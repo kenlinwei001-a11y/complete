@@ -11,16 +11,49 @@
 | Docker | Docker Engine 20+（含 `docker compose` v2 插件）；macOS/Windows 用 Docker Desktop |
 | 内存 | 建议 ≥ 4 GB 可用内存（两个 Postgres + 两个 Node 服务 + nginx） |
 | 磁盘 | ≥ 2 GB（镜像 + 演示数据卷） |
-| 端口 | 80（网关）、4001/4002（后端直连调试）、5441/5442（数据库）、9000/9001（MinIO）空闲 |
+| 端口 | 80（网关）、4001/4002（后端直连调试，**只绑 127.0.0.1**）、5441/5442（数据库）、9000/9001（MinIO）空闲 |
+
+> **4001/4002 只监听本机回环**（`docker-compose.yml`）。容器间通信走 compose 网络的服务名
+> （`http://datacore:4001` / `http://agentcore:4002`），网关也一样，**都不经这条发布端口**，
+> 因此收窄到 loopback 不影响任何服务间调用或前端访问（前端走 80 网关同源）。
+> 从**别的机器**直连 4001/4002 调试请走 SSH 隧道：`ssh -L 4001:127.0.0.1:4001 <host>`。
+> 这样做的原因见 §5.y：这两个端口上有服务间专用端点，此前从 0.0.0.0 匿名可达。
 
 > 无需本机安装 Node/pnpm —— 全部在镜像内构建。
 
 ## 2. 部署步骤
 
+### 2.0 部署分支（先看这一条 · WO-INTEGRATION-LOOP 收口）
+
+> ⛔ **本节存在的理由 = 一次真实故障**：本文档此前只写 `git clone <仓库地址>`，没有任何分支说明。
+> 照做即 clone 默认分支，而当时默认分支**落后集成分支 919 个提交**——部署方与 Codespaces
+> 拿到的都是死分支，「拉不到最新代码」的根因在此，不在网络也不在缓存。
+
+| 分支 | 角色 | 谁该用 |
+|---|---|---|
+| `main` | **发布分支**：只接收跑通完整门禁（`scripts/gate.sh` + `pnpm gates` + 并线台账门）的代码 | **部署方、Codespaces、部署 agent 一律用它** |
+| `claude/inspiring-gates-aqczjg` | 集成分支：handoff 经复验后并入此处，门禁全绿后同步到 `main` | 开发/审核方 |
+| `claude/handoff-*` | 单工单交付分支，未复验 | 只用于 PR 复验，**不要部署** |
+
 ```bash
-git clone <仓库地址> && cd <仓库目录>
-docker compose up --build          # 首次构建约几分钟；后台运行加 -d
+# 首次部署
+git clone -b main <仓库地址> && cd <仓库目录>
+docker compose up -d --build       # 首次构建约几分钟
 ```
+
+```bash
+# 更新到最新（部署方 / Codespaces / 部署 agent 的**唯一**刷新命令）
+git fetch origin main
+git checkout main && git pull --ff-only origin main
+docker compose up -d --build       # compose 自动停旧容器→换新镜像→起新容器，无需手动 kill 进程
+docker compose ps                  # 全部 healthy 即完成
+```
+
+> `--ff-only` 是刻意的：若它失败，说明本地有偏离发布分支的改动，**应当停下来查**，
+> 而不是让 merge 悄悄产生一个只存在于部署机上的版本（那正是「线上和仓库对不上」的来源）。
+>
+> `/readyz` 在 `SEED_DEMO=1` 预热期间返回 **503 是正常的**（正在生成合成数据集），
+> 日志出现 `datacore 预热完成 · /readyz ready` 后转 200。别把预热 503 当成部署失败。
 
 等待 `gateway` 服务就绪（`docker compose ps` 全部 healthy）。首次启动 DataCore 会自动：
 
@@ -75,7 +108,7 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | 订单台账 order | 对象分页查询 + 列筛选（`GET /a/v1/objects?type=Order&f_*=`，行级权限过滤） |
 | 规划体检 plan-audit | S1 `plan_audit` 求解器（约束扫描 + 一键修正 Action） |
 | 方案生成 plan-generate | S1 `plan_generate` 求解器（处置方案候选 + 采纳为草稿） |
-| 项目沙盘推演 project-sim | S1 `capacity_forecast` 求解器（P50/P90 产能、What-if 调参，`POST /b/v1/solvers/{key}/run`） |
+| 项目推演 project-sim | S1 `capacity_forecast` 求解器（P50/P90 产能、What-if 调参，`POST /b/v1/solvers/{key}/run`） |
 | S&OP 月度平衡 sop-balance | S1.8 `/a/v1/sop/*` 五步月度平衡流程（版本/推进/锁定） |
 | 查询对话 Dock | QOS 全链路：意图分类 → 工作流（路径 A）/探索 Agent（路径 B）→ SSE 流式过程 → 可溯源回答 |
 
@@ -99,12 +132,41 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 ## 5.x LLM Provider 配置与变更传播（增量）
 
 - **多 LLM 厂商**：`/admin/llm-providers`（tenant_admin）配置 provider（anthropic / openai_compatible / custom_http 预留）
-  与「用途绑定矩阵」（classifier/agent/extraction/modeling/template_gen/compose）。apiKey write-only（AES-GCM 落 A 库），
+  与「用途绑定矩阵」（classifier/agent/extraction/modeling/template_gen/compose/comprehend）。apiKey write-only（AES-GCM 落 A 库），
   AgentCore 经服务间凭证 `SERVICE_TOKEN`（两服务同值）拉取配置与解密密钥（密钥内存缓存 5min，永不落 B 库、永不到前端）。
 - **变更传播 SLO ≤60s**：B 对 A 资源（provider 配置/用途绑定/功能集）缓存统一 TTL 60s；发布即发 outbox 事件
   `{kind}.updated`（llm_provider.updated / llm_binding.updated / rules.updated），经 C-2 webhook 注册表回调 B 的
   失效钩子 `POST {B}/b/v1/internal/invalidate` 立即失效（事件通路故障由 TTL 兜底）。注册方式：
   `POST /a/v1/webhooks { "url": "http://agentcore:4002/b/v1/internal/invalidate", "events": [] }`。
+  ⚠ **该钩子已收口为 SERVICE_TOKEN 鉴权**（此前匿名可达）。A 侧投递会自动附带 `X-Service-Token`，
+  但**仅当 hook URL 的 origin 与 `AGENTCORE_BASE_URL` 完全一致时**（凭证不外泄给租户自助注册的地址）。
+  故注册的 URL 必须与 `AGENTCORE_BASE_URL` 同源 —— 两者写法不一致（如一个 `agentcore:4002`、
+  另一个 `127.0.0.1:4002`）会导致投递不带 token → B 侧 401 → **失效链静默退化成 TTL 60s 兜底**
+  （业务不报错，只是传播变慢）。排查：A 侧 `GET /a/v1/outbox` 看事件是否堆积/进死信。
+
+## 5.y 服务间专用端点（`SERVICE_TOKEN` 鉴权 · 部署必读）
+
+以下端点**不接受用户 JWT / X-Debug-User**，只认 `X-Service-Token`（值 = 两服务同值的 `SERVICE_TOKEN`）：
+
+| 端点 | 说明 |
+|---|---|
+| `GET {A}/metrics` · `GET {B}/metrics` | Prometheus 文本。**全租户合计**，且标签里带租户 LLM provider 记录 ID、模型名、token 消耗量、业务动作类型名、本体类型 key —— 故不对匿名与普通用户开放 |
+| `POST {B}/b/v1/internal/invalidate` | 缓存失效钩子（见上） |
+
+- **fail-closed**：未配置 `SERVICE_TOKEN` ⇒ 这些端点一律 401（不会退化成放行）。
+  `docker-compose.yml` 已默认给出 `SERVICE_TOKEN`（`dev-service-token-change-me`），**生产务必改**。
+- **Prometheus 抓取**需在 scrape 配置里加静态请求头：
+  ```yaml
+  scrape_configs:
+    - job_name: platform
+      # SERVICE_TOKEN 的值，勿写进版本库
+      authorization: { type: X-Service-Token, credentials: "<SERVICE_TOKEN>" }
+      static_configs: [{ targets: ["datacore:4001", "agentcore:4002"] }]
+  ```
+  （或用 `http_headers` 写 `X-Service-Token`，视 Prometheus 版本而定。）
+- **探活端点不受影响**：`/healthz` `/readyz`（及 `/a/v1/*`、`/b/v1/*` 别名）仍公开 —— compose healthcheck 依赖它们。
+- **租户级 Action 稳定率**改用 `GET {A}/a/v1/actions/metrics`（用户鉴权，只返回**调用者自己租户**的数）：
+  `/metrics` 是全租户合计，算不出租户级失败率。二者由同一份计数投影而来，不是两套口径。
 - **引用模式**：意图 → 计划为 `planRef {planKey, version|"latest"}`（执行时解析）；规则引用永远取 PUBLISHED 最新版；
   发布响应附影响面 impact；workflow 破坏性 inputs 变更 + latest 引用 → `BREAKING_CHANGE_WITH_LATEST_REFS`（force=true 越过，全审计）。
 
@@ -115,9 +177,62 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | `ANTHROPIC_API_KEY` | 打通真实 LLM：QOS 意图分类（默认 `claude-haiku-4-5`）、探索 Agent / 文档抽取 / 建模建议（默认 `claude-opus-4-8`）。**不配置时**：求解器/对象查询/规则等全部可用，但查询对话的分类与探索回答、A2/A3 的 LLM 抽取会失败报错（界面有明确错误提示） |
 | OpenAI 兼容 LLM | 登录后在 `/admin/`（意图目录-模型供应商）经 `POST /b/v1/llm/providers` 配置 `openai_compatible`（baseUrl + credential，凭据 AES-GCM 加密存储不回显），再用 `PUT /b/v1/llm/bindings` 把 classifier/agent 角色绑到该供应商；DataCore 侧用 `DC_LLM_PROVIDER=openai_compatible` + `DC_LLM_BASE_URL` + `DC_LLM_API_KEY_ENV` |
 | `EMBEDDING_PROVIDER` | 默认 `pseudo`（确定性哈希向量，零依赖可演示）。配 `openai_compatible` + `EMBEDDING_BASE_URL` + `EMBEDDING_MODEL`（及对应 key 环境变量 `EMBEDDING_API_KEY_ENV`）启用真实向量；postgres-a 用 pgvector 镜像，扩展可用时知识库走原生向量索引，不可用时自动回退 JSONB + 应用侧余弦 |
+| `OPTIMIZER_BASE_URL` | 最优化引擎 sidecar 地址（CP-SAT·组合最优化族 + `optimize_whatif` Δ目标推演）。**compose 态已自动接**（`docker-compose.yml` `${OPTIMIZER_BASE_URL:-http://optimizer:4003}`）。**源码/内存模式默认不设** → **整个组合最优化族**（`portfolio` 全局项目推演、`cross_object_occupancy` 多目标+跨对象占用、`selection`/`assignment`/`sequencing`/`packing`/`job_shop_schedule`、5 个 CP-SAT 核心、`optimize_whatif`）显式返「未接入最优化引擎」400（诚实兜底·不静默）。**后果：前端「全局项目推演」「项目推演·多目标」「优化推演」等面板结果区全空/红字"求解失败"——非 bug，是没起引擎。要用这些面板见 §6.x（必起）** |
 | `SEED_DEMO` | 置 `0` 关闭演示数据播种（空系统冷启动 —— 此时必须配置 BOOTSTRAP 变量，否则 `/readyz` 503） |
 | `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` | 管理平台增量 §1：空库首启创建平台超管（`default` 租户，角色 `platform_admin`，登录名 = 邮箱）；幂等，表非空跳过 |
+| **Loop Control 五开关**（`QOS_AGENT_MAX_ROUND_TRIPS` / `MAX_DISCOVER_CALLS` / `LOOP_REPEAT_CAP` / `PER_TOOL_CALL_CAP` / `RETRY_MAX_ATTEMPTS`） | AgentCore 执行治理层。**代码态是 opt-in（缺省不设 = 不限）**，但 **compose 出货已默认设为 `4 / 1 / 3 / 8 / 1`**（`docker-compose.yml` agentcore·`${VAR:-建议值}` 形态，可用 `.env` 覆写放宽）。分别管：轮次上界 / 盲扫（discover·search_experience·query_system_ontology）配额 / 同参重复环检测 / 同工具异参刷屏上界 / 瞬时错有界重试。超任一 → 优雅降级 `BUDGET_EXHAUSTED`·`STALL_LOOP`（诚实部分发现，不静默）。**曾经的坑（#88）**：这五个只写在代码注释的「部署态建议」里，出货 compose 一个都没设 → 容器只带第一层治理（超时），其余全是死开关；现由 `scripts/check-deploy-governance.mjs` 守门（删行即红） |
 | HTTPS | 自备 `decision.local` 证书放 `deploy/certs/`，取消 `deploy/nginx.conf` 末尾 443 server 块与 `docker-compose.yml` 中 gateway 的 443 端口/证书挂载注释，浏览器改走 `https://decision.local` |
+
+## 6.y 部署态验证 checklist（Phase4 硬预算 / dark-feature / live 叙述 —— 沙箱证不了、部署时坐实）
+
+以下三项机制**已在代码态由单测/SEAM 坐实**，但真 live 值（真 LLM 时延、真租户 resolve）**只能在真部署环境验**（无真 provider 的沙箱不编造）：
+
+1. **QOS 硬预算真收紧（对照 137s 基线）** —— compose 出货已默认设 `QOS_AGENT_MAX_ROUND_TRIPS=4` + `QOS_AGENT_MAX_DISCOVER_CALLS=1`（见 §6 表；起容器后用 `docker compose config | grep QOS_AGENT` 复核实际生效值）。验：跑一道「有对口确定性 solver」的复杂问句（如「储能份额没达标，逐层拆根因」），墙钟应从 free-LLM 盲选的 ~137s 降到确定性 path-A 秒级；path-B 自由深问题 round-trip ≤4 触顶即 `BUDGET_EXHAUSTED` 优雅降级。**该预算同样作用于 coordinator 每个子 agent / 角色 agent / 场景 path**（WO-Phase4 §6·`computeResidualBudget` 统一注入 5 处 BudgetTracker）。
+2. **dark-feature 部署态默认关** —— `scripts/provision-enterprise.mjs` 建 `industry:"battery-manufacturing"` 租户后，验该租户 resolved features **不含** `QOS_DARK_LAUNCH_FEATURES` 排除项（`apps/datacore/src/features.ts` 从 battery all-on 模板剔除）。代码态 `dark-feature-default-off.test.ts` 已锁 `resolve("demo")` 两项 false；部署态用真 provision 建租户后复核 `GET /a/v1/features/registry` 的 resolved 结果。
+3. **live 叙述真跑（§3.2 多方案权衡综合）** —— 推演类 NL 问句的一次 `llm.compose` 综合需真 LLM provider。**无 provider 时走确定性兜底 `deterministicSynthesis`（诚实·不假装 LLM），非缺陷**；要真 live 叙述，经 `/admin/`（意图目录-模型供应商）配真 provider（凭据 AES-GCM 加密存储不回显·见 §5.x），把 `agent` 角色绑上去即可。
+
+> 诚实边界（KILL-MOCK-RED）：以上 live 数字（60s / round-trip / 真 resolve）沙箱无真 provider 证不了 → 机制单测坐实、live 值留部署态复核，不编造。
+
+## 6.x 起最优化引擎 sidecar（CP-SAT·组合最优化推演必需·源码模式不用 Docker）
+
+> **源码/内存模式部署必读**：CLAUDE.md 的本地内存双服务命令**不含** `OPTIMIZER_BASE_URL`。不设时，整个**组合最优化求解器族**——
+> `portfolio`（全局项目推演）/ `cross_object_occupancy`（多目标+跨对象占用）/ `selection` / `assignment` / `sequencing` /
+> `packing` / `job_shop_schedule` / `optimize_whatif`（优化推演页 `/v/optimize-whatif`）+ 5 个 CP-SAT 核心
+> （facility_location / min_cost_flow / set_cover / independent_set / combinatorial_auction）——全部显式返
+> 「未接入最优化引擎」400。**后果：前端「全局项目推演视图」「项目推演·多目标+跨对象占用」「优化推演」等面板结果区全空 /
+> 红字"求解失败"——这不是 bug，是没起引擎。** 要用这些推演面板，此 sidecar **必起（非可选）**。sidecar 是纯 Python 进程、
+> 唯一依赖 `ortools`、**不需要 Docker**。三行起 sidecar 再给 datacore 加一个 env：
+
+```bash
+# ① 起 CP-SAT sidecar（本地·services/optimizer·需 python3 + pip）
+cd services/optimizer && pip install -r requirements.txt && PORT=4003 python3 server.py &
+#   健康检查：curl http://127.0.0.1:4003/healthz  →  {"status":"ok","engine":"cp-sat"}
+
+# ② datacore 本地命令追加 OPTIMIZER_BASE_URL 即真接入（其余 env 见 CLAUDE.md 内存模式命令）
+OPTIMIZER_BASE_URL=http://127.0.0.1:4003 \
+  PORT=4001 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> \
+  node apps/datacore/dist/server.js
+
+# ③ 验证 Δ 真变（改约束→重解→Δ 变·CP-SAT 真解·非 mock）
+curl -s -X POST http://127.0.0.1:4001/a/v1/solvers/optimize_whatif/invoke \
+  -H 'content-type: application/json' -H 'x-debug-user: demo:admin:admin' \
+  -d '{"args":{"family":"facility_location","args":{...},"perturbations":[{"kind":"cost","target":"f1","delta":50}],"seed":42}}'
+#   改 perturbations.delta（如 50→600）重跑 → deltaObjective / feasible / conflictConstraints 随之真变。
+
+# ③-bis 冒烟验证 portfolio（全局项目推演·本文档作者已亲手真跑：OK OPTIMAL 方案3 分配147 被挤12 守恒True）
+curl -s -X POST http://127.0.0.1:4001/a/v1/solvers/portfolio/invoke \
+  -H 'content-type: application/json' -H 'x-debug-user: demo:admin:admin|planner|catalog_admin' \
+  -d '{"args":{"scenarios":["max_ontime","min_cost","min_changeover"]}}' \
+  | python3 -c "import sys,json;d=json.load(sys.stdin)['data'];print('OK',d['status'],'方案',len(d['scenarios']),'分配',len(d['allocation']),'被挤',len(d['displaced']),'守恒',d['reconciled'])"
+#   期望：OK OPTIMAL 方案 3 分配 147 被挤 12 守恒 True → 前端「全局项目推演」方案对比矩阵/分配台账/被挤单卡/守恒台账满渲。
+```
+
+> **源码模式生产守护**：`python3 server.py` 用 `nohup …&` 或 systemd/pm2/supervisor 守护（sidecar 无状态、无业务数据落盘、
+> 仅本机可达、R6 确定性同输入同解）。容器化则用 `docker-compose.yml` 的 `optimizer` 服务，无需手动起。
+
+> compose 态（`docker compose up`）已自动接：`docker-compose.yml` 有 `optimizer` 服务（build `services/optimizer` ·
+> expose 4003 · healthcheck）+ `OPTIMIZER_BASE_URL` 默认值 + datacore `depends_on optimizer(service_healthy)`——
+> 整套里 5 CP-SAT 核心 + `optimize_whatif` 是真接入、真解的，无需手动起 sidecar。
 
 ## 7. 故障排查
 
@@ -130,6 +245,11 @@ docker compose up --build          # 首次构建约几分钟；后台运行加 
 | 登录 401 | 确认租户填 `demo`；改过库后想重置：`docker compose down -v` 清卷重来 |
 | 查询对话报模型错误 | 未配置 `ANTHROPIC_API_KEY`（见 §6）；其余模块不受影响 |
 | 改了代码不生效 | `docker compose up --build` 强制重建镜像 |
+| **只重建了前端 → 后端改动不生效（假 bug 制造机）** | 改动落在 `datacore`/`agentcore` 时，只 `docker compose build frontend` 或不带 `--build` 的 `up -d` 会**继续跑旧后端镜像**。症状极具迷惑性：求解器新参数报「unknown key」、时序推演全灰/全平、根因树「暂不可用」、新点亮的功能开关查无此项——**看着像功能没做，实为后端是旧的**。正解：`docker compose build --no-cache datacore agentcore frontend && docker compose up -d`。诊断口诀：**先确认后端是新的，再判断功能有没有 bug**（本项目已因此误诊过多次） |
+| **租户功能开关改了却不生效** | PG 卷持久化了租户 override：重建镜像**不会**重置已落库的开关。`PUT /a/v1/tenants/:id/features` 是**整体替换**（非合并），须一次性提交全部开关键，漏传的会被清空；或 `docker compose down -v` 清卷让 `SEED_DEMO` 重新播种 |
+| **前端能开、B 系统功能却静默失灵**（对话/QOS 问了没反应、SSE 不流、Agent 无响应） | **前端 `VITE_AGENTCORE_URL` 与 agentcore 实际监听端口不一致**。本项目真实踩过：LaunchAgent plist 配 `PORT=4005`，而前端按文档用了 `4002` → 前端连不上 B 系统，**且不报醒目错误**，极易误判为"功能没做"。诊断：浏览器 Network 看请求打到哪个端口、是否 ERR_CONNECTION_REFUSED；`curl localhost:<两个端口>/healthz` 对比。正解：两边取同一值（改 plist 的 `PORT`，或前端起服时 `VITE_AGENTCORE_URL` 指向实际端口）。**改端口后前端必须重启**（Vite env 在启动时注入，HMR 不会更新它） |
+| **拉了新代码、前端却仍显示旧行为**（如因素 chip 还是「设备OEE 76」而非「张力76/100」；矩阵列头无量纲） | 改动落在 `packages/contracts` 时，**Vite 会预打包 workspace 依赖**到 `apps/frontend-shell/node_modules/.vite`，contracts 重新 build 后旧预打包可能仍被复用 → 前端拿到旧契约。「源码改动走 HMR 生效」只对**应用源码**成立，对**被重建的依赖包不成立**。正解：`rm -rf apps/frontend-shell/node_modules/.vite` 后重启 dev server |
+| GitHub 上 agent 提交显示 **Unverified** | 本远程环境的 commit 签名密钥 `/home/claude/.ssh/commit_signing_key.pub` 为 **0 字节空文件**（签名 helper `/tmp/code-sign` 本身可用，缺的是密钥内容），故所有 agent 提交均未签名——**本仓 2400+ 个 agent commit 自建仓起一直如此，非新退化**。`git commit --amend --reset-author` 只改 author/committer，**修不了签名**，勿反复 rebase 空转。影响面**仅限 GitHub 那枚 Verified 徽章**，不影响代码、CI、合并。需要 Verified 时：在 **GitHub 网页做 squash merge**（网页产生的 commit 由 GitHub 签名 → Verified）。根治需环境侧下发有效签名密钥（Anthropic 侧配置，可经 `/bug` 反馈） |
 
 ## 8. 数据持久化与重置
 

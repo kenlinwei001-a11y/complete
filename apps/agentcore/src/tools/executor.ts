@@ -1,4 +1,4 @@
-import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
+import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMcpToolName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
 import { newId } from "../ids.js";
 import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
@@ -19,6 +19,12 @@ export interface ToolRunResult {
   toolCallId: string;
   outcome: "OK" | "DENIED" | "ERROR" | "BUDGET_EXCEEDED";
   durationMs: number;
+  /**
+   * WO-LOOP-CONTROL-P2 · Retry Manager（PRD §3.2·机制 #4）：仅 ERROR 回执置位——**瞬时/传输层错**（DataCore 不可达、
+   * MCP 传输层抖动）标 `true` → 循环侧可**有界重试**（成功则不入停滞计数）；**确定性错**（校验/逻辑/未知工具·TOOL_ERROR）
+   * 标 `false`（保守·不重试·立即入停滞）。缺省 undefined = 不重试 = 现行为字节兼容（R6·纯分类无 Date.now/随机）。
+   */
+  retryable?: boolean;
 }
 
 export interface ExecutorOptions {
@@ -28,7 +34,22 @@ export interface ExecutorOptions {
   budget?: BudgetTracker;
   /** Agent scopeDeclaration.toolNames — calls outside it are rejected regardless of user perms. */
   scopeToolNames?: string[];
+  /**
+   * WO-FIVE-ROLE-AI-EMPLOYEE P1 · Agent scopeDeclaration.objectTypes 强制（**opt-in**，仅 Coordinator 角色扇出置）——
+   * 对象读取工具（query_objects/get_object/aggregate_objects）的 objectType 不在此集内即 DENIED（AGENT_SCOPE_VIOLATION）。
+   * 未设（既有全部调用路径）= 不强制 → 字节兼容零回归。让"供应链只能查 Material、生产只能查 Line"成真隔离（越界拒）。
+   */
+  scopeObjectTypes?: string[];
 }
+
+/** 对象读取工具集：其 input.objectType/typeKey 受 scopeObjectTypes 约束（越界拒）。 */
+const OBJECT_SCOPED_TOOLS = new Set(["query_objects", "get_object", "aggregate_objects"]);
+
+/**
+ * WO-Phase4：探索类（"盲扫"）工具集——消耗 budget.maxDiscoverCalls 专用配额（与通用 tool 预算正交）。
+ * 真开放 residual 题最多允许 N 次盲扫（默认 residual=1），超即 BUDGET_EXCEEDED 并置 budget.exhausted → loop 硬预算降级。
+ */
+const DISCOVER_TOOLS = new Set(["discover", "search_experience", "query_system_ontology", "retrieve_knowledge"]);
 
 export interface ExecutorDeps {
   dataCore: DataCoreClient;
@@ -37,6 +58,11 @@ export interface ExecutorDeps {
   metrics: Metrics;
   /** 增量 §3：read_skill_resource 的附件内容读取端口（缺省 → 仅返回元信息）。 */
   skillResources?: SkillResourceReader;
+  /** WO-DRIL-P2 · retrieve_knowledge 的检索端口（缺省 → 工具降级返回空结果·fail-open 不崩）。 */
+  retrieveResources?: (
+    ctx: ToolAuthCtx,
+    req: import("@platform/contracts").ResourceSearchRequest,
+  ) => Promise<import("@platform/contracts").ResourceSearchResponse>;
 }
 
 const OUTPUT_LIMIT = 64 * 1024;
@@ -99,6 +125,8 @@ export class GuardedToolExecutor {
        * 此处不再重复消耗（{ok:false} 直接回 BUDGET_EXCEEDED）。
        */
       budgetDecision?: { ok: true } | { ok: false; reason: string };
+      /** 约束执行层 stage3②：声明此工具输出应符合的本体对象类型 → 运行时强制校验,不符拒（信任边界）。 */
+      expectsObjectType?: string;
     },
   ): Promise<ToolRunResult> {
     const started = Date.now();
@@ -108,12 +136,36 @@ export class GuardedToolExecutor {
     if (this.opts.scopeToolNames && !this.opts.scopeToolNames.includes(toolName)) {
       return this.finish(toolName, input, { error: ErrorCodes.AGENT_SCOPE_VIOLATION }, "DENIED", started, false);
     }
+    // 0.1) WO-FIVE-ROLE P1 · 对象类型 scope 门（opt-in·仅 Coordinator 角色扇出）：读对象工具的 objectType 越界即 DENIED。
+    if (this.opts.scopeObjectTypes && OBJECT_SCOPED_TOOLS.has(toolName)) {
+      const inObj = (input ?? {}) as Record<string, unknown>;
+      const requested = String(inObj.objectType ?? inObj.typeKey ?? "");
+      if (requested && !this.opts.scopeObjectTypes.includes(requested)) {
+        return this.finish(
+          toolName,
+          input,
+          { error: ErrorCodes.AGENT_SCOPE_VIOLATION, objectType: requested, allowed: this.opts.scopeObjectTypes },
+          "DENIED",
+          started,
+          false,
+        );
+      }
+    }
 
     // 0.5) OBO token about to expire (<60s) → refuse to start new tool calls (platform PRD §11)
     const exp = this.opts.ctx.tokenExpiresAt;
     if (exp !== undefined && exp * 1000 - Date.now() < 60_000) {
       this.deps.metrics.oboDenied.inc();
       return this.finish(toolName, input, { error: "OBO_TOKEN_EXPIRING" }, "DENIED", started, false);
+    }
+
+    // A1 求解器 MCP 工具：mcp__solvers__{key} → 复用既有 invoke_solver 执行路径（OBO 到 DataCore，零重写）。
+    // scope 门已用原名校验（line 110），此处归一到 invoke_solver 供下游分发；审计名亦记为 invoke_solver。
+    const solverKeyFromMcp = parseSolverMcpToolName(toolName);
+    if (solverKeyFromMcp) {
+      const inp = (input ?? {}) as Record<string, unknown>;
+      toolName = "invoke_solver";
+      input = { solverKey: solverKeyFromMcp, args: (inp.args as Record<string, unknown>) ?? {} };
     }
 
     // 1) coarse-grained IAM check
@@ -130,7 +182,16 @@ export class GuardedToolExecutor {
         );
       }
     } catch (err) {
-      return this.finish(toolName, input, wrapError(err), "ERROR", started, false);
+      return this.finish(toolName, input, wrapError(err), "ERROR", started, false, classifyRetryable(err, binding));
+    }
+
+    // 2.0) WO-Phase4：探索类工具专用配额（discover/search_experience/query_system_ontology）——与通用 tool 预算正交，
+    // 串行/并行轮均在此消耗（确定性 R6）。超 maxDiscoverCalls → BUDGET_EXCEEDED + 置 budget.exhausted（loop 下轮降级）。
+    if (this.opts.budget && DISCOVER_TOOLS.has(toolName)) {
+      const d = this.opts.budget.tryConsumeDiscover();
+      if (!d.ok) {
+        return this.finish(toolName, input, { error: "BUDGET_EXCEEDED", reason: d.reason }, "BUDGET_EXCEEDED", started, false);
+      }
     }
 
     // 2) budget (path B only)；并行轮由循环侧预计数（budgetDecision 传入）
@@ -163,10 +224,22 @@ export class GuardedToolExecutor {
     }
     try {
       const payload = await withTimeout(this.dispatch(toolName, input, binding), options?.timeoutMs, toolName);
+      // stage3②：声明了 expectsObjectType → 工具输出按本体对象类型 schema/值域强制校验,不符拒（DENIED）。
+      if (options?.expectsObjectType) {
+        const p = payload as { rows?: unknown; data?: unknown };
+        const rowsRaw = Array.isArray(p?.rows) ? p.rows : Array.isArray(p?.data) ? p.data : Array.isArray(payload) ? payload : [];
+        const rows = (rowsRaw as unknown[]).filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null);
+        if (rows.length > 0) {
+          const vr = await this.deps.dataCore.ontology.validateOutput(this.opts.ctx, options.expectsObjectType, rows);
+          if (!vr.ok) {
+            return this.finish(toolName, input, { error: "ONTOLOGY_VALIDATION_FAILED", objectType: options.expectsObjectType, violations: vr.violations }, "DENIED", started, false);
+          }
+        }
+      }
       if (cacheable) this.readCache.set(ckey, payload);
       return this.finish(toolName, input, payload, "OK", started, true);
     } catch (err) {
-      return this.finish(toolName, input, wrapError(err), "ERROR", started, false);
+      return this.finish(toolName, input, wrapError(err), "ERROR", started, false, classifyRetryable(err, binding));
     }
   }
 
@@ -184,14 +257,73 @@ export class GuardedToolExecutor {
     switch (toolName) {
       case "discover": {
         const kind = String(args.kind);
-        if (kind !== "slices" && kind !== "solvers" && kind !== "mcp_tools") {
-          return { error: "kind must be slices|solvers|mcp_tools" };
+        if (kind !== "object_types" && kind !== "slices" && kind !== "solvers" && kind !== "mcp_tools") {
+          return { error: "kind must be object_types|slices|solvers|mcp_tools" };
+        }
+        if (kind === "object_types") {
+          // CL.3：列本租户真实已发布对象类型名（agent 照真名查不再猜）。
+          const q = args.query ? String(args.query).toLowerCase() : undefined;
+          const types = await this.deps.dataCore.ontology.listObjectTypes(ctx);
+          const items = q ? types.filter((t) => t.key.toLowerCase().includes(q) || t.label.includes(String(args.query))) : types;
+          return { items, hint: "用 query_objects 时 objectType 必须是上列真实 key（区分大小写）；勿猜英文名。" };
         }
         if (kind === "mcp_tools") {
           // §2 MCP 按需加载目录：当前部署未启用 >24 工具按需加载模式 → 空目录
           return { items: [] };
         }
+        // WO-DRIL-P4 · discover(solvers|slices) **先查 Resource Registry**（P2 混合检索·五级标签+语义+确定性加权排序·
+        // entitlement 已在 registry 内前置过滤 R3），有结果即用其排序（比 keyword 目录更准）；无端口/空结果/异常 →
+        // fall back 既有 CatalogService.discover（additive·fail-open·返回形状与 catalog 一致 {items:[{key,name,description,argHints,domain}]}）。
+        if (this.deps.retrieveResources && (kind === "solvers" || kind === "slices")) {
+          try {
+            const drilKind = kind === "solvers" ? "solver" : "slice";
+            const res = await this.deps.retrieveResources(ctx, {
+              query: args.query ? String(args.query) : "",
+              kinds: [drilKind],
+              maxResults: 50,
+              minScore: 0, // 发现语义=枚举可选项（非精度检索）→ 门槛 0·由排序定优先级
+            } as import("@platform/contracts").ResourceSearchRequest);
+            if (res.results.length > 0) {
+              return {
+                items: res.results.map((r) => ({
+                  key: r.resource.key,
+                  name: r.resource.label,
+                  description: r.resource.description,
+                  argHints: r.resource.argHints ?? {},
+                  ...(r.resource.domain ? { domain: r.resource.domain } : {}),
+                })),
+                source: "dril-registry",
+              };
+            }
+          } catch {
+            /* fail-open → 落既有 catalog.discover */
+          }
+        }
         return this.deps.dataCore.catalog.discover(ctx, kind, args.query ? String(args.query) : undefined);
+      }
+      // WO-DRIL-P2 · DRIL 混合检索：一次跨 7+ 类资源按 NL 选型（fail-open：无端口 → 空结果不崩）。
+      case "retrieve_knowledge": {
+        if (!this.deps.retrieveResources) return { results: [], explanation: "资源检索未启用（无 registry 端口）。" };
+        const maxResults = args.maxResults === undefined ? 8 : Math.min(Number(args.maxResults), 50);
+        const req = {
+          query: String(args.query ?? ""),
+          maxResults,
+          minScore: 0.2,
+          ...(Array.isArray(args.kinds) ? { kinds: args.kinds.map(String) } : {}),
+        } as import("@platform/contracts").ResourceSearchRequest;
+        const res = await this.deps.retrieveResources(ctx, req);
+        // 收敛回执：只留 kind/key/label/score/scoreBreakdown（不回灌全 resource 体·省 token）。
+        return {
+          results: res.results.map((r) => ({
+            kind: r.resource.kind,
+            key: r.resource.key,
+            label: r.resource.label,
+            description: r.resource.description,
+            score: r.score,
+            scoreBreakdown: r.scoreBreakdown,
+          })),
+          explanation: res.explanation,
+        };
       }
       case "resolve_slice":
         return this.deps.dataCore.ontology.resolveSlice(
@@ -199,8 +331,45 @@ export class GuardedToolExecutor {
           String(args.sliceKey),
           (args.args ?? {}) as Record<string, unknown>,
         );
-      case "query_objects":
-        return this.deps.dataCore.ontology.queryObjects(
+      case "plan_slice": {
+        const req: {
+          rootType: string;
+          targets: string[];
+          maxHops: number;
+          question?: string;
+        } = {
+          rootType: String(args.rootType),
+          targets: Array.isArray(args.targets) ? args.targets.map(String) : [],
+          maxHops: args.maxHops === undefined ? 6 : Number(args.maxHops),
+        };
+        if (args.question !== undefined) req.question = String(args.question);
+        const res = await this.deps.dataCore.ontology.planSlice(ctx, req);
+        if (!res.ok) return res;
+        // A3-SUITE-2：新规划的切片必须登记为一等 SliceSpec，后续 resolve_slice 才能消费。
+        if (!res.plan.reused) {
+          const spec = {
+            root: { typeKey: res.plan.rootType, selector: {} as Record<string, unknown> },
+            paths: res.plan.paths.map((p) =>
+              p.hops.map((h) => ({ linkKey: h.linkKey, direction: h.direction as "out" | "in" }))
+            ),
+          };
+          await this.deps.dataCore.ontology.putSliceSpec(ctx, res.plan.sliceKey, spec);
+        }
+        return {
+          planned: true,
+          reused: res.plan.reused,
+          sliceKey: res.plan.sliceKey,
+          rootType: res.plan.rootType,
+          spannedDomains: res.plan.spannedDomains,
+          pathCount: res.plan.paths.length,
+          plan: res.plan,
+        };
+      }
+      case "query_objects": {
+        // CL.3：未知 typeKey → 结构化 UNKNOWN_TYPE + did-you-mean（不静默返空，agent 据此改名重查）。
+        const dym = await this.unknownTypeGuard(ctx, String(args.objectType));
+        if (dym) return dym;
+        const res = await this.deps.dataCore.ontology.queryObjects(
           ctx,
           String(args.objectType),
           (args.filter ?? {}) as Record<string, unknown>,
@@ -208,21 +377,84 @@ export class GuardedToolExecutor {
           // 并发一致性 §13.1：任务内首读捕获 taskEpoch，后续读复用 → 任务级快照一致（近似 MVCC）
           await this.taskSnapshotEpoch(ctx),
         );
-      case "get_object":
+        // CL.3：类型存在但 0 实例 → 区分"空 vs 不存在"，提示先引导（接 bootstrap/gap-fill），不让 agent 误判无数据。
+        const total = (res?.data as { total?: number } | undefined)?.total;
+        if (total === 0) return { ...res, empty: true, hint: `对象类型 ${String(args.objectType)} 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定"无数据"。` };
+        return res;
+      }
+      case "get_object": {
+        const dym = await this.unknownTypeGuard(ctx, String(args.objectType));
+        if (dym) return dym;
         return this.deps.dataCore.ontology.getObject(ctx, String(args.objectType), String(args.objectId));
+      }
+      // Dogfooding P3：问运行中的系统自己（受 DataCore MetaAccessPolicy 白名单门控,OBO 透传）。
+      case "query_system_ontology":
+        return this.deps.dataCore.ontology.queryMetaOntology(ctx);
+      case "get_breakpoint":
+        return this.deps.dataCore.ontology.getMetaBreakpoint(ctx, String(args.id));
+      case "impact_of":
+        return this.deps.dataCore.ontology.metaImpact(ctx, String(args.node));
       case "aggregate_objects":
         // 治理增量 §3.6 / G8：contracts IO 强校验，聚合下推（避免拉全量行）。
         return this.deps.dataCore.ontology.aggregateObjects(ctx, AggregateRequestSchema.parse(input));
       case "invoke_solver":
         return this.deps.dataCore.solver.invoke(ctx, String(args.solverKey), (args.args ?? {}) as Record<string, unknown>);
+      // WO-Phase3-B §3.2：本体遍历查询 → 复用 DataCore ontology_query 求解器（OBO 透传·零重写）。
+      case "query_ontology":
+        return this.deps.dataCore.solver.invoke(ctx, "ontology_query", (args ?? {}) as Record<string, unknown>);
       case "evaluate_rules":
         return this.deps.dataCore.rules.evaluate(
           ctx,
           args.ruleIds as string[] | "ALL_APPLICABLE",
           args.payload,
         );
+      // CL.2 合规数据生成：触发确定性合成/建域（**触发合成 ≠ 伪造**），落未审核态（PROVISIONAL）。
+      // 回执只含元信息 + provisional 标记；业务数字由 agent 后续 query_* 读回真实物化值（铁律自洽）。
+      case "fill_data": {
+        const r = await this.deps.dataCore.ontology.fillData(ctx, {
+          typeKey: String(args.typeKey),
+          fields: (args.fields ?? []) as string[],
+          ...(args.rows === undefined ? {} : { rows: Number(args.rows) }),
+          ...(args.seed === undefined ? {} : { seed: Number(args.seed) }),
+        });
+        return { ...r, provisional: true, _note: "未审核合成数据（PROVISIONAL）：业务数字请用 query_objects 读回真实物化值；转正经 create_action_draft 走审批。" };
+      }
+      case "run_synthetic": {
+        const r = await this.deps.dataCore.datagen.runSynthetic(ctx, {
+          industry: String(args.industry),
+          scale: String(args.scale),
+          ...(args.seed === undefined ? {} : { seed: Number(args.seed) }),
+          ...(args.livedIn === undefined ? {} : { livedIn: Boolean(args.livedIn) }),
+        });
+        return { ...r, provisional: true, _note: "未审核合成数据（PROVISIONAL）：业务数字请用 query_objects/query_timeseries_agg 读回真实物化值；答案须标注'基于本轮合成的未审核数据'。" };
+      }
+      case "build_domain": {
+        const r = await this.deps.dataCore.datagen.buildDomain(ctx, {
+          story: String(args.story),
+          ...(args.seed === undefined ? {} : { seed: Number(args.seed) }),
+        });
+        return { ...r, provisional: true, _note: "未审核建域（PROVISIONAL）：建出对象/规则/求解器骨架；读回/推演用 query_objects/invoke_solver；转正走 R4。" };
+      }
       case "create_action_draft":
         return this.deps.dataCore.action.createDraft(ctx, String(args.actionType), args.payload ?? args);
+      // 增量4 §5：AI 推演指挥台 —— OBO 到 DataCore /a/v1/sim/*（透传用户 JWT）。
+      // R4：sim tick/act 模拟态不写真值（DataCore 保证）；回执只含会话态元信息，不绕审批。
+      case "sim_init":
+        return this.deps.dataCore.sim.init(ctx, {
+          ...(args.baseSnapshot !== undefined ? { baseSnapshot: args.baseSnapshot as Record<string, unknown> } : {}),
+          ...(args.scope !== undefined ? { scope: args.scope as Record<string, unknown> } : {}),
+        });
+      case "sim_tick":
+        return this.deps.dataCore.sim.tick(ctx, String(args.sessionId ?? ""), args.n === undefined ? 1 : Number(args.n));
+      case "sim_world":
+        return this.deps.dataCore.sim.world(ctx, String(args.sessionId ?? ""));
+      case "sim_certify":
+        return this.deps.dataCore.sim.certify(
+          ctx,
+          String(args.sessionId ?? ""),
+          args.scope === undefined ? undefined : String(args.scope),
+          args.target === undefined ? undefined : String(args.target),
+        );
       case "search_knowledge":
         return this.deps.dataCore.kb.search(ctx, {
           query: String(args.query),
@@ -236,9 +468,59 @@ export class GuardedToolExecutor {
         return this.readSkillResource(String(args.skillId ?? ""), String(args.resourceName ?? ""));
       case "search_experience":
         return this.searchExperience(String(args.query ?? ""), args.topK === undefined ? 3 : Math.min(Math.max(1, Number(args.topK)), 10));
+      // 自成长发动机 A4：成长工单施工面（厂商中立，R2 租户隔离）。
+      case "discover_growth_tickets":
+        return this.discoverGrowthTickets(ctx.tenantId, args.status ? String(args.status) : undefined);
+      case "claim_growth_ticket":
+        return this.transitionGrowthTicket(ctx, String(args.ticketId ?? ""), "IN_PROGRESS", args.assignee ? String(args.assignee) : ctx.userId);
+      case "submit_growth_ticket":
+        return this.transitionGrowthTicket(ctx, String(args.ticketId ?? ""), "IN_REVIEW");
       default:
         throw new Error(`unknown tool: ${toolName}`);
     }
+  }
+
+  /**
+   * CL.3：未知对象类型守卫——typeKey 不在本租户已发布类型集 → 返结构化 UNKNOWN_TYPE +
+   * validTypes + did-you-mean（最近编辑距离），而非静默返空。命中真实类型 → 返 undefined（放行）。
+   * R6 确定性（编辑距离纯函数）；类型清单经 listObjectTypeKeys（OBO，R2 隔离）。
+   */
+  private async unknownTypeGuard(ctx: ToolAuthCtx, typeKey: string): Promise<{ error: string; validTypes: string[]; suggestion?: string } | undefined> {
+    let valid: string[];
+    try {
+      valid = await this.deps.dataCore.ontology.listObjectTypeKeys(ctx);
+    } catch {
+      return undefined; // 类型清单不可达时不拦（退化为既有行为），避免误伤
+    }
+    if (valid.length === 0 || valid.includes(typeKey)) return undefined;
+    const suggestion = nearestType(typeKey, valid);
+    return {
+      error: "UNKNOWN_TYPE",
+      validTypes: valid,
+      ...(suggestion ? { suggestion } : {}),
+    };
+  }
+
+  /** A4：列出成长工单（R2 租户隔离；按 status 过滤）。施工 agent 据此知道要建什么、骨架到哪。 */
+  private async discoverGrowthTickets(tenantId: string, status?: string): Promise<unknown> {
+    const all = await this.deps.repos.growthTickets.listByTenant(tenantId);
+    const items = status ? all.filter((t) => t.status === status) : all;
+    return {
+      items: items.map((t) => ({
+        id: t.id, fromQuestion: t.fromQuestion, gapCode: t.gapCode, status: t.status,
+        ioContract: t.ioContract, ontologyRefs: t.ontologyRefs, acceptance: t.acceptance,
+        scaffoldedDrafts: t.scaffoldedDrafts ?? [], assignee: t.assignee,
+      })),
+    };
+  }
+
+  /** A4：成长工单状态流转（claim→IN_PROGRESS / submit→IN_REVIEW）；不存在→错误，R2 隔离。 */
+  private async transitionGrowthTicket(ctx: { tenantId: string }, ticketId: string, to: "IN_PROGRESS" | "IN_REVIEW", assignee?: string): Promise<unknown> {
+    const tk = (await this.deps.repos.growthTickets.listByTenant(ctx.tenantId)).find((t) => t.id === ticketId);
+    if (!tk) return { error: `TICKET_NOT_FOUND: ${ticketId}` };
+    const updated = { ...tk, status: to, ...(assignee ? { assignee } : {}) };
+    await this.deps.repos.growthTickets.upsert(updated);
+    return { id: updated.id, status: updated.status, assignee: updated.assignee };
   }
 
   /**
@@ -317,6 +599,8 @@ export class GuardedToolExecutor {
     outcome: ToolRunResult["outcome"],
     started: number,
     ok: boolean,
+    /** WO-LOOP-CONTROL-P2 · Retry Manager：ERROR 回执的瞬时/确定性分类（仅 ERROR 传入·缺省 undefined=不重试=现行为）。 */
+    retryable?: boolean,
   ): Promise<ToolRunResult> {
     const durationMs = Date.now() - started;
     const toolCallId = newId("tc");
@@ -335,11 +619,50 @@ export class GuardedToolExecutor {
     };
     await this.deps.repos.toolCalls.insert(row);
     this.deps.metrics.toolCalls.inc({ tool: toolName, outcome });
-    return { ok, payload, toolCallId, outcome, durationMs };
+    return { ok, payload, toolCallId, outcome, durationMs, ...(retryable !== undefined ? { retryable } : {}) };
   }
 }
 
+/**
+ * WO-LOOP-CONTROL-P2 · Retry Manager 错误分类（PRD §3.2·纯函数 R6·无 Date.now/随机）：区分**瞬时/传输层错**（可重试）
+ * 与**确定性错**（不可重试）。传输层 = DataCore 不可达（`DataCoreUnavailableError`）或 MCP 传输/协议抖动（binding=MCP 的
+ * 抛错）——重试大概率恢复；确定性错（zod 校验失败、未知工具、逻辑 TOOL_ERROR）重试无益 → false（保守·不放大预算）。
+ * DENIED/BUDGET/ONTOLOGY_VALIDATION 等非 ERROR 出口本就不经此（各有既有分支·不重试）。
+ */
+export function classifyRetryable(err: unknown, binding: ToolBinding): boolean {
+  if (err instanceof DataCoreUnavailableError) return true; // 传输层不可达·瞬时
+  if (binding.kind === "MCP") return true; // MCP 传输/协议抖动·瞬时（EXTERNAL 传输层错）
+  return false; // 确定性错（校验/逻辑/未知工具）·不重试·字节兼容缺省
+}
+
 /** #6 稳定参数键：键名排序后序列化，使 {a,b} 与 {b,a} 命中同一缓存。 */
+/** CL.3：did-you-mean —— 在候选类型里找与 typeKey 最近的（不区分大小写的 Levenshtein），过远则不建议。 */
+function nearestType(typeKey: string, candidates: string[]): string | undefined {
+  const lev = (a: string, b: string): number => {
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, (_, i) => i);
+    for (let j = 1; j <= n; j++) {
+      let prev = dp[0]!;
+      dp[0] = j;
+      for (let i = 1; i <= m; i++) {
+        const tmp = dp[i]!;
+        dp[i] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[i]!, dp[i - 1]!);
+        prev = tmp;
+      }
+    }
+    return dp[m]!;
+  };
+  const lk = typeKey.toLowerCase();
+  let best: string | undefined;
+  let bestD = Infinity;
+  for (const c of candidates) {
+    const d = lev(lk, c.toLowerCase());
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  // 过远（超过类型名长度一半）不建议，避免误导
+  return best !== undefined && bestD <= Math.max(2, Math.ceil(typeKey.length / 2)) ? best : undefined;
+}
+
 function canonicalArgs(input: unknown): string {
   const norm = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(norm);

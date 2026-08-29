@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, b64, MODELS_CSV, ORDERS_CSV, type TestApp } from "./helpers.js";
-import { detectFkCandidates } from "../src/modeling.js";
-import type { ModelingSuggestion } from "@platform/contracts";
+import { computeFieldCoverage, detectFkCandidates, deriveModelingSuggestion } from "../src/modeling.js";
+import type { FieldCoverageReport, ModelingSuggestion } from "@platform/contracts";
 
 async function uploadCsv(t: TestApp, filename: string, csv: string): Promise<string> {
   const res = await t.app.inject({
@@ -268,6 +268,135 @@ describe("A3 modeling", () => {
     const runs = await t.repos.derivationRuns.list("demo");
     expect(runs.length).toBeGreaterThanOrEqual(1);
     expect(runs[0]!.status).toBe("SUCCEEDED");
+  });
+
+  it("轨L 增量1: 对象身份统一 obj_${type}_${pk}（去 ds.id 段）+ 同 type+pk 重物化幂等（覆盖非重复·id 字节稳定）", async () => {
+    const t = await makeApp();
+    const ordersDs = await uploadCsv(t, "orders.csv", ORDERS_CSV);
+    const modelsDs = await uploadCsv(t, "models.csv", MODELS_CSV);
+    t.llm.enqueue(SUGGESTION_V1);
+    const s1 = await t.app.inject({ method: "POST", url: "/a/v1/modeling/suggest", headers: ADMIN, payload: { rawDatasetIds: [ordersDs, modelsDs] } });
+    const draft1 = (s1.json() as { draftId: string }).draftId;
+    await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${draft1}/publish`, headers: ADMIN });
+
+    const queryIds = async (typeKey: string): Promise<string[]> => {
+      const r = (await t.app.inject({ method: "POST", url: "/a/v1/objects/query", headers: ADMIN, payload: { objectType: typeKey, filter: {}, limit: 100 } })).json() as { data: { id: string }[] };
+      return r.data.map((o) => o.id).sort();
+    };
+
+    // 第一次物化
+    await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${draft1}/materialize`, headers: ADMIN });
+    const ids1 = await queryIds("SalesOrder");
+    expect(ids1.length).toBe(6);
+    // 身份统一：id 形态 = obj_salesorder_<pk>，**不含 ds.id 段（无 _rds_ / 无 dataset id）**。
+    for (const id of ids1) {
+      expect(id.startsWith("obj_salesorder_")).toBe(true);
+      expect(id).not.toMatch(/_rds[-_]/); // 旧 B 路 obj_type_${ds.id}_${pk} 的 ds.id 段已去除
+    }
+
+    // 第二次物化（同 draft 同数据）→ 幂等：obj id 集逐字节相等（同 type+pk 覆盖，不产重复对象）。
+    await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${draft1}/materialize`, headers: ADMIN });
+    const ids2 = await queryIds("SalesOrder");
+    expect(ids2).toEqual(ids1); // 重物化幂等：id 集不变、不翻倍
+  });
+
+  it("OM4: 确定性映射管线 derive → 每个字段都建模（R12 字段全建模 100% 覆盖 + FK→LinkType + PK 推断）", async () => {
+    const t = await makeApp();
+    const ordersDs = await uploadCsv(t, "orders.csv", ORDERS_CSV);
+    const modelsDs = await uploadCsv(t, "models.csv", MODELS_CSV);
+
+    // 无 LLM：确定性建模（201）
+    const d = await t.app.inject({ method: "POST", url: "/a/v1/modeling/derive", headers: ADMIN, payload: { rawDatasetIds: [ordersDs, modelsDs] } });
+    expect(d.statusCode).toBe(201);
+    const draftId = (d.json() as { draftId: string }).draftId;
+
+    const draft = (await t.app.inject({ method: "GET", url: `/a/v1/modeling/drafts/${draftId}`, headers: ADMIN })).json() as { suggestion: ModelingSuggestion };
+    const orders = draft.suggestion.objectTypes.find((x) => x.sourceDataset === "orders")!;
+    // 每个 orders 字段（so,cust,model,qty,due,status）都成属性
+    expect(orders.properties.map((p) => p.sourceField).sort()).toEqual(["cust", "due", "model", "qty", "so", "status"]);
+    // 主键 = 唯一率最高字段 so；FK model→models.modelId 推断为 ref
+    expect(orders.properties.find((p) => p.propKey === "so")!.isPrimaryKey).toBe(true);
+    expect(orders.properties.find((p) => p.propKey === "model")!.dataType).toBe("ref");
+    // FK orders.model → models.modelId 推断成 LinkType
+    expect(draft.suggestion.linkTypes.some((l) => l.fromTypeKey === "Orders" && l.toTypeKey === "Models")).toBe(true);
+
+    // 覆盖报告：100% 全覆盖
+    const cov = (await t.app.inject({ method: "GET", url: `/a/v1/modeling/drafts/${draftId}/coverage`, headers: ADMIN })).json() as FieldCoverageReport;
+    expect(cov.fullyCovered).toBe(true);
+    expect(cov.coverage).toBe(1);
+    expect(cov.totalFields).toBe(9); // orders 6 + models 3
+    expect(cov.datasets.every((ds) => ds.unmodeled.length === 0)).toBe(true);
+  });
+
+  it("OM5: 字段全建模门 — requireFullCoverage 下未建模字段阻断发布；移除门则放行", async () => {
+    const t = await makeApp();
+    const ordersDs = await uploadCsv(t, "orders.csv", ORDERS_CSV);
+
+    // LLM 只建模部分字段（漏 due/status）→ 默认发布放行，但开门则阻断
+    t.llm.enqueue({
+      objectTypes: [
+        {
+          action: "CREATE",
+          existingTypeKey: null,
+          typeKey: "Order",
+          displayName: "订单",
+          domain: "product",
+          sourceDataset: "orders",
+          properties: [
+            { propKey: "so", sourceField: "so", dataType: "string", isPrimaryKey: true, refToTypeKey: null },
+            { propKey: "cust", sourceField: "cust", dataType: "string", isPrimaryKey: false, refToTypeKey: null },
+          ],
+          confidence: 0.8,
+        },
+      ],
+      linkTypes: [],
+    } satisfies ModelingSuggestion);
+    const s = await t.app.inject({ method: "POST", url: "/a/v1/modeling/suggest", headers: ADMIN, payload: { rawDatasetIds: [ordersDs] } });
+    const draftId = (s.json() as { draftId: string }).draftId;
+
+    // 覆盖报告显示 4 个字段未建模（model,qty,due,status）
+    const cov = (await t.app.inject({ method: "GET", url: `/a/v1/modeling/drafts/${draftId}/coverage`, headers: ADMIN })).json() as FieldCoverageReport;
+    expect(cov.fullyCovered).toBe(false);
+    expect(cov.datasets[0]!.unmodeled.sort()).toEqual(["due", "model", "qty", "status"]);
+
+    // 开门发布 → 阻断，错误列出未建模字段
+    const blocked = await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${draftId}/publish`, headers: ADMIN, payload: { requireFullCoverage: true } });
+    const br = blocked.json() as { ok: boolean; errors: { message: string }[] };
+    expect(br.ok).toBe(false);
+    expect(br.errors.some((e) => e.message.includes("未建模") && e.message.includes("status"))).toBe(true);
+
+    // 不开门 → 放行（向后兼容：覆盖为软信息）
+    const ok = await t.app.inject({ method: "POST", url: `/a/v1/modeling/drafts/${draftId}/publish`, headers: ADMIN, payload: {} });
+    expect((ok.json() as { ok: boolean }).ok).toBe(true);
+  });
+
+  it("OM6: deriveModelingSuggestion 纯函数 + computeFieldCoverage（确定性单元）", () => {
+    const datasets = [
+      {
+        dataset: {
+          id: "a", tenantId: "demo", sourceConnId: "c1", name: "orders", rowCount: 3, syncedAt: "",
+          fields: [
+            { name: "so", inferredType: "string" as const, samples: [], nullRate: 0, uniqueRate: 1 },
+            { name: "model", inferredType: "string" as const, samples: [], nullRate: 0, uniqueRate: 0.5 },
+          ],
+        },
+        rows: [{ so: "1", model: "A" }, { so: "2", model: "B" }, { so: "3", model: "A" }],
+      },
+      {
+        dataset: {
+          id: "b", tenantId: "demo", sourceConnId: "c2", name: "models", rowCount: 2, syncedAt: "",
+          fields: [{ name: "modelId", inferredType: "string" as const, samples: [], nullRate: 0, uniqueRate: 1 }],
+        },
+        rows: [{ modelId: "A" }, { modelId: "B" }],
+      },
+    ];
+    const fks = detectFkCandidates(datasets);
+    const sugg = deriveModelingSuggestion(datasets, fks);
+    expect(sugg.objectTypes.map((t) => t.typeKey).sort()).toEqual(["Models", "Orders"]);
+    expect(sugg.objectTypes.find((t) => t.typeKey === "Orders")!.properties.find((p) => p.propKey === "model")!.refToTypeKey).toBe("Models");
+    expect(sugg.linkTypes).toHaveLength(1);
+    const cov = computeFieldCoverage(sugg, datasets.map((d) => ({ name: d.dataset.name, fields: d.dataset.fields })));
+    expect(cov.fullyCovered).toBe(true);
   });
 
   it("publish validation rejects missing PK / unknown ref / typeKey conflict", async () => {

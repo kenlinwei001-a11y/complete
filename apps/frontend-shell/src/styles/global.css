@@ -1,4 +1,5 @@
 @import "./tokens.css";
+@import "./theme-warm.css";
 
 * {
   box-sizing: border-box;
@@ -13,10 +14,8 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(1100px 700px at 78% -10%, rgba(76, 144, 240, 0.075), transparent 62%),
-    radial-gradient(900px 600px at 4% 108%, rgba(196, 112, 184, 0.045), transparent 55%),
-    var(--bg);
+  /* 扁平青蓝底（对齐参考图·无渐变——用户明确"无需渐变色·如图片颜色即可"，去掉原径向辉光）。 */
+  background: var(--bg);
   color: var(--txt);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -30,6 +29,7 @@ body {
 
 button {
   font-family: inherit;
+  color: inherit; /* 继承容器文本色（--txt）——否则 <button> 用浏览器默认深色 → 卡片式按钮深字压深底（对比度 bug·系统性根治） */
   cursor: pointer;
 }
 
@@ -53,7 +53,7 @@ textarea:focus {
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-txt);
   text-decoration: none;
 }
 
@@ -62,7 +62,7 @@ a {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(226, 235, 245, 0.12);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-track {
@@ -89,18 +89,21 @@ a {
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* WO-R9-CONTRAST：原为 #4c90f0 的半透渐变，其上的 --on-accent 白字实测 **3.20:1**（暗色）/
+   在浅色主题下渐变半透会露出白面 ⇒ 白字压白底 **1.0:1**（沙盘的「现状 / 指挥」按钮就是这样）。
+   改用不透明的 --accent-solid（逐主题定义，白字 ≥6.05）——「主按钮」本来就不该靠半透。 */
 .btn.primary {
-  background: linear-gradient(135deg, rgba(76, 144, 240, 0.85), rgba(76, 144, 240, 0.6));
-  border-color: rgba(76, 144, 240, 0.6);
-  color: #fff;
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  color: var(--on-accent);
 }
 .btn.danger {
   border-color: rgba(224, 98, 108, 0.5);
-  color: var(--danger);
+  color: var(--danger-txt);
 }
 .btn.sm {
   padding: 4px 9px;
-  font-size: 11.5px;
+  font-size: 12px;
   border-radius: 6px;
 }
 
@@ -110,42 +113,68 @@ a {
   gap: 5px;
   padding: 2px 8px;
   border-radius: 99px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-family: var(--font-mono);
   border: 1px solid var(--line2);
   color: var(--muted);
   white-space: nowrap;
 }
 .badge.green {
-  color: var(--ok);
+  color: var(--ok-txt);
   border-color: rgba(98, 190, 119, 0.45);
   background: rgba(98, 190, 119, 0.1);
 }
 .badge.amber {
-  color: var(--amber);
+  color: var(--amber-txt);
   border-color: rgba(232, 181, 74, 0.45);
   background: rgba(232, 181, 74, 0.1);
 }
 .badge.red {
-  color: var(--danger);
+  color: var(--danger-txt);
   border-color: rgba(224, 98, 108, 0.45);
   background: rgba(224, 98, 108, 0.1);
 }
 .badge.blue {
-  color: var(--accent);
+  color: var(--accent-txt);
   border-color: rgba(76, 144, 240, 0.45);
   background: rgba(76, 144, 240, 0.1);
 }
 
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
+  /* 磨砂玻璃卡（对齐参考图·青蓝底上：半透光 veil + 背景模糊 + 亮描边 + 内高光 + 柔投影）。
+     背景走 --panel-glass（主题感知：暗色=白veil磨砂 / 浅色=不透明白卡·浅底磨砂无意义）；
+     backdrop-filter 在扁平底上主要呈玻璃质感（有内容/叠层在后时才见真模糊）。 */
+  background: var(--panel-glass);
+  border: 1px solid var(--line2);
   border-radius: 12px;
   padding: 14px 16px;
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+/* 悬浮层表面（WO-PROV-POPOVER-LEGIBILITY · 欠账 #104）——溯源/规则/决策依据等**浮在密集正文之上**的层。
+ * 与 .panel 刻意分家，**不是**换个名字的同一张卡：
+ *   · .panel 是磨砂玻璃（--panel-glass 半透 veil + backdrop-blur；warm 下更被 theme-warm.css 覆写成
+ *     rgba(255,255,255,.55)）。贴在页面上当卡片没问题——它下面是页面底色，合成结果稳定。
+ *   · 同一张玻璃**浮起来**盖在正文上就废了：浮层文字看到的背景 = f(浮层色, 底下恰好是哪几个像素)。
+ *     暗色实测：--txt 压在页面空白处 9.19:1，压在底层字形上 1.01:1（白压白）。
+ *     "把 --txt 调亮点"救不了——底下是什么由用户滚到哪儿决定，不由设计决定。
+ * 因此本表面：不透明背景（var(--popover-surface)，三套主题皆实色）+ **不设 backdrop-filter**。
+ * 浮层区域的渲染像素只由本表面决定 → 对比度重新变成一个可校核的常量（AA 数值见 tokens.css）。
+ * .panel 一字不改：模块卡 / 编辑器 / 导航等 40+ 个非浮层消费者继续吃玻璃质感。 */
+.popover-surface {
+  background: var(--popover-surface);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  box-shadow: var(--popover-shadow);
 }
 
 .section-title {
-  font-size: 10.5px;
+  /* nav-reorg N3：区头字号上调（10.5→12px），与组头/叶项层级更协调（不再过小到难读）。 */
+  font-size: 12px;
   letter-spacing: 1.4px;
   color: var(--muted);
   text-transform: uppercase;
@@ -162,7 +191,7 @@ table.cmp th {
   text-align: left;
   color: var(--muted);
   font-weight: 500;
-  font-size: 11px;
+  font-size: 12px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--line2);
   white-space: nowrap;
@@ -171,13 +200,13 @@ table.cmp td {
   padding: 6px 8px;
   border-bottom: 1px solid var(--line);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 table.cmp td.zh {
   font-family: var(--font-sans);
 }
 table.cmp tr:hover td {
-  background: rgba(226, 235, 245, 0.025);
+  background: var(--hover-tint);
 }
 
 .empty-state {

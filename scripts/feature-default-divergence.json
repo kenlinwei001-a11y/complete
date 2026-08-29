@@ -1,0 +1,39 @@
+{
+  "$comment": [
+    "两侧 `defaultOn` **反向**的显式登记表（门 `feature-default-parity:check` 读它）。",
+    "两侧 = A 侧真相源 `apps/datacore/src/features.ts`（+ `synthetic/view-manifest.ts` 派生的内置视图）",
+    "     与前端 mock `apps/frontend-shell/src/mocks/fixtures.ts`。",
+    "",
+    "为什么需要这张表：反向本身**不一定是 bug**（mock 开着是为了让前端能测到渲染路径，这是合法的），",
+    "但反向**一定意味着「前端绿证明不了真部署可见」**。没登记的反向 = 没人知道这件事 = 事故预备态。",
+    "2026-08-17 `view.global-sim.live` 就是这么炸的：A 侧 false / mock true，前端测试全绿，真部署那两块看不见。",
+    "",
+    "字段：",
+    "  backend / mock          —— 登记时实测到的两侧值（写错 ⇒ 门红；不许凭印象填）",
+    "  why                     —— 为什么允许反向（要能被下一个人复核，不许写「历史原因」这种占位）",
+    "  frontendGreenProves     —— **必须明写**「前端绿不证明真部署可见」这层意思（门查关键词）",
+    "  verifiedOn / verifiedBy —— 谁在什么时候实测的",
+    "",
+    "⚠️ 登记 ≠ 永久豁免。理由不成立了就该删（删了门会因「陈旧登记」报红，逼人回来看）——",
+    "   这正是本单要治的病：`features.ts` 那句「端点未落」的注释在端点落地后还留了很久，",
+    "   下一个人读了会以为要重做一遍已经做好的东西。**留一句已不成立的理由比没有理由更坏。**"
+  ],
+  "features": {
+    "sim.sandbox": {
+      "backend": false,
+      "mock": true,
+      "why": "A 侧 `defaultOn:false` 是 **L1**，而 demo 租户的 L2 行业模板（battery = ALL_FEATURE_KEYS 减去四个暗发集合）把 sim.* 全开了 —— `sim.sandbox` 不在任何暗发集合里，故对 demo 租户实际是**开**的。mock 若照抄 L1 的 false，chain-line-map / transit-flow / physical-topology / node-inspector / chain-impediments 五个子视图会被 `requires` 级联过滤掉，前端一条渲染路径都测不到（哑门）。故 mock 侧照抄的是**有效值**，不是 L1 字面量。",
+      "frontendGreenProves": "前端绿只证明 mock 世界里沙盘是开的；**不证明真部署可见** —— 对**无行业模板 / 模板不含 sim.* 的租户**，L1 的 false 说了算，这五个视图在真部署里不出现。",
+      "verifiedOn": "2026-08-17",
+      "verifiedBy": "WO-GSIM-LIVE-FLAG-REASON（沿用 fixtures.ts 内既有实测注记，本单复核为仍成立）"
+    },
+    "decision.causal-graph": {
+      "backend": false,
+      "mock": true,
+      "why": "同 `sim.sandbox` 的机制：该键**不在**任何 `*_DARK_LAUNCH_FEATURES` 集合里（`features.ts` 只写了 `defaultOn:false`），battery 模板 L2「all on」会把它打开 ⇒ 对 demo 租户实际是**开**的。mock 照抄 L1 的 false 会让因果图面板被级联过滤，接缝断言恒真。",
+      "frontendGreenProves": "前端绿不证明真部署可见：对无行业模板的租户，`/a/v1/causal-graphs/*` 仍是 404 FEATURE_NOT_FOUND（R3 先于 authz），面板不渲染。",
+      "verifiedOn": "2026-08-17",
+      "verifiedBy": "WO-GSIM-LIVE-FLAG-REASON（沿用 fixtures.ts 内既有实测注记，本单复核为仍成立）"
+    }
+  }
+}

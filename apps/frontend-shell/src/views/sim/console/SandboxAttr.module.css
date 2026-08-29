@@ -1,0 +1,848 @@
+/**
+ * WO-SIM-FE-ATTR · 推演沙盘「损失归因」台的**像素级 1:1 移植**。
+ *
+ * ── 这份 CSS 是什么 ─────────────────────────────────────────────────────────
+ * 规格 = `docs/ux-spec/sandbox/sandbox-attr.html`（可执行规格·浏览器打开就是目标屏），
+ * 基准 = `docs/ux-spec/sandbox/pg3.png`（1440×897 · deviceScaleFactor=2）。
+ * **本文件逐条照抄规格的 `<style>`**：类名、`px`、`grid-template-columns`、`height`、`font-size`
+ * 一个都没重排。要改版面 → 改规格 HTML → 重出基准 PNG → 再回来改这里，顺序不许倒过来。
+ * `test/sandbox-attr-pixel.test.tsx` 的期望值**现从规格 HTML 解析**，改一个数不同步改规格 ⇒ 当场红。
+ *
+ * ── 唯一允许偏离规格的一件事：色值 ─────────────────────────────────────────
+ * 规格里的十六进制**本就是 `apps/frontend-shell/src/styles/tokens.css` 的真值**
+ * （`docs/ux-spec/sandbox/README.md` 第 23–27 行明写）。移植时逐个换回 token 引用，零字面色值：
+ *     #223251 → var(--bg)          #2c3d5e → var(--panel)      #1c2942 → var(--panel2)
+ *     #e9eef5 → var(--txt)         #ced7e1 → var(--muted)      #bbc5ce → var(--muted2)
+ *     #4c90f0 → var(--accent)      #43b7d7 → var(--c-capacity) #62be77 → var(--ok)
+ *     #e8b54a → var(--warn)        #e0626c → var(--danger)
+ *     rgba(226,235,245,0.08) → var(--line)   rgba(226,235,245,0.14) → var(--line2)
+ * 带 alpha 的染色一律走 `color-mix(in srgb, var(--X) N%, transparent)`（仓内先例：
+ * `SandboxHome.module.css` / `SandboxConsole.module.css`），**不把 rgba 字面量抄进来**。
+ *
+ * ── 正文色一律取 `-txt` 变体（派单硬约束①）────────────────────────────────
+ * `check-text-legibility` 判据 A 在本目录按 12px 判（`views/sim/console/` 是高密度指控台，
+ * 有作用域豁免：**降字号可以，颜色仍须满足 12px 该有的 6.0:1**）。实测 `--danger` / `--warn`
+ * / `--c-capacity` 当**正文色**在亮色主题下只有 1.66–2.06:1，故：
+ *   · **正文（`color`）** → `--danger-txt` / `--warn-txt` / `--ok-txt` / `--accent-txt` / `--c-capacity-txt`
+ *   · **边框与填充（`border-color` / `background`）** → 本色 `--danger` / `--warn` / …
+ * 两者语义不同，**不许混用**。
+ *
+ * ── 规格里那三处规格自身的不一致，照实记（不圆场）────────────────────────
+ * ① 规格 `.hc` 的热力底色用的是 `rgba(255,77,77,…)` / `rgba(63,208,224,…)`，**不是** token 真值
+ *    （`--danger #e0626c` / `--c-capacity #43b7d7`）—— 规格自己这三条没换成产品色。
+ *    派单硬约束①「色值一律 var(--…)」优先，故本文件取 token；4 个高值红格与基准 PNG 会有色差，
+ *    像素代价写在交单报告里，不藏。
+ * ② 规格 `.hc` 的文字色写死 `#140508`（近黑）/ `#9fb4c6`。近黑正文在暗色主题下压在任何面上
+ *    都读不了，判据 A 当场红且**无解**（那是"文字压在彩色实心块上"的已知误报类，本单不许进基线）。
+ *    故强格取 `var(--txt)`（随主题翻转）、弱格取 `var(--muted2)`。字形像素占比极小，见报告。
+ * ③ 规格瀑布图的基线/合计柱是 `#2d4460` —— 一个不在 token 表里的过渡蓝。取
+ *    `color-mix(in srgb, var(--accent) 10%, var(--panel))`（= #2f456d，蓝通道差 10）。
+ *
+ * ── `writing-mode` 一处都没用（派单硬约束②）─────────────────────────────
+ * `.vgrp` 的竖排中文组名走**逐字换行**：容器里的 WQY 字体无竖排度量 ⇒ 竖排时每字前进量为 0，
+ * 三个字会叠成一个黑块（README §「已知的取舍」第 1 条）。本页没有竖排拉丁数字，故全页零 `writing-mode`。
+ */
+
+/* ══ 规格 `html,body` + `*` 的等价物（CSS Module 不碰全局，落在 .app 自己身上）══ */
+.app {
+  /* 规格用到 `rgba(226,235,245,0.05)` 这一档同底发丝色（`.dr` / `.gr` / `.gcell` 的下边线）。
+     从同底 token `--line`（= rgba(226,235,245,0.08)）按 62.5% 缩放现算，**不抄 rgba 字面量**：
+     srgb 预乘插值 ⇒ 底色不变、alpha 线性缩放，0.08 × 62.5% = 0.05，取值精确等于规格。 */
+  --at-hair05: color-mix(in srgb, var(--line) 62.5%, transparent);
+  box-sizing: border-box;
+  width: 1440px;
+  height: 897px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+.app * {
+  box-sizing: border-box;
+}
+
+/* ══ 顶栏 ══ */
+.tb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 0;
+  background: var(--bg);
+}
+.logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  display: grid;
+  place-items: center;
+  color: var(--c-capacity-txt);
+  font-size: 13px;
+}
+.tt {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.tt b {
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  color: var(--txt);
+}
+.tt i {
+  font-style: normal;
+  font-size: 8px;
+  letter-spacing: 0.34em;
+  color: var(--muted2);
+}
+.hole {
+  width: 92px;
+  height: 13px;
+  background: var(--panel2);
+  border-radius: 2px;
+  margin-left: 8px;
+}
+.mb {
+  display: flex;
+  gap: 20px;
+  padding: 5px 14px 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.mb span {
+  cursor: default;
+}
+
+/* ══ 主体 ══ */
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.rail {
+  width: 44px;
+  background: var(--panel2);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+.rbtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--line2);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.rbtn.on {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  border-color: var(--warn);
+  color: var(--warn-txt);
+}
+.crew {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: auto;
+  padding-bottom: 4px;
+  align-items: center;
+}
+.cw {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.cw u {
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--muted2);
+}
+.cw i {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--line2);
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  color: var(--muted);
+  font-style: normal;
+}
+.cw s {
+  text-decoration: none;
+  width: 24px;
+  height: 2px;
+  display: block;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px;
+  gap: 6px;
+}
+.row1 {
+  height: 518px;
+  flex: none;
+  display: flex;
+  gap: 6px;
+  min-height: 0;
+}
+
+/* ══ 面板外壳 ══ */
+.pan {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.pan::before,
+.pan::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--accent);
+  opacity: 0.5;
+}
+.pan::before {
+  left: -1px;
+  top: -1px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.pan::after {
+  right: -1px;
+  bottom: -1px;
+  border-left: 0;
+  border-top: 0;
+}
+.ph {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel2);
+  flex: none;
+}
+.ph i {
+  font-style: normal;
+  color: var(--c-capacity-txt);
+  font-size: 9px;
+}
+.ph b {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--txt);
+}
+.ph .rt {
+  margin-left: auto;
+  color: var(--muted2);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+}
+.pb {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+.pbScroll {
+  overflow: auto;
+}
+
+/* ══ 左：根因树 ══ */
+.left {
+  width: 264px;
+  flex: none;
+}
+.sel {
+  margin: 7px 8px 6px;
+  position: relative;
+}
+.sel select {
+  width: 100%;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  color: var(--txt);
+  padding: 5px 8px;
+  font-size: 11.5px;
+  font-family: inherit;
+  appearance: none;
+  border-radius: 2px;
+  /* 它现在**真的会筛**（WO-ATTR-DEAD-CONTROLS · B）—— 光标据实说它可点。
+     改前是 `defaultValue` 非受控、无 `onChange`：选了没反应，且默认显示「常州基地」
+     而屏上画着全部 13 列（控件报的状态本身就是假的）。 */
+  cursor: pointer;
+}
+
+/**
+ * 「这一行真的点得动」的**唯一记号**（`.tn` 的二级行 · `.dr` 的明细行）。
+ * 与上面那批 `disabled` 的页签正好相反：那边是「看起来能点其实不能」，
+ * 这边是改前「能点却看不出能点」。两边都是屏上的可点性与真实可点性对不上。
+ */
+.pick {
+  cursor: pointer;
+}
+.pick:focus-visible {
+  outline: 1px solid var(--c-capacity);
+  outline-offset: -1px;
+}
+.sel::after {
+  content: "⌄";
+  position: absolute;
+  right: 8px;
+  top: 2px;
+  color: var(--muted2);
+  pointer-events: none;
+}
+.wv {
+  display: flex;
+  align-items: center;
+  margin: 0 8px 6px;
+  border-bottom: 1px solid var(--line);
+}
+/* ── 轮次页签（WO-ATTR-DEAD-CONTROLS）──────────────────────────────────────
+   改前是 `<b>`：无 `onClick`、无 state、高亮写死在第 0 个 —— 看起来是页签，点了没反应。
+   现改 `<button disabled>`（今天没有「第几轮推演」这个承载物，理由挂 `title`）。
+
+   ⚠ **这段重置是必需的，不是洁癖**：`<button>` 带一整套 UA 默认样式
+   （背景 / 边框 / `font-family` / `line-height:normal` / `text-align:center`），
+   不逐条抹掉，屏上盒子会与规格 `docs/ux-spec/sandbox/sandbox-attr.html` 当场对不上 ——
+   本页验收线是像素级 1:1，换标签**不许连带换外观**。
+   `appearance:none` 管 Safari 的原生按钮皮，`background:none` + `border:0` 管其余。 */
+.wv button {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  font-weight: 400;
+  font-size: 11px;
+  padding: 4px 7px;
+  color: var(--muted2);
+  cursor: default;
+}
+.wv button.on {
+  color: var(--c-capacity-txt);
+  border-bottom: 1px solid var(--c-capacity);
+}
+.wv .nav {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  color: var(--muted2);
+}
+.wv .nav button {
+  appearance: none;
+  background: none;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  color: inherit;
+  cursor: default;
+  text-decoration: none;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  font-size: 10px;
+}
+.tree {
+  padding: 0 8px 8px;
+  font-size: 11px;
+}
+.tn {
+  display: grid;
+  grid-template-columns: 1fr 34px 44px;
+  align-items: center;
+  height: 20px;
+  color: var(--muted);
+  gap: 5px;
+  font-size: 11px;
+}
+.tn span:first-child {
+  white-space: nowrap;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.tn i {
+  font-style: normal;
+  color: var(--muted2);
+  font-size: 9px;
+}
+.tn em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: right;
+}
+.tn .bar {
+  height: 5px;
+  background: var(--line2);
+  position: relative;
+}
+.tn .bar s {
+  text-decoration: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: block;
+  background: var(--warn);
+}
+.tn.l1 {
+  color: var(--txt);
+  border-bottom: 1px dotted var(--line2);
+  font-size: 11px;
+}
+.tn.l2 {
+  padding-left: 12px;
+}
+.tn.l3 {
+  padding-left: 26px;
+  color: var(--muted2);
+  font-size: 11px;
+}
+.tn.hot {
+  color: var(--danger-txt);
+  font-size: 11px;
+}
+.tn.hot .bar s {
+  background: var(--danger);
+}
+
+/* ══ 中：热力矩阵 + 瀑布 ══ */
+.mid {
+  flex: 1;
+  min-width: 0;
+}
+.mt {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.hm {
+  flex: none;
+  padding: 8px;
+}
+.hmg {
+  display: grid;
+  gap: 2px;
+}
+.hc {
+  height: 20px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted2);
+}
+/* 强格（规格 `a > 0.45`）：底色已够饱和，正文翻到主文本色。见文件头「规格自身的不一致 ②」。 */
+.hcStrong {
+  font-size: 9px;
+  color: var(--txt);
+}
+/* 空格（后端 `null` + `reason`）：渲染「—」，**绝不渲染成 0**。 */
+.hcEmpty {
+  font-size: 9px;
+  color: var(--muted2);
+  background: transparent;
+  border: 1px dotted var(--line2);
+}
+.hl {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  color: var(--muted2);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 5px;
+  background: transparent;
+  /* 规格没有这一条：规格的行名是缩写（「过程质检」），而本页站名一律取 `CHAIN_NODE_REGISTRY`
+     的全名（「过程质检攒批」），64px 列里 7 字会换行 ⇒ 行高 20px 当场破掉。
+     `nowrap` 保住行高；溢出**不裁**（与规格一样让它延伸出去），故不写 `overflow`。 */
+  white-space: nowrap;
+}
+.ht {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  color: var(--muted2);
+  display: grid;
+  place-items: center;
+  background: transparent;
+  height: 16px;
+}
+.wf {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  border-top: 1px solid var(--line);
+  margin: 0 8px;
+}
+.wf svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ══ 右：归因明细 ══ */
+.right {
+  width: 344px;
+  flex: none;
+}
+.dt {
+  font-size: 10px;
+}
+.dr {
+  display: grid;
+  grid-template-columns: 5px 74px 74px 34px 42px 26px 1fr;
+  align-items: center;
+  gap: 0 4px;
+  height: 19px;
+  border-bottom: 1px solid var(--at-hair05);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  padding: 0 6px;
+}
+.dr span {
+  white-space: nowrap;
+  overflow: hidden;
+}
+.dr.hd {
+  color: var(--muted2);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.dr.on {
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  color: var(--warn-txt);
+  font-size: 10px;
+}
+.dr s {
+  text-decoration: none;
+  height: 12px;
+  width: 2px;
+  display: block;
+}
+.dr .bd {
+  font-size: 9px;
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  justify-self: start;
+}
+.dr .spk {
+  height: 9px;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+}
+.dr .spk u {
+  text-decoration: none;
+  width: 3px;
+  background: var(--accent);
+  display: block;
+}
+/* 影响级 1..4 的正文色（规格 `C=["#62be77","#4c90f0","#e8b54a","#e0626c"]`）。
+   逐档一个类而不是内联色：内联色是**变量**，`check-text-legibility` 解析不到 ⇒ 判不着，
+   等于把这四档从门的视野里藏起来。写成类 ⇒ 门每次都真判一遍。 */
+.lv1 {
+  font-size: 9px;
+  color: var(--ok-txt);
+}
+.lv2 {
+  font-size: 9px;
+  color: var(--accent-txt);
+}
+.lv3 {
+  font-size: 9px;
+  color: var(--warn-txt);
+}
+.lv4 {
+  font-size: 9px;
+  color: var(--danger-txt);
+}
+/* 同四档的**色带**（`.dr s`）—— 这是填充不是正文，故取本色而非 `-txt`（见文件头硬约束①）。 */
+.bar1 {
+  background: var(--ok);
+}
+.bar2 {
+  background: var(--accent);
+}
+.bar3 {
+  background: var(--warn);
+}
+.bar4 {
+  background: var(--danger);
+}
+
+/* ══ 下：贡献度时序 ══ */
+.bot {
+  height: 300px;
+  flex: none;
+}
+.btabs {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+/* ── 段页签（WO-ATTR-DEAD-CONTROLS · A）────────────────────────────────────
+   同上，改前是 `<b>` + 写死高亮。今天**不可用**的理由不是没接线，是**回包里没有段这个维度**
+   （实测原文与复验命令在 `useLossAttribution.ts` 的 `useContributionSeries` 头注）。
+   重置理由同 `.wv button` 那段：换标签不许连带换外观。 */
+.btabs button {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: default;
+  font-weight: 400;
+  font-size: 11px;
+  padding: 5px 9px;
+  color: var(--muted2);
+}
+.btabs button.on {
+  color: var(--c-capacity-txt);
+  border-bottom: 1px solid var(--c-capacity);
+}
+.btabs .nav {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  color: var(--muted2);
+}
+.btabs .nav button {
+  appearance: none;
+  background: none;
+  border-radius: 0;
+  margin: 0;
+  font-family: inherit;
+  line-height: inherit;
+  color: inherit;
+  cursor: default;
+  text-decoration: none;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  font-size: 10px;
+}
+.grid {
+  height: 246px;
+  flex: none;
+  display: grid;
+  grid-template-columns: 22px 132px 58px 58px 1fr;
+  overflow: hidden;
+}
+.gcol {
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+.gcap {
+  flex: none;
+  height: 18px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  color: var(--muted2);
+}
+.gcell {
+  flex: none;
+  height: 18px;
+  border-bottom: 1px solid var(--at-hair05);
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.gcell.mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  justify-content: flex-end;
+  color: var(--txt);
+}
+.gcell.up {
+  font-size: 10px;
+  color: var(--danger-txt);
+}
+.gcell.dn {
+  font-size: 10px;
+  color: var(--ok-txt);
+}
+.vgrp {
+  flex: none;
+  font-size: 9.5px;
+  color: var(--muted);
+  letter-spacing: 0;
+  text-align: center;
+  line-height: 1.18;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--line);
+}
+.lane {
+  position: relative;
+  overflow: hidden;
+}
+.lh {
+  flex: none;
+  height: 18px;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+}
+.lh span {
+  position: absolute;
+  top: 4px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--muted2);
+  border-left: 1px solid var(--line2);
+  padding-left: 3px;
+  line-height: 1;
+}
+.gr {
+  flex: none;
+  height: 18px;
+  border-bottom: 1px solid var(--at-hair05);
+  position: relative;
+}
+.sg {
+  position: absolute;
+  top: 3px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.sg.b {
+  font-size: 9px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 1px solid var(--accent);
+  color: var(--accent-txt);
+}
+.sg.a {
+  font-size: 9px;
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  border: 1px solid var(--warn);
+  color: var(--warn-txt);
+}
+.sg.r {
+  font-size: 9px;
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  border: 1px solid var(--danger);
+  color: var(--danger-txt);
+}
+.sg.g {
+  font-size: 9px;
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  border: 1px solid var(--ok);
+  color: var(--ok-txt);
+}
+.sg.o {
+  font-size: 9px;
+  border: 1px solid var(--line2);
+  color: var(--muted2);
+}
+.play {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--warn);
+  z-index: 3;
+}
+
+/* ══ 传导边抽屉 `.dock`（WO-EDGE-PANEL-4PAGES）════════════════════════════════
+ * 规格 = `docs/ux-spec/sandbox/sandbox-attr.html` 的同名段（那份 HTML 是**可执行规格**，
+ * 不是设计说明）。要改这块版面：先改规格 → 重出基准 PNG → 再回来改这里，顺序不许倒过来。
+ *
+ * ── 为什么挂在画布**外** ────────────────────────────────────────────────────
+ * `.app` 是**定死的 1440×897 且 `overflow:hidden`**，塞进画布的任何东西都必须挤掉既有内容。
+ * 抽屉紧贴画布下沿、**默认折叠**：收起态只占 26px 一条 ⇒ 画布内信息密度**逐像素不动**；
+ * 展开才向下顶开页面。用 `<details>` 而不是条件渲染 —— 它**任何时候都能展开**，
+ * 不以「已经跑过推演」为前提，那正是 `check-edge-active-mounts` 那道门存在的理由。
+ *
+ * ── 色值一律走 token（本目录零字面色值，三套主题自动跟随）──────────────────────
+ *   var(--panel2) ← 规格 --panel2   var(--line) ← 规格 --hair
+ *   var(--txt)    ← 规格 --txt      var(--muted) ← 规格 --dim
+ * ⚠ `--muted` 当**正文色**是刻意的（不是 `--muted2`）：`check-text-legibility` 对
+ * `views/sim/console/` 按 12px 判对比度（判据 A 的高密度指控台裁决），`--muted` 三套主题
+ * 都在 6.0:1 以上，`--muted2` 只有 6.13:1 且亮色主题更险。
+ * ⚠ 字号 11.5px：本目录整体按 8–11.5px 设计（判据 B 的作用域豁免已覆盖本目录），
+ * 抽屉标题条与画布里的面板头 `.ph b` 同档，不另开一级字号（R-UI-2 只许 3 级）。 */
+.dock {
+  width: 1440px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-top: 0;
+  color: var(--txt);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+}
+.dockSum {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  cursor: pointer;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  /* 去掉浏览器默认的三角记号 —— 展开态由本条自己的下边框 + 文字色表达，
+     文字尾部另有一个 ▸ 记号。**两条声明都要写**：`list-style` 管 Firefox 与新版 Chrome，
+     `::-webkit-details-marker` 管 Safari 与旧 Chrome；只写一条会在另一半浏览器里
+     多出一个与 12px 左内边距对不齐的小三角。 */
+  list-style: none;
+}
+.dockSum::-webkit-details-marker {
+  display: none;
+}
+.dock[open] .dockSum {
+  border-bottom: 1px solid var(--line);
+  color: var(--txt);
+}

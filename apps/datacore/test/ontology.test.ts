@@ -26,8 +26,8 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
     expect(a3).toEqual(a1);
     const b = (await invoke({ modelId: "4680-NCM", qty: 80, weeks: 6 })).json();
     expect(b).not.toEqual(a1);
-    const data = (a1 as { data: { p50: number; p90: number; gapPct: number; mainBottleneck: string } }).data;
-    expect(data.p50).toBeGreaterThan(0);
+    const data = (a1 as { data: { capWanP50: number; capWanP90: number; gapPct: number; mainBottleneck: string } }).data;
+    expect(data.capWanP50).toBeGreaterThan(0);
     // legacy aliases kept for AgentCore QOS seed plans
     expect(typeof data.gapPct).toBe("number");
     expect(typeof data.mainBottleneck).toBe("string");
@@ -112,7 +112,9 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
   it("C-2 outbox: ontology.published / rules.updated POSTed to webhooks with retry; failures don't affect A", async () => {
     const calls: { url: string; body: string }[] = [];
     let fail = true;
-    const fetchImpl = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    // `RequestInfo` 是 DOM lib 的类型，本包 lib 只有 ES2022 ⇒ TS2552。
+    // 取 `fetch` 自己的形参类型，既不引 DOM 也不写死。
+    const fetchImpl = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
       calls.push({ url: String(url), body: String(init?.body ?? "") });
       if (fail) throw new Error("connection refused");
       return new Response("ok", { status: 200 });
@@ -153,7 +155,8 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
   });
 
   it("healthz/readyz/metrics work; metrics carries dc_* counters", async () => {
-    const t = await makeApp();
+    // `/metrics` 已收口为服务间鉴权（假凭证，非真实部署值）；healthz/readyz 仍公开（探活需要）。
+    const t = await makeApp({ env: { SERVICE_TOKEN: "test-only-fake-service-token" } });
     expect((await t.app.inject({ method: "GET", url: "/healthz" })).statusCode).toBe(200);
     expect((await t.app.inject({ method: "GET", url: "/readyz" })).statusCode).toBe(200);
     const conn = await t.app.inject({
@@ -167,7 +170,11 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
       url: `/a/v1/connections/${(conn.json() as { id: string }).id}/sync`,
       headers: ADMIN,
     });
-    const metrics = await t.app.inject({ method: "GET", url: "/metrics" });
+    const metrics = await t.app.inject({
+      method: "GET",
+      url: "/metrics",
+      headers: { "x-service-token": "test-only-fake-service-token" },
+    });
     expect(metrics.body).toContain('dc_connector_sync_total{outcome="success",type="mock_erp"} 1');
   });
 });

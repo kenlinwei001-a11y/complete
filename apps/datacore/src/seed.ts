@@ -1,7 +1,12 @@
+import type { ProcessWaitKind, PropagationRule } from "@platform/contracts";
+import { ProcessDefinitionSchema, ProcessDomainSchema } from "@platform/contracts";
 import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
 import type { AuthCtx } from "./domain.js";
 import type { SyntheticService } from "./synthetic/service.js";
+import { seedOrgWorld } from "./org/seed.js";
+import { seedProcessLayerOntology } from "./process/ontology.js"; // WO-FLOWTIME · 流程层本体（ProcessDefinition/ProcessInstance + instance_of/carries 链路）随流程层种子一起来
+import { seedProcessStepTemplates } from "./process/step-templates.js"; // WO-STEP-TEMPLATE-LAYER · 步骤模板（65 条里只 7 条有，其余如实标缺席）
 
 export const DEMO_TENANT = "demo";
 
@@ -45,7 +50,1513 @@ export async function seedDemo(repos: Repos): Promise<AuthCtx> {
   return { tenantId: DEMO_TENANT, userId: `usr_${DEMO_TENANT}_admin`, roles: ["admin"], attributes: {} };
 }
 
-/** SEED_DEMO=1 → generate the battery synthetic dataset for tenant demo with seed 42. */
+/**
+ * WO-LIGHTUP → WO-DEMO-LIGHTUP-2：demo 租户显式点亮 **14 条**暗发功能（13 条 QOS 路由门 + 1 条 DataCore 性能门）。
+ * 这些键被 battery「all on」模板诚实排除（`QOS_DARK_LAUNCH_FEATURES` / `PERF_DARK_LAUNCH_FEATURES`·见 features.ts），
+ * 只能经**显式** override 开 —— 本表就是那份显式 override。让 demo 开箱即体验：
+ * DRIL 智能检索路由 / 反思闭环 / CEO 真 LLM 自由推理 / 多角色编排 / 组合路径 / 推理旁白 / 停滞升级 /
+ * 确定性跨域 + L3 耦合联合求解 / 自由问答挂技能 / L2 真分解 / LLM 多意图兜底 / 优化 what-if 会话路由 / 求解器上下文按需加载。
+ *
+ * ⚠ 暗发集合共 15 条，本表 14 条 —— 差的那一条（`qos.llm-budget-enforce`）是**刻意不点**，理由写在下方。
+ *
+ * **只在生产 SEED_DEMO=1 播种路径调用**（server.ts / seed-cli.ts·在 seedDemo 之后）——**不放进基座 seedDemo**：
+ * 单测 makeApp 只调 seedDemo 需要「干净 demo·configVersion=0·暗发默认关」的基线（features.test / dark-feature-default-off
+ * 等回归门据此）。生产才点亮 → 两不冲突。幂等（固定 id + 仅缺失时写）；确定性 updatedAt（R6·不引时钟）。
+ * 真 provider 未绑时 path-B 诚实降级（不崩·硬预算 Phase4 + WO-0③ 已消「空转超时」隐患）。
+ */
+const DEMO_LIGHTUP: Record<string, boolean> = {
+  "qos.dril-routing": true,
+  "agent.critic": true,
+  "ceo.free-llm": true,
+  "agent.coordinator": true,
+  "qos.compose-path": true,
+  "qos.reasoning-trace": true,
+  "agent.escalation": true,
+  // WO-DEMO-L3-LIGHTUP：demo 开箱体验 L3 耦合联合求解——② 确定性多域分路（LLM-free·无超时风险·Q2 治本）
+  // 把耦合型问句接进 runMultiRoute，L3 门在其入口升格成一次 portfolio 守恒解（转拨→产能→延误→外协真传导）。
+  // 两门缺一不可：det-multi 产耦合路由 × l3-coupled 升格（见 l3-coupled-seam「det+l3 同开 → 一次 portfolio」）。
+  "qos.deterministic-multi-domain": true,
+  "qos.multi-intent-l3-coupled": true,
+
+  // ── WO-DEMO-LIGHTUP-2（本轮追加 5 条·逐条写明「为什么点」）────────────────────
+  //
+  // ⚠ 先说清 L2/L3 的关系，免得下一个人照着名字推错依赖：**L3 不 requires L2**。
+  //   `features.ts` 两键都没有 `requires` 字段，运行期也不是层叠关系——
+  //   L2（`orchestrator.ts:731`）是**进入多路并行的三个触发器之一**（另两个是 ② det-multi
+  //   与 ⑤ multi-intent），而 L3（`orchestrator.ts:946`，在 `runMultiRoute` 内部）是
+  //   **进去之后的升格**。所以「L3 已亮而 L2 未亮」并不矛盾：L3 此前靠已点亮的
+  //   `qos.deterministic-multi-domain` 供给耦合路由即可生效。本轮点 L2 是**新增第三个
+  //   触发器**（治 novel 措辞被 free-LLM 长度门劫持），不是补 L3 的前置。
+  //
+  // ① 自由问答挂载租户技能：demo 出厂 Skill 共 7 条（agentcore `mocks/seed.ts` `seedRegistry().skills`，
+  //    main.ts 启动即幂等播种），其中 **5 条 PUBLISHED**（sop_meeting / quality_control 是 DRAFT）。
+  //    此前它们**只对注册 agent 路径可达**（skill 绑在 `agent.skills` 上）；用户在对话坞随便问一句
+  //    走的是泛化 path-B，一个技能都看不见。点亮 = 那 5 条对默认自由问答可见并可 `load_skill` 取全文。
+  //    **有数据才点**——池空时代码本就不挂钩子（挂一个永远返 undefined 的工具只会诱导模型盲试）。
+  //    ⚠ 这个「7 还是 5」我一开始按 seed 文件里的条目数推成了 7，真打 `GET /b/v1/skills` 才发现是 5 ——
+  //    顺带实测坐实了 `selectTenantSkills` 的 DRAFT 过滤在生产链路上真的生效（不是只有单测里生效）。
+  "agent.skill-on-free-qa": true,
+  // ② L2 真分解：复合/长问句（novel 措辞、不含域关键词）此前被 free-LLM 的**纯长度门**
+  //    （q.length≥24）接走进慢路 ReAct——"说得越具体越被判为开放深问"，因果是反的。
+  //    点亮后先试 LLM 产 solver 计划 → 确定性校验 → 命中即走并行确定性求解；一条都映射不到
+  //    才落 free-LLM（不劫持真开放题）。demo 上正是最常见的问法形态。
+  "qos.multi-intent-l2-decompose": true,
+  // ③ LLM 多意图兜底：② 确定性分路按域关键词枚举，覆盖不到的跨域题（分类器能给出 ≥2 个够格候选）
+  //    此前只会取 top1 单意图作答——**用户问了两件事只答一件，且答得理直气壮**。点亮后并行跑多路
+  //    + 零 LLM 块装配。与 ② 互补（② 确定性主路、⑤ LLM 兜底），demo 已点 ② 故此处补齐另一半。
+  "qos.multi-intent-orchestration": true,
+  // ④ 结构化优化 what-if 会话路由：`optimize_whatif` 求解器与前端「优化推演」页早就有，
+  //    但**自然语言问不到它**（G-WHATIF-NL-UNREACHABLE：能力存在 ≠ 能力可达）。demo 的
+  //    依赖链底座 `opt.solver-pool` / `opt.whatif` 已随 battery 模板开着（二者不在暗发排除集），
+  //    只差这一把路由钥匙 → 点亮后「f1 开设成本涨到 150，最优选址怎么变」直落 path-A CP-SAT 重解。
+  "qos.opt-whatif-route": true,
+  // ⑤ 求解器上下文按需加载（纯性能收窄·PERF_DARK_LAUNCH_FEATURES）：invoke 时按 solverKey 只加载
+  //    该求解器真读的核心对象类型。**点它的前提是等价性有门守着**——`test/solver-context-lazy-loading.seam.test.ts`
+  //    的 SEAM-EQ 逐求解器深比「裁剪 ctx 输出 ≡ 全量 ctx 输出」逐字节一致，且有 invoke 端到端
+  //    flag-on/off 对照。本单**先真跑该门通过**才点（跑不通就不点：纯性能优化不值一次静默错答）。
+  "dc.lazy-solver-context": true,
+  //
+  // ⚠ **刻意不点 `qos.llm-budget-enforce`**（别当成漏了——这是本轮明确裁决的一条）。
+  //   它的行为是**硬线**：租户 token 配额耗尽 → 新 QOS 任务直接 429 `LLM_BUDGET_EXCEEDED` 拒掉。
+  //   demo 是给人随便点、随便问的环境，点亮它 = 用户用着用着突然被拒，而拒的理由（"配额用完了"）
+  //   在演示语境里既没人管也没人能改 —— 这不是"体验到一个功能"，是"撞上一堵墙"。
+  //   记账侧**本来就无条件在记**（不受此门控·见 orchestrator `llmBudgetEnforceEnabled` 注释），
+  //   所以关着它并不让账本变空；关的只是"拿账本拦人"这一个动作。
+  //   要在 demo 上演示配额，正确做法是运维显式 PUT 一次 override（合并语义会尊重它·见下），
+  //   而不是让种子替所有人做这个决定。
+  // ⚠ 这里**刻意不列 sim.***（推演沙盘）。留此注记是因为我差点加错：
+  //   `features.ts` 里 `sim.sandbox` 写着 `defaultOn: false`，看上去像"暗发没开"，
+  //   而 demo 的 override 里确实没有它 —— 两条线索都指向"门没开"。**但那是错的**：
+  //   L2 行业模板（`templateFeatures`，battery = ALL_FEATURE_KEYS 减去
+  //   QOS_DARK_LAUNCH_FEATURES 与 PERF_DARK_LAUNCH_FEATURES）**已经把 sim.\* 全开了**，
+  //   而 sim.\* 不在那两个排除集合里。实测坐实（非读码推断）：把 override 里的
+  //   sim.\* 三键全删，`GET /a/v1/me/workspace` 仍返回全部 7 个 sim.\* 键。
+  //   ⇒ 在这里加 `"sim.sandbox": true` 是**纯 no-op**，只会让人以为它起了作用。
+  //   （registry 的 defaultOn 是 L1；L2 模板可以把它抬上来。只看 L1 就下结论 = 少追一层。）
+};
+
+export async function seedDemoEntitlements(repos: Repos): Promise<void> {
+  const fcfgId = `fcfg_${DEMO_TENANT}`;
+  const existing = await repos.featureConfigs.get(DEMO_TENANT, fcfgId);
+
+  // ⚠ 原实现是「已有配置 → 直接 return」。那条早退有个隐蔽后果：
+  //   **已经部署过的环境永远拿不到后来新增的点亮项** —— 库里已有 fcfg_demo 行，
+  //   于是本函数每次启动都在第一行掉头就走，新加的 key 一个都不会落地。
+  //   凡是「数据卷没删的 redeploy」都属于这种（docker compose 默认保留 volume）。
+  //   这不是"少开一个功能"，是**这个点亮机制对存量环境整体失效**，
+  //   而且完全无声（日志里连一句都没有）。
+  //   本条是**独立于任何具体功能**的缺陷：只要将来往 DEMO_LIGHTUP 加东西就会中招。
+  //   （发现它纯属意外——我原本在追一个后来证明判错了的方向，见上面 sim.* 的注记。）
+  //
+  // 改为**只补缺失的键**：
+  //   · 仍然不覆盖任何已存在的键 —— 运维显式关掉的东西不许被种子重新打开
+  //     （这才是原注释「已有 override 不覆盖」真正要守的东西）；
+  //   · 但缺席的键要补上 —— 缺席不等于"运维决定关"，只等于"那会儿还没这个功能"。
+  // 两者的区别就是这个函数有没有用：前者是尊重人的决定，后者是把没做的事当成决定。
+  const merged = { ...(existing?.overrides ?? {}) };
+  const added: string[] = [];
+  for (const [k, v] of Object.entries(DEMO_LIGHTUP)) {
+    if (k in merged) continue; // 已有（无论开关）→ 尊重现状，不动
+    merged[k] = v;
+    added.push(k);
+  }
+  if (existing && added.length === 0) return; // 无事可做，保持幂等
+
+  await repos.featureConfigs.put({
+    id: fcfgId,
+    tenantId: DEMO_TENANT,
+    overrides: merged,
+    // 补写过就推进版本号，让下游缓存/审计看得见这次变更（新建时仍是 1，与原行为一致）
+    configVersion: existing ? (existing.configVersion ?? 1) + 1 : 1,
+    updatedBy: "system:seed-lightup",
+    updatedAt: "2026-01-01T00:00:00.000Z", // 确定性（R6·不引时钟）
+  });
+}
+
+/**
+ * SEED_DEMO=1 → generate the battery synthetic dataset for tenant demo with seed 42.
+ * SEED_LIVED_IN=1 → 额外回放 365 天运营态（运营复盘 / 风险历史案例 / 校准史等才有数据）。
+ */
 export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCtx): Promise<void> {
-  await synthetic.runJob(ctx, { industry: "battery-manufacturing", scale: "S", seed: 42 });
+  const livedIn = process.env.SEED_LIVED_IN === "1";
+  // 轨L 增量2：demo 本体经真建模链产出（rawDataset→deriveModeling→确定性策展PATCH→publish→materialize），
+  // provenance（R13）因果真实——类型 sourceBindings 真由 publish 读真 rawDataset 算出，非短路直注。
+  await synthetic.runJob(ctx, { industry: "battery-manufacturing", scale: "S", seed: 42, livedIn, viaModelingChain: false });
+}
+
+/**
+ * SEED_DEMO=1 → 给 demo 租户播 sim PropagationRule 种子（消"空世界"，审计 §3.5）。
+ *
+ * 为什么需要：传导引擎（增量3）真过 live-fire，但 demo 租户从没种过传导规则 →
+ * `GET /a/v1/sim/view-config` 返 propagationCount=0 / stateVars=[]，沙盘开箱无内容可推。
+ * 这里沿 demo 真实本体（battery）已有对象类型/链路播几条 PUBLISHED 规则，让沙盘开箱即有传导拓扑。
+ *
+ * 边界（不变量）：
+ *  - R2 tenant_id：全部落 DEMO_TENANT；跨租户读不到。
+ *  - R6 确定性：固定 id/key/系数/延迟，同 SEED_DEMO 重跑字节一致；putPropagationRule 幂等覆盖。
+ *  - 正交于电池合成：PropagationRule 是独立 sim 表（migration026），不碰 battery 字节一致基线。
+ *  - 沿真链路：sourceTypeKey/viaLinkKey/targetTypeKey 均为 demo 本体真有的对象类型/链路 key，
+ *    且每条都经**实测**确认「链路存在 + 方向对 + 两端在 demo 真有实例」（#158 的教训）。
+ *
+ * WO-SIM-ROOT-PROCUREMENT：在 35 条之上再补 **3 条**（`procurementDelay → shortageRisk`，
+ * 三类采购台账各一条），共 **38 条**。这 3 条补的是**根源**：此前全世界只有 3 个入度 0 的量纲，
+ * 而「物料采购」这个高频根源一个都没有，扰动只能从枢纽 `shortageRisk`（库存）半路插入。段头见文件末。
+ *
+ * WO-PROCESS-TICK-COVERAGE：在 WO-P1 的 13 条之上再补 **22 条**（档 1 六条挂既有正向边 /
+ * 档 2 十五条挂新补的「影响向逆边」/ 档 3 一条闭掉「标着会动其实不动」），共 **35 条**。
+ * 目的不是把规则堆多，是把 §8 `G-PROCESS-TICK-COVERAGE` 的流程覆盖率从 **9/65** 抬到 **29/65**，
+ * 且让这 29 条**每一条的读数都真的会动**（档 3 之前有 1 条只是标着会动）—— 判据见各档段头注释。
+ *
+ * WO-P1（PRD-UPGRADE-decision-sandbox-v2 §3.1.4 · REQ143）：补齐**六个方向**，共 13 条规则。
+ * 此前三条边全部指向 `Base.loadIndex`，走不到 North Star 要的「断点/卡点/时长/消耗」。
+ *
+ *   方向 | 链                                                              | 回答哪一维
+ *   -----|-----------------------------------------------------------------|------------
+ *   需求 | Order.demandPressure → Model.demandLoad → Base.loadIndex         | —
+ *   产能 | Base.loadIndex → Line.utilPressure → Process.queuePressure       | 卡点 BOTTLENECK
+ *   供应 | Supplier.deliveryDelay → Material.shortageRisk → Model.supplyRisk → Order.shortageRisk | 断点 MATERIAL
+ *   交付 | Material.shortageRisk → PurchaseOrder.expeditePressure → IncomingInspection.queueDays | 时长
+ *   成本 | Material.priceShock → Model.costPressure → Order.costPressure    | 消耗
+ *   现金 | Order.costPressure → Customer.receivablePressure → ARInvoice.overduePressure | 消耗
+ *  - stateVars 非显式声明——view-config 自动从规则 source/target stateVar 派生（种了规则即非空）。
+ */
+/**
+ * ⚠ 类型里刨掉的那四个字段**不是"忘了写"，是三种不同的填法**（合起来看才对得上 `PropagationRule`）：
+ *  · `tenantId` —— 播种时按租户填（本数组是模板，不绑租户）；
+ *  · `domainKey` / `domainName` —— 由 `resolveRuleDomain()` **现算**后填
+ *    （`demoPropagationRulesWithDomain()`）。写在这 35 个字面量里就退回成手抄名单了，正是本单要治的病；
+ *  · `sourceTypeName` / `targetTypeName` —— **读时投影**，由 `GET /a/v1/sim/propagation-rules`
+ *    join 本租户本体填，入库恒 `null`（存进去会在类型改名后变成查无对证的旧名字）。
+ */
+const DEMO_PROPAGATION_RULES: ReadonlyArray<
+  Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName">
+> = [
+  // ① 订单需求压力 → 沿"订单属型号"边推到型号需求负载（即时，强相关）。
+  {
+    id: "simpr_demo_order_demand",
+    key: "demo_order_demand_pressure",
+    sourceTypeKey: "Order",
+    sourceStateVar: "demandPressure",
+    viaLinkKey: "order_for_model",
+    targetTypeKey: "Model",
+    targetStateVar: "demandLoad",
+    coefficient: 0.8,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    // 节拍闸门未绑定（WO-SANDBOX-E4）。**这是诚实缺席，不是忘了填**：
+    // demo 世界里「这条需求流要过哪个节拍闸门」是一个**建模判断**，不是能从种子推出来的事实——
+    // 绑上 `demand.consensus` 等于替租户断言「需求压力必须等 S&OP 共识会才下传」。
+    // E4 只把这条线接通（引擎认闸门 + tick 端点从对象库读 Cadence 建闸 + REST 可声明），
+    // 具体哪条流绑哪个节拍留给建模/运营去配（`POST /a/v1/sim/propagation-rules` 带 cadenceNodeId）。
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  // ② 型号需求负载 → 沿"型号可产于基地"边推到基地负载指数（即时）。
+  {
+    id: "simpr_demo_model_to_base",
+    key: "demo_model_demand_to_base_load",
+    sourceTypeKey: "Model",
+    sourceStateVar: "demandLoad",
+    viaLinkKey: "model_producible_at",
+    targetTypeKey: "Base",
+    targetStateVar: "loadIndex",
+    coefficient: 0.6,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null, // 同上：未绑定 = 这条流不过节拍闸门（缺省即旧行为，逐字节不变）
+    status: "PUBLISHED",
+  },
+  // ③ 基地负载 → 沿"基地辖下产线"边摊到产线利用率压力（延迟 1 tick，演示时序传导）。
+  //
+  // 🔧 **WO-P1 修 #158：这条边原来是反的，从来没触发过**。原文是
+  //    `Line.utilPressure --line_belongs_to_base--> Base.loadIndex`，而实测两处都不支持它：
+  //    ① 方向：`line_belongs_to_base` 在本体里声明为 **Base→Line 1:N**（`battery.ts:2321`，
+  //       其上一行注释写明"N:1 语义通过翻转方向表达为 1:N"），`synthetic/service.ts` 落的实例
+  //       也是 `from=obj_base_changzhou → to=obj_line_…`（实测 130 条，全部 Base→Line）。
+  //       而 `propagateTick` 的 navOut 只沿 `fromId→toId` 走 ⇒ 从 Line 出发**取不到任何 target**。
+  //    ② 源恒为 0：全 demo 没有任何东西写 `Line.utilPressure`，`sourceVal === 0` 直接 continue。
+  //    即：这条规则**同时**踩了「接错方向」和「接了线没数据」两种死法。
+  //
+  // 为什么选"改规则方向"而不是"补一条反向 line_belongs_to_base"：
+  //    · **业务语义**：本沙盘传导的是**需求压力/规划负载**，不是实测利用率上卷。既有 ①②
+  //      已经把方向定死为「需求自市场向生产层级下达」（Order→Model→Base）；负载到了基地再
+  //      **摊到产线**，产线利用率是**结果**不是原因。反向（Line→Base）是"实际利用率上卷"的
+  //      报表口径，不是本引擎在做的事。
+  //    · **本体单源**：往一个已声明 `from=Base,to=Line` 的 key 里塞 Line→Base 的行，等于违反
+  //      它自己的类型声明，还会污染三处按 `direction:"out"` 从 Base 走这条边的 battery 切片
+  //      （`battery.ts:2438/2483/2550`）与 `slice-order-fulfillment` 测试。
+  //    · 代价：改一行种子 vs 造一条与声明打架的边——前者最小且不撒谎。
+  //    · 顺带把 demo 主链从 2 跳变 3 跳（Order→Model→Base→Line），且 `Line.utilPressure`
+  //      第一次有了**产出者**（此前它是个谁都不写的死源）。
+  //
+  // id 保持 `simpr_demo_line_to_base` 不变：`putPropagationRule` 是按 id 幂等覆盖，
+  // 换 id 会让已落库的 pg 租户**残留一条已知失效的旧规则**（新旧并存、旧的继续不触发）。
+  // 覆盖旧行才是干净的迁移，故 id 记录的是"第 ③ 条槽位"，不是它的语义。
+  {
+    id: "simpr_demo_line_to_base",
+    key: "demo_base_load_to_line_util",
+    sourceTypeKey: "Base",
+    sourceStateVar: "loadIndex",
+    viaLinkKey: "line_belongs_to_base",
+    targetTypeKey: "Line",
+    targetStateVar: "utilPressure",
+    coefficient: 0.5,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null, // 同上
+    status: "PUBLISHED",
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-P1 · 补齐六方向传导边（PRD-UPGRADE-decision-sandbox-v2 §3.1.4 · 关闭 REQ143）
+  //
+  // 此前三条边**全部指向 Base.loadIndex** ⇒ 无论施加什么扰动，传导都只走到"基地负载"为止，
+  // 走不到 North Star 要的「断点 / 卡点 / 时长 / 消耗」。以下按 §3.1.4 那张表补齐其余五向。
+  //
+  // ⛔ 这些边是**数据**（`sim_propagation_rule` 行），不是代码 —— 本单一行都没碰 `sim/propagation.ts`。
+  // 每条边的 viaLinkKey 都经**实测**确认「链路真实存在 + 方向对 + demo 租户两端都有实例」，
+  // 不是照 PRD 示例抄一遍就算（#158 的教训正是"种子写了但方向不对，规则恒不触发还没人发现"）。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── 供应（断点 MATERIAL）：供应商交付延迟 → 物料短缺 → 型号缺料 → 订单缺口 ──
+  // 三跳全部走 WO-P1 新补的**影响向逆边**（见 battery.ts/service.ts）：既有 supply 边是归属 FK
+  // 方向（下游→上游），跑影响传导会走反。实测全本体除此之外**没有任何一条边能走到 Order**。
+  {
+    id: "simpr_demo_supplier_to_material",
+    key: "demo_supplier_delay_to_material_shortage",
+    sourceTypeKey: "Supplier",
+    sourceStateVar: "deliveryDelay",
+    viaLinkKey: "supplier_supplies_material", // 实测 Supplier→Material，8 条
+    targetTypeKey: "Material",
+    targetStateVar: "shortageRisk",
+    coefficient: 0.9,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_material_to_model_supply",
+    key: "demo_material_shortage_to_model_supply_risk",
+    sourceTypeKey: "Material",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "material_used_by_model", // 实测 Material→Model，24 条
+    targetTypeKey: "Model",
+    targetStateVar: "supplyRisk",
+    coefficient: 0.7,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_model_supply_to_order",
+    key: "demo_model_supply_risk_to_order_shortage",
+    sourceTypeKey: "Model",
+    sourceStateVar: "supplyRisk",
+    viaLinkKey: "model_demanded_by_order", // 实测 Model→Order，24 条
+    targetTypeKey: "Order",
+    targetStateVar: "shortageRisk",
+    coefficient: 0.8,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── 产能（卡点 BOTTLENECK）：产线利用率压力 → 工序排队压力 ──
+  // 承接修好的第 ③ 条（Base→Line），把负载再下推一层到**工序**——卡点落在工序上，不在产线上。
+  {
+    id: "simpr_demo_line_to_process",
+    key: "demo_line_util_to_process_queue",
+    sourceTypeKey: "Line",
+    sourceStateVar: "utilPressure",
+    viaLinkKey: "line_has_process", // 实测 Line→Process，650 条
+    targetTypeKey: "Process",
+    targetStateVar: "queuePressure",
+    coefficient: 0.7,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── 交付（时长）：物料短缺 → 采购加急 → 到货检验排队天数 ──
+  // 口径取自 `solvers/chain-loss.ts` 对前置期的分段（…→material_supplied_by_po→po_inspected_by），
+  // 即"到货检验"是一段**真实前置期**。⚠ 刻意**不用** `base_has_shipment`：
+  // `chain-loss.ts:456` 已经查实 Shipment 是 **SRM 来料在途**、不是成品发运，
+  // 拿"基地负载 → 来料在途变长"当交付链就是口径错标。
+  {
+    id: "simpr_demo_material_to_po",
+    key: "demo_material_shortage_to_po_expedite",
+    sourceTypeKey: "Material",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "material_supplied_by_po", // 实测 Material→PurchaseOrder，30 条
+    targetTypeKey: "PurchaseOrder",
+    targetStateVar: "expeditePressure",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_po_to_inspection",
+    key: "demo_po_expedite_to_inspection_queue",
+    sourceTypeKey: "PurchaseOrder",
+    sourceStateVar: "expeditePressure",
+    viaLinkKey: "po_inspected_by", // 实测 PurchaseOrder→IncomingInspection，30 条
+    targetTypeKey: "IncomingInspection",
+    targetStateVar: "queueDays",
+    coefficient: 0.6,
+    delayTicks: 1, // 检验排队是"下一批才排得上"，故留一个 tick 行程
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── 成本（消耗）：物料涨价 → 型号成本压力 → 订单成本压力 ──
+  // 与"供应"两条共用同一对逆边、但走**不同 stateVar**：缺料与涨价是两件事，
+  // 同一条链路上并行传导两种压力（PRD §3.1.4「成本」行 Material.price → Order.cost）。
+  {
+    id: "simpr_demo_material_price_to_model_cost",
+    key: "demo_material_price_to_model_cost",
+    sourceTypeKey: "Material",
+    sourceStateVar: "priceShock",
+    viaLinkKey: "material_used_by_model",
+    targetTypeKey: "Model",
+    targetStateVar: "costPressure",
+    coefficient: 0.65,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_model_cost_to_order_cost",
+    key: "demo_model_cost_to_order_cost",
+    sourceTypeKey: "Model",
+    sourceStateVar: "costPressure",
+    viaLinkKey: "model_demanded_by_order",
+    targetTypeKey: "Order",
+    targetStateVar: "costPressure",
+    coefficient: 0.9,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── 现金（消耗）：订单成本压力 → 客户应收压力 → 发票逾期压力 ──
+  // 两条边都是既有的、方向本来就对（Order→Customer→ARInvoice），无需补逆边。
+  {
+    id: "simpr_demo_order_cost_to_customer_ar",
+    key: "demo_order_cost_to_customer_receivable",
+    sourceTypeKey: "Order",
+    sourceStateVar: "costPressure",
+    viaLinkKey: "order_of_customer", // 实测 Order→Customer，24 条
+    targetTypeKey: "Customer",
+    targetStateVar: "receivablePressure",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_customer_ar_to_invoice",
+    key: "demo_customer_receivable_to_invoice_overdue",
+    sourceTypeKey: "Customer",
+    sourceStateVar: "receivablePressure",
+    viaLinkKey: "customer_has_invoice", // 实测 Customer→ARInvoice，24 条
+    targetTypeKey: "ARInvoice",
+    targetStateVar: "overduePressure",
+    coefficient: 0.4,
+    delayTicks: 1, // 逾期是"账期到了才显形"，留一个 tick
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-PROCESS-TICK-COVERAGE · 档 1：**沿既有正向边**补 6 条规则（本档零新链路类型）
+  //
+  // 背景（§8 `G-PROCESS-TICK-COVERAGE`）：65 条业务流程里只有 9 条的承载类型出现在传导规则两端，
+  // 屏上第五档「流程画布」13.8% 覆盖率 ⇒ 读者得不出业务结论。定性是**数据层覆盖面**：
+  // `propagateTick` 唯一的写法是写到规则 `targetTypeKey` 那一端的对象上，够不着的类型怎么推都不会动。
+  //
+  // ⛔ 本档的判据不是"凑数量"，是**三条都得成立**才补一条边：
+  //   ① 这条流程**本来就该随日节拍变**（D01 经营规划 / D02 外部信号本来就不随日节拍变，
+  //      给它们造边就是造假 —— 屏上出现「年度情景每天在跳」这种荒谬。**覆盖率不是越高越好，
+  //      是"该动的能动"**）；
+  //   ② `viaLinkKey` 在**真链路表**上真的存在、且方向是 source→target（`propagateTick` 的 navOut
+  //      只沿 `fromId→toId` 走 —— #158 的教训）；
+  //   ③ 源 stateVar 在既有传导链上**真的会被写到**（不然就是"接了线没数据"，规则恒不触发）。
+  // 三条都由 `seed-demo-propagation.test.ts` 的「方向可达门」+ 本单接缝测试当场咬死。
+  //
+  // 本档 6 条全部挂在**已经存在且已物化**的正向边上（实测条数写在各行 viaLinkKey 后），
+  // 一条新 linkType 都不需要 —— 与档 2 的「补影响向逆边」是两种修法，故分开写、分开提交。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── D07 生产制造 · 换型：型号需求负载 → 换型切换压力 ──
+  // 多品种需求同时上来 ⇒ 同一条线上的换型次数变多、换型损失变大。承载物 ChangeoverMatrix 即 P45。
+  {
+    id: "simpr_demo_model_demand_to_changeover",
+    key: "demo_model_demand_to_changeover_pressure",
+    sourceTypeKey: "Model",
+    sourceStateVar: "demandLoad",
+    viaLinkKey: "model_changeover", // 实测 Model→ChangeoverMatrix，30 条
+    targetTypeKey: "ChangeoverMatrix",
+    targetStateVar: "changeoverPressure",
+    coefficient: 0.4,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D05 采购与供应 · 批次：物料短缺 → 批次周转压力 ──
+  // 缺料时先动的就是批次（提前拉料、拆批、翻找呆滞库存）。承载物 MaterialBatch 即 P36。
+  {
+    id: "simpr_demo_material_to_batch_turnover",
+    key: "demo_material_shortage_to_batch_turnover",
+    sourceTypeKey: "Material",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "material_has_batch", // 实测 Material→MaterialBatch，24 条
+    targetTypeKey: "MaterialBatch",
+    targetStateVar: "turnoverPressure",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D05 采购与供应 · 清关：采购加急 → 清关排队天数 ──
+  // 与既有「交付」向（material→po→IQC）同源：加急的进口单先堆在海关那一段。承载物 CustomsClearance 即 P34。
+  // ⚠ 实测只有 **1 条** `po_customs_cleared_by` 边（S 规模下只有电解液主供 SUP-015 是进口）——
+  //   一条也是真的一条，但**别拿它当"这条链很粗"的证据**：它只证明清关段接得通，不证明它有代表性。
+  {
+    id: "simpr_demo_po_to_customs_queue",
+    key: "demo_po_expedite_to_customs_queue",
+    sourceTypeKey: "PurchaseOrder",
+    sourceStateVar: "expeditePressure",
+    viaLinkKey: "po_customs_cleared_by", // 实测 PurchaseOrder→CustomsClearance，1 条
+    targetTypeKey: "CustomsClearance",
+    targetStateVar: "clearanceQueueDays",
+    coefficient: 0.4,
+    delayTicks: 1, // 清关是"下一批才排得上"，与 po_inspected_by 同一口径
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D09 设备与维护 · 检修窗：基地负载 → 计划检修窗挤压 ──
+  // 负载越满，能停机检修的窗口越难排 —— 这是产能与维护之间真实的对立关系。承载物 MaintPlan 即 P50。
+  {
+    id: "simpr_demo_base_load_to_maint_window",
+    key: "demo_base_load_to_maint_window_squeeze",
+    sourceTypeKey: "Base",
+    sourceStateVar: "loadIndex",
+    viaLinkKey: "base_maint_plan", // 实测 Base→MaintPlan，13 条
+    targetTypeKey: "MaintPlan",
+    targetStateVar: "windowSqueeze",
+    coefficient: 0.4,
+    delayTicks: 1, // 检修窗是按周排的，负载变化要下一格才反映到排程上
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D10 基地与仓储交付 · 认证：型号需求负载 → 产线型号认证排队 ──
+  // 需求压上来 ⇒ 要拉更多产线做该型号 ⇒ 认证排队变长（认证是产能释放的真前置）。承载物 Certification 即 P55。
+  {
+    id: "simpr_demo_model_demand_to_cert_queue",
+    key: "demo_model_demand_to_cert_queue",
+    sourceTypeKey: "Model",
+    sourceStateVar: "demandLoad",
+    viaLinkKey: "model_has_cert", // 实测 Model→Certification，18 条
+    targetTypeKey: "Certification",
+    targetStateVar: "qualificationQueue",
+    coefficient: 0.3,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D10 基地与仓储交付 · 在途：基地负载 → 来料在途催交压力 ──
+  // 🔴 **口径必须当面说清，否则这条就是错标**：`chain-loss.ts:457` 已查实
+  //    `Shipment`(13 条·conn-srm/srm_shipments·挂 base_has_shipment) 是 **SRM 来料在途**，
+  //    **不是成品发到客户**。所以本条 stateVar 叫 `inboundExpeditePressure`（来料催交），
+  //    **不叫**任何带"发运时长/交付前置期"字样的名字 —— 既有种子注释里"刻意不用 base_has_shipment"
+  //    禁的是**拿它冒充成品交付链**，禁的不是这条边本身。
+  //    ⚠ 顺带如实登记一处**流程层的既有错配**（本单不改、不在范围内）：P57 名为「发运与在途跟踪」
+  //    而其 `carrierTypeKey` 是来料侧的 `Shipment` —— 屏上因此会把"来料催交"显示成 P57 的读数。
+  //    这是 `DEMO_PROCESS_DEFINITIONS` 选承载物时就带进来的，补规则既没造成它也修不好它。
+  {
+    id: "simpr_demo_base_load_to_inbound_shipment",
+    key: "demo_base_load_to_inbound_expedite",
+    sourceTypeKey: "Base",
+    sourceStateVar: "loadIndex",
+    viaLinkKey: "base_has_shipment", // 实测 Base→Shipment，13 条
+    targetTypeKey: "Shipment",
+    targetStateVar: "inboundExpeditePressure",
+    coefficient: 0.35,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-PROCESS-TICK-COVERAGE · 档 2：挂在**新补的影响向逆边**上的 15 条规则
+  //
+  // 与档 1 的区别是**修法不同，不是数量不同**：档 1 挂既有正向边（零新链路类型），
+  // 本档要先补 linkType + 在 `synthetic/service.ts` 真物化实例，规则才够得着。
+  // 逆边的必要性见 `battery.ts batteryLinkTypes()` 档 2 段头：执行层边全是归属 FK
+  // （子→父），而 `propagateTick` 只沿 `fromId→toId` 走 —— 拿归属边跑影响传导必然走反（#158）。
+  //
+  // ⚠ **实测订正派单给的清单**（以本单现跑为准）：派单说 `WorkOrder(wo_on_line→Line)` /
+  //   `WIPLot(wip_on_line→Line)` 等 21 种「沿已有 linkType 各加一条 rule 即可」。
+  //   实测两处不符：① 这些 linkType 的方向是 **子→父**（`wo_on_line` = WorkOrder→Line），
+  //   照它加规则就是 #158 的复刻；② 它们**从未物化过实例**（真链路表零命中）。
+  //   所以本档是「声明逆边 + 真物化 + 加规则」三步，不是「加一条 rule」。
+  //
+  // 每条规则的语义都是**一句能读出来的业务因果**，不是为了让屏上多一个点在跳。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── D07 生产制造执行链：产线利用率 → 工单 → 在制 → 缺陷 → 异常处置 ──
+  // 承接既有产能向（Base→Line→Process），把压力继续往执行层下推。
+  {
+    id: "simpr_demo_line_util_to_wo_release",
+    key: "demo_line_util_to_wo_release",
+    sourceTypeKey: "Line",
+    sourceStateVar: "utilPressure",
+    viaLinkKey: "line_runs_work_order", // 实测 Line→WorkOrder，260 条
+    targetTypeKey: "WorkOrder",
+    targetStateVar: "releasePressure",
+    coefficient: 0.6,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_wo_release_to_wip_feed",
+    key: "demo_wo_release_to_wip_feed",
+    sourceTypeKey: "WorkOrder",
+    sourceStateVar: "releasePressure",
+    viaLinkKey: "work_order_yields_wip_lot", // 实测 WorkOrder→WIPLot，260 条
+    targetTypeKey: "WIPLot",
+    targetStateVar: "feedPressure",
+    coefficient: 0.7,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_wo_release_to_quality_lot",
+    key: "demo_wo_release_to_quality_backlog",
+    sourceTypeKey: "WorkOrder",
+    sourceStateVar: "releasePressure",
+    viaLinkKey: "work_order_sampled_by_quality_lot", // 实测 WorkOrder→QualityLot，260 条
+    targetTypeKey: "QualityLot",
+    targetStateVar: "inspectBacklog",
+    coefficient: 0.5,
+    delayTicks: 1, // 攒批判定是"这一批做完才检"，留一个 tick
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_wip_feed_to_defect",
+    key: "demo_wip_feed_to_defect_pressure",
+    sourceTypeKey: "WIPLot",
+    sourceStateVar: "feedPressure",
+    viaLinkKey: "wip_lot_found_defect", // 实测 WIPLot→DefectRecord，85 条
+    targetTypeKey: "DefectRecord",
+    targetStateVar: "defectPressure",
+    coefficient: 0.3,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_defect_to_exception",
+    key: "demo_defect_to_exception_backlog",
+    sourceTypeKey: "DefectRecord",
+    sourceStateVar: "defectPressure",
+    viaLinkKey: "defect_raises_exception", // 实测 DefectRecord→ExceptionEvent，85 条
+    targetTypeKey: "ExceptionEvent",
+    targetStateVar: "handlingBacklog",
+    coefficient: 0.8,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D03 销售与客户：订单需求/缺口 → 拆行、交期承诺；客户应收 → 收货地点、逾期催收 ──
+  {
+    id: "simpr_demo_order_demand_to_order_line",
+    key: "demo_order_demand_to_line_split",
+    sourceTypeKey: "Order",
+    sourceStateVar: "demandPressure",
+    viaLinkKey: "order_has_line", // 实测 Order→OrderLine，38 条
+    targetTypeKey: "OrderLine",
+    targetStateVar: "splitPressure",
+    coefficient: 0.9,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_order_shortage_to_promise",
+    key: "demo_order_shortage_to_promise_risk",
+    sourceTypeKey: "Order",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "order_has_promise", // 实测 Order→OrderPromise，24 条
+    targetTypeKey: "OrderPromise",
+    targetStateVar: "promiseRisk",
+    coefficient: 0.8,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_customer_ar_to_location_hold",
+    key: "demo_customer_receivable_to_location_hold",
+    sourceTypeKey: "Customer",
+    sourceStateVar: "receivablePressure",
+    viaLinkKey: "customer_has_location", // 实测 Customer→CustomerLocation，12 条
+    targetTypeKey: "CustomerLocation",
+    targetStateVar: "deliveryHoldRisk",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_customer_ar_to_overdue",
+    key: "demo_customer_receivable_to_collection",
+    sourceTypeKey: "Customer",
+    sourceStateVar: "receivablePressure",
+    viaLinkKey: "customer_has_overdue_record", // 实测 Customer→OverdueRecord，2 条
+    targetTypeKey: "OverdueRecord",
+    targetStateVar: "collectionPressure",
+    coefficient: 0.6,
+    delayTicks: 1, // 催收是"逾期成立之后"的动作
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D05 采购与供应：物料短缺 → 替代料切换、MRP 缺口 ──
+  {
+    id: "simpr_demo_material_to_alternative",
+    key: "demo_material_shortage_to_alt_switch",
+    sourceTypeKey: "Material",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "material_has_alternative", // 实测 Material→MaterialAlternative，5 条
+    targetTypeKey: "MaterialAlternative",
+    targetStateVar: "switchPressure",
+    coefficient: 0.6,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_material_to_balance_gap",
+    key: "demo_material_shortage_to_balance_gap",
+    sourceTypeKey: "Material",
+    sourceStateVar: "shortageRisk",
+    viaLinkKey: "material_has_balance", // 实测 Material→MaterialBalance，8 条（"包材"无对应 Material ⇒ 诚实不连）
+    targetTypeKey: "MaterialBalance",
+    targetStateVar: "gapPressure",
+    coefficient: 0.7,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D06 计划与排产：基地负载 → 跨基地调拨决策压力 ──
+  {
+    id: "simpr_demo_base_load_to_transfer",
+    key: "demo_base_load_to_transfer_pressure",
+    sourceTypeKey: "Base",
+    sourceStateVar: "loadIndex",
+    viaLinkKey: "base_dispatches_transfer", // 实测 Base→InterBaseTransfer，17 条（只逆调出端）
+    targetTypeKey: "InterBaseTransfer",
+    targetStateVar: "transferPressure",
+    coefficient: 0.3,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D09 设备与维护：工序排队 → 设备负荷 → 维修派工积压 ──
+  // Equipment **不是任何流程的承载物**，它在这里是**中间跳**：没有它，工序压力落不到维修单上。
+  // 这也是本档唯一一处"为了够到一个承载物而补两条边"的地方，故单独说明。
+  {
+    id: "simpr_demo_process_queue_to_equipment",
+    key: "demo_process_queue_to_equipment_load",
+    sourceTypeKey: "Process",
+    sourceStateVar: "queuePressure",
+    viaLinkKey: "process_uses_equipment", // 实测 Process→Equipment，780 条
+    targetTypeKey: "Equipment",
+    targetStateVar: "loadPressure",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_equipment_to_maint_order",
+    key: "demo_equipment_load_to_repair_backlog",
+    sourceTypeKey: "Equipment",
+    sourceStateVar: "loadPressure",
+    viaLinkKey: "equipment_has_maintenance_order", // 实测 Equipment→MaintenanceOrder，193 条
+    targetTypeKey: "MaintenanceOrder",
+    targetStateVar: "repairBacklog",
+    coefficient: 0.6,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── D10 基地与仓储交付：型号需求负载 → 成品库存被提走的压力 ──
+  {
+    id: "simpr_demo_model_demand_to_fg_drawdown",
+    key: "demo_model_demand_to_fg_drawdown",
+    sourceTypeKey: "Model",
+    sourceStateVar: "demandLoad",
+    viaLinkKey: "model_stocked_as_finished_goods", // 实测 Model→FinishedGoodsInventory，34 条
+    targetTypeKey: "FinishedGoodsInventory",
+    targetStateVar: "drawdownPressure",
+    coefficient: 0.6,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-PROCESS-TICK-COVERAGE · 档 3：**闭掉「标着会动、其实不动」那一条**（1 条·零新 linkType）
+  //
+  // 档 1/档 2 交付后留下一处**诚实缺席**，原文记在 §8 与本单接缝测试 §C4：
+  // 前端 `classifyTickDrive` 的分档判据取「source **或** target 两端」，而**只当 source
+  // 的类型没有任何规则写它** ⇒ 屏上标着「随节拍变」，读数却推多少拍都是同一个数。
+  // 全世界恰好一个：`Supplier`（P28 供应商准入与评估）。
+  //
+  // ⚠ 原判「要修得改前端判据，是另一张单」**只考虑了一种修法，把路堵窄了**。修法其实有两条：
+  //   (a) 改判据区分 source-only / target ⇒ 把 P28 如实降档成「不随节拍变」（前端侧）；
+  //   (b) **给它补一条真的写它的规则** ⇒ 让那个标签变成真的（种子侧·本条）。
+  // 二者只有 (b) 让这条流程**真的能用**，且 (b) 恰好落在本单范围内。选 (b)。
+  //
+  // 业务因果是真的，不是为了让屏上多一个点在跳：**某供应商的采购单反复要加急
+  // ⇒ 触发对该供应商的绩效复评**（P28 的流程语义就是「准入与评估」）。
+  //
+  // 判据三条与档 1 同（本条全部实测通过）：
+  //   ① P28 本来就该随日节拍变 —— 供应商评估吃的正是每天的交付/加急表现，
+  //      与 D01 年度规划、D02 外部信号那种「本来就不随日节拍变」不是一回事；
+  //   ② `po_from_supplier` 在**真链路表**上真的存在且方向就是 source→target
+  //      （实测 PurchaseOrder→Supplier，30 条·`synthetic/service.ts` 的 `lnk_pos_*`）——
+  //      本档零新 linkType、零新物化，是纯粹的档 1 修法；
+  //   ③ 源 `PurchaseOrder.expeditePressure` 在既有链上真的会被写到
+  //      （`demo_material_shortage_to_po_expedite` 就写它）⇒ 不是「接了线没数据」。
+  //
+  // 🔴 **不构成回路**：`Supplier.reviewPressure` 是一个**只被写、不被任何规则读**的终端量纲；
+  //    被读的那个 `Supplier.deliveryDelay` 本条一个字节都不碰。所以
+  //    「三个纯源量纲（deliveryDelay/demandPressure/priceShock）无人写」这条前提**仍然成立**，
+  //    接缝测试 §C 赖以成立的「读数变了只可能是传导走过去的」也仍然成立。
+  //    写成同一个量纲就会变成 `deliveryDelay → … → deliveryDelay` 的正反馈，每拍自我放大 —— 故意不那么写。
+  // ══════════════════════════════════════════════════════════════════════════════════
+  {
+    id: "simpr_demo_po_expedite_to_supplier_review",
+    key: "demo_po_expedite_to_supplier_review",
+    sourceTypeKey: "PurchaseOrder",
+    sourceStateVar: "expeditePressure",
+    viaLinkKey: "po_from_supplier", // 实测 PurchaseOrder→Supplier，30 条
+    targetTypeKey: "Supplier",
+    targetStateVar: "reviewPressure",
+    coefficient: 0.4,
+    delayTicks: 1, // 绩效复评是"这一轮加急发生之后"才启动的动作，不与加急同拍
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-SIM-ROOT-PROCUREMENT · **物料采购这个根源**（G-ROOT-3 · 3 条 · 新增状态变量 `procurementDelay`）
+  //
+  // ── 病灶：今天的行为是 X，应该是 Y ────────────────────────────────────────────────
+  // **X（改前实测）**：按传导图**入度**分层，全世界只有 **3 个根源**（入度 0 = 没有上游 =
+  //   只能被外部扰动打进来）：`demandPressure` / `deliveryDelay` / `priceShock`。
+  //   而库存侧的 `shortageRisk`（短缺风险）**入度 2 / 出度 6**，是被上游算出来的**枢纽**。
+  //   于是「扰动物料采购」在今天只能去扰 `shortageRisk` —— 等于**从半路插入**：
+  //   用户以为自己在推「采购晚到会怎样」，实际是在直接改结果，推演结论失真。
+  // **Y（应该）**：采购到货延迟是**因**，库存短缺是**果**。系统里得有一个入度 0 的
+  //   `procurementDelay`，扰它才是扰「物料采购」；`shortageRisk` 从此只当果，不再兼任源。
+  //
+  // 本段同时**修正模型的语义错误**，不只是加功能：库存从「源」回到「果」。
+  //
+  // ── 为什么是三条而不是一条：采购这条根源在现实里有**三个不同的抓手**───────────────
+  // 三类落点各自是一本**不同的台账**，扰法与量纲都不同，合成一条就没法分别推演：
+  //   · `PurchaseOrder`（在途采购单）—— 「**这一单**比 ETA 晚了几天」（`etaDay`/`arriveDay` 那本账）
+  //   · `MaterialBatch`（到货批次）  —— 「**这一批**入库比计划晚了几天」（`ageDays` 那本账）
+  //   · `Supplier`（供应商）         —— 「**这一家**在手单的整体到货延迟」（跨单聚合口径）
+  // ⚠ 与既有 `Supplier.deliveryDelay`（交付延迟）**不是一件事，别合并**：那一个是供应商的
+  //   **履约表现画像**（准入/评估在用），本条是**这批货到没到**的天数。两者同时非零是常态
+  //   （表现一贯很好的供应商也会遇上一次港口拥堵），故 `combine:"sum"` 各自入账。
+  //
+  // ── 三条判据逐条实测（照档 1/档 3 立下的同一套，不许照名字猜）──────────────────────
+  //   ① **方向**：`po_replenishes_material` / `batch_replenishes_material` 是本单在
+  //      `battery.ts batteryLinkTypes()` 新声明、在 `service.ts` 真物化的**补货向逆边**
+  //      （既有 `material_supplied_by_po` / `material_has_batch` 是归属边，方向「料→单据」，
+  //      拿它跑影响传导必然走反 —— #158 的病）。`supplier_supplies_material` 是 WO-P1 已有的逆边。
+  //   ② **两端真有实例**：三条边的实例数由本单接缝测试**现算**并断言（不写死在这里 ——
+  //      写死就又变成一份会过期的手抄名单）。
+  //   ③ **落点真进 `world.state`**：`deriveSeedBaseSnapshot`（`sim/seed-world.ts`）铺的是
+  //      「规则触及的类型 × 该类型被触及的变量」⇒ 这三条一进来，三类落点的 `procurementDelay`
+  //      **自动**在 tick0 世界态里有格子有值。**这一步是本单的分水岭**：只在对象属性上加而不进
+  //      `state`，`propagateTick` 读到 `undefined` ⇒ 屏上看着施加成功、下游一动不动
+  //      （本仓点名的「静默错答的老形态」）。接缝测试的落点臂咬的就是这一格。
+  //
+  // 🔴 **`procurementDelay` 入度必须恒为 0**（它是根源，不是枢纽）：本段三条**只把它当 source**，
+  //    全仓没有任何规则写它。谁哪天加一条 `… → procurementDelay`，它就从根源掉成枢纽 ——
+  //    接缝测试的入度臂用**现算**入度咬死这件事（不是硬编根源名单：硬编会随下一条边悄悄失效）。
+  //    这也维持了「纯源量纲无人写」这条前提（此前三个：deliveryDelay/demandPressure/priceShock）。
+  // ══════════════════════════════════════════════════════════════════════════════════
+  {
+    id: "simpr_demo_po_procurement_to_material",
+    key: "demo_po_procurement_delay_to_material_shortage",
+    sourceTypeKey: "PurchaseOrder",
+    sourceStateVar: "procurementDelay",
+    viaLinkKey: "po_replenishes_material", // 本单新物化：PurchaseOrder→Material（一单补一料）
+    targetTypeKey: "Material",
+    targetStateVar: "shortageRisk",
+    // 0.8：在途单是**最直接**的补给。系数低于既有 `supplier_delay→material_shortage`(0.9) ——
+    // 那条是"这家供应商整体都在拖"，波及面比单张单大。
+    coefficient: 0.8,
+    delayTicks: 0, // 在途单晚到 ⇒ 缺口**当天**就是缺口，没有缓冲垫在中间
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_batch_procurement_to_material",
+    key: "demo_batch_procurement_delay_to_material_shortage",
+    sourceTypeKey: "MaterialBatch",
+    sourceStateVar: "procurementDelay",
+    viaLinkKey: "batch_replenishes_material", // 本单新物化：MaterialBatch→Material（一批补一料）
+    targetTypeKey: "Material",
+    targetStateVar: "shortageRisk",
+    // 0.6：批次晚入库时，**手上还有上一批**顶着，故弱于在途单那条。
+    coefficient: 0.6,
+    delayTicks: 1, // 先吃现有批次的库存，缺口**次拍**才显现
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_supplier_procurement_to_material",
+    key: "demo_supplier_procurement_delay_to_material_shortage",
+    sourceTypeKey: "Supplier",
+    sourceStateVar: "procurementDelay",
+    viaLinkKey: "supplier_supplies_material", // WO-P1 已有逆边：Supplier→Material
+    targetTypeKey: "Material",
+    targetStateVar: "shortageRisk",
+    // 0.5：供应商级是**跨单聚合**口径，摊到单个物料上最弱（一家供应商供多个料）。
+    coefficient: 0.5,
+    delayTicks: 1, // 跨单聚合要等当期在手单都对完账才看得出来，不与单据同拍
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  // WO-SIM-ROOT-TRIAD · 三个**根源**扰动因素（G-ROOT-1 / G-ROOT-2 / G-ROOT-4）
+  //
+  // 判据（仓主给的分层口径）：**根源** = 传导图里入度 0 的量纲 —— 没有任何规则写它，
+  // 只能被外部打进来。衍生因素（库存 `shortageRisk` 入度 2）扰它等于**从半路插入**，
+  // 推演结论会失真。本单之前全世界只有 3 个根源（`demandPressure` / `deliveryDelay` /
+  // `priceShock`），且都对不上「预测准不准 · 客户临时插单 · 设备坏了」这三个高频经营场景。
+  //
+  // ── ⚠ 落点为什么不需要单独"投进 world.state" ──────────────────────────────────────
+  // `sim/seed-world.ts` 的 `deriveSeedBaseSnapshot` 铺格子的口径是
+  // **`varsByType(rules)` —— 规则触及的「类型 × 该类型被触及的变量」两端都算**。
+  // 所以「加一条规则」与「落点进 state」是**同一个动作**，不是两件事：规则一进来，
+  // 它两端类型的每个对象当场多一格。这正是它注释里那句「少铺不是抠库容，是不造假指标」的另一面。
+  // ⇒ 本段**零** `world.state` 手工投放代码；反过来说，谁把规则删了，格子也跟着消失（不留孤儿指标）。
+  //
+  // ── ⚠ 三条边的落点全部受两道既有门约束，改路线前先读它们 ────────────────────────
+  //  ① `test/sim-rule-domain.seam.test.ts` 的**方向可达门**：`source --viaLinkKey--> target`
+  //     必须在**真链路表**上走得通。声明了 linkType 但 `service.ts` 从没物化过实例的边
+  //     （`dt_for_equip` / `oee_for_equip` / `maint_for_equip` 都是这一类）**用不了**。
+  //  ② `test/process-tick-coverage.seam.test.ts` §C4 的 `sourceOnly` 恒空门：
+  //     任何规则端点类型都必须**同时**是某条规则的 target，否则屏上标着「随节拍变」而读数恒定。
+  //     ⇒ 新变量不能挂在一个**只当源**的新类型上（`EquipmentDowntime` 就属这种，故被排除，见 G-ROOT-4）。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── G-ROOT-1 · 销售预测偏差：型号预测偏差 → 订单需求压力 ──────────────────────────
+  //
+  // 🔴 **本条把 `demandPressure` 从根源降级为一级衍生** —— 这是有意的模型修正，不是副作用。
+  // 语义上现有的 `demandPressure`（需求压力）**没有方向**，而预测偏差有：
+  //   · `forecastBias > 0` = **高估**（按虚高的预测备产）⇒ 真实订单需求压力**低于**计划；
+  //   · `forecastBias < 0` = **低估**（实际需求打穿计划）⇒ 需求压力**上冲**，全链告急。
+  // ⇒ 系数取**负**（本表第一条负系数，契约 `coefficient: z.number()` 本就允许，
+  //    `ontology/invariants.ts` 的上限门也早已按 `Math.abs` 判）。正系数会把「高估」
+  //    读成「需求更旺」，方向恰好反了 —— 那才是这个量纲最容易被写错的地方。
+  //
+  // 落点为什么是 `Model` 而不是 `DemandSegment`/`AnnualScenario`：后两者在
+  // `batteryLinkTypes()` 里**没有任何出边**（DemandSegment 零 linkType；AnnualScenario 只有
+  // scenario_to_target/capex/finance，三个 target 都不带 `demandPressure`）⇒ 挂上去过不了
+  // 方向可达门，且 `propagateTick` 永远取不到 target = 屏上看着扰动成功、下游一动不动。
+  // `model_demanded_by_order`(Model→Order) 是实物化的真边（`service.ts` 的 `lnk_mdbo_*`）。
+  {
+    id: "simpr_demo_forecast_bias_to_order_demand",
+    key: "demo_forecast_bias_to_order_demand",
+    sourceTypeKey: "Model",
+    sourceStateVar: "forecastBias",
+    viaLinkKey: "model_demanded_by_order", // 实测 Model→Order，service.ts `lnk_mdbo_*`
+    targetTypeKey: "Order",
+    targetStateVar: "demandPressure",
+    coefficient: -0.6, // 负号即方向：高估(+) ⇒ 需求压力被下修；低估(−) ⇒ 需求压力上冲
+    delayTicks: 0, // 预测口径一改，当期订单侧的需求读数同拍就该跟着走
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── G-ROOT-2a · 订单临时插单/取消 → 订单行拆分压力（D03 销售与客户·P18）─────────────
+  // 客户临时插单或取消，最先落地的动作就是**改订单行**（拆行/改期/改量）。
+  // `order_has_line`(Order→OrderLine) 是档 2 已物化的影响向逆边（`lnk_ohl_*`）。
+  {
+    id: "simpr_demo_order_churn_to_line_split",
+    key: "demo_order_churn_to_line_split",
+    sourceTypeKey: "Order",
+    sourceStateVar: "orderChurn",
+    viaLinkKey: "order_has_line", // 实测 Order→OrderLine，service.ts `lnk_ohl_*`
+    targetTypeKey: "OrderLine",
+    targetStateVar: "splitPressure",
+    coefficient: 0.7,
+    delayTicks: 0, // 插单/取消当天就要改行，不隔拍
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── G-ROOT-2b · 订单临时插单/取消 → 型号需求负载（→ 已有下游直通工单下达压力）────────
+  //
+  // ⚠ **派单原文要求的是 `orderChurn → releasePressure`（工单下达）。实测接不到，改接这里。**
+  // 理由是数据的实情，不是绕路：`releasePressure` 挂在 `WorkOrder` 上（今天由
+  // `Line.utilPressure --line_runs_work_order--> WorkOrder.releasePressure` 写），
+  // 而**从 `Order` 到 `WorkOrder` 没有任何链路**：`workOrderProps` 只有
+  // `modelId`/`lineId`/`baseId` 三个 FK，**根本没有订单引用** ⇒ 连一条确定性的 Order→WorkOrder
+  // 边都投影不出来。硬造一条就是「张冠李戴的数比没有更危险」（`order_of_customer` 那次已登记过同一事实）。
+  //
+  // 改接 `order_for_model`(Order→Model·实物化) 之后，`orderChurn` 仍然**真的走到**
+  // `releasePressure`，只是多两跳：orderChurn → Model.demandLoad → Base.loadIndex →
+  // Line.utilPressure → WorkOrder.releasePressure。接缝测试的传导臂咬的就是这条**四跳**链。
+  //
+  // 与既有 `demo_order_demand_pressure`（Order.demandPressure → Model.demandLoad）同 target
+  // 不同源，语义不重复：那条是「需求压力水平」，本条是「订单**变更**频度」——
+  // 插单/取消带来的排产返工本身就会推高型号侧的负载，与需求量高低是两件事。
+  {
+    id: "simpr_demo_order_churn_to_model_demand_load",
+    key: "demo_order_churn_to_model_demand_load",
+    sourceTypeKey: "Order",
+    sourceStateVar: "orderChurn",
+    viaLinkKey: "order_for_model", // 实测 Order→Model，service.ts `lnk_ofm_*`（金丝雀边，方向可达门就拿它自证）
+    targetTypeKey: "Model",
+    targetStateVar: "demandLoad",
+    coefficient: 0.5,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── G-ROOT-4 · 设备故障率 → 工序排队压力（→ 已有下游直通设备负荷压力）───────────────
+  //
+  // ⚠ **派单原文要求的是 `equipmentFailure → loadPressure`。实测必须多一跳，理由两条硬约束。**
+  //  (1) `loadPressure` 挂在 `Equipment` 自己身上，而**设备故障率最自然的落点也是 `Equipment`**
+  //      （故障率是设备的属性；`EquipmentDowntime` 那 166 条是故障的**证据**，不是率）。
+  //      同一个类型不能自己传给自己 —— 全表零自环 linkType。
+  //  (2) 退而求其次挂 `EquipmentDowntime` 也不行，**两道门各堵一半**：
+  //      · `dt_for_equip`(EquipmentDowntime→Equipment) 的 linkType 声明了很久，
+  //        `service.ts` **一条实例都没物化过**（实测 `putLink` 全表零命中）⇒ 过不了方向可达门；
+  //      · 就算补物化，`EquipmentDowntime` 会成为**只当源、不当 target** 的类型 ⇒
+  //        `process-tick-coverage.seam.test.ts` §C4 的 `sourceOnly` 恒空门当场红
+  //        （那道门守的正是「屏上标着随节拍变、读数推多少拍都不动」这个假绿形态）。
+  //
+  // ⇒ 落在 `Equipment.equipmentFailure`，沿**已物化**的 `equip_used_in`(Equipment→Process·`lnk_eui_*`)
+  //    推到工序，再由既有的 `process_uses_equipment` 回到 `Equipment.loadPressure`。
+  //    业务因果是真的、不是为了绕门：**某台设备故障 ⇒ 它所在工序排队 ⇒ 该工序其余设备负荷被顶上去**。
+  //
+  // 🔴 **不构成正反馈回路**：本条写的是 `Process.queuePressure`，读的是 `Equipment.equipmentFailure`；
+  //    而 `equipmentFailure` **没有任何规则写它**（这正是它是根源的定义）⇒ 环不闭合，不自我放大。
+  //    照抄档 3 `demo_po_expedite_to_supplier_review` 立下的同一条判据。
+  {
+    id: "simpr_demo_equipment_failure_to_process_queue",
+    key: "demo_equipment_failure_to_process_queue",
+    sourceTypeKey: "Equipment",
+    sourceStateVar: "equipmentFailure",
+    viaLinkKey: "equip_used_in", // 实测 Equipment→Process，service.ts `lnk_eui_*`
+    targetTypeKey: "Process",
+    targetStateVar: "queuePressure",
+    coefficient: 0.6,
+    delayTicks: 0, // 设备一停，它那道工序当拍就开始堆
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+];
+
+/**
+ * ══ WO-DISRUPTION-CARDS · 传导边 → 业务域（**唯一出处，屏上从它派生**）══════════════
+ *
+ * 病灶：推演页把 35 条传导边一次全倒在屏上，无分类。分组的依据其实一直在数据里 ——
+ * `DEMO_PROCESS_DEFINITIONS` 每条流程都带 `domainKey`(D01–D13) + `carrierTypeKey`（承载物类型），
+ * 而**种子作者当初选边时用的就是这条关系**，逐条写在注释里：
+ *   「承载物 MaterialBatch 即 P36」「承载物 CustomsClearance 即 P34」「承载物 MaintPlan 即 P50」
+ *   「承载物 Certification 即 P55」「全世界恰好一个：`Supplier`（P28 供应商准入与评估）」
+ * 本函数只是把那条**已经在用**的关系从注释搬进数据，**不是发明一套新的归类规则**。
+ *
+ * ── 口径：域 = **target 承载物**的域，不是 source ──────────────────────────────────
+ * 依据是种子自己的分节注释，不是本单的偏好：
+ *   `── D09 设备与维护 · 检修窗：基地负载 → 计划检修窗挤压 ──`  源 Base(D10) → 节名 D09 = target MaintPlan 的域
+ *   `── D10 基地与仓储交付 · 认证：型号需求负载 → 产线型号认证排队 ──` 源 Model(D04) → 节名 D10 = target Certification 的域
+ * 语义上也对：用户按域找一条边，找的是「它**影响**哪个域的活动」。
+ *
+ * ⛔ **不是照分节注释逐条硬编码**（那就是把手抄名单从前端搬到后端，病没治）。
+ *    这里是**现算**：新增一条规则，只要它的 target 是某流程的承载物，域自动就有；
+ *    忘了归域这件事在本设计里**不可能发生**。`test/sim-rule-domain.seam.test.ts` 咬死这一点。
+ *
+ * ── 实测：分节注释与本函数现算结果的两处**系统性分歧**（如实登记，不掩盖）────────────
+ * 18 条带 D 号分节的规则里，15 条与现算一致；3 条 + 1 条分歧，且**分歧方向都是注释更粗**：
+ *   · `demo_wo_release_to_quality_backlog` / `demo_wip_feed_to_defect_pressure` /
+ *     `demo_defect_to_exception_backlog` 落在节名 `D07 生产制造执行链` 下，
+ *     而 target（QualityLot / DefectRecord / ExceptionEvent）三个承载物都属 **D08 质量管理**。
+ *     那句节名写的是一条**跨域的链**（产线→工单→在制→缺陷→异常处置），不是一个域。
+ *   · `demo_customer_receivable_to_collection` 落在节名 `D03 销售与客户` 下，
+ *     而 target `OverdueRecord` 的承载流程属 **D11 财务与成本**。取 D11 顺带让它与
+ *     `demo_customer_receivable_to_invoice_overdue`（ARInvoice·同属 D11·**无分节注释**）归到一起，
+ *     比"一条逾期边在销售、另一条逾期边在财务"更能用。
+ * 取现算值 = 取**逐条可复算**的那个口径；注释那 4 处不改（它描述的是叙事链路，本来就没错）。
+ */
+/**
+ * ⚠ **必须惰性求值，不能写成模块级 IIFE**：本函数读的 `DEMO_PROCESS_DOMAINS`(§流程层) 与
+ * `DEMO_PROCESS_DEFINITIONS` 在本文件里声明在**它下面**，模块级立即执行会踩 `const` 的 TDZ
+ * ⇒ import 本模块即抛 `ReferenceError`（而不是等到播种时）。放函数里 = 首次调用时那两个 const 早已初始化。
+ */
+let ruleDomainByCarrier: ReadonlyMap<string, { key: string; name: string }> | null = null;
+function ruleDomainIndex(): ReadonlyMap<string, { key: string; name: string }> {
+  if (ruleDomainByCarrier) return ruleDomainByCarrier;
+  const nameOf = new Map(DEMO_PROCESS_DOMAINS.map((d) => [d.key, d.name] as const));
+  const m = new Map<string, { key: string; name: string }>();
+  for (const p of DEMO_PROCESS_DEFINITIONS) {
+    // 同一承载物被多条流程用时取**域 key 字典序最小**的那个 ⇒ 与流程数组顺序无关（R6 确定性）。
+    // demo 实测无此情形（35 条规则零 MULTI），此分支是防将来加流程时靠数组顺序碰运气。
+    const name = nameOf.get(p.domainKey);
+    if (name === undefined) continue; // 域登记册里没有的 domainKey：诚实跳过，不编一个名字出来
+    const cur = m.get(p.carrierTypeKey);
+    if (cur === undefined || p.domainKey < cur.key) m.set(p.carrierTypeKey, { key: p.domainKey, name });
+  }
+  ruleDomainByCarrier = m;
+  return m;
+}
+
+/**
+ * 一条传导边的域归属。**查不到 ⇒ `{null, null}`，绝不塞进"最近的那个域"**。
+ *
+ * demo 实测 3 条查不到，全部是**中间跳量纲**（target 不是任何流程的承载物）：
+ *   `Material`（供应商延迟→物料短缺）· `Process`（产线利用率→工序排队）· `Equipment`（工序排队→设备负荷）
+ * 其中 `Equipment` 那条，种子注释自己就写着「Equipment **不是任何流程的承载物**，它在这里是**中间跳**」
+ * —— 即：这 3 条"落不进任何域"是**数据的实情**，不是本函数没算出来。屏上单列「未归域」并说明。
+ */
+export function resolveRuleDomain(targetTypeKey: string): { domainKey: string | null; domainName: string | null } {
+  const hit = ruleDomainIndex().get(targetTypeKey);
+  return { domainKey: hit?.key ?? null, domainName: hit?.name ?? null };
+}
+
+/** demo 传导规则 + 现算出来的域（测试与播种**共用这一支**，不许各算一遍）。 */
+export function demoPropagationRulesWithDomain(): ReadonlyArray<Omit<PropagationRule, "tenantId">> {
+  return DEMO_PROPAGATION_RULES.map((r) => ({
+    ...r,
+    ...resolveRuleDomain(r.targetTypeKey),
+    // 类型人话名**入库恒 null**：它是读时投影（路由 join 本体），存一份会在类型改名后变成旧名字。
+    sourceTypeName: null,
+    targetTypeName: null,
+  }));
+}
+
+/**
+ * 播 demo 的 sim 传导规则种子（幂等：固定 id + 直接 put 覆盖）。仅写 sim 仓储，不动合成。
+ * 由 SEED_DEMO 启动路径在 seedDemoSynthetic 之后调用（本体已物化才有链路可挂）。
+ */
+export async function seedDemoPropagationRules(repos: Repos): Promise<void> {
+  for (const r of demoPropagationRulesWithDomain()) {
+    await repos.sim.putPropagationRule({ ...r, tenantId: DEMO_TENANT });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// WO-Q0 · 业务流程层种子（13 一级业务域 × 65 核心业务流程）
+// PRD-UPGRADE-decision-sandbox-v2 §3.2 · DECISION-13domain-65process-layering.md
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 13 个一级业务域。
+ *
+ * 🔴 **每个 D## 都锚到 `graphmeta.ts` 的 `BUSINESS_DOMAINS`（14 域注册表）**，不新造词表。
+ * 理由与实测证据写在 `packages/contracts/src/process.ts` §3：裁决文档说「平台无域概念」是错的，
+ * 那份 14 域注册表真接线（`GET /a/v1/business-domains` · `refbase.ts` · `refbase-coverage.ts`），
+ * 还被 `test/a3-business-domains.test.ts` 锁在 14 条。不锚 = 造第二套业务域词表。
+ *
+ * ── 14 域里唯一没有对应流程域的是 `external`（外部信号）—— **这是判断，不是遗漏** ──
+ * `external` 是**数据来源域**（`ExternalSignal` / `CommodityPriceTrend` 是外部行情数据），
+ * 不是「企业内部的一类业务活动」。真正消费外部信号的活动（采集、研判、跟踪）
+ * 已落在 D02 需求与预测（P08/P09/P10），承载物就是那两个类型。
+ * 为它单开一个流程域会造出一个域名叫「外部信号」、里面全是别的域已有的活动的空域。
+ */
+const DEMO_PROCESS_DOMAINS: ReadonlyArray<{ key: string; name: string; businessDomainKey: string }> = [
+  { key: "D01", name: "经营规划与情景", businessDomainKey: "plan" },
+  { key: "D02", name: "需求与预测", businessDomainKey: "forecast" },
+  { key: "D03", name: "销售与客户", businessDomainKey: "sales" },
+  { key: "D04", name: "产品与工程", businessDomainKey: "product" },
+  { key: "D05", name: "采购与供应", businessDomainKey: "material" },
+  { key: "D06", name: "计划与排产", businessDomainKey: "capacity" },
+  { key: "D07", name: "生产制造", businessDomainKey: "process" },
+  { key: "D08", name: "质量管理", businessDomainKey: "quality" },
+  { key: "D09", name: "设备与维护", businessDomainKey: "equip" },
+  { key: "D10", name: "基地与仓储交付", businessDomainKey: "factory" },
+  { key: "D11", name: "财务与成本", businessDomainKey: "finance" },
+  { key: "D12", name: "人员与班组", businessDomainKey: "people" },
+  { key: "D13", name: "决策与改善", businessDomainKey: "decision" },
+];
+
+/**
+ * 65 条核心业务流程。四件齐：`ownerFunctionKey`（谁做）· `stdDurationDays`（多久）·
+ * `waitKind`（卡在哪种等待）· `carrierTypeKey`（🔴 承载物）。
+ *
+ * ── 🔴 承载物纪律（红线 3）───────────────────────────────────────────────
+ * 每条的 `carrierTypeKey` 都是 **battery 种子真物化出来的 94 个对象类型之一**
+ * （实测枚举，非照文档抄）。`test/process-layer.test.ts` 断言① 真跑一次种子后逐条核对，
+ * 拼错一个字母就红。**论证不出承载物的流程一条都没建**（放弃清单见本注释末尾）。
+ *
+ * ── 两个编号锚点，别改 ────────────────────────────────────────────────────
+ * PRD §3.2.2 用 `P37 MPS` 与 `P40 APS排产` 举例说明「映射是 N:M」，WO-Q1 的
+ * `process_chain_node_map` 会照它建映射。故本表的 **P37 = 主生产计划（MPS）编制**、
+ * **P40 = 详细排产（APS）** 是对外承诺过的编号，改动会让 PRD 的例子与数据对不上。
+ * 这两条**共用同一个承载物 `ProductionSchedule`** —— 这正是 `chain-sim.ts` 里
+ * 「全仓只有一个排产承载物」那条实测事实，在流程层的合法形态（共用 ≠ 空壳，见 process.ts 文件头）。
+ *
+ * ── 放弃的流程（论证不出承载物，宁可少建也不填空壳）────────────────────
+ *  ① **流程审批/会签**（跨域通用）—— 仓主已裁「流程审批不体现」（PRD §6.4 #1 维持不做），
+ *     且平台无流程级审批承载物（`ActionDraft` 是 S2 行动审批，不是业务流程审批）。
+ *     这与 `waitKind` 不收 `WAITING_APPROVAL` 是**同一条理由**。
+ *  ② **招聘与培训**（人员域）—— 无 `TrainingPlan`/`Recruitment` 类型；
+ *     `OperatorSkillCert` 承载的是「已认证」这个结果，承载不了培训过程本身。
+ *  ③ **合同与法务评审**（销售/采购域）—— 无通用 `Contract` 类型；
+ *     `LongTermAgreement` 是采购长协的专用承载物，套给销售合同就是错挂。
+ *  ④ **售后与退换货（RMA）**（销售域）—— 无 `ReturnOrder`/`ServiceTicket`/`Complaint` 类型；
+ *     `ExceptionEvent` 是产线异常事件，不是客户投诉，借用它会把两类东西搅成一摊。
+ *  ⑤ **碳足迹核算与碳护照申报**（供应域）—— `CarbonFactor` 是**因子字典**
+ *     （`factorId/kind/key/factor`），不是核算流程的产出物；碳足迹本身只作为
+ *     `Order.carbonFootprint` **属性**存在（规则 C33 挂在它上面），属性不是一等承载物。
+ *
+ * R6：固定 id/key/时长，同 SEED_DEMO 重跑字节级一致；幂等（固定 id + put 覆盖）。
+ */
+const DEMO_PROCESS_DEFINITIONS: ReadonlyArray<{
+  key: string; domainKey: string; name: string;
+  ownerFunctionKey: string; stdDurationDays: number; waitKind: ProcessWaitKind; carrierTypeKey: string;
+}> = [
+  // ── D01 经营规划与情景（plan）· P01–P06 ────────────────────────────────
+  { key: "P01", domainKey: "D01", name: "年度经营目标分解", ownerFunctionKey: "strategy_office", stdDurationDays: 30, waitKind: "WAITING_USER", carrierTypeKey: "PlanTarget" },
+  { key: "P02", domainKey: "D01", name: "关键成功要素（KSF）梳理", ownerFunctionKey: "strategy_office", stdDurationDays: 15, waitKind: "WAITING_USER", carrierTypeKey: "KSF" },
+  { key: "P03", domainKey: "D01", name: "年度情景测算与选案", ownerFunctionKey: "strategy_office", stdDurationDays: 20, waitKind: "WAITING_DATA", carrierTypeKey: "AnnualScenario" },
+  { key: "P04", domainKey: "D01", name: "情景触发条件维护", ownerFunctionKey: "strategy_office", stdDurationDays: 5, waitKind: "WAITING_USER", carrierTypeKey: "ScenarioTrigger" },
+  { key: "P05", domainKey: "D01", name: "产能投资立项与评审", ownerFunctionKey: "strategy_office", stdDurationDays: 45, waitKind: "WAITING_USER", carrierTypeKey: "CapexProject" },
+  // S&OP 例会是典型的节拍等待（`chain-sim.ts` 的 demand.consensus 也在测这段）——本层只标类别，不算天数。
+  { key: "P06", domainKey: "D01", name: "S&OP 产销平衡例会", ownerFunctionKey: "strategy_office", stdDurationDays: 3, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "SopVersionRow" },
+
+  // ── D02 需求与预测（forecast）· P07–P11 ────────────────────────────────
+  { key: "P07", domainKey: "D02", name: "需求细分预测编制", ownerFunctionKey: "demand_planning", stdDurationDays: 7, waitKind: "WAITING_DATA", carrierTypeKey: "DemandSegment" },
+  { key: "P08", domainKey: "D02", name: "外部信号采集与研判", ownerFunctionKey: "demand_planning", stdDurationDays: 2, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "ExternalSignal" },
+  { key: "P09", domainKey: "D02", name: "原材料价格趋势跟踪", ownerFunctionKey: "demand_planning", stdDurationDays: 2, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "CommodityPriceTrend" },
+  { key: "P10", domainKey: "D02", name: "竞品份额监测", ownerFunctionKey: "demand_planning", stdDurationDays: 5, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "CompetitorShare" },
+  { key: "P11", domainKey: "D02", name: "竞品价格监测", ownerFunctionKey: "demand_planning", stdDurationDays: 3, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "CompetitorPrice" },
+
+  // ── D03 销售与客户（sales）· P12–P19 ───────────────────────────────────
+  { key: "P12", domainKey: "D03", name: "商机漏斗跟进", ownerFunctionKey: "sales", stdDurationDays: 10, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "PipelineOpportunity" },
+  { key: "P13", domainKey: "D03", name: "询报价与投标", ownerFunctionKey: "sales", stdDurationDays: 14, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "BidRecord" },
+  { key: "P14", domainKey: "D03", name: "赢单丢单复盘", ownerFunctionKey: "sales", stdDurationDays: 5, waitKind: "WAITING_DATA", carrierTypeKey: "WinLossRecord" },
+  { key: "P15", domainKey: "D03", name: "客户准入与信用授信", ownerFunctionKey: "sales", stdDurationDays: 15, waitKind: "WAITING_USER", carrierTypeKey: "Customer" },
+  { key: "P16", domainKey: "D03", name: "客户收货地点与物流条款维护", ownerFunctionKey: "sales", stdDurationDays: 3, waitKind: "WAITING_USER", carrierTypeKey: "CustomerLocation" },
+  { key: "P17", domainKey: "D03", name: "销售订单评审接单", ownerFunctionKey: "sales", stdDurationDays: 3, waitKind: "WAITING_USER", carrierTypeKey: "Order" },
+  { key: "P18", domainKey: "D03", name: "订单拆行与排产要素确认", ownerFunctionKey: "sales", stdDurationDays: 1, waitKind: "WAITING_USER", carrierTypeKey: "OrderLine" },
+  { key: "P19", domainKey: "D03", name: "交期承诺（ATP/CTP）", ownerFunctionKey: "sales", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "OrderPromise" },
+
+  // ── D04 产品与工程（product）· P20–P27 ─────────────────────────────────
+  { key: "P20", domainKey: "D04", name: "产品平台规划", ownerFunctionKey: "product_engineering", stdDurationDays: 60, waitKind: "WAITING_USER", carrierTypeKey: "ProductPlatform" },
+  { key: "P21", domainKey: "D04", name: "产品系列规划", ownerFunctionKey: "product_engineering", stdDurationDays: 30, waitKind: "WAITING_USER", carrierTypeKey: "ProductSeries" },
+  { key: "P22", domainKey: "D04", name: "型号立项与定义", ownerFunctionKey: "product_engineering", stdDurationDays: 45, waitKind: "WAITING_USER", carrierTypeKey: "Model" },
+  { key: "P23", domainKey: "D04", name: "产品版本发布", ownerFunctionKey: "product_engineering", stdDurationDays: 15, waitKind: "WAITING_USER", carrierTypeKey: "ProductVersion" },
+  { key: "P24", domainKey: "D04", name: "BOM 编制与维护", ownerFunctionKey: "product_engineering", stdDurationDays: 10, waitKind: "WAITING_DATA", carrierTypeKey: "BOMHeader" },
+  { key: "P25", domainKey: "D04", name: "工程变更（ECN）处理", ownerFunctionKey: "product_engineering", stdDurationDays: 14, waitKind: "WAITING_USER", carrierTypeKey: "EngineeringChange" },
+  { key: "P26", domainKey: "D04", name: "工艺路线与工序设计", ownerFunctionKey: "process_engineering", stdDurationDays: 20, waitKind: "WAITING_USER", carrierTypeKey: "Routing" },
+  { key: "P27", domainKey: "D04", name: "工艺能力窗口标定", ownerFunctionKey: "process_engineering", stdDurationDays: 12, waitKind: "WAITING_DATA", carrierTypeKey: "ProcessCapabilityWindow" },
+
+  // ── D05 采购与供应（material）· P28–P36 ────────────────────────────────
+  { key: "P28", domainKey: "D05", name: "供应商准入与评估", ownerFunctionKey: "procurement", stdDurationDays: 30, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "Supplier" },
+  { key: "P29", domainKey: "D05", name: "长期协议谈判与签订", ownerFunctionKey: "procurement", stdDurationDays: 45, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "LongTermAgreement" },
+  { key: "P30", domainKey: "D05", name: "备份供应池维护", ownerFunctionKey: "procurement", stdDurationDays: 20, waitKind: "WAITING_USER", carrierTypeKey: "BackupSupplierPool" },
+  { key: "P31", domainKey: "D05", name: "替代料评估与切换", ownerFunctionKey: "process_engineering", stdDurationDays: 15, waitKind: "WAITING_USER", carrierTypeKey: "MaterialAlternative" },
+  { key: "P32", domainKey: "D05", name: "物料平衡（MRP）运行", ownerFunctionKey: "supply_chain", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "MaterialBalance" },
+  { key: "P33", domainKey: "D05", name: "请购与采购下单", ownerFunctionKey: "procurement", stdDurationDays: 3, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "PurchaseOrder" },
+  { key: "P34", domainKey: "D05", name: "进口清关", ownerFunctionKey: "supply_chain", stdDurationDays: 7, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "CustomsClearance" },
+  // 承载物跨域是设计（domainKey 说「谁的活」，carrierTypeKey 说「作用在什么上」）：IQC 归采购段流程，
+  // 但 IncomingInspection 这个类型属质量域 —— 与 procurement.ts 的四段责任方划分（QUALITY_IQC）一致。
+  { key: "P35", domainKey: "D05", name: "到货检验（IQC）", ownerFunctionKey: "quality", stdDurationDays: 2, waitKind: "WAITING_DATA", carrierTypeKey: "IncomingInspection" },
+  { key: "P36", domainKey: "D05", name: "物料批次入库与呆滞盘点", ownerFunctionKey: "warehouse_logistics", stdDurationDays: 2, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "MaterialBatch" },
+
+  // ── D06 计划与排产（capacity）· P37–P41 ────────────────────────────────
+  // ⚓ P37 / P40 是 PRD §3.2.2 点名的编号锚点，WO-Q1 的映射表按它建 —— 不许改号。
+  { key: "P37", domainKey: "D06", name: "主生产计划（MPS）编制", ownerFunctionKey: "production_planning", stdDurationDays: 5, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "ProductionSchedule" },
+  { key: "P38", domainKey: "D06", name: "产能与瓶颈复核（RCCP）", ownerFunctionKey: "production_planning", stdDurationDays: 2, waitKind: "WAITING_DATA", carrierTypeKey: "Line" },
+  { key: "P39", domainKey: "D06", name: "节拍闸门维护", ownerFunctionKey: "production_planning", stdDurationDays: 5, waitKind: "WAITING_USER", carrierTypeKey: "Cadence" },
+  { key: "P40", domainKey: "D06", name: "详细排产（APS）", ownerFunctionKey: "production_planning", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "ProductionSchedule" },
+  { key: "P41", domainKey: "D06", name: "跨基地调拨决策", ownerFunctionKey: "supply_chain", stdDurationDays: 3, waitKind: "WAITING_USER", carrierTypeKey: "InterBaseTransfer" },
+
+  // ── D07 生产制造（process）· P42–P45 ───────────────────────────────────
+  { key: "P42", domainKey: "D07", name: "工单下达", ownerFunctionKey: "production_planning", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "WorkOrder" },
+  { key: "P43", domainKey: "D07", name: "齐套发料与投料", ownerFunctionKey: "warehouse_logistics", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "WIPLot" },
+  { key: "P44", domainKey: "D07", name: "工序流转报工", ownerFunctionKey: "manufacturing", stdDurationDays: 1, waitKind: "WAITING_USER", carrierTypeKey: "WIPMove" },
+  { key: "P45", domainKey: "D07", name: "换型切换执行", ownerFunctionKey: "manufacturing", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "ChangeoverMatrix" },
+
+  // ── D08 质量管理（quality）· P46–P49 ───────────────────────────────────
+  { key: "P46", domainKey: "D08", name: "质量标准与检验特性制定", ownerFunctionKey: "quality", stdDurationDays: 20, waitKind: "WAITING_USER", carrierTypeKey: "QualityStandard" },
+  { key: "P47", domainKey: "D08", name: "过程质检攒批与判定", ownerFunctionKey: "quality", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "QualityLot" },
+  { key: "P48", domainKey: "D08", name: "缺陷记录与不良分析", ownerFunctionKey: "quality", stdDurationDays: 2, waitKind: "WAITING_DATA", carrierTypeKey: "DefectRecord" },
+  { key: "P49", domainKey: "D08", name: "异常事件处置闭环", ownerFunctionKey: "quality", stdDurationDays: 2, waitKind: "WAITING_USER", carrierTypeKey: "ExceptionEvent" },
+
+  // ── D09 设备与维护（equip）· P50–P53 ───────────────────────────────────
+  { key: "P50", domainKey: "D09", name: "计划检修窗排定", ownerFunctionKey: "maintenance", stdDurationDays: 10, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "MaintPlan" },
+  { key: "P51", domainKey: "D09", name: "设备告警响应与维修派工", ownerFunctionKey: "maintenance", stdDurationDays: 1, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "MaintenanceOrder" },
+  { key: "P52", domainKey: "D09", name: "OEE 采集与损失分解", ownerFunctionKey: "maintenance", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "EquipmentOEE" },
+  { key: "P53", domainKey: "D09", name: "备件消耗与补货", ownerFunctionKey: "maintenance", stdDurationDays: 7, waitKind: "WAITING_DATA", carrierTypeKey: "SparePartConsumption" },
+
+  // ── D10 基地与仓储交付（factory）· P54–P57 ─────────────────────────────
+  { key: "P54", domainKey: "D10", name: "基地与车间产能台账维护", ownerFunctionKey: "production_planning", stdDurationDays: 10, waitKind: "WAITING_USER", carrierTypeKey: "Base" },
+  { key: "P55", domainKey: "D10", name: "产线型号认证", ownerFunctionKey: "quality", stdDurationDays: 30, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "Certification" },
+  { key: "P56", domainKey: "D10", name: "成品入库与库存对账", ownerFunctionKey: "warehouse_logistics", stdDurationDays: 1, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "FinishedGoodsInventory" },
+  { key: "P57", domainKey: "D10", name: "发运与在途跟踪", ownerFunctionKey: "warehouse_logistics", stdDurationDays: 2, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "Shipment" },
+
+  // ── D11 财务与成本（finance）· P58–P60 ─────────────────────────────────
+  { key: "P58", domainKey: "D11", name: "财务预算编制", ownerFunctionKey: "finance", stdDurationDays: 20, waitKind: "WAITING_USER", carrierTypeKey: "FinancePlan" },
+  { key: "P59", domainKey: "D11", name: "开票、应收与账龄监控", ownerFunctionKey: "finance", stdDurationDays: 3, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "ARInvoice" },
+  { key: "P60", domainKey: "D11", name: "逾期催收", ownerFunctionKey: "finance", stdDurationDays: 15, waitKind: "WAITING_EXTERNAL_SYSTEM", carrierTypeKey: "OverdueRecord" },
+
+  // ── D12 人员与班组（people）· P61–P62 ──────────────────────────────────
+  { key: "P61", domainKey: "D12", name: "班次计划排定", ownerFunctionKey: "hr_operations", stdDurationDays: 5, waitKind: "WAITING_SCHEDULE", carrierTypeKey: "ShiftPlan" },
+  { key: "P62", domainKey: "D12", name: "操作工技能认证与授权", ownerFunctionKey: "hr_operations", stdDurationDays: 20, waitKind: "WAITING_USER", carrierTypeKey: "OperatorSkillCert" },
+
+  // ── D13 决策与改善（decision）· P63–P65 ────────────────────────────────
+  { key: "P63", domainKey: "D13", name: "经营指标越线监控", ownerFunctionKey: "decision_support", stdDurationDays: 1, waitKind: "WAITING_DATA", carrierTypeKey: "Metric" },
+  { key: "P64", domainKey: "D13", name: "根因归因与复盘", ownerFunctionKey: "decision_support", stdDurationDays: 3, waitKind: "WAITING_DATA", carrierTypeKey: "RootCauseChain" },
+  { key: "P65", domainKey: "D13", name: "处置方案采纳与跟踪", ownerFunctionKey: "decision_support", stdDurationDays: 7, waitKind: "WAITING_USER", carrierTypeKey: "AdoptedMitigation" },
+];
+
+/**
+ * 播 demo 的业务流程层种子（13 域 + 65 流程）。幂等：固定 id + `putMany` 覆盖。
+ *
+ * **写前先 zod parse**：种子是本层唯一的数据来源，形状错了要在播种时就炸，
+ * 而不是等到某个消费方读到一条缺字段的记录再报一个没头没尾的错
+ * （`strictObject` 同时挡住"多写一个字段"——那通常是改名改了一半）。
+ *
+ * 由 SEED_DEMO 启动路径调用（`server.ts` / `seed-cli.ts`）。**不放进基座 `seedDemo`**：
+ * 与 `seedDemoEntitlements` 同一条理由 —— 单测 `makeApp()` 需要「干净 demo」基线，
+ * 流程层是行业模板内容，不该出现在每个不相干的单测里。
+ *
+ * ⚠ 本函数**不校验 `carrierTypeKey` 在本体里存在**（那需要本体已物化，而播种顺序不该由它绑架）。
+ * 那条判据由 `test/process-layer.test.ts` 断言① 守 —— 门在测试层，不在运行时。
+ */
+export async function seedDemoProcessLayer(repos: Repos): Promise<void> {
+  const domains = DEMO_PROCESS_DOMAINS.map((d, i) =>
+    ProcessDomainSchema.parse({ ...d, id: `pdom_${DEMO_TENANT}_${d.key}`, tenantId: DEMO_TENANT, order: i }),
+  );
+  const defs = DEMO_PROCESS_DEFINITIONS.map((p) =>
+    ProcessDefinitionSchema.parse({ ...p, id: `pdef_${DEMO_TENANT}_${p.key}`, tenantId: DEMO_TENANT }),
+  );
+  await repos.processDomains.putMany(domains);
+  await repos.processDefinitions.putMany(defs);
+  /**
+   * WO-STEP-TEMPLATE-LAYER · 步骤模板（**只 7 条，不是 65 条**）。
+   *
+   * 必须排在 `processDefinitions.putMany` **之后**：播种时逐条校验「工期守恒」
+   * （Σ步 == 定义的 stdDurationDays），要先读得到定义。顺序反了会抛「孤儿模板」。
+   * 覆盖面与缺席理由是内容问题，全部落在 `process/step-templates.ts`，本文件不复述（免两份注释漂移）。
+   */
+  await seedProcessStepTemplates(repos, DEMO_TENANT);
+  /**
+   * WO-FLOWTIME · 流程层**本体**（2 个对象类型 + `instance_of`/`carries` 链路族）。
+   *
+   * 为什么挂在这里而不进 `batteryObjectTypes()`：这两个类型是**平台流程层制品**不是电池行业对象
+   * （换行业它们不变），且进电池模板会连带打乱 `demo-chain-provenance` / `a3-refbase` 锁的
+   * 94/95 金值 —— 那两个金值度量的是**行业模板**类型数，混进平台类型后它就不再度量它原本
+   * 度量的东西了。完整判据见 `process/ontology.ts` 文件头。
+   * 结果：没播流程层的租户（含绝大多数单测）逐字节现行为，一个类型都不多。
+   */
+  await seedProcessLayerOntology(repos, DEMO_TENANT);
+}
+
+/**
+ * WO-ORG-WORLD · 组织世界种子（七世界之②）。内容与确定性说明见 `src/org/seed.ts`。
+ *
+ * **不放进基座 `seedDemo`**（与 `seedDemoProcessLayer` / `seedDemoEntitlements` 同一条理由）：
+ * 单测 `makeApp()` 需要「干净 demo」基线，组织世界是租户配置内容，不该出现在每个不相干的单测里。
+ * 由 `SEED_DEMO=1` 的两条启动播种路径（`server.ts` / `seed-cli.ts`）调用 —— 两条**必须同步**，
+ * 漂了就会出现「容器起得来的环境有组织世界、跑过 pnpm seed 的环境没有」这种只在某些机器上复现的坑。
+ *
+ * ⚠️ 播种**不等于**功能可见：`org.world` 是 `defaultOn:false` 暗发功能，
+ * 数据播了但路由仍 404，直到产品显式 override 打开 —— 开关默认值是产品决策，不是 dev 决策。
+ */
+export async function seedDemoOrgWorld(repos: Repos): Promise<void> {
+  await seedOrgWorld(repos, DEMO_TENANT);
 }

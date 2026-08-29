@@ -7,6 +7,11 @@ export interface NestingCtx {
   callChain: string[];
   /** Shared budget — nested invocations consume the top-level counters. */
   budget: BudgetTracker;
+  /**
+   * WO-SCENARIO-INPUT-PHASE0：可选的取消探针。嵌套调用可共享同一信号，
+   * 工作流/ agent 轮询此探针并优雅返回 CANCELLED 而非继续烧预算。
+   */
+  isCancelled?: () => boolean;
 }
 
 export class NestingError extends Error {
@@ -34,5 +39,5 @@ export function enterNesting(nesting: NestingCtx, kind: "agent" | "workflow", id
       `nesting depth ${callChain.length} exceeds limit ${MAX_DEPTH}: ${callChain.join(" -> ")}`,
     );
   }
-  return { callChain, budget: nesting.budget };
+  return { callChain, budget: nesting.budget, isCancelled: nesting.isCancelled };
 }

@@ -1,0 +1,826 @@
+/**
+ * WO-SIM-FE-HOME · 推演沙盘首页「指控台」的**像素级 1:1 移植**。
+ *
+ * ── 这份 CSS 是什么 ─────────────────────────────────────────────────────────
+ * 规格 = `docs/ux-spec/sandbox/sandbox-home.html`（可执行规格·浏览器打开就是目标屏），
+ * 基准 = `docs/ux-spec/sandbox/pg1.png`（1440×897 · deviceScaleFactor=2）。
+ * **本文件逐条照抄规格的 `<style>`**：类名、`px`、`grid-template-columns`、`height`、`font-size`
+ * 一个都没重排。要改版面 → 改规格 HTML → 重出基准 PNG → 再回来改这里，顺序不许倒过来。
+ *
+ * ── 唯一允许偏离规格的一件事：色值 ─────────────────────────────────────────
+ * 规格里的十六进制**本就是 `apps/frontend-shell/src/styles/tokens.css` 的真值**
+ * （规格 README 第 23–27 行明写）。移植时逐个换回 token 引用，组件里零字面色值：
+ *     #223251 → var(--bg)          #2c3d5e → var(--panel)      #1c2942 → var(--panel2)
+ *     #e9eef5 → var(--txt)         #ced7e1 → var(--muted)      #bbc5ce → var(--muted2)
+ *     #4c90f0 → var(--accent)      #43b7d7 → var(--c-capacity) #62be77 → var(--ok)
+ *     #e8b54a → var(--warn)        #e0626c → var(--danger)
+ *     rgba(226,235,245,0.08) → var(--line)   rgba(226,235,245,0.14) → var(--line2)
+ * 带 alpha 的染色一律走 `color-mix(in srgb, var(--X) N%, transparent)`（仓内已有先例：
+ * `SandboxConsole.module.css` 同款写法），**不把 rgba 字面量抄进来** —— 抄了就等于把
+ * token 复制了一份，换主题时这一份不跟随。
+ *
+ * ── 一条实测偏差，照实记（不圆场）────────────────────────────────────────
+ * 派单写「`writing-mode` 不要用」。该禁令的**理由**（规格 README 第 48–50 行）是
+ * 「容器里的 WQY 字体无竖排度量 ⇒ **中文**竖排时每字前进量为 0，三个字叠成一个黑块」。
+ * 故本文件按**承载内容**分两路，而不是一刀切：
+ *   · `.vgrp`（竖排**中文**组名 交付域/成本域/…）→ **逐字换行**，不用 writing-mode（禁令生效处）；
+ *   · `.rulerL u` / `.rulerR u`（竖排**拉丁数字** 12000…16000）→ 保留 `writing-mode:vertical-rl`，
+ *     与规格逐字节一致。拉丁数字有竖排度量，`pg1.png` 上它就是正常旋转渲染的；
+ *     改掉这一处 = 与基准 PNG 当场差出两条 26px 宽的竖条，**违背本单头号判据（1:1）**。
+ */
+
+/* ══ 规格 `html,body` + `*` 的等价物（CSS Module 不碰全局，落在 .app 自己身上）══ */
+.app {
+  /* ── 规格里那几个「同底不同 alpha」的发丝色，逐个从 token 现算（**不抄 rgba 字面量**）──
+     tokens.css：--line = rgba(226,235,245,0.08) · --line2 = rgba(226,235,245,0.14)，
+     与规格 --hair/--hair2 逐字节相同。规格另用到 .04 / .05 / .12 三档同底 alpha，
+     故按 `color-mix(… N%, transparent)` 从同底 token 缩放出来（srgb 预乘插值 ⇒ 底色不变、
+     alpha 线性缩放，取值精确等于规格）：0.08×50%=0.04 · 0.08×62.5%=0.05 · 0.14×85.714%=0.12。
+     这几个是 **SVG 也要用的**（`stroke` presentation attribute 吃不进 `var()`，
+     FlowMap 走 inline `style` 引用它们），所以定义在 .app 上让整棵子树继承。 */
+  --sh-hair04: color-mix(in srgb, var(--line) 50%, transparent);
+  --sh-hair05: color-mix(in srgb, var(--line) 62.5%, transparent);
+  --sh-hair12: color-mix(in srgb, var(--line2) 85.714%, transparent);
+  /* 站名 / 呼出卡正文的两档半透白（规格 rgba(190,208,224,.78) / rgba(233,238,245,.88)）。
+     前者底色即 --muted2 家族的冷灰、后者即 --txt，故按同底缩放而非另发明一个色。 */
+  --sh-station-label: color-mix(in srgb, var(--muted2) 78%, transparent);
+  --sh-callout-txt: color-mix(in srgb, var(--txt) 88%, transparent);
+  /* 呼出卡引线（规格 rgba(120,160,200,.28)）—— 冷蓝细线，取 --c-factory 同色族降透明。 */
+  --sh-callout-lead: color-mix(in srgb, var(--c-factory) 28%, transparent);
+  /* 缓冲区椭圆（规格 rgba(98,190,119,.15)）。 */
+  --sh-buffer-fill: color-mix(in srgb, var(--ok) 15%, transparent);
+  box-sizing: border-box;
+  width: 1440px;
+  height: 897px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+.app * {
+  box-sizing: border-box;
+}
+
+/* ══ 顶栏 ══ */
+.tb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 0;
+  background: var(--bg);
+}
+.logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  display: grid;
+  place-items: center;
+  color: var(--c-capacity-txt);
+  font-size: 13px;
+}
+.tt {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.tt b {
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  color: var(--txt);
+}
+.tt i {
+  font-style: normal;
+  font-size: 8px;
+  letter-spacing: 0.34em;
+  color: var(--muted2);
+}
+.hole {
+  width: 92px;
+  height: 13px;
+  background: var(--panel2);
+  border-radius: 2px;
+  margin-left: 8px;
+}
+.mb {
+  display: flex;
+  gap: 20px;
+  padding: 5px 14px 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.mb span {
+  cursor: default;
+}
+
+/* ══ 主体 ══ */
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.rail {
+  width: 44px;
+  background: var(--panel2);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+.rbtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--line2);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+.rbtn.on {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  border-color: var(--warn-txt);
+  color: var(--warn-txt);
+}
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px;
+  gap: 6px;
+}
+.row1 {
+  height: 518px;
+  flex: none;
+  display: flex;
+  gap: 6px;
+  min-height: 0;
+}
+
+/* ══ 面板外壳 ══ */
+.pan {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.pan::before,
+.pan::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--accent);
+  opacity: 0.5;
+}
+.pan::before {
+  left: -1px;
+  top: -1px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.pan::after {
+  right: -1px;
+  bottom: -1px;
+  border-left: 0;
+  border-top: 0;
+}
+.ph {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel2);
+  flex: none;
+}
+.ph i {
+  font-style: normal;
+  color: var(--c-capacity-txt);
+  font-size: 9px;
+}
+.ph b {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--txt);
+}
+.ph .rt {
+  margin-left: auto;
+  display: flex;
+  gap: 5px;
+  color: var(--muted2);
+  font-size: 11px;
+}
+.pb {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+.pbScroll {
+  overflow: auto;
+}
+
+/* ══ 左：扰动因素 ══ */
+.left {
+  width: 304px;
+  flex: none;
+}
+.sel {
+  margin: 7px 8px 6px;
+  position: relative;
+}
+.sel select {
+  width: 100%;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  color: var(--txt);
+  padding: 5px 8px;
+  font-size: 11.5px;
+  font-family: inherit;
+  border-radius: 2px;
+  appearance: none;
+}
+.sel::after {
+  content: "⌄";
+  position: absolute;
+  right: 8px;
+  top: 2px;
+  color: var(--muted2);
+  pointer-events: none;
+}
+.wv {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0 8px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.wv b {
+  font-weight: 400;
+  font-size: 11px;
+  padding: 4px 7px;
+  color: var(--muted2);
+  cursor: default;
+  white-space: nowrap;
+}
+.wv b.on {
+  color: var(--c-capacity-txt);
+  border-bottom: 1px solid var(--c-capacity);
+}
+.wv .nav {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  color: var(--muted2);
+}
+.wv .nav u {
+  text-decoration: none;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  font-size: 10px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 84px;
+  gap: 0 16px;
+  padding: 0 8px 8px;
+  position: relative;
+}
+.it .mk {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted2);
+  width: 11px;
+  flex: none;
+  text-align: center;
+}
+.it .rg {
+  margin-left: auto;
+  font-size: 8.5px;
+  color: var(--warn-txt);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  padding: 0 3px;
+  line-height: 1.25;
+}
+.it.ro {
+  color: var(--muted2);
+  opacity: 0.55;
+}
+.it.ro .tg {
+  border-style: dashed;
+}
+.dp {
+  height: 15px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--muted2);
+}
+.dp b {
+  font-weight: 400;
+  color: var(--muted);
+}
+.grp {
+  margin-bottom: 4px;
+}
+.gh {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--muted);
+  height: 15px;
+  border-bottom: 1px dotted var(--line2);
+  margin-bottom: 2px;
+}
+.gh em {
+  font-style: normal;
+  color: var(--muted2);
+  font-size: 10px;
+}
+.it {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 15px;
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.it .tg {
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--line2);
+  display: grid;
+  place-items: center;
+  font-size: 7px;
+  color: var(--muted2);
+  flex: none;
+}
+.it .dots {
+  color: var(--muted2);
+  letter-spacing: 1px;
+  font-size: 9px;
+}
+.it.on {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  color: var(--warn-txt);
+}
+.it.on .tg {
+  border-color: var(--warn-txt);
+  color: var(--warn-txt);
+}
+.it.hot {
+  color: var(--danger-txt);
+}
+.it.hot .tg {
+  border-color: var(--danger-txt);
+  color: var(--danger-txt);
+}
+.it.mute {
+  color: var(--muted2);
+  opacity: 0.62;
+}
+.link {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.ctx {
+  position: absolute;
+  left: 196px;
+  top: 498px;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  min-width: 96px;
+  z-index: 5;
+  box-shadow: 0 6px 20px color-mix(in srgb, black 60%, transparent);
+}
+.ctx u {
+  display: block;
+  text-decoration: none;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 4px 9px;
+  border-bottom: 1px dotted var(--line);
+}
+.ctx u:first-child {
+  color: var(--muted2);
+  font-size: 10px;
+}
+.ctx u:last-child {
+  border-bottom: 0;
+}
+
+/* ══ 中右：端到端流程图 ══ */
+.map {
+  flex: 1;
+  min-width: 0;
+}
+.mapwrap {
+  position: absolute;
+  inset: 0;
+}
+.mapwrap svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.rulerL,
+.rulerR {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--muted2);
+}
+.rulerL {
+  left: 0;
+  border-right: 1px solid var(--line);
+}
+.rulerR {
+  right: 0;
+  border-left: 1px solid var(--line);
+}
+.rulerL u,
+.rulerR u {
+  text-decoration: none;
+  writing-mode: vertical-rl;
+}
+.tick {
+  position: absolute;
+  top: 0;
+  left: 26px;
+  right: 26px;
+  height: 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--muted2);
+  padding: 0 4px;
+}
+.tick span {
+  border-left: 1px solid var(--line2);
+  padding-left: 2px;
+  line-height: 1;
+}
+.north {
+  position: absolute;
+  right: 34px;
+  top: 22px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 10px;
+}
+.north b {
+  display: block;
+  font-size: 12px;
+  color: var(--c-capacity-txt);
+}
+.lgd {
+  position: absolute;
+  right: 32px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 9.5px;
+  color: var(--muted2);
+  /* ⚠ **这一处刻意偏离规格**（规格写 `rgba(28,41,66,.86)` 半透）。
+     `.lgd` 是**定位浮层**（浮在地图之上），本仓对浮层有一条带事故来历的不变量：
+     浮层表面必须**不透明** —— 半透浮层里那行字看到的背景 = f(浮层色, 底下恰好是什么)，
+     不是一个可设计的常量（tokens.css `--popover-surface` 那段记的就是这笔账：
+     暗色实测同一句字压空白处 9.19:1、压底层字形只剩 1.01:1）。
+     `test/provenance-popover-legibility.test.tsx` ⑥「全仓定位浮层的背景必须三套主题都解析出实色」
+     当场判红把这一处逼了回来 —— 机器先说话，不是人想起来的。
+     像素代价：图例框 ≈ 110×105 逻辑 px，实测差异见交单报告。 */
+  background: var(--panel2);
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+}
+.lgd div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.lgd s {
+  text-decoration: none;
+  width: 26px;
+  height: 0;
+  border-top: 2px solid currentColor;
+  display: block;
+}
+.lgd .el {
+  width: 18px;
+  height: 9px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ok) 30%, transparent);
+  border: 1px solid var(--ok);
+}
+.lgd .num {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+/* ══ 下：指标 ══ */
+.bot {
+  height: 300px;
+  flex: none;
+}
+.btabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.btabs b {
+  font-weight: 400;
+  font-size: 11px;
+  padding: 5px 9px;
+  color: var(--muted2);
+}
+.btabs b.on {
+  color: var(--c-capacity-txt);
+  border-bottom: 1px solid var(--c-capacity);
+}
+.btabs .nav {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  color: var(--muted2);
+}
+.btabs .nav u {
+  text-decoration: none;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  font-size: 10px;
+}
+.gantt {
+  height: 246px;
+  flex: none;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 22px 128px 62px 62px 1fr;
+}
+.gcol {
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+.gcap {
+  flex: none;
+  height: 18px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--muted2);
+}
+.gcell {
+  flex: none;
+  height: 18px;
+  border-bottom: 1px solid var(--sh-hair05);
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.gcell.mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  justify-content: flex-end;
+  color: var(--txt);
+}
+.gcell.up {
+  color: var(--danger-txt);
+}
+.gcell.dn {
+  color: var(--ok-txt);
+}
+.vgrp {
+  flex: none;
+  font-size: 9.5px;
+  color: var(--muted);
+  letter-spacing: 0;
+  text-align: center;
+  line-height: 1.18;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--line);
+}
+.lane {
+  position: relative;
+  overflow: hidden;
+}
+.laneHead {
+  flex: none;
+  height: 18px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  position: relative;
+}
+.laneHead span {
+  position: absolute;
+  top: 4px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--muted2);
+  border-left: 1px solid var(--line2);
+  padding-left: 3px;
+  line-height: 1;
+}
+.grow {
+  flex: none;
+  height: 18px;
+  border-bottom: 1px solid var(--sh-hair05);
+  position: relative;
+}
+.seg {
+  position: absolute;
+  top: 3px;
+  height: 13px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  font-size: 9.5px;
+  white-space: nowrap;
+  border-radius: 1px;
+}
+.seg.b {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 1px solid var(--accent);
+  color: var(--accent-txt);
+}
+.seg.a {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  border: 1px solid var(--warn);
+  color: var(--warn-txt);
+}
+.seg.r {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  border: 1px solid var(--danger);
+  color: var(--danger-txt);
+}
+.seg.g {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  border: 1px solid var(--ok);
+  color: var(--ok-txt);
+}
+.seg.o {
+  background: transparent;
+  border: 1px solid var(--line2);
+  color: var(--muted2);
+}
+.seg em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  opacity: 0.85;
+}
+.play {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--warn);
+  z-index: 3;
+}
+.play::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -3px;
+  border: 3px solid transparent;
+  border-top-color: var(--warn-txt);
+}
+
+/* ══ 左轨下三格 ══ */
+.crew {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: auto;
+  padding-bottom: 4px;
+  align-items: center;
+}
+.cw {
+  width: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.cw u {
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--muted2);
+}
+.cw i {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line2);
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  color: var(--muted);
+  font-style: normal;
+}
+.cw s {
+  text-decoration: none;
+  width: 26px;
+  height: 2px;
+  display: block;
+}
+
+/* ══ 传导边抽屉 `.dock`（WO-EDGE-PANEL-4PAGES）════════════════════════════════
+ * 规格 = `docs/ux-spec/sandbox/sandbox-home.html` 的同名段（那份 HTML 是**可执行规格**，
+ * 不是设计说明）。要改这块版面：先改规格 → 重出基准 PNG → 再回来改这里，顺序不许倒过来。
+ *
+ * ── 为什么挂在画布**外** ────────────────────────────────────────────────────
+ * `.app` 是**定死的 1440×897 且 `overflow:hidden`**，塞进画布的任何东西都必须挤掉既有内容。
+ * 抽屉紧贴画布下沿、**默认折叠**：收起态只占 26px 一条 ⇒ 画布内信息密度**逐像素不动**；
+ * 展开才向下顶开页面。用 `<details>` 而不是条件渲染 —— 它**任何时候都能展开**，
+ * 不以「已经跑过推演」为前提，那正是 `check-edge-active-mounts` 那道门存在的理由。
+ *
+ * ── 色值一律走 token（本目录零字面色值，三套主题自动跟随）──────────────────────
+ *   var(--panel2) ← 规格 --panel2   var(--line) ← 规格 --hair
+ *   var(--txt)    ← 规格 --txt      var(--muted) ← 规格 --dim
+ * ⚠ `--muted` 当**正文色**是刻意的（不是 `--muted2`）：`check-text-legibility` 对
+ * `views/sim/console/` 按 12px 判对比度（判据 A 的高密度指控台裁决），`--muted` 三套主题
+ * 都在 6.0:1 以上，`--muted2` 只有 6.13:1 且亮色主题更险。
+ * ⚠ 字号 11.5px：本目录整体按 8–11.5px 设计（判据 B 的作用域豁免已覆盖本目录），
+ * 抽屉标题条与画布里的面板头 `.ph b` 同档，不另开一级字号（R-UI-2 只许 3 级）。 */
+.dock {
+  width: 1440px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-top: 0;
+  color: var(--txt);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+}
+.dockSum {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  cursor: pointer;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  /* 去掉浏览器默认的三角记号 —— 展开态由本条自己的下边框 + 文字色表达，
+     文字尾部另有一个 ▸ 记号。**两条声明都要写**：`list-style` 管 Firefox 与新版 Chrome，
+     `::-webkit-details-marker` 管 Safari 与旧 Chrome；只写一条会在另一半浏览器里
+     多出一个与 12px 左内边距对不齐的小三角。 */
+  list-style: none;
+}
+.dockSum::-webkit-details-marker {
+  display: none;
+}
+.dock[open] .dockSum {
+  border-bottom: 1px solid var(--line);
+  color: var(--txt);
+}

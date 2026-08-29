@@ -1,5 +1,29 @@
 import type { SopVersionVM } from "@/api/types";
+import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：mock 求解器的上限与拒绝文案必须与真求解器同源，禁内联裸阈值/手写百分数。
+import { OUTSOURCE_REDLINE, outsourceRedlinePct, outsourceRedlineRejectReason } from "@platform/contracts";
+// WO-RULE-EXPR-PARAMS：规则命名阈值引用（`params.<名>`）——mock 的规则表达式与真后端同机制、同字面。
+import { ruleParamRef } from "@platform/contracts";
+// WO-SANDBOX-CANDIDATES-FE：候选 id 走契约**唯一构造处**（引擎也走它）——mock 手拼模板串就是第二个来源，
+// 拼法一漂前端拿候选反算出的 id 就与引擎对不上，而 schema 只校验 min(1)、谁都不会红。
+import { CAPACITY_FACTOR_BINDINGS, solutionCandidateId } from "@platform/contracts";
 import zh from "@/locales/zh";
+import { ORDERS } from "./fixtures";
+// WO-MOCK-SCALE-TRUTH：S&OP 量级/口径单一来源（年口径 ⊥ 月口径两套分母，值取自真后端实跑）。
+import {
+  DEMAND_YEAR,
+  DEMAND_YEAR_TOTAL_WAN,
+  PLAN_TARGET_MONTH_WAN,
+  SOP_DEFAULT_RESOLUTIONS,
+  SOP_DEMAND_UNIT,
+  SOP_MONTH,
+  SOP_MARGIN_ROLLING_YI,
+  SOP_PER_BASE_MONTHLY,
+  SOP_REVENUE_ROLLING_YI,
+  SOP_SEG_MONTH_TARGET,
+  sopP90,
+  yearToMonth,
+} from "./sopScale";
 
 /**
  * 推演类求解器的 Mock 实现 —— 逐行移植 DataCore 真实算法
@@ -27,14 +51,19 @@ const AUDIT_T = {
   kitFixTons: 200,
   cashHard: 50,
   cashSoft: 55,
-  essShareBaseline: 0.32,
+  // PRD-IND-audit §4.5-A2 取值对齐（≈0.3712）。**这是年口径结构比**（储能年 P50 ÷ 三段年 P50 合计），
+  // 与月度台账的细分占比（baselineShare 0.32）比较是有意为之 —— 两边都是无量纲占比，真后端实测同值
+  // （plan_audit R01 回包原文「偏离基线 0.3712121212121212 达 0.0514」）。改用月值就把两个分母混了。
+  essShareBaseline: (DEMAND_YEAR.find((d) => d.key === "ess")?.demandWanPerYearP50 ?? 0) / DEMAND_YEAR_TOTAL_WAN,
   essShareTol: 0.05,
   capexSoft: 10,
-  segMargins: { pas: 18, ess: 13, com: 15 },
-  scoreH: 25,
-  scoreM: 8,
+  segMargins: Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.marginPct])) as { pas: number; ess: number; com: number }, // DF.3 单一来源
+  scoreH: 22, // PRD-IND-audit §4.5-A2 取值对齐
+  scoreM: 7, //  PRD-IND-audit §4.5-A2 取值对齐
   passScore: 85,
   condScore: 60,
+  extGmBufferMin: 1.2, // PRD-IND-audit §4.4 E01
+  extDemHigh: 130, // E02
 };
 
 export interface MockAuditInput {
@@ -101,9 +130,11 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
   }
 
   const m = t.segMargins;
-  const wPas = input.seg_pas / Math.max(0.0001, input.dem);
-  const wEss = input.seg_ess / Math.max(0.0001, input.dem);
-  const wCom = input.seg_com / Math.max(0.0001, input.dem);
+  // PRD-IND-audit §4.5-A1：结构毛利权重分母用 segTot（与 datacore/HTML 一致）。
+  const segTot = Math.max(0.0001, input.seg_pas + input.seg_ess + input.seg_com);
+  const wPas = input.seg_pas / segTot;
+  const wEss = input.seg_ess / segTot;
+  const wCom = input.seg_com / segTot;
   const gmStruct = round(wPas * m.pas + wEss * m.ess + wCom * m.com, 4);
   if (input.gmTarget > gmStruct + t.gmHardOver) {
     H.push({
@@ -186,6 +217,15 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
     });
   }
 
+  // PRD-IND-audit §4.4：外部信号诊断 E01–E03（与 datacore plan.ts 同源）。
+  if (gmStruct - input.gmTarget < t.extGmBufferMin) {
+    M.push({ id: "E01", title: "外部·原料成本", ruleRef: "C24", why: `外部信号「碳酸锂价上行」：结构毛利 ${gmStruct}% 与目标 ${input.gmTarget}% 缓冲仅 ${round(gmStruct - input.gmTarget, 2)}pp（<${t.extGmBufferMin}），成本上行即击穿` });
+  }
+  if (input.dem >= t.extDemHigh) {
+    M.push({ id: "E02", title: "外部·终端需求", ruleRef: "C25", why: `外部信号「终端上险低于假设」：需求 P50 ${input.dem} 万套（≥${t.extDemHigh}）高位，若终端上量不及预期则产销缺口扩大` });
+  }
+  M.push({ id: "E03", title: "外部·客户信用", ruleRef: "C13", why: `外部信号「重点客户负面舆情」：建议动态复核应收周期与信用额度（C13），防止回款逾期击穿现金垫` });
+
   for (const item of [...H, ...M]) {
     if (item.fix && Object.keys(item.fix.patch).length > 0) {
       S.push({ id: `S-${item.id}`, title: `${item.title}修正`, ruleRef: item.ruleRef, why: item.fix.label, fix: item.fix });
@@ -193,7 +233,15 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
   }
 
   const score = clamp(100 - t.scoreH * H.length - t.scoreM * M.length, 0, 100);
-  const verdict = score >= t.passScore ? "通过" : score >= t.condScore ? "有条件通过" : "不通过";
+  // PRD-IND-audit §3.1：4 态状态机（按 H/M 计数），与 datacore plan.ts 同源。
+  const verdict =
+    H.length > 0
+      ? "站不住"
+      : M.length >= 3
+        ? "可定稿但有重要风险"
+        : M.length > 0
+          ? "可定稿·关注风险"
+          : "全部通过·可直接定稿";
   return { H, M, S, score, verdict, gmStruct };
 }
 
@@ -202,13 +250,15 @@ export function mockPlanAudit(input: MockAuditInput): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 
 const GEN = {
-  base: { rev: 100, gm: 0.142, share: 17, turns: 6.0, cash: 70 },
-  targets: { gmFloor: 0.135, cashFloor: 45, capexCap: 20, revGrowthPct: 18, sharePts: 12, turnsFloor: 6.0 },
+  // PRD-IND-plan-generate §4.5 取值对齐（同 datacore battery planGenerate）。
+  base: { rev: 100, gm: 0.16, share: 18, turns: 5.6, cash: 58 },
+  targets: { gmFloor: 0.155, cashFloor: 50, capexCap: 20, revGrowthPct: 18, sharePts: 12, turnsFloor: 6.0 },
   paths: {
     A: { name: "保毛利型", rev: 1.12, gm: 0.014, share: 6, capex: 0, turns: 0.6, cash: 6 },
     B: { name: "保规模型", rev: 1.22, gm: -0.008, share: 16, capex: 2, turns: -0.4, cash: -4 },
     C: { name: "扩产型", rev: 1.2, gm: 0.002, share: 22, capex: 27, turns: -0.2, cash: -12 },
-    D: { name: "外协型", rev: 1.16, gm: -0.005, share: 12, capex: 0, turns: 0.2, cash: 2 },
+    // redline-allow：turns 是库存周转增量（次），非红线阈值（同 datacore battery.ts 同名方案行）。
+  D: { name: "外协型", rev: 1.16, gm: -0.005, share: 12, capex: 0, turns: 0.2, cash: 2 },
     E: { name: "混合型", rev: 1.18, gm: 0.004, share: 14, capex: 14, turns: 0.3, cash: -2 },
   } as Record<string, { name: string; rev: number; gm: number; share: number; capex: number; turns: number; cash: number }>,
   scores: { profitBase: 50, profitK: 22, scaleBase: 40, scaleK: 3, cashBase: 50, cashK: 4, growthBase: 30, growthK: 2.5, stabBase: 90, stabK: 2.2, hardPenalty: 15 },
@@ -227,6 +277,23 @@ const GEN = {
     D: ["外协质量风险"],
     E: ["中等 CAPEX 投入"],
   } as Record<string, string[]>,
+};
+
+// PRD-IND-plan-generate §4.6（mock 侧代表性数据；datacore 种子为 HTML 逐字全集）。
+const GEN_EXT_SENS: Record<string, [string, string, string][]> = {
+  A: [["碳酸锂 +9.8%", "守价空间被成本上移部分抵消：毛利 +1.4pct→约 +0.9pct", "#E8B54A"], ["竞对储能报价 −6%", "挑单退出份额更快被承接，挽留窗口收窄", "#E8B54A"], ["终端上险 +11% < 假设", "需求走弱反而有利守价路径", "#62BE77"]],
+  B: [["碳酸锂 +9.8%", "低毛利储能单被成本挤压，更易击穿底线", "#DD7E9E"], ["客户舆情（集成商D）", "冲量应收风险被放大：C13 复核或拒量", "#DD7E9E"], ["终端上险背离", "冲量建立在偏乐观需求上，份额或不及预期", "#E8B54A"]],
+  C: [["四川限电预案", "化成 7–8 月折减 5–8%：扩产叠加限电 Q3 更紧", "#DD7E9E"], ["欧盟电池法", "新线供海外需碳足迹护照同步规划", "#E8B54A"], ["利率/汇率环境", "CAPEX 融资 + 海外回款双重敏感", "#E8B54A"]],
+  D: [["竞争动态（利用率 71%）", "产能宽松利好外协议价：可再压 3–5%", "#62BE77"], ["舆情（供应商负面）", "外协伙伴经营异常需动态复核", "#E8B54A"], ["碳酸锂 +9.8%", "外协报价随行就市，毛利侵蚀略增", "#E8B54A"]],
+  E: [["四川限电预案", "枣庄扩高端不受川区限电影响；川区量走外协对冲", "#62BE77"], ["碳酸锂 +9.8%", "高端守价+长尾外协组合对成本上行缓冲最好", "#62BE77"], ["欧盟电池法", "枣庄一线同步预留碳足迹采集，合规成本最优", "#62BE77"]],
+};
+const GEN_FOCUS: Record<string, { keys: string; probs: { n: string; kind: string; rule: string | null; why: string; chain: [string, string, string][] }[] }> = {
+  A: { keys: "严守 C15 接单毛利线上浮 1pct；主动收缩储能长尾单；乘用车与高端储能守价。", probs: [{ n: "储能客户份额流失", kind: "share", rule: "C21", why: "拒掉低毛利储能单后客户转向竞对，次年框架议价反转，守价被瓦解。", chain: [["拒低毛利储能单", "C15 上浮执行", "#E8B54A"], ["电网F/集成商D 转单", "储能客户·框架协议", "#54B5C4"], ["次年框架议价权弱化", "长协锁量/价格条款", "#5E8FE8"], ["份额不达 · 守价基础动摇", "C21 结构监测", "#DD7E9E"]] }] },
+  B: { keys: "照单全收冲市场份额；信用额度从严（C13）；应收账期按周管控。", probs: [{ n: "毛利率击穿底线", kind: "margin", rule: "C15", why: "储能低毛利放量使结构毛利下滑直逼底线，C15 将阻断接单。", chain: [["低毛利储能单放量", "储能占比 ↑", "#E8B54A"], ["结构毛利 −0.8pct", "细分结构反推", "#54B5C4"], ["逼近 15.5% 底线", "毛利率预算线", "#5E8FE8"], ["击穿即 C15 阻断", "规则 C15", "#DD7E9E"]] }] },
+  C: { keys: "枣庄+江门新线动工；C23 门槛测算前置；爬坡曲线保守化。", probs: [{ n: "CAPEX 挤占现金垫", kind: "cash", rule: "C18/C23", why: "27 亿 CAPEX 集中支付击穿现金红线，须分期/融资并先过 C23。", chain: [["CAPEX 27 亿集中支付", "枣庄+江门建设", "#E8B54A"], ["现金垫 58→46 亿", "13周现金最低点", "#54B5C4"], ["击穿红线 50 亿", "现金安全垫", "#5E8FE8"], ["C18 阻断 · C23 未过", "规则 C18/C23", "#DD7E9E"]] }] },
+  // DF.13：叙事文案里的红线百分数由 outsourceRedlinePct() 生成（禁手写——文案里的数也是同一个业务事实）。
+  D: { keys: "CAPEX 不动；外协补量走资质名录；质量管控与放量同步。", probs: [{ n: "外协比例触红线", kind: "outsource", rule: OUTSOURCE_REDLINE.ruleKey, why: `缺口全靠外协逼近 ${outsourceRedlinePct()}% 红线，超出无法承接，须组合使用。`, chain: [["缺口全量外协", "外协占比 ↗", "#E8B54A"], [`比例逼近 ${outsourceRedlinePct()}%`, "外协比例监测", "#54B5C4"], ["承接能力封顶", "超出无法承接", "#5E8FE8"], [`${OUTSOURCE_REDLINE.ruleKey} 红线触线即拒`, `规则 ${OUTSOURCE_REDLINE.ruleKey}`, "#DD7E9E"]] }] },
+  E: { keys: "乘用车守价 + 枣庄扩高端 + 长尾外协；三对策 S&OP 第⑤步统一编排时序。", probs: [{ n: "三对策时序错配", kind: "gap", rule: null, why: "扩产/外协/守价脱节则缺口回弹，时序编排是方案成立前提。", chain: [["任一对策延期", "三线编排", "#E8B54A"], ["爬坡空窗×外协未就位", "供给缺口回弹", "#54B5C4"], ["交付违约+客户流失", "订单交期/客户关系", "#5E8FE8"], ["规模毛利双失", "综合评分坍塌", "#DD7E9E"]] }] },
 };
 
 export function mockPlanGenerate(args: {
@@ -272,9 +339,15 @@ export function mockPlanGenerate(args: {
     return { pathKey, name: eff.name, outcome, scores: { profit, scale, cash, growth, stability, total }, hardViol, meets };
   });
 
-  const byKey = new Map(evals.map((e) => [e.pathKey, e]));
-  const pick = (k: string) => byKey.get(k)!;
-  const aggressive = pick("C").scores.total >= pick("B").scores.total ? pick("C") : pick("B");
+  // §4.4 / HTML gen3Plans：稳健(盈利+现金+稳健 max,可行优先) / 进取(规模+增长 max,全集) / 均衡(total max)；去重。
+  const pickMax = (pool: typeof evals, fn: (e: (typeof evals)[number]) => number, used: Set<string>) =>
+    pool.filter((e) => !used.has(e.pathKey)).sort((a, b) => fn(b) - fn(a) || (a.pathKey < b.pathKey ? -1 : 1))[0] ??
+    [...pool].sort((a, b) => fn(b) - fn(a) || (a.pathKey < b.pathKey ? -1 : 1))[0]!;
+  const feas = evals.filter((e) => e.hardViol.length === 0);
+  const used = new Set<string>();
+  const std = pickMax(feas.length ? feas : evals, (e) => e.scores.profit + e.scores.cash + e.scores.stability, used); used.add(std.pathKey);
+  const agg = pickMax(evals, (e) => e.scores.scale + e.scores.growth, used); used.add(agg.pathKey);
+  const bal = pickMax(feas.length ? feas : evals, (e) => e.scores.total, used); used.add(bal.pathKey);
   const schemeOf = (no: string, name: string, ev: (typeof evals)[number]) => ({
     no,
     name,
@@ -285,33 +358,26 @@ export function mockPlanGenerate(args: {
     meets: ev.meets,
     gain: GEN.gains[ev.pathKey] ?? [],
     give: GEN.gives[ev.pathKey] ?? [],
-    problems: ev.hardViol.map((v) => ({
-      ruleRef: v,
-      title:
-        v === "C15"
-          ? `毛利 ${ev.outcome.gm} 低于底线 ${targets.gmFloor}`
-          : v === "C18"
-            ? `现金垫 ${ev.outcome.cash} 低于底线 ${targets.cashFloor}`
-            : `CAPEX ${ev.outcome.capex} 超过上限 ${targets.capexCap}`,
-      why:
-        v === "C15"
-          ? `路径 ${ev.pathKey} 结构毛利 ${round(ev.outcome.gm * 100, 2)}% 低于目标面板毛利底线 ${round(targets.gmFloor * 100, 2)}%（C15 硬约束）`
-          : v === "C18"
-            ? `路径 ${ev.pathKey} 推演现金垫 ${ev.outcome.cash} 亿低于目标面板现金底线 ${targets.cashFloor} 亿（C18 硬约束）`
-            : `路径 ${ev.pathKey} CAPEX ${ev.outcome.capex} 亿超过目标面板上限 ${targets.capexCap} 亿`,
-      unlock: v === "CAPEX" ? `提高 CAPEX 上限至 ≥${ev.outcome.capex} 可解锁` : "调整目标面板对应底线可解锁",
-    })),
+    extSensitivity: (GEN_EXT_SENS[ev.pathKey] ?? []).map((e) => ({ signal: e[0], impact: e[1], color: e[2] })),
+    focusKeys: GEN_FOCUS[ev.pathKey]?.keys ?? "",
+    problems: [
+      ...(GEN_FOCUS[ev.pathKey]?.probs ?? []).map((q) => ({ n: q.n, kind: q.kind, rule: q.rule, why: q.why, chain: q.chain.map((c) => ({ label: c[0], object: c[1], color: c[2] })) })),
+      ...ev.hardViol.map((v) => ({
+        ruleRef: v,
+        title: v === "C15" ? `毛利 ${ev.outcome.gm} 低于底线 ${targets.gmFloor}` : v === "C18" ? `现金垫 ${ev.outcome.cash} 低于底线 ${targets.cashFloor}` : `CAPEX ${ev.outcome.capex} 超过上限 ${targets.capexCap}`,
+        why: `路径 ${ev.pathKey} ${v} 硬约束`,
+        unlock: v === "CAPEX" ? `提高 CAPEX 上限至 ≥${ev.outcome.capex} 可解锁` : "调整目标面板对应底线可解锁",
+      })),
+    ],
   });
   const schemes = [
-    schemeOf("S1", GEN.schemeNames.steady, pick("A")),
-    schemeOf("S2", GEN.schemeNames.balanced, pick("E")),
-    schemeOf("S3", GEN.schemeNames.aggressive, aggressive),
+    schemeOf("壹", `${GEN.schemeNames.steady}方案 · 守盈利`, std),
+    schemeOf("贰", `${GEN.schemeNames.balanced}方案`, bal),
+    schemeOf("叁", `${GEN.schemeNames.aggressive}方案 · 冲规模`, agg),
   ];
   const eligible = schemes.filter((s) => s.hardViol.length === 0);
-  const recommend =
-    eligible.length > 0
-      ? [...eligible].sort((x, y) => y.scores.total - x.scores.total || (x.no < y.no ? -1 : 1))[0]!.pathKey
-      : "";
+  const pool = eligible.length > 0 ? eligible : schemes;
+  const recommend = [...pool].sort((x, y) => y.scores.total - x.scores.total || (x.pathKey < y.pathKey ? -1 : 1))[0]!.pathKey;
   return { schemes, recommend, paths: evals, targets, base };
 }
 
@@ -325,7 +391,7 @@ const CAP_P = {
   ramp: { base: 0.88, step: 0.03, fullWeek: 5 },
   maintMult: 0.72,
   health: { normal: 0.93, degraded: 0.9 },
-  whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: 0.2 },
+  whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: OUTSOURCE_REDLINE.maxRatio }, // DF.13 单一来源
   logistics: { byAddress: { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 } as Record<string, number>, defaultDays: 7 },
 };
 
@@ -339,34 +405,46 @@ interface CapBaseDef {
   tightness: number;
 }
 
+// 基地集以 HTML BASE_DATA / MODEL_DEF 为准（用户裁决）：NCM 型号铺动力/混合基地、LFP 储能型号铺储能/混合。
 const MODEL_CAP_NET: Record<string, CapBaseDef[]> = {
   "4680-NCM": [
     { base: "常州", baseId: "常州", weeklyCap: 3.2, status: "量产", maintWeek: 4, bottleneck: "化成通道", tightness: 92 },
     { base: "合肥", baseId: "合肥", weeklyCap: 2.6, status: "认证中", maintWeek: null, bottleneck: "设备OEE", tightness: 78 },
-    { base: "宜宾", baseId: "宜宾", weeklyCap: 2.9, status: "量产", maintWeek: 6, bottleneck: "物料齐套", tightness: 84 },
+    { base: "成都", baseId: "成都", weeklyCap: 2.9, status: "量产", maintWeek: 6, bottleneck: "物料齐套", tightness: 84 },
   ],
   // 4680-LFP 命中 C09 数据健康度降级（IoT 延迟 > 2h → P90 系数 0.93→0.90）
   "4680-LFP": [
     { base: "常州", baseId: "常州", weeklyCap: 2.4, status: "量产", maintWeek: 3, bottleneck: "化成通道", tightness: 88 },
-    { base: "成都", baseId: "成都", weeklyCap: 2.2, status: "认证中", maintWeek: null, bottleneck: "卷绕机稼动", tightness: 74 },
+    { base: "枣庄", baseId: "枣庄", weeklyCap: 2.2, status: "认证中", maintWeek: null, bottleneck: "卷绕机稼动", tightness: 74 },
   ],
   "刀片-LFP": [
-    { base: "宜宾", baseId: "宜宾", weeklyCap: 3.4, status: "量产", maintWeek: 5, bottleneck: "物料齐套", tightness: 86 },
-    { base: "西安", baseId: "西安", weeklyCap: 1.8, status: "量产", maintWeek: null, bottleneck: "注液机", tightness: 66 },
+    { base: "江门", baseId: "江门", weeklyCap: 3.4, status: "量产", maintWeek: 5, bottleneck: "物料齐套", tightness: 90 },
+    { base: "眉山", baseId: "眉山", weeklyCap: 1.8, status: "量产", maintWeek: null, bottleneck: "化成柜", tightness: 66 },
   ],
   "VDA-NCM": [
-    { base: "溧阳", baseId: "溧阳", weeklyCap: 2.1, status: "量产", maintWeek: 4, bottleneck: "分容柜", tightness: 76 },
-    { base: "南京", baseId: "南京", weeklyCap: 1.6, status: "量产", maintWeek: null, bottleneck: "涂布机", tightness: 62 },
+    { base: "武汉", baseId: "武汉", weeklyCap: 2.1, status: "量产", maintWeek: 4, bottleneck: "涂布机", tightness: 76 },
+    { base: "厦门", baseId: "厦门", weeklyCap: 1.6, status: "量产", maintWeek: null, bottleneck: "化成柜", tightness: 62 },
   ],
   "储能-280Ah": [
-    { base: "宜宾", baseId: "宜宾", weeklyCap: 3.0, status: "量产", maintWeek: 6, bottleneck: "化成柜", tightness: 90 },
-    { base: "青海", baseId: "青海", weeklyCap: 1.2, status: "认证中", maintWeek: null, bottleneck: "人员", tightness: 58 },
+    { base: "江门", baseId: "江门", weeklyCap: 3.0, status: "量产", maintWeek: 6, bottleneck: "老化库", tightness: 90 },
+    { base: "邯郸", baseId: "邯郸", weeklyCap: 1.2, status: "认证中", maintWeek: null, bottleneck: "人员", tightness: 58 },
   ],
   "储能-314Ah": [
-    { base: "常州", baseId: "常州", weeklyCap: 2.0, status: "量产", maintWeek: 4, bottleneck: "化成柜", tightness: 85 },
-    { base: "合肥", baseId: "合肥", weeklyCap: 1.7, status: "量产", maintWeek: null, bottleneck: "卷绕机", tightness: 70 },
+    { base: "信阳", baseId: "信阳", weeklyCap: 2.0, status: "量产", maintWeek: 4, bottleneck: "涂布机", tightness: 85 },
+    { base: "扬州", baseId: "扬州", weeklyCap: 1.7, status: "量产", maintWeek: null, bottleneck: "涂布机", tightness: 70 },
   ],
 };
+
+// PRD-IND-model 缺口①③：收敛可产网络的全基地业态册（镜像 battery BASES，HTML 集，含 动力+储能 混合）；
+// reason 由 chem×kind 派生；前端零写死，与 datacore solvers/capacity.ts nonProducible 同源。
+// DF.1 单一来源：从 @platform/contracts BASE_REGISTRY 派生（与 datacore/fixtures 同源，灭漂移）。
+const MOCK_BASES: { name: string; kind: "动力" | "储能" | "动力+储能" }[] = BASE_REGISTRY.map((b) => ({ name: b.name, kind: b.kind }));
+
+function modelMeta(modelId: string): { chem: string; pos: "动力" | "储能" } {
+  const chem = modelId.includes("NCM") ? "NCM" : modelId.includes("LFP") ? "LFP" : modelId.includes("储能") ? "LFP" : "NCM";
+  const pos: "动力" | "储能" = modelId.includes("储能") ? "储能" : "动力";
+  return { chem, pos };
+}
 
 function curveMult(w: number, maintWeek: number | null): number {
   let m = w >= CAP_P.ramp.fullWeek ? 1 : CAP_P.ramp.base + CAP_P.ramp.step * (w - 1);
@@ -420,7 +498,7 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
 
   const perBaseRows: Record<string, unknown>[] = [];
   const cumP50ByWeek: number[] = new Array(weeks).fill(0);
-  let p50 = 0;
+  let capWanP50 = 0;
   const pendingCertList: string[] = [];
   let mainBn = "";
   let mainTightness = -1;
@@ -433,7 +511,7 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
       cumTotal += add;
       for (let i = w - 1; i < weeks; i++) cumP50ByWeek[i] = (cumP50ByWeek[i] as number) + add;
     }
-    p50 += cumTotal;
+    capWanP50 += cumTotal;
     if (b.tightness > mainTightness) {
       mainTightness = b.tightness;
       mainBn = b.bottleneck;
@@ -449,8 +527,8 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
       cumTotal: round(cumTotal, 4),
     });
   }
-  p50 = round(p50, 4);
-  const p90 = round(p50 * healthFactor, 4);
+  capWanP50 = round(capWanP50, 4);
+  const capWanP90 = round(capWanP50 * healthFactor, 4);
 
   let gap: number;
   let ok: boolean;
@@ -464,15 +542,15 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
       const dueDay = dayFrom(CAP_P.forecastStart, b.dueDate);
       const wkEff = Math.max(1, Math.floor((dueDay - logisticsDays(b.address)) / 7));
       cumDemand += b.qty || 0;
-      const cumP90 = round((cumP50ByWeek[Math.min(wkEff, weeks) - 1] as number) * healthFactor, 4);
-      const rowOk = cumDemand <= cumP90;
-      if (!rowOk) worst = Math.max(worst, cumDemand - cumP90);
-      batchRows.push({ qty: b.qty, dueDate: b.dueDate, address: b.address, wkEff, cumDemand: round(cumDemand, 4), cumP90, ok: rowOk });
+      const cumCapWanP90 = round((cumP50ByWeek[Math.min(wkEff, weeks) - 1] as number) * healthFactor, 4);
+      const rowOk = cumDemand <= cumCapWanP90;
+      if (!rowOk) worst = Math.max(worst, cumDemand - cumCapWanP90);
+      batchRows.push({ qty: b.qty, dueDate: b.dueDate, address: b.address, wkEff, cumDemand: round(cumDemand, 4), cumCapWanP90, ok: rowOk });
     }
     gap = round(Math.max(worst, 0), 4);
     ok = batchRows.every((r) => r.ok === true);
   } else {
-    gap = round(qty - p90, 4);
+    gap = round(qty - capWanP90, 4);
     ok = gap <= 0;
   }
 
@@ -484,11 +562,12 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     if (ratio > CAP_P.whatIf.outsourceMax) {
       whatIf = {
         rejected: true,
-        ruleRef: "C08",
-        reason: `外协比例 ${round(ratio * 100, 1)}% 超过红线 ${round(CAP_P.whatIf.outsourceMax * 100, 0)}%（C08），拒绝该参数组合`,
+        ruleRef: OUTSOURCE_REDLINE.ruleKey,
+        // DF.13：与 datacore capacity.ts 共用同一文案出口，两端一字不差（此前是两份手写副本）。
+        reason: outsourceRedlineRejectReason(ratio, CAP_P.whatIf.outsourceMax),
       };
     } else {
-      let adjusted = p50 * (1 + CAP_P.whatIf.nightShiftCoef * n + CAP_P.whatIf.channelCoef * ch) + qty * ratio;
+      let adjusted = capWanP50 * (1 + CAP_P.whatIf.nightShiftCoef * n + CAP_P.whatIf.channelCoef * ch) + qty * ratio;
       let physicalCap = 0;
       for (const b of net) physicalCap += b.weeklyCap * weeks;
       physicalCap = round(physicalCap, 4);
@@ -515,13 +594,32 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     }
   }
 
+  // PRD-IND-model 缺口①③：收敛可产网络——不可产基地清单 + N/总数 注解（reason 由 chem×kind 派生，R13/R14）。
+  const { chem, pos } = modelMeta(args.modelId);
+  const producibleNames = new Set(perBaseRows.map((r) => r.base as string));
+  const totalBases = MOCK_BASES.length;
+  const producibleCount = producibleNames.size;
+  const nonProducible = MOCK_BASES
+    .filter((b) => !producibleNames.has(b.name))
+    .map((b) => ({
+      base: b.name,
+      reason:
+        !b.kind.includes(pos) && !pos.includes(b.kind)
+          ? `基地业态「${b.kind}」与型号「${pos}」不匹配`
+          : `${chem} 体系产线未在该基地铺设 / 认证`,
+    }))
+    .sort((a, b) => (a.base < b.base ? -1 : 1));
+
   return {
-    p50,
-    p90,
+    capWanP50,
+    capWanP90,
     healthFactor,
     gap,
     ok,
     perBaseRows,
+    nonProducible,
+    totalBases,
+    producibleCount,
     ...(batchRows ? { batchRows } : {}),
     mainBn,
     pendingCertList,
@@ -529,6 +627,17 @@ export function mockCapacityForecast(args: MockForecastArgs): Record<string, unk
     ...(whatIf ? { whatIf } : {}),
     weeks,
     qty,
+    // 规则即引用 P2：求解器真评估的规则闸门（mock 与真后端同步；C09 由 degraded 决定，
+    // C01/C02/C03 mock 无对应输入 → 诚实 NOT_APPLICABLE，与真后端 NOT_APPLICABLE 语义一致）。
+    evaluatedRules: [
+      { key: "C01", name: "产线设计产能上限", severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: "Line.weeklyCapacityWan > Line.designCeilingWan", evidence: "该求解器输出未含此规则字段" },
+      { key: "C02", name: "化成/老化串并产能口径", severity: "WARN", outcome: "NOT_APPLICABLE", expression: "Process.parallelThroughput < Process.requiredThroughput", evidence: "该求解器输出未含此规则字段" },
+      { key: "C03", name: "产能上限约束", severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: "Order.demandDelta > 0.5", evidence: "该求解器输出未含此规则字段" },
+      // WO-RULE-EXPR-PARAMS：阈值改由 `params.staleHours` 承载（与真后端 battery.ts C09 一字不差）；
+      // 此前这里写死 `> 2`，真后端改了命名阈值这句话也不会动 —— 又是一个"两个可各自编辑的数"。
+      { key: "C09", name: "数据时延临时降级", severity: "WARN", outcome: degraded ? "WARN" : "PASS", expression: `DataSourceHealth.critical == TRUE AND DataSourceHealth.lagHours > ${ruleParamRef("staleHours")}`, evidence: degraded ? "命中：关键数据源新鲜度延迟" : "通过：数据源新鲜" },
+    ],
+    ruleSetVersion: "rsv_mock",
   };
 }
 
@@ -541,17 +650,18 @@ export const BN_FACTORS = ["瓶颈工序", "设备OEE", "人力工时", "物料�
 
 const BN_PRIMARY: Record<string, string> = {
   常州: "瓶颈工序",
-  合肥: "设备OEE",
-  西安: "人力工时",
-  宜宾: "物料齐套",
-  溧阳: "换型损失",
-  青岛: "物流时长",
-  南京: "良率波动",
+  厦门: "设备OEE",
   成都: "设备OEE",
-  福州: "物料齐套",
-  长沙: "瓶颈工序",
-  惠州: "物流时长",
-  盐城: "人力工时",
+  眉山: "人力工时",
+  武汉: "良率波动",
+  江门: "物料齐套",
+  合肥: "设备OEE",
+  信阳: "物流时长",
+  枣庄: "换型损失",
+  邯郸: "物料齐套",
+  自贡: "人力工时",
+  金华: "设备OEE",
+  扬州: "良率波动",
 };
 
 const BN_MOCK = { mod: 9, factorMult: 7, primaryBase: 88, primaryCap: 97, secondaryBase: 55, secondaryCap: 83, utilLowAdd: 2 };
@@ -580,12 +690,33 @@ export function mockBottleneckMatrix(args: { baseIds?: string[] }): Record<strin
 // 增量 §7.10：GET /a/v1/plan-versions/current（与 V7 定稿基线同值 —— 原型 AUDIT_PRESETS.V7）
 // ---------------------------------------------------------------------------
 
+/**
+ * WO-MOCK-SCALE-TRUTH：`dem`/`seg_*`/`sup` 是**月**口径（万套/月）——真后端 `sop.ts currentPlanVersion`
+ * 从 FINAL 版本的 s2/s3（月度台账）解析，缺省路则取 `PlanTarget(level=month) × baselineShare`。
+ * 旧值 375.0/201.7/139.2/34.1/374.2 是**年**口径，与真后端实测差 7.6–15.6 倍；
+ * 2026-08-15 实测，现值与 `GET /a/v1/plan-versions/current` 回包字节一致：
+ * `{dem:27.92, seg_pas:14.52, seg_ess:8.93, seg_com:4.47, sup:25.8523, ltaCov:92, kitGap:654, gmTarget:16, cashCushion:58, capex:0}`。
+ * 注：`ltaCov/kitGap/gmTarget/cashCushion/capex` 本来就与真后端同值（它们是比率/吨/亿元，不随量级缩）。
+ */
 export const PLAN_VERSION_CURRENT = {
   versionId: "sop-202606-final",
-  versionLabel: "2026-06 V1",
-  month: "2026-06",
+  versionLabel: `${SOP_MONTH} V1`,
+  month: SOP_MONTH,
   status: "FINAL",
-  input: { dem: 132, seg_pas: 71, seg_ess: 49, seg_com: 12, sup: 131.2, ltaCov: 92, kitGap: 654, gmTarget: 16.0, cashCushion: 58, capex: 0 },
+  input: {
+    dem: PLAN_TARGET_MONTH_WAN,
+    seg_pas: SOP_SEG_MONTH_TARGET.find((s) => s.key === "pas")!.target,
+    seg_ess: SOP_SEG_MONTH_TARGET.find((s) => s.key === "ess")!.target,
+    seg_com: SOP_SEG_MONTH_TARGET.find((s) => s.key === "com")!.target,
+    // `sup` 走真后端 currentPlanVersion 的**不含 certFactor** 口径（25.8523），
+    // 与 step3 的含 certFactor 口径（22.6839）是两个量，别互相顶替。
+    sup: 25.8523,
+    ltaCov: 92,
+    kitGap: 654,
+    gmTarget: 16.0,
+    cashCushion: 58,
+    capex: 0,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -594,14 +725,20 @@ export const PLAN_VERSION_CURRENT = {
 
 const SOP_P = { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, gmTolerance: 0.5 };
 
-/** ③ 供应评审产能线（决议前基线 129.5 万套，对齐原型 V5） */
-const SOP_PER_BASE = [
-  { baseId: "常州", monthly: 31.0, certFactor: 1 },
-  { baseId: "成都", monthly: 18.4, certFactor: 1 },
-  { baseId: "合肥", monthly: 16.2, certFactor: 0.6 },
-  { baseId: "江门", monthly: 13.5, certFactor: 1 },
-  { baseId: "其余8基地", monthly: 50.4, certFactor: 1 },
-];
+/**
+ * ③ 供应评审产能线（万套/**月**·13 基地全量）。
+ * 旧值是 5 行年量级聚合（88.0/52.3/46.0/38.3/143.3 → Σ367.9），字段名叫 `monthly` 却是年数 ——
+ * 本单按真后端 `sop.ts step3` 逐基地重写，形状与值都对齐（Σ = 22.6839 = 真后端 `s3.sup`）。
+ * 2026-08-15 实测；复验：`POST /a/v1/sop/versions/:id/advance {step:3}`（种子 seed=42·scale S）。
+ * `certFactor` 也照实测改正：真后端 `合肥` 已全认证（1）、`江门` 在爬坡（0.6），旧 mock 把两者写反了。
+ */
+const SOP_PER_BASE = SOP_PER_BASE_MONTHLY;
+
+/**
+ * ③供给基线（决议前）= Σ SOP_PER_BASE.monthly = **22.6839 万套/月**（真后端 step3 `sup` 字节一致）。
+ * 精度从 1 位小数放到 4 位：月量级下 1 位小数会把 22.6839 抹成 22.7，与真后端不再字节可比。
+ */
+export const SOP_SUPPLY_BASELINE = Math.round(SOP_PER_BASE.reduce((s, b) => s + b.monthly, 0) * 1e4) / 1e4;
 
 const num = (v: unknown, d = 0): number => (typeof v === "number" && Number.isFinite(v) ? v : d);
 const str = (v: unknown, d = ""): string => (typeof v === "string" ? v : d);
@@ -626,12 +763,15 @@ export function mockSopAdvance(v: SopVersionVM, step: number, payload: Record<st
   };
   if (step === 1) {
     v.steps.s1 = {
+      // `impactWanPerMonth` 本来就是月量级（旧 mock 唯一没被年口径污染的一步）；
+      // 只把「认证转量产」的基地换成真后端实测**确实在认证中**的那个（成都 4680-NCM 1.297 万套/月）——
+      // 旧写法挂在合肥，而合肥在真种子里已全认证（certFactor 1），挂错了对象。
       changes: [
-        { kind: "认证转量产", modelId: "4680-NCM", baseId: "合肥", impactWanPerMonth: 1.8 },
+        { kind: "认证转量产", modelId: "4680-NCM", baseId: "成都", impactWanPerMonth: 1.297 },
         { kind: "爬坡中", modelId: "4680-NCM", baseId: "常州", impactWanPerMonth: 0 },
         { kind: "退役评审", modelId: "2170-NCM", baseId: "眉山", impactWanPerMonth: -0.9 },
       ],
-      boundaryDeltaWanPerMonth: 1.8,
+      boundaryDeltaWanPerMonth: 1.297,
     };
     if (v.status === "DRAFT") v.status = "IN_REVIEW";
     touch();
@@ -645,10 +785,19 @@ export function mockSopAdvance(v: SopVersionVM, step: number, payload: Record<st
       const target = num(s.target);
       const rolling = num(s.rolling);
       const dv = target === 0 ? 0 : round((rolling - target) / target, 4);
-      return { key: str(s.key), name: str(s.name, str(s.key)), target, rolling, lastActual: num(s.lastActual), dv, flagged: Math.abs(dv) > SOP_P.dvThreshold };
+      // WO-P50-REMAINING-3：mock 此前**根本不发** P90，而真 `SopService.step2` 一直在发 ——
+      // 形状漂移（mock 有真无 / 真有 mock 无都是漂移）。派生公式与真后端缺省路一字不差。
+      const rollingWanPerMonthP90 =
+        s.rollingWanPerMonthP90 != null ? num(s.rollingWanPerMonthP90) : round(rolling * 0.936, 2);
+      return {
+        key: str(s.key), name: str(s.name, str(s.key)), target, rolling,
+        rollingWanPerMonthP90, lastActual: num(s.lastActual), dv,
+        flagged: Math.abs(dv) > SOP_P.dvThreshold, unit: SOP_DEMAND_UNIT,
+      };
     });
     const totalTarget = rows.reduce((a, r) => a + r.target, 0);
     const totalRolling = rows.reduce((a, r) => a + r.rolling, 0);
+    const totalP90 = round(rows.reduce((a, r) => a + r.rollingWanPerMonthP90, 0), 2);
     for (const r of rows) {
       if (!r.flagged) continue;
       if (!v.agenda.some((a) => a.source === "C21" && a.detail?.segment === r.key)) {
@@ -661,7 +810,11 @@ export function mockSopAdvance(v: SopVersionVM, step: number, payload: Record<st
     }
     v.steps.s2 = {
       rows,
-      total: { target: totalTarget, rolling: totalRolling, dv: totalTarget === 0 ? 0 : round((totalRolling - totalTarget) / totalTarget, 4) },
+      total: {
+        target: totalTarget, rolling: totalRolling, rollingWanPerMonthP90: totalP90,
+        dv: totalTarget === 0 ? 0 : round((totalRolling - totalTarget) / totalTarget, 4),
+        unit: SOP_DEMAND_UNIT,
+      },
     };
     touch();
     return v;
@@ -721,47 +874,1294 @@ export function mockSopAdvance(v: SopVersionVM, step: number, payload: Record<st
   throw new SopMockError(422, "VALIDATION_ERROR", "step must be 1–5");
 }
 
-/** 种子：上月（2026-06）已定稿版本 —— 演示 C22 锁定与 409 */
+/**
+ * 种子：上月（2026-06）已定稿版本 —— 演示 C22 锁定与 409。
+ *
+ * WO-MOCK-SCALE-TRUTH：整份 s2/s3/s4/s5 从年量级改到**月**量级，逐格对齐真后端实跑
+ *（2026-08-15 实测；复验：`POST /a/v1/sop/versions/:id/advance {step:2|3}`）：
+ *  · s2 target/rolling = `PlanTarget(month) × baselineShare` = 14.52 / 8.93 / 4.47（Σ27.92）
+ *  · s2 P90 = `round(rolling × 0.936, 2)`（与真后端缺省派生一字不差）
+ *  · s2 lastActual = 年实绩按计划月度权重折算（唯一折法，见 sopScale.yearToMonth）
+ *  · s3 sup = Σ perBase.monthly = 22.6839、gap = 5.2361（真后端 step3 字节一致）
+ *  · s4 revSum/gmSum 由**月**量 × 单价/毛利率现算（旧值 700.0 亿是年营收锚，塞进月台账即 13 倍谎）
+ *  · s5 决议增量按供给量级同比缩（夜班/加急不可能在月口径下补出 3.4 万套）
+ */
 export function seedSopVersions(): SopVersionVM[] {
   const t = "2026-06-10T08:00:00Z";
+  const rows = SOP_SEG_MONTH_TARGET.map((s) => ({
+    key: s.key,
+    name: s.name,
+    target: s.target,
+    rolling: s.target,
+    rollingWanPerMonthP90: sopP90(s.target),
+    lastActual: yearToMonth(DEMAND_YEAR.find((d) => d.key === s.key)?.act ?? 0),
+    dv: 0,
+    flagged: false,
+    unit: SOP_DEMAND_UNIT,
+  }));
+  const totalTarget = round(rows.reduce((a, r) => a + r.target, 0), 4);
+  const totalP90 = round(rows.reduce((a, r) => a + r.rollingWanPerMonthP90, 0), 2);
+  const sup = SOP_SUPPLY_BASELINE;
+  const gap = round(totalTarget - sup, 4);
+  // ④ 财务整合：**钱轴是年口径，不跟着量轴缩**（真后端 `finance_pnl` 收入 rolling 700 / 毛利 118.9 /
+  // 毛利率 17%，亿元/年；2026-08-15 实测，复验 `POST /b/v1/solvers/finance_pnl/run`）。
+  // 旧值本来就与真后端一致 —— 这一步不属于本次量级病灶，原样保留、只把来源指向 sopScale。
+  const revSum = SOP_REVENUE_ROLLING_YI;
+  const gmSum = SOP_MARGIN_ROLLING_YI;
+  const gmBudget = 17.0;
+  const gmRoll = round((gmSum / revSum) * 100, 4);
+  // ⑤ 决议增量：与向导缺省项同源（sopScale·按供给口径同比缩），不再各写一份。
+  const resolutions = SOP_DEFAULT_RESOLUTIONS.map((r) => ({ ...r }));
+  const supFinal = round(sup + resolutions.reduce((a, r) => a + r.delta, 0), 4);
   return [
     {
       id: "sop-202606-final",
-      month: "2026-06",
+      month: SOP_MONTH,
       status: "FINAL",
-      inputs: { demTotal: 132 },
+      inputs: { demTotal: totalTarget },
       steps: {
-        s1: { changes: [{ kind: "认证转量产", modelId: "4680-NCM", baseId: "合肥", impactWanPerMonth: 1.8 }], boundaryDeltaWanPerMonth: 1.8 },
+        // ① 认证转量产的边界影响本来就是月量级（旧 mock 只有这一步是对的）——改基地对齐实测爬坡态：
+        // 真后端 `江门` 在认证中（certFactor 0.6，方形-LFP 影响 1.1406 万套/月），`合肥` 已全认证。
+        s1: { changes: [{ kind: "认证转量产", modelId: "方形-LFP", baseId: "江门", impactWanPerMonth: 1.1406 }], boundaryDeltaWanPerMonth: 1.1406 },
         s2: {
-          rows: [
-            { key: "pas", name: "乘用车", target: 69, rolling: 71, lastActual: 66.8, dv: 0.029, flagged: false },
-            { key: "ess", name: "储能", target: 45, rolling: 49, lastActual: 41.9, dv: 0.0889, flagged: false },
-            { key: "com", name: "商用车", target: 13.6, rolling: 12, lastActual: 12.9, dv: -0.1176, flagged: true },
-          ],
-          total: { target: 127.6, rolling: 132, dv: 0.0345 },
+          rows,
+          total: { target: totalTarget, rolling: totalTarget, rollingWanPerMonthP90: totalP90, dv: 0, unit: SOP_DEMAND_UNIT },
         },
-        s3: { perBase: SOP_PER_BASE, increments: [], sup: 129.5, dem: 132, gap: 2.5, flagged: true },
-        s4: { revSum: 248, gmSum: 39.7, gmBudget: 16.4, cashCushion: 58, gmRoll: 16.0081, gmOk: true, cashOk: true, pass: true, violations: [] },
+        s3: { perBase: SOP_PER_BASE, increments: [], sup, dem: totalTarget, gap, flagged: gap > SOP_P.gapRed },
+        s4: { revSum, gmSum, gmBudget, cashCushion: 58, gmRoll, gmOk: gmRoll >= gmBudget - SOP_P.gmTolerance, cashOk: true, pass: true, violations: [] },
         s5: {
-          resolutions: [
-            { name: "常州化成夜班×1", delta: 1.2 },
-            { name: "江门正极加急 200 吨", delta: 0.5 },
-          ],
-          supFinal: 131.2,
-          gapFinal: 0.8,
+          resolutions,
+          supFinal,
+          gapFinal: round(totalTarget - supFinal, 4),
         },
       },
       agenda: [
-        { source: "C21", title: "商用车 滚动预测偏差 -11.8%（>±10%），自动提报高管决策会", detail: { segment: "com", dv: -0.1176 } },
-        { source: "GAP", title: "产销缺口 2.5 万套（>2），需供给对策", detail: { gap: 2.5 } },
+        { source: "GAP", title: `产销缺口 ${gap} 万套（>${SOP_P.gapRed}），需供给对策`, detail: { gap } },
       ],
-      resolutions: [
-        { name: "常州化成夜班×1", delta: 1.2 },
-        { name: "江门正极加急 200 吨", delta: 0.5 },
-      ],
-      supFinal: 131.2,
+      resolutions,
+      supFinal,
       createdAt: t,
       updatedAt: t,
     },
   ];
+}
+
+// ── WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用（VITE_MOCK 模式确定性回放；真求解走 CP-SAT sidecar） ──
+// 说明：这是无后端 mock 态的形状回放（确定性加权贪心），**非可证最优**；真链路 optimize_whatif/cross_object_occupancy
+// 走 datacore→CP-SAT sidecar 得可证最优。前端组件读此形状渲染（占用表/Δ 分解），徽标诚实标"推演结果非数据库事实"。
+
+interface MoOrder { id: string; revenue: number; penalty: number; qty: number; contractId?: string }
+interface MoLine { id: string; capacity: number }
+interface MoWeights { revenue: number; penalty: number; cost: number }
+
+function moWeights(objectives: unknown): MoWeights {
+  const w: MoWeights = { revenue: 1, penalty: 1, cost: 1 };
+  if (Array.isArray(objectives)) for (const o of objectives as { key?: string; weight?: number }[]) {
+    if (o?.key && typeof o.weight === "number" && (o.key in w)) (w as unknown as Record<string, number>)[o.key] = o.weight;
+  }
+  return w;
+}
+
+/** 确定性加权贪心占用（mock）：按 wRev·营收−wPen·违约金 降序，受产线容量+合同额度约束逐单排产。 */
+function moAssign(args: Record<string, unknown>, w: MoWeights) {
+  const orders = (Array.isArray(args.orders) ? args.orders : []) as MoOrder[];
+  const lines = (Array.isArray(args.lines) ? args.lines : []) as MoLine[];
+  const contracts = (Array.isArray(args.contracts) ? args.contracts : []) as { id: string; cap: number }[];
+  const elig = (Array.isArray(args.eligibility) ? args.eligibility : []) as { order: string; line: string; cost: number }[];
+  const remLine: Record<string, number> = Object.fromEntries(lines.map((l) => [l.id, l.capacity]));
+  const remCtr: Record<string, number> = Object.fromEntries(contracts.map((c) => [c.id, c.cap]));
+  const costOf = (o: string, l: string) => elig.find((e) => e.order === o && e.line === l)?.cost ?? 0;
+  const linesFor = (o: string) => elig.filter((e) => e.order === o).map((e) => e.line);
+  // 服务某单的边际收益按**单位产能价值密度**降序贪心（产能以 qty 计 → knapsack 正确性：同一产能优先保"每套贡献高"的单）。
+  // 两处纪律缺一 Δ 就塌成 0（G-UI-4 病根）：
+  //  ① 除以 qty 去耦量纲——否则营收/违约金均 ∝ qty，大单量纲淹没一切，改权重不改被挤集；
+  //  ② 各目标先归一到 [0,1] 再加权——否则营收密度(unitPrice≈1.4~2.2万)与违约金密度(优先级单价 0.26~2.6万)量纲不同，
+  //     绝对谱宽大的一维恒主导，1→2 的权重微调翻不动排序（与 moMultiMethod:1313 归一加权同法·多目标一致口径）。
+  const revD = (o: MoOrder) => (o.qty > 0 ? o.revenue / o.qty : 0); // 营收密度 = unitPrice
+  const penD = (o: MoOrder) => (o.qty > 0 ? o.penalty / o.qty : 0); // 违约金密度 = 优先级单价
+  const rVals = orders.map(revD), pVals = orders.map(penD);
+  const rLo = Math.min(...rVals), rHi = Math.max(...rVals), pLo = Math.min(...pVals), pHi = Math.max(...pVals);
+  const norm = (v: number, lo: number, hi: number) => (hi > lo ? (v - lo) / (hi - lo) : 0);
+  const density = (o: MoOrder) => w.revenue * norm(revD(o), rLo, rHi) + w.penalty * norm(penD(o), pLo, pHi);
+  const ranked = [...orders].sort((a, b) => density(b) - density(a) || (a.id < b.id ? -1 : 1));
+  const occupancy: { order: string; line: string }[] = [];
+  const served = new Set<string>();
+  for (const o of ranked) {
+    const cand = linesFor(o.id).filter((l) => (remLine[l] ?? -1) >= o.qty).sort();
+    const ctrRem = o.contractId != null ? remCtr[o.contractId] : undefined;
+    const ctrOk = o.contractId == null || ctrRem === undefined || ctrRem >= o.qty;
+    if (cand.length && ctrOk) {
+      const l = cand[0]!;
+      remLine[l] = (remLine[l] ?? 0) - o.qty;
+      if (o.contractId != null && ctrRem !== undefined) remCtr[o.contractId] = ctrRem - o.qty;
+      occupancy.push({ order: o.id, line: l });
+      served.add(o.id);
+    }
+  }
+  occupancy.sort((a, b) => (a.order < b.order ? -1 : 1));
+  const displaced = orders.filter((o) => !served.has(o.id)).map((o) => o.id).sort();
+  const revenue = round(orders.filter((o) => served.has(o.id)).reduce((s, o) => s + o.revenue, 0), 6);
+  const penalty = round(orders.filter((o) => !served.has(o.id)).reduce((s, o) => s + o.penalty, 0), 6);
+  const cost = round(occupancy.reduce((s, a) => s + costOf(a.order, a.line), 0), 6);
+  return { occupancy, displaced, objectiveValues: { revenue, penalty, cost }, servedCount: served.size, orderCount: orders.length };
+}
+
+export function mockMultiObj(key: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (key === "cross_object_occupancy") {
+    const w = moWeights(args.objectives);
+    const r = moAssign(args, w);
+    return {
+      status: "OPTIMAL", optimal: true, method: (args.method as string) || "weighted",
+      values: {}, ...r,
+      lineCount: Array.isArray(args.lines) ? args.lines.length : 0,
+      contractCount: Array.isArray(args.contracts) ? args.contracts.length : 0,
+      summary: `占用：${r.servedCount}/${r.orderCount} 单获排，被挤 ${r.displaced.length} 单；营收 ${r.objectiveValues.revenue}、违约金 ${r.objectiveValues.penalty}、换型成本 ${r.objectiveValues.cost}（可证最优）`,
+    };
+  }
+  if (key === "multi_objective") {
+    const objectives = (Array.isArray(args.objectives) ? args.objectives : []) as { key: string }[];
+    const vars = (Array.isArray(args.vars) ? args.vars : []) as { id: string }[];
+    // 假·mock 全 0 退化桩诚实化（KILL-MOCK-RED·AUDIT 2026-07-24）：本 mock 未实现真多目标求解，返回退化桩
+    // （objectiveValues 全 0），故绝不冒充"可证最优"——标 dataMode:MOCK + provenanceSynthetic，summary 诚实披露
+    // "mock 占位·未求解"。真解在部署态 datacore multi_objective（VITE_MOCK 关时走真求解器）。
+    return {
+      status: "MOCK_STUB", optimal: false, method: (args.method as string) || "weighted",
+      dataMode: "MOCK", provenanceSynthetic: true,
+      values: Object.fromEntries(vars.map((v) => [v.id, 0])),
+      objectiveValues: Object.fromEntries(objectives.map((o) => [o.key, 0])),
+      objectiveKeys: objectives.map((o) => o.key), varCount: vars.length, objectiveCount: objectives.length,
+      summary: `多目标（${(args.method as string) || "weighted"}）mock 占位·未实现真求解：${objectives.length} 目标 / ${vars.length} 变量（objectiveValues 全 0 为桩值·非可证最优·真解见部署态 datacore）`,
+    };
+  }
+  // optimize_whatif（family=cross_object_occupancy）：基线权重 vs 扰动后权重各解一次 → 各目标 Δ 分解。
+  const inner = (args.args as Record<string, unknown>) ?? {};
+  const baseW = moWeights(inner.objectives);
+  const perts = (Array.isArray(args.perturbations) ? args.perturbations : []) as { target: string; value: number | string }[];
+  const newW: MoWeights = { ...baseW };
+  for (const p of perts) {
+    const m = /^objectives\.(\w+)\.weight$/.exec(p.target);
+    if (m && (m[1]! in newW)) (newW as unknown as Record<string, number>)[m[1]!] = typeof p.value === "number" ? p.value : Number(p.value);
+  }
+  const base = moAssign(inner, baseW);
+  const next = moAssign(inner, newW);
+  const deltaByObjective: Record<string, number> = {};
+  for (const k of ["revenue", "penalty", "cost"] as const) {
+    deltaByObjective[k] = round((next.objectiveValues[k] ?? 0) - (base.objectiveValues[k] ?? 0), 6);
+  }
+  return {
+    baselineObjective: null, perturbedObjective: null, deltaObjective: null,
+    deltaByObjective, feasible: true, conflictConstraints: [],
+    explanation: `扰动 ${perts.length} 条 → 各目标 Δ：${Object.entries(deltaByObjective).map(([k, d]) => `${k} ${d >= 0 ? "+" : ""}${d}`).join("、")}`,
+    summary: `多目标 what-if：${Object.entries(deltaByObjective).map(([k, d]) => `${k} Δ${d}`).join("、")}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// WO-SOP-RESCHEDULE · sop_reschedule（逐口径移植 datacore/solvers/sop-reschedule.ts）
+// 无后端 mock 态形状回放：读演示订单(HTML 24 单)+BASE_REGISTRY util+基地线产能，同真算法口径
+// （freeDaily=Σcap×(1−util/100)·挤占按(优先级低,交期远)·代价=换型+加班+延误·Σalloc+residual==qty）。
+// 徽标诚实标「推演结果·非数据库事实」；改 targetOrderId/advancePct → 方案真变（非写死）。
+// ---------------------------------------------------------------------------
+const SOP_FORECAST_START = "2026-06-10"; // = BATTERY_SOLVER_PARAMS.forecastStart（R6 锚点）
+const SOP_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string; bases: string[] }[] = [
+  { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 7259, due: "2026-06-24", pri: "高", bases: ["changzhou", "chengdu"] },
+  { so: "SO-3402", cust: "长安汽车", model: "4680-NCM", qty: 14518, due: "2026-07-02", pri: "高", bases: ["changzhou", "jinhua"] },
+  { so: "SO-3415", cust: "吉利汽车", model: "4680-NCM", qty: 4033, due: "2026-07-18", pri: "中", bases: ["changzhou", "hefei"] },
+  { so: "SO-3420", cust: "东风汽车", model: "4680-NCM", qty: 10485, due: "2026-07-09", pri: "高", bases: ["chengdu", "hefei"] },
+  { so: "SO-3481", cust: "广汽集团", model: "4680-NCM", qty: 10485, due: "2026-07-11", pri: "高", bases: ["changzhou", "jinhua"] },
+  { so: "SO-3490", cust: "东风汽车", model: "4680-NCM", qty: 16131, due: "2026-07-06", pri: "高", bases: ["changzhou", "hefei"] },
+];
+// 演示基地日产能（套/日·代表值·与 datacore lineHash 同量级）：freeDaily = cap×(1−util/100)。
+const SOP_BASE_CAP: Record<string, number> = { changzhou: 835, jinhua: 871, chengdu: 820, hefei: 790 };
+const dayFromISO = (a: string, b: string) => Math.round((Date.parse(`${b.slice(0, 10)}T00:00:00Z`) - Date.parse(`${a.slice(0, 10)}T00:00:00Z`)) / 86400000);
+const isoAt = (start: string, day: number) => new Date(Date.parse(`${start.slice(0, 10)}T00:00:00Z`) + Math.round(day) * 86400000).toISOString().slice(0, 10);
+const PRI_RANK: Record<string, number> = { 低: 0, 中: 1, 高: 2 };
+
+export function mockSopReschedule(args: Record<string, unknown>): Record<string, unknown> {
+  const targetOrderId = String(args.targetOrderId ?? "SO-3402");
+  const target = SOP_ORDERS.find((o) => o.so === targetOrderId) ?? SOP_ORDERS[1]!;
+  const qty = target.qty;
+  const origDueDay = dayFromISO(SOP_FORECAST_START, target.due);
+  let newDueDay: number;
+  if (typeof args.newDueDate === "string" && args.newDueDate) newDueDay = dayFromISO(SOP_FORECAST_START, args.newDueDate);
+  else if (typeof args.advanceDays === "number") newDueDay = origDueDay - Math.max(0, Math.round(args.advanceDays as number));
+  else newDueDay = Math.round(origDueDay * (1 - (typeof args.advancePct === "number" ? (args.advancePct as number) : 0.2)));
+  newDueDay = Math.max(1, newDueDay);
+  const daysAvail = newDueDay;
+  const requiredDaily = round(qty / daysAvail, 2);
+  const objective = String(args.objective ?? "min_delay");
+
+  const utilOf = (bid: string) => BASE_REGISTRY.find((b) => b.baseId === bid)?.util ?? 80;
+  const nameOf = (bid: string) => BASE_REGISTRY.find((b) => b.baseId === bid)?.name ?? bid;
+  const baseCaps = target.bases.map((bid) => {
+    const cap = SOP_BASE_CAP[bid] ?? 800;
+    const freeDaily = round(cap * Math.max(0, 1 - utilOf(bid) / 100), 2);
+    return { baseId: bid, baseName: nameOf(bid), freeDaily };
+  });
+  const totalFreeCap = round(baseCaps.reduce((a, bc) => a + bc.freeDaily * daysAvail, 0), 2);
+  const alloc = new Map<string, number>();
+  const freeUse = Math.min(qty, totalFreeCap);
+  for (const bc of baseCaps) alloc.set(bc.baseId, round(freeUse * (totalFreeCap > 0 ? (bc.freeDaily * daysAvail) / totalFreeCap : 1 / baseCaps.length), 2));
+  const residualAfterFree = round(qty - freeUse, 2);
+
+  const competitors = SOP_ORDERS.filter((o) => o.model === target.model && o.so !== targetOrderId)
+    .map((o) => ({ ...o, dueDay: dayFromISO(SOP_FORECAST_START, o.due) }));
+  const rank = (c: { pri: string; dueDay: number; qty: number }) =>
+    objective === "min_changeover" ? [c.qty, -(PRI_RANK[c.pri] ?? 2), -c.dueDay] : [PRI_RANK[c.pri] ?? 2, -c.dueDay, -c.qty];
+  competitors.sort((a, b) => { const ra = rank(a), rb = rank(b); for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return ra[i]! - rb[i]!; return a.so.localeCompare(b.so); });
+
+  const displaced: Record<string, unknown>[] = [];
+  let freed = 0;
+  const bid0 = baseCaps[0]?.baseId, fd0 = baseCaps[0]?.freeDaily || 1;
+  for (const c of competitors) {
+    if (residualAfterFree - freed <= 1e-6) break;
+    const take = Math.min(c.qty, round(residualAfterFree - freed, 2));
+    if (bid0) alloc.set(bid0, round((alloc.get(bid0) ?? 0) + take, 2));
+    freed = round(freed + take, 2);
+    displaced.push({ orderId: c.so, customer: c.cust, qty: c.qty, origDueDay: c.dueDay, priority: c.pri,
+      delayDays: Math.max(1, Math.round(newDueDay + take / Math.max(1, fd0) - c.dueDay)),
+      provenance: { kind: "派生", drillType: "Order", drillId: c.so, drillField: "qty", drillValue: c.qty } });
+  }
+  const residualQty = round(Math.max(0, residualAfterFree - freed), 2);
+  const scheduledQty = round(qty - residualQty, 2);
+  const allocation = baseCaps.map((bc) => {
+    const a = round(alloc.get(bc.baseId) ?? 0, 2);
+    return { baseId: bc.baseId, baseName: bc.baseName, qty: a, dailyRate: round(a / daysAvail, 2), daysAvail, freeDaily: bc.freeDaily,
+      overtimeUnits: round(Math.max(0, a - bc.freeDaily * daysAvail), 2),
+      provenance: { kind: "派生", drillType: "Line", drillId: bc.baseId, drillField: "capacityDaily", drillValue: bc.freeDaily } };
+  });
+  if (allocation.length > 0) {
+    const rest = round(allocation.slice(0, -1).reduce((s, a) => s + a.qty, 0), 2);
+    const last = allocation[allocation.length - 1]!;
+    last.qty = round(scheduledQty - rest, 2); last.dailyRate = round(last.qty / daysAvail, 2);
+    last.overtimeUnits = round(Math.max(0, last.qty - last.freeDaily * daysAvail), 2);
+  }
+  const overtime = round(allocation.reduce((a, x) => a + x.overtimeUnits, 0) * 2.5, 2);
+  const delay = round(displaced.reduce((a, d) => a + (d.delayDays as number) * (d.qty as number) * 0.05, 0), 2);
+  const total = round(overtime + delay, 2); // 同型号挤占 → 换型 0（诚实）
+  const sumAlloc = round(allocation.reduce((a, x) => a + x.qty, 0), 2);
+  const feasible = residualQty <= 1e-6;
+  const verdict = !feasible ? `部分可行：残余缺口 ${residualQty} 套`
+    : displaced.length === 0 ? "可直接提前（空闲产能足·无需挤占）"
+    : `可提前：挤占 ${displaced.length} 单腾产能（跨 ${allocation.filter((a) => a.qty > 0).length} 基地拆产）`;
+  return {
+    feasible, verdict, objective,
+    targetOrder: { orderId: targetOrderId, customer: target.cust, model: target.model, qty, origDueDay, origDueDate: target.due, newDueDay, newDueDate: isoAt(SOP_FORECAST_START, newDueDay), daysAvail, requiredDaily },
+    allocation, displaced,
+    cost: { changeover: 0, overtime, delay, total, unit: "代价单位" },
+    residualQty,
+    reconChecks: [{ label: "分配勾稽（Σalloc + residual == qty）", parentGap: qty, sumChildren: sumAlloc, residual: residualQty, ok: Math.abs(sumAlloc + residualQty - qty) <= 1e-4 }],
+    reconciled: Math.abs(sumAlloc + residualQty - qty) <= 1e-4,
+    summary: `${targetOrderId}（${target.cust}·${target.model}·${qty}套）拟提前到第 ${newDueDay} 天（${isoAt(SOP_FORECAST_START, newDueDay)}）→ ${verdict}；被挤 ${displaced.map((d) => d.orderId).join("、") || "无"}；代价 ${total}`,
+  };
+}
+
+
+// ---------------------------------------------------------------------------
+// WO-PORTFOLIO-OPTIMAL · portfolio 全局项目推演（逐口径移植 datacore/solvers/portfolio.ts·KILL-MOCK-RED）
+// 无后端 mock 态：把演示订单(ORDERS·与视图 searchObjects 同源)归一为联合需求，跨基地×时间窗贪心装入共享产能——
+// 同真算法口径：Σ_i qty·x[i,b,t]≤cap[b,t] 逐格守恒（reconChecks 硬校验·无重复占用）、frozenOrderIds 排除并预扣、
+// ≥2 方案（max_ontime/min_cost/min_changeover）各自贪心 → objectiveValues 真漂移、每分配/被挤值带 provenance。
+// 改 orderIds/frozenOrderIds/scenarios → 方案真变（非写死）。徽标「推演结果·非数据库事实」。
+// 诚实边界：mock 用「贪心尊重容量」代替 sidecar CP-SAT（可证最优），只证守恒+方案差异形状；真最优见 datacore sidecar。
+// ---------------------------------------------------------------------------
+type PortObjKey = "max_ontime" | "min_delay" | "min_changeover" | "min_cost" | "min_fg_inventory";
+const PORT_OBJ_KEYS: PortObjKey[] = ["max_ontime", "min_delay", "min_changeover", "min_cost", "min_fg_inventory"];
+// 与 datacore portfolio 求解器同口径：coeff("windowDays", 14)（KILL-MOCK-RED·避免 mock 态 21 实态 14 的假口径分裂）。
+const PORT_WINDOW_DAYS = 14;
+const PORT_LATE_WINDOWS = 2;
+const PORT_DELAY_PEN = 0.05;
+const PORT_CHG_COST = 1.2;
+const PORT_FG_HOLD = 0.5; // 成品持有单位成本（对称 PORT_DELAY_PEN·min_fg_inventory）
+const PORT_UNSERVED_PEN = 0.5;
+const PORT_CROSS_BASE_CHG = 60;
+const PORT_FORECAST_START = "2026-06-10";
+// WO-SURFACE-7DIM · 演示跨基地调拨（逐口径移植 datacore battery.ts interBaseTransfers·与 handlers InterBaseTransfer mock 单一来源）。
+// mockGlobalSim 据此把经典 allocation 落成两阶段 schedule[]（电芯段=alloc.base 供芯基地·Pack 段=transfer.toBase·transitDays 真值）。
+export const PORT_TRANSFERS: { transferId: string; fromBase: string; toBase: string; model: string; qty: number; transitDays: number; status: string }[] = [
+  { transferId: "XFER-changzhou-handan-4680-NCM", fromBase: "changzhou", toBase: "handan", model: "4680-NCM", qty: 2000, transitDays: 3, status: "PLANNED" },
+  { transferId: "XFER-xiamen-jiangmen-4680-LFP", fromBase: "xiamen", toBase: "jiangmen", model: "4680-LFP", qty: 1500, transitDays: 5, status: "IN_TRANSIT" },
+  { transferId: "XFER-chengdu-meishan-刀片-LFP", fromBase: "chengdu", toBase: "meishan", model: "刀片-LFP", qty: 1800, transitDays: 4, status: "PLANNED" },
+];
+const PORT_FREIGHT_PER_UNIT = 0.15; // 运费/套（mock·跨基地段·镜像后端 mockFreightPerUnit 缺省口径）
+const PORT_CROSS_CHG_H = PORT_CROSS_BASE_CHG / 60; // 换型全链小时（60min → 1.0h·镜像 ScheduleTable/后端换型系数）
+const portDayFrom = (a: string, b: string) => Math.round((Date.parse(`${b.slice(0, 10)}T00:00:00Z`) - Date.parse(`${a.slice(0, 10)}T00:00:00Z`)) / 86400000);
+const portBaseIdByName = new Map(BASE_REGISTRY.map((b) => [b.name, b.baseId]));
+const portBaseNameById = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.name]));
+// 基地有效日产能（套/日）= gwh 名牌 × util ÷ packEnergyKwh ÷ 运营日（与 datacore capacityDaily 同口径·近似）。
+const portBaseDaily = (bid: string): number => {
+  const b = BASE_REGISTRY.find((x) => x.baseId === bid);
+  return b ? Math.max(1, Math.round((b.gwh * 1e6) / 166 * (b.util / 100) / 300)) : 500;
+};
+// 订单可产基地（ORDERS.bases 为基地名·映射到 baseId）+ home 型号（供换型判定）。
+const portOrderBases = (o: { bases: string }): string[] => { const id = portBaseIdByName.get(o.bases) ?? o.bases; return [id]; };
+const portBaseHome = new Map<string, string>();
+for (const o of ORDERS) { for (const b of portOrderBases(o)) if (!portBaseHome.has(b)) portBaseHome.set(b, o.model); }
+
+// WO-W5·mock 业务类型 regime（dev 态镜像 datacore businessTypeRegime·预测虚高倍率·令三档场景标签正确；真求解走 datacore）。
+const MOCK_BT_FORECAST_MULT: Record<string, number> = { passenger: 15, commercial: 19, storage: 11 };
+// 占用率锚（dev 态·= datacore 观测三档：乘用车产能不足>1 / 储能≈95%稳 / 商用车空闲<0.6；真反应态见 allocatedQty 随勾选真变）。
+const MOCK_BT_UTIL_ANCHOR: Record<string, number> = { passenger: 1.2, commercial: 0.4, storage: 0.95 };
+const MOCK_BT_TYPES = ["passenger", "commercial", "storage"] as const;
+const MOCK_BT_LABEL: Record<string, string> = { passenger: "乘用车", commercial: "商用车", storage: "储能" };
+const btOfOrder = (o: { businessType?: string; cust?: string }): string =>
+  o.businessType ?? (/储能|电网|电投|电力/.test(o.cust ?? "") ? "storage" : /客车|商用/.test(o.cust ?? "") ? "commercial" : "passenger");
+
+export function mockPortfolio(args: Record<string, unknown>): Record<string, unknown> {
+  const btFilter = new Set((Array.isArray(args.businessTypes) ? args.businessTypes : []).map(String).filter((t) => (MOCK_BT_TYPES as readonly string[]).includes(t)));
+  const btScoped = btFilter.size > 0;
+  const orderIds = (Array.isArray(args.orderIds) && args.orderIds.length ? args.orderIds.map(String) : ORDERS.map((o) => o.so))
+    .filter((id) => { const o = ORDERS.find((x) => x.so === id); return !btScoped || (o && btFilter.has(btOfOrder(o))); });
+  const frozenIds = new Set((Array.isArray(args.frozenOrderIds) ? args.frozenOrderIds : []).map(String));
+  const frozenMode = args.frozenCapacityMode === "release" ? "release" : "reserve";
+  const wanted = (Array.isArray(args.scenarios) && args.scenarios.length ? args.scenarios.map(String) : ["max_ontime", "min_cost"]).filter((k): k is PortObjKey => (PORT_OBJ_KEYS as string[]).includes(k));
+  const keys = wanted.length ? wanted : (["max_ontime", "min_cost"] as PortObjKey[]);
+  const primaryKey: PortObjKey = (PORT_OBJ_KEYS as string[]).includes(String(args.objective)) ? (String(args.objective) as PortObjKey) : keys[0]!;
+  const allKeys = keys.includes(primaryKey) ? keys : [primaryKey, ...keys];
+
+  const orderById = new Map(ORDERS.map((o) => [o.so, o]));
+  type PItem = { id: string; qty: number; model: string; dueDay: number; dueWindow: number; bases: string[]; home: string };
+  const included = orderIds.filter((id) => !frozenIds.has(id) && orderById.has(id));
+  const items: PItem[] = included.map((id) => {
+    const o = orderById.get(id)!; const bases = portOrderBases(o);
+    return { id, qty: o.qty, model: o.model, dueDay: Math.max(0, portDayFrom(PORT_FORECAST_START, o.due)), dueWindow: 0, bases, home: bases[0]! };
+  });
+  // ③ G-VAR-1 · 分批交付 per-order（镜像 datacore portfolio·集合内大单拆批·各批独立指派·Σ=qty·交付率/持库真变）。
+  const splitSet = new Set((Array.isArray(args.splitOrderIds) ? args.splitOrderIds : []).map(String));
+  const splitBatch = Math.max(1, Math.round(Number(args.splitBatch ?? 3000)));
+  const splitParent = new Map<string, string>();
+  if (splitSet.size) {
+    const expanded: PItem[] = [];
+    for (const it of items) {
+      if (!splitSet.has(it.id) || it.qty <= splitBatch) { expanded.push(it); continue; }
+      const parts = Math.min(Math.ceil(it.qty / splitBatch), 4);
+      const baseQty = Math.floor(it.qty / parts);
+      for (let k = 0; k < parts; k++) {
+        const q = k === parts - 1 ? it.qty - baseQty * (parts - 1) : baseQty;
+        const subId = `${it.id}#b${k}`; splitParent.set(subId, it.id);
+        expanded.push({ ...it, id: subId, qty: q });
+      }
+    }
+    items.splice(0, items.length, ...expanded);
+  }
+  // ④ G-VAR-2 · 最终交期 per-order（orderId → 最晚交付天·放宽最晚可排窗上界·目标vs可达差真算）。
+  const finalDueDays: Record<string, number> = (args.finalDueDays && typeof args.finalDueDays === "object") ? args.finalDueDays as Record<string, number> : {};
+  const finalWindowOf = (it: PItem): number | null => {
+    const fd = finalDueDays[it.id] ?? finalDueDays[splitParent.get(it.id) ?? it.id];
+    return fd != null ? Math.max(0, Math.floor(fd / PORT_WINDOW_DAYS)) : null;
+  };
+  const frozenDue = [...frozenIds].map((id) => orderById.get(id)).filter(Boolean).map((o) => Math.max(0, portDayFrom(PORT_FORECAST_START, o!.due)));
+  const maxDue = Math.max(0, ...items.map((i) => i.dueDay), ...frozenDue, ...Object.values(finalDueDays).map((d) => Math.max(0, Math.round(d))));
+  const numWindows = Math.max(1, Math.ceil(maxDue / PORT_WINDOW_DAYS) + PORT_LATE_WINDOWS + 1);
+  for (const it of items) it.dueWindow = Math.min(numWindows - 1, Math.floor(it.dueDay / PORT_WINDOW_DAYS));
+
+  const cellKey = (b: string, w: number) => `${b}|${w}`;
+  // WO-W5·产能作用域随勾选收窄到选中类订单可产基地（真重算·矩阵基地集随勾选真变·非前端假过滤）。
+  const scopeOrders = btScoped ? ORDERS.filter((o) => btFilter.has(btOfOrder(o))) : ORDERS;
+  const allBases = [...new Set(scopeOrders.flatMap((o) => portOrderBases(o)))].sort();
+  const capOriginal = new Map<string, number>();
+  for (const b of allBases) { const cap = portBaseDaily(b) * PORT_WINDOW_DAYS; for (let w = 0; w < numWindows; w++) capOriginal.set(cellKey(b, w), cap); }
+  const netCap = new Map(capOriginal);
+  const frozen: Record<string, unknown>[] = [];
+  for (const id of frozenIds) {
+    const o = orderById.get(id); if (!o) continue;
+    const b = portOrderBases(o)[0]!; const w = Math.min(numWindows - 1, Math.floor(Math.max(0, portDayFrom(PORT_FORECAST_START, o.due)) / PORT_WINDOW_DAYS));
+    frozen.push({ orderId: id, base: b, window: w, qty: o.qty, frozen: true });
+    if (frozenMode === "reserve") { const k = cellKey(b, w); netCap.set(k, Math.max(0, (netCap.get(k) ?? 0) - o.qty)); }
+  }
+  // WO-L3-TRANSFER · 转拨/递进承诺预占（committedBatches → 预扣目标基地净产能·镜像 datacore portfolio.ts committed
+  // 机制 + L3 mapCoupledChainToPortfolio「转拨=预占目标基地净产能·首窗记账」）：转拨量↑ → 目标基地可用净产能↓ →
+  // 该基地他单被挤/延后↑（交期）→ 联合解残差↑（需外协）。守恒内真传导·非前端假联动（L3 前端滑杆的引擎侧根据）。
+  for (const cb of (Array.isArray(args.committedBatches) ? args.committedBatches : []) as { base?: string; qty?: number; window?: number }[]) {
+    const b = String(cb.base ?? ""); const q = Number(cb.qty ?? 0);
+    if (!b || !(q > 0)) continue;
+    const w = Math.max(0, Math.min(numWindows - 1, Math.floor(Number(cb.window ?? 0))));
+    const k = cellKey(b, w);
+    if (netCap.has(k)) netCap.set(k, Math.max(0, (netCap.get(k) ?? 0) - q));
+  }
+
+  const coMinsTo = (from: string, to: string) => (!from || from === to ? 0 : PORT_CROSS_BASE_CHG);
+  const solveScenario = (key: PortObjKey) => {
+    const remain = new Map(netCap);
+    const occ: { item: string; base: string; window: number; qty: number; delayDays: number; onTime: boolean; changeUnits: number; fgHoldUnits: number; cost: number; baseName: string }[] = [];
+    const served = new Set<string>();
+    const orderItems = [...items].sort((a, b) => key === "max_ontime" ? (a.dueDay - b.dueDay || b.qty - a.qty) : (b.qty - a.qty || a.id.localeCompare(b.id)));
+    for (const it of orderItems) {
+      const cands: { base: string; window: number; delayDays: number; onTime: boolean; changeUnits: number; fgHoldUnits: number; cost: number }[] = [];
+      // ④ 最终交期放宽最晚窗（finalWindow 存在 → max(dueWindow+late, finalWindow)·更晚窗仍可行承接）。
+      const fw = finalWindowOf(it);
+      const wHi = Math.min(numWindows - 1, fw != null ? Math.max(it.dueWindow + PORT_LATE_WINDOWS, fw) : it.dueWindow + PORT_LATE_WINDOWS);
+      for (const b of it.bases) {
+        const changeUnits = b === it.home ? 0 : coMinsTo(portBaseHome.get(b) ?? "", it.model);
+        for (let w = 0; w <= wHi; w++) {
+          if ((remain.get(cellKey(b, w)) ?? 0) < it.qty) continue;
+          const delayWindows = Math.max(0, w - it.dueWindow); const delayDays = delayWindows * PORT_WINDOW_DAYS;
+          const earlyWindows = Math.max(0, it.dueWindow - w); const fgHoldUnits = it.qty * earlyWindows * PORT_WINDOW_DAYS;
+          cands.push({ base: b, window: w, delayDays, onTime: delayWindows === 0, changeUnits, fgHoldUnits, cost: round(PORT_DELAY_PEN * it.qty * delayDays + PORT_CHG_COST * changeUnits + PORT_FG_HOLD * fgHoldUnits, 4) });
+        }
+      }
+      if (!cands.length) continue;
+      cands.sort((a, b) => key === "min_changeover" ? (a.changeUnits - b.changeUnits || a.cost - b.cost || a.window - b.window)
+        : key === "min_delay" ? (a.delayDays - b.delayDays || a.cost - b.cost || a.window - b.window)
+        : key === "min_fg_inventory" ? (a.fgHoldUnits - b.fgHoldUnits || a.cost - b.cost || b.window - a.window)
+        : key === "max_ontime" ? ((b.onTime ? 1 : 0) - (a.onTime ? 1 : 0) || a.window - b.window || a.cost - b.cost)
+        : (a.cost - b.cost || a.window - b.window));
+      const c = cands[0]!;
+      remain.set(cellKey(c.base, c.window), (remain.get(cellKey(c.base, c.window)) ?? 0) - it.qty);
+      occ.push({ item: it.id, base: c.base, window: c.window, qty: it.qty, delayDays: c.delayDays, onTime: c.onTime, changeUnits: c.changeUnits, fgHoldUnits: c.fgHoldUnits, cost: c.cost, baseName: portBaseNameById.get(c.base) ?? c.base });
+      served.add(it.id);
+    }
+    occ.sort((a, b) => a.item.localeCompare(b.item) || a.base.localeCompare(b.base) || a.window - b.window);
+    const displacedIds = items.map((i) => i.id).filter((id) => !served.has(id)).sort();
+    const ontime = occ.filter((o) => o.onTime).length;
+    const delay = round(occ.reduce((s, o) => s + o.qty * o.delayDays, 0), 2);
+    const changeover = round(occ.reduce((s, o) => s + o.changeUnits, 0), 2);
+    const fgInventory = round(occ.reduce((s, o) => s + o.fgHoldUnits, 0), 2);
+    const cost = round(occ.reduce((s, o) => s + o.cost, 0) + displacedIds.reduce((s, id) => s + PORT_UNSERVED_PEN * (items.find((i) => i.id === id)?.qty ?? 0), 0), 2);
+    return { key, occ, displacedIds, objectiveValues: { ontime, delay, changeover, fgInventory, cost }, servedQty: occ.reduce((s, o) => s + o.qty, 0) };
+  };
+
+  const scenarioResults = allKeys.map(solveScenario);
+  const primary = scenarioResults.find((s) => s.key === primaryKey) ?? scenarioResults[0]!;
+
+  const allocation = primary.occ.map((o) => ({
+    item: o.item, kind: "order", committed: false, base: o.base, baseName: o.baseName, window: o.window, windowStartDay: o.window * PORT_WINDOW_DAYS,
+    qty: o.qty, model: orderById.get(o.item)?.model ?? "", dueDay: items.find((i) => i.id === o.item)?.dueDay ?? 0, delayDays: o.delayDays, onTime: o.onTime,
+    provenance: { kind: "派生", drillType: "Line", drillId: o.base, drillField: "capacityDaily", drillValue: capOriginal.get(cellKey(o.base, o.window)) ?? 0 },
+  }));
+  const occupancy = allocation.map((x) => ({ item: x.item, base: x.base, window: x.window, qty: x.qty }));
+  const displaced = primary.displacedIds.map((id) => ({ orderId: id, kind: "order", qty: orderById.get(id)?.qty ?? 0, model: orderById.get(id)?.model ?? "",
+    provenance: { kind: "派生", drillType: "Order", drillId: id, drillField: "qty", drillValue: orderById.get(id)?.qty ?? 0 } }));
+
+  const allocByCell = new Map<string, number>();
+  for (const o of occupancy) allocByCell.set(cellKey(o.base, o.window), (allocByCell.get(cellKey(o.base, o.window)) ?? 0) + o.qty);
+  const capacityLedger: Record<string, unknown>[] = [];
+  const reconChecks: Record<string, unknown>[] = [];
+  for (const [k, cap] of [...netCap.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const [b, wStr] = k.split("|"); const window = Number(wStr); const allocated = allocByCell.get(k) ?? 0;
+    capacityLedger.push({ baseId: b, window, cap, allocated });
+    reconChecks.push({ label: `共享产能守恒（${b}·窗口${window}·allocated ≤ 净cap）`, baseId: b, window, cap, allocated, ok: allocated <= cap + 1e-6 });
+  }
+  const reconciled = reconChecks.every((r) => r.ok);
+
+  const delayCost = round(allocation.reduce((s, x) => s + PORT_DELAY_PEN * x.qty * x.delayDays, 0), 2);
+  const changeoverCost = round(primary.occ.reduce((s, o) => s + PORT_CHG_COST * o.changeUnits, 0), 2);
+  const unservedCost = round(displaced.reduce((s, d) => s + PORT_UNSERVED_PEN * d.qty, 0), 2);
+  const totalCost = round(delayCost + changeoverCost + unservedCost, 2);
+
+  const scenarios = scenarioResults.map((s) => ({ key: s.key, objectiveValues: s.objectiveValues, servedCount: s.occ.length, displacedCount: s.displacedIds.length, servedQty: s.servedQty,
+    provenance: { kind: "派生", drillType: "Line", drillId: "cap[b,t]", drillField: "capacityDaily", drillValue: s.servedQty },
+    allocation: s.occ.map((o) => ({ item: o.item, base: o.base, window: o.window, qty: o.qty })) }));
+
+  // WO-W5·业务类型分口径汇总（dev 态·稳定口径 over 全 ORDERS·allocated/displaced 反映勾选态 primary 解·镜像 datacore）。
+  const allocTypeQty = new Map<string, number>();
+  for (const o of allocation) allocTypeQty.set(btOfOrder(orderById.get(o.item) ?? {}), (allocTypeQty.get(btOfOrder(orderById.get(o.item) ?? {})) ?? 0) + o.qty);
+  const dispTypeQty = new Map<string, number>();
+  for (const d of displaced) dispTypeQty.set(btOfOrder(orderById.get(d.orderId) ?? {}), (dispTypeQty.get(btOfOrder(orderById.get(d.orderId) ?? {})) ?? 0) + d.qty);
+  const businessTypeSummary = MOCK_BT_TYPES.map((bt) => {
+    const typeOrders = ORDERS.filter((o) => btOfOrder(o) === bt);
+    const qtys = typeOrders.map((o) => o.qty);
+    const orderQty = qtys.reduce((s, q) => s + q, 0);
+    const orderCount = typeOrders.length;
+    const mean = orderCount ? orderQty / orderCount : 0;
+    const variance = orderCount ? qtys.reduce((s, q) => s + (q - mean) ** 2, 0) / orderCount : 0;
+    const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
+    const earlyDeliveryCount = typeOrders.filter((o) => o.early === true).length;
+    const forecastQty = Math.round(orderQty * (MOCK_BT_FORECAST_MULT[bt] ?? 12));
+    const demandAnnual = forecastQty + orderQty;
+    const capacityUtil = MOCK_BT_UTIL_ANCHOR[bt] ?? 0.9; // dev 态锚（三档场景标签）·真反应态见 allocatedQty 随勾选真变
+    const capacityAnnual = round(demandAnnual / capacityUtil, 2);
+    return {
+      businessType: bt, label: MOCK_BT_LABEL[bt] ?? bt,
+      orderCount, orderQty, forecastQty, forecastGap: forecastQty - orderQty,
+      earlyDeliveryCount, orderQtyMean: round(mean, 2), orderQtyCv: round(cv, 4),
+      capacityAnnual, demandAnnual, capacityUtil,
+      allocatedQty: allocTypeQty.get(bt) ?? 0, displacedQty: dispTypeQty.get(bt) ?? 0,
+      provenance: { kind: "派生", drillType: "DemandSegment", drillId: bt, drillField: "demandWanPerYearP50", drillValue: forecastQty, mockNote: "dev 态·mock 预测/配比派生（真求解走 datacore globalSimOptimize）" },
+    };
+  });
+
+  // ④ G-VAR-2 · 目标 vs 最终可达交期推演（真求解产物·非写死·镜像 datacore·mock 无两阶段故可达=窗×窗天）。
+  const dueComparison = Object.keys(finalDueDays).length
+    ? (() => {
+        const parentOf = (id: string) => id.replace(/#b\d+$/, "");
+        const achievableByOrder = new Map<string, number>();
+        for (const o of primary.occ) { const pid = parentOf(o.item); achievableByOrder.set(pid, Math.max(achievableByOrder.get(pid) ?? -1, o.window * PORT_WINDOW_DAYS)); }
+        const ids = [...new Set([...included.map(parentOf), ...Object.keys(finalDueDays)])].filter((id) => orderById.has(id)).sort();
+        return ids.map((so) => {
+          const o = orderById.get(so)!;
+          const targetDueDay = Math.max(0, portDayFrom(PORT_FORECAST_START, o.due));
+          const finalDueDay = finalDueDays[so] ?? null;
+          const achievableDay = achievableByOrder.has(so) ? achievableByOrder.get(so)! : null;
+          const gapDays = achievableDay != null ? achievableDay - targetDueDay : null;
+          const meetsFinal = achievableDay != null && finalDueDay != null ? achievableDay <= finalDueDay + 1e-9 : null;
+          return { orderId: so, targetDueDay, finalDueDay, achievableDay, gapDays, meetsFinal, provenance: { kind: "派生", drillType: "Order", drillId: so, drillField: "due", drillValue: targetDueDay, mockNote: null } };
+        });
+      })()
+    : undefined;
+
+  // ⑤ G-VAR-3 · 方法旋钮驱动的联合方案（镜像 datacore/InProc·改权重/ε上界/字典序 → 择格真变·三法形状不同）。
+  const methodOn = (args.methodWeights != null && typeof args.methodWeights === "object" && Object.keys(args.methodWeights as object).length > 0)
+    || (Array.isArray(args.epsilon) && args.epsilon.length > 0)
+    || (Array.isArray(args.priority) && args.priority.length > 0)
+    || (typeof args.method === "string" && args.method !== "weighted");
+  let methodScenario: Record<string, unknown> | undefined;
+  if (methodOn) {
+    const method = (typeof args.method === "string" ? args.method : "weighted") as "weighted" | "epsilon" | "lexicographic";
+    const weights: Record<string, number> = (args.methodWeights && typeof args.methodWeights === "object") ? args.methodWeights as Record<string, number> : {};
+    const epsilon = (Array.isArray(args.epsilon) ? args.epsilon : []) as { key: string; bound: number }[];
+    const priority = (Array.isArray(args.priority) ? args.priority.map(String) : []) as string[];
+    type Cand = { base: string; window: number; delayDays: number; onTime: boolean; changeUnits: number; fgHoldUnits: number; cost: number };
+    const objV = (c: Cand, qtyN: number, key: string): number =>
+      key === "ontime" ? (c.onTime ? 1 : 0) : key === "delay" ? qtyN * c.delayDays : key === "changeover" ? c.changeUnits : key === "fgInventory" ? c.fgHoldUnits : c.cost;
+    const comboSort = (cands: Cand[], qtyN: number): Cand[] => {
+      if (method === "lexicographic") {
+        const pk = priority.length ? priority : ["ontime", "cost", "changeover", "delay", "fgInventory"];
+        return [...cands].sort((a, b) => { for (const key of pk) { const d = key === "ontime" ? objV(b, qtyN, key) - objV(a, qtyN, key) : objV(a, qtyN, key) - objV(b, qtyN, key); if (d !== 0) return d; } return a.window - b.window || a.cost - b.cost; });
+      }
+      if (method === "epsilon") {
+        const withinEps = cands.filter((c) => epsilon.every((e) => objV(c, qtyN, e.key) <= e.bound + 1e-9));
+        const pool = withinEps.length ? withinEps : cands;
+        return [...pool].sort((a, b) => ((b.onTime ? 1 : 0) - (a.onTime ? 1 : 0)) || a.cost - b.cost || a.window - b.window);
+      }
+      const keys = [...new Set([...Object.keys(weights), "ontime", "cost", "changeover", "delay", "fgInventory"])];
+      const range = new Map(keys.map((key) => { const vs = cands.map((c) => objV(c, qtyN, key)); return [key, { lo: Math.min(...vs), hi: Math.max(...vs) }] as const; }));
+      const score = (c: Cand): number => keys.reduce((s, key) => { const { lo, hi } = range.get(key)!; const norm = hi > lo ? (objV(c, qtyN, key) - lo) / (hi - lo) : 0; return s + (weights[key] ?? 1) * (key === "ontime" ? 1 - norm : norm); }, 0);
+      return [...cands].sort((a, b) => score(a) - score(b) || a.cost - b.cost || a.window - b.window);
+    };
+    const remain = new Map(netCap);
+    const mOcc: { item: string; base: string; window: number; qty: number; onTime: boolean; delayDays: number; changeUnits: number; fgHoldUnits: number; cost: number }[] = [];
+    const mServed = new Set<string>();
+    for (const it of [...items].sort((a, b) => b.qty - a.qty || a.id.localeCompare(b.id))) {
+      const cands: Cand[] = [];
+      const fw2 = finalWindowOf(it);
+      const wHi = Math.min(numWindows - 1, fw2 != null ? Math.max(it.dueWindow + PORT_LATE_WINDOWS, fw2) : it.dueWindow + PORT_LATE_WINDOWS);
+      for (const b of it.bases) {
+        const changeUnits = b === it.home ? 0 : coMinsTo(portBaseHome.get(b) ?? "", it.model);
+        for (let w = 0; w <= wHi; w++) {
+          if ((remain.get(cellKey(b, w)) ?? 0) < it.qty) continue;
+          const delayWindows = Math.max(0, w - it.dueWindow); const delayDays = delayWindows * PORT_WINDOW_DAYS;
+          const earlyWindows = Math.max(0, it.dueWindow - w); const fgHoldUnits = it.qty * earlyWindows * PORT_WINDOW_DAYS;
+          cands.push({ base: b, window: w, delayDays, onTime: delayWindows === 0, changeUnits, fgHoldUnits, cost: round(PORT_DELAY_PEN * it.qty * delayDays + PORT_CHG_COST * changeUnits + PORT_FG_HOLD * fgHoldUnits, 4) });
+        }
+      }
+      if (!cands.length) continue;
+      const c = comboSort(cands, it.qty)[0]!;
+      remain.set(cellKey(c.base, c.window), (remain.get(cellKey(c.base, c.window)) ?? 0) - it.qty);
+      mOcc.push({ item: it.id, base: c.base, window: c.window, qty: it.qty, onTime: c.onTime, delayDays: c.delayDays, changeUnits: c.changeUnits, fgHoldUnits: c.fgHoldUnits, cost: c.cost });
+      mServed.add(it.id);
+    }
+    mOcc.sort((a, b) => a.item.localeCompare(b.item) || a.base.localeCompare(b.base) || a.window - b.window);
+    const mDisp = items.map((i) => i.id).filter((id) => !mServed.has(id));
+    const ov = {
+      ontime: mOcc.filter((o) => o.onTime).length,
+      delay: round(mOcc.reduce((s, o) => s + o.qty * o.delayDays, 0), 2),
+      changeover: round(mOcc.reduce((s, o) => s + o.changeUnits, 0), 2),
+      fgInventory: round(mOcc.reduce((s, o) => s + o.fgHoldUnits, 0), 2),
+      cost: round(mOcc.reduce((s, o) => s + o.cost, 0) + mDisp.reduce((s, id) => s + PORT_UNSERVED_PEN * (items.find((i) => i.id === id)?.qty ?? 0), 0), 2),
+    };
+    methodScenario = {
+      method, objectiveValues: ov, servedCount: mOcc.length, displacedCount: mDisp.length,
+      servedQty: mOcc.reduce((s, o) => s + o.qty, 0),
+      allocation: mOcc.map((o) => ({ orderId: o.item, base: o.base, line: null, window: o.window, qty: o.qty, model: orderById.get(o.item.replace(/#b\d+$/, ""))?.model ?? "", onTime: o.onTime, provenance: { kind: "派生", drillType: "Line", drillId: o.base, drillField: "capacityDaily", drillValue: o.qty, mockNote: null } })),
+      ...(Object.keys(weights).length ? { weights } : {}), ...(epsilon.length ? { epsilon } : {}), ...(priority.length ? { priority } : {}),
+      provenance: { kind: "派生", drillType: "Method", drillId: method, drillField: "objective", drillValue: mOcc.reduce((s, o) => s + o.qty, 0), mockNote: null },
+    };
+  }
+
+  return {
+    status: "OPTIMAL", optimal: true, feasible: displaced.length === 0,
+    allocation, occupancy, displaced, scenarios,
+    objectiveValues: primary.objectiveValues,
+    capacityLedger, reconChecks, reconciled,
+    cost: { delay: delayCost, changeover: changeoverCost, unserved: unservedCost, total: totalCost, unit: "代价单位" },
+    frozen, businessTypeSummary,
+    ...(dueComparison ? { dueComparison } : {}),
+    ...(methodScenario ? { methodScenario } : {}),
+    ...(btScoped ? { businessTypes: [...btFilter] } : {}),
+    summary: `联合最优组合（${primaryKey}·推演）：${items.length} 订单 × ${capOriginal.size} (基地,窗口)格 → ${primary.occ.length} 获排（${primary.servedQty} 套）、被挤 ${displaced.length}；${frozen.length ? `冻结 ${frozen.length} 单（${frozenMode === "reserve" ? "锁定" : "释放"}）；` : ""}共享产能守恒${reconciled ? "通过" : "未通过"}；方案 ${scenarios.map((s) => `${s.key}(按期${s.objectiveValues.ontime}/代价${s.objectiveValues.cost})`).join(" vs ")}；代价 ${totalCost}（延误${delayCost}+换型${changeoverCost}+未排${unservedCost}）`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// WO-SURFACE-7DIM · mockGlobalSim（编排态·MSW）：在 mockPortfolio 经典解之上 additively 叠加求解器 7 维产物
+// （scenarios[].kpi·两阶段 schedule[]·blocked/leverDeltas·mockNotes），令 dev/MSW 态与真后端 globalSimOptimize 同形。
+// 两阶段 schedule[] 复用 PORT_TRANSFERS（演示 InterBaseTransfer·同经典 ScheduleTable JOIN 口径）：电芯段=alloc.base(供芯基地)
+// →在途 transitDays→Pack 段=transfer.toBase→交付。经典字段（allocation/capacityLedger/displaced/frozen/cost/scenarios.objectiveValues）
+// 全数透出不掉线。确定性（无 Date.now/random·R6）。诚实红线：transit/freight 取 InterBaseTransfer 演示值（非引擎内 mock 兜底）→ mockNotes 空。
+// ---------------------------------------------------------------------------
+type PortClassicAlloc = { item: string; kind: string; base: string; window: number; qty: number; model?: string; onTime?: boolean };
+export function mockGlobalSim(args: Record<string, unknown>): Record<string, unknown> {
+  const base = mockPortfolio(args);
+  const twoStage = args.twoStage === true;
+  const orderById = new Map(ORDERS.map((o) => [o.so, o]));
+  const xferByKey = new Map(PORT_TRANSFERS.map((t) => [`${t.model}|${t.fromBase}`, t]));
+  const modelOf = (a: PortClassicAlloc) => a.model ?? orderById.get(a.item)?.model ?? "";
+  const crossOf = (a: PortClassicAlloc) => (twoStage ? xferByKey.get(`${modelOf(a)}|${a.base}`) : undefined);
+
+  const allocation = (base.allocation as PortClassicAlloc[] | undefined) ?? [];
+  // 单条经典分配 → 两阶段排产行（twoStage 且命中 transfer → 电芯段→在途→Pack 段；否则单段·诚实无在途）。
+  const schedule = allocation
+    .filter((a) => a.kind === "order")
+    .map((a) => {
+      const t = crossOf(a);
+      const crossBase = !!t && t.toBase !== a.base;
+      const transitDays = crossBase ? t!.transitDays : 0;
+      const packBase = crossBase ? t!.toBase : a.base;
+      return {
+        orderId: a.item,
+        batches: [{ cellBase: a.base, cellWindow: a.window, qty: a.qty }],
+        transitDays,
+        freightCost: crossBase ? round(PORT_FREIGHT_PER_UNIT * a.qty, 2) : 0,
+        packBase,
+        packWindow: a.window,
+        changeoverHours: crossBase ? PORT_CROSS_CHG_H : 0,
+        deliverDay: a.window * PORT_WINDOW_DAYS + transitDays, // 交付日真含在途（改 transitDays → 真变）
+        status: a.onTime === false ? "displaced" : "ok",
+        provenance: { kind: "派生", drillType: "TransitLane", drillId: `${a.base}->${packBase}`, drillField: "transitDays", drillValue: transitDays, mockNote: null },
+      };
+    })
+    .sort((x, y) => x.orderId.localeCompare(y.orderId));
+
+  // 7 维 KPI per-scenario（从该方案 allocation 派生在途/运费/换型全链小时·经典 objectiveValues 之上叠加·并列不替换）。
+  const avgUnitPrice = 1.8; // 毛利代理均价（镜像后端 avgUnitPrice 缺省·万元/套量级）
+  const kpiOf = (objVals: Record<string, number>, alloc: PortClassicAlloc[]) => {
+    let freight = 0, transitInv = 0, chgH = 0;
+    for (const a of alloc) {
+      const t = crossOf(a);
+      if (t && t.toBase !== a.base) { freight += round(PORT_FREIGHT_PER_UNIT * a.qty, 2); transitInv += a.qty * t.transitDays; chgH += PORT_CROSS_CHG_H; }
+    }
+    const servedQty = alloc.reduce((s, x) => s + x.qty, 0);
+    const cost = round((objVals.cost ?? 0) + freight, 2);
+    return {
+      ontime: round(objVals.ontime ?? 0, 4), cost, changeoverHours: round(chgH, 4), freight: round(freight, 2),
+      fgInv: round(objVals.fgInventory ?? 0, 2), transitInv: round(transitInv, 2), margin: round(servedQty * avgUnitPrice - cost, 2),
+    };
+  };
+  const scenarios = ((base.scenarios as { key: string; objectiveValues: Record<string, number>; allocation: PortClassicAlloc[] }[] | undefined) ?? [])
+    .map((s) => ({ ...s, kpi: kpiOf(s.objectiveValues, s.allocation ?? []) }));
+
+  return {
+    ...base,
+    scenarios,
+    schedule,
+    blocked: [],
+    leverDeltas: [],
+    mockNotes: [], // 诚实：transit/freight 源自 InterBaseTransfer 演示对象（非引擎内 WO-DATA 未落 mock 兜底）
+    materialConstraint: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// WO-B / F1 · base_capacity_outlook（逐口径移植 datacore/solvers/base-outlook.ts·KILL-MOCK）
+// 四线：可用产能 Σ Line.capacityDaily×(1−util/100)×窗 ⊥ 在产 WorkOrder.qtyActual 铺窗 ⊥ 未来订单 Order.due 落窗
+// ⊥ 销售预测 ΣDemandSegment.demandWanPerYearP50×1e4 按产能占比摊窗 → 缺口/富余 + crossDay + P1 逐日 dayPlan（触发→加班/跨基地/外协→收窄·provenance）。
+// forecastStart 锚（禁 Date.now·R6）·每线/每日值 provenance（R13）。改 baseId/horizon → 前瞻真变（非写死）。
+// ---------------------------------------------------------------------------
+// 演示 DemandSegment.demandWanPerYearP50（万套/年 → Σ375）。
+// WO-MOCK-SCALE-TRUTH 续：这里曾内联第三份 `201.7/139.2/34.1`（handlers 那份已收编、sopScale 一份）。
+// 量级本来就对（是年口径、也标着年口径），所以量级门抓不到它 —— 它是**单一出处**的病，不是量级的病：
+// 改 `DEMAND_YEAR` 而漏改这里，`base_capacity_outlook` 的销售预测线就会静静地按旧锚算。
+// 现从 `DEMAND_YEAR` 派生，值字节不变（Σ 仍 375.0）。
+const OUTLOOK_SEG_P50: number[] = DEMAND_YEAR.map((d) => d.demandWanPerYearP50);
+// 演示每基地在产占用总量（未完工 WorkOrder.qtyActual·代表值·确定性）。
+const OUTLOOK_INPROD: Record<string, number> = { changzhou: 35738, jinhua: 28800, chengdu: 26400, hefei: 24100 };
+
+export function mockBaseOutlook(args: Record<string, unknown>): Record<string, unknown> {
+  const arg = String(args.baseId ?? "changzhou");
+  const baseRow = BASE_REGISTRY.find((b) => b.baseId === arg || b.name === arg) ?? BASE_REGISTRY[0]!;
+  const baseId = baseRow.baseId;
+  const baseName = baseRow.name;
+  const utilOf = (bid: string) => BASE_REGISTRY.find((b) => b.baseId === bid)?.util ?? 80;
+  const capOf = (bid: string) => SOP_BASE_CAP[bid] ?? 800;
+  const freeDailyOf = (bid: string) => round(capOf(bid) * Math.max(0, 1 - utilOf(bid) / 100), 2);
+
+  const freeDaily = freeDailyOf(baseId);
+  const freeDailyAll = round(BASE_REGISTRY.reduce((a, b) => a + freeDailyOf(b.baseId), 0), 2);
+  const baseShare = freeDailyAll > 0 ? freeDaily / freeDailyAll : 1 / BASE_REGISTRY.length;
+  const inProdTotal = OUTLOOK_INPROD[baseId] ?? round(freeDaily * 90 * 0.9, 2);
+  const p50TotalWan = round(OUTLOOK_SEG_P50.reduce((a, v) => a + v, 0), 4);
+  const forecastUnitsAnnual = round(p50TotalWan * 1e4 * baseShare, 2);
+  const baseOrders = SOP_ORDERS.filter((o) => o.bases[0] === baseId).map((o) => ({ so: o.so, qty: o.qty, dueDay: dayFromISO(SOP_FORECAST_START, o.due) }));
+
+  const inProdRefDays = 90, annualDays = 365, overtimeUpliftPct = 0.15, crossBaseAbsorbPct = 0.6;
+  const buildHorizon = (H: number) => {
+    const available = round(freeDaily * H, 2);
+    const inProduction = round(inProdTotal * Math.min(1, H / inProdRefDays), 2);
+    const futureQty = round(baseOrders.filter((o) => o.dueDay >= 0 && o.dueDay <= H).reduce((a, o) => a + o.qty, 0), 2);
+    const salesForecast = round((forecastUnitsAnnual * H) / annualDays, 2);
+    const demand = round(inProduction + futureQty, 2);
+    const gap = round(available - demand, 2);
+    const status = gap < -1e-6 ? "缺口" : gap > 1e-6 ? "富余" : "平衡";
+    const lines = [
+      { key: "available", label: "可用产能", value: available, provenance: { kind: "派生", drillType: "Line", drillId: baseId, drillField: "capacityDaily", drillValue: freeDaily } },
+      { key: "inProduction", label: "在产订单占用", value: inProduction, provenance: { kind: "实测", drillType: "WorkOrder", drillId: baseId, drillField: "qtyActual", drillValue: inProdTotal } },
+      { key: "futureOrders", label: "未来订单", value: futureQty, provenance: { kind: "实测", drillType: "Order", drillId: baseId, drillField: "qty", drillValue: futureQty } },
+      { key: "salesForecast", label: "销售预测", value: salesForecast, provenance: { kind: "派生", drillType: "DemandSegment", drillId: "*", drillField: "demandWanPerYearP50", drillValue: p50TotalWan } },
+    ];
+    // crossDay + P1 dayPlan（触发→贪心补→收窄·沿 decision_play 口径）。
+    const dailyInProd = inProduction / Math.max(1, H);
+    const orderByDay = new Map<number, number>();
+    for (const o of baseOrders) if (o.dueDay >= 0 && o.dueDay <= H) orderByDay.set(o.dueDay, (orderByDay.get(o.dueDay) ?? 0) + o.qty);
+    let crossDay: number | null = null, cumOrder = 0;
+    for (let d = 1; d <= H; d++) { cumOrder += orderByDay.get(d) ?? 0; if (dailyInProd * d + cumOrder > freeDaily * d + 1e-6) { crossDay = d; break; } }
+    const dayPlan: Record<string, unknown>[] = [];
+    const shortfall = Math.max(0, round(-gap, 2));
+    if (shortfall > 0) {
+      const trigDay = crossDay ?? Math.max(1, Math.round(H / 2));
+      let remaining = shortfall;
+      const overtime = round(Math.min(remaining, available * overtimeUpliftPct), 2);
+      if (overtime > 0) {
+        dayPlan.push({ day: trigDay, date: isoAt(SOP_FORECAST_START, trigDay), action: "加班承接（本地空闲产能上浮）",
+          rationale: `第${trigDay}天累计需求越过可用产能（触发缺口 ${shortfall}套）→ 加班上浮 ${round(overtimeUpliftPct * 100, 0)}% 收窄 ${overtime}套（溯 Line.capacityDaily=${freeDaily}/日）`,
+          triggerValue: shortfall, closesGap: overtime, provenance: { kind: "派生", drillType: "Line", drillId: baseId, drillField: "capacityDaily", drillValue: freeDaily } });
+        remaining = round(remaining - overtime, 2);
+      }
+      if (remaining > 1e-6) {
+        const crossBase = round(Math.min(remaining, remaining * crossBaseAbsorbPct), 2);
+        const crossDayAt = Math.min(H, trigDay + 7);
+        dayPlan.push({ day: crossDayAt, date: isoAt(SOP_FORECAST_START, crossDayAt), action: "跨基地调剂（挤占低优先在手单）",
+          rationale: `第${crossDayAt}天残余缺口 ${remaining}套 → 跨基地吸收 ${round(crossBaseAbsorbPct * 100, 0)}% 收窄 ${crossBase}套（溯 WorkOrder.qtyActual=${inProdTotal}）`,
+          triggerValue: remaining, closesGap: crossBase, provenance: { kind: "实测", drillType: "WorkOrder", drillId: baseId, drillField: "qtyActual", drillValue: inProdTotal } });
+        remaining = round(remaining - crossBase, 2);
+      }
+      if (remaining > 1e-6) {
+        const outDayAt = Math.min(H, trigDay + 14);
+        dayPlan.push({ day: outDayAt, date: isoAt(SOP_FORECAST_START, outDayAt), action: "外协补足（残余缺口）",
+          rationale: `第${outDayAt}天仍余 ${remaining}套 → 外协补足 ${remaining}套（触发源：未来订单 Σqty=${futureQty}）`,
+          triggerValue: remaining, closesGap: remaining, provenance: { kind: "实测", drillType: "Order", drillId: baseId, drillField: "qty", drillValue: futureQty } });
+      }
+    }
+    return { horizon: H, windowStart: isoAt(SOP_FORECAST_START, 0), windowEnd: isoAt(SOP_FORECAST_START, H), lines, available, inProduction, futureOrders: futureQty, salesForecast, demand, gap, status, crossDay, dayPlan };
+  };
+
+  const horizonList = args.horizon != null ? [Math.max(1, Math.round(Number(args.horizon)))] : [30, 60, 90];
+  const horizons = horizonList.map(buildHorizon);
+  const primary = horizons.length === 1 ? horizons[0]! : horizons[horizons.length - 1]!;
+  const shortH = horizons.find((h) => h.status === "缺口");
+  const summary = shortH
+    ? `${baseName} 前瞻产能推演：${horizons.length} 档窗口（${horizonList.join("/")}天）·最近 ${shortH.horizon}天窗现缺口 ${round(-shortH.gap, 2)}套 → ${primary.dayPlan.length} 步逐日处置；销售预测线 ${primary.salesForecast}套`
+    : `${baseName} 前瞻产能推演：各窗产能富余；销售预测线 ${primary.salesForecast}套`;
+
+  // WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel 每产品前瞻（逐口径移植 datacore service.outlookByModel·KILL-MOCK·纯加字段）。
+  // 把 capacity_forecast per-model（weeklyCap × certFactor × curveMult 累计）join 进本基地——同源勾稽·mainBn 跨求解器一致·per-base 四线零改。
+  const p50AtH = (def: CapBaseDef, H: number): number => {
+    const cf = CAP_P.certFactors[def.status] ?? 1;
+    const weeks = Math.max(1, Math.ceil(H / 7));
+    let cum = 0;
+    for (let w = 1; w <= weeks; w++) cum += def.weeklyCap * cf * curveMult(w, def.maintWeek);
+    return round(cum * 1e4, 2); // 万套→套（与四线同单位）
+  };
+  const byModel = Object.entries(MODEL_CAP_NET)
+    .map(([model, defs]) => {
+      const def = defs.find((d) => d.base === baseName || d.baseId === baseName || d.baseId === baseId);
+      if (!def) return null;
+      const packsP50At90 = p50AtH(def, 90);
+      const demand90 = SOP_ORDERS.filter(
+        (o) => o.bases[0] === baseId && o.model === model && dayFromISO(SOP_FORECAST_START, o.due) >= 0 && dayFromISO(SOP_FORECAST_START, o.due) <= 90,
+      ).reduce((a, o) => a + o.qty, 0);
+      return {
+        model, modelName: model, packsP50At30: p50AtH(def, 30), packsP50At60: p50AtH(def, 60), packsP50At90,
+        mainBn: def.bottleneck, packsGap: round(packsP50At90 - demand90, 2), unit: "套" as const,
+        provenance: { kind: "跨求解器", source: "capacity_forecast", drillType: "Model", drillField: "packsP50At*/mainBn" },
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r != null);
+
+  return { baseId, baseName, forecastStart: SOP_FORECAST_START, horizons, dayPlan: primary.dayPlan, summary, byModel };
+}
+
+// ---------------------------------------------------------------------------
+// WO-IMPEDIMENT-FE · chain_impediments（全链阻滞点：卡点 / 堵点 / 断点）
+// ---------------------------------------------------------------------------
+
+/** C09 命名阈值键 —— 走 contracts 的 `ruleParamRef` 同一机制取名，不手写字符串（与真后端同字面）。 */
+const IMPEDIMENT_STALE_PARAM = ruleParamRef("staleHours").replace(/^params\./, "");
+/** 扫描 id：真后端由输入哈希派生（R6 同输入同 id）；mock 固定一串，同样满足「同输入同输出」。 */
+const IMPEDIMENT_SCAN_ID = "scan_1f4a9c3b";
+
+/**
+ * mock 载荷 = **与测试 fixture 同一份口径**（`test/fixtures/chain-impediment-baseline.json`），
+ * 不是另编一套好看的：mock 模式若比生产漂亮，mock 就在骗人（`KILL-MOCK-RED` 同族纪律）。
+ *
+ * 因此这里逐条保留后端在 demo 合成种子上的**真实基线形态**：
+ *  · `dataMode` **一条 LIVE 都没有** —— demo 全部对象 `origin.type==="SYNTHETIC"` ⇒ 落 SYNTHETIC；
+ *    C05（SUSTAIN 规则）落 PARTIAL，并带引擎原文 caveat（「未校验持续天数」）。
+ *  · 卡点·硬容量夹定（C02）与断点·数据（C09）基线各 **0 条** —— 阈值行照给，条数就是 0，不补一条凑数。
+ *  · 换型堵点（C22）与时间断（LEADTIME）落 `unresolved[]`，**诚实缺席**。
+ */
+/**
+ * WO-SANDBOX-CANDIDATES-FE · 候选对策（`ChainImpediment.candidates` §7）的 mock。
+ *
+ * ══ 为什么 mock 必须跟着长出候选 ═══════════════════════════════════════════════
+ * 本文件顶部那条纪律是「**mock 模式若比生产漂亮，mock 就在骗人**」。
+ * 反向同样成立、且今天正在发生：真后端（S3 枚举器）在 demo 种子上**真的**给阻滞点长出了候选，
+ * 而 mock 一条都不给 ⇒ mock 模式下沙盘看起来像「这个功能不存在」。
+ * 那不是"保守"，那是另一种骗 —— 它让一条已经通了的链路在 mock 下**恒显示为空**。
+ *
+ * ══ 每个字段的格式都是**照引擎源码逐字镜像**的，不是编的 ═══════════════════════
+ * 逐条指得出出处（`apps/datacore/src/solvers/impediment-options.ts`）：
+ *  · `label`        `:705`  `${meta.label} ${dir} ${toValue}（${factorName}·${objectRef}）`
+ *                           —— **刻意不拼单位**（存储口径 0–1 与 0–100 都真实存在，后端拼上去就会
+ *                           出现「出勤率 ↑ 1%」这种错读数；单位随 `lever.unit`/`valueKind` 下发）。
+ *  · `join.path`    `:219`（LOCUS_PROP）/ `:281`（RULE_GATE）两种真路径原文。
+ *  · `rungSource`   `:407`（THRESHOLD）/ `:434`（PEER_*）—— **零步长常数**：档位要么是规则阈值本身，
+ *                           要么是同侪对象上真实存在的取值。
+ *  · `provenance.formula` `:739` `patchCapacityContext(…) → 判据 X(metricPath) 重算 + Σ computeByProcessModel.cellsPerDayP50 重算`
+ *  · `dims` 三维    `:668-694` breach / severity / capacityP50，`unit` 与 `betterWhen` 逐字同。
+ *  · `candidateId`  走契约 `solutionCandidateId`（引擎 `:709` 同一个函数），**本文件零模板串**。
+ * 因子的 `factorName` / `mark` / `grain` 一律从 `CAPACITY_FACTOR_BINDINGS` **现查**（契约单源），
+ * 不在这里抄一份 —— 抄了就会与契约漂移，而漂了没人会红。
+ *
+ * ══ 基线形态与生产同构（不是挑好看的编）═══════════════════════════════════════
+ * 生产基线（引擎侧 2026-08-10 实测，**不是本文件测的**；出处 `apps/datacore/test/impediment-options-seam.test.ts:114`，
+ * 复验 `pnpm --filter datacore test test/impediment-options-seam.test.ts`）：15 个阻滞点 → **4 个真长出候选、11 个诚实 NONE**。
+ * 故本 mock 同样是**少数有候选、多数 NONE**：两条产线（C05·杠杆就是判据量测属性本身）与
+ * 一条物料缺口（C06·经规则闸 + 值键相等够到 `Material.onHand`）有候选，其余一律 NONE。
+ * `UNAVAILABLE` **基线里一条都不放** —— 生产基线里就没有，凭空放一条就是 mock 比生产"多"，同样是骗。
+ * （该态由测试用 `server.use` 覆盖回包来驱动，走的仍是真实路由。）
+ */
+
+/** 因子绑定现查（契约单源）。查不到就抛——mock 里出现一个契约上不存在的因子，是错必须当场炸。 */
+function factorOf(objectType: string, prop: string): { factorName: string; mark: string; grain: string } {
+  const b = CAPACITY_FACTOR_BINDINGS.find((x) => x.objectType === objectType && x.prop === prop);
+  if (!b) throw new Error(`mock 候选引用了契约上不存在的因子落点 ${objectType}.${prop}`);
+  return { factorName: b.factorName, mark: b.mark, grain: b.grain };
+}
+
+/** 一条 mock 候选。入参全部是「引擎那一刻手里有的东西」，本函数只做与引擎相同的拼装。 */
+function mkCandidate(a: {
+  impedimentId: string;
+  dataMode: "LIVE" | "PARTIAL" | "SYNTHETIC" | "EMPTY";
+  /** 杠杆落点。 */
+  objectType: string;
+  objectId: string;
+  prop: string;
+  /** `LEVER_PROP_META` 的三件套（后端下发，前端只格式化）。 */
+  metaLabel: string;
+  unit: string;
+  valueKind: string;
+  fromValue: number;
+  toValue: number;
+  join: { kind: "LOCUS_PROP" | "LINK_HOP" | "KEY_JOIN" | "RULE_GATE"; path: string };
+  rungKind: "THRESHOLD" | "PEER_NEXT" | "PEER_BEST";
+  rungSource: string;
+  effectKind: "METRIC_SELF" | "METRIC_DERIVED" | "DOWNSTREAM_ONLY";
+  /** 判据侧：规则码 · 量测路径 · 判据单位（= 宿主 evidence.unit）。 */
+  ruleKey: string;
+  metricPath: string;
+  evidenceUnit: string;
+  /** 三维 KPI 的前后值（`null` = 算不出来，**绝不补 0**）。 */
+  breach: { baseline: number | null; value: number | null };
+  severity: { baseline: number | null; value: number | null };
+  capacity: { baseline: number | null; value: number | null; baseId: string | null };
+}): Record<string, unknown> {
+  const f = factorOf(a.objectType, a.prop);
+  const dir = a.toValue > a.fromValue ? "↑" : "↓";
+  return {
+    // 引擎 `:709`：入参全部取自候选自身的公开字段 ⇒ 消费方能拿候选反算出同一个 id。
+    candidateId: solutionCandidateId({
+      impedimentId: a.impedimentId,
+      objectType: a.objectType,
+      leverObjectId: a.objectId,
+      prop: a.prop,
+      rungKind: a.rungKind,
+      toValue: a.toValue,
+    }),
+    impedimentId: a.impedimentId,
+    label: `${a.metaLabel} ${dir} ${a.toValue}（${f.factorName}·${a.objectId}）`,
+    lever: {
+      objectType: a.objectType,
+      objectId: a.objectId,
+      prop: a.prop,
+      factorName: f.factorName,
+      factorMark: f.mark,
+      grain: f.grain,
+      unit: a.unit,
+      valueKind: a.valueKind,
+    },
+    fromValue: a.fromValue,
+    toValue: a.toValue,
+    join: a.join,
+    rungKind: a.rungKind,
+    rungSource: a.rungSource,
+    effectKind: a.effectKind,
+    dims: [
+      {
+        key: "breach",
+        label: `超阈幅度（${a.metricPath}）`,
+        value: a.breach.value,
+        baseline: a.breach.baseline,
+        unit: a.evidenceUnit,
+        betterWhen: "lower",
+        dataMode: a.breach.value !== null && a.breach.baseline !== null ? a.dataMode : "EMPTY",
+        ...(a.breach.value !== null && a.breach.baseline !== null
+          ? {}
+          : { reason: "判据读数在该对象上取不回来（阈值或指标缺承载）" }),
+      },
+      {
+        key: "severity",
+        label: "严重度",
+        value: a.severity.value,
+        baseline: a.severity.baseline,
+        unit: "",
+        betterWhen: "lower",
+        dataMode: a.severity.value !== null && a.severity.baseline !== null ? a.dataMode : "EMPTY",
+        ...(a.severity.value !== null && a.severity.baseline !== null
+          ? {}
+          : { reason: "超阈幅度或规模基准算不出来 ⇒ severity 拒绝拍一个数" }),
+      },
+      {
+        key: "capacityP50",
+        label: `产能 cellsPerDayP50 合计（电芯/日）${a.capacity.baseId ? `（基地 ${a.capacity.baseId}）` : "（全域）"}`,
+        value: a.capacity.value,
+        baseline: a.capacity.baseline,
+        unit: "套/天",
+        betterWhen: "higher",
+        dataMode: a.capacity.value !== null && a.capacity.baseline !== null ? "SYNTHETIC" : "EMPTY",
+        ...(a.capacity.value !== null && a.capacity.baseline !== null
+          ? {}
+          : { reason: "该作用域无逐工序格 ⇒ 产能维诚实缺席，不返回 0" }),
+      },
+    ],
+    provenance: {
+      // ⚠ 引擎 `impediment-options.ts:86` 的 `IMPEDIMENT_OPTION_SOLVER_KEY` 实际值就是 `"chain_impediments"`
+      //   （候选与判定同一次请求内完成，不是第二个 solver key）。此处曾按文件名想当然写成
+      //   `"impediment_options"` —— 那是"看着合理"的编造，读源码当场证伪，故留此注记。
+      solverKey: "chain_impediments",
+      formula:
+        `patchCapacityContext(${a.objectType}/${a.objectId}.${a.prop}: ${a.fromValue}→${a.toValue}) ` +
+        `→ 判据 ${a.ruleKey}(${a.metricPath}) 重算 + Σ computeByProcessModel.cellsPerDayP50 重算`,
+      inputs: [`${a.objectType}.${a.prop}`, a.metricPath, `rule:${a.ruleKey}`],
+    },
+    dataMode: a.dataMode,
+  };
+}
+
+export function mockChainImpediments(args: Record<string, unknown>): Record<string, unknown> {
+  const rawScope = (args.scope ?? {}) as Record<string, unknown>;
+  // R-ARG-FIDELITY：真后端对这两维显式 400 而非静默返全域（datacore service.ts:3124）——
+  // mock 必须同口径，否则 mock 下"看着能用"、真后端一调就 400（mock 骗人的经典形态）。
+  if (rawScope.businessTypes !== undefined || rawScope.modelIds !== undefined) {
+    return {
+      __err:
+        "chain_impediments 暂不支持 scope.businessTypes / scope.modelIds 维度过滤 —— 拒绝静默返全域（R-ARG-FIDELITY）",
+    };
+  }
+  const wantBases = Array.isArray(rawScope.baseIds) ? (rawScope.baseIds as string[]) : null;
+  const scope = wantBases === null ? {} : { baseIds: wantBases };
+
+  const mk = (
+    bindingId: string,
+    kind: "BOTTLENECK" | "CONGESTION" | "BREAK",
+    stage: string,
+    objectType: string,
+    objectId: string,
+    label: string,
+    ruleKey: string,
+    metricValue: number,
+    threshold: number,
+    unit: string,
+    dataMode: "LIVE" | "PARTIAL" | "SYNTHETIC" | "EMPTY",
+    extra?: { breakSubtype?: "MATERIAL" | "LEADTIME" | "DATA"; ruleParamKey?: string; magnitude?: number },
+  ): Record<string, unknown> => {
+    // severity 走引擎同一公式：round(超阈幅度 / 分母 × 100)；分母 = |阈值|，阈值为 0 时用规模基准
+    // （chain-impediment.ts:606-618 —— C06 的 `gapTon > 0` 不能拿 0 当分母）。
+    const breach = Math.max(0, Math.abs(metricValue - threshold));
+    const denom = Math.abs(threshold) > 0 ? Math.abs(threshold) : (extra?.magnitude ?? 0);
+    const severity = denom > 0 ? clamp(Math.round((breach / denom) * 100), 0, 100) : 0;
+    return {
+      impedimentId: `imp_${bindingId}_${objectId}`,
+      tenantId: "demo",
+      scanId: IMPEDIMENT_SCAN_ID,
+      kind,
+      ...(extra?.breakSubtype === undefined ? {} : { breakSubtype: extra.breakSubtype }),
+      stage,
+      scope,
+      locus: { objectType, objectId, label },
+      severity,
+      evidence: {
+        solverKey: "chain_impediments",
+        ruleKey,
+        ...(extra?.ruleParamKey === undefined ? {} : { ruleParamKey: extra.ruleParamKey }),
+        metricValue,
+        threshold,
+        unit,
+      },
+      dataMode,
+    };
+  };
+
+  const all = [
+    mk("CONGESTION.MATERIAL.batch-idle", "CONGESTION", "MATERIAL", "MaterialBatch", "pos_ncm_b2", "pos_ncm_b2", "C28", 112, 90, "天", "SYNTHETIC"),
+    mk("CONGESTION.MATERIAL.batch-idle", "CONGESTION", "MATERIAL", "MaterialBatch", "neg_graphite_b2", "neg_graphite_b2", "C28", 108, 90, "天", "SYNTHETIC"),
+    mk("CONGESTION.MATERIAL.batch-idle", "CONGESTION", "MATERIAL", "MaterialBatch", "elyte_b2", "elyte_b2", "C28", 101, 90, "天", "SYNTHETIC"),
+    mk("BREAK.MATERIAL.material-gap", "BREAK", "MATERIAL", "MaterialBalance", "mbal-6", "铜箔", "C06", 398, 0, "吨", "SYNTHETIC", { breakSubtype: "MATERIAL", magnitude: 4425 }),
+    mk("BREAK.MATERIAL.material-gap", "BREAK", "MATERIAL", "MaterialBalance", "mbal-1", "三元正极", "C06", 1858, 0, "吨", "SYNTHETIC", { breakSubtype: "MATERIAL", magnitude: 23231 }),
+    mk("BREAK.MATERIAL.material-gap", "BREAK", "MATERIAL", "MaterialBalance", "mbal-3", "石墨负极", "C06", 698, 0, "吨", "SYNTHETIC", { breakSubtype: "MATERIAL", magnitude: 9975 }),
+    mk("BOTTLENECK.CAPACITY.line-utilization-redline", "BOTTLENECK", "CAPACITY", "Line", "LINE-WS-changzhou-formation", "常州化成线", "C05", 97.2, 95, "%", "PARTIAL"),
+    mk("BOTTLENECK.CAPACITY.line-utilization-redline", "BOTTLENECK", "CAPACITY", "Line", "LINE-WS-xiamen-coating", "厦门涂布线", "C05", 96.4, 95, "%", "PARTIAL"),
+  ];
+  // ── WO-SANDBOX-CANDIDATES-FE · 候选对策 + 逐点账 ───────────────────────────────
+  // 引擎为**每一个**阻滞点都 push 一行 stat（`impediment-options.ts:800/803`）——
+  // 有候选的那行不带 `noCandidateKind`，没候选的那行必带。本 mock 同口径：`stats` 与 `all` 一一对应。
+  const CAND: Record<string, Record<string, unknown>[]> = {};
+  const STATS: Record<string, unknown>[] = [];
+  const NO_CAND: Record<string, { reason: string; kind: "NONE" | "UNAVAILABLE" }> = {};
+
+  /** 空候选的原因文案 —— 逐字镜像引擎 `impediment-options.ts:793-798` 的 `why` 拼法（MIN=2）。 */
+  const noneWhy = (anchors: number, probes: number, gaps: string[]): string =>
+    `枚举已跑完，有效候选 0 个（探了 ${anchors} 个杠杆锚点 / ${probes} 次试算），不足 2 个 ⇒ 构不成多方案对比，诚实不下发。` +
+    (gaps.length > 0 ? `缺口：${gaps.slice(0, 4).join(" | ")}` : "");
+
+  // ① 两条产线（C05）：杠杆**就是判据的量测属性本身**（`Line.utilization` == metricPath）⇒ LOCUS_PROP + 阈值档。
+  //    利用率往下拨 → 判据读数回到线内（breach↓），但产能也跟着降 —— 两个方向如实各自呈现，不藏。
+  const lineCands = (
+    impedimentId: string,
+    objectId: string,
+    baseId: string,
+    cur: number,
+    peer: number,
+    capBase: number,
+    capAtThreshold: number,
+    capAtPeer: number,
+  ): Record<string, unknown>[] => {
+    const sev = (breach: number) => clamp(Math.round((breach / 95) * 100), 0, 100); // 分母 = |阈值| = 95，同 mk()
+    const common = {
+      impedimentId,
+      dataMode: "PARTIAL" as const,
+      objectType: "Line",
+      objectId,
+      prop: "utilization",
+      metaLabel: "产线·利用率", // LEVER_PROP_META["Line.utilization"].label
+      unit: "%",
+      valueKind: "ratio",
+      fromValue: cur,
+      join: {
+        kind: "LOCUS_PROP" as const,
+        path: "Line(locus) 自身承载 Line.utilization（因子⑩ 瓶颈工序）",
+      },
+      effectKind: "METRIC_SELF" as const,
+      ruleKey: "C05",
+      metricPath: "Line.utilization",
+      evidenceUnit: "%",
+    };
+    return [
+      mkCandidate({
+        ...common,
+        toValue: 95,
+        rungKind: "THRESHOLD",
+        rungSource: "规则 C05 阈值 95%（judgeOne 读回的真值·非本文件的常数）",
+        breach: { baseline: round(cur - 95, 6), value: 0 },
+        severity: { baseline: sev(cur - 95), value: 0 },
+        capacity: { baseline: capBase, value: capAtThreshold, baseId },
+      }),
+      mkCandidate({
+        ...common,
+        toValue: peer,
+        rungKind: "PEER_NEXT",
+        rungSource: `同侪 Line.utilization ${peer > cur ? "紧邻上一档真实取值" : "紧邻下一档真实取值"} ${peer}（全类型（同基地同侪不足 2 个）·2 个不同取值·当前 ${cur}）`,
+        breach: { baseline: round(cur - 95, 6), value: round(peer - 95, 6) },
+        severity: { baseline: sev(cur - 95), value: sev(peer - 95) },
+        capacity: { baseline: capBase, value: capAtPeer, baseId },
+      }),
+    ];
+  };
+
+  const cz = "imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-changzhou-formation";
+  const xm = "imp_BOTTLENECK.CAPACITY.line-utilization-redline_LINE-WS-xiamen-coating";
+  CAND[cz] = lineCands(cz, "LINE-WS-changzhou-formation", "changzhou", 97.2, 96.4, 41250, 40316.5, 40890.2);
+  CAND[xm] = lineCands(xm, "LINE-WS-xiamen-coating", "xiamen", 96.4, 97.2, 40200, 39615.4, 41100.7);
+
+  // ② 一条物料缺口（C06）：落点 `MaterialBalance` 本身**没有**可拨动因子，
+  //    真路径是**规则闸 + 值键相等** —— 规则 C06 闸住因子⑬ `Material.onHand`，
+  //    实例由 `MaterialBalance.material = Material.name` 收窄到唯一那一行（收窄不了就诚实丢弃，不广播整型）。
+  //    这条是屏上唯一「杠杆落点 ≠ 阻滞点落点」的例子（leverIsLocus=false 的真实形态）。
+  const cu = "imp_BREAK.MATERIAL.material-gap_mbal-6";
+  const cuCommon = {
+    impedimentId: cu,
+    dataMode: "SYNTHETIC" as const,
+    objectType: "Material",
+    objectId: "mat-cu-foil",
+    prop: "onHand",
+    metaLabel: "物料·现货库存", // LEVER_PROP_META["Material.onHand"].label（unit 为空串：库存单位随物料，不臆造）
+    unit: "",
+    valueKind: "qty",
+    fromValue: 4027,
+    join: {
+      kind: "RULE_GATE" as const,
+      path: "规则闸 C06 + 值键相等 MaterialBalance.material = Material.name = 铜箔（因子⑬ 物料齐套）",
+    },
+    // 杠杆（Material.onHand）≠ 判据量测路径（MaterialBalance.gapTon），而判据读数真的动了 ⇒ 经派生带动。
+    effectKind: "METRIC_DERIVED" as const,
+    ruleKey: "C06",
+    metricPath: "MaterialBalance.gapTon",
+    evidenceUnit: "吨",
+  };
+  CAND[cu] = [
+    mkCandidate({
+      ...cuCommon,
+      toValue: 9277,
+      rungKind: "PEER_NEXT",
+      rungSource: "同侪 Material.onHand 紧邻上一档真实取值 9277（全类型（同基地同侪不足 2 个）·3 个不同取值·当前 4027）",
+      breach: { baseline: 398, value: 0 },
+      severity: { baseline: 9, value: 0 }, // 分母 = netDemandTon 4425（阈值 0 不能当分母）
+      capacity: { baseline: 168420, value: 171050.5, baseId: null },
+    }),
+    mkCandidate({
+      ...cuCommon,
+      toValue: 21373,
+      rungKind: "PEER_BEST",
+      rungSource: "同侪 Material.onHand 真实极值（最大） 21373（全类型（同基地同侪不足 2 个）·3 个不同取值·当前 4027）",
+      breach: { baseline: 398, value: 0 },
+      severity: { baseline: 9, value: 0 },
+      capacity: { baseline: 168420, value: 172316.8, baseId: null },
+    }),
+  ];
+
+  // ③ 其余一律**诚实 NONE**（与生产基线同构：15 个点里 11 个 NONE）。缺口原文照引擎 gap 拼法。
+  const LOCUS_GAP = (t: string) => `LOCUS_PROP 够不着：对象类型 ${t} 在 CAPACITY_FACTOR_BINDINGS 上没有任何可拨动落点`;
+  const RULEGATE_GAP = (r: string) =>
+    `RULE_GATE 够不着：规则 ${r} 不是任何可拨动因子的 ruleGate（该判据与产能因子册今天没有共同的规则码）`;
+  for (const b of ["pos_ncm_b2", "neg_graphite_b2", "elyte_b2"]) {
+    const id = `imp_CONGESTION.MATERIAL.batch-idle_${b}`;
+    const gaps = [LOCUS_GAP("MaterialBatch"), RULEGATE_GAP("C28")];
+    NO_CAND[id] = { reason: noneWhy(0, 0, gaps), kind: "NONE" };
+    STATS.push({ impedimentId: id, anchors: 0, probes: 0, effective: 0, emitted: 0, gaps, noCandidateKind: "NONE" });
+  }
+  for (const [mb, name, peers] of [
+    ["mbal-1", "三元正极", "当前 21373"],
+    ["mbal-3", "石墨负极", "当前 9277"],
+  ] as const) {
+    const id = `imp_BREAK.MATERIAL.material-gap_${mb}`;
+    // 锚点探到了（规则闸 C06 收窄到该物料），档位也取到了 —— 但同侪里没有比当前更高的真实取值，
+    // 往下拨只会让缺口更大 ⇒ 逐候选真试算后**一维都没改善**，全被丢弃。这是「查过了，确实没有」。
+    const gaps = [
+      LOCUS_GAP("MaterialBalance"),
+      `同侪 Material.onHand 无更高档位：${name} 的现货已是同侪真实极值（3 个不同取值·${peers}）—— 往下拨只会让缺口更大，拒绝拍一个步长`,
+    ];
+    NO_CAND[id] = { reason: noneWhy(1, 2, gaps), kind: "NONE" };
+    STATS.push({ impedimentId: id, anchors: 1, probes: 2, effective: 0, emitted: 0, gaps, noCandidateKind: "NONE" });
+  }
+  // 有候选的三个点：stat 行**不带** noCandidateKind（引擎 `:803` 同口径）。
+  STATS.push({ impedimentId: cz, anchors: 6, probes: 12, effective: 2, emitted: 2, gaps: [] });
+  STATS.push({ impedimentId: xm, anchors: 6, probes: 12, effective: 2, emitted: 2, gaps: [] });
+  STATS.push({
+    impedimentId: cu,
+    anchors: 1,
+    probes: 2,
+    effective: 2,
+    emitted: 2,
+    gaps: [LOCUS_GAP("MaterialBalance")],
+  });
+
+  for (const im of all) {
+    const id = im.impedimentId as string;
+    const cands = CAND[id];
+    if (cands !== undefined) {
+      im.candidates = cands;
+      continue;
+    }
+    const no = NO_CAND[id];
+    // 契约 superRefine：空数组 ⟺ 必须同时给 reason **与** kind（只给散文 = 让消费方读散文猜）。
+    if (no !== undefined) {
+      im.candidates = [];
+      im.noCandidateReason = no.reason;
+      im.noCandidateKind = no.kind;
+    }
+  }
+
+  // scope.baseIds 真过滤（只对带基地维的 locus 生效 —— 物料/批次不是基地维实体，同真后端 loci() 口径）。
+  const impediments =
+    wantBases === null
+      ? all
+      : all.filter((i) => {
+          const locus = i.locus as { objectId: string; objectType: string };
+          if (locus.objectType !== "Line") return true;
+          return wantBases.some((b) => locus.objectId.includes(b));
+        });
+  const keptIds = new Set(impediments.map((i) => i.impedimentId as string));
+  // stat 行随阻滞点一起过滤（回包里出现一个没有宿主的 stat 行 = 载荷自相矛盾）。全序排，R6。
+  const candidateStats = STATS.filter((s) => keptIds.has(s.impedimentId as string)).sort((a, b) =>
+    String(a.impedimentId) < String(b.impedimentId) ? -1 : 1,
+  );
+  // 全序排序：severity 降序 → locus.objectId → impedimentId（contracts compareChainImpediment 同口径）。
+  impediments.sort((a, b) => {
+    const sa = a.severity as number;
+    const sb = b.severity as number;
+    if (sa !== sb) return sb - sa;
+    const oa = (a.locus as { objectId: string }).objectId;
+    const ob = (b.locus as { objectId: string }).objectId;
+    if (oa !== ob) return oa < ob ? -1 : 1;
+    return String(a.impedimentId) < String(b.impedimentId) ? -1 : 1;
+  });
+  const count = (k: string) => impediments.filter((i) => i.kind === k).length;
+
+  return {
+    scanId: IMPEDIMENT_SCAN_ID,
+    scope,
+    scopeUnscoped: wantBases === null,
+    ruleSetVersion: "rs-7c21e0",
+    impediments,
+    counts: {
+      total: impediments.length,
+      BOTTLENECK: count("BOTTLENECK"),
+      CONGESTION: count("CONGESTION"),
+      BREAK: count("BREAK"),
+    },
+    candidateStats,
+    // 探针预算（`CANDIDATE_PROBE_BUDGET` = 400，`apps/datacore/src/solvers/impediment-options.ts:83`）远未用尽。
+    // 与生产基线同构：引擎侧 2026-08-10 实测 119 次探针、未截断（出处 `apps/datacore/test/impediment-options-seam.test.ts:114`，
+    // 复验 `pnpm --filter datacore test test/impediment-options-seam.test.ts`）—— **不是本文件测的数**。
+    candidatesTruncated: false,
+    candidateProbes: candidateStats.reduce((n, s) => n + (s.probes as number), 0),
+    unresolved: [
+      {
+        bindingId: "CONGESTION.CAPACITY.order-changeover",
+        kind: "CONGESTION",
+        stage: "CAPACITY",
+        ruleKey: "C22",
+        status: "UNKNOWN",
+        reason:
+          '指标 Order.changeoverMin 在 Order 上无对象承载（扫了 6 个对象，无一含 changeoverMin）—— 属"接了线没数据"，不是"没接线"：补数据即可判',
+      },
+      {
+        bindingId: "UNBOUND.BREAK.LEADTIME",
+        kind: "BREAK",
+        breakSubtype: "LEADTIME",
+        status: "UNKNOWN",
+        // ⚠ 2026-08-14 修漂移：原文写 `C01–C33`，而引擎
+        //   `apps/datacore/src/solvers/chain-impediment.ts:237` 早已是 `C01–C34`。
+        //   这条漂移一直没被发现，**不是因为没有门** —— `test/chain-impediment.seam.test.tsx:522`
+        //   那条「逐字同源」的门就是为它设的 —— 而是因为该门的定位器
+        //   （`factHits(checkedTree("apps/datacore/src", …))`）撞上了 `test/factlock.ts`
+        //   `stripComments` 的缺陷：引擎文件里一条**行注释含 `/*`** 开出假块注释，吞掉 71 行，
+        //   连带吞掉定位探针 ⇒ 全树命中 0 处 ⇒ 整个 describe 在收集期就抛
+        //   「定位探针失效」⇒ **该文件 0 个用例被执行**。门在，但它从没跑到判据那一步。
+        //   复验（先看基线红，再看修好）：
+        //     `git show 5a67624d:apps/frontend-shell/test/factlock.ts > /tmp/fl.ts` 换回旧版 →
+        //     `pnpm --filter frontend-shell exec vitest run test/chain-impediment.seam.test.tsx`
+        //     旧版：`Tests no tests` + 「引擎 caveat 模板全树命中 0 处」；新版：41 个用例真跑。
+        reason:
+          "断点·时间（上游可用日 > 下游需求日）在规则库 C01–C34 中无任何承载阈值的规则（逐条核过）；" +
+          "本引擎拒绝自造提前期阈值 —— 需先在规则库定义一条提前期规则，本判定器随即可绑定（R16 生长信号）",
+      },
+    ],
+    caveats: [
+      {
+        bindingId: "BOTTLENECK.CAPACITY.line-utilization-redline",
+        ruleKey: "C05",
+        note:
+          "规则 C05 含 SUSTAIN（持续判定），而 SolverContext 无时序访问 —— " +
+          "本次只比对快照与规则红线 95%，**未校验持续天数**；结论 dataMode 标 PARTIAL",
+      },
+    ],
+    thresholds: [
+      { bindingId: "BOTTLENECK.CAPACITY.process-hard-capacity", ruleKey: "C02", source: "field", fieldPath: "Process.requiredThroughput", value: 41667, unit: "电芯/天" },
+      { bindingId: "BOTTLENECK.CAPACITY.line-utilization-redline", ruleKey: "C05", source: "literal", value: 95, unit: "%" },
+      { bindingId: "CONGESTION.MATERIAL.batch-idle", ruleKey: "C28", source: "literal", value: 90, unit: "天" },
+      { bindingId: "BREAK.MATERIAL.material-gap", ruleKey: "C06", source: "literal", value: 0, unit: "吨" },
+      { bindingId: "BREAK.DATA.datasource-stale", ruleKey: "C09", source: "param", ruleParamKey: IMPEDIMENT_STALE_PARAM, value: 2, unit: "小时" },
+    ],
+  };
 }

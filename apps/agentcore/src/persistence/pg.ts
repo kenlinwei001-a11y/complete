@@ -10,14 +10,27 @@ import type {
   LlmProviderConfig,
   McpServerConfig,
   ModelBinding,
+  PlanBuilderCanvas,
   QueryTask,
   ScenarioPackage,
   SceneEntryConfig,
+  Scenario,
   SkillDefinition,
   WorkflowDefinition,
 } from "@platform/contracts";
 
-import type { CredentialRow, FallbackTraceRow, QueryEventRow, Repos, TaskPatch, ToolCallRow } from "./repos.js";
+import type {
+  CredentialRow,
+  FallbackTraceRow,
+  IntelligenceResourceRow,
+  QueryEventRow,
+  Repos,
+  ResourceQualityScoreRow,
+  ResourceRelationRow,
+  TaskPatch,
+  ToolCallRow,
+} from "./repos.js";
+import type { IntelligenceResource, ResourceQuality } from "@platform/contracts";
 
 const ACTIVE = ["ROUTING", "AWAITING_CLARIFICATION", "EXECUTING_WORKFLOW", "EXECUTING_AGENT"];
 
@@ -150,6 +163,10 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         if (p.answer !== undefined) add("answer", JSON.stringify(p.answer));
         if (p.error !== undefined) add("error", JSON.stringify(p.error));
         if (p.resolvedRefs !== undefined) add("resolved_refs", JSON.stringify(p.resolvedRefs));
+        if (p.multiIntentPlan !== undefined) add("multi_intent_plan", JSON.stringify(p.multiIntentPlan));
+        // WO-SLOT-ENTITY-RESOLVE §6：null → 写 SQL NULL（显式清除待澄清内容）。
+        if (p.pendingClarification !== undefined) add("pending_clarification", p.pendingClarification === null ? null : JSON.stringify(p.pendingClarification));
+        if (p.slotResolutions !== undefined) add("slot_resolutions", JSON.stringify(p.slotResolutions));
         if (p.completedAt !== undefined) add("completed_at", p.completedAt);
         if (sets.length === 0) return;
         await q(`UPDATE query_tasks SET ${sets.join(", ")} WHERE id = $1`, vals);
@@ -249,16 +266,60 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       },
     },
     agentRuns: {
+      // WO-AGENTRUN-ATTRIBUTION（migrations/012）：归属**同时**落 JSONB（真值单一来源，读回即完整记录）
+      // 与四个投影列（供 WHERE/ORDER BY 走索引）。冲突分支同样更新投影列 —— 只更 record 不更列，
+      // 就会出现「JSON 里改了归属、列还留着上一版」这种两份真值打架的经典坑。
+      // WO-AGENTRUN-FANOUT-PERSIST（migrations/013）：冲突键从 `task_id` 改成 `id`。
+      // 旧写法 `ON CONFLICT (task_id) DO UPDATE` 依赖的正是那条 UNIQUE 约束 —— 约束一去，
+      // 这句会直接报 `there is no unique or exclusion constraint matching the ON CONFLICT specification`。
+      // 两处必须同一次改，改一半就是 pg 模式一启动就炸（memory 模式还照绿）。
       async insert(rec: AgentRunRecord) {
         await q(
-          `INSERT INTO agent_runs(id, task_id, record) VALUES ($1,$2,$3)
-           ON CONFLICT (task_id) DO UPDATE SET record = $3`,
-          [rec.id, rec.taskId, JSON.stringify(rec)],
+          `INSERT INTO agent_runs(id, task_id, record, tenant_id, agent_id, agent_key, created_at, origin)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           ON CONFLICT (id) DO UPDATE SET
+             record = $3, tenant_id = $4, agent_id = $5, agent_key = $6, created_at = $7, origin = $8`,
+          [
+            rec.id,
+            rec.taskId,
+            JSON.stringify(rec),
+            rec.tenantId ?? null,
+            rec.agentId ?? null,
+            rec.agentKey ?? null,
+            rec.createdAt ?? null,
+            rec.origin ?? null,
+          ],
         );
       },
+      // 只返顶层那条。`IS DISTINCT FROM` 而不是 `<> 'FANOUT'`：后者对 NULL 求值为 NULL（= 不成立），
+      // 会把**归属上线前的旧记录整批漏掉** —— 那正是本仓最爱犯的「三值逻辑吞数据」坑。
       async getByTask(taskId) {
-        const r = await q(`SELECT record FROM agent_runs WHERE task_id = $1`, [taskId]);
+        const r = await q(
+          `SELECT record FROM agent_runs
+            WHERE task_id = $1 AND origin IS DISTINCT FROM 'FANOUT'
+            ORDER BY created_at NULLS FIRST, id
+            LIMIT 1`,
+          [taskId],
+        );
         return r.rows[0]?.record as AgentRunRecord | undefined;
+      },
+      async listByTask(taskId) {
+        const r = await q(
+          `SELECT record FROM agent_runs WHERE task_id = $1 ORDER BY created_at NULLS FIRST, id`,
+          [taskId],
+        );
+        return r.rows.map((x) => x.record as AgentRunRecord);
+      },
+      async listByAgent(tenantId, agentKey) {
+        // NULL 列不会等于任何值 ⇒ 归属上线前的旧记录天然被排除（与 memory 侧「字段非空」同语义）。
+        // created_at 可能为 NULL（旧记录），故次序回落 id：ULID-ish 前 10 位是毫秒时间戳，仍是时序。
+        const r = await q(
+          `SELECT record FROM agent_runs
+            WHERE tenant_id = $1 AND agent_key = $2
+            ORDER BY created_at DESC NULLS LAST, id DESC`,
+          [tenantId, agentKey],
+        );
+        return r.rows.map((x) => x.record as AgentRunRecord);
       },
     },
     fallbackTraces: {
@@ -357,6 +418,109 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         return r.rows.map((x) => x.config as SceneEntryConfig);
       },
     },
+    scenarios: {
+      async upsert(s: Scenario) {
+        await q(
+          `INSERT INTO scenarios(id, tenant_id, scenario_key, config) VALUES ($1,$2,$3,$4)
+           ON CONFLICT (tenant_id, scenario_key) DO UPDATE SET id = $1, config = $4`,
+          [s.id, s.tenantId, s.scenarioKey, JSON.stringify(s)],
+        );
+      },
+      async remove(id) {
+        await q(`DELETE FROM scenarios WHERE id = $1`, [id]);
+      },
+      async get(id) {
+        const r = await q(`SELECT config FROM scenarios WHERE id = $1`, [id]);
+        return r.rows[0]?.config as Scenario | undefined;
+      },
+      async byKey(tenantId, scenarioKey) {
+        const r = await q(`SELECT config FROM scenarios WHERE tenant_id = $1 AND scenario_key = $2`, [tenantId, scenarioKey]);
+        return r.rows[0]?.config as Scenario | undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT config FROM scenarios WHERE tenant_id = $1`, [tenantId]);
+        return r.rows.map((x) => x.config as Scenario);
+      },
+    },
+    planBuilders: {
+      async insert(c: PlanBuilderCanvas) {
+        await q(
+          `INSERT INTO plan_builder_canvases(id, tenant_id, package_id, key, version, status, name, description, dsl, compiled_plan_id, created_by, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [c.id, c.tenantId, c.packageId, c.key, c.version, c.status, c.name, c.description ?? null, JSON.stringify(c.dsl), c.compiledPlanId ?? null, c.createdBy, c.createdAt, c.updatedAt ?? null],
+        );
+      },
+      async update(c: PlanBuilderCanvas) {
+        await q(
+          `UPDATE plan_builder_canvases SET key=$2, version=$3, status=$4, name=$5, description=$6, dsl=$7, compiled_plan_id=$8, created_by=$9, created_at=$10, updated_at=$11 WHERE id=$1`,
+          [c.id, c.key, c.version, c.status, c.name, c.description ?? null, JSON.stringify(c.dsl), c.compiledPlanId ?? null, c.createdBy, c.createdAt, c.updatedAt ?? null],
+        );
+      },
+      async get(id) {
+        const r = await q(`SELECT id, tenant_id, package_id, key, version, status, name, description, dsl, compiled_plan_id, created_by, created_at, updated_at FROM plan_builder_canvases WHERE id = $1`, [id]);
+        const row = r.rows[0];
+        if (!row) return undefined;
+        return {
+          id: row.id,
+          tenantId: row.tenant_id,
+          packageId: row.package_id,
+          key: row.key,
+          version: row.version,
+          status: row.status,
+          name: row.name,
+          description: row.description ?? undefined,
+          dsl: row.dsl as PlanBuilderCanvas["dsl"],
+          compiledPlanId: row.compiled_plan_id ?? undefined,
+          createdBy: row.created_by,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at ?? undefined,
+        };
+      },
+      async listByPackage(packageId) {
+        const r = await q(
+          `SELECT id, tenant_id, package_id, key, version, status, name, description, dsl, compiled_plan_id, created_by, created_at, updated_at FROM plan_builder_canvases WHERE package_id = $1 ORDER BY created_at DESC`,
+          [packageId],
+        );
+        return r.rows.map((row) => ({
+          id: row.id,
+          tenantId: row.tenant_id,
+          packageId: row.package_id,
+          key: row.key,
+          version: row.version,
+          status: row.status,
+          name: row.name,
+          description: row.description ?? undefined,
+          dsl: row.dsl as PlanBuilderCanvas["dsl"],
+          compiledPlanId: row.compiled_plan_id ?? undefined,
+          createdBy: row.created_by,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at ?? undefined,
+        }));
+      },
+      async latestByKey(tenantId, packageId, key) {
+        const r = await q(
+          `SELECT id, tenant_id, package_id, key, version, status, name, description, dsl, compiled_plan_id, created_by, created_at, updated_at FROM plan_builder_canvases WHERE tenant_id=$1 AND package_id=$2 AND key=$3 ORDER BY version DESC LIMIT 1`,
+          [tenantId, packageId, key],
+        );
+        const row = r.rows[0];
+        if (!row) return undefined;
+        return {
+          id: row.id,
+          tenantId: row.tenant_id,
+          packageId: row.package_id,
+          key: row.key,
+          version: row.version,
+          status: row.status,
+          name: row.name,
+          description: row.description ?? undefined,
+          dsl: row.dsl as PlanBuilderCanvas["dsl"],
+          compiledPlanId: row.compiled_plan_id ?? undefined,
+          createdBy: row.created_by,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at ?? undefined,
+        };
+      },
+    },
     experience: {
       async upsert(c) {
         await q(
@@ -368,6 +532,24 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
       async listByTenant(tenantId) {
         const r = await q(`SELECT doc FROM experience_cases WHERE tenant_id = $1 ORDER BY id`, [tenantId]);
         return r.rows.map((x) => x.doc as import("./repos.js").ExperienceCaseRow);
+      },
+    },
+    growthLedger: {
+      async insert(e) {
+        await q(`INSERT INTO growth_ledger(id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (id) DO NOTHING`, [e.id, e.tenantId, JSON.stringify(e)]);
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT doc FROM growth_ledger WHERE tenant_id = $1 ORDER BY id DESC`, [tenantId]);
+        return r.rows.map((x) => x.doc as import("@platform/contracts").GrowthLedgerEntry);
+      },
+    },
+    growthTickets: {
+      async upsert(t) {
+        await q(`INSERT INTO growth_tickets(id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET doc = $3`, [t.id, t.tenantId, JSON.stringify(t)]);
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT doc FROM growth_tickets WHERE tenant_id = $1 ORDER BY id DESC`, [tenantId]);
+        return r.rows.map((x) => x.doc as import("@platform/contracts").GrowthTicket);
       },
     },
     evalCases: {
@@ -488,6 +670,103 @@ export async function createPgRepos(databaseUrl: string): Promise<Repos> {
         return r.rows[0].task_id as string;
       },
     },
+    domainEvents: {
+      async append(e) {
+        await q(`INSERT INTO domain_events(id, tenant_id, event, payload, created_at) VALUES ($1,$2,$3,$4,$5)`, [e.id, e.tenantId, e.event, JSON.stringify(e.payload), e.createdAt]);
+      },
+      async listSince(tenantId, since) {
+        const r = await q(
+          `SELECT id, tenant_id, event, payload, created_at FROM domain_events WHERE tenant_id = $1 AND ($2::text IS NULL OR created_at >= $2::timestamptz) ORDER BY created_at ASC LIMIT 200`,
+          [tenantId, since ?? null],
+        );
+        return r.rows.map((x) => ({
+          id: x.id as string,
+          tenantId: x.tenant_id as string,
+          event: x.event as string,
+          payload: (x.payload ?? {}) as Record<string, unknown>,
+          createdAt: new Date(x.created_at as string | Date).toISOString(),
+        }));
+      },
+    },
+    // WO-DRIL-P1 · Resource Registry 三表（§6.2·R2 PK 含 tenant_id·R13 派生投影幂等换新）。
+    intelligenceResources: {
+      async replaceForTenant(tenantId, rows) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query(`DELETE FROM intelligence_resources WHERE tenant_id = $1`, [tenantId]);
+          for (const r of rows) {
+            await client.query(
+              `INSERT INTO intelligence_resources(tenant_id, kind, key, source, resource, quality, indexed_at, updated_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+              [r.tenantId, r.kind, r.key, r.source, JSON.stringify(r.resource), r.quality ? JSON.stringify(r.quality) : null, r.indexedAt, r.updatedAt],
+            );
+          }
+          await client.query("COMMIT");
+        } catch (e) {
+          await client.query("ROLLBACK");
+          throw e;
+        } finally {
+          client.release();
+        }
+      },
+      async get(tenantId, kind, key) {
+        const r = await q(`SELECT * FROM intelligence_resources WHERE tenant_id = $1 AND kind = $2 AND key = $3`, [tenantId, kind, key]);
+        return r.rows[0] ? rowToIntelligenceResource(r.rows[0]) : undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT * FROM intelligence_resources WHERE tenant_id = $1 ORDER BY kind, key`, [tenantId]);
+        return r.rows.map(rowToIntelligenceResource);
+      },
+    },
+    resourceRelations: {
+      async replaceForTenant(tenantId, rows) {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query(`DELETE FROM resource_relations WHERE tenant_id = $1`, [tenantId]);
+          for (const r of rows) {
+            await client.query(
+              `INSERT INTO resource_relations(tenant_id, from_kind, from_key, rel_type, to_kind, to_key, meta)
+               VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+              [r.tenantId, r.fromKind, r.fromKey, r.relType, r.toKind, r.toKey, r.meta ? JSON.stringify(r.meta) : null],
+            );
+          }
+          await client.query("COMMIT");
+        } catch (e) {
+          await client.query("ROLLBACK");
+          throw e;
+        } finally {
+          client.release();
+        }
+      },
+      async listFrom(tenantId, fromKind, fromKey) {
+        const r = await q(`SELECT * FROM resource_relations WHERE tenant_id = $1 AND from_kind = $2 AND from_key = $3`, [tenantId, fromKind, fromKey]);
+        return r.rows.map(rowToResourceRelation);
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT * FROM resource_relations WHERE tenant_id = $1`, [tenantId]);
+        return r.rows.map(rowToResourceRelation);
+      },
+    },
+    resourceQualityScores: {
+      async upsert(row) {
+        await q(
+          `INSERT INTO resource_quality_scores(tenant_id, kind, key, success_rate, usage_count, avg_latency_ms, last_probe_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)
+           ON CONFLICT (tenant_id, kind, key) DO UPDATE SET success_rate = $4, usage_count = $5, avg_latency_ms = $6, last_probe_at = $7`,
+          [row.tenantId, row.kind, row.key, row.successRate ?? null, row.usageCount ?? null, row.avgLatencyMs ?? null, row.lastProbeAt ?? null],
+        );
+      },
+      async get(tenantId, kind, key) {
+        const r = await q(`SELECT * FROM resource_quality_scores WHERE tenant_id = $1 AND kind = $2 AND key = $3`, [tenantId, kind, key]);
+        return r.rows[0] ? rowToQualityScore(r.rows[0]) : undefined;
+      },
+      async listByTenant(tenantId) {
+        const r = await q(`SELECT * FROM resource_quality_scores WHERE tenant_id = $1`, [tenantId]);
+        return r.rows.map(rowToQualityScore);
+      },
+    },
     async close() {
       await pool.end();
     },
@@ -551,8 +830,48 @@ function rowToTask(row: Record<string, unknown>): QueryTask {
     answer: (row.answer as QueryTask["answer"]) ?? undefined,
     error: (row.error as QueryTask["error"]) ?? undefined,
     resolvedRefs: (row.resolved_refs as QueryTask["resolvedRefs"]) ?? undefined,
+    multiIntentPlan: (row.multi_intent_plan as QueryTask["multiIntentPlan"]) ?? undefined,
+    pendingClarification: (row.pending_clarification as QueryTask["pendingClarification"]) ?? undefined,
+    slotResolutions: (row.slot_resolutions as QueryTask["slotResolutions"]) ?? undefined,
     createdAt: new Date(row.created_at as string).toISOString(),
     completedAt: row.completed_at ? new Date(row.completed_at as string).toISOString() : undefined,
+  };
+}
+
+function rowToIntelligenceResource(x: Record<string, unknown>): IntelligenceResourceRow {
+  return {
+    tenantId: x.tenant_id as string,
+    kind: x.kind as string,
+    key: x.key as string,
+    source: x.source as string,
+    resource: x.resource as IntelligenceResource,
+    quality: (x.quality ?? undefined) as ResourceQuality | undefined,
+    indexedAt: new Date(x.indexed_at as string | Date).toISOString(),
+    updatedAt: new Date(x.updated_at as string | Date).toISOString(),
+  };
+}
+
+function rowToResourceRelation(x: Record<string, unknown>): ResourceRelationRow {
+  return {
+    tenantId: x.tenant_id as string,
+    fromKind: x.from_kind as string,
+    fromKey: x.from_key as string,
+    relType: x.rel_type as string,
+    toKind: x.to_kind as string,
+    toKey: x.to_key as string,
+    meta: (x.meta ?? undefined) as Record<string, unknown> | undefined,
+  };
+}
+
+function rowToQualityScore(x: Record<string, unknown>): ResourceQualityScoreRow {
+  return {
+    tenantId: x.tenant_id as string,
+    kind: x.kind as string,
+    key: x.key as string,
+    successRate: (x.success_rate ?? undefined) as number | undefined,
+    usageCount: (x.usage_count ?? undefined) as number | undefined,
+    avgLatencyMs: (x.avg_latency_ms ?? undefined) as number | undefined,
+    lastProbeAt: x.last_probe_at ? new Date(x.last_probe_at as string | Date).toISOString() : undefined,
   };
 }
 

@@ -178,6 +178,134 @@ export function foldOldestFrame(messages: LlmAgentMessage[], frames: IterationFr
 }
 
 // ---------------------------------------------------------------------------
+// §7C 默认滚动摘要（确定性·无 LLM·CI 可复现）
+// ---------------------------------------------------------------------------
+
+/**
+ * Phase7C / WO-FIX-REASONING-CONTENT：确定性默认滚动摘要。把已折叠轮次的蒸馏笔记压成有界
+ * 「已查证据」digest——去重、保留全部工具名与首行事实、按时间序，总量有界（自最近向前累加至
+ * maxChars，超出以"更早 N 轮已略"计数省略·近端优先保留）。相比朴素"末 N 条拼接"：①去重复述
+ * ②有界防膨胀 ③结构化为条目便于模型回忆。生产可注入 LLM 摘要器覆盖（llmRollingSummarizer）。
+ * 纯函数、无时钟/随机 → 同输入字节级一致。
+ */
+export function defaultRollingSummary(notes: string[], maxChars = 1600): string {
+  const seen = new Set<string>();
+  const uniq: string[] = [];
+  for (const n of notes) {
+    const key = n.trim();
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      uniq.push(key);
+    }
+  }
+  const kept: string[] = [];
+  let used = 0;
+  for (let idx = uniq.length - 1; idx >= 0; idx--) {
+    const line = `- ${uniq[idx]}`;
+    if (kept.length > 0 && used + line.length > maxChars) {
+      kept.unshift(`（更早 ${idx + 1} 轮已略）`);
+      break;
+    }
+    kept.unshift(line);
+    used += line.length + 1;
+  }
+  return kept.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// WO-SEAM-COMPACT-REDLINE · 摘要出口防线（G2）+ 降级声明（G3）
+// ---------------------------------------------------------------------------
+
+/**
+ * 摘要降级标记。**加在摘要串首行**，由 `loop.ts effectiveSystem` 识别并换上异常态措辞。
+ *
+ * 为什么用「串内标记」而不是改摘要器签名成 `{text, degraded}`：
+ * `opts.summarizer` 的契约是 `(notes) => string | Promise<string>`，改形状会波及
+ * `defaultRollingSummary` 的直接调用方与既有断言「provider 不可用 → 与 defaultRollingSummary 字节一致」。
+ * 标记只在**本函数判定失效时**追加（即调用点），确定性兜底函数本身一个字节不动。
+ */
+export const SUMMARY_DEGRADED_MARK = "[[SUMMARY_DEGRADED]]";
+
+/** 摘要是否被判失效（供 loop.ts 与测试共用同一判据，勿各写各的）。 */
+export function isDegradedSummary(summary: string): boolean {
+  return summary.startsWith(SUMMARY_DEGRADED_MARK);
+}
+
+/** 剥掉降级标记，取正文。 */
+export function stripDegradedMark(summary: string): string {
+  return isDegradedSummary(summary) ? summary.slice(SUMMARY_DEGRADED_MARK.length).replace(/^\n/, "") : summary;
+}
+
+/**
+ * 从折叠笔记里抽「锚点」：数字（含小数/百分比）与标识符样 token（工具名/对象键）。
+ * 摘要指令明确要求「保留已验证事实 + 工具名 + 关键数字」，故一份真摘要**几乎不可能一个锚点都不含**。
+ */
+function summaryAnchors(notes: string[]): string[] {
+  const text = notes.join("\n");
+  const nums = text.match(/\d+(?:\.\d+)?%?/g) ?? [];
+  const idents = text.match(/[A-Za-z][A-Za-z0-9_]{3,}/g) ?? [];
+  return [...new Set([...nums, ...idents])];
+}
+
+/**
+ * G2 出口防线：判摘要「像不像一份摘要」。
+ *
+ * ⛔ **刻意不用长度阈值**——长垃圾照样过，正是本防线要挡的形态。判据是**内容锚定**：
+ * 笔记里若存在锚点，摘要必须至少命中一个；一个都不命中 = 与输入无关 = 失效。
+ * 笔记本身无锚点时不做判定（无可锚定，不能凭空判死）。
+ *
+ * 病灶来源（外部实证）：某宿主的摘要提示词严格要求结构化模板，模型回了 8 个不相干的字，
+ * 宿主**原样注入并永久丢弃原文**——它的出口校验也只有「非空」。我们此前一模一样。
+ */
+export function summaryLooksAnchored(summary: string, notes: string[]): boolean {
+  const anchors = summaryAnchors(notes);
+  if (anchors.length === 0) return true; // 无可锚定 → 不判死
+  return anchors.some((a) => summary.includes(a));
+}
+
+/**
+ * WO-CONTEXT-COMPRESSION · 真 LLM 滚动摘要器（补齐上下文压缩最后一块——`defaultRollingSummary` 是确定性拼接，
+ * 此处接上没实现的 LLM 摘要器 hook）。返回 `(notes) => Promise<string>` 供 runAgentLoop `opts.summarizer` 注入。
+ *
+ * - `providerAvailable=true`：调 `llm.compose` 把已折叠轮次笔记压成 ≤1600 字前情摘要；
+ *   **compose 抛错 / 返回空 / 未通过锚定校验 → 兜底 `defaultRollingSummary(notes)` 并置降级标记**
+ *   （fail-open·绝不阻断 agent 循环）。
+ * - `providerAvailable=false`：直接 `defaultRollingSummary(notes)`，**不置标记**——
+ *   那是设计上的确定性路径（CI 可复现·零额外 LLM 调用），不是异常态。两者必须可区分。
+ *
+ * 数字红线不放松：摘要「仅供回忆·业务事实仍以工具结果为准」（与 loop.ts effectiveSystem 注入措辞一致）。
+ */
+export function makeLlmRollingSummarizer(
+  llm: Pick<LlmClient, "compose">,
+  model: string,
+  tenantId: string | undefined,
+  providerAvailable: boolean,
+): (notes: string[]) => Promise<string> {
+  const degraded = (notes: string[]): string => `${SUMMARY_DEGRADED_MARK}\n${defaultRollingSummary(notes)}`;
+  return async (notes: string[]): Promise<string> => {
+    if (!providerAvailable) return defaultRollingSummary(notes);
+    try {
+      const out = await llm.compose({
+        model,
+        instruction:
+          "把以下已折叠轮次的调查笔记压成 ≤1600 字中文『前情摘要』：只保留已验证事实 + 工具名 + 关键数字，去重，不编造。" +
+          "该摘要仅供回忆·业务事实仍以工具结果为准。",
+        inputs: notes.map((note, i) => ({ round: i + 1, note })),
+        ...(tenantId ? { tenantId } : {}),
+      });
+      const s = (out ?? "").trim();
+      if (s.length === 0) return degraded(notes);
+      // G2：非空但与输入无关的文本，不许冒充摘要。
+      if (!summaryLooksAnchored(s, notes)) return degraded(notes);
+      return s;
+    } catch {
+      // fail-open：compose 抛错（无 provider / key 失效 / 网关异常）→ 退确定性兜底，不阻断循环。
+      return degraded(notes);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // §1.1/§1.3 预算器（阈值 + 测量节奏 + contextOps 留痕）
 // ---------------------------------------------------------------------------
 

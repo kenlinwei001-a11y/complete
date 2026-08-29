@@ -38,11 +38,17 @@ describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", ()
     expect(screen.getByTestId("batch-ok-0")).toHaveTextContent("✓ 按期");
     expect(screen.getByTestId("batch-ok-1")).toHaveTextContent("✗ 缺");
 
-    // ④ 逐级聚合：合计行展示 P50 与 P90 = P50 × healthFactor（0.93）
+    // ④ 逐级聚合：合计行第一层留 P50 / P90 两个结论数（规范 §1：数字不上浮层）；
+    //    「P90 = P50 × healthFactor」是公式（R-UI-3）→ 降 `?` 浮层（C' 同判据：浮层默认不可见，hover 才出）。
     await user.click(screen.getByTestId("pm-step-chip-4"));
     const total = await screen.findByTestId("pm-step4-total");
-    expect(total).toHaveTextContent("P90 = P50 ×");
-    expect(total).toHaveTextContent("0.93");
+    expect(total).toHaveTextContent("P50");
+    expect(total).toHaveTextContent("P90");
+    expect(screen.queryByTestId("info-body-pm-step4-p90")).toBeNull();
+    await user.hover(screen.getByTestId("info-pm-step4-p90"));
+    const p90body = await screen.findByTestId("info-body-pm-step4-p90");
+    expect(p90body).toHaveTextContent("P90 = P50 ×");
+    expect(p90body).toHaveTextContent("0.93");
 
     // DAG 随步骤点亮：step4 →「本步」在聚合求解器；瓶颈求解器（st=5）未点亮（透明度 0.28）
     expect(screen.getByTestId("pm-dag-current-agg")).toBeInTheDocument();
@@ -61,6 +67,105 @@ describe("F18 · 项目推演（project-sim）分批 + 六步 stepper + DAG", ()
     const modal = await screen.findByTestId("bn-matrix-modal");
     await waitFor(() => expect(within(modal).getByTestId("bn-matrix-table")).toBeInTheDocument());
     expect(within(modal).getByTestId("bn-cell-常州-瓶颈工序")).toHaveTextContent("◉");
+  });
+
+  it("DAG 节点点穿（#3 · R13）：点聚合求解器 → 抽屉看判定/推导公式/输入/关联规则", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+
+    // 默认整单首次重算完成 → 常显 DAG
+    await screen.findByTestId("pm-dag-panel");
+
+    // 点聚合求解器节点 → 详情抽屉（六要素：来源/推导/输入/规则）
+    await user.click(screen.getByTestId("pm-dag-node-agg"));
+    const drawer = await screen.findByTestId("dag-node-drawer");
+    expect(within(drawer).getByTestId("dag-node-verdict")).toHaveTextContent("P50");
+    expect(within(drawer).getByTestId("dag-node-src")).toHaveTextContent("capacity_forecast");
+    expect(drawer).toHaveTextContent("P50 = Σ可产基地"); // 推导公式
+    expect(within(drawer).getByTestId("dag-node-rule")).toHaveTextContent("C01"); // 关联规则两跳锚点
+
+    // 关掉，再点结论节点 → 缺口/健康度推导可溯
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("dag-node-drawer")).not.toBeInTheDocument());
+    await user.click(screen.getByTestId("pm-dag-node-fc"));
+    const concl = await screen.findByTestId("dag-node-drawer");
+    expect(concl).toHaveTextContent("健康度");
+    expect(within(concl).getByTestId("dag-node-rule")).toHaveTextContent("C09");
+  });
+
+  it("DAG 直接操纵（#3）：缩放按钮改 viewBox 缩放级别，复位还原", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+    const svg = await screen.findByTestId("pm-dag");
+    expect(svg).toHaveAttribute("data-zoom", "1.00");
+    // 放大 → zoom 上升、viewBox 收窄
+    const vb0 = svg.getAttribute("viewBox")!;
+    await user.click(screen.getByTestId("pm-dag-zoom-in"));
+    expect(Number(screen.getByTestId("pm-dag").getAttribute("data-zoom"))).toBeGreaterThan(1);
+    expect(screen.getByTestId("pm-dag").getAttribute("viewBox")).not.toBe(vb0);
+    // 复位 → 还原
+    await user.click(screen.getByTestId("pm-dag-zoom-reset"));
+    expect(screen.getByTestId("pm-dag")).toHaveAttribute("data-zoom", "1.00");
+    expect(screen.getByTestId("pm-dag").getAttribute("viewBox")).toBe(vb0);
+  });
+
+  it("②可产网络收敛（PRD-IND-model 缺口①）：N/总数 注解 + 不可产基地✗带派生原因（chem×业态）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+
+    // 默认 4680-NCM（动力 · NCM）首算完成 → 跳到②可产基地步
+    await screen.findByTestId("pm-stepper");
+    await user.click(screen.getByTestId("pm-step-chip-2"));
+    await screen.findByTestId("pm-step2");
+
+    // 收敛注解：仅在 3/13 个基地可产（producibleCount/totalBases，前端零写死）
+    const conv = screen.getByTestId("pm-step2-converge");
+    expect(conv).toHaveTextContent("3");
+    expect(conv).toHaveTextContent("13");
+
+    // 不可产基地：储能基地业态不匹配（江门·储能 vs 动力型号）
+    expect(screen.getByTestId("nonproducible-江门")).toHaveTextContent("不匹配");
+    // 动力基地但 NCM 产线未铺/认证（厦门·动力）
+    expect(screen.getByTestId("nonproducible-厦门")).toHaveTextContent("产线未");
+  });
+
+  it("CSV 上传分批交货表（PRD-IND-model §4.3）：解析 → 切分批 → 导入提示", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+    await screen.findByTestId("pm-stepper");
+
+    // 切分批 → 见上传/模板工具条
+    await user.click(screen.getByTestId("mode-batch"));
+    const input = screen.getByTestId("batch-upload");
+    const csv = "数量(万套),交付日期,交付地址\n15,2026/07/10,华东 · 上海\n25,2026-08-07,华南 · 深圳\n30,2026-09-04,海外 · 欧洲（海运）\n";
+    const file = new File(["﻿" + csv], "批次.csv", { type: "text/csv" });
+    await user.upload(input, file);
+
+    // 三行导入 + 提示；地址模糊匹配（上海/深圳/欧洲）、日期归一（2026/07/10→2026-07-10）
+    await waitFor(() => expect(screen.getByTestId("batch-upload-msg")).toHaveTextContent("已导入 3 批"));
+    expect(screen.getByTestId("batch-editor")).toBeInTheDocument();
+  });
+
+  it("⑥对症对策表（PRD-IND-model §4.4-⑥）：缺口时显示方案库 acts 三行（i18n 零写死）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/v/project-sim");
+    await screen.findByTestId("pm-stepper");
+
+    // 放大需求制造缺口（单批 200 万套 · 6 周 → P90 远不足）
+    fireEvent.change(screen.getByLabelText("需求(万套)"), { target: { value: "200" } });
+    await user.click(screen.getByTestId("pm-step-chip-6"));
+    await screen.findByTestId("pm-step6");
+
+    // 缺口结论 → 对症对策表三行
+    const acts = await screen.findByTestId("pm-acts-table");
+    expect(within(acts).getByTestId("pm-act-加 2 夜班")).toHaveTextContent("+12%");
+    expect(within(acts).getByTestId("pm-act-扩化成通道")).toHaveTextContent("直击主瓶颈");
+    expect(within(acts).getByTestId("pm-act-部分外协")).toHaveTextContent("C08");
   });
 
   it("型号选择器/订单点击写入 selectedObjects（查询 Dock 上下文）", async () => {

@@ -93,10 +93,10 @@ describe("剩余视图增量 · 校准（§7.21）与数据健康度（§7.22）
 
     // 校准后的参数真实生效：爬坡基线 0.9 进入 capacity_forecast 周曲线
     const out = (await invokeSolver(t, "capacity_forecast", { modelId: "4680-NCM", qty: 40, weeks: 1 })).json() as {
-      data: { perBaseRows: { weeklyCap: number; certFactor: number; maintWeek: number }[]; p50: number };
+      data: { perBaseRows: { weeklyCap: number; certFactor: number; maintWeek: number }[]; capWanP50: number };
     };
     const indep = out.data.perBaseRows.reduce((a, r) => a + r.weeklyCap * r.certFactor * 0.9, 0);
-    expect(out.data.p50).toBe(round(indep, 4));
+    expect(out.data.capWanP50).toBe(round(indep, 4));
 
     // 回滚：同样走 Action；EXECUTED 后还原旧值，状态 ROLLED_BACK
     const rb = await t.app.inject({
@@ -153,7 +153,7 @@ describe("剩余视图增量 · 校准（§7.21）与数据健康度（§7.22）
     expect(iot2.degradeImpact!.affectedSolvers.length).toBeGreaterThan(0);
     expect(iot2.degradeImpact!.affectedSolvers).toContain("capacity_forecast");
 
-    // 同一事实源：capacity_forecast 输出同时降级（P90 0.93→0.90 + 降级说明文案同源）
+    // 同一事实源：capacity_forecast 输出同时降级（capWanP90 0.93→0.90 + 降级说明文案同源）
     const out = (await invokeSolver(t, "capacity_forecast", { modelId: "4680-NCM", qty: 40, weeks: 6 })).json() as {
       data: { healthFactor: number; degradeNote?: string };
     };

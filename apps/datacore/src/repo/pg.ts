@@ -26,13 +26,226 @@ import type {
   TsPointStore,
   UserStore,
   VectorHit,
+  SimRepo,
   VectorIndex,
 } from "./repo.js";
 import { cosineSimilarity } from "./memory.js";
+import type { Perturbation, PropagationRule, SimCheckpoint, SimSession, SimSessionListItem, SimTickState } from "@platform/contracts";
 
 const { Pool } = pg;
 
-class PgStore<T extends { id: string; tenantId: string }> implements Store<T> {
+/**
+ * 规模摘要的 SQL 口径（WO-SIM-SESSIONS-PROJECTION · **唯一实现**：写时算与回填现算共用这两串）。
+ *
+ * `$3` = 正在入库的那个 `base_snapshot`。两处各抄一份 SQL 就是第二套真相源：
+ * 改了写侧忘了改回填侧，同一条会话会因为「是新写的还是回填的」而得到两个不同的格数，
+ * 而这两个数长得一模一样、谁也不会发现（本仓「金丝雀必须与主逻辑共用同一份实现」的同一条理由）。
+ *
+ * ⚠ `jsonb_typeof(v)='object'` 那道守卫不是洁癖：`base_snapshot` 契约上是
+ * `Record<string, Record<string, number>>`，但库里是 jsonb，历史行里塞过标量就会让
+ * `jsonb_object_keys(v)` **整条查询报错** —— 一个诚实位不值得赌整个列表端点 500。
+ * 非对象值按 0 格计（它本来也不是格子）。
+ *
+ * 口径与契约纯函数 `simSessionScaleOf`（memory 侧走的那份）逐值相同 ——
+ * 两侧机制天生不同（SQL vs JS），能同源的只有"口径"，故两边都在注释里点名对方。
+ */
+const scaleObjectsSql = (v: string): string => `(SELECT count(*) FROM jsonb_object_keys(${v}))`;
+const scaleCellsSql = (v: string): string =>
+  `(SELECT coalesce(sum(CASE WHEN jsonb_typeof(e.value)='object'
+                             THEN (SELECT count(*) FROM jsonb_object_keys(e.value)) ELSE 0 END), 0)
+      FROM jsonb_each(${v}) AS e)`;
+const SCALE_OBJECTS_SQL = scaleObjectsSql("$3::jsonb");
+const SCALE_CELLS_SQL = scaleCellsSql("$3::jsonb");
+
+/**
+ * 推演沙盘 pg 仓储（migration026·三具名列表 + 传导规则 doc-jsonb；R2 跨租户 null）。
+ *
+ * ⚠ `sim_session` 是**逐列**表不是 doc-jsonb 表 ⇒ 契约上加一个字段，这里**不会自动跟上**：
+ *   忘了改 = memory 模式（测试默认）全绿、pg 模式（生产）该字段恒为默认值，功能等于不存在。
+ *   这正是 R9「四处同改」要防的那一手。导出本类是为了让
+ *   `apps/datacore/test/edge-active-counterfactual.test.ts` 拿**真实现**跑一遍 put→get 往返，
+ *   把上面这句话钉成断言而不是注释里的声称（同 `PgStore` 被 `upsert-type-roundtrip.test.ts` 导出的理由）。
+ */
+export class PgSimRepo implements SimRepo {
+  constructor(private pool: pg.Pool) {}
+  private rowToSession(r: Record<string, unknown>): SimSession {
+    return {
+      id: r.id as string, tenantId: r.tenant_id as string,
+      baseSnapshot: r.base_snapshot as SimSession["baseSnapshot"], scope: r.scope as SimSession["scope"],
+      status: r.status as SimSession["status"], curTick: r.cur_tick as number,
+      parentCheckpointId: (r.parent_checkpoint_id as string | null) ?? null,
+      // WO-ACTIVE-EDGE-UX：034 加的列。旧行读回 `null`/`undefined` ⇒ `[]`（additive 可回退 RL9）。
+      disabledRuleKeys: (r.disabled_rule_keys as string[] | null) ?? [],
+      // WO-SIM-DRILL-P12：039 加的列。旧行读回 null/undefined ⇒ 1（additive 可回退 RL9）。
+      tickDays: Number(r.tick_days ?? 1) || 1,
+      createdAt: (r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at)),
+    };
+  }
+  async createSession(s: SimSession) { await this.putSession(s); }
+  /**
+   * 落一条会话。`base_objects` / `base_cells`（规模摘要·migration 038）**在同一条语句里、
+   * 从同一个 `$3` 参数**用 SQL 算出来 —— 不许在应用层算好了当第 10 个参数传进来：
+   * 那样传的数与真正入库的那个 jsonb 就是**两个可以不一致的东西**，而且没有任何东西会发现。
+   * 同语句同值 ⇒ 结构上不可能漂（理由全文见 `migrations/038_sim_session_scale.sql`）。
+   */
+  async putSession(s: SimSession) {
+    await this.pool.query(
+      `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at, tick_days,
+                                base_objects, base_cells)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${SCALE_OBJECTS_SQL},${SCALE_CELLS_SQL})
+       ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7, disabled_rule_keys=$8, tick_days=$10,
+                                      base_objects=${SCALE_OBJECTS_SQL}, base_cells=${SCALE_CELLS_SQL}`,
+      [s.id, s.tenantId, JSON.stringify(s.baseSnapshot), JSON.stringify(s.scope), s.status, s.curTick, s.parentCheckpointId,
+        JSON.stringify(s.disabledRuleKeys ?? []), s.createdAt, s.tickDays ?? 1],
+    );
+  }
+  async getSession(tenantId: string, id: string) {
+    const r = await this.pool.query(`SELECT * FROM sim_session WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+    return r.rows[0] ? this.rowToSession(r.rows[0]) : null;
+  }
+  async listSessions(tenantId: string) {
+    const r = await this.pool.query(`SELECT * FROM sim_session WHERE tenant_id=$1 ORDER BY created_at`, [tenantId]);
+    return r.rows.map((row) => this.rowToSession(row));
+  }
+  /**
+   * 列会话投影（WO-SIM-SESSIONS-PROJECTION）。**`base_snapshot` 不进 SELECT 列表** ——
+   * 这是本方法与 `listSessions` 唯一但要命的区别：35 条生产量级会话下，那一列走网线是 285MB。
+   *
+   * 规模摘要读**预存列**（migration 038 · 写时算），于是这条查询碰不到 jsonb：
+   * 同一个库逐项实测 —— 只取投影列 0.11ms / 读时现算对象数 230ms / 再现算格数 3,150ms。
+   * 「回包已经不大了」不度量「读得快」：不预存，回包 9KB 而耗时仍是 3.2 秒。
+   *
+   * ⚠ `base_objects = -1` = **存量行（migration 之前写的），还没算过**，不是"是 0"。
+   *   这种行**回落到现算并就地回填**：升级后第一次列表把存量补齐，此后恒走快路。
+   *   绝不把 `-1` 当 0 回出去 —— 那是拿一个假数字冒充诚实位，比不给更坏。
+   */
+  async listSessionSummaries(tenantId: string): Promise<SimSessionListItem[]> {
+    const r = await this.pool.query(
+      `SELECT id, tenant_id, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at, tick_days,
+              base_objects, base_cells
+         FROM sim_session WHERE tenant_id=$1 ORDER BY created_at`,
+      [tenantId],
+    );
+    const stale = r.rows.filter((row) => Number(row.base_objects) < 0).map((row) => row.id as string);
+    // 回填：只碰"还没算过"的那几行（存量），且**共用写侧那两串 SQL**（不许各抄一份）。
+    // 一次 UPDATE 全部搞定，不逐行往返 —— 存量库上这条只跑一次。
+    const backfilled = new Map<string, { objects: number; cells: number }>();
+    if (stale.length > 0) {
+      const compute = `${scaleObjectsSql("base_snapshot")} AS base_objects, ${scaleCellsSql("base_snapshot")} AS base_cells`;
+      const where = `WHERE tenant_id=$1 AND id = ANY($2::text[])`;
+      let b: pg.QueryResult;
+      try {
+        b = await this.pool.query(
+          `UPDATE sim_session SET base_objects=${scaleObjectsSql("base_snapshot")}, base_cells=${scaleCellsSql("base_snapshot")}
+            ${where} RETURNING id, base_objects, base_cells`,
+          [tenantId, stale],
+        );
+      } catch {
+        // 写不进去（只读副本 / 权限 / 并发冲突）也**必须给出真数**：`-1` 是"还没算过"的记号，
+        // 把它当成 0 回出去就是拿一个假数字冒充诚实位 —— 一个 11,348 对象的世界会显示成空世界。
+        // 退化成纯读的现算（慢，但诚实），下次再试着回填。
+        b = await this.pool.query(`SELECT id, ${compute} FROM sim_session ${where}`, [tenantId, stale]);
+      }
+      for (const row of b.rows) backfilled.set(row.id as string, { objects: Number(row.base_objects), cells: Number(row.base_cells) });
+    }
+    return r.rows.map((row) => ({
+      id: row.id as string, tenantId: row.tenant_id as string, scope: row.scope as SimSession["scope"],
+      status: row.status as SimSession["status"], curTick: row.cur_tick as number,
+      parentCheckpointId: (row.parent_checkpoint_id as string | null) ?? null,
+      disabledRuleKeys: (row.disabled_rule_keys as string[] | null) ?? [],
+      tickDays: Number(row.tick_days ?? 1) || 1,
+      createdAt: (row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)),
+      // pg 的 count()/sum() 回 bigint ⇒ node-pg 给的是**字符串**。不 Number() 会让契约里的
+      // `z.number()` 当场失败，而且 JSON 里会渲染成 `"408528"` —— 一个带引号的格数最难查。
+      baseSnapshotScale: backfilled.get(row.id as string) ?? { objects: Number(row.base_objects), cells: Number(row.base_cells) },
+    }));
+  }
+  async putTickState(ts: SimTickState) {
+    await this.pool.query(
+      `INSERT INTO sim_tick_state (session_id, tenant_id, tick, state, pending, trace) VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (session_id, tick) DO UPDATE SET state=$4, pending=$5, trace=$6`,
+      [ts.sessionId, ts.tenantId, ts.tick, JSON.stringify(ts.state), JSON.stringify(ts.pending), ts.trace ? JSON.stringify(ts.trace) : null],
+    );
+  }
+  private rowToTick(r: Record<string, unknown>): SimTickState {
+    return {
+      sessionId: r.session_id as string, tenantId: r.tenant_id as string, tick: r.tick as number,
+      state: r.state as SimTickState["state"], pending: (r.pending as SimTickState["pending"]) ?? [],
+      trace: (r.trace as SimTickState["trace"]) ?? null,
+    };
+  }
+  async getTickState(tenantId: string, sessionId: string, tick: number) {
+    const r = await this.pool.query(`SELECT * FROM sim_tick_state WHERE tenant_id=$1 AND session_id=$2 AND tick=$3`, [tenantId, sessionId, tick]);
+    return r.rows[0] ? this.rowToTick(r.rows[0]) : null;
+  }
+  async listTickStates(tenantId: string, sessionId: string) {
+    const r = await this.pool.query(`SELECT * FROM sim_tick_state WHERE tenant_id=$1 AND session_id=$2 ORDER BY tick`, [tenantId, sessionId]);
+    return r.rows.map((row) => this.rowToTick(row));
+  }
+  async deleteTicksAfter(tenantId: string, sessionId: string, tick: number) {
+    await this.pool.query(`DELETE FROM sim_tick_state WHERE tenant_id=$1 AND session_id=$2 AND tick>$3`, [tenantId, sessionId, tick]);
+  }
+  async createCheckpoint(cp: SimCheckpoint) {
+    await this.pool.query(`INSERT INTO sim_checkpoint (id, session_id, tenant_id, tick, label, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING`,
+      [cp.id, cp.sessionId, cp.tenantId, cp.tick, cp.label, cp.createdAt]);
+  }
+  private rowToCp(r: Record<string, unknown>): SimCheckpoint {
+    return { id: r.id as string, sessionId: r.session_id as string, tenantId: r.tenant_id as string, tick: r.tick as number, label: r.label as string,
+      createdAt: (r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at)) };
+  }
+  async getCheckpoint(tenantId: string, id: string) {
+    const r = await this.pool.query(`SELECT * FROM sim_checkpoint WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+    return r.rows[0] ? this.rowToCp(r.rows[0]) : null;
+  }
+  async listCheckpoints(tenantId: string, sessionId: string) {
+    const r = await this.pool.query(`SELECT * FROM sim_checkpoint WHERE tenant_id=$1 AND session_id=$2 ORDER BY tick`, [tenantId, sessionId]);
+    return r.rows.map((row) => this.rowToCp(row));
+  }
+  async putPropagationRule(rule: PropagationRule) {
+    await this.pool.query(`INSERT INTO sim_propagation_rule (id, tenant_id, doc) VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET doc=$3, updated_at=now()`,
+      [rule.id, rule.tenantId, JSON.stringify(rule)]);
+  }
+  async listPropagationRules(tenantId: string, publishedOnly = true) {
+    const r = await this.pool.query(`SELECT doc FROM sim_propagation_rule WHERE tenant_id=$1 ORDER BY doc->>'key'`, [tenantId]);
+    const all = r.rows.map((row) => row.doc as PropagationRule);
+    return publishedOnly ? all.filter((x) => x.status === "PUBLISHED") : all;
+  }
+  // ── 扰动一等公民（WO-P0 · migrations/028_perturbations.sql · R9 与 memory.ts MemSimRepo 语义须逐条对齐）──
+  async createPerturbation(p: Perturbation) {
+    await this.pool.query(
+      `INSERT INTO sim_perturbation (id, tenant_id, session_id, doc) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO UPDATE SET doc=$4`,
+      [p.id, p.tenantId, p.sessionId, JSON.stringify(p)],
+    );
+  }
+  async getPerturbation(tenantId: string, id: string) {
+    const r = await this.pool.query(`SELECT doc FROM sim_perturbation WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+    return r.rows[0] ? (r.rows[0].doc as Perturbation) : null;
+  }
+  async listPerturbations(tenantId: string, sessionId: string) {
+    // 与 memory 侧**语义同构**：startTick 升序 → 建单先后（memory 用插入序号，这里用 created_at）。
+    // `created_at` 是 TIMESTAMPTZ（微秒精度，各 INSERT 各自事务）⇒ 顺序建的两条不会撞。
+    // **末位 id 只是兜底的全序保证**，不许把它提到 created_at 前面：id 是 randomBytes，
+    // 跨运行不稳定 —— 那正是本单实测踩到的坑（见 repo.ts listPerturbations 注释①）。
+    // `(doc->>'startTick')::int` 走 028 建的 sim_perturbation_start 索引。
+    const r = await this.pool.query(
+      `SELECT doc FROM sim_perturbation WHERE tenant_id=$1 AND session_id=$2 ORDER BY (doc->>'startTick')::int, created_at, id`,
+      [tenantId, sessionId],
+    );
+    return r.rows.map((row) => row.doc as Perturbation);
+  }
+  async deletePerturbation(tenantId: string, sessionId: string, id: string) {
+    const r = await this.pool.query(`DELETE FROM sim_perturbation WHERE tenant_id=$1 AND session_id=$2 AND id=$3`, [tenantId, sessionId, id]);
+    return (r.rowCount ?? 0) > 0;
+  }
+}
+
+/**
+ * 通用 doc-blob 仓储：整个实体 `JSON.stringify` 进 `doc` JSONB 列，读出即 `r.rows[0].doc`。
+ * **不逐字段列举** —— 契约加字段无需改本类，也因此本类不可能成为"吞字段"的那一层
+ * （WO-D6 的两个吞点都在它之上：service 的手写 `def` 白名单与 route 的 zod schema）。
+ * 导出供 `test/upsert-type-roundtrip.test.ts` 拿真实现跑 put→get，把上面这句话钉成断言而非注释里的声称。
+ */
+export class PgStore<T extends { id: string; tenantId: string }> implements Store<T> {
   constructor(
     protected pool: pg.Pool,
     protected table: string,
@@ -61,6 +274,64 @@ class PgStore<T extends { id: string; tenantId: string }> implements Store<T> {
        ON CONFLICT (id) DO UPDATE SET ${updates.join(", ")}`,
       vals,
     );
+  }
+
+  /**
+   * 批量 upsert：**一次 INSERT 打多行**，把 N 次 round-trip 压成 ⌈N/CHUNK⌉ 次。
+   *
+   * 三个必须处理的坑（每一个都会让"看起来对"的实现在生产上炸）：
+   *
+   * ① **同批内 id 重复 → postgres 直接报错**，不是静默取其一：
+   *    `ON CONFLICT DO UPDATE command cannot affect row a second time`。
+   *    所以必须先按 id 去重、保留**最后一条**（这才等价于依次 put 的后写覆盖语义）。
+   *    去重要按 (tenant_id, id)? —— 不：本表主键就是 id 单列（见各 migration 的
+   *    `ON CONFLICT (id)`），跨租户共用 id 本就会互相覆盖，这是既有语义，此处不改。
+   *
+   * ② **绑定参数上限 65535**（pg 线协议 int16）。超了报 `bind message has N parameter
+   *    formats but M parameters`。列数随 extraColumns 变（3~5 列），故 chunk 必须**按实际
+   *    列数算**而不是写死行数 —— 写死 1000 行在 5 列表上是 5000 个参数（安全），
+   *    但这类"当时够用"的常数正是以后加一列就悄悄炸的东西。
+   *
+   * ③ **extraColumns 逐行求值**：同一张表不同行的 extras 键集合理论上可不同
+   *    （extraColumns 是任意函数）。列集合必须对整批取**并集**并对缺失键补 null，
+   *    否则少数行会把整批的列布局带偏。实际实现里各 extraColumns 都返回定长键集，
+   *    但依赖"实际上都一样"就是在赌一个没人守的约定。
+   */
+  async putMany(items: T[]): Promise<void> {
+    if (items.length === 0) return; // 空批 no-op：绝不发 `VALUES ()` 这种语法错
+
+    // ① 去重：后写覆盖（Map 保留最后一次 set）
+    const byId = new Map<string, T>();
+    for (const it of items) byId.set(it.id, it);
+    const rows = [...byId.values()];
+
+    // ③ 列集合取并集（顺序稳定：先出现的键在前，保证 SQL 文本对同一批可复现）
+    const extrasPerRow = rows.map((r) => this.extraColumns(r));
+    const extraKeys: string[] = [];
+    for (const e of extrasPerRow) for (const k of Object.keys(e)) if (!extraKeys.includes(k)) extraKeys.push(k);
+    const cols = ["id", "tenant_id", "doc", ...extraKeys];
+    const updates = ["doc = EXCLUDED.doc", "updated_at = now()"].concat(
+      extraKeys.map((k) => `${k} = EXCLUDED.${k}`),
+    );
+
+    // ② chunk 按列数反算，留出余量（65535 是硬上限，取 60000 免得贴边）
+    const chunkRows = Math.max(1, Math.floor(60000 / cols.length));
+
+    for (let off = 0; off < rows.length; off += chunkRows) {
+      const slice = rows.slice(off, off + chunkRows);
+      const vals: unknown[] = [];
+      const tuples = slice.map((item, i) => {
+        const extras = extrasPerRow[off + i]!;
+        vals.push(item.id, item.tenantId, JSON.stringify(item), ...extraKeys.map((k) => extras[k] ?? null));
+        const base = i * cols.length;
+        return `(${cols.map((_, c) => `$${base + c + 1}`).join(",")})`;
+      });
+      await this.pool.query(
+        `INSERT INTO ${this.table} (${cols.join(",")}) VALUES ${tuples.join(",")}
+         ON CONFLICT (id) DO UPDATE SET ${updates.join(", ")}`,
+        vals,
+      );
+    }
   }
 
   async remove(tenantId: string, id: string): Promise<void> {
@@ -276,18 +547,41 @@ class PgScheduledJobStore extends PgStore<ScheduledJobRecord> implements Schedul
 class PgTsPointStore implements TsPointStore {
   constructor(private pool: pg.Pool) {}
 
+  /**
+   * 批量 upsert：一次 INSERT 打多行。原实现是 BEGIN → 逐行 INSERT → COMMIT，
+   * 事务只有一个但 **round-trip 有 N 个** —— demo 播种 164970 个点全走这条路。
+   * 「包在事务里」省的是 fsync，不是网络往返；慢的是后者（详见 repo.ts Store.putMany 注释）。
+   *
+   * 冲突键是 (tenant_id, series_id, entity_id, ts) 四元组（非单列 id），故同批去重
+   * 必须按这个四元组，否则同样触发 `ON CONFLICT DO UPDATE command cannot affect
+   * row a second time`。tenantId 对整批是常量，键里仍带上以防将来跨租户批量写。
+   */
   async upsert(tenantId: string, points: TsPointRecord[]): Promise<number> {
     if (points.length === 0) return 0;
+    // 同批去重（后写覆盖，等价于原来的逐行顺序 upsert）
+    const byKey = new Map<string, TsPointRecord>();
+    for (const p of points) byKey.set(`${tenantId}\u0000${p.seriesId}\u0000${p.entityId}\u0000${p.ts}`, p);
+    const rows = [...byKey.values()];
+
+    const COLS = 8;
+    const chunkRows = Math.floor(60000 / COLS); // 绑定参数上限 65535，留余量
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      for (const p of points) {
+      for (let off = 0; off < rows.length; off += chunkRows) {
+        const slice = rows.slice(off, off + chunkRows);
+        const vals: unknown[] = [];
+        const tuples = slice.map((p, i) => {
+          vals.push(tenantId, p.seriesId, p.entityId, p.ts, JSON.stringify(p.values), p.ingestedAt, p.tick ?? 0, p.origin ?? null);
+          const base = i * COLS;
+          return `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8})`;
+        });
         await client.query(
           `INSERT INTO ts_points (tenant_id, series_id, entity_id, ts, vals, ingested_at, tick, origin)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           VALUES ${tuples.join(",")}
            ON CONFLICT (tenant_id, series_id, entity_id, ts)
            DO UPDATE SET vals = EXCLUDED.vals, ingested_at = EXCLUDED.ingested_at, tick = EXCLUDED.tick, origin = EXCLUDED.origin`,
-          [tenantId, p.seriesId, p.entityId, p.ts, JSON.stringify(p.values), p.ingestedAt, p.tick ?? 0, p.origin ?? null],
+          vals,
         );
       }
       await client.query("COMMIT");
@@ -297,6 +591,10 @@ class PgTsPointStore implements TsPointStore {
     } finally {
       client.release();
     }
+    // ⚠ 返回 points.length 而非 rows.length（去重后）—— **刻意与 memory 实现保持一致**。
+    // MemTsPointStore.upsert 逐点计数、不去重，返回的就是入参长度。此处若改成"实际落盘行数"，
+    // pg 与 memory 在有重复输入时会返回不同的数 ⇒ 违反「仓储双实现行为等价」。
+    // 哪个口径更"对"是另一个问题，要改必须两边一起改（且过一遍调用方）；本次只治启动时长。
     return points.length;
   }
 
@@ -532,6 +830,7 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     ontologyLinks: new PgStore(pool, "ontology_links"),
     ontologyDrafts: new PgStore(pool, "ontology_drafts"),
     ontologyVersions: new PgStore(pool, "ontology_versions"),
+    objectInterfaces: new PgStore(pool, "object_interfaces"), // WO-69 P3 · 对象接口（R9 四方同步）
     objects: new PgObjectStore(pool),
     links: new PgLinkStore(pool),
     derivationRuns: new PgStore(pool, "derivation_runs"),
@@ -540,12 +839,13 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     derivationSpecs: new PgStore(pool, "derivation_specs"),
     derivationValueRuns: new PgStore(pool, "derivation_value_runs"),
     sliceSpecs: new PgStore(pool, "slice_specs"),
-    ontologyWorkflows: new PgStore(pool, "ontology_workflows"),
     domains: new PgStore(pool, "domains"),
     elementRefs: new PgStore(pool, "element_refs"),
     publishRequests: new PgStore(pool, "publish_requests"),
     actionDrafts: new PgStore(pool, "action_drafts"),
     actionTypes: new PgStore(pool, "action_types"),
+    decisions: new PgStore(pool, "decisions"), // WO-C1 · L2 决策内核台账
+
     industryTemplates: new PgStore(pool, "industry_templates"),
     syntheticJobs: new PgStore(pool, "synthetic_jobs"),
     outboxEvents: new PgStore(pool, "outbox_events"),
@@ -554,7 +854,11 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     replayProgress: new PgStore(pool, "replay_progress"),
     extractSegments: new PgStore(pool, "extract_segments"),
     quarantineRows: new PgStore(pool, "quarantine_rows"),
+    mergeCandidates: new PgStore(pool, "merge_candidates"),
+    objectMerges: new PgStore(pool, "object_merges"),
     notifications: new PgStore(pool, "notifications"),
+    ontologyWorkflows: new PgStore(pool, "ontology_workflows"),
+    buildPipelines: new PgStore(pool, "build_pipelines"),
     validationRuns: new PgStore(pool, "validation_runs"),
     webhooks: new PgStore(pool, "webhooks"),
     sopVersions: new PgStore(pool, "sop_versions"),
@@ -574,6 +878,12 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     clockTickReports: new PgStore(pool, "clock_tick_reports"),
     forecastSnapshots: new PgStore(pool, "forecast_snapshots"),
     featureConfigs: new PgStore(pool, "feature_configs"),
+    importJobs: new PgStore(pool, "import_jobs"),
+    promptTemplates: new PgStore(pool, "prompt_templates"),
+    llmBudgets: new PgStore(pool, "llm_budgets"),
+    factoryCalendars: new PgStore(pool, "factory_calendars"),
+    dataCategorySettings: new PgStore(pool, "data_category_settings"),
+    writebackEchoes: new PgStore(pool, "writeback_echoes"),
     featureAudit: new PgStore(pool, "feature_audit"),
     scenarioPackages: new PgStore(pool, "scenario_packages"),
     dynamicFeatures: new PgStore(pool, "dynamic_features"),
@@ -588,6 +898,46 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     livedInStates: new PgStore(pool, "lived_in_states"),
     opsSchedules: new PgStore(pool, "ops_schedules"),
     opsTickReports: new PgStore(pool, "ops_tick_reports"),
+    dataBuilderAgents: new PgStore(pool, "data_builder_agents"),
+    buildPlans: new PgStore(pool, "build_plans"),
+    buildJobs: new PgStore(pool, "build_jobs"),
+    solverArtifacts: new PgStore(pool, "solver_artifacts"),
+    reconcileCandidates: new PgStore(pool, "reconcile_candidates"),
+    storyBuildRuns: new PgStore(pool, "story_build_runs"),
+    buildWorkflowRuns: new PgStore(pool, "build_workflow_runs"),
+    metaAccessPolicies: new PgStore(pool, "meta_access_policies"),
+    // WO-Q0 · 业务流程层（R9 三处同改之三 · migrations/029_process_definitions.sql）。
+    // 表名与 migration 里的 CREATE TABLE 逐字一致 —— 写错这里不会编译报错，只会在 pg 模式下运行时炸，
+    // 而测试默认走 memory ⇒ 单测全绿也证明不了这一行对（本仓「生产实参与测试实参交集为空」的老形态）。
+    // 故 process-layer.test.ts 另有一条断言：把 migration 文件里的表名抽出来，与此处的字面量比对。
+    processDomains: new PgStore(pool, "process_domains"),
+    processDefinitions: new PgStore(pool, "process_definitions"),
+    // WO-STEP-TEMPLATE-LAYER · 流程步骤模板层（R9 三处同改之三 · migrations/035_process_step_templates.sql）。
+    // 同上：表名写错**不会编译报错**，只在 pg 模式运行时炸 —— 故 process-step-template.seam.test.ts
+    // 复用同一条「migration 抽表名 ↔ 本文件字面量」对账断言（带金丝雀，抽不到就报工具坏了）。
+    processStepTemplates: new PgStore(pool, "process_step_templates"),
+    // WO-ENTERPRISE-STATE · 企业状态快照（R9 四处同改之四 · migrations/030_enterprise_states.sql）。
+    // 同上：表名写错只在 pg 模式下运行时炸，memory 默认的单测证明不了这一行 ——
+    // 故 enterprise-state.seam.test.ts 里另有一条断言，把 030 migration 的 CREATE TABLE 名字抽出来与本行比对。
+    enterpriseStates: new PgStore(pool, "enterprise_states"),
+    // WO-ADOPT-SCHEME-CARRIER · 方案采纳台账（R9 四处同改之四 · migrations/037_scheme_adoptions.sql）。
+    // 同上：表名写错不会编译报错，只在 pg 模式运行时炸 —— 故 action-adopt-scheme.seam.test.ts
+    // 复用同一条「migration 抽表名 ↔ 本文件字面量」对账断言（带金丝雀，抽不到就报工具坏了）。
+    schemeAdoptions: new PgStore(pool, "scheme_adoptions"),
+    // WO-ORG-WORLD · 组织世界（R9 三处同改之三 · migrations/032_org_world.sql）。
+    // 同 processDefinitions 的理由：表名写错**不会编译报错**，只在 pg 模式运行时炸，而测试默认走 memory
+    // ⇒ 单测全绿证明不了这四行对。故 org-world.test.ts 有一条断言把该 migration 里的 CREATE TABLE
+    // 表名抽出来与此处字面量比对（含金丝雀，抽不到 4 张就报「工具坏了」而不是「表名对」）。
+    orgPrincipals: new PgStore(pool, "org_principals"),
+    orgAuthorities: new PgStore(pool, "org_authorities"),
+    orgApprovalLimits: new PgStore(pool, "org_approval_limits"),
+    orgDelegations: new PgStore(pool, "org_delegations"),
+    // WO-PROCESS-INSTANCE · 流程运行时层（R9 三处同改之三 · migrations/033_process_instances.sql）。
+    // 同上：表名写错不编译报错、memory 单测也测不到 —— process-instance.test.ts 复用同一条
+    // 「migration 抽表名 ↔ 本文件字面量」对账断言把这两行也纳入。
+    processInstances: new PgStore(pool, "process_instances"),
+    processTasks: new PgStore(pool, "process_tasks"),
+    sim: new PgSimRepo(pool),
     async ping() {
       await pool.query("SELECT 1");
     },

@@ -1,6 +1,9 @@
 import type { AuthCtx } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { FeatureService } from "./features.js";
+import type { OntologySignature, ResourceDescriptor, SolverCategory } from "@platform/contracts";
+import { solverCategoryOf } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维（消费方在本文件：检索筛选 + 资源投影）
+import { serializableSignature } from "./solvers/ontology-signature.js";
 
 /**
  * 能力发现与路由增量 §1：资源目录（discover 的供给侧）。
@@ -16,8 +19,46 @@ export interface CatalogItem {
   description: string;
   argHints: Record<string, string>;
   domain?: string;
+  /** 该资源能回答的问句样例（供近似问句检索/选型）。 */
+  answersQuestions?: string[];
+  /** 检索标签。 */
+  tags?: string[];
   /** 关联 feature key（未开通 → 不出现在目录）。 */
   featureKey?: string;
+  /**
+   * WO-L7A 决策问题类目（求解器专有·10 类枚举）。**派生投影（R13）不是新真值源**——
+   * 由 `solvers/taxonomy.ts` 的归档表按 key 查出后挂上，目录数组本身不手写这一字段
+   * （手写就会和 `SOLVER_CATEGORY_MAP` 两处漂移）。切片等非求解器条目无此字段。
+   */
+  category?: SolverCategory;
+  /**
+   * WO-69 P2 · Function 本体签名（读/写本体面）。**不在此手填**——由 `attachOntologySignature()`
+   * 从唯一注册表 `SOLVER_ONTOLOGY_SIGNATURES` 派生附加（R13 派生投影·非新真值源）。
+   * 下游 DRIL `inputSpec/outputSpec` 再由它派生，故全链只有**一份**读取面清单。
+   */
+  ontologySignature?: OntologySignature;
+}
+
+/**
+ * WO-L7A · 给求解器目录条目挂上决策问题类目（派生投影·纯映射·R6 确定性·保序）。
+ * 单一出处 = `SOLVER_CATEGORY_MAP`；未登记的 key 不挂字段（诚实缺省，不塞"其他"兜底）。
+ */
+function withSolverCategory(items: CatalogItem[]): CatalogItem[] {
+  return items.map((it) => {
+    const category = solverCategoryOf(it.key);
+    return category ? { ...it, category } : it;
+  });
+}
+
+/**
+ * 目录项 → 附加 Function 本体签名（唯一出处 = `SOLVER_ONTOLOGY_SIGNATURES`）。
+ * 未签名的求解器**不附字段**（诚实空缺：读取面未知，而不是"读取面为空"——后者会被下游读成"什么都不读"）。
+ */
+export function attachOntologySignature(items: CatalogItem[]): CatalogItem[] {
+  return items.map((it) => {
+    const sig = serializableSignature(it.key);
+    return sig ? { ...it, ontologySignature: sig } : it;
+  });
 }
 
 /** 内置切片目录（与 ontology.resolveSlice 的内置分支一一对应）。 */
@@ -40,53 +81,286 @@ export const BUILTIN_SLICE_CATALOG: CatalogItem[] = [
 
 /** 求解器目录（与 SOLVER_KEYS 对齐；描述供 LLM 选型）。 */
 export const SOLVER_CATALOG: CatalogItem[] = [
-  { key: "capacity_rollup", name: "产能上卷", description: "把工序/产线产能沿本体金字塔上卷到基地/型号维度。", argHints: { modelId: "型号 ID" }, domain: "plan" },
-  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数" }, domain: "plan" },
-  { key: "bottleneck_matrix", name: "瓶颈矩阵", description: "按基地×工序输出瓶颈强度矩阵，定位约束工序。", argHints: { baseId: "基地 ID" }, domain: "plan" },
-  { key: "risk_timeline", name: "风险时间线", description: "按日推演风险时序（越线点/根因链）。", argHints: { baseId: "基地 ID", days: "天数" }, domain: "plan" },
-  { key: "affected_orders", name: "受影响订单", description: "给定扰动，返回受影响订单清单（problems/rootChain）。", argHints: { baseId: "基地 ID" }, domain: "plan" },
-  { key: "plan_audit", name: "计划体检", description: "对给定计划版本做体检评分（达成率/风险敞口）。", argHints: { versionId: "计划版本 ID" }, domain: "plan", featureKey: "view.plan-audit" },
-  { key: "plan_generate", name: "计划生成", description: "按目标与约束生成候选排产计划。", argHints: { objective: "目标口径" }, domain: "plan" },
-  { key: "capex_scenario", name: "年度情景测算", description: "三情景产能投资测算（供给曲线/缺口窗口/项目级 IRR/util24/C23 判定）。", argHints: { scenario: "情景 key" }, domain: "plan" },
+  { key: "capacity_rollup", name: "产能上卷", description: "把工序/产线产能沿本体金字塔上卷到基地/型号维度。", argHints: { modelId: "型号 ID" }, domain: "plan", answersQuestions: ["各基地产能怎么上卷汇总", "型号维度的总产能是多少", "工序产能怎么卷到基地"], tags: ["产能上卷", "capacity", "rollup"] },
+  // WO-SILENT-WRONG-ANSWER-3 症①：`base` 此前**根本没被声明**（求解器 capacity.ts:424 一直在读它），
+  //   照目录只能猜出 modelId/qty/weeks ⇒ 想限定基地的调用方按兄弟求解器惯例传 `baseId` → 静默答全网。
+  //   声明补齐 + `arg-aliases.ts` 收 `baseId/baseName` 别名，两半齐才治得住（门：check-arg-drop-seam.mjs 断言③）。
+  { key: "capacity_forecast", name: "产能推演", description: "给定型号/数量/周数，推演产能满足度（P50/P90、缺口率、主瓶颈）。", argHints: { modelId: "型号 ID", qty: "需求量", weeks: "周数", base: "基地（可选·不给=全网合计 scope:ALL；也认 baseId/baseName）" }, domain: "plan", answersQuestions: ["产能满足度怎么推演", "P50/P90 产能缺口率多少", "未来几周产能够不够", "主瓶颈在哪道工序"], tags: ["产能推演", "满足度", "capacity", "forecast"] },
+  { key: "bottleneck_matrix", name: "瓶颈矩阵", description: "按基地×工序输出瓶颈强度矩阵，定位约束工序。", argHints: { baseId: "基地 ID" }, domain: "plan", answersQuestions: ["瓶颈在哪个基地哪道工序", "约束工序是哪些", "瓶颈强度矩阵怎么看"], tags: ["瓶颈", "bottleneck", "约束工序"] },
+  // WO-SILENT-WRONG-ANSWER-3 症②：此前声明 `{baseId, days}`，而求解器读的是 `{base, factor, horizon}`
+  //   —— **两个声明键一个都不被读**。照目录传 `{baseId:"zaozhuang"}` 返回 8 张卡且枣庄不在其中、
+  //   与不传参数逐字节相同；传 `{days:7}` 窗口仍是 30 天。声明改成真实读取键，历史键由 arg-aliases.ts 兜。
+  { key: "risk_timeline", name: "风险时间线", description: "按日推演风险时序（越线点/根因链）。", argHints: { base: "基地（可选·不给=全网 scope:ALL；也认 baseId/baseName）", factor: "风险因素（可选·不给=该基地全因素）", horizon: "推演天数（默认 30；也认 days）" }, domain: "plan", answersQuestions: ["风险什么时候越线", "风险时序怎么逐日推演", "越线点在哪天"], tags: ["风险", "时间线", "risk", "timeline"] },
+  { key: "affected_orders", name: "受影响订单", description: "给定扰动，返回受影响订单清单（problems/rootChain）。", argHints: { baseId: "基地 ID" }, domain: "plan", answersQuestions: ["扰动会影响哪些订单", "受影响订单清单有哪些", "哪些单会被波及"], tags: ["受影响订单", "affected", "扰动"] },
+  { key: "plan_audit", name: "计划体检", description: "对给定计划版本做体检评分（达成率/风险敞口）。", argHints: { versionId: "计划版本 ID" }, domain: "plan", featureKey: "view.plan-audit", answersQuestions: ["这个计划版本达成率多少", "计划体检评分是多少", "计划的风险敞口多大"], tags: ["计划体检", "达成率", "audit"] },
+  { key: "plan_generate", name: "计划生成", description: "按目标与约束生成候选排产计划。", argHints: { objective: "目标口径" }, domain: "plan", answersQuestions: ["按目标约束生成排产计划", "怎么排一版候选计划", "生成满足交期的排产方案"], tags: ["计划生成", "排产", "generate"] },
+  { key: "capex_scenario", name: "年度情景测算", description: "三情景产能投资测算（供给曲线/缺口窗口/项目级 IRR/util24/C23 判定）。", argHints: { scenarioKey: "情景 key（baseline / aggressive / conservative —— 登记表见 solverParams.capexScenario.scenarios；给了它且不传 projects 即真取该情景的产能项目集）", demand: "情景需求曲线 D[q]（按季·万套）", s0: "现有供给 S0[q]（按季·万套）", projects: "产能项目集（直传则以调用方为准，scenarioKey 降为标签）" }, domain: "plan", answersQuestions: ["三情景产能投资怎么测算", "项目 IRR 和缺口窗口是多少", "各情景供给曲线怎么走"], tags: ["情景投资", "capex", "irr"] },
   // 20 场景目录 §2 新增 13（成熟度 E6a）
-  { key: "mitigation_select", name: "处置方案优选", description: "按因素从方案库打分排序，给推荐案与草稿 payload。", argHints: { baseName: "基地名", factor: "风险因素" }, domain: "plan" },
-  { key: "cert_schedule", name: "认证排期", description: "按缺口贡献/工时优先级，受 C26 并行约束贪心排认证到周。", argHints: { items: "待认证集", engineerGroups: "工程师组数" }, domain: "plan" },
-  { key: "kit_readiness", name: "物料齐套", description: "逐单算齐套率（含在途按 ETA），输出缺料与建议。", argHints: { orders: "订单+物料数据" }, domain: "plan" },
-  { key: "lta_gap", name: "长协补缺", description: "净需求/覆盖率/现货缺口与分批 PO 建议。", argHints: { material: "物料", month: "月份" }, domain: "plan" },
-  { key: "inventory_optimize", name: "库存优化", description: "目标水位/超储/欠储/呆滞与可释放资金。", argHints: { materials: "物料库存数据" }, domain: "plan" },
-  { key: "changeover_sequence", name: "换型排序", description: "最近邻贪心最小化换型时长，标注交期不可行单。", argHints: { lineId: "产线", orders: "周订单" }, domain: "plan" },
-  { key: "yield_diagnosis", name: "良率诊断", description: "2σ 滑窗突变检测 + 根因候选按时间贴近度排序。", argHints: { processKey: "工序", series: "良率时序" }, domain: "plan" },
-  { key: "maintenance_stagger", name: "检修错峰", description: "检修周与交付高峰冲突 → ±4 周内选负荷最低周。", argHints: { bases: "基地检修+负荷" }, domain: "plan" },
-  { key: "outsourcing_split", name: "外协分配", description: "加班/外协/延期三渠道按单位成本升序贪心分配。", argHints: { gap: "缺口", weeks: "周数" }, domain: "plan" },
-  { key: "quote_margin", name: "接单毛利", description: "BOM 成本四项分解 + 毛利率对比细分底线。", argHints: { price: "报价", bom: "BOM" }, domain: "plan" },
-  { key: "credit_exposure", name: "信用敞口", description: "敞口=应收+在产；可用额与逾期判定（C32）。", argHints: { custName: "客户", creditLimit: "额度" }, domain: "plan" },
-  { key: "quarterly_gap", name: "季度缺口对策", description: "对策按成本升序贪心覆盖季度缺口，残余明示。", argHints: { quarter: "季度", gap: "缺口" }, domain: "plan" },
-  { key: "carbon_footprint", name: "碳足迹核算", description: "物料+能耗两段碳排，对比欧盟阈值给改善杠杆。", argHints: { modelId: "型号", baseName: "基地" }, domain: "plan" },
-  { key: "countermeasure_combo", name: "对策组合编排器", description: "跨求解器编排：多杠杆按成本贪心闭合缺口，每段标注来源求解器，返回组合/残差/总成本/可行性。", argHints: { gap: "缺口", levers: "杠杆集(可选)" }, domain: "plan" },
+  { key: "mitigation_select", name: "处置方案优选", description: "按因素从方案库打分排序，给推荐案与草稿 payload。", argHints: { baseName: "基地名", factor: "风险因素" }, domain: "plan", answersQuestions: ["这个风险因素怎么处置", "从方案库选哪个处置案", "推荐的处置方案是什么"], tags: ["处置方案", "mitigation", "优选"] },
+  { key: "cert_schedule", name: "认证排期", description: "按缺口贡献/工时优先级，受 C26 并行约束贪心排认证到周。", argHints: { items: "待认证集", engineerGroups: "工程师组数" }, domain: "plan", answersQuestions: ["认证工程师怎么排期到周", "认证按什么优先级排", "并行约束下认证排到哪周"], tags: ["认证排期", "cert", "排期"] },
+  // WO-SILENT-WRONG-ANSWER-3 症③：补声明 base/fromDay/toDay —— 引擎半本单接上了基地维（Order.bases ∋ baseId），
+  //   声明不补齐等于「能力有了但没人知道怎么用」，agent 照旧只会传 orders。
+  { key: "kit_readiness", name: "物料齐套", description: "逐单算齐套率（含在途按 ETA），输出缺料与建议。", argHints: { orders: "订单+物料数据（直传则跳过引擎取数）", base: "基地（可选·不给=全网 scope.mode:ALL；也认 baseId/baseName）", fromDay: "分析窗起点（默认 1）", toDay: "分析窗终点（默认 14）" }, domain: "plan", answersQuestions: ["订单物料齐套率怎么算", "缺哪些料、在途 ETA 多少", "逐单齐套和补料建议"], tags: ["物料齐套", "齐套率", "kit"] },
+  { key: "lta_gap", name: "长协补缺", description: "净需求/覆盖率/现货缺口与分批 PO 建议。", argHints: { material: "物料", month: "月份" }, domain: "plan", answersQuestions: ["长协覆盖净需求多少", "现货缺口要补多少", "分批 PO 怎么下"], tags: ["长协", "补缺", "lta"] },
+  { key: "inventory_optimize", name: "库存优化", description: "目标水位/超储/欠储/呆滞与可释放资金。", argHints: { materials: "物料库存数据" }, domain: "plan", answersQuestions: ["库存呆滞和超储怎么优化", "目标水位怎么定、能释放多少资金", "欠储超储各多少"], tags: ["库存优化", "呆滞", "inventory"] },
+  { key: "changeover_sequence", name: "换型排序", description: "最近邻贪心最小化换型时长，标注交期不可行单。", argHints: { lineId: "产线", orders: "周订单" }, domain: "plan", answersQuestions: ["换型顺序怎么排最省换型时间", "产线一周订单怎么排换型", "哪些单交期不可行"], tags: ["换型排序", "changeover", "换型"] },
+  { key: "yield_diagnosis", name: "良率诊断", description: "2σ 滑窗突变检测 + 根因候选按时间贴近度排序。", argHints: { processKey: "工序", series: "良率时序" }, domain: "plan", answersQuestions: ["良率为什么突然下降", "良率突变点在哪道工序", "良率异常怎么诊断定位"], tags: ["良率诊断", "yield", "突变"] },
+  { key: "maintenance_stagger", name: "检修错峰", description: "检修周与交付高峰冲突 → ±4 周内选负荷最低周。", argHints: { bases: "基地检修+负荷" }, domain: "plan", answersQuestions: ["设备检修和交付高峰怎么错峰", "检修排在哪周负荷最低", "检修和交付冲突怎么避开"], tags: ["检修错峰", "maintenance", "错峰"] },
+  { key: "outsourcing_split", name: "外协分配", description: "加班/外协/延期三渠道按单位成本升序贪心分配。", argHints: { gap: "缺口", weeks: "周数" }, domain: "plan", answersQuestions: ["缺口怎么在加班外协延期间分配", "外协分配怎么最省成本", "加班外协延期三渠道各分多少"], tags: ["外协分配", "outsourcing", "加班"] },
+  // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：argHints 补 custName/modelId —— 取证单 §4 记过一笔
+  // 「卡片与 ARG_OVERRIDE 都在传 custName/modelId/qty 三个求解器不认的键」；本单起这两个键是**真读**的
+  // （客户 → order_of_customer 归属边 → 在手单 → 型号 → 真 BOM），argHints 若不补就反过来对不上了。
+  // `qty` 不列：毛利率是**比率**，报价数量不改变比率（`Order.qty` 只用于同型号多单的加权均价）。
+  { key: "quote_margin", name: "接单毛利", description: "按客户与型号取真 BOM（BOMHeader/BOMDetail）与真单价，四项分解毛利率并对比细分底线；输出带 scope 说明算的是谁。", argHints: { custName: "客户（客户名或下单品牌名）", modelId: "型号（缺省取该客户主力型号）", price: "报价（缺省取该客户该型号在手单加权均价）", bom: "BOM（直传则按 EXPLICIT 口径算，不查库）" }, domain: "plan", answersQuestions: ["这个报价毛利多少", "BOM 成本四项怎么分解", "报价毛利率对比细分底线如何", "某客户这单毛利过线吗"], tags: ["接单毛利", "quote", "毛利率", "客户"] },
+  { key: "credit_exposure", name: "信用敞口", description: "敞口=应收+在产；可用额与逾期判定（C32）。", argHints: { custName: "客户", creditLimit: "额度" }, domain: "plan", answersQuestions: ["客户信用逾期多少", "信用敞口多大", "客户可用额还剩多少", "应收加在产敞口多大"], tags: ["credit", "exposure", "信用", "逾期", "敞口"] },
+  { key: "quarterly_gap", name: "季度缺口对策", description: "对策按成本升序贪心覆盖季度缺口，残余明示。", argHints: { quarter: "季度", gap: "缺口" }, domain: "plan", answersQuestions: ["季度缺口怎么用对策覆盖", "对策按成本怎么排优先", "覆盖后残余还剩多少"], tags: ["季度缺口", "对策", "quarterly"] },
+  { key: "carbon_footprint", name: "碳足迹核算", description: "物料+能耗两段碳排，对比欧盟阈值给改善杠杆。", argHints: { modelId: "型号", baseName: "基地" }, domain: "plan", answersQuestions: ["产品碳足迹怎么核算", "物料和能耗碳排各多少", "对比欧盟阈值差多少"], tags: ["碳足迹", "carbon", "能耗"] },
+  { key: "countermeasure_combo", name: "对策组合编排器", description: "跨求解器编排：多杠杆按成本贪心闭合缺口，每段标注来源求解器，返回组合/残差/总成本/可行性。", argHints: { gap: "缺口", levers: "杠杆集(可选)" }, domain: "plan", answersQuestions: ["多个杠杆怎么组合闭合缺口", "各段对策来自哪个求解器", "组合总成本和残差多少"], tags: ["对策组合", "combo", "编排"] },
 ];
 
-function matches(item: CatalogItem, query?: string): boolean {
-  if (!query) return true;
-  const q = query.toLowerCase();
-  return (
-    item.key.toLowerCase().includes(q) ||
-    item.name.toLowerCase().includes(q) ||
-    item.description.toLowerCase().includes(q)
-  );
+/**
+ * 决策驾驶舱求解器目录（cockpit P2）：经营驾驶舱页直接调用（声明式 widget query.solver），不经 QOS
+ * 场景分类，故与 SOLVER_CATALOG（QOS discover 22）分列；作为 `solvers` MCP 工具对 Agent 公开。
+ */
+export const COCKPIT_SOLVER_CATALOG: CatalogItem[] = [
+  { key: "plan_rootcause", name: "规划决策根因归因", description: "经营指标（Metric）越线后，沿 RootCauseChain 归因模板逐层取证，产出 KPI→因子→证据的多根归因 DAG（每条边权重=活数据贡献占比）。回答『某 KPI 为什么没达标、根因在哪个因子、证据是哪些细分/物料』。", argHints: { kpiCategory: "KPI 类别(profit/scale/material，可选)" }, domain: "decision", featureKey: "view.dash.widget.rootcause", answersQuestions: ["KPI 为什么没达标", "根因在哪个因子", "证据是什么"], tags: ["rootcause", "归因", "KPI"] },
+  { key: "metric_rollup", name: "经营指标卷算", description: "从对象库读 Metric 一等对象，对齐目标树(PlanTarget) target 算 delta/miss，输出 Metric 数组（各视图 KPI 单一出处 R-一致，派生投影非新真值）。回答『各经营指标目标 vs 实际达成、哪些越线』。", argHints: { level: "层级(op/month/quarter/year，可选)" }, domain: "decision", answersQuestions: ["指标达成多少", "哪些指标越线", "目标 vs 实际"], tags: ["metric", "达成率", "KPI"] },
+  { key: "cockpit_kpi", name: "经营驾驶舱富 KPI", description: "从 SopVersionRow/FinancePlan/Base/AnnualScenario 对象确定性派生 5 个经营驾驶舱富 KPI 标量：可供给V7(最终版 supply)/收入达成率(收入行 rolling÷budget)/利用率瓶颈(max util)/AOP基准营收(baseline revenue)/现金垫C18(baseline cashCushion)。各 dash kpi widget 经 valuePath 取一。", argHints: {}, domain: "decision", answersQuestions: ["驾驶舱 KPI 是多少", "可供给/收入达成率/利用率瓶颈是多少", "AOP 基准营收和现金垫多少"], tags: ["cockpit", "KPI"] },
+  { key: "counterfactual_timeline", name: "反事实双轨推演", description: "回答『如不解决某风险，未来 N 天会怎样』：编排 risk_timeline 出 do-nothing baseline 与处置后双曲线 + 差值（峰值削减/越线日推迟/少越线日）。", argHints: { base: "基地(可选)", factor: "风险因子(可选)", horizon: "天数(默认30)", mitigationKey: "对症方案(可选)" }, domain: "decision", answersQuestions: ["如果不解决这个风险会怎样", "未来 30 天双轨走势", "处置后峰值削减和越线日推迟多少"], tags: ["what-if", "timeline", "risk"] },
+  { key: "order_fullchain", name: "订单全链推演", description: "逐单三关联判（交期/齐套/财务三闸 C15→C13→C18）+ 统一结论（可接/提价X%接/不建议接）+ 业务建模链 DAG。回答『这单能不能接、为何提价、卡在哪一判』。", argHints: { so: "订单号(缺省取首单)" }, domain: "decision", answersQuestions: ["这单能不能接", "为什么提价", "卡在哪一判"], tags: ["order", "fullchain", "credit", "delivery", "kit"] },
+  { key: "mrp_netting", name: "物料 MRP 净需求", description: "读 MaterialBalance 出物料净需求/长协覆盖/现货缺口/最早齐套表（C06 齐套口径）。S&OP 供应评审物料线。", argHints: {}, domain: "plan", answersQuestions: ["物料净需求多少", "长协覆盖多少", "现货缺口"], tags: ["mrp", "material", "netting"] },
+  { key: "finance_pnl", name: "量价本利科目表", description: "读 FinancePlan+DemandSegment 出收入/销售成本/毛利 预算vs滚动vs差异 + 毛利率行 + 结构归因（C15）。S&OP 财务整合。", argHints: {}, domain: "plan", answersQuestions: ["毛利为什么下滑", "量价本利", "预算 vs 滚动"], tags: ["finance", "pnl", "margin", "cost"] },
+  /**
+   * WO-FINANCE-WORLDSTATE · `finance_pnl` 的**世界态孪生**（并存两条口径，不是替代）。
+   *
+   * ⚠ 登记纪律（上一个 dev 刚踩过）：`process_flow_time` 进了 `SOLVER_KEYS` 却没进本目录，
+   * 被 `catalog.test.ts` 的「注册表键集 === SOLVER_KEYS」当场咬红。本条与 `SOLVER_KEYS` /
+   * `taxonomy.ts` / `solver-taxonomy.test.ts` 金值 / `ontology-core.test.ts` 金值 **同批**落地。
+   */
+  { key: "finance_world_projection", name: "财务世界态投影", description: "回答『在**这个推演世界**里、施加了那条扰动之后，成本/毛利/应收各变成多少**钱**』——即 `finance_pnl` 答不出的那一问（它的签名不吃 worldId，读本体真值，施加任何扰动都返回同一组数）。以 FinancePlan.{budget,rolling} 与 ARInvoice.amount 的**真值**为基线，用世界态里 costPressure（落 Order）/receivablePressure（落 Customer）/overduePressure（落 ARInvoice）三个压力做投影：销售成本 = 基线 ×（1 + 成本压力 ÷ divisor）、毛利用增量法（毛利 + Δ收入 − Δ成本，不用恒等式重算以免悄悄改掉基线残差）、应收/逾期逐张发票用真 amount 算。压力按**承载对象的真金额加权**聚合（Order.qty×unitPrice / 发票金额），分母是**全域基数**不是承载集（只对承载集平均会把「10 张单里 1 张涨价」报成全域涨价）。三样一起下发保证每个数可复核：基线真主键 + 压力的 carriers/universe + 产生该压力的 PropagationRule 真 id 与真系数（改种子系数→回包里的链跟着变）。换算除数 `basis.divisor` **随回包下发**且可由 args.pressureUnit 改写，不是藏在代码里的魔数。`basis.kind:\"PROJECTION\"` 是诚实位：这是推演投影不是实测值。世界态为空 / 无 FinancePlan 基线 → available:false + 原因，**绝不给一个不动的 0**。R4 只读：不写世界态、不写本体真值。", argHints: { worldId: "推演会话 id（必填·不给不回落到本体真值口径，那条路走 finance_pnl）", pressureUnit: "压力量纲 pp(百分点·缺省)|ratio(比率)", revenueLine: "收入行名（缺省 收入）", costLine: "成本行名（缺省 销售成本）", marginLine: "毛利行名（缺省 毛利）" }, domain: "decision", answersQuestions: ["这次扰动让成本涨了多少钱", "财务指标随扰动怎么变", "扰动之后毛利变成多少", "这个世界里应收和逾期敞口多少", "推演之后的量价本利是多少"], tags: ["finance", "worldstate", "sandbox", "projection", "财务", "金额", "推演", "扰动", "成本", "毛利", "应收"] },
+  { key: "audit_timeline", name: "审计项时序推演", description: "按审计项 kind 出 90 天逐日传导度 series + 4 阶段（事件窗→约束越线→波及订单→财务击穿），与产能推演同款逐日交互。规划体检/规划建议共用。", argHints: { kind: "审计项类别(产销/毛利/齐套/现金…)", horizon: "天数(默认90)" }, domain: "plan", answersQuestions: ["审计项未来走势", "审计项 90 天逐日怎么传导", "事件窗到财务击穿四阶段怎么走"], tags: ["audit", "timeline"] },
+  { key: "ksf_graph", name: "财务 KSF 图", description: "3 层有向图投影：待解决问题（越线 Metric）→ 关键成功要素 KSF（5 一等对象）→ 财务计划指标（Metric）。问题→KSF 威胁边、KSF→财务 支撑边，读 Metric(ksfRef)+KSF 投影。规划体检/规划建议共用。", argHints: {}, domain: "decision", answersQuestions: ["关键成功要素有哪些", "KSF 怎么支撑财务计划", "哪些问题威胁 KSF"], tags: ["ksf", "finance"] },
+  { key: "gap_attribution", name: "深度反向缺口归因", description: "总目标缺口(Metric.gap)→沿本体反向多跳结构分摊(gap 单位·每层 Σ子+residual=父gap 硬勾稽)到基地×订单×瓶颈叶，再沿 caused_by 因果边继续溯(占比)到地缘/决策终点，产 ~20 叶子原子因素表 + residual。叶级贡献由真颗粒对象值派生(改颗粒→归因变)。回答『总缺口沿链路一路归到哪些最终根因、各占多少、每叶证据是什么』。", argHints: { metricKey: "目标指标 key(缺省取最严重越线者)" }, domain: "decision", answersQuestions: ["为什么这个指标没达标", "为什么份额/占有率下降", "储能份额为什么下降逐层拆根因", "逐层拆根因到哪一层贡献最大", "总缺口一路归到哪些最终根因、各占多少", "缺口主要来自哪层、每叶证据是什么"], tags: ["gap", "attribution", "rootcause", "缺口归因", "逐层拆根因", "份额下降", "指标没达标"] },
+  { key: "decision_play", name: "决策推演(多方案+触发行动)", description: "对某根因(gap_attribution 产物)生成≥3 个决策方案(读真供应链对象·各维度真算:补缺口/代价/周期/风险/矿价敞口/可逆性)→比对矩阵→评估触发规则(信号阈值→行动·阈值一等可编辑)→贪心组合成分步行动计划→试算差距收窄。改根因颗粒→方案分随之变。回答『这个根因怎么补、有哪些选择、各方案代价/收益、什么信号触发什么行动、推荐组合能收窄多少』。", argHints: { metricKey: "目标指标 key(缺省最严重越线)", factorId: "根因因素 id(缺省取最高贡献因果根)" }, domain: "decision", answersQuestions: ["怎么补", "有哪些方案", "各方案代价", "触发什么行动"], tags: ["decision", "options", "mitigation"] },
+  /**
+   * WO-METRICKEY-EMPTY-PROMISE · **本条目没有 argHints，这是结论不是遗漏——别再把 `metricKey` 加回来。**
+   *
+   * 原先声明 `argHints: { metricKey: "达成率指标 key(缺省用 S&OP 产销缺口)" }`，而
+   * `solvers/service.ts supplyDemandGapAttribution()` 函数体内**零处读 args** ⇒ 传了既不报错也不生效，
+   * 答案按缺省口径算出来、调用方以为是按自己指定的那个指标算的（**静默错答**：屏上没有任何东西能分辨这两种情形）。
+   *
+   * 为什么撤承诺而不是实现它（判据不是"哪个好做"）：
+   *  · 被归因量 G = Σ SopVersionRow max(0, demand−supply)，量纲 **万套**；两端驱动（预测偏差/在手订单/结构漂移
+   *    ⊥ 产能缺口/物料缺口/OEE 损失）也全是万套等效 —— 这套分摊只对「产销供需平衡」这一个口径成立。
+   *  · 本体里**没有任何 Metric 以万套计量**（`GOAL_REGISTRY` 全域实测：营收/毛利/现金 = 亿，
+   *    毛利率/份额/达成率/保障率 = %；细分 `seg_attain_*` = %）。拿一个 % 或 亿 的缺口去切万套驱动，
+   *    得到的占比是**凭空造出来的口径**，不是这条链上任何真值派生得出的。
+   *  · 也没有「指标 → 需求端/供给端驱动族」的登记册可依（`metric_causal_binding` 登记的是
+   *    指标 → CausalFactor 因果根，服务于 `gap_attribution`，不是本求解器的两端驱动族）。
+   *  · 且缺省值 `rootMetric.key = "sop_demand_supply"` **根本不是任何 Metric 对象的 key** ——
+   *    原 argHint 那句「缺省用 S&OP 产销缺口」描述的东西压根不在 metricKey 的命名空间里。
+   *
+   * 想按别的指标看根因 → 走 `gap_attribution`（`argHints.metricKey` 在那里是**真读**的：
+   * `service.ts` 的 `gapAttribution()` 以 `args.metricKey` 命中 `Metric.key/metricId`）。
+   * 调用方若仍向本求解器传 `metricKey`，回包会在 `ignoredArgs` + `summary` 里**点名说它没生效**
+   * （不静默吞、也不 400 打断既有 CEO 深问路 —— `ceo-route.ts` 的通用 else 支会无条件带上 focus.metric）。
+   */
+  { key: "supply_demand_gap_attribution", name: "供需失衡双向归因", description: "产销缺口(SopVersionRow Σmax(0,demand−supply))→**双向**分摊到需求端(预测偏差 Σ|P50−实际|/在手订单/结构漂移)⊥供给端(产能缺口/物料缺口/设备OEE损失)，两侧真颗粒驱动值各 Σ 按占比切缺口→需求端贡献+供给端贡献+residual=总缺口(硬勾稽≤1e-4)，各端下钻叶带 drillType/drillField/drillValue。改 DemandSegment.demandWanPerYearP50→需求端占比变·改 Equipment.oee_current/Line 产能→供给端变。回答『供需为什么对不上——是需求预测虚高还是产能/物料供不上、各占多少、每叶证据是什么』。**本求解器不吃任何入参**：被归因量固定为 S&OP 产销缺口(万套)，无法按指定指标归因(本体内无万套计量的 Metric)——要按指定指标看根因请改调 gap_attribution(metricKey=…)；传进来的参数会在回包 ignoredArgs 里被逐条点名忽略。", argHints: {}, domain: "decision", answersQuestions: ["供需为什么对不上", "需求预测虚高还是供不上", "各占多少"], tags: ["supply-demand", "gap", "attribution", "forecast"] },
+  { key: "atp_check", name: "订单承诺(ATP/CTP)", description: "对一张销售订单净读对象图三源供给——成品现货(FinishedGoodsInventory.qtyOnHand)/在制未交(WorkOrder.qtyActual)/交期前可排产能(Σ 可产 Line.max_capacity_day×交期前净生产窗口天)——算可承接量(committableQty=min(需求,三源和))+承诺日(promiseDate=满足全量最早日)+缺口/瓶颈+三源拆解(现货/在制/排产)。改产能颗粒(Line 产能)或库存颗粒(FG 现货)→承诺真变。确定性(asOf=T0·无时钟随机)。回答『这单能不能接、能接多少、何时能交、卡在哪一源』。", argHints: { orderRef: "订单号(缺省取首张 OPEN 订单)" }, domain: "commercial", answersQuestions: ["这单能不能接", "能接多少", "何时能交", "卡在哪一源"], tags: ["atp", "ctp", "order", "commitment"] },
+  { key: "sop_reschedule", name: "产销重排推演", description: "给定目标订单+新交期，算能否提前/挤占哪些在手单/跨基地拆多少/被挤单延期/换型加班延误代价，输出落到基地×订单×日的执行方案。读真对象(Order/Base/Line 产能颗粒 ΣcapacityDaily×(1−util/100)/ChangeoverMatrix)+forecastStart 时间锚(确定性 R6)，挤占按(优先级低,交期远)排、每分配/被挤值带 provenance(Line/Order 可溯 R13)、Σalloc+residual==qty 硬勾稽。回答『XX订单能否提前到X日交、挤占谁、拆哪些基地、代价多大』。", argHints: { targetOrderId: "订单号(必填)", newDueDate: "新交期ISO(或 advanceDays/advancePct)", objective: "min_delay|min_changeover|min_cost(可选)" }, domain: "plan", answersQuestions: ["能否提前交", "挤占谁", "拆哪些基地", "代价多大"], tags: ["sop", "reschedule", "order"] },
+  { key: "portfolio", name: "全局项目推演", description: "全订单×全基地×时间联合最优组合——一次性把全 OPEN 订单+在产 WorkOrder+销售预测 DemandSegment 三源归一为联合需求，跨基地×时间窗 CP-SAT 求全局最优。共享产能不重复占用(Σ_i qty·x[i,b,t]≤cap[b,t] 逐格守恒·根治两单分开求解都挤同一基地窗口产能)、支持冻结子集(frozenOrderIds 排除并锁/释放其产能)、多方案量化利弊(max_ontime/min_cost/min_changeover 各求一次真算按期数/延误/换型/代价)。每分配/被挤/方案值带 provenance(R13)、capacityLedger 逐格亮出。回答『全部订单怎么跨基地跨时间排最优、冻结这几单其余怎么排、按期优先 vs 成本优先差多少』。", argHints: { orderIds: "订单集(缺省=全OPEN)", frozenOrderIds: "冻结/排除订单(可选)", frozenCapacityMode: "reserve锁定|release释放(可选)", scenarios: "方案集 max_ontime|min_cost|min_changeover(≥2)" }, domain: "plan" , answersQuestions: ["全部订单怎么跨基地跨时间排最优", "冻结这几单其余怎么排", "按期优先 vs 成本优先差多少"], tags: ["portfolio", "global", "optimal", "cp-sat"] },
+  // WO-SANDBOX-E1 推演沙盘·环节级损失归因（口径 = S0 冻结契约 chain-sim.ts §5，分母排除增值段 ⇒ Σ==100%）。
+  { key: "chain_loss_attribution", name: "环节级损失归因", description: "把「一张订单全链走完 N 天」拆到逐环节，算每个环节吃掉了**损失**的百分之多少。口径定死：pctOfChainLoss = 该环节非增值天数 ÷ 全链非增值总量（分母**排除增值段**）⇒ 全链非增值环节之和恒 == 100%。链上每段天数都来自一个真实对象的一个真实字段（Operation.standardTime/setupTime 标准工时与换型准备 · Process.agingDays 老化静置 · Supplier.leadTime 供应商到货周期 · Customer.termDays 账期回款），逐条给 R13 下钻三元组（drillType.drillId.drillField + 该字段的仓储真值 + 单位 + 换算式），拿标签回仓储捞真值可逐位对拍。算不出来的环节（清关/到货检验/返工工时/节拍/物料入厂在途）诚实标 EMPTY 并说明缺什么，**不补 0 不给假默认值**。回答『全链时间都耗在哪、哪个环节最该动、这个百分比凭什么、哪些段今天根本算不出来』。", argHints: { so: "锚点订单号（缺省取 so 字典序首张，R6 确定性）" }, domain: "decision", answersQuestions: ["全链时间都耗在哪", "哪个环节吃掉的损失最多", "流动效率是多少", "这个环节的损失占比凭什么", "哪些环节今天算不出来"], tags: ["chain", "loss", "attribution", "环节损失", "流动效率", "前置期", "沙盘", "浪费"] },
+  { key: "base_capacity_outlook", name: "每基地前瞻产能推演", description: "给定基地，按 30/60/90 天窗口前瞻推演四线对比：可用产能(Σ Line.capacityDaily×(1−util/100)×窗口) vs 在产订单占用(未完工 WorkOrder.qtyActual 铺窗) vs 未来订单(Order.due 落窗 Σqty·首基地=本基地) vs 销售预测(ΣDemandSegment.demandWanPerYearP50×1e4 按产能占比摊窗) → 缺口/富余标记 + 累计需求越线日(crossDay)。缺口窗给逐日行动过程 dayPlan(触发缺口→加班/跨基地/外协贪心补→收窄·每步 provenance)。改 Order.due/DemandSegment.demandWanPerYearP50/Line.capacityDaily 颗粒→前瞻真变。forecastStart 时间锚(确定性 R6)·每线/每日值可溯(R13)·系数 RuleEntry.params(R14)。回答『这个基地未来 30/60/90 天产能够不够、缺口哪天出现、逐日怎么处置』。", argHints: { baseId: "基地 ID 或名称(必填·如 hefei/合肥)", horizon: "窗口天数(可选·默认 30/60/90 全出)" }, domain: "plan", answersQuestions: ["未来产能够不够", "缺口哪天出现", "前瞻 30/60/90 天", "逐日怎么处置"], tags: ["capacity", "outlook", "forecast", "前瞻", "产能"] },
+];
+
+/**
+ * 通用求解器目录（A1）：净室零依赖 + CP-SAT 可证最优族。与业务场景目录（SOLVER_CATALOG）分列——
+ * 这些不绑定电池域，按 args 字段映射对任意已发布本体即用，故不进 QOS 场景 discover（22），
+ * 但作为 `solvers` MCP server 的工具对 Agent 公开（mcp__solvers__{key}）。「无描述不允许发布」同样适用。
+ */
+export const GENERIC_SOLVER_CATALOG: CatalogItem[] = [
+  { key: "generic_inference", name: "通用假设推演", description: "对任意已发布本体套假设源属性值、前向重算下游派生链，返回 before/after deltas（不落库、确定性）。回答『把某属性改成 X，下游会怎样』。", argHints: { apply: "[{objectType,objectId,prop,value}] 假设值集" }, domain: "generic", answersQuestions: ["把某属性改成 X 下游会怎样", "改个假设值前后差多少", "假设变动的下游影响链"], tags: ["假设推演", "what-if", "inference"] },
+  { key: "shared_bottleneck", name: "共享瓶颈", description: "读对象图，按 viaField 把上游对象分组到共享资源，需求和>产能即瓶颈，按优先级判哪张单降级。净室通用。", argHints: { resourceType: "【必填】被争用的共享资源对象类型（如 工序/设备/产线）", sharedByType: "【必填】来争用该资源的上游对象类型（如 订单/工单）", viaField: "【必填】sharedByType 上指向共享资源主键的字段名（如 procRef）", capacityField: "【可选·默认 capacity】resourceType 上的产能字段名", demandField: "【可选·默认 qty】sharedByType 上的需求量字段名", priorityField: "【可选】sharedByType 上的优先级字段名（数值最小者先降级）；不给则按需求量最小者降级" }, domain: "generic", answersQuestions: ["哪些对象挤同一共享资源", "共享资源产能不够谁降级", "隐性共享瓶颈在哪"], tags: ["共享瓶颈", "shared", "bottleneck"] },
+  { key: "concentration_risk", name: "隐性集中度", description: "多跳反向聚合，沿暗线找单点集中（看似分散实则汇聚到同一上游）。净室通用。", argHints: { startType: "【必填】起点对象类型 —— 看似分散的那一端（如 客户）", path: "【必填】多跳路径数组 [{viaField,toType}]，按跳序；每跳取上一跳对象的 viaField 值去 toType 里按主键解析，最后一跳的 toType 即汇聚根。例：[{viaField:'orderRef',toType:'Order'},{viaField:'materialRef',toType:'Material'},{viaField:'supplierRef',toType:'Supplier'}]", minDependents: "【可选·默认 2】依赖方数量达到几个才算「集中」" }, domain: "generic", answersQuestions: ["看似分散实则集中到哪个上游", "单点集中风险在哪", "暗线是否汇聚到同一来源"], tags: ["集中度", "concentration", "单点集中"] },
+  { key: "margin_attribution", name: "毛利倒挂归因", description: "成本项拆解 + 倒挂群主驱动聚合，定位毛利倒挂的根因成本项。净室通用。", argHints: { targetType: "【必填】成本承载对象类型 —— 毛利算在谁头上（如 订单/SKU）", costFields: "【必填·至少一项】成本项数组 [{field,label?}]；field 是 targetType 上的成本字段名，label 是归因表里显示的成本项名（缺省用 field）。例：[{field:'rawCost',label:'原料'},{field:'freight',label:'运费'}]", revenueField: "【可选·默认 revenue】targetType 上的收入字段名", marginThreshold: "【可选·默认 0】毛利率低于该阈值才判为倒挂（0 = 亏本才算）" }, domain: "generic", answersQuestions: ["毛利为什么倒挂", "哪个成本项拖垮了毛利", "毛利倒挂的根因成本项是哪些", "成本项怎么拆解定位倒挂", "倒挂群的主驱动成本是什么"], tags: ["margin", "毛利倒挂", "成本项", "cost", "attribution"] },
+  { key: "supplier_disruption_radius", name: "断供影响半径", description: "给定单一供应商断供，反向多跳逐层扇出算扩散半径与叶层敞口。净室通用。", argHints: { rootType: "【必填】断供来源对象类型（如 供应商）", rootId: "【必填】断供来源的主键值 —— 从哪一个具体来源开始扇出", layers: "【必填·至少一层】反向扇出层数组 [{type,viaField}]，按层序；每层取 type 类型里 viaField 指向上一层主键的对象。例：[{type:'Material',viaField:'supplierRef'},{type:'Order',viaField:'materialRef'},{type:'Customer',viaField:'orderRef'}]" }, domain: "generic", answersQuestions: ["某供应商断供影响多大", "断供扩散半径和叶层敞口", "断供会波及哪些下游"], tags: ["断供", "disruption", "影响半径"] },
+  { key: "selection_optimize", name: "组合最优化", description: "通用 0/1 选择最优化（CP-SAT 可证最优）：预算约束下选价值最大子集。贪心给不出最优时用。", argHints: { items: "候选项(价值/重量)", budget: "预算上限" }, domain: "generic", answersQuestions: ["预算内怎么选价值最大子集", "0/1 选择最优组合", "有限预算下最优选哪些"], tags: ["组合最优化", "selection", "cp-sat"] },
+  { key: "assignment_optimize", name: "指派最优化", description: "通用指派最优化（CP-SAT 可证最优）：把待办项指派到容器/基地，最小化总成本，满足容量约束。", argHints: { items: "待指派项", bins: "容器(容量/成本)" }, domain: "generic", answersQuestions: ["待办怎么指派到容器最省成本", "容量约束下最优指派", "指派最小化总成本"], tags: ["指派最优化", "assignment", "cp-sat"] },
+  { key: "sequencing_optimize", name: "排序最优化", description: "通用排序最优化（CP-SAT 可证最优）：在切换成本矩阵上求最短换型路径序列。", argHints: { jobs: "作业集", changeover: "两两切换成本" }, domain: "generic", answersQuestions: ["作业顺序怎么排切换成本最小", "最短切换路径序列怎么求", "排序最优化"], tags: ["排序最优化", "sequencing", "cp-sat"] },
+  { key: "packing_optimize", name: "装箱最优化", description: "通用装箱最优化（CP-SAT 可证最优）：按容量把项装入最少容器（产能填充/批次合并）。", argHints: { items: "待装项(尺寸)", binCapacity: "单箱容量" }, domain: "generic", answersQuestions: ["怎么用最少容器装完", "批次合并怎么最优", "装箱最优化"], tags: ["装箱最优化", "packing", "cp-sat"] },
+  { key: "job_shop_schedule", name: "工序排程最优化", description: "通用小时/分钟级工序排程（CP-SAT IntervalVar 可证最优）：每(工单,工序)建区间变量，同机器不重叠 + 同工单工艺顺序 + 换型间隔，最小化完工跨度 makespan，排出带开始-结束时刻的时间轴（涂布→卷绕→化成）。读工序/机器/换型对象即用，任意行业。", argHints: { opType: "工序对象类型(默认 Operation)", jobField: "工序所属工单字段", machineField: "机器字段", durationField: "工序时长字段" }, domain: "generic", answersQuestions: ["工序小时级怎么排程", "makespan 怎么最小化", "涂布卷绕化成怎么排时间轴"], tags: ["工序排程", "job-shop", "makespan"] },
+  // 优化融合（G-12）：抽象优化模板池 5 核心 + optimize_whatif（经 OntologyBinding 绑租户本体，CP-SAT sidecar 求最优）。
+  { key: "facility_location", name: "选址最优化", description: "通用选址最优化（CP-SAT 可证最优）：在开设成本与服务成本下选最优设施集并分派需求点。经本体绑定喂任意行业（仓/店、诊所/社区…）。", argHints: { facilities: "候选设施(开设成本)", clients: "需求点", serveCost: "服务成本矩阵" }, domain: "generic", answersQuestions: ["在哪开设施服务成本最低", "选址加分派需求点", "最优设施集怎么选"], tags: ["选址", "facility-location", "cp-sat"] },
+  { key: "min_cost_flow", name: "最小成本流", description: "通用最小成本流（CP-SAT 可证最优）：在带容量/成本的网络上满足供需的最小成本流分配。", argHints: { nodes: "节点(供给/需求)", arcs: "弧(容量/单位成本)" }, domain: "generic", answersQuestions: ["网络上供需怎么最小成本流转", "最小成本流分配", "带容量成本的流怎么求"], tags: ["最小成本流", "min-cost-flow", "网络"] },
+  { key: "set_cover", name: "集合覆盖", description: "通用集合覆盖最优化（CP-SAT 可证最优）：用最小成本子集覆盖全部元素。", argHints: { universe: "待覆盖元素集", subsets: "候选子集(覆盖/成本)" }, domain: "generic", answersQuestions: ["用最小成本子集覆盖全部元素", "集合覆盖最优化", "最少子集覆盖怎么选"], tags: ["集合覆盖", "set-cover", "cp-sat"] },
+  { key: "independent_set", name: "最大独立集", description: "通用最大权独立集（CP-SAT 可证最优）：在冲突图上选互不相邻的最大权点集。", argHints: { nodes: "节点(权重)", edges: "冲突边" }, domain: "generic", answersQuestions: ["冲突图上选最大权互不相邻点集", "最大独立集怎么求", "互斥点最大权选择"], tags: ["最大独立集", "independent-set", "冲突图"] },
+  { key: "combinatorial_auction", name: "组合拍卖", description: "通用组合拍卖赢家裁定（CP-SAT 可证最优）：在物品不重复分配约束下最大化中标价值。", argHints: { items: "拍卖物品", bids: "投标(物品组合/出价)" }, domain: "generic", answersQuestions: ["组合拍卖赢家怎么裁定", "物品不重复分配最大化价值", "组合出价怎么中标"], tags: ["组合拍卖", "auction", "cp-sat"] },
+  { key: "optimize_whatif", name: "优化 what-if", description: "对已绑定的优化模板做结构化扰动（改参/加约束/松约束/换目标权重）→ sidecar 重解 → Δ目标值/可行性/冲突约束（多目标模板另回 deltaByObjective 各目标 Δ 分解）。", argHints: { templateKey: "模板键", perturbation: "结构化扰动" }, domain: "generic", answersQuestions: ["改参加约束后目标值变多少", "松约束换权重重解", "优化模板扰动后 Δ目标和可行性"], tags: ["优化what-if", "optimize-whatif", "扰动"] },
+  // WO-CROSS-OBJECT-MULTIOBJ 多目标 + 跨对象占用（CP-SAT 可证最优；对小规模枚举全解对拍）。
+  { key: "multi_objective", name: "多目标最优化", description: "一次求解权衡多个冲突目标（营收↑且违约金↓且换型↓），支持加权/ε-约束/字典序三法；每目标值分别回报，改权重→最优真漂移。CP-SAT 可证最优（非贪心/启发式）。", argHints: { vars: "决策变量(bool/int)", constraints: "线性约束", objectives: "多目标(sense/weight)", method: "weighted|epsilon|lexicographic" }, domain: "generic", answersQuestions: ["多个冲突目标怎么权衡", "营收违约金换型怎么同时优化", "加权/ε约束/字典序怎么求"], tags: ["多目标", "multi-objective", "权衡"] },
+  { key: "cross_object_occupancy", name: "跨对象占用最优化", description: "订单×产线×合同三元互斥占用（一单占某线=同耗产线产能+合同额度、同线互斥）→ 最优指派 + 被挤订单(displaced)；改产线/合同颗粒→占用真变。CP-SAT 可证最优。", argHints: { orders: "订单(营收/违约金/合同/量)", lines: "产线(产能)", contracts: "合同(额度)", eligibility: "订单-产线可产对(成本)" }, domain: "generic", answersQuestions: ["订单产线合同三元占用怎么最优", "被挤订单是哪些", "跨对象互斥占用怎么指派"], tags: ["跨对象占用", "cross-object", "cp-sat"] },
+  // WO-Phase3-B 本体查询引擎（薄层遍历+简单聚合·join≠compute）：planSlice 规划 rootType→目标最短路 + executeSlice 读对象/链路 + 引擎内 sum/count/avg/max。
+  {
+    key: "ontology_query",
+    name: "本体查询",
+    description: "对任意已发布本体做多跳遍历查询：给定 rootType(+rootFilter) 沿 hops 或自动最短路走到目标类型，select 投影字段并可做简单聚合(sum/count/avg/max)。每行带 {typeKey,objId,linkPath} 溯源(R13)、确定性(R6)。只做遍历+简单聚合，复杂业务公式(ATP/SOP/portfolio/财务信用)fallback 到专用求解器(join≠compute)。一次 query 顶多次 query_objects。",
+    argHints: {
+      rootType: "起点对象类型(如 Base)",
+      rootFilter: "根过滤 [{field,op,value}]",
+      hops: "多跳 [{linkKey,direction:forward|backward,targetType?,filter?}]，省略则自动规划最短路",
+      select: "投影 [{type,fields[],aggregate?,groupBy?}]",
+      overrides: "假设注入 [{objectType,objectId,prop,value}]（what-if·出 before/after）",
+    },
+    answersQuestions: [
+      "常州基地关联哪些订单",
+      "哪些订单受某基地影响",
+      "某供应商断供会影响哪些客户",
+      "某基地的产线总产能是多少",
+      "沿本体从 X 走到 Y 有哪些对象",
+    ],
+    tags: ["本体", "遍历", "查询", "关联", "聚合", "graph", "traversal", "join"],
+    domain: "generic",
+  },
+  // WO-SANDBOX-E3 全链阻滞点判定器（卡点/堵点/断点三类机器可判 → ChainImpediment[]）。
+  {
+    /**
+     * WO-FLOWTIME · 合并时补登（WO-R9-PROCESS-MERGE·2026-08-14）。
+     *
+     * ⚠ **原单漏了这一条**：`process_flow_time` 进了 `SOLVER_KEYS` 却没进目录，
+     * 而 `catalog.test.ts` 的判据正是「注册表键集 === SOLVER_KEYS（新增求解器忘补目录描述即红）」。
+     * 是顺着 `SOLVER_KEYS.length` 这个金值往下追消费方时抖出来的，不是等全量跑撞出来的
+     * （复验：`grep -n process_flow_time apps/datacore/src/catalog.ts` 合并前 0 命中，
+     *   金丝雀同命令对 `chain_loss_attribution` 命中 1 ⇒ 是真没登记，不是 grep 坏了）。
+     */
+    key: "process_flow_time",
+    name: "流程实例流转时长",
+    description:
+      "业务流程**实例**层的站间流转时长：回答「**哪一条**流程实例被卡住、卡在**谁**那里、卡了**多久**」——即 impact-analysis 自述答不出的那三问。每条实例的进/出站时刻由**既有带时间戳单据反推**而来（origin=DERIVED_FROM_DOCUMENT，逐条带 sourceDocuments 可溯回单据 id + 字段名 + 该字段原值，R13），⛔ **一次都不读 stdDurationDays**（标准工期是计划值，拿它冒充实测卡顿是明令禁止的）。输出站内停留 dwellDays、站间流转 gapDaysToNext（负数不夹到 0——两站重叠是真实存在的）、瓶颈站（平均停留最久）与卡顿站（到 asOf 仍未出站）。「现在」由 asOf 显式指定，缺省取数据里观测到的最晚时刻并回传 asOfSource，不用 wall-clock（R6 同输入两跑字节一致）。反推不出的**诚实缺席**：四种 kind（无承载对象/无反推规则/字段缺值/结构性不适用）各带原因与复验探针，**不是 0 也不是编的数**。与 chain_loss_attribution 分层：那个答「哪一段慢」（链路节拍层·占比），这个答「哪一张单卡着」（实例层·天数 + 责任方）。",
+    argHints: {
+      processKey: "只看某一条流程节点（P##）；不传 = 全部",
+      flowKey: "只看某一条链（flowKey 前缀，如 procure_to_release）；不传 = 全部",
+      limit: "明细截断（缺省 50）——基数字段永远给全量真值，截断只影响明细数组",
+      asOf: "分析截止时刻（ISO 日期）；不传 = 数据里观测到的最晚时刻",
+    },
+    domain: "decision",
+    answersQuestions: [
+      "哪一条流程实例被卡住了",
+      "这一单卡在谁那里",
+      "卡了多久",
+      "流程节点之间流转要多久",
+      "哪个流程节点是瓶颈站",
+      "哪些流程今天反推不出来",
+    ],
+    tags: ["process", "instance", "flow-time", "流程实例", "站间流转", "卡顿", "瓶颈站", "流转时长"],
+  },
+  {
+    key: "chain_impediments",
+    name: "全链阻滞点扫描",
+    description:
+      "全链扫描产出卡点/堵点/断点三类阻滞点（ChainImpediment[]）：卡点=资源受限·通过率低于需求（硬容量夹定）· 堵点=排队积压/在制在途堆积 · 断点=链路中断（缺料/提前期/算不出来）。三类互斥，同 locus 同时命中时按规则声明的利用率红线裁决（达线=卡点）。每条阻滞点带 evidence{ruleKey, ruleParamKey, metricValue, threshold, unit} 可溯源到具体哪条规则的哪个旋钮（R13）；阈值一律从规则表达式读回（params.<名>/字面量/对象字段），引擎内零阈值 —— 改规则即改判定。判不出来的判据诚实落 unresolved[] 并说明原因，绝不给默认阈值凑一个像样的判定。",
+    argHints: { scope: "范围 {baseIds?:[]}（businessTypes/modelIds 暂不支持·显式拒绝不静默返全域）" },
+    answersQuestions: [
+      "全链哪里有卡点堵点断点",
+      "产能被什么夹住了",
+      "哪些环节在堆积",
+      "链路在哪里断了",
+      "系统替我找出该推演什么",
+    ],
+    tags: ["阻滞点", "卡点", "堵点", "断点", "全链扫描", "impediment", "bottleneck", "congestion", "break"],
+    domain: "generic",
+  },
+];
+
+/** A1 求解器全集目录（业务场景 22 + 通用 9 + 决策/骨架 8 = 39，与 SOLVER_KEYS 对齐；漂移由 catalog.test 守护）。 */
+export const ALL_SOLVER_CATALOG: CatalogItem[] = [...SOLVER_CATALOG, ...GENERIC_SOLVER_CATALOG, ...COCKPIT_SOLVER_CATALOG];
+
+/**
+ * WO-RESOURCE-DESCRIPTOR · 把 datacore 本地可发现资源池（求解器全集 + 内置切片）投影成统一
+ * ResourceDescriptor（R13 派生投影，不改各池存储）。供发现门 `resource-descriptor:check` 与
+ * SEAM 组合测复用——「无描述不允许发布」纪律从求解器一池推广到全池的 datacore 半。
+ * 确定性（R6）：纯映射，无 IO。description 为空的条目会被 findUndescribed 捕获（门红）。
+ */
+export function datacoreResourceDescriptors(): ResourceDescriptor[] {
+  const solvers: ResourceDescriptor[] = ALL_SOLVER_CATALOG.map((s) => {
+    const category = solverCategoryOf(s.key); // WO-L7A · 分类维随资源投影下发（发现侧按类筛选的供给）
+    return {
+      kind: "solver",
+      key: s.key,
+      label: s.name,
+      description: s.description,
+      argHints: s.argHints,
+      ...(s.domain ? { domain: s.domain } : {}),
+      ...(s.featureKey ? { featureKey: s.featureKey } : {}),
+      ...(s.answersQuestions ? { answersQuestions: s.answersQuestions } : {}),
+      ...(s.tags ? { tags: s.tags } : {}),
+      ...(category ? { category } : {}),
+    };
+  });
+  const slices: ResourceDescriptor[] = BUILTIN_SLICE_CATALOG.map((s) => ({
+    kind: "slice",
+    key: s.key,
+    label: s.name,
+    description: s.description,
+    argHints: s.argHints,
+    ...(s.domain ? { domain: s.domain } : {}),
+    ...(s.featureKey ? { featureKey: s.featureKey } : {}),
+  }));
+  return [...solvers, ...slices];
+}
+
+function matchScore(item: CatalogItem, query?: string): number {
+  if (!query) return 1; // 无关键词：全参与，统一低分（后续不按分截断）
+  const q = query.toLowerCase().trim();
+  if (!q) return 1;
+  const isCjk = (c: string) => /[一-龥]/.test(c);
+  const tokens = q
+    .split(/\s+/)
+    .filter((t) => t.length > 0)
+    .flatMap((t) => (t.split("").some(isCjk) ? [...new Set(t.split("").filter(isCjk))] : [t]));
+  const allTokens = [...new Set([q, ...tokens])];
+  const scoreOf = (field: string, weight: number): number => {
+    const f = field.toLowerCase();
+    let s = 0;
+    for (const tok of allTokens) {
+      if (f === tok) s += weight * 4; // 精确相等
+      else if (f.includes(tok)) s += weight * (tok.length / Math.max(f.length, 1) + 1);
+    }
+    return s;
+  };
+  let score = 0;
+  score += scoreOf(item.key, 12);
+  score += scoreOf(item.name, 10);
+  score += scoreOf(item.description, 6);
+  for (const a of item.answersQuestions ?? []) score += scoreOf(a, 14);
+  for (const t of item.tags ?? []) score += scoreOf(t, 11);
+  return score;
 }
 
 export class CatalogService {
   constructor(private repos: Repos, private features: FeatureService) {}
 
-  /** §1: discover 目录（≤20，关键词过滤 + 权限/功能开通过滤）。 */
+  /**
+   * §1: discover 目录（≤20，关键词过滤 + 权限/功能开通过滤）。
+   *
+   * WO-L7A：`category` 为**求解器决策问题类目硬过滤**（10 类枚举）——给了类目就只返回该类目的求解器，
+   * 且每条带回 `category` 字段。类目过滤发生在关键词打分**之前**（先收窄论域再排序）。
+   * ⚠ discover 的论域是**场景池**（`SOLVER_CATALOG + COCKPIT_SOLVER_CATALOG`，不含通用优化模板池），
+   *   故这里的结果 = 该类目 ∩ 场景池；要「类目成员严格相等」请走 `solverRegistry`（论域 = 全 59）。
+   * 切片池无类目维，给了即空集（诚实空，不静默忽略参数返全量——静默忽略会让调用方以为筛过了）。
+   */
   async discover(
     ctx: AuthCtx,
     kind: "slices" | "solvers",
     query?: string,
+    category?: SolverCategory,
   ): Promise<{ items: CatalogItem[] }> {
     let items: CatalogItem[];
     if (kind === "solvers") {
-      items = SOLVER_CATALOG;
+      items = withSolverCategory([...SOLVER_CATALOG, ...COCKPIT_SOLVER_CATALOG]);
+      if (category) items = items.filter((it) => it.category === category);
+    } else if (category) {
+      items = []; // 切片不参与求解器分类维
     } else {
       // 内置 + 已发布的自定义切片（自定义切片必须带 description，否则不入目录）
       const custom = await this.repos.sliceSpecs.list(ctx.tenantId);
@@ -101,14 +375,41 @@ export class CatalogService {
         }));
       items = [...BUILTIN_SLICE_CATALOG, ...customItems];
     }
-    // feature 过滤（未开通 → 不出现）
-    const filtered: CatalogItem[] = [];
+    // feature 过滤（未开通 → 不出现）+ 语义相关度排序（query 存在时）
+    const scored: { item: CatalogItem; score: number }[] = [];
     for (const it of items) {
-      if (!matches(it, query)) continue;
+      const score = matchScore(it, query);
+      if (score <= 0) continue;
       if (it.featureKey && !(await this.features.enabled(ctx.tenantId, it.featureKey))) continue;
-      filtered.push(it);
+      scored.push({ item: it, score });
     }
+    const filtered = attachOntologySignature(scored.sort((a, b) => b.score - a.score).map((s) => s.item));
     // §1：带关键词的发现（agent 上下文预算）截断 ≤20；无关键词=管理台全量列表。
     return { items: query ? filtered.slice(0, 20) : filtered };
+  }
+
+  /**
+   * A1：求解器全集注册表（业务场景 22 + 通用 9 + 决策/骨架 8 = 39）。供 AgentCore 构建 `solvers` MCP server 的
+   * 全部工具（mcp__solvers__{key}）。与 discover 同走 feature 过滤——关某求解器 feature → 工具消失
+   * （R3 先于 authz，与 404 不泄露存在性同构）。不做 ≤20 截断（治理页需全量）。
+   *
+   * WO-L7A：论域 = `ALL_SOLVER_CATALOG`（与 `SOLVER_KEYS` 键集相等，catalog.test 守），故给了 `category`
+   * 时返回的 key 集 **恰好等于**该类目的成员集（`solversInCategory(category)`，feature 全开时）——
+   * 这就是「按类找求解器」这个动作的落点：治理页分组、Agent 按决策问题收窄选型范围都走这条。
+   * 每条无条件带回 `category`（不给类目时也带，前端可自行分组）。
+   */
+  async solverRegistry(
+    ctx: AuthCtx,
+    query?: string,
+    category?: SolverCategory,
+  ): Promise<{ items: CatalogItem[] }> {
+    const out: CatalogItem[] = [];
+    for (const it of withSolverCategory(ALL_SOLVER_CATALOG)) {
+      if (category && it.category !== category) continue; // 类目硬过滤先于关键词打分
+      if (matchScore(it, query) <= 0) continue;
+      if (it.featureKey && !(await this.features.enabled(ctx.tenantId, it.featureKey))) continue;
+      out.push(it);
+    }
+    return { items: attachOntologySignature(out) };
   }
 }

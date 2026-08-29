@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   BottleneckMatrixOutputSchema,
   CapacityForecastOutputSchema,
@@ -7,19 +8,39 @@ import {
 } from "@platform/contracts";
 import { runSolver, searchObjects } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
+import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
 import { Modal } from "@/components/ui/Modal";
+import { Provenance } from "@/components/Provenance";
+import { InfoPopover } from "@/components/InfoPopover";
+import { OntologyChainView, type OntologyChainData } from "@/components/OntologyChain";
+import { RuleRef } from "@/components/RuleRef";
+import { EvaluatedRules } from "@/components/EvaluatedRules";
 import type { ViewRendererProps } from "../registry";
-import { fmt, SnapshotBadge, useActionDraft } from "./shared";
+import { ExportReportButton, SnapshotBadge, fmt, useActionDraft } from "./shared";
+import type { ProvenanceReport } from "./exportProvenance";
 import { useLiveSolver } from "./useLiveSolver";
+import { DynamicLeverPanel } from "./DynamicLeverPanel";
 import { PmDag, type PmDagNode } from "./PmDag";
+import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import EdgeActivePanel from "./EdgeActivePanel";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
-const MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"];
-const ADDRESSES = ["上海", "广州", "北京", "成都", "海外"];
-/** 物流时长（天，battery solverParams.logistics 镜像 —— 地址下拉旁展示） */
-const LOGISTICS: Record<string, number> = { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 };
+/**
+ * 去电池锁死 P1（PRD-de-battery-multitenant-config §3.2 / R14）：型号/地址/物流不再硬编码进组件，
+ * 改由 WorkspaceConfig（`workspace.scenarioPackages[0].simConfig`，按租户/行业下发）提供。
+ * 下方 DEFAULT_* 仅作 config 缺失时的优雅兜底（P2 接 debattery:check 后将进一步收口）。
+ */
+const DEFAULT_MODELS = ["4680-NCM", "4680-LFP", "刀片-LFP", "VDA-NCM", "储能-280Ah", "储能-314Ah"]; // debattery-allow：config(simConfig.models)/Model 对象缺失时的电池行业兜底
+const DEFAULT_LOGISTICS: Record<string, number> = { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 }; // debattery-allow：simConfig.logistics 缺失兜底
+
+/** WorkspaceConfig.simConfig（catchall，按租户下发；缺失则用 DEFAULT_*）。 */
+interface SimConfig {
+  models?: string[];
+  addresses?: string[];
+  logistics?: Record<string, number>;
+}
 
 interface BatchRowInput {
   qty: number;
@@ -27,67 +48,181 @@ interface BatchRowInput {
   address: string;
 }
 
-interface WhatIfState {
-  nightShifts: number; // 0–3
-  extraChannels: number; // 0–6
-  outsourcePct: number; // 0–20 step 5（20 截止 + C08 提示，§7.13）
-}
+// PRD-IND-model §4.3：分批交货 CSV 模板（含 BOM）+ 解析（parseBatchTable/pmNormDate/pmMatchAddr，纯前端）。
+const PM_CSV_TEMPLATE = "﻿数量(万套),交付日期,交付地址\n15,2026-07-10,华东 · 上海\n25,2026-08-07,华南 · 深圳\n10,2026-09-04,海外 · 欧洲（海运）\n";
+const PM_KNOWN_ADDRS = ["上海", "广州", "北京", "成都", "深圳", "武汉", "欧洲", "海外"]; // debattery-allow：CSV 地址模糊匹配的交付地名词表（物流地，非业务种子）
 
-interface WhatIfOut {
-  rejected: boolean;
-  reason?: string;
-  adjustedP50?: number;
-  adjustedP90?: number;
-  physicalCap?: number;
-  capped?: boolean;
-  capNote?: string;
-  gap?: number;
-  ok?: boolean;
+function pmNormDate(raw: string): string {
+  const s = raw.trim().replace(/[./年月]/g, "-").replace(/日/g, "");
+  const m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  return m ? `${m[1]}-${m[2]!.padStart(2, "0")}-${m[3]!.padStart(2, "0")}` : "";
+}
+function pmMatchAddr(raw: string): string {
+  const s = raw.trim();
+  if (!s) return "";
+  const exact = PM_KNOWN_ADDRS.find((a) => a === s);
+  if (exact) return exact;
+  const contained = PM_KNOWN_ADDRS.find((a) => s.includes(a));
+  if (contained) return contained;
+  const parts = s.split(/[·\s]+/).filter(Boolean);
+  return parts[parts.length - 1] ?? s;
+}
+function parseBatchTable(text: string): { rows: BatchRowInput[]; skipped: number } {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return { rows: [], skipped: 0 };
+  const head = lines[0]!;
+  const delim = head.includes("\t") ? "\t" : head.includes("，") ? "，" : ",";
+  let q = 0, d = 1, a = 2, start = 0;
+  if (/数量|qty|日期|date|地址|addr/i.test(head)) {
+    head.split(delim).map((c) => c.trim()).forEach((c, i) => {
+      if (/数量|qty/i.test(c)) q = i;
+      else if (/日期|date/i.test(c)) d = i;
+      else if (/地址|addr/i.test(c)) a = i;
+    });
+    start = 1;
+  }
+  const rows: BatchRowInput[] = [];
+  let skipped = 0;
+  for (let i = start; i < lines.length; i++) {
+    const cells = lines[i]!.split(delim).map((c) => c.trim());
+    const qty = parseFloat(cells[q] || "") || 0;
+    const dueDate = pmNormDate(cells[d] || "");
+    const address = pmMatchAddr(cells[a] || "");
+    if (qty > 0 && dueDate && address) rows.push({ qty, dueDate, address });
+    else skipped++;
+  }
+  return { rows, skipped };
 }
 
 /**
  * 项目推演（renderer=project-sim，增量 §7.13）：参数区（型号/整单·分批）→ 六步 stepper
  * （①场景解析…⑥结论与对策）+ 常显 DAG 面板（随步骤点亮）；任何参数变更 debounce 重算。
  */
-export default function ProjectSimView(_props: ViewRendererProps) {
+export default function ProjectSimView({ view }: ViewRendererProps) {
+  // R14：型号/地址/物流来自 WorkspaceConfig（按租户/行业），缺失则 DEFAULT_* 兜底
+  const { data: workspace } = useWorkspace();
+  // 8a：DAG 驱动因子层结构由 ViewConfig.layout.driverFactors 声明（去硬编码电池因子）
+  const driverFactors = view.layout?.driverFactors as { id: string; label: string; sub: string }[] | undefined;
+  const simCfg: SimConfig | undefined = workspace?.simConfig;
+  // 型号列表优先级（R14）：WorkspaceConfig > 真实 Model 对象（按租户合成/接入）> DEFAULT_MODELS 兜底。
+  // 真连模式下走 Model 对象 → 下拉与实际数据一致（消除前端写死列表与合成型号对不齐）。
+  const modelObjs = useQuery({ queryKey: ["a", "objects", { type: "Model", view: "project-sim" }], queryFn: () => searchObjects("Model", "") });
+  const modelsFromObjects = (modelObjs.data?.items ?? []).map((o) => String(o.props.modelId ?? o.props.name ?? o.id));
+  const models = simCfg?.models ?? (modelsFromObjects.length > 0 ? modelsFromObjects : DEFAULT_MODELS);
+  const logistics = simCfg?.logistics ?? DEFAULT_LOGISTICS;
+  const addresses = simCfg?.addresses ?? Object.keys(logistics);
+
   const [mode, setMode] = useState<"single" | "batch">("single");
-  const [modelId, setModelId] = useState("4680-NCM");
+  const [modelId, setModelId] = useState(models[0] ?? "");
   const [qty, setQty] = useState(40);
   const [weeks, setWeeks] = useState(6);
   const [batches, setBatches] = useState<BatchRowInput[]>([
     { qty: 18, dueDate: "2026-07-13", address: "上海" },
     { qty: 22, dueDate: "2026-08-10", address: "海外" },
   ]);
-  const [whatIf, setWhatIf] = useState<WhatIfState>({ nightShifts: 0, extraChannels: 0, outsourcePct: 0 });
+  const [uploadMsg, setUploadMsg] = useState(""); // PRD-IND-model §4.3 CSV 导入提示
   const [step, setStep] = useState(1);
   const [bnOpen, setBnOpen] = useState(false);
+  const [dagNode, setDagNode] = useState<string | null>(null); // #3：点 DAG 节点 → 抽屉看判定/推导/输入/规则
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
-  const action = useActionDraft();
+
+  // PRD-IND-model §4.3：CSV 上传 → parseBatchTable → 切分批模式；模板下载（纯前端文件交互）。
+  const onUploadCsv = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, skipped } = parseBatchTable(String(reader.result || ""));
+      if (rows.length > 0) {
+        setBatches(rows);
+        setMode("batch");
+        setStep((s) => Math.min(s, 1));
+        setUploadMsg(`✓ 已导入 ${rows.length} 批${skipped > 0 ? ` · 跳过 ${skipped} 行` : ""}`);
+      } else {
+        setUploadMsg("⚠ 未识别有效批次（需含 数量 / 交付日期 / 交付地址 列）");
+      }
+    };
+    reader.readAsText(file, "utf-8");
+    e.target.value = "";
+  };
+  const downloadTemplate = () => {
+    const blob = new Blob([PM_CSV_TEMPLATE], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "分批交货模板.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const orders = useQuery({
     queryKey: ["a", "objects", { type: "Order", view: "project-sim" }],
     queryFn: () => searchObjects("Order", ""),
   });
+  // WO-SIM-ACTION-REAL：选中订单的 so（采纳结论时随 payload 上送，审批通过后回 stamp 到该 Order）。
+  const selectedOrderSo = useMemo(() => {
+    if (!selectedOrder) return null;
+    const hit = (orders.data?.items ?? []).find((o) => o.id === selectedOrder);
+    return hit ? String(hit.props.so ?? hit.id) : null;
+  }, [selectedOrder, orders.data]);
 
-  // 任何参数变更 → debounce 300ms 重算 capacity_forecast（what-if 滑杆同路径，拖动即重算）
+  // ⑤瓶颈定位基线：capacity_forecast 出 P50/gap/perBaseRows/mainBn（⑥ 杠杆反推的瓶颈种子）。
+  // ⑥ what-if 已从「焊死 capacity_forecast whatIf 三系数」迁到动态杠杆走 generic_inference（见 DynamicLeverPanel）。
   const args = useMemo<Record<string, unknown>>(
     () => ({
       modelId,
       ...(mode === "single" ? { qty, weeks } : { batches: batches.map((b) => ({ qty: b.qty, dueDate: b.dueDate, address: b.address })) }),
-      whatIf: { nightShifts: whatIf.nightShifts, extraChannels: whatIf.extraChannels, outsourceRatio: whatIf.outsourcePct / 100 },
     }),
-    [modelId, mode, qty, weeks, batches, whatIf],
+    [modelId, mode, qty, weeks, batches],
   );
   const forecast = useLiveSolver("capacity_forecast", args, (raw) => CapacityForecastOutputSchema.parse(raw));
   const out = forecast.data;
-  const wi = out ? ((out as Record<string, unknown>).whatIf as WhatIfOut | undefined) : undefined;
+
+  /**
+   * WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间。
+   * 复算三要素全进 basis：求解器 + 本体快照版本 + **全部入参**（型号/数量/周期或分批清单）
+   * —— 入参少写一项，第三方照着重跑出的就不是屏上这份结论。
+   * `out` 未回（查询进行中）时结论/逐基地两段留空 ⇒ 共享件渲染「诚实空态，不补编」。
+   */
+  const buildReport = (): ProvenanceReport => ({
+    docName: "项目推演",
+    basis: [
+      `求解器 capacity_forecast（本体快照 ${forecast.snapshotVersion ?? "—"} · 同输入同输出）`,
+      `入参：型号 ${modelId} · ${
+        mode === "single"
+          ? `数量 ${qty} 万套 · 周期 ${weeks} 周`
+          : `分批 ${batches.length} 批（${batches.map((b) => `${b.qty}万套/${b.dueDate}/${b.address}`).join("；")}）`
+      }`,
+      `数据健康度：P90 = P50 × ${out?.healthFactor ?? "—"}（C09 系数随驱动因子新鲜度联动）`,
+    ],
+    sections: [
+      {
+        heading: "结论",
+        head: ["项", "值"],
+        rows: out
+          ? [
+              ["产能 P50（万套/窗口）", fmt(out.capWanP50)],
+              ["产能 P90（万套/窗口）", fmt(out.capWanP90)],
+              ["缺口（万套）", fmt(out.gap)],
+              ["判定", out.ok ? "可接" : "接不住"],
+            ]
+          : [],
+      },
+      {
+        heading: "逐基地",
+        head: ["基地", "周产能", "认证系数", "主瓶颈", "紧张度"],
+        rows: (out?.perBaseRows ?? []).map((r) => [r.base, fmt(r.weeklyCap), r.certFactor, r.bottleneck, fmt(r.tightness)]),
+      },
+    ],
+  });
 
   // ⑤ 多维瓶颈矩阵（bottleneck_matrix 求解器，弹窗按需取数）
   const bnBases = useMemo(() => (out ? out.perBaseRows.map((r) => r.base) : []), [out]);
   const bnMatrix = useQuery({
     queryKey: ["b", "solver", "bottleneck_matrix", bnBases],
     queryFn: async () => {
-      const res = await runSolver("bottleneck_matrix", { baseIds: bnBases });
+      // 轨M 增量1（假2/AUDIT 真值判据③）：请求 LIVE → 有真 OEE/利用率/良率走真算（不再永远 MOCK）。
+      const res = await runSolver("bottleneck_matrix", { baseIds: bnBases, dataMode: "LIVE" });
       return BottleneckMatrixOutputSchema.parse(res.data);
     },
     enabled: bnOpen && bnBases.length > 0,
@@ -96,43 +231,111 @@ export default function ProjectSimView(_props: ViewRendererProps) {
   const pickOrder = (o: { id: string; props: Record<string, unknown> }) => {
     setSelectedOrder(o.id);
     const m = String(o.props.model ?? "");
-    if (MODELS.includes(m)) setModelId(m);
+    if (models.includes(m)) setModelId(m);
     const q = Number(o.props.qty ?? 0);
     if (q > 0) setQty(Math.max(1, Math.round(q / 100))); // 套 → 万套（演示折算）
     useSessionStore.getState().setSelectedObjects([{ objectType: "Order", objectId: o.id, label: String(o.props.so ?? o.id) }]);
   };
 
-  const adopt = () => {
-    if (!out) return;
-    action.mutate({
-      actionTypeKey: "采纳产能保障方案",
-      payload: {
-        modelId,
-        whatIf: { nightShifts: whatIf.nightShifts, extraChannels: whatIf.extraChannels, outsourcePct: whatIf.outsourcePct },
-        snapshot: {
-          mode,
-          qty: Number((out as Record<string, unknown>).qty ?? qty),
-          p50: out.p50,
-          p90: out.p90,
-          adjustedP50: wi?.adjustedP50 ?? out.p50,
-          adjustedP90: wi?.adjustedP90 ?? out.p90,
-          gap: wi?.gap ?? out.gap,
-          mainBn: out.mainBn,
-        },
-      },
-    });
-  };
+  // WO-GLOBALSIM-GLASS-REDESIGN 双向下钻：全局页「进项目推演细排 →」跳 /v/project-sim?order=SO-xxxx，
+  // 到达后按 so 自动选中该单细排（订单加载后一次性归结·避免用户再手点）。
+  const [searchParams] = useSearchParams();
+  const orderParam = searchParams.get("order");
+  const orderItems = orders.data?.items;
+  // WO-GLOBALSIM-DRILL-SEAM 3.2：?order= 传入但订单池匹配不到时不再 silent no-op——诚实提示。
+  // 项目推演池 = 仅销售订单（searchObjects("Order")）；全局页需求项池 = 订单 ∪ 在产工单(WIP:) ∪ 预测(FC:)。
+  // 传入 WIP:/FC: 前缀 id（或任何未落订单项）→ orderItems.find 必未命中 → 兜底显式提示（防其它入口直带 ?order=WIP:…）。
+  const [notFoundOrder, setNotFoundOrder] = useState<string | null>(null);
+  useEffect(() => {
+    if (!orderParam || !orderItems) {
+      setNotFoundOrder(null);
+      return;
+    }
+    const hit = orderItems.find((o) => String(o.props.so ?? o.id) === orderParam);
+    if (hit) {
+      setNotFoundOrder(null);
+      if (selectedOrder !== hit.id) pickOrder(hit);
+    } else {
+      setNotFoundOrder(orderParam); // 补 else：未命中不再静默
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderParam, orderItems]);
 
   return (
     <div data-testid="project-sim-view">
+      {/* 全局在先：项目推演是「全局主计划框架内的细排」，常驻标注受约束 + 双向跳回全局重排（纯内联样式·不出 CSS 边界）。 */}
+      <div
+        data-testid="proj-global-constraint"
+        style={{
+          display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+          border: "1px solid rgba(232,181,74,.45)", borderLeft: "3px solid var(--amber)",
+          background: "rgba(232,181,74,.08)", borderRadius: 10, padding: "8px 14px",
+          fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.6,
+        }}
+      >
+        <span>
+          ⚠ 当前排程受<strong style={{ color: "var(--amber-txt)" }}>全局主计划</strong>约束
+          {/* 规范 §1/R-UI-3：「约束意味着什么」是解释不是结论，降 `?` 浮层；第一层留状态 + 记号。 */}
+          <InfoPopover topic="全局主计划约束意味着什么" testId="pm-constraint-info">
+            本页仅在既定框架内做单项目细排；跨订单的产能取舍以「接单组合优选」页的全局联合方案为准。
+          </InfoPopover>
+        </span>
+        <span style={{ marginLeft: "auto", display: "inline-flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          {orderParam && <span data-testid="proj-from-global" style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--accent-txt)" }}>← 自全局页 {orderParam} 下钻</span>}
+          <Link to="/v/global-sim" data-testid="proj-goto-global-batch" style={{ color: "#6c7bf6", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(108,123,246,.55)" }}>把这批一起做组合优选 →</Link>
+          <Link to="/v/global-sim" data-testid="proj-goto-global-reraise" style={{ color: "var(--accent-txt)", textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>接不住？回全局重排 →</Link>
+        </span>
+      </div>
+      {/* WO-GLOBALSIM-DRILL-SEAM 3.2：?order= 匹配不到时的诚实提示（复用琥珀提示样式）——口径差异 UI 显式，不装 1:1。 */}
+      {notFoundOrder && (
+        <div
+          data-testid="proj-order-notfound"
+          style={{
+            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+            border: "1px solid rgba(232,181,74,.45)", borderLeft: "3px solid var(--amber)",
+            background: "rgba(232,181,74,.08)", borderRadius: 10, padding: "8px 14px",
+            fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.6,
+          }}
+        >
+          <span>
+            ⚠ 未找到订单 <strong style={{ fontFamily: "var(--font-mono)", color: "var(--amber-txt)" }}>{notFoundOrder}</strong>
+            ——可能是在产工单(<span className="mono">WIP:</span>)或销售预测(<span className="mono">FC:</span>)项；接单可行性仅细排销售订单。
+          </span>
+          <Link to="/v/global-sim" data-testid="proj-notfound-back-global" style={{ marginLeft: "auto", color: "var(--accent-txt)", fontWeight: 600, textDecoration: "none", borderBottom: "1px dashed rgba(76,144,240,.5)" }}>
+            返回接单组合优选 →
+          </Link>
+        </div>
+      )}
       <div className={styles.head}>
         <div>
           <h3>{zh.sim.proj.title}</h3>
-          <div className={styles.sub}>
-            一个型号即一个项目级模拟：①场景解析 → ②可产基地收敛 → ③驱动因子装载 → ④逐级聚合P50 → ⑤瓶颈定位 → ⑥结论与对策；任何参数变更即重算（debounce 300ms · 竞态最后发出者胜）。
+          <div className={styles.sub} data-testid="proj-sub">
+            全局主计划框架内的细排
+            {/* 规范 §1/R-UI-3：六步流水与重算机制是「这一页怎么算」的解释，降 `?` 浮层；
+                第一层留名字。⚠ nav-ia-rename-e6 断言本行含「全局主计划框架内的细排」，前缀不许动。 */}
+            <InfoPopover topic="这一页怎么算" testId="pm-sub-info">
+              一个型号即一个项目级模拟：①场景解析 → ②可产基地收敛 → ③驱动因子装载 → ④逐级聚合P50 → ⑤瓶颈定位 → ⑥结论与对策；任何参数变更即自动重算（稍作停顿后触发，以最后一次改动为准）。
+            </InfoPopover>
           </div>
         </div>
-        {forecast.isFetching && <span style={{ fontSize: 11, color: "var(--muted2)" }}>重算中…</span>}
+        {/* 判据 U9：导出入口（第一层只留按钮 + ? 记号，口径进浮层 —— 共享件统一分层）。 */}
+        <ExportReportButton pageKey="project-sim" build={buildReport} />
+        {/* D5 · 在途可见：不止「重算中…」——补已耗时（秒级递增）+ 主动取消（用户可直接放弃，不必靠改参数间接取消）。
+            本页杠杆全是连续控件（滑杆/数字框）→ 按仓主定案**不弹二次确认框**，照旧 debounce + 取消前序。 */}
+        {forecast.isFetching && (
+          <span style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="proj-sim-recalc">
+            重算中… 已耗时 <b className="mono" data-testid="proj-sim-elapsed">{Math.floor(forecast.elapsedMs / 1000)}</b> 秒
+            <button
+              type="button"
+              data-testid="proj-sim-cancel-solve"
+              title="放弃本次推演（服务端会真的中止底层求解）"
+              onClick={forecast.cancel}
+              style={{ marginLeft: 6, fontSize: 12, padding: "0 6px", cursor: "pointer", background: "transparent", color: "inherit", border: "1px solid currentColor", borderRadius: 4 }}
+            >
+              取消
+            </button>
+          </span>
+        )}
       </div>
 
       <div className={styles.projGrid}>
@@ -173,7 +376,7 @@ export default function ProjectSimView(_props: ViewRendererProps) {
                     ]);
                   }}
                 >
-                  {MODELS.map((m) => (
+                  {models.map((m) => (
                     <option key={m}>{m}</option>
                   ))}
                 </select>
@@ -194,6 +397,15 @@ export default function ProjectSimView(_props: ViewRendererProps) {
 
             {mode === "batch" && (
               <div>
+                {/* PRD-IND-model §4.3：分批交货 CSV 上传 + 模板下载 */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "4px 0 8px" }}>
+                  <label className="btn sm" data-testid="batch-upload-label" style={{ cursor: "pointer" }}>
+                    ⬆ 上传表格
+                    <input type="file" accept=".csv,text/csv" aria-label="上传分批交货表格" data-testid="batch-upload" style={{ display: "none" }} onChange={onUploadCsv} />
+                  </label>
+                  <button className="btn sm" data-testid="batch-template" onClick={downloadTemplate}>模板.csv</button>
+                  {uploadMsg && <span data-testid="batch-upload-msg" style={{ fontSize: 12, color: "var(--muted2)" }}>{uploadMsg}</span>}
+                </div>
                 <table className="cmp" data-testid="batch-editor">
                   <thead>
                     <tr>
@@ -233,13 +445,13 @@ export default function ProjectSimView(_props: ViewRendererProps) {
                             aria-label={`第${i + 1}批交付地址`}
                             onChange={(e) => setBatches(batches.map((x, j) => (j === i ? { ...x, address: e.target.value } : x)))}
                           >
-                            {ADDRESSES.map((a) => (
+                            {addresses.map((a) => (
                               <option key={a}>{a}</option>
                             ))}
                           </select>
                         </td>
                         <td className="mono" data-testid={`batch-logi-${i}`}>
-                          {zh.sim.proj.logistics(LOGISTICS[b.address] ?? 7)}
+                          {zh.sim.proj.logistics(logistics[b.address] ?? 7)}
                         </td>
                         <td>
                           {batches.length > 1 && (
@@ -291,18 +503,23 @@ export default function ProjectSimView(_props: ViewRendererProps) {
                   modelId={modelId}
                   qty={qty}
                   weeks={Number((out as Record<string, unknown>).weeks ?? weeks)}
-                  whatIf={whatIf}
-                  setWhatIf={setWhatIf}
-                  wi={wi}
                   onOpenBn={() => setBnOpen(true)}
-                  onAdopt={adopt}
+                  isStale={forecast.isStale}
+                  orderSo={selectedOrderSo}
+                  snapshotVersion={forecast.snapshotVersion}
                 />
               </div>
 
               {/* 常显 DAG 面板（§7.13）：六层固定，随步骤点亮 */}
               <div className="panel" data-testid="pm-dag-panel">
-                <div className="section-title">{zh.sim.proj.dagTitle}</div>
-                <PmDag {...buildDag(out, mode, qty, weeks, modelId, batches)} step={step} />
+                <div className="section-title">
+                  {zh.sim.proj.dagTitle}
+                  {/* 规范 §1/R-UI-3：「点节点能看什么」是操作说明/凭什么，降 `?` 浮层。 */}
+                  <InfoPopover topic="这张图怎么看" testId="pm-dag-info">
+                    点击任一节点 → 看该步的判定逻辑 / 推导公式 / 输入数据（含来源·新鲜度） / 关联规则。
+                  </InfoPopover>
+                </div>
+                <PmDag {...buildDag(out, mode, qty, weeks, modelId, batches, driverFactors)} step={step} onNodeClick={setDagNode} />
               </div>
             </div>
           )}
@@ -310,7 +527,7 @@ export default function ProjectSimView(_props: ViewRendererProps) {
       </div>
 
       {bnOpen && (
-        <Modal title={`${zh.sim.proj.bnMatrix} · 基地×7因素`} onClose={() => setBnOpen(false)} width={720}>
+        <Modal title={`${zh.sim.proj.bnMatrix} · 各基地 · 7 类因素`} onClose={() => setBnOpen(false)} width={720}>
           <div data-testid="bn-matrix-modal">
             {bnMatrix.isLoading && <div className="empty-state">{zh.common.loading}</div>}
             {bnMatrix.data && (
@@ -353,6 +570,19 @@ export default function ProjectSimView(_props: ViewRendererProps) {
           </div>
         </Modal>
       )}
+
+      {dagNode && out && (
+        <DagNodeDrawer
+          detail={dagNodeDetail(dagNode, out, modelId, Number((out as Record<string, unknown>).qty ?? qty), driverFactors)}
+          chain={dagNodeChain(dagNode, out)}
+          snapshotVersion={forecast.snapshotVersion}
+          onClose={() => setDagNode(null)}
+        />
+      )}
+      {/* inference-process 横切：产能/项目推演的编排过程 DAG（model 收敛子模式：型号→认证产线→基地） */}
+      <InferenceProcessPanel testId="inference-project" solved mode="model-network" />
+      {/* WO-ACTIVE-EDGE-UX 挂载点（横向要求：所有推演页都要能"关掉一条传导边看结果怎么变"）。 */}
+      <EdgeActivePanel pageKey="project-sim" />
     </div>
   );
 }
@@ -370,11 +600,10 @@ function StepBody({
   modelId,
   qty,
   weeks,
-  whatIf,
-  setWhatIf,
-  wi,
   onOpenBn,
-  onAdopt,
+  isStale,
+  orderSo,
+  snapshotVersion,
 }: {
   step: number;
   out: CapacityForecastOutput;
@@ -382,13 +611,17 @@ function StepBody({
   modelId: string;
   qty: number;
   weeks: number;
-  whatIf: WhatIfState;
-  setWhatIf: (w: WhatIfState) => void;
-  wi: WhatIfOut | undefined;
   onOpenBn: () => void;
-  onAdopt: () => void;
+  /** D5：结果对应旧参数时不许采纳（采纳的必须是屏上参数真算出来的结论·非过期解）。 */
+  isStale?: boolean;
+  /** 选中销售订单的 so（下钻细排场景）；采纳结论时随 payload 上送回 stamp。 */
+  orderSo?: string | null;
+  /** WO-R13-ONTOCHAIN-PANEL：复算基线快照（本体链弹层随行透出）。 */
+  snapshotVersion?: string | null;
 }) {
   const totalQty = Number((out as Record<string, unknown>).qty ?? qty);
+  // WO-R13-ONTOCHAIN-PANEL：判定条旁「本体链」弹层开关。
+  const [chainOpen, setChainOpen] = useState(false);
 
   if (step === 1) {
     if (mode === "batch" && out.batchRows) {
@@ -417,9 +650,9 @@ function StepBody({
                   {b.wkEff} 周
                 </td>
                 <td>{fmt(b.cumDemand)}</td>
-                <td>{fmt(b.cumP90)}</td>
-                <td style={{ color: b.ok ? "var(--ok)" : "var(--danger)", fontWeight: 700 }} data-testid={`batch-ok-${i}`}>
-                  {b.ok ? "✓ 按期" : `✗ 缺 ${fmt(b.cumDemand - b.cumP90)}`}
+                <td>{fmt(b.cumCapWanP90)}</td>
+                <td style={{ color: b.ok ? "var(--ok-txt)" : "var(--danger-txt)", fontWeight: 700 }} data-testid={`batch-ok-${i}`}>
+                  {b.ok ? "✓ 按期" : `✗ 缺 ${fmt(b.cumDemand - b.cumCapWanP90)}`}
                 </td>
               </tr>
             ))}
@@ -430,7 +663,13 @@ function StepBody({
               <td>
                 <b>{fmt(totalQty)}</b>
               </td>
-              <td colSpan={5}>净生产窗口 = 交付日 − 地址物流时长（物料/物流域）· 每批按「累计需求 ≤ 累计P90」校验</td>
+              <td colSpan={5}>
+                {/* 规范 §1/R-UI-3：净窗口算式与逐批校验口径是「凭什么」，降 `?` 浮层；
+                    第一层留各批的数值列（周数 / 累计 / ✓✗ 结论就在上面行里）。 */}
+                <InfoPopover topic="批次净窗口与校验口径" testId="pm-batch-caliber">
+                  净生产窗口 = 交付日 − 地址物流时长（物料/物流域）；每批按「累计需求 ≤ 累计P90」校验。
+                </InfoPopover>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -469,7 +708,7 @@ function StepBody({
           </tr>
           <tr>
             <td>候选对策</td>
-            <td>加夜班 / 扩化成通道 / 外协</td>
+            <td>加夜班 / 扩产能瓶颈通道 / 外协</td>
             <td>方案库（按约束因素对症）</td>
           </tr>
         </tbody>
@@ -496,7 +735,8 @@ function StepBody({
               <td>
                 {r.certFactor < 1 ? (
                   <span className="badge amber" data-testid={`cert-pending-${r.base}`}>
-                    {zh.sim.proj.certPending} ×{r.certFactor}
+                    {/* 系数值是结论性数字（规范 §1 第一层留数值），只把「×」的公式写法换成「系数」。 */}
+                    {zh.sim.proj.certPending} · 系数 {r.certFactor}
                   </span>
                 ) : (
                   "量产 1.0"
@@ -505,9 +745,31 @@ function StepBody({
               <td>{fmt(r.weeklyCap, 2)}</td>
             </tr>
           ))}
+          {(out.nonProducible ?? []).map((nb) => (
+            <tr key={nb.base} style={{ opacity: 0.55 }} data-testid={`nonproducible-${nb.base}`}>
+              <td className="zh">
+                <span style={{ textDecoration: "line-through" }}>{nb.base}</span> ✗
+              </td>
+              <td colSpan={2} style={{ color: "var(--muted)" }}>
+                {nb.reason}
+              </td>
+            </tr>
+          ))}
+          {out.totalBases != null && out.producibleCount != null && (
+            <tr>
+              <td colSpan={3} style={{ color: "var(--accent-txt)" }} data-testid="pm-step2-converge">
+                收敛：型号 <b className="mono">{modelId}</b> 仅在 <b className="mono">{out.producibleCount}</b>/
+                <b className="mono">{out.totalBases}</b> 个基地可产
+                {/* 规范 §1/R-UI-3：收敛判定口径降 `?` 浮层；第一层留 N/总数 这个结论。 */}
+                <InfoPopover topic="可产判定口径" testId="pm-converge-info">
+                  按化学体系 × 基地业态推演：型号化学体系与基地业态不匹配、或对应产线未铺/未认证的基地判为不可产（上方灰色行逐基地给原因）。
+                </InfoPopover>
+              </td>
+            </tr>
+          )}
           {out.pendingCertList.length > 0 && (
             <tr>
-              <td colSpan={3} style={{ color: "var(--amber)" }} data-testid="pending-cert">
+              <td colSpan={3} style={{ color: "var(--amber-txt)" }} data-testid="pending-cert">
                 {out.pendingCertList.join("、")} {zh.sim.proj.pendingCert}
               </td>
             </tr>
@@ -536,8 +798,9 @@ function StepBody({
                   <b>{r.base}</b>
                 </td>
                 <td>前 4 周 0.88→1.0</td>
-                <td>{r.maintWeek != null ? `第 ${r.maintWeek} 周（×0.72）` : "—"}</td>
-                <td>{r.certFactor < 1 ? `×${r.certFactor}（认证中）` : "×1.0"}</td>
+                {/* 系数值是结论性数字（第一层留数值），只去掉「×」公式写法。 */}
+                <td>{r.maintWeek != null ? `第 ${r.maintWeek} 周（系数 0.72）` : "—"}</td>
+                <td>{r.certFactor < 1 ? `系数 ${r.certFactor}（认证中）` : "系数 1.0"}</td>
               </tr>
             ))}
           </tbody>
@@ -575,8 +838,13 @@ function StepBody({
                 <b>合计</b>
               </td>
               <td colSpan={2} data-testid="pm-step4-total">
-                P50 <b className="mono">{fmt(out.p50)}</b> 万套 · P90 = P50 × <b className="mono">{out.healthFactor}</b> ={" "}
-                <b className="mono">{fmt(out.p90)}</b> 万套
+                {/* 规范 §1：第一层留结论性数字（P50 / P90 两个值）；「P90 怎么从 P50 推出来」
+                    是公式（R-UI-3），降 `?` 浮层 —— 数字不上浮层、公式不上第一层。 */}
+                P50 <b className="mono">{fmt(out.capWanP50)}</b> 万套 · P90{" "}
+                <b className="mono">{fmt(out.capWanP90)}</b> 万套
+                <InfoPopover topic="P90 推导口径" testId="pm-step4-p90">
+                  P90 = P50 × <b className="mono">{out.healthFactor}</b>（数据健康度系数，C09：IoT/MES/QMS 驱动因子新鲜度联动）。
+                </InfoPopover>
               </td>
             </tr>
           </tbody>
@@ -617,8 +885,15 @@ function StepBody({
                       }}
                     />
                   </span>
-                  <span className="mono" style={{ color: r.tightness >= 85 ? "var(--danger)" : undefined }}>
+                  <span className="mono" style={{ color: r.tightness >= 85 ? "var(--danger-txt)" : undefined }}>
                     {r.tightness}
+                  </span>
+                  {/* 轨M 增量1（假2）：紧张度色块不再裸渲染当真值——逐基地诚实标实测/估算（LIVE=真 OEE/利用率/良率）。
+                      WO-DATAMODE-UNIFY-PROVENANCE（两正交维·诚实灰）：合成种子物化底料（provenanceSynthetic·provenance 维）
+                      优先标"合成"（灰），绝不冒充"实测"（KILL-MOCK-RED·铁律 0.4）；非合成保留 measurement 维实测/估算。 */}
+                  <span data-testid={`pm-tight-mode-${r.base}`}
+                    style={{ marginLeft: 6, fontSize: 12, opacity: 0.75, color: r.provenanceSynthetic ? "var(--muted, #8a94a6)" : undefined }}>
+                    {r.provenanceSynthetic ? "合成" : r.live ? "实测" : "估算"}
                   </span>
                 </td>
               </tr>
@@ -635,119 +910,224 @@ function StepBody({
     );
   }
 
-  // ⑥ 结论与对策 + what-if 三滑杆（拖动即重算）
+  // ⑥ 结论与对策 + 动态杠杆（DynamicLeverPanel · generic_inference 真重算）
   const okColor = out.ok ? "var(--ok)" : "var(--danger)";
-  const effGap = wi && !wi.rejected && wi.gap != null ? wi.gap : out.gap;
+  const verdictText =
+    mode === "batch" ? (out.ok ? zh.sim.proj.batchOk : zh.sim.proj.batchGap(fmt(out.gap))) : out.ok ? "✓ 产能可满足" : `✗ 缺口 ${fmt(out.gap)} 万套`;
+  /**
+   * WO-R13-ONTOCHAIN-PANEL：判定结论的本体链 —— 三段全部由后端响应真值透传：
+   *   ① 对象：选中订单（Order.so）否则型号（Model）——面板既有状态，非编造；
+   *   ② 边：默认粒度响应**不带**派生边（byProcessModel[].provenance 需 granularity=process-model）→ null + gaps 挂账；
+   *   ③ 规则/公式：响应 provenance 的公式原文（ok 时取 capWanP50，缺口时取 gap）+ 求解器 key。
+   * 逐条规则闸门（PASS/WARN/BLOCK）屏上已有 EvaluatedRules，链内只指一句、不重复造。
+   */
+  const verdictChain: OntologyChainData = {
+    object: orderSo ? { type: "Order", id: orderSo } : { type: "Model", id: modelId },
+    edge: null,
+    rule: {
+      formula: (out.ok ? out.provenance?.capWanP50 : out.provenance?.gap)?.formula,
+      solverKey: "capacity_forecast",
+    },
+    snapshotVersion: snapshotVersion ?? null,
+    gaps: [
+      "默认粒度响应不带派生边；byProcessModel[].provenance 需 granularity=process-model，已挂账后端单",
+      "逐条规则闸门（PASS/WARN/BLOCK）见下方规则评估区，链内不重复列出",
+    ],
+  };
   return (
     <div data-testid="pm-step6">
       <div className={styles.okBar} style={{ borderColor: okColor, color: okColor }} data-testid="proj-verdict-bar">
-        {mode === "batch" ? (out.ok ? zh.sim.proj.batchOk : zh.sim.proj.batchGap(fmt(out.gap))) : out.ok ? "✓ 产能可满足" : `✗ 缺口 ${fmt(out.gap)} 万套`}
+        {verdictText}
       </div>
+      <button type="button" className="btn sm" style={{ marginTop: 6 }} data-testid="proj-verdict-chain-btn" onClick={() => setChainOpen(true)}>
+        本体链
+      </button>
+      {chainOpen && (
+        <Modal title="本体链 · 结论溯源" onClose={() => setChainOpen(false)} width={560}>
+          <OntologyChainView conclusion={verdictText} chain={verdictChain} testId="proj-verdict-chain" />
+        </Modal>
+      )}
+      {/* WO-SIM-ACTION-REAL：兑现 DAG fc 节点那句「结论可采纳为 Action」——采纳 = 参数组合 + 推演快照
+          造「采纳产能预测结论」草稿走 S2 审批，审批通过落 ForecastAdoption 台账对象（+选中订单回 stamp）。
+          不直改任何真值（R4）；D5：结果对应旧参数时不许采纳（与全局页同一纪律）。 */}
+      {/* ⚠ 2026-08-19 审核方补：本页此前**没有**过 `act.adopt-to-draft` 熵限门，
+          而 PlanGenerateView / PlanAuditView / DynamicLeverPanel / WhatIfView 四处都过。
+          实测该特性在 `apps/datacore/src/features.ts` 是 **ACTION 级**声明（defaultOn: true）
+          ⇒ 关掉它时本页仍显示采纳入口 = 与其余四页不一致，且 base_manager 的演示语义不成立。
+          ⚠ **这只补上了客户端一致性，不是安全边界** —— 实测后端 `POST /a/v1/action-drafts`
+          （app.ts 该路由体内零 requireFeature/assertFeature）**完全不拦**该特性，
+          即关掉 flag 后直接打接口仍可建草稿。那是更大的一条，已登记本体 §8
+          `G-ENTITLEMENT-ACTION-LEVEL-CLIENT-ONLY`，归专单（改公开 API 行为，需全量回归）。 */}
+      <Feature flag="act.adopt-to-draft">
+        <AdoptConclusionButton out={out} mode={mode} modelId={modelId} totalQty={totalQty} weeks={weeks} isStale={isStale} orderSo={orderSo} />
+      </Feature>
+      {/* 规则即引用 P2：求解器真评估的规则闸门（PASS/WARN/BLOCK），改规则即改此处结论 */}
+      <EvaluatedRules rules={out.evaluatedRules} ruleSetVersion={out.ruleSetVersion} />
+      {/* PRD-IND-model §4.4-⑥：缺口时显示对症对策表（acts，方案库，i18n 下发零写死），与下方 what-if 滑杆并存 */}
+      {!out.ok && (
+        <table className="cmp" style={{ marginTop: 10 }} data-testid="pm-acts-table">
+          <thead>
+            <tr>
+              <th>{zh.sim.proj.actsTitle}</th>
+              <th>
+                效果
+                {/* 规范 §1/R-UI-3：「效果列是什么口径」降 `?` 浮层，列头只留名字。 */}
+                <InfoPopover topic="效果列口径" testId="pm-acts-caliber">
+                  效果列为场景求解器口径：同一组场景输入下由求解器真跑得出的预期变化。
+                </InfoPopover>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {zh.sim.proj.acts.map((a) => (
+              <tr key={a.action} data-testid={`pm-act-${a.action}`}>
+                <td className="zh"><b>{a.action}</b></td>
+                <td>{a.effect}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       <div className={styles.threeKpiRow}>
         <div className={styles.kpi} data-testid="kpi-p50">
-          <b style={{ color: "var(--c-capacity)" }}>{fmt(out.p50)}</b>
+          {/* 可信赖的推演（R13）：结论数字六要素溯源。
+              WO-R13-ONTOCHAIN-PANEL：formula 优先取后端响应 provenance 真值串
+              （capacity.ts 下发 capWanP50.formula）；响应缺该键（如 mock 未覆盖）时
+              才退回既有编辑口径内联串 —— 生产路径后端字段优先，绝不弃用。 */}
+          <Provenance
+            testId="p50"
+            src="聚合求解器"
+            formula={out.provenance?.capWanP50?.formula ?? "P50 = Σ可产基地 Σ周(周产能 × 爬坡曲线 × 检修窗 × 认证系数)"}
+            inputs={["可产基地", "爬坡曲线", "检修窗", "认证系数"]}
+            rule="C01/C02"
+          >
+            <b style={{ color: "var(--c-capacity-txt)" }}>{fmt(out.capWanP50)}</b>
+          </Provenance>
           <span>P50 累计产能(万套)</span>
         </div>
         <div className={styles.kpi} data-testid="kpi-p90">
-          <b style={{ color: "var(--c-forecast)" }}>{fmt(out.p90)}</b>
-          <span>P90（× 健康度 {out.healthFactor}）</span>
+          <Provenance
+            testId="p90"
+            src="IoT/SCADA 数据健康度"
+            formula={out.provenance?.capWanP90?.formula ?? `P90 = P50 × 健康度系数 ${out.healthFactor}`}
+            inputs={["P50", "数据新鲜度→健康度系数"]}
+            rule="C09"
+            note="IoT 延迟时健康度系数自动下调，置信度随之削弱"
+          >
+            <b style={{ color: "var(--c-forecast-txt)" }}>{fmt(out.capWanP90)}</b>
+          </Provenance>
+          {/* 规范 §1/R-UI-3：健康度系数的「×」推导已在上方 Provenance 浮层（formula 含真值），
+              第一层标签只留名字与量纲，与 kpi-p50 对称。 */}
+          <span>P90 累计产能(万套)</span>
         </div>
         <div className={styles.kpi} data-testid="kpi-demand">
-          <b>{fmt(totalQty)}</b>
+          {/* 需求 KPI 与后端 provenance 语义对应：本卡显示的是场景有效需求（qty 显式路径）
+              ⇒ 对 effectiveDemand；其缺（纯订单簿口径）才对 baselineDemand。后端未下发时不补编，
+              保持今天的裸数字渲染。 */}
+          {(() => {
+            const demProv = out.provenance?.effectiveDemand ?? out.provenance?.baselineDemand;
+            return demProv ? (
+              <Provenance testId="demand" src="结构化预测场景 / 订单簿" formula={demProv.formula} inputs={["需求量", "需求增量 demandDelta"]}>
+                <b>{fmt(totalQty)}</b>
+              </Provenance>
+            ) : (
+              <b>{fmt(totalQty)}</b>
+            );
+          })()}
           <span>需求(万套)</span>
         </div>
       </div>
 
+      {/* ⑥ what-if：焊死 3 滑杆 → 动态杠杆（自⑤瓶颈反推 + 敏感度排序，走 generic_inference 真重算）。
+          G-WHATIF-HARDCODED-LEVERS 收（本体 §8e）。杠杆集随瓶颈变、拖动真重算、每值 provenance、tornado 排序、
+          边界自 C08 规则闸、多方案矩阵 —— 全在 DynamicLeverPanel。 */}
       <Feature flag="view.project-sim.whatif">
-        <div className={styles.whatIfPanel} data-testid="whatif-panel">
-          <div className="section-title">{zh.sim.proj.whatIf}</div>
-          <div className={styles.sliderRow}>
-            <span>{zh.sim.proj.nightShift}（0–3 班）</span>
-            <input
-              type="range"
-              min={0}
-              max={3}
-              step={1}
-              value={whatIf.nightShifts}
-              aria-label={zh.sim.proj.nightShift}
-              data-testid="whatif-night"
-              onChange={(e) => setWhatIf({ ...whatIf, nightShifts: parseInt(e.target.value) })}
-            />
-            <b>+{whatIf.nightShifts}</b>
-          </div>
-          <div className={styles.sliderRow}>
-            <span>{zh.sim.proj.extraChannels}（0–6 条）</span>
-            <input
-              type="range"
-              min={0}
-              max={6}
-              step={1}
-              value={whatIf.extraChannels}
-              aria-label={zh.sim.proj.extraChannels}
-              data-testid="whatif-channels"
-              onChange={(e) => setWhatIf({ ...whatIf, extraChannels: parseInt(e.target.value) })}
-            />
-            <b>+{whatIf.extraChannels}</b>
-          </div>
-          <div className={styles.sliderRow}>
-            <span>{zh.sim.proj.outsource}（0–20% · step 5）</span>
-            <input
-              type="range"
-              min={0}
-              max={20}
-              step={5}
-              value={whatIf.outsourcePct}
-              aria-label={zh.sim.proj.outsource}
-              data-testid="whatif-outsource"
-              onChange={(e) => setWhatIf({ ...whatIf, outsourcePct: parseInt(e.target.value) })}
-            />
-            <b>{whatIf.outsourcePct}%</b>
-          </div>
-          {whatIf.outsourcePct >= 20 && (
-            <div className={styles.noteAmber} data-testid="whatif-c08">
-              ⚠ {zh.sim.proj.outsourceCap}
-            </div>
-          )}
-          {wi?.rejected && (
-            <div className={styles.noteRed} data-testid="whatif-rejected">
-              ⛔ {wi.reason}
-            </div>
-          )}
-
-          <div className={styles.okBar} style={{ borderColor: effGap <= 0 ? "var(--ok)" : "var(--danger)", color: effGap <= 0 ? "var(--ok)" : "var(--danger)" }} data-testid="whatif-gap">
-            {effGap <= 0 ? zh.sim.proj.gapZero(fmt(-effGap)) : zh.sim.proj.gapLeft(fmt(effGap))}
-          </div>
-          {wi && !wi.rejected && (
-            <div className={styles.abCompare} data-testid="whatif-compare">
-              <div>
-                <span>{zh.sim.proj.before}</span>
-                <b data-testid="whatif-before">{fmt(out.p50)}</b>
-              </div>
-              <div style={{ borderColor: "rgba(98,190,119,.5)" }}>
-                <span>
-                  {zh.sim.proj.after}（P90 {fmt(wi.adjustedP90 ?? 0)}）
-                </span>
-                <b style={{ color: "var(--ok)" }} data-testid="whatif-after">
-                  {fmt(wi.adjustedP50 ?? 0)}
-                </b>
-              </div>
-            </div>
-          )}
-          {wi && !wi.rejected && wi.capped && <div className={styles.noteAmber}>{wi.capNote}</div>}
-
-          <Feature flag="act.adopt-to-draft">
-            <button className="btn sm primary" style={{ marginTop: 10 }} data-testid="proj-adopt" onClick={onAdopt}>
-              {zh.sim.proj.adopt}（参数组合 + 推演快照 → Action）
-            </button>
-          </Feature>
-        </div>
+        <DynamicLeverPanel
+          beforeValue={out.capWanP50}
+          baseGap={out.gap}
+          factors={[out.mainBn, ...new Set(out.perBaseRows.map((r) => r.bottleneck).filter(Boolean))].filter(Boolean) as string[]}
+          modelId={modelId}
+          // WO-SNAPSHOT-UNIT-LIE：判别式联合的 `capacity_forecast` 分支 —— 本处的值**本来就是**
+          // 真产能（直接来自 `capacity_forecast` 输出的同名字段，量纲自证），加 `kind` 后
+          // 与产能页那份 `risk_tightness` 快照在留痕里**分得开**（原先两者长得一模一样）。
+          snapshot={{ kind: "capacity_forecast", mode, qty: totalQty, capWanP50: out.capWanP50, capWanP90: out.capWanP90, mainBn: out.mainBn }}
+        />
       </Feature>
+      {/* WO-GLOBALSIM-GLASS-REDESIGN 去重：多目标 + 跨对象占用联合 what-if 本是「全局能力」，
+          已迁至全局项目推演页（/v/global-sim）。单项目 what-if（generic_inference 动态杠杆）留此。 */}
     </div>
   );
 }
 
-// ---------------- DAG 装配（六层固定，§7.13） ----------------
+/**
+ * WO-SIM-ACTION-REAL · 步骤⑥「采纳结论」按钮：把屏上这份结论（参数组合 + 推演快照）造成
+ * 「采纳产能预测结论」Action 草稿走 S2 审批 —— 审批通过由 domainExecutor 落 ForecastAdoption
+ * 台账对象（payload 契约 = contracts ForecastAdoptionPayloadSchema，量纲逐字段标注）。
+ * 与 DynamicLeverPanel 的「采纳杠杆组合」（采纳产能保障方案 → 改写本体杠杆属性）分工不重叠：
+ * 那个改杠杆真值，这个把**结论本身**落成可溯源台账。
+ */
+function AdoptConclusionButton({
+  out,
+  mode,
+  modelId,
+  totalQty,
+  weeks,
+  isStale,
+  orderSo,
+}: {
+  out: CapacityForecastOutput;
+  mode: "single" | "batch";
+  modelId: string;
+  totalQty: number;
+  weeks: number;
+  isStale?: boolean;
+  orderSo?: string | null;
+}) {
+  const adopt = useActionDraft();
+  const onAdopt = (): void => {
+    adopt.mutate({
+      actionTypeKey: "采纳产能预测结论",
+      payload: {
+        source: "project-sim",
+        modelId,
+        mode,
+        demandWan: totalQty, // 万套（与步骤①「需求量(万套)」同轴）
+        ...(mode === "single" ? { weeks } : {}), // 周
+        ...(mode === "batch" && out.batchRows
+          ? { batches: out.batchRows.map((b) => ({ qtyWan: b.qty, dueDate: b.dueDate, address: b.address ?? "" })) }
+          : {}),
+        snapshot: {
+          capWanP50: out.capWanP50, // 万套/窗口
+          capWanP90: out.capWanP90, // 万套/窗口
+          gapWan: Math.max(0, out.gap), // 万套（契约定义 = max(0, demand−P90)，可达时归 0）
+          healthFactor: out.healthFactor, // 无量纲 0–1
+          ok: out.ok,
+          mainBn: out.mainBn ?? "", // 瓶颈因素名（文本）
+          ...(out.ruleSetVersion ? { ruleSetVersion: out.ruleSetVersion } : {}),
+        },
+        ...(orderSo ? { orderId: orderSo } : {}),
+      },
+    });
+  };
+  return (
+    <button
+      className="btn sm primary"
+      style={{ marginTop: 10 }}
+      data-testid="pm-adopt-conclusion"
+      disabled={adopt.isPending || isStale}
+      title={
+        isStale
+          ? "当前结果对应旧参数——请先按新参数重算再采纳"
+          : "采纳结论 → 生成「采纳产能预测结论」Action 草稿（参数组合 + 推演快照 · 走 S2 审批 · 审批通过才落台账真值 R4）"
+      }
+      onClick={onAdopt}
+    >
+      {adopt.isPending ? "生成草稿中…" : isStale ? "采纳结论（需先重算）" : "采纳结论（→ Action 审批）"}
+    </button>
+  );
+}
 
+// ---------------- DAG 装配（六层固定，§7.13） ----------------
 function buildDag(
   out: CapacityForecastOutput,
   mode: "single" | "batch",
@@ -755,11 +1135,18 @@ function buildDag(
   weeks: number,
   modelId: string,
   batches: BatchRowInput[],
+  driverFactors?: { id: string; label: string; sub: string }[],
 ): { layers: PmDagNode[][]; edges: [string, string][] } {
   const totalQty = Number((out as Record<string, unknown>).qty ?? qty);
   const baseRows = out.perBaseRows.slice(0, 6);
   const folded = out.perBaseRows.length > 6 ? out.perBaseRows.length - 6 : 0;
   const minWk = out.batchRows && out.batchRows.length > 0 ? Math.min(...out.batchRows.map((b) => b.wkEff)) : weeks;
+  // 去电池锁死 8a（R14）：DAG 驱动因子层结构由 ViewConfig.layout.driverFactors 声明；默认电池因子仅兜底。
+  const factors = driverFactors ?? [
+    { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },
+    { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
+    { id: "f3", label: "认证系数 + 数据健康度", sub: `PLM 认证 · P90 系数 ${out.healthFactor}` },
+  ];
 
   const layers: PmDagNode[][] = [
     [
@@ -776,21 +1163,47 @@ function buildDag(
         color: "#54B5C4",
         st: 2,
       }))
-      .concat(folded > 0 ? [{ id: "bm", label: `+${folded} 基地`, sub: "见步骤②", color: "#54B5C4", st: 2 }] : []),
+      /*
+        判据 U4b · **被挤出这张图的那几个基地**。
+        改前这里是 `{ id:"bm", label:"+N 基地", sub:"见步骤②" }` —— 一个把人支去别处的
+        死路占位：屏上既看不出被挤掉的是**谁**，也看不出**为什么**是它们被挤掉。
+        现在它留在同一张图上、可见地降级（虚线 + ✕ 已排除 + 图下逐条理由），
+        名字与产能取自 `out.perBaseRows` 真值 —— 前端不编一个基地出来。
+      */
+      .concat(
+        folded > 0
+          ? [
+              {
+                id: "bm",
+                label: `${folded} 个基地未上图`,
+                sub: `共 ${out.perBaseRows.length} 个`,
+                color: "#54B5C4",
+                st: 2,
+                excluded: true,
+                /*
+                  ⚠ 理由必须写**真的那个口径**：`perBaseRows` 由求解器按 **baseId 字典序**产出
+                  （`apps/datacore/src/solvers/capacity.ts:487` `[...cert.entries()].sort(...)`），
+                  本页 `slice(0,6)` 前**不重排** —— 所以这是"取前 6 个"，**不是**"取产能最大的 6 个"。
+                  写成"按产能降序"会让用户以为没上图的都是小基地，而实际可能恰好相反。
+                */
+                excludedReason: `本图只画求解器返回的前 6 个（按基地 id 字典序，非按产能大小）；未上图：${out.perBaseRows
+                  .slice(6)
+                  .map((r) => r.base)
+                  .join("、")}`,
+              },
+            ]
+          : [],
+      ),
+    factors.map<PmDagNode>((f) => ({ id: f.id, label: f.label, sub: f.sub, color: "#9D8BF0", st: 3 })),
     [
-      { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子", color: "#9D8BF0", st: 3 },
-      { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周", color: "#9D8BF0", st: 3 },
-      { id: "f3", label: "认证系数 + 数据健康度", sub: `PLM 认证 · P90 系数 ${out.healthFactor}`, color: "#9D8BF0", st: 3 },
-    ],
-    [
-      { id: "agg", label: "聚合求解器", sub: `Σ基地 Σ周 → P50 ${fmt(out.p50)} 万套`, color: "#C470B8", st: 4 },
+      { id: "agg", label: "聚合求解器", sub: `Σ基地 Σ周 → P50 ${fmt(out.capWanP50)} 万套`, color: "#C470B8", st: 4 },
       { id: "bn", label: "瓶颈求解器", sub: `主瓶颈：${out.mainBn || "—"}`, color: "#C470B8", st: 5 },
     ],
     [
       {
         id: "fc",
         label: `产能预测 ${out.ok ? "✓ 可达" : `✗ 缺口 ${fmt(out.gap)} 万套`}`,
-        sub: `P50 ${fmt(out.p50)} · P90 ${fmt(out.p90)}（×${out.healthFactor}）vs 需求 ${fmt(totalQty)}`,
+        sub: `P50 ${fmt(out.capWanP50)} · P90 ${fmt(out.capWanP90)}（×${out.healthFactor}）vs 需求 ${fmt(totalQty)}`,
         color: out.ok ? "#62BE77" : "#DD7E9E",
         st: 6,
       },
@@ -798,6 +1211,246 @@ function buildDag(
   ];
   const edges: [string, string][] = [["dem", "mdl"]];
   for (const n of layers[2]!) edges.push(["mdl", n.id], [n.id, "agg"]);
-  edges.push(["f1", "agg"], ["f2", "agg"], ["f3", "agg"], ["agg", "bn"], ["agg", "fc"], ["bn", "fc"]);
+  for (const f of factors) edges.push([f.id, "agg"]);
+  edges.push(["agg", "bn"], ["agg", "fc"], ["bn", "fc"]);
   return { layers, edges };
+}
+
+// ---------------- DAG 节点点穿（#3 · 哲学 #1/#3/#6：每节点可验证） ----------------
+
+/** 节点详情 = 六要素溯源（结论可溯源 R13）：判定/来源/新鲜度/推导/输入/规则/备注。 */
+interface DagDetail {
+  title: string;
+  verdict?: string;
+  src: string;
+  fresh?: string;
+  formula?: string;
+  inputs?: string[];
+  rule?: string;
+  note?: string;
+}
+
+/** DAG 驱动因子层默认（与 buildDag 一致；ViewConfig.layout.driverFactors 缺失时兜底）。 */
+function defaultDagFactors(healthFactor: number): { id: string; label: string; sub: string }[] {
+  return [
+    { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },
+    { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
+    { id: "f3", label: "认证系数 + 数据健康度", sub: `PLM 认证 · P90 系数 ${healthFactor}` },
+  ];
+}
+
+/** 节点 id → 该步骤的判定逻辑/推导/输入/规则（接 DAG 装配同一份 out，数字一致可溯）。 */
+function dagNodeDetail(
+  id: string,
+  out: CapacityForecastOutput,
+  modelId: string,
+  totalQty: number,
+  driverFactors?: { id: string; label: string; sub: string }[],
+): DagDetail {
+  // 可产基地行（b0…b5）
+  if (/^b\d+$/.test(id)) {
+    const r = out.perBaseRows[Number(id.slice(1))];
+    if (r) {
+      return {
+        title: `可产基地 · ${r.base}`,
+        verdict: `周产能 ${fmt(r.weeklyCap, 2)} 万套${r.certFactor < 1 ? " · 认证中" : " · 量产"}`,
+        src: "产能域 · MES/IoT（基地对象）",
+        formula: "周产能 = 设备节拍 × OEE × 良率 × 认证系数 × 检修窗",
+        inputs: ["设备节拍", "OEE", "良率", `认证系数 ×${r.certFactor}`, r.maintWeek != null ? `检修窗 第${r.maintWeek}周(×0.72)` : "无检修窗"],
+        rule: r.certFactor < 1 ? "C07" : undefined,
+        note: r.bottleneck ? `当前瓶颈：${r.bottleneck}（紧张度 ${r.tightness}）` : undefined,
+      };
+    }
+  }
+  // 驱动因子层（id 由 ViewConfig.layout.driverFactors 声明）
+  const factors = driverFactors ?? defaultDagFactors(out.healthFactor);
+  const f = factors.find((x) => x.id === id);
+  if (f) {
+    const isHealth = id === factors[factors.length - 1]?.id;
+    return {
+      title: `驱动因子 · ${f.label}`,
+      src: f.sub,
+      formula: "装载进逐基地逐周产能展开（爬坡 × 检修 × 认证 × 健康度）",
+      inputs: [f.label],
+      rule: isHealth ? "C09" : undefined,
+      note: isHealth
+        ? `数据健康度系数 ${out.healthFactor}：IoT/MES/QMS 新鲜度联动，源延迟即下调 P90`
+        : "驱动因子层由 ViewConfig.layout.driverFactors 声明（去硬编码 · R14）",
+    };
+  }
+  switch (id) {
+    case "dem":
+      return {
+        title: "需求 · 结构化预测场景",
+        verdict: `${fmt(totalQty)} 万套`,
+        src: "用户输入 → 结构化预测场景对象",
+        formula: "净生产窗口 = 交付日 − 该地址物流时长",
+        inputs: ["需求量", "交付窗口 / 分批交期", "交付地址"],
+        rule: "C10",
+        note: "规则 C10 校验场景字段完整性 ✓",
+      };
+    case "mdl":
+      return {
+        title: `型号 · ${modelId}`,
+        src: "产品域 · PLM（Model 对象）",
+        formula: "型号 → 可产基地集合（认证矩阵）",
+        inputs: ["BOM", "认证矩阵", "工艺路线"],
+        note: "下拉直接读 Model 对象（真连模式与实际数据一致 · 去写死列表）",
+      };
+    case "bm":
+      // 判据 U4b · 被挤出图的那几个基地：点开要答得出「是谁、为什么」，不能只说"见步骤②"。
+      return {
+        title: `未上图的基地 · ${Math.max(0, out.perBaseRows.length - 6)} 个`,
+        verdict: out.perBaseRows.slice(6).map((r) => r.base).join("、") || "—",
+        src: "求解器 capacity_forecast · perBaseRows[6:]（真值直取，非另算一份）",
+        rule: "本图每层最多画 6 个基地；perBaseRows 由求解器按 baseId 字典序产出，本页 slice 前不重排 ⇒ 这是「前 6 个」，不是「产能最大的 6 个」",
+        inputs: [`可产基地总数 ${out.perBaseRows.length} 个`, `上图 ${Math.min(6, out.perBaseRows.length)} 个`],
+        note: "它们并没有被排除出**求解**——上面的 P50/P90 与瓶颈都含这几个基地，只是没画进这张图。步骤②有全量表。",
+      };
+    case "agg":
+      return {
+        title: "聚合求解器（capacity_forecast）",
+        verdict: `P50 ${fmt(out.capWanP50)} 万套`,
+        src: "求解器 · capacity_forecast",
+        formula: "P50 = Σ可产基地 Σ周(周产能 × 爬坡曲线 × 检修窗 × 认证系数)",
+        inputs: ["逐基地周产能", "爬坡曲线", "检修窗", "认证系数"],
+        rule: "C01/C02",
+      };
+    case "bn":
+      return {
+        title: "瓶颈求解器（bottleneck_matrix）",
+        verdict: `主瓶颈：${out.mainBn || "—"}`,
+        src: "求解器 · bottleneck_matrix",
+        formula: "紧张度 = 需求负荷 / 该因素可用能力 × 100",
+        inputs: ["基地 × 7 因素能力矩阵"],
+        rule: "C03",
+        note: "点步骤⑤「多维瓶颈矩阵」看基地×7因素全表",
+      };
+    case "fc":
+      return {
+        title: "产能预测结论",
+        verdict: out.ok ? "✓ 可达" : `✗ 缺口 ${fmt(out.gap)} 万套`,
+        src: "聚合 + 数据健康度（C09）",
+        formula: `P90 = P50 ${fmt(out.capWanP50)} × 健康度 ${out.healthFactor} = ${fmt(out.capWanP90)}；缺口 = 需求 ${fmt(totalQty)} − P90`,
+        inputs: ["P50", `健康度系数 ${out.healthFactor}`, "需求"],
+        rule: "C09",
+        note: out.degradeNote ?? "结论可采纳为 Action（参数组合 + 推演快照写回）：步骤⑥「采纳结论」生成草稿走 S2 审批，审批通过落 ForecastAdoption 台账对象",
+      };
+  }
+  return { title: id, src: "—" };
+}
+
+/**
+ * WO-R13-ONTOCHAIN-PANEL：DAG 节点的本体链 —— 能从响应真值对上的段用真值，对不上的诚实缺位：
+ *  - 对象/边：默认粒度响应无对象级、边级 provenance（byProcessModel[].provenance 需
+ *    granularity=process-model，本面板今天不传该参）→ 缺位 + gaps 挂账；
+ *  - 规则/公式：agg/fc 节点对响应 provenance 的公式键（真值）；bn 节点对 evaluatedRules 的
+ *    C03 规则码（响应真评估）；其余节点引擎未下发 → 缺位。
+ * 既有六要素表（dagNodeDetail）是编辑口径静态映射，保留不删（其它判据在用），链段旁 gaps 注明口径。
+ * （缺载段直传 null：OntologyChainView 缺载段条件构造，null ⇒ 「后端未下发」诚实位。）
+ */
+function dagNodeChain(id: string, out: CapacityForecastOutput): OntologyChainData {
+  const staticNote =
+    "该节点六要素为编辑口径静态映射（dagNodeDetail），引擎未下发逐节点链；对象级/边级 provenance 需 granularity=process-model（byProcessModel[].provenance），已挂账后端单";
+  switch (id) {
+    case "agg":
+      return {
+        object: null,
+        edge: null,
+        rule: { formula: out.provenance?.capWanP50?.formula, solverKey: "capacity_forecast" },
+        gaps: [staticNote],
+      };
+    case "fc":
+      return {
+        object: null,
+        edge: null,
+        rule: { formula: (out.ok ? out.provenance?.capWanP50 : out.provenance?.gap)?.formula, solverKey: "capacity_forecast" },
+        gaps: [staticNote],
+      };
+    case "bn": {
+      const c03 = (out.evaluatedRules ?? []).find((r) => r.key === "C03");
+      return {
+        object: null,
+        edge: null,
+        rule: c03 ? { ruleKey: "C03", solverKey: "capacity_forecast" } : null,
+        gaps: [staticNote, "瓶颈矩阵为独立求解（bottleneck_matrix），其响应无 provenance 公式段；规则码取本次 capacity_forecast 响应 evaluatedRules 的 C03 真评估"],
+      };
+    }
+    default:
+      return { object: null, edge: null, rule: null, gaps: [staticNote] };
+  }
+}
+
+/** 节点详情抽屉：六要素一行一列展开 + 规则两跳（RuleRef）+ 底部本体链段（WO-R13-ONTOCHAIN-PANEL）。 */
+function DagNodeDrawer({
+  detail,
+  chain,
+  snapshotVersion,
+  onClose,
+}: {
+  detail: DagDetail;
+  /** 本体链三段（dagNodeChain 装配；缺段为 null，gaps 已写明口径）。 */
+  chain: OntologyChainData;
+  snapshotVersion?: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <Modal title={`🔍 ${detail.title}`} onClose={onClose} width={560}>
+      <div data-testid="dag-node-drawer">
+        {detail.verdict && (
+          <div className={styles.okBar} style={{ borderColor: "var(--line2)", marginBottom: 10 }} data-testid="dag-node-verdict">
+            {detail.verdict}
+          </div>
+        )}
+        <table className="cmp">
+          <tbody>
+            <tr>
+              <td style={{ width: 96, color: "var(--muted2)" }}>来源系统</td>
+              <td data-testid="dag-node-src">{detail.src}</td>
+            </tr>
+            {detail.fresh && (
+              <tr>
+                <td style={{ color: "var(--muted2)" }}>新鲜度</td>
+                <td>{detail.fresh}</td>
+              </tr>
+            )}
+            {detail.formula && (
+              <tr>
+                <td style={{ color: "var(--muted2)" }}>推导公式</td>
+                <td>
+                  <code style={{ fontSize: 12 }}>{detail.formula}</code>
+                </td>
+              </tr>
+            )}
+            {detail.inputs && detail.inputs.length > 0 && (
+              <tr>
+                <td style={{ color: "var(--muted2)" }}>输入数据</td>
+                <td>{detail.inputs.join(" · ")}</td>
+              </tr>
+            )}
+            {detail.rule && (
+              <tr>
+                <td style={{ color: "var(--muted2)" }}>关联规则</td>
+                <td data-testid="dag-node-rule">
+                  <RuleRef code={detail.rule} />
+                </td>
+              </tr>
+            )}
+            {detail.note && (
+              <tr>
+                <td style={{ color: "var(--muted2)" }}>备注</td>
+                <td style={{ color: "var(--muted)" }}>{detail.note}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {/* WO-R13-ONTOCHAIN-PANEL：抽屉底部本体链段 —— 上方六要素为编辑口径静态映射（保留），
+            此处为后端响应真值能拼出的链；拼不出的段诚实缺位，口径差异见链内 gaps。 */}
+        <div style={{ marginTop: 10, borderTop: "1px solid var(--line2)", paddingTop: 8 }}>
+          <OntologyChainView conclusion={detail.title} chain={{ ...chain, snapshotVersion: snapshotVersion ?? null }} testId="dag-node-chain" />
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted2)" }}>信任 = 出处 + 推导可当场亮出（R13）</div>
+      </div>
+    </Modal>
+  );
 }

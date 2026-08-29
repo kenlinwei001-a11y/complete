@@ -59,6 +59,40 @@ export const WorkspaceSchema = z.object({
   /** Entitlement 增量：解析后的生效功能集 + 配置版本 */
   features: z.array(z.string()).optional(),
   configVersion: z.number().int().optional(),
+  /** 去电池锁死（R14）：按租户/行业下发的项目推演配置（型号/地址/物流），替代前端写死常量 */
+  simConfig: z
+    .object({
+      models: z.array(z.string()).optional(),
+      addresses: z.array(z.string()).optional(),
+      logistics: z.record(z.string(), z.number()).optional(),
+    })
+    .optional(),
+  /** 去电池锁死（R14）：S&OP KPI 阈值 + 需求三段（按租户/行业），替代前端写死 */
+  sopConfig: z
+    .object({
+      gapRed: z.number().optional(),
+      cashFloor: z.number().optional(),
+      revBudget: z.number().optional(),
+      segments: z
+        // WO-P50-REMAINING-3：三线对照全列口径 = **万套/月**（分母是月，不是年）；
+        // 分位列名自带口径，不留裸 `p90`（那个名字在本仓背过 6 个量纲）。
+        .array(z.object({ key: z.string(), name: z.string(), target: z.number(), rolling: z.number(), rollingWanPerMonthP90: z.number().optional(), lastActual: z.number() }))
+        .optional(),
+      /** 决议增量默认项（去电池锁死 R14：按租户/行业下发，替代前端写死电池决议名）。 */
+      defaultResolutions: z.array(z.object({ name: z.string(), delta: z.number() })).optional(),
+    })
+    .optional(),
+  /** 去电池锁死（R14）：规划建议的经营目标默认值（按租户/行业），替代前端写死 */
+  planGoals: z
+    .object({
+      revGrowthPct: z.number().optional(),
+      gmFloorPct: z.number().optional(),
+      sharePts: z.number().optional(),
+      capexCap: z.number().optional(),
+      cashFloor: z.number().optional(),
+      invTurns: z.number().optional(),
+    })
+    .optional(),
 });
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 /** schema 输入形态（契约形态/旧 mock 形态皆可），fixtures 用 */
@@ -68,7 +102,7 @@ export type WorkspaceInput = z.input<typeof WorkspaceSchema>;
 
 export interface DashboardWidgetDef {
   key: string;
-  type: "kpi" | "chart" | "table";
+  type: "kpi" | "chart" | "table" | "summary" | "dag" | "metric-strip" | "counterfactual" | "version-toggle" | "order-ledger" | "plan-drill";
   title: string;
   /** BLOCK 级 feature key（view.dash.widget.{key}），缺省不受控 */
   featureKey?: string;
@@ -77,7 +111,18 @@ export interface DashboardWidgetDef {
   /** 悬停溯源描述 */
   provenance?: { toolName: string; outputPath: string; snapshotVersion?: string; label?: string };
   unit?: string;
-  chartKind?: "line" | "bar";
+  /**
+   * 值是 0~1 的**小数比率**（需 ×100 才是 `unit` 声明的那个单位），缺省 = 值已是 `unit` 的数。
+   *
+   * 存在的理由：本仓同为 `unit:"%"` 的属性量纲相反 —— 实测 `Base.util` 70~88（百分点）、
+   * `Line.schedule_attainment` 0.879~0.949（比率）。**光看 unit 分不出来**，光看取值范围
+   * 更分不出来（一个已是百分点的量取值恰为 1 时，与 100% 长得一模一样）。故量纲必须由
+   * 下发方显式声明，不许前端猜。
+   */
+  ratio?: boolean;
+  chartKind?: "line" | "bar" | "trideviation";
+  /** 三线偏差复合图（trideviation）的系列声明：data 各项的数值字段 → 线名/色。 */
+  chartSeries?: { key: string; name: string; color?: string }[];
 }
 
 export type WidgetQueryDef =
@@ -86,7 +131,7 @@ export type WidgetQueryDef =
   | { kind: "solver"; solverKey: string; args: Record<string, unknown>; valuePath?: string }
   | { kind: "timeseries"; seriesKey: string; entityIds: string[]; grain: "shift" | "day" | "week"; agg: string; days: number }
   // 运营态出厂配置增量 §4.1：驾驶舱历史 widget（数据源 = GET /a/v1/history/bundle 字段）
-  | { kind: "history"; field: "trend" | "onTimeRate" | "executedCount" | "delivered"; columns?: string[] };
+  | { kind: "history"; field: "trend" | "onTimeRate" | "executedCount" | "delivered" | "deviation"; columns?: string[] };
 
 // ---- 对象查询（GET /a/v1/objects?type=&q=，前端 PRD §6.4） ----
 
@@ -109,7 +154,8 @@ export interface GraphNodeVM {
   /** MVP 视角缺口节点（⊕ 虚线强调） */
   mvpGap?: boolean;
   properties?: { propKey: string; dataType: string; isPrimaryKey?: boolean }[];
-  sourceBindings?: { connId: string; dataset: string }[];
+  /** fieldMappings: propKey → 源字段名（字段全建模覆盖 + CSV 模版来源）。 */
+  sourceBindings?: { connId: string; dataset: string; fieldMappings?: Record<string, string> }[];
   rules?: { key: string; name: string; expression: string }[];
   derivations?: { propKey: string; formula: string }[];
 }
@@ -231,7 +277,7 @@ export interface AffectedOrderRowVM {
   cust: string;
   seg: string;
   model: string;
-  qty: number; // 万套
+  qty: number; // 套（WO-UNIT-NORMALIZE §3：Order.qty 单位规范=套）
   due: string;
   delay: number; // 天（取最大）
   risks: OrderRiskRefVM[];
@@ -249,4 +295,65 @@ export interface TaskEventFrame {
   id: string;
   event: string;
   data: Record<string, unknown>;
+}
+
+// ---- WO-BEFE-B · 行动与审批 / 调度 / 工厂日历（契约未定义 → 本地 VM） ----
+//
+// 为什么是本地 VM 而不是 `@platform/contracts`：这三组的后端记录类型住在
+// `apps/datacore/src/domain.ts`（`ScheduledJobRecord` / `SchedulerRunRecord`）与
+// `actions.ts` 的 `audit()` 返回上，**从未进过契约包**。contracts-only-shared 禁止跨 app
+// 引源码，故按本文件既有惯例（`TickReportVM` 等）在前端侧定义消费形态。
+// ⚠️ 这不是「契约已有还重定义」——落在契约里的 `ActionDraft` / `FactoryCalendar` 仍从
+// `@platform/contracts` 导入，本处只补契约**没有**的那几个形状。
+
+/** `GET /a/v1/action-drafts/:id/audit` 响应（后端 `actions.ts:822`）。 */
+export interface ActionDraftAuditVM {
+  draft: unknown;
+  steps: {
+    seq: number;
+    role: string;
+    decision?: "APPROVE" | "REJECT";
+    approverId?: string;
+    comment?: string;
+    decidedAt?: string;
+    selfApproved?: boolean;
+  }[];
+  /** 执行结果；未执行 = `null`（诚实空，前端必须显「未执行」而不是空对象）。 */
+  executionResult: unknown | null;
+  /** 后端 outbox 里 `action.*` 事件按时间正序（R4 留痕的真凭据）。 */
+  events: { event: string; payload: Record<string, unknown>; at: string; status?: string }[];
+}
+
+/** `GET /a/v1/scheduler/jobs`（后端 `domain.ts:786 ScheduledJobRecord`）。 */
+export interface ScheduledJobVM {
+  id: string;
+  tenantId: string;
+  kind: string;
+  refId: string;
+  cron: string;
+  timezone: string;
+  nextRunAt: string;
+  lastRunAt?: string;
+  status: "ACTIVE" | "PAUSED";
+  lastError?: string;
+}
+
+/** `GET /a/v1/scheduler/jobs/:id/runs`（后端 `domain.ts:799 SchedulerRunRecord`）。 */
+export interface SchedulerRunVM {
+  id: string;
+  tenantId: string;
+  jobId: string;
+  scheduledAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  status: string;
+  error?: string;
+}
+
+/** `GET /a/v1/calendars/:key/net-window`（后端 `app.ts:1304`）。 */
+export interface CalendarNetWindowVM {
+  calendarKey: string;
+  from: string;
+  to: string;
+  netProductionDays: number;
 }

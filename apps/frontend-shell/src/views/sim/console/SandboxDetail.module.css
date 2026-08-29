@@ -1,0 +1,1051 @@
+/*
+ * WO-SIM-FE-DETAIL · 推演沙盘「传导识别 + 应对策略」页 —— **像素级 1:1 移植**。
+ *
+ * ══ 这份文件是 `docs/ux-spec/sandbox/sandbox-detail.html` 的 `<style>` 段的移植 ══
+ *
+ * 规格目录的 README 原话：「**这些是要移植的，不是要重新解释的。**
+ * `px` 值、`grid-template-columns`、`height`、`font-size` 逐个照抄进 CSS Module。」
+ * 所以下面每一条 `px` / `grid-template-columns` / `height` / `font-size` 都与规格**逐字节相同**，
+ * 且由 `apps/frontend-shell/test/sandbox-detail-pixel.test.tsx` 拿规格 HTML 现读来对账 ——
+ * 改任何一个数而不同步改规格，那道用例当场红（本文件不是"参考了规格"，是"被规格咬着"）。
+ *
+ * ── 唯一允许偏离规格的一件事：**色值** ────────────────────────────────────────
+ * 规格 HTML 为了能脱离产品单独打开，把 token 的**真值**（十六进制）内联在 `:root` 里。
+ * 移植回产品必须换回 `var(--…)`，否则三套主题一翻转这一页就是死的暗色。逐条对照：
+ *   规格 --ink  #223251 → var(--bg)          规格 --panel  #2c3d5e → var(--panel)
+ *   规格 --panel2 #1c2942 → var(--panel2)    规格 --hair   rgba(226,235,245,.08) → var(--line)
+ *   规格 --hair2 rgba(…,.14) → var(--line2)  规格 --txt    #e9eef5 → var(--txt)
+ *   规格 --dim  #ced7e1 → var(--muted)       规格 --dim2   #bbc5ce → var(--muted2)
+ *   规格 --cy   #43b7d7 → var(--c-capacity)  规格 --cy2/--blu #4c90f0 → var(--accent)
+ *   规格 --amb  #e8b54a → var(--warn)        规格 --red    #e0626c → var(--danger)
+ *   规格 --grn  #62be77 → var(--ok)
+ *   规格里直接写死的文字色同族：#a2c6f7 → var(--accent-txt) · #91d2a0 → var(--ok-txt)
+ *   #f0b4b8 → var(--danger-txt) · #eabd5d → var(--warn-txt) · #e9bb8f → var(--c-process-txt)
+ *   #115dc9 → var(--accent-solid)
+ *
+ * ⚠ **一处照实说的偏差**：规格 `.sc .tag` 的文字色 `#0f1626` 在 `styles/tokens.css` 里**没有对应令牌**
+ *   （最近的 `--panel2` 是 #1c2942）。本单的 🚦范围边界不含 `tokens.css`，新增令牌属越界，
+ *   故取 `var(--panel2)`（同族最深的结构面色）并在此记账。差值只作用于 8.5px 徽标上的字，
+ *   像素比对里体现为该徽标几十个抗锯齿像素 —— 不是"忘了换"，是"换不了，登记在案"。
+ *
+ * ⚠ **半透色**：规格里的 `rgba(232,181,74,.13)` 这类是「某个语义色 + alpha」。CSS 里没有
+ *   「给 var() 加 alpha」的老写法，故用 `color-mix(in srgb, var(--warn) 13%, transparent)`：
+ *   与 transparent 混合走预乘插值，结果**逐字节等于** rgba(232,181,74,0.13)，像素不变而颜色跟着主题走。
+ */
+
+/* ── 规格 `html,body{…}` → 收进 `.app`（本页是固定画布，不许把规则泼到全局 body 上）──────── */
+.app {
+  /*
+   * ⚠ **登记在案的第二处偏差：无衬线字族没有用 `var(--font-sans)`，用的是规格那一串。**
+   *
+   * ══════════════════════════════════════════════════════════════════════
+   * 🔴 **下面这笔实测账已于 2026-08-21 过期。原文保留在下方仅供追溯，不许照它下结论。**
+   *    （WO-SIM-FE-HOST 顺手销的一条过期账；本单只改注释、**不动声明** ——
+   *      改声明要重跑像素比对，超出本单 🚦 范围边界。）
+   *
+   * ── 过期在哪（今天的事实）─────────────────────────────────────────────
+   * 旧结论的**前提**是「`--font-sans` 比规格多两项 `"Segoe UI", system-ui`」。
+   * 2026-08-21 裁决「产品 token 是真值，规格随它」之后，**四份规格 HTML 的 `--fs` 已全部改过**。
+   * 亲手复验（本单实测，不是转述）：
+   *   `grep -n -- "--fs:" docs/ux-spec/sandbox/sandbox-*.html`
+   *     → home:13 · detail:12 · attr:12 · opt:12 四行**逐字相同**，原文均为
+   *       `"Inter", "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif`
+   *   `grep -n -- "--font-sans" apps/frontend-shell/src/styles/tokens.css`
+   *     → `:81` 同一串，**逐字节相同**。
+   * ⇒ 「多两项」这个前提**方向反了**：今天是**本文件下面那条 `--sbx-fs` 少了两项**
+   *   （少 `"Segoe UI", system-ui`），规格与产品令牌反倒是一致的那一对。
+   *
+   * ── 新的实测数（页4 dev 同一套 chromium 参数 · 同一份基准）───────────────
+   *   `SandboxOpt.module.css` 改用 `var(--font-sans)` 后：差异像素 **5.53% → 3.66%**
+   *   （见该文件「── 字族」段的记账）。即换回产品令牌是**改善**，不是恶化。
+   * 本页尚未重测，故声明维持原样；要动它必须连像素比对一起重跑，那是另一张单。
+   *
+   * 形态（CLAUDE.md 铁律 0.6 句式）：
+   *   **「我用『2026-08-13 那次比对的 2.714% / 0.215%』当作『今天换不得』的证据，
+   *     而前者并不度量后者 —— 中间规格改了，被比的两个对象已经不是同一对。」**
+   * 这正是本仓一再点名的「**过期的自证数字**」：数字是真的，只是它不再指向今天这个对象。
+   * ══════════════════════════════════════════════════════════════════════
+   *
+   * ── 以下为 2026-08-13 的原始记账（**已过期**，只作追溯用）─────────────────
+   * 不是忘了换，是**实测**换不得 —— 同一套 chromium 参数、同一份基准 `pg2.png`：
+   *   · `font-family: var(--font-sans)`  ⇒ 差异像素 **2.714%**（超过工单 2% 的验收线）
+   *   · `font-family: 规格那一串`        ⇒ 差异像素 **0.215%**
+   * 差在哪：`--font-sans` 比规格多两项 `"Segoe UI", system-ui`。Linux/容器里
+   * `system-ui` 经 fontconfig 落到 **DejaVu Sans**，而规格那串一路落空到末位的
+   * `sans-serif` → chromium 默认 Arial → fontconfig 代换 **Liberation Sans**。两者：
+   *   ① `▤`（U+25A4）字形宽窄不同 —— 甘特/补货/面板头上几十处方块符号连带把后面的文字推位；
+   *   ② 行高与基线随**首选字族的度量**走，即使汉字都由 WenQuanYi 出字，整行仍会错开半个像素。
+   * 这不是容器特有的：真机上也一样分叉（Mac 上规格串落到 PingFang SC，`--font-sans` 落到 SF Pro）。
+   * 基准图 `pg2.png` 是拿规格那串渲染出来的，**它就是本页的验收对象**。
+   *
+   * 真正的修法是把 `--font-sans` 与规格对齐（去掉 `system-ui` 或让规格补上），
+   * 那要动 `styles/tokens.css` —— 不在本单 🚦范围边界内，故此处只登记不擅改。
+   *   🔴 **这一句同样已过期**：2026-08-21 的裁决走的正是「让规格补上」这条路，且**已经补完**
+   *      （四份规格 HTML 的 `--fs` 与 `tokens.css:81` 逐字节相同，见上方复验命令）。
+   *      今天剩下的活是把**本文件下面那条 `--sbx-fs` 换回 `var(--font-sans)` 并重跑像素比对**，
+   *      不需要动 `tokens.css`。
+   * 等值收在一个局部自定义属性里（**只此一处定义**），不散进各条规则。
+   *
+   * 等宽字族**没有**这个问题：`var(--font-mono)` 与规格 `--fm` 的回落链在本环境同解
+   *（JetBrains Mono→ui-monospace→Menlo→[Consolas]→monospace ⇒ DejaVu Sans Mono），
+   * 实测等宽那部分零差异，所以等宽照常用产品令牌。
+   */
+  --sbx-fs: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  width: 1440px;
+  height: 897px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 规格 html,body 的四条：margin 由固定画布本身消化，其余逐值搬进来 */
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--sbx-fs);
+  font-size: 12px;
+  line-height: 1.35;
+}
+/*
+ * 规格 `*{box-sizing:border-box}` —— 作用域限定在本页画布内。
+ *
+ * ⚠ **故意不带 `::before` / `::after`**：CSS 的 `*` **不匹配伪元素**，而 `box-sizing`
+ *   又不是继承属性 ⇒ 规格里 `.pan::before/::after` 那两枚 8px 角标吃的是 `content-box`，
+ *   总尺寸是 8+1(border)=9px。这里若顺手把伪元素也 border-box 掉，角标每条臂**短 1px**。
+ *   实测：加上伪元素那两行，四枚角标共 28 个器件像素（dsf=2）与基准 `pg2.png` 不符
+ *   （逻辑坐标 (488,31)/(480,39) 等臂端各 1px）。这不是洁癖，是本页 1:1 的一部分。
+ */
+.app,
+.app * {
+  box-sizing: border-box;
+}
+
+.sysbar {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  flex: none;
+  border-bottom: 1px solid var(--line);
+}
+.hole {
+  width: 96px;
+  height: 12px;
+  background: var(--panel2);
+  border-radius: 2px;
+}
+.sysbar .sp {
+  flex: 1;
+}
+.sysbar time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.sysbar u {
+  text-decoration: none;
+  color: var(--muted2);
+  font-size: 12px;
+  padding: 0 3px;
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  padding: 5px;
+  gap: 5px;
+}
+.pan {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.pan::before,
+.pan::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--accent);
+  opacity: 0.5;
+}
+.pan::before {
+  left: -1px;
+  top: -1px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.pan::after {
+  right: -1px;
+  bottom: -1px;
+  border-left: 0;
+  border-top: 0;
+}
+.ph {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel2);
+  flex: none;
+}
+.ph i {
+  font-style: normal;
+  color: var(--c-capacity-txt);
+  font-size: 9px;
+}
+.ph b {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--txt);
+}
+.ph .rt {
+  margin-left: auto;
+  color: var(--muted2);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+}
+
+/* ── 左：地图延续 ─────────────────────────────────────────────────────────────
+ * README「已知的取舍」第 2 条：**段名被面板边界裁掉是效果不是缺陷** ——
+ * `preserveAspectRatio="xMidYMid slice"` 让 470×470 的图铺满 470×648 的框（放大 1.379×）后横向裁切，
+ * 照参考图「地图延续出画面」。别去改成 `meet`，那会把整张图缩到中间留两条空带。 */
+.lcol {
+  width: 470px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 0;
+}
+.mapbox {
+  height: 648px;
+  flex: none;
+  position: relative;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.mapbox svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.rul {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--muted2);
+}
+.rul u {
+  text-decoration: none;
+  writing-mode: vertical-rl;
+}
+.lgd {
+  position: absolute;
+  right: 30px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 9.5px;
+  color: var(--muted2);
+  /*
+   * ⚠ **登记在案的第三处偏差：规格 `rgba(28,41,66,.86)` → 这里取实色 `var(--panel2)`。**
+   * 规格让这张图例半透 86%。而本仓已有一条成文规则（`WO-PROV-POPOVER-LEGIBILITY`，
+   * 门在 `test/provenance-popover-legibility.test.tsx`）：**定位浮层的表面必须不透明** ——
+   * 半透浮层里那行字看到的背景 = f(浮层色, 底下恰好是什么)，不是一个可设计的常量，
+   * 换皮即不可读。这张图例正是那条规则点名的形态（`position:absolute` + alpha ≥ .5）。
+   * 规格 vs 既有规则冲突时取既有规则：像素代价实测极小（底下是 `.mapbox` 的 `--panel`，
+   * 14% 的透出量本就与 `--panel2` 差 2–4/通道），而"换皮读不了"是真缺陷。
+   */
+  background: var(--panel2);
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+}
+.lgd div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.lgd s {
+  text-decoration: none;
+  width: 24px;
+  height: 0;
+  border-top: 2px solid currentColor;
+  display: block;
+}
+.lgd .el {
+  width: 16px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ok) 30%, transparent);
+  border: 1px solid var(--ok);
+}
+.lgd .num {
+  font-family: var(--font-mono);
+}
+.gminis {
+  height: 204px;
+  flex: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  position: relative;
+}
+.gm {
+  height: 18px;
+  position: relative;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 62.5%, transparent);
+}
+.gm .sg {
+  position: absolute;
+  top: 3px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 4px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.sg.b {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 1px solid var(--accent);
+  color: var(--accent-txt);
+}
+.sg.g {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  border: 1px solid var(--ok);
+  color: var(--ok-txt);
+}
+.sg.o {
+  border: 1px solid var(--line2);
+  color: var(--muted2);
+}
+.gmhead {
+  height: 16px;
+  position: relative;
+  border-bottom: 1px solid var(--line);
+}
+.gmhead span {
+  position: absolute;
+  top: 3px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--muted2);
+  border-left: 1px solid var(--line2);
+  padding-left: 3px;
+  line-height: 1;
+}
+
+/* ── 右 ─────────────────────────────────────────────────────────────────────── */
+.rcol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  min-height: 0;
+}
+.top {
+  height: 460px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+.tb2 {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 288px 1fr;
+  min-height: 0;
+}
+.lft {
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sel {
+  margin: 6px 7px 5px;
+  position: relative;
+}
+.sel select {
+  width: 100%;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  color: var(--txt);
+  padding: 5px 8px;
+  font-size: 11.5px;
+  font-family: inherit;
+  appearance: none;
+  border-radius: 2px;
+}
+.sel::after {
+  content: "⌄";
+  position: absolute;
+  right: 8px;
+  top: 2px;
+  color: var(--muted2);
+}
+.cks {
+  display: flex;
+  gap: 11px;
+  padding: 0 8px 6px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.cks label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cks i {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--line2);
+  display: inline-block;
+  font-style: normal;
+}
+.cks i.on {
+  background: var(--c-capacity);
+  border-color: var(--c-capacity-txt);
+}
+.tbl {
+  flex: 1;
+  overflow: hidden;
+  font-size: 10px;
+}
+.tr {
+  display: grid;
+  grid-template-columns: 7px 42px 54px 52px 34px 30px 36px;
+  align-items: center;
+  gap: 0 3px;
+  height: 19px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 62.5%, transparent);
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+.tr span {
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tr.hd {
+  color: var(--muted2);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--sbx-fs);
+  font-size: 10px;
+}
+.tr.on {
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  color: var(--warn-txt);
+}
+.tr s {
+  text-decoration: none;
+  height: 12px;
+  width: 2px;
+  display: block;
+}
+.tr .bd {
+  justify-self: center;
+  font-size: 9px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+}
+.rgt {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.strip {
+  height: 74px;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  flex: none;
+}
+.strip .km {
+  position: absolute;
+  top: 4px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--muted2);
+}
+.strip .ax {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 46px;
+  height: 1px;
+  background: var(--line2);
+}
+.strip .tk {
+  position: absolute;
+  top: 42px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--muted2);
+}
+.strip .ev {
+  position: absolute;
+  top: 20px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--danger-txt);
+}
+.strip .chip {
+  position: absolute;
+  top: 54px;
+  font-size: 9.5px;
+  color: var(--danger-txt);
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, transparent);
+  /*
+   * 规格 `rgba(224,98,108,.14)` —— 这**恰好就是** tokens.css 里的 `--danger-soft`
+   *（`rgba(224, 98, 108, 0.14)`，逐字节相同，零像素代价）。用既有令牌而不是现调一份：
+   * 顺带让 `provenance-popover-legibility` 那道门解析得动 —— 它的 `parseColor`
+   * 读不懂 `color-mix()`，于是把本该按「alpha<0.5 ⇒ 是 tint 不是面 ⇒ 放行」豁免的低透底纹
+   * 也报成「解析不出实色」。这是那道门的工具缺口（详见交单报告），不是这条底纹的错。
+   */
+  background: var(--danger-soft);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+.strip .self {
+  position: absolute;
+  left: 8px;
+  top: 32px;
+  font-size: 9.5px;
+  color: var(--accent-txt);
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  /*
+   * 规格 `rgba(76,144,240,.12)`；这里取 `--primary-soft`（同色 **.16**，非 .12）。
+   * 两个理由，都写明白：① 语义对得上 —— `--primary-soft` 在 tokens.css 里的定义就是
+   * 「选中项底纹」，而这枚 `P4212` 徽标正是"当前选中的那条"的自标记；② 与上面 `.chip`
+   * 同款：给那道读不懂 `color-mix()` 的门一个它解析得动的值。
+   * 代价实测：该徽标约 44×14 逻辑像素，alpha 差 4% ⇒ 严格(tol=0)比对多约 0.05%，
+   * tol=8 下看不出差别。数字见交单报告，不是"顺手改的"。
+   */
+  background: var(--primary-soft);
+  padding: 1px 6px;
+}
+.dt {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 236px;
+  min-height: 0;
+}
+.dl {
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dcard {
+  display: grid;
+  grid-template-columns: 78px 1fr 76px;
+  gap: 8px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.glyph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.glyph b {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--txt);
+}
+.glyph u {
+  text-decoration: none;
+  font-size: 8px;
+  color: var(--muted2);
+  letter-spacing: 0.06em;
+}
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 2px 7px;
+  font-size: 10px;
+  align-content: start;
+}
+.kv em {
+  font-style: normal;
+  color: var(--muted2);
+  white-space: nowrap;
+}
+.kv b {
+  font-weight: 400;
+  font-family: var(--font-mono);
+  color: var(--txt);
+}
+.kv b.hot {
+  color: var(--danger-txt);
+}
+.mini {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+.mini u {
+  text-decoration: none;
+  font-size: 8.5px;
+  color: var(--muted2);
+}
+.route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+  color: var(--muted);
+}
+.route b {
+  font-weight: 400;
+  color: var(--txt);
+}
+.route .ar {
+  color: var(--c-capacity-txt);
+  flex: 1;
+  text-align: center;
+  border-top: 1px solid var(--line2);
+}
+.rt2 {
+  flex: 1;
+  overflow: hidden;
+  font-size: 10px;
+}
+.rt2 .r {
+  display: grid;
+  grid-template-columns: 66px 1fr 1fr 44px 52px 40px;
+  height: 18px;
+  align-items: center;
+  padding: 0 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 62.5%, transparent);
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+.rt2 .r.hd {
+  color: var(--muted2);
+  font-family: var(--sbx-fs);
+  border-bottom: 1px solid var(--line);
+}
+.rt2 .r.on {
+  background: color-mix(in srgb, var(--c-capacity) 12%, transparent);
+  color: var(--txt);
+}
+.dr {
+  position: relative;
+  overflow: hidden;
+}
+.dr svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.dr .rd {
+  position: absolute;
+  right: 8px;
+  bottom: 26px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--c-capacity-txt);
+  border: 1px solid var(--line2);
+  padding: 1px 6px;
+  /* 同 `.lgd`：定位浮层表面取实色（见那条注释）。规格原值 rgba(28,41,66,.86)。 */
+  background: var(--panel2);
+}
+/*
+ * 页级诚实横幅：「这一页哪些数是示例」（WO-SIM-HONEST-FALLBACK-B）。
+ * 字号 12px 是 `check-text-legibility.mjs` 的硬底 —— 诚实声明印成看不清的小字等于没印。
+ */
+.phb {
+  flex: none;
+  margin: 4px 12px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--warn-txt);
+  border: 1px solid var(--warn);
+  border-radius: 2px;
+  padding: 2px 8px;
+}
+
+/*
+ * 「半径/张角/刻度/标记为什么是 `—`」那句人话（WO-SIM-HONEST-FALLBACK-B）。
+ * 字号 12px 是 `check-text-legibility.mjs` 的硬底，不许再往下调 —— 这句话是**诚实声明**，
+ * 印成看不清的小字等于没印（那正是本单要消灭的那个态换了个形态）。
+ */
+.dr .coneNote {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  right: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--txt);
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  padding: 3px 6px;
+}
+.dr .cp {
+  position: absolute;
+  right: 12px;
+  bottom: 6px;
+  text-align: center;
+  font-size: 9px;
+  color: var(--muted);
+}
+.dr .cp b {
+  display: block;
+  font-size: 11px;
+  color: var(--c-capacity-txt);
+}
+
+/* ── 应对策略 ───────────────────────────────────────────────────────────────── */
+.bot {
+  height: 390px;
+  flex: none;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bb {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 250px 268px 1fr;
+  min-height: 0;
+}
+.stk {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px;
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+.sc {
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  padding: 5px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+}
+.sc.on {
+  border-color: var(--ok-txt);
+  background: color-mix(in srgb, var(--ok) 9%, transparent);
+}
+.sc .r1 {
+  display: flex;
+  gap: 8px;
+  font-size: 9.5px;
+  color: var(--muted2);
+}
+.sc .r1 u {
+  text-decoration: none;
+  margin-left: auto;
+}
+.sc .r2 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.sc .r2 b {
+  font-size: 11px;
+  color: var(--txt);
+  font-weight: 500;
+}
+.sc .r2 em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ok-txt);
+}
+.sc .r3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sc .bars {
+  flex: 1;
+  display: flex;
+  gap: 1.5px;
+}
+.sc .bars s {
+  text-decoration: none;
+  width: 4px;
+  height: 9px;
+  background: var(--ok);
+  display: block;
+  opacity: 0.85;
+}
+.sc .bars s.off {
+  background: var(--line2);
+}
+.sc .pct {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ok-txt);
+}
+/* 徽标文字色 —— **不用规格的 `#0f1626`（深色压在红底上）**，改用 `var(--txt)`。
+   两条理由，第二条才是决定性的：
+   ① tokens.css 没有「压在 danger 填充上的文字」这个令牌，取 `--panel2` 是硬凑；
+   ② `check-text-legibility` 判据 A 把每个文字单元压在**面板面**上算对比度，
+      它看不见本元素自带的 `background: var(--danger)` —— 于是 `--panel2` 压 `--panel2`
+      被算成 1:1。这是门的盲区（所有自带底色的徽标都会中招），不是这里真的看不清。
+      但**不许因为「门看错了」就把它当噪声跳过**：换成 `--txt` 两边都成立 ——
+      白字压红底约 3.6:1 是徽标的常规做法，压在面板面上则远超阈值，门也不再喊。
+      门的盲区另记，本处不靠豁免绕过。 */
+.sc .tag {
+  position: absolute;
+  right: 5px;
+  top: 4px;
+  font-size: 8.5px;
+  color: var(--txt);
+  background: var(--danger);
+  padding: 0 4px;
+}
+.abtn {
+  margin-top: 2px;
+  background: var(--accent-solid);
+  border: 1px solid var(--accent);
+  color: var(--c-capacity-txt);
+  font-size: 11px;
+  padding: 4px 0;
+  text-align: center;
+  font-family: inherit;
+}
+.form {
+  padding: 6px 8px;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+}
+.fl {
+  font-size: 10px;
+  color: var(--muted2);
+}
+.fi {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 6px;
+  align-items: center;
+  font-size: 10.5px;
+}
+.fi select,
+.fi input {
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  color: var(--txt);
+  padding: 3px 6px;
+  font-size: 10.5px;
+  font-family: inherit;
+  width: 100%;
+  appearance: none;
+  border-radius: 2px;
+}
+.fi .duo {
+  display: flex;
+  gap: 5px;
+}
+.fi .duo select {
+  flex: 1;
+}
+.stp {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+}
+.stp b {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 0 7px;
+  font-weight: 400;
+}
+.stp u {
+  text-decoration: none;
+  color: var(--muted2);
+  font-size: 8px;
+  display: flex;
+  flex-direction: column;
+  line-height: 0.9;
+  padding: 0 4px;
+  border-left: 1px solid var(--line2);
+}
+.plat {
+  display: grid;
+  grid-template-columns: 16px 1fr 34px;
+  gap: 6px;
+  align-items: center;
+  font-size: 10px;
+  color: var(--muted2);
+}
+.plat .tr2 {
+  height: 4px;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  position: relative;
+}
+.plat .tr2 i {
+  position: absolute;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.plat span {
+  font-family: var(--font-mono);
+  text-align: right;
+  color: var(--muted);
+}
+.rr {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.rr .sub {
+  font-size: 10px;
+  color: var(--muted2);
+  padding: 4px 8px 3px;
+}
+.supp {
+  height: 64px;
+  position: relative;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+  margin: 0 8px;
+}
+.supp .tk {
+  position: absolute;
+  top: 2px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--muted2);
+  border-left: 1px solid var(--line2);
+  padding-left: 3px;
+}
+.supp .sg {
+  position: absolute;
+  top: 26px;
+  height: 13px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  font-size: 9px;
+}
+.ot {
+  flex: 1;
+  overflow: hidden;
+  font-size: 10px;
+  margin: 0 8px;
+}
+.ot .r {
+  display: grid;
+  grid-template-columns: 78px 46px 62px 48px 48px 44px 1fr;
+  height: 18px;
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 62.5%, transparent);
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.ot .r.hd {
+  color: var(--muted2);
+  font-family: var(--sbx-fs);
+  border-bottom: 1px solid var(--line);
+}
+.ot .bd {
+  justify-self: start;
+  font-size: 9px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+}
+.ot .act {
+  color: var(--muted);
+  font-family: var(--sbx-fs);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.ot .act.x {
+  color: var(--danger-txt);
+}
+
+/* ══ 传导边抽屉 `.dock`（WO-EDGE-PANEL-4PAGES）════════════════════════════════
+ * 规格 = `docs/ux-spec/sandbox/sandbox-detail.html` 的同名段（那份 HTML 是**可执行规格**，
+ * 不是设计说明）。要改这块版面：先改规格 → 重出基准 PNG → 再回来改这里，顺序不许倒过来。
+ *
+ * ── 为什么挂在画布**外** ────────────────────────────────────────────────────
+ * `.app` 是**定死的 1440×897 且 `overflow:hidden`**，塞进画布的任何东西都必须挤掉既有内容。
+ * 抽屉紧贴画布下沿、**默认折叠**：收起态只占 26px 一条 ⇒ 画布内信息密度**逐像素不动**；
+ * 展开才向下顶开页面。用 `<details>` 而不是条件渲染 —— 它**任何时候都能展开**，
+ * 不以「已经跑过推演」为前提，那正是 `check-edge-active-mounts` 那道门存在的理由。
+ *
+ * ── 色值一律走 token（本目录零字面色值，三套主题自动跟随）──────────────────────
+ *   var(--panel2) ← 规格 --panel2   var(--line) ← 规格 --hair
+ *   var(--txt)    ← 规格 --txt      var(--muted) ← 规格 --dim
+ * ⚠ `--muted` 当**正文色**是刻意的（不是 `--muted2`）：`check-text-legibility` 对
+ * `views/sim/console/` 按 12px 判对比度（判据 A 的高密度指控台裁决），`--muted` 三套主题
+ * 都在 6.0:1 以上，`--muted2` 只有 6.13:1 且亮色主题更险。
+ * ⚠ 字号 11.5px：本目录整体按 8–11.5px 设计（判据 B 的作用域豁免已覆盖本目录），
+ * 抽屉标题条与画布里的面板头 `.ph b` 同档，不另开一级字号（R-UI-2 只许 3 级）。 */
+.dock {
+  width: 1440px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-top: 0;
+  color: var(--txt);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+}
+.dockSum {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  cursor: pointer;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  /* 去掉浏览器默认的三角记号 —— 展开态由本条自己的下边框 + 文字色表达，
+     文字尾部另有一个 ▸ 记号。**两条声明都要写**：`list-style` 管 Firefox 与新版 Chrome，
+     `::-webkit-details-marker` 管 Safari 与旧 Chrome；只写一条会在另一半浏览器里
+     多出一个与 12px 左内边距对不齐的小三角。 */
+  list-style: none;
+}
+.dockSum::-webkit-details-marker {
+  display: none;
+}
+.dock[open] .dockSum {
+  border-bottom: 1px solid var(--line);
+  color: var(--txt);
+}

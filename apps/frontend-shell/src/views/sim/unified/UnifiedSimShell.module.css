@@ -1,0 +1,282 @@
+/* WO-SIM-UNIFIED-SHELL · 统一推演控制台五区外壳。
+   颜色一律走既有 CSS 变量（本文件不新造调色板）；版面用 grid，不写死像素宽。 */
+
+/* WO-SIM-SHELL-TABS 改了排布机制：`grid-template-rows: auto auto 1fr auto auto` → flex 列。
+   理由是**行数不再固定**：摘要条（左栏收起时）与底部抽屉（只有「指标态势」档有）都是条件渲染，
+   模板的第 3 行 `1fr` 会随子元素增减落到别的元素上 —— 实测左栏一收起，`1fr` 就落在摘要条上，
+   主体反而只拿 `auto`。flex 让「谁伸展」由元素自己声明（`.body { flex:1 }`），与兄弟个数无关。 */
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+/* ── 顶部模式页签 ─────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+/* 一个档 = 组标签（可无）+ 按钮，两者不许被 flex-wrap 拆到两行去。 */
+.tabSlot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* 组分隔标签（规格里的 `.grp`）：不是按钮，只是把决策链切成段的路牌。
+   ⚠ 字号 12px + `var(--muted)` 是被 `check-text-legibility` 逼出来的，不是随手挑的：
+   规格原型那一档是 9px + 自定义灰，本仓判据 A（`required = max(3.0, 72/S_eff)`）在 10px 要 7.2:1，
+   而本文件其余处用的 `var(--muted2)` **根本不是本仓令牌**（tokens.css 里只有 `--txt/--muted/--muted2`），
+   于是回落到字面色 #656d76、实测 dark 只有 2.03:1。本单新加的声明一律走真令牌 + 12px 硬底。 */
+.tabGroup {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+  white-space: nowrap;
+}
+/* ⛔ 改前这里写的是 `background: var(--bg-subtle, #f6f8fa)` + `border: var(--border, #d0d7de)`，
+   而 `--bg-subtle` 与 `--border` **全仓无定义**（tokens.css 只有 --panel/--panel2/--line/--line2…）
+   ⇒ 两处恒落到兜底的**浅色字面量**：白底 + 浅灰边。而本规则**没有设 `color`**，
+   文字于是继承暗色主题的浅色字 —— 浅字压白底，屏上基本读不出来（仓主 2026-08-26 报的就是它）。
+   同族病本仓当天已修过一次（`--green` / `--red` 幽灵令牌，LlmProvidersPage 的用量条）。
+   ⚠ 为什么 `check-css-token-defined` 没咬住：它只查**无兜底**的 `var(--x)`。
+     带了兜底反而把病藏起来 —— 声明不会作废，只是**永远用那个写死的浅色**，三个主题一视同仁。
+     这比「没上色」更难发现：屏上有颜色，只是恒定错的那一个。
+   ⚠ 替换时**连兜底值一起删**：留着 `var(--line, #d0d7de)` 等于给下一个幽灵令牌预留藏身处。
+   `color` 显式写 `var(--txt)`，不再靠继承 —— 按钮的前景色不该由「它恰好挂在谁下面」决定。 */
+.tab {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel2);
+  color: var(--txt);
+  font-size: 13px;
+  cursor: pointer;
+}
+/* 选中态用**成对**的 `--accent-solid` / `--on-accent`：tokens.css 里这两个就是按
+   「实心底 + 其上的字」配好的一对，逐主题验过对比度。
+   改前是 `background: var(--bg, #fff)` —— 又一处白底，且同样不设 `color`。 */
+.tabOn {
+  border-color: var(--accent);
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── 状态条 ───────────────────────────────────────────────────── */
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+/* ⚠ `--fg-muted` **全仓无定义**（tokens.css 只有 `--txt` / `--muted` / `--muted2`），
+   于是这几处恒落到字面兜底 `#656d76`：暗色主题下压在 `--panel-glass` 上实测 **2.03:1**，
+   浅色 4.63 / 暖色 4.69 —— 12px 需 6.0:1，三主题全不过，暗色下基本读不到。
+   全部改用在册令牌 `--muted2`（逐主题 #bbc5ce / #515a6a / #5b5b5b，
+   实测 dark 6.09 / light 6.13 / warm 6.07 ≥ 6.0），与本文件 `.tabGroup` 那段同一个结论。 */
+.statusKey {
+  color: var(--muted2);
+}
+.calibre {
+  font-size: 12px;
+  color: var(--muted2);
+}
+.warn {
+  color: var(--danger, #cf222e);
+}
+
+/* ── 三栏主体 ─────────────────────────────────────────────────── */
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 20rem) minmax(0, 1fr) minmax(0, 22rem);
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.bodyRailOff {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+}
+/* 非「指标态势」档：中右合并成一块整版给被挂载的那一页（右栏检视是卡墙专属的）。
+   左栏仍在 —— 见 `UnifiedSimShell.tsx` 区③ 那段：左栏属壳，不属任何一档。 */
+.bodyMode {
+  grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+}
+.bodyModeRailOff {
+  grid-template-columns: minmax(0, 1fr);
+}
+/* 被挂载页面的载入/未接线占位。四页各自带版面，本壳只给一个内边距与字号，不干涉其内部。 */
+.modeFallback {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.col {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+/* ── 左栏 / 摘要条 ────────────────────────────────────────────── */
+.railHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.summaryBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* ── 卡墙 ─────────────────────────────────────────────────────── */
+.group {
+  margin-bottom: 12px;
+}
+.groupHead {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.groupLayer {
+  font-weight: 600;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 6px;
+}
+.card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--bg, #fff);
+  cursor: pointer;
+  font: inherit;
+}
+.cardOn {
+  border-color: var(--accent, #0969da);
+  box-shadow: inset 0 0 0 1px var(--accent, #0969da);
+}
+.cardQuiet {
+  filter: saturate(0.35);
+  opacity: 0.8;
+}
+.cardName {
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cardKey {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--muted2);
+  overflow-wrap: anywhere;
+}
+.cardValue {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.cardDelta {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.unmovedBlock {
+  margin-top: 6px;
+}
+/* ⚠ 文字用 `--accent` 是**真缺陷**，不是门的误报：`--accent` 是**实心底/描边**那一档
+   （逐主题 #4c90f0 / #3b5bdb / #E8590C），当**文字色**压在页面表面上实测
+   dark 3.33 / light 5.00 / warm 3.20 —— 12px 需 6.0:1，三主题全不过。
+   tokens.css 另有专给「accent 色的文字」的一档 `--accent-txt`
+   （#a2c6f7 / #274ad7 / #9d3c08），实测 6.07 / 6.08 / 6.08，三主题全过。 */
+.unmovedToggle {
+  font-size: 12px;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  color: var(--accent-txt);
+}
+
+/* ── 右栏 ─────────────────────────────────────────────────────── */
+.section {
+  margin-bottom: 10px;
+}
+.sectionHead {
+  font-size: 12px;
+  color: var(--muted2);
+  margin-bottom: 4px;
+}
+.bigNumber {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+.list {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: 12px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── 底部抽屉 / 日志 ──────────────────────────────────────────── */
+.drawer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  max-height: 16rem;
+}
+.drawerCol {
+  min-width: 0;
+  overflow: auto;
+}
+.log {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-height: 6rem;
+  overflow: auto;
+}
+.spark {
+  display: block;
+  width: 100%;
+  height: 3rem;
+}

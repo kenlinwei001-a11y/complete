@@ -1,23 +1,125 @@
-import type { QueryTimeseriesAggInput, RuleVerdict, ToolPayload } from "@platform/contracts";
+import type { ClaimVerdict, CreateDecisionInput, CrossValidateRequest, CrossValidateResponse, Decision, ObjectRefAttempt, ObjectRefHit, ObjectRefResolution, ObjectRefResolveRequest, PlanSliceRequest, PlanSliceResponse, PromptKey, QueryTimeseriesAggInput, ResolvedPrompt, RuleVerdict, ToolPayload, TypeSemanticsResponse } from "@platform/contracts";
+import { PLATFORM_PROMPT_DEFAULTS } from "@platform/contracts";
+// WO-SLOT-ENTITY-RESOLVE：匹配规则唯一出处（mock 与 DataCore 调同一个纯核心，勿自写第二套）。
+import { matchObjectRefInType, normalizeObjectRefKey, objectRefDeclaredType, pickObjectRefResolution } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：mock DataCore 的 C08 阈值必须与真 DataCore 同源，禁内联裸阈值。
+import { OUTSOURCE_REDLINE } from "@platform/contracts";
 import { newId } from "../ids.js";
+// WO-CAPMAP-LIVE · 求解器全集替身（取自真实 /a/v1/solvers/registry 返回·替掉原来 3 条手写条目）。
+import { MOCK_SOLVER_REGISTRY } from "./solver-registry.js";
+// WO-MOCK-ENGINE-PARITY · 镜像本体图 + slice-planner/query-engine 移植件（ontology_query 路径现算·禁写死）。
+import {
+  MOCK_ONTOLOGY_LINKS,
+  MockNoQueryPlanError,
+  assertMockOntologyClosure,
+  hopsToQueryPlanHops,
+  matchQueryFilter,
+  planMockOntologyPaths,
+  type MockQueryFilter,
+  type OntologyPathHop,
+} from "./ontology-graph.js";
+// WO-MOCKDC-SIGNATURE：取消语义与生产同一个错误类型（值导入，非 type-only）。
+import { DataCoreRequestCancelledError } from "../tools/clients.js";
 import type {
   ActionClient,
   CatalogClient,
   DataCoreClient,
+  DataGenClient,
+  DecisionClient,
+  EpochClient,
   IamClient,
   KbClient,
   KbHit,
+  ObjectTypeDefSummary,
   OntologyClient,
+  PromptClient,
   RuleEngineClient,
+  SimClient,
   SolverClient,
   TimeseriesClient,
   ToolAuthCtx,
 } from "../tools/clients.js";
+import type { Expect, NoParamArityDrift } from "./signature-parity.js";
 import { cosine, pseudoEmbed } from "../util/embedding.js";
 import { hashSeed, prngFor } from "./prng.js";
 import { SEED_BASES, SEED_MODELS, SEED_ORDERS, type SeedBase, type SeedOrder } from "./seed.js";
 
 const SNAPSHOT = "ont-snap-001";
+
+/**
+ * WO-RESOURCE-CATALOG-ONTOLOGY · mock 本体对象类型定义（object_type/field 投影供给侧）。
+ * 取真实本体核心类型子集（Process/Equipment/WorkOrder/MaterialBalance/OrderLine 等），
+ * 属性带 unit/dataType（SEAM③ 量纲透出）；WIPLot 故意缺类型级 description（SEAM §4 兜底合成探针）。
+ * mock listObjectTypeDefs/listObjectTypes/getTypeSemantics 三者同源于此（防漂移）。
+ */
+/**
+ * query_objects UNKNOWN_TYPE 守卫的历史基线 key：seed 的 agent scope / intent slot 引用了
+ * Line/Shipment/Segment/Customer/Material 等目录投影之外的类型（discover-real-types.test 依赖
+ * Material「已知但 0 实例」语义）——守卫清单须为其并集，见 listObjectTypeKeys。
+ */
+const MOCK_GUARD_LEGACY_TYPE_KEYS = ["Base", "Order", "Model", "Line", "Process", "Equipment", "Shipment", "Segment", "Customer", "Material"];
+const MOCK_OBJECT_TYPE_DEFS: ObjectTypeDefSummary[] = [
+  {
+    key: "Base", displayName: "生产基地", domain: "factory", description: "生产基地主数据", status: "ACTIVE",
+    properties: [
+      { propKey: "baseId", dataType: "string", isPrimaryKey: true, description: "基地编号" },
+      { propKey: "name", dataType: "string", searchable: true, description: "基地名称" },
+    ],
+  },
+  {
+    // WO-SLOT-ENTITY-RESOLVE · mock 保真：主键改 `so`（= 生产 Order 的真主键，且 mock 行本来就带 so；
+    // 旧值 `orderId` 是**行里根本不存在的属性**，元数据与数据对不上 → 解析核心按元数据一查即空）。
+    key: "Order", displayName: "销售订单", domain: "sales", description: "客户销售订单", status: "ACTIVE",
+    properties: [
+      { propKey: "so", dataType: "string", isPrimaryKey: true, searchable: true, description: "订单编号" },
+      { propKey: "qty", dataType: "number", unit: "套", description: "订单数量" },
+      { propKey: "dueDate", dataType: "date", description: "交期" },
+    ],
+  },
+  {
+    // WO-SLOT-ENTITY-RESOLVE · mock 保真：补 `name`（生产 Model 的 name 就是 searchable 的；
+    // mock 行一直有 name 却没在元数据里声明 → 型号名解析不到）。
+    key: "Model", displayName: "产品型号", domain: "product", description: "产品型号主数据", status: "ACTIVE",
+    properties: [
+      { propKey: "modelId", dataType: "string", isPrimaryKey: true, description: "型号编号" },
+      { propKey: "name", dataType: "string", searchable: true, description: "型号名称" },
+    ],
+  },
+  {
+    key: "Process", displayName: "工序", domain: "factory", description: "制造工序定义", status: "ACTIVE",
+    properties: [
+      { propKey: "processId", dataType: "string", isPrimaryKey: true, description: "工序编号" },
+      { propKey: "changeoverHours", dataType: "number", unit: "小时", description: "换型时长" },
+    ],
+  },
+  {
+    key: "Equipment", displayName: "设备", domain: "factory", description: "生产设备台账", status: "ACTIVE",
+    properties: [
+      { propKey: "equipmentId", dataType: "string", isPrimaryKey: true, description: "设备编号" },
+      { propKey: "oee", dataType: "number", unit: "%", description: "设备综合效率" },
+    ],
+  },
+  {
+    key: "WorkOrder", displayName: "生产工单", domain: "factory", description: "生产执行工单", status: "ACTIVE",
+    properties: [
+      { propKey: "woId", dataType: "string", isPrimaryKey: true, description: "工单编号" },
+      { propKey: "plannedQty", dataType: "number", unit: "套", description: "计划数量" },
+    ],
+  },
+  {
+    key: "MaterialBalance", displayName: "物料平衡", domain: "factory", description: "投入产出物料平衡", status: "ACTIVE",
+    properties: [{ propKey: "yieldRate", dataType: "number", unit: "%", description: "良率" }],
+  },
+  {
+    key: "OrderLine", displayName: "订单明细行", domain: "sales", description: "订单行项目", status: "ACTIVE",
+    properties: [{ propKey: "lineQty", dataType: "number", unit: "套", description: "行数量" }],
+  },
+  {
+    // 故意缺类型级 description：WO §4 兜底合成（descriptionSynthesized: true）探针。
+    key: "WIPLot", displayName: "在制批次", domain: "factory", status: "ACTIVE",
+    properties: [{ propKey: "lotQty", dataType: "number", unit: "批", description: "批次数量" }],
+  },
+];
 
 /**
  * Row-level permission semantics live INSIDE the mock data layer (QOS-PRD §7.2/§7.6):
@@ -56,6 +158,76 @@ function matchFilter(obj: Record<string, unknown>, filter: Record<string, unknow
 }
 
 export class MockOntologyClient implements OntologyClient {
+  /**
+   * WO-RESOURCE-CATALOG-ONTOLOGY · 实例级可变本体定义（SEAM② 活投影探针：测试 push 新类型后
+   * 下次 list/project 即可见——镜像 A 侧"建类型→已发布"语义）。每实例深拷贝，跨测试不串。
+   *
+   * WO-MOCKDC-SIGNATURE · 口径澄清：这是**出厂共享集**，语义 = 「每个租户都跑过同一份 seed」，
+   * 因此对所有租户同构**是忠实的**，不是漏过滤。租户**自己建**的类型走 `addTypeForTenant`，
+   * 那一路必须跨租户不可见（R2）。两者别混：混了就会把「共享出厂数据」错当成「租户数据泄漏」。
+   */
+  readonly objectTypeDefs: ObjectTypeDefSummary[] = JSON.parse(JSON.stringify(MOCK_OBJECT_TYPE_DEFS)) as ObjectTypeDefSummary[];
+
+  /**
+   * WO-MOCKDC-SIGNATURE · **租户私有增量**（跨租户不可见 = `tenant_id everywhere` 的 mock 侧落地）。
+   * 每条带 `atEpoch`：§13.1 时点读靠它 —— `asOfEpoch` 早于写入 epoch 的行**不可见**，
+   * 于是「给不给 asOfEpoch 行为不同」在 mock 上是**真的**，不是收了参数摆着。
+   */
+  private readonly tenantTypes = new Map<string, { def: ObjectTypeDefSummary; atEpoch: number }[]>();
+  private readonly tenantRows = new Map<string, { typeKey: string; row: Record<string, unknown>; atEpoch: number }[]>();
+  /** 租户级单调 epoch（真 DataCore 就是 per-tenant；写入即进位）。缺省 1 = 出厂态。 */
+  private readonly tenantEpoch = new Map<string, number>();
+
+  /** 该租户当前 epoch（`MockEpochClient.current` 的真值源）。 */
+  epochOf(tenantId: string): number {
+    return this.tenantEpoch.get(tenantId) ?? 1;
+  }
+  private bumpEpoch(tenantId: string): number {
+    const e = this.epochOf(tenantId) + 1;
+    this.tenantEpoch.set(tenantId, e);
+    return e;
+  }
+
+  /** 测试钩子：给**某租户**建私有对象类型 → 进位该租户 epoch，返回写入 epoch。跨租户不可见。 */
+  addTypeForTenant(ctx: ToolAuthCtx, def: ObjectTypeDefSummary): number {
+    const atEpoch = this.bumpEpoch(ctx.tenantId);
+    const list = this.tenantTypes.get(ctx.tenantId) ?? [];
+    list.push({ def, atEpoch });
+    this.tenantTypes.set(ctx.tenantId, list);
+    return atEpoch;
+  }
+
+  /** 测试钩子：给**某租户**写一行私有对象 → 进位该租户 epoch，返回写入 epoch。跨租户不可见。 */
+  addObjectForTenant(ctx: ToolAuthCtx, typeKey: string, row: Record<string, unknown>): number {
+    const atEpoch = this.bumpEpoch(ctx.tenantId);
+    const list = this.tenantRows.get(ctx.tenantId) ?? [];
+    list.push({ typeKey, row, atEpoch });
+    this.tenantRows.set(ctx.tenantId, list);
+    return atEpoch;
+  }
+
+  /**
+   * WO-MOCKDC-PARAMS-INCREMENT · 租户私有行的**行标识**（同 id 多版本解析的归组键）。
+   * 取 `objectId` → `id` → 该类型主键属性；一个都解析不出 ⇒ `null`（不可标识的行不参与
+   * 版本归组——把解析不出 id 的行全折进同一个键，等于把它们错当成同一行的多个版本）。
+   */
+  private tenantRowId(objectType: string, row: Record<string, unknown>): string | null {
+    const pk = this.objectTypeDefs.find((t) => t.key === objectType)?.properties?.find((p) => p.isPrimaryKey)?.propKey;
+    const id = row.objectId ?? row.id ?? (pk ? row[pk] : undefined);
+    return id === undefined || id === null ? null : String(id);
+  }
+
+  /**
+   * ACTIVE 子集（镜像 A 侧 listTypes 服务端过滤）= 出厂共享集 ∪ **本租户**私有增量。
+   * `ctx` 在这里是**承重**的：换一个 tenantId，私有增量就看不见（R2）。
+   */
+  private activeTypeDefs(ctx: ToolAuthCtx, asOfEpoch?: number): ObjectTypeDefSummary[] {
+    const own = (this.tenantTypes.get(ctx.tenantId) ?? [])
+      .filter((e) => asOfEpoch === undefined || e.atEpoch <= asOfEpoch)
+      .map((e) => e.def);
+    return [...this.objectTypeDefs, ...own].filter((t) => t.status === undefined || t.status === "ACTIVE");
+  }
+
   async resolveSlice(ctx: ToolAuthCtx, sliceKey: string, args: Record<string, unknown>): Promise<ToolPayload> {
     if (sliceKey === "model_capacity_network") {
       const model = SEED_MODELS.find((m) => m.objectId === args.modelId || m.name === args.modelId);
@@ -87,14 +259,74 @@ export class MockOntologyClient implements OntologyClient {
         snapshotVersion: SNAPSHOT,
       };
     }
+    if (sliceKey.startsWith("biz.")) {
+      // A3.3 动态切片 mock：plan_slice 产出的 biz.<root>.<targets> 切片，按 key 解析返回通用子图。
+      const parts = sliceKey.split(".");
+      const rootType = parts[1] ?? "Unknown";
+      const targets = parts.slice(2);
+      return {
+        data: {
+          rootType,
+          targets,
+          nodes: targets.map((t) => ({ type: t, id: `${rootType}_to_${t}` })),
+          edges: targets.map((t) => ({ from: rootType, to: t, kind: `${rootType}_to_${t}` })),
+        },
+        snapshotVersion: SNAPSHOT,
+      };
+    }
     throw new Error(`unknown slice: ${sliceKey}`);
   }
 
+  // P3 O11：切片规划 mock——确定性派生 SlicePlan（rootType+targets），可达即 ok。
+  // unreachable 约定：target 含 "__unreachable" → 模拟 maxHops 内不可达（诚实出 NO_SLICE 那一路用）。
+  async planSlice(_ctx: ToolAuthCtx, req: PlanSliceRequest): Promise<PlanSliceResponse> {
+    const unreachable = req.targets.filter((t) => t.includes("__unreachable"));
+    const reachable = req.targets.filter((t) => !t.includes("__unreachable"));
+    if (reachable.length === 0) {
+      return { ok: false, reason: { code: "NO_PATH", rootType: req.rootType, unreachable } };
+    }
+    return {
+      ok: true,
+      plan: {
+        sliceKey: `biz.${req.rootType}.${reachable.join("_")}`,
+        rootType: req.rootType,
+        paths: reachable.map((t) => ({ target: t, hops: [{ linkKey: `${req.rootType}_to_${t}`, direction: "out" as const, toType: t }] })),
+        pathEvidence: reachable.map((t) => `${req.rootType} -[${req.rootType}_to_${t}:out]-> ${t}`),
+        spannedDomains: ["mock"],
+        reused: false,
+      },
+    };
+  }
+
+  /** A3-SUITE-2：动态切片持久化 mock——规划器产出即视为一等 SliceSpec，供后续 resolve_slice 消费。 */
+  async putSliceSpec(
+    _ctx: ToolAuthCtx,
+    sliceKey: string,
+    _spec: {
+      root: { typeKey: string; selector: { byKey?: string; filter?: Record<string, unknown> } };
+      paths: { linkKey: string; direction: "out" | "in"; filter?: Record<string, unknown>; limitPerNode?: number; project?: string[] }[][];
+      maxNodes?: number;
+    },
+  ): Promise<{ sliceKey: string; version: number }> {
+    return { sliceKey, version: 1 };
+  }
+
+  /**
+   * WO-MOCKDC-SIGNATURE · 第 5 形参 `asOfEpoch` **不再是摆设**（§13.1 任务级快照读）。
+   *
+   * 语义：出厂共享行恒可见（epoch 0 语义）；**租户私有行**带写入 epoch，
+   * 给了 `asOfEpoch` ⇒ 只看「写入 epoch ≤ 该时点」的行 ⇒ **任务内后来发生的写入看不见**。
+   * 不给 ⇒ 读活数据。于是「给不给行为不同」在 mock 上可被断言（见 mockdc-signature.seam.test.ts）。
+   *
+   * 改前：mock 只实现到第 4 个形参，执行器 `tools/executor.ts:378` 传进来的 taskEpoch 被**静默丢弃**
+   * —— 实测一整轮 agentcore 套件里丢了 149 次。那时任何拿本 mock 验"时点读"的测试都等于没验。
+   */
   async queryObjects(
     ctx: ToolAuthCtx,
     objectType: string,
     filter: Record<string, unknown>,
     limit?: number,
+    asOfEpoch?: number,
   ): Promise<ToolPayload> {
     let rows: Record<string, unknown>[];
     if (objectType === "Base") {
@@ -109,17 +341,85 @@ export class MockOntologyClient implements OntologyClient {
     } else {
       rows = [];
     }
+    // 租户私有行：R2 只看本租户（换 tenantId 即看不见）；§13.1 再按 asOfEpoch 裁时点。
+    // WO-MOCKDC-PARAMS-INCREMENT · **同 id 多版本解析**（镜像真 DataCore `objectAsOf` 按
+    // `epoch <= asOfEpoch` 回溯取最新版）：扁平历史里同一行 id 写多次 = 该行的新版本，
+    // 不是另一行 —— 归组取「时点内 epoch 最大」的一版；不给时点 ⇒ 最新版（活数据）。
+    // 改前：同 id 写两次读回两条重复行，「后写覆盖先写」这个维度在 mock 上不存在。
+    {
+      const versions = new Map<string, Record<string, unknown>>();
+      const anonymous: Record<string, unknown>[] = [];
+      for (const e of this.tenantRows.get(ctx.tenantId) ?? []) {
+        if (e.typeKey !== objectType) continue;
+        if (asOfEpoch !== undefined && e.atEpoch > asOfEpoch) continue;
+        const id = this.tenantRowId(objectType, e.row);
+        if (id === null) {
+          anonymous.push({ ...e.row });
+          continue;
+        }
+        // epoch 由 bumpEpoch 单调进位 ⇒ 同 id 后写者 epoch 更大，直接覆盖即取到最新版。
+        versions.set(id, { ...e.row });
+      }
+      rows.push(...versions.values(), ...anonymous);
+    }
     rows = rows.filter((r) => matchFilter(r, filter));
     if (limit !== undefined) rows = rows.slice(0, Math.min(limit, 200));
-    return { data: { items: rows, total: rows.length }, snapshotVersion: SNAPSHOT };
+    return {
+      data: { items: rows, total: rows.length },
+      // WO-MOCKDC-PARAMS-INCREMENT · 时点可见性：带了 asOfEpoch 就把「读到的是哪个时点的快照」
+      // 写进 snapshotVersion（与真 DataCore `ontology.ts` 的 `${snapshot}@${asOfEpoch}` 同形）——
+      // 「时点读生效了没有」由此有外部可见证据，不是只能数行数。
+      snapshotVersion: asOfEpoch === undefined ? SNAPSHOT : `${SNAPSHOT}@${asOfEpoch}`,
+    };
   }
 
-  async getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 取一个类型下的「可匹配行」（内部 id + props），供解析核心比对。
+   * mock 的行本身带 `objectId` 作为内部 id（生产是 `obj_<type>_<key>`），归一规则同源，无需 mock 专属剥前缀表。
+   */
+  private async refRows(ctx: ToolAuthCtx, objectType: string): Promise<{ id: string; props: Record<string, unknown> }[]> {
     const result = await this.queryObjects(ctx, objectType, {});
     const items = (result.data as { items: Record<string, unknown>[] }).items;
-    const found = items.find((i) => i.objectId === objectId || i.name === objectId || i.so === objectId);
+    return items.map((i) => ({ id: String(i.objectId ?? i.so ?? ""), props: i }));
+  }
+
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · **mock 保真（关键）**：与生产 `datacore/src/ontology.ts getObject` 同语义
+   * —— 只按**内部 id / 主键**取（`accept:["id"]`），中文名解析不到就是解析不到。
+   *
+   * ⚠ 改前这里是 `i.name === objectId` 也认名字 —— 比生产宽松，正是它把「槽位填充按 id 查、中文名必 404」
+   * 这个真病**盖了整整一轮**（agentcore 全绿、真绑 Kimi 一跑 10/35 反问）。假绿温床，勿回潮。
+   * 按名解析请走 `resolveObjectRef`（与生产同一条正门）。
+   */
+  async getObject(ctx: ToolAuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
+    const typeDef = this.activeTypeDefs(ctx).find((t) => t.key === objectType);
+    const { hits } = matchObjectRefInType({ ref: objectId, objectType, typeDef, rows: await this.refRows(ctx, objectType), accept: ["id"] });
+    const found = hits[0];
     if (!found) throw new Error(`object not found: ${objectType}/${objectId}`);
-    return { data: found, snapshotVersion: SNAPSHOT };
+    const row = (await this.refRows(ctx, objectType)).find((r) => r.id === found.internalId);
+    return { data: row?.props ?? {}, snapshotVersion: SNAPSHOT };
+  }
+
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 「实体文本 → 对象引用」解析 mock —— **规则不自写**，
+   * 与 DataCore 调用 contracts 里**同一个** `matchObjectRefInType` / `pickObjectRefResolution`。
+   * mock 只负责「取哪些行」（角色可见性 = 它的行级过滤），匹配语义单一出处。
+   */
+  async resolveObjectRef(ctx: ToolAuthCtx, req: ObjectRefResolveRequest): Promise<ObjectRefResolution> {
+    // #108 · 单源默认：**不许**在这里再抄一份层级清单（原来写死 ["id","name","alias"]，
+    // 把 partial 挡在门外 —— 与 datacore/src/ontology.ts 那处同病）。undefined = 用解析器自己的默认。
+    const accept = req.accept;
+    const declared = objectRefDeclaredType(req.ref);
+    const typeKeys = req.types?.length ? [...new Set(req.types)] : declared ? [declared] : await this.listObjectTypeKeys(ctx);
+    const hits: ObjectRefHit[] = [];
+    const attempts: ObjectRefAttempt[] = [];
+    for (const objectType of [...typeKeys].sort()) {
+      const typeDef = this.activeTypeDefs(ctx).find((t) => t.key === objectType);
+      const r = matchObjectRefInType({ ref: req.ref, objectType, typeDef, rows: await this.refRows(ctx, objectType), accept });
+      hits.push(...r.hits);
+      attempts.push(r.attempt);
+    }
+    return pickObjectRefResolution(req.ref, hits, attempts, { maxCandidates: req.maxCandidates });
   }
 
   /** 治理增量 §3.6：聚合下推 mock —— 返回分组行集（绝不返回全量原始行），供 G8 审计断言。 */
@@ -161,23 +461,351 @@ export class MockOntologyClient implements OntologyClient {
     });
     return { data: { rows, rowCount: rows.length, truncated: false }, snapshotVersion: SNAPSHOT };
   }
+  async fillData(_ctx: ToolAuthCtx, req: { typeKey: string; fields: string[]; rows?: number; seed?: number }): Promise<{ connId: string; rowCount: number }> {
+    return { connId: `conn_growth_${req.typeKey}`, rowCount: req.rows ?? 6 };
+  }
+
+  // stage3②：轻量本体校验 mock——行含 `__invalid` 标记字段即判不符（供执行器关卡测试）。
+  async validateOutput(_ctx: ToolAuthCtx, _objectType: string, rows: Record<string, unknown>[]): Promise<{ ok: boolean; violations: { field: string; kind: string; detail: string }[] }> {
+    const violations = rows.flatMap((r, i) => ("__invalid" in r ? [{ field: "__invalid", kind: "DOMAIN", detail: `row ${i} 违反本体值域` }] : []));
+    return { ok: violations.length === 0, violations };
+  }
+
+  // Dogfooding P3：meta 问系统自己（mock）。
+  /**
+   * WO-MOCKDC-SIGNATURE · **诚实标注**：`ctx` 已补齐形参，但这里**不按租户过滤** —— 元本体
+   * （SystemInvariant / SystemBreakpoint / SystemEvent）是**平台级**自我元模型，本就对所有租户同一份，
+   * 真 DataCore 侧也由 MetaAccessPolicy 白名单门控而非行级租户过滤。此处 `ctx` 只用于**存在性校验**。
+   * 不假装它承重：谁要拿本方法验"跨租户看不到元本体"，验的是一个不存在的语义。
+   */
+  async queryMetaOntology(ctx: ToolAuthCtx): Promise<{ total: number; byKind: Record<string, number> }> {
+    if (!ctx?.tenantId) throw new Error("queryMetaOntology: 缺少租户上下文");
+    return { total: 64, byKind: { SystemInvariant: 14, SystemBreakpoint: 8, SystemEvent: 27 } };
+  }
+  async getMetaBreakpoint(_ctx: ToolAuthCtx, id: string): Promise<unknown> {
+    return { type: "SystemBreakpoint", props: { id, status: "PARTIAL", relatedInvariants: ["R11"], relatedPRDs: ["PRD-fullstack-story-build-g8.md"] } };
+  }
+  async metaImpact(_ctx: ToolAuthCtx, node: string): Promise<{ node: string; affected: { id: string; via: string }[] }> {
+    return { node: `meta_SystemInvariant_${node}`, affected: [{ id: "PRD:PRD-platform-foundry-aip.md", via: "covered_by" }] };
+  }
+
+  // B→A 探针：守卫已知类型全集 = 出厂基线（seed 引用面）∪ 目录投影同源 ACTIVE 集。
+  // WO-RESOURCE-CATALOG-ONTOLOGY F1：discover 可见的类型（WorkOrder/MaterialBalance/OrderLine/WIPLot）
+  // 必须过 query_objects UNKNOWN_TYPE 守卫，否则「看到 → 照名查被拒」断在接缝。排序保 R6 稳定输出。
+  async listObjectTypeKeys(ctx: ToolAuthCtx): Promise<string[]> {
+    return [...new Set([...MOCK_GUARD_LEGACY_TYPE_KEYS, ...this.activeTypeDefs(ctx).map((t) => t.key)])].sort();
+  }
+  async listObjectTypes(ctx: ToolAuthCtx): Promise<{ key: string; label: string; domain: string; instanceCount: number }[]> {
+    // 与 listObjectTypeDefs 同源（MOCK_OBJECT_TYPE_DEFS·ACTIVE 子集）；count 取 mock 可见集，体现"空 vs 不存在"区分。
+    const count = async (k: string) => ((await this.queryObjects(ctx, k, {})).data as { total: number }).total;
+    const out: { key: string; label: string; domain: string; instanceCount: number }[] = [];
+    for (const t of this.activeTypeDefs(ctx)) {
+      out.push({ key: t.key, label: t.displayName ?? t.key, domain: t.domain ?? "unassigned", instanceCount: await count(t.key) });
+    }
+    return out;
+  }
+
+  /** WO-RESOURCE-CATALOG-ONTOLOGY · 对象类型全量定义 mock（object_type/field 投影供给侧·ACTIVE 过滤镜像 A 侧）。 */
+  async listObjectTypeDefs(ctx: ToolAuthCtx): Promise<ObjectTypeDefSummary[]> {
+    return this.activeTypeDefs(ctx);
+  }
+
+  /** WO-RESOURCE-CATALOG-ONTOLOGY · type-semantics mock（field 投影的属性口径源·description/unit/dataType）。 */
+  async getTypeSemantics(ctx: ToolAuthCtx, typeKeys: string[]): Promise<TypeSemanticsResponse> {
+    const want = new Set(typeKeys);
+    return {
+      types: this.activeTypeDefs(ctx)
+        .filter((t) => want.has(t.key))
+        .map((t) => ({
+          typeKey: t.key,
+          displayName: t.displayName ?? t.key,
+          props: (t.properties ?? []).map((p) => ({
+            propKey: p.propKey,
+            description: p.description,
+            unit: p.unit,
+            dataType: p.dataType,
+          })),
+          derived: [],
+          rules: [],
+        })),
+    };
+  }
+
+  // 推演验证痕迹 Layer 2：对照 mock 知识图谱事实核对断言（确定性，与 mock 对象一致）。
+  async crossValidate(ctx: ToolAuthCtx, req: CrossValidateRequest): Promise<CrossValidateResponse> {
+    const eq = (a: unknown, b: unknown): boolean => {
+      if (a === b) return true;
+      const na = Number(a);
+      const nb = Number(b);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return Math.abs(na - nb) < 1e-9;
+      return String(a).trim() === String(b).trim();
+    };
+    const verdicts: ClaimVerdict[] = [];
+    for (const c of req.claims) {
+      let subject: Record<string, unknown> | undefined;
+      try {
+        subject = (await this.getObject(ctx, c.subjectType, c.subjectId)).data as Record<string, unknown>;
+      } catch {
+        subject = undefined;
+      }
+      const property = c.property ?? "";
+      const claim = `${c.subjectType}:${c.subjectId}.${property}`;
+      if (!subject || !(property in subject)) {
+        verdicts.push({ claim, kind: c.kind, subjectType: c.subjectType, subjectId: c.subjectId, property, assertedValue: c.assertedValue, status: "NO_EVIDENCE", snapshotVersion: SNAPSHOT });
+        continue;
+      }
+      const kgValue = subject[property];
+      const consistent = eq(kgValue, c.assertedValue);
+      verdicts.push({ claim, kind: c.kind, subjectType: c.subjectType, subjectId: c.subjectId, property, assertedValue: c.assertedValue, status: consistent ? "CONSISTENT" : "CONFLICT", ...(consistent ? {} : { kgValue }), snapshotVersion: SNAPSHOT });
+    }
+    let verdict: "ALL_CONSISTENT" | "PARTIAL" | "CONFLICT" | "NO_CLAIMS";
+    if (verdicts.length === 0) verdict = "NO_CLAIMS";
+    else if (verdicts.some((v) => v.status === "CONFLICT")) verdict = "CONFLICT";
+    else if (verdicts.every((v) => v.status === "CONSISTENT")) verdict = "ALL_CONSISTENT";
+    else verdict = "PARTIAL";
+    return { claims: verdicts, verdict, snapshotVersion: SNAPSHOT };
+  }
 }
 
 export class MockSolverClient implements SolverClient {
-  async invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>): Promise<ToolPayload> {
+  /**
+   * WO-MOCKDC-SIGNATURE · 第 4 形参 `signal` **不再是摆设**（WO-D1 取消传导）。
+   * 已 abort 的调用**不许再返回结果** —— 抛与生产同一个错误类型（`DataCoreRequestCancelledError`,
+   * 499/`SOLVER_CANCELLED`），使"上游超时/客户端断开 → 求解被取消"这条链在 mock 上也能被驱动。
+   * 改前 mock 只实现到第 3 个形参：`server.ts:2265` 传进来的 `cancel.signal` 被静默丢弃
+   * ⇒ mock 里「取消」永远无效，而测试照绿。
+   */
+  async invoke(ctx: ToolAuthCtx, solverKey: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolPayload> {
+    if (signal?.aborted) throw new DataCoreRequestCancelledError(`求解调用已取消：${solverKey}`);
+    // WO-Phase3-B §3.2：本体查询引擎（mock 镜像真 datacore 输出形状·带逐行 provenance{typeKey,objId,linkPath}）。
+    // ★ WO-MOCK-ENGINE-PARITY ①（闭 §8 G-AGENTCORE-MOCK-DIVERGED-FROM-ENGINE）：
+    //   修前这里把 linkPath **写死**成 P1 之前的旧路 `["model_producible_at:in","order_for_model:in"]`
+    //   （任何 rootType≠sel.type 都返回同一条），而真引擎从运行时本体图 BFS 现算 ——
+    //   A 侧加 `model_demanded_by_order` 后真侧 Base→Order 已改走它（tie-break 字典序胜出），
+    //   mock 停在旧路，咬 mock 的测试恒绿（「测试证明了 mock 等于 mock」）。
+    //   现改为：路径/方向/落点/usedSliceKeys/summary **全部从镜像本体图现算**（ontology-graph.ts），
+    //   镜像图与 battery.ts 的漂移由 test/mock-engine-parity.test.ts 照出。
+    //   诚实边界：行数据是代表性实例池（Order/Base/Model 三池），池外类型 0 实例（诚实空行）；
+    //   overrides（what-if 重算）mock 无 recompute 引擎 → 诚实报缺抛 NO_QUERY_PLAN，不伪造 deltas。
+    if (solverKey === "ontology_query") {
+      if (Array.isArray(args.overrides) && (args.overrides as unknown[]).length > 0)
+        throw new MockNoQueryPlanError("mock 不支持 overrides 假设重算（无 recompute 引擎·诚实报缺不伪造 deltas）");
+      const rootType = String(args.rootType ?? "Base");
+      type QSelect = { type: string; fields: string[]; aggregate?: "sum" | "count" | "avg" | "max"; groupBy?: string };
+      const select = Array.isArray(args.select) ? (args.select as QSelect[]) : [{ type: "Order", fields: ["so", "qty"] }];
+      const selectTypes = [...new Set(select.map((s) => s.type))];
+      assertMockOntologyClosure(rootType, selectTypes); // R12 闭包（真侧 NoQueryPlanError 同口径）
+      const targetTypes = selectTypes.filter((t) => t !== rootType);
+      const rootFilter = Array.isArray(args.rootFilter) ? (args.rootFilter as MockQueryFilter[]) : [];
+
+      // mock 世界代表性实例池（objId 形态与既有消费方兼容；池外类型 = 0 实例·诚实空行）。
+      const pools: Record<string, { id: string; props: Record<string, unknown> }[]> = {
+        Base: SEED_BASES.map((b) => ({ id: b.objectId, props: { ...b } })),
+        Model: SEED_MODELS.map((m) => ({ id: m.objectId, props: { ...m } })),
+        Order: [
+          { id: "obj_order_SO-0001", props: { so: "SO-0001", qty: 1200 } },
+          { id: "obj_order_SO-0002", props: { so: "SO-0002", qty: 800 } },
+        ],
+      };
+      // rootFilter：与真侧同口径先预选根、零匹配即抛；mock 只守「有无匹配」语义，不按根剪枝行数据（代表性池）。
+      if (rootFilter.length > 0) {
+        const rootPool = pools[rootType];
+        if (!rootPool) throw new MockNoQueryPlanError(`mock 无 ${rootType} 实例池，rootFilter 无法求值（诚实报缺）`);
+        const matched = rootPool.filter((r) => rootFilter.every((f) => matchQueryFilter(r.props[f.field], f.op, f.value)));
+        if (matched.length === 0) throw new MockNoQueryPlanError(`rootFilter 无匹配根对象（${rootType}）`);
+      }
+
+      // ① 路径：显式 hops 优先（逐跳校验 R12 闭包），否则镜像图 BFS 最短路 —— 全部现算，无一写死。
+      type HopStep = OntologyPathHop & { filter?: MockQueryFilter[] };
+      let pathSet: HopStep[][];
+      let sliceKey: string | null;
+      const explicitHops = Array.isArray(args.hops)
+        ? (args.hops as { linkKey: string; direction: "forward" | "backward"; targetType?: string; filter?: MockQueryFilter[] }[])
+        : [];
+      if (explicitHops.length > 0) {
+        try {
+          sliceKey = planMockOntologyPaths(rootType, targetTypes).sliceKey; // best-effort（真侧显式 hops 时亦尝试 planSlice）
+        } catch {
+          sliceKey = null;
+        }
+        let cur = rootType;
+        const steps: HopStep[] = [];
+        for (const h of explicitHops) {
+          const lt = MOCK_ONTOLOGY_LINKS.find((l) => l.linkKey === h.linkKey);
+          if (!lt) throw new MockNoQueryPlanError(`linkKey ${h.linkKey} 不在本体中`);
+          const dir = h.direction === "forward" ? ("out" as const) : ("in" as const);
+          const toType = dir === "out" ? lt.toTypeKey : lt.fromTypeKey;
+          const fromType = dir === "out" ? lt.fromTypeKey : lt.toTypeKey;
+          if (fromType !== cur) throw new MockNoQueryPlanError(`hop ${h.linkKey}:${h.direction} 起点 ${fromType} 与当前类型 ${cur} 不接（链路断裂 R12）`);
+          if (h.targetType && h.targetType !== toType) throw new MockNoQueryPlanError(`hop ${h.linkKey}:${h.direction} 落点应为 ${toType}，声明 ${h.targetType} 不符`);
+          steps.push({ linkKey: h.linkKey, direction: dir, toType, ...(h.filter ? { filter: h.filter } : {}) });
+          cur = toType;
+        }
+        pathSet = [steps];
+      } else {
+        const planned = planMockOntologyPaths(rootType, targetTypes);
+        sliceKey = planned.sliceKey;
+        pathSet = targetTypes.map((t) => planned.paths.get(t)!);
+      }
+
+      // 类型级 linkPath 映射（首达即定，与真侧 linkPathByType 同语义）。
+      const linkPathByType = new Map<string, string[]>();
+      linkPathByType.set(rootType, []);
+      for (const steps of pathSet) {
+        const acc: string[] = [];
+        for (const s of steps) {
+          acc.push(`${s.linkKey}:${s.direction}`);
+          if (!linkPathByType.has(s.toType)) linkPathByType.set(s.toType, [...acc]);
+        }
+      }
+      // 每类型后置过滤集（rootFilter + 各 hop.filter）。
+      const postFilterByType = new Map<string, MockQueryFilter[]>();
+      if (rootFilter.length > 0) postFilterByType.set(rootType, rootFilter);
+      for (const steps of pathSet)
+        for (const s of steps) if (s.filter) postFilterByType.set(s.toType, [...(postFilterByType.get(s.toType) ?? []), ...s.filter]);
+
+      // ② 组织 rows / columns / provenance / 聚合（逐字段与真侧 ④ 同式）。
+      const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+      const rows: Record<string, unknown>[] = [];
+      const columns: string[] = [];
+      const provenance: { typeKey: string; objId: string; linkPath: string[] }[] = [];
+      const aggregation: string[] = [];
+      const pushCol = (c: string) => {
+        if (!columns.includes(c)) columns.push(c);
+      };
+      for (const sel of select) {
+        const filters = postFilterByType.get(sel.type);
+        const nodes = (pools[sel.type] ?? [])
+          .filter((n) => !filters || filters.every((f) => matchQueryFilter(n.props[f.field], f.op, f.value)))
+          .sort((a, b) => a.id.localeCompare(b.id)); // R6 稳定序
+        const lp = linkPathByType.get(sel.type) ?? [];
+        if (sel.aggregate) {
+          const field = sel.fields[0];
+          const groups = new Map<string, { id: string; props: Record<string, unknown> }[]>();
+          for (const n of nodes) {
+            const gk = sel.groupBy ? String(n.props[sel.groupBy] ?? "") : "__all__";
+            (groups.get(gk) ?? groups.set(gk, []).get(gk)!).push(n);
+          }
+          const aggCol = `${sel.type}.${sel.aggregate}(${field ?? "*"})`;
+          aggregation.push(aggCol);
+          if (sel.groupBy) pushCol(`${sel.type}.${sel.groupBy}`);
+          pushCol(aggCol);
+          for (const gk of [...groups.keys()].sort()) {
+            const members = groups.get(gk)!;
+            let value: number;
+            if (sel.aggregate === "count") value = members.length;
+            else {
+              const nums = members.map((m) => Number(m.props[field ?? ""])).filter((v) => Number.isFinite(v));
+              if (sel.aggregate === "sum") value = nums.reduce((s, v) => s + v, 0);
+              else if (sel.aggregate === "avg") value = nums.length > 0 ? nums.reduce((s, v) => s + v, 0) / nums.length : 0;
+              else value = nums.length > 0 ? Math.max(...nums) : 0; // max
+            }
+            const row: Record<string, unknown> = { [aggCol]: round6(value) };
+            if (sel.groupBy) row[`${sel.type}.${sel.groupBy}`] = gk === "__all__" ? null : gk;
+            rows.push(row);
+            for (const m of members) provenance.push({ typeKey: sel.type, objId: m.id, linkPath: lp });
+          }
+        } else {
+          for (const f of sel.fields) pushCol(`${sel.type}.${f}`);
+          for (const n of nodes) {
+            const row: Record<string, unknown> = {};
+            for (const f of sel.fields) row[`${sel.type}.${f}`] = n.props[f];
+            rows.push(row);
+            provenance.push({ typeKey: sel.type, objId: n.id, linkPath: lp });
+          }
+        }
+      }
+      // orderBy + limit（与真侧同式：已投影列排序·数值优先·tie 0 → slice）。
+      const orderBy = args.orderBy as { field: string; direction: "asc" | "desc" } | undefined;
+      if (orderBy) {
+        const col = columns.includes(orderBy.field) ? orderBy.field : (columns.find((c) => c.endsWith(`.${orderBy.field}`)) ?? orderBy.field);
+        const sign = orderBy.direction === "desc" ? -1 : 1;
+        rows.sort((a, b) => {
+          const an = Number(a[col]);
+          const bn = Number(b[col]);
+          const cmp = Number.isFinite(an) && Number.isFinite(bn) ? an - bn : String(a[col] ?? "").localeCompare(String(b[col] ?? ""));
+          return cmp !== 0 ? sign * cmp : 0;
+        });
+      }
+      const limit = typeof args.limit === "number" ? args.limit : undefined;
+      const limited = limit !== undefined ? rows.slice(0, limit) : rows;
+
+      const primaryTarget = targetTypes[0] ?? rootType;
+      const primarySteps = pathSet.find((p) => p[p.length - 1]?.toType === primaryTarget) ?? pathSet[0] ?? [];
+      return {
+        data: {
+          rows: limited,
+          columns,
+          provenance,
+          queryPlan: { usedSliceKeys: sliceKey ? [sliceKey] : [], hops: hopsToQueryPlanHops(primarySteps), aggregation },
+          summary: `${rootType} 遍历 ${pathSet.reduce((m, p) => Math.max(m, p.length), 0)} 跳 → ${limited.length} 行（${select
+            .map((s) => (s.aggregate ? `${s.type}.${s.aggregate}(${s.fields[0] ?? "*"})` : s.type))
+            .join(", ")}）`,
+        },
+        snapshotVersion: SNAPSHOT,
+      };
+    }
     if (solverKey === "capacity_forecast") {
       const rnd = prngFor({ solverKey, modelId: args.modelId, demandDelta: args.demandDelta, weeks: args.weeks });
       const model = SEED_MODELS.find((m) => m.objectId === args.modelId || m.name === args.modelId);
-      const baseGwh = model
-        ? SEED_BASES.filter((b) => model.bases.includes(b.name)).reduce((s, b) => s + b.gwh, 0)
-        : 20;
+      // WO-SCENARIO-FORCED-EXTRACT：mock 尊重 base 作用域（与真 solver scope:BASE/ALL 同语义）——此前无视 base 恒全网，
+      // 导致单测环境断言不了「常州基地 ≠ 全网」语义差（参数到达了、结果却没变=假绿温床）。
+      // ★ WO-BASE-SLOT-UNIFY §A · **mock 必须与真 DataCore 同口径**（datacore `capacity.ts hasBase` /
+      //   `types.normalizeBaseRef` 认 object ref）。旧写法 `typeof args.base === "string"` 只认裸串：
+      //   base 槽统一成 objectRef 后计划模板整槽透传的是 `{objectType,objectId,label}` 对象
+      //   → baseArg=undefined → mock **无视 base 恒全网**，而真 DataCore 正常收窄。
+      //   这正是「参数到达了、结果却没变 = 假绿温床」（本函数上一版注释自己写着的那句），
+      //   会让 scenario-forced-extract.seam「两问句 P50 必须不同」这条真接缝悄悄失守。
+      //   归一走 contracts `normalizeObjectRefKey`（与 A 侧同一份规则·不自写第三套剥前缀）。
+      const baseArg = normalizeObjectRefKey(args.base, "Base").toLowerCase() || undefined;
+      const scopedBases = model
+        ? SEED_BASES.filter(
+            (b) =>
+              model.bases.includes(b.name) &&
+              (!baseArg || b.objectId.toLowerCase().includes(baseArg) || b.name.toLowerCase().includes(baseArg)),
+          )
+        : [];
+      const baseGwh = model ? scopedBases.reduce((s, b) => s + b.gwh, 0) : 20;
       const delta = Number(args.demandDelta ?? 0);
-      const p50 = Math.round(baseGwh * (1 + rnd() * 0.1) * 10) / 10;
-      const p90 = Math.round(p50 * (0.85 + rnd() * 0.1) * 10) / 10;
-      const gapPct = Math.max(0, Math.round((delta - rnd() * 0.15) * 1000) / 10);
+      const capWanP50 = Math.round(baseGwh * (1 + rnd() * 0.1) * 10) / 10;
+      const capWanP90 = Math.round(capWanP50 * (0.85 + rnd() * 0.1) * 10) / 10;
+      // PRD-CAP-DEMANDDELTA mock：effectiveDemand 由 demandDelta 驱动，缺口比例分母随其走。
+      const effectiveDemand = Math.round(capWanP50 * (1 + delta) * 10) / 10;
+      const gap = Math.max(0, Math.round((effectiveDemand - capWanP90) * 10) / 10);
+      const gapPct = effectiveDemand > 0 ? Math.round((gap / effectiveDemand) * 1000) / 10 : 0;
+      const baselineDemand = Math.round((effectiveDemand / Math.max(0.01, 1 + delta)) * 10) / 10;
       const bottlenecks = ["化成", "卷绕", "涂布", "装配", "注液"];
       const mainBottleneck = bottlenecks[Math.floor(rnd() * bottlenecks.length)] as string;
-      return { data: { p50, p90, gapPct, mainBottleneck }, snapshotVersion: SNAPSHOT };
+      return {
+        data: {
+          capWanP50,
+          capWanP90,
+          unit: "万套/窗口",
+          effectiveDemand,
+          baselineDemand,
+          demandDelta: delta,
+          gap,
+          gapPct,
+          mainBottleneck,
+          mainBn: mainBottleneck,
+          ok: gap <= 0,
+          dataMode: "MOCK",
+          // WO-MOCK-ENGINE-PARITY ②：补契约必填三键（CapacityForecastOutputSchema 非 optional：
+          // healthFactor/perBaseRows/pendingCertList）——修前 mock 缺它们，按契约消费的前端在
+          // mock 世界拿到 undefined 而测试照绿。perBaseRows 与 baseGwh 同一 scopedBases 现算（不改口径）。
+          healthFactor: 0.93,
+          perBaseRows: scopedBases.map((b) => ({ base: b.name, weeklyCap: b.gwh, certFactor: 1.0, maintWeek: null, bottleneck: b.bottleneck, tightness: b.util, cumTotal: b.gwh })),
+          pendingCertList: [],
+          // PRD-CAP-DEMANDDELTA：per-field provenance 供 executor  richer provenance。
+          provenance: {
+            capWanP50: { formula: "Σ_base weeklyCap × certFactor × curveMult(周)", valueLabel: "P50 产能（万套/窗口）" },
+            capWanP90: { formula: "capWanP50 × healthFactor", valueLabel: "P90 产能（万套/窗口）" },
+            effectiveDemand: { formula: "baseline × (1 + demandDelta)", valueLabel: "有效需求（万套/窗口）" },
+            gap: { formula: "max(0, effectiveDemand − capWanP90) / effectiveDemand", valueLabel: "缺口比例" },
+          },
+        },
+        snapshotVersion: SNAPSHOT,
+      };
     }
     if (solverKey === "affected_orders") {
       const base = SEED_BASES.find((b) => b.objectId === args.baseId || b.name === args.baseId);
@@ -207,22 +835,116 @@ export class MockSolverClient implements SolverClient {
       return {
         data: {
           baseId: args.baseId,
+          // WO-MOCK-ENGINE-PARITY ②（G-MOCK-OVERCLAIM 方向判对：mock 对齐真后端）：
+          // 修前 mock 回 `orders`（真侧 affectedOrders 返回里**没有**这个字段，qos-f-entitlement 还把
+          // 它当契约断言「既有字段不变」——mock 声称而真后端不提供的教科书例）；同时缺真侧必发的
+          // `affected`/`total`/`fallback`。现对齐真侧单基地分支形状（risk.ts affectedOrders 返回字面量），
+          // delay/impact/dueDay 为代表性定值（mock 不算风险参数）。
+          affected: orders.map((o) => ({ so: o.so, cust: o.cust, model: o.model, qty: o.qty, due: o.due, dueDay: 180, delay: 3, impact: 0.5 })),
+          total: orders.length,
           count: orders.length,
           columns: ["so", "cust", "model", "qty", "due"],
           rows: orders.map((o) => [o.so, o.cust, o.model, o.qty, o.due]),
-          orders,
+          fallback: false,
           problems,
         },
         snapshotVersion: SNAPSHOT,
       };
     }
-    throw new Error(`unknown solver: ${solverKey}`);
+    // WO-DECISION-KERNEL-WIRE：decision_play 出**推荐组合**（recommendedPlan.optionIds）——orchestrator 决策钩子据此
+    // 成一等 Decision（chosenOptionIds 默认取真推演推荐组合）。形状对齐 DecisionPlayOutputSchema（rootCause/options/
+    // recommendedPlan），metricKey/factorId 从 args 派生（证 PageContext 真达求解器·同问句不同上下文→不同 Decision）。
+    if (solverKey === "decision_play") {
+      const metricKey = typeof args.metricKey === "string" && args.metricKey ? args.metricKey : "seg_attain_ess";
+      const factorId = typeof args.factorId === "string" && args.factorId ? args.factorId : "cf-cathode-shortage";
+      const rnd = prngFor({ solverKey, metricKey, factorId });
+      const round1 = (n: number) => Math.round(n * 10) / 10;
+      const options = [
+        { optionId: `opt-${factorId}-a`, factorId, label: "扩备份供应池", sourceKind: "solver" as const, closesGap: round1(8 + rnd() * 6), cost: 120, cycleDays: 30, risk: 0.3, exposure: 0.4, reversibility: 0.7, provenance: { kind: "求解器" as const, basis: "mitigation_select" } },
+        { optionId: `opt-${factorId}-b`, factorId, label: "长协提量", sourceKind: "solver" as const, closesGap: round1(5 + rnd() * 5), cost: 80, cycleDays: 45, risk: 0.4, exposure: 0.3, reversibility: 0.6, provenance: { kind: "求解器" as const, basis: "mitigation_select" } },
+      ];
+      const recommendedPlan = {
+        planId: `plan-${factorId}`,
+        optionIds: options.map((o) => o.optionId),
+        steps: options.map((o, i) => ({ phase: (i === 0 ? "即刻" : "本季") as "即刻" | "本季" | "半年", action: o.label, optionRef: o.optionId })),
+        totalClosesGap: round1(options.reduce((s, o) => s + o.closesGap, 0)),
+        totalCost: options.reduce((s, o) => s + o.cost, 0),
+      };
+      return {
+        data: {
+          rootCause: { factorId, label: "上游正极材料减供", metricKey, gap: 27.8, unit: "%" },
+          options,
+          matrix: options.map((o) => ({ optionId: o.optionId, label: o.label, dims: { closesGap: o.closesGap, cost: o.cost, cycleDays: o.cycleDays, risk: o.risk, exposure: o.exposure, reversibility: o.reversibility } })),
+          triggers: [],
+          recommendedPlan,
+          sandboxNarrowing: { beforeGap: 27.8, afterGap: round1(27.8 - recommendedPlan.totalClosesGap), narrowedPct: round1((recommendedPlan.totalClosesGap / 27.8) * 100), ticks: 3 },
+          // WO-MOCK-ENGINE-PARITY ②：补真侧必发三键（service.ts:3795+ 每次调用都构造）——
+          // 修前 mock 缺它们，前端若在 mock 世界开发读这三键会拿到 undefined 而测试照绿。
+          // 空数组/空账 = 诚实空态（mock 无判据册与依据树）；locusPlay 为真侧条件键（仅传 locusType+locusId 时出现），mock 不落。
+          optionsOmitted: [],
+          optionsEvidence: [],
+          impedimentPlays: { joined: [], scanned: 0, joinedCount: 0, candidateCount: 0, noPlayReason: "mock 无阻滞点判据册（诚实报缺）" },
+          summary: `根因「${factorId}」的 ${options.length} 个方案与推荐组合`,
+        },
+        snapshotVersion: SNAPSHOT,
+      };
+    }
+    // WO-OPTWHATIF-NL-WIRING · optimize_whatif（会话路由 SEAM 用）：MockDataCore 无真本体，故据 selection 派生
+    // 决策承载对象 + **真做 argmin 重解**（施加扰动后重算最优）——**决策方案切换是重解的真结果·非返回同一方案的桩**
+    // （KILL-MOCK）。真本体绑定 × 真 CP-SAT 的「数据装配×引擎」接缝由 DataCore `test/opt-whatif.test.ts` 装配器 SEAM
+    // 坐实（真 assembleBaselineFromSelection + bindToSolverArgs + MockFive 真重解·f1→f2）；此处只证「会话路由 × 决策切换传导」。
+    if (solverKey === "optimize_whatif") {
+      const family = String(args.family ?? "facility_location");
+      const selection = Array.isArray(args.selection) ? (args.selection as { objectId: string }[]) : [];
+      const perts = Array.isArray(args.perturbations) ? (args.perturbations as { target: string; value: number | string }[]) : [];
+      // 决策承载对象 → openCost（选中序确定性 10/20/30…·真会重优化的口径·不同扰动→不同最优）。
+      const baseFac = selection.map((s, i) => ({ id: s.objectId, openCost: (i + 1) * 10 }));
+      if (family === "facility_location" && baseFac.length > 0) {
+        const argmin = (facs: { id: string; openCost: number }[]) =>
+          [...facs].sort((a, b) => a.openCost - b.openCost || a.id.localeCompare(b.id))[0]!;
+        const applyPerts = (facs: { id: string; openCost: number }[]) =>
+          facs.map((f) => {
+            const p = perts.find((x) => x.target === `facilities.${f.id}.openCost`);
+            return p ? { ...f, openCost: Number(p.value) } : { ...f };
+          });
+        const baseWin = argmin(baseFac);
+        const pertFac = applyPerts(baseFac);
+        const pertWin = argmin(pertFac);
+        const baselineObjective = baseWin.openCost;
+        const perturbedObjective = pertWin.openCost;
+        const deltaObjective = Math.round((perturbedObjective - baselineObjective) * 1e6) / 1e6;
+        return {
+          data: {
+            baselineObjective, perturbedObjective, deltaObjective,
+            // WO-MOCK-ENGINE-PARITY ②：补真侧声明形状里的 deltaByObjective（opt-whatif.ts:175 逐目标 Δ）。
+            deltaByObjective: { objective: deltaObjective },
+            feasible: true, conflictConstraints: [],
+            explanation: `扰动 ${perts.length} 条 → 目标 ${baselineObjective} → ${perturbedObjective}（Δ=${deltaObjective}）`,
+            baselineSolution: { openFacilities: [baseWin.id], objective: baselineObjective, optimal: true },
+            perturbedSolution: { openFacilities: [pertWin.id], objective: perturbedObjective, optimal: true },
+            summary: `基线 ${baselineObjective} → 扰动后 ${perturbedObjective}（Δ=${deltaObjective}，可行）`,
+          },
+          snapshotVersion: SNAPSHOT,
+        };
+      }
+      // 装配不出（无选中/未支持族）→ 诚实报缺（orchestrator 落回 path-B·不伪造）。
+      // WO-MOCK-ENGINE-PARITY ②：补 explanation（真侧 applicable:false 分支带，service.ts:4803）。
+      return { data: { applicable: false, missingRoles: ["selection（无选中决策对象）"], feasible: false, baselineObjective: null, perturbedObjective: null, deltaObjective: null, conflictConstraints: [], explanation: "装配报缺：缺角色支撑 selection（不伪造系数·诚实落回）", summary: "optimize_whatif 装配报缺——诚实落回" }, snapshotVersion: SNAPSHOT };
+    }
+    // G-1：20 场景目录的其余求解器（cert_schedule/kit_readiness/… 见 SOLVER_KEYS）在 mock 侧
+    // 返回代表性确定性载荷，使路径A 工作流的 invoke_solver 步骤完成而不抛 unknown solver；
+    // 真实数值由 DataCore 求解器产出（见跨服务联调）。种子计划用静态 text 渲染，不解引用此处特定键。
+    return { data: { solverKey, ok: true, args }, snapshotVersion: SNAPSHOT };
   }
 }
 
 export class MockRuleEngineClient implements RuleEngineClient {
-  /** 引用模式增量 L5：规则「源头一改、引用方全部生效」—— 测试可改阈值/版本模拟规则发布新版。 */
-  c08Threshold = 0.3;
+  /**
+   * 引用模式增量 L5：规则「源头一改、引用方全部生效」—— 测试可改阈值/版本模拟规则发布新版。
+   * DF.13：初值必须 = 真 DataCore 的 C08 现行红线（`OUTSOURCE_REDLINE.maxRatio`）。此前写死了一个与真值不同的常数 —— mock
+   * 与被 mock 者对同一业务事实各执一词，正是"绿测试≠能用"的温床：agentcore 全绿但接上真 A 行为就变。
+   */
+  c08Threshold: number = OUTSOURCE_REDLINE.maxRatio;
   versions: Record<string, number> = { C03: 1, C08: 1, C13: 1 };
 
   /** 模拟规则 C08 发布新版（阈值变更）：下一次求值即用新阈值 + 新版本号。 */
@@ -267,6 +989,46 @@ export class MockRuleEngineClient implements RuleEngineClient {
       .filter((id) => all[id])
       .map((id) => ({ ...(all[id] as () => RuleVerdict)(), ruleVersion: this.versions[id] ?? 1 }));
   }
+  /**
+   * WO-REFGATE-ENT · N-01 · mock 侧同样只暴露「**可被引用**」的那一集 = 已发布。
+   *
+   * `draftRuleKeys` 是 mock 专用旋钮：测试可把某个 key 挪进草稿集，模拟 A 侧 DRAFT 规则——
+   * 它**不**出现在下面两个 `listPublished*` 的返回里，从而让「引用 DRAFT 规则 → 发布被拒」
+   * 这条判据在纯 mock 链路上也能被驱动（真 HTTP 链路另有 seam 测试直咬 URL 上的 status 过滤）。
+   */
+  readonly draftRuleKeys = new Set<string>();
+  /**
+   * WO-MOCKDC-SIGNATURE · **租户私有草稿集**（`draftRuleKeys` 是跨租户的全局旋钮 = 出厂共享态；
+   * 这里放某租户自己置草稿的 key，跨租户不可见）。`ctx` 在两个 `listPublished*` 里靠它承重。
+   */
+  private readonly tenantDraftKeys = new Map<string, Set<string>>();
+  /** 测试钩子：把某 key 在**某租户**内挪进草稿集（别的租户照样看得见它 → R2 可断言）。 */
+  setDraftForTenant(ctx: ToolAuthCtx, key: string): void {
+    const s = this.tenantDraftKeys.get(ctx.tenantId) ?? new Set<string>();
+    s.add(key);
+    this.tenantDraftKeys.set(ctx.tenantId, s);
+  }
+  private readonly allRuleKeys = ["C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10", "C11", "C13", "C15", "C16", "C18", "C21", "C22", "C23", "C24", "C26", "C27", "C28", "C29", "C30", "C31", "C32", "C33"];
+  // B→A 探针：出厂规则库已发布 key 全集（覆盖 seed workflow evaluate_rules 的 C03/C13 等）。
+  async listPublishedRuleKeys(ctx: ToolAuthCtx): Promise<string[]> {
+    const own = this.tenantDraftKeys.get(ctx.tenantId);
+    return this.allRuleKeys.filter((k) => !this.draftRuleKeys.has(k) && !own?.has(k));
+  }
+  // WO-DRIL-P1 · 规则元数据投影供给侧（mock）：已知规则给真描述，其余按 key 合成（description 非空门达标）。
+  async listPublishedRules(ctx: ToolAuthCtx): Promise<import("../tools/clients.js").RuleSummary[]> {
+    const known: Record<string, { name: string; description: string; scope: string[]; severity: string; expression: string }> = {
+      C03: { name: "产能上限约束", description: "需求增量超过产能上限（demandDelta>0.5）触发 BLOCK。", scope: ["Order", "Model"], severity: "BLOCK", expression: "Order.demandDelta > 0.5" },
+      C08: { name: "外协比例红线", description: "外协比例超过阈值触发 WARN（保交付但提示风险）。", scope: ["Base"], severity: "WARN", expression: "outsourceRatio > threshold" },
+      C13: { name: "客户信用额度", description: "客户信用额度已超限触发 BLOCK（禁止继续接单）。", scope: ["Customer", "Order"], severity: "BLOCK", expression: "creditExceeded == true" },
+    };
+    const keys = await this.listPublishedRuleKeys(ctx);
+    return keys.map((key) => {
+      const k = known[key];
+      return k
+        ? { key, name: k.name, description: k.description, scopeObjectTypes: k.scope, severity: k.severity, expression: k.expression }
+        : { key, name: key, description: undefined, scopeObjectTypes: [], severity: "WARN" };
+    });
+  }
 }
 
 export class MockActionClient implements ActionClient {
@@ -280,6 +1042,81 @@ export class MockActionClient implements ActionClient {
     const draftId = newId("draft");
     this.drafts.push({ draftId, actionType, payload, status: "PENDING_APPROVAL" });
     return { draftId, status: "PENDING_APPROVAL" };
+  }
+}
+
+/**
+ * WO-DECISION-KERNEL-WIRE：L2 决策内核 mock（DataCore kernel 的测试替身）。
+ * 记录 create/commit 调用（`created`/`committed`）供 orchestrator 决策钩子的接缝断言（成决策入参=真推演推荐组合·
+ * 立即落地才 commit）。commit 派 ActionDraft id（对齐真 kernel：每选定方案一 DRAFT·走 S2）。真 HTTP·非 mock 的
+ * POST /a/v1/decisions 由 datacore 侧 seam 测试（decision-wire-seam）证；此 mock 只固化 agentcore 侧钩子逻辑。
+ */
+export class MockDecisionClient implements DecisionClient {
+  readonly created: { input: CreateDecisionInput; decision: Decision }[] = [];
+  readonly committed: string[] = [];
+  private readonly store = new Map<string, Decision>();
+
+  async create(ctx: ToolAuthCtx, input: CreateDecisionInput): Promise<Decision> {
+    const id = newId("dec");
+    const now = "2024-01-01T00:00:00.000Z";
+    const options = input.chosenOptionIds.map((optionId) => ({
+      optionId,
+      factorId: input.factorId ?? "cf-root",
+      label: `方案 ${optionId}`,
+      sourceKind: "solver" as const,
+      closesGap: 5,
+      cost: 100,
+      cycleDays: 30,
+      risk: 0.3,
+      exposure: 0.3,
+      reversibility: 0.7,
+      provenance: { kind: "求解器" as const, basis: "mitigation_select" },
+    }));
+    const decision: Decision = {
+      id,
+      tenantId: ctx.tenantId,
+      metricKey: input.metricKey,
+      factorId: input.factorId ?? null,
+      rootRef: {
+        solverKey: "gap_attribution",
+        metricKey: input.metricKey,
+        factorId: input.factorId ?? null,
+        rootMetric: { key: input.metricKey, name: input.metricKey, unit: "%", gap: 27.8 },
+        residualPct: null,
+        topBase: null,
+        summary: `根因快照 ${input.metricKey}`,
+      },
+      optionsRef: {
+        solverKey: "decision_play",
+        options,
+        recommendedPlan: { planId: `plan-${id}`, optionIds: input.chosenOptionIds, steps: [], totalClosesGap: 0, totalCost: 0 },
+      },
+      chosenOptionIds: input.chosenOptionIds,
+      actionDraftIds: [],
+      status: "PROPOSED",
+      trace: [],
+      decidedBy: ctx.userId,
+      createdAt: now,
+      updatedAt: now,
+      outcome: null, // WO-LEARNING-LOOP-FEEDBACK：Decision.outcome 必填可空（嫁接 WO8×学习闭环调和）
+    };
+    this.store.set(id, decision);
+    this.created.push({ input, decision });
+    return decision;
+  }
+
+  async commit(ctx: ToolAuthCtx, decisionId: string): Promise<Decision> {
+    const d = this.store.get(decisionId);
+    if (!d || d.tenantId !== ctx.tenantId) throw new Error(`decision not found: ${decisionId}`);
+    const committed: Decision = {
+      ...d,
+      status: "COMMITTED",
+      actionDraftIds: d.chosenOptionIds.map(() => newId("draft")), // 每选定方案派一 ActionDraft（DRAFT·S2）
+      updatedAt: "2024-01-01T00:00:01.000Z",
+    };
+    this.store.set(decisionId, committed);
+    this.committed.push(decisionId);
+    return committed;
   }
 }
 
@@ -402,38 +1239,229 @@ class MockCatalogClient implements CatalogClient {
       { key: "model_capacity_network", name: "型号可产基地网络", description: "型号→可产基地子图", argHints: { modelId: "型号 ID" }, domain: "product" },
       { key: "base_risk_profile", name: "基地风险画像", description: "基地风险画像子图", argHints: { baseId: "基地 ID" }, domain: "plan" },
     ];
-    const solvers: { key: string; name: string; description: string; argHints: Record<string, string>; domain?: string }[] = [
-      { key: "capacity_forecast", name: "产能推演", description: "推演产能满足度 P50/P90/缺口", argHints: { modelId: "型号 ID", qty: "需求量" }, domain: "plan" },
-      { key: "affected_orders", name: "受影响订单", description: "扰动→受影响订单清单", argHints: { baseId: "基地 ID" }, domain: "plan" },
-    ];
+    // WO-MOCK-DISCOVER-PARITY · 病灶（本单实测）：此前这里**手抄 5 条**（capacity_forecast /
+    // affected_orders / risk_timeline / kit_readiness / yield_diagnosis），而真 A 侧
+    // `discover("solvers")` 的论域 = `SOLVER_CATALOG + COCKPIT_SOLVER_CATALOG`（catalog.ts，
+    // 本单实测 22+18=40 条）——候选少 8 倍，模型在内存模式下选不出本来能选的求解器，
+    // 且测试完全看不出来（mock 返回什么，测试就以为世界是什么样：
+    // 「我用『mock 返回了东西』当作『mock 返回的是对的东西』的证据」）。
+    //
+    // 修法（照抄真 A 侧口径，不自定义）：
+    //  ① 候选集**从 MOCK_SOLVER_REGISTRY 现算**，不许再手抄名单（断点 G-GATE-ROSTER-HANDCOPIED：
+    //     名单里没有的东西永远绿、永远漏）；
+    //  ② 论域 = 每条目的 `pool` 归属 ∈ {scenario, cockpit} —— 整张 GENERIC_SOLVER_CATALOG 不在内
+    //     （A 侧 docstring 自陈该档是「agent 上下文预算」候选清单，不进 QOS 场景 discover；
+    //     ⚠ 不能拿 `domain !== "generic"` 当判据：generic 档里混着 domain:"decision" 的
+    //     `process_flow_time`，目录归属 ≠ domain）；
+    //  ③ 带 query 时 slice(0,20)（同 A 侧 catalog.ts「agent 上下文预算」截断；无 query 全量）。
+    // 钉死：`test/mock-discover-parity.test.ts` 现算两侧**键集合相等**——A 侧加一个求解器而
+    // 本注册表不动 ⇒ 红在「缺哪个 key」，不是「数量不等」。
+    const solvers = MOCK_SOLVER_REGISTRY.filter((it) => it.pool !== "generic").map((it) => ({
+      key: it.key,
+      name: it.name,
+      description: it.description,
+      argHints: it.argHints,
+      ...(it.domain ? { domain: it.domain } : {}),
+      ...(it.answersQuestions ? { answersQuestions: it.answersQuestions } : {}),
+      ...(it.tags ? { tags: it.tags } : {}),
+    }));
     const items = (kind === "slices" ? slices : solvers).filter(
       (it) => !query || it.key.includes(query) || it.name.includes(query) || it.description.includes(query),
     );
-    return { items: items.slice(0, 20) };
+    // 同 A 侧 catalog.ts：带 query = agent 上下文预算截断 ≤20；无 query = 全量列表（管理台口径）。
+    return { items: query ? items.slice(0, 20) : items };
+  }
+  /**
+   * A1 求解器全集注册表。
+   *
+   * WO-CAPMAP-LIVE：改造前这里只回 **3 条**手写条目，而真实注册表 **59 条** —— 论域差 20 倍。
+   * 在"能力地图注入源 = 手写镜像"的年代这个谎言无人察觉（没人消费活目录）；一旦注入源换成活目录，
+   * 它立刻把导航图候选和 `compileSolverPlan` 的组合选型一起打塌。现改为取真实注册表返回的全集
+   * （`mocks/solver-registry.ts`·逐字段取自真起服务的 `GET /a/v1/solvers/registry`）。
+   */
+  async solverRegistry(_ctx: ToolAuthCtx, query?: string) {
+    const items = MOCK_SOLVER_REGISTRY.filter(
+      (it) => !query || it.key.includes(query) || it.name.includes(query) || it.description.includes(query),
+    ).map((it) => ({ ...it }));
+    return { items };
+  }
+}
+
+/** CL.2 合规数据生成 mock：确定性元信息回执（不产业务数字），R6 同入参字节一致。 */
+export class MockDataGenClient implements DataGenClient {
+  async runSynthetic(_ctx: ToolAuthCtx, req: { industry: string; scale: string; seed?: number; livedIn?: boolean }): Promise<Record<string, unknown>> {
+    const seed = req.seed ?? 42;
+    return {
+      jobId: `synjob-${req.industry}-${req.scale}-${seed}`,
+      status: "DONE",
+      producedSeriesKeys: ["attainment:line", "oee:base"],
+      objectCounts: { PlanTarget: 17, AnnualScenario: 3, SopVersion: 1 },
+    };
+  }
+  async buildDomain(_ctx: ToolAuthCtx, req: { story: string; seed?: number }): Promise<Record<string, unknown>> {
+    return {
+      runId: `sbr-${hashSeed(req.story) % 100000}`,
+      producedArtifacts: [{ module: "ontology", kind: "object_type", action: "CREATED", status: "DRAFT" }],
+      gapReport: { gaps: [] },
+    };
+  }
+}
+
+/**
+ * 增量4 §5：沙盘指挥台 mock —— 有状态 in-memory 会话，使 init→tick→world 在测试中连贯
+ * （tenant 隔离；模拟态不写真值：act/tick 只动会话 TickState，回执仅会话态元信息）。
+ * 行为镜像 DataCore /a/v1/sim/*：恒等 tick 进位（无传导规则桩），certify 回轻量就绪摘要。
+ */
+export class MockSimClient implements SimClient {
+  private readonly sessions = new Map<string, { tenantId: string; curTick: number; state: Record<string, unknown>; scope: Record<string, unknown> }>();
+
+  async init(ctx: ToolAuthCtx, req: { baseSnapshot?: Record<string, unknown>; scope?: Record<string, unknown> }): Promise<Record<string, unknown>> {
+    const id = newId("sims");
+    const base = req.baseSnapshot ?? {};
+    const status = Object.keys(base).length > 0 ? "READY" : "DRAFT";
+    this.sessions.set(id, { tenantId: ctx.tenantId, curTick: 0, state: { ...base }, scope: req.scope ?? {} });
+    return { id, status, curTick: 0, _note: "沙盘会话（模拟态，不写真值）。" };
+  }
+  async tick(ctx: ToolAuthCtx, sessionId: string, n: number): Promise<Record<string, unknown>> {
+    const s = this.get(ctx, sessionId);
+    const steps = Math.max(1, Math.floor(n || 1));
+    s.curTick += steps; // 恒等桩进位（无 PUBLISHED 传导规则；确定性 R6）
+    return { curTick: s.curTick, state: s.state, _note: "tick 为模拟态推进，未写真值（R4）。" };
+  }
+  async world(ctx: ToolAuthCtx, sessionId: string): Promise<Record<string, unknown>> {
+    const s = this.get(ctx, sessionId);
+    return { tick: s.curTick, state: s.state };
+  }
+  async certify(ctx: ToolAuthCtx, sessionId: string, scope?: string, target?: string): Promise<Record<string, unknown>> {
+    this.get(ctx, sessionId); // 404 隔离（R2 租户）
+    const scopeKind = scope === "LOCAL" ? "LOCAL" : "GLOBAL";
+    return { scope: scopeKind, targetRef: target ?? null, worldCompleteness: 1, canEnterSimulation: true, level: "L0", gaps: [] };
+  }
+  private get(ctx: ToolAuthCtx, sessionId: string): { tenantId: string; curTick: number; state: Record<string, unknown>; scope: Record<string, unknown> } {
+    const s = this.sessions.get(sessionId);
+    if (!s || s.tenantId !== ctx.tenantId) throw new Error(`sim session not found: ${sessionId}`);
+    return s;
+  }
+}
+
+/**
+ * WO-PROMPT-DEFAULTS-WIRING · 提示词模板 mock（测试替身）。默认无 override → 返 PLATFORM_DEFAULT
+ * （消费方 resolvePromptOverride 只采纳 TENANT_OVERRIDE → 行为 = 兜底硬编码·R6 字节兼容·既有测试零回归）。
+ * 测试可 setOverride(tid,key,tmpl) 注入租户 override，驱动"改模板 → 分类 prompt 变"的取值逻辑；
+ * 真 HTTP 驱动的灭漂移接缝由 datacore-http SEAM 测（起真源 + createHttpDataCore）证。
+ */
+export class MockPromptClient implements PromptClient {
+  private readonly overrides = new Map<string, { template: string; version: number }>();
+
+  /** 测试注入：为 (tenantId,key) 设租户 override（模拟 admin PUT /a/v1/prompt-templates/:key）。 */
+  setOverride(tenantId: string, key: PromptKey, template: string): void {
+    const cur = this.overrides.get(`${tenantId}::${key}`);
+    this.overrides.set(`${tenantId}::${key}`, { template, version: (cur?.version ?? 0) + 1 });
+  }
+  /** 测试清除：删 (tenantId,key) override（回落 PLATFORM_DEFAULT）。 */
+  clearOverride(tenantId: string, key: PromptKey): void {
+    this.overrides.delete(`${tenantId}::${key}`);
+  }
+
+  async getPromptTemplate(ctx: ToolAuthCtx, key: PromptKey): Promise<ResolvedPrompt | undefined> {
+    const ov = this.overrides.get(`${ctx.tenantId ?? ""}::${key}`);
+    return ov
+      ? { key, template: ov.template, source: "TENANT_OVERRIDE", version: ov.version }
+      : { key, template: PLATFORM_PROMPT_DEFAULTS[key], source: "PLATFORM_DEFAULT", version: 0 };
+  }
+  /**
+   * WO-MOCKDC-SIGNATURE · **诚实标注 + 可观测**：mock **没有缓存**（`getPromptTemplate` 每次直读
+   * `overrides`），所以"失效缓存"在这里**本质上无副作用** —— 假装按 `tenantId` 清缓存等于编一个
+   * 不存在的机制，清 `overrides` 更错（那是测试注入的真值源，不是缓存）。
+   *
+   * 但形参不能白收：把调用**记录下来**（租户参数一并留痕），使
+   * 「`prompt.updated` 钩子按租户调了失效没有」这条链在 mock 上可断言。真缓存失效语义由
+   * `createHttpDataCore` 那条真 HTTP 链路验（`prompt-defaults-wiring.test.ts:173`）。
+   *
+   * ⚠ 实测：本方法在整套 agentcore 测试里**被调用 0 次**（4097 次插桩调用中一次都没有）——
+   * 属"接了线没数据"，不是"没接线"：生产调用点在 `server.ts` 的 `/b/v1/internal/invalidate` 钩子。
+   */
+  readonly invalidations: (string | undefined)[] = [];
+  invalidatePromptTemplate(tenantId?: string): void {
+    this.invalidations.push(tenantId);
+  }
+}
+
+/**
+ * 并发一致性 §13.1：任务级快照锚点 mock。
+ *
+ * WO-MOCKDC-SIGNATURE · `ctx` **不再是摆设**：epoch 是**租户级**单调计数（真 DataCore 同口径），
+ * 取自 `MockOntologyClient` 的每租户写入计数器 —— 于是「租户 A 写了数据 → 只有 A 的 epoch 进位」，
+ * 且执行器首读拿到的 taskEpoch 与后续 `queryObjects(asOfEpoch)` 真正咬合成一条链。
+ * 改前：无参、恒返 `{epoch:1}` ⇒ 整条 §13.1 链在 mock 上两端皆空转。
+ */
+export class MockEpochClient implements EpochClient {
+  constructor(private readonly ontology?: MockOntologyClient) {}
+  async current(ctx: ToolAuthCtx): Promise<{ epoch: number }> {
+    return { epoch: this.ontology?.epochOf(ctx.tenantId) ?? 1 };
   }
 }
 
 export interface MockDataCore extends DataCoreClient {
   ontology: MockOntologyClient;
+  epoch: MockEpochClient;
   solver: MockSolverClient;
   rules: MockRuleEngineClient;
   action: MockActionClient;
+  decision: MockDecisionClient;
   iam: MockIamClient;
   kb: MockKbClient;
   timeseries: MockTimeseriesClient;
   catalog: MockCatalogClient;
+  datagen: MockDataGenClient;
+  sim: MockSimClient;
+  prompts: MockPromptClient;
 }
 
 export function createMockDataCore(): MockDataCore {
+  // epoch 与 ontology 共享同一个「租户写入计数器」——§13.1 的两端必须咬合，
+  // 各自独立造一份就又成了「两半各自绿、接缝断」。
+  const ontology = new MockOntologyClient();
   return {
-    ontology: new MockOntologyClient(),
+    ontology,
     solver: new MockSolverClient(),
     rules: new MockRuleEngineClient(),
     action: new MockActionClient(),
+    decision: new MockDecisionClient(),
     iam: new MockIamClient(),
     kb: new MockKbClient(),
     timeseries: new MockTimeseriesClient(),
     catalog: new MockCatalogClient(),
-    epoch: { async current() { return { epoch: 1 }; } },
+    epoch: new MockEpochClient(ontology),
+    datagen: new MockDataGenClient(),
+    sim: new MockSimClient(),
+    prompts: new MockPromptClient(),
   };
 }
+
+/* ========================================================================= *
+ * WO-MOCKDC-SIGNATURE · 形参对齐守卫的**挂载点**
+ *
+ * 放在这里（而不是某个测试文件里）是有意的：`apps/agentcore/tsconfig.json` 的
+ * `include: ["src/**│*.ts"]` 覆盖本文件 ⇒ `pnpm --filter agentcore build` / `typecheck`
+ * 就是这道门，**不需要谁记得去跑一个专门的 lint**。
+ *
+ * 少写一个形参 ⇒ 编译期红，且错误消息直接点名是哪个方法：
+ *   `Type '"queryObjects"' does not satisfy the constraint 'true'.`
+ * 机制说明与「为什么 implements 挡不住」见 `signature-parity.ts` 顶部。
+ * ========================================================================= */
+export type MockDataCoreParamParity = [
+  Expect<NoParamArityDrift<MockOntologyClient, OntologyClient>>,
+  Expect<NoParamArityDrift<MockSolverClient, SolverClient>>,
+  Expect<NoParamArityDrift<MockRuleEngineClient, RuleEngineClient>>,
+  Expect<NoParamArityDrift<MockActionClient, ActionClient>>,
+  Expect<NoParamArityDrift<MockDecisionClient, DecisionClient>>,
+  Expect<NoParamArityDrift<MockIamClient, IamClient>>,
+  Expect<NoParamArityDrift<MockKbClient, KbClient>>,
+  Expect<NoParamArityDrift<MockTimeseriesClient, TimeseriesClient>>,
+  Expect<NoParamArityDrift<MockCatalogClient, CatalogClient>>,
+  Expect<NoParamArityDrift<MockEpochClient, EpochClient>>,
+  Expect<NoParamArityDrift<MockDataGenClient, DataGenClient>>,
+  Expect<NoParamArityDrift<MockSimClient, SimClient>>,
+  Expect<NoParamArityDrift<MockPromptClient, PromptClient>>,
+];

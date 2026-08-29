@@ -1,0 +1,263 @@
+/* WO-PROCESS-INSTANCE-UI · 流程实例详情页样式。
+   零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随
+   （与 ProcessStuckView 同一条纪律、同一道门）。
+   字号层级收敛到 3 级（规范 R-UI-2，与 ProcessStuckView 同一套分层）：
+     16px = 本页要回答的那些值（整体状态）
+     13px = 步骤名 / 事实值 / 空态与错误块
+     12px = 标签 / 徽标 / 辅助说明 / 代码片段 */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+
+.head h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.head code,
+.stateLine code,
+.stepFacts code,
+.sources code,
+.empty code,
+.error code,
+.advance code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 88ch;
+}
+
+.stateLine {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ── 头部事实栅格 ─────────────────────────────────────────────────────── */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.factLabel {
+  color: var(--muted2);
+  font-size: 12px;
+}
+
+.factValue {
+  font-size: 13px;
+}
+
+.originTag {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.badge {
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 1px 7px;
+  font-size: 12px;
+  color: var(--warn-txt);
+  margin-left: 6px;
+}
+
+/* ── 当前卡点 ─────────────────────────────────────────────────────────── */
+.stuck {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+/* ── 步骤时间线 ───────────────────────────────────────────────────────── */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step[data-status="RUNNING"] {
+  border-left: 3px solid var(--accent);
+}
+
+.step[data-status="DONE"] {
+  border-left: 3px solid var(--ok);
+}
+
+.step[data-status="WAITING_USER"],
+.step[data-status="WAITING_DATA"],
+.step[data-status="WAITING_EXTERNAL_SYSTEM"],
+.step[data-status="WAITING_SCHEDULE"],
+.step[data-status="WAITING_APPROVAL"] {
+  border-left: 3px solid var(--warn);
+}
+
+.stepHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.stepName {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.defName {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stepFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.gateList {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* ── 溯源 ─────────────────────────────────────────────────────────────── */
+.sources {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sources ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+/* ── 推进区 ───────────────────────────────────────────────────────────── */
+.advance {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.advanceTitle {
+  margin: 0;
+  font-size: 13px;
+}
+
+.factGroup {
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  min-width: 280px;
+}
+
+.factGroup legend {
+  color: var(--muted2);
+  font-size: 12px;
+  padding: 0 4px;
+}
+
+.factLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.confirmFacts {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* ── 空态 / 错误 ──────────────────────────────────────────────────────── */
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+  background: var(--panel2);
+  border: 1px dashed var(--line2);
+  border-radius: 8px;
+  padding: 14px;
+  line-height: 1.7;
+}
+
+.error {
+  color: var(--danger-txt);
+  font-size: 13px;
+  background: var(--panel2);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 14px;
+  line-height: 1.7;
+}

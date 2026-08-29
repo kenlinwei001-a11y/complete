@@ -1,0 +1,748 @@
+/**
+ * WO-DSH-POC-S3 · dsh session.event 帧流 → 我方 Answer/SSE 的**纯重组装**（零 IO）。
+ *
+ * 输入是 JSON-RPC wire 上 session.event 通知里的 event 帧（已序列化过一遭的普通 JSON），
+ * 输出对齐 runAgentLoop 的 Answer 组装语义（agent/loop.ts）：
+ *   - final_answer 调用 ⇒ blocks/provenance 严格校验（AnswerBlockSchema 单校验点），
+ *     provenance 的 toolName 从帧流里的 tool/call 记录回填（对位 loop.ts repos.toolCalls.get）；
+ *   - 无 final_answer ⇒ 软收尾：最后一条 assistant/message 文本兜底（对位 lastText 分支）；
+ *   - turn/end reason: completed→ANSWERED · max-tokens→BUDGET_EXHAUSTED · error/aborted→FAILED；
+ *     max-tokens 收尾补诚实摘要头（W2 批3 dsh 自体修复②，镜像 stall 路模板·对位 loop.ts:620-634）；
+ *   - aborted 且 cause.kind==='stall-loop'（N3 watchdog cancel 落帧）⇒ 分类前置：
+ *     BUDGET_EXHAUSTED + degraded{STALL_LOOP} + 诚实降级块（镜像 loop.ts:620-632），
+ *     先于 expectsSchema/final_answer 分支（degrade 短路语义）；
+ *   - expectsSchema 模式 ⇒ checkJsonSchema 校验（对位 loop.ts:1284 acceptFinalAnswer，
+ *     同一 util/jsonschema.ts 单源）后 structured = final_answer raw input；invalid ⇒ fail-closed。
+ *
+ * WO-DSH-N2 · SSE 桥映射表（createSseMapper，既有三分支逐字节不动 + 四增补）：
+ *   tool/call              → step.started  {stepId=callId, type=name}        （meta 工具 skip，见下）
+ *   tool/result            → step.completed{stepId, status: OK|ERROR}        （meta 查集 skip）
+ *   assistant/chunk text-delta      → step.completed{stepId:narration-<t>-<s>, type:agent_narration, text}
+ *   assistant/chunk reasoning-delta → step.completed{stepId:think-<t>-<s>-<i>, type:agent_think, text}（N2·D-1 流式透传）
+ *   compaction/start       → step.started  {stepId:compaction-<id>, type:compaction}（N2·D-4）
+ *   compaction/summary     → step.completed{同 stepId, type:compaction, text:已压缩 N 条/约 M tokens}
+ *   compaction/end         → step.completed{同 stepId, type:compaction, outcome:OK|ERROR(error 时 text=原文)}
+ *   usage/finish/block-start/block-end/tool-call-delta/turn/end/assistant/message/command/* → 不逐帧映射
+ *   meta 工具（final_answer/load_skill）：tool/call skip 并记 callId 集，tool/result 查集 skip（D-7·对齐 loop.ts:1146 口径）
+ * 红线：finish 帧的 replayState（adapter-private）**绝不外发**——finish 不映射，stats 不含其任何字段。
+ * N2·D-2：统计走 reassembleDshRun 的 additive stats 键（纯 fold，口径=dsh-session-stats/token-meter
+ * 投影语义）；零 usage 帧 ⇒ stats 键整体不出（诚实缺省）。projectedTokens/contextWindow 帧流无源，不自封。
+ */
+
+import { AnswerBlockSchema, type AgentIteration, type Answer, type AnswerBlock, type ProvenanceRef } from "@platform/contracts";
+import { z } from "zod";
+import { scanBlocks } from "../util/numerics.js";
+import { checkJsonSchema } from "../util/jsonschema.js";
+import { newId } from "../ids.js";
+
+// ---- dsh 帧的窄本地类型（只声明重组装消费的字段；wire 上还有更多字段，宽容忽略） ----
+
+export interface DshSessionEvent {
+  type: string;
+  /** N2 additive：帧序号/主机打戳 ms（wire 全字段帧自带；stats fold 的时间源）。 */
+  seq?: number;
+  time?: number;
+  data?: unknown;
+}
+
+interface DshToolCall {
+  toolCallId: string;
+  name: string;
+  input: unknown;
+}
+
+export interface ReassembleOptions {
+  /** skillGovernance 聚合（loop.ts:451 同口径）；writeMode/provenancePolicy 校验在此执行。 */
+  governance?: { writeMode: boolean; provenancePolicy: "required" | "best_effort" | "none" };
+  /** expectsSchema 模式：final_answer raw input 按 schema 校验（fail-closed）后进 structured，不按 AnswerBlock 校验。 */
+  expectsSchema?: Record<string, unknown>;
+  /** provenance id 生成（测试注入确定性 id；生产缺省 prov_ 前缀自增由调用方包一层）。 */
+  newProvId?: () => string;
+  /**
+   * WO-DSH-PROD-READY W9-full：宿主 tool-execute 反向通道侧表（W8主 端点逐调用累积；
+   * 键 = 帧 callId 原值——桥上传 exec.callId 直通，team-lead 2026-08-22 裁决，关联白得）。
+   * 命中支 = 事实源：outcome 翻四态（OK/DENIED/ERROR/BUDGET_EXCEEDED 按端点记录）、
+   * toolCallId 换 tc_ 形态、durationMs 取宿主实测值（覆盖帧 time 差推导）；未命中支
+   * （MCP/meta 不过宿主）维持 W9-lite 帧流两态推导。只读消费（opts 进、值出，不 mutate）。
+   */
+  hostToolCalls?: ReadonlyMap<
+    string,
+    { outcome: "OK" | "DENIED" | "ERROR" | "BUDGET_EXCEEDED"; toolCallId: string; durationMs: number }
+  >;
+}
+
+export type ReassembledRun =
+  | {
+      ok: true;
+      outcome: "ANSWERED" | "FAILED" | "BUDGET_EXHAUSTED";
+      answer: Answer;
+      sketch: { toolName: string; inputSummary: string }[];
+      structured?: Record<string, unknown>;
+      degraded?: { reason: "TIMEOUT" | "BUDGET_EXHAUSTED" | "STALL_LOOP" };
+      /** N2·D-2 additive：帧流纯 fold 统计（零 usage 帧 ⇒ 键整体不出·诚实缺省）。 */
+      stats?: DshRunStats;
+      /**
+       * WO-DSH-PROD-READY W9-lite：帧流 → AgentIteration 骨架（foldDshIterations 纯 fold）。
+       * 恒在（可空数组——零配对调用 ⇒ [] 诚实缺省，不造迭代）；ok:false 路径不造（stats 同口径）。
+       */
+      iterations: AgentIteration[];
+    }
+  | { ok: false; errors: string[] };
+
+/** N2·D-2 · stats 三键（与 dsh host projections.values 同形子集；oracle 对账见 A2）。 */
+export interface DshRunStats {
+  /** dsh-session-stats projection 口径（lib/types/projection.d.ts：step/end 是步计数权威）。 */
+  sessionStats: {
+    turns: number;
+    steps: number;
+    llmMs: number;
+    toolMs: number;
+    ttftMs: number;
+    ttftSteps: number;
+    decodeMs: number;
+    decodeTokens: number;
+  };
+  /** dsh-token-meter TokenUsageProjection：四桶 DISJOINT，Σ 全部 usage 块。 */
+  tokenUsage: {
+    uncachedInputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+  };
+  /** 仅 pressureTokens（=末 usage 块 in+cacheRead+cacheWrite）；projectedTokens/contextWindow 帧流无源不出。 */
+  contextPressure?: { pressureTokens: number };
+}
+
+const FinalAnswerInputSchema = z
+  .object({
+    blocks: z.array(AnswerBlockSchema),
+    provenance: z.array(z.object({ toolCallId: z.string(), outputPath: z.string() }).strict()),
+  })
+  .strict();
+
+/** 从帧流提取 tool/call 记录。帧形（agent-loop/src/tool-calls.ts:263 实证）：
+ * {type:'tool/call', data:{turn, step, callId, name, arguments}} —— arguments 是 LLM 原始
+ * JSON 字符串（mock 剧本与真模型同形），此处容错解析为对象。 */
+export function collectToolCalls(events: readonly DshSessionEvent[]): DshToolCall[] {
+  const out: DshToolCall[] = [];
+  for (const e of events) {
+    if (e.type !== "tool/call" || typeof e.data !== "object" || e.data === null) continue;
+    const d = e.data as Record<string, unknown>;
+    if (typeof d.callId !== "string" || typeof d.name !== "string") continue;
+    let input: unknown = d.arguments;
+    if (typeof input === "string") {
+      try { input = JSON.parse(input); } catch { /* 保留原始字符串 */ }
+    }
+    out.push({ toolCallId: d.callId, name: d.name, input });
+  }
+  return out;
+}
+
+function lastAssistantText(events: readonly DshSessionEvent[]): string {
+  let text = "";
+  for (const e of events) {
+    if (e.type !== "assistant/message" || typeof e.data !== "object" || e.data === null) continue;
+    const message = (e.data as Record<string, unknown>).message as { content?: { type?: string; text?: string }[] } | undefined;
+    const t = (message?.content ?? []).filter((b) => b?.type === "text").map((b) => b.text ?? "").join("");
+    if (t) text = t;
+  }
+  return text;
+}
+
+function turnEndReason(events: readonly DshSessionEvent[]): string | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (!e || e.type !== "turn/end") continue;
+    const reason = (e.data as Record<string, unknown> | undefined)?.reason;
+    if (typeof reason === "string") return reason;
+    if (typeof reason === "object" && reason !== null) return String((reason as Record<string, unknown>).kind ?? "");
+    return "";
+  }
+  return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// N3 · stall-loop 分类器（watchdog cancel 落帧 ⇒ STALL_LOOP 诚实降级重建）。
+// 帧形实证（dsh-agent-loop index.js:575-580/592-595）：cancel(cause) → abort signal →
+// turn/end data.reason = {kind:'aborted', reason:<cause 原样>}；watchdog 的 cause =
+// {kind:'stall-loop', tool, count, cap}（纯 JSON，过 session lossless-JSON 校验）。
+// ---------------------------------------------------------------------------
+
+export interface StallLoopCause {
+  kind: "stall-loop";
+  tool?: string;
+  count?: number;
+  cap?: number;
+}
+
+/** 最后一个 turn/end 若为 stall-loop abort 则返回其 cause；否则 undefined（普通 aborted/error 不误吞）。 */
+export function stallLoopCause(events: readonly DshSessionEvent[]): StallLoopCause | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (!e || e.type !== "turn/end") continue;
+    const reason = (e.data as Record<string, unknown> | undefined)?.reason;
+    if (typeof reason !== "object" || reason === null) return undefined;
+    if ((reason as Record<string, unknown>).kind !== "aborted") return undefined;
+    const inner = (reason as Record<string, unknown>).reason;
+    if (typeof inner !== "object" || inner === null) return undefined;
+    if ((inner as Record<string, unknown>).kind !== "stall-loop") return undefined;
+    return inner as StallLoopCause;
+  }
+  return undefined;
+}
+
+/**
+ * W8主 · B6 预算降级桥（与 stallLoopCause 同构的第三分类器）：
+ * harness tool-bridge 收到宿主 BUDGET_EXCEEDED 回执 ⇒ agent.cancel({kind:'budget-exhausted',
+ * reason}）⇒ turn/end data.reason = {kind:'aborted', reason:<cause 原样>}。
+ * reason 字段 = 宿主 BUDGET_EXCEEDED payload.reason 原值（如 "maxToolCalls exceeded"），
+ * 供诚实摘要头 budgetNote 逐字复用（loop.ts:632 模板）。
+ */
+export interface BudgetExhaustedCause {
+  kind: "budget-exhausted";
+  reason?: string;
+}
+
+/** 最后一个 turn/end 若为 budget-exhausted abort 则返回其 cause；否则 undefined。 */
+export function budgetExhaustedCause(events: readonly DshSessionEvent[]): BudgetExhaustedCause | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (!e || e.type !== "turn/end") continue;
+    const reason = (e.data as Record<string, unknown> | undefined)?.reason;
+    if (typeof reason !== "object" || reason === null) return undefined;
+    if ((reason as Record<string, unknown>).kind !== "aborted") return undefined;
+    const inner = (reason as Record<string, unknown>).reason;
+    if (typeof inner !== "object" || inner === null) return undefined;
+    if ((inner as Record<string, unknown>).kind !== "budget-exhausted") return undefined;
+    return inner as BudgetExhaustedCause;
+  }
+  return undefined;
+}
+
+/** tool/result 帧的窄提取（成功判定仅供 stall-loop 诚实块的 provenance）。 */
+function successfulCallIds(events: readonly DshSessionEvent[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const e of events) {
+    if (e.type !== "tool/result" || typeof e.data !== "object" || e.data === null) continue;
+    const message = (e.data as Record<string, unknown>).message as
+      | { content?: { type?: string; toolCallId?: string; isError?: boolean }[] }
+      | undefined;
+    for (const b of message?.content ?? []) {
+      if (b?.type !== "tool-result" || typeof b.toolCallId !== "string") continue;
+      if (b.isError === true || seen.has(b.toolCallId)) continue;
+      seen.add(b.toolCallId);
+      out.push(b.toolCallId);
+    }
+  }
+  return out;
+}
+
+/**
+ * G-9 部分发现合成 · 镜像 loop.ts:588-604 synthesizePartialFindings 同口径
+ * （只复述工具查到什么，不下结论、不造数）：优先末次 assistant 文本，否则 sketch 去重复述，
+ * 再退固定兜底。reassemble 侧无 rollingNotes（dsh 帧流无对应物）——该档如实缺失。
+ */
+function synthesizePartialFindings(
+  events: readonly DshSessionEvent[],
+  sketch: { toolName: string; inputSummary: string }[],
+): string {
+  const lastText = lastAssistantText(events);
+  if (lastText.trim()) return lastText;
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  for (const s of sketch) {
+    const key = `${s.toolName}｜${s.inputSummary}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(`- 调用 ${s.toolName}（入参 ${s.inputSummary}）`);
+  }
+  if (lines.length === 0) return "（探索过程中未取得可复述的工具结果）";
+  return `已探索线索（仅复述调用轨迹，未形成最终结论）：\n${lines.join("\n")}`;
+}
+
+/**
+ * N2·D-2 · 帧流纯 fold → stats（口径与 dsh-session-stats / dsh-token-meter 投影逐条对齐，
+ * hist-multihop 763 帧机器复算全等，A2 以夹具 projections.values 为独立 oracle 对账）：
+ *   steps=step/end 计数（步生命周期权威）；turns=有闭合步的去重 turn 数；
+ *   llmMs=Σ(message.time−step/start.time · 有 message 的步)；
+ *   ttftMs=Σ(首个非空 delta.time−step/start.time)，ttftSteps=有首 token 的步数；
+ *   decodeMs=Σ(message.time−首 token.time · 有 usage 的步)，decodeTokens=同域 Σ outputTokens；
+ *   toolMs=Σ(result.time−call.time 按 callId 配对)；
+ *   tokenUsage=Σ usage 块四桶（DISJOINT，cacheWrite 缺省 0）；
+ *   contextPressure.pressureTokens=末 usage 块 in+cacheRead+cacheWrite。
+ * 缺 time 的帧对应时间量不计（与 dsh cancelled step 同构）；零 usage 帧 ⇒ undefined（诚实缺省）。
+ */
+export function foldDshRunStats(events: readonly DshSessionEvent[]): DshRunStats | undefined {
+  const stepStart = new Map<string, number>();
+  const messageTime = new Map<string, number>();
+  const firstTokenTime = new Map<string, number>();
+  const stepOutputTokens = new Map<string, number>();
+  const pendingCalls = new Map<string, number>();
+  const turnsWithClosedStep = new Set<number>();
+  let steps = 0;
+  let toolMs = 0;
+  const tokenUsage = { uncachedInputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  let lastUsage: { inputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number } | undefined;
+  let sawUsage = false;
+
+  for (const e of events) {
+    const d = (typeof e.data === "object" && e.data !== null ? e.data : {}) as Record<string, unknown>;
+    const key = `${d.turn ?? 0}-${d.step ?? 0}`;
+    switch (e.type) {
+      case "step/start":
+        if (typeof e.time === "number") stepStart.set(key, e.time);
+        break;
+      case "step/end":
+        steps += 1;
+        turnsWithClosedStep.add(typeof d.turn === "number" ? d.turn : 0);
+        break;
+      case "assistant/message":
+        if (typeof e.time === "number") messageTime.set(key, e.time);
+        break;
+      case "assistant/chunk": {
+        const chunk = d.chunk as { type?: string; text?: string; usage?: Record<string, unknown> } | undefined;
+        if (chunk?.type === "text-delta" || chunk?.type === "reasoning-delta") {
+          if (chunk.text && typeof e.time === "number" && !firstTokenTime.has(key)) firstTokenTime.set(key, e.time);
+        } else if (chunk?.type === "usage") {
+          const u = (chunk.usage ?? {}) as Record<string, unknown>;
+          const num = (v: unknown): number => (typeof v === "number" ? v : 0);
+          sawUsage = true;
+          tokenUsage.uncachedInputTokens += num(u.inputTokens);
+          tokenUsage.outputTokens += num(u.outputTokens);
+          tokenUsage.cacheReadTokens += num(u.cacheReadTokens);
+          tokenUsage.cacheWriteTokens += num(u.cacheWriteTokens);
+          stepOutputTokens.set(key, (stepOutputTokens.get(key) ?? 0) + num(u.outputTokens));
+          lastUsage = u;
+        }
+        break;
+      }
+      case "tool/call":
+        if (typeof d.callId === "string" && typeof e.time === "number") pendingCalls.set(d.callId, e.time);
+        break;
+      case "tool/result": {
+        const message = d.message as { content?: { type?: string; toolCallId?: string }[] } | undefined;
+        const tr = (message?.content ?? []).find((b) => b?.type === "tool-result");
+        const callId = tr?.toolCallId;
+        if (callId !== undefined && pendingCalls.has(callId) && typeof e.time === "number") {
+          toolMs += e.time - pendingCalls.get(callId)!;
+          pendingCalls.delete(callId);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  if (!sawUsage) return undefined;
+
+  let llmMs = 0;
+  for (const [k, mt] of messageTime) {
+    const st = stepStart.get(k);
+    if (st !== undefined) llmMs += mt - st;
+  }
+  let ttftMs = 0;
+  let ttftSteps = 0;
+  for (const [k, ft] of firstTokenTime) {
+    const st = stepStart.get(k);
+    if (st !== undefined) {
+      ttftMs += ft - st;
+      ttftSteps += 1;
+    }
+  }
+  let decodeMs = 0;
+  let decodeTokens = 0;
+  for (const [k, out] of stepOutputTokens) {
+    const mt = messageTime.get(k);
+    const ft = firstTokenTime.get(k);
+    if (mt !== undefined && ft !== undefined) {
+      decodeMs += mt - ft;
+      decodeTokens += out;
+    }
+  }
+
+  return {
+    sessionStats: {
+      turns: turnsWithClosedStep.size,
+      steps,
+      llmMs,
+      toolMs,
+      ttftMs,
+      ttftSteps,
+      decodeMs,
+      decodeTokens,
+    },
+    tokenUsage,
+    ...(lastUsage
+      ? {
+          contextPressure: {
+            pressureTokens:
+              (typeof lastUsage.inputTokens === "number" ? lastUsage.inputTokens : 0) +
+              (typeof lastUsage.cacheReadTokens === "number" ? lastUsage.cacheReadTokens : 0) +
+              (typeof lastUsage.cacheWriteTokens === "number" ? lastUsage.cacheWriteTokens : 0),
+          },
+        }
+      : {}),
+  };
+}
+
+/**
+ * WO-DSH-PROD-READY W9-lite · 帧流 → AgentIteration 骨架（审计记录空壳修复第一刀，纯 fold 零 IO）。
+ *
+ * 口径（逐条有据，不硬造）：
+ *   - 分组粒度 = step（team-lead 2026-08-21 裁决②）：native 迭代粒度 = 每 LLM 轮
+ *     （loop.ts:908 的 i），dsh 语义 turn=用户请求轮、step=LLM 响应轮 ⇒ 对位是 step 不是 turn；
+ *     单 prompt 形态 turn 恒 1（hist-multihop 全帧 turn:1 + dualrun 语料 stats 锚 turns:1 双实证），
+ *     turn 分组恒产单迭代、无 parity 价值。分组键 = `${turn}-${step}`（foldDshRunStats :252
+ *     fold 键先例）；配对键 = turn-step-callId（同键域，callId 只在步内唯一不跨步担保）。
+ *   - 每 LLM 轮一迭代：step/end 收轮的步即有迭代（dsh-agent-loop lib:558 step/end 在 finally
+ *     里，每个开始的步必收轮）——空 step 轮推 {index, toolCalls:[]}（对位 native :1041/:1083
+ *     空轮形态）；轮次证据（step/end）与调用证据（配对帧）分离，不互相冒充。
+ *     并集补丁：步未收轮（进程 crash 死在 finally 前）但有配对调用 ⇒ 该步仍出迭代
+ *     （审计面已执行调用不丢）；零帧/零证据 ⇒ []（零 spawn 早退诚实缺省）。
+ *   - index = (turn, step) 数值排序后 0 基顺编号——对位 native index=i 的 0 基轮次序号；
+ *     帧 step 是 1 基/turn 内编号（hist-multihop 实证 step 1..7），直填会跨 turn 撞号且与
+ *     native 恒差 1，故按契约字段既有语义（0 基轮次序号）填，不漏帧流外信息。
+ *   - toolCalls = 该步内完成 tool/call↔tool/result 配对的调用（wire 序）：
+ *     outcome 两态 = isError⇒ERROR、否则 OK。DENIED/BUDGET_EXCEEDED 帧流**无源**——治理桥
+ *     deny 在 dsh 臂只是 isError=true 的 tool/result（MCP 调用不过宿主 executor，无 tc_ id、
+ *     无 IAM 决策记录，REC §3 #10），不许硬造。
+ *   - durationMs = 配对 e.time 差（foldDshRunStats :277-287 同法配对）；缺 time 帧 ⇒ 0
+ *     （native 未执行调用 durationMs:0 同约定，loop.ts:780），不产负值/NaN 的面由帧流自带
+ *     时间单调性担保（同一主机打戳）。
+ *   - meta 口径对位 native 审计：final_answer 不进（native 在派发前拦截、audit 无记录；
+ *     其轮次仍留空迭代）；load_skill 进（native runToolBlock 有 audit 条目，loop.ts:734-746）
+ *     ——与 sketch/SSE 桥的「meta 双剔」不同，审计面只剔 final_answer。
+ *   - 未配对 tool/call（abort 撕票等帧不全）不进 toolCalls——帧不全不造 outcome；
+ *     调用轨迹仍由 sketch 承载（诚实缺省，信号不丢）。W9-full 起 hostToolCalls 侧表
+ *     命中支翻四态 + tc_（REC §3 #10 BUILTIN 段已销，MCP 未命中支两态维持）。
+ */
+export function foldDshIterations(
+  events: readonly DshSessionEvent[],
+  hostToolCalls?: ReassembleOptions["hostToolCalls"],
+): AgentIteration[] {
+  interface PendingCall {
+    turn: number;
+    step: number;
+    callId: string;
+    name: string;
+    input: unknown;
+    time?: number;
+  }
+  // 配对键 = `${turn}-${step}-${callId}`（team-lead 2026-08-21 裁决②补充，foldDshRunStats :252
+  // 的 `${turn}-${step}` fold 键先例上延一段）——callId 唯一性只在步内担保，跨 turn 复用同
+  // callId 时裸 callId 键会错配。
+  const pending = new Map<string, PendingCall>();
+  // 分桶键 = `${turn}-${step}`（缺省 0-0，foldDshRunStats 同兜底）；桶在 step/end 收轮或
+  // 首个配对调用落桶时创建。
+  const buckets = new Map<string, { turn: number; step: number; toolCalls: AgentIteration["toolCalls"] }>();
+  const bucketOf = (turn: number, step: number): { turn: number; step: number; toolCalls: AgentIteration["toolCalls"] } => {
+    const key = `${turn}-${step}`;
+    let b = buckets.get(key);
+    if (!b) {
+      b = { turn, step, toolCalls: [] };
+      buckets.set(key, b);
+    }
+    return b;
+  };
+  for (const e of events) {
+    const d = (typeof e.data === "object" && e.data !== null ? e.data : {}) as Record<string, unknown>;
+    const turn = typeof d.turn === "number" ? d.turn : 0;
+    const step = typeof d.step === "number" ? d.step : 0;
+    if (e.type === "step/end") {
+      bucketOf(turn, step); // 收轮即出迭代（空 step 轮 = 空 toolCalls，native :1041 同形态）
+      continue;
+    }
+    if (e.type === "tool/call") {
+      if (typeof d.callId !== "string" || typeof d.name !== "string") continue;
+      if (d.name === "final_answer") continue; // meta 口径：派发前拦截，native 审计同无记录
+      let input: unknown = d.arguments;
+      if (typeof input === "string") {
+        try { input = JSON.parse(input); } catch { /* 保留原始字符串（collectToolCalls 同容错） */ }
+      }
+      pending.set(`${turn}-${step}-${d.callId}`, {
+        turn,
+        step,
+        callId: d.callId,
+        name: d.name,
+        input,
+        ...(typeof e.time === "number" ? { time: e.time } : {}),
+      });
+      continue;
+    }
+    if (e.type !== "tool/result") continue;
+    const message = d.message as { content?: { type?: string; toolCallId?: string; isError?: boolean }[] } | undefined;
+    for (const b of message?.content ?? []) {
+      if (b?.type !== "tool-result" || typeof b.toolCallId !== "string") continue;
+      const call = pending.get(`${turn}-${step}-${b.toolCallId}`);
+      if (!call) continue;
+      pending.delete(`${turn}-${step}-${b.toolCallId}`);
+      // W9-full 侧表合流（team-lead 2026-08-22 裁决：键 = 帧 callId 原值直通）——命中支 =
+      // 事实源（四态 outcome + tc_ 形态 id + 宿主实测 durationMs，覆盖帧推导）；未命中支
+      // （MCP/meta 不过宿主）维持帧两态推导。配对权威仍是帧：侧表不补帧外调用。
+      const host = hostToolCalls?.get(call.callId);
+      bucketOf(call.turn, call.step).toolCalls.push({
+        toolCallId: host ? host.toolCallId : call.callId,
+        toolName: call.name,
+        input: call.input,
+        outcome: host ? host.outcome : b.isError === true ? "ERROR" : "OK",
+        durationMs: host ? host.durationMs : call.time !== undefined && typeof e.time === "number" ? e.time - call.time : 0,
+      });
+    }
+  }
+  return [...buckets.values()]
+    .sort((a, b) => a.turn - b.turn || a.step - b.step)
+    .map((b, i) => ({ index: i, toolCalls: b.toolCalls }));
+}
+
+/**
+ * 重组装主函数。事件顺序即 wire 顺序；只读不改。
+ */
+export function reassembleDshRun(events: readonly DshSessionEvent[], opts: ReassembleOptions = {}): ReassembledRun {
+  const newProvId = opts.newProvId ?? (() => newId("prov")); // 与 loop.ts 同一生成器（ids.ts 单源）
+  const calls = collectToolCalls(events);
+  const toolNameByCallId = new Map(calls.map((c) => [c.toolCallId, c.name]));
+  // sketch：loop.ts:1146 同口径 —— 元工具（final_answer/load_skill）不进 sketch。
+  const sketch = calls
+    .filter((c) => c.name !== "final_answer" && c.name !== "load_skill")
+    .map((c) => ({ toolName: c.name, inputSummary: JSON.stringify(c.input ?? {}).slice(0, 200) }));
+
+  const reason = turnEndReason(events);
+  const outcome = reason === "completed" ? "ANSWERED"
+    : reason === "max-tokens" ? "BUDGET_EXHAUSTED"
+    : "FAILED";
+
+  // W9-lite：iterations 骨架与 stats 同为帧流纯 fold，三条 ok:true 出口恒带（失败路径不造）。
+  // W9-full：hostToolCalls 侧表入 fold（命中支四态+tc_+宿主 durationMs，未命中支帧两态维持）。
+  const iterations = foldDshIterations(events, opts.hostToolCalls);
+
+  const finalCall = [...calls].reverse().find((c) => c.name === "final_answer");
+
+  // N3 · stall-loop 分类前置（degrade 短路语义，先于 expectsSchema/final_answer 分支）：
+  // watchdog cancel 落帧 ⇒ outcome BUDGET_EXHAUSTED + degraded{STALL_LOOP}（对位 loop.ts:1182）
+  // + 诚实降级块（header 模板镜像 loop.ts:620-632，cap 从帧 cause 取——reassemble 保纯不读 env）
+  // + provenance 仅成功 callId 去重 outputPath "$"（loop.ts:644-656 同口径；失败/未答调用不进）。
+  const stall = stallLoopCause(events);
+  if (stall) {
+    const budgetNote = `反复以相同参数调用同一工具、未获新信息（环检测·loopRepeatCap=${stall.cap ?? "?"}）`;
+    const header = `[预算耗尽·诚实摘要] ⚠️ 检测到无进度循环：${budgetNote}——本次深问未能完全解答（已诚实终止，未烧尽预算）。以下为已探索到的线索：`;
+    const blocks: AnswerBlock[] = [
+      { type: "text", markdown: header },
+      { type: "text", markdown: synthesizePartialFindings(events, sketch) },
+    ];
+    const provenance: ProvenanceRef[] = successfulCallIds(events).map((toolCallId) => ({
+      id: newProvId(),
+      source: "TOOL_RESULT",
+      toolCallId,
+      toolName: toolNameByCallId.get(toolCallId) ?? "unknown",
+      outputPath: "$",
+    }));
+    return {
+      ok: true,
+      outcome: "BUDGET_EXHAUSTED",
+      answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks) },
+      sketch,
+      degraded: { reason: "STALL_LOOP" },
+      iterations,
+    };
+  }
+
+  // W8主 · B6 预算降级桥分类前置（与上方 stall 分支同构，先于 expectsSchema/final_answer）：
+  // tool-bridge 收宿主 BUDGET_EXCEEDED ⇒ cancel 落帧 ⇒ outcome BUDGET_EXHAUSTED +
+  // degraded{BUDGET_EXHAUSTED} + 诚实摘要头（loop.ts:632 BUDGET_EXHAUSTED 支模板逐字，
+  // budgetNote = 宿主 reason 原值）+ 部分发现抢救 + provenance 仅成功 callId（stall 同口径）。
+  const budgetHit = budgetExhaustedCause(events);
+  if (budgetHit) {
+    const budgetNote = budgetHit.reason ?? "round-trip/迭代上界";
+    const header = `[预算耗尽·诚实摘要] ⚠️ 已达最大探索轮次/预算（${budgetNote}）：本次深问未能完全解答。以下为已探索到的线索：`;
+    const blocks: AnswerBlock[] = [
+      { type: "text", markdown: header },
+      { type: "text", markdown: synthesizePartialFindings(events, sketch) },
+    ];
+    const provenance: ProvenanceRef[] = successfulCallIds(events).map((toolCallId) => ({
+      id: newProvId(),
+      source: "TOOL_RESULT",
+      toolCallId,
+      toolName: toolNameByCallId.get(toolCallId) ?? "unknown",
+      outputPath: "$",
+    }));
+    return {
+      ok: true,
+      outcome: "BUDGET_EXHAUSTED",
+      answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks) },
+      sketch,
+      degraded: { reason: "BUDGET_EXHAUSTED" },
+      iterations,
+    };
+  }
+
+  // N2·D-2：stats 纯 fold（零 usage ⇒ undefined ⇒ 键不出）；失败路径（ok:false）不造。
+  const stats = foldDshRunStats(events);
+
+  // expectsSchema 模式：schema 校验后 structured = raw input。
+  // 校验对位 loop.ts:1284（acceptFinalAnswer 的 expectsSchema 分支）——同一 checkJsonSchema
+  // （util/jsonschema.ts）import 复用，单源零漂移；invalid ⇒ fail-closed ok:false
+  // （与下方 provenancePolicy/writeMode rejects 同通道）。
+  // ⚠ 注释订正（W2 批2③）：本分支原注释自称「对位 loop.ts:147/256」——:256 只是
+  //   AgentLoopResult.structured 的类型注释、:147 非校验点，真校验在 acceptFinalAnswer；
+  //   原实现 raw 直通无校验，invalid structured 会落进 result.structured（探针实证，
+  //   dsh-runtime-reassemble.test.ts ③ 组 red-first 两条）。
+  if (opts.expectsSchema !== undefined) {
+    if (!finalCall) {
+      return { ok: false, errors: ["expectsSchema 模式但帧流中无 final_answer 调用"] };
+    }
+    const schemaErrors = checkJsonSchema(finalCall.input, opts.expectsSchema);
+    if (schemaErrors.length > 0) {
+      return { ok: false, errors: [`expectsSchema 校验失败: ${schemaErrors.join("; ")}`] };
+    }
+    return {
+      ok: true,
+      outcome,
+      answer: { trustLevel: "AGENT_EXPLORATORY", blocks: [{ type: "text", markdown: lastAssistantText(events) || "（结构化回答见 structured）" }], provenance: [], unverifiedNumerics: false },
+      sketch,
+      structured: (typeof finalCall.input === "object" && finalCall.input !== null ? finalCall.input : {}) as Record<string, unknown>,
+      ...(outcome === "BUDGET_EXHAUSTED" ? { degraded: { reason: "BUDGET_EXHAUSTED" as const } } : {}),
+      ...(stats ? { stats } : {}),
+      iterations,
+    };
+  }
+
+  let blocks: AnswerBlock[];
+  const provenance: ProvenanceRef[] = [];
+  if (finalCall) {
+    const parsed = FinalAnswerInputSchema.safeParse(finalCall.input);
+    if (!parsed.success) {
+      return { ok: false, errors: [`final_answer 入参校验失败: ${parsed.error.issues.map((i) => i.message).join("; ")}`] };
+    }
+    for (const p of parsed.data.provenance) {
+      provenance.push({
+        id: newProvId(),
+        source: "TOOL_RESULT",
+        toolCallId: p.toolCallId,
+        toolName: toolNameByCallId.get(p.toolCallId) ?? "unknown", // loop.ts: audit?.toolName ?? "unknown" 同口径
+        outputPath: p.outputPath,
+      });
+    }
+    blocks = parsed.data.blocks;
+  } else {
+    // 软收尾（无 final_answer）：最后文本兜底，provenance 空 = 诚实 NO_ANSWER 不编造溯源。
+    blocks = [{ type: "text", markdown: lastAssistantText(events) || "（探索模式未能产出回答）" }];
+  }
+
+  const policy = opts.governance?.provenancePolicy ?? "best_effort";
+  if (policy === "required" && provenance.length === 0) {
+    return { ok: false, errors: ["Skill provenancePolicy=required：final_answer 必须包含 provenance"] };
+  }
+  if (opts.governance?.writeMode && !blocks.some((b) => b.type === "action_draft")) {
+    return { ok: false, errors: ["挂载的 Skill 为 WRITE/审批类型，final_answer 必须包含 action_draft 块"] };
+  }
+
+  // W2 批3（team-lead 2026-08-21 裁决·dsh 自体修复②）：max-tokens 截断收尾补诚实摘要头——
+  // 镜像上方 stall 路模板（同形：header 块 + 截断前文/产出块），对位 native degrade 有界终止
+  // 必带诚实前缀的约定（loop.ts:620-634）。stall 路自带头提前 return，不会叠双头；
+  // expectsSchema 分支同有 BUDGET_EXHAUSTED 可能（:417），其 answer 是占位文案，不在本修复面。
+  // 语料锚 = corpus.ts LENGTH_TRUNCATION_HEADER（漂移即红，锚的职能）。
+  if (outcome === "BUDGET_EXHAUSTED") {
+    blocks = [
+      {
+        type: "text",
+        markdown:
+          "[预算耗尽·诚实摘要] ⚠️ 模型输出触长度上限被截断——本次深问未能完全解答（已诚实终止）。以下为已探索到的线索：",
+      },
+      ...blocks,
+    ];
+  }
+
+  return {
+    ok: true,
+    outcome,
+    answer: { trustLevel: "AGENT_EXPLORATORY", blocks, provenance, unverifiedNumerics: scanBlocks(blocks) },
+    sketch,
+    ...(outcome === "BUDGET_EXHAUSTED" ? { degraded: { reason: "BUDGET_EXHAUSTED" as const } } : {}),
+    ...(stats ? { stats } : {}),
+    iterations,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// SSE 桥（E6 三档 verdict 的可重建档）：dsh 帧 → query-task SSE 事件增量。
+// 返回 undefined = 该帧不产生 SSE 事件（answer.final/task.failed 由 runner 在 turn/end 时
+// 用重组装结果发，不走逐帧映射——载荷要完整 Answer）。
+// ---------------------------------------------------------------------------
+
+export interface SseEmission {
+  event: string;
+  payload: Record<string, unknown>;
+}
+
+/** loop.ts:1146 同口径：元工具不进 sketch，也不进 SSE 桥（D-7）。 */
+const META_TOOL_NAMES = new Set(["final_answer", "load_skill"]);
+
+/**
+ * N2·D-7 · SSE 桥工厂（原 mapDshEventToSse 纯函数 → 工厂持态版）。
+ * 内持 meta callId 集：tool/call 遇 meta 工具（final_answer/load_skill）skip 并记集，
+ * tool/result 查集 skip——meta 帧不上 SSE 面（native loop 也不为它们发 step 事件）。
+ * 既有三映射分支（tool/call·tool/result·text-delta）逐字节不动（POC toEqual 锚定即闸）。
+ */
+export function createSseMapper(): (e: DshSessionEvent) => SseEmission | undefined {
+  const metaCallIds = new Set<string>();
+  return (e: DshSessionEvent): SseEmission | undefined => {
+    const d = (typeof e.data === "object" && e.data !== null ? e.data : {}) as Record<string, unknown>;
+    switch (e.type) {
+      case "tool/call": {
+        // loop.ts:844 同形：stepId = toolCallId，type = 工具名
+        const first = collectToolCalls([e])[0];
+        if (!first) return undefined;
+        if (META_TOOL_NAMES.has(first.name)) {
+          metaCallIds.add(first.toolCallId);
+          return undefined;
+        }
+        return { event: "step.started", payload: { stepId: first.toolCallId, type: first.name } };
+      }
+      case "tool/result": {
+        const message = d.message as { content?: { type?: string; toolCallId?: string; isError?: boolean }[] } | undefined;
+        const tr = (message?.content ?? []).find((b) => b?.type === "tool-result");
+        if (!tr) return undefined;
+        if (tr.toolCallId !== undefined && metaCallIds.has(tr.toolCallId)) return undefined;
+        return { event: "step.completed", payload: { stepId: tr.toolCallId, status: tr.isError ? "ERROR" : "OK" } };
+      }
+      case "assistant/chunk": {
+        // E6：narration 可映射 assistant/chunk 文本帧。帧形 {turn, step, chunk}，
+        // chunk 是原始 LLM chunk（text-delta 才带文本）。
+        const chunk = d.chunk as { type?: string; index?: number; text?: string } | undefined;
+        // N2·D-1：reasoning-delta 逐 delta 流式透传（与 text-delta 同构；stepId 带 index 防多块互覆）。
+        if (chunk?.type === "reasoning-delta") {
+          const think = chunk.text;
+          return think
+            ? { event: "step.completed", payload: { stepId: `think-${d.turn ?? 0}-${d.step ?? 0}-${chunk.index ?? 0}`, type: "agent_think", text: think } }
+            : undefined;
+        }
+        const text = chunk?.type === "text-delta" ? chunk.text : undefined;
+        return text ? { event: "step.completed", payload: { stepId: `narration-${d.turn ?? 0}-${d.step ?? 0}`, type: "agent_narration", text } } : undefined;
+      }
+      // N2·D-4：compaction 伪步对（selectStepRows 按 stepId fold 三帧合一行）。command/run|done 不映射。
+      case "compaction/start": {
+        const id = typeof d.compactionId === "string" ? d.compactionId : "unknown";
+        return { event: "step.started", payload: { stepId: `compaction-${id}`, type: "compaction" } };
+      }
+      case "compaction/summary": {
+        const id = typeof d.compactionId === "string" ? d.compactionId : "unknown";
+        const n = Array.isArray(d.shadowedSeqs) ? d.shadowedSeqs.length : 0;
+        const tokens = typeof d.shadowedTokenCount === "number" ? d.shadowedTokenCount : 0;
+        return { event: "step.completed", payload: { stepId: `compaction-${id}`, type: "compaction", text: `已压缩 ${n} 条/约 ${tokens} tokens` } };
+      }
+      case "compaction/end": {
+        const id = typeof d.compactionId === "string" ? d.compactionId : "unknown";
+        const error = typeof d.error === "string" && d.error ? d.error : undefined;
+        // error 原文逐字透传（PRD §5.1 不顶替）；无 summary ⇒ 零「已压缩」文本。
+        return {
+          event: "step.completed",
+          payload: { stepId: `compaction-${id}`, type: "compaction", outcome: error ? "ERROR" : "OK", ...(error ? { text: error } : {}) },
+        };
+      }
+      default:
+        return undefined;
+    }
+  };
+}

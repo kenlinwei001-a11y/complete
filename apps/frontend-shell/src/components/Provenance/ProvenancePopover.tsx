@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { ProvenanceRef } from "@platform/contracts";
 import { fetchTask, queryTimeseriesAgg } from "@/api/endpoints";
+import { RuleRef } from "../RuleRef";
 import zh from "@/locales/zh";
 import styles from "./ProvenancePopover.module.css";
 
@@ -73,6 +74,14 @@ export function ProvenanceProvider({ children }: { children: ReactNode }) {
 
   const close = useCallback(() => setState(null), []);
 
+  // 悬停延时在卸载时必须撤销：否则 300ms 后仍会 setState 到已卸载树 / 已拆除的测试环境上
+  useEffect(
+    () => () => {
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    },
+    [],
+  );
+
   return (
     <Ctx.Provider value={{ open, scheduleOpen, cancelScheduled, close }}>
       {children}
@@ -108,7 +117,7 @@ function PopoverPanel({ state, onClose }: { state: OpenState; onClose: () => voi
   const left = Math.min(state.rect.left, window.innerWidth - 380);
 
   return createPortal(
-    <div className={styles.pop} style={{ top, left }} role="tooltip" data-testid="prov-popover">
+    <div className={`popover-surface ${styles.pop}`} style={{ top, left }} role="tooltip" data-testid="prov-popover">
       <div className={styles.head}>
         <span className="badge blue">{state.provId}</span>
         {state.pinned && (
@@ -143,7 +152,7 @@ function PopoverSections({ prov, value, label }: { prov: ProvVM; value?: string;
         {prov.source === "TS_AGGREGATE" && prov.tsAgg ? (
           <TsAggSource prov={prov} />
         ) : (
-          <div className="mono" style={{ fontSize: 11.5 }}>
+          <div className="mono" style={{ fontSize: 12 }}>
             {prov.toolName}
             {prov.snapshotVersion && (
               <span style={{ color: "var(--muted2)" }}> · snapshot {prov.snapshotVersion}</span>
@@ -154,11 +163,11 @@ function PopoverSections({ prov, value, label }: { prov: ProvVM; value?: string;
       {/* ③ 计算 */}
       <section className={styles.sec}>
         <h5>{zh.prov.computeSection}</h5>
-        <div className="mono" style={{ fontSize: 11.5, wordBreak: "break-all" }}>
+        <div className="mono" style={{ fontSize: 12, wordBreak: "break-all" }}>
           {prov.outputPath}
         </div>
         {prov.stepId && (
-          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
             step <span className="mono">{prov.stepId}</span>
             {prov.formula && <> · {prov.formula}</>}
           </div>
@@ -168,27 +177,16 @@ function PopoverSections({ prov, value, label }: { prov: ProvVM; value?: string;
       <section className={styles.sec}>
         <h5>{zh.prov.ruleSection}</h5>
         {prov.rules?.length ? (
-          prov.rules.map((r) => <RuleRow key={r.key} ruleKey={r.key} expression={r.expression} />)
+          // 收尾#4：统一用共享 <RuleRef>（与 hover 版 <Provenance> 同一规则机制；两跳取活规则定义）
+          prov.rules.map((r) => (
+            <div key={r.key} style={{ marginBottom: 4 }}>
+              <RuleRef code={r.key} />
+            </div>
+          ))
         ) : (
-          <span style={{ color: "var(--muted2)", fontSize: 11.5 }}>{zh.prov.noRule}</span>
+          <span style={{ color: "var(--muted2)", fontSize: 12 }}>{zh.prov.noRule}</span>
         )}
       </section>
-    </div>
-  );
-}
-
-function RuleRow({ ruleKey, expression }: { ruleKey: string; expression: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ marginBottom: 4 }}>
-      <button className="badge" style={{ cursor: "pointer" }} onClick={() => setOpen(!open)}>
-        {ruleKey}
-      </button>
-      {open && (
-        <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, padding: "4px 8px", background: "var(--bg2)", borderRadius: 6 }}>
-          {expression}
-        </div>
-      )}
     </div>
   );
 }

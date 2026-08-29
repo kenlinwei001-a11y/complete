@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN } from "./helpers.js";
 import type { SyntheticJob } from "../src/domain.js";
+import { ORDER_BOOK_SIZE } from "../src/synthetic/battery.js";
 
 async function runJob(t: Awaited<ReturnType<typeof makeApp>>, seed = 42): Promise<SyntheticJob> {
   const res = await t.app.inject({
@@ -19,11 +20,29 @@ describe("A7 synthetic data", () => {
     const job1 = await runJob(t);
     expect(job1.status).toBe("SUCCEEDED");
     const report = job1.report!;
-    expect(report.rowCounts).toMatchObject({ Base: 12, Model: 6, Order: 20 });
+    expect(report.rowCounts).toMatchObject({ Base: 13, Model: 6, Order: ORDER_BOOK_SIZE }); // WO-ORDER-BOOK-500：订单簿 24→500
     for (const check of report.fkChecks) expect(check, check.check).toMatchObject({ passed: true });
     for (const spot of report.derivationSpotChecks) expect(spot.ok, `${spot.typeKey}.${spot.propKey}`).toBe(true);
+    // global-sim 升为核心内置视图（seed:true·view-manifest.BUILTIN_VIEWS·WO-MEMORY-VIEW-RESILIENCE）→ 进 scenarioSeed.views
+    // → 进 report.views 验收快照（此前经 extraViews 分桶不在快照·现收敛回核心，是"缺失视图现身"的诚实体现）。
+    // 推演沙盘四子视图入册 BUILTIN_VIEWS（WO-SANDBOX-VIEW-MOUNT）→ seed:true → 进 SEEDED_VIEW_KEYS
+    // → 进 scenarioSeed.views → 进本快照。金值随注册即更（CLAUDE.md「漏金值即退」），末位追加不动前序序（R6）。
+    // WO-IMPEDIMENTS-REACHABLE：沙盘**第五**子视图 chain-impediments 同批入册（renderer 早已注册但零路径
+    // 渲染得到 → 现由后端派单打通）。金值 13 → 14 项，仍是**末位追加**，前 13 项顺序一字未动（R6 确定性种子
+    // 的字节级一致只约束"同输入同输出"，不约束"清单不许增长"；增长处必须在末位，否则前序 diff 会淹掉真回归）。
+    // WO-WAITING-STATES-FE：流程等待态 process-wait 入册（需求 §20「『等待』是一等状态」）。
+    // 此前 65 条 ProcessDefinition 的 waitKind 在仓储里躺着、src 读取方为 0（只有 seed 写 + test 读），
+    // 现补了下发端点 GET /a/v1/process-definitions 并由本表派单。金值 14 → 15 项，同样**末位追加**，
+    // 前 14 项顺序一字未动（R6）。⚠ 它**不属于沙盘家族**（无 requires: sim.sandbox）——
+    // 业务流程层是配置驱动的主数据，挂到沙盘上会造出「关了沙盘就看不到业务流程」的假依赖。
+    // WO-R9-NAVREACH：采购四段腿分解 procurement-legs 入册。此前 `views/registry.ts:103` 已注册 renderer、
+    // 组件与 12 例可达门全绿，但后端**从未派单**（收编 WO-R5 时只收了前端半）⇒ workspace.views 没有它
+    // ⇒ ViewPage 双闸全关 ⇒ 用户一次都打不开。金值 15 → 16 项，同样**末位追加**，前 15 项一字未动（R6）。
+    // ⚠ 它**不属于沙盘家族**（无 requires: sim.sandbox）——采购/齐套域业务主数据页，挂沙盘上是假依赖。
     expect(report.views).toEqual([
-      "dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance",
+      "dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance", "global-sim",
+      "chain-line-map", "transit-flow", "physical-topology", "node-inspector", "chain-impediments", "process-wait",
+      "procurement-legs",
     ]);
     expect(report.accounts).toEqual(["admin", "planner", "base_manager"]);
 
@@ -44,6 +63,43 @@ describe("A7 synthetic data", () => {
     await runJob(t, 7);
     const snapshot3 = (await t.repos.objects.list("demo")).sort((a, b) => (a.id < b.id ? -1 : 1));
     expect(snapshot3).not.toEqual(snapshot1);
+  });
+
+  it("EXT_SIG（#11）：外部信号一等对象化 + EXTERNAL 连接器（mock_external）", async () => {
+    const t = await makeApp();
+    await runJob(t); // 合成出厂期落 ExternalSignal 对象（domain=external）
+    // 一等对象：GET /a/v1/external-signals 返回环境信号（带来源/单位/新鲜度，R13 可溯）
+    const res = await t.app.inject({ method: "GET", url: "/a/v1/external-signals", headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    const { signals } = res.json() as { signals: Record<string, unknown>[] };
+    expect(signals.length).toBeGreaterThanOrEqual(6);
+    expect(signals.find((s) => s.signalKey === "li_carbonate_price")).toMatchObject({ unit: "元/吨", source: "上海有色网", category: "原料价格", impact: "毛利" });
+    // EXTERNAL 连接器：mock_external sync → external_signals 原始表
+    const conn = await t.app.inject({ method: "POST", url: "/a/v1/connections", headers: ADMIN, payload: { connectorTypeKey: "mock_external", name: "ext-feed", config: {} } });
+    const connId = (conn.json() as { id: string }).id;
+    const sync = await t.app.inject({ method: "POST", url: `/a/v1/connections/${connId}/sync`, headers: ADMIN });
+    expect(sync.statusCode).toBeLessThan(300);
+    const raws = (await (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets?connId=${connId}`, headers: ADMIN })).json()) as { name: string; rowCount: number }[];
+    const ds = raws.find((d) => d.name === "external_signals");
+    expect(ds?.rowCount).toBeGreaterThanOrEqual(6);
+
+    // P2 敏感性：信号冲击 → 规划指标（确定性弹性）。锂价 +10%（elasticity -0.08）→ 毛利 -0.8pp。
+    const sens = await t.app.inject({
+      method: "POST", url: "/a/v1/external-signals/sensitivity", headers: ADMIN,
+      payload: { shocks: [{ signalKey: "li_carbonate_price", deltaPct: 10 }, { signalKey: "ev_demand_index", deltaPct: 5 }, { signalKey: "ghost", deltaPct: 1 }] },
+    });
+    expect(sens.statusCode).toBe(200);
+    const { impacts, unknownSignals } = sens.json() as { impacts: { metric: string; deltaPct: number }[]; unknownSignals: string[] };
+    expect(impacts.find((i) => i.metric === "毛利")?.deltaPct).toBe(-0.8);
+    expect(impacts.find((i) => i.metric === "需求")?.deltaPct).toBe(3); // 5 × 0.6
+    expect(unknownSignals).toContain("ghost");
+
+    // 信号时序：近 12 月历史（确定性，末点≈当前值）
+    const ser = await t.app.inject({ method: "GET", url: "/a/v1/external-signals/li_carbonate_price/series", headers: ADMIN });
+    expect(ser.statusCode).toBe(200);
+    const { points } = ser.json() as { points: { month: string; value: number }[] };
+    expect(points).toHaveLength(12);
+    expect(Math.abs(points[11]!.value - 96000)).toBeLessThan(700); // 末点≈当前值（含小波动）
   });
 
   it("seeds rules C03/C08/C13 with origin SYNTHETIC; C03 blocks at demandDelta > 0.5", async () => {
@@ -143,6 +199,67 @@ describe("A7 synthetic data", () => {
     for (const a of solver.data.affected) {
       expect(soSet.get(a.so)).toBe(a.qty);
     }
+  });
+
+  it("LIVE-DATA: 合成对象经'合成源→RawDataset→物化'落地，数据源可见原始行 + 对象 origin 可溯回（PRD-live-traceable-data §3.1）", async () => {
+    const t = await makeApp();
+    await runJob(t);
+
+    // ① 数据源页可见：存在"合成数据源"连接 + 源系统连接（mock→real：按 ERP/PLM/MES 分组展示）
+    const conns = (await t.app.inject({ method: "GET", url: "/a/v1/connections", headers: ADMIN })).json() as { id: string; name: string }[];
+    const synth = conns.find((c) => c.name.includes("合成数据源"));
+    expect(synth, "存在合成数据源连接（不再凭空对象）").toBeTruthy();
+    // 订单经 BINDINGS 归入 ERP 源系统连接（数据接入控制台按源系统分组，mock→real）。
+    const erp = conns.find((c) => c.name.includes("ERP 主数据"));
+    expect(erp, "存在 ERP 源系统连接").toBeTruthy();
+
+    // ② 每核心对象类型一张 RawDataset（dataset 名 = BINDINGS 源系统表名），可见原始行
+    const datasets = (await t.app.inject({ method: "GET", url: "/a/v1/raw-datasets", headers: ADMIN })).json() as { id: string; name: string; sourceConnId: string; rowCount: number }[];
+    const byName = new Map(datasets.map((d) => [d.name, d]));
+    for (const ds of ["mes_base_master", "plm_models", "erp_sales_orders"]) expect(byName.get(ds), `RawDataset ${ds} 存在`).toBeTruthy();
+    const orderDs = byName.get("erp_sales_orders")!;
+    expect(orderDs.rowCount).toBe(ORDER_BOOK_SIZE); // 订单原始表行数 = 订单簿规模
+    expect(orderDs.sourceConnId).toBe(erp!.id); // 订单原始表归 ERP 源系统连接（mock→real）
+
+    const rowsRes = (await t.app.inject({ method: "GET", url: `/a/v1/raw-datasets/${orderDs.id}/rows`, headers: ADMIN })).json() as { rows: Record<string, unknown>[] };
+    expect(rowsRes.rows.length).toBe(ORDER_BOOK_SIZE); // 原始行可在数据源页查看
+
+    // ③ 对象 origin 可溯回原始表：rawDatasetId 指真实数据集 + 行序 + 源系统连接（origin.type 仍为 SYNTHETIC，透明可溯）
+    const orders = await t.repos.objects.listByType("demo", "Order");
+    const dsIds = new Set(datasets.map((d) => d.id));
+    for (const o of orders) {
+      expect(o.origin.type).toBe("SYNTHETIC");
+      const org = o.origin as { rawDatasetId?: string; rawRowIdx?: number; sourceConnId?: string };
+      expect(org.rawDatasetId && dsIds.has(org.rawDatasetId), `Order ${o.id} origin 溯回真实 RawDataset`).toBe(true);
+      expect(org.rawDatasetId).toBe(orderDs.id);
+      expect(typeof org.rawRowIdx).toBe("number");
+      expect(org.sourceConnId).toBe(erp!.id);
+    }
+  });
+
+  it("LINEAGE: 对象 → 原始行 → RawDataset → 连接器 反查（PRD-live-traceable-data §3.2）", async () => {
+    const t = await makeApp();
+    await runJob(t);
+    const orders = await t.repos.objects.listByType("demo", "Order");
+    const so = orders[0]!.props.so as string;
+
+    const lin = (
+      await t.app.inject({ method: "GET", url: `/a/v1/lineage/object/Order/${encodeURIComponent(so)}`, headers: ADMIN })
+    ).json() as {
+      object: { id: string; type: string; origin: { rawDatasetId?: string } };
+      source: { connection: { name: string } | null; rawDataset: { name: string } | null; rawRowIdx: number | null; rawRow: Record<string, unknown> | null };
+      derivations: { prop: string; formula: string }[];
+    };
+    expect(lin.object.type).toBe("Order");
+    expect(lin.source.connection!.name).toContain("ERP 主数据"); // 订单溯到 ERP 源系统连接器（mock→real）
+    expect(lin.source.rawDataset!.name).toBe("erp_sales_orders"); // 溯到 ERP 销售订单原始表
+    expect(typeof lin.source.rawRowIdx).toBe("number");
+    expect(lin.source.rawRow!.so).toBe(so); // 溯回的原始行正是这条订单（不再"无源头"）
+    expect(Array.isArray(lin.derivations)).toBe(true); // 计算口径（派生属性）一并给出
+
+    // 未知对象 → 404（鉴权/存在性，复用 getObject 语义）
+    const miss = await t.app.inject({ method: "GET", url: "/a/v1/lineage/object/Order/NOPE", headers: ADMIN });
+    expect(miss.statusCode).toBe(404);
   });
 
   it("SY3: unknown industry → LLM-generated template, stored for reuse, full flow runs", async () => {

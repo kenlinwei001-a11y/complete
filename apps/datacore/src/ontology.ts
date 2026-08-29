@@ -1,4 +1,20 @@
-import type { ToolPayload } from "@platform/contracts";
+import type {
+  ClaimVerdict,
+  ImplementsRef,
+  InterfaceViolation,
+  ObjectRefAttempt,
+  ObjectRefHit,
+  ObjectRefResolution,
+  ObjectRefResolveRequest,
+  RefMatchKind,
+  ToolPayload,
+  TypeSemanticsResponse,
+} from "@platform/contracts";
+import { matchObjectRefInType, objectRefDeclaredType, pickObjectRefResolution } from "@platform/contracts";
+import { checkInterfaceConformance, formatInterfaceViolations } from "@platform/contracts";
+// WO-69 P3 · `functions` 的真实性靠 P2 的求解器本体签名注册表兑现（**只 import 纯声明模块**：
+// ontology-signature.ts 的运行时依赖为零 → 不引入 ontology ↔ solvers 循环）。
+import { SOLVER_ONTOLOGY_SIGNATURES } from "./solvers/ontology-signature.js";
 import type {
   AuthCtx,
   DerivationRun,
@@ -7,6 +23,7 @@ import type {
   ObjectInstance,
   ObjectTypeDef,
   OntologyVersion,
+  SourceBinding,
 } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { AuthzService } from "./authz.js";
@@ -21,6 +38,26 @@ interface AggregateFormula {
   sourceType: string;
   sourceProp: string;
   byField: string;
+}
+
+/** 交叉验证用：宽松等值比较（数字容差 1e-9；其余转字符串比较，避免类型/格式假阳）。 */
+export function looseEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a === "number" || typeof b === "number") {
+    const na = Number(a);
+    const nb = Number(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return Math.abs(na - nb) < 1e-9;
+  }
+  if (typeof a === "boolean" || typeof b === "boolean") {
+    return String(a).toLowerCase() === String(b).toLowerCase();
+  }
+  return String(a).trim() === String(b).trim();
+}
+
+function stringifyVal(v: unknown): string {
+  if (v === null || v === undefined) return "∅";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
 }
 
 /** Parse "SUM(Order.qty BY model)" style aggregate formulas. */
@@ -116,35 +153,114 @@ export class OntologyService {
     return types[0];
   }
 
+  /**
+   * WO-QOS-ONTOLOGY-CONTEXT / WO-ONTOLOGY-CONTEXT-A · 口径语义只读投影（单一真值 = A）。
+   *
+   * 对请求的对象类型返回 { 属性口径(description/unit/dataType) + 派生公式(formula) + 相关已发布规则(expression/severity) }。
+   * `keys` 省略/空 = 全部已发布 ACTIVE 类型；给定 `keys` 只投影这些（未知/未发布类型静默略过）。
+   * 全部字段来自本租户已发布本体（listTypes）+ 规则库（PUBLISHED · 按 scopeObjectTypes 命中）——不新增/改写任何口径真值
+   * （description/formula/expression 未填即诚实缺省）。R2 仅本租户（ctx 隔离）· R6 确定性字典序 · 纯读。
+   *
+   * **单一真值抽取**：GET /a/v1/ontology/type-semantics（喂 B 的 LLM prompt）与 A 侧内部消费者（如
+   * validate-output 口径注解/scope 规则命中）经此一个方法共享同一口径来源——不留第三份拷贝，杜绝语义漂移。
+   */
+  async getTypeSemantics(ctx: AuthCtx, keys?: string[]): Promise<TypeSemanticsResponse> {
+    const wanted = keys && keys.length > 0 ? new Set(keys) : undefined;
+    const allTypes = await this.listTypes(ctx);
+    const publishedRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    const byKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    const picked = allTypes
+      .filter((t) => t.status === "ACTIVE" && (!wanted || wanted.has(t.key)))
+      .sort((a, b) => byKey(a.key, b.key));
+    const types = picked.map((t) => ({
+      typeKey: t.key,
+      displayName: t.displayName,
+      props: [...t.properties]
+        .sort((a, b) => byKey(a.propKey, b.propKey))
+        .map((p) => ({
+          propKey: p.propKey,
+          // WO-SCHEMA-ZH：中文业务名与 unit 同级透出（缺则整键不下发 = 诚实留白，B 侧不臆造）。
+          ...(p.displayName ? { displayName: p.displayName } : {}),
+          ...(p.description ? { description: p.description } : {}),
+          ...(p.unit ? { unit: p.unit } : {}),
+          dataType: p.dataType,
+        })),
+      derived: [...(t.derivedProperties ?? [])]
+        .sort((a, b) => byKey(a.propKey, b.propKey))
+        .map((d) => ({ propKey: d.propKey, ...(d.formula ? { formula: d.formula } : {}) })),
+      rules: publishedRules
+        .filter((r) => r.scopeObjectTypes.includes(t.key))
+        .sort((a, b) => byKey(a.key, b.key))
+        // WO-RULE-EXPR-PARAMS：params 随 expression 一起带出（`params.<名>` 的解析源，拆开传即哑弹）。
+        .map((r) => ({ key: r.key, name: r.name, ...(r.expression ? { expression: r.expression } : {}), severity: r.severity, ...(r.params && Object.keys(r.params).length > 0 ? { params: r.params } : {}) })),
+    }));
+    return { types };
+  }
+
   async upsertType(
     ctx: AuthCtx,
     input: Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status"> & { status?: "ACTIVE" },
   ): Promise<ObjectTypeDef> {
     const existing = await this.getType(ctx, input.key);
+    // WO-D6：**先摊开 input，再覆写服务端自管字段** —— 不再逐字段列举。
+    // 老写法手抄白名单，`ObjectTypeDef` 后加的 7 个 OntoFlow 扩展字段
+    // （storageMode/stateVariables/functions/actions/security/entityCategory/description）
+    // 一个都没抄进去 ⇒ 调用方（如 OntoFlow 发布 `pipeline/subgraph.ts buildTypeDefs` 真的填了）
+    // 写进来就被静默丢弃，读出侧恒空 —— 这正是欠账 #69「本体七要素：Interface 恒零 /
+    // Security 列级恒零 / Action 无回写声明 / Function 无本体签名」的根因。
+    // 摊开写法让契约新增字段**默认过得去**，把"漏抄"这个病根去掉，而不是再补 7 行下次再漏第 8 行。
+    // 下面这几个必须显式覆写，它们是服务端真值、不许调用方指定：
+    //   id/tenantId/version/status —— 身份与版本机；
+    //   published/deprecation —— 治理增量 §2.1 API 名不可变的锚点，只能由 publishVersion/deprecate 迁移。
     const def: ObjectTypeDef = {
+      ...input,
       id: existing?.id ?? newId("otype"),
       tenantId: ctx.tenantId,
-      key: input.key,
-      displayName: input.displayName,
       domain: input.domain ?? existing?.domain,
-      properties: input.properties,
       derivedProperties: input.derivedProperties ?? [],
       sourceBindings: input.sourceBindings ?? [],
       version: (existing?.version ?? 0) + 1,
       status: "ACTIVE",
       published: existing?.published,
       deprecation: existing?.deprecation,
-      // OntoFlow（PRD v2）扩展字段透传（缺省回退既有值）。
-      storageMode: input.storageMode ?? existing?.storageMode,
-      stateVariables: input.stateVariables ?? existing?.stateVariables,
-      functions: input.functions ?? existing?.functions,
-      actions: input.actions ?? existing?.actions,
-      security: input.security ?? existing?.security,
-      entityCategory: input.entityCategory ?? existing?.entityCategory,
-      description: input.description ?? existing?.description,
+      // WO-69 P3：接口声明与行动绑定是**可选扩展**——入参给了用入参，没给则沿用既有（不因一次
+      // upsert 把已声明的 implements/actions 悄悄抹掉）。两者皆无 → 字段不出现 = 逐字节沿用现状。
+      ...(input.implements ?? existing?.implements
+        ? { implements: input.implements ?? existing?.implements }
+        : {}),
+      ...(input.actions ?? existing?.actions ? { actions: input.actions ?? existing?.actions } : {}),
     };
     await this.repos.ontologyTypes.put(def);
     return def;
+  }
+
+  /**
+   * WO-69 P3 · 为已存在类型设置「实现的接口 / 绑定的行动」（种子与管理台用）。只改这两个字段，
+   * 其余（属性/派生/域/published/version）原样保留 —— 与 `setSourceBindings` 同型。类型不存在则略过。
+   */
+  async setInterfaceBindings(
+    ctx: AuthCtx,
+    key: string,
+    input: { implements?: ImplementsRef[]; actions?: { actionTypeKey: string }[] },
+  ): Promise<void> {
+    const existing = await this.getType(ctx, key);
+    if (!existing) return;
+    await this.repos.ontologyTypes.put({
+      ...existing,
+      ...(input.implements ? { implements: input.implements } : {}),
+      ...(input.actions ? { actions: input.actions } : {}),
+    });
+  }
+
+  /**
+   * WO-MODELING-INTERACTIVE：为已存在对象类型补真实来源绑定（provenance 回填），只改 sourceBindings、
+   * 其余字段（属性/派生/域/published/version）原样保留。用于合成 A 路把"由某数据集物化"的类型标上其源
+   * RawDataset（KILL-MOCK：真有源标真源）；类型不存在则静默略过。R2 tenant 隔离（getType 已按 ctx）。
+   */
+  async setSourceBindings(ctx: AuthCtx, key: string, sourceBindings: SourceBinding[]): Promise<void> {
+    const existing = await this.getType(ctx, key);
+    if (!existing) return;
+    await this.repos.ontologyTypes.put({ ...existing, sourceBindings });
   }
 
   async upsertLinkType(
@@ -164,8 +280,70 @@ export class OntologyService {
     return def;
   }
 
+  /**
+   * WO-69 P3 · **对象接口一致性门（发布门）**。
+   *
+   * 头号纪律：接口不是注释。声明了 `implements` 却没真长出要求的属性/行动/函数 → **拒绝发布**，
+   * 并把缺口**逐条点名**（哪个类型、哪个接口@哪个版本、缺哪个 propKey/actionTypeKey/solverKey）。
+   *
+   * **零回归**：一个 `implements` 都没声明的租户，`checkInterfaceConformance` 直接空转返回 []，
+   * 发布路径逐字节沿用现状（老快照、老租户不受任何影响）。
+   *
+   * **诚实边界**：本门在**发布时**兑现契约。已经落库的**历史 OntologyVersion 快照**不会被追溯改写——
+   * 接口加要求 ⇒ 从下一次发布起全部 `latest` 实现者被要求补齐，而不是把历史快照判为失效。
+   */
+  async assertInterfaceConformance(ctx: AuthCtx): Promise<void> {
+    const types = await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE");
+    if (!types.some((t) => (t.implements ?? []).length > 0)) return; // 零回归快路
+    const violations = await this.interfaceViolations(ctx, types);
+    if (violations.length > 0) {
+      throw validationError(
+        `对象接口一致性校验未通过（${violations.length} 项）：${formatInterfaceViolations(violations)}`,
+      );
+    }
+  }
+
+  /** 一致性校验的取数 + 纯函数调用（发布门与只读的 conformance 报告共用同一把尺子）。 */
+  async interfaceViolations(
+    ctx: AuthCtx,
+    types?: ObjectTypeDef[],
+  ): Promise<InterfaceViolation[]> {
+    const allTypes = types ?? (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE"));
+    const interfaces = await this.repos.objectInterfaces.list(ctx.tenantId);
+    const actionTypes = await this.repos.actionTypes.list(ctx.tenantId);
+    return checkInterfaceConformance({
+      types: allTypes.map((t) => ({
+        key: t.key,
+        displayName: t.displayName,
+        properties: t.properties.map((p) => ({ propKey: p.propKey, dataType: p.dataType })),
+        derivedPropKeys: (t.derivedProperties ?? []).map((d) => d.propKey),
+        actions: t.actions,
+        implements: t.implements,
+      })),
+      interfaces,
+      actionTypeKeys: actionTypes.map((a) => a.key),
+      // WO-INTERFACE-ACTIONTYPE-DEEPVAL（残口②）：深校验视图 —— targetTypeKey 归因键 +
+      // paramsSchema.properties 键集投影，发布门据此判「绑定的行动在本类型上兑不兑现得了」。
+      // paramsSchema 形状不可读（无 properties 对象）→ paramKeys 省略 = 形状未知 → 跳过参数对表（诚实缺省）。
+      actionTypes: actionTypes.map((a) => {
+        const props = (a.paramsSchema as { properties?: unknown } | undefined)?.properties;
+        const paramKeys =
+          props && typeof props === "object" && !Array.isArray(props) ? Object.keys(props) : undefined;
+        return {
+          key: a.key,
+          ...(a.targetTypeKey ? { targetTypeKey: a.targetTypeKey } : {}),
+          ...(paramKeys ? { paramKeys } : {}),
+        };
+      }),
+      // WO-69 P2 兑现点：`functions` 校验用的是**真求解器签名注册表**，不是一份手抄清单。
+      solverSignatures: SOLVER_ONTOLOGY_SIGNATURES,
+    });
+  }
+
   /** Snapshot current types+links as a new ontology version and notify webhooks. */
   async publishVersion(ctx: AuthCtx): Promise<OntologyVersion> {
+    // WO-69 P3：接口契约先于快照固化 —— 不合规不许进快照（"绿测试≠能用"靠这道门堵）。
+    await this.assertInterfaceConformance(ctx);
     const versions = await this.repos.ontologyVersions.list(ctx.tenantId);
     const version = versions.length > 0 ? Math.max(...versions.map((v) => v.version)) + 1 : 1;
     // 治理增量 §2.1：发布即固化 API 名（published=true → 此后 key 不可重命名/复用）。
@@ -244,23 +422,31 @@ export class OntologyService {
     limit = 100,
     asOfEpoch?: number,
   ): Promise<ToolPayload> {
-    const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+    // A6：行级过滤 + 列级（属性级）投影同出一份决策（authz 单一机制）。
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const rowFilters = dec.rowFilters;
     const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
     const visible = all
+      .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
       .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
+      // 行级过滤读**未投影**的 props（策略作者可用不可读字段做行筛选）；投影只作用于返回值。
       .filter((o) => this.matchFilter(o.props, filter))
       .sort((a, b) => (a.id < b.id ? -1 : 1))
       .slice(0, Math.min(limit, 1000));
     if (asOfEpoch === undefined) {
       return {
-        data: visible.map((o) => ({ id: o.id, type: o.type, props: o.props })),
+        data: visible.map((o) => ({ id: o.id, type: o.type, props: this.authz.projectProps(dec, o.props) })),
         snapshotVersion: await this.snapshotVersion(ctx.tenantId),
       };
     }
     const type = await this.getType(ctx, objectType);
     const temporal = new Set((type?.properties ?? []).filter((p) => p.temporal).map((p) => p.propKey));
     const data = await Promise.all(visible.map((o) => this.objectAsOf(ctx.tenantId, o, temporal, asOfEpoch)));
-    return { data, snapshotVersion: `${await this.snapshotVersion(ctx.tenantId)}@${asOfEpoch}` };
+    // 时间回溯读同样过列级投影（否则 asOfEpoch 成为绕过列级安全的后门）。
+    return {
+      data: data.map((d) => ({ ...d, props: this.authz.projectProps(dec, d.props) })),
+      snapshotVersion: `${await this.snapshotVersion(ctx.tenantId)}@${asOfEpoch}`,
+    };
   }
 
   /** §13.1: reconstruct an object's value as of `asOfEpoch` (temporal rollback + approx flag). */
@@ -308,35 +494,230 @@ export class OntologyService {
     filter: Record<string, unknown> = {},
   ): Promise<{ rows: { props: Record<string, unknown> }[]; total: number; truncated: boolean }> {
     const CAP = 200_000; // 安全上限：超此返回 truncated=true（防 OOM；真正下推属 E2 转换引擎）
-    const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+    // A6 列级：聚合同样只能看可读列 —— 否则 sum(unitPrice) 就是列级安全的算术后门。
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const rowFilters = dec.rowFilters;
     const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
     const visible = all
+      .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
       .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
       .filter((o) => this.matchFilter(o.props, filter));
     return {
-      rows: visible.slice(0, CAP).map((o) => ({ props: o.props })),
+      rows: visible.slice(0, CAP).map((o) => ({ props: this.authz.projectProps(dec, o.props) })),
       total: visible.length,
       truncated: visible.length > CAP,
     };
   }
 
-  /** GET /a/v1/objects/:type/:id */
-  async getObject(ctx: AuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
-    const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
-    const obj = await this.repos.objects.get(ctx.tenantId, objectId);
-    let found: ObjectInstance | undefined = obj && obj.type === objectType ? obj : undefined;
-    if (!found) {
-      // Allow lookup by primary-key value too (e.g. baseId "changzhou").
-      const type = await this.getType(ctx, objectType);
-      const pk = type ? primaryKeyProp(type) : "id";
-      const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
-      found = all.find((o) => o.props[pk] === objectId);
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 单类型引用匹配（**A 侧唯一入口**·规则走 contracts 纯核心）。
+   * 只负责「取哪些行」（租户隔离 R2 + A6 行级过滤），匹配语义一律 `matchObjectRefInType`。
+   */
+  private async matchRefInType(
+    ctx: AuthCtx,
+    objectType: string,
+    ref: unknown,
+    /** undefined = 用 `matchObjectRefInType` 的单源默认（含 partial）；#108 不许在调用点抄第二份。 */
+    accept: RefMatchKind[] | undefined,
+    rowFilters: Awaited<ReturnType<AuthzService["require"]>>,
+  ): Promise<{ hits: ObjectRefHit[]; attempt: ObjectRefAttempt; byInternalId: Map<string, ObjectInstance> }> {
+    const typeDef = await this.getType(ctx, objectType);
+    if (!typeDef) {
+      return {
+        hits: [],
+        attempt: { objectType, keysTried: [], propsTried: [], rowsScanned: 0, reason: "TYPE_NOT_FOUND" },
+        byInternalId: new Map(),
+      };
     }
-    if (!found || !this.authz.rowAllowed(ctx, rowFilters, found.props)) throw notFound("object");
+    const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
+    const visible = all.filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props));
+    const byInternalId = new Map(visible.map((o) => [o.id, o]));
+    const { hits, attempt } = matchObjectRefInType({
+      ref,
+      objectType,
+      typeDef,
+      rows: visible.map((o) => ({ id: o.id, props: o.props })),
+      ...(accept ? { accept } : {}),
+    });
+    return { hits, attempt, byInternalId };
+  }
+
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · **「实体文本 → 对象引用」解析正门**（POST /a/v1/ontology/resolve-ref）。
+   *
+   * 病根：AgentCore 槽位填充逐类型调 `getObject(type, 常州)`——那是按 id/主键查，中文名必 404 ⇒ 反问。
+   * 本方法按 **id / 名称 / 别名** 三层解析，规则由 contracts `matchObjectRefInType` 单一出处提供
+   * （零业务常数 R14：可识别属性完全从 ObjectTypeDef 元数据派生，**不存在任何中文名→id 词表**）。
+   *
+   * 诚实纪律：无权读的类型记 `FORBIDDEN` 留痕（不静默跳过）；同层级多命中判 `ambiguous`
+   * （**不取第一个**）；解析不到就返回 `resolved:false` + 全部 attempts（试了哪些类型/什么键/为什么不匹）。
+   */
+  async resolveObjectRef(ctx: AuthCtx, req: ObjectRefResolveRequest): Promise<ObjectRefResolution> {
+    // #108 · 单源默认：**不许**在这里再抄一份层级清单。原来这行写死
+    // `["id","name","alias"]`，于是 `partial`（人话近指·治「常州基地/常州工厂」）
+    // 虽然进了 `matchObjectRefInType` 的默认 accept，却**永远到不了这条正门**——
+    // 铁律 0.5 第三形态「接了线接错地方」：线接在共享默认值上，调用点各自把它挡掉了。
+    // 传 undefined 让解析器用自己的单源默认；显式 `accept:["id"]`（老 getObject 语义）照旧生效。
+    const accept = req.accept as RefMatchKind[] | undefined;
+    const declared = objectRefDeclaredType(req.ref);
+    let typeKeys: string[];
+    if (req.types && req.types.length) typeKeys = [...new Set(req.types)];
+    else if (declared) typeKeys = [declared];
+    else typeKeys = (await this.listTypes(ctx)).map((t) => t.key);
+    typeKeys = [...typeKeys].sort(); // R6 确定性：类型遍历序固定
+
+    const hits: ObjectRefHit[] = [];
+    const attempts: ObjectRefAttempt[] = [];
+    for (const objectType of typeKeys) {
+      let rowFilters: Awaited<ReturnType<AuthzService["require"]>>;
+      try {
+        rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+      } catch {
+        attempts.push({ objectType, keysTried: [], propsTried: [], rowsScanned: 0, reason: "FORBIDDEN" });
+        continue;
+      }
+      const r = await this.matchRefInType(ctx, objectType, req.ref, accept, rowFilters);
+      hits.push(...r.hits);
+      attempts.push(r.attempt);
+    }
+    return pickObjectRefResolution(req.ref, hits, attempts, { maxCandidates: req.maxCandidates });
+  }
+
+  /**
+   * GET /a/v1/objects/:type/:id — 按**内部 id / 主键**取对象（语义不变）。
+   * WO-SLOT-ENTITY-RESOLVE：匹配走与 `resolveObjectRef` **同一个**核心（`accept:["id"]`），
+   * 不再自带一套 pk 回退查找——「按名解析」与「按 id 取数」是同一规则的两个接受层级，不是两套实现。
+   */
+  async getObject(ctx: AuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
+    // WO-69 P1 列级：取 AccessDecision（而非仅 rowFilters）——下面 projectProps 要靠它剔除不可读属性。
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const { hits, byInternalId } = await this.matchRefInType(ctx, objectType, objectId, ["id"], dec.rowFilters);
+    const found = hits.length ? byInternalId.get(hits[0]!.internalId) : undefined;
+    if (!found) throw notFound("object");
     return {
-      data: { id: found.id, type: found.type, props: found.props },
+      data: { id: found.id, type: found.type, props: this.authz.projectProps(dec, found.props) },
       snapshotVersion: await this.snapshotVersion(ctx.tenantId),
     };
+  }
+
+  // -- cross-validation（推演验证痕迹 Layer 2：结论断言 vs 知识图谱已有事实）------------
+  /**
+   * POST /a/v1/ontology/cross-validate — 对推演结论里的断言（对象属性 / 关系）逐条
+   * 反向核对知识图谱（对象库 props + 链路）已有事实，标 CONSISTENT/CONFLICT/NO_EVIDENCE。
+   * 确定性（R6）、tenant 隔离（R2）、行级过滤（R6 authz）。无网络/无 LLM。
+   */
+  async crossValidate(
+    ctx: AuthCtx,
+    claims: {
+      kind: "PROPERTY" | "LINK";
+      subjectType: string;
+      subjectId: string;
+      property?: string;
+      assertedValue?: unknown;
+      linkType?: string;
+      objectType?: string;
+      objectId?: string;
+    }[],
+  ): Promise<{
+    claims: ClaimVerdict[];
+    verdict: "ALL_CONSISTENT" | "PARTIAL" | "CONFLICT" | "NO_CLAIMS";
+    snapshotVersion: string;
+  }> {
+    const snapshotVersion = await this.snapshotVersion(ctx.tenantId);
+    const verdicts: ClaimVerdict[] = [];
+    for (const c of claims.slice(0, 200)) {
+      verdicts.push(await this.checkClaim(ctx, c, snapshotVersion));
+    }
+    let verdict: "ALL_CONSISTENT" | "PARTIAL" | "CONFLICT" | "NO_CLAIMS";
+    if (verdicts.length === 0) verdict = "NO_CLAIMS";
+    else if (verdicts.some((v) => v.status === "CONFLICT")) verdict = "CONFLICT";
+    else if (verdicts.every((v) => v.status === "CONSISTENT")) verdict = "ALL_CONSISTENT";
+    else verdict = "PARTIAL";
+    return { claims: verdicts, verdict, snapshotVersion };
+  }
+
+  private async checkClaim(
+    ctx: AuthCtx,
+    c: {
+      kind: "PROPERTY" | "LINK";
+      subjectType: string;
+      subjectId: string;
+      property?: string;
+      assertedValue?: unknown;
+      linkType?: string;
+      objectType?: string;
+      objectId?: string;
+    },
+    snapshotVersion: string,
+  ): Promise<ClaimVerdict> {
+    const base = {
+      subjectType: c.subjectType,
+      subjectId: c.subjectId,
+      kind: c.kind,
+      snapshotVersion,
+    } as const;
+    // resolve subject object from KG (handles pk-value lookup + row filter)
+    let subject: { props: Record<string, unknown> } | undefined;
+    try {
+      const payload = await this.getObject(ctx, c.subjectType, c.subjectId);
+      subject = payload.data as { props: Record<string, unknown> };
+    } catch {
+      subject = undefined;
+    }
+
+    if (c.kind === "PROPERTY") {
+      const property = c.property ?? "";
+      const claim = `${c.subjectType}:${c.subjectId}.${property} == ${stringifyVal(c.assertedValue)}`;
+      if (!subject || !(property in subject.props)) {
+        return { ...base, claim, property, assertedValue: c.assertedValue, status: "NO_EVIDENCE", detail: subject ? "知识图谱无此属性记录" : "知识图谱无此对象" };
+      }
+      const kgValue = subject.props[property];
+      const consistent = looseEqual(kgValue, c.assertedValue);
+      return {
+        ...base,
+        claim,
+        property,
+        assertedValue: c.assertedValue,
+        status: consistent ? "CONSISTENT" : "CONFLICT",
+        ...(consistent ? {} : { kgValue, detail: `知识图谱记录为 ${stringifyVal(kgValue)}` }),
+      };
+    }
+
+    // LINK：核对 subject --linkType--> object 是否存在
+    const linkType = c.linkType ?? "";
+    const claim = `${c.subjectType}:${c.subjectId} -[${linkType}]-> ${c.objectType ?? "?"}:${c.objectId ?? "?"}`;
+    if (!subject) {
+      return { ...base, claim, linkType, objectType: c.objectType, objectId: c.objectId, status: "NO_EVIDENCE", detail: "知识图谱无此对象" };
+    }
+    const links = await this.repos.links.list(
+      ctx.tenantId,
+      (l) => l.type === linkType,
+    );
+    // subject/object 既可按 obj_ id 也可按业务主键匹配（getObject 已能两者解析）
+    const subjId = await this.resolveObjId(ctx, c.subjectType, c.subjectId);
+    const objId = c.objectId ? await this.resolveObjId(ctx, c.objectType ?? "", c.objectId) : undefined;
+    const exists = links.some(
+      (l) => (l.fromId === subjId || l.fromId === c.subjectId) && (objId === undefined || l.toId === objId || l.toId === c.objectId),
+    );
+    return {
+      ...base,
+      claim,
+      linkType,
+      objectType: c.objectType,
+      objectId: c.objectId,
+      status: exists ? "CONSISTENT" : "NO_EVIDENCE",
+      ...(exists ? {} : { detail: "知识图谱无对应关系记录" }),
+    };
+  }
+
+  /** 把业务主键值解析为 obj_ id（解析不到则原样返回，交由调用方双匹配）。 */
+  private async resolveObjId(ctx: AuthCtx, objectType: string, idOrKey: string): Promise<string> {
+    try {
+      const payload = await this.getObject(ctx, objectType, idOrKey);
+      return (payload.data as { id: string }).id;
+    } catch {
+      return idOrKey;
+    }
   }
 
   // -- slices (QOS-PRD §7.6) --------------------------------------------------

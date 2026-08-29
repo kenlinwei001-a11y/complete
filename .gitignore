@@ -1,12 +1,30 @@
+# deps & build
 node_modules/
 dist/
 *.tsbuildinfo
+.vite/
+coverage/
+
+# env & secrets
 .env
 .env.*
 !.env.example
-coverage/
+
+# runtime data
 .blobstore/
+.blobs/
+blobs/
 *.log
 
-# 完整代码包快照（由 git archive 生成的自快照，可复现，不入库以免膨胀）
-deliverables/*完整代码包*.zip
+# OS / editor
+.DS_Store
+*.swp
+
+# local-only Claude config
+.claude/settings.local.json
+
+# 大体积生成物（按需用 Git LFS；默认不入库）
+deliverables/
+db-seed/*.sql
+!db-seed/agentcore-seed.sql
+.claude/worktrees/

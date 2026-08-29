@@ -72,7 +72,7 @@ export default function UsersPage() {
             <tbody>
               {(users ?? []).map((u) => (
                 <tr key={u.id} data-testid={`user-${u.username}`}>
-                  <td className="mono" style={{ fontSize: 11.5 }}>{u.email}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{u.email}</td>
                   <td className="zh">{u.displayName}</td>
                   <td>
                     {u.roles.map((r) => (
@@ -91,7 +91,7 @@ export default function UsersPage() {
                       {u.status === "ACTIVE" ? "ACTIVE" : "DISABLED"}
                     </button>
                   </td>
-                  <td className="mono" style={{ fontSize: 11 }}>{u.lastLoginAt?.slice(0, 16).replace("T", " ") ?? "—"}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{u.lastLoginAt?.slice(0, 16).replace("T", " ") ?? "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button className="btn sm" onClick={() => setEditing(u)} data-testid={`user-edit-${u.username}`}>
                       {zh.common.edit}
@@ -228,7 +228,7 @@ function UserModal({ tenantId, user, onClose, onSaved }: { tenantId: string; use
       <div className="section-title">{t.attributesEditor}</div>
       <textarea
         className="mono"
-        style={{ width: "100%", minHeight: 80, fontSize: 11.5 }}
+        style={{ width: "100%", minHeight: 80, fontSize: 12 }}
         value={attrText}
         aria-label={t.attributesEditor}
         onChange={(e) => setAttrText(e.target.value)}

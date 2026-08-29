@@ -89,6 +89,35 @@ export class Metrics {
     "qos_agent_budget_exhausted_total",
     "Agent runs ended by budget exhaustion",
   );
+  /** G-9：path-B agent 单次 LLM/工具调用有界超时触发的优雅降级次数（挂住时诚实终止）。 */
+  readonly agentTimeout = new Counter(
+    "qos_agent_timeout_total",
+    "Agent runs degraded by per-call LLM/tool timeout",
+  );
+  /**
+   * #89：entitlement 拉不到而**放行全部功能**（fail-open → "ALL"）的次数，按 reason 分标签
+   *（`http_401` / `unreachable:*`）。此前这条路径完全静默——一个 entitlement 恒定失效的部署
+   * 与一个健康部署在可观测面上一模一样。非零即须查：正常部署下它应长期为 0。
+   */
+  readonly entitlementFailOpen = new Counter(
+    "qos_entitlement_fail_open_total",
+    "Entitlement lookups that failed open to ALL (feature gating not enforced)",
+  );
+  /** WO-LOOP-CONTROL-P1：Loop Detector 环检测（同工具名+入参签名反复调用·成功但空转）触发的优雅降级次数。 */
+  readonly agentLoopRepeat = new Counter(
+    "qos_agent_loop_repeat_total",
+    "Agent runs degraded by loop-hash repeat detection (same tool+input signature)",
+  );
+  /** WO-LOOP-CONTROL-P2 · Retry Manager：瞬时/传输层错触发的有界重试发生次数（每次实际重试 +1）。 */
+  readonly agentRetry = new Counter(
+    "qos_agent_retry_total",
+    "Agent transient tool errors retried (bounded) by the retry manager",
+  );
+  /** WO-LOOP-CONTROL-P2 · Escalation Ladder：停滞时先升级（换策略再试一轮·rung①）而非直接降级的发生次数。 */
+  readonly agentEscalation = new Counter(
+    "qos_agent_escalation_total",
+    "Agent stall escalations (change-strategy retry before honest degrade)",
+  );
   readonly unverifiedNumerics = new Counter(
     "qos_unverified_numerics_total",
     "Answers flagged with unverified numerics by path",
@@ -132,6 +161,11 @@ export class Metrics {
         this.classifierErrors,
         this.clarificationRounds,
         this.agentBudgetExhausted,
+        this.agentTimeout,
+        this.entitlementFailOpen,
+        this.agentLoopRepeat,
+        this.agentRetry,
+        this.agentEscalation,
         this.unverifiedNumerics,
         this.toolCalls,
         this.llmTokens,

@@ -1,6 +1,29 @@
 import type { ObjectInstance } from "../domain.js";
+import { AppError } from "../errors.js";
 import { round } from "../prng.js";
-import { num, str, type SolverContext } from "./types.js";
+// WO-ENGINE-SCOPE-FIX（#116/#117 引擎层作用域维）：base 解析走 `resolveBaseRef` **单一出处**
+// （= risk.resolveBaseId / capacity 用的同一份·认 baseId/中文名/obj_base_ 前缀/近指），
+// 本文件**不许**再写第二套「中文名 → baseId」匹配（R14·types.ts 已把这条纪律写死）。
+import { baseName as baseNameOf, maintWeekOf, num, resolveBaseRef, str, type SolverContext } from "./types.js";
+// WO-ENGINE-SCOPE-FIX2（#116 A 档③ mitigation_select 基地维）：紧张度**不另算一份** ——
+// 复用 `risk.ts` 里 `bottleneck_matrix` 今天就在用的那一个 `liveTightness`（LIVE 三分支 + 自带 MOCK 回落），
+// 保证「处置选型看到的紧张度」与「瓶颈矩阵/风险时间线看到的」**同基地同因素同值**（R14 单一出处·口径不漂移）。
+// 无环：risk.ts 不 import 本文件（本文件的唯一 src 消费方是 service.ts）。
+import { liveTightness } from "./risk.js";
+// DF.13 外协红线单一来源（C08）：外协渠道上限/释放量禁内联裸阈值，一律经 outsourceRedlineCap 派生（R14·R-一致）。
+// WO-SANDBOX-D2：采购段四段（按责任方）契约 + 唯一合计实现，见 packages/contracts/src/procurement.ts。
+import {
+  outsourceRedlineCap,
+  PROCUREMENT_LEG_OWNER,
+  criticalProcurementLeg,
+  makeProcurementLeadTime,
+  procurementDaysByOwner,
+  type ProcurementLeg,
+  type ProcurementPlan,
+} from "@platform/contracts";
+// WO-SANDBOX-D4 ② · 库存「地点 × 时间序列」聚合层 + 水位带常数单一来源（超储/欠储倍数与本文件共用一份）。
+// WO-SANDBOX-D4 ③ · 全链经营现金流「不可相加」登记（credit_exposure 端与 capex_scenario 端共用同一实现）。
+import { INVENTORY_BAND, chainOperatingCashflow, inventoryLocationSeries, materialLocationRefs, purchaseOrderInbound, type InventoryInboundInput, type InventoryLocationRef } from "./aggregates.js";
 
 /**
  * 锂电 20 场景目录 §2 —— 13 个新增求解器（成熟度 E6a）。
@@ -54,8 +77,17 @@ export function mitigationSelect(args: Record<string, unknown>) {
   const factor = str(args.factor);
   const baseName = str(args.baseName);
   const tightness = num(args.tightness, 85);
-  const lib = MITIGATION_LIB[factor];
-  if (!lib) return { error: `unknown factor: ${factor}`, factors: Object.keys(MITIGATION_LIB) };
+  // WO-ENGINE-SCOPE-FIX2：张力来源披露（LIVE=读到该基地真 OEE/利用率/良率；MOCK=按 (基地,因素) 确定性估算）。
+  // 由 `deriveExtendedArgs` 在解析出基地后注入；调用方直传 tightness / 未给基地 → 键不出现（加性）。
+  const dataMode = str(args.tightnessDataMode);
+  // 优先用注入的 canonical 方案库（params.risk.mitigations，全因子名 + risk 字段，R14 单一来源）；
+  // 直接单测无 context 时回落内置 MITIGATION_LIB（消除"风险卡全因子名 vs 方案库短名"接缝 G）。
+  const injected = args.mitigations as Record<string, { key: string; name: string; eff: number; tn: number; cost: string; risk?: string }[]> | undefined;
+  const lib = injected?.[factor] ?? MITIGATION_LIB[factor];
+  if (!lib) {
+    const factors = [...new Set([...Object.keys(injected ?? {}), ...Object.keys(MITIGATION_LIB)])];
+    return { error: `unknown factor: ${factor}`, factors };
+  }
   const urgency = Math.max(0, (tightness - 70) / 30);
   const scored = lib
     .map((p) => ({ ...p, costRank: COST_RANK[p.cost] ?? 2, score: round((p.eff * urgency) / ((COST_RANK[p.cost] ?? 2) * p.tn), 4) }))
@@ -68,6 +100,7 @@ export function mitigationSelect(args: Record<string, unknown>) {
     plans: scored,
     recommended: top.key,
     draftPayload: { base: baseName, factor, planKey: top.key },
+    ...(dataMode ? { tightness, dataMode } : {}),
   };
 }
 
@@ -91,24 +124,130 @@ export function certSchedule(args: Record<string, unknown>) {
   return { schedule, engineerGroups: groups, ruleRefs: ["C26"] };
 }
 
+/**
+ * WO-SANDBOX-D2 · 采购段四段凭证（每个物料一份，由 `deriveExtendedArgs` 从真对象装配后随 args 下发）。
+ * 引擎侧**只做算术不猜数据**：这里的每一段要么带 `days`+出处，要么带 `status:"EMPTY"`+缺什么。
+ */
+export interface ProcurementEvidence {
+  supplierId: string | null;
+  supplierName: string | null;
+  minOrderQty: number | null;
+  onTimeRate: number | null;
+  legs: ProcurementLeg[];
+}
+
+/**
+ * WO-SANDBOX-D2 · 由四段凭证 + 净缺口 → `ProcurementPlan`（"补这一票要多久、买多少、找谁"）。
+ * 纯函数（R6）。总耗时/最早齐套日/补货量一律经 contracts 的唯一实现派生，本函数不另算一份。
+ */
+export function buildProcurementPlan(ev: ProcurementEvidence, shortage: number, orderPlacedDay: number): ProcurementPlan {
+  const leadTime = makeProcurementLeadTime(ev.legs);
+  const earliestKitDay = leadTime.totalDays === null ? null : orderPlacedDay + leadTime.totalDays;
+  // 期望滑期 = 供应商段天数 × (1 − 准时率)。任一输入缺 → null（**不拿 0 冒充"不会晚"**）。
+  const supplierLeg = ev.legs.find((l) => l.leg === "supplier_production");
+  const expectedSlipDays =
+    ev.onTimeRate === null || supplierLeg === undefined || supplierLeg.days === null
+      ? null
+      : round(supplierLeg.days * (1 - ev.onTimeRate), 4);
+  return {
+    supplierId: ev.supplierId,
+    supplierName: ev.supplierName,
+    leadTime,
+    minOrderQty: ev.minOrderQty,
+    shortage: round(shortage, 4),
+    // MOQ 接线（此前 `minOrderQty` 在 solvers/ 零消费方）：缺 3 但起订 1000 → 就得买 1000。
+    replenishQty: ev.minOrderQty === null ? null : round(Math.max(round(shortage, 4), ev.minOrderQty), 4),
+    moqApplied: ev.minOrderQty !== null && ev.minOrderQty > round(shortage, 4),
+    onTimeRate: ev.onTimeRate,
+    expectedSlipDays,
+    orderPlacedDay,
+    earliestKitDay,
+    expectedKitDay: earliestKitDay === null || expectedSlipDays === null ? null : round(earliestKitDay + expectedSlipDays, 4),
+  };
+}
+
 // S08 kit_readiness：齐套率 = min_物料((现库+ETA≤开工的在途)/(BOM单耗×qty))。
+//
+// WO-SANDBOX-D2：缺料行不再只给「一个最早补齐日」，而是给**按责任方分解的采购段**——
+// 供应商生产 / 在途 / 清关 / 到货检验四段各自的天数、责任方与出处（`procurement`）。
+// 之前只能答"晚了"，现在能答"晚在哪一段、该找谁"。四段不全 → `earliestKitDay: null` +
+// `earliestKitDayStatus: "EMPTY"`（**绝不用已知几段之和冒充一个日期**）。
 export function kitReadiness(args: Record<string, unknown>) {
-  const orders = (args.orders as { orderId: string; qty: number; startDay: number; materials: { material: string; onHand: number; inTransit: { qty: number; etaDay: number }[]; bomUnit: number }[] }[]) ?? [];
+  const orders =
+    (args.orders as {
+      orderId: string;
+      qty: number;
+      startDay: number;
+      materials: { material: string; onHand: number; inTransit: { qty: number; etaDay: number }[]; bomUnit: number; procurement?: ProcurementEvidence }[];
+    }[]) ?? [];
+  // 起采日 = 分析窗起点（缺省 1）。`procurement` 缺席时不参与任何计算。
+  const orderPlacedDay = num(args.fromDay, 1);
   const rows = orders.map((o) => {
     const items = o.materials.map((m) => {
       const avail = m.onHand + m.inTransit.filter((t) => t.etaDay <= o.startDay).reduce((s, t) => s + t.qty, 0);
       const need = m.bomUnit * o.qty;
       const ratio = need <= 0 ? 1 : round(avail / need, 4);
+      const shortage = round(Math.max(0, need - avail), 4);
       // 缺料时最早补齐日 = 开工日之后最早到货的在途批次 ETA
       const earliest = avail < need ? m.inTransit.filter((it) => it.etaDay > o.startDay).sort((a, b) => a.etaDay - b.etaDay)[0]?.etaDay : undefined;
-      return { material: m.material, ratio, shortage: round(Math.max(0, need - avail), 4), earliestDay: earliest };
+      // WO-SANDBOX-D2：**在途"最早到一批"≠"够了"**。原 `earliestDay` 只取最早那一批的 ETA，不看它能不能补上缺口
+      //（在途 1169 对缺口 68267 也算"顺延到那天"）。这里按 ETA 升序累加，真够了的那一批的 ETA 才是
+      // "靠在途就能齐套"的日子；一直不够 → `null`（那就只能重新采购，走下面四段）。`earliestDay` 保留不动（向后兼容）。
+      const coveringEtaDay = (() => {
+        if (shortage <= 0) return null;
+        let cum = 0;
+        for (const t of m.inTransit.filter((x) => x.etaDay > o.startDay).sort((a, b) => a.etaDay - b.etaDay)) {
+          cum += t.qty;
+          if (cum >= shortage) return t.etaDay;
+        }
+        return null;
+      })();
+      const base = { material: m.material, ratio, shortage, earliestDay: earliest, coveringEtaDay };
+      if (shortage <= 0 || m.procurement === undefined) return base;
+      const plan = buildProcurementPlan(m.procurement, shortage, orderPlacedDay);
+      const critical = criticalProcurementLeg(plan.leadTime.legs);
+      return {
+        ...base,
+        procurement: plan,
+        /** 责任方汇总（"这些天里谁占了多少"）；EMPTY 段计入 unknownOwners，**不摊到任何人头上**。 */
+        ownerDays: procurementDaysByOwner(plan.leadTime.legs),
+        /** 最该找的那一个（实测段里天数最大的）。四段无一实测 → null。 */
+        criticalLeg: critical === null ? null : { leg: critical.leg, owner: critical.owner, ownerRef: critical.ownerRef, days: critical.days },
+      };
     });
     const kitRatio = items.length ? Math.min(...items.map((i) => i.ratio)) : 1;
     const shortItems = items.filter((i) => i.ratio < 1).sort((a, b) => (a.earliestDay ?? 1e9) - (b.earliestDay ?? 1e9));
     const advice = kitRatio >= 1 ? "齐套" : shortItems.some((i) => i.earliestDay === undefined) ? "加急采购" : "顺延";
-    return { orderId: o.orderId, kitRatio: round(kitRatio, 4), shortItems, advice };
+    // 整单最早齐套日 = 各缺料项补齐日取最晚（木桶）。任一项算不出 → 整单 EMPTY（诚实缺席）。
+    // 单项补齐日 = 两条路取早者：① 在途真能补上缺口的那一批 ETA ② 现在下单重采（四段合计）。
+    const perItemDay = shortItems.map((i) => {
+      const p = (i as { procurement?: ProcurementPlan }).procurement;
+      const routes: number[] = [];
+      if (i.coveringEtaDay !== null && i.coveringEtaDay !== undefined) routes.push(i.coveringEtaDay);
+      if (p !== undefined && p.earliestKitDay !== null) routes.push(p.earliestKitDay);
+      if (routes.length === 0) return null; // 两条路都算不出 → 不知道就是不知道
+      return Math.min(...routes);
+    });
+    const unresolved = shortItems.filter((_, idx) => perItemDay[idx] === null).map((i) => i.material);
+    const earliestKitDay = shortItems.length === 0 ? o.startDay : unresolved.length > 0 ? null : Math.max(...(perItemDay as number[]));
+    return {
+      orderId: o.orderId,
+      kitRatio: round(kitRatio, 4),
+      shortItems,
+      advice,
+      earliestKitDay,
+      earliestKitDayStatus: earliestKitDay === null ? "EMPTY" : "MEASURED",
+      ...(earliestKitDay === null ? { earliestKitDayReason: `以下物料的采购段四段不全，无法结算最早齐套日（拒绝用已知几段之和冒充日期）：${unresolved.join("、")}` } : {}),
+    };
   });
-  return { rows, shortageCount: rows.filter((r) => r.kitRatio < 1).length, ruleRefs: ["C06", "C16"] };
+  return {
+    rows,
+    shortageCount: rows.filter((r) => r.kitRatio < 1).length,
+    // WO-SILENT-WRONG-ANSWER-3 症③ 诚实位：**这份齐套算的是谁** —— BASE=该基地可承接订单 / ALL=全网。
+    // 由 `deriveExtendedArgs` 注入（见那里的理由）；调用方直传 `orders` 的路不注入 ⇒ 键不出现 ⇒ 逐字节加性。
+    ...(args.kitScope !== undefined ? { scope: args.kitScope } : {}),
+    ruleRefs: ["C06", "C16"],
+  };
 }
 
 // S09 lta_gap：净需求 = 月需求×BOM − 库存 − 在途；现货缺口 = max(0, 净需求 − 长协可用)。
@@ -130,6 +269,9 @@ export function ltaGap(args: Record<string, unknown>) {
 }
 
 // S10 inventory_optimize：目标水位 = 日均耗用×(交期+安全天5)；超储/欠储/呆滞/释放资金。
+// WO-SANDBOX-D4 ②（加性）：+ locationSeries —— 快照之外补「地点 × 时间」两根轴，各自诚实标 dataMode
+//   （时间轴由真 dailyUse/onHand/PurchaseOrder.etaDay 逐日投影 = OK；地点轴今日无真源 = EMPTY，见契约）。
+//   水位带倍数（1.5/0.8）改走 INVENTORY_BAND 单一来源 —— 值逐字节不变，只是不再两处各写一份。
 export function inventoryOptimize(args: Record<string, unknown>) {
   const materials = (args.materials as { matId: string; dailyUse: number; leadTime: number; onHand: number; unitPrice: number; idleDays: number }[]) ?? [];
   const safety = num(args.safetyDays, 5);
@@ -139,8 +281,8 @@ export function inventoryOptimize(args: Record<string, unknown>) {
   let releasable = 0;
   for (const m of materials) {
     const target = m.dailyUse * (m.leadTime + safety);
-    const overQty = Math.max(0, m.onHand - 1.5 * target);
-    const underQty = Math.max(0, 0.8 * target - m.onHand);
+    const overQty = Math.max(0, m.onHand - INVENTORY_BAND.overMult * target);
+    const underQty = Math.max(0, INVENTORY_BAND.underMult * target - m.onHand);
     if (overQty > 0) {
       over.push({ matId: m.matId, overQty: round(overQty, 4), value: round(overQty * m.unitPrice, 2) });
       releasable += overQty * m.unitPrice;
@@ -148,7 +290,14 @@ export function inventoryOptimize(args: Record<string, unknown>) {
     if (underQty > 0) under.push({ matId: m.matId, underQty: round(underQty, 4) });
     if (m.idleDays > 90) idle.push({ matId: m.matId, idleDays: m.idleDays }); // C28
   }
-  return { over, under, idle, releasableCash: round(releasable, 2), ruleRefs: ["C16", "C28"] };
+  const locationSeries = inventoryLocationSeries({
+    materials: materials.map((m) => ({ matId: m.matId, dailyUse: num(m.dailyUse), leadTime: num(m.leadTime), onHand: num(m.onHand) })),
+    safetyDays: safety,
+    horizonDays: Math.max(0, Math.floor(num(args.horizonDays, 30))),
+    inbound: (args.inbound as InventoryInboundInput[] | undefined) ?? [],
+    locations: (args.locations as InventoryLocationRef[] | undefined) ?? [],
+  });
+  return { over, under, idle, releasableCash: round(releasable, 2), locationSeries, ruleRefs: ["C16", "C28"] };
 }
 
 // S11 changeover_sequence：最近邻贪心，从当前在产型号起每步选换型时长最小的未排单。
@@ -181,13 +330,27 @@ export function changeoverSequence(args: Record<string, unknown>) {
     const o = orders.find((x) => x.orderId === s.orderId);
     return o?.dueDay !== undefined && o.dueDay < 0;
   });
-  return { lineId, sequence: seq, totalChangeoverMin: total, savedVsDueMin: round(dueTotal - total, 4), infeasible, ruleRefs: ["C22", "C29"] };
+  return {
+    lineId,
+    sequence: seq,
+    totalChangeoverMin: total,
+    savedVsDueMin: round(dueTotal - total, 4),
+    infeasible,
+    // WO-ENGINE-SCOPE-FIX2：产线维诚实标注（由 `deriveExtendedArgs` 在用户真给了 `lineId` 时注入·见那里的理由）。
+    ...(args.lineScope !== undefined ? { lineScope: args.lineScope } : {}),
+    ruleRefs: ["C22", "C29"],
+  };
 }
 
 // S12 yield_diagnosis：滑窗突变 = 首个 |后7日均 − 前7日均| > 2σ(前30日) 的日。
 export function yieldDiagnosis(args: Record<string, unknown>) {
   const series = (args.series as { day: number; yield: number }[]) ?? [];
   const events = (args.events as { day: number; kind: string; source: string }[]) ?? [];
+  // 诚实边界（假6·KILL-MOCK-RED·抄 capex 缺数不造假）：无逐日良率时序输入 → 不以写死序列冒充"找到 day33 突变"，
+  // 返 dataMode:EMPTY + provenanceSynthetic 披露（SolverContext 无良率时序源）。接入真时序后喂真 series 才诊断。
+  if (series.length === 0) {
+    return { breakpoint: undefined, candidates: [], dataMode: "EMPTY", provenanceSynthetic: true, note: "无逐日良率时序输入（series 空）·无法诊断突变——不以写死序列冒充真算", ruleRefs: ["C30"] };
+  }
   const sorted = [...series].sort((a, b) => a.day - b.day);
   let breakpoint: { day: number; drop: number } | undefined;
   for (let i = 30; i + 7 <= sorted.length; i++) {
@@ -209,7 +372,10 @@ export function yieldDiagnosis(args: Record<string, unknown>) {
         .map((e) => ({ ...e, distance: Math.abs(e.day - breakpoint!.day) }))
         .sort((a, b) => a.distance - b.distance)
     : [];
-  return { breakpoint, candidates, ruleRefs: ["C30"] };
+  // WO-YIELD-SERIES-TS-SOURCE：series 由 SolverService 从 A8 时序 `yield:process` 注入时，若该序列 origin 为
+  // SYNTHETIC（demo 合成种子），args 带 provenanceSynthetic:true —— 此处透传披露：dataMode:LIVE 只表示"真算了"，
+  // 合成 provenance 不冒充实测（两维正交·G-DATAMODE-PROVENANCE-LEAK 同口径）。调用方直传 series 不带该键 → 不出现（加性）。
+  return { breakpoint, candidates, dataMode: "LIVE", ...(args.provenanceSynthetic === true ? { provenanceSynthetic: true } : {}), ruleRefs: ["C30"] };
 }
 
 // S13 maintenance_stagger：冲突=检修周∈交付高峰top3；±4 周内选负荷最低周；间隔≥26、同组同周≤3。
@@ -240,16 +406,19 @@ export function maintenanceStagger(args: Record<string, unknown>) {
       adjustments.push({ base: b.base, fromWeek: b.maintWeek, toWeek: best, loadDrop: round((b.loadByWeek[String(b.maintWeek)] ?? 0) - bestLoad, 4) });
     }
   }
-  return { adjustments, unresolved, ruleRefs: ["C11"] };
+  // 诚实边界（假6·KILL-MOCK-RED）：自动派生输入（无真实逐周负荷/交付高峰时序源）时标 provenanceSynthetic —— 错峰建议为占位估算，不冒充真排程。
+  const synthetic = args.provenanceSynthetic === true;
+  return { adjustments, unresolved, ...(synthetic ? { dataMode: "MOCK", provenanceSynthetic: true, note: "无真实逐周负荷/交付高峰源（loadByWeek/peakWeeks 缺真时序）·错峰建议为占位估算" } : {}), ruleRefs: ["C11"] };
 }
 
-// S14 outsourcing_split：三渠道 加班c1=1.0(上限gap×0.4)/外协c2=1.4(上限总需求×20% C08)/延期c3=2.5。
+// S14 outsourcing_split：三渠道 加班c1=1.0(上限gap×0.4)/外协c2=1.4(上限总需求×C08 红线)/延期c3=2.5。
+// DF.13：外协上限 = 总需求 × OUTSOURCE_REDLINE.maxRatio —— 求解器分配天然贴着红线封顶，改红线即改分配。
 export function outsourcingSplit(args: Record<string, unknown>) {
   const gap = num(args.gap);
   const totalDemand = num(args.totalDemand, gap);
   const channels = [
     { key: "overtime", name: "自产加班", unitCost: 1.0, cap: gap * 0.4 },
-    { key: "outsource", name: "外协", unitCost: 1.4, cap: totalDemand * 0.2 }, // C08
+    { key: "outsource", name: "外协", unitCost: 1.4, cap: outsourceRedlineCap(totalDemand) }, // C08 红线（DF.13 单一来源）
     { key: "delay", name: "延期", unitCost: 2.5, cap: Infinity },
   ];
   let remaining = gap;
@@ -270,6 +439,11 @@ export function outsourcingSplit(args: Record<string, unknown>) {
 }
 
 // S15 quote_margin：BOM成本=Σ(单耗×现价×(1+加工费率))；毛利率=(价−BOM−制造费率×价−物流)/价。
+//
+// WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）· 加性透出 `scope`（这答案算的是谁 / 用了哪张 BOM / 哪些订单）。
+// 修前实测：`custName` 换任意值输出**逐字节相同**，且实参值不出现在输出任何位置 —— 任何客户问毛利拿到的
+// 都是同一份数字，而答案上印着他问的那个客户名（假个性化）。三态照 `credit_exposure` 样板：
+//   CUSTOMER = 定位到具体客户（`orders`/`bomId` 可溯）· ALL = 未指定客户的全域口径 · EXPLICIT = 调用方直传数值。
 export function quoteMargin(args: Record<string, unknown>) {
   const price = num(args.price);
   const bom = (args.bom as { unit: number; spotPrice: number; processRate?: number }[]) ?? [];
@@ -278,17 +452,24 @@ export function quoteMargin(args: Record<string, unknown>) {
   const logistics = num(args.logistics);
   const margin = price <= 0 ? 0 : round((price - bomCost - mfg - logistics) / price, 4);
   const floor = num(args.segmentFloor, 0.1);
+  const scope = (args.scope as Record<string, unknown> | undefined) ?? { mode: "EXPLICIT" };
   return {
     margin,
     floor,
     diff: round(margin - floor, 4),
     verdict: margin >= floor + 0.01 ? "过线" : margin >= floor ? "触线" : "低于底线",
     breakdown: { bomCost, mfg: round(mfg, 4), logistics, price },
+    // WO-QUOTE-MARGIN-CUSTOMER：`scope` 恒出（直传 bom 的路回落 `{mode:"EXPLICIT"}`，见上 const scope）。
+    // 取代了 WO-SILENT-WRONG-ANSWER-3 症③ 的 `args.quoteScope` 条件注入 —— 后者的 custDimension:"NOT_APPLIED"
+    // 是「客户维今天没有」的诚实位，而本单把客户维**真做出来了**，故诚实位升级为 scope.mode CUSTOMER/ALL/EXPLICIT。
+    scope,
     ruleRefs: ["C15", "C24"],
   };
 }
 
 // S16 credit_exposure：敞口=应收+在产未开票；可用=额度−敞口；逾期 dueDate+30 未回（C32）。
+// WO-SEAM-ARG-DROP（引擎半·诚实化）：透出 `scope`（客户维作用域）——CUSTOMER=定位到具体客户 / ALL=未指定客户的全域合计 /
+//   EXPLICIT=调用方直传数值（无客户上下文）。让前端可见"这答案算的是谁"（R-ARG-FIDELITY），杜绝首客户静默冒充。
 export function creditExposure(args: Record<string, unknown>) {
   const limit = num(args.creditLimit);
   const receivables = num(args.receivables);
@@ -299,7 +480,14 @@ export function creditExposure(args: Record<string, unknown>) {
   const hasOverdue = overdue.some((o) => o.overdueDays > 30); // C32
   const newOrder = num(args.newOrderAmount, 0);
   const verdict = hasOverdue ? "冻结（存在逾期>30天）" : newOrder <= available ? "可接" : "超出可用额度";
-  return { limit, exposure, available, exposureBreakdown: { receivables, wipUnbilled: wip }, overdue, newOrderVerdict: verdict, ruleRefs: ["C13", "C32"] };
+  const scope = (args.scope as Record<string, unknown> | undefined) ?? { mode: "EXPLICIT" };
+  // WO-SANDBOX-D4 ③（加性）：敞口这一端也挂同一份「不可相加」登记 —— 与 capex_scenario 端**共用同一实现**
+  // （`chainOperatingCashflow`），两侧结论逐字节一致，杜绝「投资侧说不能加、敞口侧没说」的半边真相。
+  const chainCashflow = chainOperatingCashflow({
+    capex: { available: false }, // 投资分量本次没取（capex_scenario 是另一个求解器）——不取到 ≠ 不存在
+    credit: { available: true }, // 本次真算出了敞口存量
+  });
+  return { limit, exposure, available, exposureBreakdown: { receivables, wipUnbilled: wip }, overdue, newOrderVerdict: verdict, scope, chainCashflow, ruleRefs: ["C13", "C32"] };
 }
 
 // S19 quarterly_gap：对策按成本升序贪心覆盖季度缺口；残余缺口明示。
@@ -322,7 +510,14 @@ export function quarterlyGap(args: Record<string, unknown>) {
       gap = round(gap - use, 4);
     }
   }
-  return { quarter, combo, residualGap: round(Math.max(0, gap), 4), ruleRefs: ["C08", "C29"] };
+  return {
+    quarter,
+    combo,
+    residualGap: round(Math.max(0, gap), 4),
+    // WO-ENGINE-SCOPE-FIX2：季度维诚实标注（由 `deriveExtendedArgs` 在"给了季度但没给缺口"时注入·见那里的理由）。
+    ...(args.quarterScope !== undefined ? { quarterScope: args.quarterScope } : {}),
+    ruleRefs: ["C08", "C29"],
+  };
 }
 
 /**
@@ -337,7 +532,7 @@ export function countermeasureCombo(args: Record<string, unknown>) {
     { key: "cert_unlock", solver: "cert_schedule", scene: "S07", release: round(gap * 0.3, 4), unitCost: 0.5, costRank: 1 },
     { key: "changeover", solver: "changeover_sequence", scene: "S11", release: round(gap * 0.15, 4), unitCost: 0.6, costRank: 1 },
     { key: "stagger", solver: "maintenance_stagger", scene: "S13", release: round(gap * 0.1, 4), unitCost: 0.7, costRank: 2 },
-    { key: "outsource", solver: "outsourcing_split", scene: "S14", release: round(gap * 0.2, 4), unitCost: 1.4, costRank: 2 }, // C08 外协 ≤20%
+    { key: "outsource", solver: "outsourcing_split", scene: "S14", release: round(outsourceRedlineCap(gap), 4), unitCost: 1.4, costRank: 2 }, // C08 外协上限（DF.13 单一来源）
     { key: "capex", solver: "capex_scenario", scene: "S17", release: round(gap * 0.5, 4), unitCost: 2.2, costRank: 3 },
   ];
   const sorted = [...levers].sort((a, b) => a.costRank - b.costRank || a.unitCost - b.unitCost);
@@ -400,6 +595,112 @@ export const EXTENDED_SOLVERS: Record<string, (args: Record<string, unknown>) =>
   countermeasure_combo: countermeasureCombo,
 };
 
+/** 进口判据（与合成种子 `battery-extended.ts supplierIsImport` 同口径：`Supplier.sourceMode === "进口"`）。 */
+const SOURCE_MODE_IMPORT = "进口";
+
+/**
+ * WO-SANDBOX-D2 · **数据半 → 引擎半的接缝**：把真对象装配成采购段四段凭证。
+ *
+ * 每一段只有两种下场：**读到了**（`MEASURED` + `days` + `source` 指得出是哪个对象哪个字段），
+ * 或者**没读到**（`NOT_APPLICABLE` 有据可依的 0 / `EMPTY` 诚实 null）。
+ * 一个都不许"看着合理地填个默认值"——那正是本仓「静默错答比跑不通更糟」要堵的形态。
+ *
+ * 四段的真源：
+ *  ① 供应商生产 ← `Supplier.leadTime`（承诺前置期）
+ *  ② 在途       ← `Supplier.transitDays` / 责任方 `Supplier.carrierName`
+ *  ③ 清关       ← `CustomsClearance.clearedDay − declaredDay` 的历史实测（**仅进口**；
+ *                  境内直供 = 结构上没有这个环节 → `NOT_APPLICABLE`，不是 EMPTY 也不是假的 0）
+ *  ④ 到货检验   ← `IncomingInspection.releasedDay − arrivedDay` 的历史实测（按物料聚合）
+ *
+ * 聚合口径：多条记录取**均值并四舍五入到 2 位**（确定性 · R6）。取用到的对象 id 全列进 `source.objectIds`，
+ * 便于当场下钻核对（R13）。
+ */
+export function buildProcurementEvidence(c: SolverContext): (mat: Record<string, unknown>) => ProcurementEvidence {
+  const props = (o: ObjectInstance) => o.props as Record<string, unknown>;
+  const supplierByIdEntries = (c.suppliers ?? []).map((o) => [str(props(o).supplierId), { id: o.id, p: props(o) }] as const);
+  const supplierById = new Map(supplierByIdEntries);
+  // 清关记录按供应商归集（清关耗时是"这家供应商这条进口通道"的属性）。
+  const customsBySupplier = new Map<string, { id: string; p: Record<string, unknown> }[]>();
+  for (const o of c.customsClearances ?? []) {
+    const sid = str(props(o).supplierId);
+    if (!sid) continue;
+    (customsBySupplier.get(sid) ?? customsBySupplier.set(sid, []).get(sid)!).push({ id: o.id, p: props(o) });
+  }
+  // 检验记录按物料归集（检验耗时是"这个物料的检验项集"的属性）。
+  const iqcByMat = new Map<string, { id: string; p: Record<string, unknown> }[]>();
+  for (const o of c.incomingInspections ?? []) {
+    const mid = str(props(o).matId);
+    if (!mid) continue;
+    (iqcByMat.get(mid) ?? iqcByMat.set(mid, []).get(mid)!).push({ id: o.id, p: props(o) });
+  }
+  const meanDays = (rows: { id: string; p: Record<string, unknown> }[], from: string, to: string): number | null => {
+    const spans = rows.map((r) => num(r.p[to]) - num(r.p[from])).filter((d) => Number.isFinite(d) && d >= 0);
+    if (spans.length === 0) return null;
+    return round(spans.reduce((s, d) => s + d, 0) / spans.length, 2);
+  };
+  const emptyLeg = (leg: ProcurementLeg["leg"], reason: string): ProcurementLeg => ({ leg, owner: PROCUREMENT_LEG_OWNER[leg], ownerRef: null, days: null, status: "EMPTY", reason, source: null });
+
+  return (mat: Record<string, unknown>): ProcurementEvidence => {
+    const matId = str(mat.matId);
+    const supplierId = str(mat.supplierId);
+    const sup = supplierId ? supplierById.get(supplierId) : undefined;
+
+    // ── ① 供应商生产段 ──────────────────────────────────────────────
+    const legs: ProcurementLeg[] = [];
+    if (sup === undefined) {
+      legs.push(emptyLeg("supplier_production", supplierId ? `物料 ${matId} 的主供应商 ${supplierId} 在 Supplier 对象库中查无此人` : `物料 ${matId} 未绑定主供应商（Material.supplierId 缺失）`));
+    } else if (typeof sup.p.leadTime !== "number") {
+      legs.push(emptyLeg("supplier_production", `供应商 ${supplierId} 无 leadTime（承诺前置期）字段`));
+    } else {
+      legs.push({ leg: "supplier_production", owner: PROCUREMENT_LEG_OWNER.supplier_production, ownerRef: str(sup.p.name) || supplierId, days: sup.p.leadTime, status: "MEASURED", source: { objectType: "Supplier", objectIds: [sup.id], field: "leadTime" } });
+    }
+
+    // ── ② 在途段 ────────────────────────────────────────────────────
+    if (sup === undefined) {
+      legs.push(emptyLeg("in_transit", `无供应商 ⇒ 取不到在途运输前置期（Supplier.transitDays）`));
+    } else if (typeof sup.p.transitDays !== "number") {
+      legs.push(emptyLeg("in_transit", `供应商 ${supplierId} 无 transitDays（在途运输天数）字段`));
+    } else {
+      legs.push({ leg: "in_transit", owner: PROCUREMENT_LEG_OWNER.in_transit, ownerRef: str(sup.p.carrierName) || null, days: sup.p.transitDays, status: "MEASURED", source: { objectType: "Supplier", objectIds: [sup.id], field: "transitDays" } });
+    }
+
+    // ── ③ 清关段（三态在这里最关键）──────────────────────────────────
+    if (sup === undefined) {
+      legs.push(emptyLeg("customs", `无供应商 ⇒ 判定不了是否进口，清关段既不能算 0 也不能算数`));
+    } else if (str(sup.p.sourceMode) !== SOURCE_MODE_IMPORT) {
+      // 结构上没有这个环节 —— 这是**真值 0**，有据可依，不是"不知道"。
+      legs.push({ leg: "customs", owner: PROCUREMENT_LEG_OWNER.customs, ownerRef: null, days: 0, status: "NOT_APPLICABLE", reason: `供应商 ${str(sup.p.name) || supplierId} 为境内直供（Supplier.sourceMode=${str(sup.p.sourceMode) || "未标注"}），无清关环节`, source: null });
+    } else {
+      const rows = (customsBySupplier.get(supplierId) ?? []).slice().sort((a, b) => (a.id < b.id ? -1 : 1));
+      const days = meanDays(rows, "declaredDay", "clearedDay");
+      if (days === null) {
+        legs.push(emptyLeg("customs", `供应商 ${supplierId} 为进口来源但无清关记录（CustomsClearance 0 条）——不拿 0 天冒充`));
+      } else {
+        const brokers = [...new Set(rows.map((r) => str(r.p.brokerName)).filter(Boolean))];
+        legs.push({ leg: "customs", owner: PROCUREMENT_LEG_OWNER.customs, ownerRef: brokers.length === 1 ? brokers[0]! : null, days, status: "MEASURED", ...(brokers.length === 1 ? {} : { reason: `${rows.length} 条清关记录涉及 ${brokers.length} 家清关行，责任方不唯一` }), source: { objectType: "CustomsClearance", objectIds: rows.map((r) => r.id), field: "clearedDay-declaredDay" } });
+      }
+    }
+
+    // ── ④ 到货检验段 ────────────────────────────────────────────────
+    const iqcRows = (iqcByMat.get(matId) ?? []).slice().sort((a, b) => (a.id < b.id ? -1 : 1));
+    const iqcDays = meanDays(iqcRows, "arrivedDay", "releasedDay");
+    if (iqcDays === null) {
+      legs.push(emptyLeg("incoming_inspection", `物料 ${matId} 无到货检验记录（IncomingInspection 0 条）——到厂≠可投产，这段不许当 0`));
+    } else {
+      const teams = [...new Set(iqcRows.map((r) => str(r.p.inspectorTeam)).filter(Boolean))];
+      legs.push({ leg: "incoming_inspection", owner: PROCUREMENT_LEG_OWNER.incoming_inspection, ownerRef: teams.length === 1 ? teams[0]! : null, days: iqcDays, status: "MEASURED", ...(teams.length === 1 ? {} : { reason: `${iqcRows.length} 条检验记录涉及 ${teams.length} 个检验班组，责任方不唯一` }), source: { objectType: "IncomingInspection", objectIds: iqcRows.map((r) => r.id), field: "releasedDay-arrivedDay" } });
+    }
+
+    return {
+      supplierId: sup === undefined ? null : supplierId,
+      supplierName: sup === undefined ? null : str(sup.p.name) || null,
+      minOrderQty: sup !== undefined && typeof sup.p.minOrderQty === "number" ? sup.p.minOrderQty : null,
+      onTimeRate: sup !== undefined && typeof sup.p.onTimeRate === "number" ? sup.p.onTimeRate : null,
+      legs,
+    };
+  };
+}
+
 /**
  * E6b：当场景仅给 presetContext 槽位、未显式传齐 args 时，从对象数据（SolverContext §7 扩展）
  * 推导各求解器的输入 args（已传的 args 优先保留）。让 20 场景从 presetContext 端到端出结果。
@@ -414,24 +715,119 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       return { engineerGroups: 3, ...args, items: (c.certifications ?? []).map(props).map((x) => ({ model: str(x.modelId), line: str(x.lineId), status: str(x.status), certHours: num(x.certHours, 80), gapContribution: num(x.gapContribution) })) };
     case "kit_readiness": {
       if (has("orders")) return args;
-      const orders = (c.orders ?? []).slice(0, 8).map((o, i) => ({
+      // WO-SANDBOX-D2：每个物料带上**采购段四段凭证**（供应商生产/在途/清关/到货检验），
+      // 让齐套判定能按责任方分解，而不是只给 `Material.leadTime` 这一个合成标量。
+      const evidenceOf = buildProcurementEvidence(c);
+      // ── WO-SILENT-WRONG-ANSWER-3 症③（引擎半·S08 齐套分析「对用户实体失聪」的最后一段）──────────
+      // 修前：`orders = c.orders.slice(0,8)` —— **全链没有基地维**，且输出里**没有一个字**说明这是全网口径。
+      //   实测原病历（WO-DERIVED-INTENT-SLOT-DEAF §1，真 Kimi·真服务）：
+      //     「常州下周哪些订单缺料开不了工？」→ shortageCount=8 · 首行 SO-3391
+      //     「金华下周哪些订单缺料开不了工？」→ **答案逐字节相同**
+      //   上一单把「用户说的基地到不到得了求解器」（运输层）治好了，但**引擎层没人用它** ——
+      //   于是病从「丢参」变成「传到了没人读」，屏上仍然一模一样（§6.6 遗留缺口 ①，明写在 datacore 侧）。
+      // 三态定性 = **没接线**（不是没数据）：基地维的真源一直在 —— `Order.bases[]` 是每张订单的产地数组
+      //   （`affected_orders` / `portfolio` / `scope.orderInChainScope` 早就在按它过滤），只是齐套这条路没接。
+      // 修后三件（缺一条就还是静默）：
+      //   ① 给 `base` → 按 `Order.bases ∋ baseId` 真收窄订单池（解析走 `resolveBaseRef` 单一出处，
+      //      与 carbon_footprint / mitigation_select 同一份规则；键名 baseId/baseName 由 arg-aliases.ts 归一）；
+      //   ② 解析不到 → **AMBIGUOUS_SCOPE 400**，绝不静默按"没给基地"退回全网（那正是本单要治的病）；
+      //   ③ **无论给没给**都透出 `kitScope` 诚实位 —— 全网路显式标 `mode:"ALL"`，并把
+      //      「只取前 8 张订单」这个此前完全隐形的截断写进答案（`orderPoolTotal` vs `sampled`）；
+      //      基地路 `sampled===0` 时显式说明「该基地窗内无可分析订单 ≠ 全部齐套」（空 ≠ 齐套）。
+      // 加性：不给 base → 订单池与改前逐字节相同（同一 `c.orders` 同一 slice(0,8)），只多出 `kitScope` 一个新键。
+      const baseRefRaw = args.base;
+      const hasBaseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object");
+      let pool = c.orders ?? [];
+      let kitScope: Record<string, unknown>;
+      if (hasBaseRef) {
+        const r = resolveBaseRef(c.bases, baseRefRaw);
+        if (!r.resolved || !r.objectId)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `kit_readiness：问句指定基地「${str(baseRefRaw) || JSON.stringify(baseRefRaw)}」在基地库中无匹配` +
+              `${r.ambiguous ? `（歧义·候选 ${(r.candidates ?? []).map((x) => x.objectId).join("、")}）` : `（扫 ${c.bases.length} 行）`}` +
+              `——拒绝静默退回全网订单池（R-ARG-FIDELITY·G-SOLVER-SCOPE-DEAF）`,
+            400,
+          );
+        const scopedBaseId = r.objectId;
+        const scopedBaseName = baseNameOf(c, scopedBaseId);
+        const total = pool.length;
+        pool = pool.filter((o) => {
+          const bs = props(o).bases;
+          return Array.isArray(bs) && (bs as unknown[]).map((x) => str(x)).includes(scopedBaseId);
+        });
+        kitScope = {
+          mode: "BASE",
+          baseId: scopedBaseId,
+          baseName: scopedBaseName,
+          orderPoolTotal: pool.length,
+          networkOrderTotal: total,
+          note: `仅 ${scopedBaseName} 基地可承接的订单（Order.bases ∋ ${scopedBaseId}）·非全网`,
+        };
+      } else {
+        kitScope = { mode: "ALL", orderPoolTotal: pool.length, note: "全网口径（未指定基地·跨全部产地）" };
+      }
+      const orders = pool.slice(0, 8).map((o, i) => ({
         orderId: str(props(o).so, `O${i}`),
         qty: num(props(o).qty, 100),
         startDay: 7,
-        materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), onHand: num(m.onHand), inTransit: [{ qty: num(m.inTransit), etaDay: num(m.leadTime, 10) }], bomUnit: num(m.bomUnit, 1) })),
+        materials: mats.slice(0, 4).map((m) => ({
+          material: str(m.matId),
+          onHand: num(m.onHand),
+          inTransit: [{ qty: num(m.inTransit), etaDay: num(m.leadTime, 10) }],
+          bomUnit: num(m.bomUnit, 1),
+          procurement: evidenceOf(m),
+        })),
       }));
-      return { fromDay: 1, toDay: 14, ...args, orders };
+      kitScope.sampled = orders.length;
+      // 「只看前 8 张」此前完全隐形 —— 用户看到 shortageCount=8 会以为那是该口径下的全部缺料单。
+      if (orders.length < (kitScope.orderPoolTotal as number))
+        kitScope.samplingNote = `本次只分析订单池里排序靠前的 ${orders.length}/${kitScope.orderPoolTotal} 张（引擎侧固定采样上限 8）·shortageCount 是这 ${orders.length} 张里的缺料数，不是该口径下的全部`;
+      if (orders.length === 0)
+        kitScope.emptyNote = `该口径下无可分析订单 —— rows 为空**不等于**全部齐套（拒绝把"没数据"渲染成"没问题"）`;
+      return { fromDay: 1, toDay: 14, ...args, orders, kitScope };
     }
     case "lta_gap": {
       if (has("monthDemand")) return args;
-      const m = mats.find((x) => str(x.matId) === str(args.material)) ?? mats[0] ?? {};
-      return { material: str(args.material, str(m.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(m.dailyUse, 100) * 30, 2), bomUnit: num(m.bomUnit, 1), inventory: num(m.onHand), inTransit: num(m.inTransit), ltaAnnualLock: round(num(m.dailyUse, 100) * 365 * 0.8, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(m.leadTime, 30), ...args };
+      // ── WO-ENGINE-SCOPE-FIX #116 · A 组②「物料维只回显」（G-SOLVER-SCOPE-ECHO）────────────────
+      // 修前：`mats.find((x) => str(x.matId) === str(args.material)) ?? mats[0]`
+      //   —— 只匹**英文键** `matId`，而场景卡 S09 的 slotPreset 传的是**中文名**「三元正极」
+      //   （`Material` 同时有 `matId:"pos_ncm"` 与 `name:"三元正极"` 两列，只匹了前者）
+      //   → 恒落 `mats[0]`（按 id 排序首行 = 铝箔 al_foil），而输出把用户说的「三元正极」原样回显。
+      //   实测（seed 42）：`{material:"三元正极"}` 与 `{material:"铝箔"}` 逐字节相同（netDemand 21637.68）。
+      // 修后两件一起做：
+      //   ① 补匹 `Material.name`（matId 精确 → name 精确，两层皆精确·无近指，R6 确定性）；
+      //   ② **删掉 `?? mats[0]` 这个静默兜底** —— 它本身就是病，与已闭的 `G-ARG-DROP-SEAM` 同形：
+      //      指定了物料却匹不到，诚实答案是**缺席（400）**，不是把首行的数字冠上用户说的名字。
+      // 加性：不指定 `material` 时仍取 `mats[0]`（与改前逐字节一致）。
+      const wantedMat = str(args.material);
+      let m: Record<string, unknown> | undefined;
+      if (wantedMat) {
+        m = mats.find((x) => str(x.matId) === wantedMat) ?? mats.find((x) => str(x.name) === wantedMat);
+        if (!m)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `lta_gap：问句指定物料「${wantedMat}」在物料库中无匹配（试过 Material.matId / Material.name·扫 ${mats.length} 行）` +
+              `——拒绝静默落首个物料（R-ARG-FIDELITY·G-ARG-DROP-SEAM）`,
+            400,
+          );
+      } else {
+        m = mats[0];
+      }
+      const mm = m ?? {};
+      return { material: str(args.material, str(mm.matId, "三元正极")), month: str(args.month, "2026-07"), monthDemand: round(num(mm.dailyUse, 100) * 30, 2), bomUnit: num(mm.bomUnit, 1), inventory: num(mm.onHand), inTransit: num(mm.inTransit), ltaAnnualLock: round(num(mm.dailyUse, 100) * 365 * 0.8, 0), monthQuota: 1 / 12, executedThisMonth: 0, leadDays: num(mm.leadTime, 30), ...args };
     }
     case "inventory_optimize": {
-      if (has("materials")) return args;
+      // WO-SANDBOX-D4 ②：inbound（真 PurchaseOrder 到货）与 locations（物料侧地点维·今日恒空）与 materials 是否
+      // 由调用方直传**无关**，故在 early-return 之前先补 —— 否则 rules/测试直传 materials 的路会静默丢掉时间轴。
+      const d4 = {
+        inbound: purchaseOrderInbound(c),
+        locations: materialLocationRefs(c), // 恒 [] 直到 Material 补上 warehouseId（EMPTY 自愈）
+      };
+      if (has("materials")) return { ...d4, ...args };
       const idleByMat = new Map<string, number>();
       for (const b of (c.materialBatches ?? []).map(props)) idleByMat.set(str(b.matId), Math.max(idleByMat.get(str(b.matId)) ?? 0, num(b.idleDays)));
-      return { ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0 })) };
+      return { ...d4, ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0 })) };
     }
     case "changeover_sequence": {
       if (has("orders")) return args;
@@ -440,45 +836,462 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
         (matrix[str(e.fromModel)] ??= {})[str(e.toModel)] = num(e.minutes);
       }
       const orders = (c.orders ?? []).slice(0, 6).map((o, i) => ({ orderId: str(props(o).so, `o${i}`), modelId: str(props(o).model), dueDay: num(props(o).dueDay, i) }));
-      return { lineId: str(args.lineId, "L1"), ...args, orders, matrix, current: orders[0]?.modelId };
+      // ── WO-ENGINE-SCOPE-FIX2 #116 · A 档①「产线维只回显」→ **裁决 ③：不造假个性化，显性标缺席** ────
+      // 为什么这一条不能像 carbon/lta/mitigation 那样"补一行过滤就好"（追一层后三条硬证据）：
+      //   ① **换型矩阵没有产线维，而且是生成器写死的**：`synthetic/battery-extended.ts:667`
+      //      `lineId: null,  // 无线级实测 → 全局值（诚实回退）` —— 30/30 行恒 null，不是漏灌，是设计如此。
+      //      ⇒ 就算把订单按产线筛出来，`minutes` 仍是全局值，"这条线的换型时长"无从谈起。
+      //   ② **订单侧没有产线归属**：`Order` 只有 `bases[]`（基地数组），全链没有 `Order→Line` 的边。
+      //   ③ 唯一带真 `lineId` 的是 `WorkOrder`（每线 2 单·`battery.ts:4051`），但它的型号取自
+      //      `WO_MODELS = [4680-NCM, 4680-LFP, 方形-LFP, 储能-280Ah, 储能-314Ah]`，其中
+      //      **`储能-280Ah` / `储能-314Ah` 不在 `MODELS` 六型号里**（`battery.ts:54-60`）⇒ 不在换型矩阵里
+      //      ⇒ `matrix[from]?.[to] ?? 0` 会把「不知道换型多久」算成「换型 0 分钟」。
+      //      接上去 = 把今天的"回显别人的队列"换成"编造的 0 分钟换型"，**比现状更坏**
+      //      （同 `G-YIELD-SERIES-SOURCE-MISMATCH` 那一课：喂不动算法的源，接了比不接更危险）。
+      // 故本单只做两件**不撒谎**的事：
+      //   ① 用户给的 `lineId` 必须**真存在**（对 `Line.lineId` 精确校验）—— 不存在即 400，
+      //      绝不把一个不存在的产线名印在一张排序表上（今天 `LINE-WS-火星-x` 照样回显）；
+      //   ② 输出加 `lineScope.dataMode:"EMPTY"` + `missingInputs`（抄 `inventory_optimize.locationAxis`
+      //      这个本仓公认的模范），把「这张表不是这条产线的队列」写进答案本身。
+      // 加性：**不给 `lineId` → `lineScope` 键不出现**，逐字节同改前（含 `lineId:"L1"` 这个既有缺省）。
+      const wantedLine = str(args.lineId);
+      let lineScope: Record<string, unknown> | undefined;
+      if (wantedLine) {
+        const line = (c.lines ?? []).map(props).find((l) => str(l.lineId) === wantedLine);
+        if (!line)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `changeover_sequence：问句指定产线「${wantedLine}」在产线台账中无匹配（扫 Line ${(c.lines ?? []).length} 行）` +
+              `——拒绝把不存在的产线名印在一张排序表上（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+            400,
+          );
+        lineScope = {
+          dataMode: "EMPTY",
+          lineId: wantedLine,
+          baseId: str(line.baseId),
+          reason:
+            "本次排序用的是**全局换型矩阵 + 全网前 6 张订单**，不是这条产线自己的队列：" +
+            "ChangeoverMatrix 的 lineId 全库恒 null（合成器写死全局值·无线级实测），Order 也没有产线归属字段。" +
+            "拒绝把全网排序冠上这条产线的名字冒充线级排产。",
+          missingInputs: [
+            { objectType: "ChangeoverMatrix", property: "lineId", need: "线级换型分钟（今日 30/30 恒 null → 只有全局矩阵）" },
+            { objectType: "Order", property: "lineId", need: "订单→产线归属（今日只有 bases[]，无 Order→Line 边）" },
+            { objectType: "WorkOrder", property: "modelId", need: "工单型号需落在 Model 六型号内（今日 5 个取值里 储能-280Ah/储能-314Ah 不在换型矩阵中 → 换型时长无从查）" },
+          ],
+        };
+      }
+      return { lineId: str(args.lineId, "L1"), ...args, ...(lineScope ? { lineScope } : {}), orders, matrix, current: orders[0]?.modelId };
     }
     case "outsourcing_split": {
       const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
       return { gap: num(args.gap, Math.round(totalDemand * 0.15)), totalDemand, ...args };
     }
     case "quote_margin": {
+      // ── WO-QUOTE-MARGIN-CUSTOMER · 欠账 #118 ────────────────────────────────
+      // 修前一行：`bom: mats.slice(0, 4)` + `price: 500` 默认
+      //   ① **BOM 取错表**：`Material` 按 matId 排序的前 4 行（al_foil/cell_case/cu_foil/elyte，**不含正极**）
+      //      → `bomCost` 恒 313.7452，与问的是哪个型号无关。真 BOM 一直在 `BOMHeader`+`BOMDetail` 里
+      //      （4680-NCM 7 行 → 632.835 / 方形-LFP 7 行 → 540.2012）。「有数据、取错表」。
+      //   ② **客户维完全不存在**：`custName` 压根不读；就算读了，数据层的 `order_of_customer` 也是轮转绑的
+      //      （已由本单数据半修好）。实测：custName 换任意值 → 输出逐字节相同。
+      // 修后：客户 →（沿 `order_of_customer` 真归属边）→ 该客户的订单 → 型号 → 真 BOM + 真单价。
+      //   调用方直传 `bom`（测试 / rules-p3 payload）→ 原样返回，标 EXPLICIT（与上线前逐字节一致·R6）。
       if (has("bom")) return args;
-      return { price: num(args.price, 500), mfgRate: 0.1, logistics: 8, segmentFloor: 0.12, ...args, bom: mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })) };
+      const custObjs = (c.customers ?? []).map(props);
+      const orders = (c.orders ?? []).map((o) => ({ id: o.id, p: props(o) }));
+      const linkRows = c.orderCustomerLinks ?? [];
+      const wantedCust = str(args.custName);
+
+      // ── 客户解析（匹配阶梯照 credit_exposure 样板：精确 custName → 下单品牌名 → 双向子串）──
+      let cust: Record<string, unknown> | undefined;
+      if (wantedCust) {
+        cust =
+          custObjs.find((x) => str(x.custName) === wantedCust) ??
+          custObjs.find((x) => (Array.isArray(x.orderCustNames) ? (x.orderCustNames as unknown[]).map(String) : []).includes(wantedCust)) ??
+          custObjs.find((x) => str(x.custName).includes(wantedCust) || wantedCust.includes(str(x.custName)));
+        // 指定了客户却匹配不到 → AMBIGUOUS_SCOPE 400（不静默落首个客户冒充答案·R-ARG-FIDELITY）。
+        if (!cust)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `quote_margin：问句指定客户「${wantedCust}」在客户库中无匹配——拒绝静默落首个客户（R-ARG-FIDELITY·G-ARG-DROP-SEAM）`,
+            400,
+          );
+      }
+
+      // ── 客户 → 订单：**沿 order_of_customer 边**（数据半与引擎半必须在同一个接缝上·SEAM-GATE）──
+      const custId = cust ? str(cust.custId) : "";
+      const custName = cust ? str(cust.custName) : "";
+      const orderIdsOfCust = new Set(linkRows.filter((l) => l.custId === custId).map((l) => l.orderId));
+      const custOrders = cust ? orders.filter((o) => orderIdsOfCust.has(o.id)) : orders;
+
+      // ── 型号选定：显式 modelId 优先；否则取该客户 qty 最大的型号（并列时按 modelId 升序，R6 确定性）──
+      const qtyByModel = new Map<string, number>();
+      for (const o of custOrders) {
+        const m = str(o.p.model);
+        if (m) qtyByModel.set(m, (qtyByModel.get(m) ?? 0) + num(o.p.qty));
+      }
+      const rankedModels = [...qtyByModel.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+      const requestedModel = str(args.modelId);
+      const modelMatched = requestedModel !== "" && qtyByModel.has(requestedModel);
+      const modelId = requestedModel !== "" ? requestedModel : (rankedModels[0]?.[0] ?? "");
+
+      // ── 真 BOM：BOMHeader(该 modelId·量产优先·bomId 升序取首) → BOMDetail × Material.unitPrice ──
+      const matById = new Map(mats.map((m) => [str(m.matId), m]));
+      const headers = (c.bomHeaders ?? []).map(props).filter((h) => str(h.modelId) === modelId);
+      const header =
+        headers.filter((h) => str(h.status) === "量产").sort((a, b) => (str(a.bomId) < str(b.bomId) ? -1 : 1))[0] ??
+        headers.sort((a, b) => (str(a.bomId) < str(b.bomId) ? -1 : 1))[0];
+      const bomRows = header
+        ? (c.bomDetails ?? [])
+            .map(props)
+            .filter((d) => str(d.bomId) === str(header.bomId))
+            .sort((a, b) => num(a.sequence) - num(b.sequence) || (str(a.bomDetailId) < str(b.bomDetailId) ? -1 : 1))
+        : [];
+      const realBom = bomRows.map((d) => ({
+        material: str(d.materialId),
+        unit: num(d.quantity),
+        spotPrice: num(matById.get(str(d.materialId))?.unitPrice, 0),
+        // 加工费率口径改用 BOM 明细自己的**损耗率**（`BOMDetail.lossRate`），不再是写死的 0.05：
+        // 「单台用量 × 现价 × (1+损耗)」是这张 BOM 自己说的，不是求解器替它假设的。
+        processRate: num(d.lossRate),
+      }));
+
+      // ── 真单价：该客户该型号订单的 qty 加权均价（`Order.unitPrice`）——这才让 `qty` 第一次真被消费 ──
+      const priceRows = custOrders.filter((o) => str(o.p.model) === modelId);
+      const totalQty = priceRows.reduce((s, o) => s + num(o.p.qty), 0);
+      const weightedPrice = totalQty > 0 ? round(priceRows.reduce((s, o) => s + num(o.p.qty) * num(o.p.unitPrice), 0) / totalQty, 4) : 0;
+      const modelPrice = num((c.models ?? []).map(props).find((m) => str(m.modelId) === modelId)?.unitPrice, 0);
+      const price = weightedPrice > 0 ? weightedPrice : modelPrice;
+
+      // ── 取不到真 BOM / 真价 → 诚实回落到原默认，并把「为什么」写进 scope（不假装算出来了）──
+      const dataMode = realBom.length > 0 && price > 0 ? "OK" : "EMPTY";
+      const reason =
+        dataMode === "OK"
+          ? undefined
+          : realBom.length === 0
+            ? `型号「${modelId || "（未定位）"}」在 BOMHeader/BOMDetail 中无生效 BOM——不拿 Material 前 4 行冒充型号 BOM`
+            : `型号「${modelId}」取不到单价（该客户名下无此型号在手单，且 Model.unitPrice 缺失）`;
+
+      // ── 点了名的客户却算不出真值 → **报错，不回落**（与 `lta_gap` 删掉 `?? mats[0]` 同一条纪律）──
+      // 否则会走到下面的 `mats.slice(0,4)` 兜底：那正是本单要治的那份假数（313.7452），
+      // 只不过这次答案上还印着提问者的客户名 —— 比修前更像真的，也更危险。
+      // 仅约束 CUSTOMER 分支；未指定客户的 ALL 分支保留兜底（空租户仍出数·与上线前一致·R6）。
+      if (cust && dataMode === "EMPTY")
+        throw new AppError(
+          "EMPTY_SCOPE",
+          `quote_margin：客户「${custName}」算不出接单毛利。原因：${reason}。拒绝回落到 Material 前 4 行的通用 BOM 冒充该客户的报价成本（R-ARG-FIDELITY）`,
+          400,
+        );
+
+      // ── 并线补回：**点了名的型号**取不到真 BOM 也不许回落（canonical WO-SILENT-WRONG-ANSWER-3 症③ 的守卫）──
+      // 本分支从更早的基线分出，只在「点名客户」那条路上设了 EMPTY_SCOPE 闸；而 canonical 自分叉后
+      // 已为「点名型号」补了 AMBIGUOUS_SCOPE 400。若照分支原样收编，`modelId` 指定但无 BOM 且未点客户时，
+      // 会沿下面的 `dataMode !== "OK"` 落回 `mats.slice(0,4)` —— 把「铝箔+壳体+铜箔+电解液」的通用成本
+      // 冠上用户问的型号名，正是 canonical 已经修掉的那个静默错答。两条闸**并存**，不是二选一。
+      if (requestedModel !== "" && realBom.length === 0)
+        throw new AppError(
+          "AMBIGUOUS_SCOPE",
+          `quote_margin：问句指定型号「${requestedModel}」无可用 BOM（BOMHeader 命中 ${headers.length} 份 / 明细 ${bomRows.length} 行）` +
+            `——拒绝拿与型号无关的全局前 4 种物料冒充该型号的 BOM 成本（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+          400,
+        );
+
+      // ── 口径自证（**本单不发明换算常数**）─────────────────────────────────────
+      // 价来自 `Order.unitPrice`（propUnits 声明「元」·WO-SCALE-COHERENCE 后为 **元/套**≈2 万），
+      // BOM 来自 `BOMDetail.quantity`（属性中文名「**单台用量**」）× `Material.unitPrice`。
+      // 两者之间**缺一个「台/套」换算常数**：BOM 侧 Σ物料重量≈2.2kg，与 `Model.weight`（电芯级 g）同量级，
+      // 而价侧已迁到套级 —— 因此 margin 绝对值偏高。造一个常数把它压到「看着合理」= 把金值改成想要的值，
+      // 正是本仓明令禁止的做法。**本单只把口径差摆到台面上**（下方 unitBasis），
+      // 差分 / 归属 / 可溯三项不受影响（同一口径下逐客户可比）。断点登记：G-QUOTE-BOM-PRICE-UNIT-SCALE。
+      const unitBasis = {
+        price: "元/套 · Order.unitPrice（无在手单时回落 Model.unitPrice）",
+        bomCost: "元/台 · Σ BOMDetail.quantity(单台用量) × Material.unitPrice × (1+BOMDetail.lossRate)",
+        coherent: false,
+        gap: "G-QUOTE-BOM-PRICE-UNIT-SCALE",
+        note: "价按套、BOM 按台，二者间缺「台/套」换算常数（种子层欠账，非本求解器可补）——margin 绝对值偏高；逐客户差分与溯源不受影响。",
+      };
+
+      const scope: Record<string, unknown> = cust
+        ? {
+            mode: "CUSTOMER",
+            custName,
+            custId,
+            orderCustNames: Array.isArray(cust.orderCustNames) ? (cust.orderCustNames as unknown[]).map(String) : [],
+            modelId,
+            ...(requestedModel !== "" && !modelMatched
+              ? { requestedModelId: requestedModel, modelMatched: false, modelNote: `客户「${custName}」名下无「${requestedModel}」在手单——单价回落该型号 Model.unitPrice（BOM 仍取该型号真 BOM）` }
+              : { modelMatched: true }),
+            bomId: header ? str(header.bomId) : null,
+            bomRows: realBom.length,
+            orders: priceRows.map((o) => str(o.p.so)).sort(),
+            orderCount: custOrders.length,
+            qty: totalQty,
+            priceSource: weightedPrice > 0 ? "Order.unitPrice（该客户该型号在手单 qty 加权）" : "Model.unitPrice（该客户名下无此型号在手单）",
+            dataMode,
+            unitBasis,
+            ...(reason ? { reason } : {}),
+          }
+        : {
+            mode: "ALL",
+            custName: null,
+            modelId,
+            bomId: header ? str(header.bomId) : null,
+            bomRows: realBom.length,
+            orderCount: custOrders.length,
+            qty: totalQty,
+            priceSource: weightedPrice > 0 ? "Order.unitPrice（全部在手单 qty 加权）" : "Model.unitPrice",
+            dataMode,
+            unitBasis,
+            note: "未指定客户→按全部在手单的主力型号计（非首客户）",
+            ...(reason ? { reason } : {}),
+          };
+
+      return {
+        price: dataMode === "OK" ? price : num(args.price, 500),
+        mfgRate: 0.1,
+        logistics: 8,
+        segmentFloor: 0.12,
+        ...args,
+        // args 里的 custName/modelId 是**问句实参**，不能覆盖上面解析出的口径 → scope/bom 放在 ...args 之后。
+        bom: dataMode === "OK" ? realBom : mats.slice(0, 4).map((m) => ({ unit: num(m.bomUnit, 1), spotPrice: num(m.unitPrice, 1), processRate: 0.05 })),
+        scope,
+      };
     }
     case "credit_exposure": {
+      // 调用方直传数值（测试/规则 payload·rules-p3/solvers-extended）→ 原样（无客户维推导，creditExposure 标 scope:EXPLICIT）。
       if (has("creditLimit")) return args;
-      const cust = (c.customers ?? []).map(props).find((x) => str(x.custName) === str(args.custName)) ?? (c.customers ?? []).map(props)[0] ?? {};
-      const overdue = (c.arInvoices ?? []).map(props).filter((iv) => str(iv.custName) === str(cust.custName) && num(iv.overdueDays) > 30).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
-      return { custName: str(cust.custName, str(args.custName)), creditLimit: num(cust.creditLimit, 5000), receivables: num(cust.receivables), wipUnbilled: num(cust.wipUnbilled), overdue, ...args };
+      // WO-SEAM-ARG-DROP（引擎半·诚实化默认·闭 G-ARG-DROP-SEAM 求解器侧）：客户维过滤**不静默落首客户**。
+      const custObjs = (c.customers ?? []).map(props);
+      const arRows = (c.arInvoices ?? []).map(props);
+      const overdueFor = (name: string) =>
+        arRows.filter((iv) => str(iv.custName) === name && num(iv.overdueDays) > 30).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
+      const wanted = str(args.custName);
+      if (wanted) {
+        // 稳健匹配：精确 → 双向子串（路由 creditArgsFrom /XX公司/ 正则会截掉尾部拉丁字符·如「电网公司」需匹配真实「电网公司F」）。
+        const cust =
+          custObjs.find((x) => str(x.custName) === wanted) ??
+          custObjs.find((x) => str(x.custName).includes(wanted) || wanted.includes(str(x.custName)));
+        // 指定了客户却匹配不到 → 报 AMBIGUOUS_SCOPE（错误信封·不静默落首个客户冒充答案）。
+        if (!cust)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `credit_exposure：问句指定客户「${wanted}」在客户库中无匹配——拒绝静默落首个客户（R-ARG-FIDELITY·G-ARG-DROP-SEAM）`,
+            400,
+          );
+        const name = str(cust.custName);
+        return { ...args, custName: name, creditLimit: num(cust.creditLimit, 5000), receivables: num(cust.receivables), wipUnbilled: num(cust.wipUnbilled), overdue: overdueFor(name), scope: { mode: "CUSTOMER", custName: name } };
+      }
+      // 未指定客户 → **显式全域合计**（scope:ALL·前端可见"未指定客户→全部客户合计敞口"），而非静默取首个客户。
+      const totalLimit = round(custObjs.reduce((s, x) => s + num(x.creditLimit, 5000), 0), 2);
+      const totalRecv = round(custObjs.reduce((s, x) => s + num(x.receivables), 0), 2);
+      const totalWip = round(custObjs.reduce((s, x) => s + num(x.wipUnbilled), 0), 2);
+      const overdueAll = arRows.filter((iv) => num(iv.overdueDays) > 30).map((iv) => ({ invoiceId: str(iv.invoiceId), overdueDays: num(iv.overdueDays), amount: num(iv.amount) }));
+      return { ...args, custName: "全部客户合计", creditLimit: totalLimit, receivables: totalRecv, wipUnbilled: totalWip, overdue: overdueAll, scope: { mode: "ALL", customerCount: custObjs.length, note: "未指定客户→全部客户合计敞口（非首客户）" } };
     }
     case "carbon_footprint": {
       if (has("materials")) return args;
-      const em = (c.energyMeters ?? []).map(props)[0];
-      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold: 70, ...args, materials: mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
+      // ── WO-ENGINE-SCOPE-FIX #116 · A 组①「基地维只回显」（G-SOLVER-SCOPE-ECHO·最危险也最便宜的一条）──
+      // 修前：`const em = (c.energyMeters ?? []).map(props)[0];`
+      //   —— **任何基地**问都拿 `EnergyMeter` 排序首行（常州 em_changzhou）的电网因子，
+      //   而 `baseName` 被原样回显进输出（`carbonFootprint()` 第 :522 行）→ 用户看见「成都」，
+      //   `energyCarbon` 算的却是常州：实测 seed 42 成都/枣庄/江门三问，`total` 全是 349.6151、
+      //   `energyCarbon` 全是 1.3041（= 常州 2.371 × 0.55）。真值应各不相同
+      //   （成都 1.549×0.78=1.2082 / 枣庄 2.573×0.70=1.8011 / 江门 1.849×0.50=0.9245）——
+      //   13 行 EnergyMeter **每基地一行**且早已在 `SolverContext` 里（`withExtended` 十类含 EnergyMeter），
+      //   数据一直都在，只是求解器取了 `[0]`。这是「接了线接错地方」，不是「没数据」（铁律 0.5 三态）。
+      // 修后：
+      //   ① 认 `baseName`（卡片/argHints 用）**与** `base`（路由 baseArgsFrom 用）两个键 —— 键名漂移不该让作用域失效；
+      //   ② 解析走 `resolveBaseRef` 单一出处；解析不到 → **AMBIGUOUS_SCOPE 400**（抄 `credit_exposure` 的样板，
+      //      拒绝静默落首行）；解析到但该基地无 EnergyMeter → 同样 400，绝不拿别的基地的电表冒充；
+      //   ③ 回显位改成**真正被算的那个基地的规范名**（用 baseId 问也回显中文名）—— 印在答案上的名字
+      //      与数字出自同一个基地，这正是本单要治的「假个性化」。
+      // 加性：不给 `baseName`/`base`（S20 卡片今天正是 `baseName:""` 中性默认）→ 仍取 `[0]`，与改前逐字节一致。
+      const meters = (c.energyMeters ?? []).map(props);
+      // WO-SILENT-WRONG-ANSWER-3：同上，`baseName ?? base` 收编到 `arg-aliases.ts`（唯一归一出处）。
+      const baseRefRaw = args.baseName;
+      const baseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object") ? baseRefRaw : undefined;
+      let em = meters[0];
+      let scopedBaseName = "";
+      if (baseRef !== undefined) {
+        const r = resolveBaseRef(c.bases, baseRef);
+        if (!r.resolved || !r.objectId)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `carbon_footprint：问句指定基地「${str(baseRefRaw) || JSON.stringify(baseRefRaw)}」在基地库中无匹配` +
+              `${r.ambiguous ? `（歧义·候选 ${(r.candidates ?? []).map((x) => x.objectId).join("、")}）` : `（扫 ${c.bases.length} 行）`}` +
+              `——拒绝静默落首块电表（R-ARG-FIDELITY·G-ARG-DROP-SEAM）`,
+            400,
+          );
+        const scopedBaseId = r.objectId;
+        scopedBaseName = baseNameOf(c, scopedBaseId);
+        const hit = meters.find((x) => str(x.baseId) === scopedBaseId);
+        if (!hit)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `carbon_footprint：基地「${scopedBaseName}」无 EnergyMeter（单位能耗/电网因子）真源——` +
+              `拒绝拿其它基地的电表冒充该基地的能耗碳（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+            400,
+          );
+        em = hit;
+      }
+      // ── WO-ENGINE-SCOPE-FIX2 #116 · A 档②「型号维只回显」（同一个求解器的第二处假个性化）────────
+      // 修前：物料段恒取 `mats.slice(0,4)` = `Material` 按 id 排序的**前 4 行**（al_foil/cell_case/cu_foil/elyte
+      //   —— 连正极都不在里面），与 `modelId` **毫无关系**；实测 `4680-NCM` 与 `方形-LFP` 抹掉 `$.modelId`
+      //   后逐字节相同（`materialCarbon` 恒 348.311）。而输出把用户问的型号原样印在 `$.modelId` 上。
+      // 三态定性 = **没接线**（不是没数据）：真 BOM 一直在库
+      //   （`BOMHeader.modelId` + `BOMDetail.materialId/quantity/lossRate`·`synthetic/battery.ts:3365/3382`），
+      //   只是 `BOMHeader`/`BOMDetail` **从没进过 `SolverContext`**（本单已加·见 types.ts 字段注释）。
+      // 修后：给了 `modelId` → 取该型号的 BOM（多版本时取 `sortById` 排序首个 BOM —— 同型号各版本
+      //   共用同一份 `BOM_ITEM_TEMPLATES`，量值本就相同，选哪版不改数字，只改 `bomId`），
+      //   逐行 `unit = quantity × (1 + lossRate)`（损耗率是真列，不吞），`factor` 取该物料 `Material.carbonFactor`。
+      //   该型号无 BOM / BOM 明细全部对不上 `Material` → **`AMBIGUOUS_SCOPE` 400**，绝不回落全局前 4 行
+      //   （回落正是本单要治的病：把「铝箔+壳体+铜箔+电解液」的碳排印上用户问的型号名）。
+      // ⚠ 实事求是：本 seed 里各型号 BOM 只在正极那一行分叉（NCM 用 `pos_ncm` 1.05kg / LFP 用 `pos_lfp` 1.0kg，
+      //   其余 6 行完全相同）⇒ **两个 NCM 型号之间碳足迹本就应当相同**，那不是没重算，那是真值如此。
+      //   差分门据此只断言「跨化学体系必须不同」，不假装同体系也会不同。
+      // 加性：不给 `modelId`（S20 卡片今天给的是 `modelId:"4680-NCM"`，但 `{}` 与规则 payload 路都不给）
+      //   → 仍取 `mats.slice(0,4)`，与改前逐字节一致。
+      const wantedModel = str(args.modelId);
+      let bomMaterials: { material: string; unit: number; factor: number }[] | undefined;
+      if (wantedModel) {
+        const heads = (c.bomHeaders ?? []).map(props).filter((h) => str(h.modelId) === wantedModel);
+        const bomId = heads.length > 0 ? str(heads[0]!.bomId) : "";
+        const details = bomId ? (c.bomDetails ?? []).map(props).filter((d) => str(d.bomId) === bomId) : [];
+        const byMatId = new Map(mats.map((m) => [str(m.matId), m]));
+        const rows = details
+          .map((d) => {
+            const m = byMatId.get(str(d.materialId));
+            return m === undefined ? null : { material: str(d.materialId), unit: round(num(d.quantity, 0) * (1 + num(d.lossRate, 0)), 6), factor: num(m.carbonFactor, 10) };
+          })
+          .filter((x): x is { material: string; unit: number; factor: number } => x !== null);
+        if (rows.length === 0)
+          throw new AppError(
+            "AMBIGUOUS_SCOPE",
+            `carbon_footprint：问句指定型号「${wantedModel}」无可用 BOM（BOMHeader 命中 ${heads.length} 份 / BOMDetail 明细 ${details.length} 行 / 能对上 Material 的 ${rows.length} 行）` +
+              `——拒绝拿与型号无关的全局前 4 种物料冒充该型号的物料碳（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+            400,
+          );
+        bomMaterials = rows;
+      }
+      return { modelId: str(args.modelId), baseName: str(args.baseName), euThreshold: 70, ...args, ...(scopedBaseName ? { baseName: scopedBaseName } : {}), materials: bomMaterials ?? mats.slice(0, 4).map((m) => ({ material: str(m.matId), unit: num(m.bomUnit, 1), factor: num(m.carbonFactor, 10) })), processes: em ? [{ process: str(em.processKey, "涂布"), energy: num(em.energyPerUnit, 2), gridFactor: num(em.gridFactor, 0.6) }] : [] };
     }
     case "maintenance_stagger": {
       if (has("bases")) return args;
-      const bases = (c.bases ?? []).map((b, i) => ({ base: str(props(b).name, `B${i}`), group: "g1", maintWeek: 10 + (i % 3), loadByWeek: { "6": 20, "7": 5, "10": 80, "11": 8, "12": 12 } }));
-      return { peakWeeks: [10, 11, 12], ...args, bases };
+      // 诚实边界（假6·KILL-MOCK-RED）：删写死 loadByWeek/maintWeek/peakWeeks——SolverContext 无逐周负荷/交付高峰时序源。
+      // 真派生可得：真实基地 + 真实检修周（maintWeekOf 读 MaintenancePlan.week）；逐周负荷/高峰周缺真源 → 空 + 标合成（provenanceSynthetic）。
+      const bases = (c.bases ?? [])
+        .map((b, i) => ({ base: str(props(b).name, `B${i}`), group: str(props(b).group, "g1"), maintWeek: maintWeekOf(c, str(props(b).baseId)) ?? 0, loadByWeek: {} as Record<string, number> }))
+        .filter((x) => x.maintWeek > 0);
+      return { peakWeeks: [], provenanceSynthetic: true, ...args, bases };
     }
     case "yield_diagnosis": {
       if (has("series")) return args;
-      const series = Array.from({ length: 40 }, (_, d) => ({ day: d + 1, yield: d < 33 ? 0.95 : 0.85 }));
-      return { processKey: str(args.processKey, "涂布"), baseName: str(args.baseName), ...args, series, events: [{ day: 33, kind: "换批", source: "MES" }] };
+      // 诚实边界（假6·KILL-MOCK-RED）：删写死 40 天 day-33 突变 series——SolverContext 无逐日良率时序源，
+      // 不伪造序列冒充"恒找到 day33"。无 series → yieldDiagnosis 返 EMPTY + 披露（标合成）。真时序接入后再喂真 series。
+      return { processKey: str(args.processKey, "涂布"), baseName: str(args.baseName), provenanceSynthetic: true, ...args };
     }
-    case "quarterly_gap":
-      return { quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args };
+    case "quarterly_gap": {
+      // ── WO-ENGINE-SCOPE-FIX2 #116 · A 档⑤「季度维只回显」→ **裁决 ③：显性标缺席** ────────────────
+      // 危害比取证单 §2.1#8 判的「时间标签·危害低」要高一档，追一层才看得见：S19 卡片的 preset 只有
+      // `{quarter:"2026Q2"}`（`scenarios-catalog.ts:114`）—— **不带 `gap`**。于是"Q2 缺口用什么组合补？"
+      // 这一问，答案里的缺口数是本行写死的 **50**（一个与任何季度都无关的字面量），却与 `quarter:"2026Q2"`
+      // 并排渲染成 KPI。不是"标签不过滤"，是**把一个凭空的数字挂在用户说的那个季度名下**。
+      // 为什么不真算（追一层的结论，不是没查）：
+      //   · 季度**需求**真源在库 —— `PlanTarget` level="quarter"（`PT-2026-Q1..Q4`·`battery.ts:4510-4527`）；
+      //   · 但**缺口 = 需求 − 供给**，季度供给要走 `capex.deriveS0`（周产能×认证系数×周曲线 ×13 周上卷），
+      //     它今天只在 `planviews.ts` 那条路上跑，`compute()` 这条路既没有 `PlanTarget`（不在 `SolverContext`）
+      //     也没有 `computeRollup/curveMult` 的注入；且 `deriveS0` 的季度索引是**相对预测窗口起点**的，
+      //     要映射到日历季 `2026Q2` 还得先解 `forecastStart` —— 属**新数据通道**，非"加个过滤"。
+      //   · 硬接的后果与 `G-YIELD-SERIES-SOURCE-MISMATCH` 同形：把"这个数是占位"换成一个**看起来算过的**
+      //     错数，更难被发现。故本单不接，只把"这个 50 不是 Q2 的缺口"写进答案。
+      // 加性：**调用方给了 `gap` → `quarterScope` 键不出现**（那时数字归调用方所有，不是本行编的），
+      //   `{}` 也不出现（没有用户说的季度可冒充）—— 两条路都逐字节同改前。
+      const quarterGiven = str(args.quarter) !== "";
+      const gapGiven = has("gap");
+      const quarterScope =
+        quarterGiven && !gapGiven
+          ? {
+              dataMode: "EMPTY",
+              quarter: str(args.quarter),
+              reason:
+                "未给 gap ⇒ 本次缺口取的是求解器占位缺省值（50 万套），**不是该季度的真实产销缺口**：" +
+                "季度需求真源 PlanTarget(level=quarter) 在库，但季度供给需走 capex.deriveS0 的周产能上卷（仅 planviews 路可达，" +
+                "且其季度索引相对预测窗口起点、未与日历季对齐）—— 拒绝拿占位数冒充该季度的缺口读数。",
+              missingInputs: [
+                { objectType: "PlanTarget", property: "value@level=quarter", need: "季度需求（在库·但 PlanTarget 不在 SolverContext）" },
+                { objectType: "Line", property: "capacityDaily→季度供给", need: "季度供给上卷（deriveS0 需 computeRollup/curveMult 注入 + 日历季对齐）" },
+              ],
+            }
+          : undefined;
+      return { quarter: str(args.quarter, "2026Q2"), gap: num(args.gap, 50), ...args, ...(quarterScope ? { quarterScope } : {}) };
+    }
     case "countermeasure_combo": {
       const totalDemand = (c.orders ?? []).reduce((s, o) => s + num(props(o).qty), 0) || 100;
       return { gap: num(args.gap, Math.round(totalDemand * 0.15)), ...args };
     }
-    case "mitigation_select":
-      return { tightness: 85, ...args };
+    case "mitigation_select": {
+      // 注入 canonical 方案库（params.risk.mitigations）→ mitigation_select 对全部 7 个风险因子可用。
+      //
+      // ── WO-ENGINE-SCOPE-FIX2 #116 · A 档③「基地维只回显」+ #117「卡片键名不对」（一处两病）────────
+      // 修前两条并存：
+      //   ① 求解器读 `args.baseName`，而 **S06 卡片传的是 `base`**（`scenarios-catalog.ts:66`
+      //      `{ base:"常州", factor:"物料齐套", solutionName:"三班制" }`）⇒ 实测 `baseName:""`、
+      //      **`draftPayload.base` 是空串** —— 这份草稿是要变成 Action 审批件的，基地字段空着就走完了全程；
+      //   ② 就算把 `baseName` 传对，`tightness` 也是这里写死的 **85**（与哪个基地无关）⇒ 常州问、枣庄问，
+      //      `urgency`/`plans[].score`/`recommended` 逐字节相同，而输出上印着用户说的那个基地名。
+      // 数据一直都在（铁律 0.5 三态 = **接了线接错地方**，不是没数据）：`Base` 13 行齐，
+      // 且 `risk.ts liveTightness/mockTightness` **早就**按 (baseId, factor) 算张力、早就被 `bottleneck_matrix`
+      // 消费（`risk.ts:241/245`）—— 病是「只挂了 bottleneck_matrix 一个挂载点，处置选型这条路没挂」。
+      // 修后：
+      //   ① `baseName` **与** `base` 两键都认（键名漂移不该让作用域失效），解析走 `resolveBaseRef` 单一出处；
+      //      解析不到 → `AMBIGUOUS_SCOPE` 400（抄 `credit_exposure` 样板·拒绝静默按"没给基地"处理）；
+      //   ② `tightness` 缺省改为 **该基地 × 该因素的真张力**（`liveTightness`·读不到真源时它自己回落
+      //      `mockTightness`，仍是逐 (基地,因素) 确定性值 —— 两条路都随基地变，R6 无随机/无时钟）；
+      //   ③ 回显位（含 `draftPayload.base`）归一成**真正被算的那个基地**的规范名。
+      //   ④ 加性透出 `dataMode`（LIVE/MOCK）—— 让"这份紧张度是实测还是估算"在答案里可见。
+      // 调用方**直传 `tightness`** 时仍以调用方为准（`...args` 在后·`rules-p3-payload-11solvers.test.ts:159`
+      // 传 92 的那条路逐字节不变）。**不给 base/baseName → `tightness:85` 且无 `dataMode` 键 = 改前逐字节一致。**
+      // WO-SILENT-WRONG-ANSWER-3：`baseName ?? base` 这份**手写键名兜底**已收编到单一出处
+      //   `arg-aliases.ts SOLVER_ARG_ALIASES.mitigation_select`（在 `compute()` 派发前统一归一）。
+      //   这里只读规范键 —— 每个消费方各写一份 `??` 正是本单要治的散落（同一概念两个名字的债散成 N 份）。
+      const baseRefRaw = args.baseName;
+      const hasBaseRef = str(baseRefRaw) !== "" || (baseRefRaw !== null && baseRefRaw !== undefined && typeof baseRefRaw === "object");
+      // ⚠ `tightnessDataMode: undefined` 是**显式覆盖**，不是可省略的装饰：
+      //   `...args` 在前，调用方若自带该键会原样留下 ⇒ 输出冠上 "LIVE 实测" 的名义。
+      //   没有基地就没有派生，凭证必须为空 —— 见下面 scoped 路的同款注释。
+      if (!hasBaseRef) return { tightness: 85, mitigations: c.params?.risk?.mitigations, ...args, tightnessDataMode: undefined };
+      const r = resolveBaseRef(c.bases, baseRefRaw);
+      if (!r.resolved || !r.objectId)
+        throw new AppError(
+          "AMBIGUOUS_SCOPE",
+          `mitigation_select：问句指定基地「${str(baseRefRaw) || JSON.stringify(baseRefRaw)}」在基地库中无匹配` +
+            `${r.ambiguous ? `（歧义·候选 ${(r.candidates ?? []).map((x) => x.objectId).join("、")}）` : `（扫 ${c.bases.length} 行）`}` +
+            `——拒绝拿一份与该基地无关的紧张度选处置方案（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
+          400,
+        );
+      const scopedBaseId = r.objectId;
+      const scopedBaseName = baseNameOf(c, scopedBaseId);
+      const factor = str(args.factor);
+      // 因素缺省时不派生张力（求解器本就会以 `unknown factor` 收场，派生一个没人用的数只会误导）。
+      const lt = factor ? liveTightness(c, scopedBaseId, factor) : null;
+      // `dataMode` 只描述**本函数派生的那个 tightness**；调用方直传 tightness 时不出现
+      // （否则会把调用方的数字冠上"LIVE 实测"的名义 —— 那是另一种假个性化）。
+      const derivedTightness = lt !== null && !has("tightness");
+      return {
+        tightness: lt ? lt.value : 85,
+        mitigations: c.params?.risk?.mitigations,
+        ...args,
+        baseName: scopedBaseName,
+        // ⚠ 必须**无条件写这个键**，不能写成 `...(derivedTightness ? {…} : {})`。
+        //   原写法在 `derivedTightness=false` 时展开成 `{}`，于是**什么都没覆盖**——
+        //   而 `...args` 在它前面，调用方自带的 `tightnessDataMode` 就原地活了下来
+        //   ⇒ 调用方传 `{tightness:92, tightnessDataMode:"LIVE"}` 时，答案自称"这份紧张度是实测的"。
+        //   这与本单要治的假个性化**同形**，只是把"实体名"换成了"数据来源"：
+        //   dataMode 是引擎**派生出来的凭证**，不是调用方能声明的入参。
+        //   置 undefined ⇒ mitigationSelect 里 `str(undefined)` 为空 ⇒ 输出不带 dataMode 键（加性不变）。
+        tightnessDataMode: derivedTightness ? (lt!.live ? "LIVE" : "MOCK") : undefined,
+      };
+    }
     default:
       return args;
   }

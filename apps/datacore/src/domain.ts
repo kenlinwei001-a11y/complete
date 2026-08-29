@@ -105,6 +105,10 @@ export interface Connection {
   status: "ACTIVE" | "DISABLED" | "ERROR";
   lastSyncAt?: string;
   lastError?: string;
+  /** A11 per-connection 归类：实例级来源系统类（创建时默认取连接器类型 category，可覆盖、可自定义值 R14）。 */
+  category?: string;
+  /** 约束执行层（可配置,按租户）：该源导入数据的本体校验策略 + 字段映射（适配不同数据字段）。 */
+  validationPolicy?: import("@platform/contracts").ValidationPolicy;
 }
 
 export interface SyncJob {
@@ -126,6 +130,8 @@ export interface RawDataset {
   fields: FieldProfile[];
   rowCount: number;
   syncedAt: string;
+  /** A11 溯源继承：产出该数据集的连接 category（便于数据浏览按来源类筛）。 */
+  sourceCategory?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +196,11 @@ export interface Rule {
   expression: string;
   scopeObjectTypes: string[];
   severity: "BLOCK" | "WARN" | "INFO";
+  /** 规则即引用：命名阈值（求解器读 rule.params 去硬编码；改 param 即改推演）。
+   * A3-SUITE-1：同时承载切片契约字符串数组（mustIncludeTypes / mustIncludeLinkKeys）。 */
+  params?: Record<string, number | string | string[]>;
+  /** WO-RULES-CLASSIFY（加性）：业务类别（产能/物料/财务/合规/换型…），规则库分类筛选的真元数据。可空（手工/旧规则）。 */
+  category?: string;
   origin: RuleOrigin;
   version: number;
   status: "DRAFT" | "PUBLISHED" | "RETIRED";
@@ -215,6 +226,15 @@ export interface PropertyDef {
   /** 治理增量 §4：单位（场景包单位字典约束）+ 展示格式（如 "0.0"）。 */
   unit?: string;
   displayFormat?: string;
+  /**
+   * WO-SCHEMA-ZH · 属性中文业务名（"leadTime" → "到货周期"）——与 unit 并列的**展示层单一真值**。
+   * 补一层展示名而非改 propKey：key 是求解器/规则/派生公式/金值的接线名，改它会连带打断整条链。
+   * **可缺省 = 诚实留白**：含义未经业务确证的属性不臆造中文名，下游一律回落 propKey（不得渲染 undefined/空白），
+   * 也不得在前端各存一份中文映射（单源优于并存）。值的单一来源见 synthetic/battery.ts PROP_DISPLAY_NAMES。
+   */
+  displayName?: string;
+  /** DF.5 语义目录：属性业务语义描述（"这字段是什么"），喂生成接地 prompt + /catalog/search 检索。 */
+  description?: string;
 }
 
 export interface SourceBinding {
@@ -249,9 +269,7 @@ export interface ObjectTypeDef {
   properties: PropertyDef[];
   derivedProperties: DerivedPropertyDef[];
   sourceBindings: SourceBinding[];
-  version: number;
-  status: "ACTIVE" | "RETIRED";
-  // OntoFlow（PRD v2）扩展 —— 全部可选，缺省即沿用既有"本体图谱"语义（不破既有快照）。
+  // OntoFlow（PRD v2）扩展 —— 全部可选，缺省即沿用既有"本体图谱"语义（不破既有快照）。嫁接自 main 平行线。
   /** 存储模式：STATIC=静态图谱(纯结构,不参与派生/推演)；ONTOLOGY=完整本体。缺省视为 ONTOLOGY。 */
   storageMode?: "STATIC" | "ONTOLOGY";
   /** 状态变量（事件折叠产物，如 order_risk = Max(event.risk)）。 */
@@ -266,6 +284,16 @@ export interface ObjectTypeDef {
   entityCategory?: string;
   /** 对象描述（文档 + agent 提示）。 */
   description?: string;
+  /**
+   * WO-69 P3 · **实现的对象接口**（多态抽象）。沿用本结构既有的"可选扩展"先例（OntoFlow 字段全可选，
+   * 老快照不破）：**缺省不声明 = 逐字节沿用现状**，发布门一条都不走。
+   * 一个类型可实现 N 个接口（组合优于继承）；平台**没有** `extends`。
+   * `version:"latest"` 跟随最新已发布接口版本（接口一改，下次发布即被要求补齐）；
+   * 固定数字 = pin 住（接口演进不会悄悄让已发布实现者失效）。
+   */
+  implements?: import("@platform/contracts").ImplementsRef[];
+  version: number;
+  status: "ACTIVE" | "RETIRED";
   /** 治理增量 §2：是否曾 PUBLISHED（API 名不可变纪律的锚点）。 */
   published?: boolean;
   /** 治理增量 §2.2：弃用状态机。 */
@@ -278,7 +306,7 @@ export interface LinkTypeDef {
   key: string;
   fromTypeKey: string;
   toTypeKey: string;
-  cardinality: "1:1" | "1:N" | "N:N";
+  cardinality: "1:1" | "1:N" | "N:1" | "N:N";
   version: number;
   published?: boolean;
   deprecation?: DeprecationMeta;
@@ -338,20 +366,25 @@ export interface OntologyVersion {
   createdAt: string;
 }
 
+/**
+ * WO-69 P3 · 对象接口仓储记录（id 前缀 `oif_`）。契约见 `packages/contracts/src/object-interface.ts`
+ * （契约已含 id/tenantId → 此处只做 domain 侧别名，R1 不重定义）。
+ */
+export type ObjectInterfaceRecord = import("@platform/contracts").ObjectInterface;
+
 export type ObjectOrigin =
-  | { type: "SYNTHETIC"; jobId: string }
+  // 活数据可溯（PRD-live-traceable-data §3.1，additive）：合成对象现经"合成数据源→RawDataset→物化"
+  // 落地，origin 记源头 backref（sourceConnId/rawDatasetId/rawRowIdx）→ 结果可溯回原始行与连接器。
+  | { type: "SYNTHETIC"; jobId: string; sourceConnId?: string; rawDatasetId?: string; rawRowIdx?: number }
   | { type: "MATERIALIZED"; datasetId: string; jobId: string }
   | { type: "MANUAL" }
-  // OntoFlow（PRD v2）：流水线发布物化的对象。
-  | { type: "PIPELINE"; workflowId: string };
-
-/** OntoFlow（PRD v2）：本体建模工作流持久化记录（doc = OntologyWorkflow 契约）。 */
-export interface OntologyWorkflowRecord {
-  id: string; // wf_
-  tenantId: string;
-  doc: import("@platform/contracts").OntologyWorkflow;
-  updatedAt: string;
-}
+  // Dogfooding：系统本体自反投影（从 SYSTEM-ONTOLOGY.md/prd-index 确定性重生成,可溯回章节锚点）。
+  | { type: "META"; source: string; anchor?: string }
+  // OntoFlow（PRD v2 P3）：流水线发布物化落地的对象（origin 记工作流 backref）。嫁接自 main 平行线。
+  | { type: "PIPELINE"; workflowId: string }
+  // WO-GSIM-5-ACTION：S2 Action 执行回灌物化的对象（在产 WorkOrder / 跨基地调剂 InterBaseTransfer），
+  // origin 记 actionId + 方案指纹 backref → R13 溯回采纳的方案（G-DECISION 行动半 / G-LOOP-FEEDBACK）。
+  | { type: "ACTION"; actionId: string; source?: string; fingerprint?: string };
 
 export interface ObjectInstance {
   id: string; // obj_
@@ -363,6 +396,8 @@ export interface ObjectInstance {
   objectKey?: string;
   /** 本体原子规格 §1：写入批次序号（snapshotVersion = {ontologyVersion}.{epoch}）。 */
   epoch?: number;
+  /** OC1 实体解析：被并入 golden 对象的 id（置则该对象不出现在查询/切片/聚合，只见 golden）。 */
+  mergedInto?: string;
   updatedAt?: string;
 }
 
@@ -448,9 +483,16 @@ export interface SliceSpecRecord {
       expect: {
         rootType: string;
         minNodes: number;
-        mustIncludeTypes: string[];
+        mustIncludeTypes?: string[];
         mustIncludeLinkKeys?: string[];
         maxNodes?: number;
+        // A3-SUITE-1：约束可来自一等 RuleEntry.params（G-10 切片维）。
+        // 若提供 ruleRef，运行时从已发布规则读参数；否则退回到内联数组（冷启动 fallback）。
+        ruleRef?: {
+          ruleKey: string;
+          typesParam: string;
+          linksParam: string;
+        };
       };
     }[];
   };
@@ -488,6 +530,8 @@ export interface ActionDraft {
   status: ActionStatus;
   approvalSteps: ApprovalStep[];
   executionResult?: { ok: boolean; targetRef?: string; error?: string; attempts: number };
+  /** WO-GSIM-5-ACTION：确定性方案指纹（同方案两次采纳 → 幂等·返回既有草稿不重复生成·R6）。 */
+  fingerprint?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -674,6 +718,14 @@ export interface NotificationRecord {
 }
 
 /** 运营完备性 §4 数据隔离区：行级失败不再使批次失败，异常行落隔离区可修复重处理。 */
+/** Dogfooding P2：元本体访问策略记录（id=tenantId;角色白名单,默认 ["admin"]）。 */
+export interface MetaAccessPolicyRecord {
+  id: string; // = tenantId
+  tenantId: string;
+  roles: string[];
+  updatedAt?: string;
+}
+
 export interface QuarantineRowRecord {
   id: string; // qr_
   tenantId: string;
@@ -858,7 +910,8 @@ export interface ForecastSnapshotRecord {
   id: string; // fcst_<tenant>_<model>
   tenantId: string;
   modelId: string;
-  p50: number;
+  /** @unit 万套/窗口 */
+  capWanP50: number;
   weeks: number;
   predictedDaily: number; // 万套/日
   createdAt: string;
@@ -1128,9 +1181,11 @@ export interface LlmProviderRecord {
 export interface LlmPurposeBindingRecord {
   id: string; // llmb_{purpose}
   tenantId: string;
-  purpose: string; // classifier|agent|extraction|modeling|template_gen|compose
+  purpose: string; // classifier|agent|extraction|modeling|template_gen|compose|comprehend
   providerId: string;
   modelId: string;
+  /** WO-QOS-NOREASON「关推理」：ON → 解析期若绑定模型为推理型，改用同 provider 非推理兄弟（存 JSONB doc·无需迁移）。 */
+  noReasoning?: boolean;
   updatedAt: string;
 }
 
@@ -1177,4 +1232,12 @@ export interface OpsTickReportRecord {
   executed: { kind: string; persona: string; ref?: string; decision?: string }[];
   skipped: { kind: string; persona: string; reason: string }[];
   createdAt: string;
+}
+
+/** OntoFlow（PRD v2）：本体建模工作流持久化记录（doc = OntologyWorkflow 契约）。嫁接自 main 平行线。 */
+export interface OntologyWorkflowRecord {
+  id: string; // wf_
+  tenantId: string;
+  doc: import("@platform/contracts").OntologyWorkflow;
+  updatedAt: string;
 }

@@ -1,4 +1,7 @@
 /** 中文文案集中地（预留 i18n 结构，不做翻译） */
+// DF.13：文案里出现的业务阈值百分数一律由 @platform/contracts 单一来源格式化（R14 应用层无业务常数）。
+import { OUTSOURCE_REDLINE, outsourceRedlinePct } from "@platform/contracts";
+
 export const zh = {
   common: {
     appName: "全域数字化智能决策支撑系统",
@@ -29,6 +32,20 @@ export const zh = {
     footprint: "足迹",
     searchPlaceholder: "全局搜索对象…",
   },
+  home: {
+    fallbackTenant: "全域决策支撑",
+    hint: "一键启动高频场景直达推演，或进入业务视图。按 ⌘K 随处快搜场景。",
+    hotScenarios: "⚡ 高频场景",
+    businessViews: "业务视图",
+    allScenarios: "⚡ 全部场景启动器 →",
+    writebackBadge: "写回",
+  },
+  launcher: {
+    title: "场景启动器",
+    paletteTitle: "⌘K · 场景命令面板",
+    searchAria: "搜索场景",
+    searchPlaceholder: "搜场景名 / 触发问句…",
+  },
   login: {
     title: "登录",
     tenant: "租户",
@@ -45,9 +62,12 @@ export const zh = {
     connections: "连接器与上传",
     ruleDocs: "规则文档审核",
     modeling: "本体建模",
+    objectTypes: "对象/类型浏览",
     rules: "规则库",
     permissions: "权限策略",
     synthetic: "合成数据",
+    dataBuilder: "数据构建发动机",
+    pipelines: "构建 Pipeline 配置",
     actions: "Action 审批",
     catalog: "意图目录",
     agents: "Agent",
@@ -57,12 +77,34 @@ export const zh = {
     scenes: "场景入口",
     opsFallback: "兜底统计",
     opsSchedule: "运营自动化",
+    // WO-BEFE-B · 两个新管理页
+    scheduler: "定时任务",
+    calendars: "工厂日历",
     features: "功能开通",
     calibration: "校准报告",
     tenants: "租户管理",
     users: "用户管理",
     views: "视图配置",
     llmProviders: "LLM Provider",
+    externalSignals: "外部信号",
+    validation: "闭环验证(VLE)",
+    quarantine: "隔离区",
+    notifications: "通知中心",
+    domains: "域管理",
+    // WO-INTERFACE-ADMIN-UI · 对象接口管理台（WO-69 P3 的前端面：建/改/发 + 发布门反馈）
+    interfaces: "对象接口",
+    // WO-BEFE-A · 本体关系编辑器（结构边 + 因果边 + 发布会签）。
+    ontologyRelations: "本体关系",
+    evals: "Agent 评测",
+    slices: "本体切片",
+    sliceLibrary: "切片库",
+    merge: "实体合并",
+    growth: "自成长发动机",
+    solverReview: "求解器审核台",
+    solvers: "求解器目录",
+    configMigration: "配置迁移",
+    resources: "智能资源治理",
+    planBuilder: "计划构建画布",
   },
   errors: {
     notFoundTitle: "页面不存在",
@@ -73,6 +115,72 @@ export const zh = {
     pageError: "页面出错了",
     featureClosed: "该功能已被管理员关闭",
   },
+  /**
+   * 求解器**作用域诚实位**（欠账 #178 · `components/ScopeHonestyBadge.tsx`）。
+   *
+   * ⚠ 这里只放**短标签**（第一层那枚徽标上的字）。说明正文一律**取后端原文**，不在此另写一份 ——
+   * 措辞是引擎侧的单一来源（`solvers/risk.ts:776-777` / `capacity.ts:443-444` /
+   * `extended.ts:975` / `capex.ts:201-203`），前端另写一句必然与引擎口径漂移，
+   * 那正是本欠账要治的病。
+   *
+   * 措辞判据（三态不许混·混了用户会去修错地方）：说的是「**没按这个实参重算**」，
+   * **不是**「没有数据」——后者会把人引去补数据，而真正要补的是过滤维/挂载点。
+   */
+  scopeHonesty: {
+    /** 真按实参重算：报出算的是谁即可，中性陈述、不是警告。 */
+    scoped: (to: string) => (to ? `仅 ${to} · 已按此范围重算` : "已按所选范围重算"),
+    /** 该维未限定 ⇒ 数是全域合计。用户最容易把它读成局部答案，故第一层必须直说。 */
+    global: "全域口径 · 非所选范围",
+    /** 实参给了却没参与计算（只当标签回显 / 该维数据层没有）—— 三档里最危险的一档。 */
+    unapplied: "该范围实参未参与计算",
+    popoverTopic: "作用域口径",
+    fieldHint: (field: string) => `诚实位字段：${field}（求解器随结果下发）`,
+
+    /* ══ 以下为 WO-R1 从 `claude/integ-ui-w5` 收编（2026-08-13）══════════════════
+     * ⚠ **这些键必须并进上面这一个 `scopeHonesty` 块，绝不许另起第二个块。**
+     * 实测（收编当日亲手数的）：canonical 这一块 5 个键、`integ-ui-w5` 那一块 19 个键，
+     * **两边键名交集为 0**。JS 对象字面量里同名键后者静默覆盖前者，而 `git` 对这种
+     * 「两个 `scopeHonesty:` 各在文件不同位置」的合并**零冲突、全自动**——
+     * 于是 `scoped`/`global`/`unapplied`/`popoverTopic`/`fieldHint` 会在编译期毫无征兆地整组消失，
+     * `ScopeHonestyBadge` 当场渲 `undefined`。复验命令（收编后应恒为 1）：
+     *   `grep -c 'scopeHonesty: {' apps/frontend-shell/src/locales/zh.ts`
+     * 服务对象是 `views/ScopeHonesty.tsx` 的 `KitScopeBar` / `QuoteScopeBar` ——
+     * 它们补的是 `solverScopeHonesty.ts` 头注**指名拒收**的两个命题（抽样两数 · 报价两维）。
+     * ⚠ 原 w5 块里的 `baseIdLabel` / `baseNameMissing` **未收编**：那两个只服务于被裁掉的
+     * `RiskScopeBar`（理由见 `views/ScopeHonesty.tsx` 文件头「收编裁决」）。
+     * ═══════════════════════════════════════════════════════════════════════ */
+    title: "本次口径",
+    /** 后端**没下发**诚实位 —— 与「说了是全网」是两件事，必须分开显示。 */
+    unstated: "作用域未标注",
+    noNote: "后端未回传该项口径说明（诚实缺席，非「无口径」）",
+    whyItMatters:
+      "为什么这一行必须存在：「没说算的是谁」与「说了是全网」在屏上一模一样时，" +
+      "问某个基地却返回全网结果就完全看不出来 —— 那正是当初把它判为「静默错答」而非「报错」的直接原因。",
+
+    // ── kit_readiness 抽样（这两个数改变 shortageCount 的读法，故在第一层）──
+    kitTopic: "齐套口径与抽样",
+    sampling: (pool: number | undefined, sampled: number | undefined) =>
+      `订单池 ${pool ?? "—"} 张 · 本次分析 ${sampled ?? "—"} 张`,
+    networkTotal: (n: number) => `全网订单总量 ${n} 张（本口径由此收窄而来）`,
+    shortageReading: (shortage: number | undefined, sampled: number | undefined, pool: number | undefined) =>
+      shortage === undefined
+        ? "缺料单数：后端未回传"
+        : sampled === undefined
+          ? `缺料 ${shortage} 张（后端未回传本次分析量，无法判断这是不是全部）`
+          : sampled < (pool ?? sampled)
+            ? `缺料 ${shortage} 张 = 本次分析的 ${sampled} 张里有 ${shortage} 张缺料；订单池共 ${pool} 张，未分析的 ${(pool ?? 0) - sampled} 张不在此数内`
+            : `缺料 ${shortage} 张 = 该口径下 ${sampled} 张全部分析后的结果（无截断）`,
+
+    // ── quote_margin 两维（定性不同，不许合成一句）──
+    quoteModelTitle: "型号维",
+    quoteCustTitle: "客户维",
+    modelApplied: (modelId: string) => `已生效 · ${modelId}`,
+    modelAll: "未指定型号（非任何具体型号的配方）",
+    /** ⚠ 客户维今天是**诚实标注**、不是真算 —— 第一层就得写「不生效」，不许画成算过的样子。 */
+    custNotApplied: (custName: string) => (custName ? `${custName} · 不生效（NOT_APPLIED）` : "不生效（NOT_APPLIED）"),
+    custApplied: (custName: string) => `已生效 · ${custName}`,
+    missingTitle: "要真按这一维算，缺这些源：",
+  },
   dock: {
     placeholder: "输入问题，回车提交…",
     expand: "展开对话",
@@ -81,6 +189,8 @@ export const zh = {
     exploreMode: "探索模式",
     verifiedBadge: "已验证 · 工作流",
     exploratoryBadge: "探索 · AI",
+    // WO-REAL-LLM-FREE-QUERY 诚实三态之三：path-B 真 LLM 深问（据页/块上下文·工具取证）——绝不标"数据库事实"。
+    llmReasoningBadge: "真 LLM 推理 · 据页/块上下文工具取证",
     unverifiedStrip: "部分数字未能溯源，仅供参考",
     clarifyNone: "都不是",
     clarifyRound: (n: number) => `第 ${n}/2 次确认`,
@@ -92,7 +202,17 @@ export const zh = {
     feedbackDone: "已记录反馈",
     failed: "任务失败",
     cancelled: "任务已取消",
+    // CL.7 对话坞缺口卡（in-dialog gap-fill）
+    gapTitle: "信息不足 · 缺口",
+    gapTrigger: "▶ 触发生成缺失数据",
+    gapTriggering: "正在生成…",
+    gapFilled: "✓ 已补齐数据",
+    gapContinue: "继续推演 →",
+    gapUnreachable: (code: string) => `不可达：断在 ${code}（需开发/人工补）`,
+    gapTicket: "查看成长工单 →",
     routedWorkflow: (name: string) => `命中工作流 · ${name}`,
+    /** WO-FE-AGENT-TRACE：agent loop 轮次（后端 agent/loop.ts:848 的 iteration·0 基 → 展示 +1） */
+    iterationChip: (n: number) => `第 ${n + 1} 轮`,
     blockedByRule: "被规则拦截",
   },
   prov: {
@@ -138,13 +258,22 @@ export const zh = {
     exportCsv: "导出 CSV",
     exportHtml: "导出 HTML",
     footnote: "所有数字派生自同一本体",
+    // PRD-IND-map §4.4：四注册表段
+    regLinkTypes: "关系类型注册表",
+    regColLink: "关系", regColFrom: "从", regColTo: "到", regColCard: "基数",
+    regRules: "规则注册表",
+    regColRule: "规则", regColExpr: "表达式", regColScope: "作用域", regColSev: "级别",
+    regActions: "Action 类型注册表",
+    regColAct: "动作", regColParams: "参数", regColCheck: "校验", regColTarget: "目标", regColPerm: "权限",
+    regEvents: "事件对象表",
+    regColEvent: "事件", regColWindow: "窗口", regColAffects: "影响", regColSrc: "来源",
     exportedAt: (ts: string) => `导出时间：${ts}`,
     lineageText: (conn: string, dataset: string, n: number) => `${conn} · ${dataset} · ${n} 字段`,
     locateHint: "点击行：关闭弹层并在图谱中定位该节点",
   },
-  /** §7.14 年度情景规划台 */
+  /** §7.14 年度规划 */
   aop: {
-    title: (year: number) => `年度情景规划台 · AOP ${year}`,
+    title: (year: number) => `年度规划 · AOP ${year}`,
     demandUnit: "万套/年",
     capacityDecision: "产能决策",
     ltaLock: "长协锁量",
@@ -166,15 +295,51 @@ export const zh = {
     triggeredAt: (ts: string) => `触发时间 ${ts}`,
     notified: (who: string) => `已通知：${who}`,
     decompSection: "目标分解流（年 → 季 → 月）",
+    decompBaseline: (demand: number) => `基准情景 ${demand.toLocaleString("zh-CN")} 万套`,
     decompFootnote: "分解值 = S&OP 平衡台目标线（同源勾稽）",
     decompProv: (ref: string) => `同源目标对象：${ref}（= S&OP 平衡台目标线）`,
+    compareChip: (n: number) => `三情景对比 · ${n} 情景`,
+    windowSection: "缺口 / 过剩窗口曲线",
+    windowHint: (scen: string) => `${scen}情景：季度需求曲线 vs 产能供给（capex_scenario 活算）→ 缺口/过剩窗口标段`,
+    wcDemand: "需求",
+    wcSupply: "供给",
+    wcGap: "缺口",
+    wcGapWin: (from: string, to: string) => `缺口窗口 ${from}→${to}`,
+    wcSurplusWin: (from: string, to: string) => `过剩窗口 ${from}→${to}`,
+    // WO-UNIT-MEANING：窗口曲线纵轴量纲。数量单位由调用方从 demandUnit 派生传入（唯一来源），
+    // 此处只拼粒度（季）——契约无 unit 字段可消费，故量纲落在前端唯一常量上。
+    wcAxisName: (qtyUnit: string) => `${qtyUnit}/季`,
+    wcAxisCaption: (axis: string) => `纵轴：${axis}（需求 / 供给 / 缺口三序列同尺 · 年需求按季节权重卷积到季）`,
   },
-  /** §7.15 季度滚动看板 */
+  /** §7.15 季度规划 */
+  dash: {
+    // PRD-IND-dash §2.3/§2.5/§2.6
+    problemsTitle: (n: number) => `🧩 待解决的问题（${n}）· 全部订单根源归并`,
+    problemsSub: (orders: number, n: number) => `自下而上：${orders} 单逐单归因 → 汇成 ${n} 类问题清单`,
+    feedbackTitle: "回采校准 · 逐级反馈链（实际 → 月度 → 季度 → 年度）",
+    modulesTitle: "模块直达（点击进入）",
+    problemDrill: "点击查看该问题的订单全链与逐单根因",
+    ledgerAll: "全部",
+    ledgerGm: "综合毛利率",
+    ledgerDrill: "点击下钻该单的订单全链与逐单根因 DAG",
+    // 假5 修：综合毛利率为估算口径（SEG_REGISTRY 参考单价/毛利率派生·非 metric_rollup 财务实测）。
+    ledgerGmNote:
+      "综合毛利率是估算值，不是财务实测：按「数量 × 该细分品类的参考单价 × 该细分品类的参考毛利率」逐单累加，再除以总营收。参考单价与参考毛利率全平台只有一份口径；取不到数的地方如实记 0，不拿别处的数补。",
+    drillLevels: { op: "运营", month: "月度", quarter: "季度", year: "年度" } as Record<string, string>,
+    drillEmpty: (lvl: string) => `${lvl}层暂无经营指标（需合成该层 Metric）`,
+    drillToGenerate: "去建议",
+    drillToAudit: "去体检",
+    exportLabel: "导出 CSV",
+    exportTitleRow: "经营驾驶舱导出",
+    exportMetricHeader: ["经营指标", "目标", "实际", "偏差", "越线"] as const,
+    exportProblemHeader: ["待解决的问题", "影响单数", "财务影响(亿)"] as const,
+  },
   quarter: {
-    title: "季度滚动看板",
+    title: "季度规划",
     sub: "4–6 季滚动 · 需求 vs 供给 · 承接年度分解、向月度再分解",
     demand: "需求",
     supply: "供给",
+    rampNote: "产能增量项目按年度基准情景投产时点入季（与 AOP/capex_scenario 同源勾稽）；缺口三档 >4 红 / >0 黄 / ≤0 绿。",
     gap: (v: number) => `缺 ${v}`,
     surplus: (v: number) => `冗余 ${v}`,
     ltaSection: "长协执行偏差 · 本季",
@@ -186,17 +351,68 @@ export const zh = {
     ltaNote: "说明",
     escalate: "升级供应风险",
     gotoRisk: "查看风险看板 →",
+    // PRD-IND-quarter §4.5(F)：LTA 脚注去硬编码（迁 i18n，R14）；与风险看板「到货间隙」+ S&OP 第⑤步决议同源。
+    ltaFootnote: "正极 −8.0% 偏差与预警大屏「到货间隙」事件同源；已在月度 S&OP 第⑤步决议加急 200 吨对冲。",
   },
-  /** §7.16 订单全链聚合 */
+  /**
+   * WO-ORDER-JOURNEY · 决策推演面板（页面壳与各处就地嵌入**共用同一份实现**）。
+   * 改这里一处文案 ⇒ 壳页与嵌入处同时变 —— 接缝测试两处一起断言，这就是「同一份实现」的可核判据。
+   */
+  /**
+   * §7.16 订单进展与卡因（WO-ORDER-JOURNEY 前名「订单全链聚合」）。
+   * 改名理由：旧名只说「把全链聚合起来」= 典型传统 BI（只展示发生了什么）。
+   * 本页现在同屏给三件事 —— 走到哪了（地铁线路图逐站）· 卡在什么上（阻滞点/根因）· 拿它怎么办（就地推演）。
+   * 仓主原提「订单状态」，但「状态」是快照名词，既不含"进展到哪一站"，也不含"因为什么卡"，
+   * 而这两维正是本页新增的主体，故取「订单进展与卡因」。
+   * ⚠ renderer key 仍是 `order-chain`（那是路由契约，改了会连坐后端 VIEW_DEFS / features / mock 三处）。
+   */
+  /**
+   * WO-ORDER-BOOK-500 · 销售订单**头级**三态（`Order.status`）的中文名。
+   *
+   * 枚举值本身是英文、住在 `@platform/contracts` 的 `OrderStatusSchema`（跨包单一来源）；
+   * 中文只在这里出现一次 —— 中文名**不进枚举**，否则契约里就同时躺着两套词表，
+   * 后端按英文分组、前端按中文匹配，迟早对不上。
+   *
+   * ⚠ 别和 `OrderLine.lineStatus`（行级四态：未处理/已承诺/部分满足/已发运）混为一谈：
+   * 那是「这一行发没发货」，这里是「这张单走到生产生命周期的哪一段」。
+   */
+  orderStatus: {
+    OPEN: "已下待排产",
+    IN_PRODUCTION: "进行中",
+    COMPLETED: "已完成",
+  } as Record<string, string>,
   orderChain: {
-    title: "订单全链聚合",
+    title: "订单进展与卡因",
     baseFilter: "基地筛选",
     allBases: (n: number) => `全部风险基地（${n}）`,
     clearFilter: (b: string) => `✕ 清除（当前：${b}）`,
     sumOrders: "涉及订单数",
-    sumQty: "合计万套",
+    sumQty: "合计套",
     sumCusts: "客户数",
     sumRevenue: "涉及收入(亿)",
+    // PRD-IND-order-aggregate §4.5-A：经营数据看板 econTable
+    econSection: "经营数据看板（套 · 亿元）",
+    byApp: "按应用细分",
+    byBase: "按风险基地",
+    colBase: "基地",
+    econCap: "未结产能(套)",
+    econFg: "成品库存(亿)",
+    econWip: "在制(亿)",
+    econRm: "原料(亿)",
+    econSales: "未结营收(亿)",
+    econGp: "毛利(亿)",
+    econGmRate: "毛利率",
+    econTotal: "合计",
+    // WO-SCOPE-HONESTY-FE ②③：齐套 / 报价毛利的作用域诚实位消费面（结构标签；口径原文一律来自回包）。
+    scopeSection: "齐套与报价 · 这次算的是谁",
+    kitTitle: "齐套（kit_readiness）",
+    kitShortageLabel: "张缺料单（读法见下行）",
+    quoteTitle: "报价毛利（quote_margin）",
+    quoteMarginLabel: "毛利率",
+    quoteModelSel: "型号",
+    quoteCustSel: "客户",
+    quoteModelAny: "不指定型号",
+    quoteCustAny: "不指定客户",
     detailSection: "受影响订单 · 明细",
     colOrder: "订单",
     colCust: "客户",
@@ -212,14 +428,60 @@ export const zh = {
     problemOrders: (n: number) => `${n} 单受影响`,
     problemFinance: (v: number) => `财务贡献 ${v.toFixed(1)} 亿`,
     dagTitle: "逐单根因链（订单 → 判定 → 根因 → 对策）",
+    // 假3 修：库存列平台无真源 → 诚实"—"（抄 OrderAggView）；营收/毛利经 SEG_REGISTRY 参考价勾稽（可溯·非逐单实际成交价）。
+    econNoSource: "平台暂无该维度库存真数据源",
+    econFootnote:
+      "未结营收 / 毛利 / 毛利率：取真实受影响的那些订单，乘以各细分品类的参考单价与参考毛利率汇总而来，每一笔都能追回到具体订单。参考价不是逐单的实际成交价，所以这是估算口径。成品 / 在制 / 原料库存这三列平台暂时没有真数据源，如实留“—”，不编数字填上去。",
+
+    // ── WO-ORDER-ROW-DETAIL ① 行内展开订单详情（点行 → 本行**紧邻下方**展开，非浮层非跳页）──
+    colCtx: "对话",
+    rowHint: "点订单行展开详情",
+    rowDetailTitle: (so: string) => `${so} · 订单详情`,
+    rowDetailDue: "交期（完整日期）",
+    rowDetailRisksTitle: (n: number) => `关联风险点全量（${n} 条 · 不截断）`,
+    rowRiskBase: "基地",
+    rowRiskFactor: "因素",
+    rowRiskCross: "越线日",
+    rowRiskPeak: "峰值",
+    rowRiskThreshold: "越线阈值",
+    rowRiskSeries: "逐日序列",
+    rowRiskNotCrossed: "窗口内不越线",
+    rowRiskSeriesDays: (n: number) => `${n} 天`,
+    rowRiskNoField: "响应未带回该字段",
+    rowRevenueLabel: "本单营收暴露（估算）",
+    // 诚实缺数披露（R14）：说清 affected_orders.rows[] 这一层到底带回了什么、没带回什么。
+    rowDetailGap:
+      "缺数诚实披露：affected_orders.rows[] 仅带回 订单/客户/应用/型号/数量/交期/延误/风险点 八个字段；逐单实际成交价、逐单毛利、齐套缺口、信用占用均不在本求解器输出内 → 详情不臆造、不另调接口（R14）。",
+
+    // ── WO-ORDER-ROW-DETAIL ② 对话上下文（原 toggleSelectedObject 链保留，改为显式入口 + 可见选中态）──
+    ctxAdd: "＋ 加入对话",
+    ctxRemove: "✓ 已进入对话上下文",
+    ctxInBadge: "已进入对话上下文",
+    ctxHint: "把该订单写入对话上下文（selectedObjects），供追问时带上",
+
+    // ── 追加需求 · 问题卡归因叙述（派生自 problems[]，每句绑定字段；零写死 R14）──
+    narrTitle: "归因分析（叙述）",
+    narrScale: (cat: string, title: string, n: number, fin: string) =>
+      `【${cat}】${title}：归并 ${n} 单受影响，财务贡献 ${fin} 亿。`,
+    narrCommon: (s: string) => `共性根因：${s}`,
+    narrChain: (order: string, judge: string, cause: string, remedy: string) =>
+      `${order}：判定「${judge}」← 根因「${cause}」→ 对策「${remedy}」。`,
+    narrCoverage: (m: number, n: number) => `逐单因果链覆盖 ${m}/${n} 单。`,
+    narrScopeNote:
+      "口径披露：problems[] 按问题类别归并，契约 schema 不带基地/因素维 → 本叙述不做基地归因（不假装有基地维）。",
+    narrGapTitle: "推不出的部分（诚实披露）",
+    narrGapNoChains: "problems[].rootChains 为空 —— 该响应未带回逐单因果链，无法给出逐单归因叙述。",
+    narrGapNoSummary: "problems[].rootCauseSummary 为空 —— 无共性根因可述。",
+    narrGapLayer: (order: string, kinds: string) => `${order}：layers 缺「${kinds}」层 —— 该跳因果推不出。`,
+    narrGapPartial: (miss: number, n: number) =>
+      `另 ${miss}/${n} 单未随响应带回 rootChains —— 这 ${miss} 单的归因推不出（不编）。`,
+    narrDagTitle: "同一份因果链的图形视图",
+    narrProvSrc: "affected_orders 求解器 · problems[]（与本卡同源，未另调接口）",
   },
   /** §7.17 地理视图 */
   geo: {
     title: "基地地理视图",
     legendTitle: "定位（颜色）· GWh（大小）",
-    power: "动力",
-    storage: "储能",
-    mixed: "混合",
     overseas: "海外基地",
     cardLines: "产线数",
     cardGwh: "产能 (GWh)",
@@ -289,9 +551,145 @@ export const zh = {
   risk: {
     peak: "峰值",
     crossDay: "越线日",
+    legendHigh: "越线（≥阈值，高危）",
+    legendMid: "临近（阈值−15，预警）",
+    legendLow: "正常",
+    primaryTag: "⚠ 首要风险",
     noCross: "未越线",
+    // PRD-IND-risk §2.4：处置行动计划表
+    planTitle: "产能风险处置 · 最终方案与行动计划",
+    planSub: (n: number) => `按越线日前置 7 天排启动时间 · ${n} 行 · 峰值≥90 配备份方案`,
+    planAct: "行动项",
+    planDet: "详情",
+    planOwner: "责任人",
+    planStart: "启动",
+    planDone: "完成",
+    planEff: "预期",
+    planRule: "规则",
+    // WO-LIVE-DISPOSITION：处置表活推演化（生成/重算按钮 + 每行可点开看推导过程）。R14 文案下发·前端不内联业务常数。
+    plan: {
+      regen: "⚙ 生成/重算行动计划",
+      regenHint: "吃当前杠杆推演态实时重算（真缺口三杠杆贪心派生·非配置库选方案）",
+      regenBusy: "重算中…",
+      baseline: "基线方案（未含杠杆调整）",
+      withLevers: (n: number) => `含 ${n} 项杠杆推演`,
+      rowHint: "点任意行看该行动如何推演出来",
+      detailTitle: "推导过程",
+      detailSub: (base: string, shortfall: number, residual: number) =>
+        `${base} · 触发缺口 ${shortfall} 套 · 三杠杆贪心收窄 · 残留 ${residual} 套`,
+      stepNo: (i: number) => `第 ${i} 步`,
+      trigger: "触发值",
+      closes: "收窄",
+      noSteps: "该行无真缺口推导（窗内可用产能覆盖需求）——方案取自处置方案库参照名，非派生动作。",
+      conserve: (sum: number, residual: number, shortfall: number) =>
+        `守恒校验：Σ 收窄 ${sum} + 残留 ${residual} = 触发缺口 ${shortfall}`,
+      close: "收起",
+    },
     affectedOrders: "受影响订单",
     dailyStrip: "逐日张力",
+    // WO-HOVER-LAYER（欠账 #104/#175 同族）：峰值的**口径**此前只挂在原生 `title=` 上 ——
+    // 浏览器 tooltip 延迟约 1 秒才出、触屏根本不出、不能选中复制，且这里的宿主本身
+    // 已经是个浮层（RiskPopover 走 portal），浮层里再套原生 tooltip 等于没做。
+    // 改为浮层里的**可见文字**：口径必须能被读到，不能藏在属性里。
+    peakCaliber: (min: number, max: number, hint: string) =>
+      `峰值口径：${min}–${max} 紧张度指数（${hint}）·非该因素本身的值`,
+    /** 逐日格的可访问名（读屏可达；视觉靠色块 + 下方图例给量程）。 */
+    dayCellAria: (day: number, v: string) => `D+${day} · ${v}`,
+    /**
+     * WO-UI-DECLUTTER-TOP3 · 浮层文案（`docs/CONVENTION-ui-information-layering.md` §1）。
+     * 第一层只留「数值 / 状态 / 名字」，**口径 · 公式 · 为什么这么算 · 数据来源**一律降进 `?` 浮层；
+     * 文案走 locales（本体 R14：应用层不内联业务文案），不写死在组件里。
+     */
+    info: {
+      bridge: "这一页在回答什么",
+      bridgeBody:
+        "计划-执行之桥：监测执行偏离月度计划的风险。窗口内预测越线（紧张度 ≥ 阈值）即出卡；偏离 → 处置 Action 或反提月度差异（C21）。",
+      tightness: "紧张度口径",
+      tightnessBody: (min: number, max: number, hint: string) =>
+        `chip 上的数字是该风险因素的紧张度（${min}–${max}·${hint}），不是该指标本身的值。例：「设备OEE 76」= 设备OEE 这一项的张力 76/100，不是 OEE=76%。`,
+      caliber: "受影响订单口径差",
+      caliberBody:
+        "本表 = 窗口内交期、且落在任一基地风险窗内的订单（覆盖全部基地）；顶部 KPI「受影响订单」只统计上方展示的那几张风险卡，覆盖面更窄，数值可能略少。",
+      econSource: "经营数据取数来源",
+      econSourceBody:
+        "未结订单金额 / 毛利额 / 毛利率：由真实受影响的订单逐单乘以各细分品类的参考单价勾稽汇总而来，每一笔都能追回到具体订单，全平台只有这一份口径。产能 / 库存两列平台暂时没有真数据源，如实留「—」，不编数字填上去。",
+      econNoSource: "平台暂无该维度真数据源，诚实留「—」，不伪造",
+      rootcause: "根因树怎么来的",
+      rootcauseBody:
+        "为什么越线：结构反向归因（设备 / 物料 / 订单）→ caused_by 溯终点根因，每个节点可下钻真对象（R13）。数据源 gap_attribution 真求解器，按基地结构反向分摊、叶级下钻真对象字段。",
+      rootcauseDiag: "诊断详情（响应字段 · 排查下一步）",
+      score: "综合评分口径",
+      scoreBody:
+        "综合评分 = 见效 × 紧迫度 ÷（投入档 × 周期）。下表按评分降序排列，最高者即推荐方案。「预期堵口」一列的见效值源自 mitigation_select.eff（求解器回传，非前端估算）。",
+      adoptGate: "采纳之后会发生什么",
+      adoptGateBody: "采纳经 adopt_mitigation 生成 Action 草稿 → 审批后下发工单（C5 门不绕 · 前端不直改计划）。",
+      planRow: "这张表怎么读",
+      planRowBody: "按越线日前置排启动时间。点任意行可看该行动如何推演出来（逐 step 推导 + provenance）。",
+      qa: "这个问答框的边界",
+    },
+    // WO-CAPLIVE-2 · 产能推演「活台」：原子因子活推演 / 因子级根因 / 人机对话 / 方案存比（R14 下发·不内联）。
+    live: {
+      leverTitle: "原子因子活推演（拨动即 generic_inference 真重算）",
+      leverHint: "从本基地瓶颈反推的原子影响因子（细到工序×型号-物料），拖动经 generic_inference 沿派生 DAG 真重算——before/after + tornado 敏感度 + 每值溯源 + C08 边界。",
+      // WO-CAPACITY-PAGE-100PCT ⑩（R8 量纲错标）：本页传给面板的 before 值是 `card.peak`＝**峰值张力（0–100 指数）**，
+      // 却被标成"可用产能"——屏幕上出现「调整前可用产能 98.0」这种量纲错到底的数字。改为按其真实口径标注。
+      leverBefore: "调整前峰值张力（0–100）",
+      // WO-FACTOR-SCOPE-SINGLESOURCE：chip 显示用 label、传值用 CausalFactor.factorId；
+      // 候选集来自引擎回执 scope.availableFactors（单一来源）。文案一律走本表，不内联到组件里。
+      rootcause: {
+        scopeTitle: "因子作用域",
+        allFactors: "全部因子（基地级）",
+        pick: (f: string) => `按「${f}」细分`,
+        /** chip 悬停：这个因子细分后会下钻到哪类对象的哪个字段、本基地有几个（诚实可核）。 */
+        chipTitle: (label: string, drillType: string, drillField: string, n: number) =>
+          `按「${label}」细分 → 下钻本基地 ${drillType}.${drillField}（当前 ${n} 个对象）`,
+        refined: (f: string) => `已按因子「${f}」细分（gap_attribution scope.factorId·细分层为占比层·结构分摊 L1/L2 不变）`,
+        /** 第一层只留这一句可见记号；完整口径降进 `?` 浮层（WO-UI-DECLUTTER-TOP3·D4 守恒：降层不删除）。 */
+        baseAggregatedShort: "按基地聚合 · 未按因子细分",
+        baseAggregated: (f: string) =>
+          `结构+因果根因源自 gap_attribution 真求解器（按基地结构反向分摊·叶级下钻真对象字段）。注：当前按基地聚合根因，未按具体越线因子（${f}）细分——点上方因子 chip 即按因子细分。`,
+        /** 件三：一个可细分因子都没有时据实说，而不是画一排点不动的按钮。 */
+        noneAvailable: "本基地当前无可细分因子（引擎未在本基地解析到任何因子的承载对象）。",
+        /** 件四：引擎明说没细分时的告警条（用户不可能忽略的形态·非树底一行小字）。 */
+        notRefinedTitle: "⚠ 未按该因子细分",
+        notRefinedFallback: (f: string) => `引擎未按因子「${f}」细分，下方仍是本基地的聚合根因树。`,
+        backToBase: "回到基地级",
+      },
+      dialog: {
+        title: "人机对话 · 真 NL（orchestrator 路由）",
+        sub: "问因子 / 问根因 / 给任意变量推演——经 orchestrator 识别产能 what-if 意图，路由 generic_inference / gap_attribution / capacity_forecast，叙述带溯源。",
+        placeholder: "输入问题，如：化成良率降到 92% 产能少多少？",
+        ask: "问",
+        empty: "点击预设问题或输入追问。答案经 orchestrator 真路由求解器、带溯源（非正则假 NL）。",
+        presets: (base: string) => [`${base}化成良率降到 92% 产能少多少？`, `哪个工序物料最卡 4680？`, `${base}为什么越线？`],
+      },
+      scenario: {
+        title: "方案存 / 分支 / 横比（decision_play 范式）",
+        hint: "把一次拨动结果存为命名方案、分支出变体、多方案横比矩阵——各格经 generic_inference 真算·可溯，一键采纳走 Action 审批（C5 门不绕）。",
+        namePh: "方案名，如：化成扩通道",
+        save: "存为当前推演方案",
+        saveEmpty: "先拨动杠杆产生推演态再存方案",
+        branch: "分支",
+        compare: "横比选中方案",
+        pickHint: "勾选 ≥2 个方案横比",
+        col: { scheme: "方案", pick: "选" },
+        capGain: "产能增益",
+        cost: "外协代价",
+        ruleFlag: "触规则闸",
+        adopt: "采纳→Action",
+        adopted: "采纳草稿已创建·待审批（C5 门不绕·非直改）",
+        empty: "尚无保存的方案。拨动杠杆后「存为方案」，再存变体即可横比。",
+      },
+    },
+    // 假NL 修：诚实标"预设快答·非智能问答"——答案确定性派生自本卡真求解器输出（客户/订单/越线/峰值），但入口是关键词匹配非自然语言理解/LLM。
+    qa: {
+      title: "💬 预设快答（关键词匹配 · 非智能问答）· 同源求解器",
+      intro:
+        "点击下方预设问题，或输入含关键词的追问（客户 / 订单 / 越线 / 后果）。本框按关键词匹配预设问题，非自然语言理解或 LLM；答案由本卡真求解器输出（受影响订单 / 越线日 / 峰值）确定性派生。",
+      placeholder: "按关键词匹配预设问题，如：影响哪些客户？",
+      ask: "匹配",
+      disclosure: "说明：此为关键词匹配的预设快答，非智能问答；答案数字均来自本卡真求解器输出（非另起 LLM · 非伪造）。",
+    },
   },
   ledger: {
     expand: "展开",
@@ -300,6 +698,645 @@ export const zh = {
   sim: {
     run: "开始推演",
     runAudit: "体检",
+    /**
+     * WO-SANDBOX-DECLUTTER · 推演沙盘主屏「信息减负」新增的**壳文案**。
+     *
+     * 只收本单**新写**的字（抽屉入口 / 横幅 / `?` 浮层的触发器与标题）。
+     * **不搬**既有诚实位正文：那些正文带 `<b>/<code>` 结构、且相当一部分是
+     * `sandboxConsoleModel.SCOPE_DIMENSIONS` / `chainImpediment.IMPEDIMENT_*` 的
+     * **单一来源数据**（R14）——抄进本文件就是给它开一条会漂的分身。
+     * 正文原样留在组件里（一个字没删），本单改的只是**承载方式**。
+     */
+    sandbox: {
+      diag: {
+        /** 抽屉入口（折叠态也必须看得见 + 带计数）。 */
+        entry: "诊断",
+        entryAria: "打开/收起诊断抽屉",
+        /** 计数：有待办时报待办数，无待办时报收纳了几项（两种都是真数，不是装饰）。 */
+        pending: (n: number) => `${n} 项待办`,
+        items: (n: number) => `${n} 项`,
+        title: "诊断 · 建模者 / 开发者 / 调试者的那三档",
+        hint: "主屏只留决策者要看的东西；这里是就绪认证、世界列表与调试信息。诚实位一条没删，只是换了位置。",
+        close: "收起诊断",
+        empty: "本次没有可收纳的诊断项。",
+        /** 调试信息分区（SEED / 时窗无 ARGS 等）。 */
+        debugTitle: "调试信息",
+        derivedTitle: "本体派生",
+      },
+      banner: {
+        /** `canEnterSimulation === false` 时的**唯一**主屏治理信号；为 true 时整条不渲染。 */
+        title: "尚未通过就绪认证 —— 现在推演出的结论仅供参考",
+        why: "为什么不能推演（缺件清单前几条）：",
+        more: (n: number) => `另有 ${n} 条`,
+        cta: "查看详情 →",
+        ctaAria: "在诊断抽屉里看完整就绪认证",
+      },
+      /**
+       * WO-SANDBOX-V3 · 三区骨架的区名与「这一区回答什么」。
+       *
+       * 三区各自的判据是**能不能用一句话说清它回答什么**（PRD §1）——
+       * 答不出就不该在第一层。所以每个区名后面那一句问句不是装饰，是这一区的**准入判据**：
+       * 往区里加东西之前先问「它回答的是这一句吗」。
+       */
+      zones: {
+        inputTitle: "① 扰动因素",
+        inputQuestion: "我要试什么？",
+        canvasTitle: "② 业务端到端路线图",
+        canvasQuestion: "这条链现在长什么样",
+        impactTitle: "③ 影响带",
+        impactQuestion: "试了之后，哪里变了、值多少钱",
+        scopeTitle: "范围",
+        impedimentList: "阻滞点逐条",
+        rows: " 条",
+        pareto: "全链损失 Pareto · 环节级",
+        paretoWaiting: "等 chain_loss_attribution",
+        paretoHeadline: (top: number, total: number, pct: string, days: string) =>
+          `Top${top}/${total} 吃掉 ${pct} 损失 · 全链非增值 ${days}D`,
+        metrics: "全链指标",
+        metricsCount: (n: number) => `${n} 项`,
+      },
+      /**
+       * WO-SANDBOX-PROCESS-MODE · 主画布**第五档「业务流程」**的文案。
+       *
+       * ⚠ 本块**一个业务词都没有**：域名 / 流程名 / 职能名 / 承载物类型名一律来自端点下发，
+       *   这里只放界面骨架（R14 零写死词表 —— 编错比不编危险，业务专家会照着错的理解）。
+       * ⚠ 本块**不出现任何条数金值**（没有 `65`）：条数一律由 `counts(total, laid, lanes)` 现算填入。
+       *   把金值抄进文案 = 种子一变就撒谎，而屏上撒谎比屏上没有更糟。
+       */
+      processCanvas: {
+        counts: (total: number, laid: number, lanes: number) =>
+          `端点下发 ${total} 条业务流程 · 本图上站 ${laid} 座 · ${lanes} 条线（一条线 = 一个一级业务域；两个数都是现算的，不是写死的金值）`,
+        mismatch: "⚠ 下发条数 ≠ 上站座数 —— 本档漏画了流程，这不是「租户没有」而是渲染层掉了",
+        disjointOk: "与链路节拍层 24 个冻结节点的键交集：0（两层同屏、不同模型）",
+        disjointBroken: (keys: string) => `🔴 两层键集合出现交集：${keys} —— 有人把业务流程层揉进了链路节拍层`,
+        /**
+         * 出处（不上屏）：契约 `packages/contracts/src/process.ts` 文件头原话 ——
+         * 链路节拍层（24 条 `CHAIN_NODE_REGISTRY`）与业务流程层（65 条 `ProcessDefinition`）
+         * 「两层粒度不同，不能互相替代，也不能合并」。本档取数走
+         * `GET /a/v1/process-definitions`，选中态用 `processKey` 而非 `nodeId`。
+         */
+        layersNote:
+          "全链节拍层（24 个节点）与业务流程层（65 条流程）是两套不同粗细的模型：不能互相替代，也不能合并成一张表。" +
+          "但「不能合并」说的是数据，不是「不能放在一起看」——本档就是同一块画布上的另一个图层，" +
+          "自己取数、自己的检视面板、自己的选中态，只共用画布区域与档位按钮。" +
+          "左边那个交集数就是这条约束的看门狗：它一旦不为 0，说明两层真被揉到一起了。",
+        stdDaysCaveat:
+          "卡上的天数是标准工期（流程模板里的定义值），不是「此刻已经卡了多久」——" +
+          "「已经卡了多久」要点进单条流程看它的实例，本档不答。",
+        unregisteredDomains: (keys: string) =>
+          `⚠ 域登记册里查不到这些 domainKey：${keys} —— 单开一条线显示，不静默并进「其它」（静默并进会把「后端漏发」伪装成「前端没画」）`,
+        laneUnregistered: "（域未登记）",
+        laneStat: (count: number, days: number) => `${count} 站 · 标准工期合计 ${days}D`,
+        stdDays: (d: number) => `标准 ${d}D`,
+        loading: "正在取业务流程台账…",
+        errorTitle: "业务流程台账取不到 —— 下面是后端原话，本档不替它编一个解释：",
+        empty: "端点返回了 0 条业务流程。这是「本租户没有流程台账」，不是「本档没画」——两者在屏上必须分得开。",
+
+        /* ── WO-R9-METRO-UX：线路图专有文案 ─────────────────────────────────
+           ⚠ 下面 `orderBasis*` 三条是本档**最重要的诚实位**：
+           端点没下发流程间先后（结构证明见 processCanvas.ts 文件头 §0），
+           所以连线画虚线、并且当面说清楚"这条线不是流向"。删掉它，
+           这张图就变成了"看着专业但顺序是编的"——派单原话说那比卡片墙更坏。 */
+        orderBasisTitle: "线怎么连？",
+        /**
+         * 结构证明（不上屏）：取数端点 `GET /a/v1/process-definitions` 一条流程间的先后关系
+         * 都没下发 —— `ProcessDefinition` 是 zod `strictObject`，字段恰好是
+         * key/domainKey/name/ownerFunctionKey/stdDurationDays/waitKind/carrierTypeKey，
+         * 没有 predecessor/successor/stationIndex；`strictObject` 同时保证后端不可能多发一个
+         * 字段而前端没接到。线的上下次序取 `ProcessDomain.order`（契约原文「展示序」）。
+         */
+        orderBasisDisplay:
+          "连线画成虚线，是因为这批数据里根本没有「谁在谁前面」这件事 —— 流程之间的先后关系一条都没下发。" +
+          "所以本图退回按业务域分线：一条线 = 一个一级业务域；线的上下次序用的是台账给的展示序（稳定排版用，不是业务先后），" +
+          "站的左右次序按域内流程编号升序。换句话说：这张图告诉你「有哪些流程、各属哪个域」，不告诉你「先做哪个」。",
+        /**
+         * 两个反例的出处（不上屏）：2026-08-14 实测，见
+         * `apps/datacore/src/process/flow-rules.ts:83` 起那段「P42 为什么不在链 B 里」的订正
+         * （搜 `avgGapDaysToNext` 即到 −9.82 的出处）。
+         * ⚠ 有保质期：`flow-rules.ts` 的链定义一改，本句即过期，须重测而不是照抄。
+         */
+        orderBasisWhyNotNumber:
+          "为什么不干脆按流程编号画箭头：编号挨着并不等于先后。两个真实反例——" +
+          "① 真实的「在制流转到质检」链是 P43 → P47，中间跳过了 P44/P45/P46；" +
+          "② 曾经有人把它写成 P42 → P43 → P47，按这个顺序真算一遍，P42 到下一站的间隔是 −9.82 天（负数），" +
+          "当场暴露出建模错了——工单下达是罩在整段上的「伞」，不是前一站。" +
+          "所以按编号升序画箭头，等于把一个已经被数据推翻的顺序又画一遍。",
+        /**
+         * 出处与复验（不上屏）：真实站序在 `BATTERY_PROCESS_FLOW_RULES`
+         * （`apps/datacore/src/process/flow-rules.ts:104`），经 `process_flow_time` 求解器与
+         * `GET /a/v1/process-definitions/{key}/instances` 下发（带 flowKey + stationIndex），
+         * **不经本档这个端点**。覆盖的 9 条是 P25/P33/P34/P35/P41/P42/P43/P47/P51，
+         * 其中 2 条真多站：P33→P34→P35、P43→P47。
+         * 复验：curl /a/v1/process-definitions/P34/instances 看 flowKey/stationIndex，
+         *       再 curl /a/v1/process-definitions 看同样字段 —— 后者没有。
+         * 2026-08-14 现跑 = 6 条链 / 9 条流程。此前曾写「覆盖 8 条流程」，同日现跑订正为 9。
+         *
+         * ⚠ 保质期不再靠人记：两个数都挂了机器每次跑都核的赌注（上游一改当场红）。
+         * ⚠ 正则**不许用 `^` 行锚**：赌注执行器是 `new RegExp(pattern, "g")`，没有 `m` 标志 ⇒
+         *   `^` 锚的是整串开头，不是行首。第一版写 /^    flowKey:/ 时 grep 数得到 6、门现算 **0**，
+         *   被 STALE-6 当场抓出（那正是它「永不豁免」的理由）。
+         * @stale-fact apps/datacore/src/process/flow-rules.ts /flowKey: "/ ==6
+         * @stale-fact apps/datacore/src/process/flow-rules.ts /processKey: "P\d+"/ ==9
+         */
+        orderBasisWhereReal:
+          "真实的站序是存在的，只是本页取不到：它由另一条链路算出来并随「单条流程的实例」下发，" +
+          "今天覆盖 6 条链、9 条流程，其中 2 条是真正的多站链。" +
+          "本页读的这份台账里没有这个字段，所以这里如实缺席 —— 不拿编号顺序编一个顶上。" +
+          "要在这张图上画出真实站序，得后端在本页这条取数里补下发，那是另一件事。",
+        interchangeNote: (n: number) =>
+          `换乘站（双环）${n} 处：两条流程共用同一个承载物。⚠ 共用承载物只说明它们作用在同一个对象上，` +
+          `既不说明有先后，也不说明有依赖（例：主生产计划与高级排产都落在同一份生产排程上）。` +
+          `这是台账里唯一一条真把两条流程连起来的关系，所以画成换乘 —— 不是因为它像先后。`,
+        interchangeNone:
+          "本次下发里没有任何两条流程共用承载物 ⇒ 全图 0 个换乘站。这是「这批数据就没有」，不是「本档没画换乘」。",
+        radiusNote:
+          "站圈大小随标准工期增长（按平方根缩放），并以本次取到的最大标准工期为满圈 —— " +
+          "是相对量不是绝对量，换一批数据圈会重新分布。",
+        labelOverflow: (keys: string) =>
+          `⚠ 分两层后仍有站名挤在一起：${keys} —— 如实标出来，不偷偷藏标签也不假装不挤（放大或点站看右栏读全名）`,
+        lineNo: (n: number) => `${n} 号线`,
+        legendTitle: "图例",
+        legendStation: "站 = 一条业务流程（圈大小 ∝ 标准工期）",
+        legendInterchange: "换乘站 = 与另一条流程共用承载物",
+        legendDashed: "虚线 = 同一条线上按展示序排列，不是流向",
+        legendFold: "折返 = 一条线太长换到下一行，线没有断",
+        legendWaitKind: "站圈颜色 = 卡在哪一类等待（四态词表来自契约）",
+        /** WO-PROCESS-CANVAS-LIVE 新增的两个图元。两者是**实线 vs 虚线**的对照，不是深浅之别。 */
+        legendMoved: "实线脉冲环 = 这一拍该站的读数真的变了",
+        legendStatic: "虚线外环 = 本层不随节拍变（或这个世界里没有它的承载对象）——不是没画、也不是坏了",
+        zoomIn: "放大",
+        zoomOut: "缩小",
+        fit: "适应画布",
+        zoomReadout: (k: number) => `${Math.round(k * 100)}%`,
+        /** 缩到下限仍装不下：是事实就说出来，不许让它长得像「已经适应了」。 */
+        fitClamped: "已缩到下限仍装不下 ⇒ 顶左对齐，拖拽/滚轮看其余部分",
+        canvasLabel: "业务流程线路图（可缩放平移；站可点，点开右栏出完整本体关系）",
+        /** 右栏：本档的检视面板标题与未选中提示。 */
+        inspectTitle: "流程检视 · 完整本体关系",
+        inspectHint: "点画布里任一条业务流程 → 这里出它的完整本体关系：承载类型 / 属性 / 派生 / 一跳关系 / 同承载物流程 / 打到它的杠杆 / 十六层三态。",
+
+        /* ══════════════════════════════════════════════════════════════════════
+           WO-PROCESS-CANVAS-LIVE · 节拍维文案
+           ⚠ 本块同样**一个业务词都没有**：条数、域名、流程名全部由现算填入。
+           ⚠ 第一层那两句（`liveSummary` / `liveConfigMissing`）刻意**不含**
+             「口径」「公式」「×」「÷」这些 R-UI-3 点名的形态 —— 判据与公式一律进浮层；
+             这不是为了过门，是规范 §2 的原文要求（第一层只放数值/状态/名字）。
+           ══════════════════════════════════════════════════════════════════════ */
+
+        /** 三档的**全称**（浮层与读屏用）。屏上那句「本层不随节拍变」就出自这里。 */
+        driveLabel: {
+          TICK_DRIVEN: "随节拍变",
+          NO_CARRIER_OBJECTS: "无承载对象",
+          NOT_TICK_DRIVEN: "本层不随节拍变",
+        } as Record<"TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN", string>,
+        /**
+         * 站上第三行的**短标**（65 座站每座都要印，全称会把地铁图淹掉）。
+         *
+         * ⛔ 两档**必须是两句不同的话**（派单的变异反证就咬这一条）：
+         *   「不随节拍」= 传导图里没有这类承载物 ⇒ 结构上不会动；
+         *   「无承载对象」= 传导图够得着，但这个世界里一个该类对象都没有 ⇒ 补数据即动。
+         * 合成一句 = 把两个定性不同、修法不同的事实盖成一个，正是本仓「一个数盖住两个事实」的形态。
+         * ⚠ 两者都**不是**留白、也不是灰掉：留白读作"加载中/坏了"，灰掉读作"被禁用"。
+         */
+        driveMark: {
+          TICK_DRIVEN: "",
+          NO_CARRIER_OBJECTS: "无承载对象",
+          NOT_TICK_DRIVEN: "不随节拍",
+        } as Record<"TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN", string>,
+        /** 站上读数后面那一小截增量。没有上一拍就**根本不印**，不印一个假的 `+0`。 */
+        deltaSuffix: (d: number) => (d > 0 ? ` ▲${d}` : d < 0 ? ` ▼${Math.abs(d)}` : " ＝0"),
+        /** 随节拍变、但这一拍拿不到读数（世界态里还没有这些对象的条目）。 */
+        liveNoReading: "本拍无读数",
+        /** 站的读屏补充（`aria-label` 尾巴）。读屏用户拿不到颜色与形状，这里必须把话说全。 */
+        stationLiveAria: (drive: "TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN", reading: number | null, delta: number | null, objects: number) => {
+          const head =
+            drive === "TICK_DRIVEN"
+              ? "随节拍变"
+              : drive === "NO_CARRIER_OBJECTS"
+                ? "无承载对象：传导图够得着这类承载物，但这个世界里一个该类对象都没有，所以这一拍不会动"
+                : "本层不随节拍变：传导图里没有这类承载物，节拍引擎写不到它";
+          const r = reading === null ? "本拍无读数" : `本拍读数 ${reading}`;
+          const d = delta === null ? "没有可比的上一拍" : delta === 0 ? "与上一拍相同" : `相比上一拍 ${delta > 0 ? "增加" : "减少"} ${Math.abs(delta)}`;
+          return ` · ${head} · 承载对象 ${objects} 个 · ${r} · ${d}`;
+        },
+
+        /**
+         * 第一层那一句总结 = 仓主要的「基于某个时间 screenshot，有个总结」。
+         *
+         * 四件事一句话里说清，缺一件就会把某个事实伪装成另一个：
+         *  ① **哪一拍、哪个世界**（"动了"是相对谁说的，不写出来没法核对）；
+         *  ② **随节拍变几条 / 这一拍真动了几条**（两个数不是一回事：能动 ≠ 动了）；
+         *  ③ **不随节拍变几条**，并明说那是「本层不随节拍变」不是「没数据」；
+         *  ④ 没有上一拍可比时**明说没得比**，不印一个会被读成"什么都没动"的 0。
+         */
+        liveSummary: (a: {
+          sessionId: string | null;
+          tick: number | null;
+          prevTick: number | null;
+          origin: "MEASURED" | "DERIVED" | null;
+          comparable: boolean;
+          driven: number;
+          noData: number;
+          staticCount: number;
+          moved: number;
+          netDelta: number | null;
+          movedByWaitKind: readonly { label: string; drivable: number; moved: number }[];
+        }): string => {
+          const where =
+            a.sessionId === null || a.tick === null
+              ? "推演沙盘还没有世界（左边控制条上先建一个，这里才有节拍可读）"
+              : `世界 ${a.sessionId} · 第 ${a.tick} 拍${a.origin === "DERIVED" ? "（建会话时的占位态，不是引擎算的）" : "（引擎回包）"}`;
+          const scale = `随节拍变 ${a.driven} 条 · 无承载对象 ${a.noData} 条 · 本层不随节拍变 ${a.staticCount} 条`;
+          if (a.sessionId === null || a.tick === null) return `${where}；${scale}。`;
+          if (!a.comparable) {
+            return `${where}；${scale}。这是第一张快照，没有可比的上一拍 —— 推一拍再回来看，动了的站会亮出脉冲环。`;
+          }
+          if (a.moved === 0) {
+            return `${where}；${scale}。相比第 ${a.prevTick} 拍：一条都没动（是「比过了、都没动」，不是「没比」）。`;
+          }
+          const detail = a.movedByWaitKind
+            .filter((g) => g.moved > 0)
+            .map((g) => `${g.label} ${g.moved}/${g.drivable}`)
+            .join(" · ");
+          const net = a.netDelta === null ? "" : ` 读数合计 ${a.netDelta > 0 ? "+" : ""}${a.netDelta}。`;
+          return `${where}；${scale}。相比第 ${a.prevTick} 拍：${a.moved} 条真的动了（${detail}）。${net}`;
+        },
+        /** 判据源取不到（沙盘能力未开通 / 传导规则端点 404）——**不许**默认判成"全都不随节拍变"。 */
+        liveConfigMissing:
+          "拿不到判据源（推演视图配置与传导规则清单），所以这一档算不出来哪些流程随节拍变 —— " +
+          "这是「没查着」，不是「查了都不动」。两者必须分得开：后者会让人以为这个平台的流程全是静态的。",
+
+        /* ── 以下四条一律在 `?` 浮层里（第一层只留上面那一句结论 + 这个 `?` 记号）── */
+        /**
+         * 判据的技术出处与复验（不上屏）：
+         *  ① 随节拍变 = 该流程的承载类型出现在已发布传导规则的 source 或 target 一端
+         *     （`GET /a/v1/sim/propagation-rules`），且该类型在这个世界里真有物化对象
+         *     （`GET /a/v1/sim/view-config` 的 `nodeObjectIds`）；
+         *  ② 无承载对象 = 类型在规则两端里，但 0 个物化对象；
+         *  ③ 本层不随节拍变 = 类型不在规则两端集合里。第三档是**结构性**的：传导引擎
+         *     `propagateTick` 唯一的写法是写到规则 target 那一端的对象上，够不着的类型怎么推都不会动。
+         *
+         * 2026-08-14 实测：真后端种子下这三档是 9 / 0 / 56
+         * （65 条流程、64 种承载物、13 条传导规则、规则两端 11 种类型）。复验命令：
+         *   node -e "const s=require('fs').readFileSync('apps/datacore/src/seed.ts','utf8');
+         *   const b=s.slice(s.indexOf('const DEMO_PROCESS_DEFINITIONS'),s.indexOf('export async function seedDemoProcessLayer'));
+         *   const d=[...b.matchAll(/carrierTypeKey: \"([A-Za-z0-9_]+)\"/g)].map(m=>m[1]);
+         *   const r=s.slice(s.indexOf('const DEMO_PROPAGATION_RULES'),s.indexOf('export async function seedDemoPropagationRules'));
+         *   const t=new Set([...r.matchAll(/^\\s*(?:source|target)TypeKey: \"([A-Za-z0-9_]+)\"/gm)].map(m=>m[1]));
+         *   console.log(d.length, t.size, d.filter(x=>t.has(x)).length)"  ⇒ 当日现跑 `65 11 9`。
+         * ⚠ 有保质期：种子里增删任一条传导规则或流程定义即作废，须重跑不许照抄；
+         *   缺口登记在 docs/SYSTEM-ONTOLOGY.md §8 `G-PROCESS-TICK-COVERAGE`。
+         */
+        liveBasis:
+          "这三档全部是现算的，前端没有写死任何名单：" +
+          "① 随节拍变 = 这条流程的承载物既被某条已发布的传导规则碰到，这个世界里又真有这类对象；" +
+          "② 无承载对象 = 规则碰得到它，但这个世界里一个这类对象都没有 —— 补上数据它就会动；" +
+          "③ 本层不随节拍变 = 传导规则一条都碰不到它的承载物。" +
+          "第三档是结构性的，不是「今天恰好没变」：传导只会写到规则指向的那一端，够不着的东西怎么推都不会动。" +
+          "站上的读数是该承载物全部对象、全部状态变量的平均值 —— 取平均而不是求和，" +
+          "是因为不同类型的对象数能差上百倍，求和会让「圈更大」只反映「对象更多」。",
+        liveLimit:
+          "⚠ 这个判据测不出的那件事，必须当面说：「本层不随节拍变」只说明今天的传导图够不着它，" +
+          "不说明它本质上不该随节拍变。举例：「年度情景测算」「关键成功要素梳理」确实不随日节拍变，" +
+          "而「物料平衡运行」「工单下达」是该随节拍变、只是还没有人给它建传导规则 —— 这两类今天落在同一档里。" +
+          "要把它们分开需要人做建模判断，而台账的字段里没有哪一位承载这个判断。" +
+          "所以这里如实报「够不着」，不拿一个算得出的数去冒充一个算不出的结论。",
+        liveWaitKindStatic:
+          "⚠ 上面那条四态计数条（等人 / 等数据 / 等排期 / 等外部方）数的是流程台账里登记的等待类型 —— " +
+          "那是模板层的分类。推一拍改的是这个推演世界的状态，改不到流程台账，所以那四个数一个都不会随节拍变。" +
+          "真正随节拍变的是「每一态里有几条这一拍动了」，写在上面那句总结的括号里。" +
+          "把这两族数混着读，会得出「等外部方 +3」这种今天永远为假的结论。",
+        liveObserver:
+          "本档只是观察者：推演会话由沙盘控制条创建、拍子也由它推进，本图只跟着同一份世界状态重算。" +
+          "它不建会话、不推拍、不写缓存 —— 否则屏上会出现两个世界：你在控制条上推的那一拍打不到这张图，" +
+          "而图照样在动（那是最难查的一类假象）。上面写出世界编号与拍号，就是让你能当场核对看的是不是控制条上那个世界。",
+        liveMovedKeys: (keys: string) => `这一拍动了的流程：${keys}`,
+        liveDriveMismatch: "⚠ 三档条数之和 ≠ 端点下发条数 —— 分档漏了人或有人被数了两遍，这是分档实现的 bug，不是数据的事实。",
+      },
+      /**
+       * WO-SANDBOX-V3 · 下区影响带（PRD §1③）的文案。
+       *
+       * ⚠ `financeGap` 是**诚实位**，不是免责声明。规范 §1 明写诚实位
+       *   **允许降层、绝不允许删除**，故它常驻第一层。
+       *
+       * ⚠ **WO-FINANCE-WORLDSTATE 改写了它承载的那个事实，而不是删了它**：
+       *   原文陈述「平台今天没有随世界态变化的金额型财务指标」——那句话在本单之后**不再成立**
+       *   （`finance_world_projection` 就是那个出处）。诚实位说了假话比没有诚实位更坏，
+       *   故这里**改写内容、保留位置**。`finance_pnl` 不吃 `worldId / sessionId` 这一条**仍然成立**
+       *   且仍然写在里面：本单一个字都没动它的签名（它有既有调用方与金值，动签名会连坐）。
+       */
+      impact: {
+        autoNote: "扰动一施加即自动分析（沙盘里的「假设」就是已经发生的那条扰动，不需要再按一次确认）",
+        needPerturbation: "左区还没有施加扰动 —— 先施加一条，这里才知道要传播哪一处变更。",
+        deltaTitle: "世界态随扰动的变化",
+        deltaQuestion: "基线快照 → 当前 tick，哪些状态变量动了",
+        deltaBaselineMissing:
+          "本世界的基线快照（`SimSession.baseSnapshot`）还没取到 ⇒ 算不出变化量。这里显示空，不用当前值冒充「没变化」。",
+        deltaNone: "与基线逐项相等 —— 是「比过了，一项都没动」，不是「没比」。",
+        deltaMoved: (n: number, total: number) => `${n} / ${total} 项偏离基线`,
+        deltaRest: (n: number) => `其余 ${n} 项（与基线同值）`,
+        financeGapTitle: "这块金额是怎么来的 / 什么时候没有",
+        /**
+         * 技术出处（不上屏）：基线取本体真值（`FinancePlan.rolling` / `ARInvoice.amount`），
+         * 增量由 `Order.costPressure` / `Customer.receivablePressure` / `ARInvoice.overduePressure`
+         * 沿种子里的传导规则折算；换算除数随回包下发（非前端写死），产生压力的规则真 id 与系数一并回传。
+         * ⚠ 勿与求解器 `finance_pnl` 混：它读本体真值、签名不吃 worldId/sessionId ⇒ 同租户下施加任何扰动
+         *   都返回同一组数（那是它的正确行为）。本带金额走的是另一条通路 `finance_world_projection`。
+         */
+        financeGapBody:
+          "这是推演投影，不是实测值。" +
+          "打底的数取自本体里的真值（财务滚动计划与应收账款金额），增量则由这个世界里的成本压力、" +
+          "回款压力、逾期压力沿传导规则折算出来：金额 = 基线 ×（1 + 压力 ÷ 换算除数）。" +
+          "换算除数由后端随结果一起给，不是前端写死的系数；产生这些压力的规则与系数也一并回传，改了系数这里会跟着变。" +
+          "⚠ 它回答的是「这个世界里花了多少钱」，与「本租户实际损益」是两回事，别混着读。" +
+          "世界态为空、没有金额基线、或该能力未开通时，这里据实报缺 —— 绝不显示一个不动的 0。",
+        moneyTitle: "财务金额随扰动的变化",
+        moneyQuestion: "这次扰动，钱上差多少",
+        /** 口径**常驻第一层**（不是浮层里的一句话）：读者一眼要知道这不是实测数。 */
+        moneyCaliber: "推演投影 · 非实测",
+        moneyCaliberDetail: (divisor: number) => `基线 ×（1 + 压力 ÷ ${divisor}）`,
+        moneyLoading: "正在向财务投影求解器要数…",
+        moneyNoSession: "还没有推演世界 —— 建好世界这里才有金额可投影。",
+        /** 求解器说不可用（世界态空 / 无基线）：把**后端原话**摆出来，本页不替它编一个解释。 */
+        moneyUnavailable: (reason: string) => `这个世界暂时给不出金额口径 —— ${reason}`,
+        /** 请求本身失败（能力未开通 / 网络）：同样给后端原话。 */
+        moneyFailed: (msg: string) => `财务投影求解器没答上来，下面是后端原话，本页不替它编一个数：${msg}`,
+        moneyBaselineWord: "基线",
+        moneyProjectedWord: "投影",
+        moneyCashTitle: "应收 / 逾期",
+        moneyArRow: "应收余额",
+        moneyOverdueRow: "逾期敞口",
+        moneyChain: (n: number) => `换算链 ${n} 跳（真规则系数）`,
+        moneyNotes: (n: number) => `诚实缺席 ${n} 条`,
+
+        /* ══ WO-FIELD-DEAD-6 · 「诚实位那一层」的文案 ═══════════════════════════════
+         *
+         * 这一组治的病一句话：**屏上一个金额，看的人无从知道它是 500 个对象里 3 个撑起来的，
+         * 还是因为拿不到金额权重、退回等权硬算出来的。**
+         * 契约 `finance-world.ts` 把 `worldStateSource` / `worldObjectCount` / `pressures[]`
+         * 三个字段都写成**必填**（不带 `.optional()`），后端逐个算好下发，而前端此前一个都没读
+         * （`solver-field-seam:check` 2026-08-14 判：全前端生产代码零提及）。
+         *
+         * ⚠ 三句 `moneyCarriers*` **不许合并成一句「无数据」**：契约注释原文写着
+         *   「缺 `universe`，`carriers:0` 无法区分『台账空』与『查过了没中』」——
+         *   合并 = 把这个区分重新抹掉，等于把 `universe` 这个字段再杀一次。
+         *   `finance-provenance.seam.test.tsx` 用「两种 carriers:0 的屏上措辞必须不同」咬死这一条。
+         */
+        /** 世界态取自哪一份（`worldStateSource`）——不写出来，读者不知道这块钱是拿哪一份态算的。 */
+        moneyWorldStateLabel: "世界态取自",
+        moneyWorldStateTick: "当前 tick 的态",
+        moneyWorldStateBaseSnapshot: "该 tick 没有落态 → 回落会话基线快照",
+        /** 几个对象有态（`worldObjectCount`）——分母不藏起来。 */
+        moneyWorldObjects: (n: number) => `${n} 个对象有态`,
+        /**
+         * `worldObjectCount === 0` 但回包仍报 `available:true` —— **契约要求此时 `available:false`**
+         * （`finance-world.ts:146` 原文「0 = 空世界 → `available:false`」）。
+         * 前端照契约判，不照回包的一面之词判：空世界算出来的金额恒等于基线，摆上去就是静默错答。
+         */
+        moneyWorldEmptyContradiction:
+          "回包自相矛盾：`worldObjectCount: 0`（空世界）却报 `available: true` —— 契约要求此时 `available: false`。空世界的投影恒等于基线，摆上去就是拿基线冒充投影。本页据实报缺，不显示这组数。",
+        /** 成色区的区头：这一段回答「这几个金额凭什么可信」。 */
+        moneyPressureTitle: "这几个金额的成色",
+        moneyPressureQuestion: "每条压力由几个对象撑着 · 用什么口径聚合",
+        /** 有承载对象：分子分母一起给（只给分子 = 又一个没有成色的数）。 */
+        moneyCarriersSome: (carriers: number, universe: number) => `${carriers} / ${universe} 个对象带这个态`,
+        /** `carriers:0 · universe:0` —— 台账本身是空的（连查的对象都没有）。 */
+        moneyCarriersNoUniverse: "台账里就没有这类对象（全域 0 个）",
+        /** `carriers:0 · universe>0` —— 查过了，只是一个都没中。与上一句**是两件事**。 */
+        moneyCarriersNoneCarry: (universe: number) => `查过了：全域 ${universe} 个对象，没有一个带这个态`,
+        /** `weighting: "VALUE"` —— 金额口径唯一正确的聚合法。 */
+        moneyWeightingValue: "按金额加权",
+        /** `weighting: "EQUAL"` —— **回落**，可信度低于上面那档，不许显示成一样。 */
+        moneyWeightingEqual: "等权回落",
+        moneyWeightingEqualHint: "拿不到金额权重才退回等权，这条的可信度低于按金额加权的那些 —— 后端原话：",
+        /** `weighting: "VALUE"` 时也把后端口径原话带出来（诚实位只许降层、不许删）。 */
+        moneyWeightingValueHint: "后端口径原话：",
+      },
+      /**
+       * WO-V4-PLAYS · 方案环（PRD-sandbox-v4 §3.3）的文案。
+       *
+       * ⚠ `caliber` / `r4` 是**诚实位**，与上面的 `financeGap` 同族：
+       *   前者写明「平行世界之间那点差异是怎么造出来的」（它是推演投影，不是实测），
+       *   后者写明「采纳只落审批草稿，沙盘绝不写本体真值」（R4 红线）。
+       *   两者常驻第一层 —— 降层可以，删除不行。
+       *
+       * ⚠ 本节**不含任何方案名 / 指标名 / 行业实体名**：那些一律来自 `decision_play` 回包
+       *   与契约 `GOAL_REGISTRY`（R14 去电池锁死）。这里只有结构性措辞。
+       */
+      plays: {
+        title: "方案环 · 扰动 → 方案 → 平行世界 → 比对 → 采纳",
+        intro:
+          "左边拨一条扰动让指标动起来，这里向决策推演求解器要 N 个对症方案；每个方案开一个平行世界（从同一个检查点分支），并排比出差异，再把选中的那个送进 Action 审批。",
+        metricLabel: "指标",
+        metricAuto: "引擎自选（缺口最大的越线指标）",
+        solve: "求方案",
+        solving: "求方案中…",
+        solveFailed: "求方案失败 —— 下面是后端原话，本页不替它编一个解释：",
+        rootPrefix: "根因 ",
+        gapWord: "缺口",
+        narrowing: (pct: number, n: number) => `推荐组合 ${n} 项 · 收窄 ${pct}%`,
+        recommended: "在推荐组合内",
+        basis: "依据：",
+        needPerturbation:
+          "还没有施加扰动 ⇒ 平行世界没有可回补的落点。先在上面拨一条扰动，方案世界才会互不相同（不给一个点了只会开出 N 个一模一样的世界的按钮）。",
+        zeroEffect: (objectId: string, stateVar: string) =>
+          `本次扰动在 ${objectId}.${stateVar} 上的实测效应为 0（引擎规整或落点未变）⇒ 按比例回补出来的差异也必然是 0。这里如实说没有可比的差异，不去换一个"看着有差异"的算法把它糊过去。`,
+        branch: (n: number) => `为 ${n} 个方案各开一个平行世界`,
+        branching: "开世界中…",
+        caliber: (objectId: string, stateVar: string, effect: number) =>
+          `口径（这一段数字是推演值，不是实测值）：回补比例 = 该方案 closesGap ÷ 根因缺口；本次扰动在 ${objectId}.${stateVar} 上的实测效应 Δ = ${Math.round(effect * 1000) / 1000}；方案世界 = 分支世界 + 一条 delta = −Δ×回补比例 的扰动。`,
+        worldsTitle: "平行世界（各方案各一个）",
+        recovered: (pct: string) => `回补 ${pct}%`,
+        adopt: "采纳（走审批）",
+        adopting: "采纳中…",
+        compareLabel: "并排比对",
+        pickA: "比对世界 A",
+        pickB: "比对世界 B",
+        compare: "比对",
+        comparing: "比对中…",
+        compareEmpty: "两个世界里读不到该落点的值 —— 如实说读不到，不用 0 冒充。",
+        diff: (d: string) => `差异 B − A = ${d}`,
+        r4:
+          "红线：沙盘改的只是这个推演世界，不会写到真实数据上。" +
+          "「采纳」只生成一份待审批的行动草稿，审批通过之后才由正式流程去改真值。",
+      },
+      info: {
+        /**
+         * WO-HOVER-LAYER：以下三条原先挂在**原生 `title=`** 上，按
+         * `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3「公式与口径不在第一层，
+         * 且禁止用 HTML title 属性充当浮层」迁到 InfoPopover。
+         */
+        routingConfidenceTopic: "分类置信度",
+        routingConfidenceBody:
+          "量纲＝分类置信度 0–1（QOS routing.completed 事件的 confidence），越高越确定。与阈值 tauHigh / tauMid 同尺度比较，恒 0–1；满分是 1 不是 100。",
+        skillWriteModeTopic: "写模式（推导位）",
+        skillWriteModeBody:
+          "契约 isWriteModeSkill 的推导结果，非后端下发字段：会改变真值 或 需要审批 ⇒ 受 R4「真值只经 Action 审批链变更」约束，故必须产出 action_draft。",
+        llmNoReasoningTopic: "关推理",
+        llmNoReasoningBody:
+          "关掉该用途的推理（分类 / 选型等本不需推理）：推理型模型改用同 provider 的非推理兄弟出快答，是治本的降时延手段。",
+        /** `?` 触发器：hover / focus 出浮层，移开或 Esc 即消失。 */
+        trigger: "?",
+        triggerAria: (topic: string) => `${topic} —— 说明（悬停或聚焦查看）`,
+        close: "关闭说明",
+        impedimentCaliber: "口径差（按引擎显示，不按设计稿措辞）",
+        impedimentJoin: "联动口径（真实的接缝缺口）",
+        scopeDim: (label: string) => `${label} · 这一维带不带得下去`,
+        scopeReach: "范围能带到哪",
+        legend: "阻滞点图例",
+        timeWindow: "时窗 30D / 60D / 90D 为何禁用",
+        seed: "SEED · 确定性种子",
+        chainCoverage: "链路阶段 · 在册 ≠ 有数据（完整口径与取证）",
+        processLayers: "业务流程档 · 两层为何能同屏、又为何不合并",
+        /** WO-R9-METRO-UX：线路图的连线**为什么是虚线**（诚实位，不是免责声明）。 */
+        processOrderBasis: "业务流程线路图 · 线怎么连、为什么是虚线",
+        /** WO-PROCESS-CANVAS-LIVE：哪些流程随节拍变、判据是什么、这个判据**测不出**什么。 */
+        processTickDrive: "业务流程 · 哪些随节拍变、判据是什么",
+        /** WO-PROCESS-CANVAS-LIVE：图例从第一层降到浮层（R-UI-3「这个符号什么意思」属浮层）。 */
+        processLegend: "业务流程线路图 · 图例（每个符号是什么意思）",
+        paretoRate: "影响率怎么算 · 分母是什么",
+        inspectorEvidence: "下钻证据为何是空的",
+        stepTable: "逐环节表的口径",
+        /**
+         * WO-UI-BURNDOWN-21 · 全链线路图页头的**读图法**（站是什么、圈为什么有大有小、数哪来的）。
+         * 与上面 `processLegend` 同族：「这个符号什么意思」属浮层，第一层只留标题与范围值。
+         */
+        chainMapLegend: "怎么读这张图 · 站和圈分别是什么",
+        // ── WO-BEFE-WIRE-3 · 影响传播 / 快照分叉比对（口径与公式一律进浮层，第一层只留数值与状态）──
+        impactBasis: "影响面怎么算 · 引擎与口径",
+        impactDimension: (label: string) => `${label} · 这一维的连接键与全域`,
+        impactHonesty: "「算不了」与「没影响」的区别",
+        twinFork: "分叉进仿真世界会发生什么",
+        twinDiff: "两份快照的差怎么算",
+        /**
+         * WO-SANDBOX-UI-INTEGRATE · 顶栏 KPI 的**量纲口径**。
+         *
+         * 来历：仓主指出沙盘第一层「密密麻麻，很多是功能或信息描述型」。顶栏读数此前写成
+         * `全局态（0–100 指数 · tick 3） 62.5` 与 `s1（0–100 指数·全对象均值） 48.0` ——
+         * 括号里那截是**口径**（规范 §2 R-UI-3 明令进浮层），它把每个读数撑长一倍，
+         * 而顶栏恰恰是「这一页要回答的那个数」该独占的位置（R-UI-2）。
+         *
+         * ⚠ 降层**不是删除**（规范 §1 诚实位红线）：量纲是 WO-UNIT-MEANING 立的诚实位 ——
+         * 裸「62.5」看不出满分是 100 还是 10。故原文一字不改地搬进浮层，
+         * 第一层留 `?` 触发器当可见记号（「静默降层等于删除」）。
+         */
+        /**
+         * WO-SANDBOX-UI-INTEGRATE · 壳级上下文的**诚实位**（原文一字未改，只换承载方式）。
+         * 原先内联在 `SandboxView` 的 `title=` 属性里 —— 规范 §2 R-UI-3 明令禁止原生 tooltip
+         * （不受控 · 永远画在最上层 · 移开滞留；本仓 2026-08-10 真出过遮挡事故）。
+         */
+        shellContextGap: "订单锚点 / 时窗为什么不是壳级控件",
+        shellContextAnchor:
+          "订单锚点：今天不是壳级控件——它由线路图按 so 自取（chain_loss_attribution 唯一认的入参），壳里没有第二个订单选择器，硬造一个就是各模式各用各的假旋钮。",
+        shellContextWindow:
+          "时窗：chain_loss_attribution 只认 so、chain_impediments 只认 scope，两者都没有时间窗入参，故控制台顶栏那个 30D/60D/90D 是禁用的（挂「时窗无 ARGS」徽标），壳里不再造第二个。",
+        /**
+         * WO-V4-HONEST-ORIGIN · 顶栏读数**出处**（PRD-sandbox-v4 §2.1 / §4.3）。
+         * 两条正文互斥出现：占位期一条、实测期另一条 —— 记号必须真的换掉，不是加一句免责。
+         */
+        kpiOrigin: "这批读数是哪来的",
+        kpiOriginDerived:
+          "合成·占位：这批数还没取到后端的世界状态，是前端按对象与变量名确定性算出来的占位值（同样输入必得同样结果）。" +
+          "它不是任何实测值 —— 全对象取均值必然收敛到 50，那是大数定律，不是各项压力恰好都在中位。" +
+          "推进一拍、施加一条扰动，或世界状态更新之后，这个记号会换成「实测」。",
+        kpiOriginMeasured:
+          /* 口径出处（不上屏）：取自 `GET /a/v1/sim/sessions/:id/world` 回包，或 tick / 扰动回包。
+             本条口径 2026-08-13 实测；复验：
+             `pnpm --filter frontend-shell exec vitest run test/sandbox-world-origin.seam.test.tsx` */
+          "实测：这批数取自后端算出来的世界状态，不再是前端的占位值。" +
+          "口径仍是 0–100 指数（见「读数量纲」）；它描述的是这个推演会话里的模拟世界，不是真实数据。",
+        /** WO-V4-PLAYS · 方案环里那点差异的口径（诚实位，常驻第一层 + `?` 出全文）。 */
+        playCaliber: "平行世界之间的差异是怎么造出来的",
+        playCaliberBody:
+          "从同一个检查点分出来的几个子世界本来一模一样，不给它们各自一处差异，比对面板就永远是两列相同的数。" +
+          "差异来自一处写明的确定性折算，不是新造的真值：回补比例 = 这个方案能补掉的缺口 ÷ 根因缺口；" +
+          "本次扰动在该状态变量上的实际效应 = 扰动后值 − 扰动前值（两头都取后端回包）；" +
+          "方案世界 = 分支世界 + 一条「把这次扰动的效应按回补比例抵消掉」的扰动，经真接口施加、由引擎照常传导。" +
+          "读作「这个方案按引擎自己给的补缺口能力，在沙盘里把本次扰动的效应回补了这么多」。它是推演值，不是实测值。",
+        kpiUnit: "读数量纲 · 0–100 指数",
+        kpiUnitGlobal: "全局态是全部对象、全部状态变量的均值，是 0–100 的指数（不是百分比，也不是某一个变量的原值）；越高越好。",
+        kpiUnitVar: "每个状态变量的读数，是该变量在全部已建对象上的均值，是 0–100 的指数（不是百分比）。",
+        /**
+         * WO-SANDBOX-CANDIDATES-FE · 候选对策的浮层标题。
+         * 第一层只放「拨哪个对象 / 拨哪个属性 / 从多少到多少 / 效果」；
+         * 口径（档位怎么来的 · join 怎么推的 · 试算公式）一律降到这两个浮层里。
+         */
+        candidateHow: "这条对策是怎么推出来的",
+        candidateNone: "为什么这个阻滞点没有方案",
+        /**
+         * WO-UI-BURNDOWN-21（2026-08-14）· 沙盘第一层那批**成段说明**的浮层标题。
+         * 规范 §1：第一层只放「数值 / 状态 / 名字」，成段说明属浮层。
+         * 下面每一条对应的正文都是**原文照搬**下沉的（一个字没删），
+         * 第一层留下的是结论那半句 + `?` 记号 ——「静默降层等于删除」。
+         */
+        commanderHow: "AI 指挥台怎么用、它动的是什么",
+        scopeLocalReach: "选「局部」之后引擎到底裁了什么",
+        perturbAfter: "施加扰动之后会发生什么",
+        checkpointCaliber: "这份存档清单怎么排、回滚会动什么",
+        checkpointEmptyHow: "怎么存第一个档",
+        compareHow: "多场景对比怎么用",
+        compareEmptyHow: "怎么开出第一个分支",
+        commanderMovedWhy: "这一格为什么只剩一行字",
+      },
+      /**
+       * WO-SANDBOX-CANDIDATES-FE · 候选对策区的**壳文案**。
+       *
+       * 只收标题/表头/连接词这类纯壳字。**不收**任何口径正文 ——
+       * 档位来源、join 路径、试算公式、缺席原因全部是**引擎回包里的字段原文**
+       * （`rungSource` / `join.path` / `provenance.formula` / `noCandidateReason` / `gaps[]`），
+       * 抄进本文件就是给引擎文案开一条会漂的分身（R14 同族纪律）。
+       */
+      candidates: {
+        title: "候选对策",
+        /** 计数：几条候选。0 条时不显示本行，改显示「为什么没方案」。 */
+        count: (n: number) => `${n} 条`,
+        lever: "拨哪个对象",
+        prop: "拨哪个属性",
+        move: "从多少拨到多少",
+        rung: "档位来源",
+        effect: "真试算的效果",
+        join: "溯源",
+        /** 档位纪律：必须让用户看见"这个数不是前端拍的"。 */
+        rungNote: "档位取自同侪真实取值 / 规则阈值本身，全链零步长常数",
+        /** 杠杆落点不是阻滞点落点时的记号（回包里没有该对象的显示名，只有业务 id）。 */
+        leverElsewhere: "杠杆不在阻滞点落点上",
+        leverIdOnly: "回包只带业务 id，无显示名 —— 如实回显 id，不去别处凑一个名字",
+        /** KPI 维表头。 */
+        dimBefore: "不施策",
+        dimAfter: "施策后",
+        dimDelta: "改善",
+        /** 维算不出来（value===null）：显示引擎给的原因，**绝不补 0**。 */
+        dimEmpty: "算不出来",
+        /** 「为什么没方案」区。 */
+        noneTitle: "为什么这个阻滞点没有方案",
+        statLine: (a: number, p: number, e: number, m: number) =>
+          `探了 ${a} 个杠杆锚点 · 试算 ${p} 次 · 有效 ${e} 个 · 下发 ${m} 条`,
+        gapsTitle: "缺口（引擎原文）",
+        statMissing: "引擎未回带本点的逐点账（candidateStats 无对应行）—— 说不出探了几个锚点，如实标注，不编一个数",
+        /** 顶部总账。 */
+        summary: (withC: number, total: number) => `${withC} 个阻滞点有对策 · 共 ${total} 条候选`,
+        absentSummary: "没有对策的分三态（修法完全不同，不许合并看）：",
+        probes: (n: number) => `本次试算探针 ${n} 次`,
+        truncated: "⚠ 探针预算已耗尽 ⇒ 后面的档位没试算完，结果不完整",
+        waiting: "等 chain_impediments 取回后，这里逐条列出候选对策。",
+      },
+    },
+    inference: {
+      toggle: "▸ 推演过程（编排 DAG）",
+      hide: "▾ 推演过程（编排 DAG）",
+      in: "输入",
+      proc: "过程",
+      out: "输出",
+      gap: "缺口·断在此",
+      notRun: "未跑/未接入",
+    },
+    ksf: {
+      title: "财务计划 KSF 图（问题 → 关键成功要素 → 财务指标）",
+      problems: "待解决问题",
+      ksf: "关键成功要素",
+      fin: "财务计划指标",
+      timelineHint: (name: string) => `${name} 的时序推演（逐日传导度）`,
+    },
     snapshotBadge: (v: string) => `快照 ${v}`,
     adoptToDraft: "采纳为草稿",
     adoptDone: "已生成 Action 草稿并进入审批流",
@@ -307,14 +1344,18 @@ export const zh = {
     audit: {
       title: "规划体检",
       inputTitle: "输入计划字段",
-      verdict: (verdict: string, score: number) => `体检结论：${verdict}（评分 ${score}/100）`,
+      // PRD-IND-audit §3.1：「可定稿·关注风险」展示时插入 M 计数「可定稿 · 关注 N 项风险」。
+      verdict: (verdict: string, score: number, mCount = 0) => {
+        const label = verdict === "可定稿·关注风险" ? `可定稿 · 关注 ${mCount} 项风险` : verdict;
+        return `体检结论：${label}（评分 ${score}/100）`;
+      },
       hardSection: "⛔ 硬矛盾",
       medSection: "⚠ 软风险",
       sugSection: "💡 建议修正",
       applyFix: "一键应用",
       fixFootnote: "演示用——实际生效走 S&OP 议程与 Action 审批 (C10/C22)",
       timeline: "⏱ 时序推演（不解决会怎样）",
-      timelineHint: "不解决会怎样 → 传导链推演（risk_timeline 同构数据）",
+      timelineHint: "不解决会怎样 → 按审计口径(kind)逐日推演（audit_timeline 各项独立曲线）",
       gmStruct: "细分结构反推毛利率上限",
       baseline: (label: string) => `基线：${label}·改任意字段即时体检`,
       resetInput: "重置输入",
@@ -323,6 +1364,9 @@ export const zh = {
       title: "规划建议",
       goals: "🎯 经营目标（改动即重算全部方案）",
       recommend: "推荐",
+      extSens: "🌐 外部信号敏感性",
+      focusKeys: "执行关键点",
+      whyPrefix: "为什么必须解决（推演）：",
       hardViol: "硬约束冲突",
       hard: "硬约束",
       soft: "软偏好",
@@ -352,7 +1396,7 @@ export const zh = {
       },
     },
     proj: {
-      title: "项目推演",
+      title: "接单可行性",
       orders: "订单列表",
       single: "整单",
       batch: "分批",
@@ -373,24 +1417,69 @@ export const zh = {
       bnMatrixOpen: "🧮 打开瓶颈矩阵（基地×7因素）",
       whatIf: "What-if 调参（拖动即重算）",
       nightShift: "加夜班",
-      extraChannels: "扩化成通道",
+      extraChannels: "扩产能通道",
       outsource: "外协比例",
-      outsourceCap: "已达 C08 红线 20%（外协比例不得超过 20%）",
+      // DF.13：红线百分数由契约单一来源格式化（此前手写两个「20%」，是唯一真正内联在用户可见文案里的裸数）。
+      outsourceCap: `已达 ${OUTSOURCE_REDLINE.ruleKey} 红线 ${outsourceRedlinePct()}%（外协比例不得超过 ${outsourceRedlinePct()}%）`,
       gapZero: (surplus: string) => `缺口归零 · 富余 ${surplus} 万套`,
       gapLeft: (gap: string) => `缺口 ${gap} 万套`,
       adopt: "采纳产能保障方案",
-      before: "调整前 P50",
-      after: "调整后 P50",
+      // WO-P50-RENAME：默认口径是 capacity_forecast 的 capWanP50（万套/窗口）。
+      // 调用方若传的是别的量（如 RiskBoardView 传张力峰值）必须自带 beforeLabel 覆盖 —— 不许沿用本文案。
+      before: "调整前 P50（万套/窗口）",
+      after: "调整后 P50（万套/窗口）",
       logistics: (days: number) => `物流 ${days} 天`,
       pendingCert: "认证中（产能按 60% 计）",
       certPending: "认证中",
+      // PRD-IND-model §4.4-⑥：不达标时对症对策表（acts，方案库「按约束因素对症」，缺口时显示，与滑杆并存）。
+      actsTitle: "对症对策（按约束因素 · 方案库）",
+      acts: [
+        { action: "加 2 夜班", effect: "+12% 产能 · 当周见效 · 低成本" },
+        { action: "扩化成通道", effect: "+20% · 直击主瓶颈 · 含 2 周爬坡" },
+        // DF.13：红线百分数派生（这是第二处手写「20%」的用户可见文案）。
+        { action: "部分外协", effect: `+15% · 受 ${OUTSOURCE_REDLINE.ruleKey} ≤${outsourceRedlinePct()}% 约束` },
+      ],
+      // WO-PROJECT-SIM-WHATIF ⑥：动态杠杆（自瓶颈反推 + 敏感度排序，走 generic_inference 真重算）文案（R14 下发·不内联）。
+      lever: {
+        title: "动态杠杆（自瓶颈反推 · 敏感度排序）",
+        hint: "杠杆集随⑤瓶颈变——每根杠杆是撬得动本项目瓶颈的可写对象属性，敏感度由 generic_inference 服务端 ±ε 真重算得出。",
+        tornadoTitle: "敏感度龙卷图（∂目标/∂杠杆 · 降序）",
+        sensitivity: "敏感度",
+        current: "当前",
+        boundHit: (name: string) => `⚠ 已达「${name}」规则闸/物理域上限`,
+        empty: "未发现可撬动本瓶颈的杠杆（派生链未覆盖该因子）——诚实空态，不臆造滑杆。",
+        deltaTitle: (n: number) => `下游派生 before → after（${n}）`,
+        provFormula: "敏感度 = Δ下游派生 / Δ杠杆（generic_inference · recompute dryRun ±ε）",
+        adopt: "采纳杠杆组合方案",
+        schemeTitle: "多方案利弊量化矩阵（每方案 generic_inference 真算）",
+        schemeHint: "就本瓶颈自动生成候选杠杆组合，每方案经 generic_inference 真重算比对——各格数字可溯（非写死）。",
+        schemes: { maxCap: "max_产能", minCost: "min_代价", balanced: "均衡" },
+        col: { scheme: "方案", capGain: "产能增益", impact: "影响面", ruleFlag: "触规则闸", adopt: "" },
+        adoptScheme: "采纳",
+        ruleGate: (pct: string) => `外协 ≤ ${pct}（C08 规则闸）`,
+      },
     },
     sop: {
-      title: "S&OP 月度平衡台",
+      title: "月度规划",
       newVersion: "新建版本",
       versions: "版本列表",
       steps: ["① 产品评审", "② 需求评审", "③ 供应评审", "④ 财务整合", "⑤ 高管决策会"],
       runStep: (n: string) => `执行第${n}步`,
+      /**
+       * WO-UI-LAYERING-BURNDOWN：以下四条原先**直接印在第一层**，按
+       * `docs/CONVENTION-ui-information-layering.md` §2 R-UI-3
+       * 「凡形如 `A × B ÷ C`、「口径差」的文字，一律进 `?` 浮层」降层。
+       * 第一层留短名 + `?` 记号（规范 §1：静默降层等于删除）。
+       */
+      info: {
+        s1Topic: "①产品评审为什么排在最前",
+        s1Body: "产品评审先行：可产矩阵（型号×产线认证关系）变化直接改变 ②③ 的可行域。",
+        s3Topic: "供给怎么算出来的",
+        s3Body: "供给 = Σ基地（周产能 × 爬坡系数 × 认证系数）。认证中的基地按认证系数打折，量产基地系数 1.0。",
+        mrpTopic: "净需求怎么算出来的",
+        mrpBody: "净需求 = Σ需求 × BOM 用量 − 库存 − 在途（C06）。",
+        mrpSourceBody: "两瓶颈与决策推演大屏同源（C06 齐套口径）——同一份齐套口径，不是各算一套。",
+      },
       locked: "已定稿——变更须走变更 Action（C22 锁定，任何字段变更必须走计划变更 Action）",
       lockDemo: "改字段尝试（演示 409 PLAN_LOCKED）",
       finalize: "定稿 → 走 Action 审批（C10/C22）",
@@ -402,18 +1491,172 @@ export const zh = {
       finalBadge: (n: number) => `V${n} 已定稿·C22 锁定`,
       c21Chip: "C21 差异提报 → 进议程",
       step5Blocked: "④ 财务整合未通过，阻断进入⑤（先修正财务输入并重跑第④步）",
-      gapRed: "缺口 > 2 万套",
+      gapRed: "缺口 > 2 万套/月",
       kpi: {
-        demand: "需求 P50(万套)",
-        supply: "可供给(万套)",
-        gap: "产销缺口(万套)",
+        // WO-P50-REMAINING-3 · 屏上必须分得出**分母**：这三卡全是 S&OP **月**口径
+        // （需求 = ② 三线合计滚动 P50 ← PlanTarget(level=month)×基线占比；
+        //  可供给 = ③ Σ基地周产能×monthlyWeeks；缺口 = 两者之差，同轴）。
+        // 与 `DemandSegment.demandWanPerYearP50`（万套/**年**·Σ375）、
+        // `capacity_forecast.capWanP50`（万套/**窗口**）都写「万套」但分母不同 ——
+        // 只写「万套」正是让用户在屏上分不出的那半个信息（仓主 2026-08-14 实测撞上的就是这个）。
+        // 实测锚（seed 42·2026-03）：② 合计 26.58 / ③ 22.68 / 缺口 3.90，量级即月。
+        demand: "需求 P50(万套/月)",
+        supply: "可供给(万套/月)",
+        gap: "产销缺口(万套/月)",
         revAttain: "收入预算达成",
         gmVsBudget: "毛利率 vs 预算",
         cash: "现金垫 C18",
       },
     },
   },
+  intake: {
+    title: "原型 intake（HTML → 数据表/关系/对账）",
+    sub: "粘贴 HTML 原型 → 确定性解析内嵌数据表（列+样例）与关系 → 与既有本体字段对账（自动映射/待确认候选/诚实标未解析），让「下一个 HTML 自动复刻数据与关系」可见可重复。",
+    placeholder: "粘贴含 <script>const NAME=[...]</script> 的 HTML 原型……",
+    parse: "解析 + 对账",
+    tablesTitle: (n: number) => `解析出的数据表（${n}）`,
+    relations: "关系",
+    reconcileTitle: "与既有本体对账",
+    autoMapped: "自动映射",
+    candidates: "待确认候选",
+    unparsed: "未解析（诚实跳过，不静默丢）",
+    importBtn: "导入到库",
+    importHint: "把解析出的数据表物化进统一数据库（经原型连接器），在「数据接入」可见此导入文件并在线查看每张表（值与原型一致，不写死前端）。",
+    importedTitle: (n: number) => `已导入到库（连接器 + ${n} 张表）`,
+    importedConn: "导入文件（数据连接器可见）",
+    importedRows: "行",
+    filenamePlaceholder: "文件名（如 cockpit-prototype.html）",
+    objectifyBtn: "物化为对象",
+    objectifyHint: "把导入表按确定性对账映射进既有对象类型（对账后的列→既有 type.field，不新建类型），成为可查询 ObjectInstance（对象浏览器计数可见）；映射不上的诚实跳过。",
+    objectifiedTitle: (n: number) => `已物化为对象（${n} 项）`,
+    objectifiedSkipped: "诚实跳过（无可确定映射）",
+    objectifyEmpty: "无可确定映射的表——导入数据已在库可在线查看；如需物化为对象，先在建模页对账确认列映射。",
+    modelNewBtn: "建模为新类型（A3）",
+    modelNewHint: "原型表与既有本体不匹配时，到半自动建模页把它们建成新对象类型（确定性建模→审核→发布→物化）。",
+  },
+  boundary: {
+    title: "边界册治理（单一来源 + 影响图）",
+    sub: "基地/应用细分/规划目标阈值的单一来源册——改某条业务常数会波及谁（回答「改 X 影响什么」）。册为 @platform/contracts 单一来源，改值=改代码经 boundary-singlesource 门。",
+    versionTitle: "版本指纹（改值留痕 / 缓存失效锚）",
+    consumers: "派生消费端",
+    consumersNote: "boundary-singlesource 门强制其从册派生、不内联",
+    derivesVia: "派生方式",
+    downstream: "下游受影响面",
+  },
   admin: {
+    /**
+     * WO-BEFE-CLEANUP · **管理台 `?` 浮层文案**（`docs/CONVENTION-ui-information-layering.md` §1/§2 R-UI-3）。
+     *
+     * 收在一处而不是各页内联，理由是规范 §6 的不变量 **R14（应用层无业务常数）**：
+     * 「浮层文案一律走 `locales/`，不内联」。
+     *
+     * ⚠ 这里放的是**「凭什么」**（口径 · 公式 · 数据来源 · 诚实位说明），
+     * **不放结论性数字** —— 规范 §1 明写「数字属于第一层，不许只藏在浮层里」。
+     * 每条的 key 前缀 = 它服务的那一页，改页时一眼看得出要改哪几条。
+     */
+    layer: {
+      // ── /admin/calendars（WO-BEFE-B）──────────────────────────────────────
+      calWeekendTopic: "周末口径",
+      calWeekendBody:
+        "决定「哪几天默认不算生产日」，是净生产天数的扣除基准：SAT_SUN_OFF = 周六与周日均不生产；SUN_OFF = 只休周日（六天工作制）；NONE = 不按周末扣，全部由下方例外日显式指定。",
+      calNetTopic: "净生产天数怎么来的",
+      calNetBody:
+        "净生产天数只在系统后台按这份日历算一次，这一页只把结果显示出来、不自己再算一遍 —— 各算各的，就会出现「屏上的数和求解器用的数对不上」这种最难查的偏差。算法 = 区间内的自然日 − 周末（按上面的周末口径）− 节假日和检修等例外日 + 调休补班日。",
+
+      // ── /admin/ontology-relations（WO-BEFE-A）─────────────────────────────
+      relStatusTopic: "状态列口径",
+      relStatusBody:
+        "状态列显示的是「你这次操作之后它应该变成的样子」，不是系统里已经存下来的权威状态：你新建或改动的内容会立刻反映在这一列上，而系统那边读的是已发布的版本，没发布的改动它看不见 —— 所以刷新页面后这一列会退回已发布的状态。这是如实标注，不是显示出错。要让两边一致，把改动发布出去。",
+
+      // ── /admin/catalog（WO-BEFE-E）────────────────────────────────────────
+      catalogRiskTopic: "这三条红字分别在说什么",
+      catalogRiskNoTargetBody:
+        "「未选目标对象类型」：意图发布前必填（AC4）。缺它，执行期不知道该在哪个对象类型上取数。",
+      catalogRiskNoPlanBody:
+        "「未绑定执行计划」：意图发布得了，但执行期解析不到计划（QOS 路径 A 会落到兜底），等于发了一条跑不动的意图。",
+      catalogRiskDraftBody:
+        "「DRAFT 未发布」：绑定它的意图在执行期解析不到计划 —— `latest` 只认已发布版本，草稿不参与解析。",
+
+      // ── /admin/growth（WO-BEFE-D）─────────────────────────────────────────
+      growthProbeTopic: "「运行」与「只探针」的区别",
+      growthProbeBody:
+        "「运行」会补数据 / 开工单 / 发事件（真写）；「只探针」不动任何数据，只把这一轮会做什么算给你看（只读）。拿不准就先只探针。",
+      growthFuelTopic: "自成长回路怎么跑",
+      growthFuelBody:
+        "把「客户明确问题」当燃料：真跑一遍 QOS 诊断缺口 → 能自动补的补（数据真人正门导入 HARD / 合成 SOFT 二选一）、补不了的开工单，回路每轮都留证据。",
+      growthTicketTopic: "工单状态机",
+      growthTicketBody:
+        "OPEN →「认领」→ IN_PROGRESS →「提交复核」→ IN_REVIEW →「验收」→ DONE。每一步都由后端判合法性，前端只发动作不改状态。",
+
+      // ── /admin/llm-providers（WO-BEFE-F）──────────────────────────────────
+      llmLedgerTopic: "账本不可用是什么意思",
+      llmLedgerBody:
+        "账本不可用（DataCore 未返回配额状态）—— 这是「这次没查到」，不是「配额没超」。别把它读成绿灯。",
+      llmDegradeTopic: "触发降级后会发生什么",
+      llmDegradeBody:
+        "⚠ 已触发降级：路径 A 跳过非必要 compose，路径 B 新任务前先警示；已在跑的任务不中断。",
+      llmCapTopic: "structuredOutput 能力口径",
+      llmCapBody:
+        "structuredOutput（可 JSON-mode 降级）：供应商原生不支持结构化输出时，适配层退到 JSON-mode 并在响应里标注，不静默改语义。",
+
+      // ── /admin/prototype-intake（WO-BEFE-C）───────────────────────────────
+      intakeQueueTopic: "候选队列与上方预览的区别",
+      intakeQueueBody:
+        "本队列是真正存下来的那一份（由建模链路写入），与上面那块「本次解析预览」「不是同一份」：预览刷新就没了，这里的一直在。",
+      intakeUnavailTopic: "队列不可用 ≠ 没有候选",
+      intakeUnavailBody:
+        "队列不可用（需要管理员角色，或此刻服务不可达）—— 这不是「没有候选」，是「这次没查到」。权限不够时系统如实拒绝，不给你一张假的空列表。",
+
+      // ── /admin/scenes（WO-BEFE-D）─────────────────────────────────────────
+      scenesKeyTopic: "为什么第一列是场景",
+      scenesKeyBody:
+        "场景为一等主键：第一列是场景，其后选交互模式（workflow-first 为默认），而不是先选模式再挑场景 —— 用户找的是「我要办的那件事」，不是「我要用哪种引擎」。",
+      scenesActionTopic: "「复检」与「发布全链」分别做什么",
+      scenesActionBody:
+        "「复检」只重算这一条的引用闭包并把断链条目摊在行内；「发布全链」按依赖序发引用到的全部制品，任一条断链即整体中止，不半途留下发一半的链。",
+      scenesReadonlyTopic: "已发布场景为什么改不了",
+      // 出处（工程师层，不上屏）：已发布场景真实存于后端 /b/v1/scenarios，非前端写死。
+      scenesReadonlyBody:
+        "已发布的场景是只读的（配置存在后端，不是前端写死的一份）—— 要改就发一个新版本。改不动是设计如此，不是你的权限出了问题。",
+
+      // ── /admin/solver-review（WO-BEFE-E）──────────────────────────────────
+      solverReviewTopic: "「审核中（未认证）」是什么状态",
+      solverReviewBody:
+        "LLM 生成的临时求解器经锁死沙箱跑通自检后为「审核中（未认证）」，默认隔离、仅本会话可用；认证前不进任何生产求解路径。生成 ≠ 可用。",
+      solverProvisionalTopic: "PROVISIONAL 的三件套",
+      solverProvisionalBody:
+        "冻结代码 + PROVISIONAL 标记 + 未认证徽标 —— 三件缺一不可：缺冻结则代码还会变，缺标记则混进目录，缺徽标则用的人不知道它没过认证。",
+
+      // ── /admin/solvers（WO-BEFE-E）────────────────────────────────────────
+      solversSourceTopic: "这一页的数据从哪来",
+      solversSourceBody:
+        "求解器由平台代码注册（非用户创建），此页只读发现：key / 名称 / 描述 / 分类 / 参数版本全部读自后端注册表，前端不写死一条。",
+      solversTaxonomyTopic: "分类判据",
+      solversTaxonomyBody:
+        "归类判据是「它回答的是不是这句问话」，不是「它用了哪种算法」—— 故同一句问话下可以并列出现算法完全不同的几个求解器。",
+      solversRolesTopic: "字段角色绑定的口径",
+      solversRolesBody:
+        "「在本租户本体里绑到哪」= 后端按 A13 地板语义做的确定性解析（无 LLM 参与），同输入必同输出。候选分数并列时取确定性默认，并在下方标「真歧义」。",
+      solversAmbiguousTopic: "「真歧义」是什么意思",
+      solversAmbiguousBody:
+        "排第一和排第二的候选分数咬得很紧 ⇒ 这份绑定只是「按固定规则选出来的默认值」，并不是「已经确定」。要把它定死，得回到本体里把这个字段的语义补清楚，而不是直接信这条默认值。",
+      solversEmptyTopic: "为什么这里可能是空的",
+      solversEmptyBody:
+        "暂无可见求解器（求解器由平台提供，按 feature 开通显隐；如需新增请联系实施方）—— 空列表是真值，不是加载失败。",
+
+      // ── /admin/agents（WO-BEFE-C）─────────────────────────────────────────
+      agentOwnRunsTopic: "「本 Agent 的运行」的数据源",
+      agentTaskRunsTopic: "「本次任务的全部运行」的数据源",
+      agentOriginTopic: "「来源」列在说什么",
+      agentOriginBody:
+        "会诊叫起来的那些运行也开始计数之后，「运行次数」的含义就变了 —— 5 次里可能有 3 次是被会诊叫去的，不标出来就会被读成「这个助手被直接调用了 5 次」。直接运行 = 从顶层直接发起的；会诊扇出 = 多角色会诊把它叫去跑的；「—」= 本列上线前的旧记录，当时没记这个，所以留空，不拿它冒充直接运行。",
+
+      // ── /admin/resources（WO-BEFE-F）──────────────────────────────────────
+      resDetailTopic: "详情面板的数据是单独取的",
+      // 出处（工程师层，不上屏）：详情读单资源端点 GET /b/v1/resources/{kind}/{key}（带 overlayQuality）。
+      resDetailBody:
+        "点开详情时会单独再取一次这一条的完整数据，不是把列表里那一行摊开给你看 —— 两者的字段不一样，列表那份拿不到「叠加质量」这类只在详情里才有的信息。",
+    },
     connections: {
       title: "数据接入控制台",
       newConnection: "新建连接",
@@ -464,6 +1707,31 @@ export const zh = {
       materialize: "对象化",
       materializeProgress: "对象化作业进度",
       patchFailed: "操作失败，已回滚",
+      assignDomain: "归域…",
+    },
+    pipelines: {
+      title: "数据构建 Pipeline 配置",
+      subtitle: "配置低代码 pipeline 的每个节点 SOP：干什么 · 失败怎么办 · 要不要人工放行。存下即生效——数据接入/导入/建域下次执行按新定义跑。",
+      kindIntake: "数据接入",
+      kindIntakeImport: "数据导入",
+      kindStoryBuild: "故事建域",
+      factory: "出厂默认",
+      overridden: "已覆盖",
+      colNode: "节点",
+      colWhat: "干什么（SOP 正文）",
+      colOnFailure: "失败怎么办",
+      colApproval: "人要不要介入",
+      colEnabled: "启用",
+      policy: { ABORT: "中止整条", RETRY: "有界重试", SKIP: "跳过继续" },
+      maxAttempts: "重试次数",
+      requiresApproval: "需人工放行",
+      enabled: "执行",
+      save: "保存并生效",
+      saving: "保存中…",
+      resetFactory: "撤销覆盖 · 回出厂默认",
+      pausedTitle: "等待放行的运行（PAUSED）",
+      pausedEmpty: "当前没有等待放行的运行。",
+      approve: "放行并续跑",
     },
     permissions: {
       title: "权限策略",
@@ -507,6 +1775,17 @@ export const zh = {
       payload: "参数快照",
       originTask: "来源任务",
       noPermission: "你不是该步骤的审批角色",
+      // WO-BEFE-B · 留痕与撤回（后端 audit/cancel 此前零前端调用方）
+      auditTitle: "审批留痕",
+      auditEvents: "后端事件",
+      auditNoEvents: "该草稿尚无 action.* 事件",
+      auditExecution: "执行结果",
+      auditNotExecuted: "未执行",
+      cancel: "撤回",
+      confirmCancel: "确认撤回该 Action 草稿？撤回后不再进入执行，且不可恢复。",
+      cancelNoPermission: "仅发起人或管理员可撤回，且执行开始后不可撤",
+      submit: "提交审批",
+      submitHint: "决策台落下的草稿停在 DRAFT，需提交后才进入审批链",
     },
     catalog: {
       title: "意图目录",
@@ -524,6 +1803,188 @@ export const zh = {
       builtinTools: "内置工具",
       mcpTools: "MCP 工具",
       workflowTools: "Workflow 工具",
+      /**
+       * WO-AGENT-ADMIN-CONSOLE · 运行观测台文案（R14：页面不内联业务串）。
+       *
+       * ⚠️ **本块只写取证证实「后端真有数据」的那些**（`docs/AUDIT-agent-console-gap.md`）。
+       * Context Manager 五段（Retriever / Ranker / Compressor / Assembler / Validator）
+       * **刻意一个字都没有** —— 取证结论是「无承载物」（全仓仅参考原型 HTML 里一个节点标签），
+       * 写了文案就等于给一块永远空着的面板发了通行证。
+       */
+      console: {
+        title: "运行观测",
+        subtitle: "本租户经 Agent 路径的真实推演运行",
+        refresh: "刷新",
+        /** 第一层 KPI（只放数值 + 状态 + 名字，口径一律进 ? 浮层）。 */
+        kpiTotal: "AGENT 路径运行",
+        kpiCompleted: "已完成",
+        kpiFailed: "失败 / 取消",
+        kpiRunning: "进行中",
+        unitRuns: "次",
+        /** 空态：真的没有运行，不是加载失败。 */
+        empty: "本租户还没有经 Agent 路径的推演。到任意场景对话坞问一个开放问句即可产生。",
+        loading: "加载中…",
+        /** 最近运行清单 */
+        recentTitle: "最近运行",
+        colTime: "时间",
+        colQuery: "问句",
+        colStatus: "状态",
+        colAction: "",
+        openDetail: "展开",
+        closeDetail: "收起",
+        gotoTask: "证据链 →",
+        /** 第二层 · 执行状态机 */
+        stateMachineTitle: "执行状态机",
+        stateReached: "本次到达",
+        stateNotReached: "本次未经过",
+        /** 第二层 · 工具调用 */
+        toolCallsTitle: "工具调用",
+        toolCallsEmpty: "本次运行没有工具调用记录。",
+        colTool: "工具",
+        colOutcome: "结果",
+        colDuration: "耗时",
+        /** 第二层 · 上下文工程 */
+        contextTitle: "上下文工程",
+        ctxIterations: "迭代轮次",
+        ctxToolCalls: "工具调用",
+        ctxTokensIn: "输入 token",
+        ctxTokensOut: "输出 token",
+        ctxOps: "上下文清理",
+        ctxBudgetExhausted: "预算耗尽",
+        yes: "是",
+        no: "否",
+        unitTimes: "次",
+        unitRounds: "轮",
+        /**
+         * 诚实位 ①：上下文清理 0 次不是"没做"，是阈值够不到（#91）。
+         * **允许降到浮层，绝不允许删除**；第一层留可见记号（数值本身 + ? 触发器）。
+         */
+        ctxZeroNote: "本次未触发上下文清理 —— 这是真值，不是缺数据",
+        /** 诚实位 ②：引擎根本没跑（未接 LLM provider 的诚实降级）。 */
+        noRunTitle: "本次未进入 Agent 循环",
+        noRunBody:
+          "任务走的是 AGENT 路径，但引擎没有执行工具循环，因此没有运行记录。最常见原因是未接入可用的 LLM 提供商 —— 此时系统会诚实降级并直接作答，而不是空转。",
+        noRunCta: "去绑定 LLM 提供商 →",
+        noTask: "该任务不存在或不属于当前租户。",
+        // -------------------------------------------------------------------
+        // WO-AGENTRUN-ATTRIBUTION · 「本 Agent 的运行」——归属已可得的那一半
+        // 数据源：GET /b/v1/agents/:id/runs（引擎在 agent/loop.ts finishRun 单点回填归属）。
+        // -------------------------------------------------------------------
+        agentRunsTitle: "本 Agent 的运行",
+        agentRunsSubtitle: "引擎在运行时回填的真实归属，跨版本按同一个 Agent 聚合",
+        agentRunsCount: "已归属运行",
+        agentRunsEmpty:
+          "这个 Agent 还没有运行记录。把它绑到某个场景入口（AGENT_FIRST / AGENT_ONLY）或角色分派上，再去对话坞提问即可产生。注意：未接入可用 LLM 提供商时系统会诚实降级直接作答，那种情况下不产生运行记录 —— 数字为 0 是真值，不是加载失败。",
+        agentRunsNoSelection: "在左侧选中一个 Agent，即可看到它自己的历次运行。",
+        colModel: "模型",
+        colVersion: "版本",
+        colIterations: "轮次",
+        colTokens: "token（入/出）",
+        // -------------------------------------------------------------------
+        // WO-BEFE-C · 「本次任务的全部运行」——复数读端 GET /b/v1/queries/:taskId/agent-runs
+        //
+        // 为什么必须单开一段、不能并进上面那张表：上面那张按 **Agent** 聚合
+        // （「这个 Agent 一共跑过几次」），这一段按 **任务** 聚合（「这一次会诊叫了谁」）。
+        // 合成一段就再也答不了「其中几次是被会诊叫去的」——那正是本单要让人在屏上看见的那句话。
+        //
+        // ⚠ 与单数端点的关系是本段最容易搞错的地方：多角色会诊的真实形态是
+        // 「0 条顶层 + N 条子运行」，此时单数端点**如实返 404**（上方显示"本次未进入 Agent 循环"），
+        // 而本段显示 N 条。两句都是真话，缺任一句都会把一次三角色会诊说成"什么都没跑"。
+        // -------------------------------------------------------------------
+        taskRunsTitle: "本次任务的全部运行",
+        taskRunsSubtitle: "含多角色会诊扇出的子运行（顶层至多一条，扇出可有多条）",
+        taskRunsTotal: "本次运行数",
+        taskRunsFanout: "其中会诊扇出",
+        /** 真空态：0 条是常态不是故障，必须说清楚"什么情况下才会有"。 */
+        taskRunsEmpty:
+          "本次任务没有任何 Agent 运行记录。走工作流路径、或未接入可用 LLM 提供商被诚实降级直接作答时，引擎都不会进入 Agent 循环 —— 这是真值，不是加载失败。",
+        /** 「顶层 0 条但扇出 N 条」——本单最要紧的那句话，不说出来用户只会看到上方的"未进入循环"。 */
+        taskRunsRootlessNote:
+          "本次任务在最顶层没有跑 Agent 循环，真正干活的是下面这些被会诊叫去的运行 —— 所以上方那句「本次未进入 Agent 循环」和这里的条数「两句都是真的」，不是自相矛盾。",
+        colStep: "扇出步骤",
+        colAgent: "执行 Agent",
+        /**
+         * WO-AGENTRUN-FANOUT-PERSIST · 「来源」列。
+         * 会诊扇出的子运行开始计入之后，**运行数的含义变了** —— 5 次里可能有 3 次是被会诊叫去的。
+         * 不标出来，用户会把它读成"这个 Agent 被直接调用了 5 次"。数字变了却不说，就是另一种说假话。
+         */
+        colOrigin: "来源",
+        originRoot: "直接运行",
+        originFanout: "会诊扇出",
+        originUnknown: "—",
+        /** 单次运行的归属形态（三态一一对应契约 attribution 字段；缺失≠EXPLORATORY） */
+        attrLabel: "运行归属",
+        attrRegisteredPrefix: "本次由 Agent ",
+        attrRegisteredSuffix: " 执行",
+        attrExploratory: "通用探索路 —— 本次没有任何 Agent 定义参与（引擎正面标记，不是缺数据）",
+        attrUnknown: "归属未知 —— 本条运行写于归属上线之前，无从判定属于哪个 Agent",
+        /**
+         * WO-DSH-P2-UX（N5）· 「内核」列/徽标（契约 `AgentRunRecord.kernel`，additive optional）。
+         * 与归属正交：归属回答「归谁跑」，内核回答「在哪个内核上跑」。
+         * 缺失 ≡ 原生（可证：内核标识上线前外部运行时开关恒关闭——休眠门机器守 + 出货 compose 显式 0），
+         * 故**不**显示「未知」（与归属三态不同案：归属缺失不可证，内核缺失可证）。
+         */
+        colKernel: "内核",
+        kernelNative: "原生",
+        kernelExternal: "外部运行时",
+        kernelNativeTip:
+          "本次运行由内置内核执行。该字段缺失的旧记录 ≡ 原生——可证（内核标识上线前外部运行时开关恒关闭），故不显示「未知」（与归属三态不同案）。",
+        kernelExternalTip:
+          "本次运行由外部运行时执行（POC 休眠分叉，部署面缺省关闭）。",
+        /**
+         * 诚实位 ③（**降层而非删除**）：归属已经可得，但**只对一部分运行**可得。
+         * 原文是「这些运行无法归属到上面选中的 Agent」——那句话在归属上线后已经不成立，
+         * 继续挂着就是另一种说假话。现在改成陈述**残余缺口**，且残余缺口一条不少地列出来。
+         */
+        attributionTitle: "归属已可得，但不是每一次运行都归得上",
+        /**
+         * 诚实位 ③ 的第二次**降层**（WO-AGENTRUN-FANOUT-PERSIST）：
+         * 原文第三类「多角色会诊扇出的子 Agent 运行（今天根本没有落库）」**已经不成立** ——
+         * 那些运行现在真落库、真计入、真带标签。继续挂着就是拿一条已修好的缺口冒充缺口，
+         * 与当初挂着"一次都归不上"一样是说假话，只是方向相反。
+         * 故此处**删掉那一条**，同时在上方列表里加「来源」列把新语义显式说出来（数字变了必须说）。
+         * 剩下的两类**一个字都不许删**：它们仍然真的归不上。
+         */
+        attributionBody:
+          "上方「本 Agent 的运行」是引擎真回填的归属，可信，且已包含多角色会诊扇出的子运行（每行在「来源」列标明是直接运行还是会诊扇出）。下方「本租户 AGENT 路径运行」仍是租户级清单，其中两类运行归不到任何 Agent 头上：① 通用探索路（自由问句进探索模式，工具集当场按场景包白名单组装，全程没有 Agent 定义）；② 归属上线之前写下的旧记录。展开任意一次运行可看到它自己的归属形态。",
+        /** ? 浮层（口径 · 公式 · 为什么这么算 · 数据来源） */
+        info: {
+          attribution: "哪些运行归得上、哪些归不上",
+          /**
+           * 屏上这句「归属形态**只有两种正值**：REGISTERED 与 EXPLORATORY」是一条**枚举断言** ——
+           * 契约里一加第三个值，这句话当天就开始对用户说谎，而屏上不会有任何变化。
+           * 故把它赌的那个计数写下来（2026-08-23 挂记号，现算相符）：
+           *
+           * @stale-fact packages/contracts/src/qos.ts /AgentRunAttributionSchema = z\.enum\(\["REGISTERED", "EXPLORATORY"\]\)/ ==1
+           *
+           * 赌的是**那一行原样存在**：枚举一旦增删值或改写形状，这条正则现算掉到 0，门当场红。
+           * 人工复验一条命令：
+           *   `grep -n 'AgentRunAttributionSchema = z.enum' packages/contracts/src/qos.ts`
+           * ⚠ 第三种情况（字段整体缺失 = 归属上线前的旧记录）**不是枚举值**，故不进这条赌注。
+           */
+          attributionBody:
+            "运行记录（AgentRunRecord）现在带 agentId / agentKey / agentVersion / 归属形态，由引擎在 Agent 循环收尾时与运行数据同一次写入 —— 所以「谁跑的」和「跑出了什么」不会各说各话。归属形态只有两种正值：REGISTERED（真解析了某一版 Agent 定义，如场景入口 Agent、角色 Agent）与 EXPLORATORY（本次确实没有 Agent 定义）。字段整体缺失是第三种情况：归属上线前的旧记录，属于未知，不会被当成 EXPLORATORY 混算。归属之外还有一个正交的维度：这次运行是这个任务自己跑的（直接运行），还是被多角色会诊扇出去的子运行（会诊扇出）。两者都算这个 Agent 真跑过一次，都计入上面的数字，「来源」列标明是哪一种 —— 此前会诊扇出的子运行根本不落库（运行记录曾以任务为唯一键，一个任务只存得下一条），那部分次数在全仓不可见，现在已经补上。",
+          contextOps: "上下文清理的触发口径",
+          contextOpsBody:
+            "三种清理动作：折叠最旧一轮工具结果 · 服务端压缩 · 强制收尾。三者共用同一道软阈值：模型上下文窗口与 20 万 token 取小，再乘 0.7。默认 20 万窗口下软阈值是 14 万，而系统自身预算上界（工具调用次数上限 × 单条工具结果 8KB 硬截断）允许的最坏上下文约 10.3 万 —— 够不到，所以默认路上一次都不会触发。换成 12.8 万及以下窗口的提供商，同一份上下文就会触发。够不到的真正原因是上游两道防线在正常工作，属设计正确，不是缺陷。",
+          stateMachine: "执行状态机的口径",
+          stateMachineBody:
+            "七个状态来自查询任务的状态枚举：路由中 · 等待澄清 · 执行工作流 · 执行 Agent · 已完成 · 失败 · 已取消。一次运行只会落在其中一个终态上；灰色的是本次没有经过的状态，不代表它不存在。",
+          tokens: "token 计数的口径",
+          tokensBody:
+            "只统计 Agent 工具循环那部分的输入/输出 token，不含意图分类与文本组装的开销 —— 因为那两处的接口不外透用量。所以这个数是下界，不是全量成本。",
+        },
+        /** 状态机七态显示名（与后端枚举一一对应，勿另造词） */
+        states: {
+          ROUTING: "路由中",
+          AWAITING_CLARIFICATION: "等待澄清",
+          EXECUTING_WORKFLOW: "执行工作流",
+          EXECUTING_AGENT: "执行 Agent",
+          COMPLETED: "已完成",
+          FAILED: "失败",
+          CANCELLED: "已取消",
+        },
+      },
     },
     workflows: {
       title: "Workflow 编辑器",
@@ -531,6 +1992,49 @@ export const zh = {
       moveUp: "上移",
       moveDown: "下移",
       cycleError: "检测到循环调用",
+    },
+    planBuilder: {
+      title: "计划构建画布",
+      newCanvas: "新建画布",
+      listGroup: (key: string) => `${key}（按 key 分组）`,
+      version: (v: number, status: string) => `v${v} · ${status}`,
+      canvas: "画布",
+      properties: "属性",
+      dsl: "DSL (JSON)",
+      dslHint: "画布与 DSL 双向等价（R24）。直接编辑 JSON 会同步回画布节点。",
+      nodeTypes: {
+        INPUT: "输入",
+        SOLVER: "求解器",
+        TRANSFORM: "转换",
+        CONDITION: "条件",
+        LOOP: "循环",
+        MERGE: "合并",
+        OUTPUT: "输出",
+      },
+      addNode: "添加节点",
+      addEdge: "添加边",
+      fromNode: "源节点",
+      toNode: "目标节点",
+      selectTarget: "选择目标…",
+      label: "标签",
+      solverKey: "求解器",
+      stepType: "转换类型",
+      args: "参数",
+      params: "参数",
+      timeoutMs: "超时(ms)",
+      onError: "错误处理",
+      blocks: "输出块",
+      noCanvas: "暂无画布，点击新建",
+      compile: "编译验证",
+      compileOk: "验证通过",
+      publish: "发布画布",
+      publishOk: "发布成功",
+      run: "试运行",
+      runOk: "试运行完成",
+      runResult: "运行结果",
+      errors: "错误",
+      cycleDetected: "检测到环",
+      unsaved: "未保存",
     },
     mcp: {
       title: "MCP 服务器",
@@ -565,7 +2069,7 @@ export const zh = {
       lastLoginAt: "最近登录",
       resetPassword: "重置密码",
       resetDone: (pw: string) => `新密码：${pw}（仅此一次展示，TODO 邮件下发）`,
-      roleParam: "角色参数（如 常州）",
+      roleParam: "角色参数（如 区域/基地名）",
       addRole: "添加角色",
       disable: "禁用",
       enable: "启用",
@@ -606,6 +2110,17 @@ export const zh = {
       originManual: "MANUAL",
       originDocument: "DOCUMENT",
       originSynthetic: "SYNTHETIC",
+      // WO-RULES-CLASSIFY：分类筛选 + 约束条件独立入口
+      category: "类别",
+      categoryOptional: "可选",
+      categoryPlaceholder: "如 产能/物料/财务",
+      uncategorized: "未分类",
+      viewAll: "全部",
+      viewConstraint: "约束条件",
+      viewGeneral: "一般规则",
+      filterByCategory: "按类别筛选：",
+      filterClear: "清除",
+      filterEmpty: "当前筛选条件下无规则",
     },
     empty: {
       connections: "暂无连接 —— 上传文件或创建连接开始接入数据",
@@ -628,6 +2143,830 @@ export const zh = {
       bindingSummary: (i: number, s: number) => `${i} 个意图 / ${s} 个求解器`,
       saved: "已保存，配置版本 +1",
       parentOff: "父级已关闭",
+    },
+    sliceLibrary: {
+      title: "切片库",
+      sub: "域内/跨域两库（A3.2 派生）：从已发布本体确定性派生，零假数据；空态诚实。",
+      tabLibrary: "切片库",
+      tabPlan: "规划",
+      colSliceKey: "切片键",
+      colScope: "范围",
+      colRoot: "根类型",
+      colDomains: "跨越域",
+      colTypeCount: "类型数",
+      scopeIntra: "域内",
+      scopeCross: "跨域",
+      emptyLibrary: "切片库为空 —— 当前租户无已发布本体或本体未形成可派生切片",
+      planTitle: "切片规划",
+      planSub: "输入 root 类型与目标类型，经 A3.3 确定性图算法求最短路径；命中既有切片则复用。",
+      rootType: "根类型（rootType）",
+      targets: "目标类型（每行或逗号分隔）",
+      maxHops: "最大跳数",
+      question: "近似问句（可选，用于复用匹配）",
+      submitPlan: "规划路径",
+      planning: "规划中…",
+      resultTitle: "规划结果",
+      reused: "复用既有切片",
+      spannedDomains: "跨越域",
+      pathTarget: "目标",
+      pathHops: "路径（linkKey / direction / toType）",
+      noPath: "无可达路径",
+      unreachable: (list: string) => `不可达目标：${list}`,
+    },
+    // WO-SLICE-16-LAYERS · 本体切片十六层结构（层名/状态/说明文案单一来源，R14 不内联业务常数）。
+    /**
+     * 切片检视面板的 `?` 浮层标题（走 R14）。
+     * 对应 `pages/admin/SliceInspector.tsx` 里降进浮层的四段：两种「空」各自的因由 ·
+     * 只读态的权限口径 · 编辑态的权限与生效范围。标题一律写成用户会问的那句话。
+     */
+    sliceInspector: {
+      info: {
+        missingArgs: "为什么算不出这张子图",
+        emptyGraph: "为什么这张子图是空的",
+        readOnly: "谁能改这条切片规格",
+        editSpec: "谁能改、保存后影响谁",
+      },
+    },
+    sliceLayers: {
+      title: "十六层结构",
+      // 第一层只放结论（CONVENTION-ui-information-layering §1）：一句话说清"这条切片覆盖了几层"。
+      headline: (present: number) => `${present}/16 层有数据`,
+      sub: "点层卡展开明细。计数为本切片实取，非示例值。",
+      // 层名（① … ⑯，顺序即 ordinal，不可重排）
+      names: {
+        business_scenario: "业务场景",
+        decision_intent: "决策意图",
+        object: "对象",
+        property: "属性",
+        relation: "关系",
+        event: "事件",
+        state: "状态",
+        metric: "指标",
+        time: "时间",
+        rule: "规则",
+        constraint: "约束",
+        data_binding: "数据绑定",
+        scenario: "场景",
+        evidence: "证据",
+        action: "行动",
+        governance: "治理与溯源",
+      } as Record<string, string>,
+      statusPresent: "有数据",
+      statusNotInSlice: "本切片未纳入",
+      statusAbsent: "缺席",
+      // WO-SLICE-DEFAULT-ARGS：第四态「未判定」。子图没解出来时这十六层**压根没被算过**，
+      // 此时显「0 · 缺席」是静默错答——它说的是「查过了，平台没有」，真相是「没查成」。
+      // 「算不了」「查了确实为空」「后端出错」必须是屏上三件不同的事。
+      statusPending: "未判定",
+      pendingNum: "—",
+      pendingHeadline: "十六层暂未判定",
+      pendingSummary: "子图未解出 ⇒ 各层还没被算过（不是「平台没有」）。先给出 root 实参再看层。",
+      // 三态各自的一句话结论（第一层只放结论，口径/原因进浮层）
+      summaryLine: (present: number, notInSlice: number, absent: number) =>
+        `${present} 层有数据 · ${notInSlice} 层平台有但本切片未纳入 · ${absent} 层缺席`,
+      platformHas: (n: number, unit: string) => `平台有 ${n} ${unit}`,
+      carrierLabel: "承载物",
+      reasonLabel: "为什么没有",
+      whyLabel: "口径说明",
+      emptyItems: "该层无明细可展开",
+      graphSummary: (n: number, e: number) => `子图 ${n} 个节点 · ${e} 条边`,
+      truncated: "已截断",
+      argsLabel: "试切参数（JSON）",
+      reload: "重新取数",
+      loading: "解析十六层…",
+      error: "十六层解析失败",
+      // 诚实位（绝不删除，只允许降层）：说明这一页为什么可能显示空。
+      // WO-UI-BURNDOWN-21：这句是**平台策略**（「凭什么这么显示」），不是本页的读数 ——
+      // 按 CONVENTION-ui-information-layering §1 降进 `?` 浮层，第一层留可见记号。
+      // 判据用的是 §4.2 的反问：「这条若为真，用户会不会重新解读第一层那个数？」
+      // 不会 —— 层数与状态各自都已写明（`有数据 / 本切片未纳入 / 缺席 / 未判定` 四态分得清清楚楚），
+      // 不看这句也不会把「缺席」读成别的东西。故属浮层，不属第一层。
+      honestyLabel: "空的层为什么不画占位内容",
+      honesty:
+        "缺席的层不画占位内容——本平台宁可显示空并说明为什么，也不画假数据。",
+      // ── 子图未解出（graph.empty）· 真后端实测（2026-08-10，demo/seed 42）：
+      //    98 条切片里 12 条无参即空子图，其中 4 条正是首屏默认显示的多跳业务切片
+      //    ⇒ 不说清楚就等于"页面又是空的"。
+      //    复验：`GET /a/v1/ontology/slices` 取全表，逐条 `GET /a/v1/ontology/slices/{key}/layers`
+      //    （不带 args），看 `graph.empty.reason`；判定实现见
+      //    `apps/datacore/src/ontology/slice-layers.ts (diagnoseEmptyGraph)`。
+      //    第一层只放**短结论**（状态 + 缺哪个参数名），长说明降到浮层（R-UI-3）。
+      empty: {
+        // 短结论（第一层）：一眼看出「不是十六层没有，是子图没解出来」
+        titleMissingArgs: "子图未解出 · 缺试切参数",
+        titleNoRootObjects: "子图未解出 · 根类型零对象",
+        titleNoMatch: "子图未解出 · 过滤无匹配",
+        // 状态徽标（第一层允许：这是"状态"）
+        badge: "十六层暂未判定",
+        needArgs: (args: string) => `需要参数：${args}`,
+        rootTotal: (typeKey: string, n: number) => `${typeKey} 共 ${n} 个对象`,
+        // 候选值（真对象上读出来的，不是示例值）
+        pickLabel: (arg: string) => `选一个真实 ${arg} 试切`,
+        noCandidates: "取不到候选值（诚实留白：不拿假值凑）",
+        inputLabel: (arg: string) => `或自填 ${arg}`,
+        apply: "试切",
+        clear: "清空参数（看原始诚实态）",
+        applied: (pairs: string) => `当前试切参数：${pairs}`,
+        whyLabel: "为什么是空的",
+        // ── WO-SLICE-DEFAULT-ARGS：首屏默认实参（修法 B）────────────────────────
+        // 首屏默认那 4 条多跳切片的 root selector 全带 {{args.X}}，调用侧传 {} ⇒ 十六层全空。
+        // 默认值**取自后端从真实 root 对象读出的候选**（零写死 · R14），并必须公示在屏上：
+        // 悄悄替用户选一个还不说，比空卡更坏。
+        autoDefaultBadge: "默认实参 · 自动取自真实数据",
+        autoDefaultWhyLabel: "这个默认值哪来的",
+        // 出处（工程师层，不上屏）：切片的 root selector 声明了 {{args.X}} 占位符；
+        // 默认实参取自后端在本租户真实 root 对象上读出的候选值，按 objectKey 字典序取第一个（同快照同结果）。
+        autoDefaultWhy:
+          "这条切片要求先指定一个对象，不指定的话筛选条件谁都匹配不上，十六层会全是空的。" +
+          "这里的默认值是从本租户「真实存在的对象」里读出来的第一个候选（同一份数据每次取到的都一样），" +
+          "不是写死的示例值；一个真候选都读不到时，系统不猜也不编，直接回到「需要参数，请先选择」。",
+        switchLabel: (arg: string) => `换 ${arg}`,
+      },
+    },
+  },
+
+  // 全局推演「活系统」升级（WO-GSLIVE-1-COCKPIT · 自由杠杆 / 人机对话 / 方案存分比）。additive。
+  gslive: {
+    // 活②·自由变量推演（portfolio levers[] 血脉·非 generic_inference）
+    freeLevers: "自由调节杠杆 · 改任意变量后重新排产",
+    freeLeversHint: "拨动或新增任意「调节杠杆」（例如给某基地日产能加 1 条线），系统会立即重新联合排产，并给出调节前后 7 项关键指标的对比（每个数字都能追溯来源）。与上方预设杠杆并存。",
+    candidatesTitle: "推荐可调的杠杆（按产能占用率反推 · 最紧张的基地排在前）",
+    noCandidates: "先点「发起联合求解」，系统会根据产能占用情况推荐可调的杠杆。",
+    addCustom: "新增自定义杠杆",
+    leverKeyPlaceholder: "变量键（如 capacityDaily）",
+    add: "加入",
+    remove: "移除",
+    activeTitle: "已生效的调节杠杆（参与本轮联合排产）",
+    noActive: "暂无自由杠杆 · 点上方推荐项或「新增」来调节任意变量。",
+    deltasTitle: "调节前后对比 · 7 项关键指标 调节前 → 调节后（每个数字可追溯到具体杠杆）",
+    noDeltas: "拨动杠杆后，这里显示调节前后的指标对比。",
+    leverKeys: {
+      capacityDaily: "日产能",
+      formationChannels: "化成通道",
+    },
+    kpiDims: {
+      ontime: "按期项",
+      cost: "综合代价",
+      // 量纲走 contracts KPI_DIM_UNITS（WO-UNIT-MEANING·i18n 只管文案不内联单位）
+      changeoverHours: "换型",
+      freight: "在途运费",
+      fgInv: "成品库存",
+      transitInv: "在途库存",
+      margin: "毛利代理",
+    },
+    // 活①·人机对话
+    nlTitle: "人机对话 · 自然语言问全局推演",
+    nlHint: "用大白话提问（例如「把大客户排在前面，整体按期率会怎么变？」「储能份额提到 30% 要加多少产线？」），系统会逐个方案联合排产并给出文字解读，数字都可追溯来源。",
+    nlPlaceholder: "例：把 SO-3437 排在小客户前，整体按期率与被挤单怎么变？",
+    nlSubmit: "问一句",
+    nlSubmitting: "联合求解中…",
+    nlAnswerTitle: "联合排产解读",
+    nlPathBadge: (p: string, ran: boolean) => `路径：${p === "compose" ? "联合排产解读" : p} · 是否调用智能体=${ran ? "是" : "否"}`,
+    // 活③·方案存/分支/横比
+    scenarioTitle: "方案 存 / 分支 / 并排对比（7 项关键指标 × 各方案）",
+    scenarioHint: "把当前推演（含自由杠杆 / 目标）存为命名方案 → 做出变体分支 → 并排对比 → 一键采纳并走审批（不直接改动排产数据）。",
+    saveLabelPlaceholder: "方案名（如 A·最多按期+常州扩产）",
+    saveScenario: "存为方案",
+    saving: "存档中…",
+    branch: "分支",
+    branching: "分支中…",
+    adopt: "采纳（→ Action 审批）",
+    adopting: "生成草稿中…",
+    noScenarios: "先「存为方案」保存一次推演，再分支/横比。",
+    needTwo: "存 ≥2 个方案（或分支）以横比。",
+    matrixMetric: "指标 / 方案",
+    metricServed: "获排单",
+    metricDisplaced: "被挤单",
+    metricOntimeRate: "按期率(%)",
+    adopted: (label: string, status: string) => `已采纳「${label}」→ Action 草稿 ${status}`,
+  },
+  /**
+   * WO-CAPACITY-CARD-LAYOUT · 产能推演「可用产能派生诊断（自下而上 6 层）」卡片布局文案。
+   *
+   * R14（应用层无业务常数）：**壳文案**在这里；**公式与层名不在这里** ——
+   * 那些是 `views/capacity/factorOntology.ts` 的 `ONTO_LAYERS[].role / .name`（单一来源），
+   * 抄进本文件就是给它开一条会漂的分身。本块只放"框"，"瓤"仍从本体表取。
+   *
+   * 唯一的例外是 `honesty`：那句诚实位原本内联在组件里，本单把它从常驻正文
+   * 降到 `?` 浮层，按 R-UI-3「浮层文案一律走 locales」搬到这里，**一字未改**。
+   */
+  capDag: {
+    title: "🧮 可用产能派生诊断（自下而上 6 层）",
+    sub: (baseName: string, available: string) => `${baseName} · 可用 ${available} 套如何逐层算出`,
+    loading: "派生链加载中…",
+    unavailable: "派生求解器不可用（诚实空·未伪造）",
+    /** 卡片链容器的 aria 说明（递进承载物③ 之一：不靠视觉也读得出方向）。 */
+    chainAria: "可用产能派生链 · 自下而上 6 层 · 设备产能 → 工序产能 → 产线产能 → 可投产能 → 产能预测 → 产能缺口",
+    step: (n: number) => `第 ${n} 层`,
+    /** 卡面 aria-label：把「第几层 / 由谁推出 / 数值 / 状态」压成一句，读屏不必扫视。 */
+    cardAria: (step: number, name: string, valueLabel: string, value: string, status: string, from: string) =>
+      `${from}${step}. ${name}；${valueLabel} ${value}；状态 ${status}。回车展开本层明细`,
+    fromStep: (n: number, name: string) => `由第 ${n} 层 ${name} 推导得出 · `,
+    fromNone: "推导链起点（不由上游推出）· ",
+    rungAria: (n: number) => `推导链第 ${n} 级 / 共 6 级`,
+    /** `?` 浮层（第三层：凭什么）。 */
+    formulaTopic: (step: number, name: string) => `第${step}层 ${name} · 口径与公式`,
+    formula: (role: string) => `公式：${role}`,
+    anchorOf: (label: string, field: string, kind: string) => `本层锚点：${label} · 溯源字段 ${field}（${kind}）`,
+    upstream: (n: number, name: string) => `上游 ← 第${n}层 ${name}`,
+    upstreamNone: "上游 ← 无（推导链起点：设备层）",
+    downstream: (n: number, name: string) => `下游 → 第${n}层 ${name}`,
+    downstreamNone: "下游 → 无（推导链终点：本页要回答的那个数）",
+    /** 状态词：与形状、颜色三通道并行，不靠颜色单通道。 */
+    status: {
+      ok: "好",
+      warn: "警",
+      crit: "危",
+      /** 该层锚点是派生量、没有阈值 —— 诚实说"没有状态"，不臆造一个。 */
+      derived: "派生值·无阈值",
+      /** 无 LIVE 真源（tightness 为 null）。 */
+      na: "无真源",
+    },
+    /** 第二层（一次点击）。 */
+    detailHint: "点任一层卡片 → 看该层的判定 / 驱动因素 / 溯源字段",
+    detailTitle: (step: number, name: string) => `第 ${step} 层 · ${name} · 明细`,
+    detailClose: "收起明细",
+    judge: "判定：",
+    drivers: "驱动因素：",
+    derive: "推导：",
+    factorAria: (mark: string, name: string, layer: number) => `本体 ${mark} ${name}（第 ${layer} 层）`,
+    /** 诚实位：正文降到浮层，第一层留 `honestyMark` 这个可见记号（静默降层 = 删除）。 */
+    honestyMark: "口径·溯源",
+    honestyTopic: "口径与溯源（诚实位）",
+    honesty:
+      "6 层沿产能金字塔既有派生链路（本体 §3·不改链路，仅可视化）；锚点真值溯 base_capacity_outlook.available/gap，各层瓶颈张力溯 bottleneck_matrix（R13 每值可溯·R14 因素表单源 factorOntology）。",
+
+    /* ══ WO-UI-LAYERING-BURNDOWN 追加 · 仓主「看不懂这个 UX，你希望用户看到这个做什么？」════
+     * 诊断：**模型是对的，屏上没把它讲出来。** 这条链回答的是产能领域最值钱的一问 ——
+     * 「可用产能是怎么从设备一路算上来的、哪一层把它卡住了」，因为产能不够时人真正要知道的是
+     * **该去修哪一层**（修 OEE？修良率？还是催料？）。屏上答不了它，四个原因逐条对治如下。
+     * ════════════════════════════════════════════════════════════════════════════════ */
+
+    /**
+     * ① 每层「在算什么」——原先只有展开明细才看得到，而它正是这一层的**身份**。
+     * 单源 `views/capacity/factorOntology.ts` 的 `ONTO_LAYERS[].role`，前端**不重写一份**。
+     * ⚠ 这也是层3 与层4 在屏上唯一可分辨之处（今天两层都是「张力95/100·◆危」，长得一模一样）。
+     */
+    roleLabel: "这层在算",
+
+    /**
+     * ② **量纲**：契约 `packages/contracts/src/solvers.ts` 原文 ——
+     * 「张力是 0–100 的紧张度指数（越高越紧），**不是百分比、不是被测量本身的值**」。
+     * 不写在脸上，「张力95/100」会被读成「95%」或「OEE=95」。
+     */
+    tightUnit: "0–100 指数·越高越紧",
+    tightTopic: "张力是什么量纲",
+    tightBody:
+      "张力是 0–100 的紧张度指数（越高越紧），不是百分比，也不是被测量本身的值。" +
+      "例：「设备OEE 张力95/100」= 设备OEE 这一项的紧张度 95/100，不是 OEE=95%。",
+
+    /**
+     * ③ **绝对产能数缺在哪一环**（实测结论，不许拿张力冒充产能数）。
+     * 亲手核过：`BottleneckMatrixOutputSchema.rows[].tightness` 是 `z.record(string, number)`，
+     * 契约注释写明 0–100 —— **层1–4 今天只有张力，引擎不下发各层的绝对产能数**。
+     * 绝对数从第 5 层（`base_capacity_outlook.available`）才开始有。
+     */
+    noAbsMark: "层1–4 无绝对产能数",
+    noAbsTopic: "为什么前 4 层看不到「套」",
+    noAbsBody:
+      "前 4 层今天只有紧张程度，没有绝对产能数：每个因素只给出一个 0–100 的紧张度，" +
+      "不给「这一层能出多少套」。所以这四层能告诉你「哪一层最紧」，却还不能告诉你「这一层掉了多少套」。" +
+      "要看套数，得从第 5 层「可用产能」开始才有。" +
+      "这里如实报缺 —— 拿张力当产能数显示，就是拿一个数冒充另一个数。",
+
+    /**
+     * ④ **缺口的分母**：缺口没有需求这个分母就无法核对（缺口是可用的好几倍时，用户第一反应是"这数对吗"）。
+     * `demand` 引擎其实**一直在下发**（`solvers/base-outlook.ts` HorizonOutlook.demand，gap = available − demand），
+     * 是前端的 `Horizon` 接口漏读了它。
+     */
+    gapDenom: (demand: string, available: string) => `= 可用 ${available} − 需求 ${demand}`,
+    gapDenomMissing: "引擎本次未下发需求值 —— 缺口的分母缺失，无法在屏上核对",
+  },
+  /**
+   * WO-UI-LAYERING-BURNDOWN · 决策推演页「行动清单」——原 ④触发规则 + ⑤推荐组合合成的那一张。
+   *
+   * ── 为什么合并（仓主原话：「这个我没有看懂，**为何不简化为 action list**？」）──────────
+   * 合并的理由比「看不懂」更硬：**那是两个源在说同一批行动，措辞还不一致**。
+   *   · 区④「触发动作」← `synthetic/battery-extended.ts` 种子 `TRIGGER_RULES.action`
+   *     ：「启动备份供应商认证」「长协重谈加价格联动条款」
+   *   · 区⑤「推荐组合」← `solvers/service.ts` 的方案 `label`
+   *     ：「缩短备份供应商认证周期」「长协加价格联动条款」
+   * 同一件事两种说法、分两块摆 —— 用户要自己在心里做这道对账题。
+   *
+   * ── 三态**三套话，一个字都不许合并**（本文件 processWait 同源纪律）────────────────
+   * 「**没有规则在盯它**」与「**规则在盯它但没到线**」是两个不同事实，
+   * 合成一句「—」就是本仓「一个数盖住两个事实」的老形态（CLAUDE.md 铁律 0.5 ①）。
+   * 故 `NO_RULE` / `NOT_FIRED` / `FIRED` 各有互不相同的 `badge` 与 `why`。
+   *
+   * ── 分层（`docs/CONVENTION-ui-information-layering.md` §1）────────────────────────
+   * 第一层只三列：**做什么 · 何时 · 触发没有**（＝名字 + 状态，规范准入清单原文）。
+   * 「凭什么」（哪条规则 · op+阈值 · 当前值 · thresholdSource · 预期效果）全进 `?` 浮层。
+   */
+  decisionPlay: {
+    /** 壳与嵌入共用同一份实现的**可被门咬的记号**（改这一行 ⇒ 两处同时变，接缝测试两处一起断言）。 */
+    implStamp: "决策推演 · 页面壳与就地嵌入共用同一份实现",
+    /** 宿主页就地嵌入时的折叠摘要（第一层只放这一句，明细在展开后）。 */
+    embedSummary: "查看方案对比 ▸",
+    /**
+     * 「从阻滞点进来」横幅的**降层文案**（WO-UI-LAYERING-BURNDOWN §2.3 三分的第 ② 类）。
+     * 第 ① 类（**结论**：下面显示的是默认根因）留在第一层，不在这里；
+     * 第 ③ 类（契约是不是 strictObject）已下屏进代码注释 —— 用户读了它做不了任何决定。
+     */
+    entry: {
+      whyTopic: "为什么对不上",
+      /*
+       * ⚠ 这句话此前印在屏上的版本是 **2026-08-08 的一次性测量被写死进文案**：
+       *   「locus 只有 MaterialBalance / MaterialBatch / Line 三类」+
+       *   「带 drillType=MaterialBatch 或 Line 的因子一条都没有」。
+       *   两句今天都是假的，且**错法不同**（混了必修错地方）：
+       *     · 「只有三类」= 上游判据绑定长出了第四类 `Base`（C34 跨业务线产能争用），文案没跟 ⇒ 改文案；
+       *     · 「一条都没有」= **判据本身写错了** —— 产线 / 物料批次 / 基地各有 1 条因子，
+       *       只是下钻 id 是通配 `*`，缺的是「通配算不算对上」这条 join 判据，**不是缺种子**。
+       *   新文案里唯一的那个数（「共 3 条」）由下面这条溯源记号替它盯着上游，门每次跑现算比对。
+       *
+       * @stale-fact apps/datacore/src/synthetic/battery-extended.ts /drillType: "(?:Line|MaterialBatch|Base)", drillId: "\*"/ ==3
+       * @stale-fact apps/datacore/src/solvers/chain-impediment.ts /locusObjectType: (?:"|CONTENTION_LOCUS_TYPE)/ ==7
+       */
+      whyBody:
+        "阻滞点锚在真对象上（哪条产线 / 哪个物料批次 / 哪个基地），决策推演锚在因果因子上，" +
+        "而引擎这次回包里没有任何字段指向因果因子 —— 两头拼不起来。" +
+        "退一步用「同一个对象」去对也不行，但原因并不是没有因子：产线 / 物料批次 / 基地这三类，" +
+        "在因子表里共 3 条因子，只是这 3 条的下钻对象都写成通配（不指名具体哪条产线、哪一批），" +
+        "而「通配算不算对上」这条判据全仓还没有定义 ⇒ 缺的是判据，不是数据：去补数据补不好它。",
+      whyNoGuess:
+        "所以没有猜一个 factorId 传过来（猜了会被 decision_play 静默回落到贡献最大的默认根因，" +
+        "屏上就会出现一个看着确凿、实则与这条阻滞点无关的根因）。",
+      whyCarried: (stage: string) => `今天真带过来的只有 stage=${stage}（段级粗筛，不是因子级）。`,
+      caveatTopic: "这条阻滞点的诚实位",
+    },
+    actions: {
+      title: "行动清单",
+      /** 第一层三列的列名 —— 与规范 §1「①数值 ②状态 ③名字」对齐。 */
+      colWhat: "做什么",
+      colWhen: "何时",
+      colFired: "触发没有",
+      countHint: (n: number, fired: number) => `${n} 条行动 · ${fired} 条已被规则触发`,
+      empty: "引擎既没给推荐组合，也没给触发规则 —— 诚实空态，不编行动。",
+      /** 时间窗：**不写死档位**。档位由引擎实际给的 phase 现算（后端方案数/档位会变）。 */
+      phaseUnknown: "未排期",
+      phaseUnknownWhy:
+        "引擎没给这条行动的周期（它来自触发规则，规则只说「信号到线就做」，不说做多久）——" +
+        "所以这里不填一个看着确凿的档位。",
+      filterAll: "全部",
+      filterStateLabel: "按触发态筛",
+      filterPhaseLabel: "按时间窗筛",
+      /** 三态三套话（badge = 第一层那一列；why = 浮层里「凭什么这么说」）。 */
+      state: {
+        FIRED: {
+          badge: "已触发",
+          why: "有规则在盯这条行动，而且信号已经越过了阈值 —— 这是「现在就该做」，不是「建议做」。",
+        },
+        NOT_FIRED: {
+          badge: "规则未到线",
+          why: "有规则在盯这条行动，只是信号还没越过阈值。规则在册、暂未触发 —— 不等于没人管它。",
+        },
+        NO_RULE: {
+          badge: "无触发规则",
+          why:
+            "没有任何规则在盯这条行动。它来自求解器按「补缺口/代价比」选出的推荐组合，" +
+            "不是被某个信号触发的 —— 也就是说：没人会在它该做的时候提醒你。" +
+            "这与「规则未到线」是两件不同的事，别读成同一句。",
+        },
+      },
+      ruleTopic: "凭什么这么说",
+      /** ⚠ 措辞刻意把**规则模板**与**当前值**拆成两句，见下方 ruleShape 注释。 */
+      ruleTemplate: (signalRef: string, op: string, threshold: string) => `规则：${signalRef} 需 ${op} ${threshold}`,
+      ruleCurrent: (v: string) => `当前：${v}`,
+      ruleVerdict: (fired: boolean) => (fired ? "⇒ 已越阈，触发" : "⇒ 未越阈，未触发"),
+      thresholdSrc: {
+        "rule.params": "阈值来源：已被已发布规则的 params 覆盖（不是引擎默认值）。",
+        "trigger.default": "阈值来源：触发规则对象自带的默认值（没有已发布规则覆盖它）。",
+      } as Record<string, string>,
+      effect: (closesGap: string, unit: string) => `预期补缺口 ${closesGap}${unit}`,
+      effectNone: "引擎没给这条行动的预期效果（它只有规则、没有对应的求解器方案）。",
+      narrowing: (pct: string) => `若整组推荐都落地，缺口收窄 ${pct}%`,
+      inPlan: "在推荐组合内",
+      notInPlan: "不在推荐组合内",
+      /** 规则↔方案怎么对上的（诚实位：引擎今天不给显式关联）。 */
+      joinTopic: "这条规则和这条方案怎么对上的",
+      join: {
+        engine: (ref: string) => `引擎显式给了关联（${ref}）—— 不是前端猜的。`,
+        id: (t: string, o: string) =>
+          `引擎今天不给出「规则 ↔ 方案」的直接对应关系，这一行是本页按标识符自己对上的：` +
+          `\`${t}\` 与 \`${o}\` 去掉前缀后同名。同名即同一件事 —— 这是个约定，不是引擎保证。`,
+        prefix: (t: string, o: string) =>
+          `引擎今天不给出「规则 ↔ 方案」的直接对应关系，这一行是本页按标识符首段自己对上的：` +
+          `\`${t}\` 与 \`${o}\` 首段同名，且本次只有这一个候选（有歧义时前端拒绝合并，宁可分两行）。` +
+          `这是个约定，不是引擎保证。`,
+        none: "这一行没有对到任何规则/方案 —— 前端没有为了让清单好看而猜一个。",
+      },
+    },
+    /*
+     * ══ 依据强度 · 被挡下的方案 · 可动手的候选 ═══════════════════════════════════
+     * 引擎侧刚改成「**依据可核对才下发方案**」：一条战略方案指的那个真对象，必须能在本次
+     * 根因树的落点集里被核对到，否则**诚实不下发**。后果是屏上真的会出现「一条方案都没有」——
+     * 实测（2026-08-14·`apps/datacore/test/zz` 同款调用：`solvers.invoke("decision_play",{metricKey:"demand_attain"})`）
+     * 需求达成域三条战略方案**全部被挡下**。若前端不把「被挡下的是哪几条、为什么挡」显示出来，
+     * 用户看到的就是一块无缘无故的空白 —— **那比贴三条假方案更糟**，因为它连「为什么」都不给。
+     *
+     * 三档依据强度**不许靠颜色深浅区分**（本仓双皮肤，且色觉障碍用户分不出）：
+     * 每档给一个**字形记号** + 一句**互不相同的词**，颜色只是附带。
+     */
+    evidence: {
+      topic: "这条方案的依据有多硬",
+      /** 记号是**字形**不是颜色 —— 打印成黑白、或色觉障碍下同样分得开。 */
+      objectMark: "◆",
+      objectWord: "依据同一个对象",
+      objectHint: "这条方案指的那个真对象，正是本次根因树上某个节点下钻到的那一个 —— 同一个实例，依据最硬。",
+      typeMark: "△",
+      typeWord: "依据只对上类型 · 弱",
+      typeHint:
+        "根因树上确实有同一类对象，但并不是这条方案指的那一个。两边对「哪个对象算证据」并不一致，" +
+        "所以这条只能算弱依据：它没被挡下，但也别当成板上钉钉。",
+      noneMark: "○",
+      noneWord: "引擎没给依据档",
+      noneHint: "引擎这次没给这条方案的依据强度 —— 前端不替它补一个看着确凿的档位。",
+      /** 引擎逐条写的原话，前端一个字不改写。 */
+      enginePrefix: "引擎原话：",
+    },
+    omitted: {
+      title: (n: number) => `被挡下的方案（${n}）`,
+      /** `options` 全空时的第一层结论 —— 这句话没有，屏上就是无缘无故的空白。 */
+      leadNone: "本次一条方案都没下发 —— 不是没算，是依据对不上。",
+      /** 有方案、但另有被挡下的（部分挡下）。 */
+      leadSome: "另有方案没有下发 —— 依据对不上。",
+      word: "依据对不上",
+      topic: "为什么这一条被挡下",
+      /** 既没有方案、也没有被挡下名单：引擎连名字都没留，这也要出声。 */
+      silent: "本次没有方案，引擎也没留下被挡名单 —— 前端不替它编一份。",
+    },
+    plays: {
+      title: (cand: number, joined: number, scanned: number) =>
+        `可以直接动手的候选（${cand}）· 来自 ${joined}/${scanned} 个卡点`,
+      /** 第一层必须有这一句：候选与战略方案不是一回事，屏上不许摆成一张可比的表。 */
+      vsOptions: "候选与上面的方案不是一回事，不能并排比。",
+      vsOptionsTopic: "为什么不能并排比",
+      vsOptionsBody:
+        "上面的方案身上有六个维度（补缺口 / 代价 / 周期 / 风险 / 敞口 / 可逆）；候选身上真算得出来的只有" +
+        "超阈幅度、严重度、产能三样。要把候选摆进那张表，就得替它编四个数 —— 而编出来的数会被" +
+        "比对矩阵的「每列最优」和决策台账当成真数使用（台账写着选了 A、实际执行 B，界面上分辨不出）。" +
+        "所以两者各自成区，刻意不混一张表。",
+      noPlayTopic: "为什么这里是空的",
+      noPlayFallback: "引擎这次没说为什么这里是空的 —— 前端不替它编一个理由。",
+      /** 三条接法各一句话（不是同一句「已关联」）。 */
+      joinWord: {
+        LOCUS_EXACT: "接在同一个对象上",
+        LOCUS_TYPE: "只接到类型",
+        BASE_SCOPE: "接在同一个基地面上",
+      } as Record<string, string>,
+      joinTopic: "这个卡点是怎么接到根因上的",
+      severityLabel: "严重度",
+      ruleLabel: "判据",
+      leverTopic: "这一档是从哪来的",
+      /** 收窄量：`null` **不许渲染成 0** —— 「有值 0」和「算不出来」在屏上必须分得开。 */
+      gapCloseNone: "给不出收窄量",
+      gapCloseTopic: "为什么给不出收窄量",
+      gapCloseValue: (v: string, unit: string) => `预计收窄 ${v}${unit}`,
+      /** 接上了卡点、但这个卡点没有候选 —— 三态三句，禁塌成「暂无方案」。 */
+      noCandidate: {
+        NONE: "枚举跑完了，真没有有效解法",
+        UNAVAILABLE: "算不出来（缺答不是答）",
+        NOT_RUN: "本次没跑枚举",
+      } as Record<string, string>,
+      noCandidateTopic: "为什么这个卡点没有候选",
+      /** 候选被截断时的诚实位（引擎给了 `candidatesTruncated`）。 */
+      truncated: "候选没列全 —— 引擎这次截断过。",
+      truncatedTopic: "为什么没列全",
+      truncatedBody:
+        "引擎对每个卡点的试算次数有上限，这次撞到了上限就停下了。屏上这几条是真的，" +
+        "但并不是全部 —— 别把它读成「只有这几条可做」。",
+    },
+  },
+  /**
+   * WO-WAITING-STATES-FE · 业务流程等待态（需求 §20「『等待』是一等状态」）。
+   *
+   * 🔴 四态**四套文案，一个字都不许合并**。需求判据原文：
+   * 「每个态都要有可辨识的视觉区分（不是 5 个都显示同一个『等待中』）——
+   *   需求要的是回答『为什么卡住』，5 个态混成一个字就等于没做」。
+   * 故每态给三样互不相同的东西：`label`（叫什么）· `who`（**等谁**·本页的核心answer）·
+   * `hint`（判据原文，逐字取自 `packages/contracts/src/process.ts:70-75`，前端不改写）。
+   *
+   * 🔴 **没有 WAITING_APPROVAL**，且不许"顺手补齐成五种"。仓主已裁「流程审批不体现」；
+   * 契约 `PROCESS_WAIT_KINDS` 刻意四值，`process-layer.test.ts:99/106/114` 三条断言钉着。
+   * 本对象的类型是 `Record<ProcessWaitKind, …>`（见 `views/process/processWait.ts`）
+   * ⇒ 契约哪天真加了第五态，**这里编译期就红**，不会静默漏画。
+   */
+  processWait: {
+    title: "流程等待态",
+    subtitle:
+      "13 个一级业务域 × 65 条核心业务流程，每条标注它卡在哪一类等待、等谁、标准要等多久。" +
+      "这一页回答的是「为什么这个流程现在卡住了」——按等待类型分组，而不是笼统一个「等待中」。",
+    /** 出处只说「读的是什么」，不上端点路径（端点属工程师层，见本文件 honesty 段的说明）。 */
+    sourceNote: "数据来源：业务流程台账里的流程配置，不是引擎实时求解出来的。",
+    /** 与全链阻滞点的分工说明——两页容易被当成一回事，页面上直接写清楚。 */
+    vsImpediments:
+      "与「全链阻滞点」不是同一件事：那一页看的是全链的 24 个节点，问「哪里被卡住了、凭哪条规则说它被卡住」，" +
+      "由引擎实时算；本页看的是 65 条业务流程，问「这条流程在等哪一类东西、等谁」，读的是流程台账里的配置。",
+    waitKind: {
+      WAITING_USER: {
+        label: "等人",
+        short: "等人做动作",
+        who: "等内部的人拿主意或做动作 —— 评审、拍板、录入、维护。责任落在下方的职能上。",
+        hint: "判据：等人做动作/拿主意（评审、拍板、录入、签字以外的操作）。",
+      },
+      WAITING_DATA: {
+        label: "等数据",
+        short: "等上游数据齐",
+        who: "等上游数据齐才能起算 —— 人到位也没用，缺的是输入。典型如预测、MRP、良率分析、指标监控。",
+        hint: "判据：等上游数据齐才能算（预测、MRP、良率分析、指标监控）。",
+      },
+      WAITING_EXTERNAL_SYSTEM: {
+        label: "等外部",
+        short: "等外部回话",
+        who: "等企业外面回话 —— 供应商、海关、客户、行情源、设备网关。催内部没有用，工期不由我方决定。",
+        hint: "判据：等外部方/外部系统回话（供应商、海关、客户、行情源、设备网关）。",
+      },
+      WAITING_SCHEDULE: {
+        label: "等节拍",
+        short: "等窗口开闸",
+        who: "等到点开闸 —— 例会、批次、班次、检修窗、盘点日。没人在拖，是窗口还没到。",
+        hint: "判据：等节拍/窗口开闸（例会、批次、班次、检修窗、盘点日）。",
+      },
+    },
+    summary: {
+      totalProcesses: "在册流程",
+      totalStdDays: "标准工期合计",
+      unit: { process: "条", day: "天" },
+      byKind: "按等待类型分布",
+    },
+    group: {
+      countLabel: (n: number) => `${n} 条流程`,
+      stdDaysLabel: (d: number, pct: number) => `标准工期合计 ${d} 天（占全部 ${pct}%）`,
+      owners: "等谁（责任职能）",
+      /**
+       * 责任职能后面那个数：这个职能在本组里挂着几条流程。
+       * 原先屏上写作 `×3` —— 一个乘号是**算式记号**，规范 R-UI-3 点名它不该待在第一层
+       * （2026-08-14 · WO-UI-BURNDOWN-21）。数本身是结论、该留在第一层，
+       * 故把记号换成它的量词：`3 条`。**数没变，只是记号换成了人话。**
+       */
+      ownerCount: (n: number) => `${n} 条`,
+      empty: "本租户暂无此类等待的流程 —— 这是真实读数，不是没渲染。",
+    },
+    table: {
+      key: "流程",
+      name: "名称",
+      domain: "业务域",
+      owner: "责任职能",
+      stdDays: "标准工期",
+      carrier: "承载物",
+    },
+    /**
+     * WO-IA-E2E5E6 · E5 双向入口（模板层 ↔ 实例层 `process-stuck`）。
+     * 两页答的是两个不同的问题（类 vs 张），不合页，用互跳把「该不该合」的疑问消解掉。
+     * 计数口径 = 流程卡点投影（运行时实例），与 `/v/process-stuck` 页**同一份响应** ——
+     * 两页各拉各的会漂，故计数与过滤后条数被接缝测试钉成相等。
+     */
+    crosslink: {
+      /** 某站（流程定义）此刻卡着的实例数；>0 才可点，点了进过滤到该站的实例层。 */
+      stuckHere: (n: number) => `现在有 ${n} 张单卡在这里 →`,
+      stuckHereZero: "现在没有单卡在这里",
+      /**
+       * 计数拿不到时的诚实位 —— **不许摆 0**（0 会被读成「这站很顺」，
+       * 而真相是「这个数今天算不出来」）。
+       */
+      stuckUnavailable: "该站计数暂不可得",
+      stuckUnavailableDark: "流程运行时（process.runtime）未开通",
+      stuckUnavailableError: (code: string) => `读取失败（${code}）`,
+      /** 反推实例无法归属到站（单据上没有「第几步」），不计入各站计数 —— 页级口径声明。 */
+      derivedNote: (n: number) =>
+        `另有 ${n} 张单此刻同样卡着，但它们是从单据反推出来的，单据上没有「第几步」这个事实，` +
+        `落不到具体哪一站 —— 所以下面各站的计数不计入它们。要看这一批，去「流程卡点」页顶部那条说明。`,
+      /** 从实例层跳回时的行定位标记。 */
+      focusBadge: "← 从「流程卡点」页定位到这里",
+      /** focus 的站在模板层词表里查不到 ⇒ 明说（不许静默无定位的空跳）。 */
+      focusMissing: (key: string) =>
+        `模板层的流程定义里没有「${key}」这一站 —— 它只出现在运行实例里，` +
+        `本页答不出这类流程「通常在这站等什么」。`,
+    },
+    /**
+     * 诚实缺席位（本仓纪律：缺席要说出来，不许拿别的数字冒充）。
+     * `ProcessTask` / `ProcessInstance` 全仓不存在（PRD §5 的 E2 未实现），
+     * 故「此刻已经卡了多久」今天答不了；页面只给标准工期并写明它不是实测。
+     *
+     * ══ 2026-08-17 · WO-SCREEN-PLAINSPEAK：这一段是仓主截图点名的那一段 ═══════════
+     * 原文在第一层印着：curl 命令 · `X-Debug-User` 调试头 · `127.0.0.1:4001` 本机端口 ·
+     * jq 表达式 · `docs/WO-FLOWTIME-feasibility.md` 仓库路径 · `battery/S/seed=42` 种子口径，
+     * 外加一串没被渲染的 markdown 星号（这些文案按纯文本渲染，`**` 会原样印在屏上）。
+     * 仓主原话：**「这些功能描述型的文字之前也要求你调整，为何没有调整」**。
+     *
+     * ⚠ **诚实边界一条都没删，只是换成决策者的话说**：
+     *   「9/65 条算得出」「不会拿 0 冒充没卡」全部保留 —— 它们是**结论**，用户读了能做决定。
+     *   被移下来的只有**复验配方**（命令 / 端点 / 仓库路径 / 种子口径）——
+     *   那是给工程师的，判据（「这句话用户读了能做什么决定？」）对它答不出来。
+     *
+     * ── 复验配方（从屏上移到这里，不是删掉）──────────────────────────────────────
+     *   逐条清单：docs/WO-FLOWTIME-feasibility.md
+     *   探针：curl -s -H 'X-Debug-User: demo:admin:admin' \
+     *         'http://127.0.0.1:4001/a/v1/process-definitions/P34/instances' \
+     *         | jq '{available,instanceCount}'
+     *   口径：battery / S / seed=42
+     *
+     * ── 保质期：从「写了个日期」升级成「机器每次跑都核」────────────────────────────
+     * 原文带着 `2026-08-13 实测` 与 curl 配方，满足 stale-claims 的 STALE-1/2（保质期两问），
+     * 但那**只证明有人那天测过，不证明今天还成立** —— 该条在基线里正是 `UNMARKED`。
+     * 现补上机器可跑的赌注，挂在 `cannotAnswer` 正上方（见下）。
+     */
+    honesty: {
+      title: "本页答得了什么、答不了什么",
+      canAnswer:
+        "答得了：卡在哪一类等待（四态）· 等谁（责任职能）· 标准要等多久（工期基线）。" +
+        "点开任一条流程还能看到每一张单：哪一张卡着 · 卡在谁那里 · 卡了多久 · 站间流转多久。",
+      /**
+       * 第一层只留结论。强调**不用 markdown 星号**（本页按纯文本渲染，星号会原样印出来）——
+       * 要强调就走真正的 DOM 强调，见 `cannotAnswerEmph` 与 ProcessWaitView 里的 `<b>`。
+       *
+       * ⚠ 下面这条赌注**必须紧贴本属性**（中间隔一个属性就不算数）——
+       *   stale-claims 的判据是「贴不贴着」，不是「前 N 行内」。
+       *   第一版把它写在 `honesty` 整段的大注释里，STALE-5 当场照样报红，就是这个原因。
+       *   赌的是「9 条反推得出」这个数：流程链定义里被覆盖的站点数。上游一改，门当场红。
+       * @stale-fact apps/datacore/src/process/flow-rules.ts /processKey: "P\d+"/ ==9
+       */
+      cannotAnswer:
+        "答不了：① 单据上没有「第几步」这个事实，所以「卡了多久」是拿单据上的时间戳反推出来的，" +
+        "不是流程引擎直接采集的；② 65 条流程里，今天只有 9 条反推得出停留时长，" +
+        "其余 56 条会逐条告诉你缺哪种单据 —— ",
+      /** 这一句是本段最该被看见的承诺，故单列一字段、由 `<b>` 渲染（不是靠星号假装加粗）。 */
+      cannotAnswerEmph: "不会拿 0 冒充「没卡」。",
+      /** 保质期角标：压成小字，留下「这个数什么时候核的、什么情况下会变」，不上复验配方。 */
+      asOf: "上面这两个数以 2026-08-13 核对；它们随后台数据变化，数据变了会重新核对。",
+      notMeasured: "下方「标准工期」是流程定义里的基线工期，不是实测滞留天数 —— 不要当作「已卡 N 天」读。",
+    },
+    /** WO-FLOWTIME · 实例下钻面板（点某条流程 → 看它的实例与站间流转时长）。 */
+    instances: {
+      open: "看实例",
+      close: "收起",
+      loading: "反推流程实例中…",
+      titleFor: (key: string) => `${key} · 流程实例与站间流转时长`,
+      asOf: (d: string, src: string) => `分析截止时刻 ${d}（来源 ${src}）`,
+      asOfHint:
+        "「分析截止时刻」缺省取数据里观测到的最晚时刻，既不是此刻的钟点，也不是预测窗的起点 ——" +
+        "流转时长是回溯分析，它的「现在」应当是数据的最后一刻。",
+      originNote:
+        "⚠ 下列天数全部由既有单据上的时间戳反推得来，每一条都能溯回是哪张单、哪个字段、原值是多少；" +
+        "它不是流程引擎直接采集的，也不是标准工期。",
+      stdCompare: (d: number) => `对照：标准工期 ${d} 天（定义值，非实测）`,
+      counts: (n: number, stuck: number) => `${n} 条实例，其中 ${stuck} 条到截止时刻仍卡着`,
+      table: {
+        instance: "实例",
+        carrier: "承载单据",
+        entered: "入站",
+        exited: "出站",
+        dwell: "站内停留(天)",
+        gap: "到下一站(天)",
+        owner: "卡在谁那里",
+        wait: "等待类型",
+        source: "溯源",
+      },
+      stillIn: "仍卡着",
+      done: "已出站",
+      noGap: "—",
+      /** 反推不出：明说缺什么 + 怎么复验，不是空表也不是 0。 */
+      absentTitle: "这条流程反推不出流转时长",
+      absentKind: (kind: string) => `缺席类型：${kind}`,
+      absentProbe: (probe: string) => `复验探针：${probe}`,
+    },
+    state: {
+      loading: "加载流程等待态…",
+      empty: "没有取到任何流程定义 —— 这个环境还没有播入业务流程台账的演示数据，此处为空是正常的。",
+      errorTitle: "取不到流程等待态",
+    },
+    /**
+     * WO-V4-INSPECT · 节点检视面板的**界面骨架文案**（PRD-sandbox-v4 §4.2）。
+     *
+     * ⚠ 这里只放**骨架**（区块标题 / 表头 / 空态句 / 三态名），
+     * **一个业务词都不许放** —— 流程名 / 域名 / 职能名 / 对象类型中文名 / 属性中文名 / 单位
+     * 全部随 `/inspect` 响应下发（R14 零写死词表）。哪天有人往这里加一个业务名词，
+     * 就是在复制「两个 dev 各发明一套词表、交集为 0」那次事故。
+     */
+    inspect: {
+      title: "节点检视",
+      close: "关闭",
+      loading: "加载本流程的本体关系…",
+      errorTitle: "取不到本流程的检视投影",
+      openHint: "点开任意一行查看该流程的完整本体关系",
+      section: {
+        process: "流程属性",
+        runtime: "本页答不了什么（运行态诚实位）",
+        carrier: "承载物（对象类型）",
+        relations: "一跳关系",
+        shared: "同承载物的其它流程",
+        levers: "打到这个承载物的杠杆",
+        layers: "十六层三态",
+      },
+      field: {
+        name: "名称",
+        domain: "业务域",
+        owner: "责任职能",
+        waitKind: "等待类型",
+        stdDays: "标准工期（天）",
+        carrier: "承载类型",
+      },
+      carrier: {
+        objectCount: (n: number) => `本租户 ${n} 个对象`,
+      },
+      propTable: {
+        propKey: "属性键",
+        displayName: "中文业务名",
+        dataType: "类型",
+        unit: "单位",
+        flags: "标记",
+        pk: "主键",
+        derived: "派生",
+        /** 中文名缺省 = 业务含义未确证，如实说，不臆造（WO-SCHEMA-ZH 留白纪律）。 */
+        noZhName: "未登记中文名",
+      },
+      relations: {
+        empty: "本承载类型在本体链路表里没有任何一跳关系 —— 这是真实读数，不是没渲染。",
+        objectCount: (n: number) => `对端 ${n} 个对象`,
+        /** null ≠ 0：对端类型压根不存在，与「存在但没数据」是两件事。 */
+        typeMissing: "对端类型在本体里查不到",
+      },
+      shared: {
+        empty: "没有别的流程与它共用同一个承载物（一对一，不是漏查）。",
+      },
+      levers: {
+        empty: "今天没有任何登记杠杆落在这个承载类型上 —— 这是真实读数，不是没渲染。",
+        landing: (where: string) => `落点解析于 ${where}`,
+        dead: "落点属性不存在（死杠杆）",
+        reach: (domains: string, n: number) => `打到 ${n} 条流程 · 业务域：${domains || "无"}`,
+      },
+      layers: {
+        summary: (present: number, notInSlice: number, absent: number) =>
+          `有数据 ${present} 层 · 未纳入 ${notInSlice} 层 · 缺席 ${absent} 层`,
+      },
+      /** 三态名（与后端 `SliceLayerStatus` 一一对应；三态含义不同，绝不合并成"有/无"）。 */
+      layerStatus: {
+        present: "有数据",
+        not_in_slice: "平台有·本次未纳入",
+        absent: "缺席",
+      } as Record<string, string>,
+      /**
+       * 十六层的中文名（键 = 契约 `SLICE_LAYER_IDS`，**结构词不是业务词**）。
+       * 查不到即回落层 id 原文，不臆造。
+       */
+      layerName: {
+        business_scenario: "① 业务场景",
+        decision_intent: "② 决策意图",
+        object: "③ 对象",
+        property: "④ 属性",
+        relation: "⑤ 关系",
+        event: "⑥ 事件",
+        state: "⑦ 状态",
+        metric: "⑧ 指标",
+        time: "⑨ 时间",
+        rule: "⑩ 规则",
+        constraint: "⑪ 约束",
+        data_binding: "⑫ 数据绑定",
+        scenario: "⑬ 场景",
+        evidence: "⑭ 证据",
+        action: "⑮ 行动",
+        governance: "⑯ 治理与溯源",
+      } as Record<string, string>,
+    },
+    /** 词表漂移（后端下发词表 ≠ 契约词表）——接缝断了要显式报，不许默默少画一组。 */
+    drift: {
+      title: "⚠ 等待类型词表漂移",
+      missing: (keys: string) => `契约里有、后端没下发：${keys}`,
+      unknown: (keys: string) => `后端下发了、契约里没有：${keys}（前端不会渲染它，因为词表单源在契约）`,
+    },
+  },
+  /**
+   * 优化推演页的 `?` 浮层标题（走 R14：浮层文案不内联在组件里）。
+   *
+   * 这四条对应 `views/OptimizeWhatifView.tsx` 里**降进浮层**的四段说明。
+   * 第一层留的是它们各自的**结论**（清单出处 / 检索不可用 / 未接入引擎 / 决策切换），
+   * 浮层回答「凭什么」——见 `docs/CONVENTION-ui-information-layering.md` §1 三层准入。
+   * 标题一律写成**用户会问的那句话**，不是内部字段名。
+   */
+  opt: {
+    info: {
+      familySource: "这份模板清单是从哪来的",
+      retrieveHow: "「按需求找模板」怎么用",
+      retrieveError: "为什么检索不可用",
+      unavailable: "怎么把最优化引擎接上",
+      switched: "「决策切换」是什么意思",
+    },
+  },
+  /**
+   * 通用假设推演页的 `?` 浮层标题（同上走 R14）。
+   * 对应 `views/WhatIfView.tsx` 里降进浮层的三段说明：这一页怎么用 ·
+   * 第二个出口跟第一个差在哪 · 空态「为什么没有影响」。
+   */
+  whatIf: {
+    info: {
+      howItWorks: "这一页怎么用",
+      impactWorld: "这一格跟上面那个按钮差在哪",
+      emptyWhy: "为什么算不出影响",
     },
   },
 } as const;

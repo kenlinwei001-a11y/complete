@@ -6,19 +6,25 @@ import type {
   LlmProviderConfig,
   McpServerConfig,
   ModelBinding,
+  PlanBuilderCanvas,
   QueryTask,
   ScenarioPackage,
   SceneEntryConfig,
+  Scenario,
   SkillDefinition,
   WorkflowDefinition,
 } from "@platform/contracts";
 import type {
   CredentialRow,
+  DomainEventRow,
   ExperienceCaseRow,
   FallbackTraceRow,
   IdempotencyRow,
+  IntelligenceResourceRow,
   QueryEventRow,
   Repos,
+  ResourceQualityScoreRow,
+  ResourceRelationRow,
   TaskPatch,
   ToolCallRow,
 } from "./repos.js";
@@ -44,13 +50,24 @@ export function createMemoryRepos(): Repos {
   const skills = new Map<string, SkillDefinition>();
   const mcpConfigs = new Map<string, McpServerConfig>();
   const sceneEntries = new Map<string, SceneEntryConfig>();
+  const scenarios = new Map<string, Scenario>();
   const credentials = new Map<string, CredentialRow>();
   const idempotency = new Map<string, IdempotencyRow>();
   const llmProviders = new Map<string, LlmProviderConfig>();
   const llmBindings = new Map<string, ModelBinding[]>();
   const experience = new Map<string, ExperienceCaseRow>();
+  const domainEvents: DomainEventRow[] = [];
+  const growthLedger = new Map<string, import("@platform/contracts").GrowthLedgerEntry>();
+  const growthTickets = new Map<string, import("@platform/contracts").GrowthTicket>();
   const evalCases = new Map<string, import("@platform/contracts").EvalCase>();
   const evalRuns = new Map<string, import("@platform/contracts").EvalRunReport>();
+  // WO-DRIL-P1 · Resource Registry 三表（key = tenantId|kind|key，R2 租户隔离）。
+  const intelligenceResources = new Map<string, IntelligenceResourceRow>();
+  const resourceRelations: ResourceRelationRow[] = [];
+  const resourceQualityScores = new Map<string, ResourceQualityScoreRow>();
+  const irKey = (t: string, k: string, key: string) => `${t}|${k}|${key}`;
+  // WO-A · Plan Builder Canvas 索引：id + (tenantId|packageId|key) latestByKey
+  const planBuilders = new Map<string, PlanBuilderCanvas>();
 
   return {
     packages: {
@@ -99,7 +116,10 @@ export function createMemoryRepos(): Repos {
       async patch(id, patch: TaskPatch) {
         const t = tasks.get(id);
         if (!t) return;
-        tasks.set(id, { ...t, ...clone(patch) } as QueryTask);
+        const next = { ...t, ...clone(patch) } as QueryTask & { pendingClarification?: unknown };
+        // WO-SLOT-ENTITY-RESOLVE §6：`null` = 显式清除（契约字段是 optional，不能留 null）。
+        if (patch.pendingClarification === null) delete next.pendingClarification;
+        tasks.set(id, next as QueryTask);
       },
       async get(id) {
         return clone(tasks.get(id));
@@ -161,11 +181,32 @@ export function createMemoryRepos(): Repos {
       },
     },
     agentRuns: {
+      // WO-AGENTRUN-FANOUT-PERSIST：键从 taskId 改成 run id —— 与 pg 侧「去掉 task_id UNIQUE」同语义。
+      // 旧键下，同一任务的第二条 run 会**静默覆盖**第一条（Map.set 不报错），多角色会诊三个角色只剩一条。
       async insert(r) {
-        agentRuns.set(r.taskId, clone(r));
+        agentRuns.set(r.id, clone(r));
       },
+      // 只返这个任务**自己**那条（顶层）。旧记录无 origin ⇒ 视为 ROOT（旧表 UNIQUE 约束可证）。
       async getByTask(taskId) {
-        return clone(agentRuns.get(taskId));
+        const root = [...agentRuns.values()].find((r) => r.taskId === taskId && r.origin !== "FANOUT");
+        return clone(root);
+      },
+      // 次序与 pg 侧 `ORDER BY created_at NULLS FIRST, id` **逐字对齐**：同毫秒并列时都回落 id，
+      // 两套实现绝不给出不同顺序（"memory 绿 pg 红"这类接缝坑就是这么长出来的）。
+      async listByTask(taskId) {
+        return [...agentRuns.values()]
+          .filter((r) => r.taskId === taskId)
+          .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "") || a.id.localeCompare(b.id))
+          .map(clone);
+      },
+      // WO-AGENTRUN-ATTRIBUTION：与 pg 同语义 —— 两个条件都必须真值命中（`undefined === undefined`
+      // 那种"空对空"的误命中会让归属前的旧记录挂到随便哪个 agent 名下，故先要求字段非空）。
+      // 倒序用 createdAt；旧记录无该字段 → 回落 run id（ULID-ish 前 10 位是毫秒时间戳，仍是时序）。
+      async listByAgent(tenantId, agentKey) {
+        return [...agentRuns.values()]
+          .filter((r) => !!r.agentKey && r.agentKey === agentKey && !!r.tenantId && r.tenantId === tenantId)
+          .sort((a, b) => (b.createdAt ?? b.id).localeCompare(a.createdAt ?? a.id))
+          .map(clone);
       },
     },
     fallbackTraces: {
@@ -255,6 +296,12 @@ export function createMemoryRepos(): Repos {
       async get(id) {
         return clone(skills.get(id));
       },
+      async latestByKey(tenantId, key) {
+        const list = [...skills.values()]
+          .filter((s) => s.tenantId === tenantId && s.key === key)
+          .sort((a, b) => b.version - a.version);
+        return clone(list[0]);
+      },
       async listByTenant(tenantId) {
         return [...skills.values()].filter((s) => s.tenantId === tenantId).map(clone);
       },
@@ -297,6 +344,50 @@ export function createMemoryRepos(): Repos {
         return [...sceneEntries.values()].filter((s) => s.tenantId === tenantId).map(clone);
       },
     },
+    scenarios: {
+      async upsert(s) {
+        // (tenantId, scenarioKey) unique
+        for (const [id, e] of scenarios) {
+          if (e.tenantId === s.tenantId && e.scenarioKey === s.scenarioKey && id !== s.id) scenarios.delete(id);
+        }
+        scenarios.set(s.id, clone(s));
+      },
+      async remove(id) {
+        scenarios.delete(id);
+      },
+      async get(id) {
+        return clone(scenarios.get(id));
+      },
+      async byKey(tenantId, scenarioKey) {
+        return clone([...scenarios.values()].find((s) => s.tenantId === tenantId && s.scenarioKey === scenarioKey));
+      },
+      async listByTenant(tenantId) {
+        return [...scenarios.values()].filter((s) => s.tenantId === tenantId).map(clone);
+      },
+    },
+    planBuilders: {
+      async insert(c) {
+        planBuilders.set(c.id, clone(c));
+      },
+      async update(c) {
+        planBuilders.set(c.id, clone(c));
+      },
+      async get(id) {
+        return clone(planBuilders.get(id));
+      },
+      async listByPackage(packageId) {
+        return [...planBuilders.values()]
+          .filter((c) => c.packageId === packageId)
+          .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+          .map(clone);
+      },
+      async latestByKey(tenantId, packageId, key) {
+        const list = [...planBuilders.values()]
+          .filter((c) => c.tenantId === tenantId && c.packageId === packageId && c.key === key)
+          .sort((a, b) => b.version - a.version);
+        return clone(list[0]);
+      },
+    },
     experience: {
       async upsert(c) {
         experience.set(c.id, clone(c));
@@ -306,6 +397,65 @@ export function createMemoryRepos(): Repos {
           .filter((c) => c.tenantId === tenantId)
           .sort((a, b) => (a.id < b.id ? -1 : 1))
           .map(clone);
+      },
+    },
+    growthLedger: {
+      async insert(e) { growthLedger.set(e.id, clone(e)); },
+      async listByTenant(tenantId) { return [...growthLedger.values()].filter((e) => e.tenantId === tenantId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(clone); },
+    },
+    growthTickets: {
+      async upsert(t) { growthTickets.set(t.id, clone(t)); },
+      async listByTenant(tenantId) { return [...growthTickets.values()].filter((t) => t.tenantId === tenantId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map(clone); },
+    },
+    domainEvents: {
+      async append(e) { domainEvents.push(clone(e)); },
+      async listSince(tenantId, since) {
+        return domainEvents
+          .filter((e) => e.tenantId === tenantId && (!since || e.createdAt >= since))
+          .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0))
+          .slice(-200)
+          .map(clone);
+      },
+    },
+    intelligenceResources: {
+      async replaceForTenant(tenantId, rows) {
+        for (const [k, r] of intelligenceResources) {
+          if (r.tenantId === tenantId) intelligenceResources.delete(k);
+        }
+        for (const r of rows) intelligenceResources.set(irKey(r.tenantId, r.kind, r.key), clone(r));
+      },
+      async get(tenantId, kind, key) {
+        return clone(intelligenceResources.get(irKey(tenantId, kind, key)));
+      },
+      async listByTenant(tenantId) {
+        return [...intelligenceResources.values()].filter((r) => r.tenantId === tenantId).map(clone);
+      },
+    },
+    resourceRelations: {
+      async replaceForTenant(tenantId, rows) {
+        for (let i = resourceRelations.length - 1; i >= 0; i--) {
+          if (resourceRelations[i]!.tenantId === tenantId) resourceRelations.splice(i, 1);
+        }
+        for (const r of rows) resourceRelations.push(clone(r));
+      },
+      async listFrom(tenantId, fromKind, fromKey) {
+        return resourceRelations
+          .filter((r) => r.tenantId === tenantId && r.fromKind === fromKind && r.fromKey === fromKey)
+          .map(clone);
+      },
+      async listByTenant(tenantId) {
+        return resourceRelations.filter((r) => r.tenantId === tenantId).map(clone);
+      },
+    },
+    resourceQualityScores: {
+      async upsert(row) {
+        resourceQualityScores.set(irKey(row.tenantId, row.kind, row.key), clone(row));
+      },
+      async get(tenantId, kind, key) {
+        return clone(resourceQualityScores.get(irKey(tenantId, kind, key)));
+      },
+      async listByTenant(tenantId) {
+        return [...resourceQualityScores.values()].filter((r) => r.tenantId === tenantId).map(clone);
       },
     },
     credentials: {

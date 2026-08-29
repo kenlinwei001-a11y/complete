@@ -1,4 +1,4 @@
-import type { LlmProvider, LlmProviderConfig } from "@platform/contracts";
+import type { LlmProvider, LlmProviderConfig, PurposeBinding } from "@platform/contracts";
 import {
   AnthropicLlmClient,
   classifyWithJsonModeDegradation,
@@ -114,6 +114,16 @@ export class LlmProviderRegistry {
   private readonly cache = new Map<string, LlmClient>();
   /** §5: per-provider circuit breaker, persisted across resolves. */
   private readonly breakers = new Map<string, CircuitBreaker>();
+  /** §5.4：provider 尝试审计环（有界 200，按租户可查）。 */
+  private readonly attempts: import("@platform/contracts").ProviderAttempt[] = [];
+  private pushAttempt(tenantId: string, providerId: string, outcome: import("@platform/contracts").ProviderAttempt["outcome"], ms: number): void {
+    this.attempts.push({ tenantId, providerId, outcome, ms, at: new Date().toISOString() });
+    if (this.attempts.length > 200) this.attempts.splice(0, this.attempts.length - 200);
+  }
+  /** §5.4：取本租户最近 provider 尝试审计（最新在前）。 */
+  recentAttempts(tenantId: string, limit = 50): import("@platform/contracts").ProviderAttempt[] {
+    return this.attempts.filter((a) => a.tenantId === tenantId).slice(-limit).reverse();
+  }
 
   constructor(
     private readonly deps: {
@@ -183,6 +193,7 @@ export class LlmProviderRegistry {
       loadFallback,
       this.deps.metrics,
       this.breakerFor(provider.id),
+      (pid, outcome, ms) => this.pushAttempt(tenantId, pid, outcome, ms), // §5.4 审计
     );
     return { client, model: modelId, providerKey: provider.name, providerId: provider.id, modelId };
   }
@@ -252,6 +263,8 @@ class ProviderRoutedClient implements LlmClient {
     >,
     private readonly metrics?: Metrics,
     private readonly breaker?: CircuitBreaker,
+    /** §5.4：逐次 provider 尝试审计回调（providerId/结果/耗时 ms）。 */
+    private readonly attemptSink?: (providerId: string, outcome: "OK" | "FALLBACK_TRIGGERED" | "FALLBACK_OK" | "FALLBACK_FAILED", ms: number) => void,
   ) {}
 
   private structuredOutputSupported(target: { provider: LlmProvider; modelId: string }): boolean {
@@ -266,8 +279,16 @@ class ProviderRoutedClient implements LlmClient {
     const fb = await this.loadFallback().catch(() => undefined);
     if (!fb) throw err instanceof Error ? err : new Error(String(err));
     this.metrics?.llmFallback.inc({ from: this.primary.provider.id, to: fb.provider.id });
-    // 禁止链式：fallback 自身的 fallbackProviderId 不再生效
-    return op(fb);
+    // 禁止链式：fallback 自身的 fallbackProviderId 不再生效。§5.4：审计 fallback 尝试结果+耗时。
+    const t0 = Date.now();
+    try {
+      const r = await op(fb);
+      this.attemptSink?.(fb.provider.id, "FALLBACK_OK", Date.now() - t0);
+      return r;
+    } catch (e) {
+      this.attemptSink?.(fb.provider.id, "FALLBACK_FAILED", Date.now() - t0);
+      throw e;
+    }
   }
 
   private recordBreaker(ok: boolean): void {
@@ -283,14 +304,17 @@ class ProviderRoutedClient implements LlmClient {
     if (this.breaker && !this.breaker.canAttempt()) {
       return this.toFallback(op, new Error(`circuit breaker open for ${this.primary.provider.name}`));
     }
+    const t0 = Date.now();
     try {
       const r = await op(this.primary);
       this.recordBreaker(true);
+      this.attemptSink?.(this.primary.provider.id, "OK", Date.now() - t0);
       return r;
     } catch (err) {
       // §5 4xx 参数错误 / 内容审查拒绝：不切换、不计入熔断，保留原语义
       if (!isFallbackTriggering(err)) throw err;
       this.recordBreaker(false);
+      this.attemptSink?.(this.primary.provider.id, "FALLBACK_TRIGGERED", Date.now() - t0);
       return this.toFallback(op, err);
     }
   }
@@ -371,37 +395,179 @@ export class RoutingLlmClient implements LlmClient {
 export type LlmRole = "classifier" | "agent" | "compose";
 
 /**
+ * WO-DSH-N1-PROVIDER · dsh 路的绑定矩阵连接事实（resolveConnectionFacts 产出）：
+ * 经 runner 既有 opts.env 缝注入 harness 子进程（PLATFORM_LLM_*），wire model = 剥前缀的 modelId。
+ * apiKey 只走 env 注入，永不进 JSON-RPC 帧/日志/落盘（红线见 plan 凭据路径节）。
+ */
+export interface LlmConnectionFacts {
+  providerId: string;
+  /** 剥掉 dcp: 前缀的纯 model id（端点合法 model）。 */
+  modelId: string;
+  kind: LlmProvider["kind"];
+  baseUrl?: string;
+  /** 解密凭据（仅当 hasApiKey）；随子进程关闭消散。 */
+  apiKey?: string;
+  /** 绑定模型声明的上下文窗（有则注入 PLATFORM_LLM_CONTEXT_WINDOW）。 */
+  contextWindow?: number;
+}
+
+/**
  * Role → model-spec resolution (see resolution order in the header comment).
  * Returns a spec string; provider parsing happens in RoutingLlmClient/registry.
  */
 export class LlmSettings {
   constructor(
-    private readonly repos: Pick<Repos, "llmBindings">,
+    private readonly repos: Pick<Repos, "llmBindings" | "llmProviders" | "credentials">,
     private readonly config: AppConfig,
     /** LLM Provider 增量 §1.3：DataCore 用途绑定目录（source of truth）。 */
     private readonly directory?: DataCoreProviderDirectory,
   ) {}
 
+  /**
+   * WO-DSH-N1-PROVIDER · dsh 路的绑定矩阵连接事实解析（纯 additive；复用 resolveDataCore 同一条
+   * directory.provider + directory.credential 路径，凭据仅内存、永不落 B 库）。
+   * v1 收窄（刻意·登记 §11）：只接受 dcp: spec 且 kind ∈ {openai_compatible, anthropic}；
+   * 非 dcp / custom_http / DISABLED / 有 hasApiKey 而凭据取不到 ⇒ 诚实抛错（指明 spec 与原因，不静默回落 mock）。
+   */
+  async resolveConnectionFacts(spec: string, tenantId: string): Promise<LlmConnectionFacts> {
+    const dc = parseDataCoreSpec(spec);
+    if (!dc) {
+      throw new Error(`dsh 路要求 DataCore 用途绑定（dcp:{providerId}:{modelId} spec），拒绝非 dcp spec: ${spec}`);
+    }
+    if (!this.directory) throw new Error("DataCore provider directory not configured");
+    const provider = await this.directory.provider(tenantId, dc.providerId);
+    if (!provider) throw new Error(`unknown LLM provider: ${dc.providerId}`);
+    if (provider.status === "DISABLED") throw new Error(`LLM provider disabled: ${provider.name}`);
+    if (provider.kind === "custom_http") {
+      throw new Error(`dsh 路 v1 不支持 custom_http kind（provider ${provider.id}；spec ${spec}）`);
+    }
+    const apiKey = provider.hasApiKey ? await this.directory.credential(tenantId, provider.id) : undefined;
+    if (provider.hasApiKey && !apiKey) {
+      throw new Error(`LLM provider credential unavailable（hasApiKey 而凭据取不到）: ${provider.id}`);
+    }
+    const bound = provider.models.find((m) => m.modelId === dc.modelId);
+    return {
+      providerId: provider.id,
+      modelId: dc.modelId,
+      kind: provider.kind,
+      ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
+      ...(apiKey ? { apiKey } : {}),
+      ...(bound?.capabilities.maxContext ? { contextWindow: bound.capabilities.maxContext } : {}),
+    };
+  }
+
   async roleModel(tenantId: string | undefined, role: LlmRole, explicit?: string): Promise<string> {
-    if (explicit) return explicit; // scenario package field wins（场景包覆盖）
-    if (tenantId && this.directory) {
-      // 用途矩阵租户级默认（A 为 source of truth；role 名与 purpose key 同名）
+    if (explicit) {
+      // #4 静默空答修复（KILL-MOCK · SYSTEM-ONTOLOGY §8）：explicit（场景包字段 / 注册 agent.model，
+      // 如 seed 角色 agent 硬编 "claude-opus-4-8"）在 :410 一律直返 → 裸名落无 key 的默认 provider
+      // (anthropic) → 静默 AGENT_ERROR/空答。改为：explicit 的 provider 若本部署无凭据 → 回落租户
+      // 已绑定 LLM（用途绑定该 role，如本例 kimi-k2.5）；连绑定也无 → 保留 explicit 交下游真适配器，
+      // 由其失败落诚实错误（gap 块带 provider 缺失码），绝不静默空答。有凭据 → 保持 explicit 不变（正常路不回归）。
+      if (await this.explicitProviderUsable(tenantId, explicit)) return explicit;
+      const bound = await this.tenantBoundModel(tenantId, role);
+      return bound ?? explicit;
+    }
+    const bound = await this.tenantBoundModel(tenantId, role);
+    if (bound) return bound;
+    return role === "classifier" ? this.config.QOS_CLASSIFIER_MODEL : this.config.QOS_AGENT_MODEL;
+  }
+
+  /**
+   * WO-0-NL-WIRING（急救·产出③）：本 role 是否有**可用凭据**的 LLM provider。
+   * 先按 roleModel 同序解析最终 spec（含 explicit keyless 探测 + 租户绑定回落 + env 默认），
+   * 再判该 spec 的 provider 凭据是否齐（复用 explicitProviderUsable·**从不抛**·R6）。
+   * 用于 orchestrator 在 classify 失败（无 LLM）时判「真无 provider」→ 诚实降级而非 INTERNAL_ERROR。
+   * 注：测试用 mock LlmClient（classify 成功·不落此判定路径），此方法只在真·无凭据部署触发。
+   */
+  async providerAvailable(tenantId: string | undefined, role: LlmRole, explicit?: string): Promise<boolean> {
+    const spec = await this.roleModel(tenantId, role, explicit);
+    return this.explicitProviderUsable(tenantId, spec);
+  }
+
+  /** 租户级用途绑定（A 为 source of truth）→ B 本地旧通道 → undefined（由调用方落 env 默认）。 */
+  private async tenantBoundModel(tenantId: string | undefined, role: LlmRole): Promise<string | undefined> {
+    if (!tenantId) return undefined;
+    if (this.directory) {
+      // 用途矩阵租户级默认（role 名与 purpose key 同名）；「关推理」开关在此解析期把推理型模型换成非推理兄弟。
       const bound = await this.directory.bindingFor(tenantId, role);
-      if (bound) return `${DATACORE_PROVIDER_PREFIX}${bound.providerId}:${bound.modelId}`;
+      // WO-CLASSIFY-NO-REASON（Q1 Issue B·治分类器 82s）：分类=结构化抽取(问句→意图+槽位)·**不需推理档**
+      //（§3「D 模型分层」：推理档只做最终综合）。classifier 用途**默认**避开推理模型——有非推理兄弟即换，不必靠
+      // per-binding noReasoning 手动开；无兄弟/provider 取不到 → 原样返回绑定模型（诚实零回归·换不了不假装）。
+      if (bound) return `${DATACORE_PROVIDER_PREFIX}${bound.providerId}:${await this.effectiveModelId(tenantId, bound, role === "classifier")}`;
       if (role === "compose") {
         const agentBound = await this.directory.bindingFor(tenantId, "agent");
-        if (agentBound) return `${DATACORE_PROVIDER_PREFIX}${agentBound.providerId}:${agentBound.modelId}`;
+        if (agentBound) return `${DATACORE_PROVIDER_PREFIX}${agentBound.providerId}:${await this.effectiveModelId(tenantId, agentBound)}`;
       }
     }
-    if (tenantId) {
-      const bound = await this.repos.llmBindings.get(tenantId, role);
-      if (bound) return `${bound.providerKey}:${bound.model}`;
-      if (role === "compose") {
-        // compose falls back to the agent binding before env defaults
-        const agentBound = await this.repos.llmBindings.get(tenantId, "agent");
-        if (agentBound) return `${agentBound.providerKey}:${agentBound.model}`;
+    const bound = await this.repos.llmBindings.get(tenantId, role);
+    if (bound) return `${bound.providerKey}:${bound.model}`;
+    if (role === "compose") {
+      // compose falls back to the agent binding before env defaults
+      const agentBound = await this.repos.llmBindings.get(tenantId, "agent");
+      if (agentBound) return `${agentBound.providerKey}:${agentBound.model}`;
+    }
+    return undefined;
+  }
+
+  /**
+   * WO-QOS-NOREASON「关推理」解析（R6 纯解析·失败不抛）：绑定开了 noReasoning + 绑定模型是推理型
+   * （capabilities.reasoning）+ 该 provider 有满足用途的非推理兄弟（reasoning 非真 + tools）→ 改用兄弟模型 id
+   * 出快答。根因治本：部分厂商（实测 Moonshot kimi-*·锁 temperature=1）无请求级关推理参数，唯一杠杆是换非推理模型。
+   * 非推理模型 / 无兄弟 / provider 取不到 → 原样返回绑定 modelId（既有行为零回归）。
+   * `forceNonReasoning`（WO-CLASSIFY-NO-REASON）：分类器用途传 true → 即便绑定没开 noReasoning 也换非推理兄弟
+   *（§3 D-模型分层：分类不用推理档）。
+   */
+  private async effectiveModelId(tenantId: string, bound: PurposeBinding, forceNonReasoning = false): Promise<string> {
+    if ((!bound.noReasoning && !forceNonReasoning) || !this.directory) return bound.modelId;
+    try {
+      const provider = await this.directory.provider(tenantId, bound.providerId);
+      const models = provider?.models ?? [];
+      const current = models.find((m) => m.modelId === bound.modelId);
+      if (!current?.capabilities.reasoning) return bound.modelId; // 非推理模型 → 无需换
+      const sibling = models
+        .filter((m) => m.modelId !== bound.modelId && !m.capabilities.reasoning && m.capabilities.tools)
+        .sort((a, b) => b.capabilities.maxContext - a.capabilities.maxContext)[0];
+      return sibling?.modelId ?? bound.modelId;
+    } catch {
+      return bound.modelId;
+    }
+  }
+
+  /**
+   * #4 修复核心：判定 explicit spec 解析到的 provider 是否有可用凭据（keyless → false → 触发回落）。
+   * dcp:providerId:modelId → 经 directory 查 provider 存在/未禁用/凭据；否则 providerKey:model / 裸名
+   * → 落 tenant/platform/builtin provider 配置后按 kind 判定 key。判 false 从不抛，只指引 roleModel 回落。
+   */
+  private async explicitProviderUsable(tenantId: string | undefined, spec: string): Promise<boolean> {
+    const dc = parseDataCoreSpec(spec);
+    if (dc) {
+      if (!this.directory || !tenantId) return false;
+      try {
+        const p = await this.directory.provider(tenantId, dc.providerId);
+        if (!p || p.status === "DISABLED") return false;
+        if (!p.hasApiKey) return true; // 本地/自带鉴权端点：无需 key
+        return !!(await this.directory.credential(tenantId, p.id));
+      } catch {
+        return false;
       }
     }
-    return role === "classifier" ? this.config.QOS_CLASSIFIER_MODEL : this.config.QOS_AGENT_MODEL;
+    const idx = spec.indexOf(":");
+    const providerKey = idx > 0 ? spec.slice(0, idx) : this.config.QOS_DEFAULT_LLM_PROVIDER;
+    const cfg =
+      (tenantId ? await this.repos.llmProviders.byKey(tenantId, providerKey) : undefined) ??
+      (await this.repos.llmProviders.byKey(undefined, providerKey)) ??
+      BUILTIN_PROVIDERS[providerKey];
+    if (!cfg || cfg.status === "DISABLED") return false;
+    return this.cfgHasCredential(cfg);
+  }
+
+  /** provider 配置是否有可用密钥（apiKeyEnv 环境值 / 加密 credentialRef / anthropic 走 SDK 的 ANTHROPIC_API_KEY）。 */
+  private async cfgHasCredential(cfg: LlmProviderConfig): Promise<boolean> {
+    if (cfg.apiKeyEnv) return !!process.env[cfg.apiKeyEnv];
+    if (cfg.credentialRef) return !!(await this.repos.credentials.get(cfg.credentialRef));
+    // 无显式 key 配置：anthropic builtin 由 SDK 解析 ANTHROPIC_API_KEY（config/env）——本部署未配 → 不可用；
+    // openai_compatible 无 key 配置视为 baseUrl 驱动的本地/自带鉴权端点（不误判回落）。
+    if (cfg.kind === "anthropic") return !!(this.config.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY);
+    return cfg.kind === "openai_compatible";
   }
 }

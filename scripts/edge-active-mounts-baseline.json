@@ -1,0 +1,12 @@
+{
+  "note": "edge-active-mounts 棘轮基线：**已知缺口**（推演页未挂 EdgeActivePanel）的具名登记，只许降不许升。受检名册由 scripts/lib/sim-page-roster.mjs **现算**，本文件里一个页面键都不存 —— 名单一手抄，新增的页就永远不在里面、于是永远绿（本体 §8 G-GATE-ROSTER-HANDCOPIED）。`gaps.<page>.reason` 归机器算；`gaps.<page>.why` 与本 note 归人手，由 scripts/lib/baseline-doc.mjs 保证 --tighten 不吞人话。补挂面板属产品改动：收口时删掉对应条目并跑 --tighten，额度即收回。",
+  "generatedBy": "node scripts/check-edge-active-mounts.mjs --tighten",
+  "gaps": {
+    "cleanroom-attr": {
+      "reason": "NO_MOUNT",
+      "why": "⛔ **这一条不是欠账，是一条已裁决的「不适用」**（WO-EDGE-PANEL-3PAGES 逐页判定，与同批收口的 order-chain / disruption-radius 定性相反，两者不许合并读）。本门今天只有「缺口」一种在册形态、没有「不适用」这一态，故借这一格登记裁决，`reason` 那一栏仍是机器算出来的 NO_MOUNT —— **它描述的是事实（没挂），不是判断（该挂）**。\n\n【判据】`EdgeActivePanel` 关的是 `PropagationRule`（源类型.状态变量 —链路→ 目标类型.状态变量，带系数与延迟），它需要一个 `SimSession` 世界才能算开/关两版对照。而本页三块的数**一个都不来自那条链**：实测 `grep -rn \"sim/|SimSession|propagation|counterfactual|stateVar|tick\" apps/frontend-shell/src/views/cleanroom/` 只命中两行 `import ... from \"../sim/shared\"`（那是共享的 usePageView / 导出按钮，是 UI 件不是推演概念），**零个**推演符号；同一命令同一扫描面的金丝雀 `grep -rc invokeSolver CleanroomAttrView.tsx` = 5 ⇒ 工具是好的，这个零是真的零。⇒ 在本页拨动任何一条传导边，屏上**没有一个数会动**。挂上去就是「点不动的面板」，那是把『不适用』伪装成『符合』，比留着红更坏（工单原话）。\n\n【本页确实有边，但不是这一族 —— 三块必须拆开说，不许一句盖住三个事实】① 共享瓶颈 `shared_bottleneck`：入参只有**一条** `viaField`（谁在争用这个资源），它是**这个分析的定义**；关掉它得到的是「分析不成立」，不是「结果变了」—— 退化，不是反事实。② 隐性集中度 `concentration_risk`：入参 `args.path` 是**多跳 ref 链**，这一块**真有可断的边**（关一跳 ⇒ 终端根改变或链变短 ⇒ concentrations/topExposure 真的变）。③ 毛利倒挂 `margin_attribution`：入参是 `revenueField` + `costFields[]` + 阈值，**零条边**（单对象内的字段分解，没有跨对象传导）。\n\n【与 disruption-radius 的分野（为什么那一页收了、这一页没收）】那一页**整页**就是一条可断的链（求解器唯一入参就是 `layers`），故本单给它做了页自有的关系边开关，半径/波及数/DAG 真的换一批数；本页只有三分之一块有链，给一页三块里的一块加开关会变成「切到另一个 tab 开关就没了」，那是把横向能力做成局部特例。\n\n【差什么才能把这一格真正收掉（不许只写「未做」）】需要一张单做两件事：(a) 给 `views/cleanroom/deriveArgs.ts` 的 `walk()` 加 `disabledEdges` 形参（与 `DisruptionRadiusView.deriveDisruptionLayers` 已落地的那一版同构，可直接照抄判据：排序在过滤之前 ⇒ 关掉首选则次选顶上）；(b) 定产品口径：三个 tab 里只有一个有开关，是接受这种不对称，还是把三块的「可关的东西」统一抽象成一层（瓶颈那块可关的其实是『某个争用方』，毛利那块是『某个成本项』——那是另一种反事实，不是关系边）。(b) 是产品裁决，不是接线，故本单不单方面做。\n\n⚠ 若将来本页长出了以 `SimSession` 为世界的推演块，这条裁决**当场失效**，必须改回真缺口并补挂 —— 这正是「不适用」与「符合」的区别：前者随页面结构变化而失效。"
+    }
+  },
+  "gapCount": 1,
+  "rosterSize": 10
+}

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AgentBudgetSchema, PlanStepSchema } from "./qos.js";
+import { AgentBudgetSchema, AgentRunKernelSchema, DEFAULT_AGENT_BUDGET, ObjectRefSchema, PlanStepSchema, type AgentBudget } from "./qos.js";
 import { JsonSchemaObject } from "./common.js";
 
 // ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ export const AgentDefinitionSchema = z.object({
   version: z.number().int(),
   name: z.string(),
   description: z.string(),
-  model: z.string().default("claude-opus-4-8"),
+  model: z.string().default(""),  // 空=继承租户「用途绑定矩阵」的 agent 模型（运行时 roleModel 回落；无绑定再落 env QOS_AGENT_MODEL）。写死具体模型会盖过用户在 LLM Provider 里配的绑定。
   systemPrompt: z.string(),
   tools: z.array(AgentToolRefSchema),
   ruleBindings: z.object({
@@ -39,6 +39,8 @@ export const AgentDefinitionSchema = z.object({
     z.object({
       skillId: z.string(),
       version: z.union([z.number().int(), z.literal("latest")]),
+      /** WO-SKILL-1：技能绑定处可预填 inputSchema 默认值 */
+      arguments: z.record(z.string(), z.unknown()).optional(),
     }),
   ),
   mcpServers: z.array(z.object({ mcpConfigId: z.string() })),
@@ -48,6 +50,20 @@ export const AgentDefinitionSchema = z.object({
   }),
   budget: AgentBudgetSchema.partial().optional(),
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
+  /**
+   * WO-FIVE-ROLE-AI-EMPLOYEE P1（additive·可选·向后兼容）：角色标签——把扁平 agent 配置加"角色"维，
+   * 供 Coordinator 按角色选/组 agent、path-B 按 role 选对应 agent。值取 AgentRole
+   *（ceo/supply-chain/production/quality/base-planner）或 "coordinator"；未标 = 通用 agent（既有行为不变）。
+   */
+  role: z.string().optional(),
+  /**
+   * WO-AGENT-KERNEL-SELECT（additive·可选·向后兼容）：per-agent 运行内核选择。
+   * 词表复用 AgentRunKernelSchema——与 run 归因 `run.kernel` 同词，不造第三套词表
+   *（"EXTERNAL" = dsh harness 外部运行时；"DSH" 是实现名不是契约词，UI 标签层负责翻译）。
+   * 缺省/缺失 ≡ 未配置：运行时回落进程 env 分叉（DSH_HARNESS=1 ⇒ EXTERNAL），与现行行为逐字节一致；
+   * 显式值优先于 env（运维钉「原生」的 agent 不被进程级 POC 开关翻走）。
+   */
+  kernel: AgentRunKernelSchema.optional(),
 });
 export type AgentDefinition = z.infer<typeof AgentDefinitionSchema>;
 
@@ -131,8 +147,150 @@ export const McpServerConfigSchema = z.object({
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
 
 // ---------------------------------------------------------------------------
-// 平台 PRD §8.4 B4 Skill 库
+// 平台 PRD §8.4 B4 Skill 库（WO-SKILL-1 工业级能力契约）
 // ---------------------------------------------------------------------------
+
+/** Skill 能力维度 */
+export const SkillCapabilitySchema = z.enum([
+  "analysis",
+  "forecast",
+  "diagnosis",
+  "prescription",
+  "optimization",
+  "planning",
+  "approval",
+]);
+export type SkillCapability = z.infer<typeof SkillCapabilitySchema>;
+
+/** Skill 副作用级别：READ/只读、COMPUTE/计算、WRITE/会改变状态 */
+export const SkillSideEffectSchema = z.enum(["READ", "COMPUTE", "WRITE"]);
+export type SkillSideEffect = z.infer<typeof SkillSideEffectSchema>;
+
+/**
+ * 副作用词表**单一来源**（R-一致：一个事实一个出处）+ 跨域别名归一。
+ *
+ * 病灶（真实假绿·第 6 例）：`sideEffect` 这个概念在仓里曾有三套互不相识的词表——
+ *   ① 本枚举（Skill）           `READ | COMPUTE | WRITE`
+ *   ② `ToolDef.sideEffect`(qos.ts) `READ | COMPUTE | ACTION_DRAFT | EXTERNAL`（≈30 个工具在用）
+ *   ③ CapabilityMeta 拟用词表     `NONE | READ_ONLY | WRITE_BACK | EXTERNAL_ACTION`（**该文件根本不在仓里**）
+ * `skill-probe.ts` 的 SP5 判定按 ③ 写（`=== "WRITE_BACK"`），而生产里没有任何 Skill 会带 ③ 的值 →
+ * **SP5 永远不触发**（写回型技能拿不到 create_action_draft）；测试却是绿的，因为 fixture 自己造了
+ * `sideEffect: "WRITE_BACK"`（测试自产自销·`as SkillDefinition` 绕过类型）。
+ *
+ * 故此处把判定收敛为唯一出处，并**显式吸收** ②③ 的写侧词汇：跨域值宁可归一到 WRITE，
+ * 也不许静默掉回 READ——静默降级正是上面那种「绿灯照着空气亮」的成因。
+ */
+const WRITE_EFFECT_ALIASES = new Set([
+  "WRITE", // ① 本枚举
+  "ACTION_DRAFT", "EXTERNAL", // ② ToolDef 词表的写侧
+  "WRITE_BACK", "EXTERNAL_ACTION", // ③ CapabilityMeta 拟用词表的写侧
+]);
+
+/**
+ * 是否「会改变真值」的技能 → 探针/运行时须追加 `create_action_draft`、并受审批门约束（R4 真值经 Action）。
+ * 缺省（无 sideEffect 字段）视为只读，与 SkillDefinitionSchema 的缺省兜底一致。
+ */
+export function isWriteEffectSkill(skill: { sideEffect?: string | null }): boolean {
+  const se = skill.sideEffect;
+  return typeof se === "string" && WRITE_EFFECT_ALIASES.has(se);
+}
+
+/**
+ * **写模式**判定（探针与运行时必须同用此一处）：会改变真值 **或** 需要审批。
+ *
+ * 为何单列（红队复审抓到·上一版单源只收了一半）：`engine.ts skillWriteMode` 用的是
+ * `sideEffect==="WRITE" || approvalGate≠"none"`，而探针 `buildProbeTools` 只判了 `isWriteEffectSkill`
+ * （仅 sideEffect 半）。于是 `sideEffect:"COMPUTE"` + `approvalGate:"human"` 的技能——
+ *   运行时：writeMode=true → `final_answer` **必须**含 `action_draft` 块；
+ *   探针：  不给 `create_action_draft` 工具 → 它根本造不出那个块。
+ * 即**探针在比生产更小的工具集上给技能发合格证**（探针绿 ≠ 生产能用），正是本仓反复吃亏的那一族。
+ * 判定只此一处，两侧同调，谁改口径两侧一起变。
+ */
+export function isWriteModeSkill(skill: { sideEffect?: string | null; approvalGate?: string | null }): boolean {
+  if (isWriteEffectSkill(skill)) return true;
+  const gate = skill.approvalGate;
+  return typeof gate === "string" && gate !== "none";
+}
+
+/**
+ * **Skill 声明的探索预算 → `AgentBudget` 覆盖**（PRD-skill-contract-dsl §4.6 · Track E 约束 4）。
+ *
+ * 为何单列成契约里的一个纯函数（而不是在某个运行时文件里就地 `?? 8`）：
+ * `maxBudgetRounds` 从 WO-SKILL-1 落契约起就是**零生产消费方**——全仓命中只有契约声明 1 处
+ * + `apps/agentcore/test/skill-contract.test.ts:65,77` 两条「存了能读出来」的断言。
+ * 「只有 test 引用 = 已排练，不是已实现」：测试咬的是**字段**不是**链路**，字段填了不改变任何行为。
+ * 这里给它**唯一读点**，谁要用预算就调这一处，杜绝第二份口径（`sideEffect` 词表分裂的老病）。
+ *
+ * 红线 · **只收紧不放宽**：取 `min(声明值, 平台上界)`。否则一个 Skill 就能把全局预算护栏顶开
+ * （G-9 / G-WORKFLOW-BUDGET-LEAK 同族）。多个 Skill 同时在场 → 取最小（最保守者说了算）。
+ *
+ * 未声明（缺省）→ 返回 `undefined` ⇒ 调用方逐字节维持今日行为（R6）。
+ *
+ * @param skills 本轮在场的 skill（0..n）
+ * @param ceiling 平台硬上界；缺省 `DEFAULT_AGENT_BUDGET`
+ */
+export function skillBudgetOverride(
+  skills: readonly { maxBudgetRounds?: number | null }[],
+  ceiling: Pick<AgentBudget, "maxRoundTrips"> = DEFAULT_AGENT_BUDGET,
+): { maxRoundTrips: number } | undefined {
+  const declared: number[] = [];
+  for (const s of skills) {
+    const n = s?.maxBudgetRounds;
+    if (typeof n === "number" && Number.isInteger(n) && n > 0) declared.push(n);
+  }
+  if (declared.length === 0) return undefined;
+  return { maxRoundTrips: Math.min(...declared, ceiling.maxRoundTrips) };
+}
+
+/** Skill 对规则、约束、本体切片、求解器、其他技能/工作流/Agent 的引用 */
+/**
+ * 引用 kind / role 词表**单一来源**（导出成具名数组，供 skill-lint 等消费方 import）。
+ *
+ * 为何导出数组而不是让消费方掏 zod 内部（`schema.shape.kind.options`）：内部结构会随 zod 版本碎；
+ * 更要紧的是 —— WO-SKILL-3 原稿在 `skill-lint.ts` 里**手抄了一份** `VALID_REF_KINDS`/`VALID_REF_ROLES`，
+ * 与本枚举各自维护。那正是本会话刚治过的病（`sideEffect` 词表分裂→判定永不触发·假绿第 6 例）：
+ * 谁新增一种 kind，lint 那半必然漏，且两边测试都能是绿的。一个事实一个出处（R-一致）。
+ */
+export const SKILL_REFERENCE_KINDS = ["rule", "constraint", "slice", "ontologyType", "solver", "skill", "workflow", "agent"] as const;
+export const SKILL_REFERENCE_ROLES = ["precondition", "postcheck", "context", "fallback"] as const;
+
+export const SkillReferenceSchema = z.object({
+  kind: z.enum(SKILL_REFERENCE_KINDS),
+  key: z.string().min(1),
+  version: z.number().int().optional(),
+  required: z.boolean().default(true),
+  role: z.enum(SKILL_REFERENCE_ROLES).default("context"),
+});
+export type SkillReference = z.infer<typeof SkillReferenceSchema>;
+
+export const SkillAttachmentSchema = z.object({
+  name: z.string(),
+  blobKey: z.string(),
+  mime: z.string().optional(),
+  description: z.string().optional(),
+});
+export type SkillAttachment = z.infer<typeof SkillAttachmentSchema>;
+
+/**
+ * WO-PROMPT-KEY-LINT · LLM 摘要语义审查留痕（additive·**建议式·不阻断发布**）。
+ *
+ * 断点 `G-PROMPT-KEYS-CONFIG-ONLY` 的 `skill_summary_lint` 一支：该键此前只活在配置表里，
+ * src 零消费方。接线形态 = 发布门「门禁一·语义补」（结构 lint → 引用闭合 → 本审查 → 评测门），
+ * verdict **不进 422 阻断判据**（R6：发布门阻断路径 100% 确定性），只落留痕——
+ * 本字段即留痕本体（pg 为 JSONB 整对象序列化，additive 零迁移）。
+ * 判定逻辑与 R6 论据见 `apps/agentcore/src/skill-summary-review.ts` 头注。
+ */
+export const SkillSummaryReviewSchema = z.object({
+  /** PASS=合格 · ISSUES=有具体问题 · UNPARSEABLE=LLM 输出不可解析 · UNAVAILABLE=LLM 调用失败（后两档是诚实位，绝不读成「通过」）。 */
+  verdict: z.enum(["PASS", "ISSUES", "UNPARSEABLE", "UNAVAILABLE"]),
+  issues: z.array(z.string()),
+  /** 生效模板来源：租户 override 接管 / 平台默认流入（本键无更详硬编码兜底，平台默认即执行提示词）。 */
+  templateSource: z.enum(["TENANT_OVERRIDE", "PLATFORM_DEFAULT"]),
+  templateVersion: z.number().int(),
+  model: z.string(),
+  reviewedAt: z.string(),
+});
+export type SkillSummaryReview = z.infer<typeof SkillSummaryReviewSchema>;
 
 export const SkillDefinitionSchema = z.object({
   id: z.string(), // skl_
@@ -140,19 +298,43 @@ export const SkillDefinitionSchema = z.object({
   key: z.string(),
   version: z.number().int(),
   name: z.string(),
-  summary: z.string().max(400),
+  /**
+   * ⚠️ 上限 **200**，与 `skill-lint.ts` 的 `SUMMARY_MAX` **必须相等**（审核方 2026-08-09 裁决 X1）。
+   *
+   * 为什么不照 `body` 的两层治理办（契约 50000 管「存得下」· lint 3000 管「该不该这么写」，SPEC §9.3）：
+   * `summary` 会被**逐条注入 system prompt**（`agentcore/src/agent/prompts.ts` 的
+   * `- [id] name: summary`），长度**直接吃 token 预算且随 skill 数量线性放大** ——
+   * 它是**运行期成本字段**，不是「存得下就行」的字段。lint 自己的报错文案也写着
+   * 「summary 是触发器不是简介」。⇒ 契约层就该收紧，不留两层。
+   *
+   * 收紧前实测零破坏（2026-08-09）：出厂种子 8 条 summary，最长 71 字符，超 200 的 0 条。
+   * 复验命令：`node -e '...matchAll(/summary:\s*"([^"]*)"/g)...' apps/agentcore/src/mocks/seed.ts`
+   */
+  summary: z.string().max(200),
   body: z.string().max(50_000),
   /** 增量 §3（additive）：mime/description 让模型知道附件是什么、何时读（read_skill_resource） */
-  resources: z.array(
-    z.object({
-      name: z.string(),
-      blobKey: z.string(),
-      mime: z.string().optional(),
-      description: z.string().optional(),
-    }),
-  ),
+  resources: z.array(SkillAttachmentSchema),
   /** 管理平台增量 §4（additive）：补 RETIRED 终态（统一资源模式 retire） */
   status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]),
+
+  // WO-SKILL-1 新增工业级能力契约（additive·可选；运行时按如下缺省兜底）
+  // sideEffect 缺省 READ，provenancePolicy 缺省 best_effort，approvalGate 缺省 none
+  // references / dependsOn 缺省 []
+  capability: SkillCapabilitySchema.optional(),
+  sideEffect: SkillSideEffectSchema.optional(),
+  inputSchema: JsonSchemaObject.optional(),
+  outputSchema: JsonSchemaObject.optional(),
+  references: z.array(SkillReferenceSchema).optional(),
+  dependsOn: z.array(SkillReferenceSchema).optional(),
+  approvalGate: z.enum(["none", "human", "workflow"]).optional(),
+  provenancePolicy: z.enum(["required", "best_effort", "none"]).optional(),
+  /**
+   * 本 Skill 的探索轮次上界（题型预算）。**唯一读点 = `skillBudgetOverride()`**（见上方注释），
+   * 归一后注入 `AgentBudget.maxRoundTrips`；只收紧不放宽。缺省 = 平台预算，行为逐字节不变。
+   */
+  maxBudgetRounds: z.number().int().positive().optional(),
+  /** WO-PROMPT-KEY-LINT（additive）：最近一次 LLM 摘要语义审查留痕（建议式·发布时随门运行；DRAFT 从未审查过则无此字段）。 */
+  summaryReview: SkillSummaryReviewSchema.optional(),
 });
 export type SkillDefinition = z.infer<typeof SkillDefinitionSchema>;
 
@@ -196,10 +378,90 @@ export const SceneEntryConfigSchema = z.object({
 export type SceneEntryConfig = z.infer<typeof SceneEntryConfigSchema>;
 
 // ---------------------------------------------------------------------------
+// 场景启动器（PRD-scenario-launcher §3.2/§4）：Scenario 升一等对象（DRAFT→PUBLISHED→RETIRED）
+// SceneEntry 降为投影（视图侧"挂哪些场景 + 默认 agent + 兜底 mode"），主键反转为 Scenario。
+// ---------------------------------------------------------------------------
+
+export const ScenarioStatusSchema = z.enum(["DRAFT", "PUBLISHED", "RETIRED"]);
+export type ScenarioStatus = z.infer<typeof ScenarioStatusSchema>;
+
+/** presetContext：保证"打开即可推演、不被反问槽位"（选中对象 + 槽位预置 + 时窗）。 */
+export const ScenarioPresetContextSchema = z.object({
+  targetView: z.string(),
+  selectedObjects: z.array(ObjectRefSchema).default([]),
+  slotPresets: z.record(z.string(), z.unknown()).default({}),
+  timeWindow: z.object({ from: z.string(), to: z.string() }).optional(),
+});
+export type ScenarioPresetContext = z.infer<typeof ScenarioPresetContextSchema>;
+
+// PRD-scenario-ontogenesis P1/P3：场景卡发育态（相位成熟，A18 三分）。
+// GOVERNED=已亲手跑通验证真出答案（默认呈现"可用"）· PROVISIONAL=发育中/未验证（诚实标，不假装可用）·
+// ADVISORY（P3 O12）=发育闭环已自动跑通且 advisory 校验出非空答案，但未达 GOVERNED 的人工验证标尺
+// （介于二者之间：可参考、标明"自动发育所得，待人工坐实"，绝不冒充 GOVERNED）。
+export const ScenarioMaturitySchema = z.enum(["PROVISIONAL", "ADVISORY", "GOVERNED"]);
+export type ScenarioMaturity = z.infer<typeof ScenarioMaturitySchema>;
+
+/** 一张卡的发育验证运行（留痕：三环 + A10 验证结论 + 缺口）。前端可见 → "知道数据从哪来、发育到哪一步"。 */
+export const ScenarioOntogenesisRunSchema = z.object({
+  runId: z.string(),
+  scenarioKey: z.string(),
+  ranAt: z.string(),
+  // 三环（R16）：data=triggerQuestion 经 QOS 真跑出非空非兜底答案 · ontology=意图/计划已落库 · capability=意图发布且可绑定计划。
+  rings: z.object({ data: z.boolean(), ontology: z.boolean(), capability: z.boolean() }),
+  verification: z.object({
+    status: z.enum(["VERIFIED", "NOT_VERIFIED", "NOT_RUN"]),
+    path: z.enum(["WORKFLOW", "AGENT", "NONE"]).default("NONE"),
+    gapCode: z.string().nullable().default(null),
+    answerPreview: z.string().nullable().default(null), // 验证产出的答案预览（前端可见来源）
+    taskId: z.string().nullable().default(null),         // 可点进任务详情看完整溯源链
+  }),
+  // §2.5：缺口诚实开单（NEEDS_HUMAN）或自动补（AUTO_DERIVE）。
+  gaps: z.array(z.object({ gapCode: z.string(), disposition: z.enum(["AUTO_DERIVE", "NEEDS_HUMAN"]), detail: z.string() })).default([]),
+  maturity: ScenarioMaturitySchema,
+});
+export type ScenarioOntogenesisRun = z.infer<typeof ScenarioOntogenesisRunSchema>;
+
+export const ScenarioSchema = z.object({
+  id: z.string(), // scn_
+  tenantId: z.string(),
+  scenarioKey: z.string(), // S01…（出厂）或自助新建键
+  name: z.string(),
+  domain: z.string().optional(),
+  targetView: z.string(),
+  intentKey: z.string(),
+  triggerQuestion: z.string(),
+  solver: z.string().optional(),
+  rules: z.array(z.string()).default([]),
+  riskLevel: z.enum(["COMPUTE", "ACTION_DRAFT"]).default("COMPUTE"),
+  summary: z.string().default(""),
+  /** 场景默认走 WORKFLOW_FIRST；AGENT_FIRST 仅探索面（§3.2 语义收敛）。 */
+  mode: SceneEntryModeSchema.default("WORKFLOW_FIRST"),
+  defaultAgentId: z.string().optional(),
+  presetContext: ScenarioPresetContextSchema,
+  status: ScenarioStatusSchema.default("DRAFT"),
+  version: z.number().int().default(1),
+  updatedAt: z.string().optional(),
+  // PRD-scenario-ontogenesis P1：卡=发育器官。maturity 由「grow=亲手把 triggerQuestion 经 QOS 跑通验证」
+  // 设定（GOVERNED=验证真出答案 / PROVISIONAL=发育中有缺口）；lastOntogenesisRun 留痕（前端可见，知道来源）。
+  maturity: ScenarioMaturitySchema.optional(),
+  lastOntogenesisRun: ScenarioOntogenesisRunSchema.optional(),
+  // PRD-scenario-ontogenesis P3 O11：卡声明要自动长出的切片（rootType + 目标覆盖类型，形同
+  // PlanSliceRequest）；growScenario 缺切片时据此自动调 planSlice（OBO /a/v1/slices/plan），不再手装。
+  sliceTargets: z.array(z.object({ rootType: z.string(), targets: z.array(z.string()).default([]) })).optional(),
+});
+export type Scenario = z.infer<typeof ScenarioSchema>;
+
+/** WO-SCENARIO-INPUT-PHASE0：场景启动器允许用户覆盖自由文本 query（缺省用卡 triggerQuestion）。 */
+export const LaunchScenarioBodySchema = z.object({
+  query: z.string().min(1).max(500).optional(),
+});
+export type LaunchScenarioBody = z.infer<typeof LaunchScenarioBodySchema>;
+
+// ---------------------------------------------------------------------------
 // AIP Evals（运营完备性增量 §2 / 成熟度 E4）：agent 质量可量化评测
 // ---------------------------------------------------------------------------
 
-export const EvalSuiteSchema = z.enum(["classifier", "agent_quality", "regression"]);
+export const EvalSuiteSchema = z.enum(["classifier", "agent_quality", "regression", "skill_quality"]);
 export type EvalSuite = z.infer<typeof EvalSuiteSchema>;
 
 export const EvalCaseSchema = z.object({
@@ -207,6 +469,8 @@ export const EvalCaseSchema = z.object({
   tenantId: z.string(),
   suite: EvalSuiteSchema,
   packageId: z.string(),
+  /** Skill 评测门禁二（skill_quality）：关联到具体技能 key（发布门禁按此计 ≥3 用例）。 */
+  skillKey: z.string().optional(),
   /** 输入：问句 + 会话上下文（视图/选中对象等）。 */
   input: z.object({
     query: z.string().min(1),
@@ -214,6 +478,8 @@ export const EvalCaseSchema = z.object({
       view: z.string(),
       selectedObjects: z.array(z.object({ objectType: z.string(), objectId: z.string(), label: z.string().optional() })).default([]),
       filters: z.record(z.string(), z.union([z.string(), z.array(z.string())])).default({}),
+      /** 场景 slotPresets 搭车进 eval（否则需必填槽的工作流被反问澄清→不执行→评测假阴）。 */
+      presetSlots: z.record(z.string(), z.unknown()).optional(),
     }),
   }),
   /** 断言期望（§2）。 */
@@ -224,6 +490,8 @@ export const EvalCaseSchema = z.object({
     answerMustNot: z.array(z.string()).optional(),
     maxToolCalls: z.number().int().optional(),
     trust: z.enum(["VERIFIED_WORKFLOW", "AGENT_EXPLORATORY"]).optional(),
+    /** Skill 门禁二·行为增益维度：true = 该用例验证挂载技能后的行为增益（vs 不挂载，§4 评测三类之三）。 */
+    behaviorGain: z.boolean().optional(),
   }),
   /** 出处：手写 / 场景目录派生 / 兜底转化。 */
   origin: z.enum(["MANUAL", "SCENARIO", "FALLBACK"]).default("MANUAL"),
@@ -231,10 +499,17 @@ export const EvalCaseSchema = z.object({
 });
 export type EvalCase = z.infer<typeof EvalCaseSchema>;
 
+/** A14 parity 失因分类（对 PRD 期望的偏差类型）：意图错分 / 工具序列偏 / 答案断言未中 / 其它。 */
+export const EVAL_FAIL_KIND = ["INTENT", "TOOLSEQ", "ANSWER", "OTHER"] as const;
+export const EvalFailKindSchema = z.enum(EVAL_FAIL_KIND);
+export type EvalFailKind = z.infer<typeof EvalFailKindSchema>;
+
 export const EvalCaseResultSchema = z.object({
   caseId: z.string(),
   pass: z.boolean(),
   failures: z.array(z.string()),
+  /** A14：首要失因分类（pass 时省略）——供 parity 报告按失因聚合 + 前端失因色。 */
+  failKind: EvalFailKindSchema.optional(),
   observed: z.object({
     intentKey: z.string().nullable().optional(),
     path: z.string().optional(),
@@ -268,5 +543,12 @@ export const EvalRunReportSchema = z.object({
   results: z.array(EvalCaseResultSchema),
   /** mock LLM 跑出的分数仅证框架，非真实质量（接真模型后即真）。 */
   llmMode: z.enum(["MOCK", "REAL"]),
+  /** A14：对 PRD 期望的 parity 报告——按失因聚合 + 逐 case 偏差（哪些场景的意图/工具/答案与 PRD 不符）。 */
+  parity: z
+    .object({
+      byFailKind: z.object({ INTENT: z.number().int(), TOOLSEQ: z.number().int(), ANSWER: z.number().int(), OTHER: z.number().int() }),
+      byCase: z.array(z.object({ caseId: z.string(), expectIntent: z.string().nullable().optional(), pass: z.boolean(), failKind: EvalFailKindSchema.optional() })),
+    })
+    .optional(),
 });
 export type EvalRunReport = z.infer<typeof EvalRunReportSchema>;

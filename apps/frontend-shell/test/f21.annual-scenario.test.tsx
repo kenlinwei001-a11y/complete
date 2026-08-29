@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { db } from "@/mocks/db";
 
-describe("F21 · 年度情景规划台（annual-scenario）", () => {
+describe("F21 · 年度规划（annual-scenario）", () => {
   it("三情景卡渲染 + 已拍板态 + 规则徽章可点开 expression", async () => {
     const user = userEvent.setup();
     loginAs("planner");
@@ -77,6 +77,31 @@ describe("F21 · 年度情景规划台（annual-scenario）", () => {
     const pop = await screen.findByTestId("dec-prov-pop");
     expect(pop).toHaveTextContent("sop-target-2026-07");
     expect(pop).toHaveTextContent("S&OP 平衡台目标线");
+  });
+
+  it("1:1 补齐：三情景对比 chip + 情景前提 note 行 + 分解 header 基准数字 + 缺口/过剩窗口曲线", async () => {
+    loginAs("planner");
+    renderApp("/v/annual-scenario");
+
+    // 头部"三情景对比" chip（取情景数，非写死）
+    const chip = await screen.findByTestId("aop-compare-chip");
+    expect(chip).toHaveTextContent("三情景对比 · 3 情景");
+
+    // 情景卡 note 行（电池域种子文案，经契约下发）
+    const conservative = screen.getByTestId("scen-card-conservative");
+    expect(within(conservative).getByTestId("scen-note-conservative")).toHaveTextContent("守现金");
+
+    // 目标分解 header 基准情景数字（取 finalized=基准 demand=1580，非写死）
+    expect(screen.getByTestId("aop-dec-baseline")).toHaveTextContent("基准情景 1,580 万套");
+
+    // 缺口/过剩窗口曲线：消费基准 capexScenario.windows（基准含一段 2027-Q1 过剩窗）
+    const curve = screen.getByTestId("aop-window-curve");
+    expect(within(curve).getByTestId("aop-window-surplus-2027-Q1")).toHaveTextContent("过剩窗口 2027-Q1");
+    expect(within(curve).getByTestId("aop-window-chart")).toBeTruthy();
+    // WO-UNIT-MEANING：纵轴此前是裸刻度（「1150」是万套？亿元？GWh？）→ 现落 caption + 轴名，
+    // 量纲单源沿用页面唯一单位常量 zh.aop.demandUnit（"万套/年"）取数量部分，粒度换成本曲线真实的季。
+    expect(within(curve).getByTestId("aop-window-axis-caption").textContent)
+      .toBe("纵轴：万套/季（需求 / 供给 / 缺口三序列同尺 · 年需求按季节权重卷积到季）");
   });
 
   it("拍板情景（catalog_admin + act.aop-finalize）→ actionType=AOP情景拍板 草稿", async () => {

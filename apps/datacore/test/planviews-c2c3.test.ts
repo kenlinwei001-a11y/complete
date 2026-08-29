@@ -13,10 +13,10 @@ describe("C2 · 季度滚动供给口径（三来源合并 + 长协 supply_risk�
     const t = await makeApp();
     await seedBattery(t);
     const body = await quarterly(t);
-    // 已拍板情景=baseline（HF4，q0=3 相对 forecastStart=2026-Q3 → 2027-Q2 起爬坡）
+    // 已拍板情景=baseline（枣庄储能线 ZZ，q0=3 相对 forecastStart=2026-Q3 → 2027-Q2 起爬坡）
     const allEvents = body.rows.flatMap((r) => r.events.map((e) => e.label));
     expect(allEvents.some((l) => l.includes("产能增量") && l.includes("已批准项目爬坡投产"))).toBe(true);
-    expect(allEvents.some((l) => l.includes("合肥四期"))).toBe(true);
+    expect(allEvents.some((l) => l.includes("枣庄储能线"))).toBe(true); // 命名以 HTML 为准
     for (const r of body.rows) expect(Math.round((r.dem - r.sup) * 100) / 100).toBe(r.gap);
   });
 
