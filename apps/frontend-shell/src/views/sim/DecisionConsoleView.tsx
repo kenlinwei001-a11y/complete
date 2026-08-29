@@ -878,6 +878,40 @@ export default function DecisionConsoleView() {
                       </div>
                     </div>
                   ) : null}
+                  {/*
+                    🔴 **屏上唯一直接回答「我改的那个数，到底改没改变结论」的一格**
+                    （COO 那个 +15 → +100 的对照实验问的就是这一句）。
+
+                    ── 为什么上面那格答不了 ────────────────────────────────────────
+                    `worldCellsMoved` 度量的是**波及面**（多少格与对照不同），**不随幅度变**：
+                    本单真后端实测 11 类事件各跑小/大两遍 —— 产能损失把 `lossPct` 从 10 拉到 100
+                    （施加幅度 3,486 → 34,865），`worldCellsMoved` **两次都是 210**，一格不差。
+                    拿它当「改数有没有用」的判据必然误判，那正是「我用 X 当作 Y 的证据，
+                    而 X 并不度量 Y」这条老病。⇒ 这一格比的是**结论本身**。
+                  */}
+                  {result.report.appliedStateEffects.length > 0 ? (
+                    <div className={styles.splitCell}>
+                      <div
+                        className={styles.splitVal}
+                        style={{ color: result.report.findingsChanged === 0 ? "var(--danger-txt)" : undefined }}
+                      >
+                        {result.report.findingsChanged.toLocaleString("zh-CN")}
+                      </div>
+                      <div className={styles.splitLabel}>
+                        {result.report.findingsChanged === 0
+                          ? `条结论因此改变 —— 也就是说，你加的这几件事**没有改变任何一条结论**。把幅度调大再算一次，很可能还是这个数。这是结论，不是故障。`
+                          : `条结论因你加的这几件事而改变（不加时一共 ${result.report.findingsBaseline.toLocaleString("zh-CN")} 条）。`}
+                        <br />
+                        <Raw
+                          text={
+                            `怎么算的：把这批事件拿掉再推一遍同样的 ${HORIZON_DAYS} 天，对照世界也扫一遍卡点，两份清单逐条比（新增 + 消失 + 严重度变了的都算）。\n` +
+                            `⚠ 只比传导引擎扫出来的那些 —— 求解器那一路读的是本体真值、不读世界态，把它算进来这个数会恒不为 0，判据就废了。\n` +
+                            `⚠ 这个数是 0 而上面「动了 N 格」不是 0，是**正常且有意义**的一种结果：冲击确实传下去了，但动的那些格子没有一个越过它那个变量的警戒线（卡点按分位数判），所以结论没变。`
+                          }
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {nothingMoved ? <p className={styles.greyLine}>{nothingMoved}</p> : null}
