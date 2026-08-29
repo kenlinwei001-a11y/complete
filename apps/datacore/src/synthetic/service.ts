@@ -999,6 +999,12 @@ export class SyntheticService {
     // process: Line → Process（Process.lineId）
     for (const pr of g.processes) {
       await putLink(`lnk_lhp_${pr.processId}`, "line_has_process", oid("Line", pr.lineId), oid("Process", pr.processId));
+      // WO-SLICE-DOMAINS 逆边：工序排队要能**回到产线**。此前从 `Equipment`/`Process` 出发
+      // 一条出边都走不出 {Equipment, Process, MaintenanceOrder} 这三类（实测 103 条 linkType 的
+      // 正向闭包就是这三个）⇒ 设备故障对订单/毛利的贡献恒为 0。这条边的 FK 依据是
+      // `Process.lineId` 本身（与上一行 `line_has_process` 同一个字段，只是反着投影），
+      // **不是照名字猜的悬空边**。同 `process_uses_equipment` 的构造法。
+      await putLink(`lnk_pbl_${pr.processId}`, "process_belongs_to_line", oid("Process", pr.processId), oid("Line", pr.lineId));
     }
     // equip: Equipment → Process（Equipment.processId）
     for (const eq of g.equipment) {
@@ -1262,6 +1268,12 @@ export class SyntheticService {
     // D07 ①：Line → WorkOrder（wo.lineId）—— 产线吃紧 ⇒ 工单下达受阻
     for (const wo of g.workOrders) {
       await putLink(`lnk_lrw_${P(wo).woId}`, "line_runs_work_order", oid("Line", P(wo).lineId), oid("WorkOrder", P(wo).woId));
+      // WO-SLICE-DOMAINS：WorkOrder → Model（wo.modelId）。`wo_for_model` 这个 linkType
+      // **早就声明在 `batteryLinkTypes()` 里，但从来没有物化过一条实例**（实测：以 WorkOrder 为根
+      // 跑一跳切片，边实例数 0；同批的 `line_runs_work_order` 金丝雀 260 条）——
+      // 属「声明了类型、零实例」，与「没声明」是两回事。它是**制造侧回到产品/订单侧的唯一一跳**：
+      // 少了它，工单受阻这件事永远走不到型号，也就走不到订单和客户。
+      await putLink(`lnk_wfm_${P(wo).woId}`, "wo_for_model", oid("WorkOrder", P(wo).woId), oid("Model", P(wo).modelId));
     }
     // D07 ②：WorkOrder → WIPLot（lot.woId）—— 工单积压 ⇒ 齐套发料/投料堆积
     for (const lot of g.wipLots) {

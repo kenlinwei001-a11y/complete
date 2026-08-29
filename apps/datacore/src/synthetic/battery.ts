@@ -2960,6 +2960,13 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "base_dispatches_transfer", fromTypeKey: "Base", toTypeKey: "InterBaseTransfer", cardinality: "1:N" }, // capacity（影响向·`transfer_from_base` 之逆）
     // D09 设备与维护：Process → Equipment → MaintenanceOrder
     { key: "process_uses_equipment", fromTypeKey: "Process", toTypeKey: "Equipment", cardinality: "N:N" }, // equip（影响向·`equip_used_in` 之逆）
+    // WO-SLICE-DOMAINS：Process → Line（影响向·`line_has_process` 之逆·`Process.lineId` 反投影）。
+    // 🔴 **这条边是设备侧唯一的出口**：本单实测 103 条 linkType 里，从 `Equipment` 出发的正向闭包
+    // 恰好是 {Equipment, Process, MaintenanceOrder} —— 四条边全在这三类之间打转
+    // （equip_used_in / equipment_has_maintenance_order / process_uses_equipment / maint_for_equip）。
+    // 于是 `propagateTick`（navOut 只沿 fromId→toId）无论加多少条规则都走不出去，
+    // 设备故障对订单与毛利的贡献**恒为 0**。补这一条之后制造侧才接得回产能主链。
+    { key: "process_belongs_to_line", fromTypeKey: "Process", toTypeKey: "Line", cardinality: "N:1" }, // capacity（影响向·`line_has_process` 之逆）
     { key: "equipment_has_maintenance_order", fromTypeKey: "Equipment", toTypeKey: "MaintenanceOrder", cardinality: "1:N" }, // equip（影响向·`maint_for_equip` 之逆）
     // D10 基地与仓储交付：Model → FinishedGoodsInventory
     { key: "model_stocked_as_finished_goods", fromTypeKey: "Model", toTypeKey: "FinishedGoodsInventory", cardinality: "1:N" }, // supply（影响向·`fg_of_model` 之逆）
@@ -3149,6 +3156,384 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
               minNodes: 5,
               mustIncludeTypes: ["AnnualScenario", "PlanTarget", "CapexProject", "FinanceMetric"],
               mustIncludeLinkKeys: ["scenario_to_target", "scenario_to_capex", "scenario_to_finance"],
+            },
+          },
+        ],
+      },
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // WO-SLICE-DOMAINS · 反查链（设备根）+ BOM 换算链 + 四条主干域切片
+    //
+    // ── 为什么这批切片是「反向」走的：slice 引擎与传导引擎的可达性不是一回事 ──────────
+    // `propagateTick` 的 navOut **只沿 `fromId→toId`**（`propagation.ts` 的 `targetsOf`），
+    // 而 `executeSlice` 的每一跳带 `direction: "out" | "in"`（`ontology-core.ts` 的
+    // `linkIndexIn`/`linkIndexOut`）—— **`in` 就是沿同一条真边反着走，不新建任何链路**。
+    // 这就是本批切片能做到而传导规则做不到的事：实测 103 条 linkType 里，
+    // 从 `Equipment` 出发的**正向**闭包只有 `{Equipment, Process, MaintenanceOrder}` 三个类型
+    // （出边只有 `equip_used_in` / `equipment_has_maintenance_order` / `process_uses_equipment` /
+    // `maint_for_equip` 四条，全在这三类之间打转），**到不了 Order/Customer/Material**。
+    // 切片靠 `direction:"in"` 借 `line_has_process`(Line→Process) 与
+    // `line_belongs_to_base`(Base→Line) 这两条既有边反向出圈，一条假链路都不用造。
+    // ══════════════════════════════════════════════════════════════════════════════════
+    {
+      /**
+       * 设备影响 360（root = Equipment）——**反查链**：一台设备坏了，牵动哪些订单、哪个客户、哪些料。
+       *
+       * 病灶：本批之前 `rootType=Equipment` 的切片全仓只有 `coverage_equipment` 一条，
+       * 而它是 `batteryCoverageSlices()` 按类型批量生成的**零跳**壳（`paths: []`，见
+       * `data-categories.ts`），只能列设备自己的字段。真正多跳的四条（`order_fulfillment_360` /
+       * `order_to_cash_720` / `enterprise_360` / `aop_scenario_chain`）根全是 Order 或
+       * AnnualScenario ⇒ **只能 Order→Equipment 顺着查，反过来一步都走不了**。
+       *
+       * 链：Equipment → Process → Line → Base → Model → Order → Customer，并岔到 Material→Supplier。
+       * 前三跳里有两跳是 `direction:"in"`（借 `line_has_process` / `line_belongs_to_base` 反走），
+       * 第四跳 `model_producible_at` 也是 `in`（该边声明为 Model→Base）。
+       *
+       * ⚠ `limitPerNode` 不是随手填的：Model→Order 是 1:N 且 demo 有 500 张订单，
+       * 不设限会让一条路径把 600 的 `maxNodes` 吃光 —— 而 `executeSlice` 一旦 `truncated`
+       * 就**整张切片停止展开**（后面的 path 一条都不跑），于是"岔到物料"那几条会静默消失。
+       * 实测 SO 侧扇出取 10 时全图 60 节点 / 88 边 / 10 类型、`truncated=false`。
+       */
+      sliceKey: "equipment_impact_360",
+      version: 1,
+      spec: {
+        root: { typeKey: "Equipment", selector: { byKey: "{{args.equip}}" } },
+        paths: [
+          // 主干：设备 → 工序 → 产线 → 基地 → 型号 → 订单 → 客户（钱的落点）
+          [
+            { linkKey: "equip_used_in", direction: "out", project: ["processId", "lineId", "name", "kind", "yield", "utilization"] },
+            { linkKey: "line_has_process", direction: "in", project: ["lineId", "baseId", "name", "capacityDaily", "utilization", "status"] },
+            { linkKey: "line_belongs_to_base", direction: "in", project: ["baseId", "name", "kind", "util", "bottleneck", "gwh"] },
+            { linkKey: "model_producible_at", direction: "in", project: ["modelId", "name", "unitPrice"] },
+            { linkKey: "model_demanded_by_order", direction: "out", limitPerNode: 10, project: ["so", "cust", "model", "qty", "due", "pri", "status", "unitPrice", "value"] },
+            { linkKey: "order_of_customer", direction: "out", project: ["custId", "custName", "creditLimit", "termDays", "receivables", "maxOverdueDays"] },
+          ],
+          // 岔：型号 → 物料 → 供应商（设备停机改排产时，跟着动的那批料与供方）
+          [
+            { linkKey: "equip_used_in", direction: "out" },
+            { linkKey: "line_has_process", direction: "in" },
+            { linkKey: "line_belongs_to_base", direction: "in" },
+            { linkKey: "model_producible_at", direction: "in" },
+            { linkKey: "model_uses_material", direction: "out", limitPerNode: 10, project: ["matId", "name", "unitPrice", "leadTime", "onHand", "isKeyMaterial"] },
+            { linkKey: "material_supplied_by", direction: "out", project: ["supplierId", "name", "category", "onTimeRate", "region"] },
+          ],
+          // 岔：设备自身的维修工单（这台设备到底修过几次、现在什么状态）
+          [{ linkKey: "equipment_has_maintenance_order", direction: "out", limitPerNode: 20, project: ["moId", "equipId", "maintType", "priority", "plannedStart", "plannedEnd", "status"] }],
+          // 岔：同工序的其它设备（这台停了，负荷被顶到谁头上）
+          [
+            { linkKey: "equip_used_in", direction: "out" },
+            { linkKey: "process_uses_equipment", direction: "out", limitPerNode: 20, project: ["equipId", "oeeA", "oeeP", "oeeQ", "availFactor", "health_score", "status"] },
+          ],
+          // 岔：这条产线在跑的工单（停机直接砸在哪几张工单上）
+          [
+            { linkKey: "equip_used_in", direction: "out" },
+            { linkKey: "line_has_process", direction: "in" },
+            { linkKey: "line_runs_work_order", direction: "out", limitPerNode: 20, project: ["woId", "moNo", "modelId", "qtyPlanned", "qtyActual", "startDate", "status"] },
+          ],
+        ],
+        maxNodes: 600,
+        contractFixtures: [
+          {
+            // 取一台**真有维修工单**的设备当基线：`equipment_has_maintenance_order` 只对
+            // `maintenanceOrders[].equipId` 命中的设备物化（`service.ts` 的 `lnk_ehm_*`），
+            // 随手挑一台（如 …-assembly-E1）会得到 MaintenanceOrder 零节点 —— 那不是切片坏了，
+            // 是那台设备确实没修过。基线必须挑一台修过的，否则这条 fixture 什么都验不到。
+            name: "设备根反查可达 订单/客户/物料/维修单",
+            args: { equip: "LINE-WS-changzhou-assembly-coating-E2" },
+            expect: {
+              rootType: "Equipment",
+              minNodes: 20,
+              mustIncludeTypes: ["Equipment", "Process", "Line", "Base", "Model", "Order", "Customer", "Material", "Supplier", "MaintenanceOrder", "WorkOrder"],
+              mustIncludeLinkKeys: ["equip_used_in", "line_has_process", "line_belongs_to_base", "model_producible_at", "model_demanded_by_order", "order_of_customer", "model_uses_material", "material_supplied_by", "equipment_has_maintenance_order"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      /**
+       * 订单→物料 BOM 换算链（root = Order）——「这一张订单要用多少料、哪一行用哪个料、谁供的」。
+       *
+       * 病灶：本批之前四条业务切片合起来只覆盖 22 / 98 个对象类型，而**订单到物料这条链中间是断的**：
+       * `order_fulfillment_360` 走的是 `Order → Model --model_uses_material--> Material`，
+       * 一步跨过了 BOM —— 于是 `BOMHeader`(15) / `BOMDetail`(105) / `OrderLine`(873) /
+       * `MaterialBalance`(9) / `Supplier`(15) **一个都不在任何业务切片上**。
+       * `model_uses_material` 只说「这个型号用到这些料」，说不出**每台用多少、损耗多少、哪一行**——
+       * 而 BOM 正是这个换算关系的唯一出处，缺了它 agent 填不出「缺多少、谁供的」。
+       *
+       * ⚠ **Model 到 BOMHeader 中间必须过 ProductVersion，这不是绕路**：全表 103 条 linkType 里
+       * BOM 头唯一的上挂边是 `bom_belongs_to_version`(BOMHeader→ProductVersion)，
+       * 没有任何 Model→BOMHeader 的直边（`BOMHeader.modelId` 是**属性**不是链路，
+       * 照属性猜着连就是造一条悬空边 —— `order_of_customer` 那次已登记过同一事实）。
+       * 故本链走 `version_belongs_to_model`(in) → `bom_belongs_to_version`(in) → `detail_belongs_to_bom`(in)。
+       *
+       * 实测 SO-3391：94 节点 / 136 边 / 10 类型，其中 BOMDetail 49 条、Supplier 7 家，`truncated=false`。
+       */
+      sliceKey: "order_to_material_bom",
+      version: 1,
+      spec: {
+        root: { typeKey: "Order", selector: { byKey: "{{args.so}}" } },
+        paths: [
+          // 主干：订单 → 订单行 → 型号 → 版本 → BOM 头 → BOM 行 → 物料 → 供应商
+          [
+            { linkKey: "order_has_line", direction: "out", limitPerNode: 20, project: ["lineId", "orderRef", "lineNo", "model", "qty", "due", "lineStatus", "unitPrice"] },
+            { linkKey: "orderline_for_model", direction: "out", project: ["modelId", "name", "unitPrice", "capacity"] },
+            { linkKey: "version_belongs_to_model", direction: "in", limitPerNode: 10, project: ["versionId", "versionCode", "versionName", "status", "effectiveDate"] },
+            { linkKey: "bom_belongs_to_version", direction: "in", limitPerNode: 10, project: ["bomId", "bomCode", "modelId", "bomName", "bomLevel", "status", "effectiveDate"] },
+            { linkKey: "detail_belongs_to_bom", direction: "in", limitPerNode: 30, project: ["bomDetailId", "bomId", "materialId", "sequence", "quantity", "lossRate", "unit", "level", "isKeyComponent"] },
+            { linkKey: "detail_uses_material", direction: "out", project: ["matId", "name", "unitPrice", "leadTime", "onHand", "dailyUse", "isKeyMaterial"] },
+            { linkKey: "material_supplied_by", direction: "out", project: ["supplierId", "supplierCode", "name", "category", "onTimeRate", "leadTime", "region", "status"] },
+          ],
+          // 岔：物料 → 物料平衡（MRP 缺口——「缺多少」的读数在这，不在 BOM 上）
+          [
+            { linkKey: "order_has_line", direction: "out" },
+            { linkKey: "orderline_for_model", direction: "out" },
+            { linkKey: "version_belongs_to_model", direction: "in" },
+            { linkKey: "bom_belongs_to_version", direction: "in" },
+            { linkKey: "detail_belongs_to_bom", direction: "in", limitPerNode: 30 },
+            { linkKey: "detail_uses_material", direction: "out" },
+            { linkKey: "material_has_balance", direction: "out", project: ["matBalId", "material", "unit", "netDemandTon", "ltaPct", "gapTon", "coverage", "etaDate"] },
+          ],
+          // 岔：订单直挂型号（订单行缺失时仍能落到型号，不至于整条链空掉）
+          [{ linkKey: "order_for_model", direction: "out", project: ["modelId", "name", "unitPrice"] }],
+          // 岔：交期承诺（ATP/CTP 的判定结果——缺口反映在这里）
+          [{ linkKey: "order_has_promise", direction: "out", limitPerNode: 10, project: ["promiseId", "requestedQty", "committableQty", "promiseDate", "atpStatus", "shortfallQty", "bottleneck"] }],
+        ],
+        maxNodes: 800,
+        contractFixtures: [
+          {
+            name: "首单可达 订单行/BOM 头/BOM 行/物料/供应商/物料平衡",
+            args: { so: "SO-3391" },
+            expect: {
+              rootType: "Order",
+              minNodes: 20,
+              mustIncludeTypes: ["Order", "OrderLine", "Model", "ProductVersion", "BOMHeader", "BOMDetail", "Material", "Supplier", "MaterialBalance", "OrderPromise"],
+              mustIncludeLinkKeys: ["order_has_line", "orderline_for_model", "version_belongs_to_model", "bom_belongs_to_version", "detail_belongs_to_bom", "detail_uses_material", "material_supplied_by", "material_has_balance"],
+            },
+          },
+        ],
+      },
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // 四条**主干域**切片（D03 销售与客户 / D04 产品与工程 / D05 采购与供应 / D06 计划与排产）
+    //
+    // ── ⛔ 设计约束：照现状切出来的域切片彼此串不起来，必须每域多走一跳越过边界 ──────────
+    // 域→类型的映射是**现成数据**，不是本批新造的词表：`seed.ts` 的 `DEMO_PROCESS_DEFINITIONS`
+    // 每条流程都带 `domainKey`(D01–D13) + `carrierTypeKey`（承载物）。实测那 65 条流程摊开是
+    // **13 个域 / 64 个去重承载类型，而跨域共享的类型恰好 0 个**（P37/P40 共用
+    // `ProductionSchedule`，但同属 D06 —— 那是域内共用，不是跨域共享）。
+    // ⇒ **只取本域承载物切出来的四张切片两两交集全为空**，谁也 join 不上谁
+    // （`slice-library.ts` 的 `auditSliceConnectivity` 会把它们全判成度 0 的孤岛）。
+    //
+    // 故每条域切片都**显式多走一跳越过自己的边界**，把邻域的锚点类型纳进来：
+    //   D03 ──Model──▶ D04 ──Material/Supplier──▶ D05 ──Line──▶ D06 ──Order──▶ 回到 D03
+    // 实测交集（节点类型，非声明）：D03∩D04={Model,Order} · D04∩D05={Material,Model,Supplier}
+    //                              D05∩D06={Line,Model} · D06∩D03={Model,Order}
+    //
+    // ── ⚠ 三个域各有一批承载类型**进不了切片，且这是数据的实情不是漏写** ───────────────
+    //  · D03 的 `PipelineOpportunity`(2) / `BidRecord`(2) / `WinLossRecord`(2)：
+    //    实测 103 条 linkType 里**这三个类型一条边都没有**（既不当 from 也不当 to）⇒
+    //    任何以 Customer/Order 为根的路径都走不到。补边属本体改动，不在本批范围内。
+    //  · D05 的 `LongTermAgreement`(3) / `BackupSupplierPool`(2)：同上，零链路。
+    //  · D06 的 `ProductionSchedule`：`sched_for_wo` 这条 linkType 有声明，
+    //    但 demo 世界里该类型**实测 0 个对象** ⇒ 走得到边、落不到点（"接了线没数据"，
+    //    与"没接线"是两回事，修法也不同：这条要补种子，上面那几个要补链路）。
+    //    路径**照留**——数据一旦补上，切片当场就有读数，不必再改这里。
+    //  · D06 的 `Cadence`(8)：同样零链路（节拍是规则上的声明 `PropagationRule.cadenceNodeId`，
+    //    不是图上的边）。
+    //
+    // ── ⚠ 根为什么用 `selector: {}`（全量）而不是 `byKey` ─────────────────────────────
+    // 域切片要回答的是「这个域里有什么」，不是「这一单怎么走」。而 `executeSlice` 里
+    // `byKey` 模板取不到 args 时会 resolve 成 `undefined` ⇒ 根集合被过滤成空 ⇒ 整张切片 0 节点。
+    // 域切片不该要求调用方先知道一个 id 才看得见自己的域，故取全量根 + 逐跳 `limitPerNode` 收扇出。
+    // 四条的 `truncated` 实测全为 `false`（这一点必须验，truncated 一旦为真，
+    // 后面的 path 一条都不会跑，边界跳会**静默消失**而屏上只是少几个点）。
+    // ══════════════════════════════════════════════════════════════════════════════════
+    {
+      /** D03 销售与客户（sales）：客户 → 收货地点 / 订单 → 订单行 · 交期承诺，边界一跳到 D04 型号。 */
+      sliceKey: "domain_d03_sales",
+      version: 1,
+      spec: {
+        root: { typeKey: "Customer", selector: {} },
+        paths: [
+          [{ linkKey: "customer_has_location", direction: "out", limitPerNode: 4, project: ["locId", "customerRef", "province", "city", "address", "isDeliveryDefault"] }],
+          [
+            { linkKey: "order_of_customer", direction: "in", limitPerNode: 4, project: ["so", "cust", "model", "qty", "due", "pri", "status", "unitPrice", "value", "leadDays"] },
+            { linkKey: "order_has_line", direction: "out", limitPerNode: 4, project: ["lineId", "orderRef", "lineNo", "model", "qty", "due", "lineStatus", "unitPrice"] },
+          ],
+          [
+            { linkKey: "order_of_customer", direction: "in", limitPerNode: 4 },
+            { linkKey: "order_has_promise", direction: "out", limitPerNode: 4, project: ["promiseId", "orderRef", "requestedQty", "committableQty", "promiseDate", "atpStatus", "shortfallQty", "bottleneck"] },
+          ],
+          // 边界 → D04 产品与工程（锚点类型 Model）
+          [
+            { linkKey: "order_of_customer", direction: "in", limitPerNode: 4 },
+            { linkKey: "order_for_model", direction: "out", project: ["modelId", "name", "unitPrice"] },
+          ],
+        ],
+        maxNodes: 600,
+        contractFixtures: [
+          {
+            name: "D03 域内完整 + 边界含 D04 锚点 Model",
+            args: {},
+            expect: {
+              rootType: "Customer",
+              minNodes: 20,
+              mustIncludeTypes: ["Customer", "CustomerLocation", "Order", "OrderLine", "OrderPromise", "Model"],
+              mustIncludeLinkKeys: ["customer_has_location", "order_of_customer", "order_has_line", "order_has_promise", "order_for_model"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      /**
+       * D04 产品与工程（product）：型号 → 版本 → BOM → 物料 → 供应商 / 谱系 / 工程变更 / 工艺路线，
+       * 边界一跳到 D05 采购（Material·Supplier）与 D03 销售（Order）。
+       *
+       * ⚠ **path 的顺序在这条切片上是语义的一部分**：`ProcessCapabilityWindow` 实测 345 个对象，
+       * 把工艺路线那条 path 排在前面会先吃满 `maxNodes` ⇒ `truncated` 置真 ⇒ 后面带 D05 边界的
+       * BOM 主干**一条都不跑**，交集当场变空。故 BOM 主干与两条边界跳排在最前，容量大户垫底。
+       */
+      sliceKey: "domain_d04_product",
+      version: 1,
+      spec: {
+        root: { typeKey: "Model", selector: {} },
+        paths: [
+          // ① 主干 BOM（带 D05 边界，必须排第一）
+          [
+            { linkKey: "version_belongs_to_model", direction: "in", limitPerNode: 6, project: ["versionId", "modelId", "versionCode", "versionName", "status", "effectiveDate"] },
+            { linkKey: "bom_belongs_to_version", direction: "in", limitPerNode: 4, project: ["bomId", "bomCode", "modelId", "bomName", "bomLevel", "status"] },
+            { linkKey: "detail_belongs_to_bom", direction: "in", limitPerNode: 10, project: ["bomDetailId", "bomId", "materialId", "sequence", "quantity", "lossRate", "unit", "isKeyComponent"] },
+            { linkKey: "detail_uses_material", direction: "out", project: ["matId", "name", "unitPrice", "leadTime", "onHand", "isKeyMaterial"] },
+            { linkKey: "material_supplied_by", direction: "out", project: ["supplierId", "name", "category", "onTimeRate", "region"] },
+          ],
+          // ② 边界 → D03 销售与客户（锚点类型 Order）
+          [{ linkKey: "model_demanded_by_order", direction: "out", limitPerNode: 4, project: ["so", "cust", "model", "qty", "due", "status", "unitPrice"] }],
+          // ③ 产品谱系（平台/系列）
+          [
+            { linkKey: "model_belongs_to_series", direction: "out", project: ["seriesId", "seriesCode", "platformId", "name", "category", "status"] },
+            { linkKey: "series_belongs_to_platform", direction: "out", project: ["platformId", "platformCode", "name", "category", "status"] },
+          ],
+          // ④ 工程变更（ECN）
+          [{ linkKey: "change_affects_model", direction: "in", limitPerNode: 4, project: ["changeId", "changeNumber", "changeType", "modelId", "changeReason", "status"] }],
+          // ⑤ 工艺路线 → 工序 → 能力窗口（容量大户，垫底 + 收紧扇出）
+          [
+            { linkKey: "routing_belongs_to_model", direction: "in", limitPerNode: 3, project: ["routingId", "routingCode", "modelId", "routingName", "operationCount", "totalYield", "status"] },
+            { linkKey: "operation_belongs_to_routing", direction: "in", limitPerNode: 4, project: ["operationId", "operationCode", "operationSeq", "operationName", "standardTime", "yield", "isCritical"] },
+            { linkKey: "capability_belongs_to_operation", direction: "in", limitPerNode: 2, project: ["capabilityId", "operationId", "parameterName", "unit", "minValue", "maxValue", "targetValue"] },
+          ],
+        ],
+        maxNodes: 700,
+        contractFixtures: [
+          {
+            name: "D04 域内完整 + 边界含 D05 锚点(Material/Supplier) 与 D03 锚点(Order)",
+            args: {},
+            expect: {
+              rootType: "Model",
+              minNodes: 40,
+              mustIncludeTypes: ["Model", "ProductVersion", "BOMHeader", "BOMDetail", "ProductSeries", "ProductPlatform", "EngineeringChange", "Routing", "Operation", "ProcessCapabilityWindow", "Material", "Supplier", "Order"],
+              mustIncludeLinkKeys: ["version_belongs_to_model", "bom_belongs_to_version", "detail_belongs_to_bom", "detail_uses_material", "material_supplied_by", "model_demanded_by_order", "model_belongs_to_series", "routing_belongs_to_model"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      /**
+       * D05 采购与供应（material）：物料 → 供应商 / 替代料 / 物料平衡 / 批次 / 采购单 → 清关·IQC，
+       * 边界一跳到 D04 产品（Model）与 D06 计划（Line）。
+       *
+       * ⚠ 根取 `Material` 而不是某个 D05 承载物：`Material` 是这个域的**枢纽**（八条出边全从它发），
+       * 而 D05 自己的承载物（Supplier/PurchaseOrder/MaterialBatch/…）互相之间几乎没有直边 ——
+       * 以任何一个承载物为根都只能看到域的一角。`Material` 本身不属于任何流程的承载物
+       * （65 条流程里没有一条的 `carrierTypeKey` 是它），这不矛盾：**根是取景点，不是归属声明**。
+       */
+      sliceKey: "domain_d05_material",
+      version: 1,
+      spec: {
+        root: { typeKey: "Material", selector: {} },
+        paths: [
+          [{ linkKey: "material_supplied_by", direction: "out", project: ["supplierId", "supplierCode", "name", "category", "materialType", "rating", "onTimeRate", "leadTime", "region", "status"] }],
+          [{ linkKey: "material_has_alternative", direction: "out", limitPerNode: 6, project: ["altId", "primaryMaterialId", "alternativeMaterialId", "priority", "approvalStatus", "changeReason"] }],
+          [{ linkKey: "material_has_balance", direction: "out", limitPerNode: 4, project: ["matBalId", "material", "unit", "netDemandTon", "ltaPct", "gapTon", "coverage", "etaDate"] }],
+          [{ linkKey: "material_has_batch", direction: "out", limitPerNode: 6, project: ["batchId", "matId", "qty", "ageDays", "idleDays"] }],
+          [
+            { linkKey: "material_supplied_by_po", direction: "out", limitPerNode: 8, project: ["poId", "matId", "qty", "etaDay", "delayed", "supplierId", "sourceMode", "orderDay", "arriveDay"] },
+            { linkKey: "po_customs_cleared_by", direction: "out", project: ["clearanceId", "poId", "portName", "brokerName", "declaredDay", "clearedDay", "holdDays", "status"] },
+          ],
+          [
+            { linkKey: "material_supplied_by_po", direction: "out", limitPerNode: 8 },
+            { linkKey: "po_inspected_by", direction: "out", project: ["inspectionId", "poId", "matId", "inspectorTeam", "arrivedDay", "releasedDay", "sampleQty", "defectQty", "result"] },
+          ],
+          // 边界 → D04 产品与工程（锚点类型 Model）
+          [{ linkKey: "material_used_by_model", direction: "out", limitPerNode: 6, project: ["modelId", "name", "unitPrice"] }],
+          // 边界 → D06 计划与排产（锚点类型 Line：物料 → 型号 → 该型号认证过的产线）
+          [
+            { linkKey: "material_used_by_model", direction: "out", limitPerNode: 6 },
+            { linkKey: "model_certified_on", direction: "out", limitPerNode: 6, project: ["lineId", "baseId", "name", "capacityDaily", "utilization", "status"] },
+          ],
+        ],
+        maxNodes: 600,
+        contractFixtures: [
+          {
+            name: "D05 域内完整 + 边界含 D04 锚点(Model) 与 D06 锚点(Line)",
+            args: {},
+            expect: {
+              rootType: "Material",
+              minNodes: 30,
+              mustIncludeTypes: ["Material", "Supplier", "MaterialAlternative", "MaterialBalance", "MaterialBatch", "PurchaseOrder", "CustomsClearance", "IncomingInspection", "Model", "Line"],
+              mustIncludeLinkKeys: ["material_supplied_by", "material_has_alternative", "material_has_balance", "material_has_batch", "material_supplied_by_po", "po_inspected_by", "material_used_by_model", "model_certified_on"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      /**
+       * D06 计划与排产（capacity）：产线 → 基地 → 跨基地调拨 / 工单 → 排产单 / 工序，
+       * 边界一跳到 D04 产品（Model）与 D03 销售（Order）。
+       *
+       * ⚠ `sched_for_wo` 这一跳今天**必然落空**：`ProductionSchedule` 在 demo 世界实测 0 个对象
+       * （P37/P40 两条流程共用它当承载物，但合成种子没物化任何一条）。这属"接了线没数据"，
+       * 与"没接线"是两回事 —— 路径照留，种子一补就有读数，不必回头改这张切片。
+       * 同理 `Cadence`(8 个对象) 进不来是因为它**零链路**（节拍挂在规则的 `cadenceNodeId` 上，
+       * 不是图上的边），那是另一回事，不是这条跳的问题。
+       */
+      sliceKey: "domain_d06_capacity",
+      version: 1,
+      spec: {
+        root: { typeKey: "Line", selector: {} },
+        paths: [
+          [
+            { linkKey: "line_belongs_to_base", direction: "in", project: ["baseId", "name", "kind", "util", "bottleneck", "gwh", "formationCapDaily", "agingCapDaily"] },
+            { linkKey: "base_dispatches_transfer", direction: "out", limitPerNode: 4, project: ["transferId", "fromBase", "toBase", "model", "qty", "transitDays", "freightCost", "status", "etaDay"] },
+          ],
+          [
+            { linkKey: "line_runs_work_order", direction: "out", limitPerNode: 2, project: ["woId", "moNo", "modelId", "lineId", "baseId", "qtyPlanned", "qtyActual", "startDate", "endDate", "status"] },
+            { linkKey: "sched_for_wo", direction: "in", limitPerNode: 2 },
+          ],
+          [{ linkKey: "line_has_process", direction: "out", limitPerNode: 2, project: ["processId", "lineId", "name", "kind", "yield", "utilization", "requiredThroughput"] }],
+          // 边界 → D04 产品与工程（锚点类型 Model：这条线认证过哪些型号）
+          [{ linkKey: "model_certified_on", direction: "in", limitPerNode: 3, project: ["modelId", "name", "unitPrice"] }],
+          // 边界 → D03 销售与客户（锚点类型 Order：认证型号在手的订单）
+          [
+            { linkKey: "model_certified_on", direction: "in", limitPerNode: 3 },
+            { linkKey: "model_demanded_by_order", direction: "out", limitPerNode: 3, project: ["so", "cust", "model", "qty", "due", "status"] },
+          ],
+        ],
+        maxNodes: 900,
+        contractFixtures: [
+          {
+            name: "D06 域内完整 + 边界含 D04 锚点(Model) 与 D03 锚点(Order)",
+            args: {},
+            expect: {
+              rootType: "Line",
+              minNodes: 40,
+              mustIncludeTypes: ["Line", "Base", "InterBaseTransfer", "WorkOrder", "Process", "Model", "Order"],
+              mustIncludeLinkKeys: ["line_belongs_to_base", "base_dispatches_transfer", "line_runs_work_order", "line_has_process", "model_certified_on", "model_demanded_by_order"],
             },
           },
         ],

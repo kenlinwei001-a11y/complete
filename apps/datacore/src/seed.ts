@@ -1323,6 +1323,125 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-SLICE-DOMAINS · 把**设备侧接回订单与钱**（4 条）
+  //
+  // ── 病灶（实测，不是推断）────────────────────────────────────────────────────────
+  // 本段之前，全世界 42 条规则里从 `Equipment` 出发的类型级可达集恰好是
+  // **{Equipment, MaintenanceOrder, Process}** —— 到不了 Order / Customer / Material。
+  // 真跑一次也是这个结果：`Equipment.equipmentFailure` 置 100 推 8 拍，
+  // 全程只有 3 条规则触发（`demo_equipment_failure_to_process_queue` /
+  // `demo_process_queue_to_equipment_load` / `demo_equipment_load_to_repair_backlog`），
+  // `Line.utilPressure` / `Order.*` / `Customer.receivablePressure` **恒 0**
+  // ⇒ **设备故障对毛利的贡献恒为 0**。
+  //
+  // 根因不在规则层，在**链路层**：`propagateTick` 的 navOut 只沿 `fromId→toId`，
+  // 而 103 条 linkType 里从 Equipment 出发的正向闭包就是上面那三类（四条边全在三类之间打转）。
+  // ⇒ **加多少条规则都出不去**。故本段配套补了链路侧两件事（见 battery.ts / synthetic/service.ts）：
+  //   ① 新声明并物化 `process_belongs_to_line`（Process→Line·`Process.lineId` 反投影·650 条）；
+  //   ② 物化早已声明却**从未落过一条实例**的 `wo_for_model`（WorkOrder→Model·`wo.modelId`·260 条）。
+  //
+  // ── ⚠ 为什么不是派单原文那两条边（`Process.queuePressure → Line.utilPressure` 等）──────
+  // 那条会**闭合成正反馈环**：既有 `demo_line_util_to_process_queue` 已经写
+  // `Line.utilPressure --line_has_process--> Process.queuePressure`，再补一条反着写回
+  // `Line.utilPressure` 就是 `utilPressure ⇄ queuePressure` 的二环，每拍自我放大。
+  // （本表已实测过累加行为：源恒定 100 时 `queuePressure` 是 +60/拍**线性**增长；
+  //   闭上环就变成指数。）照 `demo_equipment_failure_to_process_queue` 立下的同一条判据，
+  //   本段**换落点避环**：工序排队落到 Line 上一个**新的、不回喂 utilPressure 的**量纲
+  //   `blockedPressure`，再从它走工单 → 型号 → 订单 → 客户。
+  //   环检：blockedPressure → releasePressure → {supplyRisk, costPressure} → Order → Customer → 叶，
+  //   而回到 Line 的唯一路径是 `Order.demandPressure|orderChurn → Model.demandLoad → Base.loadIndex
+  //   → Line.utilPressure`，本段一条都没写这三个源 ⇒ **不闭环**。
+  //
+  // ⚠ 派单原文还写「`promiseRisk` 今天在册但没有任何入边」——**实测不成立**：
+  //   `promiseRisk` 挂在 `OrderPromise` 上（不是 `Order`），且**已有 1 条入边**
+  //   （`demo_order_shortage_to_promise_risk`）。故本段不新造它的入边，
+  //   而是把设备侧接到它的**上游** `Order.shortageRisk`，让既有那条边自然带出读数。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── ① 工序排队 → 产线受阻（设备侧的出口，落在新量纲上避环）─────────────────────────
+  {
+    id: "simpr_demo_process_queue_to_line_blocked",
+    key: "demo_process_queue_to_line_blocked",
+    sourceTypeKey: "Process",
+    sourceStateVar: "queuePressure",
+    viaLinkKey: "process_belongs_to_line", // 本单新物化：Process→Line，650 条（`lnk_pbl_*`）
+    targetTypeKey: "Line",
+    targetStateVar: "blockedPressure",
+    coefficient: 0.55, // 与相邻边同量级（周围 0.5–0.65）：一道工序堵住，产线并非等比例停摆
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  // ── ② 产线受阻 → 工单下达受阻（复用既有已物化边 `line_runs_work_order`）───────────
+  // 与既有 `demo_line_util_to_wo_release`（Line.utilPressure → 同一 target）同 target 不同源：
+  // 那条是「产线本来就满」，本条是「产线被设备堵住」——两个成因，同一个后果，sum 累加即对。
+  {
+    id: "simpr_demo_line_blocked_to_wo_release",
+    key: "demo_line_blocked_to_wo_release",
+    sourceTypeKey: "Line",
+    sourceStateVar: "blockedPressure",
+    viaLinkKey: "line_runs_work_order", // 既有已物化：Line→WorkOrder，260 条（`lnk_lrw_*`）
+    targetTypeKey: "WorkOrder",
+    targetStateVar: "releasePressure",
+    coefficient: 0.6,
+    delayTicks: 0,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  // ── ③ 工单受阻 → 型号供给风险（制造侧回到产品侧的唯一一跳）───────────────────────
+  // 落 `Model.supplyRisk` 而不是新造量纲：它已经是既有链
+  // `Material.shortageRisk → Model.supplyRisk → Order.shortageRisk → OrderPromise.promiseRisk`
+  // 的中间站 ⇒ 本条一接上，设备故障就**自动继承**了下游那两跳，不必重复铺。
+  // 语义也对：缺料和产不出来，对订单是同一件事——**这个型号交不出货**。
+  {
+    id: "simpr_demo_wo_release_to_model_supply_risk",
+    key: "demo_wo_release_to_model_supply_risk",
+    sourceTypeKey: "WorkOrder",
+    sourceStateVar: "releasePressure",
+    viaLinkKey: "wo_for_model", // 本单新物化：WorkOrder→Model，260 条（`lnk_wfm_*`·此前声明了零实例）
+    targetTypeKey: "Model",
+    targetStateVar: "supplyRisk",
+    coefficient: 0.5,
+    delayTicks: 1, // 工单排不下去要过一拍才反映成型号级的供给缺口
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  // ── ④ 工单受阻 → 型号成本压力（走到"钱"的那一路）──────────────────────────────
+  // 为什么还要这一条：③ 只把设备故障接到 `Order.shortageRisk`（交付面），
+  // 而 `Customer.receivablePressure` 的**唯一入边**是 `Order.costPressure`（`demo_order_cost_to_customer_receivable`）
+  // ⇒ 只走 ③ 的话，类型级 BFS 到得了 Customer，**读数却永远是 0**（"接了线没数据"的又一形态）。
+  // 业务因果是真的：设备停机 ⇒ 赶工/加班/返工 ⇒ 单位成本上抬 ⇒ 应收与毛利跟着动。
+  {
+    id: "simpr_demo_wo_release_to_model_cost",
+    key: "demo_wo_release_to_model_cost",
+    sourceTypeKey: "WorkOrder",
+    sourceStateVar: "releasePressure",
+    viaLinkKey: "wo_for_model", // 同 ③ 的边，不同 target 量纲
+    targetTypeKey: "Model",
+    targetStateVar: "costPressure",
+    coefficient: 0.5,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
 ];
 
 /**
