@@ -15,12 +15,53 @@
 
 **这套系统的本体是「能改的」，但不是「能建的」—— 屏上给了改边、改切片、改规则、甚至灌数据的入口，
 唯独没有给「建对象类型」的入口，而对象类型正是换一个客户时 100% 要重写的那一层。**
-**更要命的是：屏上唯一能做的「建域」动作，会产出一个永远没有 owner 的域，从而把本体发布永久锁死 ——
-第一天照着屏幕做正确的事，第一天就把系统锁上了，而屏上没有任何地方告诉你或让你解开。**
+**更要命的是：本体治理页上那个唯一的治理按钮「发起发布会签」，在出厂租户上点一次就会把整个页面永久打成白屏 ——
+本体建设的头三天里，最先坏掉的不是我建的东西，是那扇门本身。**
 
 ---
 
 ## 二、最强证据（亲手测出来的数，不是转述）
+
+### 证据 0 · 在**出厂租户**上点一次「发起发布会签」，本体关系页当场变白屏（双向对照实验）
+
+这是本轮最硬的一条，而且**不需要任何自定义建模就能复现** —— 重启 datacore 拿到干净种子后，
+不建类型、不改任何东西，只做一件事：在 `/admin/ontology-relations` 点一次页面自己提供的「发起发布会签」。
+
+| X | 条件 | `/admin/ontology-relations` 实测 |
+|---|---|---|
+| X′ | `GET /a/v1/ontology/publish-requests` → `[]` | **正常**：`main` 文本长度 **23,973**，底部「暂无发布会签请求」在位 |
+| X | 点一次「发起发布会签」后重新加载 | **整页崩**：`main` 文本长度 **65**，屏上只剩「⚠ 页面出错了 / **Cannot read properties of undefined (reading 'join')** / 刷新」 |
+
+`pageerror` 原文：`TypeError: Cannot read properties of undefined (reading 'join')`，
+React 错误边界指名 `<OntologyRelationsPage>` @ `OntologyRelationsPage.tsx:50`。
+
+**根因追到行**（`apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx:869`）：
+```tsx
+<td className="mono">{p.touchedDomains.join(" · ") || "—"}</td>
+```
+而后端返回的会签请求记录**根本没有 `touchedDomains` 这个字段**。实测字段清单：
+```
+id, tenantId, ontologyVersion, requestedBy, status, signoffs, createdAt
+'touchedDomains' in record  →  false
+```
+⇒ 只要租户里存在 **≥1 条** 会签请求，这张表就必崩，而这张表和结构边、因果边、不变式体检、
+类型停用/下线**在同一个页面组件里** ⇒ **整个本体治理面一起消失。**
+
+**而且回不去。** `DELETE /a/v1/ontology/publish-requests` → **404 route not found**
+（金丝雀：同法 `GET /a/v1/ontology/domains` → 200 有数据 ⇒ 探针没坏）。
+内存模式靠重启才恢复；**pg 模式下这条记录是永久的。**
+
+**同一段代码里还埋着第二把锁**（`:875` / `:883`）：
+```tsx
+disabled={signoff.isPending || p.status !== "PENDING"}
+```
+后端返回的 `status` 是 **`"PENDING_SIGNOFF"`**（实测两条请求都是）。
+⇒ 就算那一行渲染得出来，「同意 / 驳回」两个按钮也**永远是禁用态**。
+**屏上没有任何人能对任何会签投票。**
+
+> 这正是本仓 CLAUDE.md 铁律 0.6 第 4 条那个形态的实例：契约字段值以**字符串字面量**
+> 形态写在比较里（`"PENDING"` vs `"PENDING_SIGNOFF"`），**类型系统一个都看不见**，
+> 四包 typecheck / build 全绿。
 
 ### 证据 A · 屏上建一个域 = 永久锁死本体发布（一步，不可逆，无提示）
 
@@ -448,15 +489,20 @@ POST /databuilder/intake/objectify -> 200 {"materialized":[{"dataset":"EXCAVATOR
 | C5 | 因果边的改 / 删 / 停 | 屏上「⚠ 因果边今天只能新建」；行内零按钮 | 2–3 | **必须**（否则一次手滑要重建整个租户）|
 | C6 | `references()` 补 link / 因果边 / 实例三类引用 | `Base` 报 0 引用、下线返 200（证据 C）| 2–3 | **必须**（否则「下线」是空动作、承诺的 409 永不发生）|
 | C7 | 状态变量改成受控选择（或建一道守卫） | 打错字 → 状态变量 41→43，7 道守卫全绿（障碍 1）| 1–2 | 强烈建议 |
-| **必须项小计** | | | **≈ 14–23 人天** | |
+| **C0** | **修 `OntologyRelationsPage.tsx:869` 的 `touchedDomains` 崩页 + `:875/:883` 的 `PENDING` / `PENDING_SIGNOFF` 状态串不一致** | 证据 0：干净种子上点一次即白屏；同意/驳回恒禁用 | **0.5** | **必须，且是第 0 天的第 0 件事** —— 不修则本体治理面在第一次点治理按钮时就没了 |
+| **必须项小计** | | | **≈ 14.5–23.5 人天** | |
 | C8 | 写行业模板 `construction-machinery.ts` | `battery.ts` **5,357 行** + `battery-extended.ts` 1,141 行；`BUILTIN_INDUSTRY_TEMPLATES=[BATTERY_TEMPLATE]` 一元数组；自由输入行业 → **500** | **25–40** | 仅当要让**合成数据 / 推演沙盘**跑起来 |
 
 ### 合计
 
 | 交付口径 | 总人天 | 其中**必须改源码** | 占比 |
 |---|---|---|---|
-| **最小可用**（接客户真实数据，不要合成沙盘） | **≈ 37–52 人天** | **14–23** | **38–44%** |
-| **完整**（含推演沙盘 / demo 可跑） | **≈ 62–92 人天** | **39–63** | **63–68%** |
+| **最小可用**（接客户真实数据，不要合成沙盘） | **≈ 37–53 人天** | **14.5–23.5** | **39–44%** |
+| **完整**（含推演沙盘 / demo 可跑） | **≈ 62–93 人天** | **39.5–63.5** | **64–68%** |
+
+⚠ **注意 C0 的性质与其余不同**：它只有 0.5 人天，但**不修的话上面 A 栏那 10.7 人天全部做不了** ——
+因为 A 栏里有 5 项（结构边 / 因果边 / 类型停用下线 / 不变式体检 / 发布会签）都在**同一个会崩的页面**上。
+换句话说：**这份估算里最小的一项，是其余所有项的前置。**
 
 **这个数还没算两笔我量不出来的**：
 ① 出厂租户在我动手前就发不出 v2（`material` 幽灵域），这笔债的清理成本取决于还有多少同类不一致；
@@ -480,8 +526,9 @@ POST /databuilder/intake/objectify -> 200 {"materialized":[{"dataset":"EXCAVATOR
 
 一个 FDE 在客户现场干完一天，屏上是绿的、计数是涨的、图谱里有他新建的节点 ——
 **他没有任何办法在屏上判断这一天的成果属于哪一档。**
-「已发布版本：v1」那行小字是唯一的线索，而它长在页面最底部、发布会签区里，
-旁边写着「暂无发布会签请求」—— 而我刚刚明明提交过一个（`201 preq_demo_1787997390812_16`），**表根本没刷新**。
+「已发布版本：v1」那行小字是唯一的线索，而它长在页面最底部、发布会签区里 ——
+**而当他伸手去按旁边那个「发起发布会签」时，整页就没了**（证据 0）。
+换句话说：**唯一能告诉他「你今天做的东西还没落地」的那个东西，被他试图落地的那个动作删掉了。**
 
 这正是本仓 CLAUDE.md 铁律 1.5 那句话的用户侧同构：
 > 「跑得起来」不度量「算得对」。
@@ -504,8 +551,11 @@ VITE_DATACORE_URL=http://127.0.0.1:4401 VITE_AGENTCORE_URL=http://127.0.0.1:4402
 # 浏览器 http://127.0.0.1:5273 → demo / admin / demo1234
 ```
 
-**三条最快的复现**（各 1 分钟，全部只用屏幕 + curl，不改一行代码）：
-1. `/admin/domains` 建一个域 → `/admin/ontology-relations` 点「发起发布会签」→
+**四条最快的复现**（各 1 分钟，全部只用屏幕 + curl，不改一行代码）：
+0. **【先做这条，因为它会毁掉后面几条的环境】** 干净种子上打开 `/admin/ontology-relations`，
+   拉到底点一次「发起发布会签」→ 刷新本页 → **白屏**「Cannot read properties of undefined (reading 'join')」。
+   恢复只能重启 datacore（内存模式）；`DELETE /a/v1/ontology/publish-requests` → 404（证据 0）
+1. `/admin/domains` 建一个域 → `POST /a/v1/ontology/publish-requests` →
    看 `signoffs` 里那个 `ownerUserId: null`（证据 A）
 2. `POST /a/v1/ontology/object-types` 带 `unit:"t"` → 400；换 `unit:"吨"` → 201（证据 B）
 3. `/admin/ontology-relations` 弃用流程选 `Base` → 点「下线类型」→ 200 → 刷新页面 → 什么都没变（证据 C）
