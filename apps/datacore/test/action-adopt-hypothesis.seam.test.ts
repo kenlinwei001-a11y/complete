@@ -24,7 +24,7 @@ const ADMIN = { "x-debug-user": "demo:admin:admin" };
 
 /** 回读对象 —— **另一条路**（列表端点），不是 create/approve 的自证响应。 */
 async function readObject(t: TestApp, type: string, id: string): Promise<Record<string, unknown>> {
-  const res = await t.app.inject({ method: "GET", url: `/a/v1/objects?type=${type}&limit=500`, headers: ADMIN });
+  const res = await t.app.inject({ method: "GET", url: `/a/v1/objects?type=${type}&pageSize=500`, headers: ADMIN });
   const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
   const hit = items.find((o) => o.id === id);
   expect(hit, `回读不到对象 ${type}:${id}`).toBeTruthy();
@@ -32,7 +32,7 @@ async function readObject(t: TestApp, type: string, id: string): Promise<Record<
 }
 
 async function firstObject(t: TestApp, type: string): Promise<{ id: string; props: Record<string, unknown> }> {
-  const res = await t.app.inject({ method: "GET", url: `/a/v1/objects?type=${type}&limit=1`, headers: ADMIN });
+  const res = await t.app.inject({ method: "GET", url: `/a/v1/objects?type=${type}&pageSize=1`, headers: ADMIN });
   const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
   expect(items.length, `种子里应有 ${type} 对象`).toBeGreaterThan(0);
   return items[0]!;
