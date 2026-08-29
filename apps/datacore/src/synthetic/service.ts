@@ -1,4 +1,5 @@
-import { IndustryTemplateSchema, type GenSpec, type GraphViewDesc, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
+// WO-DASH-ONHAND：「在手」口径取契约单一出处（卡片/台账/接缝测试同读一处·禁在此抄字面量）。
+import { ON_HAND_ORDER_STATUSES, ON_HAND_ORDER_CAPTION, IndustryTemplateSchema, type GenSpec, type GraphViewDesc, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
 import { sampleValueDomain, applyPlantCrossings, derivePlantFromRule } from "./value-domains.js";
 import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
 import { profileRows } from "../connectors/profiler.js";
@@ -1571,10 +1572,39 @@ export class SyntheticService {
           provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", label: "attainment:line 周聚合回写值" },
         },
         {
-          key: "orders", type: "kpi", title: "在手订单",
-          // livedIn：已交付订单也在 Order 表（生命周期完整），在手口径过滤 status=OPEN
-          query: { kind: "objects-aggregate", objectType: "Order", agg: "count", ...(opts?.livedIn ? { filter: { status: "OPEN" } } : {}) },
-          provenance: { toolName: "query_objects", outputPath: "$.count", label: "Order 行计数" },
+          /**
+           * WO-DASH-ONHAND ·「在手订单」口径修正（**屏上数错了**，与本仓修过的 100× 显示错同族）。
+           *
+           * ── 修前是什么行为（真后端 `SEED_DEMO=1` 实测，不是读注释推的）──────────────
+           * 本行原写 `...(opts?.livedIn ? { filter: { status: "OPEN" } } : {})` ——
+           * 而 `seed.ts` 的 `livedIn = process.env.SEED_LIVED_IN === "1"`，**标准 demo 种子不设该变量**
+           * ⇒ 生产走的恒是 `livedIn === false` 那条 ⇒ **filter 整个消失** ⇒ 卡片数的是**全簿 500**，
+           * 其中 **350 张是 `COMPLETED`（已交付关闭）**。COO 按 500 判在手量，实际 150，**虚报 3.3 倍**。
+           *
+           * ⚠ 这正是铁律 0.5 判据 6 那种「路径开关」假绿：**生产实参与测试实参交集为空** ——
+           * 带 filter 的那条分支只有 `livedIn:true` 才进得去，而生产从来传 `false`。
+           * 注释白纸黑字写着「在手口径过滤 status=OPEN」，读起来像已执行的纪律，
+           * **实测生产路一次都没走进那条分支**（铁律 1.5 判据四：信注释 = 信台账，同样要实测）。
+           *
+           * ── 为什么 filter 现在无条件挂上 ────────────────────────────────────────
+           * `opts?.livedIn` 这个条件当初的理由是「已交付订单也在 Order 表」，即**只有回放态才有
+           * 已交付单**。`WO-ORDER-BOOK-500` 之后这个前提已经不成立：标准种子就按契约
+           * `orderStatusTargets` 铺 70:20:10 三态（实测 COMPLETED 350 / IN_PRODUCTION 100 / OPEN 50）。
+           * ⇒ 条件已过期，两条路都必须过滤，故去掉分支。
+           *
+           * ── 为什么是 `ON_HAND_ORDER_STATUSES` 而不是 `"OPEN"` ──────────────────
+           * 旧的 `livedIn` 分支过滤 `status: "OPEN"` 只得 **50**，同样不对：在制单货没交、钱没结，
+           * 仍**在手**。口径取自契约单一出处（含「为什么不只数 OPEN」的完整论证），
+           * 卡片与台账读同一处，不许在这里抄第二份字面量。
+           *
+           * ⚠ 数组值 = **IN 语义**（`ontology.ts` `matchFilter`：`Array.isArray(v)` 分支），
+           * 不是「等于这个数组」。实测三档金丝雀：`"OPEN"`→50 · `"COMPLETED"`→350 ·
+           * `["OPEN","IN_PRODUCTION"]`→**150**，外加反证金丝雀（不存在的状态 → 0）。
+           */
+          key: "orders", type: "kpi", title: "在手订单", unit: "单",
+          query: { kind: "objects-aggregate", objectType: "Order", agg: "count", filter: { status: [...ON_HAND_ORDER_STATUSES] } },
+          caption: ON_HAND_ORDER_CAPTION,
+          provenance: { toolName: "query_objects", outputPath: "$.count", label: `Order 计数 · 未完成态（${ON_HAND_ORDER_STATUSES.join(" + ")}）·不含 COMPLETED` },
         },
         // cockpit P1 富 KPI（数字经合成 DemandSegment/FinancePlan/MaterialBalance + 派生/聚合算出，前端零写死 R14；R13 溯源）。
         {
@@ -1609,9 +1639,20 @@ export class SyntheticService {
           provenance: { toolName: "invoke_solver", outputPath: "$.utilPeak", label: "max(Base.util)：最高负荷基地（瓶颈风险）" },
         },
         {
+          /**
+           * WO-DASH-ONHAND ③ ·「**只标注，不对齐**」。
+           *
+           * 实测同屏两个营收差 94.24 亿（15.7%）：本卡 **601.50 亿**（`cockpit_kpi.aopBaseRev`）
+           * vs 全簿 Σ`Order.value` **507.26 亿**。⚠ **两个都对，它们本来就不是一个账**：
+           *  · 601.50 亿 = **年度计划口径**（baseline 年度情景 revenue = AOP 基准，盖全年 12 个月）
+           *  · 507.26 亿 = **订单簿口径**（已签订单加总，含已交付 + 在手，时间覆盖 2025-12 → 2026-12）
+           * 把任何一个改成另一个都是把一个真事实抹掉。要做的是让屏上**说清每个数是什么口径** ——
+           * 屏上不写，读者就只能读成「同一个词一屏两个值」（PRD-decision-mainline U1/U4 那条老账）。
+           */
           key: "aop-base", type: "kpi", title: "AOP 基准营收 (亿)", unit: "亿",
           query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "aopBaseRev" },
-          provenance: { toolName: "invoke_solver", outputPath: "$.aopBaseRev", label: "baseline 年度情景 revenue（AOP 基准）" },
+          caption: "年度计划口径 · baseline 情景全年营收目标（≠ 订单簿已签金额加总）",
+          provenance: { toolName: "invoke_solver", outputPath: "$.aopBaseRev", label: "baseline 年度情景 revenue（AOP 基准 · 计划口径 · 非订单簿加总）" },
         },
         {
           key: "cash-cushion", type: "kpi", title: "现金垫 C18 (亿)", unit: "亿",
@@ -1634,9 +1675,27 @@ export class SyntheticService {
         },
         // PRD-cockpit §2.1 订单经营台账（逐单根因 DAG + 状态筛选 + 综合毛利率聚合）：affected_orders rows/problems 同源。
         {
+          /**
+           * WO-DASH-ONHAND ② · 台账「全部」与卡片「在手订单」**不是同一个全部**，屏上必须写明。
+           *
+           * 实测（真后端 `SEED_DEMO=1`，把台账 127 个 `so` 拿回全簿逐单对 status）：
+           *  · 台账 127 单的 status 分布 = `{OPEN: 50, IN_PRODUCTION: 77}` ⇒ **零张 COMPLETED**
+           *    （台账没在偷偷混已交付单，这一点被证伪了，不是 bug）；
+           *  · 在手 150 单里有 **23 单不在台账**，全部是 `IN_PRODUCTION` 且交期
+           *    **2026-05-27 → 2026-06-09，即早于 `forecastStart`（2026-06-10）** ——
+           *    也就是**交期已过的在制单**（契约 `OrderStatusSchema` 原文即允许「少量已逾期在制」）。
+           *
+           * 根因不在分页、不在权限行级过滤，在 `risk.ts affectedOrdersAggregate` 的**交期窗口**：
+           * 不传窗口参时 `winFrom=0 / winTo=180` ⇒ 台账列的是「交期落在 D+0…D+180」的单，
+           * `dueDay < 0` 的逾期在制单被窗口挡在外面。**这是合法的另一个口径，不是错**
+           * （该窗口同时服务产能推演页的 30/60/90 chip），故按工单裁决**标注而不强行对齐**。
+           *
+           * ⚠ 窗口天数不在此处写死 —— 由求解器随输出回带 `window`，前端照回带值渲染（R14 前端零写死）。
+           */
           key: "order-ledger", type: "order-ledger", title: "订单经营台账 · 逐单根因下钻", span: 2,
           query: { kind: "solver", solverKey: "affected_orders", args: {} },
-          provenance: { toolName: "invoke_solver", outputPath: "$.rows", label: "affected_orders：受影响订单逐单 + problems 归并 + 综合毛利率（SEG 单价×毛利率派生）" },
+          caption: "台账口径 ≠ 卡片「在手订单」口径：本表只列交期落在下方窗口内的未完成单，交期已过的在制单不在表内",
+          provenance: { toolName: "invoke_solver", outputPath: "$.rows", label: "affected_orders：交期窗口内未完成订单逐单 + problems 归并 + 综合毛利率（SEG 单价×毛利率派生）" },
         },
         // PRD-cockpit §2.1 规划决策推演（月/季/年 KPI 条 + 根因链 DAG + 一键去建议/体检）：metric_rollup 按 level + plan_rootcause 根因。
         {
