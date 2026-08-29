@@ -1,9 +1,16 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DRILL_EVENT_SPECS, type DrillEventSpec, type DrillFinding, type DrillReport } from "@platform/contracts";
+import { DRILL_EVENT_SPECS, drillStateEffectAbsolute, type DrillEventSpec, type DrillFinding, type DrillReport } from "@platform/contracts";
 import {
   collectHonesty,
   exposureTotals,
+  humanizeApiError,
   impedimentSentence,
+  invariantNumbersNote,
+  SCREEN_NUMBER_PROVENANCE,
+  landingNoteFor,
+  needsLeafPick,
   nothingMovedText,
   orderedEvents,
   planCategoryOf,
@@ -136,6 +143,40 @@ describe("① 事件主体：范围、id 形态、进不进算式", () => {
     expect(s?.child?.filterParam).toBe("base");
   });
 
+  /**
+   * 🔴 **COO 实测「设备故障必炸」的回归闸**（`events.N.targetObjectId: Too small`）。
+   *
+   * 这条断言咬的是「**两级选择器必须选到第二级**」，而**不是**「这类事件读不读主体」。
+   * 两者今天恰好同真 —— 本单给 11 类都补了落点 ⇒ `subjectIsRead` 几乎恒 `true` ⇒
+   * **旧的错写法今天也不会炸**。正因为如此，这条断言必须拿一个
+   * `subjectIsRead === false` 的样本去咬，否则它测不到自己要测的东西
+   * （「我用 X 当作 Y 的证据，而 X 并不度量 Y」的又一形态）。
+   */
+  it("两级选择器必须选到第二级 —— 判据是「有没有第二级」，不是「读不读主体」", () => {
+    const equip = subjectScopeFor("EQUIPMENT_FAILURE");
+    expect(equip?.child, "设备故障必须是两级，否则本条断言测的不是那个坑").toBeTruthy();
+    expect(needsLeafPick(equip, specOf("EQUIPMENT_FAILURE"))).toBe(true);
+
+    // 一级选择器 + 读主体 ⇒ 也要选（产能损失：同一个 13 基地下拉，但没有第二级）
+    expect(needsLeafPick(subjectScopeFor("CAPACITY_LOSS"), specOf("CAPACITY_LOSS"))).toBe(true);
+
+    /**
+     * ⛔ **决定性的一条**：`ORDER_INSERT` 是今天**唯一** `subjectIsRead === false` 的事件。
+     * 它只有一级选择器 ⇒ 本判据回 `false`（不强制选客户）。
+     * 而假如有人把判据写回「读不读主体」，再给某个不读主体的事件配上第二级选择器，
+     * 上面那条 `EQUIPMENT_FAILURE` 断言**照样绿**，只有下面这条构造样本会红 ——
+     * 所以两条都要在，缺一条这道闸就是装饰品。
+     */
+    expect(subjectIsRead(specOf("ORDER_INSERT")), "样本前提变了：需要另找一个不读主体的事件").toBe(false);
+    expect(needsLeafPick(subjectScopeFor("ORDER_INSERT"), specOf("ORDER_INSERT"))).toBe(false);
+    // 构造：不读主体 + 两级选择器 ⇒ 仍然必须选到叶子（这就是当初炸的那个组合）
+    const twoLevel = { ...subjectScopeFor("ORDER_INSERT")!, child: { typeKey: "Line", label: "哪条线", nameProp: "name", filterParam: "base" } };
+    expect(needsLeafPick(twoLevel, specOf("ORDER_INSERT")), "不读主体 + 两级 ⇒ 必须选叶子，否则 targetObjectId 会是空串").toBe(true);
+
+    // 没有选择器（手填兜底那一路）⇒ 不由这条判据管
+    expect(needsLeafPick(null, specOf("ORDER_INSERT"))).toBe(false);
+  });
+
   it("带世界态落点的事件传**对象 id**，其余传**业务键**（实测：传反了后端回 not found）", () => {
     expect(subjectIdFormFor(specOf("MATERIAL_REPRICE"))).toBe("OBJECT_ID");
     expect(subjectIdFormFor(specOf("ORDER_RESCHEDULE"))).toBe("BUSINESS_KEY");
@@ -146,14 +187,75 @@ describe("① 事件主体：范围、id 形态、进不进算式", () => {
   });
 
   it("「你选的主体进不进算式」由 catalog 现算（进不了就必须在屏上说一句）", () => {
-    // 有落点 ⇒ 进
+    // 落点取自主体 ⇒ 进
     expect(subjectIsRead(specOf("MATERIAL_REPRICE"))).toBe(true);
     // 有 eventTarget 入参 ⇒ 进
     expect(subjectIsRead(specOf("ORDER_RESCHEDULE"))).toBe(true);
-    // 路由入参全空、无落点 ⇒ 不进（实测：portfolio / bottleneck_matrix 都是 args: []）
-    expect(subjectIsRead(specOf("ORDER_CANCEL"))).toBe(false);
-    expect(subjectIsRead(specOf("CAPACITY_LOSS"))).toBe(false);
-    expect(subjectIsRead(specOf("EQUIPMENT_FAILURE"))).toBe(false);
+    /**
+     * ⚠ **这三条的期望值被 WO-EVENTS-WRITE-STATE 改了，不是测试写松了**：
+     * 旧版断言 `ORDER_CANCEL / CAPACITY_LOSS / EQUIPMENT_FAILURE` 恒 `false`，
+     * 那记录的是「这 10 类事件一格世界态都不写」那个**待修的状态**。
+     * 本单给它们补了落点（`Order.demandPressure` / `Base.loadIndex` / `Line.utilPressure`，
+     * 三个都是 `targetFrom: eventTarget`）⇒ 主体现在真的进算式了。
+     */
+    expect(subjectIsRead(specOf("ORDER_CANCEL"))).toBe(true);
+    expect(subjectIsRead(specOf("CAPACITY_LOSS"))).toBe(true);
+    expect(subjectIsRead(specOf("EQUIPMENT_FAILURE"))).toBe(true);
+    /**
+     * 唯一仍然 `false` 的那一类：临时插单的落点取自 `payload.modelId`，
+     * 你选的**客户**确实不进算式（本世界 `Customer` 在关系图上只有应收侧的出边）。
+     * 把它算成 true 就是让屏上说一句假话 —— COO 卡点 ⑤ 骂的正是这件事。
+     */
+    expect(subjectIsRead(specOf("ORDER_INSERT"))).toBe(false);
+    expect(landingNoteFor(specOf("ORDER_INSERT"))).toContain("不是你选的那个主体");
+  });
+
+  it("11 类事件**全部**声明了世界态落点，且落点状态变量各不相同地指到真格子上", () => {
+    // 金丝雀：先确认表读得到（读到 0 是「契约没加载」，不是「一个落点都没有」）
+    expect(DRILL_EVENT_SPECS.length).toBe(11);
+    const withLanding = DRILL_EVENT_SPECS.filter((s) => s.stateEffect !== null);
+    expect(withLanding.length, "有事件没有世界态落点 ⇒ 它加了也不会改变任何数").toBe(11);
+    for (const s of withLanding) {
+      expect(s.stateEffect!.objectType.length, `${s.kind} 落点类型为空`).toBeGreaterThan(0);
+      expect(s.stateEffect!.keyProp.length, `${s.kind} 没声明业务键属性 ⇒ 传业务键时解析不出落点`).toBeGreaterThan(0);
+      expect(s.stateEffect!.magnitudeBasis.length, `${s.kind} 的换算系数没有出处 ⇒ 屏后魔数`).toBeGreaterThan(0);
+      // 幅度键必须真的在 payloadKeys 里，且必填 —— 否则用户不填就静默无冲击
+      const pk = s.payloadKeys.find((k) => k.key === s.stateEffect!.magnitudeFrom);
+      expect(pk, `${s.kind} 的幅度键 ${s.stateEffect!.magnitudeFrom} 不在 payloadKeys 里`).toBeTruthy();
+      expect(pk!.required, `${s.kind} 的幅度键不是必填 ⇒ 不填就静默没有冲击`).toBe(true);
+      // 落点取自 payload 时，那个键也必须真的在表里且必填
+      if (s.stateEffect!.targetFrom === "payloadKey") {
+        const tk = s.payloadKeys.find((k) => k.key === s.stateEffect!.targetKey);
+        expect(tk, `${s.kind} 的落点键不在 payloadKeys 里`).toBeTruthy();
+        expect(tk!.required).toBe(true);
+      }
+    }
+  });
+
+  it("幅度是「全距的百分之几」，换算要现算 —— 全距为 0 时返回 null 而不是硬拿 1 顶上", () => {
+    // 100% 全距 × 实测全距 350,416,350 ⇒ 施加 350,416,350（不是 100）
+    expect(drillStateEffectAbsolute(100, 350416350)).toBe(350416350);
+    expect(drillStateEffectAbsolute(50, 200)).toBe(100);
+    // 负方向（订单取消）照样成立
+    expect(drillStateEffectAbsolute(-100, 200)).toBe(-200);
+    /**
+     * ⛔ 全距为 0 / 负 / 非有限 ⇒ `null`（调用方记「未能评估」）。
+     * 硬拿 1 当全距会让幅度变成一个与这个世界无关的数：屏上显示「打上了」而其实什么都没说。
+     */
+    expect(drillStateEffectAbsolute(100, 0)).toBeNull();
+    expect(drillStateEffectAbsolute(100, Number.NaN)).toBeNull();
+  });
+
+  it("报错要说人话，但认不出的形态必须原样透出（不许编一句「请重试」把路堵死）", () => {
+    const zod = humanizeApiError("ApiClientError: events.2.targetObjectId: Too small: expected string to have >=1 characters");
+    expect(zod.recognized).toBe(true);
+    expect(zod.text).toContain("第 3 件事"); // 0-based → 1-based
+    expect(zod.text).not.toContain("Too small");
+    expect(zod.text).toContain("第二级"); // 两级选择器那句提示
+    // 金丝雀：认得出的形态确实被认出来了（上面那条），认不出的必须说「认不出」
+    const unknown = humanizeApiError("ApiClientError: 某个从没见过的错 QQQ-9999");
+    expect(unknown.recognized).toBe(false);
+    expect(unknown.text).toContain("还没有对应的人话说明");
   });
 });
 
@@ -329,10 +431,16 @@ describe("⑦ 诚实位：三态分得开", () => {
         totalByKind: { 卡点: 383, 堵点: 24, 脆弱点: 368 },
         summary: { allFailed: false, trustworthy: false, dataMode: "PARTIAL", text: "本次演习扫出 775 条结论" },
         appliedStateEffects: [
-          { eventKind: "MATERIAL_REPRICE", targetObjectId: "obj_base_changzhou", targetStateVar: "priceShock", mode: "delta", magnitude: 15, startTick: 4, applied: false },
+          { eventKind: "MATERIAL_REPRICE", targetObjectId: "obj_base_changzhou", targetStateVar: "priceShock", mode: "delta", magnitude: 15, startTick: 4, applied: false, rawMagnitude: 15, magnitudeBasis: "幅度键本身即百分点，1:1 不换算", targetLabel: "常州", rangePct: 15, observedRange: 100, downstream: ["Model.costPressure ×0.65"] },
         ],
         solverRuns: [{ solverKey: "order_fullchain", eventKind: "MATERIAL_DELAY", ok: false, dataMode: "UNDECLARED", error: "order obj_material_pos_lfp not found", findingCount: 1 }],
-        events: [{ kind: "CAPACITY_LOSS", targetObjectId: "obj_base_changzhou", payload: {}, effectiveDay: 0 }],
+        /**
+         * ⚠ 事件从 `CAPACITY_LOSS` 换成 `ORDER_INSERT`（WO-EVENTS-WRITE-STATE）：
+         * 本单给产能损失补了 `Base.loadIndex` 落点（`targetFrom: eventTarget`）⇒ 它现在**读主体**了，
+         * 拿它当「不读主体」的样本已经名不副实。今天唯一仍然不读主体的是「临时插单」——
+         * 它的落点取自 `payload.modelId`（型号），客户确实不进算式（本世界 `Customer` 没有需求侧出边）。
+         */
+        events: [{ kind: "ORDER_INSERT", targetObjectId: "obj_customer_cust_16", payload: { qtyDelta: 20000, modelId: "4680-NCM" }, effectiveDay: 0 }],
       }),
       specsByKind: new Map(DRILL_EVENT_SPECS.map((s) => [s.kind as string, s])),
       impedimentsRaw: null,
@@ -395,11 +503,82 @@ describe("⑦ 诚实位：三态分得开", () => {
     expect(parseEmphasis("a * b").every((s) => !s.strong)).toBe(true);
   });
 
+  /**
+   * 🔴 **「屏上哪几个数不吃你加的事」这张声明表，必须与那段 `Promise.all` 的实参对得上。**
+   *
+   * ── 为什么要这条接缝断言（本单最后一处「装作会算」的守门人）─────────────────
+   * COO 实测：把碳酸锂涨幅从 +15% 拉到 +100%（6.7 倍），
+   * 「63 亿 / 53 张单 / 81 万套 / 18 处卡点 / 26 张晚单」**一个数都没动**。
+   * 追下去不是 bug 是结构：这几个数来自 `risk_timeline` / `chain_impediments`，
+   * 而本页给它们的实参实测是 `{}` 与 `{scope:{}}` —— **一个 event 都没传进去**，
+   * 结构上不可能变。真正的错在**抬头那行字**把它们归因给了用户的输入。
+   *
+   * `invariantNumbersNote` 现在把这件事写到屏上。但那句话**今天正确不等于明天正确**：
+   * 哪天有人给 `risk_timeline` 接上事件入参，声明表还写着「不吃事件」⇒
+   * 一句当时正确的话就**静默变成假话**，而且没有任何东西会红。
+   * ⇒ 判据必须落在**源码里那段实参**上，由机器每次跑测试时现读现比。
+   *
+   * ⚠ 金丝雀与主逻辑**共用同一个抽取函数**（不许各抄一份正则）——
+   *   抄了就是装饰品：改主正则时金丝雀拿旧的去测、照样绿。
+   */
+  it("接缝：声明「不吃事件」的那几路，源码实参里就不许出现 events（含金丝雀自证）", () => {
+    const viewSrc = readFileSync(
+      join(process.cwd(), "src", "views", "sim", "DecisionConsoleView.tsx"),
+      "utf8",
+    );
+    /** 抽出 `timed("<label>", "<note>", <expr>)` 里那一段实参 —— 主逻辑与金丝雀共用**这一个**实现。 */
+    const argsOfRoute = (route: string): string | null => {
+      for (const line of viewSrc.split("\n")) {
+        if (!line.includes(route)) continue;
+        if (!line.includes("timed(")) continue;
+        // 第三个实参 = 最后一个逗号之后到行尾（本页每条 `timed(...)` 都写在一行里）
+        const i = line.indexOf(route);
+        const rest = line.slice(i + route.length);
+        const j = rest.indexOf(",", rest.indexOf(",") + 1); // 跳过 note 那个实参
+        return j < 0 ? rest : rest.slice(j);
+      }
+      return null;
+    };
+
+    // ── 金丝雀：吃事件的那一路**必须**被抽到，且实参里**必须**看得见 events ──
+    const eating = SCREEN_NUMBER_PROVENANCE.filter((p) => p.consumesEvents);
+    expect(eating.length).toBeGreaterThan(0);
+    const canaryArgs = argsOfRoute(eating[0]!.route);
+    expect(canaryArgs, `金丝雀抽不到「${eating[0]!.route}」那一路 ⇒ 抽取坏了，下面的「没有 events」全部不可信`).not.toBeNull();
+    expect(canaryArgs!, "金丝雀：真吃事件的那一路，实参里必须有 events").toContain("events");
+
+    // ── 主断言：声明「不吃事件」的那几路，实参里不许出现 events ──
+    for (const p of SCREEN_NUMBER_PROVENANCE.filter((x) => !x.consumesEvents)) {
+      const args = argsOfRoute(p.route);
+      if (args === null) continue; // 那一路不在这段 Promise.all 里（如「演习里的供需缺口归因」）
+      expect(
+        args,
+        `「${p.label}」声明为不吃事件，但它那一路的实参里出现了 events ——` +
+          `要么这行声明过期了（去改 SCREEN_NUMBER_PROVENANCE），要么屏上那句话已经变成假话`,
+      ).not.toContain("events");
+    }
+  });
+
+  it("屏上那句话必须点名「哪几个不变、哪个才变」，且没算过时不吓唬人", () => {
+    expect(invariantNumbersNote(null)).toBeNull();
+    const note = invariantNumbersNote(baseReport({}));
+    expect(note).not.toBeNull();
+    // 不许只说「有些数不变」就完事 —— 必须把会变的那个指出来
+    expect(note!.movingLabels.length).toBeGreaterThan(0);
+    expect(note!.frozenLabels.length).toBeGreaterThan(0);
+    for (const m of note!.movingLabels) expect(note!.text).toContain(m);
+    // 第二层要给出处与「它其实在回答什么」，不许只说「它不动」
+    expect(note!.raw).toContain("实参里**没有**你加的事件");
+    expect(note!.raw).toContain("它其实在回答");
+    // 实测数字要在第二层留底（COO 那次对照实验的原始读数）
+    expect(note!.raw).toContain("0 条改变 → 104 条改变");
+  });
+
   it("金丝雀：全绿的一次演习只留必要的几条，不会凭空长出「没打上」这种条目", () => {
     const notes = collectHonesty({
       report: baseReport({
         appliedStateEffects: [
-          { eventKind: "MATERIAL_REPRICE", targetObjectId: "obj_material_pos_lfp", targetStateVar: "priceShock", mode: "delta", magnitude: 15, startTick: 4, applied: true },
+          { eventKind: "MATERIAL_REPRICE", targetObjectId: "obj_material_pos_lfp", targetStateVar: "priceShock", mode: "delta", magnitude: 15, startTick: 4, applied: true, rawMagnitude: 15, magnitudeBasis: "幅度键本身即百分点，1:1 不换算", targetLabel: "磷酸铁锂正极", rangePct: 15, observedRange: 100, downstream: ["Model.costPressure ×0.65"] },
         ],
         events: [{ kind: "MATERIAL_REPRICE", targetObjectId: "obj_material_pos_lfp", payload: { pctChange: 15 }, effectiveDay: 0 }],
       }),

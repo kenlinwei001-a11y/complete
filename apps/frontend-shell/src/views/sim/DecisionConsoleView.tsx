@@ -18,6 +18,10 @@ import styles from "./DecisionConsoleView.module.css";
 import {
   collectHonesty,
   exposureTotals,
+  humanizeApiError,
+  invariantNumbersNote,
+  landingNoteFor,
+  needsLeafPick,
   nothingMovedText,
   orderedEvents,
   parseEmphasis,
@@ -189,6 +193,11 @@ interface RunTrace {
     coefFromConfig: boolean;
   }[];
   edgeTotal: number;
+  /**
+   * 状态变量键 → 中文名字典（**后端单源**，随规则清单一起回来）。
+   * 前端**不许**自己写第二份 —— 字典里没有的键照实显裸键，不编一个中文名。
+   */
+  stateVarNames: Record<string, string>;
   /** 撞了哪几条红线：阈值 + 它是写死的常数还是读的对象字段/规则参数。 */
   thresholds: { ruleKey: string; bindingId: string; source: string; where: string; value: number; unit: string }[];
   /** 逐条规则的判定原文（含 NOT_APPLICABLE 的，那也是结论）。 */
@@ -312,6 +321,7 @@ function buildTrace(input: {
     },
     edges: picked,
     edgeTotal: rawEdges.length,
+    stateVarNames: input.edges?.stateVarNames ?? {},
     thresholds: th,
     evaluatedRules: evalRules,
     enumeration,
@@ -404,6 +414,8 @@ export default function DecisionConsoleView() {
   const [result, setResult] = useState<RunResult | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [selectedBaseId, setSelectedBaseId] = useState<string | null>(null);
+  /** 第 ④ 区展开的是哪一条卡点的改法（`null` = 都收着）。 */
+  const [openImpediment, setOpenImpediment] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("tn");
   const [footerOpen, setFooterOpen] = useState(false);
   const startedAt = useRef<number>(0);
@@ -582,6 +594,8 @@ export default function DecisionConsoleView() {
   );
   const gapFinding = result?.report.findings.find((f) => f.source.solverKey === "supply_demand_gap_attribution") ?? null;
   const nothingMoved = nothingMovedText(result?.report ?? null);
+  /** 「屏上哪几个数不吃你加的事」—— 判据在 model 层（可测），这里只负责显示。 */
+  const invariantNote = invariantNumbersNote(result?.report ?? null);
 
   // ── 渲染 ────────────────────────────────────────────────────────────────
   return (
@@ -608,7 +622,11 @@ export default function DecisionConsoleView() {
             </h2>
             {catalog.isLoading ? <p className={styles.greyLine}>正在取事情清单…</p> : null}
             {catalog.isError ? (
-              <p className={styles.err}>事情清单取不回来，这一格今天用不了。{String(catalog.error)}</p>
+              <p className={styles.err}>
+                事情清单取不回来，这一格今天用不了 —— {humanizeApiError(String(catalog.error)).text}
+                <br />
+                <Raw text={String(catalog.error)} />
+              </p>
             ) : null}
             {specs.map((spec) => (
               <TemplateRow
@@ -734,7 +752,10 @@ export default function DecisionConsoleView() {
         {run.isError && !run.isPending ? (
           <section className="panel" aria-label="没算成">
             <p className={styles.err}>
-              这次没算成，你刚才加的 {added.length} 件事还在，再按一次〔算一下〕。
+              {/* 第一层说人话；原文降到第二层（`Raw`）一个字不删 —— 诚实位允许降层不允许删除 */}
+              {humanizeApiError(String(run.error)).text}
+              <br />
+              你刚才加的 {added.length} 件事还在，改完再按一次〔算一下〕。
               <br />
               <Raw text={String(run.error)} />
             </p>
@@ -778,6 +799,29 @@ export default function DecisionConsoleView() {
                   {totals.orderCount} 张单 · {totals.customerCount} 家客户
                   {otd ? ` · 其中会晚 ${(otd.total ?? 0) - (otd.onTimeCount ?? 0)} 张、准时 ${otd.onTimeCount ?? 0} 张` : ""}
                 </div>
+
+                {/*
+                 * 🔴 **本单最后一处「装作会算」的正面回答**（COO 病灶的落点）。
+                 *
+                 * 上面那行抬头写的是「这 N 件事凑一块，往后 30 天」，而这个大数 **2026-08-29 实测不随事件变**：
+                 * 它来自 `risk_timeline`，本页给它的实参是 `{}` —— 一个 event 都没传。
+                 * 复验：起真 datacore（`SEED_DEMO=1`）后对同一算例把幅度从 15 改到 100000 各调一次
+                 * `POST /a/v1/sim/sessions/:id/drill`，再各调一次 `POST /a/v1/solvers/risk_timeline/invoke`
+                 * ——后者两次回包的 8 张卡逐字节相同，而前者 `findingsChanged` 从 0 变 104。
+                 * 抬头把它归因给用户的输入，是一句**错误归因**；用户改了输入看它不动，
+                 * 只能得出「这系统在骗我」，而他是对的。
+                 *
+                 * ⚠ 判据与文案全部来自 `invariantNumbersNote`（纯函数 + 声明表），
+                 *   不在这里写死一句话 —— 写死的话，下次有人给那一路接上事件入参时
+                 *   没有任何东西会提醒他来改，一句当时正确的话就静默变成假话。
+                 */}
+                {invariantNote ? (
+                  <p className={styles.greyLine} data-testid="dc-invariant-note">
+                    {invariantNote.text}
+                    <br />
+                    <Raw text={invariantNote.raw} />
+                  </p>
+                ) : null}
 
                 {gapFinding ? (
                   <div className={styles.split}>
@@ -846,9 +890,26 @@ export default function DecisionConsoleView() {
                           {e.applied ? "已生效" : "没打上"}
                         </div>
                         <div className={styles.splitLabel}>
-                          {specsByKind.get(e.eventKind)?.label ?? e.eventKind} · {e.magnitude > 0 ? "+" : ""}
-                          {e.magnitude}
+                          {specsByKind.get(e.eventKind)?.label ?? e.eventKind} · 你填的 {e.rawMagnitude}
+                          {" ⇒ "}打到「{e.targetLabel}」的
+                          {/* 中文名由后端字典下发；没有就照实显裸键，不在前端编一个 */}
+                          {result.trace.stateVarNames[e.targetStateVar] ?? e.targetStateVar}上
                           {e.applied ? "，第 " + Math.max(1, e.startTick - (result.report.ticks - result.report.horizonDays)) + " 天开始起作用" : "，所以下面的结论里不含这件事"}
+                          <br />
+                          {/*
+                            幅度的两段账都要给：用户填的那个数 ⇒ 占全距百分之几 ⇒ 乘上本世界实测全距。
+                            少一段那个 `magnitude` 就是个来路不明的数（本单最早就是这么埋的坑）。
+                          */}
+                          <Raw
+                            text={
+                              `幅度怎么换算的：${e.rawMagnitude} ⇒ 该变量全距的 ${e.rangePct.toFixed(1)}%` +
+                              ` × 本世界实测全距 ${e.observedRange.toFixed(1)} = ${e.magnitude.toFixed(1)}\n` +
+                              `换算依据：${e.magnitudeBasis}\n` +
+                              (e.downstream.length > 0
+                                ? `这一格的出边（顺着往下推的第一跳）：${e.downstream.join("、")}`
+                                : `⚠ 这一格在本租户的关系图上「没有出边」—— 打上去也传不下去，屏上其余的数不会因它而动。`)
+                            }
+                          />
                         </div>
                       </div>
                     ))
@@ -864,6 +925,90 @@ export default function DecisionConsoleView() {
                         : "全部跑通"}
                     </div>
                   </div>
+                  {/*
+                    🔴 **COO 那个「+15 改 +100 一个数都没动」要的就是这一格**。
+                    它是**实测**（2026-08-29 真后端 `SEED_DEMO=1` 逐类跑过）：后端把这一批事件
+                    拿掉再推一遍同样的 30 天，逐格比出来的。
+                    复验：`POST /a/v1/sim/sessions/:id/drill` 同一算例换两个幅度各调一次，比回包的
+                    `worldCellsMoved` 与 `findingsChanged`。
+                    ⚠ 与上面「已生效」是两个不同的命题：那个说「冲击写进去了」，
+                    这个说「它传下去动了多少格」。本仓真实存在「写进去了、出边也有、
+                    但动的格子全在警戒线以下 ⇒ 卡点清单一条不动」这一态 ——
+                    不给这个数，它在屏上就与「压根没打上」长得一模一样。
+                  */}
+                  {result.report.appliedStateEffects.length > 0 ? (
+                    <div className={styles.splitCell}>
+                      <div
+                        className={styles.splitVal}
+                        style={{ color: result.report.worldCellsMoved === 0 ? "var(--danger-txt)" : undefined }}
+                      >
+                        {result.report.worldCellsMoved.toLocaleString("zh-CN")}
+                      </div>
+                      <div className={styles.splitLabel}>
+                        {result.report.worldCellsMoved === 0
+                          ? `你加的这几件事一格都没改动 —— 冲击写进去了、出边也在，但推完 ${HORIZON_DAYS} 天之后与「不加这几件事」逐格相同。这是结论，不是故障。`
+                          : `格数据因为你加的这几件事而变了（全世界一共 ${result.report.worldCellsTotal.toLocaleString("zh-CN")} 格）。`}
+                        <br />
+                        <Raw
+                          text={
+                            `这个数是实测出来的：后端把这一批事件拿掉、用同样的参数再推了一遍 ${HORIZON_DAYS} 天，逐格比对。\n` +
+                            `⚠ 它是这 ${result.report.appliedStateEffects.length} 件事「合起来」的数，不是其中某一件的功劳 —— 逐件归因要多推 ${result.report.appliedStateEffects.length} 遍，代价与收益不成比例，所以这里不做，也不假装做了。\n` +
+                            `⚠ 「动了 N 格」不等于「屏上的卡点清单会变」：卡点是按每个变量在全世界的分位数判的，动的格子若都在警戒线以下，清单就不会变。`
+                          }
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  {/*
+                    🔴 **屏上唯一直接回答「我改的那个数，到底改没改变结论」的一格**
+                    （COO 那个 +15 → +100 的对照实验问的就是这一句）。
+
+                    ── 为什么上面那格答不了 ────────────────────────────────────────
+                    `worldCellsMoved` 度量的是**波及面**（多少格与对照不同），**不随幅度变**：
+                    本单真后端实测 11 类事件各跑小/大两遍 —— 产能损失把 `lossPct` 从 10 拉到 100
+                    （施加幅度 3,486 → 34,865），`worldCellsMoved` **两次都是 210**，一格不差。
+                    拿它当「改数有没有用」的判据必然误判，那正是「我用 X 当作 Y 的证据，
+                    而 X 并不度量 Y」这条老病。⇒ 这一格比的是**结论本身**。
+                  */}
+                  {result.report.appliedStateEffects.length > 0 ? (
+                    <div className={styles.splitCell}>
+                      <div
+                        className={styles.splitVal}
+                        style={{ color: result.report.findingsChanged === 0 ? "var(--danger-txt)" : undefined }}
+                      >
+                        {result.report.findingsChanged.toLocaleString("zh-CN")}
+                      </div>
+                      <div className={styles.splitLabel}>
+                        {/*
+                          ⚠ 措辞必须点明「**顺着关系推出来的**结论」这个限定 —— 这个数**不含**
+                          求解器那一路的结论（它们读本体真值、不读世界态）。少了这个限定，
+                          「0 条改变」会被读成「整屏一条都没变」，而同一次演习里求解器完全
+                          可能多报十几条卡点 —— 那就成了一句**看起来精确的假话**。
+                        */}
+                        {/*
+                          ⚠ **上一版这句写的是「把幅度调大再算一次，很可能还是 0」——那是一句假话，已按实测改。**
+                          真后端 seed 42 实测 11 类事件各跑「小参数 / 大参数」两遍：小参数下报 0 的有 10 类，
+                          其中 **6 类**把幅度拨大之后就不再是 0（临时插单 0→76 · 改交付地点 0→97 ·
+                          物料到货延迟 0→26 · 物料短缺 0→26 · 物料价格变动 0→104 · 预测偏差 0→1），
+                          只有 4 类（订单取消 / 订单改价 / 设备故障 / 产能损失）拨到头仍是 0。
+                          ⇒ 旧文案把「多数情况下有用」说成了「很可能没用」，正好劝退了唯一有效的那个动作。
+                          这与本页那句「报『没算出来』和报『没事』必须分得开」是同一条纪律：
+                          **不许拿一句听起来稳妥的话，去盖住一个我们实测知道的事实。**
+                        */}
+                        {result.report.findingsChanged === 0
+                          ? `条**顺着关系推出来的**结论因此改变 —— 你加的这几件事传下去了（上面「动了 N 格」就是证据），但动的格子没有一个越过它那个变量的警戒线，所以这类结论一条都没被推翻。这是结论，不是故障。**值得把幅度拨大再算一次**：实测 11 类事件里，小幅度下报 0 的有 10 类，其中 6 类拨大之后就不再是 0。（求解器那一路的结论不在这个数里，见下面各路的回执。）`
+                          : `条**顺着关系推出来的**结论因你加的这几件事而改变（不加时这类结论一共 ${result.report.findingsBaseline.toLocaleString("zh-CN")} 条；求解器那一路不计在内）。`}
+                        <br />
+                        <Raw
+                          text={
+                            `怎么算的：把这批事件拿掉再推一遍同样的 ${HORIZON_DAYS} 天，对照世界也扫一遍卡点，两份清单逐条比（新增 + 消失 + 严重度变了的都算）。\n` +
+                            `⚠ 「只比传导引擎扫出来的那些」：求解器那一路读的是本体真值、不读世界态，把它算进来这个数会恒不为 0，判据就废了。所以这个数是 0 时，屏上的卡点总数仍可能因为求解器而变多 —— 两者不矛盾，看的是不同的东西。\n` +
+                            `⚠ 这个数是 0 而上面「动了 N 格」不是 0，是「正常且有意义」的一种结果：冲击确实传下去了，但动的那些格子没有一个越过它那个变量的警戒线（卡点按分位数判），所以这类结论没变。`
+                          }
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {nothingMoved ? <p className={styles.greyLine}>{nothingMoved}</p> : null}
@@ -945,22 +1090,87 @@ export default function DecisionConsoleView() {
                         {imp.total} 处卡住的地方，今天一处对策也给不出 —— 这本身是结论。
                       </p>
                     ) : (
+                      /*
+                       * 🔴 **COO 实测「4 个按钮点了什么都不发生」的修法**（诉求 #9「长得像按钮的
+                       * 东西必须能按」/ #10「点下去落到它自己那句话的答案上」）。
+                       *
+                       * ── 今天的行为是 X，应该是 Y ──────────────────────────────────
+                       * · **X**：`onClick` 只做两件事 —— `setSelectedBaseId(第 ⑤ 区的基地)` +
+                       *   滚到 `#z5`。而 ① 这 4 个卡点里有 2 个（物料批次 / 物料平衡）**根本不属于
+                       *   任何基地**，`baseOfImpediment` 回 `null` ⇒ 一个 state 都没变；
+                       *   ② 另外 2 个（金华/自贡产线）就算切了基地，第 ⑤ 区展开的也是**那个基地的
+                       *   通用打法库**，不是这条卡点自己的改法 —— COO 原话「跟我点的那 4 个卡点
+                       *   不是一回事」。⇒ 屏幕 diff 为空是**真的**，不是他看漏了。
+                       * · **Y**：就地展开**这条卡点自己的** `candidates[]`（引擎已经回了，
+                       *   旧代码在 `splitImpediments` 里把它整个丢掉只留了个计数）。
+                       *
+                       * ⚠ 保留「顺带切到对应基地」这个副作用：它对 2 个产线卡点是有意义的，
+                       *   对另外 2 个是 no-op —— 但**主效果不再依赖它**。
+                       *
+                       * ✅ **2026-08-29 真前端 + 真后端复验通过**：4 颗按钮逐一点开，屏幕文本
+                       *    分别 −1199 / +863 / +2037 / +2022 字，各自展开的是本条卡点自己的改法
+                       *    （如「物料·到货周期 ↓ 10」「产线·利用率 ↓ 89.9153」）。
+                       *    复验：`POST /a/v1/solvers/chain_impediments/invoke` 现读，18 条卡点里
+                       *    带 `candidates[]` 的就是屏上这几颗按钮。
+                       */
                       imp.actionable.map((r) => (
-                        <button
-                          type="button"
-                          key={r.impedimentId}
-                          className={styles.impRow}
-                          aria-pressed={false}
-                          onClick={() => {
-                            const base = baseOfImpediment(r.objectType, r.objectId, cards, result.risk);
-                            if (base) setSelectedBaseId(base);
-                            document.getElementById("z5")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                          }}
-                        >
-                          {r.sentence}
-                          <br />
-                          <span className={styles.impWays}>有 {r.candidateCount} 种改法 ▸</span>
-                        </button>
+                        <div key={r.impedimentId}>
+                          <button
+                            type="button"
+                            className={styles.impRow}
+                            aria-expanded={openImpediment === r.impedimentId}
+                            aria-controls={`ways-${r.impedimentId}`}
+                            onClick={() => {
+                              setOpenImpediment((prev) => (prev === r.impedimentId ? null : r.impedimentId));
+                              const base = baseOfImpediment(r.objectType, r.objectId, cards, result.risk);
+                              if (base) setSelectedBaseId(base);
+                            }}
+                          >
+                            {r.sentence}
+                            <br />
+                            <span className={styles.impWays}>
+                              有 {r.candidateCount} 种改法 {openImpediment === r.impedimentId ? "▾" : "▸"}
+                            </span>
+                          </button>
+                          {openImpediment === r.impedimentId ? (
+                            <div id={`ways-${r.impedimentId}`} className={styles.waysPanel}>
+                              {r.candidates.length === 0 ? (
+                                <p className={styles.greyLine}>
+                                  这条卡点报了 {r.candidateCount} 种改法，但回包里一条明细都没有 —— 这是数据的缺口，不是「没有改法」。
+                                </p>
+                              ) : (
+                                r.candidates.map((cd) => (
+                                  <div className={styles.wayCard} key={cd.candidateId}>
+                                    <div className={styles.wayTitle}>{cd.label}</div>
+                                    <div className={styles.wayLine}>
+                                      拨的是 {cd.leverText}
+                                      {cd.fromValue !== null && cd.toValue !== null ? (
+                                        <>
+                                          ：{roundish(cd.fromValue)}
+                                          {cd.unit} → <b>{roundish(cd.toValue)}{cd.unit}</b>
+                                        </>
+                                      ) : null}
+                                    </div>
+                                    {/* 逐维「改完 vs 不改」—— 有 baseline 才叫可核，没有 baseline 只是一个数 */}
+                                    {cd.dims.map((d) => {
+                                      const better = d.betterWhenLower ? d.value < d.baseline : d.value > d.baseline;
+                                      const same = d.value === d.baseline;
+                                      return (
+                                        <div className={styles.wayLine} key={d.label}>
+                                          {d.label}：不改 {roundish(d.baseline)}{d.unit} → 改完{" "}
+                                          <b>{roundish(d.value)}{d.unit}</b>{" "}
+                                          {same ? "（这一项没动）" : better ? "（好转）" : "（更差）"}
+                                          {d.dataMode !== "LIVE" ? <Est /> : null}
+                                        </div>
+                                      );
+                                    })}
+                                    <Raw text={`这一档怎么定的：${cd.rungSource}\n怎么算的：${cd.formula}`} />
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
                       ))
                     )}
                   </div>
@@ -1319,7 +1529,27 @@ function TemplateRow({
    *
    * 这是**既有缺陷**（`canAdd` 在本单基线 `handoff-wo-decision-console` 上逐字相同，非本轮引入），
    * 只是决策台此前没有从登录页走得到，一直没被真的点到。
+   *
+   * ── 收编裁决（`WO-CONSOLE-BLOCKERS` × `WO-EVENTS-WRITE-STATE` 并线冲突·2026-08-29）──
+   * 两张单**各自独立**发现了同一个坑（都从 `handoff-wo-decision-console` 分叉，互不知情），
+   * 修法不同，并线时正面冲突。取本版（`pickedId.length > 0` 无条件要求），
+   * **不取** `needsLeafPick(scope, spec)` 那一版，理由是后者今天仍漏两条路 ——
+   * 两条都是实测出来的，不是推理：
+   *   ① **`scope === null` 的手填兜底路**（本文件 `SUBJECT_FALLBACK` 那一支，输入框直接
+   *      `setPickedId(e.target.value)`）：`needsLeafPick(null, …)` 恒 `false`
+   *      ⇒ **手填框空着也能按〔加进去〕** ⇒ `targetObjectId: ""` ⇒ 同一个 400。
+   *   ② **`ORDER_INSERT`**：`decision-console-model.test.ts` 自己的断言写着它是今天
+   *      **唯一** `subjectIsRead === false` 的事件，且只有一级选择器
+   *      ⇒ `needsLeafPick` 回 `false` ⇒ 不选客户也能加 ⇒ 同一个 400。
+   * 那一版的**散文说得对**（「只要屏上摆了选择器，就必须选到叶子那一层」），
+   * 只是代码在单级选择器那一支回落到了 `subjectIsRead(spec)`，没兑现这句话。
+   * 本版是两张单意图的交集：**摆了选择器就必须有 id，手填框也算选择器**。
+   *
+   * ⚠ `needsLeafPick` **没有被丢掉**，它仍是生产调用（见下方 `mustPickLeaf`）——
+   * 用在**提示文案**上：两级选择器缺第二级时要说「基地选了还不够，产线才是落点」，
+   * 而不是笼统一句「先选对谁」。判据留严的，话说细的，两张单各取其长。
    */
+  const mustPickLeaf = needsLeafPick(scope, spec);
   const canAdd =
     pickedId.length > 0 &&
     spec.payloadKeys.filter((k) => k.required).every((k) => payload[k.key] !== undefined && payload[k.key] !== "");
@@ -1546,15 +1776,23 @@ function TemplateRow({
           {!canAdd ? (
             <span className={styles.fieldHint}>
               {/* 判据与 canAdd 同源：缺主体就说缺主体，不再按 subjectRead 分叉 ——
-                  分叉过的那一版，8/11 条路上「加进去」是灰的而这句话一个字都不提原因。 */}
-              {pickedId.length === 0 ? `先选${scope?.label ?? SUBJECT_FALLBACK.label}；` : ""}
+                  分叉过的那一版，8/11 条路上「加进去」是灰的而这句话一个字都不提原因。
+                  触发条件用 canAdd 那一条（无条件要 id），**文案**用两级选择器的细话：
+                  只说「先选对谁」时，用户已经选了基地、会以为自己选过了。 */}
+              {pickedId.length === 0
+                ? mustPickLeaf && scope?.child
+                  ? `先把「${scope.child.label}」也选上 —— 只选了${scope.label}还不够，${scope.child.label}才是这件事真正落到的地方；`
+                  : `先选${scope?.label ?? SUBJECT_FALLBACK.label}；`
+                : ""}
               {spec.payloadKeys.filter((k) => k.required && (payload[k.key] === undefined || payload[k.key] === "")).map((k) => `「${k.hint || k.key}」要填；`)}
               填齐了才能加 —— 缺一个必填的，后台会回「未能评估」而不是算成 0。
             </span>
           ) : null}
-          {idForm === "OBJECT_ID" ? (
-            <span className={styles.fieldHint}>这件事会真的改到数上，所以它要求主体是一个真实存在的对象。</span>
-          ) : null}
+          {/*
+            「这件事落到哪」由 catalog 现算：落点取自主体 ⇒ 说「要求是真实对象」；
+            落点取自 payload（临时插单落在型号上）⇒ 必须明说客户不进算式，不许含糊。
+          */}
+          {landingNoteFor(spec) ? <span className={styles.fieldHint}>{landingNoteFor(spec)}</span> : null}
         </div>
       ) : null}
     </>

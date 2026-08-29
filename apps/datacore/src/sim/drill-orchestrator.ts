@@ -67,6 +67,19 @@ export interface DrillOrchestrateInput {
    * 编排器自己"根据事件推断打上了没有"就是第二套真相源，而那正是本单栽过的那一跤。
    */
   appliedStateEffects?: DrillReport["appliedStateEffects"];
+  /**
+   * 「这一批事件实测改动了世界态多少格 / 一共多少格」（WO-EVENTS-WRITE-STATE）——
+   * 同 `appliedStateEffects` 的纪律：**只有调用方跑得出对照推进**，编排器只原样透传，
+   * 绝不自己"根据事件推断动了多少格"（那就是第二套真相源）。
+   */
+  worldCellsMoved?: number;
+  worldCellsTotal?: number;
+  /**
+   * 「这批事件改变了多少条结论 / 对照世界一共多少条」（WO-EVENTS-WRITE-STATE）。
+   * 同上：只有调用方跑得出对照推进并扫得出对照清单，编排器只原样透传。
+   */
+  findingsChanged?: number;
+  findingsBaseline?: number;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -706,6 +719,10 @@ export async function orchestrateDrill(input: DrillOrchestrateInput): Promise<Dr
     appliedLimitPerKind: limitPerKind,
     degraded,
     appliedStateEffects: [...(input.appliedStateEffects ?? [])],
+    worldCellsMoved: input.worldCellsMoved ?? 0,
+    worldCellsTotal: input.worldCellsTotal ?? 0,
+    findingsChanged: input.findingsChanged ?? 0,
+    findingsBaseline: input.findingsBaseline ?? 0,
     solverRuns,
     summary: {
       allFailed,

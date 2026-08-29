@@ -85,6 +85,48 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
     }
   });
 
+  /**
+   * ══ WO-EVENTS-WRITE-STATE 的接缝断言 ══════════════════════════════════════
+   *
+   * **今天的行为是 X，应该是 Y**（COO 2026-08-28 真后端实测复现，本单开工第一步）：
+   * · **X**：11 类事件里只有 `MATERIAL_REPRICE` 声明了世界态落点，其余 10 类
+   *   `stateEffect: null` ⇒ 只被路由到求解器，**一格世界态都不写**。
+   * · **Y**：每一类事件都落在一个**在传导图上真有出边**的状态变量上。
+   *
+   * ⚠ **为什么这条必须是接缝测试而不是纯契约单测**：「有没有出边」这件事，
+   * 契约层**根本答不出来** —— 出边表是运行期数据（`PropagationRule`，各租户自己维护）。
+   * 只在契约里断言「11 类都有 stateEffect」会得到一个漂亮的绿灯，
+   * 而落点完全可能指向一个本租户压根没有出边的格子 ⇒ 冲击打上去一步都传不下去，
+   * 屏上表现为「看起来改了实际还是不动」，**比压根不落点更难发现**（派单原话）。
+   * 故必须拿**真 seed 出来的已发布规则**去比。
+   */
+  it("① 11 类事件**全部**有世界态落点，且每个落点在真规则表上**真有出边**（落在叶子上比不落更糟）", async () => {
+    const t = await seededApp();
+    const rules = await t.repos.sim.listPropagationRules("demo", true);
+    // 金丝雀：先证明规则表真读出来了。读到 0 是「seed 没跑/查错了」，不是「没有出边」——
+    // 少了这一句，下面每条断言都会以「所有落点都没出边」的形态整齐地红，把人指向错误的方向。
+    expect(rules.length, "已发布传导规则读到 0 条 ⇒ 是规则表没读出来，不是落点没有出边").toBeGreaterThan(0);
+
+    const outEdges = new Map<string, string[]>();
+    for (const r of rules) {
+      const k = `${r.sourceTypeKey}.${r.sourceStateVar}`;
+      outEdges.set(k, [...(outEdges.get(k) ?? []), `${r.targetTypeKey}.${r.targetStateVar}`]);
+    }
+    // 金丝雀②：拿一个**已知必中**的格子验证这张出边表是对的（本来就在跑的那条料价链）
+    expect(outEdges.get("Material.priceShock"), "金丝雀不中 ⇒ 出边表建错了，不是落点有问题").toContain("Model.costPressure");
+
+    for (const s of DRILL_EVENT_SPECS) {
+      expect(s.stateEffect, `${s.kind}（${s.label}）没有世界态落点 ⇒ 用户加了它也不会改变任何数`).not.toBeNull();
+      const eff = s.stateEffect!;
+      const outs = outEdges.get(`${eff.objectType}.${eff.stateVar}`) ?? [];
+      expect(
+        outs.length,
+        `${s.kind} 的落点 ${eff.objectType}.${eff.stateVar} 在真规则表上零出边 ⇒ 打上去一步都传不下去`,
+      ).toBeGreaterThan(0);
+    }
+    await t.app.close();
+  });
+
   it("① 加一个新事件只需改**一处**：路由与校验规则全部由 DRILL_EVENT_SPECS 派生", () => {
     // 判据：编排器拿到的路由**完全**来自规格表 —— 表里有几条，`drillRoutesFor` 就给几条
     // （加上通用路由，且按 solverKey 去重）。这条断言使「引擎里另写一条 if 分支」变得可见：
@@ -96,18 +138,31 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
   });
 
   it("① 入参解释是声明式的：required 缺值 ⇒ 报 missing（而不是硬调一次拿 400）", () => {
-    const spec = DRILL_EVENT_SPECS.find((s) => s.kind === "FORECAST_BIAS")!;
+    /**
+     * ⚠ 样本从 `FORECAST_BIAS` 换成 `ORDER_INSERT`（WO-EVENTS-WRITE-STATE）：
+     * 预测偏差的 `modelId` 已改成从 `eventTarget` 取（用户在下拉里选了型号就够，
+     * 不必再手填一遍），故它上面已经没有「payloadKey 取不到」这一态可测。
+     * 临时插单的型号是**另一件事**（给哪个客户插哪个型号），仍走 payloadKey 且必填 ——
+     * 这条断言要咬的「声明式取参 + required 缺值报 missing」在它身上一字不差地成立。
+     */
+    const spec = DRILL_EVENT_SPECS.find((s) => s.kind === "ORDER_INSERT")!;
     const route = spec.routes.find((r) => r.solverKey === "capacity_forecast")!;
     // `capacity_forecast` 实测**必须**带 modelId（不带 → 400 "modelId required"）
-    const without = resolveDrillArgs(route, { kind: "FORECAST_BIAS", targetObjectId: "X", payload: {}, effectiveDay: 0 }, 30);
+    const without = resolveDrillArgs(route, { kind: "ORDER_INSERT", targetObjectId: "X", payload: {}, effectiveDay: 0 }, 30);
     expect(without?.missing).toContain("modelId");
     const withIt = resolveDrillArgs(
       route,
-      { kind: "FORECAST_BIAS", targetObjectId: "X", payload: { modelId: "2170-NCM" }, effectiveDay: 0 },
+      { kind: "ORDER_INSERT", targetObjectId: "X", payload: { modelId: "2170-NCM" }, effectiveDay: 0 },
       30,
     );
     expect(withIt?.missing).toEqual([]);
     expect(withIt?.args).toEqual({ modelId: "2170-NCM" });
+
+    // 预测偏差这一路改从 eventTarget 取 ⇒ 选了型号就不缺参（这是本单去掉的那格多余手填框）
+    const fbRoute = DRILL_EVENT_SPECS.find((s) => s.kind === "FORECAST_BIAS")!.routes.find((r) => r.solverKey === "capacity_forecast")!;
+    const fb = resolveDrillArgs(fbRoute, { kind: "FORECAST_BIAS", targetObjectId: "2170-NCM", payload: { biasPct: 20 }, effectiveDay: 0 }, 30);
+    expect(fb?.missing).toEqual([]);
+    expect(fb?.args).toEqual({ modelId: "2170-NCM" });
   });
 
   // ══════════════════════════════════════════════════════════════════════
@@ -285,7 +340,16 @@ describe("WO-SIM-DRILL-P12 · 推演演习接缝", () => {
 
   it("⑤ 调通但没登记归一规则 ⇒ 同样记「未能评估」，不静默丢结果", async () => {
     const rep = await orchestrateDrill({
-      events: [{ kind: "ORDER_RELOCATE", targetObjectId: "SO-1", payload: {}, effectiveDay: 0 }],
+      /**
+       * ⚠ `payload` 从 `{}` 补成 `{ movedPct: 100 }`（WO-EVENTS-WRITE-STATE）：
+       * 本单给「改交付地点」补了世界态落点，幅度键 `movedPct` 随之变成**必填**
+       * （不必填就会出现「声明了落点、用户没填幅度 ⇒ 静默没有冲击」那一态）。
+       * 空 payload 现在会先被 `validateDrillEvent` 拦下记一条「事件校验未通过」，
+       * 于是 `solverRuns` 里多一条 `ok:false` —— 这条断言就红在那里。
+       * 而本用例要咬的是**另一件事**：「求解器调通了、但回包形状没登记归一规则 ⇒
+       * 0 条结论但不算失败」。补齐必填项才测得到它，不是把断言放松。
+       */
+      events: [{ kind: "ORDER_RELOCATE", targetObjectId: "SO-1", payload: { movedPct: 100 }, effectiveDay: 0 }],
       horizonDays: 30, tickDays: 1, worldId: "w1", forkedFromStateId: null,
       // portfolio 有 normalizer；这里让它回一个**空**壳，risk_timeline 也回空 ⇒ 0 条结论但不是失败
       invokeSolver: async () => ({ someUnknownShape: true }),
