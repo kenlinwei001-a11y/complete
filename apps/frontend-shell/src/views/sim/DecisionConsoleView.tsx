@@ -1051,10 +1051,39 @@ export default function DecisionConsoleView() {
                     所以这里只摆「什么都不做」那一栏。
                   </p>
                 ) : (
+                  /**
+                   * ⚠ 下面那句「代价 / 见效天 / 风险**一个都没有**」是一条**否定断言** ——
+                   * 上游哪天真给候选加上这三样，这句话当场变成屏上说谎，而没有任何人会被通知。
+                   * 故按 `check-stale-claims` 的 STALE-5 挂溯源记号，把它赌的那个计数写下来。
+                   *
+                   * 赌的是什么（**2026-08-29** 实测）：这一段说的「这次真试算出来的那几条改法」
+                   * = 后端回包里的 `candidates[]`，其形状由 `SolutionCandidateSchema` 锁死，
+                   * 而那是个 `z.strictObject` ⇒ **它没登记的键根本传不过来**。
+                   * 实测该 schema 里 `cost` / `risk` / `leadTime` / `tn` / `eff` 一个都没有。
+                   * （屏上另外那三条「通用档位」来自前端 `Mitigation` **静态方案库**，是两回事 ——
+                   *  这句话要说清的正是这两回事的区别。）
+                   *
+                   * 复验（先自证尺子没坏再看结论·铁律 0.6）：
+                   *   node -e 'const s=require("fs").readFileSync("packages/contracts/src/chain-sim.ts","utf8");
+                   *   console.log("金丝雀",(s.match(/^\s*\w+:\s*z\./gm)||[]).length,
+                   *   "赌注",(s.match(/^\s*(?:cost|risk|leadTime|leadTimeDays|tn|eff):\s*z\./gm)||[]).length)'
+                   *   实测 → 金丝雀 188（远大于 0 ⇒ 尺子是活的）· 赌注 0（⇒ 这句话今天成立）
+                   *
+                   * 机器能跑的那两条赌注**挂在下面 `<span>` 那一行的行尾**，不在本注释块里 ——
+                   * 两个踩过的坑（都是当场报红逼出来的，不是想出来的）：
+                   *  ① 路径**不许转义斜杠**：记号的路径部分是 `[\w./@-]+`，**不含反斜杠**。
+                   *     写成 `packages\/contracts\/…` 会让整条记号解析不上，而屏上、编译、类型
+                   *     全都不报错 —— 门只会说「作者以为自己挂了赌注，其实一条都没跑」。
+                   *  ② 记号的作用域是「**本单元** + 紧贴其上的连续注释块」，而这里的「单元」是
+                   *     `<span>` 那**一行**，不是整个 `<p>`。本注释块贴的是 `<p>` 的上沿，
+                   *     `markScopeRange` 从 `<span>` 那行往上找，第一行就不是注释 ⇒ 够不着。
+                   *     JSX 的 `{'{'}/* … *{'/'}{'}'}` 形态也不行：那条判据认 `//` `*` `/*` 开头，`{'{'}/*` 不匹配。
+                   */
                   <p className={styles.greyLine}>
                     下面三条的「多久见效 / 代价 / 风险」是「{planCategory}」这一类的通用档位
                     <Est />，不是这一次的试算 —— 这次真试算出来的那几条改法身上，代价 / 见效天 / 风险
-                    <span className={styles.absent}>一个都没有</span>。
+                    {/* eslint-disable-next-line max-len -- 两条赌注必须与被赌的那句话同行，见上面注释块② */}
+                    <span className={styles.absent}>一个都没有</span>{/* @stale-fact packages/contracts/src/chain-sim.ts /export const SolutionCandidateSchema/ ==1 · @stale-fact packages/contracts/src/chain-sim.ts /^\s*(?:cost|risk|leadTime|leadTimeDays|tn|eff):\s*z\./ ==0 */}。
                   </p>
                 )}
 
