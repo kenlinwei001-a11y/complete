@@ -902,8 +902,14 @@ export default function OntologyRelationsPage() {
                      * 只覆盖「一条都没有」与「没有算不出来的部分」两句，**看不见「四类」这个数**——
                      * 枚举加到第 5 个时，这行绿字会照旧显示，而上面那排桶计数（`buckets`）也只画
                      * 4 格，第 5 类的波及在屏上**根本不出现**：用户会据此把一条并非叶子的边删掉。
-                     * 这是屏上说谎，不是记账错误，故把赌注写成机器能跑的断言，上游一动门当场红：
+                     * 这是屏上说谎，不是记账错误，故把赌注写成机器能跑的断言，上游一动门当场红。
+                     *
+                     * ⚠ **两条缺一不可**，理由是变异反证逼出来的，不是凑数：
+                     * 第一条只赌「这四个名字各在一次」——**加第 5 个成员它照样绿**（实测：把枚举
+                     * 改成五成员后现算仍是 4，门不出声）。第二条赌「成员恰好四个」才咬得住新增。
+                     * 两条合起来才覆盖 改名/删除（第一条）与 新增（第二条）三种走法。
                      * @stale-fact packages/contracts/src/sim.ts /"(?:recompute|rederive|rejudge|rewire)"/ ==4
+                     * @stale-fact packages/contracts/src/sim.ts /bucket: z\.enum\(\["[a-z]+", "[a-z]+", "[a-z]+", "[a-z]+"\]\)/ ==1
                      * 记号挂于 2026-08-29 · 复验：`node scripts/check-stale-claims.mjs`
                      * 上游真相源：`packages/contracts/src/sim.ts` 的 `bucket: z.enum([...])`
                      */}

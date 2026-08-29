@@ -1886,7 +1886,7 @@ function main() {
     if (live["truth.widgetKeysMultiSource"] < 5) {
       blind.push(`⑧ widget 槽位里被 ≥2 真相源登记的只有 ${live["truth.widgetKeysMultiSource"]} 个（<5）—— 只剩单边就查不出分叉，这条槽位等于没开`);
     }
-    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==38
+    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==39
     //    ⇒ 这个数不再是传说，它由本门每次现算并对账）。抽到 0 条 ⇒ 报「工具坏了」，
     //    **不许**报「全仓记号都通过」—— 那正是本门自己在治的那种「我没找到 ≠ 它不存在」。
     if (markSweep.files < 100) blind.push(`⑥b 记号扫描只走到 ${markSweep.files} 个源文件（<100）—— srcRoots 是不是没读到？`);
@@ -2137,13 +2137,20 @@ try {
  *        `frontend-shell/locales/zh.ts` ×2 · `frontend-shell/views/sim/sandboxConsoleModel.ts` ×6）。
  *        WO-STALE-TEXT-SWEEP 当天就补上了生产实例，而这句自述留在原地 ——
  *        **它把「已经在用」写成了「还没在用」，方向正好相反**。
- *        赌注：@stale-self marks.production ==38
- *        ⚠ **2026-08-29 由 37 改到 38**（收编 integ-batch-2 / STALE-5）：本体关系页删/停用因果边
- *          的波及预览里那句「这条边确为**叶子**：**四类**波及一条都没有」按 ⑤ 补挂 1 条记号
- *          （赌 `packages/contracts/src/sim.ts` 的 `bucket: z.enum([...])` 恰好 4 个成员）
- *          ⇒ 生产实例 37 → 38。**同样不是放宽**：那句话的运行时守卫只覆盖两个"空"，
+ *        赌注：@stale-self marks.production ==39
+ *        ⚠ **2026-08-29 由 37 改到 39**（收编 integ-batch-2 / STALE-5）：本体关系页删/停用因果边
+ *          的波及预览里那句「这条边确为**叶子**：**四类**波及一条都没有」按 ⑤ 补挂记号
+ *          ⇒ 生产实例 37 → 39。**同样不是放宽**：那句话的运行时守卫只覆盖两个"空"，
  *          看不见「四类」这个静态数；枚举加到第 5 个时屏上会继续说谎且第 5 类波及不显示，
  *          用户会据此删掉一条并非叶子的边。
+ *          ⚠ **为什么是 2 条而不是 1 条 —— 变异反证逼出来的，记在这里防复发**：
+ *          先只挂了 `/"(?:recompute|rederive|rejudge|rewire)"/ ==4`，做四步变异反证时
+ *          把枚举加到第 5 个成员（`"remeasure"`），**门一声不吭**：那条正则只数「这四个
+ *          名字各出现一次」，新增第 5 个不改变这个数 ⇒ 它咬得住改名/删除，**咬不住新增**，
+ *          而「四类」这句话恰恰是被新增证伪的。补第二条
+ *          `/bucket: z\.enum\(\["[a-z]+", "[a-z]+", "[a-z]+", "[a-z]+"\]\)/ ==1` 赌「成员恰好四个」，
+ *          变异下现算 0 ⇒ 当场红。形态：**「我用『我挂了记号』当作『这句话被守住了』的证据，
+ *          而前者并不度量后者」** —— 记号挂没挂是一回事，它咬不咬得住那句话赌的东西是另一回事。
  *        ⚠ **2026-08-29 由 35 改到 37**（WO-CONSOLE-BLOCKERS）：决策台那句「代价 / 见效天 /
  *          风险**一个都没有**」按 ⑤ 补挂了 2 条记号（赌 `SolutionCandidateSchema` 这个
  *          `z.strictObject` 里没有 cost/risk/leadTime 键）⇒ 生产实例 35 → 37。
@@ -2170,8 +2177,8 @@ try {
  *      `expectedSlipDays = 供应商段天数 ×(1−onTimeRate)`，经 `kitReadiness` 挂在
  *      已注册求解器 `kit_readiness` 上）。给一句已知是假的话挂赌注 = 把假话钉死在门里，
  *      故留给裁决：**改文案还是把那个 `effect: inert` 一并解除**，属行为判断，不由记号单决定。
- *      @stale-self marks.production ==38 —— 2026-08-29 先由 35 改到 37，收编 integ-batch-2 时
- *      再由 37 改到 38，两次都见上面那条的说明）、
+ *      @stale-self marks.production ==39 —— 2026-08-29 先由 35 改到 37，收编 integ-batch-2 时
+ *      再由 37 改到 39，两次都见上面那条的说明）、
  *      **基线赌注路径今天 0 条数据**（@stale-self baseline.factChecks ==0；属「接了线没数据」，
  *      不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
  *    ⇒ 复验命令：`node scripts/check-stale-claims.mjs`（末行直接打印这三个现算值）。
