@@ -2639,6 +2639,74 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return reply.status(201).send(r);
   });
   /**
+   * ══ WO-ONTOLOGY-EDGE-EDIT · 改一条传导边（**保留传入的 id**）══════════════════════
+   *
+   * **今天的行为是 X**（开工实测）：这条路径上只有 GET + POST 两个动词，而 POST 把
+   *   `id: newId("simpr")` 写在 `...req.body` 展开**之后**（上一条路由那行）⇒ 客户端传的 id
+   *   恒被盖掉 ⇒ 「改一条」在屏上的实际后果是「多一条同 key 的边」，把生效条数数成两条。
+   *   `apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx` 因此挂了一条诚实位
+   *   「⚠ 因果边今天只能新建」，并写明「真·启停需后端补 PUT/PATCH …/:id（后端单）」——**本条就是那张单**。
+   * **应该是 Y**：`PUT /:id` 走同一个 `putPropagationRule`（repo 层**本来就是 upsert**，缺的只是路由），
+   *   id 取自**路径参数**而不是 body，于是改一条就是改那一条。
+   *
+   * ⛔ **租户闸必须落在写之前的那次读上，不能落在写上**：`putPropagationRule` 按 id 幂等覆盖、
+   *   **不看 tenantId**（`repo/memory.ts` 一句 `this.rules.set(r.id, …)`；pg 侧 `ON CONFLICT (id) DO UPDATE`）。
+   *   若直接把 body 写下去，A 租户拿着 B 租户的 id 就能覆盖 B 的边 —— 而 id 是客户端给的。
+   *   故先 `getPropagationRule(c.tenantId, id)`，读不到即 404，连写都不发生（R2）。
+   * ⛔ `tenantId` 一律用**服务端上下文**的，body 里带什么都不采信（否则等于把 R2 交给客户端自觉）。
+   * ⚠ 走 `parseBody`（= `safeParse`）而非裸 `parse`：裸 `parse` 抛的 ZodError 身上没有 `statusCode`
+   *   ⇒ 兜底处理器判 500 并回显 zod 内部结构（上一条路由的头注记的就是这个坑）。
+   */
+  app.put("/a/v1/sim/propagation-rules/:id", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const id = (req.params as { id: string }).id;
+    const cur = await repos.sim.getPropagationRule(c.tenantId, id);
+    if (!cur) throw notFound("propagation rule"); // 跨租户 ⇒ 与"不存在"同一回包（不泄露存在性）
+    // `id`/`tenantId` 写在展开**之后** —— 与 POST 那行同一个手法，但这里盖的是**路径参数**，
+    // 不是新 mint 的 id：改的就是被点名的那一条。
+    const r = parseBody(PropagationRuleSchema, { ...(req.body as object), id, tenantId: c.tenantId });
+    await repos.sim.putPropagationRule(r);
+    return r;
+  });
+  /**
+   * WO-ONTOLOGY-EDGE-EDIT · 删一条传导边。
+   *
+   * 回执取仓储的**布尔**（真删掉了才 true）而不是"语句没报错"：`DELETE … WHERE tenant_id AND id`
+   * 删 0 行时 SQL 一样成功，拿它当成功回 200，跨租户删除就静默变成"删掉了"。
+   * 语义是**硬删**不是置 RETIRED —— 两者屏上都叫"去掉这条边"，但 RETIRED 仍在册（`published=false`
+   * 的列表读得到），硬删不在册。停用走 `PUT` 改 `status`（可逆、留痕），删除走本条（不可逆）。
+   */
+  app.delete("/a/v1/sim/propagation-rules/:id", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const ok = await repos.sim.deletePropagationRule(c.tenantId, (req.params as { id: string }).id);
+    if (!ok) throw notFound("propagation rule");
+    return { deleted: true };
+  });
+  /**
+   * WO-ONTOLOGY-EDGE-EDIT · **只改启停位**（屏上那个勾选框）。
+   *
+   * ── 为什么不让勾选框直接打 `PUT`（那条已经能改 status 了）─────────────────────
+   * `PUT` 是**整条覆盖**：勾选框得先把手上那份完整的边回传一遍。而列表是缓存来的，
+   * 用户勾选的这一刻，手上那份可能已经比库里旧（别人刚改过系数）——
+   * 于是「点一下勾选框」会**顺手把系数回退到旧值**，且屏上没有任何迹象。
+   * 本条只读 `status` 一个字段、在服务端与**当前**那条边合并，故并发下丢的最多是这一位。
+   *
+   * 启停语义落在**既有的** `status`（`DRAFT|PUBLISHED|RETIRED`，契约 `sim.ts` 该字段处），
+   * **不新造 `active`** —— `listPropagationRules(tenantId, true)` 的过滤判据本来就是
+   * `status === "PUBLISHED"`（两套仓储同口径），新造一个字段就是第二套真相源。
+   * 这里只收 `DRAFT|PUBLISHED` 两态：`RETIRED`（下线）是治理动作、不是一个勾选框该干的事。
+   */
+  app.patch("/a/v1/sim/propagation-rules/:id/status", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const id = (req.params as { id: string }).id;
+    const cur = await repos.sim.getPropagationRule(c.tenantId, id); // 租户闸同 PUT：读不到即 404
+    if (!cur) throw notFound("propagation rule");
+    const body = parseBody(z.object({ status: z.enum(["DRAFT", "PUBLISHED"]) }), req.body);
+    const r = { ...cur, status: body.status };
+    await repos.sim.putPropagationRule(r);
+    return r;
+  });
+  /**
    * WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（纯只读）。
    * 改扰动/关传导边/改派生公式**按下去之前**看到波及面：四桶（recompute 传导 /
    * rederive 派生 / rejudge 规则重判 / rewire 结构改写）+ 逐跳计数 + unresolved 诚实位

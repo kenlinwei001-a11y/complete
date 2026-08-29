@@ -47,6 +47,25 @@ export const PropagationRuleSchema = z.object({
   targetStateVar: z.string(),
   coefficient: z.number(), // 配置·可编辑（竞品 0.85/0.7 在这）
   delayTicks: z.number().int().min(0), // 配置·可编辑（竞品"延迟1个时序"=1）
+  /**
+   * **这条边在业务上是什么意思**（WO-ONTOLOGY-EDGE-EDIT）——屏上「影响说明」那一列的落点。
+   *
+   * ── 为什么必须新加一个字段，而不是复用已有的 ────────────────────────────────
+   * 候选只有 `key`，而 `key` 已经被占死了两个用途：它是**稳定键**（本字段上方原文
+   * 「可被 OPERATION_CATALOG/审计引用」），且是 `listPropagationRules` 的**排序键**
+   * （`repo/memory.ts` 按 `a.key < b.key` 排、`repo/pg.ts` 按 `doc->>'key'` 排）。
+   * 把人话说明塞进 `key`，等于让「改一句解释文案」变成「改一个被审计引用的稳定标识 + 列表跳行」——
+   * 两件毫不相干的事被同一个字节承载，正是本仓反复治的那个病。故新加。
+   *
+   * ⚠ **不入 migration**：`sim_propagation_rule` 是 `doc JSONB` 通用列
+   * （`migrations/026_sim_sessions.sql` 建表处），整条 `PropagationRule` 序列化进 `doc`，
+   * 加标量字段无需改表结构 —— 这与「新增表需同时改 migrations」那条约定不冲突，
+   * 那条管的是**新表**，本字段落在既有表的既有 JSONB 列里。
+   *
+   * `null`（缺省）= 没写说明 ⇒ 与本字段引入前**逐字节相同**（additive · 可回退 R9）；
+   * 屏上显 `—`，**不拿 `key` 顶替**（顶替就是在编一句作者没写过的解释）。
+   */
+  description: z.string().nullable().default(null),
   combine: z.enum(["sum", "max"]).default("sum"), // 多入边如何累加
   decay: z.object({ window: z.number().int(), den: z.number() }).nullable().default(null), // 复用 risk.ts 衰减，可空
   clamp: z.object({ min: z.number(), max: z.number() }).nullable().default(null),
