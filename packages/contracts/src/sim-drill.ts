@@ -1064,6 +1064,22 @@ export const DrillReportSchema = z.object({
   worldCellsMoved: z.number().int().min(0).default(0),
   /** 分母：本次推进后世界态一共多少格（报「动了 N 格」必须同时给分母，否则那个 N 读不出轻重）。 */
   worldCellsTotal: z.number().int().min(0).default(0),
+  /**
+   * **这批事件改变了多少条结论**（对照世界的卡点清单 vs 真世界的，对称差条数）。
+   *
+   * ⚠ 与 `worldCellsMoved` 是**两个不同的命题**，缺了它就答不了用户真正在问的那句话：
+   * `worldCellsMoved` 度量**波及面**（多少格与对照不同），**不随幅度变** ——
+   * 本单真后端实测：`CAPACITY_LOSS` 的 `lossPct` 从 10 拉到 100（施加幅度 3,486 → 34,865），
+   * `worldCellsMoved` 两次**都是 210**。用它当「我改的这个数有没有用」的判据必然误判。
+   * `findingsChanged` 比的是**结论本身**，所以它才是那句话的答案。
+   *
+   * **0 = 你加的这几件事一条结论都没改变**。这是结论不是故障，屏上必须直说 ——
+   * 不给这个数，用户只能逐字 diff 整屏才发现（COO 实测就是这么发现的），
+   * 而「看起来算了、其实什么都没变」正是本仓点名的那种假绿。
+   */
+  findingsChanged: z.number().int().min(0).default(0),
+  /** 分母：对照世界（不加这批事件）一共扫出多少条结论。 */
+  findingsBaseline: z.number().int().min(0).default(0),
   summary: z.object({
     allFailed: z.boolean(),
     trustworthy: z.boolean(), // 全部结论都 LIVE 才为 true

@@ -74,6 +74,12 @@ export interface DrillOrchestrateInput {
    */
   worldCellsMoved?: number;
   worldCellsTotal?: number;
+  /**
+   * 「这批事件改变了多少条结论 / 对照世界一共多少条」（WO-EVENTS-WRITE-STATE）。
+   * 同上：只有调用方跑得出对照推进并扫得出对照清单，编排器只原样透传。
+   */
+  findingsChanged?: number;
+  findingsBaseline?: number;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -715,6 +721,8 @@ export async function orchestrateDrill(input: DrillOrchestrateInput): Promise<Dr
     appliedStateEffects: [...(input.appliedStateEffects ?? [])],
     worldCellsMoved: input.worldCellsMoved ?? 0,
     worldCellsTotal: input.worldCellsTotal ?? 0,
+    findingsChanged: input.findingsChanged ?? 0,
+    findingsBaseline: input.findingsBaseline ?? 0,
     solverRuns,
     summary: {
       allFailed,

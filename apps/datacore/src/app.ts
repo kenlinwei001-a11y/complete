@@ -3122,8 +3122,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      */
     let worldCellsMoved = 0;
     let worldCellsTotal = 0;
+    /** 对照世界（**不带**这批冲击）的终态 —— 下面第 ③ 步还要拿它算「结论变了几条」。 */
+    let controlState: TickState | null = null;
     if (ephemeralPerturbations.length > 0) {
       const control = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false, ephemeralPerturbations: [] });
+      controlState = control.state;
       const ids = new Set([...Object.keys(advanced.state), ...Object.keys(control.state)]);
       for (const oid of ids) {
         const a = advanced.state[oid] ?? {};
@@ -3150,6 +3153,42 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       typeOf,
       stateVarLabel: (sv) => stateVarDisplayName(sv) ?? sv,
     });
+    /**
+     * 🔴 **「你改的那个数，到底改没改变结论」—— 屏上唯一直接回答这句话的数**
+     * （WO-EVENTS-WRITE-STATE · COO 那个 `+15 → +100` 对照实验要的就是它）。
+     *
+     * ── 为什么 `worldCellsMoved` 答不了这一问 ────────────────────────────────────
+     * 它比的是「加了这批事件 vs 不加」，度量的是**波及面**（有多少格与对照不同），
+     * **不随幅度变**：本单真后端实测 11 类事件逐条跑「小参数 / 大参数」两遍 ——
+     * `CAPACITY_LOSS` 的 `lossPct` 从 10 拉到 100（施加幅度 3,486 → 34,865），
+     * `worldCellsMoved` **两次都是 210**，一格不差。拿它当「改数有没有用」的判据，
+     * 就是本仓那条老病：**「我用 X 当作 Y 的证据，而 X 并不度量 Y」**。
+     *
+     * ⇒ 这里直接比**结论本身**：拿对照世界的终态再扫一遍卡点，与真世界的那份逐条比。
+     * `findingsChanged` = 两份清单的对称差（新增 + 消失 + 严重度变了的）条数。
+     * **0 = 你加的这几件事没有改变任何一条结论** —— 这是结论，不是故障，屏上必须直说；
+     * 不给这个数，用户就只能像 COO 那样逐字 diff 整屏才能发现，而那正是本单的病灶。
+     *
+     * ⚠ 只比传导引擎扫出来的那些（`solverKey === "propagation"`）：求解器那一路读的是
+     * 本体真值、不读世界态，把它算进来会让这个数**恒不为 0**，等于把判据做废。
+     */
+    let findingsChanged = 0;
+    let findingsBaseline = 0;
+    if (controlState !== null) {
+      const controlFindings = scanDrillFindings({
+        state: controlState,
+        rules: activeRules,
+        typeOf,
+        stateVarLabel: (sv) => stateVarDisplayName(sv) ?? sv,
+      });
+      findingsBaseline = controlFindings.length;
+      // 严重度一起进指纹：同一格从「脆弱点 91 分」变成「卡点 97 分」也是结论变了
+      const sig = (f: DrillFinding): string => `${f.key}|${f.severity}`;
+      const before = new Set(controlFindings.map(sig));
+      const after = new Set(scanFindings.map(sig));
+      for (const k of after) if (!before.has(k)) findingsChanged++;
+      for (const k of before) if (!after.has(k)) findingsChanged++;
+    }
     /**
      * 落点没打上的那些 ⇒ **一等的「未能评估」**，不是从清单里消失（PRD §4.6）。
      * 「这次冲击没施加上」与「施加了但没影响」是两个不同的屏上状态：
@@ -3213,6 +3252,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       })),
       worldCellsMoved,
       worldCellsTotal,
+      findingsChanged,
+      findingsBaseline,
       // 规模闸：**不传也有闸**（编排器落契约默认，绝不回全量）。
       // 实测依据：1,567 对象 × 36 变量的世界一次演习产出 5,593 条 / 4.66MB，
       // 与本仓 metric-series 栽过的那个 O(N×世界规模) 是同一个形状。
