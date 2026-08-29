@@ -1155,7 +1155,9 @@ export default function DecisionConsoleView() {
                         : `这个地方现在排了 ${mine.length} 份待批的动作（${mine.map((x) => x.m.name).join(" · ")}）—— 它们是同一个瓶颈的几条互斥打法，批之前先撤掉不要的那几份。`}
                       <br />
                       <a className={styles.confirmLink} href="/admin/actions" data-testid="dc-confirm-goto">
-                        去审批队列看这{mine.length === 1 ? "份" : `${mine.length} 份`} →
+                        {/* 「这」与数字之间要留空格：JSX 里相邻表达式不会自动补空白，
+                            上一版渲染成「看这2 份」（真浏览器实测），中文里数字贴着「这」很扎眼。 */}
+                        去审批队列看这{mine.length === 1 ? "份" : ` ${mine.length} 份`} →
                       </a>
                     </div>
                   );
@@ -1258,7 +1260,15 @@ function TemplateRow({
   };
 
   /**
-   * WO-CONSOLE-BLOCKERS · **加得进去、算不出来**（真服务真浏览器实测复现，非转述）。
+   * WO-CONSOLE-BLOCKERS · **加得进去、算不出来**（**2026-08-29** 真服务真浏览器实测复现，非转述）。
+   *
+   * 复验方式（三条命令，任何人可自己跑一遍）：
+   *   ① 起真后端：`PORT=4011 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 \
+   *      CREDENTIAL_KEY=<64hex> node apps/datacore/dist/server.js`
+   *   ② 看这 11 个 kind 各自读不读主体：
+   *      `curl -s -H 'X-Debug-User: demo:admin:admin' localhost:4011/a/v1/sim/drill/catalog`
+   *      → 数 `specs[].routes[].args[].from === "eventTarget"`，实测 11 个里 3 个有、8 个没有。
+   *   ③ 契约那一行：`packages/contracts/src/sim-drill.ts` 的 `DrillEventSchema.targetObjectId`。
    *
    * **今天的行为 X**：这一支原写作 `scope === null || !subjectRead || pickedId.length > 0` ——
    *   `!subjectRead` 一旦成立就**短路放行**，于是主体一个没选也能按〔加进去〕。
