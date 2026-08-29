@@ -96,7 +96,7 @@ properties: 22 条（源数据集的 19 条 + 我加的 3 条）        ← 那 
 - `本体建模`：只能编辑**草案**，而草案只能从**原始数据集**派生。已发布的 `Base` 不在草案里。
 - 属性编辑器本身**就没有 unit 这个字段**（下拉 6 个值全是 dataType）。
 
-**追一层到 API（不是为了补屏上没有的，是为了确认这不是我没找到）**：
+**追一层到 API**：
 
 ```
 apps/datacore/src/app.ts
@@ -106,19 +106,41 @@ apps/datacore/src/app.ts
   ── 没有 PUT / PATCH / DELETE ──
 ```
 
-**⇒ 对象类型一旦发布，在任何一层都改不了。** 只能 `deprecate`（停用）或 `retire`（下线）。
+> ### ⚠️ 我在这里差点下了一个**错误且会歪掉排期**的结论 —— 必须写出来
+>
+> 看到「没有 PUT/PATCH/DELETE」，我本来写的是「**对象类型一旦发布，在任何一层都改不了**」。
+> **这个结论是错的。** 按铁律 0.5「grep 的结果不是结论，必须再追一层」，我去**实打**了那个 POST：
+>
+> ```
+> POST /a/v1/ontology/object-types  {key:"Base", displayName:"生产基地(改口径)", properties:[… gwh.unit:"吨" …]}
+>   → 201 ；类型总数仍为 98（没有变成 99）；回读 Base.displayName = "生产基地(改口径)"、gwh.unit = "吨"
+> ```
+>
+> **这个 POST 是 upsert，不是 create。** 改口径、改显示名、改单位 —— **写端一直都在。**
+> 若照我原来的结论派单，会把「**接一条线（把已有字段接进属性编辑器）**」错报成
+> 「**造一道门（新增整套本体编辑写端）**」——正是 CLAUDE.md 记过的那次「把工作量错报、直接歪掉排期」。
+
+**所以动作 3 的真实结论是：能力在 API 层已经具备，屏上零入口。** 具体卡点有四个：
+
+1. **UI 一个入口都没有**：属性编辑器只有 `propKey / sourceField / dataType` 三样，
+   **`unit` / `displayName` / `description` 这三个字段前端从来不发**。运营只能用 curl。
+2. **单位受一本硬编码字典约束**：`apps/datacore/src/ontology-governance.ts:55`
+   `UNIT_DICTIONARY = ["万套","GWh","%","吨","天","元","万元","件","秒"]` —— **只有 9 个**。
+   实测填 `MWh` 直接 `400 未知单位 'MWh'`。**要加一个单位＝改代码发版**，且屏上看不到这本字典。
+3. **upsert 是整体替换，不是打补丁**：body 里漏写一条属性，那条属性**静默消失**。
+   19 条属性要改 1 个单位，得把 19 条完整回传。**没有并发校验/版本号**，两人同时改后写覆盖先写。
+4. **`retire` 之后无法复活**（单向），所以「删了重建」这条绕法对有物化数据的类型仍然是拆房子——
+   `Base` 有 13 个物化对象、被 13 条结构边与 6 个求解器引用。
 
 **金丝雀（报否定结论必须给）**：同一份路由清单里**确实**抓到了 `POST /a/v1/ontology/domains`、
-`POST /a/v1/ontology/interfaces/:key/publish` 等 40 条 `/a/v1/ontology*` 路由 ⇒ 抽取方法是好的，
-`PUT/PATCH/DELETE object-types` 是**真没有**。
+`POST /a/v1/ontology/interfaces/:key/publish` 等 40 条 `/a/v1/ontology*` 路由 ⇒ 抽取方法是好的。
 
-**⇒ 动作 3 判定：做不到，且无绕道。**
-唯一「绕」法是：`retire` 掉 `Base`，再造一个 `Base_v2` —— 而 `Base` 有 **13 个物化对象**、
-被 13 条结构边和 6 个求解器引用。**这不是绕道，这是拆房子。**
+**⇒ 动作 3 判定：屏上做不到（0 步）；绕道要手写整包 JSON 打 curl，且单位被 9 项字典锁死。**
 
-> **这条最能说明问题**：881 条属性里那 24 个 `unit`、798 个 `displayName`、104 个 `description`，
-> **全部来自种子代码，一个都不是运营在屏上填出来的，也永远改不了。**
-> 换句话说：**本体的语义层（单位/口径/显示名/描述）今天 100% 是开发资产，0% 是运营资产。**
+> **这条最能说明问题，但要说准**：881 条属性里那 24 个 `unit`、798 个 `displayName`、104 个 `description`，
+> **全部来自种子代码，没有一个是运营在屏上填出来的** —— 不是因为改不了，
+> **是因为屏上没给入口**。本体的语义层今天 100% 是开发资产、0% 是运营资产，
+> 而**把它变成运营资产所需要的写端，已经写好了在那儿闲着**。
 
 ---
 
@@ -343,7 +365,7 @@ apps/datacore/src/app.ts
 | 1 | **本体关系** | **半可用（结构边）／demo 级（因果边）** | 结构边：建 ✅(201) · 停用 ✅ · 下线 ✅ · 查引用 ✅ **但改不了**（无 rename/改基数/加描述）。<br>因果边：建 ✅ **但 42 行表体 0 input / 0 button** ⇒ 停不了、改不了、删不了；重建同 key **不覆盖而是叠加**，`combine:sum` 下系数翻倍（0.9+0.3=1.2）。**服务端只有 GET/POST。** |
 | 2 | **本体切片** | **半可用** | 有 `＋新建切片` 与 `看子图/编辑`；**编辑亲手验过**：`maxNodes 200 → 137`，`PUT /a/v1/ontology/slices/:key` → **`201`**，回读确认 137（§2.2）。<br>**但：① 删不掉**（`DELETE …/slices/:key` → **404**；金丝雀 `DELETE /a/v1/view-configs/geo-map` → **200** ⇒ DELETE 方法本身好用，是这条路由真没有）；**② 改了不留痕**——改完 `version` 仍是 **1**，没有版本递增、没有改动人、没有 diff。<br>99 条里屏上自报「多跳业务切片 4 条 · 单类型覆盖切片 95 条」。 |
 | 3 | **切片库** | **demo 级** | **两边集合交集 = 0（亲手比对）**：注册表 `GET /a/v1/ontology/slices` **99** 条（`aop_scenario_chain`/`coverage_*`），派生库 `GET /a/v1/slices/library` **61** 条（intra 7 + cross 54，全是 `biz.*`）。**同一个「切片」词在导航里指两个不相干、不互通的集合**，且没有任何一页能看到这件事。 |
-| 4 | **建模与图谱** | **demo 级** | 建模：**唯一入口是「从已有原始数据集派生」，无空白建模**；属性只能设 4 个字段，**无单位/显示名/描述/必填/枚举/默认值**；发布后**无 PUT/PATCH/DELETE**。图谱：见第 7 行。 |
+| 4 | **建模与图谱** | **demo 级** | 建模：**唯一入口是「从已有原始数据集派生」，无空白建模**；属性编辑器只有 `propKey/sourceField/dataType`，**无单位/显示名/描述/必填/枚举/默认值**；`displayName` 改不掉。<br>⚠ **但写端是在的**：`POST /a/v1/ontology/object-types` 实测是 **upsert**，能改 `unit`/`displayName`（201，类型数不增）⇒ 判为 demo 级是因为**屏上零入口**，不是因为后端没能力。图谱：见第 7 行。 |
 | 5 | **实体合并** | **demo 级** | 扫描器可用（Process 出候选，金丝雀成立），但**候选组 = 130 个真实不同的工序**，界面给 130 个「以 X 为准」按钮，**没有排除/否决/拆组/调阈值**。唯一能点的动作是制造事故。 |
 | 6 | **边界治理** | **只读报告（作为治理台是 demo 级，作为影响面报告是交付级）** | **0 按钮 0 输入**；页面自述「改值＝改代码」。且它管的是 3 张业务常数表，**不是**「哪些数据进本体」。 |
 | 7 | **图谱体系** | **demo 级** | 8 个视角（`collapsed:true` 折叠组）共用 `OntologyGraphView` 一套渲染，靠 `graphOptions` 区分。<br>**8 张全能渲染**（订正派单「只画出 5 张」），但**两张的核心承诺在真数据下是空的**：<br>· **`graph-mvp`**：节点 fill 分布与 `graph-all` **逐项相同**、`dasharray=0` ⇒ 承诺的「实色高亮 + ⊕ 虚线缺口节点」**一个没画**。根因：`mvpOverlay` 被渲染器消费（8 处），但 `n.mvpGap` **全仓只有 `mocks/fixtures.ts` 生产（3 条）、datacore 零产出** ⇒ 禁 mock（= 部署态）时恒 false。〔金丝雀：同法找 `mvpOverlay` 命中 14 次〕<br>· **`graph-source`**：**118 个节点全是 `var(--muted2)` 同一个灰** ⇒「按源系统着色」渲染成一张纯灰图。<br>· 8 张图**图例完全相同**，屏上没有任何东西说明「这张和上张差在哪」。<br>图谱**只能看不能改**：没有一个图谱页能建/改/删节点或边。 |
@@ -372,11 +394,15 @@ apps/datacore/src/app.ts
 > 第 3、4、5 条正是本仓铁律 0.6 反复警告的形态：**一条写在最容易被信的地方的错误病因，比没有这条更危险**——照原文去修会修错方向。
 > 这也是为什么派单模板要求「**我给的 file:line 与状态是线索不是结论**」：五条线索里 **2 条数字错、2 条病因错、1 条现象未复现**。
 
-- **我自己在这次评审里判错过 3 次**（都已订正、留在正文里）：
+- **我自己在这次评审里判错过 4 次**（都已订正、留在正文里）：
   ① 判「AI 建议草案点了没反应」——实为模态渲染在 `main` 之外；
   ② 判「草案刷新即丢」——实为编辑器在页面顶部而我只看了尾部；
-  ③ 判「`publish-requests` 前端零命中」——实为 grep 结果被 `head_limit` 截断。
-  **三次都是「我用 X 当作 Y 的证据，而 X 并不度量 Y」**，正是本仓铁律 0.5/0.6 反复警告的形态。
+  ③ 判「`publish-requests` 前端零命中」——实为 grep 结果被 `head_limit` 截断；
+  ④ **最严重的一次**：判「**对象类型一旦发布在任何一层都改不了**」——
+     实测 `POST object-types` 是 **upsert，改得了**。
+     **这一条若不订正，会把「接一条线」错报成「造一道门」，直接歪掉排期**（§1 动作 3 已详录）。
+  **四次都是「我用 X 当作 Y 的证据，而 X 并不度量 Y」**（④ 是「我用『路由表里没有 PUT』当作『改不了』的证据」），
+  正是本仓铁律 0.5/0.6 反复警告的形态。**其中只有 ④ 是靠亲手打那个 POST 才翻出来的 —— grep 一次都看不见。**
 
 ---
 
@@ -389,8 +415,9 @@ apps/datacore/src/app.ts
 | # | 运营要做 | 今天 | 证据 |
 |---|---|---|---|
 | A1 | **从空白新建一个对象类型** | **做不了**。唯一入口是从已有 `rds_*` 数据集派生 ⇒ 没有对应数据源的概念（模具、工装、班次模板…）进不了本体 | `/admin/modeling` 全页 1 个按钮；模态只列 87 个 `rds_*` |
-| A2 | **给属性设单位 / 显示名 / 描述** | **做不了**，字段在 UI 里不存在 | 属性下拉仅 6 个 dataType；发布后的 `Mold` 属性只有 5 个键 |
-| A3 | **改类型的显示名** | **做不了**，`displayName` 无输入框 | `Mold.displayName` 卡死为 `mes_base_master` |
+| A2 | **给属性设单位 / 显示名 / 描述** | **屏上做不了**（字段在 UI 里不存在）；**API 能做**（upsert 实测 201）⇒ **缺的是入口不是能力** | 属性编辑器仅 `propKey/sourceField/dataType`；`POST object-types` 实测可写 `unit/displayName` |
+| A2b | **加一个字典里没有的单位（如 MWh / kg / 小时）** | **做不了**，改代码发版 | `ontology-governance.ts:55` `UNIT_DICTIONARY` 硬编码 9 项；填 MWh → `400 未知单位` |
+| A3 | **改类型的显示名** | **屏上做不了**（无输入框）；API 可 upsert | `Mold.displayName` 卡死为 `mes_base_master` |
 | A4 | **给结构边/因果边写「影响说明」** | **做不了**，两个建边表单都没有描述字段 | `POST link-types` 载荷仅 4 键 |
 | A5 | **建共享属性类型（语义类型）** | **做不了**，全系统 0 个实例，无建立入口 | 派单线索，本次未见任何入口 |
 
@@ -399,7 +426,7 @@ apps/datacore/src/app.ts
 | # | 运营要做 | 今天 | 证据 |
 |---|---|---|---|
 | **B1** | **改 / 停 / 删一条因果边** | **做不了**，且**重建会叠加不会覆盖** ⇒ 静默算错 | 42 行表体 0 input/0 button；服务端仅 GET/POST；`propagation.ts:559/614` 逐条累加 |
-| **B2** | **改一个已发布类型的任何东西** | **做不了**，只能 deprecate/retire | `app.ts` 无 `PUT/PATCH/DELETE object-types` |
+| **B2** | **改一个已发布类型的任何东西** | **屏上做不了**；API 的 `POST object-types` 是 **upsert，实测能改**（201，类型数不增）⇒ **接线活，不是造门活** | 实测改 `Base.displayName` + `gwh.unit` 成功；但**整体替换**（漏传即丢属性）、**无版本/并发校验** |
 | **B3** | **删一条切片** | **做不了** | `DELETE /a/v1/ontology/slices/:key` → **404**（金丝雀 `DELETE /a/v1/view-configs/geo-map` → **200**）。全仓 `app.delete(` **8 条**（agentcore 5 + datacore 3），**无一是 slice / object-type / link-type / propagation-rule** |
 | **B8** | **改切片后能看出「谁改的、改了啥」** | **做不了** | `PUT` 成功后 `version` 仍为 **1**，无版本递增 / 无改动人 / 无 diff |
 | **B4** | **在合并里排除误判成员 / 否决候选 / 调阈值** | **做不了**，只能全合或不合 | Process 组 130 个对象、130 个「以 X 为准」 |
@@ -446,9 +473,12 @@ apps/datacore/src/app.ts
 
 ### 第二档 · 不补则**本体建不起来**
 
-3. **A1 空白新建对象类型**（不依赖数据集）
-4. **A2/A3 属性与类型的语义字段**（单位/显示名/描述/必填/枚举）——今天语义层 100% 是开发资产
-5. **B2 已发布类型可编辑**（哪怕只是「改语义字段不改结构」这一档）
+3. **A2/A3/B2 把已有写端接进屏幕** —— **本档性价比最高，是接线不是造门**：
+   `POST /a/v1/ontology/object-types` 已是 upsert 且实测能改 `unit`/`displayName`/`description`，
+   只需在属性编辑器上加三个输入框 + 一个「已发布类型也能编辑」的入口。
+   ⚠ 接的时候必须同时解决 upsert 的**整体替换**语义（前端要回传完整属性表，否则静默丢属性）。
+4. **A1 空白新建对象类型**（不依赖数据集）
+5. **A2b 单位字典可扩展**（今天 9 项硬编码；至少要让它可配、且屏上看得见）
 6. **A4 边的「影响说明」**（参考截图那一列，也是 C2 的前提）
 
 ### 第三档 · 建得起来但**维护不下去**
@@ -554,6 +584,26 @@ PY
 
 # §3 B3 全仓 delete 路由（应为 8 条，无一是本体元素）
 grep -rn 'app\.delete(' apps/*/src/
+
+# §1 动作 3 最关键的一条：POST object-types 是 upsert（不是 create）——屏上没入口而已
+python3 - <<'PY'
+import json,urllib.request
+H={'content-type':'application/json','X-Debug-User':'demo:admin:admin|planner|catalog_admin'}
+B='http://127.0.0.1:4501'
+g=lambda p: json.load(urllib.request.urlopen(urllib.request.Request(B+p,headers=H)))
+base=[t for t in g('/a/v1/ontology/object-types') if t['key']=='Base'][0]
+props=[dict(p) for p in base['properties']]
+for p in props:
+    if p['propKey']=='gwh': p['unit']='吨'          # 'MWh' 会 400：不在 9 项字典里
+body={'key':'Base','displayName':'生产基地(改口径)','domain':base.get('domain'),'properties':props}
+r=urllib.request.urlopen(urllib.request.Request(B+'/a/v1/ontology/object-types',
+    data=json.dumps(body).encode(),method='POST',headers=H))
+print('POST ->',r.status)                                    # 201
+t=g('/a/v1/ontology/object-types'); print('总数',len(t))      # 仍 98 ⇒ upsert 不是 create
+b=[x for x in t if x['key']=='Base'][0]
+print(b['displayName'], [p for p in b['properties'] if p['propKey']=='gwh'])
+PY
+grep -n 'UNIT_DICTIONARY' apps/datacore/src/ontology-governance.ts   # :55 硬编码 9 项
 ```
 
 > ⚠️ **复跑注意**：本机同时有多个 agent 各跑一套 datacore，实测**内存竞争会把新起的 datacore SIGKILL（exit 137）**。
