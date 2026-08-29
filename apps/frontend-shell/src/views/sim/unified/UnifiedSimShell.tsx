@@ -820,7 +820,14 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
                   setDrawerOpen(true);
                   say(`展开抽屉 ${inspector?.card.stateVar ?? ""}`);
                 }}
-                onAction={(a) => say(`动作 ${a}（本单不落写操作）`)}
+                /* WO-SIM-TICK-GATE：改前这里是 ``say(`动作 ${a}（本单不落写操作）`)``——
+                   屏底日志会印出 `动作 pin:supplyRisk（本单不落写操作）`：
+                   「本单」是**工单黑话**、`pin:supplyRisk` 是**机器动作键**，两样都不该出现在用户屏上
+                   （R-UI-4 同族：实现细节不上屏）。两个按钮今天已按 `InspectorPane` 头注的裁决
+                   改成**禁用占位 + title 说明**，故这条回调今天一次都不会被调到；
+                   保留它是为了将来真接线时不必改挂载契约。真接线时这里要写的是
+                   **用户看得懂的那句话**，不是动作键。 */
+                onAction={(a) => say(`动作 ${a}`)}
               />
               {/* ⚠ 这里两侧各加了**一块不同的功能**（收编时的真冲突，不是二选一）：
                   WO-SIM-SESSION-WIRE 的「我改这一格会波及谁」与 EdgeActivePanel 的

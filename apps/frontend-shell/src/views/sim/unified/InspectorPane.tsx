@@ -19,11 +19,43 @@ function fmt(n: number): string {
 }
 const NUM = (n: number | null): string => (n === null ? "—" : fmt(n));
 
+/**
+ * ══ WO-SIM-TICK-GATE（2026-08-29）· 「钉到对照 / 追这条链」：把假旋钮换成诚实的缺席 ══
+ *
+ * ── 今天的行为是 X（实测，另一角色当场抓的）────────────────────────────────────
+ * 两个按钮**可点、点了零请求**，屏底日志多一行：
+ *     `动作 pin:supplyRisk（本单不落写操作）`
+ * 三处同时在骗人：
+ *  ① **「本单」是工单黑话** —— 用户不知道什么是"单"，这是开发内部的排期语汇上了用户屏；
+ *  ② **`pin:supplyRisk` 是机器动作键**，不是人话（且把裸键 `supplyRisk` 直接印出来，
+ *     而这一屏别处都走 `stateVarLabel` 显中文名）；
+ *  ③ **按钮看起来是活的** —— 本仓最恨的那种「假旋钮」：点了有反馈、实际什么都没发生，
+ *     用户会以为自己钉成功了，回头去对照视图里找那一项，找不到。
+ *
+ * ── 应该是 Y ─────────────────────────────────────────────────────────────────
+ * 沿用本屏**已有**的裁决（`unifiedModes.ts` 的「未接线为什么占位禁用而不是隐藏」）：
+ * **留在屏上、禁用、`title` 用人话写明它将来做什么 + 今天为什么点不动**。
+ * 于是「这功能还没有」与「我点了但没生效」在屏上分得开 —— 这正是本单要修的那类混淆。
+ *
+ * ⛔ 不许改成「隐藏」：隐藏 = 假装没这功能（第 ① 单原文）。
+ * ⛔ 不许保留可点态再在日志里道歉：那还是假旋钮，只是把谎话挪了个地方。
+ */
+
+/** 未接线动作的**唯一**文案出处（组件不在渲染处拼字符串，两处一漂就各说各话）。 */
+export const PENDING_ACTION_TEXT = {
+  pin: "把这个指标钉进对照区，和别的指标并排看走势。这个功能还没有做好，所以现在点不动 —— 不是你点错了。",
+  trace: "顺着这个指标往上游一路追，看它是被哪几条因果边推成今天这样的。这个功能还没有做好，所以现在点不动 —— 不是你点错了。",
+} as const;
+
 export interface InspectorPaneProps {
   view: InspectorView | null;
   /** 底部抽屉展开（右栏「展开」进抽屉）。 */
   onExpand: () => void;
-  /** 动作按钮：本单**不实现写操作**，只把意图记进日志（写操作属第 ③ 张单）。 */
+  /**
+   * 动作回调。**今天只有「展开抽屉」是活的**；钉到对照 / 追这条链两个按钮已按上面的裁决
+   * 改成禁用占位，**不再调用本回调** —— 故本 props 现在只服务于将来接线，
+   * 保留是为了让接线那一单不必改挂载契约。
+   */
   onAction: (action: string) => void;
 }
 
@@ -171,10 +203,24 @@ export function InspectorPane({ view, onExpand, onAction }: InspectorPaneProps):
         <button type="button" data-testid="usim-act-expand" onClick={onExpand}>
           展开到底部抽屉
         </button>
-        <button type="button" data-testid="usim-act-pin" onClick={() => onAction(`pin:${c.stateVar}`)}>
+        {/* 两个未接线动作：留档 + 禁用 + `title` 写明为什么点不动（判据见文件头注）。
+            `data-pending` 是机器可读位，让门/测试能咬住"它今天是禁用的"这件事。 */}
+        <button
+          type="button"
+          data-testid="usim-act-pin"
+          data-pending="1"
+          disabled
+          title={PENDING_ACTION_TEXT.pin}
+        >
           钉到对照
         </button>
-        <button type="button" data-testid="usim-act-trace" onClick={() => onAction(`trace:${c.stateVar}`)}>
+        <button
+          type="button"
+          data-testid="usim-act-trace"
+          data-pending="1"
+          disabled
+          title={PENDING_ACTION_TEXT.trace}
+        >
           追这条链
         </button>
       </div>
