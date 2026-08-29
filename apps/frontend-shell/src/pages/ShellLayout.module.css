@@ -5,6 +5,50 @@
   height: 100vh;
 }
 
+/* WO-CONSOLE-BLOCKERS · **壳级 skip-link**（UX 定案 LOOP7 §12.4／§12.6③）。
+   X（改之前）：整个壳里第一个可焦点元素是顶栏的搜索框，键盘用户要穿过
+     顶栏 + 左导航（本轮又多一条）才够得到主内容。页内那颗「跳到〔算一下〕」
+     实测排在第 80 站 —— 等它出现时 79 站已经按完了，它治不了这一段。
+   Y：文档第 1 个可聚焦元素就是本链接，一次 Tab 即可跳过整片壳导航。
+
+   ⚠ 与 `DecisionConsoleView.module.css` 的 `.skip:focus` 有**一处刻意的不同**：
+     那一对用 `position: static` + `grid-column: 1 / -1` 回到网格流里，
+     因为它的宿主 `.page` 是**行数自适应**的网格；而本壳是
+     `grid-template-rows: 58px 1fr` + `height: 100vh` 的**定高两行**网格 ——
+     插回流里会挤出一条隐式行、把顶栏和内容区一起顶变形（聚焦那一刻整屏跳动）。
+     故本处聚焦时改用 `position: fixed`：**视觉结果与那一对逐项相同**
+     （屏外 → 实心强调底 + 白字 chip），只是不占网格位。
+   ⚠ 底色与字色**成对写在下面那一块、且那一块不带 font-size** —— 与
+     `.btn.primary` / `DecisionConsoleView .skip:focus` 同一种写法，理由不是排版而是
+     判据的可判性：`check-text-legibility` 判据 A 对每个 `color` 取「该主题所有表面令牌里
+     最差的那一个」当底，`color: var(--on-accent)` 与 `font-size` 同块会被当成
+     「白字压页面底」判红。这一对已登记在判据 C 的 `SPECIAL_PAIRS`
+     （`--on-accent × --accent-solid`）并达标，真浏览器实测见交付报告。 */
+.skipToMain {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  font-size: 13px;
+}
+.skipToMain:focus {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  z-index: 200;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  border: 0;
+  text-decoration: none;
+}
+
 .topbar {
   grid-column: 1 / 3;
   display: flex;
