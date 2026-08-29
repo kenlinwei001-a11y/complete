@@ -679,3 +679,300 @@ LOOP5 实测「45 次 Tab 都进不了内容区、200 次到不了〔应用方�
 > 真正贵的不在这一屏：它今天没有导航入口（属产品决策），而它一旦有了入口，
 > 用户点两下就会走到 `/v/sim-optimize` 那 263 个 8px 元素和那个假英文菜单上去。
 > 排期时这两件事应该绑在一起，不该只发决策台。**
+
+---
+
+# §12 · 决策台的导航落位 —— UX 定案（我定，可直接落地）
+
+> **状态**：本节是**裁决**，不是建议。协调方把这四件事划归我的职权，我按实测定完，
+> 每条都给了「为什么是这个而不是别的」。dev 照 §12.6 的条目形态改即可。
+>
+> **取证**：datacore `:4777` + agentcore `:4778` + 前端 `:5173`（全真后端，`VITE_MOCK` 未设），
+> `demo/admin/demo1234`。探针 `n1-three-surfaces.mjs`，截图 `S50` `S51`。
+
+## §12.0 ⚠ 先订正派给我的三条前提 —— 两条不成立，其中一条会让 dev 做一件做不到的事
+
+派单里写：「**105 条导航 + 71 条场景卡 + 全局搜索，三处皆无**（金丝雀 `/v/dash` 三处皆在）」。
+我逐处实测（铁律 0.5：给我的 file:line 与数字是线索不是结论）：
+
+| 面 | 派单说 | 我实测 | 判定 |
+|---|---|---|---|
+| **左导航** | 105 条，决策台无 | 左导航 `<aside a>` 实测 **71 条**；`href` 含 `decision-console` 的 **0 条**；金丝雀 `/v/dash` **在**（label「经营驾驶舱」） | **结论成立**，数字口径不同（71 ≠ 105） |
+| **场景卡** | 71 条，决策台无 | `/b/v1/scenarios` 实测 **20 条**（`S01`–`S20`，`total:20`），启动器页也渲染出 **20 个 S 编号**；含「决策台」**否** | **结论成立，数字错了**：「71」是**左导航链接数**，被记到了场景卡这一格 —— 两个数对调了 |
+| **全局搜索** | 决策台无，金丝雀 `/v/dash` **在** | 顶栏 `GlobalSearch` → `GET /a/v1/objects/search` → `governance.search` → 跳 `/o/:typeKey/:objectKey`。实测搜「**经营驾驶舱**」**0 条命中**、搜「决策台」**0 条命中**、金丝雀「常州」**10 条**（`Base/changzhou` · `Line/LINE-WS-changzhou-assembly` …） | **⛔ 前提不成立**：**金丝雀在这一面根本不在**。它只索引**本体对象**，结构上不可能命中任何页面 |
+
+**第三条要紧，因为照原话派会让 dev 去做一件做不到的事。**
+「给决策台一个全局搜索命中词」在今天的实现里没有落点 —— 除非先让 `governance.search` 索引视图，
+那是另一个量级的活（且会让对象搜索里混进页面，是另一个 IA 问题）。
+
+**真正的第三面是 ⌘K 命令面板**（`CommandPalette`），而它的索引**就是场景卡**
+（同一个 `fetchScenarioCards()` → `/b/v1/scenarios`，按 `name / triggerQuestion / sNo / summary` 过滤）。
+实测：⌘K 搜「决策」→ 1 条（`S14 外协决策`）、搜「订单」→ 4 条、搜「经营驾驶舱」→ **无匹配场景**。
+
+> ⇒ **「三处入口」实为两套机制**：① `NAV_GROUPS`（前端）② 场景卡注册表（agentcore
+> `scenarios-catalog.ts`，同时喂启动器页和 ⌘K）。第三处不是入口，是**对象检索**。
+> 派两张单就够，不是三张。
+
+---
+
+## §12.1 决定一 · 位置：**顶层无标题组，紧跟「经营驾驶舱」之后**
+
+```
+⚡ 场景启动器            ← 硬编码 NavLink（ShellLayout.tsx:849）
+经营驾驶舱               ← { title: null } 组第 1 项
+事件影响与对策  ★新增      ← { title: null } 组第 2 项
+▾ 规划与平衡 …
+▾ 推演 …                 ← 不动
+```
+
+**不放「推演」组。四条理由，每条都可复验：**
+
+**① 它和推演组里的东西不是同类 —— 输入语言就不同。**
+决策台的输入是 `/a/v1/sim/drill/catalog` 下发的 **11 个业务事件**（订单改交期 / 设备故障 /
+物料到货延迟…），主体是订单号、基地、产线、型号；
+`sim-unified` 与沙盘的输入是**状态变量**（`loadIndex` / `demandPressure` 那一族）。
+输出也不同：决策台给**钱 + 客户 + 卡点 + 四条方案**，`sim-unified` 给**指标态势 / 传导识别 /
+损失归因 / 方案寻优**四个「面」。
+并列摆进同一组，等于让 COO 在两种输入语言之间做选择 —— 而他不知道有两种。
+
+**② 分组会被折叠，而折叠状态按用户持久化 —— 放进去等于给同一个病留第二种形态。**
+
+这一条我**在真浏览器里跑了一遍**（`n2-collapse.mjs`，截图 `S52`），不是读代码推的：
+
+| 步骤 | 可见导航链接 | `统一推演控制台` | `产能推演` | `经营驾驶舱` | `⚡场景启动器`（金丝雀） |
+|---|---:|:---:|:---:|:---:|:---:|
+| 折叠前 | 63 / 71 | ✅ | ✅ | ✅ | ✅ |
+| 点一下组头「▾ 推演」 | **57** | **❌** | **❌** | ✅ | ✅ |
+| **刷新页面** | **57** | **❌** | **❌** | **✅** | ✅ |
+
+刷新后 `localStorage` 里留下 `{"nav.collapse.推演":"1"}`
+（`NavGroup` 的 `storeKey = \`nav.collapse.${title}\``，初值读 `localStorage`）。
+
+⇒ **一个 COO 只要手滑折叠过一次「推演」，那 6 条对他就永久消失** —— 刷新、重开浏览器都回不来。
+我们正在修的病就是「COO 打不开自己的决策台」，**不能用一个会复发的位置去修它**。
+而 `{ title: null }` 组**没有标题、不渲染 `NavGroup`、没有折叠钮**
+（`ShellLayout.tsx:596` `g.title === null ? g.links : <NavGroup …>`）——
+上表第 3 行 `经营驾驶舱` 全程 ✅ 就是它的实测证据。
+
+**③ 不用去动仓主已裁决的「主入口」。**
+仓主原话是「合并壳置于本组之首做主入口」—— 那是对**推演组**说的。
+决策台不进那个组，就不存在「两个主入口先点哪个」的问题，也不需要我去改仓主的裁决。
+（这正是协调方问的「要不要动 `sim-unified` 的位置」的答案：**不动，一行都不动。**）
+
+**④ 不用新增任何记号 —— 而放进推演组就必须新增一条。**
+判据⑨ 只在**组内存在** `consolidatedWhen` 成员时才触发
+（`check-nav-group-coverage.mjs`：`if (hollow.length === 0) continue;`）。
+「推演」组有 6 个 `consolidatedWhen: "sim.sandbox"` 成员 ⇒ 加进去**必须**登记
+`GROUP_CONSOLIDATION_EXEMPT["推演::decision-console"]`；
+`{ title: null }` 组**零个** `consolidatedWhen` 成员 ⇒ 判据⑨ 不触发，**一条记号都不用加**。
+这条同时接上**禁令 3**（不许再长记号）。
+
+> ### ⛔ 对派单那条实现约束的订正 —— 照原话做会把门弄红
+> 派单写「若组内有收编承诺，按判据⑨ 登记 `GROUP_CONSOLIDATION_EXEMPT`」。
+> **按我定的位置，绝对不要加这条豁免。**
+> `groupExemptUsed` 由「遍历各组各项、按 `groupExemptKey(g.title, it.key)` 记账」填充
+> （`check-nav-group-coverage.mjs` 判据⑨ 那段）。若登记了 `"推演::decision-console"`
+> 而条目其实在 `{title:null}` 组里，这个键**永远不会被标记为已用** ⇒ 判据⑨ 的
+> **陈旧豁免**分支报红：「豁免不许陈旧：… 在 NAV_GROUPS 里找不到对应的『组::项』」。
+> **加了反而红。**
+
+**⑤ 顺带解决 §7 那条 B-外的隐忧。** 决策台是今天全仓唯一「能拿出去」的屏
+（§10.1 实测：`/v/sim-optimize` 263 个 `<11px` 元素 + 假英文菜单 + `<div>` 主按钮全部复现）。
+把它放在导航第 3 站、永远可见，等于把演示动线的默认落点从最差的那一屏挪到最好的那一屏。
+
+---
+
+## §12.2 决定二 · 名字：**「事件影响与对策」**
+
+**先说为什么否掉「决策台」——不是口味问题，是撞名。**
+
+`decision-play` 这个 route **今天还活着**，它的中文名是「**决策推演**」
+（`ROUTE_NO_NAV` 里逐字：「决策推演不该占导航位，已嵌入各决策点」），
+且仍嵌在订单链 / 链阻滞 / 壳布局三处，`/v/decision-play` 深链也仍可达。
+再叫一个页面「**决策台**」——两个名字差一个字、指两个不同的东西。
+本仓**已经因为同名吃过一次亏**并写进了 `ShellLayout` 的注释：
+
+> 「屏上是：『推演』组里一个『推演沙盘』，『其它』组里另一个『推演沙盘』…
+> **两条同名条目指向两个不同页面，用户不知道点哪个。**」
+
+**⇒ 「决策台」只是我们内部的工作代号，不该上屏。**
+
+**为什么是「事件影响与对策」：**
+
+1. **它和邻居同形。** 现有 label 里读得最顺的那几个都是「名词 + 与 + 名词」或问句形：
+   `订单进展与卡因`（7 字）· `接单可行性` · `规划与平衡`。
+   「事件影响与对策」**正好 7 字，与「订单进展与卡因」逐字同长同形**，
+   在 223px 宽、13px 字号的侧栏里不会截断。
+2. **它说的是页面真正交付的两样东西**：**影响**（区③钱 + 区③b客户 + 区④卡点）与
+   **对策**（区⑤四条路）。屏上那句「加一件或几件事，我算给你看」是**动作**，适合当页内标题；
+   导航 label 命名的是**地方**，不是动作 —— 所以不用「加几件事，看影响」。
+3. **它不含 `推演` / `决策` 两个已被占用的词**，也不含这一页自己列的禁词
+   （`扰动 / 传导 / 落点 / 求解器 / 状态变量`）。
+
+**备选（我不选，写出来供仓主否决）**：
+「出了事怎么办」——最像 COO 会说的话，但在正式演示的侧栏里显得轻佻，且不成词组难做面包屑。
+
+---
+
+## §12.3 决定三 · 三处入口各自怎么办
+
+### （a）左导航 —— **做**，形态见 §12.6
+
+### （b）场景卡 —— **今天不做**，且我不建议现在做
+
+**理由是实测的，不是取舍偏好：**
+
+场景卡不是「一个链接」。点一张卡走 `useScenarioLaunch` → `useQuickLaunch`，它做**三件事**：
+`navigate('/v/<targetView>')` **＋** 提交一个 QOS Query **＋** 展开对话坞看 SSE。
+每张卡还**必须**带 `intentKey`（确定性求解器绑定键）和 `presetContext`
+（`{ targetView, selectedObjects, slotPresets }`，`scenarios-catalog.ts` 里是必填字段）。
+
+而 **`DecisionConsoleView` 一个字都不读这些**：
+
+```
+grep -c "useSessionStore|selectedObjects|presetSlots"  DecisionConsoleView.tsx  →  0
+金丝雀（同一把扫描器，全仓真读 selectedObjects 的视图）→ RiskBoardView · OrderChainView ·
+  QuarterlyRollingView · ProjectSimView · SandboxView 等 5 个文件命中
+```
+
+⇒ 给它做一张场景卡，点下去会：跳到决策台 **＋** 往对话坞里灌一段与本页无关的问答 **＋**
+本页把 `presetContext` 整个忽略、照旧显示一个空的左栏等你手工加事件。
+**一个长得像「问这个问题」、实际不回答那个问题的控件** —— 正是我在 §5 里挑的那类毛病，
+不该由我自己引进来。
+
+**什么时候该补上（写清楚，免得这条被当成"永远不做"）**：
+当决策台开始读 `presetContext.slotPresets` 预填它的事件清单时。那一刻加一张：
+
+| 字段 | 值 |
+|---|---|
+| `sNo` | `S21` |
+| `name` | `事件影响与对策` |
+| `domain` | `风险与齐套`（`VIEW_DOMAIN` 里给 `decision-console` 加这一项） |
+| `view` / `targetView` | `decision-console` |
+| `triggerQuestion` | `常州装配线停 30 天，我损失多少、有几条路？` |
+| `intentKey` | 新增一个绑到 `sim/drill` 的确定性键 |
+
+### （c）全局搜索 —— **不做，因为做不到**（依据见 §12.0）
+
+顶栏那个框只索引本体对象。**别给 dev 派这条。**
+`⌘K` 命令面板会随 (b) **自动**获得命中，无需单独做 —— 它和场景卡是同一份数据。
+
+> **所以这批实际只有一张前端单**（左导航 + skip-link），场景卡那张等 `presetContext` 接通再说。
+
+---
+
+## §12.4 决定四 · skip-link：**同批改，只改位置；不做导航折叠**
+
+§2 实测：〔算一下〕在**第 80 次 Tab**，而 skip-link 自己也在**第 80 站**——
+它要帮人跳过的 79 站，等它出现时已经按完了。
+
+**改法：把 skip-link 提到壳的第一个可聚焦元素。**
+`ShellLayout.tsx:814` 是 `<div className={styles.shell}>`，紧接着 `:815` 是 `<header className={styles.topbar}>`。
+在 814 与 815 之间插一个「跳到主内容」，target = `<main>`（`:869`，需补 `id` + `tabIndex={-1}`）。
+这样它是**文档第 1 个 Tab 站**，且**一次修好全部页面**，不是只修决策台。
+
+**为什么不用「导航分组默认折叠」来解决**：那是用**藏东西**换 Tab 位。
+我们刚在 §12.1② 论证了「折叠状态会持久化 ⇒ 条目对某些用户永远消失」——
+拿一个可访问性问题去换一个更严重的可发现性问题，方向是反的。
+
+**决策台自己那颗「跳到〔算一下〕」保留**：壳的 skip-link 把你送进 `<main>`，
+页内这颗再把你送到主动作，两级各司其职，不重复。
+
+---
+
+## §12.5 ⚠ 三个会咬人的实现陷阱（给 dev，都已实测）
+
+**陷阱 1 · 必须用 `kind: "route"`，用 `kind: "view"` 会做出一个幽灵条目。**
+`kind:"view"` 的项从 `workspace.navigation` 取 label，**表里有、后端不下发就永远不渲染**——
+`ShellLayout` 顶部注释记着 `decision-play` 就是这么变成幽灵的。实测：
+
+```
+GET /a/v1/me/workspace → navigation 51 条（金丝雀：dash ✅ / sim-optimize ✅ 都在）
+                          含 decision-console → 0 条
+grep -rn "decision-console" apps/datacore/src apps/agentcore/src → 0 命中
+```
+
+⇒ 后端根本不下发这个键，**label 必须在 `NAV_GROUPS` 内联**（同 `sim-unified` 的既有写法）。
+
+**陷阱 2 · 不许给 `feature`。**（派单这条是对的，我复验并给出自己的证据）
+
+```
+DecisionConsoleView.tsx:  grep -c "feature|Guard|entitlement"  → 0
+                          金丝雀 grep -c "import|export"        → 8   ⇒ 扫描器没坏
+对照 UnifiedSimShell.tsx: grep -c "feature|Guard"              → 0   ⇒ 同一形态
+```
+
+页面侧零 Guard ⇒ 填 `feature` 就成了「导航里藏起来、URL 照样进得去」= 把暗发做成假的。
+
+**陷阱 3 · `ROUTE_NO_NAV` 里那条必须删，不是留着。**
+留着 = 陈旧豁免（「这个 route 明明在导航里，却还挂着『刻意不占导航位』」），
+判据④ 会红 —— `sim-unified` 上一轮踩过同一条，注释里写着。
+
+---
+
+## §12.6 可直接落地的条目形态
+
+**改动共 4 处，全在前端，零后端。**
+
+**① `apps/frontend-shell/src/pages/ShellLayout.tsx` · `NAV_GROUPS` 顶层组**
+
+```ts
+{
+  title: null,
+  items: [
+    { kind: "view", key: "dash" },
+    // WO-DECISION-CONSOLE-NAV · 顶层常驻第 2 项（UX 定案 LOOP7 §12.1）。
+    // 为什么在这里而不在「推演」组：① 输入语言不同（业务事件 vs 状态变量）；
+    // ② 分组折叠态按用户持久化在 localStorage，放进去 = 折叠过该组的 COO 永远看不到；
+    // ③ 不动仓主已裁决的 sim-unified 主入口；④ 本组零 consolidatedWhen 成员 ⇒ 判据⑨ 不触发，
+    //    **不要**登记 GROUP_CONSOLIDATION_EXEMPT（登记了反而按陈旧豁免报红）。
+    // 必须 kind:"route" + 内联 label：后端 workspace.navigation 不下发此键（实测 51 条里 0 条），
+    //   用 kind:"view" 会变成幽灵条目（同 decision-play 的老账）。
+    // 不给 feature：页面侧零 Guard（实测 grep=0·金丝雀 import|export=8），填了就是假暗发。
+    { kind: "route", key: "decision-console", label: "事件影响与对策" },
+  ],
+},
+```
+
+**② 同文件 · `ROUTE_NO_NAV`：删掉 `decision-console` 那一条**（整条连注释删除）。
+删除理由写进提交说明：「入口已获批并落顶层组，豁免转为陈旧 ⇒ 判据④ 要求同删」。
+
+**③ 同文件 · skip-link（`:814`／`:869`）**
+
+```tsx
+<div className={styles.shell}>
+  {/* WO-DECISION-CONSOLE-NAV · 壳级 skip-link：必须是文档第 1 个可聚焦元素。
+      LOOP7 §2 实测：页内那颗排在第 80 站，等它出现时 79 站已经按完了。 */}
+  <a className={styles.skipToMain} href="#main-content">跳到主内容</a>
+  <header className={styles.topbar}>
+  …
+  <main className={styles.content} id="main-content" tabIndex={-1}>
+```
+
+`.skipToMain` 照搬 `DecisionConsoleView.module.css` 里 `.skip` / `.skip:focus` 的既有写法
+（屏外 → 聚焦时 `position: static` + 实心底白字）。**那一对实测 6.12:1，达标**，别另写一套。
+
+**④ `GROUP_CONSOLIDATION_EXEMPT`：不动**（一条都不加，理由见 §12.1④ 与那段订正框）。
+
+### 落地后的复验（dev 自己跑，全部不碰 datacore vitest）
+
+```bash
+pnpm nav-group-coverage:check                  # 判据①/④/⑨ 全过
+cd apps/frontend-shell && npx vitest run \
+  test/f61.admin-nav-groups.test.tsx \
+  test/sim-nav-group.seam.test.tsx \
+  test/nav-ia-decision-play.seam.test.tsx      # 三份读 ROUTE_NO_NAV 的
+```
+
+> **金丝雀已验**：`grep -rn "decision-console" apps/frontend-shell/test scripts` = **0 命中**，
+> 而同一把扫描器对 `decision-play` = **57 命中** ⇒ 扫描器没坏，
+> **今天没有任何测试或门脚本写死了「决策台不在导航里」**，这批改动不会撞上既有断言。
+
+### 真机验收判据（不许只看测试绿）
+
+起真后端 + 真前端，登录 `demo/admin/demo1234`：
+
+1. 左导航第 **3** 条链接（`⚡ 场景启动器` → `经营驾驶舱` → `事件影响与对策`）可见且可点，落 `/v/decision-console`。
+2. 把「推演」组折叠再刷新（`localStorage['nav.collapse.推演'] = "1"`）—— 第 3 条**仍在**。
+3. 从页顶按 **1 次** Tab 落在「跳到主内容」，Enter 后焦点在 `<main>`；再按 Tab 应落在页内那颗「跳到〔算一下〕」。
+4. `/v/decision-console` 深链、`⌘K`、顶栏对象搜索三者行为**不变**（本批不碰后两者）。
