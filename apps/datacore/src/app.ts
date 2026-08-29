@@ -69,7 +69,7 @@ import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-S
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
 import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
-import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
+import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
 import type { PairWeightReport } from "./sim/pair-weights.js";
 // 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
 // `buildCadenceGates` / `scopePropagationGraph` 刻意**不在本文件 import**：它们只该出现在装配处里。
@@ -106,7 +106,11 @@ import {
   DRILL_EVENT_SPECS,
   DRILL_UNIVERSAL_ROUTES,
   assertDrillRoutingTableComplete,
+  // WO-MATERIAL-REPRICE：事件 → 世界态落点的**唯一解释器**（落点写在契约规格表里，不是这里的 if）。
+  drillStateEffectFor,
   ticksForDays,
+  type DrillEvent,
+  type DrillFinding,
 } from "@platform/contracts";
 import { scanDrillFindings, layerOfStateVars } from "./sim/drill-scan.js";
 import { orchestrateDrill } from "./sim/drill-orchestrator.js";
@@ -2144,7 +2148,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simAdvanceTicks = async (
     c: AuthCtx,
     s: SimSession,
-    opts: { rules: PropagationRule[]; n: number; persist: boolean },
+    opts: { rules: PropagationRule[]; n: number; persist: boolean; ephemeralPerturbations?: readonly Perturbation[] },
   ) => {
     const { rules: propRules, n, persist } = opts;
     let state = await simCurrent(c, s);
@@ -2155,7 +2159,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // ── 扰动接入传导（WO-P2 · PRD-UPGRADE-decision-sandbox-v2 §3.1.3）───────────────────
     // 顺序 = `listPerturbations` 的 `startTick↑ → 建单先后`（repo.ts:362）。**这里绝不重排**：
     // `delta`/`scale` 不可交换（`(10+2)×1.5=18 ≠ 10×1.5+2=17`），顺序即语义。
-    const sessionPerturbations = await repos.sim.listPerturbations(c.tenantId, s.id);
+    //
+    // ── WO-MATERIAL-REPRICE · `ephemeralPerturbations`（**只走演习这一条路**）────────────
+    // 演习事件（`DrillEvent`）声明了 `stateEffect` 时会解释出一条**临时扰动**：它**不入库**，
+    // 只活在这一次 `persist:false` 的推进里。**排在会话已有扰动之后**，理由同上一段 ——
+    // 顺序即语义：会话扰动是这个世界既有的假设，演习问的是「在这些假设之上再发生一件事」。
+    // ⚠ `persist:true` 的路径（真 tick）**一条都不许传** —— 临时扰动落盘就成了没人记得建过的
+    // 世界线污染，而它在 `listPerturbations` 里查不到，用户看到数变了却查不出为什么。
+    if (persist && (opts.ephemeralPerturbations?.length ?? 0) > 0) {
+      throw new Error("simAdvanceTicks: ephemeralPerturbations 只允许在 persist:false 的推进里使用（落盘会造成查不出来源的世界线污染）");
+    }
+    const sessionPerturbations = [
+      ...(await repos.sim.listPerturbations(c.tenantId, s.id)),
+      ...(opts.ephemeralPerturbations ?? []),
+    ];
     /**
      * 「落地前值」= 该扰动 `startTick` 的**前一 tick** 快照上的目标值（`startTick===0` 取 baseSnapshot）。
      * 只有 `set` 与 `scale(magnitude===0)` 到期时用得上 —— 这两种模式不可解析求逆；
@@ -2232,6 +2249,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let appliedPerturbations: string[] = [];
     /** 本次推进中真正产出过贡献的规则 key（对照跑用它区分"关了没影响"与"这条边本来就没动"）。 */
     const firedKeys = new Set<string>();
+    /**
+     * 本次推进中**真的被写进世界态**的扰动 id（判据取引擎自己打的 `perturbation:` trace 行）。
+     *
+     * ⚠ 与 `appliedPerturbations` **不是同一件事，别混**：那个是「本 tick 处于生效期」，
+     * 一条相位错开、`entersAt` 恒 false、**一格都没写**的扰动**照样会出现在里面**。
+     * 本单实测吃过这一跤：回执报 `applied:true`，而三个量级的读数逐字节相同。
+     * 「在生效期」不度量「打上了」—— 要证明打上了，只能看引擎写没写。
+     */
+    const perturbationWrites = new Set<string>();
     for (let i = 0; i < n; i++) {
       const beforeTick = curTick; // 当前 tick t（结算 pending arriveTick===t）
       if (engineTick) {
@@ -2244,6 +2270,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         unresolvedWeights = out.unresolvedWeights;
         appliedPerturbations = out.appliedPerturbations;
         for (const k of firedPropagationRuleKeys(out.trace, out.pending)) firedKeys.add(k);
+        for (const t of out.trace) {
+          if (t.ruleKey.startsWith(PERTURBATION_TRACE_PREFIX)) perturbationWrites.add(t.ruleKey.slice(PERTURBATION_TRACE_PREFIX.length));
+        }
         // 无传导规则的世界：本 tick 若没有任何扰动动作，trace 保持 `null`（与本单引入前逐字节相同·可回退）。
         trace = propagate || out.trace.length > 0 ? out.trace : null;
         curTick += 1;
@@ -2262,6 +2291,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       // 必须让调用方看见 —— 安静地少一条边，正是本仓「静默错答」要根治的形态。
       pairWeighting: { report: pairWeightReport, unresolved: unresolvedWeights },
       appliedPerturbations, sessionPerturbationCount: sessionPerturbations.length,
+      perturbationWrites: [...perturbationWrites].sort(),
       firedRuleKeys: [...firedKeys].sort(),
     };
   };
@@ -2974,10 +3004,93 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       forkedFromStateId = null;
     }
 
-    // ── ② 传导引擎：推 ceil(horizonDays / tickDays) 拍（**不落盘**）──────────
+    // 本次要推几拍 —— ①b 判「生效日在不在窗口内」要用它，故提到冲击解释之前算。
     const ticks = ticksForDays(body.horizonDays, s.tickDays ?? 1);
+    // ── ①b 事件 → 世界态冲击（WO-MATERIAL-REPRICE · G-DRILL-3 的另一半）────────
+    /**
+     * **今天的行为是 X，应该是 Y**（起真 datacore 4091 · seed 42 · demo 租户实测，原文照录）：
+     * · **X**：事件只被路由到求解器，**一格世界态都不动** —— 于是「碳酸锂涨 15%」
+     *   进得来、打不到任何一格上，屏上的卡点与没输入这件事时逐字节相同。
+     * · **Y**：一类事件若在传导图上有**唯一正确的落点**，由规格表 `stateEffect` 声明，
+     *   这里**解释**成一条临时扰动喂进传导核（`drillStateEffectFor` 是全平台唯一实现）。
+     *
+     * ⛔ **不入库**：这批扰动只活在下面这一次 `persist:false` 的推进里。演习是只读的
+     *    （R4-sim ①），落盘就是「跑一次演习把世界推歪了」，而且在 `listPerturbations`
+     *    里查不到来源。
+     * ⛔ **落点类型不符 ⇒ 不施加，记一条「未能评估」**：`Material.priceShock` 的传导边是
+     *    `viaLinkKey: material_used_by_model`，打到别的类型上首跳恒不触发 ——
+     *    表现与「链断了」一模一样。**静默照打是最坏的处置**（用户看到 0 影响，以为料价不影响毛利）。
+     */
+    const ephemeralPerturbations: Perturbation[] = [];
+    /** 扰动 id → 它是哪个事件带来的（回执要按事件报，别从 id 里反解字符串）。 */
+    const effectEventKind = new Map<string, DrillEvent["kind"]>();
+    const stateEffectMisses: { kind: string; targetObjectId: string; reason: string }[] = [];
+    for (const [i, ev] of body.events.entries()) {
+      const eff = drillStateEffectFor(ev);
+      if (eff === null) continue; // 这类事件本来就不动世界态（10/11 类如此），不是缺口
+      const actualType = (await repos.objects.get(c.tenantId, ev.targetObjectId))?.type ?? null;
+      if (actualType !== eff.declaredObjectType) {
+        stateEffectMisses.push({
+          kind: ev.kind,
+          targetObjectId: ev.targetObjectId,
+          reason:
+            actualType === null
+              ? `对象 ${ev.targetObjectId} 在本租户不存在 —— ${ev.kind} 的落点必须是 ${eff.declaredObjectType} 对象`
+              : `对象 ${ev.targetObjectId} 是 ${actualType}，而 ${ev.kind} 的落点声明为 ${eff.declaredObjectType}；` +
+                `打错类型 ⇒ 传导边匹配不上 ⇒ 首跳恒不触发（表现与「链断了」一模一样）`,
+        });
+        continue;
+      }
+      /**
+       * 🔴 **`startTick` 必须是 `curTick + 1 + 偏移`，不是 `curTick + 偏移`** —— 差一位就一次都不施加。
+       *
+       * 实测（4091 · seed 42）：先写成 `curTick + 偏移` ⇒ `pctChange` 取
+       * **0.0001 / 15 / 100000 三个量级，748 条传导结论的严重度指纹逐字节相同**
+       * （hash 2819148055 ×3）—— 也就是「接了线、一格都没打上」，而屏上完全看不出来。
+       *
+       * 机制在 `propagation.ts` 的 `entersAt(p, producedTick)`：扰动**只在 enter 那一拍施加一次**
+       * （`propagateTick` 头注：「一次性施加 + 到期反向施加」，每 tick 重施会让 delta 复利）。
+       * 而 `propagateTick` 产出的是 `producedTick = tick + 1`，本循环第一拍的 `producedTick`
+       * 就是 `curTick + 1`。`startTick = curTick` ⇒ `active(curTick)` 与 `active(curTick+1)` 同为真
+       * ⇒ `entersAt` 恒 false ⇒ **永不落地**。
+       *
+       * ⚠ 为什么 `POST /perturbations` 那条路写 `startTick = curTick` 是对的：那条路由**自己**
+       * 先调 `simApplyAtCurrentTick` 施加过一次了，引擎再施加就是加两遍 —— 所以它必须被 `entersAt` 跳过。
+       * 演习这条路**没有**路由侧施加（不落盘、不写世界线），故必须让引擎自己 enter 一次。
+       * 两条路来路不同、相位不同，**照抄另一条的写法就会错**。
+       */
+      const startTick = s.curTick + 1 + Math.max(0, Math.floor(ev.effectiveDay / (s.tickDays ?? 1)));
+      /** 落在本次推进窗口之外 ⇒ 这一拍永远走不到，等于没施加。**据实报缺，不静默**。 */
+      if (startTick > s.curTick + ticks) {
+        stateEffectMisses.push({
+          kind: ev.kind,
+          targetObjectId: ev.targetObjectId,
+          reason:
+            `事件的生效日（第 ${ev.effectiveDay} 天）落在本次推演窗口之外` +
+            `（窗口 ${body.horizonDays} 天 = ${ticks} 拍，tickDays=${s.tickDays ?? 1}）⇒ 这一拍推不到，冲击不会发生`,
+        });
+        continue;
+      }
+      ephemeralPerturbations.push({
+        id: `simpert_drill_${s.id}_${i}`, // 确定性 id（R6：同输入同 id，无随机、无时钟）
+        tenantId: c.tenantId,
+        sessionId: s.id,
+        kind: eff.kind,
+        targetObjectId: eff.targetObjectId,
+        targetStateVar: eff.targetStateVar,
+        startTick,
+        durationTicks: null,
+        magnitude: eff.magnitude,
+        mode: eff.mode,
+        label: `演习临时扰动 · ${ev.kind} ${eff.magnitude > 0 ? "+" : ""}${eff.magnitude}（不入库）`,
+        createdAt: s.createdAt, // 借会话的建单时刻：本对象不落盘，且 R6 禁止在此读时钟
+      });
+      effectEventKind.set(`simpert_drill_${s.id}_${i}`, ev.kind);
+    }
+
+    // ── ② 传导引擎：推 ceil(horizonDays / tickDays) 拍（**不落盘**）──────────
     const activeRules = (await sessionPropRules(c, s)).active;
-    const advanced = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false });
+    const advanced = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false, ephemeralPerturbations });
 
     // ── ③ 卡点扫描（G-DRILL-2）──────────────────────────────────────────────
     const typeOf = new Map<string, string>();
@@ -2992,6 +3105,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       typeOf,
       stateVarLabel: (sv) => stateVarDisplayName(sv) ?? sv,
     });
+    /**
+     * 落点没打上的那些 ⇒ **一等的「未能评估」**，不是从清单里消失（PRD §4.6）。
+     * 「这次冲击没施加上」与「施加了但没影响」是两个不同的屏上状态：
+     * 后者说明料价不重要，前者说明这次演习**什么都没验**。混成一句就是静默错答。
+     */
+    const stateEffectFindings: DrillFinding[] = stateEffectMisses.map((m) => ({
+      key: `state-effect::unapplied::${m.kind}::${m.targetObjectId}`,
+      kind: "未能评估" as const,
+      severity: 0, // 「未能评估」恒 0：它不是一个严重度，是一个空洞
+      where: { objectType: "DrillEvent", objectId: m.targetObjectId, label: `${m.kind}·${m.targetObjectId}` },
+      when: null,
+      why: `本次「${m.kind}」的世界态冲击**未能施加**：${m.reason}。故下面的结论里不含这件事的影响。`,
+      source: { solverKey: "drill-state-effect", dataMode: "EMPTY" as const, provenance: { ...m } },
+      reconciled: null,
+      evidence: m,
+    }));
 
     // ── ④ 求解器编排（G-DRILL-4）—— 真调，不是前端自己算 ────────────────────
     const report = await orchestrateDrill({
@@ -3000,7 +3129,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       tickDays: s.tickDays ?? 1,
       worldId: s.id,
       forkedFromStateId,
-      scanFindings,
+      scanFindings: [...scanFindings, ...stateEffectFindings],
+      /**
+       * 冲击回执 —— `applied` 取自**传导引擎回报的** `advanced.appliedPerturbations`，
+       * 不是「路由这边构造了这条对象所以算打上了」。这两者的区别就是本单栽的那一跤：
+       * 相位差一位时路由照样构造得出对象，而引擎一格都没打，屏上完全看不出来。
+       */
+      appliedStateEffects: ephemeralPerturbations.map((p) => ({
+        eventKind: effectEventKind.get(p.id)!,
+        targetObjectId: p.targetObjectId,
+        targetStateVar: p.targetStateVar,
+        mode: p.mode,
+        magnitude: p.magnitude,
+        startTick: p.startTick,
+        applied: advanced.perturbationWrites.includes(p.id),
+      })),
       // 规模闸：**不传也有闸**（编排器落契约默认，绝不回全量）。
       // 实测依据：1,567 对象 × 36 变量的世界一次演习产出 5,593 条 / 4.66MB，
       // 与本仓 metric-series 栽过的那个 O(N×世界规模) 是同一个形状。

@@ -100,6 +100,8 @@ const OptimizeWhatifView = lazy(() => import("@/views/OptimizeWhatifView"));
 const ProcessInstanceDetailView = lazy(() => import("@/views/process/ProcessInstanceDetailView"));
 // WO-SIM-UNIFIED-SHELL · 统一推演控制台（五区外壳 + 指标卡墙 + 右栏检视 + 底部抽屉）：专用 route，直挂 renderer。
 const UnifiedSimShell = lazy(() => import("@/views/sim/unified/UnifiedSimShell"));
+// WO-DECISION-CONSOLE · 经营决策者版「加几件事，我算给你看」（一页六区 · 唯一一颗〔算一下〕）：专用 route。
+const DecisionConsoleView = lazy(() => import("@/views/sim/DecisionConsoleView"));
 
 setAuthFailureHandler(() => {
   if (!window.location.pathname.startsWith("/login")) {
@@ -156,6 +158,10 @@ export const routes: RouteObject[] = [
       //   **该说法已作废**，仓主已裁决本页为「推演」组主入口，`ROUTE_NO_NAV` 里那条豁免同批删除。
       //   现在的到达路径有两条：左导航「推演」组之首「统一推演控制台」 + 本 route 的深链。
       { path: "v/sim-unified", element: lazyWrap(<UnifiedSimShell />) },
+      // WO-DECISION-CONSOLE · 经营决策者版专用 route（静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
+      // ⚠ **刻意不占导航位**，已登记 `ShellLayout.ROUTE_NO_NAV`：导航信息架构属产品决策，
+      //   本单只拿到「这一页」的逐案批准，没拿到「动导航」的批准 —— 深链先通，入口另议。
+      { path: "v/decision-console", element: lazyWrap(<DecisionConsoleView />) },
       { path: "v/:viewKey", element: <ViewPage /> },
       { path: "tasks/:taskId", element: lazyWrap(<TaskDetailPage />) },
       // 治理增量 §5：对象 360 页（溯源链终点）

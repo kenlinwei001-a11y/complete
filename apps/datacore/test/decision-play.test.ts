@@ -58,7 +58,11 @@ describe("WO-CEO-3 · decision_play 决策推演引擎", () => {
     const bk = after.triggers.find((x) => x.triggerId === "trig-backup-cert")!;
     expect(bk.threshold).toBe(20);
     expect(bk.thresholdSource).toBe("rule.params"); // 证阈值一等可编辑
-    expect(bk.fired).toBe(false); // 14.29 < 20 → 不再 fire（改系数即改触发）
+    // WO-MATERIAL-REPRICE 把 CommodityPriceTrend 从 4 条续到 9 条 ⇒ `licarb_pct_cum`
+    // 由 (末−首)/首 现算，从 **14.29 → 18.45**。断言不变（仍 < 20 ⇒ 不 fire），
+    // 但这个数**必须跟着改**：留着 14.29 就是一条已经不成立的注释，
+    // 下一个人照它去核对会得出「续期没生效」这个恰好相反的结论。
+    expect(bk.fired).toBe(false); // 18.45 < 20 → 不再 fire（改系数即改触发）
   });
 
   it("C6 颗粒铁律①：改 BackupSupplierPool.certWeeks → 缩短认证方案 closesGap 变（方案分从真对象派生）", async () => {

@@ -421,11 +421,35 @@ const BACKUP_SUPPLIER_POOLS = [
 ];
 
 // WO-CEO-2 矿价趋势：碳酸锂逐周上涨（地缘冲突推升 → 上游成本 → 减供/违约）。R6：常数。
+//
+// ── WO-MATERIAL-REPRICE · 续期到覆盖推演窗口（w5–w9，2026-06-29 → 2026-07-27）────────────
+// **今天的行为是 X，应该是 Y**：X = 行情只到 `2026-06-22`（4 条），而演习默认窗口 30 天
+// （`DrillRunRequestSchema.horizonDays` 默认 30）⇒ 窗口后半段**一条行情都没有**，
+// 「碳酸锂涨 15% 会怎样」在时间轴后半段无从对照。Y = 至少覆盖一个默认窗口（+35 天）。
+//
+// ⚠ **两条硬约束，改数前必须逐条核**（本仓「改数据要连断言一起改」那条纪律的落点）：
+// ① **`pctChange` 必须与 `pricePerTon` 自洽**（= 相对上一周的环比）——
+//    既有 4 条实测自洽（88500/84000−1=5.36%≈5.4 …），续的 5 条照同一口径算，不许拍脑袋填。
+// ② **`licarb_pct_cum` 有两个活的消费方，各有一条阈值线**
+//    （`solvers/service.ts` 现算 `(末−首)/首×100`，**首末两条**决定它，中间几条不参与）：
+//      · `trig-backup-cert` 默认阈值 **12** ⇒ 续期后必须仍 **> 12**（否则该触发从 fire 变不 fire）；
+//      · `test/decision-play.test.ts` 的 C3 用例把阈值改写成 **20** 并断言**不 fire**
+//        ⇒ 续期后必须仍 **< 20**。
+//    故末周价的可行区间是 `84000×1.12 = 94,080` 与 `84000×1.20 = 100,800` 之间。
+//    本次末周 **99,500 ⇒ 累计 +18.45%**，两条线都在区间内（12 < 18.45 < 20）。
+//    ⛔ 直线外推到 10 万以上会**同时**踩穿上界 —— 那不是「数据更真实」，是把一个别人的门打红。
+// 叙事：地缘溢价见顶 → 涨幅逐周收窄 → 7 月下旬小幅回落（不是继续直线上涨）。
 const COMMODITY_PRICE_TRENDS = [
   { trendId: "licarb-w1", commodity: "碳酸锂", weekOf: "2026-06-01", pricePerTon: 84000, pctChange: 3.2, source: "SMM", spec: "电池级碳酸锂≥99.5%", currency: "CNY" },
   { trendId: "licarb-w2", commodity: "碳酸锂", weekOf: "2026-06-08", pricePerTon: 88500, pctChange: 5.4, source: "SMM", spec: "电池级碳酸锂≥99.5%", currency: "CNY" },
   { trendId: "licarb-w3", commodity: "碳酸锂", weekOf: "2026-06-15", pricePerTon: 92800, pctChange: 4.9, source: "SMM", spec: "电池级碳酸锂≥99.5%", currency: "CNY" },
   { trendId: "licarb-w4", commodity: "碳酸锂", weekOf: "2026-06-22", pricePerTon: 96000, pctChange: 3.4, source: "SMM", spec: "电池级碳酸锂≥99.5%", currency: "CNY" },
+  // ── 以下 5 条为 WO-MATERIAL-REPRICE 续期（涨幅收窄 → 见顶 → 小幅回落）──
+  { trendId: "licarb-w5", commodity: "碳酸锂", weekOf: "2026-06-29", pricePerTon: 98400, pctChange: 2.5, source: "SMM", spec: "电池级碳酸锂≥99.5%", currency: "CNY" },
+  { trendId: "licarb-w6", commodity: "碳酸锂", weekOf: "2026-07-06", pricePerTon: 99700, pctChange: 1.3, source: "SMM", spec: "电池级碳酸锂≥99.5%", currency: "CNY" },
+  { trendId: "licarb-w7", commodity: "碳酸锂", weekOf: "2026-07-13", pricePerTon: 100200, pctChange: 0.5, source: "SMM", spec: "电池级碳酸锂≥99.5%", currency: "CNY" },
+  { trendId: "licarb-w8", commodity: "碳酸锂", weekOf: "2026-07-20", pricePerTon: 100000, pctChange: -0.2, source: "SMM", spec: "电池级碳酸锂≥99.5%", currency: "CNY" },
+  { trendId: "licarb-w9", commodity: "碳酸锂", weekOf: "2026-07-27", pricePerTon: 99500, pctChange: -0.5, source: "SMM", spec: "电池级碳酸锂≥99.5%", currency: "CNY" },
 ];
 
 // WO-CEO-2 决策缺陷：因果链终点（前瞻缺失/条款缺失·可归的最终根）。

@@ -1,0 +1,727 @@
+/*
+ * WO-DECISION-CONSOLE · 经营决策者版「推演与对策」
+ *
+ * 令牌全部取自 `src/styles/tokens.css` 的**在册**令牌（`check-css-token-defined.mjs` 在守）。
+ * 三条硬线，逐条对着派单写的：
+ *  · **最小字号 12px**，一个字都不许更小 —— 门 `check-text-legibility` 的判据
+ *    `required(S,w)=max(3.0, 72/(S×…))` 下，10px 中文要 7.2:1，而本调色板里
+ *    让 `--muted2` 到 7.2 会比二级还亮（层级反转）⇒ 10px 在这套色里无解。
+ *  · 文字色一律用 `-txt` 族（`--danger-txt` / `--warn-txt` / `--ok-txt` / `--accent-txt`）；
+ *    `--danger` / `--amber` / `--ok` 只当填充与描边。
+ *  · 主按钮压 `--accent-solid`（白字 ≥6.05），**不是** `--accent`（白字实测 3.20:1）。
+ */
+
+.page {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--txt);
+  min-height: 100%;
+}
+/* 跳到主动作 —— 平时不占一个像素，Tab 到才现形。
+   本页左栏有 11 条事件模板 × 2 个可聚焦控件，不给这条路，键盘用户要按 100+ 次才够得到
+   〔算一下〕（实测 107 次）。这是 WAI-ARIA 的标准跳转链接，不是把 DOM 顺序拧成和视觉不一致。 */
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  font-size: 13px;
+}
+/* ⚠ 白字与实心底**成对**写在同一块、且这一块不带 font-size —— 与 global.css 的
+   `.btn` / `.btn.primary` 同一种写法，理由不是排版而是**判据的可判性**：
+   `check-text-legibility` 判据 A 对每个 `color` 取「该主题所有表面令牌里最差的那一个」
+   当底（门头自陈「偏保守…真实层叠里叠了实心底的情形本门吃不到」），
+   所以 `color:var(--on-accent)` 与 `font-size` 写在同一块会被当成「白字压页面底」判红。
+   这一对本身**已在门的判据 C 里登记**（`SPECIAL_PAIRS: --on-accent × --accent-solid`）并达标，
+   真浏览器实测见交付报告的对比度表。 */
+.skip:focus {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  border: 0;
+  grid-column: 1 / -1;
+}
+@media (max-width: 1100px) {
+  .page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── 左栏 ─────────────────────────────────────────────────────────────── */
+/* ⚠ 高度上限要减掉三样：顶栏（≈57px）· 壳内容区的 padding-bottom（80px，给底部对话坞让位）
+   · 本列自己的 top 偏移。不减 ⇒〔算一下〕会被对话坞盖住（实测过一次，截图里按钮只露半截）。 */
+.left {
+  position: sticky;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100vh - 190px);
+}
+.leftScroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 4px;
+}
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.zoneTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--txt);
+  margin: 0 0 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.zoneHint {
+  font-size: 12px;
+  color: var(--muted2);
+  font-weight: 400;
+}
+
+/* ── 区① 事件模板 ────────────────────────────────────────────────────── */
+/* 整行就是那一颗按钮（一行一个焦点位，见 tsx 里的说明）。 */
+.tplRow {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2);
+  color: var(--txt);
+  text-align: left;
+}
+.tplRow:hover {
+  border-color: var(--accent);
+}
+.tplRow + .tplRow {
+  margin-top: 6px;
+}
+/* ⚠ 必须显式清掉浏览器默认按钮面：global.css 的 `button` 只重置了 font/color/cursor，
+   **没有**清 background/border ⇒ 默认浅灰按钮面上压 --txt（近白字）= 一个字都看不见。
+   这个坑本单实测踩到过一次（首版截图里 11 行模板全是空白灰条）。 */
+.tplName {
+  flex: 1;
+  font-size: 13px;
+  color: var(--txt);
+  text-align: left;
+}
+/* 纯装饰（aria-hidden），不是控件 —— 行本身才是那颗按钮。 */
+.tplAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  color: var(--accent-txt);
+  font-size: 14px;
+  line-height: 1;
+}
+.tplOpen {
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 6px;
+  background: var(--panel2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fieldLabel {
+  font-size: 12px;
+  color: var(--muted);
+}
+.fieldHint {
+  font-size: 12px;
+  color: var(--muted2);
+}
+.input,
+.select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--bg);
+  color: var(--txt);
+  font-size: 13px;
+  font-family: var(--font-sans);
+}
+.select {
+  max-height: none;
+}
+.searchList {
+  max-height: 190px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.searchItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--txt);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.searchItem:hover,
+.searchItem:focus-visible {
+  background: var(--primary-soft);
+}
+.searchItem[aria-pressed="true"] {
+  background: var(--primary-soft);
+  color: var(--accent-txt);
+}
+.foldToggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--muted2);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.rowInline {
+  display: flex;
+  gap: 8px;
+}
+.rowInline > * {
+  flex: 1;
+}
+
+/* ── 已加的事 ─────────────────────────────────────────────────────────── */
+.added {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.addedItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  background: var(--panel2);
+}
+.addedText {
+  flex: 1;
+  font-size: 12px;
+  color: var(--txt);
+  line-height: 1.5;
+}
+.addedNum {
+  width: 74px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: var(--bg);
+  color: var(--txt);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+.iconBtn {
+  background: transparent;
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  color: var(--danger-txt);
+  font-size: 12px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+.countLine {
+  font-size: 13px;
+  color: var(--txt);
+}
+.greyLine {
+  font-size: 12px;
+  color: var(--muted2);
+  line-height: 1.6;
+}
+
+/* ── 唯一的那颗按钮 ──────────────────────────────────────────────────── */
+.goWrap {
+  padding-top: 4px;
+}
+.go {
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+/* 实心底 + 白字成对，单独一块（理由见上面 .skip:focus 的长注）。 */
+.goSolid {
+  border: 1px solid var(--accent-solid);
+  background: var(--accent-solid);
+  color: var(--on-accent);
+}
+.go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── 区② 算的时候 ────────────────────────────────────────────────────── */
+.computing {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 40px 16px;
+  align-items: center;
+}
+.computingText {
+  font-size: 16px;
+  color: var(--txt);
+}
+.bar {
+  width: min(420px, 100%);
+  height: 6px;
+  border-radius: 99px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+.barFill {
+  height: 100%;
+  background: var(--accent-solid);
+  animation: slide 1.4s linear infinite;
+  width: 40%;
+}
+@keyframes slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+/* ── 区③ 钱 ──────────────────────────────────────────────────────────── */
+.moneyHead {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.bigNum {
+  font-size: 42px;
+  line-height: 1.15;
+  font-weight: 700;
+  color: var(--txt);
+  font-family: var(--font-sans);
+}
+.bigUnit {
+  font-size: 16px;
+  color: var(--muted);
+  margin-left: 6px;
+  font-weight: 400;
+}
+.bigCaption {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.moneyRows {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.moneyRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+}
+.moneyLabel {
+  min-width: 132px;
+  color: var(--muted);
+}
+.split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.splitCell {
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2);
+}
+.splitVal {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--txt);
+}
+.splitLabel {
+  font-size: 12px;
+  color: var(--muted2);
+  margin-top: 2px;
+}
+
+/* ── 诚实位三态 ──────────────────────────────────────────────────────── */
+.est {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  margin-left: 3px;
+  border: 1px solid var(--amber);
+  border-radius: 999px;
+  color: var(--amber-txt);
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.7;
+  vertical-align: super;
+}
+.absent {
+  color: var(--muted2);
+  text-decoration: line-through;
+  text-decoration-color: var(--danger);
+  font-size: 13px;
+}
+.absentWhy {
+  color: var(--danger-txt);
+  font-size: 12px;
+  margin-left: 6px;
+}
+.stale {
+  opacity: 0.42;
+  filter: grayscale(0.85);
+}
+.staleBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  color: var(--amber-txt);
+  font-size: 13px;
+  background: transparent;
+}
+
+/* ── 区③b 客户与订单 ────────────────────────────────────────────────── */
+.tableWrap {
+  overflow-x: auto;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line2);
+  white-space: nowrap;
+}
+.table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--txt);
+  white-space: nowrap;
+}
+.num {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+.flagBad {
+  color: var(--danger-txt);
+}
+.flagWarn {
+  color: var(--warn-txt);
+}
+.segBar {
+  display: flex;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line2);
+  margin: 8px 0 4px;
+}
+/* 条子里不写字（见 tsx 里的说明：字压在半透色块上暗色皮实测 4.58:1，
+   而那三个数下面那行已经逐个写清楚了）⇒ 这里只剩几何。 */
+.segPiece {
+  height: 100%;
+}
+.segDone {
+  background: rgba(76, 144, 240, 0.55);
+}
+.segWip {
+  background: rgba(232, 181, 74, 0.55);
+}
+.segOpen {
+  background: rgba(98, 190, 119, 0.55);
+}
+
+/* ── 区④ 卡点 ────────────────────────────────────────────────────────── */
+.twoCol {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 14px;
+}
+@media (max-width: 860px) {
+  .twoCol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.colHead {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--txt);
+  margin-bottom: 7px;
+}
+.impRow {
+  width: 100%;
+  text-align: left;
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2);
+  color: var(--txt);
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.55;
+}
+.impRow + .impRow {
+  margin-top: 6px;
+}
+.impRow:hover {
+  border-color: var(--accent);
+}
+.impRow[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--primary-soft);
+}
+.impPlain {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.impPlain + .impPlain {
+  margin-top: 6px;
+}
+.impWays {
+  color: var(--accent-txt);
+  font-size: 12px;
+}
+.timeline {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.tlRow {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12px;
+  padding: 3px 0;
+  line-height: 1.55;
+}
+.tlDay {
+  min-width: 62px;
+  color: var(--accent-txt);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ── 区⑤ 四栏 ────────────────────────────────────────────────────────── */
+.plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+.planCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--panel2);
+}
+.planCard.doNothing {
+  border: 3px double var(--warn-txt);
+}
+.planName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--txt);
+}
+.planDims {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.planDim {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.planDimK {
+  color: var(--muted2);
+}
+.planDimV {
+  color: var(--txt);
+  font-family: var(--font-mono);
+}
+.planList {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+  border-top: 1px solid var(--line);
+  padding-top: 7px;
+}
+.planFoot {
+  margin-top: auto;
+  padding-top: 8px;
+}
+.sortBar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted2);
+  margin-bottom: 9px;
+}
+.sortBtn {
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line2);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.sortBtn[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent-txt);
+  background: var(--primary-soft);
+}
+
+/* ── 确认条 / 页脚 ──────────────────────────────────────────────────── */
+.confirm {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  color: var(--ok-txt);
+  font-size: 13px;
+}
+.footer {
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+  font-size: 12px;
+  color: var(--muted2);
+}
+.footer.sys {
+  color: var(--amber-txt);
+}
+.footerBtn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.drawer {
+  margin-top: 9px;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  background: var(--popover-surface);
+  box-shadow: var(--popover-shadow);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.drawerItem {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--txt);
+}
+.raw {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.err {
+  color: var(--danger-txt);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ── 区⑥ 这次算的时候做了什么（可披露的演算过程）───────────────────────── */
+.traceBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 6px;
+}
+.traceBlock {
+  border-top: 1px solid var(--line);
+  padding-top: 9px;
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted2);
+}
+.ok {
+  color: var(--ok-txt);
+}
