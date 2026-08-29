@@ -49,17 +49,18 @@ export const PENDING_ACTION_TEXT = {
 
 export interface InspectorPaneProps {
   view: InspectorView | null;
-  /** 底部抽屉展开（右栏「展开」进抽屉）。 */
+  /** 底部抽屉展开（右栏「展开」进抽屉）—— **今天右栏唯一活的动作**。 */
   onExpand: () => void;
-  /**
-   * 动作回调。**今天只有「展开抽屉」是活的**；钉到对照 / 追这条链两个按钮已按上面的裁决
-   * 改成禁用占位，**不再调用本回调** —— 故本 props 现在只服务于将来接线，
-   * 保留是为了让接线那一单不必改挂载契约。
-   */
-  onAction: (action: string) => void;
 }
 
-export function InspectorPane({ view, onExpand, onAction }: InspectorPaneProps): JSX.Element {
+/**
+ * ⛔ **刻意不留 `onAction` 这个 props**（改前有，且宿主真传了一个只写日志的实现）。
+ * 两个按钮改成禁用占位之后它**一次都不会被调到** —— 留着就是一条谁也不调的回调：
+ * 类型系统看得见、lint 会报未使用、而它证明不了任何功能存在
+ * （本仓「只有 test 引用 = 已排练，不是已实现」的同族形态）。
+ * 将来真接线时，连同那时要发的请求一起加回来即可 —— 那才是它第一次有意义。
+ */
+export function InspectorPane({ view, onExpand }: InspectorPaneProps): JSX.Element {
   if (view === null) {
     return (
       <div data-testid="usim-inspector-empty" className={styles.calibre}>

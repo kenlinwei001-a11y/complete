@@ -814,20 +814,18 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
             </main>
 
             <aside className={styles.col} data-testid="usim-right">
+              {/* WO-SIM-TICK-GATE：改前这里还给 InspectorPane 传了一个
+                  onAction 回调，它把动作键原样写进屏底日志 —— 印出来是
+                  「动作 pin:supplyRisk（本单不落写操作）」：「本单」是工单黑话、
+                  「pin:supplyRisk」是机器动作键，两样都不该上用户屏。
+                  「钉到对照 / 追这条链」已按 InspectorPane 头注的裁决改成禁用占位 + title 说明，
+                  那条回调随之一次都不会被调到 ⇒ 连同 props 一起删掉，不留谁也不调的回调。 */}
               <InspectorPane
                 view={inspector}
                 onExpand={() => {
                   setDrawerOpen(true);
                   say(`展开抽屉 ${inspector?.card.stateVar ?? ""}`);
                 }}
-                /* WO-SIM-TICK-GATE：改前这里是 ``say(`动作 ${a}（本单不落写操作）`)``——
-                   屏底日志会印出 `动作 pin:supplyRisk（本单不落写操作）`：
-                   「本单」是**工单黑话**、`pin:supplyRisk` 是**机器动作键**，两样都不该出现在用户屏上
-                   （R-UI-4 同族：实现细节不上屏）。两个按钮今天已按 `InspectorPane` 头注的裁决
-                   改成**禁用占位 + title 说明**，故这条回调今天一次都不会被调到；
-                   保留它是为了将来真接线时不必改挂载契约。真接线时这里要写的是
-                   **用户看得懂的那句话**，不是动作键。 */
-                onAction={(a) => say(`动作 ${a}`)}
               />
               {/* ⚠ 这里两侧各加了**一块不同的功能**（收编时的真冲突，不是二选一）：
                   WO-SIM-SESSION-WIRE 的「我改这一格会波及谁」与 EdgeActivePanel 的
