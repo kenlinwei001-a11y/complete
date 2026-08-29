@@ -1,6 +1,6 @@
 # LOOP10 · 研究者（向外看：这一行认为什么是必须的）
 
-> 实测 2026-08-29 13:00 · `HEAD d05c803e` · 真后端 `datacore:4351 / agentcore:4352 / vite:5351` · `SEED_DEMO=1` · **非** `VITE_MOCK`
+> 实测 2026-08-29 13:00 · `HEAD d05c803e`（= canonical `3408572c` + 空提交，src 与 canonical 一致）· 真后端 `datacore:4351 / agentcore:4352 / vite:5351` · `SEED_DEMO=1` · **非** `VITE_MOCK` · 真浏览器登录 demo/admin
 
 **核心立场**：这一行按 **EBIT / 服务 / 现金周期** 三个 Δ 给高管排方案[^1][^4]；本仓三块决策屏零金额零日期，**排不出敞口** —— 缺的不是功能，是计价单位。
 
