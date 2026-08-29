@@ -123,10 +123,17 @@ export interface DashboardWidgetDef {
   /**
    * WO-DASH-ONHAND · 卡片**口径副标题**（下发方声明，前端零写死 R14）。
    *
-   * 存在的理由是实测出来的病：修前同屏「AOP 基准营收 601.50 亿」与全簿订单额 507.26 亿
-   * 差 15.7%，而屏上**没有一个字**说明它们不是一个账（一个是年度计划口径、一个是订单簿口径）；
-   * 「在手订单」与下方台账「全部」同样是两个口径顶着同一个词。
+   * 存在的理由是实测出来的病（**2026-08-29 实测**，真后端内存态 `SEED_DEMO=1`）：
+   * 修前同屏「AOP 基准营收 601.50 亿」与全簿订单额 507.26 亿差 15.7%，而屏上**没有一个字**
+   * 说明它们不是一个账（一个是年度计划口径、一个是订单簿口径）；修前「在手订单」与台账
+   * 那个叫「全部」的 chip 同样是两个口径顶着同一个词。
    * 数字本身没错的时候，缺的就是这一行 —— 所以它是 widget 的**一等字段**，不是样式。
+   *
+   * 复验方式（两条命令，带 `X-Debug-User: demo:admin:admin|planner|catalog_admin`）：
+   *  · `POST /a/v1/solvers/cockpit_kpi/invoke {"args":{}}` → `data.aopBaseRev` 实测 **601.5**（亿·计划口径）
+   *  · `POST /a/v1/objects/aggregate {"typeKey":"Order","groupBy":[],"metrics":[{"prop":"value","fn":"sum"}]}`
+   *    → `rows[0].metrics.sum_value` 实测 **50,725,911,442**（= 507.26 亿·订单簿口径）
+   * 比值 0.843；两本账有桥、不是对不上，故**只标注不对齐**（口径判定见 `synthetic/service.ts` 的 `aop-base` widget 头注）。
    */
   caption?: string;
   chartKind?: "line" | "bar" | "trideviation";
