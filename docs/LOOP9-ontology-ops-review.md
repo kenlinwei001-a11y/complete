@@ -313,12 +313,12 @@ apps/datacore/src/app.ts
 | # | 面 | 裁决 | 判据（实测） |
 |---|---|---|---|
 | 1 | **本体关系** | **半可用（结构边）／demo 级（因果边）** | 结构边：建 ✅(201) · 停用 ✅ · 下线 ✅ · 查引用 ✅ **但改不了**（无 rename/改基数/加描述）。<br>因果边：建 ✅ **但 42 行表体 0 input / 0 button** ⇒ 停不了、改不了、删不了；重建同 key **不覆盖而是叠加**，`combine:sum` 下系数翻倍（0.9+0.3=1.2）。**服务端只有 GET/POST。** |
-| 2 | **本体切片** | **半可用** | 有 `＋新建切片` 与 `看子图/编辑`；派单说的「展开行 → 改 maxNodes → PUT 201」我复核成立（详见 §2.2）。**但全仓 `app.delete(` 只有 2 条、无一是 slice ⇒ 切片建了删不掉**；99 条里 95 条是 `hops=0` 单类型存根。 |
-| 3 | **切片库** | **demo 级** | 与「本体切片」**共用同一份实现**，而两边集合**交集 = 0**（注册表 99 条 vs 派生库 61 条）。同一个词在导航里指两个不相干的东西。 |
+| 2 | **本体切片** | **半可用** | 有 `＋新建切片` 与 `看子图/编辑`；**编辑亲手验过**：`maxNodes 200 → 137`，`PUT /a/v1/ontology/slices/:key` → **`201`**，回读确认 137（§2.2）。<br>**但：① 删不掉**（`DELETE …/slices/:key` → **404**；金丝雀 `DELETE /a/v1/view-configs/geo-map` → **200** ⇒ DELETE 方法本身好用，是这条路由真没有）；**② 改了不留痕**——改完 `version` 仍是 **1**，没有版本递增、没有改动人、没有 diff。<br>99 条里屏上自报「多跳业务切片 4 条 · 单类型覆盖切片 95 条」。 |
+| 3 | **切片库** | **demo 级** | **两边集合交集 = 0（亲手比对）**：注册表 `GET /a/v1/ontology/slices` **99** 条（`aop_scenario_chain`/`coverage_*`），派生库 `GET /a/v1/slices/library` **61** 条（intra 7 + cross 54，全是 `biz.*`）。**同一个「切片」词在导航里指两个不相干、不互通的集合**，且没有任何一页能看到这件事。 |
 | 4 | **建模与图谱** | **demo 级** | 建模：**唯一入口是「从已有原始数据集派生」，无空白建模**；属性只能设 4 个字段，**无单位/显示名/描述/必填/枚举/默认值**；发布后**无 PUT/PATCH/DELETE**。图谱：见第 7 行。 |
 | 5 | **实体合并** | **demo 级** | 扫描器可用（Process 出候选，金丝雀成立），但**候选组 = 130 个真实不同的工序**，界面给 130 个「以 X 为准」按钮，**没有排除/否决/拆组/调阈值**。唯一能点的动作是制造事故。 |
 | 6 | **边界治理** | **只读报告（作为治理台是 demo 级，作为影响面报告是交付级）** | **0 按钮 0 输入**；页面自述「改值＝改代码」。且它管的是 3 张业务常数表，**不是**「哪些数据进本体」。 |
-| 7 | **图谱体系** | **demo 级** | 8 个视角共用一套渲染；`graph-mvp` 承诺「实色高亮」而与普通图谱**逐字节相同**（派单线索，§2.7 复核）。图谱**只能看不能改**——没有一个图谱页能建/改/删节点或边。 |
+| 7 | **图谱体系** | **demo 级** | 8 个视角（`collapsed:true` 折叠组）共用 `OntologyGraphView` 一套渲染，靠 `graphOptions` 区分。<br>**`graph-mvp` 的「实色高亮 + ⊕ 缺口节点」在真后端下不存在**——机制比派单线索说的更准：`mvpOverlay` **确实**被渲染器消费（`OntologyGraphView.tsx` 8 处，含 `isGapNode` / `core = mvpOverlay && inSubset(n)`），但它依赖的 `n.mvpGap` **全仓只有 `apps/frontend-shell/src/mocks/fixtures.ts` 生产（3 条）**，**datacore 零产出**。<br>⇒ **禁 `VITE_MOCK`（= 本次全程、也 = 部署态）时，没有任何节点 `mvpGap=true`，`graph-mvp` 退化成一张普通按域着色图。**这不是「代码相同」，是**区分用的数据只活在 mock 里**（铁律 0.5「接了线没数据」的最坏一档）。<br>〔金丝雀：同一 grep 方法找 `mvpOverlay` 命中 **14** 次 ⇒ 工具是好的。〕<br>图谱**只能看不能改**：没有一个图谱页能建/改/删节点或边。 |
 
 ### 关于仓主那句「都是垃圾，只是 demo 级」
 
@@ -331,6 +331,17 @@ apps/datacore/src/app.ts
   - **边界册治理作为影响面报告是好东西**：逐册列派生消费端和下游影响，这正是动作 8 想要的东西，**质量高于本仓平均水平**。它只是被放在了「治理」这个名字下面。
   - **草案 + 会签的骨架是真的**：`DRAFT/REVIEWED/PUBLISHED` 状态机在、会签表在、`publish-requests` 真被调用。
     问题是**评审是假的**（状态自己跳）、**会签不在必经路上**，不是「没有」。
+### 派单线索的订正（「线索不是结论」——四条我实测后改了口径）
+
+| # | 派单/台账原文 | 实测 | 影响 |
+|---|---|---|---|
+| 1 | 「本仓刚补完 **873 个属性的 unit**」 | 881 条属性里带 `unit` 的 **24 条**（12/98 个类型）。`unit:` 在 datacore 源码出现 254 次，但多为**指标/杠杆/切片层**的单位 | 不改结论，**反而更硬**：语义层更稀疏，且一条都改不了 |
+| 2 | 「全仓 `app.delete(` 只有 **2 条**」 | **8 条**（agentcore 5 + datacore 3）。金丝雀：`app.post(` 162 条 ⇒ grep 好用 | 结论（无本体元素删除）成立，**数字要改** |
+| 3 | 「**两个切片页共用同一份实现**」 | **不准**。`SlicesPage.tsx`(356 行) 与 `SliceLibraryPage.tsx`(262 行) 是两份实现、打**两个不同端点**（`/ontology/slices` vs `/slices/library`）；真正共用的是子组件 `SliceInspector` 与 `planSlice` | 「交集 0」成立且更严重：**不是一份实现显示两批数据，是两套东西同名** |
+| 4 | 「`graph-mvp` 与普通图谱**逐字节相同**」 | 机制不是「代码相同」：`mvpOverlay` 被渲染器消费（8 处），但 `mvpGap` **只有 mocks/fixtures.ts 生产、datacore 零产出** | 现象一致，**病因完全不同**⇒ 修法也不同（要后端补 `mvpGap`，不是改前端） |
+
+> 第 3、4 条正是本仓铁律 0.6 反复警告的形态：**一条写在最容易被信的地方的错误病因，比没有这条更危险**——照原文去修会修错方向。
+
 - **我自己在这次评审里判错过 3 次**（都已订正、留在正文里）：
   ① 判「AI 建议草案点了没反应」——实为模态渲染在 `main` 之外；
   ② 判「草案刷新即丢」——实为编辑器在页面顶部而我只看了尾部；
@@ -359,7 +370,8 @@ apps/datacore/src/app.ts
 |---|---|---|---|
 | **B1** | **改 / 停 / 删一条因果边** | **做不了**，且**重建会叠加不会覆盖** ⇒ 静默算错 | 42 行表体 0 input/0 button；服务端仅 GET/POST；`propagation.ts:559/614` 逐条累加 |
 | **B2** | **改一个已发布类型的任何东西** | **做不了**，只能 deprecate/retire | `app.ts` 无 `PUT/PATCH/DELETE object-types` |
-| **B3** | **删一条切片** | **做不了** | 全仓 `app.delete(` 仅 2 条，无一是 slice |
+| **B3** | **删一条切片** | **做不了** | `DELETE /a/v1/ontology/slices/:key` → **404**（金丝雀 `DELETE /a/v1/view-configs/geo-map` → **200**）。全仓 `app.delete(` **8 条**（agentcore 5 + datacore 3），**无一是 slice / object-type / link-type / propagation-rule** |
+| **B8** | **改切片后能看出「谁改的、改了啥」** | **做不了** | `PUT` 成功后 `version` 仍为 **1**，无版本递增 / 无改动人 / 无 diff |
 | **B4** | **在合并里排除误判成员 / 否决候选 / 调阈值** | **做不了**，只能全合或不合 | Process 组 130 个对象、130 个「以 X 为准」 |
 | **B5** | **回滚一次本体变更** | **做不了**，有版本列表无回滚动作 | `GET /ontology/versions` 有；无 rollback 路由/按钮 |
 | **B6** | **真评审**（有人看过才叫 REVIEWED） | **做不了**，状态是编辑副产品 | 改个 typeKey ⇒ `DRAFT→REVIEWED` |
@@ -432,7 +444,7 @@ apps/datacore/src/app.ts
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|---|
 | **本体关系 · 结构边** | ✅ | ✅ | ✅ | ❌ | ◑ 停用/下线是**按钮不是就地☑**，且不可逆 | ◑ 只有「下线」，非删除 | ✅ | **接近但未达**（缺④，⑤⑥不可逆） |
 | **本体关系 · 因果边** | ✅ | ✅ | ✅（经由结构边） | ❌ | **❌ 表体 0 控件** | **❌** | ✅ | **未达** |
-| **本体切片** | — | — | — | ❌ | ❌ | **❌ 无删除** | ✅ | 未达 |
+| **本体切片** | — | — | — | ❌ | ❌ | **❌ 无删除（DELETE→404）** | ✅ | 未达 |
 | **切片库** | — | — | — | ❌ | ❌ | ❌ | ❌ | 未达 |
 | **建模与图谱** | ✅（草案内） | ✅ | ✅ | ❌ | ❌ | ◑ 仅草案内「删除属性」 | ◑ 仅从数据集派生 | 未达 |
 | **实体合并** | — | — | — | ◑ 有「归一名称完全一致·得分1/1」 | ❌ | ❌ | — | 未达 |
@@ -489,4 +501,29 @@ done
 
 # 动作 9：图谱体系不是空组，是 collapsed:true
 grep -n '图谱体系' -A 3 apps/frontend-shell/src/pages/ShellLayout.tsx
+
+# §2.7 graph-mvp：区分用的数据只活在 mock 里（金丝雀 mvpOverlay 应命中 14）
+grep -rn 'mvpGap'     apps/ packages/ --include=*.ts --include=*.tsx   # 仅 mocks/fixtures.ts 生产
+grep -rc 'mvpOverlay' apps/ packages/ --include=*.ts --include=*.tsx | grep -v ':0'
+
+# §2.2 切片可改不可删（金丝雀：view-configs 的 DELETE 是 200）
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE -H "$H" localhost:4501/a/v1/ontology/slices/aop_scenario_chain  # 404
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE -H "$H" localhost:4501/a/v1/view-configs/geo-map                # 200
+
+# §2.3 两个切片集合交集 = 0
+python3 - <<'PY'
+import json,urllib.request
+H={'X-Debug-User':'demo:admin:admin|planner|catalog_admin'}
+g=lambda p: json.load(urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:4501'+p,headers=H)))
+reg={x['sliceKey'] for x in g('/a/v1/ontology/slices')}
+lib=g('/a/v1/slices/library'); lib={x['sliceKey'] for x in lib['intra']+lib['cross']}
+print(len(reg), len(lib), 'intersection =', len(reg&lib))
+PY
+
+# §3 B3 全仓 delete 路由（应为 8 条，无一是本体元素）
+grep -rn 'app\.delete(' apps/*/src/
 ```
+
+> ⚠️ **复跑注意**：本机同时有多个 agent 各跑一套 datacore，实测**内存竞争会把新起的 datacore SIGKILL（exit 137）**。
+> 起服务要带重试与健康探针（见 `scratchpad/loop9/dc.sh` 的 25 次轮询），
+> 且**「NOT_FOUND」可能只是种子还没跑完**——本次实测就出现过第 1 步 404、第 3 步同一条读到值的情况。
