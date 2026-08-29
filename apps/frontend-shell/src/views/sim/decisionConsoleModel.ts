@@ -661,6 +661,120 @@ export function humanizeApiError(raw: string): { text: string; recognized: boole
   return { text: "这次没算成，而这条报错这里还没有对应的人话说明 —— 原文如下，请连同它一起找工程。", recognized: false };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// § 8 · 屏上每个数**吃不吃你加的那几件事**（WO-EVENTS-WRITE-STATE · COO 病灶的正面回答）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 🔴 **COO 那句「一个数都没动」的真正答案，也是本单最后一处「装作会算」**。
+ *
+ * ── 今天的行为是 X，应该是 Y（起真 datacore 4901 · seed 42 · demo 实测，原文照录）──
+ * · **X**：第一层最大的那个数上面白纸黑字写着「**这 N 件事凑一块，往后 30 天**」，
+ *   而那个数（63.16 亿 / 53 张单 / 会晚 26 张）来自 `risk_timeline`，
+ *   前端给它的实参实测是 **`{}`** —— **一个 event 都没传进去**。
+ *   `chain_impediments`（18 处卡点）同理，实参是 `{scope:{}}`。
+ *   ⇒ 这两路**结构上不可能**随事件变。实测坐实：把 `pctChange` 从 15 拉到 100000，
+ *   `risk_timeline` 的 8 张卡指纹**逐字节相同**、`chain_impediments` 的 18 条 id **逐字节相同**；
+ *   同一次对照里，真吃事件的那一路 `findingsChanged` 从 **0 → 104**。
+ *   ⇒ 用户改了输入 → 抬头说「这几件事凑一块」→ 底下那个数纹丝不动 ⇒
+ *   他只能得出「这系统在骗我」这一个结论。**而他是对的**：那行抬头是一句错误归因。
+ * · **Y**：每个第一层的数都必须**自己说清楚它吃不吃你加的事**。
+ *   吃的（演习那一路）照常；不吃的**当场标出来**，并指路到真会动的那个数。
+ *
+ * ── 为什么是「声明」不是在 JSX 里写死一句话 ──────────────────────────────────
+ * 与本单 `DRILL_EVENT_SPECS` 同一条纪律：判据是**数据**，因此可被测试咬住。
+ * 写在 JSX 里的一句提示，下次有人给 `risk_timeline` 接上事件入参时**不会有任何东西提醒他来改**，
+ * 于是一句当时正确的话会静默地变成假话 —— 本仓管这个叫「注释不是机制」。
+ *
+ * ⚠ **判据落在「这一路的实参里有没有事件」上**，不落在「这个数看起来该不该变」上。
+ * 后者是感觉，前者是可以指着代码点头的事实（`DecisionConsoleView` 的 `Promise.all` 那一段）。
+ */
+export interface ScreenNumberProvenance {
+  /** 这个数在屏上的名字（人话，与屏上那行字一致）。 */
+  label: string;
+  /** 它由哪一路算出来 —— 用屏上第 ⑥ 区那份耗时清单里的同一个说法，不另起一套叫法。 */
+  route: string;
+  /**
+   * 这一路的实参里**有没有**本次事件。
+   * `false` ⇒ 屏上必须标「不随你加的事变」，否则就是错误归因。
+   */
+  consumesEvents: boolean;
+  /** 不吃事件时，这个数到底在回答什么问题（不许只说「它不动」就完事）。 */
+  answers: string;
+}
+
+/**
+ * 屏上第一层那几个数的出处表 —— **与 `DecisionConsoleView` 的 `Promise.all` 逐路对应**。
+ *
+ * ⛔ 改动那段 `Promise.all` 的实参时**必须同步改这里**：
+ * `decision-console-model.test.ts` 的接缝断言会把「表里说不吃事件、而那一路的实参里出现了 events」
+ * 打成红 —— 这就是「机器先说话」的那一半。
+ */
+export const SCREEN_NUMBER_PROVENANCE: readonly ScreenNumberProvenance[] = [
+  {
+    label: "这 30 天交不出去的货（亿）· 多少张单 · 会晚多少张",
+    route: "算每个基地这 30 天紧到什么程度",
+    consumesEvents: false,
+    answers: "这个世界**当下**每个基地紧到什么程度 —— 它是本次演习的**背景板**，不是结果。",
+  },
+  {
+    label: "哪儿会出事（处）",
+    route: "全链扫红线 + 枚举改法",
+    consumesEvents: false,
+    answers: "本体真值上**当下**扫得出的卡点与改法 —— 同样是背景板。",
+  },
+  {
+    label: "产销缺口（万套）",
+    route: "演习里的供需缺口归因",
+    consumesEvents: false,
+    answers: "它读**本体真值**（在手量与需求量），不读这次推出来的世界态 ⇒ 幅度拉到 10 万倍也是同一个数。",
+  },
+  {
+    label: "N 条顺着关系推出来的结论因此改变",
+    route: "把事情施加上去 + 往后推 30 天 + 扫一遍卡住的地方",
+    consumesEvents: true,
+    answers: "",
+  },
+  {
+    label: "世界态改动了多少格",
+    route: "把事情施加上去 + 往后推 30 天 + 扫一遍卡住的地方",
+    consumesEvents: true,
+    answers: "",
+  },
+];
+
+/**
+ * 屏上要打的那句话：**哪几个数不随你加的事变，哪个才是会变的那个**。
+ *
+ * `null` = 还没算过（没结果时不该先吓唬人）。
+ */
+export function invariantNumbersNote(report: DrillReport | null): {
+  text: string;
+  raw: string;
+  movingLabels: string[];
+  frozenLabels: string[];
+} | null {
+  if (!report) return null;
+  const frozen = SCREEN_NUMBER_PROVENANCE.filter((p) => !p.consumesEvents);
+  const moving = SCREEN_NUMBER_PROVENANCE.filter((p) => p.consumesEvents);
+  if (frozen.length === 0) return null;
+  return {
+    text:
+      `⚠ 这一屏上有 ${frozen.length} 个数**不随你加的事变** —— 你把幅度从 15 改成 100000，它们也是同一个数。` +
+      `它们回答的是「这个世界当下什么样」，不是「你加的这几件事之后会怎样」。` +
+      `真的会随你加的事变的是：${moving.map((m) => `「${m.label}」`).join("、")}。`,
+    raw:
+      frozen
+        .map((p) => `· ${p.label}\n  由「${p.route}」那一路算；本次传给它的实参里**没有**你加的事件 ⇒ 结构上不会变。\n  它其实在回答：${p.answers}`)
+        .join("\n") +
+      `\n\n实测（真后端 seed 42）：同一个「物料价格变动」把幅度从 15 拉到 100000 ——\n` +
+      `· 每个基地紧到什么程度：8 张卡逐字节相同\n· 全链卡点：18 条 id 逐字节相同\n· 产销缺口：81 → 81\n` +
+      `· 而演习那一路「顺着关系推出来的结论」：0 条改变 → 104 条改变。`,
+    movingLabels: moving.map((m) => m.label),
+    frozenLabels: frozen.map((f) => f.label),
+  };
+}
+
 /** 「算完了但一项都没动」和「没算」是两个状态 —— 这条判据决定屏上说哪一句。 */
 export function nothingMovedText(report: DrillReport | null): string | null {
   if (!report) return null;

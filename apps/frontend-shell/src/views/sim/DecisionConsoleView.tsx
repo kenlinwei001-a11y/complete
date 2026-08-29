@@ -18,6 +18,7 @@ import {
   collectHonesty,
   exposureTotals,
   humanizeApiError,
+  invariantNumbersNote,
   landingNoteFor,
   needsLeafPick,
   nothingMovedText,
@@ -542,6 +543,8 @@ export default function DecisionConsoleView() {
   );
   const gapFinding = result?.report.findings.find((f) => f.source.solverKey === "supply_demand_gap_attribution") ?? null;
   const nothingMoved = nothingMovedText(result?.report ?? null);
+  /** 「屏上哪几个数不吃你加的事」—— 判据在 model 层（可测），这里只负责显示。 */
+  const invariantNote = invariantNumbersNote(result?.report ?? null);
 
   // ── 渲染 ────────────────────────────────────────────────────────────────
   return (
@@ -745,6 +748,26 @@ export default function DecisionConsoleView() {
                   {totals.orderCount} 张单 · {totals.customerCount} 家客户
                   {otd ? ` · 其中会晚 ${(otd.total ?? 0) - (otd.onTimeCount ?? 0)} 张、准时 ${otd.onTimeCount ?? 0} 张` : ""}
                 </div>
+
+                {/*
+                 * 🔴 **本单最后一处「装作会算」的正面回答**（COO 病灶的落点）。
+                 *
+                 * 上面那行抬头写的是「这 N 件事凑一块，往后 30 天」，而这个大数实测**不随事件变**：
+                 * 它来自 `risk_timeline`，本页给它的实参是 `{}` —— 一个 event 都没传。
+                 * 抬头把它归因给用户的输入，是一句**错误归因**；用户改了输入看它不动，
+                 * 只能得出「这系统在骗我」，而他是对的。
+                 *
+                 * ⚠ 判据与文案全部来自 `invariantNumbersNote`（纯函数 + 声明表），
+                 *   不在这里写死一句话 —— 写死的话，下次有人给那一路接上事件入参时
+                 *   没有任何东西会提醒他来改，一句当时正确的话就静默变成假话。
+                 */}
+                {invariantNote ? (
+                  <p className={styles.greyLine} data-testid="dc-invariant-note">
+                    {invariantNote.text}
+                    <br />
+                    <Raw text={invariantNote.raw} />
+                  </p>
+                ) : null}
 
                 {gapFinding ? (
                   <div className={styles.split}>

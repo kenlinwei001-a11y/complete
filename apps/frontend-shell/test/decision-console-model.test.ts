@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DRILL_EVENT_SPECS, drillStateEffectAbsolute, type DrillEventSpec, type DrillFinding, type DrillReport } from "@platform/contracts";
 import {
@@ -5,6 +7,8 @@ import {
   exposureTotals,
   humanizeApiError,
   impedimentSentence,
+  invariantNumbersNote,
+  SCREEN_NUMBER_PROVENANCE,
   landingNoteFor,
   needsLeafPick,
   nothingMovedText,
@@ -465,6 +469,77 @@ describe("⑦ 诚实位：三态分得开", () => {
     // 金丝雀：不含源码坐标的原文**一个字节都不动**
     const clean = "枚举已跑完，有效候选 0 个（探了 10 个杠杆锚点 / 34 次试算），不足 2 个 ⇒ 构不成多方案对比，诚实不下发。";
     expect(scrubSourceRefs(clean)).toBe(clean);
+  });
+
+  /**
+   * 🔴 **「屏上哪几个数不吃你加的事」这张声明表，必须与那段 `Promise.all` 的实参对得上。**
+   *
+   * ── 为什么要这条接缝断言（本单最后一处「装作会算」的守门人）─────────────────
+   * COO 实测：把碳酸锂涨幅从 +15% 拉到 +100%（6.7 倍），
+   * 「63 亿 / 53 张单 / 81 万套 / 18 处卡点 / 26 张晚单」**一个数都没动**。
+   * 追下去不是 bug 是结构：这几个数来自 `risk_timeline` / `chain_impediments`，
+   * 而本页给它们的实参实测是 `{}` 与 `{scope:{}}` —— **一个 event 都没传进去**，
+   * 结构上不可能变。真正的错在**抬头那行字**把它们归因给了用户的输入。
+   *
+   * `invariantNumbersNote` 现在把这件事写到屏上。但那句话**今天正确不等于明天正确**：
+   * 哪天有人给 `risk_timeline` 接上事件入参，声明表还写着「不吃事件」⇒
+   * 一句当时正确的话就**静默变成假话**，而且没有任何东西会红。
+   * ⇒ 判据必须落在**源码里那段实参**上，由机器每次跑测试时现读现比。
+   *
+   * ⚠ 金丝雀与主逻辑**共用同一个抽取函数**（不许各抄一份正则）——
+   *   抄了就是装饰品：改主正则时金丝雀拿旧的去测、照样绿。
+   */
+  it("接缝：声明「不吃事件」的那几路，源码实参里就不许出现 events（含金丝雀自证）", () => {
+    const viewSrc = readFileSync(
+      join(process.cwd(), "src", "views", "sim", "DecisionConsoleView.tsx"),
+      "utf8",
+    );
+    /** 抽出 `timed("<label>", "<note>", <expr>)` 里那一段实参 —— 主逻辑与金丝雀共用**这一个**实现。 */
+    const argsOfRoute = (route: string): string | null => {
+      for (const line of viewSrc.split("\n")) {
+        if (!line.includes(route)) continue;
+        if (!line.includes("timed(")) continue;
+        // 第三个实参 = 最后一个逗号之后到行尾（本页每条 `timed(...)` 都写在一行里）
+        const i = line.indexOf(route);
+        const rest = line.slice(i + route.length);
+        const j = rest.indexOf(",", rest.indexOf(",") + 1); // 跳过 note 那个实参
+        return j < 0 ? rest : rest.slice(j);
+      }
+      return null;
+    };
+
+    // ── 金丝雀：吃事件的那一路**必须**被抽到，且实参里**必须**看得见 events ──
+    const eating = SCREEN_NUMBER_PROVENANCE.filter((p) => p.consumesEvents);
+    expect(eating.length).toBeGreaterThan(0);
+    const canaryArgs = argsOfRoute(eating[0]!.route);
+    expect(canaryArgs, `金丝雀抽不到「${eating[0]!.route}」那一路 ⇒ 抽取坏了，下面的「没有 events」全部不可信`).not.toBeNull();
+    expect(canaryArgs!, "金丝雀：真吃事件的那一路，实参里必须有 events").toContain("events");
+
+    // ── 主断言：声明「不吃事件」的那几路，实参里不许出现 events ──
+    for (const p of SCREEN_NUMBER_PROVENANCE.filter((x) => !x.consumesEvents)) {
+      const args = argsOfRoute(p.route);
+      if (args === null) continue; // 那一路不在这段 Promise.all 里（如「演习里的供需缺口归因」）
+      expect(
+        args,
+        `「${p.label}」声明为不吃事件，但它那一路的实参里出现了 events ——` +
+          `要么这行声明过期了（去改 SCREEN_NUMBER_PROVENANCE），要么屏上那句话已经变成假话`,
+      ).not.toContain("events");
+    }
+  });
+
+  it("屏上那句话必须点名「哪几个不变、哪个才变」，且没算过时不吓唬人", () => {
+    expect(invariantNumbersNote(null)).toBeNull();
+    const note = invariantNumbersNote(baseReport({}));
+    expect(note).not.toBeNull();
+    // 不许只说「有些数不变」就完事 —— 必须把会变的那个指出来
+    expect(note!.movingLabels.length).toBeGreaterThan(0);
+    expect(note!.frozenLabels.length).toBeGreaterThan(0);
+    for (const m of note!.movingLabels) expect(note!.text).toContain(m);
+    // 第二层要给出处与「它其实在回答什么」，不许只说「它不动」
+    expect(note!.raw).toContain("实参里**没有**你加的事件");
+    expect(note!.raw).toContain("它其实在回答");
+    // 实测数字要在第二层留底（COO 那次对照实验的原始读数）
+    expect(note!.raw).toContain("0 条改变 → 104 条改变");
   });
 
   it("金丝雀：全绿的一次演习只留必要的几条，不会凭空长出「没打上」这种条目", () => {
