@@ -1,4 +1,6 @@
 import { LIVED_IN_SCENE_HISTORY, BASE_REGISTRY, PLAN_GOAL_TARGETS, assertSharedFeatureNames } from "@platform/contracts";
+// WO-DASH-ONHAND：「在手」口径与订单三态构成均取契约单一出处（mock 与真后端同读一处，不许各写各的字面量）。
+import { ON_HAND_ORDER_STATUSES, ON_HAND_ORDER_CAPTION, orderStatusTargets, type OrderStatus } from "@platform/contracts";
 // DF.13 外协红线单一来源（C08）：规则表达式/抽取候选里的阈值一律派生，禁内联裸阈值/手写百分数。
 import { OUTSOURCE_REDLINE, outsourceRedlineConstraintExpr, outsourceRedlinePct, outsourceRedlineViolationExprPublished, ruleParamRef } from "@platform/contracts";
 import type {
@@ -123,6 +125,30 @@ const CUST_BUSINESS_TYPE: Record<string, "passenger" | "commercial" | "storage">
   蔚途汽车: "passenger", 星河储能: "storage", 极光新能源: "commercial", 蓝海电网: "storage", 山岳重工: "commercial",
 };
 
+/**
+ * WO-DASH-ONHAND · mock 订单簿的 `status` **取值域**必须是契约的那三个，不许自己发明一套。
+ *
+ * ── 修前是什么行为（金丝雀验过：`AT_RISK|ON_TRACK` 在 `apps/datacore/src` 与
+ *    `packages/contracts/src` 里**零命中**，只活在本文件两行）────────────────────
+ * mock 的 `Order.status` 取值是 `"AT_RISK" | "ON_TRACK"`，而真后端与契约
+ * (`OrderStatusSchema`) 是 `OPEN | IN_PRODUCTION | COMPLETED` —— **两套不相交的枚举，
+ * 顶着同一个字段名**。于是驾驶舱「在手订单」卡片下发的 `status:[OPEN,IN_PRODUCTION]`
+ * 在 mock 上匹配 **0 条**，卡片显示 0；而在真后端显示 150。
+ * 这比"mock 数字对不上"严重一档：**mock 连字段的取值域都在撒谎**。
+ *
+ * ── 修法 ──────────────────────────────────────────────────────────────────
+ *  · `status` 改用契约三态，条数按 `orderStatusTargets` 同一处比例算（20 单 ⇒ 14/4/2）；
+ *  · mock 独有的「风险订单」表另立 `riskFlag` 字段 —— 它表达的是**交付风险**，
+ *    与「订单头处在生命周期哪一段」正交，本来就不该挤在 `status` 里
+ *    （与契约 `order-status.ts` 头注拒绝把行级 `lineStatus` 并进头级 `status` 是同一条理由）。
+ */
+const MOCK_STATUS_TARGETS = orderStatusTargets(20);
+const MOCK_ORDER_STATUS: OrderStatus[] = [
+  ...Array.from({ length: MOCK_STATUS_TARGETS.COMPLETED }, (): OrderStatus => "COMPLETED"),
+  ...Array.from({ length: MOCK_STATUS_TARGETS.IN_PRODUCTION }, (): OrderStatus => "IN_PRODUCTION"),
+  ...Array.from({ length: MOCK_STATUS_TARGETS.OPEN }, (): OrderStatus => "OPEN"),
+];
+
 export const ORDERS = Array.from({ length: 20 }, (_, i) => {
   const base = BASES[i % 13]!;
   const cust = CUSTS[i % CUSTS.length]!;
@@ -142,7 +168,10 @@ export const ORDERS = Array.from({ length: 20 }, (_, i) => {
     qty,
     due: `2026-0${(i % 6) + 4}-${String((i % 27) + 1).padStart(2, "0")}`,
     bases: base.name,
-    status: i % 5 === 0 ? "AT_RISK" : "ON_TRACK",
+    // 头级生命周期态（契约取值域·与真后端同）——驾驶舱「在手订单」按此过滤。
+    status: MOCK_ORDER_STATUS[i]!,
+    // 交付风险标（mock 独有的「风险订单」表用）：与 `status` 正交，不再挤进同一个字段。
+    riskFlag: i % 5 === 0 ? "AT_RISK" : "ON_TRACK",
     businessType,
     early,
     // WO-GUI4-MULTIOBJ-REAL：单价（营收=qty×unitPrice）+ 优先级（驱动违约金口径）·真后端 Order 同字段集。
@@ -394,10 +423,16 @@ const DASH_LAYOUT = {
       provenance: { toolName: "query_objects", outputPath: "$.sum(gwh)", snapshotVersion: "ov-12" },
     },
     {
+      // WO-DASH-ONHAND：mock 是后端的影子，不是它的对手 —— filter/unit/caption 必须与
+      // `datacore/synthetic/service.ts` 的 `DASH_LAYOUT` 逐字同步，否则 mock 上「在手订单」
+      // 照旧数全簿（修前那个 500），前端在 mock 上全绿、接真后端才发现口径不一致。
+      // 这一条不是我想起来的：`check-mock-fidelity.mjs` 当场报了 `WIDGET orders.unit` 分叉。
       key: "orders",
       type: "kpi",
       title: "在手订单",
-      query: { kind: "objects-aggregate", objectType: "Order", agg: "count" },
+      unit: "单",
+      query: { kind: "objects-aggregate", objectType: "Order", agg: "count", filter: { status: [...ON_HAND_ORDER_STATUSES] } },
+      caption: ON_HAND_ORDER_CAPTION,
       provenance: { toolName: "query_objects", outputPath: "$.count", snapshotVersion: "ov-12" },
     },
     // PRD-cockpit §2.1 订单经营台账 + 规划决策推演（与后端 DASH_LAYOUT 同步；门A 守两套不漂）。
@@ -468,7 +503,9 @@ const DASH_LAYOUT = {
       type: "table",
       title: "风险订单",
       span: 2,
-      query: { kind: "objects", objectType: "Order", filter: { status: "AT_RISK" }, columns: ["so", "cust", "model", "due"], limit: 8 },
+      // WO-DASH-ONHAND：改读 `riskFlag`——`status` 现在是契约的头级生命周期三态，
+      // 「有没有交付风险」是另一个维度，两者不再共用一个字段名。
+      query: { kind: "objects", objectType: "Order", filter: { riskFlag: "AT_RISK" }, columns: ["so", "cust", "model", "due"], limit: 8 },
     },
     // 运营态出厂配置增量 §4.1：12 个月产出趋势 / 准交率 KPI / 年度已执行工单 / 已交付台账
     {
