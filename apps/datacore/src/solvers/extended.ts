@@ -1,3 +1,4 @@
+import { selectEffectiveBom } from "../bom.js";
 import type { ObjectInstance } from "../domain.js";
 import { AppError } from "../errors.js";
 import { round } from "../prng.js";
@@ -936,17 +937,11 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       const modelId = requestedModel !== "" ? requestedModel : (rankedModels[0]?.[0] ?? "");
 
       // ── 真 BOM：BOMHeader(该 modelId·量产优先·bomId 升序取首) → BOMDetail × Material.unitPrice ──
+      // 选取口径已提到 `../bom.ts`（`selectEffectiveBom`）——**传导侧按 BOM 用量分摊系数时要用同一支**
+      // （WO-COEF-FROM-BOM）。各抄一份就会出现「接单毛利算 V1.0 那份 BOM、推演按 V2.0 那份」，
+      // 两处都绿而两个数对不上。口径一个字没改，只是搬了家。
       const matById = new Map(mats.map((m) => [str(m.matId), m]));
-      const headers = (c.bomHeaders ?? []).map(props).filter((h) => str(h.modelId) === modelId);
-      const header =
-        headers.filter((h) => str(h.status) === "量产").sort((a, b) => (str(a.bomId) < str(b.bomId) ? -1 : 1))[0] ??
-        headers.sort((a, b) => (str(a.bomId) < str(b.bomId) ? -1 : 1))[0];
-      const bomRows = header
-        ? (c.bomDetails ?? [])
-            .map(props)
-            .filter((d) => str(d.bomId) === str(header.bomId))
-            .sort((a, b) => num(a.sequence) - num(b.sequence) || (str(a.bomDetailId) < str(b.bomDetailId) ? -1 : 1))
-        : [];
+      const { header, rows: bomRows, headerCount } = selectEffectiveBom((c.bomHeaders ?? []).map(props), (c.bomDetails ?? []).map(props), modelId);
       const realBom = bomRows.map((d) => ({
         material: str(d.materialId),
         unit: num(d.quantity),
@@ -991,7 +986,7 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       if (requestedModel !== "" && realBom.length === 0)
         throw new AppError(
           "AMBIGUOUS_SCOPE",
-          `quote_margin：问句指定型号「${requestedModel}」无可用 BOM（BOMHeader 命中 ${headers.length} 份 / 明细 ${bomRows.length} 行）` +
+          `quote_margin：问句指定型号「${requestedModel}」无可用 BOM（BOMHeader 命中 ${headerCount} 份 / 明细 ${bomRows.length} 行）` +
             `——拒绝拿与型号无关的全局前 4 种物料冒充该型号的 BOM 成本（R-ARG-FIDELITY·G-SOLVER-SCOPE-ECHO）`,
           400,
         );

@@ -195,7 +195,7 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
     const mk = (key: string, id: string) => ({
       id, tenantId: "demo", key, sourceTypeKey: "T", sourceStateVar: "s", viaLinkKey: "l",
       targetTypeKey: "U", targetStateVar: "t", coefficient: 1, delayTicks: 0,
-      combine: "sum" as const, decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, description: null, status: "PUBLISHED" as const,
+      combine: "sum" as const, decay: null, clamp: null, coefficientRef: null, weightRef: null, cadenceNodeId: null, description: null, status: "PUBLISHED" as const,
       // WO-DISRUPTION-CARDS：域随边下发（分类卡片的分组依据）。本用例只验排序/开关，
       // 故两条都给同一个域 —— 分组本身由 `disruption-cards.seam.test.tsx` 专门咬。
       domainKey: "D01" as string | null, domainName: "经营规划与情景" as string | null,

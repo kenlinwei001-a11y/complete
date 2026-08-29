@@ -199,7 +199,7 @@ describe("WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片", () => {
     const mk = (key: string, domainKey: string | null, domainName: string | null) => ({
       id: `id_${key}`, tenantId: "demo", key, sourceTypeKey: "T", sourceStateVar: "s", viaLinkKey: "l",
       targetTypeKey: "U", targetStateVar: "t", coefficient: 1, delayTicks: 0,
-      combine: "sum" as const, decay: null, clamp: null, coefficientRef: null, cadenceNodeId: null, description: null,
+      combine: "sum" as const, decay: null, clamp: null, coefficientRef: null, weightRef: null, cadenceNodeId: null, description: null,
       status: "PUBLISHED" as const, domainKey, domainName,
       // 类型人话名是**读时投影**（后端 join 本体）；纯模型用例不验它，给 null ⇒ 行主标题回落显裸键。
       sourceTypeName: null as string | null, targetTypeName: null as string | null,
