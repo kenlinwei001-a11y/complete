@@ -19,6 +19,7 @@ import {
   exposureTotals,
   humanizeApiError,
   landingNoteFor,
+  needsLeafPick,
   nothingMovedText,
   orderedEvents,
   planCategoryOf,
@@ -1348,9 +1349,11 @@ function TemplateRow({
   };
 
   /**
-   * 🔴 **COO 实测「设备故障必炸」的成因就在这一行**（`ApiClientError: events.N.targetObjectId: Too small`）。
+   * 🔴 **COO 实测「设备故障必炸」的成因**（`ApiClientError: events.N.targetObjectId: Too small`）。
+   * 判据本身已提到 `decisionConsoleModel.needsLeafPick`（那里有完整的 X/Y 与实测原文）——
+   * 提出去的唯一理由是**让它测得到**：留在这个组件里它只能靠人眼复核，回归时不会说话。
    *
-   * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+   * ── 今天的行为是 X，应该是 Y（摘要，全文见 `needsLeafPick`）────────────────
    * · **X**：旧判据是 `!subjectRead || pickedId.length > 0` —— 「这类事不看主体」的事件
    *   **不要求**选主体。而「设备故障」是**两级**选择器（基地 → 产线），选完基地那一步
    *   会**故意把 `pickedId` 清空**（等你选产线）。两件事撞在一起：
@@ -1365,9 +1368,9 @@ function TemplateRow({
    * 旧写法**恰好也不会再炸**。但那是**巧合不是修复**：下一个「不读主体」的新事件
    * 只要配了两级选择器，同一个坑立刻复发。故判据照上面重写，不靠巧合。
    */
-  const needsLeafPick = scope !== null && (scope.child ? true : subjectRead);
+  const mustPickLeaf = needsLeafPick(scope, spec);
   const canAdd =
-    (!needsLeafPick || pickedId.length > 0) &&
+    (!mustPickLeaf || pickedId.length > 0) &&
     spec.payloadKeys.filter((k) => k.required).every((k) => payload[k.key] !== undefined && payload[k.key] !== "");
 
   return (
@@ -1591,7 +1594,7 @@ function TemplateRow({
           </button>
           {!canAdd ? (
             <span className={styles.fieldHint}>
-              {needsLeafPick && pickedId.length === 0
+              {mustPickLeaf && pickedId.length === 0
                 ? scope?.child
                   ? `先把「${scope.child.label}」也选上 —— 只选了${scope.label}还不够，${scope.child.label}才是这件事真正落到的地方；`
                   : "先选一个对象；"

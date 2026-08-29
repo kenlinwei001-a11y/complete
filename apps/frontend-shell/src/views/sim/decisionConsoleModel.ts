@@ -157,6 +157,31 @@ export function landingNoteFor(spec: DrillEventSpec): string | null {
   return "这件事会真的改到数上，所以它要求主体是一个真实存在的对象。";
 }
 
+/**
+ * 🔴 **这个选择器最终要不要产出一个 id** —— COO 实测「设备故障必炸」的成因就是这一条
+ * （`ApiClientError: events.N.targetObjectId: Too small`）。
+ *
+ * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────────
+ * · **X**：旧判据是「这类事件读不读主体」（`!subjectRead || pickedId`）。而「设备故障」是
+ *   **两级**选择器（基地 → 产线），选完基地那一步会**故意清空** `pickedId`（等你选产线）。
+ *   两件事撞在一起：`subjectRead=false` ⇒ 不要求 ⇒ 用户选完基地就能按〔加进去〕⇒
+ *   `targetObjectId: ""` ⇒ 后端 `z.string().min(1)` 打回一句**英文 zod 报错**。
+ *   而「产能损失」用**同一个 13 基地下拉**但**没有第二级**，选完就有值 ⇒ 它是好的。
+ *   COO 那句「同一个下拉在产能损失上是好的 ⇒ 这是一处漏」判得完全对。
+ * · **Y**：判据落在「**屏上摆了选择器就必须选到叶子那一层**」，与「读不读主体」无关。
+ *
+ * ⚠ **为什么把它从 `.tsx` 里提到这一层**：本单给 11 类事件都补了世界态落点 ⇒
+ * `subjectIsRead` 现在几乎恒为 `true`，**旧写法恰好也不会再炸** —— 那是**巧合不是修复**。
+ * 巧合不会在回归时说话，所以它必须变成一条**测得到**的判据（铁律 0.6：
+ * 「机制的判据是机器先说话，不是人先想起来」）。下一个「不读主体」的新事件只要
+ * 配了两级选择器，这条断言当场红，而不是等 COO 再点一次那个下拉。
+ */
+export function needsLeafPick(scope: SubjectScope | null, spec: DrillEventSpec): boolean {
+  if (scope === null) return false; // 没有选择器（手填兜底那一路）⇒ 不由这条判据管
+  if (scope.child) return true; // 两级选择器：选到第二级才算选完，与读不读主体无关
+  return subjectIsRead(spec);
+}
+
 /** 屏上给这条事件用的 id（对象 id 或业务键），由上面两条判据决定。 */
 export function targetIdOf(spec: DrillEventSpec, picked: { id: string; props: Record<string, unknown> }, nameProp: string): string {
   if (subjectIdFormFor(spec) === "OBJECT_ID") return picked.id;

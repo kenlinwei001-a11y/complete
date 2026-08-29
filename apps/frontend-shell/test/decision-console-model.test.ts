@@ -6,6 +6,7 @@ import {
   humanizeApiError,
   impedimentSentence,
   landingNoteFor,
+  needsLeafPick,
   nothingMovedText,
   orderedEvents,
   planCategoryOf,
@@ -134,6 +135,40 @@ describe("① 事件主体：范围、id 形态、进不进算式", () => {
     expect(s?.typeKey).toBe("Base");
     expect(s?.child?.typeKey).toBe("Line");
     expect(s?.child?.filterParam).toBe("base");
+  });
+
+  /**
+   * 🔴 **COO 实测「设备故障必炸」的回归闸**（`events.N.targetObjectId: Too small`）。
+   *
+   * 这条断言咬的是「**两级选择器必须选到第二级**」，而**不是**「这类事件读不读主体」。
+   * 两者今天恰好同真 —— 本单给 11 类都补了落点 ⇒ `subjectIsRead` 几乎恒 `true` ⇒
+   * **旧的错写法今天也不会炸**。正因为如此，这条断言必须拿一个
+   * `subjectIsRead === false` 的样本去咬，否则它测不到自己要测的东西
+   * （「我用 X 当作 Y 的证据，而 X 并不度量 Y」的又一形态）。
+   */
+  it("两级选择器必须选到第二级 —— 判据是「有没有第二级」，不是「读不读主体」", () => {
+    const equip = subjectScopeFor("EQUIPMENT_FAILURE");
+    expect(equip?.child, "设备故障必须是两级，否则本条断言测的不是那个坑").toBeTruthy();
+    expect(needsLeafPick(equip, specOf("EQUIPMENT_FAILURE"))).toBe(true);
+
+    // 一级选择器 + 读主体 ⇒ 也要选（产能损失：同一个 13 基地下拉，但没有第二级）
+    expect(needsLeafPick(subjectScopeFor("CAPACITY_LOSS"), specOf("CAPACITY_LOSS"))).toBe(true);
+
+    /**
+     * ⛔ **决定性的一条**：`ORDER_INSERT` 是今天**唯一** `subjectIsRead === false` 的事件。
+     * 它只有一级选择器 ⇒ 本判据回 `false`（不强制选客户）。
+     * 而假如有人把判据写回「读不读主体」，再给某个不读主体的事件配上第二级选择器，
+     * 上面那条 `EQUIPMENT_FAILURE` 断言**照样绿**，只有下面这条构造样本会红 ——
+     * 所以两条都要在，缺一条这道闸就是装饰品。
+     */
+    expect(subjectIsRead(specOf("ORDER_INSERT")), "样本前提变了：需要另找一个不读主体的事件").toBe(false);
+    expect(needsLeafPick(subjectScopeFor("ORDER_INSERT"), specOf("ORDER_INSERT"))).toBe(false);
+    // 构造：不读主体 + 两级选择器 ⇒ 仍然必须选到叶子（这就是当初炸的那个组合）
+    const twoLevel = { ...subjectScopeFor("ORDER_INSERT")!, child: { typeKey: "Line", label: "哪条线", nameProp: "name", filterParam: "base" } };
+    expect(needsLeafPick(twoLevel, specOf("ORDER_INSERT")), "不读主体 + 两级 ⇒ 必须选叶子，否则 targetObjectId 会是空串").toBe(true);
+
+    // 没有选择器（手填兜底那一路）⇒ 不由这条判据管
+    expect(needsLeafPick(null, specOf("ORDER_INSERT"))).toBe(false);
   });
 
   it("带世界态落点的事件传**对象 id**，其余传**业务键**（实测：传反了后端回 not found）", () => {
