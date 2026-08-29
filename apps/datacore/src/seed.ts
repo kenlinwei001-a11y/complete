@@ -1418,6 +1418,8 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     clamp: null,
     coefficientRef: null,
     cadenceNodeId: null,
+    description: null,
+    weightRef: null,
     status: "PUBLISHED",
   },
   // ── ② 产线受阻 → 工单下达受阻（复用既有已物化边 `line_runs_work_order`）───────────
@@ -1438,6 +1440,8 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     clamp: null,
     coefficientRef: null,
     cadenceNodeId: null,
+    description: null,
+    weightRef: null,
     status: "PUBLISHED",
   },
   // ── ③ 工单受阻 → 型号供给风险（制造侧回到产品侧的唯一一跳）───────────────────────
@@ -1460,6 +1464,8 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     clamp: null,
     coefficientRef: null,
     cadenceNodeId: null,
+    description: null,
+    weightRef: null,
     status: "PUBLISHED",
   },
   // ── ④ 工单受阻 → 型号成本压力（走到"钱"的那一路）──────────────────────────────
@@ -1482,6 +1488,8 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     clamp: null,
     coefficientRef: null,
     cadenceNodeId: null,
+    description: null,
+    weightRef: null,
     status: "PUBLISHED",
   },
 ];
