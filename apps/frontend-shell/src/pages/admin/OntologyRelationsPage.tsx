@@ -896,6 +896,17 @@ export default function OntologyRelationsPage() {
                 {/* 「一条都没算到」与「算到了 0 条」在屏上必须长得不一样 */}
                 {p.items.length === 0 && p.unresolved.length === 0 && (
                   <div data-testid="orel-impact-leaf" style={{ color: "var(--ok, #2e7d32)" }}>
+                    {/*
+                     * ⚠ 下面那句话里的「四类」赌的是一个**静态事实**：波及桶枚举恰好 4 个成员。
+                     * 它头顶的运行时守卫 `p.items.length === 0 && p.unresolved.length === 0`
+                     * 只覆盖「一条都没有」与「没有算不出来的部分」两句，**看不见「四类」这个数**——
+                     * 枚举加到第 5 个时，这行绿字会照旧显示，而上面那排桶计数（`buckets`）也只画
+                     * 4 格，第 5 类的波及在屏上**根本不出现**：用户会据此把一条并非叶子的边删掉。
+                     * 这是屏上说谎，不是记账错误，故把赌注写成机器能跑的断言，上游一动门当场红：
+                     * @stale-fact packages/contracts/src/sim.ts /"(?:recompute|rederive|rejudge|rewire)"/ ==4
+                     * 记号挂于 2026-08-29 · 复验：`node scripts/check-stale-claims.mjs`
+                     * 上游真相源：`packages/contracts/src/sim.ts` 的 `bucket: z.enum([...])`
+                     */}
                     这条边确为<b>叶子</b>：四类波及一条都没有，且没有算不出来的部分 —— 关掉它不会带动别的东西。
                   </div>
                 )}
