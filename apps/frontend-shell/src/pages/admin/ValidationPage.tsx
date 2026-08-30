@@ -66,7 +66,10 @@ function SegmentMatrix({ runId, onRerun }: { runId: string; onRerun: (seed: numb
 export default function ValidationPage() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["a", "validation-runs"], queryFn: fetchValidationRuns });
-  const runs = data ?? [];
+  // WO-ONTO-CRASH：后端回 `{ items }`，原先 `const runs = data ?? []` 拿对象当数组
+  // ⇒ `TypeError: runs.map is not a function`，一进页就崩、F5 也救不回。
+  // 形状翻译已收口到 `fetchValidationRuns`；这里的 `Array.isArray` 是本页的边界。
+  const runs = Array.isArray(data) ? data : [];
   const [profile, setProfile] = useState<string>("SMOKE");
   const [seed, setSeed] = useState(42);
   const [openId, setOpenId] = useState<string | null>(null);

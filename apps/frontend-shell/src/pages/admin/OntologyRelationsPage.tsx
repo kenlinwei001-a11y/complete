@@ -16,6 +16,7 @@ import {
   fetchPropagationRules,
   fetchPublishRequests,
   fetchSimViewConfig,
+  publishRequestDomains,
   retireOntologyElement,
   signoffPublishRequest,
   type DeprecationMetaVM,
@@ -244,7 +245,8 @@ export default function OntologyRelationsPage() {
   const openPublish = useMutation({
     mutationFn: () => createPublishRequest({}),
     onSuccess: (r) => {
-      toast(`已发起 v${r.ontologyVersion} 发布会签（触及 ${r.touchedDomains.length} 个域）`, "success");
+      // 同上：`r.touchedDomains` 可能不存在 —— 这里原先也会在**点击当场**抛。
+      toast(`已发起 v${r.ontologyVersion} 发布会签（触及 ${publishRequestDomains(r).length} 个域）`, "success");
       void qc.invalidateQueries({ queryKey: ["a", "ontology-publish-requests"] });
     },
     onError: toastError,
@@ -866,7 +868,10 @@ export default function OntologyRelationsPage() {
             <tr key={p.id} data-testid={`orel-pubreq-${p.id}`}>
               <td className="mono">{p.id}</td>
               <td>v{p.ontologyVersion}</td>
-              <td className="mono">{p.touchedDomains.join(" · ") || "—"}</td>
+              {/* WO-ONTO-CRASH：原写 `p.touchedDomains.join(...)`，而后端记录里没有这个字段 ⇒
+                  租户里只要存在过一条会签请求，本页就**每次打开都崩**（F5 救不回，状态在服务端）。
+                  改走 `publishRequestDomains()`：有就用后端下发的，没有就从 signoffs 现推。 */}
+              <td className="mono">{publishRequestDomains(p).join(" · ") || "—"}</td>
               <td data-testid={`orel-pubreq-status-${p.id}`}>{p.status}</td>
               <td style={{ display: "flex", gap: 6 }}>
                 <button
