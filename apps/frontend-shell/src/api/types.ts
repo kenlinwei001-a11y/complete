@@ -153,7 +153,20 @@ export type WidgetQueryDef =
 
 export interface ObjectsPage {
   items: { id: string; type: string; props: Record<string, unknown> }[];
+  /**
+   * **符合条件的总行数**（与 page / pageSize 无关，也与服务端任何内部读上限无关）。
+   * 曾被服务端一个 ≤1000 的硬顶夹住：`EquipmentOEE` 自报 1000 而真值 5460，
+   * 且调用方无从察觉 —— `total` 正是唯一的检测手段，而它自己被截断。已修。
+   */
   total: number;
+  /**
+   * `true` = 匹配行数撞上了服务端安全上限，`total` 只是**已知下界**，不是真值。
+   * 屏上凡显示 `total` 的地方都必须把这一位显示出来（写成「≥N」而不是「N」），
+   * 否则就退回成同一个病：给了错的数、而调用方看不出来。
+   */
+  totalIsLowerBound?: boolean;
+  /** 服务端对本次请求的提示（如传了它不认识的查询参数）。不该被静默丢掉。 */
+  warnings?: string[];
 }
 
 // ---- 本体图谱（GET /a/v1/ontology/graph） ----

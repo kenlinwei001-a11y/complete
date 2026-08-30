@@ -20,7 +20,7 @@ const ADMIN = { "x-debug-user": "demo:admin:admin" };
 const SNAP = { capWanP50: 321.5, capWanP90: 289.3, gapWan: 0, healthFactor: 0.9, ok: true, mainBn: "贴片机", ruleSetVersion: "rs-test-1" };
 
 async function firstOrderSo(t: TestApp): Promise<string> {
-  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Order&limit=1", headers: ADMIN });
+  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Order&pageSize=1", headers: ADMIN });
   const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
   expect(items.length, "种子里应有 Order 对象（否则本测无从验证回 stamp）").toBeGreaterThan(0);
   return String(items[0]!.props.so ?? items[0]!.id);
@@ -28,12 +28,12 @@ async function firstOrderSo(t: TestApp): Promise<string> {
 
 /** 回仓储读 ForecastAdoption 台账（读端走列表端点 = 另一条路，不是 create 响应自证）。 */
 async function readAdoptions(t: TestApp): Promise<{ id: string; props: Record<string, unknown> }[]> {
-  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=ForecastAdoption&limit=500", headers: ADMIN });
+  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=ForecastAdoption&pageSize=500", headers: ADMIN });
   return (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
 }
 
 async function readOrderProp(t: TestApp, so: string, prop: string): Promise<unknown> {
-  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Order&limit=500", headers: ADMIN });
+  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Order&pageSize=500", headers: ADMIN });
   const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
   const hit = items.find((o) => String(o.props.so ?? "") === so);
   expect(hit, `回读不到订单 ${so}`).toBeTruthy();
