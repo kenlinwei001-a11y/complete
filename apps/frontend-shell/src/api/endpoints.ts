@@ -1827,14 +1827,40 @@ export const publishDataBuilder = (id: string) =>
 // ---- 七管理页整簇（PRD admin-console-closure §6；后端已就绪、补前端） ----
 import type { ValidationRunView, QuarantineRowView } from "@platform/contracts";
 
-/** VLE 闭环验证引擎运行历史（PRD-addendum-validation-loop）。 */
-export const fetchValidationRuns = () => api.a<ValidationRunView[]>("/a/v1/validation/runs");
+/**
+ * VLE 闭环验证引擎运行历史（PRD-addendum-validation-loop）。
+ *
+ * ⚠ WO-ONTO-CRASH：此处**原先声明成 `ValidationRunView[]`，而后端回的是 `{ items }`**
+ *   （`apps/datacore/src/app.ts` 的 `GET /a/v1/validation/runs` 返回
+ *   `{ items: runs.sort(...) }`）。声明是**断言不是事实**：`api.a<T>` 不做运行时校验，
+ *   泛型只是把一个错误的形状说成对的 ⇒ 消费方 `data ?? []` 拿到的是**对象**，
+ *   `runs.map` 当场 `TypeError: runs.map is not a function`，整页崩，
+ *   且 F5 救不回（URL 还在本页，重挂载必然复现）。2026-08-30 真浏览器 2/2 复现。
+ *   现按后端真实形状声明，并在此**收口**：调用方永远拿到数组，形状只在这一处翻译。
+ */
+export const fetchValidationRuns = async (): Promise<ValidationRunView[]> => {
+  const r = await api.a<{ items?: ValidationRunView[] } | ValidationRunView[]>("/a/v1/validation/runs");
+  return Array.isArray(r) ? r : (r?.items ?? []);
+};
 export const fetchValidationRun = (id: string) => api.a<ValidationRunView>(`/a/v1/validation/runs/${id}`);
 export const startValidationRun = (profile: string, seed?: number) =>
   api.a<{ id: string }>("/a/v1/validation/runs", { method: "POST", body: { profile, ...(seed !== undefined ? { seed } : {}) } });
 
-/** 隔离区（异常行 SCHEMA_MISMATCH/DUP_KEY…）。 */
-export const fetchQuarantine = () => api.a<QuarantineRowView[]>("/a/v1/quarantine");
+/**
+ * 隔离区（异常行 SCHEMA_MISMATCH/DUP_KEY…）。
+ *
+ * ⚠ WO-ONTO-CRASH：与上面 `fetchValidationRuns` **同一个病**——原声明 `QuarantineRowView[]`，
+ *   后端 `quarantine.list()` 回的是 `{ items, byReason, total }`（`apps/datacore/src/quarantine.ts`）。
+ *   消费方 `(data ?? []).filter(...)` ⇒ `TypeError: (data ?? []).filter is not a function`。
+ *   2026-08-30 真浏览器 2/2 复现；**admin 一进页就崩，与数据量无关**
+ *   （非 admin 反而不崩：403 ⇒ data 为 undefined ⇒ 回落到 `[]`。
+ *   「换个角色看着好好的」正是这类形状错最会骗人的地方）。
+ *   `byReason` / `total` 今天前端不消费，故只取 `items`；要用时在此处扩返回值，别在页面里再解一次。
+ */
+export const fetchQuarantine = async (): Promise<QuarantineRowView[]> => {
+  const r = await api.a<{ items?: QuarantineRowView[] } | QuarantineRowView[]>("/a/v1/quarantine");
+  return Array.isArray(r) ? r : (r?.items ?? []);
+};
 export const reprocessQuarantine = (id: string) => api.a<{ ok: boolean }>(`/a/v1/quarantine/${id}/reprocess`, { method: "POST" });
 export const discardQuarantine = (ids: string[]) => api.a<{ discarded: number }>("/a/v1/quarantine/discard", { method: "POST", body: { ids } });
 
@@ -2540,14 +2566,43 @@ export const createPropagationRule = (body: {
 }) => api.a<PropagationRule>("/a/v1/sim/propagation-rules", { method: "POST", body });
 
 // ── 发布会签（R4：本体真值变更经审批链，前端不直发）────────────────────────
+/**
+ * ⚠ WO-ONTO-CRASH · 本页那处「永久崩溃」就出在这个接口上。
+ *
+ * `touchedDomains` **此前声明成必填 `string[]`，而后端记录里根本没有这个字段** ——
+ * `PublishRequestRecord`（`apps/datacore/src/domain.ts`）只有
+ * `{ id, tenantId, ontologyVersion, requestedBy, status, signoffs[], createdAt, decidedAt? }`。
+ * 路由层算出了 touchedDomains 却只拿它去实例化 signoff 行，**没有存进记录、也没有下发**。
+ * 于是 `p.touchedDomains.join(" · ")` ⇒ `Cannot read properties of undefined (reading 'join')`。
+ *
+ * 为什么是「永久」：发起会签的按钮就在本页，**用户自己点一次，本页此后每次打开都崩**，
+ * 且 F5 救不回 —— 崩溃状态不在浏览器里，在**服务端那条记录**上。
+ * （2026-08-30 实测：建完 133 条边后 POST 一次 publish-requests，本页立刻 2/2 稳定崩。）
+ *
+ * 现按两半修（只修一半必复发）：
+ *  · **写入端**：后端把 `touchedDomains` 真存进记录并下发（见 `ontology-governance.ts`）；
+ *  · **健壮性**：这里声明为**可选**，并给 `publishRequestDomains()` 从 `signoffs` 现推 ——
+ *    修之前**已经落库**的那些老记录没有这个字段，光修后端救不了它们。
+ */
 export interface PublishRequestVM {
   id: string;
   ontologyVersion: number;
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  touchedDomains: string[];
-  signoffs?: { domainKey: string; decision: string; by?: string; comment?: string; at?: string }[];
+  /** 后端真实取值含 `PENDING_SIGNOFF` / `EXPIRED`，不止这三个 —— 别拿它做等值比较。 */
+  status: string;
+  /** 后端 2026-08-30 起下发；此前落库的记录里**没有**这个字段，必须当可选处理。 */
+  touchedDomains?: string[];
+  signoffs?: { domainKey: string; ownerUserId?: string | null; decision: string | null; comment?: string; decidedAt?: string }[];
   createdAt?: string;
 }
+
+/**
+ * 这条请求触及了哪些域。
+ * 优先用后端下发的 `touchedDomains`；没有（老记录）就从 `signoffs` 现推 ——
+ * signoff 行本来就是**按触及域逐域实例化**的，两者同源，不是我编一个数出来。
+ */
+export const publishRequestDomains = (p: PublishRequestVM): string[] =>
+  p.touchedDomains ?? (p.signoffs ?? []).map((s) => s.domainKey).filter(Boolean);
+
 export const fetchPublishRequests = (status?: string) =>
   api.a<PublishRequestVM[]>(`/a/v1/ontology/publish-requests${status ? `?status=${encodeURIComponent(status)}` : ""}`);
 export const createPublishRequest = (body: { ontologyVersion?: number; force?: boolean } = {}) =>
