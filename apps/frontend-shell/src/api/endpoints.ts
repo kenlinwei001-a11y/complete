@@ -270,7 +270,8 @@ export const fetchObjectByKey = (typeKey: string, objectKey: string) =>
 // 同 unit 的范式）。前端**只消费 `displayName ?? propKey`**，不得内联任何中文名映射；缺省即该属性
 // 业务含义尚未确证 → 诚实显裸键，不渲染 undefined/空白。
 export const fetchObjectTypes = () =>
-  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean; displayName?: string }[]; sourceBindings?: { connId: string; dataset: string }[]; derivedProperties?: { propKey: string; formula: string }[] }[]>(
+  // `refToTypeKey`：该属性是指向哪个对象类型的外键（建结构边时用来认出「哪几个属性能实现这条边」）。
+  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean; displayName?: string; refToTypeKey?: string | null }[]; sourceBindings?: { connId: string; dataset: string }[]; derivedProperties?: { propKey: string; formula: string }[] }[]>(
     "/a/v1/ontology/object-types",
   );
 
@@ -2406,17 +2407,33 @@ export interface OntologyVersionVM {
 
 export const fetchOntologyVersions = () => api.a<OntologyVersionVM[]>("/a/v1/ontology/versions");
 
-/** 建一条结构边（关系类型）。201 回包即新版本的 `LinkTypeDef`。 */
+/**
+ * 建一条结构边（关系类型）。201 回包即新版本的 `LinkTypeDef`。
+ *
+ * `viaProperty` = **这条边由来源类型的哪个属性实现**（来源类型上的外键属性 `propKey`）。
+ * 不给 ⇒ 后端只登记声明、**不物化任何链路实例** ⇒ 多跳检索遍历不到这条边（实测：同向同 FK
+ * 的边，给了 `viaProperty` 返回 6 条，不给返回 0 条）。`materialized` 如实回报这次连出几条实例边：
+ * `created` 连成、`unresolved` 属性有值但在对侧查无对应主键、`carrierObjects` 带外键那一侧的对象总数。
+ */
 export const createLinkType = (body: {
   key: string;
   fromTypeKey: string;
   toTypeKey: string;
   cardinality: "1:1" | "1:N" | "N:1" | "N:N";
+  viaProperty?: string;
+  /** 外键长在哪一侧：`from`=来源类型上（缺省），`to`=去向类型上（一对多边正是这个形态）。 */
+  viaSide?: "from" | "to";
 }) =>
-  api.a<{ key: string; fromTypeKey: string; toTypeKey: string; cardinality: string; version: number }>(
-    "/a/v1/ontology/link-types",
-    { method: "POST", body },
-  );
+  api.a<{
+    key: string;
+    fromTypeKey: string;
+    toTypeKey: string;
+    cardinality: string;
+    version: number;
+    viaProperty?: string;
+    viaSide?: "from" | "to";
+    materialized?: { created: number; unresolved: number; carrierObjects: number };
+  }>("/a/v1/ontology/link-types", { method: "POST", body });
 
 /**
  * 停用（ACTIVE → DEPRECATED）。`kind` 二选一，后端是同一个 `governance.deprecate`。

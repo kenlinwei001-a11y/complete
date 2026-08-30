@@ -4064,6 +4064,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(AggregateRequestSchema, req.body);
     return governance.aggregate(ctx(req), body);
   });
+  /**
+   * 建结构边。这条路由上叠着**两张单各修一半**，两半合起来才让「建出来的边真能被检索到」成立：
+   *
+   * ① **端点 FK 校验**（WO-ONTO-CRASH）—— 边的两端类型必须真实存在。此前只校验字符串非空，
+   *    实测经本路由建的 133 条边里 **81 条端点类型根本不存在，全部 201 收下**。
+   * ② **`viaProperty` / `viaSide`（这条边由哪个属性实现）**（WO-LINKTYPE-IMPL）—— 端点都对、
+   *    边也建成了，**仍然**检索不到，因为声明不会自己长出实例。语义见 `LinkTypeDef.viaProperty`。
+   *
+   * ⚠ **两者是两个不同的病，别合并成一个**：①「边指向一个不存在的类型」修法是拒绝写入；
+   * ②「边合法但没有实例」修法是物化。实测把①排除干净后（两端都用真实存在的类型）②依然复现：
+   * 同向同外键，出厂边检索返回 6 条、新建边返回 0 条 —— 这是②独立存在的证据。
+   */
   app.post("/a/v1/ontology/link-types", async (req, reply) => {
     const c = ctx(req);
     const body = parseBody(
@@ -4072,6 +4084,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         fromTypeKey: z.string().min(1),
         toTypeKey: z.string().min(1),
         cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
+        viaProperty: z.string().min(1).optional(),
+        viaSide: z.enum(["from", "to"]).optional(),
       }),
       req.body,
     );
@@ -4099,6 +4113,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         `未知对象类型 ${missing.map((k) => `'${k}'`).join(" / ")}（需先在 /a/v1/ontology/object-types 建好再建关系）`,
       );
     }
+    // 回包里的 `materialized` 把「长出几条实例边」如实告诉用户：0 条也要说清是为什么
+    // （没选实现属性 / 没数据 / 值查无目标），不让用户对着一条建成功却检索不到的边猜。
     return reply.status(201).send(await ontology.upsertLinkType(c, body));
   });
   app.post("/a/v1/ontology/publish", async (req) => ontology.publishVersion(ctx(req)));
