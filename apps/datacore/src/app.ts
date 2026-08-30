@@ -2187,8 +2187,6 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   ) => {
     const { rules: propRules, n, persist } = opts;
     let state = await simCurrent(c, s);
-    /** 推进**之前**那一格（信噪分离的基准：Δ 都相对它算）。`propagateTick` 不改入参，可直接持引用。 */
-    const startState = state;
     let curTick = s.curTick;
     // 增量 3 传导核接入（opt-in）：有规则才传导，否则退回恒等 tick（无规则不触发，可回退）。
     // propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
@@ -2282,9 +2280,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // ⚠ 只在**本会话真有扰动**时才跑影子线：无扰动 ⇒ 两线恒等，跑了纯属白烧 CPU，
     //   且响应形状与本单引入前逐字节相同（additive·可回退 RL9）。
     // ⚠ 影子线**一个字节都不落盘**（不进 `putTickState`）—— 它是度量装置，不是第二条世界线。
+    //
+    // 🔴 **影子线必须从 `baseSnapshot` 重放，不能拿当前态当起点**（这一条是实测踩出来的，别"简化"回去）：
+    //    `POST …/perturbations` 对**建单时已生效**的扰动是在路由里**当场施加并落盘**的
+    //    （`simApplyAtCurrentTick`，见上文 `preValueOf` 段的同一条注释）⇒ 当前 tick 态里**已经**含着
+    //    用户那一笔。拿它当影子线起点，再传 `perturbations: []`，两条线跑出来逐字节相同 ——
+    //    实测 `userContribution: 0 / changedCells: 0`，而同一格的读数明明从 99.9868 变成了 99.9938。
+    //    形态正是本仓那句：**「我用『这一跑没传扰动』当作『这一跑不含扰动』的证据，而前者并不度量后者。」**
+    //    从 `baseSnapshot` 零扰动重放 `curTick` 拍，得到的才是"完全没有我这笔输入的那个世界"。
     const wantDrift = sessionPerturbations.length > 0 && engineTick;
-    let driftState: TickState | null = wantDrift ? state : null;
-    let driftPending: DelayedContribution[] = wantDrift ? pending : [];
+    let driftState: TickState | null = null;
+    let driftPending: DelayedContribution[] = [];
+    if (wantDrift) {
+      driftState = simState(s.baseSnapshot);
+      for (let t = 0; t < s.curTick; t++) {
+        const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], stateVarDomains);
+        driftState = d.next; driftPending = d.pending;
+      }
+    }
+    /** 影子线在**本次推进之前**那一格 —— `worldDrift` 的基准（不能拿真实线的起点，它含扰动）。 */
+    const driftStartState = driftState;
     /** 本次推进中真正产出过贡献的规则 key（对照跑用它区分"关了没影响"与"这条边本来就没动"）。 */
     const firedKeys = new Set<string>();
     for (let i = 0; i < n; i++) {
@@ -2325,7 +2340,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       firedRuleKeys: [...firedKeys].sort(),
       stateVars: stateVarsDisclosure,
       // 信噪比回执（WO-PROP-CLAMP）：`null` = 本会话无扰动 ⇒ 没有"用户贡献"这个量可谈。
-      signalToNoise: driftState === null ? null : summarizeSignalNoise(state, driftState, startState),
+      signalToNoise:
+        driftState === null || driftStartState === null
+          ? null
+          : summarizeSignalNoise(state, driftState, driftStartState),
     };
   };
 
