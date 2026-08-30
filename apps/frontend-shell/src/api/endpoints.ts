@@ -2383,7 +2383,7 @@ export const fetchOntologyVersions = () => api.a<OntologyVersionVM[]>("/a/v1/ont
  * `viaProperty` = **这条边由来源类型的哪个属性实现**（来源类型上的外键属性 `propKey`）。
  * 不给 ⇒ 后端只登记声明、**不物化任何链路实例** ⇒ 多跳检索遍历不到这条边（实测：同向同 FK
  * 的边，给了 `viaProperty` 返回 6 条，不给返回 0 条）。`materialized` 如实回报这次连出几条实例边：
- * `created` 连成、`unresolved` 属性有值但在去向类型里查无对应主键、`sourceObjects` 来源对象总数。
+ * `created` 连成、`unresolved` 属性有值但在对侧查无对应主键、`carrierObjects` 带外键那一侧的对象总数。
  */
 export const createLinkType = (body: {
   key: string;
