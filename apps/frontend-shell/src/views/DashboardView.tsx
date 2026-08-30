@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { aggregateObjects, fetchHistoryBundle, invokeSolver, queryObjectsPaged, queryTimeseriesAgg } from "@/api/endpoints";
 import type { DashboardWidgetDef, WidgetQueryDef, AffectedOrdersOutputVM } from "@/api/types";
-import { SEG_REGISTRY, TIGHTNESS_METRIC, formatTightness } from "@platform/contracts";
+// WO-DASH-ONHAND：「在手」状态集取契约单一出处（与驾驶舱卡片下发的 filter 同一处·禁在前端抄字面量）。
+import { ON_HAND_ORDER_STATUSES, SEG_REGISTRY, TIGHTNESS_METRIC, formatTightness } from "@platform/contracts";
 import { Feature } from "@/workspace/featureGate";
 import { EChart } from "@/components/ui/EChart";
 import { BlockConversable } from "@/components/BlockConversable";
@@ -464,6 +465,31 @@ const SEG_ECON: Record<string, { price: number; margin: number }> = Object.fromE
   SEG_REGISTRY.map((s) => [s.seg, { price: s.priceWan, margin: s.marginPct }]),
 );
 
+/**
+ * WO-DASH-ONHAND ② · 台账与卡片的**对账**：在手总数走与「在手订单」卡片**完全同一条查询**
+ * （同一个 `aggregateObjects` + 同一个契约常量 `ON_HAND_ORDER_STATUSES`）。
+ *
+ * ⚠ 这里刻意**不**复用卡片组件的返回值、也**不**在本文件写第二份状态字面量：
+ * 对账的意义就在于两边独立走同一口径还得出同一个数；抄一份字面量过来，
+ * 明天卡片改了口径而这里没改，屏上会理直气壮地报一个自洽的错数
+ * ——那正是本单要消灭的「同一个词一屏三个值」的制造方式。
+ */
+function useOnHandOrderCount() {
+  return useQuery({
+    queryKey: ["a", "order-onhand-count", [...ON_HAND_ORDER_STATUSES]],
+    queryFn: async (): Promise<number> => {
+      const res = await aggregateObjects({
+        typeKey: "Order",
+        filter: { status: [...ON_HAND_ORDER_STATUSES] },
+        groupBy: [],
+        metrics: [{ prop: "id", fn: "count" }],
+      });
+      return typeof res.rows[0]?.metrics["count_id"] === "number" ? (res.rows[0].metrics["count_id"] as number) : 0;
+    },
+    retry: false,
+  });
+}
+
 /** PRD-cockpit §2.1 订单经营台账：受影响订单台账 + 应用细分筛选 + 综合毛利率聚合 + 点单下钻逐单根因 DAG。 */
 function OrderLedgerWidget() {
   const navigate = useNavigate();
@@ -473,9 +499,14 @@ function OrderLedgerWidget() {
     queryFn: async () => (await invokeSolver("affected_orders", {})).data as AffectedOrdersOutputVM,
     retry: false,
   });
+  const { data: onHand } = useOnHandOrderCount();
   if (isLoading) return <div style={{ color: "var(--muted2)" }}>{zh.common.loading}</div>;
   const rows = data?.rows ?? [];
   if (rows.length === 0) return <div style={{ color: "var(--muted2)" }}>{zh.common.none}</div>;
+  // 口径对账串：全部真值派生（窗口天数来自求解器回带的 `window`，差额现算），一个数都不写死。
+  const win = data?.window;
+  const windowWord = win ? `交期 ${win.forecastStart} 起 ${win.toDay - win.fromDay} 天内` : "交期窗口内";
+  const offWindow = typeof onHand === "number" ? onHand - rows.length : undefined;
   const segs = [...new Set(rows.map((r) => r.seg))];
   const filtered = seg ? rows.filter((r) => r.seg === seg) : rows;
   let sales = 0;
@@ -489,8 +520,22 @@ function OrderLedgerWidget() {
   const gmRate = sales > 0 ? (gp / sales) * 100 : 0;
   return (
     <div data-testid="dash-order-ledger">
+      {/*
+        WO-DASH-ONHAND ② · 口径对账行（**在筛选条之上**，读者先知道这张表在列什么再去筛）。
+        实测这三个数：在手 150 · 本表 127 · 差 23（全是交期已过的在制单）——
+        差异本身合法（台账带交期窗口、卡片不带），但屏上此前**一个字都没说**，
+        于是两个「全部」指着两样东西。这一行就是那句缺掉的话。
+      */}
+      {offWindow !== undefined && offWindow > 0 && (
+        <div data-testid="ledger-basis-note" style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5, marginBottom: 8 }}>
+          在手 <b className="mono">{onHand}</b> 单中，本表列出{windowWord}的 <b className="mono">{rows.length}</b> 单；
+          其余 <b className="mono">{offWindow}</b> 单交期已过（在制未交），不在本表窗口内。
+        </div>
+      )}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
         <div className="segGroup" style={segBarStyle}>
+          {/* 「全部」→「全部细分」：这个 chip 筛的是**细分**，它从来不是「全部订单」。
+              原文叫「全部」，与上方卡片「在手订单」的全簿含义撞词 —— 一词两义正是本单要消灭的东西。 */}
           <button data-testid="ledger-seg-all" style={segBtnStyle(!seg)} onClick={() => setSeg("")}>{zh.dash.ledgerAll}</button>
           {segs.map((s) => (
             <button key={s} data-testid={`ledger-seg-${s}`} style={segBtnStyle(seg === s)} onClick={() => setSeg(s)}>{s}</button>
@@ -735,6 +780,19 @@ function Widget({ def, decor, drillMetric, onDrillMetric }: { def: DashboardWidg
         <PlanDrillWidget />
       ) : (
         <TableWidget data={data} columns={(def.query as { columns?: string[] }).columns} />
+      )}
+      {/*
+        WO-DASH-ONHAND · 口径副标题（下发方声明 `caption`，前端零写死 R14）。
+        排在值下面而不是标题旁：标题回答「这是什么」，口径回答「这个数盖的是哪一段 / 数的是哪一批」——
+        后者是读数时才需要的，摆在标题行会把 12 张卡的标题挤成两行（LOOP5 UX 记的那笔账）。
+      */}
+      {def.caption && (
+        <div
+          data-testid={`widget-caption-${def.key}`}
+          style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.45, marginTop: 8 }}
+        >
+          {def.caption}
+        </div>
       )}
     </div>
   );

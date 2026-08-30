@@ -81,7 +81,8 @@ export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
       "rows",
       "fallback",
       "problems",
-      "summary"
+      "summary",
+      "window"
     ]
   },
   {

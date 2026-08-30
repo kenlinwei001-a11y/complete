@@ -338,7 +338,15 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     const CONDITIONAL: Record<string, { keys: string[]; why: string }> = {
       ontology_query: { keys: ["deltas"], why: "真侧仅 overrides 非空时附（query-engine.ts return 条件展开）；mock 不支持 overrides 恒不出现" },
       decision_play: { keys: ["locusPlay"], why: "真侧仅传 locusType+locusId 时出现（service.ts:543 注释自陈）；本调用未传" },
-      affected_orders: { keys: ["summary"], why: "summary 为无 baseId 聚合分支专有（risk.ts affectedOrdersAggregate）；本调用走单基地分支" },
+      // WO-DASH-ONHAND ②：`window` 与 `summary` **同条件**（都只在聚合分支出现），故与它并列登记而非放宽断言。
+      // 真侧依据（逐条实测，不是照注释抄）：① `arg-aliases.ts` 自陈 `affected_orders` 靠 `args.baseId` 有无**切分支**
+      // （原文「这条是**模式开关**，不是别名」）；② `window` 只写在 `risk.ts` 的 `affectedOrdersAggregate` 返回里
+      // （单基地分支走的是另一个函数 `affectedOrders`，两处 return 各自独立）。
+      // ⇒ 本调用传了 baseId ⇒ 走单基地分支 ⇒ 真侧本就不回带 window，mock 同口径不回带才是**对的**。
+      affected_orders: {
+        keys: ["summary", "window"],
+        why: "summary/window 均为无 baseId 聚合分支专有（risk.ts affectedOrdersAggregate）；本调用传 baseId 走单基地分支",
+      },
     };
 
     const CASES: { solverKey: string; args: Record<string, unknown> }[] = [
