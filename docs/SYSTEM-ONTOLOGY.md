@@ -855,7 +855,7 @@ StateVarDomain(WO-PROP-CLAMP 已落): stateVar --min/max/restPoint/decayRef--> p
   衰减相(贡献之前) next=rest+(1−λ)(cur−rest) · λ 只走 decayRef→ruleParams[C35].pressureDecayPerTick(禁内联)
   ⚠ 只衰减**被某条规则写入**的量纲；入度 0 = 外生输入,不衰减(否则根源归零 ⇒ 整个世界失去驱动一起死)
   饱和相(末尾) saturateToDomain 双曲软拐点,带宽从**静息点到边界**那段切(rest==min ⇒ 下界硬地板,合法的 0 不动)
-  回执 stateVars{declared/undeclared/decayUnresolved/saturations/decayApplied} + signalToNoise{worldDrift/userContribution/ratioOnTouchedCells}
+  回执 stateVarReport{declared/undeclared/decayUnresolved/saturations/decayApplied} + signalToNoise{worldDrift/userContribution/ratioOnTouchedCells}
   ⚠ 影子线必须从 baseSnapshot **零扰动重放**,不能拿当前态当起点(POST /perturbations 会预施加 ⇒ 两线同值 ⇒ userContribution 恒 0)
 PropagationRule.coefficient/delayTicks --引用--> rule.params(G-10 P1 可编辑) ⚠ 改规则即改推演,禁内联常数(RL5)
 ontology linkType(fromType,key,toType) --必须同向--> PropagationRule(sourceTypeKey,viaLinkKey,targetTypeKey)

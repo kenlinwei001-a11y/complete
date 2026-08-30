@@ -82,15 +82,15 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
   // ── §2 衰减率必须**走引用**拿到（C35），拿不到要诚实报缺而不是悄悄不衰减 ──────────
   it("§2 λ 走 C35 引用；规则参数缺失 ⇒ decayUnresolved 报缺、绝不补默认", () => {
     const ok = run(1, stateVarDomains()).last;
-    expect(ok.stateVars.decayApplied.demandLoad).toBe(PRESSURE_DECAY_PER_TICK);
-    expect(ok.stateVars.decayUnresolved).toEqual([]);
+    expect(ok.stateVarReport.decayApplied.demandLoad).toBe(PRESSURE_DECAY_PER_TICK);
+    expect(ok.stateVarReport.decayUnresolved).toEqual([]);
 
     // 变异：把 C35 的参数拿掉 ⇒ 必须报缺，且**不衰减**（回到纯积分器），不许静默兜一个 λ
     const missing = run(1, stateVarDomains(), {} as never).last;
-    expect(missing.stateVars.decayApplied).toEqual({});
-    const names = missing.stateVars.decayUnresolved.map((x) => x.stateVar);
+    expect(missing.stateVarReport.decayApplied).toEqual({});
+    const names = missing.stateVarReport.decayUnresolved.map((x) => x.stateVar);
     expect(names).toContain("demandLoad");
-    expect(missing.stateVars.decayUnresolved[0]!.ruleKey).toBe(STATE_DECAY_RULE_KEY);
+    expect(missing.stateVarReport.decayUnresolved[0]!.ruleKey).toBe(STATE_DECAY_RULE_KEY);
   });
 
   // ── §3 未声明的量纲**不许被偷偷夹住**，且必须在回执里有名字 ──────────────────────
@@ -99,9 +99,9 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     expect(d.queueDays).toBeUndefined();     // 天数族：全仓没有第二处出处，故刻意不声明
     expect(d.inspectBacklog).toBeUndefined(); // 件数族：同上
     const { last } = run(1, d);
-    expect(last.stateVars.declaredStateVars).toContain("demandLoad");
+    expect(last.stateVarReport.declaredStateVars).toContain("demandLoad");
     // 本图上只有 demandPressure/demandLoad 两个量纲，都已声明 ⇒ 未声明表为空但字段必须在
-    expect(Array.isArray(last.stateVars.undeclaredStateVars)).toBe(true);
+    expect(Array.isArray(last.stateVarReport.undeclaredStateVars)).toBe(true);
   });
 
   // ── §4 保序饱和：**变异反证**就在这里（判据 ⑤）──────────────────────────────────
@@ -142,8 +142,8 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     expect(bumped.next.b1!.demandLoad!).toBeGreaterThan(base.next.b1!.demandLoad!);
     expect(bumped.next.b1!.demandLoad!).toBeLessThan(100);
     // 且这次饱和必须被披露，不许静默夹住
-    expect(base.stateVars.saturations.some((s) => s.objectId === "b1" && s.stateVar === "demandLoad")).toBe(true);
-    const ev = base.stateVars.saturations.find((s) => s.stateVar === "demandLoad")!;
+    expect(base.stateVarReport.saturations.some((s) => s.objectId === "b1" && s.stateVar === "demandLoad")).toBe(true);
+    const ev = base.stateVarReport.saturations.find((s) => s.stateVar === "demandLoad")!;
     expect(ev.raw).toBeGreaterThan(100); // 原始值原样留在回执里，一个字节都不丢
     expect(ev.value).toBeLessThan(100);
     expect(ev.bound).toBe("max");
@@ -154,7 +154,7 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     const withArg = propagateTick(graph, state0, [rule()], [], 0, {}, {}, [], {});
     const withoutArg = propagateTick(graph, state0, [rule()], [], 0, {}, {});
     expect(withArg.next).toEqual(withoutArg.next);
-    expect(withArg.stateVars.saturations).toEqual([]);
-    expect(withArg.stateVars.decayApplied).toEqual({});
+    expect(withArg.stateVarReport.saturations).toEqual([]);
+    expect(withArg.stateVarReport.decayApplied).toEqual({});
   });
 });

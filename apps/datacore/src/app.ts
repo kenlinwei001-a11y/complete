@@ -2329,7 +2329,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         );
         state = out.next; pending = out.pending; unresolvedGates = out.unresolvedGates;
         appliedPerturbations = out.appliedPerturbations;
-        stateVarsDisclosure = out.stateVars;
+        stateVarsDisclosure = out.stateVarReport;
         // 影子线：同一拍、同一份图/规则/闸门/取值域，**扰动清空** ⇒ 世界自身漂移。
         if (driftState !== null) {
           const d = propagateTick(
@@ -2355,7 +2355,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates },
       appliedPerturbations, sessionPerturbationCount: sessionPerturbations.length,
       firedRuleKeys: [...firedKeys].sort(),
-      stateVars: stateVarsDisclosure,
+      stateVarReport: stateVarsDisclosure,
       // 信噪比回执（WO-PROP-CLAMP）：`null` = 本会话无扰动 ⇒ 没有"用户贡献"这个量可谈。
       signalToNoise:
         driftState === null || driftStartState === null
@@ -2406,7 +2406,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             // 状态量口径回执（WO-PROP-CLAMP）：哪些量纲有声明取值域、哪些没有（因而仍是纯积分器）、
             // 哪些配了衰减却拿不到、本拍谁饱和了、实际按多少在衰减。
             // **不许静默夹住** —— 夹了不说，屏上看着正常、信息其实已经丢了。
-            stateVars: r.stateVars,
+            stateVarReport: r.stateVarReport,
           }
         : {}),
       // 信噪比（WO-PROP-CLAMP）：这一拍的 Δ 里有多少是扰动造成的、多少是世界自己在走。

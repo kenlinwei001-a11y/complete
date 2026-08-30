@@ -581,7 +581,7 @@ export function propagateTick(
   trace: PropagationTrace[];
   unresolvedGates: UnresolvedCadenceGate[];
   appliedPerturbations: string[];
-  stateVars: StateVarDisclosure;
+  stateVarReport: StateVarDisclosure;
 } {
   // ── 0') 扰动相位（WO-P2）：先把本 tick 的「到期回退 / 首次落地」作用到世界，再传导 ──
   //
@@ -895,7 +895,7 @@ export function propagateTick(
 
   return {
     next, pending: outPending, trace, unresolvedGates, appliedPerturbations,
-    stateVars: {
+    stateVarReport: {
       declaredStateVars: [...declaredSeen].sort((a, b) => a.localeCompare(b)),
       undeclaredStateVars: [...undeclaredSeen].sort((a, b) => a.localeCompare(b)),
       decayUnresolved: decayUnresolved.sort((a, b) => a.stateVar.localeCompare(b.stateVar)),
