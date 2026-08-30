@@ -92,6 +92,18 @@ function resolveRoute(who) {
   if (new RegExp(`["'\`]${seg}/${key}["'\`]`).test(app) || app.includes(`path="${key}"`)) {
     return { found: true, path, verdict: "static" };
   }
+  // helper 建的路由：`admin("ontology-relations", <Page />)` —— 路径段由 helper 拼，
+  // 字面 `path: "admin/xxx"` 一次都不出现。
+  //
+  // 形态（CLAUDE.md 铁律 0.6 句式）——这条假阴性 2026-08-30 被金丝雀当场抓到：
+  //   **「我用『这个键没以 `path:` 字面形式出现』当作『这条路由不存在』的证据，
+  //     而前者并不度量后者。」**
+  // 对照实验：`/admin/org`（字面 path）✅ 过；`/admin/slices`（helper 建）🔴 被误判不存在，
+  // 而 SlicesPage 真实存在且 E2E 测试在它上面建过切片。
+  // 一道会对半数 admin 路由喊狼来了的门，迟早被习惯性绕过 —— 那时它就彻底不工作了。
+  if (new RegExp(`\\b${seg}\\(\\s*["'\`]${key}["'\`]`).test(app)) {
+    return { found: true, path, verdict: "static" };
+  }
   // 通配兜底：`v/:viewKey` / `o/:type/:key` 这类
   if (new RegExp(`["'\`]${seg}/:`).test(app)) return { found: true, path, verdict: "wildcard" };
   return { found: true, path, verdict: "missing" };
