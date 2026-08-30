@@ -686,7 +686,18 @@ export interface ApplyReceipt {
   readonly notes: readonly string[];
 }
 
-const cellNum = (v: number | null): string => (v === null ? "（这个世界里没有这一格）" : String(v));
+/**
+ * 纯显示格式化（**不是换算**）：保留 ≤2 位小数并去掉尾随 0 —— 与卡墙 / 右栏检视 / 底部抽屉
+ * 屏上那三处**同一个口径**（`MetricWall.tsx` · `InspectorPane.tsx` · `BottomDrawer.tsx` 的 `fmt`）。
+ *
+ * ⚠ 为什么必须有这一步（2026-08-30 真浏览器实测抓到的）：回执原来走 `String(v)`，于是
+ * 同一次施加，卡墙上印的是 `102916.46`，而回执里印的是 `+99776.17000000001` ——
+ * **同一屏两种数字长相**，尾巴上那 11 位是 IEEE754 的减法余数，不是精度。
+ * 用户会以为那是"更准的数"，而它只是没格式化。
+ */
+const fmtNum = (n: number): string => n.toFixed(2).replace(/\.?0+$/, "");
+
+const cellNum = (v: number | null): string => (v === null ? "（这个世界里没有这一格）" : fmtNum(v));
 
 export function buildApplyReceipt(args: {
   readonly body: PerturbBody;
@@ -766,7 +777,7 @@ export function buildApplyReceipt(args: {
 export function receiptCellText(r: ApplyReceipt): string {
   if (r.moved === null) return `目标那一格（${r.targetText}）在这个世界里不存在 —— 无从比较（不是 0）`;
   const delta = r.before !== null && r.after !== null ? r.after - r.before : null;
-  const deltaText = delta === null ? "" : `（${delta >= 0 ? "+" : "−"}${Math.abs(delta)}）`;
+  const deltaText = delta === null ? "" : `（${delta >= 0 ? "+" : "−"}${fmtNum(Math.abs(delta))}）`;
   return `${r.targetText}：第 ${r.tickBefore} 拍 ${cellNum(r.before)} → 第 ${r.tickAfter} 拍 ${cellNum(r.after)}${deltaText}`;
 }
 

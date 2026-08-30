@@ -690,6 +690,31 @@ describe("WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执", () => {
     expect(screen.queryByTestId("rail-receipt-notes")).toBeNull();
   });
 
+  it("⑧a 回执臂 · 数字长相与卡墙同一口径 —— 屏上不许出现 IEEE754 的减法余数", async () => {
+    // 🔴 真浏览器实测抓到的（2026-08-30 · 真后端 SEED_DEMO=1）：同一次施加，
+    //    卡墙印 `102916.46`，而回执印 `+99776.17000000001` —— **同一屏两种数字长相**。
+    //    尾巴那 11 位不是精度，是 `102916.46 - 3140.29` 的浮点余数；用户会读成"更准的数"。
+    // 判据落在**长相**上（小数位数），不是"等于某个字面量" —— 后者换个 fixture 就失效。
+    const target = STATE_VARS[10] as string;
+    worldBefore = { obj_type1a_1: { [target]: 3140.29 } };
+    worldAfter = { obj_type1a_1: { [target]: 102916.46 } };
+    mount();
+    await ready();
+    await pickSubmittableVar();
+    await userEvent.selectOptions(sel("rail-objectid"), "obj_type1a_1");
+    await userEvent.click(screen.getByTestId("rail-apply"));
+
+    const cell = (await screen.findByTestId("rail-receipt-cell")).textContent ?? "";
+    // 金丝雀：这一臂要看的那三个数确实都印出来了（不中 ⇒ 工具坏了，不许读作「格式化对了」）
+    expect(cell, "金丝雀不中 ⇒ 本臂什么都没证明").toContain("102916.46");
+    expect(cell).toContain("3140.29");
+    expect(cell).toContain("+99776.17");
+    // 变异反证：改前那一版会印 `+99776.17000000001`，下面这条当场红
+    for (const n of cell.match(/\d+\.\d+/g) ?? []) {
+      expect(n.split(".")[1]!.length, `屏上出现 ${n} —— 小数位超过 2 位`).toBeLessThanOrEqual(2);
+    }
+  });
+
   it("⑧' 回执臂 · `simWorld` 必须在 POST **之前**读 —— 否则左端已经是施加后的值", async () => {
     // 这一条守的是一个会让回执**当场说谎**的顺序错误（`X → Y` 退化成 `Y → Y`）：
     // `POST …/perturbations` 对建单时已生效的扰动会在路由里当场施加。
