@@ -197,7 +197,9 @@ export default function OntologyRelationsPage() {
       }
     };
     push("from", lk.fromTypeKey, lk.toTypeKey);
-    push("to", lk.toTypeKey, lk.fromTypeKey);
+    // 自环（来源 == 去向）只列一次：两侧是同一个类型，列两遍会得到一串**标签完全相同、
+    // 值却不同**的候选，用户无从分辨该选哪个。
+    if (lk.toTypeKey && lk.toTypeKey !== lk.fromTypeKey) push("to", lk.toTypeKey, lk.fromTypeKey);
     return out.sort((a, b) => a.rank - b.rank || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
   }, [types.data, lk.fromTypeKey, lk.toTypeKey]);
 
