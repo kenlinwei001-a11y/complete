@@ -26,6 +26,9 @@ import {
   type PropagationRule,
   type PropagationTrace,
   type ResolvedSimScope,
+  type SaturationEvent,
+  type StateVarDomain,
+  type StateVarDomainLookup,
   type TickState,
 } from "@platform/contracts";
 
@@ -328,6 +331,100 @@ function effectiveCoefficient(rule: PropagationRule, ruleParams: RuleParamLookup
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// § 量纲边界与衰减（WO-PROP-CLAMP）—— 治「无衰减无夹值纯积分器」
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * **保序饱和的形状参数**：压缩带占取值域全宽的比例。
+ *
+ * 与 `coefficient`/`λ` 不同，这**不是业务常数**（不违 R14）——它是饱和曲线的**数学形参**，
+ * 只决定"顶部这一段用多大的分辨率去分辨"，不改任何业务阈值。同一条论证见
+ * `solvers/risk.ts` 的 `saturateTension`（原文：「`band`/`SCALE` 是饱和曲线的形状参数
+ * （数学形参，非业务常数 R14）」）。
+ *
+ * 取 0.25 而不是 `saturateTension` 的 0.5/100 = 0.5%：那条曲线服务的是**已经在量纲内**的
+ * 张力显示（只需分辨"刚好顶到 100"的那几个点）；这里要分辨的是**溢出好几倍**的读数，
+ * 0.5% 的带宽会把 150 与 69,134 压成同一个 100 —— 那正是本单验收判据 ④ 要拦的
+ * 「夹值把引擎夹死」。带宽 25% 时，`raw` 直到约 `max + 28×band` 仍与相邻值可区分（round12 分辨率下）。
+ */
+const SATURATION_BAND_FRACTION = 0.25;
+
+/**
+ * **保序饱和**（两侧）—— 把越界读数压回 `(min,max)` 开区间，且**严格单调**。
+ *
+ * ── 为什么不是硬截断 `Math.min(max, Math.max(min, v))` ─────────────────────────
+ * 本单验收判据 ④ 写着「夹值不能把引擎夹死，那是从一个病换成另一个病」。硬截断正是那个新病：
+ * 所有溢出读数**并落同一个数** ⇒ 扰动 +30 与 +300 在屏上一模一样、Δ 恒 0，
+ * 推演当场失去意义。`solvers/risk.ts` 的 `saturateTension` 段头存着这个病的实测样本
+ * （瓶颈工序 8 天原始值 98.65…101.29 被压成同一个 `98`，「30 个点里 8 天零信息量」）。
+ *
+ * ── 为什么不直接调用 `saturateTension` ────────────────────────────────────────
+ * 试过，不能用，且**理由是实测的不是洁癖**：它在拐点以下走 `Math.round(raw)`（**取整到 1**），
+ * 那是 0–100 整数张力**显示**口径；引擎态是带小数的连续量并按 `round12` 定精度，
+ * 套上去会把全部推演读数量化成整数 —— 这是行为改变，不是复用。
+ * 另外它只有上界一侧，而 `forecastBias` 这种带方向的量纲两侧都要。
+ * 故本函数**沿用它的曲线形状**（指数压缩进开区间、恒不达界、严格单调），做两侧推广，
+ * 并去掉取整。形状同源、口径不同，这一段就是那条边界的记号。
+ *
+ * ── 形状 ──────────────────────────────────────────────────────────────────
+ * `band = (max−min)·BAND`，拐点 `kneeHi = max−band` / `kneeLo = min+band`：
+ *  · 带内（`kneeLo ≤ raw ≤ kneeHi`）**原值返回**，逐字节不动（未越界的数据一个不碰）；
+ *  · 上溢：`max − band·e^{−(raw−kneeHi)/band}` ∈ (kneeHi, max)；
+ *  · 下溢：`min + band·e^{−(kneeLo−raw)/band}` ∈ (min, kneeLo)。
+ * 两个拐点处**值与斜率都连续**（斜率恰为 1，因指数的时间常数取 band 本身）⇒ C¹ 光滑，
+ * 不会在拐点上凭空造出一个折角被读成"这里发生了什么"。
+ *
+ * 纯函数：无随机 / 无时钟 / 无外部状态（R6 同入参字节一致）。
+ */
+export function saturateToDomain(raw: number, min: number, max: number): number {
+  if (!(max > min)) return raw; // 退化域（max<=min）⇒ 不压缩，交由调用方的声明校验去报
+  const band = (max - min) * SATURATION_BAND_FRACTION;
+  const kneeHi = max - band;
+  if (raw > kneeHi) return max - band * Math.exp(-(raw - kneeHi) / band);
+  const kneeLo = min + band;
+  if (raw < kneeLo) return min + band * Math.exp(-(kneeLo - raw) / band);
+  return raw;
+}
+
+/**
+ * 解析一个状态量的衰减率 λ ∈ [0,1)。**只走引用**（照 `effectiveCoefficient` 同一范式）。
+ *
+ * `null` = 拿不到可用 λ ⇒ 调用方**不衰减**且必须报缺。绝不在这里补一个默认值：
+ * 补了就让"没配衰减"与"配了 λ=0"在屏上一模一样，正是本仓「诚实缺席」要根治的形态。
+ */
+function resolveDecayRate(domain: StateVarDomain, ruleParams: RuleParamLookup): number | null {
+  const ref = domain.decayRef;
+  if (!ref) return null;
+  const v = ruleParams[ref.ruleKey]?.[ref.paramKey];
+  const n = typeof v === "number" ? v : Number(v);
+  // λ=1 会把状态一拍归零（"世界没有记忆"），λ<0 会放大 —— 两者都不是衰减，一律诚实拒绝。
+  if (!Number.isFinite(n) || n < 0 || n >= 1) return null;
+  return n;
+}
+
+/**
+ * 一个 tick 的**状态量披露**（R-ARG-FIDELITY：读数必须回带自己是在什么口径下算出来的）。
+ *
+ * 判据：一个看不到代码的人，读完这一层应当能自己判断「这个数为什么是这个数」——
+ * 哪些量纲被声明了、哪些没有（因而不夹不衰减）、哪些配了衰减却拿不到、这一拍谁饱和了。
+ */
+export interface StateVarDisclosure {
+  /** 本次参与传导、且**有**声明取值域的状态量（排序）。 */
+  declaredStateVars: string[];
+  /**
+   * 本次参与传导、但**没有**声明取值域的状态量（排序）。
+   * 它们**不夹不衰减**（= 仍是纯积分器）。这不是遗漏的托辞，是让缺口在屏上有名字。
+   */
+  undeclaredStateVars: string[];
+  /** 声明了 `decayRef` 却解析不到可用 λ 的状态量 + 原因（排序）。 */
+  decayUnresolved: { stateVar: string; ruleKey: string; paramKey: string; detail: string }[];
+  /** 本 tick 真实发生的饱和（排序）。空 = 没有任何读数越界。 */
+  saturations: SaturationEvent[];
+  /** 实际生效的衰减率（stateVar → λ，排序后的对象）—— 披露"这一拍到底按多少在散"。 */
+  decayApplied: Record<string, number>;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // § 扰动相位（WO-P2 · PRD-UPGRADE-decision-sandbox-v2 §3.1.3）
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -448,12 +545,14 @@ export function propagateTick(
   ruleParams: RuleParamLookup = {},
   gates: CadenceGateLookup = {},
   perturbations: readonly PerturbationInTick[] = [],
+  domains: StateVarDomainLookup = {},
 ): {
   next: TickState;
   pending: DelayedContribution[];
   trace: PropagationTrace[];
   unresolvedGates: UnresolvedCadenceGate[];
   appliedPerturbations: string[];
+  stateVars: StateVarDisclosure;
 } {
   // ── 0') 扰动相位（WO-P2）：先把本 tick 的「到期回退 / 首次落地」作用到世界，再传导 ──
   //
@@ -513,6 +612,52 @@ export function propagateTick(
   }
 
   const next = cloneState(effState);
+
+  // ── 0'') 衰减相（WO-PROP-CLAMP）：**在贡献落下之前**把上一拍的存量收掉一部分 ────────
+  //
+  // 病灶：本函数原本是 `next = clone(current)` 后一路 `+=` ⇒ 每格都是无泄漏纯积分器
+  // `x(t+1)=x(t)+inflow`。链上第 d 跳即 d 重积分 ⇒ O(t^d) 发散（实测零扰动 6 拍 73.4% 越界）。
+  // 治法：`x(t+1) = rest + (1−λ)(x(t) − rest) + inflow` —— 收敛到有限稳态 `rest + inflow/λ`。
+  //
+  // ⚠ 顺序是判据不是风格：衰减必须排在**贡献之前**，否则本拍刚到的入流会被同拍打折
+  //    （那是"入流缩水"，不是"存量衰减"，稳态会偏掉 (1−λ) 倍）。
+  // ⚠ 只动**声明过取值域**的格子；未声明的一格不碰 ⇒ 未声明租户逐字节同旧（additive·可回退 RL9）。
+  const decayApplied: Record<string, number> = {};
+  const decayUnresolved: StateVarDisclosure["decayUnresolved"] = [];
+  const decayRateOf = new Map<string, number | null>(); // stateVar -> λ（null = 拿不到，不衰减）
+  for (const stateVar of Object.keys(domains).sort((a, b) => a.localeCompare(b))) {
+    const d = domains[stateVar]!;
+    const lambda = resolveDecayRate(d, ruleParams);
+    decayRateOf.set(stateVar, lambda);
+    if (lambda === null) {
+      if (d.decayRef) {
+        decayUnresolved.push({
+          stateVar, ruleKey: d.decayRef.ruleKey, paramKey: d.decayRef.paramKey,
+          detail:
+            `状态量 ${stateVar} 声明了衰减引用 ${d.decayRef.ruleKey}.${d.decayRef.paramKey}，` +
+            `但该规则参数取不到 [0,1) 内的数（规则未发布 / 参数缺失 / 取值越界）。` +
+            `本 tick 该量纲**不衰减**（仍是纯积分器）——既不补一个默认衰减率，也不假装配过。`,
+        });
+      }
+      continue;
+    }
+    if (lambda === 0) continue; // 显式配 0 = 明确要纯积分器，尊重它，但不记进 decayApplied 的"在散"语义
+    decayApplied[stateVar] = lambda;
+  }
+  if (Object.keys(decayApplied).length > 0) {
+    for (const objId of Object.keys(next)) {
+      const bucket = next[objId]!;
+      for (const stateVar of Object.keys(bucket)) {
+        const lambda = decayApplied[stateVar];
+        if (lambda === undefined) continue;
+        const rest = domains[stateVar]!.restPoint;
+        const cur = bucket[stateVar];
+        if (typeof cur !== "number") continue;
+        bucket[stateVar] = round12(rest + (1 - lambda) * (cur - rest));
+      }
+    }
+  }
+
   const touched = new Map<string, Set<string>>(); // objId -> stateVars 已触达（区分 max 首条 + 末尾规整）
   const trace: PropagationTrace[] = [];
   const nextPending: DelayedContribution[] = [];
@@ -655,6 +800,34 @@ export function propagateTick(
     }
   }
 
+  // ── 4) 量纲边界（WO-PROP-CLAMP）：越界读数**保序压回**声明取值域，并逐格记账 ──────────
+  //
+  // ⚠ 与上面第 3 步的 `rule.clamp` 是**两件事，不许合并**：
+  //    · `rule.clamp` 挂在**边**上，只夹"这条规则的目标"，是建模者对某条流的局部约束；
+  //    · 本步挂在**状态量**上，夹的是"这个量纲本身能取什么值"，与哪条边写了它无关。
+  //    合并会漏掉一整类格子：被 A 边写、而只有 B 边声明了 clamp 的那些（实测 42 条边 clamp 全为 null，
+  //    所以第 3 步今天一格都没夹到 —— 这正是发散能一路跑到 408,305 的原因之一）。
+  //
+  // ⚠ **不许静默夹住**：每一次压缩都进 `saturations[]` 随 tick 回执下发。
+  //    夹了不说 = 屏上看着正常、信息其实已经丢了，那是把一个病换成另一个更难查的病。
+  const saturations: SaturationEvent[] = [];
+  const declaredSeen = new Set<string>();
+  const undeclaredSeen = new Set<string>();
+  for (const objId of Object.keys(next).sort((a, b) => a.localeCompare(b))) {
+    const bucket = next[objId]!;
+    for (const stateVar of Object.keys(bucket).sort((a, b) => a.localeCompare(b))) {
+      const d = domains[stateVar];
+      if (d === undefined) { undeclaredSeen.add(stateVar); continue; }
+      declaredSeen.add(stateVar);
+      const raw = bucket[stateVar];
+      if (typeof raw !== "number") continue;
+      const sat = round12(saturateToDomain(raw, d.min, d.max));
+      if (sat === raw) continue; // 带内 ⇒ 一个字节不动
+      bucket[stateVar] = sat;
+      saturations.push({ objectId: objId, stateVar, raw, value: sat, bound: raw > d.max - (d.max - d.min) * SATURATION_BAND_FRACTION ? "max" : "min" });
+    }
+  }
+
   // pending：未到的 carry + 新延迟，稳定排序（resume 字节一致）。
   const outPending = [...carry, ...nextPending].sort(
     (a, b) =>
@@ -680,5 +853,19 @@ export function propagateTick(
   // 诚实清单也稳定排序（R6：同输入同字节，含"缺什么"这份清单）。
   unresolvedGates.sort((a, b) => a.ruleKey.localeCompare(b.ruleKey) || a.cadenceNodeId.localeCompare(b.cadenceNodeId));
 
-  return { next, pending: outPending, trace, unresolvedGates, appliedPerturbations };
+  return {
+    next, pending: outPending, trace, unresolvedGates, appliedPerturbations,
+    stateVars: {
+      declaredStateVars: [...declaredSeen].sort((a, b) => a.localeCompare(b)),
+      undeclaredStateVars: [...undeclaredSeen].sort((a, b) => a.localeCompare(b)),
+      decayUnresolved: decayUnresolved.sort((a, b) => a.stateVar.localeCompare(b.stateVar)),
+      // 饱和按 (objectId, stateVar) 稳定排序（R6：同输入同字节，含"谁顶到了"这份清单）。
+      saturations: saturations.sort(
+        (a, b) => a.objectId.localeCompare(b.objectId) || a.stateVar.localeCompare(b.stateVar),
+      ),
+      decayApplied: Object.fromEntries(
+        Object.keys(decayApplied).sort((a, b) => a.localeCompare(b)).map((k) => [k, decayApplied[k]!]),
+      ),
+    },
+  };
 }
