@@ -69,7 +69,7 @@
 
 ### B. 本体/对象域（DataCore）
 - **OntologyType / OntologyLink / OntologyVersion / OntologyDraft**：本体类型/链路/快照版本/草稿 · `ontology.ts`,`modeling.ts`。**A4 对象/类型浏览器**（前端 `ObjectTypesBrowserPage` `/admin/object-types`）：列已发布类型按 14 域(A3 `BUSINESS_DOMAINS`)分组 + 每类型物化对象数(`GET /a/v1/ontology/object-types/stats` 一次算 {域/属性数/派生数/PK/count}) + 域/关键词/仅有物化 筛选 + 点「看实例」下钻实例表(`GET /a/v1/objects?type=`,A6 行级过滤) → Object360/lineage(`/o/:type/:key`)。闭合用户实测"找不到已发布对象类型在哪看"缺口（R2 隔离/R3 entitlement/R14 零业务常数）。
-- **ObjectInstance(objects) / Link(links)**：对象库与对象间链路（带 `origin`: SYNTHETIC/MATERIALIZED/MANUAL）· `domain.ts`。**对象身份约定（轨L 增量1 统一·单一规则）**：`id = obj_${typeKey.toLowerCase()}_${pk}`（业务主键，非来源数据行）——A 路 synthetic(`synthetic/service.ts`) 与 B 路建模链(`modeling.ts` materialize) **同一规则**（B 路原 `obj_${type}_${ds.id}_${pk}` 的 ds.id 段已去除）；语义：**同 type+pk 即同对象**（多数据集映射同业务键→合并覆盖，幂等 R6）；provenance 在 `origin.datasetId`（与 id 解耦）。全平台只此一条 obj id 规则，不留两套。**demo 本体经真建模链产出（轨L 增量2·R13 在建模层补断点）**：`seedDemoSynthetic` 不再 `runJob` 直注已发布类型+对象短路建模链，改 `viaModelingChain:true` → `instantiateBattery(chainMode)` 仅产 rawDataset+链路类型/实例，34 类型由真链 `derive(带噪初稿)→确定性策展PATCH(以 batteryObjectTypes/extendedObjectTypes 为半自动建模"人工修正真值"覆写 displayName/domain/属性/派生属性·`synthetic/service.ts seedDemoOntologyViaChain/buildCuratedSuggestionObjectTypes`)→publishDraft(真 CREATE 类型 + 真算 sourceBindings/sourceDataset from 真 rawDataset)→materialize(统一 id)` 产出 → **类型 provenance 因果真实**（sourceBindings 非硬编码模板，由 publish 读真 rawDataset 算；对象 origin=MATERIALIZED 可溯 datasetId）。链表达力补全（轨L 增量2a）：`ModelingSuggestion.objectTypes[] += derivedProperties`（R14 KPI 派生图叶子能过 derive→publish）+ dataType `json`；`publishDraft` 携带派生属性（不再硬置 `[]`）。**字节红线守**：type key 集 / obj id 集（467）/ 沙盘 nodeObjectIds 与 A 路基线逐字节相等（`docs/evidence/demo-provenance-baseline.md`），R6 两跑一致；零回归（`pnpm -r test` 全绿 + 沙盘 tick）。链路类型仍由 `batteryLinkTypes` A 路种法（沙盘传导依赖其 key，链不产）。**UI 真值闭合（轨L 增量3）**：ModelingPage 中心 `draft?工作台:已发布本体存在?<PublishedOntologyView>:空态`（绝不"暂无本体"当本体已存在）；`coverageByDatasetName` 权威源改为**已发布类型 sourceBindings.dataset**（非仅草案）→ demo 34 数据集真显"已建模"（真浏览器 FDE 实拍 `docs/evidence/demo-provenance-increment3-*`）。
+- **ObjectInstance(objects) / Link(links)**：对象库与对象间链路（带 `origin`: SYNTHETIC/MATERIALIZED/MANUAL/META/PIPELINE/ACTION/**LINK_DERIVED**）· `domain.ts`。**⚠ `LinkType`（声明）与 `Link`（实例）是两张表，别混**：多跳检索 `executeSlice` 遍历的是 `repos.links` 的实例行，`repos.ontologyLinks` 里的 `LinkTypeDef` 只是"A 与 B 有关系"这句声明 —— 声明不会自己长出实例，桥是 `LinkTypeDef.viaProperty`（见 §3「结构边物化链路」）。**对象身份约定（轨L 增量1 统一·单一规则）**：`id = obj_${typeKey.toLowerCase()}_${pk}`（业务主键，非来源数据行）——A 路 synthetic(`synthetic/service.ts`) 与 B 路建模链(`modeling.ts` materialize) **同一规则**（B 路原 `obj_${type}_${ds.id}_${pk}` 的 ds.id 段已去除）；语义：**同 type+pk 即同对象**（多数据集映射同业务键→合并覆盖，幂等 R6）；provenance 在 `origin.datasetId`（与 id 解耦）。全平台只此一条 obj id 规则，不留两套。**demo 本体经真建模链产出（轨L 增量2·R13 在建模层补断点）**：`seedDemoSynthetic` 不再 `runJob` 直注已发布类型+对象短路建模链，改 `viaModelingChain:true` → `instantiateBattery(chainMode)` 仅产 rawDataset+链路类型/实例，34 类型由真链 `derive(带噪初稿)→确定性策展PATCH(以 batteryObjectTypes/extendedObjectTypes 为半自动建模"人工修正真值"覆写 displayName/domain/属性/派生属性·`synthetic/service.ts seedDemoOntologyViaChain/buildCuratedSuggestionObjectTypes`)→publishDraft(真 CREATE 类型 + 真算 sourceBindings/sourceDataset from 真 rawDataset)→materialize(统一 id)` 产出 → **类型 provenance 因果真实**（sourceBindings 非硬编码模板，由 publish 读真 rawDataset 算；对象 origin=MATERIALIZED 可溯 datasetId）。链表达力补全（轨L 增量2a）：`ModelingSuggestion.objectTypes[] += derivedProperties`（R14 KPI 派生图叶子能过 derive→publish）+ dataType `json`；`publishDraft` 携带派生属性（不再硬置 `[]`）。**字节红线守**：type key 集 / obj id 集（467）/ 沙盘 nodeObjectIds 与 A 路基线逐字节相等（`docs/evidence/demo-provenance-baseline.md`），R6 两跑一致；零回归（`pnpm -r test` 全绿 + 沙盘 tick）。链路类型仍由 `batteryLinkTypes` A 路种法（沙盘传导依赖其 key，链不产）。**UI 真值闭合（轨L 增量3）**：ModelingPage 中心 `draft?工作台:已发布本体存在?<PublishedOntologyView>:空态`（绝不"暂无本体"当本体已存在）；`coverageByDatasetName` 权威源改为**已发布类型 sourceBindings.dataset**（非仅草案）→ demo 34 数据集真显"已建模"（真浏览器 FDE 实拍 `docs/evidence/demo-provenance-increment3-*`）。
 - **真源记录颗粒级物化正门（WO-CEO-DATA-supply·CEO 真数据供给·§3 数据流补前半段）**：`POST /a/v1/records/materialize`（admin·暗发 `data-import.record-materialize` defaultOn:false）把已入库真 `RawDataset`（真连接器/上传门 `/a/v1/uploads` 产·财务/MES/矿价…原始行）**逐行 1:1** 物化成一等 `ObjectInstance`（`origin=MATERIALIZED+datasetId`·真源非合成·同 obj id 约定 `obj_{type}_{pk}`），`props` 由**导入方提供的列→属性映射**（R14 零业务常数）+ 按目标 `dataType` 确定性强转填充。**颗粒不聚合铁律**：只落原始颗粒，**入库零聚合**；聚合由下游求解器 Σ/ratio 算出（如 `finance_pnl` 毛利率=毛利÷收入）→ **改颗粒→聚合必变**、驾驶舱数字可逐值下钻回真源行（R13·R-NO-ORPHAN-SOURCE）。**KILL-MOCK-RED**：源连接为合成源（`config.synthetic===true`）→ 硬拒 400（合成不冒充真物化·真源判定与 `buildSynthProvenancePredicate` 同源：MATERIALIZED 且 datasetId∉合成源集）。`replaceExisting` → 清本类型合成种子换真值（world_source→imported）。跟 dev2 本体扩展对齐：只打**已发布 ACTIVE 类型**（通用·dev2 新增 Metric 等自动可作 targetType）。契约 `contracts/record-materialize.ts`·纯函数 `decision/record-materialize.ts`·测 `record-materialize.test.ts`（9 用例·含改颗粒→聚合必变咬）。缓解断点 G-13（源数据颗粒可物化成一等对象·可溯）。
 - **MergeCandidate / ObjectMerge（实体解析 OC1）**：多源同实体 → 归一名称匹配产候选 → 人审合并（golden 存活、被并置 `mergedInto` 只见 golden、links 重指）→ 72h 可 unmerge 还原 · 真值留痕 mergedBy/mergedAt(R4) · `entity-resolution.ts` · 端点 `/a/v1/objects/merge*` · 事件 merge_candidate.created/objects.merged(§4)。
 - **PropertyDef / DerivedPropertyDef**：属性 / 派生属性 · `domain.ts`。**DF.5 语义目录**：`PropertyDef`（interface，`domain.ts`）+ `FieldProfileSchema`（zod，`contracts/datacore.ts`）各 += `description?`（字段业务语义层"这列是什么"，向后兼容可选）；`buildFieldCatalog` 字段补 description；新 `searchCatalog`（`databuilder/entity-catalog.ts`，纯函数确定性 R6）按字段名/描述/单位语义匹配 → `GET /a/v1/catalog/search?q=`（自然语言"毛利率"落到具体 {typeKey.propKey}，R2 仅 ACTIVE 类型）；描述经 `SolverGenSpec.objectTypes.propDocs` 注入生成 prompt（LLM 按语义选字段，强化 DF.8 接地）。
@@ -1962,6 +1962,51 @@ R4 `SANDBOX_MODE_ORIGIN_VIEW` · R5 `CONSOLIDATED_INTO_SANDBOX` 的 `via:"static
 哪天真接上，当场变红逼人回来重读本段（同 `dependsOn` 那条戒律的形态）。
 
 **门**：`scripts/check-dbui-flow-order.mjs`（主流程必须排第一 + 屏上不许有区号/开发口径，见 §7）。
+
+### 结构边物化链路 · 声明（LinkType）→ 实例（Link）→ 多跳检索（WO-LINKTYPE-IMPL · 2026-08-30）
+
+**一句话**：建一条结构边只写**声明**；多跳检索遍历的是**实例**。两者之间原先没有桥，
+于是「本体建完了、检索拿回 0 条边」—— 桥是 `LinkTypeDef.viaProperty`（这条边由哪个属性实现）。
+
+**修前实测（demo 租户 · 真后端 SEED_DEMO=1）**：同一份底层数据、同一个方向、同一个外键，
+出厂边 `series_belongs_to_platform` 检索返回 **6 条**边，而经
+`POST /a/v1/ontology/link-types` 新建的等价边返回 **0 条**。差的就是这一个字段。
+
+```
+POST /a/v1/ontology/link-types      ← 「建结构边」表单（OntologyRelationsPage）
+   { key, fromTypeKey, toTypeKey, cardinality, viaProperty?, viaSide? }
+        │  ① 两端类型必须存在（路由层校验；service 层不加，避免误伤
+        │     ontoflow 发布 / 数据构建晋升 那类"类型与链路同批写入"的内部调用方）
+        │  ② viaProperty 必须真是**携带外键那一侧**的属性（打错字 400 点名 + 列出可选）
+        ↓
+OntologyService.upsertLinkType  → repos.ontologyLinks.put(LinkTypeDef)   ← 声明落库
+        ↓
+OntologyService.materializeDeclaredLinks(ctx, def)      ← ★ 原先缺失的那座桥
+        │  carrier = 带外键的一侧（viaSide: from|to）；anchor = 被指向的一侧
+        │  anchor 按业务主键建索引（objectKey ?? props[pk]，与 executeSlice 的 objectKeyOf 同口径）
+        │  逐个 carrier 对象取 props[viaProperty] → 命中 anchor 即物化一条 LinkInstance
+        │  id = lnk_via_<key>_<carrier对象id>（确定性 R6·幂等，重建覆盖不翻倍）
+        │  重算前只删 origin=LINK_DERIVED 且同 key 的（出厂边是 SYNTHETIC，绝不误删）
+        ↓
+repos.links.put(LinkInstance{ type:key, fromId, toId, origin:LINK_DERIVED })
+        ↓
+OntologyCore.executeSlice  ← 多跳检索在这里遍历 repos.links，**现在能看见这条边了**
+```
+
+**回执如实回报**（`materialized: { created, unresolved, carrierObjects }`）：
+`unresolved` = 属性有值但在对侧查无对应主键。「建了 0 条」与「有 N 条指向不存在的目标」
+是两个不同的答案，不合并、不静默吞。
+
+**诚实边界**：只支持「外键属性 → 对侧业务主键」这一种连接。**实测 demo 租户 116 条结构边的可推断性**：
+唯一外键可直接推断 50 条（43.1%）· 多候选需人裁决 4 条（3.4%）· 目标主键同名兜底 4 条（3.4%）·
+外键在对侧的反向边 23 条（19.8%，靠 `viaSide:"to"` 覆盖）· 两侧都无外键 35 条（30.2%，本机制表达不了，
+如 `model_producible_at` 走数组、`model_certified_on` 走独立认证清单 —— 需中间表/数组语义，
+**不要拿 `viaProperty` 硬凑**）。
+
+**接缝门**：`apps/datacore/test/linktype-via-property.seam.test.ts`（4 例）——
+金丝雀（出厂边能检索到）+ 修前/修后对照 + 变异反证（打错属性 / 类型不存在须 400）+
+反向边方向断言（from 必须是来源类型）+ 幂等 + 出厂边零回归。
+**两半各自都绿、只有驱动接缝才会红**，正是 SEAM-GATE 要的形态。
 
 ### 本体体检链路 · 第三类边：不变式守卫（WO-ONTOLOGY-EDGE-TRICLASS · 2026-08-17）
 
