@@ -556,7 +556,9 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
               : phase === "past"
                 ? `第 ${draft.startTick} 拍已经推过去了 —— 这一档不许提交（改成 ${curTick} 或更大）`
                 : phase === "now"
-                  ? `第 ${curTick} 拍 = 现在就发生（后端「不填起始拍」的默认语义）`
+                  ? `第 ${curTick} 拍 = 现在就发生（后端「不填起始拍」的默认语义）。` +
+                    `⚠ 这一档从本拍起就生效，而这次「施加并推演」还要再走一拍 ⇒ 下游会比默认档多吃一拍传导；` +
+                    `想让下游读数正好等于屏上公示系数的那一次传导，用第 ${curTick + 1} 拍。`
                   : phase === "next"
                     ? `第 ${curTick + 1} 拍 = 下一拍 —— 正是这次「施加并推演」要推的那一拍（默认值）`
                     : `第 ${draft.startTick} 拍在将来 —— 本次只推到第 ${curTick + 1} 拍，还要再推 ${draft.startTick - curTick - 1} 拍它才落地`}
