@@ -4064,6 +4064,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(AggregateRequestSchema, req.body);
     return governance.aggregate(ctx(req), body);
   });
+  /**
+   * 建结构边。WO-LINKTYPE-IMPL 补两件此前缺的：
+   *
+   * ① **`viaProperty`（这条边由来源类型的哪个属性实现）** —— 缺了它，边只是一句声明，
+   *    多跳检索遍历的 `LinkInstance` 一条都长不出来（实测：同向同 FK 的新建边返回 0 条，
+   *    出厂边返回 6 条）。语义与物化口径见 `LinkTypeDef.viaProperty` 的注释。
+   * ② **两端类型必须真实存在** —— 此前 `toTypeKey` 传一个根本不存在的类型名也照样 201，
+   *    静默造出一条永远不可能有实例的死边。校验放在**路由层**而非 service：
+   *    `upsertLinkType` 的内部调用方（ontoflow 发布 / 数据构建晋升 / 合成种子）会在
+   *    类型与链路**同一批**写入，先后顺序不保证，service 层加硬校验会误伤它们 ⇒ 零回归。
+   */
   app.post("/a/v1/ontology/link-types", async (req, reply) => {
     const c = ctx(req);
     const body = parseBody(
@@ -4072,10 +4083,20 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         fromTypeKey: z.string(),
         toTypeKey: z.string(),
         cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
+        viaProperty: z.string().min(1).optional(),
       }),
       req.body,
     );
-    return reply.status(201).send(await ontology.upsertLinkType(c, body));
+    for (const [role, key] of [["来源", body.fromTypeKey], ["去向", body.toTypeKey]] as const) {
+      if (!(await ontology.getType(c, key))) {
+        throw validationError(`结构边 ${body.key} 的${role}类型 '${key}' 不存在（请先建对象类型）`);
+      }
+    }
+    const def = await ontology.upsertLinkType(c, body);
+    // 建完当场把「长出几条实例边」如实回报：0 条也要说清是为什么（没数据 / 值查无目标），
+    // 不让用户对着一条建成功却检索不到的边猜。
+    const materialized = await ontology.materializeDeclaredLinks(c, def);
+    return reply.status(201).send({ ...def, materialized });
   });
   app.post("/a/v1/ontology/publish", async (req) => ontology.publishVersion(ctx(req)));
   app.get("/a/v1/ontology/versions", async (req) => repos.ontologyVersions.list(ctx(req).tenantId));

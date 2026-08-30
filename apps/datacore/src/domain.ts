@@ -307,6 +307,29 @@ export interface LinkTypeDef {
   fromTypeKey: string;
   toTypeKey: string;
   cardinality: "1:1" | "1:N" | "N:1" | "N:N";
+  /**
+   * WO-LINKTYPE-IMPL · **这条边由来源类型的哪个属性实现**（`fromTypeKey` 上的外键属性 `propKey`）。
+   *
+   * ── 为什么必须有这个字段 ──────────────────────────────────────────────────
+   * `LinkTypeDef` 是**声明**（A 与 B 有关系），而多跳检索 `executeSlice` 遍历的是
+   * `repos.links` 里的 **`LinkInstance` 实例行**（带 `fromId`/`toId`）。两张表之间原先
+   * **没有桥**：全仓 `repos.links.put` 的非测试调用方只有「出厂种子硬编码 / 命名空间迁移 /
+   * 实体归并改 id / 平台元本体」四处，**没有任何一处从 LinkTypeDef 推出 LinkInstance**。
+   * ⇒ 经 `POST /a/v1/ontology/link-types` 建出来的边永远 0 实例，检索恒返回 0 条边。
+   * 实测（demo 租户）：出厂边 `series_belongs_to_platform` 返回 6 条边；同向同 FK 的新建边
+   * 返回 0 条 —— 差的就是这一个字段。
+   *
+   * 语义：对每个 `fromTypeKey` 对象，取 `props[viaProperty]` 的值，去 `toTypeKey` 对象的
+   * **业务主键**（`objectKey ?? props[pk]`）上查同值者，命中即物化一条 `LinkInstance`。
+   * 这正是出厂种子里手写的 `putLink(… oid("ProductSeries", s.seriesId), oid("ProductPlatform", s.platformId))`，
+   * 只是改为**由声明驱动**而非硬编码。
+   *
+   * **诚实边界**：只支持「来源属性 → 目标业务主键」这一种连接（本仓 133 条边全属此形态）；
+   * 非主键连接（任意 fromField↔toField 对）不在本字段语义内，需要时另行扩展，不要拿这个字段硬凑。
+   *
+   * 可选（加性·零回归）：不填 ⇒ 完全维持老行为（只声明不物化），出厂那批手写实例边不受影响。
+   */
+  viaProperty?: string;
   version: number;
   published?: boolean;
   deprecation?: DeprecationMeta;
@@ -384,7 +407,11 @@ export type ObjectOrigin =
   | { type: "PIPELINE"; workflowId: string }
   // WO-GSIM-5-ACTION：S2 Action 执行回灌物化的对象（在产 WorkOrder / 跨基地调剂 InterBaseTransfer），
   // origin 记 actionId + 方案指纹 backref → R13 溯回采纳的方案（G-DECISION 行动半 / G-LOOP-FEEDBACK）。
-  | { type: "ACTION"; actionId: string; source?: string; fingerprint?: string };
+  | { type: "ACTION"; actionId: string; source?: string; fingerprint?: string }
+  // WO-LINKTYPE-IMPL：由 `LinkTypeDef.viaProperty` 声明**推导**出的链路实例（非手写、非物化对象）。
+  // 单独一个 origin 变体是为了让重算时的 removeWhere 能**精确只删自己造的那批** ——
+  // 出厂种子的边是 origin=SYNTHETIC，绝不会被这条推导路径误删。
+  | { type: "LINK_DERIVED"; linkTypeKey: string; viaProperty: string };
 
 export interface ObjectInstance {
   id: string; // obj_

@@ -270,6 +270,23 @@ export class OntologyService {
     const existing = (
       await this.repos.ontologyLinks.list(ctx.tenantId, (l) => l.key === input.key)
     )[0];
+    // WO-LINKTYPE-IMPL：`viaProperty` 必须真是 fromType 上的一个属性。
+    // **不许静默** —— 打错一个字就静默造一条永远 0 实例的死边，正是本仓「状态变量自由文本」那个老坑
+    // （打错字 = 静默造一个死变量且删不掉）。这里当场 400 点名，并把可选属性列出来。
+    if (input.viaProperty !== undefined) {
+      const fromType = await this.getType(ctx, input.fromTypeKey);
+      if (!fromType) {
+        throw validationError(
+          `结构边 ${input.key} 声明了「由属性 ${input.viaProperty} 实现」，但来源类型 ${input.fromTypeKey} 不存在`,
+        );
+      }
+      if (!fromType.properties.some((p) => p.propKey === input.viaProperty)) {
+        throw validationError(
+          `结构边 ${input.key} 的实现属性 '${input.viaProperty}' 不是 ${input.fromTypeKey} 的属性` +
+            `（可选：${fromType.properties.map((p) => p.propKey).join("/") || "该类型没有任何属性"}）`,
+        );
+      }
+    }
     const def: LinkTypeDef = {
       id: existing?.id ?? newId("ltype"),
       tenantId: ctx.tenantId,
@@ -277,7 +294,74 @@ export class OntologyService {
       ...input,
     };
     await this.repos.ontologyLinks.put(def);
+    // 声明 → 实例：把「这条边由哪个属性实现」兑现成真的 LinkInstance，否则多跳检索遍历不到。
+    await this.materializeDeclaredLinks(ctx, def);
     return def;
+  }
+
+  /**
+   * WO-LINKTYPE-IMPL · **把结构边的声明兑现成链路实例**（`LinkTypeDef` → `LinkInstance`）。
+   *
+   * 多跳检索 `executeSlice` 遍历 `repos.links`，而建边只写 `repos.ontologyLinks` ——
+   * 这个函数就是原先缺失的那座桥。没有它，建出来的边在检索里恒为 0 条。
+   *
+   * 口径：
+   * · **只在声明了 `viaProperty` 时动手**；没声明 ⇒ 原样返回 0，老行为逐字节不变（加性·零回归）。
+   * · 连接方式 = 来源对象 `props[viaProperty]` 的值 ↔ 目标对象**业务主键**（`objectKey ?? props[pk]`）。
+   * · **幂等 / R6 确定性**：link 实例 id 由 `key + 来源对象 id` 确定性拼出，重跑逐字节一致；
+   *   重算前先删掉**本机制自己造的**那批（`origin.type === "LINK_DERIVED"` 且同 key）——
+   *   出厂种子的边是 `SYNTHETIC`，**绝不会被误删**（这是单列一个 origin 变体的全部理由）。
+   * · 归并对象（`mergedInto`）不参与，与 `sim/view-config` 的口径一致。
+   * · 值为空（null/undefined/空串）⇒ 该对象没有这条边，不算错；值有但查无目标 ⇒ 计入 `unresolved`，
+   *   **如实回报**，不静默吞掉（「建了 0 条」与「有 12 条指向不存在的目标」是两个不同的答案）。
+   */
+  async materializeDeclaredLinks(
+    ctx: AuthCtx,
+    def: LinkTypeDef,
+  ): Promise<{ created: number; unresolved: number; sourceObjects: number }> {
+    if (!def.viaProperty) return { created: 0, unresolved: 0, sourceObjects: 0 };
+    const via = def.viaProperty;
+    // 先清掉本机制上一轮造的同 key 边（viaProperty 改了/目标数据变了要能重算）。
+    await this.repos.links.removeWhere(
+      ctx.tenantId,
+      (l) => l.type === def.key && l.origin.type === "LINK_DERIVED",
+    );
+    const toType = await this.getType(ctx, def.toTypeKey);
+    if (!toType) return { created: 0, unresolved: 0, sourceObjects: 0 };
+    const toPk = toType.properties.find((p) => p.isPrimaryKey)?.propKey ?? "id";
+    // 目标侧按业务主键建索引（与 executeSlice 的 objectKeyOf 同口径：objectKey ?? props[pk]）。
+    const targets = new Map<string, string>();
+    for (const o of await this.repos.objects.listByType(ctx.tenantId, def.toTypeKey)) {
+      if (o.mergedInto) continue;
+      const bk = o.objectKey ?? o.props[toPk];
+      if (bk === null || bk === undefined) continue;
+      const k = String(bk);
+      if (!targets.has(k)) targets.set(k, o.id);
+    }
+    const sources = (await this.repos.objects.listByType(ctx.tenantId, def.fromTypeKey)).filter(
+      (o) => !o.mergedInto,
+    );
+    let created = 0;
+    let unresolved = 0;
+    for (const src of sources) {
+      const raw = src.props[via];
+      if (raw === null || raw === undefined || raw === "") continue; // 没填 = 没这条边，不是错
+      const toId = targets.get(String(raw));
+      if (!toId) {
+        unresolved++;
+        continue;
+      }
+      await this.repos.links.put({
+        id: `lnk_via_${def.key}_${src.id}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        tenantId: ctx.tenantId,
+        type: def.key,
+        fromId: src.id,
+        toId,
+        origin: { type: "LINK_DERIVED", linkTypeKey: def.key, viaProperty: via },
+      });
+      created++;
+    }
+    return { created, unresolved, sourceObjects: sources.length };
   }
 
   /**
