@@ -67,9 +67,14 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
       expect(v).toBeGreaterThan(0);
       expect(v).toBeLessThan(100); // 保序饱和恒**不达**上界，故用严格小于
     }
-    // 收敛判据：逐拍增量单调收窄（leaky integrator 的定义性行为）
+    // 收敛判据 = **压缩**：末段的逐拍变化必须显著小于首段。
+    // （不写"逐拍单调收窄"—— 起点 0 远离稳态，前几拍会先加速，那是 leaky integrator 的正常暂态，
+    //   拿单调性当收敛判据会把一个健康的暂态判成发散。判据要落在"变化在收窄"这件事上。）
     const deltas = series.slice(1).map((v, i) => v - series[i]!);
-    for (let i = 1; i < deltas.length; i++) expect(Math.abs(deltas[i]!)).toBeLessThanOrEqual(Math.abs(deltas[i - 1]!) + 1e-9);
+    expect(Math.abs(deltas.at(-1)!)).toBeLessThan(Math.abs(deltas[0]!));
+    // 纯积分器在同样 6 拍上**没有**这个性质：它的增量恒定（50），永不收窄。
+    const naiveDeltas = (() => { const s = run(6, {}).series; return s.slice(1).map((v, i) => v - s[i]!); })();
+    expect(Math.abs(naiveDeltas.at(-1)!)).toBe(Math.abs(naiveDeltas[0]!));
     // 与 §0 同拍对比：这就是本单要的那个"前后差"
     expect(series[5]!).toBeLessThan(run(6, {}).series[5]!);
   });
@@ -102,21 +107,26 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
   // ── §4 保序饱和：**变异反证**就在这里（判据 ⑤）──────────────────────────────────
   it("§4 饱和必须保序 —— 换成硬截断，本条立刻红", () => {
     // 三个都远超上界的原始值，压回后必须**严格递增**（硬截断会让三者相同 = 引擎被夹死）
-    const a = saturateToDomain(150, 0, 100);
-    const b = saturateToDomain(1500, 0, 100);
-    const c = saturateToDomain(150000, 0, 100);
+    const a = saturateToDomain(150, 0, 100, 0);
+    const b = saturateToDomain(1500, 0, 100, 0);
+    const c = saturateToDomain(150000, 0, 100, 0);
     expect(a).toBeLessThan(b);
     expect(b).toBeLessThan(c);
-    // 恒不达界（否则相邻值会并数，退化成硬截断）
+    // 恒不达上界（否则相邻值会并数，退化成硬截断）
     for (const v of [a, b, c]) { expect(v).toBeLessThan(100); expect(v).toBeGreaterThan(0); }
     // 带内原值不动（未越界的数据一个字节都不许碰）
-    expect(saturateToDomain(42, 0, 100)).toBe(42);
-    expect(saturateToDomain(0, 0, 100)).toBe(0);
-    // 两侧对称：带方向的量纲（forecastBias 域 −100..100）下溢同样保序
-    expect(saturateToDomain(-150, -100, 100)).toBeGreaterThan(-100);
-    expect(saturateToDomain(-1500, -100, 100)).toBeLessThan(saturateToDomain(-150, -100, 100));
+    expect(saturateToDomain(42, 0, 100, 0)).toBe(42);
+    // 🔴 回归钉子：`restPoint === min` 时**下界无压缩带** —— 合法的 0 必须原样是 0。
+    //    第一版两侧同带宽，这里返回 12.5，等于给全世界垫了个凭空地板（衰减把万物拉向 0）。
+    expect(saturateToDomain(0, 0, 100, 0)).toBe(0);
+    expect(saturateToDomain(1, 0, 100, 0)).toBe(1);
+    expect(saturateToDomain(-5, 0, 100, 0)).toBe(0); // 真低于下界 ⇒ 硬地板
+    // 带方向的量纲（forecastBias 域 −100..100 · 静息点 0）：下侧**有**空间 ⇒ 两侧都保序
+    expect(saturateToDomain(0, -100, 100, 0)).toBe(0);
+    expect(saturateToDomain(-150, -100, 100, 0)).toBeGreaterThan(-100);
+    expect(saturateToDomain(-1500, -100, 100, 0)).toBeLessThan(saturateToDomain(-150, -100, 100, 0));
     // 拐点连续（C¹）：拐点处取值恰为拐点本身，不造折角
-    expect(saturateToDomain(75, 0, 100)).toBe(75);
+    expect(saturateToDomain(75, 0, 100, 0)).toBe(75);
   });
 
   // ── §5 扰动仍然推得动读数（判据 ④ 金丝雀：夹值不能把引擎夹死）──────────────────

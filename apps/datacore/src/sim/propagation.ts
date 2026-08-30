@@ -384,15 +384,34 @@ const SATURATION_BAND_FRACTION = 0.25;
  * 指数式在 `risk.ts` 能用，是因为那里的原始值只过冲零点几分（`98.65…101.29`）、`u < 5`；
  * 这里过冲的是**几十倍**，两个场景的 `u` 差了两个数量级，同一条曲线不通用。
  *
+ * ── 压缩带**从静息点到边界那段空间里**切，两侧各切各的（实测逼出来的，不是对称美学）────
+ * 第一版两侧都按 `(max−min)·BAND` 切，被 §4 当场打红：`saturateToDomain(0,0,100)` **返回 12.5**。
+ * 因为压力族的 `restPoint === min === 0`，下拐点落在 25，于是**一个完全合法的 0 被抬到 12.5**；
+ * 而衰减恰恰把全世界往静息点拉 ⇒ 那会给整个世界垫一个凭空的地板，
+ * 正是本单要治的「夹值把好数据也改了」的形态，而且比发散更难查（屏上一切正常）。
+ *
+ * 改法：**上带 = (max−rest)·BAND，下带 = (rest−min)·BAND**。
+ *  · 压力族 `rest=min=0` ⇒ 下带 **0** ⇒ 下界是**硬地板**，带内一格不动（`0` 原样返回）。
+ *    下侧丢掉保序是有意的取舍：一个压力量纲"比 0 还小多少"不产生决策，
+ *    而把合法的 0 抬起来会污染全世界 —— 两害相权，取前者，并照样进 `saturations[]` 记账。
+ *  · `forecastBias` `rest=0 / min=−100 / max=100` ⇒ 两带各 25，**两侧都保序**（方向量纲需要）。
+ * 一句话：**有空间才切带，静息点贴着边界就没有带。**
+ *
  * 纯函数：无随机 / 无时钟 / 无外部状态（R6 同入参字节一致）。
  */
-export function saturateToDomain(raw: number, min: number, max: number): number {
+export function saturateToDomain(raw: number, min: number, max: number, restPoint: number): number {
   if (!(max > min)) return raw; // 退化域（max<=min）⇒ 不压缩，交由调用方的声明校验去报
-  const band = (max - min) * SATURATION_BAND_FRACTION;
-  const kneeHi = max - band;
-  if (raw > kneeHi) return max - band / (1 + (raw - kneeHi) / band);
-  const kneeLo = min + band;
-  if (raw < kneeLo) return min + band / (1 + (kneeLo - raw) / band);
+  const rest = Math.min(max, Math.max(min, restPoint));
+  const bandHi = (max - rest) * SATURATION_BAND_FRACTION;
+  if (bandHi > 0) {
+    const kneeHi = max - bandHi;
+    if (raw > kneeHi) return max - bandHi / (1 + (raw - kneeHi) / bandHi);
+  } else if (raw > max) return max; // 静息点贴着上界 ⇒ 无带可切，硬顶（仍进 saturations 记账）
+  const bandLo = (rest - min) * SATURATION_BAND_FRACTION;
+  if (bandLo > 0) {
+    const kneeLo = min + bandLo;
+    if (raw < kneeLo) return min + bandLo / (1 + (kneeLo - raw) / bandLo);
+  } else if (raw < min) return min; // 静息点贴着下界（压力族的常态）⇒ 硬地板，合法的 min 原样不动
   return raw;
 }
 
@@ -831,10 +850,10 @@ export function propagateTick(
       declaredSeen.add(stateVar);
       const raw = bucket[stateVar];
       if (typeof raw !== "number") continue;
-      const sat = round12(saturateToDomain(raw, d.min, d.max));
+      const sat = round12(saturateToDomain(raw, d.min, d.max, d.restPoint));
       if (sat === raw) continue; // 带内 ⇒ 一个字节不动
       bucket[stateVar] = sat;
-      saturations.push({ objectId: objId, stateVar, raw, value: sat, bound: raw > d.max - (d.max - d.min) * SATURATION_BAND_FRACTION ? "max" : "min" });
+      saturations.push({ objectId: objId, stateVar, raw, value: sat, bound: sat > raw ? "min" : "max" });
     }
   }
 
