@@ -43,9 +43,9 @@
 | 4 | 起始拍默认 = 当前拍 | ✅ | `curTick`；`startTick: body.startTick ?? s.curTick` | 实测：会话 `curTick=2` 时不传 `startTick` → 回包 `perturbation.startTick=2`。`curTick` 在列表与详情两个端点都有 | — |
 | 5 | 传导链每跳带 系数·延迟拍·来源 | 🟡 | `POST …/tick` → `trace[]` | 逐跳**有**：8749 跳 / 42 条规则。但 `PropagationTraceSchema` 只有 5 字段 `{ruleKey,fromObjectId,toObjectId,amount,viaLinkKey}` —— **系数与延迟不在里面**，须按 `ruleKey` join `/sim/propagation-rules`（前端已经这么做，屏上真的显示「系数 0.5 · 延迟 0声明值」）。**884/8749 延迟跳的来源丢失**，`fromObjectId` 被写成字符串 `"(delayed)"` | join 可补系数/延迟；延迟跳的来源**真丢了** |
 | 6 | `coefficientRef` 引用率 | 🟡 | `GET /a/v1/sim/propagation-rules` | **线索证实：42 条边 0 条走引用，42 条全内联 `coefficient`**（金丝雀：`coefficient` 非空 42/42，字段读取正常）。系数取值仅 10 个离散值 `-0.6,0.3,0.35,0.4,0.5,0.6,0.65,0.7,0.8,0.9` | 字段在、消费方在、**数据为空** |
-| 7 | 后果 KPI（毛利/在手订单额/准时交付率/违约赔付） | 🔵 | 三处各有一半 | 传导引擎**零货币**；`GlobalSimKpi` = `ontime/cost/changeoverHours/freight/fgInv/transitInv/margin`（margin 是**毛利代理**）；沙盘方案环下拉**有真货币**：营收(亿)/毛利(亿)/经营现金(亿)；`affected_orders` 给 `revenue 147.2093 亿`。**违约赔付 🔴 三处都没有** | 求解器层（非推演层） |
+| 7 | 后果 KPI（毛利/在手订单额/准时交付率/违约赔付） | 🔵 | 三处各有一半 | 传导引擎**零货币**；`GlobalSimKpi` = `ontime/cost/changeoverHours/freight/fgInv/transitInv/margin`（margin 是**毛利代理**）；沙盘方案环下拉**有真货币**：营收(亿)/毛利(亿)/经营现金(亿)；`affected_orders` 给 `revenue 147.2093 亿`。**违约赔付：客户侧 🔴 无字段；供应商侧有 `LongTermAgreement.breachPenaltyWan`（3 条·180/320/60 万元）—— 方向相反，不可直接用** | 求解器层（非推演层） |
 | 8 | 受影响清单 17 单 · 8 客户 · 各晚几天 | 🔵 | `POST /a/v1/solvers/affected_orders/invoke` | **两条路，结论相反**：<br>· 传导层：物料延期 4 拍 → **363 张订单 + 30 条承诺**真的动了，但动的是 `shortageRisk`，**363 张全部等于 336.00**（订单规模差 24.9 倍，冲击一模一样）<br>· 求解器层：`rows[127]` = `{so,cust,qty,due,**delay:1–3 天**,risks[{base,factor,peak,crossDay,threshold}]}`，`summary{orderCount:127,custCount:18,revenue:147.2093}` | **求解器层已完整支撑**，推演层不支撑 |
-| 9 | 选中订单全字段 | 🟡 | `/o/Order/SO-3391`（真浏览器） | 屏上 17 项：客户 ✅广汽集团 · 数量 ✅7259件 · 原交期 ✅2026-06-24 · 基地 ✅hefei,jinhua · 单价 ✅21626元。<br>**金额 ❌ 屏上没有** —— API 里 `value=156,983,134` 存在，但 `Order` 本体类型只声明 17 个属性、**`value` 不在其中**（金丝雀：`qty` 已声明），所以 Object360 不渲染。<br>**新交期 ❌**（可由 `due + affected_orders.delay` 算）· **赔付 ❌ 全仓没有** | 金额=声明一下即可；新交期=join；赔付=真缺 |
+| 9 | 选中订单全字段 | 🟡 | `/o/Order/SO-3391`（真浏览器） | 屏上 17 项：客户 ✅广汽集团 · 数量 ✅7259件 · 原交期 ✅2026-06-24 · 基地 ✅hefei,jinhua · 单价 ✅21626元。<br>**金额 ❌ 屏上没有** —— API 里 `value=156,983,134` 存在，但 `Order` 本体类型只声明 17 个属性、**`value` 不在其中**（金丝雀：`qty` 已声明），所以 Object360 不渲染。<br>**新交期 ❌**（可由 `due + affected_orders.delay` 算）· **赔付 ❌**（客户侧无字段；仓里唯一的赔付字段 `LongTermAgreement.breachPenaltyWan` 是**供应商侧**，方向相反） | 金额=声明一下即可；新交期=join；客户侧赔付=真缺 |
 | 10 | 方案对比 3 案 × 毛利Δ/交付Δ/现金Δ | 🟡 | `packages/contracts/src/global-sim.ts` | **「代价」单位 = `"代价单位"`，note 明写「惩罚加权分·非货币」** ⇒ 248 不是钱。<br>交付Δ ✅（`ontime` 单 / `delay` 套·天）· 毛利Δ 🟡（`margin` 是代理，非元）· **现金Δ 🔴（`GlobalSimKpi` 无 cash 字段）**。<br>另：`decision_play` 是**求解器**不是对象类型（`type=DecisionPlay` 实测 total=0） | 三维只有一维是真的 |
 | 11 | 导出 | 🔵 | 无后端端点 | **控制台内没有任何导出端点**。导出是**纯前端**：`views/sim/exportProvenance.ts` 的 `downloadProvenanceReport()` 在浏览器里拼 HTML + `a.download`，5 处挂载（GlobalSim / RiskBoard / DisruptionRadius / OrderChain / ProjectSim）。格式 = 自带「口径与出处」+「导出时间」的 HTML | **可复用**（本就是共享件），但导不出后端算的东西 |
 | 12 | 运行日志 10 项 | 🟡 | 见下表 | 6 项有 · 2 项部分 · **2 项真缺** | — |
@@ -155,11 +155,26 @@
 且「代价」那一列的单位契约里写死是 **「惩罚加权分·非货币」**。
 三维并排画、单位留空或标「万元」，是把一个无量纲罚分冒充成钱。
 
-### 三 · 元素 7 的「违约赔付」—— **全仓没有这个概念**
+### 三 · 元素 7 的「违约赔付」—— **有一个，但挂错边了（供应商侧，不是客户侧）**
 
-`Order` 17 个声明属性、`OrderPromise` 10 个属性、40 个 stateVar、`GlobalSimKpi` 7 个字段
-—— 逐个扫过，**没有任何赔付/违约金字段**（金丝雀：同法可扫到 `value`/`unitPrice`）。
-这不是「取不到」，是这个业务概念还没进本体。
+⚠ **这条我一开始写成「全仓没有这个概念」，自己的全量扫描当场推翻了它** —— 照记。
+
+全仓 98 个对象类型 / **859 个声明属性**逐个扫（金丝雀：同法扫到
+`Order.unitPrice`/`Base.openCost`/`InterBaseTransfer.freightCost` 等 10+ 个金额属性，扫描器可用）：
+
+| | 结果 |
+|---|---|
+| 赔付类属性 | **只有 1 个：`LongTermAgreement.breachPenaltyWan`**（长协违约金·万元） |
+| 实测值 | 3 条长协**全部非零**：180 / 320 / 60 万元（金丝雀：3/3 props 非空） |
+| 它挂在谁身上 | `supplierId: "SUP-003"` —— **供应商侧**：我们没按长协提够量，赔给供应商 |
+| 40 个 stateVar 里 | 赔付类 **0 个** |
+
+⇒ 推演台想画的「订单晚交付 → **赔客户**多少钱」，**方向正好相反，今天没有字段**：
+`Order`(17 属性) / `OrderPromise`(10 属性) / `Customer` 上都没有客户侧赔付条款
+（无违约金率、无宽限期、无赔付上限）。
+
+**这个区分是有代价的**：把 `breachPenaltyWan` 直接接到推演台的「违约赔付」格子里，
+会把一笔**供应商应收**画成**客户应付** —— 数字是真的，含义是反的。
 
 ### 四 · 元素 8 的「各晚几天」—— **能给，但必须换数据源，且不能画成传导结果**
 
@@ -181,6 +196,12 @@
 
 修好后驾驶舱 **23 处金额**（`118.85亿` / `601.50亿` / `58亿` / `149亿` / `74亿` …），
 推演沙盘与统一控制台**仍是 0 处**。**结论没变，但在金丝雀报红之前，我没有资格说这句话。**
+
+**第二次同形态，同一天，同一份报告里**：我先写下「违约赔付**全仓没有这个概念**」，
+随后跑 859 个声明属性的全量扫描，**当场扫出 `LongTermAgreement.breachPenaltyWan`**（3 条全非零）。
+形态一模一样 ——「我用『我在 `Order`/`OrderPromise`/stateVar 三处没找到』当作『它不存在』的证据」。
+两次的教训是同一句：**否定结论必须先跑全量 + 金丝雀，局部没找到不构成不存在。**
+本报告里所有「没有 / 拿不到 / 算不出」的结论，现已逐条附金丝雀。
 
 ---
 
