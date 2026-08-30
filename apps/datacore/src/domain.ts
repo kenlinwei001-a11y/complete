@@ -344,6 +344,16 @@ export interface PublishRequestRecord {
   ontologyVersion: number;
   requestedBy: string;
   status: "PENDING_SIGNOFF" | "APPROVED" | "REJECTED" | "EXPIRED";
+  /**
+   * 本次发布触及的域。
+   *
+   * ⚠ WO-ONTO-CRASH：这个字段**此前不存在** —— 路由层算出 touchedDomains 后只拿去实例化
+   * signoff 行，算完就扔。而前端 `/admin/ontology-relations` 的会签表按契约读 `touchedDomains`
+   * 并 `.join()` ⇒ 租户里只要有一条会签请求，那一页**每次打开都崩**（F5 救不回：
+   * 崩溃条件在这条落库记录上，不在浏览器）。这是「读端按契约读、写端从没写过」的接缝断裂。
+   * 现予落库并下发。老记录没有此字段，故为可选，前端另有从 `signoffs` 现推的回退。
+   */
+  touchedDomains?: string[];
   signoffs: PublishSignoffRecord[];
   createdAt: string;
   decidedAt?: string;

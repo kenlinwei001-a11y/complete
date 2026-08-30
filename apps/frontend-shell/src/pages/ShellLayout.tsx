@@ -862,7 +862,10 @@ export default function ShellLayout() {
       </aside>
 
       <main className={styles.content}>
-        <ErrorBoundary>
+        {/* WO-ONTO-CRASH · 崩溃必须有**边界**：`resetKey` 传当前路由 ⇒ 换页即清错误态。
+            不传的话，`Outlet` 换孩子而边界组件自己不卸载 —— 一页崩了会把**整个后台钉死**，
+            只有 F5 能救（2026-08-30 真浏览器实测：隔离区崩后导航去 /v/quarterly-rolling 也是崩溃页）。 */}
+        <ErrorBoundary resetKey={location.pathname} onRecover={() => navigate(-1)}>
           <Outlet />
         </ErrorBoundary>
       </main>

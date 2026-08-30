@@ -4069,12 +4069,36 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(
       z.object({
         key: z.string().min(1),
-        fromTypeKey: z.string(),
-        toTypeKey: z.string(),
+        fromTypeKey: z.string().min(1),
+        toTypeKey: z.string().min(1),
         cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
       }),
       req.body,
     );
+    /*
+     * WO-ONTO-CRASH · 端点 FK 校验（写入端不许再产生脏数据）。
+     *
+     * 此前本路由**只校验字符串非空**，不问这两个类型在不在 ⇒ 可以建出
+     * `E2EType1 → Base` 这种**指向不存在类型**的边，而本路由正是
+     * `/admin/ontology-relations`「建结构边」的落点，也是全平台唯一能建边的入口。
+     * 2026-08-30 实测：经本路由建 133 条边，**81 条端点不存在，全部 201 收下**。
+     * 这些边随后会被 `GET /a/v1/ontology/mapping/registries` 原样下发到建边页去渲染，
+     * 是「页面被脏数据打崩」那一类故障的**上游**。
+     *
+     * 判据与上面 object-types 的归域 FK 校验同款（同一种 400、同一种话术）：
+     * 校验放**路由层**不放 service —— service 还被种子/databuilder/pipeline/modeling
+     * 四处内部调用，它们自带建序保证（先建类型再建边）；把闸放这里只拦外部 REST 写入，
+     * 不动那四条内部路。金丝雀：本仓种子自带 114 条边，实测悬空 **0** 条 ⇒ 本闸不误伤种子。
+     */
+    const missing: string[] = [];
+    if (!(await ontology.getType(c, body.fromTypeKey))) missing.push(body.fromTypeKey);
+    if (body.toTypeKey !== body.fromTypeKey && !(await ontology.getType(c, body.toTypeKey)))
+      missing.push(body.toTypeKey);
+    if (missing.length > 0) {
+      throw validationError(
+        `未知对象类型 ${missing.map((k) => `'${k}'`).join(" / ")}（需先在 /a/v1/ontology/object-types 建好再建关系）`,
+      );
+    }
     return reply.status(201).send(await ontology.upsertLinkType(c, body));
   });
   app.post("/a/v1/ontology/publish", async (req) => ontology.publishVersion(ctx(req)));
