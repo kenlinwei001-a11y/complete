@@ -651,10 +651,21 @@ export function propagateTick(
   // ⚠ 顺序是判据不是风格：衰减必须排在**贡献之前**，否则本拍刚到的入流会被同拍打折
   //    （那是"入流缩水"，不是"存量衰减"，稳态会偏掉 (1−λ) 倍）。
   // ⚠ 只动**声明过取值域**的格子；未声明的一格不碰 ⇒ 未声明租户逐字节同旧（additive·可回退 RL9）。
+  //
+  // 🔴 **只有"被某条规则写入"的量纲才衰减** —— 入度 0 的量纲是**外生输入**，引擎无权让它自己变小。
+  //    这一条是被 `sandbox-g1-seam` / `sandbox-e4` 当场打红逼出来的，不是设计时想到的：
+  //    第一版对所有已声明量纲一律衰减，于是**源头也在漏** —— 闸门测试里 3 拍的批量释放
+  //    从 `1+1+1=3` 变成 `1+0.63+0.397=2.0269`，正是源 `demandPressure` 自己在衰减。
+  //    更要命的是它的终局：`forecastBias`/`priceShock`/`equipmentFailure` 这些**根源**（入度 0）
+  //    也会衰减到 0 ⇒ 整个世界失去驱动、一起归零。「零扰动空转」应当收敛到一个**非零的常态**，
+  //    不是收敛到死。衰减建模的是"**累加器会漏**"，而一个没有任何流入的量纲根本不是累加器。
+  const writtenVars = new Set<string>();
+  for (const r of rules) writtenVars.add(r.targetStateVar);
   const decayApplied: Record<string, number> = {};
   const decayUnresolved: StateVarDisclosure["decayUnresolved"] = [];
   const decayRateOf = new Map<string, number | null>(); // stateVar -> λ（null = 拿不到，不衰减）
   for (const stateVar of Object.keys(domains).sort((a, b) => a.localeCompare(b))) {
+    if (!writtenVars.has(stateVar)) continue; // 外生输入：不衰减，也不进 decayUnresolved（它压根不该衰减）
     const d = domains[stateVar]!;
     const lambda = resolveDecayRate(d, ruleParams);
     decayRateOf.set(stateVar, lambda);

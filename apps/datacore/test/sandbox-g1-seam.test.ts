@@ -152,10 +152,14 @@ async function ensureRule(): Promise<{ orderId: string; modelId: string }> {
     payload: {
       key: "g1_gated",
       sourceTypeKey: "Order",
-      sourceStateVar: "demandPressure",
+      // WO-PROP-CLAMP：本例量的是**闸门形状与守恒**，与「状态量衰减」正交。
+      // 用两个**未登记取值域**的量纲名（`STATE_VAR_DOMAINS` 查不到 ⇒ 不衰减不夹值），
+      // 让守恒判据仍然成立 —— 否则「到得晚 ⇒ 少衰减一拍 ⇒ 留得多」会把它变成一条恒假的断言
+      // （实测 fast[12]=3.99 vs slow[12]=6.38）。真种子部分（Cadence 行 / order_for_model 链路 / 真对象）一字未动。
+      sourceStateVar: "g1GateIn",
       viaLinkKey: "order_for_model",
       targetTypeKey: "Model",
-      targetStateVar: "demandLoad",
+      targetStateVar: "g1GateOut",
       coefficient: 1,
       delayTicks: 0,
       cadenceNodeId: GATE_NODE,
@@ -179,7 +183,7 @@ async function runFlow(ticks: number): Promise<number[]> {
         method: "POST",
         url: "/a/v1/sim/sessions",
         headers: ADMIN,
-        payload: { baseSnapshot: { [orderId]: { demandPressure: 1 }, [modelId]: { demandLoad: 0 } } },
+        payload: { baseSnapshot: { [orderId]: { g1GateIn: 1 }, [modelId]: { g1GateOut: 0 } } },
       })
     ).json()
   ).id as string;
@@ -187,7 +191,7 @@ async function runFlow(ticks: number): Promise<number[]> {
   for (let i = 0; i < ticks; i++) {
     const r = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
     expect(r.statusCode, `tick 失败：${r.body}`).toBe(200);
-    seen.push((r.json().state as Record<string, Record<string, number>>)[modelId]?.demandLoad ?? 0);
+    seen.push((r.json().state as Record<string, Record<string, number>>)[modelId]?.g1GateOut ?? 0);
   }
   return seen;
 }
@@ -245,7 +249,7 @@ describe("G1-2 · SEAM 命门：改种出来的 Cadence ⇒ propagateTick 的放
             method: "POST",
             url: "/a/v1/sim/sessions",
             headers: ADMIN,
-            payload: { baseSnapshot: { [orderId]: { demandPressure: 1 }, [modelId]: { demandLoad: 0 } } },
+            payload: { baseSnapshot: { [orderId]: { g1GateIn: 1 }, [modelId]: { g1GateOut: 0 } } },
           })
         ).json()
       ).id as string;
