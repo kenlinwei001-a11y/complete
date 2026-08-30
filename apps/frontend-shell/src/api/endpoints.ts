@@ -1840,7 +1840,10 @@ import type { ValidationRunView, QuarantineRowView } from "@platform/contracts";
  */
 export const fetchValidationRuns = async (): Promise<ValidationRunView[]> => {
   const r = await api.a<{ items?: ValidationRunView[] } | ValidationRunView[]>("/a/v1/validation/runs");
-  return Array.isArray(r) ? r : (r?.items ?? []);
+  // 三分支缺一不可：`r.items` 本身也可能不是数组（后端再改一次形状就会这样）。
+  // 只写 `r?.items ?? []` 的话，声明的 `Promise<ValidationRunView[]>` 又变成一句**假话** ——
+  // 而「声明与事实不符」正是本单三处崩溃的共同病根，不能在修它的地方再犯一次。
+  return Array.isArray(r) ? r : Array.isArray(r?.items) ? r.items : [];
 };
 export const fetchValidationRun = (id: string) => api.a<ValidationRunView>(`/a/v1/validation/runs/${id}`);
 export const startValidationRun = (profile: string, seed?: number) =>
@@ -1859,7 +1862,8 @@ export const startValidationRun = (profile: string, seed?: number) =>
  */
 export const fetchQuarantine = async (): Promise<QuarantineRowView[]> => {
   const r = await api.a<{ items?: QuarantineRowView[] } | QuarantineRowView[]>("/a/v1/quarantine");
-  return Array.isArray(r) ? r : (r?.items ?? []);
+  // 同 `fetchValidationRuns`：三分支缺一不可，否则声明的 `Promise<…[]>` 又是一句假话。
+  return Array.isArray(r) ? r : Array.isArray(r?.items) ? r.items : [];
 };
 export const reprocessQuarantine = (id: string) => api.a<{ ok: boolean }>(`/a/v1/quarantine/${id}/reprocess`, { method: "POST" });
 export const discardQuarantine = (ids: string[]) => api.a<{ discarded: number }>("/a/v1/quarantine/discard", { method: "POST", body: { ids } });
