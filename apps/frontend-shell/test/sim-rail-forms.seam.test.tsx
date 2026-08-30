@@ -196,7 +196,7 @@ const PERTURBATIONS = [
     tenantId: "demo",
     sessionId: SESSION_ID,
     kind: "supply_disruption",
-    targetObjectId: "obj_type1b_1",
+    targetObjectId: "obj_type1a_1",
     targetStateVar: "procurementDelay",
     startTick: 0,
     durationTicks: 60,
@@ -213,6 +213,21 @@ let names: Record<string, string> = { ...BASE_NAMES };
 let liveVars: string[] = [...STATE_VARS];
 
 /**
+ * 世界现在在第几拍。**刻意不是 0** —— 真种子世界建好时就在第 3 拍
+ * （`SEED_DEMO=1` 真后端实测：`GET /a/v1/sim/sessions` 回 `"curTick":3`，
+ * 第三方已独立复现）。fixture 若写 0，本门就永远发现不了「默认起始拍 0」那个坑：
+ * 0 恰好等于当前拍，一切看起来都对 —— 这正是铁律 0.5 判据 6 那种
+ * 「生产实参与测试实参交集为空」的假绿。
+ */
+let curTick = 3;
+/** 清单里**没有**这一条会话 ⇒ 「不知道当前拍」那一档（≠「第 0 拍」）。 */
+let sessionsAbsent = false;
+
+/** 世界态桩：`GET …/world`（施加前）与 `POST …/tick`（推完后）各回一份。 */
+let worldBefore: Record<string, Record<string, number>> = { obj_type1a_1: { [STATE_VARS[10] as string]: 100 } };
+let worldAfter: Record<string, Record<string, number>> = { obj_type1a_1: { [STATE_VARS[10] as string]: 250 } };
+
+/**
  * 写口的间谍。**必须 `vi.hoisted`** —— `vi.mock` 的工厂被提升到文件顶部，
  * 工厂体里直接引用一个普通的 `const` 会撞 `Cannot access 'createSpy' before initialization`
  * （本门第一次跑就是这么红的，记在这里省下一次同样的排查）。
@@ -220,6 +235,9 @@ let liveVars: string[] = [...STATE_VARS];
 const createSpy = vi.hoisted(() =>
   vi.fn(async (_sessionId: string, _body: unknown) => ({ curTick: 0, state: {} })),
 );
+/** `simTick` / `simWorld` 同样要 hoisted（理由同上）。两条都只在**点击事件里**被调。 */
+const tickSpy = vi.hoisted(() => vi.fn(async (_sessionId: string, _n?: number) => ({ curTick: 0, state: {} })));
+const worldSpy = vi.hoisted(() => vi.fn(async (_sessionId: string) => ({ tick: 0, state: {} })));
 
 vi.mock("@/api/endpoints", () => ({
   fetchSimViewConfig: vi.fn(async () => ({
@@ -236,7 +254,16 @@ vi.mock("@/api/endpoints", () => ({
   fetchDrillStateVarLayers: vi.fn(async () => ({ layers: layersFromEdges(edges), ruleCount: edges.length })),
   fetchPropagationRules: vi.fn(async () => ({ items: rulesFromEdges(edges), stateVarNames: { ...names } })),
   fetchSimPerturbations: vi.fn(async () => ({ items: PERTURBATIONS })),
+  // WO-SIM-TICK-GATE：起始拍的**唯一参照物**。与 `UnifiedSimShell.sessionsQ` 同一缓存键 ⇒
+  // 挂进外壳后不多发一次请求（宿主 `sim-unified-shell.seam.test.tsx` 早就桩了这一条）。
+  fetchSimSessions: vi.fn(async () => ({
+    items: sessionsAbsent
+      ? []
+      : [{ id: SESSION_ID, tenantId: "demo", status: "RUNNING", curTick, parentCheckpointId: null, scope: {}, createdAt: "2026-08-29T00:00:00.000Z" }],
+  })),
   createSimPerturbation: createSpy,
+  simTick: tickSpy,
+  simWorld: worldSpy,
   // 下面两个本门一次都不调 —— 但 `PerturbationTimeline`（`PERTURBATION_KINDS` 的单源）与
   // `shared.tsx` 在**模块求值期**就 import 了它们，整体替换式 mock 里缺一个就当场抛
   // 「No export is defined on the mock」，而那与本单要测的东西一行关系都没有。
@@ -281,9 +308,31 @@ beforeEach(() => {
   edges = baseEdges();
   names = { ...BASE_NAMES };
   liveVars = [...STATE_VARS];
+  curTick = 3;
+  sessionsAbsent = false;
+  worldBefore = { obj_type1a_1: { [STATE_VARS[10] as string]: 100 } };
+  worldAfter = { obj_type1a_1: { [STATE_VARS[10] as string]: 250 } };
   createSpy.mockClear();
+  tickSpy.mockClear();
+  worldSpy.mockClear();
+  // 两条写口的默认行为（用例可就地改）：`simWorld` 回施加前那份、`simTick` 推一拍回施加后那份。
+  worldSpy.mockImplementation(async () => ({ tick: curTick, state: worldBefore }));
+  tickSpy.mockImplementation(async () => ({ curTick: curTick + 1, state: worldAfter }));
 });
 afterEach(() => cleanup());
+
+/** 起始拍输入框当前的值（受控 ⇒ 读 `.value` 就是屏上那个数）。 */
+function startTickValue(): string {
+  return (screen.getByTestId("rail-starttick") as HTMLInputElement).value;
+}
+
+/** 选一个「在世界态里、且这一片里有」的量，把表单推到可提交态。 */
+async function pickSubmittableVar(): Promise<string> {
+  await userEvent.click(screen.getByTestId("rail-tab-D05"));
+  const head = headOf(1);
+  await userEvent.selectOptions(sel("rail-statevar"), head);
+  return head;
+}
 
 describe("WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门", () => {
   // ══════════════════════════════════════════════════════════════════════════
@@ -493,5 +542,251 @@ describe("WO-SIM-RAIL-FORMS · 左栏扰动子页接缝门", () => {
       const rows = again.mock.calls.at(-1)?.[0] as ReadonlyArray<{ targetLabel: { text: string } }>;
       expect(rows[0]?.targetLabel.text).toBe(renamed);
     });
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SIM-TICK-GATE · 三处「屏上在说谎」的接缝门（2026-08-29）
+// ══════════════════════════════════════════════════════════════════════════════
+/**
+ * ── 这一组守的是什么 ────────────────────────────────────────────────────────
+ * 改前：起始拍写死 `0`，而真种子世界建好时就在**第 3 拍**。`startTick: 0` 的扰动
+ * POST 回 201、tick 回包的 `appliedPerturbations` 里**还带着它的 id**，而卡墙一个数不动
+ * ⇒ 本轮 CEO 三次判「引擎不读输入」。真后端实测（`SEED_DEMO=1`，每个取值一个干净世界）：
+ *
+ *   startTick=0 → Δ 2598.33（**与不施加任何扰动逐字节相同**）
+ *   startTick=4 → Δ supplyRisk 99162.96 / shortageRisk 79792.86，比值 **0.8046**（屏上公示系数）
+ *
+ * ── 判据必须写成「默认值 = 由当前拍现算」，**不许**写成「默认值不是 0」──────────
+ * 后者用一个写死的 `1` 就能骗过去，而 `1` 在 curTick=3 的世界里同样是过去拍、同样有坑。
+ * 故本组每一条都**改 `curTick` 回包、断言屏上跟着变** —— 与本门 ①② 两臂同一条纪律。
+ */
+describe("WO-SIM-TICK-GATE · 起始拍 / 当前拍 / 施加回执", () => {
+  // ══════════════════════════════════════════════════════════════════════════
+  it("⑥ 金丝雀 + 默认起始拍臂：默认值由**当前拍现算** —— 改 curTick 回包，默认值跟着变", async () => {
+    mount();
+    await ready();
+    // 金丝雀：本门这组要看的那个输入框真的在屏上（不中 ⇒ 报「工具坏了」，不许报「默认值不对」）
+    expect(screen.getByTestId("rail-starttick"), "金丝雀不中 ⇒ 本组什么都没证明").toBeTruthy();
+
+    await waitFor(() => expect(startTickValue()).toBe(String(curTick + 1)));
+    // 顺带钉死那个真实病灶：curTick=3 的世界里，默认值**绝不能**是 0
+    expect(startTickValue()).not.toBe("0");
+
+    // ── 改**回包**里的当前拍 ⇒ 默认值跟着走（写死一个常数的话这一句当场红）──
+    cleanup();
+    curTick = 11;
+    mount();
+    await ready();
+    await waitFor(() => expect(startTickValue()).toBe("12"));
+  });
+
+  it("⑥' 默认值真被发出去：不碰起始拍直接施加 ⇒ 载荷里的 startTick = 当前拍+1", async () => {
+    mount();
+    await ready();
+    await pickSubmittableVar();
+    await waitFor(() => expect(startTickValue()).toBe("4"));
+
+    await userEvent.click(screen.getByTestId("rail-apply"));
+    await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
+    const body = (createSpy.mock.calls[0] as [string, Record<string, unknown>])[1];
+    expect(body.startTick).toBe(4);
+    // 屏上那一串（`label`）与真发出去的数是同一个 —— 台账里读到的字 = 用户点时看到的字
+    expect(String(body.label)).toContain("第 4 拍起");
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  it("⑥'' 过去拍臂：填 0（以及任何 < 当前拍的值）⇒ 拦住、说原因、一个请求都不发", async () => {
+    mount();
+    await ready();
+    await pickSubmittableVar();
+    const apply = screen.getByTestId("rail-apply") as HTMLButtonElement;
+    // 先证明这一屏本来是可提交的（否则下面的 disabled 证明不了是起始拍造成的）
+    await waitFor(() => expect(apply.getAttribute("data-blocked")).toBe(""));
+
+    for (const past of ["0", "1", "2"]) {
+      await userEvent.clear(screen.getByTestId("rail-starttick"));
+      await userEvent.type(screen.getByTestId("rail-starttick"), past);
+      await waitFor(() => expect(apply.getAttribute("data-blocked")).toBe("START_TICK_PAST"));
+      expect(apply.disabled).toBe(true);
+      expect(screen.getByTestId("rail-starttick-note").getAttribute("data-phase")).toBe("past");
+      await userEvent.click(apply);
+      expect(createSpy, `startTick=${past} 竟然发出去了`).not.toHaveBeenCalled();
+    }
+
+    // 金丝雀（反证）：改回当前拍立刻恢复可提交 ⇒ 上面的红不是「整屏都点不动」造成的
+    await userEvent.clear(screen.getByTestId("rail-starttick"));
+    await userEvent.type(screen.getByTestId("rail-starttick"), String(curTick));
+    await waitFor(() => expect(apply.getAttribute("data-blocked")).toBe(""));
+  });
+
+  it("⑥''' 「不知道当前拍」与「当前拍是 0」分得开 —— 前者拦住并说不知道，不许拿 0 兜底", async () => {
+    // 守的是本仓那句话：**「我没找到」和「它不存在」是两个不同的命题。**
+    sessionsAbsent = true;
+    mount();
+    await ready();
+    await pickSubmittableVar();
+    const apply = screen.getByTestId("rail-apply") as HTMLButtonElement;
+    await waitFor(() => expect(apply.getAttribute("data-blocked")).toBe("CUR_TICK_UNKNOWN"));
+    expect(apply.disabled).toBe(true);
+    // 起始拍**留空**而不是被灌成 0（灌 0 就是那个静默坑本身）
+    expect(startTickValue()).toBe("");
+    await userEvent.click(apply);
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  it("⑦ 当前拍上屏臂：屏上写明世界在第几拍，且这个数来自回包（改回包就跟着变）", async () => {
+    mount();
+    await ready();
+    const line = screen.getByTestId("rail-curtick");
+    expect(line.getAttribute("data-curtick")).toBe("3");
+    expect(line.textContent).toContain("第 3 拍");
+
+    cleanup();
+    curTick = 7;
+    mount();
+    await ready();
+    expect(screen.getByTestId("rail-curtick").getAttribute("data-curtick")).toBe("7");
+    expect(screen.getByTestId("rail-curtick").textContent).toContain("第 7 拍");
+
+    // 清单没有这一条 ⇒ 屏上说「还不知道」，**不许**印一个 0
+    cleanup();
+    sessionsAbsent = true;
+    mount();
+    await ready();
+    const unknown = screen.getByTestId("rail-curtick");
+    expect(unknown.getAttribute("data-curtick")).toBe("");
+    expect(unknown.textContent).toContain("还不知道");
+    // ⚠ 判据是「有没有**断言**世界在第 0 拍」，不是「文案里出没出现『第 0 拍』四个字」——
+    //    屏上那句免责声明本身就写着「（不是第 0 拍）」，拿裸子串去否定会把正确文案判成错的
+    //    （本门第一次跑就是这么红的：我用「字面出现」当作「作出了该断言」的证据，而前者不度量后者）。
+    expect(unknown.textContent ?? "").not.toMatch(/世界现在在\s*第 0 拍/);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  it("⑧ 回执臂 · 生效：说清落在第几拍、那一格变了多少、全世界变了几个格", async () => {
+    const target = STATE_VARS[10] as string; // D05 那一片的链首（= `headOf(1)`）
+    worldBefore = { obj_type1a_1: { [target]: 100 }, obj_type1a_2: { [target]: 5 } };
+    worldAfter = { obj_type1a_1: { [target]: 250 }, obj_type1a_2: { [target]: 9 } };
+    mount();
+    await ready();
+    await pickSubmittableVar();
+    // 落点对象必须是 worldBefore/After 里那一个，否则读的是别的格
+    await userEvent.selectOptions(sel("rail-objectid"), "obj_type1a_1");
+    await userEvent.click(screen.getByTestId("rail-apply"));
+
+    const box = await screen.findByTestId("rail-receipt");
+    expect(box.getAttribute("data-reached")).toBe("1");
+    expect(box.getAttribute("data-moved")).toBe("yes");
+    // 两个格子都变了 ⇒ 2（拿 `null`/0 冒充「没变」当场红）
+    expect(box.getAttribute("data-changed-cells")).toBe("2");
+    expect(screen.getByTestId("rail-receipt-headline").textContent).toContain("已落地在第 4 拍");
+    const cell = screen.getByTestId("rail-receipt-cell").textContent ?? "";
+    expect(cell).toContain("100");
+    expect(cell).toContain("250");
+    expect(cell).toContain("+150");
+    // 生效了就不该再挂「为什么没动」的原因
+    expect(screen.queryByTestId("rail-receipt-notes")).toBeNull();
+  });
+
+  it("⑧a 回执臂 · 数字长相与卡墙同一口径 —— 屏上不许出现 IEEE754 的减法余数", async () => {
+    // 🔴 真浏览器实测抓到的（2026-08-30 · 真后端 SEED_DEMO=1）：同一次施加，
+    //    卡墙印 `102916.46`，而回执印 `+99776.17000000001` —— **同一屏两种数字长相**。
+    //    尾巴那 11 位不是精度，是 `102916.46 - 3140.29` 的浮点余数；用户会读成"更准的数"。
+    // 判据落在**长相**上（小数位数），不是"等于某个字面量" —— 后者换个 fixture 就失效。
+    const target = STATE_VARS[10] as string;
+    worldBefore = { obj_type1a_1: { [target]: 3140.29 } };
+    worldAfter = { obj_type1a_1: { [target]: 102916.46 } };
+    mount();
+    await ready();
+    await pickSubmittableVar();
+    await userEvent.selectOptions(sel("rail-objectid"), "obj_type1a_1");
+    await userEvent.click(screen.getByTestId("rail-apply"));
+
+    const cell = (await screen.findByTestId("rail-receipt-cell")).textContent ?? "";
+    // 金丝雀：这一臂要看的那三个数确实都印出来了（不中 ⇒ 工具坏了，不许读作「格式化对了」）
+    expect(cell, "金丝雀不中 ⇒ 本臂什么都没证明").toContain("102916.46");
+    expect(cell).toContain("3140.29");
+    expect(cell).toContain("+99776.17");
+    // 变异反证：改前那一版会印 `+99776.17000000001`，下面这条当场红
+    for (const n of cell.match(/\d+\.\d+/g) ?? []) {
+      expect(n.split(".")[1]!.length, `屏上出现 ${n} —— 小数位超过 2 位`).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it("⑧' 回执臂 · `simWorld` 必须在 POST **之前**读 —— 否则左端已经是施加后的值", async () => {
+    // 这一条守的是一个会让回执**当场说谎**的顺序错误（`X → Y` 退化成 `Y → Y`）：
+    // `POST …/perturbations` 对建单时已生效的扰动会在路由里当场施加。
+    mount();
+    await ready();
+    await pickSubmittableVar();
+    await userEvent.click(screen.getByTestId("rail-apply"));
+    await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
+    expect(worldSpy).toHaveBeenCalledTimes(1);
+    expect(
+      (worldSpy.mock.invocationCallOrder[0] as number) < (createSpy.mock.invocationCallOrder[0] as number),
+      "simWorld 必须排在 createSimPerturbation 之前",
+    ).toBe(true);
+  });
+
+  it("⑧'' 回执臂 · 排在未来：说「还没轮到它」并给出还差几拍，**不说**「没生效」", async () => {
+    mount();
+    await ready();
+    await pickSubmittableVar();
+    await userEvent.clear(screen.getByTestId("rail-starttick"));
+    await userEvent.type(screen.getByTestId("rail-starttick"), "9"); // curTick=3 ⇒ 推到 4，差 5 拍
+    await userEvent.click(screen.getByTestId("rail-apply"));
+
+    const box = await screen.findByTestId("rail-receipt");
+    expect(box.getAttribute("data-reached")).toBe("0");
+    expect(box.getAttribute("data-phase")).toBe("future");
+    const notes = screen.getByTestId("rail-receipt-notes").textContent ?? "";
+    expect(notes).toContain("还没到时候");
+    expect(notes).toContain("5"); // 还差 5 拍
+  });
+
+  it("⑧''' 回执臂 · 到点却没动：给出**可执行**的原因，且一个劝退字都不许有", async () => {
+    // ⚠ 措辞红线（派单点名）：本仓已知 10 类扰动在小幅度下报 0，其中 **6 类调大就不再是 0** ⇒
+    //    「把幅度调大再算一次」是**唯一有效的动作**，回执不许写成「调大多半也还是 0」。
+    const target = STATE_VARS[10] as string;
+    worldBefore = { obj_type1a_1: { [target]: 100000 } };
+    worldAfter = { obj_type1a_1: { [target]: 100000 } }; // 一个字节都没变
+    mount();
+    await ready();
+    await pickSubmittableVar();
+    await userEvent.selectOptions(sel("rail-objectid"), "obj_type1a_1");
+    await userEvent.clear(screen.getByTestId("rail-magnitude"));
+    await userEvent.type(screen.getByTestId("rail-magnitude"), "10"); // 10 相对 100000 属「偏小」
+    await userEvent.click(screen.getByTestId("rail-apply"));
+
+    const box = await screen.findByTestId("rail-receipt");
+    expect(box.getAttribute("data-moved")).toBe("no");
+    expect(box.getAttribute("data-changed-cells")).toBe("0");
+    const notes = screen.getByTestId("rail-receipt-notes").textContent ?? "";
+    expect(notes).toContain("把幅度调大再算一次");
+    // 劝退措辞一个都不许出现（出现了 = 把唯一有效的动作劝退掉）
+    for (const bad of ["很可能还是", "多半还是", "也没用", "别再"]) {
+      expect(notes, `回执里出现了劝退措辞「${bad}」`).not.toContain(bad);
+    }
+  });
+
+  it("⑧'''' 回执臂 · 施加前那份世界态没拿到 ⇒ 说「没法比」，**不许**印成「变了 0 个格」", async () => {
+    worldSpy.mockImplementation(async () => {
+      throw new Error("world 桩：本用例刻意不回");
+    });
+    mount();
+    await ready();
+    await pickSubmittableVar();
+    await userEvent.click(screen.getByTestId("rail-apply"));
+
+    const box = await screen.findByTestId("rail-receipt");
+    expect(box.getAttribute("data-changed-cells")).toBe("");
+    const cells = screen.getByTestId("rail-receipt-cells").textContent ?? "";
+    expect(cells).toContain("没法比");
+    expect(cells).not.toContain("共 0 个格子");
+    // 但推演本身照跑（拿不到左端不该把整条链停掉）
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect(tickSpy).toHaveBeenCalledTimes(1);
   });
 });
