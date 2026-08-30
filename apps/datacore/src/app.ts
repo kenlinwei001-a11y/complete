@@ -67,9 +67,9 @@ import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow�
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type TickState } from "@platform/contracts";
+import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
-import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate } from "./sim/propagation.js";
+import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate } from "./sim/propagation.js";
 // 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
 // `buildCadenceGates` / `scopePropagationGraph` 刻意**不在本文件 import**：它们只该出现在装配处里。
 import { buildPropagationInputs } from "./sim/propagation-inputs.js";
@@ -1857,6 +1857,48 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simCurrent = async (c: AuthCtx, s: SimSession): Promise<TickState> =>
     (await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.state ?? simState(s.baseSnapshot);
 
+  /**
+   * **信噪比回执**（WO-PROP-CLAMP 第三件）—— 回答「屏上这个 Δ 里，有多少是我扰出来的」。
+   *
+   * 三个量都相对同一个基准 `start`（推进前那一格）算，逐格取绝对值后求和：
+   *  · `worldDrift`       = |drift − start|  世界**自己**会走的那部分（影子线：同拍同图、扰动清空）
+   *  · `userContribution` = |actual − drift|  两条线之差 = **只由扰动造成**的那部分
+   *  · `ratio`            = userContribution / worldDrift，越大越说明"这次推演在回答我的问题"
+   *
+   * ⚠ 为什么不是 `|actual − start|` 当用户贡献：那个数把世界自身漂移一并算进去了，
+   *   正是本单要治的病（修前它让 +30 的扰动看起来"产生了 5,352,228 的影响"）。
+   * ⚠ `ratio` 在 `worldDrift === 0` 时为 `null` 而**不是 Infinity/0**：零漂移下这个比值无定义，
+   *   给个数就是编。前端据此显示"本拍世界无自发漂移"，不是显示一个 0。
+   */
+  const summarizeSignalNoise = (actual: TickState, drift: TickState, start: TickState) => {
+    let worldDrift = 0;
+    let userContribution = 0;
+    let changedCells = 0;
+    for (const objId of Object.keys(actual)) {
+      const a = actual[objId] ?? {};
+      const d = drift[objId] ?? {};
+      const s0 = start[objId] ?? {};
+      for (const v of Object.keys(a)) {
+        const av = a[v]; const dv = d[v] ?? 0; const sv = s0[v] ?? 0;
+        if (typeof av !== "number") continue;
+        worldDrift += Math.abs(dv - sv);
+        const uc = Math.abs(av - dv);
+        userContribution += uc;
+        if (uc !== 0) changedCells += 1;
+      }
+    }
+    const r12 = (x: number) => Math.round(x * 1e12) / 1e12;
+    return {
+      worldDrift: r12(worldDrift),
+      userContribution: r12(userContribution),
+      ratio: worldDrift === 0 ? null : r12(userContribution / worldDrift),
+      changedCells,
+      basis:
+        "worldDrift=|影子线−起点|（同拍同图、扰动清空）· userContribution=|真实线−影子线| ⇒ " +
+        "只由扰动造成的那部分。两者同基准逐格绝对值求和。",
+    };
+  };
+
   /** 本租户已发布的传导规则（tick 路与 Trial Tick 的**同一个**入口，不许各查各的）。 */
   const listPublishedPropRules = (c: AuthCtx): Promise<PropagationRule[]> =>
     repos.sim.listPropagationRules(c.tenantId, true);
@@ -2145,6 +2187,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   ) => {
     const { rules: propRules, n, persist } = opts;
     let state = await simCurrent(c, s);
+    /** 推进**之前**那一格（信噪分离的基准：Δ 都相对它算）。`propagateTick` 不改入参，可直接持引用。 */
+    const startState = state;
     let curTick = s.curTick;
     // 增量 3 传导核接入（opt-in）：有规则才传导，否则退回恒等 tick（无规则不触发，可回退）。
     // propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
@@ -2200,6 +2244,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let cadenceGates: CadenceGateLookup = {};
     let gateSkipped: { nodeId: string; reason: string }[] = [];
     let unresolvedGates: UnresolvedCadenceGate[] = [];
+    /** 状态量取值域（WO-PROP-CLAMP）：夹值 + 衰减的唯一数据源，与 Trial Tick 同一装配处。 */
+    let stateVarDomains: StateVarDomainLookup = {};
+    /** 最后一拍的状态量披露（声明/未声明/衰减解析不到/本拍饱和了哪些格）。 */
+    let stateVarsDisclosure: StateVarDisclosure | null = null;
     /** 本次 tick 的范围回执（诚实回带：这一格是在什么范围下算出来的·R-ARG-FIDELITY）。 */
     let scopeReport: ScopeReport | null = null;
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, curTick))?.pending ?? []) : [];
@@ -2219,9 +2267,24 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       scopeReport = inp.scopeReport;
       Object.assign(ruleParams, inp.ruleParams);
       cadenceGates = inp.cadenceGates; gateSkipped = inp.gateSkipped;
+      stateVarDomains = inp.stateVarDomains;
     }
     let trace: PropagationTrace[] | null = null;
     let appliedPerturbations: string[] = [];
+    // ── 信噪分离（WO-PROP-CLAMP 第三件）──────────────────────────────────────────
+    //
+    // 病灶：屏上那个 Δ 回答不了「**这里面有多少是我扰出来的**」。实测（修前）同一拍里
+    // 用户扰动贡献 2,712，而世界自己漂了 5,352,228 —— 信噪比 1:2000，推演结论被自身噪声淹没。
+    //
+    // 做法（就是本单指定的最小做法）：**同一拍跑两次** —— 一条真实线（带扰动），
+    // 一条**影子线**（同图同规则同 pending，扰动清空）。两线之差即用户贡献。
+    //
+    // ⚠ 只在**本会话真有扰动**时才跑影子线：无扰动 ⇒ 两线恒等，跑了纯属白烧 CPU，
+    //   且响应形状与本单引入前逐字节相同（additive·可回退 RL9）。
+    // ⚠ 影子线**一个字节都不落盘**（不进 `putTickState`）—— 它是度量装置，不是第二条世界线。
+    const wantDrift = sessionPerturbations.length > 0 && engineTick;
+    let driftState: TickState | null = wantDrift ? state : null;
+    let driftPending: DelayedContribution[] = wantDrift ? pending : [];
     /** 本次推进中真正产出过贡献的规则 key（对照跑用它区分"关了没影响"与"这条边本来就没动"）。 */
     const firedKeys = new Set<string>();
     for (let i = 0; i < n; i++) {
@@ -2230,9 +2293,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const out = propagateTick(
           graph, state, propRules, pending, beforeTick, ruleParams, cadenceGates,
           await perturbationsForTick(beforeTick + 1), // 引擎产出的是 tick+1 那一格
+          stateVarDomains,
         );
         state = out.next; pending = out.pending; unresolvedGates = out.unresolvedGates;
         appliedPerturbations = out.appliedPerturbations;
+        stateVarsDisclosure = out.stateVars;
+        // 影子线：同一拍、同一份图/规则/闸门/取值域，**扰动清空** ⇒ 世界自身漂移。
+        if (driftState !== null) {
+          const d = propagateTick(
+            graph, driftState, propRules, driftPending, beforeTick, ruleParams, cadenceGates,
+            [], stateVarDomains,
+          );
+          driftState = d.next; driftPending = d.pending;
+        }
         for (const k of firedPropagationRuleKeys(out.trace, out.pending)) firedKeys.add(k);
         // 无传导规则的世界：本 tick 若没有任何扰动动作，trace 保持 `null`（与本单引入前逐字节相同·可回退）。
         trace = propagate || out.trace.length > 0 ? out.trace : null;
@@ -2250,6 +2323,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates },
       appliedPerturbations, sessionPerturbationCount: sessionPerturbations.length,
       firedRuleKeys: [...firedKeys].sort(),
+      stateVars: stateVarsDisclosure,
+      // 信噪比回执（WO-PROP-CLAMP）：`null` = 本会话无扰动 ⇒ 没有"用户贡献"这个量可谈。
+      signalToNoise: driftState === null ? null : summarizeSignalNoise(state, driftState, startState),
     };
   };
 
@@ -2292,8 +2368,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             // 范围回执（WO-SIM-SCOPE-TRIAL）：算了几个对象、几条边、丢了多少、范围是不是根本拿不到。
             // 与 `cadence` 同一条纪律 —— 让"筛选没生效"看得见，而不是从一个安静的数字里去猜。
             scope: r.scopeReport,
+            // 状态量口径回执（WO-PROP-CLAMP）：哪些量纲有声明取值域、哪些没有（因而仍是纯积分器）、
+            // 哪些配了衰减却拿不到、本拍谁饱和了、实际按多少在衰减。
+            // **不许静默夹住** —— 夹了不说，屏上看着正常、信息其实已经丢了。
+            stateVars: r.stateVars,
           }
         : {}),
+      // 信噪比（WO-PROP-CLAMP）：这一拍的 Δ 里有多少是扰动造成的、多少是世界自己在走。
+      // 只在本会话真有扰动时下发（无扰动 ⇒ 没有"用户贡献"这个量，响应形状逐字节同旧）。
+      ...(r.signalToNoise ? { signalToNoise: r.signalToNoise } : {}),
       // 溯源（WO-P2）：这一格世界态是哪几次扰动仍在起作用的结果。只在这个世界真有扰动时下发，
       // 无扰动的租户响应形状逐字节同旧（可回退）。
       ...(r.sessionPerturbationCount > 0 ? { appliedPerturbations: r.appliedPerturbations } : {}),

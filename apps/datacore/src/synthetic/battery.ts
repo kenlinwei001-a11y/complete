@@ -8,6 +8,7 @@ import { ruleParamRef, parityRuleExpression, parityRuleParams } from "@platform/
 import { ORDER_STATUSES, orderStatusTargets } from "@platform/contracts";
 import type { OrderStatus } from "@platform/contracts";
 import type { ExcSeverity, ExcStatus } from "@platform/contracts";
+import type { StateVarDomain } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
@@ -498,6 +499,34 @@ export const NOMINAL_PROCESS_YIELD = 0.973;
 // （C04 认证系数 · C09 数据健康降级 · C18 现金底线 · C21 产销偏差）一律由 `ruleParamOf()` 从这里派生，
 // 不再在 solver_params 里各写一份同值字面量（此前那份"诱饵"才是求解器真读的，改规则不改推演）。
 // 运行期同源：`RULE_PARAM_BINDINGS` + `RulesService` 发布投影（改规则 → solver_params 随之变）。
+// ── WO-PROP-CLAMP · 推演状态量衰减率（三个记号必须排在 BATTERY_RULES **之前**）──────────
+// 与本段头 G-10 P4 那条同一个理由：C35 的 `params` 直接引用下面两个记号，
+// `const` 有 TDZ，写在 `BATTERY_RULES` 之后会在模块加载期直接 ReferenceError（不是类型问题，是运行期）。
+
+/** 衰减率所在的规则（`BATTERY_RULES` 的 C35）—— 改这条规则即改推演，引擎不内联任何 λ。 */
+export const STATE_DECAY_RULE_KEY = "C35";
+/** 压力族共用的衰减率参数名。 */
+export const STATE_DECAY_PARAM_KEY = "pressureDecayPerTick";
+
+/**
+ * 压力族衰减率 λ —— **从本仓既有的「冲击能持续多久」模型派生**，不是随手挑一个数。
+ *
+ * 出处：`BATTERY_SOLVER_PARAMS.risk` 的 `pulseWindow: 3` / `pulseDecayDen: 4`
+ * （`solvers/risk.ts` `tensionSeries`：事件脉冲按 `1 − dist/pulseDecayDen` 线性衰减，
+ *  超过 `pulseWindow` 拍即不再影响）。即本仓对"一次冲击还剩多少"的既有口径是：
+ *  第 `pulseWindow` 拍上残留 `1 − pulseWindow/pulseDecayDen` = 1 − 3/4 = **0.25**。
+ *
+ * 几何衰减要在同一拍达到同一残留 ⇒ `(1−λ)^pulseWindow = 1 − pulseWindow/pulseDecayDen`
+ *                              ⇒ `λ = 1 − 0.25^(1/3) ≈ 0.370`。
+ *
+ * ── 为什么形状取几何（指数）而不是照抄那条线性式 ──────────────────────────────
+ * 线性衰减 `1 − t/den` 会在 `t = den` 处**穿过 0 并继续变负**，那不是衰减是反号；
+ * 它在 `tensionSeries` 里能用，是因为那里有 `dist > pulseWindow ⇒ continue` 的硬窗口兜着。
+ * 状态量是**逐拍累积**的，没有窗口可言，必须用一个恒正、且对常量入流有**有限稳态**
+ * （`rest + inflow/λ`）的形状 —— 几何衰减是满足这两条的那一个。残留口径仍与既有模型对齐。
+ */
+export const PRESSURE_DECAY_PER_TICK = 0.37;
+
 export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // DF.14：C03/C05/C13/C09 前端 mock 规则库也物化同一条 —— expression 从 `PARITY_RULE_SEEDS` 派生，
   // 两端只此一处，不再各写一份字面量（此前那份手抄副本正是欠账 #78 的机制面：值对齐过一次，机制没变）。
@@ -582,6 +611,12 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // 阈值（产能面）是**另一个字段**而不是数字 ⇒ `readRuleThreshold` 判 source="field"：改数据即改判定，
   // 引擎里一个业务阈值都不用存（`chain-impediment.ts` 文件头铁律），也不抬 A2 的 literal 棘轮。
   { key: "C34", name: "跨业务线产能争用", expression: "COUNT(Base.segClaims.dailyRate) > 1 AND Base.claimedDailyRate > Base.capacityDailyPacks", severity: "BLOCK", params: {}, category: "产能" },
+  // WO-PROP-CLAMP · 推演状态量衰减率。**这条规则存在的唯一理由就是让 λ 可编辑**：
+  // 本仓 42 条传导边的 `coefficientRef` 实测 0 条在用、全部回落内联，引用机制形同虚设；
+  // 衰减率是「一次冲击几天散掉」这条**经营口径**，必须落在规则库里改一处即改推演，
+  // 而不是再往引擎里内联一个常数（`STATE_VAR_DOMAINS` 只存**引用**，不存值）。
+  // 出厂值的推导见 `PRESSURE_DECAY_PER_TICK` 注释（从 risk.pulseWindow/pulseDecayDen 派生，非拍脑袋）。
+  { key: "C35", name: "推演状态量衰减率", expression: `SimStateVar.decayPerTick == ${ruleParamRef(STATE_DECAY_PARAM_KEY)}`, severity: "WARN", params: { [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK }, category: "推演" },
 ];
 
 /**
@@ -2602,6 +2637,82 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
  */
 export function stateVarDisplayName(stateVar: string): string | undefined {
   return STATE_VAR_DISPLAY_NAMES[stateVar];
+}
+
+// ---------------------------------------------------------------------------
+// 推演状态量的**声明取值域 + 衰减引用**（WO-PROP-CLAMP）
+// ---------------------------------------------------------------------------
+//
+// ── 为什么这张表必须存在（实测病灶）────────────────────────────────────────────
+// 传导核是 `next = clone(current)` 后一路 `+=` ⇒ 每格都是**无泄漏纯积分器**。
+// 真后端 `SEED_DEMO=1` 零扰动空转 6 拍实测：t0 全部 7204 格都在 0–100 内，
+// 6 拍后 **5290 格（73.4%）越界**，`loadIndex` 69,134 · `receivablePressure` 408,305。
+// 于是用户扰动被世界自身漂移淹没，屏上那个 Δ 回答不了「有多少是我扰出来的」。
+//
+// ── ⛔ 只登记**有出处**的量纲，其余一律不声明（不许拍脑袋定）────────────────────
+// 判据与 `STATE_VAR_DISPLAY_NAMES` 同一条：写不出出处就不登记，未登记者引擎**不夹不衰减**，
+// 并在 tick 回执 `stateVars.undeclaredStateVars` 里逐个点名（缺口有名字，不是被默默补上）。
+//
+// 本表只用了**两条既有出处**，一条都没有新发明：
+//  ① 量纲分类 —— `sim/drill-scan.ts` 段头原文：
+//     「状态变量的量纲各不相同（**压力 0–100**、天数、件数…）」
+//     ⇒ 压力/风险/指数族 = 0–100；**天数族与件数族它明确划成另一类，故本表不登记**。
+//  ② tick0 生成式 —— `sim/seed-world.ts` `deriveSeedBaseSnapshot`：
+//     `round(hash01(objectId|stateVar) × 100)`，且实测 `measuredCells: 0 / derivedCells: 7204`
+//     ⇒ 出厂世界**每一格**都由这个生成式产出，值域恰为 [0,100]。
+//
+// ── 静息点为什么不一律取 0 ────────────────────────────────────────────────────
+// `forecastBias` 是本平台唯一**带方向**的量纲（正=高估 / 负=低估，见上表该行注释，
+// 且它那条边的系数是负的）。把它的静息点取成下界，等于把负半轴整段抹掉、方向读反。
+// 故它单独声明 [-100,100] / rest 0；压力族静息点 = 下界 0（无入流即无压力）。
+const PRESSURE_DOMAIN_SOURCE =
+  "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；" +
+  "② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）";
+
+/**
+ * 状态量 → 声明取值域（**全平台唯一入口**，与 `STATE_VAR_DISPLAY_NAMES` 同一张登记册的两列）。
+ *
+ * ⚠ 天数族（`queueDays` / `clearanceQueueDays` / `procurementDelay` / `deliveryDelay`）、
+ *   件数/积压族（`inspectBacklog` / `repairBacklog` / `handlingBacklog` / `qualificationQueue`）
+ *   **刻意不在此表**：`drill-scan.ts` 只说了它们"是另一类量纲"，**没说上界是多少**，
+ *   全仓也找不到第二处出处。给它们拍一个 100 天 / 100 件的上界就是本单明令禁止的"拍脑袋定"。
+ *   它们今天仍是纯积分器，且**在 tick 回执里被逐个点名** —— 缺口留在屏上，不留在注释里。
+ */
+export const STATE_VAR_DOMAINS: Record<string, StateVarDomain> = Object.fromEntries(
+  [
+    // 压力 / 风险 / 指数 / 负载族 —— 出处 ①②，静息点 = 下界 0。
+    "demandPressure", "demandLoad", "loadIndex", "utilPressure", "queuePressure",
+    "shortageRisk", "supplyRisk", "expeditePressure", "priceShock", "costPressure",
+    "receivablePressure", "overduePressure", "changeoverPressure", "releasePressure",
+    "feedPressure", "defectPressure", "turnoverPressure", "switchPressure", "gapPressure",
+    "reviewPressure", "loadPressure", "windowSqueeze", "drawdownPressure",
+    "inboundExpeditePressure", "transferPressure", "splitPressure", "promiseRisk",
+    "deliveryHoldRisk", "collectionPressure", "orderChurn", "equipmentFailure",
+  ].map((v): [string, StateVarDomain] => [
+    v,
+    {
+      min: 0, max: 100, restPoint: 0,
+      decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+      unit: "0–100 压力指数",
+      source: PRESSURE_DOMAIN_SOURCE,
+    },
+  ]),
+);
+// 唯一带方向的量纲，单列（静息点 0 ≠ 下界）。
+STATE_VAR_DOMAINS.forecastBias = {
+  min: -100, max: 100, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "−100–100 偏差指数（正=高估）",
+  source:
+    `${PRESSURE_DOMAIN_SOURCE}；方向性出处 = 上表 forecastBias 行注释「唯一带方向的量纲（正=高估/负=低估）」` +
+    `⇒ 静息点取 0 而非下界，下界取 −max 以保持两侧对称`,
+};
+
+/**
+ * 状态量声明取值域查表（**全平台唯一入口**；未登记 → `undefined` = 不夹不衰减 + 回执点名）。
+ */
+export function stateVarDomains(): Record<string, StateVarDomain> {
+  return STATE_VAR_DOMAINS;
 }
 
 /**
