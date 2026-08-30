@@ -148,7 +148,12 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
     expect(calls.at(-1)!.body).toContain("rules.updated");
 
     // ontology.published flows through the same outbox
-    await t.app.inject({ method: "POST", url: "/a/v1/ontology/publish", headers: ADMIN });
+    // WO-SIGNOFF-CHAIN：发布路有会签准入闸（R4）。本用例验的是 outbox 投递，不是治理链 ⇒ 显式破窗。
+    await t.app.inject({
+      method: "POST",
+      url: "/a/v1/ontology/publish?breakGlass=true&reason=" + encodeURIComponent("outbox 投递用例·非治理链"),
+      headers: { "x-debug-user": "demo:admin:admin|catalog_admin" },
+    });
     const r3 = await t.services.outbox.processOnce("demo");
     expect(r3.delivered).toBe(1);
     expect(calls.at(-1)!.body).toContain("ontology.published");

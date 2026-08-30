@@ -16,7 +16,9 @@ import {
   fetchPropagationRules,
   fetchPublishRequests,
   fetchSimViewConfig,
+  isPublishRequestActionable,
   publishRequestDomains,
+  publishRequestUndecidedCount,
   retireOntologyElement,
   signoffPublishRequest,
   type DeprecationMetaVM,
@@ -251,8 +253,18 @@ export default function OntologyRelationsPage() {
     },
     onError: toastError,
   });
+  /**
+   * WO-SIGNOFF-CHAIN：`comment` 必须能带上去。
+   *
+   * 此前这里写死 `signoffPublishRequest(v.id, v.decision)` —— **第三个参数从来没传过**。
+   * 而后端 `signoff()` 第一句就是 `if (decision==="REJECT" && !comment) throw validationError("REJECT 必须填写 comment")`。
+   * ⇒ 就算把按钮点亮，「驳回」也是**必然 400**。真后端实测确认：
+   * `POST …/signoff {"decision":"REJECT"}` → `400 VALIDATION_ERROR: REJECT 必须填写 comment`。
+   * 这是会签链上与状态串**互相独立**的第二处断点：修好一处、另一处照样把链卡住。
+   */
   const signoff = useMutation({
-    mutationFn: (v: { id: string; decision: "APPROVE" | "REJECT" }) => signoffPublishRequest(v.id, v.decision),
+    mutationFn: (v: { id: string; decision: "APPROVE" | "REJECT"; comment?: string }) =>
+      signoffPublishRequest(v.id, v.decision, v.comment),
     onSuccess: (r) => {
       toast(`会签已记录：${r.status}`, "success");
       void qc.invalidateQueries({ queryKey: ["a", "ontology-publish-requests"] });
@@ -261,6 +273,8 @@ export default function OntologyRelationsPage() {
     },
     onError: toastError,
   });
+  /** 驳回理由（后端必填）。按请求 id 存，避免多行请求共用一个输入框。 */
+  const [rejectComment, setRejectComment] = useState<Record<string, string>>({});
 
   // ── 不变式（第三类边）：试算覆盖 ────────────────────────────────────────────
   //
@@ -860,11 +874,23 @@ export default function OntologyRelationsPage() {
             <th>目标版本</th>
             <th>触及域</th>
             <th>状态</th>
-            <th style={{ width: 160 }}>会签</th>
+            <th>进度</th>
+            <th style={{ width: 300 }}>会签</th>
           </tr>
         </thead>
         <tbody>
-          {(pubReqs.data ?? []).map((p) => (
+          {(pubReqs.data ?? []).map((p) => {
+            /*
+             * WO-SIGNOFF-CHAIN：可处置判据走 `isPublishRequestActionable()`（契约枚举单源）。
+             * 此前这里写 `p.status !== "PENDING"` —— 后端**从来没发过** `"PENDING"`
+             * （契约枚举是 `PENDING_SIGNOFF|APPROVED|REJECTED|EXPIRED`）⇒ 两颗按钮恒灰，
+             * 15 条会签 0 条可处置。会签机制本身全是真的，只是没人按得下第一颗按钮。
+             */
+            const actionable = isPublishRequestActionable(p);
+            const undecided = publishRequestUndecidedCount(p);
+            const total = (p.signoffs ?? []).length;
+            const comment = rejectComment[p.id] ?? "";
+            return (
             <tr key={p.id} data-testid={`orel-pubreq-${p.id}`}>
               <td className="mono">{p.id}</td>
               <td>v{p.ontologyVersion}</td>
@@ -873,26 +899,49 @@ export default function OntologyRelationsPage() {
                   改走 `publishRequestDomains()`：有就用后端下发的，没有就从 signoffs 现推。 */}
               <td className="mono">{publishRequestDomains(p).join(" · ") || "—"}</td>
               <td data-testid={`orel-pubreq-status-${p.id}`}>{p.status}</td>
-              <td style={{ display: "flex", gap: 6 }}>
-                <button
-                  className="btn sm"
-                  data-testid={`orel-pubreq-approve-${p.id}`}
-                  disabled={signoff.isPending || p.status !== "PENDING"}
-                  onClick={() => signoff.mutate({ id: p.id, decision: "APPROVE" })}
-                >
-                  同意
-                </button>
-                <button
-                  className="btn sm"
-                  data-testid={`orel-pubreq-reject-${p.id}`}
-                  disabled={signoff.isPending || p.status !== "PENDING"}
-                  onClick={() => signoff.mutate({ id: p.id, decision: "REJECT" })}
-                >
-                  驳回
-                </button>
+              {/* 只显示一个状态串，运营方不知道"还差谁"。未决数与待签域名是业务事实，必须给。 */}
+              <td data-testid={`orel-pubreq-progress-${p.id}`} style={{ fontSize: 12 }}>
+                {total === 0 ? "—" : `${total - undecided}/${total} 已签`}
+                {undecided > 0 && (
+                  <div className="muted" style={{ fontSize: 11 }}>
+                    待签：{(p.signoffs ?? []).filter((s) => !s.decision).map((s) => s.domainKey).join("、")}
+                  </div>
+                )}
+              </td>
+              <td>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <button
+                    className="btn sm"
+                    data-testid={`orel-pubreq-approve-${p.id}`}
+                    disabled={signoff.isPending || !actionable}
+                    onClick={() => signoff.mutate({ id: p.id, decision: "APPROVE" })}
+                  >
+                    同意
+                  </button>
+                  <input
+                    className="input sm"
+                    data-testid={`orel-pubreq-comment-${p.id}`}
+                    placeholder="驳回理由（必填）"
+                    value={comment}
+                    disabled={signoff.isPending || !actionable}
+                    onChange={(e) => setRejectComment((m) => ({ ...m, [p.id]: e.target.value }))}
+                    style={{ fontSize: 12, width: 150 }}
+                  />
+                  {/* 后端 REJECT 必填 comment（400 否则）⇒ 空理由时按钮就不该可点：
+                      摆一个必然 400 的按钮，与摆一个恒灰的按钮同样是骗人。 */}
+                  <button
+                    className="btn sm"
+                    data-testid={`orel-pubreq-reject-${p.id}`}
+                    disabled={signoff.isPending || !actionable || !comment.trim()}
+                    onClick={() => signoff.mutate({ id: p.id, decision: "REJECT", comment: comment.trim() })}
+                  >
+                    驳回
+                  </button>
+                </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
       {(pubReqs.data ?? []).length === 0 && <div className="empty-state">暂无发布会签请求</div>}

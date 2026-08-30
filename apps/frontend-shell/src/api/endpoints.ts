@@ -2570,6 +2570,9 @@ export const createPropagationRule = (body: {
 }) => api.a<PropagationRule>("/a/v1/sim/propagation-rules", { method: "POST", body });
 
 // ── 发布会签（R4：本体真值变更经审批链，前端不直发）────────────────────────
+// 状态取值域的**唯一真相源**是契约枚举（`PublishRequestStatusSchema`）——
+// contracts-only-shared：前端不许再写一份状态串清单。
+import type { PublishRequestView } from "@platform/contracts";
 /**
  * ⚠ WO-ONTO-CRASH · 本页那处「永久崩溃」就出在这个接口上。
  *
@@ -2591,8 +2594,22 @@ export const createPropagationRule = (body: {
 export interface PublishRequestVM {
   id: string;
   ontologyVersion: number;
-  /** 后端真实取值含 `PENDING_SIGNOFF` / `EXPIRED`，不止这三个 —— 别拿它做等值比较。 */
-  status: string;
+  /**
+   * 会签请求状态。**取值域来自契约**（`PublishRequestStatusSchema`：
+   * `PENDING_SIGNOFF | APPROVED | REJECTED | EXPIRED`），不是 `string`。
+   *
+   * ⚠ WO-SIGNOFF-CHAIN：这里此前是 `"PENDING" | "APPROVED" | "REJECTED"` ——
+   * **`"PENDING"` 这个值后端从来没有发过**。于是会签面板那两颗按钮的
+   * `disabled={p.status !== "PENDING"}` 对**每一条**请求恒真，
+   * 2026-08-30 真后端实测：15 条会签 **0 条可处置**，两颗按钮全灰。
+   * 会签机制本身（owner 鉴权 403 / REJECT 必填 comment / 72h 代签 / 7 天过期）
+   * 全都是真的、能跑的，**只是没有任何人能按下第一颗按钮**。
+   *
+   * 收窄成契约联合类型是**机制不是注释**：再写 `p.status !== "PENDING"` 会当场
+   * TS2367「两个类型没有重叠」编译失败 —— 下次同样的错发生时，**是机器先说话**。
+   * （中间态 `string` 允许任意字面量比较，正是这个错能活下来的原因。）
+   */
+  status: PublishRequestView["status"];
   /** 后端 2026-08-30 起下发；此前落库的记录里**没有**这个字段，必须当可选处理。 */
   touchedDomains?: string[];
   signoffs?: { domainKey: string; ownerUserId?: string | null; decision: string | null; comment?: string; decidedAt?: string }[];
@@ -2606,6 +2623,23 @@ export interface PublishRequestVM {
  */
 export const publishRequestDomains = (p: PublishRequestVM): string[] =>
   p.touchedDomains ?? (p.signoffs ?? []).map((s) => s.domainKey).filter(Boolean);
+
+/**
+ * 这条会签请求还能不能处置（= 还在等人签）。
+ *
+ * 唯一真值在契约枚举里，故此常量用**契约类型**标注 —— 写错一个字母就编译失败，
+ * 不靠人记住后端叫什么。这是本单那个 bug 的**根治**：
+ * 病根不是「有人打错了一个串」，是「打错了也没有任何东西会红」。
+ */
+export const PUBLISH_REQUEST_PENDING: PublishRequestView["status"] = "PENDING_SIGNOFF";
+
+/** 待处置 ⇒ 会签按钮可点。终态（APPROVED/REJECTED/EXPIRED）一律不可点。 */
+export const isPublishRequestActionable = (p: PublishRequestVM): boolean =>
+  p.status === PUBLISH_REQUEST_PENDING;
+
+/** 这条请求还差几条会签未决（面板上要显示"还差几条"，不能只显示一个状态串）。 */
+export const publishRequestUndecidedCount = (p: PublishRequestVM): number =>
+  (p.signoffs ?? []).filter((s) => !s.decision).length;
 
 export const fetchPublishRequests = (status?: string) =>
   api.a<PublishRequestVM[]>(`/a/v1/ontology/publish-requests${status ? `?status=${encodeURIComponent(status)}` : ""}`);
