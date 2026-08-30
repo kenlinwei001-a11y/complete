@@ -230,6 +230,30 @@
   · **阈值走 A 方案（仓主拍板）**：取该变量在**本世界**的 P90/P95 分位，零配置。卡点 = >P95，脆弱点 = P90~P95（**由构造互斥**，不靠事后去重），堵点 = 传导图**传递闭包**大小（刻意不用出度：出度只看一跳，会把「直连 3 个叶子」排在「直连 1 个再散 40 个」前面，与「必经」语义相反）。真跑实测占比 4.61% / 4.98%，与设计的 5%/5% 吻合。⛔ 不许改成「配置红线」：写死「利用率 > 85% 算紧张」是应用层业务常数（破 R14），而「最高的 5%」是统计口径，换行业都成立。
   · 契约 `packages/contracts/src/sim-drill.ts` · 扫描器 `apps/datacore/src/sim/drill-scan.ts`（纯函数 R6）· 编排器 `apps/datacore/src/sim/drill-orchestrator.ts` · 前端 `apps/frontend-shell/src/views/sim/DrillPanel.tsx`。⚠ 与 `apps/datacore/src/sim/drill.ts`（WO-SIM-BE-DRILL·根因二级下钻）**是两件不同的事**，别混：那个是「某环节的损失拆到执行单元」，这个是「一件事发生了会卡在哪」。接缝门 `apps/datacore/test/sim-drill.seam.test.ts`（21 例 + 四靶变异反证）。
 - **PropagationRule（传导规则 · 一等类型，不塞进 RuleEntry）**：承载结构 `sourceTypeKey/sourceStateVar/viaLinkKey/targetTypeKey/targetStateVar` + 配置 `coefficient/delayTicks/combine[sum|max]/decay/clamp` · 系数/延迟**应优先引用一条可编辑规则的 `rule.params`**（G-10 P1 已落，真正兑现"改规则即改推演"；冷启动可内联）· 是**新 BuildPlan need + 注册 provisioner**（R16 倒序发育，新增 need 不注册即测试红）· 契约 `packages/contracts` sim（增量 1/3 新建）。竞品 UI `supplier.delay_risk -- SUPPLIES.risk_propagation 0.85 --> factory.supply_risk` = 本结构逐字命中（GROUNDING-MAP §F.2）。
+  **⚠ 不变量变更：传导核不再是「无衰减无夹值纯积分器」（WO-PROP-CLAMP·2026-08-30·实测驱动）**——
+  **旧的隐含不变量（今日起不再成立，两条都是被实测推翻的）**：① **线性可加性** `Δ(target) === N拍 × 系数 × Δ(source) × 目标数`；
+  ② **节拍守恒** 「闸门只改**什么时候**到、不改**到多少**」。两条都只在**无泄漏 + 无边界**的世界里成立。
+  病灶（真后端 `SEED_DEMO=1` 零扰动空转 6 拍实测）：`next = clone(current)` 后一路 `+=` ⇒ 每格都是无泄漏纯积分器，
+  链上第 d 跳即 d 重积分 ⇒ **O(t^d) 发散**。t0 全部 **7204 格都在 0–100 内**，6 拍后 **5290 格（73.4%）越界**，
+  `loadIndex` 69,134 · `receivablePressure` 408,305 ⇒ 用户扰动被世界自身漂移淹没（实测信噪比 **1:1973**）。
+  **新不变量（三条，替代上面两条）**：
+  ① **有界**：声明了取值域的状态量，读数恒在 `(min,max)` **开区间**内（修后实测越界 **0/7204**，逐拍成立）；
+  ② **保序**：饱和用双曲软拐点而非硬截断 ⇒ 越界读数**严格单调**、恒不达界（+30/+300/+3000 实测 97.31/98.45/99.70）
+     —— 硬截断会让三者并数，扰动再也推不动读数，那是把发散换成「引擎被夹死」，同样是静默错答；
+  ③ **收敛**：常量入流下 `x* = rest + inflow/λ` 有限（纯积分器无此性质：增量恒定、永不收窄）。
+  **代价与去向（三条既有断言因此改写，均附归因实验证据，不是为了让测试变绿）**：
+  `sandbox-e4 E4-1` 与 `sandbox-g1-seam` 的**节拍守恒**断言 —— 归因实测为**衰减**所致（关掉衰减即绿），
+  二者量的是闸门形状、与衰减正交，故把它们的规则挪到**未登记取值域**的量纲名上，断言逐字不动；
+  `sim-root-triad §3` 的**线性可加**断言 —— 归因实测为**夹值**所致（关掉衰减仍红），改为
+  「同号 · 非零 · 不超过无衰减无夹值的线性上界」，仍能咬住「没接上 / 方向反 / 凭空放大」三种坏法。
+  **⚠ 一条尚未闭合的独立缺陷（本单暴露、非本单引入，也非衰减/夹值能治）**：**扇入未按量纲归一**。
+  实测 `Order.demandPressure --×0.8/combine:sum--> Model.demandLoad`：**500 张订单 / 6 个型号 ⇒ 平均扇入 83.3**，
+  源均值 51.9 ⇒ **单拍入流 ≈3460 注进一个 0–100 的量纲**，衰减稳态 ≈9352 = **上界的 94 倍**。
+  因 `x* = inflow/λ ≥ inflow`（λ<1），**任何衰减率都压不进量纲** ⇒ 读数长期停在饱和曲线的平坦段、
+  灵敏度按 `1/(1+u)²` 衰减（这正是 `sim-root-triad §3` 实得 0.11 而线性上界 144 的原因）。
+  修法属**建模决策**（`combine:"sum"` 是否按扇入归一 / 系数是否随扇入缩放），全仓无任何承载物声明该口径，
+  故本单**不擅自定**，照「没有声明的不许拍脑袋定」如实报缺于此。
+
   **⚠ 方向是硬约束，不是排版（WO-SANDBOX-PROP-DIRECTION·2026-08-11 实测复核，闭 #158/#160）**：`propagateTick` 的 `navOut` **只沿 `fromId→toId` 走**（`apps/datacore/src/sim/propagation.ts:527 (navOut)`），故规则的 `(sourceTypeKey, viaLinkKey, targetTypeKey)` 必须与本体 linkType 声明的 `(fromType, key, toType)` **同向**；写反 ⇒ `targetsOf` 恒空 ⇒ **该规则一次都不触发，且不报任何错**（trace 里没有它、下游一个字节不动，界面上只看得到"一条安静的零"）。这是本仓栽过两次的同一个错，写成一句：**「我用『这个 linkKey 的名字读起来像 A→B』当作『它在本体里就是 A→B』的证据。」** `line_belongs_to_base` 名字读作 Line→Base，而契约 cardinality 只允许 1:1/1:N/N:N，**N:1 语义一律翻转方向表达为 1:N**（`synthetic/battery.ts` linkType 声明处注释原文）⇒ 真方向是 **`Base --line_belongs_to_base(1:N)--> Line`**。两处副本：种子规则（#158，WO-P1 已修：`demo_line_util_to_base_load` → `demo_base_load_to_line_util`，`apps/datacore/src/seed.ts:281 (demo_base_load_to_line_util)`）· 前端 mock（#160，WO-SANDBOX-PROP-DIRECTION 已修：`frontend-shell/src/mocks/handlers.ts` registries handler）。**三道门守（缺一不可，各咬一层）**：① `test/seed-demo-propagation.test.ts`「方向可达门」咬**链路表**（图上走不走得通）· ② `test/sim-propagation-direction.seam.test.ts` 咬**效果层**（真扰动 → tick → 下游状态变量的**数值**，并含「把边反过来 ⇒ 必须不触发」的方向反证）· ③ `test/mock-linktype-direction.gate.test.ts` 咬 **mock ⇄ 真路由**（前端 mock 的方向与 `GET /a/v1/ontology/mapping/registries` 真响应逐条比对）。①②③ 分层的理由是实测得来的：只有①时「图对而引擎没算」照样绿；只有②时「trace 里出现过这个名字」被当成「数是对的」照样绿。
   **业务域归属 `domainKey`/`domainName`（WO-DISRUPTION-CARDS·2026-08-17·屏上分类卡片的唯一分组依据）**：仓主看推演页截图后的原话「**按照卡片，建立不同扰动因素的分类展示**」。病灶是 demo 租户 **35 条传导边一次全倒在屏上**——无分类、无栅格（勾选框不在一条竖线上）、字号过小（实测最小 12px 且含 3 处 12px `<code>`，等宽字视觉更小）。**分组依据一直在数据里，不是本单发明的**：`DEMO_PROCESS_DEFINITIONS` 每条流程都带 `domainKey`(D01–D13) + `carrierTypeKey`（承载物对象类型），而种子作者当初选边时用的就是这条关系，逐条写在注释里（「承载物 MaterialBatch 即 P36」「承载物 MaintPlan 即 P50」「全世界恰好一个：`Supplier`（P28）」）——只是**躺在注释里、没进数据结构、屏上拿不到**。本单把它搬进数据。**口径：域 = target 承载物所属的域，不是 source**（依据是种子自己的分节注释：`── D09 设备与维护 · 检修窗：基地负载 → 计划检修窗挤压 ──` 源 `Base`(D10) 而节名 D09 = target `MaintPlan` 的域）；语义上也对——用户按域找一条边，找的是「它**影响**哪个域的活动」。⛔ **不是照分节注释逐条硬编码**（那只是把手抄名单从前端搬到后端，病没治）：`seed.ts resolveRuleDomain()` 从承载物登记册**现算** ⇒ 新增一条规则只要 target 是某流程的承载物，域自动就有，**「忘了归域」在本设计里不可能发生**。⛔ **前端同样零对照表**（本体 §8 `G-GATE-ROSTER-HANDCOPIED`）：`edgeActiveModel.buildDomainSlices` 只按边自带的 `domainKey` 做 `groupBy`，一个业务判断都不做。**实测 35 条 → 9 个域 + 3 条未归域**（D03 销售与客户 6 · D04 产品与工程 3 · D05 采购与供应 7 · D06 计划与排产 2 · D07 生产制造 3 · D08 质量管理 3 · D09 设备与维护 2 · D10 基地与仓储交付 4 · D11 财务与成本 2 · 未归域 3），最大一片 7 条（参照物「一屏 5–8 行」口径）。**`null` 是诚实缺席不是漏填**：那 3 条的 target（`Material`/`Process`/`Equipment`）不是任何流程的承载物 —— 种子注释自己就写着「Equipment **不是任何流程的承载物**，它在这里是**中间跳**」；屏上单列「未归域」分片并写清原因，**不许硬塞进最近的那个域**。**注释与现算的 4 处分歧如实登记**（18 条带 D 号分节里 15 条一致）：`demo_wo_release_to_quality_backlog`/`demo_wip_feed_to_defect_pressure`/`demo_defect_to_exception_backlog` 落在节名 `D07 生产制造执行链`下而三个 target 承载物均属 **D08 质量管理**（那句节名写的是一条**跨域的链**，不是一个域）；`demo_customer_receivable_to_collection` 节名 `D03` 而 target `OverdueRecord` 属 **D11**（取 D11 顺带与同属 D11 且无分节注释的 `demo_customer_receivable_to_invoice_overdue` 归到一起）。取现算值 = 取**逐条可复算**的口径；注释那 4 处不改（它描述的是叙事链路，本来没错）。**同批新增 `sourceTypeName`/`targetTypeName`：读时投影，不入库** —— `GET /a/v1/sim/propagation-rules` 每次 join 本租户 `ObjectType.displayName` 后填（种子/POST 存进去恒 `null`），存一份会在类型改名后变成查无对证的旧名字。⚠ **初稿把它做成前端 `useQuery(fetchObjectTypes)`，实测把全仓 29 个做 `vi.mock("@/api/endpoints")` 部分 mock 的前端测试全部打红** —— 该面板挂在 8 个推演页上，给共享面板加 endpoint 依赖是结构性负债，故改成随边下发（面板只依赖一个响应）。**状态变量（`loadIndex`/`demandLoad` …）在全仓没有任何中文名**（只作为字符串存在于传导规则里，本体 `properties`/`derivedProperties` 都不含它们）⇒ 只出现在第二级的系统键那一行，前端不给它编名字（R14）。存储零迁移（`sim_propagation_rule` 是 doc-jsonb 表）· 缺省 `null` ⇒ 与本字段引入前逐字节相同（additive 可回退 RL9）。**门**：`apps/datacore/test/sim-rule-domain.seam.test.ts`（期望值取自**另一条独立路径** `GET /a/v1/process-definitions`，零写死 key/条数；含正反金丝雀 + 集合相等而非数量相等 + 单条最小变异反证）· `apps/frontend-shell/test/disruption-cards.seam.test.tsx`（chip 条数两边现算 · 切片判据同时落在**可见性与 DOM 存在性**上——`<details>` 折叠时子节点照样在 DOM 里，本仓已有 dev 在这条上栽过 · 拨动断的是**差值表里的数**不是勾选框 checked）。
   **根源/枢纽/末端三层（WO-SIM-ROOT-PROCUREMENT·2026-08-25·G-ROOT-3·链路详见 §3「根源扰动层 · 物料采购」）**：传导规则集自带一张**量纲图**（一条规则 = `sourceStateVar → targetStateVar` 一条边），按**入度**分层：**入度 0 = 根源**（没有上游 ⇒ 只能被外部扰动打进来，扰它才是扰"因"）· 入度>0 且出度>0 = **枢纽**（扰它 = 从半路插入，推演结论会失真）· 出度 0 = **末端**（通常是"看"的不是"扰"的）。**这一层必须现算，不许硬编根源名单** —— 硬编的名单在下一条边加进来时会**悄悄失效**（同 `domainKey` 拒绝硬编分节注释的那条纪律）。改前实测 3 根源 / 13 枢纽 / 20 末端；库存 `shortageRisk` 入度 2 ⇒ **是果不是源**，而仓主点名的高频根源「物料采购」当时**一个变量都没有**。本单补 `procurementDelay`（采购到货延迟）为**第 4 个根源**，三类采购台账各一条边指向 `Material.shortageRisk`（PurchaseOrder 30 / MaterialBatch 24 / Supplier 15 个落点）。⛔ **`procurementDelay` 的入度必须恒为 0**：全仓不许有任何规则写它，谁加一条 `… → procurementDelay` 它就从根源掉成枢纽 —— 门 `sim-root-procurement.seam.test.ts ①` 用**现算**入度咬死这件事。
@@ -827,6 +851,12 @@ closure(validateClosure 五维) ⊕ GapReport(selfcheck) ⊕ TrialTick(**两相*
     + propagationRulesDeclared(分母) + propagationCovered=true; 两数不可相加,旧 rulesFired 已 deprecated)
   --deriveCertification(纯投影,零新校验 RL3·增量2 已落)--> SimCertification --canEnterSimulation(L4∧trial∧gatePassed)--> 「可进入推演」
 propagateTick(增量3 已落): rules.coefficient/coefficientRef→rule.params × 源态 ×(decay) 沿 viaLink → next 态 + 延迟队列(arriveTick>t) + trace；无 PUBLISHED 规则=恒等 tick(opt-in 可回退)
+StateVarDomain(WO-PROP-CLAMP 已落): stateVar --min/max/restPoint/decayRef--> propagateTick 第 9 参
+  衰减相(贡献之前) next=rest+(1−λ)(cur−rest) · λ 只走 decayRef→ruleParams[C35].pressureDecayPerTick(禁内联)
+  ⚠ 只衰减**被某条规则写入**的量纲；入度 0 = 外生输入,不衰减(否则根源归零 ⇒ 整个世界失去驱动一起死)
+  饱和相(末尾) saturateToDomain 双曲软拐点,带宽从**静息点到边界**那段切(rest==min ⇒ 下界硬地板,合法的 0 不动)
+  回执 stateVars{declared/undeclared/decayUnresolved/saturations/decayApplied} + signalToNoise{worldDrift/userContribution/ratioOnTouchedCells}
+  ⚠ 影子线必须从 baseSnapshot **零扰动重放**,不能拿当前态当起点(POST /perturbations 会预施加 ⇒ 两线同值 ⇒ userContribution 恒 0)
 PropagationRule.coefficient/delayTicks --引用--> rule.params(G-10 P1 可编辑) ⚠ 改规则即改推演,禁内联常数(RL5)
 ontology linkType(fromType,key,toType) --必须同向--> PropagationRule(sourceTypeKey,viaLinkKey,targetTypeKey)
   ⚠ navOut 只走 fromId→toId(propagation.ts:527) ⇒ 方向写反 = targetsOf 恒空 = 规则一次不触发且零报错(#158/#160 两处副本,均已闭)
