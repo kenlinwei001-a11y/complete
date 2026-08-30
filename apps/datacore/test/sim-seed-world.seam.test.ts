@@ -207,6 +207,34 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     expect(origin?.cells).toBe(cellCount(full.baseSnapshot));
     expect((origin?.measuredCells as number) + (origin?.derivedCells as number)).toBe(origin?.cells);
 
+    // ── `note` 是**直接印在用户屏上**的那句，必须是纯文本人话 ─────────────────────
+    //
+    // 今天两个消费方都按纯文本渲染、都不过 markdown：
+    //   · `UnifiedSimShell.tsx` 顶部「世界态出处」状态行 —— 整句一份；
+    //   · `metricWallModel.ts` 的 `calibreTextOf` —— **每张指标卡各一份**（放大器：
+    //     一屏 40 张卡，这里多一个 `**`，屏上就多十几个）。
+    // 2026-08-30 真浏览器实测：修前折叠态 8 个字面 `*`、展开「未变化」后 24 个。
+    //
+    // ⚠ 这条断言咬的是**屏上原文**，不是实现：谁再往这句里写 markdown 或接口字段名，
+    //   这里当场红 —— 机器先说话，不靠人想起来（CLAUDE.md 铁律 0.6）。
+    const note = origin?.note as string;
+    expect(typeof note, "出处记号必须带一句人话").toBe("string");
+    const markdownIn = (s: string): string[] =>
+      [
+        ...(s.match(/\*\*/g) ?? []),
+        ...(s.match(/(^|[^\w])__[^\s_]/g) ?? []),
+        ...(s.match(/`/g) ?? []),
+        ...(s.match(/(^|\n)\s*#{1,6}\s/g) ?? []),
+      ];
+    // 金丝雀：同一个 `markdownIn` 对一段**已知含标记**的串必须命中。
+    // （不共用同一份实现的金丝雀是装饰品：改主正则时它拿旧的去测、照样绿。）
+    expect(markdownIn("由**本体结构派生**（占位）").length, "金丝雀：扫描器必须认得 `**`").toBe(2);
+    expect(markdownIn(note), `世界态出处这句会原样上屏，不许带 markdown 标记：${note}`).toEqual([]);
+    // 接口字段名同理 —— 用户读不懂 `measuredCells`；屏上那一项显示的词是「实测格」。
+    for (const ident of ["measuredCells", "derivedCells", "baseSnapshotOrigin", "truncated="]) {
+      expect(note.includes(ident), `屏上这句不许出现接口字段名 \`${ident}\`：${note}`).toBe(false);
+    }
+
     // ── ② tick 态：存在 + 非空 + 与 tick0 不同 + trace 非空（= 真的过了传导核）────
     const tick0 = await t.repos.sim.getTickState("demo", s.id, 0);
     const last = await t.repos.sim.getTickState("demo", s.id, s.curTick);
