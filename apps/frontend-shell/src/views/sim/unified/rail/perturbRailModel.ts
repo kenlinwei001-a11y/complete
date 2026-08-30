@@ -749,7 +749,9 @@ export function buildApplyReceipt(args: {
     }
     if (before !== null && before !== 0 && Math.abs(body.magnitude) < Math.abs(before) / 100) {
       notes.push(
-        `幅度 ${body.magnitude} 相对这一格今天的读数 ${before} 偏小，变化落在看不见的小数位上 —— ` +
+        // `before` 走 `fmtNum` 与屏上其余各处同一口径 —— 裸 `${before}` 会印出
+        // `52917.460000000006` 这种 IEEE754 尾巴（同 `receiptCellText` 那处，真浏览器抓到过）。
+        `幅度 ${body.magnitude} 相对这一格今天的读数 ${fmtNum(before)} 偏小，变化落在看不见的小数位上 —— ` +
           `把幅度调大再算一次：本平台确有一批量要更大的幅度才推得动，调大是有效的。`,
       );
     }
