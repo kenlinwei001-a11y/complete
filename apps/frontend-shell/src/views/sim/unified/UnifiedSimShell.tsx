@@ -616,10 +616,18 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
   /**
    * 页签问句里那两个计数 —— **现算，不写死**（WO-SIM-TICK-GATE）。
    *
-   * 改前两个数都是写死在 `unifiedModes.ts` 里的常量串，而且**两个今天都是错的**：
+   * 改前两个数都是写死在 `unifiedModes.ts` 里的常量串，而且**两个今天都是错的**
+   * （2026-08-30 真后端 `SEED_DEMO=1` 实测）：
    * 「38 条因果边」（实测 42，且同屏右栏 `EdgeActivePanel` 就写着 42 —— 同一屏两个数打架）、
    * 「37 个状态变量」（实测 40 = 卡墙真实卡片数）。判据与实测证据写在 `unifiedModes.ts`
    * 的 `UnifiedModeCounts` 头注里（判据住在判据自己家）。
+   *
+   * 复验（两条命令，`demo` 租户，起本地 datacore 后直接打）：
+   *   `curl -s -H 'X-Debug-User: demo:admin:admin' $A/a/v1/sim/view-config | jq '.propagationCount, (.stateVars|length)'`
+   *     ⇒ 2026-08-30 实测 `42` / `40`
+   *   `curl -s -H 'X-Debug-User: demo:admin:admin' "$A/a/v1/sim/propagation-rules?includeDraft=true" | jq '.items|length'`
+   *     ⇒ 2026-08-30 实测 `42`（且 42 条全 `PUBLISHED`）——「38」的出处是 `apps/datacore/src/seed.ts`
+   *     头注那句加边之前的旧数，没人回来改。
    *
    * ⚠ 两个数都取自 `cfgQ` 这**一份**回包：`propagationCount` 与 `stateVars` 是后端在
    * 同一个 handler 里由同一批规则派生的（`app.ts` 的 `/a/v1/sim/view-config`），
@@ -646,7 +654,7 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
           const spec = UNIFIED_MODE_SPEC[m];
           const on = m === mode;
           const disabled = spec.pending !== null;
-          // 问句里的计数**现算**（见 `modeCounts`）——「38 条因果边」那种写死的数已删。
+          // 问句里的计数**现算**（见上面 `modeCounts` 的头注：口径、复验命令与实测日期都在那里）。
           const question = spec.question(modeCounts);
           return (
             <span key={m} className={styles.tabSlot}>
