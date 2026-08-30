@@ -44,26 +44,35 @@ afterEach(() => cleanup());
  * 拿它当「页面渲染好了」的证据，会在页面还没挂上时就先回答「没崩」。
  * （这正是本仓反复吃亏的那个形态：我用 X 当作 Y 的证据，而 X 并不度量 Y。）
  */
-async function settled(pageTestId: string): Promise<boolean> {
-  await waitFor(
-    () => {
-      const ok = screen.queryByTestId(pageTestId) ?? screen.queryByTestId("page-error-boundary");
-      expect(ok, `既没等到 ${pageTestId}，也没等到崩溃页 ⇒ 多半是被 AdminGuard 挡住了，本条什么都没证明`).toBeTruthy();
-    },
-    { timeout: 5000 },
-  );
-  /*
-   * ⚠ **页面挂上了 ≠ 数据到齐了**，而本单这三处崩溃**全都发生在数据回来之后的那一次重渲染**
-   * （首帧 `data` 还是 undefined，各处 `?? []` 兜住了，看着好好的）。
-   * 第一版就是在这里收工的，于是金丝雀报「没崩」—— 探针在崩溃发生之前就下了结论。
-   * 形态照旧：我用「首帧没崩」当作「这一页不崩」的证据，而前者并不度量后者。
-   * 故再留一个沉淀窗口，期间崩溃页出现过就算崩。
-   */
-  for (let i = 0; i < 40; i++) {
-    if (screen.queryByTestId("page-error-boundary") !== null) return true;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  return screen.queryByTestId("page-error-boundary") !== null;
+/**
+ * 断言这一页**崩了**。
+ *
+ * ⚠ **页面挂上了 ≠ 数据到齐了**，而本单三处崩溃**全都发生在数据回来之后那一次重渲染**
+ * （首帧 `data` 还是 undefined，各处 `?? []` 兜住，看着好好的）。
+ * 本文件第一版就是在首帧收工的，于是金丝雀报「没崩」—— 探针在崩溃发生之前就下了结论。
+ * 形态照旧：**我用「首帧没崩」当作「这一页不崩」的证据，而前者并不度量后者。**
+ *
+ * 故这里用 `findBy*` 的**重试等待**（而不是定长 sleep）：机器慢一点只会等久一点，
+ * 不会把「还没崩」误判成「不崩」——定长窗口在负载高的机器上会变成随机红。
+ */
+async function expectCrashed(): Promise<void> {
+  await screen.findByTestId("page-error-boundary", {}, { timeout: 8000 });
+}
+
+/**
+ * 断言这一页**没崩**。
+ *
+ * `dataMarker` 是一个**只有数据真到齐才会出现**的 testId —— 必须传，
+ * 否则「首帧还没崩」会被当成「不崩」（就是上面那个坑）。
+ * 先等它出现（= 数据到了且渲染成功），再确认崩溃页不在。
+ */
+async function expectNotCrashed(pageTestId: string, dataMarker: string): Promise<void> {
+  await screen.findByTestId(pageTestId, {}, { timeout: 8000 });
+  await screen.findByTestId(dataMarker, {}, { timeout: 8000 });
+  expect(
+    screen.queryByTestId("page-error-boundary"),
+    "数据都渲染出来了，却同时还挂着崩溃页 ⇒ 边界没清干净",
+  ).toBeNull();
 }
 
 /**
@@ -89,10 +98,8 @@ describe("WO-ONTO-CRASH · 三处后台页在后端真实回包形状下不许�
     induceCrash();
     loginAs("planner");
     renderApp("/admin/ontology-relations");
-    expect(
-      await settled("ontology-relations-page"),
-      "金丝雀不中 ⇒ 是这道门坏了（探针失灵），不是页面好了",
-    ).toBe(true);
+    // 金丝雀不中（等 8s 都等不到崩溃页）⇒ 是这道门坏了（探针失灵），不是页面好了。
+    await expectCrashed();
   });
 
   /**
@@ -124,9 +131,8 @@ describe("WO-ONTO-CRASH · 三处后台页在后端真实回包形状下不许�
     );
     loginAs("planner");
     renderApp("/admin/quarantine");
-    expect(await settled("quarantine-page")).toBe(false);
-    // 不止「没崩」——那一行真的上屏了。空表也不崩，但那证明不了消费的是 `items`。
-    expect(await screen.findByTestId("q-row-q1")).toBeTruthy();
+    // `q-row-q1` 是**只有 items 真被消费**才会出现的记号：空表也不崩，但那证明不了什么。
+    await expectNotCrashed("quarantine-page", "q-row-q1");
   });
 
   /**
@@ -160,8 +166,7 @@ describe("WO-ONTO-CRASH · 三处后台页在后端真实回包形状下不许�
     );
     loginAs("planner");
     renderApp("/admin/validation");
-    expect(await settled("validation-page")).toBe(false);
-    expect(await screen.findByTestId("vle-run-vr1")).toBeTruthy();
+    await expectNotCrashed("validation-page", "vle-run-vr1");
   });
 
   /**
@@ -197,7 +202,8 @@ describe("WO-ONTO-CRASH · 三处后台页在后端真实回包形状下不许�
     );
     loginAs("planner");
     renderApp("/admin/ontology-relations");
-    expect(await settled("ontology-relations-page")).toBe(false);
+    // `orel-pubreq-…` 是只有会签表真渲染成功才会出现的记号（正是原先崩掉的那张表）。
+    await expectNotCrashed("ontology-relations-page", "orel-pubreq-preq_demo_1");
 
     const row = await screen.findByTestId("orel-pubreq-preq_demo_1");
     // 触及域这一格必须**真的有内容**，不是靠渲染成空字符串糊过去 ——
@@ -219,19 +225,16 @@ describe("WO-ONTO-CRASH · 三处后台页在后端真实回包形状下不许�
     induceCrash();
     loginAs("planner");
     const { router } = renderApp("/admin/ontology-relations");
-    expect(
-      await settled("ontology-relations-page"),
-      "前置没成立：这一页压根没崩，则本条什么都没证明",
-    ).toBe(true);
+    // 前置：这一页真的崩了。不成立则本条什么都没证明。
+    await expectCrashed();
 
     // 关键动作：**SPA 内导航**（不是 F5）——这正是 E2E 扫描器和真人点导航走的路。
     await router.navigate("/admin/validation");
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin/validation"));
 
-    expect(
-      await settled("validation-page"),
-      "换页之后仍是崩溃页 ⇒ 边界没起作用，一页崩把整个后台钉死",
-    ).toBe(false);
+    // 换过去的这一页必须**真的把数据渲染出来**（`vle-run-vrun_1` 来自 MSW 默认 mock），
+    // 不是「崩溃页消失了」就算数 —— 那有可能只是白屏。
+    await expectNotCrashed("validation-page", "vle-run-vrun_1");
   });
 
   /**
@@ -245,7 +248,7 @@ describe("WO-ONTO-CRASH · 三处后台页在后端真实回包形状下不许�
     induceCrash();
     loginAs("planner");
     renderApp("/admin/ontology-relations");
-    expect(await settled("ontology-relations-page")).toBe(true);
+    await expectCrashed();
 
     const detail = await screen.findByTestId("page-error-detail");
     expect(detail.textContent?.trim(), "错误原文被吞了 —— 崩溃变成了看不见的静默").toBeTruthy();
