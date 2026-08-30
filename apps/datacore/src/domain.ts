@@ -324,12 +324,26 @@ export interface LinkTypeDef {
    * 这正是出厂种子里手写的 `putLink(… oid("ProductSeries", s.seriesId), oid("ProductPlatform", s.platformId))`，
    * 只是改为**由声明驱动**而非硬编码。
    *
-   * **诚实边界**：只支持「来源属性 → 目标业务主键」这一种连接（本仓 133 条边全属此形态）；
-   * 非主键连接（任意 fromField↔toField 对）不在本字段语义内，需要时另行扩展，不要拿这个字段硬凑。
+   * **诚实边界**：只支持「外键属性 → 对侧业务主键」这一种连接；非主键连接（任意 fromField↔toField
+   * 对）、以及一条边要靠中间表/数组才能表达的（如出厂 `model_producible_at` 走的是数组、
+   * `model_certified_on` 走的是独立认证清单）**不在本字段语义内**，需要时另行扩展，不要硬凑。
    *
    * 可选（加性·零回归）：不填 ⇒ 完全维持老行为（只声明不物化），出厂那批手写实例边不受影响。
    */
   viaProperty?: string;
+  /**
+   * WO-LINKTYPE-IMPL · `viaProperty` **长在哪一侧**。缺省 `"from"`（外键在来源类型上）。
+   *
+   * 为什么必须有这一维：实测 demo 租户 116 条结构边，**23 条（19.8%）的外键长在去向类型上**
+   * —— 一对多边正是这个形态（`base_has_shipment: Base → Shipment`，外键是 `Shipment.baseId`；
+   * `line_belongs_to_base: Base → Line`，外键是 `Line.baseId`）。只支持 from 侧的话，用户在
+   * 表单里选中这类边会看到一个**空的属性下拉**、无路可走 —— 那还是「建完的边用不了」，
+   * 只是换了个死法。
+   *
+   * · `"from"`：来源对象的 `props[viaProperty]` → 去向类型的业务主键；边 = 来源 → 命中的去向。
+   * · `"to"`  ：去向对象的 `props[viaProperty]` → 来源类型的业务主键；边 = 命中的来源 → 去向。
+   */
+  viaSide?: "from" | "to";
   version: number;
   published?: boolean;
   deprecation?: DeprecationMeta;

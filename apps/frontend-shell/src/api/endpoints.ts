@@ -2391,6 +2391,8 @@ export const createLinkType = (body: {
   toTypeKey: string;
   cardinality: "1:1" | "1:N" | "N:1" | "N:N";
   viaProperty?: string;
+  /** 外键长在哪一侧：`from`=来源类型上（缺省），`to`=去向类型上（一对多边正是这个形态）。 */
+  viaSide?: "from" | "to";
 }) =>
   api.a<{
     key: string;
@@ -2399,7 +2401,8 @@ export const createLinkType = (body: {
     cardinality: string;
     version: number;
     viaProperty?: string;
-    materialized?: { created: number; unresolved: number; sourceObjects: number };
+    viaSide?: "from" | "to";
+    materialized?: { created: number; unresolved: number; carrierObjects: number };
   }>("/a/v1/ontology/link-types", { method: "POST", body });
 
 /**

@@ -4084,6 +4084,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         toTypeKey: z.string(),
         cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
         viaProperty: z.string().min(1).optional(),
+        viaSide: z.enum(["from", "to"]).optional(),
       }),
       req.body,
     );

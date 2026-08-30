@@ -137,7 +137,13 @@ export default function OntologyRelationsPage() {
 
   // ── 结构边：新建 ─────────────────────────────────────────────────────────
   // `viaProperty`（由哪个属性实现）是本表单的第五个槽：没有它，边只是一句声明，多跳检索一条实例都遍历不到。
-  const [lk, setLk] = useState({ key: "", fromTypeKey: "", toTypeKey: "", cardinality: "1:N" as Cardinality, viaProperty: "" });
+  // 下拉的 value 用 `<侧>:<属性名>` 编码，因为「哪个属性」和「它长在哪一侧」是一件事的两半，
+  // 拆成两个控件会让用户先选侧、再选属性 —— 多一步，且选错侧时属性列表是空的，更难懂。
+  const [lk, setLk] = useState({ key: "", fromTypeKey: "", toTypeKey: "", cardinality: "1:N" as Cardinality, via: "" });
+  const viaParsed = useMemo(() => {
+    const i = lk.via.indexOf(":");
+    return i < 0 ? null : { viaSide: lk.via.slice(0, i) as "from" | "to", viaProperty: lk.via.slice(i + 1) };
+  }, [lk.via]);
   const createLink = useMutation({
     mutationFn: () =>
       createLinkType({
@@ -145,19 +151,19 @@ export default function OntologyRelationsPage() {
         fromTypeKey: lk.fromTypeKey,
         toTypeKey: lk.toTypeKey,
         cardinality: lk.cardinality,
-        // 空串 = 用户没选 ⇒ 不传该键（传空串会被后端当成「属性名是空字符串」而 400）。
-        ...(lk.viaProperty ? { viaProperty: lk.viaProperty } : {}),
+        // 没选 ⇒ 一个键都不传（传空串会被后端当成「属性名是空字符串」而 400）。
+        ...(viaParsed ? { viaProperty: viaParsed.viaProperty, viaSide: viaParsed.viaSide } : {}),
       }),
     onSuccess: (r) => {
       // 建完当场说清「连出几条实例边」——0 条也要说，不让用户对着一条建成功却检索不到的边猜。
       const m = r.materialized;
-      const tail = !lk.viaProperty
+      const tail = !viaParsed
         ? "；未选实现属性 ⇒ 0 条实例边，多跳检索遍历不到"
         : m
-          ? `；已连出 ${m.created} 条实例边（来源对象 ${m.sourceObjects} 个${m.unresolved > 0 ? `，另有 ${m.unresolved} 个的属性值在去向类型里查无对应` : ""}）`
+          ? `；已连出 ${m.created} 条实例边（扫了 ${m.carrierObjects} 个对象${m.unresolved > 0 ? `，另有 ${m.unresolved} 个的属性值查无对应目标` : ""}）`
           : "";
       toast(`结构边 ${r.key} 已建（v${r.version}）${tail}`, m && m.created === 0 ? "info" : "success");
-      setLk({ key: "", fromTypeKey: "", toTypeKey: "", cardinality: "1:N", viaProperty: "" });
+      setLk({ key: "", fromTypeKey: "", toTypeKey: "", cardinality: "1:N", via: "" });
       void qc.invalidateQueries({ queryKey: ["a", "ontology-mapping-registries"] });
       void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
     },
@@ -165,22 +171,34 @@ export default function OntologyRelationsPage() {
   });
 
   /**
-   * 「由哪个属性实现」的候选 = **来源类型自己的属性列表**（不是自由文本框）。
+   * 「由哪个属性实现」的候选 = **两侧类型的属性列表**（不是自由文本框）。
    *
    * ⚠ 本仓有过「状态变量是自由文本，打错字 = 静默造一个死变量且删不掉」那个坑，这里不复制：
-   * 候选从选中的来源类型现取，选不出来就是没得选。已声明外键指向的属性排在最前并标出指向，
-   * 用户不必去记哪个字段是外键。
+   * 候选从当前选中的两个类型现取，选不出来就是没得选。
+   *
+   * **两侧都要列**：实测 116 条结构边里 23 条（19.8%）的外键长在**去向**类型上（一对多边，
+   * 如 `Base → Line` 的外键是 `Line.baseId`）。只列来源侧的话，用户选中这类边会看到一个空下拉、
+   * 无路可走 —— 那还是「建完的边用不了」。已声明外键指向对侧的属性排最前并标出指向。
    */
   const viaCandidates = useMemo(() => {
-    const t = (types.data ?? []).find((x) => x.key === lk.fromTypeKey);
-    if (!t) return [];
-    return [...t.properties]
-      .map((p) => ({ propKey: p.propKey, refTo: p.refToTypeKey ?? null }))
-      .sort((a, b) => {
-        // ① 指向本次「去向类型」的外键最优先 ② 其它外键 ③ 普通属性；同档按 key 稳定排序。
-        const rank = (x: { refTo: string | null }) => (x.refTo === lk.toTypeKey && lk.toTypeKey ? 0 : x.refTo ? 1 : 2);
-        return rank(a) - rank(b) || (a.propKey < b.propKey ? -1 : a.propKey > b.propKey ? 1 : 0);
-      });
+    const find = (k: string) => (types.data ?? []).find((x) => x.key === k);
+    const out: { value: string; label: string; rank: number }[] = [];
+    const push = (side: "from" | "to", ownerKey: string, otherKey: string) => {
+      const t = find(ownerKey);
+      if (!t) return;
+      for (const p of t.properties) {
+        const points = p.refToTypeKey === otherKey && otherKey;
+        out.push({
+          value: `${side}:${p.propKey}`,
+          label: `${ownerKey}.${p.propKey}${p.refToTypeKey ? ` → ${p.refToTypeKey}` : ""}`,
+          // ① 已声明指向对侧的外键最优先 ② 其它外键 ③ 普通属性
+          rank: points ? 0 : p.refToTypeKey ? 1 : 2,
+        });
+      }
+    };
+    push("from", lk.fromTypeKey, lk.toTypeKey);
+    push("to", lk.toTypeKey, lk.fromTypeKey);
+    return out.sort((a, b) => a.rank - b.rank || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
   }, [types.data, lk.fromTypeKey, lk.toTypeKey]);
 
   const deprecateLink = useMutation({
@@ -382,18 +400,18 @@ export default function OntologyRelationsPage() {
         {/* 由哪个属性实现 —— 候选来自来源类型的属性表，**不是**自由文本（打错字 = 静默造死边）。 */}
         <select
           data-testid="orel-link-via"
-          value={lk.viaProperty}
-          disabled={!lk.fromTypeKey}
-          onChange={(e) => setLk({ ...lk, viaProperty: e.target.value })}
-          title={lk.fromTypeKey ? "这条边由来源类型的哪个属性实现（外键属性）" : "先选来源类型"}
+          value={lk.via}
+          disabled={!lk.fromTypeKey || !lk.toTypeKey}
+          onChange={(e) => setLk({ ...lk, via: e.target.value })}
+          title={lk.fromTypeKey && lk.toTypeKey ? "这条边由哪个属性实现（两侧的外键属性都可选）" : "先选来源与去向类型"}
+          style={{ maxWidth: 260 }}
         >
           <option value="">
-            {lk.fromTypeKey ? "由哪个属性实现…" : "先选来源类型"}
+            {lk.fromTypeKey && lk.toTypeKey ? "由哪个属性实现…" : "先选来源与去向类型"}
           </option>
           {viaCandidates.map((p) => (
-            <option key={p.propKey} value={p.propKey}>
-              {p.propKey}
-              {p.refTo ? ` → ${p.refTo}` : ""}
+            <option key={p.value} value={p.value}>
+              {p.label}
             </option>
           ))}
         </select>
@@ -408,10 +426,10 @@ export default function OntologyRelationsPage() {
         {/* 不选实现属性是**允许**的（N:N 那类边本来就不是一个外键属性能表达的，例如出厂的
             `model_producible_at` 走的是数组、`model_certified_on` 走的是独立的认证清单），
             但必须当场说清代价，不能让用户以为建完就能检索到。 */}
-        {lk.fromTypeKey && !lk.viaProperty && (
+        {lk.fromTypeKey && lk.toTypeKey && !lk.via && (
           <span className="muted" data-testid="orel-link-via-warn" style={{ fontSize: 11.5, flexBasis: "100%" }}>
             ⚠ 未选「由哪个属性实现」⇒ 这条边只是一句声明，<b>不会长出任何实例边</b>，多跳检索遍历不到它。
-            {viaCandidates.length === 0 && ` （${lk.fromTypeKey} 没有任何属性可选）`}
+            {viaCandidates.length === 0 && ` （${lk.fromTypeKey} 与 ${lk.toTypeKey} 都没有任何属性可选）`}
           </span>
         )}
       </div>
