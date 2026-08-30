@@ -366,13 +366,23 @@ const SATURATION_BAND_FRACTION = 0.25;
  * 故本函数**沿用它的曲线形状**（指数压缩进开区间、恒不达界、严格单调），做两侧推广，
  * 并去掉取整。形状同源、口径不同，这一段就是那条边界的记号。
  *
- * ── 形状 ──────────────────────────────────────────────────────────────────
- * `band = (max−min)·BAND`，拐点 `kneeHi = max−band` / `kneeLo = min+band`：
+ * ── 形状：**双曲**软拐点 `band/(1+u)`，不是指数 ───────────────────────────────
+ * `band = (max−min)·BAND`，`u = (raw−kneeHi)/band`，拐点 `kneeHi = max−band` / `kneeLo = min+band`：
  *  · 带内（`kneeLo ≤ raw ≤ kneeHi`）**原值返回**，逐字节不动（未越界的数据一个不碰）；
- *  · 上溢：`max − band·e^{−(raw−kneeHi)/band}` ∈ (kneeHi, max)；
- *  · 下溢：`min + band·e^{−(kneeLo−raw)/band}` ∈ (min, kneeLo)。
- * 两个拐点处**值与斜率都连续**（斜率恰为 1，因指数的时间常数取 band 本身）⇒ C¹ 光滑，
+ *  · 上溢：`max − band/(1+u)` ∈ (kneeHi, max)；
+ *  · 下溢：对称同式。
+ * 两个拐点处**值与斜率都连续**（`f(knee)=knee`、`f'(knee)=1`）⇒ C¹ 光滑，
  * 不会在拐点上凭空造出一个折角被读成"这里发生了什么"。
+ *
+ * ── 为什么是双曲不是指数（实测定的，不是口味）────────────────────────────────
+ * 先按 `risk.ts` 那条指数式写了一版 `max − band·e^{−u}`，**实测被本单验收判据 ④ 当场打回**：
+ * 本世界修完后 `Model.demandLoad` 的原始值仍约 **2700**（域是 0–100），`u ≈ 105`，
+ * `e^{−105} ≈ 3e−46` ⇒ 双精度下压出来**恰好等于 100**，`supplyRisk` / `loadIndex` 同样被钉死。
+ * 于是「+30 与 +3000 读数相同」——正是判据 ④ 要拦的「夹值把引擎夹死」。
+ * 双曲式衰减是 `1/u` 而不是 `e^{−u}`：同一个 `u=105` 给出 `100 − 25/106 = 99.764`，
+ * 到 `u ~ 1e13` 才在双精度下并数 ⇒ **扰动在任何量级上都仍然推得动读数**。
+ * 指数式在 `risk.ts` 能用，是因为那里的原始值只过冲零点几分（`98.65…101.29`）、`u < 5`；
+ * 这里过冲的是**几十倍**，两个场景的 `u` 差了两个数量级，同一条曲线不通用。
  *
  * 纯函数：无随机 / 无时钟 / 无外部状态（R6 同入参字节一致）。
  */
@@ -380,9 +390,9 @@ export function saturateToDomain(raw: number, min: number, max: number): number 
   if (!(max > min)) return raw; // 退化域（max<=min）⇒ 不压缩，交由调用方的声明校验去报
   const band = (max - min) * SATURATION_BAND_FRACTION;
   const kneeHi = max - band;
-  if (raw > kneeHi) return max - band * Math.exp(-(raw - kneeHi) / band);
+  if (raw > kneeHi) return max - band / (1 + (raw - kneeHi) / band);
   const kneeLo = min + band;
-  if (raw < kneeLo) return min + band * Math.exp(-(kneeLo - raw) / band);
+  if (raw < kneeLo) return min + band / (1 + (kneeLo - raw) / band);
   return raw;
 }
 

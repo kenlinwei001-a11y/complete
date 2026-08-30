@@ -1874,6 +1874,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let worldDrift = 0;
     let userContribution = 0;
     let changedCells = 0;
+    let totalCells = 0;
+    // 只在**用户真的动过的那些格**上再算一次同样两个量（见下 `ratioOnTouchedCells` 的理由）。
+    let worldDriftOnTouched = 0;
     for (const objId of Object.keys(actual)) {
       const a = actual[objId] ?? {};
       const d = drift[objId] ?? {};
@@ -1881,10 +1884,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       for (const v of Object.keys(a)) {
         const av = a[v]; const dv = d[v] ?? 0; const sv = s0[v] ?? 0;
         if (typeof av !== "number") continue;
-        worldDrift += Math.abs(dv - sv);
+        totalCells += 1;
+        const wd = Math.abs(dv - sv);
+        worldDrift += wd;
         const uc = Math.abs(av - dv);
         userContribution += uc;
-        if (uc !== 0) changedCells += 1;
+        if (uc !== 0) { changedCells += 1; worldDriftOnTouched += wd; }
       }
     }
     const r12 = (x: number) => Math.round(x * 1e12) / 1e12;
@@ -1892,10 +1897,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       worldDrift: r12(worldDrift),
       userContribution: r12(userContribution),
       ratio: worldDrift === 0 ? null : r12(userContribution / worldDrift),
+      /**
+       * **同一个比值，但只在用户真动过的那些格上算** —— 这才是决策相关的那个数。
+       *
+       * 为什么必须单列：全域比值把「用户动了 115 格」和「世界动了 7204 格」摆在一起比，
+       * 分母里绝大部分格子与这次扰动**毫无关系**，比出来的低信噪比是**口径造成的**，
+       * 不是这次推演真的没信号。两个数都给，用户才分得清
+       * 「我的输入没效果」与「我的输入只影响了世界的一小块」——这是两个完全不同的结论。
+       */
+      ratioOnTouchedCells: worldDriftOnTouched === 0 ? null : r12(userContribution / worldDriftOnTouched),
+      worldDriftOnTouchedCells: r12(worldDriftOnTouched),
       changedCells,
+      totalCells,
       basis:
-        "worldDrift=|影子线−起点|（同拍同图、扰动清空）· userContribution=|真实线−影子线| ⇒ " +
-        "只由扰动造成的那部分。两者同基准逐格绝对值求和。",
+        "worldDrift=|影子线−起点|（影子线 = 从 baseSnapshot 零扰动重放到同一拍）· " +
+        "userContribution=|真实线−影子线| ⇒ 只由扰动造成的那部分。两者同基准逐格绝对值求和；" +
+        "ratioOnTouchedCells 把分母收窄到 changedCells 这些格。",
     };
   };
 
