@@ -23,6 +23,13 @@ function fmt(n: number): string {
 
 /** 缺席一律「—」，**绝不写 0**。 */
 const NUM = (n: number | null): string => (n === null ? "—" : fmt(n));
+
+/**
+ * 条数的显示格式：千分位整数（`7204` → `7,204`）。
+ * 四位以上的裸数字读起来要数位数，而这两个数正是让用户判断「少了多少」的依据。
+ * 缺席仍是「—」，**不写 0**（同 `NUM` 的纪律：算不出来 ≠ 0）。
+ */
+const NUM_CN = (n: number | null): string => (n === null ? "—" : Math.round(n).toLocaleString("en-US"));
 const DELTA = (n: number | null): string => (n === null ? "—" : `${n > 0 ? "+" : ""}${fmt(n)}`);
 
 export interface MetricCardButtonProps {
@@ -93,8 +100,17 @@ export function MetricWall({ wall, selected, onSelect }: MetricWallProps): JSX.E
       </div>
       {wall.truncated ? (
         <div className={`${styles.calibre} ${styles.warn}`} data-testid="usim-truncated">
-          {/* 强调用 <strong>：这段按纯文本渲染，markdown 星号会原样印在屏上。 */}
-          后端截断了指标清单 —— 屏上这些<strong>不是全部</strong>（回包 truncated=true）
+          {/* 强调用 <strong>：这段按纯文本渲染，markdown 星号会原样印在屏上。
+              ⛔ 这里原本写的是「（回包 truncated=true）」—— 把接口字段名与布尔字面量
+                 直接印给用户，且**没说少了多少**。「被截断了」不带量，用户无从判断
+                 自己看的是九成还是三十分之一。现在两件都说：说人话 + 给两个真数。
+                 数取自回包本身（`metrics.length` / `totalMetrics`），不是前端估的。 */}
+          读数没取全 —— 这一屏只取回 {NUM_CN(wall.shownMetrics)} 条，本会话共{" "}
+          {NUM_CN(wall.totalMetrics)} 条，屏上这些<strong>不是全部</strong>
+          {wall.shownMetrics !== null && wall.totalMetrics !== null && wall.totalMetrics > 0
+            ? `（约 ${((wall.shownMetrics / wall.totalMetrics) * 100).toFixed(1)}%）`
+            : ""}
+          。下面标「算不出来」的卡片里，有一部分是没被取回来，不是世界里真的没有。
         </div>
       ) : null}
 

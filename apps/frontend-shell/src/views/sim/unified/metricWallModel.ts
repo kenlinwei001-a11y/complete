@@ -326,6 +326,15 @@ export interface MetricWall {
   readonly movedCards: number;
   /** 诚实位：`metrics.length < totalMetrics` ⇒ 后端截断了，屏上要说。 */
   readonly truncated: boolean;
+  /**
+   * 截断的**量**：取回了几条 / 一共有几条。
+   *
+   * ⚠ 光说「被截断了」是不够的 —— 用户没法判断自己看的是九成还是三十分之一。
+   *   实测 demo 种子世界：取回 200 / 共 7204 ⇒ 屏上这些是全量的 2.8%。
+   *   `null` = 这一跳没回来（没有会话/请求失败），此时 `truncated` 也是 `false`。
+   */
+  readonly shownMetrics: number | null;
+  readonly totalMetrics: number | null;
 }
 
 export interface MetricWallInput {
@@ -361,6 +370,8 @@ export function buildMetricWall(input: MetricWallInput): MetricWall {
   const ticks = series?.ticks ?? [];
   const tickDays = series?.tickDays ?? 1;
   const seriesAvailable = series !== null;
+  /** 后端截断了没有。截断会改写「算不出来」那句的口径（见下方 `rep === null` 分支）。 */
+  const seriesTruncated = series?.truncated ?? false;
   const seriesAbsenceReason = seriesAvailable
     ? null
     : (input.seriesAbsenceReason ?? "指标时序这一跳没有回来（没有会话，或该请求失败）");
@@ -382,9 +393,15 @@ export function buildMetricWall(input: MetricWallInput): MetricWall {
     const label = stateVarLabel(sv, stateVarNames);
 
     if (rep === null) {
-      const reason = seriesAvailable
-        ? "本会话的指标时序里没有这个状态变量的格子（世界态未承载它）"
-        : (seriesAbsenceReason as string);
+      // ⚠ 截断态下**不许**说「世界态未承载它」——那是一句可能为假的话。
+      //   后端按排名只回了前 `appliedLimit` 条（实测 200 / 共 7204），没进这一页的变量
+      //   在世界里**是有格子的**，只是没被取回来。两种缺席的处置完全不同：
+      //   前者要建模补承载，后者只要把 limit 提上去/换白名单。混成一句会把人指向错的方向。
+      const reason = !seriesAvailable
+        ? (seriesAbsenceReason as string)
+        : seriesTruncated
+          ? "这一屏的读数没取全（后端按排名截断），这个状态变量没进这一页 —— 不代表世界里没有它"
+          : "本会话的指标时序里没有这个状态变量的格子（世界态未承载它）";
       return {
         stateVar: sv,
         label,
@@ -479,7 +496,9 @@ export function buildMetricWall(input: MetricWallInput): MetricWall {
     tickDays,
     totalCards: cards.length,
     movedCards: cards.filter((c) => c.moved).length,
-    truncated: series?.truncated ?? false,
+    truncated: seriesTruncated,
+    shownMetrics: series === null ? null : series.metrics.length,
+    totalMetrics: series === null ? null : series.totalMetrics,
   };
 }
 
