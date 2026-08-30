@@ -4093,11 +4093,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         throw validationError(`结构边 ${body.key} 的${role}类型 '${key}' 不存在（请先建对象类型）`);
       }
     }
-    const def = await ontology.upsertLinkType(c, body);
-    // 建完当场把「长出几条实例边」如实回报：0 条也要说清是为什么（没数据 / 值查无目标），
-    // 不让用户对着一条建成功却检索不到的边猜。
-    const materialized = await ontology.materializeDeclaredLinks(c, def);
-    return reply.status(201).send({ ...def, materialized });
+    // 回包里的 `materialized` 把「长出几条实例边」如实告诉用户：0 条也要说清是为什么
+    // （没选实现属性 / 没数据 / 值查无目标），不让用户对着一条建成功却检索不到的边猜。
+    return reply.status(201).send(await ontology.upsertLinkType(c, body));
   });
   app.post("/a/v1/ontology/publish", async (req) => ontology.publishVersion(ctx(req)));
   app.get("/a/v1/ontology/versions", async (req) => repos.ontologyVersions.list(ctx(req).tenantId));

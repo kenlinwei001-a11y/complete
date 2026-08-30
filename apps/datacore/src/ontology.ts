@@ -266,7 +266,7 @@ export class OntologyService {
   async upsertLinkType(
     ctx: AuthCtx,
     input: Omit<LinkTypeDef, "id" | "tenantId" | "version">,
-  ): Promise<LinkTypeDef> {
+  ): Promise<LinkTypeDef & { materialized: { created: number; unresolved: number; carrierObjects: number } }> {
     const existing = (
       await this.repos.ontologyLinks.list(ctx.tenantId, (l) => l.key === input.key)
     )[0];
@@ -297,8 +297,9 @@ export class OntologyService {
     };
     await this.repos.ontologyLinks.put(def);
     // 声明 → 实例：把「这条边由哪个属性实现」兑现成真的 LinkInstance，否则多跳检索遍历不到。
-    await this.materializeDeclaredLinks(ctx, def);
-    return def;
+    // 计数随定义一起回给调用方（路由据此告诉用户"连出了几条"），**不要在外面再算一遍**。
+    const materialized = await this.materializeDeclaredLinks(ctx, def);
+    return { ...def, materialized };
   }
 
   /**
