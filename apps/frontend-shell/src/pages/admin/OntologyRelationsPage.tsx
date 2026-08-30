@@ -405,7 +405,9 @@ export default function OntologyRelationsPage() {
           value={lk.via}
           disabled={!lk.fromTypeKey || !lk.toTypeKey}
           onChange={(e) => setLk({ ...lk, via: e.target.value })}
-          title={lk.fromTypeKey && lk.toTypeKey ? "这条边由哪个属性实现（两侧的外键属性都可选）" : "先选来源与去向类型"}
+          // ⛔ 不用原生 title= 承载口径（规范 §2 R-UI-3，且全仓有只减不增的棘轮守着）——
+          // 该说的话已经在占位项与下方那行告警里，是**可见 DOM 文字**，不是浏览器 tooltip。
+          aria-label="这条边由哪个属性实现"
           style={{ maxWidth: 260 }}
         >
           <option value="">

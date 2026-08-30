@@ -1972,6 +1972,16 @@ R4 `SANDBOX_MODE_ORIGIN_VIEW` · R5 `CONSOLIDATED_INTO_SANDBOX` 的 `via:"static
 出厂边 `series_belongs_to_platform` 检索返回 **6 条**边，而经
 `POST /a/v1/ontology/link-types` 新建的等价边返回 **0 条**。差的就是这一个字段。
 
+⚠ **「检索返回 0 条边」有两个互相独立的病因，修法完全不同，不许合并成一个**：
+| 病因 | 判据 | 修法 | 归属 |
+|---|---|---|---|
+| ① 边的**端点类型压根不存在** | 建边时两端类型不在本体里（实测 133 条边里 81 条如此，全部 201 收下） | **拒绝写入**（路由层 FK 校验 400） | WO-ONTO-CRASH |
+| ② 边合法，但**没有实例** | 两端类型都真实存在、都有对象，检索仍 0 条 | **物化**（本节 `viaProperty`） | WO-LINKTYPE-IMPL |
+
+②**独立存在**的证据：把①排除干净后（`ProductSeries` / `ProductPlatform` 两端都真实存在且都有对象，
+经金丝雀确认可被遍历到）②依然复现 —— 不给 `viaProperty` 返回 0 条，给了返回 6 条。
+接缝测试第一例把这个排除步骤写成了**机器断言**，不靠人记得。
+
 ```
 POST /a/v1/ontology/link-types      ← 「建结构边」表单（OntologyRelationsPage）
    { key, fromTypeKey, toTypeKey, cardinality, viaProperty?, viaSide? }

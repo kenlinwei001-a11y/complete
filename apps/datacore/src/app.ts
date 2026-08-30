@@ -4065,33 +4065,53 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return governance.aggregate(ctx(req), body);
   });
   /**
-   * 建结构边。WO-LINKTYPE-IMPL 补两件此前缺的：
+   * 建结构边。这条路由上叠着**两张单各修一半**，两半合起来才让「建出来的边真能被检索到」成立：
    *
-   * ① **`viaProperty`（这条边由来源类型的哪个属性实现）** —— 缺了它，边只是一句声明，
-   *    多跳检索遍历的 `LinkInstance` 一条都长不出来（实测：同向同 FK 的新建边返回 0 条，
-   *    出厂边返回 6 条）。语义与物化口径见 `LinkTypeDef.viaProperty` 的注释。
-   * ② **两端类型必须真实存在** —— 此前 `toTypeKey` 传一个根本不存在的类型名也照样 201，
-   *    静默造出一条永远不可能有实例的死边。校验放在**路由层**而非 service：
-   *    `upsertLinkType` 的内部调用方（ontoflow 发布 / 数据构建晋升 / 合成种子）会在
-   *    类型与链路**同一批**写入，先后顺序不保证，service 层加硬校验会误伤它们 ⇒ 零回归。
+   * ① **端点 FK 校验**（WO-ONTO-CRASH）—— 边的两端类型必须真实存在。此前只校验字符串非空，
+   *    实测经本路由建的 133 条边里 **81 条端点类型根本不存在，全部 201 收下**。
+   * ② **`viaProperty` / `viaSide`（这条边由哪个属性实现）**（WO-LINKTYPE-IMPL）—— 端点都对、
+   *    边也建成了，**仍然**检索不到，因为声明不会自己长出实例。语义见 `LinkTypeDef.viaProperty`。
+   *
+   * ⚠ **两者是两个不同的病，别合并成一个**：①「边指向一个不存在的类型」修法是拒绝写入；
+   * ②「边合法但没有实例」修法是物化。实测把①排除干净后（两端都用真实存在的类型）②依然复现：
+   * 同向同外键，出厂边检索返回 6 条、新建边返回 0 条 —— 这是②独立存在的证据。
    */
   app.post("/a/v1/ontology/link-types", async (req, reply) => {
     const c = ctx(req);
     const body = parseBody(
       z.object({
         key: z.string().min(1),
-        fromTypeKey: z.string(),
-        toTypeKey: z.string(),
+        fromTypeKey: z.string().min(1),
+        toTypeKey: z.string().min(1),
         cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
         viaProperty: z.string().min(1).optional(),
         viaSide: z.enum(["from", "to"]).optional(),
       }),
       req.body,
     );
-    for (const [role, key] of [["来源", body.fromTypeKey], ["去向", body.toTypeKey]] as const) {
-      if (!(await ontology.getType(c, key))) {
-        throw validationError(`结构边 ${body.key} 的${role}类型 '${key}' 不存在（请先建对象类型）`);
-      }
+    /*
+     * WO-ONTO-CRASH · 端点 FK 校验（写入端不许再产生脏数据）。
+     *
+     * 此前本路由**只校验字符串非空**，不问这两个类型在不在 ⇒ 可以建出
+     * `E2EType1 → Base` 这种**指向不存在类型**的边，而本路由正是
+     * `/admin/ontology-relations`「建结构边」的落点，也是全平台唯一能建边的入口。
+     * 2026-08-30 实测：经本路由建 133 条边，**81 条端点不存在，全部 201 收下**。
+     * 这些边随后会被 `GET /a/v1/ontology/mapping/registries` 原样下发到建边页去渲染，
+     * 是「页面被脏数据打崩」那一类故障的**上游**。
+     *
+     * 判据与上面 object-types 的归域 FK 校验同款（同一种 400、同一种话术）：
+     * 校验放**路由层**不放 service —— service 还被种子/databuilder/pipeline/modeling
+     * 四处内部调用，它们自带建序保证（先建类型再建边）；把闸放这里只拦外部 REST 写入，
+     * 不动那四条内部路。金丝雀：本仓种子自带 114 条边，实测悬空 **0** 条 ⇒ 本闸不误伤种子。
+     */
+    const missing: string[] = [];
+    if (!(await ontology.getType(c, body.fromTypeKey))) missing.push(body.fromTypeKey);
+    if (body.toTypeKey !== body.fromTypeKey && !(await ontology.getType(c, body.toTypeKey)))
+      missing.push(body.toTypeKey);
+    if (missing.length > 0) {
+      throw validationError(
+        `未知对象类型 ${missing.map((k) => `'${k}'`).join(" / ")}（需先在 /a/v1/ontology/object-types 建好再建关系）`,
+      );
     }
     // 回包里的 `materialized` 把「长出几条实例边」如实告诉用户：0 条也要说清是为什么
     // （没选实现属性 / 没数据 / 值查无目标），不让用户对着一条建成功却检索不到的边猜。

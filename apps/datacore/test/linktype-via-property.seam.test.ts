@@ -56,6 +56,15 @@ describe("WO-LINKTYPE-IMPL · 接缝：建结构边 × 多跳检索", () => {
     const canary = await resolveOneHop(t, "seam-canary", "ProductSeries", "series_belongs_to_platform");
     expect(canary.edges.length).toBeGreaterThan(0);
 
+    // ── ⚠ 把**另一个**「检索 0 条」的病因先排除干净（WO-ONTO-CRASH 那半）────────
+    // 「边的端点类型压根不存在」同样会让遍历拿不到东西，但修法完全不同（那半修法是拒绝写入）。
+    // 两个病混在一起就会修错地方，所以这里**先机器确认**两端类型都真实存在且都有对象，
+    // 下面测出来的 0 条才只能归因于「缺实现属性」这一个原因。
+    const types = JSON.parse((await t.app.inject({ method: "GET", url: "/a/v1/ontology/object-types", headers: ADMIN })).body) as { key: string }[];
+    expect(types.map((x) => x.key)).toEqual(expect.arrayContaining(["ProductSeries", "ProductPlatform"]));
+    expect(canary.nodes.some((n) => n.typeKey === "ProductSeries")).toBe(true);
+    expect(canary.nodes.some((n) => n.typeKey === "ProductPlatform")).toBe(true);
+
     // ── 修前：只声明、不说由哪个属性实现 ⇒ 建成了，但一条实例边都长不出来 ────
     const noVia = await createLink(t, { key: "seam_no_via", fromTypeKey: "ProductSeries", toTypeKey: "ProductPlatform", cardinality: "N:1" });
     expect(noVia.statusCode).toBe(201);
