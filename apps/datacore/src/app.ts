@@ -2503,6 +2503,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           },
           rules: r.rulesFed,
           firedRuleKeys: r.firedRuleKeys,
+          trace: r.trace,
           ruleParams: r.ruleParams,
           ruleExpressions,
           pairWeightReport: r.pairWeighting.report,

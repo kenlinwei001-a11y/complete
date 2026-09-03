@@ -121,6 +121,17 @@ export const SimDisclosureRulesSchema = z.object({
   refUnresolved: z.number().int(),
   /** 声明了逐实例分摊口径的条数。 */
   withWeightRef: z.number().int(),
+  /**
+   * **本拍真的走过多少条边** = 最后一拍写下的传导贡献条数（不含扰动落地/回退那几行）。
+   *
+   * 为什么必须单独给这个数，而不是拿 `slice.edges` 顶替：`slice.edges` 是**图有多少条边**
+   * （范围一定就固定了），换个扰动重跑它一个字节不变；而"这一拍到底沿几条边传了值"
+   * 才是随输入变的那个量。把前者当后者用，披露层就会在两次不同的跑之间给出一模一样的读数 ——
+   * 那正是铁律 1.5 对照实验要拦的「写死的展示」。
+   */
+  contributions: z.number().int(),
+  /** 同一拍里扰动自己落地/回退写下的行数（与上面那个数分开计，别混）。 */
+  perturbationWrites: z.number().int(),
   items: z.array(SimDisclosureRuleSchema),
   /**
    * 声明了分摊口径却**整张权重表都拿不到**的规则：该规则本拍**不传导**。
