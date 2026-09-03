@@ -305,6 +305,16 @@ export interface SolverContext {
   // optional：缺省（如测试直接构造 ctx）视为无规则——向后兼容，不破 R6。
   rules?: Record<string, { key: string; name: string; expression: string; severity: "BLOCK" | "WARN" | "INFO"; params?: Record<string, number | string | string[]> }>;
   ruleSetVersion?: string;
+  /**
+   * WO-CONSTRAINT-REFS · **对象类型上挂的约束引用**（`ObjectTypeDef.constraintRefs` 的快照，按 typeKey 索引）。
+   *
+   * 为什么必须是**独立字段**、不能塞进上面的 `rules`：`rules` 答的是「本租户有哪些规则」，
+   * 这里答的是「**哪类对象**受**哪条规则**管着、绑在**哪个属性**上」——后者是前者答不了的一维。
+   * 求解器据此把它读的那些对象类型上的约束**并入**引用集（见 `service.ts objectConstraintRules()`）。
+   *
+   * optional：缺省 / 空（测试直构 ctx、或全库一条约束都没配）→ 与本单上线前**逐字节一致**（R6 向后兼容）。
+   */
+  objectConstraints?: Record<string, import("@platform/contracts").ObjectConstraintRef[]>;
   // WO-DATAMODE-UNIFY-PROVENANCE（唯一真相合成 provenance 谓词·SolverService.buildSynthProvenancePredicate 注入）：
   // 逐对象判"是否合成种子物化"——origin SYNTHETIC ∪（MATERIALIZED 且 datasetId ∈ 合成源连接的物化数据集集）。
   // 求解器据此把**合成对象**派生的紧张度/卡/行加性标 provenanceSynthetic（measurement 维 live/dataMode 不动，两维正交），

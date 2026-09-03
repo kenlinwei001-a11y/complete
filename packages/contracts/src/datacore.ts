@@ -119,6 +119,71 @@ export const RuleEntrySchema = z.object({
 });
 export type RuleEntry = z.infer<typeof RuleEntrySchema>;
 
+// ---------------------------------------------------------------------------
+// WO-CONSTRAINT-REFS · **对象类型上的约束 = 对规则库的引用**（仓主原话：
+// 「可以通过引用模式在本体配置器里面配置对象本身的约束条件。比如一个设备，产能就是一个约束条件，
+//   可以直接引用『规则』库里面的约束或规则来完成配置。」）
+//
+// ── 为什么必须是**引用**而不是自由文本表达式 ────────────────────────────────
+// 本仓有过「状态变量是自由文本，打错字静默造一个死变量且删不掉」的账。约束若让人手写表达式，
+// 同一条业务阈值会立刻变成两份（规则库一份、对象上一份），谁也不校验谁 —— 那正是
+// `RULE_PARAM_BINDINGS` 注释里写的「诱饵」形态。故此处**只存 ruleKey**，表达式与 severity
+// 一律回规则库现取；对象侧不存任何业务常数。
+//
+// ── 与既有两张表的分工（三者都是「引用」，但问的问题不同，不许合并）────────────
+//  · `SOLVER_RULE_REFS[solverKey] -> ruleKey[]`  编译期常量：**这个求解器评估哪些规则**。
+//  · `RuleEntry.scopeObjectTypes: string[]`      规则侧声明：**这条规则说的是哪类对象**
+//    （实测 29/29 条已填，但 `solvers/` 里零消费方 —— 只有 `databuilder/` 在读）。
+//  · `ObjectTypeDef.constraintRefs`（本类型）    对象侧声明：**这类对象受哪些约束管着**，
+//    并额外指明**绑到哪个属性**、**是哪种约束**。前两张表都答不了「绑到哪个属性」。
+//
+// ⚠ `ruleKey` 是**外键**：写入时校验必须命中规则库（不存在 → 400，不许静默收下），
+//   `propKey` 同样校验必须是该类型已声明的属性 —— 两条都在 `app.ts` 的 POST 路由上兑现。
+// ---------------------------------------------------------------------------
+
+/**
+ * 约束类型。**刻意是枚举不是自由文本**：它决定求解器怎么选"最可能违规的那个实例"
+ * （上限型取最大值实例、下限型取最小值实例），自由文本给不出这个语义。
+ */
+export const ObjectConstraintKindSchema = z.enum([
+  /** 属性值不得超过某上限（如「设备产能不得超过设计产能」）——取该属性**最大**的实例来判。 */
+  "must_not_exceed",
+  /** 属性值不得低于某下限（如「良率不得低于地板值」）——取该属性**最小**的实例来判。 */
+  "must_not_fall_below",
+  /** 需要可用产能（排产/换型类，语义同上限型：占用最多的那个实例最先违规）。 */
+  "requires_capacity",
+  /** 时序先于（如「认证必须早于量产」）——取该属性**最大**（最晚）的实例来判。 */
+  "must_be_before",
+]);
+export type ObjectConstraintKind = z.infer<typeof ObjectConstraintKindSchema>;
+
+/** 上限语义（取 max 实例判）的约束类型集合 —— 求解器与前端共用同一份判定，不各写一份。 */
+export const CONSTRAINT_KINDS_UPPER: readonly ObjectConstraintKind[] = [
+  "must_not_exceed",
+  "requires_capacity",
+  "must_be_before",
+];
+
+/** 约束类型 → 中文业务名（屏上下拉的唯一出处；前端不内联第二份中文表）。 */
+export const OBJECT_CONSTRAINT_KIND_LABELS: Record<ObjectConstraintKind, string> = {
+  must_not_exceed: "不得超过（上限）",
+  must_not_fall_below: "不得低于（下限）",
+  requires_capacity: "需要产能",
+  must_be_before: "必须早于（时序）",
+};
+
+/** 对象类型上挂的一条约束引用。 */
+export const ObjectConstraintRefSchema = z.object({
+  /** 引用规则库里的规则 key（如 C05）。**外键**：不存在即 400。 */
+  ruleKey: z.string().min(1),
+  /** 绑到该对象类型的哪个属性。**外键**：必须是该类型已声明的 `properties[].propKey`。 */
+  propKey: z.string().min(1),
+  kind: ObjectConstraintKindSchema,
+  /** 配置者备注（可选·纯文档，不参与求值）。 */
+  note: z.string().optional(),
+});
+export type ObjectConstraintRef = z.infer<typeof ObjectConstraintRefSchema>;
+
 /**
  * 规则即引用（PRD-rules-as-references §4/附录B）：每个求解器声明它引用哪些规则（ruleKey）。
  * 单一来源——门 `rule-closure:check` 据此校验「⋃ 引用 ⊆ 已发布规则定义」，杜绝"未找到定义"回潮。

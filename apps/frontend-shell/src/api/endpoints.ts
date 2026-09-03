@@ -3,6 +3,7 @@ import type {
   AdminTenant,
   AdminUser,
   AdminViewConfig,
+  ObjectConstraintRef,
   AgentDefinition,
   AgentRunRecord,
   DecisionTrace,
@@ -271,9 +272,32 @@ export const fetchObjectByKey = (typeKey: string, objectKey: string) =>
 // 业务含义尚未确证 → 诚实显裸键，不渲染 undefined/空白。
 export const fetchObjectTypes = () =>
   // `refToTypeKey`：该属性是指向哪个对象类型的外键（建结构边时用来认出「哪几个属性能实现这条边」）。
-  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean; displayName?: string; refToTypeKey?: string | null }[]; sourceBindings?: { connId: string; dataset: string }[]; derivedProperties?: { propKey: string; formula: string }[] }[]>(
+  // `constraintRefs`：该类型挂了哪些**已发布**规则当对象约束（后端 domain.ts `ObjectTypeDef` 同名字段）。
+  // ⚠ 两者出处不同层：`refToTypeKey` 在**属性**上，`constraintRefs` 在**类型**上 —— 别合并到同一层。
+  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean; displayName?: string; refToTypeKey?: string | null }[]; sourceBindings?: { connId: string; dataset: string }[]; derivedProperties?: { propKey: string; formula: string }[]; constraintRefs?: ObjectConstraintRef[] }[]>(
     "/a/v1/ontology/object-types",
   );
+
+/**
+ * WO-CONSTRAINT-REFS · 给一个**已存在**的对象类型改约束引用（`/admin/ontology-relations` 对象约束面板）。
+ *
+ * ⚠ 后端 `POST /a/v1/ontology/object-types` 是 **upsert 整份定义**，不是 PATCH ——
+ * 漏传 `properties` 会把该类型的属性**整表抹掉**。故此处强制调用方把原样读回的
+ * `properties/derivedProperties/sourceBindings/domain` 一起传回来，不给"只传约束"的便捷重载：
+ * 那个重载迟早有人用，然后在生产上抹掉一个类型的全部属性。
+ *
+ * 约束本身**只带 ruleKey**（引用规则库），不带表达式/阈值 —— 屏上永远不出现自由文本表达式输入框。
+ * 引用一条不存在或未发布的规则 → 后端 400（`VALIDATION_ERROR`），前端照原样弹出，不吞。
+ */
+export const upsertObjectTypeConstraints = (body: {
+  key: string;
+  displayName: string;
+  domain?: string;
+  properties: unknown[];
+  derivedProperties: unknown[];
+  sourceBindings: unknown[];
+  constraintRefs: ObjectConstraintRef[];
+}) => api.a<{ key: string; constraintRefs?: ObjectConstraintRef[]; version: number }>("/a/v1/ontology/object-types", { method: "POST", body });
 
 // A4 对象/类型浏览器：每已发布类型物化计数 + 域 + 属性数（一次算）。
 export interface ObjectTypeStat { key: string; displayName: string; domain: string; propCount: number; derivedCount: number; pk: string | null; count: number }
