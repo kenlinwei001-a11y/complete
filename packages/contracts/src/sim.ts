@@ -1166,6 +1166,63 @@ export const ParetoSolutionSchema = z.strictObject({
 });
 export type ParetoSolution = z.infer<typeof ParetoSolutionSchema>;
 
+// ── WO-PARETO-AXES · 目标权重（**只排序，不改前沿**）──────────────────────────
+//
+// ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════════
+// **X**：`ParetoResult` 只有 `frontier[]`（已按逐目标归一值升序排好的**全序**）。
+//   决策者拿到一串互不支配的解之后，「我更在乎交付还是更在乎成本」这句话**没有落点** ——
+//   要表达它只能回头改 `objectives`（换轴）或改 `args`，两者都会**重算一遍**。
+// **Y**：权重是**读者的偏好**，不是模型的一部分。前沿算一次（与权重无关），
+//   权重只决定「这一串解里先看哪个」。
+//
+// ⛔ **这一格绝不可以流进 `args`**（违反即把多目标退化成单目标）：
+//   `cross_object_occupancy` 引擎自己吃 `args.objectives[].weight`（内存态贪心按
+//   `wRev·revenue + wPen·penalty` 排装入序、按 `wCost·cost` 选线）——
+//   把用户滑杆接到那一格上，**换权重会换出一批不同的解**，屏上那条"前沿"就变成了
+//   「换个加权再算一遍」的单目标最优点轨迹。两者在屏上长得一模一样，
+//   区别只有一条**可被机器咬住**的判据：
+//
+//   > **同一组输入换两组差别很大的权重 ⇒ 非支配解集合必须逐条相同，只有排序变。**
+//
+//   本对字段（请求侧 `weights` / 结果侧 `ranking`+`recommendedId`）与 `args` **零交集**，
+//   `runOptimizePareto` 也不把它写进任何一次 `solve()` 调用 —— 这是结构上的保证，
+//   不靠"记得别接错"。
+export const ParetoWeightsSchema = z.record(z.string(), z.number().min(0));
+export type ParetoWeights = z.infer<typeof ParetoWeightsSchema>;
+
+/** 前沿里一个解的加权排名。**由 `weights` 现算，与前沿成员资格无关**。 */
+export const ParetoRankingEntrySchema = z.strictObject({
+  /** 解 id（必在 `frontier[]` 里）。 */
+  id: z.string().min(1),
+  /** 1 起的名次（`score` 降序；同分按 `id` 字典序，全序·R6）。 */
+  rank: z.number().int().positive(),
+  /**
+   * 加权得分 ∈ [0,1]，**越大越好**。
+   * = Σ wₖ·nₖ / Σ wₖ，其中 nₖ 是该解在目标 k 上折成「1 = 全体候选里最好 · 0 = 最差」的归一读数。
+   * 归一用的极值取自**全体可行候选**（前沿 + 被支配），故它**不随权重变化** ——
+   * 权重只进分子的加权平均，这正是"改权重只换名次"的算术保证。
+   */
+  score: z.number(),
+});
+export type ParetoRankingEntry = z.infer<typeof ParetoRankingEntrySchema>;
+
+/**
+ * 一根**要不到的轴**（决策者点名要、而本租户本体今天接不上地）。
+ *
+ * ⛔ 存在的理由就是**不许拿一个编出来的数把它填上**：缺一根轴时屏上要么显式写"不可得"，
+ * 要么什么都不写 —— 而"什么都不写"会被读成"这一维没问题"，那是与事实相反的结论。
+ * 故这一格是**必答项**：装配器判断某根轴接不上地，就必须在这里点名它、并说清**最近的落点**。
+ */
+export const ParetoObjectiveGapSchema = z.strictObject({
+  /** 要不到的目标键（与 `objectives[].key` 同一命名空间，故不会与在册轴撞名）。 */
+  key: z.string().min(1),
+  /** 人读名（屏上那一列的表头）。 */
+  label: z.string().min(1),
+  /** **为什么接不上地** + 最近的落点在哪。给的是业务事实（类型/字段/量纲），不是源码位置。 */
+  reason: z.string().min(1),
+});
+export type ParetoObjectiveGap = z.infer<typeof ParetoObjectiveGapSchema>;
+
 /**
  * 帕累托解集结果。
  *
@@ -1184,6 +1241,20 @@ export const ParetoResultSchema = z.strictObject({
   iterations: z.number().int().nonnegative(),
   /** 守恒残差（见本 schema 注释）。 */
   residual: z.number().int().nonnegative(),
+  /**
+   * 本次排序**实际用的**权重（请求没给 ⇒ 各目标等权 1，原样回显出来）。
+   * 回显而不是让前端记着自己传了什么：屏上那句「按这组权重推荐」必须与算它的那组数同源。
+   */
+  weights: ParetoWeightsSchema,
+  /**
+   * 前沿的加权名次（`rank` 升序）。**长度恒等于 `frontier.length`** ——
+   * 它是同一批解的另一个视角，不是筛选后的子集。
+   */
+  ranking: z.array(ParetoRankingEntrySchema),
+  /** `rank === 1` 那个解的 id；前沿为空 ⇒ `null`（**不兜一个 id 出来**）。 */
+  recommendedId: z.string().min(1).nullable(),
+  /** 决策者点名要、而今天接不上地的轴（见 `ParetoObjectiveGapSchema`）。没有 ⇒ 空数组。 */
+  unavailableObjectives: z.array(ParetoObjectiveGapSchema),
 });
 export type ParetoResult = z.infer<typeof ParetoResultSchema>;
 
@@ -1214,6 +1285,19 @@ export const ParetoRequestSchema = z.strictObject({
   levers: z.array(ParetoLeverGridSchema).min(1),
   /** 绑定约束上限（不给 ⇒ 该解 `bindings` 为空数组，**不是**「没有约束」的断言）。 */
   constraints: z.array(z.strictObject({ key: z.string().min(1), limit: z.number() })).optional(),
+  /**
+   * 目标权重（键 = `objectives[].key`）。**只影响 `ranking`/`recommendedId`，不影响 `frontier`**
+   * —— 理由与"绝不流进 `args`"的机制见 `ParetoWeightsSchema` 的注释段。
+   *
+   * 不给 ⇒ 各目标等权 1。不在 `objectives` 里的键**被忽略**（不报错）：
+   * 用户在屏上留着一个已经换掉的轴的滑杆，不该让整次求解 400。
+   */
+  weights: ParetoWeightsSchema.optional(),
+  /**
+   * 装配器判定**接不上地**的轴，原样透传到结果里（见 `ParetoObjectiveGapSchema`）。
+   * 这一格由装配侧填、求解侧只回显 —— 求解器不认识"本租户本体缺哪个字段"这件事。
+   */
+  unavailableObjectives: z.array(ParetoObjectiveGapSchema).optional(),
 });
 export type ParetoRequest = z.infer<typeof ParetoRequestSchema>;
 
