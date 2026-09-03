@@ -120,13 +120,20 @@ import { InspectorPane } from "./InspectorPane";
 import { BottomDrawer } from "./BottomDrawer";
 import styles from "./UnifiedSimShell.module.css";
 
-/** 会话五态各自的屏上措辞。**不合并** —— 三种"没有会话"处置完全不同（见 `useConsoleSession`）。 */
+/**
+ * 会话五态各自的屏上措辞。**不合并** —— 三种"没有会话"处置完全不同（见 `useConsoleSession`）。
+ *
+ * ⚠ 这些串**直接上屏**，两条纪律：
+ *  ① 不许留 markdown 记号（前端不跑 markdown，`**x**` 会连星号一起印出来）——强调一律用「」；
+ *  ② 不许把后端枚举字面量（`RUNNING` 等）当人话用 —— 用户不认识它，
+ *     而"推演中"既是人话又没丢信息。枚举值要留给机器读的地方（`data-*` 属性）。
+ */
 const SESSION_REASON_TEXT: Record<ConsoleSessionReason, string> = {
   explicit: "宿主指定了会话",
-  auto: "自动选中最近一条 RUNNING 会话",
+  auto: "自动选中最近一条正在推演的会话",
   loading: "会话列表还在路上",
-  "no-running-session": "本租户没有 RUNNING 会话 —— 没有世界可推演（不是算不出来）",
-  unavailable: "会话列表这一跳失败 —— 不知道有没有会话（不是没有）",
+  "no-running-session": "本租户没有正在推演的会话 —— 没有世界可推演（不是算不出来）",
+  unavailable: "会话列表这一跳失败 —— 「不知道」有没有会话（不是没有）",
 };
 
 /**
@@ -167,6 +174,37 @@ const SESSION_STATUS_ABSENCE_TEXT: Record<Exclude<SessionStatusState["kind"], "k
   unavailable: "会话清单这一跳失败 —— 不知道它现在是什么状态（不是它没有状态）",
   absent: "会话清单里没有这一条 —— 它可能不是沙盘会话（清单只回沙盘会话），也可能已被删",
 };
+
+/**
+ * 会话状态的**屏上说法**（枚举值 → 人话）。
+ *
+ * ⛔ 屏上印 `RUNNING` 是把接口枚举当人话使：用户不认识它，也读不出"它意味着我现在能做什么"。
+ *    这里给的是**同一件事的人话版**，信息量只增不减 —— 每条都点明"世界此刻能不能动"，
+ *    因为那正是这一行状态对使用者的唯一含义（PAUSED/ENDED 时推进/施扰/回滚一律 409）。
+ * ⚠ 枚举字面量**没有消失**，它留在 `data-status` 上给机器读（接缝测试断言的就是那个属性）——
+ *    人看人话、机器看枚举，两边各取所需，谁也不将就谁。
+ */
+const SESSION_STATUS_TEXT: Record<SimSessionStatus, string> = {
+  DRAFT: "草稿 —— 世界还没建好，推不动",
+  READY: "就绪 —— 世界建好了，还没开始推",
+  RUNNING: "推演中 —— 世界会随拍推进，可施加扰动",
+  PAUSED: "已暂停 —— 世界冻结，推进/施扰/回滚都会被拒",
+  ENDED: "已结束 —— 世界冻结且不可恢复，只能从它分叉出新世界",
+};
+
+/**
+ * 世界态出处记号（`baseSnapshotOrigin.kind`）的屏上说法。
+ *
+ * ⚠ `kind` 在契约里是**开放的字符串**（`scope` 是松口袋 `z.record`），不是闭合枚举 ⇒
+ *    这张表只能认得出今天这两个，**认不出的必须诚实说"认不出"**，
+ *    绝不能静默回落成"实测"——那正是 `provenanceOfOrigin` 拼命要堵的那件事。
+ */
+const ORIGIN_KIND_TEXT: Record<string, string> = {
+  MEASURED: "实测读数",
+  DERIVED: "结构派生的占位读数，不是实测",
+};
+const originKindText = (kind: string): string =>
+  ORIGIN_KIND_TEXT[kind] ?? `出处记号本屏不认识（${kind}）—— 一律按「非实测」保守读`;
 
 /** 三个迁移目标的屏上说法。目标集合与后端 zod 收的那三个逐字对应。 */
 const STATUS_ACTIONS: readonly { target: SimSessionStatusTarget; label: string; hint: string }[] = [
@@ -692,7 +730,7 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
         </span>
         <span className={styles.calibre} data-testid="usim-session-reason" data-pinned={usingPinned ? "1" : "0"}>
           {usingPinned
-            ? "这块屏继续盯着刚才那个世界 —— 它已经不是 RUNNING 了，自动选取不会再选中它"
+            ? "这块屏继续盯着刚才那个世界 —— 它已经不在推演中了，自动选取不会再选中它"
             : SESSION_REASON_TEXT[session.reason]}
         </span>
         <span data-testid="usim-origin" data-origin-kind={origin?.kind ?? "unknown"} className={styles.calibre}>
@@ -702,7 +740,7 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
                 // 从前两者共用一句话，屏上分不出来。现在按 statusState 分开说。
                 `世界态出处：${SESSION_STATUS_ABSENCE_TEXT[statusState.kind === "known" ? "absent" : statusState.kind]}`
               : "世界态出处：这条会话没有带出处记号 ⇒ 出处不明，屏上一律按「非实测」读"
-            : `世界态出处：${origin.kind}${origin.note === null ? "" : ` · ${origin.note}`}${
+            : `世界态出处：${originKindText(origin.kind)}${origin.note === null ? "" : ` · ${origin.note}`}${
                 origin.measuredCells === null || origin.cells === null
                   ? ""
                   : ` · 实测格 ${origin.measuredCells}/${origin.cells}`
@@ -715,7 +753,7 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
       <div className={styles.status} data-testid="usim-lifecycle" data-status={statusState.kind === "known" ? statusState.status : statusState.kind}>
         <span>
           <span className={styles.statusKey}>状态 </span>
-          {statusState.kind === "known" ? statusState.status : "—"}
+          {statusState.kind === "known" ? SESSION_STATUS_TEXT[statusState.status] : "—"}
         </span>
         {statusState.kind === "known" ? null : (
           <span className={styles.calibre} data-testid="usim-status-absent">

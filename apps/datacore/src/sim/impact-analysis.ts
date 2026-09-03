@@ -237,7 +237,10 @@ export async function analyzeImpact(
   const instanceLevel = {
     available: false as const,
     reason:
-      "流程**实例**粒度不可用：平台今天只有 ProcessDefinition（流程定义），没有 ProcessInstance/ProcessTask 承载物，流程节点也无 owner/assignee 字段、五种 WAITING 状态全缺。故只能答「哪些流程会被波及」，答不出「哪一条实例被卡住、卡在谁那里、卡了多久」。上面的 count 是**定义数**，不是受阻实例数。",
+      // ⚠ 这句**直接上屏**（`ImpactAnalysisPanel.tsx` 把 `reason` 原样渲染成正文），
+      //   所以里面不许留 markdown 记号 —— 前端不跑 markdown，`**x**` 会连星号一起印出来。
+      //   要强调就用「」（本仓屏上通行的强调法），它在纯文本里就是它本来的样子。
+      "流程实例粒度不可用：平台今天只有 ProcessDefinition（流程定义），没有 ProcessInstance/ProcessTask 承载物，流程节点也无 owner/assignee 字段、五种 WAITING 状态全缺。故只能答「哪些流程会被波及」，答不出「哪一条实例被卡住、卡在谁那里、卡了多久」。上面的 count 是「定义数」，不是受阻实例数。",
     missingCarrier: "ProcessInstance",
   };
   let affectedProcesses: ImpactAnalysisResponse["affectedProcesses"];

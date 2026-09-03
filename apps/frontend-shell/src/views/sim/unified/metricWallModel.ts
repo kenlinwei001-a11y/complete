@@ -435,8 +435,16 @@ export function buildMetricWall(input: MetricWallInput): MetricWall {
     const { baseline, actual } = lastPair(rep);
     const delta = baseline === null || actual === null ? null : actual - baseline;
     const empty = delta === null;
+    // ── 缺席模式 ③ · 「有时序，但末拍缺格」──────────────────────────────────
+    // ⛔ 与另外两种缺席**互不冒充**，措辞必须让人一眼分得开（三者修法完全不同）：
+    //    ① 上面 `rep === null` ⇒ 这个变量**一个格子都没有**（世界态未承载它）⇒ 去建模/播种；
+    //    ② `seriesAbsenceReason` ⇒ **这一跳没回来**，有没有格子根本不知道 ⇒ 去看那次请求；
+    //    ③ 这里 ⇒ 格子**有**，只是末拍那一格空 ⇒ 去看那一拍为什么没算出数。
+    // ⚠ 措辞里不许出现 `null` 与反引号：`null` 是接口里的写法，用户屏上没有这个词，
+    //    反引号是 markdown 记号（前端不跑 markdown，会连着一起印出来）。
+    //    要说的那件事是「缺格 ≠ 0」，用人话说它，信息一点没少。
     const absenceReason = empty
-      ? "基线或推演值在当前这一格缺席（`null` = 这个世界里没有这一格，不是 0）"
+      ? "这个变量有时序，但最后一拍的基线或推演值缺格 —— 缺格不是 0（0 是「算出来就是零」，缺格是「这一格根本没有数」）"
       : null;
     const provenance: CellProvenance = empty ? "EMPTY" : baseProvenance;
     const cross = firstCrossOf(rep, ticks, threshold.value);
@@ -653,7 +661,8 @@ export function buildInspectorView(args: InspectorInputArgs): InspectorView {
       downstream,
       landings: [],
       landingsState: "unknown",
-      landingsReason: `下游 ${targets.length} 个变量在本会话里一格都算不出来 ⇒ 不知道有没有落点`,
+      // 屏上串：强调用「」不用 markdown 星号（前端不跑 markdown，`**x**` 会连星号一起印出来）。
+      landingsReason: `下游 ${targets.length} 个变量在本会话里一格都算不出来 ⇒ 「不知道」有没有落点`,
     };
   }
   return {
