@@ -54,6 +54,44 @@ const enableAll = (t: TestApp, tenant = "demo") =>
     payload: { overrides: { "sim.sandbox": true, "sim.propagation": true, "decision.causal-graph": true } },
   });
 
+/**
+ * 登记一条**链路类型**（本体声明），供 `POST /sim/propagation-rules` 的引用体检核对方向。
+ *
+ * `viaProperty` 故意不填 ⇒ 只声明、不物化实例（`LinkTypeDef.viaProperty` 头注：不填即
+ * 完全维持"只声明不物化"的老行为）。本文件的 `LinkInstance` 是手写的，不能让声明再物化一份。
+ */
+async function putLinkType(t: TestApp, tenant: string, key: string, fromTypeKey: string, toTypeKey: string): Promise<void> {
+  await t.repos.ontologyLinks.put({
+    id: `ltype_${key.toLowerCase()}`, tenantId: tenant, key, fromTypeKey, toTypeKey, cardinality: "1:N", version: 1,
+  });
+}
+
+/**
+ * ⚠ 每条链**各自一个 linkKey**，且都要在本体链路类型表里登记 —— 这不是洁癖，是硬约束：
+ *
+ * **今天的行为是 X，应该是 Y**（2026-09-03 集成红①，实测判定）
+ * · **X（改前）**：夹具三条链共用一个 `FEEDS` 键，且**从未登记链路类型**，只写了
+ *   `LinkInstance`。收编进来的 `WO-CAUSAL-EDGE-CRUD` 给写入路补了引用体检
+ *   （`app.ts assertPropagationRefs`）后，`seedGraph` 三条建边全部
+ *   **400 `VALIDATION_ERROR`：「因果边 r_ab 引用校验失败：链路类型 FEEDS 不存在于本租户本体」**
+ *   （原文实测抓取），本文件 16 例里 11 例连锁失败。
+ * · **Y（改后）**：按真实本体建模 —— 一个 linkKey 一对端点、先声明后使用。
+ *
+ * **判的是 (a) 夹具本来就非法，不是 (b) 校验过严**，证据两条（金丝雀均非零，工具是好的）：
+ *  ① 生产侧 46 条种子因果边 **46/46** 链路类型解析得到且端点方向全对
+ *     （`missingLinkType=0 endpointMismatch=0`，金丝雀 `linkTypes=105 rules=46`）——
+ *     闸门对存量**零误伤**，夹具是全仓唯一的例外；
+ *  ② demo 世界 12,235 条对象链路实例涉及 86 个 `type`，**未登记的是 0 个** ——
+ *     「对象链路的 type 必是已声明的链路类型」本就是本仓既有不变量，夹具此前违反了它。
+ * 而一个 key 在表里**只能有一对端点**（`linkTypes.find(l => l.key === …)` 取首条；
+ * 实测生产侧同 key 重复链路类型 0 条），故 `FEEDS` 一个键扛不住三对不同类型，必须拆开。
+ */
+const LINK_TYPES: [key: string, fromTypeKey: string, toTypeKey: string][] = [
+  ["FEEDS_AB", "TypeA", "TypeB"],
+  ["FEEDS_BC", "TypeB", "TypeC"],
+  ["FEEDS_DE", "TypeD", "TypeE"],
+];
+
 async function seedGraph(t: TestApp, tenant = "demo"): Promise<void> {
   const origin = { type: "SYNTHETIC" as const, jobId: "wo-causal-graph" };
   for (const k of TYPES) {
@@ -62,23 +100,26 @@ async function seedGraph(t: TestApp, tenant = "demo"): Promise<void> {
       properties: [], derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE",
     });
   }
+  for (const [key, from, to] of LINK_TYPES) await putLinkType(t, tenant, key, from, to);
   const objs: [string, string][] = [["a1", "TypeA"], ["b1", "TypeB"], ["c1", "TypeC"], ["d1", "TypeD"], ["e1", "TypeE"]];
   for (const [id, type] of objs) await t.repos.objects.put({ id, tenantId: tenant, type, props: {}, origin });
-  const links: [string, string, string][] = [["lnk_ab", "a1", "b1"], ["lnk_bc", "b1", "c1"], ["lnk_de", "d1", "e1"]];
-  for (const [id, fromId, toId] of links) {
-    await t.repos.links.put({ id, tenantId: tenant, type: "FEEDS", fromId, toId, origin });
+  const links: [string, string, string, string][] = [
+    ["lnk_ab", "FEEDS_AB", "a1", "b1"], ["lnk_bc", "FEEDS_BC", "b1", "c1"], ["lnk_de", "FEEDS_DE", "d1", "e1"],
+  ];
+  for (const [id, type, fromId, toId] of links) {
+    await t.repos.links.put({ id, tenantId: tenant, type, fromId, toId, origin });
   }
   const rules = [
-    { key: "r_ab", sourceTypeKey: "TypeA", targetTypeKey: "TypeB", coefficient: 0.5 },
-    { key: "r_bc", sourceTypeKey: "TypeB", targetTypeKey: "TypeC", coefficient: 0.4 },
-    { key: "r_de", sourceTypeKey: "TypeD", targetTypeKey: "TypeE", coefficient: 0.3 },
+    { key: "r_ab", sourceTypeKey: "TypeA", targetTypeKey: "TypeB", viaLinkKey: "FEEDS_AB", coefficient: 0.5 },
+    { key: "r_bc", sourceTypeKey: "TypeB", targetTypeKey: "TypeC", viaLinkKey: "FEEDS_BC", coefficient: 0.4 },
+    { key: "r_de", sourceTypeKey: "TypeD", targetTypeKey: "TypeE", viaLinkKey: "FEEDS_DE", coefficient: 0.3 },
   ];
   for (const r of rules) {
     const res = await t.app.inject({
       method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN,
-      payload: { ...r, sourceStateVar: "load", viaLinkKey: "FEEDS", targetStateVar: "load", delayTicks: 0, status: "PUBLISHED" },
+      payload: { ...r, sourceStateVar: "load", targetStateVar: "load", delayTicks: 0, status: "PUBLISHED" },
     });
-    expect(res.statusCode).toBe(201);
+    expect(res.statusCode, `建边 ${r.key} 被拒：${res.body}`).toBe(201);
   }
 }
 
@@ -377,11 +418,14 @@ describe("WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取）
     });
     const origin = { type: "SYNTHETIC" as const, jobId: "wo-causal-graph" };
     await t.repos.objects.put({ id: "f1", tenantId: "demo", type: "TypeF", props: {}, origin });
-    await t.repos.links.put({ id: "lnk_cf", tenantId: "demo", type: "FEEDS", fromId: "c1", toId: "f1", origin });
-    await t.app.inject({
+    // 第四对端点 ⇒ 第四个 linkKey（理由见 `LINK_TYPES` 头注：一个 key 只扛一对端点）。
+    await putLinkType(t, "demo", "FEEDS_CF", "TypeC", "TypeF");
+    await t.repos.links.put({ id: "lnk_cf", tenantId: "demo", type: "FEEDS_CF", fromId: "c1", toId: "f1", origin });
+    const cf = await t.app.inject({
       method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN,
-      payload: { key: "r_cf", sourceTypeKey: "TypeC", sourceStateVar: "load", viaLinkKey: "FEEDS", targetTypeKey: "TypeF", targetStateVar: "load", coefficient: 0.5, delayTicks: 1, status: "PUBLISHED" },
+      payload: { key: "r_cf", sourceTypeKey: "TypeC", sourceStateVar: "load", viaLinkKey: "FEEDS_CF", targetTypeKey: "TypeF", targetStateVar: "load", coefficient: 0.5, delayTicks: 1, status: "PUBLISHED" },
     });
+    expect(cf.statusCode, `建边 r_cf 被拒：${cf.body}`).toBe(201);
     const sid = (await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: { baseSnapshot: { ...BASE, f1: { load: 0 } } } })).json().id as string;
     await t.app.inject({
       method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: ADMIN,
