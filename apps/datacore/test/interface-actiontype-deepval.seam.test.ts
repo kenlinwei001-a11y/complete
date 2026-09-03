@@ -22,8 +22,22 @@ const ifaceUrl = "/a/v1/ontology/interfaces";
 /** 测试 A 专用独立租户（demo 的电池种子不动，免复位负担）。 */
 const DV = { "x-debug-user": "dvdeep:admin:admin" };
 
+/**
+ * WO-SIGNOFF-CHAIN：发布路现在有会签准入闸（R4）。本组测的是接口/行动类型深校验，
+ * 不是治理链 ⇒ 走**显式破窗**（catalog_admin + reason，留审计事件）。
+ * 调用方传进来的 headers 补上 catalog_admin 角色 —— 破窗的角色门与 72h 代签同款。
+ */
+function withCatalogAdmin(headers: Record<string, string>): Record<string, string> {
+  const cur = headers["x-debug-user"];
+  if (!cur || cur.includes("catalog_admin")) return headers;
+  return { ...headers, "x-debug-user": `${cur}|catalog_admin` };
+}
 async function publishOntology(t: TestApp, headers: Record<string, string> = ADMIN) {
-  return t.app.inject({ method: "POST", url: "/a/v1/ontology/publish", headers });
+  return t.app.inject({
+    method: "POST",
+    url: "/a/v1/ontology/publish?breakGlass=true&reason=" + encodeURIComponent("接口深校验用例·非治理链"),
+    headers: withCatalogAdmin(headers),
+  });
 }
 
 async function getType(t: TestApp, key: string) {

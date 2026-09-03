@@ -4739,7 +4739,34 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // （没选实现属性 / 没数据 / 值查无目标），不让用户对着一条建成功却检索不到的边猜。
     return reply.status(201).send(await ontology.upsertLinkType(c, body));
   });
-  app.post("/a/v1/ontology/publish", async (req) => ontology.publishVersion(ctx(req)));
+  /*
+   * WO-SIGNOFF-CHAIN · 发布准入闸（R4：本体真值变更必须经会签）。
+   *
+   * 此前本路由是 `async (req) => ontology.publishVersion(ctx(req))` —— **一句会签都不问**。
+   * 于是治理增量 §7.1 那整套会签（域 owner 鉴权 403 / REJECT 必填 comment / 72h 代签 /
+   * 7 天过期）**在同一个服务里被旁边这一行架空**：2026-08-30 真后端实测，会签单 v2
+   * 挂着 PENDING_SIGNOFF、15/15 未决，本路由回 200 并把**同一个 v2** 发了出去。
+   * 「会签面板认真签」与「一条 curl 直接发」并存 ⇒ 评审形同虚设。
+   *
+   * 闸装在**路由层**，与本文件上方建边 FK 校验同款判据：`publishVersion()` 另有**五条内部路**
+   * 直接当服务方法调（种子 ×2 / databuilder / modeling / pipeline），外加会签全票后的自动发布 ——
+   * 它们都不经 HTTP，装这里一条都不误伤；装进 service 会把种子打死（种子建租户时还没有会签单）。
+   *
+   * 破窗（`?breakGlass=true&reason=…`）需 catalog_admin 且必须写理由，发 `ontology.publish_break_glass`
+   * 审计事件。留这条路而不是留个后门：**绕过要留痕**，与 REJECT 必填 comment 同一个判据。
+   */
+  app.post("/a/v1/ontology/publish", async (req) => {
+    const c = ctx(req);
+    const q = req.query as Record<string, string | undefined>;
+    // 下一个版本号与 `publishVersion()` 的算法同源（max+1），会签单建单时钉的也是这个数。
+    const nextVersion = (await ontology.currentVersion(c.tenantId)) + 1;
+    if (q["breakGlass"] === "true") {
+      await governance.breakGlassPublish(c, nextVersion, q["reason"] ?? "");
+    } else {
+      await governance.assertPublishApproved(c, nextVersion);
+    }
+    return ontology.publishVersion(c);
+  });
   app.get("/a/v1/ontology/versions", async (req) => repos.ontologyVersions.list(ctx(req).tenantId));
 
   // 并发一致性 §13.1：任务启动时捕获 taskEpoch（工具层注入到后续读取的 asOfEpoch）。

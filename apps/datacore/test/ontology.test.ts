@@ -148,9 +148,20 @@ describe("A4 ontology, solvers, derivations, action drafts, outbox", () => {
     expect(calls.at(-1)!.body).toContain("rules.updated");
 
     // ontology.published flows through the same outbox
-    await t.app.inject({ method: "POST", url: "/a/v1/ontology/publish", headers: ADMIN });
+    // WO-SIGNOFF-CHAIN：发布路有会签准入闸（R4）。本用例验的是 outbox 投递，不是治理链 ⇒ 显式破窗。
+    await t.app.inject({
+      method: "POST",
+      url: "/a/v1/ontology/publish?breakGlass=true&reason=" + encodeURIComponent("outbox 投递用例·非治理链"),
+      headers: { "x-debug-user": "demo:admin:admin|catalog_admin" },
+    });
     const r3 = await t.services.outbox.processOnce("demo");
-    expect(r3.delivered).toBe(1);
+    // 这一趟投递的是**两条**事件，不是一条：`ontology.publish_break_glass`（破窗审计，
+    // 无 webhook 订阅 ⇒ 直接标 DELIVERED）+ `ontology.published`（本用例真正要验的那条）。
+    // 断言写成"投出去的里面有 published"而不是写死条数：
+    // 写死数字的话，以后任何一条新审计事件都会让这个**与它无关**的用例变红，
+    // 而红的原因和它要验的事（published 能不能经 outbox 投出去）毫无关系。
+    expect(r3.delivered).toBeGreaterThanOrEqual(1);
+    expect(r3.failed).toBe(0);
     expect(calls.at(-1)!.body).toContain("ontology.published");
   });
 

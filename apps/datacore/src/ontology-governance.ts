@@ -869,6 +869,20 @@ export class OntologyGovernanceService {
   /**
    * 域 owner 会签。仅该 signoff 行的 owner 可签（403 否则）；catalog_admin 在 72h
    * 后可 onBehalf 代签。全域 APPROVE → APPROVED（调用方据此自动发布）；任一 REJECT → REJECTED。
+   *
+   * ⚠ **无主域（`ownerUserId === null`）由 catalog_admin 立即兜底签**（下方 `ownerlessRow`）。
+   *   `createPublishRequest` 的注释从第一天起就写着「owner 缺位回退 catalog_admin」，
+   *   **而代码从来没有实现过这句话** —— 它只是把 `ownerUserId` 存成 `null` 就算完。
+   *   于是无主域那一行的匹配条件 `s.ownerUserId === ctx.userId` 对**任何**调用者恒假，
+   *   整条会签链**永远走不到 APPROVED**。2026-08-30 真后端实测：demo 租户 15 个域，
+   *   admin+planner 把能签的全签完 = **14/15**，剩 `material` 一行卡死，status 永远 PENDING_SIGNOFF。
+   *   （病因：对象类型 `MaterialBalance` 归到域 `material`，而域注册表里**根本没有** `material`
+   *   这条记录 ⇒ `domByKey.get("material")` 是 undefined ⇒ owner 落成 null。
+   *   注册表里另有一个**真的**无主域 `unassigned`，将来任何类型归到它也是同一个死锁。）
+   *   ⇒ 修在这里而不是去补种子：补种子只堵住 `material` 这一个 key，
+   *   而「无主域把链卡死」这个**形态**对下一个无主域照样复发。
+   *   72h 的 `onBehalf` 代签治的是「owner 在岗但拖着不签」，治不了「压根没有 owner」——
+   *   为一个永远不会出现的人等 72 小时，是把设计意外当成了流程。
    */
   async signoff(
     ctx: AuthCtx,
@@ -890,7 +904,19 @@ export class OntologyGovernanceService {
       if (ageHours < SIGNOFF_BEHALF_HOURS) throw invalidState(`未满 ${SIGNOFF_BEHALF_HOURS}h，不可代签`);
       targetRow = req.signoffs.find((s) => s.decision === null);
     } else {
+      // 先签自己名下的域；自己名下没有未决行时，catalog_admin 才兜底去签**无主**域。
+      // 顺序不能反：反了会让 catalog_admin 把无主域签在自己该签的域前面，
+      // 屏上看是"签了一下"，实际签的不是他以为的那一行。
       targetRow = req.signoffs.find((s) => s.decision === null && s.ownerUserId === ctx.userId);
+      if (!targetRow && isCatalogAdmin) {
+        const ownerlessRow = req.signoffs.find((s) => s.decision === null && !s.ownerUserId);
+        if (ownerlessRow) {
+          targetRow = ownerlessRow;
+          // 记账：这一行不是 owner 本人签的，是 catalog_admin 按"无主域"兜底签的。
+          // 与 72h 代签走同一个字段 ⇒ 审计面上"谁替谁签的"只有一处口径。
+          ownerlessRow.onBehalfOf = ctx.userId;
+        }
+      }
       if (!targetRow) throw forbidden("调用者不是任何未决域 signoff 行的 owner");
     }
     if (!targetRow) throw invalidState("无可签的 signoff 行");
@@ -908,6 +934,77 @@ export class OntologyGovernanceService {
     }
     await this.repos.publishRequests.put(req);
     return req;
+  }
+
+  /**
+   * **发布准入闸**：要发布的那个版本，必须有一条 APPROVED 的会签请求为它背书。
+   *
+   * 为什么必须有这道闸：`POST /a/v1/ontology/publish` 此前**一句会签都不问**就固化快照。
+   * 2026-08-30 真后端实测（demo 租户）：会签单 v2 挂着 `PENDING_SIGNOFF`、15/15 未决，
+   * 裸路由 `POST /a/v1/ontology/publish` 回 **200** 并把**同一个 v2** 发了出去，
+   * 那条会签单事后仍是 15/15 未决 —— **评审形同虚设**：会签面板上再认真签，
+   * 旁边这条路一秒钟就能把没人签过的版本变成真值。
+   *
+   * 判据落在**版本号**上而不是"存在任意一条 APPROVED"：`publishVersion()` 发的是
+   * `max(已有版本)+1`，而会签单建单时钉的正是这个数（`ontologyVersion`）。
+   * 于是一条 APPROVED 只能背书它自己那一个版本，发完版本号就前进、这条背书自动失效 ——
+   * **天然一次性**，不必再加"已消费"标志位（多一个状态位就多一处要同步的真相）。
+   *
+   * ⚠ 本闸装在**路由层**，不装在 `publishVersion()` 里。理由与建边 FK 校验同款：
+   * `publishVersion()` 还被**五条内部路**直接当服务方法调用 ——
+   * `synthetic/service.ts`（种子 ×2）· `databuilder/service.ts` · `modeling.ts` ·
+   * `pipeline/service.ts`，外加 `app.ts` 里会签全票通过后的自动发布。
+   * 这五条都不经 HTTP，装在路由层就一条都不误伤（金丝雀见接缝测试：
+   * 种子照常起、databuilder 照常发布、会签全票后照常自动固化）。
+   * 装进 service 反而会把种子打死 —— 种子建租户时**还没有**任何会签单可言。
+   *
+   * @returns 背书本次发布的那条 APPROVED 请求
+   */
+  async assertPublishApproved(ctx: AuthCtx, nextVersion: number): Promise<PublishRequestRecord> {
+    const all = await this.repos.publishRequests.list(ctx.tenantId);
+    const approved = all.find((r) => r.status === "APPROVED" && r.ontologyVersion === nextVersion);
+    if (approved) return approved;
+
+    // 拒的时候必须说清「还差几条」——只说"未通过会签"，运营方下一步不知道该找谁。
+    const pending = all.filter((r) => r.status === "PENDING_SIGNOFF" && r.ontologyVersion === nextVersion);
+    if (pending.length > 0) {
+      const r = pending[0]!;
+      const undecided = r.signoffs.filter((s) => s.decision === null);
+      const names = undecided.map((s) => s.domainKey).join("、");
+      throw invalidState(
+        `v${nextVersion} 的发布会签尚未通过：${undecided.length}/${r.signoffs.length} 条未决（待签域：${names}）。` +
+          `请在会签面板逐条处置，全域同意后系统会自动固化快照；确需绕过请走 breakGlass（需 catalog_admin + 填写理由，全程留痕）。`,
+      );
+    }
+    const terminal = all.find((r) => r.ontologyVersion === nextVersion);
+    if (terminal) {
+      throw invalidState(
+        `v${nextVersion} 的发布会签为 ${terminal.status}，不可发布。请重新发起会签。`,
+      );
+    }
+    throw invalidState(
+      `v${nextVersion} 没有任何发布会签请求 —— 本体真值变更必须先经各域 owner 会签（R4）。` +
+        `请先发起发布会签；确需绕过请走 breakGlass（需 catalog_admin + 填写理由，全程留痕）。`,
+    );
+  }
+
+  /**
+   * **显式破窗**：绕过会签直接发布，需 catalog_admin **且**必须写明理由，并留审计事件。
+   *
+   * 留这条路不是给闸开后门，是承认两件事实：① 首次建租户 / 灾备重放这类场景确实需要
+   * 在会签体系立起来之前发布；② 把破窗做成**有名有姓的动作**，比让人去注释掉那道闸要好 ——
+   * 前者留痕，后者不留。与 REJECT 必填 comment 同一个判据：**不许静默地做重的事**。
+   */
+  async breakGlassPublish(ctx: AuthCtx, nextVersion: number, reason: string): Promise<void> {
+    const isCatalogAdmin = ctx.roles.some((r) => r.split(":")[0] === "catalog_admin");
+    if (!isCatalogAdmin) throw forbidden("仅 catalog_admin 可绕过发布会签（breakGlass）");
+    if (!reason || !reason.trim()) throw validationError("breakGlass 必须填写 reason（留痕用）");
+    await this.outbox.emit(ctx.tenantId, "ontology.publish_break_glass", {
+      ontologyVersion: nextVersion,
+      actor: ctx.userId,
+      reason: reason.trim(),
+      at: new Date().toISOString(),
+    });
   }
 
   /** 7 天未决 → EXPIRED（定时/惰性调用）。 */

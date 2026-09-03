@@ -1962,7 +1962,15 @@ type MockPropRule = {
    */
   domainKey: string | null; domainName: string | null;
 };
-type MockPublishRequest = { id: string; ontologyVersion: number; status: "PENDING" | "APPROVED" | "REJECTED"; touchedDomains: string[]; signoffs: { domainKey: string; decision: string }[]; createdAt: string };
+/**
+ * ⚠ WO-SIGNOFF-CHAIN：`status` 此前是 `"PENDING" | "APPROVED" | "REJECTED"` ——
+ * 而真后端契约是 `PENDING_SIGNOFF | APPROVED | REJECTED | EXPIRED`，**从来不发 `"PENDING"`**。
+ * 于是 mock 与前端"自洽"（mock 发 PENDING、前端判 PENDING ⇒ 按钮亮、测试全绿），
+ * 真后端上按钮却恒灰。**这个 mock 就是那处假绿的发动机**：
+ * 它替前端把错误的契约确认了一遍，谁也看不出问题。
+ * 现按后端真实回包写（含 signoff 行的 ownerUserId/comment/decidedAt 形状）。
+ */
+type MockPublishRequest = { id: string; ontologyVersion: number; status: "PENDING_SIGNOFF" | "APPROVED" | "REJECTED" | "EXPIRED"; touchedDomains: string[]; signoffs: { domainKey: string; ownerUserId: string | null; decision: string | null; comment?: string; decidedAt?: string }[]; createdAt: string };
 
 /**
  * 结构边种子 —— 与映射表注册表段那个 handler 里的三条字面量**同一份真值**。
@@ -7290,9 +7298,14 @@ export const handlers = [
     return HttpResponse.json(st ? all.filter((p) => p.status === st) : all);
   }),
   http.post("*/a/v1/ontology/publish-requests", async () => {
+    // 后端建单即**按触及域逐域实例化 signoff 行**（`createPublishRequest`），不是空数组。
+    // mock 原先发 `signoffs: []` ⇒ 面板"还差几条"恒显示 0/0，与真后端（15 行）完全两回事。
+    const touchedDomains = ["factory", "product"];
     const rec: MockPublishRequest = {
-      id: `opr_mock_${++mockRelSeq}`, ontologyVersion: mockOntologyVersionSeq + 1, status: "PENDING",
-      touchedDomains: ["factory", "product"], signoffs: [], createdAt: "2026-08-14T00:00:00.000Z",
+      id: `opr_mock_${++mockRelSeq}`, ontologyVersion: mockOntologyVersionSeq + 1, status: "PENDING_SIGNOFF",
+      touchedDomains,
+      signoffs: touchedDomains.map((d) => ({ domainKey: d, ownerUserId: "usr_demo_admin", decision: null })),
+      createdAt: "2026-08-14T00:00:00.000Z",
     };
     mockPublishRequests.set(rec.id, rec);
     return HttpResponse.json(rec, { status: 201 });
@@ -7301,15 +7314,22 @@ export const handlers = [
     const id = String((params as { id: string }).id);
     const rec = mockPublishRequests.get(id);
     if (!rec) return err(404, "NOT_FOUND", `publish request ${id}`);
-    const b = (await request.json()) as { decision: "APPROVE" | "REJECT" };
+    const b = (await request.json()) as { decision: "APPROVE" | "REJECT"; comment?: string };
+    // 后端第一道闸：REJECT 必须带 comment，否则 400。mock 原先**不校验** ⇒
+    // 前端漏传 comment 在 mock 上照样绿，真后端上必然 400（本单实测到的第二处断点）。
+    // mock 不镜像这一条，等于替前端把"驳回能用"确认了一遍假的。
+    if (b.decision === "REJECT" && !b.comment) return err(400, "VALIDATION_ERROR", "REJECT 必须填写 comment");
+    if (rec.status !== "PENDING_SIGNOFF") return err(409, "INVALID_STATE", `发布请求已是终态 ${rec.status}`);
+    const row = rec.signoffs.find((s) => s.decision === null);
+    if (!row) return err(409, "INVALID_STATE", "无可签的 signoff 行");
+    row.decision = b.decision;
+    if (b.comment) row.comment = b.comment;
+    row.decidedAt = "2026-08-14T00:00:00.000Z";
     if (b.decision === "REJECT") {
       rec.status = "REJECTED";
-    } else {
-      rec.signoffs.push({ domainKey: rec.touchedDomains[rec.signoffs.length] ?? "factory", decision: "APPROVE" });
-      if (rec.signoffs.length >= rec.touchedDomains.length) {
-        rec.status = "APPROVED";
-        mockOntologyVersionSeq = rec.ontologyVersion; // 全域通过 → 快照真的固化了
-      }
+    } else if (rec.signoffs.every((s) => s.decision === "APPROVE")) {
+      rec.status = "APPROVED";
+      mockOntologyVersionSeq = rec.ontologyVersion; // 全域通过 → 快照真的固化了
     }
     return HttpResponse.json(rec);
   }),

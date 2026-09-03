@@ -355,6 +355,130 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
     expect(r2.status).toBe("APPROVED");
   });
 
+  /*
+   * ══════════════════════════════════════════════════════════════════════════
+   * WO-SIGNOFF-CHAIN · 接缝：会签链 × 发布路
+   * ══════════════════════════════════════════════════════════════════════════
+   *
+   * 为什么必须是接缝测试而不是各半 unit：本单修的两个洞**各自那半都是绿的** ——
+   * 会签状态机有测试且通过（上面那条 §7.1），发布路有测试且通过。
+   * 断的是它们之间那条缝：**会签把版本拦住了，而旁边那条发布路根本不问会签**。
+   * 只测各半，两个洞一个都抓不到。
+   *
+   * 三条断点在真后端上各自独立（修一处、另两处照样把链卡死），故逐条咬：
+   *  ① 无主域把链卡死在 N-1/N（`material` 域无 owner，谁都签不了）
+   *  ② REJECT 不带 comment 必 400（前端修前正是这样发的）
+   *  ③ 裸路由 `POST /a/v1/ontology/publish` 不问会签就发
+   */
+  describe("WO-SIGNOFF-CHAIN 接缝：会签链走得完 + 裸路由绕不过", () => {
+    const CATALOG_ADMIN = { "x-debug-user": "demo:usr_demo_admin:admin|catalog_admin" };
+    const PLANNER_OWNER = { "x-debug-user": "demo:usr_demo_planner:planner" };
+
+    /** 建一条会签单（走 HTTP，真实经过路由层算 touchedDomains）。 */
+    async function openRequest(t: TestApp) {
+      const r = await t.app.inject({ method: "POST", url: "/a/v1/ontology/publish-requests", headers: CATALOG_ADMIN, payload: {} });
+      expect(r.statusCode).toBe(201);
+      return J<{ id: string; status: string; ontologyVersion: number; signoffs: { domainKey: string; ownerUserId: string | null; decision: string | null }[] }>(r);
+    }
+    const undecided = (rec: { signoffs: { decision: string | null }[] }) => rec.signoffs.filter((s) => !s.decision).length;
+
+    it("① 无主域不再把链卡死：catalog_admin 兜底签 → 全域 APPROVE → 自动发布", async () => {
+      const t = await makeApp();
+      await seedBattery(t);
+      const rec = await openRequest(t);
+
+      // 金丝雀：种子里确实存在**无主域**，否则本用例什么都没证明（形态与"报 0 命中先自证工具"同源）。
+      const ownerless = rec.signoffs.filter((s) => !s.ownerUserId);
+      expect(ownerless.length, "金丝雀：种子里没有无主域 ⇒ 本用例失去意义（不是代码好了）").toBeGreaterThan(0);
+      expect(rec.status).toBe("PENDING_SIGNOFF");
+
+      // 两位 owner 轮流签，直到没有人能再签为止。
+      let cur = rec;
+      for (let i = 0; i < rec.signoffs.length * 2 && undecided(cur) > 0; i++) {
+        for (const h of [CATALOG_ADMIN, PLANNER_OWNER]) {
+          const r = await t.app.inject({
+            method: "POST",
+            url: `/a/v1/ontology/publish-requests/${cur.id}/signoff`,
+            headers: h,
+            payload: { decision: "APPROVE" },
+          });
+          if (r.statusCode === 200) cur = J<typeof cur>(r);
+        }
+      }
+      // 修前：卡在 N-1/N，status 永远 PENDING_SIGNOFF（无主域那一行谁都签不动）。
+      expect(undecided(cur), "无主域仍把会签链卡死 ⇒ 兜底签没生效").toBe(0);
+      expect(cur.status).toBe("APPROVED");
+      // 无主域那一行必须留痕：不是 owner 本人签的。
+      const signedOwnerless = cur.signoffs.find((s) => !s.ownerUserId) as { onBehalfOf?: string } | undefined;
+      expect(signedOwnerless && (signedOwnerless as { onBehalfOf?: string }).onBehalfOf, "无主域代签没留痕").toBeTruthy();
+    });
+
+    it("② REJECT 必填 comment：不带 400 / 带了 → REJECTED", async () => {
+      const t = await makeApp();
+      await seedBattery(t);
+      const rec = await openRequest(t);
+      const bad = await t.app.inject({
+        method: "POST",
+        url: `/a/v1/ontology/publish-requests/${rec.id}/signoff`,
+        headers: CATALOG_ADMIN,
+        payload: { decision: "REJECT" },
+      });
+      expect(bad.statusCode, "REJECT 不带 comment 竟然过了").toBe(400);
+      const ok = await t.app.inject({
+        method: "POST",
+        url: `/a/v1/ontology/publish-requests/${rec.id}/signoff`,
+        headers: CATALOG_ADMIN,
+        payload: { decision: "REJECT", comment: "口径未对齐" },
+      });
+      expect(ok.statusCode).toBe(200);
+      expect(J<{ status: string }>(ok).status).toBe("REJECTED");
+    });
+
+    it("③ 裸路由绕不过会签：未决 → 拒且说清还差几条；REJECTED → 拒；APPROVED → 放行", async () => {
+      const t = await makeApp();
+      await seedBattery(t);
+
+      // 金丝雀：破窗路必须能发得出去 —— 证明"发不出去"是被闸拦的，不是我根本发不动。
+      const glass = await t.app.inject({
+        method: "POST",
+        url: "/a/v1/ontology/publish?breakGlass=true&reason=" + encodeURIComponent("金丝雀"),
+        headers: CATALOG_ADMIN,
+      });
+      expect(glass.statusCode, "金丝雀：破窗路都发不出去 ⇒ 我的观测坏了，不是闸生效了").toBe(200);
+
+      const rec = await openRequest(t);
+      expect(rec.status).toBe("PENDING_SIGNOFF");
+      const blocked = await t.app.inject({ method: "POST", url: "/a/v1/ontology/publish", headers: CATALOG_ADMIN });
+      expect(blocked.statusCode, "会签未决时裸路由竟然发布成功 ⇒ 评审形同虚设").toBe(409);
+      // 报错必须说清"还差几条"，只说"未通过"运营方不知道下一步找谁。
+      const msg = J<{ error: { message: string } }>(blocked).error.message;
+      expect(msg).toContain(`${undecided(rec)}/${rec.signoffs.length}`);
+      expect(msg).toContain("未决");
+
+      // 破窗仍需 catalog_admin + reason。
+      const noRole = await t.app.inject({
+        method: "POST",
+        url: "/a/v1/ontology/publish?breakGlass=true&reason=x",
+        headers: PLANNER_OWNER,
+      });
+      expect(noRole.statusCode, "非 catalog_admin 竟能破窗").toBe(403);
+      const noReason = await t.app.inject({ method: "POST", url: "/a/v1/ontology/publish?breakGlass=true", headers: CATALOG_ADMIN });
+      expect(noReason.statusCode, "破窗不填 reason 竟然过了 ⇒ 绕过不留痕").toBe(400);
+    });
+
+    it("④ 不误伤内部路：种子/建模/管道走服务方法直发，闸只拦 HTTP", async () => {
+      const t = await makeApp();
+      // 金丝雀：种子本身就走内部 `publishVersion()`，它能起来就是"内部路没被打死"的第一手证据。
+      await seedBattery(t);
+      const before = await t.services.ontology.currentVersion("demo");
+      expect(before, "金丝雀：种子一个版本都没发 ⇒ 本用例量不到误伤").toBeGreaterThan(0);
+      // 内部路 = 直接调服务方法（种子 ×2 / databuilder / modeling / pipeline 全是这条）。
+      const ctx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["catalog_admin"], attributes: {} };
+      const v = await t.services.ontology.publishVersion(ctx);
+      expect(v.version, "内部路被发布闸误伤 ⇒ 种子/迁移/databuilder 会一起死").toBe(before + 1);
+    });
+  });
+
   it("§7.4: 引用反查 references API 返回 slice/derivation 引用", async () => {
     const t = await makeApp();
     await seedBattery(t);

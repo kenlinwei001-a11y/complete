@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { makeApp, seedBattery, ADMIN, PLANNER, type TestApp } from "./helpers.js";
+import { makeApp, seedBattery, ADMIN, PLANNER, debugUser, type TestApp } from "./helpers.js";
 import { SOLVER_KEYS } from "../src/solvers/service.js";
 import { SOLVER_ONTOLOGY_SIGNATURES } from "../src/solvers/ontology-signature.js";
 import { BATTERY_OBJECT_INTERFACES, BATTERY_TYPE_INTERFACE_BINDINGS } from "../src/synthetic/battery.js";
@@ -23,8 +23,19 @@ import {
 
 const ifaceUrl = "/a/v1/ontology/interfaces";
 
+/**
+ * WO-SIGNOFF-CHAIN：发布路现在有会签准入闸（R4）。本组测的是**接口契约固化**，
+ * 不是治理链，故走**显式破窗** —— 需 catalog_admin + reason，且会发审计事件。
+ * 写成 breakGlass 而不是把闸关掉：它在测试里也是一个有名有姓的动作，
+ * 谁在绕、为什么绕，读这一行就知道。（会签链本身由 `ontology-signoff-chain.seam.test.ts` 咬。）
+ */
+const CATALOG_ADMIN = debugUser("demo", "admin", "admin|catalog_admin");
 async function publishOntology(t: TestApp) {
-  return t.app.inject({ method: "POST", url: "/a/v1/ontology/publish", headers: ADMIN });
+  return t.app.inject({
+    method: "POST",
+    url: "/a/v1/ontology/publish?breakGlass=true&reason=" + encodeURIComponent("接口契约固化用例·非治理链"),
+    headers: CATALOG_ADMIN,
+  });
 }
 
 async function getType(t: TestApp, key: string) {
