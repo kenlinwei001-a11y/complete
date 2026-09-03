@@ -4686,8 +4686,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     );
     const onBehalf = q["onBehalf"] === "true";
     const rec = await governance.signoff(c, id, body, onBehalf);
-    // 全域 APPROVE → 自动执行发布
-    if (rec.status === "APPROVED") await ontology.publishVersion(c);
+    /*
+     * WO-PUBLISH-VERSION-PIN · 全域 APPROVE → 自动执行发布，**发的必须是这张单钉的那个版本**。
+     *
+     * 此前这一行是 `await ontology.publishVersion(c)` —— 不带期望值，于是发的是当时的
+     * `max+1`，**与本单 `rec.ontologyVersion` 钉的那个号没有任何关系**。实测复现：
+     * 钉 v2 的单，在破窗抢先发掉 v2 之后签满，**发出去的是 v3**，HTTP 200 一声不吭。
+     * 会签一条没少签（不是绕过），坏的是**出处串**：签字留痕说批的是 v2，真值库里落的是 v3。
+     *
+     * ⚠ 这条路是**会签面板上唯一的发布出口** —— 本页刻意不给「直接发布」按钮
+     * （`OntologyRelationsPage.tsx` 头注：那条 `POST /a/v1/ontology/publish` 会绕开会签）。
+     * ⇒ 这个缺陷不是边角料，它就长在运营方唯一会走的那条路上。
+     *
+     * 会签**已经落库**（上一行 `governance.signoff` 已 put），这里抛错只否掉「自动发布」这一个动作 ——
+     * 签字该留的痕一个不少，不诚实的那半（发一个没人签过的号）被拒掉。
+     */
+    if (rec.status === "APPROVED") await ontology.publishVersion(c, { expectVersion: rec.ontologyVersion });
     return rec;
   });
 
@@ -4794,7 +4808,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     } else {
       await governance.assertPublishApproved(c, nextVersion);
     }
-    return ontology.publishVersion(c);
+    /*
+     * WO-PUBLISH-VERSION-PIN：把上面那个 `nextVersion` 钉进去。
+     * 上面两道闸（破窗留痕 / 会签背书）都是**对着 `nextVersion` 这个号**做的判断，
+     * 而 `publishVersion()` 自己会再算一次 `max+1` —— 两次读之间是个 TOCTOU 窗口。
+     * 不钉的话，"被背书的号"与"真发出去的号"就可能不是同一个，
+     * 与会签路那处缺陷同一个形态。钉上之后：对不上就 409，不静默改发。
+     */
+    return ontology.publishVersion(c, { expectVersion: nextVersion });
   });
   app.get("/a/v1/ontology/versions", async (req) => repos.ontologyVersions.list(ctx(req).tenantId));
 

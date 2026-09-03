@@ -374,11 +374,17 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
     const CATALOG_ADMIN = { "x-debug-user": "demo:usr_demo_admin:admin|catalog_admin" };
     const PLANNER_OWNER = { "x-debug-user": "demo:usr_demo_planner:planner" };
 
+    interface Req {
+      id: string;
+      status: string;
+      ontologyVersion: number;
+      signoffs: { domainKey: string; ownerUserId: string | null; decision: string | null }[];
+    }
     /** 建一条会签单（走 HTTP，真实经过路由层算 touchedDomains）。 */
-    async function openRequest(t: TestApp) {
+    async function openRequest(t: TestApp): Promise<Req> {
       const r = await t.app.inject({ method: "POST", url: "/a/v1/ontology/publish-requests", headers: CATALOG_ADMIN, payload: {} });
       expect(r.statusCode).toBe(201);
-      return J<{ id: string; status: string; ontologyVersion: number; signoffs: { domainKey: string; ownerUserId: string | null; decision: string | null }[] }>(r);
+      return J<Req>(r);
     }
     const undecided = (rec: { signoffs: { decision: string | null }[] }) => rec.signoffs.filter((s) => !s.decision).length;
 
@@ -476,6 +482,114 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
       const ctx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["catalog_admin"], attributes: {} };
       const v = await t.services.ontology.publishVersion(ctx);
       expect(v.version, "内部路被发布闸误伤 ⇒ 种子/迁移/databuilder 会一起死").toBe(before + 1);
+    });
+
+    /*
+     * ══════════════════════════════════════════════════════════════════════════
+     * WO-PUBLISH-VERSION-PIN · 接缝：会签留痕 × 实际发布的**版本号必须是同一个**
+     * ══════════════════════════════════════════════════════════════════════════
+     *
+     * 与上面 ①②③ 是**不同的缺陷**，不要合并读：那三条治的是「会签能不能走完 / 能不能被绕过」，
+     * 本组治的是「会签走完了、一条没少签，**发出去的却是另一个版本号**」——
+     * 不是绕过，是**出处串不诚实**。
+     *
+     * 修前实测（2026-09-03，内存模式 + 种子，真跑复现）：
+     *   建单前 max=v1 → 会签单钉=v2 → 破窗抢先发掉 v2（max=v2）→ 该单签满 → **实际发出 v3**，
+     *   全程 HTTP 200、一句异常都没有。签字的人以为自己批的是 v2，真值库里落的是 v3。
+     *
+     * 为什么必须是**接缝**测试：两半各自都是绿的 —— 会签状态机有测试且通过（①），
+     * 发布路有测试且通过（③④）。断的是它们之间那条缝：**会签把 v2 签下来了，
+     * 而发布路根本不看这张单钉的是几**。只测各半，这个洞一个都抓不到。
+     */
+    /** 逐个签，返回**第一个**非 200 的响应（不是最后一个 —— 最后一个会被"已是终态"覆盖掉）。 */
+    async function signUntilRefused(t: TestApp, rec: Req) {
+      type Injected = Awaited<ReturnType<TestApp["app"]["inject"]>>;
+      let cur = rec;
+      for (let i = 0; i < rec.signoffs.length * 2 && undecided(cur) > 0; i++) {
+        for (const h of [CATALOG_ADMIN, PLANNER_OWNER]) {
+          if (undecided(cur) === 0) break;
+          const r = await t.app.inject({
+            method: "POST",
+            url: `/a/v1/ontology/publish-requests/${cur.id}/signoff`,
+            headers: h,
+            payload: { decision: "APPROVE" },
+          });
+          if (r.statusCode === 200) cur = J<Req>(r);
+          // 403 = 这个调用者名下没有未决行，换下一个人；其余非 200 才是"被拒"。
+          else if (r.statusCode !== 403) return { cur, refused: r };
+        }
+      }
+      return { cur, refused: null as null | Injected };
+    }
+
+    it("⑤ 正常路：钉 vN 签满 → 实际发出的就是 vN（两个数必须相等）", async () => {
+      const t = await makeApp();
+      await seedBattery(t);
+      const before = await t.services.ontology.currentVersion("demo");
+      const rec = await openRequest(t);
+      const pinned = rec.ontologyVersion;
+      const { cur, refused } = await signUntilRefused(t, rec);
+      expect(refused, `正常路竟被拒：${refused?.body}`).toBeNull();
+      expect(cur.status).toBe("APPROVED");
+
+      const published = await t.services.ontology.currentVersion("demo");
+      // 对照实验的两个数：钉的 / 发出的。**必须相等** —— 这就是本单的全部判据。
+      expect(published, `钉的是 v${pinned}，实际发出的是 v${published} ⇒ 审批留痕与实际发布脱钩`).toBe(pinned);
+      expect(published, "金丝雀：正常路一个版本都没发出去 ⇒ 我的观测坏了，不是闸生效了").toBe(before + 1);
+    });
+
+    it("⑥ 冲突路：破窗抢先占掉钉的那个版本 → 签满后必须被拒，且不许静默改发别的号", async () => {
+      const t = await makeApp();
+      await seedBattery(t);
+
+      const rec = await openRequest(t);
+      expect(rec.status).toBe("PENDING_SIGNOFF");
+      const pinned = rec.ontologyVersion;
+
+      // 破窗抢先把 pinned 这个版本号用掉（金丝雀：它必须真的发得出去，否则下面证明不了什么）。
+      const glass = await t.app.inject({
+        method: "POST",
+        url: "/a/v1/ontology/publish?breakGlass=true&reason=" + encodeURIComponent("抢先占号"),
+        headers: CATALOG_ADMIN,
+      });
+      expect(glass.statusCode, "金丝雀：破窗都发不出去 ⇒ 我的观测坏了").toBe(200);
+      const afterGlass = await t.services.ontology.currentVersion("demo");
+      expect(afterGlass, "金丝雀：破窗没把 pinned 这个号占掉 ⇒ 本用例没构造出冲突").toBe(pinned);
+
+      // 那条钉在 pinned 的 PENDING 单仍在，签满它。
+      const { refused } = await signUntilRefused(t, rec);
+      expect(refused, "钉在已被占用版本上的会签单竟然发布成功 ⇒ 签的号与发的号又对不上了").not.toBeNull();
+      expect(refused!.statusCode, "版本号冲突必须是 409").toBe(409);
+
+      const msg = J<{ error: { message: string } }>(refused!).error.message;
+      // 错误信息必须点名**被占用的那个版本号** —— 只说"版本不匹配"，运营方不知道自己签的是哪一版没发出去。
+      expect(msg, `错误信息没点名被占用的 v${pinned}：${msg}`).toContain(`v${pinned}`);
+      expect(msg).toContain("已经被发布过了");
+      // 必须告诉用户下一步：对新版本重新发起会签。
+      expect(msg).toContain("重新发起");
+
+      // 最要紧的一条：**一个字都不许静默发出去**。
+      const after = await t.services.ontology.currentVersion("demo");
+      expect(after, `被拒之后竟然还是发了 v${after} ⇒ 这正是本单要修的"静默改发"`).toBe(afterGlass);
+    });
+
+    it("⑦ 被拒后那条 APPROVED 不许被裸路由捡去发下一个号（背书天然一次性）", async () => {
+      const t = await makeApp();
+      await seedBattery(t);
+      const rec = await openRequest(t);
+      const pinned = rec.ontologyVersion;
+      await t.app.inject({
+        method: "POST",
+        url: "/a/v1/ontology/publish?breakGlass=true&reason=" + encodeURIComponent("抢先占号"),
+        headers: CATALOG_ADMIN,
+      });
+      await signUntilRefused(t, rec); // → 该单已是 APPROVED，但钉的 v{pinned} 已被占
+
+      const before = await t.services.ontology.currentVersion("demo");
+      // 裸路由此时要发的是 v{before+1}，而那条 APPROVED 背书的是 v{pinned}（≠ before+1）。
+      const bare = await t.app.inject({ method: "POST", url: "/a/v1/ontology/publish", headers: CATALOG_ADMIN });
+      expect(bare.statusCode, `一条钉在 v${pinned} 的 APPROVED 竟能背书 v${before + 1} ⇒ 背书不是一次性的`).toBe(409);
+      expect(await t.services.ontology.currentVersion("demo"), "被拒之后版本号竟然前进了").toBe(before);
     });
   });
 

@@ -30,7 +30,7 @@ import type { Repos } from "./repo/repo.js";
 import type { AuthzService } from "./authz.js";
 import type { SolverService } from "./solvers/service.js";
 import { newId } from "./ids.js";
-import { notFound, validationError } from "./errors.js";
+import { invalidState, notFound, validationError } from "./errors.js";
 import { round } from "./prng.js";
 import type { OutboxService } from "./outbox.js";
 
@@ -435,12 +435,53 @@ export class OntologyService {
     });
   }
 
-  /** Snapshot current types+links as a new ontology version and notify webhooks. */
-  async publishVersion(ctx: AuthCtx): Promise<OntologyVersion> {
+  /**
+   * Snapshot current types+links as a new ontology version and notify webhooks.
+   *
+   * WO-PUBLISH-VERSION-PIN · `expectVersion` = **调用方钉死的那个版本号**。
+   *
+   * 此前本方法只算 `max(已有版本)+1` 就发，**不问调用方是为哪个版本号来的**。
+   * 于是会签链上出现了一处**出处串不诚实**：会签单建单时钉的是 v2（`ontologyVersion`），
+   * 全票通过后 `app.ts` 的自动发布路直接调本方法，发出去的却是当时的 `max+1` ——
+   * 2026-09-03 真后端实测（内存模式 + 种子）复现的完整序列：
+   * `建单前 max=v1` → `会签单钉=v2` → `破窗抢先发掉 v2（max=v2）` → `该单签满 → 实际发出 v3`，
+   * 全程 HTTP 200、一句异常都没有。**签字的人以为自己批的是 v2，系统发的是 v3** ——
+   * 审批留痕与实际发布脱钩，追责时说不清批的是哪一版。
+   * ⚠ 这不是「绕过」：会签一条没少签，签满了才发。坏的是**发出去的那个号与签的那个号不是同一个**。
+   *
+   * 判据：**发布必须发「调用方钉的那个版本」，对不上就拒绝，绝不静默改发一个不同的号。**
+   * 静默改号正是本缺陷本身；为了让流程走通而放宽校验，等于把缺陷重新做一遍。
+   *
+   * ⚠ 为什么做成**可选参数**而不是无条件校验：本方法另有**五条内部路**直接当服务方法调
+   * （`synthetic/service.ts` 种子 ×2 · `databuilder/service.ts` · `modeling.ts` · `pipeline/service.ts`），
+   * 它们没有会签单、也无从钉版本号 —— 不传即行为**一字不变**，故一条都不误伤。
+   * 这与「准入闸装路由层不装 service」那条判据不冲突：那条讲的是**强制闸**，
+   * 本参数是**调用方自带的期望值**，默认不生效。
+   *
+   * ⚠ 为什么校验放在**这里**而不是调用点：版本号就是在这一行算出来的。放调用点就得先
+   * `currentVersion()` 再 `publishVersion()`，两次读之间是一个 TOCTOU 窗口 ——
+   * 而「读到的号」与「真发的号」不是同一个，正是本缺陷的形态。放这里两者天然是同一个。
+   */
+  async publishVersion(ctx: AuthCtx, opts?: { expectVersion?: number }): Promise<OntologyVersion> {
     // WO-69 P3：接口契约先于快照固化 —— 不合规不许进快照（"绿测试≠能用"靠这道门堵）。
     await this.assertInterfaceConformance(ctx);
     const versions = await this.repos.ontologyVersions.list(ctx.tenantId);
     const version = versions.length > 0 ? Math.max(...versions.map((v) => v.version)) + 1 : 1;
+    const expect = opts?.expectVersion;
+    if (expect !== undefined && expect !== version) {
+      const latest = version - 1;
+      // 两种对不上分开说 —— 运营方下一步动作不同：一种是"你签的那版被人抢发了"，
+      // 一种是"你钉的号根本还轮不到"。只说"版本号不匹配"，人不知道该去干什么。
+      throw invalidState(
+        expect <= latest
+          ? `发布被拒：会签单钉的是 v${expect}，而 v${expect} 已经被发布过了（当前最新 v${latest}）。` +
+            `签的版本号与发出的版本号必须相同，故本次**不改发** v${version} —— ` +
+            `静默改发别的版本号会让审批留痕与实际发布对不上，追责时说不清批的是哪一版。` +
+            `请对 v${version} 重新发起发布会签。`
+          : `发布被拒：会签单钉的是 v${expect}，而下一个可发布的版本号是 v${version}。` +
+            `签的版本号与发出的版本号必须相同，故本次不发布。请对 v${version} 重新发起发布会签。`,
+      );
+    }
     // 治理增量 §2.1：发布即固化 API 名（published=true → 此后 key 不可重命名/复用）。
     const types = await this.repos.ontologyTypes.list(ctx.tenantId);
     for (const t of types) {
