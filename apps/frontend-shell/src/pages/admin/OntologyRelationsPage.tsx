@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { OntologyInvariantOverride } from "@platform/contracts";
+import { OBJECT_CONSTRAINT_KIND_LABELS, type ObjectConstraintKind, type ObjectConstraintRef, type OntologyInvariantOverride } from "@platform/contracts";
 import {
   createLinkType,
   createPropagationRule,
@@ -15,7 +15,9 @@ import {
   fetchOntologyVersions,
   fetchPropagationRules,
   fetchPublishRequests,
+  fetchRules,
   fetchSimViewConfig,
+  upsertObjectTypeConstraints,
   retireOntologyElement,
   signoffPublishRequest,
   type DeprecationMetaVM,
@@ -204,6 +206,68 @@ export default function OntologyRelationsPage() {
     },
     onError: toastError,
   });
+
+  // ══ 对象约束面板（WO-CONSTRAINT-REFS）══════════════════════════════════════
+  //
+  // 仓主原话：「可以通过引用模式在本体配置器里面配置对象本身的约束条件。比如一个设备，产能就是
+  // 一个约束条件，可以直接引用『规则』库里面的约束或规则来完成配置。」
+  //
+  // ── 三个下拉，**没有一个是自由文本输入框**（这是硬要求，不是审美）──────────────
+  //   ① 引用哪条规则 → 选项来自 `GET /a/v1/rules` 的**已发布**规则（引用模式：只存 ruleKey）
+  //   ② 绑到哪个属性 → 选项来自该对象类型自己的 `properties[]`
+  //   ③ 约束类型     → 选项来自契约 `OBJECT_CONSTRAINT_KIND_LABELS`（前端不内联第二份中文表）
+  // 本仓有过「状态变量是自由文本，打错字静默造一个死变量且删不掉」的账。三个值全部**枚举自真值源**
+  // ⇒ 结构上打不出错字。表达式与阈值一律留在规则库里，屏上不给编辑入口 —— 给了就会分叉出第二份。
+  //
+  // ⚠ 屏上仍显示后端 400（引用不存在/未发布的规则、属性不存在）：下拉只是让人**不容易**配错，
+  //   不代表校验可以省。规则可能在你打开页面之后被别人下线 —— 那时后端必须说话。
+  const libRules = useQuery({ queryKey: ["a", "rules-library"], queryFn: fetchRules });
+  /** 已发布规则才可被引用（DRAFT 规则求解器读不到，挂上去等于挂了个空 —— 后端也拒）。 */
+  const publishedRules = useMemo(
+    () => (libRules.data ?? []).filter((r) => r.status === "PUBLISHED").slice().sort((a, b) => (a.key < b.key ? -1 : 1)),
+    [libRules.data],
+  );
+  const [cf, setCf] = useState({ typeKey: "", ruleKey: "", propKey: "", kind: "must_not_exceed" as ObjectConstraintKind });
+  const cfType = useMemo(() => (types.data ?? []).find((t) => t.key === cf.typeKey), [types.data, cf.typeKey]);
+  /**
+   * 规则下拉按**与所选类型的相关性**排序：规则自己声明的 `scopeObjectTypes` 命中该类型的排前面。
+   * 实测 29/29 条规则都填了 scopeObjectTypes —— 这张既有的声明此前在 `solvers/` 零消费方，
+   * 此处把它用在它本来就该用的地方（帮人选对规则），**不拿它当过滤器**：
+   * 跨类型引用是合法的（一条财务规则可以管着多类对象），硬过滤会把合法配置挡在门外。
+   */
+  const ruleOptions = useMemo(() => {
+    if (!cf.typeKey) return publishedRules;
+    const hit = (r: { scopeObjectTypes?: string[] }) => (r.scopeObjectTypes ?? []).includes(cf.typeKey);
+    return [...publishedRules.filter(hit), ...publishedRules.filter((r) => !hit(r))];
+  }, [publishedRules, cf.typeKey]);
+
+  /** 整份 upsert（后端不是 PATCH）：原样带回既有属性，只改 constraintRefs。 */
+  const saveConstraints = useMutation({
+    mutationFn: (next: ObjectConstraintRef[]) => {
+      const t = cfType!;
+      return upsertObjectTypeConstraints({
+        key: t.key,
+        displayName: t.displayName,
+        ...(t.domain ? { domain: t.domain } : {}),
+        properties: t.properties,
+        derivedProperties: t.derivedProperties ?? [],
+        sourceBindings: t.sourceBindings ?? [],
+        constraintRefs: next,
+      });
+    },
+    onSuccess: (r) => {
+      toast(`对象类型 ${r.key} 的约束已保存（${(r.constraintRefs ?? []).length} 条 · v${r.version}）`, "success");
+      setCf((s) => ({ ...s, ruleKey: "", propKey: "" }));
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-object-types"] });
+    },
+    onError: toastError, // 后端 400 原样弹出，不吞（引用不存在/未发布的规则时用户必须看见）
+  });
+
+  /** 全库已配的约束（面板下方总览：一眼看出「哪些类型真的配了约束」）。 */
+  const constrainedTypes = useMemo(
+    () => (types.data ?? []).filter((t) => (t.constraintRefs ?? []).length > 0).slice().sort((a, b) => (a.key < b.key ? -1 : 1)),
+    [types.data],
+  );
 
   // ── 因果边：新建（含启停）────────────────────────────────────────────────
   const [pr, setPr] = useState({
@@ -780,6 +844,158 @@ export default function OntologyRelationsPage() {
         <br />
         ⚠ 违反时目前<b>只标红，不拦任何动作</b>（发布、采纳都照常）。「该拦什么」还没定；定下来之前，
         这里先把「真要拦会拦下哪几条」如实算给你看。
+      </div>
+
+      {/* ═══════════ 对象约束 · 引用规则库（WO-CONSTRAINT-REFS）═══════════ */}
+      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>对象约束 · 引用规则库</h3>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.7 }}>
+        给一类对象挂上<b>它自己的约束条件</b>——比如「设备的产能上限」「产线利用率不得超过 X」。
+        约束<b>不在这里写表达式</b>，而是<b>引用规则库里已发布的那条规则</b>：阈值改在规则库一处，
+        这里跟着变，不会分叉出第二份。挂上之后，<b>读这类对象的求解器会把它并入规则评估</b>，
+        推演结论真的会变。
+      </div>
+      <div className="panel" style={{ marginBottom: 10, display: "flex", alignItems: "flex-end", gap: 8, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12 }}>
+          <span className="muted">① 给哪类对象</span>
+          <select
+            data-testid="orel-cf-type"
+            value={cf.typeKey}
+            onChange={(e) => setCf({ ...cf, typeKey: e.target.value, ruleKey: "", propKey: "" })}
+          >
+            <option value="">选一个对象类型…</option>
+            {(types.data ?? []).slice().sort((a, b) => (a.key < b.key ? -1 : 1)).map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.displayName}（{t.key}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12 }}>
+          <span className="muted">② 引用哪条规则</span>
+          <select
+            data-testid="orel-cf-rule"
+            value={cf.ruleKey}
+            disabled={!cf.typeKey}
+            onChange={(e) => setCf({ ...cf, ruleKey: e.target.value })}
+          >
+            <option value="">选一条已发布规则…</option>
+            {ruleOptions.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.key} · {r.name}（{r.severity}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12 }}>
+          <span className="muted">③ 绑到哪个属性</span>
+          <select
+            data-testid="orel-cf-prop"
+            value={cf.propKey}
+            disabled={!cf.typeKey}
+            onChange={(e) => setCf({ ...cf, propKey: e.target.value })}
+          >
+            <option value="">选一个属性…</option>
+            {(cfType?.properties ?? []).map((p) => (
+              <option key={p.propKey} value={p.propKey}>
+                {p.displayName ?? p.propKey}
+                {p.unit ? `（${p.unit}）` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 12 }}>
+          <span className="muted">④ 约束类型</span>
+          <select
+            data-testid="orel-cf-kind"
+            value={cf.kind}
+            onChange={(e) => setCf({ ...cf, kind: e.target.value as ObjectConstraintKind })}
+          >
+            {Object.entries(OBJECT_CONSTRAINT_KIND_LABELS).map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="btn primary sm"
+          data-testid="orel-cf-add"
+          disabled={!cf.typeKey || !cf.ruleKey || !cf.propKey || saveConstraints.isPending}
+          onClick={() =>
+            saveConstraints.mutate([
+              ...(cfType?.constraintRefs ?? []).filter((c) => !(c.ruleKey === cf.ruleKey && c.propKey === cf.propKey)),
+              { ruleKey: cf.ruleKey, propKey: cf.propKey, kind: cf.kind },
+            ])
+          }
+        >
+          挂上这条约束
+        </button>
+      </div>
+      {cf.typeKey && (
+        <table className="cmp" data-testid="orel-cf-table" style={{ width: "100%", marginBottom: 10 }}>
+          <thead>
+            <tr>
+              <th>引用的规则</th>
+              <th>绑定属性</th>
+              <th>约束类型</th>
+              <th>规则表达式（真值在规则库·此处只读）</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {(cfType?.constraintRefs ?? []).length === 0 && (
+              <tr>
+                <td colSpan={5} className="muted">
+                  该类型还没配约束
+                </td>
+              </tr>
+            )}
+            {(cfType?.constraintRefs ?? []).map((c) => {
+              const r = publishedRules.find((x) => x.key === c.ruleKey);
+              return (
+                <tr key={`${c.ruleKey}|${c.propKey}`} data-testid={`orel-cf-row-${c.ruleKey}`}>
+                  <td className="mono">
+                    {c.ruleKey}
+                    {r ? ` · ${r.name}` : ""}
+                  </td>
+                  <td className="mono">{c.propKey}</td>
+                  <td>{OBJECT_CONSTRAINT_KIND_LABELS[c.kind]}</td>
+                  {/* 规则已被下线 → 这里如实说，不留空让人以为约束还生效（后端同样会标 NOT_APPLICABLE）。 */}
+                  <td className="mono">{r ? r.expression : "⚠ 该规则已不在已发布规则库中，此约束当前不生效"}</td>
+                  <td>
+                    <button
+                      className="btn sm"
+                      data-testid={`orel-cf-del-${c.ruleKey}`}
+                      disabled={saveConstraints.isPending}
+                      onClick={() =>
+                        saveConstraints.mutate(
+                          (cfType?.constraintRefs ?? []).filter((x) => !(x.ruleKey === c.ruleKey && x.propKey === c.propKey)),
+                        )
+                      }
+                    >
+                      移除
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+      <div className="muted" data-testid="orel-cf-summary" style={{ fontSize: 12, marginBottom: 18, lineHeight: 1.7 }}>
+        全库已配约束的类型：<b>{constrainedTypes.length}</b> 个
+        {constrainedTypes.length > 0 && (
+          <>
+            {" — "}
+            {constrainedTypes.map((t) => `${t.key}(${(t.constraintRefs ?? []).length})`).join("、")}
+          </>
+        )}
+        <br />
+        ⚠ 约束只在<b>读这类对象的求解器</b>上生效：求解器没声明读某个类型，挂在那个类型上的约束它不评估
+        （声明表见后端 `SOLVER_ONTOLOGY_SIGNATURES` / `SOLVER_REQUIRED_TYPES`）。
+        <br />
+        ⚠ 判定取<b>最可能违规的那个实例</b>（上限型取该属性最大的、下限型取最小的）——约束是全称命题，
+        取平均会把「一台设备严重超限」稀释成通过。
       </div>
 
       {/* ═══════════ 关系两端的对象类型 · 弃用流程 ═══════════ */}

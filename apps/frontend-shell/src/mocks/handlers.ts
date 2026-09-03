@@ -2874,6 +2874,13 @@ const MOCK_OPT_FAMILIES = ["facility_location", "min_cost_flow", "set_cover", "i
  * `GET /a/v1/sim/propagation-rules` 的读时投影（类型人话名）与本 handler **共用同一份真值**。
  * 抄一份中文名到那条路由上，就是本仓反复治的「第二套真相源」：改了这里、那边还显旧名。
  */
+/**
+ * WO-CONSTRAINT-REFS · 本次会话配的对象约束（typeKey → refs）。
+ * mock 侧刻意**只**有状态地承载这一维：真后端存在 `ObjectTypeDef.constraintRefs` 上，
+ * 屏上「配完能看见、刷新还在」这条体验必须在 mock 模式下也成立，否则面板在 mock 里是死的。
+ */
+const MOCK_TYPE_CONSTRAINTS: Record<string, { ruleKey: string; propKey: string; kind: string }[]> = {};
+
 const MOCK_OBJECT_TYPES = [
   {
     key: "Base", displayName: "生产基地", domain: "factory", status: "ACTIVE",
@@ -3792,8 +3799,35 @@ export const handlers = [
     // WO-SCHEMA-ZH：properties[].displayName 镜像真后端 PROP_DISPLAY_NAMES（synthetic/battery.ts 单一真值）——
     // mock 只是后端的替身，**不是第二份中文名来源**；真值改了这里跟着改（datacore seam 测试守真值那一侧）。
     // 故意保留若干**无 displayName** 的属性（如 Base.position / Material.devPct），用于验前端诚实回落裸键。
-    HttpResponse.json(MOCK_OBJECT_TYPES),
+    // WO-CONSTRAINT-REFS：叠上本次会话配的对象约束（真后端把它存在 ObjectTypeDef.constraintRefs 上）。
+    HttpResponse.json(MOCK_OBJECT_TYPES.map((t) => (MOCK_TYPE_CONSTRAINTS[t.key] ? { ...t, constraintRefs: MOCK_TYPE_CONSTRAINTS[t.key] } : t))),
   ),
+
+  /**
+   * WO-CONSTRAINT-REFS · 对象类型 upsert（mock 只承载**约束引用**这一维，其余字段原样回显）。
+   *
+   * ⚠ 这里**必须复刻真后端那两条 FK 校验**（引用的规则要存在且已发布 / 属性要存在），
+   * 否则 mock 模式下配错也"成功"，而真后端 400 —— mock 与后端口径分家正是本仓反复栽的跟头。
+   * 校验的规则集取 `db.rules`（mock 的规则库单一真值），不另抄一份 key 清单。
+   */
+  http.post("*/a/v1/ontology/object-types", async ({ request }) => {
+    const body = (await request.json()) as {
+      key: string; properties?: { propKey: string }[];
+      constraintRefs?: { ruleKey: string; propKey: string; kind: string }[];
+    };
+    const refs = body.constraintRefs ?? [];
+    if (refs.length > 0) {
+      const published = new Set(db.rules.filter((r) => r.status === "PUBLISHED").map((r) => r.key));
+      const props = new Set((body.properties ?? []).map((p) => p.propKey));
+      for (const c of refs) {
+        if (!published.has(c.ruleKey)) return err(400, "VALIDATION_ERROR", `未知规则 '${c.ruleKey}'（对象约束只能引用**已发布**规则；当前已发布 ${published.size} 条）`);
+        if (!props.has(c.propKey)) return err(400, "VALIDATION_ERROR", `未知属性 '${c.propKey}'（类型 '${body.key}' 已声明属性：${[...props].join("/") || "（无）"}）`);
+      }
+    }
+    if (refs.length > 0) MOCK_TYPE_CONSTRAINTS[body.key] = refs;
+    else delete MOCK_TYPE_CONSTRAINTS[body.key];
+    return HttpResponse.json({ ...body, constraintRefs: refs, version: 2, status: "ACTIVE" }, { status: 201 });
+  }),
 
   // ---- 治理增量 §5 对象 360：按键取对象 ----
   http.get("*/a/v1/objects/:type/:id", ({ request, params }) => {
