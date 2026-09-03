@@ -10,7 +10,7 @@ import type { OrderStatus } from "@platform/contracts";
 import type { ExcSeverity, ExcStatus } from "@platform/contracts";
 import type { StateVarDomain } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
-import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
+import { hashString, mulberry32, randInt, round } from "../prng.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
 import { SEEDED_VIEW_KEYS } from "./view-manifest.js";
 
