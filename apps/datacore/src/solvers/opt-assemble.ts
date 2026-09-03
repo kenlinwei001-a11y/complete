@@ -289,7 +289,13 @@ export async function assembleParetoModel(
   const costUnit = costPropKey ? costOwner.properties.find((p) => p.propKey === costPropKey)?.unit : undefined;
   const sameUnit = revUnit !== undefined && costUnit !== undefined && revUnit === costUnit;
 
-  const objectives: ParetoObjective[] = [
+  /**
+   * **接得到本体字段的**真目标 —— 「真目标 < 2 ⇒ 整单报缺」这条红线**只数这一批**。
+   *
+   * ⚠ 下面那根 `serviceRate`（交付）**刻意不在这个数组里**，理由见它自己的注释段：
+   *   它是引擎的结构读数，不是从本体字段接出来的，**不许拿它去凑够两个**。
+   */
+  const groundedObjectives: ParetoObjective[] = [
     { key: "revenue", dir: "max", label: `${orderT.key}.${revProp}`, ...(revUnit ? { unit: revUnit } : {}) },
     ...(penProp ? [{ key: "penalty", dir: "min" as const, label: `${orderT.key}.${penProp}` }] : []),
     ...(assignCostBound
@@ -300,13 +306,6 @@ export async function assembleParetoModel(
           ...(costUnit ? { unit: costUnit } : {}),
         }]
       : []),
-    // ── 交付：**这一维一直是真算出来的，只是从没被投影成 metrics**（三分法第二态）──
-    // `cross_object_occupancy` 的回包里 `servedCount`/`orderCount` 与 `occupancy[]`/`displaced[]`
-    // 同源同一次装入循环；`opt-pareto.ts` 的 `DERIVED_METRICS` 把它们折成 `serviceRate ∈ [0,1]`。
-    // ⚠ 叫**获排率**不叫**准时率**：本族是「订单×产线×合同」的指派问题，**没有时间维** ——
-    //   一个解里没有任何一单带着"哪天交"，所以答不了准时。叫错名字就是把一个
-    //   今天答不了的问题假装答了（同 `chain-sim` 那条"状态变量没有极性登记册"的口径）。
-    { key: "serviceRate", dir: "max", label: "获排率（获排单数 ÷ 总单数）", unit: "" },
   ];
 
   // ── ⑤b 要不到的轴：**点名 + 说清最近的落点**（留白会被读成"这一维没问题"）─────
@@ -334,7 +333,7 @@ export async function assembleParetoModel(
         `要补齐需先在本体上给出账期天数（或收款日）并让求解族携带时间维。`,
     },
   ];
-  if (objectives.length < 2) {
+  if (groundedObjectives.length < 2) {
     return miss(
       [
         ...(penProp ? [] : [`penalty（${orderT.key} 上没有命中成本/违约词库的数值字段）`]),
@@ -348,9 +347,30 @@ export async function assembleParetoModel(
       ],
       `只接地到 1 个真目标（revenue ← ${orderT.key}.${revProp}）。帕累托前沿要两个真目标才成立，` +
         `⛔ 这里**不补**一个恒为 0 的第二目标 —— 那样屏上会出现一条假前沿：所有点在那一维并列，` +
-        `"权衡"根本不存在。请在本体上补齐上面点名的那一格。`,
+        `"权衡"根本不存在。请在本体上补齐上面点名的那一格。` +
+        // ⚠ 这一句是给下一个读到这里的人的：交付（获排率）确实是一根真会动的轴，
+        //   但它**不算**在这两个里 —— 它与 revenue 天然同向（服务得越多、营收越高），
+        //   拿它凑数会得到一条所有点都单调排开的"前沿"，与"补一个恒为 0 的目标"是同一种假。
+        `（交付/获排率不计入这两个：它由引擎结构读数派生、且与营收同向，凑不出真权衡。）`,
     );
   }
+
+  /**
+   * 完整轴集 = 接得到地的真目标 + **交付**。
+   *
+   * ── 交付这一维：一直被真算着，只是从没被投影成 metrics（三分法第二态）──────────
+   * `cross_object_occupancy` 的回包里 `servedCount`/`orderCount` 与 `occupancy[]`/`displaced[]`
+   * 出自同一次装入循环；`opt-pareto.ts` 的 `DERIVED_METRICS` 把它们折成 `serviceRate ∈ [0,1]`。
+   * 修法是**补投影**，不是造字段 —— 这个数一天都没缺过，只是没人把它端上来。
+   *
+   * ⚠ 叫**获排率**不叫**准时率**：本族是「订单×产线×合同」的指派问题，**没有时间维** ——
+   *   一个解里没有任何一单带着"哪天交"，所以答不了准时。叫错名字就是把一个
+   *   今天答不了的问题假装答了。
+   */
+  const objectives: ParetoObjective[] = [
+    ...groundedObjectives,
+    { key: "serviceRate", dir: "max", label: "获排率（获排单数 ÷ 总单数）", unit: "" },
+  ];
 
   // ── ⑥ 杠杆：档位取自**实测取值的次序统计量**（最小/中位/最大），一个数都不编 ─────
   const capValues = [...new Set(lines.map((l) => q(l.capacity)))].sort((a, b) => a - b);
