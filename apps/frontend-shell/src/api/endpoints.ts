@@ -870,7 +870,8 @@ export const fetchSlicesIndex = () =>
 /**
  * ══ WO-SIM-SESSION-WIRE · 变更传播预览（**按下去之前**看到波及面）══════════════
  *
- * **今天的行为是 X（开工实测）**：后端 `POST /a/v1/sim/change-impact-preview`
+ * **今天的行为是 X（2026-08-26 开工实测；复验：`grep -rn "change-impact" apps/frontend-shell/src`）**：
+ *   后端 `POST /a/v1/sim/change-impact-preview`
  *   （`apps/datacore/src/app.ts:2617`）已按四桶给出波及面
  *   （recompute 传导 / rederive 派生 / rejudge 规则重判 / rewire 结构改写）+ 逐跳计数
  *   + `unresolved` 诚实位 + `truncated` 保险丝；契约 `ChangeImpactPreviewSchema` 也早就冻结。

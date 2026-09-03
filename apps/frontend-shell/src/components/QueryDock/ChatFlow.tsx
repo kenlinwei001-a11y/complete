@@ -23,8 +23,9 @@ import { ToolCallTree, type ToolViewProps } from "./ToolCallTree";
  * `required(S)=max(3.0,72/S)` 与本仓调色板的交点，见门头推导）。两种改法：
  *  · 两处徽章（`chat-interrupted` / `scope-badge` / `chat-notice`）**直接删掉内联覆盖** ——
  *    `global.css` 的 `.badge` 本来就是 12px，内联的 10.5 / 11 只是把它压到硬底以下；
- *  · `CompactionRow` 显式写 12px：`--muted2` 在 12px 需 6.0:1，实测
+ *  · `CompactionRow` 显式写 12px：`--muted2` 在 12px 需 6.0:1，2026-08-26 实测
  *    **dark 6.09 · light 6.13 · warm 6.07**，三主题全过；原写 11px 时需 6.55:1，三主题全不过。
+ *    复验：`node scripts/check-text-legibility.mjs`（对比度与硬底由该门现算，不靠这段注释记着）。
  * ⚠ 这几行说明刻意留在**文件头注**而不是写成 JSX 注释 —— `check-ui-first-layer` 的判据 D2b
  * 把 JSX 里的长串算作「第一层长说明串」，写进 JSX 会让那道门凭空多一条。
  */

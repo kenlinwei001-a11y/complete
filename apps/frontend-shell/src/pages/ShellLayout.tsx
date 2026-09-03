@@ -821,7 +821,7 @@ export default function ShellLayout() {
       //    `useWorkspace.ts:12` 写的是 `enabled: tokenStore.get() != null` —— 这是**渲染期求值**，
       //    而 `tokenStore` 是个普通模块变量、不是响应式 store ⇒ 恢复成功后没有任何东西触发重渲染，
       //    `enabled` 永远停在挂载那一刻算出来的 `false`，屏上就永远停在「加载中…」。
-      //    实测形态：`/a/v1/auth/refresh` **回了 200**，而 `/a/v1/me/workspace` 一次都没发出去 ——
+      //    2026-08-26 实测形态：`/a/v1/auth/refresh` **回了 200**，而 `/a/v1/me/workspace` 一次都没发出去 ——
       //    「会话恢复失败」与「恢复成功但没人去取数」在屏上一模一样，都是转圈。
       //    `setRestored` 触发重渲染让 `enabled` 重算，`resetQueries` 把挂载期那些
       //    disabled 状态的查询清掉重来（只 invalidate 不够：disabled 的查询不会因失效而重跑）。

@@ -313,7 +313,8 @@ export default function OntologyRelationsPage() {
   const cfType = useMemo(() => (types.data ?? []).find((t) => t.key === cf.typeKey), [types.data, cf.typeKey]);
   /**
    * 规则下拉按**与所选类型的相关性**排序：规则自己声明的 `scopeObjectTypes` 命中该类型的排前面。
-   * 实测 29/29 条规则都填了 scopeObjectTypes —— 这张既有的声明此前在 `solvers/` 零消费方，
+   * 2026-09-03 实测 29/29 条规则都填了 scopeObjectTypes（复验：`GET /a/v1/rules?status=PUBLISHED`
+   * 数一下有几条带非空 scopeObjectTypes）—— 这张既有的声明此前在 `solvers/` 零消费方，
    * 此处把它用在它本来就该用的地方（帮人选对规则），**不拿它当过滤器**：
    * 跨类型引用是合法的（一条财务规则可以管着多类对象），硬过滤会把合法配置挡在门外。
    */

@@ -529,7 +529,8 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
 
   /**
    * 会话状态迁移。成功即失效 `["a","sim-sessions"]` —— 权威状态**只有清单那一份**
-   * （单跳实测 1,087 字节），不在本组件另存一个 status 副本当第二个出处。
+   * （2026-08-26 单跳实测 1,087 字节；复验：`GET /a/v1/sim/sessions` 看回包大小与 status 字段），
+   * 不在本组件另存一个 status 副本当第二个出处。
    */
   const statusM = useMutation({
     mutationFn: (target: SimSessionStatusTarget) => patchSimSessionStatus(sessionId as string, target),

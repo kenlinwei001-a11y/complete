@@ -33,6 +33,7 @@ export function useQuickLaunch(): (input: {
     //    净效果：首页 6 张高频场景卡**全部**落在错误页 —— 系统给新用户准备的
     //    6 个「从这里开始」一个都推不开（仓主 2026-08-27 那句「我看不懂怎么使用他们」的直接原因）。
     //    `workspace` 的 navigation/views 用的就是短名，路由与鉴权也按短名判 ⇒ 原样传，别自作主张换。
+    //    复验：`GET /a/v1/me/workspace` 看 navigation/views 下发的是哪一种名，再拿它拼 /v/<名> 真跳一次。
     const canonicalView = targetView;
     const store = useSessionStore.getState();
     store.setView(canonicalView);

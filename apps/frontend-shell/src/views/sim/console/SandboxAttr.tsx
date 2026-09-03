@@ -67,7 +67,7 @@ const ROUNDS = ["第一轮次", "第二轮次", "第三轮次", "第四轮次"] 
 /**
  * 规格第 159 行的底部页签（段名 = 契约 `ChainStage` 的中文）。**今天不可用**。
  *
- * 理由**不是**「懒得接」，是实测出来的（全文与复验命令写在 `useLossAttribution.ts`
+ * 理由**不是**「懒得接」，是 2026-08-26 实测出来的（全文与复验命令写在 `useLossAttribution.ts`
  * 的 `useContributionSeries` 头注「WO-ATTR-DEAD-CONTROLS · A」那段）：
  * 贡献度时序的回包里**没有段这个维度** —— 指标行的粒度是「对象 × 状态变量」，
  * 与链段正交；唯一可能通到段的 `segments[].nodeId` 实测 11/11 落在业务域册（`D01…D13`）上，
