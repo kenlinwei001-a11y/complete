@@ -49,11 +49,22 @@ const r = (v: number, p: number): number => {
  * ⚠️ 字段名必须自带量纲（`demandWanPerYearP50`），**不许**缩成裸 `p50`/`p90` ——
  * 本仓 `p50` 一个名字背 6 个量纲，裸名即歧义；`quantile-unit-onscreen` 接缝门会当场报红。
  */
-export const DEMAND_YEAR = [
+const DEMAND_YEAR_ANCHOR = [
   { key: "pas", name: "乘用车", demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
   { key: "ess", name: "储能", demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
   { key: "com", name: "商用车", demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
 ] as const;
+
+/**
+ * WO-UNCERTAINTY-INPUTS · 乐观上界 P10 = P50²/P90（对数正态镜像·与 datacore
+ * `synthetic/battery.ts` 的 `demandP10FromP90` **同一条式子**，口径说明以那边为准）。
+ * 置信水平式约定 ⇒ **P90 ≤ P50 ≤ P10**，不是"数越大分位越大"。
+ * 这里照样是从 `DEMAND_YEAR_ANCHOR` 现算，**不内联第二份**（本文件上方那条纪律）。
+ */
+export const DEMAND_YEAR = DEMAND_YEAR_ANCHOR.map((d) => ({
+  ...d,
+  demandWanPerYearP10: r((d.demandWanPerYearP50 * d.demandWanPerYearP50) / d.demandWanPerYearP90, 1),
+}));
 
 /** Σ demandWanPerYearP50 = 375.0 万套/年（需求侧年口径）。 */
 export const DEMAND_YEAR_TOTAL_WAN = r(DEMAND_YEAR.reduce((a, d) => a + d.demandWanPerYearP50, 0), 4);

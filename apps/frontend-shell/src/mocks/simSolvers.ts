@@ -1582,6 +1582,11 @@ export function mockBaseOutlook(args: Record<string, unknown>): Record<string, u
   const inProdTotal = OUTLOOK_INPROD[baseId] ?? round(freeDaily * 90 * 0.9, 2);
   const p50TotalWan = round(OUTLOOK_SEG_P50.reduce((a, v) => a + v, 0), 4);
   const forecastUnitsAnnual = round(p50TotalWan * 1e4 * baseShare, 2);
+  // WO-UNCERTAINTY-INPUTS：桩侧同样给三点区间（口径/公式与 datacore `base-outlook.ts` 一致·同从 DEMAND_YEAR 派生）。
+  const annualUnitsAt = (pick: (d: (typeof DEMAND_YEAR)[number]) => number) =>
+    round(round(DEMAND_YEAR.reduce((a, d) => a + pick(d), 0), 4) * 1e4 * baseShare, 2);
+  const forecastUnitsAnnualP90 = annualUnitsAt((d) => d.demandWanPerYearP90);
+  const forecastUnitsAnnualP10 = annualUnitsAt((d) => d.demandWanPerYearP10);
   const baseOrders = SOP_ORDERS.filter((o) => o.bases[0] === baseId).map((o) => ({ so: o.so, qty: o.qty, dueDay: dayFromISO(SOP_FORECAST_START, o.due) }));
 
   const inProdRefDays = 90, annualDays = 365, overtimeUpliftPct = 0.15, crossBaseAbsorbPct = 0.6;
@@ -1589,7 +1594,9 @@ export function mockBaseOutlook(args: Record<string, unknown>): Record<string, u
     const available = round(freeDaily * H, 2);
     const inProduction = round(inProdTotal * Math.min(1, H / inProdRefDays), 2);
     const futureQty = round(baseOrders.filter((o) => o.dueDay >= 0 && o.dueDay <= H).reduce((a, o) => a + o.qty, 0), 2);
-    const salesForecast = round((forecastUnitsAnnual * H) / annualDays, 2);
+    const spread = (annualUnits: number) => round((annualUnits * H) / annualDays, 2);
+    const salesForecast = spread(forecastUnitsAnnual);
+    const salesForecastBand = { conservative: spread(forecastUnitsAnnualP90), baseline: salesForecast, optimistic: spread(forecastUnitsAnnualP10) };
     const demand = round(inProduction + futureQty, 2);
     const gap = round(available - demand, 2);
     const status = gap < -1e-6 ? "缺口" : gap > 1e-6 ? "富余" : "平衡";
@@ -1632,7 +1639,7 @@ export function mockBaseOutlook(args: Record<string, unknown>): Record<string, u
           triggerValue: remaining, closesGap: remaining, provenance: { kind: "实测", drillType: "Order", drillId: baseId, drillField: "qty", drillValue: futureQty } });
       }
     }
-    return { horizon: H, windowStart: isoAt(SOP_FORECAST_START, 0), windowEnd: isoAt(SOP_FORECAST_START, H), lines, available, inProduction, futureOrders: futureQty, salesForecast, demand, gap, status, crossDay, dayPlan };
+    return { horizon: H, windowStart: isoAt(SOP_FORECAST_START, 0), windowEnd: isoAt(SOP_FORECAST_START, H), lines, available, inProduction, futureOrders: futureQty, salesForecast, salesForecastBand, demand, gap, status, crossDay, dayPlan };
   };
 
   const horizonList = args.horizon != null ? [Math.max(1, Math.round(Number(args.horizon)))] : [30, 60, 90];
