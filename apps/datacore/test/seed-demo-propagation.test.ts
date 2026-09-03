@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeApp, ADMIN, seedBattery } from "./helpers.js";
+import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
 
 /**
@@ -384,5 +384,110 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(Object.values(DIRS).flat().sort()).toEqual(
       (await t.repos.sim.listPropagationRules("demo", true)).map((r) => r.key).sort(),
     );
+  });
+});
+
+/**
+ * WO-CAUSAL-EDGE-CRUD · **写入口**的引用体检（交付判据 2）。
+ *
+ * 上面那道「方向可达门」守的是**种子**：种进去的 42 条边方向对不对。
+ * 但种子是对的**不度量**运营方经 REST 建出来的边是对的 —— 这一组守的是另一半：
+ * `POST/PATCH /a/v1/sim/propagation-rules` 收不收一条端点根本不存在、或方向反了的边。
+ *
+ * 病灶（2026-09-03 真后端实测）：三个端点都是裸 `z.string()`，只要非空就过。
+ * 一条源 `NoSuchType_ZZZ` / 链路 `no_such_link_ZZZ` / 目标 `AlsoMissing_ZZZ` 三者全不存在的边
+ * **201 且 status=PUBLISHED**，当场计入「生效因果边」，而引擎 `navOut` 查无此链路 ⇒ 永远贡献 0。
+ * 同族事故有前科：`POST /a/v1/ontology/link-types` 曾把 **133 条里的 81 条**端点不存在的结构边全部 201 放行。
+ *
+ * ⚠ 每条"必须拒绝"的断言都配一条**必须放行**的金丝雀 —— 否则一个把所有请求都判 400 的
+ * 坏实现能让整组测试全绿（"门会咬"证明不了"门咬得准"，参照上面那条变异反证的写法）。
+ */
+describe("WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检", () => {
+  /** 建一个装好本体 + 种子 + 已开 sim 特性的应用，并交出一条**真存在**的链路类型声明。 */
+  const setup = async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+    const linkTypes = await t.repos.ontologyLinks.list("demo");
+    // 🐤 金丝雀：链路类型声明表非空，否则下面每条用例都会因"链路不存在"而 400，
+    // 整组测试会以**完全正确的理由**全绿，而它其实一个字都没验到（假绿的经典形态）。
+    expect(linkTypes.length).toBeGreaterThan(0);
+    const via = linkTypes.find((l) => l.key === "model_producible_at") ?? linkTypes[0]!;
+    return { t, via };
+  };
+  const post = (t: TestApp, payload: Record<string, unknown>) =>
+    t.app.inject({ method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN, payload });
+  /** 一条**除被测那一格外全部合法**的边 —— 每条用例只动一格，故失败必然归因于那一格。 */
+  const edge = (via: { key: string; fromTypeKey: string; toTypeKey: string }, over: Record<string, unknown> = {}) => ({
+    key: "WRITE_PATH_PROBE", sourceTypeKey: via.fromTypeKey, sourceStateVar: "loadIndex",
+    viaLinkKey: via.key, targetTypeKey: via.toTypeKey, targetStateVar: "supplyRisk",
+    coefficient: 0.5, delayTicks: 0, combine: "sum", status: "PUBLISHED", ...over,
+  });
+
+  it("🐤 金丝雀：端点/链路全合法的边**必须建得出来**（证明这组门不是一律拒绝）", async () => {
+    const { t, via } = await setup();
+    const r = await post(t, edge(via));
+    expect(r.statusCode).toBe(201);
+  });
+
+  it("🔴 端点不存在的边必须 400（link-types 那次 81/133 全放行的复发闸）", async () => {
+    const { t, via } = await setup();
+    const r = await post(t, edge(via, { sourceTypeKey: "NoSuchType_ZZZ", targetTypeKey: "AlsoMissing_ZZZ" }));
+    expect(r.statusCode).toBe(400);
+    const body = r.json() as { error: { code: string; message: string; requestId: string } };
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.requestId).toBeTruthy(); // 统一信封三件套齐全
+    // 报文必须**点名是哪个值**不合法：只说"校验失败"的话，调用方唯一能做的就是猜。
+    expect(body.error.message).toContain("NoSuchType_ZZZ");
+    expect(body.error.message).toContain("AlsoMissing_ZZZ");
+  });
+
+  it("🔴 链路类型不存在的边必须 400", async () => {
+    const { t, via } = await setup();
+    const r = await post(t, edge(via, { viaLinkKey: "no_such_link_ZZZ" }));
+    expect(r.statusCode).toBe(400);
+    expect((r.json() as { error: { message: string } }).error.message).toContain("no_such_link_ZZZ");
+  });
+
+  it("🔴 方向写反的边必须 400 —— 引擎只沿 from→to 单向走，反向边语法全对但恒贡献 0", async () => {
+    const { t, via } = await setup();
+    // 源/目标对调（其余一格不动）⇒ 与链路声明的方向正好相反。
+    const r = await post(t, edge(via, { sourceTypeKey: via.toTypeKey, targetTypeKey: via.fromTypeKey }));
+    expect(r.statusCode).toBe(400);
+    // 报文要说清"反了"并给出修法，不是只说"对不上"。
+    expect((r.json() as { error: { message: string } }).error.message).toContain("方向正好反了");
+  });
+
+  it("🔴 coefficientRef 解析不到必须 400 —— 否则静默回落内联系数，用户以为改规则生效其实无效", async () => {
+    const { t, via } = await setup();
+    const r = await post(t, edge(via, { coefficientRef: { ruleKey: "NO_SUCH_RULE_ZZZ", paramKey: "p" } }));
+    expect(r.statusCode).toBe(400);
+    expect((r.json() as { error: { message: string } }).error.message).toContain("NO_SUCH_RULE_ZZZ");
+  });
+
+  it("🔴 PATCH 也走同一道体检：塞非法 coefficientRef 必须 400，而合法系数照常放行", async () => {
+    const { t, via } = await setup();
+    const created = (await post(t, edge(via))).json() as { id: string };
+    const patch = (payload: Record<string, unknown>) =>
+      t.app.inject({ method: "PATCH", url: `/a/v1/sim/propagation-rules/${created.id}`, headers: ADMIN, payload });
+
+    const bad = await patch({ coefficientRef: { ruleKey: "NOPE_ZZZ", paramKey: "x" } });
+    expect(bad.statusCode).toBe(400);
+    // 🐤 配对金丝雀：同一条边、同一个 PATCH 口，合法改动必须仍然 200 且真的改到了值。
+    const ok = await patch({ coefficient: 0.31 });
+    expect(ok.statusCode).toBe(200);
+    expect((ok.json() as { coefficient: number }).coefficient).toBe(0.31);
+  });
+
+  it("🔴 体检在 upsert **之前**跑：非法边不许先把同 key 的合法边覆盖掉再报错", async () => {
+    const { t, via } = await setup();
+    expect((await post(t, edge(via, { coefficient: 0.5 }))).statusCode).toBe(201);
+    // 同 key、但链路不存在 ⇒ 必须 400，且既有那条**原封不动**（系数仍是 0.5、版本没涨）。
+    expect((await post(t, edge(via, { viaLinkKey: "no_such_link_ZZZ", coefficient: 0.9 }))).statusCode).toBe(400);
+    const rows = (await t.repos.sim.listPropagationRules("demo", false)).filter((r) => r.key === "WRITE_PATH_PROBE");
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.coefficient).toBe(0.5);
+    expect(rows[0]!.version).toBe(1);
   });
 });
