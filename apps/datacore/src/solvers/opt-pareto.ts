@@ -28,6 +28,9 @@
  * 同 (session, 杠杆集, 参数版本) 重跑 `JSON.stringify` 逐字节一致。
  */
 import type { OptPerturbation, OptTemplateFamily, ParetoBinding, ParetoObjective, ParetoRequest, ParetoResult, ParetoSolution } from "@platform/contracts";
+// 加权排名的**唯一实现**在契约包里 —— 前端的滑杆与这里回包的 `ranking` 必须逐字节同源，
+// 故两边 import 同一段代码，不各写一份（理由见契约 `rankParetoByWeights` 的文件段）。
+import { normalizeParetoWeights, rankParetoByWeights } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { applyPerturbationSet, type SolveArgsFn } from "./opt-whatif.js";
 
@@ -148,6 +151,41 @@ function cartesian(grid: readonly { key: string; values: number[] }[]): { key: s
   return acc;
 }
 
+/**
+ * 求解回包里**可当目标用的结构读数**（`objectiveValues` 之外的那一档）。
+ *
+ * ── 为什么要有这张表（WO-PARETO-AXES 开工实测）─────────────────────────────────
+ * `cross_object_occupancy` 的回包里，「多少单获排」这件事**一直是真算出来的**
+ * （`servedCount` / `orderCount`，与 `occupancy[]`/`displaced[]` 同源），
+ * 但 `metricsOf` 从前只读 `objectiveValues` ⇒ 这个数**从来没进过 `metrics`** ⇒
+ * 它既不能当轴、也不会出现在方案卡上。这不是"没有交付这一维"，是**接了线没投影**
+ * （本仓三分法里的第二态，修法是补投影不是造字段）。
+ *
+ * ⚠ **白名单而不是"把所有数值字段都收进来"**：回包里同样是数字的还有
+ * `lineCount` / `contractCount` 这类**与解无关的常量**（整个网格里恒定），
+ * 把它们收成 metrics 会让屏上多出几根**恒定的轴** —— 恒定轴在支配比较里永远打平，
+ * 于是它看起来像一个维度，实际一个解都区分不了。宁可漏也不许多。
+ */
+const STRUCTURAL_METRIC_KEYS = ["servedCount", "orderCount"] as const;
+
+/**
+ * 从结构读数**派生**的目标。派生式写在这一处，前端不再算第二遍（两处一漂就是屏上看不出的错）。
+ *
+ * ⛔ **缺一个输入就整格不给，绝不补 0**：与 `normalized()` 同一条理由 ——
+ * 一个"没量到"的解补出 0 会在支配比较里冒充极值。
+ * 且分母为 0 时同样不给（0 单的租户不存在"获排率"这件事，给 0 或 1 都是编）。
+ */
+const DERIVED_METRICS: readonly { key: string; from: readonly string[]; of: (m: Record<string, number>) => number | undefined }[] = [
+  {
+    // 获排率 = 获排单数 / 总单数 ∈ [0,1]。**这一族没有时间维**（订单×产线×合同的指派问题），
+    // 故它是「这批需求接下了多少」，**不是「准时率」** —— 两者在屏上必须叫不同的名字，
+    // 叫成准时率就是把一个本系统今天答不了的问题假装答了。
+    key: "serviceRate",
+    from: ["servedCount", "orderCount"],
+    of: (m) => (m.orderCount! > 0 ? m.servedCount! / m.orderCount! : undefined),
+  },
+];
+
 /** 从求解输出里取一个解的目标读数：多目标 `objectiveValues` 优先，标量 `objective` 兜底。 */
 function metricsOf(out: Record<string, unknown>): Record<string, number> {
   const m: Record<string, number> = {};
@@ -156,6 +194,18 @@ function metricsOf(out: Record<string, unknown>): Record<string, number> {
     for (const [k, v] of Object.entries(ov as Record<string, unknown>)) if (typeof v === "number" && Number.isFinite(v)) m[k] = q(v);
   }
   if (typeof out.objective === "number" && Number.isFinite(out.objective)) m.objective = q(out.objective);
+  // 结构读数（白名单，理由见 `STRUCTURAL_METRIC_KEYS`）。`objectiveValues` 里的同名键优先 ——
+  // 引擎显式声明成目标的那一份最准，结构档只是它没声明时的来源。
+  for (const k of STRUCTURAL_METRIC_KEYS) {
+    const v = out[k];
+    if (m[k] === undefined && typeof v === "number" && Number.isFinite(v)) m[k] = q(v);
+  }
+  for (const d of DERIVED_METRICS) {
+    if (m[d.key] !== undefined) continue; // 引擎自己给了同名读数 ⇒ 用它的，不覆盖
+    if (!d.from.every((k) => typeof m[k] === "number")) continue; // 缺输入 ⇒ 整格不给
+    const v = d.of(m);
+    if (typeof v === "number" && Number.isFinite(v)) m[d.key] = q(v);
+  }
   // 键序稳定（R6）：`JSON.stringify` 的字节取决于插入序，故重建一个字典序对象。
   const sorted: Record<string, number> = {};
   for (const k of Object.keys(m).sort()) sorted[k] = m[k]!;
@@ -164,7 +214,8 @@ function metricsOf(out: Record<string, unknown>): Record<string, number> {
 
 /**
  * 执行帕累托解集求解：杠杆网格 → 逐组合施加扰动（克隆·不落真值 R4）→ sidecar 重解 →
- * 绑定裕度 → 可行性过滤 → 逐对支配剔除 → `{frontier, dominated, iterations, residual}`。
+ * 绑定裕度 → 可行性过滤 → 逐对支配剔除 → `{frontier, dominated, iterations, residual}`，
+ * 最后按**读者偏好**（`weights`）给前沿排一个名次（`ranking` / `recommendedId`）。
  */
 export async function runOptimizePareto(solve: SolveArgsFn, req: ParetoRequest): Promise<ParetoResult> {
   const objectives = req.objectives;
@@ -232,6 +283,12 @@ export async function runOptimizePareto(solve: SolveArgsFn, req: ParetoRequest):
   frontier.sort(cmp);
   dominated.sort(cmp);
 
+  // ── 权重：**在前沿切好之后**才登场（判据与理由见契约 `rankParetoByWeights` 的 ⛔ 段）──
+  // `frontier`/`dominated` 此刻已经定了，下面三行读它们、不改它们。
+  // 归一池 = 全体参与竞争的可行解（前沿 + 被支配），与权重无关 ⇒ 换权重只换名次。
+  const weights = normalizeParetoWeights(objectives, req.weights);
+  const ranking = rankParetoByWeights(frontier, objectives, weights, [...frontier, ...dominated]);
+
   return {
     objectives,
     frontier,
@@ -240,5 +297,12 @@ export async function runOptimizePareto(solve: SolveArgsFn, req: ParetoRequest):
     // 守恒残差：被可行性挡在竞争之外的候选数。恒等式 iterations = frontier + dominated + residual
     // 让「解去哪了」可被机器核 —— 不平就是有解被静默吞掉了。
     residual: evaluated.length - frontier.length - dominated.length,
+    weights,
+    ranking,
+    // 前沿为空 ⇒ `null`。**不兜一个 id 出来** —— 兜出来的那个解要么不存在、
+    // 要么是被支配解，屏上会把它印成"推荐方案"。
+    recommendedId: ranking[0]?.id ?? null,
+    // 装配侧填、求解侧只回显（求解器不认识"本租户本体缺哪个字段"）。
+    unavailableObjectives: req.unavailableObjectives ?? [],
   };
 }

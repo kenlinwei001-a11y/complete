@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, screen } from "@testing-library/react";
-import type { ParetoObjective, ParetoResult, ParetoSolution } from "@platform/contracts";
+import { normalizeParetoWeights, rankParetoByWeights, type ParetoObjective, type ParetoResult, type ParetoSolution } from "@platform/contracts";
 import { loginAs, renderWithClient } from "./utils";
 import { SandboxOpt } from "@/views/sim/console/SandboxOpt";
 import {
@@ -164,6 +164,12 @@ const RESULT: ParetoResult = {
   dominated: DOMINATED,
   iterations: 9,
   residual: 0,
+  // WO-PARETO-AXES 新增的四格。名次用**契约里那一份**现算（不手写一张表）——
+  // 手写的名次与打分公式一漂，这份夹具就会在"验几何"之外偷偷变成"验一个过期的次序"。
+  weights: normalizeParetoWeights(OBJ_MIN_MIN, undefined),
+  ranking: rankParetoByWeights(FRONTIER, OBJ_MIN_MIN, normalizeParetoWeights(OBJ_MIN_MIN, undefined), [...FRONTIER, ...DOMINATED]),
+  recommendedId: null,
+  unavailableObjectives: [],
 };
 
 /** 独立判官：`a` 是否逐目标不劣于 `b` 且至少一项严格更优（**不复用生产实现**）。 */

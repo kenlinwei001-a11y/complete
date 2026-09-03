@@ -118,6 +118,14 @@ const RESULT: ParetoResult = {
   ],
   iterations: 3,
   residual: 0,
+  // WO-PARETO-AXES 新增的四格（本用例咬的是"宿主发不发请求"，不咬名次）。
+  weights: { days: 1, cost: 1 },
+  ranking: [
+    { id: "pareto_w=16", rank: 1, score: 0.5 },
+    { id: "pareto_w=8", rank: 2, score: 0.5 },
+  ],
+  recommendedId: "pareto_w=16",
+  unavailableObjectives: [],
 };
 
 const err = (status: number, code: string) =>

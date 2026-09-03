@@ -137,6 +137,14 @@ const RESULT: ParetoResult = {
   ],
   iterations: 4,
   residual: 1,
+  // WO-PARETO-AXES 新增的四格（本用例不咬它们，给等权 + 空清单即可）。
+  weights: { revenue: 1, cost: 1 },
+  ranking: [
+    { id: "pareto_c1=20|c2=20", rank: 1, score: 0.5 },
+    { id: "pareto_c1=10|c2=10", rank: 2, score: 0.5 },
+  ],
+  recommendedId: "pareto_c1=20|c2=20",
+  unavailableObjectives: [],
 };
 
 const err = (status: number, code: string) =>

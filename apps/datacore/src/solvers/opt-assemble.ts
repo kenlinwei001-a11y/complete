@@ -52,6 +52,7 @@ import type {
   ParetoAssembleRole,
   ParetoLeverGrid,
   ParetoObjective,
+  ParetoObjectiveGap,
   ParetoRequest,
 } from "@platform/contracts";
 import { ParetoRequestSchema } from "@platform/contracts";
@@ -262,14 +263,81 @@ export async function assembleParetoModel(
 
   // ── ⑤ 目标：只声明**接得到地的**（真目标 < 2 ⇒ 整单报缺，不补假目标）──────────
   // 键名 `revenue`/`penalty`/`cost` 来自**引擎回包**（`objectiveValues`），是求解器契约不是行业词。
-  const objectives: ParetoObjective[] = [
-    { key: "revenue", dir: "max", label: `${orderT.key}.${revProp}` },
+  //
+  // ══ WO-PARETO-AXES · 今天的行为是 X，应该是 Y（开工实测，本机 4531 内存态 demo 租户）══
+  //
+  // **X**：本装配器只声明 `revenue`（← `OrderLine.unitPrice`）与 `cost`（← `Base.serveCost`）
+  //   两根轴。屏上那条前沿于是在权衡「**单价** vs **单位需求点履约成本**」——
+  //   而这两样都不是经营者要权衡的东西，更要命的是**它们各自都不是一个总量**（下面 ⚠ 段）。
+  // **Y**：把「**交付**」这一维接上（它一直被真算着、只是从没投影出来），
+  //   并把「毛利 / 现金」两根**今天接不上地**的轴**显式点名报缺**，而不是留白。
+  //
+  // ⚠ **为什么不顺手声明一根 `margin`（= revenue − cost）——两条独立的阻断，缺一条都还不能减**：
+  //   ① **量纲不同**：本租户实测 `OrderLine.unitPrice` 声明单位 **元**、
+  //      `Base.serveCost` 声明单位 **万元** ⇒ 直接相减差 10⁴ 倍。这一条**按本体现算**（下面 `sameUnit`），
+  //      换个两边同单位的租户它就不再是阻断。
+  //   ② **两边都缺"用量"这一项**（这一条与租户无关，是绑定层的形状）：绑定层把
+  //      `orders[].revenue` 取成**每行的单价**、把可产对成本取成**每线的标量**，
+  //      两者都不乘 `qty`。于是一行 4,343 件与一行 417 件**贡献同一份"营收"**。
+  //      ⇒ 即便量纲对齐，`revenue − cost` 也不是毛利，是两个强度量之差。
+  //   合起来：**今天没有任何一种减法能得到毛利**，所以这根轴报缺、不声明。
+  //   ⛔ 这正是「不补一个恒为 0 的第二目标」那条红线的同族 —— 补一根**算得出但算错**的轴
+  //      比补一根恒为 0 的更危险：恒为 0 的那根一眼看得出是假的，算错的那根看起来完全正常。
+  const revUnit = orderT.properties.find((p) => p.propKey === revProp)?.unit;
+  const costOwner = eligT && eligCostProp ? eligT : lineT;
+  const costPropKey = eligT && eligCostProp ? eligCostProp : assignCostProp;
+  const costUnit = costPropKey ? costOwner.properties.find((p) => p.propKey === costPropKey)?.unit : undefined;
+  const sameUnit = revUnit !== undefined && costUnit !== undefined && revUnit === costUnit;
+
+  /**
+   * **接得到本体字段的**真目标 —— 「真目标 < 2 ⇒ 整单报缺」这条红线**只数这一批**。
+   *
+   * ⚠ 下面那根 `serviceRate`（交付）**刻意不在这个数组里**，理由见它自己的注释段：
+   *   它是引擎的结构读数，不是从本体字段接出来的，**不许拿它去凑够两个**。
+   */
+  const groundedObjectives: ParetoObjective[] = [
+    { key: "revenue", dir: "max", label: `${orderT.key}.${revProp}`, ...(revUnit ? { unit: revUnit } : {}) },
     ...(penProp ? [{ key: "penalty", dir: "min" as const, label: `${orderT.key}.${penProp}` }] : []),
     ...(assignCostBound
-      ? [{ key: "cost", dir: "min" as const, label: eligT && eligCostProp ? `${eligT.key}.${eligCostProp}` : `${lineT.key}.${assignCostProp}` }]
+      ? [{
+          key: "cost",
+          dir: "min" as const,
+          label: eligT && eligCostProp ? `${eligT.key}.${eligCostProp}` : `${lineT.key}.${assignCostProp}`,
+          ...(costUnit ? { unit: costUnit } : {}),
+        }]
       : []),
   ];
-  if (objectives.length < 2) {
+
+  // ── ⑤b 要不到的轴：**点名 + 说清最近的落点**（留白会被读成"这一维没问题"）─────
+  const cashProps = hits(orderT, "cashCycle");
+  // ⚠ 下面两条 `reason` 是**上屏的正文**，不是源码注释 —— 一律写成纯文本。
+  //   本仓注释里的 `**强调**` 是给读代码的人看的 Markdown；原样丢进 `<div>` 只会
+  //   在用户屏上印出四个星号（2026-09-03 真浏览器实测就是这么翻车的：
+  //   屏上出现「**没有时间维**」）。屏上没有 Markdown 渲染器，就不许用 Markdown 语法。
+  const unavailableObjectives: ParetoObjectiveGap[] = [
+    {
+      key: "margin",
+      label: "毛利",
+      reason:
+        `今天算不出：营收侧 ${orderT.key}.${revProp}（单位 ${revUnit ?? "未声明"}）与成本侧 ` +
+        `${costPropKey ? `${costOwner.key}.${costPropKey}` : "未绑定"}（单位 ${costUnit ?? "未声明"}）` +
+        (sameUnit ? "量纲一致，" : "量纲不一致，直接相减会差一个数量级；") +
+        `且两侧都按「每行/每线一个标量」取值、不乘 ${orderT.key}.${qtyProp} —— ` +
+        `同单价下 4,343 件与 417 件会算出同一份营收。要补齐需先在本体上给出「含量的行金额」与「同量纲的行成本」。`,
+    },
+    {
+      key: "cash",
+      label: "现金",
+      reason:
+        `今天算不出：本族（${family}）是订单×产线×合同的指派问题，没有时间维 —— ` +
+        `一个解里没有任何一单带着收付款发生在哪一天，现金周期无从起算。` +
+        (cashProps.length > 0
+          ? `${orderT.key} 上离它最近的字段是 ${cashProps.map((k) => `${orderT.key}.${k}`).join("、")}，但它是存量比率不是账期天数。`
+          : `${orderT.key} 上没有任何命中账期/回款/现金词库的数值字段。`) +
+        `要补齐需先在本体上给出账期天数（或收款日）并让求解族携带时间维。`,
+    },
+  ];
+  if (groundedObjectives.length < 2) {
     return miss(
       [
         ...(penProp ? [] : [`penalty（${orderT.key} 上没有命中成本/违约词库的数值字段）`]),
@@ -283,9 +351,30 @@ export async function assembleParetoModel(
       ],
       `只接地到 1 个真目标（revenue ← ${orderT.key}.${revProp}）。帕累托前沿要两个真目标才成立，` +
         `⛔ 这里**不补**一个恒为 0 的第二目标 —— 那样屏上会出现一条假前沿：所有点在那一维并列，` +
-        `"权衡"根本不存在。请在本体上补齐上面点名的那一格。`,
+        `"权衡"根本不存在。请在本体上补齐上面点名的那一格。` +
+        // ⚠ 这一句是给下一个读到这里的人的：交付（获排率）确实是一根真会动的轴，
+        //   但它**不算**在这两个里 —— 它与 revenue 天然同向（服务得越多、营收越高），
+        //   拿它凑数会得到一条所有点都单调排开的"前沿"，与"补一个恒为 0 的目标"是同一种假。
+        `（交付/获排率不计入这两个：它由引擎结构读数派生、且与营收同向，凑不出真权衡。）`,
     );
   }
+
+  /**
+   * 完整轴集 = 接得到地的真目标 + **交付**。
+   *
+   * ── 交付这一维：一直被真算着，只是从没被投影成 metrics（三分法第二态）──────────
+   * `cross_object_occupancy` 的回包里 `servedCount`/`orderCount` 与 `occupancy[]`/`displaced[]`
+   * 出自同一次装入循环；`opt-pareto.ts` 的 `DERIVED_METRICS` 把它们折成 `serviceRate ∈ [0,1]`。
+   * 修法是**补投影**，不是造字段 —— 这个数一天都没缺过，只是没人把它端上来。
+   *
+   * ⚠ 叫**获排率**不叫**准时率**：本族是「订单×产线×合同」的指派问题，**没有时间维** ——
+   *   一个解里没有任何一单带着"哪天交"，所以答不了准时。叫错名字就是把一个
+   *   今天答不了的问题假装答了。
+   */
+  const objectives: ParetoObjective[] = [
+    ...groundedObjectives,
+    { key: "serviceRate", dir: "max", label: "获排率（获排单数 ÷ 总单数）", unit: "" },
+  ];
 
   // ── ⑥ 杠杆：档位取自**实测取值的次序统计量**（最小/中位/最大），一个数都不编 ─────
   const capValues = [...new Set(lines.map((l) => q(l.capacity)))].sort((a, b) => a - b);
@@ -328,8 +417,12 @@ export async function assembleParetoModel(
     args,
     objectives,
     levers,
+    unavailableObjectives,
     // ⛔ 不给 `constraints`：契约原话「不给 ⇒ 该解 bindings 为空数组，**不是**「没有约束」的断言」。
     //    上限是调用方声明的东西，装配器编一个出来就是在替用户定"什么算越界"。
+    // ⛔ 也**不给 `weights`**：权重是**读者当场的偏好**，不是本体能装配出来的东西。
+    //    装配器替用户预设一组权重 ⇒ 屏上那个"推荐方案"会显得像模型算出来的结论，
+    //    而它其实只是装配器随手挑的一组系数。不给 ⇒ 求解侧等权，屏上滑杆全在中位。
   });
 
   const roles: ParetoAssembleRole[] = roleBindings
@@ -350,6 +443,9 @@ export async function assembleParetoModel(
       `装配自本租户已发布本体：${orderT.key}(${orders.length} 行) × ${lineT.key}(${lines.length} 行)；` +
       `目标 ${objectives.map((o) => `${o.key}←${o.label}`).join("、")}；` +
       `杠杆 ${levers.length} 根 × ${gridValues.length} 档 = ${Math.pow(gridValues.length, levers.length)} 个候选；` +
-      `未绑定（诚实缺席，不伪造）：${unboundRoles.length ? unboundRoles.join("、") : "无"}。`,
+      `未绑定（诚实缺席，不伪造）：${unboundRoles.length ? unboundRoles.join("、") : "无"}；` +
+      // 这一句与上面那句是**两件不同的事**，不许合并：`unboundRoles` 说的是「模型的某个角色没绑上」，
+      // 这一句说的是「决策者点名要的某根**轴**今天接不上地」。前者影响解算，后者影响屏上少哪一列。
+      `要不到的轴（已在屏上标注，不填编造值）：${unavailableObjectives.map((g) => g.label).join("、")}。`,
   };
 }

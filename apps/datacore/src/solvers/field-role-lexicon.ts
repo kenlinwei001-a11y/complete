@@ -17,6 +17,15 @@ export const ROLE_LEXICON = {
   sourceSink: /供应商|supplier|vendor|源|source|原料|material|根|root/i,
   /** 叶层/敞口类型名（客户/订单：扇出的叶层敞口）。 */
   leaf: /客户|customer|订单|order|买家|buyer|终端|leaf/i,
+  /**
+   * 账期/回款/现金占用（WO-PARETO-AXES）。
+   *
+   * ⚠ **加这一条的目的是「诚实报缺」，不是「接一根现金轴」**：
+   * 帕累托装配器拿它去找「这个租户身上离现金周期最近的那格字段是什么」，
+   * 好在屏上把"这一列要不到"说清楚 —— 命中了也只是**点名落点**，不会被当成现金读数用。
+   * 真要算现金周期还差一个本族没有的东西：**时间维**（收付款发生在哪一天）。
+   */
+  cashCycle: /账期|回款|现金|cash|payment|payterm|receivable|dso|信用|credit|结算|settle/i,
 } as const;
 
 export type RoleLexiconKey = keyof typeof ROLE_LEXICON;

@@ -1369,6 +1369,166 @@ export const ParetoSolutionSchema = z.strictObject({
 });
 export type ParetoSolution = z.infer<typeof ParetoSolutionSchema>;
 
+// ── WO-PARETO-AXES · 目标权重（**只排序，不改前沿**）──────────────────────────
+//
+// ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════════
+// **X**：`ParetoResult` 只有 `frontier[]`（已按逐目标归一值升序排好的**全序**）。
+//   决策者拿到一串互不支配的解之后，「我更在乎交付还是更在乎成本」这句话**没有落点** ——
+//   要表达它只能回头改 `objectives`（换轴）或改 `args`，两者都会**重算一遍**。
+// **Y**：权重是**读者的偏好**，不是模型的一部分。前沿算一次（与权重无关），
+//   权重只决定「这一串解里先看哪个」。
+//
+// ⛔ **这一格绝不可以流进 `args`**（违反即把多目标退化成单目标）：
+//   `cross_object_occupancy` 引擎自己吃 `args.objectives[].weight`（内存态贪心按
+//   `wRev·revenue + wPen·penalty` 排装入序、按 `wCost·cost` 选线）——
+//   把用户滑杆接到那一格上，**换权重会换出一批不同的解**，屏上那条"前沿"就变成了
+//   「换个加权再算一遍」的单目标最优点轨迹。两者在屏上长得一模一样，
+//   区别只有一条**可被机器咬住**的判据：
+//
+//   > **同一组输入换两组差别很大的权重 ⇒ 非支配解集合必须逐条相同，只有排序变。**
+//
+//   本对字段（请求侧 `weights` / 结果侧 `ranking`+`recommendedId`）与 `args` **零交集**，
+//   `runOptimizePareto` 也不把它写进任何一次 `solve()` 调用 —— 这是结构上的保证，
+//   不靠"记得别接错"。
+export const ParetoWeightsSchema = z.record(z.string(), z.number().min(0));
+export type ParetoWeights = z.infer<typeof ParetoWeightsSchema>;
+
+/** 前沿里一个解的加权排名。**由 `weights` 现算，与前沿成员资格无关**。 */
+export const ParetoRankingEntrySchema = z.strictObject({
+  /** 解 id（必在 `frontier[]` 里）。 */
+  id: z.string().min(1),
+  /** 1 起的名次（`score` 降序；同分按 `id` 字典序，全序·R6）。 */
+  rank: z.number().int().positive(),
+  /**
+   * 加权得分 ∈ [0,1]，**越大越好**。
+   * = Σ wₖ·nₖ / Σ wₖ，其中 nₖ 是该解在目标 k 上折成「1 = 全体候选里最好 · 0 = 最差」的归一读数。
+   * 归一用的极值取自**全体可行候选**（前沿 + 被支配），故它**不随权重变化** ——
+   * 权重只进分子的加权平均，这正是"改权重只换名次"的算术保证。
+   */
+  score: z.number(),
+});
+export type ParetoRankingEntry = z.infer<typeof ParetoRankingEntrySchema>;
+
+/**
+ * 加权排名的**唯一实现**（跨包共用一份 —— 这不是洁癖，是本单的验收线之一）。
+ *
+ * ══ 为什么这两个函数住在契约包里 ═══════════════════════════════════════════════
+ * 屏上的滑杆一动，名次要**立刻**变。两条路：
+ *  · 重新 POST 一次求解 —— 27 次求解只为换个次序，而且"改权重会重算"这件事本身
+ *    正是本单要证伪的那个印象；
+ *  · 前端就地重排 —— 快、且用户亲眼看到**解集没变**。
+ * 选了后者，代价是"同一个打分公式存在两处"。本仓对这种漂移有明确记账
+ * （`useParetoFrontier` 原话：「在前端"再排一遍"只会造出第二套判据，两套一漂就是屏上看不出来的错」）。
+ * 故解法不是"小心地抄一遍"，是**只写一份、两边都 import 它** ——
+ * 服务端回包里的 `ranking` 与前端滑杆算出来的 `ranking`，逐字节出自同一段代码。
+ *
+ * ⚠ 两个函数都是**纯函数**：无 `Date`、无 `Math.random`、无 I/O（R6）。
+ */
+const PARETO_QUANT = 1e6;
+const pq = (x: number): number => Math.round(x * PARETO_QUANT) / PARETO_QUANT;
+
+/**
+ * 权重归一：负值/非有限值一律回落成 1；全零 ⇒ **各目标等权 1**。
+ *
+ * 「全零 ⇒ 等权」而不是「全零 ⇒ 分母 0 ⇒ NaN」：用户把所有滑杆拉到底是一个**可达的屏上状态**，
+ * 它该被读成"我没有偏好"，不该让整页读数变成 NaN。
+ * 不在 `objectives` 里的键**静默忽略**：屏上留着一根已经换掉的轴的滑杆，不该让整次求解 400。
+ */
+export function normalizeParetoWeights(
+  objectives: readonly ParetoObjective[],
+  weights: Readonly<Record<string, number>> | undefined,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  let sum = 0;
+  for (const o of objectives) {
+    const w = weights?.[o.key];
+    const v = typeof w === "number" && Number.isFinite(w) && w >= 0 ? pq(w) : 1;
+    out[o.key] = v;
+    sum += v;
+  }
+  if (sum <= 0) for (const o of objectives) out[o.key] = 1;
+  // 键序稳定（R6）：`JSON.stringify` 的字节取决于插入序，故重建一个字典序对象。
+  const sorted: Record<string, number> = {};
+  for (const k of Object.keys(out).sort()) sorted[k] = out[k]!;
+  return sorted;
+}
+
+/**
+ * **本单的心脏**：按权重给前沿排名次 —— 而**前沿是谁，这里一个字都不改**。
+ *
+ * ══ 为什么归一的极值取自 `pool`（全体可行候选）而不是权重 ══════════════════════
+ * 这不是审美，是那条验收判据的算术保证。设
+ *   nₖ(s) = 该解在目标 k 上折成「1 = 池里最好 · 0 = 池里最差」的归一读数，极值取自 `pool`。
+ * `pool` 与 `weights` **无关** ⇒ nₖ(s) 与 weights 无关 ⇒ 换权重时每个解的 nₖ 都不动，
+ * 变的只有 Σwₖnₖ/Σwₖ 这个加权平均 ⇒ **只可能换名次，不可能换成员**。
+ *
+ * ⚠ 退化域（某目标全体读数相同）⇒ 该目标对所有解贡献同一个 0.5，**不是 0 也不是 1**：
+ *   全体并列时说"大家都最好"或"大家都最差"都是断言，而这一维真实的信息量是零。
+ *   给 0.5 让它在加权平均里**不改变任何相对次序**。读数缺失同理（**不补 0** ——
+ *   补 0 在 `dir:"min"` 下是"最好"、在 `dir:"max"` 下是"最差"，同一个补法两种含义）。
+ *
+ * ⛔ 本函数**不参与**可行性判定、不参与支配比较、不被前沿切分调用 —— 它在前沿切好**之后**才跑。
+ *   这是"权重不改前沿"在代码结构上的保证，不靠注释。
+ *
+ * @param frontier 要排名次的解（一般就是 `ParetoResult.frontier`）
+ * @param pool     归一取极值的池子（一般是 `[...frontier, ...dominated]`）
+ */
+export function rankParetoByWeights(
+  // 只吃它真读的两格（`id` + `metrics`），与同族的 `dominates()` 一样 ——
+  // 这样前端的视图模型（`OptCandidate`，没有 `levers`）能**直接**喂给它，
+  // 不必先拼一个假的 `ParetoSolution` 出来（拼假结构正是"两套判据"的起点）。
+  frontier: readonly Pick<ParetoSolution, "id" | "metrics">[],
+  objectives: readonly ParetoObjective[],
+  weights: Readonly<Record<string, number>>,
+  pool: readonly Pick<ParetoSolution, "id" | "metrics">[],
+): ParetoRankingEntry[] {
+  const span = new Map<string, { lo: number; hi: number }>();
+  for (const o of objectives) {
+    const vs = pool.map((s) => s.metrics[o.key]).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    if (vs.length > 0) span.set(o.key, { lo: Math.min(...vs), hi: Math.max(...vs) });
+  }
+  const total = objectives.reduce((s, o) => s + (weights[o.key] ?? 0), 0);
+  const scoreOf = (s: Pick<ParetoSolution, "id" | "metrics">): number => {
+    if (total <= 0) return 0;
+    let acc = 0;
+    for (const o of objectives) {
+      const w = weights[o.key] ?? 0;
+      if (w === 0) continue;
+      const sp = span.get(o.key);
+      const v = s.metrics[o.key];
+      let n = 0.5;
+      if (sp !== undefined && typeof v === "number" && Number.isFinite(v)) {
+        const d = sp.hi - sp.lo;
+        n = d === 0 ? 0.5 : o.dir === "max" ? (v - sp.lo) / d : (sp.hi - v) / d;
+      }
+      acc += w * n;
+    }
+    return pq(acc / total);
+  };
+  return [...frontier]
+    .map((s) => ({ id: s.id, score: scoreOf(s) }))
+    // 全序（R6）：得分降序 → id 字典序兜底。不依赖 `Array#sort` 的稳定性。
+    .sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((e, i) => ({ id: e.id, rank: i + 1, score: e.score }));
+}
+
+/**
+ * 一根**要不到的轴**（决策者点名要、而本租户本体今天接不上地）。
+ *
+ * ⛔ 存在的理由就是**不许拿一个编出来的数把它填上**：缺一根轴时屏上要么显式写"不可得"，
+ * 要么什么都不写 —— 而"什么都不写"会被读成"这一维没问题"，那是与事实相反的结论。
+ * 故这一格是**必答项**：装配器判断某根轴接不上地，就必须在这里点名它、并说清**最近的落点**。
+ */
+export const ParetoObjectiveGapSchema = z.strictObject({
+  /** 要不到的目标键（与 `objectives[].key` 同一命名空间，故不会与在册轴撞名）。 */
+  key: z.string().min(1),
+  /** 人读名（屏上那一列的表头）。 */
+  label: z.string().min(1),
+  /** **为什么接不上地** + 最近的落点在哪。给的是业务事实（类型/字段/量纲），不是源码位置。 */
+  reason: z.string().min(1),
+});
+export type ParetoObjectiveGap = z.infer<typeof ParetoObjectiveGapSchema>;
+
 /**
  * 帕累托解集结果。
  *
@@ -1387,6 +1547,20 @@ export const ParetoResultSchema = z.strictObject({
   iterations: z.number().int().nonnegative(),
   /** 守恒残差（见本 schema 注释）。 */
   residual: z.number().int().nonnegative(),
+  /**
+   * 本次排序**实际用的**权重（请求没给 ⇒ 各目标等权 1，原样回显出来）。
+   * 回显而不是让前端记着自己传了什么：屏上那句「按这组权重推荐」必须与算它的那组数同源。
+   */
+  weights: ParetoWeightsSchema,
+  /**
+   * 前沿的加权名次（`rank` 升序）。**长度恒等于 `frontier.length`** ——
+   * 它是同一批解的另一个视角，不是筛选后的子集。
+   */
+  ranking: z.array(ParetoRankingEntrySchema),
+  /** `rank === 1` 那个解的 id；前沿为空 ⇒ `null`（**不兜一个 id 出来**）。 */
+  recommendedId: z.string().min(1).nullable(),
+  /** 决策者点名要、而今天接不上地的轴（见 `ParetoObjectiveGapSchema`）。没有 ⇒ 空数组。 */
+  unavailableObjectives: z.array(ParetoObjectiveGapSchema),
 });
 export type ParetoResult = z.infer<typeof ParetoResultSchema>;
 
@@ -1417,6 +1591,19 @@ export const ParetoRequestSchema = z.strictObject({
   levers: z.array(ParetoLeverGridSchema).min(1),
   /** 绑定约束上限（不给 ⇒ 该解 `bindings` 为空数组，**不是**「没有约束」的断言）。 */
   constraints: z.array(z.strictObject({ key: z.string().min(1), limit: z.number() })).optional(),
+  /**
+   * 目标权重（键 = `objectives[].key`）。**只影响 `ranking`/`recommendedId`，不影响 `frontier`**
+   * —— 理由与"绝不流进 `args`"的机制见 `ParetoWeightsSchema` 的注释段。
+   *
+   * 不给 ⇒ 各目标等权 1。不在 `objectives` 里的键**被忽略**（不报错）：
+   * 用户在屏上留着一个已经换掉的轴的滑杆，不该让整次求解 400。
+   */
+  weights: ParetoWeightsSchema.optional(),
+  /**
+   * 装配器判定**接不上地**的轴，原样透传到结果里（见 `ParetoObjectiveGapSchema`）。
+   * 这一格由装配侧填、求解侧只回显 —— 求解器不认识"本租户本体缺哪个字段"这件事。
+   */
+  unavailableObjectives: z.array(ParetoObjectiveGapSchema).optional(),
 });
 export type ParetoRequest = z.infer<typeof ParetoRequestSchema>;
 

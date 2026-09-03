@@ -147,12 +147,24 @@ describe("WO-SIM-PARETO-MODEL-EXIT · 装配出口 → 求解 整条缝", () => 
     expect(roleMap.line_assign_cost).toBe("Coach.runCost");
     expect(JSON.stringify(res), "装配结果里出现了本仓演示行业的实体名 ⇒ 有硬编码").not.toMatch(/Base|unitPrice|formationCap/);
 
-    // ── 反向证据 2：三个目标**每一个都接得到地**（label 就是它的出处）。
+    // ── 反向证据 2：三个**接得到本体地**的目标（label 就是它的出处），外加一根**交付**。
+    //
+    // ⚠ WO-PARETO-AXES 起这里从 3 根变 4 根。第 4 根（`serviceRate`）与前三根**性质不同**：
+    //   前三根的 label 是「类型.字段」= 它从本体哪一格接出来的；
+    //   第 4 根是引擎结构读数（`servedCount`/`orderCount`）的派生，本体上没有对应字段。
+    //   这个区别**必须被咬住** —— 下面 `groundedLabels` 那一条正是防止哪天有人
+    //   把一根派生轴混进"接得到地"的那批里，从而让「真目标 < 2 ⇒ 报缺」这条红线失效。
     expect(res.request.objectives.map((o) => `${o.key}:${o.dir}:${o.label}`)).toEqual([
       "revenue:max:TicketOrder.farePrice",
       "penalty:min:TicketOrder.refundCost",
       "cost:min:Coach.runCost",
+      "serviceRate:max:获排率（获排单数 ÷ 总单数）",
     ]);
+    // 前三根的 label 必须逐个是「本租户某类型.某字段」；第 4 根必须**不是** ——
+    // 它若长成 `X.y` 的样子，就说明有人给它伪造了一个本体出处。
+    const groundedLabels = res.request.objectives.slice(0, 3).map((o) => o.label ?? "");
+    for (const l of groundedLabels) expect(l).toMatch(/^(TicketOrder|Coach)\.[A-Za-z]+$/);
+    expect(res.request.objectives[3]!.label ?? "").not.toMatch(/^(TicketOrder|Coach)\./);
     // ── 反向证据 3：杠杆档位取自**实测产能取值**（10/20/30），不是编出来的等分刻度。
     expect(res.request.levers.map((l) => l.values)).toEqual([[10, 20, 30], [10, 20, 30], [10, 20, 30]]);
     expect(res.request.levers.map((l) => l.key).sort()).toEqual(["lines.c1.capacity", "lines.c2.capacity", "lines.c3.capacity"]);
