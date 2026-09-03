@@ -422,6 +422,19 @@ export interface SimRepo {
   listCheckpoints(tenantId: string, sessionId: string): Promise<SimCheckpoint[]>;
   putPropagationRule(r: PropagationRule): Promise<void>;
   listPropagationRules(tenantId: string, publishedOnly?: boolean): Promise<PropagationRule[]>;
+  /**
+   * 按 id 读一条因果边（WO-CAUSAL-EDGE-CRUD，`PATCH` / `DELETE` 的前置读）。
+   * **跨租户一律 `null`**（R2）——与本文件其余 `get*` 逐条同口径，不是"过滤掉"而是"查无此条"。
+   * ⚠ 不带 `publishedOnly` 语义：`PATCH` 要能改一条 `DRAFT`（停用中）的边把它拨回 `PUBLISHED`，
+   *   只读已发布的话，停用过的边就再也够不着了 —— 那正是结构边「点了回不来」那个坑。
+   */
+  getPropagationRule(tenantId: string, id: string): Promise<PropagationRule | null>;
+  /**
+   * 按 id 删一条因果边（WO-CAUSAL-EDGE-CRUD）。跨租户不删（R2），删不存在的 id 是 no-op。
+   * ⚠ 调用方**必须先查引用**：本方法是纯存储动作，不含任何「还被谁用着」的判断 ——
+   *   把闸门放在仓储里，`seedDemoPropagationRules` 这类内部写路会被自己的闸门挡住。
+   */
+  deletePropagationRule(tenantId: string, id: string): Promise<void>;
   // ── 扰动一等公民（WO-P0 · migrations/028_perturbations.sql · PRD-UPGRADE-decision-sandbox-v2 §3.1）──
   // R9 三处同改：本接口 + memory.ts MemSimRepo + pg.ts PgSimRepo，语义须无漂移。
   /** 建一条扰动（幂等 upsert：同 id 覆盖，便于 pg/memory 语义一致）。 */

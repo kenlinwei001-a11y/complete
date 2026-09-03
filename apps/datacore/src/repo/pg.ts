@@ -210,6 +210,15 @@ export class PgSimRepo implements SimRepo {
     const all = r.rows.map((row) => row.doc as PropagationRule);
     return publishedOnly ? all.filter((x) => x.status === "PUBLISHED") : all;
   }
+  // WO-CAUSAL-EDGE-CRUD · R9 三处同改：本类 + MemSimRepo + Repo 接口，语义须无漂移。
+  // ⚠ 两处 `tenant_id=$2` 是 R2 的落点，不是多余的 where：只按 id 删会让 A 租户删掉 B 租户的边。
+  async getPropagationRule(tenantId: string, id: string) {
+    const r = await this.pool.query(`SELECT doc FROM sim_propagation_rule WHERE id=$1 AND tenant_id=$2`, [id, tenantId]);
+    return r.rows.length > 0 ? (r.rows[0].doc as PropagationRule) : null;
+  }
+  async deletePropagationRule(tenantId: string, id: string) {
+    await this.pool.query(`DELETE FROM sim_propagation_rule WHERE id=$1 AND tenant_id=$2`, [id, tenantId]);
+  }
   // ── 扰动一等公民（WO-P0 · migrations/028_perturbations.sql · R9 与 memory.ts MemSimRepo 语义须逐条对齐）──
   async createPerturbation(p: Perturbation) {
     await this.pool.query(

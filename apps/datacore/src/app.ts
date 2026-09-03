@@ -22,7 +22,7 @@ import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
 import type { LlmClient } from "./llm.js";
 import { Metrics, actionMetricsView } from "./metrics.js";
-import { AppError, forbidden, notFound, unauthorized, validationError } from "./errors.js";
+import { AppError, forbidden, invalidState, notFound, unauthorized, validationError } from "./errors.js";
 import { newId } from "./ids.js";
 import { CredentialCipher } from "./crypto.js";
 import { AuthService } from "./auth.js";
@@ -67,7 +67,7 @@ import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow�
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type TickState } from "@platform/contracts";
+import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type UnresolvedCadenceGate } from "./sim/propagation.js";
 // 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
@@ -2599,13 +2599,116 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       stateVarNames: stateVarDisplayNames(items.flatMap((r) => [r.sourceStateVar, r.targetStateVar])),
     };
   });
+  /**
+   * 建/改一条因果边 —— **同 `key` 即 upsert**（WO-CAUSAL-EDGE-CRUD）。
+   *
+   * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════
+   * **X（改前，2026-09-03 真后端实测复现）**：本处把 `id: newId("simpr")` 写在 `req.body` 展开
+   *   **之后** ⇒ 客户端给什么 id 都被盖掉，而仓储 `putPropagationRule` 按 **id** 落键
+   *   ⇒ 同一个 `key` 写两次得**两行**（实测 `REPRO_EDGE`：`simpr_n88y…` 系数 0.5 与
+   *   `simpr_3e35…` 系数 0.9 并存，两行 `status` 都是 `PUBLISHED`）。
+   *   而 `propagateTick` 是**逐规则**调 `applyContribution(…, rule.combine, …)`
+   *   （`sim/propagation.ts:614`）⇒ `combine:"sum"` 下**两条都算**：用户以为自己把系数
+   *   从 0.5 改成了 0.9，真实效果是 `0.5 + 0.9 = 1.4`。**推演结论静默偏离**，
+   *   且当时 `PUT`/`PATCH`/`DELETE` 一个都没注册（源码金丝雀：`app.put(` 全文 16 命中、
+   *   本路径 0 命中）⇒ 多出来的那条**删不掉**。
+   * **Y（改后）**：`key` 是身份 —— 同 `key` 复用既有 `id`、`version` 递增、整条覆盖，
+   *   **恒 1 行**。
+   *
+   * ══ 为什么是 upsert 而不是 409 ═════════════════════════════════════════════
+   * 派单允许二选一。选 upsert 的理由不是省事，是**本仓已经有这套语义了**：结构边
+   * `POST /a/v1/ontology/link-types` → `ontology.ts upsertLinkType` 就是「按 key 找既有 →
+   * 复用 id → version+1」（实测金丝雀：同 key 连写两次得 `ltype_n87a…` v1→v2，**1 行**）。
+   * 因果边照抄这一套 ⇒ 两种边在屏上、在 API 上是**同一个心智模型**。
+   * 选 409 等于给本仓添**第四种**写语义（已有：结构边 upsert · 对象类型整体替换 · 因果边追加），
+   * 而本单的目的正是把第三种消掉。
+   *
+   * ⚠ **整条覆盖，不是字段合并** —— 与 `PATCH` 的分工要说死：
+   *   POST 认 `key`、改**整条**（省略的可选字段回落 schema 默认，与结构边一致）；
+   *   PATCH 认 `id`、只改**递上来的那几格**。要改一格就用 PATCH，别用 POST 重述全部字段。
+   *
+   * 回码：新建 **201**、改既有 **200**（`version > 1` 即改）。调用方据此分辨"我是不是覆盖了别人的边"。
+   */
   app.post("/a/v1/sim/propagation-rules", async (req, reply) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
     // 与上方 `POST …/perturbations` 的 `safeParse` 记账同一个坑（那处已修、这处漏了）：
     // 裸 `parse` 抛的 ZodError 没有 `statusCode` ⇒ 兜底处理器判 500 INTERNAL_ERROR 并回显 zod 内部结构。
-    const r = parseBody(PropagationRuleSchema, { ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
+    const draft = parseBody(PropagationRuleSchema, { ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
+    // 按 `key` 找既有（`false` = 连 DRAFT/RETIRED 一起看）。
+    // ⚠ 必须看**全部状态**：只看 PUBLISHED 的话，一条被停用的同 key 边会被当成"不存在"，
+    //   于是又新建一条 —— 那正是本单要消掉的重复行，只是换了个触发条件。
+    const existing = (await repos.sim.listPropagationRules(c.tenantId, false)).find((x) => x.key === draft.key);
+    const r: PropagationRule = { ...draft, id: existing?.id ?? draft.id, version: (existing?.version ?? 0) + 1 };
     await repos.sim.putPropagationRule(r);
-    return reply.status(201).send(r);
+    return reply.status(existing ? 200 : 201).send(r);
+  });
+  /**
+   * 改一条既有因果边的**数值与闸门**（系数 / 延迟 / 合并 / 衰减 / 钳制 / 节拍 / 启停）。
+   *
+   * 身份格（`key` 与源/链/目标六元组）**不可改** —— 理由写在契约
+   * `PropagationRulePatchSchema` 头注：允许改身份 = 允许把一条边原地掉包，
+   * 而历史推演 trace 里按 `ruleKey` 的引用会指向一条语义已变的边。
+   *
+   * ⚠ **启停是可逆的**（`PUBLISHED ⇄ DRAFT` 同一条路径，没有单向闸）。这是刻意**不复制**
+   *   结构边那个已知坑：`deprecate`/`retire` 是两个只进不出的动作，屏上没有任何按钮
+   *   能把结构边从「已停用」拨回「启用」。派单点名要求「停用要能再启用」，落点就在这里。
+   *
+   * 每次 PATCH `version` 递增 ⇒ 「这条边被改过几次」在 upsert 与 PATCH 两条写路上是**同一个计数器**，
+   * 不是各记各的。
+   */
+  app.patch("/a/v1/sim/propagation-rules/:id", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const id = (req.params as { id: string }).id;
+    const cur = await repos.sim.getPropagationRule(c.tenantId, id);
+    if (!cur) throw notFound("propagation rule"); // 跨租户同样走这一支（R2：查无此条，不泄露存在性）
+    const patch = parseBody(PropagationRulePatchSchema, req.body ?? {});
+    const next: PropagationRule = { ...cur, ...patch, version: cur.version + 1 };
+    await repos.sim.putPropagationRule(next);
+    return next;
+  });
+  /**
+   * 删一条因果边 —— **两步走，第一步可逆**（WO-CAUSAL-EDGE-CRUD）。
+   *
+   * ══ 派单的硬要求：「⛔ 不许静默删掉后让推演结果悄悄变化」════════════════════
+   * 一条 `PUBLISHED` 的边**按定义**就在推演集合里（`GET /sim/view-config` 与
+   * `POST …/tick` 读的都是 `listPropagationRules(tenantId, true)`，那个 `true` 的判据
+   * 就是 `status === "PUBLISHED"`）。直接删 ⇒ 每个在跑的会话下一拍读数都变，而没有任何
+   * 痕迹说明为什么变。故本路由对 `PUBLISHED` 的边**拒绝删除（409）**，并指路：
+   * 先 `PATCH {status:"DRAFT"}` 停用 —— 那一步**可逆**、读数变化**当场可见可回退**，
+   * 确认无碍之后再删。**把不可逆动作挡在可逆动作后面**，而不是加一句警告了事。
+   *
+   * ══ 第二道闸：被某个会话**按 key 点名**引用的边也不许删 ═══════════════════
+   * `SimSession.disabledRuleKeys` 存的是**规则 key 字符串**（「这一局我们假装这条边不存在」）。
+   * 删掉边而留下那个 key ⇒ 悬空引用：会话的假设集里点名了一条查无对证的边，
+   * `unknownPropagationRuleKeys` 会把它报成未知键。故 409 并**逐条点名是哪几个会话**
+   * （不是只说"还被引用着"—— 说不清被谁引用的拒绝，用户没法据此行动）。
+   *
+   * 两道闸都过 ⇒ 硬删。此时这条边既不在推演集合里、也没有会话点名它，
+   * 删掉**不改变任何读数** —— 这正是「不静默改变推演结果」这句话的可验证形式。
+   */
+  app.delete("/a/v1/sim/propagation-rules/:id", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const id = (req.params as { id: string }).id;
+    const cur = await repos.sim.getPropagationRule(c.tenantId, id);
+    if (!cur) throw notFound("propagation rule");
+    if (cur.status === "PUBLISHED") {
+      throw invalidState(
+        `因果边 ${cur.key} 仍处于启用态（PUBLISHED），正参与推演 —— 直接删除会让所有在跑会话的读数静默改变。` +
+          `请先 PATCH {"status":"DRAFT"} 停用（可逆、读数变化当场可见），确认无碍后再删。`,
+      );
+    }
+    const referring = (await repos.sim.listSessionSummaries(c.tenantId))
+      .filter((s) => (s.disabledRuleKeys ?? []).includes(cur.key))
+      .map((s) => s.id)
+      .sort(); // 全序 ⇒ 同输入同输出（R6），报文可被逐字节比对
+    if (referring.length > 0) {
+      throw invalidState(
+        `因果边 ${cur.key} 被 ${referring.length} 个推演会话按 key 点名引用（disabledRuleKeys）：${referring.join(", ")}。` +
+          `删掉会在这些会话的假设集里留下悬空引用；请先在这些会话里取消对该边的屏蔽。`,
+      );
+    }
+    await repos.sim.deletePropagationRule(c.tenantId, id);
+    return reply.status(204).send();
   });
   /**
    * WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（纯只读）。
