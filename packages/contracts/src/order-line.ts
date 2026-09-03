@@ -12,6 +12,8 @@ import { z } from "zod";
  *  - 勾稽铁律：Σ OrderLine.qty (BY orderRef) === Order.qty（拆行不改总量·尾行取余额保 Σ 精确）。
  *  - lineStatus 种子基线态（连续行必不同态→一单多行天然多态·行级独立态）。
  *  - unitPrice 按行 model 反范式化（Model.unitPrice 单一来源·守 R14·勿写死）。
+ *  - unitCost 同上（Model.unitCost 单一来源）—— WO-UNITCOST-LAND：营收侧与成本侧**同阶**，
+ *    毛利才答得了「单位经济学上哪个方案更划算」，而不只是「这批单赚多少」。
  */
 
 /** 明细行状态：未处理(OPEN) / 已承诺(COMMITTED) / 部分满足(PARTIAL) / 已发运(SHIPPED)。 */
@@ -30,5 +32,11 @@ export const OrderLineSchema = z.object({
   due: z.string(), // 交期（继承订单头·后续可行级精化）
   lineStatus: OrderLineStatusSchema,
   unitPrice: z.number(), // 按行 model 反范式化（Model.unitPrice 单一来源·R14）
+  /**
+   * WO-UNITCOST-LAND · 按件履约成本（元/电芯），按行 model 反范式化（`Model.unitCost` 单一来源·R14）。
+   * 值 = Σ 该型号当期 BOM 明细 `quantity ×(1+lossRate)× Material.unitPrice`（`battery.ts modelUnitCosts`）。
+   * ⚠ 口径边界：今天只含**物料**，不含人工/制造费用/物流 —— 拿它当完全成本会低估。
+   */
+  unitCost: z.number(),
 });
 export type OrderLine = z.infer<typeof OrderLineSchema>;
