@@ -333,10 +333,24 @@ export async function deriveSeedBaseSnapshot(
     origin: {
       kind: "DERIVED",
       formula: "round(hash01(`${objectId}|${stateVar}`) × 100)（FNV-1a · 与前端 deriveBaseSnapshot 同式）",
+      /**
+       * ⛔ **这句是直接印在用户屏上的，必须是纯文本人话** —— 不许写 markdown 标记，
+       *    也不许写接口字段名 / 变量名。
+       *
+       * 今天有两个消费方，**都按纯文本渲染、都不过 markdown**：
+       *   · `views/sim/unified/UnifiedSimShell.tsx` 顶部「世界态出处」状态行（整句一份）；
+       *   · `views/sim/unified/metricWallModel.ts` 的 `calibreTextOf` —— **每张指标卡各一份**。
+       * 后者是放大器：一屏 40 张卡里凡有读数的都会带上这句，所以这里多一个 `**`，
+       * 屏上就多十几个。实测（2026-08-30 真浏览器 · demo/admin）：修前折叠态 8 个字面 `*`、
+       * 展开「未变化」后 24 个；修后两态皆 0。
+       *
+       * 同理 `measuredCells` 原本也写在这句里 —— 那是接口字段名，用户读不懂；
+       * 屏上那一项显示的词是「实测格」，所以这里跟着说「实测格」。
+       */
       note:
-        "种子世界的 tick0 读数由**本体结构派生**（确定性占位），不是实测：" +
+        "种子世界的 tick0 读数由本体结构派生（确定性占位），不是实测：" +
         "推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值 —— " +
-        "measuredCells 就是每次播种现场探到的真读数格数。凡拿它当起点算出的差值，量级不可当实测读。",
+        "「实测格」一项计的就是每次播种现场探到的真读数格数。凡拿它当起点算出的差值，量级不可当实测读。",
       types: byType.size,
       objects,
       cells,
