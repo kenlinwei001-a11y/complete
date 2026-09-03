@@ -12,6 +12,8 @@ import { crossBaseLeadOf, outsourceLeadOf } from "./decision-info.js";
  *   ② 在产订单占用 inProduction = 未完工 WorkOrder.qtyActual 铺到窗（× 窗口/参照期）
  *   ③ 未来订单   futureOrders = Order.due 落在窗内（首基地=本基地）的 Σqty
  *   ④ 销售预测   salesForecast = ΣDemandSegment.demandWanPerYearP50×1e4 按基地产能占比 × 窗口/年 摊到窗
+ *      └ WO-UNCERTAINTY-INPUTS：同式再喂 P90 / P10 得 `salesForecastBand{conservative,baseline,optimistic}`
+ *        （确定性三次求值·非采样非蒙特卡洛）。基准 `salesForecast` 表达式一字未动。
  * → 缺口/富余标记（gap=available−(在产+未来)）+ crossDay（累计需求首越可用产能日）。
  *
  * P1 · 行动计划逐日过程：缺口窗内产 dayPlan——每条日行动补 rationale（该日为何做此动作：触发越线缺口值
@@ -70,7 +72,26 @@ export interface HorizonOutlook {
   available: number;
   inProduction: number;
   futureOrders: number;
+  /** 销售预测**基准情形**（P50 中位·口径与本字段历史行为逐位不变）。@unit 套 */
   salesForecast: number;
+  /**
+   * WO-UNCERTAINTY-INPUTS · 销售预测的**三点区间**（同一条公式喂三个分位得到的三个读数）。
+   *
+   * 本仓此前只有一个点估计：名字里写着 P50，而**上下游没有第二个分位**，
+   * 于是"中位数"这三个字没有任何东西在支撑它 —— 它只是一个被叫做 P50 的点。
+   * 现在 `DemandSegment` 三点齐备（P90 ≤ P50 ≤ P10），本求解器把同一条摊窗公式
+   * 跑三遍得到三个读数。**不是采样，不是蒙特卡洛** —— 三次确定性求值而已。
+   *
+   * 口径（置信水平式·SPE/PRMS）：
+   *   · `conservative` ← DemandSegment.demandWanPerYearP90（保守下界·有 90% 把握至少达到）
+   *   · `salesForecast` ← …P50（基准·中位）
+   *   · `optimistic`   ← …P10（乐观上界·仅 10% 把握达到）
+   * 恒有 `conservative ≤ salesForecast ≤ optimistic`（三个分位同序 ⇒ 同一线性摊窗后保序）。
+   *
+   * ⚠ 对照实验判据：改 P90 只动 `conservative`，改 P10 只动 `optimistic`，
+   * **`salesForecast` 一位都不许动** —— 它若跟着变，说明分位被误接进了基准路径。
+   */
+  salesForecastBand: { conservative: number; baseline: number; optimistic: number };
   demand: number;
   gap: number;
   status: "缺口" | "富余" | "平衡";
@@ -150,6 +171,15 @@ export function baseCapacityOutlook(input: BaseOutlookInput): BaseOutlookResult 
   const p50TotalWan = round(segments.reduce((a, s) => a + num(s.demandWanPerYearP50), 0), 4); // 万套/年
   const forecastUnitsAnnual = round(p50TotalWan * 1e4 * baseShare, 2); // 套/年（本基地份额）
 
+  // WO-UNCERTAINTY-INPUTS · 另外两个分位走**同一条**摊窗公式（单一出处·不另写一套算法）。
+  // 缺字段时诚实回落到 P50 那一档（区间塌成一个点），**不臆造宽度**——
+  // 「没有区间」与「区间为零」在屏上必须能分开，故下方 `hasBand` 显式判定，不靠数值相等去猜。
+  const annualUnitsAt = (propKey: string): number =>
+    round(round(segments.reduce((a, s) => a + num(s[propKey]), 0), 4) * 1e4 * baseShare, 2);
+  const hasBand = segments.some((s) => num(s.demandWanPerYearP90) > 0) && segments.some((s) => num(s.demandWanPerYearP10) > 0);
+  const forecastUnitsAnnualP90 = hasBand ? annualUnitsAt("demandWanPerYearP90") : forecastUnitsAnnual;
+  const forecastUnitsAnnualP10 = hasBand ? annualUnitsAt("demandWanPerYearP10") : forecastUnitsAnnual;
+
   const buildHorizon = (H: number): HorizonOutlook => {
     const available = round(freeDaily * H, 2);
     const inProduction = round(inProdTotal * Math.min(1, H / Math.max(1, inProdRefDays)), 2);
@@ -157,7 +187,14 @@ export function baseCapacityOutlook(input: BaseOutlookInput): BaseOutlookResult 
       baseOrders.filter((o) => o.dueDay >= 0 && o.dueDay <= H).reduce((a, o) => a + o.qty, 0),
       2,
     );
-    const salesForecast = round((forecastUnitsAnnual * H) / Math.max(1, annualDays), 2);
+    const spread = (annualUnits: number) => round((annualUnits * H) / Math.max(1, annualDays), 2);
+    const salesForecast = spread(forecastUnitsAnnual);
+    // 三个分位共用 `spread` —— 基准读数的表达式一字未动，故 P10/P90 改动**不可能**渗进它。
+    const salesForecastBand = {
+      conservative: spread(forecastUnitsAnnualP90),
+      baseline: salesForecast,
+      optimistic: spread(forecastUnitsAnnualP10),
+    };
     const demand = round(inProduction + futureQty, 2);
     const gap = round(available - demand, 2);
     const status: "缺口" | "富余" | "平衡" = gap < -1e-6 ? "缺口" : gap > 1e-6 ? "富余" : "平衡";
@@ -235,6 +272,7 @@ export function baseCapacityOutlook(input: BaseOutlookInput): BaseOutlookResult 
       inProduction,
       futureOrders: futureQty,
       salesForecast,
+      salesForecastBand,
       demand,
       gap,
       status,
