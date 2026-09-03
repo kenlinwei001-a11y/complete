@@ -3557,17 +3557,42 @@ export const handlers = [
   ),
   http.post("*/a/v1/validation/runs", () => HttpResponse.json({ id: "vrun_2" }, { status: 202 })),
 
-  http.get("*/a/v1/quarantine", () => {
-    const items = [
+  /*
+   * ⚠ WO-QUARANTINE-DISCARD · 这两个 mock 是**另一个方向**的假绿：语义比后端**更宽松**。
+   *
+   * · `GET /a/v1/quarantine` 后端按 `?status=`（缺省 PENDING）**服务端过滤**
+   *   （`apps/datacore/src/app.ts` 该路由 → `QuarantineService.list(c, status ?? "PENDING")`）；
+   *   mock 原先无视 `?status=` 恒回全部两行 ⇒ 「状态页签有没有真接上」在 mock 下测不出来。
+   * · `POST /a/v1/quarantine/discard` 后端 zod 是 `{ ids: min(1), comment: z.string().min(1) }`
+   *   且 `discard()` 里再校一次 `comment.trim()`；mock 原先**无条件** `{discarded:1}` ⇒
+   *   前端漏发 `comment` 时 mock 照样绿，真后端 400（实测
+   *   `comment: Invalid input: expected string, received undefined`）—— 这正是本单要修的那个 bug，
+   *   而它在 mock 模式下**一次都没被抓到**。
+   *
+   * 形态：**「我用『mock 模式下这个动作成功了』当作『这个动作能用』的证据，
+   * 而前者并不度量后者 —— mock 的校验比后端松。」**
+   * 现改成与后端同宽严，机器就会先说话：谁再把 comment 漏掉，mock 模式当场 400。
+   */
+  http.get("*/a/v1/quarantine", ({ request }) => {
+    const status = new URL(request.url).searchParams.get("status") ?? "PENDING";
+    const all = [
       { id: "qr_1", connId: "conn_1", dataset: "orders", raw: { so: "", qty: 10 }, reason: "SCHEMA_MISMATCH", detail: "缺主键 so", status: "PENDING", createdAt: "2026-06-17T08:00:00Z" },
-      { id: "qr_2", connId: "conn_1", dataset: "orders", raw: { so: "SO-1", qty: "x" }, reason: "TYPE_ERROR", detail: "qty 非数字", status: "DISCARDED", createdAt: "2026-06-17T08:01:00Z" },
+      { id: "qr_2", connId: "conn_1", dataset: "orders", raw: { so: "SO-1", qty: "x" }, reason: "TYPE_ERROR", detail: "qty 非数字 | discarded: 源系统脏数据，已在上游修正", status: "DISCARDED", createdAt: "2026-06-17T08:01:00Z" },
     ];
+    const items = all.filter((q) => q.status === status);
     const byReason: Record<string, number> = {};
     for (const q of items) byReason[q.reason] = (byReason[q.reason] ?? 0) + 1;
     return HttpResponse.json({ items, byReason, total: items.length });
   }),
   http.post("*/a/v1/quarantine/:id/reprocess", () => HttpResponse.json({ ok: true })),
-  http.post("*/a/v1/quarantine/discard", () => HttpResponse.json({ discarded: 1 })),
+  http.post("*/a/v1/quarantine/discard", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { ids?: unknown; comment?: unknown };
+    // 后端 zod：ids 非空数组 + comment 非空串；`discard()` 再 `comment.trim()` 一次。三条都照抄。
+    if (!Array.isArray(body.ids) || body.ids.length === 0) return err(400, "VALIDATION_ERROR", "ids: 至少需要一条隔离记录");
+    if (typeof body.comment !== "string") return err(400, "VALIDATION_ERROR", "comment: Invalid input: expected string, received undefined");
+    if (body.comment.trim() === "") return err(400, "VALIDATION_ERROR", "discard requires a comment");
+    return HttpResponse.json({ discarded: body.ids.length });
+  }),
 
   http.get("*/a/v1/notifications", () =>
     HttpResponse.json({
