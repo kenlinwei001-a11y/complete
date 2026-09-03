@@ -3,7 +3,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 // 剥注释一律走仓内**唯一**那份实现（自带四条金丝雀）——各抄一份正则的金丝雀是装饰品。
 import { REPO_ROOT, srcCode, stripComments, factHits, commentOnlyCanary, codeEatenCanary } from "./factlock.js";
-import { OBJECT_KEY_PROPS, projectNavigationSlice, renderNavigationSlice } from "../src/agent/navigation-slice.js";
+import {
+  KEYPROPS_INTENTIONAL_OMISSIONS,
+  OBJECT_KEY_PROPS,
+  projectNavigationSlice,
+  renderNavigationSlice,
+} from "../src/agent/navigation-slice.js";
 import { renderOntologySemanticContext } from "../src/agent/ontology-context.js";
 import type { TypeSemantics } from "@platform/contracts";
 
@@ -31,7 +36,11 @@ import type { TypeSemantics } from "@platform/contracts";
  * ── 咬四件事，缺一件这道门就只是「排练」────────────────────────────────────────
  *  §1 **判据自身没瞎**：抽取器先跑金丝雀（已知必中 / 已知必判假 / 规模下界 / 一条真实踩过的坑）。
  *     金丝雀不中 ⇒ 报「**工具坏了**」，**不许**把结果读作「清单干净」。
- *  §2 **主判据**：`OBJECT_KEY_PROPS` 每一个 (类型, 属性) 都必须在本体里真实存在。
+ *  §2 **主判据（正方向）**：`OBJECT_KEY_PROPS` 每一个 (类型, 属性) 都必须在本体里真实存在。
+ *  §2b **反方向**（WO-KEYPROPS-GAP 新增）：本体上**该露的**钱/单位经济学字段，表里必须列出，
+ *     或在 `KEYPROPS_INTENTIONAL_OMISSIONS` 里写下理由。**这是本门此前整个缺掉的那一半**：
+ *     `Model.unitCost` 落进本体/契约/种子/求解器全链之后唯独没进这张表，而 §2 是单向的
+ *     （只校验「列出的名字存在」，不校验「该有的名字被列出」）⇒ 门照样绿。
  *  §3 **同族第二面**：剥注释后，`apps/agentcore/src` 里凡以 `Type.prop` 形态写给 LLM 的属性名
  *     （solver 描述等）同样不许指假名 —— 只守住那张表不够，同一族的病会换个地方长。
  *  §4 **接缝（不是测函数，是测链路）**：真跑生产入口 `projectNavigationSlice` →
@@ -290,6 +299,151 @@ describe("§2 · OBJECT_KEY_PROPS 逐名对账本体（改名漏改在这里当�
       }
     }
     expect(bad, `喂给 LLM 的属性名有 ${bad.length} 个在本体里不存在 —— 两个消费方都静默丢弃，typecheck 一个都看不见：\n  ${bad.join("\n  ")}`).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §2b · 反方向：本体上**该露的**钱字段，表里列了没有（WO-KEYPROPS-GAP）
+// ---------------------------------------------------------------------------
+
+/**
+ * 钱 / 单位经济学词库 + 分位后缀 —— **§2b 判据的唯一实现**。
+ *
+ * 🚦 主判据、三条金丝雀、合成变异反证**全部调这一个函数**。
+ *    各抄一份正则的金丝雀是装饰品：改主正则时它拿旧的去测、照样绿（本仓 2026-08-08 实测过）。
+ *
+ * ⚠ **词库故意窄**：只咬钱与分位，不咬 `qty|rate|days|util|capacity` 那些。
+ *    宽词库会把命中集撑到全表一半，判据就退化成「所有属性都必须入表」——
+ *    那时白名单成了属性表的副本，语义压缩这件事本身就没了（金丝雀 C 守这条上界）。
+ */
+export function isDecisionMoneyProp(propKey: string): boolean {
+  return (
+    /(cost|price|margin|revenue|profit|amount|payable|receivable)/i.test(propKey) ||
+    /P(10|25|50|75|90|95)$/.test(propKey)
+  );
+}
+
+/** §2b 主判据的**唯一实现**（主检查与合成变异共用）：返回「该列没列、也没写理由」的条目。 */
+export function auditKeyPropsGaps(
+  table: Record<string, string[]>,
+  omissions: Record<string, Record<string, string>>,
+  ontology: OntologyProps,
+): string[] {
+  const gaps: string[] = [];
+  for (const [type, listed] of Object.entries(table)) {
+    const real = ontology.get(type);
+    if (!real) continue; // 幽灵类型由 §2 单独报，不在这里重复
+    const listedSet = new Set(listed);
+    for (const prop of [...real].sort()) {
+      if (!isDecisionMoneyProp(prop)) continue;
+      if (listedSet.has(prop)) continue;
+      // 有意排除必须**带非空理由**：空串/空白 = 用一行占位糊弄，等于没写。
+      const reason = omissions[type]?.[prop];
+      if (typeof reason === "string" && reason.trim().length > 0) continue;
+      gaps.push(
+        `${type}.${prop} —— 本体上有这一格、命中钱/分位词库，却既不在 OBJECT_KEY_PROPS 里` +
+          (typeof reason === "string" ? "，也没在 KEYPROPS_INTENTIONAL_OMISSIONS 里写下非空理由" : "，也没在 KEYPROPS_INTENTIONAL_OMISSIONS 里登记"),
+      );
+    }
+  }
+  return gaps;
+}
+
+/** 从 `navigation-slice.ts` 源码里抽降级镜像声明的对象域（`reads`）—— 该表不导出，故当文本读。 */
+function fallbackReadTypes(): string[] {
+  const src = readFileSync(join(REPO_ROOT, "apps/agentcore/src/agent/navigation-slice.ts"), "utf8");
+  const from = src.indexOf("const FALLBACK_SOLVER_CATALOG");
+  const to = src.indexOf("FALLBACK_SOLVER_CATALOG_KEYS");
+  if (from < 0 || to < 0 || to <= from) return [];
+  const out = new Set<string>();
+  for (const m of src.slice(from, to).matchAll(/reads:\s*\[([^\]]*)\]/g)) {
+    for (const t of m[1]!.matchAll(/"([^"]+)"/g)) out.add(t[1]!);
+  }
+  return [...out].sort();
+}
+
+describe("§2b · 该露的钱字段有没有被列出（新增字段漏投在这里当场红）", () => {
+  const { props } = extractOntologyProps();
+
+  it("金丝雀 A · 词库已知必中：这一批真实字段必须被词库认出来", () => {
+    // 逐字取自本体：`Model.unitCost` / `OrderLine.unitCost` / `DemandSegment.demandWanPerYearP90` /
+    // `Base.serveCost` / `Customer.receivables` —— 认不出它们，§2b 什么都测不到。
+    for (const p of ["unitCost", "unitPrice", "serveCost", "openCost", "receivables", "marginPct", "demandWanPerYearP90"]) {
+      expect(isDecisionMoneyProp(p), `词库认不出 ${p} ⇒ 判据瞎了，本节一切「没有缺口」的结论作废`).toBe(true);
+    }
+  });
+
+  it("金丝雀 B · 词库已知必判假：结构/状态字段不许被咬（否则退化成「全表必须入表」）", () => {
+    for (const p of ["segId", "status", "name", "modelId", "lineNo", "due", "isRoot"]) {
+      expect(isDecisionMoneyProp(p), `词库把 ${p} 也咬了 ⇒ 白名单会被逼成属性表的副本`).toBe(false);
+    }
+  });
+
+  it("金丝雀 C · 规模上界：命中集必须只是已列类型属性的一小撮（防判据退化）", () => {
+    const listedTypes = Object.keys(OBJECT_KEY_PROPS);
+    const totalReal = listedTypes.reduce((a, t) => a + (props.get(t)?.size ?? 0), 0);
+    const hit = listedTypes.reduce((a, t) => a + [...(props.get(t) ?? [])].filter(isDecisionMoneyProp).length, 0);
+    expect(totalReal, "已列类型在本体上一个属性都没有 ⇒ 抽取器坏了").toBeGreaterThan(200);
+    expect(hit, "词库一个都没咬到 ⇒ 判据瞎了，不许读作「没有缺口」").toBeGreaterThan(10);
+    expect(hit / totalReal, `命中率 ${(hit / totalReal * 100).toFixed(1)}% 过高 ⇒ 词库过宽，判据正在退化成属性表副本`).toBeLessThan(0.25);
+  });
+
+  it("金丝雀 D · 合成变异反证（与主判据共用 auditKeyPropsGaps · 四支都验）", () => {
+    const fakeOnt: OntologyProps = new Map([["T", new Set(["tId", "status", "unitCost"])]]);
+    const table = { T: ["tId", "status"] };
+
+    // ① 漏投的钱字段必须被报出来 —— 这一支绿不了，这道门就是装饰品。
+    expect(auditKeyPropsGaps(table, {}, fakeOnt).length, "漏投的 T.unitCost 竟没被报出 ⇒ 主判据不工作").toBe(1);
+    // ② 写下非空理由 ⇒ 消音（有意排除这条路真的通）。
+    expect(auditKeyPropsGaps(table, { T: { unitCost: "口径与别处重复" } }, fakeOnt)).toEqual([]);
+    // ③ 理由是空白 ⇒ 仍然报红（不许拿一行占位糊弄过去）。
+    expect(auditKeyPropsGaps(table, { T: { unitCost: "   " } }, fakeOnt).length, "空白理由竟然也能消音 ⇒ 有意排除退化成万能豁免").toBe(1);
+    // ④ 非钱字段漏投不报（否则判据 = 属性表副本）。
+    const fake2: OntologyProps = new Map([["T", new Set(["tId", "lineNo"])]]);
+    expect(auditKeyPropsGaps({ T: ["tId"] }, {}, fake2)).toEqual([]);
+  });
+
+  it("主判据 · 已列类型上的钱/分位字段，要么入表、要么写下理由", () => {
+    const gaps = auditKeyPropsGaps(OBJECT_KEY_PROPS, KEYPROPS_INTENTIONAL_OMISSIONS, props);
+    expect(
+      gaps,
+      `有 ${gaps.length} 个该露的字段没露 —— 两个消费方都静默丢弃（导航图印不出名字 / 口径块滤掉整条），` +
+        `typecheck 与 §2 一个都看不见：\n  ${gaps.join("\n  ")}`,
+    ).toEqual([]);
+  });
+
+  it("有意排除表自身可信：登记的类型/属性必须真实存在，且理由非空", () => {
+    const bad: string[] = [];
+    for (const [type, entries] of Object.entries(KEYPROPS_INTENTIONAL_OMISSIONS)) {
+      const real = props.get(type);
+      if (!real) { bad.push(`${type} —— 本体里没有这个类型（排除了一个不存在的东西）`); continue; }
+      for (const [prop, reason] of Object.entries(entries)) {
+        if (!real.has(prop)) bad.push(`${type}.${prop} —— 本体上无此属性（排除项自己就是个假名）`);
+        if (!reason.trim()) bad.push(`${type}.${prop} —— 理由为空（理由是写给下一个人看的，不是给门看的）`);
+        if (OBJECT_KEY_PROPS[type]?.includes(prop)) bad.push(`${type}.${prop} —— 既在表里又在排除表里（两处矛盾）`);
+      }
+    }
+    expect(bad, `有意排除表有 ${bad.length} 处不可信：\n  ${bad.join("\n  ")}`).toEqual([]);
+  });
+
+  it("可达即须列出：降级镜像里任一 solver 声明读的对象类型，都必须在 OBJECT_KEY_PROPS 里", () => {
+    // 这是「新增了类型却没进表」的那一半 —— `OrderLine` 当初正是整张表都不在。
+    //
+    // ⚠ **诚实边界（不许把这条读成「整表覆盖」）**：判据只覆盖**降级镜像**声明的 reads。
+    //   生产态走活目录（`fetchLiveSolverCatalog`），对象域来自 A 侧注册表的
+    //   `inputSpec.objectTypes / scopeObjectTypes / tieredTags.l4_object` —— 那份是**活的**，
+    //   本文件按 contracts-only-shared 不 import、也不该把它抄一份进来当基线。
+    //   ⇒ 只在活目录里可达、且不在本表的类型（`OrderLine` 就是这种），
+    //   **本条咬不到**；它一旦进了表，就转由上面那条主判据守。变异反证如实：
+    //   删 `Metric`（镜像 reads 里有）报红；删 `OrderLine`（镜像 reads 里没有）不报红。
+    const reads = fallbackReadTypes();
+    expect(reads.length, "一条 reads 都没抽到 ⇒ 抽取器坏了，不许读作「全都列了」").toBeGreaterThan(15);
+    expect(reads, "已知必中的 Metric 不在 reads 里 ⇒ 抽取器坏了").toContain("Metric");
+    const missing = reads.filter((t) => !(t in OBJECT_KEY_PROPS));
+    expect(
+      missing,
+      `这些类型会被投影进导航图，却没有 keyProps ⇒ 图上印出光秃秃的类型名、模型不知道它带什么字段：\n  ${missing.join(", ")}`,
+    ).toEqual([]);
   });
 });
 
