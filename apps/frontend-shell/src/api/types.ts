@@ -165,7 +165,18 @@ export interface ObjectsPage {
    * 否则就退回成同一个病：给了错的数、而调用方看不出来。
    */
   totalIsLowerBound?: boolean;
-  /** 服务端对本次请求的提示（如传了它不认识的查询参数）。不该被静默丢掉。 */
+  /**
+   * 本次**生效**的页号 / 页长（不是请求值）。请求的 `pageSize` 可能被服务端夹到上限
+   * （现为 500），拿请求值去算「还有没有下一页」会算错，所以以这两个回显值为准。
+   */
+  page?: number;
+  pageSize?: number;
+  /**
+   * 还有没有下一页。**判断截断优先用它**，别自己写 `page * pageSize < total` ——
+   * 那道算术在 `pageSize` 被夹时必错，而且每个调用方都要重写一遍。
+   */
+  hasMore?: boolean;
+  /** 服务端对本次请求的提示（如 pageSize 被夹到上限、传了它不认识的查询参数）。不该被静默丢掉。 */
   warnings?: string[];
 }
 
