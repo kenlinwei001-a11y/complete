@@ -29,6 +29,71 @@ describe("F43 · 管理页整簇", () => {
     await screen.findByText("已重入正门");
   });
 
+  /**
+   * WO-QUARANTINE-DISCARD · 「丢弃」此前**点了必失败**：前端发 `{ ids }`，
+   * 后端要 `{ ids, comment: z.string().min(1) }`（`apps/datacore/src/app.ts` 的
+   * `/a/v1/quarantine/discard` + `QuarantineService.discard()` 里的 `comment.trim()`）
+   * ⇒ 真后端实测 400 `VALIDATION_ERROR`
+   * （`comment: Invalid input: expected string, received undefined`）。
+   *
+   * 这条咬的是**接缝**不是函数：mock 现已与后端同宽严（漏 comment 即 400），
+   * 所以谁再把 `comment` 从请求体里拿掉，这条当场红——**机器先说话**。
+   * 空理由那半同样要咬：只靠后端 400 = 用户仍然看到一个失败的动作，那只修了一半。
+   */
+  it("隔离区丢弃：理由留空不发请求；填了理由才成功（接缝：body 必须带 comment）", async () => {
+    const user = userEvent.setup();
+    const sent: unknown[] = [];
+    let discardCalls = 0;
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("/a/v1/quarantine/discard")) {
+        discardCalls++;
+        sent.push(JSON.parse(String(init?.body ?? "{}")));
+      }
+      return origFetch(input as RequestInfo, init);
+    }) as typeof fetch;
+
+    try {
+      loginAs("planner");
+      renderApp("/admin/quarantine");
+      await screen.findByTestId("quarantine-page");
+
+      await user.click(await screen.findByTestId("q-discard-qr_1"));
+      const confirm = await screen.findByTestId("q-discard-confirm-qr_1");
+      // ① 反向对照：理由空 ⇒ 禁用，且点下去**一个请求都不发**
+      expect(confirm).toBeDisabled();
+      await user.click(confirm);
+      expect(discardCalls).toBe(0);
+      // 纯空格也算空（后端 `comment.trim()` 就是这么判的）
+      await user.type(screen.getByTestId("q-reason-qr_1"), "   ");
+      expect(await screen.findByTestId("q-discard-confirm-qr_1")).toBeDisabled();
+
+      // ② 填了理由 ⇒ 可提交，且 body 真带上 comment（这就是当初漏掉的那个字段）
+      await user.clear(screen.getByTestId("q-reason-qr_1"));
+      await user.type(screen.getByTestId("q-reason-qr_1"), "源系统重复录入");
+      const ok = await screen.findByTestId("q-discard-confirm-qr_1");
+      expect(ok).not.toBeDisabled();
+      await user.click(ok);
+      await screen.findByText("已丢弃");
+      expect(discardCalls).toBe(1);
+      expect(sent[0]).toEqual({ ids: ["qr_1"], comment: "源系统重复录入" });
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("隔离区：切到「已丢弃」页签能回读作废理由（否则理由写了没人看得见）", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    renderApp("/admin/quarantine");
+    await screen.findByTestId("quarantine-page");
+    await user.click(screen.getByTestId("q-tab-DISCARDED"));
+    // 后端把理由写进 `detail`（`… | discarded: <理由>`），这是它唯一的作废依据
+    expect(await screen.findByTestId("q-detail-qr_2")).toHaveTextContent("discarded: 源系统脏数据，已在上游修正");
+    expect(screen.queryByTestId("q-row-qr_1")).toBeNull(); // PENDING 不串进来
+  });
+
   it("通知中心：未读角标 + 跳转引用对象", async () => {
     loginAs("planner");
     renderApp("/admin/notifications");
