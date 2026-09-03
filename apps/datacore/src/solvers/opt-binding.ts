@@ -338,6 +338,40 @@ export async function bindCrossObjectOccupancy(
   const eligCostUnit = unitForRole("elig_cost", rm, byKey);
   const costUnit = rm.has("elig_cost") ? eligCostUnit : assignCostUnit;
   const costScale = alignCurrency ? currencyScaleOf(costUnit) : 1;
+
+  /**
+   * ══ WO-UNITCOST-LAND · 成本这一格：**按指派**计价还是**按件**计价 ═══════════════
+   *
+   * **今天的行为是 X**：`eligibility[].cost` 只有两个来源，`elig_cost` 与 `line_assign_cost`，
+   * **两个都是按「一次指派」计价的标量**（同 `facility_location` 的 `assign_cost` 口径）。
+   * 于是成本与订单大小无关：一行 722 件与一行 7,220 件占用同一条线 ⇒ **成本完全相同**。
+   * 营收侧上一单已由 `unit_revenue` 修成「单价 × 用量」，成本侧却还停在按指派 ⇒
+   * 两根轴**不同阶**，相减得到的"毛利"里成本占比只有 0.331%（实测），
+   * 毛利轴因此与营收轴强同向，答不了「单位经济学上哪个方案更划算」。
+   *
+   * **应该是 Y**：本体给得出**按件履约成本**时（`OrderLine.unitCost`，元/电芯），
+   * 该单的履约成本 = `unitCost × qty`，与营收侧同阶。
+   *
+   * **修法与营收侧严格对称，不新发明**：新增可选 role `unit_cost`（order 上的强度量格），
+   * 判据是**显式声明**不是猜名字 —— 理由与上面 `unit_revenue` 那一段逐字相同：
+   * 本层跨行业通用，换个租户 `cost` 可能真的绑在一格总额上，那时乘 qty 就是平方级高估，
+   * 而**屏上看不出来**。名字判定属于装配器（它有词库 `ROLE_LEXICON.unitRate`）。
+   *
+   * ⚠ **加性叠加，不是替换**：按件成本与按指派成本是**两笔不同的钱**
+   * （料工费 vs 占线/换型），故 `cost = 指派成本 + 每件成本 × qty`。
+   * 未绑 `unit_cost` ⇒ 该项恒 0 ⇒ 既有调用方逐字节不变。
+   */
+  const unitCostProp = rm.has("unit_cost") ? propForRole("unit_cost", rm) : undefined;
+  const unitCostScale = alignCurrency ? currencyScaleOf(unitForRole("unit_cost", rm, byKey)) : 1;
+  /** 订单 id → 该单的按件履约成本总额（`unitCost × qty`，已折到基准货币单位）。未绑 ⇒ 空表。 */
+  const unitFulfillCost = new Map<string, number>(
+    unitCostProp
+      ? orderObjs.map((o) => {
+          const p = o.props as Record<string, unknown>;
+          return [objId(o, orderPk), num(p[unitCostProp]) * num(p[qtyProp]) * (unitCostScale ?? 1)] as [string, number];
+        })
+      : [],
+  );
   const lineAssignCost = new Map(
     assignCostProp
       ? lineObjs.map((l) => [objId(l, linePk), num((l.props as Record<string, unknown>)[assignCostProp]) * (costScale ?? 1)])
@@ -373,13 +407,18 @@ export async function bindCrossObjectOccupancy(
       // 该线的标量占用成本（同 facility_location 的 assign_cost）；两者都没有才是 0，
       // 而这个 0 由 `assignCostBound:false` 标出来，不许被读成"占用不要钱"。
       // `lineAssignCost` 里的值**已折算**（见上），故只有走 `ecProp` 这一支才在这里折。
-      return { order: String(p[eoProp]), line, cost: ecProp ? num(p[ecProp]) * (costScale ?? 1) : (lineAssignCost.get(line) ?? 0) };
+      const order = String(p[eoProp]);
+      const assign = ecProp ? num(p[ecProp]) * (costScale ?? 1) : (lineAssignCost.get(line) ?? 0);
+      // WO-UNITCOST-LAND：按指派 + 按件（未绑 unit_cost 时后项恒 0 ⇒ 既有行为逐字节不变）。
+      return { order, line, cost: assign + (unitFulfillCost.get(order) ?? 0) };
     });
   } else {
     // 全资格全通。成本：绑了 line_assign_cost 就用该线的**真实字段值**（同 facility_location 的
     // assign_cost 口径）；没绑才写 0 —— 0 在这里是"这一维没有数据"的记号，由
     // `eligibilityDefaulted` + `assignCostBound` 两位一起说清楚，不许被读成"占用不要钱"。
-    eligibility = orders.flatMap((o) => lines.map((l) => ({ order: o.id, line: l.id, cost: lineAssignCost.get(l.id) ?? 0 })));
+    eligibility = orders.flatMap((o) =>
+      lines.map((l) => ({ order: o.id, line: l.id, cost: (lineAssignCost.get(l.id) ?? 0) + (unitFulfillCost.get(o.id) ?? 0) })),
+    );
   }
 
   return {
@@ -392,8 +431,18 @@ export async function bindCrossObjectOccupancy(
     lineType: lineT.key,
     contractBound,
     eligibilityDefaulted: !eligibilityBound,
-    /** 占用成本这一维**有没有真数据**（false ⇒ eligibility[].cost 恒 0，不是"免费"是"没量到"）。 */
-    assignCostBound: eligibilityBound ? rm.has("elig_cost") || assignCostProp !== undefined : assignCostProp !== undefined,
+    /**
+     * 占用成本这一维**有没有真数据**（false ⇒ eligibility[].cost 恒 0，不是"免费"是"没量到"）。
+     * WO-UNITCOST-LAND：绑了 `unit_cost` 也算"有真数据" —— 那时 cost 里就有一笔真实的按件履约成本，
+     * 哪怕按指派那笔一格都没绑。⛔ 漏掉这一支会让毛利轴在"只有按件成本"的租户上被误判成报缺。
+     */
+    assignCostBound:
+      unitCostProp !== undefined ||
+      (eligibilityBound ? rm.has("elig_cost") || assignCostProp !== undefined : assignCostProp !== undefined),
+    /** `eligibility[].cost` 里**含不含**按件履约成本（`unit_cost` × qty）。下游据此说清成本口径。 */
+    costIncludesUnitFulfillment: unitCostProp !== undefined,
+    /** 按件履约成本折算用的每单位量字段（`costIncludesUnitFulfillment` 为 false 时无意义）。 */
+    unitCostQtyProp: unitCostProp !== undefined ? qtyProp : undefined,
     // ── WO-MARGIN-AXIS · 口径自述（下游据此判「这两根轴能不能相减」，不靠猜）──────────
     /** `orders[].revenue` 是**行金额**（`unit_revenue` × qty）还是**原格总量**（`revenue` 直取）。 */
     revenueFromUnitRate: unitRevProp !== undefined,
@@ -408,7 +457,13 @@ export async function bindCrossObjectOccupancy(
      * 营收侧刻度取到、成本侧刻度取到（成本没绑时只要营收侧取到即可 —— 那时成本恒 0，
      * 而 `assignCostBound:false` 已把这件事举起来了）。
      */
-    currencyAligned: alignCurrency && revScale !== undefined && (assignCostProp === undefined && !rm.has("elig_cost") ? true : costScale !== undefined),
+    // WO-UNITCOST-LAND：按件成本也是成本侧的一格钱 ⇒ 它绑上了就必须**它的刻度也取到**，
+    // 否则「元 vs 万元」那种 10⁴ 倍静默错算会从这条新路重新溜进毛利轴。
+    currencyAligned:
+      alignCurrency &&
+      revScale !== undefined &&
+      (assignCostProp === undefined && !rm.has("elig_cost") ? true : costScale !== undefined) &&
+      (unitCostProp === undefined ? true : unitCostScale !== undefined),
     /** 折算后的基准单位（`currencyAligned` 为 false 时为 undefined —— 不谎报一个没折成的单位）。 */
     currencyUnit: alignCurrency && revScale !== undefined ? CURRENCY_BASE_UNIT : undefined,
   };

@@ -175,8 +175,28 @@ export async function assembleParetoModel(
   const orderT = [...orderNonEmpty].sort((a, b) => (orderCounts.get(b.key) ?? 0) - (orderCounts.get(a.key) ?? 0) || a.key.localeCompare(b.key))[0]!;
   const revProp = hits(orderT, "revenue")[0]!;
   const qtyProp = hits(orderT, "demand")[0]!;
-  // 违约/罚金（可选）：订单侧命中**成本**词库、且不是营收那一格的数值字段。绑不到 ⇒ 不声明 penalty 目标。
-  const penProp = hits(orderT, "cost").find((k) => k !== revProp);
+  /**
+   * 违约/罚金（可选）：订单侧命中**成本**词库、且不是营收那一格的数值字段。绑不到 ⇒ 不声明 penalty 目标。
+   *
+   * ⚠ WO-UNITCOST-LAND 加的第二个判据 `!lexiconHit(k, "unitRate")`——**没有它就是一处静默错绑**：
+   * 新增的 `OrderLine.unitCost` 同时命中 `cost` 词库（含 "cost"）与 `unitRate` 词库
+   * （该词库原文已含 `单位成本|unitcost|unit_cost`），而本行原本只排除 `revProp` ⇒
+   * `unitCost` 会被抓去当 **penalty**（违约金）。后果不报错：罚金轴上出现一个 540–633 的
+   * "每件料工费"，屏上完全正常，只是那根轴从此答非所问。
+   * 判据本身是原理性的：**penalty 是总量（一单赔多少），强度量当不了总量**。
+   * 今日实测本租户 `hits(OrderLine,"cost")` 加这一格前是**空**（penProp 本就 undefined），
+   * 故这条守卫对既有行为逐字节无影响 —— 它守的是**新加的这一格不许走错门**。
+   */
+  const penProp = hits(orderT, "cost").find((k) => k !== revProp && !lexiconHit(k, "unitRate"));
+  /**
+   * WO-UNITCOST-LAND · **按件履约成本**这一格（可选）：订单侧命中 `cost` 词库**且**是强度量
+   * （`unitRate`）、且不是营收那一格。绑到 ⇒ 声明 role `unit_cost`，绑定层据此把
+   * `unitCost × qty` 加进 `eligibility[].cost`，成本侧与营收侧从此**同阶**。
+   *
+   * 绑不到 ⇒ 不声明该 role，成本仍只有按指派那一笔（既有行为逐字节不变）——
+   * 这正是上一单在毛利轴注释里写下的那句「今天没有这一格」的**现算版本**，不是永久结论。
+   */
+  const unitCostProp = hits(orderT, "cost").find((k) => k !== revProp && lexiconHit(k, "unitRate"));
   /**
    * WO-MARGIN-AXIS：营收这一格是**强度量（单价）**还是**总量（金额）**？
    *
@@ -238,6 +258,9 @@ export async function assembleParetoModel(
     { role: "qty", bind: { kind: "property", ref: `${orderT.key}.${qtyProp}` } },
     { role: "line_capacity", bind: { kind: "property", ref: `${lineT.key}.${capProp}` } },
     ...(penProp ? [{ role: "penalty", bind: { kind: "property" as const, ref: `${orderT.key}.${penProp}` } }] : []),
+    // WO-UNITCOST-LAND：按件履约成本（强度量）与按指派成本（总量）绑不同的 role，判据是词库不是猜 ——
+    // 与上面 `unit_revenue` / `revenue` 那一对完全对称。绑错同样不报错、只静默算错。
+    ...(unitCostProp ? [{ role: "unit_cost", bind: { kind: "property" as const, ref: `${orderT.key}.${unitCostProp}` } }] : []),
     // 每线标量占用成本：绑定层的优先级是 `elig_cost` > `line_assign_cost` > 0，
     // 故这一格**无条件**绑上去（有可产对成本时它自动让位），少一个分支少一处漂移。
     ...(assignCostProp ? [{ role: "line_assign_cost", bind: { kind: "property" as const, ref: `${lineT.key}.${assignCostProp}` } }] : []),
@@ -308,15 +331,34 @@ export async function assembleParetoModel(
   //        ⛔ 这正是下面那条红线的同族：补一根**算得出但算错**的轴，比补一根恒为 0 的更危险 ——
   //        恒为 0 的一眼看得出是假的，算错的那根看起来完全正常。故**不乘**。
   //
-  // ⚠ 由此带来的一条**必须如实说出口**的性质：成本按指派计价、营收按件计价 ⇒
-  //   两者不同阶，成本在毛利里的占比很小（本租户实测约 0.4%）。毛利轴因此**与营收轴强同向**。
-  //   它仍是一根**每解一个值**的真轴（随解变化、进支配比较、进加权名次），
-  //   但它今天答的是「这批单赚多少」，**不是**「单位经济学上哪个方案更划算」——
-  //   后者要本体先给出**按件计价的履约成本**（`万元/件` 或 `元/件`），今天没有这一格。
+  // ══ WO-UNITCOST-LAND · 上一段末尾那句「今天没有这一格」**已过期，此处按 0.6 回写** ══
+  //
+  // 上一单在这里留下的原话是：「毛利轴今天答的是『这批单赚多少』，不是『单位经济学上哪个方案
+  // 更划算』—— 后者要本体先给出**按件计价的履约成本**（`万元/件` 或 `元/件`），今天没有这一格。」
+  // 它当时是对的，**今天不再成立**：本体已给出这一格 —— `OrderLine.unitCost`（元/电芯，
+  // 由该型号当期 BOM 现算：Σ quantity ×(1+lossRate)× Material.unitPrice），
+  // 装配器命中 `cost ∩ unitRate` 即绑 role `unit_cost`，绑定层把 `unitCost × qty`
+  // **加进** `eligibility[].cost`（加性叠加，不替换按指派那一笔 —— 料工费与占线费是两笔钱）。
+  //
+  // ⚠ **上一段那条「不该乘 qty」的红线仍然完全有效，且正是本单的做法**：
+  //   被乘 `qty` 的是**新的那一格**（本体自述按件计价的强度量），
+  //   `serveCost`（万元/需求点·年）**依旧不乘** —— 它仍按指派计价。
+  //   两笔钱各按各的口径计价，谁都没有被凭空改口径。
+  //
+  // ⚠ 仍须如实说出口的性质：成本占毛利的比重由此从**0.331% 升到 3.272%**（实测，同一批单），
+  //   毛利轴与营收轴**不再是强同向**（实测前沿 19 → 22，被支配 8 → 5）。
+  //   但按件成本今天只含**物料**（BOM 口径），不含人工/制造费用/物流 ——
+  //   ⛔ 这一句不许省：它决定了这根轴答的是「料成本口径的单位经济学」，不是完全成本。
   const revUnit = orderT.properties.find((p) => p.propKey === revProp)?.unit;
   const costOwner = eligT && eligCostProp ? eligT : lineT;
   const costPropKey = eligT && eligCostProp ? eligCostProp : assignCostProp;
-  const costUnit = costPropKey ? costOwner.properties.find((p) => p.propKey === costPropKey)?.unit : undefined;
+  // WO-UNITCOST-LAND：按指派那一格没绑、只绑了按件那一格时，成本轴的单位取后者 ——
+  // 否则会回一个 `undefined` 单位，而那时成本轴明明有真数据（读数无量纲 = 又一种静默失真）。
+  const costUnit = costPropKey
+    ? costOwner.properties.find((p) => p.propKey === costPropKey)?.unit
+    : unitCostProp
+      ? orderT.properties.find((p) => p.propKey === unitCostProp)?.unit
+      : undefined;
   /**
    * 毛利轴的**准入证**（三样缺一不可，判据全部现算，一个都不是写死的）：
    *   ① 绑定层确认两侧已折到同一基准货币单位（`currencyAligned`，它自己也是现算的）；
@@ -339,7 +381,15 @@ export async function assembleParetoModel(
   const costMoneyUnit = moneyUnitOf(costUnit);
   /** 营收轴的人读式：单价路要把 `× 用量` 写出来，否则屏上仍读作"单价"。 */
   const revenueLabel = revIsUnitRate ? `${orderT.key}.${revProp} × ${orderT.key}.${qtyProp}` : `${orderT.key}.${revProp}`;
-  const costLabel = eligT && eligCostProp ? `${eligT.key}.${eligCostProp}` : `${lineT.key}.${assignCostProp}`;
+  /**
+   * 成本轴的人读式。WO-UNITCOST-LAND：按件那一笔绑上了就**必须写进来** ——
+   * 只印按指派那一格，屏上会把一个已含料工费的数读成"占线成本"，
+   * 与营收轴当初不写 `× 用量` 时被读成"单价"是同一个病（见 `revenueLabel`）。
+   */
+  const assignCostLabel = eligT && eligCostProp ? `${eligT.key}.${eligCostProp}` : `${lineT.key}.${assignCostProp}`;
+  const costLabel = unitCostProp
+    ? `${assignCostLabel} + ${orderT.key}.${unitCostProp} × ${orderT.key}.${qtyProp}`
+    : assignCostLabel;
 
   /**
    * **接得到本体字段的**真目标 —— 「真目标 < 2 ⇒ 整单报缺」这条红线**只数这一批**。
