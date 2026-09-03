@@ -327,8 +327,16 @@ export async function assembleParetoModel(
    */
   const currencyAligned = args.currencyAligned === true;
   const marginAvailable = currencyAligned && assignCostBound;
-  /** 折算后对外报的货币单位（未折齐时退回本体原样声明的那个，不谎报）。 */
-  const moneyUnit = currencyAligned ? CURRENCY_BASE_UNIT : revUnit;
+  /**
+   * 对外报的单位：折齐了就是基准货币单位，**没折齐就各报各在本体上原样声明的那个**。
+   *
+   * ⛔ 两根轴必须**各算各的**，不许共用一个变量 —— 共用时「没折齐」这一支会把营收侧的单位
+   * 抄给成本轴（实测本租户那对：营收「元」、成本「万元」），屏上于是印出一个
+   * **单位是元、数值却是万元**的成本读数。这比不标单位更坏：不标时用户知道自己不知道。
+   */
+  const moneyUnitOf = (declared: string | undefined): string | undefined => (currencyAligned ? CURRENCY_BASE_UNIT : declared);
+  const revMoneyUnit = moneyUnitOf(revUnit);
+  const costMoneyUnit = moneyUnitOf(costUnit);
   /** 营收轴的人读式：单价路要把 `× 用量` 写出来，否则屏上仍读作"单价"。 */
   const revenueLabel = revIsUnitRate ? `${orderT.key}.${revProp} × ${orderT.key}.${qtyProp}` : `${orderT.key}.${revProp}`;
   const costLabel = eligT && eligCostProp ? `${eligT.key}.${eligCostProp}` : `${lineT.key}.${assignCostProp}`;
@@ -340,10 +348,10 @@ export async function assembleParetoModel(
    *   它是引擎的结构读数，不是从本体字段接出来的，**不许拿它去凑够两个**。
    */
   const groundedObjectives: ParetoObjective[] = [
-    { key: "revenue", dir: "max", label: revenueLabel, ...(moneyUnit ? { unit: moneyUnit } : {}) },
+    { key: "revenue", dir: "max", label: revenueLabel, ...(revMoneyUnit ? { unit: revMoneyUnit } : {}) },
     ...(penProp ? [{ key: "penalty", dir: "min" as const, label: `${orderT.key}.${penProp}` }] : []),
     ...(assignCostBound
-      ? [{ key: "cost", dir: "min" as const, label: costLabel, ...(moneyUnit ?? costUnit ? { unit: moneyUnit ?? costUnit } : {}) }]
+      ? [{ key: "cost", dir: "min" as const, label: costLabel, ...(costMoneyUnit ? { unit: costMoneyUnit } : {}) }]
       : []),
   ];
 
@@ -425,7 +433,9 @@ export async function assembleParetoModel(
    * 它改变的是**加权名次**（权重面板多一根真滑杆）与屏上多一根可读的轴。
    */
   const marginObjective: ParetoObjective[] = marginAvailable
-    ? [{ key: "margin", dir: "max", label: `毛利（${revenueLabel} − ${costLabel}）`, ...(moneyUnit ? { unit: moneyUnit } : {}) }]
+    // 毛利只在**折齐了**的分支里存在（`marginAvailable` 含 `currencyAligned`），
+    // 故这里的单位恒是基准货币单位 —— 用 `revMoneyUnit` 而不是本体原样单位。
+    ? [{ key: "margin", dir: "max", label: `毛利（${revenueLabel} − ${costLabel}）`, ...(revMoneyUnit ? { unit: revMoneyUnit } : {}) }]
     : [];
 
   /**

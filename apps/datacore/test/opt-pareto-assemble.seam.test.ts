@@ -493,4 +493,41 @@ describe("WO-SIM-PARETO-MODEL-EXIT · 装配出口 → 求解 整条缝", () => 
     const ok = await solve(t, ACME, j.request);
     expect(ok.statusCode, "原样请求也 400 ⇒ 上面那个 400 不能证明是守卫拦的").toBe(200);
   });
+
+  it("⑫ 折不齐时两根轴**各报各的单位**：成本轴不许抄营收轴的单位（抄了就是元/万元张冠李戴）", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    // 营收侧「元」（可折算），成本侧「%」（字典内的合法单位，但**不是货币**）⇒ 折不齐。
+    await putType(t, T, "TicketOrder", [
+      { propKey: "ticketNo", dataType: "string", isPrimaryKey: true },
+      { propKey: "seatQty", dataType: "number", unit: "件" },
+      { propKey: "pricePerUnit", dataType: "number", unit: "元" },
+    ]);
+    await putType(t, T, "Coach", [
+      { propKey: "coachId", dataType: "string", isPrimaryKey: true },
+      { propKey: "seatCapacity", dataType: "number" },
+      { propKey: "runCostRatio", dataType: "number", unit: "%" },
+    ]);
+    for (const [id, seatQty, pricePerUnit] of [["o1", 2, 100], ["o2", 20, 100], ["o3", 15, 90]] as [string, number, number][]) {
+      await putObj(t, T, "TicketOrder", id, { ticketNo: id, seatQty, pricePerUnit });
+    }
+    for (const [id, seatCapacity, runCostRatio] of [["c1", 20, 5], ["c2", 10, 3], ["c3", 30, 7]] as [string, number, number][]) {
+      await putObj(t, T, "Coach", id, { coachId: id, seatCapacity, runCostRatio });
+    }
+
+    const parsed = ParetoAssembleResultSchema.parse((await assemble(t, ACME)).json) as ParetoAssembleResult;
+    expect(parsed.applicable, parsed.applicable === false ? parsed.note : "").toBe(true);
+    const j = parsed as Extract<ParetoAssembleResult, { applicable: true }>;
+    expect(j.request.args!.currencyAligned, "「%」不是货币单位，却被判成折齐了").toBe(false);
+    const unitOf = Object.fromEntries(j.request.objectives.map((o) => [o.key, o.unit]));
+    expect(unitOf.revenue, "营收轴单位").toBe("元");
+    // ⛔ 本条是本单代码复审时抓到的真 bug 的捕手：两根轴曾共用一个单位变量 ⇒
+    //    没折齐这一支会把营收侧的「元」抄给成本轴，屏上印出「单位是元、数值却是另一个量纲」。
+    expect(unitOf.cost, "成本轴抄了营收轴的单位 ⇒ 屏上单位与数值不是同一个量纲").toBe("%");
+    // 折不齐 ⇒ 毛利照红线报缺，且成本值**原样不折**（×1，不是 ×10⁴）。
+    expect(j.request.objectives.some((o) => o.key === "margin")).toBe(false);
+    expect((j.request.unavailableObjectives ?? []).map((g) => g.key)).toContain("margin");
+    const costs = [...new Set((j.request.args!.eligibility as { cost: number }[]).map((e) => e.cost))].sort((a, b) => a - b);
+    expect(costs, "非货币单位被误折算了").toEqual([3, 5, 7]);
+  });
 });
