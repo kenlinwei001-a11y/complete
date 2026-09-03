@@ -2,6 +2,7 @@ import type { ObjectTypeDef, PropertyDef } from "../domain.js";
 import { WAVE1_SCALE_FACTOR } from "@platform/contracts";
 import { mulberry32, round, hashString } from "../prng.js";
 import { withPropDisplayNames, ORDER_CUST_TO_CUSTOMER, CUSTOMER_REGISTRY } from "./battery.js";
+import { MATERIALS as MATERIALS_TABLE, seedMaterials } from "./materials-seed.js";
 
 /**
  * 20 场景目录 §7 GenSpec 扩展（成熟度 E6b）：为 13 个新求解器确定性生成所需对象数据，
@@ -276,19 +277,10 @@ export function extendedObjectTypes(): TypeDef[] {
   ];
 }
 
-const MATERIALS = [
-  { matId: "pos_ncm", name: "三元正极", base: 180, materialCode: "MAT-001", category: "正极材料", spec: "NCM811", unit: "kg", isKey: true, supplierIds: ["SUP-001", "SUP-002"] },
-  { matId: "pos_lfp", name: "磷酸铁锂正极", base: 95, materialCode: "MAT-002", category: "正极材料", spec: "LFP-100", unit: "kg", isKey: true, supplierIds: ["SUP-001", "SUP-003"] },
-  { matId: "neg_graphite", name: "石墨负极", base: 60, materialCode: "MAT-003", category: "负极材料", spec: "人造石墨", unit: "kg", isKey: true, supplierIds: ["SUP-004", "SUP-005"] },
-  { matId: "sep_film", name: "隔膜", base: 28, materialCode: "MAT-004", category: "隔膜", spec: "湿法隔膜", unit: "㎡", isKey: true, supplierIds: ["SUP-006", "SUP-007"] },
-  // WO-SANDBOX-D2：高电压电解液的主供改为进口（SUP-015·日本）——**这是为了让清关段有真数据可测**，
-  // 而不是为了好看：全 14 家原供应商都是境内（region 华东/华北/…），清关段永远 NOT_APPLICABLE 就等于没接线。
-  // 国内电池厂高端电解液/添加剂从日本进口是行业实况，非臆造。境内二供 SUP-008/009 保留（备份路径不变）。
-  { matId: "elyte", name: "电解液", base: 45, materialCode: "MAT-005", category: "电解液", spec: "高电压电解液", unit: "L", isKey: true, supplierIds: ["SUP-015", "SUP-008", "SUP-009"] },
-  { matId: "cu_foil", name: "铜箔", base: 70, materialCode: "MAT-006", category: "其他", spec: "6μm铜箔", unit: "kg", isKey: false, supplierIds: ["SUP-010"] },
-  { matId: "al_foil", name: "铝箔", base: 32, materialCode: "MAT-007", category: "其他", spec: "12μm铝箔", unit: "kg", isKey: false, supplierIds: ["SUP-011"] },
-  { matId: "cell_case", name: "电芯壳体", base: 18, materialCode: "MAT-008", category: "结构件", spec: "4680壳体", unit: "个", isKey: true, supplierIds: ["SUP-012", "SUP-013"] },
-];
+// WO-UNITCOST-LAND：物料基表与物料行合成已抽到 `materials-seed.ts`（**单一实现**）——
+// `battery.ts` 算 `Model.unitCost` 要读同一份物料价，而它不能反向 import 本文件（循环依赖）。
+// 抽出时 rng 调用一次未增减，理由与实测见该文件头注。此处按原名 re-bind，下文用法全不变。
+const MATERIALS = MATERIALS_TABLE;
 
 const SUPPLIERS = [
   { supplierId: "SUP-001", supplierCode: "RBKJ", name: "容百科技", category: "原材料", materialType: "正极", rating: "S", region: "华东", leadTime: 5, minOrderQty: 1000, onTimeRate: 0.98, status: "合格" },
@@ -715,36 +707,14 @@ export function generateExtended(
   },
   scale: "S" | "M" | "L" | "XL" = "L",
 ): ExtendedData {
-  const rng = mulberry32(seed + 7919); // 独立子流，与主生成不串扰
+  // WO-UNITCOST-LAND：建流 + 产物料这一段搬到 `materials-seed.ts`（单一实现·见该文件头注）。
+  // **rng 连同物料一起拿回来继续用** ⇒ 流位置/次数/顺序原样 ⇒ 下游全部合成值逐字节不动（R6）。
+  const { rng, materials } = seedMaterials(seed);
   // 工业级数据量：S/M/L 保持原 demo 量级（既有测试），XL 放大到产线真实量级。
   const batchesPerMat = scale === "XL" ? 250 : 3; // 8 料 × 250 = 2000 批
   const poCount = scale === "XL" ? 3000 : 30;
   const extraCustomers = scale === "XL" ? 54 : 0; // 6 + 54 = 60 客户
   const invoicesPerCust = scale === "XL" ? 40 : 3;
-
-  const materials = MATERIALS.map((m) => ({
-    matId: m.matId,
-    name: m.name,
-    unitPrice: round(m.base * (0.9 + rng() * 0.2), 2),
-    leadTime: 7 + Math.floor(rng() * 21),
-    carbonFactor: round(8 + rng() * 40, 2),
-    bomUnit: round(0.5 + rng() * 2, 3),
-    dailyUse: round((50 + rng() * 200) * WAVE1_SCALE_FACTOR, 1),
-    onHand: round((500 + rng() * 4000) * WAVE1_SCALE_FACTOR, 0),
-    inTransit: round(rng() * 1500 * WAVE1_SCALE_FACTOR, 0),
-    // C27 长协执行偏差 / C31 外协质量门：从 matId 确定性派生，各植入一处越线。
-    devPct: m.matId === "pos_ncm" ? 0.08 : 0.02,
-    outsourceYield: m.matId === "sep_film" ? 0.91 : 0.95,
-    // Phase 2 Wave 2：扩展工程属性（固定值，不消耗 rng，保 R6）。
-    materialCode: m.materialCode,
-    category: m.category,
-    spec: m.spec,
-    unit: m.unit,
-    supplierId: m.supplierIds[0],
-    shelfLife: m.matId === "elyte" ? 180 : m.matId === "sep_film" ? 365 : 730,
-    isKeyMaterial: m.isKey,
-    status: "活跃",
-  }));
 
   // WO-RULE-SCOPE-TRIAD · Outsource 外协批次：每物料 1 批（外协加工是**按料**组织的，8 料 = 8 批，全 scale 同值）。
   //   · yieldRate 真值源 = Material.outsourceYield（同一物理量单一来源，不另编一份）⇒ sep_film=0.91 那批越线。
