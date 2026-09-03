@@ -33,6 +33,9 @@ export default function LedgerView({ view }: ViewRendererProps) {
   });
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+  // 服务端说 total 只是下界时，屏上必须写成「≥N」而不是「N」——
+  // 否则又回到那个病：给了错的数，而看的人看不出来。
+  const lowerBound = data?.totalIsLowerBound === true;
 
   return (
     <div className="panel" data-testid="ledger">
@@ -54,7 +57,15 @@ export default function LedgerView({ view }: ViewRendererProps) {
               }}
             />
           ))}
-        <span className="mono" style={{ marginLeft: "auto", color: "var(--muted2)", fontSize: 12 }}>
+        <span
+          className="mono"
+          style={{ marginLeft: "auto", color: "var(--muted2)", fontSize: 12 }}
+          data-testid="ledger-total"
+          {...(lowerBound
+            ? { title: "匹配行数超过服务端安全上限，这个数是已知下界而非真值；请加筛选条件收窄。" }
+            : {})}
+        >
+          {lowerBound ? "≥" : ""}
           {data?.total ?? 0} rows
         </span>
       </div>

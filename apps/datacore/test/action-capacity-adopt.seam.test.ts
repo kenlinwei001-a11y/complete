@@ -19,7 +19,7 @@ import { makeApp, seedBattery, type TestApp } from "./helpers.js";
 const ADMIN = { "x-debug-user": "demo:admin:admin" };
 
 async function firstEquipment(t: TestApp): Promise<{ id: string; oee: number }> {
-  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Equipment&limit=1", headers: ADMIN });
+  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Equipment&pageSize=1", headers: ADMIN });
   const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
   expect(items.length, "种子里应有 Equipment 对象（否则本测无从验证写回）").toBeGreaterThan(0);
   const e = items[0]!;
@@ -28,7 +28,7 @@ async function firstEquipment(t: TestApp): Promise<{ id: string; oee: number }> 
 
 async function readProp(t: TestApp, objectId: string, prop: string): Promise<unknown> {
   // 经列表端点回读（单对象端点形状与此不同）——重点是**回仓储取真值**，不是复用响应里的回显。
-  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Equipment&limit=500", headers: ADMIN });
+  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Equipment&pageSize=500", headers: ADMIN });
   const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
   const hit = items.find((o) => o.id === objectId);
   expect(hit, `回读不到对象 ${objectId}`).toBeTruthy();

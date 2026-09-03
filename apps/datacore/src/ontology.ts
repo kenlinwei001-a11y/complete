@@ -605,6 +605,49 @@ export class OntologyService {
   }
 
   /**
+   * 台账 / objectRef 选择器分页专用的 A6 全量可见读（**不走 queryObjects 的 ≤1000 截断**）。
+   *
+   * 为什么必须另开一个方法而不是把 limit 调大：`queryObjects` 里的 `Math.min(limit, 1000)` 是
+   * 给 `POST /objects/query` 返原始行给 agent 用的**上下文预算**，有它存在的理由，不能动。
+   * 但 `GET /a/v1/objects` 借它做分页读时，那个预算就变成了一道**静默的天花板**：
+   *   · `total` 由截断后的数组长度算出 ⇒ 自报 1000（= 硬顶），而真值 5460（EquipmentOEE，seed 42）；
+   *   · 第 1000 行之后的数据**任何 page 都翻不到**（page=3&pageSize=500 恒回 0 行）。
+   * 最要命的是**调用方无从察觉** —— `total` 是唯一的检测手段，而它自己被同一个硬顶截断。
+   *
+   * 语义与 `queryObjects` 的非 asOfEpoch 路**逐条对齐**（OC1 mergedInto + A6 行级过滤 +
+   * 列级投影 + 按 id 排序），差别只有一个：不截断。仍留 CAP 防 OOM，超了标 `truncated`。
+   */
+  async listVisiblePage(
+    ctx: AuthCtx,
+    objectType: string,
+    filter: Record<string, unknown> = {},
+  ): Promise<{
+    data: { id: string; type: string; props: Record<string, unknown> }[];
+    total: number;
+    truncated: boolean;
+    snapshotVersion: string;
+  }> {
+    const CAP = 200_000; // 与 listVisibleForAggregate 同一安全上限（防 OOM；真正下推属 E2 转换引擎）
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const rowFilters = dec.rowFilters;
+    const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
+    const visible = all
+      .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
+      .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
+      // 行级过滤读**未投影**的 props（与 queryObjects 一致）；投影只作用于返回值。
+      .filter((o) => this.matchFilter(o.props, filter))
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    return {
+      data: visible
+        .slice(0, CAP)
+        .map((o) => ({ id: o.id, type: o.type, props: this.authz.projectProps(dec, o.props) })),
+      total: visible.length,
+      truncated: visible.length > CAP,
+      snapshotVersion: await this.snapshotVersion(ctx.tenantId),
+    };
+  }
+
+  /**
    * WO-SLOT-ENTITY-RESOLVE · 单类型引用匹配（**A 侧唯一入口**·规则走 contracts 纯核心）。
    * 只负责「取哪些行」（租户隔离 R2 + A6 行级过滤），匹配语义一律 `matchObjectRefInType`。
    */

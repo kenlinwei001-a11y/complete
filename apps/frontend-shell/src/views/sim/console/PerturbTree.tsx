@@ -28,8 +28,10 @@
  *    今天落在「无基地维度」这一侧的是 `ChangeoverMatrix`（30 条·`lineId` 30/30 全 null）与
  *    `Material`（8 条·无任何基地字段）。**这两个类型名写在注释里只是当天的观测，不是判据** ——
  *    判据在契约 `OBJECT_TYPE_BASE_DRILL`，那张表改了这里不用动。
- *    复验：`curl -H 'X-Debug-User: demo:admin:admin' '<datacore>/a/v1/objects?type=Material&limit=5'`
- *    看 `props` 里有没有 `baseId`（⚠ 参数名是 `type` 不是 `objectType`，写错回 400 不是空列表）。
+ *    复验：`curl -H 'X-Debug-User: demo:admin:admin' '<datacore>/a/v1/objects?type=Material&pageSize=5'`
+ *    看 `props` 里有没有 `baseId`（⚠ 参数名是 `type` 不是 `objectType`，写错回 400 不是空列表；
+ *    ⚠ 页长参数是 `pageSize` 不是 `limit` —— 本行原先写的就是 `limit=5`，而该端点**不认识**它，
+ *    静默回落默认页长 50，把「我限了 5 条」读成「一共就这些」。现在传 `limit` 会回 `warnings`）。
  *
  * ── 诚实位：POST 这条线今天「接了线没数据」，不是「没接线」───────────────────
  * 契约 `PerturbationSchema.targetObjectId` 要的是**对象实例 id**，而因子目录只给到
