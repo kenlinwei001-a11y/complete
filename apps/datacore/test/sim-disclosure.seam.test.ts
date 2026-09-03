@@ -52,7 +52,10 @@ const scope: ScopeReport = {
   objects: graph.objects.length, links: graph.links.length,
   droppedObjects: 0, droppedLinks: 0, unresolved: null,
 };
-const emptyWeights: PairWeightReport = { pairs: [], unresolved: [] };
+// ⚠ `explain` 不许省：它是 `PairWeightReport` 的必填字段。
+// vitest **不做类型检查**，所以漏了它这份文件照样绿 —— 是 `pnpm -r typecheck` 把它揪出来的
+// （TS2741）。这正是本仓那条「绿测试 ≠ 对」的又一形态：两个信号度量的不是同一件事。
+const emptyWeights: PairWeightReport = { pairs: [], unresolved: [], explain: [] };
 const emptyStateVarReport: StateVarDisclosure = {
   declaredStateVars: [], undeclaredStateVars: [], decayUnresolved: [],
   saturations: [], decayApplied: {},
