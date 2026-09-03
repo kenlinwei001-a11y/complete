@@ -4773,24 +4773,70 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   //
   // 本端点认得的查询参数（其余一律回 `warnings`，不再静默吞掉）：
   const KNOWN_OBJECT_QUERY_PARAMS = new Set(["type", "q", "page", "pageSize", "base"]);
+  const MAX_PAGE_SIZE = 500;
+  /**
+   * **分页形态**的参数别名 —— 本端点一个都不实现。收到即 **400**，不降级成 warning。
+   *
+   * 为什么单把这一族拎出来硬拒（与下面对普通未知参数的宽容处置刻意不同）：
+   * 拼错一个 `sort` 只是噪声 —— 调用方少一个排序，屏上看得出来；
+   * 而一个被忽略的 `limit=500` **不产生任何错误**，只让调用方拿到**少的那一部分并当成全部**。
+   * 本仓已为这一个形态付过三次代价，最近一次是**生产前端**
+   * `chainFamilyLines.fetchOrdersForFamilies` 发 `limit=500`，实收 50 行（真值 500 · 10× 欠读），
+   * 而它此前只回 warning ⇒ 没有任何调用方去读，等于没说。
+   * 原先「不 400」的理由是「三个接缝测试与文档 curl 都在传」—— 那恰恰证明**大家都以为它生效**，
+   * 是加硬拒的理由，不是不加的理由。四处调用方已随本单一并改到 `pageSize`。
+   */
+  const PAGINATION_ALIASES = new Set([
+    "limit", "offset", "cursor", "perpage", "per_page", "page_size", "pagesize",
+    "size", "skip", "start", "top", "maxresults", "max_results",
+    "pagenum", "page_num", "pageindex", "page_index",
+  ]);
   app.get("/a/v1/objects", async (req) => {
     const q = req.query as Record<string, string | undefined>;
     const type = q["type"] ?? "";
     if (!type) throw validationError("type query parameter is required");
     const needle = (q["q"] ?? "").toLowerCase();
-    const page = Math.max(1, Number(q["page"] ?? "1") || 1);
-    const pageSize = Math.min(500, Math.max(1, Number(q["pageSize"] ?? "50") || 50));
 
-    // 无法识别的参数 → 回 warnings。**不 400**：实测本仓无任何生产调用方传 `limit`，但
-    // 三个 datacore 接缝测试与一段文档 curl 都在传（它们以为它生效），400 会把它们全打红；
-    // 且本端点的 URL 常由 agent 现拼，硬拒会把一个拼写问题升级成一次故障。
+    const unknownKeys = Object.keys(q).filter((k) => !KNOWN_OBJECT_QUERY_PARAMS.has(k) && !k.startsWith("f_"));
+
+    // ① 分页形态的未知参数 ⇒ 400 点名。静默忽略是本仓三次欠读事故的共同放大器。
+    const badPaging = unknownKeys.filter((k) => PAGINATION_ALIASES.has(k.toLowerCase()));
+    if (badPaging.length) {
+      throw validationError(
+        `分页参数 ${badPaging.map((k) => `"${k}"`).join(" / ")} 在本端点不存在，不会生效。` +
+          `本端点分页只认 page + pageSize（pageSize ≤ ${MAX_PAGE_SIZE}）；` +
+          `要取全部请按响应里的 hasMore / total 逐页翻。`,
+      );
+    }
+
+    // ② 分页参数的**值**同样不许静默改写。
+    //    `page=abc` 悄悄变 1、`pageSize=abc` 悄悄变 50 —— 与忽略参数是同一个病，只是发生在值这一层：
+    //    调用方拿到的是「别人替他选的那一页」，而响应里没有一个字提过这件事。
+    const intParam = (name: string, dflt: number): number => {
+      const raw = q[name];
+      if (raw === undefined || raw === "") return dflt;
+      if (!/^\d+$/.test(raw) || Number(raw) < 1) {
+        throw validationError(`查询参数 "${name}" 必须是 ≥1 的整数，收到 "${raw}"。`);
+      }
+      return Number(raw);
+    };
+    const page = intParam("page", 1);
+    const askedPageSize = intParam("pageSize", 50);
+    const pageSize = Math.min(MAX_PAGE_SIZE, askedPageSize);
+
     const warnings: string[] = [];
-    for (const k of Object.keys(q)) {
-      if (KNOWN_OBJECT_QUERY_PARAMS.has(k) || k.startsWith("f_")) continue;
+    // 夹到上限**也要说出来**：否则调用方按自己请求的页长算「还有没有下一页」会算错
+    // （请求 1000、实收 500，他会以为一页就取完了）。响应里的 pageSize 回显的是**生效值**。
+    if (askedPageSize > pageSize) {
       warnings.push(
-        k === "limit"
-          ? `查询参数 "limit" 在本端点无效且已被忽略（本次实际用 pageSize=${pageSize}）；分页请用 page + pageSize。`
-          : `查询参数 "${k}" 无法识别，已被忽略。本端点认得：type / q / page / pageSize / base / f_<属性名>。`,
+        `pageSize=${askedPageSize} 超过本端点上限 ${MAX_PAGE_SIZE}，本次实际用 ${pageSize}；请按 hasMore 继续翻页。`,
+      );
+    }
+    // ③ 其余无法识别的参数 → warnings（非分页形态：拼错只是噪声，且本端点 URL 常由 agent 现拼，
+    //    硬拒会把一个拼写问题升级成一次故障）。
+    for (const k of unknownKeys) {
+      warnings.push(
+        `查询参数 "${k}" 无法识别，已被忽略。本端点认得：type / q / page / pageSize / base / f_<属性名>。`,
       );
     }
 
@@ -4821,11 +4867,23 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       );
     }
     const total = rows.length;
-    const items = rows.slice((page - 1) * pageSize, page * pageSize).map((r) => ({ id: r.id, type, props: r.props }));
+    const offset = (page - 1) * pageSize;
+    const items = rows.slice(offset, offset + pageSize).map((r) => ({ id: r.id, type, props: r.props }));
     return {
       items,
       total,
       ...(result.truncated ? { totalIsLowerBound: true } : {}),
+      // 截断信号（三件套，缺一件都还能让调用方算错）：
+      //   · `total`    —— 真实匹配行数，与 page/pageSize/任何内部读上限无关（首要真相源）；
+      //   · `page`/`pageSize` —— **生效值**回显。请求值可能被夹（>上限）或被默认填充，
+      //                          调用方拿自己请求的那个数去算下一页会算错，所以由服务端说了算；
+      //   · `hasMore`  —— 直接回答「还有没有下一页」，省掉 `page*pageSize < total` 这道
+      //                    每个调用方都要自己写一遍、且一旦 pageSize 被夹就必错的算术。
+      // `totalIsLowerBound` 为真时 total 只是下界 ⇒ 此时 hasMore 以「本页是否被取满」兜底，
+      // 宁可多让调用方翻一页空页，也不谎称"没有了"。
+      page,
+      pageSize,
+      hasMore: result.truncated ? items.length === pageSize : offset + items.length < total,
       ...(warnings.length ? { warnings } : {}),
       data: items,
       snapshotVersion: result.snapshotVersion,
