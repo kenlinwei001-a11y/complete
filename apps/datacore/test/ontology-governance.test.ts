@@ -503,6 +503,7 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
      */
     /** 逐个签，返回**第一个**非 200 的响应（不是最后一个 —— 最后一个会被"已是终态"覆盖掉）。 */
     async function signUntilRefused(t: TestApp, rec: Req) {
+      type Injected = Awaited<ReturnType<TestApp["app"]["inject"]>>;
       let cur = rec;
       for (let i = 0; i < rec.signoffs.length * 2 && undecided(cur) > 0; i++) {
         for (const h of [CATALOG_ADMIN, PLANNER_OWNER]) {
@@ -518,7 +519,7 @@ describe("治理增量 G1–G10：域治理 / 演进稳定性 / 检索体系", (
           else if (r.statusCode !== 403) return { cur, refused: r };
         }
       }
-      return { cur, refused: null as null | { statusCode: number; body: string } };
+      return { cur, refused: null as null | Injected };
     }
 
     it("⑤ 正常路：钉 vN 签满 → 实际发出的就是 vN（两个数必须相等）", async () => {
