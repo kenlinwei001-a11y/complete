@@ -563,8 +563,22 @@ describe("G-FRONTEND-HARDCODED-ABSENCE · 缺席声明由数据派生，且病�
   });
 
   it("事实锁 · 采购段四段承载**确实已在**（PurchaseOrder 有日戳 · 清关/到货检验是在册对象类型）", () => {
-    // 同上：锁「在不在」，不锁「在哪个文件」。`pd("orderDay"` 这种**声明调用**比裸 `orderDay`
-    // 更钉得住 —— 裸串在别的求解器里也会撞到，撞上了就是拿一个不度量该事实的数当证据。
+    // 同上：锁「在不在」，不锁「在哪个文件」。**声明调用**比裸 `orderDay` 更钉得住 ——
+    // 裸串在别的求解器里也会撞到（实测 `chain-loss.ts` 的缺口文案里就有好几处），
+    // 撞上了就是拿一个不度量该事实的数当证据。
+    //
+    // ⚠ **今天的行为是 X，应该是 Y**（2026-09-03 集成红②，判 (b) 前提已被合法改变）
+    // · **X（改前）**：探针写死 `pd("orderDay"` 一个工厂名。收编进来的 `995938b5`
+    //   「battery-extended 工厂拆分 p/n + 85 数值调用补量纲」把三个日戳从 `pd(` 换成 `nd(`
+    //   —— 因为 `pd()` 的签名是 `dataType: NonNumericDataType`、`unit` 写死 `dimensionless`，
+    //   而日戳是**带量纲的数值**（`nd("orderDay", …, "天", "absolute")`），换过去才是对的。
+    //   于是这条锁报「PurchaseOrder 少了 orderDay」，**而三个字段一个都没少**。
+    // · **Y（改后）**：锁**属性被声明**这件事，不锁「由哪个工厂声明」——
+    //   工厂族（`pd`/`nd`/`rd`，见 `battery-extended.ts` 三个 `(propKey: string, …) => PropertyDef`）
+    //   整族都算数。棘轮**保留且方向不变**（这三个字段今天确实在册），只是改掉那个
+    //   「不度量该事实」的锚 —— 与本文件顶上「锁在不在、不锁在哪个文件」是同一条纪律，
+    //   这次犯在下一层：锁到了「由谁声明」。
+    //   ⛔ 仍然**不许**退回裸 `orderDay` 串：那会被注释与文案命中，等于把锁拆了。
     const engine = datacoreCode();
     expect(engine.length, "datacore 源码扫不到几个文件 ⇒ 扫描器坏了，不许读作「承载没了」").toBeGreaterThan(50);
     expect(factHits(engine, "def("), "金丝雀①：已知必中的 def( 一个都找不到 ⇒ 扫描器坏了").not.toEqual([]);
@@ -573,9 +587,16 @@ describe("G-FRONTEND-HARDCODED-ABSENCE · 缺席声明由数据派生，且病�
       "金丝雀②：注释里的散文仍被当成代码 ⇒ stripComments 坏了，本次结论作废",
     ).toEqual([]);
 
+    // `[pnr]d("<field>"` = 属性工厂族的声明调用（`pd` 非数值 / `nd` 数值带量纲 / `rd` 引用）。
     for (const field of ["orderDay", "shipDay", "arriveDay"]) {
-      expect(factHits(engine, `pd("${field}"`), `PurchaseOrder 少了 ${field} —— 采购支线文案必须同步改`).not.toEqual([]);
+      expect(
+        factHits(engine, new RegExp(String.raw`\b[pnr]d\("${field}"`)),
+        `PurchaseOrder 少了 ${field} —— 采购支线文案必须同步改`,
+      ).not.toEqual([]);
     }
+    // 探针自证：一个**确定不存在**的属性名必须扫不到 —— 否则上面的 `.not.toEqual([])` 只是
+    // 「正则太松，什么都命中」，那就又是一次拿不度量该事实的数当证据。
+    expect(factHits(engine, new RegExp(String.raw`\b[pnr]d\("orderDayNOPE"`)), "反向金丝雀：不存在的属性名也命中 ⇒ 探针太松，本条结论作废").toEqual([]);
     expect(factHits(engine, 'def("CustomsClearance"'), "CustomsClearance 不再是在册对象类型").not.toEqual([]);
     expect(factHits(engine, 'def("IncomingInspection"'), "IncomingInspection 不再是在册对象类型").not.toEqual([]);
     expect(factHits(engine, 'putAll("CustomsClearance"'), "清关不再落库").not.toEqual([]);
