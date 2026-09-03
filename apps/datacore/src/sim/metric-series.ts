@@ -11,6 +11,7 @@ import {
   type SimMetricSeriesItem,
   type SimMetricSeriesOrder,
   type SimMetricSeriesResponse,
+  type StateVarDomainLookup,
   type TickState,
 } from "@platform/contracts";
 import { stateVarDisplayName } from "../synthetic/battery.js";
@@ -55,6 +56,17 @@ export interface MetricSeriesEngine {
    * （本仓治过的「两处输入不同源 = 第二套真相源」）。无规则声明 `weightRef` ⇒ `{}`，逐字节同旧。
    */
   pairWeights: PairWeightLookup;
+  /**
+   * 状态量取值域（WO-PROP-CLAMP）。**同上一条完全同理**，且这一条是收编
+   * WO-COEF-FROM-BOM × WO-PROP-CLAMP 时被接缝测试当场抓出来的：
+   * 真 tick 路（`app.ts`）传了 `stateVarDomains` ⇒ 会夹值 + 衰减；
+   * 而本模块的回放曾**只传 `pairWeights` 不传它** ⇒ 曲线按「无衰减纯积分器」跑。
+   * 于是同一格上：落盘世界态 170.243587360595，曲线 actual 210.9 —— 屏上曲线与世界态对不上。
+   * `sim-seed-world.seam.test.ts ⑤` 的「落盘世界与曲线 actual 对不上」那一臂就是咬这个的。
+   * ⚠ 两个分支各自都不会红：prop-clamp 那边没有 `pairWeights`、coef-from-bom 那边没有 `domains`，
+   * **只有合并态才同时具备两者**，也只有合并态会漏喂一个 —— 这正是 SEAM-GATE 要防的那种断法。
+   */
+  stateVarDomains: StateVarDomainLookup;
 }
 
 /** 一条回放出来的世界线。`states[i]` = tick `i` 的世界态；`traces[i]` = **产出**那一格时的轨迹。 */
@@ -130,7 +142,8 @@ export function replayWorldLine(args: {
       const out = propagateTick(
         engine.graph, state, rules, pending, tick, engine.ruleParams, engine.cadenceGates,
         perturbationsForTick(tick + 1, states),
-        engine.pairWeights,
+        engine.pairWeights,      // 第 9 位
+        engine.stateVarDomains,  // 第 10 位 —— 缺它，曲线就与真 tick 走两套物理
       );
       state = out.next;
       pending = out.pending;

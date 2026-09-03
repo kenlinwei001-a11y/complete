@@ -2168,15 +2168,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 保住"无传导规则的租户零本体读"这条既有特征。此时两条线恒等（世界不动），回包照常成立。
     const engine = published.length > 0 || perturbations.length > 0
       ? await buildPropagationInputs(repos, c, resolveSimScope(s.scope), active)
-      : { graph: { objects: [], links: [] }, ruleParams: {}, cadenceGates: {}, pairWeights: {} };
+      : { graph: { objects: [], links: [] }, ruleParams: {}, cadenceGates: {}, pairWeights: {}, stateVarDomains: {} };
     return buildMetricSeries({
       sessionId: s.id,
       // 🔴 基线种子 = **本会话自己的 tick0 行**（`/act` 直写过的世界里它与 baseSnapshot 不同，
       //    那个差额属于这个世界、两条线都该带着它）。缺行才退回 baseSnapshot。
       seed: (await repos.sim.getTickState(c.tenantId, s.id, 0))?.state ?? simState(s.baseSnapshot),
-      // 逐实例权重与图/参数/闸门**同一处装配**（WO-COEF-FROM-BOM）：曲线与真 tick 少喂一样输入
-      // 就会各画各的 —— 那正是「唯一装配处」这条纪律要防的事。
-      engine: { graph: engine.graph, ruleParams: engine.ruleParams, cadenceGates: engine.cadenceGates, pairWeights: engine.pairWeights },
+      // 逐实例权重、取值域与图/参数/闸门**同一处装配**（WO-COEF-FROM-BOM × WO-PROP-CLAMP）：
+      // 曲线与真 tick 少喂一样输入就会各画各的 —— 那正是「唯一装配处」这条纪律要防的事。
+      // ⚠ `stateVarDomains` 是收编两单时漏掉的那一样，接缝测试当场抓出（详见 MetricSeriesEngine 字段注释）。
+      engine: {
+        graph: engine.graph, ruleParams: engine.ruleParams, cadenceGates: engine.cadenceGates,
+        pairWeights: engine.pairWeights, stateVarDomains: engine.stateVarDomains,
+      },
       publishedRules: published,
       activeRules: active,
       perturbations,

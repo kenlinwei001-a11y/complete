@@ -131,9 +131,15 @@ async function censusWorldLines(t: TestApp, sessionId: string): Promise<{
   const published = await t.repos.sim.listPropagationRules("demo", true);
   const { active } = partitionPropagationRules(published, s.disabledRuleKeys);
   const perturbations = await t.repos.sim.listPerturbations("demo", s.id);
-  // 逐实例分摊权重与图/参数/闸门同一处装配（WO-COEF-FROM-BOM）——路由那一份也是这么喂的。
+  // 逐实例分摊权重、状态量取值域与图/参数/闸门同一处装配
+  // （WO-COEF-FROM-BOM × WO-PROP-CLAMP）——路由那一份也是这么喂的。
+  // ⚠ `stateVarDomains` 少喂一样，本回放就按「无衰减纯积分器」跑，而落盘世界是夹过值的
+  // ⇒ 下面 ⑤ 的「落盘世界与曲线 actual 对不上」那一臂当场红。这不是断言写错，是真的两套物理。
   const inputs = await buildPropagationInputs(t.repos, t.adminCtx, resolveSimScope(s.scope), active);
-  const engine = { graph: inputs.graph, ruleParams: inputs.ruleParams, cadenceGates: inputs.cadenceGates, pairWeights: inputs.pairWeights };
+  const engine = {
+    graph: inputs.graph, ruleParams: inputs.ruleParams, cadenceGates: inputs.cadenceGates,
+    pairWeights: inputs.pairWeights, stateVarDomains: inputs.stateVarDomains,
+  };
   const actualLine = replayWorldLine({ seed, engine, rules: active, perturbations, toTick: s.curTick });
   const baselineLine = replayWorldLine({ seed, engine, rules: active, perturbations: [], toTick: s.curTick });
 
