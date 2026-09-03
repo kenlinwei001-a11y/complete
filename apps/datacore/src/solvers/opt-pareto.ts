@@ -27,7 +27,10 @@
  * 杠杆按 key 字典序、档位去重升序、笛卡尔积按里程表序枚举、输出按全序排序 ⇒
  * 同 (session, 杠杆集, 参数版本) 重跑 `JSON.stringify` 逐字节一致。
  */
-import type { OptPerturbation, OptTemplateFamily, ParetoBinding, ParetoObjective, ParetoRankingEntry, ParetoRequest, ParetoResult, ParetoSolution } from "@platform/contracts";
+import type { OptPerturbation, OptTemplateFamily, ParetoBinding, ParetoObjective, ParetoRequest, ParetoResult, ParetoSolution } from "@platform/contracts";
+// 加权排名的**唯一实现**在契约包里 —— 前端的滑杆与这里回包的 `ranking` 必须逐字节同源，
+// 故两边 import 同一段代码，不各写一份（理由见契约 `rankParetoByWeights` 的文件段）。
+import { normalizeParetoWeights, rankParetoByWeights } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { applyPerturbationSet, type SolveArgsFn } from "./opt-whatif.js";
 
@@ -210,88 +213,6 @@ function metricsOf(out: Record<string, unknown>): Record<string, number> {
 }
 
 /**
- * 权重归一：负值/非有限值一律剔除；全零或全空 ⇒ **各目标等权 1**。
- *
- * 「全零 ⇒ 等权」而不是「全零 ⇒ 分母 0 ⇒ NaN」：用户把所有滑杆拉到底是一个**可达的屏上状态**，
- * 它该被读成"我没有偏好"，不该让整页读数变成 NaN。
- * 不在 `objectives` 里的键**静默忽略**（契约原话：屏上留着一个已换掉的轴的滑杆不该让求解 400）。
- */
-export function normalizeWeights(
-  objectives: readonly ParetoObjective[],
-  weights: Readonly<Record<string, number>> | undefined,
-): Record<string, number> {
-  const out: Record<string, number> = {};
-  let sum = 0;
-  for (const o of objectives) {
-    const w = weights?.[o.key];
-    const v = typeof w === "number" && Number.isFinite(w) && w >= 0 ? q(w) : 1;
-    out[o.key] = v;
-    sum += v;
-  }
-  if (sum <= 0) for (const o of objectives) out[o.key] = 1;
-  // 键序稳定（R6）：与 `metricsOf` 同一条理由。
-  const sorted: Record<string, number> = {};
-  for (const k of Object.keys(out).sort()) sorted[k] = out[k]!;
-  return sorted;
-}
-
-/**
- * **本单的心脏（其二）**：按权重给前沿排名次 —— 而**前沿是谁，这里一个字都不改**。
- *
- * ══ 为什么归一的极值取自「全体可行候选」而不是「前沿」════════════════════════
- * 这不是审美，是那条验收判据的算术保证。设归一
- *   nₖ(s) = (读数折成「1 = 最好 · 0 = 最差」)，极值取自 `pool`。
- * `pool` 与 `weights` **无关** ⇒ nₖ(s) 与 weights 无关 ⇒ 换权重时每个解的 nₖ 都不动，
- * 变的只有 Σwₖnₖ/Σwₖ 这个加权平均 ⇒ **只可能换名次，不可能换成员**。
- * 若改成「极值取自前沿」，结论依旧（前沿也与权重无关），但少了一层：
- * 被支配解与前沿解会落在两把不同的尺上，屏上同一根轴出现两种刻度。
- *
- * ⚠ 退化域（某目标全体读数相同）⇒ 该目标对所有解贡献同一个 0.5，
- *    **不是 0 也不是 1**：全体并列时说"大家都最好"或"大家都最差"都是断言，
- *    而这一维真实的信息量是零。给 0.5 让它在加权平均里**不改变任何相对次序**。
- *
- * ⛔ 本函数**不参与**可行性判定、不参与支配比较、不被 `partitionPareto` 调用 ——
- *    它在前沿切好**之后**才跑。这是"权重不改前沿"在代码结构上的保证，不靠注释。
- */
-export function rankByWeights(
-  frontier: readonly ParetoSolution[],
-  objectives: readonly ParetoObjective[],
-  weights: Readonly<Record<string, number>>,
-  pool: readonly ParetoSolution[],
-): ParetoRankingEntry[] {
-  const span = new Map<string, { lo: number; hi: number }>();
-  for (const o of objectives) {
-    const vs = pool.map((s) => s.metrics[o.key]).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-    if (vs.length > 0) span.set(o.key, { lo: Math.min(...vs), hi: Math.max(...vs) });
-  }
-  const total = objectives.reduce((s, o) => s + (weights[o.key] ?? 0), 0);
-  const scoreOf = (s: ParetoSolution): number => {
-    if (total <= 0) return 0;
-    let acc = 0;
-    for (const o of objectives) {
-      const w = weights[o.key] ?? 0;
-      if (w === 0) continue;
-      const sp = span.get(o.key);
-      const v = s.metrics[o.key];
-      // 读数缺失 ⇒ 这一维按"零信息"计（0.5），与退化域同一口径。**不补 0**：
-      // 补 0 在 `dir:"min"` 下是"最好"、在 `dir:"max"` 下是"最差"，同一个补法两种含义。
-      let n = 0.5;
-      if (sp !== undefined && typeof v === "number" && Number.isFinite(v)) {
-        const d = sp.hi - sp.lo;
-        n = d === 0 ? 0.5 : o.dir === "max" ? (v - sp.lo) / d : (sp.hi - v) / d;
-      }
-      acc += w * n;
-    }
-    return q(acc / total);
-  };
-  return [...frontier]
-    .map((s) => ({ id: s.id, score: scoreOf(s) }))
-    // 全序（R6）：得分降序 → id 字典序兜底。不依赖 `Array#sort` 的稳定性。
-    .sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    .map((e, i) => ({ id: e.id, rank: i + 1, score: e.score }));
-}
-
-/**
  * 执行帕累托解集求解：杠杆网格 → 逐组合施加扰动（克隆·不落真值 R4）→ sidecar 重解 →
  * 绑定裕度 → 可行性过滤 → 逐对支配剔除 → `{frontier, dominated, iterations, residual}`，
  * 最后按**读者偏好**（`weights`）给前沿排一个名次（`ranking` / `recommendedId`）。
@@ -365,8 +286,8 @@ export async function runOptimizePareto(solve: SolveArgsFn, req: ParetoRequest):
   // ── 权重：**在前沿切好之后**才登场（见 `rankByWeights` 的 ⛔ 段）───────────────
   // `frontier`/`dominated` 此刻已经定了，下面三行读它们、不改它们。
   // 归一池 = 全体参与竞争的可行解（前沿 + 被支配），与权重无关 ⇒ 换权重只换名次。
-  const weights = normalizeWeights(objectives, req.weights);
-  const ranking = rankByWeights(frontier, objectives, weights, [...frontier, ...dominated]);
+  const weights = normalizeParetoWeights(objectives, req.weights);
+  const ranking = rankParetoByWeights(frontier, objectives, weights, [...frontier, ...dominated]);
 
   return {
     objectives,

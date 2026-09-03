@@ -40,8 +40,12 @@ import {
   BASE_REGISTRY,
   chainNodeDef,
   type ChainNodeDef,
+  normalizeParetoWeights,
+  rankParetoByWeights,
   type ParetoBinding,
   type ParetoObjective,
+  type ParetoObjectiveGap,
+  type ParetoRankingEntry,
   type ParetoRequest,
   type ParetoResult,
   type ParetoSolution,
@@ -300,6 +304,26 @@ export interface OptRadar {
 export interface OptModel {
   /** 端点原样回显（含 `dir`）。轴与下拉都由它派生，前端零猜测。 */
   objectives: readonly ParetoObjective[];
+  /**
+   * 决策者点名要、而**今天接不上地**的轴（端点回显）。
+   *
+   * ⛔ 屏上必须**显式印出来**，不许留白：少一列而屏上什么都不说，会被读成"这一维没问题"——
+   * 那是与事实相反的结论。这一格与「兜底占位」是两件事：占位是"没算"，这里是"算不了，且我说得出为什么"。
+   */
+  unavailableObjectives: readonly ParetoObjectiveGap[];
+  /**
+   * 当前这组**目标权重**（键 = `objectives[].key`）。端点回显它算 `ranking` 用的那一组；
+   * 用户拖滑杆后由前端就地重排（同一个 `rankParetoByWeights`，见下 `rerank()`）。
+   */
+  weights: Readonly<Record<string, number>>;
+  /**
+   * 前沿的加权名次（`rank` 升序）。**长度恒等于 `frontier.length`** —— 同一批解的另一个视角。
+   *
+   * ⚠ 权重变了它会变，`frontier` **不会变** —— 这正是「真多目标」与「换个加权再算一遍」的分界。
+   */
+  ranking: readonly ParetoRankingEntry[];
+  /** `rank===1` 那个解的 id；前沿为空 ⇒ `null`（**不兜一个 id 出来**）。 */
+  recommendedId: string | null;
   /** 散点两轴 = `objectives[0]`（横）与 `objectives[1]`（纵）。 */
   axes: readonly [OptAxis, OptAxis];
   frontier: readonly OptCandidate[];
@@ -585,6 +609,14 @@ const PLACEHOLDER_DOMINATED: readonly OptCandidate[] = (() => {
  */
 export const PLACEHOLDER_OPT_MODEL: OptModel = { // hardcoded-data-allow —— 规格占位（屏上已标「示例数据」，见 SandboxOpt 的 sandbox-opt-placeholder）
   objectives: PLACEHOLDER_OBJECTIVES,
+  // 占位态**不编"要不到的轴"**：那份清单是装配器**看着本租户本体**得出的结论，
+  // 而占位态压根没问过任何租户。给一份假的"缺哪几列"比不给更坏 —— 它会让人以为系统查过了。
+  unavailableObjectives: [],
+  // 占位态的权重与名次由**同一个** `rankParetoByWeights` 现算（等权），不另抄一张表：
+  // 占位与真数据走同一条打分路径 ⇒ 滑杆在占位态也是活的，变异反证对两种模式同时有效。
+  weights: normalizeParetoWeights(PLACEHOLDER_OBJECTIVES, undefined),
+  ranking: [],
+  recommendedId: null,
   axes: PLACEHOLDER_AXES,
   frontier: PLACEHOLDER_FRONTIER,
   dominated: PLACEHOLDER_DOMINATED,
@@ -682,6 +714,10 @@ export function projectPareto(res: ParetoResult, family: string): OptModel {
   const selId = best?.id ?? frontier[0]?.id ?? "";
   return {
     objectives: res.objectives,
+    unavailableObjectives: res.unavailableObjectives,
+    weights: res.weights,
+    ranking: res.ranking,
+    recommendedId: res.recommendedId,
     axes: pair,
     frontier,
     dominated,
@@ -716,6 +752,31 @@ function radarOf(cands: readonly OptCandidate[], selId: string, axes: readonly O
     selLabel: sel?.id ?? "",
     sel: use.map((ax) => good(sel, ax)),
   };
+}
+
+/**
+ * **滑杆动了之后**：就地按新权重重排 —— 并**原样保留** `frontier` / `dominated`。
+ *
+ * ══ 这个函数存在的意义就是那条验收判据 ═══════════════════════════════════════
+ * > **权重改变时前沿不变、排序变。**
+ *
+ * 它**不发任何请求**：解集是上一跳算好的，权重只是读者的偏好。用户拖滑杆时屏上
+ * 立刻换序而候选卡一张不增不减 —— 这件事本身就是"真多目标"的可见证据。
+ * 若这里改成"带上新权重重 POST 一次"，屏上看起来一样，但那就成了
+ * 「换个加权再算一遍」的单目标 —— 而**用户分辨不出来**，只有这个函数的存在与否能分辨。
+ *
+ * ⚠ 打分用的是契约包里那一份 `rankParetoByWeights`（与服务端回包同源，不是抄的）。
+ *   归一池 = 前沿 + 被支配（与服务端 `runOptimizePareto` 传的池子逐字相同）——
+ *   两处若传不同的池子，同一组权重会在屏上和回包里给出两个名次。
+ *
+ * ⛔ 本函数**不碰** `frontier`/`dominated`/`iterations`/`residual`/`axes`：
+ *   返回的是同一个模型换了 `weights`/`ranking`/`recommendedId` 三格。
+ */
+export function rerankByWeights(model: OptModel, weights: Readonly<Record<string, number>>): OptModel {
+  const w = normalizeParetoWeights(model.objectives, weights);
+  const pool = [...model.frontier, ...model.dominated];
+  const ranking = rankParetoByWeights(model.frontier, model.objectives, w, pool);
+  return { ...model, weights: w, ranking, recommendedId: ranking[0]?.id ?? null };
 }
 
 /** 详情面板十行：真数据模式按「编号 / 求解器 / 参数版本 / 可行性 / 各目标 / 迭代 / 残差」拼。 */
