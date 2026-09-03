@@ -7299,6 +7299,23 @@ export const handlers = [
       rec.status = "REJECTED";
     } else if (rec.signoffs.every((s) => s.decision === "APPROVE")) {
       rec.status = "APPROVED";
+      /*
+       * WO-PUBLISH-VERSION-PIN：发出去的号必须**就是这张单钉的那个**，钉的号已被占就拒。
+       *
+       * 真后端（`ontology.ts publishVersion` 的 `expectVersion`）此前发的是 `max+1`，
+       * 不看本单钉的 `ontologyVersion` ⇒ 钉 v2 的单能发出 v3。**本 mock 当时反而是对的**
+       * （这一行一直写着 `= rec.ontologyVersion`），于是 mock 与真后端语义相反 ——
+       * 前端在 mock 上永远看不见这个缺陷。现在两边对齐：钉的号被占 → 409，不静默改发。
+       */
+      if (rec.ontologyVersion !== mockOntologyVersionSeq + 1) {
+        return err(
+          409,
+          "INVALID_STATE",
+          `发布被拒：会签单钉的是 v${rec.ontologyVersion}，而 v${rec.ontologyVersion} 已经被发布过了` +
+            `（当前最新 v${mockOntologyVersionSeq}）。签的版本号与发出的版本号必须相同，` +
+            `故本次不改发 v${mockOntologyVersionSeq + 1}。请对 v${mockOntologyVersionSeq + 1} 重新发起发布会签。`,
+        );
+      }
       mockOntologyVersionSeq = rec.ontologyVersion; // 全域通过 → 快照真的固化了
     }
     return HttpResponse.json(rec);

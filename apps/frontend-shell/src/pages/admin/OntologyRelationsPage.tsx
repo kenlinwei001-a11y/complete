@@ -271,7 +271,20 @@ export default function OntologyRelationsPage() {
       void qc.invalidateQueries({ queryKey: ["a", "ontology-versions"] });
       void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
     },
-    onError: toastError,
+    /*
+     * WO-PUBLISH-VERSION-PIN：**出错也要刷新列表**。
+     *
+     * 后端把「记会签」与「全票后自动发布」放在同一个请求里，且会签是**先落库**的。
+     * 于是有一种回包是「会签已记录，但自动发布被拒」——最后一签的人钉的是 v2，
+     * 而 v2 已被别人（破窗）发掉，后端拒绝静默改发 v3，回 409。
+     * 此时只弹一个红条而不刷列表，屏上那一行会**继续显示他没签** —— 而他其实签上了。
+     * 这就成了本单要修的那个病的前端版：**屏上的状态与库里的状态对不上**。
+     */
+    onError: (e) => {
+      toastError(e);
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-publish-requests"] });
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-versions"] });
+    },
   });
   /** 驳回理由（后端必填）。按请求 id 存，避免多行请求共用一个输入框。 */
   const [rejectComment, setRejectComment] = useState<Record<string, string>>({});
