@@ -317,8 +317,9 @@ describe("差分门 C③ · carbon_footprint 型号维：materialCarbon 必须�
 // 为什么这里不是"补一行过滤"（三条硬证据，本 describe 逐条真咬）：
 //   ① `ChangeoverMatrix.lineId` 全库恒 null（生成器写死·battery-extended.ts:667「无线级实测→全局值」）；
 //   ② `Order` 没有产线归属（只有 bases[]，全链无 Order→Line 边）；
-//   ③ 唯一带真 lineId 的 `WorkOrder`，其型号取值跑出了 `Model` 之外（储能-280Ah/储能-314Ah）
-//      ⇒ 不在换型矩阵里 ⇒ 接上去会把「不知道换型多久」算成「0 分钟」，比现状更坏。
+//   ③ ~~唯一带真 lineId 的 `WorkOrder`，其型号取值跑出了 `Model` 之外（储能-280Ah/储能-314Ah）~~
+//      **此条已于 `WO-WORKORDER-CATALOG-FIX` 消除**（工单型号改从基地可产集里选，孤儿恒 0）。
+//      裁决③ 不变：① 与 ② 仍然成立，单靠它们就足以判 EMPTY。
 // ---------------------------------------------------------------------------
 describe("诚实缺席门 D① · changeover_sequence 产线维：标 EMPTY，而不是把全网排序冠上这条线的名字", () => {
   it("数据半事实①：ChangeoverMatrix 全库无线级 lineId（哪天灌了值，本条变红 → 逼人回来改成真过滤）", async () => {
@@ -333,17 +334,24 @@ describe("诚实缺席门 D① · changeover_sequence 产线维：标 EMPTY，�
     ).toBe(0);
   });
 
-  it("数据半事实②：WorkOrder 的型号跑出了 Model 之外 ⇒ 拿它当产线队列会编造 0 分钟换型", async () => {
+  it("数据半事实②：WorkOrder 的型号已全部落在 Model 目录内（棘轮反向·WO-WORKORDER-CATALOG-FIX 修）", async () => {
     const t = await boot();
     const woModels = new Set((await query(t, "WorkOrder")).map((w) => String(w.modelId)));
     const modelIds = new Set((await query(t, "Model")).map((m) => String(m.modelId)));
     expect(woModels.size, "数据半：WorkOrder 应非空").toBeGreaterThan(0);
     const orphans = [...woModels].filter((m) => !modelIds.has(m)).sort();
+    // 本条原断言是 `toBeGreaterThan(0)` —— 它记录的是**当时的数据缺陷**：工单型号取自硬编码
+    // `WO_MODELS`，其中 `储能-280Ah`/`储能-314Ah` 不在 `MODELS` 六型号里。该缺陷已由
+    // `WO-WORKORDER-CATALOG-FIX` 修掉（工单型号改从「该基地真能产的型号集」里选，见 `battery.ts`
+    // 的 `WO_MODELS_BY_BASE`）⇒ 孤儿恒 0。**棘轮就此反向**：哪天工单型号又跑出 Model 之外，
+    // 本条变红，逼人回去看工单生成段——而不是让「型号是孤儿」这件事再次悄悄成立。
+    // ⚠ 这**不解除** D① 的 EMPTY 裁决：上面的理由 ①（矩阵无线级 lineId）与 ②（Order 无产线归属）
+    // 仍然成立，只是理由 ③ 已不再是挡路的那一条。
     expect(
-      orphans.length,
-      `WorkOrder 的型号已全部落在 Model 内（孤儿 ${JSON.stringify(orphans)}）⇒ 换型矩阵能查全，` +
-        `"接 WorkOrder 会编造 0 分钟换型"这条理由作废，须回来重估产线维`,
-    ).toBeGreaterThan(0);
+      orphans,
+      `WorkOrder 的型号又跑出了 Model 之外（孤儿 ${JSON.stringify(orphans)}）⇒ ` +
+        `工单生成段「按基地可产集选型号」被绕过了，回去看 battery.ts 的 WO_MODELS_BY_BASE`,
+    ).toEqual([]);
   });
 
   it("给了真实产线 → 输出必须带 lineScope.dataMode=EMPTY + 说清缺什么（不静默冒充线级排产）", async () => {
