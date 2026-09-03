@@ -2602,6 +2602,11 @@ export interface PublishRequestVM {
    * **`"PENDING"` 这个值后端从来没有发过**。于是会签面板那两颗按钮的
    * `disabled={p.status !== "PENDING"}` 对**每一条**请求恒真，
    * 2026-08-30 真后端实测：15 条会签 **0 条可处置**，两颗按钮全灰。
+   * **复验方式**（2026-09-03 亲手重跑过，数一字未变）：起 datacore（`SEED_DEMO=1`）后
+   *   `curl -X POST -H 'x-debug-user: demo:usr_demo_admin:admin|catalog_admin' \
+   *     http://127.0.0.1:4001/a/v1/ontology/publish-requests -d '{}'`
+   *   → 回包 `status` 是 `PENDING_SIGNOFF`、`signoffs` 15 行；把它喂给旧判据即恒灰。
+   *   取值域单源见 `packages/contracts/src/ontology-governance.ts` 的 `PublishRequestStatusSchema`。
    * 会签机制本身（owner 鉴权 403 / REJECT 必填 comment / 72h 代签 / 7 天过期）
    * 全都是真的、能跑的，**只是没有任何人能按下第一颗按钮**。
    *
