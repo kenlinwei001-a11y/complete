@@ -34,6 +34,9 @@ interface ObjectsPageRes {
   items: { id: string; type: string; props: Record<string, unknown> }[];
   total: number;
   totalIsLowerBound?: boolean;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
   warnings?: string[];
 }
 
@@ -41,6 +44,13 @@ async function getPage(t: TestApp, url: string): Promise<ObjectsPageRes> {
   const res = await t.app.inject({ method: "GET", url, headers: ADMIN });
   expect(res.statusCode, `${url} → ${res.body.slice(0, 300)}`).toBe(200);
   return res.json() as ObjectsPageRes;
+}
+
+/** 期望被 400 拒掉的请求：回状态码 + 错误信息（用于断言"点了名"）。 */
+async function getRejected(t: TestApp, url: string): Promise<{ status: number; message: string }> {
+  const res = await t.app.inject({ method: "GET", url, headers: ADMIN });
+  const body = res.json() as { error?: { message?: string } };
+  return { status: res.statusCode, message: body.error?.message ?? res.body };
 }
 
 /** 种子里行数最多的类型（本测的「大类型」；seed 42 · scale S 实测 = EquipmentOEE 5460 行）。 */
@@ -120,23 +130,54 @@ describe("GET /a/v1/objects · total 说真话 + 分页能穿越硬顶", () => {
 });
 
 describe("GET /a/v1/objects · 无法识别的查询参数不许静默吞掉", () => {
-  it("`limit` 在本端点无效 ⇒ 必须回 warning 并点名正确参数是 pageSize", async () => {
+  it("`limit` 这类**分页别名**必须 400 点名，不许静默生效也不许只回 warning", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    // 实测：修前 `?limit=100000` 被完全忽略、无任何提示、静默回落 pageSize=50，
-    // 审核方与三个评审角色都被它骗过。
-    const pg = await getPage(t, "/a/v1/objects?type=Order&limit=100000");
-    expect(pg.warnings, "无效参数必须有 warnings").toBeDefined();
-    expect(pg.warnings!.join(" ")).toContain("limit");
-    expect(pg.warnings!.join(" "), "warning 要说出正确的参数名，否则调用方不知道怎么改").toContain("pageSize");
-    // 且它确实没生效（诚实 ≠ 悄悄改语义）：默认页长 50。
-    expect(pg.items.length).toBe(50);
+    // 沿革：修前 `?limit=100000` 被完全忽略、静默回落 pageSize=50；
+    // 随后改成回 warning —— 仍然不够：**生产前端 `fetchOrdersForFamilies` 就发了 `limit=500`，
+    // 实收 50 行而 total=500（10× 欠读），warning 摆在响应里没有任何人读。**
+    // 一个不产生错误、只让人少拿数据的参数，必须硬拒。
+    const rej = await getRejected(t, "/a/v1/objects?type=Order&limit=100000");
+    expect(rej.status, `limit 必须被 400 拒掉，实得 ${rej.status}：${rej.message}`).toBe(400);
+    expect(rej.message, "错误必须点名是哪个参数").toContain("limit");
+    expect(rej.message, "错误要说出正确的参数名，否则调用方不知道怎么改").toContain("pageSize");
+
+    // 金丝雀：别的分页别名同样拒（否则本条只挡住了 `limit` 一个词）。
+    for (const alias of ["offset=10", "cursor=abc", "per_page=100", "skip=5"]) {
+      const r = await getRejected(t, `/a/v1/objects?type=Order&${alias}`);
+      expect(r.status, `分页别名 ${alias} 应被 400，实得 ${r.status}`).toBe(400);
+    }
   }, 300000);
 
-  it("未知参数回 warning；合法参数（含 f_<属性名>）不许误报", async () => {
+  it("分页参数的**值**不许静默改写：page/pageSize 非法即 400", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // `page=abc` 悄悄变 1、`pageSize=abc` 悄悄变 50 —— 与忽略参数同病，只是发生在值这一层：
+    // 调用方拿到的是别人替他选的那一页，而响应里一个字都没提。
+    for (const bad of ["page=abc", "page=0", "page=-1", "pageSize=abc", "pageSize=0", "pageSize=-5"]) {
+      const r = await getRejected(t, `/a/v1/objects?type=Order&${bad}`);
+      expect(r.status, `${bad} 应被 400（静默回落是病），实得 ${r.status}：${r.message}`).toBe(400);
+    }
+    // 金丝雀（护住上一条）：合法值必须照常 200，否则"凡带 page 就 400"也能让上面全绿。
+    const ok = await getPage(t, "/a/v1/objects?type=Order&page=2&pageSize=10");
+    expect(ok.items.length).toBe(10);
+  }, 300000);
+
+  it("pageSize 超上限：夹到 500 但必须**说出来**，且回显的是生效值", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const pg = await getPage(t, "/a/v1/objects?type=Order&pageSize=100000");
+    expect(pg.pageSize, "回显的必须是生效值，不是请求值 —— 否则调用方按 100000 算下一页会算错").toBe(500);
+    expect(pg.warnings?.join(" ") ?? "", "被夹了却不说 = 又一次静默截断").toContain("500");
+    expect(pg.items.length).toBeLessThanOrEqual(500);
+  }, 300000);
+
+  it("未知（非分页）参数回 warning；合法参数（含 f_<属性名>）不许误报", async () => {
     const t = await makeApp();
     await seedBattery(t);
 
+    // 非分页形态的拼写错误只回 warning：本端点 URL 常由 agent 现拼，
+    // 硬拒会把一个拼写问题升级成一次故障，而它并不会让人少拿数据。
     const bogus = await getPage(t, "/a/v1/objects?type=Order&bogusParam=1");
     expect(bogus.warnings?.join(" ") ?? "").toContain("bogusParam");
 
@@ -144,5 +185,33 @@ describe("GET /a/v1/objects · 无法识别的查询参数不许静默吞掉", (
     // 否则「凡请求皆报警」也能让上一条绿，那它就什么都没验。
     const clean = await getPage(t, "/a/v1/objects?type=Order&q=SO&page=1&pageSize=10&base=&f_status=OPEN");
     expect(clean.warnings, `合法参数被误报为未知：${JSON.stringify(clean.warnings)}`).toBeUndefined();
+  }, 300000);
+});
+
+describe("GET /a/v1/objects · 截断信号 hasMore（不许让调用方自己算那道算术）", () => {
+  it("hasMore 逐页走完必须恰好在最后一页转 false，且 ③ 累计 = ④ 真值", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const truth = await truthCount(t, "Line");
+    // 金丝雀：Line 必须多于一页，否则 hasMore 恒 false，本条什么都没验。
+    expect(truth, `Line 只有 ${truth} 行，撑不满两页 ⇒ 本条会假绿`).toBeGreaterThan(50);
+
+    // 只信 hasMore 翻页（不看 total、不算 page*pageSize）——
+    // 这正是调用方拿到本响应后最该能做的事：跟着信号走就能取全。
+    for (const pageSize of [50, 10, 7, 1]) {
+      const seen = new Set<string>();
+      let page = 1;
+      for (;;) {
+        const pg = await getPage(t, `/a/v1/objects?type=Line&page=${page}&pageSize=${pageSize}`);
+        expect(pg.pageSize, "回显生效页长").toBe(pageSize);
+        expect(pg.page, "回显生效页号").toBe(page);
+        for (const it of pg.items) seen.add(it.id);
+        if (!pg.hasMore) break;
+        page++;
+        expect(page, "hasMore 一直为真 = 它没在最后一页转 false").toBeLessThan(truth + 5);
+      }
+      // 变异反证：页长改小，累计条数必须**不变**。跟着变小 ⇒ "翻完"是假的。
+      expect(seen.size, `pageSize=${pageSize} 时只凭 hasMore 翻完应取全 ${truth} 行`).toBe(truth);
+    }
   }, 300000);
 });

@@ -3351,9 +3351,56 @@ export const handlers = [
     const url = new URL(request.url);
     const type = url.searchParams.get("type") ?? "Order";
     const q = (url.searchParams.get("q") ?? "").toLowerCase();
-    const page = Number(url.searchParams.get("page") ?? "1");
-    const pageSize = Number(url.searchParams.get("pageSize") ?? "50");
     const base = url.searchParams.get("base");
+
+    /**
+     * WO-OBJECTS-PAGING-TRUTH · **分页语义与真后端逐条对齐**。
+     *
+     * 这里原本只有 `Number(page)` / `Number(pageSize)` 两行，比真后端**宽松**三处：
+     * 不夹 `pageSize` 上限、不拒分页别名、不回 `warnings/hasMore`。
+     * 宽松的 mock 不是"更好"，是**假绿发动机**——它会把真后端的 400 与截断提示整个盖住，
+     * 前端在 mock 下永远走不到那条分支（本仓已有过"mock 恰好把后端 bug 盖住"的实账）。
+     * 下面四条与 `apps/datacore/src/app.ts` 的 `GET /a/v1/objects` 同语义。
+     */
+    const MAX_PAGE_SIZE = 500;
+    const PAGINATION_ALIASES = new Set([
+      "limit", "offset", "cursor", "perpage", "per_page", "page_size", "pagesize",
+      "size", "skip", "start", "top", "maxresults", "max_results",
+      "pagenum", "page_num", "pageindex", "page_index",
+    ]);
+    const KNOWN = new Set(["type", "q", "page", "pageSize", "base"]);
+    const unknownKeys = [...url.searchParams.keys()].filter((k) => !KNOWN.has(k) && !k.startsWith("f_"));
+
+    const badPaging = unknownKeys.filter((k) => PAGINATION_ALIASES.has(k.toLowerCase()));
+    if (badPaging.length) {
+      return err(
+        400,
+        "VALIDATION_ERROR",
+        `分页参数 ${badPaging.map((k) => `"${k}"`).join(" / ")} 在本端点不存在，不会生效。` +
+          `本端点分页只认 page + pageSize（pageSize ≤ ${MAX_PAGE_SIZE}）；` +
+          `要取全部请按响应里的 hasMore / total 逐页翻。`,
+      );
+    }
+
+    const warnings: string[] = [];
+    const intParam = (name: string, dflt: number): number | { bad: string } => {
+      const raw = url.searchParams.get(name);
+      if (raw === null || raw === "") return dflt;
+      if (!/^\d+$/.test(raw) || Number(raw) < 1) return { bad: raw };
+      return Number(raw);
+    };
+    const pageRaw = intParam("page", 1);
+    if (typeof pageRaw !== "number") return err(400, "VALIDATION_ERROR", `查询参数 "page" 必须是 ≥1 的整数，收到 "${pageRaw.bad}"。`);
+    const askedRaw = intParam("pageSize", 50);
+    if (typeof askedRaw !== "number") return err(400, "VALIDATION_ERROR", `查询参数 "pageSize" 必须是 ≥1 的整数，收到 "${askedRaw.bad}"。`);
+    const page = pageRaw;
+    const pageSize = Math.min(MAX_PAGE_SIZE, askedRaw);
+    if (askedRaw > pageSize) {
+      warnings.push(`pageSize=${askedRaw} 超过本端点上限 ${MAX_PAGE_SIZE}，本次实际用 ${pageSize}；请按 hasMore 继续翻页。`);
+    }
+    for (const k of unknownKeys) {
+      warnings.push(`查询参数 "${k}" 无法识别，已被忽略。本端点认得：type / q / page / pageSize / base / f_<属性名>。`);
+    }
 
     let rows: { id: string; props: Record<string, unknown> }[];
     if (type === "Base") {
@@ -3428,8 +3475,17 @@ export const handlers = [
       rows = rows.filter((r) => String(r.props[prop] ?? "").includes(v));
     }
     const total = rows.length;
-    const items = rows.slice((page - 1) * pageSize, page * pageSize).map((r) => ({ ...r, type }));
-    return HttpResponse.json({ items, total });
+    const offset = (page - 1) * pageSize;
+    const items = rows.slice(offset, offset + pageSize).map((r) => ({ ...r, type }));
+    // 与真后端同一组截断信号：生效 page/pageSize 回显 + hasMore（别让前端自己算那道算术）。
+    return HttpResponse.json({
+      items,
+      total,
+      page,
+      pageSize,
+      hasMore: offset + items.length < total,
+      ...(warnings.length ? { warnings } : {}),
+    });
   }),
 
   // ---- 治理增量 §3.3 关键词搜索（命中 name + 相似度降序） ----

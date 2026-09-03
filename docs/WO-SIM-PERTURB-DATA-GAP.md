@@ -4,7 +4,7 @@
 > 缺什么就出补齐工单。本文件是对账结果 + 待补清单。
 >
 > **对账方法（不是 grep 猜的）**：起真 datacore（内存模式 `SEED_DEMO=1`，`/readyz ready` 后），
-> 按 `GET /a/v1/objects?type=<T>&limit=N` 逐类型拉**真实例**，
+> 按 `GET /a/v1/objects?type=<T>&pageSize=N` 逐类型拉**真实例**，
 > 对 `CAPACITY_FACTOR_BINDINGS`（`packages/contracts/src/capacity-factors.ts`）20 条逐条核
 > 「属性在不在 / 有没有值 / 落点类型有没有 baseId」。
 
@@ -114,7 +114,7 @@
 中间缺"类型 → 具体哪个实例"这一步。
 
 **补齐方向**：落点实例选择器（仓主已批准接，排在沙盘改造之后）。
-选择器的数据源现已确认可用：`GET /a/v1/objects?type=<T>&limit=N` 回真实例，
+选择器的数据源现已确认可用：`GET /a/v1/objects?type=<T>&pageSize=N` 回真实例，
 **注意参数名是 `type`**（本单第 0 节那个坑）。
 
 ## 3 · 仿真页需要按真数据重做的部分

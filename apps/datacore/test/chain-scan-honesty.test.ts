@@ -85,7 +85,10 @@ async function scan(t: TestApp): Promise<ScanOut> {
 async function propOf(t: TestApp, typeKey: string, objectId: string, propKey: string): Promise<unknown> {
   const res = await t.app.inject({
     method: "GET",
-    url: `/a/v1/objects?type=${encodeURIComponent(typeKey)}&limit=200`,
+    // ⚠ 这里原写 `&limit=200` —— 该端点不认识 `limit`，它被静默忽略、回落默认页长 50。
+    // 于是本函数只在**前 50 行**里 find，目标对象排在 50 名之后时会红在「找不到 objectId」，
+    // 把「没取回来」误报成「对象不存在」。正确参数名是 `pageSize`（现已对 limit 直接 400）。
+    url: `/a/v1/objects?type=${encodeURIComponent(typeKey)}&pageSize=200`,
     headers: ADMIN,
   });
   expect(res.statusCode, res.body).toBe(200);

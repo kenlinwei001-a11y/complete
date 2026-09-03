@@ -108,8 +108,15 @@ export function familyIdentityOf(
   };
 }
 
-/** 拉订单（一次查询，`q=""` = 不过滤）。失败由调用方处置——**不吞异常、不返空数组冒充"没有族"**。 */
+/**
+ * 拉订单（一次查询，`q=""` = 不过滤）。失败由调用方处置——**不吞异常、不返空数组冒充"没有族"**。
+ *
+ * ⚠ 这一行原本写的是 `{ limit: "500" }` —— `GET /a/v1/objects` **不认识 `limit`**，
+ * 于是它被静默忽略、回落默认页长：**实收 50 行，而 `total` 是 500（10× 欠读）**，
+ * 且不报任何错。族线因此长期只按订单簿的前 10% 画，看上去一切正常。
+ * 正确的参数名是 `pageSize`；该端点现已对 `limit` 这类分页别名直接 400，不再让它静默生效。
+ */
 export async function fetchOrdersForFamilies(): Promise<{ props?: Record<string, unknown> }[]> {
-  const page = await searchObjects(ORDER_OBJECT_TYPE, "", { limit: "500" });
+  const page = await searchObjects(ORDER_OBJECT_TYPE, "", { pageSize: "500" });
   return (page as unknown as { items?: { props?: Record<string, unknown> }[] }).items ?? [];
 }
