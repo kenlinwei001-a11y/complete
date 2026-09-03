@@ -292,6 +292,15 @@ export interface ObjectTypeDef {
    * 固定数字 = pin 住（接口演进不会悄悄让已发布实现者失效）。
    */
   implements?: import("@platform/contracts").ImplementsRef[];
+  /**
+   * WO-CONSTRAINT-REFS · **对象自身的约束条件 = 对规则库的引用**（仓主原话见契约
+   * `ObjectConstraintRefSchema` 注释）。缺省不声明 = 该类型没配约束（逐字节沿用现状）。
+   *
+   * ⚠ 只存 `ruleKey`，**不存表达式/severity/阈值** —— 那些一律回规则库现取，
+   * 于是「改规则即改约束判定」，对象侧不可能与规则库分叉出第二份业务常数。
+   * 消费方：`solvers/service.ts` 的 `objectConstraintRefs()`（求解器评估时并入引用集）。
+   */
+  constraintRefs?: import("@platform/contracts").ObjectConstraintRef[];
   version: number;
   status: "ACTIVE" | "RETIRED";
   /** 治理增量 §2：是否曾 PUBLISHED（API 名不可变纪律的锚点）。 */

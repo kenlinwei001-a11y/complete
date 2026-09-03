@@ -46,7 +46,7 @@ import { WorkflowService } from "./pipeline/service.js"; // OntoFlow（PRD v2）
 import { runProcessing } from "./pipeline/processing.js"; // OntoFlow（P3）· 数据处理折叠·嫁接自 main
 import { ObjectInterfaceService, OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
 // WO-69 P3 · 对象接口契约（多态抽象）
-import { ImplementsRefSchema, ObjectInterfaceInputSchema } from "@platform/contracts";
+import { ImplementsRefSchema, ObjectConstraintRefSchema, ObjectInterfaceInputSchema } from "@platform/contracts";
 import { ConnectorService } from "./connectors/service.js";
 import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
 import { planSlice } from "./ontology/slice-planner.js";
@@ -3807,6 +3807,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         // 契约在发布门兑现：声明了却没长出要求的属性/行动/函数 → POST /a/v1/ontology/publish 400 点名。
         // （`actions` 已在上方 WO-D6 块里声明，此处不重复 —— 重复键后者覆盖前者，是静默改语义的入口。）
         implements: z.array(ImplementsRefSchema).optional(),
+        // WO-CONSTRAINT-REFS · 第三个吞点（与上面 WO-D6 那两个同病）：`constraintRefs` 此前
+        // **整个键在 schema 里不存在** ⇒ zod 默认 strip ⇒ POST 带它照样 **201**，而回读整键消失、
+        // 全库 98 个类型 0 个有此键。屏上说配好了、实际什么都没发生、还不报错 —— 本仓最危险的形态。
+        // 声明它只是把"存得住"补上；"不许静默丢"由下面两条 FK 校验兑现（不存在的规则 → 400）。
+        constraintRefs: z.array(ObjectConstraintRefSchema).optional(),
       }),
       req.body,
     );
@@ -3824,6 +3829,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const dict = new Set(UNIT_DICTIONARY);
     for (const p of body.properties) {
       if (p.unit && !dict.has(p.unit)) throw validationError(`未知单位 '${p.unit}'（单位字典：${UNIT_DICTIONARY.join("/")}）`);
+    }
+    // WO-CONSTRAINT-REFS · 约束引用的两条 FK 校验。**引用不存在的规则必须报错，不许静默收下** ——
+    // 静默收下会让对象上挂着一条永远不会被评估的"约束"，屏上却显示配置成功（= 修之前那个病换个位置复发）。
+    if (body.constraintRefs && body.constraintRefs.length > 0) {
+      // 规则侧真值：只认**已发布**规则（DRAFT 规则求解器读不到，挂上去等于挂了个空 → 当场拒绝）。
+      const published = await rules.list(c, "PUBLISHED");
+      const ruleKeys = new Set(published.map((r) => r.key));
+      const propKeys = new Set(body.properties.map((p) => p.propKey));
+      for (const cr of body.constraintRefs) {
+        if (!ruleKeys.has(cr.ruleKey)) {
+          throw validationError(
+            `未知规则 '${cr.ruleKey}'（对象约束只能引用**已发布**规则；当前已发布 ${ruleKeys.size} 条）`,
+          );
+        }
+        if (!propKeys.has(cr.propKey)) {
+          throw validationError(
+            `未知属性 '${cr.propKey}'（类型 '${body.key}' 已声明属性：${[...propKeys].join("/") || "（无）"}）`,
+          );
+        }
+      }
     }
     return reply.status(201).send(await ontology.upsertType(c, body));
   });
