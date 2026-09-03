@@ -330,8 +330,15 @@ export interface MetricWall {
    * 截断的**量**：取回了几条 / 一共有几条。
    *
    * ⚠ 光说「被截断了」是不够的 —— 用户没法判断自己看的是九成还是三十分之一。
-   *   实测 demo 种子世界：取回 200 / 共 7204 ⇒ 屏上这些是全量的 2.8%。
+   *   2026-08-30 实测 demo 种子世界：取回 200 / 共 7204 ⇒ 屏上这些是全量的 2.8%。
    *   `null` = 这一跳没回来（没有会话/请求失败），此时 `truncated` 也是 `false`。
+   *
+   *   复验（两个数都来自回包本身，不是前端估的）：
+   *     H='X-Debug-User: demo:admin:admin'
+   *     curl -s -H "$H" http://127.0.0.1:4001/a/v1/sim/sessions/$S/metric-series \
+   *       | jq '{shown: (.metrics|length), total: .totalMetrics, truncated, appliedLimit}'
+   *   （同一端点的既有 curl 范例见 `views/sim/console/useMetricSeries.ts:41`；
+   *    这两个数的屏上渲染处见 `MetricWall.tsx:109`。）
    */
   readonly shownMetrics: number | null;
   readonly totalMetrics: number | null;

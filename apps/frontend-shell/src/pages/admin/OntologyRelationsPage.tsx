@@ -181,9 +181,14 @@ export default function OntologyRelationsPage() {
    * ⚠ 本仓有过「状态变量是自由文本，打错字 = 静默造一个死变量且删不掉」那个坑，这里不复制：
    * 候选从当前选中的两个类型现取，选不出来就是没得选。
    *
-   * **两侧都要列**：实测 116 条结构边里 23 条（19.8%）的外键长在**去向**类型上（一对多边，
-   * 如 `Base → Line` 的外键是 `Line.baseId`）。只列来源侧的话，用户选中这类边会看到一个空下拉、
-   * 无路可走 —— 那还是「建完的边用不了」。已声明外键指向对侧的属性排最前并标出指向。
+   * **两侧都要列**：2026-08-30 实测 116 条结构边里 23 条（19.8%）的外键长在**去向**类型上
+   * （一对多边，如 `Base → Line` 的外键是 `Line.baseId`）。只列来源侧的话，用户选中这类边会看到
+   * 一个空下拉、无路可走 —— 那还是「建完的边用不了」。已声明外键指向对侧的属性排最前并标出指向。
+   *
+   * 复验：`pnpm --filter datacore test linktype-via-property.seam` ——
+   * `apps/datacore/test/linktype-via-property.seam.test.ts:108`
+   * 「一对多边：外键长在**去向**类型上（viaSide=to），边的方向必须是 from→to 不是反的」
+   * 把这个形态钉成了机器断言（同一组数字记在该文件 :111 的注释里）。
    */
   const viaCandidates = useMemo(() => {
     const find = (k: string) => (types.data ?? []).find((x) => x.key === k);

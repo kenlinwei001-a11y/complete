@@ -2421,8 +2421,12 @@ export const fetchOntologyVersions = () => api.a<OntologyVersionVM[]>("/a/v1/ont
  * 建一条结构边（关系类型）。201 回包即新版本的 `LinkTypeDef`。
  *
  * `viaProperty` = **这条边由来源类型的哪个属性实现**（来源类型上的外键属性 `propKey`）。
- * 不给 ⇒ 后端只登记声明、**不物化任何链路实例** ⇒ 多跳检索遍历不到这条边（实测：同向同 FK
- * 的边，给了 `viaProperty` 返回 6 条，不给返回 0 条）。`materialized` 如实回报这次连出几条实例边：
+ * 不给 ⇒ 后端只登记声明、**不物化任何链路实例** ⇒ 多跳检索遍历不到这条边（2026-08-30 实测：
+ * 同向同 FK 的边，给了 `viaProperty` 返回 6 条，不给返回 0 条）。
+ * 复验：`pnpm --filter datacore test linktype-via-property.seam` ——
+ * 该实测已钉成机器断言，见 `apps/datacore/test/linktype-via-property.seam.test.ts:50`
+ * 「金丝雀 + 修前/修后对照：不给 viaProperty 检索 0 条，给了才有边」。
+ * `materialized` 如实回报这次连出几条实例边：
  * `created` 连成、`unresolved` 属性有值但在对侧查无对应主键、`carrierObjects` 带外键那一侧的对象总数。
  */
 export const createLinkType = (body: {
