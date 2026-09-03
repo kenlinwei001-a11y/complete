@@ -1320,7 +1320,15 @@ const orderProps: PropertyDef[] = [
   // 于是「哪个客户最集中」恒回 0 个，而同一工具问型号回 5 个（`Order.model` 恰好存的就是 Model 主键）。
   // 声明成 ref 还有第二个作用：`deriveConcentrationRisk` 只沿**声明过的** `refToTypeKey` 自动寻路，
   // 不声明就等于这条边对自动寻路不存在。
-  { propKey: "customerId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Customer" },
+  {
+    propKey: "customerId",
+    dataType: "ref",
+    isPrimaryKey: false,
+    unit: "dimensionless",
+    scale: "absolute",
+    refToTypeKey: "Customer",
+    description: "下单客户的**外键**（值 = `Customer.custId` 主键，不是显示名）。沿 ref 走图的通用求解器按主键值建索引，故客户集中度一类问题只认这一格；显示名在同类型的 `cust` 上。",
+  },
   { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
   { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
   { propKey: "due", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
@@ -1809,7 +1817,15 @@ const workOrderProps: PropertyDef[] = [
   // ⚠ **条件缺席**（先例：同文件 `Order.earlyDue`，声明了但只在 early 单上出现）：
   // 只有 (modelId, baseId) 与订单簿真对得上的工单才写这个字段，对不上的**不写**——
   // 见 `deriveFulfills` 的取舍说明，「张冠李戴的数比没有更危险」。
-  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Order" },
+  {
+    propKey: "orderRef",
+    dataType: "ref",
+    isPrimaryKey: false,
+    unit: "dimensionless",
+    scale: "absolute",
+    refToTypeKey: "Order",
+    description: "本工单在兑现哪张订单（值 = `Order.so` 主键）。**条件缺席**：只有 (modelId, baseId) 与订单簿真对得上的工单才写这一格，对不上的不写 —— 缺席读作「兑现关系未知」，不读作「不兑现任何订单」。",
+  },
 ];
 
 const productionScheduleProps: PropertyDef[] = [

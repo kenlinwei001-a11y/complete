@@ -5,9 +5,9 @@
 
 ## 连通图摘要
 
-- 本体：类型 **95**，链路 **104**
-- 切片库：**53**（域内 7 · 跨域 46）
-- 连通边：**610**（shared-type 185 · bridge-link 425）
+- 本体：类型 **95**，链路 **105**
+- 切片库：**54**（域内 7 · 跨域 47）
+- 连通边：**664**（shared-type 195 · bridge-link 469）
 - 孤岛：**0**（豁免 1 · 非豁免 0）
 
 ## 孤岛表
@@ -23,6 +23,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.commercial.arinvoice` | `biz.x.order_to_orderpromise` | order_of_customer: Order→Customer |
 | `biz.commercial.arinvoice` | `biz.x.order_to_plantarget` | order_of_customer: Order→Customer |
 | `biz.commercial.arinvoice` | `biz.x.orderpromise_to_order` | order_of_customer: Order→Customer |
+| `biz.commercial.arinvoice` | `biz.x.workorder_to_order` | order_of_customer: Order→Customer |
 | `biz.equip.equipment` | `biz.x.line_to_process` | equip_used_in: Equipment→Process |
 | `biz.equip.equipment` | `biz.x.process_to_line` | equip_used_in: Equipment→Process |
 | `biz.factory.base` | `biz.people.operatorattendance` | att_for_line: OperatorAttendance→Line |
@@ -43,6 +44,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.factory.base` | `biz.x.wiplot_to_defectrecord` | wip_on_line: WIPLot→Line |
 | `biz.factory.base` | `biz.x.wipqualitycheckpoint_to_wiplot` | wip_on_line: WIPLot→Line |
 | `biz.factory.base` | `biz.x.workorder_to_model` | line_runs_work_order: Line→WorkOrder |
+| `biz.factory.base` | `biz.x.workorder_to_order` | line_runs_work_order: Line→WorkOrder |
 | `biz.factory.base` | `biz.x.workorder_to_qualitylot` | line_runs_work_order: Line→WorkOrder |
 | `biz.people.operatorattendance` | `biz.x.line_to_process` | att_for_line: OperatorAttendance→Line |
 | `biz.people.operatorattendance` | `biz.x.line_to_workorder` | att_for_line: OperatorAttendance→Line |
@@ -55,6 +57,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.plan.annualscenario` | `biz.x.order_to_customer` | order_to_plantarget: Order→PlanTarget |
 | `biz.plan.annualscenario` | `biz.x.order_to_orderpromise` | order_to_plantarget: Order→PlanTarget |
 | `biz.plan.annualscenario` | `biz.x.orderpromise_to_order` | order_to_plantarget: Order→PlanTarget |
+| `biz.plan.annualscenario` | `biz.x.workorder_to_order` | order_to_plantarget: Order→PlanTarget |
 | `biz.process.operation` | `biz.x.finishedgoodsinventory_to_model` | routing_belongs_to_model: Routing→Model |
 | `biz.process.operation` | `biz.x.interbasetransfer_to_model` | routing_belongs_to_model: Routing→Model |
 | `biz.process.operation` | `biz.x.material_to_model` | routing_belongs_to_model: Routing→Model |
@@ -179,6 +182,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.customer_to_overduerecord` | `biz.x.order_to_orderpromise` | order_of_customer: Order→Customer |
 | `biz.x.customer_to_overduerecord` | `biz.x.order_to_plantarget` | order_of_customer: Order→Customer |
 | `biz.x.customer_to_overduerecord` | `biz.x.orderpromise_to_order` | order_of_customer: Order→Customer |
+| `biz.x.customer_to_overduerecord` | `biz.x.workorder_to_order` | order_of_customer: Order→Customer |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.exceptionevent_to_equipmentdowntime` | defect_raises_exception: DefectRecord→ExceptionEvent |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.inventorytxn_to_workorder` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.line_to_process` | wip_on_line: WIPLot→Line |
@@ -190,6 +194,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.defectrecord_to_wiplot` | `biz.x.shiftplan_to_line` | wip_on_line: WIPLot→Line |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.workorder_to_line` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.workorder_to_model` | wip_for_wo: WIPLot→WorkOrder |
+| `biz.x.defectrecord_to_wiplot` | `biz.x.workorder_to_order` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.workorder_to_qualitylot` | defect_for_qlot: DefectRecord→QualityLot |
 | `biz.x.equipment_to_process` | `biz.x.exceptionevent_to_equipmentdowntime` | dt_for_equip: EquipmentDowntime→Equipment |
 | `biz.x.equipment_to_process` | `biz.x.line_to_workorder` | line_has_process: Line→Process |
@@ -215,6 +220,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.finishedgoodsinventory_to_model` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.finishedgoodsinventory_to_model` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
 | `biz.x.finishedgoodsinventory_to_model` | `biz.x.workorder_to_line` | model_certified_on: Model→Line |
+| `biz.x.finishedgoodsinventory_to_model` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.finishedgoodsinventory_to_model` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
 | `biz.x.finishedgoodsinventory_to_warehouse` | `biz.x.interbasetransfer_to_base` | warehouse_of_base: Base→Warehouse |
 | `biz.x.finishedgoodsinventory_to_warehouse` | `biz.x.interbasetransfer_to_model` | fg_of_model: FinishedGoodsInventory→Model |
@@ -258,6 +264,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.interbasetransfer_to_model` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.interbasetransfer_to_model` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
 | `biz.x.interbasetransfer_to_model` | `biz.x.workorder_to_line` | model_certified_on: Model→Line |
+| `biz.x.interbasetransfer_to_model` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.interbasetransfer_to_model` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
 | `biz.x.inventorytxn_to_workorder` | `biz.x.line_to_process` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.inventorytxn_to_workorder` | `biz.x.material_to_model` | wo_for_model: WorkOrder→Model |
@@ -268,6 +275,10 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.inventorytxn_to_workorder` | `biz.x.model_to_line` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.inventorytxn_to_workorder` | `biz.x.model_to_material` | wo_for_model: WorkOrder→Model |
 | `biz.x.inventorytxn_to_workorder` | `biz.x.operatorattendance_to_line` | line_runs_work_order: Line→WorkOrder |
+| `biz.x.inventorytxn_to_workorder` | `biz.x.order_to_customer` | fulfills: WorkOrder→Order |
+| `biz.x.inventorytxn_to_workorder` | `biz.x.order_to_orderpromise` | fulfills: WorkOrder→Order |
+| `biz.x.inventorytxn_to_workorder` | `biz.x.order_to_plantarget` | fulfills: WorkOrder→Order |
+| `biz.x.inventorytxn_to_workorder` | `biz.x.orderpromise_to_order` | fulfills: WorkOrder→Order |
 | `biz.x.inventorytxn_to_workorder` | `biz.x.process_to_line` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.inventorytxn_to_workorder` | `biz.x.qualitystandard_to_model` | wo_for_model: WorkOrder→Model |
 | `biz.x.inventorytxn_to_workorder` | `biz.x.routing_to_model` | wo_for_model: WorkOrder→Model |
@@ -287,6 +298,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.line_to_process` | `biz.x.wiplot_to_defectrecord` | wip_on_line: WIPLot→Line |
 | `biz.x.line_to_process` | `biz.x.wipqualitycheckpoint_to_wiplot` | wip_on_line: WIPLot→Line |
 | `biz.x.line_to_process` | `biz.x.workorder_to_model` | line_runs_work_order: Line→WorkOrder |
+| `biz.x.line_to_process` | `biz.x.workorder_to_order` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.line_to_process` | `biz.x.workorder_to_qualitylot` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.line_to_workorder` | `biz.x.material_to_model` | model_certified_on: Model→Line |
 | `biz.x.line_to_workorder` | `biz.x.model_to_base` | line_belongs_to_base: Base→Line |
@@ -294,6 +306,10 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.line_to_workorder` | `biz.x.model_to_changeovermatrix` | model_certified_on: Model→Line |
 | `biz.x.line_to_workorder` | `biz.x.model_to_finishedgoodsinventory` | model_certified_on: Model→Line |
 | `biz.x.line_to_workorder` | `biz.x.model_to_material` | model_certified_on: Model→Line |
+| `biz.x.line_to_workorder` | `biz.x.order_to_customer` | fulfills: WorkOrder→Order |
+| `biz.x.line_to_workorder` | `biz.x.order_to_orderpromise` | fulfills: WorkOrder→Order |
+| `biz.x.line_to_workorder` | `biz.x.order_to_plantarget` | fulfills: WorkOrder→Order |
+| `biz.x.line_to_workorder` | `biz.x.orderpromise_to_order` | fulfills: WorkOrder→Order |
 | `biz.x.line_to_workorder` | `biz.x.process_to_equipment` | line_has_process: Line→Process |
 | `biz.x.line_to_workorder` | `biz.x.qualitystandard_to_model` | model_certified_on: Model→Line |
 | `biz.x.line_to_workorder` | `biz.x.routing_to_model` | model_certified_on: Model→Line |
@@ -319,6 +335,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.material_to_model` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.material_to_model` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
 | `biz.x.material_to_model` | `biz.x.workorder_to_line` | model_certified_on: Model→Line |
+| `biz.x.material_to_model` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.material_to_model` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
 | `biz.x.metric_to_principal` | `biz.x.order_to_plantarget` | plantarget_ownedby: PlanTarget→Principal |
 | `biz.x.model_to_base` | `biz.x.operatorattendance_to_line` | line_belongs_to_base: Base→Line |
@@ -331,6 +348,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.model_to_base` | `biz.x.shiftplan_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.model_to_base` | `biz.x.wiplot_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.model_to_base` | `biz.x.workorder_to_line` | line_belongs_to_base: Base→Line |
+| `biz.x.model_to_base` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.model_to_base` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
 | `biz.x.model_to_certification` | `biz.x.operatorattendance_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_certification` | `biz.x.order_to_customer` | model_demanded_by_order: Model→Order |
@@ -342,6 +360,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.model_to_certification` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_certification` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_certification` | `biz.x.workorder_to_line` | model_certified_on: Model→Line |
+| `biz.x.model_to_certification` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.model_to_certification` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
 | `biz.x.model_to_changeovermatrix` | `biz.x.operatorattendance_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_changeovermatrix` | `biz.x.order_to_customer` | model_demanded_by_order: Model→Order |
@@ -353,6 +372,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.model_to_changeovermatrix` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_changeovermatrix` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_changeovermatrix` | `biz.x.workorder_to_line` | model_certified_on: Model→Line |
+| `biz.x.model_to_changeovermatrix` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.model_to_changeovermatrix` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
 | `biz.x.model_to_finishedgoodsinventory` | `biz.x.operatorattendance_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_finishedgoodsinventory` | `biz.x.order_to_customer` | model_demanded_by_order: Model→Order |
@@ -364,6 +384,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.model_to_finishedgoodsinventory` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_finishedgoodsinventory` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_finishedgoodsinventory` | `biz.x.workorder_to_line` | model_certified_on: Model→Line |
+| `biz.x.model_to_finishedgoodsinventory` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.model_to_finishedgoodsinventory` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
 | `biz.x.model_to_line` | `biz.x.order_to_customer` | model_demanded_by_order: Model→Order |
 | `biz.x.model_to_line` | `biz.x.order_to_orderpromise` | model_demanded_by_order: Model→Order |
@@ -373,6 +394,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.model_to_line` | `biz.x.qualitylot_to_workorder` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.model_to_line` | `biz.x.wiplot_to_defectrecord` | wip_on_line: WIPLot→Line |
 | `biz.x.model_to_line` | `biz.x.wipqualitycheckpoint_to_wiplot` | wip_on_line: WIPLot→Line |
+| `biz.x.model_to_line` | `biz.x.workorder_to_order` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.model_to_line` | `biz.x.workorder_to_qualitylot` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.model_to_material` | `biz.x.operatorattendance_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_material` | `biz.x.order_to_customer` | model_demanded_by_order: Model→Order |
@@ -385,6 +407,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.model_to_material` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_material` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_material` | `biz.x.workorder_to_line` | model_certified_on: Model→Line |
+| `biz.x.model_to_material` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.model_to_material` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
 | `biz.x.operatorattendance_to_line` | `biz.x.process_to_equipment` | line_has_process: Line→Process |
 | `biz.x.operatorattendance_to_line` | `biz.x.qualitylot_to_workorder` | line_runs_work_order: Line→WorkOrder |
@@ -393,22 +416,36 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.operatorattendance_to_line` | `biz.x.wiplot_to_defectrecord` | wip_on_line: WIPLot→Line |
 | `biz.x.operatorattendance_to_line` | `biz.x.wipqualitycheckpoint_to_wiplot` | wip_on_line: WIPLot→Line |
 | `biz.x.operatorattendance_to_line` | `biz.x.workorder_to_model` | line_runs_work_order: Line→WorkOrder |
+| `biz.x.operatorattendance_to_line` | `biz.x.workorder_to_order` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.operatorattendance_to_line` | `biz.x.workorder_to_qualitylot` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.order_to_customer` | `biz.x.plantarget_to_principal` | order_to_plantarget: Order→PlanTarget |
+| `biz.x.order_to_customer` | `biz.x.qualitylot_to_workorder` | fulfills: WorkOrder→Order |
 | `biz.x.order_to_customer` | `biz.x.qualitystandard_to_model` | model_demanded_by_order: Model→Order |
 | `biz.x.order_to_customer` | `biz.x.routing_to_model` | model_demanded_by_order: Model→Order |
-| `biz.x.order_to_customer` | `biz.x.workorder_to_model` | model_demanded_by_order: Model→Order |
+| `biz.x.order_to_customer` | `biz.x.workorder_to_line` | fulfills: WorkOrder→Order |
+| `biz.x.order_to_customer` | `biz.x.workorder_to_model` | fulfills: WorkOrder→Order |
+| `biz.x.order_to_customer` | `biz.x.workorder_to_qualitylot` | fulfills: WorkOrder→Order |
 | `biz.x.order_to_orderpromise` | `biz.x.plantarget_to_principal` | order_to_plantarget: Order→PlanTarget |
+| `biz.x.order_to_orderpromise` | `biz.x.qualitylot_to_workorder` | fulfills: WorkOrder→Order |
 | `biz.x.order_to_orderpromise` | `biz.x.qualitystandard_to_model` | model_demanded_by_order: Model→Order |
 | `biz.x.order_to_orderpromise` | `biz.x.routing_to_model` | model_demanded_by_order: Model→Order |
-| `biz.x.order_to_orderpromise` | `biz.x.workorder_to_model` | model_demanded_by_order: Model→Order |
+| `biz.x.order_to_orderpromise` | `biz.x.workorder_to_line` | fulfills: WorkOrder→Order |
+| `biz.x.order_to_orderpromise` | `biz.x.workorder_to_model` | fulfills: WorkOrder→Order |
+| `biz.x.order_to_orderpromise` | `biz.x.workorder_to_qualitylot` | fulfills: WorkOrder→Order |
+| `biz.x.order_to_plantarget` | `biz.x.qualitylot_to_workorder` | fulfills: WorkOrder→Order |
 | `biz.x.order_to_plantarget` | `biz.x.qualitystandard_to_model` | model_demanded_by_order: Model→Order |
 | `biz.x.order_to_plantarget` | `biz.x.routing_to_model` | model_demanded_by_order: Model→Order |
-| `biz.x.order_to_plantarget` | `biz.x.workorder_to_model` | model_demanded_by_order: Model→Order |
+| `biz.x.order_to_plantarget` | `biz.x.workorder_to_line` | fulfills: WorkOrder→Order |
+| `biz.x.order_to_plantarget` | `biz.x.workorder_to_model` | fulfills: WorkOrder→Order |
+| `biz.x.order_to_plantarget` | `biz.x.workorder_to_qualitylot` | fulfills: WorkOrder→Order |
 | `biz.x.orderpromise_to_order` | `biz.x.plantarget_to_principal` | order_to_plantarget: Order→PlanTarget |
+| `biz.x.orderpromise_to_order` | `biz.x.qualitylot_to_workorder` | fulfills: WorkOrder→Order |
 | `biz.x.orderpromise_to_order` | `biz.x.qualitystandard_to_model` | model_demanded_by_order: Model→Order |
 | `biz.x.orderpromise_to_order` | `biz.x.routing_to_model` | model_demanded_by_order: Model→Order |
-| `biz.x.orderpromise_to_order` | `biz.x.workorder_to_model` | model_demanded_by_order: Model→Order |
+| `biz.x.orderpromise_to_order` | `biz.x.workorder_to_line` | fulfills: WorkOrder→Order |
+| `biz.x.orderpromise_to_order` | `biz.x.workorder_to_model` | fulfills: WorkOrder→Order |
+| `biz.x.orderpromise_to_order` | `biz.x.workorder_to_qualitylot` | fulfills: WorkOrder→Order |
+| `biz.x.plantarget_to_principal` | `biz.x.workorder_to_order` | order_to_plantarget: Order→PlanTarget |
 | `biz.x.process_to_equipment` | `biz.x.shiftplan_to_line` | line_has_process: Line→Process |
 | `biz.x.process_to_equipment` | `biz.x.wiplot_to_line` | line_has_process: Line→Process |
 | `biz.x.process_to_equipment` | `biz.x.workorder_to_line` | line_has_process: Line→Process |
@@ -418,6 +455,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.process_to_line` | `biz.x.wiplot_to_defectrecord` | wip_on_line: WIPLot→Line |
 | `biz.x.process_to_line` | `biz.x.wipqualitycheckpoint_to_wiplot` | wip_on_line: WIPLot→Line |
 | `biz.x.process_to_line` | `biz.x.workorder_to_model` | line_runs_work_order: Line→WorkOrder |
+| `biz.x.process_to_line` | `biz.x.workorder_to_order` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.process_to_line` | `biz.x.workorder_to_qualitylot` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.qualitylot_to_workorder` | `biz.x.qualitystandard_to_model` | wo_for_model: WorkOrder→Model |
 | `biz.x.qualitylot_to_workorder` | `biz.x.routing_to_model` | wo_for_model: WorkOrder→Model |
@@ -428,20 +466,26 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.qualitystandard_to_model` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.qualitystandard_to_model` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
 | `biz.x.qualitystandard_to_model` | `biz.x.workorder_to_line` | model_certified_on: Model→Line |
+| `biz.x.qualitystandard_to_model` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.qualitystandard_to_model` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
 | `biz.x.routing_to_model` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.routing_to_model` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
 | `biz.x.routing_to_model` | `biz.x.workorder_to_line` | model_certified_on: Model→Line |
+| `biz.x.routing_to_model` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.routing_to_model` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
 | `biz.x.shiftplan_to_line` | `biz.x.wiplot_to_defectrecord` | wip_on_line: WIPLot→Line |
 | `biz.x.shiftplan_to_line` | `biz.x.wipqualitycheckpoint_to_wiplot` | wip_on_line: WIPLot→Line |
 | `biz.x.shiftplan_to_line` | `biz.x.workorder_to_model` | line_runs_work_order: Line→WorkOrder |
+| `biz.x.shiftplan_to_line` | `biz.x.workorder_to_order` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.shiftplan_to_line` | `biz.x.workorder_to_qualitylot` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.wiplot_to_defectrecord` | `biz.x.workorder_to_line` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.wiplot_to_defectrecord` | `biz.x.workorder_to_model` | wip_for_wo: WIPLot→WorkOrder |
+| `biz.x.wiplot_to_defectrecord` | `biz.x.workorder_to_order` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.wiplot_to_defectrecord` | `biz.x.workorder_to_qualitylot` | defect_for_qlot: DefectRecord→QualityLot |
 | `biz.x.wiplot_to_line` | `biz.x.workorder_to_model` | line_runs_work_order: Line→WorkOrder |
+| `biz.x.wiplot_to_line` | `biz.x.workorder_to_order` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.wiplot_to_line` | `biz.x.workorder_to_qualitylot` | line_runs_work_order: Line→WorkOrder |
 | `biz.x.wipqualitycheckpoint_to_wiplot` | `biz.x.workorder_to_line` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.wipqualitycheckpoint_to_wiplot` | `biz.x.workorder_to_model` | wip_for_wo: WIPLot→WorkOrder |
+| `biz.x.wipqualitycheckpoint_to_wiplot` | `biz.x.workorder_to_order` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.wipqualitycheckpoint_to_wiplot` | `biz.x.workorder_to_qualitylot` | wip_for_wo: WIPLot→WorkOrder |
