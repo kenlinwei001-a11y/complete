@@ -333,8 +333,13 @@ export async function deriveSeedBaseSnapshot(
     origin: {
       kind: "DERIVED",
       formula: "round(hash01(`${objectId}|${stateVar}`) × 100)（FNV-1a · 与前端 deriveBaseSnapshot 同式）",
+      // ⚠ 这一段是**上屏的正文**（统一推演台状态条 `usim-origin`），不是源码注释 ——
+      //   一律写成纯文本。本仓注释里的 `**强调**` 是给读代码的人看的 Markdown；
+      //   原样丢进 `<span>` 只会在用户屏上印出四个星号。屏上没有 Markdown 渲染器，
+      //   就不许用 Markdown 语法。（2026-09-03 真浏览器实测：屏上出现「**本体结构派生**」；
+      //   与本单早先在 `opt-assemble.ts` 的两条 `reason` 上修掉的是同一个病。）
       note:
-        "种子世界的 tick0 读数由**本体结构派生**（确定性占位），不是实测：" +
+        "种子世界的 tick0 读数由本体结构派生（确定性占位），不是实测：" +
         "推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值 —— " +
         "measuredCells 就是每次播种现场探到的真读数格数。凡拿它当起点算出的差值，量级不可当实测读。",
       types: byType.size,
