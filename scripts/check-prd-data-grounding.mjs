@@ -152,8 +152,21 @@ function splitArgs(callParen) {
 }
 
 const propKeysIn = (block) => [...block.matchAll(/propKey:\s*"([^"]+)"/g)].map((m) => m[1]);
-/** battery-extended.ts 的简写构造器 `p()/pd()/rd()`，首参即 propKey。 */
-const shorthandKeysIn = (block) => [...block.matchAll(/\b(?:p|pd|rd)\(\s*"([^"]+)"/g)].map((m) => m[1]);
+/**
+ * battery-extended.ts 的简写构造器，首参即 propKey。
+ *
+ * ⚠ **今天的行为是 X，应该是 Y**（2026-09-03 集成红③，本门自报 RC=2「工具坏了」时抓到）
+ * · **X（改前）**：只认 `p()/pd()/rd()` 三个工厂 —— 于是 battery-extended.ts 里**全部数值属性**
+ *   （`n()/nd()`）对本门隐身。收编的 `995938b5`「battery-extended 工厂拆分 p/n +
+ *   85 数值调用补量纲」把 `Supplier.transitDays` 从 `pd(` 换成 `nd(`（它是带量纲的天数，
+ *   本就该走数值工厂），本门的已知必中锚点 `Supplier.transitDays` 当场落空 ⇒ 自报门坏了。
+ * · **Y（改后）**：整个工厂族都认 —— `p/pd`（非数值）· `n/nd`（数值带量纲）· `rd`（引用）。
+ *
+ * 形态（铁律 0.6 句式）：「我用『认得 p/pd/rd 三个工厂』当作『看得见全部属性声明』的证据，
+ * 而前者并不度量后者 —— 数值属性走的是另外两个工厂。」
+ * ⇒ 这一条正是本门 UNIVERSE_ANCHORS 金丝雀存在的理由：它先说话了，不是人想起来的。
+ */
+const shorthandKeysIn = (block) => [...block.matchAll(/\b(?:p|pd|n|nd|rd)\(\s*"([^"]+)"/g)].map((m) => m[1]);
 const unquote = (s) => (/^"([^"]*)"$/.test(String(s).trim()) ? String(s).trim().slice(1, -1) : null);
 
 /**

@@ -603,12 +603,35 @@ const canaryErrs = [];
   }
 
   // ⑦ unitVerdict 双向
-  const mbType = typeByKey.get("MaterialBalance");
-  if (mbType) {
+  //
+  // ⚠ **今天的行为是 X，应该是 Y**（2026-09-03 集成红③，本门自报 RC=2「工具坏了」时抓到）
+  // · **X（改前）**：「必咬」这一半拿**真本体里的** `MaterialBalance.coverage` 当违规样例
+  //   （当时它确实 `unit:"%"` 却存 0–1 比率）。收编的 `18a8391a`「闭死杠杆
+  //   MaterialBalance.coverage —— 改为派生属性」把它订正成 `unit:"dimensionless" scale:"ratio"`
+  //   ⇒ **缺陷被修好了**，unitVerdict 正确地不再咬 ⇒ 金丝雀反而报「门坏了」。
+  // · **Y（改后）**：必咬样例改用**合成形态**（就地造一个 `unit:"%"` 的属性），
+  //   与真本体解耦 —— 判据咬的是 `unitVerdict` 这个函数的行为，不是某个具体类型今天的状态。
+  //
+  // 形态（铁律 0.6 句式）：「我用『真本体里还存在一个 D1 形态』当作『检测器还咬得动』的证据，
+  // 而前者并不度量后者 —— 缺陷被修好时两者结论相反。」
+  // ⇒ 照本批先例（`engine-scope-fidelity-2.seam.test.ts` 缺陷修掉后反转断言、保留棘轮）：
+  //   **金丝雀保留**，只把它的取样从「真数据」挪到「合成形态」。删掉金丝雀不允许。
+  const SYNTH_PCT_TYPE = { properties: [{ propKey: "coverageCANARY", unit: "%" }] };
+  {
     const cCov = classify("(netDemandTon - gapTon) / netDemandTon");
     cCov.formula = "(netDemandTon - gapTon) / netDemandTon";
-    if (!unitVerdict("MaterialBalance", "coverage", cCov, mbType, [0.92, 0.94])) {
-      canaryErrs.push("⑦ 必咬：unitVerdict 对 MaterialBalance.coverage（unit=% 却存 0–1 比率）应报 D1 却放行");
+    if (!unitVerdict("SynthCanary", "coverageCANARY", cCov, SYNTH_PCT_TYPE, [0.92, 0.94])) {
+      canaryErrs.push("⑦ 必咬：unitVerdict 对合成样例（unit=% 却存 0–1 比率·无 ×100）应报 D1 却放行");
+    }
+  }
+  // …并顺带钉住那条**已经被修好**的真数据：它今天必须**不再**被咬。
+  // 这一条是上面那次订正的回归锁 —— 哪天有人把 coverage 的 unit 改回 "%"，这里当场红。
+  const mbType = typeByKey.get("MaterialBalance");
+  if (mbType) {
+    const cCov2 = classify("(netDemandTon - gapTon) / netDemandTon");
+    cCov2.formula = "(netDemandTon - gapTon) / netDemandTon";
+    if (unitVerdict("MaterialBalance", "coverage", cCov2, mbType, [0.92, 0.94])) {
+      canaryErrs.push("⑦ 必不咬：MaterialBalance.coverage 已于 18a8391a 订正为 dimensionless/ratio，不该再报 D1 —— 是不是 unit 被改回 % 了？");
     }
   }
   if (metricType) {
