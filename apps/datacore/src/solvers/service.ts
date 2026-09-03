@@ -6142,7 +6142,14 @@ export class SolverService {
       try {
         const ast = parseExpression(rule.expression);
         const fields = collectFieldPaths(ast);
-        if (!fields.some((path) => resolveField(payload, path) !== undefined)) naEvidence = "该求解器输出未含此规则字段（P2 续：补 payload 映射）";
+        if (!fields.some((path) => resolveField(payload, path) !== undefined)) {
+          // WO-CONSTRAINT-REFS：对象约束这一路要说清**为什么**取不到值 —— 是这类对象没进求解器上下文，
+          // 还是它压根没这个属性的读数。笼统说「该求解器输出未含此规则字段」会把人引去补 payload 映射，
+          // 而真正该看的是「这个类型的实例有没有这个属性的值」。
+          naEvidence = cb
+            ? `对象约束 ${cb.typeKey}.${cb.propKey} 取不到读数（该类型未进本求解器上下文，或其实例均无此属性值）`
+            : "该求解器输出未含此规则字段（P2 续：补 payload 映射）";
+        }
         // WO-RULE-EXPR-PARAMS：expression 引用的命名阈值必须在 rule.params 里声明。
         // 缺了就**诚实标 NOT_APPLICABLE**（而不是让下面的 catch 吞成 violated=false 的假 PASS）。
         const undeclared = [...collectParamRefs(ast)].filter((n) => !(n in (rule.params ?? {})));
