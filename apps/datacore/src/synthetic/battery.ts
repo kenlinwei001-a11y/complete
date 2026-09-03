@@ -4481,13 +4481,16 @@ function lineStatusFor(orderStatus: string, h: number, i: number): "OPEN" | "COM
  * 候选多于一张时按 `hashString(woId) % n` 定选（**零 rng、零时钟** ⇒ 同 seed 字节一致 R6）。
  *
  * ── 为什么条件 ② 不能省（实测数据，不是设想）────────────────────────────────────
- * 260 张工单里：**43** 张的 (modelId, baseId) 真自洽；**111** 张挂着目录内型号却落在
- * 该型号**产不了**的基地上（`WO_MODELS` 是硬编码 5 元数组，按 lineId 哈希选，压根没看基地产能）；
- * **106** 张的型号（`储能-280Ah` / `储能-314Ah`）根本不在 `MODELS` 目录里。
- * 省掉 ② 就会把后两类也连上去，得到「常州线上的工单兑现一张只在合肥/金华生产的订单」这种边——
- * 这正是同文件 `fg_of_model` / `order_of_customer` 两处已登记过的同一个取舍：
+ * 省掉 ② 就会把「型号对得上但基地产不了」的工单也连上去，得到
+ * 「常州线上的工单兑现一张只在合肥/金华生产的订单」这种边——这正是同文件
+ * `fg_of_model` / `order_of_customer` 两处已登记过的同一个取舍：
  * **诚实不连悬空边，「张冠李戴的数比没有更危险」**。
- * ⇒ 本函数产出 43 条边、覆盖 38 张订单，**不是覆盖率不足，是数据自洽处就这么多**。
+ *
+ * ⚠ **本段原记录的 43/111/106 三个数已被 `WO-WORKORDER-CATALOG-FIX` 消除**，勿再引用：
+ * 那 111 张「基地产不了」与 106 张「目录外型号」是**工单生成侧的两处自相矛盾**，不是本函数的口径问题。
+ * 修法见工单生成段的 `WO_MODELS_BY_BASE`（型号改从基地可产集里选）。修后 260 张工单**全部**
+ * (modelId, baseId) 自洽且落在 `MODELS` 目录内；仍连不上的，只是该 (型号@基地) 上恰好没有订单落点
+ * （`Order.bases` 只取该型号可产基地中的 1–2 个），**那是真·无订单，不是数据打架**。
  *
  * ⚠ 只显式接**订单↔工单**这一条，**不写通用推断器**：全仓 6 条边（如
  * `transfer_from_base` / `transfer_to_base`）候选属性集完全相同，确定性推断器会给两条选同一个属性，
@@ -5560,14 +5563,37 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     certStatus: ["有效", "过期", "吊销"],
   };
 
-  const WO_MODELS = ["4680-NCM", "4680-LFP", "方形-LFP", "储能-280Ah", "储能-314Ah"];
+  // WO-WORKORDER-CATALOG-FIX：工单型号改从**该工单所在基地真能产的型号**里选（MODEL_BASE_MAP 反查），
+  // 替代旧的硬编码 5 元数组 ["4680-NCM","4680-LFP","方形-LFP","储能-280Ah","储能-314Ah"]——它有两处自相矛盾：
+  //   ① `储能-280Ah`/`储能-314Ah` 不在 `MODELS` 目录。**实测：订单簿 500 单里 0 单要这两个型号**
+  //      （订单型号恰是目录六型号）⇒ 把它们补进目录**也连不上任何订单**，只会多两个没人订的 Model
+  //      对象 + 需要现编 unitPrice/BOM。而目录里已有 `方形-LFP`（pos=储能·spec P-SQ-LFP-**314**）与
+  //      `圆柱-LFP`（pos=储能）承载储能业态，且 `BASE_REGISTRY.mainProduct` 把
+  //      眉山/江门/邯郸（= MODEL_BASE_MAP 里 `方形-LFP` 的基地）记作「储能-280Ah」、
+  //      信阳/扬州（= `圆柱-LFP` 的基地）记作「储能-314Ah」⇒ 这两个名字是**电芯规格别名**，
+  //      不是第 7/8 个型号。故选「证明它们不该存在」而非「补进目录」。
+  //   ② 旧式按 `lineId` 哈希选型号，**压根没看基地产能** ⇒ 260 张里 111 张落在该型号产不了的基地上。
+  // 反查表按 baseId 建一次、桶内按 modelId 排序 ⇒ 与 MODEL_BASE_MAP 声明次序无关（纯确定性·零 rng·R6）。
+  const WO_MODELS_BY_BASE = new Map<string, string[]>();
+  for (const [mId, bs] of Object.entries(MODEL_BASE_MAP)) {
+    for (const bid of bs) {
+      const bucket = WO_MODELS_BY_BASE.get(bid);
+      if (bucket) bucket.push(mId);
+      else WO_MODELS_BY_BASE.set(bid, [mId]);
+    }
+  }
+  for (const bucket of WO_MODELS_BY_BASE.values()) bucket.sort();
 
   // WorkOrders: 2 per line（确定性来自 `hashString(<lineId+序号>)` 逐值派生，**不取 PRNG 流**）
   for (const l of lines) {
     const lineId = l.lineId as string;
     const baseId = l.baseId as string;
+    // 该基地真能产的型号集。实测 13/13 个「有产线的基地」全在 MODEL_BASE_MAP 内 ⇒ 空集今天不会发生，
+    // 但仍**诚实跳过**而非回落到某个默认型号——回落等于又造一张「基地产不了」的工单。
+    const producibleHere = WO_MODELS_BY_BASE.get(baseId) ?? [];
+    if (producibleHere.length === 0) continue;
     for (let w = 0; w < 2; w++) {
-      const modelId = WO_MODELS[hashString(`${lineId}_wo${w}`) % WO_MODELS.length]!;
+      const modelId = producibleHere[hashString(`${lineId}_wo${w}`) % producibleHere.length]!;
       const qtyPlanned = round((500 + (hashString(`${lineId}_wo${w}q`) % 1500)) * WAVE1_SCALE_FACTOR, 0);
       const qtyActual = Math.floor(qtyPlanned * (0.85 + (hashString(`${lineId}_wo${w}a`) % 15) / 100));
       const startOffset = hashString(`${lineId}_wo${w}s`) % 14;
