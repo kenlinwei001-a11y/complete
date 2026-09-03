@@ -5,6 +5,7 @@ import {
   createLinkType,
   createPropagationRule,
   createPublishRequest,
+  deletePropagationRule,
   deprecateOntologyElement,
   evaluateOntologyInvariants,
   fetchDomains,
@@ -18,6 +19,7 @@ import {
   fetchSimViewConfig,
   retireOntologyElement,
   signoffPublishRequest,
+  updatePropagationRule,
   type DeprecationMetaVM,
   type ElementReferenceVM,
 } from "@/api/endpoints";
@@ -56,8 +58,14 @@ import { toast, toastError } from "@/store/toastStore";
  *
  * 🚦 诚实位（三条，全部 2026-08-14 实测得来，不许拿界面糊过去；复验命令见每条末尾，
  *    并由 `apps/frontend-shell/test/ontology-relations.seam.test.tsx` §④ 钉成事实锁）：
- *  ① 因果边**改不了**：`POST …/propagation-rules` 把 `id` 写在 body 展开之后恒覆盖
- *     ⇒ 只能新建。停用一条**已存在**的规则需要后端补 PUT/PATCH，今天做不到。
+ *  ① ~~因果边**改不了**~~ **✅ 2026-09-03 已闭（WO-CAUSAL-EDGE-CRUD）**。原文：
+ *     「`POST …/propagation-rules` 把 `id` 写在 body 展开之后恒覆盖 ⇒ 只能新建。
+ *     停用一条**已存在**的规则需要后端补 PUT/PATCH，今天做不到。」
+ *     —— 保留原文是为了留住病史（诚实位撤掉要留痕，不许静默删）。
+ *     它当时是准的：真后端复现过同 key POST 两次得**两行**（系数 0.5 与 0.9 并存、都 PUBLISHED），
+ *     而 `propagateTick` 逐规则累加 ⇒ **两条都算**，用户以为的「改系数」实为两条相加。
+ *     现在 `POST` 按 key upsert（恒 1 行 · `version` 递增），并有 `PATCH /:id` 与 `DELETE /:id`，
+ *     因果边表行内三个控件（改系数 · 启停 · 删）都真接了线。
  *  ② 结构边的**工作集弃用态**没有只读下发口，状态列的口径是「已发布快照 ⊕ 本次会话写回包」。
  *  ③ 域归属取**对象类型的本体域**（`ObjectTypeDef.domain` ← `GET /a/v1/ontology/domains` 注册表），
  *     **不是** `ProcessDomain`（D01…D13）。后者是业务流程层的域词表，契约
@@ -231,11 +239,66 @@ export default function OntologyRelationsPage() {
         status: pr.status,
       }),
     onSuccess: (r) => {
-      toast(`因果边 ${r.key} 已建（${r.status === "PUBLISHED" ? "启用" : "停用"}）`, "success");
+      // `version > 1` ⇒ 后端按 key 认出了既有边并覆盖了它（不是又追加一条）。
+      // 这句话必须上屏：用户填了一个已存在的 key 却以为自己在新建，是本单要根治的那类误解。
+      toast(
+        (r.version ?? 1) > 1
+          ? `因果边 ${r.key} 已覆盖既有那条（第 ${r.version ?? 1} 版，仍是 1 条）`
+          : `因果边 ${r.key} 已建（${r.status === "PUBLISHED" ? "启用" : "停用"}）`,
+        "success",
+      );
       setPr((p) => ({ ...p, key: "", sourceStateVar: "", targetStateVar: "" }));
       void qc.invalidateQueries({ queryKey: ["a", "sim-propagation-rules"] });
       // 这一跳就是接缝：因果边一变，沙盘视图配置（stateVars / propagationCount）必须重取。
       void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+    },
+    onError: toastError,
+  });
+
+  // ── 因果边：改既有那一条（WO-CAUSAL-EDGE-CRUD）───────────────────────────
+  //
+  // 三个动作共用**同一个** invalidate 组合（规则列表 + 沙盘视图配置）——
+  // 因果边一变，`propagationCount` / `stateVars` 就跟着变，这一跳就是接缝。
+  // 漏掉第二个 invalidate 的话，屏上「生效因果边 N」会停在旧数字上，
+  // 而推演结果已经变了：两个数各自都对，合起来对不上（本仓「断在接缝」的老形态）。
+  const afterRuleWrite = () => {
+    void qc.invalidateQueries({ queryKey: ["a", "sim-propagation-rules"] });
+    void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+  };
+
+  /** 改系数（行内直接改那一格；身份格后端不收，故这里只递 coefficient）。 */
+  const patchCoef = useMutation({
+    mutationFn: (v: { id: string; coefficient: number }) => updatePropagationRule(v.id, { coefficient: v.coefficient }),
+    onSuccess: (r) => {
+      toast(`因果边 ${r.key} 系数已改为 ${r.coefficient}（第 ${r.version ?? 1} 版）`, "success");
+      afterRuleWrite();
+    },
+    onError: toastError,
+  });
+
+  /**
+   * 启停 —— **一个按钮来回拨**，不是「停用」「启用」两个只进不出的动作。
+   * 结构边那三个按钮（停用/下线）点了回不来，是本仓已知的坑；因果边刻意不复制它。
+   */
+  const toggleRule = useMutation({
+    mutationFn: (v: { id: string; next: "DRAFT" | "PUBLISHED" }) => updatePropagationRule(v.id, { status: v.next }),
+    onSuccess: (r) => {
+      toast(`因果边 ${r.key} 已${r.status === "PUBLISHED" ? "启用（进推演）" : "停用（在册不生效）"}`, "success");
+      afterRuleWrite();
+    },
+    onError: toastError,
+  });
+
+  /**
+   * 删 —— 后端两道闸都回 409，原文直接抛给用户看（是**设计**不是故障）：
+   * ① 还启用着 ⇒ 先停用（可逆、读数变化当场可见）；② 被某些会话按 key 点名引用 ⇒ 点名是哪几个。
+   * 故界面上不拦、不预判，让后端说清楚为什么不能删 —— 前端自己编一套判据就是第二套真相源。
+   */
+  const removeRule = useMutation({
+    mutationFn: (id: string) => deletePropagationRule(id),
+    onSuccess: () => {
+      toast("因果边已删除", "success");
+      afterRuleWrite();
     },
     onError: toastError,
   });
@@ -580,6 +643,7 @@ export default function OntologyRelationsPage() {
                 <th>系数</th>
                 <th>延迟</th>
                 <th>启停</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -589,9 +653,61 @@ export default function OntologyRelationsPage() {
                   <td className="mono">
                     {r.sourceTypeKey}.{r.sourceStateVar} --{r.viaLinkKey}--&gt; {r.targetTypeKey}.{r.targetStateVar}
                   </td>
-                  <td>{r.coefficient}</td>
+                  {/*
+                    系数**就地可改**（WO-CAUSAL-EDGE-CRUD）。改前这一格是死文本，
+                    要调一个系数只能去建边表单把 13 个字段全重述一遍 —— 而那时重述还会
+                    **多出一条同 key 的边**、两条一起算。现在就地改那一格，写的是同一条边。
+
+                    落点选 `onBlur` 而不是 `onChange`：每敲一个字符发一次 PATCH 会把
+                    「0.85」拆成 0 / 0. / 0.8 / 0.85 四次写入，中间三次都是**真的在改推演**。
+                    ⚠ `<input type=number>` 的 `onBlur` 在受控值未变时也会触发，故先比一次再发。
+                  */}
+                  <td>
+                    <input
+                      data-testid={`orel-rule-coef-${r.key}`}
+                      type="number"
+                      step="0.05"
+                      defaultValue={r.coefficient}
+                      disabled={patchCoef.isPending}
+                      onBlur={(e) => {
+                        const next = Number(e.target.value);
+                        if (!Number.isFinite(next) || next === r.coefficient) return; // 没变就不发（不制造无意义的新版本）
+                        patchCoef.mutate({ id: r.id, coefficient: next });
+                      }}
+                      style={{ width: 72 }}
+                    />
+                  </td>
                   <td>{r.delayTicks}</td>
                   <td data-testid={`orel-rule-status-${r.key}`}>{r.status === "PUBLISHED" ? "启用" : r.status === "DRAFT" ? "停用" : "已下线"}</td>
+                  <td style={{ display: "flex", gap: 6 }}>
+                    {/*
+                      启停：**一个按钮来回拨**。文案说的是「按下去会发生什么」，不是当前态
+                      （当前态在左边那一列，重复一遍只会让两处措辞漂移）。
+                      ⚠ 与结构边那三个按钮的关键差别：那边「停用/下线」只进不出，
+                        这边 PUBLISHED ⇄ DRAFT 同一条路径，来回都走得通。
+                    */}
+                    <button
+                      className="btn sm"
+                      data-testid={`orel-rule-toggle-${r.key}`}
+                      disabled={toggleRule.isPending || r.status === "RETIRED"}
+                      onClick={() => toggleRule.mutate({ id: r.id, next: r.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED" })}
+                    >
+                      {r.status === "PUBLISHED" ? "停用" : "启用"}
+                    </button>
+                    {/*
+                      删：**不在前端预判能不能删**。后端两道闸（还启用着 / 被会话点名引用）
+                      各自回 409 并说清理由，`toastError` 原样上屏。
+                      前端自己先判一遍 = 第二套真相源，且必然与后端漂移。
+                    */}
+                    <button
+                      className="btn sm"
+                      data-testid={`orel-rule-delete-${r.key}`}
+                      disabled={removeRule.isPending}
+                      onClick={() => removeRule.mutate(r.id)}
+                    >
+                      删除
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -600,25 +716,35 @@ export default function OntologyRelationsPage() {
       ))}
 
       {/* ── 出处（工程师层，不上屏；屏上只留业务结论）────────────────────────────────
-       *  机制：POST /a/v1/sim/propagation-rules 把 `id: newId("simpr")` 写在请求体展开**之后**
-       *  （apps/datacore/src/app.ts 内该路由处），传进去的 id 恒被覆盖 ⇒ 每次 POST 都是一条新规则。
-       *  故本页不提供「停用已有边」开关：提供了只会 POST 出一条同 key 的重复规则，把生效条数数成两条。
-       *  真·启停需后端补 PUT/PATCH /a/v1/sim/propagation-rules/:id（后端单）。
-       *  复验探针：grep -n 'id: newId("simpr")' apps/datacore/src/app.ts
+       *  WO-CAUSAL-EDGE-CRUD（2026-09-03）之前，这里挂的是一条诚实位：
+       *  「因果边只能新建，改不了、也停不掉」。**那句话当时是准的**，机制是
+       *  `POST …/propagation-rules` 把 `id: newId("simpr")` 写在请求体展开之后 ⇒ 恒覆盖 ⇒ 每次都新建。
+       *  真后端复现过：同 key POST 两次得两行（系数 0.5 与 0.9 并存、都 PUBLISHED），
+       *  而 `propagateTick` 逐规则累加 ⇒ 两条都算，「改系数」的真实效果是两条相加。
+       *
+       *  现已闭：`POST` 改成按 key upsert（复用 id、version 递增、恒 1 行），
+       *  并补了 `PATCH /:id`（系数/启停，**启停可来回**）与 `DELETE /:id`（两道闸后硬删）。
+       *  故这条诚实位**撤掉**，换成下面这条讲「删为什么要先停用」的说明。
+       *  复验探针：`grep -n 'app.patch("/a/v1/sim/propagation-rules' apps/datacore/src/app.ts`
        */}
-      {/* 分层规范 §1 + §3：诚实位**记号**（一句结论）留第一层，整段「为什么」进浮层。
-          原文一字未删，只是从常驻第一层挪进 `?` —— 降层不是删除。 */}
+      {/* 分层规范 §1 + §3：结论留第一层，整段「为什么」进浮层（降层不是删除）。 */}
       <div className="muted" data-testid="orel-rule-honesty" style={{ fontSize: 12, marginBottom: 18, display: "flex", alignItems: "center", gap: 6 }}>
         <span data-testid="orel-rule-honesty-mark">
-          ⚠ 因果边今天<b>只能新建</b>
+          ⚠ 删一条因果边前，要先<b>停用</b>
         </span>
-        <InfoPopover topic="为什么改不了、也停不掉" testId="orel-rule-honesty-popover">
+        <InfoPopover topic="为什么删之前必须先停用" testId="orel-rule-honesty-popover">
           <div style={{ lineHeight: 1.7 }}>
-            因果边今天<b>只能新建，改不了、也停不掉</b>：每次保存都会被当成一条全新的边收下，覆盖不掉已有的那条。
-            所以这里<b>不提供</b>「停用已有边」的开关 —— 真提供了，也只会多出一条一模一样的边，
-            把「生效因果边」的条数数成两条，反而更难看清哪条在起作用。
+            一条<b>启用中</b>的因果边，按定义就在推演集合里。直接删掉，所有在跑的推演下一拍读数都会变，
+            而屏上不会有任何东西说明为什么变 —— 这正是要避免的「结论静默偏离」。
             <br />
-            要真正修改或停用一条已有因果边，需要先补上系统侧的修改能力；在那之前，这一页只能新建。
+            所以删是<b>两步</b>：先「停用」——这一步<b>可逆</b>，读数怎么变当场就能看见，觉得不对再点「启用」拨回来；
+            确认无碍之后再删。多这一次点击买的是「不可逆的动作挡在可逆的动作后面」。
+            <br />
+            另外，若这条边正被某些推演会话按名字点名引用，系统会<b>拒绝删除并列出是哪几个会话</b>，
+            而不是删掉后在那些会话里留下一个查无对证的名字。
+            <br />
+            <b>同名即改</b>：建边表单里填一个<b>已存在</b>的规则名保存，是<b>覆盖</b>那一条（版本号 +1），
+            不会多出第二条同名的边。
           </div>
         </InfoPopover>
       </div>

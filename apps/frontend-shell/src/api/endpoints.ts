@@ -2324,11 +2324,16 @@ export const advanceProcessInstance = (id: string, body: AdvanceProcessInstanceR
 //     （契约 `packages/contracts/src/sim.ts:82`），仓储侧第二个参数叫 `publishedOnly` 不叫
 //     `activeOnly`（`apps/datacore/src/repo/repo.ts:394`），过滤判据是 `status === "PUBLISHED"`
 //     （`repo/memory.ts:76` · `repo/pg.ts:114`）。故本层一律用 `status`，不造 `active` 这个不存在的字段。
-//  ② `POST /a/v1/sim/propagation-rules` 的路由把 `id: newId("simpr")` 写在 body 展开**之后**
-//     （`app.ts:1867`）⇒ 传进去的 id 恒被覆盖 ⇒ **该端点只能新建、改不了既有规则**。
-//     所以本层只给 `createPropagationRule`，**不给** `togglePropagationRule` ——
-//     写一个只会 POST 出一条同 key 的重复规则，把 `propagationCount` 数成两条。
-//     真·启停（改既有规则的 status）**需要后端补 PUT/PATCH**，界面上以诚实位如实写明。
+//  ② ~~`POST …/propagation-rules` 只能新建、改不了~~ **✅ 2026-09-03 已闭（WO-CAUSAL-EDGE-CRUD）**。
+//     ⚠ 这条原文**已作废，保留是为了留住病史**（本仓纪律：诚实位撤掉要留痕，不许静默删）。
+//     原文写：「id 恒被覆盖 ⇒ 该端点只能新建、改不了既有规则；所以本层只给
+//     `createPropagationRule`，**不给** `togglePropagationRule`——写一个只会 POST 出一条同 key
+//     的重复规则，把 `propagationCount` 数成两条。真·启停需要后端补 PUT/PATCH。」
+//     **那段描述当时是准的**（2026-09-03 真后端复现过：同 key POST 两次得两行、系数 0.5 与 0.9
+//     并存且都 PUBLISHED，而 `propagateTick` 逐规则累加 ⇒ 两条都算）。
+//     现在后端已补齐：`POST` 改成**按 key upsert**（复用既有 id、`version` 递增、恒 1 行），
+//     并新增 `PATCH /:id`（改系数/延迟/启停，**启停可来回**）与 `DELETE /:id`（两道闸后硬删）。
+//     故本层现在**给全三个**：`createPropagationRule` / `updatePropagationRule` / `deletePropagationRule`。
 //  ③ 结构边（LinkType）的**工作集态**没有任何只读下发口（`ontologyLinks.list` 的 9 处读取方
 //     全都把 `deprecation` 投影掉了）。唯一带 `deprecation` 的读是**已发布快照**
 //     `GET /a/v1/ontology/versions` 的 `snapshot.linkTypes`（`ontology.ts:352`）。
@@ -2523,9 +2528,12 @@ export const fetchElementReferences = (elementKind: "link" | "type", key: string
 //   声明保留在上方 :694（带边开关那段完整说明）。
 
 /**
- * 建一条因果边。`status` 即启停位：`PUBLISHED` = 启用（进推演）· `DRAFT` = 停用（在册不生效）。
+ * 建一条因果边 —— **同 `key` 即改那一条**（后端按 key upsert，WO-CAUSAL-EDGE-CRUD）。
+ * `status` 即启停位：`PUBLISHED` = 启用（进推演）· `DRAFT` = 停用（在册不生效）。
  * 判据不是我说的 —— `GET /a/v1/sim/view-config` 只读 `listPropagationRules(tenantId, true)`
- * （`apps/datacore/src/app.ts:1877`），而那个 `true` 的过滤条件就是 `status === "PUBLISHED"`。
+ * （`apps/datacore/src/app.ts`），而那个 `true` 的过滤条件就是 `status === "PUBLISHED"`。
+ *
+ * ⚠ 这是**整条覆盖**：省略的可选字段回落契约默认值。只想改一格用 `updatePropagationRule`。
  */
 export const createPropagationRule = (body: {
   key: string;
@@ -2538,6 +2546,40 @@ export const createPropagationRule = (body: {
   delayTicks: number;
   status: "DRAFT" | "PUBLISHED";
 }) => api.a<PropagationRule>("/a/v1/sim/propagation-rules", { method: "POST", body });
+
+/**
+ * 改一条既有因果边的**数值与启停**（`PATCH /a/v1/sim/propagation-rules/:id`）。
+ *
+ * 只递要改的那几格 —— 身份格（`key` 与源/链/目标六元组）后端**不收**（`strictObject` ⇒ 400）：
+ * 允许改身份等于允许把一条边原地掉包，而历史推演 trace 里按 `ruleKey` 的引用会指向一条
+ * 语义已变的边。要换身份就新建一条、停用旧的，两条边各自留痕。
+ *
+ * ⚠ **启停是可逆的**：`PUBLISHED ⇄ DRAFT` 走同一个字段、同一条路径。
+ * 这是刻意**不复制**结构边那个已知坑 —— `deprecate`/`retire` 只进不出，点了回不来。
+ * 真后端实测（2026-09-03）：启用 9 → 停用 0 → 再启用 9，读数原路返回。
+ */
+export const updatePropagationRule = (
+  id: string,
+  patch: Partial<{
+    coefficient: number;
+    delayTicks: number;
+    combine: "sum" | "max";
+    status: "DRAFT" | "PUBLISHED" | "RETIRED";
+  }>,
+) => api.a<PropagationRule>(`/a/v1/sim/propagation-rules/${encodeURIComponent(id)}`, { method: "PATCH", body: patch });
+
+/**
+ * 删一条因果边（`DELETE /a/v1/sim/propagation-rules/:id`，成功回 **204 无体**）。
+ *
+ * 后端有**两道闸**，都会回 409 `INVALID_STATE`，原文直接抛给用户看（是**设计**不是故障）：
+ *  ① 边还是 `PUBLISHED`（启用中）⇒ 拒删，要求先停用。理由：启用中的边按定义就在推演集合里，
+ *    直接删会让所有在跑会话的读数**静默改变**。先停用那一步可逆、读数变化当场可见可回退。
+ *  ② 边被某些会话的 `disabledRuleKeys` **按 key 点名**引用 ⇒ 拒删并逐条点名是哪几个会话
+ *    （说不清被谁引用的拒绝，用户没法据此行动）。
+ * 故界面上的「删」必须先走「停用」——这不是多一次点击，是把不可逆动作挡在可逆动作后面。
+ */
+export const deletePropagationRule = (id: string) =>
+  api.a<void>(`/a/v1/sim/propagation-rules/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 // ── 发布会签（R4：本体真值变更经审批链，前端不直发）────────────────────────
 export interface PublishRequestVM {

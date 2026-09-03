@@ -56,11 +56,22 @@ export const PropagationRuleSchema = z.object({
    * 因果边照抄这一套。本仓已经有「三种写语义」了（结构边 upsert · 对象类型整体替换 ·
    * 因果边追加），本单是把第三种**并回第一种**，不是再加第四种。
    *
-   * `.default(1)` 而非必填：`seed.ts` 的 35 条字面量以 `Omit<PropagationRule, …>` 引用本 schema，
-   * 加必填字段会逼着改那 35 条种子（契约 §注 已警告过）。故种子侧在
-   * `demoPropagationRulesWithDomain()` 一处统一填 1，35 条字面量一个字没动。
+   * ⚠ **刻意 optional 而非 required** —— 沿用本文件 `SimSession.disabledRuleKeys` / `tickDays`
+   * 立下的同一条理由（那两处都写着「别推翻」），本单不推翻它。两条依据：
+   *  ① `PropagationRule` 在前端被当**字面量**构造 6 处（`apps/frontend-shell/test/` 下
+   *     disruption-cards / edge-active / sandbox-config-collapse / sandbox-config-ux /
+   *     statevar-display-name），置为必填会把整包前端打成编译红 —— 而那些 fixture 属于
+   *     **并行在跑的另几张单**，不该被本单牵动（实测确有其事：改成必填当场 12 处红）。
+   *  ② 更要紧的是**读回路上它真的可能不在**：`repo/pg.ts` 读的是
+   *     `row.doc as PropagationRule` —— **裸 cast、不过 zod parse**，故本字段引入**之前**
+   *     落库的那些边读回来是 `undefined`。声明成必填等于对读回路撒谎
+   *     （同一个坑 `propagation.ts` 的 `cadenceNodeId != null` 已经栽过一次并留了长注释）。
+   *
+   * 缺省/缺失 ⇒ 一律读作 `1`（消费方一律写 `?? 1`），与本字段引入前**逐字节相同**
+   * （additive · 可回退 RL9）。DataCore 侧**恒填**（`POST` upsert 与 `PATCH` 两条写路都算这个数，
+   * 种子在 `demoPropagationRulesWithDomain()` 填 1），故服务端答复里它总在。
    */
-  version: z.number().int().min(1).default(1),
+  version: z.number().int().min(1).optional(),
   sourceTypeKey: z.string(), // 抽象——任意对象类型
   sourceStateVar: z.string(), // 抽象——任意状态变量（派生属性）
   viaLinkKey: z.string(), // 抽象——任意链路类型

@@ -229,7 +229,7 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *    join 本租户本体填，入库恒 `null`（存进去会在类型改名后变成查无对证的旧名字）。
  */
 const DEMO_PROPAGATION_RULES: ReadonlyArray<
-  Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName" | "version">
+  Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName">
 > = [
   // ① 订单需求压力 → 沿"订单属型号"边推到型号需求负载（即时，强相关）。
   {

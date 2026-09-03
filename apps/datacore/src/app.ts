@@ -2662,7 +2662,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const cur = await repos.sim.getPropagationRule(c.tenantId, id);
     if (!cur) throw notFound("propagation rule"); // 跨租户同样走这一支（R2：查无此条，不泄露存在性）
     const patch = parseBody(PropagationRulePatchSchema, req.body ?? {});
-    const next: PropagationRule = { ...cur, ...patch, version: cur.version + 1 };
+    const next: PropagationRule = { ...cur, ...patch, version: (cur.version ?? 1) + 1 };
     await repos.sim.putPropagationRule(next);
     return next;
   });
