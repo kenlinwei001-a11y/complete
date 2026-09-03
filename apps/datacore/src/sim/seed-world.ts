@@ -346,7 +346,13 @@ export async function deriveSeedBaseSnapshot(
        *
        * 同理 `measuredCells` 原本也写在这句里 —— 那是接口字段名，用户读不懂；
        * 屏上那一项显示的词是「实测格」，所以这里跟着说「实测格」。
+       *
+       * ⚠ **复发过一次**（WO-PARETO-AXES · 2026-09-03 真浏览器实测）：这句里又出现过
+       *    字面 `**本体结构派生**`，屏上原样印出四个星号（消费方是统一推演台状态条 `usim-origin`）。
+       *    同单在 `opt-assemble.ts` 的两条 `reason` 上修掉的是同一个病 ——
+       *    ⇒ 这不是一处笔误，是「注释里的 Markdown 习惯漏进上屏串」这一类，改这句时先看本段。
        */
+
       note:
         "种子世界的 tick0 读数由本体结构派生（确定性占位），不是实测：" +
         "推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值 —— " +
