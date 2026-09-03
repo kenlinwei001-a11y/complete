@@ -6053,6 +6053,7 @@ export class SolverService {
   private objectConstraintBindings(c: SolverContext, solverKey: string): { ruleKey: string; typeKey: string; propKey: string; kind: ObjectConstraintKind }[] {
     const readTypes = this.solverReadTypes(solverKey);
     const out: { ruleKey: string; typeKey: string; propKey: string; kind: ObjectConstraintKind }[] = [];
+
     for (const [typeKey, refs] of Object.entries(c.objectConstraints ?? {})) {
       if (!readTypes.has(typeKey)) continue;
       for (const r of refs) out.push({ ruleKey: r.ruleKey, typeKey, propKey: r.propKey, kind: r.kind });
