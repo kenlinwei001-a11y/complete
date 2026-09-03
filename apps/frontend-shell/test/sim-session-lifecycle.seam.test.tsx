@@ -415,7 +415,10 @@ describe("WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门",
     // 屏上要明说"这块屏还盯着它"，不许闷着（钉住 ≠ 冒充 RUNNING）
     const reason = screen.getByTestId("usim-session-reason");
     expect(reason.getAttribute("data-pinned")).toBe("1");
-    expect(reason.textContent).toContain("已经不是 RUNNING");
+    // WO-SCREEN-TOKENS-2：这句改说人话（枚举 `RUNNING` 不再上屏），断言跟着改成人话那半句。
+    // 机器读的那一份仍是枚举，就在下一行的 `data-status` 上 —— 两者各测各的，别混。
+    expect(reason.textContent).toContain("已经不在推演中了");
+    expect(reason.textContent, "接口枚举不许当人话印在用户屏上").not.toContain("RUNNING");
 
     await userEvent.click(resume);
     await waitFor(() => expect(bar.getAttribute("data-status")).toBe("RUNNING"));
