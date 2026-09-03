@@ -4784,7 +4784,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    * `chainFamilyLines.fetchOrdersForFamilies` 发 `limit=500`，实收 50 行（真值 500 · 10× 欠读），
    * 而它此前只回 warning ⇒ 没有任何调用方去读，等于没说。
    * 原先「不 400」的理由是「三个接缝测试与文档 curl 都在传」—— 那恰恰证明**大家都以为它生效**，
-   * 是加硬拒的理由，不是不加的理由。四处调用方已随本单一并改到 `pageSize`。
+   * 是加硬拒的理由，不是不加的理由。
+   * 实测全仓传分页别名的调用方共 4 处，已随本单一并改到 `pageSize`：
+   * `chainFamilyLines.ts`（生产前端）· `chain-scan-honesty.test.ts` · `WO-SIM-PERTURB-DATA-GAP.md`×2；
+   * `objects-total-truthful.seam.test.ts` 改为断言 400。AgentCore 走 `POST /objects/query`，不受影响。
    */
   const PAGINATION_ALIASES = new Set([
     "limit", "offset", "cursor", "perpage", "per_page", "page_size", "pagesize",
