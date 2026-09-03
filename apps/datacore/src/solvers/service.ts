@@ -9,7 +9,7 @@ import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema, BUSINESS_TYPE_LABEL } from "@platform/contracts";
 import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
-import { SOLVER_RULE_REFS, type EvaluatedRule, type OrderDeliveryJudge } from "@platform/contracts";
+import { CONSTRAINT_KINDS_UPPER, SOLVER_RULE_REFS, type EvaluatedRule, type ObjectConstraintKind, type OrderDeliveryJudge } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, collectParamRefs, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
 import { runSolverSandbox } from "./sandbox.js";
@@ -5469,6 +5469,14 @@ export class SolverService {
       rules[r.key] = { key: r.key, name: r.name, expression: r.expression, severity: r.severity, params: r.params };
     }
     const ruleSetVersion = `rsv_${hashString(canonicalJson(publishedRules.map((r) => ({ k: r.key, v: r.version, e: r.expression, s: r.severity, p: r.params ?? {} })))).toString(16)}`;
+    // WO-CONSTRAINT-REFS：对象类型上挂的约束引用快照（typeKey → refs）。**只收非空的**，
+    // 于是「全库一条约束都没配」时这张表是 `{}` ⇒ 下游一个分支都不进 ⇒ 与本单上线前逐字节一致（R6）。
+    // ⚠ 不在此做 ruleKey 存在性校验：写入口（app.ts POST）已经拒了不存在的规则；此处若再"顺手过滤"，
+    //   规则**事后**被 retire 的情况就会被静默吞掉 —— 那正是本单要修的病。故留给评估处诚实标记。
+    const objectConstraints: NonNullable<SolverContext["objectConstraints"]> = {};
+    for (const t of (await this.repos.ontologyTypes.list(tenantId, (t) => t.status === "ACTIVE")).sort((a, b) => (a.key < b.key ? -1 : 1))) {
+      if (t.constraintRefs && t.constraintRefs.length > 0) objectConstraints[t.key] = t.constraintRefs;
+    }
     // #4 性能：扩展数据（E6b 10 类）仅 13 新求解器需要 —— 默认不加载（省 10 次全表扫描），
     // invoke/runWithParams 在 solverKey∈EXTENDED_SOLVERS 时才置 withExtended。
     const empty: ObjectInstance[] = [];
@@ -5585,6 +5593,7 @@ export class SolverService {
       segments: sortById(segments),
       dataHealth: sortById(dataHealth),
       certByModel,
+      objectConstraints,
       materials: sortById(materials),
       materialBatches: sortById(materialBatches),
       customers: sortById(customers),
@@ -5984,14 +5993,150 @@ export class SolverService {
     return out;
   }
 
-  /** 规则即引用：对求解器声明的规则（SOLVER_RULE_REFS）逐条按规则引擎评估 → EvaluatedRule[]。
+  // ── WO-CONSTRAINT-REFS · 「对象约束走引用规则库」的引擎半 ──────────────────────
+  //
+  // ── 修之前的真实行为（实测，不是推断）──────────────────────────────────────
+  // 求解器**确实读规则库**（`c.rules` 是本租户已发布规则全量快照 + `ruleSetVersion` 指纹；
+  // 实测 capacity_forecast 的 C03 随入参 0.2→0.8 从 PASS 翻 BLOCK）。缺的**不是**读规则库这条线，
+  // 而是：引用集只来自 `SOLVER_RULE_REFS[solverKey]` —— contracts 里一张**编译期常量表，按求解器 key 索引**。
+  // 对象类型这一维**根本不存在** ⇒ 对象上挂的约束无处可挂、也无人读。
+  // （病征：C01「Line.weeklyCapacityWan > Line.designCeilingWan」这条本就是对象属性约束的规则，
+  //   因为没人把 Line 的属性喂进 payload，实测恒 `NOT_APPLICABLE`。）
+  //
+  // ── 本单补的那一维 ────────────────────────────────────────────────────────
+  //   `ObjectTypeDef.constraintRefs[{ruleKey, propKey, kind}]`
+  //     → 求解器**读哪些类型**（声明表，见 solverReadTypes）
+  //       → 把这些类型上挂的规则**并入**引用集 + 把实例属性喂进 payload
+  // 于是「在本体配置器给某类对象挂一条约束 → 求解器的推演结论真的变」。
+  //
+  // ⚠ 不新增任何业务常数：阈值/表达式/severity 一律回 `c.rules` 现取（对象侧只存 ruleKey）。
+
+  /**
+   * 求解器**声明**读取的对象类型集合（`SOLVER_ONTOLOGY_SIGNATURES` 静态面 ∪ `SOLVER_REQUIRED_TYPES`）。
+   *
+   * 为什么用**声明**而不是"ctx 里哪张表非空"：后者随种子数据变（空表 = 没数据 ≠ 不读），
+   * 会让同一份配置在不同租户上评估出不同的规则集 —— R6 确定性当场破。
+   * 两张表都没登记的求解器 → 空集 = **一条对象约束都不评估**（保守缺省，同本文件
+   * `SOLVER_ONTOLOGY_SIGNATURES` 头注「未列入 = 读取面未知」的既有纪律，不自作主张放行）。
+   */
+  private solverReadTypes(solverKey: string): Set<string> {
+    const out = new Set<string>();
+    for (const r of SOLVER_ONTOLOGY_SIGNATURES[solverKey]?.reads ?? []) out.add(r.typeKey);
+    for (const t of SOLVER_REQUIRED_TYPES[solverKey] ?? []) out.add(t);
+    return out;
+  }
+
+  /**
+   * typeKey → ctx 里**已加载**的实例表。刻意**不打仓储**：对象约束只在求解器本来就读的类型上评估，
+   * 那些表 `loadContext` 已经载好了。为约束额外去扫表 = 让一条配置把求解器的读取面悄悄放大
+   * （既绕开 `SOLVER_REQUIRED_TYPES` 的裁剪，也绕开 A6 列级投影）。
+   */
+  private instancesByType(c: SolverContext): Record<string, ObjectInstance[] | undefined> {
+    return {
+      Base: c.bases, Line: c.lines, Process: c.processes, Equipment: c.equipment,
+      MaintPlan: c.maintPlans, Model: c.models, Order: c.orders, Shipment: c.shipments,
+      Segment: c.segments, DataSourceHealth: c.dataHealth,
+      Material: c.materials, MaterialBatch: c.materialBatches, Customer: c.customers,
+      ARInvoice: c.arInvoices, Certification: c.certifications, EnergyMeter: c.energyMeters,
+      ChangeoverMatrix: c.changeoverMatrix, CapexProject: c.capexProjects,
+      PurchaseOrder: c.purchaseOrders, CarbonFactor: c.carbonFactors, Supplier: c.suppliers,
+      CustomsClearance: c.customsClearances, IncomingInspection: c.incomingInspections,
+      BOMHeader: c.bomHeaders, BOMDetail: c.bomDetails,
+      AdoptedMitigation: c.adoptedMitigations, InterBaseTransfer: c.interBaseTransfers,
+    };
+  }
+
+  /**
+   * 本求解器要评估的**对象约束**：`[{ruleKey, typeKey, propKey, kind}]`，按 (ruleKey,typeKey,propKey) 升序（R6）。
+   * 只收求解器**声明读**的类型上挂的约束；同一条规则被多个类型引用 → 各出一条（证据里点名是哪类对象）。
+   */
+  private objectConstraintBindings(c: SolverContext, solverKey: string): { ruleKey: string; typeKey: string; propKey: string; kind: ObjectConstraintKind }[] {
+    const readTypes = this.solverReadTypes(solverKey);
+    const out: { ruleKey: string; typeKey: string; propKey: string; kind: ObjectConstraintKind }[] = [];
+    for (const [typeKey, refs] of Object.entries(c.objectConstraints ?? {})) {
+      if (!readTypes.has(typeKey)) continue;
+      for (const r of refs) out.push({ ruleKey: r.ruleKey, typeKey, propKey: r.propKey, kind: r.kind });
+    }
+    return out.sort((a, b) =>
+      a.ruleKey < b.ruleKey ? -1 : a.ruleKey > b.ruleKey ? 1
+      : a.typeKey < b.typeKey ? -1 : a.typeKey > b.typeKey ? 1
+      : a.propKey < b.propKey ? -1 : a.propKey > b.propKey ? 1 : 0);
+  }
+
+  /**
+   * 约束绑定 → 规则求值 payload 的**补充**（`payload[typeKey] = 最可能违规那个实例的全部属性`）。
+   *
+   * ── 为什么取「最可能违规的那个实例」而不是平均/首条 ──────────────────────────
+   * 约束的语义是**全称**的：「**任何**设备的产能都不得超过上限」。全称命题的判定 = 看最极端的那个个体。
+   * 故上限型（`must_not_exceed`/`requires_capacity`/`must_be_before`）取该属性**最大**的实例，
+   * 下限型（`must_not_fall_below`）取**最小**的。取平均会让「一台设备严重超限」被其他 49 台稀释成 PASS ——
+   * 那是把 BLOCK 静默变成 PASS，比不评估更危险。
+   *
+   * ── 为什么灌**整个实例的属性**而不只是绑定的那一个 ────────────────────────────
+   * 规则表达式常常同时引用同类型的两个属性（C01 `Line.weeklyCapacityWan > Line.designCeilingWan`）。
+   * 只灌绑定属性 → 另一个解不出 → 恒 NOT_APPLICABLE（等于没修）。灌同一个**真实实例**的整份属性，
+   * 两边取值同源、证据里点得出是哪一个对象违规。
+   *
+   * 同值并列按 `id` 字典序（R6 确定性；同本文件 C09 `worstStale` 的既有裁决键写法）。
+   */
+  private constraintPayload(c: SolverContext, solverKey: string): Record<string, { props: Record<string, unknown>; objectId: string }> {
+    const byType = this.instancesByType(c);
+    const out: Record<string, { props: Record<string, unknown>; objectId: string }> = {};
+    for (const b of this.objectConstraintBindings(c, solverKey)) {
+      if (out[b.typeKey]) continue; // 同类型多条约束：以排序后第一条选出的实例为准（确定性）
+      const rows = (byType[b.typeKey] ?? []).filter((o) => o.props[b.propKey] !== undefined && o.props[b.propKey] !== null);
+      if (rows.length === 0) continue; // 该类型没数据/没这个属性 → 不灌 → 评估处诚实落 NOT_APPLICABLE
+      const upper = CONSTRAINT_KINDS_UPPER.includes(b.kind);
+      const worst = rows.slice().sort((x, y) => {
+        const a = num(x.props[b.propKey]);
+        const z = num(y.props[b.propKey]);
+        return a !== z ? (upper ? z - a : a - z) : x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
+      })[0]!;
+      out[b.typeKey] = { props: worst.props, objectId: worst.id };
+    }
+    return out;
+  }
+
+  /** 规则即引用：对求解器声明的规则（SOLVER_RULE_REFS ∪ **对象类型上挂的约束**）逐条按规则引擎评估 → EvaluatedRule[]。
    *  字段在 payload 全不可解析 → NOT_APPLICABLE（诚实，不冒充 PASS）；违规 → 按 severity 出 BLOCK/WARN。 */
   evaluateRuleRefs(c: SolverContext, solverKey: string, payload: Record<string, unknown>): EvaluatedRule[] {
-    const refs = SOLVER_RULE_REFS[solverKey] ?? [];
+    // WO-CONSTRAINT-REFS：引用集 = 求解器声明的规则 ∪ 它读的那些对象类型上挂的约束规则。
+    // 顺序：先 SOLVER_RULE_REFS 原序（既有输出逐字节不变），再按序追加**新增**的约束规则。
+    const bindings = this.objectConstraintBindings(c, solverKey);
+    const bindingOf = new Map<string, { typeKey: string; propKey: string; kind: ObjectConstraintKind }>();
+    for (const b of bindings) if (!bindingOf.has(b.ruleKey)) bindingOf.set(b.ruleKey, b);
+    const declared = SOLVER_RULE_REFS[solverKey] ?? [];
+    const refs = [...declared, ...[...bindingOf.keys()].filter((k) => !declared.includes(k))];
+    // 约束实例属性并进 payload。**合并方向刻意是"填空"不是"覆盖"**：既有的求解器专用映射
+    // （如 capacity_forecast 的 `Order.demandDelta` / `DataSourceHealth`）永远赢。
+    // 反过来写会让一条新配的约束把 C03 的入参悄悄换成某个订单对象的属性 —— 静默改掉既有推演结论。
+    const cpay = this.constraintPayload(c, solverKey);
+    if (Object.keys(cpay).length > 0) {
+      const merged: Record<string, unknown> = { ...payload };
+      for (const [typeKey, v] of Object.entries(cpay)) {
+        const existing = merged[typeKey];
+        merged[typeKey] = existing && typeof existing === "object" && !Array.isArray(existing)
+          ? { ...v.props, ...(existing as Record<string, unknown>) }
+          : { ...v.props };
+      }
+      payload = merged;
+    }
     const out: EvaluatedRule[] = [];
     for (const key of refs) {
       const rule = c.rules?.[key];
-      if (!rule || !rule.expression.trim()) continue; // 未定义由 rule-closure 门拦
+      const cb = bindingOf.get(key);
+      if (!rule || !rule.expression.trim()) {
+        // WO-CONSTRAINT-REFS：`SOLVER_RULE_REFS` 那一路仍 `continue`（未定义由 rule-closure 门拦，行为不变）。
+        // 但**对象约束**这一路不许静默跳过 —— 规则在挂上之后被 retire，屏上那条约束就会无声消失，
+        // 正是本单要修的「配了却什么都没发生还不报错」。故诚实出一条 NOT_APPLICABLE 点名断链。
+        if (cb) {
+          out.push({
+            key, name: key, severity: "BLOCK", outcome: "NOT_APPLICABLE", expression: "",
+            evidence: `对象约束引用的规则 '${key}' 已不在已发布规则库中（${cb.typeKey}.${cb.propKey} 上的约束当前不生效）`,
+          });
+        }
+        continue;
+      }
       let naEvidence: string | null = null;
       try {
         const ast = parseExpression(rule.expression);
@@ -6012,10 +6157,13 @@ export class SolverService {
       // try/catch 两条路径都必赋值 ⇒ 不给初值（写 `= false` 会读成"默认通过"，而默认是由 catch 明确给的）。
       let violated: boolean;
       try { violated = evaluateExpression(rule.expression, { payload, params: rule.params }); } catch { violated = false; }
+      // WO-CONSTRAINT-REFS：对象约束的证据要**点名是哪个对象**（全称约束的判定个体），
+      // 否则「产能超限」这条结论落在屏上没人知道该去看哪台设备。非约束路的证据串逐字节不变。
+      const cbNote = cb ? `｜对象约束 ${cb.typeKey}.${cb.propKey}（${cb.kind}）取证对象 ${cpay[cb.typeKey]?.objectId ?? "（该类型无数据）"}` : "";
       out.push({
         key, name: rule.name, severity: rule.severity, expression: rule.expression,
         outcome: violated ? (rule.severity === "BLOCK" ? "BLOCK" : "WARN") : "PASS",
-        evidence: violated ? `命中违规条件（${rule.expression}）` : `通过（${rule.expression}）`,
+        evidence: (violated ? `命中违规条件（${rule.expression}）` : `通过（${rule.expression}）`) + cbNote,
       });
     }
     return out;
