@@ -3506,22 +3506,41 @@ export const handlers = [
       report: { profile: "SMOKE", seed: 42, pass: false, coverage: { module: 0.92, assertion: 1, loop: 0.86 }, engineeringVerificationScore: 0.95, assertions: VLE_MOCK_ASSERTIONS },
     }),
   ),
+  /*
+   * ⚠ WO-ONTO-CRASH · 这两个 mock 曾经是**假绿的发动机**，务必照后端真实回包写。
+   *
+   * 它们原先回的是**裸数组** —— 而后端真实回的是带信封的对象：
+   *   · `GET /a/v1/validation/runs` → `{ items: runs.sort(...) }`（`apps/datacore/src/app.ts` 该路由）
+   *   · `GET /a/v1/quarantine`      → `{ items, byReason, total }`（`apps/datacore/src/quarantine.ts` 的 `list()`）
+   * 也就是说：mock 照**前端的 interface** 写，而不是照**后端的回包**写 ⇒
+   * mock 和 bug 用的是同一个错误假设，于是 `VITE_MOCK=1` 一切正常、全部前端测试全绿，
+   * 而真后端一接上，这两页 admin **一进就崩**（2026-08-30 真浏览器 2/2 复现）。
+   *
+   * 形态：**「我用『mock 模式下这页好好的』当作『这页能用』的证据，而前者并不度量后者
+   * —— mock 是我自己按错误假设写的。」**
+   * 现改成信封形状，机器就会先说话：谁再把消费方写成「拿它当数组」，mock 模式当场就崩。
+   */
   http.get("*/a/v1/validation/runs", () =>
-    HttpResponse.json([
-      {
-        id: "vrun_1", profile: "SMOKE", seed: 42, startedAt: "2026-06-17T08:00:00Z", finishedAt: "2026-06-17T08:09:00Z",
-        report: { profile: "SMOKE", seed: 42, pass: true, coverage: { module: 0.95, assertion: 0.9, loop: 1 }, engineeringVerificationScore: 0.94, assertions: [] },
-      },
-    ]),
+    HttpResponse.json({
+      items: [
+        {
+          id: "vrun_1", profile: "SMOKE", seed: 42, startedAt: "2026-06-17T08:00:00Z", finishedAt: "2026-06-17T08:09:00Z",
+          report: { profile: "SMOKE", seed: 42, pass: true, coverage: { module: 0.95, assertion: 0.9, loop: 1 }, engineeringVerificationScore: 0.94, assertions: [] },
+        },
+      ],
+    }),
   ),
   http.post("*/a/v1/validation/runs", () => HttpResponse.json({ id: "vrun_2" }, { status: 202 })),
 
-  http.get("*/a/v1/quarantine", () =>
-    HttpResponse.json([
+  http.get("*/a/v1/quarantine", () => {
+    const items = [
       { id: "qr_1", connId: "conn_1", dataset: "orders", raw: { so: "", qty: 10 }, reason: "SCHEMA_MISMATCH", detail: "缺主键 so", status: "PENDING", createdAt: "2026-06-17T08:00:00Z" },
       { id: "qr_2", connId: "conn_1", dataset: "orders", raw: { so: "SO-1", qty: "x" }, reason: "TYPE_ERROR", detail: "qty 非数字", status: "DISCARDED", createdAt: "2026-06-17T08:01:00Z" },
-    ]),
-  ),
+    ];
+    const byReason: Record<string, number> = {};
+    for (const q of items) byReason[q.reason] = (byReason[q.reason] ?? 0) + 1;
+    return HttpResponse.json({ items, byReason, total: items.length });
+  }),
   http.post("*/a/v1/quarantine/:id/reprocess", () => HttpResponse.json({ ok: true })),
   http.post("*/a/v1/quarantine/discard", () => HttpResponse.json({ discarded: 1 })),
 

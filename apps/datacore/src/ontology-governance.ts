@@ -849,6 +849,10 @@ export class OntologyGovernanceService {
       ontologyVersion: opts.ontologyVersion,
       requestedBy: ctx.userId,
       status: signoffs.length === 0 ? "APPROVED" : "PENDING_SIGNOFF",
+      // WO-ONTO-CRASH：**存下来**。此前这个数组算完就扔，只用来实例化上面的 signoff 行 ——
+      // 而前端会签表按契约读它，读到 undefined 即整页崩。与 signoffs 同源（都取自
+      // `opts.touchedDomains`），故两者永远一致，不是各算一份。
+      touchedDomains: [...new Set(opts.touchedDomains)].sort(),
       signoffs,
       createdAt: new Date().toISOString(),
     };

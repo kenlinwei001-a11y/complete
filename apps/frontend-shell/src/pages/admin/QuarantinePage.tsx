@@ -14,7 +14,11 @@ const REASON_LABEL: Record<string, string> = {
 export default function QuarantinePage() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["a", "quarantine"], queryFn: fetchQuarantine });
-  const rows = (data ?? []).filter((r) => r.status === "PENDING");
+  // WO-ONTO-CRASH：`fetchQuarantine` 现在**保证**回数组（后端回的是 `{items,byReason,total}`，
+  // 形状翻译收口在 `endpoints.ts` 那一处）。原先这里直接 `(data ?? []).filter(...)`，
+  // 拿对象当数组 ⇒ `TypeError: (data ?? []).filter is not a function`，admin 一进页就崩。
+  // 这里再兜一层 `Array.isArray` 不是防御性冗余，是**边界**：这一页不该被上游形状变化打崩。
+  const rows = (Array.isArray(data) ? data : []).filter((r) => r.status === "PENDING");
   const invalidate = () => qc.invalidateQueries({ queryKey: ["a", "quarantine"] });
 
   const reprocess = useMutation({
