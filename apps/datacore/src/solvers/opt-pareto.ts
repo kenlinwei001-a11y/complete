@@ -283,7 +283,7 @@ export async function runOptimizePareto(solve: SolveArgsFn, req: ParetoRequest):
   frontier.sort(cmp);
   dominated.sort(cmp);
 
-  // ── 权重：**在前沿切好之后**才登场（见 `rankByWeights` 的 ⛔ 段）───────────────
+  // ── 权重：**在前沿切好之后**才登场（判据与理由见契约 `rankParetoByWeights` 的 ⛔ 段）──
   // `frontier`/`dominated` 此刻已经定了，下面三行读它们、不改它们。
   // 归一池 = 全体参与竞争的可行解（前沿 + 被支配），与权重无关 ⇒ 换权重只换名次。
   const weights = normalizeParetoWeights(objectives, req.weights);
