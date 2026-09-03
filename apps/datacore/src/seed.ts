@@ -1569,6 +1569,13 @@ export function demoPropagationRulesWithDomain(): ReadonlyArray<Omit<Propagation
     // 类型人话名**入库恒 null**：它是读时投影（路由 join 本体），存一份会在类型改名后变成旧名字。
     sourceTypeName: null,
     targetTypeName: null,
+    /**
+     * 种子边一律 **v1**（WO-CAUSAL-EDGE-CRUD）：它们是「出厂那一版」，没被谁改过。
+     * 在这一处统一填，是为了让上面 35 条字面量**一个字都不用动** ——
+     * 契约注释早就警告过「加必填字段会逼着改那 35 条种子」。
+     * 运营方经 `POST`（同 key upsert）或 `PATCH` 改过之后，这个数才开始涨。
+     */
+    version: 1,
   }));
 }
 

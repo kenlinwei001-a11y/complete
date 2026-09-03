@@ -22,7 +22,7 @@ import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
 import type { LlmClient } from "./llm.js";
 import { Metrics, actionMetricsView } from "./metrics.js";
-import { AppError, forbidden, notFound, unauthorized, validationError } from "./errors.js";
+import { AppError, forbidden, invalidState, notFound, unauthorized, validationError } from "./errors.js";
 import { newId } from "./ids.js";
 import { CredentialCipher } from "./crypto.js";
 import { AuthService } from "./auth.js";
@@ -67,7 +67,7 @@ import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow�
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
+import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
 import type { PairWeightReport } from "./sim/pair-weights.js";
@@ -2799,13 +2799,198 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       stateVarNames: stateVarDisplayNames(items.flatMap((r) => [r.sourceStateVar, r.targetStateVar])),
     };
   });
+  /**
+   * 因果边写入前的**引用体检**（WO-CAUSAL-EDGE-CRUD 交付判据 2）。
+   *
+   * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════
+   * **X（改前，2026-09-03 真后端实测）**：`PropagationRuleSchema` 把三个端点声明成裸
+   *   `z.string()` ⇒ 只要非空就过。实测 `POST` 一条源类型 `NoSuchType_ZZZ`、链路
+   *   `no_such_link_ZZZ`、目标 `AlsoMissing_ZZZ` 三者全不存在的边，**201 且 status=PUBLISHED**
+   *   —— 它当场进推演集合（`listPropagationRules(tenantId, true)`），而 `navOut` 里
+   *   查无此链路 ⇒ 永远贡献 0。屏上「生效因果边」数字 +1，推演结果一动不动。
+   * **Y（改后）**：端点 / 链路 / 系数来源三样都当场核对，非法 400 并点名是哪一个值。
+   *
+   * ⚠ **这不是假想的洁癖，是本仓真出过的事故**：`POST /a/v1/ontology/link-types` 当时
+   *   只校验字符串非空，**133 条建出来的结构边里 81 条端点类型根本不存在，全部 201 通过**。
+   *   因果边不许重犯同一个错。
+   *
+   * ══ 为什么连**方向**都要卡（这条最容易被当成过度设计）══════════════════════
+   * 引擎只沿 `fromId→toId` 单向走（`sim/propagation.ts` 的 `navOut`：
+   * `navKey(l.linkKey, l.fromId) -> [toId…]`，头注亦写明「`propagateTick` 的 `navOut`
+   * 只沿 `fromId→toId`」）。故一条 `viaLinkKey` 方向反了的边**语法全对、语义恒空** ——
+   * 它会安静地待在「已发布」里一辈子不产生任何贡献。这正是本仓三分法里
+   * 「**接了线接错地方**」那一态，且是最难查的一种：没有报错、没有红、只是数不动。
+   * 实测 42 条种子边**全部正向**（正向 42 · 反向 0 · 对不上 0），故这条闸门
+   * 对存量零误伤 —— 先量后卡，不是先卡后量。
+   *
+   * ══ 为什么 `coefficientRef` 也要卡 ═════════════════════════════════════════
+   * `effectiveCoefficient`（`sim/propagation.ts`）在 ref 解析不到时**静默回落**到内联
+   * `coefficient`。于是一个拼错的 `paramKey` 不会报错，只会让用户以为"系数来自规则配置、
+   * 改规则就能改推演"，实际改规则**毫无效果**（实测：42 条边走 ref 的是 0 条，全部内联回落）。
+   * 静默回落 = 用户以为改了、其实没改 ⇒ 写入时就必须解析得到，解析不到当场 400。
+   *
+   * ⛔ **闸门放在路由，不放仓储** —— 与 `deletePropagationRule` 的接口注释同一条理由：
+   *   放仓储会把 `seedDemoPropagationRules` 这类内部写路也挡住（种子经 `putPropagationRule`
+   *   直落，不走本路由）。
+   */
+  const assertPropagationRefs = async (c: AuthCtx, draft: PropagationRule): Promise<void> => {
+    const [types, linkTypes] = await Promise.all([ontology.listTypes(c), repos.ontologyLinks.list(c.tenantId)]);
+    const typeKeys = new Set(types.map((t) => t.key));
+    // 逐条收集再一次抛出：一次告诉调用方**全部**毛病，而不是修一个报一个（改 13 个字段的表单，
+    // 挤牙膏式报错等于让用户往返 3 次）。
+    const bad: string[] = [];
+    if (!typeKeys.has(draft.sourceTypeKey)) bad.push(`源对象类型 ${draft.sourceTypeKey} 不存在于本租户本体`);
+    if (!typeKeys.has(draft.targetTypeKey)) bad.push(`目标对象类型 ${draft.targetTypeKey} 不存在于本租户本体`);
+    const link = linkTypes.find((l) => l.key === draft.viaLinkKey);
+    if (!link) {
+      bad.push(`链路类型 ${draft.viaLinkKey} 不存在于本租户本体`);
+    } else if (link.fromTypeKey !== draft.sourceTypeKey || link.toTypeKey !== draft.targetTypeKey) {
+      // 方向/端点对不上 ⇒ 这条边**永远走不到任何对象**（引擎只沿 fromId→toId 单向走）。
+      // 报文必须同时给出「链路实际连的是什么」与「反过来写才对吗」这两个信息 ——
+      // 只说「对不上」的话，调用方唯一能做的就是猜。
+      const reversed = link.fromTypeKey === draft.targetTypeKey && link.toTypeKey === draft.sourceTypeKey;
+      bad.push(
+        `链路 ${link.key} 连的是 ${link.fromTypeKey}→${link.toTypeKey}，与本边的 ${draft.sourceTypeKey}→${draft.targetTypeKey} 对不上` +
+          (reversed
+            ? `（方向正好反了：引擎只沿链路的 from→to 单向传导，这样写的边会永远贡献 0。请把源/目标对调，或改用一条 ${draft.sourceTypeKey}→${draft.targetTypeKey} 的链路）`
+            : `（引擎只沿链路的 from→to 单向传导，这样写的边会永远贡献 0）`),
+      );
+    }
+    if (draft.coefficientRef) {
+      const ref = draft.coefficientRef;
+      const rule = (await repos.rules.list(c.tenantId, (x) => x.status === "PUBLISHED")).find((x) => x.key === ref.ruleKey);
+      if (!rule) {
+        bad.push(`系数来源规则 ${ref.ruleKey} 不存在或未发布（PUBLISHED）—— 解析不到会静默回落内联系数，等于改规则不生效`);
+      } else {
+        const v = (rule.params ?? {})[ref.paramKey];
+        const n = typeof v === "number" ? v : Number(v);
+        if (!Number.isFinite(n)) {
+          bad.push(
+            `规则 ${ref.ruleKey} 里没有数值参数 ${ref.paramKey}（现有参数：${Object.keys(rule.params ?? {}).join(", ") || "无"}）` +
+              ` —— 解析不到会静默回落内联系数，等于改规则不生效`,
+          );
+        }
+      }
+    }
+    if (bad.length > 0) throw validationError(`因果边 ${draft.key} 引用校验失败：${bad.join("；")}`);
+  };
+  /**
+   * 建/改一条因果边 —— **同 `key` 即 upsert**（WO-CAUSAL-EDGE-CRUD）。
+   *
+   * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════
+   * **X（改前，2026-09-03 真后端实测复现）**：本处把 `id: newId("simpr")` 写在 `req.body` 展开
+   *   **之后** ⇒ 客户端给什么 id 都被盖掉，而仓储 `putPropagationRule` 按 **id** 落键
+   *   ⇒ 同一个 `key` 写两次得**两行**（实测 `REPRO_EDGE`：`simpr_n88y…` 系数 0.5 与
+   *   `simpr_3e35…` 系数 0.9 并存，两行 `status` 都是 `PUBLISHED`）。
+   *   而 `propagateTick` 是**逐规则**调 `applyContribution(…, rule.combine, …)`
+   *   （`sim/propagation.ts:614`）⇒ `combine:"sum"` 下**两条都算**：用户以为自己把系数
+   *   从 0.5 改成了 0.9，真实效果是 `0.5 + 0.9 = 1.4`。**推演结论静默偏离**，
+   *   且当时 `PUT`/`PATCH`/`DELETE` 一个都没注册（源码金丝雀：`app.put(` 全文 16 命中、
+   *   本路径 0 命中）⇒ 多出来的那条**删不掉**。
+   * **Y（改后）**：`key` 是身份 —— 同 `key` 复用既有 `id`、`version` 递增、整条覆盖，
+   *   **恒 1 行**。
+   *
+   * ══ 为什么是 upsert 而不是 409 ═════════════════════════════════════════════
+   * 派单允许二选一。选 upsert 的理由不是省事，是**本仓已经有这套语义了**：结构边
+   * `POST /a/v1/ontology/link-types` → `ontology.ts upsertLinkType` 就是「按 key 找既有 →
+   * 复用 id → version+1」（实测金丝雀：同 key 连写两次得 `ltype_n87a…` v1→v2，**1 行**）。
+   * 因果边照抄这一套 ⇒ 两种边在屏上、在 API 上是**同一个心智模型**。
+   * 选 409 等于给本仓添**第四种**写语义（已有：结构边 upsert · 对象类型整体替换 · 因果边追加），
+   * 而本单的目的正是把第三种消掉。
+   *
+   * ⚠ **整条覆盖，不是字段合并** —— 与 `PATCH` 的分工要说死：
+   *   POST 认 `key`、改**整条**（省略的可选字段回落 schema 默认，与结构边一致）；
+   *   PATCH 认 `id`、只改**递上来的那几格**。要改一格就用 PATCH，别用 POST 重述全部字段。
+   *
+   * 回码：新建 **201**、改既有 **200**（`version > 1` 即改）。调用方据此分辨"我是不是覆盖了别人的边"。
+   */
   app.post("/a/v1/sim/propagation-rules", async (req, reply) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
     // 与上方 `POST …/perturbations` 的 `safeParse` 记账同一个坑（那处已修、这处漏了）：
     // 裸 `parse` 抛的 ZodError 没有 `statusCode` ⇒ 兜底处理器判 500 INTERNAL_ERROR 并回显 zod 内部结构。
-    const r = parseBody(PropagationRuleSchema, { ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
+    const draft = parseBody(PropagationRuleSchema, { ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
+    // 引用体检（交付判据 2）：端点 / 链路 / 方向 / 系数来源。**在 upsert 之前**——
+    // 放在后面的话，一条非法边会先把既有那条合法边覆盖掉再报错，比不校验更糟。
+    await assertPropagationRefs(c, draft);
+    // 按 `key` 找既有（`false` = 连 DRAFT/RETIRED 一起看）。
+    // ⚠ 必须看**全部状态**：只看 PUBLISHED 的话，一条被停用的同 key 边会被当成"不存在"，
+    //   于是又新建一条 —— 那正是本单要消掉的重复行，只是换了个触发条件。
+    const existing = (await repos.sim.listPropagationRules(c.tenantId, false)).find((x) => x.key === draft.key);
+    const r: PropagationRule = { ...draft, id: existing?.id ?? draft.id, version: (existing?.version ?? 0) + 1 };
     await repos.sim.putPropagationRule(r);
-    return reply.status(201).send(r);
+    return reply.status(existing ? 200 : 201).send(r);
+  });
+  /**
+   * 改一条既有因果边的**数值与闸门**（系数 / 延迟 / 合并 / 衰减 / 钳制 / 节拍 / 启停）。
+   *
+   * 身份格（`key` 与源/链/目标六元组）**不可改** —— 理由写在契约
+   * `PropagationRulePatchSchema` 头注：允许改身份 = 允许把一条边原地掉包，
+   * 而历史推演 trace 里按 `ruleKey` 的引用会指向一条语义已变的边。
+   *
+   * ⚠ **启停是可逆的**（`PUBLISHED ⇄ DRAFT` 同一条路径，没有单向闸）。这是刻意**不复制**
+   *   结构边那个已知坑：`deprecate`/`retire` 是两个只进不出的动作，屏上没有任何按钮
+   *   能把结构边从「已停用」拨回「启用」。派单点名要求「停用要能再启用」，落点就在这里。
+   *
+   * 每次 PATCH `version` 递增 ⇒ 「这条边被改过几次」在 upsert 与 PATCH 两条写路上是**同一个计数器**，
+   * 不是各记各的。
+   */
+  app.patch("/a/v1/sim/propagation-rules/:id", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const id = (req.params as { id: string }).id;
+    const cur = await repos.sim.getPropagationRule(c.tenantId, id);
+    if (!cur) throw notFound("propagation rule"); // 跨租户同样走这一支（R2：查无此条，不泄露存在性）
+    const patch = parseBody(PropagationRulePatchSchema, req.body ?? {});
+    const next: PropagationRule = { ...cur, ...patch, version: (cur.version ?? 1) + 1 };
+    // 身份格（端点/链路）PATCH 改不了，故这里体检的**唯一有效目标是 `coefficientRef`** ——
+    // 但仍走同一个函数、对合并后的 `next` 整体校验，不另抄一份"只查 ref"的删减版：
+    // 抄一份就会在下次给 PATCH 放开某个字段时**悄悄漏掉**对应的那条闸门。
+    await assertPropagationRefs(c, next);
+    await repos.sim.putPropagationRule(next);
+    return next;
+  });
+  /**
+   * 删一条因果边 —— **两步走，第一步可逆**（WO-CAUSAL-EDGE-CRUD）。
+   *
+   * ══ 派单的硬要求：「⛔ 不许静默删掉后让推演结果悄悄变化」════════════════════
+   * 一条 `PUBLISHED` 的边**按定义**就在推演集合里（`GET /sim/view-config` 与
+   * `POST …/tick` 读的都是 `listPropagationRules(tenantId, true)`，那个 `true` 的判据
+   * 就是 `status === "PUBLISHED"`）。直接删 ⇒ 每个在跑的会话下一拍读数都变，而没有任何
+   * 痕迹说明为什么变。故本路由对 `PUBLISHED` 的边**拒绝删除（409）**，并指路：
+   * 先 `PATCH {status:"DRAFT"}` 停用 —— 那一步**可逆**、读数变化**当场可见可回退**，
+   * 确认无碍之后再删。**把不可逆动作挡在可逆动作后面**，而不是加一句警告了事。
+   *
+   * ══ 第二道闸：被某个会话**按 key 点名**引用的边也不许删 ═══════════════════
+   * `SimSession.disabledRuleKeys` 存的是**规则 key 字符串**（「这一局我们假装这条边不存在」）。
+   * 删掉边而留下那个 key ⇒ 悬空引用：会话的假设集里点名了一条查无对证的边，
+   * `unknownPropagationRuleKeys` 会把它报成未知键。故 409 并**逐条点名是哪几个会话**
+   * （不是只说"还被引用着"—— 说不清被谁引用的拒绝，用户没法据此行动）。
+   *
+   * 两道闸都过 ⇒ 硬删。此时这条边既不在推演集合里、也没有会话点名它，
+   * 删掉**不改变任何读数** —— 这正是「不静默改变推演结果」这句话的可验证形式。
+   */
+  app.delete("/a/v1/sim/propagation-rules/:id", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const id = (req.params as { id: string }).id;
+    const cur = await repos.sim.getPropagationRule(c.tenantId, id);
+    if (!cur) throw notFound("propagation rule");
+    if (cur.status === "PUBLISHED") {
+      throw invalidState(
+        `因果边 ${cur.key} 仍处于启用态（PUBLISHED），正参与推演 —— 直接删除会让所有在跑会话的读数静默改变。` +
+          `请先 PATCH {"status":"DRAFT"} 停用（可逆、读数变化当场可见），确认无碍后再删。`,
+      );
+    }
+    const referring = (await repos.sim.listSessionSummaries(c.tenantId))
+      .filter((s) => (s.disabledRuleKeys ?? []).includes(cur.key))
+      .map((s) => s.id)
+      .sort(); // 全序 ⇒ 同输入同输出（R6），报文可被逐字节比对
+    if (referring.length > 0) {
+      throw invalidState(
+        `因果边 ${cur.key} 被 ${referring.length} 个推演会话按 key 点名引用（disabledRuleKeys）：${referring.join(", ")}。` +
+          `删掉会在这些会话的假设集里留下悬空引用；请先在这些会话里取消对该边的屏蔽。`,
+      );
+    }
+    await repos.sim.deletePropagationRule(c.tenantId, id);
+    return reply.status(204).send();
   });
   /**
    * ══ WO-ONTOLOGY-EDGE-EDIT · 改一条传导边（**保留传入的 id**）══════════════════════
@@ -2838,19 +3023,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return r;
   });
   /**
-   * WO-ONTOLOGY-EDGE-EDIT · 删一条传导边。
-   *
-   * 回执取仓储的**布尔**（真删掉了才 true）而不是"语句没报错"：`DELETE … WHERE tenant_id AND id`
-   * 删 0 行时 SQL 一样成功，拿它当成功回 200，跨租户删除就静默变成"删掉了"。
-   * 语义是**硬删**不是置 RETIRED —— 两者屏上都叫"去掉这条边"，但 RETIRED 仍在册（`published=false`
-   * 的列表读得到），硬删不在册。停用走 `PUT` 改 `status`（可逆、留痕），删除走本条（不可逆）。
+  /*
+   * ⛔ 收编批次4 · 这里**曾经有第二条** `app.delete("/a/v1/sim/propagation-rules/:id")`
+   *   （WO-ONTOLOGY-EDGE-EDIT 的硬删版，回 `{deleted:true}`）。
+   *   它与上面 WO-CAUSAL-EDGE-CRUD 那条**方法+路径完全相同** —— 两条同时注册，
+   *   Fastify 启动即抛 `FST_ERR_DUPLICATED_ROUTE`，**整个服务起不来**。
+   *   ⚠ 这是 merge 自动合并出来的：两侧各自新增、文本不相邻 ⇒ **不产生冲突标记**，
+   *     `tsc` 也看不见（重复注册是运行时的事）。四包 typecheck 全绿而服务起不来。
+   *   保留的是**带两道闸那条**（还启用着 ⇒ 409；被会话点名引用 ⇒ 409），因为它严格更安全，
+   *   且它自己先 `getPropagationRule` ⇒ 不存在/跨租户仍是 404，本版的 404 语义一并保住。
+   *   唯一差异：成功回 **204 无体**（原为 `{deleted:true}`），前端 `deletePropagationRule`
+   *   已同批改成 `api.a<void>`；调用点只用 onSuccess、不读回包，故无行为损失。
    */
-  app.delete("/a/v1/sim/propagation-rules/:id", async (req) => {
-    const c = ctx(req); await requireSim(c, "sim.propagation");
-    const ok = await repos.sim.deletePropagationRule(c.tenantId, (req.params as { id: string }).id);
-    if (!ok) throw notFound("propagation rule");
-    return { deleted: true };
-  });
   /**
    * WO-ONTOLOGY-EDGE-EDIT · **只改启停位**（屏上那个勾选框）。
    *

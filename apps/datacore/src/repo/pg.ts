@@ -207,6 +207,12 @@ export class PgSimRepo implements SimRepo {
   }
   // ⚠ 上面的 upsert **按 id 冲突、不看 tenant_id** —— 故改/删的租户闸落在下面这两条的
   //    `WHERE tenant_id=$1 AND id=$2` 上（与 memory 侧语义逐条对齐：跨租户 = 当作不存在）。
+  // WO-CAUSAL-EDGE-CRUD · R9 三处同改：本类 + MemSimRepo + Repo 接口，语义须无漂移。
+  // ⚠ 两处 `tenant_id` 条件是 R2 的落点，不是多余的 where：只按 id 删会让 A 租户删掉 B 租户的边。
+  // ⚠ 收编批次4：WO-ONTOLOGY-EDGE-EDIT 与 WO-CAUSAL-EDGE-CRUD **各自实现过这两个方法**，
+  //    合并时一度在本类里留下两份同名方法（后者静默覆盖前者）。现统一为一份，
+  //    `deletePropagationRule` 取**布尔回执**那一版（严格更强：忽略返回值的调用方照常工作，
+  //    而按回执转 404 的调用方非它不可）。
   async getPropagationRule(tenantId: string, id: string) {
     const r = await this.pool.query(`SELECT doc FROM sim_propagation_rule WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
     return r.rows[0] ? (r.rows[0].doc as PropagationRule) : null;

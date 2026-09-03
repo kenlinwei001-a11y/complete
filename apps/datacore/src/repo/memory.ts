@@ -104,9 +104,10 @@ class MemSimRepo implements SimRepo {
   }
   async putPropagationRule(r: PropagationRule) { this.rules.set(r.id, clone(r)); }
   // ⚠ 上一行**不看 tenantId**（按 id 覆盖）—— 故改/删路由的租户闸只能靠下面这次读，不能靠写。
+  // WO-CAUSAL-EDGE-CRUD · R9 三处同改：本类 + PgSimRepo + Repo 接口，语义须无漂移。
   async getPropagationRule(tenantId: string, id: string) {
     const r = this.rules.get(id);
-    return r && r.tenantId === tenantId ? clone(r) : null;
+    return r && r.tenantId === tenantId ? clone(r) : null; // 跨租户查无此条（R2），不是"过滤掉"
   }
   async deletePropagationRule(tenantId: string, id: string) {
     const r = this.rules.get(id);

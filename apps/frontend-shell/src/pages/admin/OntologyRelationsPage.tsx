@@ -27,6 +27,7 @@ import {
   fetchRules,
   fetchSimViewConfig,
   isPublishRequestActionable,
+  patchPropagationRule,
   previewChangeImpact,
   publishRequestDomains,
   publishRequestUndecidedCount,
@@ -73,8 +74,14 @@ import { toast, toastError } from "@/store/toastStore";
  *
  * 🚦 诚实位（三条，全部 2026-08-14 实测得来，不许拿界面糊过去；复验命令见每条末尾，
  *    并由 `apps/frontend-shell/test/ontology-relations.seam.test.tsx` §④ 钉成事实锁）：
- *  ① 因果边**改不了**：`POST …/propagation-rules` 把 `id` 写在 body 展开之后恒覆盖
- *     ⇒ 只能新建。停用一条**已存在**的规则需要后端补 PUT/PATCH，今天做不到。
+ *  ① ~~因果边**改不了**~~ **✅ 2026-09-03 已闭（WO-CAUSAL-EDGE-CRUD）**。原文：
+ *     「`POST …/propagation-rules` 把 `id` 写在 body 展开之后恒覆盖 ⇒ 只能新建。
+ *     停用一条**已存在**的规则需要后端补 PUT/PATCH，今天做不到。」
+ *     —— 保留原文是为了留住病史（诚实位撤掉要留痕，不许静默删）。
+ *     它当时是准的：真后端复现过同 key POST 两次得**两行**（系数 0.5 与 0.9 并存、都 PUBLISHED），
+ *     而 `propagateTick` 逐规则累加 ⇒ **两条都算**，用户以为的「改系数」实为两条相加。
+ *     现在 `POST` 按 key upsert（恒 1 行 · `version` 递增），并有 `PATCH /:id` 与 `DELETE /:id`，
+ *     因果边表行内三个控件（改系数 · 启停 · 删）都真接了线。
  *  ② 结构边的**工作集弃用态**没有只读下发口，状态列的口径是「已发布快照 ⊕ 本次会话写回包」。
  *  ③ 域归属取**对象类型的本体域**（`ObjectTypeDef.domain` ← `GET /a/v1/ontology/domains` 注册表），
  *     **不是** `ProcessDomain`（D01…D13）。后者是业务流程层的域词表，契约
@@ -373,8 +380,15 @@ export default function OntologyRelationsPage() {
         description: pr.description.trim() === "" ? null : pr.description.trim(),
       }),
     onSuccess: (r) => {
-      toast(`因果边 ${r.key} 已建（${r.status === "PUBLISHED" ? "启用" : "停用"}）`, "success");
-      setPr((p) => ({ ...p, key: "", sourceStateVar: "", targetStateVar: "", description: "" }));
+      // `version > 1` ⇒ 后端按 key 认出了既有边并覆盖了它（不是又追加一条）。
+      // 这句话必须上屏：用户填了一个已存在的 key 却以为自己在新建，是本单要根治的那类误解。
+      toast(
+        (r.version ?? 1) > 1
+          ? `因果边 ${r.key} 已覆盖既有那条（第 ${r.version ?? 1} 版，仍是 1 条）`
+          : `因果边 ${r.key} 已建（${r.status === "PUBLISHED" ? "启用" : "停用"}）`,
+        "success",
+      );
+      setPr((p) => ({ ...p, key: "", sourceStateVar: "", targetStateVar: "" }));
       void qc.invalidateQueries({ queryKey: ["a", "sim-propagation-rules"] });
       // 这一跳就是接缝：因果边一变，沙盘视图配置（stateVars / propagationCount）必须重取。
       void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
@@ -428,6 +442,21 @@ export default function OntologyRelationsPage() {
     void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
   };
 
+  /**
+   * 改系数（行内直接改那一格）。**收编批次4**：本块来自 WO-CAUSAL-EDGE-CRUD，
+   * 与同页 `saveRule`（WO-ONTOLOGY-EDGE-EDIT 的草稿+保存）**互补不重叠** ——
+   * `saveRule` 改的是身份格与说明，改不了系数；本块只改系数那一格。
+   * 走 `patchPropagationRule`（`PATCH /:id`）而不是 `updatePropagationRule`（`PUT /:id`）：
+   * PUT 是整条覆盖，行内改一格得把整行回传，会把别人刚改过的字段回退（本页列表是缓存来的）。
+   */
+  const patchCoef = useMutation({
+    mutationFn: (v: { id: string; coefficient: number }) => patchPropagationRule(v.id, { coefficient: v.coefficient }),
+    onSuccess: (r) => {
+      toast(`因果边 ${r.key} 系数已改为 ${r.coefficient}（第 ${r.version ?? 1} 版）`, "success");
+      invalidateRules();
+    },
+    onError: toastError,
+  });
   const saveRule = useMutation({
     mutationFn: (r: PropagationRule) => {
       const m = merged(r);
@@ -955,8 +984,33 @@ export default function OntologyRelationsPage() {
                         {!linkRows.some((l) => l.key === r.viaLinkKey) && <option value={r.viaLinkKey}>{r.viaLinkKey}（不在结构边表里）</option>}
                         {linkRows.map((l) => <option key={l.key} value={l.key}>{l.key}</option>)}
                       </select>
-                      <div className="muted mono" style={{ fontSize: 11, marginTop: 2 }}>
-                        ×{r.coefficient}
+                      {/*
+                        系数**就地可改**（WO-CAUSAL-EDGE-CRUD，收编批次4 并入本表）。
+                        改前这一格是死文本 `×0.8`，要调一个系数只能回建边表单把字段全重述一遍，
+                        而那时重述还会**多出一条同 key 的边**、两条一起算（该缺陷已随 POST 改 upsert 修掉）。
+
+                        落点选 `onBlur` 而不是 `onChange`：每敲一个字符发一次 PATCH 会把
+                        「0.85」拆成 0 / 0. / 0.8 / 0.85 四次写入，中间三次都是**真的在改推演**。
+                        ⚠ `<input type=number>` 的 `onBlur` 在受控值未变时也会触发，故先比一次再发。
+                        ⚠ 系数**不进 `edits` 草稿**：草稿那套是给身份格与说明用的（改错了要能放弃），
+                          而系数是单格数值、后端 PATCH 只收这一格，就地写回更直接。
+                      */}
+                      <div className="muted mono" style={{ fontSize: 11, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+                        <span>×</span>
+                        <input
+                          data-testid={`orel-rule-coef-${r0.key}`}
+                          aria-label={`因果边 ${r0.key} 的系数`}
+                          type="number"
+                          step="0.05"
+                          defaultValue={r.coefficient}
+                          disabled={patchCoef.isPending}
+                          onBlur={(e) => {
+                            const next = Number(e.target.value);
+                            if (!Number.isFinite(next) || next === r.coefficient) return; // 没变就不发（不制造无意义的新版本）
+                            patchCoef.mutate({ id: r0.id, coefficient: next });
+                          }}
+                          style={{ width: 64 }}
+                        />
                         {r.delayTicks > 0 ? ` · 延迟${r.delayTicks}` : ""}
                       </div>
                     </td>

@@ -102,6 +102,38 @@ export const PropagationRuleSchema = z.object({
   id: z.string(),
   tenantId: z.string(), // R2
   key: z.string(), // 稳定键，可被 OPERATION_CATALOG/审计引用
+  /**
+   * **改了第几版**（WO-CAUSAL-EDGE-CRUD）。`key` 是身份，`version` 是这个身份被改过几次。
+   *
+   * ── 为什么必须有它（病灶，2026-09-03 实测复现）─────────────────────────────
+   * 改前 `POST /a/v1/sim/propagation-rules` 把 `id: newId("simpr")` 写在 body 展开**之后**
+   * ⇒ 同一个 `key` 写两次得**两行**（实测：`REPRO_EDGE` 两行并存，系数 0.5 与 0.9，
+   * 两行 `status` 都是 `PUBLISHED`）。而 `propagateTick` 是**逐规则**调
+   * `applyContribution(…, rule.combine, …)`（`sim/propagation.ts:614`）⇒ `combine:"sum"` 下
+   * **两条都算**。于是「把系数从 0.5 改成 0.9」这个动作的真实效果是 `0.5 + 0.9 = 1.4`，
+   * 推演结论静默偏离，**而且当时没有任何动词能把多出来的那条删掉**。
+   *
+   * ── 口径与结构边 `LinkTypeDef.version` **逐条相同**，不发明第三种 ──────────────
+   * `ontology.ts upsertLinkType`：按 `key` 找既有 → 复用既有 `id` → `version = (既有 ?? 0) + 1`。
+   * 因果边照抄这一套。本仓已经有「三种写语义」了（结构边 upsert · 对象类型整体替换 ·
+   * 因果边追加），本单是把第三种**并回第一种**，不是再加第四种。
+   *
+   * ⚠ **刻意 optional 而非 required** —— 沿用本文件 `SimSession.disabledRuleKeys` / `tickDays`
+   * 立下的同一条理由（那两处都写着「别推翻」），本单不推翻它。两条依据：
+   *  ① `PropagationRule` 在前端被当**字面量**构造 6 处（`apps/frontend-shell/test/` 下
+   *     disruption-cards / edge-active / sandbox-config-collapse / sandbox-config-ux /
+   *     statevar-display-name），置为必填会把整包前端打成编译红 —— 而那些 fixture 属于
+   *     **并行在跑的另几张单**，不该被本单牵动（实测确有其事：改成必填当场 12 处红）。
+   *  ② 更要紧的是**读回路上它真的可能不在**：`repo/pg.ts` 读的是
+   *     `row.doc as PropagationRule` —— **裸 cast、不过 zod parse**，故本字段引入**之前**
+   *     落库的那些边读回来是 `undefined`。声明成必填等于对读回路撒谎
+   *     （同一个坑 `propagation.ts` 的 `cadenceNodeId != null` 已经栽过一次并留了长注释）。
+   *
+   * 缺省/缺失 ⇒ 一律读作 `1`（消费方一律写 `?? 1`），与本字段引入前**逐字节相同**
+   * （additive · 可回退 RL9）。DataCore 侧**恒填**（`POST` upsert 与 `PATCH` 两条写路都算这个数，
+   * 种子在 `demoPropagationRulesWithDomain()` 填 1），故服务端答复里它总在。
+   */
+  version: z.number().int().min(1).optional(),
   sourceTypeKey: z.string(), // 抽象——任意对象类型
   sourceStateVar: z.string(), // 抽象——任意状态变量（派生属性）
   viaLinkKey: z.string(), // 抽象——任意链路类型
@@ -335,6 +367,59 @@ export const SaturationEventSchema = z.object({
   bound: z.enum(["min", "max"]),
 });
 export type SaturationEvent = z.infer<typeof SaturationEventSchema>;
+
+/**
+ * **改一条既有因果边**（`PATCH /a/v1/sim/propagation-rules/:id`，WO-CAUSAL-EDGE-CRUD）。
+ *
+ * ── 为什么是 PATCH 而不是「再 POST 一次」───────────────────────────────────
+ * POST 认的是 `key`（身份），改的是**整条**；PATCH 认的是 `id`，只改**递上来的那几格**。
+ * 屏上「把系数从 0.8 拨到 0.9」这个动作，用户没有重述另外 12 个字段的义务 ——
+ * 逼他重述，就等于把「没填的字段」和「要清空的字段」混成同一件事
+ * （对象类型的 POST 整体替换正是踩了这个坑：省略可选键会**抹平**）。
+ *
+ * ── ⛔ 可改的格是**白名单**，不是「除 id 外都能改」──────────────────────────
+ * `key` / `sourceTypeKey` / `sourceStateVar` / `viaLinkKey` / `targetTypeKey` / `targetStateVar`
+ * **一律不可改**：它们合起来是这条边的**身份**（A 的哪个量沿哪条链影响 B 的哪个量）。
+ * 允许改 = 允许把「基地负载→订单延期」原地变成另一条完全不同的边，而历史推演里
+ * 引用 `ruleKey` 的那些 trace 会指向一条语义已被掉包的边 —— 那不是编辑，是伪造。
+ * 要换身份就新建一条、停用旧的，两条边各自留痕。
+ *
+ * 能改的只有**数值与闸门**：系数 · 延迟 · 合并语义 · 衰减 · 钳制 · 节拍绑定 · 启停。
+ * `strictObject` ⇒ 递一个不在白名单里的键当场 400，不静默忽略（静默忽略 = 用户以为改了、其实没改）。
+ */
+export const PropagationRulePatchSchema = z
+  .strictObject({
+    coefficient: z.number().optional(),
+    delayTicks: z.number().int().min(0).optional(),
+    combine: z.enum(["sum", "max"]).optional(),
+    decay: z.object({ window: z.number().int(), den: z.number() }).nullable().optional(),
+    clamp: z.object({ min: z.number(), max: z.number() }).nullable().optional(),
+    coefficientRef: z.object({ ruleKey: z.string(), paramKey: z.string() }).nullable().optional(),
+    cadenceNodeId: z
+      .string()
+      .min(1)
+      .refine(isKnownChainNodeId, {
+        message: "cadenceNodeId 必须是 CHAIN_NODE_REGISTRY 在册节点或 capacity.op.<opId> 动态工序节点（禁自由串·契约 §2.5）",
+      })
+      .nullable()
+      .optional(),
+    /**
+     * 启停 —— **三态都收，且来回都走同一个字段**。
+     *
+     * ⚠ 本仓已知坑（结构边）：`deprecate` / `retire` 是**两个只进不出的动作**，点了回不来 ——
+     * 屏上那三个按钮里没有一个能把边从「已停用」拨回「启用」。因果边**不复制这个错**：
+     * 启停就是 `status` 这一格的赋值，`PUBLISHED → DRAFT → PUBLISHED` 与
+     * `DRAFT → PUBLISHED` 走的是同一条路径，没有任何单向闸。
+     *
+     * ⛔ 与 `SimSession.disabledRuleKeys` **正交，两个字段都要，不许合并**：
+     * 本字段是**目录级**的「这条边在不在册」（改了对所有会话生效，且要过 R4 发布会签）；
+     * `disabledRuleKeys` 是**单个会话**的假设屏蔽（「这一局我们假装这条边不存在」）。
+     * 合成一个开关 = 用户在沙盘里试一下假设，把全租户的本体改了。
+     */
+    status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).optional(),
+  })
+  .refine((b) => Object.keys(b).length > 0, { message: "PATCH body 至少要带一个可改字段（空 body 改不出任何东西，不是 no-op 是调用方写错了）" });
+export type PropagationRulePatch = z.infer<typeof PropagationRulePatchSchema>;
 
 // ── SimSession 会话状态机（§2.1 sim_session 表） ──────────────────────────────
 export const SimSessionStatusSchema = z.enum(["DRAFT", "READY", "RUNNING", "PAUSED", "ENDED"]);

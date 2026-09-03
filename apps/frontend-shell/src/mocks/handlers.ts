@@ -1949,6 +1949,12 @@ let mockPertSeq = 0;
 type MockLinkType = { key: string; fromType: string; toType: string; cardinality: string; deprecation?: { status: "DEPRECATED" | "RETIRED"; supersededBy?: string; deprecatedAt?: string; graceUntil?: string; retiredAt?: string } };
 type MockPropRule = {
   id: string; tenantId: string; key: string;
+  /**
+   * 改了第几版（WO-CAUSAL-EDGE-CRUD）。契约上 `optional`，故 mock 也**允许缺**——
+   * 种子边就故意不带它，好让「读回路上真的可能没有这个字段」这一态在前端被走到
+   * （真后端 `repo/pg.ts` 读的是裸 cast，本字段引入前落库的边读回来正是 `undefined`）。
+   */
+  version?: number;
   sourceTypeKey: string; sourceStateVar: string; viaLinkKey: string;
   targetTypeKey: string; targetStateVar: string;
   coefficient: number; delayTicks: number; combine: "sum" | "max";
@@ -7178,13 +7184,24 @@ export const handlers = [
       stateVarNames: deriveStateVarNames(items.flatMap((r) => [r.sourceStateVar, r.targetStateVar])),
     });
   }),
-  // `POST /a/v1/sim/propagation-rules`（后端 app.ts:1865）：id 由服务端铸（后端把它写在 body 展开之后，
-  // 传进来的 id 恒被覆盖 —— 这里照做，否则 mock 会比后端"更能干"，把一个真缺口盖掉）。
+  /**
+   * `POST /a/v1/sim/propagation-rules` —— **按 `key` upsert**（WO-CAUSAL-EDGE-CRUD 后镜像真后端）。
+   *
+   * ⚠ 这个 handler 从前**刻意镜像一个缺陷**，原注释是：
+   *   「id 由服务端铸（后端把它写在 body 展开之后，传进来的 id 恒被覆盖 —— 这里照做，
+   *     否则 mock 会比后端"更能干"，把一个真缺口盖掉）。」
+   * 那句纪律是对的，现在**同一条纪律要求相反的实现**：后端已改成按 key upsert
+   * （复用既有 id · `version` 递增 · 恒 1 行 · 改既有回 200 而非 201），
+   * mock 若还在追加，就变成了比后端**更差劲**，一样是假的 —— 只是方向反过来。
+   */
   http.post("*/a/v1/sim/propagation-rules", async ({ request }) => {
     const b = (await request.json()) as Partial<MockPropRule>;
+    const key = String(b.key ?? "");
+    const existing = mockPropRules.find((r) => r.key === key); // 连 DRAFT/RETIRED 一起找（镜像后端的 `false`）
     const rule: MockPropRule = {
-      id: `simpr_mock_${++mockRelSeq}`, tenantId: "demo",
-      key: String(b.key ?? ""),
+      id: existing?.id ?? `simpr_mock_${++mockRelSeq}`, tenantId: "demo",
+      version: (existing?.version ?? 0) + 1,
+      key,
       sourceTypeKey: String(b.sourceTypeKey ?? ""), sourceStateVar: String(b.sourceStateVar ?? ""),
       viaLinkKey: String(b.viaLinkKey ?? ""),
       targetTypeKey: String(b.targetTypeKey ?? ""), targetStateVar: String(b.targetStateVar ?? ""),
@@ -7195,8 +7212,45 @@ export const handlers = [
       // 建边请求体里也不接受 domainKey）⇒ 一律进「未归域」分片，不替它猜一个。
       domainKey: null, domainName: null,
     };
-    mockPropRules.push(rule);
-    return HttpResponse.json(rule, { status: 201 });
+    if (existing) mockPropRules[mockPropRules.indexOf(existing)] = rule;
+    else mockPropRules.push(rule);
+    return HttpResponse.json(rule, { status: existing ? 200 : 201 });
+  }),
+  /**
+   * `PATCH /a/v1/sim/propagation-rules/:id` —— 改数值与启停（WO-CAUSAL-EDGE-CRUD）。
+   * 只合并递上来的那几格；身份格后端 `strictObject` 不收，故 mock 也只认这四个。
+   * **启停可来回**：`PUBLISHED ⇄ DRAFT` 同一条路径，没有单向闸。
+   */
+  http.patch("*/a/v1/sim/propagation-rules/:id", async ({ request, params }) => {
+    const rule = mockPropRules.find((r) => r.id === String(params.id));
+    if (!rule) return HttpResponse.json({ error: { code: "NOT_FOUND", message: "propagation rule not found" } }, { status: 404 });
+    const b = (await request.json()) as Partial<Pick<MockPropRule, "coefficient" | "delayTicks" | "combine" | "status">>;
+    if (b.coefficient !== undefined) rule.coefficient = Number(b.coefficient);
+    if (b.delayTicks !== undefined) rule.delayTicks = Number(b.delayTicks);
+    if (b.combine !== undefined) rule.combine = b.combine;
+    if (b.status !== undefined) rule.status = b.status;
+    rule.version = (rule.version ?? 1) + 1;
+    return HttpResponse.json(rule);
+  }),
+  /**
+   * `DELETE /a/v1/sim/propagation-rules/:id` —— 两道闸后硬删，成功 **204 无体**。
+   * 闸①（启用中拒删）在 mock 里照做：它是**屏上会看见的行为**，不镜像就等于
+   * 前端在 mock 下能删掉一条启用中的边、在真后端下却弹 409 —— 那正是「绿测试≠能用」。
+   * 闸②（被会话 `disabledRuleKeys` 点名）mock 世界没有会话集合可查，故不镜像，
+   * 且**这里写明它没镜像**，不假装 mock 已覆盖全部拒绝理由。
+   */
+  http.delete("*/a/v1/sim/propagation-rules/:id", ({ params }) => {
+    const i = mockPropRules.findIndex((r) => r.id === String(params.id));
+    if (i < 0) return HttpResponse.json({ error: { code: "NOT_FOUND", message: "propagation rule not found" } }, { status: 404 });
+    const rule = mockPropRules[i]!;
+    if (rule.status === "PUBLISHED") {
+      return HttpResponse.json(
+        { error: { code: "INVALID_STATE", message: `因果边 ${rule.key} 仍处于启用态（PUBLISHED），正参与推演 —— 请先停用再删。` } },
+        { status: 409 },
+      );
+    }
+    mockPropRules.splice(i, 1);
+    return new HttpResponse(null, { status: 204 });
   }),
   // `POST /a/v1/ontology/link-types`（后端 app.ts:2918 · `ontology.upsertLinkType` 按 key 幂等升版）。
   http.post("*/a/v1/ontology/link-types", async ({ request }) => {
