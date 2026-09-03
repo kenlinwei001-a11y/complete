@@ -175,7 +175,21 @@ const STRUCTURAL_METRIC_KEYS = ["servedCount", "orderCount"] as const;
  * 一个"没量到"的解补出 0 会在支配比较里冒充极值。
  * 且分母为 0 时同样不给（0 单的租户不存在"获排率"这件事，给 0 或 1 都是编）。
  */
-const DERIVED_METRICS: readonly { key: string; from: readonly string[]; of: (m: Record<string, number>) => number | undefined }[] = [
+const DERIVED_METRICS: readonly {
+  key: string;
+  from: readonly string[];
+  of: (m: Record<string, number>) => number | undefined;
+  /**
+   * **只在调用方显式声明该键为目标时才算**（WO-MARGIN-AXIS）。
+   *
+   * 为什么要有这一档：`serviceRate` 是无量纲比值，**任何**回包上算出来都成立，故不设门。
+   * 而 `margin` 是两格**钱**的差 —— 它成立的前提（两侧同货币单位）**本层看不见**。
+   * 无条件算 ⇒ 任何一个 revenue/cost 量纲没对齐的调用方都会静默拿到一个错得离谱的毛利
+   * （本仓实测过 元 vs 万元 差 10⁴ 倍那一例）。
+   * 设门 ⇒ 没声明就没有这一格，声明了则由 `runOptimizePareto` 先验准入证再放行。
+   */
+  gated?: boolean;
+}[] = [
   {
     // 获排率 = 获排单数 / 总单数 ∈ [0,1]。**这一族没有时间维**（订单×产线×合同的指派问题），
     // 故它是「这批需求接下了多少」，**不是「准时率」** —— 两者在屏上必须叫不同的名字，
@@ -184,10 +198,23 @@ const DERIVED_METRICS: readonly { key: string; from: readonly string[]; of: (m: 
     from: ["servedCount", "orderCount"],
     of: (m) => (m.orderCount! > 0 ? m.servedCount! / m.orderCount! : undefined),
   },
+  {
+    // 毛利 = 营收 − 成本，**逐解现算**（这正是它与季度聚合那种恒定轴的分别：
+    // revenue/cost 随杠杆变 ⇒ 这一格随解变，进支配比较、进加权名次）。
+    // 两侧必须同货币单位 —— 前提由 `runOptimizePareto` 的准入检查守，见 `gated`。
+    key: "margin",
+    from: ["revenue", "cost"],
+    of: (m) => m.revenue! - m.cost!,
+    gated: true,
+  },
 ];
 
-/** 从求解输出里取一个解的目标读数：多目标 `objectiveValues` 优先，标量 `objective` 兜底。 */
-function metricsOf(out: Record<string, unknown>): Record<string, number> {
+/**
+ * 从求解输出里取一个解的目标读数：多目标 `objectiveValues` 优先，标量 `objective` 兜底。
+ *
+ * @param declaredKeys 调用方在 `objectives[]` 里声明的键集 —— 带 `gated` 的派生读数只对它们放行。
+ */
+function metricsOf(out: Record<string, unknown>, declaredKeys: ReadonlySet<string>): Record<string, number> {
   const m: Record<string, number> = {};
   const ov = out.objectiveValues;
   if (ov != null && typeof ov === "object") {
@@ -202,6 +229,7 @@ function metricsOf(out: Record<string, unknown>): Record<string, number> {
   }
   for (const d of DERIVED_METRICS) {
     if (m[d.key] !== undefined) continue; // 引擎自己给了同名读数 ⇒ 用它的，不覆盖
+    if (d.gated === true && !declaredKeys.has(d.key)) continue; // 没声明 ⇒ 这一格根本不存在（理由见 `gated`）
     if (!d.from.every((k) => typeof m[k] === "number")) continue; // 缺输入 ⇒ 整格不给
     const v = d.of(m);
     if (typeof v === "number" && Number.isFinite(v)) m[d.key] = q(v);
@@ -222,6 +250,30 @@ export async function runOptimizePareto(solve: SolveArgsFn, req: ParetoRequest):
   if (objectives.length < 2) throw validationError("optimize_pareto 需至少两个目标（单目标下『前沿』退化成『最优解』，那是 optimize_whatif 的活）");
   const dupObj = objectives.map((o) => o.key).find((k, i, arr) => arr.indexOf(k) !== i);
   if (dupObj !== undefined) throw validationError(`目标键重复：'${dupObj}'（同一目标声明两次，方向可能互相矛盾）`);
+  const declaredKeys = new Set(objectives.map((o) => o.key));
+
+  /**
+   * ── 毛利轴准入检查（WO-MARGIN-AXIS · 机器先说话）────────────────────────────────
+   *
+   * `margin = revenue − cost` 只有在**两侧同货币单位**时才成立。这个前提本层看不见 ——
+   * 它是装配/绑定时的事实，由绑定层现算后写进 `args.currencyAligned`。
+   *
+   * ⛔ **声明了 margin 却没折齐 ⇒ 当场报错，不静默算一个数出来**。
+   * 理由是本仓那条反复被验证的红线：补一根**算得出但算错**的轴，比补一根恒为 0 的更危险 ——
+   * 恒为 0 的一眼看得出是假的，而一根差 10⁴ 倍的毛利在屏上是一条完全正常的曲线。
+   * 实测过的那一对：`OrderLine.unitPrice` 声明「元」、`Base.serveCost` 声明「万元」。
+   */
+  if (declaredKeys.has("margin")) {
+    const aligned = (req.args as Record<string, unknown> | undefined)?.currencyAligned === true;
+    if (!aligned) {
+      throw validationError(
+        "声明了 'margin' 目标，但 args.currencyAligned 不为 true —— 毛利是营收与成本之差，" +
+          "两侧不在同一货币单位时这个差没有意义（本仓实测过 元 vs 万元 差 10⁴ 倍的一例）。" +
+          "⛔ 此处宁可报错也不给一个数：一根算错的毛利轴在屏上是一条完全正常的曲线，没人看得出来。" +
+          "修法：装配时打开量纲对齐（绑定层的 alignCurrency），或不要声明这根轴。",
+      );
+    }
+  }
 
   // 杠杆网格规范化（R6）：按 key 字典序；档位去重 + 升序 ⇒ 请求里的书写顺序不影响结果。
   const grid = [...req.levers]
@@ -251,7 +303,7 @@ export async function runOptimizePareto(solve: SolveArgsFn, req: ParetoRequest):
     const out = await solve(family, args);
 
     const solverFeasible = out.status !== "INFEASIBLE";
-    const metrics = metricsOf(out);
+    const metrics = metricsOf(out, declaredKeys);
     // 目标读数齐不齐 —— 缺一个就判不可行（**不补 0**，理由见 `normalized`）。
     const missing = objectives.filter((o) => typeof metrics[o.key] !== "number").map((o) => o.key);
 
