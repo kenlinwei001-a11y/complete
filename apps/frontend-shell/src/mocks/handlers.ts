@@ -2881,6 +2881,11 @@ const MOCK_OPT_FAMILIES = ["facility_location", "min_cost_flow", "set_cover", "i
  */
 const MOCK_TYPE_CONSTRAINTS: Record<string, { ruleKey: string; propKey: string; kind: string }[]> = {};
 
+/** 逐用例清（同 `resetMockSim` / `resetMockReconcileCandidates`：模块态 store 不清会跨用例串味）。 */
+export function resetMockTypeConstraints(): void {
+  for (const k of Object.keys(MOCK_TYPE_CONSTRAINTS)) delete MOCK_TYPE_CONSTRAINTS[k];
+}
+
 const MOCK_OBJECT_TYPES = [
   {
     key: "Base", displayName: "生产基地", domain: "factory", status: "ACTIVE",
