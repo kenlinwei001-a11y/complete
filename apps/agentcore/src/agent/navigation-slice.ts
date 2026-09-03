@@ -296,7 +296,11 @@ export const OBJECT_KEY_PROPS: Record<string, string[]> = {
   RootCauseChain: ["chainId", "kpiCategory", "factor", "driverType", "baseWeight"],
   CausalFactor: ["factorId", "label", "metricKey", "isRoot"],
   PlanTarget: ["tgtId", "period", "level", "value"],
-  DemandSegment: ["segId", "segment", "demandWanPerYearP50", "act", "tgt"],
+  // WO-UNCERTAINTY-INPUTS：三点分布补进来 —— 少了这两个，模型手上只有一个点估计，
+  // 屏上有区间而答案里说不出"这个预测有多不确定"（本表的老病就是"模型拿不到值、只是少一段解释"）。
+  // 两个名字都逐字取自 `battery.ts` `demandSegmentProps`，且都被 `base_capacity_outlook`
+  // 的 `salesForecastBand` 真读（不是"存在但没人读"的摆设）。
+  DemandSegment: ["segId", "segment", "demandWanPerYearP50", "demandWanPerYearP90", "demandWanPerYearP10", "act", "tgt"],
   // Base 的日产能分化成/老化两段（`capacityDaily` 只长在 Line 上）。
   Base: ["baseId", "name", "formationCapDaily", "agingCapDaily", "util"],
   Line: ["lineId", "capacityDaily", "max_capacity_day", "utilization"],
