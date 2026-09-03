@@ -196,7 +196,13 @@ export type SimDisclosureAgent = z.infer<typeof SimDisclosureAgentSchema>;
 
 // ── ⑥ 各环节耗时 ────────────────────────────────────────────────────────────
 export const SimDisclosureTimingSchema = z.object({
-  /** 环节键（`graph` 物化+裁剪 · `weights` 分摊表 · `shadow` 影子线 · `engine` 传导 · `persist` 落盘 · `total`）。 */
+  /**
+   * 环节键：`graph` 入参装配（图物化 + 范围裁剪 + 规则参数 + 节拍闸门 + 逐实例分摊表）·
+   * `shadow` 影子线重放（只在本会话有扰动时才跑）· `engine` 传导 · `persist` 落盘 · `total` 合计。
+   *
+   * ⚠ 分摊表**没有**独立一格：它算在 `graph` 里面，摆成并列项等于把同一段时间记两遍。
+   * 逐规则那笔账在 `rules.items[].weightElapsedMs`。
+   */
   phase: z.string(),
   ms: z.number(),
 });

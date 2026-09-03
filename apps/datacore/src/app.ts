@@ -74,6 +74,8 @@ import type { PairWeightReport } from "./sim/pair-weights.js";
 // 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
 // `buildCadenceGates` / `scopePropagationGraph` 刻意**不在本文件 import**：它们只该出现在装配处里。
 import { buildPropagationInputs } from "./sim/propagation-inputs.js";
+// 推演过程披露层（WO-SIM-DISCLOSURE · 铁律 1.5 判据二）。**只读既有中间量，不参与计算**。
+import { buildSimRunDisclosure, DISCLOSURE_PHASE_ORDER, PhaseTimer } from "./sim/disclosure.js";
 import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-PROPAGATION · 影响传播统一入口（栈B传播 × 栈A世界隔离）
 import { analyzeImpact } from "./sim/impact-analysis.js";
 import { ChangeImpactPreviewRequestSchema } from "@platform/contracts"; // WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（分桶+跳数+诚实位）
@@ -2215,6 +2217,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     opts: { rules: PropagationRule[]; n: number; persist: boolean; ephemeralPerturbations?: readonly Perturbation[] },
   ) => {
     const { rules: propRules, n, persist } = opts;
+    // 逐环节计时（WO-SIM-DISCLOSURE ⑥）：**只测不改**——计时器一行算法都不碰，
+    // 停表也不参与任何判断。它的读数只出现在 `?disclose=1` 的披露层里。
+    const timer = new PhaseTimer();
+    const stopTotal = timer.start("total");
+    const fromTick = s.curTick;
     let state = await simCurrent(c, s);
     let curTick = s.curTick;
     // 增量 3 传导核接入（opt-in）：有规则才传导，否则退回恒等 tick（无规则不触发，可回退）。
@@ -2306,7 +2313,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       // 图 / 范围 / 规则参数 / 节拍闸门全部走**唯一装配处**（WO-SIM-ACT-CLOSE · #152，
       // 与 Trial Tick 同源，见 `buildPropagationInputs`）—— 另抄一份就会出现
       // 「认证说能跑、真 tick 不是这个数」。
+      const stopGraph = timer.start("graph");
       const inp = await buildPropagationInputs(repos, c, resolveSimScope(s.scope), propRules);
+      stopGraph();
       graph = inp.graph;
       scopeReport = inp.scopeReport;
       Object.assign(ruleParams, inp.ruleParams);
@@ -2339,6 +2348,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let driftState: TickState | null = null;
     let driftPending: DelayedContribution[] = [];
     if (wantDrift) {
+      const stopShadow = timer.start("shadow");
       driftState = simState(s.baseSnapshot);
       for (let t = 0; t < s.curTick; t++) {
         // ⚠ 影子线必须与真实线**同一份** pairWeights/stateVarDomains —— 两条线只许差「有没有扰动」
@@ -2346,6 +2356,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains);
         driftState = d.next; driftPending = d.pending;
       }
+      stopShadow();
     }
     /** 影子线在**本次推进之前**那一格 —— `worldDrift` 的基准（不能拿真实线的起点，它含扰动）。 */
     const driftStartState = driftState;
@@ -2363,6 +2374,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     for (let i = 0; i < n; i++) {
       const beforeTick = curTick; // 当前 tick t（结算 pending arriveTick===t）
       if (engineTick) {
+        const stopEngine = timer.start("engine");
         const out = propagateTick(
           graph, state, propRules, pending, beforeTick, ruleParams, cadenceGates,
           await perturbationsForTick(beforeTick + 1), // 引擎产出的是 tick+1 那一格
@@ -2388,16 +2400,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         // 无传导规则的世界：本 tick 若没有任何扰动动作，trace 保持 `null`（与本单引入前逐字节相同·可回退）。
         trace = propagate || out.trace.length > 0 ? out.trace : null;
         curTick += 1;
+        stopEngine();
       } else {
         // 无 PUBLISHED 传导规则：恒等桩进位（状态原样，确定性 R6；可回退）。
         state = simState(state); pending = []; trace = null; curTick += 1;
       }
       // ⛔ 对照跑（persist=false）在此**一个字节都不写** —— 这条约束由
       //    `test/edge-active-counterfactual.test.ts` 逐字节咬死（不是靠这行注释保证）。
-      if (persist) await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: curTick, state, pending, trace });
+      if (persist) {
+        const stopPersist = timer.start("persist");
+        await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: curTick, state, pending, trace });
+        stopPersist();
+      }
     }
+    stopTotal();
     return {
       curTick, state, trace, pending, propagate, scopeReport,
+      // ── 披露层的原料（WO-SIM-DISCLOSURE）──────────────────────────────────
+      // 全部是本次推进**已经用过**的中间量，原样带出去给 `buildSimRunDisclosure` 换个形状讲。
+      // 带出去不等于下发：路由只在 `?disclose=1` 时才装配，默认回包形状逐字节同旧（RL9）。
+      fromTick, graph, ruleParams, stateVarDomains, timer,
       cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates },
       // 逐实例分摊的诚实回执（WO-COEF-FROM-BOM）：声明了口径却算不出权重的规则**本 tick 没传导**，
       // 必须让调用方看见 —— 安静地少一条边，正是本仓「静默错答」要根治的形态。
@@ -2433,7 +2455,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     s.curTick = r.curTick;
     s.status = "RUNNING"; await repos.sim.putSession(s);
     await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
-    return r;
+    // `rules` 一并回带：披露层要逐条讲「本次喂进引擎的是哪几条、各自系数与口径」，
+    // 而这份"已发布 − 本会话屏蔽"的集合只有这里算得出来（路由再算一遍就是第二套真相源）。
+    return { ...r, rulesFed: rules };
   };
   app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
@@ -2444,7 +2468,53 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const wantExplain =
       String((req.query as Record<string, unknown> | undefined)?.explain ?? "") === "1" ||
       (req.body as { explain?: unknown } | undefined)?.explain === true;
+    /**
+     * 推演过程披露层要不要下发（WO-SIM-DISCLOSURE · 铁律 1.5 判据二）。**默认不发**，理由同 `explain`：
+     * 快照指纹要遍历本次参与传导的全部对象与边（demo 租户实测 12,745 + 12,192），
+     * 做成默认 = 每一拍都付这笔账。要 ⇒ `?disclose=1`（或 body `disclose:true`）一次拿全，不截断。
+     * 不要 ⇒ 回包形状与本单引入前**逐字节相同**（additive · 可回退 RL9）。
+     */
+    const wantDisclosure =
+      String((req.query as Record<string, unknown> | undefined)?.disclose ?? "") === "1" ||
+      (req.body as { disclose?: unknown } | undefined)?.disclose === true;
     const r = await tickSimSessionWorld(c, s, n);
+    /**
+     * 「阈值来自哪条规则表达式」那一问的原料（④）：A5 规则表达式原文。
+     * **只在真要披露时读**——不然就是给每一拍都加一次全表扫，为了一段大多数人不看的文字。
+     * 取不到的键在披露层里回 `null`，**不编**一句像模像样的表达式。
+     */
+    const ruleExpressions: Record<string, string> = {};
+    if (wantDisclosure) {
+      for (const rule of await repos.rules.list(c.tenantId, (x) => x.status === "PUBLISHED")) {
+        ruleExpressions[rule.key] = rule.expression;
+      }
+    }
+    const disclosure = wantDisclosure
+      ? buildSimRunDisclosure({
+          fromTick: r.fromTick,
+          toTick: r.curTick,
+          graph: r.graph,
+          // 无传导规则的世界 `scopeReport` 恒 `null`（整段装配都省掉了）。此时诚实回一张空切片回执
+          // ——**不许**假装跑了个 GLOBAL 全域：那会让"这个租户压根没规则"读成"跑了但什么都没动"。
+          scopeReport: r.scopeReport ?? {
+            kind: "GLOBAL" as const, target: null, hops: 0,
+            objects: 0, links: 0, droppedObjects: 0, droppedLinks: 0,
+            unresolved: "本会话没有 PUBLISHED 传导规则 ⇒ 未装配传导图（不是「跑了个空图」）",
+          },
+          rules: r.rulesFed,
+          firedRuleKeys: r.firedRuleKeys,
+          ruleParams: r.ruleParams,
+          ruleExpressions,
+          pairWeightReport: r.pairWeighting.report,
+          unresolvedWeights: r.pairWeighting.unresolved,
+          cadenceGates: r.cadence.gates,
+          cadenceSkipped: r.cadence.skipped,
+          unresolvedGates: r.cadence.unresolved,
+          stateVarDomains: r.stateVarDomains,
+          stateVarReport: r.stateVarReport,
+          timings: r.timer.timings(DISCLOSURE_PHASE_ORDER),
+        })
+      : null;
     // `cadence` 段是**诚实缺席的出口**（E4）：哪些节点有闸门、哪些节点查得到但用不了、
     // 哪些规则声明了闸门却拿不到 —— 全部亮出来，前端才可能显示"这条流因节拍未知未参与推演"，
     // 而不是看到一条安静的零。
@@ -2497,6 +2567,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       // 溯源（WO-P2）：这一格世界态是哪几次扰动仍在起作用的结果。只在这个世界真有扰动时下发，
       // 无扰动的租户响应形状逐字节同旧（可回退）。
       ...(r.sessionPerturbationCount > 0 ? { appliedPerturbations: r.appliedPerturbations } : {}),
+      // 推演过程披露层（WO-SIM-DISCLOSURE）：六项一次给全 —— 引用的数据 / 走过的切片 /
+      // 命中的规则 / 约束 / agent 是否参与 / 各环节耗时。`?disclose=1` 才下发。
+      ...(disclosure ? { disclosure } : {}),
     };
   });
 
