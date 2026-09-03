@@ -1871,13 +1871,28 @@ export const startValidationRun = (profile: string, seed?: number) =>
  *   「换个角色看着好好的」正是这类形状错最会骗人的地方）。
  *   `byReason` / `total` 今天前端不消费，故只取 `items`；要用时在此处扩返回值，别在页面里再解一次。
  */
-export const fetchQuarantine = async (): Promise<QuarantineRowView[]> => {
-  const r = await api.a<{ items?: QuarantineRowView[] } | QuarantineRowView[]>("/a/v1/quarantine");
+export const fetchQuarantine = async (status: QuarantineRowView["status"] = "PENDING"): Promise<QuarantineRowView[]> => {
+  const r = await api.a<{ items?: QuarantineRowView[] } | QuarantineRowView[]>(`/a/v1/quarantine?status=${encodeURIComponent(status)}`);
   // 同 `fetchValidationRuns`：三分支缺一不可，否则声明的 `Promise<…[]>` 又是一句假话。
   return Array.isArray(r) ? r : Array.isArray(r?.items) ? r.items : [];
 };
 export const reprocessQuarantine = (id: string) => api.a<{ ok: boolean }>(`/a/v1/quarantine/${id}/reprocess`, { method: "POST" });
-export const discardQuarantine = (ids: string[]) => api.a<{ discarded: number }>("/a/v1/quarantine/discard", { method: "POST", body: { ids } });
+/**
+ * WO-QUARANTINE-DISCARD · 丢弃**必须带用户填写的理由**。
+ *
+ * ⚠ 原实现是 `body: { ids }` —— 而后端 `POST /a/v1/quarantine/discard` 的 zod 是
+ * `{ ids: z.array(z.string()).min(1), comment: z.string().min(1) }`
+ * （`apps/datacore/src/app.ts` 该路由 + `QuarantineService.discard()` 里再校一次 `comment.trim()`）。
+ * ⇒ 屏上点「丢弃」**必返 400 `VALIDATION_ERROR`**（真后端实测：
+ * `comment: Invalid input: expected string, received undefined`），用户只看得到一个失败 toast。
+ * 两半各自都对，**接缝上对不齐**。
+ *
+ * 修法是**让用户自己填**，不是替他编一个默认理由、也不是发空串、更不是把后端校验放宽：
+ * 后端把该理由写进 `detail`（`… | discarded: <理由>`），是这条记录**唯一**的作废依据。
+ * 放宽后端 = 留下一条没人知道为什么被丢弃的记录，比报错更坏。
+ */
+export const discardQuarantine = (ids: string[], comment: string) =>
+  api.a<{ discarded: number }>("/a/v1/quarantine/discard", { method: "POST", body: { ids, comment } });
 
 /** 通知中心。 */
 export interface NotificationItem { id: string; kind: string; title: string; body: string; refType?: string; refId?: string; readAt?: string; createdAt: string }
