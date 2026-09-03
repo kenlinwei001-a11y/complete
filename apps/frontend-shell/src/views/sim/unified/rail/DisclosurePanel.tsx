@@ -58,6 +58,21 @@ const PHASE_LABEL: Readonly<Record<string, string>> = {
   total: "合计",
 };
 
+/**
+ * 节拍闸门跳过的原因码 → 屏上的名字。
+ *
+ * 后端给的是机器记号（`propagation.ts` 的 `buildCadenceGates` 只会产出这两个：
+ * `EMPTY` / `NOT_INTEGER_TICKS`）—— 实测 demo 种子世界一拍跳过 4 个节点，
+ * 屏上原样打出来就是 `material.mrpEMPTY`，**读的人一个字都看不懂**（R-UI-4「开发的话不上屏」）。
+ *
+ * ⚠ 表里没有的记号**原样显示**：宁可露出一个机器记号，也不把一个没见过的原因
+ * 静默改写成一句像模像样的人话 —— 那是替后端编原因，比露出记号坏得多。
+ */
+const CADENCE_SKIP_LABEL: Readonly<Record<string, string>> = {
+  EMPTY: "节拍表无数据",
+  NOT_INTEGER_TICKS: "周期非整拍",
+};
+
 /** 一对「标签 值」。**没有句子**，标点只有分隔用的 `·`。 */
 function KV({ k, v, mono }: { k: string; v: string; mono?: boolean }): JSX.Element {
   return (
@@ -282,7 +297,7 @@ export default function DisclosurePanel({ disclosure: d }: DisclosurePanelProps)
                 {constraints.cadenceSkipped.map((s) => (
                   <li key={s.nodeId} className={styles.row}>
                     <span className={styles.mono}>{s.nodeId}</span>
-                    <span>{s.reason}</span>
+                    <KV k="原因" v={CADENCE_SKIP_LABEL[s.reason] ?? s.reason} />
                   </li>
                 ))}
               </ul>

@@ -119,6 +119,19 @@ describe("§2 文体三条硬约束（每条先跑金丝雀证明扫法是好的
     const t = screenText();
     expect(SENTENCE_RE.test(t), `屏上出现了描述性句子：${t.match(SENTENCE_RE)?.[0] ?? ""}`).toBe(false);
   });
+
+  it("⛔ 后端的原因码不许原样上屏（R-UI-4「开发的话不上屏」）", () => {
+    // 金丝雀：先证明这一跑**真的**带着机器记号 —— 否则这条断言什么都没在验。
+    const skipped = REAL.constraints.cadenceSkipped;
+    expect(skipped.length, "夹具里没有 cadenceSkipped ⇒ 这条断言是空跑").toBeGreaterThan(0);
+    expect(skipped.some((s) => s.reason === "EMPTY"), "金丝雀不中 ⇒ 夹具变了，断言要重挑").toBe(true);
+
+    const t = screenText();
+    // 屏上要有节点名与人话原因，**不许**有那个裸记号。
+    expect(t).toContain(skipped[0]!.nodeId);
+    expect(t).toContain("节拍表无数据");
+    expect(/\bEMPTY\b/.test(t), "屏上出现了裸原因码 EMPTY").toBe(false);
+  });
 });
 
 describe("§3 逐规则那张表把「系数打哪来」讲清楚", () => {
