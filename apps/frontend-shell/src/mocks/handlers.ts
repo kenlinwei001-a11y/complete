@@ -3451,10 +3451,35 @@ export const handlers = [
     if (!account) return err(401, "UNAUTHORIZED", "未登录");
     const body = (await request.json()) as {
       typeKey: string;
+      filter?: Record<string, unknown>;
       groupBy?: string[];
       metrics: { prop: string; fn: "count" | "sum" | "avg" | "min" | "max" }[];
     };
-    const rows = body.typeKey === "Base" ? filterByScope(BASES, account) : body.typeKey === "Order" ? filterByScope(ORDERS, account) : [];
+    const scoped = body.typeKey === "Base" ? filterByScope(BASES, account) : body.typeKey === "Order" ? filterByScope(ORDERS, account) : [];
+    /**
+     * WO-DASH-ONHAND · **本处理器修前整个吞掉 `filter`**（连解构都没有）。
+     *
+     * 后果不是"mock 少个功能"，是 **mock 会撒谎**：驾驶舱「在手订单」卡片下发
+     * `filter:{status:["OPEN","IN_PRODUCTION"]}`，真后端据此回 150，而 mock 忽略它回全簿 ——
+     * 前端在 mock 上看到的恰是本单要修掉的那个错数，且**测试全绿**。
+     * 这正是 `check-mock-fidelity.mjs` 说的 G-MOCK-OVERCLAIM：mock 上跑得通，一接真后端就崩。
+     *
+     * 语义必须与 `datacore/src/ontology.ts` 的 `matchFilter` **同构**（数组 = IN，不是"等于该数组"），
+     * 抄个只认标量等值的简化版，就会在 `status:[...]` 这种真实用法上无声回落成"不过滤"。
+     */
+    const matches = (r: Record<string, unknown>): boolean => {
+      for (const [k, v] of Object.entries(body.filter ?? {})) {
+        const actual = r[k];
+        if (Array.isArray(v)) {
+          if (Array.isArray(actual)) { if (!actual.some((a) => v.includes(a))) return false; }
+          else if (!v.includes(actual)) return false;
+        } else if (Array.isArray(actual)) {
+          if (!actual.includes(v)) return false;
+        } else if (actual !== v) return false;
+      }
+      return true;
+    };
+    const rows = (scoped as unknown as Record<string, unknown>[]).filter(matches);
     const groupBy = body.groupBy ?? [];
     const groups = new Map<string, { group: Record<string, string | null>; rows: Record<string, unknown>[] }>();
     for (const r of rows as unknown as Record<string, unknown>[]) {

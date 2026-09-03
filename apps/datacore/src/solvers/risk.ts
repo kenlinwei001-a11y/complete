@@ -1336,6 +1336,18 @@ export function affectedOrdersAggregate(
   summary: { orderCount: number; totalQty: number; custCount: number; revenue: number };
   rows: { so: string; cust: string; seg: string; model: string; qty: number; due: string; delay: number; risks: AggRiskRef[] }[];
   problems: OrderProblemGroupOut[];
+  /**
+   * WO-DASH-ONHAND ② · **本表在列什么**（交期窗口）随输出回带 —— 加性字段，既有调用方不受影响（R6）。
+   *
+   * 存在的理由：驾驶舱同屏「在手订单 150」与本台账「全部 127」是**两个口径**
+   * （在手 = 未完成态全体；台账 = 未完成态 ∩ 交期落在 `[fromDay, toDay]`）。实测那 23 张之差
+   * 全是**交期已过的在制单**（`dueDay < 0`）。差异本身合法，但**屏上必须写明**，
+   * 否则两个「全部」指着两样东西而没有一个字提示 —— 那正是本仓 U1/U4 记的老账。
+   *
+   * ⚠ 天数**不许前端写死**（R14）：窗口默认值住在本函数里（`winTo` 三级优先级），
+   * 抄一份到前端就是第二份真相，改这里忘了改那里，屏上会理直气壮地报一个错的天数。
+   */
+  window: { fromDay: number; toDay: number; forecastStart: string };
   scope?: ChainScope;
 } {
   const threshold = c.params.risk.threshold;
@@ -1405,6 +1417,8 @@ export function affectedOrdersAggregate(
   // R-ARG-FIDELITY：限定了才回带（未限定 → 字段不出现 → 既有调用方逐字节不变·R6）。
   return {
     summary, rows, problems: [...probByCat.values()],
+    // WO-DASH-ONHAND ②：口径随数走（前端据此写「本表在列什么」，不自己编天数）。
+    window: { fromDay: winFrom, toDay: winTo, forecastStart: str(c.params.forecastStart) },
     ...(isChainScopeUnscoped(scope) ? {} : { scope: echoChainScope(scope, scopeBaseIds) }),
   };
 }
