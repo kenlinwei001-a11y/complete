@@ -51,6 +51,7 @@ import { TradeoffRadar } from "./TradeoffRadar";
 import {
   constraintRowsOf,
   detailRowsOf,
+  rerankByWeights,
   useExecutionCompare,
   useParetoFrontier,
   type OptCandidate,
@@ -128,19 +129,51 @@ export interface SandboxOptProps {
 }
 
 export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): JSX.Element {
-  const { model } = useParetoFrontier(paretoRequest);
+  const { model: base } = useParetoFrontier(paretoRequest);
   const [tab, setTab] = useState<ViewTab>("frontier");
   const [picked, setPicked] = useState<string | null>(null);
+  /**
+   * 用户拖过的滑杆（键 = `objectives[].key`）。**没拖过的目标不进这张表** ——
+   * 于是"我一根都没动"与"我把某根拉回了默认值"是两个可分辨的状态，
+   * 前者用端点回显的那组权重，后者用用户这一组。
+   */
+  const [userWeights, setUserWeights] = useState<Record<string, number> | null>(null);
+
+  /**
+   * 屏上这一份模型 = 端点那一份**换了名次**（`frontier`/`dominated` 一张卡不增不减）。
+   *
+   * ⚠ 这一行就是那条验收判据的落点：**权重改变时前沿不变、排序变**。
+   *   `rerankByWeights` 不发请求、不碰解集，只重算 `weights`/`ranking`/`recommendedId` 三格。
+   *   若哪天有人把它改成"带上新权重重新 POST"，屏上看起来一模一样 ——
+   *   而多目标就在那一刻退化成了「换个加权再算一遍」的单目标。
+   */
+  const model = userWeights === null ? base : rerankByWeights(base, userWeights);
 
   const all: readonly OptCandidate[] = [...model.frontier, ...model.dominated];
   const selectedId = picked !== null && all.some((c) => c.id === picked) ? picked : model.defaultSelectedId;
   const selected = all.find((c) => c.id === selectedId);
 
-  const listed =
+  /** id → 加权名次（`ranking` 是同一批解的另一个视角，不是子集，故查得到就一定查得全）。 */
+  const rankOf = new Map(model.ranking.map((e) => [e.id, e]));
+  const listedRaw =
     tab === "frontier" ? model.frontier
     : tab === "feasible" ? all.filter((c) => c.feasible)
     : tab === "infeasible" ? all.filter((c) => !c.feasible)
     : all;
+  /**
+   * 候选卡按**加权名次**排 —— 这就是"权重变了，屏上会变"的那件可见的事。
+   *
+   * ⚠ 只对**排得上名次的解**生效（`ranking` 只覆盖前沿）；被支配解没有名次，
+   *   一律排在有名次的之后、并保持端点给的那个**全序**（不另造第二套次序）。
+   */
+  const listed = [...listedRaw].sort((a, b) => {
+    const ra = rankOf.get(a.id)?.rank;
+    const rb = rankOf.get(b.id)?.rank;
+    if (ra !== undefined && rb !== undefined) return ra - rb;
+    if (ra !== undefined) return -1;
+    if (rb !== undefined) return 1;
+    return 0;
+  });
 
   const detail = detailRowsOf(model, selected);
   const constraints = constraintRowsOf(model, selected);
@@ -212,6 +245,54 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
                     ))}
                   </select>
                 </div>
+                {/* ══ 目标权重（WO-PARETO-AXES）══════════════════════════════
+                    屏上这一块是仓主要的那件事：「在界面上设定不同目标的权重，
+                    系统输出多个方案和方案比对」。**滑杆只换名次，不换解集** ——
+                    拖动时候选卡一张不增不减，只重新排序 + 换一个「推荐」角标。 */}
+                <div className={styles.wt} data-testid="sandbox-opt-weights">
+                  <div className={styles.wtHead}>
+                    <b>目标权重</b>
+                    <span>拖动只改排序 · 候选方案集不变</span>
+                  </div>
+                  {model.objectives.map((o) => {
+                    const w = model.weights[o.key] ?? 1;
+                    return (
+                      <label key={o.key} className={styles.wtRow} data-testid={`sandbox-opt-weight-${o.key}`}>
+                        <span title={o.label ?? o.key}>
+                          {o.label ?? o.key}
+                          {o.dir === "min" ? " ↓" : " ↑"}
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={10}
+                          step={0.5}
+                          value={w}
+                          data-dir={o.dir}
+                          data-weight={w}
+                          aria-label={`${o.label ?? o.key} 权重`}
+                          onChange={(e) =>
+                            setUserWeights((prev) => ({
+                              // 起点取**当前屏上这一组**（端点回显或用户上一次），不是常量 1 ——
+                              // 从 1 起会让第一次拖动把其余目标一起"重置"，用户没动过它们。
+                              ...(prev ?? model.weights),
+                              [o.key]: Number(e.target.value),
+                            }))
+                          }
+                        />
+                        <u>{w}</u>
+                      </label>
+                    );
+                  })}
+                  {/* 要不到的轴：**显式印出来 + 说清为什么**。留白会被读成"这一维没问题"。 */}
+                  {model.unavailableObjectives.map((g) => (
+                    <div key={g.key} className={styles.wtGap} data-testid={`sandbox-opt-gap-${g.key}`}>
+                      <b>{g.label}</b>
+                      <i>本系统今天算不出</i>
+                      <div className={styles.wtGapWhy}>{g.reason}</div>
+                    </div>
+                  ))}
+                </div>
                 <div className={styles.wv}>
                   {VIEW_TABS.map((t) => (
                     <b
@@ -235,9 +316,19 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
                       className={c.id === selectedId ? `${styles.pc} ${styles.on}` : styles.pc}
                       data-testid={`sandbox-opt-card-${c.id}`}
                       data-frontier={c.onFrontier ? "1" : "0"}
+                      /* 加权名次：**用它断言"改权重换了序"**，比读 DOM 顺序稳。缺席 = 这个解没排名次（非前沿）。 */
+                      data-rank={rankOf.get(c.id)?.rank ?? ""}
+                      data-recommended={c.id === model.recommendedId ? "1" : "0"}
                       onClick={() => setPicked(c.id)}
                     >
                       {c.onFrontier && <span className={styles.tag}>前沿</span>}
+                      {c.id === model.recommendedId && (
+                        // 「推荐」= **按当前这组权重**排第一，不是"最优解"。措辞上必须分得开：
+                        // 前沿上每一个解都不被支配，谁排第一完全取决于读者的偏好。
+                        <span className={styles.rec} title="按当前目标权重排第一（前沿上每个解都不被支配）">
+                          推荐
+                        </span>
+                      )}
                       <div className={styles.r1}>
                         <b>{c.id}</b>
                         <span>{c.label}</span>

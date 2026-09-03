@@ -348,6 +348,90 @@
   color: var(--muted2);
   pointer-events: none;
 }
+/* ══ WO-PARETO-AXES · 目标权重滑杆 ═════════════════════════════════════════════
+   屏上这一块回答的是「我更在乎哪一维」。它**只换名次不换解集** ——
+   故它长在候选列表的**上方**（读者先说偏好、再看名次），不是长在图上。
+   色值一律走 token（本目录源文件里出现字面色值会被 `sandbox-opt-pixel` 用例 ③ 咬红）。 */
+.wt {
+  margin: 0 8px 6px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 5px;
+}
+.wtHead {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--muted2);
+  padding: 2px 0 4px;
+}
+.wtHead b {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--txt);
+}
+.wtRow {
+  display: grid;
+  grid-template-columns: 1fr 62px 26px;
+  align-items: center;
+  gap: 6px;
+  padding: 1.5px 0;
+}
+.wtRow span {
+  font-size: 10.5px;
+  color: var(--txt);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wtRow input {
+  width: 100%;
+  accent-color: var(--accent);
+  height: 12px;
+}
+.wtRow u {
+  text-decoration: none;
+  font-size: 10px;
+  color: var(--muted2);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* 「要不到的轴」—— 与上面的滑杆行**看起来就不同**：没有滑杆、字是弱化色、带一条删除线的量纲位。
+   ⛔ 不许把它做得像一根值为 0 的轴 —— 那会被读成"这一维我调到 0 了"，而真相是"这一维算不出来"。 */
+.wtGap {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0 0;
+  font-size: 10.5px;
+  color: var(--muted2);
+}
+.wtGap b {
+  font-weight: 400;
+  color: var(--warn-txt);
+}
+.wtGap i {
+  font-style: normal;
+  color: var(--muted2);
+}
+.wtGapWhy {
+  grid-column: 1 / -1;
+  font-size: 9.5px;
+  line-height: 1.45;
+  color: var(--muted2);
+  padding-bottom: 2px;
+}
+/* 推荐解的角标：与「前沿」角标并排，故换一侧 + 换色，免得两个绿块叠在一起分不出。 */
+.pc .rec {
+  position: absolute;
+  right: -1px;
+  top: -1px;
+  font-size: 8.5px;
+  color: var(--txt);
+  background: var(--accent);
+  padding: 0 4px;
+}
 .wv {
   display: flex;
   align-items: center;
