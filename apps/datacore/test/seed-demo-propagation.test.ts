@@ -371,7 +371,7 @@ describe("WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检", () => {
     // 🐤 金丝雀：链路类型声明表非空，否则下面每条用例都会因"链路不存在"而 400，
     // 整组测试会以**完全正确的理由**全绿，而它其实一个字都没验到（假绿的经典形态）。
     expect(linkTypes.length).toBeGreaterThan(0);
-    const via = linkTypes.find((l) => l.key === "model_producible_at") ?? linkTypes[0];
+    const via = linkTypes.find((l) => l.key === "model_producible_at") ?? linkTypes[0]!;
     return { t, via };
   };
   const post = (t: TestApp, payload: Record<string, unknown>) =>
@@ -445,7 +445,7 @@ describe("WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检", () => {
     expect((await post(t, edge(via, { viaLinkKey: "no_such_link_ZZZ", coefficient: 0.9 }))).statusCode).toBe(400);
     const rows = (await t.repos.sim.listPropagationRules("demo", false)).filter((r) => r.key === "WRITE_PATH_PROBE");
     expect(rows.length).toBe(1);
-    expect(rows[0].coefficient).toBe(0.5);
-    expect(rows[0].version).toBe(1);
+    expect(rows[0]!.coefficient).toBe(0.5);
+    expect(rows[0]!.version).toBe(1);
   });
 });

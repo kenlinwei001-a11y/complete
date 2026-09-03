@@ -7104,6 +7104,38 @@ export const handlers = [
   http.post("*/a/v1/sim/propagation-rules", async ({ request }) => {
     const b = (await request.json()) as Partial<MockPropRule>;
     const key = String(b.key ?? "");
+    /**
+     * 引用体检 —— 镜像真后端的 `assertPropagationRefs`（WO-CAUSAL-EDGE-CRUD 交付判据 2）。
+     *
+     * ⚠ **为什么 mock 也必须卡**：建边表单的源类型 / 结构边 / 目标类型是**三个互不联动的下拉**，
+     * 用户随手就能选出「Base --model_producible_at--> Model」这种方向反了的组合
+     * （真链路是 Model→Base）。真后端现在 400；mock 若照收，就是「mock 下建得成、
+     * 真后端下弹 400」—— 本文件同一个 handler 里已经写过这条纪律的另一半
+     * （「mock 比后端更能干 = 把真缺口盖掉」），这里是同一条纪律的正面用法。
+     *
+     * 方向为什么是硬错而不是风格问题：引擎只沿链路的 `from→to` 单向传导，
+     * 方向反了的边语法全对、却永远贡献 0 —— 屏上「生效因果边」+1 而推演读数一动不动。
+     */
+    const linkDef = mockLinkTypes.find((l) => l.key === String(b.viaLinkKey ?? ""));
+    const knownTypes = new Set(MOCK_OBJECT_TYPES.map((t) => t.key));
+    const refBad: string[] = [];
+    if (!knownTypes.has(String(b.sourceTypeKey ?? ""))) refBad.push(`源对象类型 ${b.sourceTypeKey} 不存在于本租户本体`);
+    if (!knownTypes.has(String(b.targetTypeKey ?? ""))) refBad.push(`目标对象类型 ${b.targetTypeKey} 不存在于本租户本体`);
+    if (!linkDef) {
+      refBad.push(`链路类型 ${b.viaLinkKey} 不存在于本租户本体`);
+    } else if (linkDef.fromType !== b.sourceTypeKey || linkDef.toType !== b.targetTypeKey) {
+      const reversed = linkDef.fromType === b.targetTypeKey && linkDef.toType === b.sourceTypeKey;
+      refBad.push(
+        `链路 ${linkDef.key} 连的是 ${linkDef.fromType}→${linkDef.toType}，与本边的 ${b.sourceTypeKey}→${b.targetTypeKey} 对不上` +
+          (reversed ? "（方向正好反了：引擎只沿链路的 from→to 单向传导，这样写的边会永远贡献 0）" : "（引擎只沿链路的 from→to 单向传导，这样写的边会永远贡献 0）"),
+      );
+    }
+    if (refBad.length > 0) {
+      return HttpResponse.json(
+        { error: { code: "VALIDATION_ERROR", message: `因果边 ${key} 引用校验失败：${refBad.join("；")}`, requestId: `req_mock_${++mockRelSeq}` } },
+        { status: 400 },
+      );
+    }
     const existing = mockPropRules.find((r) => r.key === key); // 连 DRAFT/RETIRED 一起找（镜像后端的 `false`）
     const rule: MockPropRule = {
       id: existing?.id ?? `simpr_mock_${++mockRelSeq}`, tenantId: "demo",
