@@ -537,7 +537,22 @@ export type BlockReason =
   | "START_TICK_PAST"
   | "BAD_DURATION";
 
-export const BLOCK_REASON_TEXT: Record<BlockReason, string> = {
+/**
+ * 拦下发时的**说人话**文案（单一出处：表单与接缝门都读这里，各写一份必漂）。
+ *
+ * ── 为什么它带 `hardcoded-data-allow` ─────────────────────────────────────
+ * `check-debattery.mjs` 的探测器 B 咬的是**数据表形状**（顶层元素 ≥3 且块内数值字面量 ≥6），
+ * 靶子是 `[["营收","¥12.8B",-2.3], …]` 那种「数字配通用标签」的写死业务读数。
+ * 本块是 `Record<BlockReason, string>` 的**错误文案**：11 条全是句子，被数到的 8 个数字
+ * 全部长在句子里，且都是**契约边界与协议细节**（`startTick` 的 `int().min(0)` ⇒「≥ 0」·
+ * 持续拍数「≥ 1」· 说明里提到的 201/400/0），**没有一个是业务读数**
+ * （没有价格、产能、基地名、型号）。
+ * ⚠ 这**不是**「拿豁免压真业务数据换绿」：本文件真业务数全部来自后端回包
+ * （`view-config.stateVars` / 会话清单），一个都不在这张表里。
+ * 删掉这个记号唯一的效果是让门去咬一堆错误提示语。
+ * 同形态既有先例：`views/sim/sandboxConsoleModel.ts` 的 `IMPEDIMENT_JOIN_REASON`（病因文案）。
+ */
+export const BLOCK_REASON_TEXT: Record<BlockReason, string> = { // hardcoded-data-allow —— 错误文案非业务数据；逐条理由见上
   NO_SESSION: "没有可推演的世界 —— 先选一个 RUNNING 会话",
   NO_STATE_VAR: "还没选要扰哪个量",
   NO_TARGET_OBJECT: "还没选落点对象（写口要的是引擎给世界态编键的那个对象 id）",
