@@ -379,8 +379,12 @@ describe("WO-SIM-PARETO-MODEL-EXIT · 装配出口 → 求解 整条缝", () => 
 
     const a = await assemble(t, ACME);
     expect(a.statusCode, a.body).toBe(200);
-    const j = ParetoAssembleResultSchema.parse(a.json) as Extract<ParetoAssembleResult, { applicable: true }>;
-    expect(j.applicable, j.applicable === false ? j.note : "").toBe(true);
+    // 先按**联合类型**收下（不预先 cast 成 applicable:true），这样装配失败时
+    // 断言消息里能带上服务端给的 `note` —— 少了它，红的时候只看到 `false !== true`，
+    // 病因（缺哪个角色）全丢。
+    const parsed = ParetoAssembleResultSchema.parse(a.json) as ParetoAssembleResult;
+    expect(parsed.applicable, parsed.applicable === false ? parsed.note : "").toBe(true);
+    const j = parsed as Extract<ParetoAssembleResult, { applicable: true }>;
 
     // ── ⓪ 金丝雀：先自证这套装置真的接到了「单价」那条路，而不是碰巧走了老路 ────────
     const roleMap = Object.fromEntries(j.roles.map((r) => [r.role, r.ref]));
