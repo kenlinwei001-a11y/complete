@@ -7128,15 +7128,18 @@ export const handlers = [
   }),
   // `POST /a/v1/ontology/link-types`（后端 app.ts:2918 · `ontology.upsertLinkType` 按 key 幂等升版）。
   http.post("*/a/v1/ontology/link-types", async ({ request }) => {
-    const b = (await request.json()) as { key: string; fromTypeKey: string; toTypeKey: string; cardinality: string };
+    const b = (await request.json()) as { key: string; fromTypeKey: string; toTypeKey: string; cardinality: string; viaProperty?: string; viaSide?: "from" | "to" };
     const existing = mockLinkTypes.find((l) => l.key === b.key);
     if (existing) {
       existing.fromType = b.fromTypeKey; existing.toType = b.toTypeKey; existing.cardinality = b.cardinality;
     } else {
       mockLinkTypes.push({ key: b.key, fromType: b.fromTypeKey, toType: b.toTypeKey, cardinality: b.cardinality });
     }
+    // WO-LINKTYPE-IMPL：回显 viaProperty/viaSide（真后端据此把声明物化成链路实例）。
+    // ⚠ **故意不返回 `materialized`** —— mock 里没有对象实例，算不出真实条数；
+    // 编一个数会让 mock 模式显示一条真后端不会给的读数（前端对 undefined 已做静默处理）。
     return HttpResponse.json(
-      { key: b.key, fromTypeKey: b.fromTypeKey, toTypeKey: b.toTypeKey, cardinality: b.cardinality, version: 1 },
+      { key: b.key, fromTypeKey: b.fromTypeKey, toTypeKey: b.toTypeKey, cardinality: b.cardinality, version: 1, ...(b.viaProperty ? { viaProperty: b.viaProperty, viaSide: b.viaSide ?? "from" } : {}) },
       { status: 201 },
     );
   }),

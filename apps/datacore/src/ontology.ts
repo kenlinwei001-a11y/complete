@@ -267,10 +267,29 @@ export class OntologyService {
   async upsertLinkType(
     ctx: AuthCtx,
     input: Omit<LinkTypeDef, "id" | "tenantId" | "version">,
-  ): Promise<LinkTypeDef> {
+  ): Promise<LinkTypeDef & { materialized: { created: number; unresolved: number; carrierObjects: number } }> {
     const existing = (
       await this.repos.ontologyLinks.list(ctx.tenantId, (l) => l.key === input.key)
     )[0];
+    // WO-LINKTYPE-IMPL：`viaProperty` 必须真是 fromType 上的一个属性。
+    // **不许静默** —— 打错一个字就静默造一条永远 0 实例的死边，正是本仓「状态变量自由文本」那个老坑
+    // （打错字 = 静默造一个死变量且删不掉）。这里当场 400 点名，并把可选属性列出来。
+    if (input.viaProperty !== undefined) {
+      // 外键长在哪一侧，就去哪一侧的属性表里校验（viaSide 缺省 from）。
+      const carrierKey = (input.viaSide ?? "from") === "from" ? input.fromTypeKey : input.toTypeKey;
+      const carrierType = await this.getType(ctx, carrierKey);
+      if (!carrierType) {
+        throw validationError(
+          `结构边 ${input.key} 声明了「由属性 ${input.viaProperty} 实现」，但${(input.viaSide ?? "from") === "from" ? "来源" : "去向"}类型 ${carrierKey} 不存在`,
+        );
+      }
+      if (!carrierType.properties.some((p) => p.propKey === input.viaProperty)) {
+        throw validationError(
+          `结构边 ${input.key} 的实现属性 '${input.viaProperty}' 不是 ${carrierKey} 的属性` +
+            `（可选：${carrierType.properties.map((p) => p.propKey).join("/") || "该类型没有任何属性"}）`,
+        );
+      }
+    }
     const def: LinkTypeDef = {
       id: existing?.id ?? newId("ltype"),
       tenantId: ctx.tenantId,
@@ -278,7 +297,82 @@ export class OntologyService {
       ...input,
     };
     await this.repos.ontologyLinks.put(def);
-    return def;
+    // 声明 → 实例：把「这条边由哪个属性实现」兑现成真的 LinkInstance，否则多跳检索遍历不到。
+    // 计数随定义一起回给调用方（路由据此告诉用户"连出了几条"），**不要在外面再算一遍**。
+    const materialized = await this.materializeDeclaredLinks(ctx, def);
+    return { ...def, materialized };
+  }
+
+  /**
+   * WO-LINKTYPE-IMPL · **把结构边的声明兑现成链路实例**（`LinkTypeDef` → `LinkInstance`）。
+   *
+   * 多跳检索 `executeSlice` 遍历 `repos.links`，而建边只写 `repos.ontologyLinks` ——
+   * 这个函数就是原先缺失的那座桥。没有它，建出来的边在检索里恒为 0 条。
+   *
+   * 口径：
+   * · **只在声明了 `viaProperty` 时动手**；没声明 ⇒ 原样返回 0，老行为逐字节不变（加性·零回归）。
+   * · 连接方式 = 来源对象 `props[viaProperty]` 的值 ↔ 目标对象**业务主键**（`objectKey ?? props[pk]`）。
+   * · **幂等 / R6 确定性**：link 实例 id 由 `key + 来源对象 id` 确定性拼出，重跑逐字节一致；
+   *   重算前先删掉**本机制自己造的**那批（`origin.type === "LINK_DERIVED"` 且同 key）——
+   *   出厂种子的边是 `SYNTHETIC`，**绝不会被误删**（这是单列一个 origin 变体的全部理由）。
+   * · 归并对象（`mergedInto`）不参与，与 `sim/view-config` 的口径一致。
+   * · 值为空（null/undefined/空串）⇒ 该对象没有这条边，不算错；值有但查无目标 ⇒ 计入 `unresolved`，
+   *   **如实回报**，不静默吞掉（「建了 0 条」与「有 12 条指向不存在的目标」是两个不同的答案）。
+   *
+   * 两侧对称（`viaSide`）：把带外键的那一侧叫 **carrier**、被指向的那一侧叫 **anchor**，
+   * 两种方向共用同一段扫描逻辑，只在最后拼 `fromId`/`toId` 时分叉 —— 一对多边（外键在去向侧，
+   * 实测占 19.8%）因此同样能物化，不必为它另写一套。
+   */
+  async materializeDeclaredLinks(
+    ctx: AuthCtx,
+    def: LinkTypeDef,
+  ): Promise<{ created: number; unresolved: number; carrierObjects: number }> {
+    if (!def.viaProperty) return { created: 0, unresolved: 0, carrierObjects: 0 };
+    const via = def.viaProperty;
+    const side = def.viaSide ?? "from";
+    // 先清掉本机制上一轮造的同 key 边（viaProperty/viaSide 改了、或目标数据变了，要能重算）。
+    await this.repos.links.removeWhere(
+      ctx.tenantId,
+      (l) => l.type === def.key && l.origin.type === "LINK_DERIVED",
+    );
+    const carrierTypeKey = side === "from" ? def.fromTypeKey : def.toTypeKey; // 外键长在这一侧
+    const anchorTypeKey = side === "from" ? def.toTypeKey : def.fromTypeKey; // 外键指向这一侧
+    const anchorType = await this.getType(ctx, anchorTypeKey);
+    if (!anchorType) return { created: 0, unresolved: 0, carrierObjects: 0 };
+    const anchorPk = anchorType.properties.find((p) => p.isPrimaryKey)?.propKey ?? "id";
+    // 被指向侧按业务主键建索引（与 executeSlice 的 objectKeyOf 同口径：objectKey ?? props[pk]）。
+    const anchors = new Map<string, string>();
+    for (const o of await this.repos.objects.listByType(ctx.tenantId, anchorTypeKey)) {
+      if (o.mergedInto) continue;
+      const bk = o.objectKey ?? o.props[anchorPk];
+      if (bk === null || bk === undefined) continue;
+      const k = String(bk);
+      if (!anchors.has(k)) anchors.set(k, o.id);
+    }
+    const carriers = (await this.repos.objects.listByType(ctx.tenantId, carrierTypeKey)).filter(
+      (o) => !o.mergedInto,
+    );
+    let created = 0;
+    let unresolved = 0;
+    for (const c of carriers) {
+      const raw = c.props[via];
+      if (raw === null || raw === undefined || raw === "") continue; // 没填 = 没这条边，不是错
+      const anchorId = anchors.get(String(raw));
+      if (!anchorId) {
+        unresolved++;
+        continue;
+      }
+      await this.repos.links.put({
+        id: `lnk_via_${def.key}_${c.id}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        tenantId: ctx.tenantId,
+        type: def.key,
+        fromId: side === "from" ? c.id : anchorId,
+        toId: side === "from" ? anchorId : c.id,
+        origin: { type: "LINK_DERIVED", linkTypeKey: def.key, viaProperty: via },
+      });
+      created++;
+    }
+    return { created, unresolved, carrierObjects: carriers.length };
   }
 
   /**
