@@ -36,7 +36,7 @@
  *                      门里写死一张中文词表，本身就是本门要治的病。
  *
  * ══ 金丝雀（保命判据 · 每次运行都先跑）════════════════════════════════════════
- * 本门开扫之前先拿**内嵌样例**过一遍检测器（N 条必咬 + M 条必不咬）+ **规则抽取器金丝雀 R1–R7**
+ * 本门开扫之前先拿**内嵌样例**过一遍检测器（N 条必咬 + M 条必不咬）+ **规则抽取器金丝雀 R1–R8**
  * + 规模下界自证。任一不成立 ⇒ 打印「⛔ 门自己瞎了」并 **RC=2**（不是 1 —— 见下"三分退出码"），
  * **而不是安静报「代码干净」**。理由是本会话实测过的四个陷阱
  * （见 `docs/VERIFY-batch-2026-08-08.md`）：`git grep -- "apps/<星>/src"` 恒 0 命中
@@ -89,7 +89,7 @@
  *
  * ══ 三分退出码（WO-R9-SCAN-EXTRACTOR 落地）═══════════════════════════════════
  *   **0** 干净 · **1** 真违规（先修被扫代码）· **2** **门自己坏了 / 环境没就绪**（结论作废）。
- *   归 2 的三类：金丝雀不中（含规则抽取器 R1–R7）· `@platform/contracts` 的 dist 未构建或过期 ·
+ *   归 2 的三类：金丝雀不中（含规则抽取器 R1–R8）· `@platform/contracts` 的 dist 未构建或过期 ·
  *   规则表达式求值不出来（工具看不懂）。**RC=2 时不许打印「不得并线」** —— 本门这次什么都没证明。
  *   变异反证开关：`CHAIN_SCAN_HONESTY_BREAK_CANARY=legacy-regex` 把抽取器换回上面那条坏正则，
  *   金丝雀必须当场报 R1/R5/R7 不中并 **RC=2**（若它反而报 RC=1，说明金丝雀是装饰品）。
@@ -454,13 +454,53 @@ const JS_RESERVED = new Set([
 ]);
 
 /**
+ * 事实源模块**自己的**顶层 `export const NAME = <字面量>` 绑定。
+ *
+ * ── 为什么需要这一层（2026-09-03 · 收编 WO-PROP-CLAMP 时被 C35 逼出来）────────────
+ * 规则表达式合法地引用**本模块内**的记号，而不只是契约包的导出。实例：
+ *   `{ key: "C35", expression: \`SimStateVar.decayPerTick == ${"${"}ruleParamRef(STATE_DECAY_PARAM_KEY)}\`,
+ *      params: { [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK } }`
+ * 两个记号都是 `battery.ts` 自己的 `export const`（`"pressureDecayPerTick"` / `0.37`）。
+ * 原求值器的作用域只有 `@platform/contracts` ⇒ 抛 `STATE_DECAY_PARAM_KEY is not defined`
+ * ⇒ 本门自判 RC=2「门自己瞎了」，**整份结论作废**。这是**门的能力缺口**，不是被扫代码有病。
+ *
+ * ⚠ 为什么不把这两个记号搬进 `@platform/contracts`（门的提示里给的另一条路）：
+ * 它们是电池场景包的**业务常数**（λ=0.37 有一整段推导出处），contracts 是 zod 契约包。
+ * 搬过去等于让契约包长出行业常数，比这个 bug 更贵。故补门的求值能力。
+ *
+ * **诚实边界（刻意收窄，不许放宽成"求值任意初始化式"）**：
+ *  · 只认**行首**的 `export const`（顶层 = 零缩进；与 merge-markers 门同一条"判据落在行首"）；
+ *  · 只认**字面量**初始化式：字符串 / 数字 / true / false（可带 ` as const`）。
+ *    函数调用、对象、数组、引用别的记号 —— **一律不认**，因为那要真执行模块代码，
+ *    而本门的立身之本正是"只读源码、不跑被扫方的逻辑"。认不了的照旧走 RC=2 报「门看不懂」。
+ * @returns {Map<string, string|number|boolean>}
+ */
+export function moduleConstScope(strippedCode) {
+  const out = new Map();
+  const re = /^export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|-?\d+(?:\.\d+)?|true|false)\s*(?:as\s+const\s*)?;/gm;
+  for (const m of strippedCode.matchAll(re)) {
+    if (JS_RESERVED.has(m[1]) || out.has(m[1])) continue;
+    try { out.set(m[1], JSON.parse(m[2].startsWith("'") ? `"${m[2].slice(1, -1)}"` : m[2])); } catch { /* 认不了就不认，绝不猜 */ }
+  }
+  return out;
+}
+
+/**
  * 造一个以 `@platform/contracts` 的**全部导出**为作用域的求值器。
  * ⛔ 这是本门"不抄第二份真值"的落地方式：规则内容一律由**契约包自己**算出来，
  *    门只负责把源码里那段值表达式原样交给它。新增一个派生函数，本门自动跟得上。
+ *
+ * `extra` = 事实源模块自己的顶层字面量常量（见 `moduleConstScope`）。
+ * **它优先于契约导出** —— 忠实于被扫模块的真实作用域：模块内的 `const` 就是会遮住同名的东西。
  */
-export function makeEvaluator(mod) {
-  const names = Object.keys(mod).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n) && !JS_RESERVED.has(n));
-  const values = names.map((n) => mod[n]);
+export function makeEvaluator(mod, extra = new Map()) {
+  const scope = new Map();
+  for (const n of Object.keys(mod)) {
+    if (/^[A-Za-z_$][\w$]*$/.test(n) && !JS_RESERVED.has(n)) scope.set(n, mod[n]);
+  }
+  for (const [n, v] of extra) scope.set(n, v); // 模块自己的记号后写 ⇒ 覆盖同名契约导出
+  const names = [...scope.keys()];
+  const values = names.map((n) => scope.get(n));
   return (raw) => new Function(...names, `"use strict"; return (${raw});`)(...values);
 }
 
@@ -644,7 +684,7 @@ const MUST_NOT_BITE = [
   { name: "H8 字段阈值判为 field", fn: () => classifyThresholdSource("Process.parallelThroughput < Process.requiredThroughput", "Process.parallelThroughput").source === "field" },
 ];
 
-/* ── 规则抽取器金丝雀 R1–R7 ────────────────────────────────────────────────────
+/* ── 规则抽取器金丝雀 R1–R8 ────────────────────────────────────────────────────
  * ⛔ 铁律 0.6 已落地的机制：金丝雀**必须与主判据共用同一份实现**，不许另抄一份正则。
  *    故下面每一条都走**上面那个** `ruleRegistry()` / `topLevelObjects` / `topLevelProps`，
  *    一行解析逻辑都不重复；R5 额外把**同一段样例**再喂一遍反面实现
@@ -660,7 +700,7 @@ const MISBIND_SAMPLE = `[
 /** 负金丝雀用的**保证不存在**的规则码（在册即说明样例过期，报工具坏了而不是放行）。 */
 const ABSENT_PROBE_KEY = "C99";
 
-export function ruleExtractorCanaries(reg, evalRaw) {
+export function ruleExtractorCanaries(reg, evalRaw, modConsts = new Map(), rawSource = "") {
   const rows = [];
   const add = (id, name, pass, evidence) => rows.push({ id, name, pass, evidence });
   const all = [...reg.rules.values()];
@@ -758,6 +798,34 @@ export function ruleExtractorCanaries(reg, evalRaw) {
       `声明 ${declared.length} 条 · 解析 ${reg.rules.size} 条${missing.length ? ` · 丢失 ${missing.join(",")}` : " · 无丢失"}`);
   }
 
+  /* R8 正·**模块自有记号的取值必须与源码字面量逐字相等**（2026-09-03 补·收编 WO-PROP-CLAMP）。
+   *
+   *    为什么必须有它：`moduleConstScope` 让本门能求值引用了模块自有 `export const` 的规则
+   *    （C35 就是），**但也开了一个新的假绿口子** —— 它若把值解析**错**（而不是解析不出来），
+   *    规则会被算成一个错的值然后**静默通过**。解析不出来是响的（RC=2），解析错了是哑的。
+   *
+   *    判据用**独立口径**：`moduleConstScope` 走正则，本条走 `indexOf` 切片，两条路互不依赖 ——
+   *    同一个正则错误没法同时骗过两边（与 R3 的设计同款）。
+   *    样例**按形态机械挑**：挑一个真被某条规则引用、且不是契约导出的模块自有记号。
+   *    挑不到 ⇒ 报「样例不存在，金丝雀过期」= 工具坏了，不是放行。 */
+  {
+    const referenced = (name) => all.some((r) => new RegExp(`\\b${name}\\b`).test(`${r.exprRaw ?? ""}${r.paramsRaw ?? ""}`));
+    const sample = [...modConsts.keys()].find((n) => referenced(n) && !(n in CONTRACTS));
+    if (!sample) {
+      add("R8", "模块自有记号样例存在", false,
+        "规则库里已无「引用模块自有 export const」的形态 ⇒ 金丝雀过期（若确已改写，连同 moduleConstScope 一起退役）");
+    } else {
+      // 独立口径：从**未剥注释**的原文里按 `indexOf` 切出字面量，与正则解析结果比对。
+      const at = rawSource.indexOf(`export const ${sample} =`);
+      const line = at < 0 ? "" : rawSource.slice(at, rawSource.indexOf("\n", at));
+      const litRaw = line.slice(line.indexOf("=") + 1).replace(/;\s*$/, "").replace(/\s+as\s+const$/, "").trim();
+      const got = modConsts.get(sample);
+      const ok = at >= 0 && litRaw === (typeof got === "string" ? JSON.stringify(got) : String(got));
+      add("R8", `模块自有记号取值与源码一致（${sample}）`, ok,
+        at < 0 ? `原文里找不到 \`export const ${sample} =\` ⇒ 切片口径失效` : `源码切片 ${litRaw} · 解析得 ${JSON.stringify(got)}`);
+    }
+  }
+
   return rows;
 }
 
@@ -798,7 +866,7 @@ function selftest(ctx) {
   if (ctx.rules.size < 20) {
     bad.push(`规则库事实源（${RULE_REGISTRY_FILE} ${RULE_REGISTRY_SYMBOL}）只读出 ${ctx.rules.size} 条规则（下界 20）—— H6/H7/H8 全等于没开`);
   }
-  // 规则抽取器金丝雀 R1–R7（与主判据共用 ruleRegistry / topLevelObjects / topLevelProps）
+  // 规则抽取器金丝雀 R1–R8（与主判据共用 ruleRegistry / topLevelObjects / topLevelProps）
   for (const r of ctx.ruleCanaries) {
     if (!r.pass) bad.push(`规则抽取器金丝雀 ${r.id} 不中：${r.name} —— ${r.evidence}`);
   }
@@ -868,10 +936,13 @@ for (const anchor of REGION_ANCHORS) {
   }
 }
 
-const evalRaw = makeEvaluator(CONTRACTS);
+// 求值作用域 = 契约包全部导出 ＋ 事实源模块自己的顶层字面量常量（C35 那类引用要靠后者）。
+const RULE_FILE_RAW = read(RULE_REGISTRY_FILE);
+const RULE_FILE_CONSTS = moduleConstScope(stripComments(RULE_FILE_RAW));
+const evalRaw = makeEvaluator(CONTRACTS, RULE_FILE_CONSTS);
 const reg = ruleRegistry(evalRaw);
 const rules = reg.rules;
-const ruleCanaries = ruleExtractorCanaries(reg, evalRaw);
+const ruleCanaries = ruleExtractorCanaries(reg, evalRaw, RULE_FILE_CONSTS, RULE_FILE_RAW);
 const bindings = tables.flatMap((t) => (t.name === DECL_TABLES[0] ? parseBindings(t.code) : []));
 
 const ctx = {
@@ -893,7 +964,7 @@ if (blind.length > 0) {
 }
 console.log(
   `· 金丝雀通过：必咬 ${MUST_BITE.length}/${MUST_BITE.length} · 必不咬 ${MUST_NOT_BITE.length}/${MUST_NOT_BITE.length} · ` +
-    `规则抽取器 R1–R7 ${ruleCanaries.filter((r) => r.pass).length}/${ruleCanaries.length} · ` +
+    `规则抽取器 R1–R8 ${ruleCanaries.filter((r) => r.pass).length}/${ruleCanaries.length} · ` +
     `扫描面 ${targets.length} · 构造区 ${regions.length} · 声明表 ${tables.length}（${bindingCount} 条 binding）· ` +
     `SOLVER_KEYS ${solverKeys.size} · 规则库 ${rules.size} 条 · 业务词表 ${vocab.size}`,
 );
