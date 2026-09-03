@@ -296,19 +296,38 @@ export const OBJECT_KEY_PROPS: Record<string, string[]> = {
   RootCauseChain: ["chainId", "kpiCategory", "factor", "driverType", "baseWeight"],
   CausalFactor: ["factorId", "label", "metricKey", "isRoot"],
   PlanTarget: ["tgtId", "period", "level", "value"],
-  DemandSegment: ["segId", "segment", "demandWanPerYearP50", "act", "tgt"],
+  // WO-KEYPROPS-GAP：P50 早在表里、**P90 一直不在** —— 两个分位是同一个量的上下界，
+  // 只给中位数，模型答不了「需求区间/上行情景」；`marginPct/marginWan/revenueWan` 是驾驶舱
+  // 营收·毛利两个头条数的真出处（`finance_pnl` 读的就是本类型）。
+  DemandSegment: ["segId", "segment", "demandWanPerYearP50", "demandWanPerYearP90", "act", "tgt", "revenueWan", "marginWan", "marginPct"],
   // Base 的日产能分化成/老化两段（`capacityDaily` 只长在 Line 上）。
-  Base: ["baseId", "name", "formationCapDaily", "agingCapDaily", "util"],
+  // WO-KEYPROPS-GAP：`serveCost`/`openCost` 是设施选址族目标函数的两笔钱（min Σ开设 + Σ指派），
+  // 也是帕累托成本轴的绑定处（`opt-assemble.ts` 的 `assignCostLabel`）——不列，模型说不出成本轴由什么构成。
+  Base: ["baseId", "name", "formationCapDaily", "agingCapDaily", "util", "serveCost", "openCost"],
   Line: ["lineId", "capacityDaily", "max_capacity_day", "utilization"],
-  Model: ["modelId", "unitPrice", "seriesId"],
-  Order: ["so", "qty", "model", "due", "status"],
+  // WO-KEYPROPS-GAP：`unitCost`（元/电芯·当期 BOM 现算）与 `unitPrice` **同阶**，缺它 ⇒
+  // 模型报得出单价、报不出单位成本，「单位毛利/毛利率」这类题一律答不了。
+  Model: ["modelId", "unitPrice", "unitCost", "seriesId"],
+  // WO-KEYPROPS-GAP：`value` 是派生属性（`qty * unitPrice`）—— 派生正是 `renderTypeBlock`
+  // 唯一会渲染公式的那类；订单金额是最常被问的一个业务数，缺它模型只能自己乘、乘错也不报错。
+  Order: ["so", "qty", "model", "due", "status", "unitPrice", "value"],
+  // WO-KEYPROPS-GAP · **整个类型此前不在表里**（不是漏一个字段，是漏一张表）：
+  // 帕累托前沿的营收轴与按件成本轴都绑在这里（`opt-assemble.ts`：revenue ← `OrderLine.unitPrice × qty`、
+  // role `unit_cost` ← `OrderLine.unitCost`）。不列 ⇒ 导航图印出一个光秃秃的 `- OrderLine`，
+  // 模型根本不知道这张行表上带着价和成本。
+  OrderLine: ["lineId", "orderRef", "model", "qty", "due", "lineStatus", "unitPrice", "unitCost"],
   WorkOrder: ["woId", "qtyActual", "status"],
   FinishedGoodsInventory: ["model", "qtyOnHand", "qtyReserved"],
-  Customer: ["custId", "custName", "creditLimit", "maxOverdueDays"],
+  // WO-KEYPROPS-GAP：`receivables` 是敞口的**真数**（`credit_exposure` 答「这家客户欠多少」靠它），
+  // 表里原先只有额度与逾期天数 —— 两个约束条件，没有被约束的那个量。
+  Customer: ["custId", "custName", "creditLimit", "maxOverdueDays", "receivables"],
   FinancePlan: ["finId", "line", "budget", "rolling"],
   FinanceMetric: ["metricId", "scenarioKey", "cashCushion", "netMargin"],
   FinanceAccount: ["accId", "cashOnHand", "receivable", "payable"],
-  Material: ["matId", "name", "onHand", "dailyUse", "leadTime"],
+  // WO-KEYPROPS-GAP：`Model.unitCost` 的算式里逐项乘的就是 `Material.unitPrice`
+  //（Σ quantity ×(1+lossRate)× Material.unitPrice）—— 问「单位成本为什么涨了」而模型
+  // 看不到料价这一格，它只能猜是哪种料。
+  Material: ["matId", "name", "onHand", "dailyUse", "leadTime", "unitPrice"],
   MaterialBalance: ["material", "netDemandTon", "gapTon", "coverage"],
   Supplier: ["supplierId", "name", "leadTime"],
   PurchaseOrder: ["poId", "matId", "qty", "etaDay"],
@@ -318,6 +337,39 @@ export const OBJECT_KEY_PROPS: Record<string, string[]> = {
   CarbonFactor: ["factorId", "kind", "key", "factor"],
   Shipment: ["shipId", "etaDay", "status"],
   Segment: ["segKey", "name", "gmRate", "baselineShare"],
+};
+
+/**
+ * WO-KEYPROPS-GAP · **有意排除**（类型 → 属性 → 理由）—— 上表的「另一半」。
+ *
+ * ── 为什么非有这张表不可 ───────────────────────────────────────────────────
+ * `keyprops-ontology-parity.seam.test.ts` 在本单之前**只有一个方向**：
+ *   「表里列出的名字，本体上必须真实存在」。
+ * 它答不了反方向那一问：「本体上**该露的**名字，表里有没有列」。
+ * 于是 `Model.unitCost` 落进本体、契约、种子、求解器全链之后，**唯独没进这张表**，
+ * 而两个消费方（导航图 prompt / `renderTypeBlock` 白名单）都是**静默丢弃**：
+ * 不报错、typecheck 全绿、门也绿 —— 屏上只是少一段解释。
+ * 形态照 CLAUDE.md 铁律 0.6 句式：
+ *   **「我用『门是绿的』当作『该露的字段都露了』的证据，而前者并不度量后者 ——
+ *     那道门当时只校验列出的名字存在，不校验该有的名字被列出。」**
+ *
+ * ── 判据边界（写死在这里，防止下一个人把它做过头）─────────────────────────
+ * 反向判据**不是**「本体上所有属性都必须入表」—— 那会把白名单变成属性表的副本，
+ * 白名单（语义压缩）也就不存在了。反向只咬**一个窄集**：
+ *   已在上表登记的类型上，**命中钱/单位经济学词库或分位后缀**的属性
+ *   （`cost|price|margin|revenue|profit|amount|payable|receivable` · `…P50/P90` 之类）。
+ * 这类属性一旦漏投，模型答不了任何一道单位经济学的题，而且**不会报错**。
+ * 命中而**故意不列**的，必须在本表写下理由 —— 理由是给下一个人看的，不是给门看的。
+ *
+ * 🔒 守它的机制：同一道 parity 门的 §2b（与 §2 同文件、同抽取器、同词库实现）。
+ */
+export const KEYPROPS_INTENTIONAL_OMISSIONS: Record<string, Record<string, string>> = {
+  DemandSegment: {
+    // 万元/套 的单价，与 `Model.unitPrice` / `Order.unitPrice` / `OrderLine.unitPrice`（元/套）
+    // 是**同一口径的两个刻度**（`battery.ts` 里 `unitPrice = priceWan × 1e4`）。两个都投给模型，
+    // 正是本仓记过的「两处单价看着冲突」那个坑；单价一律只走「元」那一格，本格不列。
+    priceWan: "与 Model/Order/OrderLine 的 unitPrice 同口径不同刻度（万元 vs 元），两格并投＝制造单价冲突；单价统一走元那一格",
+  },
 };
 
 /** 每 solver 一句话规则提示（相关不变量/门·非全量规则集）。 */
