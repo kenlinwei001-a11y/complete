@@ -656,4 +656,69 @@ describe("WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门", () => {
     // 默认落在「指标态势」。
     expect(screen.getByTestId("usim-tab-now").getAttribute("data-active")).toBe("1");
   });
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // WO-SCREEN-TOKENS-2 · 屏上不许出现「给机器看的记号」
+  //
+  // 两类记号，成因不同、修法也不同，故**分开断言**：
+  //   ① 字面 markdown（`**加粗**` / 反引号）—— 前端不跑 markdown，写了就连记号一起印出来；
+  //   ② 接口枚举（`RUNNING` / `DERIVED` …）—— 用户不认识它，读不出"我现在能做什么"。
+  //
+  // ⚠ 本臂只咬**本壳自己的措辞**：后端下发的 `origin.note` 是原样承接的（那是刻意的，
+  //    见 `metricWallModel.ts` 头注「本层原样承接，不在前端另写一句」），
+  //    它自己干不干净由产它的那一侧负责。本 fixture 的 ORIGIN_NOTE 是干净的 ⇒
+  //    这里再数出记号，来源只可能是本壳。
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /** 屏上文本 → 记号命中。**主断言与变异反证共用这一份实现**（各抄一份正则 = 装饰品）。 */
+  const RAW_ENUMS = ["DRAFT", "READY", "RUNNING", "PAUSED", "ENDED", "DERIVED", "MEASURED"] as const;
+  const enumRx = (e: string): RegExp => new RegExp(`(^|[^A-Za-z])${e}([^A-Za-z]|$)`);
+  const detectTokens = (s: string): { stars: number; backticks: number; enums: string[] } => ({
+    stars: (s.match(/\*\*/g) ?? []).length,
+    backticks: (s.match(/`/g) ?? []).length,
+    enums: RAW_ENUMS.filter((e) => enumRx(e).test(s)),
+  });
+
+  it("⑨ 屏上零 markdown 记号、零接口枚举，而机器读的那份枚举仍在 data-* 上（含金丝雀与变异反证）", async () => {
+    mount();
+    await ready(STATE_VARS.length);
+    // 「未变化」默认收起 —— 不展开就只量到一小半卡（折叠 vs 展开是两个不同的数）。
+    for (const t of screen.getAllByTestId("usim-unmoved-toggle")) await userEvent.click(t);
+
+    // ⚠ 取样范围必须是**整块屏**。第一版写的是
+    //   `getByTestId("usim-wall").closest("div")?.parentElement?.textContent`，
+    //   它够不到状态条与生命周期条 —— 变异反证当场证明它是装饰品：
+    //   把 `状态 RUNNING` 原样塞回去，这一臂**照样绿**。故改用整个渲染容器。
+    const text = document.body.textContent ?? "";
+
+    // ── 金丝雀：这把尺子确实量到了东西 ────────────────────────────────────
+    // 不先自证，「0 处记号」与「壳根本没渲染出来」在断言里长得一模一样。
+    expect(text.length, "金丝雀：屏上文本太短 ⇒ 壳没渲染出来，下面的「0 处」是空页假象").toBeGreaterThan(200);
+    expect(text, "金丝雀：后端那句出处应当在屏上（它是本臂的取样锚点）").toContain(ORIGIN_NOTE);
+    // 金丝雀②：取样范围确实**盖到了状态条**（上一版就是漏了这一段而变成装饰品）。
+    expect(text, "金丝雀：取样没盖到生命周期条 ⇒ 这一臂量不到状态那一行").toContain("状态");
+
+    const found = detectTokens(text);
+
+    // ── ① 字面 markdown ───────────────────────────────────────────────────
+    expect(found.stars, `屏上出现 ${found.stars} 个字面 markdown 星号 —— 前端不跑 markdown`).toBe(0);
+    expect(found.backticks, `屏上出现 ${found.backticks} 个反引号 —— 同上`).toBe(0);
+
+    // ── ② 接口枚举 ────────────────────────────────────────────────────────
+    expect(found.enums, `接口枚举 ${found.enums.join("/")} 原样上屏 —— 用户不认识它`).toEqual([]);
+
+    // ── ③ 但机器读的那份**必须还在**（换人话 ≠ 把事实删掉）────────────────
+    expect(screen.getByTestId("usim-origin").getAttribute("data-origin-kind")).toBe("DERIVED");
+    expect(screen.getByTestId("usim-lifecycle").getAttribute("data-status")).toBe("RUNNING");
+    // 且人话版**说清了同一件事**：派生 ≠ 实测这个信息不许在翻译中丢掉。
+    expect(screen.getByTestId("usim-origin").textContent).toContain("不是实测");
+
+    // ── ④ 变异反证：把记号塞回去，同一把尺子必须当场报出来 ─────────────────
+    //    不报 = 这道断言是装饰品（本仓有过先例：金丝雀抄了一份旧正则，主逻辑改了它照样绿）。
+    const mutated = `${text} 世界态出处：DERIVED · **加粗** · \`null\``;
+    const m = detectTokens(mutated);
+    expect(m.stars, "变异反证：塞回星号却没被数出来 ⇒ 尺子坏了").toBeGreaterThan(0);
+    expect(m.backticks, "变异反证：塞回反引号却没被数出来 ⇒ 尺子坏了").toBeGreaterThan(0);
+    expect(m.enums, "变异反证：塞回枚举却没被数出来 ⇒ 尺子坏了").toContain("DERIVED");
+  });
 });
