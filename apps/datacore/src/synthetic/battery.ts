@@ -1802,6 +1802,14 @@ const workOrderProps: PropertyDef[] = [
   { propKey: "startDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "endDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 已排产 | 生产中 | 已完成 | 已关闭
+  // WO-FULFILLS-EDGE · 本工单兑现的**销售订单外键**（值 = `Order` 主键 `so`）。
+  // 为什么非加不可：此前 `WorkOrder` 的 `refToTypeKey` 只指向 Model/Line/Base，**没有一个指向 Order**，
+  // 而 `batteryLinkTypes()` 里 17 条涉及 Order/WorkOrder 端点的边也没有一条以这两者为端点对 ⇒
+  // 「这张订单靠哪些工单产出来兑现」在本体里**根本表达不了**，产销端到端推演断在最要紧的那一跳。
+  // ⚠ **条件缺席**（先例：同文件 `Order.earlyDue`，声明了但只在 early 单上出现）：
+  // 只有 (modelId, baseId) 与订单簿真对得上的工单才写这个字段，对不上的**不写**——
+  // 见 `deriveFulfills` 的取舍说明，「张冠李戴的数比没有更危险」。
+  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Order" },
 ];
 
 const productionScheduleProps: PropertyDef[] = [
@@ -2442,7 +2450,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "WorkOrder.woId": "工单编号", "WorkOrder.moNo": "制造单号", "WorkOrder.modelId": "型号",
   "WorkOrder.lineId": "产线", "WorkOrder.baseId": "基地", "WorkOrder.qtyPlanned": "计划数量",
   "WorkOrder.qtyActual": "实际数量", "WorkOrder.startDate": "开工日期", "WorkOrder.endDate": "完工日期",
-  "WorkOrder.status": "工单状态",
+  "WorkOrder.status": "工单状态", "WorkOrder.orderRef": "兑现订单",
   "ProductionSchedule.schedId": "排程编号", "ProductionSchedule.woId": "关联工单",
   "ProductionSchedule.lineId": "产线", "ProductionSchedule.shift": "班次",
   "ProductionSchedule.scheduledDate": "排产日期", "ProductionSchedule.qty": "排产数量",
@@ -3128,6 +3136,11 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // Phase 3 MES Domain links
     { key: "wo_for_model", fromTypeKey: "WorkOrder", toTypeKey: "Model", cardinality: "N:1" }, // process
     { key: "wo_on_line", fromTypeKey: "WorkOrder", toTypeKey: "Line", cardinality: "N:1" }, // process
+    // WO-FULFILLS-EDGE · **工单兑现销售订单**（制造侧 → 商务侧唯一的一跳）。
+    // 只声明这**一个方向**，不落逆边：查询引擎的 `direction:"in"`（`ontology/slice-index.ts:18`
+    // `l.toTypeKey === from ? l.fromTypeKey : undefined`）本来就能从 Order 反着走回 WorkOrder，
+    // 逆边落了是纯增重 —— 与同文件 D07 段那句「归属向今天没有消费方，落了就是纯增重」同一把尺子。
+    { key: "fulfills", fromTypeKey: "WorkOrder", toTypeKey: "Order", cardinality: "N:1" }, // process→commercial
     { key: "sched_for_wo", fromTypeKey: "ProductionSchedule", toTypeKey: "WorkOrder", cardinality: "N:1" }, // process
     { key: "shift_for_line", fromTypeKey: "ShiftPlan", toTypeKey: "Line", cardinality: "N:1" }, // people
     { key: "wip_for_wo", fromTypeKey: "WIPLot", toTypeKey: "WorkOrder", cardinality: "N:1" }, // process
@@ -4456,6 +4469,58 @@ function lineStatusFor(orderStatus: string, h: number, i: number): "OPEN" | "COM
   if (orderStatus === "IN_PRODUCTION") return ((h + i) % 2 === 0 ? "COMMITTED" : "PARTIAL");
   const STATUSES = ["OPEN", "COMMITTED", "PARTIAL", "SHIPPED"] as const;
   return STATUSES[(h + i) % 4] as "OPEN" | "COMMITTED" | "PARTIAL" | "SHIPPED";
+}
+
+/**
+ * WO-FULFILLS-EDGE · 工单 → 销售订单的**兑现关系**（`fulfills` 边的唯一真值源）。
+ *
+ * ── 判据：一张工单兑现哪张订单 ────────────────────────────────────────────────
+ * 只在**数据自洽**处连边，两个条件同时成立才连：
+ *   ① `wo.modelId === order.model` —— 工单产的型号就是订单要的型号；
+ *   ② `order.bases` 含 `wo.baseId` —— 订单被分配到的基地里，有这张工单所在的那个基地。
+ * 候选多于一张时按 `hashString(woId) % n` 定选（**零 rng、零时钟** ⇒ 同 seed 字节一致 R6）。
+ *
+ * ── 为什么条件 ② 不能省（实测数据，不是设想）────────────────────────────────────
+ * 260 张工单里：**43** 张的 (modelId, baseId) 真自洽；**111** 张挂着目录内型号却落在
+ * 该型号**产不了**的基地上（`WO_MODELS` 是硬编码 5 元数组，按 lineId 哈希选，压根没看基地产能）；
+ * **106** 张的型号（`储能-280Ah` / `储能-314Ah`）根本不在 `MODELS` 目录里。
+ * 省掉 ② 就会把后两类也连上去，得到「常州线上的工单兑现一张只在合肥/金华生产的订单」这种边——
+ * 这正是同文件 `fg_of_model` / `order_of_customer` 两处已登记过的同一个取舍：
+ * **诚实不连悬空边，「张冠李戴的数比没有更危险」**。
+ * ⇒ 本函数产出 43 条边、覆盖 38 张订单，**不是覆盖率不足，是数据自洽处就这么多**。
+ *
+ * ⚠ 只显式接**订单↔工单**这一条，**不写通用推断器**：全仓 6 条边（如
+ * `transfer_from_base` / `transfer_to_base`）候选属性集完全相同，确定性推断器会给两条选同一个属性，
+ * 其中一条**拓扑静默接反且不报错**。
+ *
+ * @returns `{ woId, so }[]`，按 workOrders 原序（确定性）；无候选的工单**不出现**在结果里。
+ */
+export function deriveFulfills(
+  orders: Record<string, unknown>[],
+  workOrders: Record<string, unknown>[],
+): { woId: string; so: string }[] {
+  // 按 model 预分桶：避免 260×500 全表扫，且桶内保持 orders 原序（确定性）。
+  const byModel = new Map<string, Record<string, unknown>[]>();
+  for (const o of orders) {
+    const key = String(o.model ?? "");
+    if (!key) continue;
+    const bucket = byModel.get(key);
+    if (bucket) bucket.push(o); else byModel.set(key, [o]);
+  }
+  const out: { woId: string; so: string }[] = [];
+  for (const wo of workOrders) {
+    const woId = String(wo.woId ?? "");
+    const modelId = String(wo.modelId ?? "");
+    const baseId = String(wo.baseId ?? "");
+    if (!woId || !modelId || !baseId) continue;
+    const sameModel = byModel.get(modelId);
+    if (!sameModel) continue; // 目录外型号（储能-280Ah/314Ah）：订单簿里没人要 ⇒ 诚实不连
+    const cands = sameModel.filter((o) => Array.isArray(o.bases) && (o.bases as unknown[]).includes(baseId));
+    if (cands.length === 0) continue; // 型号对得上但基地对不上 ⇒ 诚实不连
+    const pick = cands[hashString(woId) % cands.length] as Record<string, unknown>;
+    out.push({ woId, so: String(pick.so) });
+  }
+  return out;
 }
 
 export function deriveOrderLines(
@@ -5894,6 +5959,19 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       etaDate: isoDate(xferT0 + etaDay * 86400000),
       reason: `${fromName}→${toName} ${modelId} 电芯→电池包就近供芯`,
     });
+  }
+
+  // WO-FULFILLS-EDGE：把「工单兑现哪张订单」回写成 `WorkOrder.orderRef` 外键。
+  // 放在 return 之前（orders 与 workOrders 都已生成完毕），**纯投影**：只读两个既有数组、
+  // 零 rng、零时钟 ⇒ 不位移任何 rng 流，同 (industry, scale, seed) 字节一致（R6）。
+  // 无候选的工单**不写这个字段**（条件缺席，先例 `Order.earlyDue`）——
+  // 写个空串会让「查过没有」与「压根没登记」在下游分不开。
+  {
+    const woById = new Map(workOrders.map((w) => [String(w.woId), w]));
+    for (const f of deriveFulfills(orders, workOrders)) {
+      const wo = woById.get(f.woId);
+      if (wo) wo.orderRef = f.so;
+    }
   }
 
   return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, warehouses, interBaseTransfers, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, exceptionEvents, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts, finishedGoodsInv, inventoryTxns, orderPromises, orderLines };

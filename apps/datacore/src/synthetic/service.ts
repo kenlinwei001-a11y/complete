@@ -1239,6 +1239,14 @@ export class SyntheticService {
       await putLink(`lnk_txf_${txnId}`, "txn_for_fg", oid("InventoryTxn", txnId), oid("FinishedGoodsInventory", P(tx).fgRef));
       if (P(tx).woRef) await putLink(`lnk_txw_${txnId}`, "txn_from_wo", oid("InventoryTxn", txnId), oid("WorkOrder", P(tx).woRef));
     }
+    // WO-FULFILLS-EDGE 订单兑现链路（工单 → 销售订单 N:1）——**制造侧回到商务侧的那一跳**。
+    // 少了它，「这张订单靠哪些工单产出来兑现」在本体里表达不了，产销端到端推演断在这里。
+    // FK 是 `WorkOrder.orderRef`（`battery.ts` 的 `deriveFulfills` 唯一确定），**条件缺席**：
+    // 只有 (modelId, baseId) 与订单簿真自洽的工单才有这个字段 ⇒ 这里照着有没有连，不补默认值。
+    for (const wo of g.workOrders) {
+      const so = P(wo).orderRef;
+      if (so) await putLink(`lnk_wfo_${P(wo).woId}`, "fulfills", oid("WorkOrder", P(wo).woId), oid("Order", so));
+    }
     // WO-ATP-PROMISE 订单承诺链路（承诺 → 订单·一订单一承诺 N:1；承诺溯源到销售订单）。
     for (const p of g.orderPromises) {
       const promiseId = String(P(p).promiseId);

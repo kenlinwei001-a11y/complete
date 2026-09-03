@@ -1231,6 +1231,35 @@ Order(头级·so·qty·model·due) --deriveOrderLines(确定性拆行·独立哈
   残口：ATP/齐套行级消费、affected_orders 行级归因下沉归后续 WO（本单只立行级数据 + rollup 勾稽）
 ```
 
+**订单兑现链（WO-FULFILLS-EDGE · 工单 → 销售订单 · 制造侧回到商务侧的唯一一跳）**
+```
+今天之前的行为：Order 与 WorkOrder 之间**一条边都没有** —— 类型层 17 条涉及 Order/WorkOrder 端点的边里
+  没有一条以这两者为端点对（Order 侧只到 Model/Customer/PlanTarget/OrderLine/OrderPromise，
+  WorkOrder 侧只到 Model/Line/WIPLot/QualityLot/ProductionSchedule/InventoryTxn）；
+  `workOrderProps` 的 refToTypeKey 只指 Model/Line/Base，**没有指向 Order 的 FK**；
+  WorkOrder.modelId 取自硬编码 5 元数组 WO_MODELS（按 lineId 哈希选），与 500 张订单簿零引用关系
+  ⇒「这张订单靠哪些工单产出来兑现」**表达不了**，产销端到端推演断在最要紧的那一跳。
+
+WorkOrder{woId,modelId,lineId,baseId} × Order{so,model,bases}
+  --deriveFulfills(纯投影·零 rng·零时钟·R6)-->
+    ① wo.modelId === order.model（工单产的型号就是订单要的型号）
+    ② order.bases 含 wo.baseId（订单被分配到的基地里有这张工单所在的基地）
+    ①②同时成立才连；候选多于一张时 hashString(woId) % n 定选
+      --> WorkOrder.orderRef（**条件缺席** FK·先例 Order.earlyDue）
+链路：WorkOrder --fulfills(N:1)--> Order（工单兑现销售订单）
+  ⚠ 只落这一个方向，不落逆边：查询引擎 direction:"in"（ontology/slice-index.ts 的 step()）
+    本来就能从 Order 反着走回 WorkOrder，逆边落了是纯增重（同 D07 段「归属向没有消费方即纯增重」）
+  ⚠ 诚实不连悬空边（scale=S 实测 260 张工单）：43 张 (modelId,baseId) 真自洽 → 连边（覆盖 38 张订单）；
+    111 张挂目录内型号却落在该型号产不了的基地上、106 张型号（储能-280Ah/314Ah）不在 MODELS 目录里
+    → **一律不连**。43/260 不是覆盖率不足，是数据自洽处就这么多。
+  ⚠ 对照实验（真起服务 SEED_DEMO=1·非桩）：SO-900064 沿 fulfills:in 走一跳
+    修前 = NO_QUERY_PLAN「linkKey fulfills 不在本体中」（0 条）· 修后 = 2 条
+    把该 FK 改指 SO-3391 → SO-900064 回到 0 条、SO-3391 变 2 条（工单整体搬家 ⇒ 证遍历真跟着 FK 走，
+    不是顺手返回了别人的工单）
+  残口：一张工单只归一张订单（N:1·MES 工单对销售订单的常规口径）；
+    真实世界的「一工单供多订单 / 一订单多工单分批」需 N:N 或桥实体，归后续 WO。
+```
+
 **流程节点检视链（WO-V4-INSPECT · PRD-sandbox-v4-backward-derivation §4.1 + §4.2 · 纯派生·零新真值源）**
 ```
 GET /a/v1/process-definitions/{key}/inspect
