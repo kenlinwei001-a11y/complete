@@ -6088,10 +6088,23 @@ export class SolverService {
       const rows = (byType[b.typeKey] ?? []).filter((o) => o.props[b.propKey] !== undefined && o.props[b.propKey] !== null);
       if (rows.length === 0) continue; // 该类型没数据/没这个属性 → 不灌 → 评估处诚实落 NOT_APPLICABLE
       const upper = CONSTRAINT_KINDS_UPPER.includes(b.kind);
+      // ⚠ **不能只用 `num()` 比**：它对非数字回落 `0`（`types.ts:336`），于是 `must_be_before` 绑在
+      //   日期属性上时**每个实例都得 0**，排序整个塌给 `id` 字典序 —— 结果是确定性的（R6 不破），
+      //   但选出来的是「id 最小的那个」而不是「日期最晚的那个」，**语义上等于随便挑一个**。
+      //   这正是本单要修的那类病换个位置复发：跑得起来、不报错、算的不是那回事。
+      //   故按值的**实际类型**比：数字走数值序，字符串走字典序（ISO-8601 日期的字典序 = 时间序），
+      //   类型不一致时数字排在字符串前（固定次序，不留"看情况"的空档）。
+      const cmp = (l: unknown, r: unknown): number => {
+        if (typeof l === "number" && typeof r === "number") return l - r;
+        if (typeof l === "number") return -1;
+        if (typeof r === "number") return 1;
+        const ls = String(l);
+        const rs = String(r);
+        return ls < rs ? -1 : ls > rs ? 1 : 0;
+      };
       const worst = rows.slice().sort((x, y) => {
-        const a = num(x.props[b.propKey]);
-        const z = num(y.props[b.propKey]);
-        return a !== z ? (upper ? z - a : a - z) : x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
+        const d = cmp(x.props[b.propKey], y.props[b.propKey]);
+        return d !== 0 ? (upper ? -d : d) : x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
       })[0]!;
       out[b.typeKey] = { props: worst.props, objectId: worst.id };
     }

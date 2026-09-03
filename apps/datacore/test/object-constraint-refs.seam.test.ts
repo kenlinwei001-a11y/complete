@@ -237,6 +237,53 @@ describe("WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→
     expect(r.evidence).toContain(maxRow.id);
   });
 
+  /**
+   * ⑤b **日期属性上的 `must_be_before` 必须真按时间挑实例**。
+   *
+   * 病灶（本单实现过程中自查出来的）：选"最极端实例"若只用 `num()` 比大小，而 `num()` 对非数字
+   * 回落 `0`（`solvers/types.ts:336`）⇒ 日期属性上**每个实例都得 0** ⇒ 排序整个塌给 `id` 字典序。
+   * 结果**是确定性的**（R6 不破、四包全绿），但选出来的是「id 最小的那个」而不是「日期最晚的那个」
+   * —— 跑得起来、不报错、算的不是那回事。故这条咬的是**语义**不是**能不能跑**。
+   */
+  it("⑤b 非数字属性（日期/文本）上选实例必须**按值**比，不许塌给 id 字典序", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    const lines = (await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Line&pageSize=500", headers: ADMIN })).json() as {
+      items: { id: string; props: Record<string, unknown> }[]; total: number;
+    };
+    expect(lines.items.length, "分页必须取全").toBe(lines.total);
+    const rows = lines.items.filter((o) => typeof o.props.name === "string");
+    expect(rows.length, "金丝雀：Line 应当有文本属性 name（为 0 说明取数坏了，不是实现对了）").toBeGreaterThan(0);
+
+    // 上限型按值取最大；若实现塌给 id，取到的会是 id 最小的那个。两者必须不同，这条测试才区分得开。
+    const maxByValue = rows.slice().sort((x, y) => String(y.props.name).localeCompare(String(x.props.name)) || (x.id < y.id ? -1 : 1))[0]!;
+    const minById = rows.slice().sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))[0]!;
+    expect(maxByValue.id, "构造前提：按值最大的不能同时是 id 最小的").not.toBe(minById.id);
+
+    // 约束绑在**文本属性** name 上（kind 为上限型 must_be_before ⇒ 取值最大者），
+    // 而规则表达式读的是同一实例的 utilization —— 于是「选中了谁」可从证据里读出来，
+    // 与「规则怎么判」解耦，单独把比较器的语义钉住。
+    await publishRule(t, "LINE_UTIL_CEIL", 96);
+    const types = (await t.app.inject({ method: "GET", url: "/a/v1/ontology/object-types", headers: ADMIN })).json() as {
+      key: string; displayName: string; domain?: string; properties: unknown[]; derivedProperties?: unknown[]; sourceBindings?: unknown[];
+    }[];
+    const line = types.find((x) => x.key === "Line")!;
+    const res = await t.app.inject({
+      method: "POST", url: "/a/v1/ontology/object-types", headers: ADMIN,
+      payload: {
+        key: line.key, displayName: line.displayName, ...(line.domain ? { domain: line.domain } : {}),
+        properties: line.properties, derivedProperties: line.derivedProperties ?? [], sourceBindings: line.sourceBindings ?? [],
+        constraintRefs: [{ ruleKey: "LINE_UTIL_CEIL", propKey: "name", kind: "must_be_before" }],
+      },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+
+    const r = (await evaluatedRules(t)).find((x) => x.key === "LINE_UTIL_CEIL")!;
+    expect(r, "约束应被并入引用集").toBeDefined();
+    expect(r.evidence, `应选中按 name 最大的 ${maxByValue.id}，而不是 id 最小的 ${minById.id}`).toContain(maxByValue.id);
+  });
+
   it("⑥ 规则挂上之后被下线 → 诚实标 NOT_APPLICABLE 点名断链（不静默跳过）", async () => {
     const t = await makeApp();
     await seedBattery(t);
