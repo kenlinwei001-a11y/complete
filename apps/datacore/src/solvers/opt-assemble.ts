@@ -310,6 +310,10 @@ export async function assembleParetoModel(
 
   // ── ⑤b 要不到的轴：**点名 + 说清最近的落点**（留白会被读成"这一维没问题"）─────
   const cashProps = hits(orderT, "cashCycle");
+  // ⚠ 下面两条 `reason` 是**上屏的正文**，不是源码注释 —— 一律写成纯文本。
+  //   本仓注释里的 `**强调**` 是给读代码的人看的 Markdown；原样丢进 `<div>` 只会
+  //   在用户屏上印出四个星号（2026-09-03 真浏览器实测就是这么翻车的：
+  //   屏上出现「**没有时间维**」）。屏上没有 Markdown 渲染器，就不许用 Markdown 语法。
   const unavailableObjectives: ParetoObjectiveGap[] = [
     {
       key: "margin",
@@ -319,16 +323,16 @@ export async function assembleParetoModel(
         `${costPropKey ? `${costOwner.key}.${costPropKey}` : "未绑定"}（单位 ${costUnit ?? "未声明"}）` +
         (sameUnit ? "量纲一致，" : "量纲不一致，直接相减会差一个数量级；") +
         `且两侧都按「每行/每线一个标量」取值、不乘 ${orderT.key}.${qtyProp} —— ` +
-        `同单价下 4,343 件与 417 件会算出同一份营收。要补齐需先在本体上给出**含量的行金额**与**同量纲的行成本**。`,
+        `同单价下 4,343 件与 417 件会算出同一份营收。要补齐需先在本体上给出「含量的行金额」与「同量纲的行成本」。`,
     },
     {
       key: "cash",
       label: "现金",
       reason:
-        `今天算不出：本族（${family}）是订单×产线×合同的指派问题，**没有时间维** —— ` +
+        `今天算不出：本族（${family}）是订单×产线×合同的指派问题，没有时间维 —— ` +
         `一个解里没有任何一单带着收付款发生在哪一天，现金周期无从起算。` +
         (cashProps.length > 0
-          ? `${orderT.key} 上离它最近的字段是 ${cashProps.map((k) => `${orderT.key}.${k}`).join("、")}，但它是**存量比率**不是账期天数。`
+          ? `${orderT.key} 上离它最近的字段是 ${cashProps.map((k) => `${orderT.key}.${k}`).join("、")}，但它是存量比率不是账期天数。`
           : `${orderT.key} 上没有任何命中账期/回款/现金词库的数值字段。`) +
         `要补齐需先在本体上给出账期天数（或收款日）并让求解族携带时间维。`,
     },
