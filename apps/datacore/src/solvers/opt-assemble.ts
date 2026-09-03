@@ -390,6 +390,13 @@ export async function assembleParetoModel(
   const costLabel = unitCostProp
     ? `${assignCostLabel} + ${orderT.key}.${unitCostProp} × ${orderT.key}.${qtyProp}`
     : assignCostLabel;
+  /**
+   * 成本轴放进**减法**里时要带括号 —— 实测踩到过：成本轴自己是两项相加时，
+   * 毛利标签渲染成 `营收 − A + B×qty`，按四则运算读**恰好把成本的第二项加成了收益**，
+   * 与真实算法（`margin = revenue − cost`，cost 是那两项之和）相反。
+   * 数是对的、**字是错的**，而用户只看得到字 —— 同 `revenueLabel` 不写 `× 用量` 那个病。
+   */
+  const costLabelInSubtraction = unitCostProp ? `(${costLabel})` : costLabel;
 
   /**
    * **接得到本体字段的**真目标 —— 「真目标 < 2 ⇒ 整单报缺」这条红线**只数这一批**。
@@ -485,7 +492,7 @@ export async function assembleParetoModel(
   const marginObjective: ParetoObjective[] = marginAvailable
     // 毛利只在**折齐了**的分支里存在（`marginAvailable` 含 `currencyAligned`），
     // 故这里的单位恒是基准货币单位 —— 用 `revMoneyUnit` 而不是本体原样单位。
-    ? [{ key: "margin", dir: "max", label: `毛利（${revenueLabel} − ${costLabel}）`, ...(revMoneyUnit ? { unit: revMoneyUnit } : {}) }]
+    ? [{ key: "margin", dir: "max", label: `毛利（${revenueLabel} − ${costLabelInSubtraction}）`, ...(revMoneyUnit ? { unit: revMoneyUnit } : {}) }]
     : [];
 
   /**
