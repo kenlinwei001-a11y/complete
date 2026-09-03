@@ -27,7 +27,7 @@
  * 杠杆按 key 字典序、档位去重升序、笛卡尔积按里程表序枚举、输出按全序排序 ⇒
  * 同 (session, 杠杆集, 参数版本) 重跑 `JSON.stringify` 逐字节一致。
  */
-import type { OptPerturbation, OptTemplateFamily, ParetoBinding, ParetoObjective, ParetoRequest, ParetoResult, ParetoSolution } from "@platform/contracts";
+import type { OptPerturbation, OptTemplateFamily, ParetoBinding, ParetoObjective, ParetoRankingEntry, ParetoRequest, ParetoResult, ParetoSolution } from "@platform/contracts";
 import { validationError } from "../errors.js";
 import { applyPerturbationSet, type SolveArgsFn } from "./opt-whatif.js";
 
@@ -148,6 +148,41 @@ function cartesian(grid: readonly { key: string; values: number[] }[]): { key: s
   return acc;
 }
 
+/**
+ * 求解回包里**可当目标用的结构读数**（`objectiveValues` 之外的那一档）。
+ *
+ * ── 为什么要有这张表（WO-PARETO-AXES 开工实测）─────────────────────────────────
+ * `cross_object_occupancy` 的回包里，「多少单获排」这件事**一直是真算出来的**
+ * （`servedCount` / `orderCount`，与 `occupancy[]`/`displaced[]` 同源），
+ * 但 `metricsOf` 从前只读 `objectiveValues` ⇒ 这个数**从来没进过 `metrics`** ⇒
+ * 它既不能当轴、也不会出现在方案卡上。这不是"没有交付这一维"，是**接了线没投影**
+ * （本仓三分法里的第二态，修法是补投影不是造字段）。
+ *
+ * ⚠ **白名单而不是"把所有数值字段都收进来"**：回包里同样是数字的还有
+ * `lineCount` / `contractCount` 这类**与解无关的常量**（整个网格里恒定），
+ * 把它们收成 metrics 会让屏上多出几根**恒定的轴** —— 恒定轴在支配比较里永远打平，
+ * 于是它看起来像一个维度，实际一个解都区分不了。宁可漏也不许多。
+ */
+const STRUCTURAL_METRIC_KEYS = ["servedCount", "orderCount"] as const;
+
+/**
+ * 从结构读数**派生**的目标。派生式写在这一处，前端不再算第二遍（两处一漂就是屏上看不出的错）。
+ *
+ * ⛔ **缺一个输入就整格不给，绝不补 0**：与 `normalized()` 同一条理由 ——
+ * 一个"没量到"的解补出 0 会在支配比较里冒充极值。
+ * 且分母为 0 时同样不给（0 单的租户不存在"获排率"这件事，给 0 或 1 都是编）。
+ */
+const DERIVED_METRICS: readonly { key: string; from: readonly string[]; of: (m: Record<string, number>) => number | undefined }[] = [
+  {
+    // 获排率 = 获排单数 / 总单数 ∈ [0,1]。**这一族没有时间维**（订单×产线×合同的指派问题），
+    // 故它是「这批需求接下了多少」，**不是「准时率」** —— 两者在屏上必须叫不同的名字，
+    // 叫成准时率就是把一个本系统今天答不了的问题假装答了。
+    key: "serviceRate",
+    from: ["servedCount", "orderCount"],
+    of: (m) => (m.orderCount! > 0 ? m.servedCount! / m.orderCount! : undefined),
+  },
+];
+
 /** 从求解输出里取一个解的目标读数：多目标 `objectiveValues` 优先，标量 `objective` 兜底。 */
 function metricsOf(out: Record<string, unknown>): Record<string, number> {
   const m: Record<string, number> = {};
@@ -156,6 +191,18 @@ function metricsOf(out: Record<string, unknown>): Record<string, number> {
     for (const [k, v] of Object.entries(ov as Record<string, unknown>)) if (typeof v === "number" && Number.isFinite(v)) m[k] = q(v);
   }
   if (typeof out.objective === "number" && Number.isFinite(out.objective)) m.objective = q(out.objective);
+  // 结构读数（白名单，理由见 `STRUCTURAL_METRIC_KEYS`）。`objectiveValues` 里的同名键优先 ——
+  // 引擎显式声明成目标的那一份最准，结构档只是它没声明时的来源。
+  for (const k of STRUCTURAL_METRIC_KEYS) {
+    const v = out[k];
+    if (m[k] === undefined && typeof v === "number" && Number.isFinite(v)) m[k] = q(v);
+  }
+  for (const d of DERIVED_METRICS) {
+    if (m[d.key] !== undefined) continue; // 引擎自己给了同名读数 ⇒ 用它的，不覆盖
+    if (!d.from.every((k) => typeof m[k] === "number")) continue; // 缺输入 ⇒ 整格不给
+    const v = d.of(m);
+    if (typeof v === "number" && Number.isFinite(v)) m[d.key] = q(v);
+  }
   // 键序稳定（R6）：`JSON.stringify` 的字节取决于插入序，故重建一个字典序对象。
   const sorted: Record<string, number> = {};
   for (const k of Object.keys(m).sort()) sorted[k] = m[k]!;
@@ -163,8 +210,91 @@ function metricsOf(out: Record<string, unknown>): Record<string, number> {
 }
 
 /**
+ * 权重归一：负值/非有限值一律剔除；全零或全空 ⇒ **各目标等权 1**。
+ *
+ * 「全零 ⇒ 等权」而不是「全零 ⇒ 分母 0 ⇒ NaN」：用户把所有滑杆拉到底是一个**可达的屏上状态**，
+ * 它该被读成"我没有偏好"，不该让整页读数变成 NaN。
+ * 不在 `objectives` 里的键**静默忽略**（契约原话：屏上留着一个已换掉的轴的滑杆不该让求解 400）。
+ */
+export function normalizeWeights(
+  objectives: readonly ParetoObjective[],
+  weights: Readonly<Record<string, number>> | undefined,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  let sum = 0;
+  for (const o of objectives) {
+    const w = weights?.[o.key];
+    const v = typeof w === "number" && Number.isFinite(w) && w >= 0 ? q(w) : 1;
+    out[o.key] = v;
+    sum += v;
+  }
+  if (sum <= 0) for (const o of objectives) out[o.key] = 1;
+  // 键序稳定（R6）：与 `metricsOf` 同一条理由。
+  const sorted: Record<string, number> = {};
+  for (const k of Object.keys(out).sort()) sorted[k] = out[k]!;
+  return sorted;
+}
+
+/**
+ * **本单的心脏（其二）**：按权重给前沿排名次 —— 而**前沿是谁，这里一个字都不改**。
+ *
+ * ══ 为什么归一的极值取自「全体可行候选」而不是「前沿」════════════════════════
+ * 这不是审美，是那条验收判据的算术保证。设归一
+ *   nₖ(s) = (读数折成「1 = 最好 · 0 = 最差」)，极值取自 `pool`。
+ * `pool` 与 `weights` **无关** ⇒ nₖ(s) 与 weights 无关 ⇒ 换权重时每个解的 nₖ 都不动，
+ * 变的只有 Σwₖnₖ/Σwₖ 这个加权平均 ⇒ **只可能换名次，不可能换成员**。
+ * 若改成「极值取自前沿」，结论依旧（前沿也与权重无关），但少了一层：
+ * 被支配解与前沿解会落在两把不同的尺上，屏上同一根轴出现两种刻度。
+ *
+ * ⚠ 退化域（某目标全体读数相同）⇒ 该目标对所有解贡献同一个 0.5，
+ *    **不是 0 也不是 1**：全体并列时说"大家都最好"或"大家都最差"都是断言，
+ *    而这一维真实的信息量是零。给 0.5 让它在加权平均里**不改变任何相对次序**。
+ *
+ * ⛔ 本函数**不参与**可行性判定、不参与支配比较、不被 `partitionPareto` 调用 ——
+ *    它在前沿切好**之后**才跑。这是"权重不改前沿"在代码结构上的保证，不靠注释。
+ */
+export function rankByWeights(
+  frontier: readonly ParetoSolution[],
+  objectives: readonly ParetoObjective[],
+  weights: Readonly<Record<string, number>>,
+  pool: readonly ParetoSolution[],
+): ParetoRankingEntry[] {
+  const span = new Map<string, { lo: number; hi: number }>();
+  for (const o of objectives) {
+    const vs = pool.map((s) => s.metrics[o.key]).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    if (vs.length > 0) span.set(o.key, { lo: Math.min(...vs), hi: Math.max(...vs) });
+  }
+  const total = objectives.reduce((s, o) => s + (weights[o.key] ?? 0), 0);
+  const scoreOf = (s: ParetoSolution): number => {
+    if (total <= 0) return 0;
+    let acc = 0;
+    for (const o of objectives) {
+      const w = weights[o.key] ?? 0;
+      if (w === 0) continue;
+      const sp = span.get(o.key);
+      const v = s.metrics[o.key];
+      // 读数缺失 ⇒ 这一维按"零信息"计（0.5），与退化域同一口径。**不补 0**：
+      // 补 0 在 `dir:"min"` 下是"最好"、在 `dir:"max"` 下是"最差"，同一个补法两种含义。
+      let n = 0.5;
+      if (sp !== undefined && typeof v === "number" && Number.isFinite(v)) {
+        const d = sp.hi - sp.lo;
+        n = d === 0 ? 0.5 : o.dir === "max" ? (v - sp.lo) / d : (sp.hi - v) / d;
+      }
+      acc += w * n;
+    }
+    return q(acc / total);
+  };
+  return [...frontier]
+    .map((s) => ({ id: s.id, score: scoreOf(s) }))
+    // 全序（R6）：得分降序 → id 字典序兜底。不依赖 `Array#sort` 的稳定性。
+    .sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((e, i) => ({ id: e.id, rank: i + 1, score: e.score }));
+}
+
+/**
  * 执行帕累托解集求解：杠杆网格 → 逐组合施加扰动（克隆·不落真值 R4）→ sidecar 重解 →
- * 绑定裕度 → 可行性过滤 → 逐对支配剔除 → `{frontier, dominated, iterations, residual}`。
+ * 绑定裕度 → 可行性过滤 → 逐对支配剔除 → `{frontier, dominated, iterations, residual}`，
+ * 最后按**读者偏好**（`weights`）给前沿排一个名次（`ranking` / `recommendedId`）。
  */
 export async function runOptimizePareto(solve: SolveArgsFn, req: ParetoRequest): Promise<ParetoResult> {
   const objectives = req.objectives;
@@ -232,6 +362,12 @@ export async function runOptimizePareto(solve: SolveArgsFn, req: ParetoRequest):
   frontier.sort(cmp);
   dominated.sort(cmp);
 
+  // ── 权重：**在前沿切好之后**才登场（见 `rankByWeights` 的 ⛔ 段）───────────────
+  // `frontier`/`dominated` 此刻已经定了，下面三行读它们、不改它们。
+  // 归一池 = 全体参与竞争的可行解（前沿 + 被支配），与权重无关 ⇒ 换权重只换名次。
+  const weights = normalizeWeights(objectives, req.weights);
+  const ranking = rankByWeights(frontier, objectives, weights, [...frontier, ...dominated]);
+
   return {
     objectives,
     frontier,
@@ -240,5 +376,12 @@ export async function runOptimizePareto(solve: SolveArgsFn, req: ParetoRequest):
     // 守恒残差：被可行性挡在竞争之外的候选数。恒等式 iterations = frontier + dominated + residual
     // 让「解去哪了」可被机器核 —— 不平就是有解被静默吞掉了。
     residual: evaluated.length - frontier.length - dominated.length,
+    weights,
+    ranking,
+    // 前沿为空 ⇒ `null`。**不兜一个 id 出来** —— 兜出来的那个解要么不存在、
+    // 要么是被支配解，屏上会把它印成"推荐方案"。
+    recommendedId: ranking[0]?.id ?? null,
+    // 装配侧填、求解侧只回显（求解器不认识"本租户本体缺哪个字段"）。
+    unavailableObjectives: req.unavailableObjectives ?? [],
   };
 }
