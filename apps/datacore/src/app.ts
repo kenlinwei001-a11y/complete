@@ -2600,6 +2600,81 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     };
   });
   /**
+   * 因果边写入前的**引用体检**（WO-CAUSAL-EDGE-CRUD 交付判据 2）。
+   *
+   * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════
+   * **X（改前，2026-09-03 真后端实测）**：`PropagationRuleSchema` 把三个端点声明成裸
+   *   `z.string()` ⇒ 只要非空就过。实测 `POST` 一条源类型 `NoSuchType_ZZZ`、链路
+   *   `no_such_link_ZZZ`、目标 `AlsoMissing_ZZZ` 三者全不存在的边，**201 且 status=PUBLISHED**
+   *   —— 它当场进推演集合（`listPropagationRules(tenantId, true)`），而 `navOut` 里
+   *   查无此链路 ⇒ 永远贡献 0。屏上「生效因果边」数字 +1，推演结果一动不动。
+   * **Y（改后）**：端点 / 链路 / 系数来源三样都当场核对，非法 400 并点名是哪一个值。
+   *
+   * ⚠ **这不是假想的洁癖，是本仓真出过的事故**：`POST /a/v1/ontology/link-types` 当时
+   *   只校验字符串非空，**133 条建出来的结构边里 81 条端点类型根本不存在，全部 201 通过**。
+   *   因果边不许重犯同一个错。
+   *
+   * ══ 为什么连**方向**都要卡（这条最容易被当成过度设计）══════════════════════
+   * 引擎只沿 `fromId→toId` 单向走（`sim/propagation.ts` 的 `navOut`：
+   * `navKey(l.linkKey, l.fromId) -> [toId…]`，头注亦写明「`propagateTick` 的 `navOut`
+   * 只沿 `fromId→toId`」）。故一条 `viaLinkKey` 方向反了的边**语法全对、语义恒空** ——
+   * 它会安静地待在「已发布」里一辈子不产生任何贡献。这正是本仓三分法里
+   * 「**接了线接错地方**」那一态，且是最难查的一种：没有报错、没有红、只是数不动。
+   * 实测 42 条种子边**全部正向**（正向 42 · 反向 0 · 对不上 0），故这条闸门
+   * 对存量零误伤 —— 先量后卡，不是先卡后量。
+   *
+   * ══ 为什么 `coefficientRef` 也要卡 ═════════════════════════════════════════
+   * `effectiveCoefficient`（`sim/propagation.ts`）在 ref 解析不到时**静默回落**到内联
+   * `coefficient`。于是一个拼错的 `paramKey` 不会报错，只会让用户以为"系数来自规则配置、
+   * 改规则就能改推演"，实际改规则**毫无效果**（实测：42 条边走 ref 的是 0 条，全部内联回落）。
+   * 静默回落 = 用户以为改了、其实没改 ⇒ 写入时就必须解析得到，解析不到当场 400。
+   *
+   * ⛔ **闸门放在路由，不放仓储** —— 与 `deletePropagationRule` 的接口注释同一条理由：
+   *   放仓储会把 `seedDemoPropagationRules` 这类内部写路也挡住（种子经 `putPropagationRule`
+   *   直落，不走本路由）。
+   */
+  const assertPropagationRefs = async (c: AuthCtx, draft: PropagationRule): Promise<void> => {
+    const [types, linkTypes] = await Promise.all([ontology.listTypes(c), repos.ontologyLinks.list(c.tenantId)]);
+    const typeKeys = new Set(types.map((t) => t.key));
+    // 逐条收集再一次抛出：一次告诉调用方**全部**毛病，而不是修一个报一个（改 13 个字段的表单，
+    // 挤牙膏式报错等于让用户往返 3 次）。
+    const bad: string[] = [];
+    if (!typeKeys.has(draft.sourceTypeKey)) bad.push(`源对象类型 ${draft.sourceTypeKey} 不存在于本租户本体`);
+    if (!typeKeys.has(draft.targetTypeKey)) bad.push(`目标对象类型 ${draft.targetTypeKey} 不存在于本租户本体`);
+    const link = linkTypes.find((l) => l.key === draft.viaLinkKey);
+    if (!link) {
+      bad.push(`链路类型 ${draft.viaLinkKey} 不存在于本租户本体`);
+    } else if (link.fromTypeKey !== draft.sourceTypeKey || link.toTypeKey !== draft.targetTypeKey) {
+      // 方向/端点对不上 ⇒ 这条边**永远走不到任何对象**（引擎只沿 fromId→toId 单向走）。
+      // 报文必须同时给出「链路实际连的是什么」与「反过来写才对吗」这两个信息 ——
+      // 只说「对不上」的话，调用方唯一能做的就是猜。
+      const reversed = link.fromTypeKey === draft.targetTypeKey && link.toTypeKey === draft.sourceTypeKey;
+      bad.push(
+        `链路 ${link.key} 连的是 ${link.fromTypeKey}→${link.toTypeKey}，与本边的 ${draft.sourceTypeKey}→${draft.targetTypeKey} 对不上` +
+          (reversed
+            ? `（方向正好反了：引擎只沿链路的 from→to 单向传导，这样写的边会永远贡献 0。请把源/目标对调，或改用一条 ${draft.sourceTypeKey}→${draft.targetTypeKey} 的链路）`
+            : `（引擎只沿链路的 from→to 单向传导，这样写的边会永远贡献 0）`),
+      );
+    }
+    if (draft.coefficientRef) {
+      const ref = draft.coefficientRef;
+      const rule = (await repos.rules.list(c.tenantId, (x) => x.status === "PUBLISHED")).find((x) => x.key === ref.ruleKey);
+      if (!rule) {
+        bad.push(`系数来源规则 ${ref.ruleKey} 不存在或未发布（PUBLISHED）—— 解析不到会静默回落内联系数，等于改规则不生效`);
+      } else {
+        const v = (rule.params ?? {})[ref.paramKey];
+        const n = typeof v === "number" ? v : Number(v);
+        if (!Number.isFinite(n)) {
+          bad.push(
+            `规则 ${ref.ruleKey} 里没有数值参数 ${ref.paramKey}（现有参数：${Object.keys(rule.params ?? {}).join(", ") || "无"}）` +
+              ` —— 解析不到会静默回落内联系数，等于改规则不生效`,
+          );
+        }
+      }
+    }
+    if (bad.length > 0) throw validationError(`因果边 ${draft.key} 引用校验失败：${bad.join("；")}`);
+  };
+  /**
    * 建/改一条因果边 —— **同 `key` 即 upsert**（WO-CAUSAL-EDGE-CRUD）。
    *
    * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════
@@ -2634,6 +2709,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 与上方 `POST …/perturbations` 的 `safeParse` 记账同一个坑（那处已修、这处漏了）：
     // 裸 `parse` 抛的 ZodError 没有 `statusCode` ⇒ 兜底处理器判 500 INTERNAL_ERROR 并回显 zod 内部结构。
     const draft = parseBody(PropagationRuleSchema, { ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
+    // 引用体检（交付判据 2）：端点 / 链路 / 方向 / 系数来源。**在 upsert 之前**——
+    // 放在后面的话，一条非法边会先把既有那条合法边覆盖掉再报错，比不校验更糟。
+    await assertPropagationRefs(c, draft);
     // 按 `key` 找既有（`false` = 连 DRAFT/RETIRED 一起看）。
     // ⚠ 必须看**全部状态**：只看 PUBLISHED 的话，一条被停用的同 key 边会被当成"不存在"，
     //   于是又新建一条 —— 那正是本单要消掉的重复行，只是换了个触发条件。
@@ -2663,6 +2741,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!cur) throw notFound("propagation rule"); // 跨租户同样走这一支（R2：查无此条，不泄露存在性）
     const patch = parseBody(PropagationRulePatchSchema, req.body ?? {});
     const next: PropagationRule = { ...cur, ...patch, version: (cur.version ?? 1) + 1 };
+    // 身份格（端点/链路）PATCH 改不了，故这里体检的**唯一有效目标是 `coefficientRef`** ——
+    // 但仍走同一个函数、对合并后的 `next` 整体校验，不另抄一份"只查 ref"的删减版：
+    // 抄一份就会在下次给 PATCH 放开某个字段时**悄悄漏掉**对应的那条闸门。
+    await assertPropagationRefs(c, next);
     await repos.sim.putPropagationRule(next);
     return next;
   });
