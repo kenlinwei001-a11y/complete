@@ -102,7 +102,7 @@ import {
   type SimSessionStatusTarget,
 } from "@/api/endpoints";
 import { getRenderer } from "@/views/registry";
-import { UNIFIED_MODES, UNIFIED_MODE_SPEC, type UnifiedMode } from "./unifiedModes";
+import { UNIFIED_MODES, UNIFIED_MODE_SPEC, type UnifiedMode, type UnifiedModeCounts } from "./unifiedModes";
 import { stateVarLabel } from "../stateVarLabel";
 import { useConsoleSession, type ConsoleSessionReason } from "../console/useConsoleSession";
 import { metricSeriesPath } from "../console/useParetoFrontier";
@@ -126,7 +126,7 @@ const SESSION_REASON_TEXT: Record<ConsoleSessionReason, string> = {
   auto: "自动选中最近一条 RUNNING 会话",
   loading: "会话列表还在路上",
   "no-running-session": "本租户没有 RUNNING 会话 —— 没有世界可推演（不是算不出来）",
-  unavailable: "会话列表这一跳失败 —— **不知道**有没有会话（不是没有）",
+  unavailable: "会话列表这一跳失败 —— 不知道有没有会话（不是没有）",
 };
 
 /**
@@ -613,6 +613,37 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
 
   const modeView = modeViews[mode];
 
+  /**
+   * 页签问句里那两个计数 —— **现算，不写死**（WO-SIM-TICK-GATE）。
+   *
+   * 改前两个数都是写死在 `unifiedModes.ts` 里的常量串，而且**两个今天都是错的**
+   * （2026-08-30 真后端 `SEED_DEMO=1` 实测）：
+   * 「38 条因果边」（实测 42，且同屏右栏 `EdgeActivePanel` 就写着 42 —— 同一屏两个数打架）、
+   * 「37 个状态变量」（实测 40 = 卡墙真实卡片数）。判据与实测证据写在 `unifiedModes.ts`
+   * 的 `UnifiedModeCounts` 头注里（判据住在判据自己家）。
+   *
+   * 复验（两条命令，`demo` 租户，起本地 datacore 后直接打）：
+   *   `curl -s -H 'X-Debug-User: demo:admin:admin' $A/a/v1/sim/view-config | jq '.propagationCount, (.stateVars|length)'`
+   *     ⇒ 2026-08-30 实测 `42` / `40`
+   *   `curl -s -H 'X-Debug-User: demo:admin:admin' "$A/a/v1/sim/propagation-rules?includeDraft=true" | jq '.items|length'`
+   *     ⇒ 2026-08-30 实测 `42`（且 42 条全 `PUBLISHED`）——「38」的出处是 `apps/datacore/src/seed.ts`
+   *     头注那句加边之前的旧数，没人回来改。
+   *
+   * ⚠ 两个数都取自 `cfgQ` 这**一份**回包：`propagationCount` 与 `stateVars` 是后端在
+   * 同一个 handler 里由同一批规则派生的（`app.ts` 的 `/a/v1/sim/view-config`），
+   * 与 `EdgeActivePanel` 的 `fetchPropagationRules(true)` 是同一个仓储调用同一个实参 ⇒
+   * **两处不是各查一次碰巧相等，是同一份真相的两次投影**。
+   * ⚠ `undefined`（还没回来）一律映射成 `null` 而不是 `0` —— 「还不知道」与「一条都没有」
+   * 是两个命题，印 `0` 就是拿兜底值冒充事实（本壳其余各处同一条纪律）。
+   */
+  const modeCounts: UnifiedModeCounts = useMemo(
+    () => ({
+      propagationRules: cfg?.propagationCount ?? null,
+      stateVars: cfg?.stateVars.length ?? null,
+    }),
+    [cfg?.propagationCount, cfg?.stateVars],
+  );
+
   return (
     <div className={styles.shell} data-testid="usim-shell">
       {/* ── 区① 顶部模式页签（顺序与分组 = `unifiedModes.ts`，本处不另排一套）──
@@ -623,6 +654,8 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
           const spec = UNIFIED_MODE_SPEC[m];
           const on = m === mode;
           const disabled = spec.pending !== null;
+          // 问句里的计数**现算**（见上面 `modeCounts` 的头注：口径、复验命令与实测日期都在那里）。
+          const question = spec.question(modeCounts);
           return (
             <span key={m} className={styles.tabSlot}>
               {spec.group === null ? null : (
@@ -637,7 +670,7 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
                 data-testid={`usim-tab-${m}`}
                 data-active={on ? "1" : "0"}
                 disabled={disabled}
-                title={disabled ? `${spec.question} —— ${spec.pending}` : spec.question}
+                title={disabled ? `${question} —— ${spec.pending}` : question}
                 aria-selected={on}
                 onClick={() => {
                   setMode(m);
@@ -789,13 +822,18 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
             </main>
 
             <aside className={styles.col} data-testid="usim-right">
+              {/* WO-SIM-TICK-GATE：改前这里还给 InspectorPane 传了一个
+                  onAction 回调，它把动作键原样写进屏底日志 —— 印出来是
+                  「动作 pin:supplyRisk（本单不落写操作）」：「本单」是工单黑话、
+                  「pin:supplyRisk」是机器动作键，两样都不该上用户屏。
+                  「钉到对照 / 追这条链」已按 InspectorPane 头注的裁决改成禁用占位 + title 说明，
+                  那条回调随之一次都不会被调到 ⇒ 连同 props 一起删掉，不留谁也不调的回调。 */}
               <InspectorPane
                 view={inspector}
                 onExpand={() => {
                   setDrawerOpen(true);
                   say(`展开抽屉 ${inspector?.card.stateVar ?? ""}`);
                 }}
-                onAction={(a) => say(`动作 ${a}（本单不落写操作）`)}
               />
               {/* ⚠ 这里两侧各加了**一块不同的功能**（收编时的真冲突，不是二选一）：
                   WO-SIM-SESSION-WIRE 的「我改这一格会波及谁」与 EdgeActivePanel 的

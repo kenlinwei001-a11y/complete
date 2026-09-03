@@ -63,6 +63,105 @@
  *   契约注释（`sim.ts:1012`）写明它「= tick 引擎 idsByType 同源（`repos.objects.listByType` 非
  *   `mergedInto`，稳定排序）」。写口要的是**引擎给世界态编键的那个 id** —— 从别的口径取一个
  *   长得像 id 的串，POST 会成功而世界不动，正是上面那条「静默错答」的另一个形态。
+ *
+ * ══ WO-SIM-TICK-GATE（2026-08-29）· 起始拍：把「静默不生效」改成「说得出为什么」════════
+ *
+ * ── 今天的行为是 X ────────────────────────────────────────────────────────────
+ * 表单的起始拍**写死默认 `0`**，而种子世界建好时就已经在**第 3 拍**。
+ * 于是默认那一发（起始拍 `0` + 持续拍数留空）POST 回 201、`appliedPerturbations` 里
+ * **还带着它的 id**，而**本控制台卡墙上的数一个都不动** —— 实测与「一条扰动都不建」
+ * **逐字节相同**（见下表第 `0 × null` 行）。
+ *
+ * 机制（实测追到底，不是从注释读来的）：卡墙读的是 `GET …/metric-series`，那条路
+ * **从 tick0 回放整条世界线**（`apps/datacore/src/sim/metric-series.ts` 的 `replayWorldLine`），
+ * 回放的第一格产出的是 `producedTick = 1`；而落地判据是
+ * `entersAt(p, t) = active(p,t) && !active(p,t-1)`，等价于 `p.startTick === t`。
+ * ⇒ `startTick === 0` 这一格**在回放窗口里根本不存在**，`entersAt` 永远为假，
+ * 这条扰动在**卡墙**的口径里永不落地。
+ *
+ * ══ 实测取值域 · **二维**（起始拍 × 持续拍数），两条真相源分列 ═════════════════════
+ *
+ * ⚠ **2026-08-30 第三次实测·本表由一维扩成二维，并订正一处结论**。前一版只跑了
+ *    起始拍一个维度，把 `0` 一栏写成「**彻底不生效**」—— **这半句是错的**：
+ *    `0 × 持续拍数=null`（正是 UI 的默认组合）在**落盘世界线上当场就写**了
+ *    （`3140.29 → 99999`），只是**卡墙不动**。两条真相源在同一个取值上给相反的答案，
+ *    比「哪儿都不动」更危险 —— 而一维表把这件事整个盖住了。
+ *    形态：**「我用『卡墙没动』当作『这条扰动没生效』的证据，而前者并不度量后者。」**
+ *
+ * 取证条件（每一格可复现）：真后端 `SEED_DEMO=1`、种子世界 `sims_demo_seed_world`
+ * （`curTick = 3`）、**每个取值重启一次 datacore**（内存模式 ⇒ 世界字节级一致）、
+ * 落点 `obj_model_4680-NCM.supplyRisk`、`mode:"set"` 幅度 `99999`、
+ * 施加后 `POST …/tick {n:1}`（推到第 4 拍）。两列读数：
+ *  · **落盘** = `GET …/world` 的 `state`（`views/sim/SandboxView` 与 `console/SandboxDetailRoute` 读这一份）
+ *  · **卡墙** = `GET …/metric-series` 回放线**落点那一格**的末格 `actual`（本控制台读这一份）
+ * 参照系：**一条扰动都不建**时 落盘 `6057.75` · 卡墙 `6057.75`（种子世界自带一条种子扰动，
+ * 故卡墙 `actual − baseline` 恒有 `+280` 的底噪；「我这一发没生效」⇔ 读数落回这两个数）。
+ *
+ *   | 起始拍 | 持续拍数 | POST | 落盘@4      | 卡墙@4      | 判定 |
+ *   |--------|----------|------|-------------|-------------|------|
+ *   | −1     | null / 2 | **400** VALIDATION_ERROR（契约 `int().min(0)`） | 6057.75 | 6057.75 | 契约拦住 |
+ *   | **0**  | **null** | 201  | **99999→102916.46** | **6057.75** | 🔴 **两源相反**：落盘涨 17 倍，卡墙纹丝不动 |
+ *   | **0**  | **2**    | 201  | 6057.75     | **5807.15** | 🔴 **静默失效 ＋ 卡墙比参照还低**（未落地却被"到期回退"倒扣） |
+ *   | 2      | null     | 201  | 102916.46   | 105756.15   | ⚠ 生效，但两源**对不上**（gap −2839.69） |
+ *   | 2      | 2        | 201  | **3218.06** | **3218.06** | 🔴 **比参照低一半**（同一发倒扣，两源一致地错） |
+ *   | 3(=cur)| null / 2 | 201  | 102916.46   | 104835.51   | ⚠ 生效，但两源**对不上**（gap −1919.05） |
+ *   | **4(=cur+1)** | **null / 2** | 201 | **102916.46** | **102916.46** | ✅ **唯一两源相等（gap = 0）的取值** |
+ *   | 6      | null / 2 | 201  | 6057.75     | 6057.75     | 入库但本次推不到 ⇒ 屏上与"没生效"同形 ⇒ **靠回执说清** |
+ *   | 不发该字段 | —    | 201  | 与 `3` 同   | 与 `3` 同   | 后端默认 `body.startTick ?? s.curTick` = 3 |
+ *
+ * **读表的结论**：全部病态行的判据是同一个 —— **起始拍 < 当前拍**。
+ * 三种病态各不相同、修法却相同（拦住）：① `0×null` 两源相反；② `0×2` 静默失效；
+ * ③ `2×2` 未落地却被回退倒扣，读数比"什么都不做"还低。
+ * ⇒ `startTickPhaseOf(...) === "past"` 一律拦，是**一条判据盖住三种病**，不是三条特例。
+ *
+ * ── 为什么默认取 `cur+1` 而不是派单书写的 `cur`：**派单自己的验收式只在 cur+1 成立** ──
+ * 派单要求「Δ shortageRisk = Δ supplyRisk × 0.8，误差应为 0」。全精度实测
+ * （卡墙口径，代表格两档同为 `obj_order_SO-3391.shortageRisk`，故比值有意义）：
+ *   · `startTick = 4 (=cur+1)`：Δ supplyRisk **96,858.71** · Δ shortageRisk **77,486.968**
+ *     ⇒ `Δ×0.8 = 77,486.968`，**误差 0，比值恰好 0.8** ✅
+ *   · `startTick = 3 (=cur)`  ：Δ supplyRisk 98,777.76 · Δ shortageRisk 158,044.416
+ *     ⇒ 比值 **1.6 = 0.8 × 2**（扰动多传导了一拍）❌ 不满足验收式
+ * ⇒ 措辞与读数冲突时**以读数为准**（读数是实测，措辞是转述）。改回 `curTick` 只需改
+ *   `defaultStartTick` 一行，全仓没有第二处算它 —— 但那会让派单自己的验收判据当场变红。
+ *
+ * ── 比「两源一致」更贴用户的那条理由：**下游 Δ = 系数 × 它在窗口里生效的拍数** ──────
+ * 同一发扰动只改起始拍，量下游 `obj_order_SO-3391.shortageRisk`
+ * （规则 `demo_model_supply_risk_to_order_shortage`，系数 0.8 · `combine:"sum"` · `delayTicks:0`）：
+ *
+ *   | 起始拍 | Δ 供应风险 | Δ 短缺风险  | 比值  | 拆开看 |
+ *   |--------|-----------|------------|-------|--------|
+ *   | 2      | 99,698.40 | 239,276.16 | 2.400 | 0.8 × **3** 拍（回放窗口里 2/3/4 三格都生效） |
+ *   | 3(=cur)| 98,777.76 | 158,044.42 | 1.600 | 0.8 × **2** 拍（3/4 两格） |
+ *   | 4(=cur+1)| 96,858.71 | 77,486.97 | 0.800 | 0.8 × **1** 拍（只有第 4 格）✅ |
+ *
+ * 这不是 bug：`combine:"sum"` 的边每拍累加一次，起始拍越早、累加的拍数越多。
+ * 但**屏上公示的系数是「一拍一次」的口径** ⇒ 只有 `cur+1` 这一档，用户拿屏上那个 0.8
+ * 去乘自己填的幅度，算出来的数与屏上下游那一格**对得上**。这是默认值必须是它的**产品**理由。
+ * ⚠ 判据落在**比值**上不是绝对值（绝对值随世界自身演化漂，比值不漂）。
+ * ⚠ 代表格三档必须是同一个对象，否则比值无意义 —— 本表三行实测同为 `obj_order_SO-3391`。
+ *
+ * ── 同一件事在屏上的样子（2026-08-30 真浏览器实测，两轮各一个干净世界）───────────
+ * 「起始拍 = 当前拍」这一档，**同一屏上同一格会出现两个数**：
+ * 回执那一行读落盘（`GET …/world`）= `102916.46`，而卡墙那张卡读回放（`metric-series`）= `104835.51`。
+ * 换成默认的 `cur+1`，两处都是 `102916.46`。**默认值挑的就是「屏上不自相矛盾」的那一档。**
+ * 故 `now` 档的屏上提示必须点明「多吃一拍传导」（见 `PerturbRail.tsx` 起始拍那段 note），
+ * 不能只写「现在就发生」——那句话本身没错，但它让用户读不出下游为什么翻倍。
+ *
+ * ⚠ **本表两次被自己的工具骗过，故取证脚本必须先跑金丝雀**（铁律 0.6）：
+ *  ① `kind` 写成 `"SUPPLY_SHOCK"`（契约取值域是小写 snake_case）⇒ 13 个 case **全部 400**，
+ *     而世界读数当然一动不动 —— 差一点读成「起始拍怎么填都没用」。
+ *  ② `metric-series` 回包的数组叫 **`metrics`** 不是 `items` ⇒ 卡墙那一列整列读成 0 条。
+ *     报「卡墙没动」之前必须先证明卡墙**有数**（本表的参照系行就是那个金丝雀）。
+ *
+ * ── 应该是 Y ─────────────────────────────────────────────────────────────────
+ *  ① 默认 = **下一拍**（`curTick + 1`）：唯一「两条真相源一致」的取值，
+ *     且按钮上写的是「施加**并推演**」—— 推的正是这一拍，默认值与按钮的承诺对齐。
+ *  ② **过去的拍一律拦住**（含 `0`）：`0` 是彻底不生效，`1..curTick-1` 是改写历史 ⇒
+ *     指标时序按「它从第 1 拍就在」回放，而已落盘的世界线里那几拍根本没有它。
+ *  ③ **不知道当前拍时不许发**（`CUR_TICK_UNKNOWN`）：沿用本文件已有的三态纪律 ——
+ *     「我没查到」和「它不存在」是两个命题，不许拿 `0` 当兜底（`0` 恰恰就是那个静默坑）。
+ *  ④ **未来的拍照样允许**（PRD §2.2② 的「第 5 天开始停机 72h」是真需求），
+ *     但施加后必须给回执说清「本次推到第 M 拍，还没轮到它」。
  */
 import { CAPACITY_FACTOR_BINDINGS, type PerturbationKind, type PropagationRule } from "@platform/contracts";
 import { stateVarLabel, type StateVarLabel } from "../../stateVarLabel";
@@ -354,6 +453,77 @@ export function buildPerturbationLabel(label: StateVarLabel, draft: PerturbDraft
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// § 4.5 · 起始拍 —— 相对**当前拍**的四个档（判据见本文件头注的实测取值域表）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 世界现在在第几拍。`null` = 会话清单这一跳还没回来 / 失败了 ⇒ **「不知道」，不是「第 0 拍」**。
+ * 合并成一个数（拿 `0` 兜底）正是本单要修的那个静默坑，所以这里必须是可空的。
+ */
+export type CurTick = number | null;
+
+/**
+ * 起始拍落在哪一档。**四档各有不同的屏上行为，不许合并**：
+ *  · `past`   —— 已经产出过的拍。`0` 在这一档里（它是「彻底不生效」那一种）；
+ *                 `1..curTick-1` 会让回放与已落盘的世界线各说各话。**提交时拦住**。
+ *  · `now`    —— 正好是当前拍。后端「不填 startTick」的默认语义（「现在就发生」）。
+ *  · `next`   —— 当前拍 +1。「施加并推演」这一次推的就是这一拍 ⇒ 默认值取这一档。
+ *  · `future` —— 更远的将来。合法（PRD §2.2② 的「第 5 天开始停机 72h」），
+ *                 但本次推演到不了它 ⇒ 施加后必须给回执说清还差几拍。
+ */
+export type StartTickPhase = "past" | "now" | "next" | "future";
+
+export function startTickPhaseOf(startTick: number, curTick: number): StartTickPhase {
+  if (startTick < curTick) return "past";
+  if (startTick === curTick) return "now";
+  if (startTick === curTick + 1) return "next";
+  return "future";
+}
+
+/**
+ * 表单里起始拍的**默认值** = 下一拍。
+ *
+ * 为什么不是 `0`（改前那一版）：`0` 在卡墙口径里**永远不落地**（回放从 `producedTick=1` 起）。
+ *
+ * 为什么不是 `curTick`：那一档屏上确实会动，但在 `mode: "set"` 口径下
+ * **落盘世界线与回放在同一拍上给两个数**（2026-08-29 复核实测，幅度 99999：
+ * `GET …/world` = 102916.46，`metric-series` 回放 = 104835.51，gap **−1919.05**）。
+ * 这不是纸面顾虑 —— 两条真相源**在本仓都有屏在读**：`views/sim/SandboxView.tsx` 与
+ * `views/sim/console/SandboxDetailRoute.tsx` 读 `simWorld`（落盘那一份），
+ * 而本控制台的卡墙读 `metric-series`（回放那一份）⇒ 两个屏会各说各话。
+ * `curTick + 1` 是实测取值域里**唯一**「会动 **且** 两条真相源一致（gap = 0）」的取值。
+ *
+ * ⚠ **这条理由带一个前提：mode。** `delta` 口径下 1/2/3/4 四档两源全部一致 ——
+ * 拿 `delta` 去复验会验不出任何 gap，进而误判「这个修法没有依据」。
+ * 完整实测表与订正过程见本文件头注「实测取值域 · 复核订正」。
+ *
+ * ⚠ 派单书把这条写成「默认取当前拍」，但**它自己给的两个验收读数
+ * （`52,917.46` / `102,916.46`）本次原样复现，且都落在起始拍 = 4 这一档上，而那个世界
+ * `curTick = 3`** —— 即验收数本身就是 `curTick + 1` 那一档的数；派单要求的
+ * 「Δ shortageRisk = Δ supplyRisk × 0.8 误差 0」也**只有这一档满足**（`curTick` 那一档是 1.6）。
+ * 两处对不上时以**读数**为准（读数是实测，措辞是转述）。
+ * 真要改回 `curTick`，只改本函数一行即可，全仓没有第二处算它 —— 但那会让验收判据当场变红。
+ */
+export function defaultStartTick(curTick: number): number {
+  return curTick + 1;
+}
+
+/**
+ * 起始拍落在过去时的那句人话（屏上原样渲染；具体第几拍由组件在旁边显式打出来）。
+ *
+ * ⚠ 措辞纪律：这句是**给用户看的**，只讲「会看到什么」，不讲回放窗口 / 首次生效判据
+ * 这类实现口径（R-UI-4）。三种坏法**分开写**，因为它们在屏上长得完全不一样 ——
+ * 合成一句「填过去的拍不生效」会让第 ① 种（屏上真的动了，只是两屏不一致）读起来像没发生。
+ * 三种坏法的实测读数见本文件头注的二维取值域表。
+ */
+export const START_TICK_PAST_TEXT =
+  "起始拍落在已经推过的拍上 —— 这一档不许提交。实测三种坏法各不相同：" +
+  "① 填 0 且持续拍数留空：这一屏的指标卡一个都不会动，而沙盘那一屏的读数会当场跳到你填的值 —— 两屏各说各话；" +
+  "② 填 0 且填了持续拍数：两屏都不动，这一次等于白按；" +
+  "③ 填一个更早、非 0 的拍：读数会比「什么都不做」还低 —— 这一拍的效果没落上去，到期回退却照扣了一次。" +
+  "把起始拍改成当前拍或更晚，这三种都不会发生。";
+
 /** 不能提交时的原因码（屏上 `data-` 记号 + 一句人话）。 */
 export type BlockReason =
   | "NO_SESSION"
@@ -361,8 +531,10 @@ export type BlockReason =
   | "NO_TARGET_OBJECT"
   | "NOT_IN_WORLD_STATE"
   | "STATE_VARS_UNKNOWN"
+  | "CUR_TICK_UNKNOWN"
   | "BAD_MAGNITUDE"
   | "BAD_START_TICK"
+  | "START_TICK_PAST"
   | "BAD_DURATION";
 
 export const BLOCK_REASON_TEXT: Record<BlockReason, string> = {
@@ -373,12 +545,18 @@ export const BLOCK_REASON_TEXT: Record<BlockReason, string> = {
     "这个量今天扰不动：它不在这个世界的状态变量清单里（view-config.stateVars），" +
     "而传导引擎 propagateTick 只读世界态 —— 发出去会「请求成功、下游一动不动」。",
   STATE_VARS_UNKNOWN:
-    "**不知道**这个量在不在世界态里 —— view-config 这一跳还没回来或失败了。" +
+    "不知道这个量在不在世界态里 —— view-config 这一跳还没回来或失败了。" +
     "这不是「它扰不动」，是「现在判断不了」，所以先不发（不猜、不兜底）。",
+  // 与 `STATE_VARS_UNKNOWN` 同一条纪律：不知道就说不知道，**绝不拿 `0` 当兜底** ——
+  // `0` 恰恰是那个「POST 201、屏上一个数不动」的静默坑（见本文件头注 WO-SIM-TICK-GATE）。
+  CUR_TICK_UNKNOWN:
+    "还不知道这个世界现在在第几拍 —— 会话清单这一跳没回来或失败了。" +
+    "起始拍要拿它当基准，所以现在先不发（猜一个 0 就是那个「请求成功、屏上不动」的坑）。",
   BAD_MAGNITUDE: "幅度必须是一个有限的数",
   // 契约 `PerturbationSchema.startTick` 是 `int().min(0)` —— 这里按契约拦，
   // 而不是让后端回一个 400 再把技术错误原样甩到屏上。
   BAD_START_TICK: "起始拍必须是 ≥ 0 的整数",
+  START_TICK_PAST: START_TICK_PAST_TEXT,
   BAD_DURATION: "持续拍数必须 ≥ 1（要永久就留空）",
 };
 
@@ -411,7 +589,12 @@ export function livenessOf(stateVar: string, liveStateVars: ReadonlySet<string> 
 export function buildPerturbBody(
   draft: PerturbDraft,
   label: StateVarLabel,
-  opts: { readonly hasSession: boolean; readonly liveStateVars: ReadonlySet<string> | null },
+  opts: {
+    readonly hasSession: boolean;
+    readonly liveStateVars: ReadonlySet<string> | null;
+    /** 世界现在在第几拍。`null` = 还不知道 ⇒ `CUR_TICK_UNKNOWN`，**不许拿 `0` 兜底**。 */
+    readonly curTick: CurTick;
+  },
 ): BuildResult {
   if (!opts.hasSession) return { ok: false, reason: "NO_SESSION" };
   if (draft.targetStateVar === "") return { ok: false, reason: "NO_STATE_VAR" };
@@ -421,6 +604,9 @@ export function buildPerturbBody(
   if (draft.targetObjectId === "") return { ok: false, reason: "NO_TARGET_OBJECT" };
   if (!Number.isFinite(draft.magnitude)) return { ok: false, reason: "BAD_MAGNITUDE" };
   if (!(Number.isInteger(draft.startTick) && draft.startTick >= 0)) return { ok: false, reason: "BAD_START_TICK" };
+  // 起始拍要拿当前拍当基准 ⇒ 不知道当前拍就判断不了，先不发（同 `STATE_VARS_UNKNOWN` 那条纪律）。
+  if (opts.curTick === null) return { ok: false, reason: "CUR_TICK_UNKNOWN" };
+  if (startTickPhaseOf(draft.startTick, opts.curTick) === "past") return { ok: false, reason: "START_TICK_PAST" };
   if (draft.durationTicks !== null && !(Number.isInteger(draft.durationTicks) && draft.durationTicks >= 1)) {
     return { ok: false, reason: "BAD_DURATION" };
   }
@@ -437,4 +623,191 @@ export function buildPerturbBody(
       mode: draft.mode,
     },
   };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 5 · 施加回执 —— 「按下去之后到底发生了什么」（WO-SIM-TICK-GATE 缺陷 ③）
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// ── 今天的行为是 X ────────────────────────────────────────────────────────────
+// 点完「施加并推演」，屏上唯一的变化是左栏「已施加」多一行。**生效没生效、生效在第几拍、
+// 影响了几个格，一个字都没有。** 于是「引擎没读我的输入」与「这条扰动排在未来还没轮到它」
+// 在屏上长得一模一样 —— 本轮就是靠这一点被判成「引擎是死的」。
+//
+// ── 应该是 Y ─────────────────────────────────────────────────────────────────
+// 施加后给一条回执，三件事各自有出处、**不许合并**：
+//  ① **落在第几拍**（`startTick` + 本次推到第几拍）—— 确定性，算得出来，不用等观测；
+//  ② **真动了没有**（目标那一格 施加前 → 推完后；以及全世界变了几个格）—— 实测，
+//     两个数分别来自 `GET …/world`（施加前）与 `POST …/tick`（推完后）的世界态；
+//  ③ **没动就说为什么** —— 只列**这一次真命中的**原因，一条都不许编。
+//
+// ⚠ 为什么不拿 tick 回包的 `appliedPerturbations` 当「生效了」的判据（这条实测踩过）：
+//   它是「本拍**处于生效期**的扰动 id」，不是「本拍**落地了**」。实测 `startTick: 0`
+//   那条完全没落地，而它的 id **就在** `appliedPerturbations` 里
+//   （真后端回包原文：`appliedPerturbations=["simpert_107813tr28chdeqe","sims_demo_seed_world_p0"]`，
+//   同一次的卡墙读数与不施加任何扰动**逐字节相同**）——
+//   拿它当判据会得出一个恰好相反的回执（形态：「我用 X 当作 Y 的证据，而 X 并不度量 Y」）。
+//   判据只能落在**世界态真的变了没有**上。
+//
+// ⚠ 措辞红线：本仓已知有 10 类扰动在小幅度下读数为 0、其中 6 类**调大幅度就不再是 0**。
+//   所以「没动」的原因里，「幅度可能偏小 ⇒ 调大再算一次」是**唯一有效的动作**，
+//   文案只许把它写成一条可执行的建议，**不许**写成「调大多半也还是 0」这种劝退话。
+
+/** 世界态的形状（`GET …/world` 与 `POST …/tick` 的 `state` 同一形状）。 */
+export type WorldCells = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
+/** 一格读数；`null` = 这个世界里没有这一格（**不是 0**）。 */
+export function readCell(state: WorldCells | null, objectId: string, stateVar: string): number | null {
+  if (state === null) return null;
+  const v = state[objectId]?.[stateVar];
+  return typeof v === "number" ? v : null;
+}
+
+/**
+ * 两份世界态之间**读数不同的格子数**。
+ *
+ * `null` = 有一边压根没拿到 ⇒ **「没法比」，不许读作「0 个格子变了」**
+ * （那正是本仓最恨的那种把「我不知道」写成「没有」的合并）。
+ * 遍历两边键的并集：只扫其中一边会漏掉「新长出来的格子」。
+ */
+export function countChangedCells(before: WorldCells | null, after: WorldCells | null): number | null {
+  if (before === null || after === null) return null;
+  let n = 0;
+  for (const objectId of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    const b = before[objectId] ?? {};
+    const a = after[objectId] ?? {};
+    for (const stateVar of new Set([...Object.keys(b), ...Object.keys(a)])) {
+      if (b[stateVar] !== a[stateVar]) n += 1;
+    }
+  }
+  return n;
+}
+
+/** 回执模型（组件只渲染；一个业务判断都不做）。 */
+export interface ApplyReceipt {
+  /** 起始拍落在哪一档（屏上 `data-phase`）。 */
+  readonly phase: StartTickPhase;
+  readonly startTick: number;
+  /** 施加前世界在第几拍。 */
+  readonly tickBefore: number;
+  /** 推完之后世界在第几拍。 */
+  readonly tickAfter: number;
+  /** 目标那一格：屏上那一串（中文名或回落裸键）。 */
+  readonly targetText: string;
+  /** 目标那一格 施加前 / 推完后 的读数（`null` = 没这一格，不是 0）。 */
+  readonly before: number | null;
+  readonly after: number | null;
+  /** 全世界变了几个格；`null` = 没法比（有一边没拿到）。 */
+  readonly changedCells: number | null;
+  /** 目标那一格**真的动了**没有（`null` = 没法比）。 */
+  readonly moved: boolean | null;
+  /** 本次推演到底够不够得着 `startTick`（`startTick <= tickAfter`）。 */
+  readonly reached: boolean;
+  /** 屏上那一句（一行说清「生效没生效 / 在第几拍」）。 */
+  readonly headline: string;
+  /** 没动时的原因；**只列这一次真命中的那几条**，全部可执行、不劝退。 */
+  readonly notes: readonly string[];
+}
+
+/**
+ * 纯显示格式化（**不是换算**）：保留 ≤2 位小数并去掉尾随 0 —— 与卡墙 / 右栏检视 / 底部抽屉
+ * 屏上那三处**同一个口径**（`MetricWall.tsx` · `InspectorPane.tsx` · `BottomDrawer.tsx` 的 `fmt`）。
+ *
+ * ⚠ 为什么必须有这一步（2026-08-30 真浏览器实测抓到的）：回执原来走 `String(v)`，于是
+ * 同一次施加，卡墙上印的是 `102916.46`，而回执里印的是 `+99776.17000000001` ——
+ * **同一屏两种数字长相**，尾巴上那 11 位是 IEEE754 的减法余数，不是精度。
+ * 用户会以为那是"更准的数"，而它只是没格式化。
+ */
+const fmtNum = (n: number): string => n.toFixed(2).replace(/\.?0+$/, "");
+
+const cellNum = (v: number | null): string => (v === null ? "（这个世界里没有这一格）" : fmtNum(v));
+
+export function buildApplyReceipt(args: {
+  readonly body: PerturbBody;
+  readonly targetText: string;
+  readonly tickBefore: number;
+  readonly tickAfter: number;
+  readonly worldBefore: WorldCells | null;
+  readonly worldAfter: WorldCells | null;
+  /**
+   * 这个量在**已发布的传导规则**里有没有出边。`null` = 规则清单没回来 ⇒ 这一条原因不许说。
+   * 没有出边 ⇒ 扰它只改自己那一格，下游一个都不会跟着动 —— 这是个真实存在的形态，
+   * 说清楚了用户才知道该换一个量扰，而不是以为「引擎坏了」。
+   */
+  readonly hasOutEdge: boolean | null;
+}): ApplyReceipt {
+  const { body, targetText, tickBefore, tickAfter, worldBefore, worldAfter, hasOutEdge } = args;
+  const phase = startTickPhaseOf(body.startTick, tickBefore);
+  const before = readCell(worldBefore, body.targetObjectId, body.targetStateVar);
+  const after = readCell(worldAfter, body.targetObjectId, body.targetStateVar);
+  const changedCells = countChangedCells(worldBefore, worldAfter);
+  const moved = before === null && after === null ? null : before !== after;
+
+  const reached = body.startTick <= tickAfter;
+  const headline = reached
+    ? `已落地在第 ${body.startTick} 拍 · 本次推到第 ${tickAfter} 拍`
+    : `排在第 ${body.startTick} 拍 —— 本次只推到第 ${tickAfter} 拍，还没轮到它`;
+
+  const notes: string[] = [];
+  if (!reached) {
+    const left = body.startTick - tickAfter;
+    notes.push(
+      `它不是没生效，是还没到时候：再点 ${left} 次「施加并推演」就会推到第 ${body.startTick} 拍、它就落地了。` +
+        `要它立刻生效，把起始拍改成 ${tickBefore + 1}。`,
+    );
+  } else if (moved === false) {
+    // 到点了、却一个数都没动。逐条列**真命中**的原因，不编。
+    if (body.mode === "delta" && body.magnitude === 0) {
+      notes.push("「增减 0」在数学上就是不动 —— 换一个非 0 的幅度。");
+    }
+    if (body.mode === "scale" && body.magnitude === 1) {
+      notes.push("「乘以 1」在数学上就是不动 —— 换一个不等于 1 的倍数。");
+    }
+    if (body.durationTicks !== null && body.startTick + body.durationTicks <= tickAfter) {
+      notes.push(
+        `持续 ${body.durationTicks} 拍 ⇒ 它在第 ${body.startTick + body.durationTicks} 拍到期回退，` +
+          `而本次已经推到第 ${tickAfter} 拍 —— 落地与回退发生在同一次推演里，净效果为 0。` +
+          `把持续拍数调大，或留空（永久）。`,
+      );
+    }
+    if (before !== null && before !== 0 && Math.abs(body.magnitude) < Math.abs(before) / 100) {
+      notes.push(
+        // `before` 走 `fmtNum` 与屏上其余各处同一口径 —— 裸 `${before}` 会印出
+        // `52917.460000000006` 这种 IEEE754 尾巴（同 `receiptCellText` 那处，真浏览器抓到过）。
+        `幅度 ${body.magnitude} 相对这一格今天的读数 ${fmtNum(before)} 偏小，变化落在看不见的小数位上 —— ` +
+          `把幅度调大再算一次：本平台确有一批量要更大的幅度才推得动，调大是有效的。`,
+      );
+    }
+    if (hasOutEdge === false) {
+      notes.push(
+        `「${targetText}」在已发布的传导规则里没有出边 ⇒ 扰它只改自己那一格，下游不会跟着动。` +
+          `想看连锁反应，改扰一个有出边的量（下拉里「根源」那一组都有出边）。`,
+      );
+    }
+    if (notes.length === 0) {
+      notes.push(
+        `这一格从 ${cellNum(before)} 到 ${cellNum(after)} 没有变化，而已知的几条原因一条都没命中 —— ` +
+          `这是一个说不出原因的「没动」，请把这条扰动的落点与幅度报给平台方，不要当成"正常"。`,
+      );
+    }
+  }
+
+  return {
+    phase, startTick: body.startTick, tickBefore, tickAfter, targetText,
+    before, after, changedCells, moved, reached, headline, notes,
+  };
+}
+
+/** 回执里「这一格变了多少」那一行的文案（`null` 与 `0` 分开说，不合并）。 */
+export function receiptCellText(r: ApplyReceipt): string {
+  if (r.moved === null) return `目标那一格（${r.targetText}）在这个世界里不存在 —— 无从比较（不是 0）`;
+  const delta = r.before !== null && r.after !== null ? r.after - r.before : null;
+  const deltaText = delta === null ? "" : `（${delta >= 0 ? "+" : "−"}${fmtNum(Math.abs(delta))}）`;
+  return `${r.targetText}：第 ${r.tickBefore} 拍 ${cellNum(r.before)} → 第 ${r.tickAfter} 拍 ${cellNum(r.after)}${deltaText}`;
+}
+
+/** 回执里「全世界变了几个格」那一行（`null` = 没法比，不许写成 0）。 */
+export function receiptCellsText(r: ApplyReceipt): string {
+  if (r.changedCells === null) return "变了几个格：没法比 —— 施加前那一份世界态没拿到（不是 0 个）";
+  return `推到第 ${r.tickAfter} 拍后，世界里共 ${r.changedCells} 个格子的读数变了（含世界自身的演化，不只是这一条扰动）`;
 }

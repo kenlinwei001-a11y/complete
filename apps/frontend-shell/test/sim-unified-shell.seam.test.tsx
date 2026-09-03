@@ -218,6 +218,13 @@ function seriesFor(vars: readonly string[]): SimMetricSeriesResponse {
   } as unknown as SimMetricSeriesResponse;
 }
 
+/**
+ * 后端下发的传导规则条数（`view-config.propagationCount`）。
+ * **刻意不等于 `STATE_VARS.length`，也不等于任何"看起来对"的数** —— 页签那句问句若还写死
+ * 一个常数，本门的 ⑨ 臂就会当场红；两个数若被写成同一个来源，也会红。
+ */
+let propagationCount = 42;
+
 function cfgFor(vars: readonly string[], names: Record<string, string>): SandboxViewConfig {
   return {
     tenantId: "demo",
@@ -232,7 +239,9 @@ function cfgFor(vars: readonly string[], names: Record<string, string>): Sandbox
       { key: "behavior", label: "行为" },
     ],
     screens: ["pipeline", "entity", "readiness", "init", "sandbox"],
-    propagationCount: 0,
+    // WO-SIM-TICK-GATE：页签问句里那个「N 条因果边」现在**读这个字段**（改前写死 38）。
+    // 用例可就地改 `propagationCount` 变量，断言屏上跟着变。
+    propagationCount,
   } as unknown as SandboxViewConfig;
 }
 
@@ -344,6 +353,7 @@ const MOVED_VARS = STATE_VARS.filter((_, i) => kindOf(i) === "moved");
 
 beforeEach(() => {
   edges = baseEdges();
+  propagationCount = 42;
   cfg = cfgFor(STATE_VARS, NAMES);
   series = seriesFor(STATE_VARS);
   originKind = "DERIVED";
@@ -655,5 +665,110 @@ describe("WO-SIM-UNIFIED-SHELL · 统一推演控制台接缝门", () => {
     }
     // 默认落在「指标态势」。
     expect(screen.getByTestId("usim-tab-now").getAttribute("data-active")).toBe("1");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SIM-TICK-GATE · 顺带两条 A 类（同一屏、别的角色实测抓出来的）
+// ══════════════════════════════════════════════════════════════════════════════
+/**
+ * ── ⑨ 守什么 ─────────────────────────────────────────────────────────────────
+ * 改前页签问句里写死两个数，**两个今天都是错的**（真后端 `SEED_DEMO=1` 实测）：
+ *   ·「38 条因果边」 ⇒ 实测 `view-config.propagationCount` = **42**，
+ *     而**同一屏**右栏 `EdgeActivePanel` 写的就是 42 —— 一屏之内两个数打架；
+ *   ·「37 个状态变量」⇒ 实测 `stateVars.length` = **40**（卡墙卡片数就是它）。
+ * 判据必须写成「**这两个数由回包现算**」，**不许**写成「不等于 38」——
+ * 后者把 38 换成 42 也能骗过去，而 42 明天照样会过期。故本臂**改回包、断言屏上跟着变**。
+ *
+ * ── ⑩ 守什么 ─────────────────────────────────────────────────────────────────
+ * 改前「钉到对照 / 追这条链」两个按钮可点、零请求，屏底日志印
+ * `动作 pin:supplyRisk（本单不落写操作）` —— 工单黑话 + 机器动作键上了用户屏，
+ * 且是个**假旋钮**（点了有反馈、什么都没发生）。
+ */
+describe("WO-SIM-TICK-GATE · 页签计数现算 / 假旋钮下屏", () => {
+  it("⑨ 页签计数臂：两个数都由 view-config 回包现算 —— 改回包，两处 title 跟着变", async () => {
+    mount();
+    await ready(STATE_VARS.length);
+
+    // 金丝雀：这两个页签真的在屏上（不中 ⇒ 报「工具坏了」，不许读作「数字不对」）
+    const edgesTab = screen.getByTestId("usim-tab-edges");
+    const nowTab = screen.getByTestId("usim-tab-now");
+    expect(edgesTab, "金丝雀不中 ⇒ 本臂什么都没证明").toBeTruthy();
+
+    // 期望值**现算**，不写死：边数取回包字段，变量数取回包数组长度。
+    expect(edgesTab.getAttribute("title")).toContain(`${propagationCount} 条因果边`);
+    expect(nowTab.getAttribute("title")).toContain(`${STATE_VARS.length} 个状态变量`);
+    // 改前那个写死的 38 已经不在了（本 fixture 的回包是 42，两者不等 ⇒ 这一句有意义）。
+    // ⚠ **刻意不写** `not.toContain("37 个状态变量")`：本 fixture 的 `STATE_VARS.length`
+    //    **恰好就是 37**，那句话会把**正确**的现算结果判成错的 —— 我第一版就是这么红的。
+    //    形态正是本门自己在警告的那一个：「我用『屏上出现了 37』当作『它是写死的』的证据，
+    //    而前者并不度量后者。」判据只能落在**改回包屏上跟不跟着变**上，见下半段。
+    expect(edgesTab.getAttribute("title")).not.toContain("38 条因果边");
+
+    // ── 改**回包** ⇒ 两处跟着走（写死常数的话这两句当场红）────────────────────
+    cleanup();
+    propagationCount = 99;
+    const fewer = STATE_VARS.slice(0, 5);
+    cfg = cfgFor(fewer, NAMES);
+    series = seriesFor(fewer);
+    mount();
+    await ready(fewer.length);
+    const edgesTab2 = screen.getByTestId("usim-tab-edges");
+    const nowTab2 = screen.getByTestId("usim-tab-now");
+    expect(edgesTab2.getAttribute("title")).toContain("99 条因果边");
+    expect(nowTab2.getAttribute("title")).toContain("5 个状态变量");
+    // 现在**旧值必须消失** —— 这一对否定断言此刻才有意义（回包已经不是那两个数了）
+    expect(edgesTab2.getAttribute("title")).not.toContain("42 条因果边");
+    expect(nowTab2.getAttribute("title")).not.toContain("37 个状态变量");
+  });
+
+  it("⑨' 计数没到手时说「还没取到」，**不许**印成 0 条（「不知道」≠「一条都没有」）", async () => {
+    // 守的是本仓那句话：**「我没找到」和「它不存在」是两个不同的命题。**
+    // view-config 整跳失败 ⇒ 计数为 `null`；屏上若印「0 条因果边」，用户会去查一个不存在的故障。
+    cfg = undefined as unknown as SandboxViewConfig;
+    series = null;
+    mount();
+    const edgesTab = await screen.findByTestId("usim-tab-edges");
+    await waitFor(() => {
+      const title = edgesTab.getAttribute("title") ?? "";
+      expect(title).toContain("还没取到");
+      expect(title).not.toContain("0 条因果边");
+    });
+    expect(screen.getByTestId("usim-tab-now").getAttribute("title") ?? "").not.toContain("0 个状态变量");
+  });
+
+  it("⑩ 假旋钮臂：钉到对照 / 追这条链**禁用占位 + 人话 title**，工单黑话一个字都不上屏", async () => {
+    mount();
+    await ready(STATE_VARS.length);
+    await userEvent.click(screen.getByTestId(`usim-card-${STATE_VARS[0]}`));
+    await screen.findByTestId("usim-inspector");
+
+    // 金丝雀（反证）：同一排里「展开到底部抽屉」是**活的** ——
+    // 否则下面的 disabled 证明不了是"未接线"造成的，而可能是整栏都点不动。
+    expect((screen.getByTestId("usim-act-expand") as HTMLButtonElement).disabled).toBe(false);
+
+    for (const [id, what] of [["usim-act-pin", "钉到对照"], ["usim-act-trace", "追这条链"]] as const) {
+      const btn = screen.getByTestId(id) as HTMLButtonElement;
+      // ① 留在屏上（隐藏 = 假装没这功能）
+      expect(btn.textContent).toContain(what);
+      // ② 今天点不动，且机器可读位说得出它是"未接线"而不是"坏了"
+      expect(btn.disabled, `${what} 今天零请求，必须占位禁用而不是假装可点`).toBe(true);
+      expect(btn.getAttribute("data-pending")).toBe("1");
+      // ③ title 用人话说清将来做什么 + 今天为什么点不动
+      const title = btn.getAttribute("title") ?? "";
+      expect(title.length, `${what} 要说明为什么点不动`).toBeGreaterThan(20);
+      expect(title).toContain("还没有做好");
+    }
+
+    // ── 全屏扫一遍：工单黑话 / 机器动作键一个都不许出现在用户能读到的文字里 ──
+    //    判据落在**屏上的可见文本 + title**，不是源码 —— 源码里出现 `pin:` 是正常的。
+    const shell = screen.getByTestId("usim-shell");
+    const visible = [
+      shell.textContent ?? "",
+      ...[...shell.querySelectorAll("[title]")].map((e) => e.getAttribute("title") ?? ""),
+    ].join("\n");
+    for (const jargon of ["本单", "pin:", "trace:", "写操作", "工单"]) {
+      expect(visible, `屏上出现了工单黑话「${jargon}」`).not.toContain(jargon);
+    }
   });
 });

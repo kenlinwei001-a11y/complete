@@ -646,7 +646,7 @@ export function buildInspectorView(args: InspectorInputArgs): InspectorView {
       downstream,
       landings: [],
       landingsState: "unknown",
-      landingsReason: `下游 ${targets.length} 个变量在本会话里一格都算不出来 ⇒ **不知道**有没有落点`,
+      landingsReason: `下游 ${targets.length} 个变量在本会话里一格都算不出来 ⇒ 不知道有没有落点`,
     };
   }
   return {

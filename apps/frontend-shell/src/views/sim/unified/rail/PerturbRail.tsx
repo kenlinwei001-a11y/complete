@@ -17,12 +17,31 @@
  * ── ⚠ 为什么可以在渲染期 `useQuery`（这条踩过，别自作主张改）────────────────────
  * `views/sim/DrillPanel.tsx:130` 记着一条硬教训：给**共享**面板在渲染期新增 endpoint 依赖，
  * 会被全仓那批整体替换式 `vi.mock("@/api/endpoints", () => ({...}))` 打成 `undefined` 而当场抛，
- * 把别的单的门整片打红。本组件安全，是因为它依赖的四条读端
- * （`fetchSimViewConfig` / `fetchDrillStateVarLayers` / `fetchPropagationRules` / `fetchSimPerturbations`）
- * **恰好就是 `UnifiedSimShell` 今天已经在渲染期依赖的那四条**（`UnifiedSimShell.tsx:92-130`）——
- * 它挂进去以后，宿主的 mock 面一个字都不用加。第五条 `createSimPerturbation` 只在**点击事件里**调用，
+ * 把别的单的门整片打红。本组件安全，是因为它依赖的**五条渲染期读端**
+ * （`fetchSimViewConfig` / `fetchDrillStateVarLayers` / `fetchPropagationRules` /
+ *  `fetchSimPerturbations` / `fetchSimSessions`）
+ * **恰好就是 `UnifiedSimShell` 今天已经在渲染期依赖的那五条**（`cfgQ`/`layersQ`/`rulesQ`/
+ * `perturbQ`/`sessionsQ`）—— 它挂进去以后，宿主的 mock 面一个字都不用加。
+ * 写口 `createSimPerturbation` 与 `simWorld`/`simTick` 只在**点击事件里**调用，
  * 渲染期不碰（同 `DrillPanel` 的 `simDrill`）。
- * 加第六条读端之前请先回来读这一段。
+ * 加第六条**渲染期**读端之前请先回来读这一段。
+ *
+ * ══ WO-SIM-TICK-GATE（2026-08-29）· 本轮改了三处，三处都是「屏上在说谎」而非「还没做完」══
+ *
+ *  ① **起始拍不再写死 `0`**。改前是 `useState("0")`，而种子世界建好时就已经在**第 3 拍**。
+ *     `startTick: 0` 的扰动 POST 回 201、tick 回包的 `appliedPerturbations` 里**还带着它的 id**，
+ *     而卡墙一个数都不动 —— 本轮 CEO 据此判「引擎不读输入」，判错了三次。
+ *     现在默认值由**当前拍现算**（`defaultStartTick(curTick)`），过去的拍**提交时拦住**。
+ *     机制与实测取值域表见 `perturbRailModel.ts` 头注（那里是判据自己家）。
+ *
+ *  ② **当前拍显式打在表单里**。改前屏上从来没写过「世界现在在第几拍」——
+ *     而那正是「我填的起始拍对不对」唯一的参照物。没有它，起始拍这个输入框
+ *     等于让用户在没有坐标系的情况下填坐标。
+ *
+ *  ③ **施加后给回执**。改前点完只多一行「已施加」，生效没生效一个字都没有 ⇒
+ *     「引擎没读我的输入」与「这条扰动排在未来还没轮到它」在屏上一模一样。
+ *     现在说清：落在第几拍 · 目标那一格从多少变到多少 · 全世界变了几个格 ·
+ *     没动时**为什么**（还没轮到 / 幅度偏小 / 落点无出边 / 同一次推演里就到期回退了）。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -30,9 +49,11 @@ import type { PerturbationKind, PropagationRulesResponse, SandboxViewConfig } fr
 import {
   createSimPerturbation,
   simTick,
+  simWorld,
   fetchDrillStateVarLayers,
   fetchPropagationRules,
   fetchSimPerturbations,
+  fetchSimSessions,
   fetchSimViewConfig,
 } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
@@ -43,16 +64,24 @@ import {
   BLOCKED_REASON_TEXT,
   BLOCK_REASON_TEXT,
   DOWNSTREAM_NOTE,
+  buildApplyReceipt,
   buildBlockedFactors,
   buildPerturbBody,
   buildSubpages,
+  defaultStartTick,
   durationText,
   livenessOf,
   magnitudeText,
   objectChoices,
+  receiptCellText,
+  receiptCellsText,
+  startTickPhaseOf,
+  type ApplyReceipt,
+  type CurTick,
   type PerturbDraft,
   type RailSubpage,
   type RailVarOption,
+  type WorldCells,
 } from "./perturbRailModel";
 import styles from "./PerturbRail.module.css";
 
@@ -112,6 +141,19 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
     staleTime: Infinity,
     retry: false,
   });
+  /**
+   * 世界现在在第几拍 —— 起始拍那个输入框的**唯一参照物**（WO-SIM-TICK-GATE）。
+   *
+   * 缓存键 `["a","sim-sessions"]` 与 `UnifiedSimShell` 的 `sessionsQ` **逐字相同** ⇒
+   * 挂进外壳后不多发一次请求；而 `onApply` 里那条前缀失效（`sim*`）也覆盖它，
+   * 于是推完一拍以后这里的当前拍**自动跟着往前走**，不需要第二套刷新机制。
+   */
+  const sessionsQ = useQuery({
+    queryKey: ["a", "sim-sessions"],
+    queryFn: fetchSimSessions,
+    staleTime: Infinity,
+    retry: false,
+  });
 
   const cfg = cfgQ.data as SandboxViewConfig | undefined;
   const rules = (rulesQ.data as PropagationRulesResponse | undefined)?.items ?? [];
@@ -140,15 +182,47 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
     return pages.find((p) => p.sliceId === sliceId) ?? pages[0] ?? null;
   }, [pages, sliceId]);
 
+  /**
+   * 这个世界现在在第几拍。**`null` = 不知道**（清单没回来 / 失败了 / 清单里没有这一条），
+   * 不是「第 0 拍」—— 拿 `0` 兜底正是本单要修的那个静默坑（`buildPerturbBody` 会据此拦住提交）。
+   */
+  const curTick: CurTick = useMemo(() => {
+    if (!enabled || sessionsQ.data === undefined) return null;
+    const row = sessionsQ.data.items.find((x) => x.id === sessionId);
+    return row === undefined ? null : row.curTick;
+  }, [enabled, sessionsQ.data, sessionId]);
+
   const [stateVar, setStateVar] = useState("");
   const [typeKey, setTypeKey] = useState("");
   const [objectId, setObjectId] = useState("");
   const [kind, setKind] = useState<PerturbationKind>(FIRST_KIND);
   const [mode, setMode] = useState<PerturbDraft["mode"]>("delta");
   const [magnitudeRaw, setMagnitudeRaw] = useState("10");
-  const [startTickRaw, setStartTickRaw] = useState("0");
+  /**
+   * 起始拍。**初值是空串而不是 `"0"`** —— 空串代表「还没有基准，填不出来」，
+   * 而 `"0"` 是一个**看起来像已填好、实际永远不生效**的值（改前那一版就死在这里）。
+   * 真值由下面那个 effect 从 `curTick` 现算灌进来。
+   */
+  const [startTickRaw, setStartTickRaw] = useState("");
+  /** 用户有没有亲手改过起始拍 —— 改过就再也不许自动覆盖他填的数。 */
+  const [startTickTouched, setStartTickTouched] = useState(false);
   const [durationRaw, setDurationRaw] = useState("");
   const [busy, setBusy] = useState(false);
+  /** 上一次「施加并推演」的回执（`null` = 这一屏还没施加过；不是「施加了但没结果」）。 */
+  const [receipt, setReceipt] = useState<ApplyReceipt | null>(null);
+
+  /**
+   * 当前拍一到手就把起始拍灌成**下一拍**（判据见 `defaultStartTick` 的注释）。
+   *
+   * 两条约束缺一不可：
+   *  · **用户改过就不再覆盖**（`startTickTouched`）—— 否则他填的数会被下一次刷新吃掉；
+   *  · 推完一拍后 `curTick` 会 +1，此时**继续跟着走**（只要用户没手动改过），
+   *    于是连点两次「施加并推演」，第二次的默认值仍然是「下一拍」而不是已经过去的那一拍。
+   */
+  useEffect(() => {
+    if (curTick === null || startTickTouched) return;
+    setStartTickRaw(String(defaultStartTick(curTick)));
+  }, [curTick, startTickTouched]);
 
   /** 当前片的可选项：根源在前（默认选中第一个根源），枢纽/末端在后。 */
   const options: readonly RailVarOption[] = useMemo(
@@ -185,9 +259,26 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
       buildPerturbBody(draft, stateVarLabel(draft.targetStateVar, names), {
         hasSession: enabled,
         liveStateVars,
+        curTick,
       }),
-    [draft, names, enabled, liveStateVars],
+    [draft, names, enabled, liveStateVars, curTick],
   );
+  /** 起始拍落在哪一档（屏上 `data-phase` + 那句预告文案都读它）。 */
+  const phase = curTick === null ? null : startTickPhaseOf(draft.startTick, curTick);
+  /**
+   * 选中那个量在**已发布**的传导规则里有没有出边 —— 回执里「没动」的一条真原因。
+   * `null` = 规则清单还没回来 ⇒ 这一条不许说（同本文件其余「不知道 ≠ 没有」的纪律）。
+   *
+   * ⚠ 口径必须是 `status === "PUBLISHED"`：本组件取的是 `fetchPropagationRules(true)`（含草稿），
+   * 而引擎只吃已发布的那一批 —— 拿含草稿的集合去判「有没有出边」，会把一条只活在草稿上的边
+   * 当成真出边，然后回执少说一条真原因。
+   */
+  const hasOutEdge = useMemo(() => {
+    if (rulesQ.data === undefined) return null;
+    const sv = selectedVar?.stateVar ?? "";
+    if (sv === "") return null;
+    return rules.some((r) => r.status === "PUBLISHED" && r.sourceStateVar === sv);
+  }, [rulesQ.data, rules, selectedVar]);
   /** 选中那个量今天扰不扰得动（三态；屏上作 `data-` 记号，让"不知道"与"不行"分得开）。 */
   const liveness = livenessOf(selectedVar?.stateVar ?? "", liveStateVars);
 
@@ -211,15 +302,34 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
   const onApply = useCallback(async () => {
     if (!built.ok || !enabled) return;
     setBusy(true);
+    setReceipt(null); // 上一条回执立刻作废：留着它会让用户把上次的结果读成这次的
     try {
+      /**
+       * 「施加前」那一份世界态 —— 回执里 `X → Y` 的左端（WO-SIM-TICK-GATE 缺陷 ③）。
+       *
+       * ⚠ 必须在 POST **之前**读：`POST …/perturbations` 对「建单时已生效」的扰动会
+       * 在路由里**当场施加**（`app.ts` 的 `simApplyAtCurrentTick`），它回包里那份 `state`
+       * 已经是施加**之后**的了 —— 拿它当左端，`X → Y` 会变成 `Y → Y`，回执当场说谎。
+       * ⚠ 拿不到也照走（`null`）：回执会如实说「没法比」，**不许**因此把「变了 0 个格」印上屏。
+       */
+      let worldBefore: WorldCells | null = null;
+      let tickBefore: number | null = null;
+      try {
+        const w = await simWorld(sessionId as string);
+        worldBefore = w.state as WorldCells;
+        tickBefore = w.tick;
+      } catch {
+        worldBefore = null;
+      }
+
       await createSimPerturbation(sessionId as string, built.body);
       // ⛔ 改前到这里就收工了 —— 而按钮上写的是「施加**并推演**」。
       //    只建一条扰动、不推 tick，世界就没往前走一格 ⇒ 中栏指标一个数都不会变，
       //    用户点完只看到左栏「已施加」多一行，然后合理地问「结果在哪看」（仓主 2026-08-26 原话）。
       //    **按钮承诺了两件事只做了一件，这是屏上在说谎**，不是「还没做完」。
-      //    推一格（n=1）与 `startTick: 0`（立即生效）配套：扰动在第 0 拍施加，
-      //    推完第 1 拍才有「施加后 vs 施加前」的差值可看。要看累积效应再点几次。
-      await simTick(sessionId as string, 1);
+      //    推一格（n=1）与默认起始拍「下一拍」配套：扰动落在即将产出的那一拍上，
+      //    推完正好有「施加后 vs 施加前」的差值可看。要看累积效应再点几次。
+      const ticked = await simTick(sessionId as string, 1);
       // 失效**这个世界**的扰动清单：摘要条与时间轴都读这一份缓存。
       await qc.invalidateQueries({ queryKey: ["a", "sim-perturbations", sessionId ?? ""] });
       // 推过 tick 之后**世界态变了**，指标序列/会话/传导快照全部过期。
@@ -230,13 +340,30 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
         predicate: (q) =>
           Array.isArray(q.queryKey) && q.queryKey[0] === "a" && String(q.queryKey[1] ?? "").startsWith("sim"),
       });
+      // ── 回执：屏上要说清「生效没生效 / 在第几拍 / 动了几个格」（缺陷 ③）──
+      //    `tickBefore` 优先用 `GET …/world` 回的那一格（它与 `worldBefore` 是同一次读、必然自洽）；
+      //    那一跳失败时回落到渲染态的 `curTick`；两个都没有就回落成「推完那一格减一」。
+      //    ⚠ 三级回落**必须按这个顺序** —— 拿一个与 `worldBefore` 不同源的拍数去算相位，
+      //    回执会在边界上说错一拍。
+      const tb = tickBefore ?? curTick ?? ticked.curTick - 1;
+      setReceipt(
+        buildApplyReceipt({
+          body: built.body,
+          targetText: stateVarLabel(built.body.targetStateVar, names).text,
+          tickBefore: tb,
+          tickAfter: ticked.curTick,
+          worldBefore,
+          worldAfter: (ticked.state ?? null) as WorldCells | null,
+          hasOutEdge,
+        }),
+      );
       onApplied?.(built.body.label);
     } catch (e) {
       toastError(e);
     } finally {
       setBusy(false);
     }
-  }, [built, enabled, sessionId, qc, onApplied]);
+  }, [built, enabled, sessionId, qc, onApplied, curTick, names, hasOutEdge]);
 
   /**
    * 一个下拉项。**扰不动的量照样列出来**（隐藏 = 假装没这个量，用户会以为自己没找对地方），
@@ -279,6 +406,19 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
           </button>
         ))}
       </div>
+
+      {/* ── 缺陷 ②：世界现在在第几拍。**这是起始拍那个输入框唯一的参照物** ──
+          改前屏上一个字都没有 ⇒ 用户在没有坐标系的情况下填坐标，
+          而默认值恰好又是一个永远不生效的 0。「不知道」与「第 0 拍」在这里必须分开说。 */}
+      <p className={styles.tick} data-testid="rail-curtick" data-curtick={curTick ?? ""}>
+        {curTick === null ? (
+          <>世界现在在第几拍：<b>还不知道</b> —— 会话清单这一跳没回来（不是第 0 拍）</>
+        ) : (
+          <>
+            世界现在在 <b>第 {curTick} 拍</b> · 点「施加并推演」会推到 <b>第 {curTick + 1} 拍</b>
+          </>
+        )}
+      </p>
 
       {page === null ? (
         <p className={styles.absent} data-testid="rail-no-pages">
@@ -395,16 +535,34 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
               onChange={(e) => setMagnitudeRaw(e.target.value)}
             />
           </label>
+          {/* ── 缺陷 ①：起始拍。默认由当前拍现算（`defaultStartTick`），过去的拍提交时拦住。
+                 `min` 也跟着当前拍走 —— 让浏览器的原生上下箭头也踩不进那个静默坑。 */}
           <label className={styles.fld}>
-            <span className={styles.lbl}>起始拍</span>
+            <span className={styles.lbl}>起始拍{curTick === null ? "" : `（不早于第 ${curTick} 拍）`}</span>
             <input
               data-testid="rail-starttick"
               type="number"
-              min={0}
+              min={curTick ?? 0}
               value={startTickRaw}
-              onChange={(e) => setStartTickRaw(e.target.value)}
+              onChange={(e) => {
+                setStartTickTouched(true);
+                setStartTickRaw(e.target.value);
+              }}
             />
           </label>
+          <p className={styles.hint} data-testid="rail-starttick-note" data-phase={phase ?? ""}>
+            {curTick === null
+              ? "还不知道世界在第几拍 —— 起始拍没有基准，先不填（这一档不许提交，猜一个 0 就是那个「请求成功、屏上不动」的坑）"
+              : phase === "past"
+                ? `第 ${draft.startTick} 拍已经推过去了 —— 这一档不许提交（改成 ${curTick} 或更大）`
+                : phase === "now"
+                  ? `第 ${curTick} 拍 = 现在就发生（后端「不填起始拍」的默认语义）。` +
+                    `⚠ 这一档从本拍起就生效，而这次「施加并推演」还要再走一拍 ⇒ 下游会比默认档多吃一拍传导；` +
+                    `想让下游读数正好等于屏上公示系数的那一次传导，用第 ${curTick + 1} 拍。`
+                  : phase === "next"
+                    ? `第 ${curTick + 1} 拍 = 下一拍 —— 正是这次「施加并推演」要推的那一拍（默认值）`
+                    : `第 ${draft.startTick} 拍在将来 —— 本次只推到第 ${curTick + 1} 拍，还要再推 ${draft.startTick - curTick - 1} 拍它才落地`}
+          </p>
           <label className={styles.fld}>
             <span className={styles.lbl}>持续拍数（留空 = 永久）</span>
             <input
@@ -453,6 +611,37 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
             <p className={styles.absent} data-testid="rail-apply-blocked">
               {BLOCK_REASON_TEXT[built.reason]}
             </p>
+          )}
+
+          {/* ── 缺陷 ③：施加回执。**没有它，「引擎没读我的输入」与「排在未来还没轮到它」
+                 在屏上长得一模一样** —— 本轮就是这样被判成「引擎是死的」。
+                 `data-moved` 三态（`yes`/`no`/`unknown`）：「没动」与「没法比」不许合并。 */}
+          {receipt === null ? null : (
+            <div
+              className={styles.receipt}
+              data-testid="rail-receipt"
+              data-phase={receipt.phase}
+              data-reached={receipt.reached ? "1" : "0"}
+              data-moved={receipt.moved === null ? "unknown" : receipt.moved ? "yes" : "no"}
+              data-changed-cells={receipt.changedCells ?? ""}
+            >
+              <p className={styles.receiptHead} data-testid="rail-receipt-headline">
+                {receipt.headline}
+              </p>
+              <p className={styles.hint} data-testid="rail-receipt-cell">
+                {receiptCellText(receipt)}
+              </p>
+              <p className={styles.hint} data-testid="rail-receipt-cells">
+                {receiptCellsText(receipt)}
+              </p>
+              {receipt.notes.length === 0 ? null : (
+                <ul className={styles.receiptNotes} data-testid="rail-receipt-notes">
+                  {receipt.notes.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
       )}
