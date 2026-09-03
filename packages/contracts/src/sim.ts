@@ -266,6 +266,76 @@ export const PropagationRuleSchema = z.object({
 });
 export type PropagationRule = z.infer<typeof PropagationRuleSchema>;
 
+// ── 状态量的声明取值域与衰减（WO-PROP-CLAMP）───────────────────────────────────
+//
+// ── 病灶（实测·真后端 SEED_DEMO=1 · 零扰动空转 6 拍）────────────────────────────
+// 传导核是 `next = clone(current)` + 贡献 `+=` ⇒ 每个状态量都是一支**无泄漏的纯积分器**
+// `x(t+1) = x(t) + inflow(t)`。常量入流下 x 线性增长；链上第 d 跳是 d 重积分 ⇒ **O(t^d) 多项式发散**，
+// 再乘上扇入（~25 张订单汇进 1 个型号）。实测：t0 全部 7204 格都在 0–100 内，
+// 空转 6 拍后 **5290 格（73.4%）越界**，`loadIndex` 最大 69,134、`receivablePressure` 408,305。
+// 用户扰动因此被世界自身的漂移淹没 —— 屏上那个 Δ 说明不了「有多少是我扰出来的」。
+//
+// ── 为什么这两件事必须一起声明，不能只加 clamp ─────────────────────────────────
+// 只夹值 = 把发散**藏起来**：读数全部顶在上界、彼此不可区分，扰动再也推不动它
+// （`risk.ts` 的 `saturateTension` 段头记着这个病的实测样本：硬截断让「30 个点里 8 天零信息量」）。
+// 衰减才是纯积分器的**对因治疗**：`x(t+1) = rest + (1−λ)(x(t) − rest) + inflow`
+// 收敛到有限稳态 `rest + inflow/λ`；夹值只负责把稳态压回量纲内、且**保序**。
+//
+// ⚠ **本类型只承载"声明"，不承载"默认值"**：没有声明的状态量**不夹、不衰减**，
+//    并在 tick 回执里点名（`undeclaredStateVars`）。这是本仓一贯的诚实缺席 ——
+//    替 40 个状态量各拍一个取值域，等于替租户下建模判断，那是另一种静默错答。
+export const StateVarDomainSchema = z.object({
+  /** 取值域下界（含）。 */
+  min: z.number(),
+  /** 取值域上界（含）。 */
+  max: z.number(),
+  /**
+   * **静息点** —— 无入流时状态量回落到的那个值，必须 ∈ [min,max]。
+   *
+   * 为什么不一律取 0：`forecastBias` 是本平台唯一**带方向**的量纲（正=高估 / 负=低估，
+   * 见 `STATE_VAR_DISPLAY_NAMES` 该行注释），它的静息点是 0 而下界是负数；
+   * 而压力/风险类量纲的静息点就是下界 0。两者混成一个常数就会把方向量纲的负半轴整段抹掉。
+   */
+  restPoint: z.number(),
+  /**
+   * 衰减率 λ 的**引用**（照 `PropagationRule.coefficientRef` 同一范式：ruleKey + paramKey）。
+   *
+   * ⚠ 刻意**不允许内联一个 λ 字面量**：本仓 42 条传导边的 `coefficientRef` 实测 **0 条在用**、
+   *   全部回落内联 —— 引用机制形同虚设正是这条纪律要治的病。衰减率是**可编辑的经营口径**
+   *   （"一次冲击几天散掉"），必须落在规则库里改一处即改推演。
+   *
+   * `null`（或引用解析不到 / 取值不在 [0,1) ）⇒ **不衰减**，并在回执里点名
+   * （`decayUnresolved`）。绝不偷偷补一个默认 λ：那会让"没配衰减"与"配了 0"在屏上一模一样。
+   */
+  decayRef: z.object({ ruleKey: z.string(), paramKey: z.string() }).nullable().default(null),
+  /** 量纲单位（"0–100 压力指数" / "天" / "件"）—— 披露层原样打给用户看。 */
+  unit: z.string(),
+  /** 这个取值域的**出处**（哪一句注释、哪个生成式定的）。写不出出处就不许声明。 */
+  source: z.string(),
+});
+export type StateVarDomain = z.infer<typeof StateVarDomainSchema>;
+
+/** 状态量裸键 → 声明取值域。**查不到 = 未声明**（不夹不衰减，回执里点名）。 */
+export type StateVarDomainLookup = Record<string, StateVarDomain>;
+
+/**
+ * 一次**饱和**（读数越过声明取值域、被保序压回）的记录。
+ *
+ * ⚠ 存在的理由：本单明确禁止**静默夹住** —— 夹了却不说，屏上看着正常、信息其实已经丢了，
+ * 那是把一个病换成另一个更难查的病。每一次饱和都必须能在披露层看到。
+ */
+export const SaturationEventSchema = z.object({
+  objectId: z.string(),
+  stateVar: z.string(),
+  /** 压缩前的原始值（发散有多远，看这个数）。 */
+  raw: z.number(),
+  /** 压缩后的读数（恒在 (min,max) 开区间内）。 */
+  value: z.number(),
+  /** 顶到了哪一侧。 */
+  bound: z.enum(["min", "max"]),
+});
+export type SaturationEvent = z.infer<typeof SaturationEventSchema>;
+
 // ── SimSession 会话状态机（§2.1 sim_session 表） ──────────────────────────────
 export const SimSessionStatusSchema = z.enum(["DRAFT", "READY", "RUNNING", "PAUSED", "ENDED"]);
 export type SimSessionStatus = z.infer<typeof SimSessionStatusSchema>;

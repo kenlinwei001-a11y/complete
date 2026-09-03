@@ -1,6 +1,7 @@
-import type { PropagationRule, ResolvedSimScope } from "@platform/contracts";
+import type { PropagationRule, ResolvedSimScope, StateVarDomainLookup } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
+import { stateVarDomains } from "../synthetic/battery.js";
 import { cadenceFromProps } from "../synthetic/cadence.js";
 import { buildPairWeights, type PairWeightReport } from "./pair-weights.js";
 import {
@@ -64,6 +65,13 @@ export interface PropagationInputs {
   pairWeights: PairWeightLookup;
   /** 权重装配回执：铺了多少对、多少对份额为 0、哪些口径算不出（诚实报缺，不退回「逐目标同额」）。 */
   pairWeightReport: PairWeightReport;
+  /**
+   * 状态量声明取值域（WO-PROP-CLAMP）：夹值与衰减的**唯一数据来源**。
+   *
+   * 与 `cadenceGates` 同一条纪律 —— 引擎自己不认识任何量纲，边界与衰减率都是**喂进去的内容**
+   * （R14 零业务常数）。查不到的状态量 ⇒ 不夹不衰减，并由引擎在回执里逐个点名。
+   */
+  stateVarDomains: StateVarDomainLookup;
 }
 
 /**
@@ -123,5 +131,9 @@ export async function buildPropagationInputs(
     gateSkipped: built.skipped,
     pairWeights: pw.weights,
     pairWeightReport: pw.report,
+    // 状态量取值域（WO-PROP-CLAMP）：与中文名同一张登记册（`battery.ts` 的
+    // `STATE_VAR_DISPLAY_NAMES` / `STATE_VAR_DOMAINS` 两列），前端与引擎都只此一处，不留第二份。
+    // λ 本身**不在这里**——它由引擎经 `decayRef` 从上面那份 `ruleParams` 里现读（改 C35 即改推演）。
+    stateVarDomains: stateVarDomains(),
   };
 }

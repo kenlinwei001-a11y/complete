@@ -152,8 +152,12 @@ describe("WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝�
       t.app.inject({
         method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN,
         payload: {
-          key, sourceTypeKey: "Order", sourceStateVar: "demandPressure", viaLinkKey: "order_for_model",
-          targetTypeKey: "Model", targetStateVar: "demandLoad", coefficient: 0.8, delayTicks: 0,
+          // WO-PROP-CLAMP：本例量的是**闸门形状与守恒**（到点齐放 · 闸门不改总量），与「状态量衰减」正交。
+          // 换两个**未登记取值域**的量纲名（`STATE_VAR_DOMAINS` 查不到 ⇒ 不衰减不夹值），
+          // 否则 `gated[2] === plain[2]` 恒假：攒着的量到得晚、少衰减一拍，反而留得更多。
+          // 真种子部分（Cadence(demand.consensus) 那一行 / order_for_model 真链路 / 真对象）一字未动。
+          key, sourceTypeKey: "Order", sourceStateVar: "e4GateIn", viaLinkKey: "order_for_model",
+          targetTypeKey: "Model", targetStateVar: "e4GateOut", coefficient: 0.8, delayTicks: 0,
           cadenceNodeId, status: "PUBLISHED",
         },
       });
@@ -162,12 +166,12 @@ describe("WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝�
     const run = async () => {
       const sid = (await (await t.app.inject({
         method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
-        payload: { baseSnapshot: { [orderId]: { demandPressure: 10 }, [modelId]: { demandLoad: 0 } } },
+        payload: { baseSnapshot: { [orderId]: { e4GateIn: 10 }, [modelId]: { e4GateOut: 0 } } },
       })).json()).id as string;
       const seen: number[] = [];
       for (let i = 0; i < 3; i++) {
         const r = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
-        seen.push((r.json().state as Record<string, Record<string, number>>)[modelId]!.demandLoad ?? 0);
+        seen.push((r.json().state as Record<string, Record<string, number>>)[modelId]!.e4GateOut ?? 0);
       }
       return seen;
     };
