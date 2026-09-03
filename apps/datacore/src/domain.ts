@@ -343,7 +343,20 @@ export interface PublishRequestRecord {
   tenantId: string;
   ontologyVersion: number;
   requestedBy: string;
-  status: "PENDING_SIGNOFF" | "APPROVED" | "REJECTED" | "EXPIRED";
+  /**
+   * 会签请求状态。**取值域来自契约**（`PublishRequestStatusSchema`），不是本文件手抄一份。
+   *
+   * ⚠ WO-SIGNOFF-CHAIN：本单修的那个 bug 的**形态**就是「同一个取值域被抄了两份，
+   * 其中一份抄错了」—— 前端抄成了 `"PENDING"`，后端从来没发过这个值，
+   * 于是会签面板两颗按钮恒灰、15 条会签 0 条可处置，而**两边各自都编译通过**。
+   * 前端那份已改为引契约；本行是**剩下的另一份手抄**。
+   *
+   * 只修前端会留下这条：今天它与契约恰好一字不差，所以「看起来没问题」——
+   * 但「今天恰好一致」不度量「不会再分叉」。哪天契约加一个态（如 `WITHDRAWN`），
+   * 本行不会红，`PublishRequestRecord` 就再一次成了那份**抄错了也没人说话**的副本。
+   * 改成引契约之后，分叉当场是编译错误 —— **机器先说话**。
+   */
+  status: import("@platform/contracts").PublishRequestView["status"];
   /**
    * 本次发布触及的域。
    *
