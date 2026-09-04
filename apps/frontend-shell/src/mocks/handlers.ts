@@ -7708,7 +7708,7 @@ export const handlers = [
   }),
   // ---- 推演沙盘 P0（增量 4 · Agent I）：tick / checkpoint / branch / compare / certification 最小 mock ----
   http.post("*/a/v1/sim/sessions/:id/tick", async ({ params, request }) => {
-    const body = (await request.json().catch(() => ({}))) as { n?: number };
+    const body = (await request.json().catch(() => ({}))) as { n?: number; disclose?: boolean };
     const n = body.n ?? 1;
     // 占位递增态（mock 模式仅证交互；真后端走传导核）。
     const state = { "TypeA#0": { s1: 50 + n * 5, s2: 40 } };
@@ -7716,10 +7716,59 @@ export const handlers = [
     // 否则「世界列表随 tick 更新」这条断言在 mock 上永远看不出差别。
     const id = String((params as { id: string }).id);
     const s = mockSimSessions.get(id);
+    const fromTick = s?.curTick ?? Math.max(0, n - 1);
     if (s) { s.curTick = n; s.status = "RUNNING"; }
     mockSimWorlds.set(id, { tick: n, state });
     rememberTickState(id, n, state);
-    return HttpResponse.json({ curTick: n, state });
+    /**
+     * WO-SIM-DISCLOSURE · 推演过程披露层。**两条纪律，缺一条这个 mock 就有害**：
+     *
+     * ① **门要镜像**：真后端默认不下发，只在 `?disclose=1` / `disclose:true` 时给
+     *    （`app.ts` 的 `wantDisclosure`）。这里同样只在要了才给 —— 不镜像这道门，
+     *    「默认不发」这条契约在 mock 面上就永远测不出来。
+     * ② **数只许是这个玩具世界自己的真数，不许照抄真后端的读数**。
+     *    本仓出过「mock 写对了语义、恰好把后端 bug 盖住」的事：mock 越像真的，
+     *    越能替一个坏掉的后端把测试染绿。所以下面每个数都是**这一屏 mock 世界的实际规模**——
+     *    1 个对象、0 条边、0 条传导规则、0 次饱和、0 毫秒；真后端同一拍实测是
+     *    12,745 对象 / 12,192 边 / 46 条规则 / 4,577 次饱和 / 517 毫秒。
+     *    **两边差三个数量级是刻意的**：任何一条断言若在 mock 上也能拿到"真实感"的读数，
+     *    那条断言就没有在验后端。
+     * ③ 同理 `snapshotVersion` 带 `mock-` 前缀：真后端是 sha256 前 12 位十六进制。
+     *    截图/读数一眼能认出来源，**mock 的读数不可能被当成真跑的证据**。
+     */
+    const disclosure = body.disclose === true
+      ? {
+          fromTick,
+          toTick: n,
+          data: {
+            objects: 1, links: 0,
+            types: [{ typeKey: "TypeA", count: 1 }],
+            linkTypes: [],
+            // 这个玩具世界的图恒定（1 个对象、0 条边）⇒ 版本串恒定。
+            // 恒定在这里是**正确的**：换扰动重跑，引用的数据确实一个字节没变。
+            snapshotVersion: "mock-typea1",
+          },
+          slice: {
+            sliceKey: "GLOBAL", kind: "GLOBAL" as const, target: null, hops: 1,
+            nodes: 1, edges: 0, droppedNodes: 0, droppedEdges: 0, unresolved: null,
+          },
+          rules: {
+            // mock 世界没有传导规则 ⇒ 这些数就是 0。**0 是真值，不是占位。**
+            declared: 0, fired: 0, withCoefficientRef: 0, refUnresolved: 0, withWeightRef: 0,
+            contributions: 0, perturbationWrites: 0, items: [], unresolvedWeights: [],
+          },
+          constraints: {
+            stateVarBounds: [], undeclaredStateVars: ["s1", "s2"], decayUnresolved: [],
+            ruleClamps: [], saturations: 0, cadence: [], cadenceSkipped: [],
+          },
+          // 推演路零 LLM —— 这一条与真后端**语义相同**（都是 false），因为它本来就是全局事实，
+          // 不是某个世界的规模。留白才是被禁止的那件事。
+          agent: { invoked: false, calls: 0, provider: null, model: null },
+          // mock 不真的算东西 ⇒ 耗时是 0。给出这一格而不是省掉，是为了让"未计时"与"很快"分得开。
+          timings: [{ phase: "total", ms: 0 }],
+        }
+      : undefined;
+    return HttpResponse.json({ curTick: n, state, ...(disclosure ? { disclosure } : {}) });
   }),
   // WO-BEFE-E：存档改**有状态**（原先恒回 `cp_mock`/`tick:1`，存两次也只看得到一条 ⇒ 清单证明不了任何事）。
   // `tick` 取世界当前 tick（与后端 app.ts:1795 `tick: s.curTick` 同语义），不再写死 1。

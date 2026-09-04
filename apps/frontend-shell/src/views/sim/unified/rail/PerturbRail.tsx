@@ -45,7 +45,12 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PerturbationKind, PropagationRulesResponse, SandboxViewConfig } from "@platform/contracts";
+import type {
+  PerturbationKind,
+  PropagationRulesResponse,
+  SandboxViewConfig,
+  SimRunDisclosure,
+} from "@platform/contracts";
 import {
   createSimPerturbation,
   simTick,
@@ -83,6 +88,7 @@ import {
   type RailVarOption,
   type WorldCells,
 } from "./perturbRailModel";
+import DisclosurePanel from "./DisclosurePanel";
 import styles from "./PerturbRail.module.css";
 
 /**
@@ -210,6 +216,13 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
   const [busy, setBusy] = useState(false);
   /** 上一次「施加并推演」的回执（`null` = 这一屏还没施加过；不是「施加了但没结果」）。 */
   const [receipt, setReceipt] = useState<ApplyReceipt | null>(null);
+  /**
+   * 上一次推演的**过程披露层**（WO-SIM-DISCLOSURE · 铁律 1.5 判据二）。
+   *
+   * `undefined` = 这一拍没拿到披露（没要 / 后端没给）⇒ 面板整块不渲染，
+   * **不是**渲染成一片 0：那会让「引擎没跑」与「披露没要」在屏上长成同一个样子。
+   */
+  const [disclosure, setDisclosure] = useState<SimRunDisclosure | undefined>(undefined);
 
   /**
    * 当前拍一到手就把起始拍灌成**下一拍**（判据见 `defaultStartTick` 的注释）。
@@ -303,6 +316,9 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
     if (!built.ok || !enabled) return;
     setBusy(true);
     setReceipt(null); // 上一条回执立刻作废：留着它会让用户把上次的结果读成这次的
+    // 披露层同理，而且更要紧：它满屏是数（条数/耗时/命中数），留着上一拍的
+    // 比留着上一条回执更像"这一拍的结果"。
+    setDisclosure(undefined);
     try {
       /**
        * 「施加前」那一份世界态 —— 回执里 `X → Y` 的左端（WO-SIM-TICK-GATE 缺陷 ③）。
@@ -329,7 +345,10 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
       //    **按钮承诺了两件事只做了一件，这是屏上在说谎**，不是「还没做完」。
       //    推一格（n=1）与默认起始拍「下一拍」配套：扰动落在即将产出的那一拍上，
       //    推完正好有「施加后 vs 施加前」的差值可看。要看累积效应再点几次。
-      const ticked = await simTick(sessionId as string, 1);
+      // 第三个实参 = 要披露层（WO-SIM-DISCLOSURE）。**只在用户真的点了「施加并推演」时要** ——
+      // 它要给这张图算快照指纹（实测 12,745 对象 + 12,192 边），做成每一拍都付的账迟早被一刀关掉。
+      const ticked = await simTick(sessionId as string, 1, true);
+      setDisclosure(ticked.disclosure);
       // 失效**这个世界**的扰动清单：摘要条与时间轴都读这一份缓存。
       await qc.invalidateQueries({ queryKey: ["a", "sim-perturbations", sessionId ?? ""] });
       // 推过 tick 之后**世界态变了**，指标序列/会话/传导快照全部过期。
@@ -643,6 +662,12 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
               )}
             </div>
           )}
+
+          {/* ── WO-SIM-DISCLOSURE · 推演过程披露层（铁律 1.5 判据二）───────────────
+                 位置紧挨回执，是因为它讲的就是**回执那一拍**：读者刚看完「动了几个格」，
+                 下一问必然是「凭什么」。默认收起（它是第二层，不跟结果抢第一层的位置），
+                 `disclosure === undefined` 时整块不渲染（见该组件头注的三态说明）。 */}
+          <DisclosurePanel disclosure={disclosure} />
         </div>
       )}
 

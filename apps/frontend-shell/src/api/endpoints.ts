@@ -79,6 +79,8 @@ import type {
   //   ⚠ `PropagationRule` 本单也要用，但它已在 :64 由 WO-BEFE-E 引入 —— 合并时三个单
   //     各写一遍同一个 import 造成 TS2300。此处**不是删掉它**，是它已在上面声明过。
   SimCounterfactualResult,
+  // WO-SIM-DISCLOSURE · 推演过程披露层（契约单源；前端不重定义，contracts-only-shared）
+  SimRunDisclosure,
   // WO-PROCESS-INSTANCE · 流程运行时（前端不重定义，contracts-only-shared）
   ProcessStuckResponse,
   ProcessInstanceDetail,
@@ -906,9 +908,22 @@ export const patchSimDisabledRules = (sessionId: string, disabledRuleKeys: strin
  */
 export const simCounterfactual = (sessionId: string, body: { n?: number; disabledRuleKeys?: string[] }) =>
   api.a<SimCounterfactualResult>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/counterfactual`, { body });
-/** 推进 n 个 tick（默认 1）→ 返回 curTick + 新世界态（+trace 若有传导规则）。 */
-export const simTick = (sessionId: string, n = 1) =>
-  api.a<{ curTick: number; state: TickState; trace?: unknown[] }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/tick`, { body: { n } });
+/**
+ * 推进 n 个 tick（默认 1）→ 返回 curTick + 新世界态（+trace 若有传导规则）。
+ *
+ * `disclose` = 要不要**推演过程披露层**（WO-SIM-DISCLOSURE · 铁律 1.5 判据二）。
+ * **默认不要**，与后端的默认一致：披露层要给这张图算快照指纹（实测 12,745 对象 + 12,192 边），
+ * 每一拍都付这笔账迟早被人一刀关掉。要 ⇒ 后端按 `disclose:true` 一次给全，不截断。
+ *
+ * ⚠ `disclosure` 是 **optional**，而且屏上必须把「没拿到」与「拿到了但是空」分开讲：
+ * 后端不给这一段时，面板要说「本次没取到披露」，**不许**渲染成一堆 0 —— 那会让
+ * 「引擎没跑」与「披露没要」在屏上长成同一个样子。
+ */
+export const simTick = (sessionId: string, n = 1, disclose = false) =>
+  api.a<{ curTick: number; state: TickState; trace?: unknown[]; disclosure?: SimRunDisclosure }>(
+    `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/tick`,
+    { body: disclose ? { n, disclose: true } : { n } },
+  );
 /** 读当前世界态（curTick + state）。 */
 export const simWorld = (sessionId: string) =>
   api.a<{ tick: number; state: TickState }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/world`);
