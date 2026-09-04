@@ -41,7 +41,7 @@ export default function BoundaryPage() {
             <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
               {b.consumers.map((c) => (
                 <li key={c.file} data-testid={`boundary-consumer-${b.registry}`}>
-                  <span className="mono">{c.file}</span> · {c.binding} <span style={{ color: "var(--muted2)" }}>（{zh.boundary.derivesVia} {c.derivesVia}）</span>
+                  <span className="mono">{c.surface}</span> · {c.binding} <span style={{ color: "var(--muted2)" }}>（{zh.boundary.derivesVia} {c.derivesVia}）</span>
                 </li>
               ))}
             </ul>

@@ -123,7 +123,7 @@ export const SCOPE_DIMENSIONS: readonly ScopeDimensionSpec[] = [
     key: "businessTypes",
     label: "业务线",
     wiring: "no-args",
-    note: "chain_impediments 显式拒绝 scope.businessTypes（后端 service.ts:3125「暂不支持」并报 400）——今天这一维带不下去，故此处只读不可勾。",
+    note: "求解器 chain_impediments 显式拒绝 scope.businessTypes（后端报 400「暂不支持」）——今天这一维带不下去，故此处只读不可勾。",
   },
   {
     key: "baseIds",
@@ -135,7 +135,7 @@ export const SCOPE_DIMENSIONS: readonly ScopeDimensionSpec[] = [
     key: "modelIds",
     label: "产品",
     wiring: "no-args",
-    note: "chain_impediments 显式拒绝 scope.modelIds（后端 service.ts:3125「暂不支持」并报 400）——今天这一维带不下去，故此处只读不可勾。",
+    note: "求解器 chain_impediments 显式拒绝 scope.modelIds（后端报 400「暂不支持」）——今天这一维带不下去，故此处只读不可勾。",
   },
 ];
 
@@ -843,7 +843,7 @@ export const IMPEDIMENT_JOIN_REASON: Record<ImpedimentJoinStatus, string> = { //
     "在合成种子的因子表里共 3 条因子，只是这 3 条的下钻对象都写成通配（不指名具体哪条产线、哪一批），" +
     "而「通配算不算对上」这条判据全仓还没有定义 ⇒ 缺的是判据，不是数据：去补种子补不好它。" +
     "复验：调 chain_impediments 看这批阻滞点落在哪些对象类型上，再调 gap_attribution 看因子的下钻类型与下钻 id。" +
-    "更要命的是 decision_play 拿到对不上的因子 id 会静默回落到贡献最大的默认根因（solvers/service.ts:2882），" +
+    "更要命的是求解器 decision_play 拿到对不上的因子 id 会静默回落到贡献最大的默认根因，" +
     "屏上会出现一个看着确凿、实则与这条阻滞点无关的根因。故本次不猜因子 id，只把 stage 带过去做粗筛（段级精度，不是因子级）。",
 };
 

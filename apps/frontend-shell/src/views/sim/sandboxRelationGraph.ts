@@ -143,7 +143,7 @@ export const RELATION_FORMULA_PROVENANCE = "算式由声明字段还原";
 /** 出处记号的全文（屏上真渲染，收在浮层里）。 */
 export const RELATION_FORMULA_PROVENANCE_DETAIL =
   "这一行不是后端下发的公式 —— 传导规则里存的是系数 / 延迟 / 合并方式 / 衰减 / 上下限这几个参数，" +
-  "本页把它们写回引擎真实执行的那个算术形态（apps/datacore/src/sim/propagation.ts 的 propagateTick）。" +
+  "本页把它们写回引擎真实执行的那个算术形态（传导 tick `propagateTick`）。" +
   "所以它可核对、可反驳；但它也会随引擎改动而过期，核对时以引擎实现为准。" +
   "状态变量在本体里没有中文名可取，故算式里只出现系统键 —— 这是数据的实情，本页不替它编一个。";
 
