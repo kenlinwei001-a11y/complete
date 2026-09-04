@@ -1695,8 +1695,12 @@ export default function OntologyRelationsPage() {
           </>
         )}
         <br />
-        ⚠ 约束只在<b>读这类对象的求解器</b>上生效：求解器没声明读某个类型，挂在那个类型上的约束它不评估
-        （声明表见后端 `SOLVER_ONTOLOGY_SIGNATURES` / `SOLVER_REQUIRED_TYPES`）。
+        {/* WO-RELATION-EDIT-GAPS 文体收口：原句尾括号里带**反引号包着的后端 TS 常量名**
+            （`SOLVER_ONTOLOGY_SIGNATURES` / `SOLVER_REQUIRED_TYPES`）——两条都犯规：
+            ① 屏上不许有 Markdown 字面量；② 那是源码符号不是业务事实（R-UI-4 同源）。
+            真前端实测本页 Markdown 字面量命中 2 处，就是这两个；删掉后 0 处。
+            信息本身没丢：前半句已经把「求解器没声明读某个类型就不评估」这条口径说清了。 */}
+        ⚠ 约束只在<b>读这类对象的求解器</b>上生效：求解器没声明读某个类型，挂在那个类型上的约束它不评估。
         <br />
         ⚠ 判定取<b>最可能违规的那个实例</b>（上限型取该属性最大的、下限型取最小的）——约束是全称命题，
         取平均会把「一台设备严重超限」稀释成通过。
