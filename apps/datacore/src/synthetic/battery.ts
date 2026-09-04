@@ -11,6 +11,8 @@ import type { ExcSeverity, ExcStatus } from "@platform/contracts";
 import type { StateVarDomain } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
 import { hashString, mulberry32, randInt, round } from "../prng.js";
+// WO-UNITCOST-LAND：物料价的**单一实现**（`generateExtended` 与本文件共用同一份，不各抄一遍）。
+import { materialUnitPrices } from "./materials-seed.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
 import { SEEDED_VIEW_KEYS } from "./view-manifest.js";
 
@@ -1129,6 +1131,21 @@ const modelProps: PropertyDef[] = [
   { propKey: "pos", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "bases", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" },
+  /**
+   * WO-UNITCOST-LAND · **按件履约成本**（元/电芯）—— 与 `unitPrice` 同阶的强度量，单一来源。
+   *
+   * 值 = Σ over 该型号当期 BOM 的明细行 `quantity ×(1+lossRate)× Material.unitPrice`
+   * （`modelUnitCosts()` 现算，纯派生·零 rng）。量纲前置由本体自证：实测 105/105 条
+   * `BOMDetail.unit === 其 Material.unit` ⇒ `quantity × unitPrice` 无歧义，不内联任何假设。
+   *
+   * ⚠ 单位声明 **`元`**，不是 `元/件` —— 这不是偷懒，是照搬同一格 `unitPrice` 的既有口径：
+   * 本仓表达「每单位多少钱」靠的是**绑定角色**（`unit_revenue` / `unit_cost` + `qty` 那一格），
+   * 不是靠单位串（见 `opt-binding.ts` 的 `revenueFromUnitRate` / `revenueQtyProp` 回包）。
+   * ⚠ 收编订正（WO-INTEG-BATCH-5）：本单原注写「`UNIT_DICTIONARY` 今日只有 9 个词条」——
+   * 集成线上该字典已改为 `[...PROPERTY_UNITS]` 单源（约 48 词条）。结论不变：`元/件` 仍不在词库，
+   * 声明它照样会被发布门 400 拒；变的只是「为什么不在」的理由。
+   */
+  { propKey: "unitCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" },
   // C33 碳护照前置（NCM 体系碳足迹偏高 → 越线）。
   { propKey: "carbonFootprint", dataType: "number", isPrimaryKey: false, unit: "kgCO2e", scale: "absolute" },
   // Phase 2：产品工程域扩展属性（R12 全建模对齐）
@@ -1817,6 +1834,9 @@ const orderLineProps: PropertyDef[] = [
   { propKey: "due", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 交期（继承订单头）
   { propKey: "lineStatus", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // OPEN | COMMITTED | PARTIAL | SHIPPED
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 按行 model 反范式化（Model.unitPrice 单一来源·R14）
+  // WO-UNITCOST-LAND：按件履约成本，按行 model 反范式化（`Model.unitCost` 单一来源·守 R14·勿写死）。
+  // 与上面 `unitPrice` **完全同一口径同一取法** —— 营收侧与成本侧从此同阶，毛利才是单位经济学的毛利。
+  { propKey: "unitCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" },
 ];
 
 const inventoryTxnProps: PropertyDef[] = [
@@ -2389,7 +2409,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
 
   // ---- 产品 / 工程主数据 ----
   "Model.modelId": "型号编号", "Model.name": "型号名称", "Model.chem": "化学体系", "Model.pos": "业态定位",
-  "Model.bases": "可产基地", "Model.unitPrice": "单价", "Model.carbonFootprint": "碳足迹",
+  "Model.bases": "可产基地", "Model.unitPrice": "单价", "Model.unitCost": "单位成本", "Model.carbonFootprint": "碳足迹",
   "Model.seriesId": "所属系列", "Model.productCode": "产品编码", "Model.capacity": "电芯容量",
   "Model.voltage": "标称电压", "Model.energy": "单体能量", "Model.dimension": "外形尺寸",
   "Model.weight": "单体重量", "Model.applicationDomain": "应用领域", "Model.status": "生命周期状态",
@@ -2462,7 +2482,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Order.businessType": "业务类型", "Order.early": "是否提前交付", "Order.earlyDue": "提前交期",
   "OrderLine.lineId": "订单行号", "OrderLine.orderRef": "所属订单", "OrderLine.lineNo": "行序号",
   "OrderLine.model": "型号", "OrderLine.qty": "数量", "OrderLine.due": "交期",
-  "OrderLine.lineStatus": "行状态", "OrderLine.unitPrice": "单价",
+  "OrderLine.lineStatus": "行状态", "OrderLine.unitPrice": "单价", "OrderLine.unitCost": "单位成本",
   "OrderPromise.promiseId": "承诺编号", "OrderPromise.orderRef": "所属订单", "OrderPromise.model": "型号",
   "OrderPromise.requestedQty": "需求量", "OrderPromise.committableQty": "可承接量",
   "OrderPromise.promiseDate": "承诺交付日", "OrderPromise.atpStatus": "承诺状态",
@@ -2976,6 +2996,10 @@ export function withPropDisplayNames(typeKey: string, props: PropertyDef[]): Pro
  * （取值逐字不变），故整表退役：**单一出处 > 并存**。
  */
 function withGovernance(key: string, props: PropertyDef[]): PropertyDef[] {
+  // WO-INTEG-BATCH-5 收编取舍：`wo-unitcost-land` 在此处补过一格 `Model.unitCost: "元"`，
+  // 但集成线已把整张 `units` 覆写表**退役**（量纲改必填后单位在构造点声明，类型系统兜底）。
+  // 故此处保留集成线的「已退役」态，该单的意图改由 `modelProps.unitCost` 的
+  // `unit: "元", scale: "absolute"` 在构造点承接 —— 单一出处 > 并存。
   return withPropDisplayNames(key, props).map((p) => {
     const out = { ...p };
     if (p.propKey === "name" || p.propKey === "displayName" || (p.isPrimaryKey && p.dataType === "string")) {
@@ -4575,12 +4599,62 @@ export function deriveFulfills(
   return out;
 }
 
+/**
+ * WO-UNITCOST-LAND · 每型号**按件履约成本**（元/电芯）—— `Model.unitCost` 的**唯一算法**。
+ *
+ * `unitCost(model) = Σ over 该型号当期 BOM 明细 [ quantity × (1 + lossRate) × Material.unitPrice ]`
+ *
+ * 三条口径，每条都有实测依据，不是拍的：
+ *  ① **量纲**：`quantity × unitPrice` 之所以无歧义，是因为本体自己断言了两者同 UOM ——
+ *     实测 105/105 条 `BOMDetail.unit === 其 Material.unit`（取证脚本 `unit-check.mjs`）。
+ *     故这里**不内联任何换算系数**；查不到价的物料按 0 计并由调用方的金丝雀点名，不静默补数。
+ *  ② **选哪版 BOM**：一个型号有 2–3 个版本 ⇒ 2–3 份 BOM。取 `bomId` **字典序最小**那份
+ *     （= V1.0 初始量产版），判据确定性且与 rng 无关。⛔ 不取"最新版"：`expireDate` 有空串、
+ *     `status` 有试产/量产两态，按它们排会引入一个没人拍过板的口径。
+ *  ③ **损耗**：`lossRate` 是投料损耗（本体上每行自带），成本要按**投料量**算不是按净用量，
+ *     故乘 `(1+lossRate)`。这与 `counterfactual.mjs` 只读对照实验里验过的公式**逐字相同**。
+ *
+ * 纯派生：**零 rng、零时钟**（R6）。物料价来自 `materials-seed.ts` 的同一份实现
+ * （不是另抄一遍公式 —— 抄了就会漂移且不报错，见该文件头注）。
+ */
+export function modelUnitCosts(
+  bomHeaders: Record<string, unknown>[],
+  bomDetails: Record<string, unknown>[],
+  materialPrice: Map<string, number>,
+): Map<string, number> {
+  const detailsOf = new Map<string, Record<string, unknown>[]>();
+  for (const d of bomDetails) {
+    const k = String(d.bomId);
+    const arr = detailsOf.get(k);
+    if (arr) arr.push(d);
+    else detailsOf.set(k, [d]);
+  }
+  // 每型号取 bomId 字典序最小的那份 BOM（口径 ②）。
+  const bomOf = new Map<string, string>();
+  for (const h of bomHeaders) {
+    const mid = String(h.modelId), bid = String(h.bomId);
+    const prev = bomOf.get(mid);
+    if (prev === undefined || bid < prev) bomOf.set(mid, bid);
+  }
+  const out = new Map<string, number>();
+  for (const [mid, bid] of bomOf) {
+    let sum = 0;
+    for (const d of detailsOf.get(bid) ?? []) {
+      sum += Number(d.quantity ?? 0) * (1 + Number(d.lossRate ?? 0)) * (materialPrice.get(String(d.materialId)) ?? 0);
+    }
+    out.set(mid, round(sum, 2));
+  }
+  return out;
+}
+
 export function deriveOrderLines(
   orders: Record<string, unknown>[],
   models: Record<string, unknown>[],
 ): Record<string, unknown>[] {
   const modelIds = models.map((m) => String(m.modelId));
   const priceOf = new Map(models.map((m) => [String(m.modelId), Number(m.unitPrice ?? 0)]));
+  // WO-UNITCOST-LAND：成本与单价**同一取法** —— 都从 `models` 反范式化下来（R14 单一来源）。
+  const costOf = new Map(models.map((m) => [String(m.modelId), Number(m.unitCost ?? 0)]));
   const out: Record<string, unknown>[] = [];
   for (const o of orders) {
     const so = String(o.so);
@@ -4618,6 +4692,7 @@ export function deriveOrderLines(
         due: o.due,
         lineStatus: lineStatusFor(String(o.status ?? "OPEN"), h, i),
         unitPrice: priceOf.get(lm) ?? Number(o.unitPrice ?? 0),
+        unitCost: costOf.get(lm) ?? 0,
       });
     }
   }
@@ -5078,6 +5153,26 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       // （锚点段的 Math.max(0,…) 保留原样：实测其 leadDays 最小 14，clamp 从未触发，故两段口径实际一致。）
       leadDays: dueDay,
     });
+  }
+
+  /**
+   * WO-UNITCOST-LAND · 回填 `Model.unitCost`（元/电芯），**必须排在 `deriveOrderLines` 之前** ——
+   * 行上的 `unitCost` 是从 model 反范式化下来的，早一行都拿不到值。
+   *
+   * ⚠ **为什么放在这里而不是 `models` 的构造处**：BOM 依赖 ProductVersion、ProductVersion 依赖 Model，
+   * 顺序上 BOM 只能在 model 之后 ⇒ 这一格只能回填。诚实写成回填，好过为了"一次成型"
+   * 把 BOM 生成往前挪（那会真的动 rng 流与 ID 序）。
+   *
+   * ⚠ **R6：`materialUnitPrices` 自建一条 `seed+7919` 子流、用完即弃**，
+   * 不碰 `generateBattery` 自己的任何 rng 流 ⇒ 除本字段外全部合成值逐字节不动。
+   * 实测（`docs/evidence/wo-unitcost-land/determinism.mjs`）：90 个集合里只有
+   * `models` / `orderLines` 变，剔除 `unitCost` 后两者 hash 回到接线前基线值。
+   */
+  const unitCostOfModel = modelUnitCosts(bomHeaders, bomDetails, materialUnitPrices(seed));
+  for (const m of models) {
+    // 取不到 ⇒ 该型号没有 BOM。写 0 是**诚实的"没量到"**而不是"不要钱"：
+    // 下游 `assignCostBound` 与取证脚本的金丝雀都会把 0 值型号点名（今日实测 6/6 有 BOM，无 0 值）。
+    (m as Record<string, unknown>).unitCost = unitCostOfModel.get(String(m.modelId)) ?? 0;
   }
 
   // WO-ORDERLINE：订单拆行（SO→型号明细行·一单多型号多行）。独立哈希子流·**不插既有 order rng 流**→

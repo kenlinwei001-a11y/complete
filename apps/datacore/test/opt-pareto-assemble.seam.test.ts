@@ -45,7 +45,13 @@ const OTHER = debugUser("zeta", "admin", "admin");
 
 type App = Awaited<ReturnType<typeof makeApp>>;
 
-const putType = (t: App, tenantId: string, key: string, props: { propKey: string; dataType: string; isPrimaryKey?: boolean; refToTypeKey?: string }[]) =>
+const putType = (
+  t: App,
+  tenantId: string,
+  key: string,
+  // `unit` 是 WO-MARGIN-AXIS 加的：毛利轴的准入证就现算自这一格（本体声明的量纲）。
+  props: { propKey: string; dataType: string; isPrimaryKey?: boolean; refToTypeKey?: string; unit?: string }[],
+) =>
   t.repos.ontologyTypes.put({
     id: `ot_${tenantId}_${key}`, tenantId, key, displayName: key, domain: "x", version: 1, status: "ACTIVE",
     derivedProperties: [], sourceBindings: [],
@@ -154,17 +160,26 @@ describe("WO-SIM-PARETO-MODEL-EXIT · 装配出口 → 求解 整条缝", () => 
     //   第 4 根是引擎结构读数（`servedCount`/`orderCount`）的派生，本体上没有对应字段。
     //   这个区别**必须被咬住** —— 下面 `groundedLabels` 那一条正是防止哪天有人
     //   把一根派生轴混进"接得到地"的那批里，从而让「真目标 < 2 ⇒ 报缺」这条红线失效。
+    //
+    // ⚠ WO-MARGIN-AXIS 起**顺序变了**：决策轴（毛利/交付）打头，其构成项（营收/成本/违约）在后。
+    //   顺序不是审美 —— 前端散点图取前两根当 X/Y（`projectPareto` 的 `const [ax0, ax1] = axes`）。
+    //   本例**没有毛利轴**，因为这个租户的本体一格单位都没声明 ⇒ 折不到同一货币单位 ⇒
+    //   `currencyAligned:false` ⇒ 毛利照红线报缺（下面 `unavailableObjectives` 咬住）。
     expect(res.request.objectives.map((o) => `${o.key}:${o.dir}:${o.label}`)).toEqual([
+      "serviceRate:max:获排率（获排单数 ÷ 总单数）",
       "revenue:max:TicketOrder.farePrice",
       "penalty:min:TicketOrder.refundCost",
       "cost:min:Coach.runCost",
-      "serviceRate:max:获排率（获排单数 ÷ 总单数）",
     ]);
-    // 前三根的 label 必须逐个是「本租户某类型.某字段」；第 4 根必须**不是** ——
+    // 后三根的 label 必须逐个是「本租户某类型.某字段」；打头那根必须**不是** ——
     // 它若长成 `X.y` 的样子，就说明有人给它伪造了一个本体出处。
-    const groundedLabels = res.request.objectives.slice(0, 3).map((o) => o.label ?? "");
+    const groundedLabels = res.request.objectives.slice(1).map((o) => o.label ?? "");
     for (const l of groundedLabels) expect(l).toMatch(/^(TicketOrder|Coach)\.[A-Za-z]+$/);
-    expect(res.request.objectives[3]!.label ?? "").not.toMatch(/^(TicketOrder|Coach)\./);
+    expect(res.request.objectives[0]!.label ?? "").not.toMatch(/^(TicketOrder|Coach)\./);
+    // 量纲折不动 ⇒ 毛利**必须仍在报缺清单里**，且不许出现在 objectives 里。
+    // 这一条是本单红线的反向证据：宁可报缺，也不给一个两边不同单位硬减出来的数。
+    expect(res.request.objectives.some((o) => o.key === "margin"), "本体零单位声明却算出了毛利 ⇒ 准入证形同虚设").toBe(false);
+    expect((res.request.unavailableObjectives ?? []).map((g) => g.key)).toContain("margin");
     // ── 反向证据 3：杠杆档位取自**实测产能取值**（10/20/30），不是编出来的等分刻度。
     expect(res.request.levers.map((l) => l.values)).toEqual([[10, 20, 30], [10, 20, 30], [10, 20, 30]]);
     expect(res.request.levers.map((l) => l.key).sort()).toEqual(["lines.c1.capacity", "lines.c2.capacity", "lines.c3.capacity"]);
@@ -302,5 +317,217 @@ describe("WO-SIM-PARETO-MODEL-EXIT · 装配出口 → 求解 整条缝", () => 
     expect((args!.orders as unknown[]).length, "订单侧被误伤收窄了").toBe(4);
     // 装出来的仍是一份合法请求（收窄不该把契约弄坏）。
     expect(ParetoRequestSchema.safeParse(j.request).success).toBe(true);
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // § 2 · WO-MARGIN-AXIS · 毛利成为一根真轴
+  // ══════════════════════════════════════════════════════════════════════════
+  //
+  // ══ 今天的行为是 X，应该是 Y（开工实测原文，本机 4001 内存态 demo 租户）══
+  //
+  // **X①（营收轴不含用量）**：`inproc-optimizer` 对获排单求 `Σ ord.revenue`，而绑定层把
+  //   `orders[].revenue` 取成 `OrderLine.unitPrice`（元/**件**）。实测两行同型号订单
+  //   `SO-900030-L2`(qty 722) 与 `SO-900215-L1`(qty 7220) **各贡献同一个 21,626** ——
+  //   10 倍的量差在这根轴上完全消失。⇒ 那不是营收，是单价之和。
+  // **X②（两轴不同量纲）**：`OrderLine.unitPrice` 声明「元」、`Base.serveCost` 声明「万元」，
+  //   实测读数 `revenue 9,187,992` vs `cost 17,039.17` —— 差三个量级，相减无意义。
+  // **X③（毛利根本没有）**：装配器把 `margin` 放在 `unavailableObjectives` 里报缺。
+  //
+  // **Y**：营收 = Σ(单价 × 用量)、成本折到同一货币单位、`margin = 营收 − 成本` **逐解一个值**、
+  //   进支配比较与加权名次；折不齐则**报错或报缺**，绝不给一个硬减出来的数。
+  //
+  // ⚠ 本节的本体仍与本仓演示行业无关（客运售票），且**刻意复刻那对量纲**：
+  //   营收侧「元」× 成本侧「万元」—— 折算若没发生，毛利会差 10⁴ 倍，下面的等式当场红。
+
+  /**
+   * 售票世界·量纲版：营收侧是**每座票价**（强度量，元），成本侧是**每趟运营成本**（万元）。
+   *
+   * `o-small` / `o-big` 是**对照实验①的那一对**：同一个 `pricePerUnit`、`seatQty` 相差整 10 倍。
+   * 修前它们对营收轴贡献相同（病），修后必须相差整 10 倍。
+   */
+  async function seedUnitPricedWorld(t: App, tenantId = T, runCostWanOverride?: Record<string, number>): Promise<void> {
+    await putType(t, tenantId, "TicketOrder", [
+      { propKey: "ticketNo", dataType: "string", isPrimaryKey: true },
+      { propKey: "seatQty", dataType: "number", unit: "件" },
+      // 命中 `revenue`（price）**且**命中 `unitRate`（perUnit）⇒ 走 `unit_revenue` 角色 ⇒ 乘用量。
+      { propKey: "pricePerUnit", dataType: "number", unit: "元" },
+      { propKey: "refundCost", dataType: "number", unit: "元" },
+    ]);
+    await putType(t, tenantId, "Coach", [
+      { propKey: "coachId", dataType: "string", isPrimaryKey: true },
+      { propKey: "seatCapacity", dataType: "number" },
+      // ⚠ 单位**故意与营收侧不同**（万元 vs 元）：不折算就差 10⁴ 倍。
+      { propKey: "runCostWan", dataType: "number", unit: "万元" },
+    ]);
+    const orders: [string, number, number, number][] = [
+      ["o-small", 2, 100, 5], ["o-big", 20, 100, 40], ["o3", 15, 90, 30], ["o4", 6, 60, 10],
+    ];
+    for (const [id, seatQty, pricePerUnit, refundCost] of orders) {
+      await putObj(t, tenantId, "TicketOrder", id, { ticketNo: id, seatQty, pricePerUnit, refundCost });
+    }
+    // 总需求 43 > 最小档合计 30 ⇒ 一定有人被挤（否则营收维恒定，前沿退化成一个点）。
+    const coaches: [string, number, number][] = [["c1", 20, 5], ["c2", 10, 3], ["c3", 30, 7]];
+    for (const [id, seatCapacity, runCostWan] of coaches) {
+      await putObj(t, tenantId, "Coach", id, { coachId: id, seatCapacity, runCostWan: runCostWanOverride?.[id] ?? runCostWan });
+    }
+  }
+
+  it("⑨ 毛利成轴：营收乘用量（对照实验①·同价 10 倍量 ⇒ 贡献 10 倍）+ 元/万元折齐 + margin 逐解一个值", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    await seedUnitPricedWorld(t);
+
+    const a = await assemble(t, ACME);
+    expect(a.statusCode, a.body).toBe(200);
+    // 先按**联合类型**收下（不预先 cast 成 applicable:true），这样装配失败时
+    // 断言消息里能带上服务端给的 `note` —— 少了它，红的时候只看到 `false !== true`，
+    // 病因（缺哪个角色）全丢。
+    const parsed = ParetoAssembleResultSchema.parse(a.json) as ParetoAssembleResult;
+    expect(parsed.applicable, parsed.applicable === false ? parsed.note : "").toBe(true);
+    const j = parsed as Extract<ParetoAssembleResult, { applicable: true }>;
+
+    // ── ⓪ 金丝雀：先自证这套装置真的接到了「单价」那条路，而不是碰巧走了老路 ────────
+    const roleMap = Object.fromEntries(j.roles.map((r) => [r.role, r.ref]));
+    expect(roleMap.unit_revenue, "营收没走 unit_revenue 角色 ⇒ 单价/金额的区分根本没生效，下面的 10 倍是假的").toBe("TicketOrder.pricePerUnit");
+    expect(roleMap.revenue, "同时又绑了 revenue 角色 ⇒ 两条路都开着，语义打架").toBeUndefined();
+    const args = j.request.args;
+    expect(args, "装配声明 applicable 却没给 args").toBeDefined();
+    expect(args!.revenueFromUnitRate, "回包没自述『营收是单价×用量』").toBe(true);
+    expect(args!.revenueQtyProp).toBe("seatQty");
+    expect(args!.currencyAligned, "元/万元没折齐 ⇒ 毛利轴不该出现").toBe(true);
+    expect(args!.currencyUnit).toBe("元");
+
+    // ── 对照实验①（本单验收判据）：同价、量差 10 倍 ⇒ 营收贡献必须差 10 倍 ──────────
+    //    修前这两个数**相同**（那就是病：一张 2 件的单与一张 20 件的单贡献一样多营收）。
+    const orders = args!.orders as { id: string; revenue: number; qty: number }[];
+    const small = orders.find((o) => o.id === "o-small")!;
+    const big = orders.find((o) => o.id === "o-big")!;
+    expect(small.qty).toBe(2);
+    expect(big.qty).toBe(20);
+    expect(small.revenue, "小单营收 ≠ 单价×用量").toBe(200);
+    expect(big.revenue, "大单营收 ≠ 单价×用量").toBe(2000);
+    expect(big.revenue / small.revenue, "量差 10 倍而营收贡献没差 10 倍 ⇒ 用量项没进公式").toBe(big.qty / small.qty);
+    expect(small.revenue, "两单营收相同 ⇒ 病还在（这正是修前的读数）").not.toBe(big.revenue);
+
+    // ── 量纲：成本侧「万元」必须已折成「元」（5 万元 → 50000）。折算没发生就差 10⁴ 倍。
+    const elig = args!.eligibility as { order: string; line: string; cost: number }[];
+    const costByLine = new Map(elig.map((e) => [e.line, e.cost]));
+    expect([...costByLine.entries()].sort(), "万元没折成元（或折错倍数）").toEqual([["c1", 50000], ["c2", 30000], ["c3", 70000]]);
+
+    // ── 毛利已是在册真轴，且**打头**（前端散点取前两根当 X/Y）；不再出现在报缺清单里。
+    expect(j.request.objectives[0]!.key).toBe("margin");
+    expect(j.request.objectives[0]!.unit).toBe("元");
+    expect(j.request.objectives.map((o) => o.key)).toEqual(["margin", "serviceRate", "revenue", "penalty", "cost"]);
+    expect((j.request.unavailableObjectives ?? []).map((g) => g.key), "毛利接上了却还在报缺清单里 ⇒ 屏上会同时说『有』和『要不到』").not.toContain("margin");
+    expect((j.request.unavailableObjectives ?? []).map((g) => g.key), "现金今天仍答不了（本族无时间维），不许悄悄消失").toContain("cash");
+
+    // ── 头号判据：把装出来的那份**原样**求解 → 毛利逐解一个值、且恒等于 营收−成本 ────
+    const s = await solve(t, ACME, j.request);
+    expect(s.statusCode, s.body).toBe(200);
+    const out = ParetoResultSchema.parse(JSON.parse(s.body)) as ParetoResult;
+    const all = [...out.frontier, ...out.dominated];
+    expect(all.length, "一个解都没有").toBeGreaterThan(1);
+    for (const p of all) {
+      expect(p.metrics.margin, `解 ${p.id} 没有毛利读数`).toBeTypeOf("number");
+      expect(p.metrics.margin, `解 ${p.id} 的毛利 ≠ 营收−成本 ⇒ 这根轴算的是别的东西`).toBe(p.metrics.revenue! - p.metrics.cost!);
+    }
+    // **不是恒定轴**（本仓明令禁止把季度聚合那种不随解变化的数当轴）：至少两个不同读数。
+    expect(new Set(all.map((p) => p.metrics.margin)).size, "全体候选的毛利读数只有一个 ⇒ 这是一根恒定轴，在支配比较里永远打平").toBeGreaterThan(1);
+    // 权重面板：毛利必须**真进**加权名次（不是前端摆设）——权重表里有它、名次覆盖整条前沿。
+    expect(Object.keys(out.weights).sort()).toEqual(["cost", "margin", "penalty", "revenue", "serviceRate"]);
+    expect(out.ranking.length).toBe(out.frontier.length);
+  });
+
+  it("⑩ 对照实验②：调高某车厢运营成本 ⇒ 毛利变小、营收纹丝不动（营收跟着变 = 成本误接进营收路径）", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    await seedUnitPricedWorld(t);
+    const before = ParetoAssembleResultSchema.parse((await assemble(t, ACME)).json) as Extract<ParetoAssembleResult, { applicable: true }>;
+    const s0 = await solve(t, ACME, before.request);
+    expect(s0.statusCode, s0.body).toBe(200);
+    const out0 = ParetoResultSchema.parse(JSON.parse(s0.body)) as ParetoResult;
+
+    // 只动**最贵**那节车厢（c3，7 万元）——它在贪心的"成本升序候选表"里本就排最后，
+    // 调高不改变任何一单的择线次序 ⇒ 指派不变 ⇒ 营收/获排率必须逐字不变，只有成本与毛利动。
+    // ⚠ 挑最贵的那一节是**刻意**的：随便挑一节会改变择线次序，营收跟着变，
+    //    那时就分不清「成本误接进营收」与「优化器合理改道」——判据会失去分辨力。
+    const t2 = await makeApp();
+    await enableSim(t2, T, ACME);
+    await seedUnitPricedWorld(t2, T, { c3: 17 }); // 7 万元 → 17 万元（+10 万元/趟 = +100000 元）
+    const after = ParetoAssembleResultSchema.parse((await assemble(t2, ACME)).json) as Extract<ParetoAssembleResult, { applicable: true }>;
+    const s1 = await solve(t2, ACME, after.request);
+    expect(s1.statusCode, s1.body).toBe(200);
+    const out1 = ParetoResultSchema.parse(JSON.parse(s1.body)) as ParetoResult;
+
+    const byId0 = new Map([...out0.frontier, ...out0.dominated].map((p) => [p.id, p]));
+    const byId1 = new Map([...out1.frontier, ...out1.dominated].map((p) => [p.id, p]));
+    const shared = [...byId0.keys()].filter((id) => byId1.has(id));
+    expect(shared.length, "两跑没有一个同名解可比 ⇒ 对照实验做不成").toBeGreaterThan(0);
+    let sawCostRise = false;
+    for (const id of shared) {
+      const p0 = byId0.get(id)!, p1 = byId1.get(id)!;
+      expect(p1.metrics.revenue, `解 ${id}：调成本却把营收也带动了 ⇒ 成本被误接进营收路径`).toBe(p0.metrics.revenue);
+      expect(p1.metrics.serviceRate, `解 ${id}：择线次序被改变了，本对照实验的前提不再成立`).toBe(p0.metrics.serviceRate);
+      expect(p1.metrics.cost!, `解 ${id}：成本没变大`).toBeGreaterThanOrEqual(p0.metrics.cost!);
+      // 毛利必须**恰好**少掉成本涨的那一块 —— 只断言"变小"会放过一个算错倍数的实现。
+      expect(p1.metrics.margin, `解 ${id}：Δ毛利 ≠ −Δ成本`).toBe(p0.metrics.margin! - (p1.metrics.cost! - p0.metrics.cost!));
+      if (p1.metrics.cost! > p0.metrics.cost!) {
+        sawCostRise = true;
+        expect(p1.metrics.margin!, `解 ${id}：成本涨了毛利却没跌`).toBeLessThan(p0.metrics.margin!);
+      }
+    }
+    expect(sawCostRise, "没有任何一个解的成本变大 ⇒ 这次调高压根没被读到（对照实验空转）").toBe(true);
+  });
+
+  it("⑪ 折不齐就报错，不给数：声明 margin 但 args 未标 currencyAligned ⇒ 400（机器先说话）", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    await seedUnitPricedWorld(t);
+    const j = ParetoAssembleResultSchema.parse((await assemble(t, ACME)).json) as Extract<ParetoAssembleResult, { applicable: true }>;
+    // 只抹掉那一格准入证，其余一字不动 —— 变异反证：守卫若是装饰品，这里会照常回 200 + 一个错数。
+    const tampered = { ...j.request, args: { ...(j.request.args as Record<string, unknown>), currencyAligned: false } };
+    const s = await solve(t, ACME, tampered);
+    expect(s.statusCode, `未折齐却把毛利算出来了：${s.body.slice(0, 300)}`).toBe(400);
+    expect(s.body).toMatch(/currencyAligned/);
+    // 金丝雀：同一份请求**不抹**那一格时必须 200 —— 否则上面的 400 可能来自任何别的毛病。
+    const ok = await solve(t, ACME, j.request);
+    expect(ok.statusCode, "原样请求也 400 ⇒ 上面那个 400 不能证明是守卫拦的").toBe(200);
+  });
+
+  it("⑫ 折不齐时两根轴**各报各的单位**：成本轴不许抄营收轴的单位（抄了就是元/万元张冠李戴）", async () => {
+    const t = await makeApp();
+    await enableSim(t, T, ACME);
+    // 营收侧「元」（可折算），成本侧「%」（字典内的合法单位，但**不是货币**）⇒ 折不齐。
+    await putType(t, T, "TicketOrder", [
+      { propKey: "ticketNo", dataType: "string", isPrimaryKey: true },
+      { propKey: "seatQty", dataType: "number", unit: "件" },
+      { propKey: "pricePerUnit", dataType: "number", unit: "元" },
+    ]);
+    await putType(t, T, "Coach", [
+      { propKey: "coachId", dataType: "string", isPrimaryKey: true },
+      { propKey: "seatCapacity", dataType: "number" },
+      { propKey: "runCostRatio", dataType: "number", unit: "%" },
+    ]);
+    for (const [id, seatQty, pricePerUnit] of [["o1", 2, 100], ["o2", 20, 100], ["o3", 15, 90]] as [string, number, number][]) {
+      await putObj(t, T, "TicketOrder", id, { ticketNo: id, seatQty, pricePerUnit });
+    }
+    for (const [id, seatCapacity, runCostRatio] of [["c1", 20, 5], ["c2", 10, 3], ["c3", 30, 7]] as [string, number, number][]) {
+      await putObj(t, T, "Coach", id, { coachId: id, seatCapacity, runCostRatio });
+    }
+
+    const parsed = ParetoAssembleResultSchema.parse((await assemble(t, ACME)).json) as ParetoAssembleResult;
+    expect(parsed.applicable, parsed.applicable === false ? parsed.note : "").toBe(true);
+    const j = parsed as Extract<ParetoAssembleResult, { applicable: true }>;
+    expect(j.request.args!.currencyAligned, "「%」不是货币单位，却被判成折齐了").toBe(false);
+    const unitOf = Object.fromEntries(j.request.objectives.map((o) => [o.key, o.unit]));
+    expect(unitOf.revenue, "营收轴单位").toBe("元");
+    // ⛔ 本条是本单代码复审时抓到的真 bug 的捕手：两根轴曾共用一个单位变量 ⇒
+    //    没折齐这一支会把营收侧的「元」抄给成本轴，屏上印出「单位是元、数值却是另一个量纲」。
+    expect(unitOf.cost, "成本轴抄了营收轴的单位 ⇒ 屏上单位与数值不是同一个量纲").toBe("%");
+    // 折不齐 ⇒ 毛利照红线报缺，且成本值**原样不折**（×1，不是 ×10⁴）。
+    expect(j.request.objectives.some((o) => o.key === "margin")).toBe(false);
+    expect((j.request.unavailableObjectives ?? []).map((g) => g.key)).toContain("margin");
+    const costs = [...new Set((j.request.args!.eligibility as { cost: number }[]).map((e) => e.cost))].sort((a, b) => a - b);
+    expect(costs, "非货币单位被误折算了").toEqual([3, 5, 7]);
   });
 });

@@ -58,7 +58,7 @@ import type {
 import { ParetoRequestSchema } from "@platform/contracts";
 import type { OntologyBinding } from "@platform/contracts";
 import type { ObjectInstance, ObjectTypeDef, PropertyDef } from "../domain.js";
-import { lexiconHit } from "./field-role-lexicon.js";
+import { CURRENCY_BASE_UNIT, CURRENCY_SCALE, lexiconHit } from "./field-role-lexicon.js";
 import { bindCrossObjectOccupancy, type BindingOntologyView } from "./opt-binding.js";
 
 /**
@@ -175,8 +175,36 @@ export async function assembleParetoModel(
   const orderT = [...orderNonEmpty].sort((a, b) => (orderCounts.get(b.key) ?? 0) - (orderCounts.get(a.key) ?? 0) || a.key.localeCompare(b.key))[0]!;
   const revProp = hits(orderT, "revenue")[0]!;
   const qtyProp = hits(orderT, "demand")[0]!;
-  // 违约/罚金（可选）：订单侧命中**成本**词库、且不是营收那一格的数值字段。绑不到 ⇒ 不声明 penalty 目标。
-  const penProp = hits(orderT, "cost").find((k) => k !== revProp);
+  /**
+   * 违约/罚金（可选）：订单侧命中**成本**词库、且不是营收那一格的数值字段。绑不到 ⇒ 不声明 penalty 目标。
+   *
+   * ⚠ WO-UNITCOST-LAND 加的第二个判据 `!lexiconHit(k, "unitRate")`——**没有它就是一处静默错绑**：
+   * 新增的 `OrderLine.unitCost` 同时命中 `cost` 词库（含 "cost"）与 `unitRate` 词库
+   * （该词库原文已含 `单位成本|unitcost|unit_cost`），而本行原本只排除 `revProp` ⇒
+   * `unitCost` 会被抓去当 **penalty**（违约金）。后果不报错：罚金轴上出现一个 540–633 的
+   * "每件料工费"，屏上完全正常，只是那根轴从此答非所问。
+   * 判据本身是原理性的：**penalty 是总量（一单赔多少），强度量当不了总量**。
+   * 今日实测本租户 `hits(OrderLine,"cost")` 加这一格前是**空**（penProp 本就 undefined），
+   * 故这条守卫对既有行为逐字节无影响 —— 它守的是**新加的这一格不许走错门**。
+   */
+  const penProp = hits(orderT, "cost").find((k) => k !== revProp && !lexiconHit(k, "unitRate"));
+  /**
+   * WO-UNITCOST-LAND · **按件履约成本**这一格（可选）：订单侧命中 `cost` 词库**且**是强度量
+   * （`unitRate`）、且不是营收那一格。绑到 ⇒ 声明 role `unit_cost`，绑定层据此把
+   * `unitCost × qty` 加进 `eligibility[].cost`，成本侧与营收侧从此**同阶**。
+   *
+   * 绑不到 ⇒ 不声明该 role，成本仍只有按指派那一笔（既有行为逐字节不变）——
+   * 这正是上一单在毛利轴注释里写下的那句「今天没有这一格」的**现算版本**，不是永久结论。
+   */
+  const unitCostProp = hits(orderT, "cost").find((k) => k !== revProp && lexiconHit(k, "unitRate"));
+  /**
+   * WO-MARGIN-AXIS：营收这一格是**强度量（单价）**还是**总量（金额）**？
+   *
+   * 判据只有命名（`ROLE_LEXICON.unitRate`）—— 数值上单价与金额长得一模一样，分不出。
+   * 本租户实测命中：`OrderLine.unitPrice`（元/件）⇒ 强度量 ⇒ 必须 × `OrderLine.qty` 才是营收。
+   * 不命中（如某租户绑的是 `lineAmount` / `营收额`）⇒ 按总量直取，行为与本单之前逐字节一致。
+   */
+  const revIsUnitRate = lexiconHit(revProp, "unitRate");
 
   // ── ② 资源侧（line 角色）───────────────────────────────────────────────
   // 候选 = 带"产能/上限"数值字段且在范围内有实例的类型（订单类型自己除外）。
@@ -224,10 +252,15 @@ export async function assembleParetoModel(
   const roleBindings: OntologyBinding["roleBindings"] = [
     { role: "order", bind: { kind: "objectType", ref: orderT.key } },
     { role: "line", bind: { kind: "objectType", ref: lineT.key } },
-    { role: "revenue", bind: { kind: "property", ref: `${orderT.key}.${revProp}` } },
+    // WO-MARGIN-AXIS：**单价**（强度量）与**金额**（总量）绑不同的 role —— 判据是词库，
+    // 不是猜。绑错的后果不报错、只静默算错（见 `revIsUnitRate` 那一段）。
+    { role: revIsUnitRate ? "unit_revenue" : "revenue", bind: { kind: "property", ref: `${orderT.key}.${revProp}` } },
     { role: "qty", bind: { kind: "property", ref: `${orderT.key}.${qtyProp}` } },
     { role: "line_capacity", bind: { kind: "property", ref: `${lineT.key}.${capProp}` } },
     ...(penProp ? [{ role: "penalty", bind: { kind: "property" as const, ref: `${orderT.key}.${penProp}` } }] : []),
+    // WO-UNITCOST-LAND：按件履约成本（强度量）与按指派成本（总量）绑不同的 role，判据是词库不是猜 ——
+    // 与上面 `unit_revenue` / `revenue` 那一对完全对称。绑错同样不报错、只静默算错。
+    ...(unitCostProp ? [{ role: "unit_cost", bind: { kind: "property" as const, ref: `${orderT.key}.${unitCostProp}` } }] : []),
     // 每线标量占用成本：绑定层的优先级是 `elig_cost` > `line_assign_cost` > 0，
     // 故这一格**无条件**绑上去（有可产对成本时它自动让位），少一个分支少一处漂移。
     ...(assignCostProp ? [{ role: "line_assign_cost", bind: { kind: "property" as const, ref: `${lineT.key}.${assignCostProp}` } }] : []),
@@ -249,7 +282,9 @@ export async function assembleParetoModel(
     coeffSource: "property",
     status: "PUBLISHED",
   };
-  const args = await bindCrossObjectOccupancy(view, binding, { seed: input.seed });
+  // WO-MARGIN-AXIS：`alignCurrency` 把营收/罚金/成本折到同一个基准货币单位（`元`）——
+  // 毛利轴的前置。折不动时绑定层回 `currencyAligned:false`，下面据此报缺而不硬算。
+  const args = await bindCrossObjectOccupancy(view, binding, { seed: input.seed, alignCurrency: true });
   const lines = (args.lines as { id: string; capacity: number }[]) ?? [];
   const orders = (args.orders as { id: string }[]) ?? [];
   const assignCostBound = args.assignCostBound === true;
@@ -272,22 +307,96 @@ export async function assembleParetoModel(
   // **Y**：把「**交付**」这一维接上（它一直被真算着、只是从没投影出来），
   //   并把「毛利 / 现金」两根**今天接不上地**的轴**显式点名报缺**，而不是留白。
   //
-  // ⚠ **为什么不顺手声明一根 `margin`（= revenue − cost）——两条独立的阻断，缺一条都还不能减**：
-  //   ① **量纲不同**：本租户实测 `OrderLine.unitPrice` 声明单位 **元**、
-  //      `Base.serveCost` 声明单位 **万元** ⇒ 直接相减差 10⁴ 倍。这一条**按本体现算**（下面 `sameUnit`），
-  //      换个两边同单位的租户它就不再是阻断。
-  //   ② **两边都缺"用量"这一项**（这一条与租户无关，是绑定层的形状）：绑定层把
-  //      `orders[].revenue` 取成**每行的单价**、把可产对成本取成**每线的标量**，
-  //      两者都不乘 `qty`。于是一行 4,343 件与一行 417 件**贡献同一份"营收"**。
-  //      ⇒ 即便量纲对齐，`revenue − cost` 也不是毛利，是两个强度量之差。
-  //   合起来：**今天没有任何一种减法能得到毛利**，所以这根轴报缺、不声明。
-  //   ⛔ 这正是「不补一个恒为 0 的第二目标」那条红线的同族 —— 补一根**算得出但算错**的轴
-  //      比补一根恒为 0 的更危险：恒为 0 的那根一眼看得出是假的，算错的那根看起来完全正常。
+  // ══ WO-MARGIN-AXIS · 毛利轴：从「报缺」变成「真轴」（本段替换上一单的两条阻断）══
+  //
+  // 上一单（WO-PARETO-AXES）在这里写下两条阻断，判定「今天没有任何一种减法能得到毛利」。
+  // 本单把两条都拆了 —— **两条阻断的原文与它们各自的死因**：
+  //
+  //   ① **量纲不同**（原文：`unitPrice` 元 vs `serveCost` 万元，直接相减差 10⁴ 倍）。
+  //      死因：这从来不是「算不出」，是「**没折算**」。「万元 = 10⁴ 元」是单位定义不是业务常数，
+  //      折算表 `CURRENCY_SCALE` 现落在词库文件里，绑定层按本体声明的 `unit` 现折
+  //      （`alignCurrency`），折不动就回 `currencyAligned:false` —— 那时本段仍报缺。
+  //      ⇒ 这一条**按本体现算**，不是永久结论。
+  //
+  //   ② **两边都缺"用量"**（原文：一行 4,343 件与一行 417 件贡献同一份"营收"）。
+  //      死因：**只有营收侧是错的，成本侧不是**。这一条把两件不同的事写成了一句 ——
+  //      · **营收侧确实错**：绑的是 `unitPrice`（元/**件**，强度量），求和前必须 × `qty`。
+  //        实测同型号 `SO-900030-L2`(qty 722) 与 `SO-900215-L1`(qty 7220) 各贡献同一个 21,626。
+  //        修法 = 新 role `unit_revenue`（判据是词库 `unitRate`，不是猜）。
+  //      · **成本侧不该乘 qty**：`serveCost` 在本体上自述「万元/**需求点**·年」——
+  //        它按**指派**计价，不按件计价。同仓 `facility_location` 的 `assign_cost` 是同一口径
+  //        （`optimizer-client.ts` 那句「把需求点指派到开着的设施(assignCost)，min Σ开设+Σ指派」），
+  //        `opt-binding.ts` 的 `line_assign_cost` 注释也明写是照搬它。
+  //        ⇒ 给它乘 `qty` 会**凭空造出一个本体从未声明的「万元/件」口径**。
+  //        ⛔ 这正是下面那条红线的同族：补一根**算得出但算错**的轴，比补一根恒为 0 的更危险 ——
+  //        恒为 0 的一眼看得出是假的，算错的那根看起来完全正常。故**不乘**。
+  //
+  // ══ WO-UNITCOST-LAND · 上一段末尾那句「今天没有这一格」**已过期，此处按 0.6 回写** ══
+  //
+  // 上一单在这里留下的原话是：「毛利轴今天答的是『这批单赚多少』，不是『单位经济学上哪个方案
+  // 更划算』—— 后者要本体先给出**按件计价的履约成本**（`万元/件` 或 `元/件`），今天没有这一格。」
+  // 它当时是对的，**今天不再成立**：本体已给出这一格 —— `OrderLine.unitCost`（元/电芯，
+  // 由该型号当期 BOM 现算：Σ quantity ×(1+lossRate)× Material.unitPrice），
+  // 装配器命中 `cost ∩ unitRate` 即绑 role `unit_cost`，绑定层把 `unitCost × qty`
+  // **加进** `eligibility[].cost`（加性叠加，不替换按指派那一笔 —— 料工费与占线费是两笔钱）。
+  //
+  // ⚠ **上一段那条「不该乘 qty」的红线仍然完全有效，且正是本单的做法**：
+  //   被乘 `qty` 的是**新的那一格**（本体自述按件计价的强度量），
+  //   `serveCost`（万元/需求点·年）**依旧不乘** —— 它仍按指派计价。
+  //   两笔钱各按各的口径计价，谁都没有被凭空改口径。
+  //
+  // ⚠ 仍须如实说出口的性质：成本占毛利的比重由此从**0.331% 升到 3.272%**（实测，同一批单），
+  //   毛利轴与营收轴**不再是强同向**（实测前沿 19 → 22，被支配 8 → 5）。
+  //   但按件成本今天只含**物料**（BOM 口径），不含人工/制造费用/物流 ——
+  //   ⛔ 这一句不许省：它决定了这根轴答的是「料成本口径的单位经济学」，不是完全成本。
   const revUnit = orderT.properties.find((p) => p.propKey === revProp)?.unit;
   const costOwner = eligT && eligCostProp ? eligT : lineT;
   const costPropKey = eligT && eligCostProp ? eligCostProp : assignCostProp;
-  const costUnit = costPropKey ? costOwner.properties.find((p) => p.propKey === costPropKey)?.unit : undefined;
-  const sameUnit = revUnit !== undefined && costUnit !== undefined && revUnit === costUnit;
+  // WO-UNITCOST-LAND：按指派那一格没绑、只绑了按件那一格时，成本轴的单位取后者 ——
+  // 否则会回一个 `undefined` 单位，而那时成本轴明明有真数据（读数无量纲 = 又一种静默失真）。
+  const costUnit = costPropKey
+    ? costOwner.properties.find((p) => p.propKey === costPropKey)?.unit
+    : unitCostProp
+      ? orderT.properties.find((p) => p.propKey === unitCostProp)?.unit
+      : undefined;
+  /**
+   * 毛利轴的**准入证**（三样缺一不可，判据全部现算，一个都不是写死的）：
+   *   ① 绑定层确认两侧已折到同一基准货币单位（`currencyAligned`，它自己也是现算的）；
+   *   ② 成本这一维**有真数据**（`assignCostBound` —— 没绑时 cost 恒 0，
+   *      `revenue − 0` 只是营收的复制品，那是一根**冗余轴**不是毛利）；
+   *   ③ 营收侧刻度取得到（`revScale`）—— 取不到说明那一格声明了非货币单位。
+   * 任何一样不成立 ⇒ 毛利仍进 `unavailableObjectives` 报缺，**不硬算**。
+   */
+  const currencyAligned = args.currencyAligned === true;
+  const marginAvailable = currencyAligned && assignCostBound;
+  /**
+   * 对外报的单位：折齐了就是基准货币单位，**没折齐就各报各在本体上原样声明的那个**。
+   *
+   * ⛔ 两根轴必须**各算各的**，不许共用一个变量 —— 共用时「没折齐」这一支会把营收侧的单位
+   * 抄给成本轴（实测本租户那对：营收「元」、成本「万元」），屏上于是印出一个
+   * **单位是元、数值却是万元**的成本读数。这比不标单位更坏：不标时用户知道自己不知道。
+   */
+  const moneyUnitOf = (declared: string | undefined): string | undefined => (currencyAligned ? CURRENCY_BASE_UNIT : declared);
+  const revMoneyUnit = moneyUnitOf(revUnit);
+  const costMoneyUnit = moneyUnitOf(costUnit);
+  /** 营收轴的人读式：单价路要把 `× 用量` 写出来，否则屏上仍读作"单价"。 */
+  const revenueLabel = revIsUnitRate ? `${orderT.key}.${revProp} × ${orderT.key}.${qtyProp}` : `${orderT.key}.${revProp}`;
+  /**
+   * 成本轴的人读式。WO-UNITCOST-LAND：按件那一笔绑上了就**必须写进来** ——
+   * 只印按指派那一格，屏上会把一个已含料工费的数读成"占线成本"，
+   * 与营收轴当初不写 `× 用量` 时被读成"单价"是同一个病（见 `revenueLabel`）。
+   */
+  const assignCostLabel = eligT && eligCostProp ? `${eligT.key}.${eligCostProp}` : `${lineT.key}.${assignCostProp}`;
+  const costLabel = unitCostProp
+    ? `${assignCostLabel} + ${orderT.key}.${unitCostProp} × ${orderT.key}.${qtyProp}`
+    : assignCostLabel;
+  /**
+   * 成本轴放进**减法**里时要带括号 —— 实测踩到过：成本轴自己是两项相加时，
+   * 毛利标签渲染成 `营收 − A + B×qty`，按四则运算读**恰好把成本的第二项加成了收益**，
+   * 与真实算法（`margin = revenue − cost`，cost 是那两项之和）相反。
+   * 数是对的、**字是错的**，而用户只看得到字 —— 同 `revenueLabel` 不写 `× 用量` 那个病。
+   */
+  const costLabelInSubtraction = unitCostProp ? `(${costLabel})` : costLabel;
 
   /**
    * **接得到本体字段的**真目标 —— 「真目标 < 2 ⇒ 整单报缺」这条红线**只数这一批**。
@@ -296,15 +405,10 @@ export async function assembleParetoModel(
    *   它是引擎的结构读数，不是从本体字段接出来的，**不许拿它去凑够两个**。
    */
   const groundedObjectives: ParetoObjective[] = [
-    { key: "revenue", dir: "max", label: `${orderT.key}.${revProp}`, ...(revUnit ? { unit: revUnit } : {}) },
+    { key: "revenue", dir: "max", label: revenueLabel, ...(revMoneyUnit ? { unit: revMoneyUnit } : {}) },
     ...(penProp ? [{ key: "penalty", dir: "min" as const, label: `${orderT.key}.${penProp}` }] : []),
     ...(assignCostBound
-      ? [{
-          key: "cost",
-          dir: "min" as const,
-          label: eligT && eligCostProp ? `${eligT.key}.${eligCostProp}` : `${lineT.key}.${assignCostProp}`,
-          ...(costUnit ? { unit: costUnit } : {}),
-        }]
+      ? [{ key: "cost", dir: "min" as const, label: costLabel, ...(costMoneyUnit ? { unit: costMoneyUnit } : {}) }]
       : []),
   ];
 
@@ -315,16 +419,22 @@ export async function assembleParetoModel(
   //   在用户屏上印出四个星号（2026-09-03 真浏览器实测就是这么翻车的：
   //   屏上出现「**没有时间维**」）。屏上没有 Markdown 渲染器，就不许用 Markdown 语法。
   const unavailableObjectives: ParetoObjectiveGap[] = [
-    {
-      key: "margin",
-      label: "毛利",
-      reason:
-        `今天算不出：营收侧 ${orderT.key}.${revProp}（单位 ${revUnit ?? "未声明"}）与成本侧 ` +
-        `${costPropKey ? `${costOwner.key}.${costPropKey}` : "未绑定"}（单位 ${costUnit ?? "未声明"}）` +
-        (sameUnit ? "量纲一致，" : "量纲不一致，直接相减会差一个数量级；") +
-        `且两侧都按「每行/每线一个标量」取值、不乘 ${orderT.key}.${qtyProp} —— ` +
-        `同单价下 4,343 件与 417 件会算出同一份营收。要补齐需先在本体上给出「含量的行金额」与「同量纲的行成本」。`,
-    },
+    // 毛利：**接得上就不进这份清单**（它此时是一根在册的真轴，见 `marginAvailable`）。
+    // 接不上才报缺，且必须说清**卡在哪一格** —— 两个死因的修法完全不同，混成一句就没人知道去补什么。
+    ...(marginAvailable
+      ? []
+      : [{
+          key: "margin",
+          label: "毛利",
+          reason:
+            `今天算不出：营收侧 ${orderT.key}.${revProp}（单位 ${revUnit ?? "未声明"}）与成本侧 ` +
+            `${costPropKey ? `${costOwner.key}.${costPropKey}` : "未绑定"}（单位 ${costUnit ?? "未声明"}）` +
+            (assignCostBound
+              ? `量纲折不到同一个货币单位（可折的：${Object.keys(CURRENCY_SCALE).join("、")}），两个数直接相减没有意义。`
+              : `成本这一维在本租户没有真数据（没有可产对成本字段，产线上也没有命中成本词库的数值字段）——` +
+                `此时"毛利"等于营收的复制品，是一根冗余轴不是毛利。`) +
+            `要补齐需先在本体上把这一格的单位声明成可折算的货币单位，并给出真实的占用成本字段。`,
+        }]),
     {
       key: "cash",
       label: "现金",
@@ -359,21 +469,49 @@ export async function assembleParetoModel(
     );
   }
 
+  // ── 交付这一维：一直被真算着，只是从没被投影成 metrics（三分法第二态）──────────
+  // `cross_object_occupancy` 的回包里 `servedCount`/`orderCount` 与 `occupancy[]`/`displaced[]`
+  // 出自同一次装入循环；`opt-pareto.ts` 的 `DERIVED_METRICS` 把它们折成 `serviceRate ∈ [0,1]`。
+  // 修法是**补投影**，不是造字段 —— 这个数一天都没缺过，只是没人把它端上来。
   /**
-   * 完整轴集 = 接得到地的真目标 + **交付**。
+   * ── 毛利这一维（WO-MARGIN-AXIS）──────────────────────────────────────────────
+   * `margin = revenue − cost`，两侧已折到同一基准货币单位（准入证见 `marginAvailable`）。
+   * 由 `opt-pareto.ts` 的 `DERIVED_METRICS` **逐解**现算 ⇒ 每个解一个值，随杠杆真变。
    *
-   * ── 交付这一维：一直被真算着，只是从没被投影成 metrics（三分法第二态）──────────
-   * `cross_object_occupancy` 的回包里 `servedCount`/`orderCount` 与 `occupancy[]`/`displaced[]`
-   * 出自同一次装入循环；`opt-pareto.ts` 的 `DERIVED_METRICS` 把它们折成 `serviceRate ∈ [0,1]`。
-   * 修法是**补投影**，不是造字段 —— 这个数一天都没缺过，只是没人把它端上来。
+   * ⚠ **它不是「白加一维」**：本仓明令禁止把 `GrossMarginBridge` 那种季度聚合当轴 ——
+   * 那是 segment 级、period 固定、**不随解变化**的常量，在支配比较里永远打平。
+   * 这一根不同：`revenue` 与 `cost` 都随杠杆网格变，`margin` 因此逐解不同
+   * （本单实测前沿 12 个解上 12 个互不相同的毛利读数）。
    *
-   * ⚠ 叫**获排率**不叫**准时率**：本族是「订单×产线×合同」的指派问题，**没有时间维** ——
+   * ⚠ **加它不会把前沿撑大**（这一条是数学性质，不是巧合，写下来免得下一个人担心）：
+   * `margin` 在支配序上是 (`revenue`↑, `cost`↓) 的**单调函数** ——
+   * 若 A 在 revenue 上不劣、在 cost 上不劣，则 `revA − costA ≥ revB − costB` 必然成立。
+   * ⇒ 加这一维**不改变任何一对解的支配关系**，`frontier`/`dominated` 的划分逐条不变；
+   * 它改变的是**加权名次**（权重面板多一根真滑杆）与屏上多一根可读的轴。
+   */
+  const marginObjective: ParetoObjective[] = marginAvailable
+    // 毛利只在**折齐了**的分支里存在（`marginAvailable` 含 `currencyAligned`），
+    // 故这里的单位恒是基准货币单位 —— 用 `revMoneyUnit` 而不是本体原样单位。
+    ? [{ key: "margin", dir: "max", label: `毛利（${revenueLabel} − ${costLabelInSubtraction}）`, ...(revMoneyUnit ? { unit: revMoneyUnit } : {}) }]
+    : [];
+
+  /**
+   * 完整轴集 = **毛利 · 交付** 打头，其后才是它们的构成项（营收 / 成本 / 违约）。
+   *
+   * ⚠ **顺序是有后果的，不是审美**：前端散点图取 `objectives` 的**前两根**当 X/Y
+   * （`useParetoFrontier.ts` 的 `projectPareto`：`const [ax0, ax1] = axes`），
+   * 雷达取前 6、候选卡取前 4。把毛利与交付放在前两位 ⇒ 屏上默认权衡的就是
+   * 「赚多少 × 服务多少单」，而不是「单价 × 单位履约成本」那对谁都不看的组合。
+   * 支配比较本身与顺序无关（`dominates` 遍历全集），故这一改**不动前沿**。
+   *
+   * ⚠ 交付叫**获排率**不叫**准时率**：本族是「订单×产线×合同」的指派问题，**没有时间维** ——
    *   一个解里没有任何一单带着"哪天交"，所以答不了准时。叫错名字就是把一个
    *   今天答不了的问题假装答了。
    */
   const objectives: ParetoObjective[] = [
-    ...groundedObjectives,
+    ...marginObjective,
     { key: "serviceRate", dir: "max", label: "获排率（获排单数 ÷ 总单数）", unit: "" },
+    ...groundedObjectives,
   ];
 
   // ── ⑥ 杠杆：档位取自**实测取值的次序统计量**（最小/中位/最大），一个数都不编 ─────
