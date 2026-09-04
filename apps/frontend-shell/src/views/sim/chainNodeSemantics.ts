@@ -88,10 +88,10 @@ export const CHAIN_NODE_SEMANTICS: Partial<Record<RegisteredChainNodeId, ChainNo
           "这里把现金垫底线（规则 C18 的命名阈值 cashFloor）调高，主计划排产那边的方案会被同一条硬约束打回：" +
           "一个旋钮投影到两个求解器参数路径（S&OP 版本校验的 cashOk 判据 ⊕ 计划生成的硬违约 C18），改一处即改两处判定。",
         basis: [
-          "packages/contracts/src/datacore.ts:206（C18.cashFloor → solver_params `sop.cashFloor`）",
-          "packages/contracts/src/datacore.ts:207（同一条 C18.cashFloor → `planGenerate.targets.cashFloor`，注释原文「两处必须同源，否则同一条规则的两个消费方各说各话」）",
-          "apps/datacore/src/sop.ts:299（`const cashOk = cashCushion >= params.sop.cashFloor;`）",
-          "apps/datacore/src/solvers/plan.ts:292（`if (hard.cash && outcome.cash < targets.cashFloor) hardViol.push(\"C18\");`）",
+          "契约规则参数绑定册 RULE_PARAM_BINDINGS（C18.cashFloor → solver_params `sop.cashFloor`）",
+          "契约规则参数绑定册 RULE_PARAM_BINDINGS（同一条 C18.cashFloor → `planGenerate.targets.cashFloor`·两处必须同源）",
+          "S&OP 版本校验：`cashOk = cashCushion >= sop.cashFloor`",
+          "求解器 plan_generate：`outcome.cash < targets.cashFloor` ⇒ 硬违约 C18",
         ],
       },
     ],
@@ -111,9 +111,9 @@ export const CHAIN_NODE_SEMANTICS: Partial<Record<RegisteredChainNodeId, ChainNo
           "两个节点都跟钱有关、字段看着可以互换，挪用即口径错标——开票对账的节拍今天在载荷里诚实标 EMPTY，" +
           "不是「没人填」，是仓里根本没有「这件事什么时候发生」的记录。",
         basis: [
-          "apps/datacore/src/synthetic/cadence.ts:313（查财务侧四处的取证原文：termDays 口径是账期，不是开票频率）",
-          "apps/datacore/src/synthetic/cadence.ts:321（原文「termDays 是本节点最容易被误用的诱饵——账期 ≠ 结算节拍，挪用即口径错标」）",
-          "apps/datacore/src/solvers/chain-loss.ts:424（本节点段天数真读的就是 Customer.termDays）",
+          "节拍册 · 财务侧取证：`Customer.termDays` 口径是账期，不是开票频率",
+          "节拍册 · 诱饵条目：`termDays` 账期 ≠ 结算节拍，挪用即口径错标",
+          "求解器 chain_loss_attribution：本节点段天数真读的就是 `Customer.termDays`",
         ],
       },
     ],
@@ -129,9 +129,9 @@ export const CHAIN_NODE_SEMANTICS: Partial<Record<RegisteredChainNodeId, ChainNo
           "拿它当本节点的节拍，会把回款那一段的等待在全链里算第二遍。今天本节点的节拍诚实缺席，" +
           "补它要先有「开票事件」这个记录，不是换个字段凑一个。",
         basis: [
-          "apps/datacore/src/synthetic/cadence.ts:308（本节点的节拍取证条目）",
-          "apps/datacore/src/synthetic/cadence.ts:313（四处取证：ARInvoice 无开票日期 / DSO 单值 / 全仓无开票事件）",
-          "apps/datacore/src/synthetic/cadence.ts:321（诱饵原文）",
+          "节拍册 · 本节点节拍取证条目",
+          "节拍册 · 四处取证：`ARInvoice` 无开票日期 / DSO 单值 / 全仓无开票事件",
+          "节拍册 · 诱饵条目",
         ],
       },
     ],
@@ -146,9 +146,9 @@ export const CHAIN_NODE_SEMANTICS: Partial<Record<RegisteredChainNodeId, ChainNo
           "本节点的计划被规则 C18 的现金垫底线硬约束住，而**同一个 cashFloor 旋钮**也是 S&OP 共识会那边版本校验的判据：" +
           "在共识会上调它，这里的方案会跟着被判硬违约。两处必须同源，否则同一条规则的两个消费方各说各话。",
         basis: [
-          "packages/contracts/src/datacore.ts:206-207（同一条 C18.cashFloor 投影到两个 solver_params 路径）",
-          "apps/datacore/src/solvers/plan.ts:292（本侧消费：硬违约 C18）",
-          "apps/datacore/src/sop.ts:299（对侧消费：S&OP cashOk）",
+          "契约规则参数绑定册 RULE_PARAM_BINDINGS（同一条 C18.cashFloor 投影到两个 solver_params 路径）",
+          "求解器 plan_generate（本侧消费：硬违约 C18）",
+          "S&OP 版本校验（对侧消费：cashOk）",
         ],
       },
     ],
@@ -180,11 +180,11 @@ export const CHAIN_NODE_SEMANTICS: Partial<Record<RegisteredChainNodeId, ChainNo
           "而该工序硬容量按**倒数**关系同时被抬高；反过来延长静置期会**同时**制造损失与制造卡点。" +
           "这两件事今天在屏上是分开显示的，改一个数会同时动。",
         basis: [
-          "packages/contracts/src/process-capacity.ts:60（库位规格：unitsProp=agingSlots · rateProp=agingDays · rateKind=occupancyDays）",
-          "packages/contracts/src/process-capacity.ts:106（`spec.rateKind === \"occupancyDays\" ? 1 / rate : rate` —— 占用天数取倒数）",
-          "packages/contracts/src/process-capacity.ts:115（`capacityPerDay: units * unitDailyThroughput * yieldFactor`）",
-          "apps/datacore/src/solvers/chain-impediment.ts:107-120（C02 卡点判据的实测值 = readProcessHardCapacity().capacityPerDay）",
-          "apps/datacore/src/solvers/chain-loss.ts:37（本节点这一段的天数直接取 Process.agingDays，归类 queue）",
+          "契约硬容量单元规格册 HARD_CAPACITY_UNIT_SPECS · 库位规格：unitsProp=agingSlots · rateProp=agingDays · rateKind=occupancyDays",
+          "契约硬容量换算：`rateKind==\"occupancyDays\" ⇒ 1 / rate` —— 占用天数取倒数",
+          "契约硬容量公式：`capacityPerDay = units × unitDailyThroughput × yieldFactor`",
+          "求解器 chain_impediments：规则 C02 卡点判据的实测值 = 工序硬容量 capacityPerDay",
+          "求解器 chain_loss_attribution：本节点段天数直接取 `Process.agingDays`，归类 queue",
         ],
       },
     ],
@@ -201,8 +201,8 @@ export const CHAIN_NODE_SEMANTICS: Partial<Record<RegisteredChainNodeId, ChainNo
           "等待期望那套公式对它不成立。⇒ 在这里调周期**不会**改动全链前置期读数，改的是产能侧。" +
           "谁把它摊进环节，全链会凭空多出一段几十天的非增值时间，还会被归因成 Top1 损失。",
         basis: [
-          "apps/datacore/src/synthetic/cadence.ts:337（`flowGate: false`）",
-          "apps/datacore/src/synthetic/cadence.ts:344-348（原文「它是真周期，但不是产品流的等待，两件事必须分开」）",
+          "节拍册 · 本节点条目 `flowGate: false`",
+          "节拍册 · 本节点条目：它是真周期，但不是产品流的等待，两件事必须分开",
         ],
       },
     ],
@@ -222,10 +222,10 @@ export const CHAIN_NODE_SEMANTICS: Partial<Record<RegisteredChainNodeId, ChainNo
           "期望滑期 = 承诺天 × (1 − 准时率)，于是「期望齐套日」比屏上这一段更晚。" +
           "改承诺前置期两处一起动，但两处的数**本来就不相等**——拿本节点这一段去当采购承诺，会系统性乐观。",
         basis: [
-          "apps/datacore/src/solvers/chain-loss.ts:506（本节点段天数：沿 material_supplied_by 读 Supplier.leadTime）",
-          "apps/datacore/src/solvers/extended.ts:635（采购四段分解的供应商段：`source: { objectType: \"Supplier\", field: \"leadTime\" }`）",
-          "packages/contracts/src/procurement.ts:291（`expectedSlipDays` = 供应商段承诺天 × (1 − onTimeRate)）",
-          "packages/contracts/src/procurement.ts:295-297（`earliestKitDay` 承诺口径 vs `expectedKitDay` 含风险口径，刻意两个都给）",
+          "求解器 chain_loss_attribution：本节点段天数沿关系 `material_supplied_by` 读 `Supplier.leadTime`",
+          "求解器 kit_readiness · 采购四段分解的供应商段：`source = Supplier.leadTime`",
+          "契约 `ProcurementPlan.expectedSlipDays` = 供应商段承诺天 × (1 − onTimeRate)",
+          "契约 `ProcurementPlan`：`earliestKitDay` 承诺口径 vs `expectedKitDay` 含风险口径，刻意两个都给",
         ],
       },
     ],
