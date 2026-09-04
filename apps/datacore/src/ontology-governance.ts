@@ -11,6 +11,7 @@
 import type { AuthzService } from "./authz.js";
 import type {
   AuthCtx,
+  DeprecationMeta,
   DomainRecord,
   ElementRefRecord,
   LinkTypeDef,
@@ -218,6 +219,58 @@ export class OntologyGovernanceService {
       l.deprecation = deprecation;
       await this.repos.ontologyLinks.put(l);
     }
+    return { key, deprecation };
+  }
+
+  /**
+   * §2.2 **DEPRECATED → ACTIVE（把停用拨回启用）**·WO-RELATION-EDIT-GAPS。
+   *
+   * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════
+   * **X（改前，2026-09-04 真后端实测）**：本类只有 `deprecate` 与 `retire` 两个**只进不出**的动作。
+   *   实测 `POST /a/v1/ontology/links/zz_rev_probe/deprecate` → 200 DEPRECATED，随后
+   *   `POST …/reactivate` 与 `POST …/activate` 双双 **404 route not found** ——
+   *   结构边一旦停用就是死胡同，屏上也没有任何按钮能拨回来。
+   * **Y（改后）**：DEPRECATED 可拨回 ACTIVE（宽限期内反悔），RETIRED 仍不可逆。
+   *
+   * ══ 为什么另一条路可逆、这条不可逆（派单点名要在报告里说清）════════════════
+   * 因果边的启停是 `PATCH /a/v1/sim/propagation-rules/:id` 上的**一个普通字段**
+   * （`status: PUBLISHED ⇄ DRAFT`，同一条路径来回走，没有单向闸）——它天生可逆。
+   * 结构边的启停走的是治理增量 §2.2 的**状态机** `ACTIVE → DEPRECATED → RETIRED`，
+   * 而这个状态机当初**只实现了前进的两步**。两条路的差别不是设计取舍，是**漏了一步**。
+   *
+   * ⚠ **RETIRED 不给回退，这是有意的**：`retire` 的前置是「引用数 = 0」，
+   * 下线之后别处可能已经改引用了后继 key；一键拨回会让两套引用并存。
+   * 要复活请重建（`POST /a/v1/ontology/link-types` 同 key 即 upsert）——
+   * 与「不可逆动作挡在可逆动作后面」同一条判据。
+   */
+  async reactivate(
+    ctx: AuthCtx,
+    kind: "type" | "link",
+    key: string,
+  ): Promise<{ key: string; deprecation: DeprecationMeta }> {
+    const kindLabel = kind === "type" ? "对象类型" : "结构边";
+    const cur =
+      kind === "type"
+        ? (await this.repos.ontologyTypes.list(ctx.tenantId, (x) => x.key === key))[0]
+        : (await this.repos.ontologyLinks.list(ctx.tenantId, (x) => x.key === key))[0];
+    if (!cur) throw notFound(`${kind} ${key}`);
+    const st = cur.deprecation?.status ?? "ACTIVE";
+    if (st === "RETIRED") {
+      throw invalidState(
+        `${kindLabel} ${key} 已下线（RETIRED），不能直接拨回启用：下线的前置是「零引用」，` +
+          `别处可能已改引用了后继项，一键拨回会让两套引用并存。请重建同名${kindLabel}（建关系时用同一个 key 即为覆盖）。`,
+      );
+    }
+    if (st === "ACTIVE") {
+      throw invalidState(`${kindLabel} ${key} 本来就是启用态，无需重新启用。`);
+    }
+    // ACTIVE 是「没有弃用记录」的等价写法，故整块清掉而不是只改 status ——
+    // 留着 deprecatedAt/graceUntil 会让下游（`deprecationWarnings` / 发布快照）
+    // 读到一条「已启用但带着宽限期」的自相矛盾记录。
+    const deprecation: DeprecationMeta = { status: "ACTIVE" };
+    cur.deprecation = undefined;
+    if (kind === "type") await this.repos.ontologyTypes.put(cur as ObjectTypeDef);
+    else await this.repos.ontologyLinks.put(cur as LinkTypeDef);
     return { key, deprecation };
   }
 
