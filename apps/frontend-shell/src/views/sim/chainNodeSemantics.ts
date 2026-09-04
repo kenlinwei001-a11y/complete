@@ -148,7 +148,7 @@ export const CHAIN_NODE_SEMANTICS: Partial<Record<RegisteredChainNodeId, ChainNo
         basis: [
           "契约规则参数绑定册 RULE_PARAM_BINDINGS（同一条 C18.cashFloor 投影到两个 solver_params 路径）",
           "求解器 plan_generate（本侧消费：硬违约 C18）",
-          "S&OP 版本校验（对侧消费：cashOk）",
+          "S&OP 版本校验（对侧消费：`cashOk`）",
         ],
       },
     ],
