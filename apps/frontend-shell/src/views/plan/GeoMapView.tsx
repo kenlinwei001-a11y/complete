@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { searchObjects } from "@/api/endpoints";
+import { fetchAllObjects } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import type { ViewRendererProps } from "../registry";
 import outline from "@/assets/china-outline.json";
@@ -77,7 +77,7 @@ export default function GeoMapView({ view }: ViewRendererProps) {
   const positionColors = (view.layout?.positionColors as Record<string, string> | undefined) ?? POSITION_COLORS;
   const { data, isLoading } = useQuery({
     queryKey: ["a", "objects", { type: "Base", view: "geo-map" }],
-    queryFn: () => searchObjects("Base", ""),
+    queryFn: () => fetchAllObjects("Base"),
   });
   const [selected, setSelected] = useState<BaseProps | null>(null);
   const navigate = useNavigate();

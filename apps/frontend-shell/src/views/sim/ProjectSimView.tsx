@@ -6,7 +6,7 @@ import {
   CapacityForecastOutputSchema,
   type CapacityForecastOutput,
 } from "@platform/contracts";
-import { runSolver, searchObjects } from "@/api/endpoints";
+import { runSolver, fetchAllObjects, searchObjects } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
@@ -157,7 +157,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
 
   const orders = useQuery({
     queryKey: ["a", "objects", { type: "Order", view: "project-sim" }],
-    queryFn: () => searchObjects("Order", ""),
+    queryFn: () => fetchAllObjects("Order"),
   });
   // WO-SIM-ACTION-REAL：选中订单的 so（采纳结论时随 payload 上送，审批通过后回 stamp 到该 Order）。
   const selectedOrderSo = useMemo(() => {

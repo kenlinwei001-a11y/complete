@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchObjectTypes, searchObjects, invokeSolver } from "@/api/endpoints";
+import { fetchObjectTypes, fetchAllObjects, invokeSolver } from "@/api/endpoints";
 import { LayeredDag, type DagNodeDef, type DagEdgeDef } from "@/components/Dag/LayeredDag";
 import { InfoPopover } from "@/components/InfoPopover";
 import type { ViewConfigVM } from "@/api/types";
@@ -292,7 +292,7 @@ export default function DisruptionRadiusView(_props: { view?: ViewConfigVM }) {
   // 断供来源对象列表（真取，不写死）。
   const objectsQ = useQuery({
     queryKey: ["a", "objects", rootType],
-    queryFn: () => searchObjects(rootType, ""),
+    queryFn: () => fetchAllObjects(rootType),
     enabled: !!rootType,
   });
   const rootDef = types.find((t) => t.key === rootType);

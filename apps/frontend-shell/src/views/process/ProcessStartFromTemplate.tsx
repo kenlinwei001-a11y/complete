@@ -11,7 +11,7 @@ import {
   createProcessInstance,
   fetchProcessDefinitions,
   fetchProcessStepTemplate,
-  queryObjectsPaged,
+  fetchAllObjects,
 } from "@/api/endpoints";
 import styles from "./ProcessStartFromTemplate.module.css";
 
@@ -125,7 +125,7 @@ export default function ProcessStartFromTemplate() {
       if (!t.available) return;
       setCarriers({ status: "loading" });
       try {
-        const page = await queryObjectsPaged(t.carrierTypeKey, 1, 20, {});
+        const page = await fetchAllObjects(t.carrierTypeKey);
         if (!alive) return;
         /**
          * 标签**就用对象 id**（`GET /a/v1/objects` 的 `items` 只有 `{id,type,props}`，没有 display 字段）。

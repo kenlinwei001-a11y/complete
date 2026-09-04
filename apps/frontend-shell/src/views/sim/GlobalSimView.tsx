@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BASE_REGISTRY, BUSINESS_TYPE_LABEL, objectiveHeader } from "@platform/contracts";
 import type { GlobalSimScheduleRow, GlobalSimKpi, GlobalSimBusinessTypeSummary, BusinessType, GlobalSimDueComparison, GlobalSimMethodScenario, GlobalSimCost } from "@platform/contracts";
-import { composeGlobalSimNarrative, searchObjects, type GlobalSimSevenDimKpi, type SimComposeNarrative } from "@/api/endpoints";
+import { composeGlobalSimNarrative, fetchAllObjects, type GlobalSimSevenDimKpi, type SimComposeNarrative } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
 import { fmt, useActionDraft, ExportReportButton } from "./shared";
 import type { ProvenanceReport } from "./exportProvenance";
@@ -460,7 +460,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
    * `upto(n)` 是本页**唯一分段闸**：下面每一块结果都经它决定渲染与否。
    */
   const { active: gsStep, setActive: setGsStep, upto } = useSolverStep(GS_STEPS.length);
-  const orders = useQuery({ queryKey: ["a", "objects", { type: "Order", view: "global-sim" }], queryFn: () => searchObjects("Order", "") });
+  const orders = useQuery({ queryKey: ["a", "objects", { type: "Order", view: "global-sim" }], queryFn: () => fetchAllObjects("Order") });
   const orderList = useMemo(() => (orders.data?.items ?? []).map((o) => {
     // ② G-UI-2·home 基地 = 首个可产基地 id（真数据·非占位）；base 保留原（数组时逗号串·仅回显兜底）。
     const homeBase = Array.isArray(o.props.bases) ? String((o.props.bases as unknown[])[0] ?? "") : String(o.props.bases ?? o.props.base ?? "");
@@ -470,7 +470,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   }), [orders.data]);
 
   // ② G-UI-2·真 Line 对象（每基地代表产线 = PACK 线·成品下线·非占位）：订单/客户级展开显示 base + line 真数据。
-  const linesQ = useQuery({ queryKey: ["a", "objects", { type: "Line", view: "global-sim" }], queryFn: () => searchObjects("Line", ""), retry: false });
+  const linesQ = useQuery({ queryKey: ["a", "objects", { type: "Line", view: "global-sim" }], queryFn: () => fetchAllObjects("Line"), retry: false });
   const packLineByBase = useMemo(() => {
     const m = new Map<string, { lineId: string; name: string }>();
     for (const l of linesQ.data?.items ?? []) {
@@ -492,7 +492,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
   }, [packLineByBase]);
 
   // 真 InterBaseTransfer 对象（跨基地调拨·transitDays 真值·喂区⑤两段排产表；缺则单段·诚实不伪造）。
-  const xfers = useQuery({ queryKey: ["a", "objects", { type: "InterBaseTransfer" }], queryFn: () => searchObjects("InterBaseTransfer", ""), retry: false });
+  const xfers = useQuery({ queryKey: ["a", "objects", { type: "InterBaseTransfer" }], queryFn: () => fetchAllObjects("InterBaseTransfer"), retry: false });
   const transfers = useMemo<Transfer[]>(() => (xfers.data?.items ?? []).map((t) => ({
     transferId: String(t.props.transferId ?? t.id), fromBase: String(t.props.fromBase ?? ""), toBase: String(t.props.toBase ?? ""),
     model: String(t.props.model ?? ""), transitDays: Number(t.props.transitDays ?? 0), status: String(t.props.status ?? ""),
