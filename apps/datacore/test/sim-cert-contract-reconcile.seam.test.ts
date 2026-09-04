@@ -57,18 +57,31 @@ async function threeNodeWorld(t: TestApp, tenant: string): Promise<void> {
       properties: [], derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE",
     });
   }
+  // 一个 linkKey 一对端点：`POST /sim/propagation-rules` 的引用体检
+  // （`app.ts assertPropagationRefs`，WO-CAUSAL-EDGE-CRUD）按 viaLinkKey 去链路类型表核对
+  // `fromTypeKey→toTypeKey`，而 `linkTypes.find(l => l.key === …)` 只取首条 ⇒
+  // 一个 `FEEDS` 键扛不住 A→B 与 B→C 两对类型。详细判据见
+  // `decision-causal-graph.test.ts` 的 `LINK_TYPES` 头注（同一个根因，同一批修）。
+  for (const [key, from, to] of [
+    ["FEEDS_AB", "TypeA", "TypeB"],
+    ["FEEDS_BC", "TypeB", "TypeC"],
+  ] as const) {
+    await t.repos.ontologyLinks.put({
+      id: `ltype_${key.toLowerCase()}_${tenant}`, tenantId: tenant, key, fromTypeKey: from, toTypeKey: to, cardinality: "1:N", version: 1,
+    });
+  }
   await t.repos.objects.put({ id: "a1", tenantId: tenant, type: "TypeA", props: {}, origin: ORG });
   await t.repos.objects.put({ id: "b1", tenantId: tenant, type: "TypeB", props: {}, origin: ORG });
   await t.repos.objects.put({ id: "c1", tenantId: tenant, type: "TypeC", props: {}, origin: ORG });
-  await t.repos.links.put({ id: "l_ab", tenantId: tenant, type: "FEEDS", fromId: "a1", toId: "b1", origin: ORG });
-  await t.repos.links.put({ id: "l_bc", tenantId: tenant, type: "FEEDS", fromId: "b1", toId: "c1", origin: ORG });
+  await t.repos.links.put({ id: "l_ab", tenantId: tenant, type: "FEEDS_AB", fromId: "a1", toId: "b1", origin: ORG });
+  await t.repos.links.put({ id: "l_bc", tenantId: tenant, type: "FEEDS_BC", fromId: "b1", toId: "c1", origin: ORG });
 }
 
 /** 两条即时传导规则：A.flow→B.load、B.flow→C.load（源态都非零 ⇒ GLOBAL 下两条都真触发）。 */
 async function publishTwoRules(t: TestApp, tenant: string): Promise<void> {
   for (const r of [
-    { key: "r_ab", sourceTypeKey: "TypeA", sourceStateVar: "flow", viaLinkKey: "FEEDS", targetTypeKey: "TypeB", targetStateVar: "load" },
-    { key: "r_bc", sourceTypeKey: "TypeB", sourceStateVar: "flow", viaLinkKey: "FEEDS", targetTypeKey: "TypeC", targetStateVar: "load" },
+    { key: "r_ab", sourceTypeKey: "TypeA", sourceStateVar: "flow", viaLinkKey: "FEEDS_AB", targetTypeKey: "TypeB", targetStateVar: "load" },
+    { key: "r_bc", sourceTypeKey: "TypeB", sourceStateVar: "flow", viaLinkKey: "FEEDS_BC", targetTypeKey: "TypeC", targetStateVar: "load" },
   ]) {
     const res = await t.app.inject({
       method: "POST", url: "/a/v1/sim/propagation-rules", headers: H(tenant),
@@ -302,7 +315,7 @@ describe("WO-CERT-CONTRACT-RECONCILE ④ 传导相入参只有唯一装配处（
     expect((await t.app.inject({
       method: "POST", url: "/a/v1/sim/propagation-rules", headers: H(TEN),
       payload: {
-        key: "r_byref", sourceTypeKey: "TypeA", sourceStateVar: "flow", viaLinkKey: "FEEDS",
+        key: "r_byref", sourceTypeKey: "TypeA", sourceStateVar: "flow", viaLinkKey: "FEEDS_AB",
         targetTypeKey: "TypeB", targetStateVar: "load",
         coefficient: 0, // ← 内联为 0：漏了 ruleParams 就会退回它 ⇒ amount===0 ⇒ 不触发
         coefficientRef: { ruleKey: "C_COEF", paramKey: "feedCoeff" },
@@ -322,7 +335,7 @@ describe("WO-CERT-CONTRACT-RECONCILE ④ 传导相入参只有唯一装配处（
     expect((await t.app.inject({
       method: "POST", url: "/a/v1/sim/propagation-rules", headers: H(TEN),
       payload: {
-        key: "r_gated", sourceTypeKey: "TypeB", sourceStateVar: "flow", viaLinkKey: "FEEDS",
+        key: "r_gated", sourceTypeKey: "TypeB", sourceStateVar: "flow", viaLinkKey: "FEEDS_BC",
         targetTypeKey: "TypeC", targetStateVar: "load", coefficient: 1, delayTicks: 0,
         cadenceNodeId: "demand.consensus", // ← 漏了 gates 就取不到闸门 ⇒ continue ⇒ 不触发
         status: "PUBLISHED",
