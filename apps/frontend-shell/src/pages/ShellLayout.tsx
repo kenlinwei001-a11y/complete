@@ -118,28 +118,44 @@ type NavItemRef =
  * 门按 `via` 分别验：前两者验后端仍派单（一个查 `BUILTIN_VIEWS(seed:true)`、一个查 `VIEW_DEFS`），
  * 后者验 route 仍存在。写错 `via` 会被门当场咬住。
  */
+/**
+ * ── WO-INTEG-BATCH-5 收编补：`host` 字段 —— 把「被**哪个**控制台收编」变成机器可读 ──────
+ *
+ * 病样（本批实测）：`WO-SIM-NAV-UNIFIED` 给本表加的四条，收编宿主是**合并壳** `/v/sim-unified`，
+ * 不是上面十二条的旧沙盘 `/v/sim-sandbox`。这件事当时**只写进了散文注释**（见下方
+ * 「与上面所有条目的收编宿主不同」那段），于是：
+ *   · `SandboxView.CONSOLIDATED_PAGES`（旧沙盘的屏上投影）只列 12 条 —— 它是**对的**；
+ *   · 两条测试仍按「本表 = 旧沙盘一个宿主」遍历全表 ⇒ `sandbox-ui-integrate` ② 与
+ *     `sandbox-ia-consolidate` 的「不许漂移」断言双双红，而红的原因**不是收编变成了黑洞**，
+ *     是判据本身还停在一个宿主的年代。
+ * **注释不是机制**：宿主写在散文里机器读不到，两侧就只能各按各的理解走。故升成字段。
+ *
+ * 判据：`host` = **用户在哪一页能到达它**的那一页的 view key（`where` 是同一件事的人读版）。
+ * ⚠ 刻意**不给默认值**、类型上必填：给了默认值，下一条忘写 host 的条目就会**静默归到某个宿主** ——
+ *   与本批刚修的 `service.ts` 那个 `?? ["Order"]` 完全同型。漏写即编译红，机器先说话。
+ */
 export const CONSOLIDATED_INTO_SANDBOX: Record<
   string,
-  { via: "workspace.views" | "view-defs" | "static-route"; where: string }
+  { via: "workspace.views" | "view-defs" | "static-route"; host: "sim-sandbox" | "sim-unified"; where: string }
 > = {
   // ── 五个沙盘子视图（原「推演」组平级入口）──────────────────────────────────
   // 这五个的 entitlement 本就 `requires: ["sim.sandbox"]`（见 mocks/fixtures.ts 与后端 view-manifest.ts）：
   // 沙盘关 ⇒ 它们连 `workspace.views` 都不下发、`/v/<key>` 本来就 404 ⇒ **不需要回退入口**
   // （没有"沙盘关着但这五个还在"的租户状态）。故它们从 NAV_GROUPS 里**彻底删除**。
-  "chain-line-map": { via: "workspace.views", where: "沙盘中栏画布**默认**模式「线路图」（进沙盘即在屏上）" },
-  "physical-topology": { via: "workspace.views", where: "沙盘中栏画布模式条 →「物理拓扑」" },
-  "node-inspector": { via: "workspace.views", where: "沙盘右栏常驻检视面板 → 页签「变量输入」" },
-  "transit-flow": { via: "workspace.views", where: "沙盘线路图上的「在途批次图层」勾选框" },
-  "chain-impediments": { via: "workspace.views", where: "沙盘主屏阻滞点统计条 + 逐条清单（残差见 AUDIT §2）" },
+  "chain-line-map": { via: "workspace.views", host: "sim-sandbox", where: "沙盘中栏画布**默认**模式「线路图」（进沙盘即在屏上）" },
+  "physical-topology": { via: "workspace.views", host: "sim-sandbox", where: "沙盘中栏画布模式条 →「物理拓扑」" },
+  "node-inspector": { via: "workspace.views", host: "sim-sandbox", where: "沙盘右栏常驻检视面板 → 页签「变量输入」" },
+  "transit-flow": { via: "workspace.views", host: "sim-sandbox", where: "沙盘线路图上的「在途批次图层」勾选框" },
+  "chain-impediments": { via: "workspace.views", host: "sim-sandbox", where: "沙盘主屏阻滞点统计条 + 逐条清单（残差见 AUDIT §2）" },
   // ── 四个独立推演页（原「推演」/「归因与风险」组的专用 route 入口）──────────────
   // 收进沙盘顶部的**模式切换**（决策链序：现状 → 归因 → 试一手 → 求最优 → 影响半径）。
   // 与上面五个的关键差别：这四个页**不受 `sim.sandbox` 门控**（人人可进）。
   // 故它们在 NAV_GROUPS 里的条目**保留**，只是带 `consolidatedWhen: "sim.sandbox"` ——
   // 沙盘开 → 隐藏（已在沙盘里）；沙盘关 → 照旧单列（否则这四个页会随沙盘一起从 IA 里蒸发）。
-  "cleanroom-attr": { via: "static-route", where: "沙盘模式切换 →「归因」→ 档「净室归因」（沙盘关则回退为导航单列）" },
-  "what-if": { via: "static-route", where: "沙盘模式切换 →「试一手」（沙盘关则回退为导航单列）" },
-  "optimize-whatif": { via: "static-route", where: "沙盘模式切换 →「求最优」（沙盘关则回退为导航单列）" },
-  "disruption-radius": { via: "static-route", where: "沙盘模式切换 →「影响半径」（沙盘关则回退为导航单列）" },
+  "cleanroom-attr": { via: "static-route", host: "sim-sandbox", where: "沙盘模式切换 →「归因」→ 档「净室归因」（沙盘关则回退为导航单列）" },
+  "what-if": { via: "static-route", host: "sim-sandbox", where: "沙盘模式切换 →「试一手」（沙盘关则回退为导航单列）" },
+  "optimize-whatif": { via: "static-route", host: "sim-sandbox", where: "沙盘模式切换 →「求最优」（沙盘关则回退为导航单列）" },
+  "disruption-radius": { via: "static-route", host: "sim-sandbox", where: "沙盘模式切换 →「影响半径」（沙盘关则回退为导航单列）" },
   // ── 三个「归因与风险」组的后端下发页（WO-SANDBOX-NAV-CONSOLIDATE）────────────────
   // 收进沙盘「归因」模式的**档**（同一问、不同对象：链路损失 / 流程模板 / 流程实例 / 采购段），
   // 档表在 `views/sim/sandboxModes.ts` 的 `SANDBOX_ATTRIBUTE_TAB_SPEC`（那张表的 `originView`
@@ -147,17 +163,17 @@ export const CONSOLIDATED_INTO_SANDBOX: Record<
   // 与上面四页的关键差别：它们经**后端下发**（kind:"view"），不是专用 route ——
   // 故回退条目也是 kind:"view" + `consolidatedWhen`，见 NAV_GROUPS「归因与风险」组。
   "process-wait": {
-    via: "workspace.views",
+    via: "workspace.views", host: "sim-sandbox",
     where: "沙盘模式「归因」→ 档「流程等待态」（沙盘关则回退为导航单列）",
   },
   "procurement-legs": {
-    via: "workspace.views",
+    via: "workspace.views", host: "sim-sandbox",
     where: "沙盘模式「归因」→ 档「采购四段腿」（沙盘关则回退为导航单列）",
   },
   // ⚠ `view-defs` 不是 `workspace.views` 的同义词，别顺手改：`process-stuck` 刻意**不进**
   //   `BUILTIN_VIEWS`（进了就把暗发键 `process.runtime` 顶成 defaultOn:true），见表头 `via` 说明。
   "process-stuck": {
-    via: "view-defs",
+    via: "view-defs", host: "sim-sandbox",
     where: "沙盘模式「归因」→ 档「流程卡点」（暗发键关着时该档整个不出现·沙盘关则回退为导航单列）",
   },
   // ── WO-SIM-NAV-UNIFIED · 指控台四页收编进**统一推演控制台**（`/v/sim-unified`）──────────
@@ -179,15 +195,15 @@ export const CONSOLIDATED_INTO_SANDBOX: Record<
   //
   // `where` 写的是**用户点哪里能到**，逐条与 `unifiedModes.ts` 的 `UNIFIED_MODE_SPEC` 对得上：
   "sim-conduction": {
-    via: "view-defs",
+    via: "view-defs", host: "sim-unified",
     where: "统一推演控制台顶部页签 →「传导识别」（`UNIFIED_MODE_SPEC.conduction.renderer = \"sim-conduction\"`，经 getRenderer 挂的就是本页组件）",
   },
   "sim-attribution": {
-    via: "view-defs",
+    via: "view-defs", host: "sim-unified",
     where: "统一推演控制台顶部页签 →「损失归因」（`UNIFIED_MODE_SPEC.attribution.renderer = \"sim-attribution\"`，经 getRenderer 挂的就是本页组件）",
   },
   "sim-optimize": {
-    via: "view-defs",
+    via: "view-defs", host: "sim-unified",
     where: "统一推演控制台顶部页签 →「方案寻优」（`UNIFIED_MODE_SPEC.optimize.renderer = \"sim-optimize\"`，经 getRenderer 挂的就是本页组件）",
   },
   // ⚠ `sim-console` 与上面三条**收编方式不同，必须分开说**（合成一句就是本仓最恨的
@@ -197,7 +213,7 @@ export const CONSOLIDATED_INTO_SANDBOX: Record<
   //   这正是仓主那句「base 页面是一个大量的指标卡片」所裁决的合并方向，不是漏接线。
   //   旧版面本身一个字没动、`/v/sim-console` 深链照旧可达（判据⑧b 逐条验它还在 VIEW_DEFS 里）。
   "sim-console": {
-    via: "view-defs",
+    via: "view-defs", host: "sim-unified",
     where: "统一推演控制台首档「指标态势」（= 本页首屏的合并去向：37 张指标卡墙取代旧首屏；旧版面 /v/sim-console 深链仍可直达）",
   },
 };

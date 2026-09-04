@@ -154,11 +154,23 @@ describe("§1 · 七条分支的产物逐条还活着", () => {
     }
     expect(screen.getByTestId("sandbox-scope-strip"), "跨模式范围条不在 ⇒ 只并了 tab 条没并上下文").toBeTruthy();
     expect(screen.getByTestId("sandbox-mode-question"), "「当前模式回答哪一问」不在").toBeTruthy();
-    // 收编登记表里的每一条，屏上都要有一条到得了的链接（收编 ≠ 删除）
-    for (const key of Object.keys(CONSOLIDATED_INTO_SANDBOX)) {
+    // 收编登记表里**宿主是本页**的每一条，屏上都要有一条到得了的链接（收编 ≠ 删除）。
+    //
+    // ⚠ 这里此前遍历的是**全表**。`WO-SIM-NAV-UNIFIED` 之后全表有两个宿主：
+    //   12 条进旧沙盘（本页），4 条进合并壳 `/v/sim-unified` —— 拿本页去要那 4 条的链接，
+    //   红的是判据不是产品。宿主现在是 `CONSOLIDATED_INTO_SANDBOX` 上的 `host` 字段（机器可读）。
+    // ⚠ **这不是把 4 条豁免掉**：它们的可达性由 `sandbox-ia-consolidate.seam` 那条
+    //   「两个宿主的桶必须穷举全表 + 合并壳侧逐条可达」的断言接着咬，一条都没松手。
+    const hostedHere = Object.entries(CONSOLIDATED_INTO_SANDBOX)
+      .filter(([, v]) => v.host === "sim-sandbox")
+      .map(([k]) => k);
+    // 🐤 金丝雀：本页宿主的桶**不能是空的** —— 空了的话下面这个 for 一圈不转、本条恒绿，
+    //    「收编变成黑洞」就再也验不到（假绿第 12 形态 LOOP_NO_FLOOR）。
+    expect(hostedHere.length, "本页宿主桶为空 ⇒ host 字段或过滤坏了，先修尺子再读结论").toBeGreaterThan(0);
+    for (const key of hostedHere) {
       expect(
         screen.getByTestId(`sandbox-consolidated-${key}`),
-        `收编表登记了 ${key}，但沙盘里没有到达它的链接 ⇒ 收编变成了黑洞`,
+        `收编表登记了 ${key}（host=sim-sandbox），但沙盘里没有到达它的链接 ⇒ 收编变成了黑洞`,
       ).toBeTruthy();
     }
   }, 60000);
