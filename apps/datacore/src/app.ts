@@ -5108,7 +5108,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   //
   // 本端点认得的查询参数（其余一律回 `warnings`，不再静默吞掉）：
   const KNOWN_OBJECT_QUERY_PARAMS = new Set(["type", "q", "page", "pageSize", "base"]);
-  const MAX_PAGE_SIZE = 10; // MUTANT
+  const MAX_PAGE_SIZE = 500;
   /**
    * **分页形态**的参数别名 —— 本端点一个都不实现。收到即 **400**，不降级成 warning。
    *
@@ -5159,7 +5159,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       return Number(raw);
     };
     const page = intParam("page", 1);
-    const askedPageSize = intParam("pageSize", 10); // MUTANT
+    const askedPageSize = intParam("pageSize", 50);
     const pageSize = Math.min(MAX_PAGE_SIZE, askedPageSize);
 
     const warnings: string[] = [];
