@@ -27,7 +27,7 @@
  * 本文件**零业务常数**（不写死 SO 号、不写死型号名、不写死三个中文标签）。
  */
 import { BUSINESS_TYPE_LABEL, BusinessTypeSchema, type BusinessType } from "@platform/contracts";
-import { searchObjects } from "@/api/endpoints";
+import { fetchAllObjects } from "@/api/endpoints";
 import { MAX_FAMILY_RINGS, ringOffsets, type FamilyIdentity } from "./chainLineMap";
 
 /** 一条族线的锚点（发现结果）。`so` 是真实订单号，不是构造出来的。 */
@@ -115,8 +115,14 @@ export function familyIdentityOf(
  * 于是它被静默忽略、回落默认页长：**实收 50 行，而 `total` 是 500（10× 欠读）**，
  * 且不报任何错。族线因此长期只按订单簿的前 10% 画，看上去一切正常。
  * 正确的参数名是 `pageSize`；该端点现已对 `limit` 这类分页别名直接 400，不再让它静默生效。
+ *
+ * ⚠ 第二次订正（WO-PAGING-SILENT-TRUNCATION-SCAN）：改成 `pageSize: "500"` **仍然不对**，
+ * 只是恰好不痛 —— 服务端 `MAX_PAGE_SIZE` 就是 500，而订单簿真值也正好是 500（seed 42 实测）。
+ * 两个 500 相等纯属巧合：**第 501 张单进来的那一天，它会一声不响地又回到欠读**，
+ * 而屏上和这里都不会有任何迹象。形态与上面那次一模一样，只是数字从 10× 变成 1.00×。
+ * 判据必须落在服务端回显的 `hasMore` 上，不落在「我请求了多大一页」上 ⇒ 走 `fetchAllObjects`。
  */
 export async function fetchOrdersForFamilies(): Promise<{ props?: Record<string, unknown> }[]> {
-  const page = await searchObjects(ORDER_OBJECT_TYPE, "", { pageSize: "500" });
+  const page = await fetchAllObjects(ORDER_OBJECT_TYPE);
   return (page as unknown as { items?: { props?: Record<string, unknown> }[] }).items ?? [];
 }
