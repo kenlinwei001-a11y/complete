@@ -236,18 +236,43 @@ export async function fetchAllObjects(
   q = "",
   extra?: Record<string, string>,
 ): Promise<ObjectsPage> {
-  const PAGE = 500; // = 服务端 MAX_PAGE_SIZE；被夹也无妨，下面认的是回显的 hasMore
+  const PAGE = 500; // 请求值；服务端会夹到它自己的上限并**回显生效值**，下面认的是回显的 hasMore
+  const MAX_PAGES = 2000; // 安全阀，防「hasMore 恒 true」把浏览器转死
   const items: ObjectsPage["items"] = [];
-  let page = 1;
   let last: ObjectsPage | undefined;
-  // 安全阀：500 页 × 500 行 = 25 万行。撞上说明这不是一个该整页拉的类型（该走 aggregate）。
-  for (; page <= 500; page += 1) {
+  let page = 1;
+  for (; page <= MAX_PAGES; page += 1) {
     const res = await searchObjects(type, q, { ...extra, page: String(page), pageSize: String(PAGE) });
     last = res;
     items.push(...res.items);
     if (!res.hasMore) break;
   }
-  return { ...(last ?? { items: [], total: items.length }), items, total: last?.total ?? items.length };
+  /**
+   * ⚠ **安全阀绝不允许静默返回一个短列表** —— 那就是本函数存在的理由本身。
+   *
+   * 变异反证当场抓到过这个自摆的坑（WO-PAGING-SILENT-TRUNCATION-SCAN）：把服务端页长
+   * 临时改成 10 重跑，`EquipmentOEE`（真值 5460）在旧版安全阀（500 页 × 每页实收 10）下
+   * **返回 5000 条并且一声不响** —— 修完的函数又变回了它要修的那个病，只是数字换了。
+   * 所以撞阀 = **抛**，不是 break 后照常返回。
+   */
+  if (last?.hasMore) {
+    throw new Error(
+      `取「${type}」全量时翻了 ${MAX_PAGES} 页仍未取完（已取 ${items.length} 条，服务端报总数 ${String(last.total)}）。` +
+        `这个类型不适合整页拉取，请改用聚合端点求总量/合计。`,
+    );
+  }
+  /**
+   * 第二道判据：**拿服务端独立回显的 `total` 校对自己数出来的条数**。
+   * `total` 的语义是「符合条件的总行数」，与 page/pageSize 无关 ⇒ 它是本函数唯一的外部裁判。
+   * 不等就抛，**不返回一个看起来正常的短列表**：屏上报错可以被看见，少了 450 张单不会。
+   * （放过一种合法不等：服务端标了 `totalIsLowerBound` 时 `total` 只是下界，不当矛盾。）
+   */
+  const total = last?.total;
+  const lowerBound = (last as { totalIsLowerBound?: boolean } | undefined)?.totalIsLowerBound === true;
+  if (typeof total === "number" && !lowerBound && items.length !== total) {
+    throw new Error(`取「${type}」全量时条数对不上：翻页累计 ${items.length} 条，服务端报总数 ${total} 条。`);
+  }
+  return { ...(last ?? { items: [], total: items.length }), items, total: total ?? items.length };
 }
 
 export const queryObjectsPaged = (
