@@ -150,6 +150,12 @@ export function ObjectRefSelector({
 }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  /**
+   * **有意只取首页**（WO-PAGING-SILENT-TRUNCATION-SCAN 判为无害）。
+   * 理由：这是一个「打字收窄」的下拉选择器 —— 收敛机制是用户输入的 `q`，不是把全表铺出来。
+   * 结果既不进任何计算、也不当作全集上屏，用户挑中**一条**就走。
+   * 反例（就在同一次扫描里）：`GlobalSimView` 拿 `Order` 列表当排产全集 ⇒ 那才必须翻完。
+   */
   const { data } = useQuery({
     queryKey: ["a", "objects", { type: objectType, q }],
     queryFn: () => searchObjects(objectType, q),

@@ -84,6 +84,9 @@ export async function nearestEntities(
   for (const objectType of objectTypes) {
     let rows: Record<string, unknown>[];
     try {
+      // **有意只取样**（WO-PAGING-SILENT-TRUNCATION-SCAN 判为无害）：这里做的是「用户说的这串词
+      // 像不像某个对象的名字」的相似度打分，`perType` 是每型的取样预算。取样命中不了就落到
+      // out-of-domain 提示，不产生任何计数/分母/合计 —— 与「拿列表当全集」是两回事。
       const payload = await ontology.queryObjects(ctx, objectType, {}, perType);
       const d = payload.data as { rows?: unknown[]; items?: unknown[] } | unknown[];
       rows = (Array.isArray(d) ? d : (d?.rows ?? d?.items ?? [])) as Record<string, unknown>[];

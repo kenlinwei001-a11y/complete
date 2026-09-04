@@ -673,6 +673,10 @@ function useWidgetData(q: WidgetQueryDef) {
     queryKey: ["a", "widget", q],
     queryFn: async (): Promise<unknown> => {
       switch (q.kind) {
+        // **有意只取首页**：`kind:"objects"` 的 widget 语义就是「最近 N 条」，N 由 widget 定义
+        // 显式声明（实测全仓 4 处定义全部带 limit：`Order` 8 · `SopVersionRow` 20，
+        // 出自 `apps/datacore/src/synthetic/service.ts` 的驾驶舱配置）。N 是它的**业务语义**，
+        // 不是「我以为这就是全部」。要总量/合计的 widget 走 `kind:"objects-aggregate"`（服务端全量聚合）。
         case "objects":
           return queryObjectsPaged(q.objectType, 1, q.limit ?? 50, (q.filter ?? {}) as Record<string, string>);
         case "objects-aggregate": {

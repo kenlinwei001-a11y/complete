@@ -26,6 +26,8 @@ export default function LedgerView({ view }: ViewRendererProps) {
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  // 分页扫描判定 (c)**已翻页**：本页就是台账的真分页 UI —— `page` 是用户可见状态，
+  // 服务端 `total` 驱动页码条，用户自己往后翻。不需要也不应该改成一次拉全量。
   const { data, isLoading } = useQuery({
     queryKey: ["a", "objects", { type: objectType, page, filters }],
     queryFn: () => queryObjectsPaged(objectType, page, PAGE_SIZE, filters),

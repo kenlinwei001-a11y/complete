@@ -21,6 +21,10 @@ const OT_COLUMNS: readonly string[] = ["类型", "属性数(源/派生·个)", "
  * R14 零业务常数：类型名/域/列全来自 API（stats + business-domains）。
  */
 function InstancePanel({ typeKey, pk, onClose }: { typeKey: string; pk: string | null; onClose: () => void }) {
+  // **有意只取首页**：本面板是类型浏览器的「看几条长什么样」预览，不是台账。
+  // 关键在于屏上那个计数徽章读的是服务端回显的 `q.data.total`（符合条件的总行数，
+  // 独立于 page/pageSize），**不是** `rows.length` ⇒ `EquipmentOEE` 这类 5460 条的类型
+  // 屏上照实显示 5460、只是列出前 20 行，用户看得出「还有」。要逐页翻请走台账页。
   const q = useQuery({ queryKey: ["a", "ot-instances", typeKey], queryFn: () => queryObjectsPaged(typeKey, 1, 20, {}) });
   // WO-SCHEMA-ZH：属性预览此前是裸键值对（`util=0.87`），业务专家看不出这个数字是什么。
   // 中文名取后端 PropertyDef.displayName 单一真值（前端不内联映射）；缺则诚实回落 propKey。
