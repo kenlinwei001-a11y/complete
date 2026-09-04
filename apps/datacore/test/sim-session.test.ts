@@ -83,6 +83,13 @@ describe("推演沙盘增量1 · 会话状态机", () => {
   it("传导规则 CRUD（系数可编辑·一等类型）：发布即列出", async () => {
     const t = await makeApp();
     await enableSim(t);
+    // 引用体检（`app.ts assertPropagationRefs`，WO-CAUSAL-EDGE-CRUD）要求两个对象类型与
+    // 链路类型都真在本租户本体里，且链路端点方向与本边逐字相符 —— 本用例原先一个都没落，
+    // 该闸门上线后当场 400。补最小本体（抽象类型，零行业名）；改的是夹具不是闸门。
+    for (const k of ["TypeA", "TypeB"]) {
+      await t.repos.ontologyTypes.put({ id: `otype_${k}`, tenantId: "demo", key: k, displayName: k, properties: [], derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE" });
+    }
+    await t.repos.ontologyLinks.put({ id: "ltype_feeds", tenantId: "demo", key: "FEEDS", fromTypeKey: "TypeA", toTypeKey: "TypeB", cardinality: "1:N", version: 1 });
     const create = await t.app.inject({ method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN,
       payload: { key: "r_demo", sourceTypeKey: "TypeA", sourceStateVar: "risk", viaLinkKey: "FEEDS", targetTypeKey: "TypeB", targetStateVar: "risk", coefficient: 0.85, delayTicks: 1, status: "PUBLISHED" } });
     expect(create.statusCode).toBe(201);
@@ -95,7 +102,12 @@ describe("推演沙盘增量1 · 会话状态机", () => {
     await seedBattery(t); // 本体有对象类型/链路
     await enableSim(t);
     await t.app.inject({ method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN,
-      payload: { key: "r_v", sourceTypeKey: "Line", sourceStateVar: "util", viaLinkKey: "FEEDS", targetTypeKey: "Base", targetStateVar: "risk", coefficient: 0.5, delayTicks: 0, status: "PUBLISHED" } });
+      // ⚠ 走 `seedBattery` 的**真链路**，不再用凭空的 `FEEDS`：引用体检要求 viaLinkKey 真在本体里
+      // 且端点方向逐字相符。battery 本体里连 Base 与 Line 的那条是 `line_belongs_to_base`，
+      // 方向是 **Base→Line**（`battery.ts:3156`），故本边随之写成 Base→Line ——
+      // 与生产种子同一处理：`seed.ts` 的 `demo_base_load_to_line_util` 正是为这个方向
+      // 从「Line→Base」改写过来的（连 key 都改了名，注释写着理由）。
+      payload: { key: "r_v", sourceTypeKey: "Base", sourceStateVar: "util", viaLinkKey: "line_belongs_to_base", targetTypeKey: "Line", targetStateVar: "risk", coefficient: 0.5, delayTicks: 0, status: "PUBLISHED" } });
     const cfg = await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN });
     expect(cfg.statusCode).toBe(200);
     const j = cfg.json() as { nodeTypes: string[]; stateVars: string[]; propagationCount: number; radarDims: unknown[] };
@@ -113,6 +125,9 @@ describe("推演沙盘增量1 · 会话状态机", () => {
     for (const k of ["TypeA", "TypeB"]) await t.repos.ontologyTypes.put({ id: `otype_${k}`, tenantId: "demo", key: k, displayName: k, properties: [], derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE" });
     await t.repos.objects.put({ id: "o1", tenantId: "demo", type: "TypeA", props: {}, origin: org });
     await t.repos.objects.put({ id: "o2", tenantId: "demo", type: "TypeB", props: {}, origin: org });
+    // 链路**类型**声明（此前只落了下面那条链路**实例**）—— 引用体检查不到类型即 400，
+    // 规则建不成 ⇒ 下面「o2.risk = 0 + 0.5×10 = 5」读回 0，病因在建边不在传导。
+    await t.repos.ontologyLinks.put({ id: "ltype_feeds_lf", tenantId: "demo", key: "FEEDS", fromTypeKey: "TypeA", toTypeKey: "TypeB", cardinality: "1:N", version: 1 });
     await t.repos.links.put({ id: "lnk1", tenantId: "demo", type: "FEEDS", fromId: "o1", toId: "o2", origin: org });
     await t.app.inject({ method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN,
       payload: { key: "r_lf", sourceTypeKey: "TypeA", sourceStateVar: "risk", viaLinkKey: "FEEDS", targetTypeKey: "TypeB", targetStateVar: "risk", coefficient: 0.5, delayTicks: 0, status: "PUBLISHED" } });

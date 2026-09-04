@@ -657,7 +657,26 @@ export class ActionService {
       const existing = (
         await this.repos.actionDrafts.list(ctx.tenantId, (d) => d.fingerprint === fingerprint && !FINGERPRINT_DEAD_STATUSES.has(d.status))
       )[0];
-      if (existing) return existing;
+      if (existing) {
+        /**
+         * 既有单**还停在 `DRAFT`** ⇒ 复用它、并**再提交一次**，不是原样返回。
+         *
+         * 病样（本批实测，`sop-actions` V9 全链用例）：`create()` 是**先落库再 submit**
+         * （下面 `put` 与 `submit` 两行）。submit 抛错时（如当时无合格审批人 →
+         * 422 `NO_ELIGIBLE_APPROVER`）草稿已经**带着指纹**留在库里、状态 `DRAFT`。
+         * 等阻塞条件解除（补了审批人）用户再点一次「就这么办」，指纹去重命中这份残单、
+         * 原样返回 ⇒ 回包 `status: "DRAFT"`，**审批队列里自始至终没有这份单**，
+         * 而屏上确认条照旧写「已生成一份待批」。这份单从此再也提交不上去。
+         *
+         * `DRAFT` 与 `REJECTED`/`CANCELLED` 不同，故**不能**塞进 `FINGERPRINT_DEAD_STATUSES`：
+         * 那会让「同方案复用同一份 draft」这条既有语义失效（连点两次得两个 draftId，
+         * 正是 WO-CONSOLE-BLOCKERS B3 要治的病）。这里要的是**复用 id ＋ 补提交**，两者都保住。
+         *
+         * `submit: false` 是显式要一份不提交的草稿（`sop-actions` 有用例），故照旧原样返回。
+         */
+        if (existing.status === "DRAFT" && input.submit !== false) return this.submit(ctx, existing.id);
+        return existing;
+      }
     }
     const now = new Date().toISOString();
     const draft: ActionDraft = {
