@@ -66,4 +66,22 @@ describe("R-UI-4 · 源码坐标不得渲染到用户屏上", () => {
     const hits = coordLines(tree);
     expect(hits, `R-UI-4 违规：这些串会随载荷/文案渲染到屏上。修法是换成业务标识（契约名 / 对象类型.属性 / 求解器 key / 规则 key），不是删空：\n${hits.join("\n")}`).toEqual([]);
   });
+
+  /**
+   * §2 后端载荷侧。**这一节是被真浏览器逼出来的，不是补全强迫症**：
+   * 92 条导航可达路由扫完，前端侧已归零，仍有 2 处坐标上屏
+   * （`/admin/connections/<synthetic>/schema` 印 `schedule.ts:216` · `engine.ts:640`）——
+   * 源头在后端 `CADENCE_NODES` 的 `note` / `probed`，这些串**原样下发**、前端只负责渲染。
+   * ⇒ 只守前端的门，对这条路径是**结构性瞎的**。
+   *
+   * 扫描面取 `apps/datacore/src/synthetic` 整个目录而非单文件：合成数据模块的
+   * `note` / `probed` / `evidence` 串是**产品载荷**（用户屏上的溯源层），不是内部日志；
+   * 按目录守才对新增的同类文件照样生效，按文件白名单守则一加文件就漏。
+   */
+  const backend = checkedTree("apps/datacore/src/synthetic", "CADENCE_NODES", 10);
+
+  it("§2 后端合成数据载荷（note/probed/evidence 原样下发上屏）里不得有源码坐标", () => {
+    const hits = coordLines(backend);
+    expect(hits, `R-UI-4 违规（后端载荷侧）：这些串会随 API 响应原样打到用户屏上。换成业务标识（调度作业 key / 出厂配置项 / 求解器册 / 对象类型.属性 / 种子集合名），不是删空：\n${hits.join("\n")}`).toEqual([]);
+  });
 });
