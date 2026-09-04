@@ -36,7 +36,7 @@ const FIX = JSON.parse(
 ) as {
   objectTypes: Record<string, { key: string; displayName: string; properties: { propKey: string; displayName?: string }[]; derivedProperties: { propKey: string; displayName?: string }[] }>;
   orders: Record<"A" | "B", { data: { id: string; type: string; props: Record<string, unknown> } }>;
-  neighbors: Record<string, { groups: { linkKey: string; direction: "out" | "in"; total: number; items: { id: string; typeKey: string; objectKey: string; display: string }[] }[] }>;
+  neighbors: Record<"A_in" | "A_out" | "B_in", { groups: { linkKey: string; direction: "out" | "in"; total: number; items: { id: string; typeKey: string; objectKey: string; display: string }[] }[] }>;
   workOrders: Record<string, { data: { id: string; type: string; props: Record<string, unknown> } }>;
 };
 
