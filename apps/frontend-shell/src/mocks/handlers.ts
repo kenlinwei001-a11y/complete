@@ -1946,7 +1946,7 @@ let mockPertSeq = 0;
  *
  * R6 确定性：id 走计数器、时间戳固定串，无随机数、无真实时钟。
  */
-type MockLinkType = { key: string; fromType: string; toType: string; cardinality: string; deprecation?: { status: "DEPRECATED" | "RETIRED"; supersededBy?: string; deprecatedAt?: string; graceUntil?: string; retiredAt?: string } };
+type MockLinkType = { key: string; fromType: string; toType: string; cardinality: string; viaProperty?: string; viaSide?: "from" | "to"; version?: number; deprecation?: { status: "ACTIVE" | "DEPRECATED" | "RETIRED"; supersededBy?: string; deprecatedAt?: string; graceUntil?: string; retiredAt?: string } };
 type MockPropRule = {
   id: string; tenantId: string; key: string;
   /**
@@ -4063,7 +4063,20 @@ export const handlers = [
         { key: "model_producible_at", fromType: "Model", toType: "Base", cardinality: "N:N" },
         { key: "order_for_model", fromType: "Order", toType: "Model", cardinality: "1:N" },
         { key: "line_belongs_to_base", fromType: "Base", toType: "Line", cardinality: "1:N" },
-      ].concat(mockLinkTypes.filter((l) => !MOCK_LINK_SEED.some((s) => s.key === l.key)).map((l) => ({ key: l.key, fromType: l.fromType, toType: l.toType, cardinality: l.cardinality }))),
+      ]
+        // WO-RELATION-EDIT-GAPS ①：种子三条的**当前值**从 store 取（上面的字面量只做兜底）——
+        // 改一条种子边的基数/实现属性之后，本端点必须回读到新值，否则「改」在 mock 模式下
+        // 看起来永远没生效。⚠ 字面量数组本身必须原地保留：`mock-linktype-direction.gate.test.ts`
+        // 按源码文本在本端点之后抽紧跟的那个数组，换成 `mockLinkTypes.map(...)` 会让它抽出 0 条。
+        .map((s: MockLinkType) => {
+          const cur = mockLinkTypes.find((l) => l.key === s.key);
+          return cur ? { key: cur.key, fromType: cur.fromType, toType: cur.toType, cardinality: cur.cardinality, ...(cur.viaProperty ? { viaProperty: cur.viaProperty, viaSide: cur.viaSide ?? "from" } : {}) } : s;
+        })
+        .concat(
+          mockLinkTypes
+            .filter((l) => !MOCK_LINK_SEED.some((s) => s.key === l.key))
+            .map((l) => ({ key: l.key, fromType: l.fromType, toType: l.toType, cardinality: l.cardinality, ...(l.viaProperty ? { viaProperty: l.viaProperty, viaSide: l.viaSide ?? ("from" as const) } : {}) })),
+        ),
       rules: [
         { key: "C03", expression: "weeklySupply.packsPerWeekP90 >= weeklyDemand", scope: "Order、Base", severity: "阻断" },
         { key: "C06", expression: "kitCoverDays >= 5", scope: "MaterialBalance", severity: "阻断" },
@@ -7371,19 +7384,61 @@ export const handlers = [
   // `POST /a/v1/ontology/link-types`（后端 app.ts:2918 · `ontology.upsertLinkType` 按 key 幂等升版）。
   http.post("*/a/v1/ontology/link-types", async ({ request }) => {
     const b = (await request.json()) as { key: string; fromTypeKey: string; toTypeKey: string; cardinality: string; viaProperty?: string; viaSide?: "from" | "to" };
+    /*
+     * WO-RELATION-EDIT-GAPS ②③ · **mock 不许比真后端宽松**（本仓交付判据 2）。
+     * 这条纪律不是洁癖：mock 一旦宽松，"点了必 400" 那类 bug 在 mock 模式下**永远抓不到** ——
+     * 本仓真出过这个事故。故这两道闸与 `apps/datacore/src/app.ts` 建边路由**逐条对应**：
+     *  ③ key 字符集（字母开头 / 只收 [A-Za-z0-9_] / ≤64）
+     *  ② 同 key 不许改端点（含"掉个头"这种反向覆盖）
+     */
+    if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(b.key) || b.key.length > 64) {
+      return err(400, "VALIDATION_ERROR", `关系标识 '${b.key}' 不合法：只能用英文字母、数字与下划线，必须字母开头，长度不超过 64 个字符（不能含空格、中文或标点）。`);
+    }
     const existing = mockLinkTypes.find((l) => l.key === b.key);
+    if (existing && (existing.fromType !== b.fromTypeKey || existing.toType !== b.toTypeKey)) {
+      return err(
+        400,
+        "VALIDATION_ERROR",
+        `关系 ${b.key} 已存在，连的是 ${existing.fromType} → ${existing.toType}，本次提交的是 ${b.fromTypeKey} → ${b.toTypeKey}。` +
+          `两端类型是这条关系的身份，不能就地改。要改语义请新建一个关系标识，并对旧的走停用流程。`,
+      );
+    }
     if (existing) {
-      existing.fromType = b.fromTypeKey; existing.toType = b.toTypeKey; existing.cardinality = b.cardinality;
+      existing.cardinality = b.cardinality;
+      existing.viaProperty = b.viaProperty;
+      existing.viaSide = b.viaProperty ? (b.viaSide ?? "from") : undefined;
+      existing.version = (existing.version ?? 1) + 1;
     } else {
-      mockLinkTypes.push({ key: b.key, fromType: b.fromTypeKey, toType: b.toTypeKey, cardinality: b.cardinality });
+      mockLinkTypes.push({ key: b.key, fromType: b.fromTypeKey, toType: b.toTypeKey, cardinality: b.cardinality, version: 1, ...(b.viaProperty ? { viaProperty: b.viaProperty, viaSide: b.viaSide ?? "from" } : {}) });
     }
     // WO-LINKTYPE-IMPL：回显 viaProperty/viaSide（真后端据此把声明物化成链路实例）。
     // ⚠ **故意不返回 `materialized`** —— mock 里没有对象实例，算不出真实条数；
     // 编一个数会让 mock 模式显示一条真后端不会给的读数（前端对 undefined 已做静默处理）。
     return HttpResponse.json(
-      { key: b.key, fromTypeKey: b.fromTypeKey, toTypeKey: b.toTypeKey, cardinality: b.cardinality, version: 1, ...(b.viaProperty ? { viaProperty: b.viaProperty, viaSide: b.viaSide ?? "from" } : {}) },
-      { status: 201 },
+      { key: b.key, fromTypeKey: b.fromTypeKey, toTypeKey: b.toTypeKey, cardinality: b.cardinality, version: mockLinkTypes.find((l) => l.key === b.key)?.version ?? 1, ...(b.viaProperty ? { viaProperty: b.viaProperty, viaSide: b.viaSide ?? "from" } : {}) },
+      // 改既有回 200、新建回 201（与真后端一致：调用方据此分辨"我是不是覆盖了别人的边"）。
+      { status: existing ? 200 : 201 },
     );
+  }),
+  /*
+   * WO-RELATION-EDIT-GAPS ④ · `POST /a/v1/ontology/links|types/:key/reactivate`
+   * （后端 `ontology-governance.ts reactivate()`）。RETIRED 不给回退，409，与真后端同口径。
+   */
+  http.post("*/a/v1/ontology/links/:key/reactivate", ({ params }) => {
+    const key = decodeURIComponent(String((params as { key: string }).key));
+    const l = mockLinkTypes.find((x) => x.key === key);
+    if (!l) return err(404, "NOT_FOUND", `link ${key}`);
+    const st = l.deprecation?.status ?? "ACTIVE";
+    if (st === "RETIRED") {
+      return err(409, "INVALID_STATE", `结构边 ${key} 已下线（RETIRED），不能直接拨回启用：下线的前置是「零引用」，别处可能已改引用了后继项，一键拨回会让两套引用并存。请重建同名结构边（建关系时用同一个 key 即为覆盖）。`);
+    }
+    if (st === "ACTIVE") return err(409, "INVALID_STATE", `结构边 ${key} 本来就是启用态，无需重新启用。`);
+    l.deprecation = undefined;
+    return HttpResponse.json({ key, deprecation: { status: "ACTIVE" } });
+  }),
+  http.post("*/a/v1/ontology/types/:key/reactivate", ({ params }) => {
+    const key = decodeURIComponent(String((params as { key: string }).key));
+    return HttpResponse.json({ key, deprecation: { status: "ACTIVE" } });
   }),
   // `POST /a/v1/ontology/links/:key/deprecate`（后端 app.ts:2797 → `governance.deprecate`）。
   http.post("*/a/v1/ontology/links/:key/deprecate", async ({ params, request }) => {
