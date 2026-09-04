@@ -843,12 +843,14 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       //      `lineId: null,  // 无线级实测 → 全局值（诚实回退）` —— 30/30 行恒 null，不是漏灌，是设计如此。
       //      ⇒ 就算把订单按产线筛出来，`minutes` 仍是全局值，"这条线的换型时长"无从谈起。
       //   ② **订单侧没有产线归属**：`Order` 只有 `bases[]`（基地数组），全链没有 `Order→Line` 的边。
-      //   ③ 唯一带真 `lineId` 的是 `WorkOrder`（每线 2 单·`battery.ts:4051`），但它的型号取自
-      //      `WO_MODELS = [4680-NCM, 4680-LFP, 方形-LFP, 储能-280Ah, 储能-314Ah]`，其中
-      //      **`储能-280Ah` / `储能-314Ah` 不在 `MODELS` 六型号里**（`battery.ts:54-60`）⇒ 不在换型矩阵里
-      //      ⇒ `matrix[from]?.[to] ?? 0` 会把「不知道换型多久」算成「换型 0 分钟」。
-      //      接上去 = 把今天的"回显别人的队列"换成"编造的 0 分钟换型"，**比现状更坏**
-      //      （同 `G-YIELD-SERIES-SOURCE-MISMATCH` 那一课：喂不动算法的源，接了比不接更危险）。
+      //   ③ ~~唯一带真 `lineId` 的是 `WorkOrder`，但它的型号取自硬编码 `WO_MODELS`，其中
+      //      `储能-280Ah`/`储能-314Ah` 不在 `MODELS` 六型号里 ⇒ 不在换型矩阵里 ⇒
+      //      `matrix[from]?.[to] ?? 0` 会把「不知道换型多久」算成「换型 0 分钟」。~~
+      //      ⚠ **此条已于 `WO-WORKORDER-CATALOG-FIX` 消除**：工单型号改从「该基地真能产的型号集」
+      //      里选（`battery.ts` 的 `WO_MODELS_BY_BASE`），260/260 张工单的型号今已全部落在
+      //      `MODELS` 目录内 ⇒ 换型矩阵查得全。**裁决③ 本身不变**——① 与 ② 仍然成立，
+      //      单靠它们就足以判 EMPTY；下面 `missingInputs` 里 `WorkOrder` 那条现已偏保守，
+      //      要不要摘掉属求解器口径，另单裁决，本单不动（只改数据自洽，不改求解器行为）。
       // 故本单只做两件**不撒谎**的事：
       //   ① 用户给的 `lineId` 必须**真存在**（对 `Line.lineId` 精确校验）—— 不存在即 400，
       //      绝不把一个不存在的产线名印在一张排序表上（今天 `LINE-WS-火星-x` 照样回显）；
