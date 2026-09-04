@@ -138,17 +138,28 @@ const patchCalls: { sessionId: string; status: string }[] = [];
 let impactMode: "full" | "leaf" | "unresolved" | "throw" = "full";
 const impactCalls: unknown[] = [];
 
-/** 与 `apiClient` 的 `ApiClientError` **同一个类**（`vi.mock` 里的实例要能被生产代码 `instanceof` 认出来）。 */
-class FakeApiError extends Error {
-  code: string;
-  status: number;
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = "ApiClientError";
-    this.status = status;
-    this.code = code;
+/**
+ * 与 `apiClient` 的 `ApiClientError` **同一个类**（`vi.mock` 里的实例要能被生产代码 `instanceof` 认出来）。
+ *
+ * ⚠ 必须走 `vi.hoisted`，不能写成裸的 `class` 声明：`vi.mock` 会被提升到文件最顶端，
+ * 而它的工厂里引用了本类 ⇒ 工厂求值时 `class` 还在 TDZ 里，整个文件在**收集阶段**就炸
+ * （`ReferenceError: Cannot access 'FakeApiError' before initialization`，
+ * 表现为「Failed Suites 1」而不是某条用例红 —— 本文件此前 8 条用例一条都没跑过）。
+ * `vi.hoisted` 与 `vi.mock` 一起提升，故工厂与下面各处 `new FakeApiError(...)` 拿到的是同一个类。
+ */
+const { FakeApiError } = vi.hoisted(() => {
+  class FakeApiError extends Error {
+    code: string;
+    status: number;
+    constructor(status: number, code: string, message: string) {
+      super(message);
+      this.name = "ApiClientError";
+      this.status = status;
+      this.code = code;
+    }
   }
-}
+  return { FakeApiError };
+});
 
 /** 后端 409 的**原话**（`app.ts` 的 `setSimSessionStatus` 逐字，2026-08-26 真跑 curl 抄回来的）。 */
 const BACKEND_409 = `会话 ${SESSION_ID} 不能从 PAUSED 迁到 PAUSED（PAUSED 允许的去向：RUNNING/ENDED）。`;
@@ -230,7 +241,7 @@ vi.mock("@/api/endpoints", () => ({
   }),
 }));
 
-import UnifiedSimShell from "@/views/sim/unified/UnifiedSimShell";
+import UnifiedSimShell, { SESSION_STATUS_TEXT } from "@/views/sim/unified/UnifiedSimShell";
 
 function mount() {
   return render(
@@ -271,7 +282,10 @@ describe("WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门",
     mount();
     const bar = await lifecycleReady();
     expect(bar.getAttribute("data-status")).toBe("RUNNING");
-    expect(bar.textContent).toContain("RUNNING");
+    // 人看人话、机器看枚举（`UnifiedSimShell` 头注的原话）：枚举只在 `data-status` 上，
+    // 屏上那行是 `SESSION_STATUS_TEXT` 的人话版。**从单源取**，不手抄字面量 ——
+    // 抄一份就会漂（改了文案而这里拿旧串去测、照样绿）。
+    expect(bar.textContent).toContain(SESSION_STATUS_TEXT.RUNNING);
     // 三个迁移按钮都在，且**都不是禁用的**（有会话就该点得动）
     for (const t of ["paused", "running", "ended"]) {
       const btn = screen.getByTestId(`usim-status-${t}`) as HTMLButtonElement;
@@ -283,7 +297,15 @@ describe("WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门",
     sessionStatus = "PAUSED";
     mount();
     const bar2 = await lifecycleReady();
-    await waitFor(() => expect(bar2.getAttribute("data-status")).toBe("PAUSED"));
+    // ⚠ 这里**不能**期望 `PAUSED`：**自动选取只认 `RUNNING`**（见 `UnifiedSimShell` 那句
+    // "它已经不在推演中了，自动选取不会再选中它"，以及本文件判据 ⑨）。全新挂载时清单里
+    // 只有一条 PAUSED 会话 ⇒ 一条都选不中 ⇒ 状态位是诚实的 `no-session`，不是 `PAUSED`。
+    // 本臂要证的是「屏上那个状态不是写死的、改回包它就跟着变」—— 从 RUNNING 那一条
+    // 变成"一条都没选中"，这件事同样证得了，且顺带把自动选取的规则钉住。
+    //（"暂停后仍钉住已选中的那条"是另一条路径，由 ⑨ 专门咬，两者不许混为一谈。）
+    await waitFor(() => expect(bar2.getAttribute("data-status")).toBe("no-session"));
+    // 屏上那行人话也必须跟着换（只验 data-* 的话，人话那半漏了也看不出来）
+    expect(bar2.textContent).not.toContain(SESSION_STATUS_TEXT.RUNNING);
   });
 
   it("① 迁移真发那一跳：按「暂停」⇒ 打出 PATCH，实参是清单里那条会话的 id 与 PAUSED（不是别的会话、也不是别的目标）", async () => {
@@ -313,7 +335,7 @@ describe("WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门",
     await userEvent.click(screen.getByTestId("usim-status-paused"));
     const err = await screen.findByTestId("usim-status-error");
     expect(err.textContent).toContain(BACKEND_409);
-    expect(err.textContent).toContain("后端拒绝");
+    expect(err.textContent).toContain("后端拒绝了这次迁移"); // ③ 的招牌句（④ 必须没有这一句，见下）
     // 状态**没有**被前端乐观地改掉（后端没答应，屏上就不许显示已经暂停了）
     expect(screen.getByTestId("usim-lifecycle").getAttribute("data-status")).toBe("RUNNING");
   });
@@ -325,7 +347,11 @@ describe("WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门",
     await userEvent.click(screen.getByTestId("usim-status-ended"));
     const err = await screen.findByTestId("usim-status-error");
     expect(err.textContent).toContain("不知道迁移成没成");
-    expect(err.textContent).not.toContain("后端拒绝");
+    // ⚠ 禁的是 ③ 的**招牌句**「后端拒绝了这次迁移」，不是宽泛的「后端拒绝」四个字：
+    // ④ 今天的文案正是靠**点名**那一态来把两者划开（"这和「后端拒绝了」是两件事"），
+    // 拿宽泛子串去禁，等于禁止这句话说清楚自己不是什么 —— 那是拿错了尺子，
+    // 被禁的恰好是本判据想要的东西。判据仍是「两态不许合并」，只是钉在 ③ 的招牌句上。
+    expect(err.textContent).not.toContain("后端拒绝了这次迁移");
     expect(err.textContent).not.toContain(BACKEND_409);
   });
 

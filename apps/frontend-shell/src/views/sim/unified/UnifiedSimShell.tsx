@@ -184,7 +184,9 @@ const SESSION_STATUS_ABSENCE_TEXT: Record<Exclude<SessionStatusState["kind"], "k
  * ⚠ 枚举字面量**没有消失**，它留在 `data-status` 上给机器读（接缝测试断言的就是那个属性）——
  *    人看人话、机器看枚举，两边各取所需，谁也不将就谁。
  */
-const SESSION_STATUS_TEXT: Record<SimSessionStatus, string> = {
+// `export`：接缝测试要断言"屏上那句人话"，从这里取而不是各自手抄一份 ——
+// 抄一份就会漂（改了文案而测试拿旧串去测、照样绿），正是本仓反复记账的那个形态。
+export const SESSION_STATUS_TEXT: Record<SimSessionStatus, string> = {
   DRAFT: "草稿 —— 世界还没建好，推不动",
   READY: "就绪 —— 世界建好了，还没开始推",
   RUNNING: "推演中 —— 世界会随拍推进，可施加扰动",
