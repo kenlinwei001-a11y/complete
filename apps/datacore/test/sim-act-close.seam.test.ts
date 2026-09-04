@@ -234,6 +234,15 @@ async function seedWorld(t: TestApp, opts: { delayTicks?: number } = {}): Promis
       properties: [], derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE",
     });
   }
+  // 链路**类型**也要登记：`POST /sim/propagation-rules` 的引用体检（`app.ts assertPropagationRefs`，
+  // WO-CAUSAL-EDGE-CRUD）按 viaLinkKey 去链路类型表核对 `fromTypeKey→toTypeKey`，查不到即 400。
+  // 本夹具此前只落了链路**实例**（下面那条 `links.put`）没落类型声明 ⇒ 该闸门上线后当场 400。
+  // ⚠ 修的是夹具不是闸门：生产侧静态复核 46 条种子边 × 105 个链路类型，端点方向逐条比对
+  // **违规 0 条**（金丝雀：`line_belongs_to_base` 必中 ∧ 合成键必不中）⇒ 闸门零误伤。
+  await t.repos.ontologyLinks.put({
+    id: `ltype_feeds_${TENANT}`, tenantId: TENANT, key: "FEEDS",
+    fromTypeKey: "TypeA", toTypeKey: "TypeB", cardinality: "1:N", version: 1,
+  });
   await t.repos.objects.put({ id: "o_up", tenantId: TENANT, type: "TypeA", props: {}, origin: ORG });
   await t.repos.objects.put({ id: "o_down", tenantId: TENANT, type: "TypeB", props: {}, origin: ORG });
   await t.repos.links.put({ id: "lnk", tenantId: TENANT, type: "FEEDS", fromId: "o_up", toId: "o_down", origin: ORG });

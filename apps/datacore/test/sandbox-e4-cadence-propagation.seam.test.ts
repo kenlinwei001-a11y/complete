@@ -50,6 +50,15 @@ async function lightWorld(t: TestApp, tenant: string, cadenceRows: readonly Reco
   for (const k of ["TypeA", "TypeB"]) {
     await t.repos.ontologyTypes.put({ id: `otype_${k}_${tenant}`, tenantId: tenant, key: k, displayName: k, properties: [], derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE" });
   }
+  // 链路**类型**也要登记：`POST /sim/propagation-rules` 的引用体检（`app.ts assertPropagationRefs`，
+  // WO-CAUSAL-EDGE-CRUD）按 viaLinkKey 去链路类型表核对 `fromTypeKey→toTypeKey`，查不到即 400。
+  // 本夹具此前只落了链路**实例**（下面那条 `links.put`）没落类型声明 ⇒ 该闸门上线后当场 400，
+  // 且因为规则压根没建成，E4-2 的「前置期缩短量」读回 0 —— 病因在建边那一步，不在节拍那一步。
+  // ⚠ 修的是夹具不是闸门：生产侧 46 条种子边逐条核端点方向，违规 0 条 ⇒ 闸门零误伤。
+  await t.repos.ontologyLinks.put({
+    id: `ltype_feeds_${tenant}`, tenantId: tenant, key: "FEEDS",
+    fromTypeKey: "TypeA", toTypeKey: "TypeB", cardinality: "1:N", version: 1,
+  });
   await t.repos.objects.put({ id: "src", tenantId: tenant, type: "TypeA", props: {}, origin: ORG });
   await t.repos.objects.put({ id: "dst", tenantId: tenant, type: "TypeB", props: {}, origin: ORG });
   await t.repos.links.put({ id: "lnk", tenantId: tenant, type: "FEEDS", fromId: "src", toId: "dst", origin: ORG });
@@ -288,6 +297,13 @@ describe("WO-SANDBOX-E4 · 节拍进推演（D1 Cadence × propagateTick 接缝�
   it("E4-4 单源纪律：cadenceNodeId 写自由串 ⇒ REST 拒收（CHAIN_NODE_REGISTRY 单源，D1×E1 那次事故的门）", async () => {
     const t = await makeApp();
     await enableSim(t, "demo", ADMIN);
+    // 本用例此前**只起了服务、没建世界**，靠的是当年 `POST /sim/propagation-rules` 只校验字符串非空。
+    // WO-CAUSAL-EDGE-CRUD 给该路由加了端点/链路引用体检之后，下面那条「在册节点则收」的对照组
+    // 会因为 TypeA/TypeB/FEEDS 压根不在本体里而吃 400 —— 于是本用例**验不到它要验的东西**
+    // （拒的到底是"自由串 cadenceNodeId"还是"类型不存在"分不开）。补最小世界，且**复用同一个
+    // `lightWorld`**，不另抄一份夹具：抄一份就会在下次改夹具时和主逻辑各走各的。
+    // 节拍行传空 —— 本用例只验入参校验，不跑传导，不需要任何 Cadence 行。
+    await lightWorld(t, "demo", []);
     const bad = await t.app.inject({
       method: "POST", url: "/a/v1/sim/propagation-rules", headers: ADMIN,
       payload: {
