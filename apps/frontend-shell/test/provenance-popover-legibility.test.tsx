@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -470,6 +471,249 @@ function tooltipOpeningTags(src: string): string[] {
      */
     idx = src.indexOf(MARK, Math.max(end + 1, idx + MARK.length));
   }
+  return out;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * 原生 `title=` 棘轮的**尺子**（WO-LEGIBILITY-RULER-FIX · 仓主 2026-09-04 裁定改口径）
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * **今天的行为是 X**：按 `title={表达式}` 的**源码文本长度/标点**判「需要阅读」。
+ * **应该是 Y**：按**这一处 title 实际渲染给用户看的那串文本**判。
+ *
+ * 两者不是一回事，而且**两个方向都会错**（实测，不是推理）：
+ *   · 假阳：`zh.orderChain.econNoSource` 源码 26 字被判「需要阅读」，
+ *           实际渲染出来是「平台暂无该维度库存真数据源」14 字、无句读 ⇒ 短提示，不该计入。
+ *           `canDecide ? undefined : t.noPermission` 同理（还多一层：`canDecide` 为真时**根本不出 tooltip**）。
+ *   · 假阴：`title={SCOPE_FROZEN_HINT}` 源码 17 字，渲染出来是
+ *           「不随左上角「范围」变：本块锚在同一张订单上算，没有基地这一维。」—— **真·口径**，旧尺子一个都没数到。
+ *
+ * 另有一处**抽取**层的错（同属「尺子数错」）：旧实现用正则 `<([a-z][\w]*)\s([^<]*?)\/?>` 取标签、
+ * 用 `\{([^}]*)\}` 取 title 值 —— `[^<]` 遇到属性里的 `<`、`[^}]` 遇到模板里的 `${…}` 就**截断**，
+ * 于是整站点漏扫。实测：同一批源码，正则抽到 165 个 title 站点，TS AST 抽到 **180 个**（漏 15）。
+ * 故改用 TypeScript AST 抽取 + 表达式求值，两处一起修。
+ *
+ * ⚠ **为什么不用真浏览器取渲染文本**（这条必须写明，否则下一个人会以为是偷懒）：
+ * 本棘轮是纯静态 vitest 用例，跟着 `pnpm -r test` 在 gate 里跑，**没有后端、没有浏览器**；
+ * 本仓也没装 playwright/puppeteer（`node_modules/.bin` 只有 eslint/tsc/tsserver/vitest）。
+ * 且浏览器只能覆盖「这次点开的那条路径上真渲染出来的那些 title」，
+ * 而棘轮要数的是**全仓存量**（152 个 tsx / 180 个站点，含大量条件分支与空态）——
+ * 覆盖不到的站点会被静默读成 0，那正是本门最怕的那类假绿。
+ * 折中：静态求值到**文案单一来源**（`locales/zh.ts` 用的是**运行时导入的真对象**，不是再解析一遍源码），
+ * 求不到的**单列「解析不到」一档**，既不当 0 也不当超标。
+ */
+
+/** 未解析到的插值占位符（既不贡献长度也不贡献标点，只标记「这里不确定」）。 */
+const UNRESOLVED_MARK = " ";
+
+/**
+ * 「需要阅读」判据（口径不变，只是喂给它的东西从源码换成渲染文本）：
+ * 含句子结构（句号/顿号/括号/冒号）或公式符号，或长度 > 24。
+ * 短标签（"复制" "主键" "关闭"）是纯辅助提示，规范允许保留。
+ */
+const needsReading = (t: string) => t.length > 24 || /[。；·—（）()：]/.test(t) || /[×÷=＝%／]/.test(t);
+
+type TitleVerdict = "HIT" | "UNRESOLVED" | "CLEAN";
+type TitleSite = { id: string; verdict: TitleVerdict; text: string };
+/** 求值中间态：AST 节点（源码里的常量）或运行时值（`locales/zh` 真对象）。 */
+type Container = ts.Node | Record<string, unknown> | ((...a: unknown[]) => unknown) | string | undefined;
+
+const isTsNode = (v: unknown): v is ts.Node =>
+  typeof v === "object" && v !== null && "kind" in (v as Record<string, unknown>);
+
+/** 把一个运行时函数的源码解析回 AST 表达式（供函数型文案求静态骨架）。解析不出返回 undefined。 */
+function parseFnSource(fn: (...a: unknown[]) => unknown): ts.Expression | undefined {
+  const raw = fn.toString();
+  for (const candidate of [`(${raw})`, `({ ${raw} })`]) {
+    const sf = ts.createSourceFile("<fn>", `const __f = ${candidate};`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    let found: ts.Expression | undefined;
+    const walk = (n: ts.Node): void => {
+      if (!found && (ts.isArrowFunction(n) || ts.isFunctionExpression(n))) {
+        if (!ts.isBlock(n.body)) found = n.body;
+        else {
+          const ret = n.body.statements.find(ts.isReturnStatement);
+          if (ret?.expression) found = ret.expression;
+        }
+      }
+      if (!found && ts.isMethodDeclaration(n) && n.body) {
+        const ret = n.body.statements.find(ts.isReturnStatement);
+        if (ret?.expression) found = ret.expression;
+      }
+      if (!found) ts.forEachChild(n, walk);
+    };
+    walk(sf);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** 收集本文件里所有 `const X = <expr>`（含块内），供标识符回溯。 */
+function collectDecls(sf: ts.SourceFile): Map<string, ts.Expression> {
+  const map = new Map<string, ts.Expression>();
+  const walk = (n: ts.Node): void => {
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer && !map.has(n.name.text)) {
+      map.set(n.name.text, n.initializer);
+    }
+    ts.forEachChild(n, walk);
+  };
+  walk(sf);
+  return map;
+}
+
+/**
+ * 把一个 title 表达式求成**可能渲染出来的文本集合**。
+ * 返回空数组 = 这一支不产生 tooltip（`undefined`）；含 `UNRESOLVED_MARK` = 该处插值解析不到。
+ */
+function makeTitleEval(decls: Map<string, ts.Expression>, zhRoot: Record<string, unknown>) {
+  const guard = new Set<ts.Node>();
+
+  const propOf = (obj: Container, key: string): Container => {
+    if (obj === undefined || typeof obj === "string") return undefined;
+    if (!isTsNode(obj)) return (obj as Record<string, unknown>)[key] as Container;
+    if (ts.isObjectLiteralExpression(obj)) {
+      for (const p of obj.properties) {
+        const n = p.name && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name)) ? p.name.text : null;
+        if (n === key && ts.isPropertyAssignment(p)) return p.initializer;
+      }
+    }
+    return undefined;
+  };
+
+  const valuesOf = (obj: Container): Container[] => {
+    if (obj === undefined || typeof obj === "string") return [];
+    if (!isTsNode(obj)) return Object.values(obj as Record<string, unknown>) as Container[];
+    if (ts.isObjectLiteralExpression(obj)) {
+      return obj.properties.filter(ts.isPropertyAssignment).map((p) => p.initializer as Container);
+    }
+    return [];
+  };
+
+  /** 解析「容器」：标识符 / 属性链 / 字面量对象 → AST 节点或运行时值。 */
+  function resolveContainer(node: ts.Expression): Container {
+    if (ts.isIdentifier(node)) {
+      if (node.text === "zh" || node.text === "zhLocale") return zhRoot;
+      const d = decls.get(node.text);
+      if (!d || guard.has(d)) return undefined;
+      if (ts.isIdentifier(d) || ts.isPropertyAccessExpression(d) || ts.isElementAccessExpression(d)) {
+        guard.add(d);
+        const r = resolveContainer(d);
+        guard.delete(d);
+        return r;
+      }
+      return d;
+    }
+    if (ts.isPropertyAccessExpression(node)) return propOf(resolveContainer(node.expression), node.name.text);
+    if (ts.isElementAccessExpression(node)) {
+      const arg = node.argumentExpression;
+      if (arg && ts.isStringLiteral(arg)) return propOf(resolveContainer(node.expression), arg.text);
+      return undefined; // 动态键 → 由 evalNode 走「所有取值取并」
+    }
+    if (ts.isObjectLiteralExpression(node)) return node;
+    if (ts.isAsExpression(node) || ts.isParenthesizedExpression(node)) return resolveContainer(node.expression);
+    return undefined;
+  }
+
+  /** 容器值 → 文本集合；null 表示「它是个容器不是文本」。 */
+  function textsOf(v: Container): string[] | null {
+    if (v === undefined) return null;
+    if (typeof v === "string") return [v];
+    if (!isTsNode(v)) return null;
+    return evalNode(v as ts.Expression);
+  }
+
+  const longest = (xs: string[]) => (xs.length === 0 ? UNRESOLVED_MARK : xs.reduce((a, b) => (b.length > a.length ? b : a)));
+
+  function evalNode(node: ts.Expression): string[] {
+    if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node))
+      return evalNode(node.expression);
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text];
+    if (ts.isNumericLiteral(node)) return [node.text];
+    // `undefined` 那一支不产生 tooltip ⇒ 空集，不参与判档
+    if (ts.isIdentifier(node) && node.text === "undefined") return [];
+    if (ts.isTemplateExpression(node)) {
+      // 模板/拼接：静态骨架照收，`${…}` 求不到就落 UNRESOLVED_MARK（不贡献长度也不贡献标点）
+      let acc = [node.head.text];
+      for (const span of node.templateSpans) {
+        const pick = longest(evalNode(span.expression));
+        acc = acc.map((a) => a + pick + span.literal.text);
+      }
+      return acc;
+    }
+    // 三元：两支都取（`undefined` 支已在上面变成空集），按各支渲染文本各自判档 ⇒ 等价于「按较长/更坏的那支计」
+    if (ts.isConditionalExpression(node)) return [...evalNode(node.whenTrue), ...evalNode(node.whenFalse)];
+    if (ts.isBinaryExpression(node)) {
+      const k = node.operatorToken.kind;
+      if (k === ts.SyntaxKind.QuestionQuestionToken || k === ts.SyntaxKind.BarBarToken)
+        return [...evalNode(node.left), ...evalNode(node.right)];
+      if (k === ts.SyntaxKind.PlusToken) return [longest(evalNode(node.left)) + longest(evalNode(node.right))];
+      return [UNRESOLVED_MARK];
+    }
+    if (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      if (ts.isElementAccessExpression(node) && node.argumentExpression && !ts.isStringLiteral(node.argumentExpression)) {
+        const vals = valuesOf(resolveContainer(node.expression));
+        if (vals.length) return vals.flatMap((v) => textsOf(v) ?? [UNRESOLVED_MARK]);
+        return [UNRESOLVED_MARK];
+      }
+      return textsOf(resolveContainer(node)) ?? [UNRESOLVED_MARK];
+    }
+    if (ts.isCallExpression(node)) {
+      const fn = resolveContainer(node.expression);
+      if (fn !== undefined && isTsNode(fn) && (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) {
+        const body = fn.body;
+        if (!ts.isBlock(body)) return evalNode(body);
+        const ret = body.statements.find(ts.isReturnStatement);
+        if (ret?.expression) return evalNode(ret.expression);
+      }
+      // 文案单一来源里的**函数型文案**（`zh.x.y(a, b)`）：拿不到实参，但拿得到它的源码 ——
+      // 用 `Function.prototype.toString()` 取回函数体，交给同一个求值器算静态骨架。
+      // （不另抄一套解析：骨架里的 `${…}` 照样落 UNRESOLVED_MARK。）
+      if (typeof fn === "function") {
+        const parsed = parseFnSource(fn as (...a: unknown[]) => unknown);
+        if (parsed) return evalNode(parsed);
+      }
+      return [UNRESOLVED_MARK]; // 真的求不到：如实报「解析不到」
+    }
+    return [UNRESOLVED_MARK];
+  }
+
+  return evalNode;
+}
+
+/**
+ * 扫一份 .tsx：抽出**原生小写标签**上的 `title=`（`<Modal title=…>` 是 React prop，不是浏览器 tooltip），
+ * 按渲染文本判三档：HIT（确定需要阅读）/ UNRESOLVED（解析不到，单列）/ CLEAN（短提示）。
+ */
+function scanRenderedTitles(src: string, label: string, zhRoot: Record<string, unknown>): TitleSite[] {
+  const sf = ts.createSourceFile(label, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const evalNode = makeTitleEval(collectDecls(sf), zhRoot);
+  const out: TitleSite[] = [];
+  const visit = (n: ts.Node): void => {
+    if (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) {
+      const tag = n.tagName.getText(sf);
+      if (/^[a-z][\w]*$/.test(tag)) {
+        for (const a of n.attributes.properties) {
+          if (!ts.isJsxAttribute(a) || a.name.getText(sf) !== "title") continue;
+          const init = a.initializer;
+          let texts: string[];
+          if (!init) texts = [UNRESOLVED_MARK];
+          else if (ts.isStringLiteral(init)) texts = [init.text];
+          else if (ts.isJsxExpression(init)) texts = init.expression ? evalNode(init.expression) : [];
+          else texts = [UNRESOLVED_MARK];
+          const line = sf.getLineAndCharacterOfPosition(a.getStart(sf)).line + 1;
+          const id = `${label}:${line} <${tag}>`;
+          const rendered = texts.filter((t) => t !== "");
+          // 判档只看「去掉未知插值之后」的确定部分 ⇒ 未知永远不会把一条 CLEAN 顶成 HIT
+          const definite = rendered.filter((t) => needsReading(t.split(UNRESOLVED_MARK).join("")));
+          if (definite.length) out.push({ id, verdict: "HIT", text: definite[0]! });
+          else if (rendered.some((t) => t.includes(UNRESOLVED_MARK)))
+            out.push({ id, verdict: "UNRESOLVED", text: rendered[0]! });
+          else out.push({ id, verdict: "CLEAN", text: rendered[0] ?? "" });
+        }
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
   return out;
 }
 
@@ -1135,36 +1379,60 @@ describe('WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 cla
    * 谁清理掉一批，计数下降 ⇒ 也红，提示把基线调低（防止基线虚高变成永久豁免）。
    */
   it("棘轮 · 原生 title= 承载口径的存量只许减不许增（规范 §2 R-UI-3 · §6 要求第三次复发即建门）", () => {
-    // 「需要阅读」的判据：含句子结构（句号/顿号/括号/冒号）或公式符号，或长度 > 24。
-    // 短标签（"复制" "主键" "关闭"）是纯辅助提示，规范允许保留。
-    const needsReading = (t: string) => t.length > 24 || /[。；·—（）()：]/.test(t) || /[×÷=＝%／]/.test(t);
+    const zhRoot = zhLocale as unknown as Record<string, unknown>;
 
-    /** 只数**原生小写标签**上的 title=（`<Modal title=…>` 是 React prop，不是浏览器 tooltip）。 */
-    const scan = (src: string) => {
-      const out: string[] = [];
-      for (const m of src.matchAll(/<([a-z][\w]*)\s([^<]*?)\/?>/gs)) {
-        const attrs = m[2]!;
-        if (!/(^|\s)title\s*=/.test(attrs)) continue;
-        const tv = /(?:^|\s)title\s*=\s*("([^"]*)"|'([^']*)'|\{`([^`]*)`\}|\{([^}]*)\})/s.exec(attrs);
-        const text = tv ? (tv[2] ?? tv[3] ?? tv[4] ?? tv[5] ?? "") : "";
-        if (tv && /^\s*undefined\b/.test(tv[5] ?? "")) continue; // 显式 title={undefined} = 已治好
-        if (needsReading(text)) out.push(`${m[1]}: ${text.slice(0, 60)}`);
-      }
-      return out;
-    };
+    // ── 金丝雀：与主逻辑**共用同一个 scanRenderedTitles**（不许另抄一份，抄了就是装饰品）──
+    // 六个样例正好钉住本次改口径的六种情形，任一判错金丝雀即红：
+    const CANARY_SRC = `
+      const SCOPE_FROZEN_HINT = "不随左上角「范围」变：本块锚在同一张订单上算，没有基地这一维。";
+      const label = "复制";
+      export function C() {
+        return (<>
+          <span title={label}>a</span>
+          <span title="0–100 紧张度指数（越高越紧）·非该因素本身的值">b</span>
+          <Modal title="不该命中·组件 prop 不是浏览器 tooltip" />
+          <span title={undefined /* 已治好 */}>c</span>
+          <span title={SCOPE_FROZEN_HINT}>d</span>
+          <td title={zh.orderChain.econNoSource}>e</td>
+          <button title={canDecide ? undefined : zh.admin.actions.noPermission}>f</button>
+          <span title={fmtWhatever(x)}>g</span>
+        </>);
+      }`;
+    const canary = scanRenderedTitles(CANARY_SRC, "<canary>", zhRoot);
+    const verdictOf = (needle: string) => canary.find((s) => s.id.includes(needle));
+    const byTag = (tag: string) => canary.filter((s) => s.id.includes(`<${tag}>`));
+    // ① 短标签（标识符→"复制"）不计入；② 内联长口径必中；③ <Modal> 根本不该出现在站点里
+    expect(byTag("span").length + byTag("td").length + byTag("button").length, "金丝雀失灵：站点数不对").toBe(7);
+    expect(canary.some((s) => s.text.includes("不该命中")), "金丝雀失灵：<Modal> 的 prop 被当成了原生 tooltip").toBe(false);
+    const hitTexts = canary.filter((s) => s.verdict === "HIT").map((s) => s.text);
+    expect(hitTexts.some((t) => t.includes("紧张度指数")), "金丝雀失灵：内联长口径都数不出来").toBe(true);
+    // ④ 假阴修复：`title={常量标识符}` 源码只有 17 字，渲染出来是整句口径 ⇒ 必须命中
+    expect(hitTexts.some((t) => t.includes("不随左上角")), "金丝雀失灵：常量标识符没被解析成渲染文本（假阴没修好）").toBe(true);
+    // ⑤ 假阳修复：i18n key 与「cond ? undefined : 短文案」都渲染成短提示 ⇒ 必须不命中
+    expect(verdictOf("<td>")?.verdict, "金丝雀失灵：i18n key 仍按源码长度误判（假阳没修好）").toBe("CLEAN");
+    expect(verdictOf("<button>")?.verdict, "金丝雀失灵：三元的 undefined 支 / 短文案支被误判").toBe("CLEAN");
+    // ⑥ 解析不到的（运行时函数）单列一档：既不当 0 也不当超标
+    expect(canary.filter((s) => s.verdict === "UNRESOLVED").length, "金丝雀失灵：解析不到的没有单列").toBe(1);
 
-    // ── 金丝雀：与主逻辑**共用同一个 scan**（不许另抄一份正则，抄了就是装饰品）──────
-    const canary = scan(`
-      <span title="复制">c</span>
-      <span title="0–100 紧张度指数（越高越紧）·非该因素本身的值">x</span>
-      <Modal title="不该命中" />
-      <span title={undefined /* 已治好 */}>y</span>
-    `);
-    expect(canary.length, `金丝雀失灵：应恰好命中 1 条（长口径），实际 ${canary.length} 条：${canary.join(" | ")}`).toBe(1);
-    expect(canary[0]).toContain("紧张度指数");
-
-    const hits = [...listTsx(SRC_ROOT)].flatMap((abs) => scan(readFileSync(abs, "utf8")));
+    const sites = [...listTsx(SRC_ROOT)].flatMap((abs) =>
+      scanRenderedTitles(readFileSync(abs, "utf8"), abs.slice(REPO_ROOT.length + 1), zhRoot),
+    );
+    expect(sites.length, "一个 title 站点都没扫到 ⇒ 扫描器坏了，本棘轮是哑的").toBeGreaterThan(0);
+    const hits = sites.filter((s) => s.verdict === "HIT").map((s) => `${s.id}: ${s.text.slice(0, 60)}`);
+    const unresolved = sites.filter((s) => s.verdict === "UNRESOLVED").map((s) => s.id);
     expect(hits.length, "一条都没扫到 ⇒ 扫描器坏了，本棘轮是哑的").toBeGreaterThan(0);
+
+    /**
+     * ── 「解析不到」档（WO-LEGIBILITY-RULER-FIX 新增，**不进主计数**）────────────────
+     * 这些站点的 title 值是运行时数据（`JSON.stringify(...)` / `xs.join("；")` / 从接口来的字段），
+     * 静态求不到渲染文本。**不许默认当成 0，也不许默认当成超标** —— 两个方向的默认都会造出假数，
+     * 所以单列一档、只卡「不许再长」。今日实测 33 条。
+     */
+    const UNRESOLVED_TODAY = 33;
+    expect(
+      unresolved.length,
+      `「解析不到」档从 ${UNRESOLVED_TODAY} 涨到 ${unresolved.length} —— 新增了值来自运行时数据的原生 title=：\n${unresolved.slice(-8).join("\n")}`,
+    ).toBeLessThanOrEqual(UNRESOLVED_TODAY);
 
     // 存量基线（WO-HOVER-LAYER 交付时实测·由本门自己报出的数字钉死，不是估的）。
     // 其中 ~59 处在 views/sim/** 等本 WO 工单边界禁止触碰的文件里，归对应 dev 渐进清理。
@@ -1181,11 +1449,39 @@ describe('WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 cla
     // 即：80 这个基线是在**分支自己那棵树**上量的，那棵树比 canonical 少 6 个 tsx 文件。
     // 两棵树文件集合不同 ⇒ 同一把尺子量出不同的数，不是谁回归了。
     // 照棘轮语义只减不增，故收紧到实测值而非沿用虚高的 80。
+    //
+    // ⚠️ **WO-LEGIBILITY-RULER-FIX（2026-09-04）改口径后，上面这段账全部是「旧尺子」量的。**
+    // 仓主裁定「不许动基线数字（79 保持不变）」，故 79 原样留着；但必须写明**它和今天的计数不是同一把尺子量的**，
+    // 否则下一个人会拿两个尺子的数去比 —— 那正是铁律 0.6 的病（「我用 X 当作 Y 的证据，而 X 并不度量 Y」）。
+    //
+    // 同一棵树（本分支 HEAD）上的四个数，全是实测：
+    //   旧尺子（源码长度口径 + 正则抽取） 本分支 **88** / canonical **86**（基线 79 ⇒ 早就红了，
+    //     只是 `pnpm -r` 一直在 datacore 短路、frontend 整包从没跑到）
+    //   新尺子（渲染文本口径 + AST 抽取） 本分支 **94** HIT + 33 解析不到 / canonical **同 94 + 33**
+    //     （本分支未改任何 src，故两者相同）
+    // 88 → 94 的构成（逐条比对，不是估的）：
+    //   −20 假阳（旧尺子按源码长度误判）：10 条 i18n key（`zh.orderChain.econNoSource` 等，
+    //        渲染出来 13 字无句读）+ 10 条落进「解析不到」档（值来自运行时数据）
+    //   +13 假阴（旧尺子看不见的**真·口径**）：`title={SCOPE_FROZEN_HINT}` 这类常量引用，
+    //        源码 17 字、渲染出来是整句「不随左上角「范围」变：…没有基地这一维。」
+    //   +13 旧正则**整站点漏扫**（`[^<]` / `[^}]` 遇到属性里的 `<` 或模板 `${…}` 就截断）：
+    //        同一批源码正则抽 165 个站点，AST 抽 180 个
+    // ⇒ 结论（如实报，不下调尺子去凑）：**94 > 79，存在真正超标的项**，且其中 13 条是旧尺子从来没数到的
+    //   真违规。要么派单改 UX（把这批 title 换成 InfoPopover），要么仓主按新尺子重新裁一次基线。
     const BASELINE = 79;
     expect(
       hits.length,
       hits.length > BASELINE
-        ? `新增了承载口径的原生 title=（${hits.length} > 基线 ${BASELINE}）。规范 §2 R-UI-3 禁止用 title 充当浮层 —— 请改用 InfoPopover：\n${hits.slice(-8).join("\n")}`
+        ? `承载口径的原生 title=（按**渲染文本**计）${hits.length} > 基线 ${BASELINE}。规范 §2 R-UI-3 禁止用 title 充当浮层 —— 请改用 InfoPopover。\n按文件分布（前 12）：\n${[
+            ...hits.reduce((m, h) => {
+              const f = h.split(":")[0]!;
+              return m.set(f, (m.get(f) ?? 0) + 1);
+            }, new Map<string, number>()),
+          ]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 12)
+            .map(([f, n]) => `  ${n} × ${f}`)
+            .join("\n")}\n样例（最后 6 条）：\n${hits.slice(-6).join("\n")}`
         : `存量已降到 ${hits.length}（基线 ${BASELINE}）—— 很好，请把 BASELINE 改成 ${hits.length} 锁住战果，别让基线虚高变成永久豁免。`,
     ).toBe(BASELINE);
   });
