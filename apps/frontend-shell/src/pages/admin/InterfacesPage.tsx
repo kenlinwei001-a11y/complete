@@ -205,8 +205,14 @@ export default function InterfacesPage() {
               {conformance.ok ? "全部实现者合规" : `${conformance.violations.length} 项不合规`}
             </span>
           )}
+          {/*
+            ⚠ WO-SCREEN-CALIBER ③：这一段以前把 `assertInterfaceConformance` 连**反引号一起**印在屏上。
+            成因与上面第 195 行那条注释同源、只差一族：作者知道「星号会原样上屏」所以粗体改用了
+            <strong>，却仍然用**反引号**去标一个记号 —— 反引号同样是 Markdown 字面量，同样原样上屏。
+            处置照本单既定方向：**把强调渲染出来，不删字** —— 记号一个字不改，只把反引号换成 <code>。
+          */}
           <span className="muted" style={{ fontSize: 12 }}>
-            与本体现状真发布时 `assertInterfaceConformance` 会说的话逐字相同（同一份校验实现）；此处只读，不改任何东西。
+            与本体现状真发布时 <code>assertInterfaceConformance</code> 会说的话逐字相同（同一份校验实现）；此处只读，不改任何东西。
           </span>
         </div>
         {conformance && !conformance.ok && <ViolationsTable violations={conformance.violations} testIdPrefix="oif-violation" />}
