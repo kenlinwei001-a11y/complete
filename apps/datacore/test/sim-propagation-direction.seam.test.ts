@@ -1,6 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+import { PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
+
+/**
+ * 引擎的衰减律（`propagation.ts` 0'' 相 · WO-PROP-CLAMP）：每 tick 压力族状态量先往静息点收
+ * 一拍，再叠加本拍的传导贡献。本文件几条数值判据原本写在**衰减相并入之前**，
+ * 假设「没人写它 ⇒ 它不动」——今天那个前提不成立了（不是传导回写了源，是衰减在动它）。
+ *
+ * ⚠ 判据一律由**单源 λ 现算**，不贴 `7.938` / `12.6` / `1.26` 这些跑一遍得来的数：
+ *   贴上去的话，λ 一改这些断言只会悄悄对不上，而"曲线为什么长这样"就再没有东西守着。
+ *   与 `metric-series.seam` / `edge-active-counterfactual` 的 `decayN` 同一套写法、同一个出处。
+ */
+const RETAIN = 1 - PRESSURE_DECAY_PER_TICK;
+const round12 = (v: number): number => Math.round(v * 1e12) / 1e12;
+/** 零入流时逐拍衰减 n 拍后的残留（与引擎逐拍 round12 的口径一致，不合并成一次幂运算）。 */
+const decayN = (v0: number, ticks: number): number => {
+  let v = v0;
+  for (let i = 0; i < ticks; i++) v = round12(v * RETAIN);
+  return v;
+};
 
 /**
  * WO-SANDBOX-PROP-DIRECTION · 传导方向的**效果层**接缝门（欠账 #158 的复发闸）。
@@ -107,8 +126,10 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     expect(fired.every((x) => x.amount === 10)).toBe(true);
     // 🔴 判据 b：下游状态变量**真的变了**，且变成了它该变成的那个数（不是 ">0"）。
     for (const lineId of lineIds) expect(t2.state[lineId]!.utilPressure).toBe(10);
-    // 源端没被写坏（扰动是 set 20，传导不回写源）。
-    expect(t2.state[BASE_ID]!.loadIndex).toBe(20);
+    // 源端没被**传导**写坏（扰动是 set 20，传导不回写源）——
+    // 判据从「恒等 20」改成「恰等两拍纯衰减」：唯一动过它的只能是衰减律，
+    // 一旦有贡献回写到源，这个数就不再等于 decayN(20,2)（故这不是放宽，是把"没人写它"钉得更死）。
+    expect(t2.state[BASE_ID]!.loadIndex).toBe(decayN(20, 2));
     // 别的基地的产线**不该**被写到（证明贡献是沿这条基地的出边走的，不是全表刷）。
     const foreign = await t.repos.links.list("demo", (l) => l.type === "line_belongs_to_base" && l.fromId !== BASE_ID);
     expect(foreign.length).toBeGreaterThan(0); // 金丝雀：确实存在别家的产线，这条断言不是空转
@@ -181,20 +202,33 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     const load1 = t1.state[orderLink.toId]!.demandLoad!;
     const load2 = t2.state[orderLink.toId]!.demandLoad!;
     expect(load1, "金丝雀边一点都没推动 ⇒ 观测坏了").toBeGreaterThan(0);
-    expect(load2 / load1).toBeCloseTo(2, 9); // combine:"sum" 逐格累加，源态恒定 ⇒ 恰好两倍
+    // 逐格累加，但**源态不再恒定** ⇒ 比值是 `2×(1−λ)` 而不是 2。推导（实测复核见本文件头注）：
+    // 源 `demandPressure` 被 `set 10` 后逐拍衰减（实测 t1=6.3=10×0.63、t2=3.969=10×0.63²），
+    // 贡献额正比于源 ⇒ `a2 = a1×(1−λ)`；目标自己也先衰减一拍 ⇒
+    // `load2 = load1×(1−λ) + a2 = load1×(1−λ) + load1×(1−λ) = 2(1−λ)·load1`。
+    // λ 改了本行必须跟着红 —— 故写成由单源 λ 现算，不贴 1.26 这个数。
+    expect(load2 / load1).toBeCloseTo(2 * RETAIN, 9);
     const amounts = [...(t1.trace ?? []), ...(t2.trace ?? [])]
       .filter((x) => x.ruleKey === "demo_order_demand_pressure" && x.toObjectId === orderLink.toId)
       .map((x) => x.amount);
     expect(amounts.length, "两格里这条规则各该落一条 trace").toBe(2);
-    expect(amounts[0]).toBe(amounts[1]); // 源态恒定 ⇒ 逐 tick 贡献额恒定（口径没漂）
+    // 贡献额正比于源态，而源态每拍衰减一次 ⇒ 第二格恰是第一格的 (1−λ) 倍。
+    // （原文写 `amounts[0] === amounts[1]`，那是"源态每 tick 恒为 10"的年代；
+    //   实测源 t1=6.3、t2=3.969 ⇒ 恒定这个前提已不成立。仍是恒等式，仍与系数正交。）
+    // ⚠ 用 `toBeCloseTo(…, 9)` 不是 `toBe`：引擎是**先把源 round12 再算贡献**
+    // （`a2 = f(round12(src1×(1−λ)))`），而这里是拿上一格的贡献额去乘 —— 两条路径的
+    // 末位舍入点不同，实测差 1e-12（6.937918484866 vs …865）。9 位仍比被守护的效应
+    // 严格若干个数量级（贡献额本身是 10⁰ 量级），故这不是放宽，是对齐口径。
+    expect(amounts[1]).toBeCloseTo(amounts[0]! * RETAIN, 9);
 
     // 🔴 判据：方向反了 ⇒ 这条规则一次都不触发，下游一个字节都不动。
     expect(allKeys.has("demo_base_load_to_line_util")).toBe(false);
     for (const l of orig) expect(t2.state[l.toId]?.utilPressure ?? 0).toBe(0);
     // 而源端**始终非 0** —— 证明"没传导"不是因为源没数据（那是另一种死法，修法完全不同：
     // `propagation.ts:596` 的 `if (sourceVal === 0) continue` 会以完全相同的外观跳过这条规则）。
-    // t1 恰好 20：扰动真的落进去了，且这一格还没有别的东西写它。
-    expect(t1.state[BASE_ID]!.loadIndex).toBe(20);
+    // t1 恰好「20 衰减一拍」：扰动真的落进去了（引擎的扰动相 0' 排在衰减相 0'' 之前，
+    // 故落地当格就已衰减一次 ⇒ 20×(1−λ)），且这一格还没有别的东西写它。
+    expect(t1.state[BASE_ID]!.loadIndex).toBe(decayN(20, 1));
     // t2：金丝雀自己的链会绕回来喂 Base —— `Model.demandLoad @t1` 再 ×0.6 沿
     // `model_producible_at` 落到 `Base.loadIndex @t2` ⇒ `20 + demandLoad@t1 × 0.6`。
     //
@@ -206,9 +240,14 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     // 且额外多咬住一条：**跨规则的乘子链没漂**（0.6 这一跳照旧）。
     const demandLoadT1 = t1.state[orderLink.toId]!.demandLoad!;
     expect(demandLoadT1, "金丝雀链在 t1 没喂到 Model ⇒ 下面这条恒等式无从谈起").toBeGreaterThan(0);
-    expect(t2.state[BASE_ID]!.loadIndex).toBe(Math.round((20 + demandLoadT1 * 0.6) * 1e12) / 1e12);
-    // 反向钉死：它**必须**已经不是 20（世界真的在演化，不是一格没动）。
-    expect(t2.state[BASE_ID]!.loadIndex).toBeGreaterThan(20);
+    // 衰减相并入后这条恒等式多了一项：t1 那格先衰减一拍，再叠加本拍贡献
+    // ⇒ `decayN(20,2) + demandLoad@t1 × 0.6`（`decayN(20,1)` 再衰减一拍 = `decayN(20,2)`）。
+    // 0.6 这一跳照旧被咬住 —— 跨规则乘子链漂了，本行仍会红。
+    expect(t2.state[BASE_ID]!.loadIndex).toBe(round12(decayN(20, 2) + demandLoadT1 * 0.6));
+    // 反向钉死：它**必须严格大于纯衰减轨迹** —— 证明金丝雀那条链真的额外喂了 Base 一口，
+    // 而不是这一格什么都没发生、只是自己在往下掉。
+    //（原文写 `> 20`，那是无衰减年代"只增不减"的写法；今天总量会掉，比 20 是拿错了尺子。）
+    expect(t2.state[BASE_ID]!.loadIndex).toBeGreaterThan(decayN(20, 2));
   });
 
   // ── ③ 种子的方向必须与本体单源一致（把 #158 的成因钉在种子这一层）────────────────────
