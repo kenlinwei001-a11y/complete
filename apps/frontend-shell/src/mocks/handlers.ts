@@ -3649,7 +3649,8 @@ export const handlers = [
    *   mock 原先无视 `?status=` 恒回全部两行 ⇒ 「状态页签有没有真接上」在 mock 下测不出来。
    * · `POST /a/v1/quarantine/discard` 后端 zod 是 `{ ids: min(1), comment: z.string().min(1) }`
    *   且 `discard()` 里再校一次 `comment.trim()`；mock 原先**无条件** `{discarded:1}` ⇒
-   *   前端漏发 `comment` 时 mock 照样绿，真后端 400（实测
+   *   前端漏发 `comment` 时 mock 照样绿，真后端 400（实测 2026-09-03，复验：起 `SEED_DEMO=1`
+   *   的 datacore 后 `POST /a/v1/quarantine/discard` 只发 `{ids}`，回包即
    *   `comment: Invalid input: expected string, received undefined`）—— 这正是本单要修的那个 bug，
    *   而它在 mock 模式下**一次都没被抓到**。
    *
@@ -7729,8 +7730,9 @@ export const handlers = [
      * ② **数只许是这个玩具世界自己的真数，不许照抄真后端的读数**。
      *    本仓出过「mock 写对了语义、恰好把后端 bug 盖住」的事：mock 越像真的，
      *    越能替一个坏掉的后端把测试染绿。所以下面每个数都是**这一屏 mock 世界的实际规模**——
-     *    1 个对象、0 条边、0 条传导规则、0 次饱和、0 毫秒；真后端同一拍实测是
-     *    12,745 对象 / 12,192 边 / 46 条规则 / 4,577 次饱和 / 517 毫秒。
+     *    1 个对象、0 条边、0 条传导规则、0 次饱和、0 毫秒；真后端同一拍实测（2026-09-03，复验：
+     *    起 `SEED_DEMO=1` 的 datacore，`POST /a/v1/sim/worlds/:id/tick?disclose=1` 读回包
+     *    `disclosure` 六项）是 12,745 对象 / 12,192 边 / 46 条规则 / 4,577 次饱和 / 517 毫秒。
      *    **两边差三个数量级是刻意的**：任何一条断言若在 mock 上也能拿到"真实感"的读数，
      *    那条断言就没有在验后端。
      * ③ 同理 `snapshotVersion` 带 `mock-` 前缀：真后端是 sha256 前 12 位十六进制。

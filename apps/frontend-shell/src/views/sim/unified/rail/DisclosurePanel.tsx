@@ -19,7 +19,9 @@
  *  ③ **不许打源码文件名 / 行号到用户屏上**（R-UI-4）。
  *
  * ── ⚠ 为什么 `constraints.stateVarBounds[].source` **不上屏**（这是个判断，不是遗漏）──
- * 后端那一栏是**散文出处**，实测（2026-09-03 · demo 租户 seed 世界一拍，32 条取值域）：
+ * 后端那一栏是**散文出处**，实测（2026-09-03 · demo 租户 seed 世界一拍，32 条取值域；
+ * 复验：起 `SEED_DEMO=1` 的 datacore，`POST /a/v1/sim/worlds/:id/tick?disclose=1`
+ * 读回包 `disclosure.constraints.stateVarBounds[].source`）：
  *   · 每条含 **6 个反引号**、**0 个** `**` —— 反引号直出就是上面第 ② 条禁止的 Markdown 字面量，
  *     而全仓今天唯一被批准的原文渲染出口 `decisionConsoleModel.parseEmphasis` **只认 `**`**，
  *     不认反引号 ⇒ 拿它渲染，反引号照样打在屏上。为这一栏另造一个 markdown 渲染器 =
@@ -62,7 +64,9 @@ const PHASE_LABEL: Readonly<Record<string, string>> = {
  * 节拍闸门跳过的原因码 → 屏上的名字。
  *
  * 后端给的是机器记号（`propagation.ts` 的 `buildCadenceGates` 只会产出这两个：
- * `EMPTY` / `NOT_INTEGER_TICKS`）—— 实测 demo 种子世界一拍跳过 4 个节点，
+ * `EMPTY` / `NOT_INTEGER_TICKS`）—— 实测 2026-09-03 demo 种子世界一拍跳过 4 个节点
+ * （复验：起 `SEED_DEMO=1` 的 datacore，`POST /a/v1/sim/worlds/:id/tick?disclose=1`
+ * 读回包 `disclosure.cadenceGates[].reason`），
  * 屏上原样打出来就是 `material.mrpEMPTY`，**读的人一个字都看不懂**（R-UI-4「开发的话不上屏」）。
  *
  * ⚠ 表里没有的记号**原样显示**：宁可露出一个机器记号，也不把一个没见过的原因

@@ -1923,8 +1923,9 @@ export const reprocessQuarantine = (id: string) => api.a<{ ok: boolean }>(`/a/v1
  * ⚠ 原实现是 `body: { ids }` —— 而后端 `POST /a/v1/quarantine/discard` 的 zod 是
  * `{ ids: z.array(z.string()).min(1), comment: z.string().min(1) }`
  * （`apps/datacore/src/app.ts` 该路由 + `QuarantineService.discard()` 里再校一次 `comment.trim()`）。
- * ⇒ 屏上点「丢弃」**必返 400 `VALIDATION_ERROR`**（真后端实测：
- * `comment: Invalid input: expected string, received undefined`），用户只看得到一个失败 toast。
+ * ⇒ 屏上点「丢弃」**必返 400 `VALIDATION_ERROR`**（真后端实测 2026-09-03，复验：
+ * 起 `SEED_DEMO=1` 的 datacore 后 `POST /a/v1/quarantine/discard` 只发 `{ids}` 不发 `comment`，
+ * 回包即 `comment: Invalid input: expected string, received undefined`），用户只看得到一个失败 toast。
  * 两半各自都对，**接缝上对不齐**。
  *
  * 修法是**让用户自己填**，不是替他编一个默认理由、也不是发空串、更不是把后端校验放宽：

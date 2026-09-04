@@ -8,7 +8,8 @@ import { toastError, toast } from "@/store/toastStore";
  * 人工修复后 reprocess 重入正门，或 discard。后端 `/a/v1/quarantine*` 已就绪，本页补前端。
  *
  * WO-QUARANTINE-DISCARD：「丢弃」此前**点了必失败** —— 前端发 `{ ids }`，后端要 `{ ids, comment }`
- * ⇒ 400 `VALIDATION_ERROR`（真后端实测复现）。理由**由用户填**，不是系统替他编一个：
+ * ⇒ 400 `VALIDATION_ERROR`（真后端实测 2026-09-03 复现；复验：起 `SEED_DEMO=1` 的 datacore，
+ * 对 `POST /a/v1/quarantine/discard` 只发 `{ids}` 不发 `comment`）。理由**由用户填**，不是系统替他编一个：
  * 后端把它写进 `detail`（`… | discarded: <理由>`），是这条记录唯一的作废依据。
  * 故此处：① 点「丢弃」先展开一个**必填**理由输入；② 理由空白时「确认丢弃」置灰，**请求根本不发出**
  * （只做后端校验 = 用户仍会看到一个失败的动作，等于只修一半）；③ 状态切到「已丢弃」能回读到理由原文。
