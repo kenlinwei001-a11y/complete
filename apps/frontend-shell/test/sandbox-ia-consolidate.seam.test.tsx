@@ -379,10 +379,13 @@ describe("§件三 · 模式切换 = 换一整屏，不是叠一屏", () => {
     // 🐤 金丝雀：本页宿主桶非空（空了 ⇒ 下面这个 toEqual 变成「空 == 空」恒真，漂移再也验不到）
     expect(hostedHere.length, "本页宿主桶为空 ⇒ host 字段或过滤坏了，先修尺子再读结论").toBeGreaterThan(0);
     expect(shown.slice().sort()).toEqual(hostedHere.slice().sort());
-    // 每条的 href 就是那个键的深链接（写错 href = 清单在，点过去 404）
-    for (const a of Array.from(box.querySelectorAll("a"))) {
-      const key = (a.getAttribute("data-testid") ?? "").replace(/^sandbox-consolidated-/, "");
-      expect(a.getAttribute("href")).toBe(`/v/${key}`);
+    // ∀ 本页宿主的每一条：屏上都要有**它自己**那条链接，且 href 是它的深链接
+    //（写错 href = 清单在、点过去 404。遍历 `hostedHere` 而不是遍历 DOM 里的 <a>：
+    //  遍历 DOM 只能验"屏上有的都对"，验不到"表里有的屏上都在" —— 后者才是 #99/#110 的病根。）
+    for (const key of hostedHere) {
+      const a = box.querySelector(`a[data-testid="sandbox-consolidated-${key}"]`);
+      expect(a, `收编表登记了 ${key}（host=sim-sandbox），但沙盘的收编清单里没有它的链接`).toBeTruthy();
+      expect(a!.getAttribute("href"), `${key} 的链接 href 写错 ⇒ 清单在，点过去 404`).toBe(`/v/${key}`);
     }
     // 默认折叠（第二层，不占第一层——仓主原话「信息太多，第一层看不到重点」）
     expect((box as HTMLDetailsElement).open).toBe(false);
