@@ -180,7 +180,7 @@ const WI_GRAPH: ReasoningGraph = assertReasoningGraph({
       solver: "POST /a/v1/simulation/impact-analysis",
       rule: "四个「0」不是同一个 0：available:false ⇒ 算不了（不显 0）；count:0 且 universe:0 ⇒ 台账空；count:0 且 universe:N ⇒ 查过确实没被波及",
       ruleKind: "projection",
-      note: "流程是**定义**粒度不是实例粒度；决策是从 KPI 推出来的（锚定指标 ∩ 受影响 KPI），不与 KPI 并列。",
+      note: "流程是定义粒度不是实例粒度；决策是从 KPI 推出来的（锚定指标 ∩ 受影响 KPI），不与 KPI 并列。",
     },
     {
       key: "deltas", layer: 3, label: "下游逐行", sub: "before → after",

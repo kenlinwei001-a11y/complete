@@ -1408,7 +1408,7 @@ export function buildChainLineMap(payload: ChainLossPayload, opts: ChainLineMapO
   if (trunkPlan.rowCount > 1) {
     notes.push(
       `主线 ${trunkSlots.length} 个站位，一行最多摆 ${METRO_LAYOUT.maxSlotsPerRow} 个 ⇒ 折成 ${trunkPlan.rowCount} 行` +
-        `（每行 ≤ ${trunkPlan.perRow} 个）。折行处画转折标记「↩ 接下一行左端」，**这条线没有断**。`,
+        `（每行 ≤ ${trunkPlan.perRow} 个）。折行处画转折标记「↩ 接下一行左端」，这条线没有断。`,
     );
   }
   // 标签摆位是可算的，摆不下也要说 —— 静默让两个标签压在一起就是环形版的老毛病复发。

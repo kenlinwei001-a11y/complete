@@ -136,7 +136,7 @@ export function extendedObjectTypes(): TypeDef[] {
       // WO-SANDBOX-D2 采购段按责任方可分解：
       //  · sourceMode/originCountry —— 决定**清关段是否存在**（境内直供 ⇒ NOT_APPLICABLE，不是 EMPTY 也不是假的 0）。
       //  · transitDays/carrierName  —— 在途段的真值与**责任方**（承运商）。此前全仓无任何"在途耗时归谁"的承载。
-      pd("sourceMode", "供货模式：境内直供 / 进口。采购段清关环节**是否存在**的唯一判据（进口才有清关段）。", "enum"),
+      pd("sourceMode", "供货模式：境内直供 / 进口。采购段清关环节是否存在的唯一判据（进口才有清关段）。", "enum"),
       pd("originCountry", "原产国。进口供应商据此确定报关口岸与清关行。", "string"),
       nd("transitDays", "在途运输前置期（天）：从供应商发运到基地的干线运输时长，不含清关与到货检验。采购段「在途」腿的真值。", "天", "absolute"),
       pd("carrierName", "承运方。采购段「在途」腿的责任方——在途超期该找谁。", "string"),
@@ -282,7 +282,7 @@ export function extendedObjectTypes(): TypeDef[] {
       nd("clearedDay", "海关放行天（相对天）。放行后才进入到货检验。", "天", "absolute"),
       nd("holdDays", "查验滞留天数：清关总耗时超出基准申报周期的部分，>0 即被查验压住。", "天", "absolute"),
       pd("status", "清关状态。", "enum"),
-    ], "进口采购单的清关凭证。承载采购段「清关」这一腿的实测耗时（clearedDay − declaredDay）与责任方（清关行）。只有进口供应商的采购单才有此记录——境内直供**结构上没有这个环节**，因此判定为 NOT_APPLICABLE（真值 0 天）而非 EMPTY（未知）。"),
+    ], "进口采购单的清关凭证。承载采购段「清关」这一腿的实测耗时（clearedDay − declaredDay）与责任方（清关行）。只有进口供应商的采购单才有此记录——境内直供结构上没有这个环节，因此判定为 NOT_APPLICABLE（真值 0 天）而非 EMPTY（未知）。"),
     // WO-SANDBOX-D2 · 到货检验（IQC）记录（此前全仓 `grep -rn "IQC|到货检验|来料检"` = 0 条）。
     // 到厂 ≠ 可投产：压在待检区的那几天**是自家质量部的锅**，责任方 = inspectorTeam。
     def("IncomingInspection", "到货检验", "quality", [

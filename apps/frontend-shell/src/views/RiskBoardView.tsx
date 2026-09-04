@@ -436,7 +436,7 @@ export default function RiskBoardView(_props: ViewRendererProps) {
             </span>
             <span style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="risk-order-mode-note">
               {hasExposureOrder
-                ? "「影响面序」= 求解器 exposureOrder（与 exposure.rank 同一次计算的投影，前端不另排）；零敞口基地沉底。⚠ 首要风险徽章始终跟着**越线日序**第一张卡走。"
+                ? "「影响面序」= 求解器 exposureOrder（与 exposure.rank 同一次计算的投影，前端不另排）；零敞口基地沉底。⚠ 首要风险徽章始终跟着越线日序第一张卡走。"
                 : "本次响应未返回 exposureOrder（契约中为 optional）→ 只能按越线日序展示，前端不自造影响面排序。"}
             </span>
           </div>
