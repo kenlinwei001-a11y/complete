@@ -121,7 +121,7 @@ type NavItemRef =
 /**
  * ── WO-INTEG-BATCH-5 收编补：`host` 字段 —— 把「被**哪个**控制台收编」变成机器可读 ──────
  *
- * 病样（本批实测）：`WO-SIM-NAV-UNIFIED` 给本表加的四条，收编宿主是**合并壳** `/v/sim-unified`，
+ * 病样（2026-09-04 实测）：`WO-SIM-NAV-UNIFIED` 给本表加的四条，收编宿主是**合并壳** `/v/sim-unified`，
  * 不是上面十二条的旧沙盘 `/v/sim-sandbox`。这件事当时**只写进了散文注释**（见下方
  * 「与上面所有条目的收编宿主不同」那段），于是：
  *   · `SandboxView.CONSOLIDATED_PAGES`（旧沙盘的屏上投影）只列 12 条 —— 它是**对的**；
