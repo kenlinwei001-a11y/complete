@@ -117,12 +117,24 @@ describe("A10 接缝 · sim.* 事件 → 前端查询键真失效", () => {
     //                  **前端两边都没登** ⇒ 本条与④当场变红。WO-GATE-ONTOLOGY-DRIFT（2026-08-23）
     //                  按"真缓存承载"判据接进 `EVENT_INVALIDATES`（→ `sim-sessions`，理由见 ⑭⑮），
     //                  故 8/7 + 缺口仍为 0。**这两个数是被这条断言逼出来的，不是人想起来的**。
+    //   8/7 → 9/8，缺口 0 → 1（WO-SIM-DRILL-P12 · 3a23b3e3 · 2026-08-25 加了
+    //                  `sim.drill_completed` 这**一处**新 emit，`app.ts` 演习端点里唯一一行）。
+    //                  **按本门要求停下来重新核过消费方了，不是照着报错抄的数**：
+    //                  演习走 `simAdvanceTicks(persist:false)`，`curTick` 一格不动、`putTickState`
+    //                  一次不调（`sim-drill.seam.test.ts` ⑦ 咬死）⇒ 世界态/会话/扰动/检查点
+    //                  **没有任何被缓存的东西变过**，此时接失效标签就是假接线（#90/#92 同族）。
+    //                  故按本门另一条路「记进缺口台账并写清为什么今天不接线」处置 ——
+    //                  条目在 `SIM_EVENT_GAPS`，出台账条件也写死在那里（先有真读端再登记）。
+    //   ⚠ 这三个数此前一直停在 8/7/0，**不是因为没人动 emit**，而是因为 `pnpm -r test` 在
+    //     datacore 那一包就短路了，frontend-shell 整包从来没跑到这里 —— 「门存在 ≠ 门在跑」。
     const emitted = emittedSimEvents();
-    expect(emitted.length, "datacore sim.* emit 处数变了，重新核消费方").toBe(8);
-    expect(new Set(emitted).size, "datacore sim.* 事件名数变了，重新核消费方").toBe(7);
-    // 台账今日为空（机制保留）：哪天它又长出条目，每条必须有理由（上面的循环守着），
-    // 且不允许拿台账当「悄悄不接线」的挡箭牌 —— 新增 emit 而不接线也不记账 ⇒ 测试④红。
-    expect(Object.keys(SIM_EVENT_GAPS).length, "缺口台账应为空：最后一个缺口 sim.checkpoint_saved 已闭环").toBe(0);
+    expect(emitted.length, "datacore sim.* emit 处数变了，重新核消费方").toBe(9);
+    expect(new Set(emitted).size, "datacore sim.* 事件名数变了，重新核消费方").toBe(8);
+    // 台账**不是**「悄悄不接线」的挡箭牌：新增 emit 而既不接线也不记账 ⇒ 测试④当场红；
+    // 记了账也要逐条有理由、且不与已接线的重叠（本用例开头那个循环守着）。
+    // 今日在账 1 条（`sim.drill_completed`，理由与出台账条件见 `eventInvalidation.ts`）。
+    expect(Object.keys(SIM_EVENT_GAPS).length, "缺口台账条数变了：逐条复核理由与出台账条件").toBe(1);
+    expect(Object.keys(SIM_EVENT_GAPS), "在账缺口不是预期的那条 ⇒ 有新缺口混进来了，别放过").toEqual(["sim.drill_completed"]);
   });
 
   /**

@@ -4244,6 +4244,21 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   // 同时承载业务线维与基地维的对象·`AUDIT-a6-rule-carriers.md` §4.2），「保谁」的经营参数来自
   // `DemandSegment`（其 marginPct/floorPct 逐值来自 `SEG_REGISTRY`）。三类缺一条这条规则就判不动。
   C34: ["Base", "Order", "DemandSegment"],
+  // ── WO-INTEG-BATCH-5 收编补：C35 的作用域**显式声明为空**，不是漏填 ──────────────────
+  // 病样（本批实测）：`service.ts:276` 是 `BATTERY_RULE_SCOPES[r.key] ?? ["Order"]` ——
+  // **没登记的规则会静默落进 `Order` 域**。WO-PROP-CLAMP 立 C35 时没登记，于是
+  // 「推演状态量衰减率」出现在 `GET /ontology/mapping` 的 Order 行里，被 `planviews` 的
+  // 金值当场咬住（9 → 10）。金丝雀：本表 30 条规则里 **29 条有显式声明，只有 C35 靠回落**
+  // ⇒ 这张表本来就是穷举的，C35 是漏的那一条，不是"回落即约定"。
+  // 判据照本段头那条（唯一判据 = 这个字符串在 `ontology.listTypes()` 里存不存在）：
+  // C35 的 expression 主语是 `SimStateVar.decayPerTick` —— `SimStateVar` **不是本体对象类型**，
+  // 它是引擎的状态量命名空间。故按 C10 那条同样的纪律**不硬塞一个近似类型**：
+  // 塞了会让 Order 域的规则清单对计划员说一句假话（"这条规则管订单"），
+  // 从"诚实报缺"退化成"安静地算错"。
+  // ⚠ 空作用域**不影响衰减生效**：`propagation-inputs.ts:111` 建 `ruleParams` 时按
+  // `status === "PUBLISHED"` 全量取、**不看 scopeObjectTypes**，C35 的 λ 照常解析得到
+  // （`prop-clamp-decay.seam` 仍绿即为凭证）。这里管的只是"它出现在哪个域的规则清单里"。
+  C35: [],
 };
 
 export interface GeneratedBattery {
