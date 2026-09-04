@@ -145,7 +145,7 @@ describe("WO-RELATION-EDIT-GAPS · 接缝：关系的改/建/停/启四条写路
     expect(withVia.statusCode).toBeLessThan(300);
     const m = (JSON.parse(withVia.body) as { version: number; materialized: { created: number } });
     expect(m.version).toBe(3);
-    expect(m.created ?? m.materialized.created).toBeGreaterThan(0);
+    expect(m.materialized.created, "补上实现属性后必须真的连出实例边，不只是改了一行登记").toBeGreaterThan(0);
     // 下发口必须回读到实现属性 —— 缺了它，前端「改」表单预填不出来，
     // 下一次保存就会把它抹掉（改一个字段却把另一个字段清零，本仓最不许发生的静默失效）。
     expect(await readLink(t, "zz_edit_probe")).toMatchObject({ viaProperty: "model", viaSide: "from" });
