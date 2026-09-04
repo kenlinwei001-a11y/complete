@@ -47,8 +47,22 @@ async function threeNodeWorld(t: TestApp, tenant: string): Promise<void> {
   await t.repos.objects.put({ id: "a1", tenantId: tenant, type: "TypeA", props: {}, origin: ORG });
   await t.repos.objects.put({ id: "b1", tenantId: tenant, type: "TypeB", props: {}, origin: ORG });
   await t.repos.objects.put({ id: "c1", tenantId: tenant, type: "TypeC", props: {}, origin: ORG });
-  await t.repos.links.put({ id: "l_ab", tenantId: tenant, type: "FEEDS", fromId: "a1", toId: "b1", origin: ORG });
-  await t.repos.links.put({ id: "l_bc", tenantId: tenant, type: "FEEDS", fromId: "b1", toId: "c1", origin: ORG });
+  // 链路**类型**声明 —— 且必须**拆成两个 key**（`FEEDS_AB` / `FEEDS_BC`）。
+  // 理由：`POST /sim/propagation-rules` 的引用体检（`app.ts assertPropagationRefs`）核对
+  // `link.fromTypeKey→link.toTypeKey` 与本边的 `sourceTypeKey→targetTypeKey` **必须逐字相等**。
+  // 一个链路类型只能声明**一对**端点，而本夹具的两跳端点不同（A→B 与 B→C）——
+  // 沿用单一 `FEEDS` 必然有一跳对不上（报文会说「链路 FEEDS 连的是 TypeA→TypeB，
+  // 与本边的 TypeB→TypeC 对不上」），故按跳拆键。修的是夹具不是闸门。
+  await t.repos.ontologyLinks.put({
+    id: `ltype_feeds_ab_${tenant}`, tenantId: tenant, key: "FEEDS_AB",
+    fromTypeKey: "TypeA", toTypeKey: "TypeB", cardinality: "1:N", version: 1,
+  });
+  await t.repos.ontologyLinks.put({
+    id: `ltype_feeds_bc_${tenant}`, tenantId: tenant, key: "FEEDS_BC",
+    fromTypeKey: "TypeB", toTypeKey: "TypeC", cardinality: "1:N", version: 1,
+  });
+  await t.repos.links.put({ id: "l_ab", tenantId: tenant, type: "FEEDS_AB", fromId: "a1", toId: "b1", origin: ORG });
+  await t.repos.links.put({ id: "l_bc", tenantId: tenant, type: "FEEDS_BC", fromId: "b1", toId: "c1", origin: ORG });
 }
 
 const H = (tenant: string) => debugUser(tenant, "admin", "admin");
@@ -59,11 +73,11 @@ const enable = (t: TestApp, tenant: string) =>
     payload: { overrides: { "sim.sandbox": true, "sim.propagation": true, "sim.certification": true } },
   });
 
-/** 两条 PUBLISHED 传导规则：A.flow→B.load、B.flow→C.load（同 linkKey，均即时）。 */
+/** 两条 PUBLISHED 传导规则：A.flow→B.load、B.flow→C.load（各走本跳的 linkKey，均即时）。 */
 async function publishRules(t: TestApp, tenant: string): Promise<void> {
   for (const r of [
-    { key: "r_ab", sourceTypeKey: "TypeA", sourceStateVar: "flow", viaLinkKey: "FEEDS", targetTypeKey: "TypeB", targetStateVar: "load" },
-    { key: "r_bc", sourceTypeKey: "TypeB", sourceStateVar: "flow", viaLinkKey: "FEEDS", targetTypeKey: "TypeC", targetStateVar: "load" },
+    { key: "r_ab", sourceTypeKey: "TypeA", sourceStateVar: "flow", viaLinkKey: "FEEDS_AB", targetTypeKey: "TypeB", targetStateVar: "load" },
+    { key: "r_bc", sourceTypeKey: "TypeB", sourceStateVar: "flow", viaLinkKey: "FEEDS_BC", targetTypeKey: "TypeC", targetStateVar: "load" },
   ]) {
     const res = await t.app.inject({
       method: "POST", url: "/a/v1/sim/propagation-rules", headers: H(tenant),

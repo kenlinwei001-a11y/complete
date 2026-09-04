@@ -26,6 +26,14 @@ const seedDelayedPropagation = async (t: Awaited<ReturnType<typeof makeApp>>, he
   for (const k of ["TypeA", "TypeB"]) {
     await t.repos.ontologyTypes.put({ id: `otype_${k}`, tenantId: tenant, key: k, displayName: k, properties: [], derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE" });
   }
+  // 链路**类型**声明：`POST /sim/propagation-rules` 的引用体检（`app.ts assertPropagationRefs`，
+  // WO-CAUSAL-EDGE-CRUD）按 viaLinkKey 去链路类型表核对 `fromTypeKey→toTypeKey`，查不到即 400。
+  // 本夹具此前只落了链路**实例**（下面那条 `links.put`）没落类型声明 ⇒ 该闸门上线后当场 400，
+  // 规则没建成 ⇒ 后面「pending 必然非空」的断言全部失去意义。修的是夹具不是闸门。
+  await t.repos.ontologyLinks.put({
+    id: `ltype_feeds_${tenant}`, tenantId: tenant, key: "FEEDS",
+    fromTypeKey: "TypeA", toTypeKey: "TypeB", cardinality: "1:N", version: 1,
+  });
   await t.repos.objects.put({ id: "o1", tenantId: tenant, type: "TypeA", props: {}, origin: org });
   await t.repos.objects.put({ id: "o2", tenantId: tenant, type: "TypeB", props: {}, origin: org });
   await t.repos.links.put({ id: "lnk1", tenantId: tenant, type: "FEEDS", fromId: "o1", toId: "o2", origin: org });
