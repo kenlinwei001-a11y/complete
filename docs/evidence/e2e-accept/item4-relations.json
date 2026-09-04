@@ -1,0 +1,107 @@
+{
+  "actions": [
+    {
+      "act": "建(合法)",
+      "key": "e2e_probe_edge",
+      "新出现文本": [
+        "结构边 117",
+        "先选来源与去向类型",
+        "域：产品（23）",
+        "e2e_probe_edge\tOrder → WorkOrder\t1:N\t启用\t",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge"
+      ],
+      "表里出现": true,
+      "结构边数": "117"
+    },
+    {
+      "act": "停",
+      "新出现文本": [
+        "e2e_probe_edge\tOrder → WorkOrder\t1:N\t已停用\t",
+        "结构边 e2e_probe_edge 已停用（宽限至 2026-12-03）"
+      ]
+    },
+    {
+      "act": "停·行状态",
+      "附近": [
+        "",
+        "e2e_probe_edge\tOrder → WorkOrder\t1:N\t已停用\t",
+        "查引用",
+        "停用",
+        "下线",
+        "",
+        "line_of_order\tOrderLine → Order\tN:1\t启用\t"
+      ]
+    },
+    {
+      "act": "改",
+      "该行按钮": [
+        "查引用",
+        "停用",
+        "下线"
+      ],
+      "有编辑按钮": false
+    },
+    {
+      "act": "删",
+      "新出现文本": [
+        "e2e_probe_edge\tOrder → WorkOrder\t1:N\t已下线\t",
+        "结构边 e2e_probe_edge 已下线"
+      ],
+      "表里还在": true
+    }
+  ],
+  "base": {
+    "结构边": "·",
+    "状态变量": "41",
+    "生效因果边": "46",
+    "rowCount": 191
+  },
+  "buttonVocab": [
+    "🕐",
+    "健康度",
+    "🌙",
+    "A\nadmin\n▾",
+    "▾\n规划与平衡",
+    "▾\n推演",
+    "▾\n台账与地图",
+    "▾\n数据接入",
+    "▾\n建模与图谱",
+    "▾\n图谱体系",
+    "▾\n规则与校准",
+    "▾\n构建与成长",
+    "▾\n编排与场景",
+    "▾\n运营与审批",
+    "▾\n平台与系统",
+    "?",
+    "建结构边",
+    "查引用",
+    "停用",
+    "下线",
+    "建因果边",
+    "✕",
+    "挂上这条约束",
+    "停用类型",
+    "下线类型",
+    "发起发布会签"
+  ]
+}

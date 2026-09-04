@@ -1,0 +1,281 @@
+{
+  "counters": {
+    "steps": 4,
+    "clicks": 7,
+    "navs": 6
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 228,
+    "127.0.0.1:4051": 12,
+    "127.0.0.1:4052": 9
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/affected_orders/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/order_fullchain/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/kit_readiness/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/quote_margin/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/chain_loss_attribution/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/decision_play/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/graph",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:42:54.657Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:42:54.694Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:42:55.421Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:42:55.459Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:42:55.463Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:42:55.479Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:42:55.480Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:42:57.210Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:42:57.272Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:42:57.453Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:43:00.825Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:43:00.825Z",
+      "kind": "STEP",
+      "msg": "#3 侧边栏 →「订单进展与卡因」"
+    },
+    {
+      "t": "2026-09-04T02:43:00.828Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「订单进展与卡因」"
+    },
+    {
+      "t": "2026-09-04T02:43:00.864Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/order-chain"
+    },
+    {
+      "t": "2026-09-04T02:43:08.915Z",
+      "kind": "DUMP",
+      "msg": "i6-order-chain",
+      "chars": 12817
+    },
+    {
+      "t": "2026-09-04T02:43:09.159Z",
+      "kind": "SHOT",
+      "msg": "i6-order-chain"
+    },
+    {
+      "t": "2026-09-04T02:43:09.159Z",
+      "kind": "P6-CHAIN",
+      "msg": "订单进展与卡因",
+      "hasWorkOrder": true,
+      "hasFulfills": false,
+      "hasWoId": false,
+      "coverage": [],
+      "anchor": [
+        "SO-3391",
+        "SO-3391",
+        "SO-3402",
+        "SO-3415",
+        "SO-3420"
+      ]
+    },
+    {
+      "t": "2026-09-04T02:43:12.846Z",
+      "kind": "DUMP",
+      "msg": "i6-order-chain-expanded",
+      "chars": 16637
+    },
+    {
+      "t": "2026-09-04T02:43:12.846Z",
+      "kind": "P6-CHAIN",
+      "msg": "展开后",
+      "hasWorkOrder": true,
+      "hasWoId": false
+    },
+    {
+      "t": "2026-09-04T02:43:12.846Z",
+      "kind": "STEP",
+      "msg": "#4 侧边栏 →「本体图谱」查 fulfills 边"
+    },
+    {
+      "t": "2026-09-04T02:43:12.850Z",
+      "kind": "CLICK",
+      "msg": "#7 侧边栏 →「本体图谱」"
+    },
+    {
+      "t": "2026-09-04T02:43:12.898Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/graph"
+    },
+    {
+      "t": "2026-09-04T02:43:21.950Z",
+      "kind": "DUMP",
+      "msg": "i6-graph",
+      "chars": 1327
+    },
+    {
+      "t": "2026-09-04T02:43:21.950Z",
+      "kind": "P6-GRAPH",
+      "msg": "本体图谱",
+      "hasFulfills": false,
+      "hasWorkOrderType": true
+    }
+  ]
+}

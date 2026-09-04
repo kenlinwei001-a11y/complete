@@ -1,0 +1,642 @@
+[
+  {
+    "tag": "A",
+    "text": "跳到主内容",
+    "href": "#main-content"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "🕐",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "text": "健康度",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "text": "🌙",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "text": "A admin ▾",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "⚡ 场景启动器",
+    "href": "/scenarios"
+  },
+  {
+    "tag": "A",
+    "text": "经营驾驶舱",
+    "href": "/v/dash"
+  },
+  {
+    "tag": "A",
+    "text": "事件影响与对策",
+    "href": "/v/decision-console"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 规划与平衡",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "年度规划",
+    "href": "/v/annual-scenario"
+  },
+  {
+    "tag": "A",
+    "text": "季度规划",
+    "href": "/v/quarterly-rolling"
+  },
+  {
+    "tag": "A",
+    "text": "月度规划",
+    "href": "/v/sop-balance"
+  },
+  {
+    "tag": "A",
+    "text": "规划体检",
+    "href": "/v/plan-audit"
+  },
+  {
+    "tag": "A",
+    "text": "规划建议",
+    "href": "/v/plan-generate"
+  },
+  {
+    "tag": "A",
+    "text": "运营复盘",
+    "href": "/v/review"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 推演",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "统一推演控制台",
+    "href": "/v/sim-unified"
+  },
+  {
+    "tag": "A",
+    "text": "推演沙盘",
+    "href": "/v/sim-sandbox"
+  },
+  {
+    "tag": "A",
+    "text": "接单可行性",
+    "href": "/v/project-sim"
+  },
+  {
+    "tag": "A",
+    "text": "接单组合优选",
+    "href": "/v/global-sim"
+  },
+  {
+    "tag": "A",
+    "text": "产能推演",
+    "href": "/v/risk"
+  },
+  {
+    "tag": "A",
+    "text": "订单进展与卡因",
+    "href": "/v/order-chain"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 台账与地图",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "订单台账",
+    "href": "/v/order"
+  },
+  {
+    "tag": "A",
+    "text": "基地地理视图",
+    "href": "/v/geo-map"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 数据接入",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "连接器与上传",
+    "href": "/admin/connections"
+  },
+  {
+    "tag": "A",
+    "text": "规则文档审核",
+    "href": "/admin/rule-docs"
+  },
+  {
+    "tag": "A",
+    "text": "合成数据",
+    "href": "/admin/synthetic"
+  },
+  {
+    "tag": "A",
+    "text": "外部信号",
+    "href": "/admin/external-signals"
+  },
+  {
+    "tag": "A",
+    "text": "隔离区",
+    "href": "/admin/quarantine"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 建模与图谱",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "本体图谱",
+    "href": "/v/graph"
+  },
+  {
+    "tag": "A",
+    "text": "本体建模",
+    "href": "/admin/modeling"
+  },
+  {
+    "tag": "A",
+    "text": "对象/类型浏览",
+    "href": "/admin/object-types"
+  },
+  {
+    "tag": "A",
+    "text": "域管理",
+    "href": "/admin/domains"
+  },
+  {
+    "tag": "A",
+    "text": "对象接口",
+    "href": "/admin/interfaces"
+  },
+  {
+    "tag": "A",
+    "text": "本体关系",
+    "href": "/admin/ontology-relations"
+  },
+  {
+    "tag": "A",
+    "text": "本体切片",
+    "href": "/admin/slices"
+  },
+  {
+    "tag": "A",
+    "text": "切片库",
+    "href": "/admin/slice-library"
+  },
+  {
+    "tag": "A",
+    "text": "实体合并",
+    "href": "/admin/merge"
+  },
+  {
+    "tag": "A",
+    "text": "边界册治理",
+    "href": "/admin/boundary"
+  },
+  {
+    "tag": "A",
+    "text": "原型 intake",
+    "href": "/admin/prototype-intake"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 图谱体系",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "图谱·全景",
+    "href": "/v/graph-all"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·主干分级",
+    "href": "/v/graph-backbone"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·产能推演网络",
+    "href": "/v/graph-flow"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·数据来源",
+    "href": "/v/graph-source"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·求解器",
+    "href": "/v/graph-solver"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·MVP",
+    "href": "/v/graph-mvp"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·智能体网络",
+    "href": "/v/graph-agent"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·学习闭环",
+    "href": "/v/graph-loop"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 规则与校准",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "规则库",
+    "href": "/admin/rules"
+  },
+  {
+    "tag": "A",
+    "text": "校准报告",
+    "href": "/admin/calibration"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 构建与成长",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "数据构建发动机",
+    "href": "/admin/data-builder"
+  },
+  {
+    "tag": "A",
+    "text": "构建 Pipeline 配置",
+    "href": "/admin/pipelines"
+  },
+  {
+    "tag": "A",
+    "text": "自成长发动机",
+    "href": "/admin/growth"
+  },
+  {
+    "tag": "A",
+    "text": "Agent 评测",
+    "href": "/admin/evals"
+  },
+  {
+    "tag": "A",
+    "text": "求解器目录",
+    "href": "/admin/solvers"
+  },
+  {
+    "tag": "A",
+    "text": "求解器审核台",
+    "href": "/admin/solver-review"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 编排与场景",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "意图目录",
+    "href": "/admin/catalog"
+  },
+  {
+    "tag": "A",
+    "text": "Agent",
+    "href": "/admin/agents"
+  },
+  {
+    "tag": "A",
+    "text": "Workflow",
+    "href": "/admin/workflows"
+  },
+  {
+    "tag": "A",
+    "text": "Skill 库",
+    "href": "/admin/skills"
+  },
+  {
+    "tag": "A",
+    "text": "MCP",
+    "href": "/admin/mcp"
+  },
+  {
+    "tag": "A",
+    "text": "场景入口",
+    "href": "/admin/scenes"
+  },
+  {
+    "tag": "A",
+    "text": "智能资源治理",
+    "href": "/admin/resources"
+  },
+  {
+    "tag": "A",
+    "text": "计划构建画布",
+    "href": "/admin/plan-builder"
+  },
+  {
+    "tag": "A",
+    "text": "兜底统计",
+    "href": "/admin/ops/fallback"
+  },
+  {
+    "tag": "A",
+    "text": "视图配置",
+    "href": "/admin/views"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 运营与审批",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "Action 审批",
+    "href": "/admin/actions"
+  },
+  {
+    "tag": "A",
+    "text": "组织世界",
+    "href": "/admin/org"
+  },
+  {
+    "tag": "A",
+    "text": "运营自动化",
+    "href": "/admin/ops-schedule"
+  },
+  {
+    "tag": "A",
+    "text": "定时任务",
+    "href": "/admin/scheduler"
+  },
+  {
+    "tag": "A",
+    "text": "工厂日历",
+    "href": "/admin/calendars"
+  },
+  {
+    "tag": "A",
+    "text": "通知中心",
+    "href": "/admin/notifications"
+  },
+  {
+    "tag": "A",
+    "text": "闭环验证(VLE)",
+    "href": "/admin/validation"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "▾ 平台与系统",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "用户管理",
+    "href": "/admin/users"
+  },
+  {
+    "tag": "A",
+    "text": "权限策略",
+    "href": "/admin/permissions"
+  },
+  {
+    "tag": "A",
+    "text": "功能开通",
+    "href": "/admin/features"
+  },
+  {
+    "tag": "A",
+    "text": "LLM Provider",
+    "href": "/admin/llm-providers"
+  },
+  {
+    "tag": "A",
+    "text": "配置迁移",
+    "href": "/admin/config-migration"
+  },
+  {
+    "tag": "A",
+    "text": "系统自我",
+    "href": "/admin/meta"
+  },
+  {
+    "tag": "BUTTON",
+    "text": "交期风险与受影响订单 常州基地影响哪些订单？",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "text": "风险越线根因 常州物料齐套为什么这天越线？",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "text": "处置方案采纳写回 采纳常州的三班制方案",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "text": "物料齐套分析 下周哪些订单缺料开不了工？",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "text": "长协执行与补缺 7 月正极长协覆盖够吗？缺口怎么补？",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "text": "库存水位优化 哪些物料超储/欠储？能释放多少资金？",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "text": "经营驾驶舱",
+    "href": "/v/dash"
+  },
+  {
+    "tag": "A",
+    "text": "本体图谱",
+    "href": "/v/graph"
+  },
+  {
+    "tag": "A",
+    "text": "产能推演",
+    "href": "/v/risk"
+  },
+  {
+    "tag": "A",
+    "text": "订单台账",
+    "href": "/v/order"
+  },
+  {
+    "tag": "A",
+    "text": "规划体检",
+    "href": "/v/plan-audit"
+  },
+  {
+    "tag": "A",
+    "text": "规划建议",
+    "href": "/v/plan-generate"
+  },
+  {
+    "tag": "A",
+    "text": "接单可行性",
+    "href": "/v/project-sim"
+  },
+  {
+    "tag": "A",
+    "text": "月度规划",
+    "href": "/v/sop-balance"
+  },
+  {
+    "tag": "A",
+    "text": "接单组合优选",
+    "href": "/v/global-sim"
+  },
+  {
+    "tag": "A",
+    "text": "全链线路图",
+    "href": "/v/chain-line-map"
+  },
+  {
+    "tag": "A",
+    "text": "在途与在制",
+    "href": "/v/transit-flow"
+  },
+  {
+    "tag": "A",
+    "text": "物理拓扑",
+    "href": "/v/physical-topology"
+  },
+  {
+    "tag": "A",
+    "text": "节点检视",
+    "href": "/v/node-inspector"
+  },
+  {
+    "tag": "A",
+    "text": "全链阻滞点",
+    "href": "/v/chain-impediments"
+  },
+  {
+    "tag": "A",
+    "text": "流程等待态",
+    "href": "/v/process-wait"
+  },
+  {
+    "tag": "A",
+    "text": "采购四段腿分解",
+    "href": "/v/procurement-legs"
+  },
+  {
+    "tag": "A",
+    "text": "运营复盘",
+    "href": "/v/review"
+  },
+  {
+    "tag": "A",
+    "text": "年度规划",
+    "href": "/v/annual-scenario"
+  },
+  {
+    "tag": "A",
+    "text": "季度规划",
+    "href": "/v/quarterly-rolling"
+  },
+  {
+    "tag": "A",
+    "text": "订单进展与卡因",
+    "href": "/v/order-chain"
+  },
+  {
+    "tag": "A",
+    "text": "基地地理视图",
+    "href": "/v/geo-map"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·全景",
+    "href": "/v/graph-all"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·主干分级",
+    "href": "/v/graph-backbone"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·产能推演网络",
+    "href": "/v/graph-flow"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·数据来源",
+    "href": "/v/graph-source"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·求解器",
+    "href": "/v/graph-solver"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·MVP",
+    "href": "/v/graph-mvp"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·智能体网络",
+    "href": "/v/graph-agent"
+  },
+  {
+    "tag": "A",
+    "text": "图谱·学习闭环",
+    "href": "/v/graph-loop"
+  },
+  {
+    "tag": "A",
+    "text": "推演指控台",
+    "href": "/v/sim-console"
+  },
+  {
+    "tag": "A",
+    "text": "传导识别",
+    "href": "/v/sim-conduction"
+  },
+  {
+    "tag": "A",
+    "text": "损失归因",
+    "href": "/v/sim-attribution"
+  },
+  {
+    "tag": "A",
+    "text": "方案寻优",
+    "href": "/v/sim-optimize"
+  },
+  {
+    "tag": "A",
+    "text": "⚡ 全部场景启动器 →",
+    "href": "/scenarios"
+  }
+]

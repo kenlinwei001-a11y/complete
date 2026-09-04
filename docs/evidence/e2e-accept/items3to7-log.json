@@ -1,0 +1,420 @@
+{
+  "counters": {
+    "steps": 7,
+    "clicks": 7,
+    "navs": 7
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 230,
+    "127.0.0.1:4051": 19,
+    "127.0.0.1:4052": 12
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/risk_timeline/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/bottleneck_matrix/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/bundle",
+      "status": 404,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/generic_inference/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/live-scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/mitigation_select/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/base_capacity_outlook/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/gap_attribution/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/bottleneck_matrix/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/generic_inference/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/base_capacity_outlook/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/base_capacity_outlook/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/generic_inference/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/bottleneck_matrix/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/generic_inference/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/quarantine",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:40:52.316Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:40:52.342Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:40:53.094Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:40:53.137Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:40:53.139Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:40:53.144Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:40:54.890Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:40:54.973Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:40:55.173Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:40:58.542Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:40:58.542Z",
+      "kind": "SECTION",
+      "msg": "=== 项3 需求区间 P10/P50/P90 ==="
+    },
+    {
+      "t": "2026-09-04T02:40:58.542Z",
+      "kind": "STEP",
+      "msg": "#3 侧边栏 →「产能推演」"
+    },
+    {
+      "t": "2026-09-04T02:40:58.549Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「产能推演」"
+    },
+    {
+      "t": "2026-09-04T02:40:58.619Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/risk"
+    },
+    {
+      "t": "2026-09-04T02:40:59.074Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:41:05.663Z",
+      "kind": "P3",
+      "msg": "落地页有无 P10/P90",
+      "hasP10": false,
+      "hasP90": false,
+      "hasP50": false
+    },
+    {
+      "t": "2026-09-04T02:41:05.663Z",
+      "kind": "STEP",
+      "msg": "#4 点第一张基地风险卡展开（P10–P90 带在展开层里）"
+    },
+    {
+      "t": "2026-09-04T02:41:05.668Z",
+      "kind": "CLICK",
+      "msg": "#3 点「常州」基地卡"
+    },
+    {
+      "t": "2026-09-04T02:41:12.317Z",
+      "kind": "DUMP",
+      "msg": "i3-risk-expanded",
+      "chars": 15950
+    },
+    {
+      "t": "2026-09-04T02:41:12.439Z",
+      "kind": "SHOT",
+      "msg": "i3-risk-expanded"
+    },
+    {
+      "t": "2026-09-04T02:41:12.444Z",
+      "kind": "P3",
+      "msg": "展开后",
+      "hasP10": false,
+      "hasP90": false,
+      "hasP50": true
+    },
+    {
+      "t": "2026-09-04T02:41:12.444Z",
+      "kind": "SECTION",
+      "msg": "=== 项6 订单→工单 fulfills ==="
+    },
+    {
+      "t": "2026-09-04T02:41:12.444Z",
+      "kind": "STEP",
+      "msg": "#5 侧边栏 →「订单台账」"
+    },
+    {
+      "t": "2026-09-04T02:41:12.447Z",
+      "kind": "CLICK",
+      "msg": "#5 侧边栏 →「订单台账」"
+    },
+    {
+      "t": "2026-09-04T02:41:12.496Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/order"
+    },
+    {
+      "t": "2026-09-04T02:41:19.544Z",
+      "kind": "DUMP",
+      "msg": "i6-order-list",
+      "chars": 3700
+    },
+    {
+      "t": "2026-09-04T02:41:19.814Z",
+      "kind": "SHOT",
+      "msg": "i6-order-list"
+    },
+    {
+      "t": "2026-09-04T02:41:19.814Z",
+      "kind": "P6",
+      "msg": "台账页",
+      "有工单字样": false,
+      "覆盖率字样": false
+    },
+    {
+      "t": "2026-09-04T02:41:19.814Z",
+      "kind": "STEP",
+      "msg": "#6 点第一张订单（看能不能看到兑现它的工单）"
+    },
+    {
+      "t": "2026-09-04T02:41:19.833Z",
+      "kind": "CLICK",
+      "msg": "#6 点订单「SO-3391」"
+    },
+    {
+      "t": "2026-09-04T02:41:26.406Z",
+      "kind": "DUMP",
+      "msg": "i6-order-detail",
+      "chars": 3955
+    },
+    {
+      "t": "2026-09-04T02:41:26.616Z",
+      "kind": "SHOT",
+      "msg": "i6-order-detail"
+    },
+    {
+      "t": "2026-09-04T02:41:26.617Z",
+      "kind": "P6",
+      "msg": "订单详情",
+      "hasFulfills": false,
+      "hasWorkOrder": false,
+      "coverage": [],
+      "woIds": []
+    },
+    {
+      "t": "2026-09-04T02:41:26.617Z",
+      "kind": "SECTION",
+      "msg": "=== 项7 隔离区丢弃 ==="
+    },
+    {
+      "t": "2026-09-04T02:41:26.617Z",
+      "kind": "STEP",
+      "msg": "#7 侧边栏 →「隔离区」"
+    },
+    {
+      "t": "2026-09-04T02:41:26.619Z",
+      "kind": "CLICK",
+      "msg": "#7 侧边栏 →「隔离区」"
+    },
+    {
+      "t": "2026-09-04T02:41:26.726Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/admin/quarantine"
+    },
+    {
+      "t": "2026-09-04T02:41:33.736Z",
+      "kind": "DUMP",
+      "msg": "i7-quarantine",
+      "chars": 628
+    },
+    {
+      "t": "2026-09-04T02:41:33.826Z",
+      "kind": "SHOT",
+      "msg": "i7-quarantine"
+    },
+    {
+      "t": "2026-09-04T02:41:33.829Z",
+      "kind": "P7",
+      "msg": "隔离区按钮",
+      "btns": "🕐 | 健康度 | 🌙 | A\nadmin\n▾ | ▾\n规划与平衡 | ▾\n推演 | ▾\n台账与地图 | ▾\n数据接入 | ▾\n建模与图谱 | ▾\n图谱体系 | ▾\n规则与校准 | ▾\n构建与成长 | ▾\n编排与场景 | ▾\n运营与审批 | ▾\n平台与系统 | 待处理 | 已重入 | 已丢弃"
+    }
+  ]
+}

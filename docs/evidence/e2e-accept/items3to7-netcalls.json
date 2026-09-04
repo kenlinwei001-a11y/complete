@@ -1,0 +1,188 @@
+[
+  {
+    "port": "4051",
+    "path": "/a/v1/auth/refresh",
+    "status": 401,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/auth/login",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/me/workspace",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/history/watermark",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/data-health",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/scenarios",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/tenants/demo/features",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/scenes",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/solvers/risk_timeline/invoke",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/solvers/bottleneck_matrix/invoke",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/history/bundle",
+    "status": 404,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/sim/propagation-rules",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/sim/sessions",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/solvers/generic_inference/invoke",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/rules",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/sim/live-scenarios",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/solvers/mitigation_select/invoke",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/base_capacity_outlook/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/solvers/gap_attribution/invoke",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/bottleneck_matrix/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/generic_inference/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/base_capacity_outlook/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/base_capacity_outlook/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/generic_inference/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/bottleneck_matrix/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/solvers/generic_inference/run",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/scenes",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/objects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4052",
+    "path": "/b/v1/outbox",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "port": "4051",
+    "path": "/a/v1/quarantine",
+    "status": 200,
+    "method": "GET"
+  }
+]

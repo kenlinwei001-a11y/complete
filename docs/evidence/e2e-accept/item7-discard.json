@@ -1,0 +1,35 @@
+{
+  "rowsOnScreen": [
+    "e2e_probe 主键重复 {\"sku\":\"A-1\",\"name\":\"丙\",\"qty\":30} 主键 'sku'='A-1' 重复 重入 丢弃",
+    "e2e_probe 主键重复 {\"sku\":\"A-1\",\"name\":\"丁\",\"qty\":40} 主键 'sku'='A-1' 重复 重入 丢弃",
+    "e2e_probe 结构不符 {\"sku\":\"\",\"name\":\"戊\",\"qty\":50} 主键 'sku' 缺失 重入 丢弃",
+    "e2e_probe 主键重复 {\"sku\":\"A-2\",\"name\":\"己\",\"qty\":60} 主键 'sku'='A-2' 重复 重入 丢弃"
+  ],
+  "blank": {
+    "出现理由框": true,
+    "理由空时确认按钮禁用": true,
+    "空理由发出的请求": []
+  },
+  "filled": {
+    "请求": [
+      {
+        "port": "4051",
+        "path": "/a/v1/quarantine/discard",
+        "status": 200,
+        "method": "POST"
+      }
+    ],
+    "按钮禁用": false,
+    "toast": [
+      "已丢弃",
+      "已丢弃"
+    ]
+  },
+  "readback": {
+    "屏上找得到理由原文": true,
+    "含 discarded 标记": true,
+    "相关行": [
+      "e2e_probe\t主键重复\t{\"sku\":\"A-1\",\"name\":\"丙\",\"qty\":30}\t主键 'sku'='A-1' 重复 | discarded: E2E 验收：源系统主键重复，已在上游修正，本行作废\t—"
+    ]
+  }
+}

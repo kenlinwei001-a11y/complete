@@ -1,0 +1,300 @@
+{
+  "domKey": "dom_demo_capacity",
+  "patch": {
+    "id": "draft_3waedzzc89z9hpxy",
+    "tenantId": "demo",
+    "status": "REVIEWED",
+    "rawDatasetIds": [
+      "rds_s7zttkdtev2fpgwm"
+    ],
+    "fkCandidates": [],
+    "suggestion": {
+      "objectTypes": [
+        {
+          "action": "CREATE",
+          "existingTypeKey": null,
+          "typeKey": "E2eProbe",
+          "displayName": "e2e_probe",
+          "domain": "dom_demo_capacity",
+          "sourceDataset": "e2e_probe",
+          "properties": [
+            {
+              "propKey": "sku",
+              "sourceField": "sku",
+              "dataType": "enum",
+              "isPrimaryKey": true,
+              "refToTypeKey": null
+            },
+            {
+              "propKey": "name",
+              "sourceField": "name",
+              "dataType": "string",
+              "isPrimaryKey": false,
+              "refToTypeKey": null
+            },
+            {
+              "propKey": "qty",
+              "sourceField": "qty",
+              "dataType": "number",
+              "isPrimaryKey": false,
+              "refToTypeKey": null
+            }
+          ],
+          "derivedProperties": [],
+          "confidence": 1
+        }
+      ],
+      "linkTypes": []
+    },
+    "operationLog": [
+      {
+        "at": "2026-09-04T02:50:14.647Z",
+        "operation": {
+          "op": "setDomain",
+          "typeKey": "E2eProbe",
+          "domain": "dom_demo_capacity"
+        }
+      },
+      {
+        "at": "2026-09-04T02:50:14.647Z",
+        "operation": {
+          "op": "setPrimaryKey",
+          "typeKey": "E2eProbe",
+          "propKey": "sku"
+        }
+      }
+    ],
+    "createdAt": "2026-09-04T02:50:14.626Z",
+    "datasets": [
+      {
+        "name": "e2e_probe",
+        "fields": [
+          {
+            "name": "sku",
+            "inferredType": "string",
+            "samples": [
+              "A-1",
+              "A-2"
+            ],
+            "nullRate": 0.167,
+            "uniqueRate": 0.4,
+            "enumCandidates": [
+              "A-1",
+              "A-2"
+            ]
+          },
+          {
+            "name": "name",
+            "inferredType": "string",
+            "samples": [
+              "甲",
+              "乙",
+              "丙",
+              "丁",
+              "戊"
+            ],
+            "nullRate": 0,
+            "uniqueRate": 1
+          },
+          {
+            "name": "qty",
+            "inferredType": "number",
+            "samples": [
+              10,
+              20,
+              30,
+              40,
+              50
+            ],
+            "nullRate": 0,
+            "uniqueRate": 1
+          }
+        ]
+      }
+    ]
+  },
+  "pub2": {
+    "ok": true,
+    "draft": {
+      "id": "draft_3waedzzc89z9hpxy",
+      "tenantId": "demo",
+      "status": "PUBLISHED",
+      "rawDatasetIds": [
+        "rds_s7zttkdtev2fpgwm"
+      ],
+      "fkCandidates": [],
+      "suggestion": {
+        "objectTypes": [
+          {
+            "action": "CREATE",
+            "existingTypeKey": null,
+            "typeKey": "E2eProbe",
+            "displayName": "e2e_probe",
+            "domain": "dom_demo_capacity",
+            "sourceDataset": "e2e_probe",
+            "properties": [
+              {
+                "propKey": "sku",
+                "sourceField": "sku",
+                "dataType": "enum",
+                "isPrimaryKey": true,
+                "refToTypeKey": null
+              },
+              {
+                "propKey": "name",
+                "sourceField": "name",
+                "dataType": "string",
+                "isPrimaryKey": false,
+                "refToTypeKey": null
+              },
+              {
+                "propKey": "qty",
+                "sourceField": "qty",
+                "dataType": "number",
+                "isPrimaryKey": false,
+                "refToTypeKey": null
+              }
+            ],
+            "derivedProperties": [],
+            "confidence": 1
+          }
+        ],
+        "linkTypes": []
+      },
+      "operationLog": [
+        {
+          "at": "2026-09-04T02:50:14.647Z",
+          "operation": {
+            "op": "setDomain",
+            "typeKey": "E2eProbe",
+            "domain": "dom_demo_capacity"
+          }
+        },
+        {
+          "at": "2026-09-04T02:50:14.647Z",
+          "operation": {
+            "op": "setPrimaryKey",
+            "typeKey": "E2eProbe",
+            "propKey": "sku"
+          }
+        }
+      ],
+      "createdAt": "2026-09-04T02:50:14.626Z",
+      "publishedVersion": 2
+    },
+    "ontologyVersion": 2
+  },
+  "mat2": {
+    "jobId": "job_g1ytsc5cck3havgr",
+    "created": 2,
+    "quarantined": 4
+  },
+  "quarantine": {
+    "total": 4,
+    "byReason": {
+      "DUP_KEY": 3,
+      "SCHEMA_MISMATCH": 1
+    },
+    "sample": [
+      {
+        "id": "qr_x5pp8x09a40bf8t5",
+        "tenantId": "demo",
+        "connId": "rds_8wdt7qg1n7r6mg7v",
+        "dataset": "e2e_probe",
+        "raw": {
+          "sku": "A-1",
+          "name": "丙",
+          "qty": 30
+        },
+        "reason": "DUP_KEY",
+        "detail": "主键 'sku'='A-1' 重复",
+        "status": "PENDING",
+        "reprocess": {
+          "targetKey": "E2eProbe",
+          "mapping": [
+            {
+              "propKey": "sku",
+              "sourceField": "sku"
+            },
+            {
+              "propKey": "name",
+              "sourceField": "name"
+            },
+            {
+              "propKey": "qty",
+              "sourceField": "qty"
+            }
+          ],
+          "pk": "sku"
+        },
+        "createdAt": "2026-09-04T02:50:14.681Z"
+      },
+      {
+        "id": "qr_0mh2apq400hnv2m8",
+        "tenantId": "demo",
+        "connId": "rds_8wdt7qg1n7r6mg7v",
+        "dataset": "e2e_probe",
+        "raw": {
+          "sku": "A-1",
+          "name": "丁",
+          "qty": 40
+        },
+        "reason": "DUP_KEY",
+        "detail": "主键 'sku'='A-1' 重复",
+        "status": "PENDING",
+        "reprocess": {
+          "targetKey": "E2eProbe",
+          "mapping": [
+            {
+              "propKey": "sku",
+              "sourceField": "sku"
+            },
+            {
+              "propKey": "name",
+              "sourceField": "name"
+            },
+            {
+              "propKey": "qty",
+              "sourceField": "qty"
+            }
+          ],
+          "pk": "sku"
+        },
+        "createdAt": "2026-09-04T02:50:14.681Z"
+      },
+      {
+        "id": "qr_8703hbjpks9vtnr0",
+        "tenantId": "demo",
+        "connId": "rds_8wdt7qg1n7r6mg7v",
+        "dataset": "e2e_probe",
+        "raw": {
+          "sku": "",
+          "name": "戊",
+          "qty": 50
+        },
+        "reason": "SCHEMA_MISMATCH",
+        "detail": "主键 'sku' 缺失",
+        "status": "PENDING",
+        "reprocess": {
+          "targetKey": "E2eProbe",
+          "mapping": [
+            {
+              "propKey": "sku",
+              "sourceField": "sku"
+            },
+            {
+              "propKey": "name",
+              "sourceField": "name"
+            },
+            {
+              "propKey": "qty",
+              "sourceField": "qty"
+            }
+          ],
+          "pk": "sku"
+        },
+        "createdAt": "2026-09-04T02:50:14.681Z"
+      }
+    ]
+  }
+}
