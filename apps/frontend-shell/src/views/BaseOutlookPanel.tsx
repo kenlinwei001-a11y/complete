@@ -19,6 +19,11 @@ interface DayAction { day: number; date: string; action: string; rationale: stri
 interface Horizon {
   horizon: number; windowStart: string; windowEnd: string; lines: OutlookLine[];
   available: number; inProduction: number; futureOrders: number; salesForecast: number;
+  /**
+   * WO-UNCERTAINTY-INPUTS · 销售预测三点区间（后端 `base_capacity_outlook` 下发）。
+   * optional：老后端不下发时前端只显示点估计，**不臆造区间**（"没有区间"≠"区间为零"）。
+   */
+  salesForecastBand?: { conservative: number; baseline: number; optimistic: number };
   demand: number; gap: number; status: "缺口" | "富余" | "平衡"; crossDay: number | null; dayPlan: DayAction[];
 }
 // WO-CAPACITY-DEEPEN-ADDITIVE 块D · byModel 每产品前瞻（后端 base_capacity_outlook 纯加字段·optional）。
@@ -198,6 +203,53 @@ export function BaseOutlookPanel({ baseId }: { baseId: string }) {
                 </div>
               );
             })}
+
+            {/*
+              WO-UNCERTAINTY-INPUTS · 销售预测的不确定性区间上屏。
+              这一行答的是"这个预测有多不确定"——此前屏上只有一个点，而那个点的字段名里写着 P50，
+              **上下游却没有第二个分位**，于是"中位数"三个字在屏上没有任何支撑。
+              区间端点来自 DemandSegment 的 P90/P10 两个真字段（不是把点估计乘一个系数拍出来的带子）。
+            */}
+            {hz.salesForecastBand && hz.salesForecastBand.optimistic > hz.salesForecastBand.conservative && (
+              <div
+                data-testid="outlook-forecast-band"
+                style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginTop: 2 }}
+              >
+                <span style={{ width: 92, color: "var(--muted2)", flexShrink: 0, fontSize: 11 }}>└ 预测区间</span>
+                <div style={{ flex: 1, height: 12, position: "relative" }}>
+                  {(() => {
+                    const maxV = Math.max(1, ...hz.lines.map((l) => l.value));
+                    const b = hz.salesForecastBand!;
+                    const pct = (v: number) => Math.min(100, Math.max(0, (v / maxV) * 100));
+                    const lo = pct(b.conservative);
+                    const hi = pct(b.optimistic);
+                    return (
+                      <>
+                        {/* P10–P90 带 */}
+                        <div style={{ position: "absolute", top: 4, left: `${lo}%`, width: `${Math.max(0.5, hi - lo)}%`, height: 4, borderRadius: 2, background: LINE_COLOR.salesForecast, opacity: 0.35 }} />
+                        {/* 基准（P50）刻度 */}
+                        <div style={{ position: "absolute", top: 1, left: `${pct(b.baseline)}%`, width: 2, height: 10, background: LINE_COLOR.salesForecast }} />
+                      </>
+                    );
+                  })()}
+                </div>
+                <span className="mono" data-testid="outlook-forecast-band-value" style={{ width: 82, textAlign: "right", flexShrink: 0, fontSize: 11, color: "var(--muted)" }}>
+                  <Provenance
+                    testId="outlook-forecast-band-prov"
+                    src="base_capacity_outlook 求解器"
+                    formula="同一条摊窗公式喂三个分位：保守 ← DemandSegment.demandWanPerYearP90 · 基准 ← …P50 · 乐观 ← …P10"
+                    inputs={[
+                      `保守 P90 ${fmt(hz.salesForecastBand.conservative)} 套`,
+                      `基准 P50 ${fmt(hz.salesForecastBand.baseline)} 套`,
+                      `乐观 P10 ${fmt(hz.salesForecastBand.optimistic)} 套`,
+                    ]}
+                    note="置信水平口径（P90 ≤ P50 ≤ P10）· 三次确定性求值，非采样/蒙特卡洛"
+                  >
+                    {fmt(hz.salesForecastBand.conservative)}–{fmt(hz.salesForecastBand.optimistic)}
+                  </Provenance>
+                </span>
+              </div>
+            )}
           </div>
 
           {/* P1 · 行动计划逐日推演过程（缺口窗·每条补 rationale：触发缺口值 + 收窄量 + provenance）。 */}

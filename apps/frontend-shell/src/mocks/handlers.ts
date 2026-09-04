@@ -3418,6 +3418,8 @@ export const handlers = [
           tgt: d.demandWanPerYearP50,
           demandWanPerYearP50: d.demandWanPerYearP50,
           demandWanPerYearP90: d.demandWanPerYearP90,
+          // WO-UNCERTAINTY-INPUTS：三点分布的上界（P90 ≤ P50 ≤ P10）。
+          demandWanPerYearP10: d.demandWanPerYearP10,
           act: d.act,
         },
       }));

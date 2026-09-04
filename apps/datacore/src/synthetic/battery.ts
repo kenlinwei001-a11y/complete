@@ -252,11 +252,42 @@ export function custIdOfCustomer(name: string): string | undefined {
  * 因为**订单层的业态配比必须跟它同锚**（见下 `SEG_VOLUME_SHARE_BY_BUSINESS_TYPE`）。数值一字未动。
  * 合计 375 万套/年 × `SEG_REGISTRY` 单价 = 700 亿 = `scaleAnchorRevenue.S`（被金值锁死的事实锚）。
  */
-export const SEG_DEMAND = [
+const SEG_DEMAND_ANCHOR = [
   { segment: "乘用车", tgt: 201.7, demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
   { segment: "储能", tgt: 139.2, demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
   { segment: "商用车", tgt: 34.1, demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
 ];
+
+/**
+ * WO-UNCERTAINTY-INPUTS · 需求三点分布的**乐观上界** P10（万套/年）。
+ *
+ * ── 口径（不是拍脑袋的数，是从**已有种子**推的）──────────────────────────────────
+ * 本仓的分位约定是**置信水平**式（SPE/PRMS 储量口径），不是"百分位越大数越大"：
+ *   `PXX = 有 XX% 把握至少达到这个数` ⇒ **P90 ≤ P50 ≤ P10**。
+ * 证据：`contracts/solvers.ts` 自述「P90 是**下**分位 ⇒ 恒 ≤ rolling」，
+ * 且上表三行实测 P90(199.6/108.4/34.0) 逐行 < P50(201.7/139.2/34.1)。
+ * ⇒ 缺的那一端是**乐观上界**，它的名字在这套约定里就是 P10。
+ *
+ * ── 宽度从哪来（出处 = 上表 P90，不新增任何魔数）────────────────────────────────
+ * 取**对数正态**（需求/储量预测的教科书默认分布，其对数以中位数为对称轴）⇒
+ *     P10 / P50 == P50 / P90     即     **P10 = P50² / P90**
+ * 于是"上侧宽度"完全由**已经在种子里的下侧宽度**决定：一个细分的 P90 离 P50 越远，
+ * 它的 P10 也就越远。不引入第二个离散度真相源，改 P90 时 P10 自动跟着动。
+ *
+ * 实测三行（seed 无关·纯常量算术）：
+ *   乘用车 201.7²/199.6 = 203.8 → 区间 199.6–203.8（±1%，长协锁量、可预测）
+ *   储能   139.2²/108.4 = 178.8 → 区间 108.4–178.8（−22%/+28%，本行业最不确定的一档）
+ *   商用车  34.1²/34.0  =  34.2 → 区间  34.0–34.2（±0.3%，体量小且稳）
+ *
+ * ⚠ R6 确定性：纯常量算术，**无 `Math.random`、无 `Date`、不读 seed** ⇒ 同 (industry, scale, seed)
+ * 重跑字节级一致。这也是本单**刻意不引入采样器**的原因——先把输入分布摆正，采样是另一张单。
+ */
+const demandP10FromP90 = (p50: number, p90: number): number => round((p50 * p50) / p90, 1);
+
+export const SEG_DEMAND = SEG_DEMAND_ANCHOR.map((d) => ({
+  ...d,
+  demandWanPerYearP10: demandP10FromP90(d.demandWanPerYearP50, d.demandWanPerYearP90),
+}));
 
 /**
  * 需求锚的**业态量份额**（passenger / storage / commercial），由 `SEG_DEMAND` 现算。
@@ -1525,6 +1556,8 @@ const demandSegmentProps: PropertyDef[] = [
   // 的「万套/**窗口**」是两个量。只写「万套」正是让用户在屏上分不出的那半个信息。
   { propKey: "demandWanPerYearP50", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "需求预测中位口径 P50（万套/年）" },
   { propKey: "demandWanPerYearP90", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "需求预测保守下分位 P90（万套/年·≤ P50）" },
+  // WO-UNCERTAINTY-INPUTS：三点分布的上界。置信水平式约定 ⇒ P90 ≤ P50 ≤ P10（见 SEG_DEMAND 处口径说明）。
+  { propKey: "demandWanPerYearP10", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "需求预测乐观上分位 P10（万套/年·≥ P50·= P50²/P90 对数正态镜像）" },
   { propKey: "act", dataType: "number", isPrimaryKey: false, unit: "万套", scale: "absolute" }, // 实际(万)
   { propKey: "priceWan", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute" }, // 单价(万/万件)
   { propKey: "marginPct", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 毛利率(%)
@@ -2557,7 +2590,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Segment.segKey": "细分编码", "Segment.name": "细分名称", "Segment.gmRate": "毛利率",
   "Segment.baselineShare": "基线份额",
   "DemandSegment.segId": "需求细分编号", "DemandSegment.segment": "细分名称", "DemandSegment.tgt": "目标量",
-  "DemandSegment.demandWanPerYearP50": "需求P50(万套/年)", "DemandSegment.demandWanPerYearP90": "需求P90(万套/年)", "DemandSegment.act": "实际量",
+  "DemandSegment.demandWanPerYearP50": "需求P50(万套/年)", "DemandSegment.demandWanPerYearP90": "需求P90(万套/年)", "DemandSegment.demandWanPerYearP10": "需求P10(万套/年)", "DemandSegment.act": "实际量",
   "DemandSegment.priceWan": "单价", "DemandSegment.marginPct": "毛利率", "DemandSegment.floorPct": "毛利底线",
   "DemandSegment.businessType": "业务类型",
   "FinancePlan.finId": "财务科目编号", "FinancePlan.line": "科目", "FinancePlan.budget": "预算",
@@ -5420,7 +5453,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   });
   const demandSegments = SEGMENTS.map((s, i) => ({
     segId: `dseg-${i + 1}`, segment: s.segment, tgt: s.tgt,
-    demandWanPerYearP50: s.demandWanPerYearP50, demandWanPerYearP90: s.demandWanPerYearP90, act: s.act,
+    demandWanPerYearP50: s.demandWanPerYearP50, demandWanPerYearP90: s.demandWanPerYearP90,
+    // WO-UNCERTAINTY-INPUTS：乐观上界随 SEG_DEMAND 一起下发（P90 ≤ P50 ≤ P10）。
+    demandWanPerYearP10: s.demandWanPerYearP10, act: s.act,
     priceWan: s.price, marginPct: s.margin, floorPct: s.floor,
     // WO-W5·业务类型维度（additive·细分名 → 类型枚举·求解器按类聚合预测口径）。
     businessType: businessTypeOfSegment(s.segment),

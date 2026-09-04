@@ -16,6 +16,8 @@ type DayAction = { day: number; date: string; action: string; rationale: string;
 type Horizon = {
   horizon: number; windowStart: string; windowEnd: string; lines: Line[];
   available: number; inProduction: number; futureOrders: number; salesForecast: number;
+  /** WO-UNCERTAINTY-INPUTS · 销售预测三点区间（保守 P90 / 基准 P50 / 乐观 P10）。 */
+  salesForecastBand: { conservative: number; baseline: number; optimistic: number };
   demand: number; gap: number; status: "缺口" | "富余" | "平衡"; crossDay: number | null; dayPlan: DayAction[];
 };
 type Outlook = { baseId: string; baseName: string; forecastStart: string; horizons: Horizon[]; dayPlan: DayAction[]; summary: string };
@@ -101,6 +103,54 @@ describe("WO-B / F1 · base_capacity_outlook 每基地前瞻产能推演", () =>
 
     const after = lineOf((await run(t, { baseId: "changzhou", horizon: 90 })).horizons[0]!, "salesForecast").value;
     expect(after).toBeGreaterThan(before); // 预测线随 p50 真升（非写死）
+  });
+
+  /**
+   * WO-UNCERTAINTY-INPUTS · **对照实验**（铁律 1.5 判据一）—— 本单的验收判据，不是补充测试。
+   *
+   * 「跑得起来」不度量「算得对」。三点区间跑通、屏上有数、四包全绿，都证明不了
+   * **分位有没有接错路**。唯一能证明的是这条对照实验：
+   *   把 P90 改成 1.5×（P50/P10 不动）⇒ 保守读数必须变大，而**基准读数一位都不许变**。
+   *   基准若跟着变 = P90 渗进了基准路径 = bug（这正是本仓 `priceShock` 那条边的病样：
+   *   链路完整、规则已发布、读数会动，三分法全过，而公式里少了一项）。
+   *
+   * ⚠ 判据落在**基准不变**上，不是「保守变了」——「某个数动了」太容易满足，
+   * 它连接错路的情形也一起满足。不变的那个才是真判据。
+   */
+  it("WO-UNCERTAINTY-INPUTS 对照实验：P90×1.5（P50/P10 不动）→ 保守读数升、**基准读数逐位不变**", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const h0 = (await run(t, { baseId: "changzhou", horizon: 30 })).horizons[0]!;
+    const beforeBand = h0.salesForecastBand;
+    const beforeBaseline = h0.salesForecast;
+
+    // 金丝雀：区间必须真有宽度且保序，否则下面「变/不变」验的是一个塌成点的东西。
+    expect(beforeBand, "没有 salesForecastBand ⇒ 本单的字段没接上，一切结论作废").toBeTruthy();
+    expect(beforeBand.conservative).toBeLessThan(beforeBand.baseline);
+    expect(beforeBand.baseline).toBeLessThan(beforeBand.optimistic);
+
+    // 只动 P90（P50/P10 一个都不碰）。
+    const segObjs = await t.repos.objects.listByType("demo", "DemandSegment");
+    const p50Before = segObjs.map((s) => Number(s.props.demandWanPerYearP50));
+    const p10Before = segObjs.map((s) => Number(s.props.demandWanPerYearP10));
+    for (const s of segObjs) {
+      s.props.demandWanPerYearP90 = Number(s.props.demandWanPerYearP90) * 1.5;
+      await t.repos.objects.put(s);
+    }
+    const after = (await run(t, { baseId: "changzhou", horizon: 30 })).horizons[0]!;
+
+    // 自证：P50/P10 确实没被这次改动碰到（不然"基准不变"是因为输入压根没变，白证一场）。
+    const segAfter = await t.repos.objects.listByType("demo", "DemandSegment");
+    expect(segAfter.map((s) => Number(s.props.demandWanPerYearP50))).toEqual(p50Before);
+    expect(segAfter.map((s) => Number(s.props.demandWanPerYearP10))).toEqual(p10Before);
+
+    // ① 保守读数必须变大（P90 驱动的那条路真的通）。
+    expect(after.salesForecastBand.conservative).toBeGreaterThan(beforeBand.conservative);
+    // ② 基准读数**逐位不变** —— 这是本条的真判据。
+    expect(after.salesForecast, "P90 渗进了基准路径 ⇒ bug").toBe(beforeBaseline);
+    expect(after.salesForecastBand.baseline).toBe(beforeBand.baseline);
+    // ③ 乐观读数也不许被 P90 带动（P10 才是它的驱动量）。
+    expect(after.salesForecastBand.optimistic).toBe(beforeBand.optimistic);
   });
 
   it("R6 确定性 + 基地名归一：同输入字节级一致；baseId「合肥」与「hefei」返回同基地（forecastStart 锚·无时钟）", async () => {
