@@ -2080,7 +2080,7 @@ export interface BoundaryImpactRow {
   registry: string;
   title: string;
   members: number;
-  consumers: { file: string; binding: string; derivesVia: string }[];
+  consumers: { surface: string; file: string; binding: string; derivesVia: string }[];
   downstream: string[];
 }
 export interface BoundaryVersionVM {
