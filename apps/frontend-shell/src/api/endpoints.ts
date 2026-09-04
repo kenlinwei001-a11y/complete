@@ -276,7 +276,7 @@ export const fetchObjectTypes = () =>
   // `refToTypeKey`：该属性是指向哪个对象类型的外键（建结构边时用来认出「哪几个属性能实现这条边」）。
   // `constraintRefs`：该类型挂了哪些**已发布**规则当对象约束（后端 domain.ts `ObjectTypeDef` 同名字段）。
   // ⚠ 两者出处不同层：`refToTypeKey` 在**属性**上，`constraintRefs` 在**类型**上 —— 别合并到同一层。
-  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean; displayName?: string; refToTypeKey?: string | null }[]; sourceBindings?: { connId: string; dataset: string }[]; derivedProperties?: { propKey: string; formula: string }[]; constraintRefs?: ObjectConstraintRef[] }[]>(
+  api.a<{ key: string; displayName: string; domain?: string; properties: { propKey: string; dataType: string; isPrimaryKey: boolean; unit?: string; temporal?: boolean; displayName?: string; refToTypeKey?: string | null }[]; sourceBindings?: { connId: string; dataset: string }[]; derivedProperties?: { propKey: string; formula: string; unit?: string; displayName?: string }[]; constraintRefs?: ObjectConstraintRef[] }[]>(
     "/a/v1/ontology/object-types",
   );
 
