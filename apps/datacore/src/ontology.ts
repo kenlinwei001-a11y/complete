@@ -567,21 +567,35 @@ export class OntologyService {
       .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
       // 行级过滤读**未投影**的 props（策略作者可用不可读字段做行筛选）；投影只作用于返回值。
       .filter((o) => this.matchFilter(o.props, filter))
-      .sort((a, b) => (a.id < b.id ? -1 : 1))
-      .slice(0, Math.min(limit, 1000));
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    /**
+     * WO-PAGING-SILENT-TRUNCATION-SCAN · 截断必须**说出来**。
+     * 下面这个 `slice` 是给 agent 的上下文预算（有存在的理由，不动它）；
+     * 有问题的是它此前**一声不响**：回包只有一个裸数组，`Order` 真值 500 而 agent 收到 100 行，
+     * 长得和「一共就 100 张单」完全一样。`total`/`truncated` 让调用方**有可能察觉**，
+     * 与 `GET /a/v1/objects` 的 `hasMore` 是同一条纪律。
+     */
+    const matchedTotal = visible.length;
+    const cap = Math.min(limit, 1000);
+    const page = visible.slice(0, cap);
+    const truncated = matchedTotal > cap;
     if (asOfEpoch === undefined) {
       return {
-        data: visible.map((o) => ({ id: o.id, type: o.type, props: this.authz.projectProps(dec, o.props) })),
+        data: page.map((o) => ({ id: o.id, type: o.type, props: this.authz.projectProps(dec, o.props) })),
         snapshotVersion: await this.snapshotVersion(ctx.tenantId),
+        total: matchedTotal,
+        truncated,
       };
     }
     const type = await this.getType(ctx, objectType);
     const temporal = new Set((type?.properties ?? []).filter((p) => p.temporal).map((p) => p.propKey));
-    const data = await Promise.all(visible.map((o) => this.objectAsOf(ctx.tenantId, o, temporal, asOfEpoch)));
+    const data = await Promise.all(page.map((o) => this.objectAsOf(ctx.tenantId, o, temporal, asOfEpoch)));
     // 时间回溯读同样过列级投影（否则 asOfEpoch 成为绕过列级安全的后门）。
     return {
       data: data.map((d) => ({ ...d, props: this.authz.projectProps(dec, d.props) })),
       snapshotVersion: `${await this.snapshotVersion(ctx.tenantId)}@${asOfEpoch}`,
+      total: matchedTotal,
+      truncated,
     };
   }
 
