@@ -1145,7 +1145,16 @@ const modelProps: PropertyDef[] = [
    * 集成线上该字典已改为 `[...PROPERTY_UNITS]` 单源（约 48 词条）。结论不变：`元/件` 仍不在词库，
    * 声明它照样会被发布门 400 拒；变的只是「为什么不在」的理由。
    */
-  { propKey: "unitCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" },
+  // WO-INTEG-BATCH-5 收编补：`ontology-descriptions:check` 要求 ACTIVE 类型/属性带非空 description
+  // （本单落属性时漏了这一格 ⇒ 该门当场红）。描述照抄本文件 `modelUnitCosts()` 的算法段头，
+  // 不另写一套口径 —— 描述是能力语义，写偏了就是第二份真相源。
+  {
+    propKey: "unitCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute",
+    description:
+      "每型号按件履约成本（元/电芯）= Σ 该型号当期 BOM 明细 [ 用量 × (1 + 投料损耗率) × 物料单价 ]。" +
+      "一型号有多版 BOM 时取 bomId 字典序最小那份（= 初始量产版，判据与随机数无关）；" +
+      "纯派生、零随机零时钟，是成本侧绑定角色 unit_cost 的系数源，与同格 unitPrice 同阶配对即得单位毛利。",
+  },
   // C33 碳护照前置（NCM 体系碳足迹偏高 → 越线）。
   { propKey: "carbonFootprint", dataType: "number", isPrimaryKey: false, unit: "kgCO2e", scale: "absolute" },
   // Phase 2：产品工程域扩展属性（R12 全建模对齐）
@@ -1836,7 +1845,15 @@ const orderLineProps: PropertyDef[] = [
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 按行 model 反范式化（Model.unitPrice 单一来源·R14）
   // WO-UNITCOST-LAND：按件履约成本，按行 model 反范式化（`Model.unitCost` 单一来源·守 R14·勿写死）。
   // 与上面 `unitPrice` **完全同一口径同一取法** —— 营收侧与成本侧从此同阶，毛利才是单位经济学的毛利。
-  { propKey: "unitCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" },
+  // WO-INTEG-BATCH-5 收编补 description（同 `Model.unitCost` 那格的理由：本单落属性时漏了它，
+  // `ontology-descriptions:check` 当场红）。描述明写"值从型号侧反范式化下来"，
+  // 免得有人把这一格当成第二个可独立编辑的成本源。
+  {
+    propKey: "unitCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute",
+    description:
+      "该订单行的按件履约成本（元/电芯）—— 值由本行 model 从 `Model.unitCost` 反范式化下来，" +
+      "算法与唯一来源都在型号侧，本格不独立计算、不可单独改口径；与同行 unitPrice 配对即得该行单位毛利。",
+  },
 ];
 
 const inventoryTxnProps: PropertyDef[] = [
