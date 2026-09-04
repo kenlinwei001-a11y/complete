@@ -290,25 +290,37 @@ describe("§4 · 节点语义常量表（编辑口径）", () => {
     expect([...keys, "totally.made.up::node"].filter((k) => !CHAIN_NODE_IDS.includes(k))).toHaveLength(1);
   });
 
-  it("每条 cf 都有**能翻到的 file:line 依据**，且依据文件真的存在（指不出依据的一条都不许写）", () => {
+  /**
+   * 🔄 **判据换过一次（WO-RUI4-SOURCE-COORDS · 2026-09-04）**：原文要求每条依据是
+   * `file.ts:123` 形态并逐条核对文件/行号存在。**那个判据与 R-UI-4 直接冲突** ——
+   * `basis` 是**上屏文本**（下面「逐条附依据」那条用例就是断言它进 DOM 的），
+   * 而 R-UI-4 禁止源码文件名/行号出现在用户屏上。真浏览器实测：`/v/node-inspector` 曾因此
+   * 印出 34 处坐标（含 `apps/datacore/src/sim/propagation.ts:73`）。
+   *
+   * 换成的判据同样是**可核对的**，只是锚在业务标识上：契约名 / 对象类型.属性 /
+   * 求解器 key / 规则 key / 册名 —— 铁律 1.5 判据二要的正是这些。
+   * ⚠ 不许退回「只要非空就算」：那样这道门会退化成恒真的废门。
+   */
+  it("每条 cf 的依据都是**可核对的业务标识**，且**不含源码坐标**（R-UI-4）", () => {
+    // 与 rui4-source-coords.seam 同一形态的尺子（此处只需坐标形态，不扫树）。
+    const COORD = /(apps|packages|scripts)\/[A-Za-z0-9@._\-/]*\.(ts|tsx)(:\d+(-\d+)?)?|[A-Za-z0-9._-]+\.(ts|tsx):\d+/;
+    // 业务标识的可核对形态：反引号里的契约/字段/求解器名，或「规则 Cxx」「求解器 xxx」「契约 …」「…册」。
+    const BIZ = /`[^`]+`|规则\s*[A-Z]\d{2}|求解器\s*[a-z_]+|契约|册/;
     let checked = 0;
     for (const [, sem] of Object.entries(CHAIN_NODE_SEMANTICS)) {
       for (const c of sem?.cf ?? []) {
         expect(c.basis.length, `冲突 ${c.conflictId} 没给依据`).toBeGreaterThan(0);
         for (const b of c.basis) {
-          // 形如 `path/to/file.ts:123` 或 `…:123-456`
-          const m = /^([^\s:]+\.(?:ts|tsx)):(\d+)(?:-\d+)?/.exec(b);
-          expect(m, `依据不是 file:line 形态：${b}`).not.toBeNull();
-          const rel = m![1]!;
-          const line = Number(m![2]);
-          expect(existsSync(join(REPO_ROOT, rel)), `依据指向的文件不存在：${rel}`).toBe(true);
-          const lines = readRepo(rel).split("\n");
-          expect(line, `依据行号越界：${b}（该文件共 ${lines.length} 行）`).toBeLessThanOrEqual(lines.length);
+          expect(COORD.test(b), `R-UI-4 违规：依据里带源码坐标（它会上屏）：${b}`).toBe(false);
+          expect(BIZ.test(b), `依据指不出业务标识（契约名/对象类型.属性/求解器 key/规则 key/册名）：${b}`).toBe(true);
           checked += 1;
         }
       }
     }
     expect(checked, "一条 cf 依据都没检到 ⇒ 本例是恒真的废门").toBeGreaterThan(8);
+    // 反面锚：两个方向都咬得住（坐标必被抓 · 空泛串必被抓）
+    expect(COORD.test("apps/datacore/src/sim/propagation.ts:73")).toBe(true);
+    expect(BIZ.test("反正就是那么回事")).toBe(false);
   });
 
   it("写了语义的节点：`pos` 上屏且标明是**编辑口径不是引擎下发**", async () => {
