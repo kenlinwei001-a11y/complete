@@ -18,6 +18,19 @@ export type AuthCtx = z.infer<typeof AuthCtxSchema>;
 export const ToolPayloadSchema = z.object({
   data: z.unknown(),
   snapshotVersion: z.string(),
+  /**
+   * WO-PAGING-SILENT-TRUNCATION-SCAN · **截断可察觉性**（列表型 payload 才有）。
+   *
+   * `POST /a/v1/objects/query` 的 `data` 是一个**裸数组**，服务端按 `min(limit ?? 100, 1000)`
+   * 截断 —— 而回包里此前**没有任何一个字段说出这件事**：`Order` 真值 500，agent 拿到 100 行，
+   * 数组本身长得和「一共就 100 张单」一模一样。这正是 `GET /a/v1/objects` 那个洞
+   * 在 A↔B 接缝上的同一形态（那边至少还有 `hasMore`，这边一个信号都没有）。
+   *
+   * `total` = 过滤后**符合条件的总行数**（独立于 limit）；`truncated` = 本次是否没给全。
+   * `data` 的形状**一个字节都没动**（仍是裸数组），只在它旁边把真相说出来。
+   */
+  total: z.number().int().nonnegative().optional(),
+  truncated: z.boolean().optional(),
 });
 export type ToolPayload = z.infer<typeof ToolPayloadSchema>;
 
