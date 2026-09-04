@@ -504,7 +504,7 @@ function tooltipOpeningTags(src: string): string[] {
  */
 
 /** 未解析到的插值占位符（既不贡献长度也不贡献标点，只标记「这里不确定」）。 */
-const UNRESOLVED_MARK = " ";
+const UNRESOLVED_MARK = "\u0000";
 
 /**
  * 「需要阅读」判据（口径不变，只是喂给它的东西从源码换成渲染文本）：
