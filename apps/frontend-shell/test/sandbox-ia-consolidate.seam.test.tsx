@@ -70,6 +70,8 @@ import { SANDBOX_MODES, SANDBOX_MODE_LABEL, type SandboxMode } from "@/views/sim
 import { ChainLossPayloadSchema, type ChainLossPayload } from "@/views/sim/chainLineMap";
 import { ChainImpedimentPayloadSchema, type ChainImpedimentPayload } from "@/views/sim/chainImpediment";
 import { NAV_GROUPS, CONSOLIDATED_INTO_SANDBOX } from "@/pages/ShellLayout";
+// 合并壳的档表 —— 收编表里 `host: "sim-unified"` 那一桶的可达性判据取自这里（不另抄键名，抄了就会漂）
+import { UNIFIED_MODES, UNIFIED_MODE_SPEC, UNIFIED_MODE_RENDERER_KEYS } from "@/views/sim/unified/unifiedModes";
 import { getRenderer } from "@/views/registry";
 import { routes } from "@/App";
 import { ACCOUNTS, workspaceForAccount } from "@/mocks/fixtures";
@@ -370,7 +372,13 @@ describe("§件三 · 模式切换 = 换一整屏，不是叠一屏", () => {
     await ready();
     const box = screen.getByTestId("sandbox-consolidated-links");
     const shown = Array.from(box.querySelectorAll("a")).map((a) => (a.getAttribute("data-testid") ?? "").replace(/^sandbox-consolidated-/, ""));
-    expect(shown.slice().sort()).toEqual(Object.keys(CONSOLIDATED_INTO_SANDBOX).slice().sort());
+    // ⚠ 比的是**宿主是本页**的那一桶，不是全表：`WO-SIM-NAV-UNIFIED` 之后收编表有两个宿主
+    //   （12 条进本页、4 条进合并壳 `/v/sim-unified`）。拿本页去要那 4 条的链接，红的是判据不是产品。
+    //   放宽的那一半由下一条「host 桶必须穷举全表 + 合并壳侧逐条挂得住」补回来 —— **两条一起读才是完整判据**。
+    const hostedHere = Object.keys(CONSOLIDATED_INTO_SANDBOX).filter((k) => CONSOLIDATED_INTO_SANDBOX[k]!.host === "sim-sandbox");
+    // 🐤 金丝雀：本页宿主桶非空（空了 ⇒ 下面这个 toEqual 变成「空 == 空」恒真，漂移再也验不到）
+    expect(hostedHere.length, "本页宿主桶为空 ⇒ host 字段或过滤坏了，先修尺子再读结论").toBeGreaterThan(0);
+    expect(shown.slice().sort()).toEqual(hostedHere.slice().sort());
     // 每条的 href 就是那个键的深链接（写错 href = 清单在，点过去 404）
     for (const a of Array.from(box.querySelectorAll("a"))) {
       const key = (a.getAttribute("data-testid") ?? "").replace(/^sandbox-consolidated-/, "");
@@ -378,6 +386,61 @@ describe("§件三 · 模式切换 = 换一整屏，不是叠一屏", () => {
     }
     // 默认折叠（第二层，不占第一层——仓主原话「信息太多，第一层看不到重点」）
     expect((box as HTMLDetailsElement).open).toBe(false);
+  });
+
+  /**
+   * ── 上一条那个 `host === "sim-sandbox"` 过滤的**补强**（缺了这条，过滤就是豁免通道）────────
+   *
+   * 病样：上一条与 `sandbox-ui-integrate` ② 都改成了「只查本页宿主的那一桶」。
+   * 光这么改，**给一个条目写上别的 host 就能让它从两条断言里同时消失** —— 收编承诺被掏空而全绿。
+   * 那正是本仓最恨的形态：「我用『过滤后的桶全绿』当作『全表都被验过』的证据，而前者并不度量后者。」
+   *
+   * 故本条咬两件上一条不咬的事，且**只用机器读得到的字段**（`host` / `UNIFIED_MODE_SPEC`），
+   * 不开键名白名单（白名单迟早被例外吃光，对新键也不生效）：
+   *   ① **穷举**：两个 host 桶的并集必须**恰好**是全表，一个键都不许落在两桶之外；
+   *   ② **合并壳侧逐条挂得住**：`host: "sim-unified"` 的每一条，要么是某档的 `renderer`
+   *      （`UNIFIED_MODE_RENDERER_KEYS`），要么占用壳**自带档**那个位置
+   *      （`renderer === null && pending === null`，今天只有 `now` 一格）——
+   *      而自带档的**格数是有限的**，故「自带」不是可以无限声明的免死金牌：
+   *      再塞一个没接 renderer 的键进来，`1 > 1` 当场红。
+   */
+  it("补强：host 桶必须**穷举全表**，且 `sim-unified` 那一桶逐条在合并壳里挂得住（过滤不许变成豁免通道）", () => {
+    const all = Object.keys(CONSOLIDATED_INTO_SANDBOX);
+    // 🐤 金丝雀：表本身非空（读空 ⇒ 下面每个断言都恒真）
+    expect(all.length, "收编表读空 ⇒ 本条全部恒真（哑门），先修尺子").toBeGreaterThan(0);
+
+    // ── ① 穷举：不许有第三种 host，也不许有键落在两桶之外 ──────────────────────
+    const inSandbox = all.filter((k) => CONSOLIDATED_INTO_SANDBOX[k]!.host === "sim-sandbox");
+    const inUnified = all.filter((k) => CONSOLIDATED_INTO_SANDBOX[k]!.host === "sim-unified");
+    const orphans = all.filter((k) => !inSandbox.includes(k) && !inUnified.includes(k));
+    expect(
+      orphans.map((k) => `${k}(host=${CONSOLIDATED_INTO_SANDBOX[k]!.host})`),
+      `这些收编条目的 host 既不是 sim-sandbox 也不是 sim-unified ⇒ 它们从两个宿主的可达性断言里**同时消失**，` +
+        `收编就真变成黑洞了。新增宿主必须同时在这里加一桶，并给那个宿主补一条「屏上逐条可达」的断言。`,
+    ).toEqual([]);
+    expect(inSandbox.length + inUnified.length, "两桶之和 ≠ 全表 ⇒ 上面的 orphans 判据自己坏了").toBe(all.length);
+    // 🐤 金丝雀：两桶都真的非空 —— 任一为空，那一侧的宿主形态就没被覆盖（另一侧全绿也说明不了什么）
+    expect(inSandbox.length, "sim-sandbox 桶为空 ⇒ 旧沙盘那一侧的收编形态没被覆盖").toBeGreaterThan(0);
+    expect(inUnified.length, "sim-unified 桶为空 ⇒ 合并壳那一侧的收编形态没被覆盖（本条恒真）").toBeGreaterThan(0);
+
+    // ── ② 合并壳侧：每条要么挂在某档的 renderer 上，要么占用「壳自带档」那个有限的位置 ──
+    const viaRenderer = inUnified.filter((k) => UNIFIED_MODE_RENDERER_KEYS.includes(k));
+    const viaShellBuiltIn = inUnified.filter((k) => !UNIFIED_MODE_RENDERER_KEYS.includes(k));
+    // 🐤 金丝雀：renderer 名单解析得出东西（解析空 ⇒ 全部落进 viaShellBuiltIn，方向恰好反过来）
+    expect(UNIFIED_MODE_RENDERER_KEYS.length, "UNIFIED_MODE_RENDERER_KEYS 读空 ⇒ 本条的分桶全错，先修尺子").toBeGreaterThan(0);
+    expect(viaRenderer.length, "没有一条收编项挂在合并壳的 renderer 上 ⇒ 「经档挂载」这一支形态没被覆盖").toBeGreaterThan(0);
+    for (const k of viaRenderer) {
+      // 挂得住 = 那个 renderer key 在 views/registry.ts 里真注册过（没注册则打开是 UnsupportedViewCard）
+      expect(getRenderer(k), `${k} 声明收编进合并壳的某一档，但该 renderer 没在 registry 注册 ⇒ 点进去是「不支持的视图」`).toBeDefined();
+    }
+    const shellBuiltInSlots = UNIFIED_MODES.filter(
+      (m) => UNIFIED_MODE_SPEC[m].renderer === null && UNIFIED_MODE_SPEC[m].pending === null,
+    );
+    expect(
+      viaShellBuiltIn.length,
+      `这些收编项既不挂任何档的 renderer，也超出了合并壳「自带档」的格数（${shellBuiltInSlots.length} 格）：` +
+        `[${viaShellBuiltIn.join(", ")}] —— 声明了收编却在壳里无处落脚 = 收编变成黑洞。`,
+    ).toBeLessThanOrEqual(shellBuiltInSlots.length);
   });
 
   it("切到模式 B ⇒ 模式 A 的特征元素**不在 DOM 里**（逐对全测，不是抽一对）", async () => {
