@@ -2082,6 +2082,51 @@ OntologyCore.executeSlice  ← 多跳检索在这里遍历 repos.links，**现�
 反向边方向断言（from 必须是来源类型）+ 幂等 + 出厂边零回归。
 **两半各自都绿、只有驱动接缝才会红**，正是 SEAM-GATE 要的形态。
 
+### 结构边的「改」与「启停」· 写路补全（WO-RELATION-EDIT-GAPS · 2026-09-04）
+
+**一句话**：结构边此前**建得出、停得掉、改不了、停了拨不回**；本次补齐「改」与「重新启用」，
+并在建/改的入口上补两道存量零误伤的闸。四条都由真前端从登录走起实测取证（真后端 `SEED_DEMO=1`，禁 mock）。
+
+上面那两道闸（① 两端类型必须存在 ② `viaProperty` 必须是携带外键那侧的属性）**照旧工作**，
+本次是在它们**之上加项**，共用同一处路由层与同一个错误信封：
+
+```
+POST /a/v1/ontology/link-types
+        │  ③ key 字符集：字母开头 + [A-Za-z0-9_] + ≤64，越界 400（说中文，不回英文 code）
+        │     先量后卡：出厂 116 条边违规 0；若收紧成只收小写会误伤 9 条大驼峰后缀边 ⇒ 不采纳那一版
+        │  ④ **端点是身份格**：同 key 改 fromTypeKey/toTypeKey 一律 400，点名既有端点
+        ↓                （基数 / viaProperty / viaSide 照旧可改 —— 这就是「改」的落点）
+POST /a/v1/ontology/{links,types}/:key/reactivate      ← ★ 本次新增：DEPRECATED → ACTIVE
+        │  RETIRED 不给回退（下线前置是零引用，拨回会让两套引用并存）⇒ 409 说明理由
+        ↓
+GET /a/v1/ontology/mapping/registries  ← 随边加性下发 viaProperty/viaSide（前端「改」表单靠它预填）
+```
+
+**④ 为什么把端点钉成身份格**（这一条最容易被当成过度设计）：本路由是按 `key` 的 upsert，
+同 key 第二次写**不会**并存成两行（实测恒 1 行、version+1），但会**静默把既有边掉个头**。
+因果边靠 `viaLinkKey` 按方向挂在结构边上，而方向校验只在**因果边写入的那一刻**跑一次
+（`assertPropagationRefs`）⇒ 结构边事后掉头后，那些因果边语法全对、`navOut` 却再也走不到任何对象，
+**永远贡献 0、不报错、不变红** —— 三分法里「接了线接错地方」那一态。判据与
+`PropagationRulePatchSchema`「身份格不可改」、`assertRenameAllowed`「API 名不可变」同款。
+⛔ **不是禁双向边**：只卡**同 key** 反向。实测存量端点级反向对 **36** 条（各有独立 key，业务真需要），
+换 key 的反向边仍 201。
+
+**⚠ 自环据实不禁**（派单原要求「from==to 一律 4xx」，先量存量后**顶回来**）：
+出厂 116 条边里有 **1** 条合法自环 `CausalFactor --caused_by--> CausalFactor`（因果链一等节点，
+`synthetic/battery.ts`）。一刀切会误伤存量 ⇒ 只卡 key 字符集，不卡自环。
+
+**两条路的启停语义为什么曾经不一致**（派单要求点名）：因果边的启停是
+`PATCH /a/v1/sim/propagation-rules/:id` 上的一个普通字段（`PUBLISHED ⇄ DRAFT`，同一条路径来回走），
+天生可逆；结构边走治理增量 §2.2 的状态机 `ACTIVE → DEPRECATED → RETIRED`，而这个状态机
+**当初只实现了前进的两步**。差别不是设计取舍，是漏了一步 —— 本次补上。
+
+**接缝门**：`apps/datacore/test/relation-edit-gaps.seam.test.ts`（4 例，全部走真路由 `app.inject`
+而非直接调校验函数）—— 脏 key 六种全 400 + 合法/大驼峰 key 金丝雀 · 同 key 掉头/换端点全 400 且表内一字未改
++ 换 key 反向与自环金丝雀 201 · 改基数与改实现属性的对照实验（回读即新值、version 1→2→3、
+实例边 0→>0）· 停用⇄启用四个读数 + RETIRED 409 + 对象类型侧同走一遍。
+**变异反证 5 项全红**（去 key 闸 / 去端点闸 / 去 RETIRED 闸 / reactivate 不清弃用记录 / registries 不下发 viaProperty），
+还原后重新全绿 ⇒ 不是装饰品。
+
 ### 本体体检链路 · 第三类边：不变式守卫（WO-ONTOLOGY-EDGE-TRICLASS · 2026-08-17）
 
 **一句话**：本体图谱三样真值 → 守卫目录逐条求值 → 成立/不成立 + 违反者 → 屏上第三张表；改容差即**重走整条链**。
