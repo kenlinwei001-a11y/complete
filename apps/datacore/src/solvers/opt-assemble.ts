@@ -465,7 +465,7 @@ export async function assembleParetoModel(
           label: "违约金",
           reason:
             `今天算不出：${orderT.key} 上没有命中成本/违约词库、且不是单价类强度量的数值字段 ——` +
-            `一单违约赔多少是合同条款上的**总量**，本租户的本体没有把它落到订单这一层。` +
+            `一单违约赔多少是合同条款上的总量，本租户的本体没有把它落到订单这一层。` +
             (penaltyElsewhere.length > 0
               ? `全本体里离它最近的是 ${penaltyElsewhere.join("、")}，但它不挂在订单上，一单赔多少无从对应。`
               : `全本体里没有任何命中该词库的数值字段。`) +
