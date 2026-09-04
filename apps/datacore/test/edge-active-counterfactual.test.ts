@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+import { PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
 import { PgSimRepo } from "../src/repo/pg.js";
 import { createMemoryRepos } from "../src/repo/memory.js";
 import { diffTickStates, partitionPropagationRules, type SimCounterfactualResult, type SimSession } from "@platform/contracts";
@@ -35,6 +36,18 @@ const enableSim = async (t: TestApp) =>
 const BASE_ID = "obj_base_changzhou";
 /** 被测的那条边（出厂种子）。 */
 const RULE_KEY = "demo_base_load_to_line_util";
+
+/**
+ * 引擎的衰减律（`propagation.ts` 0'' 相 · WO-PROP-CLAMP）：`x' = round12(rest + (1−λ)(x − rest))`。
+ * `loadIndex` 是压力族（`STATE_VAR_DOMAINS` 静息点 0）且**有入边**（`demo_model_demand_to_base_load`
+ * 写它）⇒ 属"会漏的累加器"，逐拍衰减。这里**从单源常量派生**而不是写死一串数：λ 改了这几条断言
+ * 必须跟着红，写死的数只会悄悄对不上。
+ */
+const decayN = (v0: number, ticks: number): number => {
+  let v = v0;
+  for (let i = 0; i < ticks; i++) v = Math.round(v * (1 - PRESSURE_DECAY_PER_TICK) * 1e12) / 1e12;
+  return v;
+};
 
 interface TickResp {
   curTick: number;
@@ -98,6 +111,8 @@ describe("WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → �
     await tick(t, base); // tick1：只排 pending
     const b2 = await tick(t, base);
     for (const id of lineIds) expect(b2.state[id]!.utilPressure).toBe(10);
+    // 基线上源端**这一格**是多少，下面判据 c 要拿它当对照 —— 见那一段的理由。
+    const baseLoadAtT2 = b2.state[BASE_ID]!.loadIndex;
 
     // (b) 反事实：同一份种子、同一个扰动，只多了"把这条边关掉"这一件事。
     const cf = await sessionWithBaseLoad(t, 20);
@@ -115,7 +130,18 @@ describe("WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → �
     // 🔴 判据 b：这条规则一次都没进 trace（不是"贡献变小了"，是这条边根本没跑）。
     expect((c2.trace ?? []).filter((x) => x.ruleKey === RULE_KEY).length).toBe(0);
     // 🔴 判据 c：**只有这条边被关掉**——源端扰动照旧生效（证明关的是边，不是把整个引擎停了）。
-    expect(c2.state[BASE_ID]!.loadIndex).toBe(20);
+    //
+    // ⚠ 这一格原本断言 `toBe(20)`（= 扰动置的原值）。**前提被 WO-PROP-CLAMP 合法改变了**：
+    //   引擎新增了 0'' 衰减相，`loadIndex` 是有入边的压力族累加器 ⇒ 逐拍按 `×(1−λ)` 往静息点 0 收，
+    //   两拍后是 `20×0.63² = 7.938`。这**不是**"关边把源端也弄小了"，两条独立判据钉死这一点：
+    //   ① 数值必须**恰好**等于从单源 λ 派生的 `decayN(20, 2)`（不是"非 0"这种放宽）；
+    //   ② 它必须与**基线那一跑的同一格逐字节相同** —— 基线没关任何边，两跑源端仍一样，
+    //      才叫"只有这条边被关掉"。②是本判据真正要的语义，且**不依赖 λ 是多少**：
+    //      哪天衰减律再改，①会红提醒人复算，②照样守着"关边不影响源端"这条不变量。
+    expect(c2.state[BASE_ID]!.loadIndex).toBe(decayN(20, 2));
+    expect(c2.state[BASE_ID]!.loadIndex).toBe(baseLoadAtT2);
+    // 且它**真的还带着扰动**（不是被衰减/关边一起抹平成 0）——否则上面两条在"源端恒 0"时也全绿。
+    expect(c2.state[BASE_ID]!.loadIndex).toBeGreaterThan(0);
     // 🔴 判据 d：`status` 一个字节没动（会话级反事实与本体真值正交，这正是本单最容易做错的地方）。
     const rules = await t.repos.sim.listPropagationRules("demo", false);
     expect(rules.find((r) => r.key === RULE_KEY)!.status).toBe("PUBLISHED");

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+import { PRESSURE_DECAY_PER_TICK, STATE_VAR_DOMAINS } from "../src/synthetic/battery.js";
+import { saturateToDomain } from "../src/sim/propagation.js";
 import {
   SIM_METRIC_SERIES_DEFAULT_LIMIT,
   SIM_METRIC_SERIES_MAX_LIMIT,
@@ -47,6 +49,29 @@ const ACT_LOAD = 4;
 /** 扰动把负载置到的值。 */
 const PERT_LOAD = 20;
 const TICKS = 6;
+
+/**
+ * 引擎的衰减律（`propagation.ts` 0'' 相 · WO-PROP-CLAMP）：`x' = round12(rest + (1−λ)(x − rest))`。
+ * `loadIndex` 属压力族（`STATE_VAR_DOMAINS` 静息点 0）且**有入边**（`demo_model_demand_to_base_load`
+ * 写它）⇒ 是"会漏的累加器"，零入流时逐拍往静息点收，而不是像本文件原先假设的那样恒定不变。
+ *
+ * ⚠ 本文件几条判据原本写死 `[4,4,4,…]` / `[…,20,20,20]`。那是**衰减相并入前**的物理，
+ *   现在按单源 λ 现算 —— λ 改了这些断言必须跟着红；写死的数只会悄悄对不上，
+ *   而"曲线为什么长这样"就再没有任何东西守着了。
+ */
+const decayN = (v0: number, ticks: number): number => {
+  let v = v0;
+  for (let i = 0; i < ticks; i++) v = Math.round(v * (1 - PRESSURE_DECAY_PER_TICK) * 1e12) / 1e12;
+  return v;
+};
+/** 零扰动那条线：tick0 的 `ACT_LOAD` 起，逐格衰减。 */
+const FLAT_LINE = Array.from({ length: TICKS + 1 }, (_, t) => decayN(ACT_LOAD, t));
+/**
+ * 施加扰动那条线：`START_TICK` 之前与基线逐点相同；`START_TICK` 那一格由扰动置成
+ * `PERT_LOAD`（引擎的扰动相 0' 排在衰减相 0'' **之前**，故落地当格即已衰减一次），此后继续衰减。
+ */
+const PERT_LINE = Array.from({ length: TICKS + 1 }, (_, t) =>
+  t < START_TICK ? decayN(ACT_LOAD, t) : decayN(PERT_LOAD, t - START_TICK + 1));
 
 async function seededApp(): Promise<TestApp> {
   const t = await makeApp();
@@ -183,7 +208,7 @@ const lineIdsOf = async (t: TestApp): Promise<string[]> =>
 
 describe("WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段）", () => {
   // ── ① 基线是"同一世界不施加扰动的那条线"：生效前逐点相等，生效那一格才分叉 ──────────────
-  it("🔴 SEAM：扰动 startTick=3 ⇒ 全部指标在 tick<3 逐点相等，loadIndex 在 tick3 才由 4 跳到 20", async () => {
+  it("🔴 SEAM：扰动 startTick=3 ⇒ 全部指标在 tick<3 逐点相等，loadIndex 在 tick3 才由衰减线跳到扰动线", async () => {
     const { t, sid, perturbationId } = await worldWithFuturePerturbation();
     const lineIds = await lineIdsOf(t);
     expect(lineIds.length).toBe(10); // 金丝雀：链路真的种了，本用例不是在空世界里空转
@@ -202,8 +227,13 @@ describe("WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节�
 
     const load = metricOf(out, `${BASE_ID}.loadIndex`);
     // 🔴 判据 b：分叉点**恰好**落在生效格，且两侧都是**具体的数**（不是"不等于"）。
-    expect(load.baseline).toEqual([ACT_LOAD, ACT_LOAD, ACT_LOAD, ACT_LOAD, ACT_LOAD, ACT_LOAD, ACT_LOAD]);
-    expect(load.actual).toEqual([ACT_LOAD, ACT_LOAD, ACT_LOAD, PERT_LOAD, PERT_LOAD, PERT_LOAD, PERT_LOAD]);
+    //    两条线各自逐格由单源 λ 现算（见 `FLAT_LINE` / `PERT_LINE` 头注），不是写死的常数串。
+    expect(load.baseline).toEqual(FLAT_LINE);
+    expect(load.actual).toEqual(PERT_LINE);
+    // 金丝雀：分叉**恰好**从 START_TICK 起 —— 前面逐格相同、从那一格起逐格不同。
+    //   没有这一条，两条现算线万一被写成同一个表达式，上面两句会一起变绿。
+    expect(load.actual.slice(0, START_TICK)).toEqual(load.baseline.slice(0, START_TICK));
+    for (let t = START_TICK; t <= TICKS; t++) expect(load.actual[t]).not.toBe(load.baseline[t]);
 
     // 🔴 判据 c：基线 tick0 = **tick0 行的 4**，不是 baseSnapshot 的 0。
     //    「另起会话 / 从 baseSnapshot 重开」的实现在这一行当场红 —— 它是常驻的防线，
@@ -280,15 +310,21 @@ describe("WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节�
     for (const m of after.metrics) {
       expect(m.actual, `${m.key} 在扰动删除后仍未与基线重合`).toEqual(m.baseline);
     }
-    // 且重合到的是**没有扰动的那条线**（4 一路到底），不是"把 actual 抄给 baseline"这种假重合。
-    expect(metricOf(after, `${BASE_ID}.loadIndex`).actual).toEqual([ACT_LOAD, ACT_LOAD, ACT_LOAD, ACT_LOAD, ACT_LOAD, ACT_LOAD, ACT_LOAD]);
+    // 且重合到的是**没有扰动的那条线**（从 tick0 的 4 起逐格衰减到静息点，见 `FLAT_LINE`），
+    // 不是"把 actual 抄给 baseline"这种假重合。
+    expect(metricOf(after, `${BASE_ID}.loadIndex`).actual).toEqual(FLAT_LINE);
 
     // ⚠ 诚实边界（别当 bug 修）：删扰动**不回滚落库的世界态**（`app.ts` 明写「删的是扰动记录，
     //   不回滚世界态；回滚走 checkpoint/rollback」）。本端点回答的是「按这个世界**当前**的扰动集，
     //   两条线各是什么样」，故它与落库行在这一刻**刻意**不同 —— 下面这句把这件事钉住，
     //   免得下一个人看到差异就去"修"成读落库行（那会当场打破本用例要的可逆性）。
     const persisted = await t.repos.sim.listTickStates("demo", sid);
-    expect(persisted.at(-1)!.state[BASE_ID]!.loadIndex).toBe(PERT_LOAD);
+    const persistedLast = persisted.at(-1)!.state[BASE_ID]!.loadIndex;
+    // 落库的末格仍是**删之前那条扰动线**的末格（世界态没被回滚），
+    // 且它与删后回包的末格**不同** —— 后一句才是"刻意不同"这件事的证据；
+    // 只断言前一句的话，两者恰好相等时也照样绿，"不回滚"就没被验到。
+    expect(persistedLast).toBe(metricOf(before, `${BASE_ID}.loadIndex`).actual.at(-1));
+    expect(persistedLast).not.toBe(metricOf(after, `${BASE_ID}.loadIndex`).actual.at(-1));
   });
 
   // ── ③ 缺格返 null，不插值、不补 0；窗口超出世界线也不凭空造格 ──────────────────────
@@ -435,8 +471,18 @@ describe("WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节�
  *    source/target stateVar，与生产同一口径）⇒ 目录 = `SCALE_OBJECTS × 2` 条；
  *  · 合成对象**刻意不在本体图上** ⇒ 没有规则会写它们 ⇒ 两条线恒等 ⇒ 幅度恒 0，
  *    于是「幅度最大的那几条」就只能是下面那三条**被扰动打过**的，判据可解析、不是"不等于"；
- *  · 三条扰动的幅度**刻意各不相同且拉开**（900 / 800 / 700），
+ *  · 三条扰动的幅度**刻意各不相同且拉开**（20 / 15 / 10），
  *    这样"按幅度降序"就能断言成**具体的顺序**，而不是"某种排序"。
+ *
+ * ── ⚠ 扰动值必须落在**声明取值域的带内**（2026-09-04 收编批次 `integ-batch-5` 改）──────
+ * 本组原来把三条扰动置到 950 / 850 / 750，幅度写作 900 / 800 / 700。
+ * WO-PROP-CLAMP 并入后引擎多了「量纲边界保序饱和」相：`loadIndex` 域 [0,100]、静息点 0 ⇒
+ * 上拐点 `kneeHi = 75`，越过它的读数被双曲压缩回开区间 —— 实测三条分别被压到
+ * 99.31 / 99.22 / 99.11（第二拍再压一次到 87.32 / 87.30 / 87.27），
+ * 幅度**从相差 100 挤成相差 0.02**。那时这组断言就不再是"三档拉开、可解析"，
+ * 而是在小数第二位上分胜负 —— 本组要验的是**排序与分页**，不是夹值曲线。
+ * 故把扰动值改到带内（≤ kneeHi），让 `|值 − FLAT|` 重新**逐字精确**成立；
+ * 断言式子一个字没放宽，改的是夹具的前提。下面 §③ 有一条金丝雀**现算**证明它们真的没被饱和碰过。
  */
 describe("WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,348 对象是真实测得的量级）", () => {
   /** 合成对象数。**上万量级**（真实测 11,337 个 `nodeObjectIds` + 11 个空类型占位键 = 11,348）。 */
@@ -445,8 +491,12 @@ describe("WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,
   const SCALE_VARS = ["loadIndex", "utilPressure"] as const;
   /** 合成对象的基线值 —— 全体同一个数 ⇒ 没被扰动打过的那些幅度恒 0。 */
   const FLAT = 50;
-  /** 三条"热"指标：`set` 到这些值 ⇒ 幅度 = |值 − FLAT| = 900 / 800 / 700，三档拉开、可解析。 */
-  const HOT: readonly (readonly [number, number])[] = [[0, 950], [1, 850], [2, 750]];
+  /**
+   * 三条"热"指标：`set` 到这些值 ⇒ 幅度 = |值 − FLAT| = 20 / 15 / 10，三档拉开、可解析。
+   * 三个值都在 `loadIndex` 声明域的**带内**（≤ kneeHi 75）⇒ 引擎的保序饱和一格不碰，
+   * 幅度才等于这个减法。这一条由 §③ 的金丝雀现算把关，不靠人记住。
+   */
+  const HOT: readonly (readonly [number, number])[] = [[0, 70], [1, 65], [2, 60]];
   const oid = (i: number): string => `obj_scale_${String(i).padStart(5, "0")}`;
   /** 目录规模 = 对象数 × 变量数。**这个数就是 `totalMetrics` 该有的值**。 */
   const CATALOG = SCALE_OBJECTS * SCALE_VARS.length;
@@ -541,14 +591,26 @@ describe("WO-SIM-SERIES-SCALE · 指标时序规模闸（生产量级世界·11,
   });
 
   // ── ③ 幅度档回的确实是变化最大的那些（可解析，不是"不等于"）─────────────────────
-  it("🔴 order=magnitude ⇒ 回的正是被扰动打过的那三条，且按 |actual末 − baseline首| 降序（900/800/700）", async () => {
+  it("🔴 order=magnitude ⇒ 回的正是被扰动打过的那三条，且按 |actual末 − baseline首| 降序（20/15/10）", async () => {
     const { t, sid } = await scaleWorld();
     const out = await get(t, sid, "?order=magnitude&limit=3");
     expect(out.appliedOrder).toBe("magnitude");
 
+    // 🐤 金丝雀（先说话）：夹具的三个值 + 基线值都在**带内** —— 引擎的保序饱和一格不碰它们，
+    //    下面那条减法才成立。这里直接调引擎那支单源函数现算，不复写一遍拐点公式：
+    //    哪天域或带宽改了，是这一条先红说「尺子变了」，而不是幅度断言在小数位上莫名对不上。
+    const D = STATE_VAR_DOMAINS.loadIndex!;
+    for (const v of [FLAT, ...HOT.map(([, x]) => x)]) {
+      expect(saturateToDomain(v, D.min, D.max, D.restPoint), `夹具值 ${v} 落在饱和带外 ⇒ 幅度不再等于减法，先修夹具`).toBe(v);
+    }
+
     // 具体到**哪三条、什么顺序、幅度各是多少** —— 「排序了」这种断言，排错方向也照样绿。
     expect(out.metrics.map((m) => m.key)).toEqual(HOT.map(([i]) => `${oid(i)}.loadIndex`));
     expect(out.metrics.map(magnitudeOf)).toEqual(HOT.map(([, v]) => Math.abs(v - FLAT)));
+    // 且末格读数**恰好是置进去的那个值**（没被饱和压、也没被衰减收）——
+    // 上面那条幅度断言只看差的绝对值，两端一起漂同样多时它照样绿。
+    expect(out.metrics.map((m) => [...m.actual].reverse().find((v) => v !== null))).toEqual(HOT.map(([, v]) => v));
+    expect(out.metrics.map((m) => m.baseline.find((v) => v !== null))).toEqual(HOT.map(() => FLAT));
 
     // 反向金丝雀：这三条**真的被挑出来了**，不是"恰好排在字典序最前面"——
     // 字典序前三条是 obj_scale_00000 的两个变量 + obj_scale_00001.loadIndex，与上面这组不同。
