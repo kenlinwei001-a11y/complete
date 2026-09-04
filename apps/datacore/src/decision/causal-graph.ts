@@ -434,7 +434,9 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
       reason: "NO_SOURCE_WIRED",
       missing:
         "沙盘 session 上没有任何承载「决策」的对象。阻滞点判定器 detectChainImpediments 存在且能产 ChainImpediment（带 evidence.ruleKey/threshold），" +
-        "但它只吃 loadContext(tenantId) 的**活体对象图**，不吃本 session 的 tick state（solvers/service.ts:3126）—— 与本推演无因果关系",
+        // WO-SCREEN-CALIBER ②：这一句是**上屏正文**（实测出现在推演沙盘的诊断区），
+        // 屏上没有 Markdown 渲染器 ⇒ 星号会原样打出来。降层不删字：强调去掉，一个字没少。
+        "但它只吃 loadContext(tenantId) 的活体对象图，不吃本 session 的 tick state（solvers/service.ts:3126）—— 与本推演无因果关系",
       needs:
         "让 chain_impediments 能在给定 SimSession 的世界态上判定（把 SolverContext 的对象快照换成 session state），" +
         "或在 SimSession 上新增一条「本推演触发了哪些阻滞点」的承载。两者都要动 sim/ 与 solvers/，本单范围外",
