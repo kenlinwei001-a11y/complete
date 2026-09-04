@@ -698,8 +698,9 @@ export function buildPlaceholderInspectorInput(args: {
       carrier: "缺",
       evidence:
         "公式有（`expectedCadenceWaitDays` · 契约 `ChainSim`）；" +
-        "承载今天也有（合成种子 `putAll(\"Cadence\", cadenceObjectRows(deriveChainCadences(g)), \"nodeId\")` 落库，" +
-        "推演 tick `listByType(\"Cadence\")` → `buildCadenceGates` 读回）。" +
+        "承载今天也有（2026-09-04 实测·复验 `GET /a/v1/objects?type=Cadence`）：合成种子 " +
+        "`putAll(\"Cadence\", cadenceObjectRows(deriveChainCadences(g)), \"nodeId\")` 落库，" +
+        "推演 tick `listByType(\"Cadence\")` → `buildCadenceGates` 读回。" +
         "⇒ 本条标「缺」= 本面板缺这个值的来路，不是「全仓没有 Cadence」：输入来自占位构造器 " +
         "`buildPlaceholderInspectorInput`，它不发任何查询、也收不到任何 `Cadence` 行 —— 三分法里的「没接线」，" +
         "修法是接线不是种数据。当前值 EMPTY，滑杆仅供 what-if",
@@ -715,7 +716,7 @@ export function buildPlaceholderInspectorInput(args: {
       carrier: "缺",
       evidence:
         "`Cadence.offsetDays` 契约字段在（契约 `Cadence`）。" +
-        "运行时有两个消费方：引擎侧 `cadenceGate()` 用它算闸门相位，" +
+        "运行时有两个消费方（2026-09-04 实测·复验 `GET /a/v1/objects?type=Cadence` 看 `offsetDays`）：引擎侧 `cadenceGate()` 用它算闸门相位，" +
         "前端侧 `nextGateDayOnOrAfter` 用它算下一次开闸日。" +
         "⇒ 本条仍标「缺」的真实理由与 K1 同：本面板没去要 `Cadence` 行（没接线），" +
         "不是这个字段没人消费",
