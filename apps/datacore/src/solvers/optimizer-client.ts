@@ -312,6 +312,15 @@ export interface PortfolioResult {
   /** 未获排（served=0）的需求项 id。 */
   displaced: string[];
   method: string;
+  /**
+   * WO-OBJECTIVE-SIGN（additive·只在组合法 `multiObjective` 下出现）：
+   * 本次求解里**真正有区分力**的目标键 —— 某个需求项的候选格集在这一维上取值不全相同。
+   *
+   * 不在此列的维：归一后恒为常数，其权重乘上去也只是给所有候选格加同一个数
+   * ⇒ **数学上不可能改变择格**，那根权重滑杆是装饰品。屏上据此置灰并说明理由，
+   * 而不是让用户拖一根永远不会有反应的滑杆（判据由机器现算，换一批数据它自己会变）。
+   */
+  discriminatingObjectives?: string[];
 }
 
 export interface OptimizerClient {

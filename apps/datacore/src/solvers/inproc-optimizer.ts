@@ -65,6 +65,8 @@ export class InProcOptimizerClient implements OptimizerClient {
     // ⑤ G-VAR-3 · 多目标组合法（opt-in·req.multiObjective）：按 method(weighted/epsilon/lexicographic) 组合全目标择格。
     //   default（无 multiObjective）→ 走下方原「按首目标」口径（字节不变·护住既有全部 portfolio/scenario 测）。
     const combo = req.multiObjective === true;
+    /** 本次求解里**真正有区分力**的目标键（见 comboSort 里的登记点）。屏上据此把失效滑杆置灰。 */
+    const discriminating = new Set<string>();
     const objVal = (c: PortfolioRequest["cells"][number], key: string): number =>
       key === "ontime" ? c.ontime : key === "delay" ? c.delayUnits : key === "changeover" ? c.changeUnits : key === "fgInventory" ? c.fgHoldUnits : c.cost;
     // 权重（objectives[].weight·缺省 1）；ε 上界；字典序优先（priority·缺省 objectives 序）。
@@ -93,7 +95,16 @@ export class InProcOptimizerClient implements OptimizerClient {
       // weighted：对该 item 候选集逐目标 min-max 归一 → Σ w·(ontime 取 1−norm·其余取 norm) 最小（改权重 → 天平真偏移）。
       const keys = [...new Set([...(req.objectives ?? []).map((o) => o.key as string), ...weightOf.keys()])];
       const range = new Map<string, { lo: number; hi: number }>();
-      for (const key of keys) { const vs = cells.map((c) => objVal(c, key)); range.set(key, { lo: Math.min(...vs), hi: Math.max(...vs) }); }
+      for (const key of keys) {
+        const vs = cells.map((c) => objVal(c, key));
+        const lo = Math.min(...vs), hi = Math.max(...vs);
+        range.set(key, { lo, hi });
+        // WO-OBJECTIVE-SIGN：这一维在**这个 item 的候选格集**上有没有区分力。
+        // 只要有一个 item 上 hi>lo，该维的权重就可能改变择格 ⇒ 滑杆不是装饰品。
+        // 全体 item 都 hi==lo ⇒ 归一恒 0、加权和里是个常数 ⇒ **数学上不可能改变任何次序**，
+        // 那根滑杆在这份数据上结构性失效（实测 changeover 正是此形态：全程 33.8 恒定）。
+        if (hi > lo) discriminating.add(key);
+      }
       const score = (c: PortfolioRequest["cells"][number]): number => {
         let s = 0;
         for (const key of keys) {
@@ -167,6 +178,9 @@ export class InProcOptimizerClient implements OptimizerClient {
       occupancy,
       displaced,
       method: req.method ?? "weighted",
+      // WO-OBJECTIVE-SIGN（additive·只在组合法下出现）：哪些目标维在本次求解里**有区分力**。
+      // 不在此列的维，其权重滑杆动了也不可能改变任何结果 —— 屏上据此置灰并说明理由。
+      ...(combo ? { discriminatingObjectives: [...discriminating].sort() } : {}),
     };
   }
 

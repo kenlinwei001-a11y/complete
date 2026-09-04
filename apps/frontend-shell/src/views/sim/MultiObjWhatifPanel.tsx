@@ -42,6 +42,13 @@ interface OccResult {
   objectiveValues: Record<string, number>;
   servedCount: number;
   optimal: boolean;
+  /** 本次装入实际最大化的加权标量目标（按各目标方向折成"越大越好"）。缺席 = 引擎没给。 */
+  objective?: number;
+  /**
+   * 各目标在**单位产能价值密度**上的极差。0 ⇒ 该权重乘上常数不可能改变任何一对订单的先后
+   * ⇒ 那根滑杆在这份数据上结构性失效 ⇒ 置灰并说明理由（判据来自引擎现算，前端不写死）。
+   */
+  objectiveSpread?: Record<string, number>;
 }
 interface WhatifResult {
   deltaByObjective?: Record<string, number>;
@@ -184,19 +191,38 @@ function MultiObjWhatifInner() {
         ))}
       </div>
 
-      {/* ② 权重滑杆 → 各目标 Δ 分解卡 */}
+      {/* ② 权重滑杆 → 各目标 Δ 分解卡
+          WO-OBJECTIVE-SIGN：**极差为 0 的那一维，滑杆置灰** —— 屏上承诺了"改权重→真重解"，
+          就不许留一根拖了必然没反应的滑杆。判据 `objectiveSpread[k] === 0` 由引擎现算下发
+          （不是前端写死的白名单：换一批该维有差异的数据，这根滑杆自己就会重新可用）。 */}
       <div className={styles.miniForm} style={{ display: "grid", gap: 8, margin: "8px 0" }}>
-        {OBJ_KEYS.map((k) => (
-          <label key={k} className={styles.formRow} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ width: 80 }}>{OBJ_META[k]!.name}权重</span>
-            <input
-              type="range" min={0} max={2} step={0.1} value={w[k]}
-              data-testid={`multiobj-weight-${k}`}
-              onChange={(e) => setW((prev) => ({ ...prev, [k]: Number(e.target.value) }))}
-            />
-            <span style={{ width: 40, textAlign: "right" }}>{w[k]!.toFixed(1)}×</span>
-          </label>
-        ))}
+        {OBJ_KEYS.map((k) => {
+          const spread = occ.data?.objectiveSpread?.[k];
+          // 只有引擎明确给了 0 才置灰；缺席（如 CP-SAT sidecar 路径不下发）一律按可用渲染，不猜。
+          const inert = typeof spread === "number" && spread === 0;
+          return (
+            <label key={k} className={styles.formRow} style={{ display: "flex", alignItems: "center", gap: 10, opacity: inert ? 0.55 : 1 }}>
+              <span style={{ width: 80 }}>{OBJ_META[k]!.name}权重</span>
+              <input
+                type="range" min={0} max={2} step={0.1} value={w[k]}
+                disabled={inert}
+                data-testid={`multiobj-weight-${k}`}
+                data-inert={inert ? "1" : "0"}
+                onChange={(e) => setW((prev) => ({ ...prev, [k]: Number(e.target.value) }))}
+              />
+              <span style={{ width: 40, textAlign: "right" }}>{w[k]!.toFixed(1)}×</span>
+              {inert && (
+                <span
+                  style={{ fontSize: 11, opacity: 0.85, color: "var(--muted2)" }}
+                  data-testid={`multiobj-weight-inert-${k}`}
+                  title={`本批订单里每套${OBJ_META[k]!.name}完全相同（差额 0），这一维分不出订单的先后 —— 调它不会改变任何结果，故置灰。换一批该项有差异的订单即自动恢复可调。`}
+                >
+                  本批订单该项无差异 · 调它不会改变结果
+                </span>
+              )}
+            </label>
+          );
+        })}
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", margin: "8px 0" }} data-testid="multiobj-delta-cards">
