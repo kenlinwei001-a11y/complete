@@ -73,8 +73,12 @@ export class InProcOptimizerClient implements OptimizerClient {
     const weightOf = new Map((req.objectives ?? []).map((o) => [o.key as string, o.weight ?? 1]));
     const epsBounds = req.epsilon ?? [];
     const priorityKeys = (req.priority && req.priority.length ? req.priority : (req.objectives ?? []).map((o) => o.key as string));
+    /** 参与加权的目标键（声明的 + 给了权重的）。 */
+    const objKeys = [...new Set([...(req.objectives ?? []).map((o) => o.key as string), ...weightOf.keys()])];
     // 组合法择格：epsilon 先滤越界格 → 主目标最优；lexicographic 按优先序逐层；weighted 归一加权和最小。
-    const comboSort = (cells: PortfolioRequest["cells"]): PortfolioRequest["cells"] => {
+    // `w` 参数化是为了**同一份择格逻辑**既服务真求解、也服务下面的"这根滑杆是不是装饰品"探针 ——
+    // 探针若另抄一份择格代码，改主逻辑时探针拿旧的去测、照样报"有区分力"（本仓明令禁止的装饰品金丝雀）。
+    const comboSort = (cells: PortfolioRequest["cells"], w: Map<string, number>): PortfolioRequest["cells"] => {
       if (req.method === "lexicographic") {
         return [...cells].sort((a, b) => {
           for (const key of priorityKeys) {
@@ -93,61 +97,92 @@ export class InProcOptimizerClient implements OptimizerClient {
           || a.cost - b.cost || a.window - b.window);
       }
       // weighted：对该 item 候选集逐目标 min-max 归一 → Σ w·(ontime 取 1−norm·其余取 norm) 最小（改权重 → 天平真偏移）。
-      const keys = [...new Set([...(req.objectives ?? []).map((o) => o.key as string), ...weightOf.keys()])];
       const range = new Map<string, { lo: number; hi: number }>();
-      for (const key of keys) {
+      for (const key of objKeys) {
         const vs = cells.map((c) => objVal(c, key));
-        const lo = Math.min(...vs), hi = Math.max(...vs);
-        range.set(key, { lo, hi });
-        // WO-OBJECTIVE-SIGN：这一维在**这个 item 的候选格集**上有没有区分力。
-        // 只要有一个 item 上 hi>lo，该维的权重就可能改变择格 ⇒ 滑杆不是装饰品。
-        // 全体 item 都 hi==lo ⇒ 归一恒 0、加权和里是个常数 ⇒ **数学上不可能改变任何次序**，
-        // 那根滑杆在这份数据上结构性失效（实测 changeover 正是此形态：全程 33.8 恒定）。
-        if (hi > lo) discriminating.add(key);
+        range.set(key, { lo: Math.min(...vs), hi: Math.max(...vs) });
       }
       const score = (c: PortfolioRequest["cells"][number]): number => {
         let s = 0;
-        for (const key of keys) {
+        for (const key of objKeys) {
           const { lo, hi } = range.get(key)!;
           const norm = hi > lo ? (objVal(c, key) - lo) / (hi - lo) : 0;
-          s += (weightOf.get(key) ?? 1) * (key === "ontime" ? 1 - norm : norm); // ontime 越高越好 → 代价 = 1−norm
+          s += (w.get(key) ?? 1) * (key === "ontime" ? 1 - norm : norm); // ontime 越高越好 → 代价 = 1−norm
         }
         return s;
       };
       return [...cells].sort((a, b) => score(a) - score(b) || a.cost - b.cost || a.window - b.window);
     };
 
-    const occupancy: { item: string; base: string; window: number }[] = [];
-    const served = new Set<string>();
     const cancel = currentCancellationSignal(); // WO-D1：逐项检查（无信号 → 恒 undefined·行为不变）
-    // 稳定序装入（大单先·id tie-break·确定性 R6）。
-    for (const id of [...byItem.keys()].sort((a, b) => (qty.get(b) ?? 0) - (qty.get(a) ?? 0) || a.localeCompare(b))) {
-      if (cancel?.aborted) throw new SolverCancelledError("portfolio 内存态贪心装入循环");
-      const raw = byItem.get(id)!;
-      // 方案选格：combo → 按 method 组合全目标；否则 min_fg_inventory 取最少提前持有格（fgHold→cost→贴近交期）；
-      //          max_ontime 取最按期格（ontime→window→cost）；其余 min_* 取代价最小格（cost→ontime→window）。
-      const cells = combo
-        ? comboSort(raw)
-        : [...raw].sort((a, b) =>
-            wantsFg
-              ? a.fgHoldUnits - b.fgHoldUnits || a.cost - b.cost || b.ontime - a.ontime || b.window - a.window
-              : primary === "ontime"
-                ? b.ontime - a.ontime || a.window - b.window || a.cost - b.cost
-                : a.cost - b.cost || b.ontime - a.ontime || a.window - b.window,
-          );
-      const need = qty.get(id) ?? 0;
-      for (const c of cells) {
-        const k = `${c.base}|${c.window}`;
-        if ((remain.get(k) ?? 0) >= need) {
-          remain.set(k, (remain.get(k) ?? 0) - need); // 逐格扣减 → Σqty·x ≤ cap 守恒
-          occupancy.push({ item: c.item, base: c.base, window: c.window });
-          served.add(id);
-          break;
+    /** 装入序：大单先·id tie-break·确定性 R6。**与权重无关**，故只算一次。 */
+    const loadOrder = [...byItem.keys()].sort((a, b) => (qty.get(b) ?? 0) - (qty.get(a) ?? 0) || a.localeCompare(b));
+    /**
+     * 一趟贪心装入 → 占用格（**纯函数**：每次自带一份剩余产能，互不污染）。
+     * 抽成函数是为了让下面的"滑杆是不是装饰品"探针**复用同一份实现**（见 comboSort 的 `w` 参数注释）。
+     */
+    const packWith = (w: Map<string, number>): { occupancy: { item: string; base: string; window: number }[]; served: Set<string> } => {
+      const rem = new Map(remain); // 每趟独立，绝不共用（共用会让第二趟在第一趟的残量上跑，结论全错）
+      const occ: { item: string; base: string; window: number }[] = [];
+      const done = new Set<string>();
+      for (const id of loadOrder) {
+        if (cancel?.aborted) throw new SolverCancelledError("portfolio 内存态贪心装入循环");
+        const raw = byItem.get(id)!;
+        // 方案选格：combo → 按 method 组合全目标；否则 min_fg_inventory 取最少提前持有格（fgHold→cost→贴近交期）；
+        //          max_ontime 取最按期格（ontime→window→cost）；其余 min_* 取代价最小格（cost→ontime→window）。
+        const cells = combo
+          ? comboSort(raw, w)
+          : [...raw].sort((a, b) =>
+              wantsFg
+                ? a.fgHoldUnits - b.fgHoldUnits || a.cost - b.cost || b.ontime - a.ontime || b.window - a.window
+                : primary === "ontime"
+                  ? b.ontime - a.ontime || a.window - b.window || a.cost - b.cost
+                  : a.cost - b.cost || b.ontime - a.ontime || a.window - b.window,
+            );
+        const need = qty.get(id) ?? 0;
+        for (const c of cells) {
+          const k = `${c.base}|${c.window}`;
+          if ((rem.get(k) ?? 0) >= need) {
+            rem.set(k, (rem.get(k) ?? 0) - need); // 逐格扣减 → Σqty·x ≤ cap 守恒
+            occ.push({ item: c.item, base: c.base, window: c.window });
+            done.add(id);
+            break;
+          }
         }
       }
-    }
-    occupancy.sort((a, b) => a.item.localeCompare(b.item) || a.base.localeCompare(b.base) || a.window - b.window);
+      occ.sort((a, b) => a.item.localeCompare(b.item) || a.base.localeCompare(b.base) || a.window - b.window);
+      return { occupancy: occ, served: done };
+    };
+
+    const { occupancy, served } = packWith(weightOf);
     const displaced = req.items.map((i) => i.id).filter((id) => !served.has(id)).sort();
+
+    /**
+     * ── 「这根滑杆是不是装饰品」探针（WO-OBJECTIVE-SIGN · 只在组合法下跑）───────────────
+     *
+     * **为什么不能用"这一维有没有取值差异"当判据**（第一版就是这么写的，被真浏览器当场打脸）：
+     * 有差异**不等于**会改变结果 —— 实测 `changeover` 维在部分需求项的候选格上确实有差异，
+     * 而把它的权重在 0↔10 之间拉动，`allocation` 与 `objectiveValues` **逐字节不变**。
+     * 那一版探针于是报 `inert=0`（"有区分力"），屏上照常放行一根拖了没反应的滑杆 ——
+     * **判据保守，等于没判**。形态（铁律 0.6 句式）：
+     * 「我用『这一维有取值差异』当作『这根滑杆会改变结果』的证据，而前者并不度量后者。」
+     *
+     * 现在改成**直接重跑**：把该维权重换成几个探针值各装一趟，占用格全都逐字节相同 ⇒ 判定失效。
+     * 这是**实测**不是推断。代价 = 每维几趟内存态贪心（毫秒级），且**只在内存态引擎里跑** ——
+     * CP-SAT sidecar 路径不下发这一格（宁可屏上按"可用"渲染，也不为一个提示去多解几次 CP-SAT）。
+     */
+    if (combo) {
+      const baseSig = JSON.stringify(occupancy);
+      for (const key of objKeys) {
+        const moved = [0, 0.5, 2, 10].some((v) => {
+          if ((weightOf.get(key) ?? 1) === v) return false; // 与当前权重相同的探针值不提供信息
+          const probe = new Map(weightOf);
+          probe.set(key, v);
+          return JSON.stringify(packWith(probe).occupancy) !== baseSig;
+        });
+        if (moved) discriminating.add(key);
+      }
+    }
     // objectiveValues 从选中格真算（4 项恒计·供方案对比）。
     const cellByKey = new Map(req.cells.map((c) => [`${c.item}|${c.base}|${c.window}`, c]));
     let ontime = 0,
