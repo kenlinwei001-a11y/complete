@@ -224,13 +224,40 @@ export class InProcOptimizerClient implements OptimizerClient {
     /** 服务该单会实际发生的指派代价 = 其可行线里最便宜的那条（择线正是按此挑的）。取不到 ⇒ 0。 */
     const costOf = (id: string): number => eligByOrder.get(id)?.[0]?.cost ?? 0;
     /**
-     * **单位产能净价值密度**（本函数的心脏，理由见上"今天的行为是 X，应该是 Y"）。
-     * 分母是被消耗的那个资源（qty）；`Math.max(1, qty)` 只为防 0 除，
-     * 而 qty ≤ 0 的单在装入循环里本就永远占不到格（`lineRemain >= qty` 恒真但 occupancy 无意义），
-     * 不会因此冒充高密度上位。
+     * 各目标的**单位产能读数**（分母是被消耗的那个资源 qty；`max(1,qty)` 只为防 0 除 ——
+     * qty ≤ 0 的单在装入循环里占不到有意义的格，不会因此冒充高密度上位）。
+     */
+    const perUnit: Record<string, (o: { id: string; revenue: number; penalty: number; qty: number }) => number> = {
+      revenue: (o) => o.revenue / Math.max(1, o.qty),
+      penalty: (o) => o.penalty / Math.max(1, o.qty),
+      cost: (o) => costOf(o.id) / Math.max(1, o.qty),
+    };
+    /**
+     * ── 逐目标 min-max 归一，**再**加权（WO-OBJECTIVE-SIGN 第二半）──────────────────
+     *
+     * 只除以 qty 还不够。三个目标的**量纲天差地别**（实测真订单簿 50 单：
+     * 单位营收极差 9,066 元/套，而单位违约金极差 23,400 元/套 —— 后者是前者的 2.6 倍），
+     * 于是把营收权重从 0.5 拉到 8，加权和的次序在很窄的一段里就被营收项**彻底压过**，
+     * 再往上拉一个字节都不动：屏上表现为"滑杆前半段有反应、后半段完全失灵"。
+     * 这正是"两个目标不在同一把尺子上"的指纹 —— 权重比不再表达偏好比。
+     *
+     * 归一到 [0,1] 之后，`w_rev : w_pen` 才**真的**是"我在这两件事上的偏好比"，
+     * 滑杆全程都有反应。口径与契约 `rankParetoByWeights` 一致（池内 min-max·退化维给 0.5，
+     * 理由同那段：全体并列时说"都最好/都最差"都是断言，而这一维真实信息量为零）。
+     */
+    const normOf = new Map<string, (o: { id: string; revenue: number; penalty: number; qty: number }) => number>();
+    for (const [key, f] of Object.entries(perUnit)) {
+      const vs = req.orders.map(f);
+      const lo = vs.length ? Math.min(...vs) : 0;
+      const hi = vs.length ? Math.max(...vs) : 0;
+      normOf.set(key, hi > lo ? (o) => (f(o) - lo) / (hi - lo) : () => 0.5);
+    }
+    /**
+     * **归一化单位产能净价值密度**（本函数的心脏，理由见上"今天的行为是 X，应该是 Y"）。
+     * 方向在此显式落地：营收与"避掉的违约金"是服务这一单的**收益**（`+`），指派代价是**支出**（`−`）。
      */
     const density = (o: { id: string; revenue: number; penalty: number; qty: number }) =>
-      (wRev * o.revenue + wPen * o.penalty - wCost * costOf(o.id)) / Math.max(1, o.qty);
+      wRev * normOf.get("revenue")!(o) + wPen * normOf.get("penalty")!(o) - wCost * normOf.get("cost")!(o);
     // 稳定降序装入（密度高者先·tie-break id 升序·R6："density+id"）。
     const ordered = [...req.orders].sort((a, b) => density(b) - density(a) || a.id.localeCompare(b.id));
     const occupancy: { order: string; line: string }[] = [];
