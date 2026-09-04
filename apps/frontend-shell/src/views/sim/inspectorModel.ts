@@ -564,8 +564,7 @@ export const stepIdOf = (nodeId: string, suffix: string): string => `${nodeId}::
  * 现文案说的是今天真正的缺口：不是"没有"，是**本面板没去要**（三分法里的「没接线」，修法完全不同）。
  */
 const CADENCE_ABSENCE_REASON =
-  "没接线（不是没承载）：`Cadence` 承载已经在——`apps/datacore/src/synthetic/service.ts:712` " +
-  "`putAll(\"Cadence\", …)` 真落库，`apps/datacore/src/app.ts:1447` 的推演 tick 已在读它。" +
+  "没接线（不是没承载）：`Cadence` 承载已经在——合成种子以 `putAll(\"Cadence\", …)` 真落库，推演 tick 已在读它。" +
   "缺口在本面板这一侧：这里的输入来自占位构造器 `buildPlaceholderInspectorInput`，它不发任何查询、也不接收任何 `Cadence` 行，" +
   "所以拿不到实测周期。等待期望公式已由 S0 冻结（`expectedCadenceWaitDays`），缺的是那个值的来路，不是那个值不存在。" +
   "修法 = 把该节点的 `Cadence` 行按 `cadenceFromProps` 口径喂进来；接线后仍要分得开两种结果：" +
@@ -660,7 +659,7 @@ export function buildPlaceholderInspectorInput(args: {
       label: "作业时长",
       unit: "天",
       carrier: "有",
-      evidence: "`ChainStep.days`（kind=work）· packages/contracts/src/chain-sim.ts:223（S0 冻结）",
+      evidence: "`ChainStep.days`（kind=work）· 契约 `ChainStep`（S0 冻结）",
       baseline: workDays,
       domain: { min: 0, max: 10, step: 0.1 },
       effect: { op: "setDays", stepId: sid("work") },
@@ -671,7 +670,7 @@ export function buildPlaceholderInspectorInput(args: {
       label: "交接固定时长",
       unit: "天",
       carrier: "有",
-      evidence: "`ChainStep.days`（kind=handoff）· packages/contracts/src/chain-sim.ts:223（S0 冻结）",
+      evidence: "`ChainStep.days`（kind=handoff）· 契约 `ChainStep`（S0 冻结）",
       baseline: handoffDays,
       domain: { min: 0, max: 15, step: 0.1 },
       effect: { op: "setDays", stepId: sid("handoff") },
@@ -683,8 +682,8 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "天",
       carrier: "薄",
       evidence:
-        "`InterBaseTransfer.transitDays` · packages/contracts/src/interbase-transfer.ts:32（契约字段在 + 真种子 + `etaDay` 派生管线消费），" +
-        "但 `apps/datacore/src/solvers/` 零直接消费方（实测 grep 计数 0）⇒ 薄，非有",
+        "`InterBaseTransfer.transitDays` · 契约 `InterBaseTransfer`（契约字段在 + 真种子 + `etaDay` 派生管线消费），" +
+        "但求解器层零直接消费方 ⇒ 薄，非有",
       baseline: jitter(seed, `${nodeId}/transit`, 1, 4),
       domain: { min: 0, max: 20, step: 0.5 },
       effect: { op: "setDays", stepId: sid("transfer") },
@@ -698,10 +697,9 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "天",
       carrier: "缺",
       evidence:
-        "公式有（`expectedCadenceWaitDays` · packages/contracts/src/chain-sim.ts:108）；" +
-        "承载今天也有（2026-08-08 实测复核，复验方式：读 `apps/datacore/src/synthetic/service.ts:712` 那条 " +
-        "`putAll(\"Cadence\", cadenceObjectRows(deriveChainCadences(g)), \"nodeId\")`，再读 " +
-        "`apps/datacore/src/app.ts:1447` 推演 tick 里的 `listByType(\"Cadence\")` → `buildCadenceGates`）。" +
+        "公式有（`expectedCadenceWaitDays` · 契约 `ChainSim`）；" +
+        "承载今天也有（合成种子 `putAll(\"Cadence\", cadenceObjectRows(deriveChainCadences(g)), \"nodeId\")` 落库，" +
+        "推演 tick `listByType(\"Cadence\")` → `buildCadenceGates` 读回）。" +
         "⇒ 本条标「缺」= 本面板缺这个值的来路，不是「全仓没有 Cadence」：输入来自占位构造器 " +
         "`buildPlaceholderInspectorInput`，它不发任何查询、也收不到任何 `Cadence` 行 —— 三分法里的「没接线」，" +
         "修法是接线不是种数据。当前值 EMPTY，滑杆仅供 what-if",
@@ -716,11 +714,9 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "天",
       carrier: "缺",
       evidence:
-        "`Cadence.offsetDays` 契约字段在（packages/contracts/src/chain-sim.ts:89）。" +
-        "旧文案那句「全仓零运行时消费方（只有契约与其单测引用）」今天为假（2026-08-08 实测复核，" +
-        "复验方式：`grep -rn offsetDays apps/datacore/src apps/frontend-shell/src`）：" +
-        "引擎侧 `apps/datacore/src/sim/propagation.ts:73` 在 `cadenceGate()` 里用它算闸门相位，" +
-        "前端侧 `apps/frontend-shell/src/views/sim/transitFlow.ts:800` `nextGateDayOnOrAfter` 用它算下一次开闸日。" +
+        "`Cadence.offsetDays` 契约字段在（契约 `Cadence`）。" +
+        "运行时有两个消费方：引擎侧 `cadenceGate()` 用它算闸门相位，" +
+        "前端侧 `nextGateDayOnOrAfter` 用它算下一次开闸日。" +
         "⇒ 本条仍标「缺」的真实理由与 K1 同：本面板没去要 `Cadence` 行（没接线），" +
         "不是这个字段没人消费",
       baseline: null,
@@ -740,7 +736,7 @@ export function buildPlaceholderInspectorInput(args: {
       carrier: "缺",
       evidence:
         "contracts 层零承载：`lotSize|batchSize|batchQty|lotQty` 全仓 0 命中；" +
-        "`GlobalSimRequest.allowSplit`（global-sim.ts:125）只是布尔开关，不是批量数",
+        "`GlobalSimRequest.allowSplit`（契约 `GlobalSimRequest`）只是布尔开关，不是批量数",
       baseline: null,
       domain: { min: 1, max: 5000, step: 50 },
       effect: { op: "scaleDaysDirect", stepId: sid("queue") },
@@ -761,8 +757,7 @@ export function buildPlaceholderInspectorInput(args: {
        */
       evidence:
         "datacore 种子有真值（`battery-extended.ts` 供应商表逐家 minOrderQty）；" +
-        "求解器有真消费方：kit_readiness 用它算补货量 max(缺口, 起订量)" +
-        "（复验 `grep -n 'ev.minOrderQty' apps/datacore/src/solvers/extended.ts`）；" +
+        "求解器有真消费方：kit_readiness 用它算补货量 max(缺口, 起订量)；" +
         "但契约只在求解器出参 `ProcurementPlan` 里带它，`Supplier` 没有可写入参 ⇒ 前端拨不到源头",
       baseline: null,
       domain: { min: 0, max: 5000, step: 100 },
@@ -782,8 +777,8 @@ export function buildPlaceholderInspectorInput(args: {
             unit: "个",
             carrier: "有" as const,
             evidence:
-              `\`Process.${unitSpec.unitsProp}\` · packages/contracts/src/process-capacity.ts:58（\`HARD_CAPACITY_UNIT_SPECS.unitsProp\`）` +
-              ` + 20 因子绑定 ${unitsBinding.mark} · capacity-factors.ts:51（writable）+ 真消费方 apps/datacore/src/solvers/capacity.ts:75`,
+              `\`Process.${unitSpec.unitsProp}\` · 契约 \`HARD_CAPACITY_UNIT_SPECS.unitsProp\`` +
+              ` + 20 因子绑定 ${unitsBinding.mark}（writable）+ 真消费方 求解器 capacity_rollup（化成产能 = 通道数 × 单通道产出 × 良率）`,
             // 对齐滑杆步长（10 的整数倍）：否则 `min + n*step` 的取值域里落不到"基线的两倍"，
             // 机理判据（能力翻倍 → 排队减半）就只能测个大概方向，测不了精确值。
             baseline: Math.round(jitter(seed, `${nodeId}/units`, 400, 2000) / 10) * 10,
@@ -797,8 +792,8 @@ export function buildPlaceholderInspectorInput(args: {
             unit: "件/日",
             carrier: "有" as const,
             evidence:
-              `\`Process.${unitSpec.rateProp}\` · process-capacity.ts:58（\`HARD_CAPACITY_UNIT_SPECS.rateProp\`，rateKind=${unitSpec.rateKind}）` +
-              " + 真消费方 apps/datacore/src/solvers/capacity.ts:75",
+              `\`Process.${unitSpec.rateProp}\` · 契约 \`HARD_CAPACITY_UNIT_SPECS.rateProp\`（rateKind=${unitSpec.rateKind}）` +
+              " + 真消费方 求解器 capacity_rollup",
             baseline: Math.round(jitter(seed, `${nodeId}/rate`, 40, 140)),
             domain: { min: 10, max: 300, step: 1 },
             effect: { op: "scaleDaysInverse" as const, stepId: sid("queue") },
@@ -816,8 +811,8 @@ export function buildPlaceholderInspectorInput(args: {
             unit: "",
             carrier: "有" as const,
             evidence:
-              `\`${yieldBinding.objectType}.${yieldBinding.prop}\` · 20 因子绑定 ${yieldBinding.mark} · capacity-factors.ts:57（writable）` +
-              " + 真消费方 apps/datacore/src/solvers/capacity.ts:255-271（良率基线再基·改它即改 cellsPerDayP50）",
+              `\`${yieldBinding.objectType}.${yieldBinding.prop}\` · 20 因子绑定 ${yieldBinding.mark}（writable）` +
+              " + 真消费方 求解器 capacity_by_process_model（良率基线再基·改它即改 cellsPerDayP50）",
             baseline: jitter(seed, `${nodeId}/yield`, 0.88, 0.98),
             domain: { min: 0, max: 1, step: 0.01 },
             effect: { op: "inert" as const },
@@ -846,7 +841,7 @@ export function buildPlaceholderInspectorInput(args: {
        */
       evidence:
         "datacore 种子有真值（`battery-extended.ts` 供应商表逐家 onTimeRate）+ `livedin/bundle.ts` 有同名字段（另一口径·百分数），" +
-        "求解器有真消费方：kit_readiness 拿它算期望滑期天（复验 `grep -n 'ev.onTimeRate' apps/datacore/src/solvers/extended.ts`）；" +
+        "求解器有真消费方：kit_readiness 拿它算期望滑期天；" +
         "但契约只在求解器出参 `ProcurementPlan` 里带它，`Supplier` 没有可写入参 ⇒ 薄",
       baseline: null,
       domain: { min: 0, max: 1, step: 0.01 },
@@ -865,7 +860,7 @@ export function buildPlaceholderInspectorInput(args: {
             label: "认证中产线降额系数",
             unit: "",
             carrier: "有" as const,
-            evidence: `\`RULE_PARAM_BINDINGS\` · packages/contracts/src/datacore.ts:201（${derateBinding.ruleKey}.${derateBinding.param} → solver_params \`${derateBinding.path}\`）`,
+            evidence: `\`RULE_PARAM_BINDINGS\` · 契约规则参数绑定册（${derateBinding.ruleKey}.${derateBinding.param} → solver_params \`${derateBinding.path}\`）`,
             baseline: 0.6,
             domain: { min: 0.05, max: 1, step: 0.05 },
             effect: { op: "scaleDaysInverse" as const, stepId: sid("queue") },
@@ -881,7 +876,7 @@ export function buildPlaceholderInspectorInput(args: {
             label: "上游数据新鲜度阈值",
             unit: "小时",
             carrier: "有" as const,
-            evidence: `\`RULE_PARAM_BINDINGS\` · datacore.ts:201（${staleBinding.ruleKey}.${staleBinding.param} → solver_params \`${staleBinding.path}\`）`,
+            evidence: `\`RULE_PARAM_BINDINGS\` · 契约规则参数绑定册（${staleBinding.ruleKey}.${staleBinding.param} → solver_params \`${staleBinding.path}\`）`,
             baseline: 24,
             domain: { min: 0, max: 120, step: 1 },
             effect: { op: "addDaysScaled" as const, stepId: sid("handoff"), divisor: 24 },
@@ -898,8 +893,8 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "",
       carrier: "薄",
       evidence:
-        "`ChainScope.modelIds` · chain-sim.ts:162 有字段，但值域无 contracts 级单源册（S0 注释 chain-sim.ts:152-154 明写）；" +
-        "`Routing` / `Operation` 对象只在 datacore（battery.ts:2133 / 2234），跨包不可 import（R1）",
+        "`ChainScope.modelIds` · 契约 `ChainScope` 有字段，但值域无契约级单源册（S0 已明写）；" +
+        "`Routing` / `Operation` 对象只在 DataCore 合成种子，跨包不可 import（R1）",
       baseline: null,
       baselineOptionId: "route-standard",
       effect: { op: "topology" },
@@ -926,7 +921,7 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "",
       carrier: "有",
       evidence:
-        "`ChainScope.baseIds` · chain-sim.ts:160，值域 `CANONICAL_BASE_IDS` 派生自 `BASE_REGISTRY`（chain-sim.ts:121）⇒ 选项集是派生的，不是手抄",
+        "`ChainScope.baseIds` · 契约 `ChainScope`，值域 `CANONICAL_BASE_IDS` 派生自 `BASE_REGISTRY` ⇒ 选项集是派生的，不是手抄",
       baseline: null,
       baselineOptionId: siteOptions[0]?.optionId ?? null,
       effect: { op: "topology" },
@@ -939,8 +934,8 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "",
       carrier: "缺",
       evidence:
-        "全仓无「工序启停」承载：`Process` 属性表（apps/datacore/src/synthetic/battery.ts:914-941）无 status/enabled；" +
-        "`Line.status` 是产线维且 20 因子绑定 ⑳ 标 `writable:false`（capacity-factors.ts:70）⇒ 今天拨不动",
+        "全仓无「工序启停」承载：对象类型 `Process` 的属性表无 status/enabled；" +
+        "`Line.status` 是产线维且 20 因子绑定 ⑳ 标 `writable:false` ⇒ 今天拨不动",
       baseline: null,
       baselineOptionId: null, // ← 缺承载 ⇒ **不给默认选项**，初始不选
       effect: { op: "topology" },

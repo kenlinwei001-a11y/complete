@@ -1,0 +1,251 @@
+{
+ "apps/frontend-shell/src/mocks/handlers.ts": [
+  [
+   6869,
+   "skill-lint.ts:234",
+   "\"复用既有 lintSkill（skill-lint.ts:234）+ 工具注册表反查 + 图/引用对账。\" +"
+  ]
+ ],
+ "apps/frontend-shell/src/mocks/processWaitFixtures.ts": [
+  [
+   409,
+   "apps/datacore/src/synthetic/battery-extended.ts",
+   "\"apps/datacore/src/synthetic/battery-extended.ts 的 CustomsClearance.declaredDay 字段描述原文「申报天（相对天）。到 clearedDay 之间即「清关」腿的实测耗时」——两个时刻是同一段的两端，非我划分。\","
+  ],
+  [
+   419,
+   "packages/contracts/src/procurement.ts",
+   "\"同上字段对的另一端 clearedDay（「海关放行天…放行后才进入到货检验」）。责任方是清关行/海关（packages/contracts/src/procurement.ts PROCUREMENT_LEG_OWNER.customs = CUSTOMS_BROKER），平台侧对口职能是 supply_chain（与 seed.ts P34 定义的 ownerFunctionKey 一致）。"
+  ],
+  [
+   433,
+   "apps/datacore/src/process/flow-rules.ts",
+   "reason: `mock 世界里流程 ${key} 没有步骤模板。真后端流程里只有 9 条有（2026-08-16 现算）（候选集由 apps/datacore/src/process/flow-rules.ts 的 flowRuleCoveredProcessKeys() 算出，其中 2 条因单据只记了一个可用时刻而建不出多步）——「多数流程今天建不出实例」是平台的真实状态，mock 不替它遮"
+  ],
+  [
+   434,
+   "apps/frontend-shell/src/mocks/processWaitFixtures.ts",
+   "probe: `真后端复验：curl -s -H 'X-Debug-User: demo:u1:admin' 'http://127.0.0.1:4001/a/v1/process-definitions/${key}/step-template' | jq '{available,absence}'；mock 侧复验：读 apps/frontend-shell/src/mocks/process"
+  ]
+ ],
+ "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts": [
+  [
+   91,
+   "packages/contracts/src/datacore.ts:206",
+   "\"packages/contracts/src/datacore.ts:206（C18.cashFloor → solver_params `sop.cashFloor`）\","
+  ],
+  [
+   92,
+   "packages/contracts/src/datacore.ts:207",
+   "\"packages/contracts/src/datacore.ts:207（同一条 C18.cashFloor → `planGenerate.targets.cashFloor`，注释原文「两处必须同源，否则同一条规则的两个消费方各说各话」）\","
+  ],
+  [
+   93,
+   "apps/datacore/src/sop.ts:299",
+   "\"apps/datacore/src/sop.ts:299（`const cashOk = cashCushion >= params.sop.cashFloor;`）\","
+  ],
+  [
+   94,
+   "apps/datacore/src/solvers/plan.ts:292",
+   "\"apps/datacore/src/solvers/plan.ts:292（`if (hard.cash && outcome.cash < targets.cashFloor) hardViol.push(\\\"C18\\\");`）\","
+  ],
+  [
+   114,
+   "apps/datacore/src/synthetic/cadence.ts:313",
+   "\"apps/datacore/src/synthetic/cadence.ts:313（查财务侧四处的取证原文：termDays 口径是账期，不是开票频率）\","
+  ],
+  [
+   115,
+   "apps/datacore/src/synthetic/cadence.ts:321",
+   "\"apps/datacore/src/synthetic/cadence.ts:321（原文「termDays 是本节点最容易被误用的诱饵——账期 ≠ 结算节拍，挪用即口径错标」）\","
+  ],
+  [
+   116,
+   "apps/datacore/src/solvers/chain-loss.ts:424",
+   "\"apps/datacore/src/solvers/chain-loss.ts:424（本节点段天数真读的就是 Customer.termDays）\","
+  ],
+  [
+   132,
+   "apps/datacore/src/synthetic/cadence.ts:308",
+   "\"apps/datacore/src/synthetic/cadence.ts:308（本节点的节拍取证条目）\","
+  ],
+  [
+   133,
+   "apps/datacore/src/synthetic/cadence.ts:313",
+   "\"apps/datacore/src/synthetic/cadence.ts:313（四处取证：ARInvoice 无开票日期 / DSO 单值 / 全仓无开票事件）\","
+  ],
+  [
+   134,
+   "apps/datacore/src/synthetic/cadence.ts:321",
+   "\"apps/datacore/src/synthetic/cadence.ts:321（诱饵原文）\","
+  ],
+  [
+   149,
+   "packages/contracts/src/datacore.ts:206-207",
+   "\"packages/contracts/src/datacore.ts:206-207（同一条 C18.cashFloor 投影到两个 solver_params 路径）\","
+  ],
+  [
+   150,
+   "apps/datacore/src/solvers/plan.ts:292",
+   "\"apps/datacore/src/solvers/plan.ts:292（本侧消费：硬违约 C18）\","
+  ],
+  [
+   151,
+   "apps/datacore/src/sop.ts:299",
+   "\"apps/datacore/src/sop.ts:299（对侧消费：S&OP cashOk）\","
+  ],
+  [
+   183,
+   "packages/contracts/src/process-capacity.ts:60",
+   "\"packages/contracts/src/process-capacity.ts:60（库位规格：unitsProp=agingSlots · rateProp=agingDays · rateKind=occupancyDays）\","
+  ],
+  [
+   184,
+   "packages/contracts/src/process-capacity.ts:106",
+   "\"packages/contracts/src/process-capacity.ts:106（`spec.rateKind === \\\"occupancyDays\\\" ? 1 / rate : rate` —— 占用天数取倒数）\","
+  ],
+  [
+   185,
+   "packages/contracts/src/process-capacity.ts:115",
+   "\"packages/contracts/src/process-capacity.ts:115（`capacityPerDay: units * unitDailyThroughput * yieldFactor`）\","
+  ],
+  [
+   186,
+   "apps/datacore/src/solvers/chain-impediment.ts:107-120",
+   "\"apps/datacore/src/solvers/chain-impediment.ts:107-120（C02 卡点判据的实测值 = readProcessHardCapacity().capacityPerDay）\","
+  ],
+  [
+   187,
+   "apps/datacore/src/solvers/chain-loss.ts:37",
+   "\"apps/datacore/src/solvers/chain-loss.ts:37（本节点这一段的天数直接取 Process.agingDays，归类 queue）\","
+  ],
+  [
+   204,
+   "apps/datacore/src/synthetic/cadence.ts:337",
+   "\"apps/datacore/src/synthetic/cadence.ts:337（`flowGate: false`）\","
+  ],
+  [
+   205,
+   "apps/datacore/src/synthetic/cadence.ts:344-348",
+   "\"apps/datacore/src/synthetic/cadence.ts:344-348（原文「它是真周期，但不是产品流的等待，两件事必须分开」）\","
+  ],
+  [
+   225,
+   "apps/datacore/src/solvers/chain-loss.ts:506",
+   "\"apps/datacore/src/solvers/chain-loss.ts:506（本节点段天数：沿 material_supplied_by 读 Supplier.leadTime）\","
+  ],
+  [
+   226,
+   "apps/datacore/src/solvers/extended.ts:635",
+   "\"apps/datacore/src/solvers/extended.ts:635（采购四段分解的供应商段：`source: { objectType: \\\"Supplier\\\", field: \\\"leadTime\\\" }`）\","
+  ],
+  [
+   227,
+   "packages/contracts/src/procurement.ts:291",
+   "\"packages/contracts/src/procurement.ts:291（`expectedSlipDays` = 供应商段承诺天 × (1 − onTimeRate)）\","
+  ],
+  [
+   228,
+   "packages/contracts/src/procurement.ts:295-297",
+   "\"packages/contracts/src/procurement.ts:295-297（`earliestKitDay` 承诺口径 vs `expectedKitDay` 含风险口径，刻意两个都给）\","
+  ]
+ ],
+ "apps/frontend-shell/src/views/sim/physicalTopology.ts": [
+  [
+   38,
+   "apps/datacore/src/synthetic/battery.ts",
+   "file: \"apps/datacore/src/synthetic/battery.ts\","
+  ],
+  [
+   46,
+   "apps/datacore/src/synthetic/battery.ts",
+   "file: \"apps/datacore/src/synthetic/battery.ts\","
+  ]
+ ],
+ "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts": [
+  [
+   126,
+   "service.ts:3125",
+   "note: \"chain_impediments 显式拒绝 scope.businessTypes（后端 service.ts:3125「暂不支持」并报 400）——今天这一维带不下去，故此处只读不可勾。\","
+  ],
+  [
+   138,
+   "service.ts:3125",
+   "note: \"chain_impediments 显式拒绝 scope.modelIds（后端 service.ts:3125「暂不支持」并报 400）——今天这一维带不下去，故此处只读不可勾。\","
+  ],
+  [
+   846,
+   "service.ts:2882",
+   "\"更要命的是 decision_play 拿到对不上的因子 id 会静默回落到贡献最大的默认根因（solvers/service.ts:2882），\" +"
+  ]
+ ],
+ "apps/frontend-shell/src/views/sim/sandboxRelationGraph.ts": [
+  [
+   146,
+   "apps/datacore/src/sim/propagation.ts",
+   "\"本页把它们写回引擎真实执行的那个算术形态（apps/datacore/src/sim/propagation.ts 的 propagateTick）。\" +"
+  ]
+ ],
+ "apps/frontend-shell/src/views/sim/transitFlow.ts": [
+  [
+   265,
+   "packages/contracts/src/chain-sim.ts:84",
+   "\"契约在：CadenceSchema / expectedCadenceWaitDays 见 packages/contracts/src/chain-sim.ts:84/:108（S0 已冻结）。\","
+  ],
+  [
+   266,
+   "apps/datacore/src/synthetic/cadence.ts | apps/datacore/src/synthetic/service.ts:712",
+   "\"承载**也在**（D1 已并线，与本文件旧注释相反）：apps/datacore/src/synthetic/cadence.ts 存在，且 apps/datacore/src/synthetic/service.ts:712 以 putAll(\\\"Cadence\\\", cadenceObjectRows(deriveChainCadences(g)), \\\"nodeId\\\") 真落库。\","
+  ],
+  [
+   267,
+   "apps/datacore/src/app.ts:1448",
+   "\"下游已在读：apps/datacore/src/app.ts:1448 的推演 tick 从对象库 listByType(\\\"Cadence\\\") 取行、经 cadenceFromProps 还原成闸门。\","
+  ],
+  [
+   326,
+   "apps/datacore/src/synthetic/cadence.ts:512",
+   "\"读回口逐字镜像 apps/datacore/src/synthetic/cadence.ts:512 cadenceFromProps：dataMode 非 SYNTHETIC ⇒ 无节拍（不是 0），字段名是 cadenceKind 不是 kind。\","
+  ],
+  [
+   340,
+   "service.ts:712",
+   "unblockedBy: \"种数据：对本租户跑一次合成种子（synthetic/service.ts:712 那条 putAll 会把 Cadence 行落进来）。\","
+  ],
+  [
+   387,
+   "apps/datacore/src/synthetic/battery-extended.ts",
+   "\"复验：`grep -n 'def(\\\"PurchaseOrder\\\"' apps/datacore/src/synthetic/battery-extended.ts`（类型声明）。\","
+  ],
+  [
+   390,
+   "apps/datacore/src/synthetic/battery-extended.ts",
+   "\"复验：`grep -n 'def(\\\"CustomsClearance\\\"' apps/datacore/src/synthetic/battery-extended.ts`。\","
+  ],
+  [
+   391,
+   "packages/contracts/src/procurement.ts",
+   "\"契约侧 packages/contracts/src/procurement.ts 冻结了四段腿 supplier_production / in_transit / customs / incoming_inspection，前端可直接依赖。\" +"
+  ],
+  [
+   392,
+   "packages/contracts/src/index.ts",
+   "\"复验：`grep -n 'procurement.js' packages/contracts/src/index.ts`（导出处）。\","
+  ],
+  [
+   464,
+   "packages/contracts/src/chain-sim.ts",
+   "\"唯一仍然成立的旧结论：ASN 至今只在 packages/contracts/src/chain-sim.ts 与 procurement.ts 的注释里出现，无对象、无 schema、无数据 —— 但采购段并不依赖它，四段腿靠日戳就能画。\","
+  ],
+  [
+   522,
+   "apps/datacore/src/synthetic/service.ts",
+   "\"种数据：对本租户跑一次合成种子 —— `apps/datacore/src/synthetic/service.ts` 里 \" +"
+  ],
+  [
+   524,
+   "apps/datacore/src/synthetic/service.ts",
+   "\"那三条会把采购段行落进来（复验：`grep -n 'putAll(\\\"PurchaseOrder\\\"' apps/datacore/src/synthetic/service.ts`）。\","
+  ]
+ ]
+}
