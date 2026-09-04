@@ -399,7 +399,13 @@ export const GOAL_REGISTRY: Record<string, GoalTarget> = {
  * `downstream` 是 grep 核实的下游受影响面（视图/求解器/派生对象），供改值前评估爆炸半径。
  */
 export interface BoundaryConsumer {
-  /** 派生消费端源文件。 */
+  /**
+   * 派生消费端**业务面**（屏上显示的那一栏）。
+   * R-UI-4：源码坐标不上屏，屏上给的是「哪个系统的哪一层在用它」——
+   * 这一栏与 `binding` 合起来足以让人自己去核对，而不需要知道文件路径。
+   */
+  surface: string;
+  /** 派生消费端源文件（**门/测试用**：boundary-singlesource 据此定位源码核对派生。不上屏。） */
   file: string;
   /** 派生绑定名（消费端把册映射成的本地表示）。 */
   binding: string;
@@ -423,9 +429,9 @@ export const BOUNDARY_IMPACT: BoundaryRegistryImpact[] = [
     title: "基地集",
     members: BASE_REGISTRY.length,
     consumers: [
-      { file: "apps/datacore/src/synthetic/battery.ts", binding: "BASES", derivesVia: "BASE_REGISTRY.map" },
-      { file: "apps/frontend-shell/src/mocks/fixtures.ts", binding: "BASES", derivesVia: "BASE_REGISTRY.map" },
-      { file: "apps/frontend-shell/src/mocks/simSolvers.ts", binding: "MOCK_BASES", derivesVia: "BASE_REGISTRY.map" },
+      { surface: "DataCore · 合成种子", file: "apps/datacore/src/synthetic/battery.ts", binding: "BASES", derivesVia: "BASE_REGISTRY.map" },
+      { surface: "前端 · mock 固件", file: "apps/frontend-shell/src/mocks/fixtures.ts", binding: "BASES", derivesVia: "BASE_REGISTRY.map" },
+      { surface: "前端 · mock 求解器", file: "apps/frontend-shell/src/mocks/simSolvers.ts", binding: "MOCK_BASES", derivesVia: "BASE_REGISTRY.map" },
     ],
     downstream: [
       "Base 对象库（合成物化）",
@@ -439,10 +445,10 @@ export const BOUNDARY_IMPACT: BoundaryRegistryImpact[] = [
     title: "应用细分集",
     members: SEG_REGISTRY.length,
     consumers: [
-      { file: "apps/datacore/src/synthetic/battery.ts", binding: "SEGMENTS / audit.segMargins", derivesVia: "SEG_REGISTRY" },
-      { file: "apps/datacore/src/solvers/risk.ts", binding: "SEG_PRICE", derivesVia: "SEG_REGISTRY" },
-      { file: "apps/frontend-shell/src/views/plan/OrderChainView.tsx", binding: "ECON / SEG_COLOR", derivesVia: "SEG_REGISTRY" },
-      { file: "apps/frontend-shell/src/mocks/simSolvers.ts", binding: "AUDIT_T.segMargins", derivesVia: "SEG_REGISTRY" },
+      { surface: "DataCore · 合成种子", file: "apps/datacore/src/synthetic/battery.ts", binding: "SEGMENTS / audit.segMargins", derivesVia: "SEG_REGISTRY" },
+      { surface: "DataCore · 求解器 risk", file: "apps/datacore/src/solvers/risk.ts", binding: "SEG_PRICE", derivesVia: "SEG_REGISTRY" },
+      { surface: "前端 · 订单链视图", file: "apps/frontend-shell/src/views/plan/OrderChainView.tsx", binding: "ECON / SEG_COLOR", derivesVia: "SEG_REGISTRY" },
+      { surface: "前端 · mock 求解器", file: "apps/frontend-shell/src/mocks/simSolvers.ts", binding: "AUDIT_T.segMargins", derivesVia: "SEG_REGISTRY" },
     ],
     downstream: [
       "order-chain 视图 econTable（量价本利）",
@@ -455,9 +461,9 @@ export const BOUNDARY_IMPACT: BoundaryRegistryImpact[] = [
     title: "规划目标阈值集",
     members: Object.keys(PLAN_GOAL_TARGETS).length,
     consumers: [
-      { file: "apps/datacore/src/synthetic/battery.ts", binding: "planGenerate.targets", derivesVia: "PLAN_GOAL_TARGETS" },
-      { file: "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx", binding: "DEFAULT_GOALS", derivesVia: "PLAN_GOAL_TARGETS" },
-      { file: "apps/frontend-shell/src/mocks/fixtures.ts", binding: "planGoals", derivesVia: "PLAN_GOAL_TARGETS" },
+      { surface: "DataCore · 合成种子", file: "apps/datacore/src/synthetic/battery.ts", binding: "planGenerate.targets", derivesVia: "PLAN_GOAL_TARGETS" },
+      { surface: "前端 · 方案生成视图", file: "apps/frontend-shell/src/views/sim/PlanGenerateView.tsx", binding: "DEFAULT_GOALS", derivesVia: "PLAN_GOAL_TARGETS" },
+      { surface: "前端 · mock 固件", file: "apps/frontend-shell/src/mocks/fixtures.ts", binding: "planGoals", derivesVia: "PLAN_GOAL_TARGETS" },
     ],
     downstream: [
       "plan_generate 求解器（targets 喂方案达成判定）",
