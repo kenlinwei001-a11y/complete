@@ -174,9 +174,27 @@ export class InProcOptimizerClient implements OptimizerClient {
    * cross_object_occupancy 内存态确定性加权贪心（WO-MEMORY-VIEW-RESILIENCE §4.5）。
    *
    * 订单×产线×合同三元互斥：一单占某线 = 同耗产线产能（Line.capacity）+ 合同额度（Contract.cap），同线互斥。
-   * 贪心：按加权优先分（wRev·revenue + wPen·penalty，营收/避违约都是"该服务"的理由）**稳定降序**（tie-break id 升序·
-   * "score+id"·R6）逐单择线——在资格(eligibility)内取剩余产线容量 ≥ qty 且（若绑合同）剩余合同额度 ≥ qty 的可行线中，
-   * 选加权代价（wCost·cost）最小者（tie-break line id 升序），逐格扣减产线容量 + 合同额度 → 天然守恒不重复占用。
+   *
+   * ══ 今天的行为是 X，应该是 Y（WO-OBJECTIVE-SIGN·实测）═══════════════════════════
+   *
+   * **X（修前原文）**：装入优先序 = `wRev·revenue + wPen·penalty` 的**绝对值降序**。
+   *   而约束资源是 `qty`（`lineRemain >= o.qty` → 扣 `o.qty`）—— 这是一个背包，
+   *   排序却按**绝对价值**而非**单位资源价值**。因 `revenue = qty × unitPrice`、
+   *   `penalty = qty × 优先级单价`，绝对分 `= qty × 密度` ⇒ **排序被 qty 支配**：
+   *   把营收权重调大 = 优先塞**最大的单**（不是最赚的单），大单吃光产能 ⇒
+   *   实测（真订单簿 50 单）营收权重 0→2：获排 **20→19→18→17→16 严格递减**，
+   *   营收 39.35→39.31→**39.49**→39.26→**38.76 亿**，违约金 12.11→**16.87 亿**。
+   *   即**调大「营收（越高越好）」的权重，营收反而跌、违约金反而涨** —— 与屏上承诺相反。
+   *   ⚠️ 注意它**不是符号翻转**：符号翻转会给出严格单调曲线，而这条曲线在 w=1 处有内点极大值 ——
+   *   那正是"按绝对值排的背包"的指纹（换一组权重就换一批大单，价值忽上忽下）。
+   *
+   * **Y（本实现）**：优先序 = **单位产能净价值密度** `(wRev·revenue + wPen·penalty − wCost·cost) / qty`
+   *   降序。qty 是被消耗的那个资源，故除以它才是"每单位产能换来多少加权价值"——
+   *   这也是背包贪心的标准形。三项的**方向**在此显式落地：营收与"避掉的违约金"是收益（`+`），
+   *   指派代价是支出（`−`）。于是"我更在乎营收" ⇒ 优先高**单价**单 ⇒ 营收真的上升。
+   *
+   * 逐单择线：在资格(eligibility)内取剩余产线容量 ≥ qty 且（若绑合同）剩余合同额度 ≥ qty 的可行线中，
+   * 选**代价最小**者（tie-break line id 升序），逐格扣减产线容量 + 合同额度 → 天然守恒不重复占用。
    * 未获排的订单 = displaced（被挤）。objectiveValues 从结果**真算**：revenue=Σ获排营收、penalty=Σ被挤违约金（未服务
    * 才计罚）、cost=Σ获排指派代价（与 sidecar/桩语义一致·供 what-if Δ 分解）。
    *
@@ -195,12 +213,26 @@ export class InProcOptimizerClient implements OptimizerClient {
     for (const e of req.eligibility) {
       (eligByOrder.get(e.order) ?? eligByOrder.set(e.order, []).get(e.order)!).push({ line: e.line, cost: e.cost });
     }
+    // 择线只有一条判据：代价最小（tie-break line id 升序）。
+    // ⚠️ 原文是 `wCost * a.cost - wCost * b.cost` —— 两边同乘一个非负标量**不可能改变次序**，
+    // 那个 `wCost` factor 是装饰品；且 `wCost === 0` 时全部比较归零、静默退化成"按线名字母序挑线"
+    // （而不是挑最便宜的线）—— 把权重调到 0 反而换掉了择线口径，这是与用户预期相反的行为。
+    // wCost 真正该起作用的地方是**要不要服务这一单**（下面的密度），不是**挑哪条线**。
     for (const list of eligByOrder.values()) {
-      list.sort((a, b) => wCost * a.cost - wCost * b.cost || a.line.localeCompare(b.line));
+      list.sort((a, b) => a.cost - b.cost || a.line.localeCompare(b.line));
     }
-    const score = (o: { revenue: number; penalty: number }) => wRev * o.revenue + wPen * o.penalty;
-    // 稳定降序装入（加权优先分高者先·tie-break id 升序·R6："score+id"）。
-    const ordered = [...req.orders].sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id));
+    /** 服务该单会实际发生的指派代价 = 其可行线里最便宜的那条（择线正是按此挑的）。取不到 ⇒ 0。 */
+    const costOf = (id: string): number => eligByOrder.get(id)?.[0]?.cost ?? 0;
+    /**
+     * **单位产能净价值密度**（本函数的心脏，理由见上"今天的行为是 X，应该是 Y"）。
+     * 分母是被消耗的那个资源（qty）；`Math.max(1, qty)` 只为防 0 除，
+     * 而 qty ≤ 0 的单在装入循环里本就永远占不到格（`lineRemain >= qty` 恒真但 occupancy 无意义），
+     * 不会因此冒充高密度上位。
+     */
+    const density = (o: { id: string; revenue: number; penalty: number; qty: number }) =>
+      (wRev * o.revenue + wPen * o.penalty - wCost * costOf(o.id)) / Math.max(1, o.qty);
+    // 稳定降序装入（密度高者先·tie-break id 升序·R6："density+id"）。
+    const ordered = [...req.orders].sort((a, b) => density(b) - density(a) || a.id.localeCompare(b.id));
     const occupancy: { order: string; line: string }[] = [];
     const served = new Set<string>();
     const cancel = currentCancellationSignal(); // WO-D1：同 portfolio，逐单检查取消
@@ -234,6 +266,25 @@ export class InProcOptimizerClient implements OptimizerClient {
     const penalty = req.orders.filter((o) => displaced.includes(o.id)).reduce((s, o) => s + o.penalty, 0);
     const values: Record<string, number> = {};
     for (const o of req.orders) values[o.id] = served.has(o.id) ? 1 : 0;
+    /**
+     * 加权标量目标（按各目标声明的方向折成"越大越好"）：营收 `+`、违约金与代价 `−`。
+     * 这是贪心**实际在最大化**的那个量的实现值 —— 回它出来，"改权重 → 目标值动"这条链才有落点。
+     */
+    const objective = wRev * revenue - wPen * penalty - wCost * cost;
+    /**
+     * 各目标的**密度极差**（`max − min` over 全体订单）。极差 0 ⇒ 该权重乘上常数不改变任何一对订单的
+     * 先后 ⇒ 那根滑杆在这份数据上结构性失效，屏上据此置灰（判据由机器现算，非写死白名单）。
+     */
+    const spreadOf = (f: (o: (typeof req.orders)[number]) => number): number => {
+      if (req.orders.length === 0) return 0;
+      const vs = req.orders.map((o) => f(o) / Math.max(1, o.qty));
+      return Math.max(...vs) - Math.min(...vs);
+    };
+    const objectiveSpread: Record<string, number> = {
+      revenue: spreadOf((o) => o.revenue),
+      penalty: spreadOf((o) => o.penalty),
+      cost: spreadOf((o) => costOf(o.id)),
+    };
     // 诚实红线：贪心可行解·不可证最优。
     return {
       status: "FEASIBLE",
@@ -243,6 +294,8 @@ export class InProcOptimizerClient implements OptimizerClient {
       occupancy,
       displaced,
       method: req.method ?? "weighted",
+      objective,
+      objectiveSpread,
       summary: `占用：${served.size}/${req.orders.length} 单获排`,
     };
   }

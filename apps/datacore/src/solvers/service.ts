@@ -521,7 +521,9 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   combinatorial_auction: ["status", "optimal", "winners", "objective", "bidType", "itemCount", "bidCount", "summary"],
   // WO-CROSS-OBJECT-MULTIOBJ 多目标 / 跨对象占用 输出形状（权威=求解器实现成功路径顶层 key）。
   multi_objective: ["status", "optimal", "values", "objectiveValues", "method", "objectiveKeys", "varCount", "objectiveCount", "summary"],
-  cross_object_occupancy: ["status", "optimal", "values", "objectiveValues", "occupancy", "displaced", "method", "orderCount", "lineCount", "contractCount", "servedCount", "summary"],
+  // WO-OBJECTIVE-SIGN：+ objective（加权标量目标·"改权重→目标值动"这条链的落点）
+  //   + objectiveSpread（各目标的密度极差·0 = 该权重滑杆在本数据上结构性失效 → 屏上置灰的判据）。
+  cross_object_occupancy: ["status", "optimal", "values", "objectiveValues", "occupancy", "displaced", "method", "orderCount", "lineCount", "contractCount", "servedCount", "objective", "objectiveSpread", "summary"],
   // 轨B·增量3 optimize_whatif 输出形状（= OptWhatifResult 顶层 key + summary + 决策比对方案结构透传）。
   optimize_whatif: ["baselineObjective", "perturbedObjective", "deltaObjective", "deltaByObjective", "feasible", "conflictConstraints", "explanation", "baselineSolution", "perturbedSolution", "summary"],
   // WO-DASH-ONHAND ②：+ window（聚合分支回带交期窗口 {fromDay,toDay,forecastStart}——
@@ -5309,11 +5311,16 @@ export class SolverService {
       epsilon: args.epsilon === undefined ? undefined : asArr<{ key: string; bound: number }>(args.epsilon, "epsilon"),
       priority: args.priority === undefined ? undefined : asArr<string>(args.priority, "priority"),
     });
+    // ⚠️ 这里是**显式重建**回包（白名单投影）——引擎新加的字段不写进来就永远到不了前端。
+    //   WO-OBJECTIVE-SIGN 的 objective / objectiveSpread 二者 **additive**：引擎没给就不出现，
+    //   故 HTTP sidecar（CP-SAT）路径的回包逐字节不变，屏上两处消费方都按"缺席=不可得"处理。
     return {
       status: r.status, optimal: r.optimal, values: r.values, objectiveValues: r.objectiveValues,
       occupancy: r.occupancy, displaced: r.displaced, method: r.method,
       orderCount: orders.length, lineCount: lines.length, contractCount: contracts.length,
       servedCount: orders.length - r.displaced.length,
+      ...(r.objective === undefined ? {} : { objective: r.objective }),
+      ...(r.objectiveSpread === undefined ? {} : { objectiveSpread: r.objectiveSpread }),
       summary: r.summary,
     };
   }
