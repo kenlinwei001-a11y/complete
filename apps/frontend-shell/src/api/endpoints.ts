@@ -203,6 +203,53 @@ export const searchObjects = (type: string, q: string, extra?: Record<string, st
   return api.a<ObjectsPage>(`/a/v1/objects?${params.toString()}`);
 };
 
+/**
+ * **取全量对象**（按服务端回显的 `hasMore` 逐页翻，直到翻完）。
+ *
+ * ── 为什么必须有这个函数（WO-PAGING-SILENT-TRUNCATION-SCAN）─────────────────
+ * `GET /a/v1/objects` 的默认页长是 **50**。此前有一张单把 `limit`/`offset` 等 16 个
+ * **分页形态别名**改成了 400 点名 —— 那修的是「**传了不认识的参数**」这一种形态。
+ * 而全仓真正的多数形态是另一种：**什么参数都不传**。它不报错、不 warning，
+ * 调用方拿回 50 行并把它当成全部，`hasMore:true` 就摆在同一个回包里而没有一个人读。
+ *
+ * 实测（真后端 `SEED_DEMO=1` · seed 42 · 独立口径 `POST /a/v1/objects/aggregate` 取真值）：
+ *   `Order` 真值 **500** → 不传分页实收 **50**（7.331 倍口径偏差就是这么来的）；
+ *   `Line` 130 → 50 · `WIPLot` 260 → 50 · `Workshop` 130 → 50 ·
+ *   `Equipment` 780 → 50 · `EquipmentOEE` 5460 → 50 · `OrderLine` 873 → 50。
+ *
+ * **形态**（照 CLAUDE.md 铁律 0.6 句式）：
+ * > 「我用『接口回了 200 且有数据』当作『我拿到了全部数据』的证据，而前者并不度量后者。」
+ *
+ * ── 判据：什么时候用它，什么时候**不该**用 ─────────────────────────────────
+ * 用它 = 「这个读数要么上屏当**全集**，要么进计算当**分母/合计**」。
+ * **不该**用它的两类，必须在调用点旁写明「有意只取首页」：
+ *   · 带 `q` 收窄的搜索选择器（用户打字才是收敛机制，铺全量反而是病）；
+ *   · widget 配置里显式声明 `limit: 8` 那种「最近 N 条」表 —— N 就是它的语义。
+ *
+ * ⚠ **不许**改成「传一个大 `pageSize` 就当取全了」：服务端上限 `MAX_PAGE_SIZE=500` 会
+ * 把请求值**夹住**（回显 `pageSize` 是生效值，且给 warning），`Order` 恰好 500 时看着像对的，
+ * 而 `OrderLine`（873）、`EquipmentOEE`（5460）会静默少一半以上 —— 那是同一个病换个数字。
+ * 所以判据落在服务端回显的 `hasMore` 上，不落在「我请求了多大一页」上。
+ */
+export async function fetchAllObjects(
+  type: string,
+  q = "",
+  extra?: Record<string, string>,
+): Promise<ObjectsPage> {
+  const PAGE = 500; // = 服务端 MAX_PAGE_SIZE；被夹也无妨，下面认的是回显的 hasMore
+  const items: ObjectsPage["items"] = [];
+  let page = 1;
+  let last: ObjectsPage | undefined;
+  // 安全阀：500 页 × 500 行 = 25 万行。撞上说明这不是一个该整页拉的类型（该走 aggregate）。
+  for (; page <= 500; page += 1) {
+    const res = await searchObjects(type, q, { ...extra, page: String(page), pageSize: String(PAGE) });
+    last = res;
+    items.push(...res.items);
+    if (!res.hasMore) break;
+  }
+  return { ...(last ?? { items: [], total: items.length }), items, total: last?.total ?? items.length };
+}
+
 export const queryObjectsPaged = (
   type: string,
   page: number,
