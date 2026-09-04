@@ -1418,7 +1418,10 @@ describe('WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 cla
       scanRenderedTitles(readFileSync(abs, "utf8"), abs.slice(REPO_ROOT.length + 1), zhRoot),
     );
     expect(sites.length, "一个 title 站点都没扫到 ⇒ 扫描器坏了，本棘轮是哑的").toBeGreaterThan(0);
-    const hits = sites.filter((s) => s.verdict === "HIT").map((s) => `${s.id}: ${s.text.slice(0, 60)}`);
+    // 报错文本里把占位符换成可见记号：裸 NUL 直接进 gate.log 会被 bash 的命令替换吞掉
+    // （实测 `gate.sh: warning: command substitution: ignored null byte in input`），日志从此不可信。
+    const show = (t: string) => t.split(UNRESOLVED_MARK).join("⟦?⟧").slice(0, 60);
+    const hits = sites.filter((s) => s.verdict === "HIT").map((s) => `${s.id}: ${show(s.text)}`);
     const unresolved = sites.filter((s) => s.verdict === "UNRESOLVED").map((s) => s.id);
     expect(hits.length, "一条都没扫到 ⇒ 扫描器坏了，本棘轮是哑的").toBeGreaterThan(0);
 
