@@ -7349,6 +7349,28 @@ export const handlers = [
     return HttpResponse.json(rule);
   }),
   /**
+   * `PATCH /a/v1/sim/propagation-rules/:id/status` —— **只改启停位**（屏上那个勾选框）。
+   * 镜像后端 `app.ts` 的同名路由（WO-ONTOLOGY-EDGE-EDIT）：只收 `DRAFT|PUBLISHED` 两态，
+   * 在**当前**那条边上合并 status 一个字段（不整条覆盖 ⇒ 并发下不会顺手把系数回退）。
+   *
+   * ⚠ 这条 mock **此前缺失**：前端 `setPropagationRuleStatus` 打的就是 `/:id/status`，
+   * 而 mock 只有 `/:id` ⇒ 勾选框那一跳在 mock 世界里**根本没有 handler**，
+   * `mockPropRules` 一个字不变 ⇒ `view-config.propagationCount` 恒不降，
+   * 「停用可逆 / 先停用再删」两条接缝判据永远不可能绿，而病根不在产品也不在判据，
+   * 在 mock 少镜像了一条真路由 —— 正是本仓「绿测试≠能用」的镜像面：mock 与真后端错开一条路。
+   */
+  http.patch("*/a/v1/sim/propagation-rules/:id/status", async ({ request, params }) => {
+    const rule = mockPropRules.find((r) => r.id === String(params.id));
+    if (!rule) return HttpResponse.json({ error: { code: "NOT_FOUND", message: "propagation rule not found" } }, { status: 404 });
+    const b = (await request.json()) as { status?: "DRAFT" | "PUBLISHED" };
+    if (b.status !== "DRAFT" && b.status !== "PUBLISHED") {
+      return HttpResponse.json({ error: { code: "VALIDATION_ERROR", message: "status 只收 DRAFT|PUBLISHED" } }, { status: 400 });
+    }
+    rule.status = b.status;
+    rule.version = (rule.version ?? 1) + 1;
+    return HttpResponse.json(rule);
+  }),
+  /**
    * `DELETE /a/v1/sim/propagation-rules/:id` —— 两道闸后硬删，成功 **204 无体**。
    * 闸①（启用中拒删）在 mock 里照做：它是**屏上会看见的行为**，不镜像就等于
    * 前端在 mock 下能删掉一条启用中的边、在真后端下却弹 409 —— 那正是「绿测试≠能用」。

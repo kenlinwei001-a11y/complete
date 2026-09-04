@@ -32,16 +32,49 @@ import { checkedTree, factHits } from "./factlock";
 /** 真实 URL 命中记录（证明请求真发出去了、发的是那条路、body 是那个形状）。 */
 type Hit = { url: string; body: unknown };
 
+/**
+ * 旁观请求 —— 走 MSW 的**事件**，**不注册 handler**。
+ *
+ * ⚠ 原写法是 `server.use(http[method](pattern, …))` 记一笔然后 `return undefined`，
+ * 注释写着「落回原 handler（有状态 store 照常推进）」——**实测并不会回落**：
+ * 那个同路径 handler 把请求**吃掉**了，`mockPropRules` 这个有状态 store 整条被旁路
+ * （金丝雀：在 mock 的 PATCH handler 里打日志，spy 一挂就再也不打 ⇒ 它根本没跑）。
+ * 后果是「PATCH 记到了、store 一个字没改 ⇒ view-config 恒不变」，
+ * 于是「停用后生效条数没降」这类断言**永远不可能绿** —— 而病根不在产品，在这个 spy。
+ *
+ * 形态（照 CLAUDE.md 铁律 0.6 句式）：
+ * **「我用『请求发出去了』当作『后端处理了』的证据，而前者并不度量后者。」**
+ *
+ * `request:start` 是纯旁观：既记得到真实 URL / body，又完全不影响 handler 链。
+ */
 function spyOn(method: "get" | "post" | "patch" | "delete", pattern: string, sink: Hit[]) {
-  server.use(
-    http[method](pattern, async ({ request }) => {
-      // `delete` 没有 body；`patch` 有（WO-CAUSAL-EDGE-CRUD 之后本文件要咬 PATCH 的 body 形状）。
-      const body = method === "post" || method === "patch" ? await request.clone().json().catch(() => null) : null;
-      sink.push({ url: request.url, body });
-      return undefined as never; // 落回原 handler（有状态 store 照常推进）
-    }),
+  // 把 MSW 的路径写法翻成正则：`*` 跨段通配，`:param` 只吃**一段**（与 MSW 语义一致），
+  // 末尾允许 query 串。⚠ 少翻 `:param` 这一支会让带路径参数的模式（`links/:key/deprecate`）
+  // 永远匹配不上 ⇒ 判据读到"这一跳没发出去"，而它其实发了 —— 又一次"尺子错了当结论"。
+  const re = new RegExp(
+    `^${pattern
+      .split("*")
+      .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/:[A-Za-z_]\w*/g, "[^/]+"))
+      .join(".*")}(\\?.*)?$`,
   );
+  server.events.on("request:start", ({ request }) => {
+    if (request.method.toLowerCase() !== method) return;
+    if (!re.test(request.url)) return;
+    // ⚠ **同步**入列：条数是很多判据的主语（"这一跳发出去了没有"），
+    // 若等 body 解析完再 push，`expect(sink.length).toBe(1)` 会在请求已经发出的情况下读到 0。
+    // 故先把这一笔记上，body 随后回填（读 body 的判据都排在 `waitFor(条数)` 之后）。
+    const hit: Hit = { url: request.url, body: null };
+    sink.push(hit);
+    // `delete` 没有 body；`patch`/`post` 有（WO-CAUSAL-EDGE-CRUD 之后本文件要咬 body 形状）。
+    if (method === "post" || method === "patch") {
+      void request.clone().json().then((b) => { hit.body = b; }).catch(() => { hit.body = null; });
+    }
+  });
 }
+
+// `server.use` 的 handler 由 setup.ts 的 `server.resetHandlers()` 清；**事件监听器不在其列**，
+// 必须自己摘，否则上一条用例的监听器会一直往它那个已经没人看的 sink 里推。
+afterEach(() => server.events.removeAllListeners());
 
 /** 读接缝面板上的三个数（`—` = 还没取回来）。 */
 async function readViewCfg(): Promise<{ links: number; stateVars: number; propCount: number }> {
@@ -205,14 +238,25 @@ describe("WO-CAUSAL-EDGE-CRUD ①' 因果边改/停/删（接缝：PATCH·DELETE
     await waitFor(async () => expect((await readViewCfg()).propCount).toBe(before.propCount + 1));
     const on = await readViewCfg();
 
-    // ① 停用
+    // ① 停用 —— 先过**波及面闸**。
+    // 「关掉是减少能力：先给波及面再落；开回来只是恢复，直接落」（`OntologyRelationsPage` 原话）
+    // ⇒ 勾掉勾选框只是**开闸**，PATCH 要等 `orel-impact-confirm` 才发。
+    // 判据没放宽：仍然是「点一下停用 ⇒ 恰好一发 PATCH 且 body 是 status:DRAFT」，
+    // 只是把「点一下」按今天真实的动线走完（少走这一步就会把有闸误判成没接线）。
     await user.click(await screen.findByTestId("orel-rule-toggle-tog_key"));
+    expect(patches.length, "闸还没确认就把 PATCH 发出去了 ⇒ 波及面闸是装饰品").toBe(0);
+    await user.click(await screen.findByTestId("orel-impact-confirm"));
     await waitFor(() => expect(patches.length, "PATCH 一次都没发出去 ⇒ 停用按钮没接线").toBe(1));
     expect(patches[0]!.body, "停用发的不是 status:DRAFT").toMatchObject({ status: "DRAFT" });
     await waitFor(async () => {
       expect((await readViewCfg()).propCount, "停用后生效条数没降 ⇒ 停用是装饰品").toBe(on.propCount - 1);
     });
-    expect((await screen.findByTestId("orel-rule-status-tog_key")).textContent).toBe("停用");
+    // 启停位是**勾选框**（那一格自己没有文字）⇒ 判据落在 `data-status` + `checked`，
+    // 与同文件「建一条【停用】的因果边」那条用的是同一套判据（此处原先还停在读 textContent 的年代）。
+    await waitFor(async () =>
+      expect((await screen.findByTestId("orel-rule-status-tog_key")).getAttribute("data-status")).toBe("DRAFT"),
+    );
+    expect((await screen.findByTestId<HTMLInputElement>("orel-rule-toggle-tog_key")).checked).toBe(false);
 
     // ② 再启用 —— **这一半是本仓已知坑的反面**：结构边的停用/下线点了回不来。
     await user.click(await screen.findByTestId("orel-rule-toggle-tog_key"));
@@ -224,7 +268,10 @@ describe("WO-CAUSAL-EDGE-CRUD ①' 因果边改/停/删（接缝：PATCH·DELETE
         "再启用之后生效条数没回到停用前 ⇒ 启停不可逆，复制了结构边那个坑",
       ).toBe(on.propCount);
     });
-    expect((await screen.findByTestId("orel-rule-status-tog_key")).textContent).toBe("启用");
+    await waitFor(async () =>
+      expect((await screen.findByTestId("orel-rule-status-tog_key")).getAttribute("data-status")).toBe("PUBLISHED"),
+    );
+    expect((await screen.findByTestId<HTMLInputElement>("orel-rule-toggle-tog_key")).checked).toBe(true);
   });
 
   it("改系数：行内改那一格 ⇒ PATCH 只递 coefficient（身份格一个都不递）", async () => {
@@ -262,7 +309,11 @@ describe("WO-CAUSAL-EDGE-CRUD ①' 因果边改/停/删（接缝：PATCH·DELETE
     await waitFor(async () => expect((await readViewCfg()).propCount).toBe(before.propCount + 1));
 
     // ① 还启用着就删 ⇒ 后端 409，行**仍在**（不许前端自己先拦，理由见页面注释）
+    // 删与停用一样先过**波及面闸**（`askImpact(r0, "delete")`）：点 ✕ 只开闸，
+    // DELETE 要等 `orel-impact-confirm` 才发。这一步不走完会把有闸误判成「删除按钮没接线」。
     await user.click(await screen.findByTestId("orel-rule-delete-del_key"));
+    expect(dels.length, "闸还没确认就把 DELETE 发出去了 ⇒ 波及面闸是装饰品").toBe(0);
+    await user.click(await screen.findByTestId("orel-impact-confirm"));
     await waitFor(() => expect(dels.length, "DELETE 没发出去 ⇒ 删除按钮没接线").toBe(1));
     expect(
       await screen.findByTestId("orel-rule-del_key"),
@@ -270,10 +321,12 @@ describe("WO-CAUSAL-EDGE-CRUD ①' 因果边改/停/删（接缝：PATCH·DELETE
     ).toBeTruthy();
     expect((await readViewCfg()).propCount).toBe(before.propCount + 1);
 
-    // ② 先停用，再删 ⇒ 真的消失，且生效条数回到建之前
+    // ② 先停用，再删 ⇒ 真的消失，且生效条数回到建之前（两步各自过一次波及面闸）
     await user.click(await screen.findByTestId("orel-rule-toggle-del_key"));
+    await user.click(await screen.findByTestId("orel-impact-confirm"));
     await waitFor(async () => expect((await readViewCfg()).propCount).toBe(before.propCount));
     await user.click(await screen.findByTestId("orel-rule-delete-del_key"));
+    await user.click(await screen.findByTestId("orel-impact-confirm"));
     await waitFor(() => expect(dels.length).toBe(2));
     await waitFor(() => expect(screen.queryByTestId("orel-rule-del_key"), "停用后删了，行还在 ⇒ 没真删掉").toBeNull());
     expect((await readViewCfg()).propCount).toBe(before.propCount);
