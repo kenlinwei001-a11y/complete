@@ -28,3 +28,4 @@ deliverables/
 db-seed/*.sql
 !db-seed/agentcore-seed.sql
 .claude/worktrees/
+scratchpad/
