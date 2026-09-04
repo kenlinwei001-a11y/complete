@@ -15,6 +15,7 @@ import {
   createPublishRequest,
   deletePropagationRule,
   deprecateOntologyElement,
+  reactivateOntologyElement,
   evaluateOntologyInvariants,
   fetchDomains,
   fetchElementReferences,
@@ -94,10 +95,17 @@ type Cardinality = (typeof CARDINALITIES)[number];
 /** 未归域的对象类型落这个桶（与后端 `object-types/stats` 的 `unassigned` 同名，不另造词）。 */
 const UNASSIGNED = "unassigned";
 
-function statusLabel(dep: DeprecationMetaVM | undefined): { text: string; tone: string } {
-  if (!dep) return { text: "启用", tone: "var(--ok, #2e7d32)" };
-  if (dep.status === "RETIRED") return { text: "已下线", tone: "var(--muted, #888)" };
-  return { text: "已停用", tone: "var(--warn, #b26a00)" };
+/**
+ * ⚠ WO-RELATION-EDIT-GAPS ④：`status` 与 `text` **一起返回**，按钮的显隐判据落在 `status` 上。
+ * 拿中文串（`s.status === "DEPRECATED"`）当判据 = 拿显示层当逻辑层，改一个字就静默失效 ——
+ * 与本仓「用 X 当作 Y 的证据，而 X 并不度量 Y」同一个形态。
+ * `ACTIVE` 必须单列一支：`reactivate` 的回包是 `{status:"ACTIVE"}`（不是 undefined），
+ * 少了这一支就会掉进末尾的兜底，拨回启用之后屏上仍显示「已停用」。
+ */
+function statusLabel(dep: DeprecationMetaVM | undefined): { status: "ACTIVE" | "DEPRECATED" | "RETIRED"; text: string; tone: string } {
+  if (!dep || dep.status === "ACTIVE") return { status: "ACTIVE", text: "启用", tone: "var(--ok, #2e7d32)" };
+  if (dep.status === "RETIRED") return { status: "RETIRED", text: "已下线", tone: "var(--muted, #888)" };
+  return { status: "DEPRECATED", text: "已停用", tone: "var(--warn, #b26a00)" };
 }
 
 export default function OntologyRelationsPage() {
@@ -232,6 +240,71 @@ export default function OntologyRelationsPage() {
     return out.sort((a, b) => a.rank - b.rank || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
   }, [types.data, lk.fromTypeKey, lk.toTypeKey]);
 
+  /**
+   * ══ WO-RELATION-EDIT-GAPS ① · **「改」入口**（本页此前一个都没有）══════════════
+   *
+   * **今天的行为是 X**（2026-09-04 真前端从登录走起实测）：结构边每行只有「查引用 / 停用 / 下线」
+   *   三个按钮 —— 建 ✅ 停 ✅ 下线 ✅、**改 ❌**。金丝雀：本文件里
+   *   `deprecateLink.mutate` / `retireLink.mutate` 各 1 处命中（证明这个查法找得到入口），
+   *   而全前端 `updateLinkType|patchLinkType|editLink` **0 命中**。
+   *   后端一直是有「改」的：`POST /a/v1/ontology/link-types` 按 `key` upsert（同 key → 复用 id、
+   *   version+1）。所以这是**前端没接**，不是后端没有。
+   * **应该是 Y**：每行一个「改」，就地改**基数**与**由哪个属性实现**，保存后回读即新值、版本 +1。
+   *
+   * ── 为什么两端类型在「改」表单里是**只读**的 ─────────────────────────────────
+   * 两端是这条关系的身份（后端同款闸门见 `app.ts` 建边路由 ② 段：同 key 改端点 400）。
+   * 就地掉头会让已发布的传导规则永远算不出结果且不报错 —— 表单里索性不给这个动作，
+   * 而不是给了再被后端拒。**能在界面上就不许做的事，别让用户先做完再挨骂。**
+   *
+   * ⚠ 保存时**必须回填 `via`**（预填自 registries 新下发的 `viaProperty`/`viaSide`）：
+   *   POST 是整条覆盖，漏传就等于把实现属性抹掉，边当场退回 0 实例。
+   */
+  const [edit, setEdit] = useState<{ key: string; cardinality: Cardinality; via: string } | null>(null);
+  const editViaCandidates = useMemo(() => {
+    if (!edit) return [];
+    const row = linkRows.find((l) => l.key === edit.key);
+    if (!row) return [];
+    const find = (k: string) => (types.data ?? []).find((x) => x.key === k);
+    const out: { value: string; label: string; rank: number }[] = [];
+    const push = (side: "from" | "to", ownerKey: string, otherKey: string) => {
+      const t = find(ownerKey);
+      if (!t) return;
+      for (const p of t.properties) {
+        out.push({
+          value: `${side}:${p.propKey}`,
+          label: `${ownerKey}.${p.propKey}${p.refToTypeKey ? ` → ${p.refToTypeKey}` : ""}`,
+          rank: p.refToTypeKey === otherKey ? 0 : p.refToTypeKey ? 1 : 2,
+        });
+      }
+    };
+    push("from", row.fromType, row.toType);
+    if (row.toType !== row.fromType) push("to", row.toType, row.fromType);
+    return out.sort((a, b) => a.rank - b.rank || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0));
+  }, [edit, linkRows, types.data]);
+
+  const updateLink = useMutation({
+    mutationFn: (payload: { key: string; fromTypeKey: string; toTypeKey: string; cardinality: Cardinality; via: string }) => {
+      const i = payload.via.indexOf(":");
+      const v = i < 0 ? null : { viaSide: payload.via.slice(0, i) as "from" | "to", viaProperty: payload.via.slice(i + 1) };
+      return createLinkType({
+        key: payload.key,
+        fromTypeKey: payload.fromTypeKey,
+        toTypeKey: payload.toTypeKey,
+        cardinality: payload.cardinality,
+        ...(v ? { viaProperty: v.viaProperty, viaSide: v.viaSide } : {}),
+      });
+    },
+    onSuccess: (r) => {
+      const m = r.materialized;
+      const tail = m ? `；已连出 ${m.created} 条实例边` : "";
+      toast(`关系 ${r.key} 已改（v${r.version}）${tail}`, "success");
+      setEdit(null);
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-mapping-registries"] });
+      void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+    },
+    onError: toastError,
+  });
+
   const deprecateLink = useMutation({
     mutationFn: (key: string) => deprecateOntologyElement("link", key),
     onSuccess: (r) => {
@@ -251,6 +324,24 @@ export default function OntologyRelationsPage() {
       void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
     },
     // 409「仍被 N 处引用」是**设计**不是故障 —— 原文直接抛给用户看。
+    onError: toastError,
+  });
+
+  /**
+   * ══ WO-RELATION-EDIT-GAPS ④ · **停用之后拨得回来**═══════════════════════════
+   * **今天的行为是 X**：点「停用」之后这一行就是死胡同 —— 屏上只剩「下线」，
+   *   后端 `POST …/reactivate` 当时是 404。**应该是 Y**：停用态多一个「启用」，拨回 ACTIVE。
+   * ⚠ 「已下线」不给这个按钮：RETIRED 的前置是零引用，一键拨回会让两套引用并存
+   *   （后端同样 409 挡着，屏上就不摆这个按钮了 —— 不给按钮好过给了再挨骂）。
+   */
+  const reactivateLink = useMutation({
+    mutationFn: (key: string) => reactivateOntologyElement("link", key),
+    onSuccess: (r) => {
+      setSessionDeprecation((s) => ({ ...s, [r.key]: r.deprecation }));
+      toast(`关系 ${r.key} 已重新启用`, "success");
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-mapping-registries"] });
+      void qc.invalidateQueries({ queryKey: ["a", "sim-view-config"] });
+    },
     onError: toastError,
   });
 
@@ -700,36 +791,119 @@ export default function OntologyRelationsPage() {
               {rows.map((l) => {
                 const dep = sessionDeprecation[l.key] ?? snapshotDeprecation.get(l.key);
                 const s = statusLabel(dep);
+                const editing = edit?.key === l.key;
                 return (
                   <tr key={l.key} data-testid={`orel-link-${l.key}`}>
                     <td className="mono">{l.key}</td>
                     <td className="mono">
                       {l.fromType} → {l.toType}
                     </td>
-                    <td>{l.cardinality}</td>
+                    <td>
+                      {editing ? (
+                        <select
+                          data-testid={`orel-link-edit-card-${l.key}`}
+                          value={edit.cardinality}
+                          onChange={(e) => setEdit({ ...edit, cardinality: e.target.value as Cardinality })}
+                        >
+                          {CARDINALITIES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        l.cardinality
+                      )}
+                    </td>
                     <td data-testid={`orel-link-status-${l.key}`} style={{ color: s.tone }}>
                       {s.text}
                     </td>
-                    <td style={{ display: "flex", gap: 6 }}>
-                      <button className="btn sm" data-testid={`orel-link-refs-${l.key}`} onClick={() => showRefs.mutate(l.key)}>
-                        查引用
-                      </button>
-                      <button
-                        className="btn sm"
-                        data-testid={`orel-link-deprecate-${l.key}`}
-                        disabled={deprecateLink.isPending}
-                        onClick={() => deprecateLink.mutate(l.key)}
-                      >
-                        停用
-                      </button>
-                      <button
-                        className="btn sm"
-                        data-testid={`orel-link-retire-${l.key}`}
-                        disabled={retireLink.isPending}
-                        onClick={() => retireLink.mutate(l.key)}
-                      >
-                        下线
-                      </button>
+                    <td style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {editing ? (
+                        <Fragment>
+                          {/* 两端类型不在这里 —— 它们是身份，只读（后端同款闸门 400）。 */}
+                          <select
+                            data-testid={`orel-link-edit-via-${l.key}`}
+                            value={edit.via}
+                            aria-label="这条边由哪个属性实现"
+                            onChange={(e) => setEdit({ ...edit, via: e.target.value })}
+                            style={{ maxWidth: 240 }}
+                          >
+                            <option value="">由哪个属性实现…</option>
+                            {editViaCandidates.map((p) => (
+                              <option key={p.value} value={p.value}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            className="btn primary sm"
+                            data-testid={`orel-link-edit-save-${l.key}`}
+                            disabled={updateLink.isPending}
+                            onClick={() =>
+                              updateLink.mutate({
+                                key: l.key,
+                                fromTypeKey: l.fromType,
+                                toTypeKey: l.toType,
+                                cardinality: edit.cardinality,
+                                via: edit.via,
+                              })
+                            }
+                          >
+                            保存
+                          </button>
+                          <button className="btn sm" data-testid={`orel-link-edit-cancel-${l.key}`} onClick={() => setEdit(null)}>
+                            取消
+                          </button>
+                        </Fragment>
+                      ) : (
+                        <Fragment>
+                          <button
+                            className="btn sm"
+                            data-testid={`orel-link-edit-${l.key}`}
+                            onClick={() =>
+                              setEdit({
+                                key: l.key,
+                                cardinality: l.cardinality as Cardinality,
+                                // 预填既有实现属性 —— 留空提交会把它抹掉（POST 是整条覆盖）。
+                                via: l.viaProperty ? `${l.viaSide ?? "from"}:${l.viaProperty}` : "",
+                              })
+                            }
+                          >
+                            改
+                          </button>
+                          <button className="btn sm" data-testid={`orel-link-refs-${l.key}`} onClick={() => showRefs.mutate(l.key)}>
+                            查引用
+                          </button>
+                          {s.status === "DEPRECATED" ? (
+                            <button
+                              className="btn sm"
+                              data-testid={`orel-link-reactivate-${l.key}`}
+                              disabled={reactivateLink.isPending}
+                              onClick={() => reactivateLink.mutate(l.key)}
+                            >
+                              启用
+                            </button>
+                          ) : (
+                            <button
+                              className="btn sm"
+                              data-testid={`orel-link-deprecate-${l.key}`}
+                              disabled={deprecateLink.isPending || s.status === "RETIRED"}
+                              onClick={() => deprecateLink.mutate(l.key)}
+                            >
+                              停用
+                            </button>
+                          )}
+                          <button
+                            className="btn sm"
+                            data-testid={`orel-link-retire-${l.key}`}
+                            disabled={retireLink.isPending || s.status === "RETIRED"}
+                            onClick={() => retireLink.mutate(l.key)}
+                          >
+                            下线
+                          </button>
+                        </Fragment>
+                      )}
                     </td>
                   </tr>
                 );

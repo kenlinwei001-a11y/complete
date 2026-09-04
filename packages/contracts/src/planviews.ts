@@ -126,7 +126,20 @@ export type MappingRow = z.infer<typeof MappingRowSchema>;
 
 // PRD-IND-map §4.4/§4.5-③：映射表四注册表段（关系类型 / 规则 / Action / 事件）。
 export const MappingRegistriesSchema = z.object({
-  linkTypes: z.array(z.object({ key: z.string(), fromType: z.string(), toType: z.string(), cardinality: z.string() })),
+  // WO-RELATION-EDIT-GAPS ①：`viaProperty`/`viaSide` **加性可选**下发 —— 关系编辑器要能
+  // **预填**「由哪个属性实现」这一格。没有它，「改」表单只能把这格留空，而一次留空的提交
+  // 会把已声明的实现属性静默抹掉（边随即退回 0 实例、多跳检索遍历不到）。
+  // 「改一个字段却把另一个字段清零」正是本仓最不许发生的那种静默失效。
+  linkTypes: z.array(
+    z.object({
+      key: z.string(),
+      fromType: z.string(),
+      toType: z.string(),
+      cardinality: z.string(),
+      viaProperty: z.string().optional(),
+      viaSide: z.enum(["from", "to"]).optional(),
+    }),
+  ),
   rules: z.array(z.object({ key: z.string(), expression: z.string(), scope: z.string(), severity: z.string() })),
   actions: z.array(z.object({ name: z.string(), params: z.string(), check: z.string(), target: z.string(), perm: z.string() })),
   events: z.array(z.object({ name: z.string(), window: z.string(), affects: z.string(), source: z.string() })),

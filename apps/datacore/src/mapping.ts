@@ -105,7 +105,15 @@ export async function buildMappingRegistries(repos: Repos, tenantId: string): Pr
   const sevLabel: Record<string, string> = { BLOCK: "阻断", WARN: "告警", INFO: "提示" };
   return {
     linkTypes: links
-      .map((l) => ({ key: l.key, fromType: l.fromTypeKey, toType: l.toTypeKey, cardinality: l.cardinality }))
+      // WO-RELATION-EDIT-GAPS ①：`viaProperty`/`viaSide` 随边下发（加性可选，未声明即缺席）——
+      // 关系编辑器的「改」表单靠它预填「由哪个属性实现」，不预填就会在保存时把它抹掉。
+      .map((l) => ({
+        key: l.key,
+        fromType: l.fromTypeKey,
+        toType: l.toTypeKey,
+        cardinality: l.cardinality,
+        ...(l.viaProperty ? { viaProperty: l.viaProperty, viaSide: l.viaSide ?? ("from" as const) } : {}),
+      }))
       .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
     rules: rules
       .map((r) => ({ key: r.key, expression: r.expression, scope: (r.scopeObjectTypes ?? []).join("、") || "全局", severity: sevLabel[r.severity] ?? r.severity }))

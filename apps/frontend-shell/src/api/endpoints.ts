@@ -2447,7 +2447,9 @@ export const advanceProcessInstance = (id: string, body: AdvanceProcessInstanceR
 
 /** 弃用状态机（治理增量 §2.2）。字段缺省 = 从未弃用（ACTIVE）。 */
 export interface DeprecationMetaVM {
-  status: "DEPRECATED" | "RETIRED";
+  // WO-RELATION-EDIT-GAPS ④：`ACTIVE` 是 `reactivate` 的回包状态（后端 `DeprecationMeta` 一直有这个值，
+  // 只是此前没有任何一条路会回它，前端 VM 就漏掉了）。少这一支 ⇒ 拨回启用后状态列仍显示「已停用」。
+  status: "ACTIVE" | "DEPRECATED" | "RETIRED";
   supersededBy?: string;
   deprecatedAt?: string;
   graceUntil?: string;
@@ -2536,6 +2538,19 @@ export const retireOntologyElement = (kind: "link" | "type", key: string) =>
   kind === "link"
     ? api.a<{ key: string; status: "RETIRED" }>(`/a/v1/ontology/links/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} })
     : api.a<{ key: string; status: "RETIRED" }>(`/a/v1/ontology/types/${encodeURIComponent(key)}/retire`, { method: "POST", body: {} });
+
+/**
+ * **重新启用**（DEPRECATED → ACTIVE）· WO-RELATION-EDIT-GAPS ④。字面量段的理由同上。
+ *
+ * 2026-09-04 真后端实测：改前 `POST …/reactivate` 是 **404 route not found** ——
+ * 停用之后没有任何一条路能拨回来，而因果边那边 `PATCH …/propagation-rules/:id {status}`
+ * 一直是 `PUBLISHED ⇄ DRAFT` 可逆的。两条路不一致本身就是缺陷。
+ * ⚠ 已 RETIRED（下线）的仍然拨不回来，后端 409 并说明理由 —— 那是有意的，不是漏的。
+ */
+export const reactivateOntologyElement = (kind: "link" | "type", key: string) =>
+  kind === "link"
+    ? api.a<{ key: string; deprecation: DeprecationMetaVM }>(`/a/v1/ontology/links/${encodeURIComponent(key)}/reactivate`, { method: "POST", body: {} })
+    : api.a<{ key: string; deprecation: DeprecationMetaVM }>(`/a/v1/ontology/types/${encodeURIComponent(key)}/reactivate`, { method: "POST", body: {} });
 
 // ── 对象接口（ObjectInterface · WO-69 P3 定义/发布门已在后端，WO-INTERFACE-ADMIN-UI 补前端管理台）──────
 // 后端路由面：`apps/datacore/src/app.ts`「WO-69 P3 · 对象接口」段（7 条）。
