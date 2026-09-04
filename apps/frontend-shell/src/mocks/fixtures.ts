@@ -180,6 +180,34 @@ export const ORDERS = Array.from({ length: 20 }, (_, i) => {
   };
 });
 
+/**
+ * WO-ORDER-WORKORDER-UI · 生产工单（`WorkOrder`）——台账行展开「兑现本单的工单」的 mock 替身。
+ *
+ * ⚠ **不许比真后端"更正确"**：真后端 260 张工单只兑现 186/500 张订单（覆盖 37.2%），
+ * 也就是说**大多数订单本来就没有工单**。mock 若给每张单都配一张，前端就永远走不到
+ * 「诚实缺席」那条分支，而那正是本单要交付的一半 —— 这是本仓吃过的
+ * 「mock 恰好把后端行为盖住」的老亏。故此处按 `i % 3 === 0` 只覆盖 20 单中的 7 单（35%，
+ * 与真后端 37.2% 同量级），其余 13 单在 mock 下同样显示「无关联工单」。
+ *
+ * 字段集与真后端 `WorkOrder` 逐字同名（`woId/moNo/modelId/lineId/baseId/qtyPlanned/
+ * qtyActual/startDate/endDate/status/orderRef`）；`status` 取值用真后端同一批中文态。
+ * 零随机、零时钟 ⇒ 同一份 mock 每次一致。
+ */
+export const WORK_ORDERS = ORDERS.filter((_, i) => i % 3 === 0).map((o, n) => ({
+  id: `wo-${String(n + 1).padStart(3, "0")}`,
+  woId: `WO-${o.bases}-${String(n + 1).padStart(2, "0")}`,
+  moNo: `MO-${o.so}`,
+  modelId: o.model,
+  lineId: `LINE-${o.bases}-1`,
+  baseId: o.bases,
+  qtyPlanned: o.qty,
+  qtyActual: Math.round(o.qty * 0.96),
+  startDate: o.due,
+  endDate: o.due,
+  status: (["已排产", "生产中", "已完成"] as const)[n % 3]!,
+  orderRef: o.so,
+}));
+
 // ---------------------------------------------------------------------------
 // FeatureRegistry（Entitlement §2 首批注册清单）
 // ---------------------------------------------------------------------------
