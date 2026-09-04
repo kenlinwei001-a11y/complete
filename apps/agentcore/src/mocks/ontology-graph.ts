@@ -162,6 +162,9 @@ export const MOCK_ONTOLOGY_LINKS: MockOntologyLink[] = [
   { linkKey: "plantarget_ownedby", fromTypeKey: "PlanTarget", toTypeKey: "Principal" },
   { linkKey: "wo_for_model", fromTypeKey: "WorkOrder", toTypeKey: "Model" },
   { linkKey: "wo_on_line", fromTypeKey: "WorkOrder", toTypeKey: "Line" },
+  // WO-FULFILLS-EDGE（A 侧 fcde3882）：工单兑现销售订单，制造侧 → 商务侧唯一的一跳。
+  // 只镜像**这一个方向**（A 侧刻意不落逆边：`direction:"in"` 本来就能从 Order 反着走回 WorkOrder）。
+  { linkKey: "fulfills", fromTypeKey: "WorkOrder", toTypeKey: "Order" },
   { linkKey: "sched_for_wo", fromTypeKey: "ProductionSchedule", toTypeKey: "WorkOrder" },
   { linkKey: "shift_for_line", fromTypeKey: "ShiftPlan", toTypeKey: "Line" },
   { linkKey: "wip_for_wo", fromTypeKey: "WIPLot", toTypeKey: "WorkOrder" },

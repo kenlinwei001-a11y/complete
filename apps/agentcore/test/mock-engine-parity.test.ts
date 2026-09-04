@@ -243,7 +243,16 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     // 唯一提交 63a2ea5e，确认是**有意新增**（该单要消灭「设备故障对毛利贡献恒为 0」）不是回归。
     // ⚠ 同单还物化了 `wo_for_model`，但那条 linkType **早已声明**、只是从没落过实例 ⇒ 不进本计数，
     //   所以是 +1 不是 +2 —— 「声明」与「物化」在这条口径里不是一回事。
-    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 104）").toBe(104);
+    // 104→105 于 2026-09-04（收编批次 `handoff-integ-batch-5`）：A 侧 fcde3882（`WO-FULFILLS-EDGE`）
+    // 加 `fulfills`(WorkOrder→Order)，制造侧接到商务侧的那一跳。
+    // 照本注释的要求**两侧独立复算过，没有照抄报错里的 received**：另写一份脚本、不 import 本文件的
+    // 抽取器，对 battery.ts 与 ontology-graph.ts 各跑一遍同一条 `fromTypeKey:` 正则求差集 ⇒
+    // battery **105** · mock **104** · missing 恰为 `fulfills|WorkOrder|Order` 一条 · extra **0**；
+    // 金丝雀两侧各验两条（`model_producible_at|Model|Base` 必中 = true ∧ 合成键必不中 = false）。
+    // 再 `git log -S '"fulfills"' -- apps/datacore/src/synthetic/battery.ts` 追到唯一提交 fcde3882，
+    // 确认是**有意新增**（该单要把工单接上销售订单）不是回归。
+    // ⚠ A 侧只声明**一个方向**、刻意不落逆边 ⇒ 仍是 +1；镜像表同样只补这一条。
+    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 105）").toBe(105);
   });
 
   it("§2 mock 镜像图 == battery.ts 现算图（集合相等·缺谁多谁点名）", () => {

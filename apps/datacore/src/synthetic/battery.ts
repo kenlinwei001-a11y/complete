@@ -2857,6 +2857,14 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   procurementDelay: "采购到货延迟",
   // ── D09 设备与维护：工序排队 → 设备负荷 → 维修派工积压；基地负载 → 检修窗挤压 ──
   loadPressure: "设备负荷压力", repairBacklog: "维修派工积压", windowSqueeze: "检修窗挤压",
+  // ── WO-SLICE-DOMAINS · 设备侧接回订单与钱的那条链的落点（`seed.ts` 段内注释逐字为凭）──
+  // 名字取「产线受阻压力」而不是「产线阻塞」：该边的 description 原文是
+  // 「工序排队 ⇒ 该产线受阻。落在 blockedPressure 这个新量纲上，是为了不回喂 utilPressure 成正反馈环」
+  // ⇒ 它度量的是**产线被上游工序堵住的程度**，与既有 `utilPressure`（产线本来就满）分属两个成因。
+  // ⚠ 本键**刻意不进 `STATE_VAR_DOMAINS`**：域表只收「写得出出处」的量纲，而本单没有为它
+  //   声明取值域；未登记者引擎不夹不衰减，且在 tick 回执 `undeclaredStateVars` 里被逐个点名 ——
+  //   缺口留在屏上，不留在注释里（与 `queueDays` 等天数族同一条纪律）。
+  blockedPressure: "产线受阻压力",
   // ── D10 基地与仓储交付：认证排队 / 成品提货 / 来料催交 ──
   qualificationQueue: "认证排队", drawdownPressure: "成品提货压力",
   inboundExpeditePressure: "来料催交压力",
