@@ -71,7 +71,7 @@ export interface ChainNodeSemantics {
 
 /** 常驻上屏的来源声明 —— 让"人写的口径"与"引擎下发的证据"在屏上永远分得开。 */
 export const SEMANTICS_ORIGIN_NOTE =
-  "本区块是**编辑口径**（人写的），不是引擎下发：后端今天没有节点定位与跨节点冲突这两个字段。" +
+  "本区块是编辑口径（人写的），不是引擎下发：后端今天没有节点定位与跨节点冲突这两个字段。" +
   "跨节点冲突逐条附代码依据（file:line），指不出依据的一条都没写；本节点若没写语义，本区块整块不出现，不留空壳。";
 
 /**
@@ -85,7 +85,7 @@ export const CHAIN_NODE_SEMANTICS: Partial<Record<RegisteredChainNodeId, ChainNo
       {
         conflictId: "cf-cashfloor-shared",
         text:
-          "这里把现金垫底线（规则 C18 的命名阈值 cashFloor）调高，主计划排产那边的方案会被**同一条硬约束**打回：" +
+          "这里把现金垫底线（规则 C18 的命名阈值 cashFloor）调高，主计划排产那边的方案会被同一条硬约束打回：" +
           "一个旋钮投影到两个求解器参数路径（S&OP 版本校验的 cashOk 判据 ⊕ 计划生成的硬违约 C18），改一处即改两处判定。",
         basis: [
           "packages/contracts/src/datacore.ts:206（C18.cashFloor → solver_params `sop.cashFloor`）",

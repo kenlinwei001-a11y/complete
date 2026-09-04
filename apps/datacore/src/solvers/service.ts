@@ -4130,7 +4130,7 @@ export class SolverService {
           ? `CausalFactor.drillId「${str(hit.drillId)}」逐字节等于 locus.objectId「${locusId}」`
           : `CausalFactor.drillId「${str(hit.drillId)}」是按类型聚合的占位（契约 gap-attribution.ts:30「"*" 表示按类型聚合」）⇒ 只对上到类型 ${locusType}，不是这一张 ${locusId} 自己的因子` +
             (dyn?.drillId
-              ? `；该占位在本落点上下文里解析为 ${locusType}/${dyn.drillId}（${str(hit.drillField)}=${dyn.drillValue}）—— 这是「这一类的因落在这一张上的读数」，**不是**这一张自己的因子，精度仍为 TYPE`
+              ? `；该占位在本落点上下文里解析为 ${locusType}/${dyn.drillId}（${str(hit.drillField)}=${dyn.drillValue}）—— 这是「这一类的因落在这一张上的读数」，不是这一张自己的因子，精度仍为 TYPE`
               : `；且该占位在本落点上下文里解析不出实例（${dyn?.basis ?? "未解析"}）`)
         : `本租户 ${sameType.length} 条 drillType=${locusType} 的 CausalFactor 里，既无 drillId 等于「${locusId}」的，也无按类型聚合的占位 ⇒ 诚实说没有，不回落到贡献最大的默认因子（回落会在屏上造出一个看着确凿、实则与这条落点无关的根因）`,
       candidateFactorCount: sameType.length,

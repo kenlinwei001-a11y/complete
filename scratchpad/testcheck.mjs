@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-const hits = JSON.parse(fs.readFileSync("/tmp/scb/out3/hits.json", "utf8"));
+const hits = JSON.parse(fs.readFileSync(process.env.HITS ?? "/tmp/scb/out3/hits.json", "utf8"));
 const strs = [...new Set(hits.flatMap((h) => [...h.innerText, ...h.title]))];
 const roots = ["apps/frontend-shell/test", "apps/datacore/test", "apps/agentcore/test", "packages/contracts/test", "scripts"];
 const files = [];

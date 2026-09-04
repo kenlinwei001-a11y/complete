@@ -784,7 +784,7 @@ export const REAL_DATA_ENTRYPOINTS: RealDataEntrypoint[] = [
     status: "connected",
     source: "EquipmentOEE",
     shapeToday: "同上；每格 42 条（6 台设备 × 7 天）",
-    gap: "已接：avg(oee)，**且带等权门** —— 仅当该格各条计划工时全等（实测恒 480min）才承认；不等权即标 EMPTY，不拿简单平均冒充加权",
+    gap: "已接：avg(oee)，且带等权门 —— 仅当该格各条计划工时全等（实测恒 480min）才承认；不等权即标 EMPTY，不拿简单平均冒充加权",
   },
   {
     field: "takt",
@@ -831,7 +831,7 @@ export const REAL_DATA_ENTRYPOINTS: RealDataEntrypoint[] = [
     field: "—",
     status: "gap",
     source: "bottleneck_matrix",
-    shapeToday: "rows[]{base, tightness: 因素→0–100, primary}（基地 × 7 因素，**不是** 基地 × 工序）",
+    shapeToday: "rows[]{base, tightness: 因素→0–100, primary}（基地 × 7 因素，不是 基地 × 工序）",
     gap: "未接：维度不匹配，只能喂行级紧张度；catalog 描述『基地×工序』与输出契约不符，照描述接会接错维度",
   },
 ];

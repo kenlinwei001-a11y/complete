@@ -3,11 +3,11 @@ import path from "node:path";
 /**
  * WO-SCREEN-CALIBER ② · 剥掉**会上屏**的 Markdown 星号。
  * 判据（两条都必须成立，缺一条就不动）：
- *   ① 这个串**实测在真浏览器上屏了**（/tmp/scb/out3/hits.json，六个页面的 innerText / title 属性）；
+ *   ① 这个串**实测在真浏览器上屏了**（真浏览器扫描产物 hits.json，六个页面的 innerText / title 属性）；
  *   ② 这一处出现在**字符串字面量**里（剥注释后仍在），不是给读代码的人看的注释。
  * 排除：`markdown:` 字段（那一路真有 Markdown 渲染器）。
  */
-const hits = JSON.parse(fs.readFileSync("/tmp/scb/out3/hits.json", "utf8"));
+const hits = JSON.parse(fs.readFileSync(process.env.HITS ?? "/tmp/scb/out3/hits.json", "utf8"));
 const strs = [...new Set(hits.flatMap((h) => [...h.innerText, ...h.title]))];
 const roots = ["apps/frontend-shell/src", "apps/datacore/src", "apps/agentcore/src", "packages/contracts/src"];
 const files = [];
