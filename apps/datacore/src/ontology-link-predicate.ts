@@ -110,13 +110,8 @@ export function compileLinkPredicate(
           // 只认两种形状：`prop` 与 `<carrierTypeKey>.prop`。别的一律点名拒绝，
           // 不做「前缀可省」那种静默回退 —— 回退在这里等于把打错的字段读成 undefined。
           const p = o.path;
-          if (p.length === 1) {
-            if (!known.has(p[0])) badFields.push(p[0]);
-          } else if (p.length === 2 && p[0] === carrierTypeKey) {
-            if (!known.has(p[1])) badFields.push(p.join("."));
-          } else {
-            badFields.push(p.join("."));
-          }
+          const bare = p.length === 1 ? p[0] : p.length === 2 && p[0] === carrierTypeKey ? p[1] : undefined;
+          if (bare === undefined || !known.has(bare)) badFields.push(p.join("."));
           break;
         }
         case "literal":
