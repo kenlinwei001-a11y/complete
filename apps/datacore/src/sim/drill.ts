@@ -639,7 +639,7 @@ const SCREEN_QUANTITIES_NOT_ANSWERED_HERE: readonly {
       "传导方向的真相源是**已发布的传导规则**（`PropagationRule`：sourceTypeKey.sourceStateVar --viaLinkKey--> targetTypeKey.targetStateVar），" +
       "由 `GET /a/v1/sim/propagation-rules` 作答（实测 demo 租户 35 条 PUBLISHED）。本回包再答一份就是第二套真相源。" +
       "⚠ 规格占位里那种「常州→扬州」的**基地对基地**方向在本体里不存在：传导规则是**状态变量级**的，不是基地级的。",
-    probe: "GET /a/v1/sim/propagation-rules 看 sourceTypeKey/targetTypeKey/viaLinkKey；对 `apps/datacore/src/seed.ts` 的 seedDemoPropagationRules 复核。",
+    probe: "GET /a/v1/sim/propagation-rules 看 sourceTypeKey/targetTypeKey/viaLinkKey；对 demo 租户的传导规则种子（实测 35 条 PUBLISHED）复核。",
   },
   {
     // 系统条上那四个影响维开关。
@@ -660,12 +660,12 @@ const SCREEN_QUANTITIES_NOT_ANSWERED_HERE: readonly {
       "没有任何「某批号在某条时间轴上还剩多少公里」的量，硬接就是发明一套映射；" +
       "② `01:20–02:40` 是墙钟时刻（同一条 strip 上并排挂着 KM 与分秒），本仓的时间刻度只有 A8 模拟**日**，量纲对不上；" +
       "③ `阻滞时间 24:42` 的**环节级**对应量已经在回包里了 —— 就是 `node.steps[].days`（非增值天数）与 `node.nodeDays`，只是口径是**天**不是分秒。" +
-      "⚠ 另有一条独立事实：这条 strip 今天**连取数口都没有** —— 前端 `SandboxDetailRoute.tsx` 里 `strip` 零命中" +
-      "（金丝雀：同文件 `nodeId` 10 命中 ⇒ 工具没坏），`projectNodeDetail` 也只覆写 card/flow 两块。" +
+      "⚠ 另有一条独立事实：这条 strip 今天**连取数口都没有** —— 沙盘节点详情的取数路里 `strip` 零命中" +
+      "（金丝雀：同一把尺对 `nodeId` 10 命中 ⇒ 尺子没坏），节点详情投影也只覆写 card/flow 两块。" +
       "也就是说它不是「端点没答」，是**没有任何端点被指望去答它**；补进本回包等于凭空造一个没人要的字段。",
     probe:
-      "grep -c strip apps/frontend-shell/src/views/sim/console/SandboxDetailRoute.tsx（= 0）；" +
-      "再读回包的 node.steps[].days / node.nodeDays，与 `apps/datacore/src/synthetic/battery.ts` 的 baseDistanceKm（只到基地对粒度）。",
+      "沙盘节点详情取数路里 `strip` 命中 0；" +
+      "再读回包的 node.steps[].days / node.nodeDays，与合成种子的 baseDistanceKm（只到基地对粒度）。",
   },
 ] as const;
 

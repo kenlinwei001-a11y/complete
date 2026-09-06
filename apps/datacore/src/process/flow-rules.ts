@@ -210,7 +210,7 @@ export const PROCESS_FLOW_STRUCTURAL_NOTES: Readonly<Record<string, { reason: st
     reason:
       "有意不收（不是漏了）：`MaterialAlternative` 上唯一的两个日期是 `verifiedDate`（验证日）与 `effectiveDate`（生效日期，词表登记名如此），二者**不构成「进站→出站」的先后关系** —— 实测 ALT-001/ALT-002 的 verifiedDate=2025-02-15 **晚于** effectiveDate=2025-01-01（先生效后验证），收进来会产出 −45 天的负停留；ALT-003 两个日期一个都没有。且 `effectiveDate/expireDate` 属**有效期**语义（这份替代关系管到哪天），不是「这张单在这个站待了几天」，与 `chain-loss.ts` 那张「不收什么」清单同一条判据。要补这一段，需要的是一个**真的评估开始/结束时刻**字段，不是把现有两个日期凑一对。",
     probe:
-      "listByType(\"MaterialAlternative\") = 5 条；逐条读 verifiedDate 与 effectiveDate（ALT-001: 2025-02-15 vs 2025-01-01 ⇒ 差 −45 天；ALT-003: 两者皆缺）。再读 battery.ts PROP_DISPLAY_NAMES 的 \"MaterialAlternative.effectiveDate\" = \"生效日期\" 确认语义。",
+      "listByType(\"MaterialAlternative\") = 5 条；逐条读 verifiedDate 与 effectiveDate（ALT-001: 2025-02-15 vs 2025-01-01 ⇒ 差 −45 天；ALT-003: 两者皆缺）。再读属性显示名词表的 \"MaterialAlternative.effectiveDate\" = \"生效日期\" 确认语义。",
   },
 };
 
