@@ -44,6 +44,8 @@ import {
   // WO-CAPACITY-EDGE：消耗量的**唯一算法** + 池 id 的**唯一拼法**（种子与消费方共用一份）。
   capacityConsumptionOfWorkOrder,
   capacityPoolIdOfLine,
+  // WO-LAST3-RELATIONS：`located_in` 锚点行的**唯一派生式**（省名并集 → 行政区行）。
+  buildRegions,
 } from "./battery.js";
 import { cadenceObjectRows, deriveChainCadences } from "./cadence.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
@@ -817,6 +819,16 @@ export class SyntheticService {
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
     await putAll("Customer", ext.customers, "custId");
     await putAll("CustomerLocation", ext.customerLocations, "locId"); // WO-WAREHOUSE-CUSTLOC：客户交付地点（交付地理落点）
+    // WO-LAST3-RELATIONS · `located_in` 的锚点类型：**行政区**。
+    // 行数与取值全部由三个载体既有的 `province` 取值**并集**派生（零新业务事实·零 rng·按省名排序确定性）——
+    // 放在这里而不是 `generateBattery` 里，是因为客户交付地点来自 `ext`，两个源都齐了才能取全并集
+    // （只取 `g` 那半会漏掉 重庆/上海/北京 三省 ⇒ 30 条客户地点里有一批**静默连不上**）。
+    const regionRows = buildRegions([
+      ...(g.bases as { province?: string }[]).map((b) => b.province ?? ""),
+      ...(g.warehouses as { province?: string }[]).map((w) => w.province ?? ""),
+      ...(ext.customerLocations as { province?: string }[]).map((l) => l.province ?? ""),
+    ]);
+    await putAll("Region", regionRows, "regionId");
     await putAll("ARInvoice", ext.arInvoices, "invoiceId");
     await putAll("Certification", ext.certifications, "certId");
     await putAll("EnergyMeter", ext.energyMeters, "meterId");
