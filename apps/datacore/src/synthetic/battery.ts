@@ -2472,6 +2472,7 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
   // WO-WAREHOUSE-CUSTLOC：仓库归 factory 域（库存仓位属工厂设施）
   Warehouse: "factory",
+  Region: "factory", // WO-LAST3-RELATIONS：行政区（地理归属·三类设施的共同落点，同 Warehouse 归 factory 域）
   InterBaseTransfer: "capacity", // WO-INTERBASE-TRANSFER：跨基地调拨（在途运力·同 Shipment 归 capacity 域）
   CapacityPool: "capacity", // WO-CAPACITY-EDGE：产能池（产能升格为一等对象·归 capacity 域）
   ProductPlatform: "product", ProductSeries: "product", ProductVersion: "product",
@@ -2586,6 +2587,8 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Warehouse.warehouseId": "仓库编号", "Warehouse.baseId": "所属基地", "Warehouse.name": "仓库名称",
   "Warehouse.whType": "仓库类型", "Warehouse.capacityUnits": "仓储容量", "Warehouse.province": "省份",
   "Warehouse.city": "城市",
+  // WO-LAST3-RELATIONS：行政区（`located_in` 锚点）
+  "Region.regionId": "行政区编号", "Region.name": "行政区名称", "Region.macroRegion": "所属大区",
 
   // ---- 产品 / 工程主数据 ----
   "Model.modelId": "型号编号", "Model.name": "型号名称", "Model.chem": "化学体系", "Model.pos": "业态定位",
@@ -2619,6 +2622,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Routing.effectiveDate": "生效日期",
   "Operation.operationId": "工序编号", "Operation.operationCode": "工序编码",
   "Operation.routingId": "所属工艺路线", "Operation.operationSeq": "工序顺序",
+  "Operation.predecessorOperationId": "前驱工序", // WO-LAST3-RELATIONS：`depends_on` 承载
   "Operation.operationName": "工序名称", "Operation.description": "工序说明",
   "Operation.operationType": "工序类型", "Operation.standardTime": "标准工时",
   "Operation.setupTime": "准备工时", "Operation.yield": "工序良率", "Operation.isCritical": "是否关键工序",
@@ -3276,6 +3280,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("Shipment", "在途批次", shipmentProps),
     // WO-WAREHOUSE-CUSTLOC：仓库（库存仓位与交付地理落点·factory 域）
     plain("Warehouse", "仓库", warehouseProps),
+    // WO-LAST3-RELATIONS：行政区（`located_in` 的锚点·地域从字符串升格为可遍历节点）。
+    plainD("Region", "行政区", "省级行政区。基地/仓库/客户交付点经 `*_located_in` 指向它，令「华东产能」这类按地域的聚合可沿图走，而不是只能按字段过滤。行数由三个载体既有的 province 取值并集派生，不引入新的经营事实。", regionProps),
     // WO-INVENTORY-3TIER：成品库存（qtyAvailable 派生）+ 统一库存流水。
     { key: "FinishedGoodsInventory", displayName: "成品库存", domain: "supply", properties: withGovernance("FinishedGoodsInventory", finishedGoodsInvProps), derivedProperties: finishedGoodsInvDerived, sourceBindings: BINDINGS.FinishedGoodsInventory ?? [] },
     plain("InventoryTxn", "库存流水", inventoryTxnProps),
@@ -3412,6 +3418,24 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "transfer_from_base", fromTypeKey: "InterBaseTransfer", toTypeKey: "Base", cardinality: "N:1" }, // capacity（调出）
     { key: "transfer_to_base", fromTypeKey: "InterBaseTransfer", toTypeKey: "Base", cardinality: "N:1" }, // capacity（调入）
     { key: "transfer_of_model", fromTypeKey: "InterBaseTransfer", toTypeKey: "Model", cardinality: "N:1" }, // capacity→product（型号）
+    // ══════════════════════════════════════════════════════════════════════════════
+    // WO-LAST3-RELATIONS · `located_in` 三条（设施 → 行政区）+ `depends_on` 一条（工序 → 前驱工序）
+    //
+    // ⚠ 四条都**不声明 `viaProperty`**，与同文件 `has_capacity` 段落同一个理由，别顺手补上：
+    //   `upsertLinkType` 在 `synthetic/service.ts:700` 种链路类型时就跑一次 `materializeDeclaredLinks`，
+    //   而那一刻对象**一个都没落库**（对象在 :780+ 才 putAll）⇒ 当场 0 条；之后种子再手写一遍，
+    //   而任何人重新 `POST /a/v1/ontology/link-types` 又会补出一批 `lnk_via_*`，与种子的
+    //   `lnk_lin_*`/`lnk_odep_*` **同一条边两个实例、两个 origin**。冲突会红，双份不会。
+    //   ⇒ 只留一个真值源（种子手写），声明侧的可表达性由 `linktype-located-depends.seam.test.ts`
+    //   在**自己的租户**里走真路由证明（那里对象先落库，故 `viaProperty` 一声明就连得出来）。
+    { key: "base_located_in", fromTypeKey: "Base", toTypeKey: "Region", cardinality: "N:1" }, // factory（基地属地）
+    { key: "warehouse_located_in", fromTypeKey: "Warehouse", toTypeKey: "Region", cardinality: "N:1" }, // factory（仓库属地）
+    { key: "custloc_located_in", fromTypeKey: "CustomerLocation", toTypeKey: "Region", cardinality: "N:1" }, // commercial（交付点属地）
+    // `depends_on`：同一工艺路线内「本工序依赖上一道」。承载是 `Operation.predecessorOperationId`
+    // （末位追加的派生 FK，见 operationProps 头注）—— 不是 `operationSeq` 对 `operationSeq`：
+    // 后者会把 15 条工艺路线的同序号工序连成叉积，且不报错。
+    { key: "operation_depends_on", fromTypeKey: "Operation", toTypeKey: "Operation", cardinality: "N:1" }, // process（工序先后）
+    // ══════════════════════════════════════════════════════════════════════════════
     { key: "base_maint_plan", fromTypeKey: "Base", toTypeKey: "MaintPlan", cardinality: "N:N" }, // equip（检修）
     { key: "model_changeover", fromTypeKey: "Model", toTypeKey: "ChangeoverMatrix", cardinality: "N:N" }, // factory（换型）
     { key: "model_in_segment", fromTypeKey: "Model", toTypeKey: "Segment", cardinality: "N:N" }, // product（细分）
@@ -5345,7 +5369,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         status: "生效",
         // WO-LAST3-RELATIONS · `depends_on` 承载：同路线上一道工序（纯派生·零 rng·末位追加·守 R6）。
         // 首工序（oi===0）无前驱 ⇒ 空串；物化时落 unresolved，绝不跨工艺路线乱接。
-        predecessorOperationId: oi === 0 ? "" : `${routingId}-${STD_OPERATIONS[oi - 1].operationCode}`,
+        predecessorOperationId: oi === 0 ? "" : `${routingId}-${STD_OPERATIONS[oi - 1]?.operationCode ?? ""}`,
       });
 
       // ProcessCapabilityWindow（每工序 2-3 参数）
