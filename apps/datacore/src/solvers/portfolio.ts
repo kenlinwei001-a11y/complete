@@ -1058,6 +1058,8 @@ export async function globalSimOptimize(
       ...(input.methodWeights != null && Object.keys(input.methodWeights).length ? { weights: input.methodWeights } : {}),
       ...(input.epsilon?.length ? { epsilon: input.epsilon } : {}),
       ...(input.priority?.length ? { priority: input.priority } : {}),
+      // WO-OBJECTIVE-SIGN：透传引擎现算的"哪几维真有区分力"（缺席 = 引擎没给 ⇒ 前端按可用渲染）。
+      ...(cr.discriminatingObjectives === undefined ? {} : { discriminatingObjectives: cr.discriminatingObjectives }),
       provenance: { kind: "派生", drillType: "Method", drillId: method, drillField: "objective", drillValue: servedQty, mockNote: null },
     };
   }

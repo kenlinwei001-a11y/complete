@@ -438,6 +438,15 @@ export const GlobalSimMethodScenarioSchema = z.object({
   weights: z.record(z.string(), z.number()).optional(),
   epsilon: z.array(GlobalSimEpsilonSchema).optional(),
   priority: z.array(z.string()).optional(),
+  /**
+   * WO-OBJECTIVE-SIGN：本次求解里**真正有区分力**的目标维。
+   *
+   * 不在此列的维，其权重滑杆拖到任何位置都不可能改变结果（归一后恒为常数 ⇒ 加权和里是个常数偏移）。
+   * 屏上据此把那根滑杆**置灰并说明理由** —— 判据由引擎现算，不是写死的白名单：
+   * 换一批数据（该维出现差异）它自己就会重新放行。
+   * ⚠ 缺席 = 引擎没给这份判据（如 CP-SAT sidecar 路径）⇒ 屏上一律按"可用"渲染，不许猜。
+   */
+  discriminatingObjectives: z.array(z.string()).optional(),
   provenance: GlobalSimProvenanceSchema,
 });
 export type GlobalSimMethodScenario = z.infer<typeof GlobalSimMethodScenarioSchema>;

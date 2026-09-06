@@ -65,14 +65,20 @@ export class InProcOptimizerClient implements OptimizerClient {
     // ⑤ G-VAR-3 · 多目标组合法（opt-in·req.multiObjective）：按 method(weighted/epsilon/lexicographic) 组合全目标择格。
     //   default（无 multiObjective）→ 走下方原「按首目标」口径（字节不变·护住既有全部 portfolio/scenario 测）。
     const combo = req.multiObjective === true;
+    /** 本次求解里**真正有区分力**的目标键（见 comboSort 里的登记点）。屏上据此把失效滑杆置灰。 */
+    const discriminating = new Set<string>();
     const objVal = (c: PortfolioRequest["cells"][number], key: string): number =>
       key === "ontime" ? c.ontime : key === "delay" ? c.delayUnits : key === "changeover" ? c.changeUnits : key === "fgInventory" ? c.fgHoldUnits : c.cost;
     // 权重（objectives[].weight·缺省 1）；ε 上界；字典序优先（priority·缺省 objectives 序）。
     const weightOf = new Map((req.objectives ?? []).map((o) => [o.key as string, o.weight ?? 1]));
     const epsBounds = req.epsilon ?? [];
     const priorityKeys = (req.priority && req.priority.length ? req.priority : (req.objectives ?? []).map((o) => o.key as string));
+    /** 参与加权的目标键（声明的 + 给了权重的）。 */
+    const objKeys = [...new Set([...(req.objectives ?? []).map((o) => o.key as string), ...weightOf.keys()])];
     // 组合法择格：epsilon 先滤越界格 → 主目标最优；lexicographic 按优先序逐层；weighted 归一加权和最小。
-    const comboSort = (cells: PortfolioRequest["cells"]): PortfolioRequest["cells"] => {
+    // `w` 参数化是为了**同一份择格逻辑**既服务真求解、也服务下面的"这根滑杆是不是装饰品"探针 ——
+    // 探针若另抄一份择格代码，改主逻辑时探针拿旧的去测、照样报"有区分力"（本仓明令禁止的装饰品金丝雀）。
+    const comboSort = (cells: PortfolioRequest["cells"], w: Map<string, number>): PortfolioRequest["cells"] => {
       if (req.method === "lexicographic") {
         return [...cells].sort((a, b) => {
           for (const key of priorityKeys) {
@@ -91,52 +97,92 @@ export class InProcOptimizerClient implements OptimizerClient {
           || a.cost - b.cost || a.window - b.window);
       }
       // weighted：对该 item 候选集逐目标 min-max 归一 → Σ w·(ontime 取 1−norm·其余取 norm) 最小（改权重 → 天平真偏移）。
-      const keys = [...new Set([...(req.objectives ?? []).map((o) => o.key as string), ...weightOf.keys()])];
       const range = new Map<string, { lo: number; hi: number }>();
-      for (const key of keys) { const vs = cells.map((c) => objVal(c, key)); range.set(key, { lo: Math.min(...vs), hi: Math.max(...vs) }); }
+      for (const key of objKeys) {
+        const vs = cells.map((c) => objVal(c, key));
+        range.set(key, { lo: Math.min(...vs), hi: Math.max(...vs) });
+      }
       const score = (c: PortfolioRequest["cells"][number]): number => {
         let s = 0;
-        for (const key of keys) {
+        for (const key of objKeys) {
           const { lo, hi } = range.get(key)!;
           const norm = hi > lo ? (objVal(c, key) - lo) / (hi - lo) : 0;
-          s += (weightOf.get(key) ?? 1) * (key === "ontime" ? 1 - norm : norm); // ontime 越高越好 → 代价 = 1−norm
+          s += (w.get(key) ?? 1) * (key === "ontime" ? 1 - norm : norm); // ontime 越高越好 → 代价 = 1−norm
         }
         return s;
       };
       return [...cells].sort((a, b) => score(a) - score(b) || a.cost - b.cost || a.window - b.window);
     };
 
-    const occupancy: { item: string; base: string; window: number }[] = [];
-    const served = new Set<string>();
     const cancel = currentCancellationSignal(); // WO-D1：逐项检查（无信号 → 恒 undefined·行为不变）
-    // 稳定序装入（大单先·id tie-break·确定性 R6）。
-    for (const id of [...byItem.keys()].sort((a, b) => (qty.get(b) ?? 0) - (qty.get(a) ?? 0) || a.localeCompare(b))) {
-      if (cancel?.aborted) throw new SolverCancelledError("portfolio 内存态贪心装入循环");
-      const raw = byItem.get(id)!;
-      // 方案选格：combo → 按 method 组合全目标；否则 min_fg_inventory 取最少提前持有格（fgHold→cost→贴近交期）；
-      //          max_ontime 取最按期格（ontime→window→cost）；其余 min_* 取代价最小格（cost→ontime→window）。
-      const cells = combo
-        ? comboSort(raw)
-        : [...raw].sort((a, b) =>
-            wantsFg
-              ? a.fgHoldUnits - b.fgHoldUnits || a.cost - b.cost || b.ontime - a.ontime || b.window - a.window
-              : primary === "ontime"
-                ? b.ontime - a.ontime || a.window - b.window || a.cost - b.cost
-                : a.cost - b.cost || b.ontime - a.ontime || a.window - b.window,
-          );
-      const need = qty.get(id) ?? 0;
-      for (const c of cells) {
-        const k = `${c.base}|${c.window}`;
-        if ((remain.get(k) ?? 0) >= need) {
-          remain.set(k, (remain.get(k) ?? 0) - need); // 逐格扣减 → Σqty·x ≤ cap 守恒
-          occupancy.push({ item: c.item, base: c.base, window: c.window });
-          served.add(id);
-          break;
+    /** 装入序：大单先·id tie-break·确定性 R6。**与权重无关**，故只算一次。 */
+    const loadOrder = [...byItem.keys()].sort((a, b) => (qty.get(b) ?? 0) - (qty.get(a) ?? 0) || a.localeCompare(b));
+    /**
+     * 一趟贪心装入 → 占用格（**纯函数**：每次自带一份剩余产能，互不污染）。
+     * 抽成函数是为了让下面的"滑杆是不是装饰品"探针**复用同一份实现**（见 comboSort 的 `w` 参数注释）。
+     */
+    const packWith = (w: Map<string, number>): { occupancy: { item: string; base: string; window: number }[]; served: Set<string> } => {
+      const rem = new Map(remain); // 每趟独立，绝不共用（共用会让第二趟在第一趟的残量上跑，结论全错）
+      const occ: { item: string; base: string; window: number }[] = [];
+      const done = new Set<string>();
+      for (const id of loadOrder) {
+        if (cancel?.aborted) throw new SolverCancelledError("portfolio 内存态贪心装入循环");
+        const raw = byItem.get(id)!;
+        // 方案选格：combo → 按 method 组合全目标；否则 min_fg_inventory 取最少提前持有格（fgHold→cost→贴近交期）；
+        //          max_ontime 取最按期格（ontime→window→cost）；其余 min_* 取代价最小格（cost→ontime→window）。
+        const cells = combo
+          ? comboSort(raw, w)
+          : [...raw].sort((a, b) =>
+              wantsFg
+                ? a.fgHoldUnits - b.fgHoldUnits || a.cost - b.cost || b.ontime - a.ontime || b.window - a.window
+                : primary === "ontime"
+                  ? b.ontime - a.ontime || a.window - b.window || a.cost - b.cost
+                  : a.cost - b.cost || b.ontime - a.ontime || a.window - b.window,
+            );
+        const need = qty.get(id) ?? 0;
+        for (const c of cells) {
+          const k = `${c.base}|${c.window}`;
+          if ((rem.get(k) ?? 0) >= need) {
+            rem.set(k, (rem.get(k) ?? 0) - need); // 逐格扣减 → Σqty·x ≤ cap 守恒
+            occ.push({ item: c.item, base: c.base, window: c.window });
+            done.add(id);
+            break;
+          }
         }
       }
-    }
-    occupancy.sort((a, b) => a.item.localeCompare(b.item) || a.base.localeCompare(b.base) || a.window - b.window);
+      occ.sort((a, b) => a.item.localeCompare(b.item) || a.base.localeCompare(b.base) || a.window - b.window);
+      return { occupancy: occ, served: done };
+    };
+
+    const { occupancy, served } = packWith(weightOf);
     const displaced = req.items.map((i) => i.id).filter((id) => !served.has(id)).sort();
+
+    /**
+     * ── 「这根滑杆是不是装饰品」探针（WO-OBJECTIVE-SIGN · 只在组合法下跑）───────────────
+     *
+     * **为什么不能用"这一维有没有取值差异"当判据**（第一版就是这么写的，被真浏览器当场打脸）：
+     * 有差异**不等于**会改变结果 —— 实测 `changeover` 维在部分需求项的候选格上确实有差异，
+     * 而把它的权重在 0↔10 之间拉动，`allocation` 与 `objectiveValues` **逐字节不变**。
+     * 那一版探针于是报 `inert=0`（"有区分力"），屏上照常放行一根拖了没反应的滑杆 ——
+     * **判据保守，等于没判**。形态（铁律 0.6 句式）：
+     * 「我用『这一维有取值差异』当作『这根滑杆会改变结果』的证据，而前者并不度量后者。」
+     *
+     * 现在改成**直接重跑**：把该维权重换成几个探针值各装一趟，占用格全都逐字节相同 ⇒ 判定失效。
+     * 这是**实测**不是推断。代价 = 每维几趟内存态贪心（毫秒级），且**只在内存态引擎里跑** ——
+     * CP-SAT sidecar 路径不下发这一格（宁可屏上按"可用"渲染，也不为一个提示去多解几次 CP-SAT）。
+     */
+    if (combo) {
+      const baseSig = JSON.stringify(occupancy);
+      for (const key of objKeys) {
+        const moved = [0, 0.5, 2, 10].some((v) => {
+          if ((weightOf.get(key) ?? 1) === v) return false; // 与当前权重相同的探针值不提供信息
+          const probe = new Map(weightOf);
+          probe.set(key, v);
+          return JSON.stringify(packWith(probe).occupancy) !== baseSig;
+        });
+        if (moved) discriminating.add(key);
+      }
+    }
     // objectiveValues 从选中格真算（4 项恒计·供方案对比）。
     const cellByKey = new Map(req.cells.map((c) => [`${c.item}|${c.base}|${c.window}`, c]));
     let ontime = 0,
@@ -167,6 +213,9 @@ export class InProcOptimizerClient implements OptimizerClient {
       occupancy,
       displaced,
       method: req.method ?? "weighted",
+      // WO-OBJECTIVE-SIGN（additive·只在组合法下出现）：哪些目标维在本次求解里**有区分力**。
+      // 不在此列的维，其权重滑杆动了也不可能改变任何结果 —— 屏上据此置灰并说明理由。
+      ...(combo ? { discriminatingObjectives: [...discriminating].sort() } : {}),
     };
   }
 
@@ -174,9 +223,27 @@ export class InProcOptimizerClient implements OptimizerClient {
    * cross_object_occupancy 内存态确定性加权贪心（WO-MEMORY-VIEW-RESILIENCE §4.5）。
    *
    * 订单×产线×合同三元互斥：一单占某线 = 同耗产线产能（Line.capacity）+ 合同额度（Contract.cap），同线互斥。
-   * 贪心：按加权优先分（wRev·revenue + wPen·penalty，营收/避违约都是"该服务"的理由）**稳定降序**（tie-break id 升序·
-   * "score+id"·R6）逐单择线——在资格(eligibility)内取剩余产线容量 ≥ qty 且（若绑合同）剩余合同额度 ≥ qty 的可行线中，
-   * 选加权代价（wCost·cost）最小者（tie-break line id 升序），逐格扣减产线容量 + 合同额度 → 天然守恒不重复占用。
+   *
+   * ══ 今天的行为是 X，应该是 Y（WO-OBJECTIVE-SIGN·实测）═══════════════════════════
+   *
+   * **X（修前原文）**：装入优先序 = `wRev·revenue + wPen·penalty` 的**绝对值降序**。
+   *   而约束资源是 `qty`（`lineRemain >= o.qty` → 扣 `o.qty`）—— 这是一个背包，
+   *   排序却按**绝对价值**而非**单位资源价值**。因 `revenue = qty × unitPrice`、
+   *   `penalty = qty × 优先级单价`，绝对分 `= qty × 密度` ⇒ **排序被 qty 支配**：
+   *   把营收权重调大 = 优先塞**最大的单**（不是最赚的单），大单吃光产能 ⇒
+   *   实测（真订单簿 50 单）营收权重 0→2：获排 **20→19→18→17→16 严格递减**，
+   *   营收 39.35→39.31→**39.49**→39.26→**38.76 亿**，违约金 12.11→**16.87 亿**。
+   *   即**调大「营收（越高越好）」的权重，营收反而跌、违约金反而涨** —— 与屏上承诺相反。
+   *   ⚠️ 注意它**不是符号翻转**：符号翻转会给出严格单调曲线，而这条曲线在 w=1 处有内点极大值 ——
+   *   那正是"按绝对值排的背包"的指纹（换一组权重就换一批大单，价值忽上忽下）。
+   *
+   * **Y（本实现）**：优先序 = **单位产能净价值密度** `(wRev·revenue + wPen·penalty − wCost·cost) / qty`
+   *   降序。qty 是被消耗的那个资源，故除以它才是"每单位产能换来多少加权价值"——
+   *   这也是背包贪心的标准形。三项的**方向**在此显式落地：营收与"避掉的违约金"是收益（`+`），
+   *   指派代价是支出（`−`）。于是"我更在乎营收" ⇒ 优先高**单价**单 ⇒ 营收真的上升。
+   *
+   * 逐单择线：在资格(eligibility)内取剩余产线容量 ≥ qty 且（若绑合同）剩余合同额度 ≥ qty 的可行线中，
+   * 选**代价最小**者（tie-break line id 升序），逐格扣减产线容量 + 合同额度 → 天然守恒不重复占用。
    * 未获排的订单 = displaced（被挤）。objectiveValues 从结果**真算**：revenue=Σ获排营收、penalty=Σ被挤违约金（未服务
    * 才计罚）、cost=Σ获排指派代价（与 sidecar/桩语义一致·供 what-if Δ 分解）。
    *
@@ -195,12 +262,53 @@ export class InProcOptimizerClient implements OptimizerClient {
     for (const e of req.eligibility) {
       (eligByOrder.get(e.order) ?? eligByOrder.set(e.order, []).get(e.order)!).push({ line: e.line, cost: e.cost });
     }
+    // 择线只有一条判据：代价最小（tie-break line id 升序）。
+    // ⚠️ 原文是 `wCost * a.cost - wCost * b.cost` —— 两边同乘一个非负标量**不可能改变次序**，
+    // 那个 `wCost` factor 是装饰品；且 `wCost === 0` 时全部比较归零、静默退化成"按线名字母序挑线"
+    // （而不是挑最便宜的线）—— 把权重调到 0 反而换掉了择线口径，这是与用户预期相反的行为。
+    // wCost 真正该起作用的地方是**要不要服务这一单**（下面的密度），不是**挑哪条线**。
     for (const list of eligByOrder.values()) {
-      list.sort((a, b) => wCost * a.cost - wCost * b.cost || a.line.localeCompare(b.line));
+      list.sort((a, b) => a.cost - b.cost || a.line.localeCompare(b.line));
     }
-    const score = (o: { revenue: number; penalty: number }) => wRev * o.revenue + wPen * o.penalty;
-    // 稳定降序装入（加权优先分高者先·tie-break id 升序·R6："score+id"）。
-    const ordered = [...req.orders].sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id));
+    /** 服务该单会实际发生的指派代价 = 其可行线里最便宜的那条（择线正是按此挑的）。取不到 ⇒ 0。 */
+    const costOf = (id: string): number => eligByOrder.get(id)?.[0]?.cost ?? 0;
+    /**
+     * 各目标的**单位产能读数**（分母是被消耗的那个资源 qty；`max(1,qty)` 只为防 0 除 ——
+     * qty ≤ 0 的单在装入循环里占不到有意义的格，不会因此冒充高密度上位）。
+     */
+    const perUnit: Record<string, (o: { id: string; revenue: number; penalty: number; qty: number }) => number> = {
+      revenue: (o) => o.revenue / Math.max(1, o.qty),
+      penalty: (o) => o.penalty / Math.max(1, o.qty),
+      cost: (o) => costOf(o.id) / Math.max(1, o.qty),
+    };
+    /**
+     * ── 逐目标 min-max 归一，**再**加权（WO-OBJECTIVE-SIGN 第二半）──────────────────
+     *
+     * 只除以 qty 还不够。三个目标的**量纲天差地别**（实测真订单簿 50 单：
+     * 单位营收极差 9,066 元/套，而单位违约金极差 23,400 元/套 —— 后者是前者的 2.6 倍），
+     * 于是把营收权重从 0.5 拉到 8，加权和的次序在很窄的一段里就被营收项**彻底压过**，
+     * 再往上拉一个字节都不动：屏上表现为"滑杆前半段有反应、后半段完全失灵"。
+     * 这正是"两个目标不在同一把尺子上"的指纹 —— 权重比不再表达偏好比。
+     *
+     * 归一到 [0,1] 之后，`w_rev : w_pen` 才**真的**是"我在这两件事上的偏好比"，
+     * 滑杆全程都有反应。口径与契约 `rankParetoByWeights` 一致（池内 min-max·退化维给 0.5，
+     * 理由同那段：全体并列时说"都最好/都最差"都是断言，而这一维真实信息量为零）。
+     */
+    const normOf = new Map<string, (o: { id: string; revenue: number; penalty: number; qty: number }) => number>();
+    for (const [key, f] of Object.entries(perUnit)) {
+      const vs = req.orders.map(f);
+      const lo = vs.length ? Math.min(...vs) : 0;
+      const hi = vs.length ? Math.max(...vs) : 0;
+      normOf.set(key, hi > lo ? (o) => (f(o) - lo) / (hi - lo) : () => 0.5);
+    }
+    /**
+     * **归一化单位产能净价值密度**（本函数的心脏，理由见上"今天的行为是 X，应该是 Y"）。
+     * 方向在此显式落地：营收与"避掉的违约金"是服务这一单的**收益**（`+`），指派代价是**支出**（`−`）。
+     */
+    const density = (o: { id: string; revenue: number; penalty: number; qty: number }) =>
+      wRev * normOf.get("revenue")!(o) + wPen * normOf.get("penalty")!(o) - wCost * normOf.get("cost")!(o);
+    // 稳定降序装入（密度高者先·tie-break id 升序·R6："density+id"）。
+    const ordered = [...req.orders].sort((a, b) => density(b) - density(a) || a.id.localeCompare(b.id));
     const occupancy: { order: string; line: string }[] = [];
     const served = new Set<string>();
     const cancel = currentCancellationSignal(); // WO-D1：同 portfolio，逐单检查取消
@@ -234,6 +342,25 @@ export class InProcOptimizerClient implements OptimizerClient {
     const penalty = req.orders.filter((o) => displaced.includes(o.id)).reduce((s, o) => s + o.penalty, 0);
     const values: Record<string, number> = {};
     for (const o of req.orders) values[o.id] = served.has(o.id) ? 1 : 0;
+    /**
+     * 加权标量目标（按各目标声明的方向折成"越大越好"）：营收 `+`、违约金与代价 `−`。
+     * 这是贪心**实际在最大化**的那个量的实现值 —— 回它出来，"改权重 → 目标值动"这条链才有落点。
+     */
+    const objective = wRev * revenue - wPen * penalty - wCost * cost;
+    /**
+     * 各目标的**密度极差**（`max − min` over 全体订单）。极差 0 ⇒ 该权重乘上常数不改变任何一对订单的
+     * 先后 ⇒ 那根滑杆在这份数据上结构性失效，屏上据此置灰（判据由机器现算，非写死白名单）。
+     */
+    const spreadOf = (f: (o: (typeof req.orders)[number]) => number): number => {
+      if (req.orders.length === 0) return 0;
+      const vs = req.orders.map((o) => f(o) / Math.max(1, o.qty));
+      return Math.max(...vs) - Math.min(...vs);
+    };
+    const objectiveSpread: Record<string, number> = {
+      revenue: spreadOf((o) => o.revenue),
+      penalty: spreadOf((o) => o.penalty),
+      cost: spreadOf((o) => costOf(o.id)),
+    };
     // 诚实红线：贪心可行解·不可证最优。
     return {
       status: "FEASIBLE",
@@ -243,6 +370,8 @@ export class InProcOptimizerClient implements OptimizerClient {
       occupancy,
       displaced,
       method: req.method ?? "weighted",
+      objective,
+      objectiveSpread,
       summary: `占用：${served.size}/${req.orders.length} 单获排`,
     };
   }

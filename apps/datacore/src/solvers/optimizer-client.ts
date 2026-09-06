@@ -227,6 +227,26 @@ export interface CrossObjectOccupancyResult {
   displaced: string[];
   method: string;
   summary: string;
+
+  // ── WO-OBJECTIVE-SIGN（additive·缺省不出现 ⇒ 既有消费方字节不变）────────────────
+  /**
+   * 本次装入所**实际最大化**的加权标量目标（按各目标声明的方向折成"越大越好"）：
+   * `Σ_k ±w_k·objectiveValues[k]`，revenue 取 `+`（max）、penalty/cost 取 `−`（min）。
+   *
+   * 为什么必须回一个标量：在此之前回包只有 `objectiveValues` 三格**分量**，
+   * 没有任何一个数代表"这组权重下这个解有多好" ⇒ 「改权重 → 目标值按预期方向变」
+   * 这条链**没有可被机器咬住的落点**，只能靠人盯分量猜。本单的接缝断言就咬这一格。
+   */
+  objective?: number;
+  /**
+   * 每个目标在**单位产能价值密度**上的极差（`max − min`，跨全体订单）。
+   *
+   * 判据：装入优先序由密度决定（见 `solveCrossObjectOccupancy`）⇒
+   * **极差为 0 的目标，其权重乘上一个常数，数学上不可能改变任何一对订单的先后** ——
+   * 该权重滑杆在这份数据上是**结构性失效**，不是"碰巧没变"。
+   * 屏上据此把滑杆置灰并说明理由（机器算的，不是写死的白名单：换一批数据它自己会变）。
+   */
+  objectiveSpread?: Record<string, number>;
 }
 
 // ── WO-PORTFOLIO-OPTIMAL 全订单×全基地×时间 联合最优组合（共享产能守恒·冻结子集·多方案） ──
@@ -292,6 +312,15 @@ export interface PortfolioResult {
   /** 未获排（served=0）的需求项 id。 */
   displaced: string[];
   method: string;
+  /**
+   * WO-OBJECTIVE-SIGN（additive·只在组合法 `multiObjective` 下出现）：
+   * 本次求解里**真正有区分力**的目标键 —— 某个需求项的候选格集在这一维上取值不全相同。
+   *
+   * 不在此列的维：归一后恒为常数，其权重乘上去也只是给所有候选格加同一个数
+   * ⇒ **数学上不可能改变择格**，那根权重滑杆是装饰品。屏上据此置灰并说明理由，
+   * 而不是让用户拖一根永远不会有反应的滑杆（判据由机器现算，换一批数据它自己会变）。
+   */
+  discriminatingObjectives?: string[];
 }
 
 export interface OptimizerClient {

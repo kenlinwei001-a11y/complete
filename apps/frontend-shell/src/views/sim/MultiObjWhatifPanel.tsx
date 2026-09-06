@@ -93,6 +93,12 @@ interface OccResult {
   servedCount: number;
   orderCount: number;
   optimal: boolean;
+  /**
+   * WO-OBJECTIVE-SIGN：各目标的密度极差。某一维为 0 ⇒ 本批订单在该维上分不出先后，
+   * 拖那根滑杆必然零反应 ⇒ 屏上置灰。**由引擎现算下发，不是前端写死的白名单**
+   * （additive：引擎没给就缺席，缺席一律按可用渲染，不猜）。
+   */
+  objectiveSpread?: Record<string, number>;
 }
 
 /** 装配结果 → 可用的请求；装不出回 `undefined` + 一句诚实的原因。 */
@@ -239,12 +245,24 @@ function MultiObjWhatifInner() {
             ))}
           </div>
 
-          {/* ② 权重滑杆 —— 只给引擎真吃的那几根 */}
+          {/* ② 权重滑杆 —— 只给引擎真吃的那几根
+              WO-OBJECTIVE-SIGN：**极差为 0 的那一维，滑杆置灰** —— 屏上承诺了"改权重→真重解"，
+              就不许留一根拖了必然没反应的滑杆。判据 `objectiveSpread[o.key] === 0` 由引擎现算下发
+              （不是前端写死的白名单：换一批该维有差异的数据，这根滑杆自己就会重新可用）。
+              ⚠ 轴集本身来自装配器（WO-MULTIOBJ-CONVERGE），故这里遍历 `objectives` 而不是写死的键表 ——
+              两件事叠在同一根滑杆上：**哪几根存在**由装配器说，**哪几根是死的**由求解器说。 */}
           <div className={styles.miniForm} style={{ display: "grid", gap: 8, margin: "8px 0" }}>
             {objectives.map((o) => {
               const k = o.key;
+              const spread = occ.data?.objectiveSpread?.[k];
+              // 只有引擎明确给了 0 才置灰；缺席（如 CP-SAT sidecar 路径不下发）一律按可用渲染，不猜。
+              const inert = typeof spread === "number" && spread === 0;
               return (
-                <label key={k} className={styles.formRow} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <label
+                  key={k}
+                  className={styles.formRow}
+                  style={{ display: "flex", alignItems: "center", gap: 10, opacity: inert ? 0.55 : 1 }}
+                >
                   <span style={{ minWidth: 80 }}>{k} 权重</span>
                   <input
                     type="range"
@@ -252,11 +270,22 @@ function MultiObjWhatifInner() {
                     max={32}
                     step={1}
                     value={raw[k] ?? 1}
+                    disabled={inert}
                     data-testid={`multiobj-weight-${k}`}
+                    data-inert={inert ? "1" : "0"}
                     aria-label={`${o.label ?? k} 权重`}
                     onChange={(e) => setRaw((p) => ({ ...p, [k]: Number(e.target.value) }))}
                   />
                   <span style={{ width: 44, textAlign: "right" }}>{(raw[k] ?? 1).toFixed(0)}×</span>
+                  {inert ? (
+                    <span
+                      style={{ fontSize: 11, opacity: 0.85, color: "var(--muted2)" }}
+                      data-testid={`multiobj-weight-inert-${k}`}
+                      title={`本批订单里每套${o.label ?? k}完全相同（差额 0），这一维分不出订单的先后 —— 调它不会改变任何结果，故置灰。换一批该项有差异的订单即自动恢复可调。`}
+                    >
+                      本批订单该项无差异 · 调它不会改变结果
+                    </span>
+                  ) : null}
                 </label>
               );
             })}
