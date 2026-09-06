@@ -87,6 +87,7 @@ import {
   TENANT_ID,
   tickReport,
   TS_AGG_POINTS,
+  WORK_ORDERS,
   workspaceForAccount,
   type MockAccount,
 } from "./fixtures";
@@ -2915,7 +2916,13 @@ const MOCK_OBJECT_TYPES = [
     ],
   },
   { key: "Model", displayName: "电池型号", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "model" }], properties: [{ propKey: "modelId", dataType: "string", isPrimaryKey: true, displayName: "型号编号" }, { propKey: "name", dataType: "string", displayName: "型号名称" }, { propKey: "chemistry", dataType: "string" }] },
-  { key: "Order", displayName: "销售订单", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "order" }], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true, displayName: "订单号" }, { propKey: "cust", dataType: "string", displayName: "客户" }, { propKey: "qty", dataType: "number", displayName: "订单数量" }, { propKey: "due", dataType: "date", displayName: "交期" }] },
+  // WO-ORDER-WORKORDER-UI：`derivedProperties[].displayName` 镜像真后端（`Order.value` = 订单金额）。
+  // mock 的 ORDERS 行里没有 `value` 这一格 ⇒ 台账展开也就不会渲染它；这一条在这里是为了**声明形状**：
+  // 前端读中文名时必须**两处都查**（properties ∪ derivedProperties），mock 少了这一半就测不到那条分支。
+  { key: "Order", displayName: "销售订单", domain: "product", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "order" }], properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true, displayName: "订单号" }, { propKey: "cust", dataType: "string", displayName: "客户" }, { propKey: "qty", dataType: "number", displayName: "订单数量" }, { propKey: "due", dataType: "date", displayName: "交期" }], derivedProperties: [{ propKey: "value", formula: "qty * unitPrice", unit: "元", displayName: "订单金额" }] },
+  // WO-ORDER-WORKORDER-UI：工单四列的中文名镜像真后端 `PROP_DISPLAY_NAMES["WorkOrder.*"]`
+  // （工单编号 / 型号 / 基地 / 工单状态）—— 台账「兑现本单的工单」表头读这里，前端不写死列名。
+  { key: "WorkOrder", displayName: "生产工单", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-mes", dataset: "mes_work_orders" }], properties: [{ propKey: "woId", dataType: "string", isPrimaryKey: true, displayName: "工单编号" }, { propKey: "modelId", dataType: "ref", refToTypeKey: "Model", displayName: "型号" }, { propKey: "baseId", dataType: "ref", refToTypeKey: "Base", displayName: "基地" }, { propKey: "status", dataType: "enum", displayName: "工单状态" }, { propKey: "orderRef", dataType: "ref", refToTypeKey: "Order", displayName: "兑现订单" }] },
   { key: "Line", displayName: "产线", domain: "capacity", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "line" }], properties: [{ propKey: "lineNo", dataType: "string", isPrimaryKey: true }, { propKey: "baseId", dataType: "ref", refToTypeKey: "Base" }, { propKey: "utilization", dataType: "number", unit: "%" }] },
   { key: "Process", displayName: "工序", domain: "process", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "process" }], properties: [{ propKey: "procId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }] },
   { key: "Customer", displayName: "客户", domain: "people", status: "ACTIVE", sourceBindings: [{ connId: "conn-synth", dataset: "customer" }], properties: [{ propKey: "custId", dataType: "string", isPrimaryKey: true }, { propKey: "name", dataType: "string" }, { propKey: "creditLimit", dataType: "number" }] },
@@ -3514,8 +3521,30 @@ export const handlers = [
   http.get("*/a/v1/objects/:id/neighbors", ({ request, params }) => {
     const account = auth(request);
     if (!account) return err(401, "UNAUTHORIZED", "未登录");
-    const id = String(params.id);
-    const base = filterByScope(BASES, account).find((b) => b.id === id || b.name === id || b.name === decodeURIComponent(id));
+    const id = decodeURIComponent(String(params.id));
+    const url = new URL(request.url);
+    const linkKey = url.searchParams.get("linkKey");
+    const direction = url.searchParams.get("direction");
+
+    /**
+     * WO-ORDER-WORKORDER-UI · 订单侧的 `fulfills` 入边（工单 → 订单，N:1）。
+     *
+     * ⚠ 方向语义**照抄真后端**：`fulfills` 声明为 `WorkOrder --fulfills--> Order`，
+     * 从订单出发只有 `direction=in` 有结果；问 `out` 真后端回 `{"groups":[]}` 且 **HTTP 200**
+     * （实测）。mock 若对两个方向都回同一份数据，就会把「方向搞反」这个坑整个盖住 ——
+     * 前端在 mock 上永远发现不了，一接真后端就恒空。故此处同样只在 `in` 时回。
+     */
+    const order = filterByScope(ORDERS, account).find((o) => o.id === id || o.so === id);
+    if (order) {
+      const wos = WORK_ORDERS.filter((w) => w.orderRef === order.so);
+      const groups =
+        (!linkKey || linkKey === "fulfills") && direction !== "out" && wos.length > 0
+          ? [{ linkKey: "fulfills", direction: "in" as const, total: wos.length, items: wos.map((w) => ({ id: w.id, typeKey: "WorkOrder", objectKey: w.woId, display: w.woId })) }]
+          : [];
+      return HttpResponse.json({ groups });
+    }
+
+    const base = filterByScope(BASES, account).find((b) => b.id === id || b.name === id);
     if (!base) return err(404, "NOT_FOUND", "object not found");
     const orders = filterByScope(ORDERS, account).filter((o) => o.bases === base.name);
     const groups = [
@@ -3525,7 +3554,7 @@ export const handlers = [
         total: orders.length,
         items: orders.slice(0, 50).map((o) => ({ id: o.id, typeKey: "Order", objectKey: o.so, display: o.so })),
       },
-    ].filter((g) => g.total > 0);
+    ].filter((g) => g.total > 0 && (!linkKey || linkKey === g.linkKey) && direction !== "out");
     return HttpResponse.json({ groups });
   }),
 
@@ -3993,6 +4022,12 @@ export const handlers = [
       const o = filterByScope(ORDERS, account).find((x) => x.id === idRaw || x.so === idRaw);
       if (!o) return err(404, "NOT_FOUND", "object not found");
       return HttpResponse.json({ data: { id: o.id, type, props: { ...o } }, snapshotVersion: "1.1" });
+    }
+    // WO-ORDER-WORKORDER-UI：工单实例（台账「兑现本单的工单」按 objectKey 逐张回读型号/基地/状态）。
+    if (type === "WorkOrder") {
+      const w = WORK_ORDERS.find((x) => x.id === idRaw || x.woId === idRaw);
+      if (!w) return err(404, "NOT_FOUND", "object not found");
+      return HttpResponse.json({ data: { id: w.id, type, props: { ...w } }, snapshotVersion: "1.1" });
     }
     // WO-SCHEMA-ZH：物料实例（对象 360 展示 Material.leadTime 等属性的中文名 + 单位）。
     // 值取真后端合成量级的定值（mock 无随机·与 object-types mock 的属性列对齐）。

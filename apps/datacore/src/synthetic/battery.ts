@@ -2491,6 +2491,13 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "ProductEquipmentCapability.certificationRequired": "是否需持证", "ProductEquipmentCapability.status": "状态",
 
   // ---- 商务 / 订单 / 交付 ----
+  // WO-ORDER-WORKORDER-UI · 补齐 `Order` 上仅剩的两处未登记项（台账行展开逐格显示，缺一格就是一个裸英文键）。
+  // 两条都**逐字引自本仓既有出处**，不是新起的名：
+  //   · `customerId` ← 该属性自己的 `description`（本文件 `orderProps`）原文「下单客户的**外键**」；
+  //     不写「客户」是因为同类型上 `cust` 已占「客户」（显示名），两格并排时必须能分辨谁是外键。
+  //   · `value`（派生·`qty * unitPrice`）← `solvers/finance-world.ts` 既有注释「订单金额 = 数量 × 单价」，
+  //     与本派生的公式逐字同一件事。
+  "Order.customerId": "下单客户外键", "Order.value": "订单金额",
   "Order.so": "订单号", "Order.cust": "客户", "Order.model": "型号", "Order.qty": "订单数量",
   "Order.due": "交期", "Order.pri": "优先级", "Order.bases": "承接基地", "Order.status": "订单状态",
   "Order.demandDelta": "需求增量比例", // 有效需求 = 基线 × (1 + demandDelta)（capacity.ts PRD-CAP-DEMANDDELTA）
@@ -3008,6 +3015,25 @@ export function withPropDisplayNames(typeKey: string, props: PropertyDef[]): Pro
 }
 
 /**
+ * WO-ORDER-WORKORDER-UI · 同一条纪律施加到**派生属性**上（`Order.value` 一类）。
+ *
+ * ⚠ 为什么单独一个函数而不是塞进 `withGovernance`：`withGovernance` 收的是 `PropertyDef[]`，
+ * 而派生属性挂在类型定义的**另一个字段**上，两者在构造点不经过同一处。本函数吃整份类型定义、
+ * 只改 `derivedProperties`，故可在 `batteryObjectTypes()` 的**唯一出口**上统一施加 ——
+ * 不逐个类型手抄（手抄白名单漏项是本仓 `WO-D6` 已经吃过的亏）。
+ */
+function withDerivedDisplayNames<T extends { key: string; derivedProperties?: DerivedPropertyDef[] }>(t: T): T {
+  if (!t.derivedProperties?.length) return t;
+  return {
+    ...t,
+    derivedProperties: t.derivedProperties.map((d) => {
+      const zh = d.displayName ?? propDisplayName(t.key, d.propKey);
+      return zh ? { ...d, displayName: zh } : d;
+    }),
+  };
+}
+
+/**
  * 治理增量 §3：名称类字段 searchable=true（A3 建议同语义）。
  *
  * ── WO-UNIT-KWH：这里原本还挂着一张**运行时单位回填表** ──────────────────────────
@@ -3137,7 +3163,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     // Phase 3 MES Domain: Labor Tracking
     plain("OperatorAttendance", "操作工考勤", operatorAttendanceProps),
     plain("OperatorSkillCert", "操作工技能认证", operatorSkillCertProps),
-  ];
+    // WO-ORDER-WORKORDER-UI：派生属性的中文名在**这一个出口**统一贴（同 `withGovernance` 之于 properties）。
+  ].map(withDerivedDisplayNames);
 }
 
 export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "version">[] {

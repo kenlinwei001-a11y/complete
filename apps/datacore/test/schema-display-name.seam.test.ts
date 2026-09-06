@@ -24,7 +24,9 @@ import type { PropertyDef } from "../src/domain.js";
 
 const ONTOLOGY_TYPES = "/a/v1/ontology/object-types";
 
-interface TypeRow { key: string; displayName: string; properties: PropertyDef[] }
+// WO-ORDER-WORKORDER-UI：`derivedProperties` 也承载 displayName（同一张 PROP_DISPLAY_NAMES），
+// 故本行必须把它读进来 —— 否则 ④ 的取值域比被判对象窄一半。
+interface TypeRow { key: string; displayName: string; properties: PropertyDef[]; derivedProperties?: { propKey: string; displayName?: string }[] }
 
 async function fetchTypes(t: TestApp): Promise<TypeRow[]> {
   const res = await t.app.inject({ method: "GET", url: ONTOLOGY_TYPES, headers: ADMIN });
@@ -176,7 +178,15 @@ describe("WO-SCHEMA-ZH · 属性中文业务名经接口真下发（SEAM）", ()
     }
 
     // 表里每个键都得对上真属性（防拼错类型/属性名导致"登记了但永不生效"的假绿）。
-    const known = new Map(types.map((ty) => [ty.key, new Set((ty.properties ?? []).map((p) => p.propKey))]));
+    // ⚠ WO-ORDER-WORKORDER-UI：**两处出处都算数** —— 普通属性在 `properties`，
+    // 派生属性在 `derivedProperties`（`Order.value` = 订单金额）。只查前者会把合法登记
+    // 误判成"指向不存在的属性"，而那正是本条要防的反面：**判据的取值域必须与被判对象的取值域一致**。
+    const known = new Map(
+      types.map((ty) => [
+        ty.key,
+        new Set([...(ty.properties ?? []).map((p) => p.propKey), ...(ty.derivedProperties ?? []).map((p) => p.propKey)]),
+      ]),
+    );
     const orphans = Object.keys(PROP_DISPLAY_NAMES).filter((k) => {
       const i = k.indexOf(".");
       const [ty, prop] = [k.slice(0, i), k.slice(i + 1)];
