@@ -139,7 +139,10 @@ export default function LedgerView({ view }: ViewRendererProps) {
                       <div className={styles.expand} data-testid="ledger-expand">
                         {Object.entries(row.props).map(([k, v]) => (
                           <div key={k}>
-                            <span style={{ color: "var(--muted2)" }} title={k} data-testid={`ledger-prop-${k}`}>
+                            {/* R-UI-3：技术键不挂原生 title=（浮层里的浏览器 tooltip 等于没做，且
+                                `provenance-popover-legibility` 棘轮明令只减不增）——
+                                它已经在 `data-testid` 里，工程排查照样取得到。 */}
+                            <span style={{ color: "var(--muted2)" }} data-testid={`ledger-prop-${k}`}>
                               {propZh(k)}
                             </span>{" "}
                             <span className="mono">{formatCell(v)}</span>
@@ -230,7 +233,8 @@ function FulfillingWorkOrders({ orderId }: { orderId: string }) {
       {keys.length > 0 && (
         <table className="cmp">
           <thead>
-            <tr>{WO_COLUMNS.map((c) => <th key={c} title={c}>{woZh(c)}</th>)}</tr>
+            {/* 技术键走 `data-testid` 而不是原生 `title=`，同 R-UI-3（见上）。 */}
+            <tr>{WO_COLUMNS.map((c) => <th key={c} data-testid={`ledger-wo-col-${c}`}>{woZh(c)}</th>)}</tr>
           </thead>
           <tbody>
             {keys.map((k, i) => {

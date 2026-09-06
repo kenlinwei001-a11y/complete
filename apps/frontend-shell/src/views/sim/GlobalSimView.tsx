@@ -1123,7 +1123,9 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                         <input type="range" min={0} max={10} step={0.5} value={methodWeights[k] ?? 1} disabled={inert} data-testid={`global-sim-weight-${k}`} data-inert={inert ? "1" : "0"} onChange={(e) => setMethodWeights((p) => ({ ...p, [k]: Number(e.target.value) }))} style={{ flex: 1 }} />
                         <span className="mono" style={{ width: 32, textAlign: "right" }} data-testid={`global-sim-weight-val-${k}`}>{(methodWeights[k] ?? 1).toFixed(1)}</span>
                         {inert && (
-                          <span style={{ fontSize: 11, color: "var(--muted2)" }} data-testid={`global-sim-weight-inert-${k}`} title={`本次联合求解里，每个订单的候选落点在「${OBJ_KNOB_LABEL[k]}」这一维上取值完全相同 —— 这一维分不出落点的优劣，调它不会改变任何结果，故置灰。换一批该项有差异的订单/产能即自动恢复可调。`}>
+                          // R-UI-3：口径只走**可见 DOM 文字**，不挂原生 title=（浮层里的浏览器 tooltip 等于没做，
+                          // 且 `provenance-popover-legibility` 的棘轮明令这类存量只减不增）。
+                          <span style={{ fontSize: 11, color: "var(--muted2)" }} data-testid={`global-sim-weight-inert-${k}`}>
                             该维无差异
                           </span>
                         )}

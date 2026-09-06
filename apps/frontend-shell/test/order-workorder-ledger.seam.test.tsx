@@ -152,7 +152,7 @@ describe("WO-ORDER-WORKORDER-UI · 台账行展开的工单与中文名（接缝
     expect(within(block).queryByTestId("ledger-wo-count")).toBeNull();
   });
 
-  it("§5 属性名：屏上是业务名，裸英文键只留在 title（单源 = 后端 displayName）", async () => {
+  it("§5 属性名：屏上是业务名，裸英文键只留在 data-testid（单源 = 后端 displayName）", async () => {
     await renderLedger();
     await expandRow(A.id);
     await screen.findByTestId("ledger-prop-so", undefined, { timeout: 5000 });
@@ -163,7 +163,12 @@ describe("WO-ORDER-WORKORDER-UI · 台账行展开的工单与中文名（接缝
     for (const k of Object.keys(A.props)) {
       const el = screen.getByTestId(`ledger-prop-${k}`);
       expect(el.textContent, `属性 ${k} 屏上应显示本体登记的中文业务名`).toBe(zh.get(k) ?? k);
-      expect(el.getAttribute("title"), "技术键保留在 title 供工程排查").toBe(k);
+      // 技术键的承载从原生 `title=` 换成 `data-testid`（收编 merge-batch-2 时改）：
+      // R-UI-3 + `provenance-popover-legibility` 的棘轮明令「原生 title= 承载口径的存量只减不增」，
+      // 而本单新加的两处 title= 正好把该档从 33 顶到 35。判据的**意图没变** ——
+      // 「裸英文键不上屏、但工程排查仍取得到」——只是换了个不产生浏览器 tooltip 的载体。
+      expect(el.getAttribute("title"), "不许再挂原生 title=（R-UI-3）").toBeNull();
+      expect(el.getAttribute("data-testid"), "技术键保留在 data-testid 供工程排查").toBe(`ledger-prop-${k}`);
     }
     // 反向：本单修的就是"屏上一片裸英文键"，故这里显式咬住裸键**不再**作为可见文本出现。
     expect(screen.queryByText("customerId")).toBeNull();

@@ -238,7 +238,6 @@ function MultiObjWhatifInner() {
                 className={styles.kpi}
                 style={{ minWidth: 150, opacity: 0.75 }}
                 data-testid={`multiobj-gap-${g.key}`}
-                title={g.reason}
               >
                 <div style={{ fontSize: 12, opacity: 0.7 }}>{g.label}</div>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>本系统今天算不出</div>
@@ -281,10 +280,11 @@ function MultiObjWhatifInner() {
                   />
                   <span style={{ width: 44, textAlign: "right" }}>{(raw[k] ?? 1).toFixed(0)}×</span>
                   {inert && (
+                    // R-UI-3：口径只走**可见 DOM 文字**，不挂原生 title=（浏览器 tooltip 在浮层里等于没做，
+                    // 且 `provenance-popover-legibility` 的棘轮明令这类存量只减不增）。
                     <span
                       style={{ fontSize: 11, opacity: 0.85, color: "var(--muted2)" }}
                       data-testid={`multiobj-weight-inert-${k}`}
-                      title={`本批订单里每套${label}完全相同（差额 0），这一维分不出订单的先后 —— 调它不会改变任何结果，故置灰。换一批该项有差异的订单即自动恢复可调。`}
                     >
                       本批订单该项无差异 · 调它不会改变结果
                     </span>
