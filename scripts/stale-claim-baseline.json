@@ -272,14 +272,14 @@
    "sample": "shapeToday: \"逐设备逐日 {availability, performance, quality, oee, plannedProductionTime, actualProductionTime, equipId, lineI…"
   },
   {
-   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#376daca56727d2bd",
+   "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#6acaa2d637785da8",
    "file": "apps/frontend-shell/src/views/sim/physicalTopology.ts",
    "line": 790,
    "codes": [
     "STALE-1"
    ],
-   "why": "台账行「实测 780 台，每格 6 台」缺日期。🚦 本单范围边界外。",
-   "sample": "shapeToday: \"逐设备节拍 s/电芯（battery.ts 由 gwhᵢ 反解；实测 780 台，每格 6 台）\","
+   "why": "台账行「实测 780 台，每格 6 台」缺日期。🚦 本单范围边界外。 ⚠ 2026-09-06（WO-RUI4-COORDS-FINISH）：R-UI-4 把该串里的裸源码文件名 `battery.ts` 换成业务标识「合成种子由基地年产能 gwhᵢ 反解」（真浏览器实测 /v/physical-topology 默认渲染即命中），**声明文本变了 ⇒ 棘轮 key 随之重算**（376daca56727d2bd → 6acaa2d637785da8）。豁免理由、范围、条数、STALE 码一字未改 —— 这是跟着改名，不是放宽。",
+   "sample": "shapeToday: \"逐设备节拍 s/电芯（合成种子由基地年产能 gwhᵢ 反解；实测 780 台，每格 6 台）\","
   },
   {
    "key": "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts#b4c72321da584f97",
