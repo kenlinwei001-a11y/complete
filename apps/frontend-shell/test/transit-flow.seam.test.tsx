@@ -857,7 +857,17 @@ describe("WO-TRANSIT-WIRE · 图层自取 Cadence / 采购段，缺席由取回�
     // 事实锚（WO-C 修法）：查询/现算**住在哪个文件**不是事实 —— 正向判据全树判（搬家不红；摘线才红）。
     const fe = checkedTree("apps/frontend-shell/src", 'from "@platform/contracts"', 100);
     for (const type of ["Cadence", "PurchaseOrder", "CustomsClearance", "IncomingInspection"]) {
-      expect(factHits(fe, `searchObjects("${type}"`), `图层不再查 ${type} —— 那块面板又变回一句永远为真的话`).not.toEqual([]);
+      /**
+       * 探针认**两种**取数形态（WO-PAGING-SILENT-TRUNCATION-SCAN 起）：
+       * `searchObjects("X"` 只取首页，`fetchAllObjects("X"` 按服务端 `hasMore` 翻完 ——
+       * 本条锁的是「**这四型有没有真的被查**」，不是「用哪个函数查」。
+       * 原写死 `searchObjects("X"` ⇒ 图层改走全量翻页后这里当场红，而线一条都没断：
+       * 旧名以**字符串**形态活在断言里，`typecheck` 一个都看不见（CLAUDE.md 铁律 0.6 第 4 条）。
+       */
+      expect(
+        factHits(fe, new RegExp(String.raw`(searchObjects|fetchAllObjects)\("${type}"`)),
+        `图层不再查 ${type} —— 那块面板又变回一句永远为真的话`,
+      ).not.toEqual([]);
     }
     // 现算，而不是读常量（探针钉到「带字段名的实参形状」：transitFlow.ts 的提示字符串里引用了
     // `deriveXxx({ engineNodes, … })` 的**无字段值**形态 —— 那是给调用方看的文案，不是调用）。
