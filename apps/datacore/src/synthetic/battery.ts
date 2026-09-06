@@ -3311,18 +3311,21 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // ══════════════════════════════════════════════════════════════════════════════
     // WO-CAPACITY-EDGE · 产能两条边（`has_capacity` / `consumes_capacity`）
     //
-    // ① `has_capacity`：Line → CapacityPool。**走声明驱动物化**（`viaProperty`），
-    //    因为这条边不需要带任何量 —— 产能数在池节点上。`viaSide: "to"` 是因为外键
-    //    (`lineId`) 长在**去向**类型（CapacityPool）上，与 `line_belongs_to_base` 同形。
-    //    ⇒ 这条边由 `ontology.ts materializeDeclaredLinks` 兑现，种子不手写实例。
+    // ① `has_capacity`：Line → CapacityPool（结构边，不带量 —— 产能数在池节点上）。
+    // ② `consumes_capacity`：WorkOrder → CapacityPool，**量写在边上**（`LinkInstance.props`）。
     //
-    // ② `consumes_capacity`：WorkOrder → CapacityPool。**刻意不走 `viaProperty`**——
-    //    `materializeDeclaredLinks` 写出的 `LinkInstance` **一律没有 `props`**
-    //    （见 `ontology.ts` 里 `origin: { type: "LINK_DERIVED" … }` 那次 put），
-    //    而本条边的全部价值就在边上那个量。走声明驱动 = 得到一条「用了这条线」却
-    //    答不出「吃掉多少」的边 —— 正是本单要消灭的那个形态。故由种子带 props 物化。
+    // ⚠ 两条都**不声明 `viaProperty`**，各有各的理由，别顺手补上：
+    //   · `consumes_capacity` 不能：`materializeDeclaredLinks` 写出的 `LinkInstance`
+    //     **一律没有 `props`**（`ontology.ts` 里那次 `origin: { type: "LINK_DERIVED" … }` 的 put），
+    //     而本条边的全部价值就是边上那个量 ⇒ 声明驱动只会得到一条「用了这条线」却
+    //     答不出「吃掉多少」的边，正是本单要消灭的形态。
+    //   · `has_capacity` 技术上能（外键 `CapacityPool.lineId` 指向 `Line` 主键，`viaSide:"to"`），
+    //     但**会造出双份**：`upsertLinkType` 在 `synthetic/service.ts` 种链路类型时就跑物化，
+    //     那一刻对象还一个都没落库 ⇒ 当场 0 条；之后种子再手写一遍，而任何人重新
+    //     `POST /a/v1/ontology/link-types` 又会补出一批 `lnk_via_*`，与种子的 `lnk_hc_*`
+    //     **同一条边两个实例、两个 origin**。冲突会红，双份不会 —— 故只留一个真值源。
     // ══════════════════════════════════════════════════════════════════════════════
-    { key: "has_capacity", fromTypeKey: "Line", toTypeKey: "CapacityPool", cardinality: "1:1", viaProperty: "lineId", viaSide: "to" }, // capacity
+    { key: "has_capacity", fromTypeKey: "Line", toTypeKey: "CapacityPool", cardinality: "1:1" }, // capacity（结构边·种子物化）
     { key: "consumes_capacity", fromTypeKey: "WorkOrder", toTypeKey: "CapacityPool", cardinality: "N:1" }, // capacity（量在边上·种子物化）
     // WO-FULFILLS-EDGE · **工单兑现销售订单**（制造侧 → 商务侧唯一的一跳）。
     // 只声明这**一个方向**，不落逆边：查询引擎的 `direction:"in"`（`ontology/slice-index.ts:18`
