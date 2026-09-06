@@ -448,7 +448,7 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
       segment: "ACTION",
       reason: "NO_SOURCE_WIRED",
       missing:
-        "ActionDraft 上没有 sessionId 字段（contracts/actions.ts 全表 0 命中），SolutionCandidate 也只挂在 ChainImpediment 上 —— " +
+        "ActionDraft 上没有 sessionId 字段（动作契约全表 0 命中），SolutionCandidate 也只挂在 ChainImpediment 上 —— " +
         "沙盘推演与动作台账之间今天没有任何字段互指",
       needs: "给 ActionDraft.origin 增加 sessionId（或建一张 session→action 关联），使「这个推演促成了哪个动作」可查",
     },

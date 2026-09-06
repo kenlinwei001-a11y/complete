@@ -215,7 +215,7 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
         .map((r) => ({ key: r.key, label: r.key, group: r.refKind, detail: r.where }))
         .sort((a, b) => by(a.key, b.key)),
       absentReason:
-        "本租户尚无已发布 workflow/scene 经 resolve_slice 步引用本切片（上报路已通：发布 workflow/plan 时 refs/report.ts 会把 sliceKey 以 kind:\"slice\" 上报到 reported_refs）。",
+        "本租户尚无已发布 workflow/scene 经 resolve_slice 步引用本切片（上报路已通：发布 workflow/plan 时引用上报器会把 sliceKey 以 kind:\"slice\" 上报到 reported_refs）。",
     },
     // ── ② 决策意图 ────────────────────────────────────────────────────────────
     // 同①：产出端已修（plan 发布同样上报 resolve_slice 出向引用），
@@ -510,8 +510,8 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
       absentReason:
         `全局注册了 ${input.actionTypeKeys.length} 个 ActionType，但归因不到本切片的类型，缺口有两道：` +
         `(1) 结构缺口 —— ActionType 无 targetTypeKey 字段，无法机械 join 到对象类型；` +
-        `(2) 持久化窄门 —— object_types.actions[] 全空，且 ontology.ts:199 upsertType 逐字段重建 def 时不抄 actions/stateVariables/functions/security，` +
-        `即便 pipeline/subgraph.ts:53-57 产出了也落不了库。补种子与补窄门是两件事，不许当一件做。`,
+        `(2) 持久化窄门 —— object_types.actions[] 全空，且对象类型入库时逐字段重建定义，不抄 actions/stateVariables/functions/security，` +
+        `即便建模流水线产出了也落不了库。补种子与补窄门是两件事，不许当一件做。`,
     },
     // ── ⑯ 治理与溯源 ──────────────────────────────────────────────────────────
     // 本单最重的一条：executeSlice 原本在 nodes.set 时丢掉了 o.origin / o.epoch
