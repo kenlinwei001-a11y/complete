@@ -122,6 +122,46 @@ describe("WO-LAST3-RELATIONS · 接缝：located_in / depends_on 声明 × 物�
     for (const e of g.edges) expect((seqOf.get(e.from) ?? 0) - (seqOf.get(e.to) ?? 0)).toBe(1);
   });
 
+  it("depends_on 反向对照：前驱 FK 指向不存在的工序，该边必须消失（135→134，且只塌那一条）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // 与 `located_in` 那条同一把尺子，但**必须对本条边单独做一遍** ——
+    // 「另一条边的数据是真的」证明不了「这条边的数据是真的」。
+    const declaredKey = "op_dep_declared";
+    const mk = await createLink(t, {
+      key: declaredKey,
+      fromTypeKey: "Operation",
+      toTypeKey: "Operation",
+      cardinality: "N:1",
+      viaProperty: "predecessorOperationId",
+    });
+    expect(mk.statusCode, mk.body).toBeLessThan(300);
+    // 声明即物化，条数与种子手写那条一致（两条独立路径得同一个数 = 互为对照口径）。
+    expect(await countLinks(t, declaredKey), "声明侧与种子侧必须得到同一个数").toBe(135);
+
+    // 把某一道工序的前驱改成**不存在的 operationId** ⇒ 它那条边必须消失。
+    const ops = await t.repos.objects.listByType("demo", "Operation");
+    const victim = ops.find((o) => String(o.props.predecessorOperationId ?? "") !== "");
+    expect(victim, "金丝雀：必须存在带前驱的工序（首工序之外的 135 道）").toBeTruthy();
+    await t.repos.objects.put({ ...victim!, props: { ...victim!.props, predecessorOperationId: "OP-DOES-NOT-EXIST" } });
+
+    const again = await createLink(t, {
+      key: declaredKey,
+      fromTypeKey: "Operation",
+      toTypeKey: "Operation",
+      cardinality: "N:1",
+      viaProperty: "predecessorOperationId",
+    });
+    expect(again.statusCode, again.body).toBeLessThan(300);
+    expect(await countLinks(t, declaredKey), "前驱指向不存在的工序 ⇒ 该边必须消失").toBe(134);
+
+    // 消失的正是那一条，其余 134 条一条不少（证明没有连坐、也没有整表重算成别的东西）。
+    const left = await t.repos.links.list("demo", (l) => l.type === declaredKey);
+    expect(left.some((l) => l.fromId === victim!.id), "被改坏的那条工序边必须不在了").toBe(false);
+    expect(left.length).toBe(134);
+  });
+
   it("声明侧够用 + 反向对照：viaProperty 一声明就连得出边，FK 指向不存在的目标即消失", async () => {
     const t = await makeApp();
     await seedBattery(t);
