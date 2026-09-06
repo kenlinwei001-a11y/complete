@@ -1,0 +1,383 @@
+{
+  "counters": {
+    "steps": 8,
+    "clicks": 7,
+    "navs": 5
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 216,
+    "127.0.0.1:4051": 13,
+    "127.0.0.1:4052": 13
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/cross_object_occupancy/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/optimize_whatif/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/portfolio/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/cross_object_occupancy/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/optimize_whatif/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/cross_object_occupancy/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/optimize_whatif/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/cross_object_occupancy/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/optimize_whatif/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/portfolio/run",
+      "status": 200,
+      "method": "POST"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:34:28.033Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:34:28.062Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:34:28.751Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:34:28.799Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:34:28.807Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:34:28.807Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:34:28.819Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:34:30.554Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:34:30.614Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:34:30.801Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:34:34.163Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:34:34.163Z",
+      "kind": "STEP",
+      "msg": "#3 侧边栏 →「接单组合优选」"
+    },
+    {
+      "t": "2026-09-04T02:34:34.167Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「接单组合优选」"
+    },
+    {
+      "t": "2026-09-04T02:34:34.195Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/global-sim"
+    },
+    {
+      "t": "2026-09-04T02:34:42.233Z",
+      "kind": "STEP",
+      "msg": "#4 读基线（全部权重 1.0）"
+    },
+    {
+      "t": "2026-09-04T02:34:42.248Z",
+      "kind": "STATE",
+      "msg": "base",
+      "revenue": "39.49亿元",
+      "penalty": "14.17亿元",
+      "changeover": "17,035万元",
+      "sched": 18,
+      "squeezed": 32,
+      "sliders": "按期 权重 1.0=1 | 代价 权重 1.0=1 | 换型 权重 1.0=1 | 延误 权重 1.0=1 | 成品库存 权重 1.0=1 | 营收权重 1.0×=1 | 违约金权重 1.0×=1 | 换型成本权重 1.0×=1"
+    },
+    {
+      "t": "2026-09-04T02:34:42.520Z",
+      "kind": "SHOT",
+      "msg": "i1-exp-base"
+    },
+    {
+      "t": "2026-09-04T02:34:42.520Z",
+      "kind": "STEP",
+      "msg": "#5 把「营收权重」拉到滑杆上限 2.0，观察是否重解"
+    },
+    {
+      "t": "2026-09-04T02:34:42.533Z",
+      "kind": "SLIDER",
+      "msg": "营收权重 := 2",
+      "ok": true
+    },
+    {
+      "t": "2026-09-04T02:34:48.543Z",
+      "kind": "STATE",
+      "msg": "rev2",
+      "revenue": "38.76亿元",
+      "penalty": "16.87亿元",
+      "changeover": "17,054万元",
+      "sched": 16,
+      "squeezed": 34,
+      "sliders": "按期 权重 1.0=1 | 代价 权重 1.0=1 | 换型 权重 1.0=1 | 延误 权重 1.0=1 | 成品库存 权重 1.0=1 | 营收权重 2.0×=2 | 违约金权重 1.0×=1 | 换型成本权重 1.0×=1"
+    },
+    {
+      "t": "2026-09-04T02:34:48.794Z",
+      "kind": "SHOT",
+      "msg": "i1-exp-rev2"
+    },
+    {
+      "t": "2026-09-04T02:34:48.794Z",
+      "kind": "STEP",
+      "msg": "#6 把「违约金权重」拉到 0（只顾营收），观察排产名单是否换人"
+    },
+    {
+      "t": "2026-09-04T02:34:48.825Z",
+      "kind": "SLIDER",
+      "msg": "违约金权重 := 0",
+      "ok": true
+    },
+    {
+      "t": "2026-09-04T02:34:54.835Z",
+      "kind": "STATE",
+      "msg": "rev2pen0",
+      "revenue": "39.18亿元",
+      "penalty": "18.68亿元",
+      "changeover": "17,069万元",
+      "sched": 17,
+      "squeezed": 33,
+      "sliders": "按期 权重 1.0=1 | 代价 权重 1.0=1 | 换型 权重 1.0=1 | 延误 权重 1.0=1 | 成品库存 权重 1.0=1 | 营收权重 2.0×=2 | 违约金权重 0.0×=0 | 换型成本权重 1.0×=1"
+    },
+    {
+      "t": "2026-09-04T02:34:55.102Z",
+      "kind": "SHOT",
+      "msg": "i1-exp-rev2pen0"
+    },
+    {
+      "t": "2026-09-04T02:34:55.102Z",
+      "kind": "STEP",
+      "msg": "#7 反向：营收权重 0 / 违约金权重 2.0（只顾少赔），名单应换回另一批"
+    },
+    {
+      "t": "2026-09-04T02:34:55.114Z",
+      "kind": "SLIDER",
+      "msg": "营收权重 := 0",
+      "ok": true
+    },
+    {
+      "t": "2026-09-04T02:34:55.130Z",
+      "kind": "SLIDER",
+      "msg": "违约金权重 := 2",
+      "ok": true
+    },
+    {
+      "t": "2026-09-04T02:35:01.142Z",
+      "kind": "STATE",
+      "msg": "rev0pen2",
+      "revenue": "39.35亿元",
+      "penalty": "12.11亿元",
+      "changeover": "17,097万元",
+      "sched": 20,
+      "squeezed": 30,
+      "sliders": "按期 权重 1.0=1 | 代价 权重 1.0=1 | 换型 权重 1.0=1 | 延误 权重 1.0=1 | 成品库存 权重 1.0=1 | 营收权重 0.0×=0 | 违约金权重 2.0×=2 | 换型成本权重 1.0×=1"
+    },
+    {
+      "t": "2026-09-04T02:35:01.403Z",
+      "kind": "SHOT",
+      "msg": "i1-exp-rev0pen2"
+    },
+    {
+      "t": "2026-09-04T02:35:01.403Z",
+      "kind": "STEP",
+      "msg": "#8 换另一组旋钮：把「代价 权重」从 1.0 拉到 10（求解方法旋钮）"
+    },
+    {
+      "t": "2026-09-04T02:35:01.475Z",
+      "kind": "SLIDER",
+      "msg": "代价 权重 := 10",
+      "ok": true
+    },
+    {
+      "t": "2026-09-04T02:35:08.487Z",
+      "kind": "STATE",
+      "msg": "cost10",
+      "revenue": "39.35亿元",
+      "penalty": "12.11亿元",
+      "changeover": "17,097万元",
+      "sched": 20,
+      "squeezed": 30,
+      "sliders": "按期 权重 1.0=1 | 代价 权重 10.0=10 | 换型 权重 1.0=1 | 延误 权重 1.0=1 | 成品库存 权重 1.0=1 | 营收权重 0.0×=0 | 违约金权重 2.0×=2 | 换型成本权重 1.0×=1"
+    },
+    {
+      "t": "2026-09-04T02:35:08.691Z",
+      "kind": "SHOT",
+      "msg": "i1-exp-cost10"
+    },
+    {
+      "t": "2026-09-04T02:35:08.691Z",
+      "kind": "VERDICT",
+      "msg": "{\"营收权重1→2 变了什么\":[\"revenue\",\"penalty\",\"changeover\",\"dRevenue\",\"scheduledOrders\",\"squeezedOrders\"],\"再把违约金权重→0 变了什么\":[\"revenue\",\"penalty\",\"changeover\",\"dRevenue\",\"scheduledOrders\",\"squeezedOrders\"],\"反向(营收0/违约2) vs 基线\":[\"revenue\",\"penalty\",\"changeover\",\"scheduledOrders\",\"squeezedOrders\"],\"代价权重1→10 变了什么\":[]}"
+    }
+  ]
+}
