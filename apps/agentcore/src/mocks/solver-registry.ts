@@ -51,7 +51,7 @@ export interface MockSolverRegistryItem {
   outputShape?: string[];
 }
 
-/** 求解器全集（61 条·取自真实注册表返回·按 key 字典序）。 */
+/** 求解器全集（**62 条**·取自真实注册表返回·按 key 字典序；61→62 = WO-CAPACITY-EDGE `capacity_ledger`）。 */
 export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
   {
     "key": "affected_orders",
@@ -284,6 +284,37 @@ export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
       "provenance",
       "evaluatedRules",
       "ruleSetVersion"
+    ]
+  },
+  {
+    "key": "capacity_ledger",
+    "pool": "scenario",
+    "name": "产能台账",
+    "description": "沿 has_capacity / consumes_capacity 两条边算产能池余量：余量 = 池申报产能 − Σ 边上消耗量；超载逐条给违约信息。消耗量读的是边上的 props，不从工单节点重算。",
+    "argHints": {
+      "baseId": "【可选】只看这个基地的池",
+      "lineId": "【可选】只看这条产线的池",
+      "loadWorkOrders": "【可选】只把这些工单加载到池上（排产取舍/对照实验）",
+      "demandMultiplier": "【可选·默认 1】需求倍数：这批单的量翻 N 倍还接不接得住"
+    },
+    "domain": "plan",
+    "answersQuestions": [
+      "这条产线还剩多少产能",
+      "这个池的产能被哪些工单吃掉了",
+      "产能超载了吗超了多少"
+    ],
+    "tags": [
+      "产能台账",
+      "产能余量",
+      "超载",
+      "capacity",
+      "ledger"
+    ],
+    "outputShape": [
+      "pools",
+      "violations",
+      "disclosure",
+      "summary"
     ]
   },
   {
