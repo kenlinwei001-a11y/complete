@@ -5009,6 +5009,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
         viaProperty: z.string().min(1).optional(),
         viaSide: z.enum(["from", "to"]).optional(),
+        // WO-MATERIALIZE-3EXT · 三类显式声明（语义与实测依据见 `LinkTypeDef` 上同名字段的头注）。
+        // 三者都是**加性**：不填 ⇒ 请求体与老调用逐字节一致，物化结果不变。
+        anchorProperty: z.string().min(1).optional(),
+        viaMultiValue: z.boolean().optional(),
+        viaBridge: z
+          .object({
+            typeKey: z.string().min(1),
+            fromProperty: z.string().min(1),
+            toProperty: z.string().min(1),
+            fromAnchorProperty: z.string().min(1).optional(),
+            toAnchorProperty: z.string().min(1).optional(),
+          })
+          .optional(),
       }),
       req.body,
     );
