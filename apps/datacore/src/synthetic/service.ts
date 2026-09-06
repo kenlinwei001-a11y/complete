@@ -1310,7 +1310,10 @@ export class SyntheticService {
         "consumes_capacity",
         oid("WorkOrder", P(wo).woId),
         oid("CapacityPool", cc.poolId),
-        // 边上三格：`consumedCellsDaily` 是**量**（量纲声明在 `CapacityPool.consumedCellsDaily`），
+        // 边上三格：`consumedCellsDaily` 是**量**（量纲随池那一格 `CapacityPool.capacityCellsDaily` ——
+        // ⚠ WO-CAPACITY-EDGE-FIX 起**不再是** `CapacityPool.consumedCellsDaily`：那一格已删，
+        // 它是求解时的读数不是对象属性；余量 = 申报 − Σ消耗 只在同族内才是合法减法，
+        // 故三个读数一律取「申报产能」那一格的单位），
         // `qtyPlanned` / `spanDays` 是它的**两个输入**（量纲分别声明在 `WorkOrder.qtyPlanned`
         // 与 `WorkOrder.spanDays`）—— 带上它们，推演过程才可披露（铁律 1.5 判据二），
         // 而不是屏上只有一个说不清怎么来的数。

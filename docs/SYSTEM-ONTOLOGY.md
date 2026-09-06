@@ -2276,9 +2276,11 @@ Line.max_capacity_day (件/日)                       WorkOrder.qtyPlanned(件) 
   `WorkOrder` 节点上**没有**这一格。求解器改成从节点重算即违反 —— 判据是「把边上的 props 删掉，
   读数必须当场变」（接缝门 §4 变异反证咬的就是这条）。
 - **R-CAP-2 · 单位由本体声明**：台账文案与披露层里的单位串一律从
-  `CapacityPool.{capacityCellsDaily,consumedCellsDaily,remainingCellsDaily}` 与
-  `WorkOrder.{qtyPlanned,spanDays}` 的 `PropertyDef.unit` 现取，求解器**不内联单位**；
-  读不到量纲声明即 400，不拿空串糊过去。
+  `CapacityPool.capacityCellsDaily` 与 `WorkOrder.{qtyPlanned,spanDays}` 的 `PropertyDef.unit`
+  现取，求解器**不内联单位**；读不到量纲声明即 400，不拿空串糊过去。
+  ⚠ **出处就是这三格，不是四格五格**（WO-CAPACITY-EDGE-FIX 起）：池上的 `consumedCellsDaily` /
+  `remainingCellsDaily` **已删**（读数不是属性，理由见下节），三个读数同族 ⇒ 单位一律取池那一格。
+  本条**因此加强不是削弱**——同族守卫（池单位须以 `qtyPlanned 的单位 + "/"` 开头，否则 400）见下节。
 - **R-CAP-3 · 三种「没量」分开报**：`unpricedEdges`（边在但没带量）/ `skippedByFilter`（被
   `loadWorkOrders` 滤掉）/ `poolsWithoutCapacity`（池没申报产能）各计各的，**不许合成一个数**。
 
