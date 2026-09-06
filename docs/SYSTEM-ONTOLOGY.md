@@ -2314,6 +2314,48 @@ rollup 答「这条线**能**做多少」（能力面·套/日），ledger 答�
 「零换算系数」纪律本身：把池换回 `Line.capacityDaily`（**套**/日）当场红，而不是照样算出一堆
 「跑得起来但错两处」（件↔套 + 存量↔速率）的数。变异反证实测：注掉该守卫 ⇒ 接缝门 §5 由 400 变 200 立红。
 
+### 属地链路 / 工序先后链路 · `located_in` 与 `depends_on` 两条关系落地（WO-LAST3-RELATIONS · 2026-09-06）
+
+**一句话**：地理归属从**字符串属性**升格成 `Region` 对象（三类设施经 `*_located_in` 指过去），
+工序先后从**序号**升格成前驱外键（`operation_depends_on` 自环边）——两条此前判「表达不了」的关系，
+病因**不同**，修法也不同。
+
+**病因分开写（合成一句就会修错地方）**
+
+| 关系 | 今天的行为是 X | 应该是 Y | 属哪一类 |
+|---|---|---|---|
+| `located_in` | 地理归属只以字符串存在（`Base.province` / `Warehouse.province` / `CustomerLocation.province`——实测全仓**只有这三个**类型带 `province`，且无任何 `Region`/`Geo` 类型）⇒「华东产能」这类按地域的聚合**不能沿图走**，只能按字段过滤 | 省是**对象**，三类设施指向它 ⇒ 地域成为可遍历枢纽 | **五种声明够用，缺的是锚点类型** |
+| `depends_on` | 工序先后只靠 `Operation.operationSeq`，无前驱外键；五种声明**一种都算不出端点**（拿 `operationSeq` 对 `operationSeq` 会把 15 条工艺路线的同序号工序连成**叉积**且不报错） | 前驱作为 FK 存下来 ⇒ 零新机制即可 `viaProperty` | **补数据（派生 FK），非新机制** |
+
+**新增对象类型**：`Region`（行政区 · `factory` 域 · PK = 省名，与三个载体存的串**零转换**对齐）。
+行数由三载体 `province` 取值**并集**派生（`buildRegions`）——13 省 = 基地侧 10 ∪ 客户交付点侧新增
+重庆/上海/北京 3（仓库省份 ⊆ 基地省份）。**不引入新业务事实**；查不到大区即 `throw`，不静默回落。
+
+**新增链路 4 条**：`base_located_in`(13) · `warehouse_located_in`(34) · `custloc_located_in`(30) ·
+`operation_depends_on`(135 = 150 工序 − 15 条工艺路线的首工序)。
+⚠ `operation_depends_on` 是全仓**第二条自环边**（`caused_by` 之外）。
+
+**⚠ 四条边刻意不声明 `viaProperty`，与 `has_capacity` 同一个理由**：`upsertLinkType` 在
+`synthetic/service.ts` 种链路类型时就跑一次 `materializeDeclaredLinks`，而**那一刻对象一个都没落库**
+（对象在其后才 putAll）⇒ 当场 0 条；之后种子再手写一遍，任何人重新 `POST /a/v1/ontology/link-types`
+又会补出一批 `lnk_via_*`，**同一条边两个实例、两个 origin**。冲突会红，双份不会 ⇒ 只留一个真值源。
+这是**时序**问题，不是表达力问题 —— 表达力由接缝门在**对象已落库**的同租户里另建一条同形状的边证明
+（声明即物化 34 条），两者分开证明。
+
+**门**：`apps/datacore/test/linktype-located-depends.seam.test.ts`（声明 × 物化 × 检索整条缝 +
+反向对照：把 FK 改成指向不存在的目标 ⇒ 该边必须消失 34→33，且只塌被改的那一条 + 写入校验 4xx 信封）。
+
+**金值**：`batteryObjectTypes()` 96→**97** · demo 对象 12836→**12849** · B 侧镜像 62→**63** 类型 /
+107→**111** 链路 · `Operation.propCount` 13→**14**。R6：同 (battery, S, 42) 两次 hash 一致，
+且逐集合比对**只有 `operations` 变**（新增一列派生 FK·零 rng 位移）。
+
+**⛔ 同批第三条 `ships_to` 未落地，诚实登记**：「→工厂」半**早已存在**
+（`transfer_to_base` 17 条 · `base_has_shipment` 13 条，`Shipment.baseId` 标签即「目的基地」）；
+「仓库→客户」半**无任何外键承载**——99 个类型里指向 `Customer`/`CustomerLocation`/`Warehouse` 的属性
+只有 `Order.customerId` / `FinishedGoodsInventory.warehouseId` / `CustomerLocation.customerRef` 三条，
+没有一条表达「哪批货送到哪个地点」（与 `solvers/chain-loss.ts` 那段「成品发到客户的在途时长无承载、
+三个看着像的逐个核过全都不是」同一结论）。⇒ 补它必须**凭空造发运记录**，属造业务数据，本单不做。
+
 ### 本体体检链路 · 第三类边：不变式守卫（WO-ONTOLOGY-EDGE-TRICLASS · 2026-08-17）
 
 **一句话**：本体图谱三样真值 → 守卫目录逐条求值 → 成立/不成立 + 违反者 → 屏上第三张表；改容差即**重走整条链**。
