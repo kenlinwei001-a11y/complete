@@ -447,7 +447,7 @@ export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
     "key": "chain_loss_attribution",
     "pool": "cockpit",
     "name": "环节级损失归因",
-    "description": "把「一张订单全链走完 N 天」拆到逐环节，算每个环节吃掉了**损失**的百分之多少。口径定死：pctOfChainLoss = 该环节非增值天数 ÷ 全链非增值总量（分母**排除增值段**）⇒ 全链非增值环节之和恒 == 100%。链上每段天数都来自一个真实对象的一个真实字段（Operation.standardTime/setupTime 标准工时与换型准备 · Process.agingDays 老化静置 · Supplier.leadTime 供应商到货周期 · Customer.termDays 账期回款），逐条给 R13 下钻三元组（drillType.drillId.drillField + 该字段的仓储真值 + 单位 + 换算式），拿标签回仓储捞真值可逐位对拍。算不出来的环节（清关/到货检验/返工工时/节拍/物料入厂在途）诚实标 EMPTY 并说明缺什么，**不补 0 不给假默认值**。回答『全链时间都耗在哪、哪个环节最该动、这个百分比凭什么、哪些段今天根本算不出来』。",
+    "description": "把「一张订单全链走完 N 天」拆到逐环节，算每个环节吃掉了损失的百分之多少。口径定死：pctOfChainLoss = 该环节非增值天数 ÷ 全链非增值总量（分母排除增值段）⇒ 全链非增值环节之和恒 == 100%。链上每段天数都来自一个真实对象的一个真实字段（Operation.standardTime/setupTime 标准工时与换型准备 · Process.agingDays 老化静置 · Supplier.leadTime 供应商到货周期 · Customer.termDays 账期回款），逐条给 R13 下钻三元组（drillType.drillId.drillField + 该字段的仓储真值 + 单位 + 换算式），拿标签回仓储捞真值可逐位对拍。算不出来的环节（清关/到货检验/返工工时/节拍/物料入厂在途）诚实标 EMPTY 并说明缺什么，不补 0 不给假默认值。回答『全链时间都耗在哪、哪个环节最该动、这个百分比凭什么、哪些段今天根本算不出来』。",
     "argHints": {
       "so": "锚点订单号（缺省取 so 字典序首张，R6 确定性）"
     },
@@ -819,7 +819,7 @@ export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
     "key": "finance_world_projection",
     "pool": "cockpit",
     "name": "财务世界态投影",
-    "description": "回答『在**这个推演世界**里、施加了那条扰动之后，成本/毛利/应收各变成多少**钱**』——即 `finance_pnl` 答不出的那一问（它的签名不吃 worldId，读本体真值，施加任何扰动都返回同一组数）。以 FinancePlan.{budget,rolling} 与 ARInvoice.amount 的**真值**为基线，用世界态里 costPressure（落 Order）/receivablePressure（落 Customer）/overduePressure（落 ARInvoice）三个压力做投影：销售成本 = 基线 ×（1 + 成本压力 ÷ divisor）、毛利用增量法（毛利 + Δ收入 − Δ成本，不用恒等式重算以免悄悄改掉基线残差）、应收/逾期逐张发票用真 amount 算。压力按**承载对象的真金额加权**聚合（Order.qty×unitPrice / 发票金额），分母是**全域基数**不是承载集（只对承载集平均会把「10 张单里 1 张涨价」报成全域涨价）。三样一起下发保证每个数可复核：基线真主键 + 压力的 carriers/universe + 产生该压力的 PropagationRule 真 id 与真系数（改种子系数→回包里的链跟着变）。换算除数 `basis.divisor` **随回包下发**且可由 args.pressureUnit 改写，不是藏在代码里的魔数。`basis.kind:\"PROJECTION\"` 是诚实位：这是推演投影不是实测值。世界态为空 / 无 FinancePlan 基线 → available:false + 原因，**绝不给一个不动的 0**。R4 只读：不写世界态、不写本体真值。",
+    "description": "回答『在这个推演世界里、施加了那条扰动之后，成本/毛利/应收各变成多少钱』——即 `finance_pnl` 答不出的那一问（它的签名不吃 worldId，读本体真值，施加任何扰动都返回同一组数）。以 FinancePlan.{budget,rolling} 与 ARInvoice.amount 的真值为基线，用世界态里 costPressure（落 Order）/receivablePressure（落 Customer）/overduePressure（落 ARInvoice）三个压力做投影：销售成本 = 基线 ×（1 + 成本压力 ÷ divisor）、毛利用增量法（毛利 + Δ收入 − Δ成本，不用恒等式重算以免悄悄改掉基线残差）、应收/逾期逐张发票用真 amount 算。压力按承载对象的真金额加权聚合（Order.qty×unitPrice / 发票金额），分母是全域基数不是承载集（只对承载集平均会把「10 张单里 1 张涨价」报成全域涨价）。三样一起下发保证每个数可复核：基线真主键 + 压力的 carriers/universe + 产生该压力的 PropagationRule 真 id 与真系数（改种子系数→回包里的链跟着变）。换算除数 `basis.divisor` 随回包下发且可由 args.pressureUnit 改写，不是藏在代码里的魔数。`basis.kind:\"PROJECTION\"` 是诚实位：这是推演投影不是实测值。世界态为空 / 无 FinancePlan 基线 → available:false + 原因，绝不给一个不动的 0。R4 只读：不写世界态、不写本体真值。",
     "argHints": {
       "worldId": "推演会话 id（必填·不给不回落到本体真值口径，那条路走 finance_pnl）",
       "pressureUnit": "压力量纲 pp(百分点·缺省)|ratio(比率)",
@@ -1597,7 +1597,7 @@ export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
     "key": "process_flow_time",
     "pool": "generic",
     "name": "流程实例流转时长",
-    "description": "业务流程**实例**层的站间流转时长：回答「**哪一条**流程实例被卡住、卡在**谁**那里、卡了**多久**」——即 impact-analysis 自述答不出的那三问。每条实例的进/出站时刻由**既有带时间戳单据反推**而来（origin=DERIVED_FROM_DOCUMENT，逐条带 sourceDocuments 可溯回单据 id + 字段名 + 该字段原值，R13），⛔ **一次都不读 stdDurationDays**（标准工期是计划值，拿它冒充实测卡顿是明令禁止的）。输出站内停留 dwellDays、站间流转 gapDaysToNext（负数不夹到 0——两站重叠是真实存在的）、瓶颈站（平均停留最久）与卡顿站（到 asOf 仍未出站）。「现在」由 asOf 显式指定，缺省取数据里观测到的最晚时刻并回传 asOfSource，不用 wall-clock（R6 同输入两跑字节一致）。反推不出的**诚实缺席**：四种 kind（无承载对象/无反推规则/字段缺值/结构性不适用）各带原因与复验探针，**不是 0 也不是编的数**。与 chain_loss_attribution 分层：那个答「哪一段慢」（链路节拍层·占比），这个答「哪一张单卡着」（实例层·天数 + 责任方）。",
+    "description": "业务流程实例层的站间流转时长：回答「哪一条流程实例被卡住、卡在谁那里、卡了多久」——即 impact-analysis 自述答不出的那三问。每条实例的进/出站时刻由既有带时间戳单据反推而来（origin=DERIVED_FROM_DOCUMENT，逐条带 sourceDocuments 可溯回单据 id + 字段名 + 该字段原值，R13），⛔ 一次都不读 stdDurationDays（标准工期是计划值，拿它冒充实测卡顿是明令禁止的）。输出站内停留 dwellDays、站间流转 gapDaysToNext（负数不夹到 0——两站重叠是真实存在的）、瓶颈站（平均停留最久）与卡顿站（到 asOf 仍未出站）。「现在」由 asOf 显式指定，缺省取数据里观测到的最晚时刻并回传 asOfSource，不用 wall-clock（R6 同输入两跑字节一致）。反推不出的诚实缺席：四种 kind（无承载对象/无反推规则/字段缺值/结构性不适用）各带原因与复验探针，不是 0 也不是编的数。与 chain_loss_attribution 分层：那个答「哪一段慢」（链路节拍层·占比），这个答「哪一张单卡着」（实例层·天数 + 责任方）。",
     "argHints": {
       "processKey": "只看某一条流程节点（P##）；不传 = 全部",
       "flowKey": "只看某一条链（flowKey 前缀，如 procure_to_release）；不传 = 全部",
@@ -1919,7 +1919,7 @@ export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
     "key": "supply_demand_gap_attribution",
     "pool": "cockpit",
     "name": "供需失衡双向归因",
-    "description": "产销缺口(SopVersionRow Σmax(0,demand−supply))→**双向**分摊到需求端(预测偏差 Σ|P50−实际|/在手订单/结构漂移)⊥供给端(产能缺口/物料缺口/设备OEE损失)，两侧真颗粒驱动值各 Σ 按占比切缺口→需求端贡献+供给端贡献+residual=总缺口(硬勾稽≤1e-4)，各端下钻叶带 drillType/drillField/drillValue。改 DemandSegment.demandWanPerYearP50→需求端占比变·改 Equipment.oee_current/Line 产能→供给端变。回答『供需为什么对不上——是需求预测虚高还是产能/物料供不上、各占多少、每叶证据是什么』。",
+    "description": "产销缺口(SopVersionRow Σmax(0,demand−supply))→双向分摊到需求端(预测偏差 Σ|P50−实际|/在手订单/结构漂移)⊥供给端(产能缺口/物料缺口/设备OEE损失)，两侧真颗粒驱动值各 Σ 按占比切缺口→需求端贡献+供给端贡献+residual=总缺口(硬勾稽≤1e-4)，各端下钻叶带 drillType/drillField/drillValue。改 DemandSegment.demandWanPerYearP50→需求端占比变·改 Equipment.oee_current/Line 产能→供给端变。回答『供需为什么对不上——是需求预测虚高还是产能/物料供不上、各占多少、每叶证据是什么』。",
     "argHints": {
       "metricKey": "达成率指标 key(缺省用 S&OP 产销缺口)"
     },

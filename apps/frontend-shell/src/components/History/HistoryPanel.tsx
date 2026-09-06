@@ -5,6 +5,13 @@ import { useWorkspace } from "@/workspace/useWorkspace";
 import { toastError } from "@/store/toastStore";
 import { safeUuid } from "@/lib/uuid"; // P0 crypto 修复·嫁接自 integ-wave-10（非安全上下文防崩）
 import zh from "@/locales/zh";
+// WO-SCREEN-CALIBER ②：结论摘要是**引擎原文**，而引擎原文是 markdown（它自己写 `**…**` 强调）。
+// 这里以前按纯文本直出 ⇒ 星号原样打在屏上（实测：从沙盘点 🕐 打开本面板，摘要里出现
+// `**故意不动**` / `**没有任何传导规则**`）。收口方式与 `DecisionConsoleView` 的 `Raw` 一致：
+// **不去后端删星号**（那是改引擎原文，且同一份 note 还喂给 Agent / 报告导出，删了大家一起丢强调），
+// 而是在**渲染方**把成对的 `**…**` 变回强调 —— 收的是成因（原文是 markdown、渲染方按纯文本处理），
+// 不是逐处替换字符串：引擎明天多写一句带 `**` 的摘要，逐处替换法当场再漏一处。
+import { parseEmphasis } from "@/views/sim/decisionConsoleModel";
 
 /**
  * 历史记录侧滑面板（顶栏时钟图标触发）：本租户最近 QOS 推演任务（问句/路径/状态/结论摘要/时间），
@@ -67,7 +74,11 @@ export function HistoryPanel({ onClose }: { onClose: () => void }) {
                   {fmt(it.createdAt)} · {it.path ?? "—"}
                   {it.classification?.intentKey ? ` · ${it.classification.intentKey}` : ""}
                 </div>
-                {it.answerSummary && <div style={{ fontSize: 12, color: "var(--muted)" }}>{it.answerSummary}</div>}
+                {it.answerSummary && (
+                  <div style={{ fontSize: 12, color: "var(--muted)" }} data-testid="history-answer-summary">
+                    {parseEmphasis(it.answerSummary).map((s, i) => (s.strong ? <strong key={i}>{s.text}</strong> : <span key={i}>{s.text}</span>))}
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
                   <button className="btn sm" data-testid="history-view" onClick={() => { onClose(); navigate(`/tasks/${it.taskId}`); }}>
                     查看证据链

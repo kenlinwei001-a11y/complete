@@ -9,6 +9,8 @@ import { runSolver } from "@/api/endpoints";
 import zh from "@/locales/zh";
 import { ImpactAnalysisPanel } from "./ImpactAnalysisPanel";
 import { stateVarLabel } from "./stateVarLabel";
+// 引擎原文（markdown）的强调渲染 —— 全仓唯一被批准的那一份实现，不另抄一套正则。
+import { parseEmphasis } from "./decisionConsoleModel";
 import styles from "./SandboxConsole.module.css";
 
 /**
@@ -533,9 +535,17 @@ export function FinanceProjectionPanel({ worldId, curTick, stateVarNames }: Fina
                 {zh.sim.sandbox.impact.moneyNotes(out.notes.length)}
               </summary>
               <ul className={styles.deltaList} data-testid="sandbox-impact-finance-notes-list">
+                {/* WO-SCREEN-CALIBER ②：后端 `notes` 是**引擎原文**，而引擎原文是 markdown
+                    （`finance-world.ts` 自己写 `**…**` 强调）。这里以前按纯文本直出 ⇒ 星号原样打在屏上
+                    （实测：沙盘展开这一层即见 `**故意不动**` / `**没有任何传导规则**`）。
+                    收口方式与 `DecisionConsoleView` 的 `Raw` 一致 —— **不去后端删星号**
+                    （那是改引擎原文，且同一份 note 还喂给别的消费方，删了大家一起丢强调），
+                    而是在渲染方把成对的 `**…**` 变回强调。收的是成因，不是逐处替换字符串。 */}
                 {out.notes.map((n) => (
                   <li className={styles.deltaRow} key={n}>
-                    <span className={styles.deltaName}>{n}</span>
+                    <span className={styles.deltaName}>
+                      {parseEmphasis(n).map((s, i) => (s.strong ? <strong key={i}>{s.text}</strong> : <span key={i}>{s.text}</span>))}
+                    </span>
                   </li>
                 ))}
               </ul>

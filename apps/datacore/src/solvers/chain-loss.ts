@@ -374,7 +374,7 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
     label: "客户预告接收",
     kind: "handoff",
     reason:
-      "「把客户滚动预告变成系统里的需求信号」这段的时长无承载。仓里**有**两个看着相关的对象、但都不带时刻/时长：LongTermAgreement 只有 contractedQtyTon/actualDeliveredTon/priceFormula/effectiveDate/expiryDate（**合同有效期**，不是预告刷新间隔）；DemandSegment 只有 tgt/demandWanPerYearP50/demandWanPerYearP90/act/priceWan/marginPct/floorPct（**量**，不是时刻）。缺的是「客户每次刷新预告的时刻序列」或「预告录入到进入需求计划的时长」这一个字段——加字段能补，造对象不必。",
+      "「把客户滚动预告变成系统里的需求信号」这段的时长无承载。仓里有两个看着相关的对象、但都不带时刻/时长：LongTermAgreement 只有 contractedQtyTon/actualDeliveredTon/priceFormula/effectiveDate/expiryDate（**合同有效期**，不是预告刷新间隔）；DemandSegment 只有 tgt/demandWanPerYearP50/demandWanPerYearP90/act/priceWan/marginPct/floorPct（**量**，不是时刻）。缺的是「客户每次刷新预告的时刻序列」或「预告录入到进入需求计划的时长」这一个字段——加字段能补，造对象不必。",
     probe:
       "实测（seed 42·内存仓）：listByType('LongTermAgreement') n=3，首行字段 ltaId/supplierId/materialType/contractedQtyTon/actualDeliveredTon/priceLinked/breachPenaltyWan/priceFormula/effectiveDate/expiryDate 逐个核过；listByType('DemandSegment') n=3，字段 segId/segment/tgt/demandWanPerYearP50/demandWanPerYearP90/act/priceWan/marginPct/floorPct/businessType/revenueWan/marginWan。两者均无时刻序列、无时长字段。",
   },
@@ -407,7 +407,7 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
     label: "工单下达",
     kind: "handoff",
     reason:
-      "工单下达段无承载。WorkOrder **有** startDate/endDate（260 条），但那对日期是**生产窗口**（开工→完工），把它俩相减得到的是作业时长，不是「排产定了→工单真正下到车间」的这段等待。缺的是 releaseDate / plannedReleaseDate 这类**下达时刻**字段——「有对象、缺字段」，修法是加字段。",
+      "工单下达段无承载。WorkOrder 有 startDate/endDate（260 条），但那对日期是**生产窗口**（开工→完工），把它俩相减得到的是作业时长，不是「排产定了→工单真正下到车间」的这段等待。缺的是 releaseDate / plannedReleaseDate 这类**下达时刻**字段——「有对象、缺字段」，修法是加字段。",
     probe:
       "实测：listByType('WorkOrder') n=260，首行字段 woId/moNo/modelId/lineId/baseId/qtyPlanned/qtyActual/startDate/endDate/status 逐个核过，无任何下达/放行时刻。",
   },
@@ -451,7 +451,7 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
     label: "成品入库",
     kind: "queue",
     reason:
-      "成品入库停留段无承载。FinishedGoodsInventory（57 条）只有 qtyOnHand/qtyReserved/qtyAvailable/asOf——前三个是**存量**（件），asOf 是**快照时刻**且全表同值，构不成序列。要算这一段得有「下线时刻 → 上架可发运时刻」，仓里没有。注意：安全库存天数 / 覆盖天数那类「库存够卖几天」也**不是**这一段——那是存量除以日耗，不是货在库里停了多久。",
+      "成品入库停留段无承载。FinishedGoodsInventory（57 条）只有 qtyOnHand/qtyReserved/qtyAvailable/asOf——前三个是**存量**（件），asOf 是**快照时刻**且全表同值，构不成序列。要算这一段得有「下线时刻 → 上架可发运时刻」，仓里没有。注意：安全库存天数 / 覆盖天数那类「库存够卖几天」也不是这一段——那是存量除以日耗，不是货在库里停了多久。",
     probe:
       "实测：listByType('FinishedGoodsInventory') n=57，首行字段 fgId/model/warehouseId/qtyOnHand/qtyReserved/asOf/qtyAvailable；asOf 全表同为快照日。",
   },

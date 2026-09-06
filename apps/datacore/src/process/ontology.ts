@@ -78,13 +78,13 @@ export function processLayerObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId"
       displayName: "业务流程定义",
       domain: "plan",
       description:
-        "一条核心业务流程的**定义**（P01…P65）：谁做（ownerFunctionKey）、标准工期多久（stdDurationDays）、卡在哪种等待（waitKind）、作用在什么承载物上（carrierTypeKey）。⚠ 定义层答得出「企业里有哪些业务活动」「改这个对象会波及哪些流程」，**答不出**「哪一条实例卡住」——那要看 ProcessInstance。stdDurationDays 是**计划工期**，绝不可当作实测卡顿。",
+        "一条核心业务流程的定义（P01…P65）：谁做（ownerFunctionKey）、标准工期多久（stdDurationDays）、卡在哪种等待（waitKind）、作用在什么承载物上（carrierTypeKey）。⚠ 定义层答得出「企业里有哪些业务活动」「改这个对象会波及哪些流程」，答不出「哪一条实例卡住」——那要看 ProcessInstance。stdDurationDays 是计划工期，绝不可当作实测卡顿。",
       properties: [
         p("key", "string", "流程 key，形如 P40。全租户内唯一，是各处引用本流程的稳定标识。", true),
         p("domainKey", "string", "所属一级业务域 key（D01…D13），指向 ProcessDomain。"),
         p("name", "string", "流程中文名（行业模板内容，随租户/行业变）。"),
         p("ownerFunctionKey", "string", "责任职能 key，取自平台职能登记册 PROCESS_OWNER_FUNCTIONS（如 procurement/quality）。回答「这活归谁」。"),
-        n("stdDurationDays", "天", "标准工期（天）。**计划值**，非实测——比较实际耗时请用 ProcessInstance 的进出站时刻，拿本字段冒充实测卡顿是明令禁止的。"),
+        n("stdDurationDays", "天", "标准工期（天）。计划值，非实测——比较实际耗时请用 ProcessInstance 的进出站时刻，拿本字段冒充实测卡顿是明令禁止的。"),
         p("waitKind", "enum", "卡在哪一类等待，四值词表 PROCESS_WAIT_KINDS：WAITING_USER/WAITING_DATA/WAITING_EXTERNAL_SYSTEM/WAITING_SCHEDULE。"),
         p("carrierTypeKey", "string", "承载物：本流程作用/产出的本体对象类型 key（如 ProductionSchedule）。每条流程必须有承载物，否则是空壳。"),
       ],
@@ -96,7 +96,7 @@ export function processLayerObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId"
       displayName: "业务流程实例",
       domain: "plan",
       description:
-        "一条流程实例：**某一张单据**在**某个流程节点**上的一次经过（从几号待到几号）。回答 ProcessDefinition 答不出的三问——哪一条实例被卡住、卡在谁那里、卡了多久。⚠ 今天平台上的实例全部由**既有带时间戳单据反推**而来（origin=DERIVED_FROM_DOCUMENT），每条都能溯回具体单据 id + 字段名 + 该字段原值；不是流程引擎直采（那一档是 MEASURED，今天 0 条）。",
+        "一条流程实例：某一张单据在某个流程节点上的一次经过（从几号待到几号）。回答 ProcessDefinition 答不出的三问——哪一条实例被卡住、卡在谁那里、卡了多久。⚠ 今天平台上的实例全部由既有带时间戳单据反推而来（origin=DERIVED_FROM_DOCUMENT），每条都能溯回具体单据 id + 字段名 + 该字段原值；不是流程引擎直采（那一档是 MEASURED，今天 0 条）。",
       properties: [
         p("key", "string", "实例业务 key：<processKey>::<carrierObjectId>，租户内唯一。", true),
         p("processKey", "string", "所属流程定义 key（P01…P65），指向 ProcessDefinition。"),
@@ -105,7 +105,7 @@ export function processLayerObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId"
         p("flowKey", "string", "同一条跨流程节点链上的实例共享的 key（如同一张采购单流经下单/清关/检验三站）。站间流转时长正是沿它把相邻站接起来算的。"),
         n("stationIndex", "dimensionless", "本站在该链上的序号（0 起）。确定性排序键。"),
         p("enteredAt", "date", "入站时刻（ISO 日期）。由反推规则指定的单据字段解析而来。"),
-        p("exitedAt", "date", "出站时刻（ISO 日期）；为空 = 到分析截止时刻仍未出站 = **正卡在这一站**。空值是业务事实不是数据缺失。"),
+        p("exitedAt", "date", "出站时刻（ISO 日期）；为空 = 到分析截止时刻仍未出站 = 正卡在这一站。空值是业务事实不是数据缺失。"),
         p("waitState", "enum", "卡在哪一类等待（词表同 ProcessDefinition.waitKind）。已出站的实例为空——不在等待了，硬塞一个等待类型就是造假。"),
         p("ownerRef", "json", "卡在谁那里：{functionKey 职能层, partyField/partyValue 具体责任方（承载单据上那个字段的名与值，如 inspectorTeam=IQC-理化组）}。"),
         p("origin", "enum", "出处档位：DERIVED_FROM_DOCUMENT（从单据反推·今天全部）/ MEASURED（流程引擎直采·今天 0 条）。诚实位——反推值与实测值必须一眼可辨。"),
@@ -120,15 +120,15 @@ export function processLayerObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId"
       displayName: "业务流程步骤模板",
       domain: "plan",
       description:
-        "一条业务流程的**标准步骤**（这类流程通常分几步、每步谁做、通常卡在哪类等待、计划多久）。它是建流程实例时步骤清单的**唯一合法来源**——此前 ProcessDefinition 只说「有哪些流程」，不说「一条流程分几步」，于是建实例的步骤无处可取。⚠ 三条口径别读错：① 这是**模板/计划**层，stdDurationDays 是计划工期、waitKind 是「这类流程通常卡在哪」，都**不是实测**（实测在 ProcessTask 的 startedAt/endedAt/durationMs 与 status）；② 本类型**不含前置条件 gate**——gate 里装的是具体审批单 id / 数据 key / 外部回执号，那是「这一单」的现场事实，模板给不出；③ 65 条流程里**只有一部分**有步骤模板，没有的流程是真的没有（承载单据上没有可锚的阶段痕迹），不是数据没录全。",
+        "一条业务流程的标准步骤（这类流程通常分几步、每步谁做、通常卡在哪类等待、计划多久）。它是建流程实例时步骤清单的唯一合法来源——此前 ProcessDefinition 只说「有哪些流程」，不说「一条流程分几步」，于是建实例的步骤无处可取。⚠ 三条口径别读错：① 这是模板/计划层，stdDurationDays 是计划工期、waitKind 是「这类流程通常卡在哪」，都不是实测（实测在 ProcessTask 的 startedAt/endedAt/durationMs 与 status）；② 本类型不含前置条件 gate——gate 里装的是具体审批单 id / 数据 key / 外部回执号，那是「这一单」的现场事实，模板给不出；③ 65 条流程里只有一部分有步骤模板，没有的流程是真的没有（承载单据上没有可锚的阶段痕迹），不是数据没录全。",
       properties: [
         p("processKey", "string", "所属流程定义 key（P01…P65），指向 ProcessDefinition。同一流程的步骤共享它。"),
         n("seq", "dimensionless", "步序，从 1 起连续无缺号。确定性展示序，也是建实例时任务的先后序。"),
         p("name", "string", "步名（行业模板内容，随租户/行业变）。"),
         p("ownerFunctionKey", "string", "本步的责任职能 key，取自平台职能登记册 PROCESS_OWNER_FUNCTIONS。回答「这一步归谁」。"),
-        n("stdDurationDays", "天", "本步的**计划**工期（天，半天粒度）。各步之和恒等于所属 ProcessDefinition.stdDurationDays——步骤模板不引入新的总量真值。⛔ 非实测。"),
-        p("waitKind", "enum", "本步通常卡在哪一类等待，**模板层四值** PROCESS_WAIT_KINDS：WAITING_USER/WAITING_DATA/WAITING_EXTERNAL_SYSTEM/WAITING_SCHEDULE。运行时那五值（多一个 WAITING_APPROVAL）在 ProcessTask.status 上，不在这里。"),
-        p("carrierAnchor", "json", "本步在承载对象上的**痕迹锚点** {kind: TIMESTAMP_FIELD|STATUS_VALUE, propKey, value}。这是「这一步不是编出来的」的证据：TIMESTAMP_FIELD 指向承载类型上真实存在的时刻属性，STATUS_VALUE 还要求该阶段值在真实对象里出现过。无锚的步不许存在。"),
+        n("stdDurationDays", "天", "本步的计划工期（天，半天粒度）。各步之和恒等于所属 ProcessDefinition.stdDurationDays——步骤模板不引入新的总量真值。⛔ 非实测。"),
+        p("waitKind", "enum", "本步通常卡在哪一类等待，模板层四值 PROCESS_WAIT_KINDS：WAITING_USER/WAITING_DATA/WAITING_EXTERNAL_SYSTEM/WAITING_SCHEDULE。运行时那五值（多一个 WAITING_APPROVAL）在 ProcessTask.status 上，不在这里。"),
+        p("carrierAnchor", "json", "本步在承载对象上的痕迹锚点 {kind: TIMESTAMP_FIELD|STATUS_VALUE, propKey, value}。这是「这一步不是编出来的」的证据：TIMESTAMP_FIELD 指向承载类型上真实存在的时刻属性，STATUS_VALUE 还要求该阶段值在真实对象里出现过。无锚的步不许存在。"),
         p("basis", "string", "依据出处：这一步是从哪读来的（文件 + 那段话在说什么）。把取证留在原地，免得后人照缺省理由改错方向。"),
       ],
       derivedProperties: [],

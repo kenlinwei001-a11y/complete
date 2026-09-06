@@ -993,7 +993,7 @@ function judgeOne(
         ruleKey: b.ruleKey,
         note:
           `规则 ${b.ruleKey} 含 SUSTAIN（持续判定），而 SolverContext 无时序访问 —— ` +
-          `本次只比对快照与规则红线 ${th.value}${rowUnit}，**未校验持续天数**；结论 dataMode 标 PARTIAL`,
+          `本次只比对快照与规则红线 ${th.value}${rowUnit}，未校验持续天数；结论 dataMode 标 PARTIAL`,
       };
     } else {
       try {
@@ -1103,7 +1103,7 @@ function judgeOne(
       note: carriesSegment
         ? `locus 类型 ${b.locusObjectType} 承载业务线 ⇒ 本判据按 [${wantBts.map((t) => BUSINESS_TYPE_LABEL[t]).join("、")}] **真裁**`
         : `locus 类型 ${b.locusObjectType} 在本体上不承载业务线属性 ⇒ 本次 businessTypes 过滤对该判据**无效**：` +
-          `产出的 ${candidates.length} 条阻滞点业务线归属 = UNKNOWN（**不是**"属于所选业务线"），dataMode 已降 PARTIAL`,
+          `产出的 ${candidates.length} 条阻滞点业务线归属 = UNKNOWN（不是"属于所选业务线"），dataMode 已降 PARTIAL`,
     };
     // 第二个构造位（同样保持 `??=` 写法，理由见上面那段 H2 锚点的账）。
     if (!carriesSegment && candidates.length > 0) {
