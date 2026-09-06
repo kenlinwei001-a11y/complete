@@ -497,6 +497,33 @@ export interface LinkTypeDef {
    * · `"to"`  ：去向对象的 `props[viaProperty]` → 来源类型的业务主键；边 = 命中的来源 → 去向。
    */
   viaSide?: "from" | "to";
+  /**
+   * WO-PREDICATE-EDGE · **谓词**：这条边额外要求 carrier 行满足的条件（A5 规则 DSL 表达式原文）。
+   *
+   * ── 为什么 `viaProperty` 一个人不够 ────────────────────────────────────────
+   * `viaProperty` 只问「值对不对得上」，不问「这一行**该不该**参与这条边」。实测本仓两条边
+   * 正是差这一问，且**差了不会报错、只会静默多连**：
+   * · `material_carbon`：`CarbonFactor(kind,key)` 是**通用查表**，只有 `kind==="material"` 时
+   *   `key` 才是 `matId`（种子守卫见 `synthetic/service.ts:1103`）。没有谓词 ⇒ 能源/运输因子行
+   *   一旦 `key` 撞上 matId 也会被连进碳排链。
+   * · `defect_raises_exception`：只在 `refType === "DefectRecord"` 时成立（`:1129`）。
+   *   没有谓词 ⇒ 另外 4 种 `refType` 的异常被一起连进缺陷链，下钻结果静默变多。
+   *
+   * **「能连出边」和「连对了边」是两个命题**（铁律 1.5）。多出来的边不会红，只会让结论变胖。
+   *
+   * 语义：对 carrier 一侧（`viaSide === "from" ? fromTypeKey : toTypeKey`）的**每一行**求值，
+   * 假则跳过该行。求值器复用 `ruledsl.ts`（A5 同一份 `parseExpression` + `evaluateAst`），
+   * **纯函数、零时钟、零随机** ⇒ R6 确定性不受影响。
+   * 例：`material_carbon` ⇒ `viaProperty:"key", viaSide:"to", viaWhere:"CarbonFactor.kind == 'material'"`。
+   *
+   * **诚实边界**：谓词只**筛行**，不**算端点**。端点要靠值变换（`PT-${due.slice(0,7)}`）、
+   * 条件常量（`level==="month" ? …`）、叉积（每基地 × 每数据源）或多态目标类型得出的，
+   * 本字段一律表达不了 —— 那要的是「表达式产边」，是另一件事。详见 `ontology-link-predicate.ts` 头注。
+   *
+   * 可选（加性·零回归）：不填 ⇒ 与今天逐字节同行为；填了必须同时有 `viaProperty`
+   * （谓词只能收窄一个已存在的连接，自己造不出连接），否则写入期 400。
+   */
+  viaWhere?: string;
   version: number;
   published?: boolean;
   deprecation?: DeprecationMeta;
