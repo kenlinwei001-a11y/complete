@@ -15,6 +15,9 @@ import { checkInterfaceConformance, formatInterfaceViolations } from "@platform/
 // WO-69 P3 · `functions` 的真实性靠 P2 的求解器本体签名注册表兑现（**只 import 纯声明模块**：
 // ontology-signature.ts 的运行时依赖为零 → 不引入 ontology ↔ solvers 循环）。
 import { SOLVER_ONTOLOGY_SIGNATURES } from "./solvers/ontology-signature.js";
+// WO-PREDICATE-EDGE · 谓词边（`viaWhere`）。求值器复用 A5 规则 DSL，本模块只收窄子集 + 写入期校验。
+import { compileLinkPredicate, linkPredicateHolds, type LinkPredicate } from "./ontology-link-predicate.js";
+import { DslError } from "./ruledsl.js";
 import type {
   AuthCtx,
   DerivationRun,
@@ -366,6 +369,34 @@ export class OntologyService {
         }
       }
     }
+    // WO-PREDICATE-EDGE：`viaWhere` 同样**不许静默**。谓词取不到字段时求值器一律判假 ⇒
+    // 每一行都被筛掉 ⇒ 0 实例的死边，且全程不报错。所以打错字 / 用了被禁子集一律当场 400。
+    if (input.viaWhere !== undefined) {
+      if (input.viaProperty === undefined) {
+        throw validationError(
+          `结构边 ${input.key} 声明了谓词 viaWhere 却没有 viaProperty —— ` +
+            `谓词只能**收窄**一个已存在的连接，自己造不出连接（端点仍须由 viaProperty 给出）`,
+        );
+      }
+      const carrierKey = (input.viaSide ?? "from") === "from" ? input.fromTypeKey : input.toTypeKey;
+      const carrierType = await this.getType(ctx, carrierKey);
+      if (!carrierType) {
+        throw validationError(
+          `结构边 ${input.key} 声明了谓词 viaWhere，但${(input.viaSide ?? "from") === "from" ? "来源" : "去向"}类型 ${carrierKey} 不存在`,
+        );
+      }
+      try {
+        compileLinkPredicate(input.viaWhere, carrierKey, carrierType.properties.map((p) => p.propKey));
+      } catch (e) {
+        if (e instanceof DslError) {
+          throw validationError(
+            `结构边 ${input.key} 的谓词 viaWhere 无效：${e.message}` +
+              (e.position != null ? `（字符位 ${e.position}）` : ""),
+          );
+        }
+        throw e;
+      }
+    }
     const def: LinkTypeDef = {
       id: existing?.id ?? newId("ltype"),
       tenantId: ctx.tenantId,
@@ -474,8 +505,21 @@ export class OntologyService {
     const built = await this.buildAnchorIndex(ctx, anchorTypeKey, def.anchorProperty);
     if (!built) return { created: 0, unresolved: 0, carrierObjects: 0 };
     const { index: anchors, ambiguous } = built;
+    // WO-PREDICATE-EDGE · 谓词筛行。编译一次、逐行求值（纯函数，不碰时钟/随机/遍历顺序 ⇒ R6）。
+    // 编译失败在这里**抛出**而不是回落成「不筛」：静默不筛 = 把一条谓词边悄悄降级成全连接边，
+    // 比报错危险得多（多出来的边不会红，只会让下钻结果变多）。写入期已 400 过一次，能走到这里
+    // 说明是老快照里的存量声明，同样不许兜底。
+    let predicate: LinkPredicate | null = null;
+    if (def.viaWhere !== undefined) {
+      const carrierType = await this.getType(ctx, carrierTypeKey);
+      predicate = compileLinkPredicate(
+        def.viaWhere,
+        carrierTypeKey,
+        carrierType?.properties.map((p) => p.propKey) ?? [],
+      );
+    }
     const carriers = (await this.repos.objects.listByType(ctx.tenantId, carrierTypeKey)).filter(
-      (o) => !o.mergedInto,
+      (o) => !o.mergedInto && (!predicate || linkPredicateHolds(predicate, carrierTypeKey, o.props)),
     );
     let created = 0;
     let unresolved = 0;

@@ -2157,6 +2157,40 @@ OntologyCore.executeSlice  ← 多跳检索在这里遍历 repos.links，**现�
 新机制产出 hash `54d94127452c2d4d`）。金值不动（`demo-chain-provenance` 类型 95 / 对象 12,706 ·
 `SOLVER_KEYS` 61 · catalog 全绿）—— 本单**零种子改动**，只加元模型表达力，不新增出厂边。
 
+#### 结构边物化 · 谓词筛行 `viaWhere`（WO-PREDICATE-EDGE · 2026-09-06）
+
+上面那条链只问「值对不对得上」，不问「这一行**该不该**参与这条边」。
+`LinkTypeDef.viaWhere`（可选，A5 规则 DSL 表达式原文）补的就是这一问：物化时对
+**carrier 一侧的每一行**求值，假则跳过。挂载点在 `materializeDeclaredLinks` 的 carrier 过滤处，
+求值器**复用 `ruledsl.ts`**（同一份 `parseExpression` + `evaluateAst`，不另造），
+纯函数、零时钟、零随机 ⇒ **R6 确定性不受影响**。
+
+```
+{ key, fromTypeKey, toTypeKey, cardinality, viaProperty?, viaSide?, viaWhere? }
+     │  ③ viaWhere 必须能解析，且只许引用 carrier 自身属性；
+     │     打错字 / params.* / user.* / SUSTAIN / 聚合函数 一律写入期 400 点名
+     ↓
+materializeDeclaredLinks：carriers.filter(谓词) → 再走原有「取 props[viaProperty] 命中 anchor」
+```
+
+**为什么子集收得这么窄**：`ruledsl` 求值器取不到值时一律判假。用在规则上那是「不越线」，
+用在物化上那是**每行都被筛掉 ⇒ 0 实例的死边，且全程不报错**。所以上述五类写法在写入期就 400，
+与 `viaProperty` 打错字 400 同款话术、同一条纪律。
+
+**诚实边界（`viaWhere` 治不了什么）**：谓词只**筛行**，不**算端点**。端点靠值变换
+（`PT-${due.slice(0,7)}`、`lineId.replace("LINE-","")`）、条件常量（`level==="month" ? …`）、
+叉积（每基地 × 每数据源）或**多态目标类型**（`exc_sourced_from` 的 `toTypeKey` 随行变）得出的，
+本字段一概表达不了 —— 那要的是「表达式产边」，是另一件事、另一份代价。
+**谓词可后加成表达式，反向不可逆**，故先只做这一半。
+
+**接缝门**：`apps/datacore/test/linktype-predicate-edge.seam.test.ts`（5 例）——
+金丝雀 + 修前 0 条 + **对照实验（先把危害注入成真的再断言）** + **反向对照（属性变了边必须跟着变）** +
+确定性两跑逐字节一致 + 写入校验七种哑弹写法全 400。
+⚠ 其中 §2 刻意不满足于「修前 0 / 修后 8」：实测**未改动的 demo 数据上加不加谓词都是 8 条**
+（6 条 grid 因子的 `key` 是省名，本来就解析不到 Material ⇒ 落进 `unresolved`）。
+**那组数证明不了谓词做了任何事** —— 8 完全是 `viaProperty` 一个人干的，正是「接了线没数据」那一态。
+故该例先把一行 grid 因子的 `key` 改成真 matId，让有/无谓词在同一份数据上真的分叉（9 vs 8）再断言。
+
 ### 结构边的「改」与「启停」· 写路补全（WO-RELATION-EDIT-GAPS · 2026-09-04）
 
 **一句话**：结构边此前**建得出、停得掉、改不了、停了拨不回**；本次补齐「改」与「重新启用」，
