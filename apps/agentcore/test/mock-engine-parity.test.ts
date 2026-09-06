@@ -231,7 +231,14 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     // battery-extended.ts 所以类型数没动，本类型落在 `batteryObjectTypes()` 里，故这里 +1。
     // 独立复算：另写脚本对 ontology-graph.ts 跑 `{ key: "X", domain: "y" }` 正则 ⇒ 补镜像前
     // mockTypes **61** 且不含 `CapacityPool`，补后 **62**；金丝雀 `Base` 必中为真。
-    expect(graph.types.length, "类型数与探针独立口径不符（今日 62）").toBe(62);
+    // 62→63 于 2026-09-06（`WO-LAST3-RELATIONS`）：A 侧 `batteryObjectTypes()` 加 `Region`
+    // （行政区·归 factory 域·`located_in` 的锚点）。同 `CapacityPool` 那次一样落在
+    // `batteryObjectTypes()` 里，故这里 +1（对比 `material_has_outsource` 那次落在
+    // battery-extended.ts、类型数没动）。
+    // 独立复算：另写脚本（不 import 本文件的抽取器）对两侧各跑一遍正则求差集 ⇒ 补镜像前
+    // battery **63** · mock **62** · missing 恰为 `Region` 一条 · extra **0**；
+    // 金丝雀两条同时验过（`Base` 两侧必中 = true ∧ 合成键 `ZzzNotAType` 必不中 = false）。
+    expect(graph.types.length, "类型数与探针独立口径不符（今日 63）").toBe(63);
     // 101→103 于 2026-08-26：A 侧 d2542195 加两条**补货逆边** `po_replenishes_material`
     // (PurchaseOrder→Material) 与 `batch_replenishes_material`(MaterialBatch→Material)。
     // 按本注释的要求**两侧独立复算过**，没有照抄报错里的 received：拿 battery.ts 与
@@ -267,7 +274,18 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     // 金丝雀两侧各验两条（`model_producible_at|Model|Base` 必中 = true ∧ 合成键必不中 = false）。
     // ⚠ 这次是 **+2 不是 +1**：两条边**方向不同、语义不同**（一条是「谁有产能」的结构边、
     //   一条是「谁在吃产能、吃多少」的量边），不是互为逆边。
-    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 107）").toBe(107);
+    // 107→111 于 2026-09-06（`WO-LAST3-RELATIONS`）：A 侧加**四条**——`located_in` 三条
+    // （`base_located_in`|Base→Region · `warehouse_located_in`|Warehouse→Region ·
+    //  `custloc_located_in`|CustomerLocation→Region，把地理归属从字符串升格成可遍历节点）
+    // 与 `depends_on` 一条（`operation_depends_on`|Operation→Operation，同工艺路线内的工序先后）。
+    // 照本注释的要求**两侧独立复算过，没有照抄报错里的 received**：另写一份脚本、不 import 本文件的
+    // 抽取器，对 battery.ts `batteryLinkTypes()` 与 ontology-graph.ts `MOCK_ONTOLOGY_LINKS`
+    // 各跑一遍同一条 `fromTypeKey:` 正则求差集 ⇒ 补镜像前 battery **111** · mock **107** ·
+    // missing 恰为上述四条 · extra **0**；金丝雀两条同时验过
+    // （`model_producible_at|Model|Base` 两侧必中 = true ∧ 合成键必不中 = false）。
+    // ⚠ 这次是 **+4**：三条 `located_in` 是**不同源类型**的三条独立边（不是一条边的三个别名），
+    //   第四条与它们语义无关。且 `operation_depends_on` 两端同型（自环），是全仓第二条自环边。
+    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 111）").toBe(111);
   });
 
   it("§2 mock 镜像图 == battery.ts 现算图（集合相等·缺谁多谁点名）", () => {

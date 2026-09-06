@@ -36,7 +36,10 @@ export function batteryDataCategories(): DataCategory[] {
       key: "capacity_base", displayName: "产能与基地", description: "生产基地、车间、产线、产能投资项目及产品-产线/设备制造能力。",
       // WO-CAPACITY-EDGE：`CapacityPool` 归本类目（它的源就是产线台账 `mes_lines.MAX_CAP_DAY` 那一列，
       // 与 `Line` 同一张源表）——不归「生产执行」：那一档是工单/排程这类**活动**，池是**资源**。
-      typeKeys: ["Base", "Workshop", "Line", "CapacityPool", "Warehouse", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      // WO-LAST3-RELATIONS：`Region` 归本类目 —— 它的取值就是本类目 `Base`/`Warehouse` 台账里
+      // 那一列 `province`（外加客户交付点侧的三省），与设施同源；且它是 `*_located_in` 的锚点，
+      // 与 `CapacityPool` 同一个路子（把设施台账上的一列升格成可被指向的资源/维度）。
+      typeKeys: ["Base", "Workshop", "Line", "CapacityPool", "Warehouse", "Region", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
       key: "production_execution", displayName: "生产执行", description: "生产工单、排程、班次计划与在制（WIP）批次/移动/质检点（MES 生产执行域）。",

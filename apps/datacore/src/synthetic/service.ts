@@ -44,6 +44,8 @@ import {
   // WO-CAPACITY-EDGE：消耗量的**唯一算法** + 池 id 的**唯一拼法**（种子与消费方共用一份）。
   capacityConsumptionOfWorkOrder,
   capacityPoolIdOfLine,
+  // WO-LAST3-RELATIONS：`located_in` 锚点行的**唯一派生式**（省名并集 → 行政区行）。
+  buildRegions,
 } from "./battery.js";
 import { cadenceObjectRows, deriveChainCadences } from "./cadence.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
@@ -817,6 +819,16 @@ export class SyntheticService {
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
     await putAll("Customer", ext.customers, "custId");
     await putAll("CustomerLocation", ext.customerLocations, "locId"); // WO-WAREHOUSE-CUSTLOC：客户交付地点（交付地理落点）
+    // WO-LAST3-RELATIONS · `located_in` 的锚点类型：**行政区**。
+    // 行数与取值全部由三个载体既有的 `province` 取值**并集**派生（零新业务事实·零 rng·按省名排序确定性）——
+    // 放在这里而不是 `generateBattery` 里，是因为客户交付地点来自 `ext`，两个源都齐了才能取全并集
+    // （只取 `g` 那半会漏掉 重庆/上海/北京 三省 ⇒ 30 条客户地点里有一批**静默连不上**）。
+    const regionRows = buildRegions([
+      ...(g.bases as { province?: string }[]).map((b) => b.province ?? ""),
+      ...(g.warehouses as { province?: string }[]).map((w) => w.province ?? ""),
+      ...(ext.customerLocations as { province?: string }[]).map((l) => l.province ?? ""),
+    ]);
+    await putAll("Region", regionRows, "regionId");
     await putAll("ARInvoice", ext.arInvoices, "invoiceId");
     await putAll("Certification", ext.certifications, "certId");
     await putAll("EnergyMeter", ext.energyMeters, "meterId");
@@ -951,6 +963,13 @@ export class SyntheticService {
     for (const r of g.routings) await putLink(`lnk_rbm_${r.routingId}`, "routing_belongs_to_model", oid("Routing", r.routingId), oid("Model", r.modelId));
     // process: Operation → Routing（operation.routingId）
     for (const o of g.operations) await putLink(`lnk_obr_${o.operationId}`, "operation_belongs_to_routing", oid("Operation", o.operationId), oid("Routing", o.routingId));
+    // WO-LAST3-RELATIONS · `depends_on`：工序 → 同路线前驱工序（`Operation.predecessorOperationId`）。
+    // 首工序（seq=1）前驱为空串 ⇒ **不落边**，故边数 = 工序数 − 工艺路线数（每条路线少一条）。
+    for (const o of g.operations as { operationId: string; predecessorOperationId?: string }[]) {
+      if (o.predecessorOperationId) {
+        await putLink(`lnk_odep_${o.operationId}`, "operation_depends_on", oid("Operation", o.operationId), oid("Operation", o.predecessorOperationId));
+      }
+    }
     // process: ProcessCapabilityWindow → Operation（capability.operationId）
     for (const c of g.processCapabilities) await putLink(`lnk_cbo_${c.capabilityId}`, "capability_belongs_to_operation", oid("ProcessCapabilityWindow", c.capabilityId), oid("Operation", c.operationId));
     // quality: QualityStandard → Model（standard.modelId）
@@ -994,6 +1013,15 @@ export class SyntheticService {
     // WO-WAREHOUSE-CUSTLOC · factory: Base → Warehouse（Warehouse.baseId；方向翻转：Base 1:N Warehouse）
     for (const w of g.warehouses) {
       await putLink(`lnk_wob_${w.warehouseId}`, "warehouse_of_base", oid("Base", w.baseId), oid("Warehouse", w.warehouseId));
+    }
+    // WO-LAST3-RELATIONS · `located_in`：设施 → 行政区（载体侧 `props.province` === Region 主键，零转换）。
+    // 方向是**设施 → 区**（N:1），不是反过来：查「这个基地在哪个省」是一跳，
+    // 而「这个省有哪些基地」由检索侧的 direction:"in" 反着走（同 `fulfills` 段那把尺子，逆边落了是纯增重）。
+    for (const b of g.bases as { baseId: string; province?: string }[]) {
+      if (b.province) await putLink(`lnk_lin_b_${b.baseId}`, "base_located_in", oid("Base", b.baseId), oid("Region", b.province));
+    }
+    for (const w of g.warehouses as { warehouseId: string; province?: string }[]) {
+      if (w.province) await putLink(`lnk_lin_w_${w.warehouseId}`, "warehouse_located_in", oid("Warehouse", w.warehouseId), oid("Region", w.province));
     }
     // factory: Workshop → Line（Line 的 workshopId 从 lineId 派生：LINE-WS-{baseId}-{suffix}；方向翻转：Workshop 1:N Line）
     for (const l of g.lines) {
@@ -1081,6 +1109,10 @@ export class SyntheticService {
       await putLink(`lnk_cloc_${P(loc).locId}`, "custloc_of_customer", oid("CustomerLocation", P(loc).locId), oid("Customer", P(loc).customerRef));
       // WO-PROCESS-TICK-COVERAGE 逆边：客户侧压力（信用/应收）要能落到该客户的**收货地点**上。
       await putLink(`lnk_chl_${P(loc).locId}`, "customer_has_location", oid("Customer", P(loc).customerRef), oid("CustomerLocation", P(loc).locId));
+      // WO-LAST3-RELATIONS · `located_in`：客户交付点 → 行政区（三个载体里唯一带**基地册以外**省份的那个
+      // —— 重庆/上海/北京 只从这里进 Region，故 `buildRegions` 的入参必须含本集合，少一个就静默连不上）。
+      const locProv = P(loc).province as string | undefined;
+      if (locProv) await putLink(`lnk_lin_c_${P(loc).locId}`, "custloc_located_in", oid("CustomerLocation", P(loc).locId), oid("Region", locProv));
     }
     // supply（批次）: Material → MaterialBatch（batch.matId）
     // WO-SIM-ROOT-PROCUREMENT 逆边（`batch_replenishes_material`）：**与正向边共用同一个 `bt`**

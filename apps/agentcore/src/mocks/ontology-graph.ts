@@ -83,6 +83,7 @@ export const MOCK_ONTOLOGY_TYPES: MockOntologyType[] = [
   { key: "Segment", domain: "product" },
   { key: "ShiftPlan", domain: "people" },
   { key: "Shipment", domain: "capacity" },
+  { key: "Region", domain: "factory" }, // WO-LAST3-RELATIONS：行政区（`located_in` 锚点）
   { key: "SopVersionRow", domain: "plan" },
   { key: "SparePartConsumption", domain: "equip" },
   { key: "Warehouse", domain: "factory" },
@@ -214,6 +215,13 @@ export const MOCK_ONTOLOGY_LINKS: MockOntologyLink[] = [
   // `model_certified_on` 同处境：那条边在 A 侧也带 `props.status`，此处同样只镜像拓扑）。
   { linkKey: "has_capacity", fromTypeKey: "Line", toTypeKey: "CapacityPool" },
   { linkKey: "consumes_capacity", fromTypeKey: "WorkOrder", toTypeKey: "CapacityPool" },
+  // WO-LAST3-RELATIONS：`located_in` 三条（设施 → 行政区）+ `depends_on` 一条（工序 → 前驱工序）。
+  // ⚠ `operation_depends_on` 是全仓**第二条自环边**（`caused_by` 之外）—— 两端同为 `Operation`。
+  //   镜像口径仍是 `{linkKey, fromTypeKey, toTypeKey}` 三元组，自环在此不需特殊处理。
+  { linkKey: "base_located_in", fromTypeKey: "Base", toTypeKey: "Region" },
+  { linkKey: "warehouse_located_in", fromTypeKey: "Warehouse", toTypeKey: "Region" },
+  { linkKey: "custloc_located_in", fromTypeKey: "CustomerLocation", toTypeKey: "Region" },
+  { linkKey: "operation_depends_on", fromTypeKey: "Operation", toTypeKey: "Operation" },
 ];
 
 // ---------------------------------------------------------------------------

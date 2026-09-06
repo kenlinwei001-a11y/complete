@@ -5,9 +5,9 @@
 
 ## 连通图摘要
 
-- 本体：类型 **96**，链路 **107**
-- 切片库：**56**（域内 7 · 跨域 49）
-- 连通边：**732**（shared-type 212 · bridge-link 520）
+- 本体：类型 **97**，链路 **111**
+- 切片库：**57**（域内 7 · 跨域 50）
+- 连通边：**744**（shared-type 213 · bridge-link 531）
 - 孤岛：**0**（豁免 1 · 非豁免 0）
 
 ## 孤岛表
@@ -20,6 +20,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 
 | 切片 A | 切片 B | join（linkKey: from→to） |
 |---|---|---|
+| `biz.commercial.arinvoice` | `biz.x.customerlocation_to_region` | custloc_of_customer: CustomerLocation→Customer |
 | `biz.commercial.arinvoice` | `biz.x.order_to_orderpromise` | order_of_customer: Order→Customer |
 | `biz.commercial.arinvoice` | `biz.x.order_to_plantarget` | order_of_customer: Order→Customer |
 | `biz.commercial.arinvoice` | `biz.x.orderpromise_to_order` | order_of_customer: Order→Customer |
@@ -76,6 +77,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.product.bomdetail` | `biz.x.model_to_material` | detail_uses_material: BOMDetail→Material |
 | `biz.x.annualscenario_to_financemetric` | `biz.x.order_to_plantarget` | scenario_to_target: AnnualScenario→PlanTarget |
 | `biz.x.annualscenario_to_financemetric` | `biz.x.plantarget_to_principal` | scenario_to_target: AnnualScenario→PlanTarget |
+| `biz.x.base_to_datasourcehealth` | `biz.x.customerlocation_to_region` | base_located_in: Base→Region |
 | `biz.x.base_to_datasourcehealth` | `biz.x.finishedgoodsinventory_to_model` | model_producible_at: Model→Base |
 | `biz.x.base_to_datasourcehealth` | `biz.x.finishedgoodsinventory_to_warehouse` | warehouse_of_base: Base→Warehouse |
 | `biz.x.base_to_datasourcehealth` | `biz.x.interbasetransfer_to_model` | base_dispatches_transfer: Base→InterBaseTransfer |
@@ -96,6 +98,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.base_to_datasourcehealth` | `biz.x.wiplot_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.base_to_datasourcehealth` | `biz.x.workorder_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.base_to_datasourcehealth` | `biz.x.workorder_to_model` | model_producible_at: Model→Base |
+| `biz.x.base_to_financeaccount` | `biz.x.customerlocation_to_region` | base_located_in: Base→Region |
 | `biz.x.base_to_financeaccount` | `biz.x.finishedgoodsinventory_to_model` | model_producible_at: Model→Base |
 | `biz.x.base_to_financeaccount` | `biz.x.finishedgoodsinventory_to_warehouse` | warehouse_of_base: Base→Warehouse |
 | `biz.x.base_to_financeaccount` | `biz.x.interbasetransfer_to_model` | base_dispatches_transfer: Base→InterBaseTransfer |
@@ -116,6 +119,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.base_to_financeaccount` | `biz.x.wiplot_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.base_to_financeaccount` | `biz.x.workorder_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.base_to_financeaccount` | `biz.x.workorder_to_model` | model_producible_at: Model→Base |
+| `biz.x.base_to_interbasetransfer` | `biz.x.customerlocation_to_region` | base_located_in: Base→Region |
 | `biz.x.base_to_interbasetransfer` | `biz.x.finishedgoodsinventory_to_model` | model_producible_at: Model→Base |
 | `biz.x.base_to_interbasetransfer` | `biz.x.finishedgoodsinventory_to_warehouse` | warehouse_of_base: Base→Warehouse |
 | `biz.x.base_to_interbasetransfer` | `biz.x.line_to_capacitypool` | line_belongs_to_base: Base→Line |
@@ -135,6 +139,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.base_to_interbasetransfer` | `biz.x.wiplot_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.base_to_interbasetransfer` | `biz.x.workorder_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.base_to_interbasetransfer` | `biz.x.workorder_to_model` | model_producible_at: Model→Base |
+| `biz.x.base_to_maintplan` | `biz.x.customerlocation_to_region` | base_located_in: Base→Region |
 | `biz.x.base_to_maintplan` | `biz.x.finishedgoodsinventory_to_model` | model_producible_at: Model→Base |
 | `biz.x.base_to_maintplan` | `biz.x.finishedgoodsinventory_to_warehouse` | warehouse_of_base: Base→Warehouse |
 | `biz.x.base_to_maintplan` | `biz.x.interbasetransfer_to_model` | base_dispatches_transfer: Base→InterBaseTransfer |
@@ -155,6 +160,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.base_to_maintplan` | `biz.x.wiplot_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.base_to_maintplan` | `biz.x.workorder_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.base_to_maintplan` | `biz.x.workorder_to_model` | model_producible_at: Model→Base |
+| `biz.x.base_to_shipment` | `biz.x.customerlocation_to_region` | base_located_in: Base→Region |
 | `biz.x.base_to_shipment` | `biz.x.finishedgoodsinventory_to_model` | model_producible_at: Model→Base |
 | `biz.x.base_to_shipment` | `biz.x.finishedgoodsinventory_to_warehouse` | warehouse_of_base: Base→Warehouse |
 | `biz.x.base_to_shipment` | `biz.x.interbasetransfer_to_model` | base_dispatches_transfer: Base→InterBaseTransfer |
@@ -186,10 +192,15 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.bomdetail_to_material` | `biz.x.qualitystandard_to_model` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.routing_to_model` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.workorder_to_model` | material_used_by_model: Material→Model |
+| `biz.x.customer_to_overduerecord` | `biz.x.customerlocation_to_region` | custloc_of_customer: CustomerLocation→Customer |
 | `biz.x.customer_to_overduerecord` | `biz.x.order_to_orderpromise` | order_of_customer: Order→Customer |
 | `biz.x.customer_to_overduerecord` | `biz.x.order_to_plantarget` | order_of_customer: Order→Customer |
 | `biz.x.customer_to_overduerecord` | `biz.x.orderpromise_to_order` | order_of_customer: Order→Customer |
 | `biz.x.customer_to_overduerecord` | `biz.x.workorder_to_order` | order_of_customer: Order→Customer |
+| `biz.x.customerlocation_to_region` | `biz.x.finishedgoodsinventory_to_warehouse` | warehouse_located_in: Warehouse→Region |
+| `biz.x.customerlocation_to_region` | `biz.x.interbasetransfer_to_base` | base_located_in: Base→Region |
+| `biz.x.customerlocation_to_region` | `biz.x.model_to_base` | base_located_in: Base→Region |
+| `biz.x.customerlocation_to_region` | `biz.x.order_to_customer` | custloc_of_customer: CustomerLocation→Customer |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.exceptionevent_to_equipmentdowntime` | defect_raises_exception: DefectRecord→ExceptionEvent |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.inventorytxn_to_workorder` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.line_to_capacitypool` | wip_on_line: WIPLot→Line |
