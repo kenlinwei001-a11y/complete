@@ -1473,6 +1473,9 @@ const lineProps: PropertyDef[] = [
  *
  * ⚠ **不叫 `capacityDaily`**：`Line.capacityDaily` 是套/日，同名不同量纲正是本仓
  * `Line.utilization`(0–100) vs `Process.utilization`(0–1) 那个老坑。名字里带 `Cells` 是有意的。
+ *
+ * ⚠ **池上只有「申报产能」一格数，没有「已占用 / 余量」两格**（WO-CAPACITY-EDGE-FIX）。
+ * 后两者是沿 `consumes_capacity` 入边现算的**读数**，不是对象上的数据 —— 理由见下方属性表里那段注释。
  */
 const capacityPoolProps: PropertyDef[] = [
   { propKey: "poolId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "产能池业务主键。一线一池，由产线号确定性拼出（`capacityPoolIdOfLine`，全仓唯一拼法）。" },
@@ -1487,23 +1490,30 @@ const capacityPoolProps: PropertyDef[] = [
     description:
       "本池申报日产能（电芯/日）。**投影自 `Line.max_capacity_day`，不是第二个真值**——同一个数换个承载，改产线即改池。与 `Line.capacityDaily`（套/日）差一个单 PACK 电芯数，切勿混用。",
   },
-  {
-    propKey: "consumedCellsDaily",
-    dataType: "number",
-    isPrimaryKey: false,
-    unit: "件/日",
-    scale: "absolute",
-    description:
-      "Σ 入边 `consumes_capacity.consumedCellsDaily`（派生·不落种子值）。**本属性同时是那条边上同名量的量纲声明处**——边没有 PropertyDef 表，边上的量纲一律回本体这一格取，求解器不许内联单位串。",
-  },
-  {
-    propKey: "remainingCellsDaily",
-    dataType: "number",
-    isPrimaryKey: false,
-    unit: "件/日",
-    scale: "absolute",
-    description: "余量 = capacityCellsDaily − consumedCellsDaily（可为负 = 超载）。派生，不落种子值。",
-  },
+  // ⚠ WO-CAPACITY-EDGE-FIX · **这里刻意没有 `consumedCellsDaily` / `remainingCellsDaily` 两格**。
+  //
+  // ── 今天的行为 X → 应该的行为 Y ──────────────────────────────────────────────
+  // **X**（修前）：两者登记在本 `properties` 表里，而本表的契约是「非派生字段必须被合成填上」
+  //   （`synthetic-field-alignment.test.ts` 的第二例逐类型咬这一条）；播种器一个字节都不写它们，
+  //   两格自己的 description 还写着「派生·不落种子值」⇒ **登记处与描述在同一个类型定义里互相打脸**，
+  //   门只是把这个矛盾读了出来。
+  // **Y**：这两个量的真值只有一处 —— `Σ 入边 consumes_capacity.props.consumedCellsDaily`。
+  //   而「Σ 入边」是**图遍历**，`derivedProperties.formula` 走的 `evalArithmetic` 只认**同一对象上的
+  //   属性算术**，表达不了它。⇒ 它们根本不是对象上的一格数据，是**求解时算出来的读数**，
+  //   只在 `capacity_ledger` 回包里给（`CapacityLedgerPool.{consumedCellsDaily,remainingCellsDaily}`）。
+  //
+  // ── 为什么不选「落真值」（把播种器补上）────────────────────────────────────────
+  // 那会造出**第二个真值源**：边一改（增删一条 `consumes_capacity` / 改边上的量），节点这一格立刻过期，
+  // 而**没有任何东西会红**（「冲突会红，双份不会」）。更要命的是它直接废掉 R-CAP-1「量只在边上」——
+  // 接缝门那条变异反证「抹掉边上的量 ⇒ 读数当场变」在有节点回落值时会失效。且 `loadWorkOrders` /
+  // `demandMultiplier` 两个 what-if 杠杆下「已占用」本就**随参数变**，节点上该写哪个值根本没有答案。
+  //
+  // ── 那边上那个量的**量纲**现在从哪来 ──────────────────────────────────────────
+  // 修前是拿这两格当「边的 PropertyDef 代用表」。删掉后不是没了出处，而是换成**更强的一处**：
+  // 消耗 = `WorkOrder.qtyPlanned`(件) ÷ `WorkOrder.spanDays`(天)，两个除数都是**真声明、真落值**的属性；
+  // 而余量 = 申报 − Σ消耗 只在同族内才是合法减法 ⇒ `capacityCellsDaily.unit` 必须以 `qtyPlanned.unit + "/"`
+  // 开头。这条守卫在 `solvers/service.ts` 的 `capacityUnits` 装配处（把池换成 `Line.capacityDaily`
+  // 那个套/日 的老坑当场 400），比一格永不落值的属性能咬到的东西多。
   { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "池状态（随产线：运行中 | 调试）。**不参与超载判定** —— 调试线也申报产能，把它排除掉等于悄悄改变产能面。" },
 ];
 
@@ -2471,8 +2481,12 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Line.target_yield": "目标良率", "Line.status": "产线状态",
   // WO-CAPACITY-EDGE：产能池（件/日 口径·与 Line.capacityDaily 的套/日 刻意不同名）
   "CapacityPool.poolId": "产能池编号", "CapacityPool.lineId": "所属产线", "CapacityPool.baseId": "所属基地",
-  "CapacityPool.capacityCellsDaily": "池日产能(电芯)", "CapacityPool.consumedCellsDaily": "已占用日产能(电芯)",
-  "CapacityPool.remainingCellsDaily": "剩余日产能(电芯)", "CapacityPool.status": "产能池状态",
+  "CapacityPool.capacityCellsDaily": "池日产能(电芯)", "CapacityPool.status": "产能池状态",
+  // ⚠ 下面两条**不是池对象的属性**（`capacityPoolProps` 里刻意没有它们，见其注释），是
+  // `capacity_ledger` 回包里同名两格**读数**的中文名。登记在这张表里是因为它们要上屏，
+  // 而全仓属性中文名只有这一张真值表（`lever-meta.ts` 那条「单源 > 并存」纪律同款）。
+  "CapacityPool.consumedCellsDaily": "已占用日产能(电芯)",
+  "CapacityPool.remainingCellsDaily": "剩余日产能(电芯)",
   "Workshop.workshopId": "车间编号", "Workshop.baseId": "所属基地", "Workshop.name": "车间名称",
   "Workshop.processType": "工艺类型",
   "Process.processId": "工序编号", "Process.lineId": "所属产线", "Process.baseId": "所属基地",
@@ -4015,7 +4029,10 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
           // 第二跳方向是 `in`（边是 WorkOrder→CapacityPool，从池要反着走回工单），
           // 与同一份 spec 里 `model_certified_on` 的 `in` 同理。
           [
-            { linkKey: "has_capacity", direction: "out", project: ["poolId", "lineId", "baseId", "capacityCellsDaily", "consumedCellsDaily", "remainingCellsDaily", "status"] },
+            // ⚠ 只投影池上**真有**的四格。`consumedCellsDaily` / `remainingCellsDaily` 不在其中：
+            // 它们是 `capacity_ledger` 的读数、不是池对象上的属性（WO-CAPACITY-EDGE-FIX）。
+            // 列在这里会让切片显得「给了余量」而实际恒缺席 —— 那是承诺了取不到的东西。
+            { linkKey: "has_capacity", direction: "out", project: ["poolId", "lineId", "baseId", "capacityCellsDaily", "status"] },
             { linkKey: "consumes_capacity", direction: "in", limitPerNode: 2, project: ["woId", "qtyPlanned", "spanDays", "status"] },
           ],
           // 边界 → D04 产品与工程（锚点类型 Model：这条线认证过哪些型号）
