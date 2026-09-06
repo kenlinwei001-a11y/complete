@@ -779,7 +779,7 @@ export function buildPlaceholderInspectorInput(args: {
             carrier: "有" as const,
             evidence:
               `\`Process.${unitSpec.unitsProp}\` · 契约 \`HARD_CAPACITY_UNIT_SPECS.unitsProp\`` +
-              ` + 20 因子绑定 ${unitsBinding.mark}（writable）+ 真消费方 求解器 capacity_rollup（化成产能 = 通道数 × 单通道产出 × 良率）`,
+              ` + 20 因子绑定 ${unitsBinding.mark}（writable）+ 真消费方 求解器 capacity_rollup（硬容量日通过量 = 单元数 × 单元日通过量 × 工序良率）`,
             // 对齐滑杆步长（10 的整数倍）：否则 `min + n*step` 的取值域里落不到"基线的两倍"，
             // 机理判据（能力翻倍 → 排队减半）就只能测个大概方向，测不了精确值。
             baseline: Math.round(jitter(seed, `${nodeId}/units`, 400, 2000) / 10) * 10,
