@@ -1,5 +1,56 @@
 # 提案 · 结构边物化的残口（`viaProperty` 表达不了的那一批）
 
+> ## 🔄 2026-09-06 · WO-PREDICATE-EDGE 落地回写（实测订正，勿只读原文）
+>
+> **候选 B（谓词过滤 `viaWhere`）已实现并接线**：`LinkTypeDef.viaWhere` +
+> `ontology-link-predicate.ts`（复用 `ruledsl.ts` 求值器，未另造）+
+> 接缝门 `apps/datacore/test/linktype-predicate-edge.seam.test.ts`。
+> 本体已回写（§3「结构边物化 · 谓词筛行 `viaWhere`」）。
+>
+> ### ⚠ 它闭的是**桶③**，不是桶④ —— 派单前提在这里被实测推翻
+>
+> `WO-PREDICATE-EDGE` 的派单把桶④说成「靠谓词判定关系、约 6 条」。**实测：桶④ 6 条里
+> 谓词能表达的是 0 条。** 逐条复测（`synthetic/service.ts`，行号为 2026-09-06 实测）：
+>
+> | 桶④ 边 | 今天怎么算出来的 | 谓词能不能表达 |
+> |---|---|---|
+> | `model_in_segment` | `:1113` 串匹配算出**目标 id**（`S192→ess`） | ❌ 端点是算出来的 |
+> | `order_to_plantarget` | `:1204` `PT-${due.slice(0,7)}` 值变换 | ❌ 端点是算出来的 |
+> | `plantarget_ownedby` | `:1216` `level==="month" ? "prin-plan" : "prin-coo"` | ❌ 端点是条件常量 |
+> | `line_belongs_to_workshop` | `:993` `lineId.replace("LINE-","")` | ❌ 端点是算出来的 |
+> | `base_data_health` | `:1116` 双重 for 叉积 | ❌ 谓词能收窄连接，造不出连接 |
+> | `scenario_to_capex` | `:1193` 叉积 + 条件裁剪 | ❌ 同上（谓词只治得了「裁剪」那一半） |
+>
+> **判据一句话**：**谓词只筛行，不算端点。** 桶④ 6 条要的全是「算端点」或「造叉积」，
+> 那是候选 E（表达式产边），本提案 §5 裁决点 3 已建议**不做**（B 类）。**结论未变，且现已实测坐实。**
+>
+> **真正被 `viaWhere` 闭掉的是桶③ 3 条里的 2 条**：`material_carbon`（`kind === "material"`）与
+> `defect_raises_exception`（`refType === "DefectRecord"`）—— 即 §2.8 点名「差一个谓词」的那两条。
+> 第 3 条 `exc_sourced_from` **仍未闭**：它是**多态目标类型**（`toTypeKey` 随行变），
+> 谓词能筛行、**不能让目标类型随行变**，`LinkTypeDef.toTypeKey` 是固定的。
+>
+> ### ⚠ §2.8 对 `material_carbon` 的危害描述**说过头了一档**（实测订正）
+>
+> §2.8 写「`viaProperty:"key", viaSide:"to"` 会连上 `kind!=="material"` 的因子行」——
+> **今天不会**。真起服务实测（`SEED_DEMO=1`，demo 租户）：`CarbonFactor` 共 **14** 行
+> （`material` 8 / `grid` 6），而 6 行 grid 的 `key` 是**省名**，解析不到任何 `matId`
+> ⇒ 落进 `unresolved:6`，**不会变成边**。所以加不加谓词**都是 8 条**。
+>
+> **这条订正本身就是铁律 0.5 那个形态**：「我用『这两列都叫 key，值域可能撞』当作
+> 『今天真的撞了』的证据，而前者并不度量后者。」危害是**潜伏的**（数据一变就发作），
+> 不是**现存的** —— 两者定性不同：前者该防，后者该修。`viaWhere` 做的是防。
+> ⇒ 接缝门 §2 因此**先把危害注入成真的**（把一行 grid 因子的 `key` 改成真 matId）
+> 再断言 9 vs 8；否则那条测试会是「测试全绿但分支从没进入过」。
+>
+> ### 其余过期数（本次实测顺手订正）
+>
+> - **§4 第 9 行 `fulfills` 已过期两处**：原文写「图上不存在 Order→WorkOrder 边」「`WorkOrder`
+>   上没有 `orderRef`」—— 实测**都已存在**：声明 `battery.ts:3241`
+>   （`WorkOrder → Order`，N:1），实例 `service.ts:1248`（FK = `WorkOrder.orderRef`，条件缺席式写入）。
+>   ⇒ 该行判定应从 ❌ 改为 ✅（单 FK、单候选，`viaSide:"to"` 即可表达）。
+> - §7 证据索引里 `material_carbon` 的行号 `:1103` 与 `model_in_segment` 的 `:1113` 今日复测**仍准**。
+
+
 > **WO-EDGE-MATERIALIZE-GAP** · 只读取证 + 提案，零源码改动。
 > **base commit**：`bf8338a0`（`wo-edge-gap`，切自 `origin/claude/handoff-integ-batch-3`）
 > **取证方式**：TS AST 静态抽取（`ts.createSourceFile`）+ 逐条读种子写入方源码。**未起服务、未跑测试套件。**
