@@ -2082,6 +2082,61 @@ OntologyCore.executeSlice  ← 多跳检索在这里遍历 repos.links，**现�
 反向边方向断言（from 必须是来源类型）+ 幂等 + 出厂边零回归。
 **两半各自都绿、只有驱动接缝才会红**，正是 SEAM-GATE 要的形态。
 
+### 产能占用链路 · 产能池 → `consumes_capacity` 边上的量 → 余量/超载（WO-CAPACITY-EDGE · 2026-09-06）
+
+**一句话**：产能从「产线上的一个标量」升格成**可被指向、可被消耗的一等对象**（`CapacityPool`），
+消耗量**写在边上**（`LinkInstance.props.consumedCellsDaily`），于是「这条线还剩多少、被谁吃掉的、超没超」
+沿图可算 —— 而不是只能按字段读数。
+
+**今天的行为 X → 应该的行为 Y**（修前实测，真后端 `SEED_DEMO=1`）：
+- **X**：产能只有 `Line.capacityDaily`(套/日) / `Line.max_capacity_day`(件/日) 这些**节点标量**；
+  图上零条产能边；真正在排的 `WorkOrder`（260 条）与产能之间**没有任何连接**，
+  「吃掉多少」在本体里**没有承载**。消耗只能由订单侧现推上界
+  （`chain-impediment.readBaseContention` 的 `Σ qty/leadDays`，其注释自陈「不是已排产量」）。
+- **Y**：`Line --has_capacity--> CapacityPool`（130 条）+ `WorkOrder --consumes_capacity--> CapacityPool`（260 条，**边上带量**）
+  ⇒ 余量 = 池申报产能 − Σ 入边消耗。
+
+```
+Line.max_capacity_day (件/日)                       WorkOrder.qtyPlanned(件) ÷ spanDays(天)
+        │ 纯投影（同一个数换个承载）                          │ 存量 → 速率（这一步是修前缺的那一项）
+        ▼                                                    ▼
+   CapacityPool ──────── consumes_capacity.props.consumedCellsDaily (件/日) ──── WorkOrder
+   .capacityCellsDaily            ▲
+        │                         └─ 求解器 `capacity_ledger` **只读边上的量，不从节点重算**
+        ▼
+   余量 = 申报 − Σ 入边消耗 ⇒ PASS / BLOCK（+ 可读违约信息）
+```
+
+⚠ **量纲：本链路走「件/日」（电芯），不是「套/日」（PACK）**。`Line` 上并存两个日产能，
+差一个 `packCellCount` 倍；而 `WorkOrder.qtyPlanned` 的量纲是**件**。拿 `qtyPlanned` 比
+`capacityDaily` 会**一次错两处**（件↔套 + 存量↔速率），且不报错。故池刻意锚在件这一族，
+属性名带 `Cells`——同名不同量纲正是 `Line.utilization`(0–100) vs `Process.utilization`(0–1) 那个老坑。
+
+⚠ **两条边都不走 `viaProperty`**（与上一节的机制刻意不同，各有理由）：
+`consumes_capacity` **不能**——`materializeDeclaredLinks` 造的边一律没有 `props`，
+而本条边的全部价值就是边上那个量；`has_capacity` **能但不走**——种链路类型时对象尚未落库、
+当场 0 条，再手写一遍就成了双份真值源（冲突会红，双份不会）。
+
+**不变量（本单新增）**：
+- **R-CAP-1 · 量只在边上**：`consumedCellsDaily` 是 `consumes_capacity` 边的属性，
+  `WorkOrder` 节点上**没有**这一格。求解器改成从节点重算即违反 —— 判据是「把边上的 props 删掉，
+  读数必须当场变」（接缝门 §4 变异反证咬的就是这条）。
+- **R-CAP-2 · 单位由本体声明**：台账文案与披露层里的单位串一律从
+  `CapacityPool.{capacityCellsDaily,consumedCellsDaily,remainingCellsDaily}` 与
+  `WorkOrder.{qtyPlanned,spanDays}` 的 `PropertyDef.unit` 现取，求解器**不内联单位**；
+  读不到量纲声明即 400，不拿空串糊过去。
+- **R-CAP-3 · 三种「没量」分开报**：`unpricedEdges`（边在但没带量）/ `skippedByFilter`（被
+  `loadWorkOrders` 滤掉）/ `poolsWithoutCapacity`（池没申报产能）各计各的，**不许合成一个数**。
+
+**求解器**：`capacity_ledger`（§2.E 求解域，SOLVER_KEYS 第 62 条）。与 `capacity_rollup` 分工——
+rollup 答「这条线**能**做多少」（能力面·套/日），ledger 答「**还剩**多少」（占用面·件/日）；
+量纲不同，**不许合成一个 key**。
+
+**接缝门**：`apps/datacore/test/capacity-edge.seam.test.ts`（6 例，走真路由 + 真求解器）——
+金丝雀 + 对照实验（同一条线两个消耗量不同的活动 ⇒ 余量必须成比例地不同）+ 越界判据
+（Σ 超过产能 ⇒ PASS→BLOCK + 可读违约信息）+ **变异反证**（抹掉边上的量 ⇒ 读数当场变、
+该边计入 `unpricedEdges`）+ 可披露 + R6 确定性。
+
 ### 本体体检链路 · 第三类边：不变式守卫（WO-ONTOLOGY-EDGE-TRICLASS · 2026-08-17）
 
 **一句话**：本体图谱三样真值 → 守卫目录逐条求值 → 成立/不成立 + 违反者 → 屏上第三张表；改容差即**重走整条链**。
