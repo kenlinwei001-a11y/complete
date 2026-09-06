@@ -360,7 +360,7 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
     reason:
       "返工**天数**无承载。仓里有不良记录（DefectRecord.qty 85 条 / QualityLot.failQty 260 条 / InspectionResult 520 条），但全是**数量与判定**，没有返工工时或返工天数字段。要从不良数换算成天数得有「单件返工工时率」——那个数仓里不存在，编一个出来就是静默兜底。",
     probe:
-      "grep -rni '返工|rework' apps/datacore/src packages/contracts/src --include=*.ts → 仅命中 battery.ts:574 的一段叙事文案（外协质量波动的因果链描述串）与 chain-sim.ts 的 kind 枚举声明本身，**零字段、零对象**；再逐个读 defectRecordProps / qualityLotProps / inspectionResultProps 的属性表，确认无任何时长字段。",
+      "实测：全仓「返工」只作为**因果链叙事文案**与环节 kind 枚举名存在，**零字段、零对象**；逐个读 DefectRecord / QualityLot / InspectionResult 三型的属性表（实测 85 / 260 / 520 条），确认无任何工时或时长字段。",
   },
 
   // ══ WO-CHAIN-24 · 新增 12 节点里**算不出来的那 10 个** ═══════════════════
@@ -385,9 +385,9 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
     label: "询报价",
     kind: "queue",
     reason:
-      "询报价段**连对象都没有**：全仓没有 Quote / 报价单对象类型。`Quote` 这个名字在仓里只作为**规则求值期注入的命名空间**存在（规则 C24 `Quote.marginPct < Quote.floorPct`），battery.ts:2777 明写「Quote 仅 eval 期注入命名空间非本体对象类型」。Order 只有 due/status、OrderLine 只有 lineStatus——都是单据状态，不是「询单→报出价」这件事发生的时刻。修法是先有报价单对象，不是在这里编一个审批周期。",
+      "询报价段**连对象都没有**：全仓没有 Quote / 报价单对象类型。`Quote` 这个名字在仓里只作为**规则求值期注入的命名空间**存在（规则 C24 `Quote.marginPct < Quote.floorPct`），合成种子的规则作用域登记明写「Quote 仅 eval 期注入命名空间非本体对象类型」。Order 只有 due/status、OrderLine 只有 lineStatus——都是单据状态，不是「询单→报出价」这件事发生的时刻。修法是先有报价单对象，不是在这里编一个审批周期。",
     probe:
-      "grep -rn 'Quote|Quotation|报价' apps/datacore/src/synthetic --include=*.ts → 5 命中，逐条点开：battery.ts:290 是规则 C24 表达式、:2777 是它的 scope 归属注释（并明写 Quote 非本体对象类型）、:568/:571 是叙事文案。另核 synthetic/service.ts 的 putAll 清单（全部物化对象类型）无 Quote。",
+      "实测：合成种子里「报价 / Quote」共 5 处，逐条点开 —— 1 处是规则 C24 的表达式、1 处是它的作用域归属登记（明写 Quote 非本体对象类型）、3 处是叙事文案。另核合成数据物化清单（全部会落库的对象类型）无 Quote。",
   },
   {
     stepId: "capacity.rccp#review",
@@ -396,7 +396,7 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
     label: "产能与瓶颈复核",
     kind: "queue",
     reason:
-      "产能/瓶颈复核的**耗时**无承载。仓里有 Process / Equipment / ProcessCapabilityWindow（345 条），但它们是**能力参数**（minValue/maxValue/targetValue/ucl/lcl），回答的是「能跑多快」，不是「这次复核花了多久 / 多久复核一次」。唯一像样的候选 ProductionSchedule **未物化为对象**（synthetic/service.ts 明列为「高量低值执行类保持模型态不物化」），下游按对象根本查不到。",
+      "产能/瓶颈复核的**耗时**无承载。仓里有 Process / Equipment / ProcessCapabilityWindow（345 条），但它们是**能力参数**（minValue/maxValue/targetValue/ucl/lcl），回答的是「能跑多快」，不是「这次复核花了多久 / 多久复核一次」。唯一像样的候选 ProductionSchedule **未物化为对象**（合成数据物化清单明列为「高量低值执行类保持模型态不物化」），下游按对象根本查不到。",
     probe:
       "实测：listByType('ProcessCapabilityWindow') n=345，首行字段 capabilityId/operationId/parameterName/paramCode/unit/minValue/maxValue/targetValue/tolerance/ucl/lcl/status；listByType('ProductionSchedule') **n=0**（生成器里有、对象库里没有）。",
   },
@@ -431,7 +431,7 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
     reason:
       "请购段**连对象都没有**：全仓没有 PurchaseRequisition / 请购单对象类型。PurchaseOrder 有 orderDay（下单天）作为这一段的**终点**，但起点（请购提出天）不存在——一段时长只有一端等于没有。（设计稿 S1 自己也标 `V.G`「无 PurchaseReq 对象」，与实测一致。）",
     probe:
-      "grep -rn 'PurchaseReq|请购|Requisition' apps/datacore/src/synthetic --include=*.ts → **0 命中**（先拿确定存在的 'PurchaseOrder' 跑同一条命令验证工具没坏：命中 20+ 行）。另核 synthetic/service.ts putAll 清单无请购类。",
+      "实测：合成种子里「请购 / PurchaseRequisition」**0 命中**（金丝雀：同一把尺对确定存在的 PurchaseOrder 命中 20+ 行 ⇒ 尺子没坏）。另核合成数据物化清单无请购类。",
   },
   {
     stepId: "material.purchase_order#place",
@@ -440,9 +440,9 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
     label: "采购下单",
     kind: "queue",
     reason:
-      "**这是「有对象、缺字段」，不是「没对象」——两者修法完全不同，不许混为一谈。** PurchaseOrder 对象存在且字段很全（D2 落的四段日戳 orderDay/shipDay/arriveDay + etaDay），但四段日戳的第一段 `orderDay → shipDay` 语义是**供应商生产前置期**（battery-extended.ts 生成处注释：`orderDay ──供应商生产(Supplier.leadTime)──▶ shipDay`），已由 material.supplier_leadtime 这一段计过；拿它冒充「下单作业」会**重复计**同一段时间。缺的是「请购批准→采购下单」或「下单作业时长」这一个字段。",
+      "**这是「有对象、缺字段」，不是「没对象」——两者修法完全不同，不许混为一谈。** PurchaseOrder 对象存在且字段很全（D2 落的四段日戳 orderDay/shipDay/arriveDay + etaDay），但四段日戳的第一段 `orderDay → shipDay` 语义是**供应商生产前置期**（合成种子生成口径：`orderDay ──供应商生产(Supplier.leadTime)──▶ shipDay`），已由 material.supplier_leadtime 这一段计过；拿它冒充「下单作业」会**重复计**同一段时间。缺的是「请购批准→采购下单」或「下单作业时长」这一个字段。",
     probe:
-      "实测：listByType('PurchaseOrder') n=30，首行 po_0 字段 poId/matId/qty/etaDay/delayed/supplierId/sourceMode/orderDay(-6)/shipDay(-1)/arriveDay(1) 逐个核过；再读 battery-extended.ts:685 的日戳倒推注释确认 orderDay→shipDay 的语义归属。",
+      "实测：listByType('PurchaseOrder') n=30，首行 po_0 字段 poId/matId/qty/etaDay/delayed/supplierId/sourceMode/orderDay(-6)/shipDay(-1)/arriveDay(1) 逐个核过；再读合成种子的日戳倒推口径确认 orderDay→shipDay 的语义归属（供应商生产腿）。",
   },
   {
     stepId: "delivery.fg_stock#putaway",
@@ -464,7 +464,7 @@ const STRUCTURAL_GAPS: readonly StructuralGap[] = [
     reason:
       "**成品发到客户**的在途时长无承载。三个看着像的逐个核过、全都不是：① Shipment（13 条）是 **SRM 来料在途**（连接器 conn-srm / 数据集 srm_shipments，挂 base_has_shipment），且 etaDay 是相对 forecastStart 的**到货日偏移**（日期锚）不是时长；② InterBaseTransfer.transitDays 是**成品跨基地调拨**在途，不是发到客户；③ Supplier.transitDays 是**入厂**在途（本单已用于 material.inbound_transit）。挪用任何一个都是口径错标。",
     probe:
-      "实测：listByType('Shipment') n=13，首行 SHIP-changzhou 字段 shipId/baseId/etaDay/status/qtyTons/coverageDays；再读 battery.ts:1630 连接器映射 `Shipment: [{ connId:'conn-srm', dataset:'srm_shipments' … }]` 确认它是来料侧；再读 battery.ts:1157 interBaseTransferProps.transitDays 注释确认是基地间调拨。",
+      "实测：listByType('Shipment') n=13，首行 SHIP-changzhou 字段 shipId/baseId/etaDay/status/qtyTons/coverageDays；再读连接器映射 `Shipment: [{ connId:'conn-srm', dataset:'srm_shipments' … }]` 确认它是来料侧；再读 InterBaseTransfer.transitDays 的属性登记确认是基地间调拨。",
   },
   {
     stepId: "delivery.acceptance#inspect",
@@ -838,7 +838,7 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
         dataMode: "EMPTY",
         emptyKind,
         reason: `节拍在数据层无值可用（Cadence.${nodeId} 标 ${reason}）——等待期望公式 everyDays/2 有了（S0 契约），但没有值可以喂给它。不补 0：0 的语义是「随到随办」。`,
-        probe: `读对象 Cadence(nodeId=${nodeId})：dataMode=${str(c.props.dataMode, "?")} · emptyReason=${str(c.props.emptyReason, "-")} · 由 synthetic/cadence.ts 从种子自身发生序列推导，推不出即诚实标空。`,
+        probe: `读对象 Cadence(nodeId=${nodeId})：dataMode=${str(c.props.dataMode, "?")} · emptyReason=${str(c.props.emptyReason, "-")} · 由合成节奏推导器从种子自身发生序列推导，推不出即诚实标空。`,
       });
       continue;
     }
