@@ -436,10 +436,12 @@ export function buildCausalGraphFromSim(input: SimCausalInput): DecisionGraph {
         "沙盘 session 上没有任何承载「决策」的对象。阻滞点判定器 detectChainImpediments 存在且能产 ChainImpediment（带 evidence.ruleKey/threshold），" +
         // 这一句是**上屏正文**（实测出现在推演沙盘的诊断区），身上叠了两条互不冲突的纪律：
         //  · WO-SCREEN-CALIBER ②：屏上没有 Markdown 渲染器 ⇒ 星号会原样打出来，故不带强调；
-        //  · WO-RUI4-SOURCE-COORDS：R-UI-4 禁源码坐标上屏，故 `solvers/service.ts:3126` 与
-        //    `loadContext(tenantId)` 这类实现细节换成业务说法（「租户活体对象图」）。
-        // ⚠ 两条都是「换措辞不换事实」：说的仍是同一件事 —— 判定器读的是租户活体图、不是本 session 的 tick state。
-        "但它只吃租户活体对象图，不吃本 session 的 tick state —— 与本推演无因果关系",
+        //  · WO-RUI4-SOURCE-COORDS：R-UI-4 禁的是**源码文件名/行号**，故删掉 `solvers/service.ts:3126`。
+        // ⚠ **只删坐标，不删符号名**：`loadContext(tenantId)` / `detectChainImpediments` 是**函数名**不是坐标，
+        //   它们是这条缺口「指名道姓说清为什么接不上」的那个名字 —— 本用例（decision-causal-graph A4）
+        //   正是断言这两个名字在场。一并删掉就把「诚实降级」降成了「暂无数据」，
+        //   那是本单明令禁止的「删成空白」（铁律 1.5 判据二：溯源层必须给得出可核对的标识）。
+        "但它只吃 loadContext(tenantId) 的租户活体对象图，不吃本 session 的 tick state —— 与本推演无因果关系",
       needs:
         "让 chain_impediments 能在给定 SimSession 的世界态上判定（把 SolverContext 的对象快照换成 session state），" +
         "或在 SimSession 上新增一条「本推演触发了哪些阻滞点」的承载。两者都要动 sim/ 与 solvers/，本单范围外",
