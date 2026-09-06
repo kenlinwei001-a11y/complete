@@ -182,18 +182,43 @@ describe("WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝", () => {
     // 合计三项自洽：申报 − 已占用 = 余量。
     expect(disc.totals.capacityCellsDaily - disc.totals.consumedCellsDaily).toBeCloseTo(disc.totals.remainingCellsDaily, 4);
     // 单位必须与本体声明**逐字一致**（求解器不许内联单位串）。
+    // ⚠ WO-CAPACITY-EDGE-FIX：量纲出处从「池上三格」收敛成「池一格 + 工单两格」——
+    // `CapacityPool.{consumed,remaining}CellsDaily` 已**不是属性**（它们是本台账的读数，不是对象上的
+    // 一格数据；一格永不落值的属性同时还骗过了 `synthetic-field-alignment`）。余量 = 申报 − Σ消耗
+    // 只在同族内才是合法减法 ⇒ 三个读数一律用池那一格的单位串。
     const poolType = (await t.repos.ontologyTypes.list("demo", (x) => x.key === "CapacityPool"))[0]!;
     const woType = (await t.repos.ontologyTypes.list("demo", (x) => x.key === "WorkOrder"))[0]!;
     const unitOf = (ty: typeof poolType, k: string) => ty.properties.find((p) => p.propKey === k)!.unit;
+    // 金丝雀（否则下面三行的「同源」是句空话）：那两格确实已从属性表里消失。
+    const poolPropKeys = poolType.properties.map((p) => p.propKey);
+    expect(poolPropKeys, "读数不该回到属性表里").not.toContain("consumedCellsDaily");
+    expect(poolPropKeys, "读数不该回到属性表里").not.toContain("remainingCellsDaily");
+    expect(poolPropKeys, "金丝雀：申报产能这一格必须在（否则上面两条 not.toContain 只是表读不出来）").toContain("capacityCellsDaily");
     expect(disc.units.capacity).toBe(unitOf(poolType, "capacityCellsDaily"));
-    expect(disc.units.consumed).toBe(unitOf(poolType, "consumedCellsDaily"));
-    expect(disc.units.remaining).toBe(unitOf(poolType, "remainingCellsDaily"));
+    expect(disc.units.consumed).toBe(unitOf(poolType, "capacityCellsDaily"));
+    expect(disc.units.remaining).toBe(unitOf(poolType, "capacityCellsDaily"));
     expect(disc.units.qtyPlanned).toBe(unitOf(woType, "qtyPlanned"));
     expect(disc.units.spanDays).toBe(unitOf(woType, "spanDays"));
     // 量纲族：产能与消耗同为「件/日」，与 `Line.capacityDaily` 的「套/日」**刻意不同**（差 packCellCount 倍）。
     expect(disc.units.capacity).toBe("件/日");
     const lineType = (await t.repos.ontologyTypes.list("demo", (x) => x.key === "Line"))[0]!;
     expect(unitOf(lineType, "capacityDaily")).toBe("套/日");
+    // 同族守卫：池的单位必须以「工单量单位 + /」开头 —— 这是删掉那两格换来的**更强**的一条，
+    // 它咬的是「零换算系数」那条纪律本身，而不是「有没有一格属性写着 件/日」。
+    expect(disc.units.capacity.startsWith(`${unitOf(woType, "qtyPlanned")}/`)).toBe(true);
+    // 变异反证（铁律 1.5 判据一·对照实验）：把池的量纲改成 `Line.capacityDaily` 的**套/日**——
+    // 正是本链路头号警告的那个坑（件↔套 + 存量↔速率一次错两处）。改完必须**当场 400**，
+    // 而不是照样出一堆「跑得起来但错两处」的数。
+    const mutated = {
+      ...poolType,
+      properties: poolType.properties.map((p) => (p.propKey === "capacityCellsDaily" ? { ...p, unit: "套/日" } : p)),
+    };
+    await t.repos.ontologyTypes.put(mutated);
+    const bad = await invokeSolver(t, "capacity_ledger", {});
+    expect(bad.statusCode, "跨族量纲必须被拒，不许出数").toBe(400);
+    expect(JSON.parse(bad.body).error.message).toContain("不同族");
+    await t.repos.ontologyTypes.put(poolType); // 还原，后续断言不受污染
+    expect((await invokeSolver(t, "capacity_ledger", {})).statusCode, "还原后必须重新绿 —— 否则上面那红证明不了是量纲造成的").toBe(200);
     // 杠杆值与"本次未调用 agent"必须明写，不许留白让人以为调了。
     expect(disc.demandMultiplier).toBe(2);
     expect(disc.agentInvolved).toBe(false);
