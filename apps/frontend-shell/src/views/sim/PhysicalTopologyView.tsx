@@ -56,7 +56,8 @@ const ROW_HEAD_W = 168;
 const CELL_W = 92;
 /**
  * ⚠ 这里原本是 `const WORKSHOP_PAGE_SIZE = "500"`（注释写「够用且留余量」）——
- * WO-PAGING-SILENT-TRUNCATION-SCAN 实测：`pageSize` 的服务端上限**就是 500**，
+ * WO-PAGING-SILENT-TRUNCATION-SCAN 实测 2026-09-06（复验：`GET /a/v1/objects?type=Workshop&pageSize=100000`
+ * 看回显的 `pageSize` 与 `warnings`）：`pageSize` 的服务端上限**就是 500**，
  * 所以「留余量」从来不存在，那是把上限当成余量。车间册今天 130 行侥幸够，
  * 但它喂的是本页每一格的口径事实（进计算、上屏），一旦越过 500 就静默少一半而无人可察。
  * 改判据：按服务端回显的 `hasMore` 翻完（`fetchAllObjects`），不再自己猜一个页长。

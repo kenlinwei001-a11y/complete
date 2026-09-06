@@ -483,7 +483,7 @@ export default function DecisionConsoleView() {
         timed("② 算每个基地这 30 天紧到什么程度", "含订单准时率与打法库", invokeSolver("risk_timeline", {}).catch(() => null)),
         timed("③ 全链扫红线 + 枚举改法", "改法是逐个杠杆试算出来的，不是查表 —— 试算次数见下", invokeSolver("chain_impediments", { scope: {} }).catch(() => null)),
         timed("④ 财务投影", "只读，且读的是这次算例已经存下来的那一天", invokeSolver("finance_world_projection", { worldId: sessionId }).catch(() => null)),
-        // **有意只取首页**：`Customer` 实测真值 20（独立口径 `POST /a/v1/objects/aggregate`，seed 42），
+        // **有意只取首页**：`Customer` 实测真值 20（2026-09-06 · 独立口径 `POST /a/v1/objects/aggregate`，seed 42），
         // pageSize 50 > 20 ⇒ 首页即全集。⚠ 客户数若哪天越过 50，这里会静默欠读 —— 判据是
         // 「客户册是有界小字典」，不是「50 够大」；同屏的 ⑥⑦ 两项已经走 aggregate（服务端全量），
         // 本项只是把客户名字取出来配对，不产生任何分母。
@@ -1486,7 +1486,7 @@ function TemplateRow({
   // 数返回条数）；`SEARCH` 档只在输了字之后才打。
   /**
    * **有意只取首页**：`LIST` 档的候选类型只有四个，全是有界小字典 —— 实测真值
-   * （独立口径 `POST /a/v1/objects/aggregate`，seed 42）`Customer` 20 · `Material` 8 ·
+   * （2026-09-06 · 独立口径 `POST /a/v1/objects/aggregate`，seed 42）`Customer` 20 · `Material` 8 ·
    * `Base` 13 · `Model` 6，最大的一个也只有 pageSize 的 40%。
    * 会长大的那些类型（`Order` 500）在本表里一律是 `SEARCH` 档，不走这条路。
    */
@@ -1499,7 +1499,8 @@ function TemplateRow({
     queryKey: ["decision-console", "subject-child", scope?.child?.typeKey, parentId],
     enabled: open && !!scope?.child && parentId.length > 0,
     // **有意只取首页**：`Line` 全表 130 条 > 50，但这一查**带着 base 过滤**且服务端真的执行了它
-    // ——实测 `?type=Line&pageSize=50&base=hefei` 回 `items=10 total=10 hasMore=false`。
+    // ——实测 2026-09-06：`GET /a/v1/objects?type=Line&pageSize=50&base=hefei` 回
+    // `items=10 total=10 hasMore=false`（13 个基地各 10 条，合计 130 = 全表；逐基地复验过）。
     // 判据落在「过滤后的 total 与 hasMore」上，不落在「全表有多少行」上。
     queryFn: () =>
       searchObjects(scope!.child!.typeKey, "", { pageSize: "50", [scope!.child!.filterParam]: parentId }),

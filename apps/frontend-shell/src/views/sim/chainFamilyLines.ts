@@ -117,7 +117,8 @@ export function familyIdentityOf(
  * 正确的参数名是 `pageSize`；该端点现已对 `limit` 这类分页别名直接 400，不再让它静默生效。
  *
  * ⚠ 第二次订正（WO-PAGING-SILENT-TRUNCATION-SCAN）：改成 `pageSize: "500"` **仍然不对**，
- * 只是恰好不痛 —— 服务端 `MAX_PAGE_SIZE` 就是 500，而订单簿真值也正好是 500（seed 42 实测）。
+ * 只是恰好不痛 —— 服务端 `MAX_PAGE_SIZE` 就是 500，而订单簿真值也正好是 500
+ * （2026-09-06 实测 · seed 42；复验 `POST /a/v1/objects/aggregate` 取 `Order` count）。
  * 两个 500 相等纯属巧合：**第 501 张单进来的那一天，它会一声不响地又回到欠读**，
  * 而屏上和这里都不会有任何迹象。形态与上面那次一模一样，只是数字从 10× 变成 1.00×。
  * 判据必须落在服务端回显的 `hasMore` 上，不落在「我请求了多大一页」上 ⇒ 走 `fetchAllObjects`。

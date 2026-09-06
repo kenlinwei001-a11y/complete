@@ -212,7 +212,9 @@ export const searchObjects = (type: string, q: string, extra?: Record<string, st
  * 而全仓真正的多数形态是另一种：**什么参数都不传**。它不报错、不 warning，
  * 调用方拿回 50 行并把它当成全部，`hasMore:true` 就摆在同一个回包里而没有一个人读。
  *
- * 实测（真后端 `SEED_DEMO=1` · seed 42 · 独立口径 `POST /a/v1/objects/aggregate` 取真值）：
+ * 实测 **2026-09-06**（真后端 `SEED_DEMO=1` · seed 42 · 独立口径 `POST /a/v1/objects/aggregate` 取真值；
+ * 复验：起 datacore 后 `curl -H 'X-Debug-User: demo:admin:admin' -X POST '<dc>/a/v1/objects/aggregate'
+ * -d '{"typeKey":"Order","groupBy":[],"metrics":[{"prop":"id","fn":"count"}]}'` 与 `GET /a/v1/objects?type=Order` 对比）：
  *   `Order` 真值 **500** → 不传分页实收 **50**（7.331 倍口径偏差就是这么来的）；
  *   `Line` 130 → 50 · `WIPLot` 260 → 50 · `Workshop` 130 → 50 ·
  *   `Equipment` 780 → 50 · `EquipmentOEE` 5460 → 50 · `OrderLine` 873 → 50。
