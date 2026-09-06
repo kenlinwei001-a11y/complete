@@ -8,7 +8,7 @@
   "④ ratchetHigh 是历史最高水位，只降不升。**评审唯一必须拒绝的一行就是把它调大。**"
  ],
  "ratchetHigh": 38,
- "maxExemptions": 32,
+ "maxExemptions": 31,
  "exemptions": [
   {
    "key": "apps/frontend-shell/src/components/ProvenanceDag.tsx#4411cbdd8b75e546",
