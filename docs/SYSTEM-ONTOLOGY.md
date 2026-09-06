@@ -2291,6 +2291,27 @@ rollup 答「这条线**能**做多少」（能力面·套/日），ledger 答�
 （Σ 超过产能 ⇒ PASS→BLOCK + 可读违约信息）+ **变异反证**（抹掉边上的量 ⇒ 读数当场变、
 该边计入 `unpricedEdges`）+ 可披露 + R6 确定性。
 
+#### 收口两处「装配与登记」缺口（WO-CAPACITY-EDGE-FIX · 2026-09-06）
+
+上一节的**算法**是对的（对照四数 / 越界两数不动），红的是它**两处装配**。两条同一个形态：
+**某个东西登记在 A 处，而真正决定行为的是 B 处，两处说了相反的话。**
+
+| # | 今天的行为 X | 应该的行为 Y | 落点 |
+|---|---|---|---|
+| ① | `CapacityPool.{consumed,remaining}CellsDaily` 登记在 `properties`（该表契约 = 非派生字段必须落种子值），播种器却一格不写，描述还自陈「派生·不落种子值」⇒ **登记处与描述在同一个类型定义里互相打脸**（`synthetic-field-alignment` 逐类型咬这一条） | 两者的真值只有「Σ 入边」这**一处**，而 `derivedProperties.formula` 的 `evalArithmetic` 只认同一对象上的属性算术、表达不了图遍历 ⇒ 它们**不是对象上的数据**，是求解时的**读数**，从类型里删掉，只在 `capacity_ledger` 回包给 | `synthetic/battery.ts` `capacityPoolProps` |
+| ② | `withCapacityLedger` 只由两处生产派发点传，`loadContext` 不从 `solverKey` 推导 ⇒ 直接 `loadContext(t,…,{solverKey})` 建的 ctx 里 `capacityUnits` 恒缺席，`compute` 必抛 400，报的还是「本体里读不到量纲声明」——**本体明明声明了，是 ctx 没载**（三分法「接了线接错地方」） | 与核心 10 类**同一条契约**：有声明 ⇒ 按声明裁剪，**无 solverKey / 未声明 ⇒ 全量**（该契约由 `solver-context-lazy-loading.seam.test.ts` 的 SEAM-COMPAT 亲自咬着）。显式 opts 仍优先 ⇒ lazy flag 关时那条路逐字节不变 | `solvers/service.ts` `wantCapacityLedger` |
+
+⛔ **①「落真值」这条路被否掉的理由**（不是嫌麻烦）：那会造出**第二个真值源** —— 边一改，
+节点那格立刻过期而**没有任何东西会红**；且它直接废掉 **R-CAP-1「量只在边上」**（接缝门 §4
+「抹掉边上的量 ⇒ 读数当场变」在有节点回落值时会失效）。何况 `loadWorkOrders` / `demandMultiplier`
+两个 what-if 杠杆下「已占用」本就随参数变，节点上该写哪个值**根本没有答案**。
+
+**R-CAP-2 因此加强，不是削弱**：删掉那两格后量纲出处从「池上三格」收敛成
+「池 `capacityCellsDaily` 一格 + 工单 `qtyPlanned`/`spanDays` 两格」，并新增**同族守卫** ——
+池的单位必须以 `qtyPlanned 的单位 + "/"` 开头，否则当场 400。它咬的是本链路那条
+「零换算系数」纪律本身：把池换回 `Line.capacityDaily`（**套**/日）当场红，而不是照样算出一堆
+「跑得起来但错两处」（件↔套 + 存量↔速率）的数。变异反证实测：注掉该守卫 ⇒ 接缝门 §5 由 400 变 200 立红。
+
 ### 本体体检链路 · 第三类边：不变式守卫（WO-ONTOLOGY-EDGE-TRICLASS · 2026-08-17）
 
 **一句话**：本体图谱三样真值 → 守卫目录逐条求值 → 成立/不成立 + 违反者 → 屏上第三张表；改容差即**重走整条链**。
