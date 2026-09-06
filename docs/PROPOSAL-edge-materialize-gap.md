@@ -42,6 +42,31 @@
 > ⇒ 接缝门 §2 因此**先把危害注入成真的**（把一行 grid 因子的 `key` 改成真 matId）
 > 再断言 9 vs 8；否则那条测试会是「测试全绿但分支从没进入过」。
 >
+> ⚠ **但「边数一样」不等于「谓词没干活」——回执里看得见**（真起服务实测，同一条边）：
+>
+> | | `carrierObjects` | `created` | `unresolved` |
+> |---|---:|---:|---:|
+> | `viaProperty` 单独 | 14 | 8 | **6** |
+> | `+ viaWhere` | **8** | 8 | **0** |
+>
+> 谓词把 6 行 grid 因子**从候选集里摘掉**了，所以 `unresolved` 从 6 归 0。
+> 「有 6 条指向不存在的目标」与「这 6 行本来就不该参与」是**两个不同的答案**，
+> 回执现在给的是后者 —— 这正是 `materialized` 回执「如实回报、不合并、不静默吞」那条纪律的延伸。
+>
+> ### 桶③ 另一条 `defect_raises_exception`：谓词在这里连边数都改不了，但**候选集差 4.4 倍**
+>
+> 真起服务实测（`DefectRecord → ExceptionEvent`，`viaProperty:"refId", viaSide:"to"`，
+> 谓词 `ExceptionEvent.refType == 'DefectRecord'`）：
+>
+> | | `carrierObjects` | `created` | `unresolved` |
+> |---|---:|---:|---:|
+> | `viaProperty` 单独 | **372** | 85 | **287** |
+> | `+ viaWhere` | **85** | 85 | **0** |
+>
+> 没有谓词时，物化器把**全部 372 条异常事件**当候选去撞 `DefectRecord` 主键，
+> 撞不上的 287 条被记成 `unresolved` —— 而它们根本不是缺陷源（是设备告警/停机/物料/触发规则四类）。
+> **今天它们碰巧撞不上，所以边数没错；一旦跨类型 id 撞车就会静默连出脏边。**
+>
 > ### 其余过期数（本次实测顺手订正）
 >
 > - **§4 第 9 行 `fulfills` 已过期两处**：原文写「图上不存在 Order→WorkOrder 边」「`WorkOrder`
