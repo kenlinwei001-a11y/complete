@@ -72,7 +72,7 @@ grep -n 'putLink(`lnk_mis_\|putLink(`lnk_otp_\|putLink(`lnk_pto_\|putLink(`lnk_l
 
 | # | 边 | 种子 file:line | 端点表达式（原文片段） | 尺子读数 | **今天卡在哪** |
 |---|---|---|---|---|---|
-| 1 | `model_in_segment` | `service.ts:1121` | `oid("Segment", segOf(String(m.modelId)))`，`segOf = m => m.includes("S192")?"ess":m.includes("L148")?"com":"pas"`（`:1120`） | **算** / 单行 | 目标端由 `modelId` **串匹配**算出。`Model` 属性表（`battery.ts:1126-1160`）**无 `segKey`**：只有 `modelId/name/chem/pos/bases/unitPrice/unitCost/carbonFootprint` |
+| 1 | `model_in_segment` | `service.ts:1121` | `oid("Segment", segOf(String(m.modelId)))`，`segOf = m => m.includes("S192")?"ess":m.includes("L148")?"com":"pas"`（`:1120`） | **算** / 单行 | 目标端由 `modelId` **串匹配**算出。`Model` 属性表（`battery.ts:1126-1160`）**无 `segKey`**：只有 `modelId/name/chem/pos/bases/unitPrice/unitCost/carbonFootprint`。**⚠ 且这条边今天是退化的，见 §1.2b** |
 | 2 | `order_to_plantarget` | `service.ts:1212` | `oid("PlanTarget", \`PT-${month}\`)`，`month = o.due.slice(0,7)`（`:1211`）；外加 `:1210` 的 `monthTargets` 预筛 `t.level === "month"` | **算** / 单行 | 目标端 = **前缀 + 日期截断**。且 `level==="month"` 是**锚点侧**过滤，而 `viaWhere` 只对 carrier 求值（`ontology.ts:515-522` 用 `carrierTypeKey` 编译、`o.props` 求值）⇒ **两个独立缺口叠在一条边上** |
 | 3 | `plantarget_ownedby` | `service.ts:1224` | `owner = P(t).level === "month" ? "prin-plan" : "prin-coo"`（`:1223`） | **算**（条件常量） / 单行 | `PlanTarget` 属性表（`battery.ts:2352-2359`）只有 `tgtId/period/level/value/year/scenarioKey`，**无 `ownerRef`**。⚠ 同文件 `Metric` **有** `ownerRef`（`battery.ts:1752`，`refToTypeKey:"Principal"`）⇒ `metric_ownedby`（`service.ts:1219`）是**裸读、五种声明够用**。**同形状两条边，一条够用一条不够用，差的只是一个属性** |
 | 4 | `line_belongs_to_workshop` | `service.ts:1001` | `workshopId = l.lineId.replace("LINE-", "")`（`:1000`） | **算**（串变换） / 单行 | `Line` 属性表（`battery.ts:1411+`）**无 `workshopId`**。生成侧 `battery.ts:5457` 是 `const lineId = \`LINE-${workshopId}\`` ⇒ **workshopId 本来就在 lineId 里，只是没落成列** |
@@ -115,6 +115,32 @@ grep -n "version_belongs_to_model\|bom_belongs_to_version\|detail_belongs_to_bom
 **⇒ 同一个问题「这个型号用哪些料」，图上有两个都在被消费的答案：4 种 vs 7 种。**
 这不是本提案要新造的机制能治的，也不该被一个新机制**掩盖**掉。
 
+### 1.2b ⚠ 顺手撞出来的缺陷：`model_in_segment` 的两个分支今天是**死的**
+
+写 §2 的例子时要举「`segOf` 会算出哪几个键」，一查目录 —— **算不出 `ess` 也算不出 `com`**。
+
+```bash
+sed -n '60,67p' apps/datacore/src/synthetic/battery.ts   # MODELS 全表
+grep -n "const models = MODELS" apps/datacore/src/synthetic/battery.ts   # → 5068
+```
+> `MODELS`（`battery.ts:60-67`）**恰好 6 型**：`4680-NCM` `4680-LFP` `2170-NCM` `方形-LFP` `方形-NCM` `圆柱-LFP`
+> `battery.ts:5068` `const models = MODELS.map(…)` —— 全文件**无 `models.push`** ⇒ **任何 scale 都是这 6 型，不增不减**
+
+`segOf`（`service.ts:1120`）判的是 `includes("S192")` / `includes("L148")`。
+**6 个 modelId 里没有任何一个含这两个子串** ⇒ **6 条边全部指向 `Segment "pas"`，`ess`/`com` 两个分支从未进入。**
+
+`S192-LFP`/`L148-LFP` 这两个名字的真出处是求解器参数
+`battery.ts:903-904`（`problems.essModels` / `comModels`），**不是 `Model` 目录**。
+且本体（`docs/SYSTEM-ONTOLOGY.md` §「订单/型号/客户集」）已写明细分判定
+**「按客户名判定（`segOfCust`）……替代旧按型号 essModels/comModels」** ——
+即 `segOf` 是**已被取代的旧口径**，在这条边上留成了退化实现。
+
+**形态（铁律 0.5 三分法的第二态）**：这是「**接了线没数据**」，不是「没接线」——
+边有实例、检索能遍历、四包全绿，只是**三个细分坍缩成一个**。
+
+**⇒ 对本提案的直接影响**：`model_in_segment` **不能**当作「给它一个 `viaKeyExpr` 就好了」的例子。
+把今天的行为逐字搬进表达式，等于**把这个缺陷固化进声明**。见 §2 组 A1 与 §5 裁决点 ①。
+
 ### 1.3 复测结论表（与派单前提的差异，逐条点名）
 
 | 派单说 | 复测 |
@@ -123,6 +149,7 @@ grep -n "version_belongs_to_model\|bom_belongs_to_version\|detail_belongs_to_bom
 | 多跳桥链 2 条（`BOMDetail` 没 modelId） | ⚠ **前提对、结论错**：四跳链已全通且五种声明够用；真问题是**捷径边与 BOM 链口径不一致（4 vs 7）** |
 | 多态目标 1 条 | ✅ 成立，`toTypeKey` 固定于 `LinkTypeDef` |
 | —（派单未提） | 🆕 **`viaWhere` 只能筛 carrier，筛不了 anchor** —— `order_to_plantarget` 卡在这上面的那一半，和「算端点」是**两个独立缺口** |
+| —（派单未提） | 🆕 **`model_in_segment` 今天是退化边**：6 型号全落 `"pas"`，`ess`/`com` 分支从未进入（§1.2b）⇒ **不能拿它当「照搬进表达式即可」的样板** |
 
 ---
 
@@ -172,12 +199,12 @@ grep -n "^export function evaluateAst" apps/datacore/src/ruledsl.ts   # → 543
   → 命中 `battery.ts:5838` → 边 `PT-2026-Q1 → prin-coo`
 - **与种子逐字同构**：`service.ts:1223` 就是 `level === "month" ? "prin-plan" : "prin-coo"`
 
-`model_in_segment` 同理，但要写成嵌套 `IF` 对 `modelId` 做**等值**判定
-（`IF(this.modelId == "S192-LFP", "ess", IF(this.modelId == "L148-LFP", "com", "pas"))`）——
-**⚠ 这是等值不是子串**。种子用的是 `.includes("S192")`（`service.ts:1120`）。
-两者在**今天的 6 型号目录**上同解（`battery.ts:903-904` 把 ess/com 各定义为**单个** modelId），
-但只要新增一个 `S192-NCM`，等值版会漏、子串版会中 ⇒ **A1 对这条边只是「今天够」，不是「结构上够」**。
-要结构上够，需要 §组 A2 的 `CONTAINS`。
+**`model_in_segment` 是另一回事，不要照搬** —— 按 §1.2b，它今天 6 条边全落 `"pas"`。
+`viaKeyExpr` 能**逐字复刻**这个行为（`IF(CONTAINS(this.modelId,"S192"), "ess", …)`，
+需 A2 的 `CONTAINS`），也能**写成正确的**（如按 `Model.pos` 或 `Model.chem` 分档，两者都是现成属性，
+`battery.ts:1126-1160`），但**机制本身不会告诉你哪一个才对**。
+⇒ 这条边的裁决点**不在「有没有表达式」，在「细分到底该由什么决定」**（型号？`pos`？还是本体已采用的客户名 `segOfCust`？）——
+那是业务口径问题，属 §5 裁决点 ① 的附带说明，**不该由本提案顺手定死**。
 
 ### 组 A2 · 字符串手术 —— **必须给求值器加新节点**
 
@@ -348,6 +375,13 @@ apps/datacore/src/ontology-dsl.ts:519-528（evaluate 的 "binary" 分支）
 | **B-α（预算判定）** | **否** | `|from| × |to|` 是集合大小，与顺序无关。 |
 | **C 拆 5 条边** | **否** | 走既有 `viaWhere`，`ontology.ts:508-511` 已论证过纯函数、零时钟、零随机。 |
 
+**⚠ 一个不属于 R6 但同族的风险：确定性的**退化**。**
+`model_in_segment`（§1.2b）今天 6 条边全落 `"pas"` —— **它完全确定性、重跑字节一致、四包全绿**，
+只是**算错了**。这正是铁律 1.5 说的第四态（接对了、跑通了、但算错了），R6 一个字都管不了它。
+⇒ **把「算端点」做成机制，等于把这类错误从种子代码搬到声明里，且更难看见**（声明在数据库里，不在 diff 里）。
+**对策**：`viaKeyExpr` 落地时必须回报**键的分布**（算出了几个不同的键、各命中多少行），
+让「三个细分坍缩成一个」在物化回执上**当场看得见**，而不是要等有人去数边。
+
 **一条贯穿全文的对照实验（铁律 1.5 判据一）**——任何候选落地时的验收标准，
 **不是「跑得起来」而是「改了输入，输出按可预言的方式变」**：
 
@@ -362,11 +396,15 @@ apps/datacore/src/ontology-dsl.ts:519-528（evaluate 的 "binary" 分支）
 
 ### 裁决点 ① · 「算端点」用**表达式**还是**补列**？
 
-| 选项 | 覆盖 | 代价 |
+⚠ 先说清覆盖面：**这一组名义 4 条边，实际只有 3 条是「机制问题」** ——
+`model_in_segment` 按 §1.2b 是**业务口径问题**（细分该由型号 / `pos` / 还是客户名决定），
+任何机制都答不了它，故不计入下表分母。
+
+| 选项 | 覆盖（分母 3） | 代价 |
 |---|---|---|
-| **甲 · 只补列**（A1-β + A2-β） | `plantarget_ownedby` · `line_belongs_to_workshop`（2/4） | 零新语法；动 R6 基线；**`model_in_segment` / `order_to_plantarget` 仍无解** |
-| **乙 · 只上表达式**（A1-α + A2-α） | 4/4 | 本仓**第二套**边用表达式语言；A2-α 外溢到派生属性子系统 |
-| **丙 · 先补列，表达式只做 A1-α（不加串函数）** | 补列 2 条 + `plantarget_ownedby`/`model_in_segment` 走 `viaKeyExpr` = 3/4 | 零新 AST 节点（`if`/`string`/`cmp` 已有）；`order_to_plantarget` 留口 |
+| **甲 · 只补列**（A1-β + A2-β） | `plantarget_ownedby` · `line_belongs_to_workshop` = **2/3** | 零新语法；动 R6 基线；**`order_to_plantarget` 无解** |
+| **乙 · 只上表达式**（A1-α + A2-α） | **3/3** | 本仓**第二套**边用表达式语言；A2-α 外溢到派生属性子系统 |
+| **丙 · 补列 2 条 + A1-α（不加串函数）** | 补列 2 条即 **2/3**，另**白得** `plantarget_ownedby` 的声明式表达 | 零新 AST 节点（`if`/`string`/`cmp` 已有）；`order_to_plantarget` 留口 |
 
 **我的推荐：丙。**
 **理由**：① `line_belongs_to_workshop` 的 `workshopId` 在生成侧**已是现成变量**（`battery.ts:5457`），
@@ -374,7 +412,8 @@ apps/datacore/src/ontology-dsl.ts:519-528（evaluate 的 "binary" 分支）
 是同一个建模习惯；② A1-α **一个 AST 节点都不用加**，是四个候选里唯一「复用现成设施且不外溢」的；
 ③ A2-α 会让 `ontology-dsl` 同时改变**派生属性**的能力边界，那是另一个子系统的决策，
 不该被一条边的需求顺手带出来。
-**留口诚实说**：`order_to_plantarget` 在丙方案下**仍然做不了**，它需要 `SUBSTR`。
+**两处留口，都明说**：`order_to_plantarget` 在丙方案下**仍然做不了**（需 `SUBSTR`）；
+`model_in_segment` 需要先有人裁决细分口径，**再**谈用哪种机制表达。
 
 ### 裁决点 ② · `viaWhere` 要不要长出 **anchor 侧**谓词？
 
@@ -434,4 +473,7 @@ grep -n "^export function evaluate\b\|^export type Scalar" apps/datacore/src/ont
 grep -n "^export function evaluateAst" apps/datacore/src/ruledsl.ts
 # §4 现有边 id 的序号来源（叉积不许照抄）
 sed -n '539,549p' apps/datacore/src/ontology.ts
+# §1.2b model_in_segment 退化：6 型号无一含 S192/L148 ⇒ 全落 "pas"
+sed -n '60,67p' apps/datacore/src/synthetic/battery.ts
+grep -n "const models = MODELS" apps/datacore/src/synthetic/battery.ts   # 且全文件无 models.push
 ```
