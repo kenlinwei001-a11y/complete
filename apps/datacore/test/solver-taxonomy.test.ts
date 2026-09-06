@@ -29,10 +29,13 @@ import { SOLVER_CATEGORIES, SOLVER_CATEGORY_META, isSolverCategory, type SolverC
  * 59 → **60**：WO-FLOWTIME 的 `process_flow_time`（2026-08-14 WO-R9-PROCESS-MERGE 合并时收编）。
  * 60 → **61**：WO-FINANCE-WORLDSTATE 的 `finance_world_projection`（财务**金额**随世界态扰动的投影
  *   —— `finance_pnl` 签名不吃 worldId，缺的就是金额那一跳）。
+ * 61 → **62**：WO-CAPACITY-EDGE 的 `capacity_ledger`（产能**占用面**：池申报产能 −
+ *   Σ `consumes_capacity` 边上的消耗量 = 余量，超载逐条给违约信息。与 `capacity_rollup` 的
+ *   **能力面**分工，两者量纲不同——rollup 走 套/日，ledger 走 件/日，差一个 packCellCount 倍）。
  * ⚠ 本文件的金值**必须与 `ontology-core.test.ts` 同步改**——两处写的是同一个数，
  *   改一处不改另一处会出现「一个文件绿一个文件红」，而先看到哪个纯看运气。
  */
-const SOLVER_TOTAL = 61;
+const SOLVER_TOTAL = 62;
 
 /**
  * 类目 → 成员 的**期望值**（测试侧独立写死一份，与 `SOLVER_CATEGORY_MAP` 对拍）。
@@ -41,6 +44,7 @@ const SOLVER_TOTAL = 61;
 const EXPECTED: Record<SolverCategory, string[]> = {
   capacity_bottleneck: [
     "capacity_rollup",
+    "capacity_ledger", // WO-CAPACITY-EDGE：这条线还剩多少产能、被哪些工单吃掉的、超没超
     "capacity_forecast",
     "bottleneck_matrix",
     "shared_bottleneck",

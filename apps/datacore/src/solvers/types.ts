@@ -5,6 +5,9 @@ import {
   type RefTypeDefLike,
 } from "@platform/contracts";
 import type { ObjectInstance } from "../domain.js";
+// WO-CAPACITY-EDGE：**只取类型**（`import type` 编译期即擦除），故不产生运行时循环 ——
+// 运行时的边只有 `capacity.ts → types.js` 这一向（它从本文件取 `num`/`str`/`baseName`）。
+import type { CapacityConsumptionEdge, CapacityLedgerUnits } from "./capacity.js";
 
 /** Typed view over the per-tenant solverParams JSONB (battery defaults in synthetic/battery.ts). */
 export interface SolverParamsShape {
@@ -283,6 +286,26 @@ export interface SolverContext {
    * **按需加载**（`COMMERCE_GRAPH_SOLVERS`）；缺省 `[]` → 求解器诚实 EMPTY（不回落全域冒充某客户）。
    */
   orderCustomerLinks?: { orderId: string; customerId: string; custId: string; custName: string; orderCust: string }[];
+  /**
+   * WO-CAPACITY-EDGE · 产能池对象（`CapacityPool`）。**按需加载**（仅 `capacity_ledger`）。
+   * 缺省 `[]` ⇒ 台账诚实空，不回落到 `Line.capacityDaily` 冒充池 —— 那正是本单要消灭的
+   * 「产能只是节点上一个标量」的老形态，回落一次就把新旧两套口径搅在一起。
+   */
+  capacityPools?: ObjectInstance[];
+  /**
+   * WO-CAPACITY-EDGE · `consumes_capacity` **边上的量**的投影（`link.props`，不是节点重算值）。
+   *
+   * ⚠ 这是本单的接缝：投影必须读 `link.props.consumedCellsDaily`。若改成从
+   * `WorkOrder.qtyPlanned ÷ spanDays` 现算，边就退化成装饰品 —— 把边上的 props 全删掉，
+   * 读数一个字节都不变，而测试照样绿。缺量的边计入 `unpricedEdges` 如实回报，不补默认值。
+   */
+  capacityConsumptions?: CapacityConsumptionEdge[];
+  /**
+   * WO-CAPACITY-EDGE · 台账用到的单位串，**从本体 `PropertyDef.unit` 现取**（不在求解器内联）。
+   * 缺省 `undefined` ⇒ 调用方必须自己给；`capacity_ledger` 取不到就 400，不拿空串糊过去
+   * （量纲缺席被当成「无量纲」正是 `PROPERTY_UNITS` 头注登记的那个根因）。
+   */
+  capacityUnits?: CapacityLedgerUnits;
   /**
    * WO-ADOPT-MITIGATION · 已采纳处置方案台账（对象类型 `AdoptedMitigation`·由 `adopt_mitigation` Action
    * 审批执行写入）。**按需加载**（见 service.ts `ADOPTION_AWARE_SOLVERS`：仅 risk_timeline /

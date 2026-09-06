@@ -732,3 +732,230 @@ export function logisticsDays(
   if (!address) return 0;
   return p.logistics.byAddress[address] ?? p.logistics.defaultDays;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WO-CAPACITY-EDGE · `capacity_ledger` —— **产能台账**：沿 `has_capacity` /
+// `consumes_capacity` 两条边算「这个池还剩多少产能、被谁吃掉的、超没超」。
+//
+// ── 今天的行为 X → 应该的行为 Y ────────────────────────────────────────────────
+// **X**：产能只是节点上的一个标量（`Line.capacityDaily` / `Line.max_capacity_day`），
+//   消耗只能由订单侧现推上界（`chain-impediment.readBaseContention` 的 `Σ qty/leadDays`，
+//   它自己的注释就写着「不是已排产量」）。真正在排的活动（`WorkOrder`）与产能之间
+//   **图上零边**，「吃掉多少」这个量在本体里没有承载。
+// **Y**：产能是池（`CapacityPool`），消耗写在 `consumes_capacity` 边上，
+//   余量 = 池产能 − Σ 入边消耗，**沿图可算、逐条可披露、超载可检出**。
+//
+// ── 本函数只读边上的量，**不从节点重算** ──────────────────────────────────────
+// 这一条是本单的要害。若这里改成「拿 `WorkOrder.qtyPlanned ÷ spanDays` 现算」，
+// 边就退化成装饰品：删掉边上的 props、读数一个字节都不变 ⇒ 测试全绿而机制是空的
+// （本仓登记过的「实现有、测试有、且是绿的，零真实依赖」那一族假绿）。故边上没有
+// `consumedCellsDaily` 的入边一律计入 `unpricedEdges` **如实回报**，绝不回落到节点重算
+// ——「边在但没带量」与「边不在」是两个不同的答案，混成一个就再也分不开。
+//
+// 量纲：池与消耗**同为 件/日**（cell/day）。单位串一律由调用方从本体
+// (`CapacityPool.*` / `WorkOrder.*` 的 `PropertyDef.unit`) 读出来传进 `units`，
+// 本文件**一个单位字符串都不内联**（RL5：注释写「来自配置」不算数，得真来自配置）。
+// 纯函数：无 rng / 无时钟 / 无 IO ⇒ 同输入字节一致（R6）。
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** 一条 `consumes_capacity` 边的投影（`link.props` 原样，**不是**从节点重算的）。 */
+export interface CapacityConsumptionEdge {
+  /** 边的来源端业务键（`WorkOrder.woId`）。 */
+  woId: string;
+  /** 边的去向端业务键（`CapacityPool.poolId`）。 */
+  poolId: string;
+  /** 边上的量。`undefined` = 这条边没带量（**不许**替它算一个）。 */
+  consumedCellsDaily?: number;
+  /** 边上带的两个输入（可披露用）。 */
+  qtyPlanned?: number;
+  spanDays?: number;
+}
+
+/** `capacity_ledger` 的单位册（**全部取自本体 PropertyDef.unit**，求解器不内联）。 */
+export interface CapacityLedgerUnits {
+  capacity: string;
+  consumed: string;
+  remaining: string;
+  qtyPlanned: string;
+  spanDays: string;
+}
+
+export interface CapacityLedgerArgs {
+  /** 只看这个基地的池（缺省全量）。 */
+  baseId?: string;
+  /** 只看这条产线的池（缺省全量）。 */
+  lineId?: string;
+  /**
+   * **只把这些工单加载到池上**（缺省 = 全部入边）。排产取舍的真杠杆：
+   * 「只上 A 这张单，这条线还剩多少」—— 也是铁律 1.5 对照实验的加载器。
+   */
+  loadWorkOrders?: string[];
+  /**
+   * 需求倍数（what-if）。缺省 1。`consumedCellsDaily × demandMultiplier` ——
+   * 「这批单的量翻 N 倍还接不接得住」，越界判据靠它给出「超载前 / 超载后」两个状态。
+   */
+  demandMultiplier?: number;
+}
+
+export interface CapacityLedgerConsumer {
+  woId: string;
+  consumedCellsDaily: number;
+  qtyPlanned?: number;
+  spanDays?: number;
+}
+
+export interface CapacityLedgerPool {
+  poolId: string;
+  lineId: string;
+  baseId: string;
+  capacityCellsDaily: number;
+  consumedCellsDaily: number;
+  remainingCellsDaily: number;
+  utilizationPct: number;
+  consumerCount: number;
+  status: "PASS" | "BLOCK";
+  consumers: CapacityLedgerConsumer[];
+}
+
+export interface CapacityLedgerViolation {
+  poolId: string;
+  lineId: string;
+  baseId: string;
+  capacityCellsDaily: number;
+  consumedCellsDaily: number;
+  overByCellsDaily: number;
+  message: string;
+}
+
+/**
+ * 产能台账。`pools` 按 `poolId` 升序、`consumers` 按 `woId` 升序 ⇒ 输出确定性（R6）。
+ *
+ * @param pools `CapacityPool` 对象（props：`poolId/lineId/baseId/capacityCellsDaily/status`）
+ * @param edges `consumes_capacity` 边的投影（**边上的 props**，不是节点重算值）
+ * @param units 单位串，**由调用方从本体 `PropertyDef.unit` 读出**（本文件不内联单位）
+ */
+export function computeCapacityLedger(
+  pools: readonly { props: Record<string, unknown> }[],
+  edges: readonly CapacityConsumptionEdge[],
+  units: CapacityLedgerUnits,
+  args: CapacityLedgerArgs = {},
+): Record<string, unknown> {
+  const rawMult = args.demandMultiplier;
+  const mult = typeof rawMult === "number" && Number.isFinite(rawMult) && rawMult > 0 ? rawMult : 1;
+  const only = args.loadWorkOrders && args.loadWorkOrders.length > 0 ? new Set(args.loadWorkOrders) : undefined;
+
+  // 入边按池分桶。**只收带量的**；不带量的另计，绝不回落到节点重算。
+  const byPool = new Map<string, CapacityLedgerConsumer[]>();
+  let unpricedEdges = 0;
+  let skippedByFilter = 0;
+  for (const e of edges) {
+    if (only && !only.has(e.woId)) {
+      skippedByFilter++;
+      continue;
+    }
+    const raw = e.consumedCellsDaily;
+    if (typeof raw !== "number" || !Number.isFinite(raw)) {
+      unpricedEdges++;
+      continue;
+    }
+    const bucket = byPool.get(e.poolId) ?? [];
+    bucket.push({
+      woId: e.woId,
+      consumedCellsDaily: round(raw * mult, 6),
+      ...(typeof e.qtyPlanned === "number" ? { qtyPlanned: e.qtyPlanned } : {}),
+      ...(typeof e.spanDays === "number" ? { spanDays: e.spanDays } : {}),
+    });
+    byPool.set(e.poolId, bucket);
+  }
+
+  const rows: CapacityLedgerPool[] = [];
+  const violations: CapacityLedgerViolation[] = [];
+  let poolsWithoutCapacity = 0;
+  const scoped = pools
+    .filter((p) => (args.baseId ? str(p.props.baseId) === args.baseId : true))
+    .filter((p) => (args.lineId ? str(p.props.lineId) === args.lineId : true));
+  for (const p of [...scoped].sort((a, b) => (str(a.props.poolId) < str(b.props.poolId) ? -1 : 1))) {
+    const poolId = str(p.props.poolId);
+    // 没申报产能的池**不参与判定**（不是「产能为 0 所以全超载」—— 两者数值同、语义不同，
+    // 与 `readBaseContention` 对 `capacityDaily` 缺席的处置逐字同源）。
+    const capacity = num(p.props.capacityCellsDaily, Number.NaN);
+    if (!Number.isFinite(capacity) || !(capacity > 0)) {
+      poolsWithoutCapacity++;
+      continue;
+    }
+    const consumers = (byPool.get(poolId) ?? []).sort((a, b) => (a.woId < b.woId ? -1 : a.woId > b.woId ? 1 : 0));
+    const consumed = round(consumers.reduce((s, c) => s + c.consumedCellsDaily, 0), 6);
+    const remaining = round(capacity - consumed, 6);
+    const over = remaining < 0;
+    rows.push({
+      poolId,
+      lineId: str(p.props.lineId),
+      baseId: str(p.props.baseId),
+      capacityCellsDaily: capacity,
+      consumedCellsDaily: consumed,
+      remainingCellsDaily: remaining,
+      utilizationPct: round((consumed / capacity) * 100, 4),
+      consumerCount: consumers.length,
+      status: over ? "BLOCK" : "PASS",
+      consumers,
+    });
+    if (over) {
+      violations.push({
+        poolId,
+        lineId: str(p.props.lineId),
+        baseId: str(p.props.baseId),
+        capacityCellsDaily: capacity,
+        consumedCellsDaily: consumed,
+        overByCellsDaily: round(consumed - capacity, 6),
+        // 文案里的单位串来自 `units`（← 本体 `PropertyDef.unit`），不是手写常量。
+        message:
+          `产能池 ${poolId}（产线 ${str(p.props.lineId)}）超载：` +
+          `已占用 ${consumed} ${units.consumed} > 申报产能 ${capacity} ${units.capacity}，` +
+          `超出 ${round(consumed - capacity, 6)} ${units.remaining}，占用方 ${consumers.length} 个`,
+      });
+    }
+  }
+
+  const totalCapacity = round(rows.reduce((s, r) => s + r.capacityCellsDaily, 0), 6);
+  const totalConsumed = round(rows.reduce((s, r) => s + r.consumedCellsDaily, 0), 6);
+  // ── 顶层只有四个键，条数/合计全部落在 `disclosure` 里 ────────────────────────
+  // 两条理由，缺一条我都不会这么排：
+  //  ① **条数本来就是披露项**：铁律 1.5 判据二点名要「引用的数据（对象类型 + **条数**）」，
+  //     `unpricedEdges` / `skippedByFilter` / `poolsWithoutCapacity` 正是这一层的东西 ——
+  //     它们把「没边」「边在但没带量」「被 loadWorkOrders 滤掉」分开报，混成一个数就再也分不开
+  //     （本仓 `dependsOn` 那次错账的形态）。
+  //  ② **`poolCount` / `violationCount` 曾是字面重复**：它们恒等于 `pools.length` / `violations.length`，
+  //     同一个数在响应里存两份，迟早分叉。挪进 `counts` 且不再另立顶层键。
+  // ⚠ 诚实标注：本求解器**今天没有任何前端消费方**（本单范围边界只到「读它们的求解器入口」，
+  //   不含 UI）。`solver-field-seam:check` 会把「后端声明下发、前端零消费」判死 —— 这不是
+  //   本排布的理由（那样就是为了让门变绿而重排结构），但它确实是发现①②的契机，记在这里，
+  //   免得下一个人以为顶层被削薄是丢了信息。
+  return {
+    pools: rows,
+    violations,
+    // 铁律 1.5 判据二：推演过程可披露 —— 口径、单位、杠杆值、条数、合计全部随结果下发。
+    disclosure: {
+      formula: "余量 = CapacityPool.capacityCellsDaily − Σ consumes_capacity.consumedCellsDaily × 需求倍数",
+      edgeAmountSource: "consumes_capacity 边上的 props.consumedCellsDaily（不从工单节点重算）",
+      units,
+      demandMultiplier: mult,
+      loadWorkOrders: args.loadWorkOrders ?? null,
+      agentInvolved: false,
+      counts: {
+        pools: rows.length,
+        violations: violations.length,
+        unpricedEdges,
+        skippedByFilter,
+        poolsWithoutCapacity,
+      },
+      totals: {
+        capacityCellsDaily: totalCapacity,
+        consumedCellsDaily: totalConsumed,
+        remainingCellsDaily: round(totalCapacity - totalConsumed, 6),
+      },
+    },
+    summary:
+      `${rows.length} 个产能池，${violations.length} 个超载；` +
+      `合计申报 ${totalCapacity} ${units.capacity}，已占用 ${totalConsumed} ${units.consumed}`,
+  };
+}

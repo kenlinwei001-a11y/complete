@@ -30,6 +30,7 @@ export type SolverKey = (typeof SOLVER_KEYS)[number];
 export const SOLVER_CATEGORY_MAP: Record<SolverKey, SolverCategory> = {
   // ── 产能与瓶颈：「产能够不够、被哪道工序/哪个共享资源卡住了」 ──
   capacity_rollup: "capacity_bottleneck", // 各基地/型号维度产能上卷到多少
+  capacity_ledger: "capacity_bottleneck", // 这条产线还剩多少产能、被哪些工单吃掉的、超没超（WO-CAPACITY-EDGE）
   capacity_forecast: "capacity_bottleneck", // 未来几周产能满足度/缺口率/主瓶颈
   bottleneck_matrix: "capacity_bottleneck", // 瓶颈落在哪个基地哪道工序
   base_capacity_outlook: "capacity_bottleneck", // 某基地未来 30/60/90 天产能够不够、缺口哪天出现
