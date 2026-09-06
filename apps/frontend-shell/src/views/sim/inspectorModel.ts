@@ -757,7 +757,7 @@ export function buildPlaceholderInspectorInput(args: {
        * @stale-fact packages/contracts/src/procurement.ts /minOrderQty: z\.number\(\)/ ==1
        */
       evidence:
-        "datacore 种子有真值（`battery-extended.ts` 供应商表逐家 minOrderQty）；" +
+        "datacore 种子有真值（Supplier 合成种子逐家 minOrderQty）；" +
         "求解器有真消费方：kit_readiness 用它算补货量 max(缺口, 起订量)；" +
         "但契约只在求解器出参 `ProcurementPlan` 里带它，`Supplier` 没有可写入参 ⇒ 前端拨不到源头",
       baseline: null,
@@ -841,7 +841,7 @@ export function buildPlaceholderInspectorInput(args: {
        * @stale-fact packages/contracts/src/procurement.ts /expectedSlipDays: z\.number\(\)/ ==1
        */
       evidence:
-        "datacore 种子有真值（`battery-extended.ts` 供应商表逐家 onTimeRate）+ `livedin/bundle.ts` 有同名字段（另一口径·百分数），" +
+        "datacore 种子有真值（Supplier 合成种子逐家 onTimeRate）+ 运营历史面 GET /a/v1/history/bundle 有同名字段（另一口径·百分数），" +
         "求解器有真消费方：kit_readiness 拿它算期望滑期天；" +
         "但契约只在求解器出参 `ProcurementPlan` 里带它，`Supplier` 没有可写入参 ⇒ 薄",
       baseline: null,
