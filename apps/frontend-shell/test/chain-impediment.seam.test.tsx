@@ -374,9 +374,16 @@ describe("dataMode 如实渲染（本单头号判据）", () => {
     }
     const model = buildChainImpedimentModel(BASE);
     for (const n of model.notes) expect(n, `诚实边界文案里出现 Markdown 星号：${n}`).not.toMatch(/\*\*/);
-    // ⚠ 引擎 `caveats[].note` 里的 `**未校验持续天数**` 是**引擎原文**，本层原样透传 ——
-    //    前端替它改写才是本单禁止的事。故此处刻意不对 caveat 施加同一条规则。
-    expect(C05_CAVEAT.note).toMatch(/\*\*/);
+    // ⚠ 引擎 `caveats[].note` 是**引擎原文**，本层原样透传 —— 前端替它改写才是本单禁止的事。
+    //
+    // 2026-09-06（收编 merge-batch-2）：本条原来写的是 `expect(C05_CAVEAT.note).toMatch(/\*\*/)`，
+    // 拿「引擎原文里带 `**`」当"这是透传不是本层自写"的探针。`WO-SCREEN-CALIBER` 把引擎那句里的
+    // 粗体去掉之后（该串原样上屏、按纯文本渲染，星号会字面显示，去掉是对的），**这个探针的前提没了**。
+    // 形态：「我用『这段文字带 Markdown 记号』当作『它来自引擎』的证据，而前者并不度量后者。」
+    // 改成直接咬引擎模板的判别片段 —— 那才是"没被本层改写"的真判据：
+    expect(C05_CAVEAT.note, "引擎原文被本层改写了（应原样透传）").toContain("未校验持续天数；结论 dataMode 标 PARTIAL");
+    // 且引擎侧如今自己也不带 Markdown 记号了 ⇒ 全链（引擎原文 + 本层自写）都是纯文本安全的。
+    expect(C05_CAVEAT.note, "引擎原文如今也不该带 Markdown 记号").not.toMatch(/\*\*/);
   });
 
   it("顶栏诚实位统计与逐条 dataMode 完全一致（统计口径不许自成一套）", async () => {
@@ -508,11 +515,17 @@ describe("fixture 与 mock 对齐后端单一来源（不许悄悄漂移）", ()
 
   it("fixture 的 PARTIAL caveat 文案与引擎的 caveat 模板同源（模板改了 fixture 必须跟）", () => {
     // 引擎模板：`规则 ${b.ruleKey} 含 SUSTAIN（持续判定），而 SolverContext 无时序访问 —— `
-    //           `本次只比对快照与规则红线 ${th.value}${b.unit}，**未校验持续天数**；结论 dataMode 标 PARTIAL`
+    //           `本次只比对快照与规则红线 ${th.value}${b.unit}，未校验持续天数；结论 dataMode 标 PARTIAL`
+    //
+    // ⚠ 2026-09-06（收编 merge-batch-2）：`WO-SCREEN-CALIBER`「Markdown 字面量收零」把这句
+    //   caveat 里的粗体 `**` 去掉了（这串是**引擎原文原样透传上屏**的，屏上按纯文本渲染，
+    //   星号会字面显示出来 —— 去掉是对的）。本断言与下面的 fixture 同步跟改。
+    //   形态正是 CLAUDE.md 铁律 0.6 第 4 条：旧文案以**字符串字面量**形态存在，
+    //   `pnpm -r typecheck` / `build` 一个都看不见，只有真跑这个跨包"同源"用例才红。
     for (const frag of [
       "含 SUSTAIN（持续判定），而 SolverContext 无时序访问",
       "本次只比对快照与规则红线",
-      "**未校验持续天数**；结论 dataMode 标 PARTIAL",
+      "未校验持续天数；结论 dataMode 标 PARTIAL",
     ]) {
       expect(engineSrc, `引擎模板已变，fixture/mock 的 caveat 文案需同步：${frag}`).toContain(frag);
       expect(C05_CAVEAT.note).toContain(frag);
