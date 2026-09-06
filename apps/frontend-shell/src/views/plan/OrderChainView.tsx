@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { OrderProblemGroup, OrderFullchainOutput } from "@platform/contracts";
 import { SEG_REGISTRY, formatTightness } from "@platform/contracts";
-import { runSolver, queryObjectsPaged } from "@/api/endpoints";
+import { runSolver, fetchAllObjects, queryObjectsPaged } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
@@ -1139,7 +1139,7 @@ function OrderFullchainPanel() {
   const [inspect, setInspect] = useState<DagNodeDef | null>(null);
   const { data: orders } = useQuery({
     queryKey: ["a", "objects", "Order", "ofc-selector"],
-    queryFn: () => queryObjectsPaged("Order", 1, 100, {}),
+    queryFn: () => fetchAllObjects("Order"),
   });
   const soList = useMemo(() => (orders?.items ?? []).map((o) => String(o.props.so)).sort(), [orders]);
   const { data, isLoading } = useQuery({

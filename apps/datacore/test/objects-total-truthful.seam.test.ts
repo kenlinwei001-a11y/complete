@@ -215,3 +215,115 @@ describe("GET /a/v1/objects · 截断信号 hasMore（不许让调用方自己�
     }
   }, 300000);
 });
+
+/**
+ * ── WO-PAGING-SILENT-TRUNCATION-SCAN · 接缝：**调用方不传分页** × 真路由 ──────────
+ *
+ * 上面几组验的是「传了参数之后端点算得对」。**本组验的是另一半，也是真正在生产里发生的那半**：
+ * 调用方**什么参数都不传**。这不报错、不 warning、不留痕 —— 它拿回默认页长那么多行，
+ * 然后把它当成全部。已知真实事故：一个多目标面板因此只用 500 张单里的 50 张求解。
+ *
+ * 为什么必须是接缝测试：
+ *   · 只测端点 ⇒ 它按契约行事（默认页长是它的本职），绿；
+ *   · 只测前端 `fetchAllObjects` 的单元 ⇒ 桩想回多少回多少，永远取全，绿。
+ * 只有「真种出 > 页长的类型」×「真走这条路由」×「真跑那个翻页算法」三件事合起来才现形。
+ */
+describe("GET /a/v1/objects · 不传分页 = 静默截断；全量翻页算法必须仍等于全量口径", () => {
+  /** 前端 `apps/frontend-shell/src/api/endpoints.ts` 的 `fetchAllObjects` **同形实现**（逐页走 hasMore + total 校对）。 */
+  async function fetchAllViaRoute(t: TestApp, type: string): Promise<number> {
+    const MAX_PAGES = 2000;
+    let n = 0;
+    let last: ObjectsPageRes | undefined;
+    let page = 1;
+    for (; page <= MAX_PAGES; page++) {
+      last = await getPage(t, `/a/v1/objects?type=${type}&page=${page}&pageSize=500`);
+      n += last.items.length;
+      if (!last.hasMore) break;
+    }
+    // 撞安全阀 / 条数对不上 ⇒ 抛，绝不静默回一个短列表（这一条正是变异反证当场抓出来的）。
+    expect(last?.hasMore, `翻了 ${MAX_PAGES} 页仍未取完 ${type}`).toBeFalsy();
+    if (!last?.totalIsLowerBound) expect(n, `${type} 累计条数应等于服务端 total`).toBe(last?.total);
+    return n;
+  }
+
+  it("头号判据：真实条数 > 默认页长时，全量翻页读数 = 全量口径，而不传分页的读数不是", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // 生产里真的被当成全集用的那几类（排产订单池 / 产线册 / 在制批 / 车间册）。
+    for (const type of ["Order", "Line", "WIPLot", "Workshop"]) {
+      const truth = await truthCount(t, type);
+
+      // 金丝雀（护住本条自己）：这个类型必须真的多于默认页长，否则「不传分页」恰好也取全 ⇒ 本条假绿。
+      const bare = await getPage(t, `/a/v1/objects?type=${type}`);
+      expect(
+        truth,
+        `${type} 只有 ${truth} 行 ≤ 默认页长 ${bare.pageSize} ⇒ 它碰不到这个洞，不配当本条的样例`,
+      ).toBeGreaterThan(bare.pageSize);
+
+      // ① 病本身：什么都不传 ⇒ 静默少读，且回包**确实**说了 hasMore（信号一直都在，只是没人读）。
+      expect(bare.items.length, `${type} 不传分页应只拿到一页（这就是那个洞）`).toBe(bare.pageSize);
+      expect(bare.items.length, `${type} 不传分页拿到的必须少于真值`).toBeLessThan(truth);
+      expect(bare.hasMore, "服务端一直在说「还有」——修的是没人听，不是没人说").toBe(true);
+
+      // ② 修后：全量翻页算法的读数必须等于**独立口径**（直接读仓储，不用被测端点自己的 total）。
+      expect(await fetchAllViaRoute(t, type), `${type} 全量翻页读数应等于仓储真值`).toBe(truth);
+    }
+  }, 300000);
+
+  it("变异反证：页长改小，不传分页的读数跟着变小，而全量翻页读数纹丝不动", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const truth = await truthCount(t, "Order");
+
+    // 显式 pageSize 模拟「服务端页长被改小」：**修前形态**跟着页长走（它就是页长的函数），
+    // **修后形态**必须恒等于真值。跟着变 ⇒ 「翻完了」是假的。
+    for (const serverPage of [50, 10, 3]) {
+      const bare = await getPage(t, `/a/v1/objects?type=Order&pageSize=${serverPage}`);
+      expect(bare.items.length, `页长 ${serverPage} 时，修前形态应恰好等于页长`).toBe(serverPage);
+      expect(await fetchAllViaRoute(t, "Order"), `页长 ${serverPage} 时，修后形态必须仍是 ${truth}`).toBe(truth);
+    }
+  }, 300000);
+});
+
+/**
+ * ── 接缝：**A↔B** · `POST /a/v1/objects/query` 的截断此前一个信号都没有 ──────────
+ *
+ * `GET /a/v1/objects` 至少还回 `hasMore`；这条给 agent 用的路**回的是裸数组**，
+ * `Order` 真值 500、agent 拿到 100 行，长得和「一共就 100 张单」完全一样。
+ * 于是它会拿 100 当分母作答，而屏上没有任何东西说得出这件事。
+ */
+describe("POST /a/v1/objects/query · 截断必须可察觉", () => {
+  it("裸数组旁边必须给出 total（全量口径）与 truncated；data 形状不许变", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const truth = await truthCount(t, "Order");
+    expect(truth, "Order 必须多于默认 limit 100，否则本条碰不到截断 ⇒ 假绿").toBeGreaterThan(100);
+
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/objects/query",
+      headers: ADMIN,
+      payload: { objectType: "Order", filter: {} },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { data: unknown[]; total?: number; truncated?: boolean };
+
+    expect(Array.isArray(body.data), "data 仍必须是裸数组（既有消费方靠它）").toBe(true);
+    expect(body.data.length, "默认 limit=100 ⇒ 只给 100 行").toBe(100);
+    expect(body.total, "total 必须是全量口径（独立于 limit），不是本次给了多少行").toBe(truth);
+    expect(body.truncated, "没给全就必须说出来").toBe(true);
+
+    // 金丝雀：取全时 truncated 必须为 false —— 否则「恒 true」也能让上面那条绿。
+    const full = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/objects/query",
+      headers: ADMIN,
+      payload: { objectType: "Order", filter: {}, limit: 1000 },
+    });
+    const fullBody = full.json() as { data: unknown[]; total?: number; truncated?: boolean };
+    expect(fullBody.data.length, "limit 够大时应给全").toBe(truth);
+    expect(fullBody.truncated, "给全了就不该标截断").toBe(false);
+    expect(fullBody.total).toBe(truth);
+  }, 300000);
+});

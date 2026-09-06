@@ -1075,6 +1075,9 @@ function PnlTable() {
 
 /** SOP.4 ⑤ 版本演进对比表（SopVersionRow：V1/V3/V5/V7 需求/供给/缺口/备注，V7 待定稿高亮）。 */
 function VersionCompare() {
+  // **有意只取首页**：`SopVersionRow` 就是 V1/V3/V5/V7 四行版本快照，实测真值 4 条
+  // （独立口径 `POST /a/v1/objects/aggregate`，seed 42），页长 20 已覆盖全集。
+  // 它的行数由「S&OP 有几个版本」决定，不随订单/设备规模增长。
   const { data } = useQuery({
     queryKey: ["a", "objects", "SopVersionRow"],
     queryFn: () => queryObjectsPaged("SopVersionRow", 1, 20, {}),

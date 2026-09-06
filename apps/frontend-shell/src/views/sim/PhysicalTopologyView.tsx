@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ViewRendererProps } from "../registry";
-import { aggregateObjects, searchObjects } from "@/api/endpoints";
+import { aggregateObjects, fetchAllObjects } from "@/api/endpoints";
 import { tokenStore } from "@/api/tokenStore";
 import {
   buildTopology,
@@ -54,8 +54,13 @@ const HINT_MS = 1600;
 /** 矩阵几何（CSS 像素，供 grid 模板与 fit 计算共用）。 */
 const ROW_HEAD_W = 168;
 const CELL_W = 92;
-/** 车间册一次取满（实测 130 行；`pageSize` 上限 500，够用且留余量）。 */
-const WORKSHOP_PAGE_SIZE = "500";
+/**
+ * ⚠ 这里原本是 `const WORKSHOP_PAGE_SIZE = "500"`（注释写「够用且留余量」）——
+ * WO-PAGING-SILENT-TRUNCATION-SCAN 实测：`pageSize` 的服务端上限**就是 500**，
+ * 所以「留余量」从来不存在，那是把上限当成余量。车间册今天 130 行侥幸够，
+ * 但它喂的是本页每一格的口径事实（进计算、上屏），一旦越过 500 就静默少一半而无人可察。
+ * 改判据：按服务端回显的 `hasMore` 翻完（`fetchAllObjects`），不再自己猜一个页长。
+ */
 
 function fmt(m: Measure): string {
   if (m.value === null) return "EMPTY";
@@ -71,7 +76,7 @@ export async function fetchTopologyFacts(): Promise<TopologyFacts> {
     aggregateObjects(TOPOLOGY_FACT_QUERIES.oee),
     aggregateObjects(TOPOLOGY_FACT_QUERIES.equipment),
     aggregateObjects(TOPOLOGY_FACT_QUERIES.wip),
-    searchObjects("Workshop", "", { pageSize: WORKSHOP_PAGE_SIZE }),
+    fetchAllObjects("Workshop"),
   ]);
   return {
     oee: oee.rows as AggRow[],

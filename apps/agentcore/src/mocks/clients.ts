@@ -363,9 +363,22 @@ export class MockOntologyClient implements OntologyClient {
       rows.push(...versions.values(), ...anonymous);
     }
     rows = rows.filter((r) => matchFilter(r, filter));
-    if (limit !== undefined) rows = rows.slice(0, Math.min(limit, 200));
+    /**
+     * WO-PAGING-SILENT-TRUNCATION-SCAN · **截断信号必须与真后端同形**。
+     *
+     * 这里踩到过一次「mock 比后端更正确」：mock 回 `data:{items,total}`，而真 DataCore
+     * `POST /a/v1/objects/query` 回的是**裸数组**。执行器的 `total === 0` 判断读 `res.data.total`
+     * —— 在 mock 上读得到、测试全绿，在生产上恒 undefined、那条分支一次都没进过。
+     * 现在两侧都在 payload **同级**给 `total`（过滤后真实行数，**截断前**）与 `truncated`。
+     * `data` 的形状两侧各自保持原样（改它是另一张单），信号则对齐。
+     */
+    const matchedTotal = rows.length;
+    const cap = limit === undefined ? undefined : Math.min(limit, 200);
+    if (cap !== undefined) rows = rows.slice(0, cap);
     return {
       data: { items: rows, total: rows.length },
+      total: matchedTotal,
+      truncated: cap !== undefined && matchedTotal > cap,
       // WO-MOCKDC-PARAMS-INCREMENT · 时点可见性：带了 asOfEpoch 就把「读到的是哪个时点的快照」
       // 写进 snapshotVersion（与真 DataCore `ontology.ts` 的 `${snapshot}@${asOfEpoch}` 同形）——
       // 「时点读生效了没有」由此有外部可见证据，不是只能数行数。

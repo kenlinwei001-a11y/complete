@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ImpactChange } from "@platform/contracts";
-import { fetchObjectTypes, queryObjectsPaged, invokeSolver } from "@/api/endpoints";
+import { fetchObjectTypes, fetchAllObjects, invokeSolver } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import type { ViewConfigVM } from "@/api/types";
 import zh from "@/locales/zh";
@@ -243,7 +243,7 @@ export default function WhatIfView({ view: _view }: { view?: ViewConfigVM }) {
   // 选定类型的对象列表（真 REST /a/v1/objects?type=）——不写死。
   const objectsQ = useQuery({
     queryKey: ["a", "what-if", "objects", typeKey],
-    queryFn: async () => (await queryObjectsPaged(typeKey, 1, 200, {})).items,
+    queryFn: async () => (await fetchAllObjects(typeKey)).items,
     enabled: typeKey !== "",
     retry: false,
   });
