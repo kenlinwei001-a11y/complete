@@ -119,6 +119,15 @@ const PAGER_WHY = "没有更多页签可翻";
 const APPLY_WHY_PLACEHOLDER = "这一页的方案是示例数据，不能应用。要等这次推演真算出方案，这里才能提交。";
 const APPLY_WHY_UNWIRED = "「应用方案」要走变更审批，本页还没接上这条流程，所以现在按不了。";
 
+/**
+ * 「推荐」这枚徽标的**口径**：它是「按当前这组权重排第一」，不是「最优解」。
+ * 前沿上每个解都不被支配，谁排第一完全取决于读者的权重偏好 —— 两者措辞必须分得开，
+ * 否则读者会把一次**偏好排序**误读成一个**客观最优**。
+ *
+ * ⚠ 它承载在**候选卡的可及名**上，不是原生 `title=`（下方挂载点有完整理由）。
+ */
+const REC_CALIBER = "按当前目标权重排第一（前沿上每个解都不被支配）";
+
 /** 竖排组名：**逐字换行**，不用 `writing-mode`（规格 README §已知取舍 —— 中文竖排会叠成黑块）。 */
 function VerticalGroupName({ text }: { text: string }): JSX.Element {
   return (
@@ -369,7 +378,19 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
                          而它不再是一颗悬停才出现、触屏永远摸不到的提示。
                          （上一版写作 `title=`，被 provenance-popover-legibility 的 title 棘轮
                          当场逼出来：88 > 基线 79，其中本单新增的正是这一处与下面那一处。） */
-                      aria-label={`${c.label} · 点它把右侧详情与下方执行对比切到这一手`}
+                      /* ⚠ 2026-09-06 WO-RATCHET-REBASE 补**第三处**：「推荐」徽标上还留着一个
+                         `title=`（本批按新尺子比 canonical 多出的那 1 处，逐条比对两边命中清单
+                         点名出来的就是它）。它有两条路走不通，故并进本卡的可及名：
+                           · 徽标自己戴 `aria-label` **等于没戴** —— 本卡是 `role="button"` 且已有
+                             `aria-label`，name-from-author 会把整棵子树的可及名吞掉；
+                           · 塞 `InfoPopover` 也不行 —— 那是真 `<button>`，嵌在 `role="button"` 里
+                             属嵌套违规，且点它会连带触发 `setPicked` 换选中方案。
+                         **一个字都没删，只换承载位**（口径原文见 `REC_CALIBER`）。 */
+                      aria-label={
+                        c.id === model.recommendedId
+                          ? `${c.label} · 点它把右侧详情与下方执行对比切到这一手 · ${REC_CALIBER}`
+                          : `${c.label} · 点它把右侧详情与下方执行对比切到这一手`
+                      }
                       /* 加权名次：**用它断言"改权重换了序"**，比读 DOM 顺序稳。缺席 = 这个解没排名次（非前沿）。 */
                       data-rank={rankOf.get(c.id)?.rank ?? ""}
                       data-recommended={c.id === model.recommendedId ? "1" : "0"}
@@ -383,11 +404,10 @@ export function SandboxOpt({ paretoRequest, sessionId }: SandboxOptProps = {}): 
                     >
                       {c.onFrontier && <span className={styles.tag}>前沿</span>}
                       {c.id === model.recommendedId && (
-                        // 「推荐」= **按当前这组权重**排第一，不是"最优解"。措辞上必须分得开：
-                        // 前沿上每一个解都不被支配，谁排第一完全取决于读者的偏好。
-                        <span className={styles.rec} title="按当前目标权重排第一（前沿上每个解都不被支配）">
-                          推荐
-                        </span>
+                        // 「推荐」= **按当前这组权重**排第一，不是"最优解"（口径全文 `REC_CALIBER`，
+                        // 挂在本卡的 `aria-label` 上）。这里只留**第一层的可见记号** ——
+                        // 规范 §1：诚实位允许降层，但降层后第一层必须留记号，静默降层等于删除。
+                        <span className={styles.rec}>推荐</span>
                       )}
                       <div className={styles.r1}>
                         <b>{c.id}</b>
