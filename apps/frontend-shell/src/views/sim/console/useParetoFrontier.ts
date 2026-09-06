@@ -638,6 +638,29 @@ export const PLACEHOLDER_CONSTRAINT_ROWS = PLACEHOLDER_CONSTRAINTS;
 // § 6 · 端点回包 → 视图模型
 // ══════════════════════════════════════════════════════════════════════════
 
+/**
+ * WO-SCREEN-CALIBER · 成本口径标注 —— **一处派生，全屏一致**。
+ *
+ * 病：本页四根轴里有两根（毛利 · 成本）把 `OrderLine.unitCost` 算进去，而这一格
+ * 今天**只含物料**（型号当期 BOM：Σ 用量 ×(1+损耗率)× 物料单价），**不含人工 / 制造费用 / 物流**。
+ * 屏上只印公式不印口径 ⇒ 读者会把它当**完全成本**读，从而把毛利读高。
+ * 这与「营收侧不写 `× 用量` 就会被读成单价」是同一个病：**数是对的、字不完整**。
+ *
+ * 形态是「标签 + 值」不是解释性散文（仓主明令：屏上只该有标签+值+状态）：
+ * 一个定语 `成本口径`，一个值 `料(BOM)+占线·不含人工/制造费/物流`。
+ *
+ * 判据是**数据驱动**不是写死轴名：命中「标签里引用了 `.unitCost` 这一格」才挂。
+ * 换租户、换目标名、后端改标签措辞都照样生效；反过来若哪天成本侧不再走这一格，
+ * 标注自动消失 —— 不会留下一句与算法对不上的旧话（那比不标更坏）。
+ */
+export const COST_CALIBER_TAG = "成本口径 料(BOM)+占线·不含人工/制造费/物流";
+/** `opt-assemble` 装配成本轴时绑的那一格（`OrderLine.unitCost`）。 */
+const UNIT_COST_PROP_SUFFIX = ".unitCost";
+/** 轴/目标的人读式 → 带口径标注的人读式（不含该格则原样返回）。 */
+export function withCostCaliber(label: string): string {
+  return label.includes(UNIT_COST_PROP_SUFFIX) ? `${label} · ${COST_CALIBER_TAG}` : label;
+}
+
 /** 轴取值域：把**全体候选**（前沿 + 被支配）都框进去，否则被支配点会画到画布外。 */
 function axisOf(obj: ParetoObjective, all: readonly ParetoSolution[]): OptAxis {
   const vs = all.map((s) => s.metrics[obj.key]).filter((v): v is number => typeof v === "number");
@@ -701,7 +724,10 @@ function candidateOf(
  */
 export function projectPareto(res: ParetoResult, family: string): OptModel {
   const all = [...res.frontier, ...res.dominated];
-  const axes = res.objectives.map((o) => axisOf(o, all));
+  // WO-SCREEN-CALIBER：口径标注在**这一处**挂上去，下游（下拉 / 权重行 / 散点两轴 /
+  // 候选卡四格 / 右侧详情 kv）全部从这同一份派生 —— 挂在视图里会漏掉其中几处。
+  const objectives = res.objectives.map((o) => ({ ...o, label: withCostCaliber(o.label ?? o.key) }));
+  const axes = objectives.map((o) => axisOf(o, all));
   const [ax0, ax1] = axes;
   const pair: readonly [OptAxis, OptAxis] = [
     ax0 ?? (PLACEHOLDER_AXES[0] as OptAxis),
@@ -713,7 +739,7 @@ export function projectPareto(res: ParetoResult, family: string): OptModel {
   const best = [...res.frontier].sort((a, b) => goodnessOf(b, axes) - goodnessOf(a, axes))[0];
   const selId = best?.id ?? frontier[0]?.id ?? "";
   return {
-    objectives: res.objectives,
+    objectives,
     unavailableObjectives: res.unavailableObjectives,
     weights: res.weights,
     ranking: res.ranking,

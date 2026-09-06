@@ -392,6 +392,19 @@ export interface DerivedPropertyDef {
   unit: PropertyUnit;
   /** WO-UNIT-KWH · 量纲刻度（**必填**）。绝对量 / 比例量，判据同 {@link PropertyScale}。 */
   scale: PropertyScale;
+  /**
+   * WO-ORDER-WORKORDER-UI · 派生属性的中文业务名 —— 与 {@link PropertyDef.displayName}
+   * **同一张真值表**（`synthetic/battery.ts` 的 `PROP_DISPLAY_NAMES`，键仍是 `Type.prop`）。
+   *
+   * 为什么派生属性也必须有这一格：台账行展开逐格显示 `Order` 的 18 个键，其中 `value`
+   * （= `qty * unitPrice`·订单金额）**恰恰是最有业务含义的那一格**，而它住在
+   * `derivedProperties` 里 —— 结构上此前没有承载展示名的位置，于是不管真值表登不登记，
+   * 它在屏上永远是裸英文 `value`。补声明位，不动 `propKey`（那是公式/求解器/金值的接线名）。
+   *
+   * **可缺省 = 诚实留白**，语义同 {@link PropertyDef.displayName}：未登记就回落 `propKey`，
+   * 下游不得渲染 undefined/空白，也不得在前端自建第二份中文映射。
+   */
+  displayName?: string;
 }
 
 /** 治理增量 §2.2 弃用元数据（type/link/prop 复用同结构）。 */

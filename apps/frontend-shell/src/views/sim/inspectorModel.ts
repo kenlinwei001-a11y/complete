@@ -564,16 +564,16 @@ export const stepIdOf = (nodeId: string, suffix: string): string => `${nodeId}::
  * 现文案说的是今天真正的缺口：不是"没有"，是**本面板没去要**（三分法里的「没接线」，修法完全不同）。
  */
 const CADENCE_ABSENCE_REASON =
-  "没接线（不是没承载）：`Cadence` 承载**已经在**——`apps/datacore/src/synthetic/service.ts:712` " +
+  "没接线（不是没承载）：`Cadence` 承载已经在——`apps/datacore/src/synthetic/service.ts:712` " +
   "`putAll(\"Cadence\", …)` 真落库，`apps/datacore/src/app.ts:1447` 的推演 tick 已在读它。" +
-  "缺口在本面板这一侧：这里的输入来自占位构造器 `buildPlaceholderInspectorInput`，它**不发任何查询、也不接收任何 `Cadence` 行**，" +
-  "所以拿不到实测周期。等待期望公式已由 S0 冻结（`expectedCadenceWaitDays`），**缺的是那个值的来路，不是那个值不存在**。" +
+  "缺口在本面板这一侧：这里的输入来自占位构造器 `buildPlaceholderInspectorInput`，它不发任何查询、也不接收任何 `Cadence` 行，" +
+  "所以拿不到实测周期。等待期望公式已由 S0 冻结（`expectedCadenceWaitDays`），缺的是那个值的来路，不是那个值不存在。" +
   "修法 = 把该节点的 `Cadence` 行按 `cadenceFromProps` 口径喂进来；接线后仍要分得开两种结果：" +
-  "推得出周期的节点给真值，`dataMode` 非 SYNTHETIC 的节点给带 `emptyReason` 的诚实缺席（**无节拍，不是 0**——0 的语义是随到随办）。" +
+  "推得出周期的节点给真值，`dataMode` 非 SYNTHETIC 的节点给带 `emptyReason` 的诚实缺席（无节拍，不是 0——0 的语义是随到随办）。" +
   "在那之前：滑杆留着供 what-if，当前值不给假默认。";
 
 const REWORK_ABSENCE_REASON =
-  "缺承载：仓里有不良数量与判定（DefectRecord / QualityLot / InspectionResult），但**没有返工工时或天数字段**；" +
+  "缺承载：仓里有不良数量与判定（DefectRecord / QualityLot / InspectionResult），但没有返工工时或天数字段；" +
   "从不良数换算成天数需要「单件返工工时率」，那个数今天不存在 ⇒ 返工天数算不出来，标 EMPTY 不补 0。";
 
 /**
@@ -649,7 +649,7 @@ export function buildPlaceholderInspectorInput(args: {
     note:
       i === 0
         ? "本地承接：段集不变（基线拓扑）"
-        : "跨基地承接：段集**追加一段交接**（跨基地流转），这是拓扑变化，不是把某个数调大",
+        : "跨基地承接：段集追加一段交接（跨基地流转），这是拓扑变化，不是把某个数调大",
   }));
 
   const variables: InspectorVariable[] = [
@@ -684,7 +684,7 @@ export function buildPlaceholderInspectorInput(args: {
       carrier: "薄",
       evidence:
         "`InterBaseTransfer.transitDays` · packages/contracts/src/interbase-transfer.ts:32（契约字段在 + 真种子 + `etaDay` 派生管线消费），" +
-        "但 `apps/datacore/src/solvers/` **零直接消费方**（实测 grep 计数 0）⇒ 薄，非有",
+        "但 `apps/datacore/src/solvers/` 零直接消费方（实测 grep 计数 0）⇒ 薄，非有",
       baseline: jitter(seed, `${nodeId}/transit`, 1, 4),
       domain: { min: 0, max: 20, step: 0.5 },
       effect: { op: "setDays", stepId: sid("transfer") },
@@ -698,11 +698,11 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "天",
       carrier: "缺",
       evidence:
-        "公式**有**（`expectedCadenceWaitDays` · packages/contracts/src/chain-sim.ts:108）；" +
-        "承载**今天也有**（2026-08-08 实测复核，复验方式：读 `apps/datacore/src/synthetic/service.ts:712` 那条 " +
+        "公式有（`expectedCadenceWaitDays` · packages/contracts/src/chain-sim.ts:108）；" +
+        "承载今天也有（2026-08-08 实测复核，复验方式：读 `apps/datacore/src/synthetic/service.ts:712` 那条 " +
         "`putAll(\"Cadence\", cadenceObjectRows(deriveChainCadences(g)), \"nodeId\")`，再读 " +
         "`apps/datacore/src/app.ts:1447` 推演 tick 里的 `listByType(\"Cadence\")` → `buildCadenceGates`）。" +
-        "⇒ 本条标「缺」= **本面板缺这个值的来路**，不是「全仓没有 Cadence」：输入来自占位构造器 " +
+        "⇒ 本条标「缺」= 本面板缺这个值的来路，不是「全仓没有 Cadence」：输入来自占位构造器 " +
         "`buildPlaceholderInspectorInput`，它不发任何查询、也收不到任何 `Cadence` 行 —— 三分法里的「没接线」，" +
         "修法是接线不是种数据。当前值 EMPTY，滑杆仅供 what-if",
       baseline: null,
@@ -717,18 +717,18 @@ export function buildPlaceholderInspectorInput(args: {
       carrier: "缺",
       evidence:
         "`Cadence.offsetDays` 契约字段在（packages/contracts/src/chain-sim.ts:89）。" +
-        "旧文案那句「全仓零运行时消费方（只有契约与其单测引用）」**今天为假**（2026-08-08 实测复核，" +
+        "旧文案那句「全仓零运行时消费方（只有契约与其单测引用）」今天为假（2026-08-08 实测复核，" +
         "复验方式：`grep -rn offsetDays apps/datacore/src apps/frontend-shell/src`）：" +
         "引擎侧 `apps/datacore/src/sim/propagation.ts:73` 在 `cadenceGate()` 里用它算闸门相位，" +
         "前端侧 `apps/frontend-shell/src/views/sim/transitFlow.ts:800` `nextGateDayOnOrAfter` 用它算下一次开闸日。" +
-        "⇒ 本条仍标「缺」的真实理由与 K1 同：**本面板没去要 `Cadence` 行**（没接线），" +
+        "⇒ 本条仍标「缺」的真实理由与 K1 同：本面板没去要 `Cadence` 行（没接线），" +
         "不是这个字段没人消费",
       baseline: null,
       domain: { min: 0, max: 30, step: 1 },
       effect: { op: "setCadencePhase", stepId: sid("cadence") },
       inertReason:
-        "相位**不进等待期望公式**（S0 §2 推导：均匀到达假设下相位只移动每一次具体等待，不改期望）。" +
-        "拨它读数**必然不动**——这不是没接线，是公式本身与它无关。",
+        "相位不进等待期望公式（S0 §2 推导：均匀到达假设下相位只移动每一次具体等待，不改期望）。" +
+        "拨它读数必然不动——这不是没接线，是公式本身与它无关。",
     },
 
     // ── B 批量 ────────────────────────────────────────────────────────────────
@@ -739,8 +739,8 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "件",
       carrier: "缺",
       evidence:
-        "contracts 层**零承载**：`lotSize|batchSize|batchQty|lotQty` 全仓 0 命中；" +
-        "`GlobalSimRequest.allowSplit`（global-sim.ts:125）只是**布尔开关**，不是批量数",
+        "contracts 层零承载：`lotSize|batchSize|batchQty|lotQty` 全仓 0 命中；" +
+        "`GlobalSimRequest.allowSplit`（global-sim.ts:125）只是布尔开关，不是批量数",
       baseline: null,
       domain: { min: 1, max: 5000, step: 50 },
       effect: { op: "scaleDaysDirect", stepId: sid("queue") },
@@ -761,14 +761,14 @@ export function buildPlaceholderInspectorInput(args: {
        */
       evidence:
         "datacore 种子有真值（`battery-extended.ts` 供应商表逐家 minOrderQty）；" +
-        "求解器**有真消费方**：kit_readiness 用它算补货量 max(缺口, 起订量)" +
+        "求解器有真消费方：kit_readiness 用它算补货量 max(缺口, 起订量)" +
         "（复验 `grep -n 'ev.minOrderQty' apps/datacore/src/solvers/extended.ts`）；" +
-        "但契约只在求解器**出参** `ProcurementPlan` 里带它，`Supplier` 没有可写入参 ⇒ 前端拨不到源头",
+        "但契约只在求解器出参 `ProcurementPlan` 里带它，`Supplier` 没有可写入参 ⇒ 前端拨不到源头",
       baseline: null,
       domain: { min: 0, max: 5000, step: 100 },
       effect: { op: "inert" },
       inertReason:
-        "跨包只能依赖 `@platform/contracts`（R1 contracts-only-shared），而契约只把它作为求解器**出参**回传" +
+        "跨包只能依赖 `@platform/contracts`（R1 contracts-only-shared），而契约只把它作为求解器出参回传" +
         "（`ProcurementPlan.minOrderQty`），没有可写的 `Supplier` 入参 ⇒ 前端改不动它，更不该编一个。",
     },
 
@@ -822,7 +822,7 @@ export function buildPlaceholderInspectorInput(args: {
             domain: { min: 0, max: 1, step: 0.01 },
             effect: { op: "inert" as const },
             inertReason:
-              "良率本身有承载，但**落到「返工天数」的换算缺承载**：仓里有不良数量与判定，没有返工工时/天数字段，" +
+              "良率本身有承载，但落到「返工天数」的换算缺承载：仓里有不良数量与判定，没有返工工时/天数字段，" +
               "缺「单件返工工时率」⇒ 拿良率去编一个返工天数就是静默错答。返工桶因此标 EMPTY，本变量不驱动读数。",
           },
         ]
@@ -846,13 +846,13 @@ export function buildPlaceholderInspectorInput(args: {
        */
       evidence:
         "datacore 种子有真值（`battery-extended.ts` 供应商表逐家 onTimeRate）+ `livedin/bundle.ts` 有同名字段（另一口径·百分数），" +
-        "求解器**有真消费方**：kit_readiness 拿它算期望滑期天（复验 `grep -n 'ev.onTimeRate' apps/datacore/src/solvers/extended.ts`）；" +
-        "但契约只在求解器**出参** `ProcurementPlan` 里带它，`Supplier` 没有可写入参 ⇒ 薄",
+        "求解器有真消费方：kit_readiness 拿它算期望滑期天（复验 `grep -n 'ev.onTimeRate' apps/datacore/src/solvers/extended.ts`）；" +
+        "但契约只在求解器出参 `ProcurementPlan` 里带它，`Supplier` 没有可写入参 ⇒ 薄",
       baseline: null,
       domain: { min: 0, max: 1, step: 0.01 },
       effect: { op: "inert" },
       inertReason:
-        "它**有**求解器消费方（kit_readiness 用它算采购段的期望滑期天），但那条链算的是**采购段**，" +
+        "它有求解器消费方（kit_readiness 用它算采购段的期望滑期天），但那条链算的是采购段，" +
         "而本节点读数只由厂内各段（等待/交接/转运/节拍/返工）构成，没有采购段可落 ⇒ 拨它不改本读数。",
     },
 
@@ -898,7 +898,7 @@ export function buildPlaceholderInspectorInput(args: {
       unit: "",
       carrier: "薄",
       evidence:
-        "`ChainScope.modelIds` · chain-sim.ts:162 有字段，但**值域无 contracts 级单源册**（S0 注释 chain-sim.ts:152-154 明写）；" +
+        "`ChainScope.modelIds` · chain-sim.ts:162 有字段，但值域无 contracts 级单源册（S0 注释 chain-sim.ts:152-154 明写）；" +
         "`Routing` / `Operation` 对象只在 datacore（battery.ts:2133 / 2234），跨包不可 import（R1）",
       baseline: null,
       baselineOptionId: "route-standard",
@@ -909,13 +909,13 @@ export function buildPlaceholderInspectorInput(args: {
           optionId: "route-merged",
           label: "路线 B · 并工序",
           removeStepIds: [sid("handoff")],
-          note: "相邻两道工序并到同一工位 ⇒ **删掉交接段**。段集少一段，不是把交接时长调成 0",
+          note: "相邻两道工序并到同一工位 ⇒ 删掉交接段。段集少一段，不是把交接时长调成 0",
         },
         {
           optionId: "route-split",
           label: "路线 C · 分流并行",
           addSteps: [mkStep("merge", "handoff", jitter(seed, `${nodeId}/merge`, 0.3, 1.5), "并行支线汇合")],
-          note: "拆两条并行支线 ⇒ **多一段汇合交接**。段集多一段",
+          note: "拆两条并行支线 ⇒ 多一段汇合交接。段集多一段",
         },
       ],
     },
@@ -953,7 +953,7 @@ export function buildPlaceholderInspectorInput(args: {
             mkStep("qc-queue", "queue", jitter(seed, `${nodeId}/qc-queue`, 0.5, 3), "等检"),
             mkStep("qc-handoff", "handoff", jitter(seed, `${nodeId}/qc-handoff`, 0.2, 1), "送检交接"),
           ],
-          note: "开一道离线复检 ⇒ **多两段（等检 + 送检交接）**。复检不增值，故不产生 work 段",
+          note: "开一道离线复检 ⇒ 多两段（等检 + 送检交接）。复检不增值，故不产生 work 段",
         },
       ],
     },
@@ -965,7 +965,7 @@ export function buildPlaceholderInspectorInput(args: {
     variables,
     dataMode: "PLACEHOLDER",
     placeholderNote:
-      "本面板的段耗时为 seed 派生**占位值**（同 seed 字节一致·可复现），不是实测。" +
+      "本面板的段耗时为 seed 派生占位值（同 seed 字节一致·可复现），不是实测。" +
       "W3 按 S0 冻结契约先做、用 mock 数据；W4 收口换引擎真值。承载状态（有/薄/缺）逐条给了 file:line 取证，那部分是实测的。",
   };
 }
@@ -1137,7 +1137,7 @@ export function buildNodeKpis(args: {
       source:
         "Σ chain_loss_attribution.attribution[].pctOfChainLoss（本节点各段）—— " +
         "分母（全链非增值总量）由引擎定，前端既不重算也不改口径；" +
-        "⚠ 分母是**全链共享**的：任一其它环节的非增值天数一变，本读数跟着变（契约 chainNonValueDays）",
+        "⚠ 分母是全链共享的：任一其它环节的非增值天数一变，本读数跟着变（契约 chainNonValueDays）",
     });
   }
 

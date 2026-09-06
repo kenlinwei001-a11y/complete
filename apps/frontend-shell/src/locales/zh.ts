@@ -696,6 +696,27 @@ export const zh = {
   ledger: {
     expand: "展开",
     filter: "筛选",
+    /**
+     * WO-ORDER-WORKORDER-UI · 台账行展开里的「兑现本单的工单」区块。
+     *
+     * ⚠ 这里**只放区块标题与状态字**，一个属性中文名都不许放 ——
+     * 属性名（工单编号 / 型号 / 基地 / 工单状态）的单一真值在后端
+     * `PropertyDef.displayName`（`synthetic/battery.ts` 的 `PROP_DISPLAY_NAMES`），
+     * 前端读 `GET /a/v1/ontology/object-types` 拿，抄一份到这里就立刻和本体分叉。
+     *
+     * 「兑现」这个词取自本体里该边自己的定义（`fulfills` = 工单→销售订单的**兑现关系**），
+     * 不是新起的说法。
+     */
+    woSection: "兑现本单的工单",
+    woCount: (n: number) => `${n} 张`,
+    /**
+     * 诚实缺席：全簿 500 单里只有 186 单被工单兑现，**大多数订单本来就没有** ——
+     * 这一格必须显示出来，不许留空白或整块省掉：空白读起来像"系统没查"，
+     * 而事实是"查了，真没有"。两者在屏上必须分得出。
+     */
+    woNone: "无关联工单",
+    woLoading: "查询中",
+    woError: "工单关系读取失败",
   },
   sim: {
     run: "开始推演",

@@ -2169,7 +2169,7 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
         ruleKey: "C05",
         note:
           "规则 C05 含 SUSTAIN（持续判定），而 SolverContext 无时序访问 —— " +
-          "本次只比对快照与规则红线 95%，**未校验持续天数**；结论 dataMode 标 PARTIAL",
+          "本次只比对快照与规则红线 95%，未校验持续天数；结论 dataMode 标 PARTIAL",
       },
     ],
     thresholds: [

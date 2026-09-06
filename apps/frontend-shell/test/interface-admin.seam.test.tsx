@@ -316,3 +316,56 @@ describe("WO-INTERFACE-ADMIN-UI ③ 事实锁：mock 的口径钉在后端源码
     expect(hits).toContain("apps/frontend-shell/src/api/endpoints.ts");
   });
 });
+
+/**
+ * ── WO-SCREEN-CALIBER ③ · 屏上不许出现 Markdown 字面量（**两族**，不是一族）───────────
+ *
+ * 今天的行为是 X（本条落地前）：本页 `oif-conformance-panel` 那句说明把记号连**反引号**一起
+ * 印在屏上 —— 真浏览器实测屏上原文含反引号包住的 assertInterfaceConformance。
+ * 应该是 Y：记号一个字不丢，反引号本身不上屏（渲染成 <code> 的视觉强调）。
+ *
+ * ⚠ **这道断言存在的真正理由，是上一轮的检查器漏了半族**：
+ * 那一轮把「全站 Markdown 字面量」测成 0，而它的正则只有「成对星号」那一条 ——
+ * **「`**` 计数为 0」不度量「屏上没有 Markdown 字面量」**（铁律 0.6 的形态：
+ * 我用 X 当作 Y 的证据，而 X 并不度量 Y）。
+ * 所以这里扫的是**两族**：`**…**` 与反引号 code span，且金丝雀与主逻辑**共用同一份实现**
+ * （抄两份正则的金丝雀是装饰品：改主正则时它拿旧的去测、照样绿）。
+ */
+const MD_PATTERNS: ReadonlyArray<{ kind: string; re: RegExp }> = [
+  { kind: "bold", re: /\*\*[^*\n]{1,120}\*\*/g },
+  { kind: "code", re: /`[^`\n]{1,120}`/g },
+];
+function mdLiterals(s: string): string[] {
+  return MD_PATTERNS.flatMap((p) => {
+    p.re.lastIndex = 0;
+    return s.match(p.re) ?? [];
+  });
+}
+
+describe("WO-SCREEN-CALIBER ③ 屏上不许出现 Markdown 字面量（粗体星号 + 反引号两族）", () => {
+  beforeEach(() => loginAs("planner"));
+  afterEach(() => cleanup());
+
+  it("管理台整屏文本：两族字面量各 0 处（金丝雀先自证扫法没坏）", async () => {
+    // 金丝雀走的是**主逻辑那一份** mdLiterals，不是另抄的正则。
+    const canary = mdLiterals("带 **粗体** 与 `反引号` 的串");
+    expect(canary, "金丝雀不中 ⇒ 扫法坏了，不许报「屏上很干净」").toEqual(["**粗体**", "`反引号`"]);
+
+    await openPage();
+    const t = screen.getByTestId("interfaces-page").textContent ?? "";
+    expect(t.length, "整屏取不到文本 ⇒ 遍历坏了，同样不许报 0").toBeGreaterThan(200);
+    expect(mdLiterals(t), "屏上出现了 Markdown 字面量").toEqual([]);
+  });
+
+  it("被强调的那个记号**没丢词**：反引号没了，词还在（且渲染成 <code> 不是纯文本）", async () => {
+    await openPage();
+    const panel = screen.getByTestId("oif-conformance-panel");
+    const t = panel.textContent ?? "";
+    expect(t, "为消灭反引号把词删了 ⇒ 丢信息，比留着字面量更糟").toContain("assertInterfaceConformance");
+    expect(mdLiterals(t), "反引号仍原样上屏").toEqual([]);
+    expect(
+      [...panel.querySelectorAll("code")].map((e) => e.textContent),
+      "词在、但没渲染成视觉强调 ⇒ 作者的强调被吃掉了",
+    ).toContain("assertInterfaceConformance");
+  });
+});

@@ -1036,7 +1036,7 @@ export function NodeInspectorView({
           节点语义（定位 / 跨节点冲突）覆盖 {coverage.withSemantics}/{coverage.registered} 个在册节点；
           {coverage.missing.length === 0
             ? "已全覆盖"
-            : `尚未写语义的 ${coverage.missing.length} 个（${coverage.missing.join(" / ")}）在屏上**整块不出现**，不留空壳`}
+            : `尚未写语义的 ${coverage.missing.length} 个（${coverage.missing.join(" / ")}）在屏上整块不出现，不留空壳`}
         </small>
         <small className={styles.hostNote} data-testid="node-inspector-live-cost">
           {lossPayload === undefined

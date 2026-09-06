@@ -265,7 +265,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
       probed:
         "查 `mrp_netting` 求解器（`catalog.ts:83`）：按需 invoke，无任何调度登记（`scheduler.register` 的 jobType 只有 " +
         "SCHEDULED_FORECAST / SOP_AUTO_OPEN / APPROVAL_REMINDER / CONNECTOR_SYNC，无 MRP）。" +
-        "再查 MaterialBalance 种子：只有 netDemandTon/ltaPct/gapTon/etaDate，etaDate 是**到货日**不是**跑批日**，且 8 条互不等距。",
+        "再查 MaterialBalance 种子：只有 netDemandTon/ltaPct/gapTon/etaDate，etaDate 是**到货日不是跑批日**，且 8 条互不等距。",
     },
     extract: null,
     flowGate: true,

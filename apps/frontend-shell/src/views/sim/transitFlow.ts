@@ -121,7 +121,7 @@ export const TRANSIT_SOURCE_SPECS: readonly TransitSourceSpec[] = [
     label: "到货在途",
     mode: "arrival-only",
     modeReason:
-      "对象只有 etaDay（到货天）与 baseId（目的基地），**没有发运日、没有起运地** ⇒ 区间位置算不出来。" +
+      "对象只有 etaDay（到货天）与 baseId（目的基地），没有发运日、没有起运地 ⇒ 区间位置算不出来。" +
       "只画到站倒计时，不画一辆匀速前进的车（那条进度条会是纯发明的）。",
     requiredFields: ["shipId", "baseId", "etaDay"],
   },
@@ -131,7 +131,7 @@ export const TRANSIT_SOURCE_SPECS: readonly TransitSourceSpec[] = [
     label: "在制批次",
     mode: "station-resident",
     modeReason:
-      "对象有 currentProcess（在哪台工序）但**没有任何 eta 字段**；lastMoveTime 是绝对时间戳、" +
+      "对象有 currentProcess（在哪台工序）但没有任何 eta 字段；lastMoveTime 是绝对时间戳、" +
       "前端拿不到 forecastStart 锚点无法折成仿真日 ⇒ 只能站驻留 + 排队 / 放行，不画工序间行进过程。",
     requiredFields: ["lotId", "currentProcess", "qty"],
   },
@@ -383,7 +383,7 @@ export interface ProcurementAbsenceInput {
  * @stale-fact apps/datacore/src/synthetic/battery-extended.ts /def\("IncomingInspection"/ ==1
  */
 const PROCUREMENT_UPSTREAM_EVIDENCE = [
-  "PurchaseOrder 现有四段日戳：orderDay / shipDay / arriveDay（+ supplierId / sourceMode）—— **发运日与到货日都在**，不再是「只有 etaDay」。" +
+  "PurchaseOrder 现有四段日戳：orderDay / shipDay / arriveDay（+ supplierId / sourceMode）—— 发运日与到货日都在，不再是「只有 etaDay」。" +
     "复验：`grep -n 'def(\"PurchaseOrder\"' apps/datacore/src/synthetic/battery-extended.ts`（类型声明）。",
   "CustomsClearance（清关，declaredDay→clearedDay）与 IncomingInspection（到货检验，arrivedDay→releasedDay）都已是在册对象类型，" +
     "经 synthetic/service.ts 的 putAll 落库、并在 synthetic/data-categories.ts 登记类目（清关归采购、到货检验归质量，责任方不同故分属两类目）。" +

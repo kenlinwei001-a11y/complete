@@ -1384,7 +1384,7 @@ const orderProps: PropertyDef[] = [
     unit: "dimensionless",
     scale: "absolute",
     refToTypeKey: "Customer",
-    description: "下单客户的**外键**（值 = `Customer.custId` 主键，不是显示名）。沿 ref 走图的通用求解器按主键值建索引，故客户集中度一类问题只认这一格；显示名在同类型的 `cust` 上。",
+    description: "下单客户的外键（值 = `Customer.custId` 主键，不是显示名）。沿 ref 走图的通用求解器按主键值建索引，故客户集中度一类问题只认这一格；显示名在同类型的 `cust` 上。",
   },
   { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
   { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
@@ -1433,7 +1433,7 @@ const lineProps: PropertyDef[] = [
     unit: "%",
     scale: "ratio",
     description:
-      "产线利用率。**0–100 百分点存储**（非 0–1 比率），显示不再 ×100 —— 与 LEVER_PROP_META['Line.utilization'].kind='percent' 同口径。" +
+      "产线利用率。0–100 百分点存储（非 0–1 比率），显示不再 ×100 —— 与 LEVER_PROP_META['Line.utilization'].kind='percent' 同口径。" +
       "值由时序 `util:line` 经 `line_util_daily` 物化写入，不在播种期赋值。规则 C05 `SUSTAIN(Line.utilization > 95, 3)` 的红线 95 即按本口径。",
   },
   { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false, unit: "套/日", scale: "absolute" },
@@ -1486,8 +1486,8 @@ const processProps: PropertyDef[] = [
     unit: "dimensionless",
     scale: "ratio",
     description:
-      "工序利用率。**0–1 比率存储**（`unit=dimensionless` + `scale=ratio`），显示时 ×100 —— 与 LEVER_PROP_META['Process.utilization'].kind='ratio' 同口径。" +
-      "注意与 `Line.utilization`（`unit=%`·0–100 百分点存储）同名不同量纲：本条在产能链里作**乘数**参与 `computeRollup`，故必须是比率。",
+      "工序利用率。0–1 比率存储（`unit=dimensionless` + `scale=ratio`），显示时 ×100 —— 与 LEVER_PROP_META['Process.utilization'].kind='ratio' 同口径。" +
+      "注意与 `Line.utilization`（`unit=%`·0–100 百分点存储）同名不同量纲：本条在产能链里作乘数参与 `computeRollup`，故必须是比率。",
   },
   { propKey: "channels", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute" },
   { propKey: "channelOutputDaily", dataType: "number", isPrimaryKey: false, unit: "电芯/天", scale: "absolute" },
@@ -1634,7 +1634,7 @@ const materialBalanceProps: PropertyDef[] = [
     //   0–1 表示法 = `dimensionless` + `ratio`；`unit:"%"` 在本册专指 0–100 表示法。
     unit: "dimensionless",
     scale: "ratio",
-    description: "齐套覆盖率（净需求中已被覆盖的比例）。**0–1 比率存储**，显示时 ×100 —— 与 LEVER_PROP_META['MaterialBalance.coverage'].kind='ratio' 同口径。派生属性：值由 (netDemandTon − gapTon) / netDemandTon 算出，不是独立录入的真值。",
+    description: "齐套覆盖率（净需求中已被覆盖的比例）。0–1 比率存储，显示时 ×100 —— 与 LEVER_PROP_META['MaterialBalance.coverage'].kind='ratio' 同口径。派生属性：值由 (netDemandTon − gapTon) / netDemandTon 算出，不是独立录入的真值。",
   },
 ];
 /**
@@ -1894,7 +1894,7 @@ const workOrderProps: PropertyDef[] = [
     unit: "dimensionless",
     scale: "absolute",
     refToTypeKey: "Order",
-    description: "本工单在兑现哪张订单（值 = `Order.so` 主键）。**条件缺席**：只有 (modelId, baseId) 与订单簿真对得上的工单才写这一格，对不上的不写 —— 缺席读作「兑现关系未知」，不读作「不兑现任何订单」。",
+    description: "本工单在兑现哪张订单（值 = `Order.so` 主键）。条件缺席：只有 (modelId, baseId) 与订单簿真对得上的工单才写这一格，对不上的不写 —— 缺席读作「兑现关系未知」，不读作「不兑现任何订单」。",
   },
 ];
 
@@ -2491,6 +2491,13 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "ProductEquipmentCapability.certificationRequired": "是否需持证", "ProductEquipmentCapability.status": "状态",
 
   // ---- 商务 / 订单 / 交付 ----
+  // WO-ORDER-WORKORDER-UI · 补齐 `Order` 上仅剩的两处未登记项（台账行展开逐格显示，缺一格就是一个裸英文键）。
+  // 两条都**逐字引自本仓既有出处**，不是新起的名：
+  //   · `customerId` ← 该属性自己的 `description`（本文件 `orderProps`）原文「下单客户的**外键**」；
+  //     不写「客户」是因为同类型上 `cust` 已占「客户」（显示名），两格并排时必须能分辨谁是外键。
+  //   · `value`（派生·`qty * unitPrice`）← `solvers/finance-world.ts` 既有注释「订单金额 = 数量 × 单价」，
+  //     与本派生的公式逐字同一件事。
+  "Order.customerId": "下单客户外键", "Order.value": "订单金额",
   "Order.so": "订单号", "Order.cust": "客户", "Order.model": "型号", "Order.qty": "订单数量",
   "Order.due": "交期", "Order.pri": "优先级", "Order.bases": "承接基地", "Order.status": "订单状态",
   "Order.demandDelta": "需求增量比例", // 有效需求 = 基线 × (1 + demandDelta)（capacity.ts PRD-CAP-DEMANDDELTA）
@@ -3008,6 +3015,25 @@ export function withPropDisplayNames(typeKey: string, props: PropertyDef[]): Pro
 }
 
 /**
+ * WO-ORDER-WORKORDER-UI · 同一条纪律施加到**派生属性**上（`Order.value` 一类）。
+ *
+ * ⚠ 为什么单独一个函数而不是塞进 `withGovernance`：`withGovernance` 收的是 `PropertyDef[]`，
+ * 而派生属性挂在类型定义的**另一个字段**上，两者在构造点不经过同一处。本函数吃整份类型定义、
+ * 只改 `derivedProperties`，故可在 `batteryObjectTypes()` 的**唯一出口**上统一施加 ——
+ * 不逐个类型手抄（手抄白名单漏项是本仓 `WO-D6` 已经吃过的亏）。
+ */
+function withDerivedDisplayNames<T extends { key: string; derivedProperties?: DerivedPropertyDef[] }>(t: T): T {
+  if (!t.derivedProperties?.length) return t;
+  return {
+    ...t,
+    derivedProperties: t.derivedProperties.map((d) => {
+      const zh = d.displayName ?? propDisplayName(t.key, d.propKey);
+      return zh ? { ...d, displayName: zh } : d;
+    }),
+  };
+}
+
+/**
  * 治理增量 §3：名称类字段 searchable=true（A3 建议同语义）。
  *
  * ── WO-UNIT-KWH：这里原本还挂着一张**运行时单位回填表** ──────────────────────────
@@ -3091,7 +3117,7 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("ScenarioTrigger", "情景触发条件", scenarioTriggerProps),
     plain("PlanTarget", "计划目标", planTargetProps),
     // cockpit P1 绿地：经营驾驶舱富 KPI（数字经派生/聚合算出，R14 零写死）。
-    plainD("Cadence", "节拍", "全链各环节的**节拍**——「这个环节多久处理一次」。等待期望 = everyDays / 2（均匀到达假设），是推演沙盘里最值钱的一维：实测全链损失里等节拍占比最高的一类。值全部由种子自身的发生序列推导，推不出的诚实标 EMPTY 并给机器可读原因，绝不补 0（0 的语义是「随到随办」，等于把节拍当不存在）。⚠ 与设备节拍 CT（秒/只，单件加工时间）是两个口径，勿混用。", cadenceProps),
+    plainD("Cadence", "节拍", "全链各环节的节拍——「这个环节多久处理一次」。等待期望 = everyDays / 2（均匀到达假设），是推演沙盘里最值钱的一维：实测全链损失里等节拍占比最高的一类。值全部由种子自身的发生序列推导，推不出的诚实标 EMPTY 并给机器可读原因，绝不补 0（0 的语义是「随到随办」，等于把节拍当不存在）。⚠ 与设备节拍 CT（秒/只，单件加工时间）是两个口径，勿混用。", cadenceProps),
     { key: "DemandSegment", displayName: "需求细分", domain: "forecast", properties: withGovernance("DemandSegment", demandSegmentProps), derivedProperties: demandSegmentDerived, sourceBindings: BINDINGS.DemandSegment ?? [] },
     plain("FinancePlan", "财务预算", financePlanProps),
     // WO-V4-INSPECT：coverage 走 derivedProperties（值由公式算，非独立真值）——故不能用 plain()（它把 derivedProperties 写死成 []）。
@@ -3137,7 +3163,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     // Phase 3 MES Domain: Labor Tracking
     plain("OperatorAttendance", "操作工考勤", operatorAttendanceProps),
     plain("OperatorSkillCert", "操作工技能认证", operatorSkillCertProps),
-  ];
+    // WO-ORDER-WORKORDER-UI：派生属性的中文名在**这一个出口**统一贴（同 `withGovernance` 之于 properties）。
+  ].map(withDerivedDisplayNames);
 }
 
 export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "version">[] {
