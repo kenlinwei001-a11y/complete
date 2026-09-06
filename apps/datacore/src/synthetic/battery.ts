@@ -1475,9 +1475,9 @@ const lineProps: PropertyDef[] = [
  * `Line.utilization`(0–100) vs `Process.utilization`(0–1) 那个老坑。名字里带 `Cells` 是有意的。
  */
 const capacityPoolProps: PropertyDef[] = [
-  { propKey: "poolId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "poolId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "产能池业务主键。一线一池，由产线号确定性拼出（`capacityPoolIdOfLine`，全仓唯一拼法）。" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line", description: "本池属于哪条产线（`has_capacity` 边的来源端）。" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base", description: "本池所在基地（随产线，供按基地圈定产能面）。" },
   {
     propKey: "capacityCellsDaily",
     dataType: "number",
@@ -1504,7 +1504,7 @@ const capacityPoolProps: PropertyDef[] = [
     scale: "absolute",
     description: "余量 = capacityCellsDaily − consumedCellsDaily（可为负 = 超载）。派生，不落种子值。",
   },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 运行中 | 调试（随产线）
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "池状态（随产线：运行中 | 调试）。**不参与超载判定** —— 调试线也申报产能，把它排除掉等于悄悄改变产能面。" },
 ];
 
 const processProps: PropertyDef[] = [
@@ -1942,7 +1942,15 @@ const workOrderProps: PropertyDef[] = [
    * 除数此前只能由两个 `date` 现算，于是「吃掉多少产能」这个量在本体里**没有量纲出处**，
    * `consumes_capacity` 边上的 `spanDays` 也就无处声明单位。本格就是那个声明处（`天` 取自单位册）。
    */
-  { propKey: "spanDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" },
+  {
+    propKey: "spanDays",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "天",
+    scale: "absolute",
+    description:
+      "计划工期（天）= `endDate − startDate`。它是把工单量（件，**存量**）换算成产能占用（件/日，**速率**）的除数，`consumes_capacity` 边上的 `spanDays` 也以本格为量纲出处。恒 ≥7，故换算不需要兜底除数。",
+  },
   { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 已排产 | 生产中 | 已完成 | 已关闭
   // WO-FULFILLS-EDGE · 本工单兑现的**销售订单外键**（值 = `Order` 主键 `so`）。
   // 为什么非加不可：此前 `WorkOrder` 的 `refToTypeKey` 只指向 Model/Line/Base，**没有一个指向 Order**，
@@ -3144,7 +3152,12 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("OrderLine", "订单明细行", orderLineProps),
     plain("Line", "产线", lineProps),
     // WO-CAPACITY-EDGE：产能池（产线的产能升格为一等对象，紧随 Line —— 它就是 Line 那一列的承载）
-    plain("CapacityPool", "产能池", capacityPoolProps),
+    plainD(
+      "CapacityPool",
+      "产能池",
+      "一条产线的日产能资源（电芯/日）。产线经 `has_capacity` 指向它，生产工单经 `consumes_capacity` 吃它、**吃掉多少写在那条边上**；余量 = 本池申报产能 − Σ 入边消耗。它把「产能」从产线上的一个标量升格成可被指向、可被消耗的资源，于是「这条线还剩多少、被谁吃掉的」能沿图走出来，而不只是按字段读数。",
+      capacityPoolProps,
+    ),
     plain("Workshop", "车间", workshopProps),
     plain("Process", "工序", processProps),
     plain("Equipment", "设备", equipmentProps),
@@ -3971,6 +3984,13 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             { linkKey: "sched_for_wo", direction: "in", limitPerNode: 2 },
           ],
           [{ linkKey: "line_has_process", direction: "out", limitPerNode: 2, project: ["processId", "lineId", "name", "kind", "yield", "utilization", "requiredThroughput"] }],
+          // WO-CAPACITY-EDGE · 产能占用面：这条线的产能池 → 谁在吃它、各吃多少。
+          // 第二跳方向是 `in`（边是 WorkOrder→CapacityPool，从池要反着走回工单），
+          // 与同一份 spec 里 `model_certified_on` 的 `in` 同理。
+          [
+            { linkKey: "has_capacity", direction: "out", project: ["poolId", "lineId", "baseId", "capacityCellsDaily", "consumedCellsDaily", "remainingCellsDaily", "status"] },
+            { linkKey: "consumes_capacity", direction: "in", limitPerNode: 2, project: ["woId", "qtyPlanned", "spanDays", "status"] },
+          ],
           // 边界 → D04 产品与工程（锚点类型 Model：这条线认证过哪些型号）
           [{ linkKey: "model_certified_on", direction: "in", limitPerNode: 3, project: ["modelId", "name", "unitPrice"] }],
           // 边界 → D03 销售与客户（锚点类型 Order：认证型号在手的订单）
@@ -3987,8 +4007,8 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             expect: {
               rootType: "Line",
               minNodes: 40,
-              mustIncludeTypes: ["Line", "Base", "InterBaseTransfer", "WorkOrder", "Process", "Model", "Order"],
-              mustIncludeLinkKeys: ["line_belongs_to_base", "base_dispatches_transfer", "line_runs_work_order", "line_has_process", "model_certified_on", "model_demanded_by_order"],
+              mustIncludeTypes: ["Line", "Base", "InterBaseTransfer", "WorkOrder", "Process", "Model", "Order", "CapacityPool"],
+              mustIncludeLinkKeys: ["line_belongs_to_base", "base_dispatches_transfer", "line_runs_work_order", "line_has_process", "model_certified_on", "model_demanded_by_order", "has_capacity", "consumes_capacity"],
             },
           },
         ],
