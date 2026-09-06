@@ -297,8 +297,15 @@ describe("WO-DECISION-CAUSAL-GRAPH · A 沙盘源（Cause/Impact 真值抽取）
       expect(gap!.needs.length).toBeGreaterThan(20);
     }
     // DECISION 段的缺口必须**指名道姓**说清今天为什么接不上（而不是"暂无数据"）。
+    //
+    // ⚠ 收编 WO-RUI4-COORDS 时跟着改的断言（铁律 0.6 第 4 条：**改名要连断言一起改**）。
+    //   `missing` 是**上屏正文**（推演沙盘诊断区），R-UI-4 不许把源码符号/坐标打在用户屏上，
+    //   故 `loadContext(tenantId) 的活体对象图（solvers/service.ts:3126）` 已改写成业务说法
+    //   「租户活体对象图」。这里断言的就是那个业务说法 —— **不是放宽判据**：
+    //   本条要的是「说清吃的是哪一份数据」，业务说法照样说得清，且它才是用户看得懂的那句。
+    //   旧名以**期望串**形态存在，`pnpm -r typecheck` 一个字都看不见 —— 这正是那条铁律的原形态。
     const dec = g.segmentGaps.find((x) => x.segment === "DECISION")!;
-    expect(dec.missing).toContain("loadContext");
+    expect(dec.missing).toContain("租户活体对象图");
     expect(dec.missing).toContain("detectChainImpediments");
     // ACTION 段：ActionDraft 上没有 sessionId 这条实测事实必须写在返回体里。
     expect(g.segmentGaps.find((x) => x.segment === "ACTION")!.missing).toContain("sessionId");
