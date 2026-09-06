@@ -790,7 +790,7 @@ export const REAL_DATA_ENTRYPOINTS: RealDataEntrypoint[] = [
     field: "takt",
     status: "connected",
     source: "Equipment.ctSeconds",
-    shapeToday: "逐设备节拍 s/电芯（battery.ts 由 gwhᵢ 反解；实测 780 台，每格 6 台）",
+    shapeToday: "逐设备节拍 s/电芯（合成种子由基地年产能 gwhᵢ 反解；实测 780 台，每格 6 台）",
     gap: "已接：max(ctSeconds) 取最慢工位（线速由瓶颈工位定，节拍不许平均）",
   },
   {
