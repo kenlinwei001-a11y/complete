@@ -41,6 +41,21 @@ interface AggregateFormula {
   byField: string;
 }
 
+/**
+ * WO-LINKTYPE-IMPL / WO-MATERIALIZE-3EXT · 「声明兑现成了几条实例边」的回执。
+ *
+ * `carrierObjects` 在桥形态下 = 扫过的**桥记录数**（属性形态下 = 载体对象数）——
+ * 两种形态下它答的都是同一个问题「我一共看了几行」。
+ * `ambiguousAnchors` 只在真有撞车时出现（按非主键列匹配才可能），缺省不出现 ⇒ 老调用方不受影响。
+ */
+export interface MaterializeResult {
+  created: number;
+  unresolved: number;
+  carrierObjects: number;
+  /** 锚点列上出现同值的键数（我替你挑了排序首个）。0 时不下发 —— 「没有歧义」不该长得像「有歧义但为 0」。 */
+  ambiguousAnchors?: number;
+}
+
 /** 交叉验证用：宽松等值比较（数字容差 1e-9；其余转字符串比较，避免类型/格式假阳）。 */
 export function looseEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -267,7 +282,7 @@ export class OntologyService {
   async upsertLinkType(
     ctx: AuthCtx,
     input: Omit<LinkTypeDef, "id" | "tenantId" | "version">,
-  ): Promise<LinkTypeDef & { materialized: { created: number; unresolved: number; carrierObjects: number } }> {
+  ): Promise<LinkTypeDef & { materialized: MaterializeResult }> {
     const existing = (
       await this.repos.ontologyLinks.list(ctx.tenantId, (l) => l.key === input.key)
     )[0];
@@ -288,6 +303,67 @@ export class OntologyService {
           `结构边 ${input.key} 的实现属性 '${input.viaProperty}' 不是 ${carrierKey} 的属性` +
             `（可选：${carrierType.properties.map((p) => p.propKey).join("/") || "该类型没有任何属性"}）`,
         );
+      }
+      // WO-MATERIALIZE-3EXT 桶② · `anchorProperty` 必须真是**被指向那一侧**的属性。
+      // 与上面同一条纪律：打错一个字就静默造一条永远 0 实例的死边，这里当场 400 并列出可选项。
+      if (input.anchorProperty !== undefined) {
+        const anchorKey = (input.viaSide ?? "from") === "from" ? input.toTypeKey : input.fromTypeKey;
+        const anchorType = await this.getType(ctx, anchorKey);
+        if (!anchorType) {
+          throw validationError(
+            `结构边 ${input.key} 声明了「对到 ${anchorKey}.${input.anchorProperty}」，但该类型不存在`,
+          );
+        }
+        if (!anchorType.properties.some((p) => p.propKey === input.anchorProperty)) {
+          throw validationError(
+            `结构边 ${input.key} 的锚点属性 '${input.anchorProperty}' 不是 ${anchorKey} 的属性` +
+              `（可选：${anchorType.properties.map((p) => p.propKey).join("/") || "该类型没有任何属性"}）`,
+          );
+        }
+      }
+    } else if (input.anchorProperty !== undefined || input.viaMultiValue !== undefined) {
+      // 这两个都是 `viaProperty` 的修饰词。单独出现 = 用户以为声明了实现方式，其实什么都没声明
+      //（会静默得到一条 0 实例的边）。不许静默收下。
+      throw validationError(
+        `结构边 ${input.key} 声明了 ${input.anchorProperty !== undefined ? "anchorProperty" : "viaMultiValue"}，` +
+          `但没有声明 viaProperty —— 这两个字段是「由哪个属性实现」的修饰词，单独出现不会连出任何边`,
+      );
+    }
+    // WO-MATERIALIZE-3EXT 桶① · 桥实体投影：桥类型 + 两列 + （可选）两端的锚点列，逐项校验。
+    if (input.viaBridge) {
+      const b = input.viaBridge;
+      if (input.viaProperty !== undefined) {
+        // 两套机制同时声明 ⇒ 物化时该听谁的？不许猜，当场拒绝。
+        throw validationError(
+          `结构边 ${input.key} 同时声明了 viaProperty 与 viaBridge —— 这是两种互斥的实现方式，只能选一种`,
+        );
+      }
+      const bridgeType = await this.getType(ctx, b.typeKey);
+      if (!bridgeType) {
+        throw validationError(`结构边 ${input.key} 声明了「经桥 ${b.typeKey} 实现」，但桥类型 ${b.typeKey} 不存在`);
+      }
+      const bridgeProps = bridgeType.properties.map((p) => p.propKey);
+      for (const [label, prop] of [["fromProperty", b.fromProperty], ["toProperty", b.toProperty]] as const) {
+        if (!bridgeProps.includes(prop)) {
+          throw validationError(
+            `结构边 ${input.key} 的桥列 ${label}='${prop}' 不是 ${b.typeKey} 的属性` +
+              `（可选：${bridgeProps.join("/") || "该类型没有任何属性"}）`,
+          );
+        }
+      }
+      // 两端类型必须存在（端点 FK 校验那条纪律对桥形态同样成立），锚点列若显式给了也要真存在。
+      for (const [end, typeKey, anchorProp] of [
+        ["来源", input.fromTypeKey, b.fromAnchorProperty],
+        ["去向", input.toTypeKey, b.toAnchorProperty],
+      ] as const) {
+        const t = await this.getType(ctx, typeKey);
+        if (!t) throw validationError(`结构边 ${input.key} 经桥 ${b.typeKey} 实现，但${end}类型 ${typeKey} 不存在`);
+        if (anchorProp !== undefined && !t.properties.some((p) => p.propKey === anchorProp)) {
+          throw validationError(
+            `结构边 ${input.key} 的${end}锚点属性 '${anchorProp}' 不是 ${typeKey} 的属性` +
+              `（可选：${t.properties.map((p) => p.propKey).join("/") || "该类型没有任何属性"}）`,
+          );
+        }
       }
     }
     const def: LinkTypeDef = {
@@ -322,33 +398,82 @@ export class OntologyService {
    * 两侧对称（`viaSide`）：把带外键的那一侧叫 **carrier**、被指向的那一侧叫 **anchor**，
    * 两种方向共用同一段扫描逻辑，只在最后拼 `fromId`/`toId` 时分叉 —— 一对多边（外键在去向侧，
    * 实测占 19.8%）因此同样能物化，不必为它另写一套。
+   *
+   * ── WO-MATERIALIZE-3EXT：三类**显式声明**的扩展（缺省全不填 ⇒ 老行为逐字节不变）─────
+   * · 桶② `anchorProperty`  —— 外键对到 anchor 的**非主键列**（实测 5 条边卡在这里）
+   * · 桶⑤ `viaMultiValue`   —— carrier 的那一列是**数组**，逐元素各出一条边（实测 1 条）
+   * · 桶① `viaBridge`       —— 关系本身是个**桥对象**，桥的 props 随边带过去（实测 1 条可单跳表达）
+   *
+   * ⛔ **三类都要求显式填写，一律不做推断**。实测反证：`transfer_from_base` 与 `transfer_to_base`
+   * 的候选属性集完全相同（`[fromBase, toBase]` 各 17 条命中），任何「取第一个」的推断器都会
+   * **把其中一条的拓扑静默接反且不报错**；全仓有此歧义的边共 7 条。
    */
   async materializeDeclaredLinks(
     ctx: AuthCtx,
     def: LinkTypeDef,
-  ): Promise<{ created: number; unresolved: number; carrierObjects: number }> {
-    if (!def.viaProperty) return { created: 0, unresolved: 0, carrierObjects: 0 };
-    const via = def.viaProperty;
-    const side = def.viaSide ?? "from";
-    // 先清掉本机制上一轮造的同 key 边（viaProperty/viaSide 改了、或目标数据变了，要能重算）。
+  ): Promise<MaterializeResult> {
+    if (!def.viaProperty && !def.viaBridge) return { created: 0, unresolved: 0, carrierObjects: 0 };
+    // 先清掉本机制上一轮造的同 key 边（声明改了、或目标数据变了，要能重算）。
+    // 桥形态与属性形态共用同一个 origin 变体 ⇒ 从一种改成另一种时旧边同样会被收拾干净。
     await this.repos.links.removeWhere(
       ctx.tenantId,
       (l) => l.type === def.key && l.origin.type === "LINK_DERIVED",
     );
-    const carrierTypeKey = side === "from" ? def.fromTypeKey : def.toTypeKey; // 外键长在这一侧
-    const anchorTypeKey = side === "from" ? def.toTypeKey : def.fromTypeKey; // 外键指向这一侧
+    return def.viaBridge
+      ? await this.materializeViaBridge(ctx, def, def.viaBridge)
+      : await this.materializeViaProperty(ctx, def);
+  }
+
+  /**
+   * 按 anchor 的某一列建「业务值 → 对象 id」索引。
+   *
+   * `anchorProperty` 缺省 = 业务主键（`objectKey ?? props[pk]`，与 `executeSlice` 的 `objectKeyOf` 同口径）；
+   * 显式给了就按那一列（WO-MATERIALIZE-3EXT 桶②）。
+   *
+   * ⚠ **同值必须如实回报，不许静默取第一个**：按非主键列匹配天然可能一对多
+   * （两个客户同名 ⇒ 一张发票该连谁）。这里取**排序后第一个**保证 R6 确定性，
+   * 同时把撞车的键数记进 `ambiguous` 交给调用方 —— 「对得干干净净」与「有 3 处撞车我替你挑了」
+   * 是两个不同的答案，屏上不该长一样。
+   */
+  private async buildAnchorIndex(
+    ctx: AuthCtx,
+    anchorTypeKey: string,
+    anchorProperty: string | undefined,
+  ): Promise<{ index: Map<string, string>; ambiguous: number } | null> {
     const anchorType = await this.getType(ctx, anchorTypeKey);
-    if (!anchorType) return { created: 0, unresolved: 0, carrierObjects: 0 };
-    const anchorPk = anchorType.properties.find((p) => p.isPrimaryKey)?.propKey ?? "id";
-    // 被指向侧按业务主键建索引（与 executeSlice 的 objectKeyOf 同口径：objectKey ?? props[pk]）。
-    const anchors = new Map<string, string>();
+    if (!anchorType) return null;
+    const keyProp =
+      anchorProperty ?? anchorType.properties.find((p) => p.isPrimaryKey)?.propKey ?? "id";
+    const buckets = new Map<string, string[]>();
     for (const o of await this.repos.objects.listByType(ctx.tenantId, anchorTypeKey)) {
       if (o.mergedInto) continue;
-      const bk = o.objectKey ?? o.props[anchorPk];
-      if (bk === null || bk === undefined) continue;
+      // 缺省口径才认 objectKey（业务主键的既有语义）；显式指定某一列时只读那一列，不许回退到主键 ——
+      // 回退会让「按名字对不上」静默变成「按 id 对上了」，那是另一条边。
+      const bk = anchorProperty === undefined ? (o.objectKey ?? o.props[keyProp]) : o.props[keyProp];
+      if (bk === null || bk === undefined || bk === "") continue;
       const k = String(bk);
-      if (!anchors.has(k)) anchors.set(k, o.id);
+      const arr = buckets.get(k);
+      if (arr) arr.push(o.id);
+      else buckets.set(k, [o.id]);
     }
+    const index = new Map<string, string>();
+    let ambiguous = 0;
+    for (const [k, ids] of buckets) {
+      if (ids.length > 1) ambiguous++;
+      index.set(k, [...ids].sort()[0] as string); // 排序取首 ⇒ 同输入同输出（R6）
+    }
+    return { index, ambiguous };
+  }
+
+  /** 属性形态（含桶② `anchorProperty` 与桶⑤ `viaMultiValue`）。 */
+  private async materializeViaProperty(ctx: AuthCtx, def: LinkTypeDef): Promise<MaterializeResult> {
+    const via = def.viaProperty as string;
+    const side = def.viaSide ?? "from";
+    const carrierTypeKey = side === "from" ? def.fromTypeKey : def.toTypeKey; // 外键长在这一侧
+    const anchorTypeKey = side === "from" ? def.toTypeKey : def.fromTypeKey; // 外键指向这一侧
+    const built = await this.buildAnchorIndex(ctx, anchorTypeKey, def.anchorProperty);
+    if (!built) return { created: 0, unresolved: 0, carrierObjects: 0 };
+    const { index: anchors, ambiguous } = built;
     const carriers = (await this.repos.objects.listByType(ctx.tenantId, carrierTypeKey)).filter(
       (o) => !o.mergedInto,
     );
@@ -357,22 +482,78 @@ export class OntologyService {
     for (const c of carriers) {
       const raw = c.props[via];
       if (raw === null || raw === undefined || raw === "") continue; // 没填 = 没这条边，不是错
-      const anchorId = anchors.get(String(raw));
-      if (!anchorId) {
-        unresolved++;
+      // 桶⑤：显式声明了多值才展开。**不做类型嗅探** —— 见 `LinkTypeDef.viaMultiValue` 头注。
+      // 声明了多值却拿到非数组 ⇒ 当单值处理（数据形态变了，边数会掉，有人会发现），不静默造零边。
+      const values = def.viaMultiValue && Array.isArray(raw) ? raw : [raw];
+      for (const [i, v] of values.entries()) {
+        if (v === null || v === undefined || v === "") continue;
+        const anchorId = anchors.get(String(v));
+        if (!anchorId) {
+          unresolved++;
+          continue;
+        }
+        await this.repos.links.put({
+          // 多值时 id 必须带上元素序号，否则 3 个基地的边互相覆盖、只剩 1 条（本仓「幂等 id 撞车」老坑）。
+          id: `lnk_via_${def.key}_${c.id}${values.length > 1 ? `_${i}` : ""}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+          tenantId: ctx.tenantId,
+          type: def.key,
+          fromId: side === "from" ? c.id : anchorId,
+          toId: side === "from" ? anchorId : c.id,
+          origin: { type: "LINK_DERIVED", linkTypeKey: def.key, viaProperty: via },
+        });
+        created++;
+      }
+    }
+    return { created, unresolved, carrierObjects: carriers.length, ...(ambiguous ? { ambiguousAnchors: ambiguous } : {}) };
+  }
+
+  /**
+   * 桥形态（桶①·关系即实体）：扫桥的每一行，两端各查一次锚点，**把桥的 props 原样带上边**。
+   *
+   * 「一份记录两个投影」：桥对象继续以节点存在（`model_has_cert` 那类既有边不受影响），
+   * 同一条记录另外投影出一条直连边。**不复制、不做字段白名单** —— 白名单是第二份真相，
+   * 迟早与桥分叉；`bridgeObjectId` 回指让任何时候都能追回那一行。
+   *
+   * 幂等 id 以**桥对象 id** 为准（不是 carrier id）：一条桥记录 ⇔ 一条边，重跑覆盖不翻倍（R6）。
+   */
+  private async materializeViaBridge(
+    ctx: AuthCtx,
+    def: LinkTypeDef,
+    b: NonNullable<LinkTypeDef["viaBridge"]>,
+  ): Promise<MaterializeResult> {
+    const fromIdx = await this.buildAnchorIndex(ctx, def.fromTypeKey, b.fromAnchorProperty);
+    const toIdx = await this.buildAnchorIndex(ctx, def.toTypeKey, b.toAnchorProperty);
+    if (!fromIdx || !toIdx) return { created: 0, unresolved: 0, carrierObjects: 0 };
+    const bridges = (await this.repos.objects.listByType(ctx.tenantId, b.typeKey)).filter(
+      (o) => !o.mergedInto,
+    );
+    let created = 0;
+    let unresolved = 0;
+    for (const br of bridges) {
+      const rawFrom = br.props[b.fromProperty];
+      const rawTo = br.props[b.toProperty];
+      // 任一端没填 = 这条桥记录不表达这条关系，不是错（与属性形态同口径）。
+      if (rawFrom === null || rawFrom === undefined || rawFrom === "") continue;
+      if (rawTo === null || rawTo === undefined || rawTo === "") continue;
+      const fromId = fromIdx.index.get(String(rawFrom));
+      const toId = toIdx.index.get(String(rawTo));
+      if (!fromId || !toId) {
+        unresolved++; // 有值却查无对象 ⇒ 如实回报，不静默吞
         continue;
       }
       await this.repos.links.put({
-        id: `lnk_via_${def.key}_${c.id}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        id: `lnk_bridge_${def.key}_${br.id}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         tenantId: ctx.tenantId,
         type: def.key,
-        fromId: side === "from" ? c.id : anchorId,
-        toId: side === "from" ? anchorId : c.id,
-        origin: { type: "LINK_DERIVED", linkTypeKey: def.key, viaProperty: via },
+        fromId,
+        toId,
+        props: { ...br.props, bridgeObjectId: br.id },
+        origin: { type: "LINK_DERIVED", linkTypeKey: def.key, viaBridgeTypeKey: b.typeKey },
       });
       created++;
     }
-    return { created, unresolved, carrierObjects: carriers.length };
+    const ambiguous = fromIdx.ambiguous + toIdx.ambiguous;
+    return { created, unresolved, carrierObjects: bridges.length, ...(ambiguous ? { ambiguousAnchors: ambiguous } : {}) };
   }
 
   /**

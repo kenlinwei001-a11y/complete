@@ -510,9 +510,86 @@ export interface LinkTypeDef {
    * · `"to"`  ：去向对象的 `props[viaProperty]` → 来源类型的业务主键；边 = 命中的来源 → 去向。
    */
   viaSide?: "from" | "to";
+  /**
+   * WO-MATERIALIZE-3EXT（桶②·外键指向的不是对侧主键）· **carrier 的外键值对到 anchor 的哪一列**。
+   * 缺省 = anchor 的业务主键（`objectKey ?? props[pk]`）⇒ 不填时逐字节沿用老行为，零回归。
+   *
+   * ── 为什么必须有这个字段（实测，不是推想）────────────────────────────────
+   * 真起服务（SEED_DEMO=1）逐条建边实测：**5 条边的外键值确实在，也确实对得上，
+   * 但对上的那一列不是主键**，于是 `materializeDeclaredLinks` 全部 `created:0`：
+   * · `customer_has_invoice`   ARInvoice.custName    → Customer.custName（主键 custId）  60 载体 / 60 未命中
+   * · `customer_has_overdue_record` OverdueRecord.customerRef → Customer.custName        2 / 2
+   * · `material_has_balance`   MaterialBalance.material → Material.name（主键 matId）     9 / 9
+   * · `scenario_to_target`     PlanTarget.scenarioKey → AnnualScenario.key（主键 scnId） 17 / 17
+   * · `scenario_to_finance`    FinanceMetric.scenarioKey → AnnualScenario.key             3 / 3
+   * 出厂种子对这 5 条各自手写了一张反查表（`custByName` / `matIdByName` / `AOP-2026-${key}` 拼串），
+   * 所以**出厂边有实例、用户自建同形状的边 0 实例** —— 同一条边两种命运，这个不一致本身就是缺陷。
+   *
+   * ⚠ **一对多风险如实回报，不静默取第一个**：按非主键列匹配可能撞车（两个客户同名 ⇒ 一张发票
+   * 连到哪个客户？）。物化时同值 anchor 计入 `ambiguousAnchors` 并原样回给调用方，
+   * 匹配仍取**排序后第一个**（R6 确定性），但调用方能看见「这里有歧义」而不是以为对得干干净净。
+   */
+  anchorProperty?: string;
+  /**
+   * WO-MATERIALIZE-3EXT（桶⑤·数组值外键）· **`props[viaProperty]` 是数组 ⇒ 逐元素各物化一条边**。
+   * 缺省 `false` ⇒ 沿用老行为（`String(raw)`，数组会被拼成 `"a,b,c"` 而匹配不上任何主键）。
+   *
+   * 实测（真服务）：`model_producible_at` Model→Base，`Model.bases = ["wuhan","xiamen","zigong"]`，
+   * 声明 `viaProperty:"bases"` 得 `{created:0, unresolved:6, carrierObjects:6}` —— 6 个型号全部落空。
+   * 出厂种子绕开物化器、手写双层 for（`synthetic/service.ts` 的 `lnk_mpa_` 那段）才有边。
+   *
+   * ⚠ **显式开关，不做类型嗅探**：不许「看见是数组就自动展开」—— 那是推断。
+   * 一个属性今天恰好是数组、明天数据换一批变成字符串，嗅探式行为会**静默改变边数**；
+   * 显式声明则数据变形时当场 0 条、有人会发现。
+   */
+  viaMultiValue?: boolean;
+  /**
+   * WO-MATERIALIZE-3EXT（桶①·关系即实体）· **本边由一个桥类型的两个外键实现**。
+   *
+   * 形态：关系本身是个对象（桥表），它既该以**节点**出现（审计要看「谁在什么时候认证的」），
+   * 又该以**边**出现（推演要看「这个型号能不能上这条线」）。今天只能是节点。
+   * 实测：`model_certified_on` Model→Line 两侧都没有对侧 FK（Model 无 lineId、Line 无 modelId），
+   * 建边直接 400；桥 `Certification(certId*, modelId, lineId, status, certHours, gapContribution)`
+   * 却**早就是一等类型且有实例**。
+   *
+   * **一份记录两个投影，不造可分叉的双份**：桥对象的 `props` **原样**写进 `LinkInstance.props`
+   * （外加 `bridgeObjectId` 回指），不做字段白名单 —— 白名单是第二份真相，迟早与桥分叉。
+   * 这条边上的 `status` / `certHours` 因此不再丢失（旧物化路 `LinkInstance` 一律无 props，
+   * 认证状态、换型分钟数、BOM 用量一个都带不过来 —— 这正是「用量不在边上 ⇒ 传导只能用常数系数」的根）。
+   *
+   * **诚实边界（实测顶回来的）**：本字段只表达**单跳桥**（一条桥记录同时握着两端的外键）。
+   * `model_uses_material` / `material_used_by_model` 的桥是 `BOMDetail(bomId, materialId)`，
+   * 它**没有 modelId** —— 要 `Model ←modelId– BOMHeader –bomId→ BOMDetail –materialId→ Material`
+   * 这样的**多跳桥链**，那是另一种形状，本字段表达不了，也不许硬凑。
+   */
+  viaBridge?: LinkBridgeSpec;
   version: number;
   published?: boolean;
   deprecation?: DeprecationMeta;
+}
+
+/**
+ * WO-MATERIALIZE-3EXT · 桥实体投影规格（`LinkTypeDef.viaBridge`）。
+ *
+ * 每一端都**显式声明**「桥上的哪一列」与「对到端点类型的哪一列」——
+ * ⛔ **绝不推断**。实测反例：`transfer_from_base` 与 `transfer_to_base` 的候选属性集
+ * 完全相同（都是 `[fromBase, toBase]`，各 17 条命中），任何「取第一个」的推断器都会把
+ * 调出/调入接到同一个端点上，**其中一条拓扑静默接反且不报错**。
+ * 全仓实测有此歧义的边共 **7 条**（另含 `alt_for_material` / `material_has_alternative` /
+ * `base_dispatches_transfer` / `caused_by` / `model_changeover`）。
+ * 显式填写的「麻烦」是这套机制的正确性来源，不是它的缺陷。
+ */
+export interface LinkBridgeSpec {
+  /** 桥对象类型 key（如 `Certification`）。必须已存在，否则建边 400。 */
+  typeKey: string;
+  /** 桥上指向**来源类型**的列（如 `Certification.modelId`）。 */
+  fromProperty: string;
+  /** 桥上指向**去向类型**的列（如 `Certification.lineId`）。 */
+  toProperty: string;
+  /** 来源类型上被对到的列；缺省 = 来源类型的业务主键。语义同 `anchorProperty`。 */
+  fromAnchorProperty?: string;
+  /** 去向类型上被对到的列；缺省 = 去向类型的业务主键。 */
+  toAnchorProperty?: string;
 }
 
 /** 治理增量 §1：域（升格为一等治理单元）。UNIQUE(tenant, domainKey)。 */
@@ -614,7 +691,10 @@ export type ObjectOrigin =
   // WO-LINKTYPE-IMPL：由 `LinkTypeDef.viaProperty` 声明**推导**出的链路实例（非手写、非物化对象）。
   // 单独一个 origin 变体是为了让重算时的 removeWhere 能**精确只删自己造的那批** ——
   // 出厂种子的边是 origin=SYNTHETIC，绝不会被这条推导路径误删。
-  | { type: "LINK_DERIVED"; linkTypeKey: string; viaProperty: string };
+  // WO-MATERIALIZE-3EXT：桥实体投影出的边同样归本变体（重算 removeWhere 一并收拾），
+  // 但它没有 `viaProperty`（连接靠桥的两列）⇒ 该字段改为可选，另记 `viaBridgeTypeKey`。
+  // 加性：老记录仍带 viaProperty，读端（本仓仅 ontology.ts 三处）不受影响。
+  | { type: "LINK_DERIVED"; linkTypeKey: string; viaProperty?: string; viaBridgeTypeKey?: string };
 
 export interface ObjectInstance {
   id: string; // obj_
