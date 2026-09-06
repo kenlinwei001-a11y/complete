@@ -2482,11 +2482,13 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   // WO-CAPACITY-EDGE：产能池（件/日 口径·与 Line.capacityDaily 的套/日 刻意不同名）
   "CapacityPool.poolId": "产能池编号", "CapacityPool.lineId": "所属产线", "CapacityPool.baseId": "所属基地",
   "CapacityPool.capacityCellsDaily": "池日产能(电芯)", "CapacityPool.status": "产能池状态",
-  // ⚠ 下面两条**不是池对象的属性**（`capacityPoolProps` 里刻意没有它们，见其注释），是
-  // `capacity_ledger` 回包里同名两格**读数**的中文名。登记在这张表里是因为它们要上屏，
-  // 而全仓属性中文名只有这一张真值表（`lever-meta.ts` 那条「单源 > 并存」纪律同款）。
-  "CapacityPool.consumedCellsDaily": "已占用日产能(电芯)",
-  "CapacityPool.remainingCellsDaily": "剩余日产能(电芯)",
+  // ⚠ 这里**没有** `consumedCellsDaily` / `remainingCellsDaily` 两条（WO-CAPACITY-EDGE-FIX）。
+  // 本表的键必须逐条对上真属性 —— `schema-display-name.seam.test.ts` ④ 双向咬这一条
+  //（我第一版把它们留在表里当「读数的中文名」，被该门当场报成「指向不存在的属性」）。
+  // 那两个量是 `capacity_ledger` 回包里的读数，不是池对象上的属性；实测今天**零前端消费方**
+  //（`grep capacity_ledger apps/frontend-shell/src` 零命中，金丝雀 `capacity_forecast` 同路径 3 命中
+  //  ⇒ 是真没有，不是 grep 坏了），故此刻无处可显、也无需登记。
+  // ⚠ 将来台账真上屏时：中文名该随**承载它的那个响应字段**登记，不许倒回来给池加一格假属性。
   "Workshop.workshopId": "车间编号", "Workshop.baseId": "所属基地", "Workshop.name": "车间名称",
   "Workshop.processType": "工艺类型",
   "Process.processId": "工序编号", "Process.lineId": "所属产线", "Process.baseId": "所属基地",
