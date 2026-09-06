@@ -435,9 +435,9 @@ export const BOUNDARY_IMPACT: BoundaryRegistryImpact[] = [
     ],
     downstream: [
       "Base 对象库（合成物化）",
-      "geo-map 视图（objectType=Base，service.ts）",
+      "geo-map 视图（objectType=Base · 合成数据物化服务）",
       "capacity_forecast/capacity_rollup 求解器（perBaseRows 逐基地）",
-      "MODEL_BASE_MAP 型号→基地确定性映射（battery.ts）",
+      "MODEL_BASE_MAP 型号→基地确定性映射（电池制造场景包·合成种子）",
     ],
   },
   {
@@ -453,7 +453,7 @@ export const BOUNDARY_IMPACT: BoundaryRegistryImpact[] = [
     downstream: [
       "order-chain 视图 econTable（量价本利）",
       "risk 求解器 affectedOrders.summary.revenue（与 econTable 同源 DF.3b）",
-      "DemandSegment 派生 revenueWan=demandWanPerYearP50×priceWan / marginWan=demandWanPerYearP50×priceWan×marginPct/100（battery.ts）",
+      "DemandSegment 派生 revenueWan=demandWanPerYearP50×priceWan / marginWan=demandWanPerYearP50×priceWan×marginPct/100（电池制造场景包·合成种子）",
     ],
   },
   {
