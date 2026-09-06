@@ -1885,7 +1885,7 @@ const warehouseProps: PropertyDef[] = [
  */
 const regionProps: PropertyDef[] = [
   { propKey: "regionId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "省级行政区名（业务主键 = 三个载体 props.province 存的那个串，零转换对齐）。" },
-  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true, description: "行政区显示名（与主键同值：省名本身就是人话，不另造展示串——两份会漂）。" },
   { propKey: "macroRegion", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "所属大区（华东/华南/华中/西南/华北）——「华东产能」这类聚合的沿图落点。" },
 ];
 
