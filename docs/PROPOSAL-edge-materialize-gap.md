@@ -1,5 +1,48 @@
 # 提案 · 结构边物化的残口（`viaProperty` 表达不了的那一批）
 
+> ## 🟢 2026-09-06 收编回写（WO-MATERIALIZE-3EXT）—— **本文件的数已过期，以本节为准**
+>
+> 三桶已落地，各配一个**显式声明**字段（可选·缺省即老行为逐字节不变）：
+> **桶② → `anchorProperty`（5 条闭）· 桶⑤ → `viaMultiValue`（1 条闭）· 桶① → `viaBridge`（1 条闭）**。
+> 实现：`apps/datacore/src/ontology.ts`（`materializeViaProperty` / `materializeViaBridge` / `buildAnchorIndex`）
+> · 元模型 `apps/datacore/src/domain.ts`（`LinkTypeDef` + `LinkBridgeSpec`）
+> · 接缝门 `apps/datacore/test/linktype-materialize-3ext.seam.test.ts`（5 例）。
+> 本体已回写 `docs/SYSTEM-ONTOLOGY.md`「结构边物化链路 → 三类扩展」。
+>
+> **⚠ 三处订正（真服务 `SEED_DEMO=1` 值层面复测，不是静态近似）**：
+>
+> 1. **「21 条两侧都没有 FK」这个数不准**。116 条声明逐条实测：
+>    **可表达 83 · 真·表达不了 14 · 仅数组命中 1 · 端点零对象判不了 18**。
+>    本文件把「**类型零对象**」与「**元模型表达不了**」混算进了同一个 21 ——
+>    两者修法完全不同（补数据 vs 改元模型）。那 18 条里有 11 条是流程层边，
+>    按 `process/ontology.ts` 的设计**只写定义不写实例**，本来就不该算缺陷；
+>    另 7 条（`att_for_line`/`cert_for_operator`/`checkpoint_for_lot`/`move_for_lot`/
+>    `sched_for_wo`/`shift_for_line`/`spare_for_maint`）是**载体类型零实例**，
+>    FK 列都在，种上数据即可用 —— 是「连种子都没连」不是「表达不了」。
+> 2. **§2 桶① 列的 4 条里，`model_changeover` 今天就能表达** —— 实测
+>    `viaProperty:"fromModel", viaSide:"to"` ⇒ `created:30`、检索 30 条。它属于「没人去声明」。
+>    ⚠ 但其候选属性集是 `[fromModel, toModel]`（§2.9 已登记的歧义之一），**必须人工指定**。
+> 3. **桶① 的 `model_uses_material` / `material_used_by_model` 单跳桥表达不了** ——
+>    桥 `BOMDetail` 实测属性 `bomDetailId* bomId materialId sequence quantity lossRate unit level
+>    parentItemId isKeyComponent effectiveDate expireDate`，**没有 modelId**。
+>    要 `Model ←modelId– BOMHeader –bomId→ BOMDetail –materialId→ Material` 的**多跳桥链**，
+>    那是与「单跳桥」不同的形状，`viaBridge` 不表达、也不硬凑（本文件 §6.1 那条纪律同源）。
+>
+> **⇒ 收编后仍未闭 8 条形状**：④ 桶 6 条（边是**一段表达式**：`base_data_health` /
+> `line_belongs_to_workshop` / `model_in_segment` / `order_to_plantarget` / `plantarget_ownedby` /
+> `scenario_to_capex`）＋ 多跳桥链 2 条（`model_uses_material` / `material_used_by_model`）。
+> 桶③（谓词过滤）与桶⑥⑦另有归属，不在本单。
+>
+> **裁决点 1（边能不能带属性）实际按选项 A 落地**：桥的 `props` **原样**上边 + `bridgeObjectId` 回指，
+> 不做字段白名单。**裁决点 2 按选项 A**：桥仍是节点，边是同一条记录的第二个投影。
+> **裁决点 3 未动**（④ 桶 6 条仍只登记形态，不引表达式求值）。
+>
+> **⚠ 新登记一条未闭**：`executeSlice` 的边投影是 `{ linkKey, from, to }`，**边 props 在检索侧被丢掉**
+> （出厂手写的 `model_certified_on.props.status` 今天同样读不到）。补它会**绕过 A6 列级授权**
+> （节点 props 走列级投影，边 props 没有），不是加个字段那么简单，故本单不做。
+> 生产消费方 `solvers/service.ts` 直读 `repos.links` 的 `link.props?.status`（取不到回落常量 `"量产"`），
+> 那条路已通 —— 接缝门按它断言。
+
 > **WO-EDGE-MATERIALIZE-GAP** · 只读取证 + 提案，零源码改动。
 > **base commit**：`bf8338a0`（`wo-edge-gap`，切自 `origin/claude/handoff-integ-batch-3`）
 > **取证方式**：TS AST 静态抽取（`ts.createSourceFile`）+ 逐条读种子写入方源码。**未起服务、未跑测试套件。**
