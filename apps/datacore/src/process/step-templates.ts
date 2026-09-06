@@ -338,12 +338,12 @@ export function stepTemplateAbsenceFor(processKey: string): ProcessStepTemplateA
   if (candidates.includes(processKey)) {
     return {
       reason: `流程 ${processKey} 在候选集内（承载对象有实测进/出站时刻），但本批未落地步骤模板 —— 这是待办，不是"这条流程没有步骤"。`,
-      probe: `node -e "import('./apps/datacore/dist/process/step-templates.js').then(m=>console.log(m.stepTemplateCoveredProcessKeys()))" 看它是否已被补上；候选集见 flowRuleCoveredProcessKeys()。`,
+      probe: `GET /a/v1/process-definitions/${processKey}/step-template 看它是否已被补上；候选集 = 流转规则表覆盖到的流程 key。`,
     };
   }
   return {
     reason: `流程 ${processKey} 的承载对象上没有实测确认的进/出站时刻，因此拆不出可锚的步骤。步骤模板的候选集 = flowRuleCoveredProcessKeys()（今日 ${candidates.length} 条：${candidates.join(" ")}），本流程不在其中。⚠ 这句话说的是"本平台还没观察到这条流程怎么跑"，不是"这条流程只有一步"。`,
-    probe: `读 apps/datacore/src/process/flow-rules.ts（文件头记着建表前真跑过种子、对 65 条流程逐个 listByType 数对象并 dump 时间戳字段）；命令：node -e "import('./apps/datacore/dist/process/flow-rules.js').then(m=>console.log(m.flowRuleCoveredProcessKeys()))"。`,
+    probe: `候选集来自流转规则表（建表前对 65 条流程逐个数对象、逐个核时间戳字段）；GET /a/v1/process-definitions/${processKey}/step-template 看本流程今天答什么。`,
   };
 }
 
