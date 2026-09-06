@@ -112,7 +112,7 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
     expect(r.feasible).toBe(true); // 默认杠杆可覆盖
   });
 
-  it("catalog discover 列出全部 40 求解器（22 业务场景 + WO-TIER2 语义发现扩面 + portfolio·WO-PORTFOLIO-OPTIMAL + base_capacity_outlook·WO-B·双占 reconcile + chain_loss_attribution·WO-SANDBOX-E1 + finance_world_projection·WO-FINANCE-WORLDSTATE）", async () => {
+  it("catalog discover 列出全部 41 求解器（22 业务场景 + WO-TIER2 语义发现扩面 + portfolio·WO-PORTFOLIO-OPTIMAL + base_capacity_outlook·WO-B·双占 reconcile + chain_loss_attribution·WO-SANDBOX-E1 + finance_world_projection·WO-FINANCE-WORLDSTATE + capacity_ledger·WO-CAPACITY-EDGE）", async () => {
     const t = await makeApp();
     const res = await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN });
     const items = (res.json() as { items: { key: string }[] }).items;
@@ -125,8 +125,17 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
      * 本单实际动到 **7 处**：`SOLVER_KEYS` · `SOLVER_OUTPUT_SHAPES` · `catalog.ts` · `taxonomy.ts`（tsc 强制）·
      * `ontology-signature.ts` · `solver-taxonomy.test.ts`(60→61) · `ontology-core.test.ts`(60→61) · 本条(39→40)。
      * 前六处我按工单清单做了，**这一条只有全量跑才抓得到** —— 只跑相关文件会一路绿到并线才炸。
+     *
+     * 40 → **41**（2026-09-06·收编 `WO-CAPACITY-EDGE` 时）：`capacity_ledger` 进 `SOLVER_CATALOG`
+     * ⇒ 同时进 discover 场景池。**这一条又是被全量 gate 当场报红逼出来的**（`expected 41 to be 40`），
+     * 与上面那段预言的形态一字不差 —— 该单已改了 `SOLVER_KEYS`(61→62) / `taxonomy` / `catalog.ts` /
+     * `ontology-core`(61→62) / `solver-taxonomy` 等处，仍漏了**本条**与 agentcore 的
+     * `mocks/solver-registry.ts`（mock 比生产少一条，正是那份文件头注自陈的过期形态）。
+     * 现算复核（真起 datacore·内存态 `SEED_DEMO=1`·端口 4711·demo 租户）：
+     * `GET /a/v1/catalog?kind=solvers` → **41 条且含 `capacity_ledger`**；
+     * `GET /a/v1/solvers/registry` → **62 条**（与 `SOLVER_KEYS.length` 同口径）。
      */
-    expect(items.length).toBe(40);
+    expect(items.length).toBe(41);
     expect(items.map((i) => i.key)).toContain("base_capacity_outlook");
     expect(items.map((i) => i.key)).toContain("countermeasure_combo");
     expect(items.map((i) => i.key)).toContain("portfolio");

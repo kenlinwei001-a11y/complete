@@ -20,7 +20,8 @@ import styles from "./SimViews.module.css";
 /**
  * WO-MULTIOBJ-CONVERGE · 多目标 + 跨对象占用 what-if 面板 —— 与「方案寻优」**同轴同粒度**。
  *
- * ══ 今天的行为是 X，应该是 Y（开工实测，本机 4711 内存态 demo 租户，SEED_DEMO=1）══════
+ * ══ 今天的行为是 X，应该是 Y（开工实测 2026-09-04，本机 4711 内存态 demo 租户，SEED_DEMO=1）══
+ *    复验方式：`POST /a/v1/sim/optimize-pareto/assemble`（下方 `MULTIOBJ_ASSEMBLE_ENDPOINT`）
  *
  * **X**：本面板与 `/v/sim-optimize`（方案寻优）是同一租户、同一批订单的两个多目标界面，
  *   而它们**各算各的**，屏上给出两个对不上的数：
