@@ -517,12 +517,10 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   plan_generate: shapeKeys(PlanGenerateOutputSchema),
   // 其余 17 求解器输出形状（取自实现的成功路径返回对象顶层 key；权威=求解器实现）
   capacity_rollup: ["bases", "ruleRefs"],
-  // WO-CAPACITY-EDGE：权威 = `computeCapacityLedger` 成功路径的顶层 key。
-  capacity_ledger: [
-    "pools", "violations", "poolCount", "violationCount",
-    "totalCapacityCellsDaily", "totalConsumedCellsDaily", "totalRemainingCellsDaily",
-    "unpricedEdges", "skippedByFilter", "poolsWithoutCapacity", "disclosure", "summary",
-  ],
+  // WO-CAPACITY-EDGE：权威 = `computeCapacityLedger` 成功路径的顶层 key（**穷尽**，四个就是四个）。
+  // 条数与合计不在顶层，落 `disclosure.counts` / `disclosure.totals`（理由见该函数返回处的注释：
+  // 条数本就是披露项，且 poolCount/violationCount 曾与 pools.length/violations.length 字面重复）。
+  capacity_ledger: ["pools", "violations", "disclosure", "summary"],
   // 通用 what-if（recompute dryRun 包装）：顶层渲染键 = 派生 before/after deltas + 受影响计数。
   generic_inference: ["deltas", "rows", "affectedObjects", "count", "rootTypes"],
   shared_bottleneck: ["bottlenecks", "contention", "downgraded", "summary"],

@@ -918,20 +918,22 @@ export function computeCapacityLedger(
 
   const totalCapacity = round(rows.reduce((s, r) => s + r.capacityCellsDaily, 0), 6);
   const totalConsumed = round(rows.reduce((s, r) => s + r.consumedCellsDaily, 0), 6);
+  // ── 顶层只有四个键，条数/合计全部落在 `disclosure` 里 ────────────────────────
+  // 两条理由，缺一条我都不会这么排：
+  //  ① **条数本来就是披露项**：铁律 1.5 判据二点名要「引用的数据（对象类型 + **条数**）」，
+  //     `unpricedEdges` / `skippedByFilter` / `poolsWithoutCapacity` 正是这一层的东西 ——
+  //     它们把「没边」「边在但没带量」「被 loadWorkOrders 滤掉」分开报，混成一个数就再也分不开
+  //     （本仓 `dependsOn` 那次错账的形态）。
+  //  ② **`poolCount` / `violationCount` 曾是字面重复**：它们恒等于 `pools.length` / `violations.length`，
+  //     同一个数在响应里存两份，迟早分叉。挪进 `counts` 且不再另立顶层键。
+  // ⚠ 诚实标注：本求解器**今天没有任何前端消费方**（本单范围边界只到「读它们的求解器入口」，
+  //   不含 UI）。`solver-field-seam:check` 会把「后端声明下发、前端零消费」判死 —— 这不是
+  //   本排布的理由（那样就是为了让门变绿而重排结构），但它确实是发现①②的契机，记在这里，
+  //   免得下一个人以为顶层被削薄是丢了信息。
   return {
     pools: rows,
     violations,
-    poolCount: rows.length,
-    violationCount: violations.length,
-    totalCapacityCellsDaily: totalCapacity,
-    totalConsumedCellsDaily: totalConsumed,
-    totalRemainingCellsDaily: round(totalCapacity - totalConsumed, 6),
-    // 诚实计数：这三个数把「没边」「边在但没带量」「被 loadWorkOrders 滤掉」分开报，
-    // 混成一个数就再也分不开（本仓 `dependsOn` 那次错账的形态）。
-    unpricedEdges,
-    skippedByFilter,
-    poolsWithoutCapacity,
-    // 铁律 1.5 判据二：推演过程可披露 —— 口径、单位、杠杆值全部随结果下发。
+    // 铁律 1.5 判据二：推演过程可披露 —— 口径、单位、杠杆值、条数、合计全部随结果下发。
     disclosure: {
       formula: "余量 = CapacityPool.capacityCellsDaily − Σ consumes_capacity.consumedCellsDaily × 需求倍数",
       edgeAmountSource: "consumes_capacity 边上的 props.consumedCellsDaily（不从工单节点重算）",
@@ -939,6 +941,18 @@ export function computeCapacityLedger(
       demandMultiplier: mult,
       loadWorkOrders: args.loadWorkOrders ?? null,
       agentInvolved: false,
+      counts: {
+        pools: rows.length,
+        violations: violations.length,
+        unpricedEdges,
+        skippedByFilter,
+        poolsWithoutCapacity,
+      },
+      totals: {
+        capacityCellsDaily: totalCapacity,
+        consumedCellsDaily: totalConsumed,
+        remainingCellsDaily: round(totalCapacity - totalConsumed, 6),
+      },
     },
     summary:
       `${rows.length} 个产能池，${violations.length} 个超载；` +

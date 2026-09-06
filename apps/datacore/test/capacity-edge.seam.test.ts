@@ -106,7 +106,7 @@ describe("WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝", () => {
       return JSON.parse(res.body).data as {
         pools: { status: string; remainingCellsDaily: number }[];
         violations: { message: string; overByCellsDaily: number }[];
-        violationCount: number;
+        disclosure: { counts: { violations: number } };
       };
     };
     const beforeOver = await read(below);
@@ -115,10 +115,10 @@ describe("WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝", () => {
     // 两个状态：超载前 / 超载后。
     expect(beforeOver.pools[0]!.status).toBe("PASS");
     expect(beforeOver.pools[0]!.remainingCellsDaily).toBeGreaterThanOrEqual(0);
-    expect(beforeOver.violationCount).toBe(0);
+    expect(beforeOver.disclosure.counts.violations).toBe(0);
     expect(afterOver.pools[0]!.status).toBe("BLOCK");
     expect(afterOver.pools[0]!.remainingCellsDaily).toBeLessThan(0);
-    expect(afterOver.violationCount).toBe(1);
+    expect(afterOver.disclosure.counts.violations).toBe(1);
     // 违约信息必须可读且**带单位**（单位来自本体 PropertyDef.unit，不是求解器手写的常量）。
     expect(afterOver.violations[0]!.message).toContain("超载");
     expect(afterOver.violations[0]!.message).toContain("件/日");
@@ -135,9 +135,9 @@ describe("WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝", () => {
       expect(res.statusCode).toBe(200);
       const d = JSON.parse(res.body).data as {
         pools: { consumedCellsDaily: number; remainingCellsDaily: number; consumerCount: number }[];
-        unpricedEdges: number;
+        disclosure: { counts: { unpricedEdges: number } };
       };
-      return { pool: d.pools[0]!, unpricedEdges: d.unpricedEdges };
+      return { pool: d.pools[0]!, unpricedEdges: d.disclosure.counts.unpricedEdges };
     };
 
     const before = await readPool();
@@ -166,9 +166,21 @@ describe("WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝", () => {
     await seedBattery(t);
     const res = await invokeSolver(t, "capacity_ledger", { demandMultiplier: 2 });
     expect(res.statusCode).toBe(200);
-    const d = JSON.parse(res.body).data as { disclosure: Record<string, unknown>; poolCount: number };
-    const disc = d.disclosure as { units: Record<string, string>; demandMultiplier: number; agentInvolved: boolean; formula: string; edgeAmountSource: string };
-    expect(d.poolCount).toBe(130);
+    const d = JSON.parse(res.body).data as { disclosure: Record<string, unknown>; pools: unknown[] };
+    const disc = d.disclosure as {
+      units: Record<string, string>;
+      demandMultiplier: number;
+      agentInvolved: boolean;
+      formula: string;
+      edgeAmountSource: string;
+      counts: { pools: number; violations: number; unpricedEdges: number; skippedByFilter: number; poolsWithoutCapacity: number };
+      totals: { capacityCellsDaily: number; consumedCellsDaily: number; remainingCellsDaily: number };
+    };
+    expect(disc.counts.pools).toBe(130);
+    // 条数不许与数组长度分叉（本仓「同一个数存两份」的老坑：两份迟早不一致）。
+    expect(disc.counts.pools).toBe(d.pools.length);
+    // 合计三项自洽：申报 − 已占用 = 余量。
+    expect(disc.totals.capacityCellsDaily - disc.totals.consumedCellsDaily).toBeCloseTo(disc.totals.remainingCellsDaily, 4);
     // 单位必须与本体声明**逐字一致**（求解器不许内联单位串）。
     const poolType = (await t.repos.ontologyTypes.list("demo", (x) => x.key === "CapacityPool"))[0]!;
     const woType = (await t.repos.ontologyTypes.list("demo", (x) => x.key === "WorkOrder"))[0]!;
