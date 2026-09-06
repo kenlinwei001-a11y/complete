@@ -1098,19 +1098,38 @@ export default function GlobalSimView(_props: ViewRendererProps) {
                 {/* 规范 §1/R-UI-3：「旋钮在哪切、动了会怎样」是操作说明，降 `?` 浮层。
                     R-UI-4：原文「methodScenario」是契约字段名，浮层里改说人话。 */}
                 <InfoPopover topic="方法旋钮怎么用" testId="gs-method-info">
-                  方法在左轨「优先级 · 多目标求解方法」切换；此处调该方法参数 → 下方联合方案读数真变（引擎按对应方法真重解，非旋钮空转）。
+                  方法在左轨「优先级 · 多目标求解方法」切换；此处调该方法参数 → 引擎按对应方法真重解。
+                  {/* WO-OBJECTIVE-SIGN：原文只写「下方联合方案读数真变」，而这批旋钮**只驱动紧邻下方那一行
+                      「方法解」读数**，页面上半部的 KPI 卡与方案比对表按设计恒定不动（它们是逐目标单解的比对矩阵，
+                      故意不受旋钮污染）。含混的原文让人拖了旋钮去盯上半部，看到不动就判「旋钮是装饰品」——
+                      屏上写清楚"变的是哪一块"，比让人自己猜便宜得多。 */}
+                  <b> 变的是紧邻下方那一行「方法解」读数</b>（获排 / 按期 / 换型 / 代价）；
+                  页面上半部的 KPI 卡与「方案比对表」是<b>逐目标单解的比对矩阵</b>，按设计不受本组旋钮影响、保持恒定。
+                  某一维若在本批数据上分不出优劣，其滑杆会自动置灰并注明。
                 </InfoPopover>
               </span>
 
               {levers.method === "weighted" && (
                 <div data-testid="global-sim-method-weighted">
-                  {OBJ_KNOB_KEYS.map((k) => (
-                    <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                      <span style={{ flex: "0 0 76px", fontSize: 12 }}>{OBJ_KNOB_LABEL[k]} 权重</span>
-                      <input type="range" min={0} max={10} step={0.5} value={methodWeights[k] ?? 1} data-testid={`global-sim-weight-${k}`} onChange={(e) => setMethodWeights((p) => ({ ...p, [k]: Number(e.target.value) }))} style={{ flex: 1 }} />
-                      <span className="mono" style={{ width: 32, textAlign: "right" }} data-testid={`global-sim-weight-val-${k}`}>{(methodWeights[k] ?? 1).toFixed(1)}</span>
-                    </div>
-                  ))}
+                  {/* WO-OBJECTIVE-SIGN：引擎现算「哪几维真有区分力」（methodScenario.discriminatingObjectives）。
+                      不在其中的维 ⇒ 权重乘上去只是给所有候选格加同一个常数，**不可能改变择格** ⇒ 滑杆置灰 + 写明理由。
+                      判据缺席（引擎没下发，如 CP-SAT sidecar 路径）⇒ 一律按可用渲染，不猜。 */}
+                  {OBJ_KNOB_KEYS.map((k) => {
+                    const disc = d?.methodScenario?.discriminatingObjectives;
+                    const inert = Array.isArray(disc) && !disc.includes(k);
+                    return (
+                      <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, opacity: inert ? 0.55 : 1 }}>
+                        <span style={{ flex: "0 0 76px", fontSize: 12 }}>{OBJ_KNOB_LABEL[k]} 权重</span>
+                        <input type="range" min={0} max={10} step={0.5} value={methodWeights[k] ?? 1} disabled={inert} data-testid={`global-sim-weight-${k}`} data-inert={inert ? "1" : "0"} onChange={(e) => setMethodWeights((p) => ({ ...p, [k]: Number(e.target.value) }))} style={{ flex: 1 }} />
+                        <span className="mono" style={{ width: 32, textAlign: "right" }} data-testid={`global-sim-weight-val-${k}`}>{(methodWeights[k] ?? 1).toFixed(1)}</span>
+                        {inert && (
+                          <span style={{ fontSize: 11, color: "var(--muted2)" }} data-testid={`global-sim-weight-inert-${k}`} title={`本次联合求解里，每个订单的候选落点在「${OBJ_KNOB_LABEL[k]}」这一维上取值完全相同 —— 这一维分不出落点的优劣，调它不会改变任何结果，故置灰。换一批该项有差异的订单/产能即自动恢复可调。`}>
+                            该维无差异
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {levers.method === "epsilon" && (

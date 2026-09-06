@@ -4815,6 +4815,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { key } = req.params as { key: string };
     return governance.retire(ctx(req), "link", key);
   });
+  /*
+   * WO-RELATION-EDIT-GAPS ④ · **停用之后拨得回来**（DEPRECATED → ACTIVE）。
+   * 2026-09-04 真后端实测：`/reactivate` 与 `/activate` 都是 404 route not found ——
+   * `deprecate`/`retire` 两个只进不出的动作把结构边送进死胡同。
+   * 因果边那条路（`PATCH /sim/propagation-rules/:id {status}`）本来就 PUBLISHED⇄DRAFT 可逆；
+   * 两条路不一致的原因见 `ontology-governance.ts reactivate()` 头注（漏了一步，不是取舍）。
+   */
+  app.post("/a/v1/ontology/types/:key/reactivate", async (req) => {
+    const { key } = req.params as { key: string };
+    return governance.reactivate(ctx(req), "type", key);
+  });
+  app.post("/a/v1/ontology/links/:key/reactivate", async (req) => {
+    const { key } = req.params as { key: string };
+    return governance.reactivate(ctx(req), "link", key);
+  });
 
   // ---- 治理增量 §7.4 引用反查 ------------------------------------------------
   app.get("/a/v1/ontology/references", async (req) => {
@@ -5027,6 +5042,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      * 四处内部调用，它们自带建序保证（先建类型再建边）；把闸放这里只拦外部 REST 写入，
      * 不动那四条内部路。金丝雀：本仓种子自带 114 条边，实测悬空 **0** 条 ⇒ 本闸不误伤种子。
      */
+    /*
+     * ══ WO-RELATION-EDIT-GAPS ③ · **key 字符集**（存量零误伤，先量后卡）════════════
+     *
+     * **今天的行为是 X**（2026-09-04 真后端实测，本机 4411 口）：`key` 声明成 `z.string().min(1)`
+     *   ⇒ `"a b"`（含空格）· `"中文键"` · `"x!!"` 三条**全部 201 收下**。
+     *   这类 key 随后要被塞进 URL 路径（`/a/v1/ontology/links/:key/deprecate`）、
+     *   塞进 `SliceSpec` 的 `linkKey` 串、塞进前端 `data-testid` ——
+     *   一个空格就让「停用」这个动作在某些客户端上找不到那条边。
+     * **应该是 Y**：字母开头、只收 `[A-Za-z0-9_]`、长度 ≤64，越界当场 400 说人话。
+     *
+     * ⚠ **先量后卡（本仓纪律，不是客套）**：把闸门定死之前先量存量 116 条边的 key——
+     *   · `^[A-Za-z][A-Za-z0-9_]*$` 违规 **0 条** ⇒ 本闸零误伤，可以收；
+     *   · `^[a-z][a-z0-9_]*$`（只收小写）违规 **9 条**（`process_instance_carries_CustomsClearance`
+     *     那一族大驼峰后缀）⇒ **不收这一版**，收了就让 9 条存量边再也回写不了。
+     *   长度上限取 64：存量最长 43。
+     */
+    const LINK_KEY_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
+    if (!LINK_KEY_RE.test(body.key) || body.key.length > 64) {
+      throw validationError(
+        `关系标识 '${body.key}' 不合法：只能用英文字母、数字与下划线，必须字母开头，长度不超过 64 个字符` +
+          `（不能含空格、中文或标点）。`,
+      );
+    }
     const missing: string[] = [];
     if (!(await ontology.getType(c, body.fromTypeKey))) missing.push(body.fromTypeKey);
     if (body.toTypeKey !== body.fromTypeKey && !(await ontology.getType(c, body.toTypeKey)))
@@ -5034,6 +5072,51 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (missing.length > 0) {
       throw validationError(
         `未知对象类型 ${missing.map((k) => `'${k}'`).join(" / ")}（需先在 /a/v1/ontology/object-types 建好再建关系）`,
+      );
+    }
+    /*
+     * ══ WO-RELATION-EDIT-GAPS ② · **同 key 不许静默掉包端点/方向**════════════════
+     *
+     * ⚠ **派单给的线索是「同 key 的反向双向边可并存且都启用 ⇒ 传导重复计数」——实测推翻**：
+     *   本路由是按 `key` 的 upsert（`ontology.ts upsertLinkType`：按 key 找既有 → 复用 id → version+1），
+     *   建 `zz_rev_probe: Order→Model` 得 v1，再建 `zz_rev_probe: Model→Order` 得 **v2、同一个 id**，
+     *   `GET /ontology/mapping/registries` 里**恒 1 行**。**不会并存，也不会重复计数。**
+     *
+     * **真实缺陷是另一个，比并存更隐蔽**：第二次 201 把既有边的端点**整条覆盖**成反方向，
+     *   而屏上与回包里没有任何一处说「你刚把一条已发布的边掉了个头」。
+     *   代价是实的：因果边靠 `viaLinkKey` 挂在结构边上，方向校验（`assertPropagationRefs`）
+     *   **只在因果边写入的那一刻跑一次**；结构边事后掉头之后，那些因果边语法全对、
+     *   `navOut` 却再也走不到任何对象 ⇒ **永远贡献 0，没有报错、没有红，只是数不动**
+     *   —— 本仓三分法里「接了线接错地方」那一态。
+     *
+     * **今天的行为是 X**：同 key POST 可改端点，静默覆盖，两次都 201。
+     * **应该是 Y**：端点（`fromTypeKey`/`toTypeKey`）是**身份格**，同 key 改端点当场 400 并
+     *   点名既有端点；要改语义请新建 key 并对旧 key 走停用流程。
+     *
+     * 判据与本仓已有两处**同款**，不是新发明：
+     *   · `PropagationRulePatchSchema` 头注：「身份格（key 与源/链/目标六元组）不可改 ——
+     *     允许改身份 = 允许把一条边原地掉包」；
+     *   · `governance.assertRenameAllowed`：「type_key 一经 PUBLISHED 永不重命名」。
+     *
+     * ⛔ **不是一刀切禁反向边**：只卡「**同 key** 反向」。存量实测端点级反向对 **36 条**
+     *   （`Supplier→Material` 与 `Material→Supplier`、`Order→Model` 与 `Model→Order` …），
+     *   它们各自有独立的 key，业务上真需要双向 —— 换不同 key 建反向边**仍然 201**，
+     *   这就是本闸的金丝雀。同 key 反向的存量实测 **0 条** ⇒ 本闸零误伤。
+     *
+     * 基数 / `viaProperty` / `viaSide` **照旧可改** —— 那正是「改一条关系」该改的东西，
+     * 也是本单 ① 给前端补的那个「改」入口的落点。
+     */
+    const priorLink = (await repos.ontologyLinks.list(c.tenantId, (l) => l.key === body.key))[0];
+    if (priorLink && (priorLink.fromTypeKey !== body.fromTypeKey || priorLink.toTypeKey !== body.toTypeKey)) {
+      const reversed = priorLink.fromTypeKey === body.toTypeKey && priorLink.toTypeKey === body.fromTypeKey;
+      throw validationError(
+        `关系 ${body.key} 已存在，连的是 ${priorLink.fromTypeKey} → ${priorLink.toTypeKey}，` +
+          `本次提交的是 ${body.fromTypeKey} → ${body.toTypeKey}。两端类型是这条关系的身份，不能就地改` +
+          (reversed
+            ? `（这次正好是把它掉了个头：已发布的传导规则按原方向挂在这条关系上，掉头后它们会永远算不出结果，且不会报错）。` +
+              `若确实需要一条反方向的关系，请换一个新的关系标识另建一条 —— 双向关系在本系统里是两条各自独立的关系。`
+            : `。`) +
+          `要改语义请新建一个关系标识，并对旧的走停用流程。`,
       );
     }
     // 回包里的 `materialized` 把「长出几条实例边」如实告诉用户：0 条也要说清是为什么
