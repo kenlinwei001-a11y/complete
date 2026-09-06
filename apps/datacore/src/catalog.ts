@@ -82,6 +82,8 @@ export const BUILTIN_SLICE_CATALOG: CatalogItem[] = [
 /** 求解器目录（与 SOLVER_KEYS 对齐；描述供 LLM 选型）。 */
 export const SOLVER_CATALOG: CatalogItem[] = [
   { key: "capacity_rollup", name: "产能上卷", description: "把工序/产线产能沿本体金字塔上卷到基地/型号维度。", argHints: { modelId: "型号 ID" }, domain: "plan", answersQuestions: ["各基地产能怎么上卷汇总", "型号维度的总产能是多少", "工序产能怎么卷到基地"], tags: ["产能上卷", "capacity", "rollup"] },
+  // WO-CAPACITY-EDGE：与 capacity_rollup 分工——rollup 答「能做多少」（能力面·套/日），本条答「还剩多少」（占用面·件/日）。
+  { key: "capacity_ledger", name: "产能台账", description: "沿 has_capacity / consumes_capacity 两条边算产能池余量：余量 = 池申报产能 − Σ 边上消耗量；超载逐条给违约信息。消耗量读的是边上的 props，不从工单节点重算。", argHints: { baseId: "【可选】只看这个基地的池", lineId: "【可选】只看这条产线的池", loadWorkOrders: "【可选】只把这些工单加载到池上（排产取舍/对照实验）", demandMultiplier: "【可选·默认 1】需求倍数：这批单的量翻 N 倍还接不接得住" }, domain: "plan", answersQuestions: ["这条产线还剩多少产能", "这个池的产能被哪些工单吃掉了", "产能超载了吗超了多少"], tags: ["产能台账", "产能余量", "超载", "capacity", "ledger"] },
   // WO-SILENT-WRONG-ANSWER-3 症①：`base` 此前**根本没被声明**（求解器 capacity.ts:424 一直在读它），
   //   照目录只能猜出 modelId/qty/weeks ⇒ 想限定基地的调用方按兄弟求解器惯例传 `baseId` → 静默答全网。
   //   声明补齐 + `arg-aliases.ts` 收 `baseId/baseName` 别名，两半齐才治得住（门：check-arg-drop-seam.mjs 断言③）。
