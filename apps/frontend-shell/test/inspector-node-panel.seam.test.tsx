@@ -439,17 +439,41 @@ describe("七类变量分组 + 承载状态（有 / 薄 / 缺）", () => {
     expect(new Set(VAR_CLASSES.map((c) => VAR_CONTROL_BY_CLASS[c])).size).toBe(5);
   });
 
-  it("每个变量都带承载徽标与 file:line 取证；非「有」的必须写清缺在哪", () => {
+  /**
+   * 🔄 **判据换过一次（WO-RUI4-COORDS-FINISH · 2026-09-06）**：原文断言取证串
+   * `toMatch(/\.ts|packages\/|apps\//)`，即**要求源码坐标上屏** —— 与 R-UI-4 直接冲突。
+   * `insp-evidence-*` 是**上屏文本**（本用例自己就是从 DOM 里读它的），
+   * 而真浏览器实测 `/v/node-inspector` 曾因此印出 34 处坐标（含
+   * `apps/datacore/src/sim/propagation.ts:73`）。
+   *
+   * 与 `node-semantics.seam.test.tsx` 同一次改法：换成同样**可核对**、但锚在业务标识上的判据
+   * —— 契约名 / 对象类型.属性 / 求解器 key / 规则 key / 册名（铁律 1.5 判据二要的正是这些）。
+   * ⚠ 不许退回「只要非空就算」：那样这道门会退化成恒真的废门，
+   *   所以下面留了**两个方向的反面锚**（坐标必被抓 · 空泛串必被抓）。
+   */
+  it("每个变量都带承载徽标与**可核对的业务标识**取证（不含源码坐标·R-UI-4）；非「有」的必须写清缺在哪", () => {
+    // 与 rui4-source-coords.seam 同一形态的尺子（此处只需坐标形态，不扫树）。
+    const COORD = /(apps|packages|scripts)\/[A-Za-z0-9@._\-/]*\.(ts|tsx)(:\d+(-\d+)?)?|[A-Za-z0-9._-]+\.(ts|tsx):\d+/;
+    // 业务标识的可核对形态：反引号里的契约/字段/求解器名，或「规则 Cxx」「求解器 xxx」「契约 …」「…册」。
+    const BIZ = /`[^`]+`|规则\s*[A-Z]\d{2}|求解器\s*[a-z_]+|契约|册/;
     const input = mkInput();
     render(<InspectorNodePanel input={input} />);
+    let checked = 0;
     for (const v of input.variables) {
       const row = screen.getByTestId(`insp-var-${v.varId}`);
       expect(row).toHaveAttribute("data-carrier", v.carrier);
       expect(within(row).getByText(`承载 ${v.carrier}`)).toBeInTheDocument();
       const ev = screen.getByTestId(`insp-evidence-${v.varId}`);
-      expect(ev.textContent ?? "").toMatch(/\.ts|packages\/|apps\//); // 取证要能翻到源码
-      if (v.carrier !== "有") expect((ev.textContent ?? "").length).toBeGreaterThan(30);
+      const text = ev.textContent ?? "";
+      expect(COORD.test(text), `R-UI-4 违规：取证里带源码坐标（它会上屏）：${text}`).toBe(false);
+      expect(BIZ.test(text), `取证指不出业务标识（契约名/对象类型.属性/求解器 key/规则 key/册名）：${text}`).toBe(true);
+      if (v.carrier !== "有") expect(text.length).toBeGreaterThan(30);
+      checked += 1;
     }
+    expect(checked, "一个变量取证都没检到 ⇒ 本例是恒真的废门").toBeGreaterThan(8);
+    // 反面锚：两个方向都咬得住（坐标必被抓 · 空泛串必被抓）
+    expect(COORD.test("apps/datacore/src/sim/propagation.ts:73")).toBe(true);
+    expect(BIZ.test("反正就是那么回事")).toBe(false);
   });
 
   it("承载「缺」的变量一律 baseline === null（**没有一个假默认值**）", () => {
