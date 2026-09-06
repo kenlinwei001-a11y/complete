@@ -3109,7 +3109,7 @@ export function stateVarDisplayName(stateVar: string): string | undefined {
 // 且它那条边的系数是负的）。把它的静息点取成下界，等于把负半轴整段抹掉、方向读反。
 // 故它单独声明 [-100,100] / rest 0；压力族静息点 = 下界 0（无入流即无压力）。
 const PRESSURE_DOMAIN_SOURCE =
-  "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；" +
+  "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；" +
   "② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）";
 
 /**

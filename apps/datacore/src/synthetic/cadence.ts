@@ -216,7 +216,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
     extract: (g) => seriesOf(g.sopVersionRows, "date", null),
     flowGate: true,
     note:
-      "证据 = 种子里 S&OP 版本演进 V1→V7 的真实落期序列（`battery.ts` sopVersionRows，已 putAll 物化为 SopVersionRow 对象）。" +
+      "证据 = 种子里 S&OP 版本演进 V1→V7 的真实落期序列（合成种子 sopVersionRows，已物化为 SopVersionRow 对象）。" +
       "⚠ 本仓 S&OP 有**两套并存的周期口径**，此处取前者。后者的真实状况如下 —— 初稿我曾判它『零实例』，" +
       "追一层后发现判错，按铁律 0.5 更正并留证：" +
       "① 【本节点采用】`SopVersionRow`：标准种子恒有 4 行且等距 ⇒ 可推。" +
@@ -255,7 +255,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
     flowGate: true,
     note:
       "证据 = 同一工单下相邻排产行的落期间隔（按 woId 分组）。" +
-      "诚实边界：ProductionSchedule 属 `service.ts` 明列的『高量低值执行类保持模型态不物化』 ⇒ **生成器里有、对象库里没有**，下游按对象查不到源。",
+      "诚实边界：ProductionSchedule 属合成数据物化清单明列的『高量低值执行类保持模型态不物化』 ⇒ **生成器里有、对象库里没有**，下游按对象查不到源。",
   },
   {
     nodeId: "material.mrp",
@@ -301,7 +301,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
     extract: (g) => seriesOf(g.interBaseTransfers, "dispatchDate", null),
     flowGate: true,
     note:
-      "有集合但**推不出节拍**：`dispatchDay = 1 + (hash/1000 % 20)`（`battery.ts`）是哈希散布、不是周期 ⇒ 间隔不等长 ⇒ NON_UNIFORM。" +
+      "有集合但**推不出节拍**：`dispatchDay = 1 + (hash/1000 % 20)`（合成种子）是哈希散布、不是周期 ⇒ 间隔不等长 ⇒ NON_UNIFORM。" +
       "另查 Shipment：只有 `etaDay = randInt(2,16)`（**在途时长**）与 `coverageDays`（在途覆盖天数），两者都不是『多久发一次』，口径不同不可挪用。",
   },
   {
