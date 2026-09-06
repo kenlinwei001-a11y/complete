@@ -6,7 +6,7 @@ import {
   CapacityForecastOutputSchema,
   type CapacityForecastOutput,
 } from "@platform/contracts";
-import { runSolver, searchObjects } from "@/api/endpoints";
+import { runSolver, fetchAllObjects, searchObjects } from "@/api/endpoints";
 import { Feature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { useSessionStore } from "@/store/sessionStore";
@@ -106,6 +106,9 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
   const simCfg: SimConfig | undefined = workspace?.simConfig;
   // 型号列表优先级（R14）：WorkspaceConfig > 真实 Model 对象（按租户合成/接入）> DEFAULT_MODELS 兜底。
   // 真连模式下走 Model 对象 → 下拉与实际数据一致（消除前端写死列表与合成型号对不齐）。
+  // **有意只取首页**：`Model` 实测真值 6 条（2026-09-06 · `POST /a/v1/objects/aggregate` 独立口径，seed 42），
+  // 远小于服务端默认页长 50 ⇒ 首页即全集。型号册是本平台的封闭小字典（不随订单增长），
+  // 与同文件里的 `Order`（真值 500 · 必须翻完）不是一类东西。
   const modelObjs = useQuery({ queryKey: ["a", "objects", { type: "Model", view: "project-sim" }], queryFn: () => searchObjects("Model", "") });
   const modelsFromObjects = (modelObjs.data?.items ?? []).map((o) => String(o.props.modelId ?? o.props.name ?? o.id));
   const models = simCfg?.models ?? (modelsFromObjects.length > 0 ? modelsFromObjects : DEFAULT_MODELS);
@@ -157,7 +160,7 @@ export default function ProjectSimView({ view }: ViewRendererProps) {
 
   const orders = useQuery({
     queryKey: ["a", "objects", { type: "Order", view: "project-sim" }],
-    queryFn: () => searchObjects("Order", ""),
+    queryFn: () => fetchAllObjects("Order"),
   });
   // WO-SIM-ACTION-REAL：选中订单的 so（采纳结论时随 payload 上送，审批通过后回 stamp 到该 Order）。
   const selectedOrderSo = useMemo(() => {

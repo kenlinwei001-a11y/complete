@@ -377,9 +377,27 @@ export class GuardedToolExecutor {
           // 并发一致性 §13.1：任务内首读捕获 taskEpoch，后续读复用 → 任务级快照一致（近似 MVCC）
           await this.taskSnapshotEpoch(ctx),
         );
-        // CL.3：类型存在但 0 实例 → 区分"空 vs 不存在"，提示先引导（接 bootstrap/gap-fill），不让 agent 误判无数据。
-        const total = (res?.data as { total?: number } | undefined)?.total;
+        /**
+         * CL.3：类型存在但 0 实例 → 区分"空 vs 不存在"，提示先引导（接 bootstrap/gap-fill），
+         * 不让 agent 误判无数据。
+         *
+         * ⚠ WO-PAGING-SILENT-TRUNCATION-SCAN 实测订正：这一行原先读的是 `res.data.total` ——
+         * 而 `POST /a/v1/objects/query` 的 `data` 是**裸数组**，数组上没有 `total` 属性，
+         * 于是这个判断**恒为 undefined、这条分支一次都没进过**（假绿第 N 形态：接了线，读错字段）。
+         * `total` 现在是 payload 的**同级**字段。
+         */
+        const total = res?.total;
         if (total === 0) return { ...res, empty: true, hint: `对象类型 ${String(args.objectType)} 存在但 0 实例：可能租户未引导，请先 run_synthetic/bootstrap 合成计划域，而非判定"无数据"。` };
+        /**
+         * 截断必须让 agent 看见：此前回包只有裸数组，`Order` 真值 500 而这里给 100 行，
+         * agent 无从分辨「一共 100 张」和「给你看了 100 张」—— 它会拿 100 当分母作答。
+         */
+        if (res?.truncated) {
+          return {
+            ...res,
+            hint: `只返回了前 ${(res.data as unknown[]).length} 行，${String(args.objectType)} 符合条件的共 ${String(total)} 行。这是上下文预算截断，不是全部数据：需要总量/合计/占比时改用 aggregate_objects（服务端全量聚合），不要拿这 ${(res.data as unknown[]).length} 行当分母。`,
+          };
+        }
         return res;
       }
       case "get_object": {

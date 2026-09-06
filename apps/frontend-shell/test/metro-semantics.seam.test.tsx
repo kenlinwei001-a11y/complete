@@ -44,6 +44,15 @@ vi.mock("@/api/endpoints", async (importOriginal) => {
       return { data: net.base, snapshotVersion: "sv" };
     }),
     searchObjects: vi.fn(async () => ({ items: net.orders, total: net.orders.length })),
+    /**
+     * WO-PAGING-SILENT-TRUNCATION-SCAN：族线取单已改走 `fetchAllObjects`（按服务端 `hasMore`
+     * 翻完，不再只拿首页 50 条）。**这个桩必须一起加** —— 只桩 `searchObjects` 是不够的：
+     * `fetchAllObjects` 是 `importOriginal` 拿回来的**真实现**，它内部调的是模块自己的
+     * `searchObjects` 绑定，`vi.mock` 换掉的那个替身它一个字都看不见 ⇒ 真去发网络请求、
+     * 本测挂到超时（失败信息只说「找不到 clm-family-status」，看不出病因在这里）。
+     * 返回全量正是真函数的语义契约，所以桩成与 `searchObjects` 同一份数据是忠实的。
+     */
+    fetchAllObjects: vi.fn(async () => ({ items: net.orders, total: net.orders.length })),
     createSimSession: vi.fn(async (b: { baseSnapshot: unknown }) => ({
       id: "s1", tenantId: "t", baseSnapshot: b.baseSnapshot, scope: {}, status: "READY",
       curTick: 0, parentCheckpointId: null, createdAt: "2026-06-25T00:00:00.000Z",

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { searchObjects } from "@/api/endpoints";
+import { fetchAllObjects } from "@/api/endpoints";
 import type { ViewRendererProps } from "../registry";
 import {
   RING_LAYOUT,
@@ -308,19 +308,19 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
 
   const qTransfer = useQuery({
     queryKey: ["a", "objects", { type: "InterBaseTransfer", layer: "transit-flow" }],
-    queryFn: () => searchObjects("InterBaseTransfer", ""),
+    queryFn: () => fetchAllObjects("InterBaseTransfer"),
     enabled: wantFetch,
     retry: false,
   });
   const qShipment = useQuery({
     queryKey: ["a", "objects", { type: "Shipment", layer: "transit-flow" }],
-    queryFn: () => searchObjects("Shipment", ""),
+    queryFn: () => fetchAllObjects("Shipment"),
     enabled: wantFetch,
     retry: false,
   });
   const qWip = useQuery({
     queryKey: ["a", "objects", { type: "WIPLot", layer: "transit-flow" }],
-    queryFn: () => searchObjects("WIPLot", ""),
+    queryFn: () => fetchAllObjects("WIPLot"),
     enabled: wantFetch,
     retry: false,
   });
@@ -343,25 +343,25 @@ export function TransitFlowLayer({ nodes, sources, initialDay = 0, initialSpeed 
    */
   const qCadence = useQuery({
     queryKey: ["a", "objects", { type: "Cadence", layer: "transit-flow" }],
-    queryFn: () => searchObjects("Cadence", ""),
+    queryFn: () => fetchAllObjects("Cadence"),
     enabled: wantFetch,
     retry: false,
   });
   const qPurchaseOrder = useQuery({
     queryKey: ["a", "objects", { type: "PurchaseOrder", layer: "transit-flow" }],
-    queryFn: () => searchObjects("PurchaseOrder", ""),
+    queryFn: () => fetchAllObjects("PurchaseOrder"),
     enabled: wantFetch,
     retry: false,
   });
   const qCustoms = useQuery({
     queryKey: ["a", "objects", { type: "CustomsClearance", layer: "transit-flow" }],
-    queryFn: () => searchObjects("CustomsClearance", ""),
+    queryFn: () => fetchAllObjects("CustomsClearance"),
     enabled: wantFetch,
     retry: false,
   });
   const qInspection = useQuery({
     queryKey: ["a", "objects", { type: "IncomingInspection", layer: "transit-flow" }],
-    queryFn: () => searchObjects("IncomingInspection", ""),
+    queryFn: () => fetchAllObjects("IncomingInspection"),
     enabled: wantFetch,
     retry: false,
   });
