@@ -1451,6 +1451,62 @@ const lineProps: PropertyDef[] = [
   { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 运行中 | 停机 | 调试
 ];
 
+/**
+ * WO-CAPACITY-EDGE · **产能池**（`CapacityPool`）—— 把产能从「节点上的一个标量」升格成**可被指向、
+ * 可被消耗的一等对象**。
+ *
+ * ── 今天的行为 X / 应该的行为 Y（铁律 0.6 第 5 条要求的那一句）────────────────────
+ * **X**：产能只以标量属性存在（`Line.capacityDaily` 套/日 · `Line.max_capacity_day` 件/日 ·
+ *   `Base.gwh`），全仓求解器一律 `lines.reduce((a,l)=>a+num(l.props.capacityDaily))` 这个形态
+ *   （`base-outlook.ts` / `chain-impediment.ts` / `portfolio.ts` / `optimizer-client.ts` 都是）。
+ *   图上**没有任何一条产能边**，于是「这条线还剩多少产能、被谁吃掉的」沿图走不出来。
+ * **Y**：产能是一个**池**（本类型），产线经 `has_capacity` 指向它、活动经 `consumes_capacity`
+ *   吃它，**吃掉多少写在边上**（`LinkInstance.props`）⇒ 余量 = 池产能 − Σ 入边消耗，可沿图算。
+ *
+ * ── 单位：件/日，**不是** 套/日（这一格是本单最容易炸的地方）────────────────────
+ * `Line` 上并存两个日产能：`capacityDaily`（**套/日**·pack）与 `max_capacity_day`（**件/日**·cell），
+ * 两者差一个 `packCellCount` 倍。而 `WorkOrder.qtyPlanned` 的量纲是**件**。
+ * ⇒ 若拿 `qtyPlanned` 去比 `capacityDaily`，一次错两处（件↔套 + 存量↔速率）。
+ * 本池刻意锚在**件**这一族：`capacityCellsDaily` ← `Line.max_capacity_day`（件/日），
+ * 消耗 = `qtyPlanned(件) ÷ spanDays(天)` = 件/日 ⇒ **两侧同族同量纲，不需要任何换算系数**。
+ * 单位全部取自 `PROPERTY_UNITS` 册（`domain.ts`），本文件一个单位字符串都不新造。
+ *
+ * ⚠ **不叫 `capacityDaily`**：`Line.capacityDaily` 是套/日，同名不同量纲正是本仓
+ * `Line.utilization`(0–100) vs `Process.utilization`(0–1) 那个老坑。名字里带 `Cells` 是有意的。
+ */
+const capacityPoolProps: PropertyDef[] = [
+  { propKey: "poolId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "产能池业务主键。一线一池，由产线号确定性拼出（`capacityPoolIdOfLine`，全仓唯一拼法）。" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line", description: "本池属于哪条产线（`has_capacity` 边的来源端）。" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base", description: "本池所在基地（随产线，供按基地圈定产能面）。" },
+  {
+    propKey: "capacityCellsDaily",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "件/日",
+    scale: "absolute",
+    description:
+      "本池申报日产能（电芯/日）。**投影自 `Line.max_capacity_day`，不是第二个真值**——同一个数换个承载，改产线即改池。与 `Line.capacityDaily`（套/日）差一个单 PACK 电芯数，切勿混用。",
+  },
+  {
+    propKey: "consumedCellsDaily",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "件/日",
+    scale: "absolute",
+    description:
+      "Σ 入边 `consumes_capacity.consumedCellsDaily`（派生·不落种子值）。**本属性同时是那条边上同名量的量纲声明处**——边没有 PropertyDef 表，边上的量纲一律回本体这一格取，求解器不许内联单位串。",
+  },
+  {
+    propKey: "remainingCellsDaily",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "件/日",
+    scale: "absolute",
+    description: "余量 = capacityCellsDaily − consumedCellsDaily（可为负 = 超载）。派生，不落种子值。",
+  },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "池状态（随产线：运行中 | 调试）。**不参与超载判定** —— 调试线也申报产能，把它排除掉等于悄悄改变产能面。" },
+];
+
 const processProps: PropertyDef[] = [
   { propKey: "processId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
   { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
@@ -1879,6 +1935,22 @@ const workOrderProps: PropertyDef[] = [
   { propKey: "qtyActual", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
   { propKey: "startDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "endDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  /**
+   * WO-CAPACITY-EDGE · 计划工期（天）= `endDate − startDate`。
+   *
+   * 为什么必须显式落一格：产能是**速率**（件/日），工单量是**存量**（件）——两者相除才同量纲。
+   * 除数此前只能由两个 `date` 现算，于是「吃掉多少产能」这个量在本体里**没有量纲出处**，
+   * `consumes_capacity` 边上的 `spanDays` 也就无处声明单位。本格就是那个声明处（`天` 取自单位册）。
+   */
+  {
+    propKey: "spanDays",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "天",
+    scale: "absolute",
+    description:
+      "计划工期（天）= `endDate − startDate`。它是把工单量（件，**存量**）换算成产能占用（件/日，**速率**）的除数，`consumes_capacity` 边上的 `spanDays` 也以本格为量纲出处。恒 ≥7，故换算不需要兜底除数。",
+  },
   { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 已排产 | 生产中 | 已完成 | 已关闭
   // WO-FULFILLS-EDGE · 本工单兑现的**销售订单外键**（值 = `Order` 主键 `so`）。
   // 为什么非加不可：此前 `WorkOrder` 的 `refToTypeKey` 只指向 Model/Line/Base，**没有一个指向 Order**，
@@ -2297,6 +2369,8 @@ export const BINDINGS: Record<string, { connId: string; dataset: string; fieldMa
   // Phase 3 MES Domain bindings
   WorkOrder: [{ connId: "conn-mes", dataset: "mes_work_orders", fieldMappings: { woId: "WO_ID", moNo: "MO_NO", modelId: "MODEL_ID", lineId: "LINE_ID", baseId: "BASE_ID", qtyPlanned: "QTY_PLANNED", qtyActual: "QTY_ACTUAL", startDate: "START_DATE", endDate: "END_DATE", status: "STATUS" } }],
   ProductionSchedule: [{ connId: "conn-mes", dataset: "mes_schedules", fieldMappings: { schedId: "SCHED_ID", woId: "WO_ID", lineId: "LINE_ID", shift: "SHIFT", scheduledDate: "SCHED_DATE", qty: "QTY", priority: "PRIORITY", status: "STATUS" } }],
+  // WO-CAPACITY-EDGE：产能池的源就是产线台账那一列（`MAX_CAP_DAY`）——池不是新真值，是同一列换个承载。
+  CapacityPool: [{ connId: "conn-mes", dataset: "mes_lines", fieldMappings: { poolId: "LINE_ID", lineId: "LINE_ID", baseId: "BASE_ID", capacityCellsDaily: "MAX_CAP_DAY", status: "STATUS" } }],
   ShiftPlan: [{ connId: "conn-mes", dataset: "mes_shift_plans", fieldMappings: { shiftId: "SHIFT_ID", lineId: "LINE_ID", baseId: "BASE_ID", shiftName: "SHIFT_NAME", plannedHeadcount: "PLAN_HC", actualHeadcount: "ACT_HC", date: "SHIFT_DATE", hours: "HOURS" } }],
   WIPLot: [{ connId: "conn-mes", dataset: "mes_wip_lots", fieldMappings: { lotId: "LOT_ID", woId: "WO_ID", modelId: "MODEL_ID", lineId: "LINE_ID", currentProcess: "CUR_PROC", qty: "QTY", status: "STATUS", startTime: "START_TIME", lastMoveTime: "LAST_MOVE" } }],
   WIPMove: [{ connId: "conn-mes", dataset: "mes_wip_moves", fieldMappings: { moveId: "MOVE_ID", lotId: "LOT_ID", fromProcess: "FROM_PROC", toProcess: "TO_PROC", qty: "QTY", moveTime: "MOVE_TIME", operatorId: "OP_ID" } }],
@@ -2321,6 +2395,7 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   // WO-WAREHOUSE-CUSTLOC：仓库归 factory 域（库存仓位属工厂设施）
   Warehouse: "factory",
   InterBaseTransfer: "capacity", // WO-INTERBASE-TRANSFER：跨基地调拨（在途运力·同 Shipment 归 capacity 域）
+  CapacityPool: "capacity", // WO-CAPACITY-EDGE：产能池（产能升格为一等对象·归 capacity 域）
   ProductPlatform: "product", ProductSeries: "product", ProductVersion: "product",
   BOMHeader: "product", BOMDetail: "product", Routing: "process", Operation: "process", ProcessCapabilityWindow: "process",
   QualityStandard: "quality", InspectionCharacteristic: "quality",
@@ -2394,6 +2469,10 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Line.actual_output_daily": "日实际产出", "Line.schedule_attainment": "排产达成率",
   "Line.line_code": "产线编码", "Line.max_capacity_day": "日最大产能", "Line.capacityDaily": "日运营产能",
   "Line.target_yield": "目标良率", "Line.status": "产线状态",
+  // WO-CAPACITY-EDGE：产能池（件/日 口径·与 Line.capacityDaily 的套/日 刻意不同名）
+  "CapacityPool.poolId": "产能池编号", "CapacityPool.lineId": "所属产线", "CapacityPool.baseId": "所属基地",
+  "CapacityPool.capacityCellsDaily": "池日产能(电芯)", "CapacityPool.consumedCellsDaily": "已占用日产能(电芯)",
+  "CapacityPool.remainingCellsDaily": "剩余日产能(电芯)", "CapacityPool.status": "产能池状态",
   "Workshop.workshopId": "车间编号", "Workshop.baseId": "所属基地", "Workshop.name": "车间名称",
   "Workshop.processType": "工艺类型",
   "Process.processId": "工序编号", "Process.lineId": "所属产线", "Process.baseId": "所属基地",
@@ -2544,6 +2623,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "WorkOrder.lineId": "产线", "WorkOrder.baseId": "基地", "WorkOrder.qtyPlanned": "计划数量",
   "WorkOrder.qtyActual": "实际数量", "WorkOrder.startDate": "开工日期", "WorkOrder.endDate": "完工日期",
   "WorkOrder.status": "工单状态", "WorkOrder.orderRef": "兑现订单",
+  "WorkOrder.spanDays": "计划工期", // WO-CAPACITY-EDGE：件→件/日 的除数（产能是速率，工单量是存量）
   "ProductionSchedule.schedId": "排程编号", "ProductionSchedule.woId": "关联工单",
   "ProductionSchedule.lineId": "产线", "ProductionSchedule.shift": "班次",
   "ProductionSchedule.scheduledDate": "排产日期", "ProductionSchedule.qty": "排产数量",
@@ -3097,6 +3177,13 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     // WO-ORDERLINE：订单明细行（SO→型号行·一单多型号多行·紧随 Order·勾稽 Σ行===头）
     plain("OrderLine", "订单明细行", orderLineProps),
     plain("Line", "产线", lineProps),
+    // WO-CAPACITY-EDGE：产能池（产线的产能升格为一等对象，紧随 Line —— 它就是 Line 那一列的承载）
+    plainD(
+      "CapacityPool",
+      "产能池",
+      "一条产线的日产能资源（电芯/日）。产线经 `has_capacity` 指向它，生产工单经 `consumes_capacity` 吃它、**吃掉多少写在那条边上**；余量 = 本池申报产能 − Σ 入边消耗。它把「产能」从产线上的一个标量升格成可被指向、可被消耗的资源，于是「这条线还剩多少、被谁吃掉的」能沿图走出来，而不只是按字段读数。",
+      capacityPoolProps,
+    ),
     plain("Workshop", "车间", workshopProps),
     plain("Process", "工序", processProps),
     plain("Equipment", "设备", equipmentProps),
@@ -3261,6 +3348,25 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // Phase 3 MES Domain links
     { key: "wo_for_model", fromTypeKey: "WorkOrder", toTypeKey: "Model", cardinality: "N:1" }, // process
     { key: "wo_on_line", fromTypeKey: "WorkOrder", toTypeKey: "Line", cardinality: "N:1" }, // process
+    // ══════════════════════════════════════════════════════════════════════════════
+    // WO-CAPACITY-EDGE · 产能两条边（`has_capacity` / `consumes_capacity`）
+    //
+    // ① `has_capacity`：Line → CapacityPool（结构边，不带量 —— 产能数在池节点上）。
+    // ② `consumes_capacity`：WorkOrder → CapacityPool，**量写在边上**（`LinkInstance.props`）。
+    //
+    // ⚠ 两条都**不声明 `viaProperty`**，各有各的理由，别顺手补上：
+    //   · `consumes_capacity` 不能：`materializeDeclaredLinks` 写出的 `LinkInstance`
+    //     **一律没有 `props`**（`ontology.ts` 里那次 `origin: { type: "LINK_DERIVED" … }` 的 put），
+    //     而本条边的全部价值就是边上那个量 ⇒ 声明驱动只会得到一条「用了这条线」却
+    //     答不出「吃掉多少」的边，正是本单要消灭的形态。
+    //   · `has_capacity` 技术上能（外键 `CapacityPool.lineId` 指向 `Line` 主键，`viaSide:"to"`），
+    //     但**会造出双份**：`upsertLinkType` 在 `synthetic/service.ts` 种链路类型时就跑物化，
+    //     那一刻对象还一个都没落库 ⇒ 当场 0 条；之后种子再手写一遍，而任何人重新
+    //     `POST /a/v1/ontology/link-types` 又会补出一批 `lnk_via_*`，与种子的 `lnk_hc_*`
+    //     **同一条边两个实例、两个 origin**。冲突会红，双份不会 —— 故只留一个真值源。
+    // ══════════════════════════════════════════════════════════════════════════════
+    { key: "has_capacity", fromTypeKey: "Line", toTypeKey: "CapacityPool", cardinality: "1:1" }, // capacity（结构边·种子物化）
+    { key: "consumes_capacity", fromTypeKey: "WorkOrder", toTypeKey: "CapacityPool", cardinality: "N:1" }, // capacity（量在边上·种子物化）
     // WO-FULFILLS-EDGE · **工单兑现销售订单**（制造侧 → 商务侧唯一的一跳）。
     // 只声明这**一个方向**，不落逆边：查询引擎的 `direction:"in"`（`ontology/slice-index.ts:18`
     // `l.toTypeKey === from ? l.fromTypeKey : undefined`）本来就能从 Order 反着走回 WorkOrder，
@@ -3905,6 +4011,13 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             { linkKey: "sched_for_wo", direction: "in", limitPerNode: 2 },
           ],
           [{ linkKey: "line_has_process", direction: "out", limitPerNode: 2, project: ["processId", "lineId", "name", "kind", "yield", "utilization", "requiredThroughput"] }],
+          // WO-CAPACITY-EDGE · 产能占用面：这条线的产能池 → 谁在吃它、各吃多少。
+          // 第二跳方向是 `in`（边是 WorkOrder→CapacityPool，从池要反着走回工单），
+          // 与同一份 spec 里 `model_certified_on` 的 `in` 同理。
+          [
+            { linkKey: "has_capacity", direction: "out", project: ["poolId", "lineId", "baseId", "capacityCellsDaily", "consumedCellsDaily", "remainingCellsDaily", "status"] },
+            { linkKey: "consumes_capacity", direction: "in", limitPerNode: 2, project: ["woId", "qtyPlanned", "spanDays", "status"] },
+          ],
           // 边界 → D04 产品与工程（锚点类型 Model：这条线认证过哪些型号）
           [{ linkKey: "model_certified_on", direction: "in", limitPerNode: 3, project: ["modelId", "name", "unitPrice"] }],
           // 边界 → D03 销售与客户（锚点类型 Order：认证型号在手的订单）
@@ -3921,8 +4034,8 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
             expect: {
               rootType: "Line",
               minNodes: 40,
-              mustIncludeTypes: ["Line", "Base", "InterBaseTransfer", "WorkOrder", "Process", "Model", "Order"],
-              mustIncludeLinkKeys: ["line_belongs_to_base", "base_dispatches_transfer", "line_runs_work_order", "line_has_process", "model_certified_on", "model_demanded_by_order"],
+              mustIncludeTypes: ["Line", "Base", "InterBaseTransfer", "WorkOrder", "Process", "Model", "Order", "CapacityPool"],
+              mustIncludeLinkKeys: ["line_belongs_to_base", "base_dispatches_transfer", "line_runs_work_order", "line_has_process", "model_certified_on", "model_demanded_by_order", "has_capacity", "consumes_capacity"],
             },
           },
         ],
@@ -4308,6 +4421,8 @@ export interface GeneratedBattery {
   materialAlternatives: Record<string, unknown>[];
   workshops: Record<string, unknown>[];
   lines: Record<string, unknown>[];
+  /** WO-CAPACITY-EDGE：产能池（一线一池·`Line.max_capacity_day` 的承载·件/日）。 */
+  capacityPools: Record<string, unknown>[];
   processes: Record<string, unknown>[];
   equipment: Record<string, unknown>[];
   maintPlans: Record<string, unknown>[];
@@ -4609,6 +4724,49 @@ function lineStatusFor(orderStatus: string, h: number, i: number): "OPEN" | "COM
   if (orderStatus === "IN_PRODUCTION") return ((h + i) % 2 === 0 ? "COMMITTED" : "PARTIAL");
   const STATUSES = ["OPEN", "COMMITTED", "PARTIAL", "SHIPPED"] as const;
   return STATUSES[(h + i) % 4] as "OPEN" | "COMMITTED" | "PARTIAL" | "SHIPPED";
+}
+
+/**
+ * WO-CAPACITY-EDGE · 产能池的 id（一线一池）。**单一实现**：种子物化、边的端点、求解器回指
+ * 三处共用这一个函数，不许各拼各的字符串（拼错一次就是一批悬空边，且不报错）。
+ */
+export function capacityPoolIdOfLine(lineId: string): string {
+  return `POOL-${lineId}`;
+}
+
+/**
+ * WO-CAPACITY-EDGE · **一张工单吃掉多少产能** —— `consumes_capacity` 边上那个量的**唯一算法**。
+ *
+ * ── 为什么这是本单的要害（铁律 1.5 第四态：接对了、跑通了、但算错了）────────────
+ * 产能是**速率**（件/日），工单量是**存量**（件）。这两个数直接相减/相比是量纲错，
+ * 但它**不报错、屏上照样有数** —— 与 `propagation.ts` 那次「公式里没有用量项，
+ * 碳酸锂与铝箔同幅涨价产生相同成本压力」结构完全相同：链路通、读数动、答案错。
+ * 现成的反例就在仓里：`shared_bottleneck` 求解器按 `demandField` 直接 `Σ d.props[demandField]`
+ * 去比 `capacityField`，若拿 `qtyPlanned`(件) 比 `max_capacity_day`(件/日)，
+ * **每条线都会被判成瓶颈**，而它跑得通、返回结构完整。
+ *
+ * ⇒ 本函数把存量换算成速率：`consumedCellsDaily = qtyPlanned ÷ spanDays`（件/日）。
+ * 除数 `spanDays` 恒 ≥7（生成式 `7 + hash%7`），故**不设兜底**：读不出量或工期就
+ * 返回 `undefined`（该工单不连这条边），**不按 0 或按某个默认天数替它编一个数**。
+ *
+ * 纯函数：零 rng、零时钟、零 IO ⇒ 同输入字节一致（R6）。
+ */
+export function capacityConsumptionOfWorkOrder(
+  wo: Record<string, unknown>,
+): { poolId: string; consumedCellsDaily: number; qtyPlanned: number; spanDays: number } | undefined {
+  const lineId = typeof wo.lineId === "string" ? wo.lineId : "";
+  const qtyPlanned = typeof wo.qtyPlanned === "number" ? wo.qtyPlanned : Number.NaN;
+  const spanDays = typeof wo.spanDays === "number" ? wo.spanDays : Number.NaN;
+  if (!lineId || !Number.isFinite(qtyPlanned) || !Number.isFinite(spanDays) || !(qtyPlanned > 0) || !(spanDays > 0)) {
+    return undefined;
+  }
+  return {
+    poolId: capacityPoolIdOfLine(lineId),
+    // round(…,6) 与 `chain-impediment.readBaseContention` 的日产率同精度口径（不另立一套）。
+    consumedCellsDaily: round(qtyPlanned / spanDays, 6),
+    qtyPlanned,
+    spanDays,
+  };
 }
 
 /**
@@ -5811,7 +5969,10 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       const qtyActual = Math.floor(qtyPlanned * (0.85 + (hashString(`${lineId}_wo${w}a`) % 15) / 100));
       const startOffset = hashString(`${lineId}_wo${w}s`) % 14;
       const startDate = isoDate(t0 + startOffset * 86400000);
-      const endDate = isoDate(t0 + (startOffset + 7 + (hashString(`${lineId}_wo${w}e`) % 7)) * 86400000);
+      // WO-CAPACITY-EDGE：工期显式命名（原先只以 `endDate` 的加数形态存在，取不出来）。
+      // 恒 ≥7 ⇒ 下面 `qtyPlanned / spanDays` 不可能除零，**不需要也不许**加 `?? 1` 这类兜底。
+      const spanDays = 7 + (hashString(`${lineId}_wo${w}e`) % 7);
+      const endDate = isoDate(t0 + (startOffset + spanDays) * 86400000);
       const woId = `WO-${lineId}-${w}`;
       workOrders.push({
         woId,
@@ -5823,6 +5984,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
         qtyActual,
         startDate,
         endDate,
+        spanDays,
         // WO-INVENTORY-3TIER：状态确定性铺满 4 态（此前 w%4 仅取到 已排产/生产中·从无完工单 →
         // 完工入库派生无源）。改按 woId 哈希铺满 → 约半数 已完成/已关闭 可承接 FG 入库（R6 确定性）。
         status: MES_STATUSES.wo[hashString(`${woId}_status`) % MES_STATUSES.wo.length]!,
@@ -6213,7 +6375,19 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     }
   }
 
-  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, processes, equipment, maintPlans, segments, shipments, warehouses, interBaseTransfers, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, exceptionEvents, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts, finishedGoodsInv, inventoryTxns, orderPromises, orderLines };
+  // WO-CAPACITY-EDGE · 产能池（**纯投影**：只读已生成的 `lines`，零 rng / 零时钟 ⇒ 不位移任何
+  // rng 流，同 (industry, scale, seed) 字节一致 R6）。一线一池，`poolId` 由 `lineId` 确定性拼出。
+  // ⚠ 取的是 `max_capacity_day`（**件/日**）不是 `capacityDaily`（套/日）—— 见 `capacityPoolProps`
+  // 头注：消耗侧 `WorkOrder.qtyPlanned` 的量纲是**件**，两侧必须同族，否则一次错两处。
+  const capacityPools: Record<string, unknown>[] = lines.map((l) => ({
+    poolId: capacityPoolIdOfLine(String(l.lineId)),
+    lineId: l.lineId,
+    baseId: l.baseId,
+    capacityCellsDaily: l.max_capacity_day,
+    status: l.status,
+  }));
+
+  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, capacityPools, processes, equipment, maintPlans, segments, shipments, warehouses, interBaseTransfers, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, exceptionEvents, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts, finishedGoodsInv, inventoryTxns, orderPromises, orderLines };
 }
 
 // ---------------------------------------------------------------------------

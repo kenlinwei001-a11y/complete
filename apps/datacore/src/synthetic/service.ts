@@ -41,6 +41,9 @@ import {
   BINDINGS,
   outputLineScaleForBase,
   customerNameOfOrderCust,
+  // WO-CAPACITY-EDGE：消耗量的**唯一算法** + 池 id 的**唯一拼法**（种子与消费方共用一份）。
+  capacityConsumptionOfWorkOrder,
+  capacityPoolIdOfLine,
 } from "./battery.js";
 import { cadenceObjectRows, deriveChainCadences } from "./cadence.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
@@ -857,6 +860,10 @@ export class SyntheticService {
     //     良率(QualityLot/InspectionResult)、设备(EquipmentOEE)——补齐使 yield_diagnosis/库存/设备问题有真源。
     //     高量低值执行类(ShiftPlan/ProductionSchedule/WIPMove/操作工考勤等)保持模型态不物化（避单次 seed 逾万对象拖垮）。
     await putAll("WorkOrder", g.workOrders, "woId");
+    // WO-CAPACITY-EDGE · 产能池落库（一线一池·纯投影，见 `battery.ts` 的 `capacityPools`）。
+    // 必须在这里而不是"高量低值执行类"那一档：产能池数量 = 产线数（130），且产能直接决定
+    // 能不能接单，属决策相关层，与同批的 `MaintenanceOrder`（193 行）同理。
+    await putAll("CapacityPool", g.capacityPools, "poolId");
     await putAll("WIPLot", g.wipLots, "lotId");
     await putAll("QualityLot", g.qualityLots, "qlotId");
     await putAll("InspectionResult", g.inspectionResults, "resultId");
@@ -1274,6 +1281,42 @@ export class SyntheticService {
     //
     // 纯投影（遍历既有对象数组、零 rng、零时钟）⇒ 同 (industry, scale, seed) 字节一致（R6）。
     // ══════════════════════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // WO-CAPACITY-EDGE · 产能两条边的实例
+    //
+    // ① `has_capacity`（Line → CapacityPool）：结构边，不带量 —— 产能数在池节点上。
+    // ② `consumes_capacity`（WorkOrder → CapacityPool）：**量写在边上**。
+    //    `materializeDeclaredLinks` 造的边没有 `props`，而本条边的全部价值就是边上那个量
+    //    ⇒ 声明驱动会得到「用了这条线」却答不出「吃掉多少」的边（见 `batteryLinkTypes()` 同段注）。
+    //
+    // 量的算法在 `capacityConsumptionOfWorkOrder`（`battery.ts`）里**只有一份**：
+    // `consumedCellsDaily = qtyPlanned(件) ÷ spanDays(天)`（件/日），与池的
+    // `capacityCellsDaily`（← `Line.max_capacity_day`，件/日）**同族同量纲**。
+    // 算不出量的工单**不连边**（诚实缺席，不补 0）。纯投影：零 rng / 零时钟 ⇒ R6。
+    // ══════════════════════════════════════════════════════════════════════════════════
+    for (const l of g.lines) {
+      await putLink(
+        `lnk_hc_${P(l).lineId}`,
+        "has_capacity",
+        oid("Line", P(l).lineId),
+        oid("CapacityPool", capacityPoolIdOfLine(String(P(l).lineId))),
+      );
+    }
+    for (const wo of g.workOrders) {
+      const cc = capacityConsumptionOfWorkOrder(wo);
+      if (!cc) continue;
+      await putLink(
+        `lnk_cc_${P(wo).woId}`,
+        "consumes_capacity",
+        oid("WorkOrder", P(wo).woId),
+        oid("CapacityPool", cc.poolId),
+        // 边上三格：`consumedCellsDaily` 是**量**（量纲声明在 `CapacityPool.consumedCellsDaily`），
+        // `qtyPlanned` / `spanDays` 是它的**两个输入**（量纲分别声明在 `WorkOrder.qtyPlanned`
+        // 与 `WorkOrder.spanDays`）—— 带上它们，推演过程才可披露（铁律 1.5 判据二），
+        // 而不是屏上只有一个说不清怎么来的数。
+        { consumedCellsDaily: cc.consumedCellsDaily, qtyPlanned: cc.qtyPlanned, spanDays: cc.spanDays },
+      );
+    }
     // D07 ①：Line → WorkOrder（wo.lineId）—— 产线吃紧 ⇒ 工单下达受阻
     for (const wo of g.workOrders) {
       await putLink(`lnk_lrw_${P(wo).woId}`, "line_runs_work_order", oid("Line", P(wo).lineId), oid("WorkOrder", P(wo).woId));

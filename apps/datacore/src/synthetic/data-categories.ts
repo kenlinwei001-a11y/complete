@@ -34,7 +34,9 @@ export function batteryDataCategories(): DataCategory[] {
     },
     {
       key: "capacity_base", displayName: "产能与基地", description: "生产基地、车间、产线、产能投资项目及产品-产线/设备制造能力。",
-      typeKeys: ["Base", "Workshop", "Line", "Warehouse", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
+      // WO-CAPACITY-EDGE：`CapacityPool` 归本类目（它的源就是产线台账 `mes_lines.MAX_CAP_DAY` 那一列，
+      // 与 `Line` 同一张源表）——不归「生产执行」：那一档是工单/排程这类**活动**，池是**资源**。
+      typeKeys: ["Base", "Workshop", "Line", "CapacityPool", "Warehouse", "CapexProject", "ProductLineCapability", "ProductEquipmentCapability"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["sap_erp", "generic_jdbc", "file_upload"],
     },
     {
       key: "production_execution", displayName: "生产执行", description: "生产工单、排程、班次计划与在制（WIP）批次/移动/质检点（MES 生产执行域）。",
