@@ -504,7 +504,11 @@ describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if�
     //   +61 = WO-FINANCE-WORLDSTATE finance_world_projection（财务**金额**随世界态扰动的投影 ——
     //         `finance_pnl(ctx)` 零世界态入参、施加任何扰动都返回逐字节相同的一组数，缺的正是金额那一跳；
     //         新增 key 而**不动** finance_pnl 的签名：它有既有调用方与金值，动签名会连坐）。
-    expect(SOLVER_KEYS.length).toBe(61);
+    //   +62 = WO-CAPACITY-EDGE capacity_ledger（产能**占用面**：池申报产能 − Σ `consumes_capacity`
+    //         边上的消耗量 = 余量，超载逐条给违约信息）。**不与 capacity_rollup 合并**：
+    //         rollup 答「这条线能做多少」（能力面·套/日），ledger 答「还剩多少」（占用面·件/日），
+    //         两者量纲不同（差一个 packCellCount 倍），合成一个 key 必出量纲事故。
+    expect(SOLVER_KEYS.length).toBe(62);
     expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
   });
 

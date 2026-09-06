@@ -34,6 +34,8 @@ export const MOCK_ONTOLOGY_TYPES: MockOntologyType[] = [
   { key: "BOMDetail", domain: "product" },
   { key: "BOMHeader", domain: "product" },
   { key: "Cadence", domain: "capacity" },
+  // WO-CAPACITY-EDGE：产能池（A 侧 `batteryObjectTypes()` 新增·产能升格为一等对象）。
+  { key: "CapacityPool", domain: "capacity" },
   { key: "DataSourceHealth", domain: "quality" },
   { key: "DefectRecord", domain: "quality" },
   { key: "DemandSegment", domain: "forecast" },
@@ -206,6 +208,12 @@ export const MOCK_ONTOLOGY_LINKS: MockOntologyLink[] = [
   { linkKey: "process_uses_equipment", fromTypeKey: "Process", toTypeKey: "Equipment" },
   { linkKey: "equipment_has_maintenance_order", fromTypeKey: "Equipment", toTypeKey: "MaintenanceOrder" },
   { linkKey: "model_stocked_as_finished_goods", fromTypeKey: "Model", toTypeKey: "FinishedGoodsInventory" },
+  // WO-CAPACITY-EDGE：产能两条边（A 侧 `batteryLinkTypes()` 新增）。
+  // `consumes_capacity` 在 A 侧**边上带量**（`props.consumedCellsDaily`），本镜像只镜像拓扑
+  // ——它的口径就是 `{linkKey, fromTypeKey, toTypeKey}` 三元组，不含 props（与既有
+  // `model_certified_on` 同处境：那条边在 A 侧也带 `props.status`，此处同样只镜像拓扑）。
+  { linkKey: "has_capacity", fromTypeKey: "Line", toTypeKey: "CapacityPool" },
+  { linkKey: "consumes_capacity", fromTypeKey: "WorkOrder", toTypeKey: "CapacityPool" },
 ];
 
 // ---------------------------------------------------------------------------
