@@ -205,13 +205,13 @@ describe("WO-CAPACITY-EDGE · has_capacity / consumes_capacity 接缝", () => {
     expect(unitOf(lineType, "capacityDaily")).toBe("套/日");
     // 同族守卫：池的单位必须以「工单量单位 + /」开头 —— 这是删掉那两格换来的**更强**的一条，
     // 它咬的是「零换算系数」那条纪律本身，而不是「有没有一格属性写着 件/日」。
-    expect(disc.units.capacity.startsWith(`${unitOf(woType, "qtyPlanned")}/`)).toBe(true);
+    expect(String(disc.units.capacity).startsWith(`${unitOf(woType, "qtyPlanned")}/`)).toBe(true);
     // 变异反证（铁律 1.5 判据一·对照实验）：把池的量纲改成 `Line.capacityDaily` 的**套/日**——
     // 正是本链路头号警告的那个坑（件↔套 + 存量↔速率一次错两处）。改完必须**当场 400**，
     // 而不是照样出一堆「跑得起来但错两处」的数。
     const mutated = {
       ...poolType,
-      properties: poolType.properties.map((p) => (p.propKey === "capacityCellsDaily" ? { ...p, unit: "套/日" } : p)),
+      properties: poolType.properties.map((p) => (p.propKey === "capacityCellsDaily" ? { ...p, unit: "套/日" as const } : p)),
     };
     await t.repos.ontologyTypes.put(mutated);
     const bad = await invokeSolver(t, "capacity_ledger", {});
