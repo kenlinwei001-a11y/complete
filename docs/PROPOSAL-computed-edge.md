@@ -76,11 +76,11 @@ grep -n 'putLink(`lnk_mis_\|putLink(`lnk_otp_\|putLink(`lnk_pto_\|putLink(`lnk_l
 | 2 | `order_to_plantarget` | `service.ts:1212` | `oid("PlanTarget", \`PT-${month}\`)`，`month = o.due.slice(0,7)`（`:1211`）；外加 `:1210` 的 `monthTargets` 预筛 `t.level === "month"` | **算** / 单行 | 目标端 = **前缀 + 日期截断**。且 `level==="month"` 是**锚点侧**过滤，而 `viaWhere` 只对 carrier 求值（`ontology.ts:515-522` 用 `carrierTypeKey` 编译、`o.props` 求值）⇒ **两个独立缺口叠在一条边上** |
 | 3 | `plantarget_ownedby` | `service.ts:1224` | `owner = P(t).level === "month" ? "prin-plan" : "prin-coo"`（`:1223`） | **算**（条件常量） / 单行 | `PlanTarget` 属性表（`battery.ts:2352-2359`）只有 `tgtId/period/level/value/year/scenarioKey`，**无 `ownerRef`**。⚠ 同文件 `Metric` **有** `ownerRef`（`battery.ts:1752`，`refToTypeKey:"Principal"`）⇒ `metric_ownedby`（`service.ts:1219`）是**裸读、五种声明够用**。**同形状两条边，一条够用一条不够用，差的只是一个属性** |
 | 4 | `line_belongs_to_workshop` | `service.ts:1001` | `workshopId = l.lineId.replace("LINE-", "")`（`:1000`） | **算**（串变换） / 单行 | `Line` 属性表（`battery.ts:1411+`）**无 `workshopId`**。生成侧 `battery.ts:5457` 是 `const lineId = \`LINE-${workshopId}\`` ⇒ **workshopId 本来就在 lineId 里，只是没落成列** |
-| 5 | `base_data_health` | `service.ts:1123` | `for (const b of g.bases) for (const dh of g.dataHealth)` —— 两层 for，**两集合互不引用** | 裸读 / 裸读 · **叉积** | 无外键可依。规模：`BASE_REGISTRY` **13** 条（`packages/contracts/src/base-registry.ts:101+`）× `dataHealth` **9** 条（`battery.ts:5765-5774`，XL 档另加每基地 IoT）⇒ **117 条边** |
+| 5 | `base_data_health` | `service.ts:1123` | `for (const b of g.bases) for (const dh of g.dataHealth)` —— 两层 for，**两集合互不引用** | 裸读 / 裸读 · **叉积** | 无外键可依。规模：`BASE_REGISTRY` **13** 条（`packages/contracts/src/base-registry.ts:101+`）× `dataHealth` **9** 条（`battery.ts:5765-5773`，XL 档另加每基地 IoT）⇒ **117 条边** |
 | 6 | `scenario_to_capex` | `service.ts:1201` | `for (const s of pd.scenarios) { if (P(s).key === "conservative") continue; for (const cp of ext.capexProjects) …}`（`:1199-1201`） | 裸读 / 裸读 · **叉积 + 源侧守卫** | 同上。规模：scenarios **3**（`battery.ts:6453-6457`）减 conservative = 2 × capexProjects **3**（`battery-extended.ts:950-954`）= **6 条边** |
 | 7 | `model_uses_material` | `service.ts:1029` | `bom = Array.from({length:4}, (_,k) => matIds[(mi*2+k) % matIds.length])`（`:1027`） | **算**（模运算选料） / 单行 | 详见 §1.2 —— **不是多跳桥链问题** |
 | 8 | `material_used_by_model` | `service.ts:1032` | 与 7 **共用同一个 `bom` 变量**（`:1030-1031` 注释明写「不是抄一遍派生式」） | 同 7 | 同 7 |
-| 9 | `exc_sourced_from` | `service.ts:1131` | `oid(refType, refId)`，`refType = String(ev.refType)`（`:1129`）—— **类型名本身是变量** | 裸读 / 单行，但 **toType 随行变** | `LinkTypeDef.toTypeKey` 是**单个固定串**（`domain.ts` 声明 + `ontology.ts:313` 拿它查类型）。5 个 refType（`battery.ts:2194/2210/2231/2247/2264`：`EquipmentDowntime` / `EquipmentAlarm` / `DefectRecord` / `TriggerRule` / `MaterialBalance`）⇒ **一条声明装不下 5 个目标类型** |
+| 9 | `exc_sourced_from` | `service.ts:1131` | `oid(refType, refId)`，`refType = String(ev.refType)`（`:1129`）—— **类型名本身是变量** | 裸读 / 单行，但 **toType 随行变** | `LinkTypeDef.toTypeKey` 是**单个固定串**（`domain.ts` 声明 + `ontology.ts:504` 物化时单值取用）。5 个 refType（`battery.ts:2194/2210/2231/2247/2264`：`EquipmentDowntime` / `EquipmentAlarm` / `DefectRecord` / `TriggerRule` / `MaterialBalance`）⇒ **一条声明装不下 5 个目标类型** |
 
 ### 1.2 ⚠ 第 7/8 条的前提被实测推翻：**它不是「多跳桥链」问题**
 
@@ -217,11 +217,15 @@ grep -n "^export function evaluateAst" apps/datacore/src/ruledsl.ts   # → 543
 
 **为什么今天做不了（实测，不是推想）**：`ontology-dsl` 的 `binary "+"` **两侧强制转数**：
 ```
-apps/datacore/src/ontology-dsl.ts:519-528（evaluate 的 "binary" 分支）
-  const ln = asNumber(l); const rn = asNumber(r);
-  if (ln === null || rn === null) return null;
+apps/datacore/src/ontology-dsl.ts:513-519（evaluate 的 "binary" 分支）
+  case "binary": {
+    const l = evaluate(node.left, ctx);  const r = evaluate(node.right, ctx);
+    if (l === null || r === null) return null;
+    const ln = asNumber(l);  const rn = asNumber(r);
+    if (ln === null || rn === null) return null;      // ← 串进来到这里就没了
 ```
-`asNumber`（`:458`）只认 `typeof v === "number"` ⇒ **`"PT-" + this.period` 求值为 `null`，不是拼接、也不报错**。
+`asNumber`（`:458-461`）只认 `typeof v === "number" && Number.isFinite(v)`
+⇒ **`"PT-" + this.period` 求值为 `null`，不是拼接、也不报错**。
 这正是 `ontology-link-predicate.ts:30-39` 头注反复警告的那一态：**静默的 0 实例死边**。
 
 **具体例子（输入 → 输出）· `order_to_plantarget`**
@@ -266,7 +270,7 @@ apps/datacore/src/ontology-dsl.ts:519-528（evaluate 的 "binary" 分支）
 
 **最小能力描述**：一条 `LinkTypeDef` 的 `toTypeKey` 随行取值。
 **这不是求值器问题，是类型契约问题** —— `toTypeKey` 是 `LinkTypeDef` 的**单值字段**，
-下游 `executeSlice` 的 `mustIncludeTypes`（如 `battery.ts:3822`）与 `ontology.ts:313` 的锚点类型查找
+下游 `executeSlice` 的 `mustIncludeTypes`（如 `battery.ts:3822`）与 `ontology.ts:504` 的 `anchorTypeKey = side === "from" ? def.toTypeKey : def.fromTypeKey`（单值取用）
 都按「一条边一个目标类型」写的。改它 ≠ 加个表达式。
 
 ---
@@ -343,7 +347,7 @@ apps/datacore/src/ontology-dsl.ts:519-528（evaluate 的 "binary" 分支）
 ### 组 C —— **我给不出安全方案**
 
 `toTypeKey` 随行变会让下面这些**全部失去意义**：切片的 `mustIncludeTypes` 断言、
-`ontology.ts:313` 的锚点类型查找、以及「一条边两端类型确定」这个被 `executeSlice` 依赖的前提。
+`ontology.ts:504` 的 `anchorTypeKey = side === "from" ? def.toTypeKey : def.fromTypeKey`（单值取用）、以及「一条边两端类型确定」这个被 `executeSlice` 依赖的前提。
 把它改成多值，等于改 `LinkTypeDef` 的**类型契约**，不是加一个可选字段。
 
 **替代路（不新造机制）**：把 `exc_sourced_from` **拆成 5 条边**，每条一个固定 `toTypeKey`，
@@ -367,7 +371,7 @@ apps/datacore/src/ontology-dsl.ts:519-528（evaluate 的 "binary" 分支）
 
 | 候选 | 遍历顺序依赖？ | 具体风险 & 对策 |
 |---|---|---|
-| **A1-α `viaKeyExpr`** | **否**（求值是 `self` props 的纯函数，不 navigate） | ⚠ **但有一个与 `num()→0` 同形态的坑**：`evaluate` 在 `propref` 取不到值时返回 `null`（`ontology-dsl.ts:504-508`），在 `binary` 两侧非数时也返回 `null`（`:521-522`）。`String(null)` = `"null"` ⇒ **所有坏行塌到同一个键 `"null"`**，若恰好有对象主键是 `"null"` 就全连过去，否则全进 `unresolved`。**两种都不报错。** 对策：求值得 `null` 必须**当场计数并单列**（不能混进 `unresolved`），且写入期用真实行**试算一次**，恒 `null` 即 400。 |
+| **A1-α `viaKeyExpr`** | **否**（求值是 `self` props 的纯函数，不 navigate） | ⚠ **但有一个与 `num()→0` 同形态的坑**：`evaluate` 在 `propref` 取不到值时返回 `null`（`ontology-dsl.ts:500-505`），在 `binary` 两侧非数时也返回 `null`（`:513-519`）。`String(null)` = `"null"` ⇒ **所有坏行塌到同一个键 `"null"`**，若恰好有对象主键是 `"null"` 就全连过去，否则全进 `unresolved`。**两种都不报错。** 对策：求值得 `null` 必须**当场计数并单列**（不能混进 `unresolved`），且写入期用真实行**试算一次**，恒 `null` 即 400。 |
 | **A1-α（锚点撞车）** | **是，但已被现有代码兜住** | 算出的键落到多对象桶时，`buildAnchorIndex` 取 `[...ids].sort()[0]`（`ontology.ts:494`）并把撞车数记进 `ambiguousAnchors`（`:493`）。⇒ **确定性有保证，且不静默**。这是现成设施，新机制**必须走它，不许另写索引**。 |
 | **A1-β / A2-β 补列** | **否** | 纯数据，走既有 `viaProperty` 路。**唯一影响：对象多一个属性 ⇒ 合成指纹变** ⇒ 需同步金值（`synthetic.test.ts` SY1 逐字节重跑那条）。这是**一次性**的基线更新，不是持续风险。 |
 | **A2-α 串函数** | **否** | 同 A1-α 的 `null` 坑。额外：`SUBSTR` 的越界语义必须**写死**（`SUBSTR("2026", 0, 7)` 返回 `"2026"` 还是 `null`？）—— 不写死就会在不同 Node 版本/不同实现下漂。建议：显式定义为「截到串尾」，并在写入期校验。 |
