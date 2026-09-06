@@ -5009,6 +5009,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
         viaProperty: z.string().min(1).optional(),
         viaSide: z.enum(["from", "to"]).optional(),
+        // WO-PREDICATE-EDGE · 谓词（A5 规则 DSL 表达式原文）。语义/边界见 `LinkTypeDef.viaWhere`；
+        // 子集校验与「打错字当场 400」在 `ontology.upsertLinkType` 里，与 viaProperty 同款话术。
+        viaWhere: z.string().min(1).optional(),
       }),
       req.body,
     );
