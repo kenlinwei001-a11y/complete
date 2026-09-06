@@ -230,13 +230,13 @@ describe("GET /a/v1/objects · 截断信号 hasMore（不许让调用方自己�
  */
 describe("GET /a/v1/objects · 不传分页 = 静默截断；全量翻页算法必须仍等于全量口径", () => {
   /** 前端 `apps/frontend-shell/src/api/endpoints.ts` 的 `fetchAllObjects` **同形实现**（逐页走 hasMore + total 校对）。 */
-  async function fetchAllViaRoute(t: TestApp, type: string): Promise<number> {
+  async function fetchAllViaRoute(t: TestApp, type: string, pageSize = 500): Promise<number> {
     const MAX_PAGES = 2000;
     let n = 0;
     let last: ObjectsPageRes | undefined;
     let page = 1;
     for (; page <= MAX_PAGES; page++) {
-      last = await getPage(t, `/a/v1/objects?type=${type}&page=${page}&pageSize=500`);
+      last = await getPage(t, `/a/v1/objects?type=${type}&page=${page}&pageSize=${pageSize}`);
       n += last.items.length;
       if (!last.hasMore) break;
     }
@@ -278,10 +278,19 @@ describe("GET /a/v1/objects · 不传分页 = 静默截断；全量翻页算法�
 
     // 显式 pageSize 模拟「服务端页长被改小」：**修前形态**跟着页长走（它就是页长的函数），
     // **修后形态**必须恒等于真值。跟着变 ⇒ 「翻完了」是假的。
+    //
+    // ⚠ 这里的变异**必须同时喂给翻页算法**（`fetchAllViaRoute` 的第三个实参）。
+    // 本条最初只把 `serverPage` 喂给 `bare`，而翻页那半写死 `pageSize=500` ⇒ 它三次拿到的
+    // 输入完全相同、返回同一个数，「跟着变小就红」这句话在那一版里**恒不可能红**：
+    // 是装饰性金丝雀，不是变异反证（CLAUDE.md 铁律 0.6：抄一份不与主逻辑共用的金丝雀 = 装饰品）。
+    // 判据落在「算法在**它自己实际拿到的**页长下是否仍取全」上。
     for (const serverPage of [50, 10, 3]) {
       const bare = await getPage(t, `/a/v1/objects?type=Order&pageSize=${serverPage}`);
       expect(bare.items.length, `页长 ${serverPage} 时，修前形态应恰好等于页长`).toBe(serverPage);
-      expect(await fetchAllViaRoute(t, "Order"), `页长 ${serverPage} 时，修后形态必须仍是 ${truth}`).toBe(truth);
+      expect(
+        await fetchAllViaRoute(t, "Order", serverPage),
+        `页长 ${serverPage} 时，修后形态必须仍是 ${truth}（跟着页长变小 ⇒「翻完了」是假的）`,
+      ).toBe(truth);
     }
   }, 300000);
 });
