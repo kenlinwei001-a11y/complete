@@ -1,0 +1,23 @@
+{
+  "chain": {
+    "hasWorkOrder": true,
+    "hasFulfills": false,
+    "hasWoId": false,
+    "coverage": [],
+    "anchor": [
+      "SO-3391",
+      "SO-3391",
+      "SO-3402",
+      "SO-3415",
+      "SO-3420"
+    ]
+  },
+  "chainExpanded": {
+    "hasWorkOrder": true,
+    "hasWoId": false
+  },
+  "graph": {
+    "hasFulfills": false,
+    "hasWorkOrderType": true
+  }
+}

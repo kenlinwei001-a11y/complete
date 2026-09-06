@@ -1,0 +1,450 @@
+{
+  "counters": {
+    "steps": 3,
+    "clicks": 2,
+    "navs": 5
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 216,
+    "127.0.0.1:4051": 12,
+    "127.0.0.1:4052": 5
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/cross_object_occupancy/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/optimize_whatif/run",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/portfolio/run",
+      "status": 200,
+      "method": "POST"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:33:32.781Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:33:32.797Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:33:33.495Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:33:33.539Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:33:33.545Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:33:33.545Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:33:35.292Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:33:35.359Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:33:35.545Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:33:38.904Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:33:38.904Z",
+      "kind": "STEP",
+      "msg": "#3 侧边栏点进「接单组合优选」"
+    },
+    {
+      "t": "2026-09-04T02:33:38.914Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「接单组合优选」"
+    },
+    {
+      "t": "2026-09-04T02:33:38.954Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/global-sim"
+    },
+    {
+      "t": "2026-09-04T02:33:46.003Z",
+      "kind": "CANARY",
+      "msg": "读数抓取（应非空）",
+      "revenue": "39.49亿元",
+      "penalty": "14.17亿元",
+      "changeover": "17,035万元",
+      "dRevenue": "0.00亿元",
+      "dPenalty": "0.00亿元",
+      "dChangeover": "0万元",
+      "scheduled": [
+        "SO-3391",
+        "SO-3402",
+        "SO-3415",
+        "SO-3420",
+        "SO-3431",
+        "SO-3437",
+        "SO-3445",
+        "SO-3470",
+        "SO-3476",
+        "SO-3481",
+        "SO-3486",
+        "SO-3490",
+        "SO-3501",
+        "SO-3506",
+        "SO-3512",
+        "SO-3523",
+        "SO-3529",
+        "SO-3534",
+        "SO-3540",
+        "SO-900025",
+        "SO-3391",
+        "SO-3402",
+        "SO-3415",
+        "SO-3420",
+        "SO-3431",
+        "SO-3437",
+        "SO-3445",
+        "SO-3470",
+        "SO-3476",
+        "SO-3481",
+        "SO-3486",
+        "SO-3490",
+        "SO-3501",
+        "SO-3506",
+        "SO-3512",
+        "SO-3523",
+        "SO-3529",
+        "SO-3534",
+        "SO-3540",
+        "SO-900025",
+        "SO-3391",
+        "SO-3402",
+        "SO-3420",
+        "SO-3445",
+        "SO-3452",
+        "SO-3458",
+        "SO-3481",
+        "SO-3490",
+        "SO-3495",
+        "SO-3501",
+        "SO-3512",
+        "SO-3518",
+        "SO-3523",
+        "SO-3534",
+        "SO-900027",
+        "SO-900036",
+        "SO-900039",
+        "SO-900043"
+      ],
+      "squeezed": [
+        "SO-3415",
+        "SO-3431",
+        "SO-3437",
+        "SO-3464",
+        "SO-3470",
+        "SO-3476",
+        "SO-3486",
+        "SO-3506",
+        "SO-3529",
+        "SO-3540",
+        "SO-900024",
+        "SO-900025",
+        "SO-900026",
+        "SO-900028",
+        "SO-900029",
+        "SO-900030",
+        "SO-900031",
+        "SO-900032",
+        "SO-900033",
+        "SO-900034",
+        "SO-900035",
+        "SO-900037",
+        "SO-900038",
+        "SO-900040",
+        "SO-900041",
+        "SO-900042",
+        "SO-900044",
+        "SO-900045",
+        "SO-900046",
+        "SO-900047",
+        "SO-900048",
+        "SO-900049"
+      ],
+      "totalOrderRows": 90
+    },
+    {
+      "t": "2026-09-04T02:33:46.290Z",
+      "kind": "SHOT",
+      "msg": "i1-01-before"
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "PROBE",
+      "msg": "页面上数值/滑杆控件 59 个"
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[0] range v=0 min=0 max=20 :: 转入基地（预占其净产能）： 选择目标基地… 常州 成都 合肥 江门 金华 武汉 厦门 信阳 扬州 转拨量： 0 万套"
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[1] number v= min=0 max= :: ✓ 🔒 ☐ SO-3391 广汽集团 4680-NCM 7,259 2026-06-24 合肥 合肥PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[2] number v= min=0 max= :: ✓ 🔒 ☐ SO-3402 长安汽车 4680-NCM 14,518 2026-07-02 常州 常州PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[3] number v= min=0 max= :: ✓ 🔒 ☐ SO-3415 吉利汽车 4680-NCM 4,033 2026-07-18 常州 常州PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[4] number v= min=0 max= :: ✓ 🔒 ☐ SO-3420 东风汽车 4680-NCM 10,485 2026-07-09 常州 常州PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[5] number v= min=0 max= :: ✓ 🔒 ☐ SO-3431 广汽集团 2170-NCM 8,872 2026-06-28 武汉 — "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[6] number v= min=0 max= :: ✓ 🔒 ☐ SO-3437 宇通客车 2170-NCM 10,727 2026-07-14 武汉 — "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[7] number v= min=0 max= :: ✓ 🔒 ☐ SO-3445 长安汽车 方形-NCM 12,098 2026-07-05 常州 常州PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[8] number v= min=0 max= :: ✓ 🔒 ☐ SO-3452 国家电网 方形-LFP 17,744 2026-06-30 眉山 — "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[9] number v= min=0 max= :: ✓ 🔒 ☐ SO-3458 南方电网 方形-LFP 21,777 2026-07-12 邯郸 邯郸PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[10] number v= min=0 max= :: ✓ 🔒 ☐ SO-3464 国家电投 方形-LFP 8,872 2026-07-25 邯郸 邯郸PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[11] number v= min=0 max= :: ✓ 🔒 ☐ SO-3470 南方电网 圆柱-LFP 4,033 2026-07-08 信阳 — "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[12] number v= min=0 max= :: ✓ 🔒 ☐ SO-3476 国家电网 4680-LFP 7,259 2026-07-20 常州 常州PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[13] number v= min=0 max= :: ✓ 🔒 ☐ SO-3481 广汽集团 4680-NCM 10,485 2026-07-11 合肥 合肥PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[14] number v= min=0 max= :: ✓ 🔒 ☐ SO-3486 吉利汽车 方形-NCM 5,646 2026-07-22 常州 常州PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[15] number v= min=0 max= :: ✓ 🔒 ☐ SO-3490 东风汽车 4680-NCM 16,131 2026-07-06 常州 常州PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[16] number v= min=0 max= :: ✓ 🔒 ☐ SO-3495 南方电网 方形-LFP 19,357 2026-07-16 邯郸 邯郸PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[17] number v= min=0 max= :: ✓ 🔒 ☐ SO-3501 国家电投 方形-LFP 12,098 2026-07-28 江门 江门PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[18] number v= min=0 max= :: ✓ 🔒 ☐ SO-3506 宇通客车 2170-NCM 2,323 2026-07-19 武汉 — "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[19] number v= min=0 max= :: ✓ 🔒 ☐ SO-3512 长安汽车 方形-NCM 8,872 2026-07-03 常州 常州PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[20] number v= min=0 max= :: ✓ 🔒 ☐ SO-3518 国家电网 方形-LFP 16,131 2026-07-24 邯郸 邯郸PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[21] number v= min=0 max= :: ✓ 🔒 ☐ SO-3523 广汽集团 4680-NCM 12,098 2026-07-13 成都 成都PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[22] number v= min=0 max= :: ✓ 🔒 ☐ SO-3529 南方电网 圆柱-LFP 5,646 2026-07-10 扬州 — "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[23] number v= min=0 max= :: ✓ 🔒 ☐ SO-3534 东风汽车 4680-NCM 14,518 2026-07-27 成都 成都PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[24] number v= min=0 max= :: ✓ 🔒 ☐ SO-3540 宇通客车 2170-NCM 2,218 2026-07-17 武汉 — "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[25] number v= min=0 max= :: ✓ 🔒 ☐ SO-900024 上汽通用五菱 方形-NCM 2,569 2026-03-13 成都 成都PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[26] number v= min=0 max= :: ✓ 🔒 ☐ SO-900025 广汽埃安 2170-NCM 3,523 2026-08-08 武汉 — "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[27] number v= min=0 max= :: ✓ 🔒 ☐ SO-900026 广汽埃安 4680-NCM 2,443 2025-12-13 合肥 合肥PACK线 "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[28] number v= min=0 max= :: ✓ 🔒 ☐ SO-900027 广汽埃安 2170-NCM 4,034 2026-03-23 厦门 — "
+    },
+    {
+      "t": "2026-09-04T02:33:46.310Z",
+      "kind": "CTRL",
+      "msg": "[29] number v= min=0 max= :: ✓ 🔒 ☐ SO-900028 南方电网 方形-LFP 4,514 2026-04-11 枣庄 — "
+    }
+  ]
+}

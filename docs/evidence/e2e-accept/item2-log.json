@@ -1,0 +1,474 @@
+{
+  "counters": {
+    "steps": 5,
+    "clicks": 9,
+    "navs": 7
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 216,
+    "127.0.0.1:4051": 42,
+    "127.0.0.1:4052": 5
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/drill/catalog",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/action-drafts",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects/aggregate",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects/aggregate",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects/aggregate",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/cockpit_kpi/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/cockpit_kpi/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects/aggregate",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects/aggregate",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/cockpit_kpi/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/cockpit_kpi/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/cockpit_kpi/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects/aggregate",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects/aggregate",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/plan_rootcause/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/affected_orders/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/plan_rootcause/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/counterfactual_timeline/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/metric_rollup/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/supply_demand_gap_attribution/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/timeseries/agg-query",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/affected_orders/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects/aggregate",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/bundle",
+      "status": 404,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/affected_orders/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/risk_timeline/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/plan_rootcause/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/solvers/counterfactual_timeline/invoke",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenes",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/objects",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/sessions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/solvers/capacity_forecast/run",
+      "status": 200,
+      "method": "POST"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:56:59.979Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:57:00.000Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:57:00.702Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:57:00.735Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:57:00.741Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:57:00.741Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:57:00.761Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:57:02.493Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:57:02.569Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:57:02.744Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:57:06.106Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:57:06.106Z",
+      "kind": "STEP",
+      "msg": "#3 侧边栏 →「事件影响与对策」"
+    },
+    {
+      "t": "2026-09-04T02:57:06.116Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「事件影响与对策」"
+    },
+    {
+      "t": "2026-09-04T02:57:06.160Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/decision-console"
+    },
+    {
+      "t": "2026-09-04T02:57:15.177Z",
+      "kind": "DUMP",
+      "msg": "i2-decision-console",
+      "chars": 761
+    },
+    {
+      "t": "2026-09-04T02:57:15.284Z",
+      "kind": "SHOT",
+      "msg": "i2-decision-console"
+    },
+    {
+      "t": "2026-09-04T02:57:15.285Z",
+      "kind": "P2",
+      "msg": "事件影响与对策",
+      "有单位成本": false,
+      "有毛利": false,
+      "有交付轴": false,
+      "BOM口径说明": false,
+      "三轴同屏": false
+    },
+    {
+      "t": "2026-09-04T02:57:15.285Z",
+      "kind": "STEP",
+      "msg": "#4 侧边栏 →「经营驾驶舱」"
+    },
+    {
+      "t": "2026-09-04T02:57:15.287Z",
+      "kind": "CLICK",
+      "msg": "#3 侧边栏 →「经营驾驶舱」"
+    },
+    {
+      "t": "2026-09-04T02:57:15.327Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/dash"
+    },
+    {
+      "t": "2026-09-04T02:57:16.202Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:57:26.375Z",
+      "kind": "DUMP",
+      "msg": "i2-dash",
+      "chars": 4595
+    },
+    {
+      "t": "2026-09-04T02:57:26.621Z",
+      "kind": "SHOT",
+      "msg": "i2-dash"
+    },
+    {
+      "t": "2026-09-04T02:57:26.621Z",
+      "kind": "P2",
+      "msg": "经营驾驶舱",
+      "有单位成本": false,
+      "有毛利": true,
+      "毛利读数": "毛利总额 (亿) ⓘ",
+      "有交付轴": false,
+      "BOM口径说明": false,
+      "三轴同屏": false
+    },
+    {
+      "t": "2026-09-04T02:57:26.621Z",
+      "kind": "STEP",
+      "msg": "#5 侧边栏 →「接单可行性」"
+    },
+    {
+      "t": "2026-09-04T02:57:26.624Z",
+      "kind": "CLICK",
+      "msg": "#9 侧边栏 →「接单可行性」"
+    },
+    {
+      "t": "2026-09-04T02:57:26.697Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/v/project-sim"
+    },
+    {
+      "t": "2026-09-04T02:57:35.750Z",
+      "kind": "DUMP",
+      "msg": "i2-project-sim",
+      "chars": 2879
+    },
+    {
+      "t": "2026-09-04T02:57:35.987Z",
+      "kind": "SHOT",
+      "msg": "i2-project-sim"
+    },
+    {
+      "t": "2026-09-04T02:57:35.987Z",
+      "kind": "P2",
+      "msg": "接单可行性",
+      "有单位成本": false,
+      "有毛利": false,
+      "有交付轴": false,
+      "BOM口径说明": false,
+      "三轴同屏": false
+    },
+    {
+      "t": "2026-09-04T02:57:35.989Z",
+      "kind": "CANARY",
+      "msg": "金丝雀（导航词「经营驾驶舱」应命中）",
+      "hit": true
+    }
+  ]
+}
