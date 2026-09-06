@@ -182,8 +182,11 @@ const WO_COLUMNS = ["woId", "modelId", "baseId", "status"] as const;
  *
  * ⚠ **方向必须是 `in`**：`fulfills` 声明为 `WorkOrder --fulfills--> Order`（N:1），
  * 引擎沿 `from→to` **单向**走 ⇒ 从订单出发要的是入边。写成 `out` 会得到
- * **恒空且不报错**（实测：`direction=out` 回 `{"groups":[]}`，HTTP 200）——
+ * **恒空且不报错**（实测 2026-09-04：`direction=out` 回 `{"groups":[]}`，HTTP 200）——
  * 屏上分辨不出"这单没工单"与"我方向搞反了"，本仓踩过这个坑。
+ * 复验方式（真后端内存态 `SEED_DEMO=1`）：
+ * `GET /a/v1/objects/{orderId}/neighbors?linkKey=fulfills&direction=out` → `{"groups":[]}` / HTTP 200；
+ * 换 `direction=in` 即回真工单组。请求构造见 `fetchNeighbors`（`src/api/endpoints.ts`）。
  *
  * ── 属性怎么来：邻接接口只回 `{id,typeKey,objectKey,display}`，不带 props ────────────
  * 故按 `objectKey` 逐张回读 `WorkOrder` 对象取型号/基地/状态。一张订单最多 4 张工单
