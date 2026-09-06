@@ -115,7 +115,7 @@ export const SIM_EVENT_GAPS: Record<string, string> = { // hardcoded-data-allow 
   "sim.drill_completed":
     "WO-SIM-DRILL-P12（2026-08-25）· **刻意不接，不是漏接**。" +
     "演习（`POST /a/v1/sim/sessions/:id/drill`）是**只读**的：`simAdvanceTicks` 传 `persist:false`，" +
-    "会话 `curTick` 一格不动、`putTickState` 一次不调（接缝门 `sim-drill.seam.test.ts` ⑦ 逐字节咬死）。" +
+    "会话 `curTick` 一格不动、`putTickState` 一次不调（演习接缝门 ⑦ 逐字节咬死）。" +
     "它**不改任何被缓存的东西** —— 世界态没变、会话列表没变、扰动清单没变、检查点没变。" +
     "此时接任何一个失效标签，都是给一个没变的缓存发失效 = 假接线（#90/#92 同族），" +
     "代价是每跑一次演习就白重取一遍那些没动的数据。" +

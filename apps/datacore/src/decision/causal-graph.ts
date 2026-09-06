@@ -722,7 +722,7 @@ export function buildCausalGraphFromDecision(input: DecisionCausalInput): Decisi
   if (d.status !== "PROPOSED" && d.actionDraftIds.length === 0) {
     caveats.push(
       `Decision ${d.id} 已 ${d.status} 但 actionDraftIds 为空 —— commit 对落不成真可执行载荷的方案**诚实不派**` +
-        `（decision/kernel.ts commit 的 dryRunMitigation 判据），故 ACTION 段只有方案节点、没有真单节点`,
+        `（决策内核 commit 的 dryRunMitigation 判据），故 ACTION 段只有方案节点、没有真单节点`,
     );
   }
 
