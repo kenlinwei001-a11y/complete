@@ -2082,6 +2082,81 @@ OntologyCore.executeSlice  ← 多跳检索在这里遍历 repos.links，**现�
 反向边方向断言（from 必须是来源类型）+ 幂等 + 出厂边零回归。
 **两半各自都绿、只有驱动接缝才会红**，正是 SEAM-GATE 要的形态。
 
+#### 三类扩展 · 非主键锚点 / 数组值外键 / 桥实体（WO-MATERIALIZE-3EXT · 2026-09-06）
+
+上一节那句「诚实边界」把三类形状挡在门外。本次给每一类**加一个显式声明字段**收编，
+三者全部**可选、缺省即老行为逐字节不变**（加性·零回归）：
+
+| 桶 | 病（今天的行为 X） | 应该是 Y | 字段 |
+|---|---|---|---|
+| ② | 外键值在、也对得上，但对上的那一列**不是主键** ⇒ `created:0` | 能声明「对到 anchor 的哪一列」 | `anchorProperty` |
+| ⑤ | 一个属性里装**多个**目标 id，`String(["a","b"])` 匹配不上任何主键 | 逐元素各物化一条边 | `viaMultiValue` |
+| ① | 关系本身是个**桥对象**，两端谁都装不下 ⇒ 连声明都建不出来（400） | 扫桥、两端各查一次锚点 | `viaBridge` |
+
+**修前/修后实测（真后端 `SEED_DEMO=1` · 端到端走 `POST /a/v1/ontology/link-types` + 切片 resolve）**：
+
+| 边（用新 key 建，避开出厂硬编码实例） | 修前 | 修后 | 反向对照（锚点/开关改错 ⇒ 必须回 0） |
+|---|---:|---:|---|
+| `customer_has_invoice`（ARInvoice.custName → Customer.custName） | 0（unresolved 60） | **60** | 锚点改回主键 `custId` ⇒ 0 ✅ |
+| `customer_has_overdue_record`（OverdueRecord.customerRef → Customer.custName） | 0（unresolved 2） | **2** | 同上 ⇒ 0 ✅ |
+| `material_has_balance`（MaterialBalance.material → Material.name） | 0（unresolved 9） | **8**（1 条诚实缺席：该物料名不在 Material 目录里） | ⇒ 0 ✅ |
+| `scenario_to_target`（PlanTarget.scenarioKey → AnnualScenario.key） | 0（unresolved 17） | **17** | ⇒ 0 ✅ |
+| `scenario_to_finance`（FinanceMetric.scenarioKey → AnnualScenario.key） | 0（unresolved 3） | **3** | ⇒ 0 ✅ |
+| `model_producible_at`（Model.bases[] → Base.baseId） | 0（unresolved 6） | **18** | 关掉 `viaMultiValue` ⇒ 0 ✅ |
+| `model_certified_on`（Model ←modelId– Certification –lineId→ Line） | **建不出来**（400：lineId 不是 Model 的属性） | **18** | 桥的来源列改 `certId` ⇒ 0 ✅ |
+
+桶⑤ 的判据是**逐元素展开**不是「每型号一条」：型号 `2170-NCM` 的 `bases=["wuhan","xiamen","zigong"]`
+⇒ 必须是 **3 条**边（`obj_base_wuhan` / `obj_base_xiamen` / `obj_base_zigong`），
+总边数 18 = Σ 各型号 bases 长度 > 型号数 6。
+
+**桥形态的关键语义 —— 一份记录两个投影，不造可分叉的双份**：桥对象继续以**节点**存在
+（`model_has_cert` 那类既有边不受影响），同一条记录另外投影出一条**直连边**，
+并把桥的 `props` **原样**写进 `LinkInstance.props`（外加 `bridgeObjectId` 回指），**不做字段白名单**
+—— 白名单是第二份真相，迟早与桥分叉。幂等 id 以桥对象 id 为准（`lnk_bridge_<key>_<桥对象id>`）。
+
+⚠ **这一条为什么值钱**：`solvers/service.ts` 的产能求解器直接
+`repos.links.list(…"model_certified_on")` 然后读 `link.props?.status`，
+**取不到时回落成常量 `"量产"`** —— 即「边上没有 props」不报错，只让认证状态静默变成默认值
+（铁律 1.5 那个「跑得起来 ≠ 算得对」的形态）。桥投影把真状态带上边，这一格才不再是默认值。
+
+⚠ **已知未闭（本单不做，登记在此）**：`executeSlice` 的边投影是 `{ linkKey, from, to }`，
+**边的 `props` 在检索侧被丢掉**（出厂手写的 `model_certified_on.props.status` 今天同样读不到）。
+补它不是加一个字段那么简单 —— 节点 props 走 A6 列级投影，边 props 直接下发会**绕过列级授权**。
+故本单只在写入侧落 props，读出侧按生产消费方（求解器直读 `repos.links`）那条路断言。
+
+⛔ **三类一律显式声明，不做任何推断**。实测反证：`transfer_from_base` 与 `transfer_to_base`
+的候选属性集**完全相同**（都是 `[fromBase, toBase]`，各 17 条命中），任何「取第一个」的确定性推断器
+都会把调出/调入接到同一个端点，**其中一条拓扑静默接反且不报错**；全仓有此歧义的边实测 **7 条**
+（另含 `alt_for_material` / `material_has_alternative` / `base_dispatches_transfer` / `caused_by` / `model_changeover`）。
+同理，按**非主键列**匹配天然可能一对多（两个客户同名 ⇒ 一张发票连谁）：物化时取排序首个保证 R6，
+但撞车键数计入回执 `materialized.ambiguousAnchors` **如实回报**，不静默。
+
+**订正上一节的过期数**：那句「两侧都无外键 **35 条（30.2%）**」与
+`docs/PROPOSAL-edge-materialize-gap.md` 的「21 条」都已过期。2026-09-06 真服务**值层面**复测
+（116 条声明 · 98 个类型 · 12,706 个对象，两个类型源都扫）：
+**可表达 83 条 · 真·表达不了 14 条 · 仅数组命中 1 条 · 端点零对象判不了 18 条**
+（后者中 11 条是流程层边，按 `process/ontology.ts` 的设计**只写定义不写实例**，不是缺陷）。
+⚠ 「类型零对象」与「元模型表达不了」必须分开报 —— 修法一个是补数据、一个是改元模型。
+本单收编后，14 条里 **7 条**（②5 + ①1 + ⑤1）已可表达，**剩 7 条**：
+`base_data_health` / `line_belongs_to_workshop` / `model_in_segment` / `order_to_plantarget` /
+`plantarget_ownedby` / `scenario_to_capex`（这 6 条的边是**一段表达式**不是数据里的一列）
+＋ `model_uses_material` / `material_used_by_model`（桥 `BOMDetail` 上**没有 modelId**，
+需 `Model ←modelId– BOMHeader –bomId→ BOMDetail –materialId→ Material` 这样的**多跳桥链**，
+`viaBridge` 只表达单跳，不硬凑）—— 合计 6+2=8 条形状未闭，与上面的 7 条差 1，
+因为 `model_changeover` 经实测**今天就能表达**（见下）。
+
+**台账订正（改台账不改代码）**：提案把 `model_changeover` 列进桶①「表达不了」，
+实测用**今天已有的** `viaProperty:"fromModel", viaSide:"to"` 即得 `created:30`、检索 30 条 —— 
+它属于「没人去声明」不是「表达不了」。⚠ 但它的候选属性集是 `[fromModel, toModel]` 两个同型 FK，
+**必须人工指定**，选错即换型方向接反且不报错。
+
+**接缝门**：`apps/datacore/test/linktype-materialize-3ext.seam.test.ts`（5 例）——
+三桶各一例（金丝雀 + 修前/修后 + 方向断言 + 反向对照）+ 变异反证（7 种打错字/缺前提/机制冲突须 400
+且不留半条记录）+ R6 确定性与出厂边零回归。
+**R6 两跑逐字节一致**（两次独立播种：语料 hash `62a7e7d7aa5a6d46` / 12,706 对象；
+新机制产出 hash `54d94127452c2d4d`）。金值不动（`demo-chain-provenance` 类型 95 / 对象 12,706 ·
+`SOLVER_KEYS` 61 · catalog 全绿）—— 本单**零种子改动**，只加元模型表达力，不新增出厂边。
+
 ### 结构边的「改」与「启停」· 写路补全（WO-RELATION-EDIT-GAPS · 2026-09-04）
 
 **一句话**：结构边此前**建得出、停得掉、改不了、停了拨不回**；本次补齐「改」与「重新启用」，
