@@ -220,8 +220,8 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
       "⚠ 本仓 S&OP 有**两套并存的周期口径**，此处取前者。后者的真实状况如下 —— 初稿我曾判它『零实例』，" +
       "追一层后发现判错，按铁律 0.5 更正并留证：" +
       "① 【本节点采用】`SopVersionRow`：标准种子恒有 4 行且等距 ⇒ 可推。" +
-      "② 【已知但推不了，不是没有】`SopVersion`（`sop.ts` 以 `month` YYYY-MM 为键，`opsteam/schedule.ts:216 nextMonth()` 按月开版）：" +
-      "标准 demo 种子下确实零实例，**但** `livedin/engine.ts:640` 在出厂配置 `livedIn=true` 时会铺 12 个月版本" +
+      "② 【已知但推不了，不是没有】`SopVersion`（键 = `month` YYYY-MM，由调度作业 `SOP_AUTO_OPEN` 按自然月开版）：" +
+      "标准 demo 种子下确实零实例，**但**出厂配置 `livedIn=true`（生活化种子）会铺 12 个月版本" +
       "（`createdAt = <month>-25`）⇒ 它**有真实例**，说它是空承载是错的。之所以本节点不取它：" +
       "自然月的相邻间隔是 28/30/31 天**不等长**，而 `Cadence.everyDays` 是单个 number，" +
       "**表达不了『每月』这种日历周期**。把它平均成 30 就是编数 —— 那是 S0 契约的表达力缺口，" +
@@ -263,7 +263,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
     evidence: {
       kind: "NONE",
       probed:
-        "查 `mrp_netting` 求解器（`catalog.ts:83`）：按需 invoke，无任何调度登记（`scheduler.register` 的 jobType 只有 " +
+        "查求解器册里的 `mrp_netting`：按需 invoke，无任何调度登记（已登记的 jobType 只有 " +
         "SCHEDULED_FORECAST / SOP_AUTO_OPEN / APPROVAL_REMINDER / CONNECTOR_SYNC，无 MRP）。" +
         "再查 MaterialBalance 种子：只有 netDemandTon/ltaPct/gapTon/etaDate，etaDate 是**到货日不是跑批日**，且 8 条互不等距。",
     },
@@ -310,7 +310,7 @@ export const CADENCE_NODES: readonly CadenceNodeDef[] = [
     evidence: {
       kind: "NONE",
       probed:
-        "查财务侧四处：① `Customer.termDays`（`battery-extended.ts:455/464`）有真值，但口径是**账期**（发票到回款的允许时长），不是开票频率；" +
+        "查财务侧四处：① `Customer.termDays`（客户主数据种子）有真值，但口径是**账期**（发票到回款的允许时长），不是开票频率；" +
         "② `ARInvoice` 只有 invoiceId/custName/amount/overdueDays，**无开票日期**；" +
         "③ `DSO.period` 只有单一取值（季度标签），单值构不成序列；" +
         "④ 全仓（除本文件外）`月结` 0 命中；`开票` 仅 3 处 = 1 处字段中文名（`Customer.wipUnbilled` 未开票在制金额）+ 2 处求解器注释，" +

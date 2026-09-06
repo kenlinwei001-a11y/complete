@@ -260,11 +260,11 @@ export interface CadenceAbsenceInput {
   cadenceRows?: readonly TransitRawRow[];
 }
 
-/** 数据层确实已经有节拍承载了 —— 这几条是可按 file:line 复验的事实，不是猜测。 */
+/** 数据层确实已经有节拍承载了 —— 这几条按契约名 / 对象类型 / 求解器 key 可复验，不是猜测。 */
 const CADENCE_UPSTREAM_EVIDENCE = [
-  "契约在：CadenceSchema / expectedCadenceWaitDays 见 packages/contracts/src/chain-sim.ts:84/:108（S0 已冻结）。",
-  "承载**也在**（D1 已并线，与本文件旧注释相反）：apps/datacore/src/synthetic/cadence.ts 存在，且 apps/datacore/src/synthetic/service.ts:712 以 putAll(\"Cadence\", cadenceObjectRows(deriveChainCadences(g)), \"nodeId\") 真落库。",
-  "下游已在读：apps/datacore/src/app.ts:1448 的推演 tick 从对象库 listByType(\"Cadence\") 取行、经 cadenceFromProps 还原成闸门。",
+  "契约在：`CadenceSchema` / `expectedCadenceWaitDays`（S0 已冻结）。",
+  "承载**也在**：合成种子的节拍册以 `putAll(\"Cadence\", cadenceObjectRows(deriveChainCadences(g)), \"nodeId\")` 真落库。",
+  "下游已在读：推演 tick 从对象库 `listByType(\"Cadence\")` 取行、经 `cadenceFromProps` 还原成闸门。",
 ] as const;
 
 /**
@@ -323,7 +323,7 @@ export function deriveCadenceAbsence(input: CadenceAbsenceInput = {}): AbsenceRe
       reason: `取回了 ${fetched ?? 0} 条候选，但没有一条能读成闸门 —— 不是没查，是查回来的行用不了。`,
       evidence: [
         ...(fromRows?.rejectReasons ?? []),
-        "读回口逐字镜像 apps/datacore/src/synthetic/cadence.ts:512 cadenceFromProps：dataMode 非 SYNTHETIC ⇒ 无节拍（不是 0），字段名是 cadenceKind 不是 kind。",
+        "读回口逐字镜像节拍册 `cadenceFromProps`：`dataMode` 非 SYNTHETIC ⇒ 无节拍（不是 0），字段名是 `cadenceKind` 不是 `kind`。",
       ],
       unblockedBy: "修数据或修 schema（**不要**再接一条线）：按上面每条 reject 原因回到种子侧，让该环节真的推得出节拍。",
     };
@@ -337,7 +337,7 @@ export function deriveCadenceAbsence(input: CadenceAbsenceInput = {}): AbsenceRe
       ...CADENCE_UPSTREAM_EVIDENCE,
       "本次判定：查询已发出且返回 0 条（probe.fetched === 0）—— 与「没查过」是两回事，不要按接线去修。",
     ],
-    unblockedBy: "种数据：对本租户跑一次合成种子（synthetic/service.ts:712 那条 putAll 会把 Cadence 行落进来）。",
+    unblockedBy: "种数据：对本租户跑一次合成种子（`putAll(\"Cadence\", …)` 会把 Cadence 行落进来）。",
   };
 }
 
@@ -384,12 +384,11 @@ export interface ProcurementAbsenceInput {
  */
 const PROCUREMENT_UPSTREAM_EVIDENCE = [
   "PurchaseOrder 现有四段日戳：orderDay / shipDay / arriveDay（+ supplierId / sourceMode）—— 发运日与到货日都在，不再是「只有 etaDay」。" +
-    "复验：`grep -n 'def(\"PurchaseOrder\"' apps/datacore/src/synthetic/battery-extended.ts`（类型声明）。",
+    "复验：对象类型 `PurchaseOrder` 的属性表。",
   "CustomsClearance（清关，declaredDay→clearedDay）与 IncomingInspection（到货检验，arrivedDay→releasedDay）都已是在册对象类型，" +
-    "经 synthetic/service.ts 的 putAll 落库、并在 synthetic/data-categories.ts 登记类目（清关归采购、到货检验归质量，责任方不同故分属两类目）。" +
-    "复验：`grep -n 'def(\"CustomsClearance\"' apps/datacore/src/synthetic/battery-extended.ts`。",
-  "契约侧 packages/contracts/src/procurement.ts 冻结了四段腿 supplier_production / in_transit / customs / incoming_inspection，前端可直接依赖。" +
-    "复验：`grep -n 'procurement.js' packages/contracts/src/index.ts`（导出处）。",
+    "经合成种子 `putAll` 落库、并在数据类目册登记（清关归采购、到货检验归质量，责任方不同故分属两类目）。" +
+    "复验：对象类型 `CustomsClearance` 的属性表。",
+  "契约侧 `PROCUREMENT_LEGS` 冻结了四段腿 supplier_production / in_transit / customs / incoming_inspection，前端可直接依赖。",
 ] as const;
 
 /**
@@ -461,7 +460,7 @@ export function deriveProcurementBranch(input: ProcurementAbsenceInput = {}): Ab
         ...PROCUREMENT_UPSTREAM_EVIDENCE,
         `本次判定拿到的输入是空的：PurchaseOrder / CustomsClearance / IncomingInspection 三份行**一份都没给**（不是给了空数组）——四条腿（契约单源 PROCUREMENT_LEGS：${PROCUREMENT_LEGS.join(" → ")}）因此一条都判不了。`,
         `图层这条路已经接通（WO-TRANSIT-WIRE）：TransitFlowLayer 在原有 ${TRANSIT_SOURCE_SPECS.map((s) => s.objectType).join(" / ")} 三条查询之外，另发了采购段那三条 searchObjects；因此屏上还落到本档，只可能是这次渲染确实一条输入都没拿到。`,
-        "唯一仍然成立的旧结论：ASN 至今只在 packages/contracts/src/chain-sim.ts 与 procurement.ts 的注释里出现，无对象、无 schema、无数据 —— 但采购段并不依赖它，四段腿靠日戳就能画。",
+        "唯一仍然成立的旧结论：ASN 至今只在契约注释里出现，无对象、无 schema、无数据 —— 但采购段并不依赖它，四段腿靠日戳就能画。",
       ],
       unblockedBy:
         "接线（不是等 D2，D2 已经交了）：把 PurchaseOrder / CustomsClearance / IncomingInspection 三份行喂进来。" +
@@ -519,9 +518,9 @@ export function deriveProcurementBranch(input: ProcurementAbsenceInput = {}): Ab
      * @stale-fact apps/datacore/src/synthetic/service.ts /putAll\("IncomingInspection"/ ==1
      */
     unblockedBy:
-      "种数据：对本租户跑一次合成种子 —— `apps/datacore/src/synthetic/service.ts` 里 " +
+      "种数据：对本租户跑一次合成种子 —— " +
       'putAll("PurchaseOrder" / "CustomsClearance" / "IncomingInspection", …) ' +
-      "那三条会把采购段行落进来（复验：`grep -n 'putAll(\"PurchaseOrder\"' apps/datacore/src/synthetic/service.ts`）。",
+      "那三条会把采购段行落进来。",
   };
 }
 

@@ -8,7 +8,7 @@
   "④ ratchetHigh 是历史最高水位，只降不升。**评审唯一必须拒绝的一行就是把它调大。**"
  ],
  "ratchetHigh": 38,
- "maxExemptions": 33,
+ "maxExemptions": 32,
  "exemptions": [
   {
    "key": "apps/frontend-shell/src/components/ProvenanceDag.tsx#4411cbdd8b75e546",
@@ -207,16 +207,6 @@
    ],
    "why": "**病历**（本族唯一一份病因记录）：整段是被上一单修掉的**旧文案原文引用**，同段第 4 行已写明「那句话写下的当天是真的，**今天是假的**」并给出推翻它的两个 file:line。门读得见被引用的那句假话，读不见它外面的「已推翻」框 —— 判据没错，语境认不出。删掉它等于把 G-STALE-MEASURED-CLAIM 的病因抹掉。豁免按**文案哈希**锚定：这段一改，豁免当场失效、门重新红。",
    "sample": "* 「缺承载：`Cadence` 对象全仓 0 条（**运行态实测** `GET /a/v1/objects?type=Cadence` → total 0，对象类型尚不存在）」。"
-  },
-  {
-   "key": "apps/frontend-shell/src/views/sim/inspectorModel.ts#f01f9600a5bd164f",
-   "file": "apps/frontend-shell/src/views/sim/inspectorModel.ts",
-   "line": 685,
-   "codes": [
-    "STALE-1"
-   ],
-   "why": "T3 evidence「`apps/datacore/src/solvers/` 零直接消费方（实测 grep 计数 0）」缺日期。本单对 inspectorModel.ts 的授权范围是 **K1/K2 两条 evidence**；T3/C4/P2 这三条「solvers/ 零消费方」是另一批欠账，且要给日期就得重新亲手复核一遍作用域内的 grep（本门的 STALE-4 对作用域限定声明明确判为「认不准、不判」）。",
-   "sample": "\"但 `apps/datacore/src/solvers/` **零直接消费方**（实测 grep 计数 0）⇒ 薄，非有\","
   },
   {
    "key": "apps/frontend-shell/src/views/sim/physicalTopology.ts#5d103d698fd1c1ff",
