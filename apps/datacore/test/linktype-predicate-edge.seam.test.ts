@@ -121,7 +121,7 @@ describe("WO-PREDICATE-EDGE · 接缝：谓词声明 × 求值 × 检索", () =>
     const flipped = await patchObject(t, "CarbonFactor", (o) => String(o.props.kind) === "material", { kind: "grid" });
     await createLink(t, { key: "pred_rev", ...VIA, viaWhere: PRED });
     const after = await edgesVia(t, "pred-rev1", "pred_rev");
-    // eslint-disable-next-line no-console -- 反向对照的两个数是本单验收判据，留在输出里可独立复核
+    // 反向对照的两个数是本单验收判据，留在输出里可独立复核
     console.log(`[WO-PREDICATE-EDGE 反向对照] 改前=${base.length} 改后=${after.length}`);
     expect(after).toHaveLength(base.length - 1);
 
