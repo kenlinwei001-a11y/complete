@@ -124,21 +124,92 @@ export const MappingRowSchema = z.object({
 });
 export type MappingRow = z.infer<typeof MappingRowSchema>;
 
+/**
+ * WO-MAPPING-WHITELIST · **结构边「物化声明」字段集 —— 读路与写路的单一来源。**
+ *
+ * ── 为什么必须是一份而不是两份（2026-09-07 实测的静默数据丢失）─────────────────
+ * 关系编辑器的「改」是一次**读—改—写往返**：
+ *   `GET /a/v1/ontology/mapping/registries`（读投影）→ 表单预填 → `POST /a/v1/ontology/link-types`（写）。
+ * 而写路是**整条覆盖**（`ontology.ts upsertLinkType`：`{ id, tenantId, version, ...input }` 后
+ * `ontologyLinks.put(def)`）—— **读投影漏掉的字段，客户端就回填不出来，一次保存即被抹掉**。
+ *
+ * 修前实测：读投影只透传 `viaProperty`/`viaSide` 两个，而写路已收 **9 个**。
+ * 差集 **7 个**（`anchorProperty` `viaMultiValue` `viaBridge` `viaWhere` `viaKeyExpr`
+ * `viaWhereTo` `viaCross`）⇒ 用户在编辑器里**一个字段都不改**、只点一次「保存」，
+ * 这 7 个里已声明的那些当场归零：边退回 0 实例、多跳检索遍历不到、屏上不报错。
+ * 这正是 WO-RELATION-EDIT-GAPS ① 头注里写的那种失效，**只是当时只堵了 `viaProperty` 一个**。
+ *
+ * ⚠ **这就是为什么本 schema 存在**：两份手抄的字段清单必然漂移 —— 写路每加一个声明字段
+ * （3EXT 加了 3 个、PREDICATE 加了 1 个、COMPUTED-EDGE 加了 3 个），读路都要有人记得跟着加，
+ * 而**没有任何东西在守这件事**：漏了不红、不报错，只是用户的声明会被下一次保存吃掉。
+ * 现在读路（`buildMappingRegistries`）与写路（`POST /a/v1/ontology/link-types`）**共用本 schema**，
+ * 加字段只需改这一处，两边同时生效。
+ *
+ * ⚠ **它是白名单，不是「全字段放行」**：`z.object` 默认剥掉未知键 ⇒ 前端注入任意字段仍进不来；
+ * 读投影也只按 `LINK_MATERIALIZATION_FIELDS` 逐个拷贝，不做 `...spread`。
+ * 语义与写入期校验（互斥/前置/上限）见 `apps/datacore/src/domain.ts` 的 `LinkTypeDef` 同名字段头注。
+ */
+export const LinkMaterializationDeclSchema = z.object({
+  /** 这条边由承载侧的哪个属性实现（外键列 propKey）。 */
+  viaProperty: z.string().min(1).optional(),
+  /** 外键长在哪一侧：`from`=来源类型上（缺省），`to`=去向类型上。 */
+  viaSide: z.enum(["from", "to"]).optional(),
+  /** 外键对到 anchor 的**非主键列**。 */
+  anchorProperty: z.string().min(1).optional(),
+  /** 一个属性里放**多个**目标 id（数组）⇒ 展开成 N 条边。 */
+  viaMultiValue: z.boolean().optional(),
+  /** 关系本身是个**桥对象**（两端谁都装不下）。 */
+  viaBridge: z
+    .object({
+      typeKey: z.string().min(1),
+      fromProperty: z.string().min(1),
+      toProperty: z.string().min(1),
+      fromAnchorProperty: z.string().min(1).optional(),
+      toAnchorProperty: z.string().min(1).optional(),
+    })
+    .optional(),
+  /** carrier 侧谓词（A5 规则 DSL 表达式原文）——只**收窄**已有连接，造不出连接。 */
+  viaWhere: z.string().min(1).optional(),
+  /** 锚点键由 carrier 行上的表达式**算**出（与 `viaProperty` 互斥二选一）。 */
+  viaKeyExpr: z.string().min(1).optional(),
+  /** anchor 侧谓词（语法同 `viaWhere`，但对 anchor 行求值）。 */
+  viaWhereTo: z.string().min(1).optional(),
+  /** 不经外键的叉积；`maxEdges` **必填**——没有它这个字段就是一把没有保险的枪。 */
+  viaCross: z
+    .object({
+      fromWhere: z.string().min(1).optional(),
+      toWhere: z.string().min(1).optional(),
+      maxEdges: z.number().int().positive(),
+    })
+    .optional(),
+});
+export type LinkMaterializationDecl = z.infer<typeof LinkMaterializationDeclSchema>;
+
+/**
+ * 物化声明字段名清单 —— **由 schema 现算，不是第二份手抄的数组**（抄了就会漂）。
+ * 读投影按它逐个拷贝；接缝门按它断言「写路收的 = 读路发的」。
+ */
+export const LINK_MATERIALIZATION_FIELDS = Object.keys(
+  LinkMaterializationDeclSchema.shape,
+) as (keyof LinkMaterializationDecl)[];
+
 // PRD-IND-map §4.4/§4.5-③：映射表四注册表段（关系类型 / 规则 / Action / 事件）。
 export const MappingRegistriesSchema = z.object({
   // WO-RELATION-EDIT-GAPS ①：`viaProperty`/`viaSide` **加性可选**下发 —— 关系编辑器要能
   // **预填**「由哪个属性实现」这一格。没有它，「改」表单只能把这格留空，而一次留空的提交
   // 会把已声明的实现属性静默抹掉（边随即退回 0 实例、多跳检索遍历不到）。
   // 「改一个字段却把另一个字段清零」正是本仓最不许发生的那种静默失效。
+  // WO-MAPPING-WHITELIST：同一条纪律推广到**全部 9 个**物化声明字段（见上 schema 头注）——
+  // 只堵 `viaProperty` 一个，另外 7 个照样会被一次保存抹掉。
   linkTypes: z.array(
-    z.object({
-      key: z.string(),
-      fromType: z.string(),
-      toType: z.string(),
-      cardinality: z.string(),
-      viaProperty: z.string().optional(),
-      viaSide: z.enum(["from", "to"]).optional(),
-    }),
+    z
+      .object({
+        key: z.string(),
+        fromType: z.string(),
+        toType: z.string(),
+        cardinality: z.string(),
+      })
+      .extend(LinkMaterializationDeclSchema.shape),
   ),
   rules: z.array(z.object({ key: z.string(), expression: z.string(), scope: z.string(), severity: z.string() })),
   actions: z.array(z.object({ name: z.string(), params: z.string(), check: z.string(), target: z.string(), perm: z.string() })),
