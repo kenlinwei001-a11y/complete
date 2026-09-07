@@ -50,13 +50,16 @@ import {
   type FinanceWorldProjectionOutput,
   type FinanceWorldRecon,
   type FinanceWorldStateSource,
+  type FinanceWorldTurnDisclosure,
   type PropagationRule,
   type TickState,
+  type TurnDynamics,
 } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance } from "../domain.js";
 import { notFound, validationError } from "../errors.js";
 import type { Repos } from "../repo/repo.js";
 import { round } from "../prng.js";
+import { deriveTurnDynamics, readWorldLine, WORLD_LINE_DEFAULT_WINDOW } from "../sim/world-line.js";
 import { num, str } from "./types.js";
 
 /** 勾稽容差（与 `GapReconCheckSchema` 同一把尺子，不另立一套）。 */
@@ -153,6 +156,8 @@ export interface FinanceWorldArgs {
   revenueLine?: unknown;
   costLine?: unknown;
   marginLine?: unknown;
+  /** WO-TURN-LOOP · 回看几拍（缺省 `WORLD_LINE_DEFAULT_WINDOW`，上限 `WORLD_LINE_MAX_WINDOW`）。 */
+  turnWindow?: unknown;
 }
 
 /**
@@ -263,6 +268,48 @@ export async function projectFinanceWorld(
     pressureRow("receivablePressure", "Customer", arAgg),
     pressureRow("overduePressure", "ARInvoice", overdueAgg),
   ];
+
+  // ── ③b 回合动力学（WO-TURN-LOOP）────────────────────────────────────────────────
+  /**
+   * 这一段就是本单的兑现物：**同一个 `aggregatePressure`**，喂**世界线上的每一帧**，
+   * 于是拿到「同一读数在第 0/1/2/3 拍各是多少」——单张快照算不出来的那些量由此而来。
+   *
+   * ⛔ **刻意复用 `aggregatePressure` 而不是另写一个"历史版聚合"**：口径一旦分叉，
+   * 曲线上的点就与当前值对不上，而两边各自都"对"—— 那正是本仓治过的
+   * 「两处输入不同源 = 第二套真相源」。承载集/权重/排序全部同一份实现。
+   *
+   * ⛔ 世界线读不到 ⇒ `turnDynamics` 整块缺席（`undefined`），**既有字段一个都不动**
+   * （R6 向后兼容：不推进的世界，读数逐字节同旧）。
+   */
+  const turnWindow = (() => {
+    const w = num(args.turnWindow);
+    return Number.isFinite(w) && w > 0 ? w : WORLD_LINE_DEFAULT_WINDOW;
+  })();
+  const worldLine = await readWorldLine(repos, ctx.tenantId, world.id, world.curTick, turnWindow);
+  let turnDynamics: FinanceWorldTurnDisclosure | undefined;
+  if (worldLine.frames.length > 0) {
+    /** 逐 stateVar：沿世界线各帧跑同一个聚合，得到这一读数的轨迹。 */
+    const trackOf = (
+      objects: ObjectInstance[],
+      stateVar: string,
+      weightOf: WeightFn,
+    ): TurnDynamics =>
+      deriveTurnDynamics(
+        worldLine.frames.map((f) => ({ tick: f.tick, value: aggregatePressure(objects, f.state, stateVar, weightOf).value })),
+      );
+    turnDynamics = {
+      curTick: world.curTick,
+      ticksUsed: worldLine.ticksUsed,
+      windowRequested: worldLine.windowRequested,
+      truncated: worldLine.truncated,
+      note: worldLine.note,
+      byStateVar: {
+        costPressure: trackOf(orders, "costPressure", orderValue),
+        receivablePressure: trackOf(customers, "receivablePressure", (o) => custWeight.get(o.id) ?? 0),
+        overduePressure: trackOf(invoices, "overduePressure", invoiceAmount),
+      },
+    };
+  }
 
   // ── ④ 科目行投影（基线 = FinancePlan 真值）───────────────────────────────────────
   const roles = {
@@ -479,6 +526,9 @@ export async function projectFinanceWorld(
     lines,
     cash,
     chain,
+    // WO-TURN-LOOP：世界线读不到时**整键缺席**（不是给个空壳）——「没有历史」与「历史为空」
+    // 在屏上必须长得不一样。
+    ...(turnDynamics ? { turnDynamics } : {}),
     reconChecks,
     reconciled,
     summary,

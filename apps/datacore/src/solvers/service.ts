@@ -625,7 +625,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   //  · `chain` 产生这些压力的真规则 id 与真系数（"凭什么是这个数"当场可查）。
   finance_world_projection: [
     "worldId", "curTick", "worldStateSource", "worldObjectCount", "available", "unavailableReason",
-    "notes", "basis", "pressures", "lines", "cash", "chain", "reconChecks", "reconciled", "summary",
+    "notes", "basis", "pressures", "lines", "cash", "chain", "turnDynamics", "reconChecks", "reconciled", "summary",
   ],
 };
 
