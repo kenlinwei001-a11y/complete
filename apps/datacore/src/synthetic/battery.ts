@@ -1210,8 +1210,10 @@ const modelProps: PropertyDef[] = [
    *
    * ⚠⚠ **WO-UNIT-MARGIN-96X 订正（照铁律 0.6 回写）：本段原文写「与 `unitPrice` 同阶的强度量」，
    * 那句是错的，且它错在最容易被信的地方 —— 下游三处照它写了「同阶配对即得单位毛利」。**
-   * 实测（seed 42·scale S）：本格 `unitCost` 的分母是**电芯**（BOM 模板 `cell_case` 用量 1 个/行，
-   * 全 8 行都是单颗电芯的料），而同格 `unitPrice` 的分母是**套** ——
+   * 实测（seed 42·scale S）：本格 `unitCost` 的分母是**电芯** —— `BOM_ITEM_TEMPLATES` 8 条模板
+   * （每型号实际 7 行·LFP/NCM 各跳过对方正极）里 `cell_case` 用量 = **1 个**，
+   * 其余各行（正极 1.0–1.05kg / 负极 0.45kg / 隔膜 12㎡ …）都是**单颗电芯**的料，
+   * 而同格 `unitPrice` 的分母是**套** ——
    * 它由 `seg.priceWan × 1e4` 派生（本文件 `Model` 生成处），种子注释与 `solvers/service.ts`
    * 的 R18 口径段都明写「元/套」。**两者不同阶，直接相减不是单位毛利。**
    * 断点登记：`G-UNIT-MARGIN-CROSS-DENOM`（与 `G-QUOTE-BOM-PRICE-UNIT-SCALE` 同族·同一个欠账的另一条出口）。
