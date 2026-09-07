@@ -360,6 +360,67 @@ describe("WO-BEFE-A ② 结构边 CRUD 与启停（POST link-types / links:depre
     expect(await screen.findByTestId("orel-link-seam_supplies_to")).toBeTruthy();
   });
 
+  /**
+   * WO-MAPPING-WHITELIST · **「改」一次不许把表单管不到的物化声明抹掉。**
+   *
+   * ── 今天的行为是 X（修前）──────────────────────────────────────────────────
+   * 本页「改」表单只有 `via` 一个控件（= `viaProperty` + `viaSide` 这一对）。而结构边的
+   * 物化声明共 9 个字段，另外 7 个（`anchorProperty` `viaMultiValue` `viaBridge` `viaWhere`
+   * `viaKeyExpr` `viaWhereTo` `viaCross`）**在这个表单里没有控件**，只能从 API 声明。
+   * 修前 `updateLink` 只把 `key/端点/基数/viaProperty/viaSide` 拼进 POST 体 —— 而这条路是
+   * **整条覆盖**的 upsert ⇒ 用户点一次「保存」，那 7 个当场归零，**屏上不报错**。
+   *
+   * ── 应该是 Y ───────────────────────────────────────────────────────────────
+   * 表单管不到的声明字段从 `registries` 行**原样回填**，保存前后逐字段相同。
+   *
+   * ── 为什么用 `viaCross` 当探针 ─────────────────────────────────────────────
+   * 它是**不依赖 `viaProperty` 的独立形态**（叉积边），于是 `via` 下拉恒为「未选」，
+   * 这条断言只可能由「回填生效了」来满足，不会被表单自己那一对字段蒙混过去。
+   */
+  it("改一条带 viaCross 的边：只点保存不改任何字段 ⇒ 声明原样回填（修前这 7 个字段被静默抹掉）", async () => {
+    // 先用真 POST 造一条带 `viaCross` 的边（这类声明今天只能从 API 来，表单里没有控件）。
+    const decl = { viaCross: { fromWhere: "Base.status == 'ACTIVE'", maxEdges: 10000 } };
+    const created = await fetch("/a/v1/ontology/link-types", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: "seam_cross_probe", fromTypeKey: "Base", toTypeKey: "Line", cardinality: "N:N", ...decl }),
+    });
+    expect(created.status, "探针边没建起来 ⇒ 下面的断言无从谈起").toBe(201);
+    // 金丝雀：**建边回包里就该有 `viaCross`**。它若这里已经没了，那是 mock 建边路把它吃了，
+    // 与「保存时被抹掉」是两个不同的病 —— 不先分开，修的地方会错。
+    expect((await created.json()).viaCross, "金丝雀：建边回包应回显 viaCross").toEqual(decl.viaCross);
+
+    const posts: Hit[] = [];
+    spyOn("post", "*/a/v1/ontology/link-types", posts);
+
+    const user = userEvent.setup();
+    await openPage();
+
+    // 走用户那条路：点「改」→ 一个字段都不碰 → 点「保存」。
+    await user.click(await screen.findByTestId("orel-link-edit-seam_cross_probe"));
+    await user.click(await screen.findByTestId("orel-link-edit-save-seam_cross_probe"));
+
+    await waitFor(() => expect(posts.length, "「保存」没发出 POST ⇒ 这条用例什么都没验").toBe(1));
+    await waitFor(() => expect(posts[0]!.body, "body 还没解析完").not.toBeNull());
+
+    // 主断言：表单管不到的 `viaCross` 必须原样出现在保存请求里。
+    expect(
+      (posts[0]!.body as { viaCross?: unknown }).viaCross,
+      "「改」把 viaCross 丢了 ⇒ 用户点一次保存就抹掉了自己没看见也没碰过的声明（静默数据丢失）",
+    ).toEqual(decl.viaCross);
+
+    // 反向对照：表单**管得到**的那一对仍以表单为准 —— 这条边没选实现属性，就不许凭空回填出一个来
+    //（否则「清空实现属性」这个动作将永远生效不了，那是把一个 bug 换成了另一个）。
+    expect((posts[0]!.body as { viaProperty?: unknown }).viaProperty, "没选实现属性却回填出了 viaProperty").toBeUndefined();
+
+    // 回读也必须还在（不只是「请求里带了」，而是「存下来了」）。
+    const back = await (await fetch("/a/v1/ontology/mapping/registries")).json();
+    expect(
+      (back.linkTypes as { key: string; viaCross?: unknown }[]).find((l) => l.key === "seam_cross_probe")?.viaCross,
+      "保存后回读不到 viaCross ⇒ 往返仍在丢字段",
+    ).toEqual(decl.viaCross);
+  });
+
   it("停用一条结构边 ⇒ 状态列翻成「已停用」，而推演口径**不受影响**（两种边的启停语义不同）", async () => {
     const posts: Hit[] = [];
     spyOn("post", "*/a/v1/ontology/links/:key/deprecate", posts);
