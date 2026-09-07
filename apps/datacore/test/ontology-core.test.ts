@@ -508,7 +508,11 @@ describe("generic_inference 通用 what-if 求解器（H · G-5 通用 what-if�
     //         边上的消耗量 = 余量，超载逐条给违约信息）。**不与 capacity_rollup 合并**：
     //         rollup 答「这条线能做多少」（能力面·套/日），ledger 答「还剩多少」（占用面·件/日），
     //         两者量纲不同（差一个 packCellCount 倍），合成一个 key 必出量纲事故。
-    expect(SOLVER_KEYS.length).toBe(62);
+    //   +63 = WO-VULNERABILITY-REI supply_vulnerability（**未断但脆弱**：逐供应商节点算单点与否 +
+    //         TTR + 敞口占比）。与 supplier_disruption_radius **不合并**：那个吃 rootId 回答
+    //         「**这个** X 坏了会怎样」，本个不吃入参回答「**我该担心哪个** X」——
+    //         前者要求你已经知道该担心谁，正是它答不了的那一问。
+    expect(SOLVER_KEYS.length).toBe(63);
     expect(SOLVER_OUTPUT_SHAPES.generic_inference?.length ?? 0).toBeGreaterThan(0);
   });
 

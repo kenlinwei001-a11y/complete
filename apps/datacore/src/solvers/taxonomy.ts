@@ -61,6 +61,7 @@ export const SOLVER_CATEGORY_MAP: Record<SolverKey, SolverCategory> = {
   affected_orders: "risk_propagation", // 这个扰动会波及哪些订单
   supplier_disruption_radius: "risk_propagation", // 某供应商断供影响半径多大、波及哪些下游
   concentration_risk: "risk_propagation", // 看似分散实则汇聚到哪个单点（暗线集中风险）
+  supply_vulnerability: "risk_propagation", // 还没断，但哪个供应商/物料最该担心（单点与否 + TTR + 敞口）
 
   // ── 归因与根因诊断：「为什么没达标、缺口归到哪些根因、各占多少」 ──
   plan_rootcause: "root_cause_attribution", // 某 KPI 为什么没达标、根因在哪个因子

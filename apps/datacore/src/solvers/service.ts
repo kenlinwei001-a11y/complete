@@ -28,6 +28,7 @@ import { AUDIT_KIND_LIVE_SOURCES } from "@platform/contracts";
 import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
+import { computeSupplyVulnerability } from "./supply-vulnerability.js"; // WO-VULNERABILITY-REI 供应脆弱度（未断但脆弱）
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 // WO-69 P2 · Function 本体签名（求解器读/写本体面声明）—— 列级守卫的收窄依据 + DRIL inputSpec 的派生源。
 import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "./ontology-signature.js";
@@ -324,6 +325,10 @@ export const SOLVER_KEYS = [
   "margin_attribution",
   // PRD-fde §8 Q2 单一供应商断供影响半径（净室通用）：反向多跳逐层扇出算扩散半径与叶层敞口。
   "supplier_disruption_radius",
+  // WO-VULNERABILITY-REI 供应脆弱度：**未断但脆弱**（冗余度），与上一个互补 ——
+  // 上一个答「**指定的这个** X 坏了会怎样」（要先知道担心谁），本个答「**我该担心哪个** X」。
+  // 判据是结构量（单点与否 / TTR），不是越线快照，故三个 ChainImpediment kind 都装不下它。
+  "supply_vulnerability",
   // PRD-fde §8d 组合最优化（CP-SAT sidecar 代理）：通用 0/1 选择最优化,贪心给不出的可证最优。
   "selection_optimize",
   // A8.1/8.2/8.3 CP-SAT 可证最优族：指派(订单→基地)/排序(换型)/装箱(产能填充)
@@ -527,6 +532,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   concentration_risk: ["concentrations", "topExposure", "summary"],
   margin_attribution: ["inverted", "rootDrivers", "invertedCount", "summary"],
   supplier_disruption_radius: ["rootType", "rootId", "layers", "radius", "totalAffected", "leafType", "leafCount", "summary"],
+  supply_vulnerability: ["suppliers", "materials", "ranking", "counts", "topBySpendOnly", "summary"],
   selection_optimize: ["status", "optimal", "selected", "totalValue", "totalWeight", "itemType", "budget", "candidateCount", "summary"],
   assignment_optimize: ["status", "optimal", "assignments", "objective", "itemType", "binType", "itemCount", "binCount", "summary"],
   sequencing_optimize: ["status", "optimal", "sequence", "changeovers", "objective", "jobType", "jobCount", "summary"],
@@ -4729,6 +4735,51 @@ export class SolverService {
   }
 
   /**
+   * WO-VULNERABILITY-REI · **供应脆弱度**：按供应商节点与物料算「未断但脆弱」（单点与否 + TTR + 敞口占比）。
+   *
+   * 与 `supplier_disruption_radius` **互补而非重复**：
+   *  · 那一个要**先指定** `rootId`（"SUP-001 断了会怎样"）—— 前提是你已经知道该担心谁；
+   *  · 本个**不需要入参**，逐节点扫全表回答"**我该担心哪个**" —— 这正是三个 kind 装不下的那一态。
+   *
+   * ⚠ 必须按**供应商节点**算，不能逐物料看：`pos_ncm` 与 `pos_lfp` 各自都"有二供"，
+   * 逐物料看两个都不单点；但两者**共用 SUP-001** ⇒ 这一家断供，两种正极同时失去主供。
+   * 这条相关性只有把供应商当节点、把料聚到它名下才看得见。
+   *
+   * args: 无（全表扫）。R6 确定：纯读 + 纯函数计算，无 rng 无时钟。
+   */
+  private async supplyVulnerability(ctx: AuthCtx, _args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const [materials, suppliers, bomDetails, bomHeaders, orders] = await Promise.all([
+      this.repos.objects.listByType(ctx.tenantId, "Material"),
+      this.repos.objects.listByType(ctx.tenantId, "Supplier"),
+      this.repos.objects.listByType(ctx.tenantId, "BOMDetail"),
+      this.repos.objects.listByType(ctx.tenantId, "BOMHeader"),
+      this.repos.objects.listByType(ctx.tenantId, "Order"),
+    ]);
+    // 诚实空：没有物料就没有脆弱度可言，**不回落到"零风险"**（那会与"真的没风险"混为一谈）。
+    if (materials.length === 0) throw validationError("supply_vulnerability 需先合成 Material");
+    const res = computeSupplyVulnerability({
+      materials: materials.map((o) => ({
+        matId: str(o.props.matId, o.id),
+        name: str(o.props.name),
+        unitPrice: num(o.props.unitPrice),
+        supplierId: str(o.props.supplierId),
+        supplierIds: o.props.supplierIds,
+        isKeyMaterial: o.props.isKeyMaterial === true,
+      })),
+      suppliers: suppliers.map((o) => ({
+        supplierId: str(o.props.supplierId, o.id),
+        name: str(o.props.name),
+        leadTime: num(o.props.leadTime),
+        status: str(o.props.status),
+      })),
+      bomDetails: bomDetails.map((o) => o.props),
+      bomHeaders: bomHeaders.map((o) => o.props),
+      orders: orders.map((o) => o.props),
+    });
+    return { ...res };
+  }
+
+  /**
    * PRD-fde §8d 组合最优化（CP-SAT sidecar 代理）：通用 0/1 选择最优化（背包族）——从对象图取候选项
    * （itemType 的 valueField/weightField），在 Σweight≤budget（及可选 maxCount/minValue）下最大化 Σvalue。
    * 贪心/启发式对 0/1 背包不保证最优,这里走 OR-Tools CP-SAT 给**可证最优**——TS 解不动的"复杂推演"。
@@ -6081,6 +6132,9 @@ export class SolverService {
     // 照 finance_pnl / chain_impediments 兄弟模式先于通用 loadContext 拦截。
     if (solverKey === "finance_world_projection") return this.financeWorldProjection(ctx, args);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
+    // WO-VULNERABILITY-REI：读 Material×Supplier×BOM×Order 对象图（非电池 context），
+    // 照 supplier_disruption_radius 兄弟模式先于通用 loadContext 拦截。
+    if (solverKey === "supply_vulnerability") return this.supplyVulnerability(ctx, args);
     // WO-SANDBOX-E1 环节级损失归因（沿本体链路 hop 读对象图 + 链路，非 compute() 的电池 context），
     // 照 sop_reschedule/order_fullchain 兄弟模式先于 loadContext 拦截。
     if (solverKey === "chain_loss_attribution") return this.chainLossAttribution(ctx, args);
