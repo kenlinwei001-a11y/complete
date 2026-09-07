@@ -57,6 +57,7 @@ import type { LinkInstance, ObjectInstance } from "../domain.js";
 import { businessTypeOfOrder } from "./portfolio.js";
 import { canonicalJson, hashString, round } from "../prng.js";
 import { enumerateImpedimentOptions } from "./impediment-options.js"; // WO-SANDBOX-S3 · 阻滞点 → 候选方案枚举器
+import type { SupplyVulnerabilitySection } from "./supply-vulnerability.js"; // WO-VULNERABILITY-REI · 搭车段的类型（声明侧，见 ChainScanResult 末尾）
 import {
   DslError,
   evaluateExpression,
@@ -694,6 +695,18 @@ export interface ChainScanResult extends Record<string, unknown> {
     /** 业务线归属 UNKNOWN 的阻滞点总条数 —— 一眼看出「筛了多少、没筛动多少」。 */
     unattributedTotal: number;
   };
+  /**
+   * WO-VULNERABILITY-REI · 「未断但脆弱」搭车段（`service.ts` 在 `...scan` 之后拼上）。
+   *
+   * ⚠ **本行是补声明，不是加功能**：`SOLVER_OUTPUT_SHAPES.chain_impediments` 早已列了
+   * `supplyVulnerability`，运行时也真的发得出去（接缝测试 §6 咬着），**唯独这个接口没声明它**。
+   * 因为本接口 `extends Record<string, unknown>`，少声明**一个字**都不会报错 ——
+   * typecheck 全绿、四包全绿，而 `solver-field-seam:check` 的根解析当场失配、
+   * 整道门退成 RC=2「门自己坏了」⇒ **一整类「后端声明下发·前端零消费」的死字段从此没人看**。
+   * 这正是本仓「声明与实现漂开、而类型系统看不见」的老形态（同族先例见
+   * `packages/contracts/src/solvers.ts` 的 `adoptedMitigation`：不声明就被 zod strip、前端永远拿不到）。
+   */
+  supplyVulnerability?: SupplyVulnerabilitySection;
 }
 
 export interface ChainScanInput {
