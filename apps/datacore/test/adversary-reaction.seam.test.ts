@@ -76,7 +76,8 @@ async function runWorld(
   const created = await t.app.inject({
     method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: { baseSnapshot: base },
   });
-  expect(created.statusCode, created.body).toBe(200);
+  // 建会话真路由回 **201 Created**（不是 200）—— 第一版写死 200，五个用例一起红在同一行。
+  expect(created.statusCode, created.body).toBe(201);
   const sid = (created.json() as { id: string }).id;
   const ticked = await t.app.inject({
     method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n },
