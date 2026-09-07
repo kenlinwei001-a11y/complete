@@ -712,6 +712,100 @@ export function lossConservationResidual(rows: readonly LossAttribution[]): numb
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// § 5.5 · 损失的**金额**口径（LossValueAtRisk）—— WO-LOSS-ATTRIB-MONEY
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ★ 把「天」翻译成「钱」的**唯一实现**。★
+ *
+ * ── 今天的行为 X / 应该的行为 Y（本节的由来）──────────────────────────────
+ * **X**：`chain_loss_attribution` 与 `chain_loss_matrix` 的输出**只有天与占比**，
+ *   一个金额字段都没有（实测：矩阵回包里 `"days"` 命中 253 次，
+ *   `"value"`/`"amount"`/`"元"` 各 **0** 次）。屏上因此只能印
+ *   「订单回款 71% · 780.00D」——**没有任何一处告诉经营者这 780 天等于多少钱**。
+ * **Y**：损失归因必须给出一个**元**金额，且它必须能一路追回真对象的真字段。
+ *
+ * ── 口径（写死，改它必须先改本注释与锁死测试）──────────────────────────────
+ *
+ *      环节压住的订单金额 = 该基地订单敞口(元) × 该环节占本列损失的百分比 ÷ 100
+ *
+ * **「订单敞口」的定义**：`Σ Order.value`，取遍**可产基地清单含该基地**的订单
+ * （`Order.bases ∋ baseId`）。`Order.value` 本身是本体已登记的派生属性
+ * `qty × unitPrice`（单位「元」，见 `orderDerived`）——**不是本函数编的**。
+ *
+ * **为什么是"敞口 × 占比"而不是别的**：
+ *  · 归因占比回答「**这个环节吃掉了这条链损失的百分之几**」；
+ *  · 敞口回答「**这个基地手上压着多少合同金额**」；
+ *  · 两者相乘 = 「**这个环节在这个基地压住了多少钱**」。
+ *  · 守恒**自动成立**：Σpct == 100 ⇒ Σ 列内各环节金额 == 该列敞口。
+ *    这不是巧合，是选这个口径的理由 —— 它自带一条可被机器检查的账。
+ *
+ * **⛔ 三条不许（每条对着本仓一笔真账）**：
+ *  ✗ **不许引入"资金成本率 / 日息 / 折现率"把天换算成钱**。本仓全库实测**没有**
+ *    任何一处登记过这类费率（`grep -riE "资金成本|carryingCost|costOfCapital|wacc|折现"`
+ *    在 `apps/datacore/src` + `packages/contracts/src` 命中 0 条业务费率）。
+ *    编一个 = 铁律 1.5 判据四点名的"内联业务常数"，且**编出来的数会被当成真数读**。
+ *  ✗ **不许拿 601.50 亿（供给侧计划口径）或 700.00 亿（需求预测）当营收底数** ——
+ *    前者改订单簿逐字节不动，后者屏上标「实际」是已知谎言。唯一随订单簿变的是
+ *    `Σ Order.value` = **454.64 亿**（500 单，实测）。
+ *  ✗ **不许用 `OrderLine.unitCost` 造成本**（元/电芯 vs 套，量纲不同阶，实测毛利率 96.70%，已知坏数）。
+ *
+ * **⚠ 敞口会跨列重复计入，这是口径的一部分不是 bug**：一张单可产多个基地
+ * （实测 500 单里 **274 单**可产 >1 个基地，平均 1.55 个）⇒ Σ 各列敞口 = **715.12 亿**
+ * = 订单簿 454.64 亿的 **1.57×**。故**列间可比，列合计不可加**——
+ * 这条必须随结果一起返回（`ChainLossMatrixMoneySchema.exposureOverlapRatio`），
+ * 不许让读数的人自己去猜为什么 13 列加起来比订单簿还大。
+ */
+export function lossValueAtRiskYuan(exposureYuan: number, pctOfChainLoss: number): number {
+  return (exposureYuan * pctOfChainLoss) / 100;
+}
+
+/**
+ * 订单敞口：`Σ Order.value`，取遍可产基地清单含 `baseId` 的订单。
+ * `baseId` 传 `null` ⇒ 不过滤，即**整本订单簿**的合同金额（对账锚点，实测 454.64 亿）。
+ *
+ * 诚实缺席：`value` 不是数的订单**跳过而不当 0**——「没登记金额」和「金额是 0」是两个结论。
+ * 跳过了几张由 `countedOrders` / `skippedOrders` 显式回报，不闷掉。
+ */
+export function orderExposureYuan(
+  orders: readonly { readonly value?: unknown; readonly bases?: unknown }[],
+  baseId: string | null,
+): { exposureYuan: number; countedOrders: number; skippedOrders: number } {
+  let exposureYuan = 0;
+  let countedOrders = 0;
+  let skippedOrders = 0;
+  for (const o of orders) {
+    if (baseId !== null) {
+      const bases = Array.isArray(o.bases) ? o.bases.map((b) => String(b)) : [];
+      if (!bases.includes(baseId)) continue;
+    }
+    if (typeof o.value !== "number" || !Number.isFinite(o.value)) {
+      skippedOrders++;
+      continue;
+    }
+    exposureYuan += o.value;
+    countedOrders++;
+  }
+  return { exposureYuan, countedOrders, skippedOrders };
+}
+
+/** 金额守恒残差 = `Σ 各环节金额 − 该列敞口`（元）。空表 = `null`，同 §5 的纪律。 */
+export function moneyConservationResidualYuan(
+  cellYuan: readonly number[],
+  exposureYuan: number,
+): number | null {
+  if (cellYuan.length === 0) return null;
+  return cellYuan.reduce((sum, v) => sum + v, 0) - exposureYuan;
+}
+
+/**
+ * 金额守恒的判定容差（元）。取 **1 元**：敞口是「亿」量级（10⁸～10¹⁰），
+ * 浮点累加误差在 10⁻⁶ 元以下，1 元既足够宽松又能咬住任何**口径级**错误
+ * （少乘一个基地、把占比当成 0–1 用等，误差都是「亿」级，一眼红）。
+ */
+export const MONEY_CONSERVATION_TOLERANCE_YUAN = 1;
+
+// ══════════════════════════════════════════════════════════════════════════
 // § 6 · ChainImpediment（卡点 / 堵点 / 断点）—— 派生对象，不进 R4 审批面
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -1253,6 +1347,12 @@ export const ChainLossMatrixCellSchema = z.strictObject({
   pct: z.number().min(0).max(100),
   /** 该环节在该基地链上的非增值天数。 */
   days: z.number().nonnegative(),
+  /**
+   * 该环节在该基地**压住的订单金额（元）** = 本列订单敞口 × `pct` ÷ 100（§5.5 唯一实现）。
+   * 本列敞口取不到（该基地无可产订单 / 订单没登记 `value`）⇒ `null`，**不是 0**
+   * —— 与 `days` 的空列纪律同源：「没数据」和「金额是 0」是相反的结论。
+   */
+  valueAtRiskYuan: z.number().nonnegative().nullable(),
 });
 export type ChainLossMatrixCell = z.infer<typeof ChainLossMatrixCellSchema>;
 
@@ -1264,6 +1364,13 @@ export const ChainLossMatrixRowTotalSchema = z.strictObject({
   pctOfGrandLoss: z.number().min(0).max(100),
   /** 该环节在几个基地上真有格子（0 不可能出现——没格子的环节不进行索引）。 */
   baseCount: z.number().int().nonnegative(),
+  /**
+   * 该环节在**所有**有敞口的基地上合计压住的订单金额（元）= Σ 本行各格 `valueAtRiskYuan`。
+   * ⚠ **这个数跨列相加，故带着 §5.5 说的重复计入**（一单可产多基地）——
+   * 它回答「这个环节在全网压住多少合同金额」，**不等于**订单簿里的一笔独立营收。
+   * 一格敞口都没有 ⇒ `null`，不是 0。
+   */
+  valueAtRiskYuan: z.number().nonnegative().nullable(),
 });
 export type ChainLossMatrixRowTotal = z.infer<typeof ChainLossMatrixRowTotalSchema>;
 
@@ -1297,6 +1404,20 @@ export const ChainLossMatrixColTotalSchema = z.strictObject({
   reason: z.string().min(1).nullable(),
   /** 复验探针（怎么自己再验一遍这条结论）。空列必给。 */
   probe: z.string().min(1).nullable(),
+  /**
+   * 本基地的**订单敞口（元）** = `Σ Order.value`，取遍 `Order.bases ∋ baseId` 的订单（§5.5）。
+   * **这是本列所有金额的底数**，也是本列金额守恒的右边。取不到 ⇒ `null`，不是 0。
+   */
+  exposureYuan: z.number().nonnegative().nullable(),
+  /** 敞口算了几张单 / 因 `value` 未登记跳过几张（诚实缺席，不闷掉）。 */
+  exposureOrderCount: z.number().int().nonnegative(),
+  exposureSkippedOrders: z.number().int().nonnegative(),
+  /**
+   * 金额守恒残差（元）= `Σ 本列各格 valueAtRiskYuan − exposureYuan`。
+   * 判据 `Math.abs(residual) <= MONEY_CONSERVATION_TOLERANCE_YUAN`。空列 = `null`。
+   */
+  moneyResidualYuan: z.number().nullable(),
+  moneyOk: z.boolean(),
 });
 export type ChainLossMatrixColTotal = z.infer<typeof ChainLossMatrixColTotalSchema>;
 
@@ -1318,6 +1439,41 @@ export const ChainLossMatrixResidualSchema = z.strictObject({
 });
 export type ChainLossMatrixResidual = z.infer<typeof ChainLossMatrixResidualSchema>;
 
+/**
+ * 金额口径的**对账块**（WO-LOSS-ATTRIB-MONEY）。
+ *
+ * 存在的理由：矩阵的 13 列敞口加起来**比订单簿还大**（实测 715.12 亿 vs 454.64 亿），
+ * 因为一张单可产多个基地、会被每个可产基地各计一次。这不是错，是「敞口」这个口径的定义；
+ * 但**不把这条摆在结果里，读数的人只会得出「这个系统的数对不上账」这个结论**。
+ * 故本块把三个数一起给出，让对账这件事**在回包里就能做完**，不必去翻源码：
+ *   `orderBookTotalYuan`（订单簿合同总额，唯一随订单簿变的营收口径）
+ *   `exposureSumYuan`（Σ 各列敞口）
+ *   `exposureOverlapRatio` = 后者 ÷ 前者（实测 1.57，等于订单平均可产基地数）
+ */
+export const ChainLossMatrixMoneySchema = z.strictObject({
+  /**
+   * 订单簿合同总额（元）= `Σ Order.value`，**不过滤基地**。实测 seed 42 = 454.64 亿。
+   * ⚠ 这是**唯一随订单簿变的**营收口径。屏上另外两个数**不是**它的同义词：
+   * 601.50 亿是供给侧计划口径（改订单簿它逐字节不动）、700.00 亿是需求预测。
+   */
+  orderBookTotalYuan: z.number().nonnegative(),
+  /** 订单簿里算进总额的单数 / 因 `value` 未登记跳过的单数。 */
+  orderBookCount: z.number().int().nonnegative(),
+  orderBookSkipped: z.number().int().nonnegative(),
+  /** Σ 各非空列的 `exposureYuan`（元）。**跨列相加带重复计入**，见 `exposureOverlapRatio`。 */
+  exposureSumYuan: z.number().nonnegative(),
+  /**
+   * `exposureSumYuan ÷ orderBookTotalYuan`。等于「订单平均可产基地数」（实测 1.55~1.57）。
+   * **> 1 是正常的**：一张能在 2 个基地产的单，两列各承担一次它的敞口。
+   * 订单簿为空 ⇒ `null`（不返 0：那会被读成「没有重复计入」）。
+   */
+  exposureOverlapRatio: z.number().nonnegative().nullable(),
+  /** 全矩阵金额守恒：所有非空列的 `moneyOk` 全真。 */
+  allColumnsMoneyOk: z.boolean(),
+  toleranceYuan: z.number().positive(),
+});
+export type ChainLossMatrixMoney = z.infer<typeof ChainLossMatrixMoneySchema>;
+
 export const ChainLossMatrixResultSchema = z.strictObject({
   nodes: z.array(ChainLossMatrixNodeSchema),
   bases: z.array(ChainLossMatrixBaseSchema),
@@ -1325,6 +1481,8 @@ export const ChainLossMatrixResultSchema = z.strictObject({
   rowTotals: z.array(ChainLossMatrixRowTotalSchema),
   colTotals: z.array(ChainLossMatrixColTotalSchema),
   residual: ChainLossMatrixResidualSchema,
+  /** 金额口径与对账（WO-LOSS-ATTRIB-MONEY）。 */
+  money: ChainLossMatrixMoneySchema,
   summary: z.string().min(1),
 });
 export type ChainLossMatrixResult = z.infer<typeof ChainLossMatrixResultSchema>;
