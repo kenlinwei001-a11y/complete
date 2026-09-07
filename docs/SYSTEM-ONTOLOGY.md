@@ -2378,6 +2378,63 @@ UNIT_DIMENSIONS ──► unitFamily()  ──► sameUnitFamily / unitConversio
 组①跨族 400 · 组②同族 201（金丝雀，证明不是一刀切）· 组③存量比速率 400 · **变异反证**
 （去掉推断 ⇒ 组① 重新 201，实测）· 存量误伤统计 0 · 参数化逐行解析出四种真单位。
 
+### 量纲维度链路 · 装上维度后抓到的 6 条既有错 + 乘法许可（WO-DIMENSION-ERRORS · 2026-09-07）
+
+**一句话**：上一节把量纲**装上**，本节是**拿它去核对既有声明**的第一批结果 —— 6 处逐条改，
+并给本仓两处**真花钱的乘法**加上「先取许可再乘」。装了报警器却没人拿它对一遍既有接线，
+等于装了个没接线的报警器。
+
+**六条（今天的行为 X → 应该的 Y）**：
+
+| # | 位置 | X（今天） | Y（应该） | 判定 |
+|---|---|---|---|---|
+| 1 | `solvers/extended.ts` `inventoryOptimize` | `overQty × unitPrice` **一个单位都不看**就乘 | 先解析两端、抵得掉才乘 | **算式** |
+| 2 | `Material.{onHand,inTransit,dailyUse}` | 全声明 `吨` | `计量单位` / `计量单位` / `计量单位/日` | 声明 |
+| 3 | `solvers/extended.ts` `quoteMargin` | `Σ quantity × spotPrice` 不核两格 `unit` | 逐行取许可，抵不掉即剔除并点名 | **算式** |
+| 4 | `DemandSegment.{revenueWan,marginWan}` | `亿元`（**存量**） | `亿元/年`（**速率**） | 声明 |
+| 5 | `Line.actual_output_daily` | `套/日`（pack） | `件/日`（cell） | 声明 |
+| 6 | `Order.qty`（+`Base.committedQty`/`OrderLine.qty`） | `件`（cell） | `套`（pack） | 声明 |
+
+**#1 的定性被实测推翻，记在这里防复发**：原判「`onHand` 是吨 ⇒ kg 类物料成本 **1000× 低估**」。
+三条独立证据指向**吨不是本列的单位**，故不是 1000× 的钱、是标签错：
+① `solvers/lever-meta.ts` 的 `"Material.onHand": { unit: "", kind: "qty" }` —— UI 元数据**刻意留空**，
+原注「库存单位随物料，不臆造」；② 8 料里 3 料按 `㎡`/`L`/`个` 计量，**压根没有质量口径**，
+故 `吨` 不可能是这一列的单位；③ 同对象 `unitPrice`(元/计量单位) 与 `BOMDetail.quantity`(计量单位)
+已按此惯例落地。**形态**：「我用『声明写着吨』当作『它就是吨』的证据，而前者并不度量后者。」
+
+- **R-UNIT-5 · 抵消许可（`cancelingProductUnit` / `resolvedProductUnit`）**：
+  「存量 × 强度量」只有在**分母把被乘量抵消干净**时才有结果（`kg × 元/kg = 元`）。
+  抵不掉的四种情形 —— qty 自己是速率 / 任一端仍是未解析的 `perRef` / 分母跨族 / 抵消后的倍数在词表里没有落点
+  —— 一律返回 `undefined`，调用方**按「本行算不出」处理，不许照乘、更不许给 0**
+  （0 会被下游读成「没有可释放的钱」这个**具体结论**，而真相是「本行算不出」）。
+  ⚠ 这条补的是 R-UNIT-2 够不到的那一半：加减门只看**派生公式**，而本仓真花钱的乘法在 **TS 代码里**。
+- **R-UNIT-6 · 两个占位符可以来自两个对象，相等要现证不许假定**：
+  `BOMDetail.quantity` 由 `BOMDetail.unit` 解析、`Material.unitPrice` 由 `Material.unit` 解析。
+  真起后端实测**今日 105/105 行相等**，但两张表改一边不会红另一边 ——
+  **「今天相等」不度量「必然相等」**，故逐行现证。
+- **R-UNIT-7 · 有裁决的地方不许绕过裁决去补单位**：`Order.unitPrice`/`priceWan` 的真实分母是「套」，
+  而 `docs/DECISION-unit-of-account.md` §1.5（仓主 2026-08-28 拍板）明令
+  「套/电芯不得充当金额或产能的分母」⇒ 词库里**没有也不许有** `元/套`/`万元/套`。
+  故 #4/#6 只收**可以收的那一半**（时间分母、计数族），金额分母那一半属该裁决的 17 字段收口，另单。
+
+**读数影响（真起后端 `SEED_DEMO=1`·真路由，两棵树同一脚本对拍）**：
+15 个观测集合里 **14 个逐字节相同**（Material / Line / Order / DemandSegment 全量 + 生产路
+`inventory_optimize` + `margin_waterfall`）—— 6 条改的是**标签**与**许可**，不是数值。
+唯一变的那一集是超储估值：喂**词表外单位**时 base 树照乘出 `releasableCash=870009.54`
+（与喂**正确单位**时**逐字节相同**，hash 同为 `1d15cce6` —— 这就是「单位从没被读过」的直接证据），
+HEAD 树改为 `releasableCash=0` + 逐行 `valueOmittedReason`。生产路（真 `Material.unit`）两棵树同为 **870009.54**。
+
+**接缝门**：`apps/datacore/test/dimension-errors.seam.test.ts`（12 例）——
+①六条声明现状（改回旧值即红）· ②**四组真路由反向对照**（产能−产出 `件/日`减`套/日` 400 ·
+收入+存量 `亿元/年`加`亿元` 400 且**改回 `亿元` 重新 201** · 在手量−已承接 `套`减`件` 400 ·
+`吨`+`unitRefProp` 400「永远不被读取」）· ③乘法许可四种 undefined + 求解器变异反证
+（三次调用**只有 `unit` 一格不同**，结果分成两类）· ④改完后既有加减式误伤仍为 0。
+⚠ 反向对照一律用**本仓真实的属性配对**，不用编出来的 `a - b` —— 后者只证明门会响，
+证明不了它**对准了这 6 条**。
+
+⚠ **签名读取面随之变**：`quote_margin` 的 `reads` 补 `Material.unit` + `BOMDetail.unit`
+（被 `ontology-signature.seam.test.ts` 的 S5 实跑门**当场揪出**，不是人想起来的——机器先说话）。
+
 ### 属地链路 / 工序先后链路 · `located_in` 与 `depends_on` 两条关系落地（WO-LAST3-RELATIONS · 2026-09-06）
 
 **一句话**：地理归属从**字符串属性**升格成 `Region` 对象（三类设施经 `*_located_in` 指过去），
