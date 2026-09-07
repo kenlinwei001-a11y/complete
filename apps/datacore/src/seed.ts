@@ -228,6 +228,31 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *  · `sourceTypeName` / `targetTypeName` —— **读时投影**，由 `GET /a/v1/sim/propagation-rules`
  *    join 本租户本体填，入库恒 `null`（存进去会在类型改名后变成查无对证的旧名字）。
  */
+/**
+ * ── 描述系数对账（WO-EDGE-MONEY-WEIGHT · 2026-09-07 实测 9/13 不符，已全部改齐）──────────
+ *
+ * **今天的行为 X**（修前）：13 条边的 `description` 里写了系数，其中 **9 条与真 `coefficient` 不符**，
+ * 最大差 2 倍。而 `GET /a/v1/sim/propagation-rules` **原样把这段中文下发给用户** ⇒ 屏上正在
+ * 说与实际不符的话。逐条（描述 → 真值）：
+ *   `demo_model_demand_to_base_load` 0.7→0.6 · `demo_base_load_to_line_util` 0.6→0.5 ·
+ *   `demo_material_shortage_to_model_supply_risk` 0.85→0.7 · `demo_model_supply_risk_to_order_shortage` 0.9→0.8 ·
+ *   `demo_line_util_to_process_queue` 0.75→0.7 · `demo_material_shortage_to_po_expedite` 0.8→0.5 ·
+ *   `demo_po_expedite_to_inspection_queue` 0.7→0.6 · `demo_order_cost_to_customer_receivable` 0.6→0.5 ·
+ *   `demo_customer_receivable_to_invoice_overdue` 0.8→0.4（**差 2 倍**）。
+ *
+ * **改的是描述一侧，不是系数一侧**，两条理由（不是口味）：
+ *  ① `coefficient` 是引擎**真跑**的那个数，全仓金值/接缝门都钉在它产生的读数上；
+ *     为了对齐一句中文去改 8 条系数，等于让**注释驱动模型**，且会把每一条推演读数一起改掉。
+ *  ② 铁律 1.5 判据四原文：「**信注释 = 信台账**，同样要实测」——
+ *     两者不符时，不可信的那一侧是**注释**。故注释向真值看齐。
+ *
+ * ⚠ **诚实登记一处仍然敞着的口**：系数在 `description` 里以**自由文本**形态重复了一遍，
+ * 这是第二套真相源。本次只对齐了**种子**这一份；经 `PATCH /a/v1/sim/propagation-rules/:id`
+ * 在运行期改系数时，描述照样会重新漂掉，而**没有任何东西会报红**。
+ * 根治要么是「描述里不写数、由前端拿同一回包里的 `coefficient` 渲染」，要么是写入路校验 ——
+ * 两者都动到写路与前端，超出本单 🚦范围边界，故此处只记账不动手。
+ * 本单的机器判据落在 `apps/datacore/test/edge-money-weight.seam.test.ts` §3（扫种子，变异反证过）。
+ */
 const DEMO_PROPAGATION_RULES: ReadonlyArray<
   Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName">
 > = [
@@ -288,7 +313,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "loadIndex",
     coefficient: 0.6,
     delayTicks: 0,
-    description: "型号要生产的量涨 ⇒ 能造它的基地跟着变忙（型号需求负载 × 0.7 = 基地负载指数）",
+    description: "型号要生产的量涨 ⇒ 能造它的基地跟着变忙（型号需求负载 × 0.6 = 基地负载指数）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -333,7 +358,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "utilPressure",
     coefficient: 0.5,
     delayTicks: 1,
-    description: "基地变忙 ⇒ 负载摊到辖下每条产线（基地负载 × 0.6，隔 1 个时序才到）",
+    description: "基地变忙 ⇒ 负载摊到辖下每条产线（基地负载 × 0.5，隔 1 个时序才到）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -389,7 +414,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "supplyRisk",
     coefficient: 0.7,
     delayTicks: 0,
-    description: "物料缺 ⇒ 用到它的型号供应告急（物料短缺 × 0.85 = 型号缺料风险）",
+    description: "物料缺 ⇒ 用到它的型号供应告急（物料短缺 × 0.7 = 型号缺料风险）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -408,7 +433,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "shortageRisk",
     coefficient: 0.8,
     delayTicks: 0,
-    description: "型号缺料 ⇒ 订这个型号的单子交不齐（型号缺料 × 0.9 = 订单缺口风险）",
+    description: "型号缺料 ⇒ 订这个型号的单子交不齐（型号缺料 × 0.8 = 订单缺口风险）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -430,7 +455,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "queuePressure",
     coefficient: 0.7,
     delayTicks: 0,
-    description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.75 = 工序排队压力）",
+    description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.7 = 工序排队压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -455,7 +480,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "expeditePressure",
     coefficient: 0.5,
     delayTicks: 0,
-    description: "物料缺 ⇒ 对应采购单被催（物料短缺 × 0.8 = 采购加急压力）",
+    description: "物料缺 ⇒ 对应采购单被催（物料短缺 × 0.5 = 采购加急压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -474,7 +499,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "queueDays",
     coefficient: 0.6,
     delayTicks: 1, // 检验排队是"下一批才排得上"，故留一个 tick 行程
-    description: "采购单催得急 ⇒ 到货集中，来料检验排队天数变长（加急压力 × 0.7）",
+    description: "采购单催得急 ⇒ 到货集中，来料检验排队天数变长（加急压力 × 0.6）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -537,22 +562,46 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
 
   // ── 现金（消耗）：订单成本压力 → 客户应收压力 → 发票逾期压力 ──
   // 两条边都是既有的、方向本来就对（Order→Customer→ARInvoice），无需补逆边。
+  //
+  // ⚠ **本条是全表第一条按金额分摊的边**（WO-EDGE-MONEY-WEIGHT）。修前实测行为
+  // （真后端 SEED_DEMO=1 · seed 42 · 三元正极 +15% · tick×4）：
+  // 本条 `weightRef: null` ⇒ 该客户名下**每张单落同一个额**，客户读数 = `0.5 × Σ(逐单成本压力)`
+  // —— 一个**只数条数、不看金额**的量。于是四家金额天差地别的客户拿到**逐字节相同**的 15.137334：
+  //   东风 10.02 亿(4 单) · 深蓝 8.32 亿(7 单) · 上汽通用五菱 7.19 亿(7 单) · 零跑 5.78 亿(8 单)。
+  // 按这个读数排「先催谁的款」= **按单数排**。全表「压力 ÷ 亿元」跨度 1.07–5.01 = 4.68× 口径失真。
+  //
+  // 为什么权重加在**这一跳**而不是上一跳 `demo_model_cost_to_order_cost`：
+  // 那条是**出边**（1 型号 → N 张单），目标拿到的是同一个**率**，分摊一个率量纲不成立；
+  // 且订单体量已在 `solvers/finance-world.ts` 的 `orderValue` 聚合里计过一次，再乘一次就是重复计账
+  // （这两条理由是契约 `weightRef` 字段注释的原文，本单沿用不改）。
+  // 本条是**入边汇聚**（358 条已物化订单边 → 20 个客户），`receivablePressure` 由多源求和而来，
+  // 大单与小单按同一系数计入才是真正的病 —— 与 `demo_order_demand_pressure` 那条判据同构，
+  // 只是那条的量纲是"产多少"（用 `qty`），本条的量纲是"压着多少钱"（用 `value`）。
+  //
+  // ⚠ **用 `source_value_relative`（全域均值=1）而不是 `source_qty_relative`（组内均值=1）**：
+  // 组内归一会把金额**约掉** —— Σ权重恒等于该客户的单数 ⇒ 读数逐字节退回修前，
+  // 却挂着「已按金额分摊」的名义。判据表与实测账见契约 `PairWeightNormalize` 上方第三行。
   {
     id: "simpr_demo_order_cost_to_customer_ar",
     key: "demo_order_cost_to_customer_receivable",
     sourceTypeKey: "Order",
     sourceStateVar: "costPressure",
-    viaLinkKey: "order_of_customer", // 实测 Order→Customer，24 条
+    viaLinkKey: "order_of_customer", // 实测 Order→Customer，358 条已物化边
     targetTypeKey: "Customer",
     targetStateVar: "receivablePressure",
     coefficient: 0.5,
     delayTicks: 0,
-    description: "订单成本上去 ⇒ 该客户的应收账款压力变大（订单成本 × 0.6 = 客户应收压力）",
+    // ⚠ 描述里的系数原写 ×0.6，与真值 0.5 差 1.2 倍（`GET /a/v1/sim/propagation-rules` 原样下发
+    // 这段中文给用户看 ⇒ 屏上正在说与实际不符的话）。改**描述**一侧对齐真值，
+    // 理由见 `DEMO_PROPAGATION_RULES` 上方「描述系数对账」段（9/13 不符，已全部改齐）。
+    description: "订单成本上去 ⇒ 该客户的应收账款压力变大（订单成本 × 0.5，并按该单金额占全域平均单的倍率分摊）",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // 逐订单按 `Order.value`（= qty × unitPrice）**相对于全域平均单金额**的倍率。
+    // 分母是**全租户 500 张单的均值**，不是该客户那几张单的均值 —— 见上「⚠ 用 …」段。
+    weightRef: { basis: "source_value_relative" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -566,7 +615,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "overduePressure",
     coefficient: 0.4,
     delayTicks: 1, // 逾期是"账期到了才显形"，留一个 tick
-    description: "客户应收压力大 ⇒ 名下发票逾期风险上升（应收压力 × 0.8 = 发票逾期压力）",
+    description: "客户应收压力大 ⇒ 名下发票逾期风险上升（应收压力 × 0.4 = 发票逾期压力）",
     combine: "sum",
     decay: null,
     clamp: null,
