@@ -1206,7 +1206,26 @@ const modelProps: PropertyDef[] = [
   { propKey: "bases", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" },
   /**
-   * WO-UNITCOST-LAND · **按件履约成本**（元/电芯）—— 与 `unitPrice` 同阶的强度量，单一来源。
+   * WO-UNITCOST-LAND · **按件履约成本**（元/电芯）—— 成本侧的强度量，单一来源。
+   *
+   * ⚠⚠ **WO-UNIT-MARGIN-96X 订正（照铁律 0.6 回写）：本段原文写「与 `unitPrice` 同阶的强度量」，
+   * 那句是错的，且它错在最容易被信的地方 —— 下游三处照它写了「同阶配对即得单位毛利」。**
+   * 实测（seed 42·scale S）：本格 `unitCost` 的分母是**电芯**（BOM 模板 `cell_case` 用量 1 个/行，
+   * 全 8 行都是单颗电芯的料），而同格 `unitPrice` 的分母是**套** ——
+   * 它由 `seg.priceWan × 1e4` 派生（本文件 `Model` 生成处），种子注释与 `solvers/service.ts`
+   * 的 R18 口径段都明写「元/套」。**两者不同阶，直接相减不是单位毛利。**
+   * 断点登记：`G-UNIT-MARGIN-CROSS-DENOM`（与 `G-QUOTE-BOM-PRICE-UNIT-SCALE` 同族·同一个欠账的另一条出口）。
+   *
+   * ⚠ **不要「乘个 packCellCount 就对齐」——实测那条路是错的**：
+   *   ① `packCellCount`（96）在本仓**全部**价/成本/毛利路径上**一次都没被读过**（金丝雀实测：
+   *      把它改成 1 / 192，`Model.unitPrice`·`Model.unitCost`·`OrderLine.*`·`quote_margin`
+   *      四组读数**逐字节相同**；同一量法下把 `seg.priceWan × 1e4` 乘 2，四组读数全动 ⇒ 量法本身是好的）。
+   *      故「差一个 packCellCount 倍」是**量纲上的名义差**，不是任何一行代码算出来的倍数。
+   *   ② 真实比值是 `unitPrice / unitCost` ≈ **25.8×–34.2×**（方形-LFP 13916/540.20 · 4680-NCM 21626/632.84），
+   *      **不是 96×**。按 96 换算 ⇒ 全订单簿成本/营收 = **286.9%**，每一单都巨亏 ——
+   *      那不是把口径修对了，是把金值改成了另一个同样错的数。
+   *   ⇒ 要真收口，得先按 `docs/DECISION-unit-of-account.md` §1.5（「**套/电芯不得充当金额分母**」，
+   *      钱一律记 元/kWh）重锚种子价与 BOM 价，属**另一张单**，不是本格能补的。
    *
    * 值 = Σ over 该型号当期 BOM 的明细行 `quantity ×(1+lossRate)× Material.unitPrice`
    * （`modelUnitCosts()` 现算，纯派生·零 rng）。量纲前置由本体自证：实测 105/105 条
@@ -1227,7 +1246,9 @@ const modelProps: PropertyDef[] = [
     description:
       "每型号按件履约成本（元/电芯）= Σ 该型号当期 BOM 明细 [ 用量 × (1 + 投料损耗率) × 物料单价 ]。" +
       "一型号有多版 BOM 时取 bomId 字典序最小那份（= 初始量产版，判据与随机数无关）；" +
-      "纯派生、零随机零时钟，是成本侧绑定角色 unit_cost 的系数源，与同格 unitPrice 同阶配对即得单位毛利。",
+      "纯派生、零随机零时钟，是成本侧绑定角色 unit_cost 的系数源。" +
+      "⚠ 分母是**电芯**，而同格 unitPrice 的分母是**套**（元/套）——两者不同阶，" +
+      "直接相减得不到单位毛利（断点 G-UNIT-MARGIN-CROSS-DENOM）。",
   },
   // C33 碳护照前置（NCM 体系碳足迹偏高 → 越线）。
   { propKey: "carbonFootprint", dataType: "number", isPrimaryKey: false, unit: "kgCO2e", scale: "absolute" },
@@ -2082,7 +2103,11 @@ const orderLineProps: PropertyDef[] = [
   { propKey: "lineStatus", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // OPEN | COMMITTED | PARTIAL | SHIPPED
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 按行 model 反范式化（Model.unitPrice 单一来源·R14）
   // WO-UNITCOST-LAND：按件履约成本，按行 model 反范式化（`Model.unitCost` 单一来源·守 R14·勿写死）。
-  // 与上面 `unitPrice` **完全同一口径同一取法** —— 营收侧与成本侧从此同阶，毛利才是单位经济学的毛利。
+  // 与上面 `unitPrice` 同一**取法**（都从 `Model` 反范式化下来），但**不是同一口径**：
+  // ⚠ WO-UNIT-MARGIN-96X 订正 —— 本行原文写「营收侧与成本侧从此同阶，毛利才是单位经济学的毛利」，
+  //   **实测为假**：`unitPrice` 分母是**套**（`seg.priceWan × 1e4` 派生），`unitCost` 分母是**电芯**
+  //   （BOM 单颗电芯用量现算）。两者同声明 `unit:"元"`，故**任何按 `unit` 串做的校验都看不见这个差**
+  //   —— 这正是它能一路活到求解器的原因。断点 `G-UNIT-MARGIN-CROSS-DENOM`，详见 `Model.unitCost` 那格的订正段。
   // WO-INTEG-BATCH-5 收编补 description（同 `Model.unitCost` 那格的理由：本单落属性时漏了它，
   // `ontology-descriptions:check` 当场红）。描述明写"值从型号侧反范式化下来"，
   // 免得有人把这一格当成第二个可独立编辑的成本源。
@@ -2090,7 +2115,9 @@ const orderLineProps: PropertyDef[] = [
     propKey: "unitCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute",
     description:
       "该订单行的按件履约成本（元/电芯）—— 值由本行 model 从 `Model.unitCost` 反范式化下来，" +
-      "算法与唯一来源都在型号侧，本格不独立计算、不可单独改口径；与同行 unitPrice 配对即得该行单位毛利。",
+      "算法与唯一来源都在型号侧，本格不独立计算、不可单独改口径。" +
+      "⚠ 本格分母是**电芯**，同行 unitPrice 分母是**套**——两者不同阶，" +
+      "`unitPrice − unitCost` 不是该行单位毛利（断点 G-UNIT-MARGIN-CROSS-DENOM）。",
   },
 ];
 
