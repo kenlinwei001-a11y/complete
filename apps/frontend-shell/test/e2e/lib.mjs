@@ -94,10 +94,17 @@ export async function login(page, { user = "admin", password = "demo1234", tenan
  * 判据：网络记录里必须出现打到 4001/4002 的 200 回包。
  * MSW mock 模式下请求被 service worker 截胡，`fromServiceWorker` 为真且不会有真 4001 连接。
  */
+/**
+ * ⚠ WO-HOME-ENTRY-FLOW 实测订正：原版把端口 **4001|4002 写死在正则里**。
+ * 本单改用 4032/4042（避让并跑的 6 单，⛔ 不许 pkill 别人的服务）⇒ 第一次跑
+ * `realHits: 0`，读起来**一模一样**像「页面在走 mock」。
+ * 形态（铁律 0.6 句式）：「我用『没命中 4001/4002』当作『没打真后端』的证据，而前者并不度量后者。」
+ * ⇒ 端口改成从 env 取（与 serve.sh 同一组默认值），尺子跟着服务走。
+ */
+export const REAL_PORTS = [process.env.E2E_DC_PORT ?? "4032", process.env.E2E_AC_PORT ?? "4042"];
 export function assertNoMock(netLog) {
-  const real = netLog.filter(
-    (e) => /127\.0\.0\.1:(4001|4002)/.test(e.url) && e.status >= 200 && e.status < 400,
-  );
+  const re = new RegExp(`127\\.0\\.0\\.1:(${REAL_PORTS.join("|")})`);
+  const real = netLog.filter((e) => re.test(e.url) && e.status >= 200 && e.status < 400);
   return {
     ok: real.length > 0,
     realHits: real.length,
