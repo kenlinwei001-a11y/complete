@@ -347,12 +347,16 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
    */
   quote_margin: {
     reads: [
-      { typeKey: "Material", propKeys: ["bomUnit", "matId", "unitPrice"] },
+      // WO-DIMENSION-ERRORS 补 `unit` 两格（**被 S5 实跑当场揪出**，不是人想起来的）：
+      // `BOMDetail.quantity × Material.unitPrice` 这一乘从今天起要先取量纲许可，
+      // 而两个因子的真实单位分别写在 `BOMDetail.unit` 与 `Material.unit` 里 ⇒ 它们进了读取面。
+      // 漏声明 = 守卫误放行 = 出错数字，故按真读取处补齐（`solvers/extended.ts` realBom 装配）。
+      { typeKey: "Material", propKeys: ["bomUnit", "matId", "unit", "unitPrice"] },
       { typeKey: "Line", propKeys: ["baseId"], linkKeys: ["model_certified_on"] },
       { typeKey: "Model", propKeys: ["modelId", "unitPrice"] },
       { typeKey: "Order", propKeys: ["model", "qty", "so", "unitPrice"], linkKeys: ["order_of_customer"] },
       { typeKey: "BOMHeader", propKeys: ["bomId", "modelId", "status"] },
-      { typeKey: "BOMDetail", propKeys: ["bomDetailId", "bomId", "lossRate", "materialId", "quantity", "sequence"] },
+      { typeKey: "BOMDetail", propKeys: ["bomDetailId", "bomId", "lossRate", "materialId", "quantity", "sequence", "unit"] },
       { typeKey: "Customer", propKeys: ["custId", "custName", "orderCustNames"] },
     ],
   },
