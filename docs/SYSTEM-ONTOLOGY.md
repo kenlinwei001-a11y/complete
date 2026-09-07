@@ -2314,6 +2314,70 @@ rollup 答「这条线**能**做多少」（能力面·套/日），ledger 答�
 「零换算系数」纪律本身：把池换回 `Line.capacityDaily`（**套**/日）当场红，而不是照样算出一堆
 「跑得起来但错两处」（件↔套 + 存量↔速率）的数。变异反证实测：注掉该守卫 ⇒ 接缝门 §5 由 400 变 200 立红。
 
+### 量纲维度链路 · 单位字符串 → 分子/分母结构 → 提交期跨族拦截（WO-RATE-DIMENSION · 2026-09-07）
+
+**一句话**：单位从**只能比对相等的字符串**升格成**有结构的量纲**（分子/分母各是哪个 kind + 相对基元的倍数），
+于是「同族可比、跨族不可比」「存量 ≠ 速率」第一次成为**机器判据**，而不再是上一节那样靠人把池手工锚在「件/日」族。
+
+**今天的行为 X → 应该的行为 Y**（实测正线 `ec1e707c`）：
+- **X**：`PROPERTY_UNITS`（`apps/datacore/src/domain.ts`）是 **50 条闭合字符串联合**，
+  `UNIT_DICTIONARY` 由它派生，REST 建类型只做一次**成员判定**。字典里**已有 10 条**带斜杠的词条
+  （`元/kWh 元/吨 万套/年 万套/月 万套/窗口 套/天 套/日 件/日 电芯/天 GWh/年`，实测在用 7 条）——
+  ⚠ 派单里「字典全是简单单位、没有任何 X per Y 形式」这一句**已过期**；缺的**不是词条，是维度本身**：
+  斜杠只是一个字符，没有任何代码答得出「`件/日` 与 `套/日` 同族吗」「`件` 与 `件/日` 是同一个量吗」。
+  于是 `qtyPlanned(件)` 比 `max_capacity_day(件/日)` 这类**一次错两处**的比较静默出数、四包全绿。
+  同时 `Material.unitPrice` 声明成 **`元`**（⚠ 派单里「至今没有声明单位」也已过期，是**声明了但错**：
+  把逐行量纲不同的**强度量**当成了**绝对额**）。
+- **Y**：`UNIT_DIMENSIONS`（`apps/datacore/src/units.ts`）给每个词条登记
+  `{num:{kind,factor?}, den?:{kind,factor?}}`；**族键 = kind 对**（倍数不参与）⇒ 可比性可判、
+  存量/速率可分；跨族在 `POST /a/v1/ontology/object-types` **提交那一刻** 400。
+
+```
+PROPERTY_UNITS (56 条闭合联合)
+        │ satisfies Record<PropertyUnit, UnitDimension>   ← 加词条不登记量纲 = 当场编译失败
+        ▼
+UNIT_DIMENSIONS ──► unitFamily()  ──► sameUnitFamily / unitConversionFactor / explainUnitMismatch
+        │                                      │
+        │ resolveParametricUnit()              └─► inferFormulaDimensionIssues(派生公式的加减两端)
+        ▼                                                        │
+ 元/计量单位 + Material.unit(kg|㎡|L|个) ⇒ 元/kg 元/㎡ 元/L 元/个   ▼
+                                              POST /a/v1/ontology/object-types → 400（跨族/异阶/异倍数/未裁决）
+```
+
+**四条不变量（本单新增）**
+- **R-UNIT-1 · 计数名词各自成族**：`件 套 个 电芯 台 条 批 单 项 次` 各是独立 kind（`count:<名词>`），
+  互不可比。并 `个`→`件` 需先裁决「一个壳体算不算一件」——那是**口径决定**，本模块不替任何人做，
+  只让没裁决过的比较当场报错。**唯一被合并的一对是 `日`≡`天`**（同一单位两种写法，1:1 无自由度；
+  本仓真实同时在用：`Line.capacityDaily`=套/日 vs `ProductLineCapability.maxCapacity`=套/天）。
+- **R-UNIT-2 · 存量 ≠ 速率**：有分母即速率。`unitFamily("件")="count:件"` vs
+  `unitFamily("件/日")="count:件/time"` ⇒ 不同族。上一节 R-CAP-2 的「同族守卫」是这条的**手工特例**，
+  本条把它一般化到全部 56 个单位。
+- **R-UNIT-3 · 倍数未裁决要与跨族分开报**：`月`/`年` 的天数是日历口径（365 / 365.25 / 250 各有说法），
+  故登记 kind **不登记 factor** ⇒ 同族但换算系数「未裁决」。四种原因（跨族 / 异阶 / 异倍数 / 未裁决）
+  **必须分开说**，修法完全不同；糊成一句「单位不一致」等于什么都没说。
+- **R-UNIT-4 · 参数化量纲（`perRef`）**：一个属性只能声明一个 `unit`，而 `Material.unitPrice` 的
+  真实量纲**逐行不同**。占位符 `计量单位` 出现在分母位（`元/计量单位`）或分子位（`计量单位`），
+  配 `PropertyDef.unitRefProp` 指出由哪一格提供真实单位。**双向一致性**由 REST 门兑现
+  （声明了占位符不给 `unitRefProp` → 400；给了 `unitRefProp` 而单位不含占位符 → 400）——
+  单向成立会造出「看起来配好了、实际永远解析不出来」的哑弹。解析不出（该行 `unit` 在词表外）
+  ⇒ 按**该行量纲未知**处理，**不许回落成声明值**。
+
+**改到的两格声明**（数据值逐字节不动，改的只是量纲声明）：
+`Material.unitPrice` `元` → `元/计量单位`(refProp `unit`)；
+`BOMDetail.quantity` `个` → `计量单位`(refProp `unit`)——实测 8 行 BOM 里**只有 1 行**真是「个」。
+两者合起来让 `Model.unitCost = Σ quantity(计量单位) × Material.unitPrice(元/计量单位) = 元`
+这个抵消**在模型里可证**，不再只是注释里声称的。
+
+**门**：`POST /a/v1/ontology/object-types` 三段新校验 —— ⓐ 派生属性的 `unit` 补进字典门
+（此前循环只走 `properties`，`derivedProperties[].unit` 想写什么写什么）· ⓑ 参数化双向一致 ·
+ⓒ 派生公式加减两端同族同倍数。**只管加减，不管乘除也不管「声明值 vs 推断值」**：加减两端同量纲
+是无争议的算术事实、误伤面 0（实测 6 条加减式全部同族同倍数）；乘除会产生本模型表达不了的复合量纲，
+强行校验只会制造假红。**宁可少拦，不许假红。**
+
+**接缝门**：`apps/datacore/test/rate-dimension.seam.test.ts`（11 例，全部走真路由）——
+组①跨族 400 · 组②同族 201（金丝雀，证明不是一刀切）· 组③存量比速率 400 · **变异反证**
+（去掉推断 ⇒ 组① 重新 201，实测）· 存量误伤统计 0 · 参数化逐行解析出四种真单位。
+
 ### 属地链路 / 工序先后链路 · `located_in` 与 `depends_on` 两条关系落地（WO-LAST3-RELATIONS · 2026-09-06）
 
 **一句话**：地理归属从**字符串属性**升格成 `Region` 对象（三类设施经 `*_located_in` 指过去），
