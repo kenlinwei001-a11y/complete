@@ -86,6 +86,23 @@ const hits = (t: ObjectTypeDef, role: Parameters<typeof lexiconHit>[1]): string[
 const refsTo = (t: ObjectTypeDef, typeKey: string): string[] =>
   t.properties.filter((p) => p.refToTypeKey === typeKey).map((p) => p.propKey).sort();
 
+/**
+ * 从单位串里取**分母**（「每什么」那一半）：`元/套` → `套`；`元` → `undefined`。
+ *
+ * ⚠ `undefined` 的语义是「**这一格没声明分母**」，**不是**「分母是 1」，更不是
+ * 「和另一格一样」。这个区分是本文件下面 `denomCoherent` 的全部要害 ——
+ * 两格都返回 `undefined` 时**不许**读成"相等"：那正是 `currencyScaleOf` 犯过的病
+ * （两格都写「元」⇒ 判"已对齐"⇒ 一个按套计价的价与一个按电芯计价的成本被直接相减）。
+ * **缺声明 ≠ 声明相同**；把前者当后者，是「我用 X 当作 Y 的证据，而 X 并不度量 Y」的又一例。
+ */
+const denomOf = (unit: string | undefined): string | undefined => {
+  if (typeof unit !== "string") return undefined;
+  const i = unit.indexOf("/");
+  if (i <= 0) return undefined;
+  const d = unit.slice(i + 1).trim();
+  return d === "" ? undefined : d;
+};
+
 /** 一次装配用到的全部读本体入口（与绑定层同一个视图接口，不另造一套）。 */
 export interface AssembleDeps {
   listTypes(tenantId: string): Promise<ObjectTypeDef[]>;
@@ -368,6 +385,22 @@ export async function assembleParetoModel(
   //   ⛔ 但**不许**就地乘一个 96 去「对齐」：`packCellCount` 在全仓价/成本/毛利路径上一次都没被读过
   //   （金丝雀实测：改 1 / 192，四组读数逐字节相同），而真实比值是 25.7×–40.6× 不是 96× ——
   //   乘 96 只会把一个错数换成另一个错数，并让每一单都巨亏。这是种子层的锚，不是本层的系数。
+  //
+  // ══ WO-MARGIN-AXIS-HONESTY · 上面整段「毛利是一根真轴」在**本租户今天不再成立** ══
+  //
+  // 仓主裁决：口径重锚做完之前，这根轴**暂退回 `unavailableObjectives`**（带原因串上屏），
+  // 不是删除。判据落在下面新加的第 4 张准入证 `denomCoherent` 上 —— 它是**现算**的，
+  // 故本段描述的那条「接得上就是真轴」的路**代码仍在、随时会走**：
+  //   · 本租户（两侧都是单价、都只声明币种）⇒ 退回报缺；
+  //   · 成本侧只有「按指派那一笔」总量的租户（没有 `unit_cost` 那一格）⇒ **照旧是真轴**，
+  //     本次改动对它们逐字节无影响（这也是本次不做成"无差别下架"的判据）。
+  //
+  // 🔓 **恢复条件（写在这里，让下一个人不必考古）**：
+  //   把 `${订单类型}.${单价格}` 与 `${订单类型}.${单件成本格}` 两格的单位声明到「每什么」
+  //   这一层且两者一致（如按 `docs/DECISION-unit-of-account.md` §1.5 统一记 元/kWh）。
+  //   声明一改，`denomCoherent` 当场变真，本轴**自动**回到 `objectives` 打头位 ——
+  //   ⛔ 不需要、也不许再改本文件一行代码去"放它回来"。
+  //   ⚠ 注意「元/件」今天进不了单位词库（发布门 400 会拒），故重锚是种子/词库两侧的活。
   const revUnit = orderT.properties.find((p) => p.propKey === revProp)?.unit;
   const costOwner = eligT && eligCostProp ? eligT : lineT;
   const costPropKey = eligT && eligCostProp ? eligCostProp : assignCostProp;
@@ -378,16 +411,75 @@ export async function assembleParetoModel(
     : unitCostProp
       ? orderT.properties.find((p) => p.propKey === unitCostProp)?.unit
       : undefined;
+  const unitCostUnit = unitCostProp ? orderT.properties.find((p) => p.propKey === unitCostProp)?.unit : undefined;
   /**
-   * 毛利轴的**准入证**（三样缺一不可，判据全部现算，一个都不是写死的）：
+   * ══ WO-MARGIN-AXIS-HONESTY · 毛利轴的**第 4 张准入证：分母自洽** ══════════════
+   *
+   * **今天的行为是 X**：营收侧与成本侧各是一个**单价类强度量**，被同一个 `qty` 乘完相减。
+   *   两格在本体上只声明了**币种**（都写「元」），**没有一格声明「每什么」** ——
+   *   `currencyScaleOf` 读的是币种串，两边都是「元」⇒ 判「已对齐」⇒ 减法照做。
+   *   于是「分母不同」这件事在整条链上**没有任何一处看得见**，一路活到屏上。
+   *
+   * **应该是 Y**：币种相同**不构成**可相减的证据。要相减，还得两侧的**分母**同时
+   *   ① 被声明、② 相等。缺声明就是**不知道**，不知道就不许当成"相同"。
+   *
+   * ── 判据（现算，零业务常数，换个租户换套本体照样成立·R14）─────────────────────
+   * 只在**两侧各有一个单价类强度量**时才判（`revIsUnitRate && unitCostProp`）——
+   * 这正是「一个差被同一个 `qty` 同时乘进两侧、然后相减」的那个形态。
+   * 此时装配器隐含假设「两个 rate 的分母都等于 `qty` 那一格数的东西」，
+   * 而本体上没有任何一格担保它 ⇒ `denomCoherent:false` ⇒ 毛利退回报缺。
+   *
+   * ── 边界：为什么**营收轴/成本轴自己不退**（写死在这里，防止做成无差别下架）────────
+   * 本条只咬**减法**：毛利是「两个独立计价基的量相减」，两个基不同 ⇒ 连**名次**都被扭曲，
+   * 而名次正是这根轴要回答的东西。营收轴（`单价 × 用量`）与成本轴（`按指派那笔 + 单价 × 用量`）
+   * 各自只是**一个**计价基上的量，它们是毛利的**构成项**不是差 ——
+   * 退掉它们不但救不了任何一个读数，还会把 `groundedObjectives` 打到 2 以下让整单报缺。
+   *
+   * ⚠ 本层**不声称知道是哪一侧错了**：两侧都没声明分母，谁偏了本层无从判断。
+   *   下面 `rateSpread` 报的是**观测到的比值**（现算，非常数），不是"换算因子" ——
+   *   ⛔ 尤其**不许**拿它去乘一下"对齐"：那个比值里含毛利本身，乘完只是把一个错数换成另一个。
+   */
+  const crossDenomRisk = revIsUnitRate && unitCostProp !== undefined;
+  const revDenom = denomOf(revUnit);
+  const costDenom = denomOf(unitCostUnit);
+  const denomCoherent = !crossDenomRisk || (revDenom !== undefined && costDenom !== undefined && revDenom === costDenom);
+  /**
+   * 两个 rate 的**观测比值区间**（只在要报缺时才算，纯读、全序、无随机 ⇒ 不破 R6 确定性）。
+   *
+   * 报它的理由：只说「分母没声明」，读者无从判断这是学理洁癖还是真问题。
+   * 比值**逐行不同**才是「名次也被扭曲」的证据 —— 若逐行同一个数，那至多是绝对值偏。
+   */
+  const rateSpread = await (async (): Promise<{ lo: number; hi: number; n: number; distinct: number } | undefined> => {
+    if (denomCoherent || !unitCostProp) return undefined;
+    const rows = await view.listByType(tenantId, orderT.key);
+    let lo = Infinity;
+    let hi = -Infinity;
+    let n = 0;
+    const seen = new Set<number>();
+    for (const o of rows) {
+      const p = o.props as Record<string, unknown>;
+      const a = Number(p[revProp]);
+      const b = Number(p[unitCostProp]);
+      if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) continue;
+      const r = q(a / b);
+      if (r < lo) lo = r;
+      if (r > hi) hi = r;
+      seen.add(r);
+      n += 1;
+    }
+    return n === 0 ? undefined : { lo, hi, n, distinct: seen.size };
+  })();
+  /**
+   * 毛利轴的**准入证**（四样缺一不可，判据全部现算，一个都不是写死的）：
    *   ① 绑定层确认两侧已折到同一基准货币单位（`currencyAligned`，它自己也是现算的）；
    *   ② 成本这一维**有真数据**（`assignCostBound` —— 没绑时 cost 恒 0，
    *      `revenue − 0` 只是营收的复制品，那是一根**冗余轴**不是毛利）；
    *   ③ 营收侧刻度取得到（`revScale`）—— 取不到说明那一格声明了非货币单位。
+   *   ④ **两侧分母自洽**（`denomCoherent`，见上段）—— 币种同不等于可相减。
    * 任何一样不成立 ⇒ 毛利仍进 `unavailableObjectives` 报缺，**不硬算**。
    */
   const currencyAligned = args.currencyAligned === true;
-  const marginAvailable = currencyAligned && assignCostBound;
+  const marginAvailable = currencyAligned && assignCostBound && denomCoherent;
   /**
    * 对外报的单位：折齐了就是基准货币单位，**没折齐就各报各在本体上原样声明的那个**。
    *
@@ -455,14 +547,31 @@ export async function assembleParetoModel(
       : [{
           key: "margin",
           label: "毛利",
-          reason:
-            `今天算不出：营收侧 ${orderT.key}.${revProp}（单位 ${revUnit ?? "未声明"}）与成本侧 ` +
-            `${costPropKey ? `${costOwner.key}.${costPropKey}` : "未绑定"}（单位 ${costUnit ?? "未声明"}）` +
-            (assignCostBound
-              ? `量纲折不到同一个货币单位（可折的：${Object.keys(CURRENCY_SCALE).join("、")}），两个数直接相减没有意义。`
-              : `成本这一维在本租户没有真数据（没有可产对成本字段，产线上也没有命中成本词库的数值字段）——` +
-                `此时"毛利"等于营收的复制品，是一根冗余轴不是毛利。`) +
-            `要补齐需先在本体上把这一格的单位声明成可折算的货币单位，并给出真实的占用成本字段。`,
+          reason: !denomCoherent
+            // ── 死因③（WO-MARGIN-AXIS-HONESTY）：币种同、分母不同 ⇒ 这根轴**暂退**，不是删除 ──
+            // ⚠ 这段是**上屏正文**：不许出现源码文件名/行号（R-UI-4），也不许出现排期语汇。
+            //   规则口径、字段名、单位、条数、比值是业务事实，必须给 —— 少了它们这句话
+            //   就退化成"系统说算不了"，读者无从判断是真缺口还是保守。
+            ? `暂不出这根轴：营收侧 ${orderT.key}.${revProp} 与成本侧 ${orderT.key}.${unitCostProp} ` +
+              `都是"每一单位多少钱"的单价类读数，但本体上两格只声明了币种` +
+              `（分别是 ${revUnit ?? "未声明"}、${unitCostUnit ?? "未声明"}），没有声明"每什么"。` +
+              `装配把两者同乘 ${orderT.key}.${qtyProp} 之后相减，等于默认它们按同一个单位计价，` +
+              `而本体上没有任何一格担保这件事 —— 币种相同不构成可相减的证据。` +
+              (rateSpread
+                ? `本租户实测两者比值 ${rateSpread.lo.toFixed(1)}×–${rateSpread.hi.toFixed(1)}×` +
+                  `（取自 ${rateSpread.n} 行，${rateSpread.distinct} 个互不相同的比值）：` +
+                  (rateSpread.distinct > 1
+                    ? `比值逐行不同 ⇒ 相减不只是绝对值偏，方案之间的名次也会被扭曲，而名次正是这根轴要回答的东西。`
+                    : `比值逐行一致 ⇒ 绝对值整体偏移，名次尚可比，但读数本身不是毛利。`)
+                : ``) +
+              `恢复条件：把这两格的计价单位声明到"每什么"这一层（如 元/套、元/kWh）并使两者一致，本轴自动回到在册目标。`
+            : `今天算不出：营收侧 ${orderT.key}.${revProp}（单位 ${revUnit ?? "未声明"}）与成本侧 ` +
+              `${costPropKey ? `${costOwner.key}.${costPropKey}` : "未绑定"}（单位 ${costUnit ?? "未声明"}）` +
+              (assignCostBound
+                ? `量纲折不到同一个货币单位（可折的：${Object.keys(CURRENCY_SCALE).join("、")}），两个数直接相减没有意义。`
+                : `成本这一维在本租户没有真数据（没有可产对成本字段，产线上也没有命中成本词库的数值字段）——` +
+                  `此时"毛利"等于营收的复制品，是一根冗余轴不是毛利。`) +
+              `要补齐需先在本体上把这一格的单位声明成可折算的货币单位，并给出真实的占用成本字段。`,
         }]),
     /**
      * ── WO-MULTIOBJ-CONVERGE · 违约金（接不到地就点名，不许留白）─────────────────
