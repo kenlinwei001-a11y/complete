@@ -365,6 +365,28 @@ export function str(v: unknown, fallback = ""): string {
 }
 
 /**
+ * WO-VULNERABILITY-REI · 引用属性 → **引用值集合**（单值与多值统一成一条口径·跨 solver 复用）。
+ *
+ * ══ 为什么必须有这个函数，而不是各处 `String(props[f])` ═══════════════════════
+ * 本仓的图遍历求解器（`supplier_disruption_radius` / `concentration_risk`）一律写
+ * `String(o.props[viaField] ?? "")` 去和上一层主键比对。该写法**默认引用属性是标量**，
+ * 遇到数组时 `String(["SUP-001","SUP-002"])` 得到 `"SUP-001,SUP-002"` ——
+ * 这个串**永远不等于任何主键** ⇒ 整行被判为"不相关"而静默丢弃。
+ *
+ * 后果不是报错，是**反向的错答**：断供 SUP-002 得到「影响 0 个对象」，
+ * 读起来像"这家供应商没风险"，实际是"我们看不见它供的料"。
+ * `concentrationRisk` 的既有注释已经点名过这一族病叫「静默错答的全清报告」。
+ *
+ * 判据：**空数组与缺字段返回空集**（诚实无引用），不返回 `[""]` —— 那会让空值互相匹配上，
+ * 把两个都没填供应商的对象连成一条假边。
+ */
+export function refValues(v: unknown): string[] {
+  if (typeof v === "string") return v === "" ? [] : [v];
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x !== "");
+  return [];
+}
+
+/**
  * WO-BASE-ID-FIDELITY · base 标识符规范化**单一出处**（跨 solver 复用·勿散落）。
  * 认多形态并归一到「裸 base 键」：
  *   - `obj_base_<id>`（synthetic 图节点 id·synthetic/service.ts toId=`obj_base_${baseId}`）→ strip 前缀 → `<id>`

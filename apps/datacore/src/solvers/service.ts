@@ -8,7 +8,7 @@ import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema, BUSINESS_TYPE_LABEL } from "@platform/contracts";
-import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
+import { num, str, dayFrom, normalizeBaseRef, refValues, type SolverContext, type SolverParamsShape } from "./types.js";
 import { CONSTRAINT_KINDS_UPPER, SOLVER_RULE_REFS, type EvaluatedRule, type ObjectConstraintKind, type OrderDeliveryJudge } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, collectParamRefs, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
@@ -1459,8 +1459,12 @@ export class SolverService {
     for (const s of starts) {
       let cur: ObjectInstance | undefined = s;
       for (const hop of path) {
-        const refVal = String(cur!.props[hop.viaField] ?? "");
-        cur = idxByType.get(hop.toType)!.get(refVal);
+        // WO-VULNERABILITY-REI：多值引用取**首个可解析**值（确定性：按属性内声明序，主供在 [0]）。
+        // 旧写法 `String(props[f] ?? "")` 遇数组恒解析失败 ⇒ 该起点被当作"断链"整条丢弃，
+        // 集中度于是漏掉所有走多供路径的依赖方。这里**不**扇出成多条路径：本求解器的语义是
+        // 「每个起点收敛到**一个**根」，扇出会让同一个起点被计进多个根、把 count 算重。
+        const nextRef = refValues(cur!.props[hop.viaField]).find((v) => idxByType.get(hop.toType)!.has(v));
+        cur = nextRef === undefined ? undefined : idxByType.get(hop.toType)!.get(nextRef);
         if (!cur) break;
       }
       if (!cur || cur === s) continue;
@@ -4699,7 +4703,11 @@ export class SolverService {
       const objs = await this.repos.objects.listByType(ctx.tenantId, layer.type);
       const tdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === layer.type))[0];
       const pk = tdef?.properties.find((p) => p.isPrimaryKey)?.propKey;
-      const hit = objs.filter((o) => frontier.has(String(o.props[layer.viaField] ?? "")));
+      // WO-VULNERABILITY-REI：`refValues` 取代 `String(props[f] ?? "")` —— 引用属性可能是**多值**
+      // （`Material.supplierIds` 就是）。旧写法把数组 `String()` 成 "SUP-001,SUP-002"，
+      // 与任何主键都不等 ⇒ 备份供应商断供恒回「影响 0 个对象」的**静默全清报告**。
+      // 命中判据改为「该对象的引用值集合与 frontier **有交集**」。
+      const hit = objs.filter((o) => refValues(o.props[layer.viaField]).some((v) => frontier.has(v)));
       const ids = hit.map((o) => String((pk ? o.props[pk] : undefined) ?? o.id)).sort();
       result.push({ type: layer.type, viaField: layer.viaField, count: ids.length, ids });
       if (ids.length > 0) radius += 1; // 半径 = 实际穿透到的层数
