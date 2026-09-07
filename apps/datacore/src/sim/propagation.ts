@@ -626,8 +626,8 @@ export function propagateTick(
   unresolvedGates: UnresolvedCadenceGate[];
   unresolvedWeights: UnresolvedPairWeight[];
   appliedPerturbations: string[];
-  /** 本拍越过容忍线的 `<还手规则 key> <还手方对象 id>`（WO-ADVERSARY-REACTION·升序）。 */
-  reactionActors: string[];
+  /** 本拍越过容忍线的还手方（WO-ADVERSARY-REACTION·按 (ruleKey, actorObjectId) 升序）。 */
+  reactionActors: { ruleKey: string; actorObjectId: string }[];
   stateVarReport: StateVarDisclosure;
 } {
   // ── 0') 扰动相位（WO-P2）：先把本 tick 的「到期回退 / 首次落地」作用到世界，再传导 ──
@@ -751,12 +751,19 @@ export function propagateTick(
   const unresolvedGates: UnresolvedCadenceGate[] = [];
   const unresolvedWeights: UnresolvedPairWeight[] = [];
   /**
-   * 本拍**真的越过容忍线**的 `<还手规则 key> <还手方对象 id>` 集合（WO-ADVERSARY-REACTION）。
+   * 本拍**真的越过容忍线**的还手方（WO-ADVERSARY-REACTION）。
    *
    * ⚠ 与「规则 fired」不是一回事：延迟到货的贡献也让规则显得 fired，
-   * 而本集合数的是**这一拍触发条件成立的主体**。「规则跑了」不度量「有人还手了」。
+   * 而本清单数的是**这一拍触发条件成立的主体**。「规则跑了」不度量「有人还手了」。
+   *
+   * ⛔ **结构化数组，不是把两个 id 拼进一个串** —— 第一版拼成 `"<key><分隔符><id>"`，
+   *    消费方再按分隔符切开。实测当场吃了一次亏：分隔符写进去的是一个**不可见字符**，
+   *    切分恒失败 ⇒ 逐规则计数恒 0，而汇总计数（数组长度）仍是 1，
+   *    屏上「1 个客户还手了」与「这条规则触发 0 个客户」并存、互相矛盾且都不报错。
+   *    形态：**「我用『两个 id 都在这个串里』当作『消费方拿得回这两个 id』的证据」**。
+   *    结构化之后这一类错**在类型层就不可能发生**，不需要任何人记得分隔符是什么。
    */
-  const reactionActors = new Set<string>();
+  const reactionActors: { ruleKey: string; actorObjectId: string }[] = [];
 
   // ── 0) 对象类型索引 + 链路导航索引（复用 recompute 的 "linkKey|id" 思路） ──
   const typeOf = new Map<string, string>();
@@ -868,7 +875,7 @@ export function propagateTick(
       //    ⇒ 逐字节同旧（additive·可回退 RL9）。
       const drive = rule.reaction == null ? sourceVal : Math.max(0, round12(sourceVal - rule.reaction.tolerance));
       if (drive === 0) continue; // 没越过容忍线 ⇒ 这个对手本拍不还手（不是"还手了但力度为 0"）
-      if (rule.reaction != null) reactionActors.add(`${rule.key} ${sourceId}`);
+      if (rule.reaction != null) reactionActors.push({ ruleKey: rule.key, actorObjectId: sourceId });
       // 衰减（可选，复用 risk.ts amp x (1 - dist/den)）。源/目标在抽象图上相邻 -> dist=1。
       let factor = 1;
       if (rule.decay) {
@@ -997,9 +1004,11 @@ export function propagateTick(
 
   return {
     next, pending: outPending, trace, unresolvedGates, unresolvedWeights, appliedPerturbations,
-    // 还手触发清单：`<规则 key> <还手方对象 id>`，升序（R6：同输入同字节）。
+    // 还手触发清单，按 (规则 key, 还手方 id) 升序（R6：同输入同字节）。
     // 空数组 = 本拍没有任何对手越过容忍线 —— 与「对抗方关着」是两件事，由调用方分开报。
-    reactionActors: [...reactionActors].sort((a, b) => a.localeCompare(b)),
+    reactionActors: reactionActors.sort(
+      (a, b) => a.ruleKey.localeCompare(b.ruleKey) || a.actorObjectId.localeCompare(b.actorObjectId),
+    ),
     stateVarReport: {
       declaredStateVars: [...declaredSeen].sort((a, b) => a.localeCompare(b)),
       undeclaredStateVars: [...undeclaredSeen].sort((a, b) => a.localeCompare(b)),

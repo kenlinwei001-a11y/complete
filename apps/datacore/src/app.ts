@@ -2324,8 +2324,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let stateVarDomains: StateVarDomainLookup = {};
     /** 最后一拍的状态量披露（声明/未声明/衰减解析不到/本拍饱和了哪些格）。 */
     let stateVarsDisclosure: StateVarDisclosure | null = null;
-    /** 最后一拍越过容忍线的 `<还手规则 key> <还手方对象 id>`（WO-ADVERSARY-REACTION）。 */
-    let reactionActors: string[] | null = null;
+    /** 最后一拍越过容忍线的还手方（WO-ADVERSARY-REACTION·结构化，不是拼串）。 */
+    let reactionActors: { ruleKey: string; actorObjectId: string }[] | null = null;
     /** 本次 tick 的范围回执（诚实回带：这一格是在什么范围下算出来的·R-ARG-FIDELITY）。 */
     let scopeReport: ScopeReport | null = null;
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, curTick))?.pending ?? []) : [];

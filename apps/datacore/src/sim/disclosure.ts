@@ -159,8 +159,8 @@ export interface BuildDisclosureInput {
   adversaryEnabled: boolean;
   /** 因对抗方关闭而**没参与**本次推演的还手规则 key。开着时为空。 */
   adversarySuppressedRuleKeys: readonly string[];
-  /** 引擎回带的 `<还手规则 key> <还手方对象 id>`（最后一拍）。没走引擎 = null。 */
-  reactionActors: readonly string[] | null;
+  /** 引擎回带的还手方清单（最后一拍）。没走引擎 = null。 */
+  reactionActors: readonly { ruleKey: string; actorObjectId: string }[] | null;
 }
 
 /**
@@ -174,14 +174,12 @@ export function buildSimRunDisclosure(inp: BuildDisclosureInput): SimRunDisclosu
 
   // ── ③ 命中的规则 ──────────────────────────────────────────────────────────
   const fired = new Set(inp.firedRuleKeys);
-  // 还手触发计数：引擎回带的是 `<规则 key> <还手方对象 id>`，这里按规则聚合成"几个对手还手了"。
-  // 解析取**最后一个空格**为界：对象 id 里不含空格，而规则 key 理论上可以 —— 从右切最稳。
+  // 还手触发计数：引擎回带的是结构化的 (ruleKey, actorObjectId)，这里按规则聚合成"几个对手还手了"。
+  // ⛔ 不解析串 —— 第一版拿分隔符切串，切分恒失败而汇总数仍对，
+  //    屏上出现「汇总 1 个客户还手 / 该规则触发 0 个客户」这种自相矛盾且不报错的读数。
   const triggeredByRule = new Map<string, number>();
-  for (const entry of inp.reactionActors ?? []) {
-    const cut = entry.lastIndexOf(" ");
-    if (cut <= 0) continue;
-    const k = entry.slice(0, cut);
-    triggeredByRule.set(k, (triggeredByRule.get(k) ?? 0) + 1);
+  for (const a of inp.reactionActors ?? []) {
+    triggeredByRule.set(a.ruleKey, (triggeredByRule.get(a.ruleKey) ?? 0) + 1);
   }
   const weightByRule = new Map(inp.pairWeightReport.pairs.map((p) => [p.ruleKey, p]));
   const items: SimDisclosureRule[] = [...inp.rules]
