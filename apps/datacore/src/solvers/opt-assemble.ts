@@ -58,7 +58,7 @@ import type {
 import { ParetoRequestSchema } from "@platform/contracts";
 import type { OntologyBinding } from "@platform/contracts";
 import type { ObjectInstance, ObjectTypeDef, PropertyDef } from "../domain.js";
-import { CURRENCY_BASE_UNIT, CURRENCY_SCALE, lexiconHit } from "./field-role-lexicon.js";
+import { CURRENCY_BASE_UNIT, CURRENCY_SCALE, currencyScaleOf, lexiconHit } from "./field-role-lexicon.js";
 import { bindCrossObjectOccupancy, type BindingOntologyView } from "./opt-binding.js";
 
 /**
@@ -187,7 +187,22 @@ export async function assembleParetoModel(
    * 今日实测本租户 `hits(OrderLine,"cost")` 加这一格前是**空**（penProp 本就 undefined），
    * 故这条守卫对既有行为逐字节无影响 —— 它守的是**新加的这一格不许走错门**。
    */
-  const penProp = hits(orderT, "cost").find((k) => k !== revProp && !lexiconHit(k, "unitRate"));
+  /**
+   * ⚠ WO-PENALTY-CHANGEOVER-ONTOLOGY · **违约词库现在真的存在了**，先按它找，找不到才退回 `cost`。
+   *
+   * 改前这一行只扫 `cost` 词库，而本行上下的报缺原文一直写着「没有命中成本/**违约**词库」——
+   * 全仓当时**根本没有违约词库**（`违约金` 三字不匹配 `cost` 的任何一个词）。
+   * 那句话因此指着一个不存在的判据，且它给出的「最近落点」漏掉了真正最近的那一格
+   * （`LongTermAgreement.breachPenaltyWan` 对 `cost` 恒不命中）。铁律 1.5 判据四：注释说的不度量真实。
+   *
+   * 两条词库的**优先级不可颠倒**：一个租户同时有「违约金」与「履约成本」两格总量时，
+   * 罚金轴要的是前者。退回 `cost` 是为了**既有租户逐字节不变** —— 本租户改前 `hits(OrderLine,"cost")`
+   * 只有 `unitCost` 一格且它命中 `unitRate` 被排除，故改前 `penProp` 是 undefined；
+   * 改后由 `penalty` 词库命中 `breachPenalty` 接上，`cost` 那条支路行为一字不动。
+   */
+  const penProp =
+    hits(orderT, "penalty").find((k) => k !== revProp && !lexiconHit(k, "unitRate")) ??
+    hits(orderT, "cost").find((k) => k !== revProp && !lexiconHit(k, "unitRate"));
   /**
    * WO-UNITCOST-LAND · **按件履约成本**这一格（可选）：订单侧命中 `cost` 词库**且**是强度量
    * （`unitRate`）、且不是营收那一格。绑到 ⇒ 声明 role `unit_cost`，绑定层据此把
@@ -379,6 +394,13 @@ export async function assembleParetoModel(
   const moneyUnitOf = (declared: string | undefined): string | undefined => (currencyAligned ? CURRENCY_BASE_UNIT : declared);
   const revMoneyUnit = moneyUnitOf(revUnit);
   const costMoneyUnit = moneyUnitOf(costUnit);
+  /**
+   * WO-PENALTY-CHANGEOVER-ONTOLOGY：罚金轴的单位。**改前这根轴一格单位都不报** ——
+   * 那时它永远接不上地、从来没上过屏，所以没人发现；接上地之后不报单位，
+   * 屏上就是一个几十亿的裸数（`fmtCompact(v,"")` 走 `toLocaleString()` 那一支），
+   * 与营收轴并排却看不出它们同不同币同不同刻度。与另外两根**同一个 `moneyUnitOf`**，不另写一份。
+   */
+  const penMoneyUnit = moneyUnitOf(penProp ? orderT.properties.find((p) => p.propKey === penProp)?.unit : undefined);
   /** 营收轴的人读式：单价路要把 `× 用量` 写出来，否则屏上仍读作"单价"。 */
   const revenueLabel = revIsUnitRate ? `${orderT.key}.${revProp} × ${orderT.key}.${qtyProp}` : `${orderT.key}.${revProp}`;
   /**
@@ -406,7 +428,9 @@ export async function assembleParetoModel(
    */
   const groundedObjectives: ParetoObjective[] = [
     { key: "revenue", dir: "max", label: revenueLabel, ...(revMoneyUnit ? { unit: revMoneyUnit } : {}) },
-    ...(penProp ? [{ key: "penalty", dir: "min" as const, label: `${orderT.key}.${penProp}` }] : []),
+    ...(penProp
+      ? [{ key: "penalty", dir: "min" as const, label: `${orderT.key}.${penProp}`, ...(penMoneyUnit ? { unit: penMoneyUnit } : {}) }]
+      : []),
     ...(assignCostBound
       ? [{ key: "cost", dir: "min" as const, label: costLabel, ...(costMoneyUnit ? { unit: costMoneyUnit } : {}) }]
       : []),
@@ -421,9 +445,44 @@ export async function assembleParetoModel(
    */
   const penaltyElsewhere = types
     .filter((t) => t.key !== orderT.key)
-    .flatMap((t) => hits(t, "cost").filter((k) => !lexiconHit(k, "unitRate")).map((k) => `${t.key}.${k}`))
+    // WO-PENALTY-CHANGEOVER-ONTOLOGY：与订单侧那一格**同一组判据**（先违约词库、再成本词库，都排除强度量）。
+    // 改前这里只扫 `cost` ⇒ 真正最近的那一格（命中违约词库、不命中成本词库的那种，
+    // 如本租户的 `LongTermAgreement.breachPenaltyWan`）**恒被漏掉**，
+    // 屏上于是把"最近的落点"指到几个跟违约毫无关系的成本字段上。
+    .flatMap((t) =>
+      [...hits(t, "penalty"), ...hits(t, "cost")]
+        .filter((k) => !lexiconHit(k, "unitRate"))
+        .map((k) => `${t.key}.${k}`),
+    )
     .sort()
     .slice(0, 3);
+  /**
+   * WO-PENALTY-CHANGEOVER-ONTOLOGY · 换型报缺时「最近的落点」—— **现扫全本体**（R14，不写死类型名），
+   * 并把**时长格**与**金额格**分开数。
+   *
+   * 为什么非分开不可：改前那句报缺的收尾是「要补齐需先让求解族携带次序，
+   * **并在本体上给出按型号对计价的换型费率**」—— 后半句在本租户是**错的**：
+   * 型号对矩阵（`fromModel`/`toModel` + 时长）**已经在本体上了**，缺的只是「钱」那一格和「次序」。
+   * 照那句话去补的人会重造一份已经存在的矩阵。判据落在**声明的单位是不是货币**上，
+   * 不落在字段名像不像钱 —— 名字像钱而单位是分钟的格，接进目标函数就是量纲错。
+   *
+   * ⚠ **不能只扫 propKey**（先写成那样，实测当场空手而归）：本租户真正承载换型的是
+   * `ChangeoverMatrix`，而它的数值格叫 `minutes` / `hours` —— 两个名字里一个换型字样都没有，
+   * `hits(t,"changeover")` 对它恒 0。**词命中在类型名上，不在字段名上。**
+   * 故判据是两条的并集：**类型名命中** ⇒ 收它全部数值格；**字段名命中** ⇒ 收那一格。
+   * （只扫字段名会得出「全本体没有任何换型格」这个与事实相反的否定结论 —— 铁律 0.6 那个形态。）
+   */
+  const changeoverProps = types.flatMap((t) =>
+    (lexiconHit(t.key, "changeover") ? numProps(t).map((p) => p.propKey) : hits(t, "changeover")).map((k) => ({
+      ref: `${t.key}.${k}`,
+      unit: t.properties.find((p) => p.propKey === k)?.unit,
+    })),
+  );
+  const changeoverMoney = changeoverProps.filter((c) => currencyScaleOf(c.unit) !== undefined).map((c) => c.ref).sort();
+  const changeoverNonMoney = changeoverProps
+    .filter((c) => currencyScaleOf(c.unit) === undefined)
+    .map((c) => `${c.ref}（${c.unit ?? "未声明单位"}）`)
+    .sort();
   // ⚠ 下面两条 `reason` 是**上屏的正文**，不是源码注释 —— 一律写成纯文本。
   //   本仓注释里的 `**强调**` 是给读代码的人看的 Markdown；原样丢进 `<div>` 只会
   //   在用户屏上印出四个星号（2026-09-03 真浏览器实测就是这么翻车的：
@@ -457,6 +516,13 @@ export async function assembleParetoModel(
      *
      * ⛔ 这里**不许**把那套系数搬进来凑一根轴（R14 零业务常数）：
      * 一根按写死系数算出来的违约金在屏上是一条完全正常的曲线，没人看得出它不是本体事实。
+     *
+     * ══ WO-PENALTY-CHANGEOVER-ONTOLOGY：上面那段「X」**在本租户已过期，照 0.6 回写** ══
+     * 违约金已落到本体（`OrderLine.breachPenalty`，元/整行 = qty × 在册优先级费率），
+     * 于是 `penProp` 现算命中、`penalty` 成为一根**真轴**，本条报缺在本租户不再出现。
+     * ⚠ 本段**不删**：它对「订单侧没有这一格」的租户仍然逐字有效 —— 报缺是现算的，不是租户特例。
+     * ⚠ 那套系数**没有**被搬进本文件：它落在场景包 `solver_params.breachPenalty`（标 `synthetic:true`），
+     *   种子期乘完 qty 写进本体，装配器只认本体上那一格。R14 红线一字未破。
      */
     ...(penProp
       ? []
@@ -486,7 +552,17 @@ export async function assembleParetoModel(
         `今天算不出：本族（${family}）是订单×产线×合同的指派问题，解里没有次序 ——` +
         `一条产线上排了哪几单是集合不是序列，"从哪个型号换到哪个型号"无从起算，换型次数也就无从起算。` +
         `按每件摊一笔换型费可以算出一个数，但那笔钱与真实换型次数无关，是一根看着正常、答非所问的轴。` +
-        `要补齐需先让求解族携带次序（或时间窗），并在本体上给出按型号对计价的换型费率。`,
+        // WO-PENALTY-CHANGEOVER-ONTOLOGY：把「本体缺什么」现算出来说准。
+        // 改前这句收尾笼统写「并在本体上给出按型号对计价的换型费率」，而本租户的型号对矩阵
+        // **已经在本体上**（只是没有钱那一格）—— 照那句话去补的人会重造一份已经存在的矩阵。
+        (changeoverNonMoney.length > 0
+          ? `全本体里命中换型词库的是 ${changeoverNonMoney.join("、")}，都不是货币单位（可折的：${Object.keys(CURRENCY_SCALE).join("、")}）——` +
+            `型号对与换型时长本体上已经有了，缺的是按型号对计价的那一格钱。`
+          : `全本体里没有任何命中换型词库的数值字段。`) +
+        (changeoverMoney.length > 0
+          ? `钱那一格是 ${changeoverMoney.join("、")}，但没有次序就没有换型次数，一格钱乘不出总额。`
+          : ``) +
+        `要补齐需两件同时成立：让求解族携带次序（或时间窗），并给出按型号对计价的换型金额格。`,
     },
     {
       key: "cash",
