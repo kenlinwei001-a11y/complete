@@ -28,7 +28,8 @@ import { AUDIT_KIND_LIVE_SOURCES } from "@platform/contracts";
 import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
-import { computeSupplyVulnerability } from "./supply-vulnerability.js"; // WO-VULNERABILITY-REI 供应脆弱度（未断但脆弱）
+// WO-VULNERABILITY-REI 供应脆弱度（未断但脆弱）：独立求解器 + 搭 chain_impediments 回包的那一段。
+import { computeSupplyVulnerability, supplyVulnerabilitySection, type VulnInputs } from "./supply-vulnerability.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 // WO-69 P2 · Function 本体签名（求解器读/写本体面声明）—— 列级守卫的收窄依据 + DRIL inputSpec 的派生源。
 import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "./ontology-signature.js";
@@ -615,7 +616,9 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // WO-SANDBOX-S3 追加三键：candidateStats（每点探了几个杠杆/为什么没方案的逐点账）·
   // candidatesTruncated（探针预算耗尽的显式截断标）· candidateProbes（试算次数）。
   // 三者都是**诚实位**：漏进形状契约 = 前端看不见"为什么这个阻滞点没有方案"，那就是新一种盲区。
-  chain_impediments: ["scanId", "scope", "impediments", "counts", "unresolved", "caveats", "thresholds", "candidateStats", "candidatesTruncated", "candidateProbes"],
+  // WO-VULNERABILITY-REI：+`supplyVulnerability` —— **未断但脆弱**那一段（三个 kind 装不下的结构量）
+  // 搭这条既有回包出屏，不另开页。段内自带 `scoped:false`/`available` 两个诚实位。
+  chain_impediments: ["scanId", "scope", "impediments", "counts", "unresolved", "caveats", "thresholds", "candidateStats", "candidatesTruncated", "candidateProbes", "supplyVulnerability"],
   // WO-FLOWTIME 流程实例流转时长。诚实位一律进形状（漏一个 = 前端只看得见好消息）：
   //  · `absences` 反推不出的那批（四种 kind + 缺哪种单据 + 复验探针）——与 chain_impediments 的
   //    `unresolved` 同族纪律：算不出来要能被渲染出来，不是被当成 0 隐掉；
@@ -4429,7 +4432,28 @@ export class SolverService {
     // WO-SANDBOX-S3：一等关系行是候选枚举器 `LINK_HOP` join 的**唯一**可达面来源（改种子里的关系，
     // 可达面自动跟着变；代码里没有第二张"类型对照表"）。判定逻辑不读它，故对 E3 的判定结果零影响。
     const links = await this.repos.links.list(ctx.tenantId, () => true);
-    return detectChainImpediments({ c, materialBalances, links, scope: parsed.data });
+    const scan = detectChainImpediments({ c, materialBalances, links, scope: parsed.data });
+    // WO-VULNERABILITY-REI 第 3 件 · **未断但脆弱**搭既有回包出屏，不另开页。
+    //
+    // 为什么挂这里：这一页问的是「今天哪里出问题了」，而「明天最可能从哪里出问题」是同一个
+    // 决策的另一半 —— 三个 kind（BOTTLENECK/CONGESTION/BREAK）全要求**越线已经发生**，
+    // 结构上装不下「读数完全正常但没有备份路径」这一态。分居两页 = 逼用户自己去关联。
+    //
+    // 零额外 IO：`loadContext(withExtended)` 已经把 Material/Supplier/BOM 拉进 `c`，
+    // `orders` 是 SolverContext 的核心字段 ⇒ 不多打一次仓储，也不改宿主求解器的判定结果。
+    // 空 Material ⇒ 段内 `available:false` 明说「未评估」，**不把宿主拖红**（见 section 头注）。
+    return {
+      ...scan,
+      supplyVulnerability: supplyVulnerabilitySection(
+        SolverService.vulnInputs({
+          materials: c.materials ?? [],
+          suppliers: c.suppliers ?? [],
+          bomDetails: c.bomDetails ?? [],
+          bomHeaders: c.bomHeaders ?? [],
+          orders: c.orders,
+        }),
+      ),
+    };
   }
 
   /**
@@ -4757,26 +4781,46 @@ export class SolverService {
     ]);
     // 诚实空：没有物料就没有脆弱度可言，**不回落到"零风险"**（那会与"真的没风险"混为一谈）。
     if (materials.length === 0) throw validationError("supply_vulnerability 需先合成 Material");
-    const res = computeSupplyVulnerability({
-      materials: materials.map((o) => ({
-        matId: str(o.props.matId, o.id),
-        name: str(o.props.name),
-        unitPrice: num(o.props.unitPrice),
-        supplierId: str(o.props.supplierId),
-        supplierIds: o.props.supplierIds,
-        isKeyMaterial: o.props.isKeyMaterial === true,
-      })),
-      suppliers: suppliers.map((o) => ({
-        supplierId: str(o.props.supplierId, o.id),
-        name: str(o.props.name),
-        leadTime: num(o.props.leadTime),
-        status: str(o.props.status),
-      })),
-      bomDetails: bomDetails.map((o) => o.props),
-      bomHeaders: bomHeaders.map((o) => o.props),
-      orders: orders.map((o) => o.props),
-    });
+    const res = computeSupplyVulnerability(
+      SolverService.vulnInputs({ materials, suppliers, bomDetails, bomHeaders, orders }),
+    );
     return { ...res };
+  }
+
+  /**
+   * WO-VULNERABILITY-REI · 对象行 → 脆弱度入参的**唯一**转写。
+   *
+   * 刻意做成静态方法而不是在两个调用点各写一遍：独立求解器（`supply_vulnerability`）与
+   * 搭车段（`chain_impediments.supplyVulnerability`）**必须吃同一份口径** ——
+   * 抄两份的话，哪天 `supplierIds` 的读法改了而只改一处，两条路会给出**不同的脆弱清单**，
+   * 且两边都是绿的。这正是本仓「金丝雀必须与主逻辑共用同一份实现」那条纪律的同族要求。
+   */
+  private static vulnInputs(o: {
+    materials: ObjectInstance[];
+    suppliers: ObjectInstance[];
+    bomDetails: ObjectInstance[];
+    bomHeaders: ObjectInstance[];
+    orders: ObjectInstance[];
+  }): VulnInputs {
+    return {
+      materials: o.materials.map((m) => ({
+        matId: str(m.props.matId, m.id),
+        name: str(m.props.name),
+        unitPrice: num(m.props.unitPrice),
+        supplierId: str(m.props.supplierId),
+        supplierIds: m.props.supplierIds,
+        isKeyMaterial: m.props.isKeyMaterial === true,
+      })),
+      suppliers: o.suppliers.map((s) => ({
+        supplierId: str(s.props.supplierId, s.id),
+        name: str(s.props.name),
+        leadTime: num(s.props.leadTime),
+        status: str(s.props.status),
+      })),
+      bomDetails: o.bomDetails.map((d) => d.props),
+      bomHeaders: o.bomHeaders.map((h) => h.props),
+      orders: o.orders.map((r) => r.props),
+    };
   }
 
   /**
