@@ -69,7 +69,11 @@ export function Modal({
       (prevFocus.current as HTMLElement | null)?.focus?.();
     };
     // WO-PALETTE-USABLE：空依赖是**本修复的核心**——focus-trap 只该在挂载/卸载各跑一次。
-    // onClose 经 onCloseRef 取最新值，故不必进依赖数组（把它放回去 = 复现「一次一个字符」）。
+    // onClose 经 onCloseRef 取最新值，故不必进依赖数组。
+    // ⚠ 把它改回 [onClose] 会同时坏两件事（测试 §5 咬的是第二件，因为第一件会被 contains 守卫遮住）：
+    //   ① 每渲染一次就重跑首焦选择 ⇒ 「点一次只能输入一个字符」；
+    //   ② cleanup 每渲染一次就 prevFocus.current.focus() 把焦点弹回弹窗外的触发元素，
+    //      且随后 prevFocus.current 被**改写成弹窗内的元素** ⇒ 关闭时焦点再也回不到触发者（无障碍回归）。
   }, []);
 
   return createPortal(
