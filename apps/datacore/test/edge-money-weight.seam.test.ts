@@ -27,32 +27,37 @@ import {
   propagateTick,
   type PropagationGraph,
 } from "../src/sim/propagation.js";
-import { pairWeightNormalizeOf, type PropagationRule, type TickState } from "@platform/contracts";
+import {
+  PropagationRuleSchema,
+  pairWeightNormalizeOf,
+  type PropagationRule,
+  type TickState,
+} from "@platform/contracts";
 
 const SEED_TS = join(dirname(fileURLToPath(import.meta.url)), "../src/seed.ts");
 
-/** 一条 Order→Customer 形状的规则（身份格照真种子那条，数值可改）。 */
-const arRule = (over: Partial<PropagationRule> = {}): PropagationRule => ({
-  id: "r1",
-  tenantId: "demo",
-  key: "ar",
-  sourceTypeKey: "Order",
-  sourceStateVar: "costPressure",
-  viaLinkKey: "order_of_customer",
-  targetTypeKey: "Customer",
-  targetStateVar: "receivablePressure",
-  coefficient: 0.5,
-  delayTicks: 0,
-  description: null,
-  combine: "sum",
-  decay: null,
-  clamp: null,
-  coefficientRef: null,
-  weightRef: null,
-  cadenceNodeId: null,
-  status: "PUBLISHED",
-  ...over,
-});
+/**
+ * 一条 Order→Customer 形状的规则（身份格照真种子那条，数值可改）。
+ *
+ * ⚠ 走 `PropagationRuleSchema.parse` 而**不是**写字面量 —— 与 `sim-propagation.test.ts` 同一条：
+ * 字面量会被 TS 判成"另一个同名类型"（TS2719，`propagateTick` 的形参类型来自 src 侧解析的契约包），
+ * 且缺省字段（`combine`/`decay`/`weightRef`…）的默认值应当由**契约**给，不该在测试里各抄一份。
+ */
+const arRule = (over: Partial<PropagationRule> = {}): PropagationRule =>
+  PropagationRuleSchema.parse({
+    id: "r1",
+    tenantId: "demo",
+    key: "ar",
+    sourceTypeKey: "Order",
+    sourceStateVar: "costPressure",
+    viaLinkKey: "order_of_customer",
+    targetTypeKey: "Customer",
+    targetStateVar: "receivablePressure",
+    coefficient: 0.5,
+    delayTicks: 0,
+    status: "PUBLISHED",
+    ...over,
+  });
 
 // ══════════════════════════════════════════════════════════════════════════════
 // §1 病灶与修法 —— 「同条数、不同金额」与「同金额、不同条数」两个方向都要咬
@@ -84,7 +89,10 @@ describe("§1 应收压力：按金额算，不按条数算", () => {
   /** 每张单的成本压力**相同**（真种子里同型号的单确实如此）——差别只在金额上。 */
   const C = 10;
   const BASE: TickState = Object.fromEntries(
-    GRAPH.objects.map((o) => [o.id, o.typeKey === "Order" ? { costPressure: C } : { receivablePressure: 0 }]),
+    GRAPH.objects.map((o): [string, Record<string, number>] => [
+      o.id,
+      o.typeKey === "Order" ? { costPressure: C } : { receivablePressure: 0 },
+    ]),
   );
   /** 金额（与真后端那两组同形状）。 */
   const VALUE: Record<string, number> = {
@@ -120,7 +128,7 @@ describe("§1 应收压力：按金额算，不按条数算", () => {
     expect(next.cBig!.receivablePressure).toBe(next.cSml!.receivablePressure); // ← 这就是病
     // 而金额相同、单数不同的两家反被拉开 1.5 倍 —— 病的另一面。
     expect(next.cMany!.receivablePressure).toBe(15);
-    expect(next.cMany!.receivablePressure / next.cBig!.receivablePressure).toBe(1.5); // = 单数比 3/2
+    expect(next.cMany!.receivablePressure! / next.cBig!.receivablePressure!).toBe(1.5); // = 单数比 3/2
   });
 
   it("② 修后·实验 1「同条数、不同金额」⇒ 读数按**金额比**拉开（4 个数缺一不可）", () => {
