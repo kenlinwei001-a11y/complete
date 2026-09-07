@@ -2648,6 +2648,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   // WO-OPT-WHATIF-DATA · 选址决策成本（optimize_whatif/facility_location 的 open_cost / assign_cost 系数源）
   "Base.openCost": "年固定开办成本", "Base.serveCost": "单位需求点履约成本",
   "Line.lineId": "产线编号", "Line.baseId": "所属基地", "Line.name": "产线名称",
+  "Line.workshopId": "所属车间", // WO-COMPUTED-EDGE：与同表 baseId 同形态的归属外键
   "Line.utilization": "利用率", // ← 杠杆标签「产线·利用率」的后半段由本串派生（lever-meta.ts 不另存）
   "Line.actual_output_daily": "日实际产出", "Line.schedule_attainment": "排产达成率",
   "Line.line_code": "产线编码", "Line.max_capacity_day": "日最大产能", "Line.capacityDaily": "日运营产能",
@@ -2771,6 +2772,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Order.customerId": "下单客户外键", "Order.value": "订单金额",
   "Order.so": "订单号", "Order.cust": "客户", "Order.model": "型号", "Order.qty": "订单数量",
   "Order.due": "交期", "Order.pri": "优先级", "Order.bases": "承接基地", "Order.status": "订单状态",
+  "Order.dueMonth": "交期月", // WO-COMPUTED-EDGE：合同交期所属计划月（YYYY-MM），月度目标的连接依据
   "Order.demandDelta": "需求增量比例", // 有效需求 = 基线 × (1 + demandDelta)（capacity.ts PRD-CAP-DEMANDDELTA）
   "Order.outsourceRatio": "外协比例", // ← LEVER「订单·外协比例」
   "Order.creditUsedRatio": "信用额度使用率", "Order.leadDays": "交付前置天数", "Order.unitPrice": "单价",
