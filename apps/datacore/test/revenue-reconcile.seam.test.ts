@@ -119,16 +119,36 @@ describe("WO-REVENUE-RECONCILE · 四个营收的口径对账", () => {
     const rev = mets.find((m) => m.props.metricId === "kpi-revenue")!;
     const actual = Number(rev.props.actual);
 
-    // ── 正面：它必须能由订单簿**逐位重算**出来（415.6 亿 / 计划年 458 单）───────────────
-    // 走的是生产同一个函数（`orderBookYearRevenue`），不在本文件另抄一遍口径 ——
-    // 抄一遍就变成"两份公式各自绿"，改一处漏一处不会红，那正是本仓反复付账的形态。
+    /**
+     * ── 正面：它必须能由订单簿重算出来（实测 415.6 亿 / 计划年 458 单）─────────────
+     *
+     * ⚠ 这里**故意用独立预言机**（inline 过滤 + 求和），**不调用生产的
+     * `orderBookYearRevenue`** —— 与本文件 §1 的写法一致（§1 也是自己重算
+     * `供给量 × P̄` 而不是回调生产函数）。
+     *
+     * 理由：本仓「不许各抄一遍公式」那条纪律管的是**生产代码之间**（合成期与查询期两处
+     * 各写一份 Σqty×unitPrice，改一处漏一处不会红）。**测试的预言机恰恰相反** ——
+     * 拿被测函数去验被测函数，函数本身算错时两边一起错、断言照样绿，
+     * 那正是「我用『它等于它自己』当作『它算对了』的证据」。
+     * 所以：生产侧共用一个函数（已由 `solvers/service.ts` 与 `battery.ts` 共用做到），
+     * 测试侧独立重算。两者不冲突，各治各的病。
+     */
     const orderRows = (await orders(t)).map((o) => o.props);
-    const book = orderBookYearRevenue(orderRows);
-    expect(actual, "『营收·实际』必须逐位等于订单簿计划年窗成交额").toBe(yuanToYi(book.yuan));
+    const planYear = String(rev.props.basis ?? "").match(/(20\d\d)\s*年/)?.[1]
+      ?? new Date().getFullYear().toString(); // 计划年从**下发的口径自述**里读，不内联 "2026"
+    const inWindow = orderRows.filter((o) => String(o.dueMonth ?? o.due ?? "").startsWith(planYear));
+    const oracleYuan = inWindow.reduce((a, o) => a + Number(o.qty ?? 0) * Number(o.unitPrice ?? 0), 0);
+    expect(actual, "『营收·实际』必须等于订单簿计划年窗成交额（独立重算，非回调生产函数）")
+      .toBeCloseTo(oracleYuan / 1e8, 1);
+    // 交叉核对：生产函数与独立预言机必须给同一个数（它们若分叉，是生产函数的口径漂了）。
+    expect(yuanToYi(orderBookYearRevenue(orderRows).yuan), "生产口径函数与独立预言机分叉")
+      .toBeCloseTo(oracleYuan / 1e8, 1);
     // 计划年窗必须真的是**窗**：它得比全簿少（订单交期跨 2025-12→2026-12 两个日历年）。
     // 少了这一条，「窗」退化成「全簿」也照样绿 —— 而那会把上一年度的簿子算进本年度达成。
-    expect(book.count, "计划年窗必须真的裁掉了跨年单，否则窗形同虚设").toBeLessThan(orderRows.length);
-    expect(book.count).toBeGreaterThan(0);
+    expect(inWindow.length, "计划年窗必须真的裁掉了跨年单，否则窗形同虚设").toBeLessThan(orderRows.length);
+    expect(inWindow.length).toBeGreaterThan(0);
+    // 口径自述必须真的下发了（前端那一行「口径 · …」的数据源；空串/缺失 ⇒ 屏上少一段解释）。
+    expect(String(rev.props.basis ?? ""), "Metric.basis 未下发 ⇒ 前端口径行无数据可渲染").not.toBe("");
 
     // ── 反面：修前那两条**病的指纹**必须都不再成立 ──────────────────────────────
     const demandRev = segs.reduce((a, s) => a + Number(s.props.demandWanPerYearP50 ?? 0) * Number(s.props.priceWan ?? 0), 0);
