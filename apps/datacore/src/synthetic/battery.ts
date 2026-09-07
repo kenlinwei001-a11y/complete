@@ -6183,9 +6183,32 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   const marketShareActual = 21.5; // 诚实合成：无市场规模真数据源，种子常数（synthetic 标灰，不冒充实测）
   const metrics: Record<string, unknown>[] = [
     // 运营指标（op）——metricId 保持既有 kpi-margin/attain/material 不变（R6 obj id 集稳定）；target/floorVal 现取自 GOAL_REGISTRY。
-    goalMetric("kpi-margin", "gm_rate", round(round(totalMargin, 1) / round(totalRev, 1) * 100, 1), "rc-profit-mix"),
-    goalMetric("kpi-attain", "demand_attain", round(totalAct / totalTgt * 100, 1), "rc-scale-demand"),
-    goalMetric("kpi-material", "material_cov", round(totalCovered / totalNet * 100, 1), "rc-material-gap"),
+    /**
+     * WO-GAP-NORMALIZE 病③ · **口径这一行，屏上承诺了就得有数据**。
+     *
+     * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+     * **X（修前实测·真后端 `SEED_DEMO=1`）**：`Metric.basis` 全库只有 2 条有值
+     *   （`kpi-revenue` / `kpi-gross-profit`，且两条都是 `level:"year"`），
+     *   而经营指标条 widget 取的是 `metric_rollup {level:"op"}` ⇒ **屏上 6 条、带 basis 的 0 条**。
+     *   同一块卡的 caption 却写着「逐条随指标下发（**点开每条**看「口径」一行）：
+     *   营收＝成交侧订单簿、毛利＝需求预测侧、份额＝合成种子」——
+     *   它点名的三条**全是 year 级，那个 widget 一条都不取**。
+     *   ⇒ 屏上在承诺一件**永远不会发生**的事：既没有那三条指标，也没有任何一行口径。
+     * **Y（本段 + widget 取数改全级 + caption 改真话）**：**每条** Metric 都自带 `basis`，
+     *   指标条取全部级别 ⇒ caption 点名的三条真的在屏上、且真的各带一行口径。
+     *
+     * ⚠ 为什么不是「只给 op 侧补 basis」（另一条候选路）：那样补完，caption 点名的
+     *   营收/毛利/份额**仍然一条都不在屏上** —— 承诺与屏的差距一点没缩小，只是换了个地方对不上。
+     * ⚠ 且本单把缺省根因指标改成了**相对缺口最大者**（实测 = 营收），而指标条正是选下钻指标的那个控件；
+     *   若仍按 `op` 过滤，屏上会出现「右边默认在下钻营收，左边指标清单里根本没有营收这一行」——
+     *   **那是本单自己会造出来的新矛盾**，所以取全级不是附赠，是本单的必要收尾。
+     */
+    goalMetric("kpi-margin", "gm_rate", round(round(totalMargin, 1) / round(totalRev, 1) * 100, 1), "rc-profit-mix",
+      "需求预测侧 · Σ(细分需求 P50 × 单价 × 毛利率) ÷ Σ(细分需求 P50 × 单价)；分子分母同源同口径，故可相除"),
+    goalMetric("kpi-attain", "demand_attain", round(totalAct / totalTgt * 100, 1), "rc-scale-demand",
+      "需求侧 · Σ(细分实际需求) ÷ Σ(细分目标需求)，全细分合计；不含订单成交信息"),
+    goalMetric("kpi-material", "material_cov", round(totalCovered / totalNet * 100, 1), "rc-material-gap",
+      "物料侧 · Σ(净需求 × 长协覆盖率) ÷ Σ(净需求)，按吨加权；覆盖率取长协比例，非现货可得性"),
     /**
      * WO-METRIC-IDENTITY 病① · **「实际」这一栏必须真的是实际**。
      *
@@ -6212,8 +6235,10 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       + `目标 ${GOAL_REGISTRY.revenue!.target} 亿来自计划侧年度目标登记册 —— 实际与目标两条链分开取数，故本指标会随订单簿增减而变`),
     goalMetric("kpi-gross-profit", "gross_profit", round(totalMargin, 1), "rc-profit-mix",
       "需求预测口径 · Σ(细分需求 P50 × 单价 × 毛利率)，全年全需求；与同屏「营收」的成交侧口径不同源，两者不可相除"),
-    goalMetric("kpi-share", "market_share", marketShareActual),
-    goalMetric("kpi-cash", "cash", cashActual),
+    goalMetric("kpi-share", "market_share", marketShareActual, undefined,
+      "诚实合成种子 · 无外部市场规模真数据源，本值是确定性合成常数（非实测、非派生）；接入真市场规模前不可当实测读"),
+    goalMetric("kpi-cash", "cash", cashActual, undefined,
+      "计划侧 · baseline 年度情景现金安全垫（与推演参数同源）；非银行流水实测余额"),
   ];
   // WO-CEO-1a item3：三应用细分升带责任 Metric（owner + 越线）。达成率=act/tgt×100，floor=95（储能 72.2%<95 → 越线，owner=储能业务线）。
   const SEG_METRIC_KEY: Record<string, string> = { 乘用车: "pas", 储能: "ess", 商用车: "com" };
@@ -6224,6 +6249,8 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       businessType: businessTypeOfSegment(d.segment as string), // WO-SEG-ATTR-SCOPE：细分升 Metric 一等字段（储能→storage·与 Order.businessType 同源同口径·R-一致），使 gap_attribution 按业态裁订单
       target: 100, actual: round((d.act as number) / (d.tgt as number) * 100, 1), floorVal: 95, unit: "%", weight: 0.1,
       ksfRef: "ksf-dem", ownerRef: `prin-seg-${k}`, chainKey: "rc-scale-demand",
+      // WO-GAP-NORMALIZE 病③：口径逐条下发（理由见上「病③」段）——细分达成率只看本细分需求两端，不掺订单成交。
+      basis: `需求侧 · ${d.segment as string}细分实际需求 ÷ 该细分目标需求；只看本细分，与全公司达成率不同口径`,
     });
   }
   // cockpit P5 / sop：S&OP 版本演进 V1→V7（需求渐增、供给追赶、缺口收敛；V7 待定稿）。同源 totalRev/需求规模派生。

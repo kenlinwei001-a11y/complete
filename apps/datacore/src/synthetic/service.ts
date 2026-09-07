@@ -1904,9 +1904,22 @@ export class SyntheticService {
            * 份额=诚实合成种子），**一句 widget 级 caption 说不清 11 条**，那正是本 caption 修前
            * 犯的错 —— 它只描述了其中一条，读者却会当成整条指标条的口径。
            */
+          /**
+           * WO-GAP-NORMALIZE 病③ · 取数从 `{level:"op"}` 改为全级（`{}`）。
+           *
+           * **修前实测**：`args:{level:"op"}` ⇒ 屏上 6 条（毛利率/需求达成率/物料保障率 + 三条细分达成率），
+           * 而本 caption 点名的**营收 / 毛利 / 份额三条全是 `level:"year"`** ⇒ **一条都不在屏上**。
+           * caption 还写「点开每条看「口径」一行」，而当时 6 条里带 `Metric.basis` 的是 **0 条**。
+           * 两句承诺，屏上都兑现不了。
+           * **修后**：取全级 10 条（op 6 + year 4），且每条 Metric 都带 `basis` ⇒ 三条点名指标真的在屏上、
+           * 每条真的有一行口径。**承诺与屏对齐，靠的是把数据补齐，不是把话说小。**
+           *
+           * ⚠ 另一个必须取全级的理由：根因下钻的缺省根指标现按**相对缺口**选（实测 = 营收），
+           * 而本指标条正是选下钻指标的控件 —— 仍按 op 过滤会让「右边默认下钻营收、左边清单里没有营收」。
+           */
           key: "metric-strip", type: "metric-strip", title: "经营指标（目标 vs 实际 · 单一出处）", span: 2, featureKey: "view.dash.widget.metric",
-          query: { kind: "solver", solverKey: "metric_rollup", args: { level: "op" }, valuePath: "metrics" },
-          caption: "各指标口径互不相同，逐条随指标下发（点开每条看「口径」一行）：营收＝成交侧订单簿、毛利＝需求预测侧、份额＝合成种子",
+          query: { kind: "solver", solverKey: "metric_rollup", args: {}, valuePath: "metrics" },
+          caption: "年度目标与运营指标同列，各指标口径互不相同，逐条随指标下发（每条下方「口径 · …」即是）：营收＝成交侧订单簿、毛利＝需求预测侧、份额＝合成种子",
           provenance: { toolName: "invoke_solver", outputPath: "$.metrics", label: "metric_rollup：Metric 对齐目标树算 delta/miss（口径逐条经 Metric.basis 下发）" },
         },
         // cockpit P2 规划决策推演 · 根因 DAG（KPI 越线 → 因子 → 取证叶，结构与贡献均经 plan_rootcause 求解器
