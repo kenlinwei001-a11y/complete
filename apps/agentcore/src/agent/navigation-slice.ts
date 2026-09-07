@@ -313,8 +313,21 @@ export const OBJECT_KEY_PROPS: Record<string, string[]> = {
   // 也是帕累托成本轴的绑定处（`opt-assemble.ts` 的 `assignCostLabel`）——不列，模型说不出成本轴由什么构成。
   Base: ["baseId", "name", "formationCapDaily", "agingCapDaily", "util", "serveCost", "openCost"],
   Line: ["lineId", "capacityDaily", "max_capacity_day", "utilization"],
-  // WO-KEYPROPS-GAP：`unitCost`（元/电芯·当期 BOM 现算）与 `unitPrice` **同阶**，缺它 ⇒
-  // 模型报得出单价、报不出单位成本，「单位毛利/毛利率」这类题一律答不了。
+  // WO-KEYPROPS-GAP：`unitCost`（当期 BOM 现算）缺它 ⇒ 模型报得出单价、报不出单位成本。
+  //
+  // ⚠⚠ **WO-MARGIN-AXIS-HONESTY 订正**：本行原文写「`unitCost`（元/电芯·当期 BOM 现算）与
+  //   `unitPrice` **同阶**，……「单位毛利/毛利率」这类题一律答不了」——**后半句连着的那个前提是假的**。
+  //   实测：`unitPrice` 的分母是**套**、`unitCost` 的分母是**电芯**，两格却同声明 `unit:"元"`，
+  //   `unitPrice − unitCost` **不是**单位毛利（断点 `G-UNIT-MARGIN-CROSS-DENOM`）。
+  //   所以列出这两格的作用是**让模型拿得到这两个数与它们各自的口径**，
+  //   **不是**让它去做那个减法 —— 把"能报出两个数"读成"能答单位毛利"，正是本仓要治的那个病。
+  //
+  // ⚠ 但**这句话本身从来没进过 prompt**（开工实测，免得下一个人高估它的杀伤力）：
+  //   两个消费方拿的都不是本注释 —— ① `renderNavigationSlice` 只印 `keyProps.join("/")`（**光名字**）；
+  //   ② `renderTypeBlock` 把本表当白名单，真正上屏的口径是**本体上那一格的 `description`/`unit`**。
+  //   而那两格的 `description`（DataCore 侧 `Model.unitCost` / `OrderLine.unitCost`）**已写明分母不同**。
+  //   ⇒ 本条订正救的是**读这份代码的人**，不是模型；模型侧的口径来自本体，不来自这里。
+  //   这个区分要写出来：把"改了个假注释"报成"堵了一处模型幻觉"，本身就是拿 X 冒充 Y。
   Model: ["modelId", "unitPrice", "unitCost", "seriesId"],
   // WO-KEYPROPS-GAP：`value` 是派生属性（`qty * unitPrice`）—— 派生正是 `renderTypeBlock`
   // 唯一会渲染公式的那类；订单金额是最常被问的一个业务数，缺它模型只能自己乘、乘错也不报错。
