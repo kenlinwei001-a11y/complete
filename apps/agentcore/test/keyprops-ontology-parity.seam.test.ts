@@ -178,13 +178,22 @@ export function extractOntologyProps(): { props: OntologyProps; unresolved: stri
   }
 
   // ── ② battery-extended.ts：
-  //    `def("K", 名, 域, [ p("x",类型) | n("x",单位) | pd("x",口径) | nd("x",口径,单位) | rd("x",引用) | { propKey: "x" } ])`
+  //    `def("K", 名, 域, [ p("x",类型) | n("x",单位) | nRef("x",单位,引用格) | pd("x",口径) | nd("x",口径,单位) | rd("x",引用) | { propKey: "x" } ])`
   //
   // ⚠ **工厂名是本抽取器的耦合面**（WO-UNIT-KWH 实测：改前这里只认 `p(` / `pd(`，
   //    而量纲必填后属性工厂按「数值 / 非数值」拆成了两支 —— 数值属性改走 `n()` / `nd()`。
   //    于是 `Supplier.leadTime` 这类数值属性**整批抽不到**，金丝雀 B 当场报红。
   //    这正是金丝雀该干的活：它报的是「**工具坏了**」，不是「清单干净」。）
   //    battery-extended.ts 里新增或改名属性工厂时，**必须同步改下面这条正则**。
+  //
+  // ⚠ **同一形态第 2 次**（MERGE-BATCH-6 收编实测）：WO-RATE-DIMENSION / WO-DIMENSION-ERRORS
+  //    为「参数化量纲」新起了工厂 `nRef()`（`unit` 与 `unitRefProp` 必须成对，见 battery-extended.ts），
+  //    而这条正则只认 `p|pd|n|nd|rd` ⇒ `Material.{unitPrice,dailyUse,onHand,inTransit}` **整批被静默丢掉**，
+  //    §2 主判据当场把这 4 个真属性误报成「本体里不存在」。
+  //    注意**金丝雀 A 没说话**：它只看 `unresolved` 与规模下界，而漏抽是**静默**的、规模也没跌破下界 ——
+  //    「抽取器没报错」不度量「抽取器抽全了」。故本次把 nRef 这条支路钉进金丝雀 B（见下），
+  //    下一个同形状的工厂改动由机器先说话。
+  //    形态（铁律 0.6 句式）：「我用『抽取器零解析失败』当作『属性抽全了』的证据，而前者并不度量后者。」
   const ext = stripComments(readFileSync(join(REPO_ROOT, ONTOLOGY_SOURCES[1]), "utf8"));
   const extIdx = ext.indexOf("export function extendedObjectTypes()");
   const extArr = extIdx < 0 ? null : balanced(ext, ext.indexOf("[", ext.indexOf("return [", extIdx)), "[", "]");
@@ -192,7 +201,7 @@ export function extractOntologyProps(): { props: OntologyProps; unresolved: stri
   for (const entry of extArr ? splitTopLevel(extArr) : []) {
     const keyM = entry.match(/def\(\s*"([A-Za-z_]\w*)"/);
     if (!keyM) { unresolved.push(`ext 注册项解析失败：${entry.slice(0, 60)}`); continue; }
-    add(keyM[1]!, [...[...entry.matchAll(/\b(?:pd?|nd?|rd)\(\s*"([^"]+)"/g)].map((m) => m[1]!), ...propKeysIn(entry)]);
+    add(keyM[1]!, [...[...entry.matchAll(/\b(?:nRef|pd?|nd?|rd)\(\s*"([^"]+)"/g)].map((m) => m[1]!), ...propKeysIn(entry)]);
   }
 
   return { props, unresolved };
@@ -220,6 +229,12 @@ describe("§1 · 抽取器自证（不中就报「工具坏了」，不许报「
     // extendedObjectTypes 那条支路（`def(...)` + `p()/pd()` 写法）必须也活着。
     expect(props.get("Supplier"), "battery-extended.ts 支路抽空了 ⇒ 半个本体不见了").toContain("leadTime");
     expect(props.get("CausalFactor")).toContain("metricKey");
+    // **参数化量纲**那条支路（`nRef("x", 单位, 引用格)`）必须也活着 —— 这四个逐字取自
+    // battery-extended.ts 的 `def("Material", …)`，全部走 nRef。漏认这个工厂时它们**静默消失**，
+    // 而 unresolved 仍是空、规模仍在下界之上 ⇒ 只有这一条会说话。
+    for (const p of ["unitPrice", "dailyUse", "onHand", "inTransit"]) {
+      expect(props.get("Material"), `nRef() 支路抽空了 ⇒ 参数化量纲的属性整批丢失（漏的是 Material.${p}）`).toContain(p);
+    }
   });
 
   it("金丝雀 C · 已知必判假：本体里没有的名字不许被抽出来", () => {
