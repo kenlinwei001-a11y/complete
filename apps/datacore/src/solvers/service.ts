@@ -1927,8 +1927,34 @@ export class SolverService {
         }
       : undefined;
 
+    /**
+     * WO-GAP-NORMALIZE 病② · **`scope.baseId` 不许被专属域路由静默吞掉**。
+     *
+     * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+     * **X（修前实测·与归一无关·5 个 metricKey 各显式传 `scope:{baseId:"jiangmen"}` 逐个跑）**：
+     *   | metricKey | 回显 scope.baseId | L1 节点 |
+     *   |---|---|---|
+     *   | `revenue` / `cash` / `demand_attain` | **undefined（吞了）** | `metricgap:<key>` |
+     *   | `seg_attain_ess` | `jiangmen` ✓ | `base:jiangmen` |
+     *   凡指标配了专属因果域（或 market_share 域），下面两条早返回就**整个丢掉已解析的
+     *   `scopedBaseId`**：既不按基地归因，也不回显、更不说明。而这两条域路由的 L1 是
+     *   `metricgap:<key>`，前端基地根因面板只认 `base:<基地>` ⇒ **树整棵消失成「诚实灰」**，
+     *   屏上既看不到江门的根因，也看不到一句「按基地这一维我给不了」。
+     *   ⚠ 这是**独立于归一的老病**：显式传 metricKey 时今天就在犯，不是缺省根换成营收才有的。
+     *   只是缺省根从 `seg_attain_ess`（无专属域·走结构树）换成 `revenue`（有专属域）之后，
+     *   **风险板每一个基地的根因树同时变灰**，才把它顶到台面上。
+     * **Y（本段）**：`scope.baseId` 是**「按基地这一维拆给我看」**的请求，而专属因果域**没有基地这一维**
+     *   （它拆的是 caused_by 因果跳）。两者不是同一个问题的两种答法，是两个问题。
+     *   故给了 `scope.baseId` 就**走基地结构反向分摊**（那条路真有基地维），不进域路由。
+     *
+     * ⚠ **这不是绕开，是照本函数已有的先例办**：上面 `capFactor` 那段处理
+     *   「因子作用域解析不了」时，判的就是**保留 base 作用域结构树 + 诚实标注**，
+     *   理由一字不差 ——「绝不静默退化，也绝不假装按这一维细分了」。同一个函数里两处作用域，
+     *   一处守纪律一处不守，那是漏了不是设计。
+     * ⚠ 不给 `scope.baseId` 时**逐字节不变**：域路由照旧优先（R6 · 全局路径零回归）。
+     */
     // ── market_share 域：独立结构分解（CompetitorShare）+ caused_by 遍历到商业根因 ──
-    if (str(m.key) === "market_share") {
+    if (str(m.key) === "market_share" && !scopedBaseId) {
       return await this.gapAttributionMarketShare(ctx, m, G, unit, structuralExplained, causalExplained, binding);
     }
 
@@ -1950,7 +1976,8 @@ export class SolverService {
           `请在 CausalFactor 数据上定唯一入口（把其余非根因子接到入口下游，或标 isRoot）。判据实测：${entryPick.basis}`,
       );
     }
-    if (entryPick.kind === "ok") {
+    // `scopedBaseId` 存在 ⇒ 不进域路由（理由见上「病②」段：域路由没有基地这一维，进去等于把请求吞了）。
+    if (entryPick.kind === "ok" && !scopedBaseId) {
       return await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, entryPick.entryId, domainAdj);
     }
 
