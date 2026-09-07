@@ -15,7 +15,16 @@ const run = async () => {
   const { browser, page } = await launch();
   const reqs = [];
   page.on("request", (r) => {
-    if (/\/a\/v1\/sim\//.test(r.url())) reqs.push({ url: r.url().replace(/^https?:\/\/[^/]+/, ""), body: r.postData() });
+    if (!/\/a\/v1\/sim\//.test(r.url())) return;
+    // ⚠ 请求体**截断到 300 字**：`optimize-pareto` 会把整本订单簿塞进 body，
+    //   原样落盘产出 1.7MB 的证据文件（实测）。本脚本要证的是「带没带 sessionId」，
+    //   而 `sessionId` 恒在 body 开头 —— 截断不影响判据，只砍掉噪声。
+    const raw = r.postData();
+    reqs.push({
+      url: r.url().replace(/^https?:\/\/[^/]+/, ""),
+      body: raw === null ? null : raw.length > 300 ? raw.slice(0, 300) + `…(共${raw.length}字)` : raw,
+      hasSessionId: (raw ?? "").includes("sessionId"),
+    });
   });
 
   await login(page, { user: "admin" });
