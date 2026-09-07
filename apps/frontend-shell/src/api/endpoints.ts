@@ -115,6 +115,7 @@ import type {
 } from "@platform/contracts";
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
 import { api } from "./apiClient";
+import { SYNONYMS_BY_SNO } from "@/config/eventGuidance"; // WO-HOME-ENTRY-FLOW · ⌘K 事件同义词（数据侧补词，面板组件不动）
 // WO-SANDBOX-MEMORY：`GET /a/v1/sim/sessions` 的流式投影（解析前剥掉 285MB 的 baseSnapshot）
 import { readSessionsProjected, type WithoutBaseSnapshot } from "./simSessionsProjection";
 import type {
@@ -1465,8 +1466,44 @@ export interface ScenarioCardVM {
   inactive?: boolean;
   presetContext: { targetView: string; selectedObjects: { objectType: string; objectId: string; label?: string }[]; slotPresets: Record<string, unknown> };
 }
-export const fetchScenarioCards = (includeInactive = false) =>
-  api.b<{ launcherEnabled: boolean; total: number; items: ScenarioCardVM[] }>(`/b/v1/scenarios${includeInactive ? "?includeInactive=true" : ""}`);
+/**
+ * WO-HOME-ENTRY-FLOW · ⌘K 同义词**在数据侧**补进去（面板组件一行不动）。
+ *
+ * **今天的行为（X）**：`CommandPalette` 的检索面是 `[name, triggerQuestion, sNo, summary]` 四个字段
+ *   （见该文件那一行 `.some((s) => s?.toLowerCase().includes(needle))`）。用户嘴里的**业务事件词**
+ *   一个都不在这四个字段里 ⇒ 真浏览器逐词实测：`物料延期`/`延期`/`停机`/`插单` **全 0 命中**
+ *   （金丝雀：同面板 `物料` 3 条、`订单` 4 条 ⇒ 面板是好的，那 4 个 0 是真 0）。
+ * **应该的行为（Y）**：用户打得出的那个事件词，能命中**真能答这件事**的那张卡。
+ *
+ * ⚠ 为什么改这里、不改 `CommandPalette.tsx`：本轮另有 `WO-PALETTE-USABLE` 在改该文件
+ *   （「每点一次只能输一个 ASCII 字符」的焦点 bug），两单同改一个文件必冲突。
+ *   派单原话：「⌘K 同义词**走数据/配置侧**」—— 这里就是那个数据侧：卡片进任何消费方之前的唯一关口。
+ *
+ * ⚠ 为什么拼进 `summary` 而不是新加一个字段：面板**只搜那四个字段**，新字段它一个字都读不到
+ *   （加了等于没加，且是「测试能过、屏上没用」的那种假绿）。`summary` 是四个里唯一
+ *   「可以承载补充说明、且不是主标题」的那个。副作用是它会显示在场景启动器页
+ *   （`ScenarioLauncherPage` 那处 `{c.summary}`）—— 这**不是副作用，是功能**：
+ *   把「这张卡还能用哪些词搜到」直接告诉用户，比藏起来强。
+ *
+ * ⚠ 纯函数、不改原对象：`items` 是 react-query 的缓存对象，原地改会让同一份数据被反复追加
+ *   （「可搜：…可搜：…」越滚越长）。故每次 map 出新对象，且**先剥掉已有的同一段前缀再拼**。
+ */
+const SEARCH_HINT_PREFIX = "　·　可搜：";
+export function enrichScenarioCardsForSearch(items: ScenarioCardVM[]): ScenarioCardVM[] {
+  return items.map((c) => {
+    const syn = SYNONYMS_BY_SNO[c.sNo];
+    if (!syn || syn.length === 0) return c;
+    const base = c.summary.split(SEARCH_HINT_PREFIX)[0];
+    return { ...c, summary: `${base}${SEARCH_HINT_PREFIX}${syn.join(" / ")}` };
+  });
+}
+
+export const fetchScenarioCards = async (includeInactive = false) => {
+  const res = await api.b<{ launcherEnabled: boolean; total: number; items: ScenarioCardVM[] }>(
+    `/b/v1/scenarios${includeInactive ? "?includeInactive=true" : ""}`,
+  );
+  return { ...res, items: enrichScenarioCardsForSearch(res.items ?? []) };
+};
 export const createScenario = (body: Partial<Scenario>) =>
   api.b<Scenario>("/b/v1/scenarios", { method: "POST", body });
 export const updateScenario = (key: string, body: Partial<Scenario>) =>
