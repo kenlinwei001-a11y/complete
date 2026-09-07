@@ -35,6 +35,8 @@ const S5_FIXTURES: { key: string; args: Record<string, unknown> }[] = [
   { key: "plan_rootcause", args: {} },
   { key: "concentration_risk", args: { startType: "Customer", path: [{ viaField: "orderRef", toType: "Order" }] } },
   { key: "margin_attribution", args: { targetType: "Order", revenueField: "revenue", costFields: [{ field: "matCost" }] } },
+  // WO-VULNERABILITY-REI：零入参、静态声明全读取面（5 类）⇒ 声明写错了只有实跑比得出来。
+  { key: "supply_vulnerability", args: {} },
   { key: "metric_rollup", args: {} },
   { key: "cockpit_kpi", args: {} },
   { key: "ksf_graph", args: {} },

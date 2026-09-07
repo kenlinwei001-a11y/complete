@@ -32,10 +32,15 @@ import { SOLVER_CATEGORIES, SOLVER_CATEGORY_META, isSolverCategory, type SolverC
  * 61 → **62**：WO-CAPACITY-EDGE 的 `capacity_ledger`（产能**占用面**：池申报产能 −
  *   Σ `consumes_capacity` 边上的消耗量 = 余量，超载逐条给违约信息。与 `capacity_rollup` 的
  *   **能力面**分工，两者量纲不同——rollup 走 套/日，ledger 走 件/日，差一个 packCellCount 倍）。
+ * 62 → **63**：WO-VULNERABILITY-REI 的 `supply_vulnerability`（**未断但脆弱**：单点与否 + TTR +
+ *   敞口占比）。与既有 `supplier_disruption_radius` 互补而非重复——那个要**先指定** rootId
+ *   （"SUP-001 断了会怎样"），本个不吃入参、逐节点扫全表回答"**我该担心哪个**"。
+ *   三个 `ChainImpediment` kind（BOTTLENECK/CONGESTION/BREAK）全是「已经坏了」的快照态，
+ *   装不下这个结构量，故落成独立求解器而非第四个 kind。
  * ⚠ 本文件的金值**必须与 `ontology-core.test.ts` 同步改**——两处写的是同一个数，
  *   改一处不改另一处会出现「一个文件绿一个文件红」，而先看到哪个纯看运气。
  */
-const SOLVER_TOTAL = 62;
+const SOLVER_TOTAL = 63;
 
 /**
  * 类目 → 成员 的**期望值**（测试侧独立写死一份，与 `SOLVER_CATEGORY_MAP` 对拍）。
@@ -70,6 +75,7 @@ const EXPECTED: Record<SolverCategory, string[]> = {
     "audit_timeline",
     "concentration_risk",
     "supplier_disruption_radius",
+    "supply_vulnerability", // WO-VULNERABILITY-REI：未断但脆弱（该担心哪个），与上一条「指定谁会怎样」互补
   ],
   root_cause_attribution: [
     "yield_diagnosis",

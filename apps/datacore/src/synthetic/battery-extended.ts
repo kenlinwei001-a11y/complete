@@ -168,6 +168,11 @@ export function extendedObjectTypes(): TypeDef[] {
       n("devPct", "dimensionless", "ratio"), n("outsourceYield", "dimensionless", "ratio"),
       p("materialCode", "string"), p("category", "enum"), p("spec", "string"), p("unit", "string"),
       { propKey: "supplierId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier", unit: "dimensionless", scale: "absolute" },
+      // WO-VULNERABILITY-REI · 合格供应商**全集**（主供 + 备份），主供在 [0]，与上一行 `supplierId` 同源同序。
+      // `dataType: "json"` 而非 `ref`：`ref` 在本仓语义是**单值外键**（`refToTypeKey` 只解析一个值），
+      // 拿它装数组会让引用解析器把整个数组 `String()` 成 "SUP-001,SUP-002" 去查主键 ⇒ 恒零命中。
+      // 「有几家能供这个料」是脆弱度的第一判据（单点 vs 多供），压扁成标量后本体里就没有这件事了。
+      { propKey: "supplierIds", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
       n("shelfLife", "天", "absolute"), p("isKeyMaterial", "boolean"), p("status", "enum"),
     ]),
     def("Supplier", "供应商", "supply", [

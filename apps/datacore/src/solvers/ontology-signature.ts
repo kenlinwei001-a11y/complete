@@ -131,6 +131,21 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
   },
 
   /**
+   * WO-VULNERABILITY-REI · supply_vulnerability：读取面**静态可declare**（无入参、全表扫），
+   * 与 `concentration_risk`（读取面由入参决定）相反，故这里直接列全 —— 不写 resolveReads。
+   * `supplierIds` 必须列进 propKeys：它就是本求解器的判据源（少了它 = 退回压扁前的老状态）。
+   */
+  supply_vulnerability: {
+    reads: [
+      { typeKey: "Material", propKeys: ["matId", "name", "unitPrice", "supplierId", "supplierIds", "isKeyMaterial"] },
+      { typeKey: "Supplier", propKeys: ["supplierId", "name", "leadTime", "status"] },
+      { typeKey: "BOMDetail", propKeys: ["bomId", "materialId", "quantity", "lossRate"] },
+      { typeKey: "BOMHeader", propKeys: ["bomId", "modelId"] },
+      { typeKey: "Order", propKeys: ["model", "qty"] },
+    ],
+  },
+
+  /**
    * margin_attribution：读取面由入参决定，且**属性也由入参决定**（revenueField + costFields[].field）
    * → 这是全表唯一能做到入参级精确 propKeys 的一条（主键属性未知 → 连带省略：见下，仍取全属性）。
    */

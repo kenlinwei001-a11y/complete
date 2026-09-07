@@ -365,6 +365,37 @@ export function str(v: unknown, fallback = ""): string {
 }
 
 /**
+ * WO-VULNERABILITY-REI · 引用属性 → **引用值集合**（单值与多值统一成一条口径·跨 solver 复用）。
+ *
+ * ══ 为什么必须有这个函数，而不是各处 `String(props[f])` ═══════════════════════
+ * 本仓的图遍历求解器（`supplier_disruption_radius` / `concentration_risk`）一律写
+ * `String(o.props[viaField] ?? "")` 去和上一层主键比对。该写法**默认引用属性是标量**，
+ * 遇到数组时 `String(["SUP-001","SUP-002"])` 得到 `"SUP-001,SUP-002"` ——
+ * 这个串**永远不等于任何主键** ⇒ 整行被判为"不相关"而静默丢弃。
+ *
+ * 后果不是报错，是**反向的错答**：断供 SUP-002 得到「影响 0 个对象」，
+ * 读起来像"这家供应商没风险"，实际是"我们看不见它供的料"。
+ * `concentrationRisk` 的既有注释已经点名过这一族病叫「静默错答的全清报告」。
+ *
+ * 判据：**空数组与缺字段返回空集**（诚实无引用），不返回 `[""]` —— 那会让空值互相匹配上，
+ * 把两个都没填供应商的对象连成一条假边。
+ *
+ * ⚠ **数字必须照旧转成串**（这条是替换 `String(...)` 时差点丢掉的既有行为）：
+ * 两个调用点（`concentrationRisk` 多跳 / `supplierDisruptionRadius` 逐层命中）原本走
+ * `String(props[f] ?? "")`，主键是**数字**的租户（自增 id）在旧写法下 `String(123)==="123"`
+ * 是能匹配上的。本函数若只认 string，那些租户的链会从「能走」变成「走不通」——
+ * 修一个静默错答的同时制造另一个，且同样不报错。故 string ∪ 有限 number 都收。
+ * 布尔/对象/NaN 不收：`String(true)`/`"[object Object]"` 当主键匹配是巧合不是设计。
+ */
+export function refValues(v: unknown): string[] {
+  const one = (x: unknown): string | null =>
+    typeof x === "string" ? (x === "" ? null : x) : typeof x === "number" && Number.isFinite(x) ? String(x) : null;
+  if (Array.isArray(v)) return v.map(one).filter((x): x is string => x !== null);
+  const s = one(v);
+  return s === null ? [] : [s];
+}
+
+/**
  * WO-BASE-ID-FIDELITY · base 标识符规范化**单一出处**（跨 solver 复用·勿散落）。
  * 认多形态并归一到「裸 base 键」：
  *   - `obj_base_<id>`（synthetic 图节点 id·synthetic/service.ts toId=`obj_base_${baseId}`）→ strip 前缀 → `<id>`

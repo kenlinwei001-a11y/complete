@@ -992,10 +992,25 @@ export class SyntheticService {
       // WO-PROCESS-TICK-COVERAGE 逆边：与上一行**共用同一次遍历**（不是抄一遍派生式）⇒ 两向严格互逆。
       await putLink(`lnk_mha_${ma.altId}`, "material_has_alternative", oid("Material", ma.primaryMaterialId), oid("MaterialAlternative", ma.altId));
     }
-    // supply: Material → Supplier（material.supplierId）
+    // supply: Material → Supplier（material.supplierIds 全集·主供 rank=0）
+    //
+    // WO-VULNERABILITY-REI：此处**曾只写 `supplierId`（=`supplierIds[0]`）一行** ⇒ 全仓
+    // 「哪个料只有一家能供」这件事在本体图上不可见：单点料（`cu_foil`/`al_foil` 各 1 家）与
+    // 双供料在图上**形态完全相同**（都恰好一条出边）。备份供应商（SUP-002/003/005/007/008/009/013）
+    // **一条边都没有** —— 沿图走的任何消费方都读不到它们的存在。
+    // 现按全集逐条物化，并在**边上**记 `rank`/`isPrimary`（主供是谁这件事不丢，仍是 rank=0 那条）。
+    // 纯投影：遍历序跟着 `ext.materials` × `supplierIds` 声明序、无 rng ⇒ R6 字节确定性不动。
     for (const m of ext.materials) {
-      const supplierId = (m as { supplierId?: string }).supplierId;
-      if (supplierId) await putLink(`lnk_msb_${(m as { matId: string }).matId}`, "material_supplied_by", oid("Material", (m as { matId: string }).matId), oid("Supplier", supplierId));
+      const matId = (m as { matId: string }).matId;
+      const ids = (m as { supplierIds?: string[] }).supplierIds ?? [];
+      // 回落：老快照没有 supplierIds 时退回标量单行（**不静默产出 0 行**——那会让本体凭空少一批边）。
+      const list = ids.length > 0 ? ids : [(m as { supplierId?: string }).supplierId].filter(Boolean) as string[];
+      for (const [rank, supplierId] of list.entries()) {
+        // 边 id 带 supplierId 后缀 ⇒ 同一物料的多条边互不覆盖（沿用 `lnk_msb_` 前缀，rank=0 那条
+        // **保持原 id `lnk_msb_<matId>`**，既有引用与快照 diff 不被这次扩容打乱）。
+        const linkId = rank === 0 ? `lnk_msb_${matId}` : `lnk_msb_${matId}_${supplierId}`;
+        await putLink(linkId, "material_supplied_by", oid("Material", matId), oid("Supplier", supplierId), { rank, isPrimary: rank === 0 });
+      }
     }
 
     // WO-INTERBASE-TRANSFER：调拨三条链路（transfer_from_base/transfer_to_base→Base·transfer_of_model→Model·N:1）。
@@ -1122,10 +1137,18 @@ export class SyntheticService {
     // 传导引擎只沿 fromId→toId 走（`sim/propagation.ts` navOut），拿归属边跑影响传导必然走反。
     // 这里按**同一批 FK** 反投影出「上游→下游」的影响边（供应商断供→物料短缺→型号缺料→订单交不出）。
     // 纯投影：遍历序跟着既有边、无 rng/无时钟 ⇒ 同 (industry, scale, seed) 重跑字节一致（R6）。
+    // WO-VULNERABILITY-REI：逆边同样按**全集**物化（与上面正边**共用同一份 `supplierIds`**，
+    // 不另抄一份派生式 ⇒ 两向严格互逆；抄一份迟早漂移，而漂移了不报错）。
+    // ⚠ 这条边是 `simpr_demo_supplier_procurement_to_material` 影响传导规则的 `viaLinkKey`
+    //   （`seed.ts` `demo_supplier_procurement_delay_to_material_shortage`）—— 只写主供那一行时，
+    //   「备份供应商出问题」这一整类扰动在推演里**恒无下游**，看着像"没风险"，实为传导路不存在。
     for (const m of ext.materials) {
-      const supplierId = (m as { supplierId?: string }).supplierId;
       const matId = (m as { matId: string }).matId;
-      if (supplierId) await putLink(`lnk_ssm_${supplierId}_${matId}`, "supplier_supplies_material", oid("Supplier", supplierId), oid("Material", matId));
+      const ids = (m as { supplierIds?: string[] }).supplierIds ?? [];
+      const list = ids.length > 0 ? ids : [(m as { supplierId?: string }).supplierId].filter(Boolean) as string[];
+      for (const [rank, supplierId] of list.entries()) {
+        await putLink(`lnk_ssm_${supplierId}_${matId}`, "supplier_supplies_material", oid("Supplier", supplierId), oid("Material", matId), { rank, isPrimary: rank === 0 });
+      }
     }
     for (const o of g.orders) {
       await putLink(`lnk_mdbo_${o.so}`, "model_demanded_by_order", oid("Model", o.model), oid("Order", o.so));

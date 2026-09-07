@@ -8,7 +8,7 @@ import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
 import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema, BUSINESS_TYPE_LABEL } from "@platform/contracts";
-import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
+import { num, str, dayFrom, normalizeBaseRef, refValues, type SolverContext, type SolverParamsShape } from "./types.js";
 import { CONSTRAINT_KINDS_UPPER, SOLVER_RULE_REFS, type EvaluatedRule, type ObjectConstraintKind, type OrderDeliveryJudge } from "@platform/contracts";
 import { evaluateExpression, parseExpression, collectFieldPaths, collectParamRefs, resolveField } from "../ruledsl.js";
 import { createHash } from "node:crypto";
@@ -28,6 +28,8 @@ import { AUDIT_KIND_LIVE_SOURCES } from "@platform/contracts";
 import { affectedOrders, affectedOrdersAggregate, auditTimeline, bottleneckMatrix, counterfactualTimeline, riskTimeline, type AffectedOrdersArgs, type RiskTimelineArgs } from "./risk.js";
 import { planAudit, planGenerate, type PlanAuditInput, type PlanGenerateArgs } from "./plan.js";
 import { capexScenario, type CapexScenarioArgs } from "./capex.js";
+// WO-VULNERABILITY-REI 供应脆弱度（未断但脆弱）：独立求解器 + 搭 chain_impediments 回包的那一段。
+import { computeSupplyVulnerability, supplyVulnerabilitySection, type VulnInputs } from "./supply-vulnerability.js";
 import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 // WO-69 P2 · Function 本体签名（求解器读/写本体面声明）—— 列级守卫的收窄依据 + DRIL inputSpec 的派生源。
 import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "./ontology-signature.js";
@@ -324,6 +326,10 @@ export const SOLVER_KEYS = [
   "margin_attribution",
   // PRD-fde §8 Q2 单一供应商断供影响半径（净室通用）：反向多跳逐层扇出算扩散半径与叶层敞口。
   "supplier_disruption_radius",
+  // WO-VULNERABILITY-REI 供应脆弱度：**未断但脆弱**（冗余度），与上一个互补 ——
+  // 上一个答「**指定的这个** X 坏了会怎样」（要先知道担心谁），本个答「**我该担心哪个** X」。
+  // 判据是结构量（单点与否 / TTR），不是越线快照，故三个 ChainImpediment kind 都装不下它。
+  "supply_vulnerability",
   // PRD-fde §8d 组合最优化（CP-SAT sidecar 代理）：通用 0/1 选择最优化,贪心给不出的可证最优。
   "selection_optimize",
   // A8.1/8.2/8.3 CP-SAT 可证最优族：指派(订单→基地)/排序(换型)/装箱(产能填充)
@@ -527,6 +533,7 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   concentration_risk: ["concentrations", "topExposure", "summary"],
   margin_attribution: ["inverted", "rootDrivers", "invertedCount", "summary"],
   supplier_disruption_radius: ["rootType", "rootId", "layers", "radius", "totalAffected", "leafType", "leafCount", "summary"],
+  supply_vulnerability: ["suppliers", "materials", "ranking", "counts", "topBySpendOnly", "summary"],
   selection_optimize: ["status", "optimal", "selected", "totalValue", "totalWeight", "itemType", "budget", "candidateCount", "summary"],
   assignment_optimize: ["status", "optimal", "assignments", "objective", "itemType", "binType", "itemCount", "binCount", "summary"],
   sequencing_optimize: ["status", "optimal", "sequence", "changeovers", "objective", "jobType", "jobCount", "summary"],
@@ -609,7 +616,9 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // WO-SANDBOX-S3 追加三键：candidateStats（每点探了几个杠杆/为什么没方案的逐点账）·
   // candidatesTruncated（探针预算耗尽的显式截断标）· candidateProbes（试算次数）。
   // 三者都是**诚实位**：漏进形状契约 = 前端看不见"为什么这个阻滞点没有方案"，那就是新一种盲区。
-  chain_impediments: ["scanId", "scope", "impediments", "counts", "unresolved", "caveats", "thresholds", "candidateStats", "candidatesTruncated", "candidateProbes"],
+  // WO-VULNERABILITY-REI：+`supplyVulnerability` —— **未断但脆弱**那一段（三个 kind 装不下的结构量）
+  // 搭这条既有回包出屏，不另开页。段内自带 `scoped:false`/`available` 两个诚实位。
+  chain_impediments: ["scanId", "scope", "impediments", "counts", "unresolved", "caveats", "thresholds", "candidateStats", "candidatesTruncated", "candidateProbes", "supplyVulnerability"],
   // WO-FLOWTIME 流程实例流转时长。诚实位一律进形状（漏一个 = 前端只看得见好消息）：
   //  · `absences` 反推不出的那批（四种 kind + 缺哪种单据 + 复验探针）——与 chain_impediments 的
   //    `unresolved` 同族纪律：算不出来要能被渲染出来，不是被当成 0 隐掉；
@@ -1459,8 +1468,12 @@ export class SolverService {
     for (const s of starts) {
       let cur: ObjectInstance | undefined = s;
       for (const hop of path) {
-        const refVal = String(cur!.props[hop.viaField] ?? "");
-        cur = idxByType.get(hop.toType)!.get(refVal);
+        // WO-VULNERABILITY-REI：多值引用取**首个可解析**值（确定性：按属性内声明序，主供在 [0]）。
+        // 旧写法 `String(props[f] ?? "")` 遇数组恒解析失败 ⇒ 该起点被当作"断链"整条丢弃，
+        // 集中度于是漏掉所有走多供路径的依赖方。这里**不**扇出成多条路径：本求解器的语义是
+        // 「每个起点收敛到**一个**根」，扇出会让同一个起点被计进多个根、把 count 算重。
+        const nextRef: string | undefined = refValues(cur!.props[hop.viaField]).find((v) => idxByType.get(hop.toType)!.has(v));
+        cur = nextRef === undefined ? undefined : idxByType.get(hop.toType)!.get(nextRef);
         if (!cur) break;
       }
       if (!cur || cur === s) continue;
@@ -4427,7 +4440,28 @@ export class SolverService {
     // WO-SANDBOX-S3：一等关系行是候选枚举器 `LINK_HOP` join 的**唯一**可达面来源（改种子里的关系，
     // 可达面自动跟着变；代码里没有第二张"类型对照表"）。判定逻辑不读它，故对 E3 的判定结果零影响。
     const links = await this.repos.links.list(ctx.tenantId, () => true);
-    return detectChainImpediments({ c, materialBalances, links, scope: parsed.data });
+    const scan = detectChainImpediments({ c, materialBalances, links, scope: parsed.data });
+    // WO-VULNERABILITY-REI 第 3 件 · **未断但脆弱**搭既有回包出屏，不另开页。
+    //
+    // 为什么挂这里：这一页问的是「今天哪里出问题了」，而「明天最可能从哪里出问题」是同一个
+    // 决策的另一半 —— 三个 kind（BOTTLENECK/CONGESTION/BREAK）全要求**越线已经发生**，
+    // 结构上装不下「读数完全正常但没有备份路径」这一态。分居两页 = 逼用户自己去关联。
+    //
+    // 零额外 IO：`loadContext(withExtended)` 已经把 Material/Supplier/BOM 拉进 `c`，
+    // `orders` 是 SolverContext 的核心字段 ⇒ 不多打一次仓储，也不改宿主求解器的判定结果。
+    // 空 Material ⇒ 段内 `available:false` 明说「未评估」，**不把宿主拖红**（见 section 头注）。
+    return {
+      ...scan,
+      supplyVulnerability: supplyVulnerabilitySection(
+        SolverService.vulnInputs({
+          materials: c.materials ?? [],
+          suppliers: c.suppliers ?? [],
+          bomDetails: c.bomDetails ?? [],
+          bomHeaders: c.bomHeaders ?? [],
+          orders: c.orders,
+        }),
+      ),
+    };
   }
 
   /**
@@ -4707,7 +4741,11 @@ export class SolverService {
       const objs = await this.repos.objects.listByType(ctx.tenantId, layer.type);
       const tdef = (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === layer.type))[0];
       const pk = tdef?.properties.find((p) => p.isPrimaryKey)?.propKey;
-      const hit = objs.filter((o) => frontier.has(String(o.props[layer.viaField] ?? "")));
+      // WO-VULNERABILITY-REI：`refValues` 取代 `String(props[f] ?? "")` —— 引用属性可能是**多值**
+      // （`Material.supplierIds` 就是）。旧写法把数组 `String()` 成 "SUP-001,SUP-002"，
+      // 与任何主键都不等 ⇒ 备份供应商断供恒回「影响 0 个对象」的**静默全清报告**。
+      // 命中判据改为「该对象的引用值集合与 frontier **有交集**」。
+      const hit = objs.filter((o) => refValues(o.props[layer.viaField]).some((v) => frontier.has(v)));
       const ids = hit.map((o) => String((pk ? o.props[pk] : undefined) ?? o.id)).sort();
       result.push({ type: layer.type, viaField: layer.viaField, count: ids.length, ids });
       if (ids.length > 0) radius += 1; // 半径 = 实际穿透到的层数
@@ -4725,6 +4763,71 @@ export class SolverService {
       leafType: leaf?.type ?? null,
       leafCount: leaf?.count ?? 0,
       summary: `断供「${rootId}」影响半径 ${radius} 层、波及 ${totalAffected} 个对象；叶层 ${leaf?.type ?? "—"} ${leaf?.count ?? 0} 个`,
+    };
+  }
+
+  /**
+   * WO-VULNERABILITY-REI · **供应脆弱度**：按供应商节点与物料算「未断但脆弱」（单点与否 + TTR + 敞口占比）。
+   *
+   * 与 `supplier_disruption_radius` **互补而非重复**：
+   *  · 那一个要**先指定** `rootId`（"SUP-001 断了会怎样"）—— 前提是你已经知道该担心谁；
+   *  · 本个**不需要入参**，逐节点扫全表回答"**我该担心哪个**" —— 这正是三个 kind 装不下的那一态。
+   *
+   * ⚠ 必须按**供应商节点**算，不能逐物料看：`pos_ncm` 与 `pos_lfp` 各自都"有二供"，
+   * 逐物料看两个都不单点；但两者**共用 SUP-001** ⇒ 这一家断供，两种正极同时失去主供。
+   * 这条相关性只有把供应商当节点、把料聚到它名下才看得见。
+   *
+   * args: 无（全表扫）。R6 确定：纯读 + 纯函数计算，无 rng 无时钟。
+   */
+  private async supplyVulnerability(ctx: AuthCtx, _args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const [materials, suppliers, bomDetails, bomHeaders, orders] = await Promise.all([
+      this.repos.objects.listByType(ctx.tenantId, "Material"),
+      this.repos.objects.listByType(ctx.tenantId, "Supplier"),
+      this.repos.objects.listByType(ctx.tenantId, "BOMDetail"),
+      this.repos.objects.listByType(ctx.tenantId, "BOMHeader"),
+      this.repos.objects.listByType(ctx.tenantId, "Order"),
+    ]);
+    // 诚实空：没有物料就没有脆弱度可言，**不回落到"零风险"**（那会与"真的没风险"混为一谈）。
+    if (materials.length === 0) throw validationError("supply_vulnerability 需先合成 Material");
+    const res = computeSupplyVulnerability(
+      SolverService.vulnInputs({ materials, suppliers, bomDetails, bomHeaders, orders }),
+    );
+    return { ...res };
+  }
+
+  /**
+   * WO-VULNERABILITY-REI · 对象行 → 脆弱度入参的**唯一**转写。
+   *
+   * 刻意做成静态方法而不是在两个调用点各写一遍：独立求解器（`supply_vulnerability`）与
+   * 搭车段（`chain_impediments.supplyVulnerability`）**必须吃同一份口径** ——
+   * 抄两份的话，哪天 `supplierIds` 的读法改了而只改一处，两条路会给出**不同的脆弱清单**，
+   * 且两边都是绿的。这正是本仓「金丝雀必须与主逻辑共用同一份实现」那条纪律的同族要求。
+   */
+  private static vulnInputs(o: {
+    materials: ObjectInstance[];
+    suppliers: ObjectInstance[];
+    bomDetails: ObjectInstance[];
+    bomHeaders: ObjectInstance[];
+    orders: ObjectInstance[];
+  }): VulnInputs {
+    return {
+      materials: o.materials.map((m) => ({
+        matId: str(m.props.matId, m.id),
+        name: str(m.props.name),
+        unitPrice: num(m.props.unitPrice),
+        supplierId: str(m.props.supplierId),
+        supplierIds: m.props.supplierIds,
+        isKeyMaterial: m.props.isKeyMaterial === true,
+      })),
+      suppliers: o.suppliers.map((s) => ({
+        supplierId: str(s.props.supplierId, s.id),
+        name: str(s.props.name),
+        leadTime: num(s.props.leadTime),
+        status: str(s.props.status),
+      })),
+      bomDetails: o.bomDetails.map((d) => d.props),
+      bomHeaders: o.bomHeaders.map((h) => h.props),
+      orders: o.orders.map((r) => r.props),
     };
   }
 
@@ -6081,6 +6184,9 @@ export class SolverService {
     // 照 finance_pnl / chain_impediments 兄弟模式先于通用 loadContext 拦截。
     if (solverKey === "finance_world_projection") return this.financeWorldProjection(ctx, args);
     if (solverKey === "supplier_disruption_radius") return this.supplierDisruptionRadius(ctx, args);
+    // WO-VULNERABILITY-REI：读 Material×Supplier×BOM×Order 对象图（非电池 context），
+    // 照 supplier_disruption_radius 兄弟模式先于通用 loadContext 拦截。
+    if (solverKey === "supply_vulnerability") return this.supplyVulnerability(ctx, args);
     // WO-SANDBOX-E1 环节级损失归因（沿本体链路 hop 读对象图 + 链路，非 compute() 的电池 context），
     // 照 sop_reschedule/order_fullchain 兄弟模式先于 loadContext 拦截。
     if (solverKey === "chain_loss_attribution") return this.chainLossAttribution(ctx, args);

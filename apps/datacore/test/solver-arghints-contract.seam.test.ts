@@ -177,6 +177,13 @@ const NOT_DRIVEN: Record<string, string> = {
   chain_impediments:
     "需电池 SolverContext（`service.ts:4377` loadContext withExtended）+ MaterialBalance 对象，本夹具没有；" +
     "其唯一目录键 `scope` 已追一层确认真被读（`service.ts:4366` `args.scope`）且为可选 ⇒ 不属本单缺陷。",
+  supply_vulnerability:
+    "WO-VULNERABILITY-REI · **零入参**求解器（目录 `argHints: {}`，实现 `supplyVulnerability(ctx, _args)` " +
+    "一个 `args.*` 都不读）⇒ 本文件的判据「按目录键切片 → 不许 VALIDATION_ERROR」在它身上**恒真**，" +
+    "驱动了也验不出任何东西——把它塞进真值组只会给覆盖率添一条空转的绿。" +
+    "另一半理由是夹具：它首行即 `listByType('Material')`，0 条就 throw，而本夹具是纯净室图" +
+    "（`AhMaterial`/`AhSupplier`…），**没有** `Material` 类型。真实驱动在 " +
+    "`test/supply-vulnerability.seam.test.ts`（电池种子 + 四格对照实验）。",
   // 下面这一族：无 CP-SAT sidecar 时求解器在**参数校验通过之后**另抛一条
   // 「未接入最优化引擎（设 OPTIMIZER_BASE_URL）」的 VALIDATION_ERROR（如 `service.ts:4692`）
   // ⇒ 本文件「不许是 VALIDATION_ERROR」这个判据在它们身上**分辨不了「漂移」与「没 sidecar」**，
