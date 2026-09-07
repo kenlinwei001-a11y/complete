@@ -2236,6 +2236,124 @@ materializeDeclaredLinks：carriers.filter(谓词) → 再走原有「取 props[
 **那组数证明不了谓词做了任何事** —— 8 完全是 `viaProperty` 一个人干的，正是「接了线没数据」那一态。
 故该例先把一行 grid 因子的 `key` 改成真 matId，让有/无谓词在同一份数据上真的分叉（9 vs 8）再断言。
 
+#### 结构边物化 · 算端点 `viaKeyExpr` / anchor 侧谓词 `viaWhereTo` / 叉积 `viaCross`（WO-COMPUTED-EDGE-IMPL · 2026-09-07）
+
+上一节的「诚实边界」列了 `viaWhere` 治不了的四类形态。**本节把其中三类收掉，第四类（多态目标）改用拆边解决。**
+挂载点仍是 `materializeDeclaredLinks`，四种实现形态（`viaProperty` / `viaBridge` / `viaKeyExpr` / `viaCross`）
+**互斥二选一**，同时声明两种在写入期 400。
+
+```
+{ key, fromTypeKey, toTypeKey, cardinality,
+  viaProperty? | viaBridge? | viaKeyExpr? | viaCross?,     ← 四选一，互斥
+  viaSide?, anchorProperty?, viaMultiValue?,
+  viaWhere?,      ← carrier 侧谓词（上一节）
+  viaWhereTo? }   ← anchor 侧谓词（本节新增，属性形态与叉积形态共用）
+     ↓
+materializeViaProperty：carriers.filter(viaWhere) → 键 = 读 props[viaProperty] **或** 算 viaKeyExpr
+                        → 查 buildAnchorIndex(anchors.filter(viaWhereTo))
+materializeViaCross   ：from.filter(fromWhere) × to.filter(toWhere)，**先算乘积再决定写不写**
+```
+
+**① `viaKeyExpr`（算端点）** —— 求值器复用 **`ontology-dsl.ts`**（A4 派生属性那一份，`parseFormula` + `evaluate`
+返回 `Scalar`），**不是** `viaWhere` 用的 `ruledsl.evaluateAst`（那份返回 `boolean`，天生产不出 key）。
+`Ast` 里 `if` / `string` / `cmp` 都是现成的 ⇒ **一个 AST 节点都没加**。
+算出的键走**同一个** `buildAnchorIndex`（含 `anchorProperty` 与 `ambiguousAnchors`），不另写索引。
+**回执必给键分布** `keyExprDistinctKeys` —— 把算端点做成机制等于把「算错了」搬进声明，而声明在数据库里、
+不在 diff 里；`distinct === 1` 就是「所有行塌到同一个锚点」在物化那一刻唯一可见的形态。
+`keyExprNullRows`（公式算不出键的行）与 `unresolved`（算出了键但查无锚点）**分开计**：两者修法不同。
+
+**② `viaWhereTo`（anchor 侧谓词）** —— 与 `viaWhere` 共用同一份 `compileLinkPredicate`，只是换 anchor 侧
+类型与属性表去校验。它是 **`viaCross` 的前置**：叉积没有外键可依，两侧谓词是唯一的收窄手段。
+
+**③ `viaCross`（叉积）+ 强制边数预算 `maxEdges`** —— 叉积是全仓唯一一种**边数不由数据量线性决定**的声明
+（`Order`(500) × `OrderLine`(873) 一条声明 = 436,500 条边）。故：两侧先各自筛完、各取真实计数，
+乘积超 `maxEdges` ⇒ **当场 400，一条边都不写**（事后统计意味着 43 万条已经写进去了），
+报文里带三个实算的数（|from| / |to| / 乘积）。
+**边 id 定死为 `lnk_cross_${key}_${fromId}_${toId}`，不含任何序号** —— 属性形态那个 `_${i}` 后缀在叉积里
+会变成「anchor 在 `listByType` 返回序里的位置」，仓储遍历顺序一变边 id 全变而**边数不变、四包全绿**，
+是「排序塌成 id 序」的同族静默病。
+
+**对照实验（真后端 `SEED_DEMO=1`，修前=`ec1e707c` 修后=本单，同一份探针跑两棵树）**：
+
+| 边（声明式等价物） | 修前 created / 检索 | 修后 created / 检索 | 限界证据 |
+|---|---|---|---|
+| `plantarget_ownedby`（`viaKeyExpr` 条件常量） | 0 / 0 | **17 / 17**，`keyExprDistinctKeys=2` | — |
+| `model_in_segment`（`viaKeyExpr` 枚举映射） | 0 / 0 | **6 / 6**，`distinct=2`（pas 4 · ess 2） | — |
+| `line_belongs_to_workshop`（补列 + `viaProperty`） | **400**（`Line` 无 `workshopId`） | **130 / 130** | — |
+| `order_to_plantarget`（补列 + `anchorProperty` + `viaWhereTo`） | **400**（`Order` 无 `dueMonth`） | **458 / 458**（`unresolved=42`） | — |
+| `base_data_health`（`viaCross`） | 0 / 0 | **117 / 117** | 候选 13×9=117 → 边 117（无谓词） |
+| `scenario_to_capex`（`viaCross` + `fromWhere`） | 0 / 0 | **6 / 6** | 候选 3×3=9 → `fromWhere` 筛 conservative → 2×3=**6** |
+
+🐤 金丝雀（同一把尺子）：`viaProperty:"baseId", viaSide:"to"` 在两棵树上都连出 **130** 条 ⇒ 上表的 0 是真的 0。
+
+**新增两列（「补列」而非「加语法」的两条）**：`Line.workshopId`（ref→Workshop）与 `Order.dueMonth`（`YYYY-MM`）。
+两者的值在生成侧本来就是现成变量/现成截断，落成列只是把归属如实写下来 —— 与 `Metric.ownerRef` 同一个建模习惯。
+⚠ `order_to_plantarget` 刻意**不**走表达式：`ontology-dsl` 的 `binary "+"` 两侧强制转数，
+`"PT-" + this.period` 求值为 `null` 而**不报错**，会静默造一条 0 实例的死边。
+
+**接缝门**：`apps/datacore/test/linktype-computed-edge.seam.test.ts`（6 节）——
+金丝雀 + 修前 0 + 键分布 + **反向对照（改被表达式读的那一列 ⇒ 边必须换端点，改回来必须复现）** +
+叉积限界与超预算不写边 + anchor 谓词的**危害注入式**对照 + 五条溯源边与映射表逐条对齐 + 六种哑弹写法 400。
+**变异反证实跑三次**：屏蔽 anchor 谓词 ⇒ §4 红；把算出的键写死 ⇒ §1/§2 红；关掉边数预算 ⇒ §3 红。
+
+#### 异常溯源边 · 一条多态边 → 五条定型边（WO-COMPUTED-EDGE-IMPL 裁决③ · 2026-09-07）
+
+**今天的行为 X**：`exc_sourced_from` 声明 `ExceptionEvent → EquipmentDowntime`（单值 `toTypeKey`），
+而实例的目标类型**随 `ExceptionEvent.refType` 变**（5 源）。`executeSlice` 按声明的单值 `toTypeKey` 裁剪可达类型
+⇒ 真后端实测：**372 条实例写进了 `repos.links`，检索只看得见 166 条**
+（`{nodes:538, edges:166, truncated:false}`），另 **206 条**（`EquipmentAlarm` 111 · `DefectRecord` 85 ·
+`MaterialBalance` 7 · `TriggerRule` 3）**写进去了永远读不出来，且不报错**。
+**应该的行为 Y**：五个目标类型 = **五条边**，每条一个固定 `toTypeKey`，声明不再说谎。
+
+- 原 key `exc_sourced_from` **原地留给 `EquipmentDowntime`** ⇒ 既有消费方看到的 166 条一个字节不变；
+  新增 `exc_sourced_from_alarm` / `_defect` / `_balance` / `_trigger` 四条（**+4 不是 +5，也不是改名**）。
+- 用户自建时**五种声明今天就够**：`viaProperty:"refId", viaWhere:"ExceptionEvent.refType == '<X>'"` —— **零新机制**。
+- 不让 `toTypeKey` 随行变的理由：那要改 `LinkTypeDef` 的**类型契约**（`executeSlice.mustIncludeTypes` 断言、
+  物化时 `anchorTypeKey` 的单值取用都建立在「一条边两端类型确定」上），代价与收益不成比例。
+- `refType → linkKey` 的**唯一出处**是 `battery.ts` 的 `EXC_SOURCE_LINKS`；类型声明侧刻意写成**字面量五行**
+  （B 侧镜像门的抽取器是对源文件跑文本正则，`...map()` 展开它一条都看不见 ⇒ 会把 +4 读成 −1），
+  两处的一致性由接缝门 §5 逐条断言。
+- **金值同步**：B 侧镜像 `MOCK_ONTOLOGY_LINKS` 补四条，`mock-engine-parity` 链路数 **111 → 115**
+  （独立复算：另写脚本不 import 该测试的抽取器，两侧各跑同一正则求差集 ⇒ base 树 111/111、本单树 115/115、
+  missing [] / extra []）。类型数不动（仍 63）。
+
+#### 型号 → 细分：一条**退化边**的修复（`model_in_segment` · 2026-09-07）
+
+**今天的行为 X**：端点由 `modelId.includes("S192") ? "ess" : includes("L148") ? "com" : "pas"` 算出，
+而 `MODELS` 全表 6 型**没有任何一个 modelId 含这两个子串** ⇒ **6 条边全落 `pas`，两个分支从未进入过**。
+边有实例、检索遍历得到、四包全绿 —— 三个细分坍缩成一个，没有任何东西会红（铁律 0.5 第二态「接了线没数据」，
+也是铁律 1.5 说的第四态：接对了、跑通了、但算错了）。
+`S192-LFP`/`L148-LFP` 的真出处是求解器参数 `problems.essModels`/`comModels`，**不是 `Model` 目录**。
+
+**应该的行为 Y**：型号归段由用途位 `pos` 决定 —— 这不是新口径，而是 `Model.unitPrice` 早已在用的那一条。
+两处从此共用 `segKeyOfModelPos()` 单一出处（定价说这个型号是储能、图上说它是乘用车，是同一个问题的第二个答案，
+比缺一条边危险）。修后实测：`{pas: 4, ess: 2}`。
+
+**`com` 分支删掉而不是补数据**：型号表 `pos` 的取值域只有 动力 / 储能 / 动力+储能，**一个商用都没有**
+（`orderUnitPriceOf` 头注早已记下「`SEG_REGISTRY.com` 声明的 1.8 万元/套零个承载者」）。
+商用车细分在本仓由**买方业态**判定（`customerSegKeyOf` / `segKeyOfBusinessType`，走 `Order.businessType`），
+**不由型号判定** ⇒ 型号侧留一个 `com` 分支就是留一个永远进不去的分支。
+
+#### 型号用料的两个答案 → 口径归一（`model_uses_material` · 2026-09-07）
+
+**今天的行为 X**：同一个业务问题「这个型号用哪些料」，图上有**两个都在被消费的答案**：
+- **捷径边** `model_uses_material` / `material_used_by_model`：物料集由一句模运算 `matIds[(mi*2+k) % 8]` 算出，
+  **每型号 4 种**，与 BOM 表毫无关系。消费方：8 条切片 + `chain-loss` 求解器 + 两条传导规则的 `viaLinkKey`。
+- **BOM 四跳链** `version_belongs_to_model` → `bom_belongs_to_version` → `detail_belongs_to_bom` → `detail_uses_material`：
+  四跳**全通、五种声明够用**，走 `BOM_ITEM_TEMPLATES`（8 行模板，按化学体系跳掉对侧正极）⇒ **每型号 7 种**。
+  消费方：`order_to_material_bom` 切片 + `Model.unitCost`。
+
+**应该的行为 Y**：**留 BOM 表、废模运算** —— 捷径边改为**从 BOM 链派生**
+（`BOMHeader.modelId → BOMDetail.bomId → BOMDetail.materialId`，多版 BOM 取并集后去重）。
+边 key / 方向 / 端点类型**一个字节没改**（全部消费方原地生效），变的只是它算的是哪一份物料集。
+实测：**24 条（4/型号）→ 42 条（7/型号）**，正逆两向共用同一个集合、不可能只改一半。
+
+**三种没有采纳的改法，各自的理由**：
+- **给 `BOMDetail` 加 `modelId`**：不该。它的父 `BOMHeader` 已有 `modelId`，明细行再挂是**冗余外键**，
+  两处一旦不同步就是第三个真相。
+- **造「多跳桥链」机制**：四跳链今天就全通，缺的不是机制；造新机制只会**再生出第三个答案**。
+- **直接退役捷径边**：要改 8 条切片 + 2 条传导规则的 `viaLinkKey`，属另一张单；且一跳答「用哪些料」本身有价值。
+
 ### 产能占用链路 · 产能池 → `consumes_capacity` 边上的量 → 余量/超载（WO-CAPACITY-EDGE · 2026-09-06）
 
 **一句话**：产能从「产线上的一个标量」升格成**可被指向、可被消耗的一等对象**（`CapacityPool`），
