@@ -1790,14 +1790,27 @@ export class SyntheticService {
         },
         // cockpit P1 富 KPI（数字经合成 DemandSegment/FinancePlan/MaterialBalance + 派生/聚合算出，前端零写死 R14；R13 溯源）。
         {
+          // WO-REVENUE-RECONCILE：本卡是①②两个营收的**共同分母**（① = 供给量×P̄、② = 本卡×P̄），
+          // 口径写在屏上，读者才追得到「为什么那两个营收差一截」= 供给缺口，不是记账错误。
           key: "demand-p50", type: "kpi", title: "需求 P50 (万套/年)", unit: "万套/年", featureKey: "view.dash.widget.demand",
           query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "demandWanPerYearP50" },
+          caption: "需求预测口径 · 三细分 P50 中位情景合计，非在手订单量（订单簿口径见「在手订单」卡）",
           provenance: { toolName: "query_objects", outputPath: "$.sum(demandWanPerYearP50)", label: "三细分需求 P50 合计（万套/年）" },
         },
         {
+          /**
+           * WO-REVENUE-RECONCILE ·「毛利」这个词**屏上有两个数，口径完全不同**，故本卡必须自报家门：
+           *  · 本卡 **118.85 亿** = `Σ(需求 P50 × 单价 × 毛利率)` —— **需求预测口径**，全年、全需求、
+           *    含成本（隐含毛利率 ≈17%，与 `GOAL_REGISTRY.gm_rate` 同档）；
+           *  · 方案寻优页最优解 **250.60 亿** = `Σ获排 OrderLine 营收 − 指派成本` —— **订单行口径**，
+           *    只含被排上的 355/873 行，且成本侧只有占线费 + 料费（实测毛利率 **96.70%**，
+           *    因 `OrderLine.unitCost` 是**元/电芯**而 `qty` 计的是**套**，量纲不同阶）。
+           * 两个数都叫「毛利」而差 2.1 倍，屏上不写口径，读者只能读成有一个算错了。
+           */
           key: "gross-margin", type: "kpi", title: "毛利总额 (亿)", unit: "亿", featureKey: "view.dash.widget.demand",
           query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "marginWan" },
-          provenance: { toolName: "query_objects", outputPath: "$.sum(marginWan)", label: "Σ(需求×单价×毛利率) 派生回写" },
+          caption: "需求预测口径 · Σ(细分需求 P50 × 单价 × 毛利率)，全年全需求含成本；与方案寻优页「毛利」（仅获排订单行）不同口径",
+          provenance: { toolName: "query_objects", outputPath: "$.sum(marginWan)", label: "Σ(需求×单价×毛利率) 派生回写（需求预测口径·非订单行寻优毛利）" },
         },
         {
           key: "material-gap", type: "kpi", title: "物料现货缺口 (吨)", unit: "吨", featureKey: "view.dash.widget.material",
@@ -1811,9 +1824,23 @@ export class SyntheticService {
           provenance: { toolName: "invoke_solver", outputPath: "$.supplyV7", label: "最终版 SopVersionRow.supply（S&OP 定稿可供给）" },
         },
         {
+          /**
+           * WO-REVENUE-RECONCILE ② ·「**分子分母同源，故本卡结构上恒定**」——口径必须写在屏上。
+           *
+           * 实测（真后端 `SEED_DEMO=1`，订单簿 500 单 / 100 单**两次取数**）：本卡恒读 **102**。
+           * 不是巧合，是恒等式：`budget = round(totalRev × 0.98, 1)`、`rolling = round(totalRev, 1)`
+           * （两行同出 `battery.ts` 的 `fin-rev`）⇒ `rolling ÷ budget ≡ 1/0.98 = 102.04%`，
+           * **与 totalRev 取什么值无关**。把订单簿砍到 1/5，本卡逐字节不动（hash 两轮相同）。
+           *
+           * ⚠ 这一句不许省：读者会把「收入达成率 102%」读成「今年收入超额完成 2 个点」，
+           * 而它实际只是**预算按 98% 编制**这一条编制口径的复读 —— 数字是对的，**读法是错的**，
+           * 缺的正是这一行。真正的达成率要等 `rolling` 换成**已实现营收**（订单簿口径）才成立，
+           * 那属另一张单（改 `rolling` 会动 `FinancePlan` 全族金值，见本单报告 ②-b）。
+           */
           key: "rev-attain", type: "kpi", title: "收入达成率", unit: "%",
           query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "revAttainPct" },
-          provenance: { toolName: "invoke_solver", outputPath: "$.revAttainPct", label: "FinancePlan 收入行 rolling÷budget×100" },
+          caption: "计划编制口径：滚动预测 ÷ 年度预算，二者同源于年度需求锚（预算＝需求锚×98%）⇒ 本卡不随订单簿变动",
+          provenance: { toolName: "invoke_solver", outputPath: "$.revAttainPct", label: "FinancePlan 收入行 rolling÷budget×100（同源比值·非已实现营收达成）" },
         },
         {
           key: "util-peak", type: "kpi", title: "利用率瓶颈 (峰)", unit: "%",
@@ -1824,10 +1851,20 @@ export class SyntheticService {
           /**
            * WO-DASH-ONHAND ③ ·「**只标注，不对齐**」。
            *
-           * 实测同屏两个营收差 94.24 亿（15.7%）：本卡 **601.50 亿**（`cockpit_kpi.aopBaseRev`）
-           * vs 全簿 Σ`Order.value` **507.26 亿**。⚠ **两个都对，它们本来就不是一个账**：
+           * 实测同屏两个营收差 146.86 亿（24.4%）：本卡 **601.50 亿**（`cockpit_kpi.aopBaseRev`）
+           * vs 全簿 Σ`Order.value` **454.64 亿**。⚠ **两个都对，它们本来就不是一个账**：
            *  · 601.50 亿 = **年度计划口径**（baseline 年度情景 revenue = AOP 基准，盖全年 12 个月）
-           *  · 507.26 亿 = **订单簿口径**（已签订单加总，含已交付 + 在手，时间覆盖 2025-12 → 2026-12）
+           *  · 454.64 亿 = **订单簿口径**（已签订单加总，含已交付 + 在手，时间覆盖 2025-12 → 2026-12）
+           *
+           * ⚠ **WO-REVENUE-RECONCILE 订正（照铁律 0.6 第 5 条回写）**：本段原文写死 **507.26 亿**
+           * （`sum_value = 50,725,911,442`），**该数已过期**，且它是本仓派单前提被引用过的数。
+           * 今日实测 `sum_value = 45,464,327,004`（= **454.64 亿**），差 **−10.4%**。
+           * 逐层追因：单量**几乎没动**（`sum_qty` 2,421,222 → 2,436,095，+0.61%），
+           * 动的是**单价** —— 隐含均价 20,950.54 → **18,662.79 元/套**（−10.9%），
+           * 落到需求加权 P̄ **18,666.67 元/套**（= `Σ(P50×price)/ΣP50`）的 **0.02%** 以内。
+           * ⇒ 这不是回归，是订单单价被对齐到了需求侧 P̄（口径收敛）。**改的是账不是代码。**
+           * 复验：`POST /a/v1/objects/aggregate {"typeKey":"Order","groupBy":[],
+           * "metrics":[{"prop":"value","fn":"sum"},{"prop":"qty","fn":"sum"}]}`。
            * 把任何一个改成另一个都是把一个真事实抹掉。要做的是让屏上**说清每个数是什么口径** ——
            * 屏上不写，读者就只能读成「同一个词一屏两个值」（PRD-decision-mainline U1/U4 那条老账）。
            */
@@ -1844,9 +1881,27 @@ export class SyntheticService {
         // SPINE.4 经营指标条（视图绑定迁移：驾驶舱 KPI 读 Metric 单一出处 R-一致）。metric_rollup 对齐目标树
         // 算 target/actual/delta/miss，前端零写死（R14）；越线红标，与各视图同一 Metric（一处事实一处出处）。
         {
+          /**
+           * WO-REVENUE-RECONCILE ② ·「**实际**」这一栏的口径必须写在屏上。
+           *
+           * 本条上的 `Metric.kpi-revenue` 标题写「营收」、栏位写「实际」，而实测它的 `actual`
+           * **不是已实现营收**，是 `Σ(DemandSegment.demandWanPerYearP50 × priceWan)`
+           * = **年度需求 P50 预测**（`battery.ts` 的 `goalMetric("kpi-revenue","revenue", totalRev)`）。
+           *
+           * 实测证据（真后端，订单簿 500 单 → 100 单）：`actual` 两轮均为 **700**，hash 逐字节相同；
+           * 同一改动下订单簿 Σ`Order.value` 从 **454.64 亿 → 107.81 亿**（−76.3%）。
+           * ⇒ **把订单砍掉四分之三，「营收·实际」一分不少** —— 它度量的不是已发生的生意。
+           *
+           * 且 `target` 取自 `GOAL_REGISTRY.revenue.target = 700`，与 `actual` 恰好同值 ⇒
+           * 达成率**结构上恒为 100.0%**，永远不会越线。**一个永远不会报警的指标不是指标。**
+           *
+           * ⚠ 本单按工单裁决**只标口径不改数**：把 `actual` 换成订单簿口径会动 `metric_rollup`
+           * /`plan_rootcause`/目标树全族金值，属另一张单（见报告 ②-a）。
+           */
           key: "metric-strip", type: "metric-strip", title: "经营指标（目标 vs 实际 · 单一出处）", span: 2, featureKey: "view.dash.widget.metric",
           query: { kind: "solver", solverKey: "metric_rollup", args: { level: "op" }, valuePath: "metrics" },
-          provenance: { toolName: "invoke_solver", outputPath: "$.metrics", label: "metric_rollup：Metric 对齐目标树算 delta/miss（各视图 KPI 单一出处）" },
+          caption: "「实际」＝年度需求锚口径（Σ 细分需求 P50 × 单价）的滚动预测值，非已签订单或已交付金额；故本条不随订单簿增减而变",
+          provenance: { toolName: "invoke_solver", outputPath: "$.metrics", label: "metric_rollup：Metric 对齐目标树算 delta/miss（「实际」为需求锚预测口径·非订单簿实收）" },
         },
         // cockpit P2 规划决策推演 · 根因 DAG（KPI 越线 → 因子 → 取证叶，结构与贡献均经 plan_rootcause 求解器
         // 从 PlanKpi/RootCauseChain/活数据算出，前端零写死 R14；R13 求解器溯源）。
