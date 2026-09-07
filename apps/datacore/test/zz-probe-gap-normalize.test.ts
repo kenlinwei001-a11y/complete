@@ -17,6 +17,22 @@ async function defaultRoot(t: TestApp): Promise<Root["rootMetric"]> {
   return ((await t.services.solvers.invoke(ADMIN, "gap_attribution", {})) as unknown as Root).rootMetric;
 }
 
+/**
+ * **修前**那把尺子的一比一复刻（`(target−actual)` 裸差降序 + reverse 的并列次序）。
+ * 留在这里是为了让「修前 / 修后」两列能在**同一份数据、同一次运行**里并排打出来——
+ * 否则「修后是这个数」只是一句孤证，读者没法自己判断修法有没有改变什么。
+ */
+async function legacyRootKey(t: TestApp): Promise<string> {
+  const rows = (await t.repos.objects.listByType(ADMIN.tenantId, "Metric")).map((o) => o.props);
+  const breached = rows.filter((p) => Number(p.actual) < Number(p.floorVal));
+  const absGap = (p: Record<string, unknown>) => Number(p.target) - Number(p.actual);
+  return String(
+    [...(breached.length ? breached : rows)]
+      .sort((a, b) => absGap(a) - absGap(b) || String(a.metricId).localeCompare(String(b.metricId)))
+      .reverse()[0]!.key,
+  );
+}
+
 describe("PROBE · WO-GAP-NORMALIZE 五格对照实验", () => {
   it("EXP1 · 相对缺口排序：给出越线集的相对缺口表 + 新第一名", async () => {
     const t = await makeApp();
@@ -60,17 +76,24 @@ describe("PROBE · WO-GAP-NORMALIZE 五格对照实验", () => {
     // ×1e4：亿 → 万元（业务含义一字未变，只换记账单位）
     const tUp = await makeApp(); await seedBattery(tUp);
     await patchMetric(tUp, "kpi-revenue", { unit: "万元", target: 700 * 1e4, actual: 415.6 * 1e4, floorVal: 686 * 1e4 });
-    const up = await defaultRoot(tUp);
+    const up = await defaultRoot(tUp); const upLegacy = await legacyRootKey(tUp);
 
     // ÷1e4：亿 → 万亿
     const tDn = await makeApp(); await seedBattery(tDn);
     await patchMetric(tDn, "kpi-revenue", { unit: "万亿", target: 700 / 1e4, actual: 415.6 / 1e4, floorVal: 686 / 1e4 });
-    const dn = await defaultRoot(tDn);
+    const dn = await defaultRoot(tDn); const dnLegacy = await legacyRootKey(tDn);
 
+    const tBase = await makeApp(); await seedBattery(tBase); const baseLegacy = await legacyRootKey(tBase);
     // eslint-disable-next-line no-console
-    console.log(`=== EXP3 === 亿:${base} | 万元(×1e4):${up.key} | 万亿(÷1e4):${dn.key}`);
+    console.log(`=== EXP3 量纲不变性 ===`);
+    // eslint-disable-next-line no-console
+    console.log(`  修前（裸差）  亿:${baseLegacy} | 万元(×1e4):${upLegacy} | 万亿(÷1e4):${dnLegacy}`);
+    // eslint-disable-next-line no-console
+    console.log(`  修后（相对）  亿:${base} | 万元(×1e4):${up.key} | 万亿(÷1e4):${dn.key}`);
     expect(up.key, "换成万元后根指标不许变").toBe(base);
     expect(dn.key, "换成万亿后根指标不许变").toBe(base);
+    // 判据自证有鉴别力：修前那把尺子在同一组数据上**必须**被单位换算掀翻，否则这格实验什么都没验。
+    expect(new Set([baseLegacy, upLegacy, dnLegacy]).size, "修前的裸差尺子必须随单位而变（否则本实验无鉴别力）").toBeGreaterThan(1);
   });
 
   it("EXP5 · 金丝雀：拿一个确定会变的输入跑一遍，缺省根必须变（证明量法有鉴别力）", async () => {
