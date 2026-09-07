@@ -1,0 +1,443 @@
+# ==============================================================================
+# 震后次生地质灾害应急报告 · 推演与生成规格
+# ------------------------------------------------------------------------------
+# 依赖：ontology/jishishan-geohazard-emergency.ontology.yaml (meta.version = 2)
+# 主干：事实输入 → 定级 → 响应级别 → 启动权限与指挥人 → 流程剧本 → 报告成文
+# 权限口径：一律采用 DEC-07（§5.5），§5.3.1 作废
+# 边界：本规格产出"震后次生地质灾害"支线报告；全域震后应急报告需《积石山县
+#       地震应急预案》接入（缺口 G-09）
+# ==============================================================================
+
+meta:
+  spec_key: eq_secondary_geohazard_report
+  version: 1
+  ontology_ref: jishishan_geohazard_emergency@2
+  output_artifact: 震后次生地质灾害应急报告（分时相：首报 / 书面报告 / 续报 / 终报）
+  authoritative_for:
+    - 次生地质灾害的险情灾情定级
+    - 地质灾害应急响应级别与启动权限
+    - 地质灾害侧的指挥人、工作组激活范围与措施清单
+    - 地质灾害险情灾情的信息报告时限
+  not_authoritative_for:
+    - 地震灾害本身的响应级别与总指挥（属抗震救灾指挥部）
+    - 全域伤亡与经济损失统计口径
+    - 生命线工程与建筑物震损调度
+
+# ==============================================================================
+# 一、输入：事实契约
+# ------------------------------------------------------------------------------
+# 分三类：EQ 震情要素（外部权威发布）、SG 次生灾害事实（现场归因后）、
+#         CTX 情景上下文（决定流程分支）。缺项一律走 fallback，不得臆造。
+# ==============================================================================
+input_contract:
+
+  earthquake_facts:
+    required: [origin_time, magnitude, epicenter_place, source_authority]
+    optional: [depth_km, max_intensity, intensity_in_county, affected_townships, aftershock_status]
+    fields:
+      origin_time:      {type: datetime, note: 发震时刻，作为所有时限的 T0}
+      magnitude:        {type: number,   note: 震级}
+      depth_km:         {type: number}
+      epicenter_place:  {type: string}
+      max_intensity:    {type: enum, values: [Ⅵ, Ⅶ, Ⅷ, Ⅸ, Ⅹ, Ⅺ]}
+      intensity_in_county: {type: string, note: 县域内烈度分布，决定排查优先级}
+      affected_townships:  {type: array,  note: 受影响乡镇（全县17个乡镇的子集）}
+      aftershock_status:   {type: string, note: 余震活动情况，关联 G-13 作业安全}
+      source_authority:    {type: string, constraint: 须为中国地震台网或省地震局发布，不得引用未经证实来源}
+
+  secondary_hazard_facts:
+    attribution_rule: 依 ASSUME-EQ-2，仅计入由地质灾害体直接造成的伤亡与损失，房屋倒塌等地震直接灾害不计入
+    disaster_side:
+      death_missing:   {type: number, unit: 人, note: 因次生地质灾害死亡+失踪}
+      injured:         {type: number, unit: 人, note: 不参与定级，仅用于报告叙述}
+      direct_loss_cny: {type: number, unit: 元, note: 因次生地质灾害造成的直接经济损失}
+    risk_side:
+      evacuation_persons:      {type: number, unit: 人, note: 因次生地质灾害险情需紧急避险转移人数}
+      potential_loss_cny:      {type: number, unit: 元}
+      blocks_river_tributary:  {type: boolean, note: 是否造成江河支流被阻断（堰塞）}
+      blocks_trunk_transport:  {type: boolean, note: 是否造成铁路主干线/高速公路/民航/航道中断（依 DEC-08 全量口径）}
+    inventory_side:
+      sites_checked:      {type: number, note: 已复核隐患点数，分母为震前存量318（DEC-03/G-11）}
+      sites_escalated:    {type: number, note: 险情升级的既有隐患点数}
+      sites_new:          {type: number, note: 新增隐患点数}
+      sites_new_by_scale: {type: object, note: 新增点按特大型/大型/中型/小型分布，直接影响 DEC-03 的"大型=0"结论}
+    social_side:
+      social_attention: {type: enum, values: [特别高, 非常高, 较高, 一般关注], note: 定性维度，与量化维度取更高级别}
+
+  context_facts:
+    season:              {type: enum, values: [汛期, 冻融期, 冰雪消融期, 其他], note: 决定 hazard_chain 主导阶段}
+    concurrent_rainfall: {type: boolean, note: 叠加降雨则泥石流风险权重上调}
+    is_minority_area:    {type: boolean, default: true, note: 见 DEC-EQ-5，本县为民族自治县，默认为真}
+    upper_level_activated: {type: boolean, note: 州/省是否已启动响应，为真则本级响应上级指挥（RP-3）}
+
+  fallback_policy:
+    - {missing: 次生灾害伤亡与损失, action: 按险情侧单独定级，报告标注"灾情待核，本级依险情定级"}
+    - {missing: 全部量化字段, action: 依 EQ-INTENSITY-PRIOR 先验估算，仅用于首报，须显著标注"先验估算，待现场核实"}
+    - {missing: 烈度, action: 按震级与震中距粗判，标注不确定；不得用于正式定级}
+    - {conflict: 多源数据不一致, action: 取更严（更高级别）者，并在报告中列出分歧与来源}
+
+# ==============================================================================
+# 二、定级引擎：事实 → 级别
+# ==============================================================================
+grading_engine:
+
+  step_1_disaster_grade:
+    rule_ref: RULE-GRADE-DISASTER
+    inputs: [death_missing, direct_loss_cny]
+    logic: |
+      IF death_missing >= 30 OR direct_loss_cny >= 30000000 THEN 特别重大
+      ELSE IF death_missing >= 10 OR direct_loss_cny >= 5000000 THEN 重大
+      ELSE IF death_missing >= 3  OR direct_loss_cny >= 1000000 THEN 较大
+      ELSE 一般
+    evidence: §1.5.2
+
+  step_2_risk_grade:
+    rule_ref: RULE-GRADE-RISK
+    inputs: [evacuation_persons, potential_loss_cny, blocks_river_tributary, blocks_trunk_transport]
+    logic: |
+      IF evacuation_persons >= 1000 OR potential_loss_cny >= 100000000 OR blocks_river_tributary THEN 特别重大
+      ELSE IF evacuation_persons >= 500 OR potential_loss_cny >= 50000000 OR blocks_trunk_transport THEN 重大
+      ELSE IF evacuation_persons >= 100 OR potential_loss_cny >= 5000000 THEN 较大
+      ELSE 一般
+    evidence: [§1.5.1, DEC-08]
+
+  step_3_base_level:
+    logic: base_level = 取 灾情级别 / 险情级别 / 社会关注度级别 三者中最高者
+    mapping: {特别重大: RL-1, 重大: RL-2, 较大: RL-3, 一般: RL-4}
+    evidence: [§5.4, §5.1]
+
+  step_4_modifiers:
+    apply_order: [MOD-MINORITY, MOD-JUMP, MOD-CAPACITY, MOD-ADJUST]
+    modifiers:
+      - id: MOD-MINORITY
+        condition: is_minority_area == true
+        effect: 建议在 base_level 基础上提高一级
+        evidence: §5.5「地质灾害发生在少数民族聚居地区和其他特殊地区，可根据需要，适当提高应急响应级别」
+        standing_note: 见 DEC-EQ-5——本县为保安族东乡族撒拉族自治县，全域适用该条款
+      - id: MOD-JUMP
+        condition: 特殊时期或突发情况
+        effect: 可越级启动
+        evidence: §5.2
+      - id: MOD-CAPACITY
+        condition: 超出本县党委政府应对能力
+        effect: 办公室报总指挥，按程序报请启动上一级响应
+        evidence: §5.6.2
+      - id: MOD-ADJUST
+        condition: 灾情发展变化
+        effect: 及时上调或下调，避免响应不足或响应过度
+        evidence: [§5.2, §5.5]
+    output: final_level（须同时输出 base_level 与提级理由，二者都要进报告）
+
+  decisions_applied:
+    - id: DEC-EQ-5
+      decided_by: MODEL
+      topic: 民族地区提级条款的常态适用
+      finding: >
+        积石山保安族东乡族撒拉族自治县全域即少数民族聚居地区，§5.5 的提级条款
+        在本县并非例外情形而是常态覆盖。若逐案援引，等于响应级别系统性上浮一级；
+        若从不援引，则该条款形同虚设。
+      ruling: >
+        报告一律同时给出「推导级别 base_level」与「提级建议级别 base_level+1」两个结论，
+        由指挥部裁量决定，报告不替指挥部拍板；但默认推荐提级，理由写明属地民族自治县属性。
+      requires_confirmation: 县地质灾害应急指挥部
+      rationale: 安全侧默认，且把裁量权明确交还有权机关，避免模型越权决定响应级别
+
+# ==============================================================================
+# 三、流程剧本：级别 → 谁指挥、走什么流程
+# ------------------------------------------------------------------------------
+# 权限与指挥人一律取 DEC-07（§5.5）。这是本规格的核心分支表。
+# ==============================================================================
+playbooks:
+
+  levels:
+
+  - level: RL-1
+    roman: Ⅰ
+    scale_label: 特大型
+    activation:
+      initiator: 县地质灾害应急指挥部（提出启动动议）
+      approver: 县委、县政府（同意后启动）
+      procedure: 指挥部初判达到Ⅰ级条件 → 报请县委县政府同意 → 启动Ⅰ级响应
+    command:
+      commander: 县委、县政府主要领导
+      coordinator: 县地质灾害应急指挥部
+      onsite: 成立现场指挥部，靠前组织指挥（ACT-02）
+      note: 震后须纳入县抗震救灾指挥部统一领导，本指挥部转为次生地质灾害防范支线
+    working_groups: 全部10个工作组激活（WG-01 至 WG-10）
+    actions: ACT-01 至 ACT-13 全量
+    reporting:
+      速报: 30分钟内报县指挥部、州人民政府、州应急管理主管部门
+      书面: 事发后2小时内由县政府相关部门书面上报
+      直报: 县指挥部办公室可直接速报省人民政府及省应急管理主管部门、国务院及应急管理主管部门
+    upper_level: 立即报州；争取省级资金支持（DEC-14）
+    evidence: [§5.5(1), §5.6.1, §4.1]
+
+  - level: RL-2
+    roman: Ⅱ
+    scale_label: 大型
+    activation:
+      initiator: 县地质灾害应急指挥部
+      approver: 县政府（同意后启动）
+      procedure: 指挥部初判达到Ⅱ级条件 → 报请县政府同意 → 启动Ⅱ级响应
+    command:
+      commander: 县政府主要领导
+      coordinator: 县地质灾害应急指挥部
+      onsite: 视情成立现场指挥部
+    working_groups: 按险情灾情和救灾需要激活相应工作组
+    actions: 参照Ⅰ级响应措施开展（§5.6.2），由各工作组按需裁剪
+    reporting:
+      速报: 30分钟内（大型口径，依 DEC-10 桥接）
+      书面: 事发后2小时内
+    upper_level: 立即报州；县财政先行垫付，逐级申请州省支持（DEC-14）
+    evidence: [§5.5(2), §5.6.2, §4.1, DEC-10]
+
+  - level: RL-3
+    roman: Ⅲ
+    scale_label: 中型
+    activation:
+      initiator: 县地质灾害应急指挥部（视情自行启动，无需报请）
+      approver: 县地质灾害应急指挥部
+      procedure: 指挥部初判达到Ⅲ级条件 → 视情启动Ⅲ级响应
+    command:
+      commander: 县政府分管领导
+      coordinator: 县地质灾害应急指挥部
+      onsite: 州地质灾害应急指挥部派出联合工作组协助
+    working_groups: 抢险救援组WG-02、抢险技术组WG-03、群众生活保障组WG-04、医疗救治组WG-05、基础设施保障组WG-07 为核心
+    actions: [ACT-01 灾情报告, ACT-04 收集灾情, ACT-06 派遣救援队伍, ACT-08 医疗救治, ACT-03 转移安置, ACT-09 抢修基础设施]
+    reporting:
+      速报: 1小时内报县指挥部、州人民政府、州应急管理局
+    escalation_trigger: 超出本县应对能力时，办公室报总指挥，按程序报请启动Ⅱ级响应（MOD-CAPACITY）
+    evidence: [§5.5(3), §5.6.3, §4.1]
+
+  - level: RL-4
+    roman: Ⅳ
+    scale_label: 小型
+    activation:
+      initiator: 县地质灾害应急指挥部办公室（视情自行启动）
+      approver: 县地质灾害应急指挥部办公室
+      procedure: 办公室初判达到Ⅳ级条件 → 视情启动Ⅳ级响应
+    command:
+      commander: 县地质灾害应急指挥部办公室主任（即县应急管理局局长）
+      coordinator: 灾区乡（镇）人民政府为处置主体，县指挥部办公室指导支持
+      onsite: 县指挥部视灾情派出联合工作组指导乡镇
+    working_groups: 不必全组激活；按需调派救援队伍与应急物资支援乡镇
+    actions: [ACT-06 人员搜救, ACT-08 医疗救护, ACT-03 受灾群众安置, 次生灾害防范, 应急恢复]
+    reporting:
+      速报: 1小时内报县指挥部、州人民政府、州应急管理局
+    evidence: [§5.5(4), §5.6.4, §4.1]
+
+  common_to_all_levels:
+    note: 以下动作不以响应启动为前提，震后立即执行
+    immediate_actions:
+      - {id: IMM-1, action: 先期处置——无论何种级别，指挥部和有关部门立即采取措施控制险情灾情发展, evidence: §5}
+      - {id: IMM-2, action: 全量存量隐患点复核（震前基数318处）+ 新增隐患点识别, basis: ASSUME-EQ-3, owner: 县自然资源局+各乡镇+WG-03}
+      - {id: IMM-3, action: 按红色（Ⅰ级）预警响应执行24小时——转移避让、危险区域管控、救援队伍进驻, basis: ASSUME-EQ-1}
+      - {id: IMM-4, action: 应急避难场所与安置点选址前完成地质灾害危险性快速评估, basis: ASSUME-EQ-4, owner: 县自然资源局+WG-04}
+      - {id: IMM-5, action: 24小时值班与领导带班，值班电话 0930-7722005 保持畅通, evidence: [§3.1.3, §2.2]}
+      - {id: IMM-6, action: 上级预案启动后，本级响应上级应急指挥, evidence: §5.2 RP-3}
+
+# ==============================================================================
+# 四、报告成文：分时相模板
+# ==============================================================================
+report_templates:
+
+  phases:
+
+  - id: RPT-T1
+    name: 首报（速报）
+    deadline: T+30min（重大/特别重大）或 T+60min（较大/一般），T0 = 接报时刻
+    audience: 县地质灾害应急指挥部、州人民政府、州应急管理主管部门
+    length: 一页以内，要素齐全优先于文字完整
+    sections:
+      - {id: S1, name: 震情要素, source: input.earthquake_facts, must_cite_authority: true}
+      - {id: S2, name: 次生地质灾害初步情况, source: input.secondary_hazard_facts, allow_prior: true}
+      - {id: S3, name: 定级结论, source: grading_engine, must_show: [灾情级别, 险情级别, base_level, 提级建议, 定级依据条款]}
+      - {id: S4, name: 响应启动建议, source: playbooks, must_show: [建议级别, 启动主体, 审批主体, 拟任总指挥]}
+      - {id: S5, name: 已采取措施, source: playbooks.common_to_all_levels}
+      - {id: S6, name: 下一步与请求事项, source: 缺口与支援需求}
+    hard_rules:
+      - 未经核实的数字必须标注来源与置信度，禁止用先验估算冒充实测
+      - 定级结论必须给出可回溯的条款依据（§1.5.1 / §1.5.2 / §5.4）
+      - 若采用先验估算，S3 须写明"待现场排查回传后重新定级"
+
+  - id: RPT-T2
+    name: 书面报告
+    deadline: 事发后2小时内（仅大型/特大型要求）
+    responsible: 县人民政府相关部门
+    sections: [S1, S2, S3, S4, S5, 责任矩阵, 资源需求与缺口, S6]
+    evidence: §4.1
+
+  - id: RPT-T3
+    name: 续报
+    cadence: T+12h、T+24h，此后每日；灾情险情有新变化时随时续报
+    evidence: [§4.2, §4.3]
+    sections:
+      - 定级复核（是否触发 MOD-ADJUST 上调或下调）
+      - 隐患点排查进展（已核/318，升级 N 处，新增 N 处，按规模分布）
+      - 转移安置进展（转移人数、安置点数量与容量、选址安全评估结论）
+      - 搜救与医疗救治进展
+      - 基础设施抢修进展（交通、电力、通信、供水、供气）
+      - 灾害链阶段研判（当前处于 CH-1/CH-2/CH-3/CH-4，风险重心迁移）
+      - 余震与气象条件对次生灾害的叠加影响
+      - 续报必备要素（§4.3）：发生时间、地点、类型、灾害体规模、诱发因素、发展趋势、周边自然地理环境、受灾建筑物、地形地貌、伤亡与损失、已采取措施
+
+  - id: RPT-T4
+    name: 终报
+    trigger: 满足 RULE-TERMINATION 全部6项条件，由响应启动机关决定终止
+    sections:
+      - 终止条件逐项核验（险情受控/搜救完成/群众安置/生活保障/设施抢通/秩序恢复）
+      - 终止决定主体与时间（须与启动主体一致）
+      - 灾情核查与损失统计最终结论（WG-08）
+      - 转入恢复重建阶段的交接事项与善后处置安排
+      - 震后隐患底数更新建议（触发 §8.4 修订条件第③项，更新 facts.hazard_inventory）
+      - 预案执行复盘：本次暴露的缺口（对照 quality.gaps 与 quality_v2_additions）
+    evidence: [§5.7, §8.4]
+
+  cross_cutting_rules:
+    - 每份报告首页固定标注："本报告依《积石山县突发地质灾害应急预案》编制，仅覆盖震后次生地质灾害支线；全域抗震救灾以县抗震救灾指挥部发布为准。"
+    - 所有伤亡与损失数字须注明是否为"次生地质灾害归因"分项（ASSUME-EQ-2）
+    - 所有存量统计须注明"基于震前底数363/318处"（G-11）
+    - 每条论断绑定证据：预案条款号 / 现场回传 / 权威发布 / 先验估算，四选一必标
+
+# ==============================================================================
+# 五、演算示例（假设输入，用于验证分支正确性，非真实事件）
+# ==============================================================================
+worked_examples:
+
+  - id: EX-A
+    label: 中强震 + 较重次生灾害
+    input:
+      earthquake: {magnitude: 5.4, max_intensity: Ⅶ, season: 冻融期, concurrent_rainfall: false}
+      disaster_side: {death_missing: 3, injured: 11, direct_loss_cny: 8000000}
+      risk_side: {evacuation_persons: 320, potential_loss_cny: 60000000, blocks_river_tributary: false, blocks_trunk_transport: false}
+      social_side: {social_attention: 较高}
+      context: {is_minority_area: true}
+    derivation:
+      灾情级别: 重大
+      灾情判据: 直接经济损失800万元，落入500万-3000万区间（§1.5.2）；死亡失踪3人本身仅达"较大"，取更高者
+      险情级别: 重大
+      险情判据: 潜在经济损失6000万元，落入5000万-1亿区间（§1.5.1）；转移320人本身仅达"较大"，取更高者
+      社会关注度级别: 较大
+      base_level: RL-2
+      提级建议: RL-1（依 MOD-MINORITY，属民族自治县辖区）
+    branch_output:
+      按 base_level 走:
+        启动: 县地质灾害应急指挥部报请县政府同意
+        总指挥: 县政府主要领导
+        速报时限: 30分钟
+        书面时限: 事发后2小时
+        工作组: 按需激活
+      按提级建议走:
+        启动: 县地质灾害应急指挥部报请县委、县政府同意
+        总指挥: 县委、县政府主要领导
+        速报时限: 30分钟
+        书面时限: 事发后2小时
+        工作组: 全部10个激活，措施ACT-01至ACT-13全量
+    report_note: 首报须同时列出两个结论与提级理由，由指挥部裁定；冻融期须按 CH-4 评估液化流滑与冻融崩滑（G-10）
+
+  - id: EX-B
+    label: 有感地震 + 轻微次生灾害
+    input:
+      earthquake: {magnitude: 4.8, max_intensity: Ⅵ, season: 其他, concurrent_rainfall: false}
+      disaster_side: {death_missing: 0, injured: 2, direct_loss_cny: 400000}
+      risk_side: {evacuation_persons: 60, potential_loss_cny: 3000000, blocks_river_tributary: false, blocks_trunk_transport: false}
+      social_side: {social_attention: 一般关注}
+      context: {is_minority_area: true}
+    derivation:
+      灾情级别: 一般
+      灾情判据: 无死亡失踪，直接损失40万元低于100万（§1.5.2）
+      险情级别: 一般
+      险情判据: 转移60人低于100人，潜在损失300万元低于500万（§1.5.1）
+      base_level: RL-4
+      提级建议: RL-3（依 MOD-MINORITY，供裁量）
+    branch_output:
+      按 base_level 走:
+        启动: 县地质灾害应急指挥部办公室视情自行启动，无需报请
+        总指挥: 县地质灾害应急指挥部办公室主任（县应急管理局局长）
+        处置主体: 灾区乡（镇）人民政府，县指挥部办公室指导支持
+        速报时限: 1小时
+        书面报告: 不作强制要求
+    report_note: 指挥层级与 EX-A 完全不同——此级别县政府领导不任总指挥，主战场在乡镇
+
+  - id: EX-C
+    label: 强震 + 堰塞（险情驱动越级）
+    input:
+      earthquake: {magnitude: 6.5, max_intensity: Ⅷ, season: 汛期, concurrent_rainfall: true}
+      disaster_side: {death_missing: 4, direct_loss_cny: 12000000}
+      risk_side: {evacuation_persons: 260, potential_loss_cny: 40000000, blocks_river_tributary: true}
+      social_side: {social_attention: 特别高}
+    derivation:
+      灾情级别: 重大
+      灾情判据: 直接损失1200万元落入500万-3000万；死亡失踪4人达"较大"，取更高者
+      险情级别: 特别重大
+      险情判据: 造成江河支流被阻断——该定性条件单独即触发特别重大（§1.5.1(1)），量化项（转移260人/潜在损失4000万）仅达较大，取更高者
+      社会关注度级别: 特别重大
+      base_level: RL-1
+      提级建议: 已达最高级，无需提级
+    branch_output:
+      启动: 县地质灾害应急指挥部报请县委、县政府同意
+      总指挥: 县委、县政府主要领导
+      速报时限: 30分钟；可直接速报省人民政府及国务院应急管理主管部门
+      工作组: 全部10个激活
+    teaching_point: 定性条件（堵河）可单独顶格触发最高级别，量化阈值不构成上限——引擎必须先判定性项再判量化项
+    chain_note: 汛期+降雨叠加，须按 CH-3 评估堰塞体溃决与泥石流放大风险
+
+# ==============================================================================
+# 六、生成前置校验（gates）—— 不过闸不得出报告
+# ==============================================================================
+gates:
+  - id: GATE-1
+    name: 边界声明
+    check: 报告首页是否声明"仅覆盖震后次生地质灾害支线"
+    fail_action: 阻断出稿
+  - id: GATE-2
+    name: 归因口径
+    check: 伤亡与损失是否已按 ASSUME-EQ-2 完成次生灾害归因，是否与地震直接灾害重复计数
+    fail_action: 阻断出稿
+  - id: GATE-3
+    name: 定级可回溯
+    check: 每个级别结论是否绑定条款依据，且灾情/险情/社会关注度三路各自结论均已列出
+    fail_action: 阻断出稿
+  - id: GATE-4
+    name: 权限一致
+    check: 启动主体与总指挥是否与 DEC-07（§5.5）表一致；终止主体是否与启动主体一致
+    fail_action: 阻断出稿
+  - id: GATE-5
+    name: 提级双结论
+    check: 是否同时给出 base_level 与提级建议，且未替指挥部拍板
+    fail_action: 阻断出稿
+  - id: GATE-6
+    name: 置信标注
+    check: 先验估算、外部知识、推算值是否均已标注，未混入实测数据
+    fail_action: 阻断出稿
+  - id: GATE-7
+    name: 底数现势性
+    check: 存量统计是否标注"基于震前底数"，是否提示 G-11 需更新
+    fail_action: 告警放行
+  - id: GATE-8
+    name: 缺口披露
+    check: 报告是否披露本次推演受哪些缺口限制（G-01/G-02/G-09/G-12/G-13）
+    fail_action: 告警放行
+
+# ==============================================================================
+# 七、当前可用性
+# ==============================================================================
+readiness:
+  can_produce_now:
+    - 定级与响应级别推导（阈值完整，逻辑闭合）
+    - 启动权限、审批主体、总指挥的确定（DEC-07 已冻结）
+    - 工作组激活范围与措施清单（10组 × 13项措施已建模）
+    - 信息报告时限与报送对象（DEC-10 桥接完成）
+    - 终止条件核验与终报框架
+  degraded_without_input:
+    - {blocked_by: G-01, affects: 逐点排查清单、撤离路线、乡镇任务分解——只能给总量级结论}
+    - {blocked_by: G-02, affects: 安置点选址与容量——只能给选址安全约束，给不出具体场所}
+    - {blocked_by: G-03, affects: 队伍与物资缺口——只能列需求项，算不出缺口量}
+    - {blocked_by: G-11, affects: 隐患底数——只能用震前363/318口径}
+  cannot_produce:
+    - {blocked_by: G-09, item: 全域震后应急报告（抗震救灾指挥部构成、地震响应级别、两指挥部衔接条款均缺）}
+  highest_value_next_input:
+    rank_1: 《积石山县地震应急预案》——解锁全域报告，当前唯一 blocking 缺口
+    rank_2: 地质灾害隐患点逐点清单（编号/坐标/乡镇/威胁户数/监测责任人）——解锁乡镇级任务分解与撤离推演
+    rank_3: 应急避难场所清单（位置/容量/地质安全评估）——解锁转移安置容量推演
+    rank_4: 震后最新隐患排查成果——解决底数现势性

@@ -10,8 +10,10 @@
 meta:
   ontology_key: jishishan_geohazard_emergency
   display_name: 积石山县突发地质灾害应急预案本体
-  version: 1
-  status: DRAFT
+  version: 2
+  status: FROZEN_V2
+  frozen_at: 2026-09-07
+  frozen_note: 用户裁决 C-07 采用 §5.5；其余冲突按 decisions 节裁决口径冻结，作为震后报告推演的唯一语义基线
   domain: 应急管理 / 突发地质灾害
   language: zh-CN
   jurisdiction:
@@ -1294,3 +1296,319 @@ provenance:
     原文推算: 由原文数值计算得出（已标 formula），引用时须注明推算
     外部补全: 非本文档来源，须人工核实后方可引用（当前仅 G-08）
     存疑: 与 quality.conflicts 关联，引用前必须先裁决
+
+# ==============================================================================
+# 十、裁决台账（decisions）—— v2 冻结口径
+# ------------------------------------------------------------------------------
+# 规则：推演与报告生成一律引用本节口径；本节与 quality.conflicts 一一对应。
+#       decided_by = USER 的条款不得由模型再行更改；= MODEL 的为默认裁决，
+#       县指挥部可推翻，推翻后须同步 bump meta.version。
+# ==============================================================================
+decisions:
+  - id: DEC-07
+    resolves: C-07
+    decided_by: USER
+    topic: 响应启动权限与指挥人
+    ruling: 以 §5.5 为准，§5.3.1 作废
+    frozen_table:
+      RL-1: {approver: 县委、县政府, initiator: 县地质灾害应急指挥部报请, commander: 县委、县政府主要领导, coordinator: 县地质灾害应急指挥部}
+      RL-2: {approver: 县政府, initiator: 县地质灾害应急指挥部报请, commander: 县政府主要领导, coordinator: 县地质灾害应急指挥部}
+      RL-3: {approver: 县地质灾害应急指挥部（视情自启）, commander: 县政府分管领导, coordinator: 县地质灾害应急指挥部}
+      RL-4: {approver: 县地质灾害应急指挥部办公室（视情自启）, commander: 县地质灾害应急指挥部办公室主任, coordinator: 灾区乡镇为处置主体，办公室指导支持}
+    downstream_impact: RULE-RESPONSE-LEVEL 的 procedure 字段一律取 procedure_b
+
+  - id: DEC-10
+    resolves: C-10
+    decided_by: MODEL
+    topic: 报告时限口径桥接
+    ruling: >
+      以 §5.1「Ⅳ级（小型）/Ⅲ级（中型）/Ⅱ级（大型）/Ⅰ级（特大型）」为唯一桥，
+      建立 后果分级 → 响应级别 → 规模口径 → 报告时限 的单向推导链。
+    frozen_bridge:
+      一般: {response: RL-4, scale: 小型, report_deadline_minutes: 60}
+      较大: {response: RL-3, scale: 中型, report_deadline_minutes: 60}
+      重大: {response: RL-2, scale: 大型, report_deadline_minutes: 30, written_minutes_from_event: 120}
+      特别重大: {response: RL-1, scale: 特大型, report_deadline_minutes: 30, written_minutes_from_event: 120}
+    rationale: 险情与灾情两个口径分别推导，取两者中更严（时限更短）者执行
+    caveat: 属模型补桥，非原文条款；报告中须标注"依 §5.1 推导"
+
+  - id: DEC-01
+    resolves: C-01
+    decided_by: MODEL
+    topic: 全县总人口
+    ruling: 取 278089 人（约 27.8 万人），原文"万"字为衍字
+    confidence: 原文推算
+    usage_rule: 引用时写作"约27.8万人"，不得直接引用原文表述
+
+  - id: DEC-02
+    resolves: C-02
+    decided_by: MODEL
+    topic: 地质灾害易发区面积
+    ruling: 取 427.69 平方公里（909.97 × 47%）
+    confidence: 原文推算
+    usage_rule: 报告中须标注"（按占比推算）"，如需法定引用应回原始调查成果核实
+
+  - id: DEC-03
+    resolves: C-03
+    decided_by: MODEL
+    topic: 大型隐患点存量
+    ruling: 震前存量按"大型 = 0 处"处理；震后新增大型隐患点作为变量由现场排查填充
+    note: 该口径直接决定震后 Ⅱ级响应是否有对应存量对象，报告中必须显式说明
+
+  - id: DEC-04
+    resolves: C-04
+    decided_by: MODEL
+    topic: 不稳定斜坡
+    ruling: 纳入本预案适用范围，按"崩塌、滑坡的前兆形态"处置，沿用崩滑的分级与响应口径
+    rationale: 142 处占存量 39%，为最大类目；排除在外将使近四成隐患点失去处置依据
+    补充定义: 斜坡岩土体已出现变形迹象、稳定性系数不足但尚未整体失稳，在降雨、地震、人类工程活动作用下可转化为崩塌或滑坡的斜坡地段
+    confidence: 外部补全（建议县自然资源局确认）
+
+  - id: DEC-05
+    resolves: C-05
+    decided_by: MODEL
+    topic: 机构名称归并
+    canonical_names:
+      县武警中队: {aliases: [县武警大队]}
+      县气象局: {aliases: [县气象站, 县农业局（气象站）]}
+      县卫生健康局: {aliases: [县卫生健康委]}
+      县农业农村局: {aliases: [县农业局]}
+    usage_rule: 图谱与报告一律用 canonical 名，别名仅用于回溯原文
+
+  - id: DEC-06
+    resolves: C-06
+    decided_by: MODEL
+    topic: 新闻发布责任主体
+    ruling: 新闻宣传组（WG-10）职责补入"承担险情灾情信息发布、组织新闻发布会、开展应急救援新闻报道"，与 §5.6.1(11) 对齐
+    responsible: 县委宣传部（牵头）+ 县融媒体中心（执行）+ 县应急局/县自然资源局（供稿）
+
+  - id: DEC-08
+    resolves: C-08
+    decided_by: MODEL
+    topic: Ⅱ级响应启动条件的交通中断情形
+    ruling: 回补 §1.5.1(2) 全量口径——铁路主要干线、高速公路、民航、航道中断，均触发 Ⅱ级
+    rationale: §5.4 的缩写会使铁路/民航/航道中断场景失去触发点，属漏洞而非有意收窄
+
+  - id: DEC-11
+    resolves: C-11
+    decided_by: MODEL
+    topic: 通信电力保障牵头单位
+    ruling: 按阶段切分——响应期以 §2.3(7) 基础设施保障组（县发改局牵头）为准；平时准备与恢复期以 §6(七) 县工信局为准
+    rationale: 响应期需统一调度电力/通信/供水/供气，归口工作组；平时归口行业主管部门
+
+  - id: DEC-12
+    resolves: C-12
+    decided_by: MODEL
+    topic: 成员单位名单补齐
+    add_members: [县司法局, 县科技局, 县市场监管局, 县疾控中心]
+    rationale: 四家单位均在工作组或保障条款中承担实际职责，却不在 §2.1 名单内
+
+  - id: DEC-13
+    resolves: C-13
+    decided_by: MODEL
+    topic: 章节编号重排
+    renumbering:
+      "§1.4（预案体系）": §1.4
+      "§1.4（工作原则）": §1.5
+      "§1.5 险情灾情分级": §1.6
+      "§1.6 地质现状": §1.7
+      "§5.6.2（Ⅱ级）": §5.6.2
+      "§5.6.2（Ⅲ级）": §5.6.3
+      "§5.6.3（Ⅳ级）": §5.6.4
+    usage_rule: 本体内 evidence 字段仍用原文编号以便回溯；对外报告引用时用重排后编号并附注
+
+  - id: DEC-14
+    resolves: C-14
+    decided_by: MODEL
+    topic: Ⅰ/Ⅱ级响应的县级资金来源
+    ruling: 县级财政先行垫付，同步逐级申请州、省支持；§6(四) 的州级视角表述在县级预案中按"县启动即县先行"理解
+    caveat: 属口径补全，涉及财政事权划分，须县财政局确认
+
+  - id: DEC-09
+    resolves: C-09
+    decided_by: MODEL
+    topic: 下位授权对象
+    ruling: §5.5 末段"各县（市）人民政府"更正为"各乡（镇）人民政府"，与 §5.4 末段一致
+
+# ==============================================================================
+# 十一、地震触发层（earthquake_trigger_layer）
+# ------------------------------------------------------------------------------
+# 定位：地震不是本预案的处置对象，而是次生地质灾害的**触发源**。本层把
+#       "地震事件"接到既有灾害链上，使本体可服务震后次生地质灾害应急报告。
+# ==============================================================================
+earthquake_trigger_layer:
+
+  scope_boundary:
+    id: EQ-BOUNDARY
+    severity: 关键
+    statement: >
+      本预案不覆盖地震灾害本身。地震发生后，全域抗震救灾由县抗震救灾指挥部依
+      《积石山县地震应急预案》组织；本预案及本体仅对"震后次生地质灾害"这一支线
+      提供权威依据。
+    in_scope:
+      - 同震崩塌、滑坡、泥石流、地面塌陷、不稳定斜坡失稳
+      - 震裂山体后效应与后续降雨/融雪激发的泥石流
+      - 存量 318 处隐患点的震后复核与新增隐患点识别
+      - 上述次生灾害引发的转移避险、险情灾情定级、地质灾害响应启动与信息报告
+    out_of_scope:
+      - 房屋倒塌与建筑物压埋人员搜救的整体指挥
+      - 地震灾害总体损失评估与烈度圈划定
+      - 生命线工程震损的全域调度
+      - 地震应急响应级别的确定（另属地震应急预案）
+    integration_requirement:
+      - 震后次生地质灾害工作纳入县抗震救灾指挥部统一领导
+      - 本预案的县地质灾害应急指挥部转为其下的次生地质灾害防范组/技术支撑单元
+      - 两套响应级别并存时，对外发布口径以抗震救灾指挥部为准，本体输出作为专业支线报告
+    missing_document:
+      title: 积石山县地震应急预案
+      status: 未提供
+      needed_for: 全域震后应急报告；当前仅能输出次生地质灾害支线报告
+      quality_ref: G-09
+
+  event_type:
+    type_key: EarthquakeEvent
+    display_name: 地震事件
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: origin_time, dataType: date, required: true}
+      - {key: magnitude, dataType: number, required: true, unit: 震级M}
+      - {key: depth_km, dataType: number}
+      - {key: epicenter_lat, dataType: number}
+      - {key: epicenter_lon, dataType: number}
+      - {key: epicenter_place, dataType: string}
+      - {key: max_intensity, dataType: enum, enumValues: [Ⅵ, Ⅶ, Ⅷ, Ⅸ, Ⅹ, Ⅺ]}
+      - {key: affected_townships, dataType: string, description: 受影响乡镇列表}
+      - {key: season_context, dataType: enum, enumValues: [汛期, 冻融期, 冰雪消融期, 其他], description: 决定次生灾害类型权重}
+      - {key: concurrent_rainfall, dataType: boolean, description: 震时或震后短期是否叠加降雨}
+      - {key: source_authority, dataType: string, description: 震情要素发布机构，须为中国地震台网/省地震局}
+
+  link_types_added:
+    - {link_key: eq_triggers_hazard, from_type: EarthquakeEvent, to_type: HazardType,  cardinality: "N:N", desc: 地震触发灾害类型}
+    - {link_key: eq_destabilizes,    from_type: EarthquakeEvent, to_type: HazardSite,  cardinality: "N:N", desc: 地震使既有隐患点失稳或加剧}
+    - {link_key: eq_creates_site,    from_type: EarthquakeEvent, to_type: HazardSite,  cardinality: "1:N", desc: 地震新生隐患点}
+    - {link_key: intensity_zone_of,  from_type: EarthquakeEvent, to_type: Region,      cardinality: "N:N", desc: 烈度区覆盖行政区域，props含intensity}
+
+  hazard_chain:
+    id: EQ-CHAIN
+    description: 震后次生地质灾害演化链，用于按时相推演风险重心迁移
+    stages:
+      - id: CH-1
+        name: 同震阶段
+        window: T+0 至 T+数小时
+        dominant_hazards: [崩塌, 滑坡, 地面塌陷]
+        mechanism: 地震动直接触发陡坡岩土体失稳，崩塌响应最快
+        report_focus: 交通生命线阻断点、隐患点上下方居民点、压埋风险
+      - id: CH-2
+        name: 震裂后效应阶段
+        window: T+数小时 至 T+数周
+        dominant_hazards: [滑坡, 崩塌, 不稳定斜坡]
+        mechanism: 震裂松动山体在余震、重力与温差作用下持续变形，可延迟失稳
+        report_focus: 已排查点的复测与位移速率、余震后的再排查、临时安置点选址安全性
+      - id: CH-3
+        name: 降雨/融雪激发阶段
+        window: T+数周 至 震后3-5年（活跃期）
+        dominant_hazards: [泥石流, 滑坡]
+        mechanism: 震后松散物源大量增加，泥石流启动的临界雨量显著降低，同流量下规模放大
+        report_focus: 泥石流沟（震前15条）物源增量复核、雨量阈值下调、汛前排查提级
+        confidence: 外部补全（震后泥石流活跃期为地学通识，具体年限与阈值须专业单位测定）
+      - id: CH-4
+        name: 冬春特有阶段
+        window: 冻融期
+        dominant_hazards: [崩塌, 滑坡, 地面塌陷]
+        mechanism: 冻融循环加剧震裂岩体劣化；饱和砂土层在地震作用下可产生液化流滑
+        report_focus: 冻融期地震须专门评估液化流滑与冻融崩滑，不能沿用汛期模型
+        confidence: 外部补全（待核）
+
+  intensity_prior:
+    id: EQ-INTENSITY-PRIOR
+    purpose: 震后尚无现场数据时，用烈度先验估算次生地质灾害规模，供首报使用
+    status: 外部补全（先验，非本预案条款）
+    usage_rule: 仅可用于首报的"初步研判"段落，必须标注为先验估算；一经现场排查回传即作废
+    table:
+      - {intensity: Ⅵ, expected: 零星崩塌落石，既有隐患点变形迹象增加, site_check_priority: 全域巡查}
+      - {intensity: Ⅶ, expected: 崩滑明显增多，公路边坡多处落石，部分隐患点险情升级, site_check_priority: 优先重点隐患点17处}
+      - {intensity: Ⅷ, expected: 崩滑大量发生，可能出现堵河、断道，新生隐患点显著增加, site_check_priority: 全量318处+新增排查}
+      - {intensity: 大于等于Ⅸ, expected: 大规模崩滑与山体解体，次生灾害可能成为主要伤亡来源, site_check_priority: 全域航空/遥感先行+地面核查}
+    caveat: 上述为经验先验，实际取值随地形、岩土条件、含水率、季节大幅波动
+
+  precedent:
+    id: EQ-PRECEDENT-2023
+    title: 2023年12月18日积石山6.2级地震
+    status: 外部知识（模型先验，须由县应急局/县地震局核实后方可写入正式报告）
+    why_it_matters:
+      - 本县已有真实震例，震后隐患底数与预案编制时的 363/318 口径很可能已不一致
+      - 该震发生于冬季冻融期，验证了 CH-4 阶段的现实性
+      - 邻近区域出现过饱和砂土液化流滑（俗称砂涌）造成重大伤亡，是本预案术语表与灾害类型清单中完全缺失的灾种
+    required_actions:
+      - 核实震后地质灾害隐患点复核成果，更新 facts.hazard_inventory
+      - 评估是否将"液化流滑/砂涌"补入 HazardType 与适用范围
+      - 触发 §8.4 修订条件第③项"面临的风险发生重大变化"
+    quality_ref: [G-08, G-10]
+
+  frozen_assumptions:
+    - id: ASSUME-EQ-1
+      decided_by: MODEL
+      topic: 震后地质灾害预警响应等级
+      assumption: 破坏性地震（有感且造成破坏，或县域内烈度达Ⅵ度及以上）发生后 24 小时内，地质灾害侧一律按红色（Ⅰ级）预警响应执行，不等气象会商
+      rationale: >
+        §3.3 红色预警响应含"组织受威胁人员转移避让、实施危险区域管控、救援队伍进驻预警区"，
+        是震后立即需要的动作；而 §3.2.4 的预警发布流程依赖气象会商，震后不适用（触发因子是地震动不是降雨）。
+        取最高级别为安全侧默认。
+      expiry: T+24h 后依现场排查与气象会商结果逐级下调
+      requires_confirmation: 县地质灾害应急指挥部
+    - id: ASSUME-EQ-2
+      decided_by: MODEL
+      topic: 次生地质灾害定级口径
+      assumption: 次生地质灾害的险情/灾情定级，仅计入由地质灾害体直接造成的伤亡与损失，不计入房屋倒塌等地震直接灾害
+      rationale: 避免与抗震救灾指挥部的地震灾害统计重复计数，保证两条线数据可加总而不叠算
+      implementation: RULE-GRADE-DISASTER / RULE-GRADE-RISK 的输入须为"次生地质灾害归因"后的分项数值
+      requires_confirmation: 县地质灾害应急指挥部办公室 + 调查评估组 WG-08
+    - id: ASSUME-EQ-3
+      decided_by: MODEL
+      topic: 震后隐患点排查启动
+      assumption: 不待定级、不待响应启动，震后立即启动全量存量隐患点复核（震前基数318处）与新增隐患点识别
+      rationale: §5 明确"无论发生何种级别，要立即采取措施先期开展应急防范"；§3.1.2 隐患排查属预防常态职责，不以响应启动为前提
+      owner: 县自然资源局（技术）+ 各乡镇政府（执行）+ 抢险技术组 WG-03（响应期）
+    - id: ASSUME-EQ-4
+      decided_by: MODEL
+      topic: 临时安置点选址
+      assumption: 震后所有应急避难场所与集中安置点，选址前须经地质灾害危险性快速评估，不得设于隐患点影响范围内
+      rationale: >
+        §5.6.1(3) 要求开放避难场所但未提选址安全约束；震后山区安置点常被迫设于坡脚或沟口，
+        存在被次生灾害二次打击的风险。此为本预案的实质性缺口（G-02 叠加）。
+      owner: 县自然资源局 + 群众生活保障组 WG-04
+      requires_confirmation: 县地质灾害应急指挥部
+
+# ==============================================================================
+# 十二、v2 新增质量条目
+# ==============================================================================
+quality_v2_additions:
+  gaps:
+    - id: G-09
+      topic: 地震应急预案缺位
+      finding: 未提供《积石山县地震应急预案》，抗震救灾指挥部构成、地震响应分级、与地质灾害指挥部的衔接条款均不可知
+      impact: 当前只能产出次生地质灾害支线报告，无法产出全域震后应急报告
+      blocking: true
+      needed_input: 《积石山县地震应急预案》全文
+    - id: G-10
+      topic: 液化流滑/砂涌灾种缺失
+      finding: 本预案灾害类型仅列崩塌、滑坡、泥石流、地面塌陷，无饱和砂土液化引发的流滑灾种
+      impact: 该灾种在冬季地震中可致重大伤亡，且处置逻辑（快速淹埋、无明显前兆）与崩滑截然不同
+      recommendation: 修订时补入灾害类型、术语定义、易发区判定与专项处置措施
+      confidence: 外部补全（待核）
+    - id: G-11
+      topic: 震后隐患底数现势性
+      finding: 363/318 的隐患点统计为预案编制时口径，未反映任何震后复核结果
+      impact: 一切基于存量的推演结论均须标注"基于震前底数"
+      needed_input: 最新一轮地质灾害隐患排查成果（含逐点清单，同 G-01）
+    - id: G-12
+      topic: 震后隐患点排查时限
+      finding: §3.1.2 只规定冰雪消融期前、汛期前排查，无"震后立即排查"的时限条款
+      impact: 震后排查启动时间、完成时限、复核频次均无依据，只能按 ASSUME-EQ-3 处理
+      recommendation: 修订时增加"破坏性地震后24小时内完成重点隐患点复核、72小时内完成全域初查"类条款
+    - id: G-13
+      topic: 余震期作业安全
+      finding: 全文无余震条件下现场排查、抢险作业人员安全规定
+      impact: 排查人员与救援队伍在震裂边坡下作业存在二次伤亡风险，无撤离触发条件
+      recommendation: 修订时增加余震预警联动与作业面撤离标准
