@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { makeApp, debugUser } from "./helpers.js";
+import { PROPERTY_UNITS } from "../src/domain.js";
 import { ParetoAssembleResultSchema, type ParetoAssembleResult } from "@platform/contracts";
 
 /**
@@ -172,6 +173,13 @@ describe("G-UNIT-MARGIN-CROSS-DENOM · 毛利轴第 4 张准入证：币种同 �
     const gap = (j.request.unavailableObjectives ?? []).find((g) => g.key === "margin");
     expect(gap, "毛利既不在 objectives 也不在报缺清单 ⇒ 静默消失，正是本仓禁止的那一种").toBeDefined();
 
+    // ── R6 确定性：报缺这条路上新增了一次**遍历订单行**（算比值区间），必须仍逐字节可重放 ──
+    //    lo/hi/n/distinct 全是与顺序无关的聚合，但"我以为它与顺序无关"不是证据，重放一次才是。
+    const again = await t.app.inject({ method: "POST", url: "/a/v1/sim/optimize-pareto/assemble", headers: ACME, payload: {} });
+    expect(again.body, "同租户同范围重跑，装配回包不逐字节一致 ⇒ R6 破了").toBe(
+      (await t.app.inject({ method: "POST", url: "/a/v1/sim/optimize-pareto/assemble", headers: ACME, payload: {} })).body,
+    );
+
     // ── 原因串是**打给用户看的**：业务事实要给，实现细节不许出现（R-UI-4）──────────
     const reason = gap!.reason;
     expect(reason, "报缺却没有原因串 ⇒ 等于给了一个不动的 0").toBeTruthy();
@@ -186,6 +194,17 @@ describe("G-UNIT-MARGIN-CROSS-DENOM · 毛利轴第 4 张准入证：币种同 �
     expect(reason, "原因串泄漏了源码文件名（R-UI-4）").not.toMatch(/\.ts\b|opt-assemble|opt-binding|battery/);
     expect(reason, "原因串泄漏了行号（R-UI-4）").not.toMatch(/:\d+/);
     expect(reason, "原因串出现排期语汇（工单/本单）——那是给开发看的，不是给用户看的").not.toMatch(/工单|本单|WO-/);
+
+    // ── 恢复条件里给的每一个单位，必须是这个平台**真的收得下**的 ──────────────────
+    // 本单初稿在这里手写过「如 元/套、元/kWh」，而 `元/套` 恰恰是单位字典**刻意不收**的那一个
+    // （§1.5「套/电芯不得充当金额分母」）⇒ 照着做的人会被发布门拒掉，然后以为平台坏了。
+    // 「教用户去做一件这个系统不允许的事」比不给建议更坏，故这一条钉住。
+    const suggested = reason.match(/[元万亿]+元?\/[A-Za-z一-龥]+/g) ?? [];
+    // 金丝雀：先证明这个抓法抓得到东西 —— 抓到 0 个就不许读作"没有非法建议"。
+    expect(suggested.length, "抓不到任何被建议的复合单位 ⇒ 抓法坏了，不许读作「建议都合法」").toBeGreaterThan(0);
+    for (const u of suggested) {
+      expect(PROPERTY_UNITS as readonly string[], `原因串建议了 ${u}，但单位字典收不下它 ⇒ 用户照做会被发布门拒`).toContain(u);
+    }
   });
 
   it("② 反向对照：订单上没有单价类成本格 ⇒ 毛利**必须仍在 objectives**（否则是无差别下架）", async () => {

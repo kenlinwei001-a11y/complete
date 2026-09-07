@@ -58,7 +58,22 @@ import type {
 import { ParetoRequestSchema } from "@platform/contracts";
 import type { OntologyBinding } from "@platform/contracts";
 import type { ObjectInstance, ObjectTypeDef, PropertyDef } from "../domain.js";
-import { CURRENCY_BASE_UNIT, CURRENCY_SCALE, denomOfCurrencyUnit, lexiconHit } from "./field-role-lexicon.js";
+import { PROPERTY_UNITS } from "../domain.js";
+import { CURRENCY_BASE_UNIT, CURRENCY_SCALE, denomOfCurrencyUnit, lexiconHit, parseCurrencyUnit } from "./field-role-lexicon.js";
+
+/**
+ * 平台今天**发得出去**的「币种/分母」复合单位（如 `元/kWh`、`元/吨`）——
+ * 现算自单位字典 `PROPERTY_UNITS`，**不写死**。
+ *
+ * ⚠ 为什么必须现算：这串会原样打进毛利轴报缺的**恢复条件**给用户看。
+ * 写死的例子会过期，更糟的是会**教错**：本单初稿在这里手写了「如 元/套、元/kWh」，
+ * 而 `元/套` 恰恰是单位字典**刻意不收**的那一个
+ * （`docs/DECISION-unit-of-account.md` §1.5「套/电芯不得充当金额分母」）——
+ * 照着那句去声明的人会被发布门拒掉，然后以为是平台坏了。
+ * **屏上给的每一个可选项，都必须是这个平台真的收得下的。**
+ */
+const DENOMINATED_CURRENCY_UNITS: string[] = (PROPERTY_UNITS as readonly string[])
+  .filter((u) => parseCurrencyUnit(u)?.denom !== undefined);
 import { bindCrossObjectOccupancy, type BindingOntologyView } from "./opt-binding.js";
 
 /**
@@ -558,7 +573,11 @@ export async function assembleParetoModel(
                     ? `比值逐行不同 ⇒ 相减不只是绝对值偏，方案之间的名次也会被扭曲，而名次正是这根轴要回答的东西。`
                     : `比值逐行一致 ⇒ 绝对值整体偏移，名次尚可比，但读数本身不是毛利。`)
                 : ``) +
-              `恢复条件：把这两格的计价单位声明到"每什么"这一层（如 元/套、元/kWh）并使两者一致，本轴自动回到在册目标。`
+              `恢复条件：把这两格的计价单位声明到"每什么"这一层并使两者一致` +
+              (DENOMINATED_CURRENCY_UNITS.length > 0
+                ? `（本平台今天认的有 ${DENOMINATED_CURRENCY_UNITS.join("、")}）`
+                : ``) +
+              `，本轴自动回到在册目标。`
             : `今天算不出：营收侧 ${orderT.key}.${revProp}（单位 ${revUnit ?? "未声明"}）与成本侧 ` +
               `${costPropKey ? `${costOwner.key}.${costPropKey}` : "未绑定"}（单位 ${costUnit ?? "未声明"}）` +
               (assignCostBound
