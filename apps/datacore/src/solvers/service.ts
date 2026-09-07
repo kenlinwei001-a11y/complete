@@ -1919,6 +1919,14 @@ export class SolverService {
     // （部分订单有 unitPrice、部分缺），缺价单会被静默压低 30.8× 权重 → 归因份额悄悄错分摊。
     // → **禁止静默兜底**（本仓病灶族）：缺 unitPrice 即 0 权重（诚实缺席），绝不冒充一个旧口径业务单价。
     // 门：`test/unitprice-scale.test.ts`（口径锚 + 兜底效果层断言）。
+    // ⚠ WO-UNIT-MARGIN-96X 补一条本行**自己没说破**的前提：这里把 `qty` 读作**套**，
+    //   而 `Order.qty` 在本体上声明的是 `unit:"件"`（`synthetic/battery.ts` orderProps）。
+    //   两者只有在「一件 == 一套」时才自洽，而同一本体又用 `packCellCount=96` 表达「一套 == 96 电芯」。
+    //   本行的**结论仍成立**（营收锚 `scaleAnchorRevenue` 就是按「qty=套」标定的，实测订单簿
+    //   Σqty×unitPrice ≈ 480.6 亿，与 S 档 700 亿锚同量级），但它成立靠的是**种子的标定意图**，
+    //   不是本体的单位声明 —— 声明侧今天是矛盾的。同一个矛盾的另一条出口是成本侧
+    //   （`OrderLine.unitCost` 分母是电芯，却与分母为套的 `unitPrice` 相减），
+    //   断点 `G-UNIT-MARGIN-CROSS-DENOM`。⛔ 勿据此就地改任一侧：改哪一侧都会动金值，属种子层裁决。
     const orderVal = (o: Record<string, unknown>) => round(num(o.qty) * num(o.unitPrice) / 1e4, 2); // 万元 = 套 × 元/套 ÷ 1e4
     // ── R13 口径对齐：provenance 的 drillValue 必须是 **drillField 所指字段本身的真值**（WO-PROV-DRILLFIELD·欠账 #96）──
     // 病灶（本单修复）：叶/基地节点标 `drillField:"value"`，却把 `orderVal` 的**万元**归因权重塞进 `drillValue`，
