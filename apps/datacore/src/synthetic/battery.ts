@@ -6049,10 +6049,34 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   // 财务预算三线：收入=Σ收入细分、销售成本=收入-毛利、毛利=Σ毛利额（与 DemandSegment 交叉一致）。
   const totalRev = demandSegments.reduce((s, d) => s + (d.demandWanPerYearP50 as number) * (d.priceWan as number), 0);
   const totalMargin = demandSegments.reduce((s, d) => s + (d.demandWanPerYearP50 as number) * (d.priceWan as number) * (d.marginPct as number) / 100, 0);
+  /**
+   * WO-METRIC-IDENTITY 病② · **`budget` 与 `rolling` 不许同出一处**（拆恒等式）。
+   *
+   * ── 今天的行为是 X，应该是 Y ────────────────────────────────────────────────
+   * **X（修前实测，真后端 `SEED_DEMO=1`）**：三行的 `budget` 全是**同一行 `rolling` × 0.98**
+   *   （`budget: round(totalRev*0.98,1)` / `rolling: round(totalRev,1)`，成本行、毛利行同构）。
+   *   于是屏上「收入达成率」= `rolling ÷ budget ≡ 1/0.98 = 102.04%`，**与 `totalRev` 取何值无关**：
+   *   实测把订单簿砍到 1/5、把 `totalRev` 换成任何数，该卡恒读 **102**。
+   *   同一个病还悄悄杀掉了 `finance_pnl` 的毛利率差：`budgetPct = gm.budget/rev.budget`、
+   *   `rollPct = gm.rolling/rev.rolling`，×0.98 上下相消 ⇒ **`diffPp` 结构上恒为 0.0**
+   *   （修前实测 17.0% vs 17.0%，差 0.0pp —— 一个永远不会动的差异列）。
+   * **Y（本段）**：`budget` = **计划侧**年度预算，单一来源 `GOAL_REGISTRY`（人定的年度目标，
+   *   与需求预测无关，改需求它不动）；`rolling` = **需求侧**滚动预测（Σ需求P50×价，原口径不动）。
+   *   两列从此**两条链**，比值不再是常数，毛利率差也不再恒 0（实测 16.0% vs 17.0%，+1.0pp）。
+   *
+   * ⚠ **三行的损益恒等式（收入 = 销售成本 + 毛利）必须逐位成立**，两列都是 ——
+   * 只改收入行会让科目表当场对不上账（那是把一个病换成另一个病）。故成本行两列都由
+   * 「收入 − 毛利」**同一步派生**，不另抄一条公式；两个操作数都已是 1 位小数 ⇒ 减法精确。
+   * ⚠ 预算侧不再出现 `0.98` 这个内联业务常数（RL5：业务常数只许来自配置/登记册）。
+   */
+  const revBudgetYi = GOAL_REGISTRY.revenue!.target; // 亿·计划侧年度收入预算（登记册单一来源）
+  const gmBudgetYi = GOAL_REGISTRY.gross_profit!.target; // 亿·计划侧年度毛利预算（同一登记册）
+  const revRollingYi = round(totalRev, 1); // 亿·需求侧滚动预测（口径不动）
+  const gmRollingYi = round(totalMargin, 1);
   const financePlans = [
-    { finId: "fin-rev", line: "收入", budget: round(totalRev * 0.98, 1), rolling: round(totalRev, 1) },
-    { finId: "fin-cogs", line: "销售成本", budget: round((totalRev - totalMargin) * 0.98, 1), rolling: round(totalRev - totalMargin, 1) },
-    { finId: "fin-gm", line: "毛利", budget: round(totalMargin * 0.98, 1), rolling: round(totalMargin, 1) },
+    { finId: "fin-rev", line: "收入", budget: revBudgetYi, rolling: revRollingYi },
+    { finId: "fin-cogs", line: "销售成本", budget: round(revBudgetYi - gmBudgetYi, 1), rolling: round(revRollingYi - gmRollingYi, 1) },
+    { finId: "fin-gm", line: "毛利", budget: gmBudgetYi, rolling: gmRollingYi },
   ];
 
   // SPINE：KSF 五要素（口径同 HTML KSF_DEF）+ 责任主体（org/role/person）。
