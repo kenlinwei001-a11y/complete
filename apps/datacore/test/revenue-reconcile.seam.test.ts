@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN, invokeSolver, type TestApp } from "./helpers.js";
 import { GOAL_REGISTRY } from "@platform/contracts";
 import { round } from "../src/prng.js";
+import { generateBattery, orderBookYearRevenue, yuanToYi } from "../src/synthetic/battery.js";
 
 /**
  * WO-REVENUE-RECONCILE · 屏上四个「营收」的**对账接缝**。
@@ -18,6 +19,14 @@ import { round } from "../src/prng.js";
  *
  * **Y（本文件）**：四个数各自的**口径身份**被钉死成断言 ——
  *   谁跟订单簿走、谁不跟，谁能从谁推出来，都由机器说话，不靠人记得。
+ *
+ * ══ ⚠ WO-METRIC-IDENTITY 之后：② 已换口径，本文件 §2/§4 随之**翻面** ═════════════
+ *   ② `Metric.kpi-revenue.actual` 不再是需求 P50 预测（700.0），而是**成交侧订单簿计划年窗**
+ *   ——实测 **415.6 亿 / 458 单**（全簿 454.64 亿 / 500 单，2025-12 那 42 张属上一年度的簿子）。
+ *   `target` 仍是计划侧登记册的 700 ⇒ 达成 **59.4%**、`miss=true`，第一次是个会报警的指标。
+ *   §2 原本断的是「② ≈ 需求预测 且 ② ≡ target」（= **病的指纹**），现在断的是
+ *   「② 由订单簿逐位重算 且 两条指纹都不再成立」。§4 的翻面更值得记一笔 ——
+ *   它修前**依然是绿的，而理由已是假话**，详见 §4 头注。
  *
  * ── 为什么必须是接缝测试，不能各半测 ────────────────────────────────────────
  * 每一半单独看都是绿的、也都是对的：`cockpitKpi` 忠实回读了 `AnnualScenario.revenue`；
@@ -95,18 +104,39 @@ describe("WO-REVENUE-RECONCILE · 四个营收的口径对账", () => {
     await t.app.close();
   });
 
-  it("§2 ②的『实际』**不是已实现营收**：它等于需求预测，且与 target 同值 ⇒ 达成率结构上恒为 100%", async () => {
+  /**
+   * ⚠ **本节（§2）已从「钉住病」翻面成「钉住修复」**（WO-METRIC-IDENTITY 金值同步）。
+   *
+   * 基座原文断的是 `actual ≈ 需求预测` 且 `actual === target` —— 那是**病的指纹**，
+   * 当时写它是对的（先把病钉死，才谈得上证明修没修掉）。病修掉之后，
+   * **同一条断言就掉了个头**：它现在要求实现回到 700，等于用测试把修复顶回去。
+   * 这类断言不改，下一个人只会看到一条红，然后最省事的动作是把 `actual` 改回需求预测。
+   */
+  it("§2 ②的『实际』是**成交侧真值**：由订单簿计划年窗逐位重算，且不再与需求预测/target 同值", async () => {
     const t = await bootedApp();
     const segs = await t.repos.objects.listByType("demo", "DemandSegment");
     const mets = await t.repos.objects.listByType("demo", "Metric");
     const rev = mets.find((m) => m.props.metricId === "kpi-revenue")!;
+    const actual = Number(rev.props.actual);
 
+    // ── 正面：它必须能由订单簿**逐位重算**出来（415.6 亿 / 计划年 458 单）───────────────
+    // 走的是生产同一个函数（`orderBookYearRevenue`），不在本文件另抄一遍口径 ——
+    // 抄一遍就变成"两份公式各自绿"，改一处漏一处不会红，那正是本仓反复付账的形态。
+    const orderRows = (await orders(t)).map((o) => o.props);
+    const book = orderBookYearRevenue(orderRows);
+    expect(actual, "『营收·实际』必须逐位等于订单簿计划年窗成交额").toBe(yuanToYi(book.yuan));
+    // 计划年窗必须真的是**窗**：它得比全簿少（订单交期跨 2025-12→2026-12 两个日历年）。
+    // 少了这一条，「窗」退化成「全簿」也照样绿 —— 而那会把上一年度的簿子算进本年度达成。
+    expect(book.count, "计划年窗必须真的裁掉了跨年单，否则窗形同虚设").toBeLessThan(orderRows.length);
+    expect(book.count).toBeGreaterThan(0);
+
+    // ── 反面：修前那两条**病的指纹**必须都不再成立 ──────────────────────────────
     const demandRev = segs.reduce((a, s) => a + Number(s.props.demandWanPerYearP50 ?? 0) * Number(s.props.priceWan ?? 0), 0);
-    // 「实际」逐位等于**需求 P50 预测**——这就是它不随订单簿变的原因（§4 会再证一次）。
-    expect(Number(rev.props.actual)).toBeCloseTo(demandRev, 1);
-    // 且它与目标同值 ⇒ 这个指标**永远不会越线**。一个永远不会报警的指标不是指标。
-    expect(Number(rev.props.target)).toBe(GOAL_REGISTRY.revenue!.target);
-    expect(Number(rev.props.actual)).toBe(Number(rev.props.target));
+    expect(actual, "回到需求 P50 预测 = 口径回潮（『实际』又变成预测）").not.toBeCloseTo(demandRev, 1);
+    expect(Number(rev.props.target), "target 仍是计划侧登记册目标（这一半没变，也不该变）").toBe(GOAL_REGISTRY.revenue!.target);
+    expect(actual, "actual 与 target 同值 ⇒ delta≡0、永不越线，那正是本单修掉的病").not.toBe(Number(rev.props.target));
+    // 而且它现在**真的会报警**：415.6 < floorVal 686 ⇒ 屏上转红。
+    expect(actual).toBeLessThan(Number(rev.props.floorVal));
     await t.app.close();
   });
 
@@ -124,14 +154,34 @@ describe("WO-REVENUE-RECONCILE · 四个营收的口径对账", () => {
     await t.app.close();
   });
 
-  it("§4 ★对照实验（兼金丝雀）：删掉一半订单 → ③必须跟着掉，①②必须逐字节不动", async () => {
+  /**
+   * ⚠ **本节（§4）也翻了面，而且它修前是一条「绿得没道理」的断言** —— 记这一笔比改它更重要。
+   *
+   * 基座原文最后一行是 `expect(metAfter).toBe(metBefore)`，理由写的是
+   * 「②『营收·实际』今天是需求预测口径，必须不随订单簿变」。
+   * WO-METRIC-IDENTITY 把 ② 换成成交侧之后，**这条断言依旧是绿的** —— 而它的理由已经是假话。
+   * 真原因是：`Metric.kpi-revenue.actual` 是**合成期物化**的对象属性，
+   * 删 `Order` 对象只动仓储、不会回头重算已落库的 `Metric`。
+   * ⇒ 「删了订单它不动」既不能证明它是预测口径，也不能证明它是成交口径，**这条断言零鉴别力**。
+   *
+   * 形态（CLAUDE.md 铁律 0.6 句式）：
+   * 「我用『删掉订单后 ② 没动』当作『② 不跟订单簿走』的证据，而前者并不度量后者 ——
+   *  它度量的是『② 是快照，不是查询期投影』。」
+   *
+   * ── 修法：把对照实验挪到**各自真正的施力点**上 ─────────────────────────────────
+   *  · **查询期**（本节前半）：`revAttainPct` 是查询期现算的，删订单**必须**让它掉，
+   *    且掉到的新值可**逐位预言**（按剩余订单重算）。修前它恒 102.04，删多少订单都不动。
+   *  · **合成期**（本节后半）：`Metric.kpi-revenue.actual` 只有换一副订单簿**重新生成**才会变 ——
+   *    故对照实验用 `generateBattery` 的两个规模（S=500 单 / L=825 单）当 X 与 X'。
+   */
+  it("§4 ★对照实验（兼金丝雀）：查询期删订单 → 达成率必须按可预言的量掉，①计划口径必须逐字节不动", async () => {
     const t = await bootedApp();
     const before = await orders(t);
     const revBefore = sumProp(before, "value");
     const aopBefore = await scalar(t, "cockpit_kpi", "aopBaseRev");
-    const metBefore = Number(
-      (await t.repos.objects.listByType("demo", "Metric")).find((m) => m.props.metricId === "kpi-revenue")!.props.actual,
-    );
+    const attainBefore = await scalar(t, "cockpit_kpi", "revAttainPct");
+    const fins = await t.repos.objects.listByType("demo", "FinancePlan");
+    const revBudget = Number(fins.find((f) => String(f.props.line) === "收入")!.props.budget);
 
     // 真删一半订单对象（不是改断言、不是改期望值）。
     const victims = before.slice(0, Math.floor(before.length / 2));
@@ -140,18 +190,48 @@ describe("WO-REVENUE-RECONCILE · 四个营收的口径对账", () => {
     const after = await orders(t);
     const revAfter = sumProp(after, "value");
     const aopAfter = await scalar(t, "cockpit_kpi", "aopBaseRev");
-    const metAfter = Number(
-      (await t.repos.objects.listByType("demo", "Metric")).find((m) => m.props.metricId === "kpi-revenue")!.props.actual,
-    );
+    const attainAfter = await scalar(t, "cockpit_kpi", "revAttainPct");
 
-    // 金丝雀：观测手段本身是好的 —— 订单条数确实动了。它若不动，下面三条断言全部没有鉴别力。
+    // 金丝雀：观测手段本身是好的 —— 订单条数确实动了。它若不动，下面几条断言全部没有鉴别力。
     expect(after.length, "金丝雀：订单数必须真的变少，否则是本测试的量法坏了").toBeLessThan(before.length);
     // ③ 跟着订单簿走 —— 这才配叫「实算」。
     expect(revAfter, "订单簿营收必须随订单减少而下降").toBeLessThan(revBefore);
-    // ①② 不跟订单簿走 —— 它们是**计划/预测口径**，不动才是对的；动了反而说明口径被搅混了。
+    // ① 不跟订单簿走 —— 它是**供给计划口径**，不动才是对的；动了反而说明口径被搅混了。
     expect(aopAfter, "① AOP 基准营收是供给计划口径，必须不随订单簿变").toBe(aopBefore);
-    expect(metAfter, "②『营收·实际』今天是需求预测口径，必须不随订单簿变").toBe(metBefore);
+
+    // ★ 达成率：查询期现算 ⇒ 必须掉，且掉到的值可**逐位预言**（不是"变小就行"）。
+    // 「变小就行」挡不住一个把分子换成另一条会变小的量的实现；逐位预言挡得住。
+    const bookAfter = yuanToYi(orderBookYearRevenue(after.map((o) => o.props)).yuan);
+    expect(attainAfter, "收入达成率必须逐位等于『剩余订单计划年成交额 ÷ 年度收入预算』")
+      .toBe(round((bookAfter / revBudget) * 100, 1));
+    expect(attainAfter, "删掉一半订单而达成率不动 ⇒ 分子又变回与订单簿无关的常数（102.04 那个老病）")
+      .toBeLessThan(attainBefore);
     await t.app.close();
+  });
+
+  it("§4b ★对照实验（合成期）：换一副订单簿重新生成 → ②必须跟着动，①与预算三行必须逐字节不动", async () => {
+    // X → X'：同 seed、不同规模 ⇒ 订单簿从 500 单换成 825 单（`orderCount = max(ORDER_BOOK_SIZE, …)`）。
+    // 这是**发电机层**的对照实验，不经服务端 —— ② 是合成期物化的，只有这一层才是它真正的施力点。
+    const small = generateBattery(42, "S");
+    const large = generateBattery(42, "L");
+    const metOf = (g: ReturnType<typeof generateBattery>) =>
+      Number((g.metrics as { metricId: string; actual: number }[]).find((m) => m.metricId === "kpi-revenue")!.actual);
+
+    // 金丝雀：两副订单簿必须真的不同规模，否则下面全部没有鉴别力。
+    expect(large.orders.length, "金丝雀：L 的订单簿必须真的比 S 大").toBeGreaterThan(small.orders.length);
+
+    // ② 必须跟着动，且两侧都**逐位**等于各自订单簿的计划年窗成交额（实测 415.6 → 674.0）。
+    expect(metOf(small)).toBe(yuanToYi(orderBookYearRevenue(small.orders).yuan));
+    expect(metOf(large)).toBe(yuanToYi(orderBookYearRevenue(large.orders).yuan));
+    expect(metOf(large), "订单簿变大而『营收·实际』不动 ⇒ 它又不跟成交走了（修前正是这一态）")
+      .toBeGreaterThan(metOf(small));
+
+    // 而**计划侧**必须一个字节都不动：目标 + 预算三行都不随订单簿变（动了才是口径被搅混）。
+    const tgtOf = (g: ReturnType<typeof generateBattery>) =>
+      Number((g.metrics as { metricId: string; target: number }[]).find((m) => m.metricId === "kpi-revenue")!.target);
+    expect(tgtOf(large), "target 是计划侧登记册目标，与订单簿无关").toBe(tgtOf(small));
+    expect(JSON.stringify(large.financePlans), "预算三行取自目标登记册，必须不随订单簿变")
+      .toBe(JSON.stringify(small.financePlans));
   });
 
   it("§5 口径必须写在屏上：并排的营收族卡片都得带 caption（数字没错时，缺的就是这一行）", async () => {
