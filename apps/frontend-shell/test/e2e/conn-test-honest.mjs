@@ -75,9 +75,25 @@ try {
   if (!nomock.ok) throw new Error("assertNoMock 失败：这一屏没有打到真后端，取证作废");
   result.steps.push(`② 真后端命中 ${nomock.realHits} 次（禁 VITE_MOCK 已实测）`);
 
-  // ③ 从导航点进「数据接入」——不许手敲 URL
-  await page.click('text=数据接入');
+  // ③ 从导航点进数据接入——不许手敲 URL，点的是侧栏里那条真链接。
+  //
+  // ⚠ 这里踩过一个坑，写下来防止下次又绕：第一版脚本先 `click('text=数据接入')`，
+  //   以为侧栏那个 `▶ 数据接入` 是**折叠的分组头**、要先展开。
+  //   实测（`probe-nav.mjs` 量 DOM）恰好相反：**分组本来就是展开的** ——
+  //   点击前 `a[href="/admin/connections"]` 的盒子是 223×36、可点；
+  //   我那一下点在分组头上，反而把它**收起来了**（父节点变 `display:none`），
+  //   于是后面等这条链接「可见」永远等不到。
+  //   形态：**「我用『图标看着像 ▶』当作『分组是折叠的』的证据，而前者并不度量后者。」**
+  //   判据要落在 DOM 量出来的盒子上，不是截图上那个箭头长什么样。
+  await page.waitForSelector('a[href="/admin/connections"]', { timeout: 20000 });
+  const navBox = await page.$eval('a[href="/admin/connections"]', (a) => {
+    const r = a.getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height) };
+  });
+  result.navLinkBox = navBox; // 金丝雀：盒子非零才说明它真的在屏上可点
+  await page.click('a[href="/admin/connections"]');
   await page.waitForSelector('button:has-text("新建连接")', { timeout: 30000 });
+  result.navSteps = `侧栏「数据接入」分组默认展开，组内条目 1 次点击直达（链接盒 ${navBox.w}×${navBox.h}）`;
   result.urlAfterNavClick = page.url();
   result.steps.push("③ 点导航「数据接入」→ " + result.urlAfterNavClick);
   await shot(page, `conntest-${MODE}-02-connections-page`);
