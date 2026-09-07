@@ -1118,7 +1118,9 @@ const baseProps: PropertyDef[] = [
 ];
 const baseDerived: DerivedPropertyDef[] = [
   { propKey: "orderCount", formula: "COUNT(Order.so BY bases)", unit: "单", scale: "absolute" },
-  { propKey: "committedQty", formula: "SUM(Order.qty BY bases)", unit: "件", scale: "absolute" },
+  // WO-DIMENSION-ERRORS · 随 `Order.qty` 件→套：本式**字面上**就是 Σ Order.qty，
+  // 只改被加数不改和，会造出「同一个量在两处属于两个计数族」这种更难查的形态。
+  { propKey: "committedQty", formula: "SUM(Order.qty BY bases)", unit: "套", scale: "absolute" },
   // A8/T3: snapshot property (Equipment.oee_current) is a legal leaf of the derivation graph.
   { propKey: "oeeIndex", formula: "AVG(Equipment.oee_current BY baseId)", unit: "dimensionless", scale: "ratio" },
 ];
@@ -1409,7 +1411,18 @@ const orderProps: PropertyDef[] = [
     description: "下单客户的外键（值 = `Customer.custId` 主键，不是显示名）。沿 ref 走图的通用求解器按主键值建索引，故客户集中度一类问题只认这一格；显示名在同类型的 `cust` 上。",
   },
   { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
-  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  // WO-DIMENSION-ERRORS · 今天的行为：声明 `件`（cell）。应该是：`套`（pack）。
+  // 判据不是名字，是**已被仓主拍板的那份文件**：`docs/DECISION-unit-of-account.md` §1.4 把
+  //「`SO-3391` 的 `unitPrice = 21626 元/套`」当作既定事实用来反推一套多少 kWh。
+  // 派生式 `value = qty * unitPrice` 要得出 `元`，`qty` 就只能是**套**（元/套 × 套 = 元）。
+  // 真起后端对拍（SEED_DEMO=1·500 单）：Σqty = 2,436,095，Σvalue = 454.6 亿元。
+  //   · 读作**套**：占需求锚 375 万套/年 的 65% —— 在手订单簿的合理量级 ✅
+  //   · 读作**件**：= 25,376 套（96 电芯/套），即 500 张单合计只占年需求 0.68%，
+  //     且隐含单价 96 × 21,626 ≈ **207 万元/套** ❌
+  // ⚠ `unitPrice` 保持 `元` 不动：真实分母是「套」，而上述裁决 §1.5 明令「套/电芯不得充当
+  //   金额的分母」⇒ 词库里没有也不许有 `元/套`（`Model.unitCost` 那格已按同一理由声明 `元`）。
+  //   本单只收**可以收的那一半** —— 计数族错；金额分母那一半属该裁决的 17 字段收口，不在本单。
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "套", scale: "absolute" },
   { propKey: "due", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "pri", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // PRD-IND-order 优先级（高/中/低）
   { propKey: "bases", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
@@ -1458,7 +1471,17 @@ const lineProps: PropertyDef[] = [
       "产线利用率。0–100 百分点存储（非 0–1 比率），显示不再 ×100 —— 与 LEVER_PROP_META['Line.utilization'].kind='percent' 同口径。" +
       "值由时序 `util:line` 经 `line_util_daily` 物化写入，不在播种期赋值。规则 C05 `SUSTAIN(Line.utilization > 95, 3)` 的红线 95 即按本口径。",
   },
-  { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false, unit: "套/日", scale: "absolute" },
+  // WO-DIMENSION-ERRORS · 今天的行为：声明 `套/日`（pack）。应该是：`件/日`（cell）。
+  // 证据在生成侧，不在名字上：本字段由时序聚合 `line_output_daily`（`agg:"sum"` over `output:line`）
+  // 回写，而 `output:line` 的尺度锚是 `outputLineScaleForBase(baseFormationCapDaily)` ——
+  // 括号里那个量本文件自陈是 **dailyCells**（"基地夹定产能(formationCapDaily=computeRollup dailyCells)"）
+  // ⇒ 这条序列从生成的第一天起就是**电芯**。
+  // 数值对拍（真起后端 SEED_DEMO=1·130 条 Line）：中位 actual/`max_capacity_day`(件/日) = **4.665**，
+  // 而中位 actual/`capacityDaily`(套/日) = **447.8**。若真是套/日，则每条线的实际产出是其
+  // pack 产能的 447 倍 —— 而同对象 `utilization` 中位只有 **92.1%**，两者不可能同时为真。
+  // （4.665 而非 ~1，是因为 `formationCapDaily` 是**基地级**电芯产能而 `max_capacity_day` 是**单线**级，
+  //   一基地约 10 条线 —— 那是聚合口径问题，与本条量纲无关，不在本单范围。）
+  { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false, unit: "件/日", scale: "absolute" },
   { propKey: "schedule_attainment", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
   // SA-5：产线台账字段（R12 全建模对齐）
   { propKey: "line_code", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
@@ -1690,8 +1713,19 @@ const demandSegmentDerived: DerivedPropertyDef[] = [
   // ⇒ 这也是「按字段名机械抄单位」这条捷径的反例：`Wan` 后缀在这里**不度量它的单位**。
   //   名字暂不改（`revenueWan` 是求解器/前端/金值的接线名，改名要连断言一起改，属另一张单）；
   //   但机器可读的 `unit` 必须说真话 —— 从今天起以本声明为准，不以名字为准。
-  { propKey: "revenueWan", formula: "demandWanPerYearP50 * priceWan", unit: "亿元", scale: "absolute" },
-  { propKey: "marginWan", formula: "demandWanPerYearP50 * priceWan * marginPct / 100", unit: "亿元", scale: "absolute" },
+  // ── WO-DIMENSION-ERRORS · 上一单收掉了**倍数**错（万元→亿元），**阶**错还留着 ───────────
+  // 今天的行为：声明 `亿元` = **存量**（"账上有 700 亿"）。
+  // 应该是：`亿元/年` = **速率**（"一年做 700 亿"）—— 因为左因子是 `demandWanPerYearP50`，
+  // 它的名字与声明都自陈分母是**年**（`万套/年`）。逐位：`万套/年 × 万元/套 = 1e8 元/年`。
+  // ⚠ 存量与速率之间**没有换算系数**（不像 万元↔亿元 差 1e4）：它们是两个不同的量。
+  //   上一单把注释从「收入(万)」改成「亿元」时只盯着倍数，分母那一半原样留了下来 ——
+  //   同一行上**两种错并存**，修掉显眼的那个反而更像已经修完了。
+  // ⚠ `priceWan` 保持 `万元` 不动：它的真实分母是「套」，而 `docs/DECISION-unit-of-account.md`
+  //   §1.5 的仓主裁决明令「套/电芯不得充当金额的分母」⇒ 词库里**没有也不许有** `万元/套`。
+  //   本仓表达「每单位多少钱」靠绑定角色 + qty 那一格（同 `Model.unitCost` 的既有口径），
+  //   不靠单位串。故这里只收**时间**这一半的分母 —— 它不触那条裁决。
+  { propKey: "revenueWan", formula: "demandWanPerYearP50 * priceWan", unit: "亿元/年", scale: "absolute" },
+  { propKey: "marginWan", formula: "demandWanPerYearP50 * priceWan * marginPct / 100", unit: "亿元/年", scale: "absolute" },
 ];
 const financePlanProps: PropertyDef[] = [
   { propKey: "finId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
@@ -1978,7 +2012,9 @@ const orderLineProps: PropertyDef[] = [
   { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Order" }, // 该行属于哪张订单
   { propKey: "lineNo", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 行号（1 起·首行保原单 model）
   { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" }, // 该行型号
-  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // Σ BY orderRef === Order.qty（勾稽）
+  // WO-DIMENSION-ERRORS · 随 `Order.qty` 件→套：本行注释自陈「Σ BY orderRef === Order.qty」是一条**等式**，
+  // 等式两端必须同族。同理下方 `unitPrice` 保持 `元`（元/套 属该裁决收口范围·见 Order.qty 处长注）。
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "套", scale: "absolute" }, // Σ BY orderRef === Order.qty（勾稽）
   { propKey: "due", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 交期（继承订单头）
   { propKey: "lineStatus", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // OPEN | COMMITTED | PARTIAL | SHIPPED
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 按行 model 反范式化（Model.unitPrice 单一来源·R14）
