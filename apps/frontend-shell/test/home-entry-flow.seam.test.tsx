@@ -27,7 +27,7 @@ import { enrichScenarioCardsForSearch, type ScenarioCardVM } from "@/api/endpoin
  */
 describe("WO-HOME-ENTRY-FLOW · 首页入口 ⊇ 侧栏 route 项 + 遇事指引", () => {
   it("首页把 kind:\"route\" 的导航项也铺出来（含统一推演控制台），且 view 项一个不丢", async () => {
-    loginAs("admin");
+    loginAs("planner");
     renderApp("/");
     await screen.findByTestId("home-page");
 
@@ -57,7 +57,7 @@ describe("WO-HOME-ENTRY-FLOW · 首页入口 ⊇ 侧栏 route 项 + 遇事指引
   });
 
   it("遇事指引区：每条都给出「该点哪个」，且指到一张真在册的场景卡", async () => {
-    loginAs("admin");
+    loginAs("planner");
     renderApp("/");
     await screen.findByTestId("home-page");
 
