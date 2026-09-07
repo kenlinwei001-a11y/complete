@@ -840,9 +840,16 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
       // P90 = `round(rolling × 0.936, 2)`（真后端缺省派生同式），lastActual = 年实绩按月度权重折算。
       // **滚动修正的比例原样保留**（乘用车贴目标 / 储能下修 −3.9% / 商用车上修 >+10% → C21 红标），
       // 所以演示行为不变、只有量级回到月 —— 这正是「改值不改故事」与「只改标注不改值」的分界。
-      // ⚠️ 钱轴是**年**（亿元/年），不跟着量轴缩：真后端 `finance_pnl` 收入 budget 686 / rolling 700，
-      // `cockpit_kpi.revAttainPct` 实测 102 = 700÷686。旧 mock 把预算写成 700（= rolling 自己）⇒ 达成率恒 100%。
-      // 2026-08-15 实测；复验：`POST /b/v1/solvers/finance_pnl/run` 与 `/a/v1/solvers/cockpit_kpi/invoke`
+      // ⚠️ 钱轴是**年**（亿元/年），不跟着量轴缩：真后端 `finance_pnl` 收入 budget **700** / rolling 700。
+      // ── WO-METRIC-IDENTITY 金值同步（本段前两版都写错过，两次错法不同，都记在这里）──
+      //  · 最早：预算写 700（= rolling 自己）⇒ 达成率恒 100%。
+      //  · 上一版：改到 **686** 去对齐真后端的「102% = 700÷686」——**看着对上了，其实对齐的是个恒等式**：
+      //    真后端当时 `budget = rolling × 0.98`，两列同出一处，比值 ≡ 1/0.98 = 102.04%，与输入无关。
+      //  · 现在：真后端预算列改取年度目标登记册（收入 700 / 毛利 112 / 成本 588），
+      //    而达成率的**分子**同时换成成交侧订单簿计划年成交额（415.6 亿 / 458 单）
+      //    ⇒ `cockpit_kpi.revAttainPct` 实测 **59.4**（越线转红），不再是 100 也不再是 102。
+      // 教训：预算回到 700 而达成率**没有**回到 100 —— 分子分母是两条链，这才是它能报警的原因。
+      // 2026-09-07 实测；复验：`POST /b/v1/solvers/finance_pnl/run` 与 `/a/v1/solvers/cockpit_kpi/invoke`
       //（真后端同名端点；判据见 test/mock-scale-truth.seam.test.ts 的 L2 钱轴一节）。
       revBudget: SOP_REVENUE_BUDGET_YI,
       segments: SOP_WIZARD_SEGMENTS,

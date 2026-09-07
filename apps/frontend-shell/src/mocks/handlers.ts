@@ -149,7 +149,7 @@ import {
   type MockForecastArgs,
 } from "./simSolvers";
 // WO-MOCK-SCALE-TRUTH：年口径（DemandSegment / SopVersionRow / AOP 营收）单一来源。
-import { AOP_BASE_REVENUE_YI, DEMAND_YEAR, FINANCE_PNL_YEAR, SOP_VERSION_ROWS, SOP_VERSION_TOTAL_GAP_WAN, SUPPLY_V7_WAN } from "./sopScale";
+import { AOP_BASE_REVENUE_YI, DEMAND_YEAR, FINANCE_PNL_YEAR, REV_ATTAIN_PCT, SOP_VERSION_ROWS, SOP_VERSION_TOTAL_GAP_WAN, SUPPLY_V7_WAN } from "./sopScale";
 import {
   affectedOrdersOutput,
   AOP_RESPONSE,
@@ -4282,7 +4282,12 @@ export const handlers = [
       // DS.2 富 KPI（mock：从对象派生的 5 标量确定性示例）。
       // WO-MOCK-SCALE-TRUTH：`supplyV7` = 定稿版 SopVersionRow.supply（万套/年·真后端实测 379，旧值 132）；
       // `aopBaseRev` = 基准情景年营收 = 供给侧年口径 322.2 × P̄ 1.8667（亿元·真后端实测 601.5，旧值 240）。
-      return HttpResponse.json({ data: { supplyV7: SUPPLY_V7_WAN, revAttainPct: 102, utilPeak: 88, aopBaseRev: AOP_BASE_REVENUE_YI, cashCushion: 58 }, snapshotVersion: "ov-12" });
+      // WO-METRIC-IDENTITY：`revAttainPct` 写死的 **102 已过期且方向相反**。102 抄的是真后端修前那个
+      // 恒等式读数（`rolling ÷ budget ≡ 1/0.98`，与订单簿多少无关）；真后端现改成
+      // 成交侧订单簿计划年成交额 ÷ 年度收入预算 ⇒ 实测 **59.4**（越线转红）。
+      // 同一块屏上 mock 读「超额完成 2 个点」而真后端读「只完成 59.4%」，那是两个相反的结论 ——
+      // 本文件头注那句「mock 不许比真后端宽松」说的正是这种情形。改走 `REV_ATTAIN_PCT` 单一来源。
+      return HttpResponse.json({ data: { supplyV7: SUPPLY_V7_WAN, revAttainPct: REV_ATTAIN_PCT, utilPeak: 88, aopBaseRev: AOP_BASE_REVENUE_YI, cashCushion: 58 }, snapshotVersion: "ov-12" });
     if (key === "metric_rollup") {
       // SPINE.4 经营指标条（mock：op 级 4 指标·物料保障率越线·交付达成率已达成——单一出处 COCKPIT_ROLLUP_METRICS）
       const missCount = COCKPIT_ROLLUP_METRICS.filter((m) => m.miss).length;
@@ -5961,8 +5966,10 @@ export const handlers = [
     }
     if (key === "finance_pnl")
       // WO-MOCK-SCALE-TRUTH：量价本利科目表是**年**口径（亿元/年）。旧 mock 写 240/248/39.4，
-      // 真后端实测 686/700/118.9（收入 rolling 700 就是需求侧营收锚本体）——同一张表差 2.8 倍。
-      // 这一族**不随**量轴改月：钱轴与量轴期间不同是真后端自己的设计，见 mocks/sopScale.ts。
+      // 与真后端同一张表差 2.8 倍。这一族**不随**量轴改月：钱轴与量轴期间不同是真后端自己的设计。
+      // WO-METRIC-IDENTITY：真后端预算列已从「滚动×0.98」换成年度目标登记册 ⇒ 实测
+      // 收入 **700**/700、销售成本 588/581.1、毛利 **112**/118.9，毛利率 16.0%→17.0%（+1.0pp，修前恒 0.0）。
+      // 数值与派生全部走 `mocks/sopScale.ts` 的 `FINANCE_PNL_YEAR` 单一来源，本处不抄第二份。
       return HttpResponse.json({
         data: {
           pnl: FINANCE_PNL_YEAR.pnl.map((row) => ({ ...row })),

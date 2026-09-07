@@ -232,33 +232,88 @@ export const SOP_WIZARD_SEGMENTS = SOP_SEG_MONTH_TARGET.map((s) => {
 
 /**
  * ── ⚠️ 钱轴是**年**，不跟着量轴缩 ──────────────────────────────────────────
- * 2026-08-15 实测真后端 `finance_pnl`（复验 `POST /b/v1/solvers/finance_pnl/run`）：
- * 收入 budget **686** / rolling **700**、销售成本 569.5 / 581.1、
- * 毛利 116.5 / **118.9**、毛利率 17% → 17%。这是**年**口径（亿元/年），rolling 700 就是需求侧营收锚本体。
+ * 2026-09-07 实测真后端 `finance_pnl`（复验 `POST /b/v1/solvers/finance_pnl/run`）：
+ * 收入 budget **700** / rolling **700**、销售成本 588 / 581.1、
+ * 毛利 **112** / **118.9**、毛利率 16.0% → 17.0%（+1.0pp）。这是**年**口径（亿元/年），rolling 700 就是需求侧营收锚本体。
+ * ⚠ 预算列的旧值（686 / 569.5 / 116.5，毛利率 17→17 差 0）已过期 —— 见下一段头注：
+ * 那不是"数变了"，是那一列**整列换了来源**（× 0.98 恒等式 → 目标登记册）。
  * 而 S&OP ②③ 的量是**月**口径（万套/月）。两轴不同期间是真后端自己的设计，不是 bug ——
  * 所以本单**只**把量轴从年改月，钱轴（s4 的 revSum/gmSum/gmBudget、cashCushion）一个字节不动。
  * 记这一笔是因为：不写下来，下一个人很容易"顺手"把 700 也缩成 52，那才是把对的改错。
  */
+/**
+ * ── ⚠️ WO-METRIC-IDENTITY 金值同步：**预算列整列换源**（不是"数微调了"）─────────────
+ *
+ * **旧值为什么是错的**：三行的 `budget` 全是**同一行 `rolling` × 0.98**
+ * （真后端修前 `budget: round(totalRev*0.98,1)` / `rolling: round(totalRev,1)`）。
+ * 于是屏上「收入达成率」= `rolling ÷ budget ≡ 1/0.98 = 102.04%`，**与 `totalRev` 取何值无关**；
+ * 同一个病还把毛利率差杀成常数：`budgetPct = gm.budget/rev.budget`、`rollPct = gm.rolling/rev.rolling`，
+ * ×0.98 上下相消 ⇒ 旧 `gmRow` 那组 **17 / 17 / diffPp 0** 是**结构上恒 0**，不是"今年恰好没差"。
+ *
+ * **新值**（真后端 `generateBattery(42,"S")` 实测，2026-09-07）：预算列改取 `GOAL_REGISTRY`
+ * 计划侧年度目标 —— 收入 **700**（`revenue.target`）、毛利 **112**（`gross_profit.target`）、
+ * 销售成本 **588**（= 700 − 112，同一步派生，保住"收入 = 成本 + 毛利"逐位成立）。
+ * 滚动列（需求侧预测）一个字节没动：700 / 581.1 / 118.9。
+ * ⇒ `gmRow` 变成 **16.0% vs 17.0% = +1.0pp**：这是本仓第一次在这一列上看到一个会动的差。
+ *
+ * ⚠ `diff` 是 `rolling − budget`（真后端 `financePnl` 的 `round(rolling-budget,1)`），
+ * 修前预算恒低 2% ⇒ 三个 diff 全是正数；现在收入行 diff = **0**（预算与预测同为 700，
+ * 这是真事实不是占位），成本行 **−6.9**、毛利行 **+6.9**。
+ * ⚠ 三行不许各写各的：本块的成本行与 `gmRow` 全部由收入/毛利两行**派生**，
+ * 手抄第三个数就是再造一处会漂的真相源。
+ */
+const FIN_REV_BUDGET_YI = 700; // = GOAL_REGISTRY.revenue.target（计划侧年度收入预算）
+const FIN_GM_BUDGET_YI = 112; // = GOAL_REGISTRY.gross_profit.target（计划侧年度毛利预算）
+const FIN_REV_ROLLING_YI = 700; // 需求侧滚动预测 Σ(P50×price)（口径未动）
+const FIN_GM_ROLLING_YI = 118.9; // 需求侧滚动毛利 Σ(P50×price×marginPct)（口径未动）
+const FIN_GM_BUDGET_PCT = r((FIN_GM_BUDGET_YI / FIN_REV_BUDGET_YI) * 100, 1); // 16.0
+const FIN_GM_ROLL_PCT = r((FIN_GM_ROLLING_YI / FIN_REV_ROLLING_YI) * 100, 1); // 17.0
 export const FINANCE_PNL_YEAR = {
   pnl: [
-    { subject: "收入", budget: 686, rolling: 700, diff: 14 },
-    { subject: "销售成本", budget: 569.5, rolling: 581.1, diff: 11.6 },
-    { subject: "毛利", budget: 116.5, rolling: 118.9, diff: 2.4 },
+    { subject: "收入", budget: FIN_REV_BUDGET_YI, rolling: FIN_REV_ROLLING_YI, diff: r(FIN_REV_ROLLING_YI - FIN_REV_BUDGET_YI, 1) },
+    { subject: "销售成本", budget: r(FIN_REV_BUDGET_YI - FIN_GM_BUDGET_YI, 1), rolling: r(FIN_REV_ROLLING_YI - FIN_GM_ROLLING_YI, 1), diff: r((FIN_REV_ROLLING_YI - FIN_GM_ROLLING_YI) - (FIN_REV_BUDGET_YI - FIN_GM_BUDGET_YI), 1) },
+    { subject: "毛利", budget: FIN_GM_BUDGET_YI, rolling: FIN_GM_ROLLING_YI, diff: r(FIN_GM_ROLLING_YI - FIN_GM_BUDGET_YI, 1) },
   ],
-  gmRow: { subject: "毛利率", budgetPct: 17, rollPct: 17, diffPp: 0 },
+  // ⚠ 逐位照抄真后端 `financePnl` 的**取整顺序**：两个百分比各自先 round 到 1 位，
+  // 再相减取 diffPp。先减后 round 在别的数上会差一档 —— mock 与真后端不同口径，正是本文件在治的病。
+  gmRow: { subject: "毛利率", budgetPct: FIN_GM_BUDGET_PCT, rollPct: FIN_GM_ROLL_PCT, diffPp: r(FIN_GM_ROLL_PCT - FIN_GM_BUDGET_PCT, 1) },
 } as const;
+
+/**
+ * `cockpit_kpi.revAttainPct` = **订单簿计划年成交额 ÷ 收入行年度预算** ×100（真后端实测 **59.4**）。
+ *
+ * **旧 mock 写死 102，那是错的**：它抄的是真后端修前那个恒等式的读数
+ * （`rolling ÷ budget ≡ 1/0.98`），**与订单簿多少无关** —— 真后端把订单簿砍到 1/5 它照读 102。
+ * 现在真后端的分子是成交侧（订单簿计划年窗 415.6 亿 / 458 单），分母是本文件上面那条年度预算
+ * ⇒ 59.4%。`handlers.ts` 头注写着「mock 不许比真后端宽松」：同一块屏上，
+ * mock 读 102（超额完成）而真后端读 59.4（越线转红）**是两个相反的结论**，不是精度差。
+ *
+ * ⚠ 分子是**记录下来的真后端读数**，不是本文件自算的 —— 前端 mock 没有 500 张单的订单簿，
+ * 编一个出来只会造出第三份真相源。分母走 `SOP_REVENUE_BUDGET_YI` 单一来源：
+ * 改预算时本值自动跟着走，不会漂。
+ */
+export const ORDER_BOOK_PLAN_YEAR_REVENUE_YI = 415.6;
 
 /** ④滚动收入合计（亿元/年）= `finance_pnl` 收入行 rolling = 700（= 需求侧营收锚）。 */
 export const SOP_REVENUE_ROLLING_YI = FINANCE_PNL_YEAR.pnl[0].rolling;
 /** ④滚动毛利合计（亿元/年）= `finance_pnl` 毛利行 rolling = 118.9。 */
 export const SOP_MARGIN_ROLLING_YI = FINANCE_PNL_YEAR.pnl[2].rolling;
 /**
- * 收入预算（亿元/年）= `finance_pnl` 收入行 budget = **686**。
- * 旧 mock 写 700（= rolling 自己），于是达成率恒 100%；真后端 `cockpit_kpi.revAttainPct` 实测 **102**
- * （= 700 ÷ 686，目录条目原文「收入达成率(收入行 rolling÷budget)」）。改到 686 才与真后端对上。
- * 2026-08-15 实测；复验：`POST /a/v1/solvers/cockpit_kpi/invoke`。
+ * 收入预算（亿元/年）= `finance_pnl` 收入行 budget = **700**（计划侧年度目标登记册）。
+ *
+ * ⚠ **本值的历史正好演示了「买绿式改期望值」为什么危险**：
+ * 更早的 mock 写 700（= rolling 自己）⇒ 达成率恒 100%；WO-MOCK-SCALE-TRUTH 改到 **686**
+ * 去对齐真后端的 102%。**686 当时确实与真后端一致，但它对齐的是一个恒等式**
+ * （真后端 `budget = rolling × 0.98`，686 = 700×0.98）——
+ * 对齐一个假数得到的一致，仍然是假的一致。
+ * 真后端 WO-METRIC-IDENTITY 把预算列换成目标登记册之后，本值回到 **700**，
+ * 而达成率**不再**因此变成 100%：分子同时换成了成交侧订单簿（415.6 亿）⇒ **59.4%**。
+ * 2026-09-07 实测；复验：`POST /a/v1/solvers/cockpit_kpi/invoke`。
  */
 export const SOP_REVENUE_BUDGET_YI = FINANCE_PNL_YEAR.pnl[0].budget;
+
+/** `cockpit_kpi.revAttainPct`（%）= 成交侧 ÷ 计划侧，两条链分开（真后端实测 **59.4**，旧 mock 写死 102）。 */
+export const REV_ATTAIN_PCT = r((ORDER_BOOK_PLAN_YEAR_REVENUE_YI / SOP_REVENUE_BUDGET_YI) * 100, 1);
 
 /** Σ SOP_PER_BASE_MONTHLY —— 决议增量按此缩放（与 simSolvers 的 SOP_SUPPLY_BASELINE 同值同源）。 */
 const SUPPLY_BASELINE_MONTH = r(SOP_PER_BASE_MONTHLY.reduce((a, b) => a + b.monthly, 0), 4);

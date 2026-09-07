@@ -137,8 +137,26 @@ const REAL = {
   demandYearRevenue: 700,
   cockpitAopBaseRev: 601.5,
   financeRevenueRolling: 700,
-  financeRevenueBudget: 686,
+  /**
+   * WO-METRIC-IDENTITY 金值同步：**686 → 700**。
+   *
+   * 旧值 686 为什么是错的 —— 不是"真后端数变了"，是 686 从来就是个**恒等式的读数**：
+   * 真后端修前 `budget = round(rolling × 0.98, 1)`，686 = 700×0.98，两列**同出一处**。
+   * 拿它当"真后端实测值"记进本表，等于把一个内联常数（0.98）记成了一条业务事实。
+   * 修后预算列改取 `GOAL_REGISTRY` 计划侧年度目标 ⇒ 收入 **700**、毛利 **112**、成本 **588**
+   *（= 700−112，同一步派生，保住"收入 = 成本 + 毛利"逐位成立）。2026-09-07 实测。
+   *
+   * ⚠ 预算回到 700 而**达成率没有回到 100%**：分子同时换成了成交侧订单簿（415.6 亿）⇒ 59.4%。
+   * 这两件事必须一起记 —— 只记预算回 700，下一个人会以为达成率又恒 100 了。
+   */
+  financeRevenueBudget: 700,
   financeMarginRolling: 118.9,
+  /**
+   * `cockpit_kpi.revAttainPct` 真后端实测 **59.4**（= 415.6 ÷ 700 ×100，成交侧 ÷ 计划侧）。
+   * 本行是**新加的比对项**：旧表没有它，于是 mock 写死的 102 三周来没有任何东西在守 ——
+   * 而 102 与 59.4 在屏上是「超额完成」与「越线转红」两个**相反的结论**，不是精度差。
+   */
+  cockpitRevAttainPct: 59.4,
   // —— plan_audit 结论（同一份基线喂进去，两边必须给同一个结论）——
   auditScore: 43,
   auditVerdict: "站不住",
@@ -302,6 +320,8 @@ describe("WO-MOCK-SCALE-TRUTH · mock 与真后端量级判据", () => {
       magnitudeVerdict("finance_pnl 收入.rolling", rev.rolling, REAL.financeRevenueRolling),
       magnitudeVerdict("finance_pnl 收入.budget", rev.budget, REAL.financeRevenueBudget),
       magnitudeVerdict("finance_pnl 毛利.rolling", gm.rolling, REAL.financeMarginRolling),
+      // WO-METRIC-IDENTITY 新加：达成率此前没有比对项，mock 写死的 102 三周无人守。
+      magnitudeVerdict("cockpit_kpi.revAttainPct", kpi.revAttainPct, REAL.cockpitRevAttainPct),
     ];
     expect(failures(vs), `跨数量级项：\n${explain(failures(vs))}`).toEqual([]);
     for (const v of vs) expect(Math.abs(v.ratio - 1), `${v.label} 偏差 > 1%：${v.reason}`).toBeLessThan(0.01);
