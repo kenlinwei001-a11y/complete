@@ -2948,7 +2948,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Material.carbonFactor": "碳排因子", "Material.bomUnit": "BOM单耗", "Material.dailyUse": "日耗用量",
   "Material.inTransit": "在途量", "Material.outsourceYield": "外协良率", "Material.materialCode": "物料编码",
   "Material.category": "物料类别", "Material.spec": "规格型号", "Material.unit": "计量单位",
-  "Material.supplierId": "主供应商", "Material.shelfLife": "保质期", "Material.isKeyMaterial": "是否关键物料",
+  "Material.supplierId": "主供应商", "Material.supplierIds": "合格供应商全集", "Material.shelfLife": "保质期", "Material.isKeyMaterial": "是否关键物料",
   "Material.status": "物料状态",
   "Supplier.supplierId": "供应商编号", "Supplier.supplierCode": "供应商编码", "Supplier.name": "供应商名称",
   "Supplier.category": "供应类别", "Supplier.materialType": "供应物料类型", "Supplier.rating": "供应商评级",
@@ -3484,7 +3484,10 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "change_affects_model", fromTypeKey: "EngineeringChange", toTypeKey: "Model", cardinality: "N:1" },
     // supply（Wave 2：物料替代 + 供应商）
     { key: "alt_for_material", fromTypeKey: "MaterialAlternative", toTypeKey: "Material", cardinality: "N:N" },
-    { key: "material_supplied_by", fromTypeKey: "Material", toTypeKey: "Supplier", cardinality: "N:1" },
+    // WO-VULNERABILITY-REI：`N:1` → `N:N`。改的不是接线，是**把一直存在的事实说对**：
+    // 8 个物料里 6 个有 2–3 家合格供应商，声明成 N:1 时本体在替数据撒谎（"每个料只有一个供应商"），
+    // 而 `service.ts` 也确实只物化了 `supplierIds[0]` 那一行 —— 声明与物化**一起**把冗余抹平了。
+    { key: "material_supplied_by", fromTypeKey: "Material", toTypeKey: "Supplier", cardinality: "N:N" },
     { key: "line_has_process", fromTypeKey: "Line", toTypeKey: "Process", cardinality: "1:N" }, // process
     { key: "equip_used_in", fromTypeKey: "Equipment", toTypeKey: "Process", cardinality: "N:N" }, // equip（多设备归一工序）
     { key: "model_uses_material", fromTypeKey: "Model", toTypeKey: "Material", cardinality: "N:N" }, // supply
@@ -3500,7 +3503,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     //   同名 key 反向塞行会违反该 key 自己声明的 fromTypeKey/toTypeKey，并污染既有切片的
     //   `direction:"out"` 遍历，故一律另立 key、与归属边共存互不干扰。
     // 三条边的实例全部由既有对象 FK **确定性反投影**（同一份数据换个方向落），无随机/无时钟 ⇒ R6 同 seed 字节一致。
-    { key: "supplier_supplies_material", fromTypeKey: "Supplier", toTypeKey: "Material", cardinality: "1:N" }, // supply（影响向·`material_supplied_by` 之逆）
+    // WO-VULNERABILITY-REI：`1:N` → `N:N`（与正边 `material_supplied_by` 同步改）。一个料**可以**有多家供应商，
+    // 这条逆边正是 `demo_supplier_procurement_delay_to_material_shortage` 的 `viaLinkKey`。
+    { key: "supplier_supplies_material", fromTypeKey: "Supplier", toTypeKey: "Material", cardinality: "N:N" }, // supply（影响向·`material_supplied_by` 之逆）
     { key: "material_used_by_model", fromTypeKey: "Material", toTypeKey: "Model", cardinality: "N:N" }, // supply→product（影响向·`model_uses_material` 之逆）
     { key: "model_demanded_by_order", fromTypeKey: "Model", toTypeKey: "Order", cardinality: "1:N" }, // product→commercial（影响向·`order_for_model` 之逆）
     { key: "order_of_customer", fromTypeKey: "Order", toTypeKey: "Customer", cardinality: "N:N" }, // commercial（多单归一客户）
