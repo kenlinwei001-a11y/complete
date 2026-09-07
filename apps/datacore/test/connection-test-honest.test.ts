@@ -89,6 +89,19 @@ describe("WO-CONNTEST-HONEST §1 · 连不上就说连不上（修复前对任�
     expect(r.reason).toBe("HTTP_ERROR");
   });
 
+  it("非 HTTP 方案 ⇒ 明说「协议不受支持」，不许退化成笼统的「地址格式不正确」", async () => {
+    // 咬顺序：file:///x 与 jdbc:… 的 host 为空，若协议关排在「解析不出 target」之后就会被吃掉，
+    // 用户只看到「地址格式不正确」，丢掉真正的原因（协议写错了）。
+    const t = await makeApp({ fetchImpl: statusFetch(200) });
+    for (const url of ["ftp://h.test/x", "file:///etc/passwd", "ws://h.test/x", "jdbc:postgresql://db/x"]) {
+      const r = await testConn(t.app, "rest_api", { url });
+      expect(r.ok, `${url} 不许放行`).toBe(false);
+      expect(r.reason).toBe("INVALID_URL");
+      expect(r.message, `${url} 的文案要点名协议`).toMatch(/协议不受支持/);
+      expect(r.probed).toBe(false); // 压根没发请求
+    }
+  });
+
   it("四类失败的 reason 两两不同 —— 只回一个笼统「失败」等于没修", async () => {
     const reasons = new Set<string>();
     for (const [code, fetchImpl] of [

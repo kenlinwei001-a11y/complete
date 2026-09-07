@@ -208,12 +208,11 @@ export async function probeHttp(
   if (typeof rawUrl !== "string" || rawUrl.trim() === "") {
     return { ok: false, reason: "INVALID_URL", message: "地址为空：请填写完整地址（含 http:// 或 https://）。", probed: false };
   }
-  if (!target) {
-    return { ok: false, reason: "INVALID_URL", message: "地址格式不正确：请填写完整地址（含 http:// 或 https://）。", probed: false, target: undefined };
-  }
   // 只走 http/https。实测其它方案（`ftp://` / `ws://` → `unknown scheme`，`file://` → `not implemented... yet...`）
   // 都会掉进兜底的「检查地址、端口与网络连通性」——**那句话把人指向网络，而真正的问题是方案写错了**。
   // 顺带把 `file://` 明确挡在门外：它不该是一个「数据源地址」。
+  // ⚠ 这一关必须排在 `!target` 之前：`file:///x` / `jdbc:…` 的 host 为空 ⇒ target 为 undefined，
+  //   排在后面就会被前一关吃掉，只得到笼统的「地址格式不正确」，丢掉「是协议写错了」这个真原因。
   if (!isHttpScheme(rawUrl)) {
     return {
       ok: false,
@@ -222,6 +221,9 @@ export async function probeHttp(
       probed: false,
       target,
     };
+  }
+  if (!target) {
+    return { ok: false, reason: "INVALID_URL", message: "地址格式不正确：请填写完整地址（含 http:// 或 https://）。", probed: false, target: undefined };
   }
   if (hasEmbeddedCredentials(rawUrl)) {
     return {
