@@ -46,7 +46,19 @@ async function clickByText(page, texts) {
 try {
   out.landedAfterLogin = await login(page);
   await sleep(1800);
-  out.noMock = assertNoMock(net);
+  // ⚠ `lib.mjs` 的 `assertNoMock` 把端口**写死成 4001/4002**。本跑的后端在 **4021/4022**
+  //   （4001/4002 被别的 agent 占着，不许 pkill），所以它会报 `ok:false` ——
+  //   那是**它的常量过期**，不是"没打后端"。两个都记下来，并另给一个按本跑端口的实测：
+  //   判据仍是"有没有真回包"，只是把端口换成这一跑真的在用的那对。
+  out.noMock_libDefault = assertNoMock(net);
+  const realHits = net.filter((e) => /127\.0\.0\.1:(4021|4022)/.test(e.url) && e.status >= 200 && e.status < 400);
+  out.noMock_thisRun = {
+    ok: realHits.length > 0,
+    realHits: realHits.length,
+    // 金丝雀的反面：本跑**不应该**打到 4001/4002（那是别人的实例）
+    otherInstanceHits: net.filter((e) => /127\.0\.0\.1:(4001|4002)/.test(e.url)).length,
+    sample: realHits.slice(0, 4).map((e) => `${e.status} ${e.method} ${e.url}`),
+  };
   out.shots = [await shot(page, "L1-home-after-login")];
 
   // ── 金丝雀：先量经营驾驶舱，证明尺子是好的 ────────────────────────────
@@ -55,14 +67,27 @@ try {
   out.canary.money = moneyRuler(await visibleText(page));
   out.shots.push(await shot(page, "L2-canary-cockpit"));
 
-  // ── 回首页，再点去 损失归因 ───────────────────────────────────────────
-  await clickByText(page, ["首页", "主页"]);
-  await sleep(1200);
-  out.navToSim = await clickByText(page, ["推演", "沙盘", "决策沙盘"]);
-  await sleep(2000);
-  out.shots.push(await shot(page, "L3-sim-entry"));
-  out.navToAttr = await clickByText(page, ["损失归因", "归因"]);
-  await sleep(3500);
+  // ── 点去 统一推演控制台 → 损失归因 页签 ────────────────────────────────
+  // ⛔ 全程点击，一次 `goto` 都没有（手敲 URL 会让「找不到入口」这类问题凭空消失）。
+  // 侧栏分组「推演」在 DOM 里**本来就是展开的** —— 按 ▾ 图标去「先展开」反而会把它收起来，
+  // 故判据落在「目标链接可见吗」，不是图标形状（实测教训，另一张单量到的同一个坑）。
+  const navSim = page.locator('[data-testid="nav-sim-unified"]');
+  if (!(await navSim.isVisible().catch(() => false))) {
+    await page.locator('[data-testid="nav-group-toggle-推演"]').click({ timeout: 8000 }).catch(() => {});
+    await sleep(600);
+  }
+  await navSim.click({ timeout: 10000 });
+  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+  await sleep(2500);
+  out.navToSim = { url: page.url(), via: '[data-testid="nav-sim-unified"]' };
+  out.shots.push(await shot(page, "L3-sim-unified"));
+
+  const attrTab = page.locator('[data-testid="usim-tab-attribution"]');
+  out.attrTabVisible = await attrTab.isVisible().catch(() => false);
+  await attrTab.click({ timeout: 10000 });
+  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+  await sleep(4000);
+  out.navToAttr = { url: page.url(), via: '[data-testid="usim-tab-attribution"]' };
   out.shots.push(await shot(page, "L4-loss-attribution"));
 
   // ① 屏上金额
