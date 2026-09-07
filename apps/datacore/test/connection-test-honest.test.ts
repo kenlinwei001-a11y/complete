@@ -192,11 +192,15 @@ describe("WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接�
    * 这条断言让机器先说话。
    */
   it("名单 = createAdapter 实际抛错的类型集合（改一边不改另一边即红）", async () => {
-    const t = await makeApp();
+    // 只需要一个占位 BlobStore：未实现的类型在**构造期**就抛，压根走不到读 blob。
+    const stubBlob = {
+      put: async () => {}, get: async () => Buffer.alloc(0),
+      exists: async () => true, delete: async () => {},
+    };
     const actuallyUnsupported = new Set<string>();
     for (const ct of CONNECTOR_TYPES) {
       try {
-        createAdapter(ct.key, { blobKey: "k", format: "csv", datasetName: "d", url: "http://x.test" }, t.blob);
+        createAdapter(ct.key, { blobKey: "k", format: "csv", datasetName: "d", url: "http://x.test" }, stubBlob);
       } catch (err) {
         if (err instanceof Error && /no adapter implementation/.test(err.message)) actuallyUnsupported.add(ct.key);
       }

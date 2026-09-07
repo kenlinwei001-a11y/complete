@@ -29,6 +29,15 @@ import type { ConnectionTestReason, ConnectionTestResult } from "@platform/contr
  *    拿 `:9` 当「端口拒绝」的样例会得出「分类没生效」这个恰好相反的结论。要用普通闭口端口（如 `:4099`）。
  * 2. **超时错误没有 `code`，只有 `name === "TimeoutError"`** —— 只看 `code` 的分类器会把超时落进兜底。
  *
+ * ## 出站请求的信任边界（改动前这个端点零网络，改动后会真发请求——故此处记明）
+ * 「测试连接」现在会按用户填的地址发一次 GET。这**不是新开的口子**：同一个调用方本来就能
+ * `POST /a/v1/connections` 建一个 `rest_api` 连接再 `POST /:id/sync`，走 `RestApiAdapter` 发同样的请求，
+ * 且实测两条路由的鉴权同级（都只过 `ctx(req)`，无额外角色校验）。本改动只是让这个既有能力
+ * **早一步、且不必落库**即可触发。
+ * ⚠ 刻意**不加**私网地址黑名单：本平台的连接对象本来就是内网 ERP/JDBC，
+ * 拦掉私网等于把主要用法拦死。若日后要收紧，应在**连接器框架**统一做（同时覆盖 sync 路），
+ * 只在 test 路加拦截会造出「测得通、同步不通」的新谎。
+ *
  * ## no-secrets-echo
  * 回包里的 `target` **只取 origin**，刻意丢掉 path 与 query：`?apiKey=…` / `http://user:pass@host`
  * 这类写法会把凭据带进回包。失败说明一律用本文件的模板拼，**不回显 error 原文**
