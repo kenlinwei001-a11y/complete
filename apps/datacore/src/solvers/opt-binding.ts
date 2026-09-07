@@ -350,7 +350,14 @@ export async function bindCrossObjectOccupancy(
    * 毛利轴因此与营收轴强同向，答不了「单位经济学上哪个方案更划算」。
    *
    * **应该是 Y**：本体给得出**按件履约成本**时（`OrderLine.unitCost`，元/电芯），
-   * 该单的履约成本 = `unitCost × qty`，与营收侧同阶。
+   * 该单的履约成本 = `unitCost × qty`，与营收侧**同为总量**（都乘了 `qty`）。
+   *
+   * ⚠⚠ **WO-UNIT-MARGIN-96X 订正**：本行原文写「与营收侧**同阶**」——**实测为假**。
+   * 「都乘了 `qty`」只说明两侧都是总量，**不说明两个 rate 的分母相同**。本租户实测：
+   * 营收侧 `unitPrice` 分母是**套**、成本侧 `unitCost` 分母是**电芯**（比值 25.8×–34.2×）
+   * ⇒ `eligibility[].cost` 里的按件那一笔被系统性低估，毛利轴据此排序时高估了大单的优势。
+   * **本层无法自己发现它**：两格在本体上同声明 `unit:"元"`，`currencyScaleOf` 因而判「已对齐」。
+   * 断点 `G-UNIT-MARGIN-CROSS-DENOM`（修法在本体侧或种子侧，见 `synthetic/battery.ts` 那格订正段）。
    *
    * **修法与营收侧严格对称，不新发明**：新增可选 role `unit_cost`（order 上的强度量格），
    * 判据是**显式声明**不是猜名字 —— 理由与上面 `unit_revenue` 那一段逐字相同：
