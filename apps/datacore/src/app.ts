@@ -200,6 +200,8 @@ import { poolSnapshot } from "./opsteam/pools.js";
 import { OpsScheduleSchema } from "@platform/contracts";
 import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
 import type { AuthCtx, ObjectInstance, SliceSpecRecord, PropertyUnit, PropertyScale } from "./domain.js";
+// WO-RATE-DIMENSION · 量纲维度门（速率/复合量纲）。见 `units.ts` 头注。
+import { UNIT_REF_PLACEHOLDER, inferFormulaDimensionIssues, isParametricUnit } from "./units.js";
 import { mulberry32, hashString, randInt } from "./prng.js";
 import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema, CeoDatasetGenerateRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化 · WO-CEO-DATA-2
 import { AdvanceProcessInstanceRequestSchema, CreateProcessInstanceRequestSchema } from "@platform/contracts"; // WO-PROCESS-INSTANCE · 流程运行时（建实例/推进；body 只收**外部事实**，不收 status —— 状态机不交给调用方）
@@ -4635,6 +4637,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             // 此处漏声明 ⇒ zod strip 掉 ⇒ getTypeSemantics 下发给 B 的口径恒缺 displayName/description。
             displayName: z.string().optional(),
             description: z.string().optional(),
+            // WO-RATE-DIMENSION · 参数化量纲的取值格（见 `domain.ts PropertyDef.unitRefProp`）。
+            // 与 `unit` 的双向一致性在下方校验：单向成立 ⇒ 400，不许静默收下。
+            unitRefProp: z.string().optional(),
           }),
         ),
         // WO-UNIT-KWH · 派生属性同样可声明量纲（缺省在下方边界补成显式 dimensionless）。
@@ -4696,6 +4701,60 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const dict = new Set(UNIT_DICTIONARY);
     for (const p of body.properties) {
       if (p.unit && !dict.has(p.unit)) throw validationError(`未知单位 '${p.unit}'（单位字典：${UNIT_DICTIONARY.join("/")}）`);
+    }
+    // WO-RATE-DIMENSION §a · **派生属性的单位此前完全不过这道门** —— 上面那个循环只走
+    // `body.properties`，于是 `derivedProperties[].unit` 想写什么写什么，回读原样带出。
+    // 派生值恰恰是最容易出量纲事故的那一类（单位由公式决定），漏在门外是实打实的缺口。
+    for (const d of body.derivedProperties) {
+      if (d.unit && !dict.has(d.unit)) {
+        throw validationError(`未知单位 '${d.unit}'（派生属性 '${d.propKey}'；单位字典：${UNIT_DICTIONARY.join("/")}）`);
+      }
+    }
+    // WO-RATE-DIMENSION §b · 参数化量纲的**双向**一致性。
+    // 单向成立会造出「看起来配好了、实际永远解析不出来」的属性 —— 静默失效，屏上却显示成功。
+    for (const p of body.properties) {
+      const parametric = p.unit !== undefined && isParametricUnit(p.unit);
+      if (parametric && !p.unitRefProp) {
+        throw validationError(
+          `属性 '${p.propKey}' 声明了参数化单位 '${p.unit}'，必须同时给出 unitRefProp（指出真实单位由哪一格提供）`,
+        );
+      }
+      if (!parametric && p.unitRefProp) {
+        throw validationError(
+          `属性 '${p.propKey}' 给了 unitRefProp='${p.unitRefProp}'，但单位 '${p.unit ?? "dimensionless"}' 不含占位符 '${UNIT_REF_PLACEHOLDER}'，该字段将永远不被读取`,
+        );
+      }
+      if (p.unitRefProp && !body.properties.some((q) => q.propKey === p.unitRefProp)) {
+        throw validationError(
+          `属性 '${p.propKey}' 的 unitRefProp='${p.unitRefProp}' 不是类型 '${body.key}' 上已声明的属性`,
+        );
+      }
+    }
+    // WO-RATE-DIMENSION §c · **量纲维度门**：派生公式里的加减法两端必须同族同倍数。
+    //
+    // 为什么这道门只管加减、不管乘除也不管「声明值 vs 推断值」：见 `units.ts
+    // inferFormulaDimensionIssues()` 头注 —— 加减两端同量纲是无争议的算术事实，
+    // 实测本仓 6 条加减式全部同族同倍数（**误伤 0**）；乘除会产生本模型表达不了的复合量纲，
+    // 强行校验只会制造假红。**宁可少拦，不许假红**。
+    //
+    // 它拦的是这一类：`件`(存量) 与 `件/日`(速率) 相减、`件/日` 与 `套/日` 相减 ——
+    // 改前两者都**静默出数**，链路完整、四包全绿，而结果一次错两处（族错 + 阶错）。
+    {
+      const unitOfProp = new Map<string, string>();
+      for (const p of body.properties) unitOfProp.set(p.propKey, p.unit ?? "dimensionless");
+      for (const d of body.derivedProperties) unitOfProp.set(d.propKey, d.unit ?? "dimensionless");
+      for (const d of body.derivedProperties) {
+        const issues = inferFormulaDimensionIssues(d.formula, (id) => {
+          const u = unitOfProp.get(id);
+          return u !== undefined && dict.has(u) ? (u as PropertyUnit) : undefined;
+        });
+        const first = issues[0];
+        if (first) {
+          throw validationError(
+            `派生属性 '${d.propKey}' 的公式 '${d.formula}' 量纲不成立：'${first.left}' ${first.op} '${first.right}' —— ${first.reason}`,
+          );
+        }
+      }
     }
     // WO-CONSTRAINT-REFS · 约束引用的两条 FK 校验。**引用不存在的规则必须报错，不许静默收下** ——
     // 静默收下会让对象上挂着一条永远不会被评估的"约束"，屏上却显示配置成功（= 修之前那个病换个位置复发）。
