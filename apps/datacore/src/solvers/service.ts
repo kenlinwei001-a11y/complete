@@ -38,7 +38,7 @@ import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING 
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
 import { businessTypeOfOrder, portfolioOptimize as runPortfolioOptimize, globalSimOptimize as runGlobalSimOptimize, type PortfolioObjectiveKey, type PortfolioInput } from "./portfolio.js";
 import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } from "./base-outlook.js";
-import { chainLossAttribution as runChainLossAttribution, type ChainLossObject } from "./chain-loss.js"; // WO-SANDBOX-E1 · 环节级损失归因（纯函数·口径走 S0 冻结契约）
+import { chainLossAttribution as runChainLossAttribution, type ChainLossObject, type ChainLossSimOverlay } from "./chain-loss.js"; // WO-SANDBOX-E1 · 环节级损失归因（纯函数·口径走 S0 冻结契约）
 // WO-SANDBOX-E2 · 推演作用域（业务线/基地/型号）归一**单一出处**（勿在各求解器方法里另写一套解析/过滤）。
 import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
 import { normalizeSolverArgs } from "./arg-aliases.js"; // WO-SILENT-WRONG-ANSWER-3 · 入参键名归一单一出处（base/baseId/baseName · horizon/days）
@@ -4328,10 +4328,24 @@ export class SolverService {
     const links = (await this.repos.links.list(ctx.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
     const so = str(args.so);
     if (so && !orders.some((o) => str(o.props.so) === so)) throw notFound(`Order ${so}`);
+    // WO-DRILL-VERDICT-BACKEND · 会话上下文（可选）。传了就读那个会话**当前拍**的世界态，
+    // 以天计的状态量叠加到对应环节上（口径与量纲纪律见 `chain-loss.ts` §2a）。
+    // 不传 ⇒ `sim` 缺席 ⇒ 与本参数引入前逐字节相同（R6·反向对照实验锁）。
+    // R2：别租户/不存在的会话在这里就 404，不会静默退化成「不叠加」——
+    // 静默退化会让用户以为看的是自己那次推演，其实看的是真实世界（本仓最恨的静默错答）。
+    const sessionId = str(args.sessionId);
+    let sim: ChainLossSimOverlay | undefined;
+    if (sessionId) {
+      const s = await this.repos.sim.getSession(ctx.tenantId, sessionId);
+      if (!s) throw notFound(`SimSession ${sessionId}`);
+      const state = (await this.repos.sim.getTickState(ctx.tenantId, s.id, s.curTick))?.state ?? s.baseSnapshot;
+      sim = { sessionId: s.id, tick: s.curTick, state };
+    }
     return runChainLossAttribution({
       ...(so ? { so } : {}),
       orders, customers, models, routings, operations, materials, suppliers, processes, cadences,
       purchaseOrders, customsClearances, incomingInspections, links,
+      ...(sim ? { sim } : {}),
     }) as unknown as Record<string, unknown>;
   }
 

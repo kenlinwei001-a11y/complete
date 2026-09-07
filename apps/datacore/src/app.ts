@@ -151,7 +151,7 @@ import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/serv
 // WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵（逐基地各跑一次既有一维归因，口径全走 S0 契约）
 import { chainLossMatrix, CHAIN_LOSS_MATRIX_SOLVER_KEY } from "./solvers/chain-loss-matrix.js";
 import { ChainLossMatrixResultSchema } from "@platform/contracts";
-import type { ChainLossObject } from "./solvers/chain-loss.js";
+import type { ChainLossObject, ChainLossSimOverlay } from "./solvers/chain-loss.js";
 // WO-V4-INSPECT · 杠杆标签/单位/值类的**单一真值**（PRD §4.1 的杠杆→域映射拿它当输入·前端零内联）
 import { LEVER_PROP_META } from "./solvers/lever-meta.js";
 import { solversByCategory, uncategorizedSolverKeys } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维
@@ -3215,9 +3215,38 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    * 逐类型 `listByType` + 一次 `links.list` → 委派**纯函数** `chainLossMatrix`（无时钟无随机·R6）。
    * 全程带 `c.tenantId`：仓储读全部按租户过滤，别的租户既读不到本租户的 Order 也读不到 Base。
    */
+  /**
+   * WO-DRILL-VERDICT-BACKEND · 把根因链**接进会话上下文**的唯一实现（两条路由共用）。
+   *
+   * ── 修前的病（真后端实测，不是推测）────────────────────────────────────────
+   * `chain-loss-matrix` / `chain-loss-drill` 修前只收 `so`，只读 `repos.objects`（真实对象），
+   * 而扰动落在 `sim_tick_state`（按 `sessionId|tick` 存）。两个库互不相干 ⇒ 实测：
+   * 给 `obj_supplier_SUP-001.deliveryDelay` 施 +30 天扰动、再 tick×3（curTick 6→9），
+   * 世界态里该值确实 9→39，而 `chain-loss-matrix` 回包 **md5 逐字节相同**
+   * （`00005c6ac8853747042bc1100b35d6b0` / 30440B）。
+   * 于是「演习结论」答的永远是真实世界那条链，问不出「**这一次推演**里根因链变成什么样了」。
+   * 金丝雀（证读数取法有鉴别力）：同一支端点只改 `so`，md5 当场变（19331B / 19487B 两个不同值）。
+   *
+   * ── 为什么 `sessionId` 是**可选**的 ─────────────────────────────────────────
+   * 这两条端点也服务「看真实世界这条链」这个正当用法（沙盘之外的根因页）。
+   * 不传 ⇒ 一格都不叠 ⇒ **与本参数引入前逐字节相同**（反向对照实验锁住这一条）。
+   * 传了但那一拍没有天数族读数 ⇒ `simContext` 块仍在、`appliedDays: 0`
+   * —— 「没有会话」与「有会话但零影响」是两个结论，不许在屏上长成一样。
+   *
+   * R2：别租户的会话 404（走 `getSimOr404`，与其余会话级路由同一个闸门，不另写一条判据）。
+   */
+  const loadChainSimOverlay = async (c: AuthCtx, sessionId?: string): Promise<ChainLossSimOverlay | undefined> => {
+    if (sessionId === undefined) return undefined;
+    const s = await getSimOr404(c, sessionId); // R2：别租户 404，且会话不存在即 404
+    // 读**当前拍**的世界态；该拍还没落格就回落基线快照（与 `simCurrent` 同一条判据，不另写）。
+    const state = (await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.state ?? s.baseSnapshot;
+    return { sessionId: s.id, tick: s.curTick, state };
+  };
+
   app.post("/a/v1/sim/chain-loss-matrix", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
-    const body = parseBody(z.object({ so: z.string().min(1).optional() }), req.body ?? {});
+    const body = parseBody(z.object({ so: z.string().min(1).optional(), sessionId: z.string().min(1).optional() }), req.body ?? {});
+    const sim = await loadChainSimOverlay(c, body.sessionId);
     const load = async (typeKey: string): Promise<ChainLossObject[]> =>
       (await repos.objects.listByType(c.tenantId, typeKey)).map((o) => ({ id: o.id, props: o.props }));
     const [baseObjects, orders, customers, models, routings, operations, materials, suppliers, processes, cadences, purchaseOrders, customsClearances, incomingInspections] =
@@ -3234,7 +3263,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       chainLossMatrix({
         baseObjects,
         ...(body.so ? { so: body.so } : {}),
-        chain: { orders, customers, models, routings, operations, materials, suppliers, processes, cadences, purchaseOrders, customsClearances, incomingInspections, links },
+        // 会话上下文（可选）。不传 ⇒ `chain.sim` 缺席 ⇒ 与本参数引入前逐字节相同。
+        chain: { orders, customers, models, routings, operations, materials, suppliers, processes, cadences, purchaseOrders, customsClearances, incomingInspections, links, ...(sim ? { sim } : {}) },
       }),
     );
   });
@@ -3292,8 +3322,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    * 取锚点链的环节份额（`chain_loss_attribution` 的**唯一**调用口，两条路由共用）。
    * 折叠「step 占比 → 节点占比」这一步走 `nodeLossShare`（住在 chain-loss.ts），本文件不复写。
    */
-  const chainShareFor = async (c: AuthCtx, nodeId: string, so?: string) => {
-    const raw = (await solvers.invoke(c, "chain_loss_attribution", so ? { so } : {})) as unknown as ChainLossResult;
+  const chainShareFor = async (c: AuthCtx, nodeId: string, so?: string, sessionId?: string) => {
+    // `sessionId` 透传给求解器（它自己去读那一拍的世界态，见 `SolverService.chainLossAttribution`）。
+    // 不传 ⇒ 求解器不叠加 ⇒ 与本参数引入前逐字节相同（WO-DRILL-VERDICT-BACKEND）。
+    const raw = (await solvers.invoke(c, "chain_loss_attribution", {
+      ...(so ? { so } : {}), ...(sessionId ? { sessionId } : {}),
+    })) as unknown as ChainLossResult;
     return { result: raw, share: nodeLossShare(raw, nodeId) };
   };
 
@@ -3304,11 +3338,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/sim/chain-loss-drill", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const body = parseBody(ChainLossDrillRequestSchema, req.body ?? {});
-    const { result, share } = await chainShareFor(c, body.nodeId, body.so);
+    const { result, share } = await chainShareFor(c, body.nodeId, body.so, body.sessionId);
     // 缺省基地 = 锚点订单的基地（不限定就会把别基地的设备也摊进来，那是另一条链上的事）。
     const baseId = body.baseId ?? result.anchor.baseId ?? null;
-    // 本路由不在会话上下文里（无 :id），也不消费模拟时钟 ⇒ 显式传 null（见 buildDrillWorld 注释）。
-    const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null, null);
+    // WO-DRILL-VERDICT-BACKEND：本路由**现在可以**在会话上下文里（`sessionId` 可选入参）。
+    // 传了就把那个会话喂给 `buildDrillWorld` —— 于是 `lots[].conduction.dwellDays` 的减数
+    // 用的是**这一次推演**的拍数，而不再是「没有会话」那一档的 null。
+    // 不传仍显式 null（诚实报「不在会话上下文里」，不编一个 `curTick:0` 冒充第 0 拍）。
+    const drillSession = body.sessionId === undefined ? null : await getSimOr404(c, body.sessionId);
+    const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null, drillSession);
     return chainLossDrill(share, world, opts);
   });
 

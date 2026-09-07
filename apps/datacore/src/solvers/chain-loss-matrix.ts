@@ -51,6 +51,7 @@ import {
 import {
   chainLossAttribution,
   CHAIN_LOSS_SOLVER_KEY,
+  SIM_DAY_STATE_VAR_BY_CARRIER,
   type ChainLossInput,
   type ChainLossObject,
   type ChainLossResult,
@@ -257,6 +258,34 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
   }));
   const rowsResidual = lossConservationResidual(rowAttribution);
 
+  // ── 推演上下文披露（WO-DRILL-VERDICT-BACKEND · 铁律 1.5 判据二）───────────────
+  //
+  // 矩阵按基地**逐列各跑一次**一维归因，故这里做跨列并集。同一个 `stepId` 在多列出现时
+  // **只记一次**：那几个承载物（Supplier / PurchaseOrder / CustomsClearance / IncomingInspection）
+  // 是全租户共享的，各列读的是同一格世界态，值本来就相同 —— 逐列累加会把同一天数重复计 N 遍，
+  // 把 `appliedDays` 虚增成基地数的倍数（本仓「同一段被重复计」那族口径错的同形态）。
+  //
+  // ⚠ 不在会话上下文里（`input.chain.sim` 缺席）⇒ 整块 `undefined` ⇒ 回包与本字段引入前逐字节相同。
+  const simCtx = ((): ChainLossMatrixResult["simContext"] => {
+    const sim = input.chain.sim;
+    if (!sim) return undefined;
+    const appliedByStep = new Map<string, { stepId: string; stateVar: string; stateValue: number; deltaDays: number }>();
+    const excluded = new Set<string>();
+    for (const col of columns) {
+      for (const a of col.run?.simContext?.appliedSteps ?? []) if (!appliedByStep.has(a.stepId)) appliedByStep.set(a.stepId, a);
+      for (const v of col.run?.simContext?.excludedStateVars ?? []) excluded.add(v);
+    }
+    const appliedSteps = [...appliedByStep.values()].sort((a, b) => a.stepId.localeCompare(b.stepId));
+    return {
+      sessionId: sim.sessionId,
+      tick: sim.tick,
+      appliedSteps,
+      appliedDays: appliedSteps.reduce((sum, a) => sum + a.deltaDays, 0),
+      excludedStateVars: [...excluded].sort(),
+      dayStateVarRegistry: { ...SIM_DAY_STATE_VAR_BY_CARRIER },
+    };
+  })();
+
   const filled = colTotals.filter((c) => c.days !== null);
   const grandDays = filled.reduce((sum, c) => sum + (c.days ?? 0), 0);
   const topRow = [...rowTotals].sort((a, b) => b.days - a.days || a.nodeId.localeCompare(b.nodeId))[0];
@@ -279,6 +308,13 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
       `${filled.length} 列有数据（合计非增值 ${grandDays.toFixed(2)} 天）、` +
       `${bases.length - filled.length} 列诚实标 null（无可锚定 Order，**未补 0**）；` +
       (topLabel ? `跨基地合计吃掉损失最多的环节是「${topLabel}」${topRow!.pctOfGrandLoss.toFixed(1)}%；` : "") +
-      `逐列归因口径与 ${CHAIN_LOSS_SOLVER_KEY} 同源（同一份 computeLossAttribution）。`,
+      `逐列归因口径与 ${CHAIN_LOSS_SOLVER_KEY} 同源（同一份 computeLossAttribution）。` +
+      (simCtx
+        ? `本次在推演会话 ${simCtx.sessionId} 第 ${simCtx.tick} 拍的上下文里：` +
+          `叠加 ${simCtx.appliedSteps.length} 段共 ${simCtx.appliedDays.toFixed(2)} 天（只叠以天计的状态量）；` +
+          `另有 ${simCtx.excludedStateVars.length} 个状态量因量纲不是天数**未计入**（逐个见 simContext.excludedStateVars）。`
+        : ""),
+    // 缺省 = 未传 sessionId ⇒ 整块缺席（与本字段引入前逐字节相同）。
+    ...(simCtx ? { simContext: simCtx } : {}),
   };
 }

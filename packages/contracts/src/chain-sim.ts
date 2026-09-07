@@ -1318,6 +1318,41 @@ export const ChainLossMatrixResidualSchema = z.strictObject({
 });
 export type ChainLossMatrixResidual = z.infer<typeof ChainLossMatrixResidualSchema>;
 
+/**
+ * 推演上下文披露（WO-DRILL-VERDICT-BACKEND · 铁律 1.5 判据二「推演过程必须可披露」）。
+ *
+ * **整块缺席 = 本次不在任何会话上下文里**（读的是真实世界那条链）。
+ * 块在而 `appliedDays === 0` = 有会话、但这一拍没有以天计的影响。
+ * 这两档必须能被前端区分开 —— 不许都渲染成一句「无影响」。
+ *
+ * ⚠ `excludedStateVars` 是本块最值钱的一项：逐个点名「承载物身上有读数、
+ *   但因量纲不是天数所以没被叠加」的状态量（如 `Supplier.reviewPressure` 是 0–100 压力指数）。
+ *   不写出来，用户会以为推演把它们算进去了 —— 缺口留在屏上，不留在注释里。
+ */
+export const ChainLossSimContextSchema = z.strictObject({
+  sessionId: z.string().min(1),
+  /** 世界态取自哪一拍（`SimSession.curTick`）。 */
+  tick: z.number().int().nonnegative(),
+  appliedSteps: z.array(
+    z.strictObject({
+      stepId: z.string().min(1),
+      /** 天数族状态量裸键（登记表见 `dayStateVarRegistry`）。 */
+      stateVar: z.string().min(1),
+      /** 该状态量在这一拍世界态里的真值本身（可能为负）。 */
+      stateValue: z.number(),
+      /** 真正加到该段 `days` 上的天数（= `max(0, stateValue)`）。 */
+      deltaDays: z.number().nonnegative(),
+    }),
+  ),
+  /** Σ `appliedSteps[].deltaDays`。0 = 有会话但这一拍零影响。 */
+  appliedDays: z.number().nonnegative(),
+  /** 有读数、但因量纲被排除的状态量（`Type.var` 形态，去重后字典序）。 */
+  excludedStateVars: z.array(z.string().min(1)),
+  /** 承载物类型 → 天数族状态量的登记表（审计可当场核对本次用的是不是这几个）。 */
+  dayStateVarRegistry: z.record(z.string(), z.string()),
+});
+export type ChainLossSimContext = z.infer<typeof ChainLossSimContextSchema>;
+
 export const ChainLossMatrixResultSchema = z.strictObject({
   nodes: z.array(ChainLossMatrixNodeSchema),
   bases: z.array(ChainLossMatrixBaseSchema),
@@ -1326,6 +1361,12 @@ export const ChainLossMatrixResultSchema = z.strictObject({
   colTotals: z.array(ChainLossMatrixColTotalSchema),
   residual: ChainLossMatrixResidualSchema,
   summary: z.string().min(1),
+  /**
+   * 本次矩阵的推演上下文（缺省 = 未传 `sessionId`，读真实世界）。
+   * 矩阵按基地逐列各跑一次一维归因，故 `appliedSteps` 是**跨列并集**（同一段在多列出现只记一次，
+   * 取字典序第一列的读数 —— 同一个承载物在各列上是同一格世界态，值本来就相同）。
+   */
+  simContext: ChainLossSimContextSchema.optional(),
 });
 export type ChainLossMatrixResult = z.infer<typeof ChainLossMatrixResultSchema>;
 // § 7 · 根因二级下钻（ChainSubCause）+ 批号级传导明细（ChainNodeDetail）
@@ -1695,5 +1736,13 @@ export const ChainLossDrillRequestSchema = z.strictObject({
   so: z.string().min(1).optional(),
   /** 把执行单元的展开限定在某个基地内（缺省 = 锚点订单的基地）。 */
   baseId: z.string().min(1).optional(),
+  /**
+   * 在**哪一次推演**的上下文里下钻（WO-DRILL-VERDICT-BACKEND）。
+   *
+   * 缺省 = 不在会话上下文里，读真实世界那条链（与本字段引入前逐字节相同）。
+   * 传了 ⇒ 该会话**当前拍**的世界态里、以天计的状态量会叠加到对应环节上，
+   * 且 `simContext` 逐条披露叠了什么、因量纲排除了什么。别租户的会话 404（R2）。
+   */
+  sessionId: z.string().min(1).optional(),
 });
 export type ChainLossDrillRequest = z.infer<typeof ChainLossDrillRequestSchema>;
