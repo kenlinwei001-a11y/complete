@@ -45,14 +45,15 @@ describe("G-UNIT-MARGIN-CROSS-DENOM · 单价按套 / 单件成本按电芯，�
     expect(/propKey: "unitCost", dataType: "number", isPrimaryKey: false, unit: "元"/.test(src)).toBe(true);
   });
 
-  it("② 真实比值是 25.8×–34.2×，**不是** packCellCount(96) —— 拦「乘个 96 就对齐」这一手", () => {
+  it("② 真实比值是 25.7×–40.6×，**不是** packCellCount(96) —— 拦「乘个 96 就对齐」这一手", () => {
     const g = generateBattery(42, "S");
     const ratios = g.models.map((m) => Number(m.unitPrice) / Number(m.unitCost));
     const lo = Math.min(...ratios);
     const hi = Math.max(...ratios);
-    console.log("UNITPRICE/UNITCOST 比值区间 =", lo.toFixed(2), "–", hi.toFixed(2));
+    console.log("UNITPRICE/UNITCOST 比值区间 =", lo.toFixed(3), "–", hi.toFixed(3), " n=", ratios.length);
+    // 区间取自 6 个型号**全量**实测（25.735 圆柱-LFP … 40.563 4680-LFP），不是抽样。
     expect(lo).toBeGreaterThan(20);
-    expect(hi).toBeLessThan(40);
+    expect(hi).toBeLessThan(45);
     // 96 落在区间外 ⇒ 「差一个 packCellCount 倍」这个说法在数值上就站不住。
     const pcc = Number(BATTERY_SOLVER_PARAMS.packCellCount);
     expect(pcc).toBeGreaterThan(hi);

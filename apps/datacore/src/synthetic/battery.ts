@@ -1221,7 +1221,8 @@ const modelProps: PropertyDef[] = [
    *      把它改成 1 / 192，`Model.unitPrice`·`Model.unitCost`·`OrderLine.*`·`quote_margin`
    *      四组读数**逐字节相同**；同一量法下把 `seg.priceWan × 1e4` 乘 2，四组读数全动 ⇒ 量法本身是好的）。
    *      故「差一个 packCellCount 倍」是**量纲上的名义差**，不是任何一行代码算出来的倍数。
-   *   ② 真实比值是 `unitPrice / unitCost` ≈ **25.8×–34.2×**（方形-LFP 13916/540.20 · 4680-NCM 21626/632.84），
+   *   ② 真实比值是 `unitPrice / unitCost` ≈ **25.7×–40.6×**（6 个型号实测：最低 圆柱-LFP 13902/540.20=25.74，
+   *      最高 4680-LFP 21912/540.20=40.56），
    *      **不是 96×**。按 96 换算 ⇒ 全订单簿成本/营收 = **286.9%**，每一单都巨亏 ——
    *      那不是把口径修对了，是把金值改成了另一个同样错的数。
    *   ⇒ 要真收口，得先按 `docs/DECISION-unit-of-account.md` §1.5（「**套/电芯不得充当金额分母**」，

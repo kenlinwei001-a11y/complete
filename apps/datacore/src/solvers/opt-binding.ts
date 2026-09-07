@@ -354,7 +354,7 @@ export async function bindCrossObjectOccupancy(
    *
    * ⚠⚠ **WO-UNIT-MARGIN-96X 订正**：本行原文写「与营收侧**同阶**」——**实测为假**。
    * 「都乘了 `qty`」只说明两侧都是总量，**不说明两个 rate 的分母相同**。本租户实测：
-   * 营收侧 `unitPrice` 分母是**套**、成本侧 `unitCost` 分母是**电芯**（比值 25.8×–34.2×）
+   * 营收侧 `unitPrice` 分母是**套**、成本侧 `unitCost` 分母是**电芯**（比值 25.7×–40.6×）
    * ⇒ `eligibility[].cost` 里的按件那一笔被系统性低估，毛利轴据此排序时高估了大单的优势。
    * **本层无法自己发现它**：两格在本体上同声明 `unit:"元"`，`currencyScaleOf` 因而判「已对齐」。
    * 断点 `G-UNIT-MARGIN-CROSS-DENOM`（修法在本体侧或种子侧，见 `synthetic/battery.ts` 那格订正段）。

@@ -196,7 +196,7 @@ export async function assembleParetoModel(
    * ⚠⚠ **WO-UNIT-MARGIN-96X 订正**：本段原文写「成本侧与营收侧从此**同阶**」——**那句是错的**。
    * 「都乘了 `qty`」只保证两侧**都是总量**，不保证两个 rate 的**分母是同一个东西**。
    * 本租户实测即是反例：`OrderLine.unitPrice` 的分母是**套**（种子由 `seg.priceWan × 1e4` 派生），
-   * `OrderLine.unitCost` 的分母是**电芯**（当期 BOM 单颗电芯用量现算），比值 25.8×–34.2×。
+   * `OrderLine.unitCost` 的分母是**电芯**（当期 BOM 单颗电芯用量现算），比值 25.7×–40.6×。
    * ⇒ 毛利轴今天算的是 `营收(按套计价) − 成本(按电芯计价)`，成本项被系统性低估。
    *
    * ⚠ **本层看不见这个差，而且今天没有任何机制能看见**：两格在本体上**同声明 `unit:"元"`**，
@@ -366,7 +366,7 @@ export async function assembleParetoModel(
   //   （订正原文见本文件 `unitCostProp` 那段）。两个 rate 的分母不同（套 vs 电芯），
   //   故那个 3.272% 本身就是**被系统性低估**后的读数 —— 全订单簿按电芯口径对齐后是 **286.9%**。
   //   ⛔ 但**不许**就地乘一个 96 去「对齐」：`packCellCount` 在全仓价/成本/毛利路径上一次都没被读过
-  //   （金丝雀实测：改 1 / 192，四组读数逐字节相同），而真实比值是 25.8×–34.2× 不是 96× ——
+  //   （金丝雀实测：改 1 / 192，四组读数逐字节相同），而真实比值是 25.7×–40.6× 不是 96× ——
   //   乘 96 只会把一个错数换成另一个错数，并让每一单都巨亏。这是种子层的锚，不是本层的系数。
   const revUnit = orderT.properties.find((p) => p.propKey === revProp)?.unit;
   const costOwner = eligT && eligCostProp ? eligT : lineT;
