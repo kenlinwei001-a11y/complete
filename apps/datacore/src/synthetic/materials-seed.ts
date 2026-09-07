@@ -54,6 +54,24 @@ export type SeededMaterial = {
   bomUnit: number; dailyUse: number; onHand: number; inTransit: number; devPct: number;
   outsourceYield: number; materialCode: string; category: string; spec: string; unit: string;
   supplierId: string; shelfLife: number; isKeyMaterial: boolean; status: string;
+  /**
+   * WO-VULNERABILITY-REI · **全部合格供应商**（主供在 [0]，其余为备份），与 `MATERIALS[].supplierIds` 同序。
+   *
+   * ══ 为什么标量 `supplierId` 不够，必须再留一个多值属性 ═════════════════════════
+   * `supplierId: m.supplierIds[0]` 把数组**压扁成标量**，于是「这个料有没有二供」这件事
+   * 在本体里**根本不存在** —— 不是没人读，是没得读。代价是可实测的两条：
+   *  ① `supplier_disruption_radius`（`solvers/service.ts` 的 `supplierDisruptionRadius`）按
+   *     `o.props[viaField]` 逐字符串比对：SUP-002 从来不是任何料的 `[0]` ⇒ 断供 SUP-002
+   *     回「影响 0 个对象」。**这不是"没风险"，是"看不见"** —— 正是该文件 `concentrationRisk`
+   *     注释里自己点名的「静默错答的全清报告」。
+   *  ② 单点物料（`cu_foil`/`al_foil` 各只有 1 家）与双供物料在压扁后**形态完全相同**，
+   *     谁都看不出哪个是单点 —— 而单点与否恰恰是脆弱度的第一判据。
+   *
+   * ⚠ **保留 `supplierId` 不删**：它是「主供是谁」这个独立事实（采购责任方口径），
+   * 既有消费方（PO/清关/外协）读的都是它。本字段是**增量**，不是改口径。
+   * 不消耗 rng（纯静态转写）⇒ R6 字节确定性不动。
+   */
+  supplierIds: string[];
 };
 
 /**
@@ -84,6 +102,9 @@ export function seedMaterials(seed: number): { rng: () => number; materials: See
     spec: m.spec,
     unit: m.unit,
     supplierId: m.supplierIds[0] as string,
+    // WO-VULNERABILITY-REI：主供之外的**备份路径**在此保住（上一行只留了 [0]）。
+    // `[...]` 拷贝而非直接引用 MATERIALS 的数组 —— 防调用方就地 sort/push 反噬基表。
+    supplierIds: [...m.supplierIds],
     shelfLife: m.matId === "elyte" ? 180 : m.matId === "sep_film" ? 365 : 730,
     isKeyMaterial: m.isKey,
     status: "活跃",
