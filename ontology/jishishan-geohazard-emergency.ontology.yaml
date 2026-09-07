@@ -1,0 +1,1296 @@
+# ==============================================================================
+# 积石山县突发地质灾害应急预案 · 本体图谱（Ontology Graph）
+# ------------------------------------------------------------------------------
+# 用途：作为"新报告推演"的语义底座。所有事实只存一份（facts），所有阈值以可判定
+#       规则表达（rules），所有论断绑定证据（evidence → 原文章节）。
+# 对齐：docs/PRD-addendum-ontology-core.md 的元模型（object_types / link_types /
+#       derivation_specs），可直接映射为 DataCore A4 的本体版本发布载荷。
+# ==============================================================================
+
+meta:
+  ontology_key: jishishan_geohazard_emergency
+  display_name: 积石山县突发地质灾害应急预案本体
+  version: 1
+  status: DRAFT
+  domain: 应急管理 / 突发地质灾害
+  language: zh-CN
+  jurisdiction:
+    country: 中国
+    province: 甘肃省
+    prefecture: 临夏回族自治州
+    county: 积石山保安族东乡族撒拉族自治县
+    admin_level: 县级
+  purpose: >
+    将预案文本结构化为对象-关系图谱，支撑三类推演：
+    (1) 情景推演——给定灾情/险情输入，自动判级、判定响应级别、展开责任链与措施清单；
+    (2) 覆盖度推演——对照上位法规与新大纲，检出缺失、口径冲突与责任真空；
+    (3) 资源推演——按隐患点分布与威胁人口，推演队伍/物资/资金缺口。
+  source_documents:
+    - doc_id: DOC-1
+      title: 积石山县突发地质灾害应急预案
+      type: 县级专项应急预案
+      format: docx
+      sha_note: 由用户上传的单一源文件，本体全部事实均溯源至此
+      structure: 10 章（总则/组织机构/预防预警/信息报告/应急响应/应急保障/责任奖惩/预案管理/预案解释/附则）
+  conventions:
+    id_style: 大写类型前缀 + 连字符编号，全局唯一
+    number_semantics: 本预案"以上"含本数，"以下"不含本数（源自 §10.1 末段）
+    currency: CNY
+    evidence_ref: 值为原文章节号，形如 "§1.5.1"
+    single_source_of_truth: 任何数字只在 facts 或 rules 中定义一次，其余位置以 $ref 引用
+
+# ==============================================================================
+# 一、元模型：对象类型（object_types）
+# ==============================================================================
+object_types:
+
+  - type_key: Region
+    display_name: 行政区域
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: string, required: true}
+      - {key: level, dataType: enum, enumValues: [国, 省, 州, 县, 乡镇, 村]}
+      - {key: area_km2, dataType: number}
+      - {key: population, dataType: number, temporal: true}
+      - {key: village_count, dataType: number}
+      - {key: township_count, dataType: number}
+
+  - type_key: Organization
+    display_name: 组织机构
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: string, required: true}
+      - {key: org_class, dataType: enum, enumValues: [指挥部, 办公室, 工作组, 成员单位, 政府, 党委, 救援队伍, 专家组, 企业]}
+      - {key: level, dataType: enum, enumValues: [国, 省, 州, 县, 乡镇, 村]}
+      - {key: contact, dataType: string}
+      - {key: duties, dataType: string}
+
+  - type_key: Role
+    display_name: 岗位/职务
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: string, required: true}
+      - {key: appointed_from, dataType: string, description: 由何种职务的人担任}
+
+  - type_key: HazardType
+    display_name: 地质灾害类型
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: string, required: true}
+      - {key: definition, dataType: string}
+      - {key: trigger_factors, dataType: string}
+
+  - type_key: HazardSite
+    display_name: 地质灾害隐患点/灾害点
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: hazard_type_ref, dataType: ref, refTo: HazardType}
+      - {key: scale, dataType: enum, enumValues: [特大型, 大型, 中型, 小型]}
+      - {key: status, dataType: enum, enumValues: [现存险情, 已消除]}
+      - {key: threatened_population, dataType: number, temporal: true}
+      - {key: threatened_asset_cny, dataType: number, temporal: true}
+      - {key: is_key_site, dataType: boolean, description: 是否列为全县重点隐患点}
+      - {key: mitigation_measure, dataType: enum, enumValues: [工程治理, 搬迁避让, 群测群防, 专业监测, 未处置]}
+
+  - type_key: SeverityGrade
+    display_name: 险情/灾情分级
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: enum, enumValues: [特别重大, 重大, 较大, 一般]}
+      - {key: dimension, dataType: enum, enumValues: [险情, 灾情]}
+      - {key: rank, dataType: number, description: 1=最高}
+
+  - type_key: WarningLevel
+    display_name: 气象风险预报预警级别
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: roman, dataType: enum, enumValues: [Ⅰ, Ⅱ, Ⅲ, Ⅳ]}
+      - {key: color, dataType: enum, enumValues: [红色, 橙色, 黄色, 蓝色]}
+      - {key: name, dataType: string}
+      - {key: risk_statement, dataType: string}
+      - {key: rank, dataType: number, description: 1=最高}
+
+  - type_key: ResponseLevel
+    display_name: 应急响应级别
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: roman, dataType: enum, enumValues: [Ⅰ, Ⅱ, Ⅲ, Ⅳ]}
+      - {key: scale_label, dataType: enum, enumValues: [特大型, 大型, 中型, 小型]}
+      - {key: rank, dataType: number}
+      - {key: proposer, dataType: string, description: 提出建议主体}
+      - {key: decider, dataType: string, description: 决定启动主体}
+      - {key: onsite_commander, dataType: string, description: 总指挥担任者}
+
+  - type_key: Rule
+    display_name: 可判定规则（阈值/条件）
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: rule_class, dataType: enum, enumValues: [分级判定, 响应启动, 报告时限, 预警响应, 预案修订]}
+      - {key: expression, dataType: string, description: 见 §2 派生公式 DSL 兼容表达式}
+      - {key: outcome, dataType: string}
+
+  - type_key: Action
+    display_name: 应急措施/处置动作
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: string, required: true}
+      - {key: phase, dataType: enum, enumValues: [预防, 预警, 报告, 响应, 保障, 恢复, 善后]}
+      - {key: description, dataType: string}
+
+  - type_key: Resource
+    display_name: 应急资源（队伍/物资/装备/资金/系统）
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: string, required: true}
+      - {key: resource_class, dataType: enum, enumValues: [队伍, 物资装备, 指挥系统, 资金, 交通, 医疗, 通信电力, 后勤, 技术, 制度, 法制]}
+      - {key: owner_org_ref, dataType: ref, refTo: Organization}
+
+  - type_key: LegalBasis
+    display_name: 编制依据（法规/上位预案）
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: title, dataType: string, required: true}
+      - {key: basis_class, dataType: enum, enumValues: [法律, 行政法规, 国家预案, 国务院决定, 地方性法规, 省级预案, 州级预案, 县级预案]}
+      - {key: level, dataType: enum, enumValues: [国, 省, 州, 县]}
+
+  - type_key: Term
+    display_name: 术语定义
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: term, dataType: string, required: true}
+      - {key: definition, dataType: string, required: true}
+
+  - type_key: Evidence
+    display_name: 证据（原文出处）
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: doc_id, dataType: string, required: true}
+      - {key: section, dataType: string, required: true}
+      - {key: quote, dataType: string}
+      - {key: confidence, dataType: enum, enumValues: [原文直述, 原文推算, 外部补全, 存疑]}
+
+# ==============================================================================
+# 二、元模型：关系类型（link_types）
+# ==============================================================================
+link_types:
+  - {link_key: located_in,          from_type: HazardSite,    to_type: Region,         cardinality: "1:N", desc: 隐患点位于区域}
+  - {link_key: part_of_region,      from_type: Region,        to_type: Region,         cardinality: "1:N", desc: 行政隶属}
+  - {link_key: member_of,           from_type: Organization,  to_type: Organization,   cardinality: "N:N", desc: 成员单位隶属于指挥部/工作组}
+  - {link_key: leads,               from_type: Organization,  to_type: Organization,   cardinality: "1:N", desc: 牵头单位领衔工作组}
+  - {link_key: office_of,           from_type: Organization,  to_type: Organization,   cardinality: "1:1", desc: 办公室设于/服务于指挥部}
+  - {link_key: holds_role,          from_type: Organization,  to_type: Role,           cardinality: "1:N", desc: 机构负责人担任岗位}
+  - {link_key: reports_to,          from_type: Organization,  to_type: Organization,   cardinality: "N:N", desc: 信息上报路径}
+  - {link_key: responsible_for,     from_type: Organization,  to_type: Action,         cardinality: "N:N", desc: 机构承担措施}
+  - {link_key: site_of_type,        from_type: HazardSite,    to_type: HazardType,     cardinality: "1:N", desc: 隐患点属灾害类型}
+  - {link_key: grade_defined_by,    from_type: SeverityGrade, to_type: Rule,           cardinality: "1:N", desc: 分级由阈值规则定义}
+  - {link_key: triggers_response,   from_type: SeverityGrade, to_type: ResponseLevel,  cardinality: "1:1", desc: 分级触发响应级别}
+  - {link_key: warning_triggers,    from_type: WarningLevel,  to_type: Action,         cardinality: "N:N", desc: 预警级别触发响应行动}
+  - {link_key: escalates_from,      from_type: WarningLevel,  to_type: WarningLevel,   cardinality: "1:1", desc: 高级别在低级别基础上叠加}
+  - {link_key: response_includes,   from_type: ResponseLevel, to_type: Action,         cardinality: "N:N", desc: 响应级别包含措施}
+  - {link_key: response_escalates,  from_type: ResponseLevel, to_type: ResponseLevel,  cardinality: "1:1", desc: 响应级别参照/升级关系}
+  - {link_key: action_uses,         from_type: Action,        to_type: Resource,       cardinality: "N:N", desc: 措施消耗资源}
+  - {link_key: resource_secured_by, from_type: Resource,      to_type: Organization,   cardinality: "N:N", desc: 保障责任单位}
+  - {link_key: derives_from,        from_type: LegalBasis,    to_type: LegalBasis,     cardinality: "1:N", desc: 下位预案承接上位}
+  - {link_key: evidenced_by,        from_type: Evidence,      to_type: Evidence,       cardinality: "N:N", desc: 任意节点 → 证据（通用挂载，实现为 evidence 字段）}
+
+# ==============================================================================
+# 三、事实层：单一真值（facts）—— 所有数字只在此定义一次
+# ==============================================================================
+facts:
+  region_profile:
+    id: REG-JSS
+    name: 积石山县
+    evidence: ["§1.6"]
+    geography:
+      position: 甘肃省西南部、临夏回族自治州西北部
+      neighbors: {北: 永靖县, 南: 临夏县, 西: 青海省循化县, 东: 东乡县}
+    admin:
+      township_count: 17
+      village_count: 145
+      total_population:
+        value: 278089
+        unit: 人
+        source_text: "总人口278089万人"
+        quality_flag: UNIT_ERROR      # 原文"万人"与数值量级矛盾，见 quality.conflicts C-01
+    area:
+      total_km2: 909.97
+      prone_area_ratio: 0.47
+      prone_area_km2:
+        value: null
+        derived_hint: total_km2 * prone_area_ratio ≈ 427.69
+        quality_flag: MISSING_VALUE   # 原文"易发地质灾害面积平方公里"数值缺失，见 C-02
+    geological_context:
+      - 新构造运动强烈
+      - 岩土体破碎
+      - 生态环境脆弱
+      - 人类工程活动影响加剧
+
+  hazard_inventory:
+    evidence: ["§1.6"]
+    total_sites: 363
+    by_type:
+      泥石流沟: 15
+      崩塌: 38
+      不稳定斜坡: 142
+      滑坡: 166
+      地面塌陷: 2
+    by_type_checksum: {sum: 363, matches_total: true}
+    resolved_sites:
+      count: 45
+      means: [工程治理, 搬迁避让]
+    active_sites:
+      count: 318
+      by_scale: {特大型: 1, 中型: 51, 小型: 266, 大型: 0}
+      by_scale_checksum: {sum: 318, matches_total: true, note: "分级四档中'大型'档为 0，原文未列，见 C-03"}
+      threatened_population: 13777
+      threatened_asset_cny: 832150000      # 8.3215 亿元
+    key_sites:
+      count: 17
+      requirement: 针对具体装置/场所/设施/岗位制定现场处置方案，做到一点一案
+      evidence: ["§1.4 预案体系", "§6(十)制度保障"]
+    derived_indicators:
+      resolution_rate: {formula: "resolved_sites.count / total_sites", value: 0.1240}
+      avg_threatened_pop_per_site: {formula: "threatened_population / active_sites.count", value: 43.3}
+      avg_asset_per_capita_cny: {formula: "threatened_asset_cny / threatened_population", value: 60401}
+      threatened_pop_share_of_county: {formula: "threatened_population / region_profile.admin.total_population", value: 0.0495, caveat: 依赖 C-01 修正}
+
+  duty_contact:
+    office_hotline: "0930-7722005"
+    holder: 县地质灾害应急指挥部办公室（设于县应急管理局）
+    evidence: ["§2.2"]
+    duty_regime:
+      - {scope: 各乡镇, rule: 24小时值班 + 领导带班，值班电话向社会公布, evidence: "§3.1.3"}
+      - {scope: 指挥部办公室, rule: 工作人员不得关闭移动通讯工具，确保通讯畅通, evidence: "§3.1.3"}
+      - {scope: 汛期及预警期, rule: 24小时值班 + 隐患点巡查排查 + 地质灾害"零"报告, evidence: "§6(十)"}
+
+# ==============================================================================
+# 四、实例层：节点（nodes）
+# ==============================================================================
+nodes:
+
+  # ---------- 4.1 灾害类型 ----------
+  hazard_types:
+    - id: HT-COLLAPSE
+      name: 崩塌
+      definition: 陡峭斜坡上的岩体或土体在重力作用下突然脱离母体，发生崩落、滚动的现象或过程
+      evidence: ["§1.3", "§10.1"]
+    - id: HT-LANDSLIDE
+      name: 滑坡
+      definition: 斜坡上的土体或岩体，受河流冲刷、地下水活动、地震及人工切坡等因素影响，在重力作用下沿软弱面整体或分散顺坡下滑
+      trigger_factors: [河流冲刷, 地下水活动, 地震, 人工切坡]
+      evidence: ["§1.3", "§10.1"]
+    - id: HT-DEBRIS_FLOW
+      name: 泥石流
+      definition: 山区沟谷或山地坡面上，由暴雨等水源激发的、含大量泥沙石块的土水气混合流
+      trigger_factors: [暴雨]
+      evidence: ["§1.3", "§10.1"]
+    - id: HT-SUBSIDENCE
+      name: 地面塌陷
+      definition: 地表岩体或土体受自然作用或人为活动影响向下陷落，形成塌陷坑洞并造成灾害
+      evidence: ["§1.3", "§10.1"]
+    - id: HT-UNSTABLE_SLOPE
+      name: 不稳定斜坡
+      definition: 原文未给出定义，仅在灾害点统计中作为一类计数（142处）
+      quality_flag: DEFINITION_GAP    # 见 C-04
+      evidence: ["§1.6"]
+    - id: HT-SECONDARY
+      name: 次生地质灾害
+      definition: 由地质灾害造成的工程结构、设施和自然环境破坏而引发的灾害，如水灾、爆炸及剧毒和强腐蚀性物质泄漏等
+      evidence: ["§10.1"]
+
+  # ---------- 4.2 组织机构 ----------
+  organizations:
+    - id: ORG-HQ
+      name: 积石山县突发地质灾害应急指挥部
+      org_class: 指挥部
+      level: 县
+      duties:
+        - 贯彻国家、省、州、县突发地质灾害防治工作的决策部署，统一指挥险情灾情处理、医疗救护、治安管理
+        - 配合国家和省、州应急指挥部做好地质灾害调查与应急处理，协调成员单位做好应急防治与救灾
+        - 协调成员单位在应急救援中遇到的实际问题，研究处理重大事项
+      evidence: ["§2.1"]
+    - id: ORG-HQ-OFFICE
+      name: 县地质灾害应急指挥部办公室
+      org_class: 办公室
+      level: 县
+      seated_at: ORG-EMERGENCY
+      contact: "0930-7722005"
+      duties:
+        - 贯彻指挥部指示部署，协调成员单位应急处置
+        - 收集汇总上报险情灾情与救援进展；组织专家分析趋势，提出救援方案与措施建议；按指挥部安排发布信息通报与新闻
+        - 组织协调应急救援队伍行动；起草文件简报；资料准备与归档
+        - 落实指挥部决定事项，承担日常事务
+      evidence: ["§2.2"]
+    - id: ORG-EMERGENCY
+      name: 县应急管理局
+      org_class: 成员单位
+      level: 县
+      key_note: 指挥部办公室驻在单位；局长兼任办公室主任
+      evidence: ["§2.1", "§2.2"]
+    - id: ORG-NATRES
+      name: 县自然资源局
+      org_class: 成员单位
+      level: 县
+      key_note: 局长兼任办公室副主任；技术主责部门
+      evidence: ["§2.1", "§2.2"]
+    - id: ORG-COUNTY-GOV
+      name: 县人民政府
+      org_class: 政府
+      level: 县
+      evidence: ["§5.3.1", "§5.5", "§8.3"]
+    - id: ORG-COUNTY-PARTY
+      name: 县委
+      org_class: 党委
+      level: 县
+      evidence: ["§5.5(1)", "§5.6.1"]
+    - id: ORG-PREFECTURE-HQ
+      name: 州地质灾害应急指挥部
+      org_class: 指挥部
+      level: 州
+      evidence: ["§3.2.3", "§4.1", "§5.6.3"]
+    - id: ORG-PROV-CENTER
+      name: 省地质灾害应急中心专家组
+      org_class: 专家组
+      level: 省
+      evidence: ["§3.2.3"]
+    - id: ORG-TOWNSHIP
+      name: 乡（镇）人民政府
+      org_class: 政府
+      level: 乡镇
+      instance_count: 17
+      duties: [群测群防网络建设, 隐患排查, 24小时值班, 编制本级预案并报县自然资源局备案, Ⅳ级响应现场处置]
+      evidence: ["§3.1.1", "§3.1.2", "§3.1.3", "§5.6.3", "§8.3"]
+    - id: ORG-MEMBERS
+      name: 指挥部成员单位（集合）
+      org_class: 成员单位
+      level: 县
+      members:
+        党政群团: [县委宣传部, 县委网信办, 县人武部]
+        应急与自然资源: [县应急管理局, 县自然资源局, 县消防救援大队]
+        经济与财政: [县发改局, 县工业和信息化局, 县财政局, 县商务局]
+        社会民生: [县教育局, 县民政局, 县卫生健康委, 县文化广电和旅游局, 县乡村振兴局]
+        基础设施: [县交通运输局, 县水务局, 县住房和城乡建设局, 县生态环境局]
+        农林气象地震: [县农业局（气象站）, 县林草中心, 县地震局]
+        安全力量: [县武警中队, 县公安局]
+        物资与传播: [县物资储备中心, 县融媒体中心]
+        企业: [县供电公司, 中国电信积石山分公司, 中国移动积石山分公司, 中国联通积石山分公司, 中国人民财产保险积石山支公司]
+      extensibility: 根据工作需要可增加有关部门和单位负责同志参加
+      evidence: ["§2.1"]
+
+  # ---------- 4.3 领导岗位 ----------
+  roles:
+    - {id: ROLE-CHIEF, name: 总指挥, appointed_from: 县委常委、常务副县长, evidence: ["§2.1"]}
+    - {id: ROLE-DEPUTY, name: 副总指挥, appointed_from: 县应急管理局局长、县自然资源局局长等, evidence: ["§2.1"]}
+    - {id: ROLE-OFFICE-DIR, name: 办公室主任, appointed_from: 县应急管理局局长, evidence: ["§2.2"]}
+    - {id: ROLE-OFFICE-DEPUTY, name: 办公室副主任, appointed_from: 县自然资源局局长、县应急管理局分管副局长, evidence: ["§2.2"]}
+
+  # ---------- 4.4 应急救援工作组（10组）----------
+  working_groups:
+    activation_condition: 较大及以上地质灾害发生后，根据应急工作需要设立
+    evidence: ["§2.3"]
+    groups:
+      - id: WG-01
+        name: 综合协调组
+        lead: [县应急局, 县自然资源局]
+        members: [县发改局, 县公安局, 县财政局, 县住建局, 县交通运输局, 县水务局, 县卫生健康局]
+        duties: [应急处置综合协调, 险情灾情信息收集汇总, 承办会议活动, 指挥部后勤保障, 对接州级工作组]
+      - id: WG-02
+        name: 抢险救援组
+        lead: [县应急局]
+        members: [县自然资源局, 县武警中队, 县公安局, 县住建局, 县水务局, 县卫生健康局, 县消防救援大队, 外援社会专业救援队伍, 民间救援力量]
+        duties: [人员搜救与应急抢险, 制定抢险救援行动方案, 调配救援队伍与装备, 指导事发地政府应急处置, 排危除险防次生灾害]
+      - id: WG-03
+        name: 抢险技术组
+        lead: [县自然资源局]
+        members: [县科技局, 县教育局, 县生态环境局, 县水务局, 县交通运输局, 县住建局, 县应急局, 县气象站, 县地震局, 有关行业单位]
+        duties: [灾情调查, 险情动态监测与处置, 预警预报, 抢险救援方案制定, 现场会商研判, 隐患点排查巡查, 气象/地震/生态/水情/交通监测, 次生灾害防范建议]
+      - id: WG-04
+        name: 群众生活保障组
+        lead: [县应急局]
+        members: [县发改局, 县民政局, 县财政局, 县工信局, 县商务局, 县自然资源局, 县水务局, 县农业农村局, 县卫生健康局, 县物资储备中心]
+        duties: [受灾群众紧急转移安置, 基本生活保障, 救助方案与资金物资保障, 生活必需品生产调集转运, 统筹社会组织与志愿者]
+      - id: WG-05
+        name: 医疗救治和卫生防疫组
+        lead: [县卫生健康委]
+        members: [县农业农村局, 县市场监管局, 县疾控中心]
+        duties: [医疗救治, 组派医疗应急救援队伍, 伤员救治转移, 疾病与动物疫病防控, 传染源管控与隔离诊治, 现场消杀与卫生宣传]
+      - id: WG-06
+        name: 交通运输保障组
+        lead: [县交通运输局]
+        members: [县公安局, 县交警大队, 县应急局]
+        duties: [抢修维护公路码头等交通设施, 交通管制, 协调运力优先保障救援, 救援队伍装备物资运送方案, 伤病员与群众应急转移]
+      - id: WG-07
+        name: 基础设施保障组
+        lead: [县发改局]
+        members: [县工信局, 县民政局, 县财政局, 县自然资源局, 县住建局, 县农业农村局, 县水务局, 县供电公司, 中国电信/移动/联通积石山分公司]
+        duties: [协调电力通信供水供气运营单位抢修维护, 恢复灾区通信供电供水供气, 调度应急通信与供电设备]
+      - id: WG-08
+        name: 调查评估组
+        lead: [县应急局]
+        members: [县自然资源局, 县住建局, 县交通运输局, 县水务局, 县农业农村局, 县卫生健康局, 县乡村振兴局, 县气象站, 积石山电力公司]
+        duties: [灾情信息收集统计核查上报, 灾情调查与跟踪评估, 灾害损失评估, 灾后群众救助情况评估]
+      - id: WG-09
+        name: 社会治安组
+        lead: [县公安局]
+        members: [县武警大队]
+        duties: [灾区治安维稳, 打击盗窃抢劫哄抢救灾物资等违法犯罪, 重要场所安全警戒, 涉灾矛盾纠纷化解]
+        quality_flag: NAME_INCONSISTENT   # 成员单位表作"县武警中队"，此处作"县武警大队"，见 C-05
+      - id: WG-10
+        name: 新闻宣传组
+        lead: [县委宣传部]
+        members: [县委网信办, 县应急局, 县自然资源局, 县卫生健康局, 县文旅局, 县气象站, 县融媒体中心]
+        duties: [网络舆情监看与应对处置, 舆情监测预警, 敏感负面有害信息调控管控, 打击谣言并及时辟谣]
+        quality_flag: SCOPE_NARROW        # 职责仅写舆情，未写新闻发布/信息发布，而 §5.6.1(11) 要求召开新闻发布会，见 C-06
+
+  # ---------- 4.5 险情分级 ----------
+  severity_grades_hazard_risk:   # 险情：以"威胁"为口径（尚未成灾）
+    dimension: 险情
+    basis: 威胁人员生命、潜在经济损失的大小
+    evidence: ["§1.5.1"]
+    grades:
+      - id: SG-R1
+        name: 特别重大
+        rank: 1
+        thresholds:
+          evacuation_persons: {op: ">=", value: 1000}
+          potential_loss_cny: {op: ">=", value: 100000000}
+          special: 造成江河支流被阻断，严重影响群众生命财产安全
+        combinator: OR
+      - id: SG-R2
+        name: 重大
+        rank: 2
+        thresholds:
+          evacuation_persons: {min: 500, max: 1000, min_inclusive: true, max_inclusive: false}
+          potential_loss_cny: {min: 50000000, max: 100000000, min_inclusive: true, max_inclusive: false}
+          special: 造成铁路主要干线、高速公路、民航和航道中断；影响群众生命财产安全、有社会影响
+        combinator: OR
+      - id: SG-R3
+        name: 较大
+        rank: 3
+        thresholds:
+          evacuation_persons: {min: 100, max: 500, min_inclusive: true, max_inclusive: false}
+          potential_loss_cny: {min: 5000000, max: 50000000, min_inclusive: true, max_inclusive: false}
+        combinator: OR
+      - id: SG-R4
+        name: 一般
+        rank: 4
+        thresholds:
+          evacuation_persons: {op: "<", value: 100}
+          potential_loss_cny: {op: "<", value: 5000000}
+        combinator: OR
+
+  severity_grades_disaster:      # 灾情：以"已造成后果"为口径
+    dimension: 灾情
+    basis: 造成人员伤亡、经济损失的大小
+    evidence: ["§1.5.2"]
+    grades:
+      - id: SG-D1
+        name: 特别重大
+        rank: 1
+        thresholds:
+          death_missing: {op: ">=", value: 30}
+          direct_loss_cny: {op: ">=", value: 30000000}
+        combinator: OR
+      - id: SG-D2
+        name: 重大
+        rank: 2
+        thresholds:
+          death_missing: {min: 10, max: 30, min_inclusive: true, max_inclusive: false}
+          direct_loss_cny: {min: 5000000, max: 30000000, min_inclusive: true, max_inclusive: false}
+        combinator: OR
+      - id: SG-D3
+        name: 较大
+        rank: 3
+        thresholds:
+          death_missing: {min: 3, max: 10, min_inclusive: true, max_inclusive: false}
+          direct_loss_cny: {min: 1000000, max: 5000000, min_inclusive: true, max_inclusive: false}
+        combinator: OR
+      - id: SG-D4
+        name: 一般
+        rank: 4
+        thresholds:
+          death_missing: {op: "<", value: 3}
+          direct_loss_cny: {op: "<", value: 1000000}
+        combinator: OR
+
+  # ---------- 4.6 预警级别 ----------
+  warning_levels:
+    evidence: ["§3.2.1", "§10.1 地质灾害气象风险预警"]
+    issuer:
+      consultation: [县应急管理局, 县自然资源局, 县气象部门]
+      approval: 按程序审批
+      publisher: 县应急局与县自然资源局联合发布
+      timing: 第一时间发布
+      channels: [电视, 广播, 手机短信, 微信群, QQ群]
+      audience: [乡镇人民政府, 村（居）委会, 信息员, 联络员, 社会公众]
+      content: [可能发生时间, 地点, 成灾范围, 影响程度]
+      evidence: ["§3.2.4"]
+    levels:
+      - {id: WL-4, roman: Ⅳ, color: 蓝色, name: 关注级, rank: 4, risk_statement: 有发生地质灾害的可能性 / 气象因素致地质灾害有一定风险}
+      - {id: WL-3, roman: Ⅲ, color: 黄色, name: 注意级, rank: 3, risk_statement: 发生地质灾害的可能性较大 / 风险较高}
+      - {id: WL-2, roman: Ⅱ, color: 橙色, name: 警报级, rank: 2, risk_statement: 发生地质灾害的可能性大 / 风险高}
+      - {id: WL-1, roman: Ⅰ, color: 红色, name: 加强警报级, rank: 1, risk_statement: 发生地质灾害的可能性很大 / 风险很高}
+
+  # ---------- 4.7 预警响应行动（累积叠加）----------
+  warning_responses:
+    determiner: 县自然资源局会同相关部门根据地质灾害风险高低确定
+    accumulation_semantics: 高级别响应在低一级响应基础上叠加（蓝→黄→橙→红）
+    evidence: ["§3.3"]
+    items:
+      - id: WR-BLUE
+        level: WL-4
+        escalates_from: null
+        actions:
+          - 实行24小时值班，保持通信联络畅通
+          - 气象、水务密切关注雨情水情变化趋势，必要时通报
+          - 自然资源等部门加大预警区域内巡查监测力度
+          - 应急、自然资源等部门做好应对准备
+        grassroots_action: 指挥部办公室、乡镇政府立即通知群测群防组织和群防监测人员，加强隐患点巡查、监测
+      - id: WR-YELLOW
+        level: WL-3
+        escalates_from: WR-BLUE
+        actions:
+          - 实行24小时在岗值班
+          - 气象、水务加强雨情水情动态监测并及时通报
+          - 县政府组织自然资源等部门、企事业单位加强防御，开展24小时巡查监测
+          - 应急部门会同自然资源、气象联合开展趋势会商，组织应急救援队伍做好准备
+        grassroots_action: 同蓝色（Ⅳ/Ⅲ级合并表述）
+      - id: WR-ORANGE
+        level: WL-2
+        escalates_from: WR-YELLOW
+        actions:
+          - 气象、水务加密监测和收集雨情水情并及时通报
+          - 县政府组织相关部门按职责防御，必要时启动应急预案，组织受威胁人员转移避让
+          - 应急部门会同自然资源、气象、水务、交通加强趋势会商研判
+          - 组织应急救援队伍进入待命状态
+        grassroots_action: 立即组织群测群防、专业监测人员加强巡查监测，告知受威胁对象提醒防范；做好启动预案准备
+      - id: WR-RED
+        level: WL-1
+        escalates_from: WR-ORANGE
+        actions:
+          - 气象、水务实时监测和收集雨情水情并及时通报
+          - 县政府组织相关部门按职责防御，组织受威胁人员转移避让，实施危险区域管控
+          - 应急部门会同自然资源、气象、水利、交通动态会商研判
+          - 组织应急救援队伍进驻预警区，随时准备抢险救援
+        grassroots_action: 加强巡查、加密监测隐患体和降雨量变化；发现临灾征兆立即发布紧急撤离信号、疏散受威胁人员、转移重要财产，快速上报州政府及上级业务主管部门，启动相应应急预案
+    fallback_rule:
+      id: WR-FALLBACK
+      condition: 气象预报预警漏报 且 当地局部出现持续大雨或暴雨
+      obligation:
+        - 群测群防责任单位和监测人员及时告知受威胁对象并提醒防范
+        - 立即向主管部门报告
+        - 发现临灾特征立即组织疏散、转移重要财产
+        - 县应急指挥部适时启动相应级别应急预案
+      evidence: ["§3.3 末段"]
+
+  # ---------- 4.8 响应级别 ----------
+  response_levels:
+    mapping_basis: 对应地质灾害等级，由低到高依次分为 Ⅳ级（小型）、Ⅲ级（中型）、Ⅱ级（大型）、Ⅰ级（特大型）
+    evidence: ["§5.1", "§5.3.1", "§5.5"]
+    principles:
+      - {id: RP-1, text: 按分级响应原则由低到高逐级启动, evidence: "§5.2"}
+      - {id: RP-2, text: 特殊时期及突发情况下可越级启动预案响应, evidence: "§5.2"}
+      - {id: RP-3, text: 预案一经启动立即报上级应急指挥机构；上级预案启动后响应上级指挥, evidence: "§5.2"}
+      - {id: RP-4, text: 响应启动后可视灾情发展及时调整级别，避免响应不足或响应过度, evidence: ["§5.2", "§5.5"]}
+      - {id: RP-5, text: 无论何种级别，指挥部和有关部门要立即先期开展应急防范和救灾处置，控制险情灾情发展, evidence: "§5"}
+      - {id: RP-6, text: 灾害发生在少数民族聚居地区和其他特殊地区，可适当提高响应级别, evidence: "§5.5"}
+    levels:
+      - id: RL-1
+        roman: Ⅰ
+        scale_label: 特大型
+        rank: 1
+        activation_conditions:   # 满足其一即可
+          - {ref: SG-D1, text: 因灾死亡和失踪30人以上或直接经济损失3000万元以上（灾情）}
+          - {ref: SG-R1, text: 需紧急避险转移1000人以上或潜在经济损失1亿元以上；造成江河支流被阻断（险情）}
+          - {text: 发生社会关注度特别高、危害特别大、造成特别重大损失的地质灾害, type: 定性}
+        procedure_a: {proposer: 县地质灾害应急指挥部, decider: 县政府县长, source: "§5.3.1"}
+        procedure_b: {proposer: 县地质灾害应急指挥部, approver: 县委、县政府, commander: 县委、县政府主要领导, source: "§5.5"}
+        quality_flag: PROCEDURE_CONFLICT   # 见 C-07
+        coordinator: 县地质灾害应急指挥部
+      - id: RL-2
+        roman: Ⅱ
+        scale_label: 大型
+        rank: 2
+        activation_conditions:
+          - {ref: SG-D2, text: 因灾死亡10人以上30人以下，或直接经济损失500万元以上3000万元以下（灾情）}
+          - {ref: SG-R2, text: 需紧急避险转移500人以上1000人以下或潜在经济损失5000万元以上1亿元以下；造成公路主要干线、高速公路中断（险情）}
+          - {text: 发生社会关注度非常高、危害重大、造成重大损失的地质灾害, type: 定性}
+        procedure_a: {proposer: 县地质灾害应急指挥部总指挥, decider: 县政府县长, source: "§5.3.1"}
+        procedure_b: {proposer: 县地质灾害应急指挥部, approver: 县政府, commander: 县政府主要领导, source: "§5.5"}
+        quality_flag: SCOPE_DRIFT          # §1.5.1 重大险情含"铁路主要干线、民航和航道中断"，§5.4 缩为"公路主要干线、高速公路"，见 C-08
+        coordinator: 县地质灾害应急指挥部
+      - id: RL-3
+        roman: Ⅲ
+        scale_label: 中型
+        rank: 3
+        activation_conditions:
+          - {ref: SG-D3, text: 因灾死亡3人以上10人以下，或直接经济损失100万元以上500万元以下（灾情）}
+          - {ref: SG-R3, text: 需紧急避险转移100人以上500人以下或潜在经济损失500万元以上5000万元以下（险情）}
+          - {text: 发生社会关注度较高、危害大、造成较大损失的地质灾害, type: 定性}
+        procedure_a: {decider: 县地质灾害应急指挥部总指挥, source: "§5.3.1"}
+        procedure_b: {decider: 县地质灾害应急指挥部（视情）, commander: 县政府分管领导, source: "§5.5"}
+        coordinator: 县地质灾害应急指挥部
+        upper_support: 州地质灾害应急指挥部派出联合工作组
+      - id: RL-4
+        roman: Ⅳ
+        scale_label: 小型
+        rank: 4
+        activation_conditions:
+          - {ref: SG-D4, text: 因灾死亡3人以下，或直接经济损失100万元以下（灾情）}
+          - {ref: SG-R4, text: 需紧急避险转移100人以下或潜在经济损失500万元以下（险情）}
+          - {text: 发生社会关注、危害较大、造成一定损失的地质灾害, type: 定性}
+        procedure_a: {proposer: 县地质灾害应急指挥部办公室, decider: 县地质灾害应急指挥部总指挥, source: "§5.3.1"}
+        procedure_b: {decider: 县地质灾害应急指挥部办公室（视情）, commander: 县地质灾害应急指挥部办公室主任, source: "§5.5"}
+        coordinator: 灾区乡（镇）为处置主体，指挥部办公室指导支持
+    escalation_to_prefecture:
+      condition: 出现较大及以上地质灾害险情后，必要时
+      actor: 县应急局会同县自然资源局
+      action: 启动州级地质灾害应急响应
+      evidence: ["§5.4 末段"]
+    downward_delegation:
+      text: 各乡（镇）人民政府可参照县级启动条件，结合实际制定本地区响应启动条件
+      evidence: ["§5.4"]
+      quality_flag: WRONG_SUBJECT   # §5.5 末段误作"各县（市）人民政府"，县级预案中主体应为乡镇，见 C-09
+
+  # ---------- 4.9 Ⅰ级响应措施（13项，Ⅱ级参照执行）----------
+  response_actions:
+    scope: 县级Ⅰ级响应措施集；Ⅱ级响应"参照县级一级响应措施开展"
+    evidence: ["§5.6.1", "§5.6.2"]
+    items:
+      - {id: ACT-01, name: 灾情报告, phase: 响应, owner: 县地质灾害应急指挥部, detail: 立即向州委州政府和州指挥部、县委县政府报告险情灾情和应急处置工作情况}
+      - {id: ACT-02, name: 靠前指挥, phase: 响应, owner: 县地质灾害应急指挥部, detail: 成立现场指挥部，靠前组织指挥和协调}
+      - {id: ACT-03, name: 转移安置受灾群众, phase: 响应, owner: WG-04, detail: 组织转移，开放应急避难场所或设置集中安置点，设立救灾物资集中接收点，统筹调运食品/饮用水/衣被/帐篷/折叠床等生活物资}
+      - {id: ACT-04, name: 收集灾情, phase: 响应, owner: [县应急局, 县自然资源局, 各成员单位], detail: 通过灾情上报系统收集人员伤亡、房屋倒塌、社会影响；各成员单位摸排本行业受灾情况报办公室}
+      - {id: ACT-05, name: 综合研判, phase: 响应, owner: [县地质灾害应急指挥部, WG-03], detail: 组织成员单位和专家分析研判灾害趋势，指导现场应急调查、周边隐患排查与监测预警}
+      - {id: ACT-06, name: 派遣救援队伍, phase: 响应, owner: WG-02, detail: 调度消防与专业救援队伍，协调县武警中队、县人武部；优先被困失联人员搜救、伤员救治、群众安置}
+      - {id: ACT-07, name: 实施交通管制, phase: 响应, owner: WG-06, detail: 主要交通公路交通管制，优先保障抢险救援/医疗卫生/救灾物资车辆及危重伤员转送，分流非必要人员车辆}
+      - {id: ACT-08, name: 开展医疗救治, phase: 响应, owner: WG-05, detail: 派遣医疗紧急救援队伍，必要时建立战地医院或医疗点；调度救护车/医疗器械/药品/血浆；组织心理援助；卫生消杀与疫情防控}
+      - {id: ACT-09, name: 抢修各类基础设施, phase: 响应, owner: [WG-07, WG-06], detail: 抢修公路桥梁等交通设施和供电供水供气通信等基础设施}
+      - {id: ACT-10, name: 维护社会治安, phase: 响应, owner: WG-09, detail: 加强灾区治安与道路交通管理，重点单位部位安全保卫，依法打击犯罪}
+      - {id: ACT-11, name: 新闻宣传和网络舆情应对, phase: 响应, owner: WG-10, detail: 及时召开新闻发布会，有序做好信息发布和救援新闻报道，加强舆论引导；舆情监看、风险研判、负面有害信息管控、辟谣}
+      - {id: ACT-12, name: 灾情核查与统计, phase: 响应, owner: WG-08, detail: 灾情核查，损失评估统计汇总，及时报送灾情与处置情况}
+      - {id: ACT-13, name: 生产生活恢复, phase: 恢复, owner: [县地质灾害应急指挥部, 各成员单位], detail: 指导受灾产业减损、组织企业复产、恢复市场供应、群众复工学生复课、实施救灾救助}
+    level_scoping:
+      RL-1: {items: [ACT-01 .. ACT-13], note: 全量}
+      RL-2: {items: 参照 RL-1, note: 由各工作组根据险情灾情和救灾需要参照一级响应措施开展}
+      RL-3: {items: [ACT-01, ACT-04, ACT-06, ACT-08, ACT-03, ACT-09], note: 及时收集上报灾情，组织人员搜救、医疗救治、群众安置、基础设施抢修；州指挥部派联合工作组协助}
+      RL-4: {items: [ACT-06, ACT-08, ACT-03], note: 指挥部视灾情派联合工作组指导乡镇；组织人员搜救、医疗救护、群众安置、次生灾害防范和应急恢复；按需支援救援队伍与物资}
+
+  # ---------- 4.10 信息报告 ----------
+  reporting:
+    evidence: ["§3.2.2", "§3.2.3", "§4.1", "§4.2", "§4.3"]
+    discovery_and_alarm:
+      - {actor: 监测单位/监测人, obligation: 发现灾情或险情按分级标准及时报告乡镇政府和县应急管理局}
+      - {actor: 乡镇政府/县应急管理局, obligation: 通过现场踏勘，根据灾情险情上报县指挥部办公室}
+      - {actor: 任何公民和单位, obligation: 有义务通过各种途径向当地政府及有关部门报告灾情险情}
+    alarm_handling:
+      actor: 县地质灾害应急指挥部办公室
+      steps:
+        - 接到报警后迅速处置，并将灾情及时上报州地质灾害应急指挥部办公室
+        - 必要时联系协调省地质灾害应急中心专家组赶赴事发地核查、指导乡镇村居开展应急工作
+        - 灾害危及水库、堤防、桥梁、隧道、公路等重要设施安全时，及时向相关部门通报沟通
+    deadlines:
+      - id: RPT-SLA-1
+        trigger: 小型、中型地质灾害报告
+        deadline_minutes: 60
+        from: 县地质灾害应急指挥部办公室接报时刻
+        to: [县地质灾害指挥部, 州人民政府, 州应急管理局]
+        channel: 速报
+      - id: RPT-SLA-2
+        trigger: 大型、特大型地质灾害报告
+        deadline_minutes: 30
+        from: 县地质灾害应急指挥部办公室接报时刻
+        to: [县地质灾害应急指挥部, 州人民政府, 州应急管理主管部门]
+        channel: 速报
+        additional:
+          - {actor: 县人民政府相关部门, form: 书面上报, deadline_minutes: 120, from: 事发时刻}
+          - {actor: 县指挥部办公室, option: 可直接速报省人民政府及省应急管理主管部门、国务院及应急管理主管部门}
+    quality_flag: TAXONOMY_MISMATCH   # 报告口径用"小/中/大/特大型"，分级标准用"一般/较大/重大/特别重大"，见 C-10
+    content_schema:
+      initial_and_follow_up:
+        - 发生时间
+        - 发生地点
+        - 地质灾害类型
+        - 灾害体规模
+        - 可能的诱发因素
+        - 发展趋势
+        - 死亡/失踪/受伤人数
+        - 直接经济损失
+        - 受威胁人数与可能损失
+        - 已采取的措施
+      follow_up_extra: [周边自然地理环境, 受灾建筑物, 地形地貌]
+      update_rule: 发现灾情或险情有新变化时要及时续报；根据发展变化及救援进展做好续报和终报
+
+  # ---------- 4.11 响应终止 ----------
+  termination:
+    id: TERM-01
+    decider: 应急响应启动机关
+    conditions_all_of:
+      - 地质灾害险情得到有效控制 或 灾害现场应对处置工作结束
+      - 人员搜救工作已经完成
+      - 受灾群众基本得到安置
+      - 灾区群众生活基本得到保障
+      - 交通运输、电力、通信、供水等设施基本抢修抢通
+      - 灾区生活秩序基本恢复
+    transition_to: 恢复重建阶段
+    follow_up: 县委县政府安排各部门按有关规定做好善后处置
+    evidence: ["§5.7"]
+
+  # ---------- 4.12 应急保障（11项）----------
+  safeguards:
+    supervisor: 县地质灾害应急指挥部办公室会同有关部门督导检查，总结经验教训
+    evidence: ["§6"]
+    items:
+      - id: SF-01
+        name: 队伍保障
+        resource_class: 队伍
+        owners: [县政府有关部门, 县武警中队, 县人民政府, 各成员单位, 乡镇街道, 县应急管理部门, 县自然资源部门]
+        content:
+          - 加强国家综合性消防救援队伍、地质灾害应急救援队伍、医疗卫生救援队伍等综合及专业抢险救灾队伍建设
+          - 建立各类专、兼职应急救援队伍和志愿者队伍
+          - 成员单位建立管理本系统本行业专业救援队伍
+          - 依法与县武警中队建立军地协作联动机制
+          - 乡镇街道建立基层应急救援队伍；依托社会团体/企事业单位/社区建立志愿者队伍
+          - 应急管理与自然资源部门加强应急救援专家队伍建设
+      - id: SF-02
+        name: 物资装备保障
+        resource_class: 物资装备
+        owners: [县应急管理局, 县政府及有关部门]
+        content:
+          - 建立健全应急储备网络和生产、调拨及紧急配送体系
+          - 保障生活救助物资、灾害救援、监测预警、隐患调查、应急通信、工程抢险装备、医疗器械和药品的生产供应
+          - 通过与生产经营企业签订协议等方式保障供给
+      - id: SF-03
+        name: 应急指挥系统保障
+        resource_class: 指挥系统
+        owners: [县人民政府, 县应急管理部门, 县自然资源部门, 有条件的乡镇街道]
+        content:
+          - 配置应急指挥场所，配备互联互通的视频会商系统
+          - 实现州、县二级应急指挥平台互联互通，后方与现场远程视频会商
+          - 综合利用自动监测、通信、计算机、遥感技术建立应急指挥信息系统
+          - 实现险情灾情快速响应、灾害损失快速评估与动态跟踪、趋势判断快速反馈
+      - id: SF-04
+        name: 资金保障
+        resource_class: 资金
+        owners: [各级财政]
+        content:
+          - 按国家和省州县政府有关规定执行，按财政事权与支出责任划分分级负担
+          - 特别重大、重大由州政府启动响应的，积极争取省级支持
+          - 较大、一般由县级政府启动响应的，州政府视情给予适当支持
+      - id: SF-05
+        name: 交通保障
+        resource_class: 交通
+        owners: [县交通运输局]
+        content: [组织被毁公路和有关设施的抢险抢修确保灾区公路畅通, 保障受灾群众/救灾人员/物资运输安全]
+      - id: SF-06
+        name: 医疗保障
+        resource_class: 医疗
+        owners: [县卫生健康局]
+        content: [灾区受灾群众和救援人员的医疗保障, 防疫工作]
+      - id: SF-07
+        name: 通讯与电力保障
+        resource_class: 通信电力
+        owners: [县工信局]
+        content: [应急救援期间的应急通讯、电力保障]
+        quality_flag: OWNER_CONFLICT   # WG-07 基础设施保障组由县发改局牵头统筹电力通信，此处牵头改为县工信局，见 C-11
+      - id: SF-08
+        name: 后勤保障
+        resource_class: 后勤
+        owners: [灾害发生地乡镇政府, 县发改局, 县财政局]
+        content: [应急救援后勤保障]
+      - id: SF-09
+        name: 技术保障
+        resource_class: 技术
+        owners: [县应急管理局, 县公安局, 县自然资源局, 县农业农村局, 县水务局, 县交通运输局, 县气象局, 县生态环境分局, 地质灾害应急防治专家组]
+        content: [提供汛情、气象、环境、地质、交通等信息和技术保障]
+        quality_flag: NAME_INCONSISTENT  # 他处称"县气象站"，此处称"县气象局"，见 C-05
+      - id: SF-10
+        name: 制度保障
+        resource_class: 制度
+        owners: [县地质灾害应急指挥部, 各乡镇]
+        content:
+          - 汛期和预警预报期间24小时值班
+          - 地质灾害隐患点巡查排查
+          - 地质灾害"零"报告制度
+          - 向重点隐患点群众发放防灾"明白卡"
+          - 制定"一点一案"，落实预防措施、划定紧急避险路线和避险场所
+      - id: SF-11
+        name: 法制保障
+        resource_class: 法制
+        owners: [县司法局]
+        content: [根据县政府要求为应急救援工作提供法律保障]
+        quality_flag: NOT_IN_MEMBER_LIST  # 县司法局承担保障职责但未列入 §2.1 成员单位名单，见 C-12
+
+  # ---------- 4.13 预防与预警基础 ----------
+  prevention:
+    evidence: ["§3.1.1", "§3.1.2", "§3.1.3"]
+    monitoring_system:
+      owner_primary: 各乡（镇）人民政府
+      owner_guiding: 县自然资源部门
+      measures:
+        - 建立健全地质灾害群测群防网络，形成完善的监测体系
+        - 保障群测群防工作所需的人、财、物，落实防治责任制
+        - 组织开展地质灾害风险调查，完善群测群防和专业监测预警网络
+        - 提升地质灾害和灾害链的早期识别、综合监测预警能力
+        - 定期开展地质灾害巡查检查
+    inspection_regime:
+      owner_guiding: 县自然资源局
+      owner_executing: 各乡（镇）人民政府
+      cadence:
+        - {window: 每年冰雪消融期前, action: 组织人员排查本区域地质灾害隐患}
+        - {window: 每年汛期前, action: 组织人员排查本区域地质灾害隐患}
+        - {window: 汛中, action: 定期和不定期开展检查}
+        - {window: 汛后, action: 定期和不定期开展检查}
+      per_site_requirements:
+        - 划定危险区并予以公告
+        - 在危险区边界设立明显警示标志
+        - 明确监测单位和监测人员
+        - 明确发现险情后的报警方式和撤离路线
+
+  # ---------- 4.14 预案体系与管理 ----------
+  plan_system:
+    evidence: ["§1.4 预案体系", "§8", "§9"]
+    tiers:
+      - {tier: 县本级, artifact: 积石山县突发地质灾害应急预案, count: 1}
+      - {tier: 乡镇级, artifact: 乡（镇）突发地质灾害应急预案, count: 17, filing: 报县自然资源局备案}
+      - {tier: 点位级, artifact: 现场处置方案（一点一案）, count: 17, requirement: 具体、简单、针对性强；依风险评估及危险性控制措施逐一编制；相关人员应知应会并经演练}
+    framework: 基本形成县、乡、点应急预案框架体系
+    management:
+      drill: {owner: 县人民政府, frequency_per_year: "1-2次", type: 应急防治与救灾演练, evidence: "§8.1"}
+      education: {content: 公众防灾减灾知识宣传和教育培训，增强防灾意识和自救互救能力, evidence: "§8.2"}
+      approval: {drafters: [县应急局, 县自然资源局], approver: 县政府, effective: 自印发之日起实施, evidence: ["§8.3", "§9", "§10.2"]}
+      interpretation: {owners: [积石山县应急管理局, 积石山县自然资源局], scope: 负责补充修订和解释, evidence: "§9"}
+      revision_triggers:
+        - 有关法律、法规、规章、标准、上位预案中的有关规定发生变化
+        - 应急指挥机构及其职责发生重大调整
+        - 面临的风险发生重大变化
+        - 重要应急资源发生重大变化
+        - 预案中的其他重要信息发生变化
+        - 在地质灾害应对和应急演练中发现需做重大调整
+        - 应急预案制定单位认为应当修订的其他情况
+      evaluation: 编制单位建立评估制度，组织专家分析评价预案的针对性、实用性和可操作性，实现动态优化和科学规范管理
+
+  # ---------- 4.15 责任与奖惩 ----------
+  accountability:
+    evidence: ["§7"]
+    reward: 各级政府对应急救援工作中贡献突出的单位和个人给予表彰和奖励
+    punishment: 对自然灾害应对中工作不力或玩忽职守造成损失的单位和个人依法依规追究责任
+    martyr: 在应急救援工作中牺牲人员符合评定烈士条件的按有关规定办理
+
+  # ---------- 4.16 编制依据 ----------
+  legal_basis:
+    evidence: ["§1.2"]
+    items:
+      - {id: LB-01, title: 中华人民共和国突发事件应对法, basis_class: 法律, level: 国}
+      - {id: LB-02, title: 地质灾害防治条例, basis_class: 行政法规, level: 国}
+      - {id: LB-03, title: 国家突发地质灾害应急预案, basis_class: 国家预案, level: 国}
+      - {id: LB-04, title: 国务院关于加强地质灾害防治工作的决定, basis_class: 国务院决定, level: 国}
+      - {id: LB-05, title: 甘肃省地质环境保护条例, basis_class: 地方性法规, level: 省}
+      - {id: LB-06, title: 甘肃省突发事件总体应急预案, basis_class: 省级预案, level: 省}
+      - {id: LB-07, title: 临夏州突发地质灾害应急预案, basis_class: 州级预案, level: 州, source_text: "《临夏州突发质灾害应急预案》", quality_flag: TYPO}
+      - {id: LB-08, title: 积石山县突发公共事件应急预案, basis_class: 县级预案, level: 县}
+    guiding_ideology:
+      - 习近平新时代中国特色社会主义思想
+      - 习近平总书记关于防范化解重大安全风险和防灾减灾救灾的重要论述
+      - 人民至上、生命至上
+    work_principles:
+      - {id: WP-1, name: 以防为主，防救结合, detail: 树立"两个坚持、三个转变"理念，从源头防范化解重大风险，建立健全群测群防机制}
+      - {id: WP-2, name: 统一领导，协调联动, detail: 在各级党委政府统一领导下建立协调联动机制，各司其职密切配合形成合力}
+      - {id: WP-3, name: 属地为主，分级负责, detail: 属地为主、条块结合，分级负责、上下联动}
+      - {id: WP-4, name: 快速反应，科学处置, detail: 依靠科技手段和专业力量，精准研判、科学决策、快速反应}
+    scope:
+      applicable_area: 积石山县境内
+      applicable_events: [山体崩塌, 滑坡, 泥石流, 地面塌陷等突发地质灾害]
+      activities: [防范, 应对]
+      evidence: ["§1.3"]
+
+  # ---------- 4.17 术语表 ----------
+  glossary:
+    evidence: ["§10.1"]
+    terms:
+      - {id: TM-01, term: 突发地质灾害, definition: 突然发生的由自然因素或人类工程活动诱发的，危害人民生命和财产安全的崩塌、滑坡、泥石流、地面塌陷等与地质作用有关的灾害}
+      - {id: TM-02, term: 崩塌, ref: HT-COLLAPSE}
+      - {id: TM-03, term: 滑坡, ref: HT-LANDSLIDE}
+      - {id: TM-04, term: 泥石流, ref: HT-DEBRIS_FLOW}
+      - {id: TM-05, term: 地面塌陷, ref: HT-SUBSIDENCE}
+      - {id: TM-06, term: 地质灾害易发区, definition: 具备地质灾害发生的地质构造、地形地貌和气候条件，在自然、人为活动作用下容易发生地质灾害的区域}
+      - {id: TM-07, term: 地质灾害危险区, definition: 出现地质灾害前兆、可能造成人员伤亡或财产损失的区域}
+      - {id: TM-08, term: 地质灾害隐患, definition: 出现地质灾害发生前兆，可能发生地质灾害的潜在点或潜在区段}
+      - {id: TM-09, term: 地质灾害险情, definition: 可能因地质灾害造成的危害情况，包括威胁人数、威胁对象及潜在经济损失等，具有紧迫性，需采取紧急避险等应急措施}
+      - {id: TM-10, term: 地质灾害灾情, definition: 因地质灾害造成的损失情况，包括人员伤亡、经济损失和生态环境破坏程度}
+      - {id: TM-11, term: 次生地质灾害, ref: HT-SECONDARY}
+      - {id: TM-12, term: 地质灾害危害程度, definition: 地质灾害造成的人员伤亡、经济损失与生态环境破坏程度}
+      - {id: TM-13, term: 地质灾害应急调查, definition: 各级应急组织针对突发性地质灾害险情、灾情而采取的紧急获取相关信息的过程}
+      - {id: TM-14, term: 地质灾害应急监测, definition: 在应急状态下对影响灾害体变形、发展及破坏的各因素进行测定，并将信息传感、采集、传输、处理的相关活动}
+      - {id: TM-15, term: 地质灾害应急准备, definition: 为应对突发地质灾害紧急情况而进行的准备工作}
+      - {id: TM-16, term: 地质灾害应急管理, definition: 针对突发地质灾害紧急应对行动的组织管理活动}
+      - {id: TM-17, term: 地质灾害应急演练, definition: 模拟紧急应对突发地质灾害的活动}
+      - {id: TM-18, term: 地质灾害气象风险预警, ref: warning_levels}
+      - {id: TM-19, term: 地质灾害气象风险预警响应, definition: 针对地质灾害风险采取相应防御措施的行动}
+      - {id: TM-20, term: 地质灾害应急响应, definition: 各级应急组织根据险情灾情实际情况，按应急预案采取有效处置措施，为避免灾害进一步发生、降低灾害影响所进行的一系列决策、组织指挥和应对处置行动}
+      - {id: TM-21, term: 地质灾害应急处置, definition: 为应对突发地质灾害险情灾情所采取的紧急调查和防灾减灾行动，是应急响应的中心环节和主要技术工作阶段，分险情应急处置和灾情应急处置}
+      - {id: TM-22, term: 直接经济损失, definition: 地质灾害及次生灾害造成的物质破坏（建筑物、工程结构、设施、设备、物品、财产等）引起的经济损失，以重新修复所需费用计算；不含货币、有价证券等非实物财产损失}
+      - {id: TM-23, term: 潜在经济损失, definition: 地质灾害险情可能造成的最大直接经济损失}
+      - {id: TM-24, term: 数量表述约定, definition: 本预案有关数量的表述中，"以上"含本数，"以下"不含本数}
+
+# ==============================================================================
+# 五、边（edges）—— 显式关系实例，供图查询与推演遍历
+# ==============================================================================
+edges:
+  # 分级 → 响应级别
+  - {link_key: triggers_response, from: SG-D1, to: RL-1, evidence: "§5.4(1)①"}
+  - {link_key: triggers_response, from: SG-R1, to: RL-1, evidence: "§5.4(1)②"}
+  - {link_key: triggers_response, from: SG-D2, to: RL-2, evidence: "§5.4(2)①"}
+  - {link_key: triggers_response, from: SG-R2, to: RL-2, evidence: "§5.4(2)②"}
+  - {link_key: triggers_response, from: SG-D3, to: RL-3, evidence: "§5.4(3)①"}
+  - {link_key: triggers_response, from: SG-R3, to: RL-3, evidence: "§5.4(3)②"}
+  - {link_key: triggers_response, from: SG-D4, to: RL-4, evidence: "§5.4(4)①"}
+  - {link_key: triggers_response, from: SG-R4, to: RL-4, evidence: "§5.4(4)②"}
+  # 预警级别叠加链
+  - {link_key: escalates_from, from: WL-3, to: WL-4}
+  - {link_key: escalates_from, from: WL-2, to: WL-3}
+  - {link_key: escalates_from, from: WL-1, to: WL-2}
+  # 预警级别 → 响应行动
+  - {link_key: warning_triggers, from: WL-4, to: WR-BLUE}
+  - {link_key: warning_triggers, from: WL-3, to: WR-YELLOW}
+  - {link_key: warning_triggers, from: WL-2, to: WR-ORANGE}
+  - {link_key: warning_triggers, from: WL-1, to: WR-RED}
+  # 组织架构
+  - {link_key: office_of, from: ORG-HQ-OFFICE, to: ORG-HQ}
+  - {link_key: member_of, from: ORG-MEMBERS, to: ORG-HQ}
+  - {link_key: holds_role, from: ORG-EMERGENCY, to: ROLE-OFFICE-DIR}
+  - {link_key: holds_role, from: ORG-NATRES, to: ROLE-OFFICE-DEPUTY}
+  - {link_key: holds_role, from: ORG-EMERGENCY, to: ROLE-DEPUTY}
+  - {link_key: holds_role, from: ORG-NATRES, to: ROLE-DEPUTY}
+  # 工作组牵头
+  - {link_key: leads, from: ORG-EMERGENCY, to: WG-01}
+  - {link_key: leads, from: ORG-NATRES,    to: WG-01}
+  - {link_key: leads, from: ORG-EMERGENCY, to: WG-02}
+  - {link_key: leads, from: ORG-NATRES,    to: WG-03}
+  - {link_key: leads, from: ORG-EMERGENCY, to: WG-04}
+  - {link_key: leads, from: 县卫生健康委,   to: WG-05}
+  - {link_key: leads, from: 县交通运输局,   to: WG-06}
+  - {link_key: leads, from: 县发改局,       to: WG-07}
+  - {link_key: leads, from: ORG-EMERGENCY, to: WG-08}
+  - {link_key: leads, from: 县公安局,       to: WG-09}
+  - {link_key: leads, from: 县委宣传部,     to: WG-10}
+  # 上报链路
+  - {link_key: reports_to, from: 监测人/监测单位, to: ORG-TOWNSHIP, evidence: "§3.2.2"}
+  - {link_key: reports_to, from: 监测人/监测单位, to: ORG-EMERGENCY, evidence: "§3.2.2"}
+  - {link_key: reports_to, from: ORG-TOWNSHIP,   to: ORG-HQ-OFFICE, evidence: "§3.2.2"}
+  - {link_key: reports_to, from: ORG-EMERGENCY,  to: ORG-HQ-OFFICE, evidence: "§3.2.2"}
+  - {link_key: reports_to, from: ORG-HQ-OFFICE,  to: ORG-PREFECTURE-HQ, evidence: "§3.2.3 / §4.1"}
+  - {link_key: reports_to, from: ORG-HQ-OFFICE,  to: 省人民政府及省应急管理主管部门, evidence: "§4.1（大型/特大型可直报）"}
+  - {link_key: reports_to, from: ORG-HQ-OFFICE,  to: 国务院及应急管理主管部门, evidence: "§4.1（大型/特大型可直报）"}
+  # 措施承担
+  - {link_key: responsible_for, from: WG-02, to: ACT-06}
+  - {link_key: responsible_for, from: WG-03, to: ACT-05}
+  - {link_key: responsible_for, from: WG-04, to: ACT-03}
+  - {link_key: responsible_for, from: WG-05, to: ACT-08}
+  - {link_key: responsible_for, from: WG-06, to: ACT-07}
+  - {link_key: responsible_for, from: WG-07, to: ACT-09}
+  - {link_key: responsible_for, from: WG-08, to: ACT-12}
+  - {link_key: responsible_for, from: WG-09, to: ACT-10}
+  - {link_key: responsible_for, from: WG-10, to: ACT-11}
+  # 保障资源
+  - {link_key: action_uses, from: ACT-06, to: SF-01}
+  - {link_key: action_uses, from: ACT-03, to: SF-02}
+  - {link_key: action_uses, from: ACT-05, to: SF-03}
+  - {link_key: action_uses, from: ACT-09, to: SF-05}
+  - {link_key: action_uses, from: ACT-09, to: SF-07}
+  - {link_key: action_uses, from: ACT-08, to: SF-06}
+  - {link_key: action_uses, from: ACT-13, to: SF-04}
+  # 预案承接
+  - {link_key: derives_from, from: LB-08, to: LB-07}
+  - {link_key: derives_from, from: LB-07, to: LB-03}
+  - {link_key: derives_from, from: LB-06, to: LB-01}
+
+# ==============================================================================
+# 六、规则层：可判定表达式（供推演引擎直接求值）
+# ==============================================================================
+rule_semantics:
+  inclusive_note: '"以上"含本数（>=），"以下"不含本数（<）'
+  combinator_default: OR（任一条件满足即命中该级）
+  tie_break: 命中多级时取 rank 最小者（最高级别）
+
+rules:
+  - id: RULE-GRADE-DISASTER
+    rule_class: 分级判定
+    inputs: [death_missing, direct_loss_cny]
+    expression: |
+      IF death_missing >= 30 OR direct_loss_cny >= 30000000 THEN "特别重大"
+      ELSE IF death_missing >= 10 OR direct_loss_cny >= 5000000 THEN "重大"
+      ELSE IF death_missing >= 3  OR direct_loss_cny >= 1000000 THEN "较大"
+      ELSE "一般"
+    outcome: SeverityGrade(dimension=灾情)
+    evidence: ["§1.5.2", "§5.4"]
+
+  - id: RULE-GRADE-RISK
+    rule_class: 分级判定
+    inputs: [evacuation_persons, potential_loss_cny, blocks_river_tributary, blocks_trunk_transport]
+    expression: |
+      IF evacuation_persons >= 1000 OR potential_loss_cny >= 100000000 OR blocks_river_tributary THEN "特别重大"
+      ELSE IF evacuation_persons >= 500 OR potential_loss_cny >= 50000000 OR blocks_trunk_transport THEN "重大"
+      ELSE IF evacuation_persons >= 100 OR potential_loss_cny >= 5000000 THEN "较大"
+      ELSE "一般"
+    outcome: SeverityGrade(dimension=险情)
+    evidence: ["§1.5.1", "§5.4"]
+
+  - id: RULE-RESPONSE-LEVEL
+    rule_class: 响应启动
+    inputs: [grade_disaster, grade_risk, social_attention]
+    expression: |
+      level = MIN_RANK(
+        MAP(grade_disaster, {特别重大: Ⅰ, 重大: Ⅱ, 较大: Ⅲ, 一般: Ⅳ}),
+        MAP(grade_risk,     {特别重大: Ⅰ, 重大: Ⅱ, 较大: Ⅲ, 一般: Ⅳ}),
+        MAP(social_attention, {特别高: Ⅰ, 非常高: Ⅱ, 较高: Ⅲ, 一般关注: Ⅳ})
+      )
+    modifiers:
+      - {id: MOD-MINORITY, condition: 灾害发生在少数民族聚居地区或其他特殊地区, effect: 可适当提高响应级别, evidence: "§5.5"}
+      - {id: MOD-JUMP,     condition: 特殊时期及突发情况, effect: 可越级启动响应, evidence: "§5.2"}
+      - {id: MOD-ADJUST,   condition: 灾情发展变化, effect: 及时上调或下调，避免响应不足或过度, evidence: ["§5.2", "§5.5"]}
+      - {id: MOD-CAPACITY, condition: 超出本县党委政府应对能力, effect: 办公室报总指挥，按程序报请启动二级响应, evidence: "§5.6.2(Ⅲ级段)"}
+    outcome: ResponseLevel
+    evidence: ["§5.1", "§5.4", "§5.5"]
+
+  - id: RULE-REPORT-SLA
+    rule_class: 报告时限
+    inputs: [scale_label]
+    expression: |
+      IF scale_label IN ("大型","特大型") THEN {速报: 30min, 书面: 120min(自事发), 可直报: [省, 国]}
+      ELSE IF scale_label IN ("小型","中型") THEN {速报: 60min}
+    outcome: 报告时限义务
+    evidence: ["§4.1"]
+
+  - id: RULE-WARNING-RESPONSE
+    rule_class: 预警响应
+    inputs: [warning_level]
+    expression: |
+      actions = UNION(WR of all levels with rank >= rank(warning_level))   -- 累积叠加
+      IF warning_level == Ⅰ THEN ADD(紧急撤离信号, 疏散受威胁人员, 转移重要财产, 上报州政府, 启动应急预案)
+      IF warning_level == Ⅱ THEN ADD(告知受威胁对象, 做好启动预案准备)
+    outcome: 行动清单
+    evidence: ["§3.3"]
+
+  - id: RULE-TERMINATION
+    rule_class: 响应启动
+    inputs: [险情受控, 搜救完成, 群众安置, 生活保障, 设施抢通, 秩序恢复]
+    expression: ALL(inputs) == true → 由启动机关决定终止响应，转入恢复重建阶段
+    outcome: 响应终止
+    evidence: ["§5.7"]
+
+  - id: RULE-PLAN-REVISION
+    rule_class: 预案修订
+    inputs: [法规变化, 机构调整, 风险变化, 资源变化, 信息变化, 演练发现, 编制单位判断]
+    expression: ANY(inputs) == true → 应当及时修订应急预案
+    outcome: 触发预案修订
+    evidence: ["§8.4"]
+
+# ==============================================================================
+# 七、质量层：冲突、缺口与待补（推演前必须先看这一节）
+# ==============================================================================
+quality:
+  conflicts:
+    - id: C-01
+      severity: 高
+      type: 数值单位错误
+      location: "§1.6"
+      finding: '"总人口278089万人" —— 278089 万人 ≈ 27.8 亿，与县域量级矛盾'
+      likely_truth: 总人口 278089 人（约 27.8 万人）
+      impact: 一切人口占比类推演（受威胁人口占比、人均资产）依赖此值
+    - id: C-02
+      severity: 高
+      type: 数值缺失
+      location: "§1.6"
+      finding: '"其中易发地质灾害面积平方公里，占全县总面积的47%" —— 数值空缺'
+      likely_truth: 909.97 × 47% ≈ 427.69 平方公里
+      impact: 易发区面积无法直接引用，需补测或按比例推算并标注
+    - id: C-03
+      severity: 中
+      type: 分类不完整
+      location: "§1.6"
+      finding: 现存318处按规模分为"1特大型 + 51中型 + 266小型"，缺"大型"档（计 0），而响应分级中 Ⅱ级对应"大型"
+      impact: Ⅱ级响应在现状隐患清单中无对应存量对象，情景推演需显式说明"大型=0"是事实还是漏统计
+    - id: C-04
+      severity: 中
+      type: 定义缺口
+      location: "§1.6 vs §1.3 / §10.1"
+      finding: 灾害点统计含"不稳定斜坡"142处（占 39%，最大类目），但适用范围与术语表均未列入
+      impact: 最大类目缺乏定义与处置口径，预案适用性存疑
+    - id: C-05
+      severity: 低
+      type: 名称不一致
+      location: "§2.3(9) / §2.1；§6(九) / §2.3(3)"
+      finding: 县武警中队 ↔ 县武警大队；县气象站 ↔ 县气象局；县卫生健康委 ↔ 县卫生健康局；县农业局（气象站）↔ 县农业农村局
+      impact: 机构实体消歧困难，图谱中已按同一实体归并并保留别名
+    - id: C-06
+      severity: 中
+      type: 职责范围不足
+      location: "§2.3(10) vs §5.6.1(11)"
+      finding: 新闻宣传组职责仅表述舆情监看管控，未含新闻发布与信息发布；而 Ⅰ级响应措施要求"及时召开新闻发布会，有序做好险情灾情信息发布"
+      impact: 新闻发布责任主体在组织层面悬空
+    - id: C-07
+      severity: 高
+      type: 程序冲突
+      location: "§5.3.1 vs §5.5"
+      finding: |
+        §5.3.1：Ⅳ级由办公室建议、总指挥决定启动；Ⅲ级由总指挥启动；Ⅱ级由总指挥建议、县长决定；Ⅰ级由县长启动。
+        §5.5：Ⅳ级由办公室视情启动（办公室主任任总指挥）；Ⅲ级由指挥部视情启动（分管领导任总指挥）；Ⅱ级报请县政府同意（政府主要领导任总指挥）；Ⅰ级报请县委县政府同意（县委县政府主要领导任总指挥）。
+      impact: 同一响应级别存在两套启动权限与指挥人安排，实战会产生指挥权争议；推演时必须先冻结采用哪一套
+      recommendation: 以 §5.5 为准（更细、含指挥人安排），§5.3.1 改为与之一致的表述
+    - id: C-08
+      severity: 中
+      type: 口径漂移
+      location: "§1.5.1(2) vs §5.4(2)②"
+      finding: 重大险情定义含"铁路主要干线、高速公路、民航和航道中断"，Ⅱ级响应启动条件缩为"公路主要干线、高速公路中断"
+      impact: 铁路/民航/航道中断场景在响应启动条件中失去触发点
+    - id: C-09
+      severity: 中
+      type: 主体错误
+      location: "§5.5 末段"
+      finding: '县级预案中写"各县（市）人民政府根据地质灾害分级…确定本级应急响应分级标准"，主体应为"各乡（镇）人民政府"（§5.4 末段即为正确表述）'
+      impact: 疑为从州级预案复制未改，下位授权对象错位
+    - id: C-10
+      severity: 高
+      type: 分类体系不匹配
+      location: "§4.1 vs §1.5"
+      finding: 信息报告时限按"小型/中型/大型/特大型"（规模口径），而险情灾情分级按"一般/较大/重大/特别重大"（后果口径），两套体系无映射条款
+      impact: 接报后无法确定适用 30 分钟还是 1 小时时限；推演已按 响应级别 Ⅳ/Ⅲ/Ⅱ/Ⅰ ↔ 小/中/大/特大型 建立映射（源自 §5.1），需在新报告中显式声明该映射
+    - id: C-11
+      severity: 中
+      type: 牵头单位冲突
+      location: "§2.3(7) vs §6(七)"
+      finding: 基础设施保障组由县发改局牵头（含电力、通信），但通讯与电力保障由县工信局牵头
+      impact: 同一事项两个牵头单位
+    - id: C-12
+      severity: 低
+      type: 名单遗漏
+      location: "§6(十一) vs §2.1"
+      finding: 县司法局承担法制保障但不在指挥部成员单位名单；县科技局、县市场监管局、县疾控中心同样出现在工作组但不在成员名单
+      impact: 成员单位名单需补齐
+    - id: C-13
+      severity: 低
+      type: 编号错误
+      location: "§1.4 出现两次（预案体系、工作原则）；§5.6.2 出现两次（Ⅱ级、Ⅲ级）"
+      impact: 引用定位困难；本体中已按内容重排为 §1.4 预案体系 / §1.5 工作原则、§5.6.2 Ⅱ级 / §5.6.3 Ⅲ级 / §5.6.4 Ⅳ级
+    - id: C-14
+      severity: 中
+      type: 层级越位
+      location: "§6(四) 资金保障"
+      finding: 表述"特别重大、重大由州政府启动响应""较大、一般由县（市）政府启动响应"，是州级视角；县级预案中 Ⅰ/Ⅱ 级均由本县启动（§5.5），资金分担口径与响应启动口径不咬合
+      impact: Ⅰ/Ⅱ级响应的县级资金来源不明确
+
+  gaps:
+    - id: G-01
+      topic: 隐患点空间明细
+      finding: 仅有 363/318 的总量与分类统计，无逐点清单（编号、坐标、乡镇、威胁户数、监测责任人）
+      needed_for: 资源推演、撤离路线推演、乡镇级预案生成
+    - id: G-02
+      topic: 应急避难场所
+      finding: §5.6.1(3) 要求"开放应急避难场所或设置集中安置点"，全文无场所清单、容量、位置
+      needed_for: 转移安置容量推演
+    - id: G-03
+      topic: 队伍与物资底数
+      finding: §6(一)(二) 只有能力建设要求，无队伍数量/人数/装备/物资储备量
+      needed_for: 缺口分析与调运推演
+    - id: G-04
+      topic: 预警阈值
+      finding: 预警级别仅有定性描述（可能性大小），无降雨量/位移速率等量化触发阈值
+      needed_for: 自动预警推演与漏报回溯（§3.3 已承认存在漏报情形）
+    - id: G-05
+      topic: 附件缺失
+      finding: 无成员单位联络表、无隐患点分布图、无组织架构图、无流程图、无"明白卡"模板
+      needed_for: 预案可操作性；上位规范通常要求附件
+    - id: G-06
+      topic: 恢复重建
+      finding: §5.7 仅一句"转入恢复重建阶段"，无恢复重建章节（评估、规划、资金、监督）
+      needed_for: 全周期推演
+    - id: G-07
+      topic: 与相邻县及跨界灾害
+      finding: 县域与青海循化县接壤，无跨省界地质灾害联动条款
+      needed_for: 跨界情景推演
+    - id: G-08
+      topic: 2023年积石山6.2级地震后的风险变化
+      finding: 预案未反映震后地质灾害隐患激增这一重大风险变化（§8.4 修订触发条件③"面临的风险发生重大变化"）
+      needed_for: 现势性评估；属外部知识，需人工核实后补入
+      confidence: 外部补全（待核）
+
+# ==============================================================================
+# 八、推演接口：新报告如何基于本图谱生成
+# ==============================================================================
+inference_hooks:
+  scenario_simulation:
+    name: 情景推演（给定事件 → 输出处置全链条）
+    input_schema:
+      event_time: datetime
+      location: {township: string, village: string, site_id: "string?"}
+      hazard_type: HazardType.id
+      death_missing: "number?"
+      injured: "number?"
+      direct_loss_cny: "number?"
+      evacuation_persons: "number?"
+      potential_loss_cny: "number?"
+      blocks_river_tributary: "boolean?"
+      blocks_trunk_transport: "boolean?"
+      social_attention: "enum?"
+      warning_level_at_time: "WarningLevel.id?"
+    pipeline:
+      - {step: 1, apply: RULE-GRADE-DISASTER, out: grade_disaster}
+      - {step: 2, apply: RULE-GRADE-RISK,     out: grade_risk}
+      - {step: 3, apply: RULE-RESPONSE-LEVEL, out: response_level}
+      - {step: 4, apply: RULE-REPORT-SLA,     out: reporting_obligations, note: 需先解决 C-10 口径映射}
+      - {step: 5, traverse: "response_level -[response_includes]-> Action", out: action_checklist}
+      - {step: 6, traverse: "Action -[responsible_for]<- Organization", out: responsibility_matrix}
+      - {step: 7, traverse: "Action -[action_uses]-> Resource -[resource_secured_by]-> Organization", out: resource_plan}
+      - {step: 8, apply: RULE-TERMINATION, out: termination_criteria}
+    output_report_sections:
+      - 事件研判与定级（含定级依据与证据引用）
+      - 响应启动建议（含启动主体、指挥人、越级/提级理由）
+      - 分钟级信息报告清单（30/60/120 分钟节点）
+      - 责任矩阵（工作组 × 措施 × 牵头/参加单位）
+      - 资源需求与缺口（对照 G-03 标注不可算项）
+      - 终止条件与恢复重建衔接
+  gap_audit:
+    name: 覆盖度审计（对照上位法规/新大纲 → 输出修订建议）
+    method: 以 legal_basis 为对照轴，逐条检查本体节点覆盖情况；quality.conflicts + quality.gaps 直接构成整改台账
+    output: 修订建议清单（问题、位置、建议表述、依据、优先级）
+  resource_planning:
+    name: 资源推演
+    known_inputs: [facts.hazard_inventory.active_sites]
+    blocked_by: [G-01, G-02, G-03]
+    note: 当前仅能做总量级估算（318 点 / 13777 人 / 8.32 亿元资产），逐点推演需先补 G-01
+  township_plan_generation:
+    name: 乡镇级预案批量生成
+    basis: plan_system.tiers（17 乡镇 + 17 重点隐患点一点一案）
+    method: 以县级本体为模板，替换主体层级（县→乡镇）、裁剪响应级别至 Ⅳ/Ⅲ、绑定该乡镇隐患点子图
+    blocked_by: [G-01]
+
+# ==============================================================================
+# 九、溯源
+# ==============================================================================
+provenance:
+  extraction_method: docx → word/document.xml 段落与表格文本抽取 → 人工语义结构化
+  extracted_at: 2026-09-07
+  paragraph_count: 279
+  coverage:
+    covered_sections: ["§1 总则", "§2 组织机构和职责分工", "§3 预防和预警", "§4 信息报告", "§5 应急响应与启动", "§6 应急保障", "§7 责任与奖惩", "§8 预案管理", "§9 预案解释", "§10 附则"]
+    uncovered: 无（原文全部章节已建模）
+  confidence_policy:
+    原文直述: 直接引用原文事实，可无条件用于新报告
+    原文推算: 由原文数值计算得出（已标 formula），引用时须注明推算
+    外部补全: 非本文档来源，须人工核实后方可引用（当前仅 G-08）
+    存疑: 与 quality.conflicts 关联，引用前必须先裁决
