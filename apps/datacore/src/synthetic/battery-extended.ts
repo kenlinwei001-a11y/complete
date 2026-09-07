@@ -145,7 +145,27 @@ export function extendedObjectTypes(): TypeDef[] {
       // 一个属性只能声明一个 `unit` ⇒ 用参数化量纲把「分母由哪一格给」这件事说清楚。
       // ⚠ 这会让下游任何拿它做算术的地方开始被量纲校验 —— **这是目的，不是副作用**。
       nRef("unitPrice", "元/计量单位", "unit", "物料单价；分母是该物料自身的计量单位（见同对象 unit 格：kg/㎡/L/个）"),
-      n("leadTime", "天", "absolute"), n("carbonFactor", "kgCO2e", "absolute"), n("bomUnit", "dimensionless", "absolute"), n("dailyUse", "吨", "absolute"), n("onHand", "吨", "absolute"), n("inTransit", "吨", "absolute"), n("devPct", "dimensionless", "ratio"), n("outsourceYield", "dimensionless", "ratio"),
+      n("leadTime", "天", "absolute"), n("carbonFactor", "kgCO2e", "absolute"), n("bomUnit", "dimensionless", "absolute"),
+      // ── WO-DIMENSION-ERRORS · 库存三兄弟：改前全声明 `吨`，**一次错两处** ───────────────
+      // ① **族错**：`吨` 是质量，而同对象 `unit` 实测 8 料里 3 料是 `㎡`(隔膜) / `L`(电解液) /
+      //    `个`(电芯壳体) —— 面积、体积、计数**没有一个能换算成质量**。一个属性一个 `unit`，
+      //    真实量纲逐行不同 ⇒ 与 `unitPrice` 同一形态，同一修法：分母/分子由 `unit` 那一格给。
+      // ② **阶错（仅 dailyUse）**：名字自陈「日耗」是**速率**，却声明成**存量**。两处算式都要求它是速率：
+      //    `target = dailyUse × (leadTime + safety)`（速率 × 时间 = 存量 ✅）与
+      //    `onHand[d] = onHand0 − dailyUse × d + Σ入库`（存量 − 速率×时间 ✅）。
+      //    声明成存量则这两式**两端不同阶**，而它们不是派生公式、是 TS 代码 ⇒ 加减门看不见，静默。
+      // ⚠ 为什么**不是**把 `吨` 留给 kg 类物料：`吨` 若为真，`overQty(吨) × unitPrice(元/kg)`
+      //   就是 1000× 低估。而三条独立证据都指向「本列跟随物料自身计量单位」，不是吨：
+      //   · `solvers/lever-meta.ts` 的 `"Material.onHand": { unit: "", kind: "qty" }` ——
+      //     UI 元数据**刻意留空**，原注「库存单位随物料，不臆造」；
+      //   · 3/8 料压根没有质量口径（见 ①），故 `吨` 不可能是**本列**的单位；
+      //   · 同对象的 `unitPrice`(元/计量单位) 与 `BOMDetail.quantity`(计量单位) 已按此惯例落地。
+      //   ⇒ 读数本来就是对的，**错的是标签**。改声明后 `overQty × unitPrice = 元` 由模型可证，
+      //   不再是「两个占位符恰好都指向同一格」这种靠巧合成立的事。
+      nRef("dailyUse", "计量单位/日", "unit", "日均耗用**速率**；分子是该物料自身的计量单位（见同对象 unit 格：kg/㎡/L/个），分母是日"),
+      nRef("onHand", "计量单位", "unit", "现货库存**存量**；单位随该物料自身的计量单位（见同对象 unit 格：kg/㎡/L/个）"),
+      nRef("inTransit", "计量单位", "unit", "在途库存**存量**；单位随该物料自身的计量单位（见同对象 unit 格：kg/㎡/L/个）"),
+      n("devPct", "dimensionless", "ratio"), n("outsourceYield", "dimensionless", "ratio"),
       p("materialCode", "string"), p("category", "enum"), p("spec", "string"), p("unit", "string"),
       { propKey: "supplierId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier", unit: "dimensionless", scale: "absolute" },
       n("shelfLife", "天", "absolute"), p("isKeyMaterial", "boolean"), p("status", "enum"),
