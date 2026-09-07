@@ -156,13 +156,19 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
     ],
   },
 
-  /** cockpit_kpi：5 标量派生自 SopVersionRow/FinancePlan/Base/AnnualScenario。属性实现固定 → 精确。 */
+  /**
+   * cockpit_kpi：5 标量派生自 SopVersionRow/FinancePlan/Base/AnnualScenario/**Order**。属性实现固定 → 精确。
+   * WO-METRIC-IDENTITY：`revAttainPct` 的**分子**改为订单簿计划年成交额（`Order.{dueMonth,qty,unitPrice}`），
+   * 分母仍是 `FinancePlan.收入.budget` —— 读取面真的多了一个对象类型，故这里同步声明。
+   * 少声明是本仓认得的假绿形态：签名说它没读 `Order`，而它读了，靠签名做影响分析的人会算错爆炸半径。
+   */
   cockpit_kpi: {
     reads: [
       { typeKey: "SopVersionRow", propKeys: ["isFinal", "supply", "ver"] },
       { typeKey: "FinancePlan", propKeys: ["budget", "line", "rolling"] },
       { typeKey: "Base", propKeys: ["util"] },
       { typeKey: "AnnualScenario", propKeys: ["cashCushion", "key", "revenue"] },
+      { typeKey: "Order", propKeys: ["dueMonth", "qty", "unitPrice"] },
     ],
   },
 

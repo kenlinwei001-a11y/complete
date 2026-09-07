@@ -1876,6 +1876,16 @@ const metricProps: PropertyDef[] = [
   // businessTypeOfSegment 派生，与 Order.businessType 同源同口径 R-一致），供 gap_attribution 按业态裁订单。
   // 声明于类型以对齐合成字段（否则 seg Metric 实例的 businessType 成孤儿字段·synthetic-field-alignment 红）。
   { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // passenger | commercial | storage（仅 seg 指标有·非 seg 指标缺省）
+  /**
+   * WO-METRIC-IDENTITY · **本指标的口径自述**（`actual` 与 `target` 各自从哪条链取数）。
+   *
+   * 存在的理由是实测出来的病：同一块经营指标条上并排的几个数**口径互不相同**
+   * （营收=成交侧订单簿、毛利=需求预测侧、份额=诚实合成种子），而屏上一个字都没说。
+   * 数字本身没错的时候，缺的就是这一行 —— 故它是 `Metric` 的**一等属性**，不是样式。
+   * ⚠ 口径由**后端下发**、前端零写死（R14）：前端只渲染这一串，不许自己拼口径文案。
+   * ⚠ 只写**业务事实**（口径名 / 时间窗 / 条数 / 目标出处），不写源码文件名行号（R-UI-4）。
+   */
+  { propKey: "basis", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 const metricDerived: DerivedPropertyDef[] = [
   { propKey: "delta", formula: "actual - target", unit: "dimensionless", scale: "absolute" }, // 差异（带符号）
@@ -2917,7 +2927,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "Metric.level": "考核周期", "Metric.category": "指标类别", "Metric.target": "目标值",
   "Metric.actual": "实际值", "Metric.floorVal": "底线值", "Metric.unit": "计量单位", "Metric.weight": "权重",
   "Metric.ksfRef": "所属关键成功要素", "Metric.ownerRef": "责任人", "Metric.chainKey": "根因链键",
-  "Metric.businessType": "业务类型",
+  "Metric.businessType": "业务类型", "Metric.basis": "口径说明",
   "KSF.ksfId": "要素编号", "KSF.key": "要素键", "KSF.name": "要素名称", "KSF.sub": "要素说明",
   "Principal.principalId": "责任主体编号", "Principal.name": "名称", "Principal.kind": "主体类型",
   "Principal.parentRef": "上级主体",
@@ -5178,6 +5188,56 @@ function meanOfDaily(rows: { avail: number; perf: number; qual: number; oee: num
 }
 
 /**
+ * WO-METRIC-IDENTITY · **成交侧营收的唯一口径**（`Metric.kpi-revenue.actual` 与
+ * `cockpit_kpi.revAttainPct` 的分子共用这一个函数，不各抄一遍派生式）。
+ *
+ * ── 为什么必须是同一个函数 ──────────────────────────────────────────────────
+ * 这个口径要在**两个时刻**求值：合成期（`generateBattery` 手里是原始记录）与查询期
+ * （求解器手里是 `Order` 对象实例）。两处各写一遍 `Σ qty×unitPrice`，改一处漏一处
+ * **不会红** —— 那正是本仓 `lnk_mum_`/`lnk_mubm_` 那一对立下的纪律：**共用同一个变量/函数，
+ * 不是抄一遍公式**。故本函数只吃「有 `dueMonth`（或 `due`）+ `qty` + `unitPrice`」的行，
+ * 两边都能喂。
+ *
+ * ── 时间窗：为什么是**计划年**而不是全簿 ────────────────────────────────────
+ * 实测（真后端 `SEED_DEMO=1`，500 单）：订单交期跨 **2025-12 → 2026-12 两个日历年**，
+ * 全簿 Σ`Order.value` = **454.64 亿 / 500 单**，其中落在计划年内的是 **415.58 亿 / 458 单**
+ * （2025-12 那 42 张 39.06 亿属上一年度的簿子）。
+ * 而它要去对的 `GOAL_REGISTRY.revenue.target` 是**年度**目标（700 亿），
+ * 拿 13 个月的成交去除以 12 个月的目标，等于白送一个月的分子 —— 那是另一种口径错。
+ * **故取计划年窗**；计划年 = `BATTERY_SOLVER_PARAMS.forecastStart` 所在日历年，
+ * **不内联 `"2026"`**（内联的年份是个定时炸弹：改 forecastStart 时它不会红，只会悄悄错一年）。
+ *
+ * ⚠ `value` 是派生属性（`qty * unitPrice`），合成期的原始记录上**还没有**这一列，
+ * 所以本函数一律走 `qty × unitPrice` 而不是读 `value` —— 两者逐位相等
+ * （`revenue-reconcile.seam.test.ts` §3 就钉着这条等式），但只有前者两个时刻都拿得到。
+ */
+export function planYearOf(): string {
+  return String(BATTERY_SOLVER_PARAMS.forecastStart ?? "").slice(0, 4);
+}
+
+export function orderBookYearRevenue(
+  rows: { dueMonth?: unknown; due?: unknown; qty?: unknown; unitPrice?: unknown }[],
+  planYear: string = planYearOf(),
+): { yuan: number; count: number } {
+  let yuan = 0;
+  let count = 0;
+  for (const r of rows) {
+    // `dueMonth` 是 `due` 的前 7 位（合成期回填），两者任一在即可判年 —— 查询期对象一定有 dueMonth，
+    // 合成期在 dueMonth 回填之前调用则回落 `due`。回落不是兜底摆设：本函数在两个时刻都被真调用。
+    const ym = String(r.dueMonth ?? r.due ?? "");
+    if (!ym.startsWith(planYear)) continue;
+    yuan += Number(r.qty ?? 0) * Number(r.unitPrice ?? 0);
+    count += 1;
+  }
+  return { yuan, count };
+}
+
+/** 元 → 亿，保留 1 位（`Metric.unit`/`FinancePlan` 全族的「亿」口径）。 */
+export function yuanToYi(yuan: number): number {
+  return round(yuan / 1e8, 1);
+}
+
+/**
  * Deterministic generation: master data (Base) → Model → Order → production
  * topology (Line/Process/Equipment) → calendars (MaintPlan/Shipment) → misc.
  * Referential integrity by construction; same seed → byte-identical output.
@@ -6046,6 +6106,14 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     gapTon: round(Math.max(0, m.net * (1 - m.lta / 100)), 0),
     etaDate: m.eta,
   }));
+  /**
+   * WO-METRIC-IDENTITY · **成交侧**营收（订单簿计划年窗）——口径与算法都在 `orderBookYearRevenue`，
+   * 本处只取一次值给下游 `Metric.kpi-revenue` 用（求解器侧走同一个函数，不抄公式）。
+   * ⚠ 必须排在 `dueMonth` 回填之后（回填在 `orders` 补足段之后）—— 早一行就只剩 `due` 回落路。
+   */
+  const planYear = planYearOf();
+  const orderBookRev = orderBookYearRevenue(orders, planYear);
+  const orderBookRevYi = yuanToYi(orderBookRev.yuan);
   // 财务预算三线：收入=Σ收入细分、销售成本=收入-毛利、毛利=Σ毛利额（与 DemandSegment 交叉一致）。
   const totalRev = demandSegments.reduce((s, d) => s + (d.demandWanPerYearP50 as number) * (d.priceWan as number), 0);
   const totalMargin = demandSegments.reduce((s, d) => s + (d.demandWanPerYearP50 as number) * (d.priceWan as number) * (d.marginPct as number) / 100, 0);
@@ -6107,9 +6175,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   // `goalMetric`：target/floorVal/owner/ksf/name/unit/level/category 一律取自 GOAL_REGISTRY 单一来源；只 actual + 可选 chainKey 由本地传入。
   // actual 诚实来源：营收=Σ需求×价（totalRev，真实聚合）· 毛利=Σ需求×价×毛利率（totalMargin）· 现金=baseline 情景现金垫（params 同源）·
   //   份额=诚实合成种子（无外部市场规模真源 → provenanceSynthetic 轴标合成，绝不冒充实测 KILL-MOCK-RED）· 运营三指标沿用 P1 同源派生。
-  const goalMetric = (metricId: string, goalKey: string, actual: number, chainKey?: string) => {
+  const goalMetric = (metricId: string, goalKey: string, actual: number, chainKey?: string, basis?: string) => {
     const g = GOAL_REGISTRY[goalKey]!;
-    return { metricId, key: g.key, name: g.name, level: g.level, category: g.category, target: g.target, actual, floorVal: g.floorVal, unit: g.unit, weight: g.weight, ksfRef: g.ksfRef, ownerRef: g.ownerRef, ...(chainKey ? { chainKey } : {}) };
+    return { metricId, key: g.key, name: g.name, level: g.level, category: g.category, target: g.target, actual, floorVal: g.floorVal, unit: g.unit, weight: g.weight, ksfRef: g.ksfRef, ownerRef: g.ownerRef, ...(chainKey ? { chainKey } : {}), ...(basis ? { basis } : {}) };
   };
   const cashActual = (BATTERY_SOLVER_PARAMS.planview as { scenarios: { finance: { baseline: { cashCushion: number } } } }).scenarios.finance.baseline.cashCushion;
   const marketShareActual = 21.5; // 诚实合成：无市场规模真数据源，种子常数（synthetic 标灰，不冒充实测）
@@ -6118,9 +6186,32 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     goalMetric("kpi-margin", "gm_rate", round(round(totalMargin, 1) / round(totalRev, 1) * 100, 1), "rc-profit-mix"),
     goalMetric("kpi-attain", "demand_attain", round(totalAct / totalTgt * 100, 1), "rc-scale-demand"),
     goalMetric("kpi-material", "material_cov", round(totalCovered / totalNet * 100, 1), "rc-material-gap"),
-    // 顶层企业目标（year · CEO 决策看板头条）——营收700亿此前仅 Σp50×price 局部变量，现升一等 Metric（有 target/floor/owner/越线）。
-    goalMetric("kpi-revenue", "revenue", round(totalRev, 1), "rc-scale-demand"),
-    goalMetric("kpi-gross-profit", "gross_profit", round(totalMargin, 1), "rc-profit-mix"),
+    /**
+     * WO-METRIC-IDENTITY 病① · **「实际」这一栏必须真的是实际**。
+     *
+     * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+     * **X（修前实测，真后端 `SEED_DEMO=1`）**：栏位写「实际」，值却是 `round(totalRev,1)`
+     *   = `Σ(DemandSegment.demandWanPerYearP50 × priceWan)` = **年度需求 P50 预测** 700.0 亿。
+     *   对照实验：`ORDER_BOOK_SIZE` 500→100，订单簿 Σ`Order.value` 从 **454.64 亿 → 107.81 亿**
+     *   （−76.28%），而本值**两轮逐字节相同**（700 / 700）——
+     *   **把订单砍掉四分之三，「营收·实际」一分不少**。它度量的不是已发生的生意。
+     *   更狠的是 `target` 取自 `GOAL_REGISTRY.revenue.target` = **700**，与 `actual` **恰好同值**
+     *   ⇒ `delta ≡ 0`、`miss ≡ false`、达成率**结构上恒 100.0%**。
+     *   **一个永远不会越线的指标不是指标** —— 它在屏上占着一格，却不可能报警。
+     * **Y（本行）**：`actual` 换成**成交侧**订单簿（计划年窗 Σ 数量×单价），`target` 仍是**计划侧**
+     *   登记册目标 —— **两条链彻底分开**，达成率从此是一个会动、会越线的真数
+     *   （实测 415.6 / 700 = 59.4%，低于底线 686 ⇒ `miss=true`，屏上转红）。
+     *
+     * ⚠ **59.4% 不是"变差了"，是第一次被量出来**：修前那个 100.0% 是恒等式的读数，
+     * 不是达成情况。真话是「计划年内已签约 415.6 亿，覆盖 700 亿年度目标的 59.4%」。
+     * ⚠ 需求 P50 那 700 亿**一个字节都没丢**：它还在 `demand-p50` / `gross-margin` /
+     * `FinancePlan.rolling` 三处，且仍是本指标的 `target`（同一个数），只是不再冒充「实际」。
+     */
+    goalMetric("kpi-revenue", "revenue", orderBookRevYi, "rc-scale-demand",
+      `成交侧 · 订单簿计划年窗（交期落 ${planYear} 年的 ${orderBookRev.count} 张已签订单，Σ 数量×单价）；`
+      + `目标 ${GOAL_REGISTRY.revenue!.target} 亿来自计划侧年度目标登记册 —— 实际与目标两条链分开取数，故本指标会随订单簿增减而变`),
+    goalMetric("kpi-gross-profit", "gross_profit", round(totalMargin, 1), "rc-profit-mix",
+      "需求预测口径 · Σ(细分需求 P50 × 单价 × 毛利率)，全年全需求；与同屏「营收」的成交侧口径不同源，两者不可相除"),
     goalMetric("kpi-share", "market_share", marketShareActual),
     goalMetric("kpi-cash", "cash", cashActual),
   ];
