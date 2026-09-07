@@ -77,12 +77,56 @@ export const CURRENCY_SCALE: Readonly<Record<string, number>> = Object.freeze({ 
 export const CURRENCY_BASE_UNIT = "元";
 
 /**
+ * 把一个单位串拆成 **币种** 与 **计价分母**（「每什么」那一半）——两者是**两件事**，
+ * 本仓曾把它们合成一件，代价见下。
+ *
+ * ```
+ * "元"       → { currency: "元",  denom: undefined }   ← 只说了钱，没说「每什么」
+ * "元/kWh"   → { currency: "元",  denom: "kWh" }
+ * "万元/套"  → { currency: "万元", denom: "套" }
+ * "%"        → undefined                               ← 压根不是钱
+ * ```
+ *
+ * ⚠⚠ **`denom: undefined` 的语义是「这一格没声明分母」，不是「分母是 1」，更不是
+ * 「和另一格一样」。** 两格都 `undefined` 时**不许**读成"相等" —— 那正是本函数出现之前
+ * `currencyScaleOf` 犯过的病：`Model.unitPrice`（分母是**套**）与 `Model.unitCost`
+ * （分母是**电芯**）**同声明 `unit:"元"`** ⇒ 判「已对齐」⇒ 两个数被直接相减当毛利，
+ * 而实测两者比值 25.7×–40.6× 且**逐型号不同**（扭曲的不只是绝对值，是排序）。
+ * 断点 `G-UNIT-MARGIN-CROSS-DENOM`。**缺声明 ≠ 声明相同。**
+ */
+export function parseCurrencyUnit(unit: string | undefined | null): { currency: string; denom?: string } | undefined {
+  if (typeof unit !== "string" || unit === "") return undefined;
+  const i = unit.indexOf("/");
+  const currency = (i < 0 ? unit : unit.slice(0, i)).trim();
+  if (!(currency in CURRENCY_SCALE)) return undefined;
+  const denom = i < 0 ? "" : unit.slice(i + 1).trim();
+  return denom === "" ? { currency } : { currency, denom };
+}
+
+/**
  * 取某单位折到 `CURRENCY_BASE_UNIT` 的倍数。
+ *
+ * ⚠ **只折币种那一半**：`元/kWh` 与 `元/吨` 的刻度都是 1 —— 「一万元 = 10⁴ 元」这条换算
+ * 与分母无关。这是**刻意**的：本函数回答的是「这两个数是不是同一种钱」，
+ * **不回答**「这两个数能不能相减」。后者还要分母也相同，那是 `denomOfCurrencyUnit` 的活，
+ * 判据落在 `opt-assemble.ts` 毛利轴的第 4 张准入证 `denomCoherent` 上。
+ * ⛔ 把这两个问题合成一个，就是 `G-UNIT-MARGIN-CROSS-DENOM` 的成因，别再合回去。
  *
  * @returns 倍数；**不是货币单位或未声明单位 ⇒ `undefined`**（调用方据此判「量纲对不齐」，
  *          必须报缺而不是硬算 —— 见 `opt-assemble.ts` 毛利轴那一段）。
  */
 export function currencyScaleOf(unit: string | undefined | null): number | undefined {
-  if (typeof unit !== "string" || unit === "") return undefined;
-  return CURRENCY_SCALE[unit];
+  const parsed = parseCurrencyUnit(unit);
+  return parsed ? CURRENCY_SCALE[parsed.currency] : undefined;
+}
+
+/**
+ * 取某货币单位的**计价分母**（「每什么」）。`元` ⇒ `undefined`（没声明）；`元/kWh` ⇒ `kWh`。
+ *
+ * ⚠ 与 `currencyScaleOf` **共用同一份解析**（`parseCurrencyUnit`），不许各抄一份：
+ * 抄了就会出现「刻度认得这个串、分母不认得」这种两边不一致的状态，
+ * 而那种不一致**不会报错**，只会让某根轴莫名其妙地退掉或莫名其妙地回来。
+ */
+export function denomOfCurrencyUnit(unit: string | undefined | null): string | undefined {
+  return parseCurrencyUnit(unit)?.denom;
 }
