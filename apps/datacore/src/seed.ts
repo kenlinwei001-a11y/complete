@@ -381,7 +381,10 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     key: "demo_material_shortage_to_model_supply_risk",
     sourceTypeKey: "Material",
     sourceStateVar: "shortageRisk",
-    viaLinkKey: "material_used_by_model", // 实测 Material→Model，24 条
+    // WO-COMPUTED-EDGE 订正：原注写「实测 Material→Model，**24 条**」——那是捷径边走模运算
+    // （每型号 4 种料）时的数。口径归一到 BOM 链之后（每型号 7 种）实测为 **42 条**。
+    // 注释里的数与台账一样会过期，且写在最容易被信的地方（铁律 1.5 判据四）。
+    viaLinkKey: "material_used_by_model", // 实测 Material→Model，42 条（SEED_DEMO=1 真后端现读）
     targetTypeKey: "Model",
     targetStateVar: "supplyRisk",
     coefficient: 0.7,
