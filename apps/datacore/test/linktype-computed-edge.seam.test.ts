@@ -252,6 +252,10 @@ describe("WO-COMPUTED-EDGE · 接缝：算端点 / anchor 谓词 / 叉积 ——
   });
 
   it("§5 多态目标拆边：EXC_SOURCE_LINKS 与 batteryLinkTypes() 五条声明逐条对齐 + 检索真能取到", async () => {
+    // 🐤 循环下限：`EXC_SOURCE_LINKS` 空掉时，下面两个 for 一次都不进而全部「通过」——
+    //    那是「零次循环的空断言」这一类假绿（coverage-blind 门的 LOOP_NO_FLOOR 形态）。先钉住条数。
+    expect(EXC_SOURCE_LINKS.length, "溯源边映射表空了 ⇒ 下面的循环一次都不进，断言等于没写").toBe(5);
+
     // 两处（映射表 × 类型声明）必须一一对应。声明侧刻意写成字面量（B 侧镜像门的抽取器是文本正则，
     // 看不见 `...map()` 展开），所以**需要这条断言当那两处的粘合剂** —— 漏改任一处当场红。
     const declared = new Map(batteryLinkTypes().filter((l) => l.key.startsWith("exc_sourced_from")).map((l) => [l.key, l.toTypeKey]));
