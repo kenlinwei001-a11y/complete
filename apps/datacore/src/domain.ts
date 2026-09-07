@@ -251,6 +251,13 @@ export const PROPERTY_UNITS = [
   "亿元",
   "元/kWh",
   "元/吨",
+  // WO-RATE-DIMENSION · 物料单价的四种真实分母。改前 `Material.unitPrice` 声明成 `元`
+  // （= 把**强度量**当成**绝对额**），而实测同一列逐行分母不同：三元正极/石墨/铜箔/铝箔 `kg`、
+  // 隔膜 `㎡`、电解液 `L`、电芯壳体 `个`（分母就写在同对象的 `Material.unit` 那一格）。
+  "元/kg",
+  "元/个",
+  "元/L",
+  "元/㎡",
   // ── 能量 / 产能（kWh 同族 —— 裁决后产能直接用本族，不再换算成「套」）──────────────
   "kWh",
   "MWh",
@@ -303,6 +310,14 @@ export const PROPERTY_UNITS = [
   "%",
   "点",
   "级",
+  // ── 参数化量纲（WO-RATE-DIMENSION）───────────────────────────────────────────
+  // 分母（或分子）由**同对象另一格的值**给出，由 {@link PropertyDef.unitRefProp} 指出是哪一格，
+  // `units.ts resolveParametricUnit()` 在读到具体对象时求出**具体单位**（`元/kg` / `㎡` …）。
+  // 为什么必须有这一档：一个属性只能声明一个 `unit`，而 `Material.unitPrice` 的真实量纲
+  // **逐行不同** —— 这个形态改前在模型里**无处安放**，只能退化成 `元`（强度量被当成绝对额）。
+  // 占位符字面量见 `units.ts UNIT_REF_PLACEHOLDER`，两处必须一致（本册是词表侧的那一份）。
+  "元/计量单位",
+  "计量单位",
 ] as const;
 
 /** 见 {@link PROPERTY_UNITS}。类型与运行时字典同一份数据派生 —— 不许各抄一份。 */
@@ -344,6 +359,23 @@ export interface PropertyDef {
    * 详见 {@link PropertyScale}。
    */
   scale: PropertyScale;
+  /**
+   * WO-RATE-DIMENSION · **参数化量纲的取值格**：当 `unit` 含占位符 `计量单位`
+   * （`元/计量单位` / `计量单位`）时，本字段指出**由同对象的哪一格提供真实单位**。
+   *
+   * 为什么必须有这一格：`Material.unitPrice` 的真实量纲**逐行不同**
+   * （三元正极 `元/kg` · 隔膜 `元/㎡` · 电解液 `元/L` · 电芯壳体 `元/个`），
+   * 而一个属性只能声明一个 `unit`。改前它退化成 `元` —— **把强度量当成了绝对额**，
+   * 于是任何拿它做的成本算术都失去了量纲校验的依据。
+   *
+   * ⚠ 与 `unit` 的一致性由 REST 建类型门兑现（两者必须**同时**成立或**同时**不成立）：
+   * 声明了参数化单位却不给本格 ⇒ 400；给了本格却不是参数化单位 ⇒ 400。
+   * 单向成立会造出一个「看起来配好了、实际永远解析不出来」的属性，正是本仓最危险的那个形态。
+   *
+   * 求值见 `units.ts resolveParametricUnit()`；解析不出（该行 `unit` 写了词表外的值）时
+   * 按「该行量纲未知」处理，**不许回落成声明值**。
+   */
+  unitRefProp?: string;
   refToTypeKey?: string | null;
   /** 本体原子规格 §1：枚举取值（dataType=enum）。 */
   enumValues?: string[];
