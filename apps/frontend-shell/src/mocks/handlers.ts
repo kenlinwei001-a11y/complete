@@ -7474,6 +7474,11 @@ export const handlers = [
      * `viaProperty`/`viaSide` 两个 ⇒ 另外 7 个进得来、存不下，**mock 模式下这条边保存一次
      * 就少几个字段**，与真后端修前的 bug 一模一样，于是 mock 模式既复现不出修好的行为、
      * 也没法用来测它。下面按 `LINK_MATERIALIZATION_FIELDS`（契约现算）整组存取。
+     *
+     * 实测 2026-09-07（MERGE-BATCH-7 收编时复验）：该常量现算 **9 个键**，定义在
+     * `packages/contracts/src/planviews.ts:192`；真后端读投影的同源用法见
+     * `apps/datacore/src/mapping.ts:125`。复验命令：
+     * `node -e "console.log(require('./packages/contracts/dist/index.js').LINK_MATERIALIZATION_FIELDS)"`。
      */
     // 只取契约认的那 9 个键 —— 逐个拷贝而不是 `...b`，垃圾字段与 `key`/端点一个都不许混进来。
     const decl: Record<string, unknown> = {};

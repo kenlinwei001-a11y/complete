@@ -305,6 +305,9 @@ export default function OntologyRelationsPage() {
        * 回填源是 `linkRows`（`GET …/mapping/registries` 的下发行），它与本请求体
        * **共用契约的 `LinkMaterializationDecl`** ⇒ 「读投影发得出来的」= 「这里送得回去的」。
        * 遍历用契约现算的 `LINK_MATERIALIZATION_FIELDS`，将来加第 10 个字段这里自动跟上。
+       * 实测 2026-09-07（MERGE-BATCH-7 收编时复验）：该常量现算 **9 个键**，定义在
+       * `packages/contracts/src/planviews.ts:192`；后端读投影同源用法见 `apps/datacore/src/mapping.ts:125`。
+       * 复验命令：`node -e "console.log(require('./packages/contracts/dist/index.js').LINK_MATERIALIZATION_FIELDS)"`。
        *
        * ⚠ `viaProperty`/`viaSide` **不走回填**：它们是表单管的那一对，必须以用户的选择为准
        *   （回填会让「清空实现属性」这个动作永远生效不了）。故下面显式跳过再由 `v` 覆盖。
