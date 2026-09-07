@@ -1225,7 +1225,12 @@ const bomDetailProps: PropertyDef[] = [
   { propKey: "bomId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "BOMHeader" },
   { propKey: "materialId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Material" },
   { propKey: "sequence", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
-  { propKey: "quantity", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute" },
+  // WO-RATE-DIMENSION · 改前声明 `个`，而实测 8 行 BOM 里**只有 1 行**真的是「个」（电芯壳体）：
+  // 正极/负极/铜箔/铝箔 `kg`、隔膜 `㎡`、电解液 `L`（出处 = 同对象下面那一格 `unit`，
+  // 值与 `Material.unit` 逐行一致）。声明成 `个` 等于把 7/8 行的量纲说错。
+  // 参数化之后 `Model.unitCost = Σ quantity(计量单位) × Material.unitPrice(元/计量单位) = 元`
+  // 这个抵消**在模型里可证**，不再只是注释里声称的。
+  { propKey: "quantity", dataType: "number", isPrimaryKey: false, unit: "计量单位", scale: "absolute", unitRefProp: "unit" },
   { propKey: "lossRate", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
   { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   { propKey: "level", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },

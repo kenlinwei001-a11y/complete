@@ -1,25 +1,39 @@
-import { describe, it } from "vitest";
-import { batteryObjectTypes } from "../src/synthetic/battery.js";
-import { extendedObjectTypes } from "../src/synthetic/battery-extended.js";
+import { describe, it, expect, beforeAll } from "vitest";
+import { makeApp, seedBattery, ADMIN, type TestApp } from "./helpers.js";
 
-describe("measure", () => {
-  it("derived formulas and their operand units", () => {
-    const types: any[] = [...(batteryObjectTypes() as any[]), ...(extendedObjectTypes() as any[])];
-    for (const t of types) {
-      for (const d of t.derivedProperties ?? []) {
-        const ids = (d.formula.match(/[A-Za-z_][\w]*/g) ?? []).filter(
-          (x: string) => !/^(SUM|COUNT|MIN|MAX|AVG|BY)$/i.test(x),
-        );
-        const operands = ids.map((id: string) => {
-          const p = (t.properties ?? []).find((q: any) => q.propKey === id);
-          const dp = (t.derivedProperties ?? []).find((q: any) => q.propKey === id);
-          return `${id}=${p?.unit ?? dp?.unit ?? "?"}`;
-        });
-        const additive = /[+\-]/.test(d.formula.replace(/^\s*-/, ""));
-        console.log(
-          `DERIVED ${t.key}.${d.propKey} unit=${d.unit} additive=${additive} formula="${d.formula}" operands=${operands.join(",")}`,
-        );
+/** 存量测量：种子里的每个类型，今天能不能经自己的 REST 路由原样回写。 */
+describe("measure · REST round-trip", () => {
+  let t: TestApp;
+  beforeAll(async () => {
+    t = await makeApp();
+    await seedBattery(t);
+  }, 180_000);
+
+  it("每个 ACTIVE 类型经 POST /a/v1/ontology/object-types 回写", async () => {
+    const listRes = await t.app.inject({ method: "GET", url: "/a/v1/ontology/object-types", headers: ADMIN });
+    const types = JSON.parse(listRes.body) as any[];
+    const fails: string[] = [];
+    for (const ty of types) {
+      const body = {
+        key: ty.key,
+        displayName: ty.displayName,
+        ...(ty.domain ? { domain: ty.domain } : {}),
+        properties: ty.properties,
+        derivedProperties: ty.derivedProperties ?? [],
+        sourceBindings: ty.sourceBindings ?? [],
+      };
+      const res = await t.app.inject({
+        method: "POST",
+        url: "/a/v1/ontology/object-types",
+        headers: ADMIN,
+        payload: body,
+      });
+      if (res.statusCode !== 201) {
+        fails.push(`${ty.key} → ${res.statusCode} ${JSON.parse(res.body)?.error?.message ?? res.body.slice(0, 200)}`);
       }
     }
+    console.log("ROUNDTRIP_TOTAL=", types.length, "FAILS=", fails.length);
+    for (const f of fails) console.log("ROUNDTRIP_FAIL", f);
+    expect(types.length).toBeGreaterThan(50);
   });
 });

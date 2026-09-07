@@ -47,8 +47,8 @@ const RD = { "x-debug-user": "ratedim:admin:admin|catalog_admin" };
 
 describe("WO-RATE-DIMENSION · 速率/复合量纲维度", () => {
   let t: TestApp;
-  const post = (body: unknown) =>
-    t.app.inject({ method: "POST", url: "/a/v1/ontology/object-types", headers: RD, payload: body });
+  const post = async (body: Record<string, unknown>) =>
+    await t.app.inject({ method: "POST", url: "/a/v1/ontology/object-types", headers: RD, payload: body });
 
   beforeAll(async () => {
     t = await makeApp();
