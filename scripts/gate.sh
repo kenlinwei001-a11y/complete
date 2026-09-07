@@ -122,7 +122,13 @@ run "chain-scan-honesty:check" node scripts/check-chain-scan-honesty.mjs
 #    （新增 action-wiring / outsource-redline / ontology-descriptions 时没人回来改标签）。
 #    标签说谎与假绿同族——看门的人以为自己知道跑了多少道，其实读的是过期常数。
 #    出处唯一 = package.json 的 gates 脚本，这里只做投影。
-GATES_N="$(node -e 'console.log(require("./package.json").scripts.gates.split("&&").length)' 2>/dev/null || echo "?")"
+#
+# ⚠️ 2026-09-07（WO-GATES-NO-SHORTCIRCUIT）改口径：原式数的是 `split("&&").length`。
+#    `gates` 已由 `&&` 短路链改成 `node scripts/run-gates.mjs <71 个门…>`（全跑不短路），
+#    串里一个 `&&` 都没有了 ⇒ 旧式恒返 **1**，标签会写"1 条治理门"。
+#    形态（铁律 0.6）：**「我用『&& 的个数』当作『门的道数』的证据，而前者并不度量后者。」**
+#    改为数门名本身 —— 与 gate-census.mjs / check-ontology-writeback.mjs 同一口径。
+GATES_N="$(node -e 'console.log((require("./package.json").scripts.gates.match(/scripts\/check-[a-z0-9-]+\.mjs/g)||[]).length)' 2>/dev/null || echo "?")"
 run "pnpm gates（${GATES_N} 条治理门）" pnpm gates
 run "ontology-writeback:check" node scripts/check-ontology-writeback.mjs
 # ⚠️ 刻意**不**并入 handoff 并线台账门（`check-handoff-integration.mjs`）：
