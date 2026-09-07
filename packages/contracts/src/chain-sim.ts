@@ -1325,10 +1325,23 @@ export type ChainLossMatrixResidual = z.infer<typeof ChainLossMatrixResidualSche
  * 块在而 `appliedDays === 0` = 有会话、但这一拍没有以天计的影响。
  * 这两档必须能被前端区分开 —— 不许都渲染成一句「无影响」。
  *
- * ⚠ `excludedStateVars` 是本块最值钱的一项：逐个点名「承载物身上有读数、
- *   但因量纲不是天数所以没被叠加」的状态量（如 `Supplier.reviewPressure` 是 0–100 压力指数）。
- *   不写出来，用户会以为推演把它们算进去了 —— 缺口留在屏上，不留在注释里。
+ * ⚠ `excluded` 是本块最值钱的一项：逐个点名「承载物身上有读数、却没被叠加」的状态量，
+ *   **并给出理由**。不写出来，用户会以为推演把它们算进去了 —— 缺口留在屏上，不留在注释里。
  */
+/**
+ * 排除理由。两种**修法完全不同**，故分开标（不许合成一句「因量纲排除」）：
+ *  · `NOT_DAY_UNIT`  —— 量纲不是天（0–100 压力/风险指数）。永远不该叠；想让它影响链，
+ *                       得先说清「多少压力等于几天」，那是另一条边、另一张单。
+ *  · `OTHER_CARRIER` —— **是**天数族，但这一段不该由它计（已在别的承载物上叠过）。
+ *                       典型：`Supplier.procurementDelay` —— 采购到货延迟算在 `PurchaseOrder`
+ *                       那一段上，在供应商画像上再叠一次就是同一段重复计。
+ */
+export const ChainLossSimExcludedSchema = z.strictObject({
+  /** `Type.var` 形态，如 `Supplier.reviewPressure`。 */
+  key: z.string().min(1),
+  reason: z.enum(["NOT_DAY_UNIT", "OTHER_CARRIER"]),
+});
+export type ChainLossSimExcluded = z.infer<typeof ChainLossSimExcludedSchema>;
 export const ChainLossSimContextSchema = z.strictObject({
   sessionId: z.string().min(1),
   /** 世界态取自哪一拍（`SimSession.curTick`）。 */
@@ -1346,8 +1359,8 @@ export const ChainLossSimContextSchema = z.strictObject({
   ),
   /** Σ `appliedSteps[].deltaDays`。0 = 有会话但这一拍零影响。 */
   appliedDays: z.number().nonnegative(),
-  /** 有读数、但因量纲被排除的状态量（`Type.var` 形态，去重后字典序）。 */
-  excludedStateVars: z.array(z.string().min(1)),
+  /** 有读数、却没被叠加的状态量 + 理由（去重后按 key 字典序）。 */
+  excluded: z.array(ChainLossSimExcludedSchema),
   /** 承载物类型 → 天数族状态量的登记表（审计可当场核对本次用的是不是这几个）。 */
   dayStateVarRegistry: z.record(z.string(), z.string()),
 });

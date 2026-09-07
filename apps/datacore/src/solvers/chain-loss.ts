@@ -270,9 +270,10 @@ export interface ChainLossResult {
    * 缺省 = 本次**不在任何会话上下文里**（读的是真实世界那条链）。这一档必须能被前端区分出来：
    * 「没有会话」与「有会话但这一拍没扰动」是两个结论，屏上不许长得一样。
    *
-   * ⚠ `excludedStateVars` 是本块**最值钱**的一项：它逐个点名「这个承载物身上有读数、
-   *    但因为量纲不是天数所以没被叠加」的状态量。不写出来，用户会以为推演把它们算进去了 ——
-   *    缺口留在屏上，不留在注释里（同 `undeclaredStateVars` 那条纪律）。
+   * ⚠ `excluded` 是本块**最值钱**的一项：它逐个点名「这个承载物身上有读数、却没被叠加」的
+   *    状态量**并给出理由**（两种理由的语义见 `ChainLossSimExcluded`，不许合成一句）。
+   *    不写出来，用户会以为推演把它们算进去了 —— 缺口留在屏上，不留在注释里
+   *    （同 `undeclaredStateVars` 那条纪律）。
    */
   simContext?: {
     sessionId: string;
@@ -282,10 +283,11 @@ export interface ChainLossResult {
     /** 叠加总天数（Σ `appliedSteps[].deltaDays`）。0 = 有会话但这一拍没有天数族影响。 */
     appliedDays: number;
     /**
-     * 本次链上承载物身上**有读数却因量纲被排除**的状态量（去重后按裸键字典序）。
-     * 例：`Supplier.reviewPressure`（0–100 绩效复评压力）不是天数，不叠。
+     * 本次链上承载物身上**有读数却没被叠加**的状态量，**带排除理由**（按 key 字典序）。
+     * 两种理由的语义见 `ChainLossSimExcluded` —— 不许合成一句，那会让「永远不该叠」
+     * 与「已在别处叠过」长得一样。
      */
-    excludedStateVars: string[];
+    excluded: ChainLossSimExcluded[];
     /** 天数族登记表本身（前端/审计可当场核对本次用的是不是这四个）。 */
     dayStateVarRegistry: Record<string, string>;
   };
@@ -336,6 +338,23 @@ export interface ChainLossObject {
 // ── R6 确定性 ────────────────────────────────────────────────────────────────
 // 叠加是纯查表：同一份 (objects, links, overlay) 两跑字节一致。不传 `sim` ⇒ 一格都不叠
 // ⇒ **与本字段引入前逐字节相同**（反向对照实验锁住这一条）。
+
+/**
+ * 一个**有读数却没被叠加**的状态量，及其排除理由。
+ *
+ * 两种理由**修法完全不同**，故分开标（本仓「三分法」纪律的同族）：
+ *  · `NOT_DAY_UNIT`  —— 量纲根本不是天（0–100 压力/风险指数）。**永远不该叠**，
+ *                       想让它影响链，得先说清「多少压力等于几天」——那是另一条边、另一张单。
+ *  · `OTHER_CARRIER` —— 它**是**天数族，只是这一段不该由它计。典型是
+ *                       `Supplier.procurementDelay`：采购到货延迟已在 `PurchaseOrder` 那一段叠过，
+ *                       在供应商画像上再叠一次就是同一段**重复计**。
+ * 合成一句「因量纲排除」会把后者说成前者 —— 标签说谎比缺标签危险（1e4 那次的教训）。
+ */
+export interface ChainLossSimExcluded {
+  /** `Type.var` 形态，如 `Supplier.reviewPressure`。 */
+  key: string;
+  reason: "NOT_DAY_UNIT" | "OTHER_CARRIER";
+}
 
 /** 推演世界态叠加：某个会话在某一拍上的世界态切片。 */
 export interface ChainLossSimOverlay {
@@ -880,7 +899,7 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
   const nodeMeta = new Map<string, { label: string; stage: ChainStage; scope?: ChainScope; steps: ChainStep[] }>();
   // 推演叠加的两本账（§2a）：叠了什么 / 因量纲没叠什么。不在会话上下文里时两本都空。
   const simApplied: { stepId: string; stateVar: string; stateValue: number; deltaDays: number }[] = [];
-  const simExcluded = new Set<string>();
+  const simExcluded = new Map<string, ChainLossSimExcluded>();
 
   for (const d of drafts) {
     const raw = d.obj && d.drillId ? num(d.obj.props[d.drillField]) : null;
@@ -913,11 +932,24 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
     if (simAdd) {
       simApplied.push({ stepId: d.stepId, stateVar: simAdd.stateVar, stateValue: simAdd.stateValue, deltaDays: simAdd.deltaDays });
     }
-    // 量纲被排除的那些格：**有读数、但不是天数**，逐个记名（见 `simContext.excludedStateVars`）。
+    // 没被叠加的那些格，逐个记名 —— 且**必须分两种理由**（见 `simContext.excluded`）。
+    //
+    // ⚠ 这里曾经只写一句「因量纲排除」，实测当场发现它在说谎：`Supplier.procurementDelay`
+    //   **是**天数族（`STATE_VAR_DISPLAY_NAMES` 那行原文「它度量的是天数」），却被记成了「量纲不符」。
+    //   它真正的排除理由是**承载物不对**：同一行注释接着写「前者挂单据、后者挂供应商画像」
+    //   ⇒ 采购到货延迟算在 `PurchaseOrder` 那一段上，在 `Supplier` 上再算一次就是**同一段重复计**。
+    //   两种理由的修法完全不同（量纲不符 ⇒ 永远不该叠；承载物不对 ⇒ 已在别的段叠过了），
+    //   合成一句就是本仓「标签说的 ≠ 实际做的」那族错（`drillField:"value"` 差 1e4 的同形态）。
     if (input.sim && carrier) {
       const dayVar = SIM_DAY_STATE_VAR_BY_CARRIER[d.drillType];
+      const dayFamily = new Set(Object.values(SIM_DAY_STATE_VAR_BY_CARRIER));
       for (const v of Object.keys(input.sim.state[carrier.id] ?? {})) {
-        if (v !== dayVar) simExcluded.add(`${d.drillType}.${v}`);
+        if (v === dayVar) continue;
+        simExcluded.set(`${d.drillType}.${v}`, {
+          key: `${d.drillType}.${v}`,
+          // 是天数族、只是不该记在这个承载物上 ⇒ OTHER_CARRIER；否则是量纲根本不是天 ⇒ NOT_DAY_UNIT。
+          reason: dayFamily.has(v) ? "OTHER_CARRIER" : "NOT_DAY_UNIT",
+        });
       }
     }
     const step: ChainStep = {
@@ -1104,7 +1136,7 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
             tick: input.sim.tick,
             appliedSteps: [...simApplied].sort((a, b) => a.stepId.localeCompare(b.stepId)),
             appliedDays: simApplied.reduce((sum, a) => sum + a.deltaDays, 0),
-            excludedStateVars: [...simExcluded].sort(),
+            excluded: [...simExcluded.values()].sort((a, b) => a.key.localeCompare(b.key)),
             dayStateVarRegistry: { ...SIM_DAY_STATE_VAR_BY_CARRIER },
           },
         }

@@ -55,6 +55,7 @@ import {
   type ChainLossInput,
   type ChainLossObject,
   type ChainLossResult,
+  type ChainLossSimExcluded,
 } from "./chain-loss.js";
 
 export const CHAIN_LOSS_MATRIX_SOLVER_KEY = "chain_loss_matrix";
@@ -270,10 +271,10 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
     const sim = input.chain.sim;
     if (!sim) return undefined;
     const appliedByStep = new Map<string, { stepId: string; stateVar: string; stateValue: number; deltaDays: number }>();
-    const excluded = new Set<string>();
+    const excluded = new Map<string, ChainLossSimExcluded>();
     for (const col of columns) {
       for (const a of col.run?.simContext?.appliedSteps ?? []) if (!appliedByStep.has(a.stepId)) appliedByStep.set(a.stepId, a);
-      for (const v of col.run?.simContext?.excludedStateVars ?? []) excluded.add(v);
+      for (const e of col.run?.simContext?.excluded ?? []) excluded.set(e.key, e);
     }
     const appliedSteps = [...appliedByStep.values()].sort((a, b) => a.stepId.localeCompare(b.stepId));
     return {
@@ -281,7 +282,7 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
       tick: sim.tick,
       appliedSteps,
       appliedDays: appliedSteps.reduce((sum, a) => sum + a.deltaDays, 0),
-      excludedStateVars: [...excluded].sort(),
+      excluded: [...excluded.values()].sort((a, b) => a.key.localeCompare(b.key)),
       dayStateVarRegistry: { ...SIM_DAY_STATE_VAR_BY_CARRIER },
     };
   })();
@@ -312,7 +313,8 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
       (simCtx
         ? `本次在推演会话 ${simCtx.sessionId} 第 ${simCtx.tick} 拍的上下文里：` +
           `叠加 ${simCtx.appliedSteps.length} 段共 ${simCtx.appliedDays.toFixed(2)} 天（只叠以天计的状态量）；` +
-          `另有 ${simCtx.excludedStateVars.length} 个状态量因量纲不是天数**未计入**（逐个见 simContext.excludedStateVars）。`
+          `另有 ${simCtx.excluded.filter((e) => e.reason === "NOT_DAY_UNIT").length} 个状态量因**量纲不是天数**未计入、` +
+          `${simCtx.excluded.filter((e) => e.reason === "OTHER_CARRIER").length} 个因**已在别的环节计过**未重复计（逐个见 simContext.excluded）。`
         : ""),
     // 缺省 = 未传 sessionId ⇒ 整块缺席（与本字段引入前逐字节相同）。
     ...(simCtx ? { simContext: simCtx } : {}),
