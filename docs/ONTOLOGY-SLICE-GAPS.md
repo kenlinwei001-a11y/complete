@@ -5,9 +5,9 @@
 
 ## 连通图摘要
 
-- 本体：类型 **97**，链路 **111**
-- 切片库：**57**（域内 7 · 跨域 50）
-- 连通边：**744**（shared-type 213 · bridge-link 531）
+- 本体：类型 **97**，链路 **115**
+- 切片库：**60**（域内 7 · 跨域 53）
+- 连通边：**768**（shared-type 221 · bridge-link 547）
 - 孤岛：**0**（豁免 1 · 非豁免 0）
 
 ## 孤岛表
@@ -25,6 +25,8 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.commercial.arinvoice` | `biz.x.order_to_plantarget` | order_of_customer: Order→Customer |
 | `biz.commercial.arinvoice` | `biz.x.orderpromise_to_order` | order_of_customer: Order→Customer |
 | `biz.commercial.arinvoice` | `biz.x.workorder_to_order` | order_of_customer: Order→Customer |
+| `biz.equip.equipment` | `biz.x.exceptionevent_to_materialbalance` | exc_sourced_from: ExceptionEvent→EquipmentDowntime |
+| `biz.equip.equipment` | `biz.x.exceptionevent_to_triggerrule` | exc_sourced_from: ExceptionEvent→EquipmentDowntime |
 | `biz.equip.equipment` | `biz.x.line_to_process` | equip_used_in: Equipment→Process |
 | `biz.equip.equipment` | `biz.x.process_to_line` | equip_used_in: Equipment→Process |
 | `biz.factory.base` | `biz.people.operatorattendance` | att_for_line: OperatorAttendance→Line |
@@ -181,6 +183,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.base_to_shipment` | `biz.x.wiplot_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.base_to_shipment` | `biz.x.workorder_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.base_to_shipment` | `biz.x.workorder_to_model` | model_producible_at: Model→Base |
+| `biz.x.bomdetail_to_material` | `biz.x.exceptionevent_to_materialbalance` | material_has_balance: Material→MaterialBalance |
 | `biz.x.bomdetail_to_material` | `biz.x.finishedgoodsinventory_to_model` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.interbasetransfer_to_model` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.model_to_base` | material_used_by_model: Material→Model |
@@ -201,7 +204,10 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.customerlocation_to_region` | `biz.x.interbasetransfer_to_base` | base_located_in: Base→Region |
 | `biz.x.customerlocation_to_region` | `biz.x.model_to_base` | base_located_in: Base→Region |
 | `biz.x.customerlocation_to_region` | `biz.x.order_to_customer` | custloc_of_customer: CustomerLocation→Customer |
+| `biz.x.defectrecord_to_wiplot` | `biz.x.exceptionevent_to_equipmentalarm` | defect_raises_exception: DefectRecord→ExceptionEvent |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.exceptionevent_to_equipmentdowntime` | defect_raises_exception: DefectRecord→ExceptionEvent |
+| `biz.x.defectrecord_to_wiplot` | `biz.x.exceptionevent_to_materialbalance` | defect_raises_exception: DefectRecord→ExceptionEvent |
+| `biz.x.defectrecord_to_wiplot` | `biz.x.exceptionevent_to_triggerrule` | defect_raises_exception: DefectRecord→ExceptionEvent |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.inventorytxn_to_workorder` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.line_to_capacitypool` | wip_on_line: WIPLot→Line |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.line_to_process` | wip_on_line: WIPLot→Line |
@@ -216,6 +222,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.defectrecord_to_wiplot` | `biz.x.workorder_to_model` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.workorder_to_order` | wip_for_wo: WIPLot→WorkOrder |
 | `biz.x.defectrecord_to_wiplot` | `biz.x.workorder_to_qualitylot` | defect_for_qlot: DefectRecord→QualityLot |
+| `biz.x.equipment_to_process` | `biz.x.exceptionevent_to_equipmentalarm` | alarm_for_equip: EquipmentAlarm→Equipment |
 | `biz.x.equipment_to_process` | `biz.x.exceptionevent_to_equipmentdowntime` | dt_for_equip: EquipmentDowntime→Equipment |
 | `biz.x.equipment_to_process` | `biz.x.line_to_capacitypool` | line_has_process: Line→Process |
 | `biz.x.equipment_to_process` | `biz.x.line_to_workorder` | line_has_process: Line→Process |
@@ -224,8 +231,17 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.equipment_to_process` | `biz.x.shiftplan_to_line` | line_has_process: Line→Process |
 | `biz.x.equipment_to_process` | `biz.x.wiplot_to_line` | line_has_process: Line→Process |
 | `biz.x.equipment_to_process` | `biz.x.workorder_to_line` | line_has_process: Line→Process |
+| `biz.x.exceptionevent_to_equipmentalarm` | `biz.x.material_to_materialbalance` | exc_sourced_from_balance: ExceptionEvent→MaterialBalance |
+| `biz.x.exceptionevent_to_equipmentalarm` | `biz.x.process_to_equipment` | alarm_for_equip: EquipmentAlarm→Equipment |
+| `biz.x.exceptionevent_to_equipmentalarm` | `biz.x.wiplot_to_defectrecord` | defect_raises_exception: DefectRecord→ExceptionEvent |
+| `biz.x.exceptionevent_to_equipmentdowntime` | `biz.x.material_to_materialbalance` | exc_sourced_from_balance: ExceptionEvent→MaterialBalance |
 | `biz.x.exceptionevent_to_equipmentdowntime` | `biz.x.process_to_equipment` | dt_for_equip: EquipmentDowntime→Equipment |
 | `biz.x.exceptionevent_to_equipmentdowntime` | `biz.x.wiplot_to_defectrecord` | defect_raises_exception: DefectRecord→ExceptionEvent |
+| `biz.x.exceptionevent_to_materialbalance` | `biz.x.material_to_model` | material_has_balance: Material→MaterialBalance |
+| `biz.x.exceptionevent_to_materialbalance` | `biz.x.model_to_material` | material_has_balance: Material→MaterialBalance |
+| `biz.x.exceptionevent_to_materialbalance` | `biz.x.wiplot_to_defectrecord` | defect_raises_exception: DefectRecord→ExceptionEvent |
+| `biz.x.exceptionevent_to_triggerrule` | `biz.x.material_to_materialbalance` | exc_sourced_from_balance: ExceptionEvent→MaterialBalance |
+| `biz.x.exceptionevent_to_triggerrule` | `biz.x.wiplot_to_defectrecord` | defect_raises_exception: DefectRecord→ExceptionEvent |
 | `biz.x.finishedgoodsinventory_to_model` | `biz.x.interbasetransfer_to_base` | model_producible_at: Model→Base |
 | `biz.x.finishedgoodsinventory_to_model` | `biz.x.inventorytxn_to_workorder` | txn_for_fg: InventoryTxn→FinishedGoodsInventory |
 | `biz.x.finishedgoodsinventory_to_model` | `biz.x.line_to_capacitypool` | model_certified_on: Model→Line |
