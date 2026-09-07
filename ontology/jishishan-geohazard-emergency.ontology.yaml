@@ -10,8 +10,8 @@
 meta:
   ontology_key: jishishan_geohazard_emergency
   display_name: 积石山县突发地质灾害应急预案本体
-  version: 3
-  status: FROZEN_V3
+  version: 4
+  status: FROZEN_V4
   frozen_at: 2026-09-07
   frozen_note: 用户裁决 C-07 采用 §5.5；其余冲突按 decisions 节裁决口径冻结，作为震后报告推演的唯一语义基线
   domain: 应急管理 / 突发地质灾害
@@ -1859,3 +1859,39 @@ quality_v3_additions:
       previous_status: 预警阈值缺失
       new_status: 缺失依旧，且已被权威文献确认需下调
       resolution: SRC-2 建议4 明确"降雨引发地质灾害阈值降低""建议更新地震区地质灾害气象风险预警模型及阈值"；震区雨强极值已知（日95.4 mm、小时29.3 mm、10分钟12.6 mm），可作为阈值研究的输入
+
+# ==============================================================================
+# 十六、v4 上位预案接入（G-09 状态更新）
+# ==============================================================================
+upstream_plan_linked:
+  gap_ref: G-09
+  previous_status: blocking——缺地震侧指挥体系、分级与响应
+  new_status: 部分关闭
+  linked_ontology:
+    key: linxia_earthquake_emergency
+    version: 1
+    title: 临夏州地震应急预案
+    files:
+      - ontology/linxia-earthquake-emergency.ontology.yaml
+      - ontology/linxia-earthquake-emergency.chunks.yaml
+      - ontology/linxia-earthquake-response-report.spec.yaml
+  what_it_closes:
+    - 地震灾害分级标准与响应分级（州级口径）
+    - 州抗震救灾指挥部组成、职责、11个工作组与启动权限
+    - 震后地震侧的16项响应措施与信息报告路径
+    - 次生地质灾害的跨预案归口规则（EQ-LX-HANDOFF 的 HO-1..HO-4）
+  what_remains_open:
+    - 积石山县本级抗震救灾指挥部的组成、职责与启动权限（州预案 §2.2 仅原则性表述）
+    - 缺口编号更新为 G-LX-06；索取渠道新增州抗震救灾指挥部办公室（州应急局）
+  assumption_upgrades:
+    - id: ASSUME-EQ-4
+      change: 由模型假设升级为上位预案明文
+      basis: 临夏州地震应急预案 §5.1(10)——对灾区集中安置点和应急避难场所开展次生灾害隐患排查
+      new_status: RULE（不再需要指挥部确认）
+    - id: ASSUME-EQ-3
+      change: 部分获上位预案支持
+      basis: 临夏州地震应急预案 §5.1(10) 震后隐患排查与监测预警要求
+      residual: 排查启动与完成时限仍无依据，G-12 保持开启
+  new_cross_plan_conflict:
+    id: C-LX-04
+    note: 地震灾害分级（死亡300/50/10）与本预案地质灾害灾情分级（死亡30/10/3）差约一个数量级，承接 DEC-15 并列不换算原则

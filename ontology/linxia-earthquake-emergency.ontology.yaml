@@ -1,0 +1,1046 @@
+# ==============================================================================
+# 临夏州地震应急预案 · 本体图谱
+# ------------------------------------------------------------------------------
+# 定位：积石山县的上位地震应急预案。补齐 jishishan_geohazard_emergency@3 的
+#       blocking 缺口 G-09（地震侧指挥体系、分级与响应）。
+# 配套：linxia-earthquake-emergency.chunks.yaml       （原文逐字分块，78块）
+#       linxia-earthquake-response-report.spec.yaml   （震后应急报告推演规格）
+# 对齐：docs/PRD-addendum-ontology-core.md 元模型，可发布为 DataCore A4 本体版本
+# 引用：evidence 字段填章节号 → 经 chunks 的 section_index 解析到 chunk_id → 取原文
+# ==============================================================================
+
+meta:
+  ontology_key: linxia_earthquake_emergency
+  display_name: 临夏州地震应急预案本体
+  version: 1
+  status: FROZEN_V1
+  domain: 应急管理 / 地震灾害
+  language: zh-CN
+  jurisdiction:
+    province: 甘肃省
+    prefecture: 临夏回族自治州
+    admin_level: 州（市）级
+    subordinate_counties_note: 辖县（市）含积石山保安族东乡族撒拉族自治县
+  source_document:
+    doc_id: DOC-LX-EQ
+    title: 临夏州地震应急预案
+    drafted_by: 州应急局会同州地震局等有关部门
+    interpreted_by: 州抗震救灾指挥部办公室
+    effective: 自印发之日起实施
+    supersedes: 临州办发〔2012〕392号
+    doc_number: 缺失（G-LX-01）
+    issue_date: 缺失（G-LX-01）
+    structure: 11章 + 附件《临夏州地震灾害应急响应措施》表
+  purpose: >
+    (1) 震后按事实输入完成地震灾害初判定级，确定响应级别、启动权限与指挥人；
+    (2) 打通州—县两级、地震—地质灾害两套预案的衔接口径；
+    (3) 检出与上位国家预案、下位县级预案之间的口径冲突与责任真空。
+  relation_to_county_plan:
+    upstream_of: jishishan_geohazard_emergency@3
+    interface_point: §2.1.1(8) 地震监测和次生灾害防范处置组
+    key_finding: >
+      §10.1 明文要求"州、县（市）人民政府应结合实际制定本行政区域地震应急预案，
+      报州抗震救灾指挥部办公室备案"——证实《积石山县地震应急预案》应当存在且
+      已报州备案。此前"未检索到"仅说明未公开发布，不代表不存在。
+      索取渠道新增：州抗震救灾指挥部办公室（设于州应急局）。
+  conventions:
+    number_semantics: 本预案所称"以上"包括本数，"以下"不包括本数（§11.3）
+    evidence_ref: 章节号，形如 "§3.1"，经 chunks.section_index 解析
+    single_source_of_truth: 任何阈值只在 rules 或 nodes 中定义一次
+
+# ==============================================================================
+# 一、元模型
+# ==============================================================================
+object_types:
+  - type_key: EarthquakeEvent
+    display_name: 地震事件
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: origin_time, dataType: date, required: true}
+      - {key: magnitude, dataType: number, required: true}
+      - {key: depth_km, dataType: number}
+      - {key: epicenter_place, dataType: string}
+      - {key: epicenter_lat, dataType: number}
+      - {key: epicenter_lon, dataType: number}
+      - {key: max_intensity, dataType: enum, enumValues: [Ⅴ, Ⅵ, Ⅶ, Ⅷ, Ⅸ, Ⅹ, Ⅺ]}
+      - {key: death_missing, dataType: number, description: 死亡含失踪}
+      - {key: is_urban, dataType: boolean, description: 是否发生在州内城市（关联§4.2速报阈值）}
+      - {key: pop_density_within_50km, dataType: number, unit: 人每平方公里}
+      - {key: is_key_area, dataType: boolean, description: 是否重要地区（关联Ⅰ级震级判据）}
+      - {key: event_class, dataType: enum, enumValues: [破坏性地震, 强有感地震, 临震预报, 地震传言, 周边地区地震, 支援请求]}
+
+  - type_key: Organization
+    display_name: 组织机构
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: string, required: true}
+      - {key: org_class, dataType: enum, enumValues: [指挥部, 现场指挥部, 办公室, 工作组, 成员单位, 政府, 党委, 军队武警, 救援队伍, 企业, 社会组织]}
+      - {key: level, dataType: enum, enumValues: [国, 省, 州, 县, 乡镇]}
+      - {key: duties, dataType: string}
+
+  - type_key: DisasterGrade
+    display_name: 地震灾害分级
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: enum, enumValues: [特别重大, 重大, 较大, 一般]}
+      - {key: roman, dataType: enum, enumValues: [Ⅰ, Ⅱ, Ⅲ, Ⅳ]}
+      - {key: rank, dataType: number, description: 1=最高}
+
+  - type_key: ResponseLevel
+    display_name: 地震应急响应级别
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: roman, dataType: enum, enumValues: [Ⅰ, Ⅱ, Ⅲ, Ⅳ]}
+      - {key: proposer, dataType: string}
+      - {key: decider, dataType: string}
+      - {key: commanding_body, dataType: string}
+      - {key: responsible_tier, dataType: enum, enumValues: [省, 州, 县]}
+
+  - type_key: Action
+    display_name: 应急响应措施
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: string, required: true}
+      - {key: phase, dataType: enum, enumValues: [监测, 报告, 响应, 保障, 结束, 恢复重建]}
+      - {key: description, dataType: string}
+
+  - type_key: Safeguard
+    display_name: 保障措施
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: string, required: true}
+      - {key: owner, dataType: string}
+
+  - type_key: OtherEvent
+    display_name: 其他地震事件
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: name, dataType: string, required: true}
+      - {key: definition, dataType: string}
+      - {key: responsible, dataType: string}
+
+  - type_key: Rule
+    display_name: 可判定规则
+    primary_key: id
+    properties:
+      - {key: id, dataType: string, required: true}
+      - {key: rule_class, dataType: enum, enumValues: [灾害分级, 分级应对, 响应启动, 速报阈值, 报告路径, 响应终止, 预案修订]}
+      - {key: expression, dataType: string}
+
+link_types:
+  - {link_key: member_of,          from_type: Organization, to_type: Organization,  cardinality: "N:N", desc: 成员单位隶属指挥部或工作组}
+  - {link_key: leads,              from_type: Organization, to_type: Organization,  cardinality: "1:N", desc: 牵头单位领衔工作组}
+  - {link_key: office_of,          from_type: Organization, to_type: Organization,  cardinality: "1:1", desc: 办公室服务于指挥部}
+  - {link_key: reports_to,         from_type: Organization, to_type: Organization,  cardinality: "N:N", desc: 报告路径}
+  - {link_key: grade_triggers,     from_type: DisasterGrade, to_type: ResponseLevel, cardinality: "1:1", desc: 灾害分级触发响应级别}
+  - {link_key: grade_assigns_tier, from_type: DisasterGrade, to_type: Organization,  cardinality: "1:1", desc: 分级应对——该级别由哪一级党委政府负责}
+  - {link_key: response_includes,  from_type: ResponseLevel, to_type: Action,        cardinality: "N:N", desc: 响应级别包含措施}
+  - {link_key: responsible_for,    from_type: Organization, to_type: Action,         cardinality: "N:N", desc: 机构承担措施}
+  - {link_key: secures,            from_type: Organization, to_type: Safeguard,      cardinality: "N:N", desc: 保障责任单位}
+  - {link_key: escalates_to,       from_type: ResponseLevel, to_type: ResponseLevel, cardinality: "1:1", desc: 响应升级路径}
+  - {link_key: hands_off_to,       from_type: Organization, to_type: Organization,   cardinality: "N:N", desc: 跨预案衔接（地震→地质灾害）}
+
+# ==============================================================================
+# 二、事实层
+# ==============================================================================
+facts:
+  command_structure:
+    evidence: ["§2.1.1"]
+    hq:
+      name: 州抗震救灾指挥部
+      leadership: 在州委、州政府的领导下，负责统一指挥和协调全州抗震救灾工作
+      commander: 州政府分管副州长
+      deputy_commanders:
+        - 州政府办相关副主任
+        - 州应急局局长
+        - 州地震局局长
+        - 州发展改革委分管负责同志
+        - 州公安局分管负责同志
+        - 临夏军分区分管负责同志
+        - 武警临夏支队分管负责同志
+        - 州消防救援支队分管负责同志
+    office:
+      name: 州抗震救灾指挥部办公室
+      seated_at: 州应急局
+      director: 州应急局局长（兼）
+      deputy_directors: [州地震局局长（兼）, 州应急局分管副局长（兼）]
+      duty: 承担州抗震救灾指挥部日常工作
+    member_units:
+      count_listed: 30
+      list:
+        党政群团: [州委宣传部, 州委网信办, 团州委]
+        综合管理: [州应急局, 州地震局, 州发展改革委, 州财政局, 州统计局, 州市场监管局]
+        社会民生: [州教育局, 州民政局, 州司法局, 州卫健委, 州文旅局]
+        国土资源与环境: [州自然资源局, 州生态环境局, 州气象局]
+        基础设施: [州住建局, 州交通局, 州水务局, 州工信局]
+        经济与物资: [州农业农村局, 州商务局, 州粮食和物资储备局]
+        安全力量: [州公安局]
+        传播与金融: [州广播电视台, 州银保监分局]
+        社会组织与企业: [州红十字会, 中国电信临夏分公司, 国网临夏供电公司, 中石油临夏销售分公司]
+      extensibility: 根据工作需要，可增加有关部门和单位负责同志参加
+      note: >
+        指挥部成员名单未列临夏军分区、武警临夏支队、州消防救援支队，
+        但三家均在副总指挥名单及多个工作组参加单位中——名单口径不闭合，见 C-LX-10
+    onsite_hq:
+      name: 州抗震救灾现场指挥部
+      evidence: ["§2.1.2"]
+      trigger: 较大及以上地震灾害发生后，立即成立
+      chief: 州抗震救灾指挥部总指挥 或 州委、州政府指定专人
+      duty: 指导协调和组织开展现场应急救援工作，各工作组按任务分工开展工作
+      dissolution: 应急救援阶段结束后自动撤销
+    county_tier:
+      name: 县（市）抗震救灾指挥部
+      evidence: ["§2.2"]
+      leadership: 在本级党委、政府的领导下，按照州抗震救灾指挥部的指挥调度
+      duty: 负责指导协调和组织本行政区域抗震救灾工作
+
+  jishishan_adaptation:
+    purpose: 将州预案的通用判据落到积石山县的具体参数
+    population_density:
+      county_population: {value: 278089, unit: 人, source: 积石山县突发地质灾害应急预案 §1.6, caveat: 依 DEC-01 修正原文"万人"衍字}
+      county_area_km2: 909.97
+      density: {value: 305.6, unit: 人每平方公里, formula: 278089 / 909.97}
+      threshold_in_plan: 200
+      conclusion: 积石山县人口密度 305.6 人/km² 高于州预案 200 人/km² 的判据阈值
+      implication: 州预案 §3.1 的震级判据对积石山县成立——该县发生 6.0 级以上地震，可不待伤亡统计直接初判为重大地震灾害（Ⅱ级）
+      decision_ref: DEC-LX-03
+      caveat: >
+        原文表述为"震中50公里范围内人口密度达到200人/平方公里的地区"，
+        是按50 km圆域平均密度计算还是按行政区密度计算，原文未明确（C-LX-11）。
+        本结论按行政区密度计算，若按圆域平均（含大量山区与邻县）可能低于阈值。
+    precedent_check:
+      event: 2023-12-18 积石山 Ms6.2 地震
+      magnitude_criterion: 6.2 落入 6.0以上、7.0以下
+      derived_grade: 重大地震灾害（Ⅱ级）
+      note: 与实际处置量级相符，可作为判据校验样例
+
+# ==============================================================================
+# 三、实例层
+# ==============================================================================
+nodes:
+
+  # ---------- 3.1 十一个工作组 ----------
+  working_groups:
+    activation_condition: 较大及以上地震灾害发生后，根据应急处置工作需要设立
+    evidence: ["§2.1.1"]
+    groups:
+      - id: WG-LX-01
+        name: 综合协调组
+        lead: [州应急局]
+        members: [州发改委, 州财政局, 州交通局, 州地震局]
+        duties: [抗震救灾综合协调, 收集汇总震情灾情等信息, 承办抗震救灾有关会议活动]
+      - id: WG-LX-02
+        name: 抢险救援组
+        lead: [州应急局]
+        members: [州地震局, 州公安局, 临夏军分区, 武警临夏支队, 州消防救援支队, 专业救援队伍, 民间救援力量]
+        duties: [制订实施抗震救灾力量配置方案, 调配救援队伍和装备, 搜救被困群众和受伤人员, 组织救援人员和物资运转, 清理灾区现场, 处置次生灾害]
+      - id: WG-LX-03
+        name: 地震灾情调查及灾害损失评估组
+        lead: [州应急局, 州地震局]
+        members: [州财政局, 州住建局, 州水务局, 州卫健委, 州农业农村局, 州教育局, 州自然资源局, 州交通局, 州科技局, 州统计局, 州银保监分局]
+        duties:
+          - 开展地震烈度、发震构造、地震宏观异常现象调查
+          - 调查受灾范围、建（构）筑物和基础设施破坏程度、工程结构震害特征
+          - 调查人员伤亡数量、地震社会影响和各种地震地质灾害
+          - 组织对地震灾害损失进行评估
+          - 组织开展灾区房屋安全性鉴定
+          - 指导灾区做好保险理赔
+        note: 该组职责明文含"各种地震地质灾害"调查——与县地质灾害预案调查评估组 WG-08 存在职责重叠，须约定归口，见 C-LX-07
+      - id: WG-LX-04
+        name: 群众生活保障组
+        lead: [州应急局]
+        members: [州民政局, 州发改委, 州粮食和物资储备局, 州教育局, 州工信局, 州财政局, 州住建局, 州水务局, 州商务局, 州气象局, 州红十字会, 国网临夏供电公司, 州消防救援支队]
+        duties: [制订实施受灾群众救助工作方案及资金物资保障措施, 调集转运生活必需品等抗震救灾物资, 指导紧急转移和安置, 保障基本生活和市场供应, 统筹社会组织和志愿者队伍]
+      - id: WG-LX-05
+        name: 医疗救治和卫生防疫组
+        lead: [州卫健委]
+        members: [州住建局, 州水务局, 州农业农村局, 州市场监管局, 临夏军分区, 武警临夏支队, 州红十字会]
+        duties: [组派医疗卫生救援队伍, 调集医疗器械药品, 救治和转移受伤人员, 检查监测饮用水源和食品, 医疗服务与心理救助, 制定灾后防疫方案]
+      - id: WG-LX-06
+        name: 交通运输保障组
+        lead: [州交通局]
+        members: [州公安局, 州应急局, 临夏军分区, 武警临夏支队]
+        duties: [抢修维护公路等交通运输设施, 协调运力优先保障救援与物资运输, 实施交通管制维护秩序, 制定运送方案, 配合紧急转移, 组织州内外抢险救援与运输队伍]
+      - id: WG-LX-07
+        name: 基础设施保障和生产恢复组
+        lead: [州发改委]
+        members: [州工信局, 州民政局, 州财政局, 州自然资源局, 州生态环境局, 州住建局, 州交通局, 州农业农村局, 州水务局, 州商务局, 州应急局, 州文旅局, 州广播电视台, 州银保监分局, 国网临夏供电公司, 中石油临夏销售分公司]
+        duties: [抢修维护供电供水供气通信道路防洪广播电视等设施, 组织生产调运抢险救援物资装备, 核实工矿商贸和农业损毁情况, 指导制订恢复生产方案]
+      - id: WG-LX-08
+        name: 地震监测和次生灾害防范处置组
+        lead: [州地震局, 州自然资源局, 州水务局]
+        members: [州应急局, 州工信局, 州公安局, 州生态环境局, 州住建局, 州交通局, 州科技局, 州广播电视台, 州气象局, 州消防救援支队]
+        duties:
+          - 密切监视震情发展，做好余震防范
+          - 及时组织扑救火灾，处置危化品泄漏事故，做好灾区火灾、安全隐患和环境风险排查防范
+          - 对重大地质灾害和洪水灾害隐患进行监测预警
+          - 一旦发生山体崩塌、滑坡、泥石流、堰塞湖、溃坝、地面塌陷等险情，及时组织疏散群众
+          - 加强河湖水质监测和危险化学品等污染物防控，保障水库安全和饮用水源安全
+          - 对易发次生灾害的重大危险源、重要目标、重大关键基础设施采取紧急处置措施并加强监控
+          - 加强灾区环境监测，减轻或消除环境污染危害
+        criticality: 关键——这是州地震预案与积石山县地质灾害预案的唯一接口节点
+        interface_note: 该组次生灾害清单含堰塞湖、溃坝，而县地质灾害预案灾害类型无此二者，见 C-LX-07
+      - id: WG-LX-09
+        name: 社会治安组
+        lead: [州公安局]
+        members: [州司法局, 武警临夏支队]
+        duties: [治安管理和安全保卫, 打击盗窃抢劫哄抢救灾物资及以赈灾募捐名义诈骗传播谣言制造恐慌等犯罪, 维护治安和道路交通秩序, 重要场所安全警戒, 涉灾矛盾纠纷化解和法律服务]
+      - id: WG-LX-10
+        name: 救灾捐赠与涉外、涉港澳台事务组
+        lead: [州政府办公室, 州应急局]
+        members: [州商务局, 州文旅局, 州红十字会]
+        duties: [接受和安排国内外捐赠, 协调国内外专业救援队现场救援行动, 处理涉外及涉港澳台事务, 转移安置在灾区的国境外人员, 组织管理国境外媒体采访]
+      - id: WG-LX-11
+        name: 信息发布及宣传报道组
+        lead: [州委宣传部]
+        members: [州委网信办, 州应急局, 州地震局, 州工信局, 州文旅局, 州广播电视台]
+        duties: [组织开展震情灾情及抗震救灾信息发布, 新闻宣传]
+
+  # ---------- 3.2 地震灾害分级 ----------
+  disaster_grades:
+    evidence: ["§3.1"]
+    basis: 根据《国家地震应急预案》《甘肃省地震应急预案》相关规定，结合临夏州实际
+    magnitude_criterion_scope:
+      text: 临夏市以及震中50公里范围内人口密度达到200人/平方公里的地区
+      applies_to_jishishan: true
+      ref: facts.jishishan_adaptation.population_density
+    grades:
+      - id: SG-LX-1
+        name: 特别重大地震灾害
+        roman: Ⅰ
+        rank: 1
+        criteria:
+          death_missing: {op: ">=", value: 300}
+          magnitude: {op: ">=", value: 7.0, area_condition: 重要地区}
+        combinator: OR
+      - id: SG-LX-2
+        name: 重大地震灾害
+        roman: Ⅱ
+        rank: 2
+        criteria:
+          death_missing: {min: 50, max: 300, min_inclusive: true, max_inclusive: false}
+          magnitude: {min: 6.0, max: 7.0, min_inclusive: true, max_inclusive: false, area_condition: 判据区域}
+        combinator: OR
+      - id: SG-LX-3
+        name: 较大地震灾害
+        roman: Ⅲ
+        rank: 3
+        criteria:
+          death_missing: {min: 10, max: 50, min_inclusive: true, max_inclusive: false}
+          magnitude: {min: 5.0, max: 6.0, min_inclusive: true, max_inclusive: false, area_condition: 判据区域}
+        combinator: OR
+      - id: SG-LX-4
+        name: 一般地震灾害
+        roman: Ⅳ
+        rank: 4
+        criteria:
+          death_missing: {op: "<", value: 10}
+          magnitude: {min: 4.5, max: 5.0, min_inclusive: true, max_inclusive: false, area_condition: 判据区域}
+        combinator: OR
+
+  # ---------- 3.3 分级应对（谁负责） ----------
+  tiered_responsibility:
+    evidence: ["§3.2.1"]
+    note: 这是"谁负责应对"的维度，与"启动哪一级响应"是两件事，不可混用（C-LX-08）
+    rows:
+      - {grade: 特别重大, responsible: 省抗震救灾指挥部指挥和协调, per: 省委、省政府的决策部署}
+      - {grade: 重大,     responsible: 省抗震救灾指挥部指挥和协调, per: 省委、省政府的决策部署}
+      - {grade: 较大,     responsible: 市（州）党委、政府负责应对}
+      - {grade: 一般,     responsible: 县（市、区）党委、政府负责应对}
+    cross_boundary: 涉及跨行政区域的地震灾害，由上一级党委、政府统筹协调，受灾地区党委、政府负责本行政区域抗震救灾工作
+    capacity_overflow: 当地震灾害超出属地政府的应对能力时，报请上一级政府提供支援或者负责应对
+
+  # ---------- 3.4 响应级别与启动权限 ----------
+  response_levels:
+    evidence: ["§3.2.2", "§5.1", "§5.2", "§5.3", "§5.4", "§11.6附件表"]
+    general_rule: 地震灾害发生后，县级以上政府及其有关部门和单位根据地震灾害初判级别、应急处置能力及预期影响后果，研判确定本级地震应急响应级别
+    modifiers:
+      - {id: MOD-LX-MINORITY, condition: 地震灾害发生在少数民族聚居地区和其他特殊地区, effect: 可根据需要适当提高应急响应级别, evidence: "§3.2.2"}
+      - {id: MOD-LX-ADJUST,   condition: 灾情发展变化, effect: 及时调整响应级别，避免响应不足或响应过度, evidence: "§3.2.2"}
+    levels:
+      - id: RL-LX-1
+        roman: Ⅰ
+        trigger_grade: SG-LX-1
+        proposer: 州抗震救灾指挥部（提出启动建议，立即向州委、州政府报告）
+        decider: 州委、州政府
+        annex_decider: 州委、州政府决定启动
+        consistent_with_annex: true
+        upward_report: 第一时间向省委、省政府报告
+        command_context: 在省抗震救灾指挥部的指导和州委、州政府的领导下，由州抗震救灾指挥部组织开展抗震救灾工作
+        annex_command_context: 在省委省政府领导下，接受省抗震救灾指挥部统一指挥，州委、州政府全面动员和组织开展抗震救灾先期处置工作
+        actions: [ACT-LX-01 至 ACT-LX-16 全量]
+      - id: RL-LX-2
+        roman: Ⅱ
+        trigger_grade: SG-LX-2
+        proposer: 州抗震救灾指挥部（提出启动建议，立即向州委、州政府报告）
+        decider: 州政府
+        annex_decider: 州政府决定启动
+        consistent_with_annex: true
+        upward_report: 第一时间向省委、省政府报告
+        actions: 参照地震Ⅰ级应急响应有关措施组织开展应急处置工作
+        annex_gap: 附件表该行"指挥和协调""主要响应措施"两列为空白（C-LX-03）
+      - id: RL-LX-3
+        roman: Ⅲ
+        trigger_grade: SG-LX-3
+        proposer: 州抗震救灾指挥部办公室（提出启动建议，立即向州委、州政府报告）
+        decider: 州政府
+        annex_decider: 州抗震救灾指挥部决定启动
+        consistent_with_annex: false
+        conflict_ref: C-LX-02
+        decision_ref: DEC-LX-01
+        upward_report: 第一时间向省委、省政府报告
+        command_context: 在省抗震救灾指挥部的指导下，州委、州政府组织协调全州的抗震救灾工作
+        onsite: 州抗震救灾指挥部成立现场指挥部赴受灾地区，协助当地县（市）政府做好抗震救灾工作
+        actions_annex: [收集上报灾情信息, 组织开展人员搜救, 医疗救护, 群众安置, 基础设施抢修, 实施交通管制, 开展灾情损失评估, 加强监测和震情研判, 灾害风险排查, 抢修生命线工程, 加强新闻报道, 生产生活恢复, 加强应急值守]
+        escalation: 当灾情超出本州应对能力、震情敏感复杂或发生在重要时段的较大地震灾害事件，州委、州政府向省抗震救灾指挥部报告，按程序报请启动地震Ⅱ级应急响应
+      - id: RL-LX-4
+        roman: Ⅳ
+        trigger_grade: SG-LX-4
+        proposer: 州抗震救灾指挥部办公室（了解震情灾情后报告指挥部并通报成员单位）
+        decider: 州抗震救灾指挥部办公室（视情决定启动）
+        annex_decider: 州抗震救灾指挥部办公室决定启动
+        consistent_with_annex: true
+        command_context: 在省抗震救灾指挥部办公室、州抗震救灾指挥部的指导下，受灾地区县（市）党委、政府组织开展工作
+        county_duties: [人员搜救, 医疗救护, 受灾群众安置, 次生灾害防范, 应急恢复]
+        state_support: 州抗震救灾指挥部视情派出联合工作组，指导受灾县（市）党委、政府开展应急处置，并根据需求给予救援队伍和应急物资支援
+        annex_gap: 附件表该行"主要响应措施"列为空白（C-LX-03）
+
+  # ---------- 3.5 Ⅰ级响应十六项措施 ----------
+  response_actions:
+    scope: 州级Ⅰ级响应措施集；Ⅱ级参照执行
+    evidence: ["§5.1", "§11.6附件表"]
+    items:
+      - {id: ACT-LX-01, name: 灾情报告, detail: 第一时间向省抗震救灾指挥部和州委、州政府报告震情、灾情和应急处置工作进展情况}
+      - {id: ACT-LX-02, name: 靠前指挥, detail: 靠前组织指挥和协调抗震救灾工作, annex_variant: 附件表此项作"启动应急指挥机构"（C-LX-09）}
+      - {id: ACT-LX-03, name: 收集灾情, detail: 受灾县（市）政府迅速摸排上报；州应急局通过灾情上报系统收集人员伤亡、房屋倒塌、社会影响；各成员单位摸排本行业受灾情况报指挥部办公室}
+      - {id: ACT-LX-04, name: 综合研判, detail: 州抗震救灾指挥部组织成员单位综合分析判断地震趋势，全面了解掌握震情}
+      - {id: ACT-LX-05, name: 派遣救援队伍, detail: 协调调度消防、矿山和危险化学品救援队、军队和武警部队赴灾区，优先开展人员搜救、伤员救治、受灾群众安置}
+      - {id: ACT-LX-06, name: 实施交通管制, detail: 对通往受灾地区的主要通道实施交通管制，优先保证抢险救援、医疗卫生、救灾物资车辆和转送危重伤员车辆进出，设立救援物资车辆停车卸载场地}
+      - {id: ACT-LX-07, name: 开展医疗救治, detail: 派遣医疗紧急救援队伍，必要时建立战地医院或医疗点；调度救护车、医疗器械、药品和血浆；统筹各县市医疗资源分流重伤员异地救治；组织心理援助；卫生消杀和疫情防控}
+      - {id: ACT-LX-08, name: 开展灾情损失评估, detail: 初评地震影响范围、人员伤亡数量和极震区烈度，制作震中位置图等专题图件；配合省地震局开展发震构造研究与烈度评定；调查灾区范围、受灾人口、成灾人口、建筑物和生命线工程破坏程度；组织专家开展灾害损失评估}
+      - {id: ACT-LX-09, name: 加强监测和震情研判, detail: 加密震情监测研判，监视震情发展和宏微观异常，通报余震分布；加强灾害性天气、次生灾害危险源监测预警；加强空气、水源、土壤和地质灾害监测}
+      - {id: ACT-LX-10, name: 灾害风险排查, detail: 对重大危险源、重要目标、重要基础设施隐患排查与监测预警；防范强余震和降雨形成的滑坡、泥石流、坍塌等次生灾害；组织专家对水库、堤坝、闸站险情排查评估和除险加固，必要时人员转移；排查危化品设备、输油气管道、输配电线路受损；对灾区集中安置点和应急避难场所开展次生灾害隐患排查}
+      - {id: ACT-LX-11, name: 抢修生命线工程, detail: 抢通运输路线，制定紧急运输保障方案，综合调配运力；调集通信、供电、供水车辆优先确保应急指挥、人员搜救、医疗救治和群众安置；企业抢修供电、通信、供水、供气、广播电视等基础设施}
+      - {id: ACT-LX-12, name: 安置受灾群众, detail: 组织转移，鼓励投亲靠友，开放应急避难场所，设置临时安全的集中安置点；设立救灾物资集中接收点（库），统筹调运食品、饮用水、衣被、帐篷、折叠床等生活物资}
+      - {id: ACT-LX-13, name: 加强新闻报道, detail: 按要求及时组织召开新闻发布会，有序做好震情灾情权威信息发布和新闻宣传报道，加强舆情应对和舆论引导}
+      - {id: ACT-LX-14, name: 涉外事务管理, detail: 转移安置在灾区的国境外人员并报省；组织管理国境外媒体采访；协调国境外救援队活动；国境外捐赠物资款项的接收管理与检验检疫登记}
+      - {id: ACT-LX-15, name: 生产生活恢复, detail: 指导灾区党委政府实施救灾救助，帮助企业恢复生产、恢复市场供应、群众复工、学生复课}
+      - {id: ACT-LX-16, name: 加强应急值守, detail: 震后72小时内各有关成员单位安排1名县级干部和至少1名科级干部集中在州抗震救灾指挥部办公点值班值守；震后4至7天内安排至少1名科级干部值班值守, quantified: true}
+
+  # ---------- 3.6 监测报告 ----------
+  monitoring_and_reporting:
+    evidence: ["§4.1", "§4.2", "§4.3"]
+    monitoring:
+      owner: 州地震局
+      duties:
+        - 监测、收集和管理全州各类地震观测数据
+        - 及时提出加强年度地震重点危险区和防震减灾工作的意见
+        - 州、县（市）地震工作部门加强震情跟踪监测、预测预报和群测群防
+        - 对地震预测意见和可能与地震有关的异常现象进行综合分析研判
+      forecast_authority: 州政府根据预报的震情决策发布临震预报，指导预报区域加强应急防范
+    quick_report:
+      id: RULE-LX-QUICKREPORT
+      trigger:
+        urban: {op: ">=", value: 3.5, scope: 州内城市}
+        rural: {op: ">=", value: 4.0, scope: 农村地区}
+      owner: 州地震局
+      content: [地震发生时间, 地点, 震级, 震源深度]
+      to: [州委, 州政府]
+      cc: 州抗震救灾指挥部各成员单位
+      deadline: 原文仅表述"快速完成"，无量化时限（G-LX-04 / DEC-LX-06）
+    disaster_report:
+      paths:
+        - {actor: 事发地县级以上政府, action: 及时将震情、灾情等信息报上一级政府, escalation: 必要时可越级上报}
+        - {actor: 州地震局, action: 协助省上专家迅速开展地震灾害快速评估并提出应急处置决策建议, to: [州委, 州政府], cc: 相关部门}
+        - {actor: 州抗震救灾指挥部, action: 迅速组织开展现场灾情收集、分析研判, to: [州委, 州政府, 省应急厅, 省地震局]}
+        - {actor: 州政府, action: 较大以上地震灾情及时报告省政府}
+      special_persons:
+        condition: 发现有港澳台或外籍人员伤亡、失踪或被困
+        action: 当地政府及有关部门迅速核实并报告州政府办公室、州应急局、州地震局、州文旅局；有关部门依规及时报告州委、州政府和省上有关部门
+
+  # ---------- 3.7 应急结束 ----------
+  termination:
+    id: TERM-LX
+    evidence: ["§6"]
+    decider: 应急响应启动机构
+    conditions_all_of:
+      - 抗震救灾应急工作基本结束
+      - 紧急转移和安置人员工作基本完成
+      - 地震次生灾害影响基本消除
+      - 交通运输、电力、通信和供水设施等基本抢修抢通
+      - 灾区生活秩序基本恢复
+    transition_to: 灾后恢复重建阶段
+
+  # ---------- 3.8 恢复重建 ----------
+  recovery:
+    evidence: ["§7.1", "§7.2"]
+    planning:
+      特别重大: 省政府按照国务院及国家相关部委的要求组织编制灾后恢复重建规划
+      重大较大一般: 按分级应对原则，在上一级政府安排部署和有关部门组织下，按程序由省发改委牵头，会同省财政厅、省应急厅、省地震局等部门和灾区市（州）政府编制
+      state_role: 州政府按程序组建灾后恢复重建指导协调小组，研究解决恢复重建中的重大问题，指导受灾县（市）开展灾后恢复重建
+    implementation: 州、县（市）政府根据规划和当地经济社会发展水平，有计划、分步骤地组织实施本行政区域灾后恢复重建
+
+  # ---------- 3.9 其他地震事件 ----------
+  other_events:
+    evidence: ["§8.1", "§8.2", "§8.3", "§8.4", "§8.5"]
+    items:
+      - id: EVT-LX-FELT
+        name: 强有感地震事件
+        definition: 发生在州政府所在地以及大中型水库等重要设施场地及附近的震级在4.5级以下、且有明显震感、可能对社会造成一定影响的地震事件
+        responsible: 事件发生地县（市）党委、政府
+        state_actions: [州应急局迅速了解灾情并视情派工作组, 州地震局收集震情并提出趋势研判意见, 州委宣传部协调科普宣传和舆论引导]
+      - id: EVT-LX-IMMINENT
+        name: 临震应急事件
+        definition: 省级以上人民政府发布短临地震预报后，县级以上人民政府需要及时进行处置的地震事件
+        actions:
+          - 州抗震救灾指挥部指导督促预报区域县（市）党委政府做好防震抗震和抢险救援准备
+          - 地震预报区县（市）政府统一指挥部署应急准备，视情组织人员避震疏散或撤离
+          - 州地震局加强震情监视，及时报告趋势研判意见
+          - 州委宣传部协调科普宣传和舆论引导
+          - 各成员单位对可能发生的地震事件影响后果进行评估并做好准备
+        termination: 终止临震应急公告由省抗震救灾指挥部统一发布
+      - id: EVT-LX-RUMOR
+        name: 地震传言事件
+        responsible: 事发地党委、政府
+        actions:
+          - 州地震局迅速分析研判，及时明确事件性质并发布声明
+          - 州委宣传部、州委网信办、州公安局指导协助当地采取有效措施平息传言
+          - 传言扩散迅速并严重影响生产生活秩序时，州抗震救灾指挥部组织联合工作组赴影响地区
+      - id: EVT-LX-NEARBY
+        name: 周边地区地震事件
+        definition: 地震发生在周边地区，但对本州造成震灾损失或严重社会影响
+        actions:
+          - 州地震局迅速分析周边地震对本州的影响，研判本州境内地震烈度，评估可能造成的伤亡损失
+          - 州抗震救灾指挥部办公室根据震级大小、灾情严重程度和研判结果，向州抗震救灾指挥部或受影响县（市）政府提出启动响应的建议
+          - 按程序决定启动应急响应后，有关县（市）部门和单位立即开展应急处置
+        relevance_to_jishishan: 积石山县西接青海循化县，2023年震例即为跨省界影响，本条为跨界情景的唯一依据
+      - id: EVT-LX-SUPPORT
+        name: 支援周边地区地震事件
+        definition: 周边发生较大地震灾害事件并向本州提出支援请求
+        actions:
+          - 州抗震救灾指挥部按州委、州政府要求组织实施对外支援
+          - 协调州级有关部门组织专业救援队伍支援
+          - 协调州发改委、州商务局、州交通局、州粮食和物资储备局等做好救灾物资筹措和运送
+
+  # ---------- 3.10 保障措施 ----------
+  safeguards:
+    evidence: ["§9.1", "§9.2", "§9.3", "§9.4", "§9.5", "§9.6"]
+    items:
+      - id: SF-LX-01
+        name: 应急指挥系统保障
+        owner: [州政府, 县（市）政府, 州县应急部门, 州县地震部门]
+        content:
+          - 设置应急指挥场所，建立健全地震应急指挥系统
+          - 实现省、州、县（市）三级应急指挥平台互联互通
+          - 有条件的乡（镇）政府积极建立应急指挥平台并与州县平台互联互通
+          - 综合利用自动监测、通信、计算机、遥感等技术建立应急指挥信息系统
+          - 实现震情灾情快速响应、灾害损失快速评估与动态跟踪、地震趋势判断的快速反馈
+      - id: SF-LX-02
+        name: 队伍建设
+        owner: [州政府, 县（市）政府, 指挥部成员单位, 乡镇政府及街道办, 应急与地震部门]
+        content:
+          - 加强地震灾害紧急救援队伍、综合消防救援队伍建设并提供必要支持保障
+          - 成员单位加强本系统本行业专业救援队伍建设
+          - 乡镇街道组织动员社会力量建立基层抗震救灾队伍
+          - 依托社会团体、企事业单位及社区建立地震应急救援志愿者队伍
+          - 应急、地震部门加强地震应急专家队伍建设
+      - id: SF-LX-03
+        name: 物资与资金保障
+        owner: [州政府, 县（市）政府及有关部门]
+        content:
+          - 制定应急物资保障方案，建立健全物资采购、储备、调拨及紧急配送机制
+          - 保障生活救助物资、地震救援、监测预警、现场调查、人员防护、应急通信、通信指挥、工程抢险装备、医疗器械和药品等有效供应
+          - 抗震救灾所需财政负担经费按财政事权和支出责任划分分级承担
+          - 对启动州级层面响应的，根据县（市）政府请求，州政府结合实际给予适当支持
+      - id: SF-LX-04
+        name: 避难场所保障
+        owner: [州政府, 县（市）政府及有关部门, 人员密集场所管理单位]
+        content:
+          - 建立必要的应急避难场所，或利用符合条件的广场、绿地、公园、学校、体育场馆等公共设施因地制宜设立
+          - 统筹安排交通运输、通信、供水、供电、排污、环保、物资储备等设施设备
+          - 学校、医院、影剧院、商场、酒店、体育场馆、宗教场所等人员密集场所设置应急疏散通道，配备救生避险设施，保证通道出口畅通
+        note: 本条与 ACT-LX-10 的"对灾区集中安置点和应急避难场所开展次生灾害隐患排查"共同构成安置点安全约束
+      - id: SF-LX-05
+        name: 基础设施保障
+        owner: [州工信局, 州文旅局, 州广播电视台, 国网临夏供电公司, 州公安局, 州交通局]
+        content:
+          - 州工信局建立有线无线相结合、基础通信网络与机动通信系统相配套的应急通信保障系统
+          - 基础通信网络严重损毁且短时间难以修复时，立即启动应急卫星、短波等无线通信系统，确保至少一种以上临时通信手段有效畅通
+          - 州文旅局、州广播电视台完善应急广播体系，严重损毁时立即启动卫星、短波广播，确保至少一种传输覆盖手段畅通
+          - 州工信局、国网临夏供电公司协调指导电力企业加强电力基础设施和调度系统建设
+          - 州公安局、州交通局加强公路紧急运输保障统一指挥调度，建立应急救援"绿色通道"机制
+      - id: SF-LX-06
+        name: 宣传培训
+        owner: [州政府, 县（市）政府, 宣传/教育/文旅/地震/广播电视/红十字会/新闻出版等部门, 学校]
+        content:
+          - 建立健全地震应急管理培训制度，组织应急管理人员、救援人员、志愿者培训
+          - 开展防震减灾科学、法律知识普及和宣传教育
+          - 学校把防震减灾知识教育纳入教学内容，教育、地震等部门加强指导和监督
+
+  # ---------- 3.11 预案管理与附则 ----------
+  plan_management:
+    evidence: ["§10.1", "§10.2", "§11.1", "§11.2", "§11.3", "§11.4", "§11.5"]
+    drafting: 州应急局会同州地震局等有关部门编制本预案，并根据工作实际需要及时修订完善
+    filing_requirements:
+      - {who: 州、县（市）人民政府, what: 结合实际制定本行政区域地震应急预案, file_to: 州抗震救灾指挥部办公室}
+      - {who: 州、县（市）政府有关部门, what: 结合本部门职能制定地震应急预案或含抗震救灾内容的应急预案, file_to: 本级抗震救灾指挥部办公室}
+      - {who: 交通/水务/电力/通信/广播电视等基础设施经营管理单位、学校、医院、可能发生次生灾害的设施矿山危险物品生产经营单位, what: 制定地震应急预案或含抗震救灾内容的应急预案, file_to: 所在地县级抗震救灾指挥部办公室}
+    drills:
+      regime: 建立健全抗震救灾演练制度，制定演练计划，采取实战演练、桌面推演等方式
+      mandatory: 上年度发生较大以上级别地震灾害的地区，本年度至少组织进行1次应急演练
+      scope: 机关、学校、医院、企事业单位和基层组织结合实际开展地震应急演练
+      on_revision: 如预案发生重大调整，需及时按照新的预案开展演练
+    accountability:
+      reward: 对在抗震救灾工作中作出突出贡献的单位和个人给予表彰和奖励
+      punishment: 对工作不力或玩忽职守等造成严重后果或影响的单位和个人依法依规追究责任
+    supervision: 按州抗震救灾指挥部统一部署，由指挥部办公室会同有关成员单位对本预案实施情况进行监督检查
+    terminology: 本预案所称以上包括本数，以下不包括本数
+    interpretation: 由州抗震救灾指挥部办公室负责解释
+
+  legal_basis:
+    evidence: ["§1.2"]
+    items:
+      - {id: LB-LX-01, title: 中华人民共和国突发事件应对法, level: 国}
+      - {id: LB-LX-02, title: 中华人民共和国防震减灾法, level: 国}
+      - {id: LB-LX-03, title: 国家突发事件总体应急预案, level: 国}
+      - {id: LB-LX-04, title: 国家地震应急预案, level: 国, note: 该预案已于2025年修订，分级阈值发生变化，见 C-LX-01}
+      - {id: LB-LX-05, title: 甘肃省突发事件总体应急预案, level: 省}
+      - {id: LB-LX-06, title: 甘肃省防震减灾条例, level: 省}
+      - {id: LB-LX-07, title: 甘肃省地震应急预案, level: 省}
+      - {id: LB-LX-08, title: 临夏州突发事件总体应急预案, level: 州}
+    guiding_ideology: 深入贯彻落实习近平总书记关于防范化解重大安全风险和防灾减灾救灾重要论述，坚持人民至上、生命至上
+    work_principles:
+      text: 人民至上、生命至上，以防为主、防救结合，统一指挥、军地联动，分级负责、属地为主，资源共享、快速反应
+      note: 地震灾害发生后，县级以上政府及其有关部门按照各自职责和任务分工开展地震灾害应急处置工作
+    scope: 本预案适用于本省州境内或毗邻市（州）发生地震灾害的应对工作
+
+# ==============================================================================
+# 四、边
+# ==============================================================================
+edges:
+  - {link_key: grade_triggers, from: SG-LX-1, to: RL-LX-1}
+  - {link_key: grade_triggers, from: SG-LX-2, to: RL-LX-2}
+  - {link_key: grade_triggers, from: SG-LX-3, to: RL-LX-3}
+  - {link_key: grade_triggers, from: SG-LX-4, to: RL-LX-4}
+  - {link_key: grade_assigns_tier, from: SG-LX-1, to: 省抗震救灾指挥部}
+  - {link_key: grade_assigns_tier, from: SG-LX-2, to: 省抗震救灾指挥部}
+  - {link_key: grade_assigns_tier, from: SG-LX-3, to: 州党委政府}
+  - {link_key: grade_assigns_tier, from: SG-LX-4, to: 县党委政府}
+  - {link_key: escalates_to, from: RL-LX-3, to: RL-LX-2, condition: 灾情超出本州应对能力/震情敏感复杂/发生在重要时段}
+  - {link_key: office_of, from: 州抗震救灾指挥部办公室, to: 州抗震救灾指挥部}
+  - {link_key: leads, from: 州应急局,   to: WG-LX-01}
+  - {link_key: leads, from: 州应急局,   to: WG-LX-02}
+  - {link_key: leads, from: 州应急局,   to: WG-LX-03}
+  - {link_key: leads, from: 州地震局,   to: WG-LX-03}
+  - {link_key: leads, from: 州应急局,   to: WG-LX-04}
+  - {link_key: leads, from: 州卫健委,   to: WG-LX-05}
+  - {link_key: leads, from: 州交通局,   to: WG-LX-06}
+  - {link_key: leads, from: 州发改委,   to: WG-LX-07}
+  - {link_key: leads, from: 州地震局,   to: WG-LX-08}
+  - {link_key: leads, from: 州自然资源局, to: WG-LX-08}
+  - {link_key: leads, from: 州水务局,   to: WG-LX-08}
+  - {link_key: leads, from: 州公安局,   to: WG-LX-09}
+  - {link_key: leads, from: 州政府办公室, to: WG-LX-10}
+  - {link_key: leads, from: 州应急局,   to: WG-LX-10}
+  - {link_key: leads, from: 州委宣传部, to: WG-LX-11}
+  - {link_key: reports_to, from: 事发地县级以上政府, to: 上一级政府, note: 必要时可越级上报}
+  - {link_key: reports_to, from: 州抗震救灾指挥部, to: 省应急厅}
+  - {link_key: reports_to, from: 州抗震救灾指挥部, to: 省地震局}
+  - {link_key: reports_to, from: 州政府, to: 省政府, condition: 较大以上地震灾情}
+  - {link_key: hands_off_to, from: WG-LX-08, to: 积石山县地质灾害应急指挥部, note: 跨预案唯一接口，见 interoperability 节}
+  - {link_key: responsible_for, from: WG-LX-08, to: ACT-LX-09}
+  - {link_key: responsible_for, from: WG-LX-08, to: ACT-LX-10}
+  - {link_key: responsible_for, from: WG-LX-02, to: ACT-LX-05}
+  - {link_key: responsible_for, from: WG-LX-05, to: ACT-LX-07}
+  - {link_key: responsible_for, from: WG-LX-06, to: ACT-LX-06}
+  - {link_key: responsible_for, from: WG-LX-03, to: ACT-LX-08}
+  - {link_key: responsible_for, from: WG-LX-07, to: ACT-LX-11}
+  - {link_key: responsible_for, from: WG-LX-04, to: ACT-LX-12}
+  - {link_key: responsible_for, from: WG-LX-11, to: ACT-LX-13}
+  - {link_key: responsible_for, from: WG-LX-10, to: ACT-LX-14}
+
+# ==============================================================================
+# 五、规则层
+# ==============================================================================
+rule_semantics:
+  inclusive_note: 本预案所称"以上"包括本数，"以下"不包括本数（§11.3）
+  combinator_default: OR（死亡人数判据与震级判据任一满足即命中）
+  tie_break: 命中多级时取 rank 最小者（最高级别）
+
+rules:
+  - id: RULE-LX-GRADE
+    rule_class: 灾害分级
+    inputs: [death_missing, magnitude, in_criterion_area, is_key_area]
+    expression: |
+      IF death_missing >= 300 OR (is_key_area AND magnitude >= 7.0) THEN 特别重大（Ⅰ级）
+      ELSE IF death_missing >= 50 OR (in_criterion_area AND 6.0 <= magnitude < 7.0) THEN 重大（Ⅱ级）
+      ELSE IF death_missing >= 10 OR (in_criterion_area AND 5.0 <= magnitude < 6.0) THEN 较大（Ⅲ级）
+      ELSE IF death_missing < 10 OR (in_criterion_area AND 4.5 <= magnitude < 5.0) THEN 一般（Ⅳ级）
+    note: in_criterion_area = 临夏市 OR 震中50km范围内人口密度≥200人/km²的地区；积石山县成立（DEC-LX-03）
+    evidence: ["§3.1"]
+
+  - id: RULE-LX-TIER
+    rule_class: 分级应对
+    inputs: [grade, is_cross_boundary, exceeds_local_capacity]
+    expression: |
+      responsible = MAP(grade, {特别重大: 省抗震救灾指挥部, 重大: 省抗震救灾指挥部, 较大: 州党委政府, 一般: 县党委政府})
+      IF is_cross_boundary THEN 上一级党委政府统筹协调，受灾地区党委政府负责本行政区域
+      IF exceeds_local_capacity THEN 报请上一级政府提供支援或者负责应对
+    evidence: ["§3.2.1"]
+
+  - id: RULE-LX-ACTIVATION
+    rule_class: 响应启动
+    inputs: [grade]
+    expression: |
+      Ⅰ级: 州抗震救灾指挥部提出建议 → 报州委州政府 → 州委、州政府决定启动 → 第一时间报省委省政府
+      Ⅱ级: 州抗震救灾指挥部提出建议 → 报州委州政府 → 州政府决定启动 → 第一时间报省委省政府
+      Ⅲ级: 州抗震救灾指挥部办公室提出建议 → 报州委州政府 → 州政府决定启动 → 第一时间报省委省政府
+      Ⅳ级: 州抗震救灾指挥部办公室了解震情灾情 → 报指挥部并通报成员单位 → 办公室视情决定启动
+    conflict: Ⅲ级与附件表不一致，已按 DEC-LX-01 取正文
+    evidence: ["§5.1", "§5.2", "§5.3", "§5.4"]
+
+  - id: RULE-LX-QUICKREPORT
+    rule_class: 速报阈值
+    inputs: [magnitude, is_urban]
+    expression: |
+      IF (is_urban AND magnitude >= 3.5) OR (NOT is_urban AND magnitude >= 4.0)
+      THEN 州地震局快速完成速报参数（时间/地点/震级/震源深度），报州委州政府并通报成员单位
+    deadline: 原文无量化时限，见 DEC-LX-06 补桥
+    evidence: ["§4.2"]
+
+  - id: RULE-LX-TERMINATION
+    rule_class: 响应终止
+    inputs: [应急工作基本结束, 转移安置基本完成, 次生灾害影响基本消除, 生命线基本抢通, 生活秩序基本恢复]
+    expression: ALL(inputs) == true → 由应急响应启动机构决定终止，转入灾后恢复重建阶段
+    evidence: ["§6"]
+
+  - id: RULE-LX-MODIFIER
+    rule_class: 响应启动
+    inputs: [is_minority_area, 灾情发展]
+    expression: |
+      IF is_minority_area THEN 可根据需要适当提高应急响应级别
+      IF 灾情发展变化 THEN 及时调整级别，避免响应不足或响应过度
+    standing_note: 临夏州为回族自治州、积石山为民族自治县，该条款在辖域内属常态覆盖（DEC-LX-04）
+    evidence: ["§3.2.2"]
+
+# ==============================================================================
+# 六、地震事件触发层
+# ------------------------------------------------------------------------------
+# 把一次真实地震接入预案执行：事件摄入 → 初判 → 定级 → 分级应对 → 响应启动 →
+# 措施展开 → 次生灾害移交。同时定义与县地质灾害本体的联动。
+# ==============================================================================
+earthquake_event_layer:
+
+  ingestion:
+    id: EQ-LX-INGEST
+    authoritative_sources:
+      震情要素: [中国地震台网, 甘肃省地震局, 州地震局速报]
+      烈度: [省地震局/中国地震局烈度调查成果, WG-LX-03 烈度评定]
+      伤亡与损失: [州应急局灾情上报系统, 各成员单位行业摸排, WG-LX-03 损失评估]
+    hard_rule: 震级、震源深度、烈度一律引用官方发布，不得由模型估算或引用未证实来源
+
+  initial_judgement:
+    id: EQ-LX-INITJUDGE
+    principle: 震后伤亡统计滞后于震级发布，故初判优先走震级判据，伤亡判据用于后续修正
+    sequence:
+      - {step: 1, action: 取震级与震中位置，判定是否落入判据区域（临夏市 或 震中50km内人口密度≥200人/km²）}
+      - {step: 2, action: 按 RULE-LX-GRADE 的震级支路给出初判级别}
+      - {step: 3, action: 伤亡数据回传后按死亡人数支路复判，取更高级别}
+      - {step: 4, action: 按 MOD-LX-MINORITY 给出提级建议（双结论，不替指挥部拍板）}
+      - {step: 5, action: 按 RULE-LX-TIER 确定由哪一级党委政府负责应对（与响应级别是两个维度）}
+    jishishan_shortcut:
+      condition: 震中位于积石山县
+      rule: 该县人口密度 305.6 人/km²，满足判据区域条件
+      table:
+        - {magnitude: ">=7.0（重要地区）", 初判: 特别重大Ⅰ级}
+        - {magnitude: "6.0 ~ 7.0", 初判: 重大Ⅱ级}
+        - {magnitude: "5.0 ~ 6.0", 初判: 较大Ⅲ级}
+        - {magnitude: "4.5 ~ 5.0", 初判: 一般Ⅳ级}
+        - {magnitude: "<4.5", 初判: 不构成地震灾害分级；若在重要设施场地附近且有明显震感，按 EVT-LX-FELT 强有感地震事件处置}
+      caveat: 依赖 DEC-LX-03 与 C-LX-11（密度计算口径），须县地震局确认
+
+  secondary_hazard_handoff:
+    id: EQ-LX-HANDOFF
+    criticality: 关键——本层是两套预案能否协同的唯一枢纽
+    state_side:
+      owner: WG-LX-08 地震监测和次生灾害防范处置组
+      lead_units: [州地震局, 州自然资源局, 州水务局]
+      scope: [山体崩塌, 滑坡, 泥石流, 堰塞湖, 溃坝, 地面塌陷]
+      duty: 对重大地质灾害和洪水灾害隐患进行监测预警，一旦发生险情及时组织疏散群众
+      evidence: ["§2.1.1(8)"]
+    county_side:
+      ontology: jishishan_geohazard_emergency@3
+      owner: 县地质灾害应急指挥部（震后转为抗震救灾指挥部下的次生地质灾害防范支线）
+      scope: [崩塌, 滑坡, 泥石流, 地面塌陷, 不稳定斜坡]
+      gap: 县预案灾害类型不含堰塞湖与溃坝，仅在险情分级中以"江河支流被阻断"隐含堰塞（C-LX-07）
+    handoff_rules:
+      - {id: HO-1, rule: 次生地质灾害的监测预警与疏散决策，震后由 WG-LX-08 统一归口；县地质灾害应急指挥部作为其技术支撑与属地执行单元}
+      - {id: HO-2, rule: 次生地质灾害的定级仍按县地质灾害预案口径执行，但结论上报 WG-LX-08 而非独立对外发布（承接 DEC-15）}
+      - {id: HO-3, rule: 堰塞湖与溃坝险情超出县地质灾害预案适用范围，由 WG-LX-08 中的州水务局归口，县级配合}
+      - {id: HO-4, rule: 灾情损失评估中"各种地震地质灾害"的调查由 WG-LX-03 牵头，县调查评估组提供分项数据，避免两套统计重复计数}
+    reinforced_assumptions:
+      note: 县本体中原为模型假设的两条，在州预案中找到明文依据，置信度升级
+      items:
+      - id: ASSUME-EQ-4
+        was: 模型假设——安置点选址须先做地质灾害危险性评估
+        now: 上位预案明文
+        basis: §5.1(10) 灾害风险排查——"对灾区集中安置点和应急避难场所开展次生灾害隐患排查"
+        status: 已升级为 RULE，不再需要指挥部确认
+      - id: ASSUME-EQ-3
+        was: 模型假设——不待定级即启动全量隐患点复核
+        now: 上位预案部分支持
+        basis: §5.1(10) 明文要求震后对重大危险源、重要目标、重要基础设施隐患排查与监测预警，并防范强余震和降雨形成的次生灾害
+        residual_gap: 州预案同样未规定震后地质灾害排查的启动时限与完成时限（承接县本体 G-12）
+
+  aftershock_and_chain:
+    id: EQ-LX-CHAIN
+    state_plan_coverage:
+      - {item: 余震防范, basis: "§2.1.1(8) 密切监视震情发展，做好余震防范"}
+      - {item: 余震分布通报, basis: "§5.1(9) 及时通报震区余震分布情况"}
+      - {item: 强余震与降雨次生灾害, basis: "§5.1(10) 防范因强余震和降雨形成的滑坡、泥石流、坍塌等次生灾害造成新的人员伤亡和交通堵塞"}
+    residual_gap:
+      - 无量化的余震震级触发条件（多大余震须重新排查、须撤离作业面）
+      - 无现场作业人员在余震条件下的撤离标准（承接县本体 G-13）
+    external_calibration:
+      ref: jishishan_geohazard_emergency@3 → earthquake_calibration_2023
+      usable: 烈度—隐患点密度系数（Ⅷ度0.1329、Ⅶ度0.0694、Ⅵ度0.0023 处/km²）可用于震后次生地质灾害规模的先验估算
+
+  interoperability_matrix:
+    purpose: 一次地震中两套预案同时运转时，各条线的归属与冲突消解
+    rows:
+      - {dimension: 总指挥, 地震线: 州政府分管副州长（州级）/ 县抗震救灾指挥部（县级）, 地质灾害线: 依县预案 §5.5 分级确定, 裁决: 对外统一以抗震救灾指挥部为准}
+      - {dimension: 灾害分级, 地震线: 死亡300/50/10 或 震级7.0/6.0/5.0/4.5, 地质灾害线: 死亡30/10/3 或 损失3000万/500万/100万, 裁决: 两个级别并存且都成立，并列呈现严禁互换（DEC-15）}
+      - {dimension: 伤亡统计, 地震线: 全域地震灾害伤亡, 地质灾害线: 仅次生地质灾害归因分项, 裁决: 分项可加总不可叠算（ASSUME-EQ-2）}
+      - {dimension: 次生灾害监测, 地震线: WG-LX-08 归口, 地质灾害线: 县自然资源局执行, 裁决: HO-1}
+      - {dimension: 损失评估, 地震线: WG-LX-03 牵头, 地质灾害线: 县调查评估组 WG-08, 裁决: HO-4}
+      - {dimension: 信息发布, 地震线: WG-LX-11 州委宣传部, 地质灾害线: 县新闻宣传组 WG-10, 裁决: 州级响应期一律由 WG-LX-11 统一发布}
+      - {dimension: 堰塞湖溃坝, 地震线: WG-LX-08 州水务局, 地质灾害线: 不在适用范围, 裁决: HO-3}
+
+# ==============================================================================
+# 七、裁决台账
+# ------------------------------------------------------------------------------
+# decided_by = MODEL 的为默认裁决，州/县指挥部可推翻，推翻后须 bump meta.version
+# ==============================================================================
+decisions:
+
+  - id: DEC-LX-01
+    resolves: C-LX-02
+    decided_by: MODEL
+    topic: Ⅲ级响应启动权限（正文与附件表冲突）
+    conflict: 正文 §5.3 为"州抗震救灾指挥部办公室提出建议、州政府决定启动"；附件表为"州抗震救灾指挥部决定启动"
+    ruling: 以正文 §5.3 为准
+    rationale: >
+      正文表述完整（含建议主体、报告路径、决定主体），附件表为摘要且同表另有两行整列空白，
+      属编制疏漏而非有意规定；且Ⅲ级与Ⅱ级同为"州政府决定"符合分级递进逻辑，
+      若取附件表则Ⅲ级由指挥部自决、Ⅱ级由州政府决定、Ⅳ级由办公室自决，权限阶梯反而断裂。
+    requires_confirmation: 州抗震救灾指挥部办公室
+
+  - id: DEC-LX-02
+    resolves: C-LX-01
+    decided_by: MODEL
+    topic: 与《国家地震应急预案》2025年修订版的分级阈值冲突
+    conflict_table:
+      - {级别: 特别重大, 本州预案: 死亡300人以上, 国家2025修订: 死亡200人以上}
+      - {级别: 重大,     本州预案: 死亡50~300人,  国家2025修订: 死亡30~200人}
+      - {级别: 较大,     本州预案: 死亡10~50人,   国家2025修订: 死亡10~30人}
+      - {级别: 一般,     本州预案: 死亡10人以下,  国家2025修订: 死亡10人以下}
+    analysis: 本州预案阈值与2012版国家预案一致，未同步2025年修订，属预案现势性问题
+    ruling: >
+      本地执行以本州预案为准（属地预案在其未修订前仍然有效）；
+      但报告中须并列标注国标口径，并在终报的预案复盘章节触发 §10.1 修订建议。
+    rationale: 执行依据须唯一且可追责，不能因上位修订而自行套用未落地的新阈值；但隐瞒差异会使上报省级时口径不一致
+    requires_confirmation: 州抗震救灾指挥部办公室 + 州地震局
+    urgency: 高——应急管理部2025-10-31明确要求"加快新一轮各地各级地震应急预案修订"
+
+  - id: DEC-LX-03
+    decided_by: MODEL
+    topic: 积石山县是否落入震级判据区域
+    computation: 278089 人 / 909.97 km² = 305.6 人/km² > 200 人/km²
+    ruling: 成立——积石山县满足"人口密度达到200人/平方公里"的判据条件
+    implication: 该县发生 6.0 级以上地震，可不待伤亡统计直接初判为重大地震灾害（Ⅱ级）并启动相应程序
+    dependency: 依赖县本体 DEC-01（总人口 278089 人的单位修正）
+    caveat: 原文未明确密度按50km圆域平均还是按行政区计算（C-LX-11）；本裁决按行政区计算
+    requires_confirmation: 州地震局 + 县地震局
+
+  - id: DEC-LX-04
+    decided_by: MODEL
+    topic: 少数民族地区提级条款的常态适用
+    finding: 临夏回族自治州全域、积石山保安族东乡族撒拉族自治县全域均为少数民族聚居地区，§3.2.2 提级条款属常态覆盖而非例外
+    ruling: 报告一律并列输出"推导级别"与"提级建议级别"及理由，由有权机关裁量，模型不替其拍板
+    consistency: 与县本体 DEC-EQ-5 口径一致，两级预案采同一处理方式
+    requires_confirmation: 州抗震救灾指挥部
+
+  - id: DEC-LX-05
+    resolves: C-LX-09
+    decided_by: MODEL
+    topic: Ⅰ级响应措施第（2）项正文与附件表不一致
+    conflict: 正文 §5.1(2) 为"靠前指挥"；附件表第（2）项为"启动应急指挥机构"
+    ruling: 取并集——第（2）项同时包含"启动应急指挥机构"与"靠前组织指挥和协调"
+    rationale: 两者均为Ⅰ级响应的必要动作，且互不排斥；漏掉任一都会造成执行缺项
+
+  - id: DEC-LX-06
+    resolves: C-LX-06
+    decided_by: MODEL
+    topic: 震情速报无量化时限
+    finding: §4.2 仅表述"快速完成"，而下位的县地质灾害预案反而有 30/60 分钟明确时限
+    ruling: >
+      补桥——Ⅰ/Ⅱ级初判情形按 30 分钟内完成速报，Ⅲ/Ⅳ级按 1 小时内，
+      与县地质灾害预案 §4.1 的时限体系对齐。
+    status: 属模型补桥，非原文条款；报告中须标注"依县级预案时限体系类推"
+    requires_confirmation: 州地震局
+
+  - id: DEC-LX-07
+    resolves: C-LX-07
+    decided_by: MODEL
+    topic: 次生地质灾害的两套预案归口
+    ruling: 见 earthquake_event_layer.secondary_hazard_handoff 的 HO-1 至 HO-4
+    summary: 州级响应期由 WG-LX-08 统一归口，县地质灾害应急指挥部为技术支撑与属地执行单元；堰塞湖溃坝归州水务局；损失评估由 WG-LX-03 牵头汇总以避免重复计数
+    requires_confirmation: 州抗震救灾指挥部办公室 + 县地质灾害应急指挥部办公室
+
+  - id: DEC-LX-08
+    resolves: C-LX-08
+    decided_by: MODEL
+    topic: 分级应对与响应分级两个维度的混淆风险
+    ruling: >
+      报告必须分别输出两个结论——「由哪一级党委政府负责应对」（§3.2.1）与
+      「启动哪一级响应」（§5），二者不同源、不可互推。
+      例：较大地震灾害由州党委政府负责应对，同时启动州级Ⅲ级响应；
+      重大地震灾害由省抗震救灾指挥部指挥协调，州级仍启动州级Ⅱ级响应作为配合。
+    gate: 并入报告生成的 GATE-LX-3
+
+  - id: DEC-LX-09
+    resolves: C-LX-10
+    decided_by: MODEL
+    topic: 指挥部成员单位名单不含军地力量
+    finding: 临夏军分区、武警临夏支队、州消防救援支队出现在副总指挥名单和多个工作组，但不在成员单位列举中
+    ruling: 视为成员单位，在图谱中补入；属编制列举疏漏
+    requires_confirmation: 州抗震救灾指挥部办公室
+
+# ==============================================================================
+# 八、质量层
+# ==============================================================================
+quality:
+  conflicts:
+    - id: C-LX-01
+      severity: 高
+      type: 与上位预案阈值脱节
+      location: "§3.1 vs 《国家地震应急预案》2025年修订版"
+      finding: 本州预案沿用2012版国家预案阈值（300/50/10），与2025修订版（200/30/10）不一致
+      impact: 同一伤亡规模在州、国两级口径下差一级；上报省级与国家时可能出现级别表述矛盾
+      ruling_ref: DEC-LX-02
+      verification_needed: 需核实2025年修订版正式文本的分级条款，本条依据为应急管理部2025-10-31解读稿
+    - id: C-LX-02
+      severity: 高
+      type: 正文与附件冲突
+      location: "§5.3 vs §11.6附件表"
+      finding: Ⅲ级响应启动主体，正文为州政府决定，附件表为州抗震救灾指挥部决定
+      impact: 实战中启动权限归属不清，可能延误或越权
+      ruling_ref: DEC-LX-01
+    - id: C-LX-03
+      severity: 中
+      type: 附件表不完整
+      location: "§11.6附件表"
+      finding: Ⅱ级响应行的"指挥和协调""主要响应措施"两列空白；Ⅳ级响应行的"主要响应措施"列空白
+      impact: 附件表本应是实战速查工具，两级空白使其在Ⅱ、Ⅳ级情形下不可用
+    - id: C-LX-04
+      severity: 高
+      type: 跨预案分级口径差异
+      location: 本预案 §3.1 vs 积石山县突发地质灾害应急预案 §1.5.2
+      finding: 地震灾害按死亡300/50/10分级，地质灾害灾情按死亡30/10/3分级，差约一个数量级
+      impact: 同一场地震的两条线级别必然不同，若不并列标注会被误读为矛盾或误报
+      ruling_ref: 承接县本体 DEC-15；本预案侧补充 DEC-LX-08
+    - id: C-LX-05
+      severity: 低
+      type: 表述语病
+      location: "§1.3"
+      finding: 原文"本预案适用于本省州境内或毗邻市（州)发生地震灾害的应对工作"，"本省州境内"表述不清，疑为"本州境内"
+      impact: 适用范围的地域边界存在歧义
+    - id: C-LX-06
+      severity: 中
+      type: 时限缺失
+      location: "§4.2"
+      finding: 震情速报仅表述"快速完成"，无量化时限；而下位县地质灾害预案有30/60分钟明确时限
+      impact: 上位预案时限反而弱于下位预案，无法据以考核
+      ruling_ref: DEC-LX-06
+    - id: C-LX-07
+      severity: 中
+      type: 次生灾害灾种范围不一致
+      location: "§2.1.1(8) vs 积石山县地质灾害预案 §1.3"
+      finding: 州预案次生灾害含堰塞湖、溃坝；县地质灾害预案灾害类型仅崩塌滑坡泥石流地面塌陷，无堰塞湖溃坝
+      impact: 堰塞湖与溃坝在县级层面无处置依据，存在责任真空
+      ruling_ref: DEC-LX-07（HO-3）
+    - id: C-LX-08
+      severity: 中
+      type: 维度混淆风险
+      location: "§3.2.1 vs §5"
+      finding: 分级应对（谁负责）与响应分级（启动哪一级）是两个独立维度，原文相邻编排易被合并理解
+      impact: 可能误认为"重大地震灾害由省负责，州就不启动响应"，实则州级仍启动Ⅱ级响应
+      ruling_ref: DEC-LX-08
+    - id: C-LX-09
+      severity: 低
+      type: 正文与附件措施项不一致
+      location: "§5.1(2) vs §11.6附件表第（2）项"
+      finding: 正文为"靠前指挥"，附件表为"启动应急指挥机构"
+      ruling_ref: DEC-LX-05
+    - id: C-LX-10
+      severity: 低
+      type: 成员单位名单不闭合
+      location: "§2.1.1"
+      finding: 临夏军分区、武警临夏支队、州消防救援支队在副总指挥与工作组中出现，却不在成员单位列举内
+      ruling_ref: DEC-LX-09
+    - id: C-LX-11
+      severity: 中
+      type: 判据计算口径不明
+      location: "§3.1"
+      finding: '"震中50公里范围内人口密度达到200人/平方公里的地区"——未明确按50km圆域平均密度还是按行政区密度计算'
+      impact: 直接决定积石山县是否落入震级判据区域，进而决定6.0级地震能否直接初判Ⅱ级
+      ruling_ref: DEC-LX-03（按行政区计算）
+      priority: 该口径必须由州地震局明确，是本预案在积石山适用性的关键开关
+
+  gaps:
+    - id: G-LX-01
+      topic: 文号与印发日期缺失
+      finding: 正文仅有"自印发之日起实施"，无发文字号与印发日期；仅知废止 临州办发〔2012〕392号
+      impact: 无法确认现行版本、无法判断是否已按2025年国家预案修订
+      action: 向州抗震救灾指挥部办公室索取印发通知原件
+    - id: G-LX-02
+      topic: 附件表不完整
+      finding: 见 C-LX-03
+      action: 索取完整版附件表
+    - id: G-LX-03
+      topic: 底数与联络信息缺失
+      finding: 无成员单位联络表、无指挥部组织架构图、无救援队伍与物资装备底数、无应急避难场所清单
+      impact: 资源推演与队伍调派推演均无法量化，只能列需求项
+      action: 与 G-LX-01 同渠道一并索取
+    - id: G-LX-04
+      topic: 震情速报无时限
+      finding: 见 C-LX-06
+    - id: G-LX-05
+      topic: 无烈度判据
+      finding: 分级只有死亡人数与震级两类判据，无烈度判据；而烈度是震后最早可得的致灾强度指标之一
+      impact: 烈度调查成果无法直接进入定级链路，只能作为辅助描述
+    - id: G-LX-06
+      topic: 《积石山县地震应急预案》仍未获取
+      finding: §10.1 证实其应当存在并已报州抗震救灾指挥部办公室备案
+      status: 从"不确定是否存在"升级为"确认应当存在，仅未获取"
+      action: 索取渠道新增州抗震救灾指挥部办公室（州应急局），优先于此前的县级渠道
+      impact: 县级抗震救灾指挥部的具体组成、职责、启动权限仍不可知；本体现只能用州预案 §2.2 的原则性表述
+    - id: G-LX-07
+      topic: 余震量化触发条件缺失
+      finding: 有"做好余震防范""通报余震分布"的定性要求，无量化触发（多大余震须重新排查、须撤离现场作业面）
+      impact: 承接县本体 G-13，两级预案均未覆盖余震期现场作业安全
+    - id: G-LX-08
+      topic: 恢复重建条款过简
+      finding: §7 仅两条，无恢复重建的资金机制、评估办法、进度监督与验收标准
+      impact: 终报的恢复重建交接章节只能写原则，写不出可执行安排
+    - id: G-LX-09
+      topic: 无演练与培训的量化考核
+      finding: §10.2 仅要求"上年度发生较大以上地震灾害的地区本年度至少1次演练"，其余地区无频次要求
+      impact: 未发生灾害的年份无演练强制，能力保持无抓手
