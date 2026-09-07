@@ -29,11 +29,16 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // WO-PALETTE-USABLE：原来空串态 `.slice(0,8)`、有词 `.slice(0,12)` —— 后端 20 条里的 S09–S20
+  // **既不在 DOM 里、也滚不出来**（实测 scrollHeight 292 == clientHeight 292，不是没滚到是没渲染）。
+  // 叠加焦点抢占（见 Modal.tsx）后连「靠输入去够」这条退路也断了。
+  // 现在不截断：外层已有 maxHeight:360 + overflowY:auto 兜住高度，20 条只是让它真的可滚，
+  // 面板不会长成一屏塞不下的长条。
   const matches = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const items = data?.items ?? [];
-    if (!needle) return items.slice(0, 8);
-    return items.filter((c) => [c.name, c.triggerQuestion, c.sNo, c.summary].some((s) => s?.toLowerCase().includes(needle))).slice(0, 12);
+    if (!needle) return items;
+    return items.filter((c) => [c.name, c.triggerQuestion, c.sNo, c.summary].some((s) => s?.toLowerCase().includes(needle)));
   }, [q, data]);
 
   if (!open) return null;
@@ -52,7 +57,16 @@ export function CommandPalette() {
           }}
           style={{ width: "100%", marginBottom: 10 }}
         />
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 360, overflowY: "auto" }}>
+        <div
+          data-testid="command-palette-count"
+          style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}
+        >
+          {zh.launcher.paletteCount(matches.length, data?.total ?? matches.length)}
+        </div>
+        <div
+          data-testid="command-palette-list"
+          style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 360, overflowY: "auto" }}
+        >
           {matches.length === 0 && <div className="empty-state">无匹配场景</div>}
           {matches.map((c) => (
             <button

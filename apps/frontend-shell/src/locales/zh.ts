@@ -45,6 +45,10 @@ export const zh = {
     paletteTitle: "⌘K · 场景命令面板",
     searchAria: "搜索场景",
     searchPlaceholder: "搜场景名 / 触发问句…",
+    // WO-PALETTE-USABLE：面板此前只列 8 条（后端 20 条），且列表不可滚 ⇒ 用户无从知道后面还有。
+    // 现在全量渲染 + 报数，"还有多少条"从猜变成看得见。
+    paletteCount: (shown: number, total: number) =>
+      shown === total ? `共 ${total} 个场景` : `${shown} / ${total} 个场景`,
   },
   login: {
     title: "登录",
