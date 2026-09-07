@@ -157,8 +157,9 @@ describe("WO-REVENUE-RECONCILE · 四个营收的口径对账", () => {
   it("§5 口径必须写在屏上：并排的营收族卡片都得带 caption（数字没错时，缺的就是这一行）", async () => {
     const t = await bootedApp();
     const w = await dashWidgets(t);
-    // ① 的卡片（既有）、以及本单补的两处：达成率、经营指标条。
-    for (const key of ["aop-base", "rev-attain", "metric-strip"]) {
+    // ① 的卡片（既有）、以及本单补的四处：达成率、经营指标条、需求 P50（①②的共同分母）、
+    // 毛利总额（与方案寻优页「毛利」同名不同口径，差 2.1 倍）。
+    for (const key of ["aop-base", "rev-attain", "metric-strip", "demand-p50", "gross-margin"]) {
       const card = w.find((x) => x.key === key);
       expect(card, `驾驶舱缺 widget ${key}`).toBeTruthy();
       expect(String(card!.caption ?? ""), `widget「${card!.title}」缺口径副标题`).not.toBe("");

@@ -1790,14 +1790,27 @@ export class SyntheticService {
         },
         // cockpit P1 富 KPI（数字经合成 DemandSegment/FinancePlan/MaterialBalance + 派生/聚合算出，前端零写死 R14；R13 溯源）。
         {
+          // WO-REVENUE-RECONCILE：本卡是①②两个营收的**共同分母**（① = 供给量×P̄、② = 本卡×P̄），
+          // 口径写在屏上，读者才追得到「为什么那两个营收差一截」= 供给缺口，不是记账错误。
           key: "demand-p50", type: "kpi", title: "需求 P50 (万套/年)", unit: "万套/年", featureKey: "view.dash.widget.demand",
           query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "demandWanPerYearP50" },
+          caption: "需求预测口径 · 三细分 P50 中位情景合计，非在手订单量（订单簿口径见「在手订单」卡）",
           provenance: { toolName: "query_objects", outputPath: "$.sum(demandWanPerYearP50)", label: "三细分需求 P50 合计（万套/年）" },
         },
         {
+          /**
+           * WO-REVENUE-RECONCILE ·「毛利」这个词**屏上有两个数，口径完全不同**，故本卡必须自报家门：
+           *  · 本卡 **118.85 亿** = `Σ(需求 P50 × 单价 × 毛利率)` —— **需求预测口径**，全年、全需求、
+           *    含成本（隐含毛利率 ≈17%，与 `GOAL_REGISTRY.gm_rate` 同档）；
+           *  · 方案寻优页最优解 **250.60 亿** = `Σ获排 OrderLine 营收 − 指派成本` —— **订单行口径**，
+           *    只含被排上的 355/873 行，且成本侧只有占线费 + 料费（实测毛利率 **96.70%**，
+           *    因 `OrderLine.unitCost` 是**元/电芯**而 `qty` 计的是**套**，量纲不同阶）。
+           * 两个数都叫「毛利」而差 2.1 倍，屏上不写口径，读者只能读成有一个算错了。
+           */
           key: "gross-margin", type: "kpi", title: "毛利总额 (亿)", unit: "亿", featureKey: "view.dash.widget.demand",
           query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "marginWan" },
-          provenance: { toolName: "query_objects", outputPath: "$.sum(marginWan)", label: "Σ(需求×单价×毛利率) 派生回写" },
+          caption: "需求预测口径 · Σ(细分需求 P50 × 单价 × 毛利率)，全年全需求含成本；与方案寻优页「毛利」（仅获排订单行）不同口径",
+          provenance: { toolName: "query_objects", outputPath: "$.sum(marginWan)", label: "Σ(需求×单价×毛利率) 派生回写（需求预测口径·非订单行寻优毛利）" },
         },
         {
           key: "material-gap", type: "kpi", title: "物料现货缺口 (吨)", unit: "吨", featureKey: "view.dash.widget.material",
