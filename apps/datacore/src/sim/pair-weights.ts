@@ -8,6 +8,13 @@ import { pairWeightKey, type PairWeightLookup, type PropagationGraph } from "./p
 /**
  * **逐实例分摊权重的算处**（WO-COEF-FROM-BOM · 契约 `PropagationRule.weightRef`）。
  *
+ * ⚠ **本模块承载两个不同的病，别合并成一个**（第二个由 WO-EDGE-MONEY-WEIGHT 补）：
+ *  ① `bom_cost_share` 治的是「一条边一个常数 ⇒ **用量**没进公式」（贵重料与边角料同额）；
+ *  ② `source_value_relative` 治的是「多源汇一目标时逐源同额 ⇒ **金额**没进公式」
+ *     （压 10 亿的客户与压 5.78 亿的客户读数逐字节相同 ⇒ 按条数排序）。
+ *  两者的修法**不同**：① 换的是"一条边内部怎么分"，② 换的是"多条边之间谁更重"，
+ *  且 ② 的分母必须是**全域**基数（组内归一会把金额约掉，读数原样退回按条数）。
+ *
  * ── 今天是 X / 应该是 Y（本单的病灶，实测·demo 租户 seed 42）─────────────────────
  * **今天的行为是**：`propagation.ts` 把系数解析成**整条规则一个标量**，对该源的**每一个**目标
  * 落同一个额；公式 `coeff × sourceVal × factor` 里**没有用量项**。于是磷酸铁锂正极
@@ -42,7 +49,10 @@ export interface PairWeightExplain {
   /** 分子（该对的"计量值"）与分母（归一用的那个量）。两者都给，读者才能自己除一遍。 */
   numerator: number;
   denominator: number;
-  /** 归一方式：`IN_EDGES` = Σ=1（加权平均）；`IN_EDGES_MEAN` = 均值=1（保总量）。 */
+  /**
+   * 归一方式：`IN_EDGES` = Σ=1（加权平均）；`IN_EDGES_MEAN` = 组内均值=1（保总量）；
+   * `IN_EDGES_GLOBAL_MEAN` = **全域**均值=1（保总量且跨目标可比 —— 金额敞口口径）。
+   */
   normalize: PairWeightNormalize;
   /** **代入真实数字**的算式（不是符号式）——「这个数是算的还是拍的」靠它自证。 */
   formula: string;
@@ -98,12 +108,20 @@ interface Measure {
 /**
  * 把 `(targetId → [Measure])` 归一成权重表片段 + 逐对出处。
  *
- * **两种归一，选哪种看目标量纲**（判据表见契约 `PairWeightNormalize` 上方）：
- *  · `IN_EDGES`      —— 除以 `denomOf` 给的分母。Σ=1 ⇒ **加权平均**，配**强度**型目标。
- *  · `IN_EDGES_MEAN` —— 除以组内均值。均值=1、Σ=N ⇒ **保总量**，配**广延**型目标。
+ * **三种归一，选哪种看目标量纲**（判据表见契约 `PairWeightNormalize` 上方）：
+ *  · `IN_EDGES`             —— 除以 `denomOf` 给的分母。Σ=1 ⇒ **加权平均**，配**强度**型目标。
+ *  · `IN_EDGES_MEAN`        —— 除以**组内**均值。均值=1、Σ=N ⇒ **保总量**，配**广延**型目标。
+ *  · `IN_EDGES_GLOBAL_MEAN` —— 除以**全域**均值（`denomOf` 直接给全域基数，**不再除以 rows.length**）。
+ *    ⇒ 保总量**且跨目标可比**，配**敞口**（金额）型目标。
+ *
+ * ⚠ 后两者的差别只在分母的一次除法上，却是「按金额算」与「按条数算」的分野：
+ *   组内均值下 Σ权重 ≡ 组的条数 n（金额被组内归一**约掉了**）⇒ 读数退回按条数；
+ *   全域均值下 Σ权重 = 该组金额 ÷ 全域均值 ∝ **金额敞口**。
+ *   实测账见契约 `PairWeightNormalize` 上方 WO-EDGE-MONEY-WEIGHT 段。
  *
  * @param denomOf 分母。**故意可与「图里现有入边之和」不同**：`bom_cost_share` 拿**整份 BOM** 当分母，
- *                这样占比是可审计的绝对量；按现有入边重新归一会让「加一条链路」悄悄改掉其它每一条的权重。
+ *                `source_value_relative` 拿**全租户该类型全部实例的均值**当分母 ——
+ *                这样占比/倍率是可审计的绝对量；按现有入边重新归一会让「加一条链路」悄悄改掉其它每一条的权重。
  */
 function normalizeInEdges(
   ruleKey: string,
@@ -120,7 +138,9 @@ function normalizeInEdges(
   for (const targetId of [...measures.keys()].sort((a, b) => a.localeCompare(b))) {
     const rows = (measures.get(targetId) ?? []).slice().sort((a, b) => a.sourceId.localeCompare(b.sourceId));
     const base = denomOf(targetId, rows);
-    // MEAN：分母 = 组内均值（= 总量 ÷ 条数）。条数恒 ≥1（这一组是由边建出来的）。
+    // MEAN：分母 = **组内**均值（= 该组总量 ÷ 该组条数）。条数恒 ≥1（这一组是由边建出来的）。
+    // GLOBAL_MEAN：`denomOf` 给的**已经是**全域均值 —— 这里**绝不**再除以 rows.length，
+    //   再除一次就把它变回组内口径，读数当场退回「按条数算」（本单要治的那个病）。
     const denominator = normalize === "IN_EDGES_MEAN" ? base / rows.length : base;
     for (const r of rows) {
       // 分母 ≤ 0（该目标的计量口径整体拿不到数）⇒ 该目标的全部入边权重 0：
@@ -135,7 +155,10 @@ function normalizeInEdges(
           `${r.formula} = ${r.measure} ；权重 = ${r.measure} ÷ ${denominator} = ${w}` +
           (normalize === "IN_EDGES_MEAN"
             ? `（分母是**组内均值** ${base} ÷ ${rows.length} —— 均值=1、保总量，配"广延"型目标）`
-            : `（分母是**该组总量**，Σ权重=1 —— 加权平均，配"强度"型目标）`),
+            : normalize === "IN_EDGES_GLOBAL_MEAN"
+              ? `（分母是**全域均值** ${denominator} —— 全租户该类型全部实例的均值，**不是**这一组的均值；` +
+                `均值=1、保总量，且权重与"挂在谁名下"无关 ⇒ 跨目标可比，配"敞口"型目标）`
+              : `（分母是**该组总量**，Σ权重=1 —— 加权平均，配"强度"型目标）`),
         fields: r.fields,
         bomId: r.bomId,
       });
@@ -309,6 +332,67 @@ export async function buildPairWeights(
         });
       }
       const r = normalizeInEdges(rule.key, basis, normalize, measures, (_t, rows) => rows.reduce((s, x) => s + x.measure, 0));
+      weights[rule.key] = r.table;
+      report.explain.push(...r.explain);
+      done(edges.length, r.zeroPairs);
+      continue;
+    }
+
+    if (basis === "source_value_relative") {
+      // ── 源实例**金额**相对于**全域基数**的倍率（WO-EDGE-MONEY-WEIGHT）───────────────
+      //
+      // 病灶（修前实测·真后端 SEED_DEMO=1·seed 42·三元正极 +15%·tick×4）：
+      // `Order→Customer` 应收边 `weightRef: null` ⇒ 每张单落同一个额 ⇒ 客户读数按**条数**走。
+      // 东风(10.02亿/4单) · 深蓝(8.32亿/7单) · 上汽通用五菱(7.19亿/7单) · 零跑(5.78亿/8单)
+      // **四家拿到逐字节相同的 15.137334**。按它排「先催谁的款」= 按单数排。
+      //
+      // ⚠ **分母是全域基数，不是承载集** —— 这一行是本口径的全部要害。
+      // 拿该客户名下那几张单的均值当分母，金额会被组内归一**约掉**，Σ权重恒等于条数，
+      // 读数逐字节退回修前，却挂着"已按金额分摊"的名义（最难查的那种假绿）。
+      // 判据同 `bom_cost_share` 拿整份 BOM 当分母那一条，逐字相同。
+      const sources = await byType(rule.sourceTypeKey);
+      /**
+       * 一个源实例的金额。**优先读已物化的派生属性 `value`**（`Order.value`，本仓 500/500 都有），
+       * 拿不到才回落 `qty × unitPrice` —— 与 `solvers/finance-world.ts` 的 `orderValue`
+       * 及 `solvers/service.ts` 的 `orderValueYuan` **同一个式子**，不另起第二套金额口径。
+       */
+      const valueOf = (o: ObjectInstance): { v: number; how: string; fields: string[] } => {
+        const direct = num(o.props.value);
+        if (direct > 0) return { v: direct, how: `金额 value ${direct}`, fields: [`${rule.sourceTypeKey}.value`] };
+        const q = num(o.props.qty), p = num(o.props.unitPrice);
+        return {
+          v: Math.max(0, q * p), // 负金额不是权重，按 0 计（不翻转方向）——与 source_qty_relative 同一条
+          how: `数量 ${q} × 单价 ${p}`,
+          fields: [`${rule.sourceTypeKey}.qty`, `${rule.sourceTypeKey}.unitPrice`],
+        };
+      };
+      // 全域基数 = 本租户该类型**全部**实例（不只是图里有边的那些）的金额均值。
+      // 用全部实例而不是 `edges` 的源：范围裁剪（LOCAL）时分母也不该跟着缩，
+      // 否则「只推演这块」会把权重整体放大，局部与全域的读数不再可比。
+      const totalValue = sources.reduce((s, o) => s + valueOf(o).v, 0);
+      if (sources.length === 0 || totalValue <= 0) {
+        fail(
+          `本租户 ${rule.sourceTypeKey} ${sources.length} 个实例 / 金额合计 ${totalValue} ⇒ 算不出全域金额基数。` +
+            `本条流不传导——退回「逐目标同额」等于挂着"已按金额分摊"的名义跑修前的按条数口径。`,
+        );
+        continue;
+      }
+      const globalMean = totalValue / sources.length;
+      const valueById = new Map(sources.map((o) => [o.id, valueOf(o)]));
+      const measures = new Map<string, Measure[]>();
+      for (const e of edges) {
+        const v = valueById.get(e.fromId);
+        (measures.get(e.toId) ?? measures.set(e.toId, []).get(e.toId)!).push({
+          sourceId: e.fromId,
+          // 源实例不在对象库里（链路指向已删/未物化对象）⇒ 金额 0（算得出来的真值），不报缺。
+          measure: v?.v ?? 0,
+          formula: v ? v.how : `源实例不在对象库中 ⇒ 金额 0`,
+          fields: v?.fields ?? [`${rule.sourceTypeKey}.value`],
+          bomId: null,
+        });
+      }
+      // 分母恒为**全域均值**，与 targetId / 该组条数都无关 —— 这正是"跨目标可比"的来源。
+      const r = normalizeInEdges(rule.key, basis, normalize, measures, () => globalMean);
       weights[rule.key] = r.table;
       report.explain.push(...r.explain);
       done(edges.length, r.zeroPairs);
