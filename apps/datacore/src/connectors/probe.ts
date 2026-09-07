@@ -53,19 +53,39 @@ export function probeTimeoutMs(env: Record<string, string | undefined> = process
 }
 
 /**
- * 已注册但**本版本没有适配器实现**的连接器类型。
+ * 已注册、**且真的一行数据也过不来**的连接器类型。
  *
- * 判据（实测·真后端）：这三类建连后 `GET /a/v1/connections/:id/schema` 返
+ * 判据（实测·真后端 `SEED_DEMO=1`）：建连后 `GET /a/v1/connections/:id/schema` 返
  * `connector type '<key>' is registered but has no adapter implementation yet`，
- * `POST /a/v1/connections/:id/sync` 直接 `FAILED`。金丝雀：`mock_erp` 同样两步返真 schema。
+ * `POST /a/v1/connections/:id/sync` 直接 `FAILED`。金丝雀：`mock_erp` 同样两步返真 schema + `SUCCEEDED`。
  * ⇒ 对它们报「连接成功」是**比 DNS 那个更坏的谎**：客户会存下连接、排期接入，
- * 直到同步那天才发现一行数据也过不来。故一律 `ok:false / UNSUPPORTED_TYPE`，且 `probed:false`
- * （诚实标注「没试」——不是网络问题，是平台没这个能力）。
+ * 直到同步那天才发现一行数据也过不来。故一律 `ok:false / UNSUPPORTED_TYPE`。
  *
- * ⚠ 单一出处：这份名单必须与 `registry.ts` 的 `createAdapter` switch 保持一致。
- * 接缝测试拿 `createAdapter` **真跑**每个注册类型来反推该名单，改一边不改另一边当场红。
+ * ⚠⚠ **`createAdapter` 抛错 ≠ 这个连接器不能用** —— 这是本单实测撞出来的坑，
+ * 差一点把修复做成反方向的谎：
+ * `knowledge_base` 的 `createAdapter` **同样抛** no-adapter，但它压根不走适配器路，
+ * 而是由 `KbService`（`kb.ts`：`addDoc` / `sync` 重嵌 / `search`）服务。
+ * 真后端实测：灌一篇文档 → `{"chunkCount":1}`，检索 → 命中 `score 0.4752`，sync → `{"docs":1,"chunks":1}`。
+ * **它完全能用。** 若照「createAdapter 抛错」一刀切判它 UNSUPPORTED，
+ * 就是对一个好用的连接器说「暂未支持」——与本单要修的那个谎同形态，只是方向相反。
+ * 故另立 `TYPES_SERVED_BY_OTHER_PATH`，两个集合合起来才等于「createAdapter 抛错」的那批。
  */
-export const TYPES_WITHOUT_ADAPTER = new Set(["sap_erp", "salesforce_crm", "generic_jdbc"]);
+export const TYPES_WITHOUT_ADAPTER = new Set([
+  "sap_erp",
+  "salesforce_crm",
+  "generic_jdbc",
+  // external_feed：既无适配器，也**没有**替代消费方（全仓只在 data-categories 的候选清单里被提了一嘴，
+  // 那是给前端选类型用的建议列表，不是消费方）⇒ 与上面三个同档。
+  "external_feed",
+]);
+
+/**
+ * 已注册、`createAdapter` 会抛，但**由另一条链路真实服务**的类型 —— 能用，不许报「暂未支持」。
+ * `knowledge_base` → `KbService`：文档由**上传灌入**（`POST /a/v1/kb/:connId/docs`），
+ * 不从 `endpoint` 拉取；`endpoint` 只是标签（databuilder 建的那些填的是 `internal://databuilder`，
+ * 连 HTTP 方案都不是）。所以**也不许拿 HTTP 去探它的 endpoint**：探失败是假阴性。
+ */
+export const TYPES_SERVED_BY_OTHER_PATH = new Set(["knowledge_base"]);
 
 interface ErrLink {
   name: string;

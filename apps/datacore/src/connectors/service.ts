@@ -98,15 +98,16 @@ export class ConnectorService {
    * 现在按类型选探针，并在回包里带 `probed`（有没有真发起连接）+ `latencyMs`（真连了才有耗时）——
    * 这两位让「试过了，连不上」与「压根没试」在回包里可区分。
    *
-   * 探针按类型分三档（**每一档都不许对没验证过的东西说成功**）：
-   * - **网络型**（`rest_api`/`external_feed`/`knowledge_base`）：有界 HTTP GET，按 DNS/拒绝/超时/认证/HTTP 分类。
+   * 探针按类型分档（**每一档都不许对没验证过的东西说成功，也不许对能用的东西说不支持**）：
+   * - **无适配器型**（`TYPES_WITHOUT_ADAPTER`）：`ok:false / UNSUPPORTED_TYPE`，理由见 probe.ts。
+   * - **知识库**（`knowledge_base`）：由 `KbService` 服务、文档靠上传灌入 ⇒ 探后备存储，**不探 endpoint**。
+   * - **网络型**（`rest_api`）：有界 HTTP GET，按 DNS/拒绝/超时/认证/HTTP 分类。
    * - **文件型**（`file_upload`/`prototype_html`）：探 blob 在不在——这就是该源的「可达」。
    * - **内置样例型**（`mock_*`）：真调 `adapter.listDatasets()` 枚举一遍。**这是反向对照**：
    *   它必须仍返 `ok:true`，否则就是把按钮做成了永远失败。
-   * - **无适配器型**（见 `TYPES_WITHOUT_ADAPTER`）：`ok:false / UNSUPPORTED_TYPE`，理由见 probe.ts。
    */
   async testConnection(
-    _ctx: AuthCtx,
+    ctx: AuthCtx,
     input: { connectorTypeKey: string; config: Record<string, unknown> },
   ): Promise<ConnectionTestResult> {
     const type = getConnectorType(input.connectorTypeKey);
@@ -133,8 +134,26 @@ export class ConnectorService {
       };
     }
     const timeoutMs = probeTimeoutMs();
-    // ③ 网络型：有界 HTTP 探测。
-    const urlField: Record<string, string> = { rest_api: "url", external_feed: "feedUrl", knowledge_base: "endpoint" };
+    // ③ 知识库：由 KbService 服务，文档靠上传灌入、不从 endpoint 拉取 ⇒ **不许拿 HTTP 探 endpoint**
+    //    （实测：databuilder 建的 KB 连接 endpoint 是 `internal://databuilder`，HTTP 探必失败 = 假阴性）。
+    //    真探针 = 后备存储读得动吗：真去数一遍本租户该类型下的文档。
+    if (type.key === "knowledge_base") {
+      const startedAt = Date.now();
+      try {
+        const docs = await this.repos.kbDocs.list(ctx.tenantId, () => true);
+        return {
+          ok: true,
+          reason: "OK",
+          message: `知识库可用（当前已存 ${docs.length} 篇文档）。文档通过「上传」灌入，不从该地址拉取。`,
+          latencyMs: Date.now() - startedAt,
+          probed: true,
+        };
+      } catch {
+        return { ok: false, reason: "UNREACHABLE", message: "知识库存储读取失败：请稍后重试或联系管理员。", latencyMs: Date.now() - startedAt, probed: true };
+      }
+    }
+    // ④ 网络型：有界 HTTP 探测。
+    const urlField: Record<string, string> = { rest_api: "url" };
     const field = urlField[type.key];
     if (field) return probeHttp(input.config[field], this.fetchImpl, timeoutMs);
     // ④ 文件型：blob 在不在就是「可达」。

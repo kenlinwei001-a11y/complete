@@ -6,6 +6,7 @@ import {
   classifyNetworkError,
   hasEmbeddedCredentials,
   safeTarget,
+  TYPES_SERVED_BY_OTHER_PATH,
   TYPES_WITHOUT_ADAPTER,
 } from "../src/connectors/probe.js";
 import type { ConnectionTestResult } from "@platform/contracts";
@@ -184,14 +185,18 @@ describe("WO-CONNTEST-HONEST §3 · 金丝雀与「没试」的可区分性", ()
 
 describe("WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接成功」", () => {
   /**
-   * 🔒 接缝金丝雀（单一出处）：`TYPES_WITHOUT_ADAPTER` 必须**恰好等于**
-   * `createAdapter` 真跑起来会抛「no adapter implementation」的那批类型。
+   * 🔒 接缝金丝雀（单一出处）：`createAdapter` 真跑起来会抛「no adapter implementation」的那批类型，
+   * 必须**恰好等于** `TYPES_WITHOUT_ADAPTER ∪ TYPES_SERVED_BY_OTHER_PATH`。
    *
-   * 为什么必须用真跑反推而不是照抄名单：哪天有人实现了 sap 适配器却忘了从名单里删，
-   * 「测试连接」会继续对一个**已经能用**的连接器说「暂未支持」——反向的谎，一样难看。
-   * 这条断言让机器先说话。
+   * 为什么要拆成两个集合而不是一个：本单实测撞到过 ——
+   * `knowledge_base` 的 createAdapter **也抛**，但它由 `KbService` 真实服务（灌文档/检索/重嵌全通）。
+   * 照「抛了就是不支持」一刀切，会对一个**好用的**连接器说「暂未支持」，
+   * 与本单要修的那个谎同形态、方向相反。
+   *
+   * 为什么用真跑反推而不是照抄名单：哪天有人实现了 sap 适配器却忘了改名单，
+   * 「测试连接」会继续对一个已经能用的连接器说「暂未支持」。这条断言让机器先说话。
    */
-  it("名单 = createAdapter 实际抛错的类型集合（改一边不改另一边即红）", async () => {
+  it("createAdapter 抛错的集合 = 无适配器 ∪ 走其他链路（改一边不改另一边即红）", async () => {
     // 只需要一个占位 BlobStore：未实现的类型在**构造期**就抛，压根走不到读 blob。
     const stubBlob = {
       put: async () => {}, get: async () => Buffer.alloc(0),
@@ -207,15 +212,19 @@ describe("WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接�
     }
     // 金丝雀：这个反推手段本身得抓得到东西，否则「集合相等」会因为两边都空而假绿。
     expect(actuallyUnsupported.size).toBeGreaterThan(0);
-    expect([...actuallyUnsupported].sort()).toEqual([...TYPES_WITHOUT_ADAPTER].sort());
+    const declared = [...TYPES_WITHOUT_ADAPTER, ...TYPES_SERVED_BY_OTHER_PATH].sort();
+    expect([...actuallyUnsupported].sort()).toEqual(declared);
+    // 两个集合不许重叠——同一个类型不能既「不支持」又「走别的链路」。
+    for (const k of TYPES_SERVED_BY_OTHER_PATH) expect(TYPES_WITHOUT_ADAPTER.has(k)).toBe(false);
   });
 
-  it("sap_erp / salesforce_crm / generic_jdbc ⇒ ok:false + UNSUPPORTED_TYPE，且说得出后果", async () => {
+  it("sap_erp / salesforce_crm / generic_jdbc / external_feed ⇒ ok:false + UNSUPPORTED_TYPE，且说得出后果", async () => {
     const t = await makeApp({ fetchImpl: statusFetch(200) }); // 就算网络全通也不许报成功
     const cases: [string, Record<string, unknown>][] = [
       ["sap_erp", { host: "sap.example.test", client: "100", username: "u", password: "p" }],
       ["salesforce_crm", { instanceUrl: "https://x.my.salesforce.com", clientId: "c", clientSecret: "s" }],
       ["generic_jdbc", { jdbcUrl: "jdbc:postgresql://db.test:5432/x", username: "u", password: "p" }],
+      ["external_feed", { feedUrl: "http://feed.example.test/rss" }],
     ];
     for (const [key, config] of cases) {
       const r = await testConn(t.app, key, config);
@@ -223,6 +232,39 @@ describe("WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接�
       expect(r.reason).toBe("UNSUPPORTED_TYPE");
       expect(r.message).toMatch(/适配器/); // 讲清「为什么」而不是笼统失败
     }
+  });
+
+  /**
+   * ⛔ 反向的谎，与本单要修的那个同样严重：对**能用**的连接器说「连不上 / 不支持」。
+   * 这条咬的是本单中途真犯过的一个错：把 `knowledge_base` 也当成「createAdapter 抛错 ⇒ 不支持」，
+   * 并拿 HTTP 去探它的 `endpoint`；而真后端实测该类型灌文档/检索/重嵌全通，
+   * 且 databuilder 建的连接 endpoint 是 `internal://databuilder`（连 HTTP 方案都不是）⇒ 必然假阴性。
+   */
+  it("knowledge_base 由 KbService 服务 ⇒ 必须 ok:true，且不许拿 HTTP 去探 internal:// 的 endpoint", async () => {
+    // 网络层全部失败：若实现去探了 endpoint，这条当场红。
+    const t = await makeApp({ fetchImpl: failingFetch("ENOTFOUND") });
+    const r = await testConn(t.app, "knowledge_base", { endpoint: "internal://databuilder" });
+    expect(r.ok, "知识库连接器能用，不许报失败").toBe(true);
+    expect(r.reason).toBe("OK");
+    expect(r.probed).toBe(true);
+    expect(r.message).toMatch(/知识库/);
+  });
+
+  it("知识库探针真读了后备存储：灌一篇文档后回包里的篇数会变（不是写死的 true）", async () => {
+    const t = await makeApp();
+    const conn = (await t.app.inject({
+      method: "POST", url: "/a/v1/connections", headers: ADMIN,
+      payload: { connectorTypeKey: "knowledge_base", name: "kb1", config: { endpoint: "internal://databuilder" } },
+    })).json() as { id: string };
+    const before = await testConn(t.app, "knowledge_base", { endpoint: "internal://databuilder" });
+    await t.app.inject({
+      method: "POST", url: `/a/v1/kb/${conn.id}/docs`, headers: ADMIN,
+      payload: { filename: "n.txt", contentBase64: Buffer.from("换型停机处置流程", "utf8").toString("base64") },
+    });
+    const after = await testConn(t.app, "knowledge_base", { endpoint: "internal://databuilder" });
+    // 对照实验：改变输入（多一篇文档），回包必须按可预言的方式变化。
+    expect(before.message).not.toBe(after.message);
+    expect(after.message).toMatch(/1 篇文档/);
   });
 });
 
