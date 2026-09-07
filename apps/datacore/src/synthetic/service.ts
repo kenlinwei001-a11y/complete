@@ -46,6 +46,8 @@ import {
   capacityPoolIdOfLine,
   // WO-LAST3-RELATIONS：`located_in` 锚点行的**唯一派生式**（省名并集 → 行政区行）。
   buildRegions,
+  // WO-COMPUTED-EDGE：型号归段的**唯一**出处（图谱边与 Model.unitPrice 共用），替代已死的 S192/L148 串匹配。
+  segKeyOfModelPos,
 } from "./battery.js";
 import { cadenceObjectRows, deriveChainCadences } from "./cadence.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
@@ -1023,10 +1025,13 @@ export class SyntheticService {
     for (const w of g.warehouses as { warehouseId: string; province?: string }[]) {
       if (w.province) await putLink(`lnk_lin_w_${w.warehouseId}`, "warehouse_located_in", oid("Warehouse", w.warehouseId), oid("Region", w.province));
     }
-    // factory: Workshop → Line（Line 的 workshopId 从 lineId 派生：LINE-WS-{baseId}-{suffix}；方向翻转：Workshop 1:N Line）
+    // factory: Workshop → Line（方向翻转：Workshop 1:N Line）
+    // WO-COMPUTED-EDGE：端点改**读列** `Line.workshopId`，不再现算 `lineId.replace("LINE-","")`。
+    // 那一句串手术正是「用户自建这条边恒 0 实例」的根（`Line` 上没有对应列 ⇒ viaProperty 无从声明）。
+    // 现在种子与声明式物化（`viaProperty:"workshopId", viaSide:"to"`）读的是**同一列**，不可能分叉。
     for (const l of g.lines) {
-      const workshopId = (l.lineId as string).replace("LINE-", "");
-      await putLink(`lnk_lbw_${l.lineId}`, "line_belongs_to_workshop", oid("Workshop", workshopId), oid("Line", l.lineId));
+      const workshopId = String((l as { workshopId?: string }).workshopId ?? "");
+      if (workshopId) await putLink(`lnk_lbw_${l.lineId}`, "line_belongs_to_workshop", oid("Workshop", workshopId), oid("Line", l.lineId));
     }
     // factory: Base → Line（Line.baseId，保留向后兼容；方向翻转：Base 1:N Line）
     for (const l of g.lines) {
@@ -1048,16 +1053,65 @@ export class SyntheticService {
       // WO-PROCESS-TICK-COVERAGE 逆边：工序排队压力要能落到**具体设备**上（设备是产能瓶颈的真落点）。
       await putLink(`lnk_pue_${eq.equipId}`, "process_uses_equipment", oid("Process", eq.processId), oid("Equipment", eq.equipId));
     }
-    // supply: Model → Material（确定性 BOM：每型号取 4 种物料，按型号序错位选取，覆盖全部 8 料）
-    const matIds = ext.materials.map((m) => String((m as { matId: string }).matId));
-    for (let mi = 0; mi < g.models.length; mi++) {
-      const m = g.models[mi] as { modelId: string };
-      const bom = Array.from({ length: 4 }, (_, k) => matIds[(mi * 2 + k) % matIds.length] as string);
-      for (const matId of new Set(bom)) {
-        await putLink(`lnk_mum_${m.modelId}_${matId}`, "model_uses_material", oid("Model", m.modelId), oid("Material", matId));
-        // WO-P1 影响向逆边：与上一行**共用同一个 bom 变量**（不是抄一遍派生式）⇒ 两向严格互逆，
-        // 改 BOM 派生式时不可能只改一半（抄一份就会漂，本仓已因「金丝雀各抄一份正则」吃过亏）。
-        await putLink(`lnk_mubm_${matId}_${m.modelId}`, "material_used_by_model", oid("Material", matId), oid("Model", m.modelId));
+    /*
+     * supply: Model → Material（**捷径边**：跨过 BOM 四跳链直连「这个型号用哪些料」）。
+     *
+     * ══ WO-COMPUTED-EDGE · 口径归一（今天的行为是 X，应该是 Y）══════════════════════════
+     * **X**：这两条边的物料集由一句**模运算**算出 —— `matIds[(mi*2+k) % 8]`，**每型号取 4 种**，
+     *   与 BOM 表毫无关系。而同一个业务问题「这个型号用哪些料」，图上还有**第二个答案**：
+     *   `Model ←version_belongs_to_model– ProductVersion ←bom_belongs_to_version– BOMHeader
+     *    ←detail_belongs_to_bom– BOMDetail –detail_uses_material→ Material`
+     *   四跳全通（本文件上方四条 `putLink` 即是），走 `BOM_ITEM_TEMPLATES` 8 行模板按化学体系
+     *   跳掉对侧正极 ⇒ **每型号 7 种**。**两个答案都在被消费**：捷径边被 8 条切片 +
+     *   `chain-loss` 求解器 + 两条传导规则（`viaLinkKey`）读，BOM 链被 `order_to_material_bom`
+     *   切片与 `Model.unitCost` 读。4 种 vs 7 种，谁都不会红。
+     * **Y**：**留 BOM 表这一份、废掉模运算这一份** —— 捷径边改为**从 BOM 链派生**：
+     *   `BOMHeader.modelId → BOMDetail.bomId → BOMDetail.materialId`，去重后连边。
+     *   捷径边的 key/方向/端点类型**一个字节没改**（8 条切片、求解器、两条传导规则全部原地生效），
+     *   变的只是它算的是哪一份物料集。
+     *
+     * ── 为什么不是另外三种改法（每一种都会把问题做大）─────────────────────────────
+     * · **给 `BOMDetail` 加 `modelId`**：不该。`BOMDetail` 的父是 `BOMHeader`，而 `BOMHeader`
+     *   已经有 `modelId` —— 给明细行再挂一个型号是**冗余外键**，两处一旦不同步就是第三个真相。
+     * · **造「多跳桥链」机制**：四跳链今天就全通、五种声明够用，缺的不是机制；
+     *   造一个新机制只会**再生出第三个答案**。
+     * · **直接退役捷径边、下钻一律走四跳**：那要改 8 条切片 + 2 条传导规则的 `viaLinkKey`，
+     *   属另一张单的范围；且捷径边本身是有价值的（一跳答「用哪些料」）。
+     *
+     * ⚠ 逆边 `material_used_by_model` 与正向边**共用同一个 `pairs` 集合**（不是抄一遍派生式）
+     *   ⇒ 两向严格互逆，改口径时不可能只改一半（抄一份就会漂，本仓已因「金丝雀各抄一份正则」吃过亏）。
+     * ⚠ 遍历序取自 `g.bomHeaders` / `g.bomDetails` 的落库序（两者都是确定性生成的），
+     *   且边 id 只由 `modelId`+`matId` 决定 ⇒ R6 同 seed 字节一致。
+     */
+    const bomIdsByModel = new Map<string, string[]>();
+    for (const bh of g.bomHeaders) {
+      const mid = String((bh as { modelId?: string }).modelId ?? "");
+      const bid = String((bh as { bomId?: string }).bomId ?? "");
+      if (!mid || !bid) continue;
+      const arr = bomIdsByModel.get(mid);
+      if (arr) arr.push(bid);
+      else bomIdsByModel.set(mid, [bid]);
+    }
+    const matsByBom = new Map<string, string[]>();
+    for (const bd of g.bomDetails) {
+      const bid = String((bd as { bomId?: string }).bomId ?? "");
+      const mat = String((bd as { materialId?: string }).materialId ?? "");
+      if (!bid || !mat) continue;
+      const arr = matsByBom.get(bid);
+      if (arr) arr.push(mat);
+      else matsByBom.set(bid, [mat]);
+    }
+    for (const m of g.models) {
+      const modelId = String((m as { modelId: string }).modelId);
+      // 一个型号可能有多版 BOM（多个 ProductVersion）⇒ 取并集：「这个型号用到过哪些料」
+      // 是所有在效版本的并，不是某一版的独占。去重按 matId（Set 保持插入序 ⇒ 确定性）。
+      const mats = new Set<string>();
+      for (const bid of bomIdsByModel.get(modelId) ?? []) {
+        for (const mat of matsByBom.get(bid) ?? []) mats.add(mat);
+      }
+      for (const matId of mats) {
+        await putLink(`lnk_mum_${modelId}_${matId}`, "model_uses_material", oid("Model", modelId), oid("Material", matId));
+        await putLink(`lnk_mubm_${matId}_${modelId}`, "material_used_by_model", oid("Material", matId), oid("Model", modelId));
       }
     }
     // ── WO-P1 · 供应「影响方向」逆边（类型声明见 battery.ts `batteryLinkTypes()` 同名三条）────────
@@ -1148,9 +1202,19 @@ export class SyntheticService {
     for (const sh of g.shipments) await putLink(`lnk_bsh_${P(sh).shipId}`, "base_has_shipment", oid("Base", P(sh).baseId), oid("Shipment", P(sh).shipId));
     // equip（检修）: Base → MaintPlan（mp.baseId）
     for (const mp of g.maintPlans) await putLink(`lnk_bmp_${P(mp).planId}`, "base_maint_plan", oid("Base", P(mp).baseId), oid("MaintPlan", P(mp).planId));
-    // product（细分）: Model → Segment（确定性化学体系映射：S192→ess｜L148→com｜其余→pas）
-    const segOf = (modelId: string) => (modelId.includes("S192") ? "ess" : modelId.includes("L148") ? "com" : "pas");
-    for (const m of g.models) await putLink(`lnk_mis_${m.modelId}`, "model_in_segment", oid("Model", m.modelId), oid("Segment", segOf(String(m.modelId))));
+    // product（细分）: Model → Segment。
+    // WO-COMPUTED-EDGE · **修一条退化边**（铁律 0.5 的第二态「接了线没数据」）：
+    //   旧派生式 `modelId.includes("S192") ? "ess" : includes("L148") ? "com" : "pas"` 里，
+    //   两个分支的判据在 `MODELS` 全表 6 型上**一次都没匹中过** ⇒ 6 条边全落 `"pas"`，
+    //   三个细分坍缩成一个，而边有实例、检索走得通、四包全绿 —— 没有任何东西会红。
+    //   现改用 `segKeyOfModelPos`（型号归段的唯一出处，与 `Model.unitPrice` 的归段共用同一个函数）。
+    //   `com` 分支已随该函数删除：型号表里没有商用车型号，商用车细分在本仓由**买方业态**判定
+    //   （`customerSegKeyOf`/`segKeyOfBusinessType`），不由型号判定 —— 详见该函数头注。
+    // 声明式等价物：`viaKeyExpr: 'IF(this.pos == "储能", "ess", "pas")'`（零新 AST 节点）。
+    for (const m of g.models) {
+      const segKey = segKeyOfModelPos(String((m as { pos?: string }).pos ?? ""));
+      await putLink(`lnk_mis_${m.modelId}`, "model_in_segment", oid("Model", m.modelId), oid("Segment", segKey));
+    }
     // quality（数据源）: Base → DataSourceHealth（N:N，每基地挂全部数据源）
     for (const b of g.bases) for (const dh of g.dataHealth) await putLink(`lnk_bdh_${b.baseId}_${P(dh).sourceId}`, "base_data_health", oid("Base", b.baseId), oid("DataSourceHealth", P(dh).sourceId));
     // finance（Phase5A）: Base → FinanceAccount（fa.baseId）
@@ -1238,10 +1302,18 @@ export class SyntheticService {
       if (fm) await putLink(`lnk_s2f_${P(s).key}`, "scenario_to_finance", oid("AnnualScenario", P(s).scnId), oid("FinanceMetric", P(fm).metricId));
     }
     // plan（Phase7A）: Order → PlanTarget（按交期月匹配月度目标）→ Order 根直达 plan 域。
+    // WO-COMPUTED-EDGE：端点改**读列** `Order.dueMonth` 对到 `PlanTarget.period`，不再现算
+    // `PT-${due.slice(0,7)}`（前缀+截断）。声明式等价物是
+    // `viaProperty:"dueMonth", anchorProperty:"period", viaWhereTo:"PlanTarget.level == 'month'"`。
+    // ⚠ 那个 `level==="month"` 是 **anchor 侧**条件，`viaWhere` 够不着 —— 今天它侥幸不需要谓词，
+    //   只因 period 三档编码恰好不撞值（"2026" / "2026-Q1" / "2026-03"）。**那是数据形态的巧合，
+    //   不是机制保证**，所以声明侧照样把 `viaWhereTo` 写上，别指望下一个客户的编码也这么巧。
     const monthTargets = new Set(pd.planTargets.filter((t) => P(t).level === "month").map((t) => String(P(t).period)));
+    const targetIdByPeriod = new Map(pd.planTargets.filter((t) => P(t).level === "month").map((t) => [String(P(t).period), String(P(t).tgtId)]));
     for (const o of g.orders) {
-      const month = String((o as { due?: string }).due ?? "").slice(0, 7);
-      if (monthTargets.has(month)) await putLink(`lnk_otp_${o.so}`, "order_to_plantarget", oid("Order", o.so), oid("PlanTarget", `PT-${month}`));
+      const month = String((o as { dueMonth?: string }).dueMonth ?? "");
+      const tgtId = monthTargets.has(month) ? targetIdByPeriod.get(month) : undefined;
+      if (tgtId) await putLink(`lnk_otp_${o.so}`, "order_to_plantarget", oid("Order", o.so), oid("PlanTarget", tgtId));
     }
 
     // SPINE 骨架链：指标→KSF / 指标→责任人（由 Metric.ksfRef/ownerRef 确定性派生，骨架可视化 + R-一致）。

@@ -463,6 +463,41 @@ export function segKeyOfBusinessType(bt: BusinessType): "pas" | "com" | "ess" {
 }
 
 /**
+ * **型号 → 细分**（`Model.pos` 用途位 → `Segment.segKey`）。型号侧归段的**唯一**出处。
+ *
+ * ══ 今天的行为是 X，应该是 Y（WO-COMPUTED-EDGE 实测）════════════════════════════
+ * **X**：`model_in_segment` 的端点由种子里一句 `modelId.includes("S192") ? "ess"
+ *   : modelId.includes("L148") ? "com" : "pas"` 算出。而 `MODELS` 全表**恰好 6 型**
+ *   （`4680-NCM` `4680-LFP` `2170-NCM` `方形-LFP` `方形-NCM` `圆柱-LFP`，全文件无 `models.push`
+ *   ⇒ 任何 scale 都是这 6 型），**没有任何一个 modelId 含 `S192` 或 `L148`**
+ *   ⇒ **6 条边全部指向 `Segment "pas"`，`ess` / `com` 两个分支从未进入过**。
+ *   边有实例、检索遍历得到、四包全绿 —— 三个细分坍缩成一个，而没有任何东西会红。
+ *   （`S192-LFP`/`L148-LFP` 这两个名字的真出处是求解器参数 `problems.essModels`/`comModels`，
+ *   **不是 `Model` 目录**；照它去匹配型号 id 从第一天起就匹不中。）
+ * **Y**：型号归段由用途位 `pos` 决定 —— 这**不是本函数新发明的口径**，而是本文件
+ *   `Model.unitPrice` 早已在用的那一条（`SEG_REGISTRY.find(s => s.key === (m.pos === "储能" ? "ess" : "pas"))`）。
+ *   两处从此**共用本函数**，不再各写一遍：定价说这个型号是储能、图上说它是乘用车，
+ *   那是同一个问题的第二个答案，比缺一条边危险。
+ *
+ * ── 为什么返回值里**没有** `com`（死分支的处置：删，不是补数据）─────────────────
+ * 型号表里**根本没有商用车型号**：`pos` 的取值域只有 动力 / 储能 / 动力+储能 三种，
+ * 一个「商用」都没有。这不是数据没种够 —— 本文件 `orderUnitPriceOf` 的头注早就把它记成实测结论：
+ * 「`SEG_REGISTRY.com` 声明的 1.8 万元/套**零个承载者**，商用车客户买的是动力 NCM」。
+ * 商用车这个细分在本仓语义下**由买方业态判定**（`customerSegKeyOf` / `segKeyOfBusinessType`，
+ * 走的是 `Order.businessType`），**不由型号判定** ⇒ 型号侧留一个 `com` 分支就是留一个
+ * 永远进不去的分支。**故删掉，而不是往 `MODELS` 里塞一个假型号把它喂活。**
+ *
+ * ⚠ `===` 而不是 `includes`：`4680-LFP` 的 `pos` 是「动力+储能」⇒ 归 `pas`。
+ * 这一条与 `Model.unitPrice` 的归段**必须逐字一致**（同一个函数，想不一致都难）。
+ * 本文件 `orderUnitPriceOf` 头注记的那个「定价用 `===`、选型用 `includes`」的口径不一致，
+ * 是**选型侧**（`modelsForBusinessType`）的账，不在本函数范围内；本函数只保证
+ * 「型号归哪个段」在定价与图谱两处是同一个答案。
+ */
+export function segKeyOfModelPos(pos: string): "pas" | "ess" {
+  return pos === "储能" ? "ess" : "pas";
+}
+
+/**
  * 订单客户名 → 客户主数据名（无归属登记时返回 `undefined` —— **不兜底、不轮转**）。
  * 返回 undefined 时调用方必须**不建边**（诚实缺席），而不是随手落一个客户。
  */
@@ -1406,6 +1441,22 @@ const orderProps: PropertyDef[] = [
   { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
   { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
   { propKey: "due", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  /**
+   * WO-COMPUTED-EDGE · **交期月**（`YYYY-MM`）—— `order_to_plantarget` 的连接列。
+   *
+   * **今天的行为是 X**：那条边的端点由种子现算 `PT-${o.due.slice(0,7)}`（前缀 + 日期截断），
+   * 而 `Order` 上没有任何一列长成月份 ⇒ 用户经建边页自建这条边**恒 0 实例**。
+   * **应该是 Y**：把「这张单算在哪个计划月」如实落成一列，边退化成
+   * `viaProperty:"dueMonth" + anchorProperty:"period"`（对到 `PlanTarget.period`，前缀 `PT-` 随之消失）。
+   *
+   * ⚠ **为什么不写成表达式**：`ontology-dsl` 的 `binary "+"` **两侧强制转数**
+   * （`asNumber` 只认有限数字）⇒ `"PT-" + this.period` 求值为 `null` 而**不报错**，
+   * 静默造一条 0 实例的死边。补列绕开这个坑，且可读、可测、不引入新语法。
+   *
+   * ⚠ **口径钉死在 `due` 上，不是 `earlyDue`**：提前交期是履约承诺，计划月归属仍按合同交期算 ——
+   * 两者混用会让同一张单在两个月度目标下各出现一次。
+   */
+  { propKey: "dueMonth", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "合同交期所属的计划月（`YYYY-MM`，由 `due` 截断，非 `earlyDue`）。月度计划目标 `PlanTarget.period` 用的是同一个编码，故这一列就是订单归入哪个月度目标的连接依据。" },
   { propKey: "pri", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // PRD-IND-order 优先级（高/中/低）
   { propKey: "bases", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   // WO-ORDER-BOOK-500：**声明 enumValues**（此前 dataType:"enum" 但取值未声明 ⇒ `ontology-validate.ts`
@@ -1428,6 +1479,20 @@ const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * 
 const lineProps: PropertyDef[] = [
   { propKey: "lineId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
   { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  /**
+   * WO-COMPUTED-EDGE · **所属车间的外键** —— 补的是一个本来就该有的属性，不是绕过机制。
+   *
+   * **今天的行为是 X**：`line_belongs_to_workshop` 的端点由种子现算
+   * （`l.lineId.replace("LINE-", "")`），而 `Line` 上**没有** `workshopId` 这一列 ⇒
+   * 这条边**出厂有实例、用户经建边页自建恒 0 实例**（`viaProperty` 无从声明，下拉里根本没有这一项）。
+   * **应该是 Y**：车间归属和基地归属（同表上一行的 `baseId`）是同一种东西 —— 一个外键列，
+   * 于是这条边退化成 `viaProperty:"workshopId", viaSide:"to"`，与 `line_belongs_to_base` 逐字同构。
+   *
+   * ⚠ 值**不是新真相**：生成侧本来就是 `const lineId = \`LINE-${workshopId}\``，`workshopId` 是
+   * 现成变量（见本文件产线生成段），落列只是把它写下来 —— 与 `Metric.ownerRef` 同一个建模习惯。
+   * 刻意**不**写成「从 lineId 反解」的派生式：两处各算一次就是第二份真相，迟早分叉。
+   */
+  { propKey: "workshopId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Workshop", description: "所属车间的外键（值 = `Workshop.workshopId` 主键）。与同表 `baseId` 同一形态；产线 id 本就是 `LINE-{workshopId}`，本列把这个归属如实落成一列，而不是让每个消费方各自从 id 里反解一次。" },
   { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
   // 运营指标（利用率 + 时序聚合物化：日实际产出 / 排程达成率）——全建模对齐（R12）。
   // ⚠⚠ `Line.utilization` 是 **0–100 百分数**，与 `Process.utilization` 的 **0–1 小数**同名不同量纲。
@@ -5174,7 +5239,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     // Order.unitPrice=model.unitPrice 自动继承（Model 侧与 Order 侧同一口径，不打架 R14）。
     void randInt(rng, 380, 980); // R6：保持 rng 流步长不变（下游订单/拓扑字节一致）
     const sc = BATTERY_SOLVER_PARAMS.scaleCoherence as { modelPriceVarPpk: number };
-    const seg = SEG_REGISTRY.find((s) => s.key === (m.pos === "储能" ? "ess" : "pas"))!;
+    // WO-COMPUTED-EDGE：归段口径抽成 `segKeyOfModelPos` 单一出处（图谱侧 `model_in_segment`
+    // 与本处定价从此**共用同一个函数**）。值不变 —— 本行原文就是该函数的函数体。
+    const seg = SEG_REGISTRY.find((s) => s.key === segKeyOfModelPos(m.pos))!;
     const priceVar = ((hashString(`${m.modelId}:unitprice`) % (2 * sc.modelPriceVarPpk + 1)) - sc.modelPriceVarPpk) / 1000; // ±modelPriceVarPpk‰
     const unitPrice = Math.round(seg.priceWan * 1e4 * (1 + priceVar));
     return {
@@ -5495,6 +5562,18 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   }
 
   /**
+   * WO-COMPUTED-EDGE · 回填 `Order.dueMonth`（`YYYY-MM`）。
+   *
+   * **一处回填而不是两处各写一遍**：订单来自两段（24 张锚点 + 规模补足段），两段各写一次
+   * 就是两份口径，改一处漏一处不会红 —— 这正是本仓 `lnk_mum_`/`lnk_mubm_` 那一对立下的纪律
+   * （「共用同一个变量，不是抄一遍派生式」）。
+   * 纯字符串截断、零 rng、零时钟 ⇒ R6 不受影响（`due` 本身就是确定性生成的）。
+   */
+  for (const o of orders) {
+    o["dueMonth"] = String(o["due"] ?? "").slice(0, 7);
+  }
+
+  /**
    * WO-UNITCOST-LAND · 回填 `Model.unitCost`（元/电芯），**必须排在 `deriveOrderLines` 之前** ——
    * 行上的 `unitCost` 是从 model 反范式化下来的，早一行都拿不到值。
    *
@@ -5554,6 +5633,8 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       lines.push({
         lineId,
         baseId: b.baseId,
+        // WO-COMPUTED-EDGE：车间归属落成一列（值取上面这个**现成变量**，不从 lineId 反解 —— 反解=第二份真相）。
+        workshopId,
         name: `${b.name}${wsDef.type}线`,
         // SA-5：产线台账字段（R12 全建模对齐）
         line_code: lineId.replace("LINE-", "L-"),
