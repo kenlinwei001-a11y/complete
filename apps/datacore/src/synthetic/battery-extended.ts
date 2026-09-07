@@ -53,6 +53,23 @@ const n = (
 });
 
 /**
+ * WO-RATE-DIMENSION · **参数化量纲**的数值属性：真实单位逐行不同，由 `refProp` 那一格给出。
+ *
+ * 与 `n()` 分开一个工厂而不是加第五个可选参数，是为了让「参数化」在调用点**一眼可见** ——
+ * `unit` 与 `unitRefProp` 必须成对出现（REST 建类型门对单向声明直接 400），
+ * 藏在可选参数里迟早有人只写一半。
+ */
+const nRef = (propKey: string, unit: PropertyUnit, refProp: string, description?: string): PropertyDef => ({
+  propKey,
+  dataType: "number",
+  isPrimaryKey: false,
+  unit,
+  scale: "absolute",
+  unitRefProp: refProp,
+  ...(description ? { description } : {}),
+});
+
+/**
  * WO-69 P3 · `Approvable` 接口要求的审批字段（approver / approvedAt）确定性合成。
  *
  * **R6 零位移**：由业务主键**加盐哈希**派生（同 WO-SA-2 设备可靠性字段的既有做法）——
@@ -121,7 +138,14 @@ export function extendedObjectTypes(): TypeDef[] {
     //   这是本单第 4 个「名字里的单位与实际值对不上」的字段（另三个：revenueWan/marginWan 的 Wan 实为亿元、
     //   下面 samplingRate 反向）—— **名字不是量纲的证据，实测值才是**。
     def("Material", "物料", "supply", [
-      p("matId", "string", true), p("name", "string"), n("unitPrice", "元", "absolute"), n("leadTime", "天", "absolute"), n("carbonFactor", "kgCO2e", "absolute"), n("bomUnit", "dimensionless", "absolute"), n("dailyUse", "吨", "absolute"), n("onHand", "吨", "absolute"), n("inTransit", "吨", "absolute"), n("devPct", "dimensionless", "ratio"), n("outsourceYield", "dimensionless", "ratio"),
+      p("matId", "string", true), p("name", "string"),
+      // WO-RATE-DIMENSION · 改前声明 `元`，即**把强度量当成绝对额**。实测同一列逐行分母不同：
+      // 三元正极/磷酸铁锂/石墨/铜箔/铝箔 `kg` · 隔膜 `㎡` · 电解液 `L` · 电芯壳体 `个`
+      // （出处 `materials-seed.ts MATERIALS[].unit`，即下方 `p("unit","string")` 那一格）。
+      // 一个属性只能声明一个 `unit` ⇒ 用参数化量纲把「分母由哪一格给」这件事说清楚。
+      // ⚠ 这会让下游任何拿它做算术的地方开始被量纲校验 —— **这是目的，不是副作用**。
+      nRef("unitPrice", "元/计量单位", "unit", "物料单价；分母是该物料自身的计量单位（见同对象 unit 格：kg/㎡/L/个）"),
+      n("leadTime", "天", "absolute"), n("carbonFactor", "kgCO2e", "absolute"), n("bomUnit", "dimensionless", "absolute"), n("dailyUse", "吨", "absolute"), n("onHand", "吨", "absolute"), n("inTransit", "吨", "absolute"), n("devPct", "dimensionless", "ratio"), n("outsourceYield", "dimensionless", "ratio"),
       p("materialCode", "string"), p("category", "enum"), p("spec", "string"), p("unit", "string"),
       { propKey: "supplierId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Supplier", unit: "dimensionless", scale: "absolute" },
       n("shelfLife", "天", "absolute"), p("isKeyMaterial", "boolean"), p("status", "enum"),

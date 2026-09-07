@@ -286,6 +286,23 @@ export function isParametricUnit(unit: string): boolean {
   return unit.includes(UNIT_REF_PLACEHOLDER);
 }
 
+/**
+ * 取**某个具体对象上**这个属性的真实单位。非参数化属性原样返回声明值。
+ *
+ * 返回 `undefined` = **该行量纲未知**（`unitRefProp` 那一格为空，或它的值不在词表里）。
+ * 调用方必须按未知处理 —— **不许回落成声明值**（那等于把「不知道」读成「就是占位符本身」，
+ * 正是本仓反复犯的那个形态：沉默被读成某个具体值）。
+ */
+export function resolvePropertyUnit(
+  prop: { unit: PropertyUnit; unitRefProp?: string },
+  props: Record<string, unknown>,
+): PropertyUnit | undefined {
+  if (!isParametricUnit(prop.unit)) return prop.unit;
+  if (!prop.unitRefProp) return undefined;
+  const raw = props[prop.unitRefProp];
+  return typeof raw === "string" && raw.length > 0 ? resolveParametricUnit(prop.unit, raw) : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // 公式量纲推断（派生属性门用）
 // ---------------------------------------------------------------------------
