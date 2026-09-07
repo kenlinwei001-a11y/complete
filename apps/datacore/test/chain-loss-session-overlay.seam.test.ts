@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ADMIN, makeApp, seedBattery, type TestApp } from "./helpers.js";
 import { ChainLossMatrixResultSchema, type ChainLossMatrixResult } from "@platform/contracts";
 import { SIM_DAY_STATE_VAR_BY_CARRIER, type ChainLossResult } from "../src/solvers/chain-loss.js";
+import { SOLVER_OUTPUT_SHAPES } from "../src/solvers/service.js";
 
 /**
  * WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话的**接缝门**。
@@ -101,6 +102,25 @@ describe("WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝", () => {
     const run = await attribution(t);
     expect(run.simContext, "一维归因同理").toBeUndefined();
     for (const e of run.evidence) expect(e.sim, `无会话时证据不该带 sim（${e.stepId}）`).toBeUndefined();
+  });
+
+  it("②b 形状契约：无会话时顶层 key 恒 == SOLVER_OUTPUT_SHAPES；simContext 是**条件字段**故意不登记", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const shape = SOLVER_OUTPUT_SHAPES["chain_loss_attribution"]!;
+    const noSession = await attribution(t);
+    // 这条与 `chain-loss-attribution.test.ts` 的精确相等断言同源：本单加了一个**条件**顶层 key，
+    // 必须证明它在无会话路径上**一个字节都没多** —— 否则那条断言会红，而红的原因会被误读成"形状漂了"。
+    expect(Object.keys(noSession).sort(), "无会话路径的顶层 key 不许因本单变化").toEqual([...shape].sort());
+    expect(shape, "simContext 是条件字段，刻意不进形状表（理由见 service.ts 该行注释）").not.toContain("simContext");
+
+    // 有会话时**恰好多这一个**键，不许顺手多带别的。
+    const run = await attribution(t);
+    const sup = carrierOf(run, "Supplier");
+    expect(sup).not.toBeNull();
+    const sid = await makeSession(t, { [sup!.objectId]: { deliveryDelay: 3 } });
+    const withSession = await attribution(t, { sessionId: sid });
+    expect(Object.keys(withSession).sort()).toEqual([...shape, "simContext"].sort());
   });
 
   it("③ 正向对照：天数族叠加后，该段天数 == 字段真值换算 + 状态量（按可预言的量变，不是"变了就算过"）", async () => {

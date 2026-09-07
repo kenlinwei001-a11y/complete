@@ -603,6 +603,17 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // WO-SANDBOX-E1 chain_loss_attribution 输出形状（= ChainLossResult 顶层 key）。
   // `attribution` 是 S0 `LossAttribution[]` 原形；`evidence` 是与 steps 一一对应的 R13 下钻行；
   // `empty` 是诚实缺席清单（前端必须显式渲染 EMPTY，不许当成 0 隐掉）。
+  //
+  // ⚠ WO-DRILL-VERDICT-BACKEND 的 `simContext` **刻意不在本表**，这是**有意省略不是漏登**
+  //   （两者在文件里长得一模一样，故必须写下来）：本表登记的是**无条件**下发的顶层 key，
+  //   而 `simContext` 只在传了 `sessionId` 时才出现 —— 它的「缺席」本身就是一个结论
+  //   （= 本次读的是真实世界那条链，不在任何会话上下文里）。
+  //   把它登记进来会让 `chain-loss-attribution.test.ts` 那条
+  //   `Object.keys(结果) === 声明形状` 的精确相等断言当场红 —— 而那条断言是有价值的守卫
+  //   （它抓的是「顶层 key 悄悄多一个/少一个」），**不许为了登记一个条件字段去把它改松**
+  //   （那正是"为买绿改期望值"）。
+  //   代价说清楚：DF.6 拉取靶（`checkPullTargetCoverage`）今天**够不到** `simContext`，
+  //   要用它的视图得走别的路。这是本次权衡的已知残口，不是没想到。
   chain_loss_attribution: ["anchor", "nodes", "attribution", "evidence", "empty", "totals", "conservation", "summary"],
   // WO-SANDBOX-E3 阻滞点扫描：impediments 是主表；unresolved/caveats/thresholds 是**诚实位**——
   // 前端必须能渲染"哪条判据判不出来、为什么"与"这条结论的旋钮在哪"，故一并进形状契约（漏了就成盲区）。
