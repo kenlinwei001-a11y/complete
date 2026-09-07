@@ -48,6 +48,8 @@ import {
   buildRegions,
   // WO-COMPUTED-EDGE：型号归段的**唯一**出处（图谱边与 Model.unitPrice 共用），替代已死的 S192/L148 串匹配。
   segKeyOfModelPos,
+  // WO-COMPUTED-EDGE：异常源类型 → 溯源边 key 的**唯一**对照（声明侧与实例侧共用一份）。
+  excSourceLinkKeyOf,
 } from "./battery.js";
 import { cadenceObjectRows, deriveChainCadences } from "./cadence.js";
 import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
@@ -1219,12 +1221,19 @@ export class SyntheticService {
     for (const b of g.bases) for (const dh of g.dataHealth) await putLink(`lnk_bdh_${b.baseId}_${P(dh).sourceId}`, "base_data_health", oid("Base", b.baseId), oid("DataSourceHealth", P(dh).sourceId));
     // finance（Phase5A）: Base → FinanceAccount（fa.baseId）
     for (const fa of ext.financeAccounts) await putLink(`lnk_bfn_${P(fa).accId}`, "base_finance", oid("Base", P(fa).baseId), oid("FinanceAccount", P(fa).accId));
-    // WO-EXCEPTION-EVENT · 异常事件→源对象溯源边（exc_sourced_from·R13 全监听下钻）。toType 异构（5 源），
-    // 真实源类型落 edge props.refType；目标 obj 已物化（3 源上文 putAll + MaterialBalance/TriggerRule 已物化）。
+    // WO-EXCEPTION-EVENT · 异常事件→源对象溯源边（R13 全监听下钻）。
+    // WO-COMPUTED-EDGE（裁决③·多态目标）：**边 key 随 refType 分流到五条定型边**，不再全塞进一条
+    // 声明为 `ExceptionEvent→EquipmentDowntime` 的多态边。修前实测：372 条实例写进 links、
+    // **检索只看得见 166 条**（`executeSlice` 按声明的单值 `toTypeKey` 裁剪可达类型），
+    // 另 206 条写进去了永远读不出来、且不报错。key 映射的**唯一出处**是 `EXC_SOURCE_LINKS`。
+    // 目标 obj 已物化（3 源上文 putAll + MaterialBalance/TriggerRule 已物化）。
     for (const ev of exceptionEvents) {
       const refType = String(ev.refType);
       const refId = String(ev.refId);
-      await putLink(`lnk_exc_${String(ev.excId)}`, "exc_sourced_from", oid("ExceptionEvent", ev.excId), oid(refType, refId), { refType, refId });
+      // 认不出的 refType ⇒ **不建边**（诚实缺席）。兜底落到某一条上等于造一条端点类型错的脏边，
+      // 而它不会报错、只会让那一源的下钻结果凭空变多。
+      const excLinkKey = excSourceLinkKeyOf(refType);
+      if (excLinkKey) await putLink(`lnk_exc_${String(ev.excId)}`, excLinkKey, oid("ExceptionEvent", ev.excId), oid(refType, refId), { refType, refId });
       // WO-PROCESS-TICK-COVERAGE 逆边（**只逆 DefectRecord 那一源**）：缺陷变多 → 异常处置积压。
       // 为什么不把五源都逆：另四源（EquipmentAlarm/EquipmentDowntime/MaterialBalance/TriggerRule）
       // 今天在传导图上都不是 target，逆了也没有源能驱动它们 —— 那就是「接了线没数据」的边，

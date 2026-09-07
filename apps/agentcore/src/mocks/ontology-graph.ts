@@ -182,7 +182,14 @@ export const MOCK_ONTOLOGY_LINKS: MockOntologyLink[] = [
   { linkKey: "oee_for_equip", fromTypeKey: "EquipmentOEE", toTypeKey: "Equipment" },
   { linkKey: "dt_for_equip", fromTypeKey: "EquipmentDowntime", toTypeKey: "Equipment" },
   { linkKey: "alarm_for_equip", fromTypeKey: "EquipmentAlarm", toTypeKey: "Equipment" },
+  // WO-COMPUTED-EDGE（裁决③）：A 侧把一条多态溯源边拆成**五条定型边**（A 侧单一来源 `EXC_SOURCE_LINKS`）。
+  // 拆之前 `exc_sourced_from` 声明 `toTypeKey: EquipmentDowntime` 而实例目标类型随行变 ⇒
+  // 372 条实例里检索只看得见 166 条。镜像照抄 A 侧五条，key 名与端点逐字一致。
   { linkKey: "exc_sourced_from", fromTypeKey: "ExceptionEvent", toTypeKey: "EquipmentDowntime" },
+  { linkKey: "exc_sourced_from_alarm", fromTypeKey: "ExceptionEvent", toTypeKey: "EquipmentAlarm" },
+  { linkKey: "exc_sourced_from_defect", fromTypeKey: "ExceptionEvent", toTypeKey: "DefectRecord" },
+  { linkKey: "exc_sourced_from_balance", fromTypeKey: "ExceptionEvent", toTypeKey: "MaterialBalance" },
+  { linkKey: "exc_sourced_from_trigger", fromTypeKey: "ExceptionEvent", toTypeKey: "TriggerRule" },
   { linkKey: "maint_for_equip", fromTypeKey: "MaintenanceOrder", toTypeKey: "Equipment" },
   { linkKey: "spare_for_maint", fromTypeKey: "SparePartConsumption", toTypeKey: "MaintenanceOrder" },
   { linkKey: "att_for_line", fromTypeKey: "OperatorAttendance", toTypeKey: "Line" },

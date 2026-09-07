@@ -285,7 +285,23 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     // （`model_producible_at|Model|Base` 两侧必中 = true ∧ 合成键必不中 = false）。
     // ⚠ 这次是 **+4**：三条 `located_in` 是**不同源类型**的三条独立边（不是一条边的三个别名），
     //   第四条与它们语义无关。且 `operation_depends_on` 两端同型（自环），是全仓第二条自环边。
-    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 111）").toBe(111);
+    // 111→115 于 2026-09-07（`WO-COMPUTED-EDGE-IMPL` 裁决③·多态目标）：A 侧把**一条多态溯源边**
+    // 拆成**五条定型边** —— 原 `exc_sourced_from` 声明 `toTypeKey: EquipmentDowntime`，而实例的目标类型
+    // 随 `ExceptionEvent.refType` 变（5 源）。真后端 SEED_DEMO=1 实测：372 条实例写进了 `repos.links`，
+    // 而 `executeSlice` 按声明的**单值** toTypeKey 裁剪可达类型 ⇒ 检索只看得见 **166 条**
+    // （`{nodes:538, edges:166, truncated:false}`），另 **206 条**（EquipmentAlarm 111 / DefectRecord 85 /
+    // MaterialBalance 7 / TriggerRule 3）写进去了永远读不出来且不报错。
+    // 新增四条：`exc_sourced_from_alarm|ExceptionEvent|EquipmentAlarm` ·
+    // `exc_sourced_from_defect|ExceptionEvent|DefectRecord` ·
+    // `exc_sourced_from_balance|ExceptionEvent|MaterialBalance` ·
+    // `exc_sourced_from_trigger|ExceptionEvent|TriggerRule`。原 key 原地留给 EquipmentDowntime 那一源
+    // ⇒ 既有消费方看到的 166 条一个字节不变，是 **+4 不是 +5**，也不是改名。
+    // 照本注释的要求**两侧独立复算过，没有照抄报错里的 received**：另写一份脚本、不 import 本文件的
+    // 抽取器，对 battery.ts `batteryLinkTypes()` 与 ontology-graph.ts `MOCK_ONTOLOGY_LINKS` 各跑一遍
+    // 同一条正则求差集 ⇒ **base 树 A 111 · B 111**，**本单树 A 115 · B 115 · missing [] · extra []**；
+    // 金丝雀两条同时验过（`model_producible_at|Model|Base` 两侧必中 = true ∧ 合成键必不中 = true）。
+    // ⚠ 类型数不动（仍 63）：五个目标类型早就都在本体里，本次只加链路声明。
+    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 115）").toBe(115);
   });
 
   it("§2 mock 镜像图 == battery.ts 现算图（集合相等·缺谁多谁点名）", () => {

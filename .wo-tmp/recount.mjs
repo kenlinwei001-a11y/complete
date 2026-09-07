@@ -1,34 +1,30 @@
-// 独立复算（**不 import 测试里的抽取器**）：对 battery.ts 与 ontology-graph.ts 各跑一遍
-// 同一条 `fromTypeKey:` 正则，求差集。先跑金丝雀自证正则没瞎。
+/**
+ * 金值独立复算：**不 import** mock-engine-parity 的抽取器，自己对两份源文件跑同一条正则求差集。
+ * （该测试头注明令：不许照抄报错里的 received，必须两侧独立复算。）
+ */
 import { readFileSync } from "node:fs";
+const A = readFileSync("apps/datacore/src/synthetic/battery.ts", "utf8");
+const B = readFileSync("apps/agentcore/src/mocks/ontology-graph.ts", "utf8");
 
-const R = /\{[^{}]*?key:\s*"([^"]+)"[^{}]*?fromTypeKey:\s*"([^"]+)"[^{}]*?toTypeKey:\s*"([^"]+)"[^{}]*?\}/g;
-const RM = /\{[^{}]*?linkKey:\s*"([^"]+)"[^{}]*?fromTypeKey:\s*"([^"]+)"[^{}]*?toTypeKey:\s*"([^"]+)"[^{}]*?\}/g;
+// 只取 batteryLinkTypes() 的 return 数组体（粗切：从声明处到文件里下一个 `\n}` 之后的 `export`）。
+const start = A.indexOf("export function batteryLinkTypes()");
+if (start < 0) throw new Error("工具坏了：找不到 batteryLinkTypes");
+const ltText = A.slice(start, A.indexOf("\nexport ", start + 10));
+// 剥行注释（`//`），否则注释里举例的 `key: "x", fromTypeKey:` 会被算进去。
+const strip = (s) => s.split("\n").map((l) => l.replace(/^\s*\/\/.*$/, "")).join("\n");
 
-const grab = (file, re) => {
-  const src = readFileSync(file, "utf8");
-  const out = new Set();
-  let m;
-  re.lastIndex = 0;
-  while ((m = re.exec(src)) !== null) out.add(`${m[1]}|${m[2]}|${m[3]}`);
-  return out;
-};
+const RE = /\{\s*key:\s*"(\w+)",\s*fromTypeKey:\s*"(\w+)",\s*toTypeKey:\s*"(\w+)"/g;
+const RE_B = /\{\s*linkKey:\s*"(\w+)",\s*fromTypeKey:\s*"(\w+)",\s*toTypeKey:\s*"(\w+)"/g;
 
-const A = grab("apps/datacore/src/synthetic/battery.ts", R);
-const B = grab("apps/agentcore/src/mocks/ontology-graph.ts", RM);
+const aSet = new Set([...strip(ltText).matchAll(RE)].map((m) => `${m[1]}|${m[2]}|${m[3]}`));
+const bSet = new Set([...strip(B).matchAll(RE_B)].map((m) => `${m[1]}|${m[2]}|${m[3]}`));
 
-// 🐤 金丝雀：一条已知必中 ∧ 一个已知不存在必不中 —— 正则若瞎，这里先说话。
-const CAN_HIT = "model_producible_at|Model|Base";
-const CAN_MISS = "zz_no_such_link|Nope|Nope";
-console.log("CANARY battery hit  :", A.has(CAN_HIT));
-console.log("CANARY battery miss :", A.has(CAN_MISS));
-console.log("CANARY mock    hit  :", B.has(CAN_HIT));
-console.log("CANARY mock    miss :", B.has(CAN_MISS));
-if (!A.has(CAN_HIT) || A.has(CAN_MISS) || !B.has(CAN_HIT) || B.has(CAN_MISS)) {
-  console.log("!! 工具坏了，下面的数不许信");
-  process.exit(2);
-}
-console.log("battery links:", A.size);
-console.log("mock    links:", B.size);
-console.log("missing (A 有 mock 缺):", [...A].filter((k) => !B.has(k)).sort());
-console.log("extra   (mock 有 A 无):", [...B].filter((k) => !A.has(k)).sort());
+// 🐤 金丝雀：一条我确定两侧都有的边必中；一条合成键必不中（单向测不出恒真匹配器）。
+const canaryHit = aSet.has("model_producible_at|Model|Base") && bSet.has("model_producible_at|Model|Base");
+const canaryMiss = !aSet.has("zzz_nonexistent|Foo|Bar") && !bSet.has("zzz_nonexistent|Foo|Bar");
+console.log(`🐤 金丝雀：必中=${canaryHit}  必不中=${canaryMiss}${canaryHit && canaryMiss ? "" : "  ⛔ 工具坏了，下面的数不算数"}`);
+
+console.log(`battery(A) 链路 = ${aSet.size}`);
+console.log(`mock(B)    链路 = ${bSet.size}`);
+console.log(`missing (A 有 B 缺) = ${JSON.stringify([...aSet].filter((k) => !bSet.has(k)))}`);
+console.log(`extra   (B 有 A 缺) = ${JSON.stringify([...bSet].filter((k) => !aSet.has(k)))}`);
