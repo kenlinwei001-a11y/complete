@@ -17,6 +17,7 @@ import { checkInterfaceConformance, formatInterfaceViolations } from "@platform/
 import { SOLVER_ONTOLOGY_SIGNATURES } from "./solvers/ontology-signature.js";
 // WO-PREDICATE-EDGE · 谓词边（`viaWhere`）。求值器复用 A5 规则 DSL，本模块只收窄子集 + 写入期校验。
 import { compileLinkPredicate, linkPredicateHolds, type LinkPredicate } from "./ontology-link-predicate.js";
+import { compileLinkKeyExpr, evalLinkKey, type LinkKeyExpr } from "./ontology-link-keyexpr.js";
 import { DslError } from "./ruledsl.js";
 import type {
   AuthCtx,
@@ -57,6 +58,35 @@ export interface MaterializeResult {
   carrierObjects: number;
   /** 锚点列上出现同值的键数（我替你挑了排序首个）。0 时不下发 —— 「没有歧义」不该长得像「有歧义但为 0」。 */
   ambiguousAnchors?: number;
+  /**
+   * WO-COMPUTED-EDGE · `viaKeyExpr` 算出了**几个互不相同**的键。**算端点这一路必给。**
+   *
+   * 为什么它必须上回执：把算端点做成机制，等于把「算错了」搬进声明，而声明在数据库里、不在 diff 里。
+   * 本仓真事：`model_in_segment` 的旧派生式让 6 个型号**全落 `pas`** —— 边有实例、检索走得通、
+   * 四包全绿，只是三个细分坍缩成一个。`distinct=1` 就是这件事在物化那一刻的**唯一可见形态**。
+   */
+  keyExprDistinctKeys?: number;
+  /**
+   * WO-COMPUTED-EDGE · 键表达式求值为 `null` 的行数（属性缺失 / 串参与四则 / 除零）。
+   * **与 `unresolved` 分开计**：「公式算不出键」与「算出了键但查无锚点」修法完全不同，
+   * 混成一个数会让前者伪装成后者。0 时不下发。
+   */
+  keyExprNullRows?: number;
+  /** WO-COMPUTED-EDGE · 叉积两侧谓词筛完之后的行数（限界证据：候选 |from|×|to| → 边 M）。 */
+  crossFrom?: number;
+  crossTo?: number;
+}
+
+/**
+ * WO-COMPUTED-EDGE · 键表达式可引用的属性名全集 = **声明属性 ∪ 派生属性**。
+ *
+ * 为什么派生属性也算：`ontology-dsl` 是**派生属性自己的**求值器，`this.value`（`qty * unitPrice`）
+ * 这类派生列在 `props` 上是实打实存在的。只用 `properties` 校验会把它们判成「不存在的属性」
+ * 而 400 —— 那是把一个合法写法拦在门外，与本仓「白名单迟早被例外吃光」是同一个形态的错。
+ */
+function carrierPropKeysOf(t: { properties: { propKey: string }[]; derivedProperties?: { propKey: string }[] } | null | undefined): string[] {
+  if (!t) return [];
+  return [...t.properties.map((p) => p.propKey), ...(t.derivedProperties ?? []).map((d) => d.propKey)];
 }
 
 /** 交叉验证用：宽松等值比较（数字容差 1e-9；其余转字符串比较，避免类型/格式假阳）。 */
@@ -369,32 +399,118 @@ export class OntologyService {
         }
       }
     }
-    // WO-PREDICATE-EDGE：`viaWhere` 同样**不许静默**。谓词取不到字段时求值器一律判假 ⇒
-    // 每一行都被筛掉 ⇒ 0 实例的死边，且全程不报错。所以打错字 / 用了被禁子集一律当场 400。
-    if (input.viaWhere !== undefined) {
-      if (input.viaProperty === undefined) {
+    /*
+     * WO-COMPUTED-EDGE · **四种实现形态互斥**（属性 / 桥 / 算端点 / 叉积）。
+     * 同时声明两种 ⇒ 物化时该听谁的？不许猜，当场拒绝 —— 与上面 `viaProperty × viaBridge`
+     * 那一条同款判据，只是把二元互斥扩成四元。
+     */
+    {
+      const declared = [
+        ["viaProperty", input.viaProperty !== undefined],
+        ["viaBridge", input.viaBridge !== undefined],
+        ["viaKeyExpr", input.viaKeyExpr !== undefined],
+        ["viaCross", input.viaCross !== undefined],
+      ].filter(([, on]) => on).map(([n]) => n as string);
+      if (declared.length > 1) {
         throw validationError(
-          `结构边 ${input.key} 声明了谓词 viaWhere 却没有 viaProperty —— ` +
-            `谓词只能**收窄**一个已存在的连接，自己造不出连接（端点仍须由 viaProperty 给出）`,
+          `结构边 ${input.key} 同时声明了 ${declared.join(" 与 ")} —— 这些是互斥的实现方式，只能选一种`,
         );
       }
+    }
+    // WO-COMPUTED-EDGE 桶④·算端点：`viaKeyExpr` 与 `viaProperty` 同一条纪律 —— **不许静默**。
+    // 表达式取不到字段时求值为 null ⇒ 该行算不出键 ⇒ 全体落空的死边，且全程不报错。
+    if (input.viaKeyExpr !== undefined) {
       const carrierKey = (input.viaSide ?? "from") === "from" ? input.fromTypeKey : input.toTypeKey;
       const carrierType = await this.getType(ctx, carrierKey);
       if (!carrierType) {
         throw validationError(
-          `结构边 ${input.key} 声明了谓词 viaWhere，但${(input.viaSide ?? "from") === "from" ? "来源" : "去向"}类型 ${carrierKey} 不存在`,
+          `结构边 ${input.key} 声明了键表达式 viaKeyExpr，但${(input.viaSide ?? "from") === "from" ? "来源" : "去向"}类型 ${carrierKey} 不存在`,
         );
       }
+      // 编译期已把「引用不存在的属性 / 用聚合 / 常量公式」逐条 400 点名（见 ontology-link-keyexpr.ts）。
+      compileLinkKeyExpr(input.viaKeyExpr, carrierKey, carrierPropKeysOf(carrierType));
+      // `anchorProperty` 对算端点同样有效（算出来的键可以对到锚点的非主键列），照 viaProperty 那条校验。
+      if (input.anchorProperty !== undefined) {
+        const anchorKey = (input.viaSide ?? "from") === "from" ? input.toTypeKey : input.fromTypeKey;
+        const anchorType = await this.getType(ctx, anchorKey);
+        if (!anchorType) {
+          throw validationError(`结构边 ${input.key} 声明了「对到 ${anchorKey}.${input.anchorProperty}」，但该类型不存在`);
+        }
+        if (!anchorType.properties.some((p) => p.propKey === input.anchorProperty)) {
+          throw validationError(
+            `结构边 ${input.key} 的锚点属性 '${input.anchorProperty}' 不是 ${anchorKey} 的属性` +
+              `（可选：${anchorType.properties.map((p) => p.propKey).join("/") || "该类型没有任何属性"}）`,
+          );
+        }
+      }
+    }
+    // WO-PREDICATE-EDGE：`viaWhere` 同样**不许静默**。谓词取不到字段时求值器一律判假 ⇒
+    // 每一行都被筛掉 ⇒ 0 实例的死边，且全程不报错。所以打错字 / 用了被禁子集一律当场 400。
+    // WO-COMPUTED-EDGE：`viaWhereTo` 是它的 anchor 侧对称件，共用同一份编译器与同一套话术。
+    for (const [field, src, sideOfPred] of [
+      ["viaWhere", input.viaWhere, "carrier"],
+      ["viaWhereTo", input.viaWhereTo, "anchor"],
+    ] as const) {
+      if (src === undefined) continue;
+      if (input.viaProperty === undefined && input.viaKeyExpr === undefined) {
+        throw validationError(
+          `结构边 ${input.key} 声明了谓词 ${field} 却既没有 viaProperty 也没有 viaKeyExpr —— ` +
+            `谓词只能**收窄**一个已存在的连接，自己造不出连接（端点仍须由 viaProperty 或 viaKeyExpr 给出；` +
+            `叉积的两侧谓词写在 viaCross.fromWhere / viaCross.toWhere 里）`,
+        );
+      }
+      const fromIsCarrier = (input.viaSide ?? "from") === "from";
+      const typeKey =
+        sideOfPred === "carrier"
+          ? fromIsCarrier ? input.fromTypeKey : input.toTypeKey
+          : fromIsCarrier ? input.toTypeKey : input.fromTypeKey;
+      const t = await this.getType(ctx, typeKey);
+      if (!t) {
+        throw validationError(`结构边 ${input.key} 声明了谓词 ${field}，但被它筛的类型 ${typeKey} 不存在`);
+      }
       try {
-        compileLinkPredicate(input.viaWhere, carrierKey, carrierType.properties.map((p) => p.propKey));
+        compileLinkPredicate(src, typeKey, t.properties.map((p) => p.propKey));
       } catch (e) {
         if (e instanceof DslError) {
           throw validationError(
-            `结构边 ${input.key} 的谓词 viaWhere 无效：${e.message}` +
+            `结构边 ${input.key} 的谓词 ${field} 无效：${e.message}` +
               (e.position != null ? `（字符位 ${e.position}）` : ""),
           );
         }
         throw e;
+      }
+    }
+    /*
+     * WO-COMPUTED-EDGE 桶④·造叉积：两侧谓词各按自己那一侧的类型校验，`maxEdges` 必须是正整数。
+     * ⚠ **上限不给默认值**：叉积是全仓唯一一种边数不随数据量线性增长的声明，
+     * 一个默认值等于替声明方做了「这条边最多能有多大」这个判断，而那正是本字段要逼他自己想清楚的事。
+     */
+    if (input.viaCross) {
+      const cross = input.viaCross;
+      if (!Number.isInteger(cross.maxEdges) || cross.maxEdges <= 0) {
+        throw validationError(
+          `结构边 ${input.key} 的叉积上限 viaCross.maxEdges 必须是正整数（收到 ${String(cross.maxEdges)}）——` +
+            `叉积的边数是两侧行数之积，没有上限就没有任何东西拦住一次误声明写爆仓储`,
+        );
+      }
+      for (const [label, typeKey, src] of [
+        ["fromWhere", input.fromTypeKey, cross.fromWhere],
+        ["toWhere", input.toTypeKey, cross.toWhere],
+      ] as const) {
+        const t = await this.getType(ctx, typeKey);
+        if (!t) throw validationError(`结构边 ${input.key} 声明了叉积，但${label === "fromWhere" ? "来源" : "去向"}类型 ${typeKey} 不存在`);
+        if (src === undefined) continue;
+        try {
+          compileLinkPredicate(src, typeKey, t.properties.map((p) => p.propKey));
+        } catch (e) {
+          if (e instanceof DslError) {
+            throw validationError(
+              `结构边 ${input.key} 的叉积谓词 viaCross.${label} 无效：${e.message}` +
+                (e.position != null ? `（字符位 ${e.position}）` : ""),
+            );
+          }
+          throw e;
+        }
       }
     }
     const def: LinkTypeDef = {
@@ -443,16 +559,37 @@ export class OntologyService {
     ctx: AuthCtx,
     def: LinkTypeDef,
   ): Promise<MaterializeResult> {
-    if (!def.viaProperty && !def.viaBridge) return { created: 0, unresolved: 0, carrierObjects: 0 };
+    // WO-COMPUTED-EDGE：四种实现形态（属性 / 桥 / 算端点 / 叉积）任一声明才动手；一个都没有 ⇒ 老行为。
+    if (!def.viaProperty && !def.viaBridge && !def.viaKeyExpr && !def.viaCross) {
+      return { created: 0, unresolved: 0, carrierObjects: 0 };
+    }
     // 先清掉本机制上一轮造的同 key 边（声明改了、或目标数据变了，要能重算）。
-    // 桥形态与属性形态共用同一个 origin 变体 ⇒ 从一种改成另一种时旧边同样会被收拾干净。
+    // 四种形态共用同一个 origin 变体 ⇒ 从一种改成另一种时旧边同样会被收拾干净。
     await this.repos.links.removeWhere(
       ctx.tenantId,
       (l) => l.type === def.key && l.origin.type === "LINK_DERIVED",
     );
+    if (def.viaCross) return await this.materializeViaCross(ctx, def, def.viaCross);
     return def.viaBridge
       ? await this.materializeViaBridge(ctx, def, def.viaBridge)
       : await this.materializeViaProperty(ctx, def);
+  }
+
+  /**
+   * WO-COMPUTED-EDGE · 编译一侧的谓词。carrier 侧读 `viaWhere`，anchor 侧读 `viaWhereTo`。
+   *
+   * 编译失败在物化期**抛出**而不是回落成「不筛」：静默不筛 = 把一条谓词边悄悄降级成全连接边，
+   * 比报错危险得多（多出来的边不会红，只会让下钻结果变多）。写入期已 400 过一次，能走到这里
+   * 说明是老快照里的存量声明，同样不许兜底。
+   */
+  private async compileSidePredicate(
+    ctx: AuthCtx,
+    src: string | undefined,
+    typeKey: string,
+  ): Promise<LinkPredicate | null> {
+    if (src === undefined) return null;
+    const t = await this.getType(ctx, typeKey);
+    return compileLinkPredicate(src, typeKey, t?.properties.map((p) => p.propKey) ?? []);
   }
 
   /**
@@ -465,11 +602,16 @@ export class OntologyService {
    * （两个客户同名 ⇒ 一张发票该连谁）。这里取**排序后第一个**保证 R6 确定性，
    * 同时把撞车的键数记进 `ambiguous` 交给调用方 —— 「对得干干净净」与「有 3 处撞车我替你挑了」
    * 是两个不同的答案，屏上不该长一样。
+   *
+   * WO-COMPUTED-EDGE：`anchorWhere`（来自 `viaWhereTo`）在**建索引这一步**就把不合格的锚点排除掉，
+   * 而不是建完索引再筛 —— 后者会让被排除的锚点仍然参与 `ambiguous` 计数，
+   * 于是「我筛掉了撞车的那一个」在回执上仍报有歧义。判据要落在**进索引的那批行**上。
    */
   private async buildAnchorIndex(
     ctx: AuthCtx,
     anchorTypeKey: string,
     anchorProperty: string | undefined,
+    anchorWhere?: LinkPredicate | null,
   ): Promise<{ index: Map<string, string>; ambiguous: number } | null> {
     const anchorType = await this.getType(ctx, anchorTypeKey);
     if (!anchorType) return null;
@@ -478,6 +620,7 @@ export class OntologyService {
     const buckets = new Map<string, string[]>();
     for (const o of await this.repos.objects.listByType(ctx.tenantId, anchorTypeKey)) {
       if (o.mergedInto) continue;
+      if (anchorWhere && !linkPredicateHolds(anchorWhere, anchorTypeKey, o.props)) continue;
       // 缺省口径才认 objectKey（业务主键的既有语义）；显式指定某一列时只读那一列，不许回退到主键 ——
       // 回退会让「按名字对不上」静默变成「按 id 对上了」，那是另一条边。
       const bk = anchorProperty === undefined ? (o.objectKey ?? o.props[keyProp]) : o.props[keyProp];
@@ -496,26 +639,37 @@ export class OntologyService {
     return { index, ambiguous };
   }
 
-  /** 属性形态（含桶② `anchorProperty` 与桶⑤ `viaMultiValue`）。 */
+  /**
+   * 属性形态（含桶② `anchorProperty` 与桶⑤ `viaMultiValue`）。
+   *
+   * WO-COMPUTED-EDGE：**算端点（`viaKeyExpr`）走的也是这一段** —— 唯一的差别是「锚点键从哪来」：
+   * `viaProperty` 从 `c.props[via]` **读**，`viaKeyExpr` 从表达式**算**。往下一律共用同一个
+   * `buildAnchorIndex` / 同一套 `unresolved` 口径 / 同一个方向分叉。
+   * 刻意不为算端点另写一条物化路：另写一套 = 「算出来的键」与「读出来的键」两套匹配语义，
+   * 迟早分叉（本仓「桥形态各写一套锚点索引」那次已经付过一遍学费）。
+   */
   private async materializeViaProperty(ctx: AuthCtx, def: LinkTypeDef): Promise<MaterializeResult> {
-    const via = def.viaProperty as string;
+    const via = def.viaProperty;
     const side = def.viaSide ?? "from";
     const carrierTypeKey = side === "from" ? def.fromTypeKey : def.toTypeKey; // 外键长在这一侧
     const anchorTypeKey = side === "from" ? def.toTypeKey : def.fromTypeKey; // 外键指向这一侧
-    const built = await this.buildAnchorIndex(ctx, anchorTypeKey, def.anchorProperty);
-    if (!built) return { created: 0, unresolved: 0, carrierObjects: 0 };
-    const { index: anchors, ambiguous } = built;
-    // WO-PREDICATE-EDGE · 谓词筛行。编译一次、逐行求值（纯函数，不碰时钟/随机/遍历顺序 ⇒ R6）。
+    // WO-PREDICATE-EDGE · 谓词筛行；WO-COMPUTED-EDGE · anchor 侧谓词。两侧共用同一份编译器。
     // 编译失败在这里**抛出**而不是回落成「不筛」：静默不筛 = 把一条谓词边悄悄降级成全连接边，
     // 比报错危险得多（多出来的边不会红，只会让下钻结果变多）。写入期已 400 过一次，能走到这里
     // 说明是老快照里的存量声明，同样不许兜底。
-    let predicate: LinkPredicate | null = null;
-    if (def.viaWhere !== undefined) {
+    const predicate = await this.compileSidePredicate(ctx, def.viaWhere, carrierTypeKey);
+    const anchorPredicate = await this.compileSidePredicate(ctx, def.viaWhereTo, anchorTypeKey);
+    const built = await this.buildAnchorIndex(ctx, anchorTypeKey, def.anchorProperty, anchorPredicate);
+    if (!built) return { created: 0, unresolved: 0, carrierObjects: 0 };
+    const { index: anchors, ambiguous } = built;
+    // WO-COMPUTED-EDGE · 键表达式编译一次、逐行求值（纯函数，只读 props ⇒ R6 与谓词同一把尺）。
+    let keyExpr: LinkKeyExpr | null = null;
+    if (def.viaKeyExpr !== undefined) {
       const carrierType = await this.getType(ctx, carrierTypeKey);
-      predicate = compileLinkPredicate(
-        def.viaWhere,
+      keyExpr = compileLinkKeyExpr(
+        def.viaKeyExpr,
         carrierTypeKey,
-        carrierType?.properties.map((p) => p.propKey) ?? [],
+        carrierPropKeysOf(carrierType),
       );
     }
     const carriers = (await this.repos.objects.listByType(ctx.tenantId, carrierTypeKey)).filter(
@@ -523,12 +677,26 @@ export class OntologyService {
     );
     let created = 0;
     let unresolved = 0;
+    let keyExprNullRows = 0;
+    const distinctKeys = new Set<string>();
     for (const c of carriers) {
-      const raw = c.props[via];
-      if (raw === null || raw === undefined || raw === "") continue; // 没填 = 没这条边，不是错
-      // 桶⑤：显式声明了多值才展开。**不做类型嗅探** —— 见 `LinkTypeDef.viaMultiValue` 头注。
-      // 声明了多值却拿到非数组 ⇒ 当单值处理（数据形态变了，边数会掉，有人会发现），不静默造零边。
-      const values = def.viaMultiValue && Array.isArray(raw) ? raw : [raw];
+      let values: unknown[];
+      if (keyExpr) {
+        const k = evalLinkKey(keyExpr, c.props);
+        if (k === null) {
+          // 「公式算不出键」与「算出了键但查无锚点」分开计 —— 修法完全不同，混了会修错地方。
+          keyExprNullRows++;
+          continue;
+        }
+        distinctKeys.add(k);
+        values = [k];
+      } else {
+        const raw = c.props[via as string];
+        if (raw === null || raw === undefined || raw === "") continue; // 没填 = 没这条边，不是错
+        // 桶⑤：显式声明了多值才展开。**不做类型嗅探** —— 见 `LinkTypeDef.viaMultiValue` 头注。
+        // 声明了多值却拿到非数组 ⇒ 当单值处理（数据形态变了，边数会掉，有人会发现），不静默造零边。
+        values = def.viaMultiValue && Array.isArray(raw) ? raw : [raw];
+      }
       for (const [i, v] of values.entries()) {
         if (v === null || v === undefined || v === "") continue;
         const anchorId = anchors.get(String(v));
@@ -538,17 +706,30 @@ export class OntologyService {
         }
         await this.repos.links.put({
           // 多值时 id 必须带上元素序号，否则 3 个基地的边互相覆盖、只剩 1 条（本仓「幂等 id 撞车」老坑）。
+          // 算端点恒单值 ⇒ 走不到那个后缀，id 与属性形态同形（`lnk_via_<key>_<carrierId>`）。
           id: `lnk_via_${def.key}_${c.id}${values.length > 1 ? `_${i}` : ""}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
           tenantId: ctx.tenantId,
           type: def.key,
           fromId: side === "from" ? c.id : anchorId,
           toId: side === "from" ? anchorId : c.id,
-          origin: { type: "LINK_DERIVED", linkTypeKey: def.key, viaProperty: via },
+          origin: keyExpr
+            ? { type: "LINK_DERIVED", linkTypeKey: def.key, viaKeyExpr: keyExpr.src }
+            : { type: "LINK_DERIVED", linkTypeKey: def.key, viaProperty: via as string },
         });
         created++;
       }
     }
-    return { created, unresolved, carrierObjects: carriers.length, ...(ambiguous ? { ambiguousAnchors: ambiguous } : {}) };
+    return {
+      created,
+      unresolved,
+      carrierObjects: carriers.length,
+      ...(ambiguous ? { ambiguousAnchors: ambiguous } : {}),
+      // 算端点必给键分布：`distinct===1` 就是「所有行塌到同一个锚点」这件事的唯一可见形态。
+      // 用 `keyExpr &&` 而不是 `distinctKeys.size &&` —— 算出 0 个键（全 null）同样要说出来，
+      // 否则「公式全废」与「这条边不是算端点」在回执上长一模一样。
+      ...(keyExpr ? { keyExprDistinctKeys: distinctKeys.size } : {}),
+      ...(keyExprNullRows ? { keyExprNullRows } : {}),
+    };
   }
 
   /**
@@ -598,6 +779,63 @@ export class OntologyService {
     }
     const ambiguous = fromIdx.ambiguous + toIdx.ambiguous;
     return { created, unresolved, carrierObjects: bridges.length, ...(ambiguous ? { ambiguousAnchors: ambiguous } : {}) };
+  }
+
+  /**
+   * WO-COMPUTED-EDGE · 叉积形态（桶④后半）：**不经外键**，from 全集 × to 全集，两侧各挂一个谓词收窄。
+   *
+   * ── 先限界再写入，不是写完再统计 ────────────────────────────────────────────
+   * 两侧**先各自筛完、各取真实计数**，乘积超 `maxEdges` ⇒ **当场 400**，一条边都不写。
+   * 事后统计在这里等于没有：`Order`(500) × `OrderLine`(873) = 436,500 条，等发现时已经写进去了。
+   * 报文里把三个实算的数（|from| / |to| / 乘积）全给出来 —— 用户要能自己判断是谓词写松了
+   * 还是这条边本来就不该是叉积，而不是对着一句「太多了」猜。
+   *
+   * ── 边 id 不含任何序号（R6 的命门）────────────────────────────────────────
+   * `lnk_cross_${key}_${fromId}_${toId}` —— 只由两个对象 id 决定。若照抄属性形态那个
+   * `..._${i}` 后缀，`i` 就是 anchor 在 `listByType` 返回序里的位置：**仓储遍历顺序一变边 id 全变，
+   * 而边数不变、四包全绿** —— 那正是「排序塌成 id 序」那一族的静默病。
+   *
+   * `unresolved` 恒 0：叉积没有「有值却查无目标」这一态（两侧都是实打实的对象）。
+   * 如实回 0，不省略这个字段 —— 省略会让调用方以为这条边没有这个维度可看。
+   */
+  private async materializeViaCross(
+    ctx: AuthCtx,
+    def: LinkTypeDef,
+    cross: NonNullable<LinkTypeDef["viaCross"]>,
+  ): Promise<MaterializeResult> {
+    const fromPred = await this.compileSidePredicate(ctx, cross.fromWhere, def.fromTypeKey);
+    const toPred = await this.compileSidePredicate(ctx, cross.toWhere, def.toTypeKey);
+    const fromRows = (await this.repos.objects.listByType(ctx.tenantId, def.fromTypeKey)).filter(
+      (o) => !o.mergedInto && (!fromPred || linkPredicateHolds(fromPred, def.fromTypeKey, o.props)),
+    );
+    const toRows = (await this.repos.objects.listByType(ctx.tenantId, def.toTypeKey)).filter(
+      (o) => !o.mergedInto && (!toPred || linkPredicateHolds(toPred, def.toTypeKey, o.props)),
+    );
+    const product = fromRows.length * toRows.length;
+    if (product > cross.maxEdges) {
+      throw validationError(
+        `结构边 ${def.key} 的叉积会连出 ${product} 条边（${def.fromTypeKey} 筛后 ${fromRows.length} 行 ` +
+          `× ${def.toTypeKey} 筛后 ${toRows.length} 行），超过本次声明的上限 maxEdges=${cross.maxEdges}。` +
+          `一条边都没有写入。请用 viaCross.fromWhere / viaCross.toWhere 把两侧收窄，` +
+          `或确认这条关系真的该是「全连全」再调高上限 —— 叉积是全仓唯一一种边数不随数据量线性增长的声明。`,
+      );
+    }
+    let created = 0;
+    for (const f of fromRows) {
+      for (const t of toRows) {
+        await this.repos.links.put({
+          id: `lnk_cross_${def.key}_${f.id}_${t.id}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+          tenantId: ctx.tenantId,
+          type: def.key,
+          fromId: f.id,
+          toId: t.id,
+          origin: { type: "LINK_DERIVED", linkTypeKey: def.key, viaCross: true },
+        });
+        created++;
+      }
+    }
+    // `carrierObjects` 在这里答的仍是同一个问题「我一共看了几行」= 两侧之和（叉积没有单一载体侧）。
+    return { created, unresolved: 0, carrierObjects: fromRows.length + toRows.length, crossFrom: fromRows.length, crossTo: toRows.length };
   }
 
   /**
