@@ -50,8 +50,14 @@ async function matrix(t: TestApp, payload: Record<string, unknown> = {}): Promis
   return ChainLossMatrixResultSchema.parse(res.json());
 }
 
-async function attribution(t: TestApp, payload: Record<string, unknown> = {}): Promise<ChainLossResult> {
-  const res = await t.app.inject({ method: "POST", url: ATTR_URL, headers: ADMIN, payload });
+/**
+ * ⚠ 求解器通用口的入参**包在 `args` 里**（`POST /a/v1/solvers/:key/invoke` 的 body 形状是
+ *   `{ args: {...} }`，见 `app.ts` 该路由的 `parseBody`）。把字段平铺在顶层会被静默丢掉 ——
+ *   本文件第一版就是这么写的，于是 5 条断言同时红，而红的原因看起来像"引擎没接线"。
+ *   形态：「我用『我把 sessionId 放进 body 了』当作『求解器收到了 sessionId』的证据。」
+ */
+async function attribution(t: TestApp, args: Record<string, unknown> = {}): Promise<ChainLossResult> {
+  const res = await t.app.inject({ method: "POST", url: ATTR_URL, headers: ADMIN, payload: { args } });
   expect(res.statusCode, `归因端点应 200，实际 ${res.statusCode}：${res.body.slice(0, 400)}`).toBe(200);
   const body = res.json() as { data?: ChainLossResult } & ChainLossResult;
   return (body.data ?? body) as ChainLossResult;
@@ -123,7 +129,7 @@ describe("WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝", () => {
     expect(Object.keys(withSession).sort()).toEqual([...shape, "simContext"].sort());
   });
 
-  it("③ 正向对照：天数族叠加后，该段天数 == 字段真值换算 + 状态量（按可预言的量变，不是"变了就算过"）", async () => {
+  it("③ 正向对照：天数族叠加后，该段天数 == 字段真值换算 + 状态量（按可预言的量变，不是「变了就算过」）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const before = await attribution(t);
@@ -232,7 +238,8 @@ describe("WO-DRILL-VERDICT-BACKEND · 根因链 × 推演会话接缝", () => {
     for (const [url, payload] of [
       [MATRIX_URL, { sessionId: "sims_nope" }],
       [DRILL_URL, { nodeId: "material.replenish", sessionId: "sims_nope" }],
-      [ATTR_URL, { sessionId: "sims_nope" }],
+      // 通用求解器口的入参包在 `args` 里（见 `attribution()` 头注）。
+      [ATTR_URL, { args: { sessionId: "sims_nope" } }],
     ] as const) {
       const res = await t.app.inject({ method: "POST", url, headers: ADMIN, payload });
       expect(
