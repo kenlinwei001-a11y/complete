@@ -85,22 +85,45 @@ try {
   say("rootcauseDataMetric", cockpit ? await cockpit.getAttribute("data-metric") : "(无 cockpit-rootcause 节点)");
   await shot(page, `gapnorm-${TAG}-02-rootcause.png`);
 
-  // ── 风险板：每基地根因树（受病② 影响最直接的那一屏）────────────────────────
+  /**
+   * ── 判据① 的真正落点：**产能推演**（route `risk`）──────────────────────────
+   * 全前端只有 `RiskBoardView` 这一处调 `gap_attribution` 时**不传 metricKey**
+   * （另两处都显式传），所以「缺省根指标是谁」这件事，用户唯一看得见它的地方就是这一屏。
+   * 驾驶舱右侧那块未选中态走的是 `plan_rootcause`，不是本单改的那条路 —— 不能拿它当判据。
+   */
   let riskClicked = null;
-  for (const cand of ["风险", "风险板", "风险看板", "运营风险"]) {
+  for (const cand of ["产能推演", "风险板", "风险看板"]) {
     const el = await page.$(`a:text-is("${cand}"), button:text-is("${cand}")`);
     if (el) { await el.click(); riskClicked = cand; break; }
   }
   if (riskClicked) {
-    await sleep(4000);
-    const dagCount = await page.$$eval('[data-testid="provenance-dag"]', (e) => e.length);
-    const greyHits = (await visibleText(page)).match(/诚实灰|该基地不在结构归因|暂无根因/g) ?? [];
+    await sleep(6000);
     say("riskBoardClicked", riskClicked);
+    say("riskUrl", page.url());
+    // 根因树挂在**展开某张基地卡**之后的详情里（不是常驻）—— 必须真点开一张卡。
+    const cards = await page.$$eval('[data-testid^="risk-card-"]', (els) => els.map((e) => e.getAttribute("data-testid")));
+    say("riskCards", cards);
+    if (cards.length > 0) {
+      await page.click(`[data-testid="${cards[0]}"]`);
+      say("riskCardOpened", cards[0]);
+      await sleep(7000);
+      await shot(page, `gapnorm-${TAG}-04-riskcard-open.png`);
+    }
+    const dagCount = await page.$$eval('[data-testid="provenance-dag"]', (e) => e.length);
     say("riskBoardDagCount", dagCount);
-    say("riskBoardGreyHits", greyHits.slice(0, 5));
+    // 缺省根指标在屏上的原文：根因树的 KPI 根节点（`dag-node-kpi:<key>`）
+    const kpiRoots = await page.$$eval('[data-testid^="dag-node-kpi:"]', (els) =>
+      els.map((e) => ({ testid: e.getAttribute("data-testid"), text: (e.innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 120) })),
+    );
+    say("riskKpiRootNodes", kpiRoots);
+    const body = await visibleText(page);
+    const greyHits = body.match(/该基地不在结构归因[^\n]{0,60}|暂无根因[^\n]{0,40}|缺口[^\n]{0,30}/g) ?? [];
+    say("riskBoardTextHits", greyHits.slice(0, 8));
     await shot(page, `gapnorm-${TAG}-03-riskboard.png`);
+    // 金丝雀：这一屏上必须至少有一棵 DAG 或一句明确的诚实灰说明；两者都没有 ⇒ 量法/时序坏了
+    say("riskCanary", dagCount > 0 ? `量法有效：数到 ${dagCount} 棵根因树` : "屏上零棵根因树（需人工判定是诚实灰还是量法坏）");
   } else {
-    say("riskBoardClicked", "(导航里没找到风险板入口)");
+    say("riskBoardClicked", "(导航里没找到产能推演入口)");
   }
 
   say("consoleErrors", consoleErrors.slice(0, 8));
