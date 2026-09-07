@@ -354,12 +354,22 @@ export class OntologyService {
           );
         }
       }
-    } else if (input.anchorProperty !== undefined || input.viaMultiValue !== undefined) {
-      // 这两个都是 `viaProperty` 的修饰词。单独出现 = 用户以为声明了实现方式，其实什么都没声明
+    } else if (
+      // WO-COMPUTED-EDGE：`anchorProperty` 对**算端点**同样有效（算出来的键照样可以对到锚点的非主键列），
+      // 故它的前提从「必须有 viaProperty」放宽成「必须有 viaProperty **或** viaKeyExpr」。
+      // ⚠ `viaMultiValue` 不放宽：键表达式返回的是**单个 Scalar**，多值展开在它身上无意义 ——
+      //   收下它等于收下一个永远不生效的开关，那正是本仓「声明了却什么都没发生」那一类。
+      (input.anchorProperty !== undefined && input.viaKeyExpr === undefined) ||
+      input.viaMultiValue !== undefined
+    ) {
+      // 这两个都是「由哪个属性实现」的修饰词。单独出现 = 用户以为声明了实现方式，其实什么都没声明
       //（会静默得到一条 0 实例的边）。不许静默收下。
       throw validationError(
-        `结构边 ${input.key} 声明了 ${input.anchorProperty !== undefined ? "anchorProperty" : "viaMultiValue"}，` +
-          `但没有声明 viaProperty —— 这两个字段是「由哪个属性实现」的修饰词，单独出现不会连出任何边`,
+        `结构边 ${input.key} 声明了 ${input.viaMultiValue !== undefined ? "viaMultiValue" : "anchorProperty"}，` +
+          (input.viaMultiValue !== undefined && input.viaKeyExpr !== undefined
+            ? `但实现方式是 viaKeyExpr —— 键表达式对每一行只算出**一个**键，多值展开在它身上不会生效`
+            : `但没有声明 viaProperty${input.anchorProperty !== undefined ? " 也没有声明 viaKeyExpr" : ""} —— ` +
+              `这些字段是「由哪个属性实现」的修饰词，单独出现不会连出任何边`),
       );
     }
     // WO-MATERIALIZE-3EXT 桶① · 桥实体投影：桥类型 + 两列 + （可选）两端的锚点列，逐项校验。

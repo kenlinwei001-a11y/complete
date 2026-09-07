@@ -358,8 +358,24 @@ describe("WO-COMPUTED-EDGE · 接缝：算端点 / anchor 谓词 / 叉积 ——
     });
     expect(noBudget.statusCode).toBe(400);
 
-    // 🐤 反向金丝雀：合法声明必须仍然 201（上面五条不是「什么都拒」）。
+    // ⑥ `viaMultiValue` 配 `viaKeyExpr`：键表达式每行只算出一个 Scalar，多值展开永不生效
+    //    ⇒ 收下它就是收下一个「声明了却什么都没发生」的开关。
+    const mv = await createLink(t, { key: "zz_ce_bad6", ...P, viaKeyExpr: "this.level", viaMultiValue: true });
+    expect(mv.statusCode).toBe(400);
+    expect(JSON.parse(mv.body).error.message).toContain("viaMultiValue");
+
+    // 🐤 反向金丝雀（三条，覆盖三种合法形态）：合法声明必须仍然 201（上面六条不是「什么都拒」）。
     const ok = await createLink(t, { key: "zz_ce_ok", ...P, viaKeyExpr: 'IF(this.level == "month", "prin-plan", "prin-coo")' });
-    expect(ok.statusCode, "🐤 合法声明被拒 ⇒ 校验收得太狠，上面五条 400 证明不了什么").toBe(201);
+    expect(ok.statusCode, "🐤 合法声明被拒 ⇒ 校验收得太狠，上面六条 400 证明不了什么").toBe(201);
+    // ⚠ **`anchorProperty` + `viaKeyExpr` 必须放行**：算出来的键照样可以对到锚点的非主键列。
+    //   这一条不是补白 —— 它守的是一个真实写反过的判据：`anchorProperty` 的前提原本写死「必须有
+    //   viaProperty」，于是这个组合会被那条分支抢先 400，而 viaKeyExpr 自己那段校验成了死代码。
+    const okAnchor = await createLink(t, {
+      key: "zz_ce_ok_anchor", fromTypeKey: "Order", toTypeKey: "PlanTarget", cardinality: "N:N",
+      viaKeyExpr: "this.dueMonth", anchorProperty: "period", viaWhereTo: "PlanTarget.level == 'month'",
+    });
+    expect(okAnchor.statusCode, okAnchor.body).toBe(201);
+    expect(materializedOf(okAnchor.body).created, "anchorProperty + viaKeyExpr 连不出边 ⇒ 两者没真配合").toBeGreaterThan(0);
+    expect((await edgesVia(t, "zzce-ok-anchor", "Order", "zz_ce_ok_anchor")).length).toBe(materializedOf(okAnchor.body).created);
   });
 });
