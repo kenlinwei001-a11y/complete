@@ -13,7 +13,7 @@ const kpisOf = async (t: TestApp, args: Record<string, unknown>): Promise<Kpi[]>
   ((await (await invokeSolver(t, "plan_rootcause", args)).json()).data.kpis as Kpi[]);
 
 describe("WO-CEO-1a item4 · plan_rootcause 真 level（假周期已删）", () => {
-  it("level=year 返回真顶层目标 Metric（无 -year 后缀、无系数；营收=真实聚合700，非 op×1.04）", async () => {
+  it("level=year 返回真顶层目标 Metric（无 -year 后缀、无系数；营收=订单簿成交侧真值，非 op×1.04）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const year = await kpisOf(t, { level: "year" });
@@ -23,8 +23,22 @@ describe("WO-CEO-1a item4 · plan_rootcause 真 level（假周期已删）", () 
       expect(byId.get(id), `${id} 应为真 year 级 Metric`).toBeDefined();
       expect(byId.get(id)!.kpiId).not.toContain("-year"); // 不再拼假后缀
     }
-    // 营收 actual = 真实聚合 700（此前假下钻会取 op 指标×1.04；现读真顶层目标对象）
-    expect(byId.get("kpi-revenue")!.actual).toBe(700);
+    /**
+     * WO-METRIC-IDENTITY 金值同步：**700 → 415.6**。
+     *
+     * 本行原本盯的是「不再拿 op 指标 ×1.04 编造 year 级读数」，这个靶心**没变**；
+     * 变的是它顺手写死的那个 700 —— 那是**年度需求 P50 预测**，与 `GOAL_REGISTRY.revenue.target`
+     * 恰好同值，于是营收这条 year 级指标 `delta ≡ 0`、结构上永不越线。
+     * 新值 415.6 = 订单簿**计划年窗**成交额（成交侧真值，会随订单簿增减而变）。
+     *
+     * ⚠ 不写死 415.6：改判为「与顶层 Metric 对象逐位同值」——
+     * 这既守住原靶心（下钻读的是真对象、不是系数编造），又不再把订单簿真值抄第二份。
+     */
+    const met = (await t.repos.objects.listByType("demo", "Metric")).find((m) => m.props.metricId === "kpi-revenue")!;
+    expect(byId.get("kpi-revenue")!.actual, "下钻读数必须逐位等于 Metric 对象真值，不是系数编造")
+      .toBe(Number(met.props.actual));
+    expect(byId.get("kpi-revenue")!.actual, "成交侧口径 ⇒ 必须不再与年度目标 700 同值（同值即恒 100% 达成的老病）")
+      .not.toBe(byId.get("kpi-revenue")!.target);
   });
 
   it("level=month/quarter 诚实空（假周期系数已删，无真对象即空，绝不编造）", async () => {
