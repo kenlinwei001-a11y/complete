@@ -1469,7 +1469,7 @@ export class SolverService {
         // 旧写法 `String(props[f] ?? "")` 遇数组恒解析失败 ⇒ 该起点被当作"断链"整条丢弃，
         // 集中度于是漏掉所有走多供路径的依赖方。这里**不**扇出成多条路径：本求解器的语义是
         // 「每个起点收敛到**一个**根」，扇出会让同一个起点被计进多个根、把 count 算重。
-        const nextRef = refValues(cur!.props[hop.viaField]).find((v) => idxByType.get(hop.toType)!.has(v));
+        const nextRef: string | undefined = refValues(cur!.props[hop.viaField]).find((v) => idxByType.get(hop.toType)!.has(v));
         cur = nextRef === undefined ? undefined : idxByType.get(hop.toType)!.get(nextRef);
         if (!cur) break;
       }
