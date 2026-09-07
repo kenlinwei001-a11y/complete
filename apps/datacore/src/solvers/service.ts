@@ -1954,7 +1954,7 @@ export class SolverService {
      * ⚠ 不给 `scope.baseId` 时**逐字节不变**：域路由照旧优先（R6 · 全局路径零回归）。
      */
     // ── market_share 域：独立结构分解（CompetitorShare）+ caused_by 遍历到商业根因 ──
-    if (str(m.key) === "market_share" && !scopedBaseId) {
+    if (str(m.key) === "market_share" && !scopedBaseId && !unsupportedFactor) {
       return await this.gapAttributionMarketShare(ctx, m, G, unit, structuralExplained, causalExplained, binding);
     }
 
@@ -1976,8 +1976,18 @@ export class SolverService {
           `请在 CausalFactor 数据上定唯一入口（把其余非根因子接到入口下游，或标 isRoot）。判据实测：${entryPick.basis}`,
       );
     }
-    // `scopedBaseId` 存在 ⇒ 不进域路由（理由见上「病②」段：域路由没有基地这一维，进去等于把请求吞了）。
-    if (entryPick.kind === "ok" && !scopedBaseId) {
+    /**
+     * `scopedBaseId` 存在 ⇒ 不进域路由（理由见上「病②」段：域路由没有基地这一维，进去等于把请求吞了）。
+     *
+     * `unsupportedFactor` 存在 ⇒ 同理，也不进：调用方**点了一个因子**，而引擎解析不了它。
+     * 这时唯一诚实的回法是「基地结构树 + `factorApplied:false` + 说清为什么」——
+     * 上面那段 `unsupportedFactor` 已经把话都写好了，可域路由的早返回把它连同 `scope` 一起吞掉，
+     * 屏上于是变成「点了因子 chip，回来一棵没按因子细分、也不承认没细分的树」。
+     * 判据实证（同一份种子，A/B 跑同两个测试文件）：
+     *   `factor-scope-singlesource.seam.test.ts` 在基线 `5e43754a` 上 **8 条红**，
+     *   加了这两个闸之后 **0 条红** —— 它们红的根因是同一个：作用域请求被早返回吞掉。
+     */
+    if (entryPick.kind === "ok" && !scopedBaseId && !unsupportedFactor) {
       return await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, entryPick.entryId, domainAdj);
     }
 
