@@ -31,7 +31,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(46); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46
+    expect(cfg.propagationCount).toBe(47); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47）= 47
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
@@ -73,7 +73,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(46); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条
+    expect(items.length).toBe(47); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47）= 47
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
     // WO-SIM-ROOT-TRIAD 新增 4 条根源边全部挂**已物化**的既有链路（零新 linkType、零新物化）：
@@ -124,7 +124,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(46); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条
+    expect(rules.length).toBe(47); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47）= 47
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -169,7 +169,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(46); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条
+    expect(items.length).toBe(47); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47）= 47
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {
