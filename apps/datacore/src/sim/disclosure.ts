@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  adversaryMoveNameOf,
   pairWeightNormalizeOf,
   simSliceKey,
   type PropagationRule,
@@ -154,6 +155,12 @@ export interface BuildDisclosureInput {
   /** 引擎的状态量回执（最后一拍）。`null` = 本次没走引擎。 */
   stateVarReport: StateVarDisclosure | null;
   timings: SimDisclosureTiming[];
+  /** 本租户对抗方开关（`ADVERSARY_FEATURE_KEY`）。WO-ADVERSARY-REACTION。 */
+  adversaryEnabled: boolean;
+  /** 因对抗方关闭而**没参与**本次推演的还手规则 key。开着时为空。 */
+  adversarySuppressedRuleKeys: readonly string[];
+  /** 引擎回带的 `<还手规则 key> <还手方对象 id>`（最后一拍）。没走引擎 = null。 */
+  reactionActors: readonly string[] | null;
 }
 
 /**
@@ -167,6 +174,15 @@ export function buildSimRunDisclosure(inp: BuildDisclosureInput): SimRunDisclosu
 
   // ── ③ 命中的规则 ──────────────────────────────────────────────────────────
   const fired = new Set(inp.firedRuleKeys);
+  // 还手触发计数：引擎回带的是 `<规则 key> <还手方对象 id>`，这里按规则聚合成"几个对手还手了"。
+  // 解析取**最后一个空格**为界：对象 id 里不含空格，而规则 key 理论上可以 —— 从右切最稳。
+  const triggeredByRule = new Map<string, number>();
+  for (const entry of inp.reactionActors ?? []) {
+    const cut = entry.lastIndexOf(" ");
+    if (cut <= 0) continue;
+    const k = entry.slice(0, cut);
+    triggeredByRule.set(k, (triggeredByRule.get(k) ?? 0) + 1);
+  }
   const weightByRule = new Map(inp.pairWeightReport.pairs.map((p) => [p.ruleKey, p]));
   const items: SimDisclosureRule[] = [...inp.rules]
     .map((r): SimDisclosureRule => {
@@ -189,6 +205,16 @@ export function buildSimRunDisclosure(inp: BuildDisclosureInput): SimRunDisclosu
         delayTicks: r.delayTicks,
         combine: r.combine,
         via: `${r.sourceTypeKey}.${r.sourceStateVar} --${r.viaLinkKey}--> ${r.targetTypeKey}.${r.targetStateVar}`,
+        // ── 对手方还手（WO-ADVERSARY-REACTION · 铁律 1.5 判据二）────────────────
+        // 「物理传导」与「某个客户在跟我博弈」必须在屏上分得开 —— 这是业务事实不是实现细节。
+        isReaction: r.reaction != null,
+        reactionActorTypeKey: r.reaction?.actorTypeKey ?? null,
+        reactionMove: r.reaction?.move ?? null,
+        reactionMoveName: r.reaction ? adversaryMoveNameOf(r.reaction.move) : null,
+        reactionTolerance: r.reaction?.tolerance ?? null,
+        // 真的越过容忍线的还手方实例数。**不是** `fired` —— 延迟到货也算 fired，
+        // 而这里数的是"这一拍有几个客户被惹毛了"。非还手边 = null（不是 0，两者含义不同）。
+        reactionTriggeredActors: r.reaction != null ? (triggeredByRule.get(r.key) ?? 0) : null,
       };
     })
     // 命中的排前面（屏上第一眼就是"这一拍谁动了"），其次按 key 升序（R6 全序）。
@@ -280,6 +306,18 @@ export function buildSimRunDisclosure(inp: BuildDisclosureInput): SimRunDisclosu
         ...inp.pairWeightReport.unresolved,
         ...inp.unresolvedWeights.map((u) => ({ ruleKey: u.ruleKey, basis: u.basis, reason: u.detail })),
       ].sort((a, b) => a.ruleKey.localeCompare(b.ruleKey) || a.basis.localeCompare(b.basis)),
+      // ── 对抗方这一栏（WO-ADVERSARY-REACTION）───────────────────────────────────
+      // ⛔ **关闭态也必须给**，照本层「agent 是否参与」那条同源纪律：
+      //   零参与就明写零参与，不许留白让读者以为"对手确实没反应"。
+      //   `enabled:false` + `suppressed:N` 读起来就是一句话：**这是一次单方推演**。
+      adversary: {
+        enabled: inp.adversaryEnabled,
+        declared: items.filter((i) => i.isReaction).length,
+        suppressed: inp.adversarySuppressedRuleKeys.length,
+        fired: items.filter((i) => i.isReaction && i.fired).length,
+        triggeredActors: (inp.reactionActors ?? []).length,
+        moves: [...new Set(items.filter((i) => i.isReaction).map((i) => String(i.reactionMove)))].sort(),
+      },
     },
     constraints: {
       stateVarBounds,

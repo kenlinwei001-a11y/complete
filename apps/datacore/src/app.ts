@@ -67,7 +67,7 @@ import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow�
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
+import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
 import type { PairWeightReport } from "./sim/pair-weights.js";
@@ -1950,12 +1950,37 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 这里写的正是 `sim_session` 自己那一行的世界态：本体里的 `PropagationRule.status` 一个字节不动，
   // 别租户、别会话、下一次新建的会话全都看不到这次屏蔽。若哪天要把"这条边其实该退役"落成真值，
   // 那是改 `status`，必须走 R4 正门 —— 两件事分属两个字段，不许合并（契约 `SimSession.disabledRuleKeys` 注释）。
-  /** 本会话真正参与推演的规则（= 已发布 − 本会话屏蔽），并把屏蔽掉的那几条一并带回（供"降级显示"）。 */
+  /**
+   * 本会话真正参与推演的规则（= 已发布 − 本会话屏蔽 − 对抗方关闭时的还手边），
+   * 并把屏蔽掉的那几条一并带回（供"降级显示"）。
+   *
+   * ── 对抗方闸（WO-ADVERSARY-REACTION）为什么落在这里 ────────────────────────────
+   * 与 `disabledRuleKeys` **同一个落点、同一条纪律**：过滤只作用于「这次推演」，
+   * 不下沉进 `listPublishedPropRules`（那 8 处调用语义各不相同，一刀切必错 —— 见上表），
+   * 也不改 `PropagationRule.status`（那是本体真值，要走 R4 正门）。
+   * ⇒ 目录路（`GET /sim/propagation-rules`）照旧看得见还手边，屏上是**可见地降级**，
+   *   不是从图上消失；引擎路吃不到它。
+   *
+   * 🔴 关闭态**必须与本单引入前逐字节相同**：`partitionAdversaryRules` 在开关开着时
+   *   原样返回同一引用，关着时**只**滤掉 `reaction != null` 的那几条（今天恰好 1 条）。
+   *   46 条既有边一条都不受影响。
+   */
   const sessionPropRules = async (c: AuthCtx, s: SimSession, override?: readonly string[]) => {
     const published = await listPublishedPropRules(c);
     const disabled = [...new Set(override ?? s.disabledRuleKeys ?? [])].sort();
-    const { active, suppressed } = partitionPropagationRules(published, disabled);
-    return { published, active, suppressed, disabled };
+    const adversaryEnabled = await features.enabled(c.tenantId, ADVERSARY_FEATURE_KEY);
+    const gated = partitionAdversaryRules(published, adversaryEnabled);
+    const { active, suppressed } = partitionPropagationRules([...gated.active], disabled);
+    return {
+      published,
+      active,
+      // 「本会话屏蔽的」与「对抗方关着而没参与的」合并进同一份降级清单：
+      // 屏上都是"这条边这次没参与"，但成因不同，故对抗方那几条另有 `adversary` 栏点名。
+      suppressed: [...suppressed, ...gated.suppressed],
+      disabled,
+      adversaryEnabled,
+      adversarySuppressed: gated.suppressed,
+    };
   };
 
   // ⚠ `buildPropagationInputs` 曾**在这里**以闭包形式存在，现已提取到 `./sim/propagation-inputs.ts`
@@ -2299,6 +2324,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     let stateVarDomains: StateVarDomainLookup = {};
     /** 最后一拍的状态量披露（声明/未声明/衰减解析不到/本拍饱和了哪些格）。 */
     let stateVarsDisclosure: StateVarDisclosure | null = null;
+    /** 最后一拍越过容忍线的 `<还手规则 key> <还手方对象 id>`（WO-ADVERSARY-REACTION）。 */
+    let reactionActors: string[] | null = null;
     /** 本次 tick 的范围回执（诚实回带：这一格是在什么范围下算出来的·R-ARG-FIDELITY）。 */
     let scopeReport: ScopeReport | null = null;
     let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, curTick))?.pending ?? []) : [];
@@ -2385,6 +2412,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         unresolvedWeights = out.unresolvedWeights;
         appliedPerturbations = out.appliedPerturbations;
         stateVarsDisclosure = out.stateVarReport;
+        // 还手触发清单取**最后一拍**（与 stateVarReport 同一口径）：披露层讲的是
+        // 「这一次推进结束时的世界」，不是把 n 拍的触发累加起来（那会把同一个客户数 n 遍）。
+        reactionActors = out.reactionActors;
         // 影子线：同一拍、同一份图/规则/闸门/权重/取值域，**扰动清空** ⇒ 世界自身漂移。
         if (driftState !== null) {
           const d = propagateTick(
@@ -2428,6 +2458,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       perturbationWrites: [...perturbationWrites].sort(),
       firedRuleKeys: [...firedKeys].sort(),
       stateVarReport: stateVarsDisclosure,
+      reactionActors,
       // 信噪比回执（WO-PROP-CLAMP）：`null` = 本会话无扰动 ⇒ 没有"用户贡献"这个量可谈。
       signalToNoise:
         driftState === null || driftStartState === null
@@ -2450,14 +2481,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     assertSimSessionWritable(s, "tick");
     // PUBLISHED only，**再减去本会话屏蔽的边**（WO-ACTIVE-EDGE-UX 的引擎接缝就是这一行）。
     // `disabledRuleKeys` 为空 ⇒ `partitionPropagationRules` 原样返回 ⇒ 与本单引入前逐字节相同（RL9）。
-    const rules = (await sessionPropRules(c, s)).active;
+    const sess = await sessionPropRules(c, s);
+    const rules = sess.active;
     const r = await simAdvanceTicks(c, s, { rules, n, persist: true });
     s.curTick = r.curTick;
     s.status = "RUNNING"; await repos.sim.putSession(s);
     await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
     // `rules` 一并回带：披露层要逐条讲「本次喂进引擎的是哪几条、各自系数与口径」，
     // 而这份"已发布 − 本会话屏蔽"的集合只有这里算得出来（路由再算一遍就是第二套真相源）。
-    return { ...r, rulesFed: rules };
+    // 对抗方开关与被闸掉的还手边同理 —— 只有这里既拿得到租户又拿得到规则集。
+    return { ...r, rulesFed: rules, adversaryEnabled: sess.adversaryEnabled, adversarySuppressed: sess.adversarySuppressed };
   };
   app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
@@ -2514,6 +2547,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           stateVarDomains: r.stateVarDomains,
           stateVarReport: r.stateVarReport,
           timings: r.timer.timings(DISCLOSURE_PHASE_ORDER),
+          // 对抗方（WO-ADVERSARY-REACTION）：开关 + 被闸掉的还手边 + 本拍越线的对手实例。
+          // 关闭态照样下发 —— 让读者当场看出「这是一次单方推演」，而不是留白让他以为对手没反应。
+          adversaryEnabled: r.adversaryEnabled,
+          adversarySuppressedRuleKeys: r.adversarySuppressed.map((x) => x.key),
+          reactionActors: r.reactionActors,
         })
       : null;
     // `cadence` 段是**诚实缺席的出口**（E4）：哪些节点有闸门、哪些节点查得到但用不了、

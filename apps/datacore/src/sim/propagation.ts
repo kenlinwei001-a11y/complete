@@ -626,6 +626,8 @@ export function propagateTick(
   unresolvedGates: UnresolvedCadenceGate[];
   unresolvedWeights: UnresolvedPairWeight[];
   appliedPerturbations: string[];
+  /** 本拍越过容忍线的 `<还手规则 key> <还手方对象 id>`（WO-ADVERSARY-REACTION·升序）。 */
+  reactionActors: string[];
   stateVarReport: StateVarDisclosure;
 } {
   // ── 0') 扰动相位（WO-P2）：先把本 tick 的「到期回退 / 首次落地」作用到世界，再传导 ──
@@ -748,6 +750,13 @@ export function propagateTick(
   const nextPending: DelayedContribution[] = [];
   const unresolvedGates: UnresolvedCadenceGate[] = [];
   const unresolvedWeights: UnresolvedPairWeight[] = [];
+  /**
+   * 本拍**真的越过容忍线**的 `<还手规则 key> <还手方对象 id>` 集合（WO-ADVERSARY-REACTION）。
+   *
+   * ⚠ 与「规则 fired」不是一回事：延迟到货的贡献也让规则显得 fired，
+   * 而本集合数的是**这一拍触发条件成立的主体**。「规则跑了」不度量「有人还手了」。
+   */
+  const reactionActors = new Set<string>();
 
   // ── 0) 对象类型索引 + 链路导航索引（复用 recompute 的 "linkKey|id" 思路） ──
   const typeOf = new Map<string, string>();
@@ -847,6 +856,19 @@ export function propagateTick(
       // 否则扰动要白等一个 tick 才开始扩散。无扰动时 `effState === state`（同一引用），逐字节不变。
       const sourceVal = effState[sourceId]?.[rule.sourceStateVar] ?? 0;
       if (sourceVal === 0) continue;
+      // ── 对手方容忍线（WO-ADVERSARY-REACTION）─────────────────────────────────────
+      //
+      // 物理传导是线性的（源动一点点，目标就动一点点）；而**还手有容忍区** ——
+      // 对手不会因为 0.1 个百分点就翻脸。故还手边只把**超出容忍线的那部分**当驱动量：
+      //   `drive = max(0, 源读数 − tolerance)`（hinge），其余公式与传导**逐项相同**。
+      //
+      // ⚠ 用 hinge 而不是「越线后按全额」：后者在阈值处产生阶跃，读数在阈值上下抖一下、
+      //    还手力度就从 0 跳到满格 —— 那是把数值噪声放大成业务结论。
+      // ⚠ `rule.reaction == null`（40+ 条普通边）走的是**同一个变量、零额外浮点运算**
+      //    ⇒ 逐字节同旧（additive·可回退 RL9）。
+      const drive = rule.reaction == null ? sourceVal : Math.max(0, round12(sourceVal - rule.reaction.tolerance));
+      if (drive === 0) continue; // 没越过容忍线 ⇒ 这个对手本拍不还手（不是"还手了但力度为 0"）
+      if (rule.reaction != null) reactionActors.add(`${rule.key} ${sourceId}`);
       // 衰减（可选，复用 risk.ts amp x (1 - dist/den)）。源/目标在抽象图上相邻 -> dist=1。
       let factor = 1;
       if (rule.decay) {
@@ -854,8 +876,8 @@ export function propagateTick(
         if (dist > rule.decay.window) continue; // 超窗 -> 无贡献
         factor = 1 - dist / rule.decay.den;
       }
-      // 「整条边」的量：强度 × 源态 × 衰减。**无分摊口径时它就是最终额**（逐字节同旧·RL9）。
-      const baseAmount = round12(coeff * sourceVal * factor);
+      // 「整条边」的量：强度 × 驱动量 × 衰减。**无分摊口径时它就是最终额**（逐字节同旧·RL9）。
+      const baseAmount = round12(coeff * drive * factor);
       // 早退判据仍落在 baseAmount 上：任何权重 × 0 恒为 0，故这一步的行为与有无分摊无关。
       if (baseAmount === 0) continue;
       // 放行时刻：无闸门 = 本 tick 即放行（旧行为逐字节不变）；有闸门 = 等到下一次开闸。
@@ -975,6 +997,9 @@ export function propagateTick(
 
   return {
     next, pending: outPending, trace, unresolvedGates, unresolvedWeights, appliedPerturbations,
+    // 还手触发清单：`<规则 key> <还手方对象 id>`，升序（R6：同输入同字节）。
+    // 空数组 = 本拍没有任何对手越过容忍线 —— 与「对抗方关着」是两件事，由调用方分开报。
+    reactionActors: [...reactionActors].sort((a, b) => a.localeCompare(b)),
     stateVarReport: {
       declaredStateVars: [...declaredSeen].sort((a, b) => a.localeCompare(b)),
       undeclaredStateVars: [...undeclaredSeen].sort((a, b) => a.localeCompare(b)),

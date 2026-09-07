@@ -315,6 +315,59 @@ export async function buildPairWeights(
       continue;
     }
 
+    if (basis === "actor_exposure_relative") {
+      // ── 交易对手的**在手订单金额敞口**相对于本规则源池均值的倍率（WO-ADVERSARY-REACTION）──
+      //
+      // 用于**对抗方还手**：`Customer --customer_places_order--> Order` 是 **1:N 扇出**，
+      // 每张订单只有一个客户入边 ⇒ 组内归一（`IN_EDGES` / `IN_EDGES_MEAN`）**恒等于 1**，
+      // 权重整个失效。这正是「东风(10.02亿) 与 零跑(2.39亿) 同为 4 单、压力逐字节相同」的结构性根因
+      // （判据表见契约 `SOURCE_POOL_MEAN` 上方那段）。故分母换成**跨 target 的源池均值**。
+      //
+      // 🔴 敞口**就从本规则自己的边上算**（Σ over 该客户名下订单），不另开一条取数路：
+      //    权重与传导走同一批边 ⇒ 不可能出现「按 A 组边分摊、沿 B 组边传导」的错位。
+      // 🔴 金额口径取 `qty × unitPrice`，与 `solvers/finance-world.ts` 的 `orderValue` **同一支**
+      //    （那里是聚合权重的既有单源）。另立一个"订单金额"的算法就是第二套真相源。
+      const targets = await byType(rule.targetTypeKey);
+      const valueOf = new Map(targets.map((o) => [o.id, Math.max(0, num(o.props.qty) * num(o.props.unitPrice))]));
+      /** 源实例 id → 其在手金额敞口（Σ 名下目标实例的 qty×unitPrice）。 */
+      const exposure = new Map<string, number>();
+      for (const e of edges) exposure.set(e.fromId, (exposure.get(e.fromId) ?? 0) + (valueOf.get(e.toId) ?? 0));
+      // 源池均值：分母只统计**本规则真的有边的那些源**（没有在手订单的客户不进池，
+      // 否则一批零敞口的客户会把均值压低、凭空放大所有人的还手力度）。
+      const pool = [...exposure.keys()].sort((a, b) => a.localeCompare(b));
+      const totalExposure = pool.reduce((s, k) => s + (exposure.get(k) ?? 0), 0);
+      const meanExposure = pool.length > 0 ? totalExposure / pool.length : 0;
+      if (!(meanExposure > 0)) {
+        fail(
+          `本规则源池 ${pool.length} 个 ${rule.sourceTypeKey} 的在手金额敞口合计为 ${totalExposure} ⇒ 算不出相对倍率。` +
+            `本条流不传导——退回「逐目标同额」等于让所有对手方还手力度一样，正是本口径要治的那个错行为。`,
+        );
+        continue;
+      }
+      const table: Record<string, number> = {};
+      let zeroPairs = 0;
+      // R6：按 (源 id, 目标 id) 升序写入 —— 浮点除法与序无关，但键序会被逐字节快照咬到。
+      for (const e of [...edges].sort((a, b) => a.fromId.localeCompare(b.fromId) || a.toId.localeCompare(b.toId))) {
+        const exp = exposure.get(e.fromId) ?? 0;
+        const w = exp / meanExposure;
+        if (w === 0) zeroPairs += 1;
+        table[pairWeightKey(e.fromId, e.toId)] = w;
+        report.explain.push({
+          ruleKey: rule.key, basis, sourceObjectId: e.fromId, targetObjectId: e.toId,
+          weight: w, numerator: exp, denominator: meanExposure, normalize,
+          formula:
+            `在手敞口 Σ(qty × unitPrice) = ${exp} ；权重 = ${exp} ÷ ${meanExposure} = ${w}` +
+            `（分母是**源池均值** ${totalExposure} ÷ ${pool.length} —— 均值=1、无量纲，` +
+            `保住不同对手方之间的**绝对金额比**；组内归一在 1:N 扇出上恒为 1、度量不了这件事）`,
+          fields: [`${rule.targetTypeKey}.qty`, `${rule.targetTypeKey}.unitPrice`],
+          bomId: null,
+        });
+      }
+      weights[rule.key] = table;
+      done(edges.length, zeroPairs);
+      continue;
+    }
+
     // 在册但本模块没实现 ⇒ 诚实报缺（而不是悄悄按某个"差不多"的口径算）。
     // 这一支是**登记册与实现之间的接缝守卫**：往契约里加一个口径却忘了在这里实现，
     // 引擎会当场报缺，而不是给出一批看着合理的错数。

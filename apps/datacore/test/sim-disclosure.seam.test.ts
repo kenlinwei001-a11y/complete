@@ -72,6 +72,9 @@ function build(over: Partial<Parameters<typeof buildSimRunDisclosure>[0]> = {}) 
     cadenceGates: {}, cadenceSkipped: [], unresolvedGates: [],
     stateVarDomains: {}, stateVarReport: emptyStateVarReport,
     timings: [],
+    // WO-ADVERSARY-REACTION：默认走「对抗方关着」= 本仓出厂态（`defaultOn: false`）。
+    // 用例要验开启态就用 `over` 覆盖 —— 默认值取生产实参，免得测试验的是生产不走的那条路。
+    adversaryEnabled: false, adversarySuppressedRuleKeys: [], reactionActors: null,
     ...over,
   });
 }

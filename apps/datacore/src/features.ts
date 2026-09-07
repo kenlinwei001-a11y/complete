@@ -93,6 +93,11 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   { key: "sim.sandbox", name: "推演沙盘", level: "VIEW", defaultOn: false },
   { key: "sim.propagation", name: "系数传导", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.propagation.delay", name: "延迟传导", level: "BLOCK", defaultOn: false, requires: ["sim.propagation"] },
+  // WO-ADVERSARY-REACTION · 对手方（客户/供应商/竞争对手）会对我方应对**做出反应**并回流进世界态。
+  // **默认关闭**：对手会还手是新行为，现有租户的推演结论不该因为一次并线就变。
+  // 关闭态下还手规则被 `partitionAdversaryRules` 滤出引擎（目录里仍可见 —— §3.3
+  // 「关掉的边要可见地降级，不是从图上消失」），且披露层必须写明这是一次**单方推演**。
+  { key: "sim.propagation.adversary", name: "对抗方反应", level: "BLOCK", defaultOn: false, requires: ["sim.propagation"] },
   { key: "sim.checkpoint", name: "检查点/回滚", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.branch", name: "分支对比", level: "BLOCK", defaultOn: false, requires: ["sim.checkpoint"] },
   { key: "sim.certification", name: "就绪认证 L0-L4", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },

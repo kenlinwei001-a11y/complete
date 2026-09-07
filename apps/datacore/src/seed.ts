@@ -1,5 +1,5 @@
 import type { ProcessWaitKind, PropagationRule } from "@platform/contracts";
-import { ProcessDefinitionSchema, ProcessDomainSchema } from "@platform/contracts";
+import { ProcessDefinitionSchema, ProcessDomainSchema, assertReactionWellFormed } from "@platform/contracts";
 import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
 import type { AuthCtx } from "./domain.js";
@@ -229,7 +229,15 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *    join 本租户本体填，入库恒 `null`（存进去会在类型改名后变成查无对证的旧名字）。
  */
 const DEMO_PROPAGATION_RULES: ReadonlyArray<
-  Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName">
+  Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName" | "reaction"> & {
+    /**
+     * **第五种填法**（WO-ADVERSARY-REACTION）：`reaction` 在这张表里是**可选**的 ——
+     * 只有「对手方还手」那几条边写它，其余 46 条**一个字都不用动**
+     * （契约 `version` 字段注释立下的同一条纪律：加字段不许逼着改既有种子字面量）。
+     * 缺省由 `demoPropagationRulesWithDomain()` 统一填 `null` = 普通物理传导。
+     */
+    reaction?: PropagationRule["reaction"];
+  }
 > = [
   // ① 订单需求压力 → 沿"订单属型号"边推到型号需求负载（即时，强相关）。
   //
@@ -1495,6 +1503,82 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-ADVERSARY-REACTION · **对抗方：客户会还手**（默认关闭 · `sim.propagation.adversary`）
+  //
+  // ── 今天的行为 X（实测·金丝雀见下）/ 应该的 Y ────────────────────────────────────
+  // **X**：上面 46 条边**没有一条**表达「交易对手对我方应对做出反应」。
+  //   实测 `orderChurn`（「订单频繁变更」= 插单/取消）在本文件里**入度 0、出度 2** ——
+  //   它是**纯外生根**：只有用户在扰动面板上手动拨它，客户才"砍单"。
+  //   世界里再糟的事（成本一路上抬、应收压力爆表）都不会让任何客户主动少下一张单。
+  //   ⇒ 这就是**单方推演**：扰动是一次性外生冲击，对手不还手。军事预演里对抗方缺席，
+  //     推演产出的就只是"我方计划的自洽性检查"，不是对抗结果。
+  //   金丝雀（证明上面那个"0"是真的 0，不是我 grep 坏了）：同一把尺子量
+  //   `targetStateVar: "demandLoad"` 得 **2**、`"receivablePressure"` 得 **1**。
+  // **Y**：我方应对把成本压到客户头上、越过该客户的**容忍线**之后，
+  //   客户按一条**可披露的规则**还手（砍单），且这个还手**回流进世界态**影响下一拍读数。
+  //
+  // ── 为什么落在「应收压力 → 砍单」这一跳（不是随手挑的）──────────────────────────
+  // `Customer.receivablePressure` 的唯一入边是 `Order.costPressure`
+  // （`demo_order_cost_to_customer_receivable`）⇒ 它**恰好度量的就是"我方把成本转嫁给了这个客户多少"**。
+  // 客户对成本转嫁的标准还手动作就是**砍单 / 改期 / 压价**（`ADVERSARY_MOVE_REGISTRY` 三型）。
+  // 本条取 `CUT_ORDER`，落点 `Order.orderChurn` —— 而 `orderChurn` 的两条既有出边
+  // （`demo_order_churn_to_line_split` / `demo_order_churn_to_model_demand_load`）
+  // **本来就已经发布**，所以还手一落地，世界立刻知道该怎么往下走：
+  //   我方涨价 → Order.costPressure ↑ → Customer.receivablePressure ↑ →〔越过容忍线〕→
+  //   Order.orderChurn ↑ → OrderLine.splitPressure ↑ / Model.demandLoad ↑ → …
+  // ⇒ **零新下游**。本条只补上"回来的那一箭"，不另造一条尾巴。
+  //
+  // 🔴 **这会闭合一个正反馈环**（需求负载 → 基地负载 → 产线利用 → 工单下达 → 型号成本 →
+  //    订单成本 → 应收压力 → 砍单 → 需求负载）。这**不是设计失误，是对抗的本质** ——
+  //    真实商战里"涨价→客户跑→摊薄成本更高→再涨价"正是这么转的。两道既有闸把它按住：
+  //    ① 容忍线（本条 `tolerance`）让环在低水位**根本不导通**；
+  //    ② `WO-PROP-CLAMP` 的量纲衰减 + 取值域饱和让它收敛到有限稳态而不是发散。
+  //    确定性（R6）不受影响：全程零随机、零时钟。
+  {
+    id: "simpr_demo_customer_reaction_cut_order",
+    key: "demo_customer_reaction_cut_order",
+    sourceTypeKey: "Customer",
+    sourceStateVar: "receivablePressure",
+    // Customer→Order 的**影响向逆边**（`order_of_customer` 之逆）。与 `order_has_line`／
+    // `customer_has_location` 是同一种补法：正向边只能把压力送到客户身上，
+    // 送不回订单 —— 而"还手"这个动作的落点就在订单上。
+    // 两向由 `synthetic/service.ts` **同一段派生式**建出（共用 custId/custName），故严格互逆。
+    viaLinkKey: "customer_places_order",
+    targetTypeKey: "Order",
+    targetStateVar: "orderChurn",
+    // 强度：越过容忍线的每 1 个百分点应收压力，换算成 0.35 单位订单变更压力。
+    coefficient: 0.35,
+    // 客户不是当天就砍单：要开会、要走内部审批。留一拍 —— 这一拍的延迟本身就是
+    // 「对抗方反应有时滞」这条业务事实，不是性能取舍。
+    delayTicks: 1,
+    description: "客户被成本转嫁压过容忍线 ⇒ 主动砍单（订单变更频度上升）。对手方还手，非物理传导",
+    combine: "sum",
+    decay: null,
+    // 单条边的还手力度封顶：一次推演里客户可以砍单，但不会把订单簿一次砍到 0。
+    clamp: { min: 0, max: 40 },
+    coefficientRef: null,
+    // ⛔ **必须用 `actor_exposure_relative`，两个组内归一口径在这里都恒等于 1**：
+    // 本边是 1:N 扇出（一个客户 → 名下 N 张单），每张单只有**一个**客户入边 ⇒
+    // `IN_EDGES`(Σ=1) 与 `IN_EDGES_MEAN`(均值=1) 组内只有一行、权重都是 1，形同没加。
+    // 那正是本仓已登记的病灶「东风(10.02亿) 与 零跑(2.39亿) 同为 4 单、应收压力逐字节相同 15.137」
+    // 的结构性根因 —— 不是系数填错，是入边归一这个口径度量不了"谁的盘子大"。
+    // `SOURCE_POOL_MEAN` 除以**源池均值**，保住两家客户之间的绝对金额比 ⇒ 还手力度按敞口拉开。
+    weightRef: { basis: "actor_exposure_relative" },
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+    reaction: {
+      actorTypeKey: "Customer", // 恒等于 sourceTypeKey，构造期由 assertReactionWellFormed 钉死
+      // 容忍线：应收压力 12 个百分点以内客户忍了，超出部分才激起还手。
+      // 取 12 的依据是**世界自己的量级**：`receivablePressure` 已登记取值域上界与本仓实测
+      // 常态读数在个位数到十几之间，12 落在"明显不正常但还没到极端"的位置 ——
+      // 低于它，零扰动空转的常态噪声就会天天惹毛客户（那是把噪声变成结论）；
+      // 高于它，只有极端扰动才看得到对抗方，这个功能等于没开。
+      tolerance: 12,
+      move: "CUT_ORDER",
+    },
+  },
 ];
 
 /**
@@ -1566,9 +1650,13 @@ export function resolveRuleDomain(targetTypeKey: string): { domainKey: string | 
 
 /** demo 传导规则 + 现算出来的域（测试与播种**共用这一支**，不许各算一遍）。 */
 export function demoPropagationRulesWithDomain(): ReadonlyArray<Omit<PropagationRule, "tenantId">> {
-  return DEMO_PROPAGATION_RULES.map((r) => ({
+  // `assertReactionWellFormed` 是**构造期**自检（还手方必须就是这条边的源）——
+  // 机器先说话，不留给运行期去发现「披露层说客户在还手、引擎沿着别的类型在算」。
+  return assertReactionWellFormed(DEMO_PROPAGATION_RULES).map((r) => ({
     ...r,
     ...resolveRuleDomain(r.targetTypeKey),
+    /** 缺省 = 普通物理传导（不是还手）。见 `DEMO_PROPAGATION_RULES` 的「第五种填法」。 */
+    reaction: r.reaction ?? null,
     // 类型人话名**入库恒 null**：它是读时投影（路由 join 本体），存一份会在类型改名后变成旧名字。
     sourceTypeName: null,
     targetTypeName: null,

@@ -409,8 +409,18 @@ export const PropagationRuleSchema = z.object({
    * 不是世界的物理传导。语义与理由见 `ReactionSpecSchema` 头注。
    *
    * `null`（缺省）⇒ 与本字段引入前**逐字节相同**（additive·可回退 RL9）。
+   *
+   * ⚠ **刻意 `optional` 而非 `.default(null)`** —— 与本文件 `version` 字段**同一条理由**，
+   * 那条注释写得很清楚，本单不推翻它，两条依据实测都成立：
+   *  ① `PropagationRule` 在测试里被当**字面量**构造（`prop-clamp-decay.seam` /
+   *     `sim-disclosure.seam` 等，前端 fixture 另有 6 处），做成必填会把它们全打成编译红 ——
+   *     而那些 fixture 属于并行在跑的别的单，不该被本单牵动。
+   *  ② 更要紧的是**读回路上它真的可能不在**：`repo/pg.ts` 读的是 `row.doc as PropagationRule`
+   *     ——**裸 cast、不过 zod parse**，故本字段引入**之前**落库的边读回来是 `undefined`。
+   *     声明成必填等于对读回路撒谎。
+   * ⇒ 消费方一律用 `reaction == null`（同时接住 `null` 与 `undefined`），不许写 `=== null`。
    */
-  reaction: ReactionSpecSchema.nullable().default(null),
+  reaction: ReactionSpecSchema.nullable().optional(),
 });
 export type PropagationRule = z.infer<typeof PropagationRuleSchema>;
 
@@ -459,9 +469,12 @@ export function partitionAdversaryRules<T extends Pick<PropagationRule, "reactio
  * 漂了就会出现「披露层说客户在还手、引擎其实沿着别的类型在算」这种查无对证的错答。
  * **机器先说话**：种子构造期即抛，不留给运行期去发现。
  */
-export function assertReactionWellFormed<T extends Pick<PropagationRule, "key" | "sourceTypeKey" | "reaction">>(
-  rules: readonly T[],
-): readonly T[] {
+export function assertReactionWellFormed<
+  // ⚠ `reaction` 写成**可选**而非 `Pick<PropagationRule, …>`：种子那张表把它做成了「第五种填法」
+  //   （只有还手边写它）。用 Pick 会让 T 推不出实际元素类型，调用点当场报
+  //   「Property 'targetTypeKey' does not exist」—— 实测踩过。
+  T extends { key: string; sourceTypeKey: string; reaction?: ReactionSpec | null },
+>(rules: readonly T[]): readonly T[] {
   for (const r of rules) {
     if (r.reaction == null) continue;
     if (r.reaction.actorTypeKey !== r.sourceTypeKey) {

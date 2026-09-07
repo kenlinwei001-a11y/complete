@@ -3504,6 +3504,10 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "material_used_by_model", fromTypeKey: "Material", toTypeKey: "Model", cardinality: "N:N" }, // supply→product（影响向·`model_uses_material` 之逆）
     { key: "model_demanded_by_order", fromTypeKey: "Model", toTypeKey: "Order", cardinality: "1:N" }, // product→commercial（影响向·`order_for_model` 之逆）
     { key: "order_of_customer", fromTypeKey: "Order", toTypeKey: "Customer", cardinality: "N:N" }, // commercial（多单归一客户）
+    // WO-ADVERSARY-REACTION 影响向逆边：`order_of_customer` 只能把压力送到**客户**身上，
+    // 送不回订单；而「客户还手（砍单/改期）」这个动作的落点恰恰在**订单**上。
+    // 与 `order_has_line` / `customer_has_location` 是同一种补法（档 2「补影响向逆边」）。
+    { key: "customer_places_order", fromTypeKey: "Customer", toTypeKey: "Order", cardinality: "1:N" }, // commercial（影响向·`order_of_customer` 之逆）
     // WO-WAREHOUSE-CUSTLOC：客户交付地点归属客户（CustomerLocation N:1 Customer·参照 order_of_customer 方向）
     { key: "custloc_of_customer", fromTypeKey: "CustomerLocation", toTypeKey: "Customer", cardinality: "N:N" }, // commercial（多地点归一客户）
     // 8 域切片增量：补全 supply 深链 / commercial 深链 / 工厂扩展 / 设备-检修 / 产能 / 质量 / 计划 跨域边。
