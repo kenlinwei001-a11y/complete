@@ -111,6 +111,17 @@ try {
     }
     const dagCount = await page.$$eval('[data-testid="provenance-dag"]', (e) => e.length);
     say("riskBoardDagCount", dagCount);
+    // 根因面板整块的**屏上原文**（有树 / 诚实灰 两态都要能引用出来）
+    const rcPanel = await page.$('[data-testid^="rootcause-panel-"]');
+    say("riskRootCausePanelText",
+      rcPanel ? (await rcPanel.innerText()).replace(/\s+/g, " ").trim().slice(0, 520) : "(根因面板节点不在这一屏)");
+    // 元素级截图：整页图太长，判据①要看的就是这一块，单独出一张便于并排对照。
+    if (rcPanel) {
+      await rcPanel.scrollIntoViewIfNeeded();
+      await sleep(800);
+      await rcPanel.screenshot({ path: `apps/frontend-shell/test/e2e/shots/gapnorm-${TAG}-05-rootcause-panel.png` });
+      say("rootcausePanelShot", `gapnorm-${TAG}-05-rootcause-panel.png`);
+    }
     // 缺省根指标在屏上的原文：根因树的 KPI 根节点（`dag-node-kpi:<key>`）
     const kpiRoots = await page.$$eval('[data-testid^="dag-node-kpi:"]', (els) =>
       els.map((e) => ({ testid: e.getAttribute("data-testid"), text: (e.innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 120) })),

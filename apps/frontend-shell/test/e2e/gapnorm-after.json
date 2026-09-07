@@ -1,6 +1,6 @@
 {
   "tag": "after",
-  "at": "2026-09-07T14:22:05.673Z",
+  "at": "2026-09-07T14:27:27.673Z",
   "steps": [
     "登录后落在 http://127.0.0.1:5173/",
     "点了导航项「经营驾驶舱」"
@@ -8,13 +8,13 @@
   "loginLandedAt": "http://127.0.0.1:5173/",
   "noMock": {
     "ok": true,
-    "realHits": 5,
+    "realHits": 6,
     "sample": [
       "200 POST http://127.0.0.1:4001/a/v1/auth/login",
       "200 GET http://127.0.0.1:4001/a/v1/me/workspace",
       "200 GET http://127.0.0.1:4001/a/v1/history/watermark",
       "200 GET http://127.0.0.1:4001/a/v1/data-health",
-      "200 GET http://127.0.0.1:4002/b/v1/scenarios"
+      "200 POST http://127.0.0.1:4001/a/v1/auth/refresh"
     ]
   },
   "navSample": [
@@ -143,6 +143,8 @@
   ],
   "riskCardOpened": "risk-card-常州",
   "riskBoardDagCount": 1,
+  "riskRootCausePanelText": "🌳 常州 · 根因推演树 ? 因子作用域： 全部因子（基地级） 按「瓶颈工序」细分 按「换型损失」细分 按「设备OEE」细分 按「人力工时」细分 按「物流时长」细分 按「物料齐套」细分 按「良率波动」细分 RED 营收 实际 415.6亿 · 目标 700亿 · 缺口 284.4亿 KSF 基地 常州 占缺口 37% · 贡献 92.0859亿 28% 正极物料短缺 贡献 22.8466 MaterialBalance.gapTon · 492 11% changzhou 设备瓶颈（OEE 缺口） 贡献 8.5439 Equipment.oee_current · 0.8279 9% 订单 SO-3490（东风汽车） 贡献 7.0132 Order.value · 352397826 8% 订单 SO-3402（长安汽车） 贡献 6.4772 Order.value · 325464524 6% 订单 SO-3445（长安汽车） 贡献 5.2333 Order.value · 262962128 6% 订单 SO-3420（东风汽车） 贡献 4.7284 Order.value · 237590100 5% 订单 SO-3",
+  "rootcausePanelShot": "gapnorm-after-05-rootcause-panel.png",
   "riskKpiRootNodes": [
     {
       "testid": "dag-node-kpi:revenue",
@@ -156,13 +158,18 @@
     "缺口 284.4亿",
     "缺口 37% · 贡献 92.0859亿",
     "缺口）",
-    "缺口",
-    "缺口"
+    "缺口窗给逐日处置过程",
+    "缺口）」"
   ],
   "riskCanary": "量法有效：数到 1 棵根因树",
   "consoleErrors": [
     "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
-    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
     "Failed to load resource: the server responded with a status of 404 (Not Found)"
   ]
 }
