@@ -1,5 +1,24 @@
 # 提案 · 表达式产边（桶④「算端点 / 造叉积」）
 
+> ## ✅ 已落地（`WO-COMPUTED-EDGE-IMPL` · 2026-09-07）
+>
+> 本提案的四组**全部闭合**，落地口径与本文推荐一致（仓主裁决：① 走「丙」· ② 加 anchor 侧谓词 · ③ 拆边 + 口径归一）。
+> 落地后的机制说明、对照实验四数与限界证据 → `docs/SYSTEM-ONTOLOGY.md`
+> 「结构边物化 · 算端点 `viaKeyExpr` / anchor 侧谓词 `viaWhereTo` / 叉积 `viaCross`」及其后三节。
+>
+> | 组 | 本文的推荐 | 实际落地 | 状态 |
+> |---|---|---|---|
+> | **A1** 条件常量/枚举映射（2 条） | A1-α `viaKeyExpr`，复用 `ontology-dsl`，零新 AST 节点 | 照此落地。`plantarget_ownedby` 0→**17** 条 · `model_in_segment` 0→**6** 条（`keyExprDistinctKeys=2`） | ✅ 已闭 |
+> | **A2** 字符串手术（2 条） | 裁决点① 三选一 | 走**丙**：补列 `Line.workshopId` / `Order.dueMonth`，**没有**加 `SUBSTR`/`CONCAT`/`CONTAINS`（不外溢到派生属性子系统）。`line_belongs_to_workshop` 400→**130** · `order_to_plantarget` 400→**458** | ✅ 已闭 |
+> | **B** 造叉积（2 条） | B-α `viaCross` + 强制边数预算 | 照此落地，`maxEdges` **必填无默认值**。`base_data_health` 0→**117**（13×9）· `scenario_to_capex` 0→**6**（候选 3×3=9 → `fromWhere` 筛 → 2×3） | ✅ 已闭 |
+> | **C** 多态目标（1 条） | 「我给不出安全方案」，替代路=拆 5 条 | 走替代路。实测揭出比预期更硬的证据：**372 条实例写进 links、检索只看得见 166 条**，206 条静默不可达。原 key 留给 `EquipmentDowntime`，新增 4 条 | ✅ 已闭 |
+> | 裁决点② anchor 侧谓词 | 推荐「乙 · 加 `viaWhereTo`」 | 照此落地（叉积的前置） | ✅ 已闭 |
+> | 裁决点③ BOM 捷径边 | 推荐「乙 · 口径归一到 BOM 链」 | 照此落地：捷径边改从 BOM 四跳链派生，**24 条（4/型号）→ 42 条（7/型号）**，边 key/方向/端点零改动 | ✅ 已闭 |
+> | §1.2b `model_in_segment` 退化 | 「不该由本提案顺手定死」 | 由本单裁决：按已有的 `pos` 口径归段（与 `Model.unitPrice` 共用 `segKeyOfModelPos`），`com` 分支**删除**（型号表零商用车型号，该细分由买方业态判定）。修后 `{pas:4, ess:2}` | ✅ 已闭 |
+>
+> **本文其余内容原样保留**（含被实测推翻的两处：§1.2 与 §1.2b）—— 它是当时的取证过程，不是现状描述。
+> 现状以本体为准。
+
 | | |
 |---|---|
 | **单号** | `WO-COMPUTED-EDGE-PROPOSAL`（只读单，零源码改动） |
