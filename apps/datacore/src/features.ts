@@ -255,6 +255,17 @@ export const PERF_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
  */
 export const WORLD_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "org.world",
+  // WO-ADVERSARY-REACTION · 对抗方反应。**必须进这个集合，光写 `defaultOn:false` 拦不住 demo 租户** ——
+  // 上面那段注释白纸黑字写着「新增暗发门必须同时进这三个集合之一，否则等于没暗发」，
+  // 而我初版正是只写了 `defaultOn:false` 就以为关上了。
+  // 实测（真后端 · demo 租户 · 未设任何覆盖）：`resolve("demo")` 里**它在**，即**其实是开的**；
+  // 金丝雀：同为 `defaultOn:false` 且全程没人碰过的 `sim.checkpoint` **同样在** ⇒
+  // 这不是我这个键特殊，是 L2 行业模板「ALL_FEATURE_KEYS 全开」把它顺带打开了。
+  // 形态（铁律 0.6 句式）：**「我用『注册表里写着 defaultOn:false』当作『它对真实租户是关的』的证据，
+  // 而前者并不度量后者。」** 判据只能是**对租户 resolve 之后**的结果。
+  // 落在 world 集而不是另两个：对抗方是**未完工的世界层功能** —— 引擎与披露层已落，
+  // 屏上展示位未建（`views/sim/` 受仓主禁令 2 冻结，须逐案批准）。
+  "sim.propagation.adversary",
 ]);
 
 /**
