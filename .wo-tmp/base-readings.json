@@ -1,0 +1,228 @@
+{
+ "DemandSegment": [
+  {
+   "demandWanPerYearP50": 201.7,
+   "marginPct": 19,
+   "marginWan": 84.3106,
+   "priceWan": 2.2,
+   "revenueWan": 443.74,
+   "segId": "dseg-1",
+   "segment": "乘用车"
+  },
+  {
+   "demandWanPerYearP50": 139.2,
+   "marginPct": 13,
+   "marginWan": 25.3344,
+   "priceWan": 1.4,
+   "revenueWan": 194.88,
+   "segId": "dseg-2",
+   "segment": "储能"
+  },
+  {
+   "demandWanPerYearP50": 34.1,
+   "marginPct": 15,
+   "marginWan": 9.207,
+   "priceWan": 1.8,
+   "revenueWan": 61.38,
+   "segId": "dseg-3",
+   "segment": "商用车"
+  }
+ ],
+ "DemandSegment.sums": {
+  "marginWan": 118.852,
+  "revenueWan": 700.0
+ },
+ "Line.sample": [
+  {
+   "actual_output_daily": 76874.6133,
+   "capacityDaily": 176,
+   "lineId": "LINE-WS-changzhou-assembly",
+   "max_capacity_day": 16896,
+   "utilization": 92.5496
+  },
+  {
+   "actual_output_daily": 78532.8233,
+   "capacityDaily": 176,
+   "lineId": "LINE-WS-changzhou-calendering",
+   "max_capacity_day": 16896,
+   "utilization": 92.852
+  },
+  {
+   "actual_output_daily": 78728.0855,
+   "capacityDaily": 176,
+   "lineId": "LINE-WS-changzhou-coating",
+   "max_capacity_day": 16896,
+   "utilization": 90.4739
+  }
+ ],
+ "Line.totals": {
+  "n": 130,
+  "sum_actual_output_daily": 5444093.6549,
+  "sum_capacityDaily": 12160,
+  "sum_max_capacity_day": 1167360
+ },
+ "Material": [
+  {
+   "dailyUse": 461,
+   "idleDays": null,
+   "inTransit": 1941,
+   "leadTime": 14,
+   "matId": "al_foil",
+   "onHand": 9558,
+   "unit": "kg",
+   "unitPrice": 32.48
+  },
+  {
+   "dailyUse": 338.2,
+   "idleDays": null,
+   "inTransit": 144,
+   "leadTime": 14,
+   "matId": "cell_case",
+   "onHand": 3619,
+   "unit": "个",
+   "unitPrice": 18.34
+  },
+  {
+   "dailyUse": 275.1,
+   "idleDays": null,
+   "inTransit": 2865,
+   "leadTime": 13,
+   "matId": "cu_foil",
+   "onHand": 2596,
+   "unit": "kg",
+   "unitPrice": 63.3
+  },
+  {
+   "dailyUse": 242.6,
+   "idleDays": null,
+   "inTransit": 1169,
+   "leadTime": 10,
+   "matId": "elyte",
+   "onHand": 5173,
+   "unit": "L",
+   "unitPrice": 41.34
+  },
+  {
+   "dailyUse": 509.9,
+   "idleDays": null,
+   "inTransit": 701,
+   "leadTime": 25,
+   "matId": "neg_graphite",
+   "onHand": 5545,
+   "unit": "kg",
+   "unitPrice": 62.1
+  },
+  {
+   "dailyUse": 617,
+   "idleDays": null,
+   "inTransit": 3051,
+   "leadTime": 26,
+   "matId": "pos_lfp",
+   "onHand": 6116,
+   "unit": "kg",
+   "unitPrice": 94.35
+  },
+  {
+   "dailyUse": 601,
+   "idleDays": null,
+   "inTransit": 1371,
+   "leadTime": 26,
+   "matId": "pos_ncm",
+   "onHand": 8198,
+   "unit": "kg",
+   "unitPrice": 176.35
+  },
+  {
+   "dailyUse": 519.9,
+   "idleDays": null,
+   "inTransit": 1234,
+   "leadTime": 17,
+   "matId": "sep_film",
+   "onHand": 9734,
+   "unit": "㎡",
+   "unitPrice": 29.92
+  }
+ ],
+ "Order.sample": [
+  {
+   "qty": 7259,
+   "so": "SO-3391",
+   "unitPrice": 22198,
+   "value": 161135282
+  },
+  {
+   "qty": 14518,
+   "so": "SO-3402",
+   "unitPrice": 22418,
+   "value": 325464524
+  },
+  {
+   "qty": 4033,
+   "so": "SO-3415",
+   "unitPrice": 21846,
+   "value": 88104918
+  }
+ ],
+ "Order.totals": {
+  "n": 500,
+  "sum_qty": 2436095,
+  "sum_value": 45464327004
+ },
+ "count.BOMDetail": "ERR HTTP Error 400: Bad Request",
+ "count.DemandSegment": "ERR HTTP Error 400: Bad Request",
+ "count.Line": "ERR HTTP Error 400: Bad Request",
+ "count.Material": "ERR HTTP Error 400: Bad Request",
+ "count.Order": "ERR HTTP Error 400: Bad Request",
+ "inventory_optimize": {
+  "over": [],
+  "releasableCash": 0,
+  "under_maxQty": 9185.6,
+  "under_n": 5
+ },
+ "inventory_optimize.overProbe": {
+  "over": [
+   {
+    "matId": "al_foil",
+    "overQty": 13138.5,
+    "value": 426738.48
+   },
+   {
+    "matId": "cell_case",
+    "overQty": 9638.7,
+    "value": 176773.76
+   },
+   {
+    "matId": "cu_foil",
+    "overQty": 7427.7,
+    "value": 470173.41
+   },
+   {
+    "matId": "elyte",
+    "overQty": 5458.5,
+    "value": 225654.39
+   },
+   {
+    "matId": "neg_graphite",
+    "overQty": 22945.5,
+    "value": 1424915.55
+   },
+   {
+    "matId": "pos_lfp",
+    "overQty": 28690.5,
+    "value": 2706948.68
+   },
+   {
+    "matId": "pos_ncm",
+    "overQty": 27946.5,
+    "value": 4928365.27
+   },
+   {
+    "matId": "sep_film",
+    "overQty": 17156.7,
+    "value": 513328.46
+   }
+  ],
+  "releasableCash": 10872898
+ },
+ "margin_waterfall": "ERR HTTP Error 404: Not Found"
+}

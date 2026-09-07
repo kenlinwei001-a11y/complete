@@ -120,6 +120,9 @@ export const UNIT_DIMENSIONS = {
   亿元: { num: money(1e8) },
   "元/kWh": { num: money(1), den: energy(1) },
   "元/吨": { num: money(1), den: mass(1e3) },
+  // WO-DIMENSION-ERRORS：钱的**年流量**。分母倍数**不登记** —— 与 `万套/年` 同理，
+  // 「一年几天」是日历口径（365 / 365.25 / 250 工作日），不由本模块替人裁决。
+  "亿元/年": { num: money(1e8), den: time() },
   // WO-RATE-DIMENSION 新增：物料单价的四种真实分母（见 `Material.unit` 的实测取值域）。
   "元/kg": { num: money(1), den: mass(1) },
   "元/个": { num: money(1), den: count("个") },
@@ -129,6 +132,8 @@ export const UNIT_DIMENSIONS = {
   [`元/${UNIT_REF_PLACEHOLDER}`]: { num: money(1), den: { kind: "perRef" } },
   // 参数化：分子由同对象另一格给出（`BOMDetail.quantity` → `BOMDetail.unit`）。
   [UNIT_REF_PLACEHOLDER]: { num: { kind: "perRef" } },
+  // 参数化**速率**：分子由同对象另一格给出、分母是日（`Material.dailyUse` → `Material.unit`）。
+  [`${UNIT_REF_PLACEHOLDER}/日`]: { num: { kind: "perRef" }, den: time(1) },
   // ── 能量 / 产能 ──────────────────────────────────────────────────────────────
   kWh: { num: energy(1) },
   MWh: { num: energy(1e3) },
@@ -177,6 +182,13 @@ export const UNIT_DIMENSIONS = {
   "件/日": { num: count("件"), den: time(1) },
   "电芯/天": { num: count("电芯"), den: time(1) },
   "GWh/年": { num: energy(1e6), den: time() },
+  // WO-DIMENSION-ERRORS · `Material.dailyUse` 的四个解析落点（分母是**日**，倍数精确 = 1）。
+  // ⚠ 四者互不同族（mass/time · area/time · volume/time · count:个/time）—— 这正是把
+  // 「8 料一个 `吨`」拆开的意义：族错在这一层才看得见。
+  "kg/日": { num: mass(1), den: time(1) },
+  "㎡/日": { num: plain("area"), den: time(1) },
+  "L/日": { num: plain("volume"), den: time(1) },
+  "个/日": { num: count("个"), den: time(1) },
   // ── 比例 / 评分（`%` 与 `dimensionless` **不并族** —— 那正是 100× 那个 bug 的藏身处）──
   "%": { num: plain("percent") },
   点: { num: plain("score") },
