@@ -140,11 +140,13 @@ export class ConnectorService {
     if (type.key === "knowledge_base") {
       const startedAt = Date.now();
       try {
+        // 向导里连接还没落库、拿不到 connId ⇒ 只能按租户统计。措辞要如实说是「本租户」，
+        // 不许写成「本连接已存 N 篇」——那是个连数字都对不上的谎。
         const docs = await this.repos.kbDocs.list(ctx.tenantId, () => true);
         return {
           ok: true,
           reason: "OK",
-          message: `知识库可用（当前已存 ${docs.length} 篇文档）。文档通过「上传」灌入，不从该地址拉取。`,
+          message: `知识库可用（本租户现有 ${docs.length} 篇文档）。文档通过「上传」灌入，不从该地址拉取。`,
           latencyMs: Date.now() - startedAt,
           probed: true,
         };
@@ -156,7 +158,7 @@ export class ConnectorService {
     const urlField: Record<string, string> = { rest_api: "url" };
     const field = urlField[type.key];
     if (field) return probeHttp(input.config[field], this.fetchImpl, timeoutMs);
-    // ④ 文件型：blob 在不在就是「可达」。
+    // ⑤ 文件型：blob 在不在就是「可达」。
     if (type.key === "file_upload" || type.key === "prototype_html") {
       const key = input.config.blobKey;
       if (typeof key !== "string" || key === "") {
@@ -173,7 +175,7 @@ export class ConnectorService {
         return { ok: false, reason: "UNREACHABLE", message: "读取文件存储失败：请稍后重试或联系管理员。", latencyMs: Date.now() - startedAt, probed: true };
       }
     }
-    // ⑤ 内置样例型：真枚举一遍数据集（反向对照——这一档必须仍然 ok:true）。
+    // ⑥ 内置样例型：真枚举一遍数据集（反向对照——这一档必须仍然 ok:true）。
     const startedAt = Date.now();
     try {
       const adapter = createAdapter(type.key, input.config, this.blob, this.fetchImpl);

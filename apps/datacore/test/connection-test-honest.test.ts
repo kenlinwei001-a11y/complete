@@ -264,7 +264,8 @@ describe("WO-CONNTEST-HONEST §4 · 无适配器的三类：不许报「连接�
     const after = await testConn(t.app, "knowledge_base", { endpoint: "internal://databuilder" });
     // 对照实验：改变输入（多一篇文档），回包必须按可预言的方式变化。
     expect(before.message).not.toBe(after.message);
-    expect(after.message).toMatch(/1 篇文档/);
+    expect(before.message).toMatch(/现有 0 篇文档/);
+    expect(after.message).toMatch(/现有 1 篇文档/);
   });
 });
 
