@@ -1686,6 +1686,28 @@ export const zh = {
       testConnection: "测试连接",
       testOk: "连接成功",
       testFail: "连接失败",
+      /**
+       * 「测试连接」失败分类标题（后端 `ConnectionTestReason` 一一对应）。
+       * ⚠ 只回一句笼统「连接失败」，客户 IT 拿着它什么都做不了 —— 这四类各对应完全不同的下一步动作：
+       * 改主机名 / 找运维开端口 / 换账号 / 查防火墙。
+       */
+      testReason: {
+        MISSING_CONFIG: "配置不完整",
+        UNKNOWN_TYPE: "连接器类型不存在",
+        UNSUPPORTED_TYPE: "该类型暂未支持",
+        INVALID_URL: "地址格式不正确",
+        DNS_NOT_RESOLVED: "主机名解析不到",
+        CONNECTION_REFUSED: "端口拒绝连接",
+        TIMEOUT: "连接超时",
+        TLS_ERROR: "证书校验失败",
+        AUTH_FAILED: "认证被拒",
+        HTTP_ERROR: "对端返回异常",
+        NOT_FOUND: "文件不存在",
+        UNREACHABLE: "无法建立连接",
+      } as Record<string, string>,
+      /** 未真正发起连接时的标注 —— 让「试过了连不上」与「压根没试」在屏上可区分。 */
+      testNotProbed: "未发起连接",
+      testProbedIn: "已实测",
       upload: "文件上传",
       uploadHint: "拖拽或点击上传 CSV/XLSX/JSON",
       fieldProfile: "字段画像",

@@ -139,6 +139,22 @@ export function safeTarget(raw: unknown): string | undefined {
   }
 }
 
+/**
+ * 地址里内嵌了 `user:pass@`（实测：undici 直接抛
+ * `TypeError: Request cannot be constructed from a URL that includes credentials`，且**这条 message 本身带用户名**
+ * —— 又一个「不许回显 error 原文」的理由）。
+ * 前置识别它，好过让它掉进兜底的「无法建立连接」：那句话会让人去查网络，而真正该做的是把凭据挪到凭据字段。
+ */
+export function hasEmbeddedCredentials(raw: unknown): boolean {
+  if (typeof raw !== "string" || raw.trim() === "") return false;
+  try {
+    const u = new URL(raw.trim());
+    return u.username !== "" || u.password !== "";
+  } catch {
+    return false;
+  }
+}
+
 /** 发一次有界 HTTP 探测并归类。任何异常都被吃掉转成 result —— 「测试连接」自身不许抛。 */
 export async function probeHttp(
   rawUrl: unknown,
@@ -151,6 +167,15 @@ export async function probeHttp(
   }
   if (!target) {
     return { ok: false, reason: "INVALID_URL", message: "地址格式不正确：请填写完整地址（含 http:// 或 https://）。", probed: false, target: undefined };
+  }
+  if (hasEmbeddedCredentials(rawUrl)) {
+    return {
+      ok: false,
+      reason: "INVALID_URL",
+      message: "地址中不支持内嵌用户名密码：请去掉地址里的「用户名:密码@」部分，改用下方的凭据字段填写。",
+      probed: false,
+      target,
+    };
   }
   const startedAt = Date.now();
   try {

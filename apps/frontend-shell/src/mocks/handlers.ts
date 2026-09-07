@@ -4738,9 +4738,23 @@ export const handlers = [
     return HttpResponse.json(conn);
   }),
   http.post("*/a/v1/connections/test", async ({ request }) => {
-    const body = (await request.json()) as { config: Record<string, unknown> };
-    const ok = Boolean(Object.values(body.config ?? {}).some((v) => v !== "" && v != null));
-    return HttpResponse.json(ok ? { ok: true } : { ok: false, message: "配置为空" });
+    // mock 模式下无法真发起网络请求，但**回包形态与判据必须与真后端一致** ——
+    // 原实现「任一字段非空即 ok:true」正是真后端那个 bug 的镜像（对不存在的主机也说「连接成功」）。
+    // 桩里留着它，等于在 mock 模式下继续教错的行为。
+    const body = (await request.json()) as { connectorTypeKey?: string; config: Record<string, unknown> };
+    const cfg = body.config ?? {};
+    const key = body.connectorTypeKey ?? "";
+    if (["sap_erp", "salesforce_crm", "generic_jdbc"].includes(key)) {
+      return HttpResponse.json({ ok: false, reason: "UNSUPPORTED_TYPE", message: `当前版本尚未内置 ${key} 的数据适配器：建立连接后也无法读取表结构或同步数据。`, probed: false });
+    }
+    const url = String(cfg.url ?? cfg.feedUrl ?? cfg.endpoint ?? "");
+    if (url === "" && !["mock_erp", "mock_crm", "mock_external", "file_upload", "prototype_html"].includes(key)) {
+      return HttpResponse.json({ ok: false, reason: "MISSING_CONFIG", message: "缺少必填配置：url", probed: false });
+    }
+    if (/\.invalid(\/|$|:)/.test(url)) {
+      return HttpResponse.json({ ok: false, reason: "DNS_NOT_RESOLVED", message: "主机名解析不到：请检查主机名拼写，或确认本服务所在网络能解析该域名。", target: url.replace(/^(\w+:\/\/[^/?#]+).*$/, "$1"), latencyMs: 12, probed: true });
+    }
+    return HttpResponse.json({ ok: true, reason: "OK", latencyMs: 3, probed: true });
   }),
   http.post("*/a/v1/connections", async ({ request }) => {
     const body = (await request.json()) as { connectorTypeKey: string; name: string; config: Record<string, unknown>; category?: string };
