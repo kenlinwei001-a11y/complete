@@ -796,6 +796,26 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
   // transitDays = ceil(baseDistanceKm / dailyTruckKm)（下限 minTransitDays·同区非 0）；
   // freightCost = baseDistanceKm × tonKmRate × (qty × qtyToTon)（确定性·同基地=0 距=0 费=0）。
   interbase: { dailyTruckKm: 600, minTransitDays: 1, tonKmRate: 0.55, qtyToTon: 0.4 },
+  // WO-PENALTY-CHANGEOVER-ONTOLOGY · 违约金费率册（R14：业务常数入册·禁生成环内联魔数）。
+  //
+  // `OrderLine.breachPenalty = OrderLine.qty × ratePerUnitYuan[所属订单.pri]`（元/整行）。
+  //
+  // ⚠ **诚实位 `synthetic: true` 不是装饰**：这三个数**没有真实合同条款做出处**。
+  //   来历是前端多目标面板旧版内联的那张「优先级 → 元/套」表（高 26000 / 中 9000 / 低 2600），
+  //   那套系数因为「本体上没有这一格」被整根轴退成显式缺席位；本单把它从**客户端自造口径**
+  //   搬成**本体事实 + 在册费率**，值保持不变以免屏上读数无解释地跳变。
+  // ⚠ 量级自陈（读到这里的人必须知道，别把它当真实 LD 条款）：本租户 `Model.unitPrice`
+  //   约 2.1 万元/件量级 ⇒ 高优先级档的赔付率超过货值本身。真实 LD 条款通常封顶在合同额的
+  //   一个百分比，**本表不是**。要接真实条款：换掉本表的值（或改成从合同对象读），本体那一格不动。
+  // ⚠ 单位为什么写在注释里而不是本体上：本册（PROPERTY_UNITS）在 R-UNIT 裁决下没有
+  //   `元/件`/`元/套` 这类以物理计数作分母的货币单位 ⇒ 费率本身在本平台声明不出来，
+  //   只有乘完 qty 的总额可以（那一格声明的是「元」）。故费率只活在种子侧，且只此一处。
+  breachPenalty: {
+    synthetic: true,
+    ratePerUnitYuan: { 高: 26000, 中: 9000, 低: 2600 },
+    /** `pri` 取到表外值时的兜底档（不静默给 0 —— 给 0 等于"这单赔不赔都行"，是个业务断言）。 */
+    defaultPri: "低",
+  } as { synthetic: boolean; ratePerUnitYuan: Record<string, number>; defaultPri: string },
   // WO-OPT-WHATIF-DATA · 设施选址成本费率册（R14：业务常数入册·禁生成环内联魔数）。
   // Base.openCost = gwh × gwhFixedWan + lines × lineFixedWan（规模派生·万元/年）；
   // Base.serveCost = 产能加权全网平均干线距离km × servePerKmWan（地理派生·万元/需求点·年）。
@@ -1988,6 +2008,36 @@ const orderLineProps: PropertyDef[] = [
       "该订单行的按件履约成本（元/电芯）—— 值由本行 model 从 `Model.unitCost` 反范式化下来，" +
       "算法与唯一来源都在型号侧，本格不独立计算、不可单独改口径；与同行 unitPrice 配对即得该行单位毛利。",
   },
+  // ── WO-PENALTY-CHANGEOVER-ONTOLOGY · 违约金落到订单行这一层 ──────────────────────
+  //
+  // 今天的行为是 X：`OrderLine` 上没有任何命中违约/成本词库的**总量**数值字段 ⇒
+  //   `opt-assemble.ts` 的 `penProp` 恒 undefined ⇒ 不声明 `penalty` role ⇒ 绑定层
+  //   `num(p["penalty"])` 对 873 行**恒取到 0**。引擎侧其实**全接好了**
+  //   （`inproc-optimizer.ts` 的密度排序含 `wPen·penalty` 项、`objectiveValues.penalty`
+  //   = Σ 被挤单违约金、标量目标含 `−wPen·penalty`），只是没有数据可读 ——
+  //   这是三分法第二态「接了线没数据」，修法是**补数据**不是接线。
+  // 应该是 Y：这一格是本体事实，装配器现扫命中即声明为真轴；改费率 ⇒ 装入次序与目标值真变。
+  //
+  // ⚠ **为什么是「总量（元）」而不是「费率（元/件）」**，两条判据缺一不可：
+  //  ① 语义：违约金是**一行赔多少**的总量。`opt-assemble.ts` 那段注释写得很清楚 ——
+  //     「penalty 是总量（一单赔多少），强度量当不了总量」，故它显式排除 `unitRate` 命中的格。
+  //  ② 量纲：本册（`domain.ts` PROPERTY_UNITS）在 R-UNIT 裁决下**故意没有** `元/套`，
+  //     也没有 `元/件` —— 「套/件」只作物理计数，不得充当金额的分母。
+  //     ⇒ 一个按件的违约费率在本平台的单位字典里**根本声明不出来**。
+  //     费率因此只能是**种子侧的派生输入**（在册于 `BATTERY_SOLVER_PARAMS.breachPenalty`），
+  //     落到本体上的是它乘完 qty 之后的那个总额，单位「元」——与 unitPrice/unitCost 同货币基准。
+  //
+  // ⚠ 放在 `OrderLine` 而不是 `Order`：装配器的 `orderT` 现算挑的就是 `OrderLine`
+  //   （873 行 > Order 500 行，且两个多目标面板已收敛到这个粒度）。挂到 `Order` 上
+  //   `penProp` 仍是 undefined、轴仍然缺席 —— 挂错一层的后果不是报错，是这根轴照旧不存在。
+  {
+    propKey: "breachPenalty", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute",
+    description:
+      "该订单行未能交付时按合同违约条款要赔付的金额总量（元/整行，不是每件费率）。" +
+      "值 = 本行 qty × 所属订单优先级对应的违约费率，费率册在场景包 solver_params.breachPenalty，" +
+      "标注为合成值（本平台无真实合同条款数据源）。多目标推演把它计入「被挤单」那一侧：" +
+      "一行被挤出排产才发生这笔赔付，获排则不发生。",
+  },
 ];
 
 const inventoryTxnProps: PropertyDef[] = [
@@ -2674,6 +2724,7 @@ export const PROP_DISPLAY_NAMES: Record<string, string> = {
   "OrderLine.lineId": "订单行号", "OrderLine.orderRef": "所属订单", "OrderLine.lineNo": "行序号",
   "OrderLine.model": "型号", "OrderLine.qty": "数量", "OrderLine.due": "交期",
   "OrderLine.lineStatus": "行状态", "OrderLine.unitPrice": "单价", "OrderLine.unitCost": "单位成本",
+  "OrderLine.breachPenalty": "违约金", // WO-PENALTY-CHANGEOVER-ONTOLOGY
   "OrderPromise.promiseId": "承诺编号", "OrderPromise.orderRef": "所属订单", "OrderPromise.model": "型号",
   "OrderPromise.requestedQty": "需求量", "OrderPromise.committableQty": "可承接量",
   "OrderPromise.promiseDate": "承诺交付日", "OrderPromise.atpStatus": "承诺状态",
@@ -4991,11 +5042,27 @@ export function deriveOrderLines(
   const priceOf = new Map(models.map((m) => [String(m.modelId), Number(m.unitPrice ?? 0)]));
   // WO-UNITCOST-LAND：成本与单价**同一取法** —— 都从 `models` 反范式化下来（R14 单一来源）。
   const costOf = new Map(models.map((m) => [String(m.modelId), Number(m.unitCost ?? 0)]));
+  /**
+   * WO-PENALTY-CHANGEOVER-ONTOLOGY · 违约费率取自在册费率表（**禁在本函数内联三个数字**）。
+   * 取不到就抛 —— 与 `ruleParamOf` 同一条纪律：种子构建期炸，不静默回落一个看似正常的 0
+   * （回落 0 会让违约金轴对全体订单恒为 0，屏上是一根完全正常、却什么都不表达的平轴）。
+   */
+  const penaltyCfg = BATTERY_SOLVER_PARAMS.breachPenalty as { ratePerUnitYuan: Record<string, number>; defaultPri: string };
+  const penaltyRateOf = (pri: string): number => {
+    const r = penaltyCfg.ratePerUnitYuan[pri] ?? penaltyCfg.ratePerUnitYuan[penaltyCfg.defaultPri];
+    if (typeof r !== "number" || !Number.isFinite(r)) {
+      throw new Error(`solver_params.breachPenalty.ratePerUnitYuan 缺 '${pri}' 档且兜底档 '${penaltyCfg.defaultPri}' 也取不到（R14 单源）`);
+    }
+    return r;
+  };
   const out: Record<string, unknown>[] = [];
   for (const o of orders) {
     const so = String(o.so);
     const m0 = String(o.model ?? "");
     const totalQty = Number(o.qty ?? 0);
+    // 违约费率按**所属订单**的优先级取（合同条款挂在订单头，行继承之）——
+    // 与 unitPrice/unitCost 按**行型号**取是两条不同的溯源线，不许混。
+    const penRate = penaltyRateOf(String(o.pri ?? ""));
     const h = hashString(`oline_${so}`);
     // 拆行数：偶数 → 2-3 行（不同型号）· 奇数 → 1 行（确定性）。
     const nLines = h % 2 === 0 ? 2 + (Math.floor(h / 4) % 2) : 1;
@@ -5029,6 +5096,8 @@ export function deriveOrderLines(
         lineStatus: lineStatusFor(String(o.status ?? "OPEN"), h, i),
         unitPrice: priceOf.get(lm) ?? Number(o.unitPrice ?? 0),
         unitCost: costOf.get(lm) ?? 0,
+        // 总量（元/整行）。纯乘法、零 rng、零时钟 ⇒ 不消耗任何随机流，下游合成值零位移（R6）。
+        breachPenalty: qty * penRate,
       });
     }
   }
