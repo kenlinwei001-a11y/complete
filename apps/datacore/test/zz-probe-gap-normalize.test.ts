@@ -15,22 +15,32 @@ describe("PROBE · gap_attribution 缺省根指标选法", () => {
       absGap: Number(p.target) - Number(p.actual),
       relGap: (Number(p.target) - Number(p.actual)) / Math.abs(Number(p.target)),
       breached: Number(p.actual) < Number(p.floorVal),
-      basis: p.basis === undefined ? "(none)" : String(p.basis).slice(0, 30),
     }));
     // eslint-disable-next-line no-console
     console.log("=== ALL METRICS ===");
     for (const r of table) {
       // eslint-disable-next-line no-console
-      console.log(`${r.metricId.padEnd(16)} key=${r.key.padEnd(18)} lvl=${r.level.padEnd(5)} unit=${r.unit.padEnd(3)} tgt=${r.target} act=${r.actual} floor=${r.floorVal} absGap=${r.absGap.toFixed(4)} relGap=${r.relGap.toFixed(4)} breached=${r.breached} basis=${r.basis}`);
+      console.log(`${r.metricId.padEnd(16)} key=${r.key.padEnd(18)} lvl=${r.level.padEnd(5)} unit=${r.unit.padEnd(3)} tgt=${r.target} act=${r.actual} floor=${r.floorVal} absGap=${r.absGap.toFixed(4)} relGap=${r.relGap.toFixed(4)} breached=${r.breached}`);
     }
-    // eslint-disable-next-line no-console
-    console.log("=== BREACHED ===", table.filter((r) => r.breached).map((r) => r.metricId).join(", "));
-
     const g = (await t.services.solvers.invoke(ADMIN, "gap_attribution", {})) as unknown as {
       rootMetric: { key: string; name: string; gap: number; unit: string };
     };
     // eslint-disable-next-line no-console
     console.log("=== DEFAULT ROOT ===", JSON.stringify(g.rootMetric));
     expect(g.rootMetric).toBeTruthy();
+  });
+
+  it("PRE-EXISTING?：显式 metricKey=revenue + scope.baseId=jiangmen ⇒ scope 回显了吗", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    for (const mk of ["revenue", "cash", "demand_attain", "seg_attain_ess", "gross_profit"]) {
+      const g = (await t.services.solvers.invoke(ADMIN, "gap_attribution", {
+        metricKey: mk, scope: { baseId: "jiangmen" },
+      })) as unknown as { scope?: { baseId?: string }; levels: { depth: number; nodes: { id: string }[] }[] };
+      const l1 = g.levels.find((L) => L.depth === 1);
+      // eslint-disable-next-line no-console
+      console.log(`metricKey=${mk.padEnd(16)} scope.baseId=${String(g.scope?.baseId)} L1nodes=[${(l1?.nodes ?? []).map((n) => n.id).join(",")}]`);
+    }
+    expect(true).toBe(true);
   });
 });

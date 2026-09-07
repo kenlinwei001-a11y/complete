@@ -1819,14 +1819,47 @@ export class SolverService {
     };
     const scopedBaseId = normalizeBaseId(scope.baseId);
     const scopedFactorId = scope.factorId !== undefined && str(scope.factorId) !== "" ? str(scope.factorId) : undefined;
-    // 目标 Metric：显式 metricKey，否则取最严重越线者（缺省 = 缺口最大·如储能 seg_attain_ess）。
+    /**
+     * WO-GAP-NORMALIZE · **缺省根指标的排序必须无量纲**。
+     *
+     * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+     * **X（修前实测，真后端 `SEED_DEMO=1` · seed 42 · scale S）**：缺省根 = 先筛 `actual < floorVal`，
+     *   再按 **`target − actual` 这个带单位的裸差**降序取第一。三条越线指标的裸差分别是
+     *   营收 **284.4 亿** · 储能达成率 **27.8 百分点** · 需求达成率 **9.2 百分点** ——
+     *   `284.4 > 27.8` 这个比较**是「亿」和「百分点」在比大小**，不是严重程度在比大小。
+     *   量纲不变性实验当场证伪：把营收改记成「万元」（×10000，**业务含义一个字没变**），
+     *   裸差变成 2,844,000，它赢得更狠；改记成「万亿」（÷10000）裸差 0.02844，它掉到最后一名 ——
+     *   **同一个经营局面，登记册里换个单位就换一个根因**。
+     * **Y（本行）**：按**相对缺口** `(target − actual) / |target|` 排序 —— 「目标里缺了几成」是纯比值，
+     *   ×10000 与 ÷10000 都约得掉 ⇒ 换单位不换根因。实测三条越线指标的相对缺口：
+     *   营收 **0.4063**（700 缺 284.4）· 储能达成率 **0.2780** · 需求达成率 **0.0920**。
+     *
+     * ⚠ **归一后营收仍居首，这不是没修好，恰恰是修好了**：它现在赢在「700 的目标缺了四成」，
+     *   而不再赢在「它的单位恰好比别人大」。归一之前那个第一名是量纲的产物，之后这个是数据的产物。
+     *   反向对照（同样实测）：把营收 actual 还原成不越线的 700，越线集只剩两条，
+     *   缺省根**回到储能达成率**（0.2780 > 0.0920）—— 排序对数据仍然敏感，只是不再对单位敏感。
+     *
+     * ⚠ 本仓同形态的账已经记过一次：多目标寻优的目标方向倒挂，根因也是**未归一的量纲**
+     *   （单位营收跨度 9,066 vs 单位违约金跨度 23,400），修法同样是归一。**同病同修。**
+     *
+     * 分母取 `|target|`：`G = target − actual` 正是下面整棵树要分摊的那个量，除以它自己的目标，
+     * 读作「目标里缺了几成」——与被分摊的量同源，不引第二口径。`target` 为 0（无标度可归一）时
+     * 退到 `|floorVal|`；两者皆 0 ⇒ 该指标**没有可归一的标度**，记 0（沉到正缺口之下、负缺口之上），
+     * 绝不拿裸差顶上去 —— 那等于把量纲又放回来一条缝。
+     */
+    const relGapOf = (p: Record<string, unknown>): number => {
+      const denom = Math.abs(num(p.target)) || Math.abs(num(p.floorVal));
+      return denom > 0 ? (num(p.target) - num(p.actual)) / denom : 0;
+    };
+    // 目标 Metric：显式 metricKey，否则取**相对缺口**最大的越线者。
+    // 排序方向与并列次序与修前逐字节一致（原写法是「升序 + reverse」⇒ 缺口降序、并列时 metricId 降序），
+    // 只把比较量从「带单位的裸差」换成「无量纲相对缺口」——R6 确定性不变。
     const breached = metricObjs.filter((p) => num(p.actual) < num(p.floorVal));
     const wantKey = args.metricKey ? str(args.metricKey) : undefined;
     const m =
       (wantKey ? metricObjs.find((p) => str(p.key) === wantKey || str(p.metricId) === wantKey) : undefined) ??
       [...(breached.length ? breached : metricObjs)]
-        .sort((a, b) => num(a.target) - num(a.actual) - (num(b.target) - num(b.actual)) || str(a.metricId).localeCompare(str(b.metricId)))
-        .reverse()[0]!;
+        .sort((a, b) => relGapOf(b) - relGapOf(a) || str(b.metricId).localeCompare(str(a.metricId)))[0]!;
     const G = round(num(m.target) - num(m.actual), 4); // 缺口（正=未达）
     const unit = str(m.unit);
 
