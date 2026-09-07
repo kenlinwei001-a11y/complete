@@ -248,17 +248,32 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const t1 = st((await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } })).json());
     expect(t1[materialId]!.shortageRisk).toBe(9);
     expect(t1[orderId]?.shortageRisk ?? 0).toBe(0);
-    // tick2：Model.supplyRisk = 12.6。**不是** 9×0.7=6.3 —— 这条链上有一处真实的**扇入**：
-    // 该供应商供两种料（pos_ncm / pos_lfp），两种料都进同一个型号的 BOM ⇒ 6.3 + 6.3（combine:"sum"）。
-    // 这里刻意钉 12.6 而不是 ≥0：扇入被漏掉时（比如逆边只落了一半）这行会红，而 ≥0 照样绿。
+    // tick2：Model.supplyRisk = 9 × 0.7 = 6.3。
+    //
+    // ⚠ **本行原为 12.6，由 `WO-COMPUTED-EDGE-IMPL`（2026-09-07）改为 6.3。原注释把一个数据缺陷
+    //   写成了「一处真实的扇入」**，原文是：
+    //     「该供应商供两种料（pos_ncm / pos_lfp），两种料都进同一个型号的 BOM ⇒ 6.3 + 6.3」
+    //   ——「该供应商供两种料」属实（`SUP-001` 是全表唯一供两种料的供应商，实测），
+    //   但「两种料都进同一个型号的 BOM」**不属实**：那是旧捷径边的产物。
+    //   旧 `model_uses_material` 的物料集由一句模运算 `matIds[(mi*2+k) % 8]` 算出（每型号 4 种），
+    //   与 BOM 表无关，于是会给一个 NCM 型号同时挂上 `pos_ncm` 与 `pos_lfp` ——
+    //   **一个三元型号同时吃三元正极和磷酸铁锂正极，物理上不成立。**
+    //   捷径边口径归一到 BOM 链之后（每型号 7 种，按化学体系跳掉对侧正极），
+    //   同一个型号只可能有一种正极 ⇒ 扇入从 2 回到 1，读数从 12.6 回到 6.3。
+    //   **12.6 那个数不是被改小了，是那处「扇入」本来就不该存在。**
+    //
+    // ⚠ 于是本行**不再**承担「扇入被漏掉时会红」那个职责（这条链上今天没有真实扇入了）。
+    //   它原本要防的「正逆两向边只落了一半」由
+    //   `linktype-computed-edge.seam.test.ts` §7 直接断言两向严格互逆来守 —— 那是更强的判据：
+    //   它咬的是两个集合相等，不是某一个读数恰好翻倍。
     // Order 仍为 0 —— 证明它确实**跨了多跳**，不是某条一跳捷径顺手写到的。
     const t2 = st((await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } })).json());
-    expect(t2[modelId]!.supplyRisk).toBe(12.6);
+    expect(t2[modelId]!.supplyRisk).toBe(6.3);
     expect(t2[orderId]?.shortageRisk ?? 0).toBe(0);
-    // tick3：Model(12.6) ×0.8 → Order.shortageRisk = 10.08。
+    // tick3：Model(6.3) ×0.8 → Order.shortageRisk = 5.04。
     // 🔴 这一行就是本单的效果层判据：供应侧的一次扰动，真的落到了订单缺口上。
     const t3 = st((await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } })).json());
-    expect(t3[orderId]!.shortageRisk).toBe(10.08);
+    expect(t3[orderId]!.shortageRisk).toBe(5.04);
 
     // 并且 trace 里能读到这三跳的原文（North Star「断点」维要的溯源承载物）。
     const trace = (await t.repos.sim.getTickState("demo", sid, 3))!.trace!;

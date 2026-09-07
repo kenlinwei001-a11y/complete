@@ -278,6 +278,55 @@ describe("WO-COMPUTED-EDGE · 接缝：算端点 / anchor 谓词 / 叉积 ——
     expect(total).toBeGreaterThan(dtOnly.length);
   });
 
+  it("§7 BOM 口径归一：捷径边 == BOM 四跳链的物料集，且正逆两向严格互逆", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const links = await t.repos.links.list("demo");
+    const pairs = (type: string) => new Set(links.filter((l) => l.type === type).map((l) => `${l.fromId}->${l.toId}`));
+
+    // ① 正逆严格互逆。**这条是本仓「抄一份就会漂」那条纪律的牙** ——
+    //    它比任何单个读数都强：咬的是两个集合相等，不是某个数恰好翻倍。
+    //    （原先由 `seed-demo-propagation` 里一个「扇入 ⇒ 12.6」的读数间接守，
+    //     而那个扇入本身是旧捷径边的数据缺陷造出来的，不是真的。）
+    const fwd = pairs("model_uses_material");
+    const rev = new Set([...pairs("material_used_by_model")].map((p) => p.split("->").reverse().join("->")));
+    expect(fwd.size, "捷径边零实例 ⇒ 尺子坏了").toBeGreaterThan(0);
+    expect([...fwd].sort(), "正逆两向不互逆 ⇒ 有一半是抄出来的、已经漂了").toEqual([...rev].sort());
+
+    // ② 捷径边的物料集 == 沿 BOM 四跳链走出来的物料集（口径归一的判据）。
+    //    走不通的话说明捷径边又变回「第二个答案」了。
+    const idOf = (m: Map<string, string[]>, k: string) => m.get(k) ?? [];
+    const byFrom = (type: string) => {
+      const m = new Map<string, string[]>();
+      for (const l of links.filter((x) => x.type === type)) m.set(l.fromId, [...(m.get(l.fromId) ?? []), l.toId]);
+      return m;
+    };
+    const versionOfModel = byFrom("version_belongs_to_model"); // ProductVersion → Model
+    const bomOfVersion = byFrom("bom_belongs_to_version"); // BOMHeader → ProductVersion
+    const detailOfBom = byFrom("detail_belongs_to_bom"); // BOMDetail → BOMHeader
+    const matOfDetail = byFrom("detail_uses_material"); // BOMDetail → Material
+    // 四跳链是 ...→Model 方向，故先反向索引出 Model → {Material}
+    const chain = new Map<string, Set<string>>();
+    for (const [detailId, bomIds] of detailOfBom) {
+      for (const bomId of bomIds) {
+        for (const versionId of idOf(bomOfVersion, bomId)) {
+          for (const modelId of idOf(versionOfModel, versionId)) {
+            const s = chain.get(modelId) ?? new Set<string>();
+            for (const matId of idOf(matOfDetail, detailId)) s.add(matId);
+            chain.set(modelId, s);
+          }
+        }
+      }
+    }
+    expect(chain.size, "BOM 四跳链走不出任何型号 ⇒ 尺子坏了，下面的相等不算数").toBeGreaterThan(0);
+    const shortcut = byFrom("model_uses_material");
+    for (const [modelId, mats] of chain) {
+      expect([...(shortcut.get(modelId) ?? [])].sort(), `型号 ${modelId} 的捷径边物料集 ≠ BOM 链物料集 ⇒ 口径又分叉了`).toEqual([...mats].sort());
+    }
+    // ③ 每型号 7 种（8 行模板按化学体系跳掉对侧正极）—— 修前是模运算给的 4 种。
+    for (const [, mats] of chain) expect(mats.size).toBe(7);
+  });
+
   it("§6 写入期校验：三类会静默变成死边的写法必须 400 且说人话", async () => {
     const t = await makeApp();
     await seedBattery(t);
