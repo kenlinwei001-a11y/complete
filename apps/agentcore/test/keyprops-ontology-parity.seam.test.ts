@@ -325,7 +325,12 @@ describe("§2 · OBJECT_KEY_PROPS 逐名对账本体（改名漏改在这里当�
  */
 export function isDecisionMoneyProp(propKey: string): boolean {
   return (
-    /(cost|price|margin|revenue|profit|amount|payable|receivable)/i.test(propKey) ||
+    // WO-PENALTY-CHANGEOVER-ONTOLOGY 补 `penalty|breach`：违约金是**钱**，而改前这条词库
+    // 一个字都咬不到它（`breachPenalty` 不含 cost/price/margin/revenue/profit/amount/payable/receivable）。
+    // 后果正是本门要防的那一种：`OrderLine.breachPenalty` 落到本体、接成帕累托罚金轴，
+    // 而 `OBJECT_KEY_PROPS` 漏投它 —— 本门**全绿**，模型静默拿不到值。那一行是人补的，不是门逼出来的。
+    // ⚠ 词库仍要窄（金丝雀 C 的 25% 上界守着）：只加这两个钱词，不加 qty/rate/days 那些。
+    /(cost|price|margin|revenue|profit|amount|payable|receivable|penalty|breach)/i.test(propKey) ||
     /P(10|25|50|75|90|95)$/.test(propKey)
   );
 }
@@ -375,7 +380,9 @@ describe("§2b · 该露的钱字段有没有被列出（新增字段漏投在�
   it("金丝雀 A · 词库已知必中：这一批真实字段必须被词库认出来", () => {
     // 逐字取自本体：`Model.unitCost` / `OrderLine.unitCost` / `DemandSegment.demandWanPerYearP90` /
     // `Base.serveCost` / `Customer.receivables` —— 认不出它们，§2b 什么都测不到。
-    for (const p of ["unitCost", "unitPrice", "serveCost", "openCost", "receivables", "marginPct", "demandWanPerYearP90"]) {
+    // WO-PENALTY-CHANGEOVER-ONTOLOGY 加 `breachPenalty`：金丝雀必须跟着词库一起长，
+    // 否则新加的那两个钱词没有任何"已知必中"的样例背书，等于加了一条没人验的正则。
+    for (const p of ["unitCost", "unitPrice", "serveCost", "openCost", "receivables", "marginPct", "demandWanPerYearP90", "breachPenalty"]) {
       expect(isDecisionMoneyProp(p), `词库认不出 ${p} ⇒ 判据瞎了，本节一切「没有缺口」的结论作废`).toBe(true);
     }
   });
