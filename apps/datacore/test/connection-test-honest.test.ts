@@ -5,6 +5,7 @@ import {
   classifyHttpStatus,
   classifyNetworkError,
   hasEmbeddedCredentials,
+  isHttpScheme,
   safeTarget,
   TYPES_SERVED_BY_OTHER_PATH,
   TYPES_WITHOUT_ADAPTER,
@@ -357,5 +358,13 @@ describe("WO-CONNTEST-HONEST §7 · 分类器纯函数（形态实测自 Node 22
     expect(hasEmbeddedCredentials("http://a:b@h.test/")).toBe(true);
     expect(hasEmbeddedCredentials("http://a@h.test/")).toBe(true);
     expect(hasEmbeddedCredentials("http://h.test/")).toBe(false);
+  });
+
+  it("只放行 http/https —— 其余方案在 undici 里的报错会把人误导向网络问题", () => {
+    expect(isHttpScheme("http://h.test/")).toBe(true);
+    expect(isHttpScheme("https://h.test/")).toBe(true);
+    for (const u of ["ftp://h.test/x", "file:///etc/passwd", "ws://h.test/x", "jdbc:postgresql://d/x", "not-a-url"]) {
+      expect(isHttpScheme(u), `${u} 不该放行`).toBe(false);
+    }
   });
 });

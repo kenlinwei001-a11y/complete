@@ -177,6 +177,17 @@ export function safeTarget(raw: unknown): string | undefined {
  * —— 又一个「不许回显 error 原文」的理由）。
  * 前置识别它，好过让它掉进兜底的「无法建立连接」：那句话会让人去查网络，而真正该做的是把凭据挪到凭据字段。
  */
+/** 只有 http/https 才拿去 fetch —— 其余方案在 undici 里的报错文案会把人指向网络问题（见 probeHttp）。 */
+export function isHttpScheme(raw: unknown): boolean {
+  if (typeof raw !== "string" || raw.trim() === "") return false;
+  try {
+    const p = new URL(raw.trim()).protocol;
+    return p === "http:" || p === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function hasEmbeddedCredentials(raw: unknown): boolean {
   if (typeof raw !== "string" || raw.trim() === "") return false;
   try {
@@ -199,6 +210,18 @@ export async function probeHttp(
   }
   if (!target) {
     return { ok: false, reason: "INVALID_URL", message: "地址格式不正确：请填写完整地址（含 http:// 或 https://）。", probed: false, target: undefined };
+  }
+  // 只走 http/https。实测其它方案（`ftp://` / `ws://` → `unknown scheme`，`file://` → `not implemented... yet...`）
+  // 都会掉进兜底的「检查地址、端口与网络连通性」——**那句话把人指向网络，而真正的问题是方案写错了**。
+  // 顺带把 `file://` 明确挡在门外：它不该是一个「数据源地址」。
+  if (!isHttpScheme(rawUrl)) {
+    return {
+      ok: false,
+      reason: "INVALID_URL",
+      message: "地址协议不受支持：请使用 http:// 或 https:// 开头的地址。",
+      probed: false,
+      target,
+    };
   }
   if (hasEmbeddedCredentials(rawUrl)) {
     return {
