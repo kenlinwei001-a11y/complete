@@ -63,6 +63,42 @@ describe("WO-UNIT-MARGIN-96X · 取证探针", () => {
     expect(all.length).toBeGreaterThan(0);
   });
 
+  it("④ 引擎层：优化装配 —— unit_cost 到底绑没绑上（毛利轴是否活着）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const r = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/sim/optimize-pareto/assemble",
+      headers: ADMIN,
+      payload: {},
+    });
+    console.log("ASSEMBLE_STATUS =", r.statusCode);
+    const j = JSON.parse(r.body) as Record<string, unknown>;
+    console.log("ASSEMBLE_APPLICABLE =", j.applicable);
+    const req = (j.request ?? {}) as Record<string, unknown>;
+    const args = (req.args ?? {}) as Record<string, unknown>;
+    const elig = (args.eligibility ?? []) as Record<string, unknown>[];
+    console.log("ASSEMBLE_FAMILY =", req.family);
+    console.log("ASSEMBLE_ARGS_KEYS =", Object.keys(args).join(","));
+    console.log("ELIG_SAMPLE =", JSON.stringify(elig.slice(0, 5)));
+    console.log("ELIG_COST_NONZERO =", elig.filter((e) => Number(e.cost) !== 0).length, "/", elig.length);
+    console.log("OBJECTIVES =", JSON.stringify(req.objectives ?? args.objectives ?? j.objectives));
+    console.log("UNAVAILABLE =", JSON.stringify(j.unavailableObjectives ?? (req as Record<string, unknown>).unavailableObjectives));
+    // 把整包里带 margin/cost 字样的键路径找出来
+    const seen: string[] = [];
+    const walk = (o: unknown, path: string, depth: number) => {
+      if (depth > 4 || o === null || typeof o !== "object") return;
+      for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+        if (/margin|cost|unit/i.test(k)) seen.push(`${path}.${k}=${JSON.stringify(v)?.slice(0, 220)}`);
+        if (!Array.isArray(v)) walk(v, `${path}.${k}`, depth + 1);
+        else if (v.length > 0) walk(v[0], `${path}.${k}[0]`, depth + 1);
+      }
+    };
+    walk(j, "$", 0);
+    console.log("MARGIN_COST_KEYS =\n" + seen.join("\n"));
+    expect([200, 404]).toContain(r.statusCode);
+  });
+
   it("③ 引擎层：quote_margin 真实读数（真后端 seed + 真求解器路）", async () => {
     const t = await makeApp();
     await seedBattery(t);
