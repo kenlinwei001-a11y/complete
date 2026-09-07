@@ -2,6 +2,8 @@ import { selectEffectiveBom } from "../bom.js";
 import type { ObjectInstance } from "../domain.js";
 import { AppError } from "../errors.js";
 import { round } from "../prng.js";
+// WO-DIMENSION-ERRORS：本文件两处**真金白银的乘法**（库存超储估值 · BOM 成本）从今天起先取量纲许可再乘。
+import { resolvedProductUnit } from "../units.js";
 // WO-ENGINE-SCOPE-FIX（#116/#117 引擎层作用域维）：base 解析走 `resolveBaseRef` **单一出处**
 // （= risk.resolveBaseId / capacity 用的同一份·认 baseId/中文名/obj_base_ 前缀/近指），
 // 本文件**不许**再写第二套「中文名 → baseId」匹配（R14·types.ts 已把这条纪律写死）。
@@ -274,7 +276,7 @@ export function ltaGap(args: Record<string, unknown>) {
 //   （时间轴由真 dailyUse/onHand/PurchaseOrder.etaDay 逐日投影 = OK；地点轴今日无真源 = EMPTY，见契约）。
 //   水位带倍数（1.5/0.8）改走 INVENTORY_BAND 单一来源 —— 值逐字节不变，只是不再两处各写一份。
 export function inventoryOptimize(args: Record<string, unknown>) {
-  const materials = (args.materials as { matId: string; dailyUse: number; leadTime: number; onHand: number; unitPrice: number; idleDays: number }[]) ?? [];
+  const materials = (args.materials as { matId: string; dailyUse: number; leadTime: number; onHand: number; unitPrice: number; idleDays: number; unit?: string }[]) ?? [];
   const safety = num(args.safetyDays, 5);
   const over: unknown[] = [];
   const under: unknown[] = [];
@@ -285,8 +287,29 @@ export function inventoryOptimize(args: Record<string, unknown>) {
     const overQty = Math.max(0, m.onHand - INVENTORY_BAND.overMult * target);
     const underQty = Math.max(0, INVENTORY_BAND.underMult * target - m.onHand);
     if (overQty > 0) {
-      over.push({ matId: m.matId, overQty: round(overQty, 4), value: round(overQty * m.unitPrice, 2) });
-      releasable += overQty * m.unitPrice;
+      // ── WO-DIMENSION-ERRORS · 这一乘从今天起要**先拿到许可**再乘 ─────────────────────
+      // `overQty` 承 `Material.onHand`（`计量单位`），`m.unitPrice` 承 `Material.unitPrice`
+      // （`元/计量单位`）—— 两个占位符**都**由同一行的 `Material.unit` 解析。
+      // 改前这里一个单位都不看就相乘：`unit` 是 kg 还是 ㎡ 还是词表外的 `卷`，结果都照样
+      // `round(...,2)` 成一个像钱的数。真值对了只是因为两格恰好同源，不是因为有人证过。
+      // 改后：抵不掉 ⇒ **不给 value、不计入 releasableCash**，并把原因写在行上。
+      // ⚠ 不给 0 —— 0 会被下游当成「没有可释放资金」这个**具体结论**，而真相是「本行算不出」。
+      const valueUnit = resolvedProductUnit(
+        { unit: "计量单位", refValue: m.unit },
+        { unit: "元/计量单位", refValue: m.unit },
+      );
+      if (valueUnit !== undefined) {
+        over.push({ matId: m.matId, overQty: round(overQty, 4), value: round(overQty * m.unitPrice, 2), valueUnit });
+        releasable += overQty * m.unitPrice;
+      } else {
+        over.push({
+          matId: m.matId,
+          overQty: round(overQty, 4),
+          valueUnit: null,
+          valueOmittedReason: `物料 '${m.matId}' 的计量单位${m.unit ? ` '${m.unit}' 不在单位词表内` : "未随入参给出"}，`
+            + "无法证明 库存量 × 单价 得到的是金额 —— 本行不计入可释放资金（不拿 0 冒充「没有可释放的钱」）",
+        });
+      }
     }
     if (underQty > 0) under.push({ matId: m.matId, underQty: round(underQty, 4) });
     if (m.idleDays > 90) idle.push({ matId: m.matId, idleDays: m.idleDays }); // C28
@@ -447,8 +470,31 @@ export function outsourcingSplit(args: Record<string, unknown>) {
 //   CUSTOMER = 定位到具体客户（`orders`/`bomId` 可溯）· ALL = 未指定客户的全域口径 · EXPLICIT = 调用方直传数值。
 export function quoteMargin(args: Record<string, unknown>) {
   const price = num(args.price);
-  const bom = (args.bom as { unit: number; spotPrice: number; processRate?: number }[]) ?? [];
-  const bomCost = round(bom.reduce((s, b) => s + b.unit * b.spotPrice * (1 + (b.processRate ?? 0)), 0), 4);
+  const bom = (args.bom as { material?: string; unit: number; spotPrice: number; processRate?: number; qtyUnit?: string; priceUnit?: string }[]) ?? [];
+  // ── WO-DIMENSION-ERRORS · 逐行先拿乘法许可，再累加 ────────────────────────────────
+  // `b.unit`(用量·BOMDetail.unit 计) × `b.spotPrice`(单价·Material.unit 计) 要得到 `元`，
+  // 两格必须抵消干净。改前这里直接 `reduce` 相加 —— 一行 `12 ㎡` 与一行 `1.05 kg` 的乘积
+  // 被当成同一种钱加在一起，而**只要两格不等，加的就不是钱**，屏上照样是一个两位小数。
+  // ⚠ 只在**两格都给了**时才判：直传 `bom`（EXPLICIT 路 / 既有测试）不带这两格 ⇒
+  //   `undefined` ⇒ 视为调用方自负口径，**逐字节同改前**（不制造假红，见 units.ts 头注「宁可少拦」）。
+  const bomSkipped: { material: string; reason: string }[] = [];
+  const bomCost = round(
+    bom.reduce((s, b) => {
+      if (b.qtyUnit !== undefined && b.priceUnit !== undefined) {
+        const rowUnit = resolvedProductUnit({ unit: "计量单位", refValue: b.qtyUnit }, { unit: "元/计量单位", refValue: b.priceUnit });
+        if (rowUnit === undefined) {
+          bomSkipped.push({
+            material: b.material ?? "(未具名)",
+            reason: `BOM 用量以 '${b.qtyUnit}' 计、物料单价以 '${b.priceUnit}' 计 —— 两者抵不掉，`
+              + "该行乘出来的不是金额，故不计入 BOM 成本（不拿一个抵不掉的乘积冒充钱）",
+          });
+          return s;
+        }
+      }
+      return s + b.unit * b.spotPrice * (1 + (b.processRate ?? 0));
+    }, 0),
+    4,
+  );
   const mfg = num(args.mfgRate) * price;
   const logistics = num(args.logistics);
   const margin = price <= 0 ? 0 : round((price - bomCost - mfg - logistics) / price, 4);
@@ -459,7 +505,9 @@ export function quoteMargin(args: Record<string, unknown>) {
     floor,
     diff: round(margin - floor, 4),
     verdict: margin >= floor + 0.01 ? "过线" : margin >= floor ? "触线" : "低于底线",
-    breakdown: { bomCost, mfg: round(mfg, 4), logistics, price },
+    // WO-DIMENSION-ERRORS：被量纲许可挡下的行**必须出现在答案里**。空数组不出键 ⇒ 逐字节同改前；
+    // 一旦非空，看答案的人才知道「这个 bomCost 少算了哪几行、为什么」，而不是拿到一个偏低的数。
+    breakdown: { bomCost, mfg: round(mfg, 4), logistics, price, ...(bomSkipped.length > 0 ? { bomSkipped } : {}) },
     // WO-QUOTE-MARGIN-CUSTOMER：`scope` 恒出（直传 bom 的路回落 `{mode:"EXPLICIT"}`，见上 const scope）。
     // 取代了 WO-SILENT-WRONG-ANSWER-3 症③ 的 `args.quoteScope` 条件注入 —— 后者的 custDimension:"NOT_APPLIED"
     // 是「客户维今天没有」的诚实位，而本单把客户维**真做出来了**，故诚实位升级为 scope.mode CUSTOMER/ALL/EXPLICIT。
@@ -828,7 +876,11 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       if (has("materials")) return { ...d4, ...args };
       const idleByMat = new Map<string, number>();
       for (const b of (c.materialBatches ?? []).map(props)) idleByMat.set(str(b.matId), Math.max(idleByMat.get(str(b.matId)) ?? 0, num(b.idleDays)));
-      return { ...d4, ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0 })) };
+      // WO-DIMENSION-ERRORS：把 `Material.unit` 一并带进求解器实参。
+      // 它不是新数据，是**已经在对象上的那一格** —— `onHand`(计量单位) 与 `unitPrice`(元/计量单位)
+      // 两个声明的占位符都由它解析。改前这一格被丢在装配处，于是求解器拿到两个"不知道单位的数"
+      // 直接相乘；`str(m.unit)` 取不到就是空串，下游按「本行算不出」处理，不回落成任何具体单位。
+      return { ...d4, ...args, materials: mats.map((m) => ({ matId: str(m.matId), dailyUse: num(m.dailyUse, 100), leadTime: num(m.leadTime, 10), onHand: num(m.onHand), unitPrice: num(m.unitPrice, 1), idleDays: idleByMat.get(str(m.matId)) ?? 0, unit: str(m.unit) })) };
     }
     case "changeover_sequence": {
       if (has("orders")) return args;
@@ -944,9 +996,17 @@ export function deriveExtendedArgs(c: SolverContext, solverKey: string, args: Re
       // 两处都绿而两个数对不上。口径一个字没改，只是搬了家。
       const matById = new Map(mats.map((m) => [str(m.matId), m]));
       const { header, rows: bomRows, headerCount } = selectEffectiveBom((c.bomHeaders ?? []).map(props), (c.bomDetails ?? []).map(props), modelId);
+      // ── WO-DIMENSION-ERRORS · 这一对配的是**两个对象上的两格 `unit`** ─────────────────
+      // `unit:` 承 `BOMDetail.quantity`（声明 `计量单位`，由 **BOMDetail.unit** 解析）；
+      // `spotPrice:` 承 `Material.unitPrice`（声明 `元/计量单位`，由 **Material.unit** 解析）。
+      // 二者相乘要得到 `元`，前提是这两格**相等** —— 真起后端实测今日 105/105 行相等，
+      // 但**没有任何东西保证它**：`BOMDetail` 与 `Material` 是两张表，改一边不会红另一边。
+      // 「今天相等」不度量「必然相等」。故把两格都带上，由 `resolvedProductUnit` 逐行判许可。
       const realBom = bomRows.map((d) => ({
         material: str(d.materialId),
         unit: num(d.quantity),
+        qtyUnit: str(d.unit),
+        priceUnit: str(matById.get(str(d.materialId))?.unit),
         spotPrice: num(matById.get(str(d.materialId))?.unitPrice, 0),
         // 加工费率口径改用 BOM 明细自己的**损耗率**（`BOMDetail.lossRate`），不再是写死的 0.05：
         // 「单台用量 × 现价 × (1+损耗)」是这张 BOM 自己说的，不是求解器替它假设的。

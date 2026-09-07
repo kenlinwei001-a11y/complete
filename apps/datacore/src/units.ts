@@ -299,6 +299,72 @@ export function isParametricUnit(unit: string): boolean {
 }
 
 /**
+ * WO-DIMENSION-ERRORS · **「存量 × 强度量」的乘法许可**：`qty × rate` 的结果单位，
+ * 仅当 `rate` 的分母把 `qty` **抵消干净**时给出（`kg × 元/kg = 元`）。
+ *
+ * ══ 为什么需要它（这一条是本单的要害）════════════════════════════════════════
+ * `inferFormulaDimensionIssues` 明说只管加减、乘除一律降级 unknown —— 那对**派生公式**是对的
+ * （宁可少拦不许假红）。但本仓真正花钱的乘法**不在派生公式里，在 TS 代码里**：
+ * `over[].value = overQty × unitPrice` · `bomCost = Σ quantity × spotPrice`。
+ * 这两处今天**一次单位都不看**就相乘 —— 两个因子的真实量纲各自由**另一格**（`unit`）决定，
+ * 而那一格可以是 kg / ㎡ / L / 个，也可以是词表外的值（如 `卷`）。抵不掉就是一个没有意义的数，
+ * 而它照样会被 `round(...,2)` 成一个像钱的数打到屏上。**这正是铁律 1.5 的第四态：
+ * 接对了、跑通了、但算错了。**
+ *
+ * ⚠ 返回 `undefined` 的四种可能，调用方**一律按「本行算不出」处理，不许照乘**：
+ *   · `qty` 自己是速率（有分母）—— 本函数只处理「存量 × 强度量」这一种形态；
+ *   · 任一端仍含未解析的 `perRef` 占位符（`unitRefProp` 那一格为空/不在词表）；
+ *   · 分母与被乘量**跨族**（`吨 × 元/㎡`）—— 没有已裁决的换算口径；
+ *   · 抵消后的倍数在词表里**没有对应词条**（本模型说不出它是什么量）。
+ *
+ * 纯函数（R6）：零 rng、零时钟、零 IO。
+ */
+export function cancelingProductUnit(qty: PropertyUnit, rate: PropertyUnit): PropertyUnit | undefined {
+  const q = dimensionOf(qty);
+  const r = dimensionOf(rate);
+  // 只处理「存量 × 强度量」：qty 必须无分母，rate 必须有分母。
+  if (q.den !== undefined || r.den === undefined) return undefined;
+  // 未解析的参数化占位符不参与任何判断 —— 把「不知道」当成某个具体 kind 正是本仓的老病。
+  if (q.num.kind === "perRef" || r.num.kind === "perRef" || r.den.kind === "perRef") return undefined;
+  if (q.num.kind !== r.den.kind) return undefined; // 分母抵不掉 ⇒ 跨族，乘积无意义
+  const qf = q.num.factor;
+  const rn = r.num.factor;
+  const rd = r.den.factor;
+  if (qf === undefined || rn === undefined || rd === undefined || rd === 0) return undefined; // 倍数未裁决
+  const scale = (qf * rn) / rd;
+  for (const u of PROPERTY_UNITS as readonly PropertyUnit[]) {
+    const d = dimensionOf(u);
+    if (d.den === undefined && d.num.kind === r.num.kind && d.num.factor === scale) return u;
+  }
+  return undefined;
+}
+
+/**
+ * 同上，但两端都是**参数化**声明、各自由一格 `unit` 值解析（`Material.onHand` × `Material.unitPrice`，
+ * `BOMDetail.quantity` × `Material.unitPrice`）。
+ *
+ * ⚠ 两个 `refValue` 是**两个不同的入参**，绝不合成一个 —— `BOMDetail.unit` 与 `Material.unit`
+ * 是两个对象上的两格，今天恰好 105/105 行相等（真起后端实测），但**没有任何东西保证它**。
+ * 「今天相等」与「必然相等」是两个命题；把它们合成一个入参就等于把前者写成后者。
+ */
+export function resolvedProductUnit(
+  qty: { unit: PropertyUnit; refValue?: string },
+  rate: { unit: PropertyUnit; refValue?: string },
+): PropertyUnit | undefined {
+  const q = isParametricUnit(qty.unit)
+    ? qty.refValue
+      ? resolveParametricUnit(qty.unit, qty.refValue)
+      : undefined
+    : qty.unit;
+  const r = isParametricUnit(rate.unit)
+    ? rate.refValue
+      ? resolveParametricUnit(rate.unit, rate.refValue)
+      : undefined
+    : rate.unit;
+  return q === undefined || r === undefined ? undefined : cancelingProductUnit(q, r);
+}
+
+/**
  * 取**某个具体对象上**这个属性的真实单位。非参数化属性原样返回声明值。
  *
  * 返回 `undefined` = **该行量纲未知**（`unitRefProp` 那一格为空，或它的值不在词表里）。
