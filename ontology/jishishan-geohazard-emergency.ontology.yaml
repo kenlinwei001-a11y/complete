@@ -10,8 +10,8 @@
 meta:
   ontology_key: jishishan_geohazard_emergency
   display_name: 积石山县突发地质灾害应急预案本体
-  version: 2
-  status: FROZEN_V2
+  version: 3
+  status: FROZEN_V3
   frozen_at: 2026-09-07
   frozen_note: 用户裁决 C-07 采用 §5.5；其余冲突按 decisions 节裁决口径冻结，作为震后报告推演的唯一语义基线
   domain: 应急管理 / 突发地质灾害
@@ -1612,3 +1612,250 @@ quality_v2_additions:
       finding: 全文无余震条件下现场排查、抢险作业人员安全规定
       impact: 排查人员与救援队伍在震裂边坡下作业存在二次伤亡风险，无撤离触发条件
       recommendation: 修订时增加余震预警联动与作业面撤离标准
+
+# ==============================================================================
+# 十三、外部信源（external_sources）—— v3 联网核实成果
+# ------------------------------------------------------------------------------
+# 检索目标：《积石山县地震应急预案》。结论：未检索到公开发布版（见 G-09 更新）。
+# 检索副产物：三项高价值信源，已核实并纳入图谱，全部标注出处与置信度。
+# ==============================================================================
+external_sources:
+
+  - id: SRC-1
+    kind: 本预案官网发布版
+    title: 积石山县突发地质灾害应急预案
+    publisher: 积石山县应急管理局
+    published_at: 2024-03-15
+    url: https://www.jss.gov.cn/jss/zfxxgk/xzbmlj/bmlj/XYJGLJ/fdzdgknr/zhzw/art/2024/art_12d72eb55ec84c7cbfa841121707c284.html
+    confidence: 官方发布
+    finding_1_attachments:
+      statement: 官网发布版含 6 个附件，用户上传的 docx 全部缺失
+      attachments:
+        - {no: 附件1, title: 积石山县地质灾害应急指挥部组成人员名单及联系电话, fills_gap: G-05}
+        - {no: 附件2, title: 积石山县突发地质灾害应急指挥部办公室成员单位职责, fills_gap: C-12}
+        - {no: 附件3, title: 积石山县地质灾害应急响应流程图, fills_gap: C-07 可佐证启动程序}
+        - {no: 附件4, title: 积石山县突发公共事件应急救援物资清单, fills_gap: G-03}
+        - {no: 附件5, title: 积石山县地质灾害风险点分布图, fills_gap: G-01}
+        - {no: 附件6, title: 积石山县地质灾害隐患点统计表, fills_gap: G-01}
+      status: 页面未提供附件下载链接，正文亦未内嵌
+      action_required: 向县应急管理局索取附件原件；取得后可一次性关闭 G-01/G-03/G-05 与 C-12
+      new_gap: G-14
+    finding_2_publication_date:
+      statement: 发布日期 2024-03-15，晚于 2023-12-18 地震三个月，但正文隐患底数仍为 363处/318处
+      implication: 无法判断该底数是否已含震后复核成果；G-11（底数现势性）不因发布日期而关闭
+      action_required: 向县自然资源局核实 363/318 的统计基准日
+
+  - id: SRC-2
+    kind: 学术文献（权威机构）
+    title: 甘肃积石山Ms 6.2级地震的同震地质灾害基本特征及风险防控建议
+    authors: 王立朝、侯圣山、董英、铁永波、张鸣之、杨旭东、肖锐铧、刘明学、冯振、张永军、王仲复
+    institutions:
+      - 中国地质环境监测院（自然资源部地质灾害技术指导中心）
+      - 中国地质调查局西安地质调查中心
+      - 中国地质调查局成都地质调查中心
+      - 甘肃省地质环境监测院
+      - 青海省地质环境监测总站
+    journal: "中国地质灾害与防治学报 2024, 35(3): 108-118"
+    doi: 10.16031/j.cnki.issn.1003-8035.202312026
+    data_source_note: 隐患数据来自全国地质灾害信息系统及自然资源部、甘肃省、青海省震后地质灾害排查
+    confidence: 权威机构同行评议文献（可直接引用，须标注出处）
+    value: 用本县真实震例的实测数据，替换原 EQ-INTENSITY-PRIOR 的经验先验
+
+  - id: SRC-3
+    kind: 上位预案
+    title: 国家地震应急预案（2025年修订）
+    publisher: 国务院办公厅印发；应急管理部发布解读
+    interpreted_at: 2025-10-31
+    url: https://www.mem.gov.cn/gk/zcjd/202510/t20251031_584036.shtml
+    confidence: 官方发布（解读稿；正文文号待补）
+    value: 在县级地震应急预案缺位时，作为地震侧分级与响应的上位依据
+    note: 解读明确提出"加快新一轮各地各级地震应急预案修订"——积石山县地震应急预案可能正在修订中，这是其未公开的合理解释
+
+# ==============================================================================
+# 十四、本县真实震例标定（EQ-CALIBRATION-2023）
+# ------------------------------------------------------------------------------
+# 来源 SRC-2。取代 earthquake_trigger_layer.intensity_prior 的经验估值。
+# 用途：震后首报阶段，在现场排查数据回传前，用本地实测密度系数估算次生灾害规模。
+# ==============================================================================
+earthquake_calibration_2023:
+  status: 已核实（SRC-2）
+  supersedes: EQ-INTENSITY-PRIOR（原经验先验降级为兜底，仅在无烈度数据时使用）
+
+  event:
+    id: EQ-2023-1218
+    origin_time: 2023-12-18T23:59
+    magnitude: 6.2
+    magnitude_type: Ms
+    depth_km: 10
+    epicenter_place: 甘肃省临夏州积石山县
+    max_intensity: Ⅷ
+    isoseismal:
+      long_axis_strike: NNW
+      long_axis_km: 124
+      short_axis_km: 85
+      area_ge_6_degree_km2: 8364
+    affected_scope: 甘肃省3个市（州）9个县（市、区）+ 青海省2个市（州）4个县（市），共30个乡镇
+    season_context: 冻融期
+    county_building_damage: {value: 155393, unit: 间, scope: 仅积石山县}
+    controlling_fault: 拉脊山断裂（同震灾害沿断裂密集分布，断层上盘效应显著）
+
+  post_quake_survey:
+    as_of: 2023-12-23
+    scope: 甘肃、青海两省震区（非仅积石山县）
+    total_checked: 2044
+    breakdown:
+      new_sites: 78
+      intensified_existing: 88
+      unchanged_existing: 1878
+    checksum: {sum: 2044, matches_total: true}
+    composition_of_166:
+      note: 新发 + 变形加剧 合计 166 处
+      by_type: {崩塌: 0.675, 滑坡: 0.319}
+      by_scale: {小型: 0.849, 中型: 0.108}
+      damage_mode: 多为小型崩塌威胁房屋和道路
+
+  intensity_density_table:
+    purpose: 核心标定成果——按烈度区面积估算新发与加剧隐患点数量
+    unit: 处每平方公里
+    rows:
+      - {intensity: Ⅷ, sites: 44, zone_area_km2: 331,  density: 0.1329}
+      - {intensity: Ⅶ, sites: 105, zone_area_km2: 1514, density: 0.0694}
+      - {intensity: Ⅵ, sites: 15,  zone_area_km2: 6519, density: 0.0023}
+      - {intensity: Ⅴ, sites: 2,   zone_area_km2: null, density: null}
+    checksum: {sum: 166, matches_composition: true}
+    derived_insight:
+      - Ⅷ度与Ⅶ度密度比约 1.9 倍——每升一度密度约翻倍
+      - Ⅶ度与Ⅵ度密度比约 30 倍——Ⅶ度是密度断崖的拐点，排查资源应以Ⅶ度线为界重点投放
+      - 全县总面积 909.97 km²；若全域落入Ⅷ度区，新发加剧隐患点上界约 121 处
+    usage_formula: 估算新发与加剧隐患点数 = Σ（各烈度区在县域内的面积 × 对应密度系数）
+    caveat: 单一震例标定，样本量有限；震级、季节、含水率差异会显著影响结果，估算值须标注为推算
+
+  split_by_category:
+    intensified_existing_88:
+      by_intensity: {Ⅷ: {n: 29, pct: 0.330}, Ⅶ: {n: 51, pct: 0.579}, Ⅵ: {n: 6, pct: 0.068}, Ⅴ: {n: 2, pct: 0.023}}
+    new_sites_78:
+      by_intensity: {Ⅷ: {n: 15, pct: 0.193}, Ⅶ: {n: 54, pct: 0.692}, Ⅵ: {n: 9, pct: 0.115}}
+      note: 新发灾害全部位于Ⅵ度及以上烈度区——Ⅴ度区可不列入新增排查重点
+
+  pre_quake_baseline_by_radius:
+    source: 全国地质灾害动态数据库（震前）
+    rows:
+      - {radius_km: 10, scope: 积石山县, sites: 49,   threatened_persons: 2639,  threatened_asset_cny: 148330000}
+      - {radius_km: 30, scope: 积石山县及青海民和等县, sites: 472,  threatened_persons: 33257, threatened_asset_cny: 1270869000}
+      - {radius_km: 50, scope: 震区, sites: 1296, threatened_persons: 87623, threatened_asset_cny: 3262151300}
+    cross_check_with_plan:
+      finding: 震中10 km内积石山县49处，与本预案全县363处不矛盾（前者为半径截取，后者为全县）
+      unresolved: 两套统计的基准日与口径不同，合并使用前须核实
+
+  ground_motion:
+    network: 国家地质安全监测台网
+    stations_within_50km: 206
+    pga_range_mg: {min: 30.4, max: 1969.7}
+    attenuation: 随震中距增大呈对数衰减
+    typical_landslide_response:
+      site: 青海省民和县官亭镇赵木川村滑坡（距震中16 km）
+      daily_deformation_mm: {"2023-12-18": 84.1, "2023-12-19": 12.6, "2023-12-20": 2.6}
+      stabilized_at: 2023-12-19T10:00
+      operational_meaning: 同震位移在震后首日最大，次日衰减至约1/7，第三日趋稳——首日是监测加密与撤离管控的黄金窗口
+    equipment_caveat: 部分加速度设备工作模式不符合 DZ/T 0450—2023，未能及时获取有效数据（单芯片唤醒时长、采样频率偏低、定时采传等原因）
+
+  meteorological_context:
+    source: SRC-2 引文[21]
+    rainfall_extremes: {daily_max_mm: 95.4, hourly_max_mm: 29.3, ten_min_max_mm: 12.6}
+    note_rainfall: 震区为甘肃省暴雨中心之一，降水强度大
+    winter: {jan_mean_temp_c: -8, frozen_soil_depth_cm: 86}
+    conclusion: 主震区同时存在降雨与冻融两类诱发因素，呈现多季地质灾害高发规律
+    operational_meaning: 验证 hazard_chain 的 CH-3（降雨激发）与 CH-4（冻融）两阶段真实存在，震后地质灾害不是单峰而是多季反复
+
+  authoritative_recommendations:
+    source: SRC-2 第4节，五条建议
+    items:
+      - {no: 1, text: 科学部署隐患排查，更新震区地质灾害隐患库；对威胁较大的灾害点合理安排搬迁避让、工程治理、监测预警，提前部署勘查与可研，纳入防治项目储备库}
+      - {no: 2, text: 综合利用国产陆探SAR、高分系列光学遥感数据，运用地学空间分析与人工智能技术，开展中大型滑坡监测评价与综合遥感监测示范}
+      - {no: 3, text: 考虑后效应与链式致灾效应，深入研究拉脊山断裂构造活动性、黄土区同震地质灾害成因机理、地震砂土液化致灾机制，更新易发性分区图，并在震后防治专项规划、恢复重建规划、国土空间规划中充分考虑}
+      - {no: 4, text: 震后崩塌滑坡泥石流呈增强趋势并延续相当长时间，降雨引发地质灾害阈值降低；建议更新地震区地质灾害气象风险预警模型及阈值，深化预警模型与判据研究}
+      - {no: 5, text: 加大地震影响区震后地质灾害调查评价，重点研究震后阶地岩土体动力学响应及次生地质灾害发育演化特征}
+    mapping_to_our_gaps:
+      建议1: 对应 G-01 / G-11 / SRC-1 附件6
+      建议3: 对应 G-10（砂土液化致灾机制被列为待研究方向，佐证该灾种确属认知空白）
+      建议4: 对应 G-04（预警阈值缺失），且明确指出震后阈值需下调
+
+  conclusions_verbatim:
+    - 积石山Ms 6.2级地震新引发78处地质灾害，88处原有隐患点变形加剧；多分布在高烈度区，类型以崩塌为主，规模以小型为主，断层上盘效应显著
+    - 地震影响区地质环境条件发生改变，地质灾害后效应显著，预计未来地质灾害风险增加
+
+# ==============================================================================
+# 十五、v3 新增冲突与缺口
+# ==============================================================================
+quality_v3_additions:
+  conflicts:
+    - id: C-15
+      severity: 高
+      type: 跨预案分级口径冲突
+      location: 本预案 §1.5.2 vs 《国家地震应急预案》（2025年修订，SRC-3）
+      finding: >
+        同一场地震造成的同一批死亡人数，在两套预案下得出的级别完全不同。
+        国家地震应急预案按死亡人数分级：特别重大 200人以上、重大 30~200人、
+        较大 10~30人、一般 10人以下；本预案地质灾害灾情分级：特别重大 30人以上、
+        重大 10~30人、较大 3~10人、一般 3人以下。
+      comparison_table:
+        - {deaths: 200人以上,  地震灾害: 特别重大, 地质灾害灾情: 特别重大}
+        - {deaths: 30~200人,   地震灾害: 重大,     地质灾害灾情: 特别重大}
+        - {deaths: 10~30人,    地震灾害: 较大,     地质灾害灾情: 重大}
+        - {deaths: 3~10人,     地震灾害: 一般,     地质灾害灾情: 较大}
+        - {deaths: 3人以下,    地震灾害: 一般,     地质灾害灾情: 一般}
+      implication: >
+        地质灾害口径系统性严于地震口径约一至二级。这不是错误——两套预案保护对象与
+        动员规模不同——但意味着震后次生地质灾害支线的响应级别会正常地高于地震主线，
+        两个级别并存且都成立。
+      ruling:
+        id: DEC-15
+        decided_by: MODEL
+        text: >
+          报告中两个级别并列呈现，各自标注依据预案，严禁互相换算或取其一冒充另一个。
+          对外统一发布口径以抗震救灾指挥部为准；本体输出始终标注为"地质灾害专业支线定级"。
+        gate: 已并入 GATE-2（归因口径）与 GATE-3（定级可回溯）的校验范围
+      requires_confirmation: 县地质灾害应急指挥部办公室
+
+  gaps:
+    - id: G-14
+      topic: 预案发布版附件未获取
+      finding: 官网发布版含6个附件（人员名单电话、成员单位职责、响应流程图、物资清单、风险点分布图、隐患点统计表），页面未提供下载链接，用户上传的 docx 也不含附件
+      impact: 附件6 隐患点统计表与附件5 风险点分布图正是 G-01 的直接答案；附件4 物资清单是 G-03 的答案
+      action: 向县应急管理局索取附件原件（值班电话 0930-7722005）
+      priority: 最高——一次索取可关闭 G-01 / G-03 / G-05 与 C-12 四项
+      blocking: false
+
+  gap_updates:
+    - id: G-08
+      previous_status: 外部知识（待核）
+      new_status: 已核实
+      resolution: >
+        2023-12-18 积石山 Ms6.2 地震确认发生，最大烈度Ⅷ度，震源深度10 km；
+        震后新引发78处地质灾害、88处既有隐患点变形加剧（SRC-2）。
+        本预案发布于 2024-03-15（震后），但正文底数仍为 363/318，
+        是否已含震后复核成果不明——转入 G-11 继续跟踪。
+    - id: G-09
+      previous_status: blocking，需《积石山县地震应急预案》
+      new_status: 仍 blocking，但已有上位替代
+      search_result: >
+        在县政府门户（jss.gov.cn）及公开检索中均未找到《积石山县地震应急预案》发布版。
+        应急管理部 2025-10-31 解读明确要求"加快新一轮各地各级地震应急预案修订"，
+        该预案可能正在修订中或未公开发布，属正常情形，不能推定其不存在。
+      substitute_available:
+        source: SRC-3 国家地震应急预案（2025年修订）
+        usable_for: 地震灾害分级标准、国家级响应分级与启动条件
+        not_usable_for: 积石山县抗震救灾指挥部的组成、职责、启动权限与本预案的衔接条款
+      recommended_action: 向县应急管理局一并索取（与 G-14 附件同一渠道）
+    - id: G-10
+      previous_status: 外部知识（待核）
+      new_status: 部分佐证
+      resolution: >
+        SRC-2 建议3 将"地震砂土液化致灾机制"列为需深入研究的方向，
+        佐证该机制确属当前认知空白。但该文献研究范围为同震崩滑，
+        未给出积石山县境内液化流滑的具体点位与规模，故灾种是否需补入本预案
+        仍需县自然资源局判定。
+    - id: G-04
+      previous_status: 预警阈值缺失
+      new_status: 缺失依旧，且已被权威文献确认需下调
+      resolution: SRC-2 建议4 明确"降雨引发地质灾害阈值降低""建议更新地震区地质灾害气象风险预警模型及阈值"；震区雨强极值已知（日95.4 mm、小时29.3 mm、10分钟12.6 mm），可作为阈值研究的输入
