@@ -3,7 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // ⚠ 这一行不能写成 `import type`：`OBJECT_CONSTRAINT_KIND_LABELS` 是**值**不是类型。
 import {
   OBJECT_CONSTRAINT_KIND_LABELS,
+  // WO-MAPPING-WHITELIST · 结构边物化声明的**字段清单**（值，不是类型）——
+  //   「改」表单靠它把自己管不到的那几个声明字段原样回填，见 `updateLink`。
+  //   用契约现算的清单而不是在这里手抄一份：手抄的那份迟早与后端漂移，
+  //   而漂移的表现是**一次保存悄悄清零一个字段**，不报错、不变红。
+  LINK_MATERIALIZATION_FIELDS,
   type ChangeImpactPreview,
+  type LinkMaterializationDecl,
   type ObjectConstraintKind,
   type ObjectConstraintRef,
   type OntologyInvariantOverride,
@@ -286,11 +292,36 @@ export default function OntologyRelationsPage() {
     mutationFn: (payload: { key: string; fromTypeKey: string; toTypeKey: string; cardinality: Cardinality; via: string }) => {
       const i = payload.via.indexOf(":");
       const v = i < 0 ? null : { viaSide: payload.via.slice(0, i) as "from" | "to", viaProperty: payload.via.slice(i + 1) };
+      /*
+       * WO-MAPPING-WHITELIST · **本表单管不到的物化声明字段必须原样回填。**
+       *
+       * 本页只给了 `via` 一个控件（= `viaProperty` + `viaSide` 这一对）。而结构边的物化声明
+       * 一共 9 个字段，另外 7 个（`anchorProperty` `viaMultiValue` `viaBridge` `viaWhere`
+       * `viaKeyExpr` `viaWhereTo` `viaCross`）今天只能从 API 声明、**在这个表单里没有控件**。
+       * 由于 POST 是**整条覆盖**（后端 `upsertLinkType`：`{...input}` → `put`），
+       * 不回填就等于「用户点了一次保存，把自己没看见也没碰过的声明清零了」——
+       * 边随即退回 0 实例、多跳检索遍历不到，**屏上不报错**。这是静默数据丢失。
+       *
+       * 回填源是 `linkRows`（`GET …/mapping/registries` 的下发行），它与本请求体
+       * **共用契约的 `LinkMaterializationDecl`** ⇒ 「读投影发得出来的」= 「这里送得回去的」。
+       * 遍历用契约现算的 `LINK_MATERIALIZATION_FIELDS`，将来加第 10 个字段这里自动跟上。
+       *
+       * ⚠ `viaProperty`/`viaSide` **不走回填**：它们是表单管的那一对，必须以用户的选择为准
+       *   （回填会让「清空实现属性」这个动作永远生效不了）。故下面显式跳过再由 `v` 覆盖。
+       */
+      const row = linkRows.find((l) => l.key === payload.key);
+      const carried: Record<string, unknown> = {};
+      for (const f of LINK_MATERIALIZATION_FIELDS) {
+        if (f === "viaProperty" || f === "viaSide") continue;
+        const cur = row?.[f];
+        if (cur !== undefined) carried[f] = cur;
+      }
       return createLinkType({
         key: payload.key,
         fromTypeKey: payload.fromTypeKey,
         toTypeKey: payload.toTypeKey,
         cardinality: payload.cardinality,
+        ...(carried as LinkMaterializationDecl),
         ...(v ? { viaProperty: v.viaProperty, viaSide: v.viaSide } : {}),
       });
     },

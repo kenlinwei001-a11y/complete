@@ -1,4 +1,5 @@
 import type { MappingRow, MappingRegistries } from "@platform/contracts";
+import { LINK_MATERIALIZATION_FIELDS } from "@platform/contracts";
 import type { Repos } from "./repo/repo.js";
 import { SOLVER_KEYS } from "./solvers/service.js";
 import { AGENT_SEEDS, CONN_SYSTEM, DOMAIN_ORDER, GRAPH_DOMAIN, SOLVER_GRAPH } from "./graphmeta.js";
@@ -107,13 +108,37 @@ export async function buildMappingRegistries(repos: Repos, tenantId: string): Pr
     linkTypes: links
       // WO-RELATION-EDIT-GAPS ①：`viaProperty`/`viaSide` 随边下发（加性可选，未声明即缺席）——
       // 关系编辑器的「改」表单靠它预填「由哪个属性实现」，不预填就会在保存时把它抹掉。
-      .map((l) => ({
-        key: l.key,
-        fromType: l.fromTypeKey,
-        toType: l.toTypeKey,
-        cardinality: l.cardinality,
-        ...(l.viaProperty ? { viaProperty: l.viaProperty, viaSide: l.viaSide ?? ("from" as const) } : {}),
-      }))
+      //
+      // WO-MAPPING-WHITELIST：**同一条纪律对全部 9 个物化声明字段成立，此前只兑现了 2 个。**
+      // 修前这里手写 `...(l.viaProperty ? { viaProperty, viaSide } : {})`，而写路
+      // （`POST /a/v1/ontology/link-types`）已收 9 个 ⇒ 差集 7 个（`anchorProperty`
+      // `viaMultiValue` `viaBridge` `viaWhere` `viaKeyExpr` `viaWhereTo` `viaCross`）
+      // 在「读—改—写」往返里被静默抹掉：写路是整条覆盖（`upsertLinkType` 的 `{...input}` + `put`），
+      // 客户端拿不到就回填不出来，用户一个字段都不改、只点一次保存，声明当场归零。
+      //
+      // 现在按**契约的字段集**（`LINK_MATERIALIZATION_FIELDS`，与写路同一份 schema）逐个拷贝：
+      // · 仍是**白名单**（逐个 key 拷贝，不 `...spread` 整条 `LinkTypeDef`）——
+      //   `id`/`tenantId`/`version`/`published`/`deprecation` 一个都不会漏出去；
+      // · 加字段只需改契约那一处，读写两路同时生效，**不再靠人记得同步两份手抄清单**。
+      .map((l) => {
+        const decl: Record<string, unknown> = {};
+        for (const f of LINK_MATERIALIZATION_FIELDS) {
+          // `LinkTypeDef` 上这 9 个字段同名同义 ⇒ 直接按契约的 key 取，不做 `any`/宽转换：
+          // 哪天 `LinkTypeDef` 少了其中一个，这一行**当场编译红**，而不是悄悄发不出来。
+          const v = l[f];
+          if (v !== undefined) decl[f] = v;
+        }
+        // `viaSide` 的缺省态必须**显式**下发：编辑器把它拼进 `${viaSide}:${viaProperty}` 当预填值，
+        // 缺席会拼出 `undefined:...`。仅在声明了 viaProperty 时补默认（与修前逐字节同行为）。
+        if (l.viaProperty !== undefined && decl.viaSide === undefined) decl.viaSide = "from" as const;
+        return {
+          key: l.key,
+          fromType: l.fromTypeKey,
+          toType: l.toTypeKey,
+          cardinality: l.cardinality,
+          ...decl,
+        };
+      })
       .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
     rules: rules
       .map((r) => ({ key: r.key, expression: r.expression, scope: (r.scopeObjectTypes ?? []).join("、") || "全局", severity: sevLabel[r.severity] ?? r.severity }))

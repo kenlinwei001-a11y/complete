@@ -1,6 +1,7 @@
 import { http, HttpResponse, type DefaultBodyType } from "msw";
 import type { AgentRunRecord, BuildPipeline, BuildPipelineKind, PlanBuilderCanvas, PlanBuilderCompileResult, PlanBuilderPublishResult, CreatePlanBuilderBody, UpdatePlanBuilderBody, PlanStep, Scenario, SkillCompileDiagnostic, SkillCompileStageReport, FactoryCalendar, OpsPlaybook, ReconcileAction, SchemaReconcileCandidate } from "@platform/contracts";
-import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition, deriveDispositionOptions, SEG_REGISTRY } from "@platform/contracts";
+import { BOUNDARY_IMPACT, boundaryVersion, deriveDisposition, deriveDispositionOptions, SEG_REGISTRY, LINK_MATERIALIZATION_FIELDS } from "@platform/contracts";
+import type { LinkMaterializationDecl } from "@platform/contracts";
 // WO-DECISION-INFO-FE · 决策三块（影响面 / 不作为后果 / 方案代价）的 mock 载荷类型，
 // 与真后端共用同一份契约 ⇒ mock 与引擎口径不可能分家。
 import type {
@@ -1947,7 +1948,23 @@ let mockPertSeq = 0;
  *
  * R6 确定性：id 走计数器、时间戳固定串，无随机数、无真实时钟。
  */
-type MockLinkType = { key: string; fromType: string; toType: string; cardinality: string; viaProperty?: string; viaSide?: "from" | "to"; version?: number; deprecation?: { status: "ACTIVE" | "DEPRECATED" | "RETIRED"; supersededBy?: string; deprecatedAt?: string; graceUntil?: string; retiredAt?: string } };
+// WO-MAPPING-WHITELIST：物化声明这 9 个字段用契约的 `LinkMaterializationDecl`，不在 mock 里手抄
+// —— 手抄的那份漂移了，mock 就会比真后端「少存几个字段」，而少存的表现正是本单要抓的那个 bug
+// （保存一次静默清零）⇒ mock 模式下这个 bug 永远复现不出来，也永远测不出来。
+type MockLinkType = { key: string; fromType: string; toType: string; cardinality: string; version?: number; deprecation?: { status: "ACTIVE" | "DEPRECATED" | "RETIRED"; supersededBy?: string; deprecatedAt?: string; graceUntil?: string; retiredAt?: string } } & LinkMaterializationDecl;
+
+/**
+ * 一条 mock 边的**物化声明投影** —— 建边回包与 `mapping/registries` 读投影**共用这一个**。
+ * 各写各的会漂：漂了的表现是「建的时候在、回读的时候没了」，而那正是本单要抓的那个 bug。
+ * 口径与真后端 `apps/datacore/src/mapping.ts` 一致：逐个 key 拷贝（不 spread 整条，
+ * `version`/`deprecation` 不许漏出去），`viaSide` 仅在声明了 `viaProperty` 时补默认。
+ */
+function mockLinkDecl(l: MockLinkType): LinkMaterializationDecl {
+  const out: Record<string, unknown> = {};
+  for (const f of LINK_MATERIALIZATION_FIELDS) if (l[f] !== undefined) out[f] = l[f];
+  if (l.viaProperty !== undefined && out.viaSide === undefined) out.viaSide = "from";
+  return out as LinkMaterializationDecl;
+}
 type MockPropRule = {
   id: string; tenantId: string; key: string;
   /**
@@ -4103,14 +4120,18 @@ export const handlers = [
         // 改一条种子边的基数/实现属性之后，本端点必须回读到新值，否则「改」在 mock 模式下
         // 看起来永远没生效。⚠ 字面量数组本身必须原地保留：`mock-linktype-direction.gate.test.ts`
         // 按源码文本在本端点之后抽紧跟的那个数组，换成 `mockLinkTypes.map(...)` 会让它抽出 0 条。
+        // WO-MAPPING-WHITELIST：读投影与真后端 `mapping.ts buildMappingRegistries` 同口径 ——
+        // **9 个物化声明字段整组下发**，不是只发 `viaProperty`/`viaSide`。
+        // 修前只发 2 个 ⇒ 关系编辑器在 mock 模式下回填不出另外 7 个，保存一次即抹掉，
+        // 与真后端修前的 bug 同形；两边一起修才谈得上「mock 与真后端同口径」。
         .map((s: MockLinkType) => {
           const cur = mockLinkTypes.find((l) => l.key === s.key);
-          return cur ? { key: cur.key, fromType: cur.fromType, toType: cur.toType, cardinality: cur.cardinality, ...(cur.viaProperty ? { viaProperty: cur.viaProperty, viaSide: cur.viaSide ?? "from" } : {}) } : s;
+          return cur ? { key: cur.key, fromType: cur.fromType, toType: cur.toType, cardinality: cur.cardinality, ...mockLinkDecl(cur) } : s;
         })
         .concat(
           mockLinkTypes
             .filter((l) => !MOCK_LINK_SEED.some((s) => s.key === l.key))
-            .map((l) => ({ key: l.key, fromType: l.fromType, toType: l.toType, cardinality: l.cardinality, ...(l.viaProperty ? { viaProperty: l.viaProperty, viaSide: l.viaSide ?? ("from" as const) } : {}) })),
+            .map((l) => ({ key: l.key, fromType: l.fromType, toType: l.toType, cardinality: l.cardinality, ...mockLinkDecl(l) })),
         ),
       rules: [
         { key: "C03", expression: "weeklySupply.packsPerWeekP90 >= weeklyDemand", scope: "Order、Base", severity: "阻断" },
@@ -7440,14 +7461,25 @@ export const handlers = [
   }),
   // `POST /a/v1/ontology/link-types`（后端 app.ts:2918 · `ontology.upsertLinkType` 按 key 幂等升版）。
   http.post("*/a/v1/ontology/link-types", async ({ request }) => {
-    const b = (await request.json()) as { key: string; fromTypeKey: string; toTypeKey: string; cardinality: string; viaProperty?: string; viaSide?: "from" | "to" };
+    const b = (await request.json()) as { key: string; fromTypeKey: string; toTypeKey: string; cardinality: string } & LinkMaterializationDecl;
     /*
      * WO-RELATION-EDIT-GAPS ②③ · **mock 不许比真后端宽松**（本仓交付判据 2）。
      * 这条纪律不是洁癖：mock 一旦宽松，"点了必 400" 那类 bug 在 mock 模式下**永远抓不到** ——
      * 本仓真出过这个事故。故这两道闸与 `apps/datacore/src/app.ts` 建边路由**逐条对应**：
      *  ③ key 字符集（字母开头 / 只收 [A-Za-z0-9_] / ≤64）
      *  ② 同 key 不许改端点（含"掉个头"这种反向覆盖）
+     *
+     * WO-MAPPING-WHITELIST · **mock 也不许比真后端「少存」**（同一条纪律的另一半）。
+     * 真后端是整条覆盖的 upsert，收 9 个物化声明字段并原样落库；mock 修前只认
+     * `viaProperty`/`viaSide` 两个 ⇒ 另外 7 个进得来、存不下，**mock 模式下这条边保存一次
+     * 就少几个字段**，与真后端修前的 bug 一模一样，于是 mock 模式既复现不出修好的行为、
+     * 也没法用来测它。下面按 `LINK_MATERIALIZATION_FIELDS`（契约现算）整组存取。
      */
+    // 只取契约认的那 9 个键 —— 逐个拷贝而不是 `...b`，垃圾字段与 `key`/端点一个都不许混进来。
+    const decl: Record<string, unknown> = {};
+    for (const f of LINK_MATERIALIZATION_FIELDS) if (b[f] !== undefined) decl[f] = b[f];
+    // `viaSide` 的缺省态显式补齐（与真后端 `mapping.ts` 读投影同口径：声明了 viaProperty 才补）。
+    if (b.viaProperty !== undefined && decl.viaSide === undefined) decl.viaSide = "from";
     if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(b.key) || b.key.length > 64) {
       return err(400, "VALIDATION_ERROR", `关系标识 '${b.key}' 不合法：只能用英文字母、数字与下划线，必须字母开头，长度不超过 64 个字符（不能含空格、中文或标点）。`);
     }
@@ -7462,17 +7494,23 @@ export const handlers = [
     }
     if (existing) {
       existing.cardinality = b.cardinality;
-      existing.viaProperty = b.viaProperty;
-      existing.viaSide = b.viaProperty ? (b.viaSide ?? "from") : undefined;
+      // 整条覆盖（与真后端一致）：先把 9 个声明字段全清，再写回本次提交带来的那些。
+      // 逐个 delete 而不是只赋 `viaProperty` —— 漏清一个，那个字段就会**赖在边上删不掉**，
+      // 而真后端那边它已经没了，两边从此不同口径。
+      for (const f of LINK_MATERIALIZATION_FIELDS) delete (existing as Record<string, unknown>)[f];
+      Object.assign(existing, decl);
       existing.version = (existing.version ?? 1) + 1;
     } else {
-      mockLinkTypes.push({ key: b.key, fromType: b.fromTypeKey, toType: b.toTypeKey, cardinality: b.cardinality, version: 1, ...(b.viaProperty ? { viaProperty: b.viaProperty, viaSide: b.viaSide ?? "from" } : {}) });
+      mockLinkTypes.push({ key: b.key, fromType: b.fromTypeKey, toType: b.toTypeKey, cardinality: b.cardinality, version: 1, ...decl });
     }
-    // WO-LINKTYPE-IMPL：回显 viaProperty/viaSide（真后端据此把声明物化成链路实例）。
+    // WO-LINKTYPE-IMPL：回显物化声明（真后端据此把声明物化成链路实例）。
     // ⚠ **故意不返回 `materialized`** —— mock 里没有对象实例，算不出真实条数；
     // 编一个数会让 mock 模式显示一条真后端不会给的读数（前端对 undefined 已做静默处理）。
+    // 回包的声明**从落库那条行上现取**（不是从请求体再拼一次）——
+    // 这样「回包说的」= 「存下来的」= 「registries 待会发的」，三者共用 `mockLinkDecl` 一份实现。
+    const saved = mockLinkTypes.find((l) => l.key === b.key);
     return HttpResponse.json(
-      { key: b.key, fromTypeKey: b.fromTypeKey, toTypeKey: b.toTypeKey, cardinality: b.cardinality, version: mockLinkTypes.find((l) => l.key === b.key)?.version ?? 1, ...(b.viaProperty ? { viaProperty: b.viaProperty, viaSide: b.viaSide ?? "from" } : {}) },
+      { key: b.key, fromTypeKey: b.fromTypeKey, toTypeKey: b.toTypeKey, cardinality: b.cardinality, version: saved?.version ?? 1, ...(saved ? mockLinkDecl(saved) : {}) },
       // 改既有回 200、新建回 201（与真后端一致：调用方据此分辨"我是不是覆盖了别人的边"）。
       { status: existing ? 200 : 201 },
     );
