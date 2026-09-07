@@ -162,6 +162,9 @@ export function safeTarget(raw: unknown): string | undefined {
   if (typeof raw !== "string" || raw.trim() === "") return undefined;
   try {
     const u = new URL(raw.trim());
+    // 非「//host」型的方案（如 `jdbc:postgresql://…`）解析后 host 为空 —— 实测会得到无意义的 `jdbc://`。
+    // 宁可不给 target，也不给一个看起来像地址却什么都不指的串。
+    if (u.host === "") return undefined;
     return `${u.protocol}//${u.host}`;
   } catch {
     return undefined;

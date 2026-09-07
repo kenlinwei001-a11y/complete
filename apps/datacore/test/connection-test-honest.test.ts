@@ -348,6 +348,8 @@ describe("WO-CONNTEST-HONEST §7 · 分类器纯函数（形态实测自 Node 22
     expect(safeTarget("not-a-url")).toBeUndefined();
     expect(safeTarget("")).toBeUndefined();
     expect(safeTarget(undefined)).toBeUndefined();
+    // 非「//host」型方案：解析得动但 host 为空 —— 不许回一个无意义的 `jdbc://`。
+    expect(safeTarget("jdbc:postgresql://db.test:5432/x")).toBeUndefined();
   });
 
   it("hasEmbeddedCredentials 认得 user:pass@", () => {
