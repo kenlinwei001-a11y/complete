@@ -530,4 +530,171 @@ describe("WO-SIM-PARETO-MODEL-EXIT · 装配出口 → 求解 整条缝", () => 
     const costs = [...new Set((j.request.args!.eligibility as { cost: number }[]).map((e) => e.cost))].sort((a, b) => a - b);
     expect(costs, "非货币单位被误折算了").toEqual([3, 5, 7]);
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // § 3 · WO-PENALTY-CHANGEOVER-ONTOLOGY · 违约金：从「显式缺席位」变成**会改排序的真轴**
+  // ══════════════════════════════════════════════════════════════════════════
+  //
+  // ══ 今天的行为是 X，应该是 Y（开工实测，本机 4801 内存态 demo 租户，SEED_DEMO=1）══
+  //
+  // **X**：`OrderLine` 上没有任何命中违约词库的**总量**数值字段（改前全仓**根本没有违约词库**），
+  //   ⇒ 装配器 `penProp` 恒 undefined ⇒ 不声明 `penalty` role ⇒ 绑定层
+  //   `num(p["penalty"])` 对 873 行**恒取到 0**。实测装配回包每一行都是 `"penalty":0`。
+  //   引擎侧其实**全接好了**（密度排序含 `wPen·penalty` 项、`objectiveValues.penalty`、
+  //   标量目标含 `−wPen·penalty`）—— 这是三分法**第二态「接了线没数据」**，修法是补数据不是接线。
+  // **Y**：违约金是本体事实（`OrderLine.breachPenalty`，元/整行），装配器现扫命中即声明为真轴；
+  //   **改费率 ⇒ 装入次序与目标函数值真变**。
+  //
+  // ⚠ 本组咬的是「**算得对不对**」不是「传下去了吗」（铁律 1.5）：同族既有用例验的是
+  //   装配→求解这条**管子通不通**，而一根恒为 0 的罚金轴在那些用例里**照样全绿** ——
+  //   0 会被原样传下去、原样求和、原样回包。只有"改了输入、输出必须按可预言的方式变"这一条咬得住。
+  describe("⑬ WO-PENALTY-CHANGEOVER-ONTOLOGY · 罚金轴（对照实验·真路由 + 真求解器）", () => {
+    /**
+     * 售票世界·违约版。与上面几套的差别只有一处：罚金那一格改叫 `breachPenalty` ——
+     * **命中新加的 `penalty` 词库、完全不命中 `cost` 词库**。
+     * 这一格的命名是本组的**变异捕手**：装配器若退回只扫 `cost`，`penProp` 当场 undefined、
+     * 罚金轴消失，下面第一条断言就红。
+     *
+     * 产能刻意收紧到 `20 + 6 = 26 < 总需求 41`：产能够用时人人获排、`displaced` 为空 ⇒
+     * "改费率会不会换人上车"这件事根本无从观察（那不是绿，是**测不到**）。
+     */
+    async function seedBreachWorld(t: App): Promise<void> {
+      await putType(t, T, "TicketOrder", [
+        { propKey: "ticketNo", dataType: "string", isPrimaryKey: true },
+        { propKey: "seatQty", dataType: "number", unit: "件" },
+        { propKey: "pricePerUnit", dataType: "number", unit: "元" },
+        // ⚠ 名字里一个 `cost/成本/费用` 都没有 —— 改前的装配器对它**恒不命中**。
+        { propKey: "breachPenalty", dataType: "number", unit: "元" },
+      ]);
+      await putType(t, T, "Coach", [
+        { propKey: "coachId", dataType: "string", isPrimaryKey: true },
+        { propKey: "seatCapacity", dataType: "number" },
+        { propKey: "runCost", dataType: "number", unit: "元" },
+      ]);
+      const orders: [string, number, number, number][] = [
+        ["o1", 12, 100, 1200], ["o2", 8, 60, 400], ["o3", 15, 90, 900], ["o4", 6, 30, 60],
+      ];
+      for (const [id, seatQty, pricePerUnit, breachPenalty] of orders) {
+        await putObj(t, T, "TicketOrder", id, { ticketNo: id, seatQty, pricePerUnit, breachPenalty });
+      }
+      for (const [id, seatCapacity, runCost] of [["c1", 20, 5], ["c2", 6, 3]] as [string, number, number][]) {
+        await putObj(t, T, "Coach", id, { coachId: id, seatCapacity, runCost });
+      }
+    }
+
+    /**
+     * 单点求解口的门禁：`cross_object_occupancy` 绑在 `opt.multiobj` 上
+     * （`features.ts`：`bindings.solverKeys` 含它，`defaultOn:false`，且 `requires: ["opt.solver-pool"]`）。
+     * ⇒ 只开 `sim.sandbox` 时这条口回 **404 FEATURE_NOT_FOUND**（实测，正是 R3「功能关闭 = 不存在」）。
+     * 依赖项不开则该功能开不起来，故两格一起开。
+     */
+    const enableMultiObj = (t: App) =>
+      t.app.inject({
+        method: "PUT",
+        url: `/a/v1/tenants/${T}/features`,
+        headers: ACME,
+        payload: { overrides: { "sim.sandbox": true, "opt.solver-pool": true, "opt.multiobj": true } },
+      });
+
+    /** 真路由 + 真求解器跑一次单点求解（`optimize-pareto` 回的是前沿，这里要的是**一个解**）。 */
+    const solveOnce = async (t: App, args: Record<string, unknown>) => {
+      const r = await t.app.inject({
+        method: "POST",
+        url: "/a/v1/solvers/cross_object_occupancy/invoke",
+        headers: ACME,
+        payload: { args },
+      });
+      expect(r.statusCode, r.body).toBe(200);
+      return (JSON.parse(r.body) as { data: { values: Record<string, number>; displaced: string[]; objectiveValues: Record<string, number>; objective: number } }).data;
+    };
+
+    it("装配：罚金轴由**违约词库**接地（不是成本词库），且带货币单位", async () => {
+      const t = await makeApp();
+      await enableSim(t, T, ACME);
+      await seedBreachWorld(t);
+
+      const parsed = ParetoAssembleResultSchema.parse((await assemble(t, ACME)).json) as ParetoAssembleResult;
+      expect(parsed.applicable, parsed.applicable === false ? parsed.note : "").toBe(true);
+      const j = parsed as Extract<ParetoAssembleResult, { applicable: true }>;
+
+      // 金丝雀：这一格**确实**不命中成本词库 —— 否则本用例证明的是老路而不是新路。
+      expect(/成本|cost|费用|损|料价|原料|开支|支出|耗费/i.test("breachPenalty"), "金丝雀失效：breachPenalty 若命中成本词库，本组测的是旧路径").toBe(false);
+
+      const roleMap = Object.fromEntries(j.roles.map((r) => [r.role, r.ref]));
+      expect(roleMap.penalty, "罚金 role 没接到违约那一格 ⇒ 违约词库没起作用").toBe("TicketOrder.breachPenalty");
+      const pen = j.request.objectives.find((o) => o.key === "penalty");
+      expect(pen, "罚金没成为一根声明出来的真轴").toBeDefined();
+      expect(pen?.dir, "罚金是越小越好").toBe("min");
+      // 改前这根轴一格单位都不报（它从来接不上地，所以没人发现）；接上地之后不报单位 =
+      // 屏上一个几十亿的裸数，与营收轴并排却看不出同不同刻度。
+      expect(pen?.unit, "罚金轴没带单位").toBe("元");
+      // 接上地 ⇒ 这一条**不再**出现在报缺清单里（报缺是现算的，不是写死的白名单）。
+      expect((j.request.unavailableObjectives ?? []).map((g) => g.key), "接上地了还在报缺").not.toContain("penalty");
+      // 而换型那一根**仍然**报缺 —— 它卡在族没有次序，不是卡在某一格字段（本单选 (b) 保持缺席）。
+      expect((j.request.unavailableObjectives ?? []).map((g) => g.key)).toContain("changeover");
+    });
+
+    it("对照实验：某单违约金 ×10 ⇒ 目标函数值变、且该单从**被挤**翻成**获排**（不改排序 = 这根轴没参与排序）", async () => {
+      const t = await makeApp();
+      await enableMultiObj(t);
+      await seedBreachWorld(t);
+
+      const j = ParetoAssembleResultSchema.parse((await assemble(t, ACME)).json) as Extract<ParetoAssembleResult, { applicable: true }>;
+      const args = j.request.args!;
+      const orders = args.orders as { id: string; penalty: number; qty: number }[];
+
+      // 金丝雀 A：罚金真的**有值**（全 0 的话下面每一条都会"因为正确的原因"变绿）。
+      expect(orders.every((o) => o.penalty > 0), `罚金全 0 ⇒ 本组什么都没测到：${JSON.stringify(orders)}`).toBe(true);
+
+      const base = await solveOnce(t, args);
+      // 金丝雀 B：产能真的不够用（`displaced` 空 ⇒ "换谁上车"无从观察，不是绿是测不到）。
+      expect(base.displaced.length, "没有任何单被挤 ⇒ 产能够用，排序变化观察不到").toBeGreaterThan(0);
+
+      // 挑一张**基线被挤**的单：qty 最小者（密度上位后最容易真塞进去），tie-break id 升序 ⇒ 全序确定。
+      const target = orders.filter((o) => base.displaced.includes(o.id)).sort((x, y) => x.qty - y.qty || x.id.localeCompare(y.id))[0]!;
+
+      const mutate = (mult: number) => ({ ...args, orders: orders.map((o) => (o.id === target.id ? { ...o, penalty: o.penalty * mult } : o)) });
+      const upArgs = mutate(10);
+
+      // ⚠ **变异反证**：先证明变异真的改到了被测那一半的输入 —— 本仓有过"参数只喂给修前那半、
+      //   三次输入相同、恒不可能红"的装饰品。判据落在两份 payload 的**差集**上，不是"我写了 ×10"。
+      const diff = (orders as { id: string; penalty: number }[])
+        .map((o, i) => [o.id, o.penalty, (upArgs.orders as { penalty: number }[])[i]!.penalty] as const)
+        .filter(([, a, b]) => a !== b);
+      expect(diff.length, `变异没有改到任何一格输入 ⇒ 本用例恒不可能红：${JSON.stringify(diff)}`).toBe(1);
+      expect(diff[0]![0]).toBe(target.id);
+      expect(diff[0]![2]).toBe(diff[0]![1] * 10);
+
+      const up = await solveOnce(t, upArgs);
+
+      // ── 判据一：目标函数值真的动了（罚金是 `min`，故加权标量目标必须**变小**）。
+      expect(up.objectiveValues.penalty, "方案总违约金纹丝不动 ⇒ 罚金没进目标函数").not.toBe(base.objectiveValues.penalty);
+      expect(up.objective, "加权标量目标纹丝不动 ⇒ 罚金没进那个和式").not.toBe(base.objective);
+
+      // ── 判据二：**排单决策**真的翻了 —— 这一条才是"这根轴参与排序"的证据。
+      //    目标值变了但排序不变，只说明它被**求和**了，不说明它被**排序**用了。
+      expect(base.values[target.id], "选的这张单在基线里就该是被挤的").toBe(0);
+      expect(up.values[target.id], "违约金 ×10 之后这张单仍被挤 ⇒ 这根轴没参与排序，正是本单要修的病").toBe(1);
+    });
+
+    it("反向对照：违约金清零 ⇒ 轴读数归零、滑杆极差归零，且排序回到只看其它目标的结果", async () => {
+      const t = await makeApp();
+      await enableMultiObj(t);
+      await seedBreachWorld(t);
+
+      const j = ParetoAssembleResultSchema.parse((await assemble(t, ACME)).json) as Extract<ParetoAssembleResult, { applicable: true }>;
+      const args = j.request.args!;
+      const orders = args.orders as { id: string; penalty: number }[];
+
+      const base = await solveOnce(t, args);
+      const zero = await solveOnce(t, { ...args, orders: orders.map((o) => ({ ...o, penalty: 0 })) });
+
+      // 轴读数归零（Σ 被挤单罚金，全零 ⇒ 恒 0）。
+      expect(zero.objectiveValues.penalty, "全体罚金清零，轴读数却不是 0").toBe(0);
+      // 排序回到只看其它目标：至少有一张单的获排/被挤与基线不同。
+      // ⛔ 这一条**不能**换成"目标值变了" —— 那只证明求和路通，不证明排序路通。
+      const flipped = Object.keys(base.values).filter((k) => base.values[k] !== zero.values[k]);
+      expect(flipped.length, "清零后排单结果与基线**完全相同** ⇒ 罚金从来没参与过排序").toBeGreaterThan(0);
+    });
+  });
 });

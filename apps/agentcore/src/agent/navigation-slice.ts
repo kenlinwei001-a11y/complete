@@ -323,7 +323,13 @@ export const OBJECT_KEY_PROPS: Record<string, string[]> = {
   // 帕累托前沿的营收轴与按件成本轴都绑在这里（`opt-assemble.ts`：revenue ← `OrderLine.unitPrice × qty`、
   // role `unit_cost` ← `OrderLine.unitCost`）。不列 ⇒ 导航图印出一个光秃秃的 `- OrderLine`，
   // 模型根本不知道这张行表上带着价和成本。
-  OrderLine: ["lineId", "orderRef", "model", "qty", "due", "lineStatus", "unitPrice", "unitCost"],
+  // WO-PENALTY-CHANGEOVER-ONTOLOGY：`breachPenalty` 是帕累托前沿的**罚金轴**那一格
+  // （`opt-assemble.ts`：penalty ← `OrderLine.breachPenalty`）。不列的后果**不是报错**，
+  // 是模型拿不到值 —— 屏上少一段"这单被挤要赔多少"的解释，而 typecheck 与四包 gate 全绿。
+  // ⚠ §2b 那道门当时也咬不到它（钱词库只认 cost|price|margin|revenue|profit|amount|payable|receivable，
+  //   `breachPenalty` 一个都不含）⇒ 本行是人补的，不是机器逼出来的。同单已把
+  //   `penalty|breach` 补进那道门的词库，下一个同形状的字段机器会先说话。
+  OrderLine: ["lineId", "orderRef", "model", "qty", "due", "lineStatus", "unitPrice", "unitCost", "breachPenalty"],
   WorkOrder: ["woId", "qtyActual", "status"],
   FinishedGoodsInventory: ["model", "qtyOnHand", "qtyReserved"],
   // WO-KEYPROPS-GAP：`receivables` 是敞口的**真数**（`credit_exposure` 答「这家客户欠多少」靠它），

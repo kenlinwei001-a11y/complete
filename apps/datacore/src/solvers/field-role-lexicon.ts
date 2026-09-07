@@ -27,6 +27,32 @@ export const ROLE_LEXICON = {
   unitRate: /单价|unitprice|unit_price|每单位|per_?unit|费率|rate|单位成本|unitcost|unit_cost/i,
   /** 成本/费用（margin_attribution 成本项）。 */
   cost: /成本|cost|费用|损|料价|原料|开支|支出|耗费/i,
+  /**
+   * **违约/罚金**（WO-PENALTY-CHANGEOVER-ONTOLOGY）—— 合同没履约要赔的那笔钱。
+   *
+   * ⚠ **为什么必须单列一条，而不是把这些词并进 `cost`**：`cost` 被五个求解族共用
+   * （`field-roles.ts` 的 revenue+cost 类型判定 · `service.ts` 的 `open_cost`/`assign_cost`/
+   * arc cost 三处 `.find` · `opt-assemble.ts` 的 `groundsCost` 排序与 `elig_cost`），
+   * 往里塞词会**静默改掉那五处挑中哪一格**。实测本体上 `LongTermAgreement.breachPenaltyWan`
+   * 一旦被 `cost` 收编，`LongTermAgreement` 就多出一格"成本字段"参与那些排序 ——
+   * 后果不报错，只是某个求解器换了一格去算，屏上照样正常。新开一条词库**爆炸半径为零**。
+   *
+   * ⚠ 这一条同时修掉一处**注释与实现不符**（铁律 1.5 判据四）：`opt-assemble.ts` 的报缺原文
+   * 一直写着「没有命中成本/**违约**词库」，而改前全仓**根本没有违约词库** ——
+   * `违约金` 三个字不匹配 `cost` 的任何一个词。屏上那句话因此指着一个不存在的判据，
+   * 且它给出的「最近落点」（Base.openCost 等）漏掉了真正最近的
+   * `LongTermAgreement.breachPenaltyWan`，因为后者对 `cost` 恒不命中。
+   */
+  penalty: /违约|违规|penalty|breach|赔偿|索赔|罚金|罚款|liquidated/i,
+  /**
+   * **换型/转产**（WO-PENALTY-CHANGEOVER-ONTOLOGY）—— 「上一个型号 → 这一个型号」这件事。
+   *
+   * ⚠ **加它的目的是「诚实报缺」，不是「接一根换型轴」**（与 `cashCycle` 完全同一个理由）：
+   * 换型成本要成立，先得有**次序**；指派族的解是集合不是序列，这一条卡在**族**上，
+   * 不是卡在某一格字段上。词库只用来在报缺时**现扫**出「本租户身上离它最近的是哪几格、
+   * 那几格是时长还是钱」——把"缺的到底是什么"说准，而不是笼统说"本体上没有"。
+   */
+  changeover: /换型|转产|changeover|change_over|setup|切换/i,
   /** 根源/汇点类型名（供应商/源头：supplier_disruption_radius 的 root；concentration_risk 的 sink）。 */
   sourceSink: /供应商|supplier|vendor|源|source|原料|material|根|root/i,
   /** 叶层/敞口类型名（客户/订单：扇出的叶层敞口）。 */

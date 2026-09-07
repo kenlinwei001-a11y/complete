@@ -38,5 +38,18 @@ export const OrderLineSchema = z.object({
    * ⚠ 口径边界：今天只含**物料**，不含人工/制造费用/物流 —— 拿它当完全成本会低估。
    */
   unitCost: z.number(),
+  /**
+   * WO-PENALTY-CHANGEOVER-ONTOLOGY · 该行未能交付时按合同违约条款要赔的**金额总量**（元/整行）。
+   * 值 = 本行 `qty` × 所属 `Order.pri` 对应的违约费率（费率册在场景包
+   * `solver_params.breachPenalty`，标 `synthetic:true` —— 本平台没有真实合同条款数据源）。
+   *
+   * ⚠ **是总量不是费率**，两条判据缺一不可：
+   *  ① 语义 —— 帕累托装配器那条红线的原文「penalty 是总量（一单赔多少），强度量当不了总量」；
+   *  ② 量纲 —— 本册（`domain.ts` PROPERTY_UNITS）在 R-UNIT 裁决下**没有** `元/件`/`元/套`
+   *     这类以物理计数作分母的货币单位，一个按件的违约费率在本平台**声明不出来**。
+   *     故费率只活在种子侧，落到本体上的是乘完 qty 的那个总额（单位「元」）。
+   * ⚠ 口径边界：多目标推演把它计入**被挤单**那一侧 —— 一行被挤出排产才发生这笔赔付，获排则不发生。
+   */
+  breachPenalty: z.number(),
 });
 export type OrderLine = z.infer<typeof OrderLineSchema>;
