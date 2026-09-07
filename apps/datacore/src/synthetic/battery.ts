@@ -457,6 +457,45 @@ export function customerSegKeyOf(custName: string): "pas" | "com" | "ess" {
   return "pas";
 }
 
+/**
+ * WO-COMPUTED-EDGE（裁决③·多态目标）· **异常事件溯源边：一条多态边 → 五条定型边**。
+ * 本常量是这五条边的**单一来源** —— 类型声明（`batteryLinkTypes()`）与实例落库（`synthetic/service.ts`）
+ * 都从这里展开，不许任何一侧另抄一份 refType↔linkKey 的对照表。
+ *
+ * ══ 今天的行为是 X，应该是 Y（真后端 SEED_DEMO=1 实测）════════════════════════════
+ * **X**：只有**一条** `exc_sourced_from`，声明 `toTypeKey: "EquipmentDowntime"`，
+ *   而实例的目标类型**随行变**（`oid(ev.refType, ev.refId)`，5 种源）。
+ *   `LinkTypeDef.toTypeKey` 是**单值**字段，`executeSlice` 按它裁剪可达类型 ⇒
+ *   **实测：372 条实例写进了 `repos.links`，检索只看得见 166 条**
+ *   （`{nodes: 538 = ExceptionEvent 372 + EquipmentDowntime 166, edges: 166, truncated: false}`）。
+ *   另外 **206 条**（`EquipmentAlarm` 111 · `DefectRecord` 85 · `MaterialBalance` 7 · `TriggerRule` 3）
+ *   **写进去了、永远读不出来**，而且不报错 —— 本仓「边写进去了但检索读不到」那一类的又一实例。
+ * **Y**：五个目标类型 = **五条边**，每条一个固定 `toTypeKey`，声明因此不再说谎，
+ *   206 条边从此可被检索到。用户自建时**五种声明今天就够**：
+ *   `viaProperty:"refId", viaWhere:"ExceptionEvent.refType == '<X>'"` —— 零新机制。
+ *
+ * ── 为什么不是「让 toTypeKey 随行变」───────────────────────────────────────────
+ * 那要改 `LinkTypeDef` 的**类型契约**（不是加一个可选字段）：`executeSlice` 的 `mustIncludeTypes`
+ * 断言、`ontology.ts` 物化时 `anchorTypeKey = side === "from" ? def.toTypeKey : def.fromTypeKey`
+ * 的单值取用，都建立在「一条边两端类型确定」这个前提上。代价与收益不成比例。
+ *
+ * ⚠ `exc_sourced_from` 这个 key **原地保留**给 `EquipmentDowntime` 那一源：
+ *   它今天能被检索到的**恰好就是这 166 条**，既有消费方（切片 / 前端披露 fixture / B 侧镜像）
+ *   看到的东西一个字节不变；新增的是另外四条 key。**不是改名，是把说谎的那部分拆出去。**
+ */
+export const EXC_SOURCE_LINKS: { refType: string; linkKey: string }[] = [
+  { refType: "EquipmentDowntime", linkKey: "exc_sourced_from" }, // 原 key 留给它：既有消费方看到的 166 条不变
+  { refType: "EquipmentAlarm", linkKey: "exc_sourced_from_alarm" },
+  { refType: "DefectRecord", linkKey: "exc_sourced_from_defect" },
+  { refType: "MaterialBalance", linkKey: "exc_sourced_from_balance" },
+  { refType: "TriggerRule", linkKey: "exc_sourced_from_trigger" },
+];
+
+/** `ExceptionEvent.refType` → 该源对应的溯源边 key。取不到 ⇒ 不建边（诚实缺席，不兜底落到某一条上）。 */
+export function excSourceLinkKeyOf(refType: string): string | undefined {
+  return EXC_SOURCE_LINKS.find((s) => s.refType === refType)?.linkKey;
+}
+
 /** 业务类型（订单侧口径）→ 细分键（客户名册侧口径）。两套词表的唯一换算处。 */
 export function segKeyOfBusinessType(bt: BusinessType): "pas" | "com" | "ess" {
   return bt === "commercial" ? "com" : bt === "storage" ? "ess" : "pas";
@@ -3559,9 +3598,21 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "oee_for_equip", fromTypeKey: "EquipmentOEE", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
     { key: "dt_for_equip", fromTypeKey: "EquipmentDowntime", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
     { key: "alarm_for_equip", fromTypeKey: "EquipmentAlarm", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
-    // WO-EXCEPTION-EVENT：异常事件→源对象溯源边（R13·全监听下钻）。toType 为异构（5 源）·代表声明为 EquipmentDowntime，
-    // 真实归属由 ExceptionEvent.refType 判别（edge props.refType 落每边真实源类型）。
-    { key: "exc_sourced_from", fromTypeKey: "ExceptionEvent", toTypeKey: "EquipmentDowntime", cardinality: "N:1" }, // quality（四源归一溯源）
+    // WO-EXCEPTION-EVENT / WO-COMPUTED-EDGE（裁决③·多态目标）：异常事件→源对象溯源边（R13·全监听下钻），
+    // **五源各一条**。语义、实测读数与「为什么不让 toTypeKey 随行变」见 `EXC_SOURCE_LINKS` 头注。
+    //
+    // ⚠ 这五行**必须逐条字面写死，不许写成 `...EXC_SOURCE_LINKS.map(...)`**：
+    //   B 侧镜像门（`apps/agentcore/test/mock-engine-parity.test.ts`）的抽取器是**对本文件文本跑正则**
+    //   `\{ key: "X", fromTypeKey: "Y", toTypeKey: "Z"` —— 展开写法它一条都看不见，
+    //   于是 A 侧链路数会**掉 1** 而不是 +4，镜像差集反过来报「mock 多了 5 条」。
+    //   那是「抽取器看不见某种写法」这一类的假红，方向与事实相反。
+    //   两处（本表 × `EXC_SOURCE_LINKS`）的一致性由 `linktype-computed-edge.seam.test.ts` §5 逐条断言，
+    //   任一处漏改当场红 —— **机器先说话，不靠人记得**。
+    { key: "exc_sourced_from", fromTypeKey: "ExceptionEvent", toTypeKey: "EquipmentDowntime", cardinality: "N:1" }, // quality（溯源·停机源）
+    { key: "exc_sourced_from_alarm", fromTypeKey: "ExceptionEvent", toTypeKey: "EquipmentAlarm", cardinality: "N:1" }, // quality（溯源·报警源）
+    { key: "exc_sourced_from_defect", fromTypeKey: "ExceptionEvent", toTypeKey: "DefectRecord", cardinality: "N:1" }, // quality（溯源·缺陷源）
+    { key: "exc_sourced_from_balance", fromTypeKey: "ExceptionEvent", toTypeKey: "MaterialBalance", cardinality: "N:1" }, // quality（溯源·物料平衡源）
+    { key: "exc_sourced_from_trigger", fromTypeKey: "ExceptionEvent", toTypeKey: "TriggerRule", cardinality: "N:1" }, // quality（溯源·触发规则源）
     { key: "maint_for_equip", fromTypeKey: "MaintenanceOrder", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
     { key: "spare_for_maint", fromTypeKey: "SparePartConsumption", toTypeKey: "MaintenanceOrder", cardinality: "N:1" }, // equip
     { key: "att_for_line", fromTypeKey: "OperatorAttendance", toTypeKey: "Line", cardinality: "N:1" }, // people
