@@ -1288,6 +1288,11 @@ import {
   type DataHealthResponse,
   type MappingRow,
   type MappingRegistries,
+  // WO-MAPPING-WHITELIST · 结构边「物化声明」字段集 —— 前端**不重定义**（R1 contracts-only-shared）。
+  //   `createLinkType` 的请求体与 `MappingRegistries.linkTypes` 的行**共用这一份**，
+  //   于是「读投影发得出来的」与「保存时送得回去的」在类型上就是同一个集合，
+  //   加第 10 个字段时前端不需要有人记得跟着改（漏跟 = 一次保存把它抹掉，且不报错）。
+  type LinkMaterializationDecl,
   type SolverArtifact,
   // WO-BEFE-A · 因果边（传导规则）契约类型：前端**不重定义**（R1 contracts-only-shared）。
   //   ⚠ 合并 WO-BEFE-A × WO-BEFE-E 时此处曾重复声明（两单各自引入同一个类型，tsc 报
@@ -2565,26 +2570,33 @@ export const fetchOntologyVersions = () => api.a<OntologyVersionVM[]>("/a/v1/ont
  * 「金丝雀 + 修前/修后对照：不给 viaProperty 检索 0 条，给了才有边」。
  * `materialized` 如实回报这次连出几条实例边：
  * `created` 连成、`unresolved` 属性有值但在对侧查无对应主键、`carrierObjects` 带外键那一侧的对象总数。
+ *
+ * ⚠ **WO-MAPPING-WHITELIST · 本路由是「整条覆盖」的 upsert，不是 PATCH。**
+ * 请求体里**没带的物化声明字段一律被抹掉**（后端 `upsertLinkType`：`{ id, tenantId, version, ...input }`
+ * → `ontologyLinks.put`）。所以「改一条已有的边」必须把 `LinkMaterializationDecl` 的**九个字段原样回填**，
+ * 只回填 `viaProperty`/`viaSide` 会把另外 7 个（`anchorProperty` `viaMultiValue` `viaBridge`
+ * `viaWhere` `viaKeyExpr` `viaWhereTo` `viaCross`）静默清零 —— 边随即退回 0 实例、
+ * 多跳检索遍历不到，**屏上不报错**。回填源是 `fetchMappingRegistries().linkTypes` 里的同 key 行
+ * （读投影与本请求体共用 `LinkMaterializationDecl`，所以「发得出来的」= 「送得回去的」）。
  */
-export const createLinkType = (body: {
-  key: string;
-  fromTypeKey: string;
-  toTypeKey: string;
-  cardinality: "1:1" | "1:N" | "N:1" | "N:N";
-  viaProperty?: string;
-  /** 外键长在哪一侧：`from`=来源类型上（缺省），`to`=去向类型上（一对多边正是这个形态）。 */
-  viaSide?: "from" | "to";
-}) =>
-  api.a<{
+export const createLinkType = (
+  body: {
     key: string;
     fromTypeKey: string;
     toTypeKey: string;
-    cardinality: string;
-    version: number;
-    viaProperty?: string;
-    viaSide?: "from" | "to";
-    materialized?: { created: number; unresolved: number; carrierObjects: number };
-  }>("/a/v1/ontology/link-types", { method: "POST", body });
+    cardinality: "1:1" | "1:N" | "N:1" | "N:N";
+  } & LinkMaterializationDecl,
+) =>
+  api.a<
+    {
+      key: string;
+      fromTypeKey: string;
+      toTypeKey: string;
+      cardinality: string;
+      version: number;
+      materialized?: { created: number; unresolved: number; carrierObjects: number };
+    } & LinkMaterializationDecl
+  >("/a/v1/ontology/link-types", { method: "POST", body });
 
 /**
  * 停用（ACTIVE → DEPRECATED）。`kind` 二选一，后端是同一个 `governance.deprecate`。
