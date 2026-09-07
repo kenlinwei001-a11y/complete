@@ -5040,6 +5040,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         // WO-PREDICATE-EDGE · 谓词（A5 规则 DSL 表达式原文）。语义/边界见 `LinkTypeDef.viaWhere`；
         // 子集校验与「打错字当场 400」在 `ontology.upsertLinkType` 里，与 viaProperty 同款话术。
         viaWhere: z.string().min(1).optional(),
+        // WO-COMPUTED-EDGE 桶④ · 三个新声明（语义/实测依据见 `LinkTypeDef` 上同名字段的头注）。
+        // 三者都是**加性**：不填 ⇒ 请求体与老调用逐字节一致，物化结果不变。
+        // ⚠ 这里只做**形状**校验（非空串 / 正整数）；「引用的属性真不真存在、聚合有没有被用、
+        //   四种形态是不是同时声明了两种」全部在 `ontology.upsertLinkType` 里 400 点名 ——
+        //   那些判断要读对象类型的属性表，zod 在这一层看不到它。
+        viaKeyExpr: z.string().min(1).optional(),
+        viaWhereTo: z.string().min(1).optional(),
+        viaCross: z
+          .object({
+            fromWhere: z.string().min(1).optional(),
+            toWhere: z.string().min(1).optional(),
+            // 必填且为正整数：叉积没有上限 = 一次误声明就能把仓储写爆（Order×OrderLine 实测 436,500 条）。
+            maxEdges: z.number().int().positive(),
+          })
+          .optional(),
       }),
       req.body,
     );

@@ -590,9 +590,96 @@ export interface LinkTypeDef {
    * （谓词只能收窄一个已存在的连接，自己造不出连接），否则写入期 400。
    */
   viaWhere?: string;
+  /**
+   * WO-COMPUTED-EDGE（桶④·算端点）· **锚点键由 carrier 行上的一个表达式算出**，而不是直接读一列。
+   * 与 `viaProperty` **互斥二选一**（同时给 ⇒ 物化时该听谁的？不许猜，写入期 400）。
+   *
+   * 语义：对 carrier 一侧（`viaSide === "from" ? fromTypeKey : toTypeKey`）的每一行求值，
+   * 结果 `String()` 后走**与 `viaProperty` 完全同一个** `buildAnchorIndex`
+   * （含 `anchorProperty` 改锚点列、含同值撞车记 `ambiguousAnchors`）——
+   * **不另写一套索引**，否则「算出来的键」与「读出来的键」会有两套匹配语义。
+   *
+   * 求值器复用 `ontology-dsl.ts`（A4 派生属性那一份，`parseFormula` + `evaluate` 返回 `Scalar`），
+   * **不是** `viaWhere` 用的 `ruledsl.evaluateAst`（那份返回 `boolean`，天生产不出 key）。
+   * 收窄子集与写入期校验见 `ontology-link-keyexpr.ts` 头注。
+   *
+   * ── 为什么必须有这个字段（实测，不是推想）────────────────────────────────
+   * 出厂种子里有两条边的端点是**算出来的**，而承载类型上根本没有那一列 ⇒ `viaProperty` 无从声明：
+   * · `plantarget_ownedby` PlanTarget→Principal：`level === "month" ? "prin-plan" : "prin-coo"`
+   *   （`PlanTarget` 属性表只有 `tgtId/period/level/value/year/scenarioKey`，无 `ownerRef`）
+   * · `model_in_segment` Model→Segment：按型号用途位 `pos` 归段（`Model` 上无 `segKey`）
+   * ⇒ 这两条边**出厂有实例、用户自建恒 0 实例**，与 `anchorProperty` 头注记下的是同一个缺陷。
+   * 对照组：同形状的 `metric_ownedby` 因为 `Metric` 上真有 `ownerRef` 一列，`viaProperty` 就够用。
+   *
+   * ⚠ **回执必须给键分布**（`keyExprDistinctKeys` / `keyExprNullRows`）：把算端点做成机制，
+   * 等于把「算错了」这类错误从种子代码搬进声明里，而声明在数据库里、不在 diff 里。
+   * 本仓真实教训：`model_in_segment` 的旧派生式 `includes("S192")?"ess":includes("L148")?"com":"pas"`
+   * 让 6 个型号**全落 `pas`**，两个分支从未进入 —— 边有实例、检索遍历得到、四包全绿，
+   * 只是三个细分坍缩成一个。**键分布是唯一能让这件事在物化那一刻就被看见的东西。**
+   *
+   * 可选（加性·零回归）：不填 ⇒ 与今天逐字节同行为。
+   */
+  viaKeyExpr?: string;
+  /**
+   * WO-COMPUTED-EDGE · **anchor 侧谓词**（A5 规则 DSL 表达式原文，语法同 `viaWhere`）。
+   * `viaWhere` 只对 **carrier** 行求值；本字段对 **anchor** 行求值，假则该锚点不进索引。
+   *
+   * ── 为什么这是独立于「算端点」的第二个缺口（实测）──────────────────────────
+   * · `order_to_plantarget`：种子只连 `level === "month"` 的目标，而 `level` 长在 **anchor**
+   *   （`PlanTarget`）上，`viaWhere` 够不着。今天它侥幸不需要谓词，只因 `period` 在 year/quarter/month
+   *   三档间恰好不撞值（`"2026"` / `"2026-Q1"` / `"2026-03"`）—— **那是数据形态的巧合，不是机制保证**：
+   *   换个客户、period 编码一变就静默多连。
+   * · **叉积（`viaCross`）没有外键可依，两侧谓词是它唯一的收窄手段** —— `scenario_to_capex`
+   *   要排除 `conservative` 情景，没有本字段就无处可写。⇒ 本字段是 `viaCross` 的**前置**，不是锦上添花。
+   *
+   * 属性形态与叉积形态**共用**同一个字段与同一份编译器（`compileLinkPredicate`，只是换 anchor 侧
+   * 类型与属性表去校验），不为两种形态各造一套谓词语法。
+   */
+  viaWhereTo?: string;
+  /**
+   * WO-COMPUTED-EDGE（桶④·造叉积）· **不经外键，对 from 全集 × to 全集连边**；两侧各挂一个谓词收窄。
+   * 与 `viaProperty` / `viaBridge` / `viaKeyExpr` **三者互斥**。
+   *
+   * ── 为什么必须有这个字段 ────────────────────────────────────────────────
+   * 出厂种子里两条边是**两层 for 遍历两个互不引用的集合**，没有任何外键可依：
+   * · `base_data_health` Base→DataSourceHealth：每基地挂全部数据源
+   * · `scenario_to_capex` AnnualScenario→CapexProject：非保守情景 × 全部投资项目
+   * 谓词能**收窄**一个连接，**造不出**一个连接 ⇒ 这两条今天用户自建不出来。
+   *
+   * ── ⚠ 边数预算不是装饰品，是这个字段能存在的前提 ────────────────────────────
+   * **叉积是全仓唯一一个边数不由数据量线性决定的声明。** 实测规模：`Order`(500) × `OrderLine`(873)
+   * 一条声明 = **436,500** 条边，是现有全图边数（约 6,791）的 64 倍，而写入走
+   * `repos.links.put` 逐条 await ⇒ **一次误声明就能把仓储写爆，且它不会红，只会变慢。**
+   * 故 `maxEdges` 的判定**必须在物化前用真实计数做**（两侧各 `listByType(...).length`，
+   * 谓词筛完之后再乘），不能事后统计 —— 事后统计意味着 43 万条已经写进去了。
+   * 超预算当场 400 并把三个实算的数（|from| / |to| / 乘积）写进报文，不静默截断。
+   */
+  viaCross?: LinkCrossSpec;
   version: number;
   published?: boolean;
   deprecation?: DeprecationMeta;
+}
+
+/**
+ * WO-COMPUTED-EDGE · 叉积规格（`LinkTypeDef.viaCross`）。
+ *
+ * ⚠ **边 id 里绝不许出现数组下标**。属性形态的边 id 是 `lnk_via_${key}_${carrierId}${i}`，
+ * 其中 `i` 是多值数组的元素序号 —— 那是安全的（同一行内的稳定序）。
+ * 叉积若照抄，`i` 就变成 **anchor 在 `listByType` 返回序里的位置**：仓储遍历顺序一变，
+ * 边 id 全变，**R6 当场破，而边数不变、四包全绿**（与「排序塌成 id 序」同族的静默病）。
+ * 故叉积边 id 定死为 `lnk_cross_${key}_${fromId}_${toId}` —— **只由两个对象 id 决定**。
+ */
+export interface LinkCrossSpec {
+  /** 来源侧谓词（对 `fromTypeKey` 行求值），语法同 `viaWhere`。不填 = 全取。 */
+  fromWhere?: string;
+  /** 去向侧谓词（对 `toTypeKey` 行求值）。不填 = 全取。 */
+  toWhere?: string;
+  /**
+   * 本次叉积允许写入的边数上限。**必填**——没有它这个字段就是一把没有保险的枪。
+   * 缺省治理建议值 10,000（≈ 现有全图边数 6,791 的 1.5 倍：超过它就该被人看一眼）；
+   * 这是个**治理旋钮不是物理常数**，故不写死在代码里，由声明方每次显式承诺。
+   */
+  maxEdges: number;
 }
 
 /**
@@ -721,7 +808,17 @@ export type ObjectOrigin =
   // WO-MATERIALIZE-3EXT：桥实体投影出的边同样归本变体（重算 removeWhere 一并收拾），
   // 但它没有 `viaProperty`（连接靠桥的两列）⇒ 该字段改为可选，另记 `viaBridgeTypeKey`。
   // 加性：老记录仍带 viaProperty，读端（本仓仅 ontology.ts 三处）不受影响。
-  | { type: "LINK_DERIVED"; linkTypeKey: string; viaProperty?: string; viaBridgeTypeKey?: string };
+  // WO-COMPUTED-EDGE：算端点（`viaKeyExpr` 原文）与叉积（`viaCross:true`）同样归本变体 ——
+  // 三种形态共用一个 origin，`removeWhere` 才能在「声明从 A 形态改成 B 形态」时把旧边一并收拾干净；
+  // 各记各的判据串是为了让一条边被审计时能答出「它是怎么来的」，不必回头去猜。
+  | {
+      type: "LINK_DERIVED";
+      linkTypeKey: string;
+      viaProperty?: string;
+      viaBridgeTypeKey?: string;
+      viaKeyExpr?: string;
+      viaCross?: true;
+    };
 
 export interface ObjectInstance {
   id: string; // obj_
