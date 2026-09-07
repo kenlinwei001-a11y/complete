@@ -11,6 +11,9 @@ import { pino, type Logger } from "pino";
 import { z } from "zod";
 import { AggregateRequestSchema, ObjectRefResolveRequestSchema, BuildRunBodySchema, BuildWorkflowStartBodySchema, ClockTickBodySchema, PlanSliceRequestSchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
 import { OntologyInvariantEvaluateRequestSchema } from "@platform/contracts";
+// WO-MAPPING-WHITELIST：结构边物化声明字段集 —— 写路（本文件建边路由）与读路
+// （`mapping.ts buildMappingRegistries`）共用这一份，杜绝两份手抄清单漂移导致的静默字段丢失。
+import { LinkMaterializationDeclSchema } from "@platform/contracts";
 import { validateOutputAgainstOntology } from "./ontology-validate.js";
 import {
   assertOntologyInvariantsAllowPublish,
@@ -5017,45 +5020,31 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/ontology/link-types", async (req, reply) => {
     const c = ctx(req);
     const body = parseBody(
-      z.object({
-        key: z.string().min(1),
-        fromTypeKey: z.string().min(1),
-        toTypeKey: z.string().min(1),
-        cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
-        viaProperty: z.string().min(1).optional(),
-        viaSide: z.enum(["from", "to"]).optional(),
-        // WO-MATERIALIZE-3EXT · 三类显式声明（语义与实测依据见 `LinkTypeDef` 上同名字段的头注）。
-        // 三者都是**加性**：不填 ⇒ 请求体与老调用逐字节一致，物化结果不变。
-        anchorProperty: z.string().min(1).optional(),
-        viaMultiValue: z.boolean().optional(),
-        viaBridge: z
-          .object({
-            typeKey: z.string().min(1),
-            fromProperty: z.string().min(1),
-            toProperty: z.string().min(1),
-            fromAnchorProperty: z.string().min(1).optional(),
-            toAnchorProperty: z.string().min(1).optional(),
-          })
-          .optional(),
-        // WO-PREDICATE-EDGE · 谓词（A5 规则 DSL 表达式原文）。语义/边界见 `LinkTypeDef.viaWhere`；
-        // 子集校验与「打错字当场 400」在 `ontology.upsertLinkType` 里，与 viaProperty 同款话术。
-        viaWhere: z.string().min(1).optional(),
-        // WO-COMPUTED-EDGE 桶④ · 三个新声明（语义/实测依据见 `LinkTypeDef` 上同名字段的头注）。
-        // 三者都是**加性**：不填 ⇒ 请求体与老调用逐字节一致，物化结果不变。
-        // ⚠ 这里只做**形状**校验（非空串 / 正整数）；「引用的属性真不真存在、聚合有没有被用、
-        //   四种形态是不是同时声明了两种」全部在 `ontology.upsertLinkType` 里 400 点名 ——
-        //   那些判断要读对象类型的属性表，zod 在这一层看不到它。
-        viaKeyExpr: z.string().min(1).optional(),
-        viaWhereTo: z.string().min(1).optional(),
-        viaCross: z
-          .object({
-            fromWhere: z.string().min(1).optional(),
-            toWhere: z.string().min(1).optional(),
-            // 必填且为正整数：叉积没有上限 = 一次误声明就能把仓储写爆（Order×OrderLine 实测 436,500 条）。
-            maxEdges: z.number().int().positive(),
-          })
-          .optional(),
-      }),
+      z
+        .object({
+          key: z.string().min(1),
+          fromTypeKey: z.string().min(1),
+          toTypeKey: z.string().min(1),
+          cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
+        })
+        /*
+         * WO-MAPPING-WHITELIST · **九个物化声明字段与读投影共用同一份 schema**
+         * （`LinkMaterializationDeclSchema`，定义与逐字段语义见 `packages/contracts/src/planviews.ts`）。
+         *
+         * 修前这里手抄一份、`buildMappingRegistries` 手抄另一份，而两份**差 7 个字段** ——
+         * 读投影只发 `viaProperty`/`viaSide`。本路由是**整条覆盖**的 upsert
+         * （`upsertLinkType`: `{ id, tenantId, version, ...input }` → `ontologyLinks.put`），
+         * 于是关系编辑器「读—改—写」往返一次，就把用户没机会回填的那 7 个声明**静默抹掉**。
+         * 共用一份之后：写路收什么，读路就发什么，加字段改一处，**不再靠人记得同步**。
+         *
+         * ⚠ 仍然是白名单：`z.object` 默认剥掉未知键 ⇒ 前端注入任意字段进不来（反向对照见接缝门）。
+         * ⚠ 这里只做**形状**校验（非空串 / 正整数）；「引用的属性真不真存在、聚合有没有被用、
+         *   四种形态是不是同时声明了两种」全部在 `ontology.upsertLinkType` 里 400 点名 ——
+         *   那些判断要读对象类型的属性表，zod 在这一层看不到它。
+         * ⚠ `viaCross.maxEdges` 必填且为正整数：叉积没有上限 = 一次误声明就能把仓储写爆
+         *   （Order×OrderLine 实测 436,500 条）。
+         */
+        .extend(LinkMaterializationDeclSchema.shape),
       req.body,
     );
     /*
