@@ -379,11 +379,20 @@ export function str(v: unknown, fallback = ""): string {
  *
  * 判据：**空数组与缺字段返回空集**（诚实无引用），不返回 `[""]` —— 那会让空值互相匹配上，
  * 把两个都没填供应商的对象连成一条假边。
+ *
+ * ⚠ **数字必须照旧转成串**（这条是替换 `String(...)` 时差点丢掉的既有行为）：
+ * 两个调用点（`concentrationRisk` 多跳 / `supplierDisruptionRadius` 逐层命中）原本走
+ * `String(props[f] ?? "")`，主键是**数字**的租户（自增 id）在旧写法下 `String(123)==="123"`
+ * 是能匹配上的。本函数若只认 string，那些租户的链会从「能走」变成「走不通」——
+ * 修一个静默错答的同时制造另一个，且同样不报错。故 string ∪ 有限 number 都收。
+ * 布尔/对象/NaN 不收：`String(true)`/`"[object Object]"` 当主键匹配是巧合不是设计。
  */
 export function refValues(v: unknown): string[] {
-  if (typeof v === "string") return v === "" ? [] : [v];
-  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x !== "");
-  return [];
+  const one = (x: unknown): string | null =>
+    typeof x === "string" ? (x === "" ? null : x) : typeof x === "number" && Number.isFinite(x) ? String(x) : null;
+  if (Array.isArray(v)) return v.map(one).filter((x): x is string => x !== null);
+  const s = one(v);
+  return s === null ? [] : [s];
 }
 
 /**
