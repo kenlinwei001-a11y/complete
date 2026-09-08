@@ -199,7 +199,10 @@ describe("WO-RISKBOARD-TRUNCATION §4 · 计数口径：为什么不能用「越
     // 显式点名 base+factor ⇒ 该卡 `forced`，**即使不越线也恒出卡**（否则"问了枣庄答了空"是另一种静默）。
     const out = await risk({ horizon: 30, base: "常州", factor: "设备OEE" });
     expect(out.cards.length).toBe(1);
-    expect(out.cards[0].crossDay, "这张卡是 forced 且不越线——(a) 口径的反例就靠它").toBeNull();
+    // `expect(...).toBeDefined()` **不收窄类型**（tsc 照样报 possibly undefined）⇒ 用真正的收窄。
+    const only = out.cards[0];
+    if (!only) throw new Error("单基地单因素路必须恰好出 1 张卡");
+    expect(only.crossDay, "这张卡是 forced 且不越线——(a) 口径的反例就靠它").toBeNull();
 
     // 候选 (a)：越线总数 − 榜上**卡数**。这里越线总数 = 0，榜上卡数 = 1。
     const crossingTotal = out.cards.filter((c) => c.crossDay !== null).length;

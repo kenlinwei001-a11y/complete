@@ -767,7 +767,10 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
   //   「越线总数 0 − 榜上 1 张」= **−1**：一个负的"还有 N 个基地在越线"本身就是第二个错答。
   //   集合差写法对 `shown` 是不是数组前缀**不敏感**，日后排序或筛选改了也不会悄悄算错。
   //   守恒（测试咬死）：`crossingTotal === shownCrossing + count`。
-  const isCrossing = (x: Record<string, unknown>): boolean => (x.crossDay as number | null) !== null;
+  // `!= null` 是**故意**的松比较：今天 `crossDay` 恒被显式赋值（`number | null`），但用严格 `!== null`
+  // 时一旦哪天变成 `undefined`，那张卡会被算成"越线"⇒ **多报**一个越线基地 = 又一个错答。
+  // 宁可对 undefined 与 null 一视同仁（都不算越线），也不要造出一个凭空多出来的越线基地。
+  const isCrossing = (x: Record<string, unknown>): boolean => (x.crossDay as number | null | undefined) != null;
   const shownSet = new Set(shown);
   // 只取五个标量字段：被截掉的卡此刻还挂着 `__exposureDraft` 等内部半成品（见下方回填），整卡外泄会带出内部键。
   const unlistedBases = cards
