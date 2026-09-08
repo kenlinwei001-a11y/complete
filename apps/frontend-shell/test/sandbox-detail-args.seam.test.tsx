@@ -13,6 +13,7 @@ import type {
   SimSession,
   TickState,
 } from "@platform/contracts";
+import { LOSS_EXPOSURE_CAPTION, MONEY_CONSERVATION_TOLERANCE_YUAN } from "@platform/contracts";
 import { server } from "./setup";
 import type { ViewConfigVM } from "@/api/types";
 import SandboxDetailRoute, {
@@ -74,12 +75,12 @@ const MATRIX: ChainLossMatrixResult = {
   bases: [{ baseId: "base_a", name: "甲基地" }],
   cells: [
     // ⚠ 故意让 `[1]` 吃的损失更大：宿主若改成"取损失最大的那个"，用例 ① 会当场红。
-    { nodeId: "capacity.aging", baseId: "base_a", pct: 30, days: 3 },
-    { nodeId: "material.kitting", baseId: "base_a", pct: 70, days: 7 },
+    { nodeId: "capacity.aging", baseId: "base_a", pct: 30, days: 3, valueAtRiskYuan: 300_000 },
+    { nodeId: "material.kitting", baseId: "base_a", pct: 70, days: 7, valueAtRiskYuan: 700_000 },
   ],
   rowTotals: [
-    { nodeId: "capacity.aging", days: 3, pctOfGrandLoss: 30, baseCount: 1 },
-    { nodeId: "material.kitting", days: 7, pctOfGrandLoss: 70, baseCount: 1 },
+    { nodeId: "capacity.aging", days: 3, pctOfGrandLoss: 30, baseCount: 1, valueAtRiskYuan: 300_000 },
+    { nodeId: "material.kitting", days: 7, pctOfGrandLoss: 70, baseCount: 1, valueAtRiskYuan: 700_000 },
   ],
   colTotals: [
     {
@@ -93,9 +94,27 @@ const MATRIX: ChainLossMatrixResult = {
       missingNodeIds: [],
       reason: null,
       probe: null,
+      // 金额桩自洽：Σ本列各格(30万+70万) == 本列敞口 100 万。
+      exposureYuan: 1_000_000,
+      exposureOrderCount: 1,
+      exposureSkippedOrders: 0,
+      exposureDeliveredOrders: 0,
+      moneyResidualYuan: 0,
+      moneyOk: true,
     },
   ],
   residual: { byBase: [{ baseId: "base_a", residualPct: 0, ok: true, reason: null }], rows: 0, rowsOk: true, tolerancePct: 0.5 },
+  money: {
+    orderBookTotalYuan: 1_000_000,
+    orderBookCount: 1,
+    orderBookSkipped: 0,
+    orderBookDelivered: 0,
+    exposureSumYuan: 1_000_000,
+    exposureOverlapRatio: 1,
+    allColumnsMoneyOk: true,
+    toleranceYuan: MONEY_CONSERVATION_TOLERANCE_YUAN,
+    caption: LOSS_EXPOSURE_CAPTION,
+  },
   summary: "接缝桩：两环节 × 一基地",
 };
 
