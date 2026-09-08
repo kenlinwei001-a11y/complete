@@ -1713,8 +1713,23 @@ export type ParetoRequest = z.infer<typeof ParetoRequestSchema>;
 //  ③ `ParetoRequestSchema` 是 `strictObject` 且三件套必填 —— 给它加 autoBind 分支
 //     等于把必填改成条件必填，契约的拒绝力当场下降一档。
 export const ParetoAssembleRequestSchema = z.strictObject({
-  /** 推演会话 id：原样写进装配出的 `ParetoRequest.sessionId`（R6 确定性键，本层不解释它）。 */
+  /**
+   * 推演会话 id。
+   *
+   * ⚠ **WO-WORLDSTATE-CONTRACT 起，本字段的语义变了，此处按铁律 0.6 回写**：
+   * 原文是「原样写进装配出的 `ParetoRequest.sessionId`（R6 确定性键，**本层不解释它**）」——
+   * 那句话当时属实，也正是本单要修的病：传了等于没传，屏上那条前沿永远答本体真值。
+   * **现在它是世界态读取的入口**：给了就按《世界态读取契约》读该会话**当前拍**的态，
+   * 把模型读的那几格改写成这次推演里的值；仍然原样回显进 `ParetoRequest.sessionId`。
+   * 不给 ⇒ 一格都不叠，与本单引入前**逐字节相同**（反向对照实验锁住这一条）。
+   * 会话不存在 / 属于别的租户 ⇒ **404**，⛔ 绝不静默退化成本体真值。
+   */
   sessionId: z.string().min(1).optional(),
+  /**
+   * 压力量纲（`pp` = 按百分点读，缺省）。与 `finance_world_projection` 的同名入参**同一座桥**
+   * （`FINANCE_WORLD_PRESSURE_DIVISOR`），不是第二套口径。
+   */
+  pressureUnit: z.enum(["pp", "ratio"]).optional(),
   /** 想要的模板族。不给 ⇒ 服务端按「今天真能装配且真能求解」的族挑（确定性顺序）。 */
   family: z.string().min(1).optional(),
   /**
@@ -1730,6 +1745,166 @@ export const ParetoAssembleRequestSchema = z.strictObject({
   seed: z.number().optional(),
 });
 export type ParetoAssembleRequest = z.infer<typeof ParetoAssembleRequestSchema>;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-WORLDSTATE-CONTRACT · **世界态读取契约**
+//
+// ══ 今天的行为是 X，应该是 Y（开工实测原文，本机 4051 内存态 demo 租户）══════════
+//
+// **X**：`ParetoRequestSchema.sessionId` 与 `ParetoAssembleRequestSchema.sessionId`
+//   **早就存在**，前端 `SandboxOptRoute.tsx` 也**确实在传**（`body = sessionId ? {sessionId} : {}`），
+//   但全链**没有任何一处读它去取世界态** —— 装配器把它原样抄进回包
+//   （`opt-assemble.ts` 唯一一处 `sessionId`，注释原文「本层不解释它」），
+//   `opt-pareto.ts` 里 `sessionId` **零命中**（金丝雀：同文件 `objectives` 命中 17，故是真零命中）。
+//   实测：给 `obj_model_4680-NCM.costPressure` 施 999 扰动（http 201，世界态里确认写入 999）
+//   再 tick×3，方案寻优回包 **md5 `f46392a90be7692d17503e04fc06d432` / 19124B 逐字节不变**。
+//   金丝雀（证读数取法有鉴别力）：同一支端点只收窄 `selection`，md5 当场变成
+//   `fce5fb58b094da9fd1292829a46a0f74` / 19292B。
+//   ⇒ 形态**不是**「没接线」，是「**接了线、线是通的、终点没人接收**」。
+//
+// **Y**：给「产出侧怎么读这次推演的世界态」一份**显式契约**，让方案寻优读的是
+//   **这次推演的世界态**而不是本体真值；读了哪几格、经哪条链路、按哪条公式换算，
+//   **逐格可披露**（铁律 1.5 判据二）。
+//
+// ══ 为什么需要一份契约，而不是"把世界态灌进 args" ═══════════════════════════════
+// 实测发现**世界态与优化模型钉在不同的对象类型上**，这是本单真正的架构问题：
+//   · 模型读的决策对象：`OrderLine`（873 条）· `Base`（13 条）
+//   · 世界态在这两类上只有 `OrderLine.splitPressure` / `Base.loadIndex`
+//   · 而 `costPressure` 挂在 `Order`（500 条）与 `Model` 上 —— **不是模型读的那两类**
+// 于是"把世界态灌进 args"这句话本身没有定义：灌哪一格、灌到谁身上，正是要被写下来的东西。
+//
+// ══ 三条纪律（每一条都是复用既有口径，不是新发明）═════════════════════════════
+//  ① **同名直取**：世界态格 `state[objId][v]` 中，`v` 恰好是该对象的一个属性 ⇒ 直接覆盖该属性。
+//     这是 `sim/seed-world.ts` `deriveSeedBaseSnapshot` 那条播种纪律的**逆向**——
+//     它播种时先探 `props[stateVar]`「同名属性存在且是有限数 ⇒ 那就是真读数」，
+//     读取侧沿用同一个同名判据，**两侧共用一个身份**，不另立一套映射。
+//  ② **压力投影**：压力类状态变量不是属性，需要一座量纲桥才能作用到金额/产能上。
+//     桥**复用 `FINANCE_WORLD_PRESSURE_DIVISOR`**（`finance-world.ts` 已声明并已在跑的那座，
+//     `pp:100 / ratio:1`），公式与它逐字同形：`量' = 量 ×（1 ± 压力 ÷ divisor）`。
+//     ⛔ 不新增任何业务系数 —— divisor 是**单位换算**（百分点→比率）不是业务常数。
+//  ③ **经真链路反查**：压力挂在别的类型上时，只走**本体里真实存在的那条边**取过来
+//     （`finance-world.ts` 的原话：「经真链路 `customer_has_invoice` 反查
+//     ＝ 传导规则自己走的那条边，不另造映射」）。⛔ 不按名字猜对应关系。
+//
+// ⚠ **R2**：会话不存在 / 属于别的租户 ⇒ **404**，⛔ 绝不静默退化成「读本体真值」——
+//   那正是本单要修的这个病的形态（悄悄给你一份看起来正常、其实答非所问的数）。
+// ⚠ **向后兼容**：不传 `sessionId` ⇒ 一格都不叠 ⇒ 与本契约引入前**逐字节相同**
+//   （先例：`wo-drill-verdict-backend` 的 `loadChainSimOverlay`，反向对照实验锁住这一条）。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 一条**压力投影声明**：某个状态变量作用到模型的哪一格、往哪个方向、按什么公式。
+ *
+ * ⚠ `affects` 是**模型量的角色名**（成本 / 产能 / 需求量），不是行业词也不是属性名 ——
+ * 具体落到哪个属性由装配器当场绑定的 role 决定（换租户换本体，落点自动跟着变，R14）。
+ */
+export const SimWorldProjectionRuleSchema = z.strictObject({
+  /** 世界态里的状态变量名。 */
+  stateVar: z.string().min(1),
+  /** 作用到模型的哪一格。 */
+  affects: z.enum(["cost", "capacity", "demand"]),
+  /** 压力升高时该量往哪个方向走（`up` = 变大，`down` = 变小）。 */
+  direction: z.enum(["up", "down"]),
+  /** 人读公式（**纯文本上屏**，不许 markdown —— 屏上没有渲染器）。 */
+  formula: z.string().min(1),
+  /** 这条声明**沿用哪条已落地的口径**（写出来是为了它可被追、可被推翻，不是客套）。 */
+  source: z.string().min(1),
+});
+export type SimWorldProjectionRule = z.infer<typeof SimWorldProjectionRuleSchema>;
+
+/**
+ * 一格**真的被应用**的世界态读数（可披露的最小单元）。
+ *
+ * ⚠ 「这个数是谁算的」必须逐格答得出 —— 这是 agent 编排层的硬判据：
+ * 回包里每个数都要能追到**某个求解器输出或本体真值**，agent 自己算的数即红。
+ * 故本行同时带：压力的**承载对象**（世界态那一格的真主键）、**经哪条边**取过来、
+ * 落到**哪个对象的哪个属性**、以及**改前改后**两个数。
+ */
+export const SimWorldAppliedCellSchema = z.strictObject({
+  /** 被改写的那个决策对象（模型真正读的对象）。 */
+  objectId: z.string().min(1),
+  objectType: z.string().min(1),
+  /** 被改写的属性（本体真属性名）。 */
+  property: z.string().min(1),
+  /** 世界态里的状态变量名。 */
+  stateVar: z.string().min(1),
+  /** 压力**真正挂在**哪个对象上（同对象时 = `objectId`）。 */
+  carrierId: z.string().min(1),
+  carrierType: z.string().min(1),
+  /** 怎么取过来的：`SELF` = 同对象；否则是**本体里真实存在的那条边**的 linkKey。 */
+  via: z.string().min(1),
+  /** 世界态里那一格的原始读数（未经任何折算）。 */
+  rawValue: z.number(),
+  /** 改写前的属性值（本体真值）。 */
+  before: z.number(),
+  /** 改写后的属性值（喂给求解器的那个数）。 */
+  after: z.number(),
+  /** 这一格用的换算方式：同名直取，还是压力投影。 */
+  kind: z.enum(["DIRECT", "PROJECTED"]),
+});
+export type SimWorldAppliedCell = z.infer<typeof SimWorldAppliedCellSchema>;
+
+/**
+ * 世界态里**有、但本模型没消费**的状态变量。
+ *
+ * ⛔ 这一段不许省：留白会被读成「这个变量没有压力」，而真相是「这个模型不看它」。
+ * 两件事的处置完全不同 —— 前者不用管，后者是下一张单的入口。
+ */
+export const SimWorldUnconsumedSchema = z.strictObject({
+  stateVar: z.string().min(1),
+  /** 有多少个对象承载着它。 */
+  carriers: z.number().int().min(0),
+  /** 为什么没被消费（人话，纯文本）。 */
+  reason: z.string().min(1),
+});
+export type SimWorldUnconsumed = z.infer<typeof SimWorldUnconsumedSchema>;
+
+/**
+ * **世界态读取披露块**（铁律 1.5 判据二：一个看不到代码的人，读完应能自己判断
+ * 「这是真推演还是查表」）。
+ *
+ * 消费方有两类，**契约按两类一起设计**：
+ *  ① **求解器** —— 今天唯一的消费方，确定性计算，读世界态而不是本体真值；
+ *  ② **agent 编排层** —— 经工具调用读同一份披露，据此组织方案与比对。
+ * 故本块既给「读了什么」（②要的溯源），也给「怎么换算的」（①要的口径）。
+ */
+export const SimWorldReadDisclosureSchema = z.strictObject({
+  /** 读的是哪个推演会话。 */
+  sessionId: z.string().min(1),
+  /** 第几拍。 */
+  tick: z.number().int().min(0),
+  /** 这一拍的态是真落过格（`TICK`），还是回落到开局快照（`BASE_SNAPSHOT`）。 */
+  source: z.enum(["TICK", "BASE_SNAPSHOT"]),
+  /** 世界态里一共有多少个对象有态（0 ⇒ 这个世界还什么都没发生，见 `note`）。 */
+  worldObjects: z.number().int().min(0),
+  /** 逐类型：本模型读了这个类型的几个对象、其中几格被世界态改写。 */
+  objectTypesRead: z.array(z.strictObject({
+    typeKey: z.string().min(1),
+    objects: z.number().int().min(0),
+    cellsApplied: z.number().int().min(0),
+  })),
+  /** 一共改写了多少格。**0 是一个结论不是故障**，理由见 `note`。 */
+  cellsApplied: z.number().int().min(0),
+  /** 本次生效的投影声明（改配置即改这张表，屏上当场可查「凭什么是这个数」）。 */
+  rules: z.array(SimWorldProjectionRuleSchema),
+  /** 逐格明细（按稳定键排序·R6）。量大时截断，截了多少由 `appliedTruncated` 说。 */
+  applied: z.array(SimWorldAppliedCellSchema),
+  /** `applied` 被截掉了多少格（0 = 全给了）。⛔ 不静默截断。 */
+  appliedTruncated: z.number().int().min(0),
+  /** 世界态里有、本模型没消费的状态变量（诚实缺席，不许留白）。 */
+  unconsumed: z.array(SimWorldUnconsumedSchema),
+  /** 压力量纲桥（`pp` = 按百分点读）。与 `finance-world` 同一座桥，不是第二套。 */
+  pressureUnit: z.enum(["pp", "ratio"]),
+  divisor: z.number(),
+  /**
+   * 本次**有没有调用 agent**。今天推演路零 LLM ⇒ 恒 `false`。
+   * ⛔ 不许留白让人以为调了（铁律 1.5 判据二点名的那一格）。
+   */
+  agentInvolved: z.literal(false),
+  /** 一句人话（**纯文本上屏**）。 */
+  note: z.string().min(1),
+});
+export type SimWorldReadDisclosure = z.infer<typeof SimWorldReadDisclosureSchema>;
 
 /** 一条 role→本体 绑定的溯源行（屏上那条前沿「是从哪个类型的哪个字段来的」）。 */
 export const ParetoAssembleRoleSchema = z.strictObject({
@@ -1757,6 +1932,14 @@ export const ParetoAssembleResultSchema = z.discriminatedUnion("applicable", [
     roles: z.array(ParetoAssembleRoleSchema),
     /** 装配过程中**诚实缺席**的可选角色（绑不到 ⇒ 该维度不参与，绝不伪造）。 */
     unboundRoles: z.array(z.string()),
+    /**
+     * WO-WORLDSTATE-CONTRACT · 本次装配**读了哪个推演世界态**（不传 `sessionId` ⇒ `null`）。
+     *
+     * ⚠ `null` 与「读了但一格都没改」**是两个结论，不许在屏上长成一样**：
+     * 前者是「这次没在任何推演世界里」，后者是「在这个世界里，但它还没影响到这个模型的任何一格」。
+     * 后者由 `cellsApplied:0` + `unconsumed[]` 说清楚。
+     */
+    worldState: SimWorldReadDisclosureSchema.nullable(),
     note: z.string(),
   }),
   z.strictObject({
