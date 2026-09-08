@@ -91,7 +91,41 @@ KIMI_BASE_URL=<该供应商的 /v1 基址>
 探针 `zz-probe-realegress.test.ts` 把 `PLATFORM_LLM_BASE_URL` 指向**真外部供应商**、配一把
 **明知无效的字面量假 key**（不发送任何真凭据），看回来的是供应商自己的 401 还是连接层错误。
 
-（结果见 §2.1，随实测回填。）
+### 2.1 实测：**一路通到真供应商，只被鉴权挡** ⇒ 定性为 (b)「只缺凭据」
+
+三家真供应商，各跑一次 `runDshAgent`（`provider=platform`，生产档 `cordis.l2.yml`，真子进程）：
+
+| 目标 | 鉴权拒绝特征（命中） | 连接层失败特征 | 定性 |
+|---|---|---|---|
+| `api.moonshot.cn/v1` | `401` · `authentication` | **（无）** | 到达供应商，被其鉴权拒绝 |
+| `api.openai.com/v1` | `401` · `invalid_api_key` · `invalid_request_error` | **（无）** | 同上（OpenAI 自己的错误体形态） |
+| `api.deepseek.com/v1` | `401` · `authentication` · `invalid_request_error` | **（无）** | 同上 |
+
+**连接层特征全部零命中**（扫的是 `ENOTFOUND` / `ECONNREFUSED` / `EAI_AGAIN` / `ETIMEDOUT` /
+`CERT_` / `self-signed` / `unable to verify`）⇒ **DNS、TLS、代理、出网都是通的**。
+
+**⇒ 已被证明打通的链段**：
+`runDshAgent` → env 注入（`PLATFORM_LLM_*`）→ 真子进程 → 真 DNS/TLS/HTTPS 出网 →
+**真外部供应商** → 供应商自己的错误体回灌进 harness 事件流。
+**唯一未验证的链段**：鉴权通过之后的「供应商正常应答 → 解析 → 收尾」。
+
+**红线**：假 key 是字面量，**未发送任何真凭据**；断言 `wire` 不含该假 key 串，三臂全绿。
+
+### 2.2 顺带澄清一条**差点被我误报成 fail-open 的**
+
+三臂的 `result.ok` 都是 `true`，乍看像「401 了还报成功」。**再追一层即推翻**：
+
+```
+result = {"ok":true,"outcome":"FAILED","answer":{...markdown:"（探索模式未能产出回答）"},
+          "stats":{"tokenUsage":{"uncachedInputTokens":0,"outputTokens":0,...}}}
+```
+
+`ok` 度量的是**会话协议跑完了**，`outcome:"FAILED"` 才是裁决 ⇒ **语义自洽，不是 fail-open。**
+（若只看 `ok` 就下结论，就是本仓记过的那个病。）
+
+**并且这给出一条重要订正**：401 路径上 `tokenUsage` 是 **0/0**。
+⇒ `tokenUsage>0` 这个断言**确实能分**「拿到带 usage 的应答」与「没拿到应答」，
+**但分不了**「真外部供应商」与「本地 stub / 固定端点 / 回放」——**§3 的结论要按这个精度读，别扩大。**
 
 ---
 

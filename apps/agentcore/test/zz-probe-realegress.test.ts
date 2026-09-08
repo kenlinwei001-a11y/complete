@@ -64,8 +64,11 @@ describe("PROBE · dsh 路到真外部供应商的出网边界", () => {
         // 连接层失败的特征串（若命中这些 ⇒ 根本没到供应商）
         const netMarks = ["ENOTFOUND", "ECONNREFUSED", "EAI_AGAIN", "ETIMEDOUT", "CERT_", "self-signed", "unable to verify"];
         console.info(`[EGRESS ${t.name}] 连接层失败特征: ${netMarks.filter((m) => wire.includes(m)).join(" | ") || "(无)"}`);
-        const snippet = wire.length > 1400 ? wire.slice(0, 1400) : wire;
-        console.info(`[EGRESS ${t.name}] wire 前 1400 字: ${snippet}`);
+        console.info(`[EGRESS ${t.name}] result=${JSON.stringify(out.result).slice(0, 1200)}`);
+        const err = out.events.filter((e) => /error|fail|abort/i.test(e.type));
+        console.info(`[EGRESS ${t.name}] 错误类事件=${JSON.stringify(err.map((e) => e.type))}`);
+        const lastTypes = out.events.slice(-8).map((e) => e.type);
+        console.info(`[EGRESS ${t.name}] 末 8 个事件=${JSON.stringify(lastTypes)}`);
         // 红线：假 key 不许出现在帧流里
         expect(wire).not.toContain(INVALID_KEY);
       },
