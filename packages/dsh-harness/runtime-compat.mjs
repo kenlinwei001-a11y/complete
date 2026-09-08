@@ -19,8 +19,11 @@
 //
 // ⚠ 上游包一律**运行期调用**（无 top-level 捕获引用，已逐处核过），所以本模块只要在那些
 // 函数**被调用前**装好即可；ESM 里把它排在首个 import 就满足。
-// ⚠ 跨进程不继承：谁 spawn 出新的 node 进程，谁负责把它带过去（见 smoke.mjs / test/run.mjs
-//   往子进程 env 注入 `NODE_OPTIONS=--import <本文件 URL>`）。
+// ⚠ 跨进程不继承：谁 spawn 出新的 node 进程，谁负责把它带过去。今天三个入口各自负责：
+//   · smoke.mjs                     —— 自身 import 本模块 **且** 往它 spawn 的 dsh host 子进程
+//                                      注入 `NODE_OPTIONS=--import <本文件 URL>`（那只子进程才是调 agent-loop 的）
+//   · test/*.test.mjs（2 个）        —— 各自把本模块排在首个 import
+//   test/run.mjs 无需改：它 spawn 的 smoke 与 `node --test` 子进程都由上面两条自带。
 //
 // 语义照 TC39 提案原文：用 `this` 当构造器（子类调用保持子类型），返回 { promise, resolve, reject }。
 
