@@ -1938,8 +1938,17 @@ export const ParetoAssembleResultSchema = z.discriminatedUnion("applicable", [
      * ⚠ `null` 与「读了但一格都没改」**是两个结论，不许在屏上长成一样**：
      * 前者是「这次没在任何推演世界里」，后者是「在这个世界里，但它还没影响到这个模型的任何一格」。
      * 后者由 `cellsApplied:0` + `unconsumed[]` 说清楚。
+     *
+     * ⛔ **必须 `.optional()`，不许写成必填** —— 这一格开工时写成了必填，实测差点埋一个静默回归：
+     * 本 schema 是 `strictObject`，而**前端拿它当判官**
+     *（`SandboxOptRoute.tsx` / `MultiObjWhatifPanel.tsx` 的 `safeParse`），
+     * 解析失败**不报错**、只是 `return undefined` ⇒ 屏上悄悄退回规格占位。
+     * ⇒ 任何**少这一格**的回包（三处既有前端 fixture、以及本字段之前发出的老回包）
+     * 都会让那一屏**无声地空掉**，而没有任何一处会说是为什么。
+     * 服务端**恒填**这一格（`null` 或真披露块），故设成可选**不损失任何信息**，
+     * 只是把「老形状」与「新形状」的兼容边界留在契约里，而不是留给运气。
      */
-    worldState: SimWorldReadDisclosureSchema.nullable(),
+    worldState: SimWorldReadDisclosureSchema.nullable().optional(),
     note: z.string(),
   }),
   z.strictObject({
