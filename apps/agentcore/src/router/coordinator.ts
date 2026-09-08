@@ -7,6 +7,7 @@ import type { ExtendedPlanStep } from "../workflow/executor.js";
 import { isCapacityFeasibilityQuery, CAPACITY_PROCESS_RE } from "../agent/sim-planner.js"; // WO-AGENT-RUNTIME-S01 · 定式意图（产能可行性变体）不拆多角色·直路 capacity_forecast；WO-ROUTE-1 · 工序词单一来源（定语位判据）
 import { domainResolveMulti } from "./domain-resolver.js"; // WO-QOS-CROSS-DOMAIN-UNIFIED · Coordinator 降级：能 solver 分解的跨域题让位②
 import { selectDeterministicMultiRoute } from "./multi-route.js";
+import { hasUnverifiedNumerics } from "../util/numerics.js"; // WO-NUMERIC-MAINPATH · 诚实位现算（缺口 B）·与原生/dsh/workflow 三路**同一份判据**
 
 /**
  * WO-FIVE-ROLE-AI-EMPLOYEE P1 · Coordinator 编排（确定性·R6 无 LLM/时钟/随机）。
@@ -313,5 +314,25 @@ export function synthesize(plan: CoordinatorPlan, answers: RoleAnswerInput[]): A
       : `**综合结论**：各角色作答如上，未见互相冲突的判断。`;
   blocks.push({ type: "text", markdown: `---\n${consensusLine}\n\n_每角色结论均来自其专职 agent 在自身 scope 内的取证（越界已被拒）。_` });
 
-  return { trustLevel: "AGENT_EXPLORATORY", blocks, provenance: [], unverifiedNumerics: false };
+  // WO-NUMERIC-MAINPATH · 诚实位**现算**（缺口 B）。
+  //
+  // 修前的行为：这里硬写 `unverifiedNumerics: false`。而本函数做的事恰恰是把各角色 agent 的
+  // `answerText` **逐字**拼进 markdown —— 那些字里的数字全是模型自撰的，一次都没扫过。
+  // ⇒ 前端 `AnswerCard` 的琥珀提示条被这一行**无条件关掉**：
+  //   「没有未溯源数字」与「没人去看有没有」在屏上长得一模一样。
+  // 性质比原生路更差：原生路至少还亮琥珀条。这一位不是量出来的，是**断言**出来的。
+  //
+  // 形态（铁律 0.6 句式）：「我用『我在返回值里写了 false』当作『这份答案里没有未溯源数字』
+  // 的证据，而前者并不度量后者。」
+  //
+  // ⚠ 扫描范围**只取 agent 自撰的 `answerText`，不扫整块 markdown** —— 这不是放宽判据，
+  //   是界定红线管哪个产物（与 `util/numerics.ts` 顶部那段治理面注释同一条界）：
+  //   本函数自己拼的头块（「已分派 3 个角色」）、角色栏包装（`（agt_7）`、`基地[b1,b2]`）里的
+  //   数字都是**平台常量与标识符**，不是模型编的业务数字。连它们一起扫 ⇒ 琥珀条**恒亮**，
+  //   与恒灭一样不度量任何东西（检测器失去鉴别力）。
+  // 判据本身一个字符都不改：复用 `util/numerics.ts:hasUnverifiedNumerics`（原生 / dsh / workflow 三路同源），
+  // 好让「协调路的数」与「其他路的数」直接可比。
+  const unverifiedNumerics = answers.some((a) => hasUnverifiedNumerics(a.answerText ?? ""));
+
+  return { trustLevel: "AGENT_EXPLORATORY", blocks, provenance: [], unverifiedNumerics };
 }
