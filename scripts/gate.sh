@@ -108,10 +108,18 @@ capture() {
   t1=$(date +%s%N)
   CAP_MS=$(( (t1 - t0) / 1000000 ))
   CAP_RC=$rc
+  # 同进程组里还没退出的 = 我起的后代。**只数不杀。**
+  # 先给一段**排空宽限**：正常收尾时 worker 可能还差几百毫秒才被收割，
+  # 不等就会把「正在正常退出」误报成「残留」——那又是一次拿瞬时快照当终态。
+  # ⚠ 判据落在「等满宽限之后**还在不在**」，不是「此刻在不在」。
+  local waited=0
+  CAP_LEFTOVER="$(ps -eo pgid=,pid= 2>/dev/null | awk -v g="$pgid" '$1==g' | grep -c . )"
+  while [ "$CAP_LEFTOVER" -gt 0 ] && [ "$waited" -lt 30 ]; do
+    sleep 0.1; waited=$((waited + 1))
+    CAP_LEFTOVER="$(ps -eo pgid=,pid= 2>/dev/null | awk -v g="$pgid" '$1==g' | grep -c . )"
+  done
   CAP_OUT="$(cat "$tmp")"       # 与原 $(...) 同语义（都吃掉尾部换行），下游逻辑逐字节不变
   rm -f "$tmp"
-  # 同进程组里还没退出的 = 我起的孤儿。只数不杀。
-  CAP_LEFTOVER="$(ps -eo pgid=,pid= 2>/dev/null | awk -v g="$pgid" '$1==g' | grep -c . )"
   CAP_WHY=""
   case $rc in
     124|137) CAP_STATE="NOT-MEASURED"; CAP_WHY="超过 ${secs}s 上限被掐断 —— 输出截断，本步结论不成立" ;;
@@ -121,6 +129,15 @@ capture() {
     0)       CAP_STATE="PASS" ;;
     *)       CAP_STATE="FAIL"; CAP_WHY="命令判负 RC=${rc}" ;;
   esac
+  # ⚠ 残留后代 ⇒ **捕获到的是快照，不是终稿**：那些后代仍可能在往同一个文件写。
+  #    RC 是真的，但**凡是读输出的断言都失去依据**（TEST 段的「逐包点名」正是读输出的）。
+  #    故一律降到 NOT-MEASURED —— 「我拿到的这份输出是不是完整的」我证不了，就不许当证据用。
+  #    ⛔ 只降 PASS，不动 FAIL：真判负是**退出码**给的，不依赖输出完整性，
+  #       把红降成「没测出来」等于把红吞掉，那比假绿还坏。
+  if [ "$CAP_LEFTOVER" -gt 0 ] && [ "$CAP_STATE" = "PASS" ]; then
+    CAP_STATE="NOT-MEASURED"
+    CAP_WHY="命令已退出（RC=0）但排空 3s 后仍有 ${CAP_LEFTOVER} 个后代在跑 —— 捕获到的是快照不是终稿，读输出的断言全部失去依据"
+  fi
 }
 
 run() {
