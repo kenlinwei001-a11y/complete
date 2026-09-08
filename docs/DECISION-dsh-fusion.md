@@ -80,6 +80,13 @@ flag 关时该模块不加载。部署面实测零处设这个 flag。
 
 这三条不是「建议」，是**闸**。任一未销账，`DSH_HARNESS=1` 都不许进部署面。
 
+> **📌 销账进度（2026-09-08 · WO-DSH-UNFREEZE 实测）→ 见 §13。**
+> 三条**判据面均已销账**（A 判据 1/2/3 · B 判据 1/2 · C 判据 1/2/3），
+> 证据为亲手跑出的对照实验，非台账转述。**但 §13 同时登记了 3 条剩余风险**
+> （含一条**真实外部供应商一跳仍未跑过**）——**裁决结论不变，翻不翻由仓主看证据后定。**
+> ⚠️ 本节 §3 前置 A/B/C 的**正文一个字未改**（含那些已被实测推翻的 `file:line` 描述），
+> 改的只有本指针 + 新增 §13。要引用现状请读 §13，**别直接引用 §3 正文的行号与代码片段**。
+
 ### 前置 A · 真 provider 从没跑过
 
 **事实**：POC 全程 mock provider。
@@ -475,3 +482,92 @@ PRD §6 已同步增列第四条前置并标已销。
 ## 12 · 补遗（2026-08-21）· WO-DSH-PROD-READY W7：灰度方案与推广/回退判据
 
 见 `docs/ROLLOUT-dsh-external-kernel.md`——W9-lite 计费口径翻转的阻塞性前置观察面、G0→G3 三档推广/回退判据（初值）、灰度期已知差异白名单与观测面边界登记。本文 §3 前置条件仍是闸，灰度文档一个字不放宽。
+
+## 13 · 三条前置条件 · 销账记录（2026-09-08 · WO-DSH-UNFREEZE）
+
+> **取证头**：base commit `1ca9c729`（= canonical `origin/claude/inspiring-gates-aqczjg`）·
+> 取证时刻 2026-09-08 04:03–04:20 UTC · `dsh-dormancy:check` **RC=0**（金丝雀 28/28）·
+> 产品源码改动 **0 行**（`git diff --stat canonical...HEAD` 只有一个临时取证测试件，交付前已删）。
+>
+> ⚠️ **本节只加销账证据，不改 §1 裁决结论**。「代码可以并，flag 不能翻」仍然成立；
+> 本节回答的是「三把钥匙现在在不在手里」，**不是**「现在就该翻」。
+
+### 13.1 派单前提被实测推翻的部分（照铁律 0.6 第 5 条，先记这一条）
+
+本单派单书把三条前置一律描述为**待做**。实测：**三条的判据面在 2026-08-17 → 08-25 之间
+已由 `WO-DSH-N1-PROVIDER` / `N3` / `N4` / `PROD-READY W1·W3·W8` / `F-1` / `GOV-CREDENTIAL`
+陆续落地，只是没有任何人回写 §3。** 形态与本仓记过的第 5 条同构：
+
+> **「我用『§3 那三条还写着待销账』当作『这活还没做』的证据，而前者并不度量后者。」**
+
+§3 正文里**已过期、照着读会得出相反结论**的具体行（正文保留原样，此处点名）：
+
+| §3 原文 | 今天实测 |
+|---|---|
+| 前置 A「`engine.ts:509` 写的是 `provider: … ?? "mock"` ⇒ 只翻 `DSH_HARNESS=1` 走的仍是 mock」 | **该回落已根除**。`config.ts:7` `PRODUCTION_DSH_HARNESS_PROVIDER = "platform"`，`config.ts:80` `DSH_HARNESS_PROVIDER` **缺省即 `platform`**；`dsh-provider-seam.test.ts` A1 用 grep 钉死 engine 分叉段不得复活 `?? "mock"` |
+| 前置 A「`cordis.yml` 尾部应答的是本地 `plugins/mock-llm.mjs` 写死剧本」 | **生产档已摘除 mock-llm**，挂 `plugins/platform-llm.mjs`；mock-llm 迁至测试专档 `cordis.poc.yml`（A2 双向锚定：生产档不含 ∧ poc 档必含） |
+| 前置 B「dsh 没有环检测，POC 已文档化放弃」 | **已补**：`packages/dsh-harness/plugins/platform-watchdog.mjs`（2026-08-17 `WO-DSH-N3`），cumulative-per-signature，cap 同 env 源 `QOS_AGENT_LOOP_REPEAT_CAP` |
+| 前置 C「`platform-world.mjs:85-88` `activeServerNames` 按 `ctx.root` 键控 ⇒ root 级」 | **已下沉**：`plugins/mcp-client-tenant.mjs`（vendor fork）池键 = `` `${tenantId}\0${serverName}` ``；无 tenantId 退化为原语义 |
+| §7 遗留 2「`packages/dsh-harness` 无 `test` 脚本 ⇒ 常设门整包看不见」 | **已闭**：`package.json` 的 `scripts.test` = `node test/run.mjs`（今日实测 13/13 通过 + drift-check PASS） |
+
+### 13.2 逐条销账结论
+
+| 前置 | §3 的销账判据 | 今天的证据 | 结论 |
+|---|---|---|---|
+| **A** 真 provider | ①`cordis.yml` 换我方适配器 + `DSH_HARNESS_PROVIDER` 有生产取值 | 生产档挂 `platform-llm.mjs`；缺省 = `platform`（`dsh-provider-seam` A2/A1） | ✅ |
+| | ②接缝驱动的组合测试，断言**生产实际传的那个 provider 值**端到端跑通 | `dsh-provider-seam` **A3**：engine 分叉 → `resolveConnectionFacts` 剥 `dcp:` → env 注入子进程 → 真 HTTP OpenAI-completions 端点 ⇒ `ANSWERED` ∧ stub 见 `model` 无前缀 ∧ `Authorization=Bearer <key>` | ✅ |
+| | ③该测试实参**就是生产实参**，且被机器核 | A1 断言 `PRODUCTION_DSH_HARNESS_PROVIDER==='platform'` ∧ `loadConfig({}).DSH_HARNESS_PROVIDER` 与之同值；A3/A4/A5 传的是**该常量本身**（非字面量） | ✅ |
+| **B** STALL_LOOP | ①runner 侧补环检测/看门狗，语义对齐 `loopRepeatCap` | `platform-watchdog.mjs`：同签名累计（**刻意不采 stock 的 consecutive-chain**，否则 A-B-A-B 交替逃逸）· meta 工具不计数（对位 `loop.ts:1171`）· opt-in 缺省禁用（对位 `loop.ts:533`） | ✅ |
+| | ②`deploy-governance-seam` 那条断言存在 `DSH_HARNESS=1` 下的**对位副本** | 同文件 **③′**（出货 env + `DSH_HARNESS=1` ⇒ 病态同签名循环在 cap 处被 watchdog 打断、`STALL_LOOP`、`agentLoopRepeat` 计 1）+ **④′ 归因臂**（仅去掉 cap ⇒ 无降级、烧满 8 轮） | ✅ |
+| | ③若选「外壳保留」须说清在哪层拦 | **不适用**——选的是「补」不是「保留」 | — |
+| **C** MCP 命名空间 | ①命名空间宿主下沉到至少携带 `tenantId` | 池键 `` `${tenantId}\0${serverName}` ``（`mcp-client-tenant.mjs`）；走的是 README 给的「根级共享连接池 + scoped 可见性过滤」路，**未改公开名** ⇒ `mcp__<serverName>__<tool>` 审计名逐字节不变 | ✅ |
+| | ②负向接缝测试：双租户同名 ⇒ 两边都起得来 ∧ A 看不见 B ∧ 审计仍可归因 | `dsh-e2e-tenant-collision` **L4.A1**（各回各 `whoami:` 标记 / 事件流零跨租户串字 / 工具表各只见各 / pidFile 恰 2 异 pid）· **L4.A2**（allow-list 误配异租户工具名仍 `isError` fail-closed）· **L4.A3**（跨租户凭据解析 fail-closed ∧ 凭据零上帧）· harness 侧 **P1/P2** | ✅ |
+| | ③必须在 dsh 路跑，原生路绿不算 | 全部经 `runDshAgent`（真子进程 + JSON-RPC wire + 生产档 `cordis.yml`）；harness 侧套件以 `DSH_HARNESS=1` 为**断言前置**（不满足即抛） | ✅ |
+
+### 13.3 六格对照实验（亲手跑，非引用）
+
+| # | 实验 | 观测 |
+|---|---|---|
+| **A** | mock 路 vs 生产 provider 路的**回答原文** | mock 路：`structured answer via dsh final_answer`（`mock-llm.mjs` 写死串，与提问无关）<br>生产路（`provider=platform` + 生产档 `cordis.yml` + http 治理）：`真 provider 应答 X：常州基地 9 月缺口 1200 台` |
+| **E** | 判别力金丝雀 | 同一条生产路，把上游应答换成 Y ⇒ 回答变成 `真 provider 应答 Y：完全不同的另一句结论`。**换输入回答就变 ⇒ 观测有鉴别力**，不是写死剧本 |
+| **B1** | 病态同签名循环 | 关 watchdog（不给 cap）：**烧满剧本 8 轮**（`tool/call`×8，`ANSWERED`，无降级）<br>开 watchdog（cap=3）：**第 3 轮停**，`turn/end` 落 `{kind:'stall-loop', tool:'echo_tool', count:3, cap:3}` ⇒ `BUDGET_EXHAUSTED` + `STALL_LOOP`；cap=4 ⇒ 停在 4（**cap 由 env 驱动非硬编码**） |
+| **B2** | 反向对照（不误杀） | 异参多轮（`stall_loop_varying`）cap=3：**8 轮全跑完 ∧ `ANSWERED` ∧ 零降级 ∧ 连 advisory 档都没触及**；同参 `final_answer` 8 轮（meta 守卫）同样不误杀 |
+| **C** | 双租户同名 MCP server | **撞车前**（把池键改回 root 级 `` `\0${serverName}` ``，真变异）：harness 套件 **7/13 红** —— `P1` 两租户**只起 1 只**子进程（期望 2）；`A4` 租户 B 调自己的 `whoami` **拿回 `whoami:tA`** = **跨租户数据串**；`A3` B 连自己的独有工具都看不见<br>**撞车后**（现行池键）：**13/13 全绿**，pidFile 恰 2 异 pid，各回各标记 |
+| **D** | 休眠不变 | 产品源码 **0 行改动** ⇒ `DSH_HARNESS=0` 全链逐字节相同（非推断：`git diff --stat canonical...HEAD` 仅一个临时测试件）；`dsh-dormancy:check` **RC=0**，金丝雀 28/28，扫描面 部署面 8 / 源码面 705（下界 5/200 均过） |
+
+⚠️ **C 的「撞车前」是真变异实测，不是引用测试注释**：改的是 `mcp-client-tenant.mjs` 的池键那一行，
+跑完即按备份逐字节还原（`git diff` 空 + 还原后复跑 13/13）。
+
+### 13.4 剩余风险（**翻 flag 前仓主需要看的就是这一段**）
+
+| # | 风险 | 性质 | 定性 |
+|---|---|---|---|
+| **R1** | **真实外部供应商一跳从未跑过。** 判据面已销账，但 A3/L4 等全部打在**本地 stub OpenAI-completions 端点**上。真供应商臂 `dsh-e2e-real-triad.test.ts` L2.A1/L2.A4 **存在但由 env 门控**（`KIMI_API_KEY`/`KIMI_BASE_URL`），本机无凭据 ⇒ **skip**（实测 `api.anthropic.com` 可达但 401 无 key） | **验证面缺口** | §3 前置 A 判据 1/2/3 的字面要求**不含**「必须打真供应商」，故判据已销；但派单书那句「真的用生产 provider 路跑通一次」在**外部供应商**这一层**未兑现**。翻 flag 前建议在有凭据的环境跑一次 L2.A1/A4 |
+| **R2** | **`sliceSolverKeys` 规划自检不过 dsh 路。** `engine.ts:539` 算出、`:844` **只传给 `runAgentLoop`**；dsh 分叉段（`:630–800`）**零引用** | **观测面缩小**（非阻断——该自检本身就「不阻断真工具」，只记 `planFellBackToReAct`） | 翻 flag 后这条指标在 EXTERNAL 运行上恒不产出。不是安全护栏净减少，但**是「翻了之后有个指标会静默变空」**，别当成指标下降 |
+| **R3** | **数字红线是「标注」不是「阻断」，两路皆然。** `unverifiedNumerics` 由 `scanBlocks`（`util/numerics.js` 单源）在 dsh 路照算（`reassemble.ts:544/573/660`），`provenancePolicy=required` 也照拒（`:633-635`）；但裸数只被**标记**，不被拦下 | **平台级属性，非 dsh 退化** | 见 §13.5 |
+
+**不构成风险、但必须说清的两条**（防被读成「dsh 把它弄坏了」）：
+`QOS_AGENT_PER_TOOL_CALL_CAP` 在**注册 agent 路上原生也没接**（只在 `router/orchestrator.ts:2083` 的自由问答路），
+故 dsh 分叉在此**无 delta**；`agent.kernel=EXTERNAL` 绕过两道门这件事 **§10 已登记**，本单未改变。
+
+### 13.5 架构定位补注（仓主 2026-09-08 定）· 以及一条**第 4 条前置候选**
+
+> 仓主原话：「**所有计算原则上使用求解器而不是 agent(LLM) 来计算，agent 只负责调动工具、本体、规则等等输出结果，
+> 然后基于结果推演，形成多个方案和方案比对。**」
+
+⇒ **dsh 在本平台的定位是编排层 / ReAct 指挥层，不是计算层。** 与该定位对表的实测：
+
+- ✅ **能调到求解器，且不是第二份实现**：dsh 路的工具执行走**反向通道** `/b/v1/dsh/tool-execute`，
+  执行体是 engine 逐 run 铸进 `dshToolExecuteRuns` 的**同一个 `executor`** ⇒ `invoke_solver`
+  与原生路**同一条执行路径**（`tools/executor.ts:418`），无重写、无第二真值。
+- ✅ **「不许自己算」的纪律真的送达了 dsh 路**：`AGENT_SYSTEM_CORE`（含【数字红线】「禁止估算、推断或从记忆中给出数字」
+  与【求解纪律】「禁止你自己心算或估算，必须调对口 solver」）经 `engine.ts:667` → `setup-spec.ts:265`
+  拼进 dsh 的 `persona`。**不是只写在原生路的 prompt 里。**
+- ⚠️ **但「阻止」这件事，两条路都只做到「检测 + 标注」**：裸数触发 `unverifiedNumerics=true`（诚实标），
+  `provenancePolicy=required` 时缺 provenance 会**拒**收尾——除此之外，**没有任何机制阻止模型把一个编出来的数字写进答案**。
+
+> **⇒ 建议登记为第 4 条前置（候选）**：「dsh 路上有没有机制阻止 agent 自行产出数值」——
+> 答案是**有检测、有标注、required 档有拒绝，但没有无条件阻断**。
+> ⚠️ **它不是 dsh 引入的退化**（原生路同款），所以**按 §3 的体例它不该挡 dsh 的闸**；
+> 但既然 dsh 的价值定位就是「调工具不算数」，**翻 flag 会把这条平台级弱点放到更显眼的位置**，
+> 故照仓主要求在此点名，由仓主裁决要不要升为正式前置。
