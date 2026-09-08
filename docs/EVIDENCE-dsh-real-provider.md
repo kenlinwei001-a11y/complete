@@ -2,7 +2,8 @@
 
 > **取证头**
 > · base commit：`75d9b222`（canonical `origin/claude/inspiring-gates-aqczjg`）merge `d08a3e13`（`claude/handoff-wo-dsh-unfreeze`，快进，仅带一份文档）
-> · 取证时刻：2026-09-08 04:29–05:0x UTC
+> · 取证时刻：2026-09-08 04:29–09:15 UTC（中途因会话配额 429 中断一次，产出全部已落远端分支，无丢失）
+> · 交付 tip：`ffeaf5c6` · 分支 `claude/handoff-wo-dsh-real-provider`
 > · `dsh-dormancy:check` **RC=0**（金丝雀 28/28；扫描面 部署面 8 / 源码面 705）
 > · **本机能不能跑真供应商一跳：❌ 跑不了。缺的是凭据，不是接线，也不是网络。**
 > · ⛔ 本单未翻 flag；产品源码 0 行改动。
