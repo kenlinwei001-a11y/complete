@@ -1244,6 +1244,60 @@ demo 上 `OrderLine` 经 `line_of_order` 够得着 `Order.costPressure`、经 `o
 **失效策略缺口在前端，不在本契约**（见 §8 `G-PARETO-WORLDSTATE-CACHE`）。
 SEAM `apps/datacore/test/worldstate-contract.seam.test.ts`（7 例）。
 
+### 采纳台账读侧链路 · `AdoptedMitigation` → `risk_timeline.adoptionLedger` → 风险板（WO-ADOPTION-SURVIVES-FIX · 2026-09-08）
+
+```
+AdoptedMitigation(ACTIVE·租户级对象·props 无任何 session 字段)
+  --adoptedMitigationIndex(risk.ts·(baseId|factor)→{eff,tn,planKey,planName,adoptedAt,adoptionId})-->
+  ├─【既有·真曲线】tensionSeries(..., {eff,tn}, ...)  → card.series 自第 tn 天起扣 eff
+  │                                    → card.adoptedMitigation{planKey,eff,tn}（**寄生在卡片上**）
+  └─【本单新增·台账读侧】adoptionLedger(c, adopted, horizon, scopeBaseId)
+        --逐条当场做对照实验：同 baseline 同 events，算「吃了这条采纳」与「拿掉这条采纳」两条曲线-->
+        adoptionLedger[]{state, crossDay, wouldCrossDay, peak, peakWithout, peakCut, onBoard, 四项披露}
+        --RiskTimelineOutputSchema.adoptionLedger（**加性字段必须进契约，否则 zod strip 掉 = 等于没加**）-->
+        RiskBoardView 结果元信息行「已处置 N 条」+ `?` 浮层逐条明细
+```
+
+**这条链存在的理由（一句话）**：**「把问题解决了」和「记录被抹掉了」在屏上长得一模一样。**
+风险卡的出卡条件是「本窗越线」，采纳披露此前**只挂在卡片上** ⇒ 卡一走，记录跟着走
+⇒ **措施越有效，证据消失得越彻底**，而这个失败**只在成功时发生**。
+
+**⚠ 实测订正（派单前提被推翻的那一半，别照旧说法理解这条链）**：卡片消失有**两种**机制，
+派单只写了其中一种、且把主例的成因说反了。seed 42 · horizon 30 · 阈值 85 实测：
+
+| 采纳 | 该 pair peak | crossDay | 卡在不在 | 真实机制 |
+|---|---|---|---|---|
+| 无 | 98 | 1 | 在（第 5 位） | — |
+| 常州·瓶颈工序 `debottleneck`(13/T+6) | 97.9949 | 1 | **在**（第 6 位） | 峰值排名保住 |
+| 常州·瓶颈工序 `reroute`(9/T+3) | 97.9531 | 1 | **不在** | **`cards.slice(0,maxCards=8)` 截断**（低于成都 97.9935） |
+| 江门·物料齐套 `air_freight`(15/T+1) | 97.8399→82.8399 | **null** | **不在** | `if (!pair.forced && crossDay===null) continue` |
+
+即 `reroute` 那张卡**越线一次都没被消解**（三态 crossDay 全为 1），决定它去留的是 **0.047 个张力点的排名差**。
+⇒ **若照派单字面在 `crossDay===null` 分支里补记录，本单会一行都不生效。**
+故本链**以 ACTIVE 台账为遍历源**（不是在出卡循环里补一笔），两种消失机制自动全覆盖。
+
+**不变量（新增两条，均由 SEAM 咬死）**
+- **R-ADOPT-1 · 台账存活与风险态解耦**：一条 ACTIVE `AdoptedMitigation` ⇒ `adoptionLedger` 恒有且仅有一条对应记录，
+  **与该 (基地,因素) 今天越不越线、卡片渲没渲、是否被 top-N 截断无关**。
+- **R-ADOPT-2 · 已消解不许复活成告警**：`adoptionLedger` **一个字都不进 `cards[]`**；
+  `cards[]` 中每张卡恒满足 `crossDay !== null`；凡 `state==="RESOLVED"` 者 `onBoard === false`。
+  实测「当前风险卡数」修前修后同为 **8**（KPI「风险基地」同为 8）。
+
+**三态不许合并**（少一态读侧就会替处置邀功）：`RESOLVED`（不采纳会越线、采纳后不越线）·
+`STILL_CROSSING`（采纳后仍越线，生效了但不够）·`NO_CROSS_EITHER_WAY`（两条曲线都不越线，**本窗本来就没事**）。
+同理 `peakCut` 是**实测削峰差**而非标称 `eff`：实测 `reroute` 标称 9 而只削 **0.0469**，`air_freight` 标称 15 实削 **15**。
+
+**真浏览器实测**（登录走起 · 禁 `VITE_MOCK` · 真两级审批 planner→admin ⇒ `EXECUTED`）：
+修前屏上 `已处置 N 条` 记号**不存在**、浮层不存在、两张卡都已消失 ⇒ 采纳零痕迹；
+修后同一屏「已处置 2 条」，浮层逐条给出方案人话名 / 消解点数 / 起效日 / 采纳日 / 两条曲线峰值对照。
+**跨会话**：新开浏览器换 `planner` 登录、本次零采纳 ⇒ 仍读到 2 条 ACTIVE（`hasSessionField:false`）。
+方案人话名取台账自带 `planName`（**不再多打一次 `mitigation_select`**，也不许读侧另写 key→中文对照表）。
+
+SEAM `apps/datacore/test/adoption-survives.seam.test.ts`（7 例，**全部走生产实参**
+`invokeSolver("risk_timeline",{horizon})` 不传 base/factor；既有六个用例全走 `forcedCard()` 即
+`forced=true`，那条 `continue` 永不触发 —— 铁律 0.5 判据 6「测试实参与生产实参交集为空」的原样复现）。
+E2E `apps/frontend-shell/test/e2e/adoption-survives.mjs`。
+
 **优化融合链路（G-12 · 增量 0 立契约/本体/许可证 · 设计待落，详 `docs/SPEC-optimization-template-pool.md`）**
 ```
 OptModelTemplate(抽象 11 核心,零业务常数) --OntologyBinding(A13 角色+slice 范围+DF.8 接地,每租户绑同模板到自己本体)--> 可解模型

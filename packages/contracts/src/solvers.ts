@@ -342,6 +342,53 @@ export const RiskPlanRowSchema = z.object({
 });
 export type RiskPlanRow = z.infer<typeof RiskPlanRowSchema>;
 
+/**
+ * WO-ADOPTION-SURVIVES-FIX · 已采纳处置台账的**读侧一条**（`risk_timeline.adoptionLedger[]`）。
+ *
+ * 为什么要有这个数组（而不是继续只挂在 `cards[].adoptedMitigation` 上）：
+ * 卡片的存在条件是「本窗内越线」。一条处置**把越线彻底消解掉**时卡片整张消失，
+ * 挂在卡上的采纳披露**随之一起消失** ⇒ **措施越有效，证据消失得越彻底**。
+ * 本数组以 **ACTIVE 台账**为遍历源，故记录的存活与「今天还越不越线 / 卡片渲没渲」完全解耦。
+ *
+ * ⚠ 它**不是**第二份台账：唯一真相源仍是对象 `AdoptedMitigation`（`repos.objects`），
+ * 本数组是它在这一次推演窗口下的投影 —— 每条都带一次**当场做的对照实验**
+ * （`wouldCrossDay`/`peakWithout` = 把这条采纳拿掉会怎样），读侧因此能自证
+ * 「这个问题是被这条处置消解的」还是「它本来就不越线」。
+ * ⚠ 它**不进 `cards[]`**：已消解的问题不许重新变成告警。
+ */
+export const AdoptionLedgerEntrySchema = z.object({
+  adoptionId: z.string(),
+  baseId: z.string(),
+  base: z.string(),
+  factor: z.string(),
+  planKey: z.string(),
+  /** 方案人话名（台账自带·执行器写入时取自方案库）。空串 = 老记录没有，读侧应回落显 `planKey` 而不是编一个。 */
+  planName: z.string(),
+  /** 消解幅度（张力点数·方案库标称值）。 */
+  eff: z.number(),
+  /** 起效日（第 tn 天起曲线开始降）。 */
+  tn: z.number().int(),
+  /** 采纳日（YYYY-MM-DD·确定性时间锚 forecastStart，非 Date.now）。 */
+  adoptedAt: z.string(),
+  /**
+   * 三态，**不许合并**：
+   * `RESOLVED` 不采纳会越线、采纳后不越线（这条处置真消解了它）·
+   * `STILL_CROSSING` 采纳后仍越线（生效了但不够，卡片照旧在榜）·
+   * `NO_CROSS_EITHER_WAY` 两条曲线都不越线（**本窗它本来就没事**，这条处置不邀功）。
+   */
+  state: z.enum(["RESOLVED", "STILL_CROSSING", "NO_CROSS_EITHER_WAY"]),
+  crossDay: z.number().int().nullable(),
+  /** 反事实：把这条采纳拿掉的越线日（`null` = 本来就不越线）。 */
+  wouldCrossDay: z.number().int().nullable(),
+  peak: z.number(),
+  peakWithout: z.number(),
+  /** 真实削峰量 = `peakWithout − peak`（实测差，非标称 `eff`：饱和与夹 0 会让两者不等）。 */
+  peakCut: z.number(),
+  /** 该 (基地,因素) 这一次是否仍出现在 `cards[]` 里（去重与 maxCards 截断之后的真值）。 */
+  onBoard: z.boolean(),
+});
+export type AdoptionLedgerEntry = z.infer<typeof AdoptionLedgerEntrySchema>;
+
 export const RiskTimelineOutputSchema = z.object({
   horizon: z.number().int(),
   threshold: z.number(), // 默认 85
@@ -376,6 +423,12 @@ export const RiskTimelineOutputSchema = z.object({
   scopeBaseId: z.string().optional(),
   scopeBaseName: z.string().optional(),
   scopeNote: z.string().optional(),
+  /**
+   * WO-ADOPTION-SURVIVES-FIX（加性·optional·向后兼容）：**已采纳处置台账**在本窗口下的投影。
+   * 仅在真有 ACTIVE 采纳时下发（零采纳 → 键缺席 → 与上线前逐字节一致）。
+   * 键缺席 ≠ 没人采纳过 —— 也可能是旧版后端；读侧两态必须分开说。
+   */
+  adoptionLedger: z.array(AdoptionLedgerEntrySchema).optional(),
 });
 export type RiskTimelineOutput = z.infer<typeof RiskTimelineOutputSchema>;
 

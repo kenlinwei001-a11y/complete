@@ -260,6 +260,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const cards = data.cards;
   // 展示序（不动 data.cards 本身）：exposureOrder 缺席 → 自动回落数组序，并在下方 chip 处说明为什么。
   const hasExposureOrder = (data.exposureOrder?.length ?? 0) > 0;
+  // WO-ADOPTION-SURVIVES-FIX：采纳台账（引擎投影·**与 cards 平行的另一条读侧**）。
+  // 它的存活不依赖 `cards` 里有没有对应那张卡 —— 这正是本单要治的耦合。
+  const adoptionLedger = data.adoptionLedger ?? [];
   const displayCards = orderMode === "exposure" && hasExposureOrder ? orderCardsByExposure(cards, data.exposureOrder) : cards;
 
   // 逐基地取 bottleneck 行（base 名直配·mock/real 同为中文名）。
@@ -356,6 +359,16 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                 载荷直传 `data`（`RiskTimelineOutputSchema.parse` 的产物，四个键都在），
                 不重定义契约类型（R1 contracts-only-shared）。 */}
             <ScopeHonestyBadge payload={data} testId="risk-timeline" />
+            {/* WO-ADOPTION-SURVIVES-FIX · 「已处置 N 条」——**采纳台账的第一层可见记号**。
+                ⚠ 刻意挂在这条**结果元信息行**上，而不是另起一块：
+                ① 语义 —— 它与窗口/阈值/作用域同属「这一次推演的元信息 + 诚实位」，
+                   而且它正是「常州为什么不在榜上了」这个问题的答案所在；
+                ② 分层 —— 规范 §1「第一层只放结论」：这里只留一个**数**，逐条明细全在 `?` 浮层里。
+                键缺席（`adoptionLedger === undefined`）⇒ 本次没有任何 ACTIVE 采纳**或**后端是旧版，
+                两态都渲染成"什么都不显示"是可以的：此时屏上本就没有任何采纳可谈。
+                ⚠ 它**不进 `cards[]`**，KPI「风险基地」仍数 `cards.length` —— 已消解的问题不许重新报警。 */}
+            {adoptionLedger.length > 0 && ` · 已处置 ${adoptionLedger.length} 条`}
+            {adoptionLedger.length > 0 && <AdoptionLedgerPopover ledger={adoptionLedger} />}
           </div>
         </div>
         <div className={styles.rkHsel}>
@@ -780,6 +793,76 @@ function CardAdoptedLine({ card }: { card: RiskCard }) {
       <span style={{ color: "var(--ok-txt)" }}>已采纳 {name ?? ad.planKey}</span>
       <span>消解 {ad.eff} · T+{ad.tn} 起效</span>
     </div>
+  );
+}
+
+/**
+ * WO-ADOPTION-SURVIVES-FIX · 「已处置」台账浮层 —— **采纳记录脱离卡片独立上屏的那一层**。
+ *
+ * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════════
+ * **X**：上一张单（WO-SIM-VERDICT-FRONTEND）把采纳记录印上了卡面（`CardAdoptedLine`），
+ * 但它**寄生在卡片上**。而卡片只在「本窗越线」时才出（引擎侧
+ * `if (!pair.forced && crossDay === null) continue;`）—— 一条处置**把越线彻底消解掉**时，
+ * 卡片整张消失，`CardAdoptedLine` 连同它一起消失，下一个基地顶上这个位置。
+ * 实测：常州·瓶颈工序采 `reroute`(eff 9,T+3) ⇒ 卡没了、记录也没了；
+ * 采 `debottleneck`(eff 13,T+6·第 6 天前仍越线) ⇒ 卡还在、记录看得见。
+ * ⇒ **「把问题解决了」与「记录被抹掉了」在屏上长得一模一样，且措施越有效证据消失得越彻底。**
+ *
+ * **Y**：台账有自己的屏位，来源是引擎新下发的 `adoptionLedger`（遍历源 = ACTIVE 台账对象，
+ * 与「今天还越不越线」「卡片渲没渲」彻底解耦）。
+ *
+ * ══ 三条设计约束，逐条对着写 ═══════════════════════════════════════════════════
+ * ① **不许让已消解的问题重新报警** —— 本组件**一个字都不进 `cards[]`**，KPI「风险基地」
+ *    仍旧数 `cards.length`。已解决就是已解决。
+ * ② **要可追溯不是一直挂着** —— 第一层只留一个数（「已处置 N 条」）＋ `?` 记号，
+ *    逐条明细全在浮层里（`docs/CONVENTION-ui-information-layering.md` §1：结论在第一层、
+ *    明细降第二层）。它**不占卡位**，也不会把已解决的事重新摆到眼前。
+ * ③ **不造第二套台账** —— 唯一真相源仍是对象 `AdoptedMitigation`；本层是它的投影，
+ *    前端**不重算任何一个数**（eff/tn/峰值/越线日全是引擎原值直投）。
+ *
+ * ⚠ **三态分开印，不许合并**（引擎已算好，前端只负责说人话）：
+ * `RESOLVED` 才允许说「这条处置消解了它」；`NO_CROSS_EITHER_WAY` 必须明说「本窗本来就不越线」——
+ * 否则读侧会把「本来没事」讲成「我解决了」，那是**替处置邀功**，比不显示更坏。
+ * ⚠ 方案名走台账自带的 `planName`（执行器写入时取自方案库），**不再多打一次
+ * `mitigation_select`**；台账没有名字（老记录）就显 `planKey` 本身，不编名字 ——
+ * 与 `CardAdoptedLine` 同一条纪律：回落必须看得出是回落（`data-name-resolved`）。
+ */
+function AdoptionLedgerPopover({ ledger }: { ledger: NonNullable<RiskTimelineOutput["adoptionLedger"]> }) {
+  const stateNote = (e: NonNullable<RiskTimelineOutput["adoptionLedger"]>[number]): string => {
+    if (e.state === "RESOLVED") return `已消解：本窗不再越线（不采纳则 T+${e.wouldCrossDay} 越线）`;
+    if (e.state === "STILL_CROSSING") return `仍越线 T+${e.crossDay}（不采纳则 T+${e.wouldCrossDay}）—— 生效了但不够`;
+    return "本窗本来就不越线 —— 这条处置不记功（诚实位）";
+  };
+  return (
+    <InfoPopover topic="已采纳处置台账" testId="risk-adoption-ledger" align="right">
+      <div data-testid="risk-adoption-ledger-body" data-count={ledger.length}>
+        <div>
+          台账来自对象 <code>AdoptedMitigation</code>（两级审批通过后由 <code>adopt_mitigation</code> 写入·租户级）。
+          它<b>不随风险卡消失</b>：一条处置把越线彻底消解掉时卡片会下榜，而这里的记录仍在 —— 那正是本层存在的理由。
+        </div>
+        {ledger.map((e) => (
+          <div
+            key={e.adoptionId}
+            data-testid={`risk-adoption-row-${e.baseId}-${e.factor}`}
+            data-state={e.state}
+            data-onboard={e.onBoard ? "1" : "0"}
+            data-plan={e.planKey}
+            data-name-resolved={e.planName ? "1" : "0"}
+            style={{ marginTop: 8, paddingTop: 7, borderTop: "1px solid var(--line2)" }}
+          >
+            <div>
+              <b>{e.base} · {e.factor}</b>　已采纳「{e.planName || e.planKey}」
+            </div>
+            <div>消解 {e.eff} 点 · T+{e.tn} 起效 · 采纳日 {e.adoptedAt || "（台账未记）"}</div>
+            <div>{stateNote(e)}</div>
+            <div>
+              峰值 {e.peakWithout} → {e.peak}（实测削峰 {e.peakCut}）·
+              {e.onBoard ? " 该卡仍在看板上" : " 该卡已下榜（不再是当前风险）"}
+            </div>
+          </div>
+        ))}
+      </div>
+    </InfoPopover>
   );
 }
 
