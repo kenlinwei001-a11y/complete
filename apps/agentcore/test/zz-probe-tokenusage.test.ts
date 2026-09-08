@@ -20,9 +20,11 @@ const USAGE = { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 };
 
 const sse = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
 
-async function startStub(text: string): Promise<{ url: string; close: () => Promise<void> }> {
+async function startStub(text: string): Promise<{ url: string; count: () => number; close: () => Promise<void> }> {
   const base = { id: "chatcmpl-stub", object: "chat.completion.chunk", created: 1, model: MODEL_ID };
+  let hits = 0;
   const server: Server = createServer((req, res) => {
+    if (req.method === "POST" && req.url?.endsWith("/chat/completions")) hits += 1;
     if (req.method !== "POST" || !req.url?.endsWith("/chat/completions")) {
       res.writeHead(404).end();
       return;
@@ -30,6 +32,11 @@ async function startStub(text: string): Promise<{ url: string; close: () => Prom
     let raw = "";
     req.on("data", (c) => (raw += c));
     req.on("end", () => {
+      // 与仓内 startStubOpenAi 同形态：剧本用尽 ⇒ 500（这就是 stub 臂的终止机制）
+      if (hits > 1) {
+        res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: { message: "stub script exhausted" } }));
+        return;
+      }
       let out = sse({
         ...base,
         choices: [
@@ -65,7 +72,7 @@ async function startStub(text: string): Promise<{ url: string; close: () => Prom
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const { port } = server.address() as AddressInfo;
-  return { url: `http://127.0.0.1:${port}`, close: () => new Promise<void>((r) => server.close(() => r())) };
+  return { url: `http://127.0.0.1:${port}`, count: () => hits, close: () => new Promise<void>((r) => server.close(() => r())) };
 }
 
 describe("PROBE · stub 是否也满足 L2.A1/A4 的「真跳证据」断言", () => {
@@ -104,7 +111,8 @@ describe("PROBE · stub 是否也满足 L2.A1/A4 的「真跳证据」断言", (
           },
         );
         const stats = out.result.ok ? out.result.stats : undefined;
-        console.info(`[PROBE] result.ok=${out.result.ok}`);
+        console.info(`[PROBE] result.ok=${out.result.ok} stubRequests=${stub.count()}`);
+        console.info(`[PROBE] eventCount=${out.events.length}`);
         console.info(`[PROBE] stats.tokenUsage=${JSON.stringify(stats?.tokenUsage)}`);
         console.info(
           `[PROBE] L2.A1/A4 断言在 stub 上的取值: uncachedInputTokens>0 => ${Number(stats?.tokenUsage?.uncachedInputTokens) > 0} ; outputTokens>0 => ${Number(stats?.tokenUsage?.outputTokens) > 0}`,
