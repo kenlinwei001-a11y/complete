@@ -260,6 +260,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const cards = data.cards;
   // 展示序（不动 data.cards 本身）：exposureOrder 缺席 → 自动回落数组序，并在下方 chip 处说明为什么。
   const hasExposureOrder = (data.exposureOrder?.length ?? 0) > 0;
+  // WO-ADOPTION-SURVIVES-FIX：采纳台账（引擎投影·**与 cards 平行的另一条读侧**）。
+  // 它的存活不依赖 `cards` 里有没有对应那张卡 —— 这正是本单要治的耦合。
+  const adoptionLedger = data.adoptionLedger ?? [];
   const displayCards = orderMode === "exposure" && hasExposureOrder ? orderCardsByExposure(cards, data.exposureOrder) : cards;
 
   // 逐基地取 bottleneck 行（base 名直配·mock/real 同为中文名）。
@@ -356,6 +359,16 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                 载荷直传 `data`（`RiskTimelineOutputSchema.parse` 的产物，四个键都在），
                 不重定义契约类型（R1 contracts-only-shared）。 */}
             <ScopeHonestyBadge payload={data} testId="risk-timeline" />
+            {/* WO-ADOPTION-SURVIVES-FIX · 「已处置 N 条」——**采纳台账的第一层可见记号**。
+                ⚠ 刻意挂在这条**结果元信息行**上，而不是另起一块：
+                ① 语义 —— 它与窗口/阈值/作用域同属「这一次推演的元信息 + 诚实位」，
+                   而且它正是「常州为什么不在榜上了」这个问题的答案所在；
+                ② 分层 —— 规范 §1「第一层只放结论」：这里只留一个**数**，逐条明细全在 `?` 浮层里。
+                键缺席（`adoptionLedger === undefined`）⇒ 本次没有任何 ACTIVE 采纳**或**后端是旧版，
+                两态都渲染成"什么都不显示"是可以的：此时屏上本就没有任何采纳可谈。
+                ⚠ 它**不进 `cards[]`**，KPI「风险基地」仍数 `cards.length` —— 已消解的问题不许重新报警。 */}
+            {adoptionLedger.length > 0 && ` · 已处置 ${adoptionLedger.length} 条`}
+            {adoptionLedger.length > 0 && <AdoptionLedgerPopover ledger={adoptionLedger} />}
           </div>
         </div>
         <div className={styles.rkHsel}>
