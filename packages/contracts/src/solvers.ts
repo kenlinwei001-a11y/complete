@@ -376,6 +376,47 @@ export const RiskTimelineOutputSchema = z.object({
   scopeBaseId: z.string().optional(),
   scopeBaseName: z.string().optional(),
   scopeNote: z.string().optional(),
+  /**
+   * WO-RISKBOARD-TRUNCATION（加性·optional）：**越线但未上榜**的基地 —— `cards` 上面那条 `.max(8)`
+   * 不是"全网只有 8 个基地越线"，而是"越线的那些里排前 8 的 8 个"，**两者在屏上原本无法区分**。
+   *
+   * 病历：采纳 `常州·瓶颈工序·reroute` 后常州峰值 98 → 97.9531，比成都 97.9935 低 0.047 个张力点 ⇒
+   * 掉出前 8 ⇒ 卡片从回包消失，**而它的 `crossDay` 仍是 1**（第 1 天就越线，一次都没被消解）。
+   * 「常州不在风险榜」于是被读成「常州没事了」—— 用户会据此不派人去常州。
+   *
+   * 与 `kit_readiness` 的 `orderPoolTotal`/`sampled` 是同一个命题（`ScopeHonesty.tsx` 规矩③
+   * 「抽样必须上屏 …… 不显示这两个数，那个数就是在误导」），故同样**必须在契约里显式声明**：
+   * zod 默认 strip 未声明键，前端必经 `RiskTimelineOutputSchema.parse` ⇒ 服务端写了、契约吞了、
+   * 屏上永远拿不到。**加性字段必须同时在契约里声明，否则等于没加。**
+   *
+   * ⚠ **仅在真被截断时下发**（没截断则整键缺席，不是 `count: 0`）：没有被藏起来的东西时，
+   * 多出来的那句话本身就是噪声；缺省态回包与本诚实位引入前**逐字节相同**。
+   * 守恒：`crossingTotal === shownCrossing + count`，且 `count === bases.length`（数与名单同一出处·不会打架）。
+   */
+  unlistedCrossings: z
+    .object({
+      /** 越线但未上榜的基地数（= `bases.length` 派生·不另算）。 */
+      count: z.number().int().nonnegative(),
+      /** 本次推演里越线（`crossDay !== null`）的基地总数。 */
+      crossingTotal: z.number().int().nonnegative(),
+      /** 榜上**越线**的卡数（≠ 榜上卡数：显式点名基地时榜上可能混有不越线的 forced 卡）。 */
+      shownCrossing: z.number().int().nonnegative(),
+      /** 看板容量（求解器参数 `maxCards`）。 */
+      cap: z.number().int().positive(),
+      /** 被截掉的越线基地名单（承 `cards` 的既有全序·同输入同序）。 */
+      bases: z.array(
+        z.object({
+          base: z.string(),
+          baseId: z.string(),
+          factor: z.string(),
+          crossDay: z.number().int(),
+          peak: z.number(),
+        }),
+      ),
+      /** 口径原文（前端一个字不编·直接上屏）。 */
+      note: z.string(),
+    })
+    .optional(),
 });
 export type RiskTimelineOutput = z.infer<typeof RiskTimelineOutputSchema>;
 
