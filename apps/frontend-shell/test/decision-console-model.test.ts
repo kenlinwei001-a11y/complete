@@ -1,0 +1,592 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { DRILL_EVENT_SPECS, drillStateEffectAbsolute, type DrillEventSpec, type DrillFinding, type DrillReport } from "@platform/contracts";
+import {
+  collectHonesty,
+  exposureTotals,
+  humanizeApiError,
+  impedimentSentence,
+  invariantNumbersNote,
+  SCREEN_NUMBER_PROVENANCE,
+  landingNoteFor,
+  needsLeafPick,
+  nothingMovedText,
+  orderedEvents,
+  planCategoryOf,
+  parseEmphasis,
+  scrubSourceRefs,
+  SOURCE_REF_MASK,
+  SOURCE_REF_MASK_BARE,
+  sortMitigations,
+  splitImpediments,
+  subjectIdFormFor,
+  subjectIsRead,
+  subjectScopeFor,
+  targetIdOf,
+  topCustomers,
+  type BaseCard,
+  type Mitigation,
+} from "@/views/sim/decisionConsoleModel";
+
+/**
+ * WO-DECISION-CONSOLE · 决策台纯函数层。
+ *
+ * ⚠ 这些用例**咬的是真回包的形状**，不是我自己编的样例：每个 fixture 都从
+ * 起真 datacore（seed 42 · demo 租户）的实测回包里逐字段抄下来的，并在注释里点名出处。
+ * 「测了函数」不等于「测了链路」—— 所以每条断言都写清它防的是屏上哪一句错话。
+ */
+
+// ── 实测 fixture（原文抄录）────────────────────────────────────────────────
+/** `POST /a/v1/solvers/chain_impediments/invoke` 里的两条（一条带候选、一条不带）。 */
+const IMPEDIMENTS_RAW = {
+  impediments: [
+    {
+      impedimentId: "imp_BOTTLENECK.CAPACITY.cross-segment-contention_changzhou",
+      kind: "BOTTLENECK",
+      severity: 100,
+      locus: { objectType: "Base", objectId: "changzhou", label: "常州" },
+      evidence: { ruleKey: "C34", metricValue: 3693.683654, threshold: 1760, unit: "套/日" },
+      dataMode: "SYNTHETIC",
+      candidates: [],
+      noCandidateReason: "枚举已跑完，有效候选 0 个（探了 10 个杠杆锚点 / 34 次试算），不足 2 个 ⇒ 构不成多方案对比，诚实不下发。",
+    },
+    {
+      impedimentId: "imp_BOTTLENECK.CAPACITY.line-util_LINE-WS-zigong-grading",
+      kind: "BOTTLENECK",
+      severity: 0,
+      locus: { objectType: "Line", objectId: "LINE-WS-zigong-grading", label: "自贡分容线" },
+      evidence: { ruleKey: "C05", metricValue: 95.358, threshold: 95, unit: "%" },
+      dataMode: "PARTIAL",
+      candidates: [{ candidateId: "a" }, { candidateId: "b" }, { candidateId: "c" }, { candidateId: "d" }],
+      noCandidateReason: null,
+    },
+  ],
+};
+
+/** `risk_timeline` 的两张卡（跨基地订单 `SO-3402` 在两张卡上各出现一次 —— 双计的成因）。 */
+const CARDS: BaseCard[] = [
+  {
+    baseId: "changzhou",
+    baseName: "常州",
+    factor: "瓶颈工序",
+    status: "OK",
+    revenueYi: 3,
+    orderCount: 2,
+    customerCount: 2,
+    orders: [
+      { so: "SO-3402", cust: "长安汽车", model: "方形-LFP", qty: 14518, due: "2026-07-02", dueDay: 22, revenueYi: 2, seg: "乘用车" },
+      { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 7259, due: "2026-06-24", dueDay: 14, revenueYi: 1, seg: "乘用车" },
+    ],
+    doNothing: null,
+  },
+  {
+    baseId: "jinhua",
+    baseName: "金华",
+    factor: "瓶颈工序",
+    status: "OK",
+    revenueYi: 2,
+    orderCount: 1,
+    customerCount: 1,
+    orders: [
+      { so: "SO-3402", cust: "长安汽车", model: "方形-LFP", qty: 14518, due: "2026-07-02", dueDay: 22, revenueYi: 2, seg: "乘用车" },
+    ],
+    doNothing: null,
+  },
+];
+
+/** `battery.ts` 的 `risk.mitigations`，`risk_timeline` 原样下发。 */
+const LIBRARY: Record<string, Mitigation[]> = {
+  物料齐套: [
+    { key: "early_stock", name: "提前备料", eff: 12, tn: 2, cost: "中", risk: "低" },
+    { key: "alt_supplier", name: "备选供应商切换", eff: 9, tn: 5, cost: "高", risk: "中" },
+    { key: "air_freight", name: "空运补料", eff: 15, tn: 1, cost: "极高", risk: "低" },
+  ],
+  瓶颈工序: [
+    { key: "debottleneck", name: "瓶颈工序扩容", eff: 13, tn: 6, cost: "高", risk: "中" },
+    { key: "reroute", name: "工艺路线调整", eff: 9, tn: 3, cost: "中", risk: "中" },
+    { key: "outsource_step", name: "工序外协", eff: 10, tn: 4, cost: "高", risk: "高" },
+  ],
+};
+
+const specOf = (kind: string): DrillEventSpec => {
+  const s = DRILL_EVENT_SPECS.find((x) => x.kind === kind);
+  if (!s) throw new Error(`fixture 坏了：契约里没有 ${kind}`);
+  return s;
+};
+
+describe("① 事件主体：范围、id 形态、进不进算式", () => {
+  it("金丝雀：契约今天登记了 11 类事件（这个数变了下面的用例才有意义）", () => {
+    expect(DRILL_EVENT_SPECS.length).toBe(11);
+  });
+
+  it("500 张订单只能搜、不能铺（这是「筛选（共 11337 个落点）」那个病的对策）", () => {
+    for (const k of ["ORDER_RESCHEDULE", "ORDER_CANCEL", "ORDER_RELOCATE", "ORDER_REPRICE"]) {
+      const s = subjectScopeFor(k);
+      expect(s?.typeKey, k).toBe("Order");
+      expect(s?.mode, k).toBe("SEARCH");
+    }
+  });
+
+  it("候选少的一律铺，且**没有一个是 Order**（铺 500 行就是复发）", () => {
+    for (const k of ["ORDER_INSERT", "MATERIAL_DELAY", "MATERIAL_SHORTAGE", "MATERIAL_REPRICE", "EQUIPMENT_FAILURE", "CAPACITY_LOSS", "FORECAST_BIAS"]) {
+      const s = subjectScopeFor(k);
+      expect(s?.mode, k).toBe("LIST");
+      expect(s?.typeKey, k).not.toBe("Order");
+    }
+  });
+
+  it("设备故障是两级（基地 → 产线），两级各自 ≤20 行（13 / 每基地 10，实测）", () => {
+    const s = subjectScopeFor("EQUIPMENT_FAILURE");
+    expect(s?.typeKey).toBe("Base");
+    expect(s?.child?.typeKey).toBe("Line");
+    expect(s?.child?.filterParam).toBe("base");
+  });
+
+  /**
+   * 🔴 **COO 实测「设备故障必炸」的回归闸**（`events.N.targetObjectId: Too small`）。
+   *
+   * 这条断言咬的是「**两级选择器必须选到第二级**」，而**不是**「这类事件读不读主体」。
+   * 两者今天恰好同真 —— 本单给 11 类都补了落点 ⇒ `subjectIsRead` 几乎恒 `true` ⇒
+   * **旧的错写法今天也不会炸**。正因为如此，这条断言必须拿一个
+   * `subjectIsRead === false` 的样本去咬，否则它测不到自己要测的东西
+   * （「我用 X 当作 Y 的证据，而 X 并不度量 Y」的又一形态）。
+   */
+  it("两级选择器必须选到第二级 —— 判据是「有没有第二级」，不是「读不读主体」", () => {
+    const equip = subjectScopeFor("EQUIPMENT_FAILURE");
+    expect(equip?.child, "设备故障必须是两级，否则本条断言测的不是那个坑").toBeTruthy();
+    expect(needsLeafPick(equip, specOf("EQUIPMENT_FAILURE"))).toBe(true);
+
+    // 一级选择器 + 读主体 ⇒ 也要选（产能损失：同一个 13 基地下拉，但没有第二级）
+    expect(needsLeafPick(subjectScopeFor("CAPACITY_LOSS"), specOf("CAPACITY_LOSS"))).toBe(true);
+
+    /**
+     * ⛔ **决定性的一条**：`ORDER_INSERT` 是今天**唯一** `subjectIsRead === false` 的事件。
+     * 它只有一级选择器 ⇒ 本判据回 `false`（不强制选客户）。
+     * 而假如有人把判据写回「读不读主体」，再给某个不读主体的事件配上第二级选择器，
+     * 上面那条 `EQUIPMENT_FAILURE` 断言**照样绿**，只有下面这条构造样本会红 ——
+     * 所以两条都要在，缺一条这道闸就是装饰品。
+     */
+    expect(subjectIsRead(specOf("ORDER_INSERT")), "样本前提变了：需要另找一个不读主体的事件").toBe(false);
+    expect(needsLeafPick(subjectScopeFor("ORDER_INSERT"), specOf("ORDER_INSERT"))).toBe(false);
+    // 构造：不读主体 + 两级选择器 ⇒ 仍然必须选到叶子（这就是当初炸的那个组合）
+    const twoLevel = { ...subjectScopeFor("ORDER_INSERT")!, child: { typeKey: "Line", label: "哪条线", nameProp: "name", filterParam: "base" } };
+    expect(needsLeafPick(twoLevel, specOf("ORDER_INSERT")), "不读主体 + 两级 ⇒ 必须选叶子，否则 targetObjectId 会是空串").toBe(true);
+
+    // 没有选择器（手填兜底那一路）⇒ 不由这条判据管
+    expect(needsLeafPick(null, specOf("ORDER_INSERT"))).toBe(false);
+  });
+
+  it("带世界态落点的事件传**对象 id**，其余传**业务键**（实测：传反了后端回 not found）", () => {
+    expect(subjectIdFormFor(specOf("MATERIAL_REPRICE"))).toBe("OBJECT_ID");
+    expect(subjectIdFormFor(specOf("ORDER_RESCHEDULE"))).toBe("BUSINESS_KEY");
+    const order = { id: "obj_order_SO-3391", props: { so: "SO-3391" } };
+    expect(targetIdOf(specOf("ORDER_RESCHEDULE"), order, "so")).toBe("SO-3391");
+    const material = { id: "obj_material_pos_lfp", props: { matId: "pos_lfp" } };
+    expect(targetIdOf(specOf("MATERIAL_REPRICE"), material, "name")).toBe("obj_material_pos_lfp");
+  });
+
+  it("「你选的主体进不进算式」由 catalog 现算（进不了就必须在屏上说一句）", () => {
+    // 落点取自主体 ⇒ 进
+    expect(subjectIsRead(specOf("MATERIAL_REPRICE"))).toBe(true);
+    // 有 eventTarget 入参 ⇒ 进
+    expect(subjectIsRead(specOf("ORDER_RESCHEDULE"))).toBe(true);
+    /**
+     * ⚠ **这三条的期望值被 WO-EVENTS-WRITE-STATE 改了，不是测试写松了**：
+     * 旧版断言 `ORDER_CANCEL / CAPACITY_LOSS / EQUIPMENT_FAILURE` 恒 `false`，
+     * 那记录的是「这 10 类事件一格世界态都不写」那个**待修的状态**。
+     * 本单给它们补了落点（`Order.demandPressure` / `Base.loadIndex` / `Line.utilPressure`，
+     * 三个都是 `targetFrom: eventTarget`）⇒ 主体现在真的进算式了。
+     */
+    expect(subjectIsRead(specOf("ORDER_CANCEL"))).toBe(true);
+    expect(subjectIsRead(specOf("CAPACITY_LOSS"))).toBe(true);
+    expect(subjectIsRead(specOf("EQUIPMENT_FAILURE"))).toBe(true);
+    /**
+     * 唯一仍然 `false` 的那一类：临时插单的落点取自 `payload.modelId`，
+     * 你选的**客户**确实不进算式（本世界 `Customer` 在关系图上只有应收侧的出边）。
+     * 把它算成 true 就是让屏上说一句假话 —— COO 卡点 ⑤ 骂的正是这件事。
+     */
+    expect(subjectIsRead(specOf("ORDER_INSERT"))).toBe(false);
+    expect(landingNoteFor(specOf("ORDER_INSERT"))).toContain("不是你选的那个主体");
+  });
+
+  it("11 类事件**全部**声明了世界态落点，且落点状态变量各不相同地指到真格子上", () => {
+    // 金丝雀：先确认表读得到（读到 0 是「契约没加载」，不是「一个落点都没有」）
+    expect(DRILL_EVENT_SPECS.length).toBe(11);
+    const withLanding = DRILL_EVENT_SPECS.filter((s) => s.stateEffect !== null);
+    expect(withLanding.length, "有事件没有世界态落点 ⇒ 它加了也不会改变任何数").toBe(11);
+    for (const s of withLanding) {
+      expect(s.stateEffect!.objectType.length, `${s.kind} 落点类型为空`).toBeGreaterThan(0);
+      expect(s.stateEffect!.keyProp.length, `${s.kind} 没声明业务键属性 ⇒ 传业务键时解析不出落点`).toBeGreaterThan(0);
+      expect(s.stateEffect!.magnitudeBasis.length, `${s.kind} 的换算系数没有出处 ⇒ 屏后魔数`).toBeGreaterThan(0);
+      // 幅度键必须真的在 payloadKeys 里，且必填 —— 否则用户不填就静默无冲击
+      const pk = s.payloadKeys.find((k) => k.key === s.stateEffect!.magnitudeFrom);
+      expect(pk, `${s.kind} 的幅度键 ${s.stateEffect!.magnitudeFrom} 不在 payloadKeys 里`).toBeTruthy();
+      expect(pk!.required, `${s.kind} 的幅度键不是必填 ⇒ 不填就静默没有冲击`).toBe(true);
+      // 落点取自 payload 时，那个键也必须真的在表里且必填
+      if (s.stateEffect!.targetFrom === "payloadKey") {
+        const tk = s.payloadKeys.find((k) => k.key === s.stateEffect!.targetKey);
+        expect(tk, `${s.kind} 的落点键不在 payloadKeys 里`).toBeTruthy();
+        expect(tk!.required).toBe(true);
+      }
+    }
+  });
+
+  it("幅度是「全距的百分之几」，换算要现算 —— 全距为 0 时返回 null 而不是硬拿 1 顶上", () => {
+    // 100% 全距 × 实测全距 350,416,350 ⇒ 施加 350,416,350（不是 100）
+    expect(drillStateEffectAbsolute(100, 350416350)).toBe(350416350);
+    expect(drillStateEffectAbsolute(50, 200)).toBe(100);
+    // 负方向（订单取消）照样成立
+    expect(drillStateEffectAbsolute(-100, 200)).toBe(-200);
+    /**
+     * ⛔ 全距为 0 / 负 / 非有限 ⇒ `null`（调用方记「未能评估」）。
+     * 硬拿 1 当全距会让幅度变成一个与这个世界无关的数：屏上显示「打上了」而其实什么都没说。
+     */
+    expect(drillStateEffectAbsolute(100, 0)).toBeNull();
+    expect(drillStateEffectAbsolute(100, Number.NaN)).toBeNull();
+  });
+
+  it("报错要说人话，但认不出的形态必须原样透出（不许编一句「请重试」把路堵死）", () => {
+    const zod = humanizeApiError("ApiClientError: events.2.targetObjectId: Too small: expected string to have >=1 characters");
+    expect(zod.recognized).toBe(true);
+    expect(zod.text).toContain("第 3 件事"); // 0-based → 1-based
+    expect(zod.text).not.toContain("Too small");
+    expect(zod.text).toContain("第二级"); // 两级选择器那句提示
+    // 金丝雀：认得出的形态确实被认出来了（上面那条），认不出的必须说「认不出」
+    const unknown = humanizeApiError("ApiClientError: 某个从没见过的错 QQQ-9999");
+    expect(unknown.recognized).toBe(false);
+    expect(unknown.text).toContain("还没有对应的人话说明");
+  });
+});
+
+describe("② 卡点：必须分栏，且不许把「刚越线」写成「没越线」", () => {
+  it("18 条里带候选的进「能动」，其余进「只能盯着」——并排摆等于骗人说 N 个问题 N 套对策", () => {
+    const r = splitImpediments(IMPEDIMENTS_RAW);
+    expect(r.total).toBe(2);
+    expect(r.actionable.map((x) => x.label)).toEqual(["自贡分容线"]);
+    expect(r.watchOnly.map((x) => x.label)).toEqual(["常州"]);
+    // 引擎自陈的原文必须留着（点开要给）
+    expect(r.watchOnly[0]?.noCandidateReason).toContain("枚举已跑完");
+  });
+
+  it("95.358 vs 95 不许写成「95%，红线 95%（超红线 0%）」—— 那读起来像没问题", () => {
+    const s = impedimentSentence({
+      impedimentId: "x",
+      kind: "BOTTLENECK",
+      severity: 0,
+      locus: { objectType: "Line", objectId: "l", label: "自贡分容线" },
+      evidence: { metricValue: 95.358, threshold: 95, unit: "%" },
+      dataMode: "PARTIAL",
+    } as never);
+    expect(s).toContain("95.36%");
+    expect(s).toContain("红线 95.00%");
+    expect(s).not.toContain("超红线 0%");
+    expect(s).toContain("超红线 0.4%");
+  });
+
+  it("规则码 / 字段名不许进第一层那句话（R-UI-4）", () => {
+    const r = splitImpediments(IMPEDIMENTS_RAW);
+    for (const row of [...r.actionable, ...r.watchOnly]) {
+      expect(row.sentence).not.toContain("C34");
+      expect(row.sentence).not.toContain("C05");
+      expect(row.sentence).not.toContain("capacityDailyPacks");
+    }
+    // 但规则码本身要留在数据里（第二层要用）
+    expect(r.watchOnly[0]?.ruleKey).toBe("C34");
+  });
+
+  it("有本体类型中文名时挂上去（`pos_lfp_b2` 这种机器键单独上屏读不出是什么）", () => {
+    const r = splitImpediments(IMPEDIMENTS_RAW, new Map([["Base", "生产基地"], ["Line", "产线"]]));
+    expect(r.watchOnly[0]?.sentence.startsWith("生产基地 常州")).toBe(true);
+    expect(r.actionable[0]?.sentence.startsWith("产线 自贡分容线")).toBe(true);
+  });
+});
+
+describe("③ 敞口合计：按订单去重，绝不把各基地相加", () => {
+  it("跨基地订单只算一次（相加 5 亿 vs 去重 3 亿，差的就是被双计的那张）", () => {
+    const t = exposureTotals(CARDS);
+    expect(t.naiveSumYi).toBe(5);
+    expect(t.dedupedYi).toBe(3);
+    expect(t.orderCount).toBe(2);
+    expect(t.customerCount).toBe(2);
+  });
+});
+
+describe("④ 客户：订单聚合与客户档案按名字对齐，信用越线要标出来", () => {
+  it("合创汽车应收 7,916 > 额度 6,303 ⇒ overCredit（实测真值）", () => {
+    const rows = topCustomers(
+      [
+        { group: { cust: "合创汽车" }, metrics: { count_so: 3, sum_value: 1_000_000_000 } },
+        { group: { cust: "广汽埃安" }, metrics: { count_so: 223, sum_value: 22_334_317_368 } },
+      ],
+      [
+        { props: { custId: "cust_16", custName: "合创汽车", receivables: 7916, creditLimit: 6303, maxOverdueDays: 23 } },
+        { props: { custId: "cust_0", custName: "广汽埃安", receivables: 7530, creditLimit: 17539, maxOverdueDays: 24 } },
+      ],
+      50_725_911_442,
+      6,
+    );
+    // 金额降序
+    expect(rows[0]?.custName).toBe("广汽埃安");
+    expect(rows[0]?.sharePct).toBeCloseTo(44.0, 0);
+    const hc = rows.find((r) => r.custName === "合创汽车");
+    expect(hc?.overCredit).toBe(true);
+    expect(rows[0]?.overCredit).toBe(false);
+  });
+});
+
+describe("⑤ 方案：类别 join 在基地卡上，排序不推荐", () => {
+  it("卡片的 factor 必须命中方案库的键，命不中就诚实返回 null（不硬凑）", () => {
+    expect(planCategoryOf(CARDS[0]!, LIBRARY)).toBe("瓶颈工序");
+    expect(planCategoryOf({ ...CARDS[0]!, factor: "查无此类" }, LIBRARY)).toBeNull();
+    expect(planCategoryOf(null, LIBRARY)).toBeNull();
+  });
+
+  it("按见效天 / 代价 / 风险换序，三种序互不相同（否则「可点换序」是装饰）", () => {
+    const byTn = sortMitigations(LIBRARY.物料齐套!, "tn").map((m) => m.key);
+    const byCost = sortMitigations(LIBRARY.物料齐套!, "cost").map((m) => m.key);
+    const byRisk = sortMitigations(LIBRARY.物料齐套!, "risk").map((m) => m.key);
+    expect(byTn).toEqual(["air_freight", "early_stock", "alt_supplier"]);
+    expect(byCost).toEqual(["early_stock", "alt_supplier", "air_freight"]);
+    expect(byRisk[byRisk.length - 1]).toBe("alt_supplier"); // 唯一的「中」风险排最后
+    expect(byTn).not.toEqual(byCost);
+  });
+
+  it("不认识的档位排最后，**不许**当成「低」（那就是「绝不许填低」的另一种犯法）", () => {
+    const withUnknown: Mitigation[] = [
+      { key: "unknown", name: "未登记档位", eff: 1, tn: 9, cost: "未知", risk: "未知" },
+      ...LIBRARY.物料齐套!,
+    ];
+    expect(sortMitigations(withUnknown, "cost").at(-1)?.key).toBe("unknown");
+    expect(sortMitigations(withUnknown, "risk").at(-1)?.key).toBe("unknown");
+  });
+});
+
+describe("⑥ 事件顺序线：去重、限窗、标估", () => {
+  const finding = (when: number | null, label: string, dataMode: string): DrillFinding =>
+    ({
+      key: `k-${label}-${when}`,
+      kind: "卡点",
+      severity: 90,
+      where: { objectType: "Base", objectId: "b", label },
+      when,
+      why: "越过阈值 85",
+      source: { solverKey: "risk_timeline", dataMode, provenance: {} },
+      reconciled: null,
+    }) as DrillFinding;
+
+  it("同一条被两个事件各路由一次 ⇒ 只出现一次（实测 risk_timeline 会回两遍）", () => {
+    const rows = orderedEvents([finding(1, "常州·瓶颈工序", "LIVE"), finding(1, "常州·瓶颈工序", "LIVE")], [], 30);
+    expect(rows.length).toBe(1);
+  });
+
+  it("窗外的不进线；订单晚到的按到期日排，且一律标估（引擎自陈是 hash 派生）", () => {
+    const rows = orderedEvents(
+      [finding(1, "常州·瓶颈工序", "LIVE"), finding(99, "窗外的", "LIVE")],
+      [
+        { so: "SO-3391", dueDay: 14, delayDays: 4, onTime: false },
+        { so: "SO-OK", dueDay: 5, delayDays: 0, onTime: true },
+        { so: "SO-OUT", dueDay: 90, delayDays: 3, onTime: false },
+      ],
+      30,
+    );
+    expect(rows.map((r) => r.day)).toEqual([1, 14]);
+    expect(rows.find((r) => r.kind === "ORDER")?.estimated).toBe(true);
+    // LIVE 的结论不标估
+    expect(rows.find((r) => r.kind === "RISK")?.estimated).toBe(false);
+  });
+});
+
+describe("⑦ 诚实位：三态分得开", () => {
+  const baseReport = (over: Partial<DrillReport>): DrillReport =>
+    ({
+      worldId: "w",
+      forkedFromStateId: null,
+      horizonDays: 30,
+      tickDays: 1,
+      ticks: 30,
+      events: [],
+      findings: [],
+      totalByKind: {},
+      truncated: false,
+      appliedLimitPerKind: 50,
+      degraded: [],
+      appliedStateEffects: [],
+      solverRuns: [],
+      summary: { allFailed: false, trustworthy: false, dataMode: "PARTIAL", text: "" },
+      ...over,
+    }) as DrillReport;
+
+  it("「算完了一项都没动」与「没算」是两句话（引擎那句克制要原样传到屏上）", () => {
+    expect(nothingMovedText(baseReport({ totalByKind: {} }))).toContain("比过了，一项都没动");
+    expect(nothingMovedText(baseReport({ totalByKind: { 卡点: 3 } }))).toBeNull();
+    expect(nothingMovedText(baseReport({ summary: { allFailed: true, trustworthy: false, dataMode: "EMPTY", text: "" } }))).toBeNull();
+    expect(nothingMovedText(null)).toBeNull();
+  });
+
+  it("截断、没打上的冲击、跑不通的算、不读主体的事件，四类都要进页脚（缺一条就是静默降层）", () => {
+    const notes = collectHonesty({
+      report: baseReport({
+        truncated: true,
+        totalByKind: { 卡点: 383, 堵点: 24, 脆弱点: 368 },
+        summary: { allFailed: false, trustworthy: false, dataMode: "PARTIAL", text: "本次演习扫出 775 条结论" },
+        appliedStateEffects: [
+          { eventKind: "MATERIAL_REPRICE", targetObjectId: "obj_base_changzhou", targetStateVar: "priceShock", mode: "delta", magnitude: 15, startTick: 4, applied: false, rawMagnitude: 15, magnitudeBasis: "幅度键本身即百分点，1:1 不换算", targetLabel: "常州", rangePct: 15, observedRange: 100, downstream: ["Model.costPressure ×0.65"] },
+        ],
+        solverRuns: [{ solverKey: "order_fullchain", eventKind: "MATERIAL_DELAY", ok: false, dataMode: "UNDECLARED", error: "order obj_material_pos_lfp not found", findingCount: 1 }],
+        /**
+         * ⚠ 事件从 `CAPACITY_LOSS` 换成 `ORDER_INSERT`（WO-EVENTS-WRITE-STATE）：
+         * 本单给产能损失补了 `Base.loadIndex` 落点（`targetFrom: eventTarget`）⇒ 它现在**读主体**了，
+         * 拿它当「不读主体」的样本已经名不副实。今天唯一仍然不读主体的是「临时插单」——
+         * 它的落点取自 `payload.modelId`（型号），客户确实不进算式（本世界 `Customer` 没有需求侧出边）。
+         */
+        events: [{ kind: "ORDER_INSERT", targetObjectId: "obj_customer_cust_16", payload: { qtyDelta: 20000, modelId: "4680-NCM" }, effectiveDay: 0 }],
+      }),
+      specsByKind: new Map(DRILL_EVENT_SPECS.map((s) => [s.kind as string, s])),
+      impedimentsRaw: null,
+      financeNotes: ["收入行**故意不动**：…这是诚实缺席，不是「收入不受影响」。"],
+      riskDataMode: "PARTIAL",
+    });
+    const joined = notes.map((n) => `${n.text}||${n.raw}`).join("\n");
+    expect(joined).toContain("775");
+    expect(joined).toContain("没能打到世界上");
+    expect(joined).toContain("order obj_material_pos_lfp not found");
+    expect(joined).toContain("不读你选的那个主体");
+    expect(joined).toContain("诚实缺席");
+    expect(joined).toContain("模拟数据");
+  });
+
+  it("引擎原文里的源码文件名/行号要隐去，其余一字不改（R-UI-4 × 诚实位不许删，两条都得守）", () => {
+    // 实测原文（`finance_world_projection.notes[0]`）里就带着 `seed.ts`
+    const raw =
+      "收入行**故意不动**：世界态的需求侧变量与 FinancePlan 收入行之间今天**没有任何传导规则**（`seed.ts` 13 条里六方向全查过）。凭空折算一个收入弹性就是引擎自己发明一个系数。";
+    const out = scrubSourceRefs(raw);
+    expect(out).not.toContain("seed.ts");
+    /*
+     * ⚠ WO-CONSOLE-BLOCKERS · **本条断言改过，改的是期望不是实现** ——
+     * UX 第 7 轮在真屏上抓到 `（（源码出处已按界面规范隐去） 13 条…`：遮蔽词自带一对全角括号，
+     * 而被遮的源码坐标本来就写在括号里 ⇒ 括号叠括号。修法是让遮蔽词**看上下文选形态**。
+     * 这一句原来断言的是 `toContain(SOURCE_REF_MASK)`（带括号那支）——
+     * 它**当时就是绿的，而屏上正躺着那个 `（（`**：断言咬的是"替换发生了没有"，
+     * 不是"替换出来的那句读不读得通"。形态照铁律 0.6：
+     * 「我用『遮蔽词出现了』当作『这句话没被替换搞坏』的证据，而前者并不度量后者。」
+     */
+    expect(out).toContain(SOURCE_REF_MASK_BARE);
+    expect(out).not.toContain("（（"); // ← 这一条才是那次事故的判据
+    // 落点**不在**括号里时，仍用自带括号的那支（不然那句话会缺标点）
+    const standalone = scrubSourceRefs("这条判据的出处见 seed.ts 里那一段。");
+    expect(standalone).toContain(SOURCE_REF_MASK);
+    // 其余一字不改
+    expect(out).toContain("凭空折算一个收入弹性就是引擎自己发明一个系数");
+    expect(out).toContain("13 条里六方向全查过");
+    // 带行号的形态也要吃掉
+    expect(scrubSourceRefs("契约 gap-attribution.ts:30「\"*\" 表示按类型聚合」")).not.toMatch(/\.ts:\d+/);
+    // 金丝雀：不含源码坐标的原文**一个字节都不动**
+    const clean = "枚举已跑完，有效候选 0 个（探了 10 个杠杆锚点 / 34 次试算），不足 2 个 ⇒ 构不成多方案对比，诚实不下发。";
+    expect(scrubSourceRefs(clean)).toBe(clean);
+  });
+
+  /**
+   * WO-CONSOLE-BLOCKERS · B2：引擎原文是 markdown，渲染方却按纯文本直出 ⇒ `**…**` 上屏。
+   * 这里咬的是**分段函数**；「屏上 0 个星号」那一半由真浏览器扫描量（见交付报告）。
+   */
+  it("引擎原文里的 markdown 强调被切成段（星号不上屏、字一个不少）", () => {
+    // 金丝雀：函数认得出一个**确定存在**的强调段
+    const segs = parseEmphasis("收入行**故意不动**：今天**没有任何传导规则**。");
+    expect(segs.filter((s) => s.strong).map((s) => s.text)).toEqual(["故意不动", "没有任何传导规则"]);
+    // 字一个不少（拼回去 == 去掉星号的原文）
+    expect(segs.map((s) => s.text).join("")).toBe("收入行故意不动：今天没有任何传导规则。");
+    // 反向金丝雀：没有强调标记的原文原样一段，不许凭空切
+    const plain = "这是**不成对的原文";
+    expect(parseEmphasis(plain)).toEqual([{ text: plain, strong: false }]);
+    // 落单的星号不猜作者意图（只认成对）
+    expect(parseEmphasis("a * b").every((s) => !s.strong)).toBe(true);
+  });
+
+  /**
+   * 🔴 **「屏上哪几个数不吃你加的事」这张声明表，必须与那段 `Promise.all` 的实参对得上。**
+   *
+   * ── 为什么要这条接缝断言（本单最后一处「装作会算」的守门人）─────────────────
+   * COO 实测：把碳酸锂涨幅从 +15% 拉到 +100%（6.7 倍），
+   * 「63 亿 / 53 张单 / 81 万套 / 18 处卡点 / 26 张晚单」**一个数都没动**。
+   * 追下去不是 bug 是结构：这几个数来自 `risk_timeline` / `chain_impediments`，
+   * 而本页给它们的实参实测是 `{}` 与 `{scope:{}}` —— **一个 event 都没传进去**，
+   * 结构上不可能变。真正的错在**抬头那行字**把它们归因给了用户的输入。
+   *
+   * `invariantNumbersNote` 现在把这件事写到屏上。但那句话**今天正确不等于明天正确**：
+   * 哪天有人给 `risk_timeline` 接上事件入参，声明表还写着「不吃事件」⇒
+   * 一句当时正确的话就**静默变成假话**，而且没有任何东西会红。
+   * ⇒ 判据必须落在**源码里那段实参**上，由机器每次跑测试时现读现比。
+   *
+   * ⚠ 金丝雀与主逻辑**共用同一个抽取函数**（不许各抄一份正则）——
+   *   抄了就是装饰品：改主正则时金丝雀拿旧的去测、照样绿。
+   */
+  it("接缝：声明「不吃事件」的那几路，源码实参里就不许出现 events（含金丝雀自证）", () => {
+    const viewSrc = readFileSync(
+      join(process.cwd(), "src", "views", "sim", "DecisionConsoleView.tsx"),
+      "utf8",
+    );
+    /** 抽出 `timed("<label>", "<note>", <expr>)` 里那一段实参 —— 主逻辑与金丝雀共用**这一个**实现。 */
+    const argsOfRoute = (route: string): string | null => {
+      for (const line of viewSrc.split("\n")) {
+        if (!line.includes(route)) continue;
+        if (!line.includes("timed(")) continue;
+        // 第三个实参 = 最后一个逗号之后到行尾（本页每条 `timed(...)` 都写在一行里）
+        const i = line.indexOf(route);
+        const rest = line.slice(i + route.length);
+        const j = rest.indexOf(",", rest.indexOf(",") + 1); // 跳过 note 那个实参
+        return j < 0 ? rest : rest.slice(j);
+      }
+      return null;
+    };
+
+    // ── 金丝雀：吃事件的那一路**必须**被抽到，且实参里**必须**看得见 events ──
+    const eating = SCREEN_NUMBER_PROVENANCE.filter((p) => p.consumesEvents);
+    expect(eating.length).toBeGreaterThan(0);
+    const canaryArgs = argsOfRoute(eating[0]!.route);
+    expect(canaryArgs, `金丝雀抽不到「${eating[0]!.route}」那一路 ⇒ 抽取坏了，下面的「没有 events」全部不可信`).not.toBeNull();
+    expect(canaryArgs!, "金丝雀：真吃事件的那一路，实参里必须有 events").toContain("events");
+
+    // ── 主断言：声明「不吃事件」的那几路，实参里不许出现 events ──
+    for (const p of SCREEN_NUMBER_PROVENANCE.filter((x) => !x.consumesEvents)) {
+      const args = argsOfRoute(p.route);
+      if (args === null) continue; // 那一路不在这段 Promise.all 里（如「演习里的供需缺口归因」）
+      expect(
+        args,
+        `「${p.label}」声明为不吃事件，但它那一路的实参里出现了 events ——` +
+          `要么这行声明过期了（去改 SCREEN_NUMBER_PROVENANCE），要么屏上那句话已经变成假话`,
+      ).not.toContain("events");
+    }
+  });
+
+  it("屏上那句话必须点名「哪几个不变、哪个才变」，且没算过时不吓唬人", () => {
+    expect(invariantNumbersNote(null)).toBeNull();
+    const note = invariantNumbersNote(baseReport({}));
+    expect(note).not.toBeNull();
+    // 不许只说「有些数不变」就完事 —— 必须把会变的那个指出来
+    expect(note!.movingLabels.length).toBeGreaterThan(0);
+    expect(note!.frozenLabels.length).toBeGreaterThan(0);
+    for (const m of note!.movingLabels) expect(note!.text).toContain(m);
+    // 第二层要给出处与「它其实在回答什么」，不许只说「它不动」
+    expect(note!.raw).toContain("实参里**没有**你加的事件");
+    expect(note!.raw).toContain("它其实在回答");
+    // 实测数字要在第二层留底（COO 那次对照实验的原始读数）
+    expect(note!.raw).toContain("0 条改变 → 104 条改变");
+  });
+
+  it("金丝雀：全绿的一次演习只留必要的几条，不会凭空长出「没打上」这种条目", () => {
+    const notes = collectHonesty({
+      report: baseReport({
+        appliedStateEffects: [
+          { eventKind: "MATERIAL_REPRICE", targetObjectId: "obj_material_pos_lfp", targetStateVar: "priceShock", mode: "delta", magnitude: 15, startTick: 4, applied: true, rawMagnitude: 15, magnitudeBasis: "幅度键本身即百分点，1:1 不换算", targetLabel: "磷酸铁锂正极", rangePct: 15, observedRange: 100, downstream: ["Model.costPressure ×0.65"] },
+        ],
+        events: [{ kind: "MATERIAL_REPRICE", targetObjectId: "obj_material_pos_lfp", payload: { pctChange: 15 }, effectiveDay: 0 }],
+      }),
+      specsByKind: new Map(DRILL_EVENT_SPECS.map((s) => [s.kind as string, s])),
+      impedimentsRaw: null,
+      financeNotes: [],
+      riskDataMode: "LIVE",
+    });
+    expect(notes.length).toBe(0);
+  });
+});

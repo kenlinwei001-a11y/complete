@@ -7,7 +7,7 @@ import type { ViewRendererProps } from "./registry";
 import zh from "@/locales/zh";
 
 /**
- * 运营回顾（renderer=review，运营态出厂配置增量 §4.2）——「越用越准」的证据链页面。
+ * 运营复盘（renderer=review，运营态出厂配置增量 §4.2）——「越用越准」的证据链页面。
  * 全量消费 GET /a/v1/history/bundle（只读历史）：
  * MAPE 收敛曲线（危机回弹点标注）· 参数校准史（含被拒及方法学原因）· S&OP 版本史
  * · Action 审计史（分页）· 规则演进 · 意图孵化记录。
@@ -27,7 +27,7 @@ export default function ReviewView(_props: ViewRendererProps) {
   return (
     <div data-testid="review-view" style={{ display: "grid", gap: 18 }}>
       <header style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-        <h2 style={{ margin: 0 }}>运营回顾 · 已运行 12 个月</h2>
+        <h2 style={{ margin: 0 }}>运营复盘 · 已运行 12 个月</h2>
         <span className="badge" title={`回放 ${data.generatedFrom.replayFrom} ~ ${data.generatedFrom.replayTo} · seed ${data.generatedFrom.seed}`}>
           {data.generatedFrom.replayFrom} ~ {data.generatedFrom.replayTo}
         </span>

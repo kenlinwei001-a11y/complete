@@ -22,7 +22,11 @@ describe("F17 · S&OP 月度平衡台（sop-balance）", () => {
     await user.click(await screen.findByTestId("sop-create"));
     await waitFor(() => expect(screen.getByTestId("sop-detail-status")).toHaveTextContent("DRAFT"));
     expect(screen.getByTestId("sop-kpi-bar")).toBeInTheDocument();
-    expect(screen.getByTestId("sop-kpi-prov-gap")).toHaveTextContent("公式");
+    // 缺口卡走共享六要素溯源（悬浮即弹：推导公式 + 关联规则两跳）
+    await user.hover(screen.getByTestId("prov-v-sopkpi-gap"));
+    const gapTip = await screen.findByTestId("prov-tip");
+    expect(gapTip).toHaveTextContent("缺口 = 需求P50 − 可供给");
+    await user.unhover(screen.getByTestId("prov-v-sopkpi-gap"));
     expect(screen.getByTestId("sop-version-badge")).toHaveTextContent("V1 评审中");
 
     // ① 产品评审 → IN_REVIEW
@@ -30,11 +34,13 @@ describe("F17 · S&OP 月度平衡台（sop-balance）", () => {
     await screen.findByTestId("sop-s1-table");
     await waitFor(() => expect(screen.getByTestId("sop-detail-status")).toHaveTextContent("IN_REVIEW"));
 
-    // ② 需求评审：商用车 −11.8%（>±10%）→ 行尾 C21 chip
+    // ② 需求评审：商用车 +15.9%（滚动 5.18 vs 目标 4.47 万套/**月**，实绩偏强上修 >±10%）→ 行尾 C21 chip
+    // WO-MOCK-SCALE-TRUTH：口径从年改月（目标 34.1→4.47），偏差**比例**刻意原样保留，
+    // 只因两位小数下 (5.18−4.47)/4.47 = 15.88% 进位到 15.9%（旧年口径是 15.84% → 15.8%）。
     await user.click(screen.getByTestId("sop-step-chip-2"));
     await user.click(await screen.findByTestId("sop-run-2"));
     const dvCom = await screen.findByTestId("sop-dv-com");
-    expect(dvCom).toHaveTextContent("-11.8%");
+    expect(dvCom).toHaveTextContent("15.9%");
     const c21 = screen.getByTestId("sop-c21-chip-com");
     expect(c21).toHaveTextContent("C21 差异提报");
 
@@ -45,10 +51,12 @@ describe("F17 · S&OP 月度平衡台（sop-balance）", () => {
     expect(agenda0).toHaveAttribute("data-highlight", "1");
     expect(agenda0).toHaveTextContent("商用车");
 
-    // ③ 供应评审：缺口 2.5 > 2 红标
+    // ③ 供应评审：需求 28.28（三段滚动合计） − 供给 22.6839（Σ 13 基地月产能） = 缺口 5.5961 > 2 红标。
+    // 供给基线 22.6839 与真后端 `sop.ts step3` 的 `sup` 字节一致（旧 mock 是年量级 367.9，差 16.2 倍）。
     await user.click(screen.getByTestId("sop-step-chip-3"));
     await user.click(await screen.findByTestId("sop-run-3"));
-    expect(await screen.findByTestId("sop-gap")).toHaveTextContent("2.5");
+    const gapEl = await screen.findByTestId("sop-gap");
+    expect(gapEl).toHaveTextContent("需求 28.3 − 供给 22.7 = 缺口 5.6 万套/月");
 
     // ④ 现金垫 40 < 50 → 不通过 → ⑤入口 chip 禁用 + 原因 tooltip
     await user.click(screen.getByTestId("sop-step-chip-4"));

@@ -1,0 +1,485 @@
+{
+  "landedAfterLogin": "http://127.0.0.1:5173/",
+  "shotLogin": "01-home-after-login.png",
+  "noMock": {
+    "ok": true,
+    "realHits": 5,
+    "sample": [
+      "200 POST http://127.0.0.1:4001/a/v1/auth/login",
+      "200 GET http://127.0.0.1:4001/a/v1/me/workspace",
+      "200 GET http://127.0.0.1:4001/a/v1/history/watermark",
+      "200 GET http://127.0.0.1:4001/a/v1/data-health",
+      "200 GET http://127.0.0.1:4002/b/v1/scenarios"
+    ]
+  },
+  "home": {
+    "hint": "一键启动高频场景直达推演，或进入业务视图。按 ⌘K 随处快搜场景。",
+    "sectionTitles": [
+      "⚡ 高频场景",
+      "业务视图"
+    ],
+    "hot": [
+      {
+        "testid": "home-scenario-S02",
+        "text": "交期风险与受影响订单 | 常州基地影响哪些订单？"
+      },
+      {
+        "testid": "home-scenario-S03",
+        "text": "风险越线根因 | 常州物料齐套为什么这天越线？"
+      },
+      {
+        "testid": "home-scenario-S06",
+        "text": "处置方案采纳写回 | 采纳常州的三班制方案"
+      },
+      {
+        "testid": "home-scenario-S08",
+        "text": "物料齐套分析 | 下周哪些订单缺料开不了工？"
+      },
+      {
+        "testid": "home-scenario-S09",
+        "text": "长协执行与补缺 | 7 月正极长协覆盖够吗？缺口怎么补？"
+      },
+      {
+        "testid": "home-scenario-S10",
+        "text": "库存水位优化 | 哪些物料超储/欠储？能释放多少资金？"
+      }
+    ],
+    "views": [
+      {
+        "testid": "home-view-dash",
+        "href": "/v/dash",
+        "text": "经营驾驶舱"
+      },
+      {
+        "testid": "home-view-graph",
+        "href": "/v/graph",
+        "text": "本体图谱"
+      },
+      {
+        "testid": "home-view-risk",
+        "href": "/v/risk",
+        "text": "产能推演"
+      },
+      {
+        "testid": "home-view-order",
+        "href": "/v/order",
+        "text": "订单台账"
+      },
+      {
+        "testid": "home-view-plan-audit",
+        "href": "/v/plan-audit",
+        "text": "规划体检"
+      },
+      {
+        "testid": "home-view-plan-generate",
+        "href": "/v/plan-generate",
+        "text": "规划建议"
+      },
+      {
+        "testid": "home-view-project-sim",
+        "href": "/v/project-sim",
+        "text": "接单可行性"
+      },
+      {
+        "testid": "home-view-sop-balance",
+        "href": "/v/sop-balance",
+        "text": "月度规划"
+      },
+      {
+        "testid": "home-view-global-sim",
+        "href": "/v/global-sim",
+        "text": "接单组合优选"
+      },
+      {
+        "testid": "home-view-chain-line-map",
+        "href": "/v/chain-line-map",
+        "text": "全链线路图"
+      },
+      {
+        "testid": "home-view-transit-flow",
+        "href": "/v/transit-flow",
+        "text": "在途与在制"
+      },
+      {
+        "testid": "home-view-physical-topology",
+        "href": "/v/physical-topology",
+        "text": "物理拓扑"
+      },
+      {
+        "testid": "home-view-node-inspector",
+        "href": "/v/node-inspector",
+        "text": "节点检视"
+      },
+      {
+        "testid": "home-view-chain-impediments",
+        "href": "/v/chain-impediments",
+        "text": "全链阻滞点"
+      },
+      {
+        "testid": "home-view-process-wait",
+        "href": "/v/process-wait",
+        "text": "流程等待态"
+      },
+      {
+        "testid": "home-view-procurement-legs",
+        "href": "/v/procurement-legs",
+        "text": "采购四段腿分解"
+      },
+      {
+        "testid": "home-view-review",
+        "href": "/v/review",
+        "text": "运营复盘"
+      },
+      {
+        "testid": "home-view-annual-scenario",
+        "href": "/v/annual-scenario",
+        "text": "年度规划"
+      },
+      {
+        "testid": "home-view-quarterly-rolling",
+        "href": "/v/quarterly-rolling",
+        "text": "季度规划"
+      },
+      {
+        "testid": "home-view-order-chain",
+        "href": "/v/order-chain",
+        "text": "订单进展与卡因"
+      },
+      {
+        "testid": "home-view-geo-map",
+        "href": "/v/geo-map",
+        "text": "基地地理视图"
+      },
+      {
+        "testid": "home-view-graph-all",
+        "href": "/v/graph-all",
+        "text": "图谱·全景"
+      },
+      {
+        "testid": "home-view-graph-backbone",
+        "href": "/v/graph-backbone",
+        "text": "图谱·主干分级"
+      },
+      {
+        "testid": "home-view-graph-flow",
+        "href": "/v/graph-flow",
+        "text": "图谱·产能推演网络"
+      },
+      {
+        "testid": "home-view-graph-source",
+        "href": "/v/graph-source",
+        "text": "图谱·数据来源"
+      },
+      {
+        "testid": "home-view-graph-solver",
+        "href": "/v/graph-solver",
+        "text": "图谱·求解器"
+      },
+      {
+        "testid": "home-view-graph-mvp",
+        "href": "/v/graph-mvp",
+        "text": "图谱·MVP"
+      },
+      {
+        "testid": "home-view-graph-agent",
+        "href": "/v/graph-agent",
+        "text": "图谱·智能体网络"
+      },
+      {
+        "testid": "home-view-graph-loop",
+        "href": "/v/graph-loop",
+        "text": "图谱·学习闭环"
+      },
+      {
+        "testid": "home-view-sim-console",
+        "href": "/v/sim-console",
+        "text": "推演指控台"
+      },
+      {
+        "testid": "home-view-sim-conduction",
+        "href": "/v/sim-conduction",
+        "text": "传导识别"
+      },
+      {
+        "testid": "home-view-sim-attribution",
+        "href": "/v/sim-attribution",
+        "text": "损失归因"
+      },
+      {
+        "testid": "home-view-sim-optimize",
+        "href": "/v/sim-optimize",
+        "text": "方案寻优"
+      }
+    ],
+    "allScenarios": [
+      {
+        "testid": "home-all-scenarios",
+        "href": "/scenarios",
+        "text": "⚡ 全部场景启动器 →"
+      }
+    ],
+    "bodyText": "跳到主内容\n全域数字化智能决策支撑系统\n全域数字化智能决策支撑系统\n🕐\n健康度\n🌙\nA\nadmin\n▾\n⚡ 场景启动器\n经营驾驶舱\n事件影响与对策\n▾\n规划与平衡\n年度规划\n季度规划\n月度规划\n规划体检\n规划建议\n运营复盘\n▾\n推演\n统一推演控制台\n推演沙盘\n接单可行性\n接单组合优选\n产能推演\n订单进展与卡因\n▾\n台账与地图\n订单台账\n基地地理视图\n▾\n数据接入\n连接器与上传\n规则文档审核\n合成数据\n外部信号\n隔离区\n▾\n建模与图谱\n本体图谱\n本体建模\n对象/类型浏览\n域管理\n对象接口\n本体关系\n本体切片\n切片库\n实体合并\n边界册治理\n原型 intake\n▾\n图谱体系\n▾\n规则与校准\n规则库\n校准报告\n▾\n构建与成长\n数据构建发动机\n构建 Pipeline 配置\n自成长发动机\nAgent 评测\n求解器目录\n求解器审核台\n▾\n编排与场景\n意图目录\nAgent\nWorkflow\nSkill 库\nMCP\n场景入口\n智能资源治理\n计划构建画布\n兜底统计\n视图配置\n▾\n运营与审批\nAction 审批\n组织世界\n运营自动化\n定时任务\n工厂日历\n通知中心\n闭环验证(VLE)\n▾\n平台与系统\n用户管理\n权限策略\n功能开通\nLLM Provider\n配置迁移\n系统自我\n全域数字化智能决策支撑系统\n一键启动高频场景直达推演，或进入业务视图。按 ⌘K 随处快搜场景。\n⚡ 高频场景\n交期风险与受影响订单\n常州基地影响哪些订单？\n风险越线根因\n常州物料齐套为什么这天越线？\n处置方案采纳写回\n采纳常州的三班制方案\n物料齐套分析\n下周哪些订单缺料开不了工？\n长协执行与补缺\n7 月正极长协覆盖够吗？缺口怎么补？\n库存水位优化\n哪些物料超储/欠储？能释放多少资金？\n业务视图\n经营驾驶舱\n本体图谱\n产能推演\n订单台账\n规划体检\n规划建议\n接单可行性\n月度规划\n接单组合优选\n全链线路图\n在途与在制\n物理拓扑\n节点检视\n全链阻滞点\n流程等待态\n采购四段腿分解\n运营复盘\n年度规划\n季度规划\n订单进展与卡因\n基地地理视图\n图谱·全景\n图谱·主干分级\n图谱·产能推演网络\n图谱·数据来源\n图谱·求解器\n图谱·MVP\n图谱·智能体网络\n图谱·学习闭环\n推演指控台\n传导识别\n损失归因\n方案寻优\n⚡ 全部场景启动器 →"
+  },
+  "nav": [
+    {
+      "href": "/scenarios",
+      "text": "⚡ 场景启动器"
+    },
+    {
+      "href": "/v/dash",
+      "text": "经营驾驶舱"
+    },
+    {
+      "href": "/v/decision-console",
+      "text": "事件影响与对策"
+    },
+    {
+      "href": "/v/annual-scenario",
+      "text": "年度规划"
+    },
+    {
+      "href": "/v/quarterly-rolling",
+      "text": "季度规划"
+    },
+    {
+      "href": "/v/sop-balance",
+      "text": "月度规划"
+    },
+    {
+      "href": "/v/plan-audit",
+      "text": "规划体检"
+    },
+    {
+      "href": "/v/plan-generate",
+      "text": "规划建议"
+    },
+    {
+      "href": "/v/review",
+      "text": "运营复盘"
+    },
+    {
+      "href": "/v/sim-unified",
+      "text": "统一推演控制台"
+    },
+    {
+      "href": "/v/sim-sandbox",
+      "text": "推演沙盘"
+    },
+    {
+      "href": "/v/project-sim",
+      "text": "接单可行性"
+    },
+    {
+      "href": "/v/global-sim",
+      "text": "接单组合优选"
+    },
+    {
+      "href": "/v/risk",
+      "text": "产能推演"
+    },
+    {
+      "href": "/v/order-chain",
+      "text": "订单进展与卡因"
+    },
+    {
+      "href": "/v/order",
+      "text": "订单台账"
+    },
+    {
+      "href": "/v/geo-map",
+      "text": "基地地理视图"
+    },
+    {
+      "href": "/admin/connections",
+      "text": "连接器与上传"
+    },
+    {
+      "href": "/admin/rule-docs",
+      "text": "规则文档审核"
+    },
+    {
+      "href": "/admin/synthetic",
+      "text": "合成数据"
+    },
+    {
+      "href": "/admin/external-signals",
+      "text": "外部信号"
+    },
+    {
+      "href": "/admin/quarantine",
+      "text": "隔离区"
+    },
+    {
+      "href": "/v/graph",
+      "text": "本体图谱"
+    },
+    {
+      "href": "/admin/modeling",
+      "text": "本体建模"
+    },
+    {
+      "href": "/admin/object-types",
+      "text": "对象/类型浏览"
+    },
+    {
+      "href": "/admin/domains",
+      "text": "域管理"
+    },
+    {
+      "href": "/admin/interfaces",
+      "text": "对象接口"
+    },
+    {
+      "href": "/admin/ontology-relations",
+      "text": "本体关系"
+    },
+    {
+      "href": "/admin/slices",
+      "text": "本体切片"
+    },
+    {
+      "href": "/admin/slice-library",
+      "text": "切片库"
+    },
+    {
+      "href": "/admin/merge",
+      "text": "实体合并"
+    },
+    {
+      "href": "/admin/boundary",
+      "text": "边界册治理"
+    },
+    {
+      "href": "/admin/prototype-intake",
+      "text": "原型 intake"
+    },
+    {
+      "href": "/admin/rules",
+      "text": "规则库"
+    },
+    {
+      "href": "/admin/calibration",
+      "text": "校准报告"
+    },
+    {
+      "href": "/admin/data-builder",
+      "text": "数据构建发动机"
+    },
+    {
+      "href": "/admin/pipelines",
+      "text": "构建 Pipeline 配置"
+    },
+    {
+      "href": "/admin/growth",
+      "text": "自成长发动机"
+    },
+    {
+      "href": "/admin/evals",
+      "text": "Agent 评测"
+    },
+    {
+      "href": "/admin/solvers",
+      "text": "求解器目录"
+    },
+    {
+      "href": "/admin/solver-review",
+      "text": "求解器审核台"
+    },
+    {
+      "href": "/admin/catalog",
+      "text": "意图目录"
+    },
+    {
+      "href": "/admin/agents",
+      "text": "Agent"
+    },
+    {
+      "href": "/admin/workflows",
+      "text": "Workflow"
+    },
+    {
+      "href": "/admin/skills",
+      "text": "Skill 库"
+    },
+    {
+      "href": "/admin/mcp",
+      "text": "MCP"
+    },
+    {
+      "href": "/admin/scenes",
+      "text": "场景入口"
+    },
+    {
+      "href": "/admin/resources",
+      "text": "智能资源治理"
+    },
+    {
+      "href": "/admin/plan-builder",
+      "text": "计划构建画布"
+    },
+    {
+      "href": "/admin/ops/fallback",
+      "text": "兜底统计"
+    },
+    {
+      "href": "/admin/views",
+      "text": "视图配置"
+    },
+    {
+      "href": "/admin/actions",
+      "text": "Action 审批"
+    },
+    {
+      "href": "/admin/org",
+      "text": "组织世界"
+    },
+    {
+      "href": "/admin/ops-schedule",
+      "text": "运营自动化"
+    },
+    {
+      "href": "/admin/scheduler",
+      "text": "定时任务"
+    },
+    {
+      "href": "/admin/calendars",
+      "text": "工厂日历"
+    },
+    {
+      "href": "/admin/notifications",
+      "text": "通知中心"
+    },
+    {
+      "href": "/admin/validation",
+      "text": "闭环验证(VLE)"
+    },
+    {
+      "href": "/admin/users",
+      "text": "用户管理"
+    },
+    {
+      "href": "/admin/permissions",
+      "text": "权限策略"
+    },
+    {
+      "href": "/admin/features",
+      "text": "功能开通"
+    },
+    {
+      "href": "/admin/llm-providers",
+      "text": "LLM Provider"
+    },
+    {
+      "href": "/admin/config-migration",
+      "text": "配置迁移"
+    },
+    {
+      "href": "/admin/meta",
+      "text": "系统自我"
+    }
+  ],
+  "workspaceRaw": "{\"tenant\":{\"id\":\"demo\",\"name\":\"全域数字化智能决策支撑系统\",\"industry\":\"battery-manufacturing\"},\"user\":{\"id\":\"usr_demo_admin\",\"username\":\"admin\",\"roles\":[\"admin\",\"planner\",\"catalog_admin\",\"tenant_admin\"],\"attributes\":{}},\"scenarioPackages\":[{\"id\":\"pkg_battery_manufacturing\",\"name\":\"电池制造场景包\"}],\"views\":[{\"viewKey\":\"dash\",\"name\":\"经营驾驶舱\",\"renderer\":\"dashboard\",\"layout\":{\"widgets\":[{\"key\":\"gwh\",\"type\":\"kpi\",\"title\":\"总产能 (GWh)\",\"unit\":\"GWh\",\"featureKey\":\"view.dash.widget.capacity\",\"query\":{\"kind\":\"objects-aggregate\",\"objectType\":\"Base\",\"agg\":\"sum\",\"prop\":\"gwh\"},\"provenance\":{\"toolName\":\"query_objects\",\"outputPath\":\"$.sum(gwh)\",\"label\":\"全部基地铭牌产能合计\"}},{\"key\":\"util\",\"type\":\"kpi\",\"title\":\"平均利用率\",\"unit\":\"%\",\"query\":{\"kind\":\"objects-aggregate\",\"objectType\":\"Base\",\"agg\":\"avg\",\"prop\":\"util\"},\"provenance\":{\"toolName\":\"query_objects\",\"outputPath\":\"$.avg(util)\",\"label\":\"12 基地利用率算术平均\"}},{\"key\":\"attain\",\"type\":\"kpi\",\"title\":\"计划达成率\",\"unit\":\"%\",\"ratio\":true,\"query\":{\"kind\":\"objects-aggregate\",\"objectType\":\"Line\",\"agg\":\"avg\",\"prop\":\"schedule_attainment\"},\"provenance\":{\"toolName\":\"query_timeseries_agg\",\"outputPath\":\"$.avg(schedule_attainment)\",\"label\":\"attainment:line 周聚合回写值\"}},{\"key\":\"orders\",\"type\":\"kpi\",\"title\":\"在手订单\",\"unit\":\"单\",\"query\":{\"kind\":\"objects-aggregate\",\"objectType\":\"Order\",\"agg\":\"count\",\"filter\":{\"status\":[\"OPEN\",\"IN_PRODUCTION\"]}},\"caption\":\"订单簿口径 · 未完成态（已下待排产 + 进行中），不含已交付关闭单\",\"provenance\":{\"toolName\":\"query_objects\",\"outputPath\":\"$.count\",\"label\":\"Order 计数 · 未完成态（OPEN + IN_PRODUCTION）·不含 COMPLETED\"}},{\"key\":\"demand-p50\",\"type\":\"kpi\",\"title\":\"需求 P50 (万套/年)\",\"unit\":\"万套/年\",\"featureKey\":\"view.dash.widget.demand\",\"query\":{\"kind\":\"objects-aggregate\",\"objectType\":\"DemandSegment\",\"agg\":\"sum\",\"prop\":\"demandWanPerYearP50\"},\"provenance\":{\"toolName\":\"query_objects\",\"outputPath\":\"$.sum(demandWanPerYearP50)\",\"label\":\"三细分需求 P50 合计（万套/年）\"}},{\"key\":\"gross-margin\",\"type\":\"kpi\",\"title\":\"毛利总额 (亿)\",\"unit\":\"亿\",\"featureKey\":\"view.dash.widget.demand\",\"query\":{\"kind\":\"objects-aggregate\",\"objectType\":\"DemandSegment\",\"agg\":\"sum\",\"prop\":\"marginWan\"},\"provenance\":{\"toolName\":\"query_objects\",\"outputPath\":\"$.sum(marginWan)\",\"label\":\"Σ(需求×单价×毛利率) 派生回写\"}},{\"key\":\"material-gap\",\"type\":\"kpi\",\"title\":\"物料现货缺口 (吨)\",\"unit\":\"吨\",\"featureKey\":\"view.dash.widget.material\",\"query\":{\"kind\":\"objects-aggregate\",\"objectType\":\"MaterialBalance\",\"agg\":\"sum\",\"prop\":\"gapTon\"},\"provenance\":{\"toolName\":\"query_objects\",\"outputPath\":\"$.sum(gapTon)\",\"label\":\"净需求×(1−长协覆盖) 缺口合计\"}},{\"key\":\"supply-v7\",\"type\":\"kpi\",\"title\":\"可供给 (万·终版)\",\"unit\":\"万\",\"query\":{\"kind\":\"solver\",\"solverKey\":\"cockpit_kpi\",\"args\":{},\"valuePath\":\"supplyV7\"},\"provenance\":{\"toolName\":\"invoke_solver\",\"outputPath\":\"$.supplyV7\",\"label\":\"最终版 SopVersionRow.supply（S&OP 定稿可供给）\"}},{\"key\":\"rev-attain\",\"type\":\"kpi\",\"title\":\"收入达成率\",\"unit\":\"%\",\"query\":{\"kind\":\"solver\",\"solverKey\":\"cockpit_kpi\",\"args\":{},\"valuePath\":\"revAttainPct\"},\"provenance\":{\"toolName\":\"invoke_solver\",\"outputPath\":\"$.revAttainPct\",\"label\":\"FinancePlan 收入行 rolling÷budget×100\"}},{\"key\":\"util-peak\",\"type\":\"kpi\",\"title\":\"利用率瓶颈 (峰)\",\"unit\":\"%\",\"query\":{\"kind\":\"solver\",\"solverKey\":\"cockpit_kpi\",\"args\":{},\"valuePath\":\"utilPeak\"},\"provenance\":{\"toolName\":\"invoke_solver\",\"outputPath\":\"$.utilPeak\",\"label\":\"max(Base.util)：最高负荷基地（瓶颈风险）\"}},{\"key\":\"aop-base\",\"type\":\"kpi\",\"title\":\"AOP 基准营收 (亿)\",\"unit\":\"亿\",\"query\":{\"kind\":\"solver\",\"solverKey\":\"cockpit_kpi\",\"args\":{},\"valuePath\":\"aopBaseRev\"},\"caption\":\"年度计划口径 · baseline 情景全年营收目标（≠ 订单簿已签金额加总）\",\"provenance\":{\"toolName\":\"invoke_solver\",\"outputPath\":\"$.aopBaseRev\",\"label\":\"baseline 年度情景 revenue（AOP 基准 · 计划口径 · 非订单簿加总）\"}},{\"key\":\"cash-cushion\",\"type\":\"kpi\",\"title\":\"现金垫 C18 (亿)\",\"unit\":\"亿\",\"query\":{\"kind\":\"solver\",\"solverKey\":\"cockpit_kpi\",\"args\":{},\"valuePath\":\"cashCushion\"},\"provenance\":{\"toolName\":\"invoke_solver\",\"outputPath\":\"$.cashCushion\",\"label\":\"baseline 年度情景 cashCushion（C18 现金安全垫）\"}},{\"key\":\"metric-strip\",\"type\":\"metric-strip\",\"title\":\"经营指标（目标 vs 实际 · 单一出处）\",\"span\":2,\"featureKey\":\"view.dash.widget.metric\",\"query\":{\"kind\":\"solver\",\"solverKey\":\"metric_rollup\",\"args\":{\"level\":\"op\"},\"valuePath\":\"metrics\"},\"provenance\":{\"toolName\":\"invoke_solver\",\"outputPath\":\"$.metrics\",\"label\":\"metric_rollup：Metric 对齐目标树算 delta/miss（各视图 KPI 单一出处）\"}},{\"key\":\"rootcause\",\"type\":\"dag\",\"title\":\"规划决策推演 · 未达成指标根因下钻\",\"span\":2,\"featureKey\":\"view.dash.widget.rootcause\",\"query\":{\"kind\":\"solver\",\"solverKey\":\"plan_rootcause\",\"args\":{},\"valuePath\":\"dag\"},\"provenance\":{\"toolName\":\"invoke_solver\",\"outputPath\":\"$.dag\",\"label\":\"plan_rootcause：经营 KPI 越线沿归因模板逐层取证（贡献=活数据聚合）\"}},{\"key\":\"order-ledger\",\"type\":\"order-ledger\",\"title\":\"订单经营台账 · 逐单根因下钻\",\"span\":2,\"query\":{\"kind\":\"solver\",\"solverKey\":\"affected_orders\",\"args\":{}},\"caption\":\"台账口径 ≠ 卡片「在手订单」口径：本表只列交期落在交期窗口内的未完成单；交期已过的在制单不在表内\",\"provenance\":{\"toolName\":\"invoke_solver\",\"outputPath\":\"$.rows\",\"label\":\"affected_orders：交期窗口内未完成订单逐单 + problems 归并 + 综合毛利率（SEG 单价×毛利率派生）\"}},{\"key\":\"plan-drill\",\"type\":\"plan-drill\",\"title\":\"规划决策推演 · 未达成指标根因下钻\",\"span\":2,\"query\":{\"kind\":\"solver\",\"solverKey\":\"plan_rootcause\",\"args\":{},\"valuePath\":\"kpis\"},\"provenance\":{\"toolName\":\"invoke_solver\",\"outputPath\":\"$.kpis\",\"label\":\"plan_rootcause 按 level（月/季/年）越线指标 + 根因 DAG；一键去建议/体检\"}},{\"key\":\"version-toggle\",\"type\":\"version-toggle\",\"title\":\"S&OP 版本切换（V5/V7）\",\"span\":1,\"featureKey\":\"view.dash.widget.version\",\"query\":{\"kind\":\"objects\",\"objectType\":\"SopVersionRow\",\"limit\":20},\"provenance\":{\"toolName\":\"query_objects\",\"outputPath\":\"$.items\",\"label\":\"SopVersionRow 版本演进（gap=demand−supply 派生）\"}},{\"key\":\"counterfactual\",\"type\":\"counterfactual\",\"title\":\"反事实双轨推演（如不解决会怎样）\",\"span\":2,\"featureKey\":\"view.dash.widget.counterfactual\",\"query\":{\"kind\":\"solver\",\"solverKey\":\"counterfactual_timeline\",\"args\":{\"horizon\":30}},\"provenance\":{\"toolName\":\"invoke_solver\",\"outputPath\":\"$\",\"label\":\"counterfactual_timeline：do-nothing vs 处置后双曲线 + 峰值削减/越线日推迟\"}},{\"key\":\"oee-trend\",\"type\":\"chart\",\"title\":\"OEE 14 日趋势\",\"span\":2,\"chartKind\":\"line\",\"query\":{\"kind\":\"timeseries\",\"seriesKey\":\"oee:equip\",\"entityIds\":[],\"grain\":\"day\",\"agg\":\"avg\",\"days\":14},\"provenance\":{\"toolName\":\"query_timeseries_agg\",\"outputPath\":\"$.points\",\"label\":\"oee:equip 日粒度均值\"}},{\"key\":\"orders-table\",\"type\":\"table\",\"title\":\"订单明细（前 8 · 按订单号）\",\"span\":2,\"query\":{\"kind\":\"objects\",\"objectType\":\"Order\",\"columns\":[\"so\",\"cust\",\"model\",\"qty\",\"due\",\"status\"],\"limit\":8},\"caption\":\"全簿口径（含已交付关闭单）· 每行状态见 status 列；「在手」总数以上方「在手订单」卡片为准\",\"provenance\":{\"toolName\":\"query_objects\",\"outputPath\":\"$.items\",\"label\":\"Order 对象查询 · 全簿按订单号取前 8（非在手口径）\"}}]},\"options\":{},\"key\":\"dash\",\"title\":\"经营驾驶舱\"},{\"viewKey\":\"graph\",\"name\":\"本体图谱\",\"renderer\":\"ontology-graph\",\"layout\":{},\"options\":{\"graphOptions\":{\"colorBy\":\"domain\",\"nodeFilter\":{\"domains\":[\"factory\",\"product\",\"process\",\"equip\",\"people\",\"quality\",\"capacity\",\"forecast\",\"sales\",\"material\",\"finance\",\"plan\",\"external\",\"decision\"]},\"dimOthers\":true,\"layoutSeed\":42},\"desc\":\"对象本体层：14 业务域的对象类型与它们之间的结构关系，点任一节点看属性、来源字段、适用规则与派生公式。求解器与智能体属于其上的推演层与编排层，在此淡出——要三层同时看，切「图谱·全景」。\"},\"key\":\"graph\",\"title\":\"本体图谱\"},{\"viewKey\":\"risk\",\"name\":\"产能推演\",\"renderer\":\"risk-board\",\"layout\":{\"solverKey\":\"risk_timeline\",\"horizon\":14,\"outputFields\":[\"cards\",\"planRows\",\"horizon\",\"threshold\"]},\"options\":{},\"key\":\"risk\",\"title\":\"产能推演\"},{\"viewKey\":\"order\",\"name\":\"订单台账\",\"renderer\":\"ledger\",\"layout\":{\"objectType\":\"Order\",\"columns\":[{\"key\":\"so\",\"label\":\"SO\"},{\"key\":\"cust\",\"label\":\"客户\",\"filterable\":true},{\"key\":\"model\",\"label\":\"型号\",\"filterable\":true},{\"key\":\"qty\",\"label\":\"数量\"},{\"key\":\"due\",\"label\":\"交期\"},{\"key\":\"bases\",\"label\":\"基地\",\"filterable\":true},{\"key\":\"status\",\"label\":\"状态\",\"filterable\":true}]},\"options\":{},\"key\":\"order\",\"title\":\"订单台账\"},{\"viewKey\":\"plan-audit\",\"name\":\"规划体检\",\"renderer\":\"plan-audit\",\"layout\":{\"solverKey\":\"plan_audit\",\"fieldGroups\":[{\"title\":\"需求侧（万套）\",\"fields\":[{\"key\":\"dem\",\"label\":\"月度需求总量\",\"unit\":\"万套\",\"step\":0.1},{\"key\":\"seg_pas\",\"label\":\"乘用车\",\"unit\":\"万套\",\"step\":0.1},{\"key\":\"seg_ess\",\"label\":\"储能\",\"unit\":\"万套\",\"step\":0.1},{\"key\":\"seg_com\",\"label\":\"商用车\",\"unit\":\"万套\",\"step\":0.1}]},{\"title\":\"供给侧\",\"fields\":[{\"key\":\"sup\",\"label\":\"月度可供给\",\"unit\":\"万套\",\"step\":0.1},{\"key\":\"ltaCov\",\"label\":\"长协覆盖率\",\"unit\":\"%\",\"step\":1},{\"key\":\"kitGap\",\"label\":\"正极物料缺口\",\"unit\":\"吨\",\"step\":10}]},{\"title\":\"财务侧\",\"fields\":[{\"key\":\"gmTarget\",\"label\":\"毛利率目标\",\"unit\":\"%\",\"step\":0.5},{\"key\":\"cashCushion\",\"label\":\"现金安全垫(13周最低点)\",\"unit\":\"亿\",\"step\":0.5},{\"key\":\"capex\",\"label\":\"CAPEX 本月\",\"unit\":\"亿\",\"step\":0.5}]}],\"outputFields\":[\"H\",\"M\",\"S\",\"score\",\"verdict\"]},\"options\":{},\"key\":\"plan-audit\",\"title\":\"规划体检\"},{\"viewKey\":\"plan-generate\",\"name\":\"规划建议\",\"renderer\":\"plan-generate\",\"layout\":{\"solverKey\":\"plan_generate\",\"goalFields\":[{\"key\":\"revGrowthPct\",\"label\":\"收入增长\",\"unit\":\"%\",\"step\":1},{\"key\":\"gmFloorPct\",\"label\":\"毛利底线\",\"unit\":\"%\",\"step\":0.1,\"hardKey\":\"hardGm\"},{\"key\":\"sharePts\",\"label\":\"份额增\",\"unit\":\"pct\",\"step\":1},{\"key\":\"capexCap\",\"label\":\"CAPEX 上限\",\"unit\":\"亿\",\"step\":1,\"hardKey\":\"hardCapex\"},{\"key\":\"cashFloor\",\"label\":\"现金底线\",\"unit\":\"亿\",\"step\":1,\"hardKey\":\"hardCash\"},{\"key\":\"invTurns\",\"label\":\"库存周转\",\"unit\":\"次\",\"step\":0.5}],\"outputFields\":[\"schemes\",\"recommend\"]},\"options\":{},\"key\":\"plan-generate\",\"title\":\"规划建议\"},{\"viewKey\":\"project-sim\",\"name\":\"接单可行性\",\"renderer\":\"project-sim\",\"layout\":{\"solverKey\":\"capacity_forecast\",\"driverFactors\":[{\"id\":\"f1\",\"label\":\"节拍 × OEE × 良率\",\"sub\":\"IoT/MES/QMS 驱动因子\"},{\"id\":\"f2\",\"label\":\"爬坡曲线 + 检修窗\",\"sub\":\"前4周 0.88→1.0 · 各基地检修周\"},{\"id\":\"f3\",\"label\":\"认证系数 + 数据健康度\",\"sub\":\"PLM 认证 · P90 系数\"}],\"outputFields\":[\"capWanP50\",\"capWanP90\",\"gap\",\"perBaseRows\",\"mainBn\"]},\"options\":{},\"key\":\"project-sim\",\"title\":\"接单可行性\"},{\"viewKey\":\"sop-balance\",\"name\":\"月度规划\",\"renderer\":\"sop-balance\",\"layout\":{\"apiTag\":\"sop\"},\"options\":{},\"key\":\"sop-balance\",\"title\":\"月度规划\"},{\"viewKey\":\"global-sim\",\"name\":\"接单组合优选\",\"renderer\":\"global-sim\",\"layout\":{\"solverKey\":\"portfolio\"},\"options\":{},\"key\":\"global-sim\",\"title\":\"接单组合优选\"},{\"viewKey\":\"chain-line-map\",\"name\":\"全链线路图\",\"renderer\":\"chain-line-map\",\"layout\":{},\"options\":{},\"key\":\"chain-line-map\",\"title\":\"全链线路图\"},{\"viewKey\":\"transit-flow\",\"name\":\"在途与在制\",\"renderer\":\"transit-flow\",\"layout\":{},\"options\":{},\"key\":\"transit-flow\",\"title\":\"在途与在制\"},{\"viewKey\":\"physical-topology\",\"name\":\"物理拓扑\",\"renderer\":\"physical-topology\",\"layout\":{},\"options\":{},\"key\":\"physical-topology\",\"title\":\"物理拓扑\"},{\"viewKey\":\"node-inspector\",\"name\":\"节点检视\",\"renderer\":\"node-inspector\",\"layout\":{},\"options\":{},\"key\":\"node-inspector\",\"title\":\"节点检视\"},{\"viewKey\":\"chain-impediments\",\"name\":\"全链阻滞点\",\"renderer\":\"chain-impediments\",\"layout\":{},\"options\":{},\"key\":\"chain-impediments\",\"title\":\"全链阻滞点\"},{\"viewKey\":\"process-wait\",\"name\":\"流程等待态\",\"renderer\":\"process-wait\",\"layout\":{},\"options\":{},\"key\":\"process-wait\",\"title\":\"流程等待态\"},{\"viewKey\":\"procurement-legs\",\"name\":\"采购四段腿分解\",\"renderer\":\"procurement-legs\",\"layout\":{},\"options\":{},\"key\":\"procurement-legs\",\"title\":\"采购四段腿分解\"},{\"viewKey\":\"review\",\"name\":\"运营复盘\",\"renderer\":\"review\",\"layout\":{\"apiTag\":\"history\"},\"options\":{},\"key\":\"review\",\"title\":\"运营复盘\"},{\"viewKey\":\"annual-scenario\",\"name\":\"年度规划\",\"renderer\":\"annual-scenario\",\"layout\":{\"endpoint\":\"/a/v1/plan/aop\",\"year\":2026,\"actionTypeKey\":\"AOP情景拍板\",\"finalizeFeature\":\"act.aop-finalize\"},\"options\":{},\"key\":\"annual-scenario\",\"title\":\"年度规划\"},{\"viewKey\":\"quarterly-rolling\",\"name\":\"季度规划\",\"renderer\":\"quarterly-rolling\",\"layout\":{\"endpoint\":\"/a/v1/plan/quarterly\",\"n\":6,\"gapTiers\":{\"red\":4,\"yellow\":0},\"ltaEscalatePct\":5},\"options\":{},\"key\":\"quarterly-rolling\",\"title\":\"季度规划\"},{\"viewKey\":\"order-chain\",\"name\":\"订单进展与卡因\",\"renderer\":\"order-chain\",\"layout\":{\"solverKey\":\"affected_orders\",\"window\":{\"before\":7,\"after\":14},\"problemCategories\":[\"DELIVERY\",\"MARGIN\",\"KIT\",\"CREDIT\"],\"categoryLabels\":{\"DELIVERY\":\"交期\",\"MARGIN\":\"毛利\",\"KIT\":\"齐套\",\"CREDIT\":\"信用\"},\"segColors\":{\"乘用车\":\"#5E8FE8\",\"商用车\":\"#DD9551\",\"储能\":\"#36BFA5\"},\"outputFields\":[\"rows\",\"problems\",\"summary\",\"columns\"]},\"options\":{},\"key\":\"order-chain\",\"title\":\"订单进展与卡因\"},{\"viewKey\":\"geo-map\",\"name\":\"基地地理视图\",\"renderer\":\"geo-map\",\"layout\":{\"objectType\":\"Base\",\"sizeProp\":\"gwh\",\"colorProp\":\"kind\",\"utilThresholds\":[92,85,78]},\"options\":{},\"key\":\"geo-map\",\"title\":\"基地地理视图\"},{\"viewKey\":\"graph-all\",\"name\":\"图谱·全景\",\"renderer\":\"ontology-graph\",\"layout\":{},\"options\":{\"graphOptions\":{\"colorBy\":\"domain\",\"layoutSeed\":42},\"desc\":\"全域对象与关系全景：14 业务域对象类型 + 求解器 + 智能体一张图，按域着色；可切数据来源着色、主干分级、各推演网络与学习闭环视角。\"},\"key\":\"graph-all\",\"title\":\"图谱·全景\"},{\"viewKey\":\"graph-backbone\",\"name\":\"图谱·主干分级\",\"renderer\":\"ontology-graph\",\"layout\":{},\"options\":{\"graphOptions\":{\"colorBy\":\"domain\",\"nodeFilter\":{\"tiers\":[0,1]},\"dimOthers\":true,\"layoutSeed\":42},\"desc\":\"按层级看节点：一级=推演主干（产能预测←工序产能→产线产能→工厂产能→基地）；二级=按业务推演链切片（产能/产销/采购/财务现金）；三级=明细（OEE历史/停机/操作员/不良/供应商/物流）。\"},\"key\":\"graph-backbone\",\"title\":\"图谱·主干分级\"},{\"viewKey\":\"graph-flow\",\"name\":\"图谱·产能推演网络\",\"renderer\":\"ontology-graph\",\"layout\":{},\"options\":{\"graphOptions\":{\"colorBy\":\"domain\",\"linkKinds\":[\"flow\",\"agg\"],\"layoutSeed\":42},\"desc\":\"产能金字塔自下而上派生：节拍×OEE→设备产能→×良率×人力→工序产能→min瓶颈→产线产能→Σ→工厂产能。工序有串行（按瓶颈 min）与并行（化成/老化多通道）之分；物流时长经物料齐套约束可投产能；最后与预测场景、需求、瓶颈汇入产能预测。\"},\"key\":\"graph-flow\",\"title\":\"图谱·产能推演网络\"},{\"viewKey\":\"graph-source\",\"name\":\"图谱·数据来源\",\"renderer\":\"ontology-graph\",\"layout\":{},\"options\":{\"graphOptions\":{\"colorBy\":\"source\",\"layoutSeed\":42},\"desc\":\"只聚焦真正来自源系统的原始数据节点，按源系统重新着色，回答『每个数据从哪来』：ERP/SAP 物料主数据、MES 工艺与制造执行、EAM/CMMS 设备资产、IoT/SCADA 节拍OEE、QMS/LIMS 质量、HR/排班 人员工时、PLM 产品BOM、WMS 物料齐套。产能域(派生)、求解器、智能体不是源数据，已淡出。\"},\"key\":\"graph-source\",\"title\":\"图谱·数据来源\"},{\"viewKey\":\"graph-solver\",\"name\":\"图谱·求解器\",\"renderer\":\"ontology-graph\",\"layout\":{},\"options\":{\"graphOptions\":{\"colorBy\":\"domain\",\"nodeFilter\":{\"domains\":[\"solver\"]},\"linkKinds\":[\"calc\"],\"dimOthers\":true,\"layoutSeed\":42},\"desc\":\"求解器以智能辅助决策中台形式注册，绑定到对应对象类型：聚合求解器（产能金字塔）、瓶颈求解器（工艺链最小割）、场景求解器（假设情景重算）、精度校准器（预测↔实际偏差学习）。读业务对象、写回派生对象，由管线/Agent 触发。\"},\"key\":\"graph-solver\",\"title\":\"图谱·求解器\"},{\"viewKey\":\"graph-mvp\",\"name\":\"图谱·MVP\",\"renderer\":\"ontology-graph\",\"layout\":{},\"options\":{\"graphOptions\":{\"colorBy\":\"domain\",\"mvpOverlay\":true,\"layoutSeed\":42},\"desc\":\"实色高亮的是 MVP 必备的核心闭环：工艺路线(节拍)+设备(OEE)+良率+产能聚合/瓶颈+需求→产能预测。⊕ 虚线节点是当前缺口，需从源系统补采——其中实际产出、OEE历史、生产工单MO 是离散组装制造与自学习闭环最关键的三项，缺它们系统就『算不准、学不会』。\"},\"key\":\"graph-mvp\",\"title\":\"图谱·MVP\"},{\"viewKey\":\"graph-agent\",\"name\":\"图谱·智能体网络\",\"renderer\":\"ontology-graph\",\"layout\":{},\"options\":{\"graphOptions\":{\"colorBy\":\"domain\",\"nodeFilter\":{\"domains\":[\"agent\",\"solver\"]},\"linkKinds\":[\"orch\"],\"dimOthers\":true,\"layoutSeed\":42},\"desc\":\"产能预测不是『一个 Agent 跑一个模型』，而是编排Agent 指挥一支专职智能体团队：意图解析/检索/建模求解/瓶颈诊断/解释校验/学习/行动，外加经验记忆库（越用越聪明）与约束规则（安全边界）。每个 Agent 把求解器与业务建模当工具调用——AI 的价值在于可自主规划、可解释、可成长的协同。\"},\"key\":\"graph-agent\",\"title\":\"图谱·智能体网络\"},{\"viewKey\":\"graph-loop\",\"name\":\"图谱·学习闭环\",\"renderer\":\"ontology-graph\",\"layout\":{},\"options\":{\"graphOptions\":{\"colorBy\":\"domain\",\"nodeFilter\":{\"ids\":[\"产能预测\",\"实际产出\",\"精度校准器\",\"学习Agent\",\"经验记忆库\",\"良率\",\"OEE历史\",\"OEE指标\",\"聚合求解器\",\"工序产能\"]},\"linkKinds\":[\"fb\",\"orch\"],\"dimOthers\":true,\"layoutSeed\":42},\"desc\":\"预测 ↔ 实际偏差 → 精度校准器 → 参数写回 → 越用越准（真实数据 MAPE 趋势见校准报告页，不做假动画）。\",\"descLink\":{\"to\":\"/admin/calibration\",\"label\":\"查看精度趋势与校准历史\"}},\"key\":\"graph-loop\",\"title\":\"图谱·学习闭环\"},{\"viewKey\":\"sim-console\",\"name\":\"推演指控台\",\"renderer\":\"sim-console\",\"layout\":{},\"options\":{},\"key\":\"sim-console\",\"title\":\"推演指控台\"},{\"viewKey\":\"sim-conduction\",\"name\":\"传导识别\",\"renderer\":\"sim-conduction\",\"layout\":{},\"options\":{},\"key\":\"sim-conduction\",\"title\":\"传导识别\"},{\"viewKey\":\"sim-attribution\",\"name\":\"损失归因\",\"renderer\":\"sim-attribution\",\"layout\":{},\"options\":{},\"key\":\"sim-attribution\",\"title\":\"损失归因\"},{\"viewKey\":\"sim-optimize\",\"name\":\"方案寻优\",\"renderer\":\"sim-optimize\",\"layout\":{},\"options\":{},\"key\":\"sim-optimize\",\"title\":\"方案寻优\"}],\"theme\":{\"--accent\":\"#4C90F0\"},\"navigation\":[{\"key\":\"dash\",\"label\":\"经营驾驶舱\",\"viewKey\":\"dash\",\"group\":\"business\"},{\"key\":\"graph\",\"label\":\"本体图谱\",\"viewKey\":\"graph\",\"group\":\"business\"},{\"key\":\"risk\",\"label\":\"产能推演\",\"viewKey\":\"risk\",\"group\":\"business\"},{\"key\":\"order\",\"label\":\"订单台账\",\"viewKey\":\"order\",\"group\":\"business\"},{\"key\":\"plan-audit\",\"label\":\"规划体检\",\"viewKey\":\"plan-audit\",\"group\":\"business\"},{\"key\":\"plan-generate\",\"label\":\"规划建议\",\"viewKey\":\"plan-generate\",\"group\":\"business\"},{\"key\":\"project-sim\",\"label\":\"接单可行性\",\"viewKey\":\"project-sim\",\"group\":\"business\"},{\"key\":\"sop-balance\",\"label\":\"月度规划\",\"viewKey\":\"sop-balance\",\"group\":\"business\"},{\"key\":\"global-sim\",\"label\":\"接单组合优选\",\"viewKey\":\"global-sim\",\"group\":\"business\"},{\"key\":\"chain-line-map\",\"label\":\"全链线路图\",\"viewKey\":\"chain-line-map\",\"group\":\"business\"},{\"key\":\"transit-flow\",\"label\":\"在途与在制\",\"viewKey\":\"transit-flow\",\"group\":\"business\"},{\"key\":\"physical-topology\",\"label\":\"物理拓扑\",\"viewKey\":\"physical-topology\",\"group\":\"business\"},{\"key\":\"node-inspector\",\"label\":\"节点检视\",\"viewKey\":\"node-inspector\",\"group\":\"business\"},{\"key\":\"chain-impediments\",\"label\":\"全链阻滞点\",\"viewKey\":\"chain-impediments\",\"group\":\"business\"},{\"key\":\"process-wait\",\"label\":\"流程等待态\",\"viewKey\":\"process-wait\",\"group\":\"business\"},{\"key\":\"procurement-legs\",\"label\":\"采购四段腿分解\",\"viewKey\":\"procurement-legs\",\"group\":\"business\"},{\"key\":\"review\",\"label\":\"运营复盘\",\"viewKey\":\"review\",\"group\":\"business\"},{\"key\":\"annual-scenario\",\"label\":\"年度规划\",\"viewKey\":\"annual-scenario\",\"group\":\"business\"},{\"key\":\"quarterly-rolling\",\"label\":\"季度规划\",\"viewKey\":\"quarterly-rolling\",\"group\":\"business\"},{\"key\":\"order-chain\",\"label\":\"订单进展与卡因\",\"viewKey\":\"order-chain\",\"group\":\"business\"},{\"key\":\"geo-map\",\"label\":\"基地地理视图\",\"viewKey\":\"geo-map\",\"group\":\"business\"},{\"key\":\"graph-all\",\"label\":\"图谱·全景\",\"viewKey\":\"graph-all\",\"group\":\"business\"},{\"key\":\"graph-backbone\",\"label\":\"图谱·主干分级\",\"viewKey\":\"graph-backbone\",\"group\":\"business\"},{\"key\":\"graph-flow\",\"label\":\"图谱·产能推演网络\",\"viewKey\":\"graph-flow\",\"group\":\"business\"},{\"key\":\"graph-source\",\"label\":\"图谱·数据来源\",\"viewKey\":\"graph-source\",\"group\":\"business\"},{\"key\":\"graph-solver\",\"label\":\"图谱·求解器\",\"viewKey\":\"graph-solver\",\"group\":\"business\"},{\"key\":\"graph-mvp\",\"label\":\"图谱·MVP\",\"viewKey\":\"graph-mvp\",\"group\":\"business\"},{\"key\":\"graph-agent\",\"label\":\"图谱·智能体网络\",\"viewKey\":\"graph-agent\",\"group\":\"business\"},{\"key\":\"graph-loop\",\"label\":\"图谱·学习闭环\",\"viewKey\":\"graph-loop\",\"group\":\"business\"},{\"key\":\"sim-console\",\"label\":\"推演指控台\",\"viewKey\":\"sim-console\",\"group\":\"business\"},{\"key\":\"sim-conduction\",\"label\":\"传导识别\",\"viewKey\":\"sim-conduction\",\"group\":\"business\"},{\"key\":\"sim-attribution\",\"label\":\"损失归因\",\"viewKey\":\"sim-attribution\",\"group\":\"business\"},{\"key\":\"sim-optimize\",\"label\":\"方案寻优\",\"viewKey\":\"sim-optimize\",\"group\":\"business\"},{\"key\":\"connections\",\"label\":\"数据接入\",\"group\":\"admin\"},{\"key\":\"rule-docs\",\"label\":\"规则文档审核\",\"group\":\"admin\"},{\"key\":\"modeling\",\"label\":\"本体建模\",\"group\":\"admin\"},{\"key\":\"rules\",\"label\":\"规则库\",\"group\":\"admin\"},{\"key\":\"permissions\",\"label\":\"权限策略\",\"group\":\"admin\"},{\"key\":\"synthetic\",\"label\":\"合成数据\",\"group\":\"admin\"},{\"key\":\"actions\",\"label\":\"Action 审批\",\"group\":\"admin\"},{\"key\":\"features\",\"label\":\"功能开通\",\"group\":\"admin\"},{\"key\":\"boundary\",\"label\":\"边界册治理\",\"group\":\"admin\"},{\"key\":\"prototype-intake\",\"label\":\"原型 intake\",\"group\":\"admin\"},{\"key\":\"catalog\",\"label\":\"意图目录\",\"group\":\"admin\"},{\"key\":\"agents\",\"label\":\"Agent 注册表\",\"group\":\"admin\"},{\"key\":\"workflows\",\"label\":\"Workflow\",\"group\":\"admin\"},{\"key\":\"skills\",\"label\":\"Skill\",\"group\":\"admin\"},{\"key\":\"mcp\",\"label\":\"MCP 服务器\",\"group\":\"admin\"},{\"key\":\"scenes\",\"label\":\"场景入口\",\"group\":\"admin\"},{\"key\":\"ops/fallback\",\"label\":\"兜底运营\",\"group\":\"admin\"},{\"key\":\"query-history\",\"label\":\"推演历史\",\"group\":\"admin\"}],\"features\":[\"act.adopt-to-draft\",\"act.aop-finalize\",\"act.export\",\"act.plan-audit.apply-fix\",\"admin.meta-ontology\",\"admin.plan-builder\",\"agent.coordinator\",\"agent.critic\",\"agent.escalation\",\"agent.skill-on-free-qa\",\"ceo.dataset.generate\",\"ceo.free-llm\",\"data-import.record-materialize\",\"dc.lazy-solver-context\",\"decision.causal-graph\",\"domain.capacity\",\"domain.decision\",\"domain.equip\",\"domain.external\",\"domain.factory\",\"domain.finance\",\"domain.forecast\",\"domain.material\",\"domain.people\",\"domain.plan\",\"domain.process\",\"domain.product\",\"domain.quality\",\"domain.sales\",\"domain.unassigned\",\"opt.embedding-retrieval\",\"opt.evolve\",\"opt.multiobj\",\"opt.solver-pool\",\"opt.whatif\",\"qos.agent-fallback\",\"qos.compose-path\",\"qos.deterministic-multi-domain\",\"qos.dril-routing\",\"qos.multi-intent-l2-decompose\",\"qos.multi-intent-l3-coupled\",\"qos.multi-intent-orchestration\",\"qos.opt-whatif-route\",\"qos.reasoning-trace\",\"shell.query-dock\",\"sim.branch\",\"sim.certification\",",
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+}

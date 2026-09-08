@@ -71,7 +71,7 @@ export const LlmProviderUpdateSchema = z.object({
 });
 
 const BindingsPutSchema = z.object({
-  bindings: z.array(z.object({ purpose: LlmPurposeSchema, providerId: z.string(), modelId: z.string() })),
+  bindings: z.array(z.object({ purpose: LlmPurposeSchema, providerId: z.string(), modelId: z.string(), noReasoning: z.boolean().optional() })),
 });
 
 const RefReportSchema = z.object({
@@ -246,7 +246,7 @@ export class LlmProviderService {
 
   async bindings(tenantId: string): Promise<PurposeBinding[]> {
     const recs = await this.repos.llmPurposeBindings.list(tenantId);
-    return recs.map((r) => ({ purpose: r.purpose as LlmPurpose, providerId: r.providerId, modelId: r.modelId }));
+    return recs.map((r) => ({ purpose: r.purpose as LlmPurpose, providerId: r.providerId, modelId: r.modelId, ...(r.noReasoning ? { noReasoning: true as const } : {}) }));
   }
 
   /**
@@ -256,7 +256,7 @@ export class LlmProviderService {
    */
   async putBindings(
     ctx: AuthCtx,
-    bindings: { purpose: LlmPurpose; providerId: string; modelId: string }[],
+    bindings: { purpose: LlmPurpose; providerId: string; modelId: string; noReasoning?: boolean }[],
   ): Promise<{ bindings: PurposeBinding[]; warnings: { purpose: string; message: string }[] }> {
     const warnings: { purpose: string; message: string }[] = [];
     for (const b of bindings) {
@@ -290,6 +290,7 @@ export class LlmProviderService {
         purpose: b.purpose,
         providerId: b.providerId,
         modelId: b.modelId,
+        ...(b.noReasoning ? { noReasoning: true } : {}),
         updatedAt: new Date().toISOString(),
       };
       await this.repos.llmPurposeBindings.put(rec);

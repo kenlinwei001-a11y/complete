@@ -1,0 +1,128 @@
+{
+  "cases": [
+    {
+      "用例": "金丝雀·合法 Order→WorkOrder key=e2e_ok",
+      "输入": {
+        "src": "Order",
+        "dst": "WorkOrder",
+        "key": "e2e_ok"
+      },
+      "按钮禁用": false,
+      "点了": true,
+      "弹窗": null,
+      "屏上新出现": [
+        "结构边 118",
+        "先选来源与去向类型",
+        "域：产品（24）",
+        "e2e_ok\tOrder → WorkOrder\t1:N\t启用\t",
+        "e2e_ok",
+        "e2e_ok",
+        "e2e_ok",
+        "e2e_ok",
+        "e2e_ok",
+        "e2e_ok",
+        "e2e_ok",
+        "e2e_ok"
+      ]
+    },
+    {
+      "用例": "key 留空",
+      "输入": {
+        "src": "Order",
+        "dst": "WorkOrder",
+        "key": ""
+      },
+      "按钮禁用": true,
+      "点了": false,
+      "弹窗": null,
+      "屏上新出现": []
+    },
+    {
+      "用例": "key 重名 e2e_ok",
+      "输入": {
+        "src": "Order",
+        "dst": "WorkOrder",
+        "key": "e2e_ok"
+      },
+      "按钮禁用": false,
+      "点了": true,
+      "弹窗": null,
+      "屏上新出现": [
+        "先选来源与去向类型",
+        "结构边 e2e_ok 已建（v2）；未选实现属性 ⇒ 0 条实例边，多跳检索遍历不到"
+      ]
+    },
+    {
+      "用例": "方向反 · 同 key",
+      "输入": {
+        "src": "WorkOrder",
+        "dst": "Order",
+        "key": "e2e_ok"
+      },
+      "按钮禁用": false,
+      "点了": true,
+      "弹窗": null,
+      "屏上新出现": [
+        "先选来源与去向类型",
+        "域：工艺（16）",
+        "e2e_ok\tWorkOrder → Order\t1:N\t启用\t",
+        "域：产品（23）",
+        "结构边 e2e_ok 已建（v3）；未选实现属性 ⇒ 0 条实例边，多跳检索遍历不到"
+      ]
+    },
+    {
+      "用例": "key 带空格与中文「订单 兑现!!」",
+      "输入": {
+        "src": "Order",
+        "dst": "WorkOrder",
+        "key": "订单 兑现!!"
+      },
+      "按钮禁用": false,
+      "点了": true,
+      "弹窗": null,
+      "屏上新出现": [
+        "结构边 119",
+        "先选来源与去向类型",
+        "域：产品（24）",
+        "订单 兑现!!\tOrder → WorkOrder\t1:N\t启用\t",
+        "订单 兑现!!",
+        "订单 兑现!!",
+        "订单 兑现!!",
+        "订单 兑现!!",
+        "订单 兑现!!",
+        "订单 兑现!!",
+        "订单 兑现!!",
+        "订单 兑现!!"
+      ]
+    },
+    {
+      "用例": "自环 Order→Order",
+      "输入": {
+        "src": "Order",
+        "dst": "Order",
+        "key": "e2e_selfloop"
+      },
+      "按钮禁用": false,
+      "点了": true,
+      "弹窗": null,
+      "屏上新出现": [
+        "结构边 120",
+        "先选来源与去向类型",
+        "域：产品（25）",
+        "e2e_selfloop\tOrder → Order\t1:N\t启用\t",
+        "e2e_selfloop",
+        "e2e_selfloop",
+        "e2e_selfloop",
+        "e2e_selfloop",
+        "e2e_selfloop",
+        "e2e_selfloop",
+        "e2e_selfloop",
+        "e2e_selfloop"
+      ]
+    }
+  ],
+  "端点不存在": {
+    "结论": "来源/去向是限定下拉（99 个选项），UI 层无法输入不存在的端点 —— 这是 UI 挡住了，不是错误处理",
+    "选项数": 99
+  }
+}

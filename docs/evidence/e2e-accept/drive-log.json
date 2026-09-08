@@ -1,0 +1,146 @@
+{
+  "counters": {
+    "steps": 2,
+    "clicks": 1,
+    "navs": 4
+  },
+  "netPorts": {
+    "127.0.0.1:5181": 190,
+    "127.0.0.1:4051": 5,
+    "127.0.0.1:4052": 1
+  },
+  "netByPath": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:30:39.903Z",
+      "kind": "STEP",
+      "msg": "#1 打开前端根路径（唯一允许输入的 URL = 应用入口）"
+    },
+    {
+      "t": "2026-09-04T02:30:39.925Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:30:40.768Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:30:40.812Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:30:40.818Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:30:40.820Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:30:42.971Z",
+      "kind": "SHOT",
+      "msg": "00-login",
+      "file": "shots/00-login.png"
+    },
+    {
+      "t": "2026-09-04T02:30:42.976Z",
+      "kind": "SCREEN",
+      "msg": "登录页文本",
+      "head": "全域数字化智能决策支撑系统\n租户\n用户名\n密码\n登录"
+    },
+    {
+      "t": "2026-09-04T02:30:42.976Z",
+      "kind": "STEP",
+      "msg": "#2 填写 demo / admin / demo1234 并登录"
+    },
+    {
+      "t": "2026-09-04T02:30:42.981Z",
+      "kind": "PROBE",
+      "msg": "登录页 input 数=3"
+    },
+    {
+      "t": "2026-09-04T02:30:42.990Z",
+      "kind": "PROBE",
+      "msg": "input[0] name=null type=null ph=null"
+    },
+    {
+      "t": "2026-09-04T02:30:42.998Z",
+      "kind": "PROBE",
+      "msg": "input[1] name=null type=null ph=null"
+    },
+    {
+      "t": "2026-09-04T02:30:43.003Z",
+      "kind": "PROBE",
+      "msg": "input[2] name=null type=password ph=null"
+    },
+    {
+      "t": "2026-09-04T02:30:43.043Z",
+      "kind": "CLICK",
+      "msg": "#1 点击登录按钮"
+    },
+    {
+      "t": "2026-09-04T02:30:43.250Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:30:47.269Z",
+      "kind": "SHOT",
+      "msg": "01-after-login",
+      "file": "shots/01-after-login.png"
+    },
+    {
+      "t": "2026-09-04T02:30:47.270Z",
+      "kind": "SCREEN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:30:47.278Z",
+      "kind": "SCREEN",
+      "msg": "首页文本已存",
+      "chars": 951
+    },
+    {
+      "t": "2026-09-04T02:30:47.285Z",
+      "kind": "PROBE",
+      "msg": "首页可点入口 128 个"
+    }
+  ]
+}

@@ -1,0 +1,568 @@
+跳到主内容
+全域数字化智能决策支撑系统
+全域数字化智能决策支撑系统
+🕐
+健康度
+🌙
+A
+admin
+▾
+⚡ 场景启动器
+经营驾驶舱
+事件影响与对策
+▾
+规划与平衡
+年度规划
+季度规划
+月度规划
+规划体检
+规划建议
+运营复盘
+▾
+推演
+统一推演控制台
+推演沙盘
+接单可行性
+接单组合优选
+产能推演
+订单进展与卡因
+▾
+台账与地图
+订单台账
+基地地理视图
+▾
+数据接入
+连接器与上传
+规则文档审核
+合成数据
+外部信号
+隔离区
+▾
+建模与图谱
+本体图谱
+本体建模
+对象/类型浏览
+域管理
+对象接口
+本体关系
+本体切片
+切片库
+实体合并
+边界册治理
+原型 intake
+▾
+图谱体系
+▾
+规则与校准
+规则库
+校准报告
+▾
+构建与成长
+数据构建发动机
+构建 Pipeline 配置
+自成长发动机
+Agent 评测
+求解器目录
+求解器审核台
+▾
+编排与场景
+意图目录
+Agent
+Workflow
+Skill 库
+MCP
+场景入口
+智能资源治理
+计划构建画布
+兜底统计
+视图配置
+▾
+运营与审批
+Action 审批
+组织世界
+运营自动化
+定时任务
+工厂日历
+通知中心
+闭环验证(VLE)
+▾
+平台与系统
+用户管理
+权限策略
+功能开通
+LLM Provider
+配置迁移
+系统自我
+本体建模工作台
+AI 建议草案
+数据源（连接器与上传）
+合成数据源（确定性生成）
+mock_erp
+64 个数据集
+AnnualScenario
+3 行
+1 个对象类型
+20 分钟前同步
+ARAging
+2 行
+1 个对象类型
+20 分钟前同步
+ARInvoice
+60 行
+1 个对象类型
+20 分钟前同步
+BackupSupplierPool
+2 行
+1 个对象类型
+20 分钟前同步
+BidRecord
+2 行
+1 个对象类型
+20 分钟前同步
+BOMDetail
+105 行
+1 个对象类型
+20 分钟前同步
+BOMHeader
+15 行
+1 个对象类型
+20 分钟前同步
+Cadence
+8 行
+1 个对象类型
+20 分钟前同步
+CapexProject
+3 行
+1 个对象类型
+20 分钟前同步
+CarbonFactor
+14 行
+1 个对象类型
+20 分钟前同步
+CausalFactor
+37 行
+1 个对象类型
+20 分钟前同步
+Certification
+18 行
+1 个对象类型
+20 分钟前同步
+ChangeoverMatrix
+30 行
+1 个对象类型
+20 分钟前同步
+CommodityPriceTrend
+9 行
+1 个对象类型
+20 分钟前同步
+CompetitorPrice
+2 行
+1 个对象类型
+20 分钟前同步
+CompetitorShare
+3 行
+1 个对象类型
+20 分钟前同步
+Customer
+20 行
+1 个对象类型
+20 分钟前同步
+CustomerLocation
+30 行
+1 个对象类型
+20 分钟前同步
+CustomsClearance
+1 行
+1 个对象类型
+20 分钟前同步
+DecisionGap
+2 行
+1 个对象类型
+20 分钟前同步
+DemandSegment
+3 行
+1 个对象类型
+20 分钟前同步
+DSO
+2 行
+1 个对象类型
+20 分钟前同步
+eam_maint_orders
+193 行
+1 个对象类型
+20 分钟前同步
+EnergyMeter
+13 行
+1 个对象类型
+20 分钟前同步
+EngineeringChange
+9 行
+1 个对象类型
+20 分钟前同步
+ExceptionEvent
+372 行
+1 个对象类型
+20 分钟前同步
+ExternalSignal
+6 行
+1 个对象类型
+20 分钟前同步
+FinanceAccount
+13 行
+1 个对象类型
+20 分钟前同步
+FinanceMetric
+3 行
+1 个对象类型
+20 分钟前同步
+FinancePlan
+3 行
+1 个对象类型
+20 分钟前同步
+FinishedGoodsInventory
+18 行
+1 个对象类型
+20 分钟前同步
+GrossMarginBridge
+4 行
+1 个对象类型
+20 分钟前同步
+IncomingInspection
+30 行
+1 个对象类型
+20 分钟前同步
+InspectionCharacteristic
+72 行
+1 个对象类型
+20 分钟前同步
+InterBaseTransfer
+17 行
+1 个对象类型
+20 分钟前同步
+InventoryTxn
+128 行
+1 个对象类型
+20 分钟前同步
+KSF
+5 行
+1 个对象类型
+20 分钟前同步
+LongTermAgreement
+3 行
+1 个对象类型
+20 分钟前同步
+Material
+8 行
+1 个对象类型
+20 分钟前同步
+MaterialBalance
+9 行
+1 个对象类型
+20 分钟前同步
+MaterialBatch
+24 行
+1 个对象类型
+20 分钟前同步
+Metric
+10 行
+1 个对象类型
+20 分钟前同步
+Operation
+150 行
+1 个对象类型
+20 分钟前同步
+OrderLine
+873 行
+1 个对象类型
+20 分钟前同步
+OrderPromise
+50 行
+1 个对象类型
+20 分钟前同步
+Outsource
+8 行
+1 个对象类型
+20 分钟前同步
+OverdueRecord
+2 行
+1 个对象类型
+20 分钟前同步
+PipelineOpportunity
+2 行
+1 个对象类型
+20 分钟前同步
+PlanTarget
+17 行
+1 个对象类型
+20 分钟前同步
+PriceRealization
+2 行
+1 个对象类型
+20 分钟前同步
+Principal
+7 行
+1 个对象类型
+20 分钟前同步
+ProcessCapabilityWindow
+345 行
+1 个对象类型
+20 分钟前同步
+ProductEquipmentCapability
+376 行
+1 个对象类型
+20 分钟前同步
+ProductLineCapability
+18 行
+1 个对象类型
+20 分钟前同步
+PurchaseOrder
+30 行
+1 个对象类型
+20 分钟前同步
+QualityStandard
+36 行
+1 个对象类型
+20 分钟前同步
+RootCauseChain
+4 行
+1 个对象类型
+20 分钟前同步
+Routing
+15 行
+1 个对象类型
+20 分钟前同步
+ScenarioTrigger
+4 行
+1 个对象类型
+20 分钟前同步
+SopVersionRow
+4 行
+1 个对象类型
+20 分钟前同步
+Supplier
+15 行
+1 个对象类型
+20 分钟前同步
+TriggerRule
+3 行
+1 个对象类型
+20 分钟前同步
+Warehouse
+34 行
+1 个对象类型
+20 分钟前同步
+WinLossRecord
+2 行
+1 个对象类型
+20 分钟前同步
+ERP 主数据
+mock_erp
+2 个数据集
+erp_sales_orders
+500 行
+1 个对象类型
+20 分钟前同步
+erp_segments
+3 行
+1 个对象类型
+20 分钟前同步
+IoT 时序通道
+rest_api
+5 个数据集
+iot_alarms
+111 行
+1 个对象类型
+20 分钟前同步
+iot_downtime
+166 行
+1 个对象类型
+20 分钟前同步
+iot_equipment
+780 行
+1 个对象类型
+20 分钟前同步
+iot_oee_daily
+5460 行
+1 个对象类型
+20 分钟前同步
+iot_source_health
+9 行
+1 个对象类型
+20 分钟前同步
+MES 制造执行系统
+rest_api
+7 个数据集
+mes_base_master
+13 行
+1 个对象类型
+20 分钟前同步
+mes_lines
+130 行
+1 个对象类型
+20 分钟前同步
+mes_maint_plans
+13 行
+1 个对象类型
+20 分钟前同步
+mes_processes
+650 行
+1 个对象类型
+20 分钟前同步
+mes_wip_lots
+260 行
+1 个对象类型
+20 分钟前同步
+mes_work_orders
+260 行
+1 个对象类型
+20 分钟前同步
+mes_workshops
+130 行
+1 个对象类型
+20 分钟前同步
+PLM 产品生命周期管理
+rest_api
+5 个数据集
+plm_material_alts
+5 行
+1 个对象类型
+20 分钟前同步
+plm_models
+6 行
+1 个对象类型
+20 分钟前同步
+plm_platforms
+3 行
+1 个对象类型
+20 分钟前同步
+plm_series
+6 行
+1 个对象类型
+20 分钟前同步
+plm_versions
+15 行
+1 个对象类型
+20 分钟前同步
+QMS 质量管理系统
+rest_api
+3 个数据集
+qms_defects
+85 行
+1 个对象类型
+20 分钟前同步
+qms_inspection_results
+520 行
+1 个对象类型
+20 分钟前同步
+qms_quality_lots
+260 行
+1 个对象类型
+20 分钟前同步
+SRM 供应商关系管理
+rest_api
+1 个数据集
+srm_shipments
+13 行
+1 个对象类型
+20 分钟前同步
+已发布本体
+98 个对象类型（经建模链发布 · 可溯数据源）
+类型	域	属性数(个)	派生数(个)	来源数据集（provenance）
+已采纳处置方案 AdoptedMitigation	decision	10	0	无来源
+年度情景 AnnualScenario	plan	14	0	AnnualScenario
+应收账款账龄 ARAging	finance	5	0	ARAging
+应收发票 ARInvoice	commercial	6	0	ARInvoice
+备份供应池 BackupSupplierPool	supply	5	0	BackupSupplierPool
+生产基地 Base	factory	19	3	mes_base_master
+竞标记录 BidRecord	commercial	6	0	BidRecord
+BOM明细 BOMDetail	product	12	0	BOMDetail
+BOM主表 BOMHeader	product	9	0	BOMHeader
+节拍 Cadence	capacity	11	0	Cadence
+产能投资项目 CapexProject	plan	5	0	CapexProject
+碳因子 CarbonFactor	supply	4	0	CarbonFactor
+因果因素 CausalFactor	decision	14	0	CausalFactor
+认证 Certification	factory	6	0	Certification
+换型矩阵 ChangeoverMatrix	factory	6	0	ChangeoverMatrix
+矿产价格趋势 CommodityPriceTrend	external	8	0	CommodityPriceTrend
+竞品价格 CompetitorPrice	commercial	5	0	CompetitorPrice
+竞品份额 CompetitorShare	commercial	5	0	CompetitorShare
+客户 Customer	commercial	8	0	Customer
+客户地点 CustomerLocation	commercial	8	0	CustomerLocation
+清关记录 CustomsClearance	supply	9	0	CustomsClearance
+数据源健康度 DataSourceHealth	quality	4	0	iot_source_health
+决策缺陷 DecisionGap	decision	7	0	DecisionGap
+缺陷记录 DefectRecord	quality	9	0	qms_defects
+需求细分 DemandSegment	forecast	11	2	DemandSegment
+应收账款周转天数 DSO	finance	4	0	DSO
+能耗计量 EnergyMeter	factory	5	0	EnergyMeter
+工程变更 EngineeringChange	product	12	0	EngineeringChange
+设备 Equipment	equip	18	0	iot_equipment
+设备告警 EquipmentAlarm	equip	9	0	iot_alarms
+设备停机 EquipmentDowntime	equip	9	0	iot_downtime
+设备OEE EquipmentOEE	equip	11	0	iot_oee_daily
+异常事件 ExceptionEvent	quality	9	0	ExceptionEvent
+外部信号 ExternalSignal	external	11	0	ExternalSignal
+基地财务账户 FinanceAccount	finance	6	0	FinanceAccount
+情景财务指标 FinanceMetric	finance	6	0	FinanceMetric
+财务预算 FinancePlan	finance	4	0	FinancePlan
+成品库存 FinishedGoodsInventory	supply	6	1	FinishedGoodsInventory
+毛利桥 GrossMarginBridge	finance	6	0	GrossMarginBridge
+到货检验 IncomingInspection	quality	9	0	IncomingInspection
+检验特性 InspectionCharacteristic	quality	10	0	InspectionCharacteristic
+检验结果 InspectionResult	quality	9	0	qms_inspection_results
+跨基地调拨 InterBaseTransfer	capacity	13	1	InterBaseTransfer
+库存流水 InventoryTxn	supply	9	0	InventoryTxn
+关键成功要素 KSF	decision	4	0	KSF
+产线 Line	factory	11	0	mes_lines
+长期协议 LongTermAgreement	supply	10	0	LongTermAgreement
+维修工单 MaintenanceOrder	equip	11	0	eam_maint_orders
+检修计划 MaintPlan	equip	4	0	mes_maint_plans
+物料 Material	supply	19	0	Material
+物料替代关系 MaterialAlternative	supply	10	0	plm_material_alts
+物料平衡 MaterialBalance	material	8	1	MaterialBalance
+物料批次 MaterialBatch	supply	5	0	MaterialBatch
+经营指标 Metric	decision	14	2	Metric
+电池型号 Model	product	17	2	plm_models
+工序定义 Operation	process	13	0	Operation
+操作工考勤 OperatorAttendance	people	11	0	hr_attendance
+操作工技能认证 OperatorSkillCert	people	8	0	hr_skill_certs
+销售订单 Order	product	17	1	erp_sales_orders
+订单明细行 OrderLine	product	9	0	OrderLine
+订单承诺 OrderPromise	commercial	10	0	OrderPromise
+外协批次 Outsource	supply	6	0	Outsource
+逾期记录 OverdueRecord	finance	7	0	OverdueRecord
+营收漏斗 PipelineOpportunity	commercial	5	0	PipelineOpportunity
+计划目标 PlanTarget	plan	6	0	PlanTarget
+价格实现 PriceRealization	commercial	5	0	PriceRealization
+责任主体 Principal	people	4	0	Principal
+工序 Process	process	17	0	mes_processes
+工艺能力边界 ProcessCapabilityWindow	process	12	0	ProcessCapabilityWindow
+业务流程定义 ProcessDefinition	plan	7	0	无来源
+业务流程实例 ProcessInstance	plan	13	0	无来源
+业务流程步骤模板 ProcessStepTemplate	plan	8	0	无来源
+产品设备能力 ProductEquipmentCapability	equip	11	0	ProductEquipmentCapability
+生产排程 ProductionSchedule	process	8	0	mes_schedules
+产品产线能力 ProductLineCapability	factory	12	0	ProductLineCapability
+产品平台 ProductPlatform	product	6	0	plm_platforms
+产品系列 ProductSeries	product	9	0	plm_series
+产品版本 ProductVersion	product	9	0	plm_versions
+采购订单 PurchaseOrder	supply	10	0	PurchaseOrder
+质检批次 QualityLot	quality	10	0	qms_quality_lots
+质量标准 QualityStandard	quality	13	0	QualityStandard
+根因归因链 RootCauseChain	decision	7	0	RootCauseChain
+工艺路线 Routing	process	10	0	Routing
+情景触发条件 ScenarioTrigger	plan	7	0	ScenarioTrigger
+应用细分 Segment	product	4	0	erp_segments
+班次计划 ShiftPlan	people	8	0	mes_shift_plans
+在途批次 Shipment	capacity	6	0	srm_shipments
+S&OP版本演进 SopVersionRow	plan	7	1	SopVersionRow
+备件消耗 SparePartConsumption	equip	7	0	eam_spare_parts
+供应商 Supplier	supply	19	0	Supplier
+触发规则 TriggerRule	decision	7	0	TriggerRule
+仓库 Warehouse	factory	7	0	Warehouse
+赢单丢单记录 WinLossRecord	commercial	5	0	WinLossRecord
+在制批次 WIPLot	process	9	0	mes_wip_lots
+在制移动 WIPMove	process	7	0	mes_wip_moves
+在制质检点 WIPQualityCheckpoint	quality	7	0	qms_wip_checkpoints
+生产工单 WorkOrder	process	11	0	mes_work_orders
+车间 Workshop	factory	4	0	mes_workshops

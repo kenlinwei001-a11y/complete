@@ -1,4 +1,6 @@
 import { LIVED_IN_INCUBATED, LIVED_IN_SCENE_HISTORY, type HistoryBundle, type HistoryWatermark } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：版本史 mock 与 datacore 同源派生，禁手抄。
+import { OUTSOURCE_REDLINE, OUTSOURCE_REDLINE_HISTORY, outsourceRedlineViolationExpr } from "@platform/contracts";
 
 /**
  * 运营态出厂配置增量（mock 模式）：GET /a/v1/history/bundle / watermark 的确定性 fixture。
@@ -11,8 +13,8 @@ const MONTHS = ["2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12"
 const LIVED_BASES = [
   { baseId: "changzhou", name: "常州", monthlyWan: 5.2, maintMonth: "2026-04" },
   { baseId: "hefei", name: "合肥", monthlyWan: 4.1, maintMonth: "2026-05" },
-  { baseId: "xian", name: "西安", monthlyWan: 2.6, maintMonth: "2026-03" },
-  { baseId: "yibin", name: "宜宾", monthlyWan: 6.0, maintMonth: "2026-06" },
+  { baseId: "wuhan", name: "武汉", monthlyWan: 2.6, maintMonth: "2026-03" },
+  { baseId: "jiangmen", name: "江门", monthlyWan: 6.0, maintMonth: "2026-06" },
 ];
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -55,7 +57,7 @@ export const LIVED_RISK_CASES: HistoryBundle["riskCases"] = [
     tags: ["到货危机"], curve: { seriesKey: "output:line", entityId: "LINE-changzhou", from: "2025-11-08", to: "2025-12-08" },
   },
   {
-    id: "case_lh_demo_9", caseNo: "CASE-009", title: "西安·物流时长风险处置", baseId: "xian", baseName: "西安",
+    id: "case_lh_demo_9", caseNo: "CASE-009", title: "武汉·物流时长风险处置", baseId: "wuhan", baseName: "武汉",
     factor: "物流时长", severity: "MEDIUM", windowFrom: "2026-03-10", windowTo: "2026-03-23",
     crossedAt: "2026-03-10", adoptedAt: "2026-03-13", resolvedAt: "2026-03-23",
     mitigation: { name: "双路由切换", planKey: "dual_route" }, actionId: "act_lh_demo_009",
@@ -71,7 +73,7 @@ export const LIVED_RISK_CASES: HistoryBundle["riskCases"] = [
 ];
 
 const CUSTS = ["星辰汽车", "蓝海储能", "极光电动", "云岭新能源"];
-const MODELS = ["4680-NCM", "S192-LFP", "VDA-NCM"];
+const MODELS = ["4680-NCM", "圆柱-LFP", "VDA-NCM"];
 
 function deliveredOrders(): HistoryBundle["delivered"] {
   const out: HistoryBundle["delivered"] = [];
@@ -165,10 +167,19 @@ const CAL_PROPOSALS: HistoryBundle["calibrations"]["proposals"] = [
 ];
 
 const RULE_VERSIONS: HistoryBundle["ruleVersions"] = [
-  { key: "C08", name: "外协比例红线", version: 1, label: "v1.0", expression: "Order.outsourceRatio > 0.3", reason: "场景包出厂基线（上限 30%）", changedAt: "2025-07-01", status: "RETIRED", tags: [] },
-  { key: "C08", name: "外协比例红线", version: 2, label: "v1.1", expression: "Order.outsourceRatio > 0.25", reason: "Q1 外协质量事件复盘：上限 30%→25%", changedAt: "2025-09-12", status: "RETIRED", tags: [] },
-  { key: "C08", name: "外协比例红线", version: 3, label: "v1.2", expression: "Order.outsourceRatio > 0.22", reason: "连续两月外协毛利侵蚀复盘：25%→22%", changedAt: "2026-01-09", status: "RETIRED", tags: [] },
-  { key: "C08", name: "外协比例红线", version: 4, label: "v1.3", expression: "Order.outsourceRatio > 0.2", reason: "年度复盘：外协质量+毛利双重约束，收紧至 20%", changedAt: "2026-04-03", status: "PUBLISHED", tags: [] },
+  // DF.13：C08 版本史从契约 OUTSOURCE_REDLINE_HISTORY 派生（此前是 datacore livedin/engine.ts 那份的**手抄副本**，
+  // 两处各改各的就是漂移；现在改红线 → 后端与本 mock 同时变）。
+  ...OUTSOURCE_REDLINE_HISTORY.map((h) => ({
+    key: OUTSOURCE_REDLINE.ruleKey,
+    name: OUTSOURCE_REDLINE.ruleName,
+    version: h.version,
+    label: h.label,
+    expression: outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, h.maxRatio),
+    reason: h.reason,
+    changedAt: h.changedAt,
+    status: h.status,
+    tags: [] as string[],
+  })),
   { key: "C16", name: "齐套覆盖天数下限", version: 1, label: "v1.0", expression: "Shipment.coverageDays < 3", reason: "出厂基线：关键材料齐套覆盖 ≥3 天", changedAt: "2025-07-01", status: "RETIRED", tags: [] },
   { key: "C16", name: "齐套覆盖天数下限", version: 2, label: "v2.0", expression: "Shipment.coverageDays < 5", reason: "到货危机复盘（2025-11-18~2025-12-01）：正极到货延迟导致齐套断档，覆盖天数 3→5 天", changedAt: "2025-12-03", status: "PUBLISHED", tags: ["到货危机复盘"] },
 ];
@@ -208,6 +219,13 @@ export function historyBundleFor(baseScope: string[] | null, page: number, pageS
   const items = allActions.slice((page - 1) * pageSize, page * pageSize);
   const countBy = (s: string) => allActions.filter((a) => a.status === s).length;
 
+  // 三线偏差（#5）：供给=trend 产出；需求=供给×需求系数（危机窗口拉高 → 缺口可见）；缺口=需求−供给。
+  const deviation = trend.map((t) => {
+    const crisis = t.month.startsWith("2025-11") || t.month.startsWith("2025-12");
+    const demand = round2(t.output * (crisis ? 1.22 : 1.06));
+    return { month: t.month, demand, supply: t.output, gap: round2(demand - t.output) };
+  });
+
   return {
     generatedFrom: {
       industry: "battery-manufacturing", scale: "S", seed: 42, jobId: "synthetic-battery-manufacturing-S-42",
@@ -215,6 +233,7 @@ export function historyBundleFor(baseScope: string[] | null, page: number, pageS
     },
     crisisWindow: { from: "2025-11-18", to: "2025-12-01" },
     trend,
+    deviation,
     monthly,
     delivered,
     deliveredCount: delivered.length,
@@ -254,7 +273,7 @@ export function historyBundleFor(baseScope: string[] | null, page: number, pageS
           i === 4
             ? [{ name: "正极提前备料专项（到货危机对策，CASE-007）", delta: 0.8 }]
             : i === 2
-              ? [{ name: "宜宾二线提前爬坡（C21 储能需求上修决议）", delta: 1.2 }]
+              ? [{ name: "枣庄一线提前爬坡（C21 储能需求上修决议）", delta: 1.2 }]
               : [],
       };
     }),

@@ -1,0 +1,1877 @@
+{
+  "fromTick": 5,
+  "toTick": 6,
+  "data": {
+    "objects": 12745,
+    "links": 12192,
+    "types": [
+      {
+        "typeKey": "EquipmentOEE",
+        "count": 5460
+      },
+      {
+        "typeKey": "OrderLine",
+        "count": 873
+      },
+      {
+        "typeKey": "Equipment",
+        "count": 780
+      },
+      {
+        "typeKey": "Process",
+        "count": 650
+      },
+      {
+        "typeKey": "InspectionResult",
+        "count": 520
+      },
+      {
+        "typeKey": "Order",
+        "count": 500
+      },
+      {
+        "typeKey": "ProductEquipmentCapability",
+        "count": 376
+      },
+      {
+        "typeKey": "ExceptionEvent",
+        "count": 372
+      },
+      {
+        "typeKey": "ProcessCapabilityWindow",
+        "count": 345
+      },
+      {
+        "typeKey": "QualityLot",
+        "count": 260
+      },
+      {
+        "typeKey": "WIPLot",
+        "count": 260
+      },
+      {
+        "typeKey": "WorkOrder",
+        "count": 260
+      },
+      {
+        "typeKey": "MaintenanceOrder",
+        "count": 193
+      },
+      {
+        "typeKey": "EquipmentDowntime",
+        "count": 166
+      },
+      {
+        "typeKey": "Operation",
+        "count": 150
+      },
+      {
+        "typeKey": "Line",
+        "count": 130
+      },
+      {
+        "typeKey": "Workshop",
+        "count": 130
+      },
+      {
+        "typeKey": "InventoryTxn",
+        "count": 128
+      },
+      {
+        "typeKey": "EquipmentAlarm",
+        "count": 111
+      },
+      {
+        "typeKey": "BOMDetail",
+        "count": 105
+      },
+      {
+        "typeKey": "DefectRecord",
+        "count": 85
+      },
+      {
+        "typeKey": "InspectionCharacteristic",
+        "count": 72
+      },
+      {
+        "typeKey": "ARInvoice",
+        "count": 60
+      },
+      {
+        "typeKey": "FinishedGoodsInventory",
+        "count": 57
+      },
+      {
+        "typeKey": "OrderPromise",
+        "count": 50
+      },
+      {
+        "typeKey": "CausalFactor",
+        "count": 37
+      },
+      {
+        "typeKey": "QualityStandard",
+        "count": 36
+      },
+      {
+        "typeKey": "Warehouse",
+        "count": 34
+      },
+      {
+        "typeKey": "ChangeoverMatrix",
+        "count": 30
+      },
+      {
+        "typeKey": "CustomerLocation",
+        "count": 30
+      },
+      {
+        "typeKey": "IncomingInspection",
+        "count": 30
+      },
+      {
+        "typeKey": "PurchaseOrder",
+        "count": 30
+      },
+      {
+        "typeKey": "MaterialBatch",
+        "count": 24
+      },
+      {
+        "typeKey": "Customer",
+        "count": 20
+      },
+      {
+        "typeKey": "Certification",
+        "count": 18
+      },
+      {
+        "typeKey": "ProductLineCapability",
+        "count": 18
+      },
+      {
+        "typeKey": "InterBaseTransfer",
+        "count": 17
+      },
+      {
+        "typeKey": "PlanTarget",
+        "count": 17
+      },
+      {
+        "typeKey": "BOMHeader",
+        "count": 15
+      },
+      {
+        "typeKey": "ProductVersion",
+        "count": 15
+      },
+      {
+        "typeKey": "Routing",
+        "count": 15
+      },
+      {
+        "typeKey": "Supplier",
+        "count": 15
+      },
+      {
+        "typeKey": "CarbonFactor",
+        "count": 14
+      },
+      {
+        "typeKey": "Base",
+        "count": 13
+      },
+      {
+        "typeKey": "EnergyMeter",
+        "count": 13
+      },
+      {
+        "typeKey": "FinanceAccount",
+        "count": 13
+      },
+      {
+        "typeKey": "MaintPlan",
+        "count": 13
+      },
+      {
+        "typeKey": "Shipment",
+        "count": 13
+      },
+      {
+        "typeKey": "Metric",
+        "count": 10
+      },
+      {
+        "typeKey": "CommodityPriceTrend",
+        "count": 9
+      },
+      {
+        "typeKey": "DataSourceHealth",
+        "count": 9
+      },
+      {
+        "typeKey": "EngineeringChange",
+        "count": 9
+      },
+      {
+        "typeKey": "MaterialBalance",
+        "count": 9
+      },
+      {
+        "typeKey": "Cadence",
+        "count": 8
+      },
+      {
+        "typeKey": "Material",
+        "count": 8
+      },
+      {
+        "typeKey": "Outsource",
+        "count": 8
+      },
+      {
+        "typeKey": "Principal",
+        "count": 7
+      },
+      {
+        "typeKey": "ExternalSignal",
+        "count": 6
+      },
+      {
+        "typeKey": "Model",
+        "count": 6
+      },
+      {
+        "typeKey": "ProductSeries",
+        "count": 6
+      },
+      {
+        "typeKey": "KSF",
+        "count": 5
+      },
+      {
+        "typeKey": "MaterialAlternative",
+        "count": 5
+      },
+      {
+        "typeKey": "GrossMarginBridge",
+        "count": 4
+      },
+      {
+        "typeKey": "RootCauseChain",
+        "count": 4
+      },
+      {
+        "typeKey": "ScenarioTrigger",
+        "count": 4
+      },
+      {
+        "typeKey": "SopVersionRow",
+        "count": 4
+      },
+      {
+        "typeKey": "AnnualScenario",
+        "count": 3
+      },
+      {
+        "typeKey": "CapexProject",
+        "count": 3
+      },
+      {
+        "typeKey": "CompetitorShare",
+        "count": 3
+      },
+      {
+        "typeKey": "DemandSegment",
+        "count": 3
+      },
+      {
+        "typeKey": "FinanceMetric",
+        "count": 3
+      },
+      {
+        "typeKey": "FinancePlan",
+        "count": 3
+      },
+      {
+        "typeKey": "LongTermAgreement",
+        "count": 3
+      },
+      {
+        "typeKey": "ProductPlatform",
+        "count": 3
+      },
+      {
+        "typeKey": "Segment",
+        "count": 3
+      },
+      {
+        "typeKey": "TriggerRule",
+        "count": 3
+      },
+      {
+        "typeKey": "ARAging",
+        "count": 2
+      },
+      {
+        "typeKey": "BackupSupplierPool",
+        "count": 2
+      },
+      {
+        "typeKey": "BidRecord",
+        "count": 2
+      },
+      {
+        "typeKey": "CompetitorPrice",
+        "count": 2
+      },
+      {
+        "typeKey": "DecisionGap",
+        "count": 2
+      },
+      {
+        "typeKey": "DSO",
+        "count": 2
+      },
+      {
+        "typeKey": "OverdueRecord",
+        "count": 2
+      },
+      {
+        "typeKey": "PipelineOpportunity",
+        "count": 2
+      },
+      {
+        "typeKey": "PriceRealization",
+        "count": 2
+      },
+      {
+        "typeKey": "WinLossRecord",
+        "count": 2
+      },
+      {
+        "typeKey": "CustomsClearance",
+        "count": 1
+      }
+    ],
+    "linkTypes": [
+      {
+        "linkKey": "line_of_order",
+        "count": 873
+      },
+      {
+        "linkKey": "order_has_line",
+        "count": 873
+      },
+      {
+        "linkKey": "orderline_for_model",
+        "count": 873
+      },
+      {
+        "linkKey": "equip_used_in",
+        "count": 780
+      },
+      {
+        "linkKey": "process_uses_equipment",
+        "count": 780
+      },
+      {
+        "linkKey": "line_has_process",
+        "count": 650
+      },
+      {
+        "linkKey": "process_belongs_to_line",
+        "count": 650
+      },
+      {
+        "linkKey": "model_demanded_by_order",
+        "count": 500
+      },
+      {
+        "linkKey": "order_for_model",
+        "count": 500
+      },
+      {
+        "linkKey": "order_of_customer",
+        "count": 500
+      },
+      {
+        "linkKey": "order_to_plantarget",
+        "count": 458
+      },
+      {
+        "linkKey": "product_equip_capability",
+        "count": 376
+      },
+      {
+        "linkKey": "exc_sourced_from",
+        "count": 372
+      },
+      {
+        "linkKey": "capability_belongs_to_operation",
+        "count": 345
+      },
+      {
+        "linkKey": "line_runs_work_order",
+        "count": 260
+      },
+      {
+        "linkKey": "wo_for_model",
+        "count": 260
+      },
+      {
+        "linkKey": "work_order_sampled_by_quality_lot",
+        "count": 260
+      },
+      {
+        "linkKey": "work_order_yields_wip_lot",
+        "count": 260
+      },
+      {
+        "linkKey": "equipment_has_maintenance_order",
+        "count": 193
+      },
+      {
+        "linkKey": "operation_belongs_to_routing",
+        "count": 150
+      },
+      {
+        "linkKey": "line_belongs_to_base",
+        "count": 130
+      },
+      {
+        "linkKey": "line_belongs_to_workshop",
+        "count": 130
+      },
+      {
+        "linkKey": "workshop_belongs_to_base",
+        "count": 130
+      },
+      {
+        "linkKey": "txn_for_fg",
+        "count": 128
+      },
+      {
+        "linkKey": "txn_from_wo",
+        "count": 128
+      },
+      {
+        "linkKey": "base_data_health",
+        "count": 117
+      },
+      {
+        "linkKey": "detail_belongs_to_bom",
+        "count": 105
+      },
+      {
+        "linkKey": "detail_uses_material",
+        "count": 105
+      },
+      {
+        "linkKey": "defect_raises_exception",
+        "count": 85
+      },
+      {
+        "linkKey": "wip_lot_found_defect",
+        "count": 85
+      },
+      {
+        "linkKey": "char_belongs_to_standard",
+        "count": 72
+      },
+      {
+        "linkKey": "customer_has_invoice",
+        "count": 60
+      },
+      {
+        "linkKey": "fg_at_warehouse",
+        "count": 57
+      },
+      {
+        "linkKey": "order_has_promise",
+        "count": 50
+      },
+      {
+        "linkKey": "promise_for_order",
+        "count": 50
+      },
+      {
+        "linkKey": "standard_belongs_to_model",
+        "count": 36
+      },
+      {
+        "linkKey": "fg_of_model",
+        "count": 34
+      },
+      {
+        "linkKey": "model_stocked_as_finished_goods",
+        "count": 34
+      },
+      {
+        "linkKey": "warehouse_of_base",
+        "count": 34
+      },
+      {
+        "linkKey": "custloc_of_customer",
+        "count": 30
+      },
+      {
+        "linkKey": "customer_has_location",
+        "count": 30
+      },
+      {
+        "linkKey": "material_supplied_by_po",
+        "count": 30
+      },
+      {
+        "linkKey": "model_changeover",
+        "count": 30
+      },
+      {
+        "linkKey": "po_from_supplier",
+        "count": 30
+      },
+      {
+        "linkKey": "po_inspected_by",
+        "count": 30
+      },
+      {
+        "linkKey": "po_replenishes_material",
+        "count": 30
+      },
+      {
+        "linkKey": "batch_replenishes_material",
+        "count": 24
+      },
+      {
+        "linkKey": "material_has_batch",
+        "count": 24
+      },
+      {
+        "linkKey": "material_used_by_model",
+        "count": 24
+      },
+      {
+        "linkKey": "model_uses_material",
+        "count": 24
+      },
+      {
+        "linkKey": "caused_by",
+        "count": 23
+      },
+      {
+        "linkKey": "model_certified_on",
+        "count": 18
+      },
+      {
+        "linkKey": "model_has_cert",
+        "count": 18
+      },
+      {
+        "linkKey": "model_producible_at",
+        "count": 18
+      },
+      {
+        "linkKey": "product_line_capability",
+        "count": 18
+      },
+      {
+        "linkKey": "base_dispatches_transfer",
+        "count": 17
+      },
+      {
+        "linkKey": "plantarget_ownedby",
+        "count": 17
+      },
+      {
+        "linkKey": "scenario_to_target",
+        "count": 17
+      },
+      {
+        "linkKey": "transfer_from_base",
+        "count": 17
+      },
+      {
+        "linkKey": "transfer_of_model",
+        "count": 17
+      },
+      {
+        "linkKey": "transfer_to_base",
+        "count": 17
+      },
+      {
+        "linkKey": "bom_belongs_to_version",
+        "count": 15
+      },
+      {
+        "linkKey": "routing_belongs_to_model",
+        "count": 15
+      },
+      {
+        "linkKey": "version_belongs_to_model",
+        "count": 15
+      },
+      {
+        "linkKey": "base_energy_meter",
+        "count": 13
+      },
+      {
+        "linkKey": "base_finance",
+        "count": 13
+      },
+      {
+        "linkKey": "base_has_shipment",
+        "count": 13
+      },
+      {
+        "linkKey": "base_maint_plan",
+        "count": 13
+      },
+      {
+        "linkKey": "metric_affects_ksf",
+        "count": 10
+      },
+      {
+        "linkKey": "metric_ownedby",
+        "count": 10
+      },
+      {
+        "linkKey": "change_affects_model",
+        "count": 9
+      },
+      {
+        "linkKey": "material_carbon",
+        "count": 8
+      },
+      {
+        "linkKey": "material_has_balance",
+        "count": 8
+      },
+      {
+        "linkKey": "material_has_outsource",
+        "count": 8
+      },
+      {
+        "linkKey": "material_supplied_by",
+        "count": 8
+      },
+      {
+        "linkKey": "supplier_supplies_material",
+        "count": 8
+      },
+      {
+        "linkKey": "model_belongs_to_series",
+        "count": 6
+      },
+      {
+        "linkKey": "model_in_segment",
+        "count": 6
+      },
+      {
+        "linkKey": "scenario_to_capex",
+        "count": 6
+      },
+      {
+        "linkKey": "series_belongs_to_platform",
+        "count": 6
+      },
+      {
+        "linkKey": "alt_for_material",
+        "count": 5
+      },
+      {
+        "linkKey": "material_has_alternative",
+        "count": 5
+      },
+      {
+        "linkKey": "scenario_to_finance",
+        "count": 3
+      },
+      {
+        "linkKey": "customer_has_overdue_record",
+        "count": 2
+      },
+      {
+        "linkKey": "po_customs_cleared_by",
+        "count": 1
+      }
+    ],
+    "snapshotVersion": "5e1f365be4aa"
+  },
+  "slice": {
+    "sliceKey": "GLOBAL",
+    "kind": "GLOBAL",
+    "target": null,
+    "hops": 1,
+    "nodes": 12745,
+    "edges": 12192,
+    "droppedNodes": 0,
+    "droppedEdges": 0,
+    "unresolved": null
+  },
+  "rules": {
+    "declared": 46,
+    "fired": 46,
+    "withCoefficientRef": 0,
+    "refUnresolved": 0,
+    "withWeightRef": 3,
+    "contributions": 8753,
+    "perturbationWrites": 2,
+    "items": [
+      {
+        "ruleKey": "demo_base_load_to_inbound_expedite",
+        "fired": true,
+        "coefficient": 0.35,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Base.loadIndex --base_has_shipment--> Shipment.inboundExpeditePressure"
+      },
+      {
+        "ruleKey": "demo_base_load_to_line_util",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Base.loadIndex --line_belongs_to_base--> Line.utilPressure"
+      },
+      {
+        "ruleKey": "demo_base_load_to_maint_window_squeeze",
+        "fired": true,
+        "coefficient": 0.4,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Base.loadIndex --base_maint_plan--> MaintPlan.windowSqueeze"
+      },
+      {
+        "ruleKey": "demo_base_load_to_transfer_pressure",
+        "fired": true,
+        "coefficient": 0.3,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Base.loadIndex --base_dispatches_transfer--> InterBaseTransfer.transferPressure"
+      },
+      {
+        "ruleKey": "demo_batch_procurement_delay_to_material_shortage",
+        "fired": true,
+        "coefficient": 0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "MaterialBatch.procurementDelay --batch_replenishes_material--> Material.shortageRisk"
+      },
+      {
+        "ruleKey": "demo_customer_receivable_to_collection",
+        "fired": true,
+        "coefficient": 0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Customer.receivablePressure --customer_has_overdue_record--> OverdueRecord.collectionPressure"
+      },
+      {
+        "ruleKey": "demo_customer_receivable_to_invoice_overdue",
+        "fired": true,
+        "coefficient": 0.4,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Customer.receivablePressure --customer_has_invoice--> ARInvoice.overduePressure"
+      },
+      {
+        "ruleKey": "demo_customer_receivable_to_location_hold",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Customer.receivablePressure --customer_has_location--> CustomerLocation.deliveryHoldRisk"
+      },
+      {
+        "ruleKey": "demo_defect_to_exception_backlog",
+        "fired": true,
+        "coefficient": 0.8,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "DefectRecord.defectPressure --defect_raises_exception--> ExceptionEvent.handlingBacklog"
+      },
+      {
+        "ruleKey": "demo_equipment_failure_to_process_queue",
+        "fired": true,
+        "coefficient": 0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Equipment.equipmentFailure --equip_used_in--> Process.queuePressure"
+      },
+      {
+        "ruleKey": "demo_equipment_load_to_repair_backlog",
+        "fired": true,
+        "coefficient": 0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Equipment.loadPressure --equipment_has_maintenance_order--> MaintenanceOrder.repairBacklog"
+      },
+      {
+        "ruleKey": "demo_forecast_bias_to_order_demand",
+        "fired": true,
+        "coefficient": -0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Model.forecastBias --model_demanded_by_order--> Order.demandPressure"
+      },
+      {
+        "ruleKey": "demo_line_blocked_to_wo_release",
+        "fired": true,
+        "coefficient": 0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Line.blockedPressure --line_runs_work_order--> WorkOrder.releasePressure"
+      },
+      {
+        "ruleKey": "demo_line_util_to_process_queue",
+        "fired": true,
+        "coefficient": 0.7,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Line.utilPressure --line_has_process--> Process.queuePressure"
+      },
+      {
+        "ruleKey": "demo_line_util_to_wo_release",
+        "fired": true,
+        "coefficient": 0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Line.utilPressure --line_runs_work_order--> WorkOrder.releasePressure"
+      },
+      {
+        "ruleKey": "demo_material_price_to_model_cost",
+        "fired": true,
+        "coefficient": 0.65,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": "bom_cost_share",
+        "weightNormalize": "IN_EDGES",
+        "weightPairs": 24,
+        "weightZeroPairs": 3,
+        "weightElapsedMs": 3,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Material.priceShock --material_used_by_model--> Model.costPressure"
+      },
+      {
+        "ruleKey": "demo_material_shortage_to_alt_switch",
+        "fired": true,
+        "coefficient": 0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Material.shortageRisk --material_has_alternative--> MaterialAlternative.switchPressure"
+      },
+      {
+        "ruleKey": "demo_material_shortage_to_balance_gap",
+        "fired": true,
+        "coefficient": 0.7,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Material.shortageRisk --material_has_balance--> MaterialBalance.gapPressure"
+      },
+      {
+        "ruleKey": "demo_material_shortage_to_batch_turnover",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Material.shortageRisk --material_has_batch--> MaterialBatch.turnoverPressure"
+      },
+      {
+        "ruleKey": "demo_material_shortage_to_model_supply_risk",
+        "fired": true,
+        "coefficient": 0.7,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Material.shortageRisk --material_used_by_model--> Model.supplyRisk"
+      },
+      {
+        "ruleKey": "demo_material_shortage_to_po_expedite",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Material.shortageRisk --material_supplied_by_po--> PurchaseOrder.expeditePressure"
+      },
+      {
+        "ruleKey": "demo_model_cost_to_order_cost",
+        "fired": true,
+        "coefficient": 0.9,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Model.costPressure --model_demanded_by_order--> Order.costPressure"
+      },
+      {
+        "ruleKey": "demo_model_demand_to_base_load",
+        "fired": true,
+        "coefficient": 0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Model.demandLoad --model_producible_at--> Base.loadIndex"
+      },
+      {
+        "ruleKey": "demo_model_demand_to_cert_queue",
+        "fired": true,
+        "coefficient": 0.3,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Model.demandLoad --model_has_cert--> Certification.qualificationQueue"
+      },
+      {
+        "ruleKey": "demo_model_demand_to_changeover_pressure",
+        "fired": true,
+        "coefficient": 0.4,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Model.demandLoad --model_changeover--> ChangeoverMatrix.changeoverPressure"
+      },
+      {
+        "ruleKey": "demo_model_demand_to_fg_drawdown",
+        "fired": true,
+        "coefficient": 0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Model.demandLoad --model_stocked_as_finished_goods--> FinishedGoodsInventory.drawdownPressure"
+      },
+      {
+        "ruleKey": "demo_model_supply_risk_to_order_shortage",
+        "fired": true,
+        "coefficient": 0.8,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Model.supplyRisk --model_demanded_by_order--> Order.shortageRisk"
+      },
+      {
+        "ruleKey": "demo_order_churn_to_line_split",
+        "fired": true,
+        "coefficient": 0.7,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Order.orderChurn --order_has_line--> OrderLine.splitPressure"
+      },
+      {
+        "ruleKey": "demo_order_churn_to_model_demand_load",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": "source_qty_relative",
+        "weightNormalize": "IN_EDGES_MEAN",
+        "weightPairs": 500,
+        "weightZeroPairs": 0,
+        "weightElapsedMs": 9,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Order.orderChurn --order_for_model--> Model.demandLoad"
+      },
+      {
+        "ruleKey": "demo_order_cost_to_customer_receivable",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Order.costPressure --order_of_customer--> Customer.receivablePressure"
+      },
+      {
+        "ruleKey": "demo_order_demand_pressure",
+        "fired": true,
+        "coefficient": 0.8,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": "source_qty_relative",
+        "weightNormalize": "IN_EDGES_MEAN",
+        "weightPairs": 500,
+        "weightZeroPairs": 0,
+        "weightElapsedMs": 1,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Order.demandPressure --order_for_model--> Model.demandLoad"
+      },
+      {
+        "ruleKey": "demo_order_demand_to_line_split",
+        "fired": true,
+        "coefficient": 0.9,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Order.demandPressure --order_has_line--> OrderLine.splitPressure"
+      },
+      {
+        "ruleKey": "demo_order_shortage_to_promise_risk",
+        "fired": true,
+        "coefficient": 0.8,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Order.shortageRisk --order_has_promise--> OrderPromise.promiseRisk"
+      },
+      {
+        "ruleKey": "demo_po_expedite_to_customs_queue",
+        "fired": true,
+        "coefficient": 0.4,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "PurchaseOrder.expeditePressure --po_customs_cleared_by--> CustomsClearance.clearanceQueueDays"
+      },
+      {
+        "ruleKey": "demo_po_expedite_to_inspection_queue",
+        "fired": true,
+        "coefficient": 0.6,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "PurchaseOrder.expeditePressure --po_inspected_by--> IncomingInspection.queueDays"
+      },
+      {
+        "ruleKey": "demo_po_expedite_to_supplier_review",
+        "fired": true,
+        "coefficient": 0.4,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "PurchaseOrder.expeditePressure --po_from_supplier--> Supplier.reviewPressure"
+      },
+      {
+        "ruleKey": "demo_po_procurement_delay_to_material_shortage",
+        "fired": true,
+        "coefficient": 0.8,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "PurchaseOrder.procurementDelay --po_replenishes_material--> Material.shortageRisk"
+      },
+      {
+        "ruleKey": "demo_process_queue_to_equipment_load",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Process.queuePressure --process_uses_equipment--> Equipment.loadPressure"
+      },
+      {
+        "ruleKey": "demo_process_queue_to_line_blocked",
+        "fired": true,
+        "coefficient": 0.55,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Process.queuePressure --process_belongs_to_line--> Line.blockedPressure"
+      },
+      {
+        "ruleKey": "demo_supplier_delay_to_material_shortage",
+        "fired": true,
+        "coefficient": 0.9,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Supplier.deliveryDelay --supplier_supplies_material--> Material.shortageRisk"
+      },
+      {
+        "ruleKey": "demo_supplier_procurement_delay_to_material_shortage",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Supplier.procurementDelay --supplier_supplies_material--> Material.shortageRisk"
+      },
+      {
+        "ruleKey": "demo_wip_feed_to_defect_pressure",
+        "fired": true,
+        "coefficient": 0.3,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "WIPLot.feedPressure --wip_lot_found_defect--> DefectRecord.defectPressure"
+      },
+      {
+        "ruleKey": "demo_wo_release_to_model_cost",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "WorkOrder.releasePressure --wo_for_model--> Model.costPressure"
+      },
+      {
+        "ruleKey": "demo_wo_release_to_model_supply_risk",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "WorkOrder.releasePressure --wo_for_model--> Model.supplyRisk"
+      },
+      {
+        "ruleKey": "demo_wo_release_to_quality_backlog",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "WorkOrder.releasePressure --work_order_sampled_by_quality_lot--> QualityLot.inspectBacklog"
+      },
+      {
+        "ruleKey": "demo_wo_release_to_wip_feed",
+        "fired": true,
+        "coefficient": 0.7,
+        "coefficientSource": "INLINE",
+        "coefficientRef": null,
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "WorkOrder.releasePressure --work_order_yields_wip_lot--> WIPLot.feedPressure"
+      }
+    ],
+    "unresolvedWeights": []
+  },
+  "constraints": {
+    "stateVarBounds": [
+      {
+        "stateVar": "changeoverPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "collectionPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "costPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "defectPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "deliveryHoldRisk",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "demandLoad",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "demandPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "drawdownPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "equipmentFailure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": null,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "expeditePressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "feedPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "forecastBias",
+        "min": -100,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "−100–100 偏差指数（正=高估）",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）；方向性出处 = 上表 forecastBias 行注释「唯一带方向的量纲（正=高估/负=低估）」⇒ 静息点取 0 而非下界，下界取 −max 以保持两侧对称",
+        "decayLambda": null,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "gapPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "inboundExpeditePressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "loadIndex",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "loadPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "orderChurn",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": null,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "overduePressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "priceShock",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": null,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "promiseRisk",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "queuePressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "receivablePressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "releasePressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "reviewPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "shortageRisk",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "splitPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "supplyRisk",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "switchPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "transferPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "turnoverPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "utilPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "windowSqueeze",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      }
+    ],
+    "undeclaredStateVars": [
+      "blockedPressure",
+      "clearanceQueueDays",
+      "deliveryDelay",
+      "handlingBacklog",
+      "inspectBacklog",
+      "procurementDelay",
+      "qualificationQueue",
+      "queueDays",
+      "repairBacklog"
+    ],
+    "decayUnresolved": [],
+    "ruleClamps": [],
+    "saturations": 4692,
+    "cadence": [],
+    "cadenceSkipped": [
+      {
+        "nodeId": "material.mrp",
+        "reason": "EMPTY"
+      },
+      {
+        "nodeId": "material.shipping",
+        "reason": "EMPTY"
+      },
+      {
+        "nodeId": "order.review",
+        "reason": "EMPTY"
+      },
+      {
+        "nodeId": "order.settlement",
+        "reason": "EMPTY"
+      }
+    ]
+  },
+  "agent": {
+    "invoked": false,
+    "calls": 0,
+    "provider": null,
+    "model": null
+  },
+  "timings": [
+    {
+      "phase": "graph",
+      "ms": 157
+    },
+    {
+      "phase": "shadow",
+      "ms": 235
+    },
+    {
+      "phase": "engine",
+      "ms": 90
+    },
+    {
+      "phase": "persist",
+      "ms": 15
+    },
+    {
+      "phase": "total",
+      "ms": 533
+    }
+  ]
+}

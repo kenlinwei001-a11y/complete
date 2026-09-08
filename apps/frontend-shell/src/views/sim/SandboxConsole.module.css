@@ -1,0 +1,1806 @@
+/* WO-SANDBOX-CONSOLE · 推演沙盘一页控制台的布局。
+ *
+ * 零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark(黑曜石) / light(冷蓝) / warm(亮橙)
+ * 三套自动跟随。设计稿 :root 里那批 --g0/--g1/--ink/--acc… 逐值等于仓里 token
+ * （--g0=--bg #223251 · --g1=--panel #2c3d5e · --g2=--panel2 #1c2942 · --ink=--txt ·
+ *  --dim=--muted · --faint=--muted2 · --acc=--accent · --red=--danger · --amb=--amber ·
+ *  --grn=--ok），故此处直接用仓里的 token 名，不再另建一套色值。
+ * 设计稿的 --vio 取 --c-equip（#9d8bf0，仓里最近的紫），--cyn 取 --c-capacity（#43b7d7）。
+ */
+
+/* WO-SANDBOX-DECLUTTER · 从 grid 改 flex 的原因：
+ *  本单新增两个**条件渲染**的行（治理横幅 / 诊断抽屉），固定 `grid-template-rows` 的
+ *  行数与孩子数一对不上就会错位；flex 列天然按实际孩子排。
+ *
+ * ⚠ 本注释此前还有第二条，写的是「`.mid` 改成 `flex: 1 1 0` ⇒ 三栏区高度取剩余空间，
+ *    这就堵死了中栏大片空白那条路」。**那句话是错的，且被真浏览器实拍推翻了**，现已删除
+ *    （留着就是一条自称实测的过期声明 —— 本仓 `G-STALE-MEASURED-CLAIM` 那一族）。
+ *    实拍结论见 `.mid` 与 `.root` 各自的注：空白的真因是「容器被钉成固定高 + 内容短」，
+ *    `flex: 1 1 0` 不但没堵住，它自己就是钉高的那一手。正解是三栏一律**按内容定高**。
+ */
+/* ── WO-SANDBOX-LAYOUT-HARNESS · 版面尺寸令牌 ─────────────────────────────────
+ * 只管**尺寸**，不管颜色（颜色一律走 styles/tokens.css，本文件零硬编码色值，见文件头）。
+ * 全模块只有**一个**尺寸令牌，它治的是一条实测出来的病，数不是拍的：
+ *
+ * `--sbx-fs-body: 13px` —— 本模块此前把整页压到 12px。真浏览器实测（2026-08-17，
+ *   `/v/sim-sandbox`，1440×900 与 1280×800 两个视口逐元素量）：内容区 602 个可见文本元素里
+ *   **555 个是 12px（92.2%）**。仓主说的「字太小」指的就是这 92%。
+ *   13 这个数 **不是从参照物抄来的**（参照物正文是 13.5）—— 它是**本仓全局 body 自己的尺寸**
+ *   （`styles/global.css` 里 body 的那条声明）。也就是说本模块是**唯一**把正文压下去的地方，
+ *   改回 13 是回到本仓自己的正文尺寸，不是引进一个新数。
+ *
+ * ⚠ **为什么只有一个尺寸令牌，没有第二个「micro」** —— 这条是被门当场逼出来的，记下来免得改回去：
+ *   本单第一版另加了 `--sbx-fs-micro: 11px` 给 `<small>`。`check-ui-first-layer.mjs` 的
+ *   D3（规范 R-UI-2「一屏之内最多三级字号」）当场报 **2 → 4**：多出来的两档，一档是
+ *   micro，另一档是**我写在这段注释里的一个字面量**被抽取器当成了真声明
+ *   （注释里的散文被读成代码，与 css-token 门栽过的是同一个坑）。
+ *   ⇒ 正解是**不加档**：`<small>` 直接取正文尺寸。这样既去掉了浏览器默认值那条暗路，
+ *     又没有给这一页增加字号层级。
+ *
+ * ⚠ `<small>` 那条暗路是什么（实测，不是推想）：不显式写字号时浏览器默认 `small = 0.8333em`，
+ *   12 的父级算出 **10**，而这个 10 **在源码里没有任何一条 CSS 声明**。
+ *   于是 `check-text-legibility.mjs` 的 12px 硬底（**静态扫 CSS 声明**）实测报
+ *   **「B 低于 12px 0 条」且整门全绿**，同一时刻真浏览器在这一页量到 **12 个 10px 元素**
+ *   （`<small> / %`、`/ 吨`、`/ 套/天` —— 全是中文单位）。
+ *   形态（CLAUDE.md 铁律 0.6 句式）：
+ *     **「我用『CSS 里没有 <12px 的声明』当作『屏上没有 <12px 的字』的证据，而前者并不度量后者。」**
+ *   这正是 `layout-legibility:check` 存在的理由：静态门看**声明**，本门看**渲染结果**。
+ *
+ * 令牌写 `var(--x, 兜底)` 形态：`SandboxView.tsx` 用到本模块的 `.banner` 时**不在 `.root` 子树内**，
+ * 拿不到定义；兜底保证那里也是同一个值，而不是静默退回继承值。
+ *
+ * ⚠ 令牌声明**写进各自已有的块里**，不另起一个 `.root, .banner { }` 合并块 ——
+ *   本仓有测试用 `css.indexOf(".X {")` 取块再断言其内容
+ *   （`test/sandbox-console.seam.test.tsx` 的 `block()`）。多一个以 `.banner {` 开头的块，
+ *   那类查找会命中**错的那一个**，断言就在一个空壳上跑。属「同名不同物」的老坑。
+ */
+.root small,
+.banner small {
+  /* `<small>` 一律显式定尺寸（取正文尺寸，不另开一档 —— 见上「为什么只有一个尺寸令牌」）。
+     不写这条就走浏览器默认 `0.8333em`，随父级浮动，而浮动出来的值没有任何 CSS 声明可查。
+     已显式写了字号的 `.candLever small` 等（选择器更强）不受影响。 */
+  font-size: var(--sbx-fs-body, 13px);
+}
+
+.root {
+  --sbx-fs-body: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /*
+   * ⚠ 这里原有一条 `min-height: 76vh`，本单删掉了 —— 它是"中间大片空白"的**共犯**。
+   * 三栏区改成按内容定高之后，没有任何孩子会 grow；此时 76vh 的下限只会在内容不足时
+   * 在整块控制台**底部**留一段谁也不用的空白。真浏览器实拍确认：删掉后页面高度
+   * 1125 → 1101px，屏上没有任何东西变小或错位。
+   * 「不塌」这件事现在由内容自己保证（顶栏/统计条/阻滞点清单/控制条/Pareto/指标行都是实内容）。
+   */
+}
+
+/* ── 页根竖排（WO-SANDBOX-DENSITY）─────────────────────────────────────────────
+ * `SandboxView.tsx` 的**根容器**此前挂的是 `SimViews.module.css` 的 `.head`
+ * （`display:flex; align-items:flex-start; justify-content:space-between`）——
+ * 那个类是给「标题在左、动作在右」的**页眉一行**用的，被当成页根用之后，
+ * 导出按钮 / 模式条 / 整个控制台变成了**并排的三列**。真浏览器实拍（1440×900）后果：
+ *   · 导出按钮被挤到约 30px 宽 ⇒「导 出」两个字竖着排；
+ *   · 模式条被挤成约 230px 一条窄柱 ⇒ 五个模式折成两行、说明文字折成三行；
+ *   · 控制台只分到约 840px（内容区 1150px），中栏画布与右栏检视一起变窄。
+ * 这不是密度问题，是**版面破了**；而「第一层看不到重点」有一半就坐在这上面：
+ * 一条 230px 的窄柱里塞进模式条 + 范围 + 诚实位 + 收编清单，怎么排都是一团。
+ *
+ * 本类把页根改回**竖排**：一行是一层，宽度给足。
+ * ⚠ 不去改 `.head` 本身：那个类另有 19 个页面在用，改它等于把本页的账记到别人头上。
+ */
+/* ══ WO-SANDBOX-QUIET（2026-08-20 · 仓主指令）· 说明性文字全部收进悬停 ══════════
+ *
+ * 仓主原话：「所有说明性文字（如截屏，都用 icon 替代）…目前太多说明性文字，密密麻麻」，
+ * 追加确认：「连诚实位记号也一并去掉、只在悬停时出现 —— 需要」。
+ *
+ * ⚠ 本条**主动降低了诚实位的可见性**，是仓主明示裁决，不是我的优化。已在本体记账
+ *（G-UI-FIRSTLAYER-OVERLOAD 行内「诚实位可见性主动降级」）。风险照实写在这里：
+ * 本仓有过病历 —— 顶栏 16 个读数全落在 49.5–50.4（`hash01(id|var)×100` 的必然结果），
+ * 同屏别处有「合成数据」徽标而这批没有，读者只会把没记号的那批读成实测。
+ * 记号淡出后，**这个风险在纯鼠标未悬停的那一刻是真实存在的**。
+ *
+ * ⛔ 但有两条**不许一起降**（降了就不是「视觉降噪」而是「删可达性」）：
+ *   ① 记号仍在 DOM、仍是真 `<button>`、仍在无障碍树里 —— 读屏器照读；
+ *   ② `:focus-visible` 必须让它**立刻现形** —— 键盘 Tab 过去看得见自己停在哪，
+ *      否则键盘用户会在一串隐形按钮里迷路。这不是折衷，是 `opacity:0` 与
+ *      `display:none` 的本质区别：前者仍可聚焦，后者不可 —— 选前者正是为了这个。
+ *
+ * 只作用于沙盘这一屏（`.viewStack` 后代选择器），其余页面逐字节不变。
+ */
+.viewStack :global(.info-trigger-quiet),
+.viewStack button[data-testid^="info-"] {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+/* 悬停到「它所解释的那个东西」的整行/整块时现形——不要求精准指到 14px 的圆点上。 */
+.viewStack *:hover > span > button[data-testid^="info-"],
+.viewStack *:hover > button[data-testid^="info-"],
+.viewStack span:hover > button[data-testid^="info-"] {
+  opacity: 0.85;
+}
+/* 键盘可达：Tab 到就现形（见上 ② —— 这一条不许删）。 */
+.viewStack button[data-testid^="info-"]:focus-visible,
+.viewStack button[data-testid^="info-"][aria-expanded="true"] {
+  opacity: 1;
+}
+
+.viewStack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* ── 治理横幅（canEnterSimulation === false 才渲染；为 true 时整条不存在）──────── */
+.banner {
+  /* 本块**不在 `.root` 子树内**（`SandboxView.tsx` 单独用它），故令牌在此自带一份。 */
+  --sbx-fs-body: 13px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border: 1px solid var(--line2);
+  border-left: 3px solid var(--warn);
+  border-radius: 4px;
+  background: var(--panel2);
+  font-size: var(--sbx-fs-body, 13px);
+  line-height: 1.55;
+  color: var(--muted);
+}
+.bannerTitle {
+  font-weight: 700;
+  color: var(--warn-txt);
+}
+.bannerGaps {
+  margin: 0;
+  color: var(--muted);
+}
+.bannerGaps code {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+}
+
+/* ── 诊断抽屉 ─────────────────────────────────────────────────────────────── */
+.diagBtn {
+  background: none;
+  border: 1px solid var(--line2);
+  border-radius: 2px;
+  color: var(--muted);
+  font: 600 var(--sbx-fs-body, 13px) var(--font-mono);
+  padding: 4px 8px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.diagBtn:hover,
+.diagBtn[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent-txt);
+}
+.diagBtn[data-issues="0"] b {
+  color: var(--muted2);
+}
+.diagBtn b {
+  color: var(--warn-txt);
+}
+.diagPanel {
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  background: var(--panel);
+  max-height: 46vh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: none;
+}
+.diagHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--sbx-fs-body, 13px);
+  flex: none;
+}
+.diagHead b {
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  letter-spacing: 0.12em;
+  color: var(--txt);
+}
+.diagBody {
+  overflow: auto;
+  min-height: 0;
+  padding: 0 2px 4px;
+}
+.diagBody .railSection:first-child {
+  border-top: 0;
+}
+.diagBody summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── 顶栏 ─────────────────────────────────────────────────────────────────── */
+.top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+.logo {
+  font: 800 var(--sbx-fs-body, 13px) var(--font-sans);
+  letter-spacing: 0.2em;
+}
+.logo i {
+  color: var(--accent-txt);
+  font-style: normal;
+}
+.tag {
+  font: 600 var(--sbx-fs-body, 13px)/1.4 var(--font-mono);
+  padding: 4px 7px;
+  border: 1px solid var(--line2);
+  border-radius: 2px;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.tagOn {
+  color: var(--c-capacity-txt);
+  border-color: var(--c-capacity);
+}
+.tagHot {
+  color: var(--danger-txt);
+  border-color: var(--danger);
+}
+.spacer {
+  flex: 1;
+}
+.seg {
+  display: flex;
+  border: 1px solid var(--line2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.seg button {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: 600 var(--sbx-fs-body, 13px) var(--font-mono);
+  padding: 4px 8px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+.seg button + button {
+  border-left: 1px solid var(--line2);
+}
+.seg button[aria-pressed="true"] {
+  /* WO-R9-CONTRAST：白字压 --accent 实测 3.20:1（12px 需 6.0）——沙盘的 30D/60D/90D、
+     真实性标注、线路图三组分段控件全在这一条上。实心底改走 --accent-solid（白字 ≥6.05）。 */
+  background: var(--accent-solid);
+  color: var(--on-accent);
+}
+
+/* ── 阻滞点统计条 ─────────────────────────────────────────────────────────── */
+/*
+ * WO-SANDBOX-V3 · PRD §2 第 2 行：**四个数字仍在，但不再各占一张大卡**。
+ *
+ * 改前：`grid-template-columns: repeat(4, 1fr)` ＋ 21px 主数值 ＋ 每卡两行文案
+ *       ⇒ 五张卡（含流动效率）铺成两行大卡，占掉主屏最上面一整块，
+ *         而它们回答的是「哪里堵」——那是**下区**的问题，不是这一屏的主问题。
+ * 改后：一条**紧凑横条**（flex wrap），落在下区影响带的第一行当**汇总条**。
+ *       数字、标签、释义**一个字没删**（D4）：只是不再各自撑成一张卡。
+ */
+.impBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* WO-SANDBOX-IMP2PLAN · 逐条阻滞点 → 决策推演 */
+.impJump {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.impJumpRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  text-decoration: none;
+  font-size: var(--sbx-fs-body, 13px);
+  cursor: pointer;
+}
+.impJumpRow:hover {
+  border-left-color: var(--ok);
+  background: var(--panel2);
+}
+.impJumpRow[data-degraded="1"] {
+  border-left-color: var(--amber, #d89b28);
+}
+.impJumpLocus {
+  font-family: var(--font-mono);
+}
+.impJumpMeta {
+  color: var(--muted);
+  font-size: var(--sbx-fs-body, 13px);
+}
+.impJumpBadge {
+  margin-left: auto;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted);
+}
+.impJumpRow[data-degraded="1"] .impJumpBadge {
+  color: var(--amber-txt, #d89b28);
+  border-color: var(--amber, #d89b28);
+}
+.impJumpJoin {
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted2);
+}
+.impJumpRow[data-join="NO_FACTOR_DIMENSION"] .impJumpJoin {
+  color: var(--amber-txt, #d89b28);
+}
+@media (max-width: 900px) {
+  .impBar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.impCard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+}
+.impCard:hover {
+  background: var(--panel2);
+}
+.impCard[aria-pressed="true"] {
+  background: var(--panel2);
+  border-color: var(--line2);
+}
+.impCard[data-static="1"] {
+  cursor: default;
+}
+/* WO-SANDBOX-V3：21px → 15px。21px 是**本页最大的一级**，而 R-UI-2 规定
+   「最大的那一级只给这一页要回答的那个数」—— 阻滞点计数不是那个数（它是下区的汇总）。 */
+.impNum {
+  font: 800 15px/1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+/* 汇总条模式：卡不再各占一列，故不抢剩余宽度（`flex:1` 会把五张卡撑满整行）。 */
+.impMeta {
+  min-width: 0;
+}
+.impMeta b {
+  display: block;
+  font-size: var(--sbx-fs-body, 13px);
+  letter-spacing: 0.06em;
+}
+.impMeta span {
+  display: block;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.impCard[data-kind="BOTTLENECK"] {
+  border-left-color: var(--amber);
+}
+.impCard[data-kind="BOTTLENECK"] .impNum {
+  color: var(--amber-txt);
+}
+.impCard[data-kind="CONGESTION"] {
+  border-left-color: var(--danger);
+}
+.impCard[data-kind="CONGESTION"] .impNum {
+  color: var(--danger-txt);
+}
+.impCard[data-kind="BREAK"] {
+  border-left-color: var(--c-equip);
+}
+.impCard[data-kind="BREAK"] .impNum {
+  color: var(--c-equip-txt);
+}
+.impCard[data-kind="FLOW"] {
+  border-left-color: var(--c-capacity);
+}
+.impCard[data-kind="FLOW"] .impNum {
+  color: var(--c-capacity-txt);
+}
+
+/* ══ WO-SANDBOX-V3 · 三区骨架 ══════════════════════════════════════════════
+ *
+ *   ┌──────────────┬──────────────────────────────┐
+ *   │ ① 左：扰动输入 │ ② 主：业务端到端路线图          │
+ *   ├──────────────┴──────────────────────────────┤
+ *   │ ③ 下：影响带                                 │
+ *   └─────────────────────────────────────────────┘
+ *
+ * 与被它取代的 `.mid`（160px / 1fr / 260px 三栏）的关键差别：
+ *  · 左区从 160px 放宽到 300px —— 它现在装的是**表单**（类型/落点/状态变量/方式/幅度/持续），
+ *    160px 那一版是给一列复选框设计的，塞表单会每个 `<select>` 都换行；
+ *  · 右栏那 260px 收回来给主画布：节点检视挪进主区、跟着画布走（点了节点在同一区里看结果，
+ *    视线不用横跨整屏 —— 规范 R-UI-1）。
+ */
+.zones {
+  display: grid;
+  /* ══ WO-SANDBOX-3COL（2026-08-20 · 仓主指令）· 三栏：扰动 | 画布 50% | 指标 ══════
+   * 仓主原话：「附件截屏的 5 个子页面，需要占整体页面 50% 的大小，然后把扰动因素全部
+   * 放在左侧，指标放在右侧」。
+   *
+   * ⇒ `1fr 2fr 1fr` = **25% / 50% / 25%**：中栏（5 个画布档位：线路图 / 物理拓扑 /
+   * 链路阶段 / 本体拓扑 / 业务流程）恰好占一半，两侧各占四分之一。
+   * 为什么用 `fr` 不用 `50%`：`gap` 会从百分比里再扣一次，写死 50% 实际拿不到一半；
+   * `fr` 分的是**扣掉 gap 之后**的剩余空间，2/(1+2+1) 才是真的 50%。
+   *
+   * ⚠ 影响带（③ 指标区）从**独立的第三行**移进本栅格当第三栏 —— 这是本次唯一的 DOM 移动。
+   * 三区互不嵌套的判据不受影响：`.zones` 是容器，不是那三个区之一。
+   */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+  gap: 6px;
+  /* 两区各自按内容定高（理由与 `.mid` 那条同源：stretch 会把矮的那区拉出一段空白）。 */
+  align-items: start;
+  flex: 0 1 auto;
+}
+/* 窄屏塌成一栏（三栏各 ~25% 时，任何一栏低于 ~280px 都装不下表单/图例）。 */
+@media (max-width: 1400px) {
+  .zones {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  }
+  /* 中屏：指标区回到整行（仍在栅格内，只是跨两列） */
+  .zoneImpact {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 1100px) {
+  .zones {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/*
+ * WO-SANDBOX-CONFIG-UX · 有配置面板时，输入区与画布各**占满整行**（上下两行，不再左右分栏）。
+ *
+ * 为什么必须放宽：配置面板**自己内部**就是两列（扰动因素 | 本体关系表+图，见
+ * `SandboxConfigPanel.module.css`）。把一个两列面板塞进 300px 的栏，右列会被压成一条缝 ——
+ * 那就等于没做「同屏」这件事，只是把两块叠得更挤。
+ *
+ * 代价诚实说：画布从 `1fr − 300px` 变成整行 ⇒ **只会更宽**；输入区里那几个折叠段
+ * （范围 / 多场景对比 / AI 指挥台）也跟着变整行 —— 它们都是 `<details>`，
+ * summary 是一行文字，拉宽不产生"被拉变形"的元素。
+ *
+ * ⚠ **只在传了 `configZone` 时生效**（`SandboxConsole.tsx` 里条件加类）：
+ *   不传的六个直接挂载点走的仍是上面那条 `300px | 1fr`，逐字节不变。
+ *
+ * ══ WO-SANDBOX-CONFIG-COLLAPSE（2026-08-17 追加，**上文一个字未改**）════════════
+ * 上文那笔账（"画布只会更宽"）**对它自己那次仍然成立**，但它漏算了一件事：
+ * 整行 = 画布被排到**第二行**，跟在整个左区之后。真浏览器实测画布区顶边
+ * **1440×900 → 1453px · 1280×800 → 1472px**，两个视口都在折线以下 —— 更宽，但要滚半屏才看得见。
+ * ⇒ 本条现在**只在配置面板展开时加类**（`configZone && configExpanded`）：
+ *   · 收起（默认）⇒ 回到 `300px | 1fr`，画布回第一行右侧 ⇒ **顶边落进第一屏**；
+ *   · 展开       ⇒ 仍是上下两行，面板拿到整行宽度，上一张单的「同屏两列」逐字不变。
+ * 代价照实写：展开的那一刻画布会被推到折线以下 —— 那是用户**主动要去配置**时的取舍，
+ * 与"默认就看不见地铁图"是两件事。
+ * ⚠ 机器守着这件事：`check-layout-legibility.mjs` 的**首屏锚点**判据
+ *   （`[data-testid="sandbox-zone-canvas"]` 的 top < 视口高，两个视口各判一次）。
+ */
+.zoneFullRow {
+  grid-column: 1 / -1;
+}
+
+.zoneInput,
+.zoneCanvas,
+.zoneImpact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 区头：区名 + 「这一区回答什么」。
+   字号刻意压在**标题级**（不是主数值级）—— R-UI-2 规定最大一级只给「这一页要回答的那个数」，
+   区名不是那个数。 */
+.zoneHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 2px;
+}
+.zoneHead h2 {
+  margin: 0;
+  font: 700 var(--sbx-fs-body, 13px)/1.4 var(--font-ui, inherit);
+  color: var(--txt);
+}
+.zoneQ {
+  font: 400 var(--sbx-fs-body, 13px)/1.4 var(--font-ui, inherit);
+  color: var(--muted2);
+}
+
+/* 折叠段（范围 / 阻滞点逐条 / Pareto / 全链指标）——
+   summary 那一行就是**第一层记号**：降层不是删除，屏上必须留一句「这里有话要说」。 */
+.zoneSection {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  min-width: 0;
+}
+.zoneSection > summary {
+  cursor: pointer;
+  padding: 6px 10px;
+  font: 600 var(--sbx-fs-body, 13px)/1.5 var(--font-ui, inherit);
+  color: var(--muted);
+  list-style-position: inside;
+}
+.zoneSection > summary b {
+  color: var(--txt);
+  font-variant-numeric: tabular-nums;
+}
+.zoneSection[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+/* ── 下区影响带：两半左右分列（PRD §1③「两半，左右分列」）───────────────── */
+.impactBand {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .impactBand {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.impactHalf {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 逐 stateVar 差分行：名字 / 基线→现值 / 变化量。
+   三列固定顺序 ⇒ 标签与数值的视线距离恒定在一行内（规范 R-UI-1）。 */
+.deltaList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.deltaRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+.deltaName {
+  font: 600 var(--sbx-fs-body, 13px)/1.4 var(--font-mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deltaVals {
+  font: 400 var(--sbx-fs-body, 13px)/1.4 var(--font-mono);
+  color: var(--muted2);
+  font-variant-numeric: tabular-nums;
+}
+.deltaVals b {
+  color: var(--txt);
+}
+.deltaAmt {
+  font: 700 var(--sbx-fs-body, 13px)/1.4 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  text-align: right;
+}
+.deltaAmt[data-dir="up"] {
+  color: var(--danger-txt);
+}
+.deltaAmt[data-dir="down"] {
+  color: var(--c-capacity-txt);
+}
+.deltaAmt[data-dir="flat"] {
+  color: var(--muted2);
+}
+
+/* ── 三栏主体（旧骨架 · `.zones` 取代之后仅剩响应式兜底引用）───────────────── */
+.mid {
+  display: grid;
+  /*
+   * 左右两栏收窄，腾出的宽度全部给中栏画布（审核方退单二·选项一）。
+   * 理由（看过代码与实拍之后选的，不是照抄）：
+   *  · 中栏是这一页的**主对象**，且全链线路图正被重画成横向铺展（WO-CHAIN-MAP-LAYOUT），
+   *    横向图对宽度的边际收益远高于另外两栏；
+   *  · 左栏是一列复选框 + 两个 `?`，160px 装得下（基地名最长四字 + 拼音副标已自带省略号）；
+   *  · 右栏检视是一张窄表（环节/类型/天数/条/影响率）＋ kv 列表，260px 仍不换行。
+   * 实测收益：画布净宽 1120 → 1172px（+52px）。
+   */
+  grid-template-columns: 160px minmax(0, 1fr) 260px;
+  gap: 6px;
+  /*
+   * 三栏**各自按内容定高**，不再一律拉到行高（默认 `align-items: stretch` 就是那个"一律拉到行高"）。
+   *
+   * 这是「右栏从挤变成空」的**结构性**解法：检视栏内容只有约 200px，被 stretch 拉到 440px 之后，
+   * 那 240px 差额一定要落在某处 —— 要么是正文与折叠条之间的洞（`flex-grow:1` 那一版），
+   * 要么是列底的一段空白（`flex-grow:0` 那一版）。两版我都实拍过，空白只是换了位置没有变少。
+   * 只有**不把它拉到 440px**，那段空白才真的不存在。
+   *
+   * 唯一的例外是中栏画布（`.canvasPaneStretch`）：它是这一页的主对象，必须**保住预留高度**，
+   * 否则数据回来时整页会跳，且真有图时 680px 高的环形图正需要这块地方。
+   */
+  align-items: start;
+  /*
+   * 三栏区**按内容定高**（`flex: 0 1 auto` + 不设 min-height）。
+   *
+   * 这里连着删掉了两个我自己上一版加的magic number（`flex: 1 1 0` + `min-height: 440px`）。
+   * 删的理由是实拍出来的：那两条把三栏区**钉死在 440px**，而这一屏在引擎无数据时
+   * 三栏的真实内容分别只有 416 / 210 / 168px ⇒ 差额必然变成空白，无论我把它挪到哪儿。
+   * 「预留一块高度等图来填」听起来合理，但图不来的时候预留就是空洞，
+   * 而本仓的空态纪律是**照实说没有**，不是**留一块地方假装它在**。
+   */
+  flex: 0 1 auto;
+}
+@media (max-width: 1240px) {
+  .mid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.pane {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+/* 中栏画布：与另外两栏一样**按内容定高**（`align-items: start` 已给出，这里只留语义锚点 +
+   一个很低的地板，免得某个模式内容为空时缩成一条缝而看不出"这里是画布"）。
+   刻意**不**设成 440px 那种"为图预留"的高度 —— 理由见 `.mid`。 */
+.canvasPaneStretch {
+  min-height: 120px;
+}
+
+.paneHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+  flex-wrap: wrap;
+}
+.paneHead h2 {
+  margin: 0;
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  letter-spacing: 0.16em;
+  color: var(--muted2);
+  text-transform: uppercase;
+}
+.paneBody {
+  padding: 7px 9px;
+  overflow: auto;
+  min-height: 0;
+  /* 可收缩 + 自己滚 ⇒ 内容再长也不撑破所在的 `.pane`（右栏溢出的第二条堵法）。
+   *
+   * ⚠ 这里**必须是 `flex: 0 1 auto`，不能是 `1 1 auto`**（后者是我上一版的错，真浏览器实拍抓出来的）：
+   * `flex-grow: 1` 会让检视栏正文**吃掉整列的剩余空间**，把它下面那两条折叠区
+   * （多场景对比 / AI 指挥台）一路顶到列底 ⇒ 正文与折叠条之间开出约 300px 的空洞。
+   * 截图里「右栏从挤变成空」那一段，就是这个 `grow` 撑出来的。
+   * 不长 + 可缩 + 自己滚，才是"内容多了自己滚、内容少了不占地方"。 */
+  flex: 0 1 auto;
+}
+.paneBodyFlush {
+  padding: 0;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* ── 左栏：范围 ───────────────────────────────────────────────────────────── */
+.dimGroup {
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--line);
+}
+.dimGroup:last-child {
+  border-bottom: 0;
+}
+.dimHead {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.dimHead b {
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  letter-spacing: 0.14em;
+  color: var(--muted2);
+}
+/* 基地清单：**自己滚**，不把整栏顶高。
+   实测（1920×1300）：13 个复选框全铺 = 左栏 416px，比中栏画布（210px）还高一倍，
+   于是画布右下方露出一大片页面底色 —— 那也是"眼睛看到的空白"的一部分。
+   一个范围筛选器不该是这一屏最高的东西（规范 §1：筛选是第二层内容）。 */
+.optList {
+  max-height: 168px;
+  overflow: auto;
+}
+
+.opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: var(--sbx-fs-body, 13px);
+  cursor: pointer;
+}
+.opt[data-disabled="1"] {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.opt input {
+  accent-color: var(--accent);
+  width: 11px;
+  height: 11px;
+  margin: 0;
+}
+.optName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.optSub {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+}
+.badge {
+  font: 700 var(--sbx-fs-body, 13px)/1.5 var(--font-mono);
+  padding: 1px 4px;
+  border-radius: 2px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.badgeOk {
+  background: color-mix(in srgb, var(--c-capacity) 16%, transparent);
+  color: var(--c-capacity-txt);
+}
+.badgeThin {
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  color: var(--amber-txt);
+}
+.badgeGap {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: var(--danger-txt);
+}
+.legendList {
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted);
+  line-height: 1.7;
+}
+.note {
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted2);
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
+.noteWarn {
+  font-size: var(--sbx-fs-body, 13px);
+  line-height: 1.5;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 2px;
+  background: var(--panel2);
+  border-left: 3px solid var(--amber);
+  color: var(--muted);
+}
+.noteWarn b {
+  color: var(--txt);
+}
+
+/* ── 中栏：画布 ───────────────────────────────────────────────────────────── */
+.canvasWrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.canvasSlot {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  /*
+   * 「中间一大片空白」的**真因与正解**（2026-08-10 真浏览器实拍定的，先前那条右栏推链只是旁证）。
+   *
+   * 实测（1920×1300 · planner · mock）：画布槽高 403px，而槽内内容只有 214px ——
+   * 因为 `chain_loss_attribution` 取不到数时，线路图按本仓纪律只渲染一个很矮的
+   * 「引擎未取到数 · 本图不画任何替代数据」红框。**189px 的空白就是这么来的**：
+   * 一个被拉伸到面板高度的容器 ＋ 一段很短的内容 ⇒ 内容贴顶、底下全空。
+   *
+   * 为什么**不**把画布区改成"按内容缩高"：那样数据回来时整页会跳一下，
+   * 而且真有数据时环形图本身 680px 高、正需要这块高度。空间要留着。
+   * 正解是让**短内容居中**：空态读起来就是"这里现在没有图"，而不是"版面塌了"。
+   *
+   * `safe` 是关键：内容一旦超过容器（真有图时），`safe center` 自动退回 `start`，
+   * 不会把图顶出容器上沿变成滚不到的死区。少了 `safe` 这条就是拿一个 bug 换另一个。
+   */
+  justify-content: safe center;
+}
+.canvasSlot[hidden] {
+  display: none;
+}
+.canvasSlot > * {
+  min-height: 0;
+}
+.layerToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted);
+  cursor: pointer;
+}
+.layerToggle input {
+  accent-color: var(--accent);
+}
+.layerPanel {
+  border-top: 1px dashed var(--line2);
+  padding-top: 6px;
+  margin-top: 6px;
+}
+
+/* ── 线路图 + 在途图层：**同一块画布**（WO-CONSOLE-CLEANUP ④）────────────────────
+ * 上一单把两图的几何做成了同源（坐标全取自 `chainLineMap.ts`、`viewBox` 相同），
+ * 但控制台把它们渲染成**上下两个兄弟节点**，于是"叠加"这件事一直没发生。
+ * 这里补的就是挂载点：把在途层那张环 SVG 钉到线路图舞台 SVG 的**同一个屏上矩形**上。
+ * 两图 viewBox 相同 ⇒ 盒子重合即坐标重合，**本文件不写一行几何**（矩形由
+ * `sandboxConsoleModel.ts` 的 `transitOverlayBox` 纯函数算好，经 CSS 变量落下来）。
+ *
+ * 选择器咬的是在途层**已发布的 testid**（`transit-ring`，它本来就是那一层的测试契约），
+ * 因为不许改那个文件；testid 一旦改名，`sandbox-console.seam §9` 的"叠加层必须存在"当场红。
+ * 未测量到尺寸（jsdom / 未布局 / display:none）时 `data-overlay-measured="0"`，
+ * 选择器不命中 ⇒ 图层按常规块排在下方，**不假装已对齐**。
+ */
+.metroStack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.metroStack[data-transit-overlay="on"][data-overlay-measured="1"] svg[data-testid="transit-ring"] {
+  position: absolute;
+  left: var(--sc-ov-left);
+  top: var(--sc-ov-top);
+  width: var(--sc-ov-w);
+  height: var(--sc-ov-h);
+  clip-path: inset(var(--sc-ov-ct) var(--sc-ov-cr) var(--sc-ov-cb) var(--sc-ov-cl));
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── 在途/在制 时序可算性分级（替代设计稿那个假时钟）───────────────────────── */
+.tierBox {
+  border: 1px solid var(--line2);
+  border-left: 3px solid var(--c-capacity);
+  border-radius: 3px;
+  padding: 7px 9px;
+  margin: 0 0 8px;
+  background: var(--panel2);
+}
+.tierList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tierList li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line2);
+}
+.tierList li[data-mode="interpolated"] {
+  border-left-color: var(--ok);
+}
+.tierList li[data-mode="arrival-only"] {
+  border-left-color: var(--amber);
+}
+.tierList li[data-mode="station-resident"] {
+  border-left-color: var(--c-equip);
+}
+.tierList li[data-mode="empty"] {
+  border-left-color: var(--danger);
+}
+.tierList b {
+  font-size: var(--sbx-fs-body, 13px);
+}
+.tierList em {
+  font-style: normal;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted);
+  line-height: 1.5;
+}
+.tierList code {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+}
+.tierGlyph {
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--txt);
+}
+
+/* ── 链路阶段画布（HTML 网格·自动换行 ⇒ 结构上不横滚）────────────────────── */
+/* 卡片瘦身后的宽度常数（交付报告要报的那两个数）：
+ *   NW（卡片最小宽） = 132px · GAP = 10px ⇒ GX = 142px。
+ * 定列布局下 maxC=7 时画布宽 = 84(段名列) + 7*142 + 24(内边距) = 1102px。
+ * 但本实现**不用定列**：每条 lane 是 repeat(auto-fill, minmax(132px,1fr)) 的网格，
+ * 放不下就换行 —— 于是 100% 缩放下横向滚动条**结构上不可能出现**，与屏宽无关。 */
+.stageBoard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 9px;
+  transform-origin: top left;
+}
+.lane {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel2);
+  padding: 6px 8px;
+}
+.laneHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.laneName {
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  letter-spacing: 0.16em;
+  color: var(--muted2);
+}
+.laneStat {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+}
+.laneGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+}
+.nodeCard {
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 3px;
+  padding: 6px 7px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.nodeCard:hover {
+  border-color: var(--accent);
+}
+.nodeCard[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.nodeCardTop {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.nodeCardName {
+  flex: 1;
+  min-width: 0;
+  font: 600 var(--sbx-fs-body, 13px) var(--font-sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nodeCardPct {
+  font: 800 var(--sbx-fs-body, 13px) var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--amber-txt);
+}
+.nodeCardPct[data-zero="1"] {
+  color: var(--muted2);
+}
+.nodeCardTopStep {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nodeCardFoot {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.nodeCardMore {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--accent-txt);
+}
+.nodeCardEmpty {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--danger-txt);
+}
+.laneEmptyRow {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--danger-txt);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+
+/* ── 「在册不在场」行（引擎既不产环节也不产 EMPTY 行的在册节点）──────────────── */
+.laneAbsentRow {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted);
+  margin-top: 5px;
+  line-height: 1.6;
+  border-left: 2px dotted var(--muted2);
+  padding-left: 6px;
+}
+.laneAbsentRow b {
+  color: var(--txt);
+}
+.laneAbsentRow code {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+}
+
+/* ── 诚实缺席节点 = **灰卡片**（WO-CONSOLE-CLEANUP ②）─────────────────────────
+ * 与 `.nodeCard` 的差别**必须是形状**，不是颜色深浅：
+ *  · `clip-path` 真把右上角切掉（缺角标签形），`.nodeCard` 没有这条声明 —— 这是几何层的判据；
+ *  · 边框虚线 + 无填充（`.nodeCard` 是实底实线）。
+ * 只调深浅会被读成"同一种东西弱一点"，而这两者是「有承载物 / 没有承载物」两种事实。
+ * 门 `sandbox-console.seam §9` 同时咬 `data-card-shape` 与本文件里的 `clip-path` 声明。
+ */
+.emptyCard {
+  background: transparent;
+  border: 1px dashed var(--muted2);
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  padding: 6px 9px 6px 7px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--muted);
+  font: inherit;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.emptyCard:hover {
+  border-color: var(--danger);
+}
+.emptyCard[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.emptyCardTop {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.emptyCardName {
+  flex: 1;
+  min-width: 0;
+  font: 600 var(--sbx-fs-body, 13px) var(--font-sans);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.emptyCardKind {
+  font: 800 var(--sbx-fs-body, 13px) var(--font-mono);
+  letter-spacing: 0.06em;
+  color: var(--danger-txt);
+  border: 1px solid var(--danger);
+  border-radius: 2px;
+  padding: 0 3px;
+}
+.emptyCardFoot {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+}
+.emptyCardFoot b {
+  color: var(--danger-txt);
+}
+.emptyCardRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px dotted var(--line2);
+  padding-top: 3px;
+}
+.emptyCardRow b {
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted);
+}
+.emptyCardRow em {
+  font: var(--sbx-fs-body, 13px)/1.55 var(--font-sans);
+  font-style: normal;
+  color: var(--muted2);
+  white-space: normal;
+}
+.emptyCardRow code {
+  font: var(--sbx-fs-body, 13px)/1.5 var(--font-mono);
+  color: var(--muted2);
+  white-space: normal;
+  word-break: break-all;
+}
+.dimmed {
+  opacity: 0.22;
+}
+
+/* ── 右栏：检视 ───────────────────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.tabs button {
+  flex: 1;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted2);
+  font: 600 var(--sbx-fs-body, 13px) var(--font-mono);
+  letter-spacing: 0.06em;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.tabs button[aria-selected="true"] {
+  color: var(--txt);
+  border-bottom-color: var(--accent);
+}
+.sec {
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  letter-spacing: 0.15em;
+  color: var(--muted2);
+  margin: 11px 0 5px;
+  text-transform: uppercase;
+}
+.sec:first-child {
+  margin-top: 0;
+}
+.stepTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--sbx-fs-body, 13px);
+}
+.stepTable td,
+.stepTable th {
+  padding: 2px 3px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.stepTable th {
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+}
+.stepTable tr[data-value-add="1"] {
+  opacity: 0.55;
+}
+.stepKind {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  white-space: nowrap;
+  color: var(--muted);
+}
+.stepNum {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stepBarCell {
+  width: 46px;
+}
+.stepBar {
+  display: block;
+  height: 6px;
+  border-radius: 1px;
+  min-width: 1px;
+  background: var(--amber);
+}
+.stepPct {
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  width: 42px;
+}
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  margin: 0;
+}
+.kv dt {
+  color: var(--muted);
+  font-size: var(--sbx-fs-body, 13px);
+}
+.kv dd {
+  margin: 0;
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* 右栏折叠区的滚动容器：`max-height` + 自己滚 ⇒ 折叠区内容再多也**不撑高三栏那一行**。
+   （成因与修法见 SandboxConsole.tsx 里 `sc-rail-stack` 的注。） */
+.railStack {
+  flex: 0 1 auto;
+  min-height: 0;
+  /* ⚠ 不能用百分比：`.mid` 改 `align-items:start` 之后检视栏是**按内容定高**的，
+     百分比 max-height 要拿父高去算、而父高又取决于孩子 —— 循环依赖，实拍下的表现是
+     折叠条被裁掉一截（实测 -36px）。用视口单位，取值确定、与父高无关。 */
+  max-height: 40vh;
+  overflow: auto;
+}
+.railSection {
+  border-top: 1px solid var(--line);
+}
+.railSection > summary {
+  cursor: pointer;
+  padding: 6px 9px;
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  letter-spacing: 0.1em;
+  color: var(--muted2);
+  list-style: none;
+}
+.railSection > summary::-webkit-details-marker {
+  display: none;
+}
+.railSection > summary::before {
+  content: "▸ ";
+  color: var(--accent-txt);
+}
+.railSection[open] > summary::before {
+  content: "▾ ";
+}
+.railBody {
+  padding: 0 9px 9px;
+}
+
+/* ── 底部 Pareto ──────────────────────────────────────────────────────────── */
+.pareto {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 104px;
+  min-width: 0;
+}
+.paretoBar {
+  flex: 1 1 0;
+  min-width: 26px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+.paretoBar:hover .paretoFill {
+  filter: brightness(1.3);
+}
+.paretoPct {
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  text-align: center;
+  margin-bottom: 2px;
+  color: var(--amber-txt);
+}
+.paretoFill {
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+  background: var(--amber);
+}
+.paretoLabel {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+  margin-top: 3px;
+  line-height: 1.2;
+  height: 24px;
+  overflow: hidden;
+}
+
+/* ── 底部指标卡片行 ───────────────────────────────────────────────────────── */
+.metricRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 6px;
+}
+.metricCard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 7px 10px;
+  min-width: 0;
+}
+.metricLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  letter-spacing: 0.1em;
+  color: var(--muted2);
+  flex-wrap: wrap;
+}
+.metricValue {
+  font: 800 20px/1.15 var(--font-mono);
+  margin-top: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.metricCard[data-empty="1"] .metricValue {
+  color: var(--muted2);
+  font-size: 14px;
+}
+.metricSub {
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* ── 状态行 ───────────────────────────────────────────────────────────────── */
+.stateLine {
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted);
+  margin: 0;
+  padding: 7px 9px;
+}
+.errBox {
+  padding: 7px 9px;
+  border-left: 3px solid var(--danger);
+  background: var(--panel2);
+  border-radius: 2px;
+  font-size: var(--sbx-fs-body, 13px);
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0;
+}
+.errBox b {
+  color: var(--danger-txt);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   WO-SANDBOX-CANDIDATES-FE · 阻滞点 → 候选对策
+   零硬编码颜色：全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随。
+   ══════════════════════════════════════════════════════════════════════════════ */
+.impJumpItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* WO-R13-ONTOCHAIN-PANEL ② · 阻滞点的本体链开关 + 弹层（零硬编码颜色，全走 token） */
+.impChain {
+  margin: 0 0 4px 10px;
+}
+.impChainBtn {
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 1px 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: var(--sbx-fs-body, 13px);
+  cursor: pointer;
+}
+.impChainBtn[aria-expanded="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.impChainPanel {
+  margin-top: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel2);
+}
+.candBlock {
+  margin: 0 0 4px 10px;
+  padding-left: 8px;
+  border-left: 2px dashed var(--line2);
+}
+.candHeadLine {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted);
+}
+.candHeadLine b {
+  color: var(--txt);
+}
+.candHeadLine i {
+  font-style: normal;
+  color: var(--muted2);
+  font-size: var(--sbx-fs-body, 13px);
+}
+.candList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.candCard {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ok);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 5px 8px;
+  font-size: var(--sbx-fs-body, 13px);
+}
+/* 旁路补偿（判据没动但下游产能真的变了）与前两族形态不同 —— 靠边框颜色区分，不靠深浅 */
+.candCard[data-effect="DOWNSTREAM_ONLY"] {
+  border-left-color: var(--accent);
+}
+.candHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.candLever,
+.candProp,
+.candMove {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.candLever small,
+.candProp small,
+.candMove small {
+  color: var(--muted2);
+  font-size: var(--sbx-fs-body, 13px);
+}
+.candLever b {
+  font-family: var(--font-mono);
+}
+.candProp code {
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted);
+}
+.candMark {
+  font-style: normal;
+  color: var(--muted2);
+}
+.candElsewhere {
+  font-style: normal;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--amber-txt, #d89b28);
+  border: 1px solid var(--amber, #d89b28);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.candMove b {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-mono);
+}
+.candArrow {
+  font-style: normal;
+  color: var(--ok-txt);
+}
+.candMode {
+  margin-left: auto;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted);
+}
+.candMode[data-mode="PARTIAL"],
+.candMode[data-mode="EMPTY"],
+.candMode[data-mode="SYNTHETIC"] {
+  color: var(--amber-txt, #d89b28);
+  border-color: var(--amber, #d89b28);
+}
+.candTags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted);
+}
+.candTag b {
+  color: var(--txt);
+}
+.candDims {
+  width: 100%;
+  margin-top: 4px;
+  border-collapse: collapse;
+  font-size: var(--sbx-fs-body, 13px);
+}
+.candDims th {
+  text-align: right;
+  font-weight: 400;
+  color: var(--muted2);
+  font-size: var(--sbx-fs-body, 13px);
+  padding: 1px 4px;
+}
+.candDims th:first-child {
+  text-align: left;
+}
+.candDims td {
+  text-align: right;
+  padding: 1px 4px;
+  border-top: 1px solid var(--line2);
+  font-family: var(--font-mono);
+}
+.candDimLabel {
+  text-align: left !important;
+  font-family: inherit !important;
+  color: var(--muted);
+}
+.candDimLabel small {
+  color: var(--muted2);
+}
+/* 「算不出来」必须与「0」在视觉上分家 —— 前者不是一个数 */
+.candDimEmpty {
+  text-align: left !important;
+  font-family: inherit !important;
+  color: var(--amber-txt, #d89b28);
+}
+.candDelta[data-good="1"] {
+  color: var(--ok-txt);
+}
+.candDelta[data-good="0"] {
+  color: var(--muted2);
+}
+
+/* ── 「为什么这个阻滞点没有方案」——空白比错答更容易被当成没问题 ─────────────── */
+.candNone {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber, #d89b28);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 5px 8px;
+  font-size: var(--sbx-fs-body, 13px);
+}
+/* 三态形状不同、不只靠深浅：NONE 是真结论（实线），UNAVAILABLE / NOT_RUN 是缺答（虚线） */
+.candNone[data-absence="UNAVAILABLE"],
+.candNone[data-absence="NOT_RUN"] {
+  border-left-style: dashed;
+}
+.candNoneHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.candNoneTag {
+  border: 1px solid var(--amber, #d89b28);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--amber-txt, #d89b28);
+}
+.candNoneTag[data-absence="NONE"] {
+  border-color: var(--line2);
+  color: var(--muted);
+}
+.candNoneTitle {
+  color: var(--muted);
+}
+.candNoneClaim {
+  margin: 3px 0 0;
+  color: var(--txt);
+}
+.candNoneReason {
+  margin: 3px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.candNoneStat {
+  margin: 3px 0 0;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  font-size: var(--sbx-fs-body, 13px);
+}
+.candGaps {
+  margin: 3px 0 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: var(--sbx-fs-body, 13px);
+  line-height: 1.5;
+}
+.candGapsHead {
+  list-style: none;
+  margin-left: -16px;
+  color: var(--muted2);
+}
+
+/* ── 候选面总账（三态逐格，0 也显示）─────────────────────────────────────────── */
+.candSummary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted);
+}
+.candSummarySep {
+  color: var(--muted2);
+}
+.candSummaryTag {
+  font-style: normal;
+  border: 1px solid var(--line2);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: var(--sbx-fs-body, 13px);
+}
+.candSummaryTag[data-absence="UNAVAILABLE"],
+.candSummaryTag[data-absence="NOT_RUN"] {
+  color: var(--amber-txt, #d89b28);
+  border-color: var(--amber, #d89b28);
+}
+.candSummaryProbes {
+  color: var(--muted2);
+  font-size: var(--sbx-fs-body, 13px);
+}
+.candSummaryTrunc {
+  color: var(--amber-txt, #d89b28);
+}
+
+/* 浮层正文的分段（第二层内容：口径 / join 路径 / 试算公式）*/
+.popSec {
+  display: block;
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.popSec b {
+  display: block;
+  font-size: var(--sbx-fs-body, 13px);
+}
+.popSec i {
+  display: block;
+  font-style: normal;
+  color: var(--muted);
+  font-size: var(--sbx-fs-body, 13px);
+}
+.popSec code {
+  display: block;
+  margin-top: 2px;
+  word-break: break-all;
+  font-size: var(--sbx-fs-body, 13px);
+  color: var(--muted2);
+}
+.popNote {
+  color: var(--ok-txt) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   WO-SANDBOX-PROCESS-MODE · 主画布第五档「业务流程」
+
+   ⚠ 零硬编码颜色：全部走 `styles/tokens.css` 的 token（三套皮自动跟随）。
+     等待类型的四种色不在本文件里 —— 它们由 `views/process/processWait.ts` 的
+     `WAIT_KIND_STYLE` 以 CSS 变量名下发（`--c-people` / `--c-forecast` / `--c-equip`
+     / `--c-capacity`），组件用内联 `background: var(<那个变量>)` 取。
+     在这里再写一遍四种颜色 = 第二份词表，改一处忘一处即两处飘。
+   ⚠ 泳道 / 卡片**复用**本文件既有的 `.stageBoard` `.lane` `.nodeCard` 系列
+     （同一块画布上读法一致），本节只补第五档独有的那几个记号。
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.processCanvas {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+/* 下发条数 ≠ 铺开条数 —— 这不是提示，是"本档漏画了"的报警，故用告警色且加粗 */
+.processMismatch {
+  display: block;
+  color: var(--danger-txt);
+}
+.processKindBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 9px;
+}
+.processKindChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font: var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted);
+}
+.processKindChip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.processKindChip b {
+  color: var(--txt);
+  font-variant-numeric: tabular-nums;
+}
+/* 流程键（P01…）—— 与节拍层卡片上那个百分比占同一个位置，但含义完全不同，故另起一个类：
+   共用 `.nodeCardPct` 会让"占比"和"流程键"在样式上被当成一回事。 */
+.processKeyChip {
+  font: 700 var(--sbx-fs-body, 13px) var(--font-mono);
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+}
+.processWaitMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 4px;
+  color: var(--bg);
+  font: 700 var(--sbx-fs-body, 13px) var(--font-sans);
+  font-style: normal;
+  vertical-align: -2px;
+}

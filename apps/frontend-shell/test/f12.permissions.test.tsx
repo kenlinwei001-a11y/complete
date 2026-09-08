@@ -7,7 +7,7 @@ describe("F12 · 权限 UI 与 feature 守卫", () => {
     loginAs("base_manager");
     renderApp("/admin/permissions");
     expect(await screen.findByTestId("page-403")).toBeInTheDocument();
-    expect(screen.queryByTestId("nav-admin")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("nav-group-数据接入")).not.toBeInTheDocument(); // N1 统一域分组：无管理页→空组隐藏
   });
 
   it("base_manager：feature 关闭的视图直访 → 404（404 优先于 403）", async () => {
@@ -27,6 +27,6 @@ describe("F12 · 权限 UI 与 feature 守卫", () => {
     loginAs("planner");
     renderApp("/admin/permissions");
     expect(await screen.findByTestId("authz-explain")).toBeInTheDocument();
-    expect(screen.getByTestId("nav-admin")).toBeInTheDocument();
+    expect(screen.getByTestId("nav-group-数据接入")).toBeInTheDocument(); // N1 统一域分组：admin 角色见管理类域分组
   });
 });

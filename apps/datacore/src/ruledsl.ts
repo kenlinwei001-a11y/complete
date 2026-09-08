@@ -1,14 +1,19 @@
 /**
  * Rule DSL (platform PRD §4.2) — shared by A5 rule engine and the A6 rowFilter subset.
  *
- *   expr       := comparison | expr ("AND"|"OR") expr | "NOT" expr
+ *   expr       := implies
+ *   implies    := orExpr ("IMPLIES" orExpr)*           // a IMPLIES b ≡ NOT a OR b（C33）
+ *   orExpr     := comparison | orExpr ("AND"|"OR") orExpr | "NOT" orExpr
  *   comparison := operand op operand
- *   operand    := field | literal | func "(" args ")" | userRef
+ *   operand    := field | literal | func "(" args ")" | userRef | paramRef
  *   field      := objectType "." propName            // e.g. Order.demandDelta
+ *   paramRef   := "params" "." name                  // e.g. params.cashFloor — 本规则的命名阈值
  *   func       := SUM | MIN | MAX | COUNT | AVG
  *   op         := > | >= | < | <= | == | != | IN     // IN: rowFilter subset (scalar/array overlap)
  *   userRef    := user.<path>  |  ${user.<path>}     // rowFilter subset, resolved on AuthCtx
  */
+
+import { RULE_PARAM_NAMESPACE } from "@platform/contracts";
 
 export type AstNode =
   | { kind: "and"; left: AstNode; right: AstNode }
@@ -24,7 +29,14 @@ export type Operand =
   | { kind: "field"; path: string[] }
   | { kind: "literal"; value: unknown }
   | { kind: "func"; name: "SUM" | "MIN" | "MAX" | "COUNT" | "AVG"; arg: { path: string[] } }
-  | { kind: "user"; path: string[] };
+  | { kind: "user"; path: string[] }
+  /**
+   * WO-RULE-EXPR-PARAMS：本规则的**命名阈值**引用（`params.cashFloor` → `rule.params.cashFloor`）。
+   * 刻意与 `field` 分开：`field` 解析带"前缀可省"回退（见 `resolveField`），若把它当字段，
+   * `params.cashFloor` 解不出时会**静默回退**到载荷顶层的 `cashFloor` —— 那就是拿一个看着合理的
+   * 值冒充阈值。本操作数只从 `ctx.params` 解析，取不到即抛错（诚实缺席，不兜底）。
+   */
+  | { kind: "param"; name: string };
 
 export class DslError extends Error {
   /** 管理平台增量 §5：语法错误定位到字符位（0 起，相对原始 expression 字符串）。 */
@@ -50,7 +62,7 @@ type Token = (
   | { t: "userref"; v: string } // ${user.x.y}
 ) & { pos: number }; // 字符位（0 起，token 起始）
 
-const KEYWORDS = new Set(["AND", "OR", "NOT", "IN", "TRUE", "FALSE", "NULL"]);
+const KEYWORDS = new Set(["AND", "OR", "NOT", "IN", "TRUE", "FALSE", "NULL", "IMPLIES"]);
 const FUNCS = new Set(["SUM", "MIN", "MAX", "COUNT", "AVG"]);
 
 function lex(src: string): Token[] {
@@ -134,9 +146,20 @@ class Parser {
   }
 
   parse(): AstNode {
-    const node = this.parseOr();
+    const node = this.parseImplies();
     if (this.pos < this.tokens.length) this.fail("unexpected trailing tokens");
     return node;
+  }
+
+  /** IMPLIES（最低优先级）：`a IMPLIES b` ≡ `NOT a OR b`（PRD-catalog §3 C33；解析期脱糖,复用 or/not 节点,求值器零改）。 */
+  private parseImplies(): AstNode {
+    let left = this.parseOr();
+    while (this.isKeyword("IMPLIES")) {
+      this.pos++;
+      const right = this.parseOr();
+      left = { kind: "or", left: { kind: "not", operand: left }, right };
+    }
+    return left;
   }
 
   private peek(): Token | undefined {
@@ -194,7 +217,7 @@ class Parser {
       const save = this.pos;
       this.pos++;
       try {
-        const inner = this.parseOr();
+        const inner = this.parseImplies(); // 括号内走最高层（含 IMPLIES，支持 NOT (a IMPLIES b)）
         const close = this.peek();
         if (close?.t === "punct" && close.v === ")") {
           this.pos++;
@@ -291,8 +314,16 @@ class Parser {
         }
       }
       if (KEYWORDS.has(upper)) this.fail(`unexpected keyword ${t.v}`);
-      this.pos++;
       const path = t.v.split(".");
+      // 命名阈值引用 `params.<名>`：必须恰好两段（`params` 裸用 / `params.a.b` 嵌套都不是合法阈值名）。
+      if (path[0] === RULE_PARAM_NAMESPACE) {
+        if (path.length !== 2 || !path[1]) {
+          this.fail(`命名阈值引用须形如 ${RULE_PARAM_NAMESPACE}.<阈值名>（当前 ${t.v}）`);
+        }
+        this.pos++;
+        return { kind: "param", name: path[1] as string };
+      }
+      this.pos++;
       if (path[0] === "user") return { kind: "user", path: path.slice(1) };
       return { kind: "field", path };
     }
@@ -322,6 +353,12 @@ export interface EvalContext {
   /** Rule payload or object props. Field `Order.demandDelta` resolves
    *  payload.Order.demandDelta, then payload.demandDelta. */
   payload: Record<string, unknown>;
+  /**
+   * WO-RULE-EXPR-PARAMS：**本条规则**的命名阈值（`rule.params`），供 `params.<名>` 操作数解析。
+   * 不传 = 该规则没有命名阈值；此时表达式里出现 `params.x` 会**抛错**（不静默按 undefined 比较，
+   * 那会让越线判定悄悄恒为 false = 哑弹规则）。
+   */
+  params?: Record<string, unknown>;
   /** User for ${user.attr} references (rowFilter subset). */
   user?: { userId?: string; roles?: string[]; attributes?: Record<string, unknown> };
   /**
@@ -347,6 +384,57 @@ export function sustainField(inner: AstNode): string[] | null {
     default:
       return null;
   }
+}
+
+/** 收集表达式引用的所有字段路径（field operand）。规则即引用：用于判定该规则字段是否在
+ *  求解器 payload 内可解析——全不可解析 → NOT_APPLICABLE（诚实标，不冒充 PASS）。 */
+export function collectFieldPaths(node: AstNode, acc: string[][] = []): string[][] {
+  const op = (o: Operand): void => { if (o.kind === "field") acc.push(o.path); };
+  switch (node.kind) {
+    case "and":
+    case "or":
+      collectFieldPaths(node.left, acc);
+      collectFieldPaths(node.right, acc);
+      break;
+    case "not":
+      collectFieldPaths(node.operand, acc);
+      break;
+    case "cmp":
+      op(node.left);
+      op(node.right);
+      break;
+    case "sustain":
+      collectFieldPaths(node.inner, acc);
+      break;
+  }
+  return acc;
+}
+
+/**
+ * 收集表达式引用的所有**命名阈值名**（`params.<名>` 操作数）。
+ * 用途：发布/编辑期校验「expression 引用的阈值 ⊆ rule.params 声明的阈值」——把「引用了没声明的阈值」
+ * 从"运行期哑弹"提前成"编辑期拒绝"（G-C08-EXPR-PARAM-SPLIT 的另一半）。
+ */
+export function collectParamRefs(node: AstNode, acc: Set<string> = new Set()): Set<string> {
+  const op = (o: Operand): void => { if (o.kind === "param") acc.add(o.name); };
+  switch (node.kind) {
+    case "and":
+    case "or":
+      collectParamRefs(node.left, acc);
+      collectParamRefs(node.right, acc);
+      break;
+    case "not":
+      collectParamRefs(node.operand, acc);
+      break;
+    case "cmp":
+      op(node.left);
+      op(node.right);
+      break;
+    case "sustain":
+      collectParamRefs(node.inner, acc);
+      break;
+  }
+  return acc;
 }
 
 function drill(root: unknown, path: string[]): unknown {
@@ -399,6 +487,17 @@ function evalOperand(op: Operand, ctx: EvalContext): unknown {
         ...(ctx.user?.attributes ?? {}),
       };
       return drill(root, op.path);
+    }
+    case "param": {
+      // 诚实缺席：未声明的阈值**抛错**，不回退载荷、不取 0/undefined。
+      // 若这里悄悄返回 undefined，`compare` 遇非数直接 false ⇒ 规则永不触发（哑弹），且测试全绿。
+      const bag = ctx.params;
+      if (!bag || !Object.prototype.hasOwnProperty.call(bag, op.name)) {
+        throw new DslError(
+          `命名阈值 ${RULE_PARAM_NAMESPACE}.${op.name} 未在本规则 params 中声明 —— 拒绝按缺省值求值`,
+        );
+      }
+      return bag[op.name];
     }
     case "func": {
       const values = resolveCollection(ctx.payload, op.arg.path);

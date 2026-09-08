@@ -47,6 +47,23 @@ services:
       - "9000:9000"
       - "9001:9001"
 
+  # 最优化引擎 sidecar：CP-SAT（OR-Tools, Apache-2.0）封装为平台自有内部 REST。
+  # 仅内部网络可达（不映射宿主端口）；无状态、无业务数据落盘；datacore 经 OPTIMIZER_BASE_URL 调用。
+  optimizer:
+    build:
+      context: ./services/optimizer
+      dockerfile: Dockerfile
+    environment:
+      PORT: "4003"
+    expose:
+      - "4003"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4003/healthz').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   datacore:
     build:
       context: .
@@ -60,6 +77,8 @@ services:
       SERVICE_TOKEN: ${SERVICE_TOKEN:-dev-service-token-change-me}
       BLOB_DIR: /data/blobs
       SEED_DEMO: ${SEED_DEMO:-1}             # 默认播种电池制造演示数据（seed 42，幂等）
+      # ⚠️ demo/测试专用·绕过 JWT 的调试后门（X-Debug-User 头）——省去每次手测 login。**真实生产务必设 0 或删除本行**。
+      ALLOW_DEBUG_USER: ${ALLOW_DEBUG_USER:-1}
       # 管理平台增量 §1：空库首启创建平台超管（default 租户 platform_admin；SEED_DEMO=0 冷启动时必配）
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
@@ -68,19 +87,28 @@ services:
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-pseudo}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      # PRD-fde §8d 组合最优化：自托管 CP-SAT sidecar（内部网络发现；未配则 selection_optimize 报"未接入"）
+      OPTIMIZER_BASE_URL: ${OPTIMIZER_BASE_URL:-http://optimizer:4003}
     volumes:
       - blob-data:/data/blobs
     ports:
-      - "4001:4001"                          # 直连调试入口（前端走 gateway 同源）
+      # 直连调试入口（前端走 gateway 同源）。**只绑 127.0.0.1**：容器间通信走 compose 网络
+      # 的服务名（agentcore 用 http://datacore:4001、gateway 反代同理），完全不经这条发布端口，
+      # 故收窄到 loopback 不影响任何服务间调用；受影响的仅「从别的机器直连 4001 调试」——
+      # 那正是要关掉的面（`/metrics` 与 `/b/v1/internal/invalidate` 曾从这里匿名可达）。
+      # 远程调试改用 SSH 隧道：ssh -L 4001:127.0.0.1:4001 <host>
+      - "127.0.0.1:4001:4001"
     depends_on:
       postgres-a:
+        condition: service_healthy
+      optimizer:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4001/readyz >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 120s                     # 首次启动含演示数据播种（90 天时序）
+      start_period: 600s                     # 首次启动含演示数据播种（pg 模式 90 天时序实测 ~487s，留余量）
 
   agentcore:
     build:
@@ -97,8 +125,22 @@ services:
       QOS_AGENT_MODEL: ${QOS_AGENT_MODEL:-claude-opus-4-8}
       QOS_TAU_HIGH: "0.85"
       QOS_TAU_LOW: "0.55"
+      # ── Loop Control 执行治理层（出货默认收紧；单源 = apps/agentcore/src/config.ts 各 env 的「部署态建议」注释）
+      # 这五个开关在**代码里是 opt-in（缺省不设 = 不限）**：不在这里显式给值，出货容器就只带第一层治理（超时），
+      # 环检测 / 盲扫配额 / per-tool 刷屏 / 有界重试**全部不生效**。由 scripts/check-deploy-governance.mjs 守门防回潮。
+      # 需放宽时用 .env 覆写（如 QOS_AGENT_MAX_ROUND_TRIPS=8），不要删行——删行 = 退回「一个都没设」。
+      QOS_AGENT_MAX_ROUND_TRIPS: ${QOS_AGENT_MAX_ROUND_TRIPS:-4}
+      QOS_AGENT_MAX_DISCOVER_CALLS: ${QOS_AGENT_MAX_DISCOVER_CALLS:-1}
+      QOS_AGENT_LOOP_REPEAT_CAP: ${QOS_AGENT_LOOP_REPEAT_CAP:-3}
+      QOS_AGENT_PER_TOOL_CALL_CAP: ${QOS_AGENT_PER_TOOL_CALL_CAP:-8}
+      QOS_AGENT_RETRY_MAX_ATTEMPTS: ${QOS_AGENT_RETRY_MAX_ATTEMPTS:-1}
+      # ── dsh harness 路 B 分叉（WO-DSH-N1-PROVIDER；出货缺省 off + 真 provider 路由；同受治理门守护）
+      DSH_HARNESS: ${DSH_HARNESS:-0}
+      DSH_HARNESS_PROVIDER: ${DSH_HARNESS_PROVIDER:-platform}
     ports:
-      - "4002:4002"                          # 直连调试入口（前端走 gateway 同源）
+      # 同 datacore：只绑 127.0.0.1。gateway 反代与 A→B 的 scaffold/ask 调用都走 compose
+      # 网络服务名（http://agentcore:4002），不经这条发布端口。
+      - "127.0.0.1:4002:4002"
     depends_on:
       postgres-b:
         condition: service_healthy

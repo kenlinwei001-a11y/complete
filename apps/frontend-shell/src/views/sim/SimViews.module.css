@@ -12,7 +12,7 @@
   margin-bottom: 3px;
 }
 .sub {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.6;
   max-width: 760px;
@@ -45,7 +45,7 @@
   line-height: 1.1;
 }
 .kpi span {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -69,11 +69,11 @@
 }
 .formRow i {
   font-style: normal;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .grpHead {
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: 1.2px;
   color: var(--muted2);
   margin: 10px 0 4px;
@@ -90,7 +90,7 @@
   font-size: 17px;
 }
 .verdict .meta {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-top: 5px;
   line-height: 1.7;
@@ -119,14 +119,22 @@
 .audCard.sug {
   border-left-color: var(--ok);
 }
+/*
+ * WO-UI-FIRSTLAYER-BURNDOWN-2 · 同 `.okBar`，但这条是**半像素**档：12.5px。
+ * 它与 12px 在屏上分不出来，却实打实占掉 R-UI-2 三级配额里的一整级。
+ * 消费方实测 3 个（`grep -rln "styles.audHead" apps/frontend-shell/src`）：
+ * `PlanAuditView` · `SopReschedulePanel` · `MultiObjWhatifPanel` ——
+ * **三个的第四级恰好都只是它**（改前 12.5/12/16/17 与 12.5/12/18/21），归 12 后三个同时降到三级。
+ * 一行 CSS 结清三处 R-UI-2 违规，且零视觉代价。
+ */
 .audHead {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 .audWhy {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.7;
   margin-top: 5px;
@@ -139,8 +147,8 @@
   margin-top: 8px;
 }
 .tlToggle {
-  font-size: 10.5px;
-  color: var(--c-capacity);
+  font-size: 12px;
+  color: var(--c-capacity-txt);
   background: none;
   border: none;
   padding: 0;
@@ -199,7 +207,7 @@
 }
 .genTitle span {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .outcomeRow {
@@ -207,7 +215,7 @@
   gap: 14px;
   flex-wrap: wrap;
   margin: 8px 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .outcomeRow b {
@@ -224,22 +232,22 @@
   padding-top: 10px;
 }
 .genSec h5 {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
   letter-spacing: 1px;
   margin-bottom: 6px;
   font-family: var(--font-mono);
 }
 .gainGive {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.9;
 }
 .gainTag {
-  color: var(--ok);
+  color: var(--ok-txt);
   font-weight: 700;
 }
 .giveTag {
-  color: var(--amber);
+  color: var(--amber-txt);
   font-weight: 700;
 }
 .problem {
@@ -247,7 +255,7 @@
   border-radius: 8px;
   padding: 7px 10px;
   margin-top: 6px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .problem .unlock {
   color: var(--muted);
@@ -274,7 +282,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 7px 10px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--txt);
   line-height: 1.5;
 }
@@ -293,7 +301,7 @@
   margin-bottom: 12px;
 }
 .inputBar label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   display: inline-flex;
   align-items: center;
@@ -311,18 +319,29 @@
   color: var(--muted);
   border-radius: 99px;
   padding: 4px 12px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .chip.on {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-txt);
   background: rgba(76, 144, 240, 0.1);
 }
+/*
+ * WO-UI-FIRSTLAYER-BURNDOWN-2 · 规范 §2 R-UI-2「一屏之内最多三级字号
+ * （主数值 / 标题与标签 / 辅助说明），最大一级只给这一页要回答的那个数」。
+ *
+ * 唯一消费方是 `ProjectSimView.tsx`（`grep -rln "styles.okBar" apps/frontend-shell/src`
+ * 实测 **1 个文件**），它改前四级：21 `.kpi b`（P50/P90/需求三个 KPI ＝ 本页那个数）·
+ * 16 `.head h3`（页标题）· **13 本条** · 12 正文。13 与 12 之间这半档没有信息量 ——
+ * 本条的强调本来就由 `font-weight:700` ＋ 1.5px 描边 ＋ 语义色扛着，不靠字号。
+ * 归 12 ⇒ 三级（21 / 16 / 12），且视觉权重一点没丢。
+ * ⚠ 12px 是版面门的字号硬底，到此为止，不再往下压。
+ */
 .okBar {
   border: 1.5px solid;
   border-radius: 9px;
   padding: 9px 14px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   margin: 10px 0;
 }
@@ -344,19 +363,19 @@
 .noteAmber {
   border: 1px solid rgba(232, 181, 74, 0.5);
   background: rgba(232, 181, 74, 0.08);
-  color: var(--amber);
+  color: var(--amber-txt);
   border-radius: 8px;
   padding: 8px 12px;
-  font-size: 11.5px;
+  font-size: 12px;
   margin: 8px 0;
 }
 .noteRed {
   border: 1px solid rgba(224, 98, 108, 0.55);
   background: rgba(224, 98, 108, 0.08);
-  color: var(--danger);
+  color: var(--danger-txt);
   border-radius: 8px;
   padding: 8px 12px;
-  font-size: 11.5px;
+  font-size: 12px;
   margin: 8px 0;
 }
 .noteInfo {
@@ -365,7 +384,7 @@
   color: var(--muted);
   border-radius: 8px;
   padding: 8px 12px;
-  font-size: 11px;
+  font-size: 12px;
   margin: 8px 0;
 }
 .whatIfPanel {
@@ -380,7 +399,7 @@
   gap: 12px;
   flex-wrap: wrap;
   margin: 8px 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 .abCompare {
@@ -399,8 +418,97 @@
   display: block;
 }
 .abCompare span {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted);
+}
+
+/* 求解在途状态条（仓主 2026-08-14 点名「很难看」的那个）。
+   与 .abCompare 的统计块**刻意不同形**：无边框、无大数字、字号回到正文 12px ——
+   它报的是「系统此刻在做什么」，不是一个业务指标，两者混排会让人把耗时读成指标。
+   `min-height` 恒占位 ⇒ 出现/消失时上下不跳（拖滑块会频繁触发）。 */
+.inflightStrip {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.inflightStrip b {
+  font-size: 12px;          /* 覆盖 .abCompare b 的 18px：耗时不是统计值 */
+  font-weight: 600;
+  color: var(--txt);
+  margin: 0 2px;
+}
+/* 呼吸点：唯一的「在跑」视觉信号，比一个图标安静。
+   prefers-reduced-motion 下停动画但保留可见（信息不靠动效传递）。 */
+.inflightDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-right: 6px;
+  flex: none;
+  animation: inflightPulse 1.2s ease-in-out infinite;
+}
+@keyframes inflightPulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inflightDot { animation: none; opacity: 0.8; }
+}
+/* 取消做成文字按钮而非 .btn sm —— 它是次要动作，不该和主操作等重 */
+.inflightCancel {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.inflightCancel:hover,
+.inflightCancel:focus-visible { color: var(--txt); }
+
+/* 杠杆重算 · 汇总条（第一层）+ 明细折叠（第二层）。
+   仓主 2026-08-14 定案「没价值则展示汇总数据，点击后再展示详细数据」。 */
+.deltaSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.deltaSummary b {
+  font-size: 13px;
+  color: var(--txt);
+}
+/* 「N 行中仅 M 个不同结果」——这是事实陈述不是警告，故用 muted2 不用告警色；
+   但要与左侧汇总分开读，故加分隔线。 */
+.deltaDistinct {
+  color: var(--muted2);
+  border-left: 1px solid var(--line2);
+  padding-left: 14px;
+}
+.deltaSummaryToggle {
+  font-size: 12px;
+  color: var(--muted2);
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
+}
+.deltaSummaryToggle:hover { color: var(--txt); }
+/* 明细里的读法说明：屏上给的是引擎原始键，不解释用户读不出来。 */
+.deltaLegend {
+  font-size: 12px;
+  color: var(--muted2);
+  margin: 4px 0 6px;
 }
 
 /* —— S&OP —— */
@@ -417,7 +525,7 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 10px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--txt);
   display: flex;
   align-items: center;
@@ -438,7 +546,7 @@
 .lockBanner {
   border: 1.5px solid rgba(176, 127, 216, 0.55);
   background: rgba(176, 127, 216, 0.08);
-  color: #b07fd8;
+  color: var(--c-equip-txt);
   border-radius: 10px;
   padding: 10px 14px;
   font-size: 12px;
@@ -449,7 +557,7 @@
   border-left: 3px solid var(--amber);
   border-radius: 8px;
   padding: 7px 10px;
-  font-size: 11.5px;
+  font-size: 12px;
   margin-bottom: 6px;
   line-height: 1.6;
 }
@@ -459,7 +567,7 @@
   gap: 8px;
   flex-wrap: wrap;
   margin: 8px 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 .miniForm input {
@@ -477,7 +585,7 @@
 
 /* —— 传导链时间轴（增量 §7.10-4/§7.11，PropagationTimeline 全局唯一实现） —— */
 .ptlHead {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--muted2);
   margin-bottom: 2px;
 }
@@ -526,24 +634,26 @@
 }
 .ptlW {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted2);
 }
 .ptlT {
   display: block;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   margin: 2px 0;
-  color: var(--ok);
+  color: var(--ok-txt);
 }
+/* WO-R9-CONTRAST：这两处原是**硬编码色**（绕过令牌，三套主题下都不跟随）——
+   #e8b54a 在浅色两套上只有 1.66:1。改走文字安全变体令牌。 */
 .ptlSt[data-sev="1"] .ptlT {
-  color: #e8b54a;
+  color: var(--warn-txt);
 }
 .ptlSt[data-sev="2"] .ptlT {
-  color: #dd7e9e;
+  color: var(--c-people-txt);
 }
 .ptlM {
-  font-size: 9.5px;
+  font-size: 12px;
   color: var(--muted);
   line-height: 1.5;
 }
@@ -556,7 +666,7 @@
 }
 .ptlO {
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: 12px;
   border: 1px solid var(--line2);
   border-radius: 5px;
   padding: 1px 5px;
@@ -574,7 +684,7 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-bottom: 8px;
 }
@@ -595,11 +705,11 @@
   top: -1px;
   right: -1px;
   border-radius: 0 10px 0 10px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 10px;
   background: rgba(98, 190, 119, 0.16);
-  color: var(--ok);
+  color: var(--ok-txt);
   border: 1px solid rgba(98, 190, 119, 0.4);
 }
 .genCardWrap {
@@ -610,14 +720,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   padding: 2.5px 0;
   border-bottom: 1px dashed var(--line2);
 }
 .meetRow i {
   font-style: normal;
   color: var(--muted2);
-  font-size: 10px;
+  font-size: 12px;
 }
 .hardChip {
   border: 1px solid var(--line2);
@@ -625,11 +735,11 @@
   color: var(--muted);
   border-radius: 99px;
   padding: 2px 8px;
-  font-size: 10px;
+  font-size: 12px;
 }
 .hardChip.on {
   border-color: rgba(224, 98, 108, 0.75);
-  color: var(--danger);
+  color: var(--danger-txt);
   background: rgba(224, 98, 108, 0.08);
 }
 .violBar {
@@ -639,12 +749,12 @@
   border-radius: 8px;
   padding: 7px 10px;
   margin-top: 6px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .violBar .unlock {
   color: var(--muted);
   margin-top: 2px;
-  font-size: 10.5px;
+  font-size: 12px;
 }
 
 /* —— S&OP：KPI 条 / 版本徽章 / 议程高亮 —— */
@@ -668,44 +778,24 @@
   line-height: 1.2;
 }
 .sopKpi span {
-  font-size: 9.5px;
+  font-size: 12px;
   color: var(--muted);
-}
-.sopKpiPop {
-  display: none;
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + 4px);
-  left: 0;
-  min-width: 230px;
-  background: var(--panel);
-  border: 1px solid var(--line2);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 10.5px;
-  color: var(--muted);
-  line-height: 1.6;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
-}
-.sopKpi:hover .sopKpiPop,
-.sopKpi:focus-within .sopKpiPop {
-  display: block;
 }
 .verBadge {
   border: 1px solid rgba(176, 127, 216, 0.55);
-  color: #b07fd8;
+  color: var(--c-equip-txt);
   background: rgba(176, 127, 216, 0.08);
   border-radius: 99px;
-  font-size: 10.5px;
+  font-size: 12px;
   padding: 3px 10px;
   font-weight: 700;
 }
 .c21Chip {
   border: 1px solid rgba(232, 181, 74, 0.6);
-  color: var(--amber);
+  color: var(--amber-txt);
   background: rgba(232, 181, 74, 0.08);
   border-radius: 99px;
-  font-size: 10px;
+  font-size: 12px;
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -716,9 +806,10 @@
 }
 
 /* —— 项目推演：六步 stepper + DAG 面板 + what-if 滑杆 —— */
+/* 项目推演：分步详情在上、推演 DAG 全宽在下（借鉴 HTML 项目推演布局，DAG 给足画布） */
 .pmGrid {
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(380px, 1fr);
+  grid-template-columns: 1fr;
   gap: 14px;
   align-items: start;
 }
@@ -731,7 +822,7 @@
 }
 .pmStepNum {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin-left: auto;
 }
@@ -739,7 +830,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
   margin: 6px 0;
 }
@@ -760,7 +851,264 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   color: #0c1118;
   font-weight: 700;
+}
+
+/* ══ WO-SIM-PERTURB-TIMELINE · 扰动时间轴（读端）═══════════════════════════════
+ * 遵循 docs/CONVENTION-ui-information-layering.md：
+ *  · 第一层只放「数值 / 状态 / 名字」——泳道名、幅度、生效状态；
+ *  · 口径 / 公式 / 字段出处一律进 `?` 浮层（.hintPop，**不用** HTML title 属性）；
+ *  · §3「数据本身有结构时第一层要把结构画出来」——扰动有时序，故画成
+ *    共享 tick 轴的甘特条 + 「现在」竖线 + 同落点归入同一泳道（叠加顺序看得见）。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* —— `?` 口径浮层（悬停/聚焦显示 · Esc 关闭 · 移开立即消失）—— */
+.hintWrap {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+.hintBtn {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--line2);
+  background: var(--panel2);
+  color: var(--muted2);
+  font: 700 12px var(--font-mono);
+  line-height: 1;
+  cursor: help;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.hintBtn:hover,
+.hintBtn:focus-visible {
+  color: var(--accent-txt);
+  border-color: var(--accent);
+  outline: none;
+}
+.hintPop {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  max-width: 380px;
+  width: max-content;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-align: left;
+  white-space: normal;
+}
+.hintPop b {
+  color: var(--txt);
+}
+.hintPop code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* —— 时间轴外框 —— */
+.ptlBox {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 8px 10px 10px;
+  margin-top: 8px;
+}
+.ptlHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.ptlTitle {
+  font: 700 12px var(--font-mono);
+  letter-spacing: 0.04em;
+  color: var(--muted2);
+}
+.ptlCount {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--txt);
+}
+.ptlFlag {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px dashed var(--amber);
+  color: var(--amber-txt);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* —— tick 轴 —— */
+.ptlAxis {
+  position: relative;
+  height: 14px;
+  margin-left: 128px;
+  border-bottom: 1px solid var(--line2);
+}
+.ptlAxisTick {
+  position: absolute;
+  top: 0;
+  font: 12px var(--font-mono);
+  color: var(--muted2);
+  transform: translateX(-50%);
+}
+.ptlNow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--accent);
+  z-index: 2;
+}
+.ptlNowCap {
+  position: absolute;
+  top: -1px;
+  transform: translateX(-50%);
+  font: 700 12px var(--font-mono);
+  color: var(--accent-txt);
+  white-space: nowrap;
+}
+
+/* —— 泳道（一个落点 = 一条）—— */
+.ptlLane {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  align-items: stretch;
+  border-top: 1px solid var(--line);
+}
+.ptlLaneName {
+  padding: 4px 8px 4px 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.ptlLaneName b {
+  display: block;
+  font: 600 12px var(--font-mono);
+  color: var(--txt);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ptlLaneName span {
+  font-size: 12px;
+  color: var(--muted2);
+}
+.ptlTrack {
+  position: relative;
+  padding: 3px 0;
+  min-width: 0;
+}
+.ptlRow {
+  position: relative;
+  height: 20px;
+}
+.ptlBar {
+  position: absolute;
+  top: 2px;
+  height: 16px;
+  min-width: 10px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  font: 600 12px var(--font-mono);
+  color: var(--txt);
+  cursor: pointer;
+  overflow: visible;
+  white-space: nowrap;
+}
+.ptlBar:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+/* 状态三态（第一层的「状态」维度） */
+.ptlBar.active {
+  background: color-mix(in srgb, var(--danger) 26%, transparent);
+  border-color: var(--danger);
+}
+.ptlBar.future {
+  background: transparent;
+  border-color: var(--line2);
+  border-style: dashed;
+  color: var(--muted2);
+}
+.ptlBar.past {
+  background: color-mix(in srgb, var(--muted2) 16%, transparent);
+  border-color: var(--line2);
+  color: var(--muted);
+}
+/* 永久（durationTicks=null）：右端不封口 */
+.ptlBar.forever {
+  border-right-style: dashed;
+}
+.ptlOrd {
+  font-size: 12px;
+  color: var(--muted2);
+}
+.ptlBarLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ptlStack {
+  font: 12px var(--font-mono);
+  color: var(--amber-txt);
+  padding: 1px 0 3px;
+}
+
+/* —— 第二层：点开的明细 —— */
+.ptlDetail {
+  grid-column: 1 / -1;
+  border-top: 1px dashed var(--line2);
+  padding: 6px 0 8px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.ptlDetail dl {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 8px;
+  margin: 0;
+}
+.ptlDetail dt {
+  font-size: 12px;
+  color: var(--muted2);
+}
+.ptlDetail dd {
+  margin: 0;
+  font: 12px var(--font-mono);
+  color: var(--txt);
+}
+
+/**
+ * 「⬇ 导出」按钮与它的 `?` 记号并排（判据 U9 在第一层的全部落点）。
+ * 刻意**不设 font-size**：字号层级数是 `ui-first-layer:check` 的 D3 棘轮判据（R-UI-2 字号 ≤3 级），
+ * 这里凭空多一级会让本文件的读数变差，而按钮字号本就该跟随 `.btn.sm`。
+ * 零字面色值 —— 颜色全部来自既有的 `btn` 类（暗/亮两套主题各自成立）。
+ */
+.exportWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
 }

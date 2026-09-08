@@ -2,6 +2,8 @@
  * 五维评分雷达（增量 §7.11）：自绘 SVG —— 三环网格 + 五轴 + 多边形填充。
  * 维度顺序固定：盈利 / 规模 / 现金 / 增长 / 稳健；坐标确定性（F16 SVG 坐标断言）。
  */
+import styles from "./RadarChart.module.css";
+
 export interface RadarScores {
   profit: number;
   scale: number;
@@ -74,9 +76,11 @@ export function RadarChart({
         <text
           key={d.key}
           x={labelPos[i]![0]}
-          y={labelPos[i]![1] + 3}
+          y={labelPos[i]![1] + 4}
           textAnchor="middle"
-          fontSize={9}
+          /* 字号在 RadarChart.module.css 的 .axisLabel 里（12px）。
+             ⚠ 不许改回 `fontSize={…}` 属性 —— 静态门看不见 SVG 表现属性，见该 CSS 文件头。 */
+          className={styles.axisLabel}
           fill="#9AA8B6"
         >
           {d.label}

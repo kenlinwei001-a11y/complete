@@ -1,0 +1,9 @@
+.git
+.github
+.claude
+.vscode
+**/node_modules
+**/dist
+apps/frontend-shell/test
+apps/agentcore/test
+apps/datacore/test

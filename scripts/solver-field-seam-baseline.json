@@ -1,0 +1,784 @@
+{
+  "note": "① 本文件是 `scripts/check-solver-field-seam.mjs` 的**存量死字段棘轮**：后端声明会下发、前端零消费方的求解器输出字段。\n② 每条必须写 `why`（<10 字即判红）。**无理由白名单正是本门要治的病**——豁免要说清「凭什么这条今天可以不接」。\n③ `maxEntries` 必须**恒等于** `entries.length`；`ratchetHigh` 是历史最高水位，**只降不升**。\n   评审唯一必须拒绝的一行，就是把 ratchetHigh 调大。加一条豁免 = 同时改 maxEntries = 一处显眼 diff，评审必然看见。\n④ `--update` **只删不加**（修好的摘掉），新增死字段**不自动收编**——要记进存量必须人手编辑本文件。\n⑤ `id` 形如 `S3:<求解器>.<字段>`（输出顶层字段）/ `S4:<契约schema>.<字段>`（契约 schema 嵌套一层）/ `S5:<求解器>.<顶层字段>.<行字段>`（结果接口内联行，嵌套一层）。\n⑥ **2026-08-13 · 本门从 `claude/integ-ui-w5` 收编进 canonical 时，ratchetHigh 由 116 → 120。** 这是本文件唯一一次抬高水位，理由必须在这里说清、供评审当场否决：116 那个数是 2026-08-11 在 `integ-ui-w5` 那棵树上量的，而 canonical 此后又并了三轮（`183970ba` / `9ee260ab` 等），门第一次量 canonical 时多出 6 条、少了 2 条（`--update` 已摘掉，116→114）。 6 条里 **4 条是真缺口**（chain_impediments 的候选/归因账，属 WO-SANDBOX-S3 后续，不在收编单的范围边界内），**2 条是本门载体④ 作用域规则的误报**（`RiskTimelineOutputSchema.scopeNote`/`scopeBaseName` 经`readScopeHonesty(raw: unknown)` 类型擦除透传消费，逐条见各自 why）。 换言之：抬高的 4 = 真缺口 4，误报那 2 抵掉了 `--update` 摘掉的 2。**此后仍然只降不升。**",
+  "generatedBy": "node scripts/check-solver-field-seam.mjs --update",
+  "ratchetHigh": 97,
+  "maxEntries": 97,
+  "entries": [
+    {
+      "id": "S3:assignment_optimize.binCount",
+      "carrier": "S3",
+      "owner": "assignment_optimize",
+      "field": "binCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `assignment_optimize.binCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:assignment_optimize.binType",
+      "carrier": "S3",
+      "owner": "assignment_optimize",
+      "field": "binType",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `assignment_optimize.binType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:assignment_optimize.itemType",
+      "carrier": "S3",
+      "owner": "assignment_optimize",
+      "field": "itemType",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `assignment_optimize.itemType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:atp_check.atpStatus",
+      "carrier": "S3",
+      "owner": "atp_check",
+      "field": "atpStatus",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `atp_check.atpStatus` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:atp_check.committableQty",
+      "carrier": "S3",
+      "owner": "atp_check",
+      "field": "committableQty",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `atp_check.committableQty` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:atp_check.orderRef",
+      "carrier": "S3",
+      "owner": "atp_check",
+      "field": "orderRef",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `atp_check.orderRef` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:atp_check.promiseDate",
+      "carrier": "S3",
+      "owner": "atp_check",
+      "field": "promiseDate",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `atp_check.promiseDate` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:atp_check.requestedQty",
+      "carrier": "S3",
+      "owner": "atp_check",
+      "field": "requestedQty",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `atp_check.requestedQty` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:atp_check.shortfallQty",
+      "carrier": "S3",
+      "owner": "atp_check",
+      "field": "shortfallQty",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `atp_check.shortfallQty` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:capacity_forecast.feasibilityNote",
+      "carrier": "S3",
+      "owner": "capacity_forecast",
+      "field": "feasibilityNote",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `capacity_forecast.feasibilityNote` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260→CapacityForecastOutputSchema）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260→CapacityForecastOutputSchema"
+    },
+    {
+      "id": "S3:capex_scenario.c23",
+      "carrier": "S3",
+      "owner": "capex_scenario",
+      "field": "c23",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `capex_scenario.c23` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:capex_scenario.chainCashflow",
+      "carrier": "S3",
+      "owner": "capex_scenario",
+      "field": "chainCashflow",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `capex_scenario.chainCashflow` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:capex_scenario.s0",
+      "carrier": "S3",
+      "owner": "capex_scenario",
+      "field": "s0",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `capex_scenario.s0` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:carbon_footprint.maxLever",
+      "carrier": "S3",
+      "owner": "carbon_footprint",
+      "field": "maxLever",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `carbon_footprint.maxLever` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:cert_schedule.engineerGroups",
+      "carrier": "S3",
+      "owner": "cert_schedule",
+      "field": "engineerGroups",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `cert_schedule.engineerGroups` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:changeover_sequence.savedVsDueMin",
+      "carrier": "S3",
+      "owner": "changeover_sequence",
+      "field": "savedVsDueMin",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `changeover_sequence.savedVsDueMin` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:changeover_sequence.sequence",
+      "carrier": "S3",
+      "owner": "changeover_sequence",
+      "field": "sequence",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `changeover_sequence.sequence` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:changeover_sequence.totalChangeoverMin",
+      "carrier": "S3",
+      "owner": "changeover_sequence",
+      "field": "totalChangeoverMin",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `changeover_sequence.totalChangeoverMin` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:cockpit_kpi.aopBaseRev",
+      "carrier": "S3",
+      "owner": "cockpit_kpi",
+      "field": "aopBaseRev",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `cockpit_kpi.aopBaseRev` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:cockpit_kpi.revAttainPct",
+      "carrier": "S3",
+      "owner": "cockpit_kpi",
+      "field": "revAttainPct",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `cockpit_kpi.revAttainPct` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:cockpit_kpi.supplyV7",
+      "carrier": "S3",
+      "owner": "cockpit_kpi",
+      "field": "supplyV7",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `cockpit_kpi.supplyV7` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:cockpit_kpi.utilPeak",
+      "carrier": "S3",
+      "owner": "cockpit_kpi",
+      "field": "utilPeak",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `cockpit_kpi.utilPeak` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:combinatorial_auction.bidCount",
+      "carrier": "S3",
+      "owner": "combinatorial_auction",
+      "field": "bidCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `combinatorial_auction.bidCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:combinatorial_auction.bidType",
+      "carrier": "S3",
+      "owner": "combinatorial_auction",
+      "field": "bidType",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `combinatorial_auction.bidType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:combinatorial_auction.winners",
+      "carrier": "S3",
+      "owner": "combinatorial_auction",
+      "field": "winners",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `combinatorial_auction.winners` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:countermeasure_combo.combo",
+      "carrier": "S3",
+      "owner": "countermeasure_combo",
+      "field": "combo",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `countermeasure_combo.combo` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:countermeasure_combo.residualGap",
+      "carrier": "S3",
+      "owner": "countermeasure_combo",
+      "field": "residualGap",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `countermeasure_combo.residualGap` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:credit_exposure.chainCashflow",
+      "carrier": "S3",
+      "owner": "credit_exposure",
+      "field": "chainCashflow",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `credit_exposure.chainCashflow` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:credit_exposure.exposureBreakdown",
+      "carrier": "S3",
+      "owner": "credit_exposure",
+      "field": "exposureBreakdown",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `credit_exposure.exposureBreakdown` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:credit_exposure.newOrderVerdict",
+      "carrier": "S3",
+      "owner": "credit_exposure",
+      "field": "newOrderVerdict",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `credit_exposure.newOrderVerdict` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:credit_exposure.overdue",
+      "carrier": "S3",
+      "owner": "credit_exposure",
+      "field": "overdue",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `credit_exposure.overdue` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:cross_object_occupancy.contractCount",
+      "carrier": "S3",
+      "owner": "cross_object_occupancy",
+      "field": "contractCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `cross_object_occupancy.contractCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:cross_object_occupancy.lineCount",
+      "carrier": "S3",
+      "owner": "cross_object_occupancy",
+      "field": "lineCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `cross_object_occupancy.lineCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:facility_location.clientCount",
+      "carrier": "S3",
+      "owner": "facility_location",
+      "field": "clientCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `facility_location.clientCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:facility_location.clientType",
+      "carrier": "S3",
+      "owner": "facility_location",
+      "field": "clientType",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `facility_location.clientType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:facility_location.facilityCount",
+      "carrier": "S3",
+      "owner": "facility_location",
+      "field": "facilityCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `facility_location.facilityCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:facility_location.facilityType",
+      "carrier": "S3",
+      "owner": "facility_location",
+      "field": "facilityType",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `facility_location.facilityType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:gap_attribution.globalGap",
+      "carrier": "S3",
+      "owner": "gap_attribution",
+      "field": "globalGap",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `gap_attribution.globalGap` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:gap_attribution.hypotheses",
+      "carrier": "S3",
+      "owner": "gap_attribution",
+      "field": "hypotheses",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `gap_attribution.hypotheses` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:gap_attribution.noBaseData",
+      "carrier": "S3",
+      "owner": "gap_attribution",
+      "field": "noBaseData",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `gap_attribution.noBaseData` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:gap_attribution.severityKind",
+      "carrier": "S3",
+      "owner": "gap_attribution",
+      "field": "severityKind",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `gap_attribution.severityKind` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:independent_set.chosen",
+      "carrier": "S3",
+      "owner": "independent_set",
+      "field": "chosen",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `independent_set.chosen` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:inventory_optimize.locationSeries",
+      "carrier": "S3",
+      "owner": "inventory_optimize",
+      "field": "locationSeries",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `inventory_optimize.locationSeries` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:inventory_optimize.releasableCash",
+      "carrier": "S3",
+      "owner": "inventory_optimize",
+      "field": "releasableCash",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `inventory_optimize.releasableCash` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:inventory_optimize.under",
+      "carrier": "S3",
+      "owner": "inventory_optimize",
+      "field": "under",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `inventory_optimize.under` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:job_shop_schedule.jobCount",
+      "carrier": "S3",
+      "owner": "job_shop_schedule",
+      "field": "jobCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `job_shop_schedule.jobCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:job_shop_schedule.jobType",
+      "carrier": "S3",
+      "owner": "job_shop_schedule",
+      "field": "jobType",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `job_shop_schedule.jobType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:job_shop_schedule.makespan",
+      "carrier": "S3",
+      "owner": "job_shop_schedule",
+      "field": "makespan",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `job_shop_schedule.makespan` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:lta_gap.po",
+      "carrier": "S3",
+      "owner": "lta_gap",
+      "field": "po",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `lta_gap.po` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:maintenance_stagger.adjustments",
+      "carrier": "S3",
+      "owner": "maintenance_stagger",
+      "field": "adjustments",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `maintenance_stagger.adjustments` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:metric_rollup.byLevel",
+      "carrier": "S3",
+      "owner": "metric_rollup",
+      "field": "byLevel",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `metric_rollup.byLevel` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:min_cost_flow.arcCount",
+      "carrier": "S3",
+      "owner": "min_cost_flow",
+      "field": "arcCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `min_cost_flow.arcCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:min_cost_flow.flows",
+      "carrier": "S3",
+      "owner": "min_cost_flow",
+      "field": "flows",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `min_cost_flow.flows` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:mitigation_select.draftPayload",
+      "carrier": "S3",
+      "owner": "mitigation_select",
+      "field": "draftPayload",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `mitigation_select.draftPayload` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:mitigation_select.urgency",
+      "carrier": "S3",
+      "owner": "mitigation_select",
+      "field": "urgency",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `mitigation_select.urgency` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:multi_objective.objectiveCount",
+      "carrier": "S3",
+      "owner": "multi_objective",
+      "field": "objectiveCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `multi_objective.objectiveCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:multi_objective.objectiveKeys",
+      "carrier": "S3",
+      "owner": "multi_objective",
+      "field": "objectiveKeys",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `multi_objective.objectiveKeys` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:multi_objective.varCount",
+      "carrier": "S3",
+      "owner": "multi_objective",
+      "field": "varCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `multi_objective.varCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:ontology_query.queryPlan",
+      "carrier": "S3",
+      "owner": "ontology_query",
+      "field": "queryPlan",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `ontology_query.queryPlan` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:outsourcing_split.outsourceQualityGate",
+      "carrier": "S3",
+      "owner": "outsourcing_split",
+      "field": "outsourceQualityGate",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `outsourcing_split.outsourceQualityGate` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:outsourcing_split.savedVsAllDelay",
+      "carrier": "S3",
+      "owner": "outsourcing_split",
+      "field": "savedVsAllDelay",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `outsourcing_split.savedVsAllDelay` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:packing_optimize.binCapacity",
+      "carrier": "S3",
+      "owner": "packing_optimize",
+      "field": "binCapacity",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `packing_optimize.binCapacity` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:packing_optimize.binCount",
+      "carrier": "S3",
+      "owner": "packing_optimize",
+      "field": "binCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `packing_optimize.binCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:packing_optimize.bins",
+      "carrier": "S3",
+      "owner": "packing_optimize",
+      "field": "bins",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `packing_optimize.bins` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:packing_optimize.itemType",
+      "carrier": "S3",
+      "owner": "packing_optimize",
+      "field": "itemType",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `packing_optimize.itemType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:process_flow_time.absencesShown",
+      "carrier": "S3",
+      "owner": "process_flow_time",
+      "field": "absencesShown",
+      "why": "人手挂账（2026-08-14 · WO-FIELD-DEAD-6 病②，**非 --update 自动收编**）：求解器输出顶层字段 `process_flow_time.absencesShown` = 本次实际下发了几条 `absences`（反推不出来的那批的截断分母）——与 `absences` 成对，是「算不出来要能被渲染出来、不是被当成 0 隐掉」这条诚实位纪律的分母半。 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:323）。判死证据：全前端生产代码零提及。【这不是「3 个字段没人看」，是**整个求解器零前端消费方**】复核（2026-08-14 亲手跑，判据与门共用 `scripts/lib/seam-lex.mjs` 的 `mentionsInProd`，前端生产面 210 个文件、已剔 mocks/ 与测试）：求解器 key `process_flow_time` 在前端仅 2 个文件命中，且**两处都不是调用** —— `views/ProcessStuckView.tsx:258` 是 JSX 里的 `<code>` 文案（告诉读者「要看这一批，走 process_flow_time 求解器或 GET /a/v1/process-definitions/:key/instances」），`locales/zh.ts:741,762` 是两条诚实位串。再追一层（铁律 0.5：grep 不是结论）：前端三条调用通路全部查过 —— `runSolver(...)` 21 处、`invokeSolver(...)` 20 处、间接分发两处 （`views/sim/useLiveSolver.ts:101` 的 `runSolver(solverKey,…)` 与 `views/DashboardView.tsx:646` 的 `invokeSolver(q.solverKey,…)`）；`useLiveSolver` 的 10 个调用点实参**全是字符串字面量**（portfolio / sop_reschedule / capacity_forecast / generic_inference / plan_audit / plan_generate / cross_object_occupancy / optimize_whatif / base_capacity_outlook / bottleneck_matrix），无一是本求解器；`DashboardView` 那条由后端下发的 widget 定义驱动，全仓无任何 widget 定义引用本 key。金丝雀（同一条判据、同一份实现）：`finance_world_projection` ⇒ 2 文件命中且其一是真调用点 `views/sim/SandboxImpactBand.tsx:192` ⇒ 工具是好的，上面这个否定结论才有资格被相信。【门为什么只报得出 3 条】本求解器声明 13 个顶层字段，逐字段全域命中（同上判据）：summary 45 · origin 16 · coverage 10 · stations 7 · asOf 5 · bottleneck 5 · stuck 5 · totals 5 · asOfSource 2 · absences 1 · **timelines 0 · timelinesShown 0 · absencesShown 0**。另外 10 个的命中**全是通名撞车**（门自己的诚实边界写着「通名（rows/summary/total）撞车会漏报」），不是这个求解器的输出被消费。**照 3 条去修就是治症状**：真实缺口是这 13 个字段一个都没上屏。【为什么本单不接线】接线要先决定「它放进哪个页、哪个导航组」= 导航信息架构 = 仓主的决策，照 `scripts/backend-frontend-seam-baseline.json` 里 WO-R6 已立的先例挂账待裁决；为消红加一个没人调的客户端函数 = 把死字段换成死函数，不做。【不要读成「这些数据前端完全看不到」】流程**实例**层的数据另有一条载体已接：`GET /a/v1/process-definitions/:key/instances` → `views/process/ProcessWaitView.tsx:79` 的 `InstancePanel`（本体 §3 L19 登记在册）。死的是**求解器这条通路**，不是这批事实本身 —— 两者定性不同、修法不同，不许合成一句。【复验命令】`node scripts/check-solver-field-seam.mjs --verbose | grep process_flow_time`；`grep -rn 'process_flow_time' apps/frontend-shell/src`（今日实测 5 命中，全为文案/注释，零调用）。",
+      "evidence": "apps/datacore/src/solvers/service.ts:323"
+    },
+    {
+      "id": "S3:process_flow_time.timelines",
+      "carrier": "S3",
+      "owner": "process_flow_time",
+      "field": "timelines",
+      "why": "人手挂账（2026-08-14 · WO-FIELD-DEAD-6 病②，**非 --update 自动收编**）：求解器输出顶层字段 `process_flow_time.timelines` = 逐流程实例的站间流转时长明细（哪一条实例、在哪个站、停了多久）——本求解器的**主输出**，也是「哪一条流程实例被卡住、卡在谁那里、卡了多久」三问的答案本体。 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:323）。判死证据：全前端生产代码零提及。【这不是「3 个字段没人看」，是**整个求解器零前端消费方**】复核（2026-08-14 亲手跑，判据与门共用 `scripts/lib/seam-lex.mjs` 的 `mentionsInProd`，前端生产面 210 个文件、已剔 mocks/ 与测试）：求解器 key `process_flow_time` 在前端仅 2 个文件命中，且**两处都不是调用** —— `views/ProcessStuckView.tsx:258` 是 JSX 里的 `<code>` 文案（告诉读者「要看这一批，走 process_flow_time 求解器或 GET /a/v1/process-definitions/:key/instances」），`locales/zh.ts:741,762` 是两条诚实位串。再追一层（铁律 0.5：grep 不是结论）：前端三条调用通路全部查过 —— `runSolver(...)` 21 处、`invokeSolver(...)` 20 处、间接分发两处 （`views/sim/useLiveSolver.ts:101` 的 `runSolver(solverKey,…)` 与 `views/DashboardView.tsx:646` 的 `invokeSolver(q.solverKey,…)`）；`useLiveSolver` 的 10 个调用点实参**全是字符串字面量**（portfolio / sop_reschedule / capacity_forecast / generic_inference / plan_audit / plan_generate / cross_object_occupancy / optimize_whatif / base_capacity_outlook / bottleneck_matrix），无一是本求解器；`DashboardView` 那条由后端下发的 widget 定义驱动，全仓无任何 widget 定义引用本 key。金丝雀（同一条判据、同一份实现）：`finance_world_projection` ⇒ 2 文件命中且其一是真调用点 `views/sim/SandboxImpactBand.tsx:192` ⇒ 工具是好的，上面这个否定结论才有资格被相信。【门为什么只报得出 3 条】本求解器声明 13 个顶层字段，逐字段全域命中（同上判据）：summary 45 · origin 16 · coverage 10 · stations 7 · asOf 5 · bottleneck 5 · stuck 5 · totals 5 · asOfSource 2 · absences 1 · **timelines 0 · timelinesShown 0 · absencesShown 0**。另外 10 个的命中**全是通名撞车**（门自己的诚实边界写着「通名（rows/summary/total）撞车会漏报」），不是这个求解器的输出被消费。**照 3 条去修就是治症状**：真实缺口是这 13 个字段一个都没上屏。【为什么本单不接线】接线要先决定「它放进哪个页、哪个导航组」= 导航信息架构 = 仓主的决策，照 `scripts/backend-frontend-seam-baseline.json` 里 WO-R6 已立的先例挂账待裁决；为消红加一个没人调的客户端函数 = 把死字段换成死函数，不做。【不要读成「这些数据前端完全看不到」】流程**实例**层的数据另有一条载体已接：`GET /a/v1/process-definitions/:key/instances` → `views/process/ProcessWaitView.tsx:79` 的 `InstancePanel`（本体 §3 L19 登记在册）。死的是**求解器这条通路**，不是这批事实本身 —— 两者定性不同、修法不同，不许合成一句。【复验命令】`node scripts/check-solver-field-seam.mjs --verbose | grep process_flow_time`；`grep -rn 'process_flow_time' apps/frontend-shell/src`（今日实测 5 命中，全为文案/注释，零调用）。",
+      "evidence": "apps/datacore/src/solvers/service.ts:323"
+    },
+    {
+      "id": "S3:process_flow_time.timelinesShown",
+      "carrier": "S3",
+      "owner": "process_flow_time",
+      "field": "timelinesShown",
+      "why": "人手挂账（2026-08-14 · WO-FIELD-DEAD-6 病②，**非 --update 自动收编**）：求解器输出顶层字段 `process_flow_time.timelinesShown` = 本次实际下发了几条 timeline（截断分母）——不下发这个数，前端无从知道屏上这几条是全部还是被截过的一部分。 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:323）。判死证据：全前端生产代码零提及。【这不是「3 个字段没人看」，是**整个求解器零前端消费方**】复核（2026-08-14 亲手跑，判据与门共用 `scripts/lib/seam-lex.mjs` 的 `mentionsInProd`，前端生产面 210 个文件、已剔 mocks/ 与测试）：求解器 key `process_flow_time` 在前端仅 2 个文件命中，且**两处都不是调用** —— `views/ProcessStuckView.tsx:258` 是 JSX 里的 `<code>` 文案（告诉读者「要看这一批，走 process_flow_time 求解器或 GET /a/v1/process-definitions/:key/instances」），`locales/zh.ts:741,762` 是两条诚实位串。再追一层（铁律 0.5：grep 不是结论）：前端三条调用通路全部查过 —— `runSolver(...)` 21 处、`invokeSolver(...)` 20 处、间接分发两处 （`views/sim/useLiveSolver.ts:101` 的 `runSolver(solverKey,…)` 与 `views/DashboardView.tsx:646` 的 `invokeSolver(q.solverKey,…)`）；`useLiveSolver` 的 10 个调用点实参**全是字符串字面量**（portfolio / sop_reschedule / capacity_forecast / generic_inference / plan_audit / plan_generate / cross_object_occupancy / optimize_whatif / base_capacity_outlook / bottleneck_matrix），无一是本求解器；`DashboardView` 那条由后端下发的 widget 定义驱动，全仓无任何 widget 定义引用本 key。金丝雀（同一条判据、同一份实现）：`finance_world_projection` ⇒ 2 文件命中且其一是真调用点 `views/sim/SandboxImpactBand.tsx:192` ⇒ 工具是好的，上面这个否定结论才有资格被相信。【门为什么只报得出 3 条】本求解器声明 13 个顶层字段，逐字段全域命中（同上判据）：summary 45 · origin 16 · coverage 10 · stations 7 · asOf 5 · bottleneck 5 · stuck 5 · totals 5 · asOfSource 2 · absences 1 · **timelines 0 · timelinesShown 0 · absencesShown 0**。另外 10 个的命中**全是通名撞车**（门自己的诚实边界写着「通名（rows/summary/total）撞车会漏报」），不是这个求解器的输出被消费。**照 3 条去修就是治症状**：真实缺口是这 13 个字段一个都没上屏。【为什么本单不接线】接线要先决定「它放进哪个页、哪个导航组」= 导航信息架构 = 仓主的决策，照 `scripts/backend-frontend-seam-baseline.json` 里 WO-R6 已立的先例挂账待裁决；为消红加一个没人调的客户端函数 = 把死字段换成死函数，不做。【不要读成「这些数据前端完全看不到」】流程**实例**层的数据另有一条载体已接：`GET /a/v1/process-definitions/:key/instances` → `views/process/ProcessWaitView.tsx:79` 的 `InstancePanel`（本体 §3 L19 登记在册）。死的是**求解器这条通路**，不是这批事实本身 —— 两者定性不同、修法不同，不许合成一句。【复验命令】`node scripts/check-solver-field-seam.mjs --verbose | grep process_flow_time`；`grep -rn 'process_flow_time' apps/frontend-shell/src`（今日实测 5 命中，全为文案/注释，零调用）。",
+      "evidence": "apps/datacore/src/solvers/service.ts:323"
+    },
+    {
+      "id": "S3:quarterly_gap.combo",
+      "carrier": "S3",
+      "owner": "quarterly_gap",
+      "field": "combo",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `quarterly_gap.combo` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:quarterly_gap.residualGap",
+      "carrier": "S3",
+      "owner": "quarterly_gap",
+      "field": "residualGap",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `quarterly_gap.residualGap` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:risk_timeline.otdBatch",
+      "carrier": "S3",
+      "owner": "risk_timeline",
+      "field": "otdBatch",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `risk_timeline.otdBatch` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260→RiskTimelineOutputSchema）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260→RiskTimelineOutputSchema"
+    },
+    {
+      "id": "S3:selection_optimize.itemType",
+      "carrier": "S3",
+      "owner": "selection_optimize",
+      "field": "itemType",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `selection_optimize.itemType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:selection_optimize.totalWeight",
+      "carrier": "S3",
+      "owner": "selection_optimize",
+      "field": "totalWeight",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `selection_optimize.totalWeight` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:sequencing_optimize.changeovers",
+      "carrier": "S3",
+      "owner": "sequencing_optimize",
+      "field": "changeovers",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `sequencing_optimize.changeovers` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:sequencing_optimize.jobCount",
+      "carrier": "S3",
+      "owner": "sequencing_optimize",
+      "field": "jobCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `sequencing_optimize.jobCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:sequencing_optimize.jobType",
+      "carrier": "S3",
+      "owner": "sequencing_optimize",
+      "field": "jobType",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `sequencing_optimize.jobType` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:sequencing_optimize.sequence",
+      "carrier": "S3",
+      "owner": "sequencing_optimize",
+      "field": "sequence",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `sequencing_optimize.sequence` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:set_cover.chosen",
+      "carrier": "S3",
+      "owner": "set_cover",
+      "field": "chosen",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `set_cover.chosen` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:set_cover.setCount",
+      "carrier": "S3",
+      "owner": "set_cover",
+      "field": "setCount",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `set_cover.setCount` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:set_cover.universeSize",
+      "carrier": "S3",
+      "owner": "set_cover",
+      "field": "universeSize",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `set_cover.universeSize` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S3:supply_demand_gap_attribution.ignoredArgs",
+      "carrier": "S3",
+      "owner": "supply_demand_gap_attribution",
+      "field": "ignoredArgs",
+      "why": "2026-08-26 · WO-GATE-SEAM-SMALL 人手收编（**不是** --update 招安，逐条实测过）。三态定性 = **前端还没做**（展示位本身不存在），不是「该消费没消费」，故按工单纪律不硬接、记账并顶回来。实测证据三条：① 前端唯一调用点 apps/frontend-shell/src/views/DashboardView.tsx:351 传的是**空 args**（`invokeSolver(\"supply_demand_gap_attribution\", {})`），而 `ignoredArgs` 的取值恒 = 「调用方传了但求解器不吃的键」（apps/datacore/src/solvers/service.ts:3115 `ignoredSolverArgs(args, …)`，消费集为 ∅）⇒ 这条路上它**恒为空数组**，接上去屏上也只会显示一个空清单；② 该字段的真实消费方在 **agentcore CEO 路由**那一侧（apps/agentcore/src/router/ceo-route.ts:365 落该支后无条件注入 `args.metricKey`），而那条路今天靠 `summary` 里的 `ignoreNote`（service.ts:3116-3117）把同一句话说给用户听 —— 用户**看得到**「已忽略入参 metricKey：…」，只是走的是散文位不是结构位；③ 结构位今天零生产消费方：`grep -rn ignoredArgs apps/frontend-shell/src apps/agentcore/src` = 0，只有 4 处 datacore 测试引用（supply-demand-gap-attribution.test.ts:221/229/243/263）—— 照铁律 0.5 判据 #2，**只有 test 引用 = 已排练，不是已实现**。金丝雀：同一命令同一扫描面 `grep -c totalGap DashboardView.tsx` = 12 ⇒ 工具是好的，这个零是真的零。修法（另立 WO·不在本单范围边界内）：要么给 agentcore 答复路一个结构化「被忽略入参」回执位，要么后端别再声明下发这一格、只留 summary 那一句。",
+      "evidence": "apps/datacore/src/solvers/service.ts:496"
+    },
+    {
+      "id": "S3:yield_diagnosis.breakpoint",
+      "carrier": "S3",
+      "owner": "yield_diagnosis",
+      "field": "breakpoint",
+      "why": "存量（2026-08-11 建门当日快照）：求解器输出顶层字段 `yield_diagnosis.breakpoint` 由后端声明下发（声明处 apps/datacore/src/solvers/service.ts:260）。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/service.ts:260"
+    },
+    {
+      "id": "S4:CapacityForecastOutputSchema.feasibilityNote",
+      "carrier": "S4",
+      "owner": "CapacityForecastOutputSchema",
+      "field": "feasibilityNote",
+      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `CapacityForecastOutputSchema.feasibilityNote` 由后端声明下发（声明处 packages/contracts/src/solvers.ts:99（求解器侧引用 apps/datacore/src/solvers/service.ts:9））。判死证据：解析该 schema 的前端文件（含其直接 importer）里零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "packages/contracts/src/solvers.ts:99（求解器侧引用 apps/datacore/src/solvers/service.ts:9）"
+    },
+    {
+      "id": "S4:CapacityForecastOutputSchema.unit",
+      "carrier": "S4",
+      "owner": "CapacityForecastOutputSchema",
+      "field": "unit",
+      "why": "2026-08-26 · WO-GATE-SEAM-SMALL 人手收编（**不是** --update 招安）。三态定性 = **该消费没消费**，即**真缺口**，不是误报也不是声明多余 —— 展示位就摆在那里，前端只是把量纲**内联写死**而没有读这一格，正是这条字段的注释亲口要治的那个病（packages/contracts/src/solvers.ts:122 原文：「`capWanP50`/`capWanP90`/`baselineDemand`/`effectiveDemand` 的量纲单一真值（后端单源下发）」，同族的 ByProcessModelRowSchema.unit 更写死了「前端只格式化不内联·治 G-UNIT-NORMALIZE」）。实测证据：解析该 schema 的唯一前端文件是 apps/frontend-shell/src/views/sim/ProjectSimView.tsx（:6 import `CapacityForecastOutputSchema`、:178 `.parse(raw)`），其直接 importer 只有 views/registry.ts；`grep -c unit ProjectSimView.tsx` = **0**，而同文件 :204-205 把量纲硬编码在标签里 —— `[\"产能 P50（万套/窗口）\", fmt(out.capWanP50)]` / `[\"产能 P90（万套/窗口）\", fmt(out.capWanP90)]`。金丝雀：同一命令同一扫描面 `grep -c capWanP50 ProjectSimView.tsx` = 16 ⇒ 工具是好的，那个零是真的零。**为什么本单不修**：落点在 `apps/frontend-shell/src/views/sim/ProjectSimView.tsx`，不在 WO-GATE-SEAM-SMALL 的范围边界（本单只许碰 apps/datacore/** · apps/agentcore/** · packages/contracts/** · 各包 test/**）内，硬接会与并行改沙盘的 dev 撞车。修法（另立 WO·一行一处）：把 :204-205 的标签换成读 `out.unit ?? \"万套/窗口\"` 拼出来，同理 :843-844 的 `万套` 也应改读该格。",
+      "evidence": "packages/contracts/src/solvers.ts:110（求解器侧引用 apps/datacore/src/solvers/service.ts:10）"
+    },
+    {
+      "id": "S4:ChainImpedimentSchema.contention",
+      "carrier": "S4",
+      "owner": "ChainImpedimentSchema",
+      "field": "contention",
+      "why": "存量（2026-08-13 本门自 `integ-ui-w5` 收编进 canonical 当日快照）：本门的 08-11 水位是在 **另一棵树** 上量的；收编到 canonical 时该树已多并三轮（WO-SANDBOX-S3 的 chain_impediments 候选账等），于是长出本条。判死证据见 evidence；归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用。修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。 ⚠ `contention` 是通名：全前端有 2 处同名（`views/cleanroom/CleanroomAttrView.tsx:146` 的 `BottleneckOut` 与 `mocks/handlers.ts:2107`），但都不是本 schema 的消费方 —— 本门的作用域化判据正是为此。",
+      "evidence": "packages/contracts/src/chain-sim.ts:1075（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:41）· 作用域内零提及"
+    },
+    {
+      "id": "S4:ChainImpedimentSchema.manifestations",
+      "carrier": "S4",
+      "owner": "ChainImpedimentSchema",
+      "field": "manifestations",
+      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `ChainImpedimentSchema.manifestations` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40））。判死证据：解析该 schema 的前端文件（含其直接 importer）里零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40）"
+    },
+    {
+      "id": "S4:ChainImpedimentSchema.rootCauseImpedimentId",
+      "carrier": "S4",
+      "owner": "ChainImpedimentSchema",
+      "field": "rootCauseImpedimentId",
+      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `ChainImpedimentSchema.rootCauseImpedimentId` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40））。判死证据：解析该 schema 的前端文件（含其直接 importer）里零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40）"
+    },
+    {
+      "id": "S4:ChainImpedimentSchema.tenantId",
+      "carrier": "S4",
+      "owner": "ChainImpedimentSchema",
+      "field": "tenantId",
+      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `ChainImpedimentSchema.tenantId` 由后端声明下发（声明处 packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40））。判死证据：解析该 schema 的前端文件（含其直接 importer）里零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "packages/contracts/src/chain-sim.ts:832（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:40）"
+    },
+    {
+      "id": "S4:ParetoRequestSchema.args",
+      "carrier": "S4",
+      "owner": "ParetoRequestSchema",
+      "field": "args",
+      "why": "2026-08-26 · WO-GATE-SEAM-SMALL 人手收编。三态定性 = **都不是** —— 这条是**误报**，且是本门 why 里明写允许的那一类（「误报（经 JSX `{...row}` 展开等本门追不到的形态消费）→ 同样加基线并把消费点写进 why」）。误报有两层，两层都成立：**第一层：它压根不是输出字段，是入参。** `ParetoRequestSchema` 的声明处紧挨着一行注释就写着「**请求体。**」（packages/contracts/src/sim.ts:1200-1206），`args` 的注释是「基线 args（杠杆扰动施加在它的克隆上，R4 不落真值）」。本门自己的 `SCHEMA_EXEMPTIONS`（check-solver-field-seam.mjs:363-366）已经把入参族结构性豁免掉了，只是两条正则写的是 `/Args$/` 与 `/Input(Schema)?$/`，**不认 `*RequestSchema` 这个命名**，于是本仓唯一用 Request 后缀的入参 schema 漏进了载体④。判据同本门自述：「前端没传入参是另一种病（arg-drop），归 arg-drop-seam:check 管辖；本门只管**输出**字段」。**第二层：即便按输出算，它也是被消费的 —— 整包透传。** 装配口 `POST /a/v1/sim/optimize-pareto/assemble` 回一份可直接 POST 的 ParetoRequest，前端 apps/frontend-shell/src/views/sim/console/SandboxOptRoute.tsx:138 `ParetoRequestSchema.safeParse(raw)` 收下后 :145 `return { ...req, sessionId }`（**对象展开**，正是本门追不到的那个形态），再经 :184 `paretoRequest` 传给 SandboxOpt → useParetoFrontier；useParetoFrontier.ts:716 `queryFn: () => api.a(PARETO_ENDPOINT, { body: req })` —— **整个对象原样 POST 回去**。该文件头 :73 的原话：「**不改模型**：装回来的 `family`/`args`/`objectives`/`levers` **一格不动**往下透」。逐格读反而是错的（会把「原样重放」变成「前端重拼」）。⇒ 本条不该由 dev 改代码来消，正确处置是登记；若要根治误报，该动的是本门 SCHEMA_EXEMPTIONS 的命名正则（属门本体改动，不在本单范围边界内，且工单明令不许改 scripts/check-*.mjs 去迎合代码）。",
+      "evidence": "packages/contracts/src/sim.ts:1206（求解器侧引用 apps/datacore/src/solvers/opt-assemble.ts:57）"
+    },
+    {
+      "id": "S4:ParetoRequestSchema.levers",
+      "carrier": "S4",
+      "owner": "ParetoRequestSchema",
+      "field": "levers",
+      "why": "2026-08-26 · WO-GATE-SEAM-SMALL 人手收编。三态定性 = **都不是**，同 `S4:ParetoRequestSchema.args` 那条，逐字同源、同一次装配-透传链，故不另起一套说法：① **它是入参不是输出** —— `ParetoRequestSchema` 声明处上方注释原文「请求体。」（packages/contracts/src/sim.ts:1200），`levers: z.array(ParetoLeverGridSchema).min(1)` 是调用方要填的杠杆网格；本门 SCHEMA_EXEMPTIONS 的入参族豁免正则 `/Args$/`、`/Input(Schema)?$/` 不认 `*RequestSchema`，故漏进载体④。② **即便按输出算也已被消费**：SandboxOptRoute.tsx:138 safeParse → :145 `{ ...req, sessionId }` 对象展开 → useParetoFrontier.ts:716 `body: req` 整包 POST 回后端；该文件 :50 还专门写着「`ParetoRequest` 的必填三件套是 `family` + `objectives(≥2)` + `levers(≥1)`」，:73 写着「装回来的 …/`levers` **一格不动**往下透」。⇒ 登记，不改代码。",
+      "evidence": "packages/contracts/src/sim.ts:1206（求解器侧引用 apps/datacore/src/solvers/opt-assemble.ts:57）"
+    },
+    {
+      "id": "S4:RiskTimelineOutputSchema.otdBatch",
+      "carrier": "S4",
+      "owner": "RiskTimelineOutputSchema",
+      "field": "otdBatch",
+      "why": "存量（2026-08-11 建门当日快照）：求解器侧契约 schema 字段（嵌套一层） `RiskTimelineOutputSchema.otdBatch` 由后端声明下发（声明处 packages/contracts/src/solvers.ts:321（求解器侧引用 apps/datacore/src/solvers/service.ts:9））。判死证据：解析该 schema 的前端文件（含其直接 importer）里零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "packages/contracts/src/solvers.ts:321（求解器侧引用 apps/datacore/src/solvers/service.ts:9）"
+    },
+    {
+      "id": "S4:RiskTimelineOutputSchema.scopeBaseName",
+      "carrier": "S4",
+      "owner": "RiskTimelineOutputSchema",
+      "field": "scopeBaseName",
+      "why": "**误报·经类型擦除的整包透传消费**（2026-08-13 收编时亲手复核）：该字段前端**真有消费方** —— `apps/frontend-shell/src/lib/solverScopeHonesty.ts` 的 `readFlat` 第 100 行 `str(payload.scopeBaseName)` 逐字读它；链路 `views/RiskBoardView.tsx:214 <ScopeHonestyBadge payload={data}/>` → `readScopeHonesty(raw: unknown)`。本门载体④ 的作用域是「前端 import 了该 schema（或其 z.infer 别名）的文件 ∪ 其直接 importer」，而 `readScopeHonesty` 的形参**刻意**是 `unknown`（文件头写死：诚实位是加性键，先 pick 一次就丢一次），故它不在作用域内 —— 这正是本门头注自曝的盲区「前端可能经解构/重命名/**类型透传**/`...rest` 消费」那一档。按本门失败提示的指定处置：加基线并把消费点写进 why（可评审的显式动作）。⚠ 别照「前端零消费方」去修 —— 那会让人再写一份平行读取器，正是本仓刚裁掉的那种双实现。",
+      "evidence": "packages/contracts/src/solvers.ts:321 · 真消费方 apps/frontend-shell/src/lib/solverScopeHonesty.ts:100"
+    },
+    {
+      "id": "S4:RiskTimelineOutputSchema.scopeNote",
+      "carrier": "S4",
+      "owner": "RiskTimelineOutputSchema",
+      "field": "scopeNote",
+      "why": "**误报·经类型擦除的整包透传消费**（2026-08-13 收编时亲手复核）：该字段前端**真有消费方** —— `apps/frontend-shell/src/lib/solverScopeHonesty.ts` 的 `readFlat` 第 92 行 `str(payload.scopeNote)` 逐字读它；链路 `views/RiskBoardView.tsx:214 <ScopeHonestyBadge payload={data}/>` → `readScopeHonesty(raw: unknown)`。本门载体④ 的作用域是「前端 import 了该 schema（或其 z.infer 别名）的文件 ∪ 其直接 importer」，而 `readScopeHonesty` 的形参**刻意**是 `unknown`（文件头写死：诚实位是加性键，先 pick 一次就丢一次），故它不在作用域内 —— 这正是本门头注自曝的盲区「前端可能经解构/重命名/**类型透传**/`...rest` 消费」那一档。按本门失败提示的指定处置：加基线并把消费点写进 why（可评审的显式动作）。⚠ 别照「前端零消费方」去修 —— 那会让人再写一份平行读取器，正是本仓刚裁掉的那种双实现。",
+      "evidence": "packages/contracts/src/solvers.ts:321 · 真消费方 apps/frontend-shell/src/lib/solverScopeHonesty.ts:92"
+    },
+    {
+      "id": "S5:chain_impediments.segmentAttribution.unattributedTotal",
+      "carrier": "S5",
+      "owner": "chain_impediments",
+      "field": "unattributedTotal",
+      "why": "存量（2026-08-13 本门自 `integ-ui-w5` 收编进 canonical 当日快照）：本门的 08-11 水位是在 **另一棵树** 上量的；收编到 canonical 时该树已多并三轮（WO-SANDBOX-S3 的 chain_impediments 候选账等），于是长出本条。判死证据见 evidence；归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用。修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/chain-impediment.ts:615（接口 ChainScanResult）· 全前端生产代码零提及"
+    },
+    {
+      "id": "S5:portfolio.cost.unserved",
+      "carrier": "S5",
+      "owner": "portfolio.cost",
+      "field": "unserved",
+      "why": "存量（2026-08-11 建门当日快照）：求解器结果接口的内联行字段（嵌套一层） `portfolio.cost.unserved` 由后端声明下发（声明处 apps/datacore/src/solvers/portfolio.ts:504（接口 PortfolioOutput））。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/portfolio.ts:504（接口 PortfolioOutput）"
+    },
+    {
+      "id": "S5:sop_reschedule.targetOrder.newDueDay",
+      "carrier": "S5",
+      "owner": "sop_reschedule.targetOrder",
+      "field": "newDueDay",
+      "why": "存量（2026-08-11 建门当日快照）：求解器结果接口的内联行字段（嵌套一层） `sop_reschedule.targetOrder.newDueDay` 由后端声明下发（声明处 apps/datacore/src/solvers/sop-reschedule.ts:39（接口 SopRescheduleResult））。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/sop-reschedule.ts:39（接口 SopRescheduleResult）"
+    },
+    {
+      "id": "S5:sop_reschedule.targetOrder.origDueDay",
+      "carrier": "S5",
+      "owner": "sop_reschedule.targetOrder",
+      "field": "origDueDay",
+      "why": "存量（2026-08-11 建门当日快照）：求解器结果接口的内联行字段（嵌套一层） `sop_reschedule.targetOrder.origDueDay` 由后端声明下发（声明处 apps/datacore/src/solvers/sop-reschedule.ts:39（接口 SopRescheduleResult））。判死证据：全前端生产代码零提及（前端生产面已剔 mocks/ 与测试、注释不算消费）。归类=引擎已算、前端未接 —— 记账待排期，**不是**判它没用；修法二选一：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或后端别再声明下发。",
+      "evidence": "apps/datacore/src/solvers/sop-reschedule.ts:39（接口 SopRescheduleResult）"
+    }
+  ]
+}

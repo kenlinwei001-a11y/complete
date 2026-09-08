@@ -15,6 +15,12 @@ export interface TsGenSpec {
 export interface TsGenEntity {
   entityId: string;
   baseId: string;
+  /**
+   * WO-SCALE-COHERENCE（R18 realized 层）：绝对量序列(output:line)的 per-base 尺度因子。
+   * 令实现产出 = 基地夹定产能 × 排产达成率，与 computeRollup 的 gwh 派生产能同锚（否则实现/预测脱尺度 →
+   * 校准 MAPE 恒高、良率信号被淹）。仅绝对量序列由调用方按 seriesKey 传入；比率/占比序列不传(=1)。
+   */
+  scale?: number;
 }
 
 export interface ScenarioModifiers {
@@ -75,6 +81,8 @@ export function genPoint(
     if (spec.seriesKey.startsWith("util") && scenario.utilBoost) v += scenario.utilBoost;
     if (spec.seriesKey.startsWith("yield") && scenario.yieldFactor) v *= scenario.yieldFactor;
   }
+  // WO-SCALE-COHERENCE：绝对量序列按 per-base gwh 派生尺度缩放（均值/噪声/漂移/剧本效应同比 → 相对结构不变）。
+  if (entity.scale && entity.scale !== 1) v *= entity.scale;
   v = clampFor(spec, round(v, 4));
   const values: Record<string, number> = { [spec.measureField]: v };
   if (spec.weightField) {
