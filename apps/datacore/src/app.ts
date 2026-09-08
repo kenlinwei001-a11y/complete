@@ -3172,6 +3172,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     //   + 统一错误信封 `{ error: { code, message, requestId } }`，message 是
     //   `"<path>: <message>"` 的人读串，不含任何 zod 内部字段。
     const body = parseBody(ParetoRequestSchema, req.body ?? {});
+    /**
+     * WO-WORLDSTATE-CONTRACT · R2：给了 `sessionId` 就必须是**本租户真实存在**的会话。
+     *
+     * ⛔ 这一句不是形式主义。改前实测：传一个**根本不存在**的 sessionId，本口照样 200
+     * 并回一整套本体真值口径的方案 —— 调用方拿到的是「一份看起来正常、其实答非所问的数」，
+     * 正是本单要修的那个病的形态。**宁可 404 也不给一个静默退化的答案。**
+     * ⚠ 本口自身**不叠世界态**（世界态在装配侧就已经烤进 `args` 了，见
+     * `SolverService.assembleParetoModel`）——它在这里只做**存在性闸门**，
+     * 不改一格读数，故对既有调用方逐字节无影响。
+     */
+    if (body.sessionId !== undefined) await getSimOr404(c, body.sessionId);
     const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
     return runOptimizePareto(solve, body);
   });

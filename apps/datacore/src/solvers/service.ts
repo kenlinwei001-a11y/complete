@@ -33,6 +33,7 @@ import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "./ontology-signature.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { assembleParetoModel } from "./opt-assemble.js"; // WO-SIM-PARETO-MODEL-EXIT · 模型装配的**出口**（此前装配能力有、无人能调）
+import { buildWorldReadView } from "../sim/world-read.js"; // WO-WORLDSTATE-CONTRACT · 世界态读取契约（产出侧读这次推演的态，不是本体真值）
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING · 复用 A13 角色推断机制（field-roles/resolveFieldRoles 同源词库·配置化 R14·非业务常数）+ 结构信号 fanOut（R6·零 LLM）
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
@@ -4976,15 +4977,33 @@ export class SolverService {
    *    （`field-role-lexicon` / `opt-binding`），故口径不会分叉。
    *
    * R2：`ctx.tenantId` 全程透传，`listTypes`/`listByType` 都是租户内查询，别租户一行摸不到。
+   *
+   * ══ WO-WORLDSTATE-CONTRACT · `sessionId` 从「只回显」变成「真读世界态」 ═══════════
+   * **今天的行为是 X（改前实测）**：`sessionId` 一路传到这里，装配器把它抄进回包就完了
+   *（`opt-assemble.ts` 注释原文「本层不解释它」），于是屏上那条前沿**永远答本体真值** ——
+   * 给 `obj_model_4680-NCM.costPressure` 施 999 再 tick×3，回包 md5 逐字节不变
+   *（`f46392a90be7692d17503e04fc06d432` / 19124B；金丝雀：只收窄 selection 当场变）。
+   * **应该是 Y**：给了 `sessionId` 就按《世界态读取契约》读该会话**当前拍**的态，
+   * 模型读的那几格改写成这次推演里的值，并把「读了哪几格、经哪条链路、按哪条公式」逐格披露。
+   *
+   * ⚠ 注入点选在**这里**而不是装配器内部：装配器不该认识 `Repos`，也不该认识沙盘 ——
+   * 它只管「从本体装出一份可解的模型」。换掉 `listByType` 这一个视图就够了
+   *（签名逐字一致），两件事因此各自可测、各自可换。
+   * ⚠ 不传 `sessionId` ⇒ `view` 压根不建 ⇒ 走原来那两行 ⇒ **与本单引入前逐字节相同**。
    */
   async assembleParetoModel(ctx: AuthCtx, input: ParetoAssembleRequest): Promise<ParetoAssembleResult> {
+    // R2：会话不存在/属于别的租户 ⇒ 这一步就 404（⛔ 不静默退化成读本体真值）。
+    const world = input.sessionId
+      ? await buildWorldReadView(this.repos, ctx, input.sessionId, { pressureUnit: input.pressureUnit })
+      : undefined;
     return assembleParetoModel(
       {
         listTypes: (tid) => this.repos.ontologyTypes.list(tid),
-        listByType: (tid, typeKey) => this.repos.objects.listByType(tid, typeKey),
+        listByType: world ? (tid, typeKey) => world.listByType(tid, typeKey) : (tid, typeKey) => this.repos.objects.listByType(tid, typeKey),
       },
       ctx.tenantId,
       input,
+      world ? () => world.disclosure() : undefined,
     );
   }
 
