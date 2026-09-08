@@ -38,7 +38,7 @@
  * **不许**渲染成一片 0 —— 那会让「引擎没跑」与「披露没要」在屏上长成同一个样子，
  * 正是本仓「静默错答」要根治的形态。
  */
-import type { SimRunDisclosure } from "@platform/contracts";
+import { adversaryMoveNameOf, adversarySelectorNameOf, type SimRunDisclosure } from "@platform/contracts";
 import styles from "./DisclosurePanel.module.css";
 
 /** 千分位。读数是给人看的，`12745` 与 `12,745` 在一列数字里差别很大。 */
@@ -77,6 +77,43 @@ const CADENCE_SKIP_LABEL: Readonly<Record<string, string>> = {
   NOT_INTEGER_TICKS: "周期非整拍",
 };
 
+/**
+ * ══ 对抗方这一栏的**四态** —— 四句话必须在屏上长得不一样 ═══════════════════════
+ *
+ * 判据原文（本单立单依据，一字不改）：
+ * > `无对抗方数据` 与 `对抗方反应为 0` **是两个结论，不许在屏上长成一样**。
+ *
+ * 后端 `rules.adversary` 是**必给**的一栏（关闭态也给），故这四态由两个字段现算，
+ * 不靠前端猜：
+ *
+ * | 态 | 判据 | 屏上说的那句话 |
+ * |---|---|---|
+ * | `ABSENT`     | 整栏 `undefined` —— 后端这一版没给 | 「未取到对抗方回执」（**不是**一片 0） |
+ * | `ONE_SIDED`  | `enabled === false` | 「单方推演」+ 挂起条数 —— 对手**根本没被算** |
+ * | `NO_REACTION`| `enabled && fired === 0` | 「无人越过容忍线」—— 对手**算了，答案是零** |
+ * | `REACTED`    | `enabled && fired > 0` | 逐条列出：谁、动了什么、多少、凭哪条规则 |
+ *
+ * ⚠ `ONE_SIDED` 与 `NO_REACTION` 是本栏存在的全部理由：
+ *   前者「对手没上场」，后者「对手上场了但没动手」——把两者都渲染成 `0 项`，
+ *   读者会把一次**单方推演**误读成「对手确实不还手」，那是拿缺席冒充结论。
+ */
+type AdversaryState = "ABSENT" | "ONE_SIDED" | "NO_REACTION" | "REACTED";
+
+function adversaryStateOf(a: SimRunDisclosure["rules"]["adversary"] | undefined): AdversaryState {
+  if (a === undefined || a === null) return "ABSENT";
+  if (!a.enabled) return "ONE_SIDED";
+  return a.fired > 0 ? "REACTED" : "NO_REACTION";
+}
+
+/**
+ * 动作 key → 人话名。**取自契约登记册，前端不另抄一份表** ——
+ * 抄一份的下场是登记册加了第四种动作而屏上永远只认三种（本仓已登记的老病）。
+ * 登记册里查不到 ⇒ 原样显示那个 key，**不编**一个像模像样的名字。
+ */
+const moveLabel = (key: string): string => adversaryMoveNameOf(key) ?? key;
+/** 选择方 key → 人话名。同上，同一条纪律。 */
+const selectorLabel = (key: string): string => adversarySelectorNameOf(key) ?? key;
+
 /** 一对「标签 值」。**没有句子**，标点只有分隔用的 `·`。 */
 function KV({ k, v, mono }: { k: string; v: string; mono?: boolean }): JSX.Element {
   return (
@@ -98,11 +135,29 @@ export default function DisclosurePanel({ disclosure: d }: DisclosurePanelProps)
   if (d === undefined) return null;
 
   const { data, slice, rules, constraints, agent, timings } = d;
+  /**
+   * ⚠ 用 `?.` 取而不是直接解构：这一栏是**后端加的新字段**，
+   * 而本面板同时服务于**不带这一栏的旧回包**（以及不产这一栏的桩）。
+   * 直接解构 ⇒ 那些场景下整块面板白屏；`ABSENT` 态才是它们的真相。
+   */
+  const adv = rules.adversary as SimRunDisclosure["rules"]["adversary"] | undefined;
+  const advState = adversaryStateOf(adv);
 
   return (
     <details className={styles.wrap} data-testid="sim-disclosure">
       <summary data-testid="sim-disclosure-summary">
         推演过程 · 第 {n(d.fromTick)} → {n(d.toTick)} 拍
+        {/* 面板默认收起 ⇒ 对抗方这一句必须**在收起态就看得见**，
+            否则「有没有人在跟我博弈」这件事仍然要点开两层才知道。 */}
+        <span className={styles.tag} data-testid="sim-disclosure-adversary-flag" data-state={advState}>
+          {advState === "ABSENT"
+            ? "对抗方未取到"
+            : advState === "ONE_SIDED"
+              ? "单方推演"
+              : advState === "NO_REACTION"
+                ? "对抗方未越线"
+                : `对抗方还手 ${n(adv!.fired)} 条`}
+        </span>
       </summary>
       <div className={styles.body}>
         {/* ── ① 引用的数据 ───────────────────────────────────────────────── */}
