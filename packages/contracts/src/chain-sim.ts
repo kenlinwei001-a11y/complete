@@ -1531,6 +1531,17 @@ export const ChainLossMatrixMoneySchema = z.strictObject({
   /**
    * 口径措辞（`LOSS_EXPOSURE_CAPTION`）。**屏上印金额必须同时印这句** ——
    * 不印，用户就会拿 156.63 亿去对营收 601.50 亿，然后得出「这系统对不上账」。
+   *
+   * ── ⚠ 消费侧现状（2026-09-08 真浏览器实测，**后端已给、屏上还没接**）──────────
+   * 真登录 → 点到「统一推演控制台 / 损失归因」，整屏金额扫描仍是 **元 0 · 亿 0 · 万 0**
+   * （同一把尺子量经营驾驶舱得 亿 10 · 万 19 ⇒ 尺子是好的），而同一次点击的真回包里
+   * `valueAtRiskYuan` 命中 **252** 次。差的是**展示层三个符号**（本单范围外，另单收）：
+   *  · `useLossAttribution.ts` 的 `HeatCellValue` —— 只有 `pct`/`days`，没有金额字段；
+   *  · 同文件 `projectHeatMatrix` —— 投影时把 `valueAtRiskYuan` 丢了（只搬 `pct`/`days`）；
+   *  · `HeatMatrixModel` —— 没有承载列敞口与本 `caption` 的位置。
+   * ⚠ 新增字段**必须 optional**：`sandbox-attr-pixel.test.tsx` 手工构造 `HeatMatrixModel`
+   * 与 `HeatCellValue` 字面量，加必填字段会让那份**不许改**的测试当场编译红
+   * （`useLossAttribution.ts` 的 `emptyReason` 上已经为同一原因写过一次这条警告）。
    */
   caption: z.string().min(1),
   /** Σ 各非空列的 `exposureYuan`（元）。**跨列相加带重复计入**，见 `exposureOverlapRatio`。 */
