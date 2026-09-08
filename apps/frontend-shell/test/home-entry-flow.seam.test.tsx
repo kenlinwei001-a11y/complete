@@ -92,20 +92,35 @@ describe("WO-HOME-ENTRY-FLOW · 首页入口 ⊇ 侧栏 route 项 + 遇事指引
       presetContext: { targetView: "risk", selectedObjects: [], slotPresets: {} },
     };
 
+    /**
+     * ⚠ 取第 0 项要先断言长度，不许直接 `arr[0].summary`。
+     * 本仓开着 `noUncheckedIndexedAccess` ⇒ 下标取值的类型是 `T | undefined`，
+     * 直接点属性 **vitest 跑得过、`tsc --noEmit` 报 TS2532**。
+     * 形态（铁律 0.6 句式）：「我用『这个测试是绿的』当作『这段代码编得过』的证据，
+     * 而前者并不度量后者」—— 本单实测栽在这上面一次（5 处 TS2532），故封成一个函数，
+     * 长度不对当场报错，而不是让下标静悄悄给回 undefined。
+     */
+    const first = (arr: ScenarioCardVM[]): ScenarioCardVM => {
+      expect(arr.length).toBeGreaterThan(0);
+      const head = arr[0];
+      if (head === undefined) throw new Error("enrich 返回空数组：量法坏了，不是断言失败");
+      return head;
+    };
+
     const once = enrichScenarioCardsForSearch([card]);
-    expect(once[0].summary).toContain("物料延期");
+    expect(first(once).summary).toContain("物料延期");
     // 原文不许被吃掉（同义词是**追加**，不是替换）
-    expect(once[0].summary).toContain("解读齐套分析");
+    expect(first(once).summary).toContain("解读齐套分析");
     // 纯函数：不许原地改缓存对象（react-query 的 items 会被反复读）
     expect(card.summary).toBe("解读齐套分析");
 
     // 幂等：同一份数据被 enrich 两次（react-query 重取/重渲染）不许越滚越长
     const twice = enrichScenarioCardsForSearch(once);
-    expect(twice[0].summary).toBe(once[0].summary);
+    expect(first(twice).summary).toBe(first(once).summary);
 
     // 金丝雀：没有登记同义词的卡**原样返回** —— 若这条也变了，说明我在给所有卡乱加词
     const other: ScenarioCardVM = { ...card, sNo: "S99", summary: "不该被动" };
     expect(SYNONYMS_BY_SNO["S99"]).toBeUndefined();
-    expect(enrichScenarioCardsForSearch([other])[0].summary).toBe("不该被动");
+    expect(first(enrichScenarioCardsForSearch([other])).summary).toBe("不该被动");
   });
 });
