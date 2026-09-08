@@ -20,7 +20,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { ADVERSARY_FEATURE_KEY } from "@platform/contracts";
+import { ADVERSARY_FEATURE_KEY, assertReactionWellFormed } from "@platform/contracts";
 import { makeApp, seedBattery, ADMIN, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
 
@@ -228,11 +228,26 @@ describe("WO-ADVERSARY-REACTION · 客户会还手（五格对照实验）", () 
   }, 300000);
 
   // ══ 可披露（铁律 1.5 判据二）—— 规则 key / 系数 / 触发条件 / 承载条数必须给得出 ══
-  it("可披露：命中的规则 key · 系数 · 容忍线 · 还手动作 · 承载条数 · 越线对手数，一项不缺", async () => {
+  it("可披露：命中的规则 key · 系数 · 容忍线 · 还手动作 · 承载条数 · 越线对手数 · **谁选的**，一项不缺", async () => {
     const t = await boot(true);
     const byCust = await ordersByCustomer(t);
     const [custId] = [...byCust].sort((a, b) => a[0].localeCompare(b[0]))[0]!;
     const d = await disclose(t, { [custId]: { receivablePressure: TOLERANCE * 8 } }, 1);
+
+    // 🐤 金丝雀（仓主 2026-09-08 补的判据要求的那一条）：**先拿一条确定命中的普通规则**
+    //    证明"可披露这一层本身出得来东西"，再去断言还手边的那几项。
+    //    不先验这一步 ⇒ 万一披露层整层是空的，下面每一条都会以"某项没给"的面目报出来，
+    //    而真相是"这一层根本没产出"。形态：**「我用『某项读不到』当作『那一项没实现』的证据」**。
+    const canaryPhysical = d.items.find((i) => !i.isReaction && i.fired);
+    expect(
+      canaryPhysical,
+      "金丝雀失败：一条命中的**普通**传导边都披露不出来 ⇒ 报「披露层坏了」，不是「还手边没给」",
+    ).toBeTruthy();
+    expect(canaryPhysical!.ruleKey.length).toBeGreaterThan(0);
+    expect(canaryPhysical!.coefficient).toBeGreaterThan(0);
+    // 普通边**不许**冒充还手边：这几项必须是 null（而不是 0/空串这种"像模像样的值"）。
+    expect(canaryPhysical!.reactionSelectedBy).toBeNull();
+    expect(canaryPhysical!.reactionTriggeredActors).toBeNull();
 
     const item = d.items.find((i) => i.ruleKey === REACTION_RULE_KEY);
     expect(item, "还手边没进披露层 ⇒ 用户读不到「谁在跟我博弈」").toBeTruthy();
@@ -246,13 +261,49 @@ describe("WO-ADVERSARY-REACTION · 客户会还手（五格对照实验）", () 
     expect(item!.weightNormalize).toBe("SOURCE_POOL_MEAN");
     expect(item!.weightPairs, "承载条数必须给").toBeGreaterThan(0);
     expect(item!.reactionTriggeredActors, "越线对手数必须给（1 个客户被惹毛）").toBe(1);
+    // ── 仓主 2026-09-08 架构原则：**「这是按规则算的，不是谁编的」必须读得出来** ──────
+    // 数值由求解器算（系数 + 分摊 + 容忍线，上面几行已断言）；这三行回答的是
+    // 「这条规则**凭什么是这一条**」—— 缺了它，前面几项再全也答不了这一问。
+    expect(item!.reactionSelectedBy, "今天还手只能由规则表直选（零 LLM）").toBe("RULE_TABLE");
+    expect(item!.reactionSelectedByName).toBe("规则表直选"); // 屏上不许只显裸键
+    expect(item!.reactionSelectorRef, "规则表直选没有『谁挑的』，必须是 null 不是空串").toBeNull();
 
     expect(d.adversary.enabled).toBe(true);
     expect(d.adversary.declared).toBe(1);
     expect(d.adversary.suppressed).toBe(0);
     expect(d.adversary.moves).toEqual(["CUT_ORDER"]);
     expect(d.adversary.triggeredActors).toBe(1);
+    // 汇总栏也必须明写"这一步是谁做的" —— 留白会让人以为反应是模型选的。
+    expect(d.adversary.selectors).toEqual(["RULE_TABLE"]);
+
+    // ── 顶层 agent 栏：本次推演**零 LLM**，必须明写而不是留白（铁律 1.5 判据二）──────
+    expect(d.agentInvoked, "推演路今天零 LLM ⇒ 必须明写 invoked:false").toBe(false);
   }, 300000);
+
+  // ══ 架构原则的**构造期闸**：选择方不许自带强度 ═══════════════════════════════
+  // 仓主 2026-09-08：「所有计算原则上使用求解器而不是 agent 来计算，agent 只负责…挑规则」。
+  // ⇒ 编排层将来只能**挑一条已有规则**，数值必须来自那条规则自己。
+  // 这条用例是那道闸的**变异反证**：喂一条没有表内强度的还手边，构造期必须当场抛。
+  // 没有反证的门是装饰品 —— 门永远绿也可能是因为它什么都不拦。
+  it("架构原则闸：还手边不带表内强度（coefficient/coefficientRef 都没有）⇒ 构造期必须抛", async () => {
+    const wellFormed = {
+      key: "probe_ok", sourceTypeKey: "Customer", coefficient: 0.35, coefficientRef: null,
+      reaction: { actorTypeKey: "Customer", tolerance: 12, move: "CUT_ORDER", selectedBy: "RULE_TABLE", selectorRef: null },
+    };
+    // 🐤 金丝雀：合规的那条**必须过** —— 否则这道闸是"一律拒绝"，反证就没有意义。
+    expect(() => assertReactionWellFormed([wellFormed])).not.toThrow();
+
+    // 变异：把表内强度拿掉（模拟"强度由挑规则的那一方现编"）。
+    const noStrength = { ...wellFormed, key: "probe_no_strength", coefficient: undefined, coefficientRef: null };
+    expect(() => assertReactionWellFormed([noStrength])).toThrow(/表内强度/);
+
+    // 变异：规则表直选却带了"谁挑的"出处 —— 读起来像编排层参与过。
+    const fakeSelector = {
+      ...wellFormed, key: "probe_fake_selector",
+      reaction: { ...wellFormed.reaction, selectorRef: "agent_run_1" },
+    };
+    expect(() => assertReactionWellFormed([fakeSelector])).toThrow(/selectorRef/);
+  });
 });
 
 /** 取一次带披露的推进（`?disclose=1`）——可披露那一层的读端。 */
@@ -269,19 +320,24 @@ async function disclose(t: TestApp, base: Record<string, Record<string, number>>
     disclosure: {
       rules: {
         items: {
-          ruleKey: string; isReaction: boolean; coefficient: number;
+          ruleKey: string; isReaction: boolean; fired: boolean; coefficient: number;
           reactionActorTypeKey: string | null; reactionMove: string | null;
           reactionMoveName: string | null; reactionTolerance: number | null;
           reactionTriggeredActors: number | null;
+          reactionSelectedBy: string | null; reactionSelectedByName: string | null;
+          reactionSelectorRef: string | null;
           weightBasis: string | null; weightNormalize: string | null; weightPairs: number | null;
         }[];
         adversary: {
           enabled: boolean; declared: number; suppressed: number;
-          fired: number; triggeredActors: number; moves: string[];
+          fired: number; triggeredActors: number; moves: string[]; selectors: string[];
         };
       };
+      agent: { invoked: boolean; calls: number };
     };
   };
   expect(body.disclosure, "?disclose=1 没回披露层").toBeTruthy();
-  return body.disclosure.rules;
+  // `agent` 与 `rules` 是披露层的两栏（⑤ 与 ③）。摊平一格带出来，
+  // 免得用例为了读「本次调没调 LLM」再各自去翻回包结构。
+  return { ...body.disclosure.rules, agentInvoked: body.disclosure.agent.invoked };
 }

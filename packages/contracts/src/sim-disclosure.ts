@@ -131,6 +131,20 @@ export const SimDisclosureRuleSchema = z.object({
    * 非还手边 = null。
    */
   reactionTriggeredActors: z.number().int().nullable(),
+  /**
+   * **谁选了这条还手规则**（仓主 2026-09-08 架构原则；取值见 `ADVERSARY_SELECTOR_REGISTRY`）。
+   * 今天恒为 `"RULE_TABLE"`（规则表直选、零 LLM）；编排层接入后才会出现 `"AGENT"`。
+   * 非还手边 = null。
+   *
+   * ⚠ 这一项是**可披露层的要害**：一个看不到代码的人凭它 + `coefficient` + `reactionTolerance`
+   * + `weightPairs` 就能自己判断「这是按规则算的，不是谁编的」。缺了它，
+   * 前四项再全也答不了「这条规则凭什么是这一条」。
+   */
+  reactionSelectedBy: z.string().nullable(),
+  /** 选择方人话名（如「规则表直选」）；非还手边 = null。屏上不许只显裸键。 */
+  reactionSelectedByName: z.string().nullable(),
+  /** 选择方出处引用（`AGENT` 才有）；`RULE_TABLE` 与非还手边恒 null。 */
+  reactionSelectorRef: z.string().nullable(),
 });
 export type SimDisclosureRule = z.infer<typeof SimDisclosureRuleSchema>;
 
@@ -183,6 +197,16 @@ export const SimDisclosureRulesSchema = z.object({
     triggeredActors: z.number().int(),
     /** 本次参与的还手动作 key（去重升序），供屏上直接列「客户做了什么」。 */
     moves: z.array(z.string()),
+    /**
+     * 本次这些还手规则**由谁选的**（去重升序，取值见 `ADVERSARY_SELECTOR_REGISTRY`）。
+     *
+     * ⛔ **关闭态与"全是规则表直选"时都必须给**，理由与本栏其余字段同源：
+     * 今天恒为 `["RULE_TABLE"]`，明写出来读者才知道**这一步没有模型参与**；
+     * 留白会让人以为「反应是模型选的」——而架构原则恰恰要求数值由求解器算。
+     * 与顶层 `agent.invoked` 是两个粒度：那条说整次推演调没调 LLM，
+     * 这条说**还手的选择**这一步是谁做的。
+     */
+    selectors: z.array(z.string()),
   }),
 });
 export type SimDisclosureRules = z.infer<typeof SimDisclosureRulesSchema>;

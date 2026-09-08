@@ -157,6 +157,46 @@ export function adversaryMoveNameOf(key: string): string | null {
 }
 
 /**
+ * **谁选了这条还手规则**（仓主 2026-09-08 架构原则的字段位）。
+ *
+ * 原则原文：「**所有计算原则上使用求解器而不是 agent(LLM) 来计算，agent 只负责调动工具、
+ * 本体、规则等等输出结果，然后基于结果推演，形成多个方案和方案比对。**」
+ *
+ * ⇒ 把「还手」这件事**切成两半，两半的裁决方不同**：
+ *  · **反应的数值**（还多狠）—— **永远**由规则算：
+ *    `强度(coefficient|coefficientRef) × 分摊(weightRef) × max(0, 源读数 − tolerance) × decay`。
+ *    确定性、可重放、零 LLM。**这一半今天已落地，且不许让给 agent。**
+ *  · **反应的选择**（这个客户这次是砍单还是改期）—— 今天由规则表直接声明；
+ *    未来可由编排层（agent）来定，但它**只能从已发布的还手规则里挑一条**，
+ *    系数仍取自被挑中的那条规则 —— **不能凭空造一个系数**。
+ *
+ * 本单**不接 agent**（那层另有单在做），只把这个**字段位**留出来并由
+ * `assertReactionWellFormed()` 钉死「选择方不许自带强度」，让编排层以后能直接填。
+ */
+export const ADVERSARY_SELECTOR_REGISTRY = [
+  {
+    key: "RULE_TABLE",
+    name: "规则表直选",
+    detail: "规则表里这条边自己声明了该动作 ⇒ 确定性、可重放、本次零 LLM 参与。",
+  },
+  {
+    key: "AGENT",
+    name: "编排层选规则",
+    detail: "由 agent 从**已发布的还手规则**里挑一条；强度与分摊仍取自被挑中的那条规则，agent 不产出数值。",
+  },
+] as const;
+export type AdversarySelectorKey = (typeof ADVERSARY_SELECTOR_REGISTRY)[number]["key"];
+const ADVERSARY_SELECTOR_KEYS: ReadonlySet<string> = new Set(ADVERSARY_SELECTOR_REGISTRY.map((s) => s.key));
+/** `reaction.selectedBy` 是否在册。**唯一判据**——两侧共用这一支，不许各抄一份集合。 */
+export function isKnownAdversarySelector(key: string): boolean {
+  return ADVERSARY_SELECTOR_KEYS.has(key);
+}
+/** 在册选择方的人话名（拿不到 ⇒ `null`，调用方据实处理，不编名字）。 */
+export function adversarySelectorNameOf(key: string): string | null {
+  return ADVERSARY_SELECTOR_REGISTRY.find((s) => s.key === key)?.name ?? null;
+}
+
+/**
  * **对手方反应声明**（WO-ADVERSARY-REACTION）—— 这条边不是「世界的物理传导」，
  * 而是「**某个交易对手看到读数之后主动做的一件事**」。
  *
@@ -203,6 +243,22 @@ export const ReactionSpecSchema = z.object({
   move: z.string().refine(isKnownAdversaryMove, {
     message: "reaction.move 必须是 ADVERSARY_MOVE_REGISTRY 在册动作（禁自由串）",
   }),
+  /**
+   * **谁选了这条规则**（仓主 2026-09-08 架构原则的字段位，见 `ADVERSARY_SELECTOR_REGISTRY`）。
+   * 缺省 = `RULE_TABLE`（今天唯一的取值：规则表直选、零 LLM）。
+   *
+   * ⚠ 做成**带默认值的可选字段**而不是必填：老行读回来是 `undefined`，
+   * 补一个默认值即可，不必迁移 —— 与 `coefficientRef` 同一种加法（additive·可回退 RL9）。
+   */
+  selectedBy: z.string().refine(isKnownAdversarySelector, {
+    message: "reaction.selectedBy 必须是 ADVERSARY_SELECTOR_REGISTRY 在册选择方（禁自由串）",
+  }).default("RULE_TABLE"),
+  /**
+   * 选择方的**出处引用**：`selectedBy:"AGENT"` 时填「哪次编排、哪个 agent 挑的」，
+   * 供披露层回答「这条还手是谁选的」。`RULE_TABLE` 时恒 `null`
+   * —— **不留一个像模像样的空串让人以为编排层参与了**（同本文件 agent 披露那条纪律）。
+   */
+  selectorRef: z.string().nullable().default(null),
 });
 export type ReactionSpec = z.infer<typeof ReactionSpecSchema>;
 
@@ -473,7 +529,10 @@ export function assertReactionWellFormed<
   // ⚠ `reaction` 写成**可选**而非 `Pick<PropagationRule, …>`：种子那张表把它做成了「第五种填法」
   //   （只有还手边写它）。用 Pick 会让 T 推不出实际元素类型，调用点当场报
   //   「Property 'targetTypeKey' does not exist」—— 实测踩过。
-  T extends { key: string; sourceTypeKey: string; reaction?: ReactionSpec | null },
+  T extends {
+    key: string; sourceTypeKey: string; reaction?: ReactionSpec | null;
+    coefficient?: number; coefficientRef?: { ruleKey: string; paramKey: string } | null;
+  },
 >(rules: readonly T[]): readonly T[] {
   for (const r of rules) {
     if (r.reaction == null) continue;
@@ -481,6 +540,25 @@ export function assertReactionWellFormed<
       throw new Error(
         `传导规则 ${r.key}: reaction.actorTypeKey=${r.reaction.actorTypeKey} 与 sourceTypeKey=${r.sourceTypeKey} 不一致。` +
           `还手方必须就是这条边的源 —— 否则披露层报的"谁在还手"与引擎实际算的不是一回事。`,
+      );
+    }
+    // ── 仓主 2026-09-08 架构原则的**构造期闸**：选择方不许自带强度 ──────────────
+    // 原则：「所有计算原则上使用求解器而不是 agent(LLM) 来计算」⇒
+    // 编排层将来只能**挑一条已有规则**，数值必须来自被挑中的那条规则自己。
+    // 判据落在「这条规则**有没有**表内强度」上：`coefficient` 或 `coefficientRef` 至少有一个。
+    // 两个都没有 ⇒ 强度只能由挑选它的人现编 —— 那正是本原则要堵死的形态，构造期即抛。
+    const hasTableStrength =
+      (typeof r.coefficient === "number" && Number.isFinite(r.coefficient)) || r.coefficientRef != null;
+    if (!hasTableStrength) {
+      throw new Error(
+        `传导规则 ${r.key}: 还手边必须自带表内强度（coefficient 或 coefficientRef），现在两个都没有。` +
+          `否则「还多狠」这个数只能由挑规则的那一方现编 —— 而架构原则是「数值由求解器算、agent 只挑规则」。`,
+      );
+    }
+    if (r.reaction.selectedBy === "RULE_TABLE" && r.reaction.selectorRef !== null) {
+      throw new Error(
+        `传导规则 ${r.key}: selectedBy=RULE_TABLE 却带了 selectorRef=${r.reaction.selectorRef}。` +
+          `规则表直选没有"谁挑的"这个出处 —— 留一个像模像样的值会让披露层读起来像编排层参与过。`,
       );
     }
   }
