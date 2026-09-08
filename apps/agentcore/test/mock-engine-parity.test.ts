@@ -301,7 +301,20 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     // 同一条正则求差集 ⇒ **base 树 A 111 · B 111**，**本单树 A 115 · B 115 · missing [] · extra []**；
     // 金丝雀两条同时验过（`model_producible_at|Model|Base` 两侧必中 = true ∧ 合成键必不中 = true）。
     // ⚠ 类型数不动（仍 63）：五个目标类型早就都在本体里，本次只加链路声明。
-    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 115）").toBe(115);
+    // 115→116 于 2026-09-08（收编 MERGE-BATCH-9 时由本门当场报红逼出来的，不是人想起来的）：
+    // `WO-ADVERSARY-REACTION` 在 A 侧加了**一条影响向逆边** `customer_places_order|Customer|Order`
+    // （`order_of_customer` 之逆 —— 正向只能把压力送到客户身上，逆向才送得到订单上），
+    // B 侧 `MOCK_ONTOLOGY_LINKS` 没跟 ⇒ 与批 8 那条 `supply_vulnerability` 同一条纪律（金值/注册即更）。
+    // 照本注释的要求**两侧独立复算过，没有照抄报错里的 received**：另写一份脚本、不 import 本文件的
+    // 抽取器，对 battery.ts 与 ontology-graph.ts 各跑一遍同一条 `fromTypeKey:` 正则求差集 ⇒
+    // 补镜像前 **A 116 · B 115 · missing 恰 `customer_places_order|Customer|Order` 一条 · extra 0**。
+    // ⚠ 复算脚本第一版**自己出了假阳性**报 A=117 并多出一条 `X|Y|Z`：battery.ts 的注释里
+    //   **逐字引用了本抽取器的正则**（`{ key: "X", fromTypeKey: "Y", toTypeKey: "Z"`），
+    //   不剥注释就会把那行注释当成一条真链路。⇒ **剥行注释后**才得到 116。
+    //   金丝雀三条同时验过：`model_producible_at|Model|Base` 两侧必中 = true ∧
+    //   合成键 `zz_synthetic_never|Foo|Bar` 两侧必不中 = false ∧ 注释假阳性 `X|Y|Z` 必已消除 = false。
+    // ⚠ 类型数不动（仍 63）：`Customer` 与 `Order` 两端早就都在本体里，本次只加一条链路声明。
+    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 116）").toBe(116);
   });
 
   it("§2 mock 镜像图 == battery.ts 现算图（集合相等·缺谁多谁点名）", () => {

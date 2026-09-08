@@ -126,6 +126,7 @@ export const MOCK_ONTOLOGY_LINKS: MockOntologyLink[] = [
   { linkKey: "material_used_by_model", fromTypeKey: "Material", toTypeKey: "Model" },
   { linkKey: "model_demanded_by_order", fromTypeKey: "Model", toTypeKey: "Order" },
   { linkKey: "order_of_customer", fromTypeKey: "Order", toTypeKey: "Customer" },
+  { linkKey: "customer_places_order", fromTypeKey: "Customer", toTypeKey: "Order" },
   { linkKey: "custloc_of_customer", fromTypeKey: "CustomerLocation", toTypeKey: "Customer" },
   { linkKey: "model_has_cert", fromTypeKey: "Model", toTypeKey: "Certification" },
   { linkKey: "customer_has_invoice", fromTypeKey: "Customer", toTypeKey: "ARInvoice" },
