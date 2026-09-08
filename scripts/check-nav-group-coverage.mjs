@@ -333,6 +333,36 @@ function arrayBlock(src, declRe, label, open = "[") {
   return null;
 }
 
+/**
+ * 从 `open`（必须指向一个 `{`）起做花括号配对，返回配对 `}` 的下标；未配对返回 -1。
+ * 与 `arrayBlock` 同一套配对逻辑，只是用在**已经切出来的对象体内部**（按条目再切一层）。
+ */
+function matchBrace(s, open) {
+  let depth = 0;
+  for (let i = open; i < s.length; i++) {
+    if (s[i] === "{") depth++;
+    else if (s[i] === "}") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * 条目体里的 `<name>: "字面量"` → 字面量原文；取不到返回 `null`（**不返回 ""** ——
+ * 「没有这个字段」与「字段是空串」是两件事，判据⑧d 正是靠 where 的长度说话）。
+ *
+ * ⚠ 认转义引号（`"…\"sim-conduction\"…"`）：生产表里真有四条 `where` 内嵌引号，
+ *   用 `[^"]*` 会在第一个 `\"` 处截断，把 104 字的到达路径读成半句 —— 判据⑧d 照样放行，
+ *   却把后半句丢了。故按「非引号非反斜杠，或反斜杠加任意字符」逐段吃。
+ * ⚠ 名字前置 `[,{\s]` 是词边界：防 `where` 被某个以它结尾的字段名尾巴撞上。
+ */
+function strField(entryBody, name) {
+  const m = entryBody.match(new RegExp(String.raw`(?:^|[,{\s])${name}\s*:\s*"((?:[^"\\]|\\.)*)"`));
+  return m ? m[1] : null;
+}
+
 /** 数组体里深度为 1 的 `key: "字面量"`（不下钻 layout/options 等嵌套对象，防把内层 key 当视图键）。 */
 function topLevelKeys(body) {
   const keys = [];
@@ -531,13 +561,61 @@ function parseNavRouteKeys(body) {
  * 门就会拿旧表放行一个真的漏登记（同 0.6 那条「金丝雀必须与主逻辑共用同一份实现」）。
  * 单一出处在被测代码里，门只负责对账。
  *
- * 形态：`"chain-line-map": { via: "workspace.views", where: "…" },`
+ * 形态（WO-INTEG-BATCH-5 起共三个字段）：
+ *   `"chain-line-map": { via: "workspace.views", host: "sim-sandbox", where: "…" },`
  * ⚠ 入参必须是**已去注释**的对象体 —— 表头的长注释里逐字写着这些键名。
+ *
+ * ⛔ **不许再把「字段的排列顺序」写进正则**（2026-09-08 实测，这是本文件同一形态第 2 次）：
+ *   上一版写作 `"key"\s*:\s*\{\s*via:\s*"…"\s*,\s*where:\s*"…"`，把「`where` 紧跟 `via`」
+ *   钉死在正则里。`WO-INTEG-BATCH-5` 往两者之间插了个 `host` 字段 ⇒ 生产表 **16 条一条都不匹配**，
+ *   读成 0 条；判据①⑧f 随即报出 8 条**假阳性**（"后端下发的视图漏登记" / "带了 consolidatedWhen
+ *   却不在收编表里"），而真相是**门瞎了**，那 16 条一直好好写在表里。
+ *   同一形态本文件上一次发生在 `parseNavViewKeys`（见其注释：加 `consolidatedWhen` ⇒ 25→22）。
+ *   **形态**：「我用『字段今天的排列顺序』当作『条目的结构』的证据，而前者并不度量后者。」
+ *   故改成**花括号配对切出条目、再按字段名各取各的**：加字段、换顺序、换排版都不影响。
+ *
+ * ⚠ 第二条同样重要：**读不懂的条目必须出声**（推 `gateBroken`），不许静默丢弃。
+ *   静默丢弃正是上一版最坏的地方 —— 集合悄悄变小，而门一言不发：
+ *   小了的豁免集让判据①④ **误红**，小了的对账集让判据⑧ **漏检**，两个方向都错。
  */
 function parseConsolidated(body) {
   const out = [];
-  for (const m of body.matchAll(/"([^"]+)"\s*:\s*\{\s*via:\s*"([^"]+)"\s*,\s*where:\s*"([^"]*)"/g)) {
-    out.push({ key: m[1], via: m[2], where: m[3] });
+  const head = /"((?:[^"\\]|\\.)*)"\s*:\s*\{/y;
+  let i = 0;
+  while (i < body.length) {
+    // 条目之间只可能是空白与逗号；遇到别的东西说明本门不认识这段写法，必须出声。
+    if (/[\s,]/.test(body[i])) { i++; continue; }
+    head.lastIndex = i;
+    const m = head.exec(body);
+    if (!m) {
+      gateBroken.push(
+        `✗ 判据③ 门自身没坏：${SHELL} 的 CONSOLIDATED_INTO_SANDBOX 有一段本门读不懂的写法 ——\n` +
+          `    「${body.slice(i, i + 60).replace(/\s+/g, " ").trim()}…」\n` +
+          `    本门只认 \`"<key>": { … }\` 形态。表的写法变了就必须同步改 parseConsolidated，` +
+          `不许让它静默少读几条。`,
+      );
+      break;
+    }
+    const open = m.index + m[0].length - 1; // 指向那个 `{`
+    const close = matchBrace(body, open);
+    if (close < 0) {
+      gateBroken.push(
+        `✗ 判据③ 门自身没坏：${SHELL} 的 CONSOLIDATED_INTO_SANDBOX 条目 "${m[1]}" 花括号未配对 —— 本门无法切出它的字段。`,
+      );
+      break;
+    }
+    const inner = body.slice(open + 1, close);
+    const via = strField(inner, "via");
+    const where = strField(inner, "where");
+    if (via === null || where === null) {
+      gateBroken.push(
+        `✗ 判据③ 门自身没坏：${SHELL} 的 CONSOLIDATED_INTO_SANDBOX 条目 "${m[1]}" 取不到` +
+          `${via === null ? " via" : ""}${where === null ? " where" : ""} 字段 —— 类型上这两个都是必填，` +
+          `取不到即本门的字段抽取坏了（或表里写成了本门不认的字面量形态）。`,
+      );
+    }
+    out.push({ key: m[1], via: via ?? "", host: strField(inner, "host") ?? "", where: where ?? "" });
+    i = close + 1;
   }
   return out;
 }
@@ -663,20 +741,35 @@ function parseRendererValues(body) {
   }
 
   /* ── 判据⑧ 的词法自检（WO-SANDBOX-IA-CONSOLIDATE）──────────────────────────── */
+  /* ⚠ **样例形状必须取自生产实物**（与判据⑨ 的 SAMPLE_GROUPS 同一条纪律）。
+   * 2026-09-08 实测：本样例上一版停在 `{ via, where }` 两字段的老形态，而生产表早已是
+   * `{ via, host, where }` 三字段 —— 于是**自检恒绿、生产恒读 0 条**，门瞎了 50 天没人看见。
+   * 这正是铁律 0.5 判据 6 那一形态：**生产实参与测试实参交集为空** ——
+   * 「这个函数有测试」证明不了「生产喂进去的那个形状有测试」。
+   * 故样例必须同时覆盖三件事：① 生产今天的三字段形态；② 多行排版；③ `where` 内嵌转义引号；
+   * 外加 ④ 一条**带未知新字段**的条目 —— 它是防「下次再插一个字段又瞎掉」的变异样本。 */
   const SAMPLE_CONS = `
-    // "commented-key": { via: "workspace.views", where: "注释里的不算" },
-    "canary-view-key": { via: "workspace.views", where: "沙盘中栏默认模式" },
-    "canary-route-key": { via: "static-route", where: "沙盘模式切换 →「归因」" },
+    // "commented-key": { via: "workspace.views", host: "sim-sandbox", where: "注释里的不算" },
+    "canary-view-key": { via: "workspace.views", host: "sim-sandbox", where: "沙盘中栏默认模式" },
+    "canary-route-key": {
+      via: "static-route", host: "sim-sandbox",
+      where: "沙盘模式切换 →「归因」",
+    },
+    "canary-quoted-key": { via: "view-defs", host: "sim-unified", where: "页签（\\"传导识别\\"）" },
+    "canary-newfield-key": { via: "view-defs", host: "sim-unified", note: "将来新加的字段", where: "顶部页签" },
   `;
   const gotCons = parseConsolidated(stripComments(SAMPLE_CONS));
   const wantCons = [
-    { key: "canary-view-key", via: "workspace.views", where: "沙盘中栏默认模式" },
-    { key: "canary-route-key", via: "static-route", where: "沙盘模式切换 →「归因」" },
+    { key: "canary-view-key", via: "workspace.views", host: "sim-sandbox", where: "沙盘中栏默认模式" },
+    { key: "canary-route-key", via: "static-route", host: "sim-sandbox", where: "沙盘模式切换 →「归因」" },
+    { key: "canary-quoted-key", via: "view-defs", host: "sim-unified", where: '页签（\\"传导识别\\"）' },
+    { key: "canary-newfield-key", via: "view-defs", host: "sim-unified", where: "顶部页签" },
   ];
   if (JSON.stringify(gotCons) !== JSON.stringify(wantCons)) {
     gateBroken.push(
       `✗ 词法自检：parseConsolidated 提取结果不对 —— 期望 ${JSON.stringify(wantCons)}，实得 ${JSON.stringify(gotCons)}` +
-        `（应做到：注释里的不算 / via 与 where 两个字段都提得出 —— 少了 via 就分不清该验后端派单还是该验 route）`,
+        `（应做到：注释里的不算 / via·host·where 三字段都提得出 / 多行排版认得 / where 里的转义引号不截断 /` +
+        ` **中间插入未知字段照样提得出** —— 最后这条正是 2026-09-08 那次门瞎掉的直接原因）`,
     );
   }
 
