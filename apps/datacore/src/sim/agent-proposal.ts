@@ -92,7 +92,7 @@ export function buildProposalMenu(input: BuildMenuInput): ProposalMenu | null {
 
 /** A→B 出站客户端接口（注入；测试用脚本化替身，不吊起真 agentcore）。 */
 export interface ProposerClient {
-  propose(menu: ProposalMenu, agentId: string): Promise<{ draft: unknown; provenance: unknown }>;
+  propose(menu: ProposalMenu, agentId: string, who: { tenantId: string; userId?: string; roles?: string[] }): Promise<{ draft: unknown; provenance: unknown }>;
 }
 
 /**
@@ -101,14 +101,15 @@ export interface ProposerClient {
  */
 export function httpProposerClient(baseUrl: string, serviceToken: string, timeoutMs = 60_000): ProposerClient {
   return {
-    async propose(menu, agentId) {
+    async propose(menu, agentId, who) {
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), timeoutMs);
       try {
         const res = await fetch(`${baseUrl.replace(/\/$/, "")}/b/v1/sim/propose-candidates`, {
           method: "POST",
           headers: { "content-type": "application/json", "x-service-token": serviceToken },
-          body: JSON.stringify({ menu, agentId }),
+          // R2：租户随请求点名（服务间调用没有用户身份可推）。
+          body: JSON.stringify({ menu, agentId, tenantId: who.tenantId, ...(who.userId ? { userId: who.userId } : {}), ...(who.roles ? { roles: who.roles } : {}) }),
           signal: ac.signal,
         });
         if (!res.ok) throw new Error(`agentcore ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -141,7 +142,7 @@ export interface FreezeDeps {
 export async function generateAndFreeze(
   deps: FreezeDeps,
   client: ProposerClient | null,
-  args: { tenantId: string; sessionId: string; menu: ProposalMenu; agentId: string },
+  args: { tenantId: string; sessionId: string; menu: ProposalMenu; agentId: string; userId?: string; roles?: string[] },
 ): Promise<{ proposal: FrozenProposal; reused: boolean }> {
   const fp = fingerprintMenu(args.menu);
   const existing = await deps.findProposalByFingerprint(args.tenantId, args.sessionId, fp);
@@ -152,7 +153,7 @@ export async function generateAndFreeze(
   let provenance: ProposalProvenance = noAgentProvenance("未配置 AGENTCORE_BASE_URL/SERVICE_TOKEN（A→B 服务间通路不可用）");
   if (client) {
     try {
-      const out = await client.propose(args.menu, args.agentId);
+      const out = await client.propose(args.menu, args.agentId, { tenantId: args.tenantId, ...(args.userId ? { userId: args.userId } : {}), ...(args.roles ? { roles: args.roles } : {}) });
       const parsedDraft = AgentProposalDraftSchema.safeParse(out.draft);
       const prov = out.provenance as ProposalProvenance | undefined;
       if (parsedDraft.success && prov && prov.agentInvolved) {

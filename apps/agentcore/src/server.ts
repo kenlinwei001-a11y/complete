@@ -2629,11 +2629,18 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
    * 不 import `dsh-runtime`，只**回读** engine 跑完标在 `run.kernel` 上的实际值。
    */
   app.post("/b/v1/sim/propose-candidates", async (req) => {
-    const a = await auth(req);
+    // **仅限服务间调用**（同 `/b/v1/internal/scaffold` 口径）：调用方是 A 侧的
+    // `POST /a/v1/sim/optimize-pareto/propose`，那一跳已经做过用户鉴权 + entitlement + R2 租户核对。
+    // 用户 JWT 直打本口一律 401 —— 它不是给前端用的口。
+    requireServiceToken(req);
     const body = z.object({
       menu: ProposalMenuSchema,
       agentId: z.string().min(1),
       version: z.union([z.number().int().positive(), z.literal("latest")]).optional(),
+      /** R2：租户由调用方点名（服务间调用没有用户身份可推），下游 scope 一律按它隔离。 */
+      tenantId: z.string().min(1),
+      userId: z.string().min(1).optional(),
+      roles: z.array(z.string()).optional(),
     }).parse(req.body ?? {});
     const budget = new BudgetTracker({ maxIterations: 6, maxToolCalls: 10 });
     return proposeCandidates(deps.engine, {
@@ -2641,7 +2648,13 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
       agentId: body.agentId,
       ...(body.version !== undefined ? { version: body.version } : {}),
       taskId: newId("tsk"),
-      ctx: { tenantId: a.tenantId, userId: a.userId, roles: a.roles ?? [], token: a.token, debugUser: a.debugUser },
+      ctx: {
+        tenantId: body.tenantId,
+        userId: body.userId ?? "svc",
+        roles: body.roles ?? [],
+        // 服务间调用无用户 token：下游读 A 侧数据走 X-Debug-User 缝（与既有 OBO 客户端同面）。
+        debugUser: `${body.tenantId}:${body.userId ?? "svc"}:${(body.roles ?? ["admin"]).join("|")}`,
+      },
       nesting: { callChain: [], budget },
     });
   });

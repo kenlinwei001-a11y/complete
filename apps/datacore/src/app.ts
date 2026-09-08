@@ -3296,7 +3296,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         now: () => new Date().toISOString(),
       },
       proposerClient,
-      { tenantId: c.tenantId, sessionId: s.id, menu, agentId: body.agentId },
+      // R2 + 归属：租户/用户/角色随请求带到 B 侧（服务间调用那边推不出身份）。
+      { tenantId: c.tenantId, sessionId: s.id, menu, agentId: body.agentId, userId: c.userId, roles: c.roles ?? [] },
     );
     return {
       applicable: true as const,

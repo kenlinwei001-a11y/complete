@@ -278,6 +278,18 @@ export const WORLD_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
  */
 export const INCOMPLETE_DATA_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "process.runtime",
+  // WO-AGENT-IN-LOOP · 方案生成让 agent 参与 —— **依赖尚缺**，与 `process.runtime` 同族语义。
+  //
+  // ⚠ 本键差点重蹈上面那条注释点名的坑：初版只写了 `defaultOn:false` 就以为暗发了，
+  //   实测 `POST /a/v1/sim/optimize-pareto/propose` 对 demo 租户**返回 200 而不是 404**
+  //   —— L2 模板「all on」把它无条件抬开了。**「我以为暗发了」和「它真的关着」是两个命题。**
+  //   （这一条不是照抄格式，是本单实测撞上、按上面那段警告修的。）
+  //
+  // 为什么属「依赖尚缺」：引擎两端都就绪，但它要 **A→B 服务间通路**（`AGENTCORE_BASE_URL`
+  // + `SERVICE_TOKEN`）**加一个已发布、且 `kernel` 配好的 agent**。两者缺一，每次提案都落
+  // 确定性兜底 ⇒ 「本次未调用 agent」成为常态而无人察觉 —— 那正是一个会说谎的诚实位
+  // （与 process.runtime 那条「空面板与一切顺利在界面上分不开」同一形态）。
+  "sim.agent-proposals",
 ]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */
