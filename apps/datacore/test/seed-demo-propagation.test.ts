@@ -86,7 +86,11 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // 是制造侧回到产品/订单侧的唯一一跳；两条分别走供给面 supplyRisk 与成本面 costPressure）。
     expect(viaKeys).toEqual([
       "base_dispatches_transfer", "base_has_shipment", "base_maint_plan", "batch_replenishes_material", "customer_has_invoice",
-      "customer_has_location", "customer_has_overdue_record", "defect_raises_exception", "equip_used_in", "equipment_has_maintenance_order",
+      // WO-ADVERSARY-REACTION 的还手边挂 `customer_places_order`（`order_of_customer` 的影响向逆边）。
+      // ⚠ 它**默认关闭但目录不过滤**（§3.3「关掉的边要可见地降级，不是从图上消失」），
+      //   故这份清单里有它 —— 这份清单数的是**目录**，不是"默认世界会跑的边"。
+      "customer_has_location", "customer_has_overdue_record", "customer_places_order",
+      "defect_raises_exception", "equip_used_in", "equipment_has_maintenance_order",
       "line_belongs_to_base", "line_has_process", "line_runs_work_order", "line_runs_work_order", "material_has_alternative",
       "material_has_balance", "material_has_batch", "material_supplied_by_po", "material_used_by_model", "material_used_by_model",
       "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
@@ -395,10 +399,32 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // 十一组合计 46 条 = 全部种子规则（没有哪条规则游离在分组之外）。
-    expect(Object.values(DIRS).flat().sort()).toEqual(
-      (await t.repos.sim.listPropagationRules("demo", true)).map((r) => r.key).sort(),
-    );
+    // ── 完整性：十一组 46 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    //
+    // 🔴 口径修正（WO-ADVERSARY-REACTION）：目录里从此有两类边，**必须分开数**——
+    //  · **物理边**（`reaction == null`）：默认世界照跑，逐条都要在上面的 trace 里出现；
+    //  · **还手边**（`reaction != null`）：功能键 `sim.propagation.adversary` **默认关闭**
+    //    ⇒ 被滤出引擎，本来就**不该**在 trace 里；但它**仍留在目录里**
+    //    （§3.3「关掉的边要可见地降级，不是从图上消失」）。
+    //  ⇒ **「目录条数」从此不再度量「默认世界会跑几条边」**，拿它当判据就是本仓那个老形态。
+    //
+    // ⚠ 三条臂都要断言，少一条这道门就退化：
+    //    只断言物理边 ⇒ 有人把还手边默认打开也不会红（出厂世界悄悄变了没人知道）；
+    //    只断言总数   ⇒ 回到今天这个红，且分不清是"漏分组"还是"漏过滤"；
+    //    不断言"没跑" ⇒ §2 反向对照就没有常驻守卫，只剩一次性人工测量。
+    const all = await t.repos.sim.listPropagationRules("demo", true);
+    const physicalKeys = all.filter((r) => r.reaction == null).map((r) => r.key).sort();
+    const reactionKeys = all.filter((r) => r.reaction != null).map((r) => r.key).sort();
+    expect(Object.values(DIRS).flat().sort()).toEqual(physicalKeys);
+    // 臂 2（可见地降级）：还手边确实**在目录里**，没有从图上消失。
+    expect(reactionKeys).toEqual(["demo_customer_reaction_cut_order"]);
+    // 臂 3（出厂态守卫）：默认世界里它一拍都没跑过。跑了 = 对抗方没被闸住、既有行为被改坏。
+    for (const k of reactionKeys) {
+      expect(
+        fired.has(k),
+        `${k} 在**默认世界**（未开 sim.propagation.adversary）里触发了 ⇒ 出厂态被改坏`,
+      ).toBe(false);
+    }
   });
 });
 
