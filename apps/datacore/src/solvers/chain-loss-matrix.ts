@@ -66,18 +66,26 @@
  *
  * **应该的行为 Y（本单落地的）**：把**订单敞口**这一真实的基地维接进来，并顺带把「天」翻成「钱」：
  *
- *      该基地订单敞口 = Σ Order.value，取遍 `Order.bases ∋ baseId` 的订单
+ *      该基地订单敞口 = Σ Order.value，取遍**在手**且 `Order.bases ∋ baseId` 的订单
  *      该环节压住的金额 = 敞口 × 该环节占本列损失的百分比 ÷ 100      （§5.5 唯一实现）
  *
- * 实测这一维**真的把 13 列拉开了**：敞口 16.19 亿（meishan）～165.99 亿（changzhou），
- * **10.25×**，13 个互不相同的值。而它**零编数** —— `Order.value` 是本体已登记的派生属性
- * `qty × unitPrice`（单位「元」），`Order.bases` 是订单自带的可产基地清单。
+ * 实测这一维**真的把 13 列拉开了**：在手敞口 6.42 亿（xinyang）～60.59 亿（changzhou），
+ * **9.43×**，13 个互不相同的值。而它**零编数** —— `Order.value` 是本体已登记的派生属性
+ * `qty × unitPrice`（单位「元」），`Order.bases` 是订单自带的可产基地清单，
+ * 「在手」判据取 `order-status.ts` 的 `isOnHandOrderStatus`（平台既有单一出处）。
+ *
+ * **⚠ 「在手」这道过滤是本单第二次改对的（照实记账）**：初版不看 `status`，
+ * 把 **350 张 `COMPLETED`** 也算进敞口 ⇒ 订单簿总额报 454.64 亿（在手真值 **156.63 亿**，
+ * **虚报 2.90×**）。这与 `order-status.ts` 记过的那笔账（驾驶舱在手卡片虚报 3.3 倍）**同一个形态**。
+ * 更要命的是它**会把结论指反**：`xinyang` 按全簿 33.97 亿排第 6，按在手 6.42 亿是**倒数第 1**；
+ * `meishan` 按全簿是倒数第 1（16.19 亿），按在手排第 9（11.64 亿）。
+ * 已交付关闭的单货已交、款已结，**早就不在这条链上流**，压不住。
  *
  * **守恒（选这个口径的理由）**：Σpct == 100 ⇒ **Σ 列内各环节金额 == 该列敞口**，
  * 自带一条机器可查的账（`moneyOk` / `moneyResidualYuan`，容差 1 元）。
  *
- * **⚠ 列合计不可加**：一单可产多基地（实测 500 单里 274 单、平均 1.55 个）⇒
- * Σ 13 列敞口 = 715.12 亿 = 订单簿 454.64 亿的 **1.57×**。这条随结果返回
+ * **⚠ 列合计不可加**：一单可产多基地（实测在手 150 单里 89 单）⇒
+ * Σ 13 列敞口 = 260.29 亿 = 在手订单簿 156.63 亿的 **1.66×**。这条随结果返回
  * （`money.exposureOverlapRatio`），不让读数的人自己去猜为什么加起来比订单簿还大。
  */
 import {
@@ -91,6 +99,7 @@ import {
   orderExposureYuan,
   moneyConservationResidualYuan,
   MONEY_CONSERVATION_TOLERANCE_YUAN,
+  LOSS_EXPOSURE_CAPTION,
   type ChainNode,
   type ChainStage,
   type ChainStep,
@@ -143,10 +152,12 @@ interface Column {
   run: ChainLossResult | null;
   reason: string | null;
   probe: string | null;
-  /** 本列订单敞口（元）。无可产订单 / 全部未登记 `value` ⇒ `null`，**不是 0**。 */
+  /** 本列**在手**订单敞口（元）。无在手可产订单 / 全部未登记 `value` ⇒ `null`，**不是 0**。 */
   exposureYuan: number | null;
   exposureOrderCount: number;
   exposureSkippedOrders: number;
+  /** 本列因**已交付**（非在手态）被排除的单数 —— 不是"丢了"，是"不该在"。 */
+  exposureDeliveredOrders: number;
 }
 
 /**
@@ -157,17 +168,22 @@ interface Column {
  * （那正是「没数据」被读成「金额是 0」的那个病）。故：`value` 是数就用它；
  * 不是数但 `qty`/`unitPrice` 都在 ⇒ **就地按本体登记的同一条公式补算**，
  * 两条都不成立才算「未登记」交给 `orderExposureYuan` 跳过并计入 `skipped`。
+ *
+ * ⚠ **`status` 必须原样带过去**：敞口只算在手单（§5.5）。这里漏掉 `status`，
+ * `isOnHandOrderStatus(undefined)` 恒假 ⇒ **每一列敞口都会变成 0**，
+ * 屏上金额整片消失 —— 而那看起来会像「这个基地没订单」，不像「字段没传」。
  */
-function orderMoneyShape(o: ChainLossObject): { value?: number; bases?: unknown } {
+function orderMoneyShape(o: ChainLossObject): { value?: number; bases?: unknown; status?: unknown } {
   const raw = o.props.value;
   const bases = o.props.bases;
-  if (typeof raw === "number" && Number.isFinite(raw)) return { value: raw, bases };
+  const status = o.props.status;
+  if (typeof raw === "number" && Number.isFinite(raw)) return { value: raw, bases, status };
   const qty = o.props.qty;
   const unitPrice = o.props.unitPrice;
   if (typeof qty === "number" && Number.isFinite(qty) && typeof unitPrice === "number" && Number.isFinite(unitPrice)) {
-    return { value: qty * unitPrice, bases };
+    return { value: qty * unitPrice, bases, status };
   }
-  return { bases };
+  return { bases, status };
 }
 
 /**
@@ -238,6 +254,7 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
         exposureYuan: exposure.exposureYuan,
         exposureOrderCount: exposure.countedOrders,
         exposureSkippedOrders: exposure.skippedOrders,
+        exposureDeliveredOrders: exposure.deliveredOrders,
       };
     }
     const anchor = cands[0] as ChainLossObject;
@@ -259,6 +276,7 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
       exposureYuan: exposure.exposureYuan,
       exposureOrderCount: exposure.countedOrders,
       exposureSkippedOrders: exposure.skippedOrders,
+      exposureDeliveredOrders: exposure.deliveredOrders,
     };
   });
 
@@ -299,6 +317,7 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
         exposureYuan: col.exposureYuan,
         exposureOrderCount: col.exposureOrderCount,
         exposureSkippedOrders: col.exposureSkippedOrders,
+        exposureDeliveredOrders: col.exposureDeliveredOrders,
         // 没有格子 ⇒ 守恒无从谈起（同 §5 空表返 null 的纪律）。
         moneyResidualYuan: null,
         moneyOk: false,
@@ -353,6 +372,7 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
       exposureYuan: col.exposureYuan,
       exposureOrderCount: col.exposureOrderCount,
       exposureSkippedOrders: col.exposureSkippedOrders,
+      exposureDeliveredOrders: col.exposureDeliveredOrders,
       moneyResidualYuan,
       moneyOk: moneyResidualYuan !== null && Math.abs(moneyResidualYuan) <= MONEY_CONSERVATION_TOLERANCE_YUAN,
     });
@@ -407,6 +427,9 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
     orderBookTotalYuan: book.exposureYuan,
     orderBookCount: book.countedOrders,
     orderBookSkipped: book.skippedOrders,
+    orderBookDelivered: book.deliveredOrders,
+    // 口径措辞随结果走（§5.5 单一出处）—— 屏上印金额必须连它一起印。
+    caption: LOSS_EXPOSURE_CAPTION,
     exposureSumYuan,
     // 订单簿为 0 ⇒ null（返 0 会被读成"没有重复计入"，那是相反的结论）。
     exposureOverlapRatio: book.exposureYuan > 0 ? exposureSumYuan / book.exposureYuan : null,
@@ -439,8 +462,9 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
           (topRowMoney !== null ? `，按订单敞口折合 ${yiYuan(topRowMoney)} 亿元` : "") +
           `；`
         : "") +
-      `金额口径＝各基地订单敞口（Σ Order.value，取遍 Order.bases 含该基地的订单）×环节损失占比：` +
-      `订单簿合同总额 ${yiYuan(money.orderBookTotalYuan)} 亿元（${money.orderBookCount} 单），` +
+      `金额口径＝各基地在手订单敞口（Σ Order.value，取遍未完成态且 Order.bases 含该基地的订单）×环节损失占比：` +
+      `在手订单簿合同总额 ${yiYuan(money.orderBookTotalYuan)} 亿元（${money.orderBookCount} 单，` +
+      `另有 ${money.orderBookDelivered} 单已交付关闭不计入敞口），` +
       `Σ 各列敞口 ${yiYuan(money.exposureSumYuan)} 亿元` +
       (money.exposureOverlapRatio !== null
         ? `＝订单簿的 ${money.exposureOverlapRatio.toFixed(2)}×（一单可产多基地故跨列重复计入，列间可比、列合计不可加）`
