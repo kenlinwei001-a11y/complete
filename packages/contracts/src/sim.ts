@@ -75,7 +75,42 @@ export const PAIR_WEIGHT_BASIS_REGISTRY = [
       "分母是**全域**均值，不是该目标那一组的均值 —— 这一条是本口径与 `source_qty_relative` " +
       "唯一但决定性的区别，见 `PairWeightNormalize` 上方第三行。",
   },
+  {
+    key: "actor_exposure_relative",
+    normalize: "SOURCE_POOL_MEAN",
+    measure:
+      "源实例（交易对手）的**在手订单金额敞口** = Σ(其名下订单 qty × unitPrice)，" +
+      "除以**本规则全部源实例**该敞口的均值。均值=1、无量纲 —— 它是系数上的倍率，不是份额。",
+  },
 ] as const;
+
+/**
+ * ⛔ **为什么必须有第三种归一方向 `SOURCE_POOL_MEAN`（WO-ADVERSARY-REACTION 实测立此账）**
+ *
+ * 上面两种归一**都在「同一个 target 的入边集合」里做**（实现共用 `pair-weights.ts` 的
+ * `normalizeInEdges`）。这带来一条**数学上的硬限制**，不是实现瑕疵：
+ *
+ * > **组内归一只能重新分配**同一个目标的各个源之间的份额，
+ * > **永远无法让两个不同的目标/主体按绝对量级拉开距离** —— 因为每一组各自除以自己的分母。
+ *
+ * 退化情形更刺眼：`Customer --customer_places_order--> Order` 是 **1:N 扇出**，
+ * 每张订单**有且只有一个**客户入边 ⇒ 组内只有一行 ⇒
+ * `IN_EDGES` 给 `measure/measure = 1`、`IN_EDGES_MEAN` 给 `measure/(measure/1) = 1`，
+ * **两种归一恒等于 1，权重整个失效**。
+ *
+ * 这正是本仓那条已登记病灶的结构性根因：
+ * 「东风(10.02亿) 与 零跑(2.39亿) 同为 4 单，应收压力**逐字节相同 15.137**」——
+ * 不是系数填错，是**入边归一这个口径本身度量不了「谁的盘子大」**。
+ *
+ * `SOURCE_POOL_MEAN` 换一个分母：除以**本规则全部源实例**的均值（跨 target 的全局池）。
+ * 均值仍为 1（故仍是系数上的**无量纲倍率**，不改量纲、不破坏既有公式），
+ * 但两个主体之间的**绝对金额比**被完整保留 ⇒ 10.02/2.39 = 4.19× 如实体现在还手力度上。
+ *
+ * ⚠ 判据一句话：**问「要不要在同组的几个源之间分蛋糕」还是「要不要让不同主体按体量拉开」**。
+ * 前者用 `IN_EDGES*`（分蛋糕，Σ 或均值受控）；后者只能用 `SOURCE_POOL_MEAN`。
+ * 用错的后果两边都实测过：前者当后者用 ⇒ 权重恒 1（本条）；
+ * 后者当前者用 ⇒ 同一目标的入边之和不再受控，压力会随源的条数膨胀。
+ */
 
 /**
  * ⛔ **两种归一各配什么目标，判据是目标量纲，不是"看着差不多"**（WO-COEF-FROM-BOM 实测立此账）。
@@ -136,6 +171,136 @@ export function isKnownPairWeightBasis(key: string): boolean {
 export function pairWeightNormalizeOf(key: string): PairWeightNormalize | null {
   return PAIR_WEIGHT_BASIS_REGISTRY.find((b) => b.key === key)?.normalize ?? null;
 }
+
+// ── 对抗方还手动作登记册（WO-ADVERSARY-REACTION · `ReactionSpec.move` 的取值域） ──
+/**
+ * **交易对手能做的动作**。禁自由串 —— 沿用 `cadenceNodeId × CHAIN_NODE_REGISTRY`、
+ * `weightRef.basis × PAIR_WEIGHT_BASIS_REGISTRY` 立下的同一条纪律。
+ *
+ * 收录判据：**它必须是对手方**做的、且**会回流进世界态**的动作。
+ * 「客户很生气」不收（那是情绪不是动作，落不到任何 stateVar 上）。
+ */
+export const ADVERSARY_MOVE_REGISTRY = [
+  { key: "CUT_ORDER", name: "砍单", detail: "对手方削减在手订单量 ⇒ 订单变更频度（orderChurn）上升。" },
+  { key: "RESCHEDULE", name: "改期", detail: "对手方推迟交付要求 ⇒ 订单行拆分/改期压力上升。" },
+  { key: "PRESS_PRICE", name: "压价", detail: "对手方要求让价 ⇒ 订单侧成本/毛利压力上升。" },
+] as const;
+export type AdversaryMoveKey = (typeof ADVERSARY_MOVE_REGISTRY)[number]["key"];
+const ADVERSARY_MOVE_KEYS: ReadonlySet<string> = new Set(ADVERSARY_MOVE_REGISTRY.map((m) => m.key));
+/** `reaction.move` 是否在册。**唯一判据**——两侧共用这一支，不许各抄一份集合。 */
+export function isKnownAdversaryMove(key: string): boolean {
+  return ADVERSARY_MOVE_KEYS.has(key);
+}
+/** 在册动作的人话名（拿不到 ⇒ `null`，调用方据实处理，不编名字）。 */
+export function adversaryMoveNameOf(key: string): string | null {
+  return ADVERSARY_MOVE_REGISTRY.find((m) => m.key === key)?.name ?? null;
+}
+
+/**
+ * **谁选了这条还手规则**（仓主 2026-09-08 架构原则的字段位）。
+ *
+ * 原则原文：「**所有计算原则上使用求解器而不是 agent(LLM) 来计算，agent 只负责调动工具、
+ * 本体、规则等等输出结果，然后基于结果推演，形成多个方案和方案比对。**」
+ *
+ * ⇒ 把「还手」这件事**切成两半，两半的裁决方不同**：
+ *  · **反应的数值**（还多狠）—— **永远**由规则算：
+ *    `强度(coefficient|coefficientRef) × 分摊(weightRef) × max(0, 源读数 − tolerance) × decay`。
+ *    确定性、可重放、零 LLM。**这一半今天已落地，且不许让给 agent。**
+ *  · **反应的选择**（这个客户这次是砍单还是改期）—— 今天由规则表直接声明；
+ *    未来可由编排层（agent）来定，但它**只能从已发布的还手规则里挑一条**，
+ *    系数仍取自被挑中的那条规则 —— **不能凭空造一个系数**。
+ *
+ * 本单**不接 agent**（那层另有单在做），只把这个**字段位**留出来并由
+ * `assertReactionWellFormed()` 钉死「选择方不许自带强度」，让编排层以后能直接填。
+ */
+export const ADVERSARY_SELECTOR_REGISTRY = [
+  {
+    key: "RULE_TABLE",
+    name: "规则表直选",
+    detail: "规则表里这条边自己声明了该动作 ⇒ 确定性、可重放、本次零 LLM 参与。",
+  },
+  {
+    key: "AGENT",
+    name: "编排层选规则",
+    detail: "由 agent 从**已发布的还手规则**里挑一条；强度与分摊仍取自被挑中的那条规则，agent 不产出数值。",
+  },
+] as const;
+export type AdversarySelectorKey = (typeof ADVERSARY_SELECTOR_REGISTRY)[number]["key"];
+const ADVERSARY_SELECTOR_KEYS: ReadonlySet<string> = new Set(ADVERSARY_SELECTOR_REGISTRY.map((s) => s.key));
+/** `reaction.selectedBy` 是否在册。**唯一判据**——两侧共用这一支，不许各抄一份集合。 */
+export function isKnownAdversarySelector(key: string): boolean {
+  return ADVERSARY_SELECTOR_KEYS.has(key);
+}
+/** 在册选择方的人话名（拿不到 ⇒ `null`，调用方据实处理，不编名字）。 */
+export function adversarySelectorNameOf(key: string): string | null {
+  return ADVERSARY_SELECTOR_REGISTRY.find((s) => s.key === key)?.name ?? null;
+}
+
+/**
+ * **对手方反应声明**（WO-ADVERSARY-REACTION）—— 这条边不是「世界的物理传导」，
+ * 而是「**某个交易对手看到读数之后主动做的一件事**」。
+ *
+ * ── 今天的行为 X / 应该的 Y（实测·不是推测）────────────────────────────────────
+ * **X**：全仓 46 条传导边**没有任何一条**表达「对手方还手」。金丝雀实测：
+ * `orderChurn`（「订单频繁变更」＝插单/取消）在 `seed.ts` 里
+ * **入度 0 / 出度 2** —— 它是**纯外生根**，只能由用户在扰动面板上手动拨。
+ * 也就是说「客户砍单」这件事今天**只会发生在用户自己拨了它的时候**，
+ * 世界里再糟的事都不会让任何客户主动砍一张单。⇒ **单方推演**：扰动是一次性外生冲击，对手不还手。
+ * **Y**：我方应对造成的读数变化越过对手的**容忍线**之后，对手按一条**可披露的规则**还手，
+ * 且这个还手**回流进世界态**、影响下一拍读数。
+ *
+ * ── ⛔ 为什么不另起一套规则引擎（本单最容易做错的地方）──────────────────────────
+ * 「还手」与「传导」在**数值机制上是同一件事**：沿一条链路，把源读数按系数（可引用规则参数）
+ * × 分摊权重写到目标格子上，可带延迟、可夹值、可过节拍闸门。
+ * 唯一的差别是**触发条件**：传导是线性的（源动一点点，目标就动一点点），
+ * 而还手有**容忍区**（`tolerance`）—— 对手不会因为 0.1 个百分点就翻脸。
+ * ⇒ 故本字段只加**一个 deadband**，其余全部复用 `PropagationRule` 既有字段与既有引擎：
+ *   `amount = 强度(coefficient|coefficientRef) × 分摊(weightRef) × max(0, 源读数 − tolerance) × decay`
+ * 与传导公式**逐项相同**，只有 `源读数` 换成了 `超出容忍的那部分`。
+ * 另造一套「对抗引擎」会立刻产生第二套延迟队列 / 第二套闸门 / 第二套确定性口径 ——
+ * 本仓已经因为「两半用不同机制不对接」反复炸过（metric-aware 那次）。
+ *
+ * `null`（缺省）= 这条边是普通物理传导，不是还手 ⇒ 与本字段引入前**逐字节相同**（additive·可回退 RL9）。
+ */
+export const ReactionSpecSchema = z.object({
+  /**
+   * **谁在还手**（承载交易对手的对象类型）。语义上恒等于本规则的 `sourceTypeKey` ——
+   * 冗余声明的理由是**披露层要直读**：可披露那一层回答的是「哪个主体、按哪条规则、还了什么手」，
+   * 让它去反推 `sourceTypeKey` 等于把「谁是对手方」这件事变成一条隐含约定。
+   * 一致性由 `assertReactionWellFormed()`（构造期）钉死，不靠人记。
+   */
+  actorTypeKey: z.string().min(1),
+  /**
+   * **容忍线**（deadband）：源读数**超过**这个数的部分才激起反应，未超过 ⇒ 本规则**零贡献**。
+   *
+   * ⚠ 为什么是「超出部分」而不是「越线后全额」：后者会在阈值处产生**阶跃**，
+   * 同一个世界推两拍、读数在阈值上下抖一下，还手力度就从 0 跳到满格 ——
+   * 那是数值噪声被放大成业务结论。超出部分（hinge）在阈值处连续，且
+   * 「越过得越多、还手越狠」本身就是对的业务语义。
+   */
+  tolerance: z.number().min(0),
+  /** 还手动作，取值受 `ADVERSARY_MOVE_REGISTRY` 约束（禁自由串）。 */
+  move: z.string().refine(isKnownAdversaryMove, {
+    message: "reaction.move 必须是 ADVERSARY_MOVE_REGISTRY 在册动作（禁自由串）",
+  }),
+  /**
+   * **谁选了这条规则**（仓主 2026-09-08 架构原则的字段位，见 `ADVERSARY_SELECTOR_REGISTRY`）。
+   * 缺省 = `RULE_TABLE`（今天唯一的取值：规则表直选、零 LLM）。
+   *
+   * ⚠ 做成**带默认值的可选字段**而不是必填：老行读回来是 `undefined`，
+   * 补一个默认值即可，不必迁移 —— 与 `coefficientRef` 同一种加法（additive·可回退 RL9）。
+   */
+  selectedBy: z.string().refine(isKnownAdversarySelector, {
+    message: "reaction.selectedBy 必须是 ADVERSARY_SELECTOR_REGISTRY 在册选择方（禁自由串）",
+  }).default("RULE_TABLE"),
+  /**
+   * 选择方的**出处引用**：`selectedBy:"AGENT"` 时填「哪次编排、哪个 agent 挑的」，
+   * 供披露层回答「这条还手是谁选的」。`RULE_TABLE` 时恒 `null`
+   * —— **不留一个像模像样的空串让人以为编排层参与了**（同本文件 agent 披露那条纪律）。
+   */
+  selectorRef: z.string().nullable().default(null),
+});
+export type ReactionSpec = z.infer<typeof ReactionSpecSchema>;
 
 // ── PropagationRule —— 一等类型（§1.1 · 系数/延迟优先引用 rule.params，G-10 P1） ──
 export const PropagationRuleSchema = z.object({
@@ -335,8 +500,110 @@ export const PropagationRuleSchema = z.object({
   sourceTypeName: z.string().nullable().default(null),
   /** 目标对象类型的人话名（口径与 `sourceTypeName` 逐条相同）。 */
   targetTypeName: z.string().nullable().default(null),
+  /**
+   * **对手方还手声明**（WO-ADVERSARY-REACTION）。非空 = 这条边是「某个交易对手主动做的事」，
+   * 不是世界的物理传导。语义与理由见 `ReactionSpecSchema` 头注。
+   *
+   * `null`（缺省）⇒ 与本字段引入前**逐字节相同**（additive·可回退 RL9）。
+   *
+   * ⚠ **刻意 `optional` 而非 `.default(null)`** —— 与本文件 `version` 字段**同一条理由**，
+   * 那条注释写得很清楚，本单不推翻它，两条依据实测都成立：
+   *  ① `PropagationRule` 在测试里被当**字面量**构造（`prop-clamp-decay.seam` /
+   *     `sim-disclosure.seam` 等，前端 fixture 另有 6 处），做成必填会把它们全打成编译红 ——
+   *     而那些 fixture 属于并行在跑的别的单，不该被本单牵动。
+   *  ② 更要紧的是**读回路上它真的可能不在**：`repo/pg.ts` 读的是 `row.doc as PropagationRule`
+   *     ——**裸 cast、不过 zod parse**，故本字段引入**之前**落库的边读回来是 `undefined`。
+   *     声明成必填等于对读回路撒谎。
+   * ⇒ 消费方一律用 `reaction == null`（同时接住 `null` 与 `undefined`），不许写 `=== null`。
+   */
+  reaction: ReactionSpecSchema.nullable().optional(),
 });
 export type PropagationRule = z.infer<typeof PropagationRuleSchema>;
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 对抗方开关（WO-ADVERSARY-REACTION · 默认关闭）
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 对抗方反应的功能键。**默认关闭**（`defaultOn: false`，见 `apps/datacore/src/features.ts`）——
+ * 对手会还手是**新行为**，现有租户的推演结论不该因为一次并线就变。
+ *
+ * ⚠ 常量定在契约包的理由：引擎侧（过滤规则）与披露侧（回答"这次对抗方开着吗"）
+ * 必须用**同一个串**。两处各写一份字面量，改名时必然只改一处 —— 本仓 `nodeId`
+ * 那次事故的同一形态。
+ */
+export const ADVERSARY_FEATURE_KEY = "sim.propagation.adversary";
+
+/** 这条边是不是「对手方还手」。**唯一判据**——消费方不许各自判 `reaction !== null`。 */
+export function isReactionRule(rule: Pick<PropagationRule, "reaction">): boolean {
+  return rule.reaction != null;
+}
+
+/**
+ * 按对抗方开关把规则集切成两半。**引擎只吃 `active`**；`suppressed` 交给披露层
+ * 回答「有 N 条还手规则因为对抗方关着而没参与」——
+ * 照 §3.3「关掉的边要**可见地降级**，不是从图上消失」那条既有纪律，
+ * 不许让用户在屏上完全看不出自己关掉了什么。
+ *
+ * ⚠ 开关**开着**时原样返回同一引用（`===` 即可验），
+ * 关着时**只**滤掉 `reaction != null` 的那几条 ⇒ 未声明还手的租户逐字节同旧。
+ */
+export function partitionAdversaryRules<T extends Pick<PropagationRule, "reaction">>(
+  rules: readonly T[],
+  adversaryEnabled: boolean,
+): { active: readonly T[]; suppressed: readonly T[] } {
+  if (adversaryEnabled) return { active: rules, suppressed: [] };
+  const active: T[] = [];
+  const suppressed: T[] = [];
+  for (const r of rules) (isReactionRule(r) ? suppressed : active).push(r);
+  return { active, suppressed };
+}
+
+/**
+ * 构造期自检：`reaction.actorTypeKey` 必须与 `sourceTypeKey` 一致。
+ * 这两个字段是**同一件事的两个落点**（见 `ReactionSpecSchema.actorTypeKey` 注释），
+ * 漂了就会出现「披露层说客户在还手、引擎其实沿着别的类型在算」这种查无对证的错答。
+ * **机器先说话**：种子构造期即抛，不留给运行期去发现。
+ */
+export function assertReactionWellFormed<
+  // ⚠ `reaction` 写成**可选**而非 `Pick<PropagationRule, …>`：种子那张表把它做成了「第五种填法」
+  //   （只有还手边写它）。用 Pick 会让 T 推不出实际元素类型，调用点当场报
+  //   「Property 'targetTypeKey' does not exist」—— 实测踩过。
+  T extends {
+    key: string; sourceTypeKey: string; reaction?: ReactionSpec | null;
+    coefficient?: number; coefficientRef?: { ruleKey: string; paramKey: string } | null;
+  },
+>(rules: readonly T[]): readonly T[] {
+  for (const r of rules) {
+    if (r.reaction == null) continue;
+    if (r.reaction.actorTypeKey !== r.sourceTypeKey) {
+      throw new Error(
+        `传导规则 ${r.key}: reaction.actorTypeKey=${r.reaction.actorTypeKey} 与 sourceTypeKey=${r.sourceTypeKey} 不一致。` +
+          `还手方必须就是这条边的源 —— 否则披露层报的"谁在还手"与引擎实际算的不是一回事。`,
+      );
+    }
+    // ── 仓主 2026-09-08 架构原则的**构造期闸**：选择方不许自带强度 ──────────────
+    // 原则：「所有计算原则上使用求解器而不是 agent(LLM) 来计算」⇒
+    // 编排层将来只能**挑一条已有规则**，数值必须来自被挑中的那条规则自己。
+    // 判据落在「这条规则**有没有**表内强度」上：`coefficient` 或 `coefficientRef` 至少有一个。
+    // 两个都没有 ⇒ 强度只能由挑选它的人现编 —— 那正是本原则要堵死的形态，构造期即抛。
+    const hasTableStrength =
+      (typeof r.coefficient === "number" && Number.isFinite(r.coefficient)) || r.coefficientRef != null;
+    if (!hasTableStrength) {
+      throw new Error(
+        `传导规则 ${r.key}: 还手边必须自带表内强度（coefficient 或 coefficientRef），现在两个都没有。` +
+          `否则「还多狠」这个数只能由挑规则的那一方现编 —— 而架构原则是「数值由求解器算、agent 只挑规则」。`,
+      );
+    }
+    if (r.reaction.selectedBy === "RULE_TABLE" && r.reaction.selectorRef !== null) {
+      throw new Error(
+        `传导规则 ${r.key}: selectedBy=RULE_TABLE 却带了 selectorRef=${r.reaction.selectorRef}。` +
+          `规则表直选没有"谁挑的"这个出处 —— 留一个像模像样的值会让披露层读起来像编排层参与过。`,
+      );
+    }
+  }
+  return rules;
+}
 
 // ── 状态量的声明取值域与衰减（WO-PROP-CLAMP）───────────────────────────────────
 //

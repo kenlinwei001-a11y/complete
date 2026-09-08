@@ -1785,6 +1785,12 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 | G-ROOT-2 | `orderChurn` 订单变更压力 | `Order` | `--order_has_line--> OrderLine.splitPressure`(0.7) · `--order_for_model--> Model.demandLoad`(0.5) |
 | G-ROOT-4 | `equipmentFailure` 设备故障率 | `Equipment` | `--equip_used_in--> Process.queuePressure`(0.6) |
 
+> ⚠ **G-ROOT-2 的「入度 0」自 2026-09-07 起带条件**（WO-ADVERSARY-REACTION，见下节）：
+> `orderChurn` 在**物理边**里仍然入度 0（默认世界 = 单方推演，逐字节同旧），
+> 但**对抗方开关打开后**它获得第一条入边 —— 一条**还手边**（`reaction != null`）。
+> 判据因此从「入度 0」收窄为「**物理边**入度 0」：还手是世界之外的主体主动做的事，
+> 它写一个量纲不代表这个量纲变成了内生衍生量。`sim-root-triad.seam.test.ts §1` 已按此改口径并加「升格臂」。
+
 **🔴 `demandPressure` 由根源降级为一级衍生（入度 0 → 1）—— 有意的模型修正，不是副作用。**
 语义上「需求压力」**没有方向**，而「预测偏差」有：正 = 高估（按虚高的预测备产 ⇒ 真实订单需求压力
 **低于**计划）· 负 = 低估（实际需求打穿计划 ⇒ 需求压力上冲，全链告急）。故 G-ROOT-1 是
@@ -1824,6 +1830,88 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 远端断言方向）。该等式成立的前提正是「它是根源」（源值逐拍恒定）⇒ 门本身也在守这条性质。
 含三个金丝雀：源码抽取器恒等式 · 入度计数器拿已知非零量纲自证 · 传导用已知走得通的老根源
 `deliveryDelay` 自证（它若也不动 ⇒ 报「引擎坏了」，不许报「新边接错了」）。
+
+### 对抗链路 · 我方应对 → 对手方**还手** → 回流进世界态（WO-ADVERSARY-REACTION · 2026-09-07 · 默认关闭）
+
+**今天的行为 X（实测·金丝雀见下）/ 应该的 Y**
+- **X**：传导图 46 条边**没有一条**表达「交易对手对我方应对做出反应」。
+  实测 `orderChurn`（「订单临时插单/取消」）在 `seed.ts` 里**入度 0 / 出度 2** —— **纯外生根**：
+  只有用户在扰动面板上手动拨，客户才"砍单"；世界里再糟的事（成本一路上抬、应收压力爆表）
+  都不会让任何客户主动少下一张单。⇒ **推演是单方的**：扰动是一次性外生冲击，对手不还手。
+  金丝雀（证明那个 0 是真的 0，不是尺子坏了）：同一把尺子量 `targetStateVar:"demandLoad"` 得 **2**、
+  `"receivablePressure"` 得 **1**。
+- **Y**：我方应对把成本压到某个客户头上、越过**该客户的容忍线**之后，客户按一条**可披露的规则**
+  还手（砍单），且这个还手**回流进世界态**、影响下一拍读数。
+
+**新增链路（结构边）**：`customer_places_order`（`Customer → Order`，1:N）——
+`order_of_customer` 的**影响向逆边**，与 `order_has_line` / `customer_has_location` 同一种补法。
+两向由 `synthetic/service.ts` **同一段派生式**建出（共用 `custId`/`custName`），故严格互逆；
+归属册里查不到的订单**两向一起缺席**，不会一半在一半不在。实测 demo 租户 **500 条**（与正向边同数）。
+
+**新增因果边（还手边·第一条）**：
+`Customer.receivablePressure --customer_places_order--> Order.orderChurn`
+（系数 **0.35** · 延迟 **1 拍** · 容忍线 **12** · 动作 **CUT_ORDER 砍单** · 分摊口径 `actor_exposure_relative`）。
+它**闭合了一个正反馈环**（需求负载→基地负载→产线利用→工单下达→型号成本→订单成本→应收压力→砍单→需求负载）
+—— 这不是设计失误而是对抗的本质；两道既有闸把它按住：容忍线让环在低水位**根本不导通**，
+`WO-PROP-CLAMP` 的量纲衰减 + 取值域饱和让它收敛到有限稳态。R6 确定性不受影响（零随机零时钟）。
+
+**契约新增**：`ReactionSpec`（`actorTypeKey`/`tolerance`/`move`）挂在 `PropagationRule.reaction`（**optional**，
+理由同 `version`：`repo/pg.ts` 读回是裸 cast，老行读出来是 `undefined`）；
+`ADVERSARY_MOVE_REGISTRY` 三型（砍单/改期/压价，禁自由串）；
+`partitionAdversaryRules()` / `assertReactionWellFormed()`（构造期钉死「还手方 = 这条边的源」）。
+
+**引擎（复用，不另起一套）**：`propagateTick` 只多了一个 **deadband** ——
+`drive = max(0, 源读数 − tolerance)`，其余公式与传导**逐项相同**
+（`amount = 强度 × 分摊 × drive × 衰减`）。`reaction == null` 的 46 条边走同一变量、零额外浮点运算 ⇒ 逐字节同旧。
+
+**新增归一方向 `SOURCE_POOL_MEAN`（`actor_exposure_relative`）**：既有两个口径**都在同一 target 的入边集合里归一**，
+数学上**只能重分配、无法让两个主体按绝对量级拉开**；而本边是 **1:N 扇出**（每张单只有一个客户入边）⇒
+组内归一**恒等于 1、权重整个失效**。这正是已登记病灶「东风(10.02亿)与零跑(2.39亿)同为 4 单、
+应收压力**逐字节相同 15.137**」的**结构性根因**（不是系数填错）。新口径除以**源池均值**，保住主体间的绝对金额比。
+
+**不变量影响**：`G-ROOT-2` 的「入度 0」收窄为「**物理边**入度 0」（见上节 ⚠ 框）。
+
+**门禁 / 默认值**：功能键 `sim.propagation.adversary`（`defaultOn:false` **且**已进 `WORLD_DARK_LAUNCH_FEATURES`）。
+⚠ **只写 `defaultOn:false` 拦不住 demo 租户** —— L2 行业模板对 battery 是「ALL_FEATURE_KEYS 全开减暗发集」；
+实测未进暗发集时 `resolve("demo")` 里它**在**（金丝雀：同为 `defaultOn:false` 的 `sim.checkpoint` **同样在**）。
+关闭态下还手边被 `sessionPropRules` 滤出引擎，**目录仍可见**（§3.3「关掉的边要可见地降级，不是从图上消失」）。
+
+**计算由谁做（仓主 2026-09-08 架构原则）**：「**所有计算原则上使用求解器而不是 agent(LLM) 来计算，
+agent 只负责调动工具、本体、规则等等输出结果，然后基于结果推演**」。本链路据此**切成两半**：
+- **反应的数值**（还多狠）—— **永远**由规则算：`强度 × 分摊 × max(0, 源读数 − 容忍线) × 衰减`，
+  确定性、可重放、零 LLM。**这一半不许让给 agent。**
+- **反应的选择**（这次是砍单还是改期）—— 今天由规则表直选（`selectedBy: "RULE_TABLE"`）；
+  未来编排层可以挑，但**只能从已发布的还手规则里挑一条**，系数仍取自被挑中的那条规则。
+  字段位已留出（`ReactionSpec.selectedBy` / `selectorRef` + `ADVERSARY_SELECTOR_REGISTRY`），
+  **本单不接 agent**。两道构造期闸把原则钉死（`assertReactionWellFormed`）：
+  ① 还手边必须自带**表内强度**（`coefficient` 或 `coefficientRef`）—— 两个都没有 ⇒ 强度只能由挑规则的人现编；
+  ② `RULE_TABLE` 不许带 `selectorRef` —— 留个像模像样的值会让披露层读起来像编排层参与过。
+  两闸都有**变异反证**用例（门永远绿也可能是因为它什么都不拦）。
+
+**可披露（铁律 1.5 判据二）**：披露层逐边给 `isReaction` / `reactionActorTypeKey` / `reactionMove(+人话名)` /
+`reactionTolerance` / `reactionTriggeredActors` / **`reactionSelectedBy`(+人话名) / `reactionSelectorRef`**，
+外加 `rules.adversary` 汇总栏（`enabled/declared/suppressed/fired/triggeredActors/moves/**selectors**`）。
+⛔ **关闭态也必须给这一栏**（同「agent 是否参与」那条纪律）：写 `enabled:false + suppressed:1`，
+让读者当场知道**这是一次单方推演**，而不是误以为"对手确实没反应"。
+**判据**：一个看不到代码的人，凭「规则 key + 系数 + 容忍线 + 承载条数 + **谁选的**」应当能自己判断
+「这是按规则算的，不是谁编的」—— 少了最后一项，前四项再全也答不了「这条规则凭什么是这一条」。
+
+**对照实验（真后端 `SEED_DEMO=1` · 非 mock · 2026-09-08 实测复现）**：
+- **§1 开/关**：同一应对 ⇒ 世界态 md5 `9b516d5f…`(开) vs `0f55ebc8…`(关)，**不同**。
+- **§2 反向对照（跨分支实测，不是推断）**：同一份探针在 canonical `75d9b222` 与本分支各跑一遍 ——
+  关闭态世界态 md5**两边同为 `0f55ebc8…`**、剥掉还手边的 46 条规则目录 md5 两边同为 `1236ba78…`
+  ⇒ **逐字节相同**。**唯一差异是目录总条数 46 → 47**，即那条**可见地降级**的还手边本身
+  （§3.3 有意为之，非回归；金值四处已同步）。
+- **§3 按金额不按条数**：同为 **7 单**的 **深蓝汽车**(`cust_5`·敞口 8.315 亿) / **上汽通用五菱**(`cust_12`·7.194 亿)
+  受同一冲击 ⇒ 还手 **10.7542 / 9.3044**，比值 **1.15581670** 与敞口比**逐位相等**（差 <1e-6）。
+  修前这两个数会逐字节相同 —— 那正是本仓已登记的「东风/零跑同为 4 单、压力相同 15.137」病灶的同一形态。
+- **§4 确定性**：同 seed 同应对重跑两次逐字节相同。**§5 金丝雀**：同一把尺子量"确定会变的量"必须变（见测试头注）。
+
+**屏上现状（诚实缺席）**：还手边本身**已在屏上**（统一推演控制台右栏「扰动因素·关掉看变化」，
+显人话名 + `Customer.receivablePressure –customer_places_order→ Order.orderChurn` + 系数 0.35 + 延迟 1，
+边计数 46 → **47**）；但**还手专有字段**（砍单 / 容忍线 / 越线对手数 / 对抗方汇总栏）**无展示位** ——
+`views/sim/` 受仓主禁令 2 冻结，须逐案批准后另立单。且该面板读的是**目录**（不受开关过滤），
+故**屏上今天分不出对抗方开没开** —— 这是已知残口，不是漏做。
 
 ### 展示名链路 · 状态变量单源表 → 两条读时投影 → 屏上人话名（WO-STATEVAR-DISPLAYNAME · 2026-08-17）
 

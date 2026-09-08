@@ -107,6 +107,44 @@ export const SimDisclosureRuleSchema = z.object({
   combine: z.string(),
   /** 人读的一条边：`<源类型>.<源状态量> --<链路>--> <目标类型>.<目标状态量>`。 */
   via: z.string(),
+  // ── 对手方还手（WO-ADVERSARY-REACTION · 铁律 1.5 判据二「推演过程必须可披露」）──
+  /**
+   * 这条边是不是**对手方主动还手**（`PropagationRule.reaction != null`）。
+   * `false` = 世界的物理传导。**两者必须在屏上分得开** —— 用户有权知道
+   * 「这个数是物理传导算出来的，还是某个客户在跟我博弈」。
+   */
+  isReaction: z.boolean(),
+  /** 还手方的对象类型（如 `Customer`）；非还手边 = null。 */
+  reactionActorTypeKey: z.string().nullable(),
+  /** 还手动作 key（`ADVERSARY_MOVE_REGISTRY` 在册）；非还手边 = null。 */
+  reactionMove: z.string().nullable(),
+  /** 还手动作的人话名（如「砍单」）；非还手边 = null。 */
+  reactionMoveName: z.string().nullable(),
+  /** 容忍线：源读数超过它才激起反应；非还手边 = null。 */
+  reactionTolerance: z.number().nullable(),
+  /**
+   * 本拍**真的越过容忍线**的还手方实例数（= 有多少个客户被惹毛了）。
+   *
+   * ⚠ 与 `fired` 不是同一件事，别混：`fired` 只说「这条规则写下过贡献」，
+   * 而延迟到货的贡献也算 `fired`。本字段数的是**这一拍触发条件成立的主体条数** ——
+   * 「规则跑了」不度量「有人还手了」，正是本仓反复治的那个形态。
+   * 非还手边 = null。
+   */
+  reactionTriggeredActors: z.number().int().nullable(),
+  /**
+   * **谁选了这条还手规则**（仓主 2026-09-08 架构原则；取值见 `ADVERSARY_SELECTOR_REGISTRY`）。
+   * 今天恒为 `"RULE_TABLE"`（规则表直选、零 LLM）；编排层接入后才会出现 `"AGENT"`。
+   * 非还手边 = null。
+   *
+   * ⚠ 这一项是**可披露层的要害**：一个看不到代码的人凭它 + `coefficient` + `reactionTolerance`
+   * + `weightPairs` 就能自己判断「这是按规则算的，不是谁编的」。缺了它，
+   * 前四项再全也答不了「这条规则凭什么是这一条」。
+   */
+  reactionSelectedBy: z.string().nullable(),
+  /** 选择方人话名（如「规则表直选」）；非还手边 = null。屏上不许只显裸键。 */
+  reactionSelectedByName: z.string().nullable(),
+  /** 选择方出处引用（`AGENT` 才有）；`RULE_TABLE` 与非还手边恒 null。 */
+  reactionSelectorRef: z.string().nullable(),
 });
 export type SimDisclosureRule = z.infer<typeof SimDisclosureRuleSchema>;
 
@@ -138,6 +176,38 @@ export const SimDisclosureRulesSchema = z.object({
    * 空数组 ≠ 没有问题；它与"没人声明分摊"是两件事。
    */
   unresolvedWeights: z.array(z.object({ ruleKey: z.string(), basis: z.string(), reason: z.string() })),
+  /**
+   * **对抗方这一栏**（WO-ADVERSARY-REACTION）—— 回答「这次推演里对手还手了吗」。
+   *
+   * ⛔ **不许在关闭态省掉这一栏**（照本文件既有的「agent 是否参与」那条同源纪律：
+   * 「今天推演路零 LLM ⇒ 必须明写『本次未调用 agent』，不许留白让人以为调了」）。
+   * 对抗方关着时这里就写 `enabled:false` + `suppressed:N`，
+   * 让读者当场知道**这是一次单方推演**，而不是让他误以为"对手确实没反应"。
+   */
+  adversary: z.object({
+    /** 本租户对抗方开关（`ADVERSARY_FEATURE_KEY`）。 */
+    enabled: z.boolean(),
+    /** 参与本次推演的还手规则条数（开关关着时恒 0）。 */
+    declared: z.number().int(),
+    /** 因为开关关着而**没参与**的还手规则条数。>0 且 enabled=false ⇒ 这是一次单方推演。 */
+    suppressed: z.number().int(),
+    /** 其中本拍真的写下过贡献的条数。 */
+    fired: z.number().int(),
+    /** 本拍越过容忍线的还手方实例总数（跨全部还手规则去重前的求和）。 */
+    triggeredActors: z.number().int(),
+    /** 本次参与的还手动作 key（去重升序），供屏上直接列「客户做了什么」。 */
+    moves: z.array(z.string()),
+    /**
+     * 本次这些还手规则**由谁选的**（去重升序，取值见 `ADVERSARY_SELECTOR_REGISTRY`）。
+     *
+     * ⛔ **关闭态与"全是规则表直选"时都必须给**，理由与本栏其余字段同源：
+     * 今天恒为 `["RULE_TABLE"]`，明写出来读者才知道**这一步没有模型参与**；
+     * 留白会让人以为「反应是模型选的」——而架构原则恰恰要求数值由求解器算。
+     * 与顶层 `agent.invoked` 是两个粒度：那条说整次推演调没调 LLM，
+     * 这条说**还手的选择**这一步是谁做的。
+     */
+    selectors: z.array(z.string()),
+  }),
 });
 export type SimDisclosureRules = z.infer<typeof SimDisclosureRulesSchema>;
 

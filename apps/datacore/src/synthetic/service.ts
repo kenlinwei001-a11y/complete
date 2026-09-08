@@ -1171,6 +1171,11 @@ export class SyntheticService {
       const custId = custName ? custIdByName.get(custName) : undefined;
       if (!custId || !custName) continue; // 无归属登记 → 不建边（不轮转、不落首客户）
       await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("Customer", custId), { custId, custName, orderCust });
+      // WO-ADVERSARY-REACTION 影响向逆边（`customer_places_order`）：**与正向边共用同一个
+      // `custId`/`custName` 派生结果**，不是照属性再猜一遍 —— 两向严格互逆，
+      // 改归属派生式时不可能只改一半（`batch_replenishes_material` 那处已登记过同一取舍）。
+      // 归属册里查不到的订单同样**不建边**（`continue` 在上面，两向一起缺席，不会一半在一半不在）。
+      await putLink(`lnk_cpo_${o.so}`, "customer_places_order", oid("Customer", custId), oid("Order", o.so), { custId, custName, orderCust });
     }
 
     // ---- 8 域切片增量：13 条跨域边中的 11 条（由 ext/g 的对象 FK 确定性派生）----

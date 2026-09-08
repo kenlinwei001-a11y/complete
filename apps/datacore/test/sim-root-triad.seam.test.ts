@@ -83,6 +83,12 @@ interface LiveRule {
   targetStateVar: string;
   coefficient: number;
   delayTicks: number;
+  /**
+   * 对手方还手声明（WO-ADVERSARY-REACTION）。`null`/缺省 = 普通物理传导。
+   * 「根源 = 入度 0」这条判据只数**物理边** —— 还手是世界之外的主体主动做的事，
+   * 它写一个量纲不代表这个量纲变成了内生衍生量。
+   */
+  reaction?: { actorTypeKey: string; tolerance: number; move: string } | null;
 }
 
 /**
@@ -200,8 +206,18 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
     expect(canaryIn, `工具坏了：${CANARY_NONROOT} 的入度算出 0，而它明明被多条规则写 ⇒ 计数器不度量入度`).toBeGreaterThan(0);
 
     // ── 三个根源：入度必须为 0（否定结论 ⇒ 同时给出金丝雀命中证据）──────────────
+    //
+    // 🔴 **口径修正（WO-ADVERSARY-REACTION）**：入度只数**非还手边**。
+    //    「根源 = 入度 0」这条判据说的是「世界自己不会产生它，只能被外部打进来」。
+    //    而**对手方还手**恰恰是「世界之外的另一个主体主动做的事」——
+    //    它写 `orderChurn` 不代表这个量纲变成了内生衍生量，而是代表**有人在跟我博弈**。
+    //    两件事必须分开数，否则「客户会不会还手」这个开关一开，
+    //    三个根源里就有一个被读成"不再是根源"，而它的外生性一个字节都没变。
+    //    ⚠ 且还手边**默认是关的**（`sim.propagation.adversary` 在 WORLD 暗发集里），
+    //    默认世界（= 单方推演）里 `orderChurn` 的入度**就是 0**，与本单引入前逐字节相同。
+    const physical = rules.filter((r) => r.reaction == null);
     for (const { gate, stateVar } of TRIAD) {
-      const writers = rules.filter((r) => r.targetStateVar === stateVar).map((r) => r.key);
+      const writers = physical.filter((r) => r.targetStateVar === stateVar).map((r) => r.key);
       expect(
         writers,
         `${gate} · ${stateVar} 不再是根源：被 ${writers.join("、")} 写。` +
@@ -222,11 +238,28 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
     // ── 根源集合（现算）：必须**包含**新三个 + 两个老根源，且**不含** demandPressure ──
     // 用「包含」而不是「等于」：别的单也在往图里加根源边，写死全集会把它们全变成假红。
     const vars = new Set(rules.flatMap((r) => [r.sourceStateVar, r.targetStateVar]));
-    const roots = [...vars].filter((v) => inDegreeOf(rules, v) === 0).sort();
+    const roots = [...vars].filter((v) => inDegreeOf(physical, v) === 0).sort();
     for (const v of [...TRIAD.map((x) => x.stateVar), "deliveryDelay", "priceShock"]) {
       expect(roots, `${v} 应当是根源（现算根源集：${roots.join("、")}）`).toContain(v);
     }
     expect(roots, "demandPressure 已降级为一级衍生，不该再出现在根源里").not.toContain("demandPressure");
+
+    // ── 🔴 **升格臂**（WO-ADVERSARY-REACTION，与上面的「降级臂」同款写法）──────────
+    // `orderChurn` 的语义是「客户临时插单/取消」。本单之前它**只能由用户手动拨**
+    // ⇒ 世界里再糟的事都不会让任何客户主动少下一张单（= 单方推演，对手不还手）。
+    // 本单给了它**第一条入边**，且这条入边是**还手边**（`reaction != null`）：
+    // 客户被成本转嫁压过容忍线之后自己砍单。两条断言把这件事钉死 ——
+    //  · 物理边里它仍然入度 0（上面已断言，即"默认世界逐字节同旧"）；
+    //  · 还手边里它入度恰好 1，且那条边确实标着 reaction（不是随手加的普通传导边）。
+    const churnReactionWriters = rules.filter(
+      (r) => r.targetStateVar === "orderChurn" && r.reaction != null,
+    );
+    expect(
+      churnReactionWriters.map((r) => r.key),
+      "orderChurn 没有任何还手边 ⇒ 对抗方没落地：世界仍然只有『用户手动拨客户才砍单』这一条路",
+    ).toEqual(["demo_customer_reaction_cut_order"]);
+    expect(churnReactionWriters[0]!.reaction!.actorTypeKey).toBe("Customer");
+    expect(churnReactionWriters[0]!.reaction!.move).toBe("CUT_ORDER");
   }, 120000);
 
   it("§1b 🔴 中文名：三个根源在**真接口**里都拿得到人话名（下拉里没名字 = 用户挑不出来）", async () => {
