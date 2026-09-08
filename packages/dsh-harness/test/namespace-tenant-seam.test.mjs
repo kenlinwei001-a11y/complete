@@ -8,6 +8,9 @@
 //
 // A0 门：本套件只在 DSH_HARNESS=1 下有意义（§6 前置C 判据③：原生路绿不算）。
 
+// ⚠ 必须排在**所有**其他 import 之前：dsh 供应链在 Node 20 上缺 `Promise.withResolvers`，
+// 不补齐则 mcp-client 首连即抛，A1–A12 全线红。病因详见 ../runtime-compat.mjs 头注。
+import '../runtime-compat.mjs'
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync } from 'node:fs'
