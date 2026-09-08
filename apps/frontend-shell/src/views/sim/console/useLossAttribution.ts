@@ -54,6 +54,7 @@ import {
   chainNodeDef,
   type ChainLossDrill,
   type ChainLossMatrixResult,
+  type ChainLossSimContext,
   type SimMetricSeriesResponse,
 } from "@platform/contracts";
 import { api } from "@/api/apiClient";
@@ -136,6 +137,16 @@ export interface HeatMatrixModel {
    * `HeatMatrixModel` 字面量，加必填字段会让那份**不许改**的测试当场编译红。
    */
   emptyReason?: EmptyReason;
+  /**
+   * WO-SIM-VERDICT-FRONTEND · 本次矩阵的**推演上下文披露**（端点 `simContext` 原样带上来）。
+   *
+   * **整块缺席 = 这一次读的是真实世界那条链**（没在任何会话上下文里）；
+   * 块在而 `appliedDays === 0` = 有会话、但这一拍没有以天计的影响。
+   * 这两档**不许在屏上长成一样**（后端契约 `ChainLossSimContextSchema` 头注原话）。
+   *
+   * ⚠ 同样必须 optional，理由与上面 `emptyReason` 完全一样（那份手工字面量不许改）。
+   */
+  simContext?: ChainLossSimContext;
 }
 
 export const heatCellKey = (nodeId: string, baseId: string): string => `${nodeId}|${baseId}`;
@@ -205,6 +216,9 @@ export function projectHeatMatrix(res: ChainLossMatrixResult): HeatMatrixModel {
   if (answeredEmpty) for (const b of res.bases) if (!reasons.has(b.baseId)) reasons.set(b.baseId, EMPTY_REASON.empty);
   return {
     ...(answeredEmpty ? { emptyReason: EMPTY_REASON.empty } : {}),
+    // 会话上下文原样带上来。**端点没给就一格都不补** —— 「不在会话里」与「有会话但零影响」
+    // 是两个结论，前端编一个空块出来就把前者伪装成了后者（契约头注点名禁止的那件事）。
+    ...(res.simContext === undefined ? {} : { simContext: res.simContext }),
     // 站名仍走注册表：回包的 `label` 与册同源，但动态工序节点（`capacity.op.*`）不在册 ⇒ 用回包的。
     nodes: res.nodes.map((n) => ({ nodeId: n.nodeId, label: chainNodeDef(n.nodeId)?.label ?? n.label })),
     bases: res.bases.map((b) => ({ baseId: b.baseId, name: b.name })),
@@ -263,12 +277,38 @@ export function projectHeatMatrix(res: ChainLossMatrixResult): HeatMatrixModel {
  * `view.options.so`），宿主没给就让后端按它自己那份口径挑。
  *
  * ⇒ **本单对 ② 的处置是「改文档不改代码」**：上面这张对拍表就是那份文档。
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * WO-SIM-VERDICT-FRONTEND · 今天的行为是 X，应该是 Y（`sessionId` 这一维）
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * **X（改造前）**：本 hook 的 body 只可能是 `{}` 或 `{so}`。真浏览器实测（登录走起 · 禁 VITE_MOCK ·
+ * 统一推演控制台「损失归因」页签）浏览器**真正发出的字节**是
+ * `POST /a/v1/sim/chain-loss-matrix body={}` 与 `POST /a/v1/sim/chain-loss-drill
+ * body={"nodeId":"demand.consensus"}` —— **0/2 带 sessionId**；
+ * 而**同一屏同一会话**的 `POST /a/v1/sim/optimize-pareto` body 里明明白白写着
+ * `{"sessionId":"sims_demo_seed_world",…}`。⇒ 会话 id 就在手边，只是没交给 chain-loss。
+ * 后果不是「少个参数」：施了扰动之后打开损失归因，屏上四格与**没施扰动时逐字节相同**，
+ * 「这一次推演里根因链变成什么样了」这个问题**问不出来**（答的永远是真实世界那条链）。
+ *
+ * **Y（现在）**：宿主给了会话就把它一起发。后端（`WO-DRILL-VERDICT-BACKEND`）已经收这个入参，
+ * 把该会话**当前拍**世界态里以天计的状态量叠到对应环节上，并在 `simContext` 里逐条披露
+ * 叠了什么、因量纲/承载物排除了什么。
+ *
+ * ⚠ **不给 `sessionId` 这条路一个字节都没动**（反向对照实验锁死这一条）：
+ * `sessionId === undefined` ⇒ body 仍是 `{}` / `{so}`，与本改动引入前**逐字节相同**；
+ * 后端那一侧也已用 md5 对拍过同一条判据。缺省值**不许在前端编**（同 `so` 的理由，见上面 (b)(c)）。
  */
-export function useChainLossMatrix(so?: string): HeatMatrixModel {
+export function useChainLossMatrix(so?: string, sessionId?: string): HeatMatrixModel {
   const q = useQuery({
-    queryKey: ["a", "sim-chain-loss-matrix", so ?? ""],
+    // 会话是取数口径的一部分 ⇒ 必须进缓存键。不进 ⇒ 换个会话拿到上一个会话的矩阵，
+    // 而屏上没有任何东西会报错（本仓「静默错答」的标准形态）。
+    queryKey: ["a", "sim-chain-loss-matrix", so ?? "", sessionId ?? ""],
     retry: false,
-    queryFn: () => api.a<ChainLossMatrixResult>(CHAIN_LOSS_MATRIX_PATH, { body: so === undefined ? {} : { so } }),
+    queryFn: () =>
+      api.a<ChainLossMatrixResult>(CHAIN_LOSS_MATRIX_PATH, {
+        body: { ...(so === undefined ? {} : { so }), ...(sessionId === undefined ? {} : { sessionId }) },
+      }),
   });
   if (q.data !== undefined) return projectHeatMatrix(q.data);
   // 「还在飞」与「没答上来」是两个不同的屏上态：前者会自己好，后者不会。
@@ -389,15 +429,28 @@ const CHAIN_TOTAL_LABEL = "全链非增值";
  * 接 `POST /a/v1/sim/chain-loss-drill`：矩阵的 `rowTotals` 给二级（环节），
  * drill 给三级（子因）。两者拼成一棵树 —— **两个端点各读各的会漂**，故收在同一个 hook 里。
  */
-export function useChainLossDrill(heat: HeatMatrixModel, drilledNodeId: string | null, so?: string): RootCauseModel {
+export function useChainLossDrill(
+  heat: HeatMatrixModel,
+  drilledNodeId: string | null,
+  so?: string,
+  sessionId?: string,
+): RootCauseModel {
   const enabled = heat.source === "endpoint" && drilledNodeId !== null;
   const q = useQuery({
-    queryKey: ["a", "sim-chain-loss-drill", drilledNodeId ?? "", so ?? ""],
+    // 同矩阵：会话进缓存键（理由见 `useChainLossMatrix` 的同一行）。
+    queryKey: ["a", "sim-chain-loss-drill", drilledNodeId ?? "", so ?? "", sessionId ?? ""],
     enabled,
     retry: false,
     queryFn: () =>
       api.a<ChainLossDrill>(CHAIN_LOSS_DRILL_PATH, {
-        body: { nodeId: drilledNodeId as string, ...(so === undefined ? {} : { so }) },
+        // WO-SIM-VERDICT-FRONTEND：`sessionId` 与矩阵**同源同值**（都从宿主那一个会话来）——
+        // 两处各取各的会让二级（矩阵 rowTotals）与三级（本端点 subCauses）落在两个不同的世界上，
+        // 拼成的那棵树每一层都对、合起来不成立。不给 ⇒ body 与本改动前逐字节相同。
+        body: {
+          nodeId: drilledNodeId as string,
+          ...(so === undefined ? {} : { so }),
+          ...(sessionId === undefined ? {} : { sessionId }),
+        },
       }),
   });
   if (heat.source !== "endpoint") return emptyTree(reasonOf(heat));

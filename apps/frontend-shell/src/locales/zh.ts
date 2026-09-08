@@ -2591,6 +2591,24 @@ export const zh = {
         "rule.params": "阈值来源：已被已发布规则的 params 覆盖（不是引擎默认值）。",
         "trigger.default": "阈值来源：触发规则对象自带的默认值（没有已发布规则覆盖它）。",
       } as Record<string, string>,
+      /**
+       * WO-SIM-VERDICT-FRONTEND · 第一层「触发判定条」的短文案。
+       *
+       * ⚠ 与上面 `thresholdSrc` 是**同一件事的两种长度**，不是两套说法：
+       * 那两句是浮层里的完整解释，这两句是第一层的记号。第一层只放数值/状态/名字，
+       * 成段解释仍在浮层（规范 §1）—— 故这里刻意短，且**不许**在这里写第三种说法。
+       */
+      trigStrip: {
+        head: (n: number, fired: number) => `触发判定 ${n} 条 · 已触发 ${fired} 条`,
+        src: {
+          "rule.params": "阈值来自规则参数",
+          "trigger.default": "阈值来自内置默认",
+        } as Record<string, string>,
+        /** 引擎答不上来（失败/超时/回包形状不对）—— 与「一条规则都没有」是两回事。 */
+        noAnswer: "触发判定：没取到",
+        /** 引擎答了，答案是「一条触发规则都没有」。 */
+        none: "触发判定：一条规则都没有",
+      },
       effect: (closesGap: string, unit: string) => `预期补缺口 ${closesGap}${unit}`,
       effectNone: "引擎没给这条行动的预期效果（它只有规则、没有对应的求解器方案）。",
       narrowing: (pct: string) => `若整组推荐都落地，缺口收窄 ${pct}%`,

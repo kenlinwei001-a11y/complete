@@ -544,6 +544,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
                       三分支各不相同，**不许合并**：缺席=未知 / 零敞口=一等结论 / 有敞口=真数字。 */}
                   {/* U2 分段闸：影响面摘要是第 4 步（affectedOrders / otd / exposure.rank）。 */}
                   {upto(4) && <CardExposureLine card={card} />}
+                  {/* WO-SIM-VERDICT-FRONTEND 挂载点：**不在任何折叠之下** ——
+                      「上一次采纳了什么」是做第二次决策的前提，藏一次点击后面等于没有。 */}
+                  <CardAdoptedLine card={card} />
                 </div>
               );
             })}
@@ -719,6 +722,63 @@ function CardExposureLine({ card }: { card: RiskCard }) {
     <div className={styles.rkCF} data-testid={`risk-exposure-line-${card.base}`} data-exposure="OK">
       <span style={{ color: "var(--c-forecast-txt)" }}>影响面 #{exp.rank} · {exp.orderCount} 张单 · {exp.customerCount} 家客户</span>
       <span style={{ color: "var(--ok-txt)" }}>{exp.revenueYi} {exp.units.revenue}</span>
+    </div>
+  );
+}
+
+/**
+ * WO-SIM-VERDICT-FRONTEND · 卡面「已采纳处置」一行 —— **采纳台账的屏上入口**。
+ *
+ * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
+ * **X**：走完两级审批采纳一条处置方案之后，引擎侧一切正常 —— 台账落了 `AdoptedMitigation`
+ * 记录、真曲线从第 tn 天起真的降下去、风险卡上 `adoptedMitigation` 这个键**真的带着**
+ * `{planKey, eff, tn}`。而**前端源码里 `adoptedMitigation` 一次都没有出现过**
+ * （金丝雀：同一把尺子扫 `mitigationLibrary` 命中 `DecisionConsoleView` ⇒ 扫法成立，
+ * 不是"我没找到"）。屏上能搜到的「工艺路线调整」全是**方案库候选**——那是选项，不是台账。
+ * 后果：同一个扰动做第二次时，看不到第一次采纳过什么，于是**同一条方案被重复采纳**，
+ * 或者对着一条悄悄降下去的曲线猜它为什么降。
+ *
+ * **Y**：卡面直接印「已采纳哪条 · 消解多少 · 第几天起效」。
+ *
+ * ⚠ **两态必须分开**（缺席 ≠ 没采纳过）：
+ *  · 键缺席 ⇒ 这张卡这一格上**没有任何一条在生效的采纳**（`ACTIVE` 一条都没有）；
+ *  · 键在   ⇒ 逐项点名。
+ * 本行**只在键在时渲染**：一张从没被处置过的卡上挂一行「未采纳」，会让整屏全是噪声，
+ * 而「没有采纳」这件事本来就由卡面其余读数（峰值/越线日没被削）表达。
+ * ⚠ 前端**不重算任何一个数**：`eff` / `tn` 是引擎给的原值直投。
+ *
+ * ── 方案的**人话名**从哪来（为什么要多这一跳）────────────────────────────────
+ * `card.adoptedMitigation` 只带 `planKey`（`debottleneck` 这类接线名），屏上直接印它
+ * 等于让用户读接线名。方案名的真出处是 `mitigation_select` 的 `plans[].name`
+ * （实测 `debottleneck` → 「瓶颈工序扩容」）——**前端不许自己写一张 key→中文 对照表**，
+ * 那就是第二套真相源。查不到就**显 `planKey` 本身**（不编名字、不留空白），
+ * 与 `stateVarLabel` 同一条纪律：回落必须看得出是回落，`data-name-resolved` 让它可断言。
+ */
+function CardAdoptedLine({ card }: { card: RiskCard }) {
+  const ad = card.adoptedMitigation;
+  const { data } = useQuery({
+    // ⚠ 与展开态 `MitigationCards` 的 key 逐字相同（`tightness` 那一位取 `card.peak`）⇒
+    //    用户点开卡片时是缓存命中，不多打第二次。
+    queryKey: ["a", "mitigation_select", card.base, card.factor, card.peak],
+    enabled: ad !== undefined, // 只有真有采纳的那张卡才发（实测 8 张卡通常只中 1 张）
+    retry: false,
+    queryFn: async () => {
+      const res = await invokeSolver("mitigation_select", { baseName: card.base, factor: card.factor, tightness: card.peak });
+      return res.data as { plans?: MitPlan[] };
+    },
+  });
+  if (!ad) return null;
+  const name = (data?.plans ?? []).find((p) => p.key === ad.planKey)?.name;
+  return (
+    <div
+      className={styles.rkCF}
+      data-testid={`risk-adopted-line-${card.base}`}
+      data-adopted="1"
+      data-plan={ad.planKey}
+      data-name-resolved={name === undefined ? "0" : "1"}
+    >
+      <span style={{ color: "var(--ok-txt)" }}>已采纳 {name ?? ad.planKey}</span>
+      <span>消解 {ad.eff} · T+{ad.tn} 起效</span>
     </div>
   );
 }

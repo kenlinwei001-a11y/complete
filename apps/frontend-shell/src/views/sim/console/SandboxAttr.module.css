@@ -837,3 +837,38 @@
   border-bottom: 1px solid var(--line);
   color: var(--txt);
 }
+
+/* ══ 推演上下文披露条 `.simctx`（WO-SIM-VERDICT-FRONTEND）═══════════════════════
+ * 挂在画布**上方**、画布之外 —— 同 `.dock` 的理由：`.app` 是定死的 1440×897 且
+ * `overflow:hidden`，塞进画布的任何东西都必须挤掉既有内容，而那一盒是像素级 1:1 的验收线。
+ *
+ * 字号与 `.dock` 同一级（11.5px）—— 不新起一级：一屏之内最多三级字号（R-UI-2）。
+ * 色值一律走 token（本目录零字面色值，三套主题自动跟随）。
+ */
+.simctx {
+  width: 1440px;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 5px 12px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+}
+.simctx b {
+  color: var(--txt);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+/* 逐段那几粒：与「合计」区分开 —— 合计是结论，逐段是它的构成。 */
+.simctxStep {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--txt);
+}

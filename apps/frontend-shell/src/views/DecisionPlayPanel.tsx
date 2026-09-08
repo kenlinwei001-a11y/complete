@@ -843,6 +843,83 @@ export function DecisionPlayPanel({ metricKey, factorId = "", locus = null, entr
 }
 
 /**
+ * WO-SIM-VERDICT-FRONTEND · **触发判定条**（第一层，不折叠）。
+ *
+ * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
+ * **X**：触发判定（哪条信号 · 该越多少 · 现在多少 · 越没越 · 阈值来自哪）**引擎早就在算**，
+ * 而屏上一个字都没有。真浏览器实测（登录走起 · 禁 VITE_MOCK）：`/v/order-chain`、
+ * `/v/sim-unified`、`/v/risk` 三屏对 6 个探针串（触发动作名 / 阈值出处标签）**全 0 命中**
+ * （扫屏金丝雀 `admin` 同一把尺子命中 ⇒ 量法是好的，不是"我没找到"）。
+ * 病因不是没接线，是**接在折叠抽屉里**：`DecisionPlayEmbed` 默认收起，
+ * `<details>` 未展开时整棵子树不挂载 ⇒ 用户不点开就永远看不见。
+ * 后果是实的：把阈值从 12 改到 30（真 REST 发布一条规则参数）之后，引擎当场
+ * 从「已触发」翻成「未触发」，而**屏上任何一处都没变** —— 改得动，看不见。
+ *
+ * **Y**：把这一条判定**留在第一层**（数值 / 状态 / 名字 —— 正是规范 §1 准许的三样），
+ * 其余明细（预期效果 / 方案对比 / 因果图）照旧留在抽屉里。
+ * 第一层因此长出 3 行小字，抽屉一格没动。
+ *
+ * ⚠ **不许排成「18.45 > 30」这种假断言** —— 那是 `ui-layering.seam` ④ 咬死的形态
+ * （当前值并不大于阈值，而结论恰恰写着"未触发"，屏上自相矛盾）。
+ * 故本条的顺序固定为：**规则模板（信号名 · 符号 · 阈值）→ 当前值 → 结论 → 阈值出处**，
+ * 当前值**永远不排在符号前面**，且四段是四个元素。
+ * ⚠ 也**不印 `action`**（触发规则那侧的措辞）：同一个行动的两种措辞同时上屏
+ * 是 `ui-layering.seam` ③ 咬死的形态。本条只答「哪条规则在盯着、盯到没有」。
+ *
+ * ⚠ **不多打一跳**：`queryKey` 与 `DecisionPlayPanel` 逐字相同 ⇒ 抽屉展开时命中同一份缓存。
+ */
+export function TriggerVerdictStrip({
+  metricKey,
+  factorId = "",
+  locus = null,
+  testId,
+}: Pick<DecisionPlayPanelProps, "metricKey" | "factorId" | "locus" | "testId">) {
+  const locusType = locus?.objectType ?? "";
+  const locusId = locus?.objectId ?? "";
+  const { data, isLoading, isError } = useQuery({
+    // ⚠ 与 `DecisionPlayPanel` 的 key **必须逐字相同**，否则就是同一份数据取两次。
+    queryKey: ["a", "decision_play", metricKey, factorId, locusType, locusId],
+    queryFn: async () => {
+      const args: Record<string, unknown> = {};
+      if (metricKey) args.metricKey = metricKey;
+      if (factorId) args.factorId = factorId;
+      if (locusType && locusId) { args.locusType = locusType; args.locusId = locusId; }
+      const res = await invokeSolver("decision_play", args);
+      return res.data as DecisionPlayOutput;
+    },
+    retry: false,
+  });
+  const tid = testId === undefined ? "dp-trigstrip" : `${testId}-trigstrip`;
+  // 三种「没有判定」成因不同，屏上分开说（合成一句就是拿一个词盖住三个事实）。
+  if (isLoading) return <div className={dpStyles.trigStrip} data-testid={tid} data-state="loading">{zh.common.loading}</div>;
+  if (isError) return <div className={dpStyles.trigStrip} data-testid={tid} data-state="error">{zh.decisionPlay.actions.trigStrip.noAnswer}</div>;
+  const triggers = data?.triggers ?? [];
+  if (triggers.length === 0) return <div className={dpStyles.trigStrip} data-testid={tid} data-state="empty">{zh.decisionPlay.actions.trigStrip.none}</div>;
+  const firedCount = triggers.filter((t) => t.fired).length;
+  return (
+    <div className={dpStyles.trigStrip} data-testid={tid} data-state="ok" data-fired-count={firedCount}>
+      <b>{zh.decisionPlay.actions.trigStrip.head(triggers.length, firedCount)}</b>
+      {triggers.map((t) => (
+        <span key={t.triggerId} className={dpStyles.trigRow} data-testid={`${tid}-${t.triggerId}`} data-fired={t.fired ? "1" : "0"}>
+          {/* ① 规则模板：信号名 · 符号 · 阈值（**当前值不在这一段里**）。 */}
+          <i data-testid={`${tid}-tpl-${t.triggerId}`}>{zh.decisionPlay.actions.ruleTemplate(t.signalRef, t.op, fmt(t.threshold))}</i>
+          {/* ② 当前值：单独一段，排在符号**之后**。 */}
+          <u data-testid={`${tid}-cur-${t.triggerId}`}>{zh.decisionPlay.actions.ruleCurrent(fmt(t.signalValue))}</u>
+          {/* ③ 结论。 */}
+          <s data-testid={`${tid}-verdict-${t.triggerId}`} data-verdict={t.fired ? "FIRED" : "NOT_FIRED"}>
+            {zh.decisionPlay.actions.ruleVerdict(t.fired)}
+          </s>
+          {/* ④ 诚实位：阈值是规则库里改得动的那种，还是引擎自带的兜底 —— 两者修法完全不同。 */}
+          <em data-testid={`${tid}-src-${t.triggerId}`} data-src={t.thresholdSource}>
+            {zh.decisionPlay.actions.trigStrip.src[t.thresholdSource] ?? t.thresholdSource}
+          </em>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
  * **就地嵌入壳**（宿主页用这个，不直接用 `DecisionPlayPanel`）。
  *
  * 为什么默认折叠：`OrderChainView` / `ChainImpedimentView` 都在 `check-ui-first-layer` 的棘轮基线里，
@@ -862,6 +939,16 @@ export function DecisionPlayEmbed({
   const [open, setOpen] = useState(false);
   const label = summaryLabel ?? zh.decisionPlay.embedSummary;
   return (
+    <>
+      {/* WO-SIM-VERDICT-FRONTEND 挂载点：**在抽屉之外**，故不点也看得见。
+          只留「哪条规则在盯着 · 越没越 · 阈值来自哪」这三样（规范 §1 准许的数值/状态/名字），
+          方案对比与因果图照旧在抽屉里 —— 抽屉一格没动。 */}
+      <TriggerVerdictStrip
+        metricKey={metricKey}
+        {...(factorId === undefined ? {} : { factorId })}
+        {...(locus === undefined ? {} : { locus })}
+        {...(testId === undefined ? {} : { testId })}
+      />
     <details
       data-testid={testId ? `${testId}-details` : undefined}
       data-locus-type={locus?.objectType}
@@ -885,6 +972,7 @@ export function DecisionPlayEmbed({
         ) : null}
       </div>
     </details>
+    </>
   );
 }
 
