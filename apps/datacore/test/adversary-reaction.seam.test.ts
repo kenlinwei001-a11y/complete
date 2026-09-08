@@ -89,9 +89,13 @@ async function runWorld(
 /** 挑两个**订单条数相同、金额不同**的客户 —— §3 的实验对象。挑不出来就让测试红，不静默跳过。 */
 async function pickSameCountDifferentMoney(t: TestApp) {
   const byCust = await ordersByCustomer(t);
-  const rows: { custId: string; orders: string[]; exposure: number }[] = [];
+  const rows: { custId: string; name: string; orders: string[]; exposure: number }[] = [];
   for (const [custId, orders] of [...byCust].sort((a, b) => a[0].localeCompare(b[0]))) {
-    rows.push({ custId, orders, exposure: await exposureOf(t, orders) });
+    // 客户**人话名**一并取出：本单的结论要写进本体，而「是哪两家客户」这种事
+    // 必须由机器打出来，不许我凭印象往台账上写（铁律 1.5 判据四·信台账 = 信注释）。
+    const o = await t.repos.objects.get("demo", custId);
+    const name = String((o?.props as Record<string, unknown> | undefined)?.name ?? custId);
+    rows.push({ custId, name, orders, exposure: await exposureOf(t, orders) });
   }
   for (const a of rows) {
     for (const b of rows) {
@@ -184,8 +188,9 @@ describe("WO-ADVERSARY-REACTION · 客户会还手（五格对照实验）", () 
     const churnSmall = state[small.orders[0]!]?.orderChurn ?? 0;
     // eslint-disable-next-line no-console
     console.log(
-      `ADVERSARY_EXP3 单数=${big.orders.length} | 大户敞口=${big.exposure} churn=${churnBig}` +
-        ` | 小户敞口=${small.exposure} churn=${churnSmall}`,
+      `ADVERSARY_EXP3 单数=${big.orders.length} | 大户 ${big.name}(${big.custId}) 敞口=${big.exposure} churn=${churnBig}` +
+        ` | 小户 ${small.name}(${small.custId}) 敞口=${small.exposure} churn=${churnSmall}` +
+        ` | 敞口比=${big.exposure / small.exposure} 还手比=${churnBig / churnSmall}`,
     );
 
     expect(big.orders.length).toBe(small.orders.length); // 前提：条数确实相同
