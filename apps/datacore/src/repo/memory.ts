@@ -1,3 +1,5 @@
+// WO-AGENT-IN-LOOP · agent 提案定版（migrations/040）。
+import type { FrozenProposal } from "@platform/contracts";
 import type {
   ExecutionLockRecord,
   KbChunkRecord,
@@ -114,6 +116,24 @@ class MemSimRepo implements SimRepo {
     if (!r || r.tenantId !== tenantId) return false; // 跨租户 = 当作不存在（R2：不泄露"有这条但不给你"）
     this.rules.delete(id);
     return true;
+  }
+  // ── WO-AGENT-IN-LOOP · agent 提案定版（R9：与 PgSimRepo 同名方法语义须逐条对齐）──
+  // key = proposalId。定版后**不再改**，故这里存 clone 即可（写入即冻结）。
+  private proposals = new Map<string, FrozenProposal>();
+  async putProposal(p: FrozenProposal) { this.proposals.set(p.proposalId, clone(p)); }
+  async getProposal(tenantId: string, id: string) {
+    const p = this.proposals.get(id);
+    return p && p.tenantId === tenantId ? clone(p) : null;
+  }
+  /** 指纹匹配的**最新一版**（pg 侧 `ORDER BY version DESC LIMIT 1` 的同语义）。 */
+  async findProposalByFingerprint(tenantId: string, sessionId: string, fingerprint: string) {
+    const hits = [...this.proposals.values()]
+      .filter((p) => p.tenantId === tenantId && p.sessionId === sessionId && p.inputFingerprint === fingerprint)
+      .sort((a, b) => b.version - a.version);
+    return hits[0] ? clone(hits[0]) : null;
+  }
+  async countProposals(tenantId: string, sessionId: string) {
+    return [...this.proposals.values()].filter((p) => p.tenantId === tenantId && p.sessionId === sessionId).length;
   }
   async listPropagationRules(tenantId: string, publishedOnly = true) {
     return [...this.rules.values()]
