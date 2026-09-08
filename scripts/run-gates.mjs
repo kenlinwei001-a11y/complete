@@ -54,6 +54,8 @@
  *    与各门自己的 `--selftest` 的事）。
  *  · **PASS 不等于那道门有牙**；NOT-MEASURED 也**不等于**被扫的代码有问题 —— 它等于「没查」。
  *  · 只跑了名册子集时（`--only`），屏上打「部分运行」横幅，且**不许**读作全量扫描。
+ *  · **执行器只报环境、不改环境**：跑门前打一份 dist 体检（`distInventory()`），
+ *    但**绝不替你 build** —— 理由写在该函数头注（一 build，dist-freshness 那 15 道门就恒真）。
  *
  * 用法：
  *   node scripts/run-gates.mjs <门脚本…>      # 由 package.json 的 gates 展开 argv
@@ -66,12 +68,13 @@
  *   node scripts/run-gates.mjs --timeout-ms N # 单门超时（默认 900000 = 15 分钟）
  */
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PKG = join(ROOT, "package.json");
+const WORKSPACE = join(ROOT, "pnpm-workspace.yaml");
 
 /** 门册下界：低于它一律判「执行器坏了」，不许判「门册空」。今天 71 道，留足删门余量。 */
 const MIN_ROSTER = 40;
@@ -130,6 +133,64 @@ export function rosterCanary(pkgText) {
     roster,
     got: `从 package.json:scripts.gates 解出 ${roster.length} 道门 · 必中样例 ${basename(CANARY_GATE)} 在册 · 必不中样例 0 误咬`,
   };
+}
+
+/**
+ * **环境前置体检**（dist 清单）—— 在跑门**之前**先把「哪些 dist 没构建」摆到屏上。
+ *
+ * ══ 为什么是「体检」而不是「顺手 build 一下」══════════════════════════════════
+ * WO 原话是「能在跑门前统一 build 一次就 build」。**实测后判定：不能，且不该。**
+ * `scripts/check-dist-freshness.mjs` 守的正是「dist 不许落后于 src」，它背后有 **15 道门**
+ * `import(".../dist/x.js")` 之后讲的是**源码**的话。执行器若在跑门前替它们把 dist 重建一遍，
+ * 这 15 道门的新鲜度判据就**恒真** —— 门还在，牙没了。
+ * 形态（铁律 0.6 句式）：
+ *   > **「我用『跑门前我刚 build 过』当作『被验的那个 commit 的 dist 是新鲜的』的证据，
+ *   >    而前者并不度量后者 —— 它度量的是**执行器自己刚干的事**。」**
+ * 这与本仓「派 dev 必须 worktree 隔离」那次假绿同族：**信号是真的，只是不指向要断言的对象。**
+ * 故执行器**只报不建**：dist 缺就让相关门诚实落到 NOT-MEASURED，并在这里说明原因与修法。
+ *
+ * ══ 清单从哪来（不许手抄）════════════════════════════════════════════════════
+ * 真值 = `pnpm-workspace.yaml` 的 globs → 各包 `package.json` 有没有 `build` 脚本。
+ * **不写死包名** —— 手抄的名册迟早与仓库分叉，那正是 `check-gate-roster-handcopied.mjs`
+ * 这道门存在的理由。globs 解不出来即报「执行器坏了」，不许静默当成「没有包要建」。
+ */
+export function distInventory(root = ROOT) {
+  let globs = [];
+  try {
+    // pnpm-workspace.yaml 的 packages 段是 `- "apps/*"` 这种行，取引号里的值即可。
+    globs = [...readFileSync(join(root, "pnpm-workspace.yaml"), "utf8").matchAll(/^\s*-\s*["']?([^"'\s]+)["']?\s*$/gm)]
+      .map((m) => m[1])
+      .filter((g) => g.endsWith("/*"));
+  } catch {
+    return { ok: false, why: `读不到 ${WORKSPACE}` };
+  }
+  if (!globs.length) return { ok: false, why: "pnpm-workspace.yaml 里解不出任何 `<目录>/*` glob" };
+
+  const rows = [];
+  for (const g of globs) {
+    const base = g.slice(0, -2);
+    let entries = [];
+    try {
+      entries = readdirSync(join(root, base));
+    } catch {
+      continue; // glob 指向的目录不存在 —— 不是错，跳过
+    }
+    for (const name of entries.sort()) {
+      const dir = `${base}/${name}`;
+      const pj = join(root, dir, "package.json");
+      if (!existsSync(pj)) continue;
+      let hasBuild = false;
+      try {
+        hasBuild = Boolean(JSON.parse(readFileSync(pj, "utf8")).scripts?.build);
+      } catch {
+        continue;
+      }
+      if (!hasBuild) continue; // 没有 build 脚本 = 本来就不产 dist，不该报缺
+      rows.push({ dir, built: existsSync(join(root, dir, "dist")) });
+    }
+  }
+  if (!rows.length) return { ok: false, why: `${globs.join(" / ")} 下一个带 build 脚本的包都没找到` };
+  return { ok: true, globs, rows, missing: rows.filter((r) => !r.built).map((r) => r.dir) };
 }
 
 /**
@@ -220,6 +281,27 @@ function main() {
       `\n   单门超时 ${timeoutMs} ms · 三态：PASS 真跑绿 / FAIL 真跑红 / NOT-MEASURED **没跑成**\n`,
   );
 
+  // ── 环境前置体检：先说「哪些 dist 没建」，再跑门 ──────────────────────────────
+  // 放在**跑门之前**是刻意的：事后才解释「为什么 16 道没测出来」，读的人已经先把
+  // 那 16 道当成绿的了。⚠ 只报不建（理由见 distInventory 的头注）。
+  const dist = distInventory();
+  if (!dist.ok) {
+    toolBroken(`环境前置体检做不了：${dist.why}`, "体检做不了 ⇒ 说不清「没测出来」是环境还是代码 ⇒ 不许开跑。");
+  }
+  const builtN = dist.rows.length - dist.missing.length;
+  console.log(`环境前置体检 · 带 build 脚本的包 ${dist.rows.length} 个（真值：${dist.globs.join(" / ")}）· 已构建 ${builtN} 个`);
+  if (dist.missing.length) {
+    console.log(`  ⚠ **未构建 ${dist.missing.length} 个**：${dist.missing.join("  ")}`);
+    console.log(
+      `  ⇒ 读这些 dist 的门会自报 RC=2 落进 **NOT-MEASURED**。那**不是**「这些包没问题」，是「没查」。\n` +
+        `  ⇒ 想把它们测出来：先 \`pnpm -r build\`（或按包 \`pnpm --filter <包> build\`）再重跑本执行器。\n` +
+        `  ⇒ 执行器**故意不替你 build**：它一 build，dist-freshness 那 15 道门的新鲜度判据就恒真（门还在，牙没了）。`,
+    );
+  } else {
+    console.log(`  ✓ 全部已构建 —— 因缺 dist 而 NOT-MEASURED 的门，本次一道都不该出现。`);
+  }
+  console.log("");
+
   const results = [];
   const t0 = Date.now();
   for (const [i, g] of roster.entries()) {
@@ -282,6 +364,9 @@ function main() {
           partial,
           skipped: missingFromRun,
           canary: canary.got,
+          // 环境前置：解释 NOT-MEASURED 的那一半原因，机读侧也要能看见（否则只剩人读日志）
+          distMissing: dist.missing,
+          distBuilt: builtN,
           totalMs,
           counts: { PASS: passes.length, FAIL: fails.length, "NOT-MEASURED": notMeasured.length },
           results: results.map(({ gate, state, rc, ms, why }) => ({ gate, state, rc, ms, why })),
@@ -300,7 +385,10 @@ function main() {
   if (notMeasured.length) {
     console.error(
       `\n🟠 门链**没测完**：${notMeasured.length} 道门没跑成（RC=2 / 缺 dist / 超时 / 起不来）。\n` +
-        `   ⛔ 这不是「全绿」—— 只许说「我没查出来」。先补齐前置（多半是 \`pnpm -r build\` 出 dist）再重跑。`,
+        `   ⛔ 这不是「全绿」—— 只许说「我没查出来」。` +
+        (dist.missing.length
+          ? `\n   本次未构建的包：${dist.missing.join("  ")} ⇒ 先 \`pnpm -r build\` 再重跑，多半能把大部分测出来。`
+          : `\n   ⚠ 注意：本次所有带 build 脚本的包**都已构建**，所以这些「没测出来」**不是缺 dist** —— 另有原因，逐条看上面的判据。`),
     );
     process.exit(2);
   }
