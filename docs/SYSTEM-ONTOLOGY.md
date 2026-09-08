@@ -550,6 +550,31 @@ POST /b/v1/skill-graphs/run → { runId, source, layers[], nodeResults[] }
      · **事件（对 PRD §10.3 的诚实偏离）**：PRD 原计划新增 `agent.reflected`，**实现改为不新增** —— 全仓零命中，
        与 `agent_escalated` 同款约定（复用 `step.completed` 伪 step·**不新增 §8.2 事件名**·前端零改）。观测改走
        `AgentLoopResult.reflected/replanReason`（`loop.ts:182/184`·`:928-929` 回填）。**§4 事件表因此不新增条目。**
+
+   ★**数字红线的观测面：通用 path-B 此前既不拦也不计（WO-NUMERIC-MAINPATH 缺口 A·已闭）**
+     被守的架构原则（仓主 2026-09-08）：「**所有计算原则上使用求解器而不是 agent(LLM) 来计算**，agent 只负责调动工具、
+     本体、规则等等输出结果」⇒ 可机器核查的判据：**屏上每个数都要能追到求解器输出或本体真值**。
+     · **两个正交计数别混用**：`qos_unverified_numerics_total`（**标注**·loop/workflow 打）
+       ⊕ `qos_numeric_redline_total{path,action}`（**处置**·`blocked`=dsh 路真拒 / `would_block`=原生路照常放行只记「若阻断会拦下多少」）。
+     · **修前的接线**：`would_block` 只打在 `engine.runRegisteredAgent` 的交付出口。而通用 path-B（`orchestrator.runPathB`）
+       **直调 `runAgentLoop`**、一次都不经过 `runRegisteredAgent`（后者 5 个 src 调用方 = propose-candidates · skill-probe ·
+       orchestrator 角色 agent 路 · orchestrator Coordinator 扇出 · engine 嵌套 invoke_agent，**通用 path-B 一个都不是**）
+       ⇒ 分类 `outOfCatalog` 无门直落的那条路——**最容易出裸数、也最开放**——该计数**结构性恒 0**。
+       形态：「我用『我在 engine 出口记了 would_block』当作『我知道主路有多少裸数』的证据，而前者并不度量后者。」
+     · **现接线**：`runPathB` 的**交付出口**（rung② 重路由之后、`tasks.patch(COMPLETED)` 之前）按 `result.answer.unverifiedNumerics`
+       打**同一个** `numericRedline{path:"AGENT_NATIVE",action:"would_block"}`。判据与采样点与 engine 出口逐字对齐（否则两路的数不可比）；
+       每次运行至多 +1；排在 rung② 之后是因为重路由成功时本次 answer 根本没上屏，由 Coordinator 那条路自己记。
+     · ⛔ **只标不拦是产品裁决，不是实现细节**：`action` 恒为 `would_block`，回包恒 `COMPLETED` + `answer.final`。
+       实测代价：把这个按「非阻断」校准的检测器提升成硬阻断，会拒掉本仓唯一一次真实录制的 agent 运行
+       （红在序号列表标记与「共读取 6 个文件」上，那次运行里一个业务数字都没有）。要收紧须先拿仓主裁决。
+     · **诚实位不许硬写（缺口 B·已闭）**：`router/coordinator.ts synthesize` 把各角色 agent 的 `answerText` 逐字拼进 markdown 后
+       曾 `return { …, unverifiedNumerics: false }` ⇒ 前端 `AnswerCard` 顶部琥珀条被**无条件关掉**，
+       「没有未溯源数字」与「没人去看有没有」在屏上一模一样。现改为用同一份 `util/numerics.ts` **现算**；
+       扫描范围**只取 agent 自撰的 `answerText`**，本函数自拼的头块（「已分派 3 个角色」）与角色栏包装（agentId／基地 id）不算
+       —— 连它们一起扫会让琥珀条**恒亮**，与恒灭一样不度量任何东西。
+     · SEAM `apps/agentcore/test/numeric-mainpath.seam.test.ts`（14 例·三节各一组**对照实验**：主路吐裸数 ⇒ 计数 0→1 且仍 COMPLETED /
+       同路零裸数 ⇒ 该 label **整块缺席**（判据落在 `Counter.values` 键集，不是 `get()` 的 0） / 诚实位含数 true·不含数 false /
+       两把尺子在标准溯源表达法上判定相反 · 变异反证：三个源文件回退到修前 ⇒ 14 例中 **7 例红**，逐条红在预言的位置）。
      · **门（诚实标注）**：PRD §10.6 计划的 `harness-elements:check` **今天不是脚本门** ——
        只有 vitest `apps/agentcore/test/harness-elements.test.ts`，`scripts/` 下**无** `check-harness-elements.mjs`
        （金丝雀：同目录 `check-loop-control.mjs` 在）。故 **§7 不登记该门**，欠账留 WO。
@@ -592,6 +617,12 @@ POST /b/v1/skill-graphs/run → { runId, source, layers[], nodeResults[] }
              （fallback-safe·SEAM-3 集成态 spy≥1 坐实·绝不误降级开放题）
      · 不变量：R6(executePlan 同 plan 同执行序同产物·组内无共享写·汇总按 step 稳定) · 数字红线(综合步不产数·每数字 ⟦ref:N⟧ 溯到某步产物·
        scan 未溯源裸数→unverifiedNumerics) · R13(每步一条 provenance source=TOOL_RESULT 贯通) · R1(ComposePlan 契约在 contracts·A/B 共享形状)
+       ★**数字红线判据收编为唯一实现（WO-NUMERIC-MAINPATH 缺口 C）**：本路径此前私有第二份 scan（剥 `⟦…⟧` 后 `/\d/` 全量），
+         与 `util/numerics.ts:hasUnverifiedNumerics`（原生路 / dsh 路 / workflow 渲染三路共用）**不同源**——旧私有那份把
+         **标准溯源表达法**（「缺口 1200 套 ⟦ref:0⟧。」）判为未溯源，共用那份判为已溯源。两把尺子的结果落进**同一个契约字段**
+         `Answer.unverifiedNumerics` ⇒ 同一段答文走组合路径亮琥珀条、走原生路不亮，屏上无从分辨。现已删私有实现、
+         全路改用 `util/numerics.ts` 单源（判据本身一字未改·收编的是调用方）；`usedLlm===false` 的确定性兜底仍豁免
+         （那段是**平台自拼**的诚实摘要·数字直取 solver 产物·与 `util/numerics.ts` 顶部治理面同一条界）。
      · 边界实录（消费不改）：组合仅覆盖 **navigation-slice SOLVER_CATALOG ∩ SOLVER_ARGS_SCHEMAS 已登记** 的 solver；portfolio/affected_orders
        已登记 args schema 但未入 SOLVER_CATALOG → 经真 navSlice 暂不投影（serial argsFrom 由 executePlan 直驱测坐实）
      ★**推演 NL 大脑（WO-GSIM-4-AGENT·消费 Phase2-C·补 portfolio 端到端）**：推演类 NL（全局联合排产/跨基地最优/递进批次）
