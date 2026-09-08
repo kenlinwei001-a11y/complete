@@ -43,15 +43,25 @@ const PRE_FIELD = JSON.parse(
   readFileSync(join(TEST_DIR, "fixtures/sim-disclosure.real.json"), "utf8"),
 ) as SimRunDisclosure;
 
-/** 整块渲染开（含二层 `<details>`），返回屏上全部可见文本。 */
+/**
+ * 整块渲染开（含二层 `<details>`），返回屏上全部可见文本。
+ *
+ * ⚠ **必须 `unmount()`**：同一个 `describe` 里连渲四态时，不卸载会让四份 DOM 同时挂在
+ * 同一个 body 上 ⇒ `getByTestId` 报「找到多个」，而且 `not.toContain` 会被**别一态的文本**
+ * 意外满足 —— 那是「测试自己坏了」冒充「产品对了」，比红更坏。
+ */
 function screenText(d: SimRunDisclosure): string {
-  const { container } = render(<DisclosurePanel disclosure={d} />);
+  const { container, unmount } = render(<DisclosurePanel disclosure={d} />);
   container.querySelectorAll("details").forEach((el) => el.setAttribute("open", ""));
-  return container.textContent ?? "";
+  const text = container.textContent ?? "";
+  unmount();
+  return text;
 }
 function stateOf(d: SimRunDisclosure): string {
-  render(<DisclosurePanel disclosure={d} />);
-  return screen.getByTestId("sim-disclosure-adversary").getAttribute("data-state") ?? "";
+  const { unmount } = render(<DisclosurePanel disclosure={d} />);
+  const s = screen.getByTestId("sim-disclosure-adversary").getAttribute("data-state") ?? "";
+  unmount();
+  return s;
 }
 
 describe("§0 夹具自证（金丝雀先行 —— 不然下面全是废话）", () => {
