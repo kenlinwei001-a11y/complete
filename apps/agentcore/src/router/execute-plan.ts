@@ -4,6 +4,8 @@ import type { LlmClient } from "../llm/types.js";
 // WO-GRAPH-EXEC-CONSOLIDATE：分层扇出调度**收编到唯一实现**（原本文件自写一份组内 Promise.all 循环）。
 import { runLayeredGraph } from "../skill-orchestrator.js";
 import type { GuardedToolExecutor } from "../tools/executor.js";
+// WO-NUMERIC-MAINPATH · 数字红线判据**收编到唯一实现**（缺口 C·原本文件自写一份 `/\d/` 全量私有 scan）。
+import { hasUnverifiedNumerics } from "../util/numerics.js";
 
 /**
  * WO-Phase2-C-COMPLETE · 组合路径执行器（executePlan·「能用半」）。
@@ -99,11 +101,35 @@ function readOutputPath(data: unknown, outputPath: string): unknown {
   return cur;
 }
 
-/** 数字红线扫描：去掉 ⟦…⟧ 溯源标记后仍存在裸业务数字 → 未溯源（诚实标 unverifiedNumerics）。 */
-function scanUnverified(text: string): boolean {
-  const stripped = text.replace(/⟦[^⟧]*⟧/g, "");
-  return /\d/.test(stripped);
-}
+/*
+ * WO-NUMERIC-MAINPATH · 缺口 C：**这里曾有第二份数字红线判据，已删除**。
+ *
+ * 原实现（私有·本文件独有）：
+ *   const stripped = text.replace(/⟦[^⟧]*⟧/g, ""); return /\d/.test(stripped);
+ *
+ * 它与 `util/numerics.ts:hasUnverifiedNumerics`（原生路 / dsh 路 / workflow 渲染三路共用的那份）
+ * **不是同一把尺子**，差别有二，且都不是小数点后的差别：
+ *   ① 剥离粒度：私有那份只抠掉 `⟦…⟧` 这几个字符，**句子剩下的部分照扫** ⇒
+ *      「产能缺口 1200 套 ⟦ref:0⟧。」剥完成「产能缺口 1200 套 。」→ 有数字 → 判**未溯源**。
+ *      共用那份剔的是**整句**（含 `⟦ref:N⟧` 的句子视为已溯源）⇒ 同一句判**已溯源**。
+ *      ⇒ 私有那份把**标准的、正确溯源的**表达法判成违规。
+ *   ② 白名单：共用那份剔 ISO 日期、限定业务单位；私有那份 `/\d/` 连 `2026-03-01`、
+ *      「第 3 步」、`outcome=OK` 里的任何一个数字都算。
+ *
+ * **两把尺子量出来的结果落进同一个契约字段** `Answer.unverifiedNumerics` ——
+ * 也就是前端 `AnswerCard` 顶部那一条琥珀提示条、以及 `server.ts` 那处 needsReview 判定。
+ * ⇒ 同一段答文，走组合路径亮琥珀条、走原生路不亮，而屏上没有任何东西告诉用户尺子换了。
+ *
+ * 形态（铁律 0.6 句式）：「我用『两条路的 `unverifiedNumerics` 都叫这个名字』当作
+ * 『它们是同一个量』的证据，而前者并不度量后者。」
+ * 同源前案见 CLAUDE.md 铁律 0.6：「金丝雀必须与主逻辑共用同一份实现，不许各抄一份正则」——
+ * 这里抄的不是金丝雀，是**主判据本身**。
+ *
+ * ⚠ 为什么选「合成一份」而不是「分成两个计数器」：分歧落点是**一个契约字段驱动一个 UI 元件**，
+ *   不是计数器（实测：本文件对 `metrics` 零引用，金丝雀 `orchestrator.ts` 命中 34 ⇒ 量法没瞎；
+ *   组合路径**从来没有**打过 `unverifiedNumerics` 计数点）。加计数器改变不了「一个字段两把尺子」。
+ * ⚠ 判据本身一个字符都没改（`util/numerics.ts` 原样复用）——收编的是调用方，不是判据。
+ */
 
 /**
  * 提取单步产物的**核心标量字段**（top-level number/string/boolean）→ 供确定性兜底内嵌可核数字。
@@ -128,7 +154,7 @@ export function coreScalars(data: unknown): { key: string; value: string }[] {
  *    等于让下一个读代码的人继续相信「走到这儿 = 没绑 provider」，而那正是 classifySynthFailure 刚治好的病。
  * WO-DIALOGUE-Q1Q2（治「未溯源空壳」类·reviewer flag）：**为所有 solver 步**内嵌其核心标量字段
  * （thresholdQty/capWanP90/baselineDemand/mainBottleneck/summary …），使无 LLM 时答案也显**可核数字**而非空 ⟦ref⟧ 壳；
- * 每数仍绑其步 ⟦ref:N⟧（→ provenance[N]·R13 溯源），非裸编（数字红线 scanUnverified 只对 LLM 综合启用·此处诚实标）。
+ * 每数仍绑其步 ⟦ref:N⟧（→ provenance[N]·R13 溯源），非裸编（数字红线 hasUnverifiedNumerics 只对 LLM 综合启用·此处诚实标）。
  */
 /**
  * 综合失败的**真实原因**（诚实分档）。此前一律说「无 LLM provider」，
@@ -282,7 +308,12 @@ export async function executePlan(plan: ComposePlan, ctx: ExecutePlanCtx): Promi
   }
 
   const blocks: AnswerBlock[] = [{ type: "text", markdown: synthText }];
-  const unverifiedNumerics = usedLlm ? scanUnverified(synthText) : false;
+  // WO-NUMERIC-MAINPATH 缺口 C：判据换成仓内唯一实现（见上方删除说明）。
+  // `usedLlm` 这一档**保留不动**：LLM 综合失败时 `synthText` 是本文件 `deterministicSynthesis`
+  // **平台自己拼的**诚实兜底（「步骤 0 · capacity_forecast … thresholdQty=1200」），
+  // 那些数字直接取自 solver 产物、不是模型编的 —— 与 `util/numerics.ts` 顶部治理面注释同一条界：
+  // 红线管「agent 自撰的答案正文」，不管「平台自撰的诚实降级摘要」。
+  const unverifiedNumerics = usedLlm ? hasUnverifiedNumerics(synthText) : false;
   const answer: Answer = {
     trustLevel: "AGENT_EXPLORATORY", // 含 LLM 综合 → 非 VERIFIED_WORKFLOW（绝不冒充「数据库事实」）
     blocks,
