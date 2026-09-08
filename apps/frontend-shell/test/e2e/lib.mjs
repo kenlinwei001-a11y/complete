@@ -97,7 +97,7 @@ export async function login(page, { user = "admin", password = "demo1234", tenan
  * ⚠ 端口可配（WO-CONNTEST-HONEST 加）：本仓同时可能有别的 agent 占着 4001/4002/5173
  * （实测三个口全被占），写死端口会让这份判据在别人占口时**恒假**——
  * 那正是「我用 X 当作 Y 的证据，而 X 并不度量 Y」的老病。
- * 默认值 "4001|4002" 与合并前 HEAD 的写死正则语义逐字符等价（收编方 MERGE-BATCH-8 核对）。
+ * 默认值 "4001|4002" 与 WO-PALETTE-USABLE 那份写死正则语义逐字符等价（收编方 MERGE-BATCH-8 核对）。
  */
 const REAL_PORTS = (process.env.E2E_API_PORTS ?? "4001|4002").replace(/[^0-9|]/g, "");
 
