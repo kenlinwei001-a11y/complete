@@ -90,16 +90,32 @@ export async function login(page, { user = "admin", password = "demo1234", tenan
 
 /**
  * 实测「这一屏真的在打真后端」——不是靠「我没设 VITE_MOCK」这种自证。
- * 判据：网络记录里必须出现打到 4001/4002 的 200 回包。
- * MSW mock 模式下请求被 service worker 截胡，`fromServiceWorker` 为真且不会有真 4001 连接。
+ * 判据：网络记录里必须出现打到**真后端端口**的 2xx/3xx 回包。
+ * MSW mock 模式下请求被 service worker 截胡，`fromServiceWorker` 为真且不会有真后端连接。
+ *
+ * ── WO-GAP-NORMALIZE 订正 · 端口不许写死（2026-09-08 实测踩到）───────────────────
+ * 原实现把 `4001|4002` 焊死在正则里。本机是**多 agent 共享**的：4001/4002 常被别的
+ * agent 的长跑服务占着，自己的后端只能起在别的端口 —— 这时原实现恒报 `ok:false`，
+ * 读起来像「这屏是 mock」，实际是**量法对错了端口**。
+ * 形态（铁律 0.6 句式）：**「我用『没有打到 4001 的包』当作『这屏在打 mock』的证据，
+ * 而前者并不度量后者。」**
+ * 故端口改由 `E2E_API_PORTS`（逗号分隔）给，缺省仍是 `4001,4002` —— 老用法逐字节不变。
+ *
+ * ⚠ 返回值里必须回显 `ports`：否则「真的是 mock」与「端口填错了」在报告里长得一模一样，
+ *   而这两件事的处置完全相反。
  */
-export function assertNoMock(netLog) {
-  const real = netLog.filter(
-    (e) => /127\.0\.0\.1:(4001|4002)/.test(e.url) && e.status >= 200 && e.status < 400,
-  );
+export function assertNoMock(netLog, ports) {
+  const list = (ports ?? process.env.E2E_API_PORTS ?? "4001,4002")
+    .toString().split(",").map((p) => p.trim()).filter(Boolean);
+  const re = new RegExp(`127\\.0\\.0\\.1:(${list.join("|")})`);
+  const real = netLog.filter((e) => re.test(e.url) && e.status >= 200 && e.status < 400);
   return {
     ok: real.length > 0,
+    ports: list,
     realHits: real.length,
+    // 金丝雀：本次记录里**打到任何主机**的 2xx/3xx 总数。真后端命中 0 而这个数也 0
+    // ⇒ 是「网络记录没收上来」（量法坏），不是「这屏在打 mock」。
+    anyHits: netLog.filter((e) => e.status >= 200 && e.status < 400).length,
     sample: real.slice(0, 5).map((e) => `${e.status} ${e.method} ${e.url}`),
   };
 }
