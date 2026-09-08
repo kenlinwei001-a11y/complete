@@ -78,6 +78,11 @@ export class SimClockService {
   }
 
   async tick(ctx: AuthCtx, advance: "1d" | "7d"): Promise<{ tickJobId: string; report: ClockTickReport }> {
+    // WO-COLUMN-SECURITY-TAIL · 残口②：tick 内 `writeForecastDeviation` 调 `loadContext(ctx.tenantId)`
+    // （不带 AuthCtx → 列投影恒等），且把算出的偏差**写回共享世界态**。这里刻意**不**补投影：
+    // 补了就等于让"谁点的 tick"决定全租户看到的模拟结果 —— 一个用户的权限污染所有人的真值（R6 确定性也就没了）。
+    // 正确处置是拒：受列级约束的调用者不得推进模拟时钟。admin / 无列级策略 → 空集 → 逐字节现行为。
+    await this.solvers.assertContextColumnUnrestricted(ctx, "模拟时钟推进（tick）");
     const clock = await this.repos.simulationClocks.get(ctx.tenantId, ctx.tenantId);
     if (!clock) throw notFound("simulation clock (run a synthetic job first)");
     if (clock.status === "TICKING") throw invalidState("a tick is already running");
