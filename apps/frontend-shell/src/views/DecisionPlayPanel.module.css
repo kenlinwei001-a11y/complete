@@ -31,3 +31,51 @@
   color: var(--muted2);
   margin-left: 4px;
 }
+
+/* ══ 触发判定条 `.trigStrip`（WO-SIM-VERDICT-FRONTEND）══════════════════════════
+ * 第一层、不折叠：「哪条规则在盯着 · 现在多少 · 越没越 · 阈值来自哪」这四样
+ * 属规范 §1 准许的数值/状态/名字；方案对比与因果图仍在抽屉里。
+ *
+ * 字号 12px = `check-text-legibility.mjs` 的 `FLOOR_PX`，与本文件 `.thHint` 同一级
+ * —— **不新起一级**（R-UI-2：一屏之内最多三级字号）。
+ */
+.trigStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted2);
+}
+.trigStrip b {
+  color: var(--txt);
+  font-weight: 600;
+}
+/* 一条规则一粒；四段（模板 / 当前值 / 结论 / 出处）是四个元素——
+   排成一行会长出「18.45 > 30」这种假断言，那是被门咬死的形态。 */
+.trigRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font-style: normal;
+}
+.trigRow i,
+.trigRow u,
+.trigRow em {
+  font-style: normal;
+  text-decoration: none;
+}
+.trigRow s {
+  text-decoration: none;
+  color: var(--muted);
+}
+.trigRow[data-fired="1"] s {
+  color: var(--danger-txt);
+}
+.trigRow[data-fired="1"] {
+  border-color: var(--danger);
+}

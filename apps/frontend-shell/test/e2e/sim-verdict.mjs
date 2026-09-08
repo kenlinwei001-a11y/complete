@@ -53,7 +53,11 @@ const clickTab = async (page, label) => {
   const els = await page.$$('[role="tab"]');
   for (const e of els) {
     const t = ((await e.evaluate((n) => n.innerText)) || "").replace(/\s+/g, " ").trim();
-    if (t.includes(label)) { await e.click({ timeout: 8000 }); return true; }
+    if (!t.includes(label)) continue;
+    // 禁用的页签点不动 —— 如实回「禁用」而不是抛超时（超时会把整条取证打断，
+    // 且「点不到」与「这一档被禁用」是两个结论）。
+    if (await e.evaluate((n) => n.disabled === true || n.getAttribute("aria-disabled") === "true")) return "disabled";
+    try { await e.click({ timeout: 8000 }); return true; } catch { return "clickfail"; }
   }
   return false;
 };
