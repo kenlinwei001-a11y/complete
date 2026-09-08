@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ConnectorType } from "@platform/contracts";
+import type { ConnectionTestResult, ConnectorType } from "@platform/contracts";
 import {
   createConnection,
   fetchConnections,
@@ -208,7 +208,7 @@ function ConnectionWizard({ onClose, onCreated }: { onClose: () => void; onCreat
   const [name, setName] = useState("");
   const [category, setCategory] = useState(""); // A11 归类：默认取类型 category，可自由输入覆盖
   const [config, setConfig] = useState<Record<string, unknown>>({});
-  const [testResult, setTestResult] = useState<{ ok: boolean; message?: string } | null>(null);
+  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 
   const testMut = useMutation({
     mutationFn: () => testConnection({ connectorTypeKey: type!.key, config }),
@@ -266,8 +266,31 @@ function ConnectionWizard({ onClose, onCreated }: { onClose: () => void; onCreat
           </div>
           <JsonSchemaForm schema={type.configSchema} value={config} onChange={setConfig} />
           {testResult && (
-            <div className={`badge ${testResult.ok ? "green" : "red"}`} style={{ marginTop: 10 }} data-testid="test-result">
-              {testResult.ok ? t.testOk : `${t.testFail}${testResult.message ? `：${testResult.message}` : ""}`}
+            /**
+             * 失败时给的是**可行动的原因**，不是笼统「连接失败」：分类标题 + 该做什么 + 实测目标/耗时。
+             * `probed` 让「试过了连不上」与「压根没试」在屏上可区分 —— 这正是修复前那个 bug 的本体
+             * （没试却报了「连接成功」）。R-UI-4：不打源码文件名/行号。
+             */
+            <div style={{ marginTop: 10 }} data-testid="test-result">
+              <div className={`badge ${testResult.ok ? "green" : "red"}`}>
+                {testResult.ok
+                  ? t.testOk
+                  : `${t.testFail}：${t.testReason[testResult.reason ?? ""] ?? t.testFail}`}
+              </div>
+              {testResult.message && (
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }} data-testid="test-result-message">
+                  {testResult.message}
+                </div>
+              )}
+              {(testResult.target || testResult.latencyMs != null || testResult.probed === false) && (
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }} data-testid="test-result-probe">
+                  {testResult.probed === false
+                    ? t.testNotProbed
+                    : `${t.testProbedIn}${testResult.target ? ` · ${testResult.target}` : ""}${
+                        testResult.latencyMs != null ? ` · ${testResult.latencyMs}ms` : ""
+                      }`}
+                </div>
+              )}
             </div>
           )}
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>

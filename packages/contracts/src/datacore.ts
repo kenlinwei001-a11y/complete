@@ -18,6 +18,54 @@ export const ConnectorTypeSchema = z.object({
 });
 export type ConnectorType = z.infer<typeof ConnectorTypeSchema>;
 
+/**
+ * 「测试连接」失败分类（可行动 ≠ 笼统「失败」）。
+ *
+ * ⚠ 这个枚举存在的理由是一次真实事故：`POST /a/v1/connections/test` 曾**只校验 configSchema 必填项**，
+ * 对 `host=nonexistent.invalid` 照样返 `{ok:true}`（实测 6ms —— 这个耗时本身就是「压根没连」的证据）。
+ * 客户 IT 在验收会上第一个点的就是这个按钮，屏上会对一个不存在的主机说「连接成功」。
+ * 所以判据不是「表单填全了没有」，而是「**真的连上了没有，连不上是哪一类连不上**」——
+ * 四类失败对应四种完全不同的下一步动作（改主机名 / 开端口 / 换账号 / 查网络），
+ * 只回一个笼统「失败」等于没修。
+ */
+export const ConnectionTestReasonSchema = z.enum([
+  "OK",                 // 真连上了
+  "MISSING_CONFIG",     // 必填项没填（表单层，未发起连接）
+  "UNKNOWN_TYPE",       // 连接器类型不存在
+  "UNSUPPORTED_TYPE",   // 类型已注册但本版本无适配器实现 ⇒ 建连后取 schema/同步必失败，不许报「连接成功」
+  "INVALID_URL",        // 地址本身解析不了（拼写/协议错）
+  "DNS_NOT_RESOLVED",   // 主机名解析不到（ENOTFOUND/EAI_AGAIN）
+  "CONNECTION_REFUSED", // 端口拒绝（ECONNREFUSED）——主机在，服务没起或端口没开
+  "TIMEOUT",            // 有界超时内没有响应（防火墙丢包 / 地址不可路由）
+  "TLS_ERROR",          // 证书/TLS 握手失败
+  "AUTH_FAILED",        // 连上了但认证被拒（HTTP 401/403）
+  "HTTP_ERROR",         // 连上了但对端返非 2xx
+  "NOT_FOUND",          // 文件型数据源的 blob 不存在
+  "UNREACHABLE",        // 连不上，且不属于以上任何一类（兜底）
+]);
+export type ConnectionTestReason = z.infer<typeof ConnectionTestReasonSchema>;
+
+export const ConnectionTestResultSchema = z.object({
+  ok: z.boolean(),
+  reason: ConnectionTestReasonSchema,
+  /** 面向用户的中文说明。⚠ no-secrets-echo：禁含密码/密钥明文，也禁含 URL 的 userinfo 与 query。 */
+  message: z.string().optional(),
+  /**
+   * 实际探测的目标，**只取 origin**（`协议//主机:端口`）——刻意丢掉 path 与 query，
+   * 因为 `?apiKey=…` 这类写法会把凭据带进回包（no-secrets-echo）。
+   */
+  target: z.string().optional(),
+  /** 探测耗时（毫秒）。它是「真的发起了连接」的可核对证据，也让超时在屏上可见。 */
+  latencyMs: z.number().optional(),
+  /**
+   * 是否**真的发起了连接尝试**。false = 还没碰网络就判定了（必填项缺失 / 类型无适配器）。
+   * 这一位是本契约最要紧的一项：它让「我们试过了，连不上」与「我们压根没试」在回包里可区分，
+   * 而这正是修复前那个 bug 的本体 —— 没试却报了成功。
+   */
+  probed: z.boolean(),
+});
+export type ConnectionTestResult = z.infer<typeof ConnectionTestResultSchema>;
+
 export const ConnectionInstanceSchema = z.object({
   id: z.string(), // conn_
   tenantId: z.string(),

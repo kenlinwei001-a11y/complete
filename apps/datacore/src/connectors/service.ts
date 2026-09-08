@@ -1,4 +1,4 @@
-import type { SourceSchema } from "@platform/contracts";
+import type { ConnectionTestResult, SourceSchema } from "@platform/contracts";
 import type { AuthCtx, Connection, RawDataset, SyncJob } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import type { BlobStore } from "../blob.js";
@@ -11,6 +11,7 @@ import { newId } from "../ids.js";
 import { notFound, validationError } from "../errors.js";
 import { createAdapter, CREDENTIAL_FIELDS, getConnectorType } from "./registry.js";
 import { profileRows, suggestDatasetKind } from "./profiler.js";
+import { probeHttp, probeTimeoutMs, safeTarget, TYPES_WITHOUT_ADAPTER } from "./probe.js";
 
 /** Per-dataset config on the connection (A8.1: TIMESERIES marking, also for CSV uploads). */
 interface DatasetConfig {
@@ -88,6 +89,107 @@ export class ConnectorService {
       await this.scheduler.register(ctx.tenantId, "CONNECTOR_SYNC", conn.id, input.schedule.cron);
     }
     return this.redact(conn);
+  }
+
+  /**
+   * 「测试连接」——**真去连**，连不上说得出是哪一类连不上。
+   *
+   * 原实现只查 `configSchema.required`，齐了就 `ok:true`：`host=nonexistent.invalid` 返「连接成功」（实测 6ms）。
+   * 现在按类型选探针，并在回包里带 `probed`（有没有真发起连接）+ `latencyMs`（真连了才有耗时）——
+   * 这两位让「试过了，连不上」与「压根没试」在回包里可区分。
+   *
+   * 探针按类型分档（**每一档都不许对没验证过的东西说成功，也不许对能用的东西说不支持**）：
+   * - **无适配器型**（`TYPES_WITHOUT_ADAPTER`）：`ok:false / UNSUPPORTED_TYPE`，理由见 probe.ts。
+   * - **知识库**（`knowledge_base`）：由 `KbService` 服务、文档靠上传灌入 ⇒ 探后备存储，**不探 endpoint**。
+   * - **网络型**（`rest_api`）：有界 HTTP GET，按 DNS/拒绝/超时/认证/HTTP 分类。
+   * - **文件型**（`file_upload`/`prototype_html`）：探 blob 在不在——这就是该源的「可达」。
+   * - **内置样例型**（`mock_*`）：真调 `adapter.listDatasets()` 枚举一遍。**这是反向对照**：
+   *   它必须仍返 `ok:true`，否则就是把按钮做成了永远失败。
+   */
+  async testConnection(
+    ctx: AuthCtx,
+    input: { connectorTypeKey: string; config: Record<string, unknown> },
+  ): Promise<ConnectionTestResult> {
+    const type = getConnectorType(input.connectorTypeKey);
+    if (!type) {
+      return { ok: false, reason: "UNKNOWN_TYPE", message: `未知连接器类型：${input.connectorTypeKey}`, probed: false };
+    }
+    // ① 表单层：必填项。未发起连接 ⇒ probed:false（保留原行为，它是本次的金丝雀）。
+    const required = (type.configSchema.required as string[] | undefined) ?? [];
+    const missing = required.filter((k) => {
+      const v = input.config[k];
+      return v == null || v === "";
+    });
+    if (missing.length > 0) {
+      return { ok: false, reason: "MISSING_CONFIG", message: `缺少必填配置：${missing.join("、")}`, probed: false };
+    }
+    // ② 已注册但无适配器：不去连，也不谎报成功。
+    if (TYPES_WITHOUT_ADAPTER.has(type.key)) {
+      return {
+        ok: false,
+        reason: "UNSUPPORTED_TYPE",
+        message: `当前版本尚未内置 ${type.key} 的数据适配器：即使网络可达，建立连接后也无法读取表结构或同步数据。请改用文件导入或通用 REST 接口接入。`,
+        probed: false,
+        target: safeTarget(input.config.host ?? input.config.instanceUrl ?? input.config.jdbcUrl),
+      };
+    }
+    const timeoutMs = probeTimeoutMs();
+    // ③ 知识库：由 KbService 服务，文档靠上传灌入、不从 endpoint 拉取 ⇒ **不许拿 HTTP 探 endpoint**
+    //    （实测：databuilder 建的 KB 连接 endpoint 是 `internal://databuilder`，HTTP 探必失败 = 假阴性）。
+    //    真探针 = 后备存储读得动吗：真去数一遍本租户该类型下的文档。
+    if (type.key === "knowledge_base") {
+      const startedAt = Date.now();
+      try {
+        // 向导里连接还没落库、拿不到 connId ⇒ 只能按租户统计。措辞要如实说是「本租户」，
+        // 不许写成「本连接已存 N 篇」——那是个连数字都对不上的谎。
+        const docs = await this.repos.kbDocs.list(ctx.tenantId, () => true);
+        return {
+          ok: true,
+          reason: "OK",
+          message: `知识库可用（本租户现有 ${docs.length} 篇文档）。文档通过「上传」灌入，不从该地址拉取。`,
+          latencyMs: Date.now() - startedAt,
+          probed: true,
+        };
+      } catch {
+        return { ok: false, reason: "UNREACHABLE", message: "知识库存储读取失败：请稍后重试或联系管理员。", latencyMs: Date.now() - startedAt, probed: true };
+      }
+    }
+    // ④ 网络型：有界 HTTP 探测。
+    const urlField: Record<string, string> = { rest_api: "url" };
+    const field = urlField[type.key];
+    if (field) return probeHttp(input.config[field], this.fetchImpl, timeoutMs);
+    // ⑤ 文件型：blob 在不在就是「可达」。
+    if (type.key === "file_upload" || type.key === "prototype_html") {
+      const key = input.config.blobKey;
+      if (typeof key !== "string" || key === "") {
+        return { ok: false, reason: "MISSING_CONFIG", message: "缺少必填配置：blobKey", probed: false };
+      }
+      const startedAt = Date.now();
+      try {
+        const exists = await this.blob.exists(key);
+        const latencyMs = Date.now() - startedAt;
+        return exists
+          ? { ok: true, reason: "OK", message: "文件已就绪，可读取。", latencyMs, probed: true }
+          : { ok: false, reason: "NOT_FOUND", message: "文件不存在：该上传记录已失效或被清理，请重新上传。", latencyMs, probed: true };
+      } catch {
+        return { ok: false, reason: "UNREACHABLE", message: "读取文件存储失败：请稍后重试或联系管理员。", latencyMs: Date.now() - startedAt, probed: true };
+      }
+    }
+    // ⑥ 内置样例型：真枚举一遍数据集（反向对照——这一档必须仍然 ok:true）。
+    const startedAt = Date.now();
+    try {
+      const adapter = createAdapter(type.key, input.config, this.blob, this.fetchImpl);
+      const datasets = await adapter.listDatasets();
+      const latencyMs = Date.now() - startedAt;
+      return { ok: true, reason: "OK", message: `连接可用，可读取 ${datasets.length} 张数据表。`, latencyMs, probed: true };
+    } catch (err) {
+      const latencyMs = Date.now() - startedAt;
+      // createAdapter 对未实现类型抛的正是这一条 —— 兜住它，避免 500。
+      const msg = err instanceof Error && /no adapter implementation/.test(err.message)
+        ? `当前版本尚未内置 ${type.key} 的数据适配器：建立连接后也无法读取表结构或同步数据。`
+        : "连接失败：数据源未能返回表结构。";
+      return { ok: false, reason: "UNSUPPORTED_TYPE", message: msg, latencyMs, probed: true };
+    }
   }
 
   /** Update schedule → re-register/unregister the CONNECTOR_SYNC job. */

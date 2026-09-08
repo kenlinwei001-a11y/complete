@@ -24,6 +24,7 @@ import type {
   SliceLibraryResponse,
   DataBuilderAgent,
   ConnectionInstance,
+  ConnectionTestResult,
   ValidationPolicy,
   ConnectorType,
   FeatureDef,
@@ -586,7 +587,7 @@ export const fetchConnectorCategories = () => api.a<{ categories: string[] }>("/
 export const createConnection = (body: { connectorTypeKey: string; name: string; config: Record<string, unknown>; category?: string }) =>
   api.a<ConnectionInstance>("/a/v1/connections", { body });
 export const testConnection = (body: { connectorTypeKey: string; config: Record<string, unknown> }) =>
-  api.a<{ ok: boolean; message?: string }>("/a/v1/connections/test", { body });
+  api.a<ConnectionTestResult>("/a/v1/connections/test", { body });
 export const triggerSync = (connId: string) =>
   api.a<{ syncJobId: string }>(`/a/v1/connections/${connId}/sync`, { body: {} });
 export const fetchSyncJob = (jobId: string) => api.a<SyncJobVM>(`/a/v1/sync-jobs/${jobId}`);

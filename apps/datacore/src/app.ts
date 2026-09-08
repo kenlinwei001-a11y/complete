@@ -6668,9 +6668,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   // ---- A1 connectors --------------------------------------------------------------------
   app.get("/a/v1/connector-types", async () => CONNECTOR_TYPES);
-  // 前端 PRD §7.4 新建向导「测试连接」：按 configSchema 必填项校验（mock/file 类直接通过）。
+  // 前端 PRD §7.4 新建向导「测试连接」：**真去连**，连不上给可行动的失败分类（见 connectors/probe.ts）。
+  // ⚠ 原实现只查 configSchema 必填项、齐了就 `return { ok: true }` —— 对 `host=nonexistent.invalid`
+  // 照样返「连接成功」（实测 6ms，连 DNS 都没查）。客户 IT 验收会上第一个点的就是这个按钮。
   app.post("/a/v1/connections/test", async (req) => {
-    ctx(req);
+    const c = ctx(req);
     const body = parseBody(
       z.object({
         connectorTypeKey: z.string().min(1),
@@ -6678,16 +6680,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       }),
       req.body,
     );
-    const ct = CONNECTOR_TYPES.find((t) => t.key === body.connectorTypeKey);
-    if (!ct) return { ok: false, message: `未知连接器类型：${body.connectorTypeKey}` };
-    const schema = (ct.configSchema ?? {}) as { required?: string[] };
-    const required = Array.isArray(schema.required) ? schema.required : [];
-    const missing = required.filter((k) => {
-      const v = body.config[k];
-      return v == null || v === "";
-    });
-    if (missing.length > 0) return { ok: false, message: `缺少必填配置：${missing.join("、")}` };
-    return { ok: true };
+    return connectors.testConnection(c, body);
   });
   app.post("/a/v1/connections", async (req, reply) => {
     const c = ctx(req);
