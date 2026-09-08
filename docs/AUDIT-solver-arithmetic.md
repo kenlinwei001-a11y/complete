@@ -33,31 +33,43 @@ C3 末行是反向自证：不存在的 key 必须报 0，报了非 0 说明量�
 > 判断「这个数是不是编的」的实现**同时存在三份**，两份不共用判据。
 
 **求解器产的数 N = 63 个内置求解器 key**（+ LLM 生成的 PROVISIONAL 临时求解器，租户级不定数）
-· **agent 可产数并上屏的路径 M = 10 条**（A 段，其中 5 条今天真的会发生、3 条被结构性堵死、2 条无数据）
-· **双来源冲突 K = 4 处**（C 段，全部为「无任何机制比对」，不是「实测数字对不上」）
+· **agent 可产数并上屏的路径 M = 10 条**（A 段：**默认无门可达 3 条** · 有条件可达 3 条 · 暗发关 3 条 · 无数据 1 条）
+· **双来源冲突 K = 4 处**（C 段，全部为「无任何机制比对」，**不是**「实测数字对不上」——本单未起服务）
 
 **一句最要害的话**：`util/numerics.ts` 里那段注释写着「原生路刻意不设此拦——只统计
-`numericRedline{action:"would_block"}`」。**实测这个统计打在 `engine.ts` 的
-`runAgent` 出口上，而 QOS path-B 走的是 `orchestrator.ts` 直调 `runAgentLoop`，不经 engine 那个出口。**
-⇒ 主路的裸数**既不拦、也不计**。「先拿数再定收不收紧」这个决策所依据的那个数，
-在最需要它的那条路上是 0。
+`numericRedline{action:"would_block"}`，收不收紧是产品裁决」。
+**实测这个统计打在 `engine.ts:runRegisteredAgent`（437–939 行）的出口上；
+而 QOS 通用 path-B 走的是 `orchestrator.ts:runPathB` 直调 `runAgentLoop`，根本不经这个方法。**
+（`runAgentLoop(` 全仓只有 **2** 个调用点：`engine.ts` 与 `router/orchestrator.ts`；
+金丝雀：同一把量法看得见 `acceptFinalAnswer(` 的 2 处引用。）
+⇒ **最容易出裸数的那条路，既不拦、也不计。**
+形态照铁律 0.6 句式：
+> **「我用『我在 engine 出口记了 would_block』当作『我知道主路有多少裸数』的证据，而前者并不度量后者。」**
+
+「先拿数再定收不收紧」这个裁决所依据的那个数，在最需要它的那条路上恒为 0。
 
 ---
 
 ## A · 违反原则的位置（agent 自己算了数，且这个数上了屏）
 
-| # | 路径（file:符号） | 这个数是什么 | 它怎么被算出来的 | 它上到屏上的哪里 | 严重度 |
-|---|---|---|---|---|---|
-| A1 | `agent/loop.ts:acceptFinalAnswer` ← `router/orchestrator.ts:runPathB`（直调 `runAgentLoop`） | final_answer 正文里的任意业务数字 | 模型自撰。`scanBlocks` 扫到裸数**只置 `unverifiedNumerics:true` + `metrics.unverifiedNumerics.inc`，仍 `ok:true`** | `answer.final` → `AnswerCard`，顶部琥珀条 + 正文原样显示 | **高** |
-| A2 | 同 A1，**观测面** | ——（不是数，是"有多少这样的数"） | `numericRedline{path:"AGENT_NATIVE",action:"would_block"}` 只打在 `engine.ts:runAgent` 出口；**path-B 不经该出口** | 不上屏，但它是「收不收紧」这个产品裁决的唯一依据 | **高** |
-| A3 | `router/coordinator.ts:synthesize` | 各角色 agent 答文里的数字，逐字拼进汇总块 | 由各角色 agent 自撰；`synthesize` **硬写 `unverifiedNumerics:false` + `provenance:[]`**，不扫 | 多角色协调答案；**琥珀条被这行硬写关掉了** | **高** |
-| A4 | `router/execute-plan.ts:scanUnverified`（私有实现） | 组合路径「综合」步正文里的数字 | LLM `compose` 自撰；判据**另抄一份**（`/\d/` 全量，与 `util/numerics.ts` 的 `hasUnverifiedNumerics` 不是同一份实现）；只标不断 | 组合路径答案 | **中**（更严，但**判据分裂**⇒ 两路的数不可比） |
-| A5 | `agent/loop.ts:acceptFinalAnswer` 的 `opts.expectsSchema` 分支 | 结构化产出里**自由文本字段**（如 `AgentProposalDraft.rationale`）中的数字 | 模型自撰；该分支**提前 return**，`unverifiedNumerics` 硬写 `false`，`structured` 从不过 `scanBlocks` | 凡渲染 `structured` 的界面（方案卡的理由行） | **中** |
-| A6 | `router/l2-decompose.ts:mergeSlotFloor` | 求解器**入参**（`demandDelta` / `weeks` 等 number 槽） | 确定性底座只填空白，**冲突时 LLM 赢**（注释原文）；LLM 抽的数直接成为 solver args | 屏上的数是 solver 算的（合规），但**前提是 LLM 给的，且无留痕对比** | **中** |
-| A7 | `synthetic/service.ts:resolveTemplate` | 未知行业的整张 `IndustryTemplate`（含各类数值区间） | 非 `battery-manufacturing` 行业 → `llm.parseStructured(IndustryTemplateSchema)` **直接返回并落库使用**；记 `source:"LLM"` 但**无人工闸** | 该租户全部合成对象 → 求解器 → 屏上一切读数 | **中**（demo 走 battery 硬编码分支，不触发） |
-| A8 | `solvers/llm-gen.ts:generateSolverDraft` → `solvers/service.ts:generateProvisionalSolver` | 临时求解器**的公式本身** | LLM 写 `computeSource` → 冻结(hash+版本) → 接地校验 → 沙箱跑通 → `PROVISIONAL/UNVERIFIED` | 输出强标 `__provisional{origin,status,trustLevel}`；写真值需人工晋升 `GOVERNED` | **低**（运行期确定性 + 强标 + 写闸；但公式作者是 LLM） |
-| A9 | `agent/production-cognition.ts:llmRollingSummarizer`（经 `orchestrator.ts:makeLlmRollingSummarizer` 注入） | 折叠轮次的「前情摘要」里复述的关键数字 | LLM 复述；提示词写「只复述、不新造」，**无机器校验**；摘要回灌进后续推理上下文 | 不直接上屏，但**污染后续答案里的数** | **中** |
-| A10 | `workflow/executor.ts` `case "llm_compose"` → `render_answer` 文本块 | 工作流综合文本里的数字 | LLM `compose`；`renderAnswer` **会**用共享 `scanBlocks` 扫（这点合规），但 `trustLevel` 仍是 `VERIFIED_WORKFLOW` | 绿色「已验证」徽标下的 LLM 散文 | **低**（今天**零数据**，见 D 段） |
+⚠ **「严重度」与「今天可达吗」分成两列，不许合并** —— 合并就会犯本仓 `features.ts` 那条注释点名的病：
+「**『我以为暗发了』和『它真的关着』是两个命题**」。缺陷本身有多重，与它今天会不会发生，是两个量。
+
+| # | 路径（file:符号） | 这个数是什么 | 它怎么被算出来的 | 它上到屏上的哪里 | 严重度 | 今天可达吗（代码层判定） |
+|---|---|---|---|---|---|---|
+| A1 | `agent/loop.ts:acceptFinalAnswer` ← `router/orchestrator.ts:runPathB`（**直调** `runAgentLoop`） | final_answer 正文里的任意业务数字 | 模型自撰。`scanBlocks` 扫到裸数**只置 `unverifiedNumerics:true` + `metrics.unverifiedNumerics.inc`，仍 `ok:true`** | `answer.final` → `AnswerCard`，顶部琥珀条 + 正文原样显示 | **高** | ✅ **默认可达**：`outOfCatalog`（分类没命中意图）即无门直落 `runPathB` |
+| A2 | 同 A1，**观测面** | ——（不是数，是"有多少这样的数"） | `numericRedline{path:"AGENT_NATIVE",action:"would_block"}` 打在 `engine.ts:runRegisteredAgent`（437–939）出口；**`runPathB` 不经该方法** | 不上屏，但它是「收不收紧」这个产品裁决的唯一依据 | **高** | ✅ **默认可达**（= A1 那条路每次都漏计） |
+| A3 | `router/coordinator.ts:synthesize` | 各角色 agent 答文里的数字，逐字拼进汇总块 | 由各角色 agent 自撰；`synthesize` **硬写 `unverifiedNumerics:false` + `provenance:[]`**，不扫 | 多角色协调答案；**琥珀条被这行硬写关掉了** | **高** | ◑ 暗发关：`agent.coordinator` `defaultOn:false` 且在 `QOS_DARK_LAUNCH_FEATURES` |
+| A4 | `router/execute-plan.ts:scanUnverified`（**私有**实现） | 组合路径「综合」步正文里的数字 | LLM `compose` 自撰；判据**另抄一份**（`/\d/` 全量，与 `util/numerics.ts:hasUnverifiedNumerics` 不是同一份实现）；只标不断 | 组合路径答案 | **中**（判据分裂 ⇒ 两路的数不可比） | ◑ 暗发关：`qos.compose-path` `defaultOn:false` |
+| A5 | `agent/loop.ts:acceptFinalAnswer` 的 `opts.expectsSchema` 分支 | 结构化产出里**自由文本字段**（如 `AgentProposalDraft.rationale`）中的数字 | 模型自撰；该分支**提前 return**，`unverifiedNumerics` 硬写 `false`，`structured` 从不过 `scanBlocks` | 凡渲染 `structured` 的界面（方案卡的理由行） | **中** | ✅ 可达：workflow `invoke_agent` 带 `expectsSchema` 的步走这条；提案路另有暗发门 |
+| A6 | `router/l2-decompose.ts:mergeSlotFloor` | 求解器**入参**（`demandDelta` / `weeks` 等 number 槽） | 确定性底座只填空白，**冲突时 LLM 赢**（注释原文）；LLM 抽的数直接成为 solver args | 屏上的数是 solver 算的（合规），但**前提是 LLM 给的，且无留痕对比** | **中** | ✅ **默认可达**：`orchestrator` 主链路两处调用（多意图选型 + `proceedWithIntent` 前） |
+| A7 | `synthetic/service.ts:resolveTemplate` | 未知行业的整张 `IndustryTemplate`（含各类数值区间） | 非 `battery-manufacturing` 行业 → `llm.parseStructured(IndustryTemplateSchema)` **直接返回并落库使用**；记 `source:"LLM"` 但**无人工闸** | 该租户全部合成对象 → 求解器 → 屏上一切读数 | **中** | ◑ 仅非 battery 行业；demo 走硬编码 `BATTERY_TEMPLATE` 早返回 |
+| A8 | `solvers/llm-gen.ts:generateSolverDraft` → `solvers/service.ts:generateProvisionalSolver` | 临时求解器**的公式本身** | LLM 写 `computeSource` → 冻结(hash+版本) → 接地校验(`checkGrounding`) → 沙箱跑通 → `PROVISIONAL/UNVERIFIED` | 输出强标 `__provisional{origin,status,trustLevel}`；写真值需人工晋升 `GOVERNED` | **低**（运行期确定性 + 强标 + 写闸；但公式作者是 LLM） | ✅ 可达：`SolverReviewPage.tsx` → `endpoints.ts` → `app.ts` → service，四层全通 |
+| A9 | `agent/production-cognition.ts:llmRollingSummarizer`（经 `orchestrator.ts:makeLlmRollingSummarizer` 注入） | 折叠轮次的「前情摘要」里复述的关键数字 | LLM 复述；提示词写「只复述、不新造」，**无机器校验**；摘要回灌进后续推理上下文 | 不直接上屏，但**污染后续答案里的数** | **中** | ◑ 需 `llmSettings.providerAvailable("compose")` 为真；否则退确定性 `defaultRollingSummary` |
+| A10 | `workflow/executor.ts` `case "llm_compose"` → `render_answer` 文本块 | 工作流综合文本里的数字 | LLM `compose`；`renderAnswer` **会**用共享 `scanBlocks` 扫（这点合规），但 `trustLevel` 仍是 `VERIFIED_WORKFLOW` | 绿色「已验证」徽标下的 LLM 散文 | **低** | ❌ **无数据**：已发布 workflow 定义零处用 `llm_compose`（见 D 段金丝雀） |
+
+**M 的口径**：10 条路径中，**默认无门可达 3 条**（A1/A2/A6）· **有条件可达 3 条**（A5/A8，以及 A9 视 provider）·
+**暗发关 3 条**（A3/A4/A7）· **无数据 1 条**（A10）。
 
 ### A 段最要害的两条，展开
 
@@ -67,17 +79,33 @@ C3 末行是反向自证：不存在的 key 必须报 0，报了非 0 说明量�
 ② dsh 路（`dsh-runtime/reassemble.ts`）**无条件阻断**，复用同一份 `scanBlocks`；
 ③ 原生路**刻意不拦**，先只统计 `would_block`，收不收紧是产品裁决。
 
-前两条实测属实。**第三条的落地位置错了**：`numericRedline{action:"would_block"}` 打在
-`engine.ts` 的 `runAgent` 出口；而 `runAgentLoop` 全仓只有**两个**调用点
-（`engine.ts` 与 `router/orchestrator.ts`，金丝雀：同一把量法看得见 `acceptFinalAnswer` 的 2 处引用），
-**QOS path-B 走的是第二个，不经 engine 出口** ⇒ 主路一次都不计。
-形态照铁律 0.6 句式：**「我用『我在 engine 出口记了 would_block』当作『我知道主路有多少裸数』的证据，而前者并不度量后者。」**
+前两条实测属实，第三条**只对经 `runRegisteredAgent` 的那几条路成立**。
+实测 `runRegisteredAgent` 的调用方共 5 处（`propose-candidates` · `skill-probe` ·
+`orchestrator` 的角色 agent 路 · `orchestrator` 的 Coordinator 扇出 · `engine` 的嵌套 `invoke_agent`）——
+**通用自由探索 path-B 一处都不在里面**。它才是「真开放题」的落点，也是最容易出裸数的那条。
 
 **A3 —— 硬写的诚实位**
 `coordinator.synthesize` 把各角色 agent 的 `answerText` **逐字**拼进 markdown 块，
 然后返回 `unverifiedNumerics: false`。这一位不是量出来的，是**断言**出来的。
-后果比 A1 更重：A1 至少还亮琥珀条，A3 把琥珀条**关掉**了 ——
+性质比 A1 更差：A1 至少还亮琥珀条，A3 把琥珀条**关掉**了 ——
 「没有未溯源数字」与「没人去看有没有」在屏上一模一样。
+（今天此路暗发关，所以**严重度高、可达性低**；`agent.coordinator` 一旦翻开，这条立刻生效。）
+
+**A6 —— 唯一一条「合规的数，可疑的前提」**
+它和 A1–A5 不同类：屏上那个数**确实**是求解器算的，追得到出处。
+问题在**入参**：`mergeSlotFloor` 的注释原文是
+「底座只填空白，**冲突时 LLM 赢**（它有语义）」，
+接线点是 `orchestrator.proceedWithIntent`（其自注：「**所有** path-A 绑定的必经之路」）。
+
+⚠ 不许把这条说过头 —— `#108` 的**底座回落**是真的存在的（`slots.ts:fillSlots` 第 ①.c 段）：
+LLM 给的值**校验不过**时（解析不到 / 不合法）会改用底座值。所以「LLM 全面压过确定性」是错的说法。
+**真正的缺口窄得多，也因此更难看见**：对 `number` 槽（`demandDelta` / `weeks`），
+LLM 给一个**合法但不对**的数（问句写「10%」而它抽成 `20`）会在第 ① 步直接通过，
+底座回落**根本轮不到跑**；`noteResolution` 记的是**胜者**，不记「两个抽取器当时给的不是同一个值」。
+⇒ 求解器忠实地算了一道**可能不是用户问的那道**题，而屏上一切看起来都可溯源。
+
+判据一句话：**可溯源 ≠ 问对了题。**
+（这也正是「对照实验」判据能抓、而三分法抓不到的那一格：链路通、数字有出处、值却错。）
 
 ---
 
