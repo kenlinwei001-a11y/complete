@@ -3173,16 +3173,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     //   `"<path>: <message>"` 的人读串，不含任何 zod 内部字段。
     const body = parseBody(ParetoRequestSchema, req.body ?? {});
     /**
-     * WO-WORLDSTATE-CONTRACT · R2：给了 `sessionId` 就必须是**本租户真实存在**的会话。
+     * WO-WORLDSTATE-CONTRACT · **本口刻意不校验 `sessionId` 的存在性**（这是判断，不是遗漏）。
      *
-     * ⛔ 这一句不是形式主义。改前实测：传一个**根本不存在**的 sessionId，本口照样 200
-     * 并回一整套本体真值口径的方案 —— 调用方拿到的是「一份看起来正常、其实答非所问的数」，
-     * 正是本单要修的那个病的形态。**宁可 404 也不给一个静默退化的答案。**
-     * ⚠ 本口自身**不叠世界态**（世界态在装配侧就已经烤进 `args` 了，见
-     * `SolverService.assembleParetoModel`）——它在这里只做**存在性闸门**，
-     * 不改一格读数，故对既有调用方逐字节无影响。
+     * 开工时我在这里加过一句 `getSimOr404(c, body.sessionId)`，理由是「R2 不许静默退化」。
+     * **实测把它否掉了**：`opt-pareto-assemble.seam.test.ts` 与 `opt-pareto.seam.test.ts`
+     * 共 3 个既有用例当场从 200 变 404（它们传的是 `sess-1` / `sess-pareto-http` 这类
+     * **合成标签**，本来就没打算指向一条真会话）。追一层看契约原文，它们没写错 ——
+     * `ParetoRequestSchema.sessionId` 的定义是「**R6 确定性键的一部分**」，
+     * 即一个**标签**，不是外键。把标签升级成外键是另一个契约变更，不在本单射程内。
+     *
+     * **R2 落在真正读世界态的那一口**：`POST …/optimize-pareto/assemble` ——
+     * 会话不存在/属于别的租户即 404（`SolverService.assembleParetoModel` 第一行）。
+     * 本口**一格世界态都不读**：世界态在装配侧就已经烤进 `args` 了，
+     * 它这里只是把上一跳回的那份请求原样求解。
+     * ⇒ 「静默退化成本体真值」这个风险在本口**结构上不存在**：args 是调用方自己给的。
      */
-    if (body.sessionId !== undefined) await getSimOr404(c, body.sessionId);
     const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
     return runOptimizePareto(solve, body);
   });
