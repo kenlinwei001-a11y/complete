@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import type { ChainLossMatrixResult } from "@platform/contracts";
+import {
+  LOSS_EXPOSURE_CAPTION,
+  MONEY_CONSERVATION_TOLERANCE_YUAN,
+  type ChainLossMatrixResult,
+} from "@platform/contracts";
 import { server } from "./setup";
 import { loginAs, renderWithClient } from "./utils";
 import { SandboxAttr } from "@/views/sim/console/SandboxAttr";
@@ -61,13 +65,14 @@ const MATRIX_WITH_DATA: ChainLossMatrixResult = {
     { nodeId: NODE_B, stage: "MATERIAL", label: "齐套发料" },
   ],
   bases: [{ baseId: BASE_A, name: "甲基地" }],
+  // 金额桩按真口径自洽：敞口 100 万元，两格按 37%/63% 分完 ⇒ Σ格 == 敞口（守恒成立）。
   cells: [
-    { nodeId: NODE_A, baseId: BASE_A, pct: 37, days: 4.1 },
-    { nodeId: NODE_B, baseId: BASE_A, pct: 63, days: 6.9 },
+    { nodeId: NODE_A, baseId: BASE_A, pct: 37, days: 4.1, valueAtRiskYuan: 370_000 },
+    { nodeId: NODE_B, baseId: BASE_A, pct: 63, days: 6.9, valueAtRiskYuan: 630_000 },
   ],
   rowTotals: [
-    { nodeId: NODE_A, days: 4.1, pctOfGrandLoss: 37, baseCount: 1 },
-    { nodeId: NODE_B, days: 6.9, pctOfGrandLoss: 63, baseCount: 1 },
+    { nodeId: NODE_A, days: 4.1, pctOfGrandLoss: 37, baseCount: 1, valueAtRiskYuan: 370_000 },
+    { nodeId: NODE_B, days: 6.9, pctOfGrandLoss: 63, baseCount: 1, valueAtRiskYuan: 630_000 },
   ],
   colTotals: [
     {
@@ -81,9 +86,26 @@ const MATRIX_WITH_DATA: ChainLossMatrixResult = {
       missingNodeIds: [],
       reason: null,
       probe: null,
+      exposureYuan: 1_000_000,
+      exposureOrderCount: 1,
+      exposureSkippedOrders: 0,
+      exposureDeliveredOrders: 0,
+      moneyResidualYuan: 0,
+      moneyOk: true,
     },
   ],
   residual: { byBase: [{ baseId: BASE_A, residualPct: 0, ok: true, reason: null }], rows: 0, rowsOk: true, tolerancePct: 0.5 },
+  money: {
+    orderBookTotalYuan: 1_000_000,
+    orderBookCount: 1,
+    orderBookSkipped: 0,
+    orderBookDelivered: 0,
+    exposureSumYuan: 1_000_000,
+    exposureOverlapRatio: 1,
+    allColumnsMoneyOk: true,
+    toleranceYuan: MONEY_CONSERVATION_TOLERANCE_YUAN,
+    caption: LOSS_EXPOSURE_CAPTION,
+  },
   summary: "接缝桩：两环节 × 一基地",
 };
 

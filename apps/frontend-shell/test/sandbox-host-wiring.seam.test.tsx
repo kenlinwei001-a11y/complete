@@ -3,7 +3,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import type { ComponentType } from "react";
-import { SIM_METRIC_SERIES_DEFAULT_LIMIT, type ChainLossMatrixResult, type ChainNodeDetail, type SimMetricSeriesResponse, type SimSession } from "@platform/contracts";
+import { LOSS_EXPOSURE_CAPTION, MONEY_CONSERVATION_TOLERANCE_YUAN, SIM_METRIC_SERIES_DEFAULT_LIMIT, type ChainLossMatrixResult, type ChainNodeDetail, type SimMetricSeriesResponse, type SimSession } from "@platform/contracts";
 import { server } from "./setup";
 import type { ViewConfigVM } from "@/api/types";
 import type { ViewRendererProps } from "@/views/registry";
@@ -191,8 +191,8 @@ const NODE_DETAIL: ChainNodeDetail = {
 const CHAIN_LOSS_MATRIX: ChainLossMatrixResult = {
   nodes: [{ nodeId: "capacity.aging", stage: "CAPACITY", label: "老化静置" }],
   bases: [{ baseId: "base_a", name: "甲基地" }],
-  cells: [{ nodeId: "capacity.aging", baseId: "base_a", pct: 100, days: 4 }],
-  rowTotals: [{ nodeId: "capacity.aging", days: 4, pctOfGrandLoss: 100, baseCount: 1 }],
+  cells: [{ nodeId: "capacity.aging", baseId: "base_a", pct: 100, days: 4, valueAtRiskYuan: 1_000_000 }],
+  rowTotals: [{ nodeId: "capacity.aging", days: 4, pctOfGrandLoss: 100, baseCount: 1, valueAtRiskYuan: 1_000_000 }],
   colTotals: [
     {
       baseId: "base_a",
@@ -205,9 +205,27 @@ const CHAIN_LOSS_MATRIX: ChainLossMatrixResult = {
       missingNodeIds: [],
       reason: null,
       probe: null,
+      // 唯一一格吃满 100% ⇒ 该格金额 == 本列敞口（守恒平凡成立）。
+      exposureYuan: 1_000_000,
+      exposureOrderCount: 1,
+      exposureSkippedOrders: 0,
+      exposureDeliveredOrders: 0,
+      moneyResidualYuan: 0,
+      moneyOk: true,
     },
   ],
   residual: { byBase: [{ baseId: "base_a", residualPct: 0, ok: true, reason: null }], rows: 0, rowsOk: true, tolerancePct: 0.5 },
+  money: {
+    orderBookTotalYuan: 1_000_000,
+    orderBookCount: 1,
+    orderBookSkipped: 0,
+    orderBookDelivered: 0,
+    exposureSumYuan: 1_000_000,
+    exposureOverlapRatio: 1,
+    allColumnsMoneyOk: true,
+    toleranceYuan: MONEY_CONSERVATION_TOLERANCE_YUAN,
+    caption: LOSS_EXPOSURE_CAPTION,
+  },
   summary: "接缝桩：一环节 × 一基地",
 };
 
