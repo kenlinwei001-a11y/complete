@@ -303,11 +303,15 @@ describe("WO-DSH-E2E · L5 诚实层穿透", () => {
 
   it("L5.P3 EMPTY 口径保真：软收尾逐字 == 末 assistant 文本；空文本 ⇒ 诚实兜底逐字；provenance 空", { timeout: INTEGRATION_TIMEOUT }, async () => {
     // 非空软收尾：markdown 逐字 == 剧本原文（不增不减）。
-    const nonEmpty = await runScripted([{ text: "直接作答：L5-EMPTY-PROBE-7319", usage: USAGE }]);
+    // ⚠ 探针串**刻意不含数字**（WO-NUMERIC-REDLINE-BLOCK 起）：软收尾正文属 agent 自撰产出，
+    // 走数字红线；原探针 `…-7319` 的 4 位数会被红线当未溯源数值拦下 ⇒ 整条 ok:false。
+    // 本用例的被测对象是**逐字保真**，唯一性靠字母串即可，不需要数字。
+    // ⛔ 不许为让它过而放宽红线判据 —— 该改的是探针，不是门。
+    const nonEmpty = await runScripted([{ text: "直接作答：L5-EMPTY-PROBE-QIJIUYAO", usage: USAGE }]);
     expect(nonEmpty.run.result.ok).toBe(true);
     if (nonEmpty.run.result.ok) {
       const md = nonEmpty.run.result.answer.blocks[0];
-      expect(md && "markdown" in md ? md.markdown : "").toBe("直接作答：L5-EMPTY-PROBE-7319");
+      expect(md && "markdown" in md ? md.markdown : "").toBe("直接作答：L5-EMPTY-PROBE-QIJIUYAO");
       expect(nonEmpty.run.result.answer.provenance).toEqual([]);
     }
     // 空文本：诚实兜底串逐字，不编造内容不编造溯源。
