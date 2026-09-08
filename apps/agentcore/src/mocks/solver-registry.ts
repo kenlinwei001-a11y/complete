@@ -51,7 +51,7 @@ export interface MockSolverRegistryItem {
   outputShape?: string[];
 }
 
-/** 求解器全集（**62 条**·取自真实注册表返回·按 key 字典序；61→62 = WO-CAPACITY-EDGE `capacity_ledger`）。 */
+/** 求解器全集（**63 条**·取自真实注册表返回·按 key 字典序；61→62 = WO-CAPACITY-EDGE `capacity_ledger`；62→63 = WO-VULN-REI `supply_vulnerability`，A 侧 GENERIC 档新增而本文件漏跟 ⇒ mock-discover-parity §2/§3 报红，本次补齐）。 */
 export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
   {
     "key": "affected_orders",
@@ -1976,6 +1976,35 @@ export const MOCK_SOLVER_REGISTRY: readonly MockSolverRegistryItem[] = [
       "reconChecks",
       "reconciled",
       "residualPct",
+      "summary"
+    ]
+  },
+  {
+    "key": "supply_vulnerability",
+    "pool": "generic",
+    "name": "供应脆弱度",
+    "description": "还没断、但哪个供应商/物料最该担心：逐供应商节点算单点与否 + TTR（备份供应商提前期，无备份报「无恢复路径」而非 0 天）+ 敞口占比（BOM 成本 × 在手订单量的相对占比），出按敞口排序的脆弱清单。与「断供影响半径」互补：那个要先指定担心谁，这个回答该担心谁。",
+    "argHints": {},
+    "domain": "generic",
+    "answersQuestions": [
+      "我该担心哪个供应商",
+      "哪些物料是单点供应",
+      "断供恢复要多久（TTR）",
+      "供应冗余在哪里最薄"
+    ],
+    "tags": [
+      "脆弱点",
+      "vulnerability",
+      "单点供应",
+      "TTR",
+      "供应冗余"
+    ],
+    "outputShape": [
+      "suppliers",
+      "materials",
+      "ranking",
+      "counts",
+      "topBySpendOnly",
       "summary"
     ]
   },
