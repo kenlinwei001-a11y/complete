@@ -16,15 +16,26 @@ import styles from "./DashboardView.module.css";
 import { downloadCsv } from "./exportCsv";
 
 /** 导出行数据结构（metric_rollup.metrics + affected_orders.problems）。 */
-export interface DashExportMetric { name?: string; key?: string; target?: number; actual?: number; delta?: number; miss?: boolean }
+export interface DashExportMetric { name?: string; key?: string; target?: number; actual?: number; delta?: number; miss?: boolean; basis?: string | null }
 export interface DashExportProblem { title?: string; orderCount?: number; financeImpact?: number }
 
-/** PRD-cockpit §8 P5「导出」：把经营指标 + 待解决问题拼成 CSV 行（纯函数，确定性，可单测）。 */
+/**
+ * PRD-cockpit §8 P5「导出」：把经营指标 + 待解决问题拼成 CSV 行（纯函数，确定性，可单测）。
+ *
+ * ── WO-GAP-NORMALIZE 病③b · 导出必须带「口径」列 ──────────────────────────────
+ * 屏上指标条改成取**全级**之后，同一张导出表里同时出现「营收 415.6 亿（成交侧订单簿）」与
+ * 「毛利 118.9 亿（需求预测侧）」——**两条链、不同源、不可相除**。屏上有一行「口径 · …」拦着，
+ * 而导出到 Excel 之后那行就没了 ⇒ 拿到 CSV 的人会把它们当成一本账里的两个数去算毛利率。
+ * 这正是本仓反复付账的那个形态：**数字都对，缺的是那句「这俩不是一本账」**。
+ * 故 `basis` 随指标一起进 CSV，与屏上同一个字段、同一个下发源（`Metric.basis`），前端零拼装。
+ * ⚠ 表头因此从 5 列变 6 列（金值变化见本单报告）；空口径留空串，**不补默认口径** ——
+ *   「后端没声明」与「后端声明了这个」在表里必须仍然分得开。
+ */
 export function buildDashExportRows(metrics: DashExportMetric[], problems: DashExportProblem[]): (readonly unknown[])[] {
   return [
     [zh.dash.exportTitleRow],
     zh.dash.exportMetricHeader,
-    ...metrics.map((m) => [m.name ?? m.key ?? "", m.target ?? "", m.actual ?? "", m.delta ?? "", m.miss ? "越线" : ""]),
+    ...metrics.map((m) => [m.name ?? m.key ?? "", m.target ?? "", m.actual ?? "", m.delta ?? "", m.miss ? "越线" : "", m.basis ?? ""]),
     [],
     zh.dash.exportProblemHeader,
     ...problems.map((p) => [p.title ?? "", p.orderCount ?? "", p.financeImpact ?? ""]),
@@ -92,7 +103,11 @@ export default function DashboardView({ view }: ViewRendererProps) {
   const modLinks = (view.layout?.moduleLinks as ModLink[] | undefined) ?? MODULE_LINKS;
   const feedbackChain = (view.layout?.feedbackChain as string[] | undefined) ?? FEEDBACK_CHAIN;
   const handleExport = async () => {
-    const [ao, mr] = await Promise.allSettled([invokeSolver("affected_orders", {}), invokeSolver("metric_rollup", { level: "op" })]);
+    // WO-GAP-NORMALIZE 病③b：取数范围**必须与屏上指标条同参**（那边已改全级 `{}`）。
+    // 修前这里留在 `{level:"op"}`：屏上 10 条、导出 6 条，且**缺的正是营收** ——
+    // 而营收恰是根因下钻的缺省根指标 ⇒「屏上红着的那条，导出文件里没有」。
+    // 判据落在「同参」上，不是「都取全级」：以后哪边改了范围，另一边照抄这一处的实参。
+    const [ao, mr] = await Promise.allSettled([invokeSolver("affected_orders", {}), invokeSolver("metric_rollup", {})]);
     const problems = ao.status === "fulfilled" ? ((ao.value.data as { problems?: DashExportProblem[] })?.problems ?? []) : [];
     const metrics = mr.status === "fulfilled" ? ((mr.value.data as { metrics?: DashExportMetric[] })?.metrics ?? []) : [];
     downloadCsv(`dashboard-${new Date().toISOString().slice(0, 10)}`, buildDashExportRows(metrics, problems));

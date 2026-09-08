@@ -333,7 +333,9 @@ export const zh = {
     drillToAudit: "去体检",
     exportLabel: "导出 CSV",
     exportTitleRow: "经营驾驶舱导出",
-    exportMetricHeader: ["经营指标", "目标", "实际", "偏差", "越线"] as const,
+    // WO-GAP-NORMALIZE 病③b：末列「口径」随指标下发（Metric.basis）。全级导出后同表并列
+    // 成交侧营收与需求预测侧毛利，无此列则两者在 Excel 里看不出不同源。
+    exportMetricHeader: ["经营指标", "目标", "实际", "偏差", "越线", "口径"] as const,
     exportProblemHeader: ["待解决的问题", "影响单数", "财务影响(亿)"] as const,
   },
   quarter: {
