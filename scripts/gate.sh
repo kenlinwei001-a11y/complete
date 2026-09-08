@@ -57,11 +57,106 @@ preflight() {
 preflight
 
 FAILED=()
+# ⛔ 第三态数组（WO-GATES-NO-SHORTCIRCUIT 续跑）：**「没测出来」不许落进 FAILED**。
+#    FAILED 打的是「不得并线」——那句话是给**真违规**留的；把「我没查成」塞进去
+#    等于拿门去指控代码，方向正好反了（与 preflight 的 RC=2 同一条纪律）。
+NOT_MEASURED=()
+
+# ══ capture · 有界捕获（本段是本次修的东西，其余判据一个字没动）═══════════════════
+#
+# ⛔ 治什么（2026-09-08 亲手复现，不是转述）：
+#    `out="$(cmd 2>&1)"` 的等待条件是**管道读到 EOF**，而管道的 EOF 要等**所有写端关闭**。
+#    被捕获的进程自己早就退出了，只要它留下**任何一个继承了 stdout 的后代**（孤儿），
+#    写端就没关，`$(...)` 就**永不返回**。
+#    实测：被捕获命令瞬间打出 `parent-exited-now` 并退出，而 `$(...)` 阻塞了 **25,037ms**
+#    —— 恰好等于那个孤儿 `sleep 25` 的寿命。
+#
+#    形态（铁律 0.6 句式）：
+#      > **「我用『命令替换拿到了输出』当作『被捕获的进程已经结束』的证据，
+#      >    而前者并不度量后者 —— 只要还有任何一个后代握着写端，读端就不会返回。」**
+#
+#    真实代价：`pnpm -r test` 死掉后孤儿 vitest worker 仍握着写端 ⇒ gate.sh 卡在
+#    `anon_pipe_read`，**进程活着却没有子进程**，日志停在「───── TEST …」不动。
+#    按铁律 1 会被判成「已被杀」——**两种态处置完全不同**（重派 vs 人工介入）。
+#    最终记下的是**一个截断的捕获 + 一个无意义的 RC**。今天同样的方式失败了两次。
+#
+# ══ 修法三件，各治一半，缺一件都还会犯 ═════════════════════════════════════════
+#   ① **输出落文件，不落管道** —— 文件没有「等所有写端关闭」这个语义，孤儿再多也不挡读。
+#      这一件单独就把上面那 25,037ms 压到 **17ms**，且 RC 仍如实转述（实测）。
+#   ② **timeout 兜底** —— ① 只治「孤儿挡路」，治不了「命令**自己**不结束」。后者必须有界。
+#      超时 ⇒ RC=124 ⇒ 落 **NOT-MEASURED**（输出必然截断，结论不成立）。
+#   ③ **setsid 独立进程组** —— 事后能**精确点名**「我起的这批里谁还没走」，
+#      不靠 `pkill -f` 那种会匹到探针自己的模式（本仓已因此自杀 3 次）。
+#
+# ══ 不做什么（刻意的，别当成漏了）═════════════════════════════════════════════
+#  · **不杀残留孤儿**：报出来交给人。执行器替被测命令清场，就和替它 build 一样 ——
+#    那是**执行器自己干的事**，不是被测对象的性质（与 run-gates.mjs 不代劳 build 同一条理由）。
+#  · **不因为有残留就改判**：命令真结束了、RC 是真的，就照实记 PASS/FAIL。
+#    残留只加一行警告。**执行器不许替被测命令「猜」它成功了，同样不许替它「猜」它失败了。**
+#
+# 用法：capture <超时秒> <命令…>  → 置 CAP_STATE / CAP_RC / CAP_OUT / CAP_MS / CAP_WHY / CAP_LEFTOVER
+GATE_STEP_TIMEOUT="${GATE_STEP_TIMEOUT:-1800}"   # 单个静态门/BUILD 上限，默认 30 分钟
+GATE_TEST_TIMEOUT="${GATE_TEST_TIMEOUT:-5400}"   # 六包串行测试上限，默认 90 分钟
+capture() {
+  local secs="$1"; shift
+  local tmp pgid rc t0 t1
+  tmp="$(mktemp -t gate-capture.XXXXXX)"
+  t0=$(date +%s%N)
+  setsid timeout --signal=TERM --kill-after=15s "${secs}s" "$@" > "$tmp" 2>&1 &
+  pgid=$!
+  wait "$pgid"; rc=$?
+  t1=$(date +%s%N)
+  CAP_MS=$(( (t1 - t0) / 1000000 ))
+  CAP_RC=$rc
+  # 同进程组里还没退出的 = 我起的后代。**只数不杀。**
+  # 先给一段**排空宽限**：正常收尾时 worker 可能还差几百毫秒才被收割，
+  # 不等就会把「正在正常退出」误报成「残留」——那又是一次拿瞬时快照当终态。
+  # ⚠ 判据落在「等满宽限之后**还在不在**」，不是「此刻在不在」。
+  local waited=0
+  CAP_LEFTOVER="$(ps -eo pgid=,pid= 2>/dev/null | awk -v g="$pgid" '$1==g' | grep -c . )"
+  while [ "$CAP_LEFTOVER" -gt 0 ] && [ "$waited" -lt 30 ]; do
+    sleep 0.1; waited=$((waited + 1))
+    CAP_LEFTOVER="$(ps -eo pgid=,pid= 2>/dev/null | awk -v g="$pgid" '$1==g' | grep -c . )"
+  done
+  CAP_OUT="$(cat "$tmp")"       # 与原 $(...) 同语义（都吃掉尾部换行），下游逻辑逐字节不变
+  rm -f "$tmp"
+  CAP_WHY=""
+  case $rc in
+    124|137) CAP_STATE="NOT-MEASURED"; CAP_WHY="超过 ${secs}s 上限被掐断 —— 输出截断，本步结论不成立" ;;
+    125)     CAP_STATE="NOT-MEASURED"; CAP_WHY="timeout 自己失败了（RC=125）" ;;
+    126)     CAP_STATE="NOT-MEASURED"; CAP_WHY="命令不可执行（RC=126）" ;;
+    127)     CAP_STATE="NOT-MEASURED"; CAP_WHY="命令找不到（RC=127）—— 是环境缺东西，不是代码违规" ;;
+    0)       CAP_STATE="PASS" ;;
+    *)       CAP_STATE="FAIL"; CAP_WHY="命令判负 RC=${rc}" ;;
+  esac
+  # ⚠ 残留后代 ⇒ **捕获到的是快照，不是终稿**：那些后代仍可能在往同一个文件写。
+  #    RC 是真的，但**凡是读输出的断言都失去依据**（TEST 段的「逐包点名」正是读输出的）。
+  #    故一律降到 NOT-MEASURED —— 「我拿到的这份输出是不是完整的」我证不了，就不许当证据用。
+  #    ⛔ 只降 PASS，不动 FAIL：真判负是**退出码**给的，不依赖输出完整性，
+  #       把红降成「没测出来」等于把红吞掉，那比假绿还坏。
+  if [ "$CAP_LEFTOVER" -gt 0 ] && [ "$CAP_STATE" = "PASS" ]; then
+    CAP_STATE="NOT-MEASURED"
+    CAP_WHY="命令已退出（RC=0）但排空 3s 后仍有 ${CAP_LEFTOVER} 个后代在跑 —— 捕获到的是快照不是终稿，读输出的断言全部失去依据"
+  fi
+}
+
 run() {
   local name="$1"; shift
   echo "───── ${name} ─────"
   local out rc
-  out="$("$@" 2>&1)"; rc=$?          # ★ 先捕获退出码，绝不经管道
+  capture "$GATE_STEP_TIMEOUT" "$@"
+  out="$CAP_OUT"; rc="$CAP_RC"      # ★ 先捕获退出码，绝不经管道
+  if [ "$CAP_LEFTOVER" -gt 0 ]; then
+    echo "   ⚠ 本步留下 ${CAP_LEFTOVER} 个未退出的后代（同进程组）。**只报不杀。**"
+    echo "     旧写法会在这里永久阻塞（孤儿握着管道写端）——现在不会了，但它们仍在占 CPU。"
+  fi
+  if [ "$CAP_STATE" = "NOT-MEASURED" ]; then
+    echo "$out" | tail -40
+    echo "◌ ${name} **NOT-MEASURED**（RC=${rc}）：${CAP_WHY}"
+    echo "   ⚠ 这**既不是绿也不是红**，是「没查成」。不许读作通过，也不许读作违规。"
+    NOT_MEASURED+=("${name}")
+    return
+  fi
   if [ $rc -eq 0 ]; then
     echo "$out" | tail -3
     echo "✅ ${name} RC=0"
@@ -122,7 +217,13 @@ run "chain-scan-honesty:check" node scripts/check-chain-scan-honesty.mjs
 #    （新增 action-wiring / outsource-redline / ontology-descriptions 时没人回来改标签）。
 #    标签说谎与假绿同族——看门的人以为自己知道跑了多少道，其实读的是过期常数。
 #    出处唯一 = package.json 的 gates 脚本，这里只做投影。
-GATES_N="$(node -e 'console.log(require("./package.json").scripts.gates.split("&&").length)' 2>/dev/null || echo "?")"
+#
+# ⚠️ 2026-09-07（WO-GATES-NO-SHORTCIRCUIT）改口径：原式数的是 `split("&&").length`。
+#    `gates` 已由 `&&` 短路链改成 `node scripts/run-gates.mjs <71 个门…>`（全跑不短路），
+#    串里一个 `&&` 都没有了 ⇒ 旧式恒返 **1**，标签会写"1 条治理门"。
+#    形态（铁律 0.6）：**「我用『&& 的个数』当作『门的道数』的证据，而前者并不度量后者。」**
+#    改为数门名本身 —— 与 gate-census.mjs / check-ontology-writeback.mjs 同一口径。
+GATES_N="$(node -e 'console.log((require("./package.json").scripts.gates.match(/scripts\/check-[a-z0-9-]+\.mjs/g)||[]).length)' 2>/dev/null || echo "?")"
 run "pnpm gates（${GATES_N} 条治理门）" pnpm gates
 run "ontology-writeback:check" node scripts/check-ontology-writeback.mjs
 # ⚠️ 刻意**不**并入 handoff 并线台账门（`check-handoff-integration.mjs`）：
@@ -148,7 +249,25 @@ run_test() {
   echo "───── TEST (六包·串行) ─────"
   local out rc roll cnt
   # datacore 勿并发多 vitest（CLAUDE.md LOOP 纪律）→ workspace-concurrency=1
-  out="$(pnpm -r --workspace-concurrency=1 test 2>&1)"; rc=$?   # ★ 先捕获退出码，绝不经管道
+  #
+  # ⛔ 这一行正是 2026-09-08 那两次「gate.sh 卡死」的现场：原写法 `out="$(pnpm … 2>&1)"`。
+  #    pnpm 死掉后**孤儿 vitest worker 仍握着管道写端** ⇒ 读端永不返回 ⇒ gate.sh 卡在
+  #    anon_pipe_read，进程活着但没有子进程，日志停在上面那行「───── TEST …」不动。
+  #    改走 capture()（文件重定向 + timeout + 独立进程组），理由见 capture() 头注。
+  capture "$GATE_TEST_TIMEOUT" pnpm -r --workspace-concurrency=1 test
+  out="$CAP_OUT"; rc="$CAP_RC"   # ★ 先捕获退出码，绝不经管道
+  if [ "$CAP_LEFTOVER" -gt 0 ]; then
+    echo "   ⚠ TEST 段留下 ${CAP_LEFTOVER} 个未退出的后代（多半是 vitest worker）。**只报不杀。**"
+    echo "     ——**这正是旧写法永久阻塞的那批进程**。现在不挡路了，但它们仍在占 CPU。"
+  fi
+  if [ "$CAP_STATE" = "NOT-MEASURED" ]; then
+    echo "$out" | tail -40
+    echo "◌ TEST (六包·串行) **NOT-MEASURED**（RC=${rc}）：${CAP_WHY}"
+    echo "   ⚠ 六包测试**没跑完**：既不许读作「全绿」，也不许读作「有包红了」。"
+    echo "   ⚠ 逐包点名在这一态下**一律作废** —— 汇总行数少不是「有包被跳过」，是「没跑到那里」。"
+    NOT_MEASURED+=("TEST (六包·串行)")
+    return
+  fi
   # ⚠ 匹配前必须剥 ANSI 转义码。GitHub Actions 设 CI=true，vitest 因此**强开彩色输出**，
   #   汇总行实际形如 `Tests \e[22m \e[1m\e[31m16 failed`——"Tests" 与数字之间夹着转义序列，
   #   而原正则要求二者之间只有空格，于是 CI 上恒匹配 0 行、点名判 0/5 而误报"有包被静默跳过"。
@@ -199,10 +318,24 @@ fi
 
 echo
 echo "═════════ GATE 结果 ═════════"
-if [ ${#FAILED[@]} -eq 0 ]; then
-  echo "✅ 全绿（可并线）"
-  exit 0
+# 三态，顺序不许换：**先判红，再判「没测出来」，最后才敢说绿。**
+#   RC=1 有真违规 · RC=2 没测完（结论作废，与 preflight 同码）· RC=0 全绿
+# ⛔ 「没测出来」绝不许走到 exit 0 那一支 —— 那正是本仓那次「BUILD_EXIT=0 假绿」的形态：
+#    信号是真的，只是它不指向我要断言的那个对象。
+if [ ${#FAILED[@]} -ne 0 ]; then
+  echo "❌ 未通过：${FAILED[*]}"
+  if [ ${#NOT_MEASURED[@]} -ne 0 ]; then
+    echo "◌ 另有**没测出来**：${NOT_MEASURED[*]}（这些既不是绿也不是红）"
+  fi
+  echo "   —— 不得并线。修完重跑本脚本。"
+  exit 1
 fi
-echo "❌ 未通过：${FAILED[*]}"
-echo "   —— 不得并线。修完重跑本脚本。"
-exit 1
+if [ ${#NOT_MEASURED[@]} -ne 0 ]; then
+  echo "◌ **本次没测完**：${NOT_MEASURED[*]}"
+  echo "   ⚠ 零条判负，但上面这些步骤**没跑成**（超时 / 起不来 / 被掐断）。"
+  echo "   ⚠ 这**不是**「全绿（可并线）」—— 只许说「我没查出来」。RC=2"
+  echo "   处置：看各步 NOT-MEASURED 那行的判据；超时可用 GATE_STEP_TIMEOUT / GATE_TEST_TIMEOUT 放宽后重跑。"
+  exit 2
+fi
+echo "✅ 全绿（可并线）"
+exit 0
