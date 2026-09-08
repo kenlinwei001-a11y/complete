@@ -746,13 +746,38 @@ function CardExposureLine({ card }: { card: RiskCard }) {
  * 本行**只在键在时渲染**：一张从没被处置过的卡上挂一行「未采纳」，会让整屏全是噪声，
  * 而「没有采纳」这件事本来就由卡面其余读数（峰值/越线日没被削）表达。
  * ⚠ 前端**不重算任何一个数**：`eff` / `tn` 是引擎给的原值直投。
+ *
+ * ── 方案的**人话名**从哪来（为什么要多这一跳）────────────────────────────────
+ * `card.adoptedMitigation` 只带 `planKey`（`debottleneck` 这类接线名），屏上直接印它
+ * 等于让用户读接线名。方案名的真出处是 `mitigation_select` 的 `plans[].name`
+ * （实测 `debottleneck` → 「瓶颈工序扩容」）——**前端不许自己写一张 key→中文 对照表**，
+ * 那就是第二套真相源。查不到就**显 `planKey` 本身**（不编名字、不留空白），
+ * 与 `stateVarLabel` 同一条纪律：回落必须看得出是回落，`data-name-resolved` 让它可断言。
  */
 function CardAdoptedLine({ card }: { card: RiskCard }) {
   const ad = card.adoptedMitigation;
+  const { data } = useQuery({
+    // ⚠ 与展开态 `MitigationCards` 的 key 逐字相同（`tightness` 那一位取 `card.peak`）⇒
+    //    用户点开卡片时是缓存命中，不多打第二次。
+    queryKey: ["a", "mitigation_select", card.base, card.factor, card.peak],
+    enabled: ad !== undefined, // 只有真有采纳的那张卡才发（实测 8 张卡通常只中 1 张）
+    retry: false,
+    queryFn: async () => {
+      const res = await invokeSolver("mitigation_select", { baseName: card.base, factor: card.factor, tightness: card.peak });
+      return res.data as { plans?: MitPlan[] };
+    },
+  });
   if (!ad) return null;
+  const name = (data?.plans ?? []).find((p) => p.key === ad.planKey)?.name;
   return (
-    <div className={styles.rkCF} data-testid={`risk-adopted-line-${card.base}`} data-adopted="1" data-plan={ad.planKey}>
-      <span style={{ color: "var(--ok-txt)" }}>已采纳 {ad.planKey}</span>
+    <div
+      className={styles.rkCF}
+      data-testid={`risk-adopted-line-${card.base}`}
+      data-adopted="1"
+      data-plan={ad.planKey}
+      data-name-resolved={name === undefined ? "0" : "1"}
+    >
+      <span style={{ color: "var(--ok-txt)" }}>已采纳 {name ?? ad.planKey}</span>
       <span>消解 {ad.eff} · T+{ad.tn} 起效</span>
     </div>
   );
