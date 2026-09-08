@@ -2159,6 +2159,31 @@ export class Orchestrator {
       if (await this.maybeRerouteToCoordinator(taskId, auth, task, result)) return; // rung② 成功 → runCoordinator 已 COMPLETED + answer.final
     }
 
+    // WO-NUMERIC-MAINPATH · 通用 path-B 的数字红线**观测**接线（缺口 A）。
+    //
+    // 修前的行为：`numericRedline{path:"AGENT_NATIVE",action:"would_block"}` 只打在
+    // `engine.runRegisteredAgent` 的交付出口上；而**本方法直调 `runAgentLoop`**（见上方 ~2026 行），
+    // 一次都不经过 `runRegisteredAgent`（实测：`runRegisteredAgent` 的 5 个 src 调用方
+    // = propose-candidates · skill-probe · 本文件的角色 agent 路 · 本文件的 Coordinator 扇出 ·
+    // engine 的嵌套 invoke_agent —— 通用 path-B 一个都不是）。
+    // ⇒ **最容易出裸数的那条路（分类 outOfCatalog 即无门直落此处），`would_block` 结构性恒 0。**
+    //
+    // 形态（铁律 0.6 句式）：「我用『我在 engine 出口记了 would_block』当作『我知道主路有多少裸数』
+    // 的证据，而前者并不度量后者。」——「先拿数再定收不收紧」这个产品裁决所依据的那个数，
+    // 恰恰在最需要它的那条路上不存在。
+    //
+    // ⚠ 本单**只补观测，不补阻断**：`action` 仍是 `would_block`，回包照常 COMPLETED + answer.final。
+    //   （把这个按「非阻断」校准的检测器提升成硬阻断，实测会拒掉本仓唯一一次真实录制的 agent 运行 ——
+    //    红在序号列表标记与「共读取 6 个文件」上，那次运行里一个业务数字都没有。）
+    //
+    // 判据与采样点与 engine 出口**逐字对齐**，否则两路的数不可比（那正是缺口 C 的病）：
+    //  · 判据 = `result.answer.unverifiedNumerics`，即 loop 侧 `scanBlocks(blocks)` 的值（util/numerics.ts 单源）；
+    //  · 采样点 = **交付出口**（每次运行至多 +1），且排在 rung② 重路由**之后** ——
+    //    rung② 成功时本次 answer 根本没上屏，由 runCoordinator 那条路自己记，记在这里会把没交付的也算进去。
+    if (result.answer.unverifiedNumerics) {
+      this.deps.metrics.numericRedline.inc({ path: "AGENT_NATIVE", action: "would_block" });
+    }
+
     await this.deps.repos.tasks.patch(taskId, {
       status: "COMPLETED",
       answer: result.answer,
