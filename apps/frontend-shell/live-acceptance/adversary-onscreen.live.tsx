@@ -1,3 +1,6 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -37,6 +40,20 @@ import { tokenStore } from "@/api/tokenStore";
  */
 
 const ORIGIN = "http://127.0.0.1:4801";
+/**
+ * 取证产物落点。**锚 `import.meta.url` 而不是 `process.cwd()`** ——
+ * cwd 随「从哪儿起的 vitest」而变，于是同一份报告里的路径下次就对不上，
+ * 而「取证文件是上一轮的」这个坑本仓踩过。
+ */
+const ART_DIR = join(dirname(fileURLToPath(import.meta.url)), "__artifacts__");
+/** 把屏上**真实文本**落盘 —— 这个 jsdom 竖井里没有像素，屏上的字就是最强的取证物。 */
+function dumpScreen(name: string, body: string): void {
+  mkdirSync(ART_DIR, { recursive: true });
+  const p = join(ART_DIR, name);
+  writeFileSync(p, body);
+  // eslint-disable-next-line no-console
+  console.log(`[live] 取证落盘 ${p}`);
+}
 const wire: { method: string; url: string; status: number }[] = [];
 const realFetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -75,6 +92,19 @@ beforeAll(async () => {
   ).toBe(true);
 });
 
+/**
+ * 切对抗方开关（**L3 租户 override** —— 平台默认值与暗发集合一个字节没动）。
+ * 这就是本单第三态（单方推演）在真屏上的取法：把开关关掉，同一条动线再走一遍。
+ */
+async function setAdversary(on: boolean): Promise<void> {
+  const r = await realFetch(`${ORIGIN}/a/v1/tenants/demo/features`, {
+    method: "PUT",
+    headers: { ...AUTH, authorization: `Bearer ${bearer}` },
+    body: JSON.stringify({ overrides: { "sim.propagation.adversary": on } }),
+  });
+  expect(r.status, await r.clone().text()).toBe(200);
+}
+
 /** 建一个真会话（真 HTTP），返回 sessionId。扰动由 UI 去拨，这里只给一个空世界。 */
 async function newSession(): Promise<string> {
   const r = await realFetch(`${ORIGIN}/a/v1/sim/sessions`, {
@@ -98,7 +128,7 @@ function mount(sessionId: string) {
  * 走一遍**真 UI 动线**：选状态量 → 选类型 → 选对象 → 填幅度 → 点「施加并推演」。
  * 回屏上对抗方那一栏的 `data-state` 与全文。
  */
-async function runThroughUi(magnitude: number): Promise<{ state: string; text: string }> {
+async function runThroughUi(magnitude: number, tag = "on"): Promise<{ state: string; text: string }> {
   const user = userEvent.setup({ delay: null });
   const sessionId = await newSession();
   const { container, unmount } = mount(sessionId);
@@ -131,6 +161,20 @@ async function runThroughUi(magnitude: number): Promise<{ state: string; text: s
   const adv = within(panel).getByTestId("sim-disclosure-adversary");
   container.querySelectorAll("details").forEach((el) => el.setAttribute("open", ""));
   const out = { state: adv.getAttribute("data-state") ?? "", text: container.textContent ?? "" };
+  // 屏上「对抗方」那一块的原样文本 + 收起态那句话 —— 逐字落盘，供报告与复核比对。
+  dumpScreen(
+    `adversary-mag${magnitude}-${tag}.txt`,
+    [
+      `# 真后端 ${ORIGIN} · 真 UI 动线 · 扰动幅度 ${magnitude}（容忍线 12）· 对抗方开关 ${tag}`,
+      `# 取证时刻 ${new Date().toISOString()}`,
+      `## 收起态那句话（不点开就看得见）`,
+      screen.getByTestId("sim-disclosure-adversary-flag").textContent ?? "",
+      `## 对抗方分节（展开）`,
+      adv.textContent ?? "",
+      `## data-state`,
+      out.state,
+    ].join("\n"),
+  );
   unmount();
   return out;
 }
@@ -155,6 +199,26 @@ describe("连真后端 · 对抗方在屏上看得见（对照实验：只改幅
     expect(text).toContain("12"); // 容忍线
     expect(text).toContain("未调用 agent"); // 推演路零 LLM，恒写不留白
     expect(text, "越线了还说『无人越过容忍线』").not.toContain("无人越过容忍线");
+  }, 180000);
+
+  it("对抗方关闭（缺省态）⇒ 屏上说「单方推演」+ 挂起条数，⛔ 不许说成「对手没还手」", async () => {
+    // 第三态：把开关关回缺省，**同一条 UI 动线、同一个越线幅度**再走一遍。
+    // 变的只有开关这一个量 ⇒ 屏上那句话必须从「还手」翻成「单方推演」。
+    await setAdversary(false);
+    try {
+      const { state, text } = await runThroughUi(96, "off");
+      expect(state).toBe("ONE_SIDED");
+      expect(text).toContain("单方推演");
+      expect(text).toContain("挂起还手规则 1 条");
+      // 要害：关闭态与「开了但没人越线」**必须**分得开 ——
+      // 前者对手没上场，后者对手上场了没动手，读者据此得出的经营结论完全不同。
+      expect(text, "关闭态说成『无人越过容忍线』= 把「对手没上场」冒充「对手没动手」").not.toContain(
+        "无人越过容忍线",
+      );
+      expect(text, "关着还说还手了").not.toContain("本拍还手 1 条");
+    } finally {
+      await setAdversary(true); // 还原，免得污染同文件后续用例
+    }
   }, 180000);
 
   it("⛔ 全程零 mock：所有出站请求都打到真 datacore，且 tick 那一跳真带了 disclose", () => {
