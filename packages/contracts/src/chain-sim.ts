@@ -36,6 +36,9 @@ import { z } from "zod";
 import { BASE_REGISTRY, SEG_REGISTRY, type CanonicalSeg } from "./base-registry.js";
 import { BUSINESS_TYPE_LABEL, BusinessTypeSchema, type BusinessType } from "./global-sim.js";
 import { DerivedDataModeSchema } from "./derive-fields.js";
+// WO-LOSS-ATTRIB-MONEY · 「在手」口径的**单一出处**（`order-status.ts`）。敞口只算未交付的钱，
+// 判据不是本文件发明的 —— 那份文件已经把「把 350 张 COMPLETED 也数进去 ⇒ 虚报」记成过一次账。
+import { ON_HAND_ORDER_CAPTION, isOnHandOrderStatus } from "./order-status.js";
 
 // ══════════════════════════════════════════════════════════════════════════
 // § 1 · 链段（需求 → 订单 → 产能 → 物料 → 交付）
@@ -729,9 +732,14 @@ export function lossConservationResidual(rows: readonly LossAttribution[]): numb
  *
  *      环节压住的订单金额 = 该基地订单敞口(元) × 该环节占本列损失的百分比 ÷ 100
  *
- * **「订单敞口」的定义**：`Σ Order.value`，取遍**可产基地清单含该基地**的订单
- * （`Order.bases ∋ baseId`）。`Order.value` 本身是本体已登记的派生属性
+ * **「订单敞口」的定义**：`Σ Order.value`，取遍**在手**（`OPEN` + `IN_PRODUCTION`，
+ * 判据走 `order-status.ts` 的 `isOnHandOrderStatus`）**且可产基地清单含该基地**
+ * （`Order.bases ∋ baseId`）的订单。`Order.value` 本身是本体已登记的派生属性
  * `qty × unitPrice`（单位「元」，见 `orderDerived`）——**不是本函数编的**。
+ *
+ * ⚠ **在手这道过滤不是可选项**：已交付关闭的单不在链上流，压不住。少了它，
+ * 订单簿总额会从在手真值 **156.63 亿**（150 单）虚报成全簿 **454.64 亿**（500 单），
+ * **2.90×**，且会把「最该看的基地」指反 —— 详见 `orderExposureYuan` 上的取证。
  *
  * **为什么是"敞口 × 占比"而不是别的**：
  *  · 归因占比回答「**这个环节吃掉了这条链损失的百分之几**」；
@@ -747,37 +755,76 @@ export function lossConservationResidual(rows: readonly LossAttribution[]): numb
  *    编一个 = 铁律 1.5 判据四点名的"内联业务常数"，且**编出来的数会被当成真数读**。
  *  ✗ **不许拿 601.50 亿（供给侧计划口径）或 700.00 亿（需求预测）当营收底数** ——
  *    前者改订单簿逐字节不动，后者屏上标「实际」是已知谎言。唯一随订单簿变的是
- *    `Σ Order.value` = **454.64 亿**（500 单，实测）。
+ *    `Σ Order.value`：全簿 **454.64 亿**（500 单）／**在手 156.63 亿**（150 单，实测）。
+ *    **本函数取的是后者**（理由见 `orderExposureYuan`：已交付的钱压不住）。
  *  ✗ **不许用 `OrderLine.unitCost` 造成本**（元/电芯 vs 套，量纲不同阶，实测毛利率 96.70%，已知坏数）。
  *
  * **⚠ 敞口会跨列重复计入，这是口径的一部分不是 bug**：一张单可产多个基地
- * （实测 500 单里 **274 单**可产 >1 个基地，平均 1.55 个）⇒ Σ 各列敞口 = **715.12 亿**
- * = 订单簿 454.64 亿的 **1.57×**。故**列间可比，列合计不可加**——
+ * （实测 **在手 150 单里 89 单**可产 >1 个基地）⇒ Σ 各列敞口 = **260.29 亿**
+ * = 在手订单簿 156.63 亿的 **1.66×**。故**列间可比，列合计不可加**——
  * 这条必须随结果一起返回（`ChainLossMatrixMoneySchema.exposureOverlapRatio`），
  * 不许让读数的人自己去猜为什么 13 列加起来比订单簿还大。
+ *
+ * ⚠ 这个倍率是**按金额加权**的平均可产基地数（1.66），**不等于**按条数的平均
+ * （在手实测 1.593）—— 大单可产的基地更多。早先注释把两者说成同一个数，
+ * 是「拿一个看起来相关的数当另一个」的老病，照实订正。
  */
 export function lossValueAtRiskYuan(exposureYuan: number, pctOfChainLoss: number): number {
   return (exposureYuan * pctOfChainLoss) / 100;
 }
 
 /**
- * 订单敞口：`Σ Order.value`，取遍可产基地清单含 `baseId` 的订单。
- * `baseId` 传 `null` ⇒ 不过滤，即**整本订单簿**的合同金额（对账锚点，实测 454.64 亿）。
+ * 订单敞口：`Σ Order.value`，取遍**在手**且可产基地清单含 `baseId` 的订单。
+ * `baseId` 传 `null` ⇒ 不按基地过滤，即**整本在手订单簿**的合同金额（对账锚点，实测 156.63 亿 / 150 单）。
  *
- * 诚实缺席：`value` 不是数的订单**跳过而不当 0**——「没登记金额」和「金额是 0」是两个结论。
- * 跳过了几张由 `countedOrders` / `skippedOrders` 显式回报，不闷掉。
+ * ── ⚠ 「在手」这道过滤是本函数的正确性核心，删了它就是编数 ────────────────────
+ * **判据不是本文件发明的**：`order-status.ts` 的 `ON_HAND_ORDER_STATUSES` 已经把口径定死为
+ * 「未完成态 = `OPEN` 已下待排产 + `IN_PRODUCTION` 进行中」，并且**已经为这件事记过一次账**——
+ * 那份文件原文写着：驾驶舱「在手订单」卡片曾因为没带 filter 把 **350 张 `COMPLETED`**
+ * 也数了进去，**虚报 3.3 倍**。
+ *
+ * **本单第一版就重犯了这个错**（照实记账，不藏）：初版 `orderExposureYuan` 不看 `status`，
+ * 于是整本 500 单一起算 ⇒ 订单簿总额报 **454.64 亿**，而在手真值是 **156.63 亿**，
+ * **虚报 2.90×**（实测 seed 42：`OPEN` 50 + `IN_PRODUCTION` 100 + `COMPLETED` 350）。
+ *
+ * **为什么损失归因必须用在手口径而不是全簿**：这一屏回答的是
+ * 「链上这些非增值时间**压住了多少钱**」。一张 `COMPLETED` 的单**货已交、款已结、
+ * 早就不在这条链上流**了 —— 它的合同额不可能被今天的老化静置压住。
+ * 把它算进敞口，等于拿去年已经收回来的钱去吓今天的经营者。
+ *
+ * ⚠ 这不是个小数点问题，它**会改排序**（实测）：`xinyang` 按全簿是 33.97 亿（第 6），
+ * 按在手只有 6.42 亿（**倒数第 1**）；`meishan` 按全簿 16.19 亿（倒数第 1），
+ * 按在手 11.64 亿（第 9）。**用错口径会把"最该看的基地"指反。**
+ *
+ * ⚠ 与 `portfolio.ts` / `chain-impediment.ts` 的 `status === "OPEN"` **不是同一个口径，别去统一**
+ * （`order-status.ts` 明写）：那两处数的是「还有多少单**要排产**」（决策集，排除在制是对的）；
+ * 这里问的是「还有多少货**没交出去**」⇒ 含在制。两个问题，两个口径。
+ *
+ * ── 诚实缺席（三个计数分开报，不合成一个数）──────────────────────────────
+ *  · `countedOrders`   算进敞口的单数；
+ *  · `skippedOrders`   `value` 未登记而跳过 ——「没登记金额」≠「金额是 0」；
+ *  · `deliveredOrders` 因**已交付**被排除的单数 —— 它不是"丢了"，是**不该在**。
+ *    分开报的理由：这三个数混成一个，就再也分不出「数据缺」与「口径排除」，
+ *    而这两件事的修法相反（前者补数据，后者**不许**去补）。
  */
 export function orderExposureYuan(
-  orders: readonly { readonly value?: unknown; readonly bases?: unknown }[],
+  orders: readonly { readonly value?: unknown; readonly bases?: unknown; readonly status?: unknown }[],
   baseId: string | null,
-): { exposureYuan: number; countedOrders: number; skippedOrders: number } {
+): { exposureYuan: number; countedOrders: number; skippedOrders: number; deliveredOrders: number } {
   let exposureYuan = 0;
   let countedOrders = 0;
   let skippedOrders = 0;
+  let deliveredOrders = 0;
   for (const o of orders) {
     if (baseId !== null) {
       const bases = Array.isArray(o.bases) ? o.bases.map((b) => String(b)) : [];
       if (!bases.includes(baseId)) continue;
+    }
+    // 在手过滤走 `order-status.ts` 的谓词，**不在这里写 `!== "COMPLETED"` 的字面量**
+    // （那份文件明写：逐处字面量比较一律换成该函数，否则口径迟早各漂各的）。
+    if (!isOnHandOrderStatus(o.status)) {
+      deliveredOrders++;
+      continue;
     }
     if (typeof o.value !== "number" || !Number.isFinite(o.value)) {
       skippedOrders++;
@@ -786,8 +833,15 @@ export function orderExposureYuan(
     exposureYuan += o.value;
     countedOrders++;
   }
-  return { exposureYuan, countedOrders, skippedOrders };
+  return { exposureYuan, countedOrders, skippedOrders, deliveredOrders };
 }
+
+/**
+ * 敞口口径的**屏上措辞**（单一出处，转发 `order-status.ts` 的那句）。
+ * 屏上印金额时必须同时印这句 —— 否则用户会拿它跟「营收 601.50 亿」去对，然后得出
+ * 「这个系统的数对不上账」这个**正确但可避免**的结论。
+ */
+export const LOSS_EXPOSURE_CAPTION = `损失敞口口径 · ${ON_HAND_ORDER_CAPTION}`;
 
 /** 金额守恒残差 = `Σ 各环节金额 − 该列敞口`（元）。空表 = `null`，同 §5 的纪律。 */
 export function moneyConservationResidualYuan(
@@ -1409,9 +1463,14 @@ export const ChainLossMatrixColTotalSchema = z.strictObject({
    * **这是本列所有金额的底数**，也是本列金额守恒的右边。取不到 ⇒ `null`，不是 0。
    */
   exposureYuan: z.number().nonnegative().nullable(),
-  /** 敞口算了几张单 / 因 `value` 未登记跳过几张（诚实缺席，不闷掉）。 */
+  /**
+   * 敞口算了几张单 / 因 `value` 未登记跳过几张 / 因**已交付**被排除几张（三件事分开报）。
+   * `exposureSkippedOrders`（数据缺）与 `exposureDeliveredOrders`（口径排除）**修法相反**：
+   * 前者要补数据，后者**不许**去补 —— 合成一个数就再也分不开。
+   */
   exposureOrderCount: z.number().int().nonnegative(),
   exposureSkippedOrders: z.number().int().nonnegative(),
+  exposureDeliveredOrders: z.number().int().nonnegative(),
   /**
    * 金额守恒残差（元）= `Σ 本列各格 valueAtRiskYuan − exposureYuan`。
    * 判据 `Math.abs(residual) <= MONEY_CONSERVATION_TOLERANCE_YUAN`。空列 = `null`。
@@ -1442,28 +1501,44 @@ export type ChainLossMatrixResidual = z.infer<typeof ChainLossMatrixResidualSche
 /**
  * 金额口径的**对账块**（WO-LOSS-ATTRIB-MONEY）。
  *
- * 存在的理由：矩阵的 13 列敞口加起来**比订单簿还大**（实测 715.12 亿 vs 454.64 亿），
+ * 存在的理由：矩阵的 13 列敞口加起来**比订单簿还大**（实测在手 260.29 亿 vs 156.63 亿），
  * 因为一张单可产多个基地、会被每个可产基地各计一次。这不是错，是「敞口」这个口径的定义；
  * 但**不把这条摆在结果里，读数的人只会得出「这个系统的数对不上账」这个结论**。
- * 故本块把三个数一起给出，让对账这件事**在回包里就能做完**，不必去翻源码：
- *   `orderBookTotalYuan`（订单簿合同总额，唯一随订单簿变的营收口径）
+ * 故本块把四个数一起给出，让对账这件事**在回包里就能做完**，不必去翻源码：
+ *   `orderBookTotalYuan`（**在手**订单簿合同总额，唯一随订单簿变的营收口径）
  *   `exposureSumYuan`（Σ 各列敞口）
- *   `exposureOverlapRatio` = 后者 ÷ 前者（实测 1.57，等于订单平均可产基地数）
+ *   `exposureOverlapRatio` = 后者 ÷ 前者（实测 1.66，**金额加权**的平均可产基地数）
+ *   `caption`（口径措辞 —— 屏上印金额必须连它一起印）
+ *
+ * ⚠ 对账的第二条腿是**跟平台里已有的数对得上**，不是自洽就行：
+ * 本块的在手口径与 `order-status.ts` 的 `ON_HAND_ORDER_STATUSES` 同源 ⇒
+ * 与驾驶舱「在手订单」卡片、订单经营台账**读的是同一批单**（150 张）。
+ * 早先版本不带在手过滤，报的 454.64 亿在平台里**找不到第二个出处** ——
+ * 那正是「又造了一个互不相干的数」。
  */
 export const ChainLossMatrixMoneySchema = z.strictObject({
   /**
-   * 订单簿合同总额（元）= `Σ Order.value`，**不过滤基地**。实测 seed 42 = 454.64 亿。
+   * **在手**订单簿合同总额（元）= `Σ Order.value`，**不过滤基地**、只取未完成态。
+   * 实测 seed 42 = **156.63 亿**（150 单；全簿 500 单是 454.64 亿，差 2.90×）。
    * ⚠ 这是**唯一随订单簿变的**营收口径。屏上另外两个数**不是**它的同义词：
    * 601.50 亿是供给侧计划口径（改订单簿它逐字节不动）、700.00 亿是需求预测。
    */
   orderBookTotalYuan: z.number().nonnegative(),
-  /** 订单簿里算进总额的单数 / 因 `value` 未登记跳过的单数。 */
+  /** 在手簿里算进总额的单数 / 因 `value` 未登记跳过的单数 / 因已交付被排除的单数。 */
   orderBookCount: z.number().int().nonnegative(),
   orderBookSkipped: z.number().int().nonnegative(),
+  orderBookDelivered: z.number().int().nonnegative(),
+  /**
+   * 口径措辞（`LOSS_EXPOSURE_CAPTION`）。**屏上印金额必须同时印这句** ——
+   * 不印，用户就会拿 156.63 亿去对营收 601.50 亿，然后得出「这系统对不上账」。
+   */
+  caption: z.string().min(1),
   /** Σ 各非空列的 `exposureYuan`（元）。**跨列相加带重复计入**，见 `exposureOverlapRatio`。 */
   exposureSumYuan: z.number().nonnegative(),
   /**
-   * `exposureSumYuan ÷ orderBookTotalYuan`。等于「订单平均可产基地数」（实测 1.55~1.57）。
+   * `exposureSumYuan ÷ orderBookTotalYuan`（实测在手 **1.66**）。
+   * 它是**按金额加权**的平均可产基地数，**不是**按条数的那个（在手实测 1.593）——
+   * 大单可产的基地更多，两个数不相等，别拿其中一个去验另一个。
    * **> 1 是正常的**：一张能在 2 个基地产的单，两列各承担一次它的敞口。
    * 订单簿为空 ⇒ `null`（不返 0：那会被读成「没有重复计入」）。
    */
