@@ -26,6 +26,12 @@ export function Modal({
   // （`onClose={() => setOpen(false)}`）⇒ 父组件每渲染一次 onClose 就换个身份 ⇒ effect 清理+重跑
   // ⇒ 重跑时把焦点抢回「dialog 里文档序第一个可聚焦元素」。而 `.head` 的 ✕ 排在 `.body` 前面，
   // 于是**每敲一键焦点就跳到 ✕**，⌘K 面板变成「点一次只能输入一个字符」（实测 `4680` 只留下 `4`）。
+  // 实测日期 2026-09-07（修前树 81adb092）。复验：
+  //   `PHASE=before node apps/frontend-shell/test/e2e/verify-palette-usable.mjs`
+  // 原始读数存 apps/frontend-shell/test/e2e/palette-before.json 的 `typing[]`
+  // （四组输入全部只留首字符，`focusBefore:"INPUT"` → `focusAfter:"BUTTON"`）；
+  // 金丝雀同文件 `canary`：登录用户名框用同一 `type()+inputValue()` 留住了 `4680` 全 4 字符
+  // ⇒ 上面报的「留不住」是功能坏了，不是量法坏了。
   // 修法选「稳定 onClose 身份」而不是「让首焦跳过 .head」：后者会改掉全部 22 个 Modal 的首焦落点，
   // 本单的反向对照正是要保住它们不被改坏。
   const onCloseRef = useRef(onClose);

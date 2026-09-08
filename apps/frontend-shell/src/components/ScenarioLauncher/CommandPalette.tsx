@@ -31,6 +31,9 @@ export function CommandPalette() {
 
   // WO-PALETTE-USABLE：原来空串态 `.slice(0,8)`、有词 `.slice(0,12)` —— 后端 20 条里的 S09–S20
   // **既不在 DOM 里、也滚不出来**（实测 scrollHeight 292 == clientHeight 292，不是没滚到是没渲染）。
+  // 实测日期 2026-09-07（修前树 81adb092）；原始读数见
+  // apps/frontend-shell/test/e2e/palette-before.json 的 `panel.emptyQuery`
+  // （backend.total 20 但 rowCountByTestId 8 · scrollH 292 == clientH 292 · scrollable false）。
   // 叠加焦点抢占（见 Modal.tsx）后连「靠输入去够」这条退路也断了。
   // 现在不截断：外层已有 maxHeight:360 + overflowY:auto 兜住高度，20 条只是让它真的可滚，
   // 面板不会长成一屏塞不下的长条。
