@@ -1099,11 +1099,64 @@ GET /a/v1/sim/sessions/:id/node-detail?nodeId=
         · conduction.impactLevel ← 恒 null                                           【B 路·本体零承载】
       clock   ← A8 SimulationClockRecord.t0 + currentTick（**唯一「现在」来源，绝不 wall-clock**）
       missing[] ← 每条带 CHAIN_DETAIL_ABSENCE_CODES 里的机器可读码（八码互不冒充）
-  ⚠ `POST /a/v1/sim/chain-loss-drill` **共用同一个 buildDrillWorld**，但传 session=null（它没有 :id，也不消费时钟）
+  ⚠ `POST /a/v1/sim/chain-loss-drill` **共用同一个 buildDrillWorld**；此前恒传 session=null，
+     **WO-DRILL-VERDICT-BACKEND 起改为可选**（传了 `sessionId` 就把该会话喂进去，见下一条链路）
   ⚠ 时钟没了走的是 CLOCK_UNINITIALIZED 分支：dwellDays → null，而 elapsedDays **纹丝不动**（两个口径没被糊成一个）
   ⚠ 屏上另外四个量本回包**刻意不答**，逐条登记而不沉默：cone.radius/angle=PRESENTATION_ONLY ·
      chrome.directions=ANSWERED_ELSEWHERE（→ GET /a/v1/sim/propagation-rules）· chrome.filters/strip=ONTOLOGY_MISSING
 ```
+
+### 会话上下文链路 · 推演世界态 → 根因链天数（WO-DRILL-VERDICT-BACKEND · 2026-09-07）
+
+**病灶（真后端实测，不是推测）**：修前 `chain-loss-matrix` / `chain-loss-drill` / `chain_loss_attribution`
+**不收 `sessionId`**，只读 `repos.objects`（真实对象），而扰动落在 `sim_tick_state`（按 `sessionId|tick` 存）。
+两个库互不相干 ⇒ 给 `obj_supplier_SUP-001.deliveryDelay` 施 +30 天扰动、再 tick×3（curTick 6→9），
+世界态里该值确实 9→39，而矩阵回包 **md5 逐字节相同**（`00005c6ac8853747042bc1100b35d6b0` / 30440B）。
+金丝雀（证读数取法有鉴别力）：同一端点只改 `so`，md5 当场变（19331B / 19487B）。
+于是「演习结论」答的永远是真实世界那条链，问不出「**这一次推演**里根因链变成什么样了」。
+
+```
+POST /a/v1/sim/chain-loss-matrix { so?, sessionId? }
+POST /a/v1/sim/chain-loss-drill  { nodeId, so?, baseId?, sessionId? }
+POST /a/v1/solvers/chain_loss_attribution/invoke { so?, sessionId? }
+  --sessionId 缺省--> 一格都不叠，回包与本参数引入前**逐字节相同**（R6·向后兼容，接缝门②咬住）
+  --sessionId 有值--> getSimOr404(R2 别租户 404，**绝不静默退化成"不叠加"**)
+                   --repos.sim.getTickState(tenantId, sid, curTick)?.state ?? baseSnapshot-->
+      ChainLossSimOverlay{ sessionId, tick, state: objId → {stateVar: number} }
+  --chain-loss.ts §2a simDeltaDaysFor(overlay, drillType, objectId)（纯查表·R6）-->
+      days = daysFromDrill(drillValue, drillUnit, drillValueEnd) + max(0, 天数族读数)
+```
+
+**只叠「天数族」四个状态量，名单不是本单发明的**（`synthetic/battery.ts` `STATE_VAR_DOMAINS`
+表头警告原文点名的那四个，`SIM_DAY_STATE_VAR_BY_CARRIER` 只是把它按承载物索引了一遍）：
+
+| 承载物 | 天数族状态量 | 叠到哪一段 |
+|---|---|---|
+| `Supplier` | `deliveryDelay`（交付延迟） | `material.supplier_leadtime` |
+| `PurchaseOrder` | `procurementDelay`（采购到货延迟） | `material.in_transit` |
+| `CustomsClearance` | `clearanceQueueDays`（清关排队天数） | 清关段 |
+| `IncomingInspection` | `queueDays`（排队天数） | `material.iqc` |
+
+**R18 量纲**：其余 37 种状态量绝大多数是 **0–100 压力/风险指数**，**一天都不许**加进以天计的链
+（加了就是 `gap_attribution` 差 1e4 那次的同族）。未叠加者逐个进 `simContext.excluded`，
+**且必须分两种理由**——合成一句就是标签说谎：
+· `NOT_DAY_UNIT` 量纲根本不是天（如 `Supplier.reviewPressure`）⇒ 永远不该叠；
+· `OTHER_CARRIER` **是**天数族、只是承载物不对（如 `Supplier.procurementDelay` ——
+  `STATE_VAR_DISPLAY_NAMES` 原文「前者挂单据、后者挂供应商画像」）⇒ 已在 `PurchaseOrder` 那段叠过，
+  再叠一次就是同一段**重复计**。
+
+**R13 加强**：`drillValue` 恒是仓储字段真值（**不被叠加污染**），推演叠加另立 `evidence[].sim`
+`{sessionId, tick, stateVar, stateValue, deltaDays}` 一格 ⇒ 真值 / 换算 / 叠加三者各自可回仓储与世界态对拍。
+
+**披露（铁律 1.5 判据二）**：`simContext` **整块缺席 = 不在任何会话上下文里**；
+块在而 `appliedDays === 0` = 有会话但这一拍零天数族影响。**两档不许在屏上长成一样。**
+矩阵按基地逐列各跑一次一维归因，故 `appliedSteps` 取**跨列并集**（同一承载物只计一次，
+逐列累加会把同一天数虚增成基地数的倍数）。
+
+**实测对照**（真后端 `SEED_DEMO=1`）：不传 `sessionId` 两跑 md5 恒 `00005c6a…`/30440B；
+传了 ⇒ `3619a7f7…`/31395B，`simContext.appliedDays=141.414`（3 段），排除 5 项逐个列名。
+下钻侧 `material.replenish` 的 `nodeDays` 由 **5 → 14**（= `Supplier.leadTime` 5 天 + `deliveryDelay` 9 天，
+按可预言的量变，不是"变了就算过"）。SEAM `apps/datacore/test/chain-loss-session-overlay.seam.test.ts`（8 例）。
 
 **优化融合链路（G-12 · 增量 0 立契约/本体/许可证 · 设计待落，详 `docs/SPEC-optimization-template-pool.md`）**
 ```

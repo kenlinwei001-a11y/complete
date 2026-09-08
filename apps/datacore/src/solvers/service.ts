@@ -40,7 +40,7 @@ import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING 
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
 import { businessTypeOfOrder, portfolioOptimize as runPortfolioOptimize, globalSimOptimize as runGlobalSimOptimize, type PortfolioObjectiveKey, type PortfolioInput } from "./portfolio.js";
 import { baseCapacityOutlook as runBaseCapacityOutlook, type ByModelOutlook } from "./base-outlook.js";
-import { chainLossAttribution as runChainLossAttribution, type ChainLossObject } from "./chain-loss.js"; // WO-SANDBOX-E1 · 环节级损失归因（纯函数·口径走 S0 冻结契约）
+import { chainLossAttribution as runChainLossAttribution, type ChainLossObject, type ChainLossSimOverlay } from "./chain-loss.js"; // WO-SANDBOX-E1 · 环节级损失归因（纯函数·口径走 S0 冻结契约）
 // WO-SANDBOX-E2 · 推演作用域（业务线/基地/型号）归一**单一出处**（勿在各求解器方法里另写一套解析/过滤）。
 import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
 import { normalizeSolverArgs } from "./arg-aliases.js"; // WO-SILENT-WRONG-ANSWER-3 · 入参键名归一单一出处（base/baseId/baseName · horizon/days）
@@ -610,6 +610,17 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   // WO-SANDBOX-E1 chain_loss_attribution 输出形状（= ChainLossResult 顶层 key）。
   // `attribution` 是 S0 `LossAttribution[]` 原形；`evidence` 是与 steps 一一对应的 R13 下钻行；
   // `empty` 是诚实缺席清单（前端必须显式渲染 EMPTY，不许当成 0 隐掉）。
+  //
+  // ⚠ WO-DRILL-VERDICT-BACKEND 的 `simContext` **刻意不在本表**，这是**有意省略不是漏登**
+  //   （两者在文件里长得一模一样，故必须写下来）：本表登记的是**无条件**下发的顶层 key，
+  //   而 `simContext` 只在传了 `sessionId` 时才出现 —— 它的「缺席」本身就是一个结论
+  //   （= 本次读的是真实世界那条链，不在任何会话上下文里）。
+  //   把它登记进来会让 `chain-loss-attribution.test.ts` 那条
+  //   `Object.keys(结果) === 声明形状` 的精确相等断言当场红 —— 而那条断言是有价值的守卫
+  //   （它抓的是「顶层 key 悄悄多一个/少一个」），**不许为了登记一个条件字段去把它改松**
+  //   （那正是"为买绿改期望值"）。
+  //   代价说清楚：DF.6 拉取靶（`checkPullTargetCoverage`）今天**够不到** `simContext`，
+  //   要用它的视图得走别的路。这是本次权衡的已知残口，不是没想到。
   chain_loss_attribution: ["anchor", "nodes", "attribution", "evidence", "empty", "totals", "conservation", "summary"],
   // WO-SANDBOX-E3 阻滞点扫描：impediments 是主表；unresolved/caveats/thresholds 是**诚实位**——
   // 前端必须能渲染"哪条判据判不出来、为什么"与"这条结论的旋钮在哪"，故一并进形状契约（漏了就成盲区）。
@@ -4349,10 +4360,24 @@ export class SolverService {
     const links = (await this.repos.links.list(ctx.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
     const so = str(args.so);
     if (so && !orders.some((o) => str(o.props.so) === so)) throw notFound(`Order ${so}`);
+    // WO-DRILL-VERDICT-BACKEND · 会话上下文（可选）。传了就读那个会话**当前拍**的世界态，
+    // 以天计的状态量叠加到对应环节上（口径与量纲纪律见 `chain-loss.ts` §2a）。
+    // 不传 ⇒ `sim` 缺席 ⇒ 与本参数引入前逐字节相同（R6·反向对照实验锁）。
+    // R2：别租户/不存在的会话在这里就 404，不会静默退化成「不叠加」——
+    // 静默退化会让用户以为看的是自己那次推演，其实看的是真实世界（本仓最恨的静默错答）。
+    const sessionId = str(args.sessionId);
+    let sim: ChainLossSimOverlay | undefined;
+    if (sessionId) {
+      const s = await this.repos.sim.getSession(ctx.tenantId, sessionId);
+      if (!s) throw notFound(`SimSession ${sessionId}`);
+      const state = (await this.repos.sim.getTickState(ctx.tenantId, s.id, s.curTick))?.state ?? s.baseSnapshot;
+      sim = { sessionId: s.id, tick: s.curTick, state };
+    }
     return runChainLossAttribution({
       ...(so ? { so } : {}),
       orders, customers, models, routings, operations, materials, suppliers, processes, cadences,
       purchaseOrders, customsClearances, incomingInspections, links,
+      ...(sim ? { sim } : {}),
     }) as unknown as Record<string, unknown>;
   }
 

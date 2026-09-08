@@ -170,6 +170,23 @@ export interface ChainLossEvidence {
   conversion: string;
   /** 从锚点订单沿本体走到该对象的**派生边**（linkType 序列；空串 = 锚点自身对象）。 */
   derivationEdge: string;
+  /**
+   * 本段在**本次推演**里被叠加了多少天（WO-DRILL-VERDICT-BACKEND）。
+   *
+   * 缺省 = 本次不在会话上下文里，或该承载物在这一拍没有天数族读数（**不是 0 天**，见 `simDeltaDaysFor`）。
+   * 有值时恒满足：`days === daysFromDrill(drillValue, drillUnit, drillValueEnd) + sim.deltaDays`
+   * ⇒ 真值、换算、推演叠加三者各自可回仓储/世界态对拍（R13 加强版，见 §2a）。
+   */
+  sim?: {
+    sessionId: string;
+    tick: number;
+    /** 叠加所用的状态量裸键（天数族，出处见 `SIM_DAY_STATE_VAR_BY_CARRIER`）。 */
+    stateVar: string;
+    /** 该状态量在这一拍世界态里的**真值本身**（可能为负，见 `simDeltaDaysFor` 的夹取说明）。 */
+    stateValue: number;
+    /** 真正加到 `days` 上的天数（= `max(0, stateValue)`）。 */
+    deltaDays: number;
+  };
 }
 
 /** 诚实缺席的两种形态——**修法完全不同**，故分开标（本仓「三分法」纪律的同族）。 */
@@ -247,6 +264,33 @@ export interface ChainLossResult {
     ok: boolean;
   };
   summary: string;
+  /**
+   * 本次读数的**推演上下文披露**（WO-DRILL-VERDICT-BACKEND · 铁律 1.5 判据二）。
+   *
+   * 缺省 = 本次**不在任何会话上下文里**（读的是真实世界那条链）。这一档必须能被前端区分出来：
+   * 「没有会话」与「有会话但这一拍没扰动」是两个结论，屏上不许长得一样。
+   *
+   * ⚠ `excluded` 是本块**最值钱**的一项：它逐个点名「这个承载物身上有读数、却没被叠加」的
+   *    状态量**并给出理由**（两种理由的语义见 `ChainLossSimExcluded`，不许合成一句）。
+   *    不写出来，用户会以为推演把它们算进去了 —— 缺口留在屏上，不留在注释里
+   *    （同 `undeclaredStateVars` 那条纪律）。
+   */
+  simContext?: {
+    sessionId: string;
+    tick: number;
+    /** 本次真正叠加了的段（stepId → 天数），按 stepId 字典序。 */
+    appliedSteps: { stepId: string; stateVar: string; stateValue: number; deltaDays: number }[];
+    /** 叠加总天数（Σ `appliedSteps[].deltaDays`）。0 = 有会话但这一拍没有天数族影响。 */
+    appliedDays: number;
+    /**
+     * 本次链上承载物身上**有读数却没被叠加**的状态量，**带排除理由**（按 key 字典序）。
+     * 两种理由的语义见 `ChainLossSimExcluded` —— 不许合成一句，那会让「永远不该叠」
+     * 与「已在别处叠过」长得一样。
+     */
+    excluded: ChainLossSimExcluded[];
+    /** 天数族登记表本身（前端/审计可当场核对本次用的是不是这四个）。 */
+    dayStateVarRegistry: Record<string, string>;
+  };
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -256,6 +300,104 @@ export interface ChainLossResult {
 export interface ChainLossObject {
   id: string;
   props: Record<string, unknown>;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// § 2a · 推演世界态叠加（WO-DRILL-VERDICT-BACKEND · 会话上下文）
+// ══════════════════════════════════════════════════════════════════════════
+//
+// ── 这一段解决的病（实测，不是推测）────────────────────────────────────────
+// 修前 `POST /a/v1/sim/chain-loss-matrix` 与 `/chain-loss-drill` **不收 `sessionId`**，
+// 只读 `repos.objects`（真实对象），而扰动落在 `sim_tick_state`（按 `sessionId|tick` 存）。
+// 两个库互不相干 ⇒ 真后端实测：给 `obj_supplier_SUP-001.deliveryDelay` 施 +30 天扰动、
+// 再 tick×3（curTick 6→9），世界态里该值确实 9→39，而 `chain-loss-matrix` 回包
+// **md5 逐字节相同**（`00005c6ac8853747042bc1100b35d6b0` / 30440B）。
+// 也就是说「演习结论」问不出「这一次推演里，根因链变成什么样了」——它答的永远是真实世界那条链。
+//
+// ── 为什么只叠加**天数族**，其余一律不叠（R18 量纲纪律）──────────────────────
+// 世界态里 41 种状态量，绝大多数是 **0–100 压力/风险指数**（`STATE_VAR_DOMAINS` 的
+// `PRESSURE_DOMAIN_SOURCE` 逐条登记）。把一个「压力 87.3」加到一条**以天为单位**的链上，
+// 就是本仓最爱犯的量纲错（`gap_attribution` 差 1e4 那次的同族）——**指数不是天数**。
+//
+// 天数族的名单**不是本单发明的**，是 `synthetic/battery.ts` `STATE_VAR_DOMAINS` 表头
+// 那条警告原文点名的四个：
+//   > ⚠ 天数族（`queueDays` / `clearanceQueueDays` / `procurementDelay` / `deliveryDelay`）
+//   >   …**刻意不在此表**：`drill-scan.ts` 只说了它们"是另一类量纲"，没说上界是多少
+// 这四个恰好各自挂在采购段的四个承载物上（见下表），且 `STATE_VAR_DISPLAY_NAMES` 里
+// `procurementDelay` 那行注释白纸黑字写着「**它度量的是天数**」。
+// 故本表是**查表，不是判断**：谁也不许往里加一个"看起来像天数"的键。
+//
+// ── R13：`drillValue` 不许被污染 ─────────────────────────────────────────────
+// 叠加**不改** `drillValue`（它恒是仓储字段真值），而是另立 `sim` 字段披露
+// 「哪个会话 / 哪一拍 / 哪个状态量 / 加了几天」。于是
+//   `days === daysFromDrill(drillValue, drillUnit) + sim.deltaDays`
+// 三者仍然逐一可回仓储对拍 —— 这是把 R13 从「字段可校」加强成「叠加也可校」。
+// 反面做法（把 30 天直接加进 `drillValue`）会让证据里的 `Supplier.leadTime` 回仓储捞出来对不上，
+// 正是 1e4 那次的形状。
+//
+// ── R6 确定性 ────────────────────────────────────────────────────────────────
+// 叠加是纯查表：同一份 (objects, links, overlay) 两跑字节一致。不传 `sim` ⇒ 一格都不叠
+// ⇒ **与本字段引入前逐字节相同**（反向对照实验锁住这一条）。
+
+/**
+ * 一个**有读数却没被叠加**的状态量，及其排除理由。
+ *
+ * 两种理由**修法完全不同**，故分开标（本仓「三分法」纪律的同族）：
+ *  · `NOT_DAY_UNIT`  —— 量纲根本不是天（0–100 压力/风险指数）。**永远不该叠**，
+ *                       想让它影响链，得先说清「多少压力等于几天」——那是另一条边、另一张单。
+ *  · `OTHER_CARRIER` —— 它**是**天数族，只是这一段不该由它计。典型是
+ *                       `Supplier.procurementDelay`：采购到货延迟已在 `PurchaseOrder` 那一段叠过，
+ *                       在供应商画像上再叠一次就是同一段**重复计**。
+ * 合成一句「因量纲排除」会把后者说成前者 —— 标签说谎比缺标签危险（1e4 那次的教训）。
+ */
+export interface ChainLossSimExcluded {
+  /** `Type.var` 形态，如 `Supplier.reviewPressure`。 */
+  key: string;
+  reason: "NOT_DAY_UNIT" | "OTHER_CARRIER";
+}
+
+/** 推演世界态叠加：某个会话在某一拍上的世界态切片。 */
+export interface ChainLossSimOverlay {
+  sessionId: string;
+  /** 该世界态取自哪一拍（`SimSession.curTick`）。 */
+  tick: number;
+  /** `objectId → { stateVar: number }`，原样取自 `sim_tick_state.state`。 */
+  state: Record<string, Record<string, number>>;
+}
+
+/**
+ * 承载物类型 → 该类型上**以天计**的推演状态量（**唯一映射表**）。
+ *
+ * 出处见上文 §2a：四个键逐条引自 `synthetic/battery.ts` `STATE_VAR_DOMAINS` 表头警告
+ * 点名的「天数族」，不是本单挑的。想加第五个 ⇒ 先去那张表把它登记成天数族，再回来加。
+ */
+export const SIM_DAY_STATE_VAR_BY_CARRIER: Readonly<Record<string, string>> = Object.freeze({
+  Supplier: "deliveryDelay",
+  PurchaseOrder: "procurementDelay",
+  CustomsClearance: "clearanceQueueDays",
+  IncomingInspection: "queueDays",
+});
+
+/**
+ * 取某个承载物在本次推演里的**天数叠加**。
+ *
+ * 三种取不到一律回 `null`（**不回 0**）：没传会话 / 该类型没有天数族状态量 /
+ * 该对象在世界态里没有这一格。回 0 会让「这一拍没有推演影响」与「这个量根本不在世界态里」
+ * 在证据里长得一模一样 —— 那正是本文件头「诚实缺席，绝不补 0」那条纪律。
+ */
+export function simDeltaDaysFor(
+  overlay: ChainLossSimOverlay | undefined,
+  drillType: string,
+  objectId: string,
+): { stateVar: string; stateValue: number; deltaDays: number } | null {
+  if (!overlay) return null;
+  const stateVar = SIM_DAY_STATE_VAR_BY_CARRIER[drillType];
+  if (stateVar === undefined) return null;
+  const cell = overlay.state[objectId]?.[stateVar];
+  if (typeof cell !== "number" || !Number.isFinite(cell)) return null;
+  // 天数族是纯积分器（`STATE_VAR_DOMAINS` 不夹不衰减），可能为负；负的等待天数没有业务含义，
+  // 夹到 0 而不是让它把全链算成负数（夹在这里而不是改世界态：世界态是别人的真相源）。
+  return { stateVar, stateValue: cell, deltaDays: Math.max(0, cell) };
 }
 export interface ChainLossLink {
   type: string;
@@ -294,6 +436,11 @@ export interface ChainLossInput {
   customsClearances: ChainLossObject[];
   incomingInspections: ChainLossObject[];
   links: ChainLossLink[];
+  /**
+   * 推演世界态叠加（WO-DRILL-VERDICT-BACKEND）。**缺省 = 不叠加**，此时本求解器
+   * 与本字段引入前逐字节相同（反向对照实验锁）。口径与量纲纪律见 §2a。
+   */
+  sim?: ChainLossSimOverlay;
 }
 
 const SOLVER_KEY = "chain_loss_attribution";
@@ -750,6 +897,9 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
   const empty: ChainLossEmpty[] = [];
   const nodeOrder: string[] = [];
   const nodeMeta = new Map<string, { label: string; stage: ChainStage; scope?: ChainScope; steps: ChainStep[] }>();
+  // 推演叠加的两本账（§2a）：叠了什么 / 因量纲没叠什么。不在会话上下文里时两本都空。
+  const simApplied: { stepId: string; stateVar: string; stateValue: number; deltaDays: number }[] = [];
+  const simExcluded = new Map<string, ChainLossSimExcluded>();
 
   for (const d of drafts) {
     const raw = d.obj && d.drillId ? num(d.obj.props[d.drillField]) : null;
@@ -771,7 +921,37 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
       });
       continue;
     }
-    const days = daysFromDrill(raw, d.drillUnit, rawEnd ?? undefined);
+    // 字段真值 → 天数（唯一换算），再叠加**本次推演**在这个承载物上的天数族读数。
+    // 不在会话上下文里 ⇒ `simAdd === null` ⇒ `days` 与叠加引入前逐字节相同（§2a·R6）。
+    const baseDays = daysFromDrill(raw, d.drillUnit, rawEnd ?? undefined);
+    // `raw !== null` 已蕴含 `d.obj` 非空（`raw` 的取值式就是 `d.obj && d.drillId ? … : null`），
+    // 但那是**跨语句**的蕴含，TS narrow 不到 ⇒ 取一个局部常量，别用 `!` 把判空关掉。
+    const carrier = d.obj;
+    const simAdd = carrier ? simDeltaDaysFor(input.sim, d.drillType, carrier.id) : null;
+    const days = baseDays + (simAdd?.deltaDays ?? 0);
+    if (simAdd) {
+      simApplied.push({ stepId: d.stepId, stateVar: simAdd.stateVar, stateValue: simAdd.stateValue, deltaDays: simAdd.deltaDays });
+    }
+    // 没被叠加的那些格，逐个记名 —— 且**必须分两种理由**（见 `simContext.excluded`）。
+    //
+    // ⚠ 这里曾经只写一句「因量纲排除」，实测当场发现它在说谎：`Supplier.procurementDelay`
+    //   **是**天数族（`STATE_VAR_DISPLAY_NAMES` 那行原文「它度量的是天数」），却被记成了「量纲不符」。
+    //   它真正的排除理由是**承载物不对**：同一行注释接着写「前者挂单据、后者挂供应商画像」
+    //   ⇒ 采购到货延迟算在 `PurchaseOrder` 那一段上，在 `Supplier` 上再算一次就是**同一段重复计**。
+    //   两种理由的修法完全不同（量纲不符 ⇒ 永远不该叠；承载物不对 ⇒ 已在别的段叠过了），
+    //   合成一句就是本仓「标签说的 ≠ 实际做的」那族错（`drillField:"value"` 差 1e4 的同形态）。
+    if (input.sim && carrier) {
+      const dayVar = SIM_DAY_STATE_VAR_BY_CARRIER[d.drillType];
+      const dayFamily = new Set(Object.values(SIM_DAY_STATE_VAR_BY_CARRIER));
+      for (const v of Object.keys(input.sim.state[carrier.id] ?? {})) {
+        if (v === dayVar) continue;
+        simExcluded.set(`${d.drillType}.${v}`, {
+          key: `${d.drillType}.${v}`,
+          // 是天数族、只是不该记在这个承载物上 ⇒ OTHER_CARRIER；否则是量纲根本不是天 ⇒ NOT_DAY_UNIT。
+          reason: dayFamily.has(v) ? "OTHER_CARRIER" : "NOT_DAY_UNIT",
+        });
+      }
+    }
     const step: ChainStep = {
       stepId: d.stepId,
       nodeId: d.nodeId,
@@ -798,6 +978,8 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
       ...(d.drillFieldEnd === undefined || rawEnd === null ? {} : { drillFieldEnd: d.drillFieldEnd, drillValueEnd: rawEnd }),
       conversion: conversionText(`${d.drillType}.${d.drillField}`, d.drillUnit, d.drillFieldEnd === undefined ? undefined : `${d.drillType}.${d.drillFieldEnd}`),
       derivationEdge: d.derivationEdge,
+      // R13 加强版：`drillValue` 恒是仓储真值，推演叠加另立一格披露（§2a）。
+      ...(simAdd ? { sim: { sessionId: input.sim!.sessionId, tick: input.sim!.tick, ...simAdd } } : {}),
     });
     if (!nodeMeta.has(d.nodeId)) {
       nodeOrder.push(d.nodeId);
@@ -945,6 +1127,20 @@ export function chainLossAttribution(input: ChainLossInput): ChainLossResult {
       (topLabel ? `；吃掉损失最多的是「${topLabel}」${(top!.pctOfChainLoss).toFixed(1)}%` : "") +
       `。另有 ${empty.length} 个环节诚实标 EMPTY（${empty.filter((e) => e.emptyKind === "NO_CARRIER").length} 段本体无承载 / ` +
       `${empty.filter((e) => e.emptyKind === "NO_INSTANCE").length} 段本链无实例），未补 0。`,
+    // 推演上下文披露（铁律 1.5 判据二）。不在会话上下文里 ⇒ 整块缺席，不下发一个空壳
+    // ——「没有会话」与「有会话但零叠加」必须能被区分（后者 appliedDays===0 但块在）。
+    ...(input.sim
+      ? {
+          simContext: {
+            sessionId: input.sim.sessionId,
+            tick: input.sim.tick,
+            appliedSteps: [...simApplied].sort((a, b) => a.stepId.localeCompare(b.stepId)),
+            appliedDays: simApplied.reduce((sum, a) => sum + a.deltaDays, 0),
+            excluded: [...simExcluded.values()].sort((a, b) => a.key.localeCompare(b.key)),
+            dayStateVarRegistry: { ...SIM_DAY_STATE_VAR_BY_CARRIER },
+          },
+        }
+      : {}),
   };
 }
 
