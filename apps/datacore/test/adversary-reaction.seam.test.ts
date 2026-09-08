@@ -93,8 +93,12 @@ async function pickSameCountDifferentMoney(t: TestApp) {
   for (const [custId, orders] of [...byCust].sort((a, b) => a[0].localeCompare(b[0]))) {
     // 客户**人话名**一并取出：本单的结论要写进本体，而「是哪两家客户」这种事
     // 必须由机器打出来，不许我凭印象往台账上写（铁律 1.5 判据四·信台账 = 信注释）。
+    // ⚠ 属性名是 `custName` **不是** `name` —— 第一版写 `props.name`，
+    //   读回 `undefined` 静默回落成 id，屏上打出 `obj_customer_cust_5(obj_customer_cust_5)`。
+    //   形态：**「我用『这个 key 读不到值』当作『这个对象没有名字』的证据」** —— 是量法找错了字段。
+    //   故这里**不静默回落**：读不到就让下面的断言红，而不是打一个看起来像 id 的"名字"。
     const o = await t.repos.objects.get("demo", custId);
-    const name = String((o?.props as Record<string, unknown> | undefined)?.name ?? custId);
+    const name = String((o?.props as Record<string, unknown> | undefined)?.custName ?? "");
     rows.push({ custId, name, orders, exposure: await exposureOf(t, orders) });
   }
   for (const a of rows) {
@@ -194,6 +198,11 @@ describe("WO-ADVERSARY-REACTION · 客户会还手（五格对照实验）", () 
     );
 
     expect(big.orders.length).toBe(small.orders.length); // 前提：条数确实相同
+    // 🐤 名字读得到 —— 否则上面那行日志里的"客户名"其实是 id 的回落，
+    //    而本体里写的「是哪两家客户」就成了没有出处的话。
+    for (const r of [big, small]) {
+      expect(r.name, `${r.custId} 的 custName 读不到 ⇒ 量法找错字段，不是这家客户没名字`).not.toBe("");
+    }
     expect(churnBig, "还手力度为 0 ⇒ 这一格没验到东西").toBeGreaterThan(0);
     expect(churnSmall).toBeGreaterThan(0);
     // 🔴 这就是本仓那条病灶的反面判据：两家同为 N 单，**读数不许逐字节相同**。
