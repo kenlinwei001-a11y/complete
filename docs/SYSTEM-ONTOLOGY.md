@@ -1715,16 +1715,36 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 实测未进暗发集时 `resolve("demo")` 里它**在**（金丝雀：同为 `defaultOn:false` 的 `sim.checkpoint` **同样在**）。
 关闭态下还手边被 `sessionPropRules` 滤出引擎，**目录仍可见**（§3.3「关掉的边要可见地降级，不是从图上消失」）。
 
+**计算由谁做（仓主 2026-09-08 架构原则）**：「**所有计算原则上使用求解器而不是 agent(LLM) 来计算，
+agent 只负责调动工具、本体、规则等等输出结果，然后基于结果推演**」。本链路据此**切成两半**：
+- **反应的数值**（还多狠）—— **永远**由规则算：`强度 × 分摊 × max(0, 源读数 − 容忍线) × 衰减`，
+  确定性、可重放、零 LLM。**这一半不许让给 agent。**
+- **反应的选择**（这次是砍单还是改期）—— 今天由规则表直选（`selectedBy: "RULE_TABLE"`）；
+  未来编排层可以挑，但**只能从已发布的还手规则里挑一条**，系数仍取自被挑中的那条规则。
+  字段位已留出（`ReactionSpec.selectedBy` / `selectorRef` + `ADVERSARY_SELECTOR_REGISTRY`），
+  **本单不接 agent**。两道构造期闸把原则钉死（`assertReactionWellFormed`）：
+  ① 还手边必须自带**表内强度**（`coefficient` 或 `coefficientRef`）—— 两个都没有 ⇒ 强度只能由挑规则的人现编；
+  ② `RULE_TABLE` 不许带 `selectorRef` —— 留个像模像样的值会让披露层读起来像编排层参与过。
+  两闸都有**变异反证**用例（门永远绿也可能是因为它什么都不拦）。
+
 **可披露（铁律 1.5 判据二）**：披露层逐边给 `isReaction` / `reactionActorTypeKey` / `reactionMove(+人话名)` /
-`reactionTolerance` / `reactionTriggeredActors`，外加 `rules.adversary` 汇总栏
-（`enabled/declared/suppressed/fired/triggeredActors/moves`）。
+`reactionTolerance` / `reactionTriggeredActors` / **`reactionSelectedBy`(+人话名) / `reactionSelectorRef`**，
+外加 `rules.adversary` 汇总栏（`enabled/declared/suppressed/fired/triggeredActors/moves/**selectors**`）。
 ⛔ **关闭态也必须给这一栏**（同「agent 是否参与」那条纪律）：写 `enabled:false + suppressed:1`，
 让读者当场知道**这是一次单方推演**，而不是误以为"对手确实没反应"。
+**判据**：一个看不到代码的人，凭「规则 key + 系数 + 容忍线 + 承载条数 + **谁选的**」应当能自己判断
+「这是按规则算的，不是谁编的」—— 少了最后一项，前四项再全也答不了「这条规则凭什么是这一条」。
 
-**对照实验（真后端 `SEED_DEMO=1` · 非 mock）**：开/关同一应对 ⇒ 世界态 md5
-`d5499e75…`(开) vs `f69ea768…`(关)；**关闭态与 canonical `75d9b222` 逐字节相同**（同一 md5）；
-同为 7 单的深蓝汽车(8.32亿)/上汽通用五菱(7.19亿) 受同一冲击 ⇒ 还手 10.7542 / 9.3044，
-比值 1.1558× **恰等于**金额比（修前这两个数会逐字节相同）。
+**对照实验（真后端 `SEED_DEMO=1` · 非 mock · 2026-09-08 实测复现）**：
+- **§1 开/关**：同一应对 ⇒ 世界态 md5 `9b516d5f…`(开) vs `0f55ebc8…`(关)，**不同**。
+- **§2 反向对照（跨分支实测，不是推断）**：同一份探针在 canonical `75d9b222` 与本分支各跑一遍 ——
+  关闭态世界态 md5**两边同为 `0f55ebc8…`**、剥掉还手边的 46 条规则目录 md5 两边同为 `1236ba78…`
+  ⇒ **逐字节相同**。**唯一差异是目录总条数 46 → 47**，即那条**可见地降级**的还手边本身
+  （§3.3 有意为之，非回归；金值四处已同步）。
+- **§3 按金额不按条数**：同为 **7 单**的 **深蓝汽车**(`cust_5`·敞口 8.315 亿) / **上汽通用五菱**(`cust_12`·7.194 亿)
+  受同一冲击 ⇒ 还手 **10.7542 / 9.3044**，比值 **1.15581670** 与敞口比**逐位相等**（差 <1e-6）。
+  修前这两个数会逐字节相同 —— 那正是本仓已登记的「东风/零跑同为 4 单、压力相同 15.137」病灶的同一形态。
+- **§4 确定性**：同 seed 同应对重跑两次逐字节相同。**§5 金丝雀**：同一把尺子量"确定会变的量"必须变（见测试头注）。
 
 **屏上现状（诚实缺席）**：还手边本身**已在屏上**（统一推演控制台右栏「扰动因素·关掉看变化」，
 显人话名 + `Customer.receivablePressure –customer_places_order→ Order.orderChurn` + 系数 0.35 + 延迟 1，

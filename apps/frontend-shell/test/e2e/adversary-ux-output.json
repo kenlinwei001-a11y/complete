@@ -21,8 +21,8 @@
           "200 POST http://127.0.0.1:4011/a/v1/auth/login",
           "200 GET http://127.0.0.1:4011/a/v1/me/workspace",
           "200 GET http://127.0.0.1:4011/a/v1/history/watermark",
-          "200 GET http://127.0.0.1:4011/a/v1/data-health",
-          "200 GET http://127.0.0.1:4012/b/v1/scenarios"
+          "200 GET http://127.0.0.1:4012/b/v1/scenarios",
+          "200 GET http://127.0.0.1:4011/a/v1/data-health"
         ]
       },
       "canaryHomeReadable": true,
