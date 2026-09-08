@@ -54,6 +54,7 @@ import type {
   ParetoObjective,
   ParetoObjectiveGap,
   ParetoRequest,
+  SimWorldReadDisclosure,
 } from "@platform/contracts";
 import { ParetoRequestSchema } from "@platform/contracts";
 import type { OntologyBinding } from "@platform/contracts";
@@ -108,7 +109,15 @@ const hits = (t: ObjectTypeDef, role: Parameters<typeof lexiconHit>[1]): string[
 const refsTo = (t: ObjectTypeDef, typeKey: string): string[] =>
   t.properties.filter((p) => p.refToTypeKey === typeKey).map((p) => p.propKey).sort();
 
-/** 一次装配用到的全部读本体入口（与绑定层同一个视图接口，不另造一套）。 */
+/**
+ * 一次装配用到的全部读本体入口（与绑定层同一个视图接口，不另造一套）。
+ *
+ * ⚠ WO-WORLDSTATE-CONTRACT：`listByType` 现在**可能是一个叠了世界态的视图**
+ * （`sim/world-read.ts` 的 `buildWorldReadView`，签名逐字一致故本文件一行不用改）。
+ * 本文件**刻意不认识世界态** —— 它只管「从本体装出一份可解的模型」，
+ * 至于那些数是本体真值还是这次推演的态，由调用方注入哪个视图决定。
+ * 这样两件事各自可测：装配逻辑不必知道沙盘，世界态叠加不必知道帕累托。
+ */
 export interface AssembleDeps {
   listTypes(tenantId: string): Promise<ObjectTypeDef[]>;
   listByType(tenantId: string, typeKey: string): Promise<ObjectInstance[]>;
@@ -122,11 +131,15 @@ const miss = (missingRoles: string[], note: string): ParetoAssembleResult => ({ 
  * @param deps    读本体（调用方注入 repos，本文件不认识 Repos）
  * @param tenantId R2：全程只读本租户，别租户一行都摸不到
  * @param input   「要优化什么范围」
+ * @param worldStateOf WO-WORLDSTATE-CONTRACT · 取世界态披露块的**回调**（不传 ⇒ `null`）。
+ *   ⚠ 是回调不是值：披露块要统计「本次**真读过**哪些类型、改写了几格」，
+ *   而这件事只有等下面所有 `listByType` 都跑完才知道。传值就只能传一个空壳。
  */
 export async function assembleParetoModel(
   deps: AssembleDeps,
   tenantId: string,
   input: ParetoAssembleRequest,
+  worldStateOf?: () => SimWorldReadDisclosure | null,
 ): Promise<ParetoAssembleResult> {
   const family = input.family ?? ASSEMBLABLE_FAMILIES[0];
   if (!(ASSEMBLABLE_FAMILIES as readonly string[]).includes(family)) {
@@ -854,6 +867,7 @@ export async function assembleParetoModel(
     request,
     roles,
     unboundRoles,
+    worldState: worldStateOf?.() ?? null,
     note:
       `装配自本租户已发布本体：${orderT.key}(${orders.length} 行) × ${lineT.key}(${lines.length} 行)；` +
       `目标 ${objectives.map((o) => `${o.key}←${o.label}`).join("、")}；` +

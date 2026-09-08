@@ -3177,6 +3177,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     //   + 统一错误信封 `{ error: { code, message, requestId } }`，message 是
     //   `"<path>: <message>"` 的人读串，不含任何 zod 内部字段。
     const body = parseBody(ParetoRequestSchema, req.body ?? {});
+    /**
+     * WO-WORLDSTATE-CONTRACT · **本口刻意不校验 `sessionId` 的存在性**（这是判断，不是遗漏）。
+     *
+     * 开工时我在这里加过一句 `getSimOr404(c, body.sessionId)`，理由是「R2 不许静默退化」。
+     * **实测把它否掉了**：`opt-pareto-assemble.seam.test.ts` 与 `opt-pareto.seam.test.ts`
+     * 共 3 个既有用例当场从 200 变 404（它们传的是 `sess-1` / `sess-pareto-http` 这类
+     * **合成标签**，本来就没打算指向一条真会话）。追一层看契约原文，它们没写错 ——
+     * `ParetoRequestSchema.sessionId` 的定义是「**R6 确定性键的一部分**」，
+     * 即一个**标签**，不是外键。把标签升级成外键是另一个契约变更，不在本单射程内。
+     *
+     * **R2 落在真正读世界态的那一口**：`POST …/optimize-pareto/assemble` ——
+     * 会话不存在/属于别的租户即 404（`SolverService.assembleParetoModel` 第一行）。
+     * 本口**一格世界态都不读**：世界态在装配侧就已经烤进 `args` 了，
+     * 它这里只是把上一跳回的那份请求原样求解。
+     * ⇒ 「静默退化成本体真值」这个风险在本口**结构上不存在**：args 是调用方自己给的。
+     */
     const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
     return runOptimizePareto(solve, body);
   });

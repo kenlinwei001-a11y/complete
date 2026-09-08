@@ -97,6 +97,25 @@ async function seedTicketWorld(t: App, tenantId = T): Promise<void> {
   }
 }
 
+/**
+ * WO-WORLDSTATE-CONTRACT · 建一条**真会话**（本用例原先传的是合成标签 `sess-1`）。
+ *
+ * ══ 为什么本文件要改这一处 ═══════════════════════════════════════════════════
+ * `sessionId` 从「只回显的 R6 确定性键」变成了「**世界态读取的入口**」——
+ * 装配口现在真的会去读它（读不到 ⇒ 404 · R2，⛔ 不许静默退化成读本体真值）。
+ * 于是一个指不到任何会话的标签**必须**报 404，本用例原写法当场从 200 变 404。
+ *
+ * ⚠ `baseSnapshot` **刻意留空**：本门测的是「装配」不是「世界态」，空世界 ⇒ 叠加零格 ⇒
+ * 下面那些断言（杠杆档位 10/20/30、逐字节确定性）**与本单引入前逐字节相同**。
+ * 拿一个有态的世界来测装配，等于把两件事搅在一起，哪天前沿变了也分不清是谁改的。
+ */
+const seedSession = (t: App, tenantId: string, id: string) =>
+  t.repos.sim.createSession({
+    id, tenantId, baseSnapshot: {}, scope: {}, status: "RUNNING", curTick: 0,
+    parentCheckpointId: null, disabledRuleKeys: [], tickDays: 1,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+
 const assemble = async (t: App, headers: Record<string, string>, payload: Record<string, unknown> = {}) => {
   const r = await t.app.inject({ method: "POST", url: "/a/v1/sim/optimize-pareto/assemble", headers, payload });
   return { statusCode: r.statusCode, body: r.body, json: r.statusCode === 200 ? (JSON.parse(r.body) as ParetoAssembleResult) : undefined };
@@ -133,6 +152,7 @@ describe("WO-SIM-PARETO-MODEL-EXIT · 装配出口 → 求解 整条缝", () => 
     const t = await makeApp();
     await enableSim(t, T, ACME);
     await seedTicketWorld(t);
+    await seedSession(t, T, "sess-1"); // WO-WORLDSTATE-CONTRACT：sessionId 现在是真入口，必须指到真会话
 
     const a = await assemble(t, ACME, { sessionId: "sess-1" });
     expect(a.statusCode).toBe(200);
@@ -243,6 +263,7 @@ describe("WO-SIM-PARETO-MODEL-EXIT · 装配出口 → 求解 整条缝", () => 
       const t = await makeApp();
       await enableSim(t, T, ACME);
       await seedTicketWorld(t);
+      await seedSession(t, T, "sess-1"); // 同上：真会话（空世界 ⇒ 叠加零格 ⇒ 本用例读数不变）
       const a = await assemble(t, ACME, { sessionId: "sess-1" });
       const j = a.json as Extract<ParetoAssembleResult, { applicable: true }>;
       const s = await solve(t, ACME, j.request);
