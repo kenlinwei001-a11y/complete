@@ -15,12 +15,14 @@
       "screenshot": "adv-off.png",
       "noMock": {
         "ok": true,
-        "realHits": 4,
+        "realHits": 5,
+        "portsProbed": "4011|4012",
         "sample": [
-          "200 POST http://127.0.0.1:4001/a/v1/auth/login",
-          "200 GET http://127.0.0.1:4001/a/v1/me/workspace",
-          "200 GET http://127.0.0.1:4001/a/v1/history/watermark",
-          "200 GET http://127.0.0.1:4001/a/v1/data-health"
+          "200 POST http://127.0.0.1:4011/a/v1/auth/login",
+          "200 GET http://127.0.0.1:4011/a/v1/me/workspace",
+          "200 GET http://127.0.0.1:4011/a/v1/history/watermark",
+          "200 GET http://127.0.0.1:4011/a/v1/data-health",
+          "200 GET http://127.0.0.1:4012/b/v1/scenarios"
         ]
       },
       "canaryHomeReadable": true,
@@ -33,7 +35,28 @@
           "suppressed": 1,
           "fired": 0,
           "triggeredActors": 0,
-          "moves": []
+          "moves": [],
+          "selectors": []
+        },
+        "disclosure": {
+          "canaryPhysicalRuleFound": true,
+          "canaryPhysicalRuleKey": "demo_customer_receivable_to_invoice_overdue",
+          "reaction": null,
+          "汇总栏": {
+            "enabled": false,
+            "declared": 0,
+            "suppressed": 1,
+            "fired": 0,
+            "triggeredActors": 0,
+            "moves": [],
+            "selectors": []
+          },
+          "本次是否调用agent": {
+            "invoked": false,
+            "calls": 0,
+            "provider": null,
+            "model": null
+          }
         },
         "orderChurnSameCell": 0,
         "probeOrderSameCell": "obj_order_SO-900025"
@@ -75,12 +98,13 @@
       "noMock": {
         "ok": true,
         "realHits": 5,
+        "portsProbed": "4011|4012",
         "sample": [
-          "200 POST http://127.0.0.1:4001/a/v1/auth/login",
-          "200 GET http://127.0.0.1:4001/a/v1/me/workspace",
-          "200 GET http://127.0.0.1:4001/a/v1/history/watermark",
-          "200 GET http://127.0.0.1:4001/a/v1/data-health",
-          "200 GET http://127.0.0.1:4002/b/v1/scenarios"
+          "200 POST http://127.0.0.1:4011/a/v1/auth/login",
+          "200 GET http://127.0.0.1:4011/a/v1/me/workspace",
+          "200 GET http://127.0.0.1:4011/a/v1/history/watermark",
+          "200 GET http://127.0.0.1:4011/a/v1/data-health",
+          "200 GET http://127.0.0.1:4012/b/v1/scenarios"
         ]
       },
       "canaryHomeReadable": true,
@@ -95,7 +119,47 @@
           "triggeredActors": 1,
           "moves": [
             "CUT_ORDER"
+          ],
+          "selectors": [
+            "RULE_TABLE"
           ]
+        },
+        "disclosure": {
+          "canaryPhysicalRuleFound": true,
+          "canaryPhysicalRuleKey": "demo_customer_receivable_to_invoice_overdue",
+          "reaction": {
+            "规则key": "demo_customer_reaction_cut_order",
+            "系数": 0.35,
+            "触发条件_容忍线": 12,
+            "承载条数": 500,
+            "分摊口径": "actor_exposure_relative",
+            "归一方向": "SOURCE_POOL_MEAN",
+            "还手动作": "CUT_ORDER",
+            "动作人话名": "砍单",
+            "越线对手数": 1,
+            "谁选的": "RULE_TABLE",
+            "谁选的人话名": "规则表直选",
+            "选择方出处": null
+          },
+          "汇总栏": {
+            "enabled": true,
+            "declared": 1,
+            "suppressed": 0,
+            "fired": 1,
+            "triggeredActors": 1,
+            "moves": [
+              "CUT_ORDER"
+            ],
+            "selectors": [
+              "RULE_TABLE"
+            ]
+          },
+          "本次是否调用agent": {
+            "invoked": false,
+            "calls": 0,
+            "provider": null,
+            "model": null
+          }
         }
       },
       "onScreen": {
@@ -174,6 +238,63 @@
         "adv-off.png",
         "adv-on.png"
       ],
+      "可披露_开启态": {
+        "canaryPhysicalRuleFound": true,
+        "canaryPhysicalRuleKey": "demo_customer_receivable_to_invoice_overdue",
+        "reaction": {
+          "规则key": "demo_customer_reaction_cut_order",
+          "系数": 0.35,
+          "触发条件_容忍线": 12,
+          "承载条数": 500,
+          "分摊口径": "actor_exposure_relative",
+          "归一方向": "SOURCE_POOL_MEAN",
+          "还手动作": "CUT_ORDER",
+          "动作人话名": "砍单",
+          "越线对手数": 1,
+          "谁选的": "RULE_TABLE",
+          "谁选的人话名": "规则表直选",
+          "选择方出处": null
+        },
+        "汇总栏": {
+          "enabled": true,
+          "declared": 1,
+          "suppressed": 0,
+          "fired": 1,
+          "triggeredActors": 1,
+          "moves": [
+            "CUT_ORDER"
+          ],
+          "selectors": [
+            "RULE_TABLE"
+          ]
+        },
+        "本次是否调用agent": {
+          "invoked": false,
+          "calls": 0,
+          "provider": null,
+          "model": null
+        }
+      },
+      "可披露_关闭态": {
+        "canaryPhysicalRuleFound": true,
+        "canaryPhysicalRuleKey": "demo_customer_receivable_to_invoice_overdue",
+        "reaction": null,
+        "汇总栏": {
+          "enabled": false,
+          "declared": 0,
+          "suppressed": 1,
+          "fired": 0,
+          "triggeredActors": 0,
+          "moves": [],
+          "selectors": []
+        },
+        "本次是否调用agent": {
+          "invoked": false,
+          "calls": 0,
+          "provider": null,
+          "model": null
+        }
+      },
       "真后端": {
         "OFF": true,
         "ON": true
