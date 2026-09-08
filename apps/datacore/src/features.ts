@@ -97,6 +97,12 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   { key: "sim.branch", name: "分支对比", level: "BLOCK", defaultOn: false, requires: ["sim.checkpoint"] },
   { key: "sim.certification", name: "就绪认证 L0-L4", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.commander", name: "AI 推演指挥台", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
+  // WO-AGENT-IN-LOOP（R3 暗发·defaultOn:false·关 = 404 FEATURE_NOT_FOUND·先于 authz）：
+  // **方案生成让 agent 参与**——agent 读本次世界态挑候选对策（只出方案与比对，**不产数**），
+  // 提案定版落盘后由确定性引擎照旧算帕累托。关 ⇒ 方案寻优逐字节沿用今天的装配器网格。
+  // 暗发理由：它要 A→B 服务间通路（AGENTCORE_BASE_URL/SERVICE_TOKEN）+ 一个已发布的 agent，
+  // 两者缺一就只会走兜底提案——默认开会让「本次未调用 agent」成为常态而无人察觉。
+  { key: "sim.agent-proposals", name: "方案生成·agent 参与", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   // WO-DECISION-CAUSAL-GRAPH · 决策因果图（Cause→Impact→Decision→Action→Result 五段·只读投影）。
   // **暗发 defaultOn:false**：关 = /a/v1/causal-graphs/* 一律 404 FEATURE_NOT_FOUND（R3 先于 authz），
   // 现有租户零影响（RL2）。不 requires sim.sandbox —— 两个数据源里只有一个是沙盘，
