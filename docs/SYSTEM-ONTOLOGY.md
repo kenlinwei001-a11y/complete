@@ -2474,6 +2474,77 @@ rollup 答「这条线**能**做多少」（能力面·套/日），ledger 答�
 没有一条表达「哪批货送到哪个地点」（与 `solvers/chain-loss.ts` 那段「成品发到客户的在途时长无承载、
 三个看着像的逐个核过全都不是」同一结论）。⇒ 补它必须**凭空造发运记录**，属造业务数据，本单不做。
 
+### 方案生成链路 · 装配器菜单 → agent 挑方案 → 定版落盘 → 确定性引擎算数（WO-AGENT-IN-LOOP · 2026-09-08）
+
+**一句话**：推演路此前**零 LLM / 零 agent**，「方案寻优」那批候选是按**结构信号**装配出来的
+固定杠杆网格 —— 它不读本次事件，故施加任何扰动候选集逐字节不变（**是一张产线产能扫描表，
+不是本次事件的对策**）。本链路让 agent 参与「挑哪几条对策」，**同时一个数都不许它产**。
+
+**今天的行为是 X，应该是 Y**
+
+| | X（改前实测） | Y（本链路） |
+|---|---|---|
+| 候选从哪来 | `assembleParetoModel` 按词库命中/主键/ref 指向/实例行数挑杠杆，**不读世界态** | 同一份菜单 + **本次世界态**交给 agent，由它挑针对本次事件的候选 |
+| agent 是否参与 | `solvers/` 内 `mcp\|skillId\|agentId\|ReAct` 命中 **0**；`capacity.ts` 写死 `agentInvolved: false` | 参与，且**走哪条内核如实回**（内置 `runAgentLoop` / dsh 外部运行时） |
+| 谁算数 | 求解器 | **仍然只有求解器**（见下「分工」） |
+
+**分工（仓主 2026-09-08 定的架构原则，本链路的前提）**
+
+> 「所有计算原则上使用**求解器**而不是 agent(LLM) 来计算，agent 只负责调动工具、本体、规则等等
+> 输出结果，然后基于结果推演，形成**多个方案和方案比对**。」
+
+| 谁 | 产出 | 数从哪来 |
+|---|---|---|
+| 装配器（确定性） | 杠杆菜单：有哪些杠杆、每根有哪些档位 | **本体真值** |
+| **agent** | 挑哪几项、组成哪几个方案、方案之间怎么比 | **不产数** |
+| 求解器（确定性） | 每个方案的营收/成本/毛利/获排率、支配关系、前沿 | 求解器输出 |
+
+**⛔ 「agent 不产数」是结构性的不是提示词纪律**：契约 `AgentProposalDraftSchema`
+（`packages/contracts/src/sim-proposal.ts`）里**没有任何能装业务数值的格** —— agent 只能回
+**下标**（`leverIndex`/`valueIndex`），数值全在菜单里。兑现只有一处
+（`resolveProposalToLevers`，纯函数），**下标越界一律抛**（`ProposalResolveError`，
+静默夹逼等于给幻觉出来的下标发一张合法通行证）。
+理由：**一个会自己编数的 agent，屏上每个数都可疑，而它不会报错。**
+
+**新增链路 3 条**
+`POST /a/v1/sim/optimize-pareto/propose`（A：装菜单 → 调 B → 定版落盘）·
+`POST /b/v1/sim/propose-candidates`（B：跑 agent，回下标与文字）·
+`POST /a/v1/sim/optimize-pareto/by-proposal`（A：**只读定版** → 兑现 → 同一个 `runOptimizePareto`）。
+A→B 走**既有服务间通路**（`AGENTCORE_BASE_URL` + `SERVICE_TOKEN`，同 `databuilder` 的 scaffoldClient
+形态）——**不在 datacore 里新起一套 LLM 客户端**。
+
+**新增承载物**：`sim_agent_proposal` 表（`migrations/040` · R9 四处同改）。
+定版 = `proposalId` + `version` + `inputFingerprint`（规范化「菜单 + 世界态」的 sha256）。
+
+**⚠ 确定性 R6 为什么没被破**：LLM 只在**生成时刻**出现一次，产物立刻定版；
+之后每一次求解都**读定版**，求解路径上一次模型调用都没有 ⇒ 同一提案版本重跑逐字节一致。
+同族先例：`solvers/llm-gen.ts`（「只在生成时刻调一次 LLM，产物随后冻结(hash+版本)」）。
+新鲜度判据落在**指纹**不是「最新一版」——拿最新版套一个已经变了的世界，
+就是「针对上一个事件的对策」，而它在屏上看起来完全正常。
+
+**⚠ 与 dsh（外部 agent 运行时）的关系**：走 dsh 的**唯一合法途径**是那个 agent 记录自己声明
+`kernel:"EXTERNAL"`（`WO-AGENT-KERNEL-SELECT`，engine 显式值优先于 env）。
+本链路**不翻 `DSH_HARNESS`**、不写任何部署面、**不 import `dsh-runtime`** ——
+对 dsh 的全部关系就是**回读**它跑完之后标在 `run.kernel` 上的值。
+翻 flag 的三条前置见 `docs/DECISION-dsh-fusion.md` §3（销账另有其单）。
+实测 `dsh-dormancy:check` 改后仍 **RC=0**（金丝雀 28/28）。
+
+**诚实位**：`provenance.agentInvolved` / `route`（`NONE`/`NATIVE`/`EXTERNAL`）/ `provider` / `model` /
+`elapsedMs` / `fallbackReason` 随回包下发。**未调用 agent 必须明写，不许留白**（铁律 1.5 判据二）；
+agent 不可用时落**确定性兜底提案**（档位仍全部取自菜单，不造数）且写清原因。
+
+**门禁**：`sim.agent-proposals`（BLOCK · **defaultOn:false** · requires `sim.sandbox`）。
+关 ⇒ 404 `FEATURE_NOT_FOUND`，且 `POST /a/v1/sim/optimize-pareto` **一行未动** ⇒
+关闭态与今天逐字节相同。
+
+**门**：`apps/datacore/test/agent-proposal.seam.test.ts` 六节（§1 零数值格·含变异反证 ·
+§2 兑现 fail-closed · §3 确定性与「指纹命中不再调模型」· §4 换事件必须换指纹 + 反向对照 ·
+§5 诚实位不许留白 · §6 方案↔解 id 与 `paretoSolutionId` 同源）。
+
+**⛔ 前端诚实登记**：后端已下发上述可披露层，但**屏上今天没有展示位** ——
+方案寻优页读的仍是未改动的 `POST /a/v1/sim/optimize-pareto`。
+接屏属 `apps/frontend-shell/src/views/sim/` 的改动，该目录在禁令 2 下冻结、本单不解冻，故不做。
+
 ### 本体体检链路 · 第三类边：不变式守卫（WO-ONTOLOGY-EDGE-TRICLASS · 2026-08-17）
 
 **一句话**：本体图谱三样真值 → 守卫目录逐条求值 → 成立/不成立 + 违反者 → 屏上第三张表；改容差即**重走整条链**。
