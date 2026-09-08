@@ -365,9 +365,23 @@ async function makeBareAgent(t: TestApp): Promise<string> {
   return agent.id;
 }
 
-describe.skipIf(!KIMI_READY)("L2.A1 · 真 LLM：engine 分叉 → 绑定矩阵解析 → env 注入 → 真 Kimi 端点", () => {
+/**
+ * 两个只差一个记号串的提问。**判别力就建立在这一个差异上**：
+ * 真供应商读了输入 ⇒ 两次回答不同；固定端点 / 写死剧本 / 缓存回放 ⇒ 两次回答相同。
+ * 刻意用「回显一个记号」而不是「算一道题」：
+ *   ① 不依赖模型知识或算力，换任何供应商都稳；
+ *   ② 不产生任何数值 —— 本平台的纪律是「求解器算数，agent 只编排」，
+ *      让真跳臂去问一个要模型自己算的数，等于在验收里鼓励它违纪。
+ */
+const NONCE_A = "ALPHA-7Q3";
+const NONCE_B = "BRAVO-2X8";
+const noncePrompt = (nonce: string): string =>
+  `直接调用 final_answer 工具收尾，参数严格使用这个 JSON 形态（不要添加任何其他键）：` +
+  `{"blocks":[{"type":"text","markdown":"${nonce}"}],"provenance":[]}。`;
+
+describe.skipIf(!KIMI_READY)("L2.A1 · 真 LLM：engine 分叉 → 绑定矩阵解析 → env 注入 → 真供应商端点", () => {
   it(
-    "runRegisteredAgent 真分叉 ⇒ ANSWERED ∧ 真 token 痕迹（stats.tokenUsage）∧ 全面零 key 子串",
+    "两问判别力金丝雀：换问题 ⇒ 回答必须跟着变（固定端点过不了）∧ ANSWERED ∧ 零 key 子串",
     { timeout: REAL_TIMEOUT },
     async () => {
       const prevHarnessDir = process.env.DSH_HARNESS_DIR;
@@ -383,30 +397,46 @@ describe.skipIf(!KIMI_READY)("L2.A1 · 真 LLM：engine 分叉 → 绑定矩阵�
           env: { DSH_HARNESS_CORDIS_FILE: "cordis.poc.yml" },
         });
         const agentId = await makeBareAgent(t);
-        const run = () =>
+        const runWith = (taskId: string, nonce: string) => () =>
           t!.deps.engine.runRegisteredAgent({
-            taskId: "task_l2_a1",
+            taskId,
             agentId,
             version: 1,
-            prompt:
-              "直接调用 final_answer 工具收尾，" +
-              '参数严格使用这个 JSON 形态（不要添加任何其他键）：{"blocks":[{"type":"text","markdown":"L2 真跳"}],"provenance":[]}。',
+            prompt: noncePrompt(nonce),
             ctx: CTX,
             nesting: enterNesting({ callChain: [], budget: new BudgetTracker() }, "agent", agentId),
             emit: async () => {},
           });
-        const result = await runRealOnce(run, (r) => r.outcome === "ANSWERED");
-        expect(result.outcome).toBe("ANSWERED");
-        // 真跳证据：answer.stats（N2·D-2 fold）携带真模型 token 账——stub/剧本给不出非零真值口径。
-        const stats = (result.answer as { stats?: { tokenUsage?: { uncachedInputTokens: number; outputTokens: number } } }).stats;
+        const resA = await runRealOnce(runWith("task_l2_a1_a", NONCE_A), (r) => r.outcome === "ANSWERED");
+        const resB = await runRealOnce(runWith("task_l2_a1_b", NONCE_B), (r) => r.outcome === "ANSWERED");
+        expect(resA.outcome).toBe("ANSWERED");
+        expect(resB.outcome).toBe("ANSWERED");
+
+        const textA = answerText(resA);
+        const textB = answerText(resB);
+        console.info(`[L2.A1 判别力] A=<<${textA}>> B=<<${textB}>>`);
+        // ⚠ 头号判据：换问题回答必须跟着变。不变 ⇒ 打到的是固定端点，**报「量法坏了」不许报「真路通了」**。
+        expect(
+          isDiscriminating(textA, textB),
+          "两次回答相同 ⇒ 该端点不随输入变化（固定端点/剧本/回放），不构成『真供应商应答』证据",
+        ).toBe(true);
+        // 内容确实跟着各自的问题走（而不是只是随机噪声两次不同）。
+        expect(textA).toContain(NONCE_A);
+        expect(textB).toContain(NONCE_B);
+
+        // 次要观测（**不是**真实性证据）：token 账。
+        // ⚠ 2026-09-08 实测：本文件的本地 stub 自报 usage 50/10 会被逐字透传，`>0` 在 stub 上照样绿
+        //   ⇒ 它只能分「拿到带 usage 的应答」与「没拿到应答」（401 路径实测 0/0），
+        //     **分不了「真供应商」与「本地 stub」**。真实性判据是上面那条判别力金丝雀。
+        const stats = (resA.answer as { stats?: { tokenUsage?: { uncachedInputTokens: number; outputTokens: number } } }).stats;
         expect(stats?.tokenUsage).toBeDefined();
         expect(stats!.tokenUsage!.uncachedInputTokens).toBeGreaterThan(0);
         expect(stats!.tokenUsage!.outputTokens).toBeGreaterThan(0);
         console.info(
-          `[L2.A1 真跳痕迹] model=${MODEL_ID} uncachedInputTokens=${stats!.tokenUsage!.uncachedInputTokens} outputTokens=${stats!.tokenUsage!.outputTokens}`,
+          `[L2.A1 token 账（次要观测）] model=${MODEL_ID} uncachedInputTokens=${stats!.tokenUsage!.uncachedInputTokens} outputTokens=${stats!.tokenUsage!.outputTokens}`,
         );
         // 凭据红线：结果面（answer/run/sketch）零 key 子串。
-        expect(JSON.stringify(result)).not.toContain(REAL_KEY as string);
+        expect(JSON.stringify(resA) + JSON.stringify(resB)).not.toContain(REAL_KEY as string);
       } finally {
         if (prevHarnessDir === undefined) delete process.env.DSH_HARNESS_DIR;
         else process.env.DSH_HARNESS_DIR = prevHarnessDir;
@@ -416,6 +446,45 @@ describe.skipIf(!KIMI_READY)("L2.A1 · 真 LLM：engine 分叉 → 绑定矩阵�
       }
     },
   );
+});
+
+// ---------------------------------------------------------------------------
+// L2.A1′ · 判别力金丝雀的**变异反证**（无需凭据，常设红位）
+// ---------------------------------------------------------------------------
+/**
+ * 上面那条金丝雀本身也要被证明「真的会说话」——否则它就是装饰品。
+ * 本臂把同一个 `isDiscriminating` 拿去量一个**固定应答的本地端点**（无论问什么都回同一句），
+ * 断言它**判为不具判别力**。若哪天有人把 `isDiscriminating` 改松，这一臂当场红。
+ * ⚠ 共用 L2.A1 的同一份实现，不另抄一份（抄了就会出现「主逻辑改了、金丝雀拿旧的测、照样绿」）。
+ */
+describe("L2.A1′ · 判别力金丝雀的变异反证（免凭据）", () => {
+  it("固定应答端点：两问回答相同 ⇒ isDiscriminating 必须判 false", { timeout: STUB_TIMEOUT }, async () => {
+    const FIXED = "固定端点写死串";
+    const runOnce = async (nonce: string): Promise<string> => {
+      // 剧本只有一轮 final_answer，且**内容与提问无关**（这正是要被抓出来的形态）。
+      const stub = await startStubOpenAi([finalAnswerRound(FIXED)]);
+      try {
+        const out = await runDshAgent(
+          { prompt: noncePrompt(nonce), setup: { ...BASE_SETUP }, provider: "platform", model: MODEL_ID },
+          {
+            harnessDir: HARNESS_DIR,
+            cordisFile: CORDIS_L2,
+            requestTimeoutMs: 60_000,
+            env: { ...platformEnv(`${stub.url}/v1`, FAKE_KEY), PLATFORM_GOV_URL: "http://127.0.0.1:9/unused" },
+          },
+        );
+        return answerText(out.result);
+      } finally {
+        await stub.close();
+      }
+    };
+    const a = await runOnce(NONCE_A);
+    const b = await runOnce(NONCE_B);
+    console.info(`[L2.A1′ 变异反证] A=<<${a}>> B=<<${b}>>`);
+    expect(a).toBe(FIXED); // 端点确实是固定应答（金丝雀的前提成立）
+    expect(b).toBe(FIXED);
+    expect(isDiscriminating(a, b)).toBe(false); // ⇒ 金丝雀抓得住固定端点
+  });
 });
 
 // ---------------------------------------------------------------------------
