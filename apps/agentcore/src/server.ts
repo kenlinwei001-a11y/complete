@@ -9,6 +9,7 @@ import {
   ErrorCodes,
   LlmProviderConfigSchema,
   MCP_CONFIG_NOTES,
+  ProposalMenuSchema,
   MCP_SERVER_NAME_RE,
   McpServerConfigSchema,
   mcpServerNameSlug,
@@ -58,6 +59,8 @@ import { CreateIntentBodySchema, CreatePlanBodySchema, UpdateIntentBodySchema, r
 import { encryptSecret } from "./crypto.js";
 import type { AppDeps } from "./deps.js";
 import { newId } from "./ids.js";
+// WO-AGENT-IN-LOOP · 方案生成（agent 只出方案与比对，不产数）。
+import { proposeCandidates } from "./sim/propose-candidates.js";
 import { fallbackStats, promoteFallbackTrace } from "./ops/fallback.js";
 import { HttpError } from "./router/orchestrator.js";
 import { projectTrace, type TraceGapInput } from "./router/project-trace.js";
@@ -2612,6 +2615,35 @@ export async function buildServer(deps: AppDeps): Promise<FastifyInstance> {
     });
     const gs = ((res as { data?: unknown }).data ?? res) as { scenarios?: Record<string, unknown>[] };
     return buildComposeNarrative(body.query, Array.isArray(gs.scenarios) ? gs.scenarios : []);
+  });
+
+  /**
+   * WO-AGENT-IN-LOOP · **方案生成**：agent 读本次世界态，挑出针对本次事件的候选对策。
+   *
+   * 分工（仓主 2026-09-08 架构原则）：**求解器算数，agent 只编排 + 出方案与比对**。
+   * 故本口的回包里**一个业务数字都没有** —— 只有「选了菜单上第几项」的下标与文字，
+   * 数值由 A 侧求解器算完贴回去。红线不靠提示词，靠 `expectsSchema`（schema 里没有数值格）。
+   *
+   * 走哪条内核由**agent 记录自己的 `kernel`** 决定（`WO-AGENT-KERNEL-SELECT`：
+   * `"EXTERNAL"` ⇒ dsh 出进程 JSON-RPC；缺省回落进程 env）。本口**不翻 `DSH_HARNESS`**、
+   * 不 import `dsh-runtime`，只**回读** engine 跑完标在 `run.kernel` 上的实际值。
+   */
+  app.post("/b/v1/sim/propose-candidates", async (req) => {
+    const a = await auth(req);
+    const body = z.object({
+      menu: ProposalMenuSchema,
+      agentId: z.string().min(1),
+      version: z.union([z.number().int().positive(), z.literal("latest")]).optional(),
+    }).parse(req.body ?? {});
+    const budget = new BudgetTracker({ maxIterations: 6, maxToolCalls: 10 });
+    return proposeCandidates(deps.engine, {
+      menu: body.menu,
+      agentId: body.agentId,
+      ...(body.version !== undefined ? { version: body.version } : {}),
+      taskId: newId("tsk"),
+      ctx: { tenantId: a.tenantId, userId: a.userId, roles: a.roles ?? [], token: a.token, debugUser: a.debugUser },
+      nesting: { callChain: [], budget },
+    });
   });
 
   app.post("/b/v1/capacity-live/ask", async (req) => {
