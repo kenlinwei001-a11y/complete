@@ -1131,6 +1131,14 @@ POST /a/v1/solvers/chain_loss_attribution/invoke { so?, sessionId? }
 矩阵按基地逐列各跑一次一维归因，故 `appliedSteps` 取**跨列并集**（同一承载物只计一次，
 逐列累加会把同一天数虚增成基地数的倍数）。
 
+**消费侧（WO-SIM-VERDICT-FRONTEND · 2026-09-08 · 本链的另一半）**：端点收了不等于屏上问得出来。
+真浏览器实测（登录走起 · 禁 `VITE_MOCK` · 统一推演控制台「损失归因」页签）修前浏览器**真正发出的字节**是
+`chain-loss-matrix {}` / `chain-loss-drill {"nodeId":"demand.consensus"}` —— **0/2 带 `sessionId`**，
+而同一屏同一会话的 `optimize-pareto` body 里就写着 `{"sessionId":"sims_demo_seed_world",…}`。
+修后 **2/2 带**，且 `simContext` 上屏（第一层印「第几拍 · 叠加多少天几段 · 另有几项未计入」，
+逐段明细与两类排除理由在 `?` 浮层）。**反向对照**：同屏「传导识别」档不在本单范围内、一个字节没动，
+实测仍发 `chain-loss-matrix {}` ⇒ 无会话那条路与本改动引入前逐字节相同。
+
 **实测对照**（真后端 `SEED_DEMO=1`）：不传 `sessionId` 两跑 md5 恒 `00005c6a…`/30440B；
 传了 ⇒ `3619a7f7…`/31395B，`simContext.appliedDays=141.414`（3 段），排除 5 项逐个列名。
 下钻侧 `material.replenish` 的 `nodeDays` 由 **5 → 14**（= `Supplier.leadTime` 5 天 + `deliveryDelay` 9 天，
