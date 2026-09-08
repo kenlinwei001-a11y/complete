@@ -47,10 +47,24 @@
 C 段 449 = 祖先型 440（tip 就在 `0fc852b7` 的历史里）+ 内容型 9（cherry-pick/squash 进来的，
 祖先关系不成立但内容已在）。**只看祖先关系会把这 9 条误报成待并** —— 那正是派单说的第一个方向的错。
 
+## 怎么用这份清单
+
+1. **先把 A 段 23 条并掉**（其中 21 条纯新增，压不到任何人）。这一步不需要读 diff。
+2. **再清 B1 的 40 条**（只冲突在文档上，压不到源码）。
+3. **B2a 的 14 条**逐条看 —— 这是「最近推的、还带源码的」那一批。
+   其中 `wo-view-audit-b`（2294 文件）与 `merge-to-canonical`（231 文件）**不要整条并**，见 B2a 下方说明。
+4. **B2b 的 261 条先别动**。理由在 B2b 段：它们旧、冲突面大，而且**「分支还在」不等于「活还没做」**
+   （本仓五次实测推翻过这个假设）。要动就一条一条追，那是另一张单。
+5. **D 段可以删**，但 D2 那 23 条删之前必须看反方向删除行（判据写在 D2 里）。
+
+> ⚠️ **这份清单的 base 是 `0fc852b7`，它有保质期。** 集成线每并进一条，A/B/C 的边界就变一次
+> —— 本单扫描期间它就动了一次（见「量法自证」）。**重算命令**：
+> `git merge-tree --write-tree <新的集成线 SHA> <branch>`，结果树等于集成线自己的树即已并。
+
 ## A · 待并·干净（按建议顺序，先并的排前面）
 
 **顺序的尺子**（不是字母序）：① 改同一批文件的排在一起 —— 同一轮 LOOP 的角色报告写进同一个目录，
-连着并可以一次看完一轮；② 纯新增（\`-0\`）排在有删改的前面 —— 纯新增合进来不可能压掉别人的东西；
+连着并可以一次看完一轮；② 纯新增（`-0`）排在有删改的前面 —— 纯新增合进来不可能压掉别人的东西；
 ③ 同一簇内改动小的先并。**两条动源码的排最后**，它们是这一段里唯一需要看 diff 的。
 
 | # | 分支 | tip | 它带来了什么 | 文件数 | 行数 | 建议顺序理由 |
@@ -185,18 +199,18 @@ C 段 449 = 祖先型 440（tip 就在 `0fc852b7` 的历史里）+ 内容型 9�
 | 分支 | tip | 日期 | 改动文件 | 其中未被吸收 | 源码冲突数 | 主冲突面 | 它带来了什么 |
 |---|---|---|---|---|---|---|---|
 | `wo-riskboard-truncation` | `f4239eda` | 2026-09-08 | 2 | 2 | 1 | `packages/contracts/src/solvers.ts` | （提交信息为空，需看 diff） |
-| `wo-computed-edge-impl` | `063137a8` | 2026-09-07 | 15 | 7 | 1 | `apps/datacore/src/app.ts` | 回退两份门产物索引的 generatedAt 日期噪声（本单没有�… |
-| `merge-to-canonical` | `0df3a17a` | 2026-09-06 | 231 | 43 | 15 | `apps/datacore/src/app.ts` | fix(test): 收编引入的红 —— 因果图 DECISION 缺口断言跟�… |
-| `merge-batch-2` | `e95b0f3e` | 2026-09-06 | 25 | 20 | 2 | `apps/datacore/test/solvers-extended.test.ts` | merge-batch-2 修合并引入的红（不新增功能，只补注册与�… |
-| `wo-rui4-coords` | `5bba74d0` | 2026-09-04 | 15 | 7 | 4 | `apps/datacore/src/decision/causal-graph.ts` | WO-RUI4: 门补 §2 后端载荷侧扫描面 + 取证脚本移出版本�… |
+| `wo-computed-edge-impl` | `063137a8` | 2026-09-07 | 15 | 7 | 1 | `apps/datacore/src/app.ts` | 回退两份门产物索引的 generatedAt 日期噪声（本单没有�… |
+| `merge-to-canonical` | `0df3a17a` | 2026-09-06 | 231 | 43 | 15 | `apps/datacore/src/app.ts` | fix(test): 收编引入的红 —— 因果图 DECISION 缺口断言跟�… |
+| `merge-batch-2` | `e95b0f3e` | 2026-09-06 | 25 | 20 | 2 | `apps/datacore/test/solvers-extended.test.ts` | merge-batch-2 修合并引入的红（不新增功能，只补注册与�… |
+| `wo-rui4-coords` | `5bba74d0` | 2026-09-04 | 15 | 7 | 4 | `apps/datacore/src/decision/causal-graph.ts` | WO-RUI4: 门补 §2 后端载荷侧扫描面 + 取证脚本移出版本�… |
 | `wo-sim-opt-readable` | `61f38f8e` | 2026-08-28 | 4 | 4 | 4 | `apps/frontend-shell/src/views/sim/console/ParetoChart.tsx` | （提交信息为空，需看 diff） |
-| `wo-view-audit-b` | `c4d68acb` | 2026-08-26 | 2294 | 328 | 297 | `apps/agentcore/src/agent/navigation-slice.ts` | docs(audit): 订正 §6 行数口径不一致（helper 列两处混用�… |
+| `wo-view-audit-b` | `c4d68acb` | 2026-08-26 | 2294 | 328 | 297 | `apps/agentcore/src/agent/navigation-slice.ts` | docs(audit): 订正 §6 行数口径不一致（helper 列两处混用�… |
 | `wo-sim-session-wire` | `842ed354` | 2026-08-26 | 3 | 3 | 3 | `apps/frontend-shell/src/api/endpoints.ts` | （提交信息为空，需看 diff） |
 | `wo-sim-nav-unified` | `67536c0f` | 2026-08-26 | 5 | 3 | 1 | `apps/frontend-shell/src/pages/ShellLayout.tsx` | （提交信息为空，需看 diff） |
 | `wo-sim-honest-fallback-b` | `5951a0fd` | 2026-08-26 | 9 | 5 | 3 | `apps/frontend-shell/src/views/sim/console/SandboxOpt.module.css` | （提交信息为空，需看 diff） |
 | `wo-legibility-12px` | `1b108e21` | 2026-08-26 | 6 | 4 | 3 | `apps/frontend-shell/src/components/QueryDock/ChatFlow.tsx` | （提交信息为空，需看 diff） |
-| `wo-gate-seam-small` | `1f68c0fa` | 2026-08-26 | 6 | 2 | 1 | `apps/agentcore/test/mockdc-params-increment.seam.test.ts` | 验收通过：4 门 RC=0 + BUILD_RC=0 + 三个受影响测试文件全�… |
-| `wo-attr-dead-controls` | `c25e4148` | 2026-08-26 | 5 | 4 | 2 | `apps/frontend-shell/src/views/sim/console/SandboxAttr.tsx` | WO-ATTR-DEAD-CONTROLS · 死控件门（11 用例：契约现算/真选�… |
+| `wo-gate-seam-small` | `1f68c0fa` | 2026-08-26 | 6 | 2 | 1 | `apps/agentcore/test/mockdc-params-increment.seam.test.ts` | 验收通过：4 门 RC=0 + BUILD_RC=0 + 三个受影响测试文件全�… |
+| `wo-attr-dead-controls` | `c25e4148` | 2026-08-26 | 5 | 4 | 2 | `apps/frontend-shell/src/views/sim/console/SandboxAttr.tsx` | WO-ATTR-DEAD-CONTROLS · 死控件门（11 用例：契约现算/真选�… |
 | `wo-arghints-12-loud` | `2508e40f` | 2026-08-23 | 2 | 2 | 1 | `apps/datacore/src/catalog.ts` | （提交信息为空，需看 diff） |
 
 ⚠️ **这一批里有两条不是普通工单，是「聚合分支」，不要当成一张 WO 去并**：
@@ -480,3 +494,252 @@ C 段 449 = 祖先型 440（tip 就在 `0fc852b7` 的历史里）+ 内容型 9�
 2026-07-17  a3-fix                                         70bb7252  f=29    u=27    c=16   apps/agentcore/src/catalog/service.ts
 ```
 
+## C · 已并（449 条，可忽略）
+
+判定依据一句话：**`git merge-tree --write-tree 0fc852b7 <branch>` 的结果树等于集成线自己的树**
+—— 也就是「把它合进来，一个字节都不会变」。分两型：
+
+- **祖先型 440 条**：tip 就在集成线历史里，`git merge-base --is-ancestor` 直接成立。
+- **内容型 9 条**：tip **不是**祖先（cherry-pick / squash 进来的），但内容已全在。
+  **这 9 条正是「只看祖先关系」会误报成待并的那一批**，逐条点名如下：
+
+| 分支 | tip | 它当初带来了什么（现已在集成线上） |
+|---|---|---|
+| `qos-budget-600s` | `80480a60` | chore(qos): free-LLM 预算 90s→600s + 放开 maxIterations/toolCall |
+| `skill-agent-reconcile` | `93528faa` | docs(reconcile): Skill/Agent 14 份 PRD × 两份外部规格对账 � |
+| `wo-a10-events` | `89370e3a` | docs(audit): 收紧 §5.3 —— 门与 vitest 两条通道都查，� |
+| `wo-multiplan-prd` | `785f5eac` | docs(prd): 沙盘多方案生成与对比 PRD（WO-MULTIPLAN-PRD·零� |
+| `wo-ontology-7elem` | `c01f30f2` | docs(ontology): 七要素四缺口盘点 —— 结论转逐条证据  |
+| `wo-sim-unified-ts6` | `5a93535b` | WO-SIM-UNIFIED-TS6·修 6 条 noUncheckedIndexedAccess 类型错(未� |
+| `wo-synth-validation-lite` | `b54691e6` | perf(datacore): 合成 VALIDATION_LITE 剖面 + VLE determinismCheck � |
+| `wo-testgap-triage` | `858d9dc1` | docs(testgap): WO-TESTGAP-BACKFILL 定性阶段 —— 20 个缺失测 |
+| `wo-view-audit-a` | `9e9311d8` | WO-VIEW-AUDIT-A · §0 补最后一跳取证（UnifiedNav 的 views � |
+
+祖先型 440 条不展开，压缩列出（已去掉 `handoff-` 前缀）供核对：
+
+```
+audit-prd-sas check-dsl-cmp check-mig-xr check-rt-gov check-spec-aut e2e-accept gate-last4 integ-batch-2 integ-batch-3 integ-batch-3b integ-batch-4 
+integ-batch-5 integ-red-fix loop-architect loop-data loop11-stage34 loop5-trigger loop7-coo loop7-ux loop8-fde merge-batch-2-final merge-batch-3 
+merge-batch-4 merge-batch-5 merge-order-advisory onto-s8-merge-guard perturbation prd-v2-agent prd-v2-skill prd-v2-slice process-layer 
+propagate-perturb propagation-edges route-gate-base sandbox-batch-a2s3 sandbox-metro-prd sim-events skill-compiler-s1 skill-orchestrator-s1 
+skill-partial-a skill-partial-b skill-precond skill-refclosure-a wo-31-a6-contention wo-87-pipeline-ui wo-93-r13-drillfield wo-a6-contention 
+wo-action-executor-carriers wo-action-noop-exec wo-actiontype-target wo-active-edge wo-adopt-scheme-carrier wo-adoption-survives-fix 
+wo-adversary-reaction wo-agent-admin-console wo-agent-dsh-default wo-agent-in-loop wo-agent-kernel-fork-ui wo-agentcore-rename-tail wo-anchor-gate 
+wo-anchor-importline wo-anchor-recal-2 wo-audit-timeline-livesource wo-base-unify wo-baseline-writer-honesty wo-befe-a wo-befe-b wo-befe-c 
+wo-befe-cleanup wo-befe-d wo-befe-e wo-befe-f wo-befe-g wo-befe-seam-prosemask wo-befe-wildcard-claim wo-befe-wire-3 wo-branch-reconcile 
+wo-breakpoint-triage wo-buildplan-13cards wo-canonical-reds wo-capacity-card-layout wo-capacity-edge wo-capacity-edge-fix wo-capacity-qapanel-real-nl 
+wo-capmap-live wo-causal-edge-crud wo-cert-contract-reconcile wo-chain-map-layout wo-change-impact-preview wo-classify-filter wo-coef-from-bom 
+wo-conntest-honest wo-console-blockers wo-constraint-refs wo-coord-terminal wo-d6-upserttype wo-dash-onhand wo-databuilder-pipeline wo-dbui-13-needs 
+wo-dbui-flow wo-dc-errorenvelope-11 wo-debattery-27 wo-decision-console wo-decision-info-rebased wo-decision-play-fe-consume wo-decision-play-options 
+wo-derived-intent-slot-deaf wo-derived-recompute-check wo-dim-label-3 wo-dimension-errors wo-dispatch-deficit-fix wo-disruption-cards 
+wo-dist-freshness-guard wo-docfix-skill-claims wo-drill-verdict-backend wo-dsh-fuse-guards wo-dsh-gov-credential wo-dsh-n1-provider 
+wo-dsh-n2-reassemble wo-dsh-n3-watchdog wo-dsh-n4-namespace wo-dsh-n5-ux wo-dsh-n6-chatux wo-dsh-poc-s0 wo-dsh-poc-s1 wo-dsh-real-provider 
+wo-dsh-unfreeze wo-dynamic-drill-resolve wo-edge-active-red-investigate wo-edge-gap wo-edge-money-weight wo-edge-panel-3pages wo-edge-panel-4pages 
+wo-engine-2 wo-engine-scope-fix wo-engine-scope-fix2 wo-engine-scope-forensics wo-entitlement-server-side wo-event-sub-closure wo-events-write-state 
+wo-f2-transit-wiring wo-fact-usage-registry wo-factlock-anchor wo-factlock-triage wo-fe-agent-trace wo-fe-layer-2 wo-fe-red-3-owndebt wo-fe-red-7 
+wo-fe-skill-studio wo-fe-wire-2 wo-field-dead-6 wo-finance-worldstate wo-fix-p1-regression wo-fix-schema-display-name wo-fix-sim-act-close 
+wo-fulfills-edge wo-gap-normalize wo-gate-b-splitaccount wo-gate-befe-seam wo-gate-blindspots wo-gate-ledger-fix wo-gate-mock-parity wo-gate-onto-2 
+wo-gate-ontology-drift wo-gate-reach-sweep wo-gate-roster-sweep wo-gate-roster-sweep-2 wo-gate4 wo-gates-no-shortcircuit wo-graph-exec-consolidate 
+wo-gsim-live-flag-reason wo-harness-ux-adoption wo-harness-ux-gap-1 wo-home-consolidate-parity wo-home-entry-flow wo-ia-e2e5e6 
+wo-impediments-reachable wo-infer-page-ssot wo-integration-loop wo-interface-actiontype-deepval wo-interface-admin-ui wo-keyprops-gap 
+wo-l7a-solver-taxonomy wo-last3-relations wo-legibility-ruler wo-linktype-impl wo-lint-backend wo-lint-fe-ac wo-llm-purpose-doc-sync 
+wo-llm-purpose-enum wo-loss-attrib-money wo-lta-evidence-conflict wo-mainline-reconcile wo-mapping-whitelist wo-margin-axis wo-margin-axis-honesty 
+wo-material-reprice wo-materialize-3ext wo-metric-identity wo-metrickey-empty-promise wo-migration-collision wo-mock-discover-parity 
+wo-mock-engine-parity wo-mock-scale-truth wo-mock-sop-scale wo-mock-tdz wo-mockdc-params-increment wo-mockdc-signature wo-multiobj-converge 
+wo-name-consistency wo-numeric-redline-block wo-objective-sign wo-objects-paging wo-objects-total wo-oee-ssot wo-oee-ssot-c wo-oee-unify 
+wo-onscreen-false-2 wo-onscreen-stale-facts wo-onscreen-stale-fix-13 wo-onto-anchor-recal wo-onto-capability wo-onto-crash wo-onto-dedupe wo-onto-e2e 
+wo-onto-status-backfill wo-onto-truncate-guard wo-ontology-7elements wo-ontology-anchors-80 wo-ontology-edge-edit wo-ontology-edge-triclass 
+wo-ontology-emit-blind wo-optimal-wording wo-order-500-reds wo-order-book-500 wo-order-dependent-pick wo-order-journey wo-order-wo-ui 
+wo-p50-remaining-3 wo-p50-rename wo-paging-scan wo-palette-usable wo-pareto-axes wo-penalty-changeover wo-plan-change-lever-map 
+wo-prd-field-audit-reopen wo-prd-grounding-burndown wo-predicate-edge wo-process-canvas-live wo-process-instance-ui wo-process-instance-wire 
+wo-process-start-deeplink wo-process-tick-coverage wo-prompt-key-lint wo-prompt-keys-wire wo-prop-clamp wo-provenance-popover-legibility 
+wo-publish-version-pin wo-quantile-unit-two-reds wo-quarantine-discard wo-r13-ontochain-panel wo-r4-freeqa-gate wo-r9-contrast wo-r9-covblind 
+wo-r9-covblind2 wo-r9-gate-closeout wo-r9-metro-ux wo-r9-navreach wo-r9-procmerge wo-r9-scan-extractor wo-r9-signature wo-r9-stuckview 
+wo-ratchet-newfile-blindspot wo-ratchet-rebase wo-rate-dimension wo-real-frontend-verify wo-reclaim-agentcore wo-reclaim-cap0-iface wo-reclaim-docs 
+wo-reclaim-engine wo-reclaim-fe-batch wo-reclaim-gates wo-reclaim-sandbox wo-reclaim-tail wo-reclaim-uiw5 wo-ref-closure-tail wo-references-family 
+wo-refgate-ent wo-relation-edit-gaps wo-revenue-reconcile wo-risk-perfactor-series wo-roster-sweep-3 wo-route-1 wo-rui4-coords-finish 
+wo-rule-scope-drop wo-rule-scope-triad wo-sandbox-3col wo-sandbox-53cells wo-sandbox-config-collapse wo-sandbox-config-ux wo-sandbox-d2 
+wo-sandbox-d2-close wo-sandbox-d2-close2 wo-sandbox-d4 wo-sandbox-declutter wo-sandbox-density wo-sandbox-e3 wo-sandbox-e4 wo-sandbox-e4-close 
+wo-sandbox-f1 wo-sandbox-f2 wo-sandbox-f4 wo-sandbox-f4-close wo-sandbox-ia-consolidate wo-sandbox-layout-harness wo-sandbox-memory 
+wo-sandbox-nav-consolidate wo-sandbox-process-mode wo-sandbox-s3-enum wo-sandbox-structure wo-sandbox-ui-integrate wo-sandbox-v3 
+wo-sandbox-view-mount wo-scope-honesty-fe2 wo-screen-caliber wo-screen-plainspeak wo-screen-plainspeak-admin wo-screen-raw-tokens wo-screen-tokens-2 
+wo-seam-gate-method wo-seed-reach-seam wo-seedgate-freshness wo-signoff-chain wo-silent-wrong-answer-3 wo-sim-act-close wo-sim-action-real 
+wo-sim-basedrill-greyout wo-sim-be-drill wo-sim-be-matrix wo-sim-be-pareto wo-sim-be-series wo-sim-be-viewkey wo-sim-console-days wo-sim-detail-wire 
+wo-sim-disclosure wo-sim-drill wo-sim-drill-p12 wo-sim-e2e wo-sim-fe-attr wo-sim-fe-detail wo-sim-fe-home wo-sim-fe-host wo-sim-fe-opt 
+wo-sim-fe-series-wire wo-sim-honest-fallback-a wo-sim-nav-group wo-sim-nodedetail-fields wo-sim-param-wire wo-sim-pareto-exit wo-sim-perturb-data-gap 
+wo-sim-perturb-timeline wo-sim-rail-forms wo-sim-root-perturb wo-sim-root-procurement wo-sim-root-triad wo-sim-scope-trial wo-sim-seed-perturb 
+wo-sim-seed-world wo-sim-series-scale wo-sim-sessions-projection wo-sim-shell-tabs wo-sim-stale-3 wo-sim-tick-gate wo-sim-trial-scope-reconcile 
+wo-sim-unified-shell wo-sim-ux-backing wo-sim-verdict-frontend wo-simsession-biz-reuse wo-skill-dependson-cover wo-skill-graph-render-closure 
+wo-skill-refgraph-tail wo-skill-refgraph-wire wo-slice-16-layers wo-slice-16-layers-emptygraph wo-slice-default-args wo-slice-deriv-empty 
+wo-slice-domains wo-slice-ref-reporter wo-slice16-reconcile wo-slot-entity-resolve wo-slot-harvest wo-snapshot-unit-lie wo-solver-arghints-drift 
+wo-solver-role-table-drift wo-sopscale-basereg wo-splitaccount-b-close wo-stale-claims-69 wo-stale-regex-blind wo-stale-text-4 wo-stale-text-family 
+wo-stale-text-sweep wo-statevar-displayname wo-statevar-displayname-fix wo-step-template-layer wo-step-vocab-uplift wo-test-typecheck-blind 
+wo-testgap-audit wo-timeout-5000-sweep wo-title-divergence wo-transit-geometry wo-turn-loop wo-typecheck-testblind wo-u10-three-pages 
+wo-u2-dense-anchor wo-u2-stepwise-2 wo-u3-dag-design wo-u3-dag-rest wo-u4b-u1-u8-sim wo-u6-action-from-conclusion wo-u7-u9-rest wo-ui-burndown-21 
+wo-ui-declutter-top3 wo-ui-firstlayer-burndown-2 wo-ui-layering wo-ui-layering-burndown wo-ui-layering-census wo-unblock-skill-fe 
+wo-uncertainty-inputs wo-unit-fulfill-cost wo-unit-kwh wo-unit-margin wo-unitcost-land wo-v4-inspect wo-v4-plays wo-viewname-single-source 
+wo-vuln-rei wo-wo-catalog wo-worldstate-contract wo-yield-series-ts-source worktree-stale-guard
+```
+
+## D · 空壳 / 过期（可删）
+
+### D1 · 空壳（11 条）——只有开工占位提交，一个字节的内容都没有
+
+判据：分支相对 merge-base 的 diff **为空**（`git diff <merge-base> <branch>` 零文件），
+即它的提交全是空提交 / WIP 占位。**这类分支删掉不会丢任何东西。**
+
+| 分支 | tip | 日期 | 提交数 | 末条提交信息 | 为什么可删 |
+|---|---|---|---|---|---|
+| `loop8-coo` | `f6aaddbe` | 2026-08-29 | 1 | WIP loop8-coo | 开工占位，零内容 |
+| `loop8-data` | `5544736e` | 2026-08-29 | 1 | WIP | 开工占位，零内容 |
+| `wo-dbui-13-cards` | `852453e6` | 2026-08-20 | 1 | WO-DBUI-13-CARDS 占位 | 开工占位，零内容 |
+| `wo-firstscreen-truth` | `1fa52f66` | 2026-08-28 | 1 | WIP·未验：WO-FIRSTSCREEN-TRUTH 开工 | 开工占位，零内容 |
+| `wo-mainline-ui-2345` | `af7b365b` | 2026-08-28 | 1 | WIP·未验 | 开工占位，零内容 |
+| `wo-merge-inventory` | `150a9328` | 2026-09-08 | 3 | WIP·未验: B 段（待并·有冲突 315 条 | **本单自己的分支**，不要删 |
+| `wo-orel-copy` | `d53257df` | 2026-08-25 | 1 | WO-OREL-COPY 开工占位 | 开工占位，零内容 |
+| `wo-r13-drillfield` | `e8f67f33` | 2026-08-06 | 3 | autosave(claude/handoff-wo-r13-drillfield): 08 | 开工占位，零内容 |
+| `wo-sim-nav-order` | `52f7e4d5` | 2026-08-29 | 1 | WIP·未验 · WO-SIM-NAV-ORDER 开工空提� | 开工占位，零内容 |
+| `wo-slice-edit` | `45ff88ce` | 2026-08-28 | 1 | WIP·未验 | 开工占位，零内容 |
+| `wo-solver-arith-audit` | `1c4ee8eb` | 2026-09-08 | 4 | docs(audit): D 段补 DSH_HARNESS 默认值与 | 今天刚开工的占位，**在跑中，先别删** |
+
+⚠️ 其中 `wo-r13-drillfield` 的 3 个提交里有一条是 **`autosave … 容器重启防丢快照`** ——
+它是铁律 1 那次「容器重启丢产出」的抢救快照。**内容仍为空**（相对 merge-base 无差异），
+但删它之前建议再确认一次：抢救的东西是不是当时就已经并进去了。
+
+### D2 · 过期候选（23 条，仍计入 B 段，不重复计数）
+
+判据：冲突**全部**是 `add/add` —— 分支要新建的文件，**集成线上已经有了**（由别的路子落地）。
+⇒ 这条分支要做的事，**别人已经做过**。
+
+> ⛔ **这 23 条我标的是「候选」不是「可删」，差别是实的**：`add/add` 只证明「同名文件两边都有」，
+> **不证明「集成线那份包含了分支这份的全部内容」**。实测样例 `prd-skill-compiler`：
+> 集成线 907 行 / 分支 741 行 / 差 `+174/-8` —— 那 **8 行是分支独有的**。
+> 直接删就会丢掉那 8 行。**判据落在内容上，不是文件名上**（这正是铁律 0.6 第 2 条那个
+> 「拿存在性当证据」的老病）。**每条删之前跑一次 `git diff <branch> <INTEG> -- <该文件>`，看反方向的删除行。**
+
+| 分支 | add/add 冲突文件数 |
+|---|---|
+| `diag-100q` | 3 |
+| `prd-audit-b1` | 4 |
+| `prd-audit-b2` | 4 |
+| `prd-audit-b3` | 1 |
+| `prd-audit-b4` | 1 |
+| `prd-audit-b5` | 1 |
+| `prd-coverage-full` | 1 |
+| `prd-skill-compiler` | 1 |
+| `prd-skill-contract` | 1 |
+| `prd-skill-governance` | 1 |
+| `prd-skill-migration` | 1 |
+| `prd-skill-runtime` | 1 |
+| `qos-live-evidence` | 1 |
+| `sandbox-gap-audit` | 1 |
+| `skill-migration-scope` | 1 |
+| `wo-66-rules-first-class` | 1 |
+| `wo-a6-rule-scan` | 1 |
+| `wo-a6-seg` | 1 |
+| `wo-computed-edge-proposal` | 1 |
+| `wo-metrics-audit` | 1 |
+| `wo-prd-field-audit` | 1 |
+| `wo-sandbox-d1` | 2 |
+| `wo-sandbox-f3` | 4 |
+
+## E · 我发现但没改的问题
+
+**本单是只读单**（禁令 1「度量装置的自我维护」= B 类停工，禁令 3「不许新增门/棘轮/基线」）。
+以下全部**只报不修**，一行产品源码、一行 `scripts/` 都没动。
+
+### E1 · `dispatch-deficit.sh` 的「待复验」量的是**另一条分支**，不是集成线（这是派单没提到的第三个方向）
+
+派单说这个数「两个方向都错」（祖先关系多算 · 时间闸漏看）。实测下来**还有第三个、也是更根本的一个**：
+
+`scripts/dispatch-deficit.sh` 里写死：
+
+```
+INTEG="origin/claude/verify-reclaim-6"
+```
+
+**它比对的根本不是 `merge-batch-9`。** 实测两条分支：
+
+| 分支 | tip | 日期 |
+|---|---|---|
+| `origin/claude/verify-reclaim-6`（脚本实际用的） | `39ed0350` | **2026-08-25** |
+| `origin/claude/merge-batch-9`（真正的集成线） | `0fc852b7` | **2026-09-08** |
+
+且实测 **`verify-reclaim-6` 是 `merge-batch-9` 的祖先**（`git merge-base --is-ancestor` RC=0）
+⇒ 集成线**完全包含**它，它只是 14 天前的一个旧快照。
+
+后果是**结构性的**：8 月 25 日之后收编进 `merge-batch-9` 的每一条分支，
+在这个探针眼里**永远是「待复验」**，因为它比的是一条永远不会前进的旧分支。
+
+形态（铁律 0.6 句式）：
+> **「我用『它不在 `verify-reclaim-6` 里』当作『它还没被收编』的证据，而前者并不度量后者
+> —— 收编去的地方是 `merge-batch-9`。」**
+
+### E2 · 时间闸挡掉的不是少数，是**绝大多数**
+
+脚本的时间闸是 `分支 tip 时间 >= INTEG tip 时间`，而 `INTEG` = `verify-reclaim-6` @ **2026-08-25**。
+实测本清单的 338 条待并分支按这个闸切开：
+
+| | 条数 | 探针看得见吗 |
+|---|---|---|
+| tip 早于 2026-08-25 | **305** | ❌ 看不见 |
+| tip 不早于 2026-08-25 | **33** | ✅ 看得见 |
+
+**338 条真实待并里，这个闸挡掉了 305 条 —— 90.2%。**
+脚本注释里自己写了「时间闸**必要不充分**：漏掉推得早、至今没并的分支」，
+这句话是对的，但**它没说漏的量级是九成**。读者看到「待复验 160」不会想到真值是 338。
+
+⚠️ 顺带说明 160 与 338 为什么不是同一个数的两种算法：160 是「不在 `verify-reclaim-6` 里 **且** tip 晚于 08-25」，
+338 是「合进 `merge-batch-9` 会真的改变内容」。**两个数量的是两件不同的事**，不能互相校验。
+
+### E3 · 集成线在测量期间会动，而任何扫描都没有钉住它
+
+这是本单自己踩的坑（已写在文档开头「量法自证」）。补充一点**给下一个做同类测量的人**：
+
+本仓所有 agent 的 worktree **共用同一份 `.git` refs**。任何一个 agent 跑 `git fetch`，
+`origin/*` 就在**所有人脚下**一起挪。所以「我开头取了一次值」这件事**不构成**「这个值在我测量期间成立」。
+
+实测本次：`merge-batch-9` 在第一遍扫描期间从 `f7f4a00d` 动到 `0fc852b7`（收编方并了一条单），
+`inspiring-gates-aqczjg` 从 `75d9b222` 动到 `962dd3be`（reflog 两条 `update by push` 可查）。
+**一次扫描的时间窗里，两条主干都动了。**
+
+这与铁律 3 记的 LOOP10「五个角色钉在不同 commit 上，同一个问题得到差 25 倍的两个正确答案」是**同一个形态**。
+LOOP 那次的对策是「派单里写死 PIN + 报告头回显 base」，**同样的对策适用于一切扫描类测量**，
+而今天的扫描脚本（含 `dispatch-deficit.sh`）**都没有钉 PIN，也不回显 base**。
+
+### E4 · `docs/SYSTEM-ONTOLOGY.md` 是收编的真正瓶颈
+
+315 条冲突分支里 **178 条**冲突在这一个文件上，第二名（`apps/datacore/src/solvers/service.ts`，66 条）不到它的四成。
+它是一份人人追加的台账，于是**每一条 handoff 分支都会碰它**，收编成本被它单点放大。
+
+⛔ 但**解法不许是「取并集」**（铁律 0.6 第 5 条写死，且已真实造成「同一条目两份、状态相反」，
+让 `dispatch-deficit.sh` 凭空派出过不存在的活）。这意味着这 178 条**每条都要人看那几行**，
+**这就是当前收编吞吐的实际上限**。我不提改法（属禁令 1 的 B 类 / 禁令 3 的新增门），只把这个数摆出来。
+
+### E5 · 两条「聚合分支」混在 handoff 命名空间里，不是工单
+
+- `handoff-wo-view-audit-b` @ `c4d68acb`：**2294 个改动文件 · 297 个源码冲突 · 328 个文件仍未被吸收**。
+- `handoff-merge-to-canonical` @ `0df3a17a`：**231 个改动文件 · 15 个源码冲突**。
+
+这个体量不可能是一张工单的产出。**按「一张 WO = 一条 handoff 分支」的纪律，它们不该在这个命名空间里** ——
+后果是任何按 `handoff-*` 枚举的调度/收编工具都会把它们当成一张待并的单来数。
+
+### E6 · handoff 命名空间在无限增长，且**没有回收**
+
+本次会话开始时枚举到 **795** 条，扫描时 **798** 条 —— **一小时内多了 3 条**，
+而 D1 段那 11 条空壳里最早的来自 **2026-08-06**，一个月了还在。
+已并的 449 条也全部还在。**这个命名空间只增不减**，
+所以任何「数 handoff 分支」的指标都会随时间单调劣化 —— 今天是 798，下个月只会更多。
+
+### E7 · 我顶回来的派单前提错误
+
+| 派单原话 | 实测 |
+|---|---|
+| canonical「目前停在 `75d9b222` **八天没动**」 | `75d9b222` 的提交日期是 **2026-09-07**，距今 **1 天**不是 8 天；且它**已经不是** canonical 的 tip —— 现在是 `962dd3be`（2026-09-08），比 `75d9b222` **多 168 个提交**。reflog 两条 `update by push` 可查。 |
+| 待复验「155」 | ① 亲手跑 `bash scripts/dispatch-deficit.sh 4`，**今天它报的是 160 不是 155** —— 这个数每天都在漂（它数的是「tip 晚于 08-25 且不在 `verify-reclaim-6` 里」的分支，新推一条就 +1）。② 实测真实待并 **338**（干净 23 + 有冲突 315）。160 既不是 338 的子集也不是超集 —— 它量的是另一条分支（E1）加一道挡掉九成的时间闸（E2）。**两个数不可互校**。 |
+| 金丝雀「`handoff-wo-adoption-survives-fix` **必须**判为待并」 | 在派单写就时（base `f7f4a00d`）**成立**；但收编方在我扫描期间把它并进来了（提交 `0fc852b7`，提交信息点名了这条分支），所以在 base `0fc852b7` 上它**必须**判为已并。**金丝雀本身没坏，是它的预期值有保质期。** |
+
+**最后一条值得单独说**：一个写死了预期值的金丝雀，在一个还在动的仓库上**自带保质期**。
+本单把它改成了**差分金丝雀**（同一条分支、两个 base、两个相反的预期），
+这样它验的是「量法分不分得出这两种情况」，而不是「今天这条分支是什么状态」——
+**前者不会过期，后者每次收编都会过期。**
