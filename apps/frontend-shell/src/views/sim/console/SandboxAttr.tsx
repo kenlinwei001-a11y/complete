@@ -135,7 +135,19 @@ export function SandboxAttr({ sessionId, so }: SandboxAttrProps = {}): JSX.Eleme
    * 默认取「全网」＝ 屏上真在画的那件事，下拉从此不说谎。
    */
   const [scopeKey, setScopeKey] = useState<string>(NETWORK_SCOPE_KEY);
-  const heat = useChainLossMatrix(so);
+  /**
+   * WO-SIM-VERDICT-FRONTEND · 今天的行为是 X，应该是 Y。
+   *
+   * **X**：本页收到了 `sessionId`（宿主 `UnifiedSimShell` 透下来的那一个），却**只**把它交给
+   * 底部时序（`useContributionSeries`）。上面四格（热矩阵 / 根因树 / 明细 / 瀑布）走
+   * chain-loss 两条端点，body 里**一个会话字节都没有** —— 真浏览器实测 0/2（原文见
+   * `useLossAttribution.ts` 的 `useChainLossMatrix` 头注「WO-SIM-VERDICT-FRONTEND」段）。
+   * 于是「施了扰动之后，这一次推演里各环节吃掉多少」问不出来：答的永远是真实世界那条链。
+   *
+   * **Y**：同一个 `sessionId` 交给这两条端点。**一页之内四格与底部时序看同一个世界**
+   * —— 这不是顺手统一，是本页的立身之本：两半各读各的，屏上每一格都对而合起来不成立。
+   */
+  const heat = useChainLossMatrix(so, sessionId);
   /**
    * ⚠ **只有热力图吃投影后的矩阵，另外三块吃原始的** —— 这不是漏改，是本单的判据：
    * 根因树的三级子因来自 `POST /a/v1/sim/chain-loss-drill`，那个端点的入参是
@@ -144,7 +156,7 @@ export function SandboxAttr({ sessionId, so }: SandboxAttrProps = {}): JSX.Eleme
    * 边界写在用户读得到的地方（`SCOPE_HINT` / `SCOPE_FROZEN_HINT`），不是只写在这条注释里。
    */
   const scopedHeat = projectHeatByScope(heat, scopeKey);
-  const tree = useChainLossDrill(heat, selectedNodeId ?? heat.nodes[0]?.nodeId ?? null, so);
+  const tree = useChainLossDrill(heat, selectedNodeId ?? heat.nodes[0]?.nodeId ?? null, so, sessionId);
   const detail = useAttrDetail(heat, selectedNodeId);
   const waterfall = useWaterfall(heat, tree);
   const series = useContributionSeries(sessionId);
