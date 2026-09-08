@@ -10,9 +10,12 @@ import { describe, expect, it } from "vitest";
 import {
   collectToolCalls,
   createSseMapper,
+  foldDshIterations,
+  foldDshRunStats,
   reassembleDshRun,
   type DshSessionEvent,
 } from "../src/dsh-runtime/reassemble.js";
+import { NUMERIC_REDLINE_CODE } from "../src/util/numerics.js";
 
 const toolCall = (callId: string, name: string, args: unknown): DshSessionEvent => ({
   type: "tool/call",
@@ -335,17 +338,19 @@ describe("N2-A1 · think 流对账（reasoning-delta → agent_think 逐 delta �
 describe("N2-A2 · stats 黄金对账（纯 fold == 夹具 projections.values 独立投影）", () => {
   it("multihop：sessionStats/tokenUsage 逐字段全等；contextPressure 仅 pressureTokens", () => {
     const { frames, oracle } = loadDshFixture("hist-multihop.json");
-    const r = reassembleDshRun(frames);
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
+    // WO-NUMERIC-REDLINE-BLOCK 起：本夹具的**答案正文**会触发数字红线（详见本文件末
+    // 「数字红线 × 黄金夹具」一节），故 `reassembleDshRun` 在此返回 ok:false。
+    // 本用例的被测对象是 **stats 纯 fold**（标题即此），与红线正交 ⇒ 直接调同一个导出的 fold，
+    // 不再借道 `reassembleDshRun` 的 ok 分支。⚠ 这不是绕过红线：红线的行为由那一节显式钉住。
+    const stats = foldDshRunStats(frames);
     // oracle = dsh host 独立投影（输入帧 vs host 投影，非循环自证）
-    expect(r.stats?.sessionStats).toEqual(oracle.sessionStats);
-    expect(r.stats?.tokenUsage).toEqual(oracle.tokenUsage);
+    expect(stats?.sessionStats).toEqual(oracle.sessionStats);
+    expect(stats?.tokenUsage).toEqual(oracle.tokenUsage);
     const pressure = oracle.contextPressure as { pressureTokens?: number };
-    expect(r.stats?.contextPressure).toEqual({ pressureTokens: pressure.pressureTokens });
+    expect(stats?.contextPressure).toEqual({ pressureTokens: pressure.pressureTokens });
     // 诚实边界：projectedTokens/contextWindow 帧流无源，绝不自封
-    expect(r.stats?.contextPressure).not.toHaveProperty("projectedTokens");
-    expect(r.stats?.contextPressure).not.toHaveProperty("contextWindow");
+    expect(stats?.contextPressure).not.toHaveProperty("projectedTokens");
+    expect(stats?.contextPressure).not.toHaveProperty("contextWindow");
   });
 });
 
@@ -597,17 +602,17 @@ describe("WO-DSH-PROD-READY W9-lite · 帧流→iterations 骨架", () => {
 
   it("⑧ 黄金夹具 multihop：7 步 ⇒ 7 迭代（步 1-6 各一 read 全 OK，步 7 纯文本空轮），ΣdurationMs == stats.sessionStats.toolMs（同源交叉核）", () => {
     const { frames } = loadDshFixture("hist-multihop.json");
-    const r = reassembleDshRun(frames);
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.iterations.map((it) => it.index)).toEqual([0, 1, 2, 3, 4, 5, 6]); // 0 基顺编号（native i 同口径）
+    // 同上一处：被测对象是 **iterations 纯 fold**，与数字红线正交 ⇒ 直调导出的 fold。
+    const iterations = foldDshIterations(frames);
+    const stats = foldDshRunStats(frames);
+    expect(iterations.map((it) => it.index)).toEqual([0, 1, 2, 3, 4, 5, 6]); // 0 基顺编号（native i 同口径）
     for (let i = 0; i < 6; i++) {
-      expect(r.iterations[i]?.toolCalls.map((c) => c.toolName)).toEqual(["read"]);
-      expect(r.iterations[i]?.toolCalls[0]?.outcome).toBe("OK");
+      expect(iterations[i]?.toolCalls.map((c) => c.toolName)).toEqual(["read"]);
+      expect(iterations[i]?.toolCalls[0]?.outcome).toBe("OK");
     }
-    expect(r.iterations[6]?.toolCalls).toEqual([]); // 夹具实证：step 7 零调用纯文本轮
-    const sum = r.iterations.reduce((n, it) => n + it.toolCalls.reduce((m, c) => m + c.durationMs, 0), 0);
-    expect(sum).toBe(r.stats?.sessionStats.toolMs); // 两条独立 fold 路径同帧同源，必须互等
+    expect(iterations[6]?.toolCalls).toEqual([]); // 夹具实证：step 7 零调用纯文本轮
+    const sum = iterations.reduce((n, it) => n + it.toolCalls.reduce((m, c) => m + c.durationMs, 0), 0);
+    expect(sum).toBe(stats?.sessionStats.toolMs); // 两条独立 fold 路径同帧同源，必须互等
   });
 });
 
@@ -704,5 +709,44 @@ describe("WO-DSH-PROD-READY W9-full · hostToolCalls 侧表合流（四态+tc_+�
     if (!r.ok) return;
     expect(r.iterations).toEqual([{ index: 0, toolCalls: [] }]); // 帧不全不造 outcome（探针⑥口径维持）
     expect(JSON.stringify([...hostToolCalls.entries()])).toBe(snapshot); // opts 进值出，零副作用
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WO-NUMERIC-REDLINE-BLOCK · 数字红线 × 黄金夹具：**误报面的实测证据**
+//
+// ⚠ 这一节存在的理由，是把本单最贵的一个发现钉在机器上、而不是留在报告里：
+// 数字红线的判据 `hasUnverifiedNumerics` 原本是给**诚实标**用的（源文件头注自称
+// "Non-blocking flag"），它把**有序列表序号**（`1.` `2.` …）与**非业务计数**
+// （「共读取 6 个文件」）一并咬住。当这同一个判据被提升成**硬阻断**，
+// 这些原本可容忍的误报就变成了**合法答案被毙**。
+//
+// 本仓唯一一份**真实录制**的 dsh 运行（hist-multihop·763 帧）就是活证据：
+// 它的答案正文没有一个业务数字，全是文件链的序号与计数 —— 照样被红线拦下。
+//
+// 形态（铁律 0.6 句式）：
+//   「我用『我手写的反向对照放行了』当作『合法答案不会被误杀』的证据，而前者并不度量后者
+//     —— 反向对照是我自己造的，真实语料才是尺子。」
+//
+// ⇒ 结论**不是**「把判据改松」（WO 明令禁止：判据改松 = 门还在牙没了），
+//   而是：**dsh 路今天 defaultOn:false ⇒ 严格档安全**；
+//   若要把红线推到原生路，这里就是它的代价清单，由仓主据此裁决。
+// ---------------------------------------------------------------------------
+describe("WO-NUMERIC-REDLINE-BLOCK · 红线在真实语料上的误报面（钉住，防静默改变）", () => {
+  it("真实录制的 multihop 语料：答案零业务数字，仍被红线拦下（误报面的量级证据）", () => {
+    const { frames } = loadDshFixture("hist-multihop.json");
+    const r = reassembleDshRun(frames);
+    expect(r.ok, "此处若变绿：红线判据被放宽了 —— 那是产品裁决，不是实现细节").toBe(false);
+    if (r.ok) return;
+    expect(r.code).toBe(NUMERIC_REDLINE_CODE);
+  });
+
+  it("金丝雀：同一条路**只把序号/计数去掉**就放行 ⇒ 拦它的确实是那些数字，不是别的", () => {
+    const clean = [
+      assistantMessage("任务完成，密码为『量子-纠缠-坍缩-观测』。"),
+      turnEnd("completed"),
+    ];
+    const r = reassembleDshRun(clean);
+    expect(r.ok, "去掉数字仍被拦 ⇒ 拦截理由不是数字，本节的归因就错了").toBe(true);
   });
 });

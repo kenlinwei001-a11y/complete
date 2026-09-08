@@ -31,7 +31,7 @@
 
 import { AnswerBlockSchema, type AgentIteration, type Answer, type AnswerBlock, type ProvenanceRef } from "@platform/contracts";
 import { z } from "zod";
-import { scanBlocks } from "../util/numerics.js";
+import { scanBlocks, NUMERIC_REDLINE_CODE, NUMERIC_REDLINE_MESSAGE } from "../util/numerics.js";
 import { checkJsonSchema } from "../util/jsonschema.js";
 import { newId } from "../ids.js";
 
@@ -87,7 +87,12 @@ export type ReassembledRun =
        */
       iterations: AgentIteration[];
     }
-  | { ok: false; errors: string[] };
+  /**
+   * 拒绝臂。`code` 为 **additive optional 判别位**（既有三处 governance/schema 拒绝不带此键，
+   * 逐字节旧行为）：WO-NUMERIC-REDLINE-BLOCK 用它让 engine 出口**不靠匹配文案**就能识别
+   * 数字红线拦截 —— 拿错误串当判别键会在文案一改就静默失灵（本仓「拿 X 当 Y 的证据」老病）。
+   */
+  | { ok: false; errors: string[]; code?: typeof NUMERIC_REDLINE_CODE };
 
 /** N2·D-2 · stats 三键（与 dsh host projections.values 同形子集；oracle 对账见 A2）。 */
 export interface DshRunStats {
@@ -636,6 +641,27 @@ export function reassembleDshRun(events: readonly DshSessionEvent[], opts: Reass
   }
   if (opts.governance?.writeMode && !blocks.some((b) => b.type === "action_draft")) {
     return { ok: false, errors: ["挂载的 Skill 为 WRITE/审批类型，final_answer 必须包含 action_draft 块"] };
+  }
+
+  // WO-NUMERIC-REDLINE-BLOCK · **dsh 路无条件阻断**（仓主 2026-09-08 架构原则：
+  // 「所有计算原则上使用求解器而不是 agent(LLM) 来计算」）。
+  //
+  // 上面两道 governance 拒绝**都不度量数字红线**：`required` 查的是 `provenance.length === 0`，
+  // 一条 provenance + 十个编造数字照过。本检查补的正是那个缺口——
+  // **agent 自撰答案正文里出现未溯源数值 ⇒ 拒绝该产出**，不是标注、不是计数、不看 policy 档位。
+  //
+  // 位置刻意钉在这里（三点，改动前先读完）：
+  //  ① **在 BUDGET_EXHAUSTED 诚实摘要头拼接之前** ⇒ 扫的是 agent 写的字，
+  //     不含平台自己拼的那句头（否则平台文案自触红线 = 自伤）。
+  //  ② **stall / 预算两个早退分支（上方 :541/:570）不设此拦** ⇒ 那两支的正文是
+  //     **平台拼的**诚实降级摘要（`loopRepeatCap=3` 是平台常量不是模型编的数）。
+  //     在那里拦 = 把一次诚实降级降成 FAILED，用户从「看到部分线索」退成「什么都没有」，严格更差。
+  //  ③ 判据复用 `scanBlocks` 单源、一字未改（放宽判据 = 门还在牙没了）。
+  //
+  // 原生路（`runAgentLoop`）**刻意不设此拦**——先只报不断、只统计「若阻断会拦下多少」
+  // （engine 侧 numericRedline{action:"would_block"}），收不收紧是产品裁决不在本单。
+  if (scanBlocks(blocks)) {
+    return { ok: false, errors: [NUMERIC_REDLINE_MESSAGE], code: NUMERIC_REDLINE_CODE };
   }
 
   // W2 批3（team-lead 2026-08-21 裁决·dsh 自体修复②）：max-tokens 截断收尾补诚实摘要头——

@@ -226,9 +226,12 @@ describe("WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态", () 
     expect(await countHarnessProcesses(harness.binPath), "前置：夹具目录唯一，基线计数 0").toBe(0);
     // 健康×5 连跑：每次 close 的 EOF→exit 常规档回收。
     setFaultEnv(harness.dir, "healthy");
-    for (let i = 0; i < 5; i++) {
+    // ⚠ 轮次标记用**字母**不用数字（WO-NUMERIC-REDLINE-BLOCK 起）：fault-harness 会把 prompt
+    // 原样回声进答案（`健康回答 prompt=…`），而答案正文走数字红线 ⇒ `连跑 0` 的数字会被拦成 ok:false。
+    // 本用例被测的是**子进程回收**，轮次只需可区分，不需要是数字。⛔ 该改的是探针，不是门。
+    for (const tag of ["A", "B", "C", "D", "E"]) {
       const out = await runDshAgent(
-        { prompt: `zombie 连跑 ${i}`, provider: "stub", model: "stub" },
+        { prompt: `zombie 连跑 ${tag}`, provider: "stub", model: "stub" },
         { harnessDir: harness.dir, requestTimeoutMs: 10_000 },
       );
       expect(out.result.ok).toBe(true);
@@ -293,10 +296,11 @@ describe("WO-DSH-PROD-READY W4 · DSH 故障注入 + 多租户并发形态", () 
   it("F7 资源形态（runner 级）⇒ 并发×4 各自独立子进程同时在跑（每 run 一进程·无池化上限 钉板）", { timeout: 60_000 }, async () => {
     const recordFile = join(mkdtempSync(join(tmpdir(), "dsh-w4-record-")), "records.jsonl");
     setFaultEnv(harness.dir, "healthy-slow", recordFile);
+    // ⚠ 并发标记同上用字母：prompt 经 fault-harness 回声进答案，数字会触发数字红线。
     const runs = await Promise.all(
-      [0, 1, 2, 3].map((i) =>
+      ["A", "B", "C", "D"].map((tag) =>
         runDshAgent(
-          { prompt: `并发形态 ${i}`, provider: "stub", model: "stub" },
+          { prompt: `并发形态 ${tag}`, provider: "stub", model: "stub" },
           { harnessDir: harness.dir, requestTimeoutMs: 15_000 },
         ),
       ),

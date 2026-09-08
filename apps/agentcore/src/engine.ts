@@ -33,6 +33,9 @@ import type { FeatureGate } from "./features/gate.js";
 import { ResourceRegistryService } from "./dril/resource-registry.js";
 import { runWorkflow, type ExtendedPlanStep, type WorkflowResult } from "./workflow/executor.js";
 import { newId } from "./ids.js";
+// WO-NUMERIC-REDLINE-BLOCK：判别位/文案单源。`util/numerics.js` **不属于** dsh-runtime，
+// 静态 import 它不触碰休眠面（dormancy 只禁静态 import `dsh-runtime` / `packages/dsh-harness`）。
+import { NUMERIC_REDLINE_CODE } from "./util/numerics.js";
 
 // ---------------------------------------------------------------------------
 // WO-SKILL-2 · Skill 运行时辅助（provenance 策略 / 写模式 / 规则引用预检后验）
@@ -775,11 +778,24 @@ export class ExecutionEngine {
         this.dshToolExecuteRuns.delete(runToken);
       }
       if (!dsh.result.ok) {
+        // WO-NUMERIC-REDLINE-BLOCK：数字红线拦截走**用户可读原文**（reassemble 已把 R-UI-4 合规的
+        // 那句话放进 errors[0]），不套「dsh 重组装拒绝：」这个内部前缀——被拦的是终端用户会看的答案，
+        // 屏上得是一句他能据以行动的话，不是内核名。其余拒绝（schema / provenance / writeMode）
+        // 维持既有前缀与文案，逐字节旧行为（dsh-e2e-honesty L5.P2a/P2b 两条断言咬的就是它们）。
+        const redlineBlocked = dsh.result.code === NUMERIC_REDLINE_CODE;
+        if (redlineBlocked) this.deps.metrics.numericRedline.inc({ path: "AGENT_DSH", action: "blocked" });
         return {
           outcome: "FAILED",
           answer: {
             trustLevel: "AGENT_EXPLORATORY",
-            blocks: [{ type: "text", markdown: `dsh 重组装拒绝：${dsh.result.errors.join("; ")}` }],
+            blocks: [
+              {
+                type: "text",
+                markdown: redlineBlocked
+                  ? dsh.result.errors.join("; ")
+                  : `dsh 重组装拒绝：${dsh.result.errors.join("; ")}`,
+              },
+            ],
             provenance: [],
             unverifiedNumerics: false,
           },
@@ -908,6 +924,14 @@ export class ExecutionEngine {
         }),
     });
 
+    // WO-NUMERIC-REDLINE-BLOCK · 原生路**只报不断**：照常放行，只记「若阻断会拦下多少」。
+    // 无条件阻断会改既有行为、可能打断现有流程 ⇒ 先拿数，收不收紧是产品裁决（不在本单）。
+    // 采样点刻意与 dsh 阻断点**同一阶段**（都在 applyPostChecks 之前，量的都是 agent 交付出来的
+    // 那份答案）—— 一个量后验前、一个量后验后的话，两路的数就不可比了。
+    // 判据取 `result.answer.unverifiedNumerics`，它就是 loop 侧 `scanBlocks(blocks)` 的值（同一单源判据）。
+    if (result.answer.unverifiedNumerics) {
+      this.deps.metrics.numericRedline.inc({ path: "AGENT_NATIVE", action: "would_block" });
+    }
     // W1：原生出口与 DSH 出口共用上方 applyPostChecks 闭包（两段后验单源，禁漂移）。
     return applyPostChecks(result);
   }

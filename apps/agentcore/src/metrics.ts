@@ -122,6 +122,20 @@ export class Metrics {
     "qos_unverified_numerics_total",
     "Answers flagged with unverified numerics by path",
   );
+  /**
+   * WO-NUMERIC-REDLINE-BLOCK · 数字红线的**处置**计数（与上面那个「标注」计数正交，别混用）。
+   * labels：`path` = AGENT_DSH | AGENT_NATIVE；`action` = blocked | would_block。
+   *  · `blocked`     —— dsh 路真的拒了这份产出（用户没看到那些数）。
+   *  · `would_block` —— 原生路**照常放行**，此计数只回答「若阻断会拦下多少」。
+   * 两个 action 共用**同一个判据** `scanBlocks` ⇒ 两路的数直接可比；
+   * 若各写一套判据，这个比值就不度量任何东西了（本仓「金丝雀与主逻辑必须共用同一份实现」同源）。
+   * 记在**交付出口**（每次运行至多 +1），不记在 `acceptFinalAnswer` —— 后者在 reflect 重规划时
+   * 会被调多次，按它计数会把「一次运行」记成两三次，数就不再是「拦下多少份产出」。
+   */
+  readonly numericRedline = new Counter(
+    "qos_numeric_redline_total",
+    "Numeric-redline dispositions by path and action (blocked / would_block)",
+  );
   readonly toolCalls = new Counter("qos_tool_calls_total", "Tool calls by tool and outcome");
   readonly llmTokens = new Counter("qos_llm_tokens_total", "LLM tokens by model, direction and provider");
   /** LLM Provider 增量 §1.1：provider 故障降级（fallback 接管）次数 */
@@ -167,6 +181,7 @@ export class Metrics {
         this.agentRetry,
         this.agentEscalation,
         this.unverifiedNumerics,
+        this.numericRedline,
         this.toolCalls,
         this.llmTokens,
         this.llmFallback,
