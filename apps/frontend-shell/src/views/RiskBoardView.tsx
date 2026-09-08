@@ -216,6 +216,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   // 可切回求解器数组序（越线日↑→张力↓）。两个序都留着，因为它们回答的是两个不同的问题
   // （"谁最快出事" vs "出事落在谁身上"），把其中一个藏起来就是替用户做了他该做的判断。
   const [orderMode, setOrderMode] = useState<"exposure" | "solver">("exposure");
+  // WO-RISKBOARD-TRUNCATION：「越线但未上榜」名单的展开态（默认收起 —— 第一层只放那个**数**，
+  // 名单是点开才看的第二层；但那个数本身不许折叠，它改变整块榜的读法）。
+  const [openUnlisted, setOpenUnlisted] = useState(false);
   /**
    * 判据 U2 步骤态。默认末步 = 完整结果（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
    * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止。
@@ -299,6 +302,11 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const crossDays = cards.map((c) => c.crossDay).filter((d): d is number => d != null);
   const earliestCross = crossDays.length ? Math.min(...crossDays) : null;
 
+  // WO-RISKBOARD-TRUNCATION · 「越线但未上榜」：后端**只在真被截断时**下发这一整块。
+  // 缺席 ⇒ 下面整段不渲染（不是渲染「还有 0 个」）—— 没有被藏起来的东西时，多出来的那句话本身就是噪声。
+  // ⚠ 前端**一个数都不自己算**：条数/总数/名单/口径原文全取回包。自己拿 `cards.length` 反推
+  //   会造出第二套口径，而它在「榜上混有不越线的卡」时给的数与后端不一致（那正是本单要治的病的变体）。
+  const unlisted = data.unlistedCrossings;
   const openCard = openBase ? cards.find((c) => c.base === openBase) ?? null : null;
   // WO-LIVE-DISPOSITION：处置表数据源 = 点过「生成/重算」则用**重算结果**（吃当前杠杆推演态），否则基线查询结果。
   const planRows: PlanRow[] = livePlan?.rows ?? data.planRows ?? [];
