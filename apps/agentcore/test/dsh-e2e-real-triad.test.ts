@@ -52,13 +52,28 @@ const MCP_FIXTURE = join(HARNESS_DIR, "test/fixtures/mock-mcp-tenant.mjs");
 /** L2 专档：生产档内容 + governance mode:http（url/token 由 env 注入，不落盘）。 */
 const CORDIS_L2 = "cordis.l2.yml";
 
-const MODEL_ID = "kimi-k3";
-const PROVIDER_ID = "llmp_kimi_l2";
-const KIMI_KEY = process.env.KIMI_API_KEY;
-const KIMI_BASE = process.env.KIMI_BASE_URL;
-const KIMI_READY = typeof KIMI_KEY === "string" && KIMI_KEY.length > 0 && typeof KIMI_BASE === "string" && KIMI_BASE.length > 0;
+/**
+ * 真供应商连接事实（WO-DSH-REAL-PROVIDER 2026-09-08 改为**厂商中立**）。
+ *
+ * 改这里的理由（实测，不是偏好）：原实现把门控写成 `KIMI_API_KEY`/`KIMI_BASE_URL`，
+ * 而 `MODEL_ID` 是文件级硬编码 `"kimi-k3"` 并经 `kimiDirectory()` 写进 provider.models ⇒
+ * **持 OpenAI / DeepSeek / 任何别家 key 的环境即便有凭据也跑不了这条臂**（模型名对不上）。
+ * 这条臂名义上叫「真 LLM」，实际只对一家成立 —— 于是「翻 flag 前跑一次真供应商」这件事
+ * 被一个与真实性无关的常量卡死。现在：通用名优先，旧的 KIMI_* 保留向后兼容。
+ */
+const REAL_KEY = process.env.DSH_REAL_API_KEY ?? process.env.KIMI_API_KEY;
+const REAL_BASE = process.env.DSH_REAL_BASE_URL ?? process.env.KIMI_BASE_URL;
+/** 模型名必须可配：不同供应商模型名不同。缺省保留 kimi-k3（旧配方原样可跑）。 */
+const MODEL_ID = process.env.DSH_REAL_MODEL ?? "kimi-k3";
+/** provider kind：openai_compatible（缺省）或 anthropic。 */
+const REAL_KIND = process.env.DSH_REAL_KIND === "anthropic" ? "anthropic" : "openai_compatible";
+const PROVIDER_ID = "llmp_real_l2";
+const KIMI_READY = typeof REAL_KEY === "string" && REAL_KEY.length > 0 && typeof REAL_BASE === "string" && REAL_BASE.length > 0;
 if (!KIMI_READY) {
-  console.info("[dsh-e2e-real-triad] KIMI_API_KEY/KIMI_BASE_URL 未注入：L2.A1/L2.A4 真跳臂 skip（A14 门控先例）");
+  console.info(
+    "[dsh-e2e-real-triad] 真供应商臂 skip：需 DSH_REAL_API_KEY + DSH_REAL_BASE_URL（旧名 KIMI_API_KEY/KIMI_BASE_URL 同样接受）；" +
+      "另可选 DSH_REAL_MODEL（缺省 kimi-k3）/ DSH_REAL_KIND（openai_compatible|anthropic）。L2.A1/L2.A4 跳过。",
+  );
 }
 /** 显式假 key（stub 臂用；形如真 key 但绝非凭据，红线断言的扫描对象）。 */
 const FAKE_KEY = "l2-e2e-fake-key-00000000000000000000000000000000";
@@ -217,22 +232,22 @@ const GOV_C03: DshSetupSpec["governance"] = {
   scopeObjectTypes: [],
 };
 
-/** Kimi provider 目录注入形态（A3 stubDirectory 先例；连接事实全取真 env）。 */
+/** 真供应商 provider 目录注入形态（A3 stubDirectory 先例；连接事实全取真 env，厂商中立）。 */
 function kimiDirectory(): unknown {
   const provider: LlmProvider = {
     id: PROVIDER_ID,
     tenantId: "platform",
-    name: "L2 Kimi Provider",
-    kind: "openai_compatible",
-    baseUrl: KIMI_BASE as string,
-    models: [{ modelId: MODEL_ID, displayName: "Kimi K3", capabilities: { tools: true, structuredOutput: true, maxContext: 131072 } }],
+    name: "L2 Real Provider",
+    kind: REAL_KIND,
+    baseUrl: REAL_BASE as string,
+    models: [{ modelId: MODEL_ID, displayName: MODEL_ID, capabilities: { tools: true, structuredOutput: true, maxContext: 131072 } }],
     status: "ACTIVE",
     hasApiKey: true,
   };
   const binding = { providerId: PROVIDER_ID, modelId: MODEL_ID } as PurposeBinding;
   return {
     provider: async (_tenantId: string, id: string) => (id === PROVIDER_ID ? provider : undefined),
-    credential: async () => KIMI_KEY,
+    credential: async () => REAL_KEY,
     bindingFor: async (_tenantId: string, purpose: string) => (purpose === "agent" ? binding : undefined),
   };
 }
@@ -289,6 +304,38 @@ async function runRealOnce<T>(fn: () => Promise<T>, ok: (out: T) => boolean): Pr
   const first = await fn();
   if (ok(first)) return first;
   return fn();
+}
+
+// ---------------------------------------------------------------------------
+// 判别力金丝雀（WO-DSH-REAL-PROVIDER 2026-09-08 新增）
+// ---------------------------------------------------------------------------
+/**
+ * **为什么需要这个**（2026-09-08 实测，不是设计洁癖）：
+ * 本文件原先拿 `stats.tokenUsage.*>0` 当「真跳到外部供应商」的证据，注释写
+ * 「stub/剧本给不出非零真值口径」。**实测给得出**：同文件 `startStubOpenAi` 自报
+ * `usage:{prompt_tokens:50,completion_tokens:10}`，逐字透传成 `50/10`，断言 `>0` 照样绿。
+ *
+ * 形态（铁律 0.6 句式）：
+ *   「我用『tokenUsage 非零』当作『打到了真外部供应商』的证据，而前者并不度量后者
+ *    —— usage 是**端点自报**的字段，任何 stub / 回放 / 固定端点都能自报。」
+ *
+ * 精确边界（别扩大）：`tokenUsage>0` **能**分「拿到带 usage 的应答」与「没拿到应答」
+ * （401 路径实测 0/0）；**不能**分「真供应商」与「本地 stub / 固定端点」。
+ *
+ * 于是判据换成**输入依赖性**：同一条链路问两个不同的问题，回答必须跟着变。
+ * 固定端点、写死剧本、缓存回放三者都过不了这一关。
+ *
+ * ⚠ 本函数是**真臂与变异反证臂共用的同一份实现**（本仓铁律：金丝雀不许各抄一份，
+ *   抄了就是装饰品——改主逻辑时金丝雀拿旧的去测、照样绿）。
+ */
+function answerText(result: unknown): string {
+  const blocks = (result as { answer?: { blocks?: { markdown?: string; text?: string }[] } }).answer?.blocks ?? [];
+  return blocks.map((b) => b.markdown ?? b.text ?? "").join("\n").trim();
+}
+
+/** 两次回答是否体现输入依赖性（= 这条链路有判别力）。 */
+function isDiscriminating(a: string, b: string): boolean {
+  return a.length > 0 && b.length > 0 && a !== b;
 }
 
 // ---------------------------------------------------------------------------
@@ -359,7 +406,7 @@ describe.skipIf(!KIMI_READY)("L2.A1 · 真 LLM：engine 分叉 → 绑定矩阵�
           `[L2.A1 真跳痕迹] model=${MODEL_ID} uncachedInputTokens=${stats!.tokenUsage!.uncachedInputTokens} outputTokens=${stats!.tokenUsage!.outputTokens}`,
         );
         // 凭据红线：结果面（answer/run/sketch）零 key 子串。
-        expect(JSON.stringify(result)).not.toContain(KIMI_KEY as string);
+        expect(JSON.stringify(result)).not.toContain(REAL_KEY as string);
       } finally {
         if (prevHarnessDir === undefined) delete process.env.DSH_HARNESS_DIR;
         else process.env.DSH_HARNESS_DIR = prevHarnessDir;
@@ -558,7 +605,7 @@ describe.skipIf(!KIMI_READY)("L2.A4 · 组合臂：kimi-k3 真调 + C03 真裁�
           `[L2.A4 真跳痕迹] model=${MODEL_ID} uncachedInputTokens=${stats?.tokenUsage.uncachedInputTokens} outputTokens=${stats?.tokenUsage.outputTokens} evalCalls=${gov.evalCalls.length}`,
         );
         // 凭据红线：全帧流/结果零 key 子串。
-        expect(wire).not.toContain(KIMI_KEY as string);
+        expect(wire).not.toContain(REAL_KEY as string);
         const pids = readFileSync(pidFile, "utf8").split("\n").filter(Boolean);
         expect(pids.length).toBe(1);
       } finally {
