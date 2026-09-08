@@ -500,7 +500,14 @@ export function chainLossMatrix(input: ChainLossMatrixInput): ChainLossMatrixRes
         ? `＝订单簿的 ${money.exposureOverlapRatio.toFixed(2)}×（一单可产多基地故跨列重复计入，列间可比、列合计不可加）`
         : "") +
       `；逐列归因口径与 ${CHAIN_LOSS_SOLVER_KEY} 同源（同一份 computeLossAttribution）。` +
-          ...(simCtx ? { simContext: simCtx } : {}),
+      (simCtx
+        ? `本次在推演会话 ${simCtx.sessionId} 第 ${simCtx.tick} 拍的上下文里：` +
+          `叠加 ${simCtx.appliedSteps.length} 段共 ${simCtx.appliedDays.toFixed(2)} 天（只叠以天计的状态量）；` +
+          `另有 ${simCtx.excluded.filter((e) => e.reason === "NOT_DAY_UNIT").length} 个状态量因**量纲不是天数**未计入、` +
+          `${simCtx.excluded.filter((e) => e.reason === "OTHER_CARRIER").length} 个因**已在别的环节计过**未重复计（逐个见 simContext.excluded）。`
+        : ""),
+    // 缺省 = 未传 sessionId ⇒ 整块缺席（与本字段引入前逐字节相同）。
+    ...(simCtx ? { simContext: simCtx } : {}),
   };
 }
 
