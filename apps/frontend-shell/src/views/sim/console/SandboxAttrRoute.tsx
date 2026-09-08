@@ -41,17 +41,86 @@
  * 上方热矩阵/根因树/瀑布三格的数 —— 那三格走链路损耗求解器（`useChainLossMatrix`），
  * 与会话、与传导边**不同源**（见本文件头 `so` 那段）。两个问题相邻但不同源，故各自成块。
  */
+import { useQuery } from "@tanstack/react-query";
 import type { ViewRendererProps } from "@/views/registry";
+import { fetchSimViewConfig } from "@/api/endpoints";
 import EdgeActivePanel from "../EdgeActivePanel";
+import { stateVarText } from "../stateVarLabel";
 import { SandboxAttr } from "./SandboxAttr";
 import css from "./SandboxAttr.module.css";
 import { consoleHostProps, useConsoleSession } from "./useConsoleSession";
+import { useChainLossMatrix } from "./useLossAttribution";
+
+/**
+ * WO-SIM-VERDICT-FRONTEND · 「这一屏的数是在哪一次推演里算的」——**推演上下文披露条**。
+ *
+ * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
+ * **X**：会话 id 接上之后，屏上四格的数会跟着这一次推演变了 —— 但**屏上没有任何一处说它变了**。
+ * 用户看到的是一组新数字，无从判断这是「真实世界本来就这样」还是「这一次推演叠上去的」。
+ * 铁律 1.5 判据二原话：凡对外宣称「推演」的结果，必须能逐项列出引用的数据与走过的规则；
+ * **一个看不到代码的人，读完这一层应当能自己判断这是真推演还是查表。**
+ * **Y**：把端点已经给出的那一块（`simContext`）如实印在第一层。
+ *
+ * ── 三态必须分得开（不许塌成一句「无影响」）─────────────────────────────────
+ *  · **整块缺席** ⇒ 不在任何一次推演里，读的是真实世界那条链；
+ *  · **块在 · 合计 0 天** ⇒ 在推演里，但这一拍没有以天计的影响；
+ *  · **块在 · 合计 N 天** ⇒ 逐段点名叠了谁、叠了几天。
+ * 后两者在屏上长成一样，等于把「算过了、结果是零」伪装成「没算」。
+ *
+ * ⚠ 本条**不发第二次请求**：`useChainLossMatrix` 与页内组件同一个缓存键，命中同一份回包；
+ *   状态变量的人话名走 `stateVarText`（后端单源字典），前端一个中文名都不写。
+ * ⚠ R-UI-4：屏上不出现源码文件名/行号，也不出现「工单」这类排期语汇；
+ *   而**拍数 / 天数 / 段数 / 状态变量名**是业务事实，必须给。
+ */
+function SimContextStrip({ so, sessionId }: { so?: string; sessionId?: string }): JSX.Element {
+  const heat = useChainLossMatrix(so, sessionId);
+  // 与统一推演控制台同一个缓存键 ⇒ 宿主已经取过就直接命中，不多打一跳。
+  const cfg = useQuery({ queryKey: ["a", "sim-view-config"], queryFn: fetchSimViewConfig, retry: false });
+  const names = cfg.data?.stateVarNames;
+  const ctx = heat.simContext;
+  const day = (n: number): string => n.toFixed(1);
+
+  if (ctx === undefined) {
+    return (
+      <div className={css.simctx} data-testid="sandbox-attr-simctx" data-in-session="0">
+        <b>真实世界</b>
+        <span>不在任何一次推演里</span>
+        <span>下面的数按当前主数据算</span>
+      </div>
+    );
+  }
+  // 排除项按理由分两堆：两种「没算」的成因不同，合成一个数就没法据此行动。
+  const notDay = ctx.excluded.filter((e) => e.reason === "NOT_DAY_UNIT").length;
+  const other = ctx.excluded.filter((e) => e.reason === "OTHER_CARRIER").length;
+  return (
+    <div className={css.simctx} data-testid="sandbox-attr-simctx" data-in-session="1" data-applied-days={ctx.appliedDays}>
+      <b>这一次推演</b>
+      <span data-testid="sandbox-attr-simctx-tick">第 {ctx.tick} 拍</span>
+      <span data-testid="sandbox-attr-simctx-days">
+        叠加 {day(ctx.appliedDays)} 天 · {ctx.appliedSteps.length} 段
+      </span>
+      {ctx.appliedSteps.map((s) => (
+        <span key={s.stepId} className={css.simctxStep} data-testid={`sandbox-attr-simctx-step-${s.stepId}`}>
+          {stateVarText(s.stateVar, names)} +{day(s.deltaDays)} 天
+        </span>
+      ))}
+      {ctx.appliedSteps.length === 0 && <span data-testid="sandbox-attr-simctx-zero">这一拍没有按天算的影响</span>}
+      {notDay > 0 && <span data-testid="sandbox-attr-simctx-notday">{notDay} 项不按天计，未计入</span>}
+      {other > 0 && <span data-testid="sandbox-attr-simctx-other">{other} 项已在别段计过</span>}
+    </div>
+  );
+}
 
 export default function SandboxAttrRoute({ view }: ViewRendererProps): JSX.Element {
   const p = (view.options ?? {}) as { sessionId?: string; so?: string };
   const session = useConsoleSession(p);
   return (
     <div {...consoleHostProps(session)}>
+      {/* WO-SIM-VERDICT-FRONTEND 挂载点：**在归因台之上**、不在任何折叠之下 ——
+          「这组数是哪一次推演算的」必须先于数本身被读到。
+          刻意挂在 `.app` **外面**：`SandboxAttr` 那一盒是像素级 1:1 的验收线，
+          往盒子里塞一行会当场破坏它（`sandbox-attr-pixel.test.tsx` 逐条断言 .app/.row1/.bot 高度）。 */}
+      <SimContextStrip {...(p.so ? { so: p.so } : {})} {...(session.sessionId ? { sessionId: session.sessionId } : {})} />
       <SandboxAttr
         {...(session.sessionId ? { sessionId: session.sessionId } : {})}
         {...(p.so ? { so: p.so } : {})}
