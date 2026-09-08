@@ -5,16 +5,21 @@ import {
   MONEY_CONSERVATION_TOLERANCE_YUAN,
   lossValueAtRiskYuan,
   orderExposureYuan,
+  orderStatusTargets,
   type ChainLossMatrixResult,
 } from "@platform/contracts";
+// 订单簿总数取生成侧的单一出处，**不在测试里写 500 这个字面量**
+// （写死就成了第二份真相：扩容改了生成器，这里还咬旧数、还是绿的）。
+import { ORDER_BOOK_SIZE } from "../src/synthetic/battery.js";
 
 /**
  * WO-LOSS-ATTRIB-MONEY · 「损失归因说得出多少钱」的接缝门。
  *
  * ── 这个文件咬的是什么 ──────────────────────────────────────────────────────
- * 数据半 = 种子里的 `Order.value`（派生属性 `qty × unitPrice`）+ `Order.bases`（可产基地清单）；
+ * 数据半 = 种子里的 `Order.value`（派生属性 `qty × unitPrice`）+ `Order.bases`（可产基地清单）
+ *          + `Order.status`（三态 70:20:10）；
  * 引擎半 = 契约 §5.5 的 `orderExposureYuan` / `lossValueAtRiskYuan` + 矩阵求解器的敞口装配。
- * 任一半漏（订单没金额 / 敞口没按基地过滤 / 金额没乘进格子）本文件当场红。
+ * 任一半漏（订单没金额 / 敞口没按基地过滤 / **没按在手过滤** / 金额没乘进格子）本文件当场红。
  * **全部经真 HTTP 端点驱动**（`app.inject`）——纯函数绿证明不了路由把金额发出去了。
  *
  * ── 判据（= 交单时那五格对照实验，逐条落成断言）────────────────────────────
@@ -31,16 +36,41 @@ import {
  *     == `exposureOverlapRatio`（一单可产多基地故 > 1，这个数必须显式返回、不许让人猜）。
  *  ⑤ **诚实缺席**：没有可产订单的基地，金额是 `null` **不是 0**
  *     （「没数据」与「金额是 0」是相反的结论）。
+ *  ⑥ 契约两个纯函数各自的口径（单测层，供变异反证定位到底是哪一半坏了）。
+ *  ⑦ **敞口是「在手」口径**：已交付关闭单一分钱都不进，且在手/已交付两个数
+ *     与 `order-status.ts` 的 `orderStatusTargets` 同源、加起来等于全簿。
+ *
+ * ── ⚠ 判据 ⑦ 的由来：本单第一版自己犯的错（照实记账，不藏）────────────────
+ * 初版 `orderExposureYuan` **不看 `status`**，把整本 500 单（含 350 张 `COMPLETED`）
+ * 都算进敞口 ⇒ 在手订单簿总额报 **454.64 亿**，真值 **156.63 亿**，**虚报 2.90×**。
+ * 而 `order-status.ts` 早就为同一形态记过一次账（驾驶舱「在手订单」卡片虚报 3.3 倍）——
+ * **同一个错在同一个仓里犯了第二次**，故按铁律 0.6 二级处置**当场建机制**：判据 ⑦ 就是那道门。
+ * 它咬的不是「数对不对」，是「**口径有没有跟平台的单一出处对齐**」——
+ * 前者换个种子就失效，后者不会。
  *
  * ── 变异反证（本单**亲手跑过**，下面写的是实测结果不是预期）──────────────────
- * 注入：把 `orderExposureYuan` 里的基地过滤 `if (!bases.includes(baseId)) continue;` 删掉
- * （即每列都拿整本订单簿当敞口）。实测 `vitest` **RC=1，2 failed | 4 passed**：
- *   · **判据 ② 红** —— `两列敞口居然相等…: expected 1 to be greater than 1`（比值从 10.25 → 1.000）；
- *   · **判据 ⑥ 红** —— `expected { exposureYuan: 350 } to deeply equal { exposureYuan: 100 }`。
- * 还原 → 6/6 全绿。
+ * **变异 A**：把基地过滤短路掉（`if (false && !bases.includes(baseId))`，每列都拿整本簿当敞口）。
+ *   实测 **RC=1，2 failed | 5 passed**：
+ *   · **判据 ② 红** —— `两列敞口居然相等 …: expected 1 to be greater than 1`（比值 9.43 → 1.000）；
+ *   · **判据 ⑥ 红** —— `expected { exposureYuan: 350, …(3) } to deeply equal { exposureYuan: 100, …(3) }`。
+ *   ⚠ 附带：这条变异**连 `tsc` 都过不去**（`error TS2345: Argument of type 'string | null'
+ *   is not assignable to parameter of type 'string'` —— 短路后 `baseId` 的收窄没了）。
+ *   即基地过滤有**两道**防线，类型系统是第一道。
+ * **变异 B**：把在手过滤短路掉（`if (false && !isOnHandOrderStatus(o.status))`，即回到初版那个错）。
+ *   实测 **RC=1，2 failed | 5 passed**（`tsc` 这条**过得去** —— 所以它只有测试这一道防线，
+ *   这正是判据 ⑦ 必须存在的理由）：
+ *   · **判据 ⑥ 红** —— `expected { exposureYuan: 10099, …(3) } to deeply equal { exposureYuan: 100, …(3) }`
+ *     （10099 = 100 + 那张 9,999 的 `COMPLETED` 单混了进来）；
+ *   · **判据 ⑦ 红** —— `种子里一张 COMPLETED 都没有 ⇒ 本条判据没真跑起来: expected 0 to be greater than 0`
+ *     （`orderBookDelivered` 归零 —— 排除计数没了，金丝雀先说话）。
+ * 两次变异各自还原 → **7/7 全绿，RC=0**。
  *
- * ⚠ **判据 ④ 在这次变异下仍然绿，这是本门的已知盲区，照实记账**：
- * 每列都拿整本订单簿时，`exposureOverlapRatio` 从 1.57 变成 **13.00**，
+ * ⚠ 上面每一条都是**跑出来的原文**，不是预期。初稿曾按"应该会这样红"写了两条，
+ * 实跑下来 ⑦ 的红法与预想完全不同（是金丝雀先红，不是数值断言先红）——
+ * 照实改回。**猜出来的变异结果和没做变异是一回事。**
+ *
+ * ⚠ **判据 ④ 在变异 A 下仍然绿，这是本门的已知盲区，照实记账**：
+ * 每列都拿整本订单簿时，`exposureOverlapRatio` 从 1.66 变成 **13.00**，
  * 而 ④ 只断言「它 > 1 且等于 Σ敞口÷订单簿」—— 13.00 两条都满足。
  * 也就是说**④ 度量的是「这个比率自洽」，不是「敞口按基地过滤了」**，后者只有 ②⑥ 咬得住。
  * 不给 ④ 加一个「ratio < 基地数」的上界，是因为那个上界没有业务出处
@@ -191,23 +221,58 @@ describe("WO-LOSS-ATTRIB-MONEY · 损失归因的金额口径与基地维", () =
   });
 
   it("⑥ 契约 §5.5 两个纯函数各自的口径（单测层，供变异反证定位）", () => {
-    // 敞口：按基地过滤 + 跳过未登记 value（不当 0）。
+    // 敞口：在手过滤 + 按基地过滤 + 跳过未登记 value（不当 0）。
     const orders = [
-      { value: 100, bases: ["a", "b"] },
-      { value: 200, bases: ["b"] },
-      { value: undefined, bases: ["a"] }, // 未登记金额 ⇒ skipped，不计 0
-      { value: 50, bases: ["c"] },
+      { value: 100, bases: ["a", "b"], status: "OPEN" },
+      { value: 200, bases: ["b"], status: "IN_PRODUCTION" }, // 在制也在手（货没交、钱没结）
+      { value: undefined, bases: ["a"], status: "OPEN" }, // 未登记金额 ⇒ skipped，不计 0
+      { value: 50, bases: ["c"], status: "OPEN" },
+      { value: 9_999, bases: ["a", "b", "c"], status: "COMPLETED" }, // 已交付 ⇒ 一分钱都不许进敞口
     ];
-    expect(orderExposureYuan(orders, "a")).toEqual({ exposureYuan: 100, countedOrders: 1, skippedOrders: 1 });
-    expect(orderExposureYuan(orders, "b")).toEqual({ exposureYuan: 300, countedOrders: 2, skippedOrders: 0 });
-    // baseId=null ⇒ 整本订单簿（对账锚点）。
-    expect(orderExposureYuan(orders, null)).toEqual({ exposureYuan: 350, countedOrders: 3, skippedOrders: 1 });
+    expect(orderExposureYuan(orders, "a")).toEqual({ exposureYuan: 100, countedOrders: 1, skippedOrders: 1, deliveredOrders: 1 });
+    expect(orderExposureYuan(orders, "b")).toEqual({ exposureYuan: 300, countedOrders: 2, skippedOrders: 0, deliveredOrders: 1 });
+    // baseId=null ⇒ 整本**在手**订单簿（对账锚点）。9999 那张 COMPLETED 不在里面。
+    expect(orderExposureYuan(orders, null)).toEqual({ exposureYuan: 350, countedOrders: 3, skippedOrders: 1, deliveredOrders: 1 });
     // 一单可产多基地 ⇒ Σ各基地敞口(100+300+50=450) > 订单簿(350)：重复计入是口径的一部分。
     expect(100 + 300 + 50).toBeGreaterThan(350);
+
+    // ⚠ 本单第一版就是漏了这道过滤（把 COMPLETED 也算进去）。这一条是那笔账的锁：
+    //   9,999 远大于其余全部之和，漏了它任何一个断言都会当场红成天文数字。
+    expect(orderExposureYuan(orders, null).exposureYuan).toBeLessThan(9_999);
+
+    // `status` 缺失 ⇒ 不在手（保守），且**计入 deliveredOrders 而不是静默丢**。
+    // 这一条锁的是 `orderMoneyShape` 漏传 status 那个形态：真发生时敞口会整片变 0。
+    expect(orderExposureYuan([{ value: 100, bases: ["a"] }], "a")).toEqual({
+      exposureYuan: 0, countedOrders: 0, skippedOrders: 0, deliveredOrders: 1,
+    });
 
     // 天 → 钱：pct 是 0–100 不是 0–1（写错一个数量级这里当场红）。
     expect(lossValueAtRiskYuan(1000, 100)).toBe(1000);
     expect(lossValueAtRiskYuan(1000, 71.3)).toBeCloseTo(713, 9);
     expect(lossValueAtRiskYuan(1000, 0)).toBe(0);
+  });
+
+  it("⑦ 敞口是**在手**口径：已交付单一分钱都不进，且与 order-status 单一出处同源", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const m = await okMatrix(t);
+
+    // 金丝雀：种子里必须**真有**已交付单，否则这条判据等于没跑（三态 70:20:10）。
+    expect(m.money.orderBookDelivered, "种子里一张 COMPLETED 都没有 ⇒ 本条判据没真跑起来").toBeGreaterThan(0);
+    expect(m.money.orderBookCount).toBeGreaterThan(0);
+
+    // 在手簿 + 已交付 == 全簿：两个数加起来必须是订单簿总数，否则有单被静默吞掉。
+    const seen = m.money.orderBookCount + m.money.orderBookSkipped + m.money.orderBookDelivered;
+    expect(seen, "在手 + 未登记 + 已交付 ≠ 全簿 ⇒ 有订单被静默丢了").toBe(ORDER_BOOK_SIZE);
+
+    // 口径与 `order-status.ts` 同源：已交付占比按 ORDER_STATUS_MIX 应是 70%。
+    expect(m.money.orderBookDelivered).toBe(orderStatusTargets(ORDER_BOOK_SIZE).COMPLETED);
+    expect(m.money.orderBookCount).toBe(
+      orderStatusTargets(ORDER_BOOK_SIZE).OPEN + orderStatusTargets(ORDER_BOOK_SIZE).IN_PRODUCTION,
+    );
+
+    // 屏上措辞随结果走 —— 印金额不印口径，用户就会拿它去对营收，然后判「对不上账」。
+    expect(m.money.caption).toContain("未完成态");
+    expect(m.summary).toContain("在手");
   });
 });
