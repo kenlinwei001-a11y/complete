@@ -81,6 +81,62 @@ export const FinanceWorldPressureSchema = z.object({
 });
 export type FinanceWorldPressure = z.infer<typeof FinanceWorldPressureSchema>;
 
+/** 轨迹上的一点：第几回合、那一回合的读数。 */
+export const TurnPointSchema = z.object({
+  tick: z.number().int(),
+  value: z.number(),
+});
+export type TurnPoint = z.infer<typeof TurnPointSchema>;
+
+/**
+ * WO-TURN-LOOP · 某个读数的**回合动力学** —— 这一组里每一项**单张快照都算不出来**。
+ *
+ * 判据（本单的验收线）：把世界线拿掉，`deltaFromPrev`/`direction`/`peak`/`maxStep` 全部变 `null`
+ * 或 `UNKNOWN`。若拿掉世界线它们还有值，那就说明它们其实是从当前帧现算的，**回合没真接上**。
+ */
+export const TurnDynamicsSchema = z.object({
+  /** 同一读数在窗口内各拍的值（按 tick 升序）。 */
+  trajectory: z.array(TurnPointSchema),
+  /** 相对上一拍的增量。单帧 ⇒ `null`（诚实：没有上一拍可减）。 */
+  deltaFromPrev: z.number().nullable(),
+  /** 方向。单帧 ⇒ `UNKNOWN` —— 「看不出来」与「没变(FLAT)」是两个命题，不许合并。 */
+  direction: z.enum(["RISING", "FALLING", "FLAT", "UNKNOWN"]),
+  /** 峰值落在哪一回合（并列取最早那拍）。 */
+  peak: TurnPointSchema.nullable(),
+  /** 谷值落在哪一回合（并列取最早）。 */
+  trough: TurnPointSchema.nullable(),
+  /** 窗口内各拍值之和（"累积"的直读量）。 */
+  accumulated: z.number(),
+  /** 窗口内最大单拍跳变（拐得最狠的那一回合）。 */
+  maxStep: z.object({ fromTick: z.number().int(), toTick: z.number().int(), delta: z.number() }).nullable(),
+  /** 用了几拍。 */
+  ticksUsed: z.number().int(),
+});
+export type TurnDynamics = z.infer<typeof TurnDynamicsSchema>;
+
+/**
+ * WO-TURN-LOOP · 回合可披露层（铁律 1.5 判据二）。
+ *
+ * 「一个看不到代码的人，读完这一层应当能自己判断『这是真推演还是查表』」——
+ * 故必须给全：**第几回合** · **用了前几拍** · **窗口多长** · **每个读数的轨迹**。
+ * ⛔ 不含源码文件名/行号（R-UI-4）；tick 号、拍数、规则 key、系数是**业务事实**，必须给。
+ */
+export const FinanceWorldTurnDisclosureSchema = z.object({
+  /** 当前是第几回合（= 会话 `curTick`）。 */
+  curTick: z.number().int(),
+  /** 实际用了前几拍（含当前拍）。 */
+  ticksUsed: z.number().int(),
+  /** 请求的回看窗口。 */
+  windowRequested: z.number().int(),
+  /** 世界线比窗口长 ⇒ 前面还有拍没进这次窗口。 */
+  truncated: z.boolean(),
+  /** 拿不到序列时说清为什么（`null` = 序列正常）。 */
+  note: z.string().nullable(),
+  /** 逐读数的回合动力学（key = stateVar）。 */
+  byStateVar: z.record(z.string(), TurnDynamicsSchema),
+});
+export type FinanceWorldTurnDisclosure = z.infer<typeof FinanceWorldTurnDisclosureSchema>;
+
 /** 一条科目行的「基线 → 投影」。 */
 export const FinanceWorldLineSchema = z.object({
   subject: z.string(), // = FinancePlan.line 真值（不是引擎编的名字）
@@ -158,6 +214,11 @@ export const FinanceWorldProjectionOutputSchema = z.object({
   lines: z.array(FinanceWorldLineSchema),
   cash: FinanceWorldCashSchema,
   chain: z.array(FinanceWorldChainHopSchema),
+  /**
+   * WO-TURN-LOOP · 回合动力学 + 可披露层。**可选**：世界线读不到时整块缺席，
+   * 既有字段一个都不变（R6 向后兼容 —— 不推进的世界读数逐字节同旧）。
+   */
+  turnDynamics: FinanceWorldTurnDisclosureSchema.optional(),
   reconChecks: z.array(FinanceWorldReconSchema),
   reconciled: z.boolean(),
   summary: z.string(),
