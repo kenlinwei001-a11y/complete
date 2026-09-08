@@ -1,6 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import pg from "pg";
+// WO-AGENT-IN-LOOP · agent 提案定版（migrations/040）。
+import type { FrozenProposal } from "@platform/contracts";
 import type {
   ExecutionLockRecord,
   KbChunkRecord,
@@ -225,6 +227,30 @@ export class PgSimRepo implements SimRepo {
     const r = await this.pool.query(`SELECT doc FROM sim_propagation_rule WHERE tenant_id=$1 ORDER BY doc->>'key'`, [tenantId]);
     const all = r.rows.map((row) => row.doc as PropagationRule);
     return publishedOnly ? all.filter((x) => x.status === "PUBLISHED") : all;
+  }
+  // ── WO-AGENT-IN-LOOP · agent 提案定版（migrations/040 · R9 与 memory.ts MemSimRepo 语义须逐条对齐）──
+  async putProposal(p: FrozenProposal) {
+    await this.pool.query(
+      `INSERT INTO sim_agent_proposal (id, tenant_id, session_id, version, input_fingerprint, doc)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING`,
+      [p.proposalId, p.tenantId, p.sessionId, p.version, p.inputFingerprint, JSON.stringify(p)],
+    );
+  }
+  async getProposal(tenantId: string, id: string) {
+    const r = await this.pool.query(`SELECT doc FROM sim_agent_proposal WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
+    return (r.rows[0]?.doc as FrozenProposal) ?? null;
+  }
+  async findProposalByFingerprint(tenantId: string, sessionId: string, fingerprint: string) {
+    const r = await this.pool.query(
+      `SELECT doc FROM sim_agent_proposal WHERE tenant_id=$1 AND session_id=$2 AND input_fingerprint=$3
+       ORDER BY version DESC LIMIT 1`,
+      [tenantId, sessionId, fingerprint],
+    );
+    return (r.rows[0]?.doc as FrozenProposal) ?? null;
+  }
+  async countProposals(tenantId: string, sessionId: string) {
+    const r = await this.pool.query(`SELECT COUNT(*)::int AS n FROM sim_agent_proposal WHERE tenant_id=$1 AND session_id=$2`, [tenantId, sessionId]);
+    return (r.rows[0]?.n as number) ?? 0;
   }
   // ── 扰动一等公民（WO-P0 · migrations/028_perturbations.sql · R9 与 memory.ts MemSimRepo 语义须逐条对齐）──
   async createPerturbation(p: Perturbation) {

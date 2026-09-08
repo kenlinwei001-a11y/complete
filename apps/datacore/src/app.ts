@@ -83,9 +83,13 @@ import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-
 import { analyzeImpact } from "./sim/impact-analysis.js";
 import { ChangeImpactPreviewRequestSchema } from "@platform/contracts"; // WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（分桶+跳数+诚实位）
 import { ParetoRequestSchema } from "@platform/contracts"; // WO-SIM-BE-PARETO · 帕累托解集（多目标前沿）
+// WO-AGENT-IN-LOOP · 兑现（下标→数值·唯一处）· 方案→解 id · 目标读数（与前端同源那一份）。
+import { deriveParetoMetrics, mapOptionsToSolutions, resolveProposalToLevers } from "@platform/contracts";
 import { ParetoAssembleRequestSchema } from "@platform/contracts"; // WO-SIM-PARETO-MODEL-EXIT · 模型装配出口
 import { SimMetricSeriesQuerySchema } from "@platform/contracts"; // WO-SIM-SERIES-SCALE · 指标时序 query 单源（limit/order/白名单）
-import { runOptimizePareto } from "./solvers/opt-pareto.js";
+import { runOptimizePareto, paretoSolutionId } from "./solvers/opt-pareto.js";
+// WO-AGENT-IN-LOOP · 方案生成（agent 只出方案与比对，不产数）。
+import { buildProposalMenu, generateAndFreeze, httpProposerClient, type ProposerClient } from "./sim/agent-proposal.js";
 import type { SolveArgsFn } from "./solvers/opt-whatif.js";
 import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact.js";
 // WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段）的**模型层**。回放/归属/分段一律在那边，
@@ -3223,6 +3227,155 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const body = parseBody(ParetoAssembleRequestSchema, req.body ?? {});
     return solvers.assembleParetoModel(c, body);
+  });
+  /**
+   * WO-AGENT-IN-LOOP · **方案生成**：让 agent 参与「挑哪几条对策」，且**一个数都不许它产**。
+   *
+   * ══ 今天的行为是 X，应该是 Y（实测原文）════════════════════════════════════
+   * **X**：推演路**零 LLM / 零 agent**（金丝雀：同一把扫法在 `apps/agentcore/src` 命中 10 个文件，
+   *   在 `solvers/`+`synthetic/` 命中 **0**；`solvers/capacity.ts` 白纸黑字 `agentInvolved: false`）。
+   *   上一条 `/assemble` 按**结构信号**（词库命中 / 主键 / ref 指向 / 实例行数）挑杠杆 ——
+   *   它**不读本次事件**，故施加任何扰动，那张网格逐字节不变：
+   *   **那是一张固定的产线产能扫描表，不是本次事件的对策。**
+   * **Y**：本条口把**同一份菜单**（数值仍全部来自 `/assemble` 读的本体真值）连同**本次世界态**
+   *   一起交给 agent，由它挑出针对本次事件的若干候选对策，**定版落盘**后交给确定性引擎算。
+   *
+   * ══ 分工（仓主 2026-09-08 架构原则）══════════════════════════════════════════
+   * > 「所有计算原则上使用**求解器**而不是 agent(LLM) 来计算，agent 只负责调动工具、本体、
+   * >   规则等等输出结果，然后基于结果推演，形成**多个方案和方案比对**。」
+   * ⇒ agent 的产出里**没有任何数值格**（契约 `AgentProposalDraftSchema`：只有下标与文字）。
+   *   每个方案的营收/成本/毛利/获排率一律由下面那条 `/by-proposal` 的求解器算。
+   *
+   * ⚠ 门禁单独一格（`sim.agent-proposals`，defaultOn:false）：它与 `/assemble` 不是同一块屏的两步，
+   *   而是**同一步的两种做法**（确定性挑 vs agent 挑）。合成一格会让「关掉 agent」这件事做不到。
+   */
+  /**
+   * WO-AGENT-IN-LOOP · 本对口的请求体。
+   * `agentId` 必填且**由调用方点名**：走内置 `runAgentLoop` 还是 dsh 外部运行时，
+   * 由**那个 agent 记录自己的 `kernel`** 决定（`WO-AGENT-KERNEL-SELECT`）——
+   * 本口不认识内核这件事，也**不翻 `DSH_HARNESS`**（翻 flag 的三条前置见 DECISION-dsh-fusion §3）。
+   */
+  const ProposeRequestBodySchema = z.strictObject({
+    sessionId: z.string().min(1),
+    agentId: z.string().min(1),
+    /** 透传给装配器的「要优化什么范围」；不给 = 全范围（与 `/assemble` 同义）。 */
+    assemble: ParetoAssembleRequestSchema.optional(),
+  });
+  const SolveByProposalBodySchema = z.strictObject({
+    proposalId: z.string().min(1),
+    /** 只影响名次不影响解集（同 `ParetoRequestSchema.weights` 的红线）。 */
+    weights: z.record(z.string(), z.number()).optional(),
+  });
+  /**
+   * A→B 出站（既有服务间通路 `AGENTCORE_BASE_URL` + `SERVICE_TOKEN`，同 scaffoldClient 形态）。
+   * 未配置 ⇒ `null` ⇒ 走确定性兜底提案，且回包明写「本次未调用 agent」+ 原因。
+   */
+  const proposerClient: ProposerClient | null =
+    config.AGENTCORE_BASE_URL && config.SERVICE_TOKEN ? httpProposerClient(config.AGENTCORE_BASE_URL, config.SERVICE_TOKEN) : null;
+  app.post("/a/v1/sim/optimize-pareto/propose", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    await requireSim(c, "sim.agent-proposals"); // 关 ⇒ 404 FEATURE_NOT_FOUND（R3 先于 authz）
+    const body = parseBody(ProposeRequestBodySchema, req.body ?? {});
+    const s = await getSimOr404(c, body.sessionId); // R2：别租户 404
+
+    // ① 菜单：数值全部取自装配器（读本体真值）。**本步零 LLM**。
+    const assembled = await solvers.assembleParetoModel(c, body.assemble ?? {});
+    if (!assembled.applicable) {
+      // 装配不出 ⇒ 连菜单都没有，**不请 agent**（请了它也只能凭空编杠杆）。200 + 诚实缺格。
+      return { applicable: false as const, missingRoles: assembled.missingRoles, note: assembled.note };
+    }
+
+    // ② 世界态：扰动 + 求解器基线读数 + 本体条数。**三样都不是 agent 产的**。
+    const perturbations = await repos.sim.listPerturbations(c.tenantId, s.id);
+    const events = perturbations.map((p) => ({
+      kind: p.kind,
+      target: `${p.targetObjectId}.${p.targetStateVar}`,
+      magnitude: p.magnitude,
+    }));
+    const baseOut = await solvers.invoke(c, assembled.request.family, assembled.request.args ?? {});
+    const declared = new Set(assembled.request.objectives.map((o) => o.key));
+    const baselineMetrics = deriveParetoMetrics(baseOut as Parameters<typeof deriveParetoMetrics>[0], declared);
+    // 条数：逐个**真读**本体（铁律 1.5 判据二要的「对象类型 + 条数」）。
+    // ⚠ 不从装配结果里猜 —— `ParetoAssembleRole` 上根本没有条数这一格，
+    //   编一个出来就是本仓最忌的那种「看着像业务事实的实现细节」。
+    const counts: Record<string, number> = {};
+    for (const r of assembled.roles.filter((x) => x.kind === "objectType")) {
+      if (counts[r.ref] === undefined) counts[r.ref] = (await repos.objects.listByType(c.tenantId, r.ref)).length;
+    }
+
+    const menu = buildProposalMenu({ assembled, events, baselineMetrics, counts });
+    if (!menu) return { applicable: false as const, missingRoles: ["menu"], note: "菜单装不出" };
+
+    // ③ 请 agent 出方案 → 定版落盘。指纹命中已有版 ⇒ 直接复用，**不再调模型**。
+    const { proposal, reused } = await generateAndFreeze(
+      {
+        countProposals: (t, sid) => repos.sim.countProposals(t, sid),
+        findProposalByFingerprint: (t, sid, fp) => repos.sim.findProposalByFingerprint(t, sid, fp),
+        putProposal: (pr) => repos.sim.putProposal(pr),
+        newId,
+        now: () => new Date().toISOString(),
+      },
+      proposerClient,
+      // R2 + 归属：租户/用户/角色随请求带到 B 侧（服务间调用那边推不出身份）。
+      { tenantId: c.tenantId, sessionId: s.id, menu, agentId: body.agentId, userId: c.userId, roles: c.roles ?? [] },
+    );
+    return {
+      applicable: true as const,
+      proposal,
+      reused,
+      // 兑现出来的杠杆网格原样回显 —— 「屏上这条前沿对应的就是它本身」（同 `/assemble` 的可追溯理由）。
+      request: { ...assembled.request, levers: resolveProposalToLevers(menu, proposal.draft) },
+      options: mapOptionsToSolutions(menu, proposal.draft, paretoSolutionId),
+    };
+  });
+  /**
+   * WO-AGENT-IN-LOOP · **按定版提案求解**（本单确定性的要害）。
+   *
+   * 这条口**只读定版**：`proposalId` → 落盘的那一份 → `resolveProposalToLevers`（纯函数）
+   * → 与上面那条 `/optimize-pareto` **同一个** `runOptimizePareto`。
+   * **求解路径上一次模型调用都没有** ⇒ 同一提案版本重跑两次逐字节相同。
+   *
+   * ⚠ 为什么不给 `/optimize-pareto` 加一个 `proposalId` 分支：那会把 `ParetoRequestSchema`
+   *   的必填三件套改成**条件必填**，契约的拒绝力当场降一档 —— 与本文件上方 `/assemble`
+   *   拒绝加 `autoBind` 分支是同一条理由，不重复第二遍。
+   */
+  app.post("/a/v1/sim/optimize-pareto/by-proposal", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    await requireSim(c, "sim.agent-proposals");
+    const body = parseBody(SolveByProposalBodySchema, req.body ?? {});
+    const proposal = await repos.sim.getProposal(c.tenantId, body.proposalId); // R2：别租户 null
+    if (!proposal) throw notFound("提案不存在或不属于本租户");
+    const levers = resolveProposalToLevers(proposal.menu, proposal.draft);
+    const request = ParetoRequestSchema.parse({
+      family: proposal.menu.family,
+      ...(proposal.menu.args ? { args: proposal.menu.args } : {}),
+      objectives: proposal.menu.objectives,
+      levers,
+      ...(proposal.menu.constraints ? { constraints: proposal.menu.constraints } : {}),
+      ...(proposal.menu.unavailableObjectives ? { unavailableObjectives: proposal.menu.unavailableObjectives } : {}),
+      ...(body.weights ? { weights: body.weights } : {}),
+    });
+    const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
+    const result = await runOptimizePareto(solve, request);
+    return {
+      ...result,
+      // ── 可披露（铁律 1.5 判据二 + 仓主 2026-09-08 追加的「走的哪条路」）────────────
+      // ⚠ `agentInvolved:false` 时**明写**，不留白 —— 留白会让人以为调了。
+      proposalDisclosure: {
+        proposalId: proposal.proposalId,
+        version: proposal.version,
+        inputFingerprint: proposal.inputFingerprint,
+        agent: proposal.provenance,
+        // 方案 → 解 id：屏上「方案 A 是哪个点、在不在前沿上」有确定答案。
+        options: mapOptionsToSolutions(proposal.menu, proposal.draft, paretoSolutionId).map((o) => ({
+          ...o,
+          onFrontier: result.frontier.some((f) => f.id === o.solutionId),
+        })),
+        comparisonNote: proposal.draft.comparisonNote,
+      },
+    };
   });
   /**
    * WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵 `chain_loss_matrix`（纯只读）。

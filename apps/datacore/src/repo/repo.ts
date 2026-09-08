@@ -1,4 +1,4 @@
-import type { ApprovalLimit, Authority, BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Delegation, EnterpriseState, OrgPrincipal, Perturbation, ProcessDefinition, ProcessDomain, ProcessInstance, ProcessStepTemplate, ProcessTask, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimSessionListItem, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
+import type { ApprovalLimit, Authority, BuildJob, BuildPlan, BuildWorkflowRun, DataBuilderAgent, Decision, Delegation, EnterpriseState, FrozenProposal, OrgPrincipal, Perturbation, ProcessDefinition, ProcessDomain, ProcessInstance, ProcessStepTemplate, ProcessTask, PropagationRule, SchemaReconcileCandidate, SimCheckpoint, SimSession, SimSessionListItem, SimTickState, SolverArtifact, StoryBuildRun } from "@platform/contracts";
 import type {
   ActionDraft,
   ActionTypeRecord,
@@ -422,6 +422,22 @@ export interface SimRepo {
   listCheckpoints(tenantId: string, sessionId: string): Promise<SimCheckpoint[]>;
   putPropagationRule(r: PropagationRule): Promise<void>;
   listPropagationRules(tenantId: string, publishedOnly?: boolean): Promise<PropagationRule[]>;
+  // ── WO-AGENT-IN-LOOP · agent 提案定版（migrations/040 · R9 三处同改，语义须无漂移）──
+  /**
+   * 落一版提案。`version` 由调用方按 `countProposals+1` 定，写入即冻结（**不再改**）——
+   * 「定版」这两个字的全部意义就在这里：重跑读的是这一行，不是再调一次模型。
+   */
+  putProposal(p: FrozenProposal): Promise<void>;
+  /** 按 id 取。跨租户一律 null（R2）。 */
+  getProposal(tenantId: string, id: string): Promise<FrozenProposal | null>;
+  /**
+   * 取该会话**指纹匹配**的最新一版 —— 「世界态没变就复用同一版」靠它。
+   * ⚠ 判据是**指纹**不是「最新一版」：拿最新版套一个已经变了的世界，
+   *   就是那种「针对上一个事件的对策」，屏上看不出来。
+   */
+  findProposalByFingerprint(tenantId: string, sessionId: string, fingerprint: string): Promise<FrozenProposal | null>;
+  /** 该会话已有几版（定 `version` 用）。 */
+  countProposals(tenantId: string, sessionId: string): Promise<number>;
   /**
    * 按 id 读一条传导边／因果边（**跨租户一律 `null`**·R2 —— 不是"过滤掉"而是"查无此条"）。
    * WO-ONTOLOGY-EDGE-EDIT 与 WO-CAUSAL-EDGE-CRUD 各自新增过一版，收编批次4 合为一条。
