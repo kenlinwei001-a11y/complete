@@ -43,6 +43,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import type { ViewRendererProps } from "@/views/registry";
+import { InfoPopover } from "@/components/InfoPopover";
 import { fetchSimViewConfig } from "@/api/endpoints";
 import EdgeActivePanel from "../EdgeActivePanel";
 import { stateVarText } from "../stateVarLabel";
@@ -67,11 +68,22 @@ import { useChainLossMatrix } from "./useLossAttribution";
  *  · **块在 · 合计 N 天** ⇒ 逐段点名叠了谁、叠了几天。
  * 后两者在屏上长成一样，等于把「算过了、结果是零」伪装成「没算」。
  *
+ * ── 分层（`docs/CONVENTION-ui-information-layering.md` §1）─────────────────────
+ * **第一层只留结论**：在哪一次推演 · 第几拍 · 叠加多少天几段 · 另有几项没计入。
+ * 这四样都是「数值 / 状态」，是规范准许的第一层住户，且**实验要看的那个数就在这里**
+ * （施扰动前后 141.4 → 171.4 天，不点任何东西就看得见）。
+ * **逐段明细与排除理由降到 `?` 浮层**：它们回答「凭什么这么算」，属第二层。
+ * ⚠ 降层**不是删除**：第一层留着「另有 N 项未计入」这个可见记号 + `?` 本身，
+ *   点开就是那几项各是什么理由。静默降层等于删除，那是规范点名禁止的。
+ *
  * ⚠ 本条**不发第二次请求**：`useChainLossMatrix` 与页内组件同一个缓存键，命中同一份回包；
  *   状态变量的人话名走 `stateVarText`（后端单源字典），前端一个中文名都不写。
  * ⚠ R-UI-4：屏上不出现源码文件名/行号，也不出现「工单」这类排期语汇；
  *   而**拍数 / 天数 / 段数 / 状态变量名**是业务事实，必须给。
  */
+/** 浮层的题目：**它解释的是什么**（一句，不含内部符号名）。 */
+const SIMCTX_TOPIC = "这一次推演往链上叠了什么";
+
 function SimContextStrip({ so, sessionId }: { so?: string; sessionId?: string }): JSX.Element {
   const heat = useChainLossMatrix(so, sessionId);
   // 与统一推演控制台同一个缓存键 ⇒ 宿主已经取过就直接命中，不多打一跳。
@@ -99,14 +111,19 @@ function SimContextStrip({ so, sessionId }: { so?: string; sessionId?: string })
       <span data-testid="sandbox-attr-simctx-days">
         叠加 {day(ctx.appliedDays)} 天 · {ctx.appliedSteps.length} 段
       </span>
-      {ctx.appliedSteps.map((s) => (
-        <span key={s.stepId} className={css.simctxStep} data-testid={`sandbox-attr-simctx-step-${s.stepId}`}>
-          {stateVarText(s.stateVar, names)} +{day(s.deltaDays)} 天
-        </span>
-      ))}
-      {ctx.appliedSteps.length === 0 && <span data-testid="sandbox-attr-simctx-zero">这一拍没有按天算的影响</span>}
-      {notDay > 0 && <span data-testid="sandbox-attr-simctx-notday">{notDay} 项不按天计，未计入</span>}
-      {other > 0 && <span data-testid="sandbox-attr-simctx-other">{other} 项已在别段计过</span>}
+      {ctx.excluded.length > 0 && (
+        <span data-testid="sandbox-attr-simctx-excluded">另有 {ctx.excluded.length} 项未计入</span>
+      )}
+      <InfoPopover topic={SIMCTX_TOPIC} testId="sandbox-attr-simctx">
+        {ctx.appliedSteps.map((s) => (
+          <p key={s.stepId} data-testid={`sandbox-attr-simctx-step-${s.stepId}`}>
+            {stateVarText(s.stateVar, names)} +{day(s.deltaDays)} 天
+          </p>
+        ))}
+        {ctx.appliedSteps.length === 0 && <p data-testid="sandbox-attr-simctx-zero">这一拍没有按天算的影响。</p>}
+        {notDay > 0 && <p data-testid="sandbox-attr-simctx-notday">{notDay} 项有读数但不按天计，没有叠进来。</p>}
+        {other > 0 && <p data-testid="sandbox-attr-simctx-other">{other} 项是按天的，但这一段已在别处计过，不重复计。</p>}
+      </InfoPopover>
     </div>
   );
 }

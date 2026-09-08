@@ -48,6 +48,12 @@ const panel = async (page, testid) => {
   return { present: true, text, md5: md5(text) };
 };
 
+/** 收集一族 `data-testid` 前缀命中的元素的屏上文本（**只取 innerText ⇒ 折叠起来的不算数**）。 */
+const collect = async (page, prefix) =>
+  page.$$eval(`[data-testid^="${prefix}"]`, (els) =>
+    els.map((e) => ({ id: e.getAttribute("data-testid"), text: (e.innerText || "").replace(/\s+/g, " ").trim() })),
+  );
+
 /** 点顶部页签（`role=tab`）。返回是否点到。 */
 const clickTab = async (page, label) => {
   const els = await page.$$('[role="tab"]');
@@ -102,9 +108,29 @@ const run = async () => {
     report.attribution.simctx = await panel(page, "sandbox-attr-simctx");
     await shot(page, `sv-${TAG}-02-attr`);
     say("归因明细 md5 =", report.attribution.detail.md5, "| 根因树 md5 =", report.attribution.tree.md5);
-    say("推演上下文披露块:", report.attribution.simctx.present ? JSON.stringify(report.attribution.simctx.text).slice(0, 400) : "(屏上没有这一块)");
+    say("推演上下文披露块（第一层）:", report.attribution.simctx.present ? JSON.stringify(report.attribution.simctx.text).slice(0, 400) : "(屏上没有这一块)");
+    // 降层 ≠ 删除：第一层留了 `?` 记号，**真 hover** 一下证明逐段明细拿得到。
+    const info = await page.$('[data-testid="info-sandbox-attr-simctx"]');
+    if (info === null) report.attribution.simctxDetail = { present: false };
+    else {
+      await info.hover();
+      await sleep(800);
+      report.attribution.simctxDetail = await panel(page, "info-body-sandbox-attr-simctx");
+      await shot(page, `sv-${TAG}-02a-simctx-detail`);
+    }
+    say("推演上下文明细（浮层·真 hover）:", JSON.stringify(report.attribution.simctxDetail.text ?? null));
+    // ── 反向对照（同一屏、同一会话、同一个后端）───────────────────────────────
+    // 「传导识别」这一档也调同一条矩阵端点，但它**不在本单点名的三处之内**，
+    // 一个字节都没动 ⇒ 它发出的 body 必须仍是 `{}`。
+    // 这条比「我没改那个文件」强：它证的是**用户那条路上真发出的字节**没变。
+    const condOk = await clickTab(page, "传导识别");
+    say("点『传导识别』页签（反向对照）:", condOk);
+    await sleep(6000);
+    await shot(page, `sv-${TAG}-02b-conduction`);
   }
   report.attribution.requests = chainLossReqs.slice();
+  report.attribution.reverseControl = chainLossReqs.filter((r) => !r.hasSessionId).map((r) => `${r.url} ${r.body}`);
+  say("反向对照 · 不带 sessionId 的请求:", JSON.stringify(report.attribution.reverseControl));
   const withSid = chainLossReqs.filter((r) => r.hasSessionId).length;
   say("浏览器发出的 chain-loss 请求", chainLossReqs.length, "条，带 sessionId 的", withSid, "条");
   say("  请求体:", chainLossReqs.map((r) => `${r.url} ${r.body}`).join(" | ") || "(无)");
@@ -113,14 +139,21 @@ const run = async () => {
   // 探针串 = 触发动作名 / 阈值出处标签（不是「含 12」——页面到处是数字，会假阳性）。
   const NEEDLES = ["启动备份供应商认证", "备份供应商", "长协重谈", "汇率对冲", "阈值来自", "规则参数"];
   const scanTrig = (t) => [...new Set(NEEDLES.flatMap((n) => lines(t, n)))];
-  const trigTabOk = await clickTab(page, "演习结论");
-  say("点『演习结论』页签:", trigTabOk ? "成功" : "点不到（该档可能仍禁用）");
-  await sleep(5000);
-  const verdictText = await visibleText(page);
-  report.trigger.verdictTabHits = scanTrig(verdictText);
-  report.trigger.verdictPanel = await panel(page, "usim-verdict");
-  await shot(page, `sv-${TAG}-03-verdict`);
-  say("演习结论屏上触发句命中:", JSON.stringify(report.trigger.verdictTabHits));
+  // 触发判定挂在决策推演的嵌入处（`/v/order-chain` 是其中一个宿主，且是本单点名的三屏之一）。
+  // ⛔ 仍不手敲 URL：走导航里的链接。
+  const ocLink = await page.$('a[href="/v/order-chain"]');
+  if (ocLink === null) say("❌ 导航里没有 /v/order-chain");
+  else {
+    await ocLink.click({ timeout: 8000 });
+    await sleep(9000);
+    say("触发判定观测落点 URL =", page.url().replace(/^https?:\/\/[^/]+/, ""));
+    const ocText = await visibleText(page);
+    report.trigger.screenHits = scanTrig(ocText);
+    report.trigger.strip = await collect(page, "oc-play-trigstrip");
+    await shot(page, `sv-${TAG}-03-trigger`);
+    say("订单链屏上触发句命中:", JSON.stringify(report.trigger.screenHits));
+    say("触发判定条:", JSON.stringify(report.trigger.strip));
+  }
 
   const backendTrig = await api("/a/v1/solvers/decision_play/invoke", { method: "POST", headers: HDR, body: "{}" });
   report.trigger.backend = ((backendTrig.json?.data ?? backendTrig.json)?.triggers ?? []).map(
@@ -135,7 +168,8 @@ const run = async () => {
   const riskText = await visibleText(page);
   const LEDGER_NEEDLES = ["已采纳", "采纳", "工艺路线调整", "reroute", "处置方案", "起效"];
   report.ledger.hits = Object.fromEntries(LEDGER_NEEDLES.map((n) => [n, lines(riskText, n).slice(0, 5)]));
-  report.ledger.panel = await panel(page, "risk-adopted-ledger");
+  report.ledger.adoptedLines = await collect(page, "risk-adopted-line-");
+  say("屏上「已采纳」行:", report.ledger.adoptedLines.length, "条 ⇒", JSON.stringify(report.ledger.adoptedLines));
   await shot(page, `sv-${TAG}-04-risk`);
   say("屏上台账相关命中:", JSON.stringify(report.ledger.hits));
 
