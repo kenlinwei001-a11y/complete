@@ -89,17 +89,31 @@ export async function login(page, { user = "admin", password = "demo1234", tenan
 }
 
 /**
+ * 后端端口（datacore|agentcore）。默认 4001/4002 —— 与 `serve.sh` 同一组，既有单不受影响。
+ *
+ * ⚠ **必须可覆盖**：本机会同时跑好几个 agent，4001/4002 常被别人占着
+ * （实测：`ss -ltnp` 报"空闲"而 `listen` 报 EADDRINUSE —— **`ss` 在这个沙箱里看不见别人的 socket，
+ * 拿它当"端口可用"的证据是错的量法**；唯一可靠的判据是**真去 bind 一次**）。
+ * 换端口之后若这里仍写死 4001/4002，`assertNoMock` 会**恒报"疑似 mock"** ——
+ * 而那不是 mock 的证据，是**量法对错了端口**。形态：
+ * 「我用『没看到打 4001 的包』当作『页面在用 mock』的证据，而前者并不度量后者。」
+ */
+export const E2E_API_PORTS = process.env.E2E_API_PORTS ?? "4001|4002";
+
+/**
  * 实测「这一屏真的在打真后端」——不是靠「我没设 VITE_MOCK」这种自证。
- * 判据：网络记录里必须出现打到 4001/4002 的 200 回包。
- * MSW mock 模式下请求被 service worker 截胡，`fromServiceWorker` 为真且不会有真 4001 连接。
+ * 判据：网络记录里必须出现打到**本次实际使用的**后端端口的 200 回包。
+ * MSW mock 模式下请求被 service worker 截胡，`fromServiceWorker` 为真且不会有真后端连接。
  */
 export function assertNoMock(netLog) {
-  const real = netLog.filter(
-    (e) => /127\.0\.0\.1:(4001|4002)/.test(e.url) && e.status >= 200 && e.status < 400,
-  );
+  const re = new RegExp(`127\\.0\\.0\\.1:(${E2E_API_PORTS})`);
+  const real = netLog.filter((e) => re.test(e.url) && e.status >= 200 && e.status < 400);
   return {
     ok: real.length > 0,
     realHits: real.length,
+    // 报 ok:false 时必须让人一眼看出"我在找哪个端口" —— 否则"端口配错"与"真的在用 mock"
+    // 在屏上一模一样，而这两件事的修法完全相反。
+    portsProbed: E2E_API_PORTS,
     sample: real.slice(0, 5).map((e) => `${e.status} ${e.method} ${e.url}`),
   };
 }

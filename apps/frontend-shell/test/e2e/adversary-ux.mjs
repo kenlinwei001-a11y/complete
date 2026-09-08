@@ -20,7 +20,9 @@
 import { launch, login, shot, attachNetLog, assertNoMock, visibleText, sleep } from "./lib.mjs";
 import { writeFileSync } from "node:fs";
 
-const A = "http://127.0.0.1:4001";
+// datacore 基址。默认 4001；本机多 agent 并跑时 4001/4002 常被别人占着 ⇒ 可用 env 换一组
+// （换了必须同时给 `E2E_API_PORTS`，否则 `assertNoMock` 找的还是老端口、恒报"疑似 mock"）。
+const A = process.env.E2E_DATACORE_URL ?? "http://127.0.0.1:4001";
 const HDR = { "X-Debug-User": "demo:admin:admin|planner|catalog_admin", "Content-Type": "application/json" };
 const RULE = "demo_customer_reaction_cut_order";
 const CUST = "obj_customer_cust_0";
@@ -49,6 +51,33 @@ async function driveWorld() {
   const s = await api("POST", "/a/v1/sim/sessions", { baseSnapshot: { [CUST]: { receivablePressure: 96 } } });
   const t = await api("POST", `/a/v1/sim/sessions/${s.json.id}/tick?disclose=1`, { n: 3 });
   return { state: t.json.state, disclosure: t.json.disclosure };
+}
+
+/**
+ * 可披露那一层在**真 HTTP 路径上**到底给了哪几项（仓主 2026-09-08 架构原则新增的验收格）。
+ * 判据：一个看不到代码的人，凭这几项应当能自己判断「这是按规则算的，不是谁编的」。
+ *
+ * 🐤 金丝雀先行：先拿一条**确定命中的普通传导边**证明这一层出得来东西，
+ *    再去报还手边的任何一项 —— 否则"整层是空的"会以"某项没给"的面目报出来。
+ */
+function readDisclosure(disc) {
+  const items = disc?.rules?.items ?? [];
+  const canary = items.find((i) => !i.isReaction && i.fired) ?? null;
+  const r = items.find((i) => i.ruleKey === RULE) ?? null;
+  return {
+    canaryPhysicalRuleFound: canary !== null,
+    canaryPhysicalRuleKey: canary?.ruleKey ?? null,
+    reaction: r === null ? null : {
+      规则key: r.ruleKey, 系数: r.coefficient,
+      触发条件_容忍线: r.reactionTolerance, 承载条数: r.weightPairs,
+      分摊口径: r.weightBasis, 归一方向: r.weightNormalize,
+      还手动作: r.reactionMove, 动作人话名: r.reactionMoveName,
+      越线对手数: r.reactionTriggeredActors,
+      谁选的: r.reactionSelectedBy, 谁选的人话名: r.reactionSelectedByName, 选择方出处: r.reactionSelectorRef,
+    },
+    汇总栏: disc?.rules?.adversary ?? null,
+    本次是否调用agent: disc?.agent ?? null,
+  };
 }
 
 /** 一态一跑：设开关 → **全新上下文登录** → 点进统一推演控制台 → 读屏。 */
@@ -106,6 +135,8 @@ async function runState(label, adversaryOn) {
       probeOrder: oid,
       orderChurn: oid ? (world.state[oid]?.orderChurn ?? 0) : null,
       adversary: world.disclosure?.rules?.adversary ?? null,
+      // 可披露那一层在真 HTTP 路径上给了哪几项（含「谁选了这条规则」）。
+      disclosure: readDisclosure(world.disclosure),
     },
     onScreen: {
       // 🐤 金丝雀 b：一条**确定存在的既有边**在屏上的样子。
@@ -161,6 +192,9 @@ const main = async () => {
     },
     屏上还手边: { OFF: a.onScreen, ON: b.onScreen },
     两张截图: [a.screenshot, b.screenshot],
+    // 仓主 2026-09-08 新增的那一格：可披露层在真路径上给全了没有。
+    可披露_开启态: b.backend.disclosure,
+    可披露_关闭态: a.backend.disclosure,
     真后端: { OFF: a.noMock.ok, ON: b.noMock.ok },
     进到推演页: { OFF: a.navigated, ON: b.navigated },
   };
