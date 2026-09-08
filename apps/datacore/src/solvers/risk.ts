@@ -538,8 +538,20 @@ export function preferRiskCard(a: Record<string, unknown>, e: Record<string, unk
  * 按缺省值算则是拿假数往下推。执行器写入时已校验齐全，故此路只可能由**数据被改坏**触发。
  * 不变量：同一 (baseId,factor) 至多一条 ACTIVE（执行器写前 REVOKED 旧条）；若仍多条 → 按 objectId 升序末条胜（全序确定 R6）。
  */
-export function adoptedMitigationIndex(c: SolverContext): Map<string, { eff: number; tn: number; planKey: string }> {
-  const idx = new Map<string, { eff: number; tn: number; planKey: string }>();
+export interface AdoptedRow {
+  eff: number;
+  tn: number;
+  planKey: string;
+  /** 方案人话名（执行器写入时从方案库取的 `plan.name`·台账自带·读侧无需再查一次方案库）。 */
+  planName: string;
+  /** 采纳日（执行器取确定性时间锚 `params.forecastStart`，禁 `Date.now` · R6）。 */
+  adoptedAt: string;
+  /** `${baseId}-${factor}-${planKey}`（执行器生成·对象 id 的人话半）。 */
+  adoptionId: string;
+}
+
+export function adoptedMitigationIndex(c: SolverContext): Map<string, AdoptedRow> {
+  const idx = new Map<string, AdoptedRow>();
   const list = c.adoptedMitigations;
   if (!Array.isArray(list) || list.length === 0) return idx; // 无采纳 → 空 Map → 零成本 → 与上线前逐字节一致
   for (const o of [...list].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
@@ -556,9 +568,129 @@ export function adoptedMitigationIndex(c: SolverContext): Map<string, { eff: num
           `（跳过=用户以为已采纳而曲线不动，正是 adopt_mitigation 空执行的病灶）。`,
       );
     }
-    idx.set(`${baseId}|${factor}`, { eff, tn, planKey: str(p.planKey) });
+    // planName/adoptedAt/adoptionId 是**台账自带的披露字段**，不参与真曲线计算 ——
+    // 缺了不抛错（老对象 / 外部导入可能没有），回落到看得出是回落的值，绝不编一个名字。
+    idx.set(`${baseId}|${factor}`, {
+      eff,
+      tn,
+      planKey: str(p.planKey),
+      planName: str(p.planName),
+      adoptedAt: str(p.adoptedAt),
+      adoptionId: str(p.adoptionId, `${baseId}-${factor}-${str(p.planKey)}`),
+    });
   }
   return idx;
+}
+
+/**
+ * WO-ADOPTION-SURVIVES-FIX · **采纳台账的读侧投影**（`adoptionLedger`）。
+ *
+ * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════════
+ * **X**：采纳记录**只能搭卡片的车上屏**。风险卡的出卡条件是
+ * `if (!pair.forced && crossDay === null) continue;`（本文件 riskTimeline 里那一行）——
+ * 一条处置**把越线彻底消解掉**（如 `reroute` eff=9 tn=3），`crossDay` 变 `null`，
+ * **整张卡在非 forced 路上被 `continue` 掉**，连着 `card.adoptedMitigation` 这个披露键一起消失，
+ * 下一个基地顶上它的位置。而换 `debottleneck`（eff=13 tn=6，第 6 天前仍越线）卡就留得住。
+ * ⇒ **「把问题解决了」和「记录被抹掉了」在屏上长得一模一样**，且**措施越有效证据消失得越彻底**。
+ * 这个失败**只在成功时发生**，所以最难被发现：既有的 `action-adopt-mitigation.seam.test.ts`
+ * 六个用例全部走 `forcedCard()`（`{base,factor}` 两键齐 ⇒ `forced=true` ⇒ 那一行 `continue` 永不触发），
+ * 而**生产**（`RiskBoardView` 的 `invokeSolver("risk_timeline", { horizon })`）一个键都不给 ⇒ `forced=false`。
+ * 正是 CLAUDE.md 铁律 0.5 判据 6 那个形态：**测试实参与生产实参交集为空**，全绿而生产是坏的。
+ *
+ * **Y**：采纳记录的存活**不依赖于「这个问题今天还越不越线」**，也不依赖于「这张卡有没有被渲染」。
+ *
+ * ══ 为什么从台账遍历，而不是在出卡循环里补一笔 ═════════════════════════════════
+ * 在 `pairs` 循环里补，记录的存活就换成依赖**「这个 (基地,因素) 有没有被枚举到」**——
+ * `pairs` 本身带一条筛子（`if (f !== primary && mockTightness(...) >= threshold) continue`），
+ * 于是仍有采纳会落在枚举之外。**把依赖从 A 换成 B 不算解决**。
+ * 本函数**以 ACTIVE 台账为遍历源**：一条 ACTIVE 采纳 ⇒ 恒有一条记录，没有例外分支。
+ *
+ * ══ 三态必须分开（不许拿「不越线」冒充「我消解的」）══════════════════════════════
+ * 对每条采纳当场做一次**对照实验**（铁律 1.5 判据一）：同一 baseline、同一 events，
+ * 算「吃了这条采纳」与「把这条采纳拿掉」两条曲线，看越线日各是什么：
+ *   · `RESOLVED`             不采纳会越线、采纳后不越线  ⇒ **是这条处置消解的**（本单要救的那一态）
+ *   · `STILL_CROSSING`       采纳后仍越线              ⇒ 采纳生效了但不够（卡片照旧在榜）
+ *   · `NO_CROSS_EITHER_WAY`  两条都不越线              ⇒ **本窗内它本来就不越线**，这条处置**不邀功**
+ * 第三态是诚实位：少了它，读侧会把「本来就没事」讲成「我把它解决了」。
+ *
+ * ⚠ **本函数一个字都不写进 `cards[]`** —— 已消解的问题**不许**重新变成告警（本单设计约束 1）。
+ * 「当前风险卡数」修前修后必须相等，这由「不碰 cards/bestByBase/shown 任何一行」在结构上保证。
+ *
+ * R6 确定性：`tensionSeries`/`riskEvents`/`liveTightness` 全纯函数，输出按 (baseId,factor) 全序排。
+ * 零采纳 ⇒ 空数组 ⇒ 调用方不置键 ⇒ 与上线前**逐字节一致**，且零额外 `tensionSeries` 调用。
+ */
+export interface AdoptionLedgerEntry {
+  adoptionId: string;
+  baseId: string;
+  base: string;
+  factor: string;
+  planKey: string;
+  planName: string;
+  eff: number;
+  tn: number;
+  adoptedAt: string;
+  state: "RESOLVED" | "STILL_CROSSING" | "NO_CROSS_EITHER_WAY";
+  /** 吃了这条采纳之后的越线日（`null` = 本窗不再越线）。 */
+  crossDay: number | null;
+  /** **把这条采纳拿掉**的反事实越线日（`null` = 本来就不越线）。 */
+  wouldCrossDay: number | null;
+  /** 吃了采纳的峰值。 */
+  peak: number;
+  /** 反事实峰值（不采纳）。 */
+  peakWithout: number;
+  /** 真实削峰量 = `peakWithout − peak`（**实测差**，不是方案标称 `eff`：饱和/夹 0 会让两者不等）。 */
+  peakCut: number;
+}
+
+export function adoptionLedger(
+  c: SolverContext,
+  adopted: Map<string, AdoptedRow>,
+  horizon: number,
+  scopeBaseId: string | null,
+): AdoptionLedgerEntry[] {
+  if (adopted.size === 0) return []; // 零采纳 → 零成本 → 逐字节一致
+  const p = c.params.risk;
+  const eventsByBase = new Map<string, RiskEvent[]>();
+  const out: AdoptionLedgerEntry[] = [];
+  for (const [key, a] of adopted) {
+    const sep = key.indexOf("|"); // key = `${baseId}|${factor}`；factor 可含任意字符，故切第一个分隔符
+    const baseId = key.slice(0, sep);
+    const factor = key.slice(sep + 1);
+    if (scopeBaseId !== null && baseId !== scopeBaseId) continue; // 与 `scope` 回显同口径：问某基地就只答某基地
+    let events = eventsByBase.get(baseId);
+    if (!events) {
+      events = riskEvents(c, baseId, horizon);
+      eventsByBase.set(baseId, events);
+    }
+    const lt = liveTightness(c, baseId, factor);
+    const baseline = lt.live ? lt.value : undefined; // 与卡面 series 同锚（同一出处·不另起一套）
+    const withAdopt = tensionSeries(c, baseId, factor, horizon, events, a, baseline);
+    const without = tensionSeries(c, baseId, factor, horizon, events, undefined, baseline);
+    const crossDay = crossDayOf(withAdopt, p.threshold);
+    const wouldCrossDay = crossDayOf(without, p.threshold);
+    const peak = Math.max(...withAdopt);
+    const peakWithout = Math.max(...without);
+    out.push({
+      adoptionId: a.adoptionId,
+      baseId,
+      base: baseName(c, baseId),
+      factor,
+      planKey: a.planKey,
+      planName: a.planName,
+      eff: a.eff,
+      tn: a.tn,
+      adoptedAt: a.adoptedAt,
+      state: crossDay !== null ? "STILL_CROSSING" : wouldCrossDay !== null ? "RESOLVED" : "NO_CROSS_EITHER_WAY",
+      crossDay,
+      wouldCrossDay,
+      peak,
+      peakWithout,
+      peakCut: round(peakWithout - peak, 4),
+    });
+  }
+  // R6 全序确定（Map 迭代序取决于插入序 = 对象 id 序，已确定；仍显式排一次，别让读侧依赖插入序）。
+  out.sort((x, y) => (x.baseId < y.baseId ? -1 : x.baseId > y.baseId ? 1 : x.factor < y.factor ? -1 : x.factor > y.factor ? 1 : 0));
+  return out;
 }
 
 export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<string, unknown> {
@@ -783,6 +915,15 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
   }
   const exposureOrder = [...ranked].sort((a, b) => a.rank - b.rank).map((e) => e.baseId);
 
+  // ── WO-ADOPTION-SURVIVES-FIX · 采纳台账读侧投影（**在 shown 定稿之后**算，且一个字不写回 cards）──
+  // `onBoard` 只能在这里算：卡片除了「越线才出」还要过 `bestByBase` 去重与 `slice(maxCards)`，
+  // 在 pairs 循环里判会得出「push 了 ⇒ 在屏上」这个**假**结论（去重会把它挤掉）。
+  // 这一条本身就是本单要治的那个病的同款形态：拿一个近似量当作要度量的那个量。
+  const ledger = adoptionLedger(c, adopted, horizon, scopeBaseId).map((e) => ({
+    ...e,
+    onBoard: shown.some((c2) => str(c2.baseId) === e.baseId && str(c2.factor) === e.factor),
+  }));
+
   return {
     horizon,
     threshold: p.threshold,
@@ -803,6 +944,9 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
     // WO-DECISION-INFO ①：**按影响面排序**的基地序（零敞口者沉底）。与 cards[].exposure.rank 同一次计算的投影
     // （不是第二套排序算法 → 不会漂移）；前端渲看板按此序即可，不必自己再排一遍。
     exposureOrder,
+    // WO-ADOPTION-SURVIVES-FIX · 已采纳处置台账（加性·**仅在真有 ACTIVE 采纳时置键**）。
+    // 零采纳 ⇒ 不置键 ⇒ 与上线前逐字节一致；有采纳 ⇒ 记录与「这个问题还越不越线」彻底解耦。
+    ...(ledger.length > 0 ? { adoptionLedger: ledger } : {}),
   };
 }
 
