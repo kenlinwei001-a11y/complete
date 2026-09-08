@@ -1848,22 +1848,26 @@ export class SyntheticService {
         },
         {
           /**
-           * WO-REVENUE-RECONCILE ② ·「**分子分母同源，故本卡结构上恒定**」——口径必须写在屏上。
+           * WO-REVENUE-RECONCILE ② 发现 / **WO-METRIC-IDENTITY 已修复**：本卡曾是个**恒等式**。
            *
-           * 实测（真后端 `SEED_DEMO=1`，订单簿 500 单 / 100 单**两次取数**）：本卡恒读 **102**。
-           * 不是巧合，是恒等式：`budget = round(totalRev × 0.98, 1)`、`rolling = round(totalRev, 1)`
-           * （两行同出 `battery.ts` 的 `fin-rev`）⇒ `rolling ÷ budget ≡ 1/0.98 = 102.04%`，
-           * **与 totalRev 取什么值无关**。把订单簿砍到 1/5，本卡逐字节不动（hash 两轮相同）。
+           * **修前（实测·真后端 `SEED_DEMO=1`，订单簿 500 单 / 100 单两次取数）**：本卡恒读 **102**。
+           * 不是巧合：`budget = round(totalRev × 0.98, 1)`、`rolling = round(totalRev, 1)` 两行同出一处
+           * ⇒ `rolling ÷ budget ≡ 1/0.98 = 102.04%`，**与 totalRev 取什么值无关**；
+           * 把订单簿砍到 1/5，本卡逐字节不动。读者会把它读成「今年收入超额完成 2 个点」，
+           * 而它只是**预算按 98% 编制**这条编制口径的复读 —— 数字是对的，**读法是错的**。
            *
-           * ⚠ 这一句不许省：读者会把「收入达成率 102%」读成「今年收入超额完成 2 个点」，
-           * 而它实际只是**预算按 98% 编制**这一条编制口径的复读 —— 数字是对的，**读法是错的**，
-           * 缺的正是这一行。真正的达成率要等 `rolling` 换成**已实现营收**（订单簿口径）才成立，
-           * 那属另一张单（改 `rolling` 会动 `FinancePlan` 全族金值，见本单报告 ②-b）。
+           * **修后（本单，实测 500 单）**：分子换成**成交侧**（订单簿计划年窗 Σ 数量×单价 = 415.6 亿 /
+           * 458 单），分母留在**计划侧**（收入行年度预算 700 亿，已改为取自年度目标登记册）
+           * ⇒ 本卡 **59.4%**，且**会动**：订单簿砍到 1/5 时读 14.5%（两条链分开，再没有常数钉得住它）。
+           *
+           * ⚠ **59.4% 不是"变差了"**：修前那个 102% 从来不是达成率，它是编制口径的读数。
+           * 真话是「计划年内已签约 415.6 亿，覆盖 700 亿年度预算的 59.4%」——
+           * 这是第一次有人能从这张卡上读出一个**可能不达标**的事实。
            */
           key: "rev-attain", type: "kpi", title: "收入达成率", unit: "%",
           query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "revAttainPct" },
-          caption: "计划编制口径：滚动预测 ÷ 年度预算，二者同源于年度需求锚（预算＝需求锚×98%）⇒ 本卡不随订单簿变动",
-          provenance: { toolName: "invoke_solver", outputPath: "$.revAttainPct", label: "FinancePlan 收入行 rolling÷budget×100（同源比值·非已实现营收达成）" },
+          caption: "成交 ÷ 预算：分子＝订单簿计划年已签成交额（Σ 数量×单价），分母＝年度收入预算（目标登记册）；两条链分开取数，故本卡随订单簿增减而变",
+          provenance: { toolName: "invoke_solver", outputPath: "$.revAttainPct", label: "订单簿计划年成交额 ÷ FinancePlan 收入行年度预算 ×100（成交侧 ÷ 计划侧·非同源比值）" },
         },
         {
           key: "util-peak", type: "kpi", title: "利用率瓶颈 (峰)", unit: "%",
@@ -1905,26 +1909,41 @@ export class SyntheticService {
         // 算 target/actual/delta/miss，前端零写死（R14）；越线红标，与各视图同一 Metric（一处事实一处出处）。
         {
           /**
-           * WO-REVENUE-RECONCILE ② ·「**实际**」这一栏的口径必须写在屏上。
+           * WO-REVENUE-RECONCILE ② 发现 / **WO-METRIC-IDENTITY 已修复**：「实际」这一栏曾不是实际。
            *
-           * 本条上的 `Metric.kpi-revenue` 标题写「营收」、栏位写「实际」，而实测它的 `actual`
-           * **不是已实现营收**，是 `Σ(DemandSegment.demandWanPerYearP50 × priceWan)`
-           * = **年度需求 P50 预测**（`battery.ts` 的 `goalMetric("kpi-revenue","revenue", totalRev)`）。
+           * **修前（实测·真后端，订单簿 500 单 → 100 单两轮）**：`Metric.kpi-revenue` 标题写「营收」、
+           * 栏位写「实际」，而它的 `actual` 是 `Σ(DemandSegment.demandWanPerYearP50 × priceWan)`
+           * = **年度需求 P50 预测** 700.0 亿。两轮 hash 逐字节相同，而同一改动下订单簿
+           * Σ`Order.value` 从 **454.64 亿 → 107.81 亿**（−76.3%）——
+           * **把订单砍掉四分之三，「营收·实际」一分不少**。且 `target` 也是 700（同值）⇒
+           * `delta ≡ 0`、达成率**结构上恒 100.0%**，永远不会越线。**一个永远不会报警的指标不是指标。**
            *
-           * 实测证据（真后端，订单簿 500 单 → 100 单）：`actual` 两轮均为 **700**，hash 逐字节相同；
-           * 同一改动下订单簿 Σ`Order.value` 从 **454.64 亿 → 107.81 亿**（−76.3%）。
-           * ⇒ **把订单砍掉四分之三，「营收·实际」一分不少** —— 它度量的不是已发生的生意。
+           * **修后（本单）**：`actual` 换成**成交侧**订单簿计划年窗（415.6 亿 / 458 单），
+           * `target` 仍是**计划侧**登记册目标 700 亿 ⇒ 达成 59.4%、`miss=true` 屏上转红，
+           * 且订单簿砍到 1/5 时 `actual` 跟着掉到 101.3 亿（**会动**）。
            *
-           * 且 `target` 取自 `GOAL_REGISTRY.revenue.target = 700`，与 `actual` 恰好同值 ⇒
-           * 达成率**结构上恒为 100.0%**，永远不会越线。**一个永远不会报警的指标不是指标。**
+           * ⚠ **每条指标的口径改由后端逐条下发**（`Metric.basis` 一等属性 → `metric_rollup` 透传 →
+           * 前端渲染，R14 零写死）。本卡上 11 条指标口径互不相同（营收=成交侧、毛利=需求预测侧、
+           * 份额=诚实合成种子），**一句 widget 级 caption 说不清 11 条**，那正是本 caption 修前
+           * 犯的错 —— 它只描述了其中一条，读者却会当成整条指标条的口径。
+           */
+          /**
+           * WO-GAP-NORMALIZE 病③ · 取数从 `{level:"op"}` 改为全级（`{}`）。
            *
-           * ⚠ 本单按工单裁决**只标口径不改数**：把 `actual` 换成订单簿口径会动 `metric_rollup`
-           * /`plan_rootcause`/目标树全族金值，属另一张单（见报告 ②-a）。
+           * **修前实测**：`args:{level:"op"}` ⇒ 屏上 6 条（毛利率/需求达成率/物料保障率 + 三条细分达成率），
+           * 而本 caption 点名的**营收 / 毛利 / 份额三条全是 `level:"year"`** ⇒ **一条都不在屏上**。
+           * caption 还写「点开每条看「口径」一行」，而当时 6 条里带 `Metric.basis` 的是 **0 条**。
+           * 两句承诺，屏上都兑现不了。
+           * **修后**：取全级 10 条（op 6 + year 4），且每条 Metric 都带 `basis` ⇒ 三条点名指标真的在屏上、
+           * 每条真的有一行口径。**承诺与屏对齐，靠的是把数据补齐，不是把话说小。**
+           *
+           * ⚠ 另一个必须取全级的理由：根因下钻的缺省根指标现按**相对缺口**选（实测 = 营收），
+           * 而本指标条正是选下钻指标的控件 —— 仍按 op 过滤会让「右边默认下钻营收、左边清单里没有营收」。
            */
           key: "metric-strip", type: "metric-strip", title: "经营指标（目标 vs 实际 · 单一出处）", span: 2, featureKey: "view.dash.widget.metric",
-          query: { kind: "solver", solverKey: "metric_rollup", args: { level: "op" }, valuePath: "metrics" },
-          caption: "「实际」＝年度需求锚口径（Σ 细分需求 P50 × 单价）的滚动预测值，非已签订单或已交付金额；故本条不随订单簿增减而变",
-          provenance: { toolName: "invoke_solver", outputPath: "$.metrics", label: "metric_rollup：Metric 对齐目标树算 delta/miss（「实际」为需求锚预测口径·非订单簿实收）" },
+          query: { kind: "solver", solverKey: "metric_rollup", args: {}, valuePath: "metrics" },
+          caption: "年度目标与运营指标同列，各指标口径互不相同，逐条随指标下发（每条下方「口径 · …」即是）：营收＝成交侧订单簿、毛利＝需求预测侧、份额＝合成种子",
+          provenance: { toolName: "invoke_solver", outputPath: "$.metrics", label: "metric_rollup：Metric 对齐目标树算 delta/miss（口径逐条经 Metric.basis 下发）" },
         },
         // cockpit P2 规划决策推演 · 根因 DAG（KPI 越线 → 因子 → 取证叶，结构与贡献均经 plan_rootcause 求解器
         // 从 PlanKpi/RootCauseChain/活数据算出，前端零写死 R14；R13 求解器溯源）。

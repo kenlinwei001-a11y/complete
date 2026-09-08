@@ -6,7 +6,7 @@ import type { OptimizerClient } from "./optimizer-client.js";
 import { notFound, validationError, solverColumnRestricted } from "../errors.js";
 import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
-import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
+import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, orderBookYearRevenue, yuanToYi, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema, BUSINESS_TYPE_LABEL } from "@platform/contracts";
 import { num, str, dayFrom, normalizeBaseRef, refValues, type SolverContext, type SolverParamsShape } from "./types.js";
 import { CONSTRAINT_KINDS_UPPER, SOLVER_RULE_REFS, type EvaluatedRule, type ObjectConstraintKind, type OrderDeliveryJudge } from "@platform/contracts";
@@ -1639,21 +1639,38 @@ export class SolverService {
    */
   /**
    * DS.2 经营驾驶舱富 KPI：从对象库确定性派生 5 标量（R13 溯源对象 / R6），各 kpi widget valuePath 取。
-   * 可供给V7=最终版 SopVersionRow.supply · 收入达成=收入行 rolling÷budget×100 · 利用率瓶颈=max(Base.util)
-   * · AOP基准=baseline 情景 revenue · 现金垫=baseline 情景 cashCushion。
+   * 可供给V7=最终版 SopVersionRow.supply · 收入达成=**订单簿计划年成交额 ÷ 收入行预算**×100 ·
+   * 利用率瓶颈=max(Base.util) · AOP基准=baseline 情景 revenue · 现金垫=baseline 情景 cashCushion。
+   *
+   * ── WO-METRIC-IDENTITY 病② · `revAttainPct` 修前是个**恒等式**，不是达成率 ────────────
+   * **今天的行为是 X**：`revAttainPct = FinancePlan.收入.rolling ÷ FinancePlan.收入.budget`，
+   *   而合成侧两列**同出一处**（`budget = rolling × 0.98`）⇒ 比值 **≡ 1/0.98 = 102.04%**，
+   *   与任何输入无关。实测把订单簿砍到 1/5，本卡两轮都读 **102**，逐字节不动。
+   *   「收入达成率 102%」会被读成「今年超额完成 2 个点」，实际它只是**预算按 98% 编制**这条
+   *   编制口径的复读 —— 数字是对的，**读法是错的**，而屏上没有任何东西拦得住这个误读。
+   * **应该是 Y**：分子换成**成交侧**（订单簿计划年窗，`Order` 真值聚合），分母留在**计划侧**
+   *   （`FinancePlan.收入.budget`，本单已改为取自年度目标登记册）。两条链分开 ⇒
+   *   它随订单簿增减而变，也随年度预算调整而变，**再没有一个常数能把它钉住**。
+   *
+   * ⚠ 分子**不在这里重算公式**，走 `orderBookYearRevenue`（与合成侧 `Metric.kpi-revenue.actual`
+   * 同一个函数）—— 两处各抄一遍口径，改一处漏一处不会红，那正是本仓反复付账的形态。
+   * ⚠ 故本求解器的读取面**多了 `Order`**，`ontology-signature.ts` 已同步声明（少声明即假绿：
+   * 「它读了什么」是签名的一等事实，不是注释）。
    */
   private async cockpitKpi(ctx: AuthCtx): Promise<Record<string, unknown>> {
     const sops = await this.repos.objects.listByType(ctx.tenantId, "SopVersionRow");
     const fins = await this.repos.objects.listByType(ctx.tenantId, "FinancePlan");
     const bases = await this.repos.objects.listByType(ctx.tenantId, "Base");
     const scns = await this.repos.objects.listByType(ctx.tenantId, "AnnualScenario");
+    const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
     const finalSop = sops.find((s) => s.props.isFinal === true) ?? [...sops].sort((a, b) => str(b.props.ver).localeCompare(str(a.props.ver)))[0];
     const rev = fins.find((f) => str(f.props.line) === "收入");
     const baseline = scns.find((s) => str(s.props.key) === "baseline");
     const utils = bases.map((b) => num(b.props.util)).filter((u) => u > 0);
+    const bookYuan = orderBookYearRevenue(orders.map((o) => o.props)).yuan;
     return {
       supplyV7: finalSop ? round(num(finalSop.props.supply), 1) : 0,
-      revAttainPct: rev && num(rev.props.budget) > 0 ? round((num(rev.props.rolling) / num(rev.props.budget)) * 100, 1) : 0,
+      revAttainPct: rev && num(rev.props.budget) > 0 ? round((yuanToYi(bookYuan) / num(rev.props.budget)) * 100, 1) : 0,
       utilPeak: utils.length > 0 ? round(Math.max(...utils) <= 1 ? Math.max(...utils) * 100 : Math.max(...utils), 1) : 0, // 转百分（datacore 小数/mock 整数兼容）
       aopBaseRev: baseline ? round(num(baseline.props.revenue), 1) : 0,
       cashCushion: baseline ? round(num(baseline.props.cashCushion), 1) : 0,
@@ -1827,14 +1844,47 @@ export class SolverService {
     };
     const scopedBaseId = normalizeBaseId(scope.baseId);
     const scopedFactorId = scope.factorId !== undefined && str(scope.factorId) !== "" ? str(scope.factorId) : undefined;
-    // 目标 Metric：显式 metricKey，否则取最严重越线者（缺省 = 缺口最大·如储能 seg_attain_ess）。
+    /**
+     * WO-GAP-NORMALIZE · **缺省根指标的排序必须无量纲**。
+     *
+     * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+     * **X（修前实测，真后端 `SEED_DEMO=1` · seed 42 · scale S）**：缺省根 = 先筛 `actual < floorVal`，
+     *   再按 **`target − actual` 这个带单位的裸差**降序取第一。三条越线指标的裸差分别是
+     *   营收 **284.4 亿** · 储能达成率 **27.8 百分点** · 需求达成率 **9.2 百分点** ——
+     *   `284.4 > 27.8` 这个比较**是「亿」和「百分点」在比大小**，不是严重程度在比大小。
+     *   量纲不变性实验当场证伪：把营收改记成「万元」（×10000，**业务含义一个字没变**），
+     *   裸差变成 2,844,000，它赢得更狠；改记成「万亿」（÷10000）裸差 0.02844，它掉到最后一名 ——
+     *   **同一个经营局面，登记册里换个单位就换一个根因**。
+     * **Y（本行）**：按**相对缺口** `(target − actual) / |target|` 排序 —— 「目标里缺了几成」是纯比值，
+     *   ×10000 与 ÷10000 都约得掉 ⇒ 换单位不换根因。实测三条越线指标的相对缺口：
+     *   营收 **0.4063**（700 缺 284.4）· 储能达成率 **0.2780** · 需求达成率 **0.0920**。
+     *
+     * ⚠ **归一后营收仍居首，这不是没修好，恰恰是修好了**：它现在赢在「700 的目标缺了四成」，
+     *   而不再赢在「它的单位恰好比别人大」。归一之前那个第一名是量纲的产物，之后这个是数据的产物。
+     *   反向对照（同样实测）：把营收 actual 还原成不越线的 700，越线集只剩两条，
+     *   缺省根**回到储能达成率**（0.2780 > 0.0920）—— 排序对数据仍然敏感，只是不再对单位敏感。
+     *
+     * ⚠ 本仓同形态的账已经记过一次：多目标寻优的目标方向倒挂，根因也是**未归一的量纲**
+     *   （单位营收跨度 9,066 vs 单位违约金跨度 23,400），修法同样是归一。**同病同修。**
+     *
+     * 分母取 `|target|`：`G = target − actual` 正是下面整棵树要分摊的那个量，除以它自己的目标，
+     * 读作「目标里缺了几成」——与被分摊的量同源，不引第二口径。`target` 为 0（无标度可归一）时
+     * 退到 `|floorVal|`；两者皆 0 ⇒ 该指标**没有可归一的标度**，记 0（沉到正缺口之下、负缺口之上），
+     * 绝不拿裸差顶上去 —— 那等于把量纲又放回来一条缝。
+     */
+    const relGapOf = (p: Record<string, unknown>): number => {
+      const denom = Math.abs(num(p.target)) || Math.abs(num(p.floorVal));
+      return denom > 0 ? (num(p.target) - num(p.actual)) / denom : 0;
+    };
+    // 目标 Metric：显式 metricKey，否则取**相对缺口**最大的越线者。
+    // 排序方向与并列次序与修前逐字节一致（原写法是「升序 + reverse」⇒ 缺口降序、并列时 metricId 降序），
+    // 只把比较量从「带单位的裸差」换成「无量纲相对缺口」——R6 确定性不变。
     const breached = metricObjs.filter((p) => num(p.actual) < num(p.floorVal));
     const wantKey = args.metricKey ? str(args.metricKey) : undefined;
     const m =
       (wantKey ? metricObjs.find((p) => str(p.key) === wantKey || str(p.metricId) === wantKey) : undefined) ??
       [...(breached.length ? breached : metricObjs)]
-        .sort((a, b) => num(a.target) - num(a.actual) - (num(b.target) - num(b.actual)) || str(a.metricId).localeCompare(str(b.metricId)))
-        .reverse()[0]!;
+        .sort((a, b) => relGapOf(b) - relGapOf(a) || str(b.metricId).localeCompare(str(a.metricId)))[0]!;
     const G = round(num(m.target) - num(m.actual), 4); // 缺口（正=未达）
     const unit = str(m.unit);
 
@@ -1902,8 +1952,34 @@ export class SolverService {
         }
       : undefined;
 
+    /**
+     * WO-GAP-NORMALIZE 病② · **`scope.baseId` 不许被专属域路由静默吞掉**。
+     *
+     * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+     * **X（修前实测·与归一无关·5 个 metricKey 各显式传 `scope:{baseId:"jiangmen"}` 逐个跑）**：
+     *   | metricKey | 回显 scope.baseId | L1 节点 |
+     *   |---|---|---|
+     *   | `revenue` / `cash` / `demand_attain` | **undefined（吞了）** | `metricgap:<key>` |
+     *   | `seg_attain_ess` | `jiangmen` ✓ | `base:jiangmen` |
+     *   凡指标配了专属因果域（或 market_share 域），下面两条早返回就**整个丢掉已解析的
+     *   `scopedBaseId`**：既不按基地归因，也不回显、更不说明。而这两条域路由的 L1 是
+     *   `metricgap:<key>`，前端基地根因面板只认 `base:<基地>` ⇒ **树整棵消失成「诚实灰」**，
+     *   屏上既看不到江门的根因，也看不到一句「按基地这一维我给不了」。
+     *   ⚠ 这是**独立于归一的老病**：显式传 metricKey 时今天就在犯，不是缺省根换成营收才有的。
+     *   只是缺省根从 `seg_attain_ess`（无专属域·走结构树）换成 `revenue`（有专属域）之后，
+     *   **风险板每一个基地的根因树同时变灰**，才把它顶到台面上。
+     * **Y（本段）**：`scope.baseId` 是**「按基地这一维拆给我看」**的请求，而专属因果域**没有基地这一维**
+     *   （它拆的是 caused_by 因果跳）。两者不是同一个问题的两种答法，是两个问题。
+     *   故给了 `scope.baseId` 就**走基地结构反向分摊**（那条路真有基地维），不进域路由。
+     *
+     * ⚠ **这不是绕开，是照本函数已有的先例办**：上面 `capFactor` 那段处理
+     *   「因子作用域解析不了」时，判的就是**保留 base 作用域结构树 + 诚实标注**，
+     *   理由一字不差 ——「绝不静默退化，也绝不假装按这一维细分了」。同一个函数里两处作用域，
+     *   一处守纪律一处不守，那是漏了不是设计。
+     * ⚠ 不给 `scope.baseId` 时**逐字节不变**：域路由照旧优先（R6 · 全局路径零回归）。
+     */
     // ── market_share 域：独立结构分解（CompetitorShare）+ caused_by 遍历到商业根因 ──
-    if (str(m.key) === "market_share") {
+    if (str(m.key) === "market_share" && !scopedBaseId && !unsupportedFactor) {
       return await this.gapAttributionMarketShare(ctx, m, G, unit, structuralExplained, causalExplained, binding);
     }
 
@@ -1925,7 +2001,18 @@ export class SolverService {
           `请在 CausalFactor 数据上定唯一入口（把其余非根因子接到入口下游，或标 isRoot）。判据实测：${entryPick.basis}`,
       );
     }
-    if (entryPick.kind === "ok") {
+    /**
+     * `scopedBaseId` 存在 ⇒ 不进域路由（理由见上「病②」段：域路由没有基地这一维，进去等于把请求吞了）。
+     *
+     * `unsupportedFactor` 存在 ⇒ 同理，也不进：调用方**点了一个因子**，而引擎解析不了它。
+     * 这时唯一诚实的回法是「基地结构树 + `factorApplied:false` + 说清为什么」——
+     * 上面那段 `unsupportedFactor` 已经把话都写好了，可域路由的早返回把它连同 `scope` 一起吞掉，
+     * 屏上于是变成「点了因子 chip，回来一棵没按因子细分、也不承认没细分的树」。
+     * 判据实证（同一份种子，A/B 跑同两个测试文件）：
+     *   `factor-scope-singlesource.seam.test.ts` 在基线 `5e43754a` 上 **8 条红**，
+     *   加了这两个闸之后 **0 条红** —— 它们红的根因是同一个：作用域请求被早返回吞掉。
+     */
+    if (entryPick.kind === "ok" && !scopedBaseId && !unsupportedFactor) {
       return await this.gapAttributionMetricDomain(ctx, m, G, unit, structuralExplained, causalExplained, binding, entryPick.entryId, domainAdj);
     }
 
@@ -4318,6 +4405,9 @@ export class SolverService {
           level: str(p.level), category: str(p.category), target, actual,
           delta: round(actual - target, 4), miss: actual < floorVal, floorVal,
           ksfRef: p.ksfRef ?? null, ownerRef: p.ownerRef ?? null, chainKey: str(p.chainKey),
+          // WO-METRIC-IDENTITY：口径自述随指标一起下发（R14 前端零写死）。
+          // 缺省 `null` 而不是 `""` —— 前端据此判「这条没声明口径」，与「口径是空串」区分得开。
+          basis: p.basis !== undefined && p.basis !== null ? str(p.basis) : null,
         };
       })
       .sort((a, b) => a.metricId.localeCompare(b.metricId));

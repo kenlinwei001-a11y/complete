@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GOAL_REGISTRY, PLAN_GOAL_TARGETS } from "@platform/contracts";
 import { ADMIN, invokeSolver, makeApp, seedBattery, type TestApp } from "./helpers.js";
-import { generateBattery } from "../src/synthetic/battery.js";
+import { generateBattery, orderBookYearRevenue, yuanToYi } from "../src/synthetic/battery.js";
 
 /**
  * SPINE 经营目标-指标-责任骨架（Goal–Metric–Owner）：KSF/Metric/Principal 一等对象 + metric_rollup
@@ -55,7 +55,27 @@ describe("SPINE · 目标-指标-责任骨架（L6 + L1 + R2）", () => {
     }
     // 营收700亿此前仅 Σp50×price 局部变量 → 现为一等目标 Metric（target 取自 GOAL_REGISTRY）
     expect(byKey.get("revenue")!.target).toBe(GOAL_REGISTRY.revenue!.target);
-    expect(byKey.get("revenue")!.actual).toBe(700); // 真实聚合 Σ需求×单价
+    /**
+     * WO-METRIC-IDENTITY 金值同步：**700 → 415.6**。
+     *
+     * 旧值 700 为什么是错的（不是"口径换了所以数变了"，是它当时就不该写在 `actual` 上）：
+     * 700 = `Σ(DemandSegment.demandWanPerYearP50 × priceWan)` = **年度需求 P50 预测**，
+     * 而它同时恰好等于 `GOAL_REGISTRY.revenue.target`（上一行断言的那个 700）
+     * ⇒ `actual ≡ target`、`delta ≡ 0`、`miss ≡ false`，**这个指标结构上永远不会越线**。
+     * 更硬的证据是对照实验：订单簿砍到 1/5，本值两轮**逐字节相同** —— 它不度量已发生的生意。
+     * 新值 415.6 = 订单簿**计划年窗**成交额（交期落 `forecastStart` 所在年的 458 张单，Σ 数量×单价）。
+     *
+     * ⚠ 这里**不写死 415.6**：写死等于再造一份订单簿真值副本，改单量时它会红在这一行而不是红在病上。
+     * 断言改成「`actual` 必须能由订单簿逐位重算出来」+「它不再与 target/需求预测同值」——
+     * 一个恒返回常数的实现过不了第一条，一个把口径换回需求预测的实现过不了第二条。
+     */
+    const revActual = byKey.get("revenue")!.actual;
+    const orderRows = (await t.repos.objects.listByType("demo", "Order")).map((o) => o.props);
+    expect(revActual, "营收·实际必须逐位等于订单簿计划年窗成交额（成交侧，不是需求预测）")
+      .toBe(yuanToYi(orderBookYearRevenue(orderRows).yuan));
+    expect(revActual, "actual 与 target 同值 ⇒ 达成率恒 100%、永不越线，那正是本单修掉的病")
+      .not.toBe(byKey.get("revenue")!.target);
+    expect(byKey.get("revenue")!.miss, "415.6 < floorVal 686 ⇒ 必须真的越线（会在屏上转红）").toBe(true);
   });
 
   it("R-一致（Gap④ 杀漂移）：Metric.target/floorVal 全部取自 GOAL_REGISTRY 单一来源，毛利率底线不再漂移", async () => {

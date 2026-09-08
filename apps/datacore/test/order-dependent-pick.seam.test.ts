@@ -34,7 +34,35 @@ interface OFC { judges: { kit: { material: string; gapTon: number; eta: string }
 
 const ga = async (t: TestApp, metricKey: string): Promise<GA> =>
   (await t.services.solvers.invoke(ADMIN, "gap_attribution", { metricKey })) as unknown as GA;
-const play = async (t: TestApp): Promise<DP> => (await t.services.solvers.invoke(ADMIN, "decision_play", {})) as unknown as DP;
+const play = async (t: TestApp, metricKey?: string): Promise<DP> =>
+  (await t.services.solvers.invoke(ADMIN, "decision_play", metricKey === undefined ? {} : { metricKey })) as unknown as DP;
+
+/**
+ * C1 组要咬的是「**备份池证据锚在树上那一个**，不是数组第一条」——
+ * 它需要一棵**含 `BackupSupplierPool` 落点**的归因树才有东西可咬。
+ *
+ * ── 为什么这里从「不传 metricKey」改成显式钉一个（WO-GAP-NORMALIZE 实测）──────────
+ * C1 原先靠**缺省根指标**取树。缺省根现在是 `revenue`（营收 415.6/700，相对缺口 0.4063
+ * 为全场最大），而营收的因果域下钻面是**商业侧**：`Customer` / `PipelineOpportunity` /
+ * `PriceRealization` —— 一个 `BackupSupplierPool` 落点都没有（实测该树落点类型计数：
+ * Customer=2 PipelineOpportunity=3 PriceRealization=2）。
+ * 于是 C1 自己的金丝雀当场喊「树上一个备份池落点都没有 ⇒ 下面的'锚到树上'是空真」——
+ * **金丝雀是对的，它拦住的正是空真**，不是引擎坏了。
+ *
+ * ⚠ 同一次实测证明引擎在这件事上**是诚实的**，不是丢了方案：
+ *   `decision_play` 对营收根因返回 0 方案，并在 `optionsOmitted` 里逐条写明理由 ——
+ *   「依据对象 BackupSupplierPool|pool-anode 与其类型都不在本次归因树的落点集里
+ *    （根因「pipeline 收缩(root)」的下钻面为 Customer、PipelineOpportunity、PriceRealization）
+ *    ⇒ 该方案与本根因无可核对的依据关系，诚实不下发。」
+ *   把方案硬塞给一个对不上的根因，才是这道门要防的病。
+ *
+ * 故这里钉住一个**供给侧**指标：本组测的是「选谁」的判据，与「缺省根是谁」无关 ——
+ * 后者一变本组就空转，那是**耦合错了维度**。本文件其余各组早就都显式传 `demand_attain`，
+ * 本组改这一处只是把它拉回同一个写法。
+ * 判据（换指标时照此复核）：所选指标的树里 `BackupSupplierPool` 落点数必须 > 0
+ * —— 这正是 L0 第一行断言在守的东西，所以选错了它会立刻红，不会静默空转。
+ */
+const C1_METRIC = "seg_attain_ess";
 const fullchain = async (t: TestApp): Promise<OFC> => (await t.services.solvers.invoke(ADMIN, "order_fullchain", {})) as unknown as OFC;
 
 /** 本域入口节点（`gapAttributionMetricDomain` 的 L1 单节点·id 恒为 `metricgap:<key>`）。 */
@@ -165,11 +193,11 @@ describe("WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按�
   // ══════════════════════════════════════════════════════════════════════════
 
   it("C1·L0 金丝雀：本次推演树上确实有 BackupSupplierPool 落点，且确实有引用它的方案", async () => {
-    const g = (await t.services.solvers.invoke(ADMIN, "gap_attribution", {})) as unknown as GA;
+    const g = (await t.services.solvers.invoke(ADMIN, "gap_attribution", { metricKey: C1_METRIC })) as unknown as GA;
     const nodes = [...g.levels.flatMap((L) => L.nodes), ...(g.atomicLeaves ?? [])];
     expect(nodes.filter((n) => n.provenance?.drillType === "BackupSupplierPool").length,
       "树上一个备份池落点都没有 ⇒ 下面的'锚到树上'是空真").toBeGreaterThan(0);
-    const dp = await play(t);
+    const dp = await play(t, C1_METRIC);
     expect(dp.options.filter((o) => o.provenance.drillType === "BackupSupplierPool").length).toBeGreaterThan(0);
   }, 240000);
 
@@ -197,7 +225,7 @@ describe("WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按�
     expect(idsNow[0], "金丝雀：探针没被排到第一位 ⇒ 这条用例分辨不出新旧实现").toBe(decoyPool.id);
 
     // 期望现算：本次归因树上**贡献最大**的备份池落点（并列再比 nodeId）—— 与引擎侧同一条判据。
-    const g = (await t.services.solvers.invoke(ADMIN, "gap_attribution", {})) as unknown as GA;
+    const g = (await t.services.solvers.invoke(ADMIN, "gap_attribution", { metricKey: C1_METRIC })) as unknown as GA;
     const poolAnchors = [...g.levels.flatMap((L) => L.nodes), ...(g.atomicLeaves ?? [])]
       .filter((n) => n.provenance?.drillType === "BackupSupplierPool");
     expect(poolAnchors.length, "金丝雀：树上得有备份池落点").toBeGreaterThan(0);
@@ -205,7 +233,7 @@ describe("WO-ORDER-DEPENDENT-PICK · 「取数组第一条」一律换成「按�
     const expectedPoolId = String(winner.provenance!.drillId);
     expect(expectedPoolId, "树锚不该是探针 —— 探针没有任何因子指向它").not.toBe("pool-cathode-alt");
 
-    const dp = await play(t);
+    const dp = await play(t, C1_METRIC);
     const backup = dp.options.find((o) => o.provenance.drillType === "BackupSupplierPool");
     expect(backup, "备份池方案被整条剔除了 ⇒ 断不出证据对象是谁").toBeTruthy();
     expect(

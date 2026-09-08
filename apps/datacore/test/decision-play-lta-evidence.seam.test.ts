@@ -46,6 +46,26 @@ const play = async (t: TestApp, metricKey?: string): Promise<DP> =>
 const attribution = async (t: TestApp, metricKey?: string): Promise<GA> =>
   (await t.services.solvers.invoke(ADMIN, "gap_attribution", metricKey ? { metricKey } : {})) as unknown as GA;
 
+/**
+ * 本门要咬的是「**同一根因树上只许有一份证据长协**」——前提是那棵树上**得有长协落点**。
+ *
+ * ── 为什么从「不传 metricKey」改成显式钉一个（WO-GAP-NORMALIZE 实测）────────────────
+ * 本门原先靠**缺省根指标**取树。缺省根现在是 `revenue`（营收 415.6/700，相对缺口 0.4063
+ * 全场最大），其因果域下钻面是**商业侧** `Customer` / `PipelineOpportunity` /
+ * `PriceRealization` —— 长协与备份池落点**都是 0**。于是 L1 金丝雀当场喊
+ * 「归因树上一个长协落点都没有」——**金丝雀是对的，它拦下的正是空真**。
+ *
+ * ⚠ 同次实测证明引擎是诚实的、不是丢方案：`decision_play` 对营收根因返回 0 方案，
+ *   且 `optionsOmitted` 逐条写明「依据对象…不在本次归因树的落点集里…诚实不下发」。
+ *
+ * 钉住供给侧 `seg_attain_ess`（实测：树长协落点 1 · 引用长协的方案 2 —— 正好满足
+ * L1 的两条金丝雀）。本门测的是「**证据选谁**」，与「缺省根是谁」无关；耦合到缺省根
+ * 只会让本门在缺省根一变时集体空转。
+ * 判据（换指标时照此复核）：所选指标必须使「树长协落点 > 0」且「引用长协的方案 ≥ 2」，
+ * 这正是 L1 两行断言在守的东西 —— 选错了立刻红，不会静默空转。
+ */
+const LTA_METRIC = "seg_attain_ess";
+
 /** 归因树上所有长协落点（本门的**唯一裁判**：方案说谁是证据，得跟树上这批对得上）。 */
 const ltaAnchorsOf = (ga: GA): GaNode[] =>
   [...ga.levels.flatMap((L) => L.nodes), ...(ga.atomicLeaves ?? [])].filter((n) => n.provenance?.drillType === LTA);
@@ -62,7 +82,7 @@ describe("WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据
   }, 180000);
 
   it("L1 金丝雀：本次推演里**确实有**长协落点、也**确实有**引用长协的方案（否则下面全是空真）", async () => {
-    const [dp, ga] = [await play(t), await attribution(t)];
+    const [dp, ga] = [await play(t, LTA_METRIC), await attribution(t, LTA_METRIC)];
     const anchors = ltaAnchorsOf(ga);
     expect(anchors.length, "归因树上一个长协落点都没有 ⇒ 是求解器/种子坏了，不是'证据一致'").toBeGreaterThan(0);
     const refs = dp.options.map(ltaRefOf).filter((x): x is string => x !== null);
@@ -70,7 +90,7 @@ describe("WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据
   });
 
   it("L2 核心：所有引用长协的方案指向**同一份**，且就是归因树锚定的那一份（期望值现算·不写死 id）", async () => {
-    const [dp, ga] = [await play(t), await attribution(t)];
+    const [dp, ga] = [await play(t, LTA_METRIC), await attribution(t, LTA_METRIC)];
 
     // 期望值从**同一次归因**里现算：贡献最大的长协落点（并列再比 nodeId）——与引擎侧同一条判据。
     const anchors = ltaAnchorsOf(ga);
@@ -93,7 +113,7 @@ describe("WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据
   });
 
   it("L3 依据强度：长协方案不再是 TYPE«同类型不同实例»，一律 OBJECT（修前 opt-lta-clause 是 TYPE）", async () => {
-    const dp = await play(t);
+    const dp = await play(t, LTA_METRIC);
     const ltaOptionIds = new Set(dp.options.filter((o) => ltaRefOf(o) !== null).map((o) => o.optionId));
     expect(ltaOptionIds.size, "金丝雀：得先有长协方案才谈得上强度").toBeGreaterThanOrEqual(2);
     for (const ev of dp.optionsEvidence.filter((e) => ltaOptionIds.has(e.optionId))) {
@@ -102,7 +122,7 @@ describe("WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据
   });
 
   it("L4 证据对象 ⟷ 证据读数同源：drillValue 是**那一份**长协自己的数，不是全体合计", async () => {
-    const dp = await play(t);
+    const dp = await play(t, LTA_METRIC);
     for (const o of dp.options) {
       const ltaId = ltaRefOf(o);
       if (!ltaId) continue;
@@ -122,7 +142,7 @@ describe("WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据
   });
 
   it("L5 解析路径可核对：basis 里写明证据长协是**怎么选出来的**（不是'恰好排第一'）", async () => {
-    const dp = await play(t);
+    const dp = await play(t, LTA_METRIC);
     const ltaOpts = dp.options.filter((o) => ltaRefOf(o) !== null);
     expect(ltaOpts.length).toBeGreaterThanOrEqual(2);
     for (const o of ltaOpts) {
@@ -146,8 +166,8 @@ describe("WO-LTA-EVIDENCE-CONFLICT · 同一根因树上「哪份长协是证据
   });
 
   it("L7 R6 确定性：同输入两跑，长协证据逐字节一致", async () => {
-    const a = await play(t);
-    const b = await play(t);
+    const a = await play(t, LTA_METRIC);
+    const b = await play(t, LTA_METRIC);
     const fp = (dp: DP) => JSON.stringify(dp.options.map((o) => [o.optionId, o.provenance]));
     expect(fp(a)).toBe(fp(b));
   });
