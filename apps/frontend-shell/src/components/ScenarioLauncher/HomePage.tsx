@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { fetchScenarioCards } from "@/api/endpoints";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { featureOn } from "@/workspace/featureGate";
-import { NAV_GROUPS } from "@/pages/ShellLayout";
+import { NAV_GROUPS, isRouteRefHidden, isViewConsolidatedAway } from "@/pages/ShellLayout";
 import { EVENT_GUIDES } from "@/config/eventGuidance";
 import { useScenarioLaunch } from "./useScenarioLaunch";
 import { rankHotScenarios } from "./rankHotScenarios";
@@ -43,6 +43,11 @@ import zh from "@/locales/zh";
  *   · `consolidatedWhen`（收编键）**开** → 隐藏 —— 功能还在，入口搬进那个控制台里了，单列 = 重复入口。
  *   抄反任何一条，首页就会出现「侧栏没有、首页有」的反向不一致，比现在这个病更难查。
  *
+ * ✅ **WO-HOME-CONSOLIDATE-PARITY 已把「逐字相同」升级成「同一个函数」**：上一版这一段是
+ *   靠人守的纪律（本文件自己抄了一份 filter 链），而**这条反向不一致当时就真的存在**
+ *   —— 只是发生在 `kind:"view"` 那一半（见下面 `HomePage` 里 `views` 那行的长注）。
+ *   判定本体现在只有一份：`isRouteRefHidden` / `isViewConsolidatedAway`，两面都调它。
+ *
  * ⚠ testid 沿用 `home-view-<key>` **不另起一套**：判据 3（反向对照·一项都不许丢）与
  *   判据 4（金丝雀）用的都是 `[data-testid^="home-view-"]` 这把尺子。route 项换个前缀
  *   就会**量不到**，于是「加上了」和「没加」在屏上一模一样 —— 那正是本单要修的病的形态。
@@ -52,9 +57,36 @@ type HomeRouteEntry = { key: string; label: string };
 export function routeEntriesForHome(workspace: Parameters<typeof featureOn>[0]): HomeRouteEntry[] {
   return NAV_GROUPS.flatMap((g) => g.items)
     .filter((it): it is Extract<(typeof NAV_GROUPS)[number]["items"][number], { kind: "route" }> => it.kind === "route")
-    .filter((it) => !(it.feature && !featureOn(workspace, it.feature)))
-    .filter((it) => !(it.consolidatedWhen && featureOn(workspace, it.consolidatedWhen)))
+    .filter((it) => !isRouteRefHidden(it, workspace))
     .map((it) => ({ key: it.key, label: it.label }));
+}
+
+/**
+ * WO-HOME-CONSOLIDATE-PARITY · **首页的 `kind:"view"` 项也必须跑收编过滤**。
+ *
+ * ══ 病因（实测 · 2026-09-08）══════════════════════════════════════════════════════
+ * **今天的行为（X）**：首页对后端下发项只做了 `n.group !== "admin"`，
+ * 而侧栏（`UnifiedNav`）在**同一份** `workspace.navigation` 上还多跑了一层收编过滤。
+ * 两处的输入逐字相同（都是 `workspace.navigation.filter(group !== "admin")`），
+ * 差别**只在这一层** ⇒ 侧栏主动藏起来的项，首页照列：实测首页独有 **11** 项。
+ * 用户看到的是：同一条业务判断，两个面给出相反的答案 —— 侧栏说「这已经在统一推演控制台里了，
+ * 单列 = 重复入口」，首页说「来，这里还有一个入口」。
+ * **应该的行为（Y）**：收编是业务判断不是组件私事，凡铺入口的面都跑同一条过滤。
+ *
+ * ⚠ **11 不是 4**：`consolidatedWhen` 只是收编的**一半**。另一半是
+ * `CONSOLIDATED_INTO_SANDBOX` 的**无条件收编**（那五个沙盘子视图，entitlement 本就
+ * `requires: ["sim.sandbox"]`）。只修带 `consolidatedWhen` 的那 4+2 项 ⇒ 另外 5 项照漏，
+ * 而且漏得**看不出来**（首页少了 6 个、还剩 5 个不一致，屏上看起来「修好了」）。
+ * 故这里调的是 `isViewConsolidatedAway` 整条判定，不是只挑其中一个字段。
+ *
+ * ⚠ **不许在这里写死键清单**：写死了下次谁往 `CONSOLIDATED_INTO_SANDBOX` 或
+ * `NAV_GROUPS` 加一项，首页这份不会跟着变 —— 本病换个键再犯一次，且没有任何东西会说话。
+ */
+function businessViewsForHome(
+  navigation: { key: string; label?: string; viewKey?: string; group?: string }[],
+  workspace: Parameters<typeof featureOn>[0],
+) {
+  return navigation.filter((n) => n.group !== "admin" && !isViewConsolidatedAway(n.viewKey ?? n.key, workspace));
 }
 
 export default function HomePage() {
@@ -63,8 +95,17 @@ export default function HomePage() {
   const launch = useScenarioLaunch();
   if (!workspace) return <div className="empty-state">{zh.common.loading}</div>;
 
-  const views = workspace.navigation.filter((n) => n.group !== "admin");
-  const accessibleViewKeys = views.map((n) => n.viewKey ?? n.key);
+  // 铺入口用**收编过滤后**的集合（与侧栏同源，见 businessViewsForHome 的长注）。
+  const views = businessViewsForHome(workspace.navigation, workspace);
+  /**
+   * ⚠ 高频场景排序用的是**未过滤**的可达集，刻意与上面那行不同 ——
+   * 两个集合度量的是**两件事**：`views` 是「该不该在首页单列一个入口」，
+   * 而 `accessibleViewKeys` 是「这张卡的落点这个角色**到不到得了**」。
+   * 被收编的页**照样到得了**（换了个入口，在那个控制台里），只是不单列。
+   * 若这里也跟着过滤，落在 `sim-console` 等页上的场景卡会被判成「本角色不可达」而降权 ——
+   * 那是把「入口收编」错算成「功能没有」，比首页多几个重复入口严重得多。
+   */
+  const accessibleViewKeys = workspace.navigation.filter((n) => n.group !== "admin").map((n) => n.viewKey ?? n.key);
   const hot = rankHotScenarios(data?.items ?? [], accessibleViewKeys, 6);
   const routeEntries = routeEntriesForHome(workspace);
 

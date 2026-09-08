@@ -558,6 +558,58 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   { title: "平台与系统", items: ["tenants", "users", "permissions", "features", "llm-providers", "config-migration", "meta"].map((key) => ({ kind: "admin" as const, key })) },
 ];
 
+/**
+ * WO-HOME-CONSOLIDATE-PARITY · **收编过滤的唯一实现**（侧栏与首页共用这一份，不许各抄一份）。
+ *
+ * ══ 病因（本单实测 · 2026-09-08）══════════════════════════════════════════════════
+ * **今天的行为（X）**：这套收编规则**只长在 `UnifiedNav` 的函数体里**。首页
+ * （`ScenarioLauncher/HomePage.tsx`）拿的是**同一个** `workspace.navigation.filter(group !== "admin")`
+ * （两处逐字相同，见本文件 `<UnifiedNav views={...}>` 与 HomePage 里那一行），
+ * 却**一次都没跑这层过滤** ⇒ 同一条业务判断，两个面执行得不一样：
+ * 侧栏认定「已经在那个控制台里了、单列 = 重复入口」而藏起来的项，**首页照列不误**。
+ * 实测首页独有 **11** 项（不是派单书说的 4 项 —— 那个数只数了 `consolidatedWhen`
+ * 这一半，漏了 `CONSOLIDATED_INTO_SANDBOX` 的**无条件收编**那一半）。
+ * **应该的行为（Y）**：收编是一条业务判断，不是某个组件的私事 ——
+ * 凡消费 `workspace.navigation` 铺入口的面，都跑同一条过滤。
+ *
+ * ══ 为什么是「共用函数」而不是「在首页照抄一遍」═══════════════════════════════════
+ * 上一张单（WO-HOME-ENTRY-FLOW）的 route 侧就是照抄的：注释里写着「显隐规则必须与
+ * `UnifiedNav` 逐字相同」。**「逐字相同」靠人守就迟早不同** —— 那正是本单要修的病的形态。
+ * 抽成函数则「相同」由**编译器**保证：改一处两处一起变，机器先说话。
+ *
+ * ⚠ 两条语义**方向相反**，合在这一份实现里，抄反的机会从此归零：
+ *   · `feature`（暗发键）**关** → 隐藏（R3「功能关闭 = 不存在」，连入口都不许泄露存在性）；
+ *   · `consolidatedWhen`（收编键）**开** → 隐藏（收编：功能还在，入口搬进那个控制台里了）。
+ */
+const CONDITIONAL_CONSOLIDATION: ReadonlyMap<string, string> = new Map(
+  NAV_GROUPS.flatMap((g) => g.items)
+    .filter((it): it is Extract<NavItemRef, { kind: "view" }> => it.kind === "view" && it.consolidatedWhen !== undefined)
+    .map((it) => [it.key, it.consolidatedWhen!] as const),
+);
+
+/**
+ * 后端下发的 `kind:"view"` 项：这个键**此刻**是否已被某个控制台收编（⇒ 不该单列）。
+ *
+ * 两种收编，判据不同、不许合成一句（合成就是本仓最恨的「拿一个笼统说法盖住两个不同事实」）：
+ *  · **条件收编**（`NAV_GROUPS` 里带 `consolidatedWhen`）：那个开关**开**着才算收编，
+ *    关着照旧单列 —— 这几个页不受该 entitlement 门控，藏掉会让它们跟着控制台一起从 IA 蒸发。
+ *  · **无条件收编**（`CONSOLIDATED_INTO_SANDBOX` 里有、且没带 `consolidatedWhen`）：
+ *    只用于**随同一个 entitlement 一起消失**的键（那五个沙盘子视图，`requires: ["sim.sandbox"]`）——
+ *    沙盘关 ⇒ 它们连 `workspace.navigation` 都不下发，不存在「沙盘关着但它们还在」的状态。
+ */
+export function isViewConsolidatedAway(viewKey: string, workspace: Workspace | undefined): boolean {
+  const when = CONDITIONAL_CONSOLIDATION.get(viewKey);
+  if (when !== undefined) return featureOn(workspace, when);
+  return CONSOLIDATED_INTO_SANDBOX[viewKey] !== undefined;
+}
+
+/** `kind:"route"` 项：此刻是否该隐藏（`feature` 关 → 隐藏；`consolidatedWhen` 开 → 隐藏）。 */
+export function isRouteRefHidden(ref: Extract<NavItemRef, { kind: "route" }>, workspace: Workspace | undefined): boolean {
+  if (ref.feature && !featureOn(workspace, ref.feature)) return true;
+  if (ref.consolidatedWhen && featureOn(workspace, ref.consolidatedWhen)) return true;
+  return false;
+}
+
 type NavItemVM = { key: string; label: string; viewKey?: string; group?: string };
 type AdminPage = { path: string; label: string };
 
@@ -590,23 +642,14 @@ function UnifiedNav({
   /**
    * WO-SANDBOX-NAV-CONSOLIDATE · **条件收编**：`consolidatedWhen` 开着才算收编。
    *
-   * 这张 Map 必须在 `views` 过滤**之前**算好，理由与上一段一模一样：条件收编的键若只从
+   * 过滤必须在 `views` 进分组循环**之前**跑完，理由与上一段一模一样：条件收编的键若只从
    * 分组循环里 `return null`，`leftover` 会照单全收 ⇒ 原地掉进「其它」兜底桶。
    * 一次过滤盖住分组与兜底两条路 —— 这是本文件最容易漏、漏了后果最直接的一行。
+   *
+   * WO-HOME-CONSOLIDATE-PARITY：判定本体已抽成模块级的 `isViewConsolidatedAway`，
+   * **首页跑的是同一个函数** —— 两个面的收编口径从此由编译器保证一致，不再靠人守「逐字相同」。
    */
-  const conditionalConsolidation = new Map(
-    NAV_GROUPS.flatMap((g) => g.items)
-      .filter((it): it is Extract<NavItemRef, { kind: "view" }> => it.kind === "view" && it.consolidatedWhen !== undefined)
-      .map((it) => [it.key, it.consolidatedWhen!] as const),
-  );
-  const views = allViews.filter((it) => {
-    const key = it.viewKey ?? it.key;
-    const when = conditionalConsolidation.get(key);
-    // 条件收编：开关**开**着 ⇒ 已在控制台里 ⇒ 不单列；关着 ⇒ 条目照旧（不让页跟着控制台蒸发）。
-    if (when !== undefined) return !featureOn(workspace, when);
-    // 无条件收编：只用于随同一个 entitlement 一起消失的键（那五个沙盘子视图）。
-    return !CONSOLIDATED_INTO_SANDBOX[key];
-  });
+  const views = allViews.filter((it) => !isViewConsolidatedAway(it.viewKey ?? it.key, workspace));
   const viewByKey = new Map(views.map((it) => [it.viewKey ?? it.key, it]));
   const adminByPath = new Map(adminPages.map((p) => [p.path, p]));
   const usedViews = new Set<string>();
@@ -616,11 +659,10 @@ function UnifiedNav({
     const links = g.items
       .map((ref) => {
         if (ref.kind === "route") {
-          // 无条件渲染（无下发依赖）；`feature` 只服务于暗发页：关 → 入口消失（R3 不泄露存在性）。
-          if (ref.feature && !featureOn(workspace, ref.feature)) return null;
-          // WO-SANDBOX-IA-CONSOLIDATE · 收编开关（与上一行**方向相反**：这条是"开就隐藏"）。
-          // 那个控制台在 ⇒ 本页已在它里面 ⇒ 单列 = 重复入口；控制台不在 ⇒ 条目照旧（不让页跟着蒸发）。
-          if (ref.consolidatedWhen && featureOn(workspace, ref.consolidatedWhen)) return null;
+          // 无条件渲染（无下发依赖）；两条显隐规则**方向相反**，判定本体在 `isRouteRefHidden`：
+          //   `feature` 关 → 隐藏（R3 暗发不泄露存在性）· `consolidatedWhen` 开 → 隐藏（已在控制台里）。
+          // WO-HOME-CONSOLIDATE-PARITY：首页 `routeEntriesForHome` 跑的是同一个函数。
+          if (isRouteRefHidden(ref, workspace)) return null;
           return <RouteItemLink key={`r:${ref.key}`} routeKey={ref.key} label={ref.label} />;
         }
         if (ref.kind === "view") {
