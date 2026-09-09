@@ -73,11 +73,22 @@ function digest(parts: readonly string[]): string {
  *   `sessionId` 为空时同样是 `undefined`：没有会话就没有世界，也就没有版本。
  */
 export function useWorldStateVersion(sessionId: string | undefined): string | undefined {
-  // 与 `useConsoleSession` 同键同参 ⇒ 同一份缓存、同一条 `sim.tick_completed` 失效链路。
+  // 与 `useConsoleSession` 同键 ⇒ 同一份缓存、同一条 `sim.tick_completed` 失效链路。
+  //
+  // ⚠ **`enabled: false` 是刻意的：本 hook 只读这份缓存，一条列表请求都不自己发。**
+  // 理由是一条既有接缝断言（`sandbox-host-wiring.seam` ④「显式给了 id 还去查会话列表」）——
+  // 宿主拿到 `view.options.sessionId` 时**不发列表请求**是本仓明写的契约，
+  // 我第一版让本 hook 无条件 `enabled: !!sessionId`，当场把那条门咬红了（**门先说话，不是我想起来的**）。
+  //   · **自动态**：`useConsoleSession` 必须先拿到列表才解得出 `sessionId`
+  //     ⇒ 到这里时列表**一定**已在缓存里 ⇒ `curTick` 拿得到。
+  //   · **显式态**：列表从未被取 ⇒ `curTick` 拿不到 ⇒ 版本里记 `t?`（**据实说"不知道"**，
+  //     不许拿 0 冒充）。此时"推拍导致装配变化"这一路由 `store/eventInvalidation.ts` 里
+  //     `sim-world` 标签上挂着的 `["a","sim-pareto-assemble"]` 兜住 —— 两半正好互补，
+  //     所以这里不需要为了拿一个 tick 去顶掉那条契约。
   const sessionsQ = useQuery({
     queryKey: ["a", "sim-sessions"],
     queryFn: fetchSimSessions,
-    enabled: !!sessionId,
+    enabled: false,
     staleTime: Infinity,
     retry: false,
   });
@@ -92,14 +103,13 @@ export function useWorldStateVersion(sessionId: string | undefined): string | un
 
   return useMemo(() => {
     if (!sessionId) return undefined;
-    const sessions = sessionsQ.data?.items;
+    // **扰动集是必需的那一半**：它是"施扰动但不推拍"唯一的信号，拿不到就答"还不知道"。
     const perts = pertQ.data?.items;
-    if (sessions === undefined || perts === undefined) return undefined;
-    // 会话不在列表里（别的租户 / 已结束被过滤）⇒ 版本答不出来，**不许拿 0 当默认**：
-    // 默认成 0 会让两个不同的世界共用一条缓存，正是本单要消灭的那个形态。
-    const tick = sessions.find((s) => s.id === sessionId)?.curTick;
-    if (tick === undefined) return undefined;
+    if (perts === undefined) return undefined;
+    // tick 是**尽力而为**的那一半（见上 `enabled:false` 段）。拿不到就据实记 `t?` ——
+    // ⛔ 不许拿 0 冒充：0 是一个**真的 tick 值**，用它冒充"不知道"会让 tick0 与未知态撞成同一条缓存。
+    const tick = sessionsQ.data?.items.find((s) => s.id === sessionId)?.curTick;
     const ids = perts.map((p) => p.id).sort();
-    return `t${tick}·p${ids.length}·${digest(ids)}`;
+    return `${tick === undefined ? "t?" : `t${tick}`}·p${ids.length}·${digest(ids)}`;
   }, [sessionId, sessionsQ.data, pertQ.data]);
 }
