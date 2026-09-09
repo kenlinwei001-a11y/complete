@@ -295,6 +295,19 @@ describe("adopt_mitigation · 采纳后风险曲线**真的**下降（效果层�
       "scopeBaseId",
       "scopeBaseName",
       "scopeNote",
+      // ── 登记 #5（WO-RISKBOARD-TRUNCATION · 2026-09-09 收编 MERGE-BATCH-9 时由本门当场报红逼出来的）──
+      //   加的键：顶层 `unlistedCrossings`（越线但被 `cards.slice(0,maxCards)` 截掉、没上榜的基地）。
+      //   它存在的理由：`cards` 上那条 `.max(8)` 不是「全网只有 8 个基地越线」，而是「越线的那些里排前 8」，
+      //   **两者在屏上原本无法区分** —— 实测基线态 13 个基地全部越线、看板永远只显示 8 个。
+      //
+      //   ✅ 纯加性取证（实跑，不是推断）：把 `unlistedCrossings` 一并剥离后
+      //   长度回到 **52991**、sha 回到 **588c226c…** —— 与本门下方两个金值**逐字节相同**
+      //   ⇒ 老字段一个都没被动，故**金值不动**，只登记键名（正是本表的用法）。
+      //   逐键贡献 Δ550：`bases` 393 · `note` 80 · `shownCrossing` 18 · `cap` 8，全在该顶层键内部。
+      //
+      //   ⚠ 这是「金值/注册即更」这条纪律在本批的**第三次同族发作**（前两次：`supply_vulnerability`
+      //   漏跟 B 侧 mock 求解器注册表 · `customer_places_order` 漏跟 B 侧本体镜像）。三次都是**机器先说话**。
+      "unlistedCrossings",
     ];
     const stripAdditive = (node: unknown): unknown => {
       if (Array.isArray(node)) return node.map(stripAdditive);
