@@ -6110,6 +6110,7 @@ window.__CFG__ = (function () {
     root.dataset.pwWired = '1';
     root.addEventListener('click', function (e) {
       var b = e.target.closest('[data-pw]'); if (!b) return;
+      if (b.tagName === 'SELECT') return; // 下拉框交给 change 事件，避免点击即重绘导致原生下拉被关闭
       e.preventDefault();
       var act = b.dataset.pw, val = b.dataset.pv;
       if (act === 'create') { ui.proj = blank(); ui.step = 0; ui.focus = 'c1'; show(true); }
@@ -6135,9 +6136,6 @@ window.__CFG__ = (function () {
         ui.step = 0; render();
         msg('已载入积石山6.2级全程模拟数据：表单/预案/关联报告/智能体已就绪，可逐步查看至“生成报告”（下发件样稿）。', true);
       }
-      else if (act === 'type') { collectForm(); ui.proj.type = b.value; ui.proj.planId = ''; ui.proj.agentId = ''; render(); }
-      else if (act === 'plan') { ui.proj.planId = b.value; render(); }
-      else if (act === 'agent') { ui.proj.agentId = b.value; render(); }
       else if (act === 'goplan') { show(false); if (window.__PLAN_LIBRARY__) { /* switch to plans view */ } if (typeof window.__switchWorkbenchView === 'function') window.__switchWorkbenchView('plans'); if (window.__PLAN_LIBRARY__ && window.__PLAN_LIBRARY__.render) window.__PLAN_LIBRARY__.render(); }
       else if (act === 'focus') { ui.focus = val; render(); var el = $('pw-' + val) || $(val); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
       else if (act === 'prev') { collectForm(); ui.step = Math.max(0, ui.step - 1); render(); }
@@ -6182,6 +6180,13 @@ window.__CFG__ = (function () {
       if (e.target.closest('[data-pwrel]')) { }
     });
     root.addEventListener('change', function (e) {
+      var sel = e.target.closest('[data-pw]');
+      if (sel && sel.tagName === 'SELECT') {
+        var act = sel.getAttribute('data-pw');
+        if (act === 'type') { collectForm(); ui.proj.type = sel.value; ui.proj.planId = ''; ui.proj.agentId = ''; render(); return; }
+        if (act === 'plan') { collectForm(); ui.proj.planId = sel.value; render(); return; }
+        if (act === 'agent') { collectForm(); ui.proj.agentId = sel.value; render(); return; }
+      }
       var rel = e.target.closest('[data-pwrel]'); if (rel) { var id = rel.getAttribute('data-pwrel'); var arr = ui.proj.relatedIds; var i = arr.indexOf(id); if (rel.checked && i < 0) arr.push(id); if (!rel.checked && i >= 0) arr.splice(i, 1); var lb = rel.closest('.pw-opt'); if (lb) lb.classList.toggle('on', rel.checked); }
     });
   }
