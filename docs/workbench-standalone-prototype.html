@@ -491,6 +491,7 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
         <div class="nav-subs" id="navConfigSubs">
           <button class="nav-sub" data-config-sub="functions">函数库</button>
           <button class="nav-sub" data-config-sub="agents">Agent配置</button>
+          <button class="nav-sub" data-config-sub="skills">Skill库</button>
           <button class="nav-sub" data-config-sub="models">大模型配置</button>
           <button class="nav-sub" data-config-sub="datasources">数据源与数据库</button>
           <button class="nav-sub" data-config-sub="constraints">约束条件库</button>
@@ -719,7 +720,7 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
         </section>
 
         <section id="config" class="view">
-          <div class="panel"><div class="panel-head"><div><h2>配置</h2><p>统一管理应急函数库、Agent、大模型、数据源与数据库、约束条件库与权限审计等系统配置能力。</p></div></div><div class="tabbar"><button class="tab active" type="button" data-config-tab="functions">函数库</button><button class="tab" type="button" data-config-tab="agents">Agent配置</button><button class="tab" type="button" data-config-tab="models">大模型配置</button><button class="tab" type="button" data-config-tab="datasources">数据源与数据库</button><button class="tab" type="button" data-config-tab="constraints">约束条件库</button><button class="tab" type="button" data-config-tab="audit">权限与审计</button></div></div>
+          <div class="panel"><div class="panel-head"><div><h2>配置</h2><p>统一管理应急函数库、Agent、大模型、数据源与数据库、约束条件库与权限审计等系统配置能力。</p></div></div><div class="tabbar"><button class="tab active" type="button" data-config-tab="functions">函数库</button><button class="tab" type="button" data-config-tab="agents">Agent配置</button><button class="tab" type="button" data-config-tab="skills">Skill库</button><button class="tab" type="button" data-config-tab="models">大模型配置</button><button class="tab" type="button" data-config-tab="datasources">数据源与数据库</button><button class="tab" type="button" data-config-tab="constraints">约束条件库</button><button class="tab" type="button" data-config-tab="audit">权限与审计</button></div></div>
           <div id="configFunctions" class="config-pane active">
         <section id="functions">
         
@@ -764,6 +765,21 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
                 <div id="agentMessage" class="cfg-msg"></div>
                 <div id="agentNewForm"></div>
                 <div id="agentList" class="cfg-list"></div>
+              </div>
+            </section>
+          </div>
+          <div id="configSkills" class="config-pane">
+            <section id="skills">
+              <div class="panel">
+                <div class="panel-head">
+                  <div><h2>Skill 库 · 按灾害场景</h2><p>沉淀可复用的处置技能：每个 Skill 声明触发条件、产出与关联 MCP 函数，按灾害场景分类。Agent 配置时从本库按场景勾选 Skill，保证口径统一、可追溯，避免手填不一致。</p></div>
+                  <div class="card-actions"><button class="secondary" type="button" data-sk="reset">恢复基线</button><button class="primary" type="button" data-sk="new">＋ 新增 Skill</button></div>
+                </div>
+                <div id="skillKpis" class="cfg-kpis"></div>
+                <div id="skillTabs" class="cfg-toolbar"></div>
+                <div id="skillMessage" class="cfg-msg"></div>
+                <div id="skillNewForm"></div>
+                <div id="skillList" class="cfg-list"></div>
               </div>
             </section>
           </div>
@@ -2480,7 +2496,7 @@ function renderModelConfigs(){ const el=$("modelConfigList"); if(!el)return; el.
 function saveConfigData(){localStorage.setItem("workbench_agent_configs",JSON.stringify(agentConfigs));localStorage.setItem("workbench_model_configs",JSON.stringify(modelConfigs));}
 setTimeout(()=>{renderAgentConfigs();renderModelConfigs();$("saveAgentBtn")?.addEventListener("click",()=>{const n=$("agentName").value.trim();if(!n)return toast("请输入Agent名称");agentConfigs.push({name:n,model:$("agentModel").value,status:$("agentStatus").value,desc:$("agentPrompt").value.trim()||"未填写职责说明"});saveConfigData();renderAgentConfigs();toast("Agent配置已保存");});$("saveModelBtn")?.addEventListener("click",()=>{const n=$("modelName").value.trim();if(!n)return toast("请输入模型名称");modelConfigs.push({name:n,type:$("modelType").value,context:$("modelContext").value.trim()||"未设置",endpoint:$("modelEndpoint").value.trim()||"未设置",status:$("modelStatus").value});saveConfigData();renderModelConfigs();toast("大模型配置已保存");});},0);
 document.querySelectorAll("[data-sentiment-tab]").forEach(x=>x.classList.toggle("active",x===btn)); $("sentimentNews").classList.toggle("active",t==="news"); $("sentimentBids").classList.toggle("active",t==="bids"); }));
-document.querySelectorAll("[data-config-tab]").forEach(btn => btn.addEventListener("click", () => { const t=btn.dataset.configTab; document.querySelectorAll("[data-config-tab]").forEach(x=>x.classList.toggle("active",x===btn)); /* 通用切换：pane id 约定为 config + 首字母大写的 tab 名，新增页签无需再改这里 */ const paneId="config"+t.charAt(0).toUpperCase()+t.slice(1); document.querySelectorAll(".config-pane").forEach(pane=>pane.classList.toggle("active",pane.id===paneId)); if(t==="constraints"&&window.__CONSTRAINT_LIBRARY__) window.__CONSTRAINT_LIBRARY__.render(); if(t==="models"&&window.__LLM_PROVIDERS__) window.__LLM_PROVIDERS__.render(); if(t==="datasources"&&window.__DATASOURCES__) window.__DATASOURCES__.render(); if(t==="agents"&&window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render(); }));
+document.querySelectorAll("[data-config-tab]").forEach(btn => btn.addEventListener("click", () => { const t=btn.dataset.configTab; document.querySelectorAll("[data-config-tab]").forEach(x=>x.classList.toggle("active",x===btn)); /* 通用切换：pane id 约定为 config + 首字母大写的 tab 名，新增页签无需再改这里 */ const paneId="config"+t.charAt(0).toUpperCase()+t.slice(1); document.querySelectorAll(".config-pane").forEach(pane=>pane.classList.toggle("active",pane.id===paneId)); if(t==="constraints"&&window.__CONSTRAINT_LIBRARY__) window.__CONSTRAINT_LIBRARY__.render(); if(t==="models"&&window.__LLM_PROVIDERS__) window.__LLM_PROVIDERS__.render(); if(t==="datasources"&&window.__DATASOURCES__) window.__DATASOURCES__.render(); if(t==="agents"&&window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render(); if(t==="skills"&&window.__SKILL_LIBRARY__) window.__SKILL_LIBRARY__.render(); }));
 const viewHistory = [];
 function activeViewId() {
   return document.querySelector(".view.active")?.id || null;
@@ -4217,6 +4233,184 @@ window.__CFG__ = (function () {
   else { wire(); render(); }
 })();
 </script>
+<script id="skill-library-single">
+/* =============================================================================
+   Skill 库（配置 → Skill库）
+   - 按灾害场景分类的处置技能：每个 Skill 有触发条件、产出、关联 MCP 函数
+   - Agent 配置时从本库按场景勾选 Skill，而非手填文本，保证口径统一、可追溯
+   ============================================================================= */
+(function () {
+  'use strict';
+  var C = window.__CFG__, esc = C.esc, $ = C.el;
+  var SCEN = [
+    { code: 'eq', name: '地震抗灾' }, { code: 'ct', name: '反恐维稳' }, { code: 'fire', name: '火灾扑救' },
+    { code: 'flood', name: '抗洪抢险' }, { code: 'epi', name: '疫情防控' }, { code: 'snow', name: '雨雪冰冻' },
+    { code: 'common', name: '通用调度' }
+  ];
+  var CATS = ['态势研判', '力量/需求测算', '方案生成', '保障/风控'];
+  var scName = function (c) { var s = SCEN.find(function (x) { return x.code === c; }); return s ? s.name : c; };
+  function S(id, sc, name, cat, trigger, output, tools) {
+    return { id: id, scenario: sc, name: name, category: cat, trigger: trigger, output: output, tools: tools, enabled: true };
+  }
+  var BASE = [
+    S('sk_eq_assess', 'eq', '震情快速研判', '态势研判', '收到震级/深度/烈度与人口分布后', '倒损建筑量、被困人数、伤亡估计', ['eq_assess_building_collapse', 'eq_assess_trapped_population', 'eq_assess_casualty_estimate']),
+    S('sk_eq_sar', 'eq', '搜救力量编成', '力量/需求测算', '确认被困规模后', '搜救队伍数、生命探测仪与重型装备需求', ['eq_demand_rescue_team', 'eq_demand_detection_kits', 'eq_demand_heavy_equipment']),
+    S('sk_eq_triage', 'eq', '伤员分级转运', '力量/需求测算', '伤亡结构明确后', '创伤床位、血液单位与救护车批次', ['eq_demand_medical_beds', 'eq_demand_blood_units', 'eq_logistics_ambulance_fleet']),
+    S('sk_eq_dispatch', 'eq', '跨区调拨方案生成', '方案生成', '本地资源不足、需跨区增援时', '有效可调量、缺口与空运架次建议', ['cm_supply_effective_available', 'cm_supply_gap', 'cm_logistics_air_sorties']),
+    S('sk_ct_threat', 'ct', '威胁等级研判', '态势研判', '接报警情与威胁信息后', '威胁等级评分', ['ct_assess_threat_score']),
+    S('sk_ct_force', 'ct', '处置力量编成', '力量/需求测算', '威胁等级确定后', '处置警力需求', ['ct_demand_police_force']),
+    S('sk_ct_cordon', 'ct', '警戒封控部署', '方案生成', '需要区域管控时', '封控点位资源与医疗待命配置', ['ct_demand_cordon_resources', 'ct_risk_medical_standby']),
+    S('sk_ct_comm', 'ct', '通信保障配置', '保障/风控', '多部门协同处置时', '通信装备需求与有效可调量', ['ct_supply_comm_devices', 'cm_supply_effective_available']),
+    S('sk_fire_spread', 'fire', '火场态势预测', '态势研判', '接报火情与气象条件后', '火场蔓延面积预测', ['fire_assess_spread_area']),
+    S('sk_fire_force', 'fire', '灭火力量编成', '力量/需求测算', '火场规模确定后', '消防车数量与空中洒水架次', ['fire_demand_fire_engines', 'fire_demand_aerial_drops']),
+    S('sk_fire_water', 'fire', '供水与泡沫保障', '保障/风控', '灭火用水/化工火灾时', '灭火用水流量与泡沫用量', ['fire_demand_water_flow', 'fire_demand_foam_agent']),
+    S('sk_fire_rotation', 'fire', '消防员轮换排班', '保障/风控', '长时间作业时', '人员轮换班次与油耗', ['fire_supply_crew_rotation', 'cm_logistics_fuel_consumption']),
+    S('sk_flood_sim', 'flood', '汛情推演', '态势研判', '依据水位/流量输入', '淹没面积与受影响/转移人口', ['flood_assess_inundation_area', 'cm_assess_affected_population', 'cm_assess_displaced_population']),
+    S('sk_flood_dike', 'flood', '堤防抢险方案', '方案生成', '堤防出险时', '子堤沙袋量与抢险队伍', ['flood_demand_sandbags', 'flood_supply_embankment_crew']),
+    S('sk_flood_drain', 'flood', '排涝与电源保障', '力量/需求测算', '内涝需强排时', '排涝能力与配套电源', ['flood_demand_pump_capacity', 'flood_demand_power_gensets']),
+    S('sk_flood_evac', 'flood', '群众转移组织', '方案生成', '需组织转移时', '转移运力（含洪涝通行折损）', ['flood_demand_evacuation_transport', 'flood_risk_route_derate']),
+    S('sk_epi_spread', 'epi', '传播态势推演', '态势研判', '依据新增与接触数据', '新增病例与实时再生数 Rt', ['epi_assess_new_cases', 'epi_assess_rt']),
+    S('sk_epi_capacity', 'epi', '收治能力测算', '力量/需求测算', '隔离收治需求出现时', '隔离床位与医护人数', ['epi_demand_isolation_beds', 'epi_demand_medical_staff']),
+    S('sk_epi_ppe', 'epi', '防护物资保障', '保障/风控', '保障一线防护时', '防护物资日耗与可支撑天数', ['epi_demand_ppe_daily', 'cm_risk_stock_days']),
+    S('sk_epi_test', 'epi', '检测能力评估', '力量/需求测算', '核酸/抗原筛查时', '检测能力需求', ['epi_demand_testing_capacity']),
+    S('sk_snow_risk', 'snow', '冰冻风险研判', '态势研判', '依据气温/降水/覆冰数据', '路面结冰与线路覆冰风险', ['snow_assess_icing_risk', 'snow_assess_line_icing']),
+    S('sk_snow_road', 'snow', '道路保通方案', '方案生成', '道路结冰影响通行时', '融雪剂、除雪机械与通行折损', ['snow_demand_deicing_salt', 'snow_demand_clearing_machines', 'snow_risk_icy_road_derate']),
+    S('sk_snow_power', 'snow', '电力抢修组织', '力量/需求测算', '线路覆冰跳闸时', '电力抢修力量', ['snow_demand_power_crew']),
+    S('sk_snow_shelter', 'snow', '滞留人员保障', '保障/风控', '出现滞留人员时', '保暖物资与转运车次', ['snow_demand_warm_supplies', 'cm_logistics_vehicle_trips']),
+    S('sk_cm_match', 'common', '资源匹配与缺口分析', '力量/需求测算', '任何调拨前', '有效可调量、满足率与缺口', ['cm_supply_effective_available', 'cm_supply_coverage_ratio', 'cm_supply_gap']),
+    S('sk_cm_transport', 'common', '运输方案编制', '方案生成', '确定待运物资后', '车次、运输时长与日往返次数', ['cm_logistics_vehicle_trips', 'cm_logistics_transport_time', 'cm_logistics_round_trips_per_day']),
+    S('sk_cm_cost', 'common', '成本与资金测算', '保障/风控', '需要成本/资金评估时', '运输成本与资金缺口', ['cm_cost_transport_cost', 'cm_cost_funding_gap']),
+    S('sk_cm_endurance', 'common', '续航能力评估', '保障/风控', '评估持续保障能力时', '可支撑天数与油耗', ['cm_risk_stock_days', 'cm_logistics_fuel_consumption'])
+  ];
+  var db = C.store('workbench.skills.v1', BASE, function (x) { return x && x.id && x.name && x.scenario; });
+  var ui = { editing: null, scenario: '全部' };
+
+  var fnList = function () { return (window.__FUNCTION_LIBRARY__ ? window.__FUNCTION_LIBRARY__.list() : []); };
+  var mcpOf = function (f) { return String(f.id).replace(/[.\-]/g, '_'); };
+  function toolInfo(name) { var f = fnList().find(function (x) { return mcpOf(x) === name; }); return f ? { ok: true, name: f.name } : { ok: false, name: name }; }
+  function usedBy(id) { return (window.__AGENT_CONFIG__ ? window.__AGENT_CONFIG__.list() : []).filter(function (a) { return (a.skills || []).indexOf(id) >= 0; }); }
+
+  function formHtml(s, isNew) {
+    var sc = s.scenario || 'common';
+    var fns = fnList().filter(function (f) { return f.scenario === sc || f.scenario === 'common'; });
+    var picked = s.tools || [];
+    return '<div class="cfg-form">' +
+      '<label>Skill ID<input data-sf="id" value="' + esc(s.id || '') + '" ' + (isNew ? '' : 'readonly') + ' placeholder="sk_xxx"></label>' +
+      '<label>名称<input data-sf="name" value="' + esc(s.name || '') + '"></label>' +
+      '<label>灾害场景<select data-sf="scenario">' + SCEN.map(function (x) { return '<option value="' + x.code + '" ' + (sc === x.code ? 'selected' : '') + '>' + x.name + '</option>'; }).join('') + '</select></label>' +
+      '<label>技能类别<select data-sf="category">' + CATS.map(function (x) { return '<option ' + (s.category === x ? 'selected' : '') + '>' + x + '</option>'; }).join('') + '</select></label>' +
+      '<label>状态<select data-sf="enabled"><option value="1" ' + (s.enabled !== false ? 'selected' : '') + '>启用</option><option value="0" ' + (s.enabled === false ? 'selected' : '') + '>停用</option></select></label>' +
+      '<label class="wide">触发条件<input data-sf="trigger" value="' + esc(s.trigger || '') + '"></label>' +
+      '<label class="wide">产出<input data-sf="output" value="' + esc(s.output || '') + '"></label>' +
+      '<div class="wide cfg-block"><span class="cfg-caption">关联 MCP 函数（仅列出本场景与通用函数）</span><div class="cfg-pick">' +
+      fns.map(function (f) {
+        var n = mcpOf(f);
+        return '<label class="' + (picked.indexOf(n) >= 0 ? 'on' : '') + '"><input type="checkbox" data-sf="tools" value="' + esc(n) + '" ' + (picked.indexOf(n) >= 0 ? 'checked' : '') + '><span>' + esc(f.name) + '<small>' + esc(n) + '</small></span></label>';
+      }).join('') + '</div></div>' +
+      '</div><div class="card-actions"><button class="primary" type="button" data-sk="' + (isNew ? 'create-commit' : 'edit-commit') + '">' + (isNew ? '新增 Skill' : '保存修改') + '</button>' +
+      '<button class="secondary" type="button" data-sk="edit-cancel">取消</button></div>';
+  }
+
+  function render() {
+    if (!$('skillList')) return;
+    var list = db.list();
+    $('skillKpis').innerHTML = [
+      ['Skill', list.length, '个'], ['覆盖场景', new Set(list.map(function (s) { return s.scenario; })).size + '/' + SCEN.length, '类'],
+      ['关联 MCP 函数', new Set([].concat.apply([], list.map(function (s) { return s.tools || []; }))).size, '个去重'],
+      ['被 Agent 引用', list.filter(function (s) { return usedBy(s.id).length; }).length, '个 Skill'],
+      ['停用', list.filter(function (s) { return s.enabled === false; }).length, '个']
+    ].map(function (k) { return '<div class="kpi"><span>' + k[0] + '</span><b>' + esc(k[1]) + '</b><small>' + esc(k[2]) + '</small></div>'; }).join('');
+
+    $('skillTabs').innerHTML = ['全部'].concat(SCEN.map(function (s) { return s.name; })).map(function (n) {
+      var code = n === '全部' ? '全部' : SCEN.find(function (s) { return s.name === n; }).code;
+      var cnt = code === '全部' ? list.length : list.filter(function (s) { return s.scenario === code; }).length;
+      return '<button class="cfg-tab ' + (ui.scenario === code ? 'active' : '') + '" type="button" data-sk="scenario" data-sv="' + esc(code) + '">' + esc(n) + ' ' + cnt + '</button>';
+    }).join('');
+
+    var rows = ui.scenario === '全部' ? list : list.filter(function (s) { return s.scenario === ui.scenario; });
+    $('skillList').innerHTML = rows.map(function (s) {
+      if (ui.editing === s.id) return '<div class="cfg-card">' + formHtml(s, false) + '</div>';
+      var ub = usedBy(s.id);
+      return '<div class="cfg-card' + (s.enabled === false ? ' off' : '') + '">' +
+        '<div class="cfg-card-head"><div><h4>' + esc(s.name) + ' <span class="cfg-pill ' + (s.enabled === false ? 'warn' : 'ok') + '">' + (s.enabled === false ? '已停用' : esc(s.category)) + '</span></h4>' +
+        '<div class="cfg-sub">' + esc(scName(s.scenario)) + ' · ' + esc(s.id) + ' · 被 ' + ub.length + ' 个 Agent 引用</div></div>' +
+        '<div class="cfg-actions">' +
+        '<button class="secondary" type="button" data-sk="toggle" data-sv="' + esc(s.id) + '">' + (s.enabled === false ? '启用' : '停用') + '</button>' +
+        '<button class="secondary" type="button" data-sk="edit" data-sv="' + esc(s.id) + '">编辑</button>' +
+        '<button class="secondary" type="button" data-sk="delete" data-sv="' + esc(s.id) + '">删除</button></div></div>' +
+        '<div class="cfg-meta">' +
+        '<span><b>触发条件</b>' + esc(s.trigger || '—') + '</span><span><b>产出</b>' + esc(s.output || '—') + '</span>' +
+        '<span style="grid-column:1/-1"><b>关联 MCP 函数 ' + (s.tools || []).length + '</b>' + ((s.tools || []).map(function (t) {
+          var i = toolInfo(t); return '<span class="cfg-chip' + (i.ok ? ' on' : '') + '" title="' + esc(i.name) + '">' + esc(t) + '</span>';
+        }).join('') || '<span class="muted">未关联</span>') + '</span>' +
+        (ub.length ? '<span style="grid-column:1/-1"><b>引用 Agent</b>' + ub.map(function (a) { return '<span class="cfg-chip">' + esc(a.name) + '</span>'; }).join('') + '</span>' : '') +
+        '</div></div>';
+    }).join('') || '<p class="muted">该场景下暂无 Skill。</p>';
+
+    $('skillNewForm').innerHTML = ui.editing === '__new__' ? '<div class="cfg-card">' + formHtml({ scenario: 'common', category: CATS[0], enabled: true, tools: [] }, true) + '</div>' : '';
+  }
+
+  function readForm() {
+    var d = C.readFields('skills', 'data-sf');
+    return { id: String(d.id || '').trim(), name: String(d.name || '').trim(), scenario: d.scenario, category: d.category,
+      trigger: String(d.trigger || '').trim(), output: String(d.output || '').trim(), enabled: d.enabled !== '0', tools: d.tools || [] };
+  }
+  function commit(isNew) {
+    var s = readForm();
+    if (!s.id) return C.message('skillMessage', 'Skill ID 不能为空', false);
+    if (!s.name) return C.message('skillMessage', '名称不能为空', false);
+    if (isNew && db.find(s.id)) return C.message('skillMessage', 'ID 已存在：' + s.id, false);
+    if (isNew) db.list().push(s);
+    else { var t = db.find(ui.editing); if (!t) return; Object.assign(t, s, { id: t.id }); }
+    ui.editing = null; db.save(); render();
+    C.message('skillMessage', (isNew ? '已新增 Skill ' : '已保存 Skill ') + s.name + '（关联 MCP 函数 ' + s.tools.length + ' 个）', true);
+    C.notify(isNew ? '已新增 Skill' : '已保存 Skill');
+    if (window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render();
+  }
+
+  function wire() {
+    var root = $('skills'); if (!root || root.dataset.skWired === '1') return;
+    root.dataset.skWired = '1';
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-sk]'); if (!b) return;
+      e.preventDefault();
+      var act = b.dataset.sk, val = b.dataset.sv;
+      if (act === 'scenario') { ui.scenario = val; ui.editing = null; render(); }
+      else if (act === 'edit') { ui.editing = val; render(); }
+      else if (act === 'edit-cancel') { ui.editing = null; render(); C.message('skillMessage', ''); }
+      else if (act === 'edit-commit') { commit(false); }
+      else if (act === 'new') { ui.editing = '__new__'; render(); }
+      else if (act === 'create-commit') { commit(true); }
+      else if (act === 'toggle') { var s = db.find(val); if (s) { s.enabled = s.enabled === false; db.save(); render(); if (window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render(); } }
+      else if (act === 'delete') {
+        var ub = usedBy(val); db.remove(val); render();
+        C.message('skillMessage', ub.length ? '已删除，但有 ' + ub.length + ' 个 Agent 仍引用该 Skill：' + ub.map(function (a) { return a.name; }).join('、') : '已删除 Skill ' + val, !ub.length);
+        if (window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render();
+      }
+      else if (act === 'reset') { db.reset(); ui.editing = null; render(); C.message('skillMessage', '已恢复内置基线（' + db.list().length + ' 个 Skill）。', true); if (window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render(); }
+    });
+    root.addEventListener('change', function (e) {
+      if (e.target.type === 'checkbox' && e.target.getAttribute('data-sf')) {
+        var lb = e.target.closest('label'); if (lb) lb.classList.toggle('on', e.target.checked);
+      }
+      if (e.target.getAttribute && e.target.getAttribute('data-sf') === 'scenario' && ui.editing) {
+        var cur = readForm();
+        var keep = fnList().filter(function (f) { return f.scenario === cur.scenario || f.scenario === 'common'; }).map(mcpOf);
+        cur.tools = (cur.tools || []).filter(function (x) { return keep.indexOf(x) >= 0; });
+        var t = ui.editing === '__new__' ? cur : Object.assign({}, db.find(ui.editing), cur);
+        var host = ui.editing === '__new__' ? $('skillNewForm') : e.target.closest('.cfg-card');
+        if (!host) { render(); return; }
+        host.innerHTML = ui.editing === '__new__' ? '<div class="cfg-card">' + formHtml(t, true) + '</div>' : formHtml(t, false);
+      }
+    });
+  }
+
+  window.__SKILL_LIBRARY__ = { list: function () { return db.list(); }, render: render, find: function (id) { return db.find(id); } };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(); render(); }, { once: true });
+  else { wire(); render(); }
+})();
+</script>
+
 <script id="agent-config-single">
 /* =============================================================================
    Agent 配置 · 按灾害场景编排（配置 → Agent配置）
@@ -4249,37 +4443,37 @@ window.__CFG__ = (function () {
   var BASE = [
     A('agent_eq', 'eq', '地震应急处置 Agent', '震后灾情研判、搜救力量与医疗资源测算、跨区调拨建议',
       '你是地震应急处置助手。先用态势研判函数估算倒损与被困人数，再依次测算搜救队伍、装备、床位与血液需求；所有资源必须先用 cm_supply_effective_available 折算有效可调量，再给出缺口与调拨建议。禁止跨场景使用消防或防汛函数。',
-      ['震情快速研判', '搜救力量编成', '伤员分级转运', '跨区调拨方案生成'],
+      ['sk_eq_assess', 'sk_eq_sar', 'sk_eq_triage', 'sk_eq_dispatch'],
       ['eq_assess_building_collapse', 'eq_assess_trapped_population', 'eq_assess_casualty_estimate', 'eq_demand_rescue_team', 'eq_demand_detection_kits', 'eq_demand_heavy_equipment', 'eq_demand_medical_beds', 'eq_demand_blood_units', 'eq_logistics_ambulance_fleet', 'cm_supply_effective_available', 'cm_supply_gap', 'cm_logistics_air_sorties'],
       ['ds_rescue', 'ds_person', 'ds_medical', 'ds_blood', 'ds_engineering', 'ds_air', 'ds_uav'], 0.2),
     A('agent_ct', 'ct', '反恐维稳处置 Agent', '威胁研判、处置力量与警戒封控配置、通信与医疗待命',
       '你是反恐维稳处置助手。先评估威胁等级，再据此计算处置力量、封控点位与通信装备；医疗待命按预估伤亡配置。不要调用自然灾害类函数。',
-      ['威胁等级研判', '处置力量编成', '警戒封控部署', '通信保障配置'],
+      ['sk_ct_threat', 'sk_ct_force', 'sk_ct_cordon', 'sk_ct_comm'],
       ['ct_assess_threat_score', 'ct_demand_police_force', 'ct_demand_cordon_resources', 'ct_supply_comm_devices', 'ct_risk_medical_standby', 'cm_supply_effective_available'],
       ['ds_person', 'ds_comm', 'ds_medical', 'ds_vehicle'], 0.15),
     A('agent_fire', 'fire', '火灾扑救处置 Agent', '火场蔓延预测、供水强度与消防力量测算、空中支援建议',
       '你是火灾扑救处置助手。先预测火场蔓延面积，再计算灭火用水流量与消防车数量；化工/油类火灾必须计算泡沫用量；需要空中支援时才调用直升机洒水架次。注意生活饮水与灭火用水是两个函数，不要混用。',
-      ['火场态势预测', '灭火力量编成', '供水与泡沫保障', '消防员轮换排班'],
+      ['sk_fire_spread', 'sk_fire_force', 'sk_fire_water', 'sk_fire_rotation'],
       ['fire_assess_spread_area', 'fire_demand_water_flow', 'fire_demand_fire_engines', 'fire_demand_foam_agent', 'fire_demand_aerial_drops', 'fire_supply_crew_rotation', 'cm_logistics_fuel_consumption'],
       ['ds_fire', 'ds_person', 'ds_air', 'ds_fuel'], 0.2),
     A('agent_flood', 'flood', '抗洪抢险处置 Agent', '淹没范围推演、堤防抢险与排涝、群众转移运力',
       '你是抗洪抢险处置助手。按水位推演淹没面积与受影响人口，测算子堤沙袋、排涝能力与配套电源，安排群众转移运力；运输时长必须用洪涝通行折损修正，不要用冰雪折损函数。',
-      ['汛情推演', '堤防抢险方案', '排涝与电源保障', '群众转移组织'],
+      ['sk_flood_sim', 'sk_flood_dike', 'sk_flood_drain', 'sk_flood_evac'],
       ['flood_assess_inundation_area', 'flood_demand_sandbags', 'flood_demand_pump_capacity', 'flood_demand_power_gensets', 'flood_demand_evacuation_transport', 'flood_supply_embankment_crew', 'flood_risk_route_derate', 'cm_assess_affected_population', 'cm_assess_displaced_population'],
       ['ds_engineering', 'ds_power', 'ds_vehicle', 'ds_person', 'ds_relief'], 0.2),
     A('agent_epi', 'epi', '疫情防控处置 Agent', '传播态势推演、隔离床位与医护测算、防护物资与检测能力',
       '你是疫情防控处置助手。先推演新增与 Rt，再测算隔离床位、医护人数、防护物资日耗与检测能力；隔离床位与创伤床位是不同函数，不要相互替代。物资须给出可支撑天数。',
-      ['传播态势推演', '收治能力测算', '防护物资保障', '检测能力评估'],
+      ['sk_epi_spread', 'sk_epi_capacity', 'sk_epi_ppe', 'sk_epi_test'],
       ['epi_assess_new_cases', 'epi_assess_rt', 'epi_demand_isolation_beds', 'epi_demand_medical_staff', 'epi_demand_ppe_daily', 'epi_demand_testing_capacity', 'cm_risk_stock_days'],
       ['ds_medical', 'ds_person', 'ds_relief'], 0.15),
     A('agent_snow', 'snow', '雨雪冰冻处置 Agent', '结冰与覆冰风险研判、道路保通、电力抢修与保暖物资',
       '你是雨雪冰冻处置助手。先判断路面结冰与线路覆冰风险，再测算融雪剂、除雪机械、电力抢修力量与保暖物资；运输量必须先用冰雪运力折损修正再算车次。',
-      ['冰冻风险研判', '道路保通方案', '电力抢修组织', '滞留人员保障'],
+      ['sk_snow_risk', 'sk_snow_road', 'sk_snow_power', 'sk_snow_shelter'],
       ['snow_assess_icing_risk', 'snow_assess_line_icing', 'snow_demand_deicing_salt', 'snow_demand_clearing_machines', 'snow_demand_power_crew', 'snow_demand_warm_supplies', 'snow_risk_icy_road_derate', 'cm_logistics_vehicle_trips'],
       ['ds_engineering', 'ds_power', 'ds_relief', 'ds_vehicle'], 0.2),
     A('agent_common', 'common', '综合调度 Agent', '跨场景资源匹配、运输组织与成本资金测算',
       '你是综合调度助手，负责跨场景的资源匹配与运输组织。任何调拨先算有效可调量与缺口，再算车次/架次、时长、油耗与成本；场景专有的需求测算交给对应灾害 Agent，不要自行代算。',
-      ['资源匹配与缺口分析', '运输方案编制', '成本与资金测算', '续航能力评估'],
+      ['sk_cm_match', 'sk_cm_transport', 'sk_cm_cost', 'sk_cm_endurance'],
       ['cm_supply_effective_available', 'cm_supply_coverage_ratio', 'cm_supply_gap', 'cm_logistics_vehicle_trips', 'cm_logistics_transport_time', 'cm_logistics_round_trips_per_day', 'cm_logistics_fuel_consumption', 'cm_risk_stock_days', 'cm_cost_transport_cost', 'cm_cost_funding_gap'],
       ['ds_fuel', 'ds_vehicle', 'ds_relief', 'ds_fund'], 0.1)
   ];
@@ -4296,6 +4490,13 @@ window.__CFG__ = (function () {
     var d = (window.__DATASOURCES__ ? window.__DATASOURCES__.list() : []).find(function (x) { return x.id === id; });
     return d ? { ok: true, name: d.name, domain: d.domain, kind: window.__DATASOURCES__.kindName(d.kind), off: d.enabled === false } : { ok: false, name: '数据源已删除', domain: '', kind: '' };
   }
+  var skillList = function () { return (window.__SKILL_LIBRARY__ ? window.__SKILL_LIBRARY__.list() : []); };
+  function skillInfo(key) {
+    // 兼容旧快照：既可按 ID 也可按名称解析
+    var s = skillList().find(function (x) { return x.id === key || x.name === key; });
+    return s ? { ok: true, id: s.id, name: s.name, scenario: s.scenario, off: s.enabled === false } : { ok: false, id: key, name: String(key) };
+  }
+  var hasSkill = function (a, s) { return (a.skills || []).some(function (k) { return k === s.id || k === s.name; }); };
   function modelInfo(a) {
     var ps = (window.__LLM_PROVIDERS__ ? window.__LLM_PROVIDERS__.list() : []);
     var p = ps.find(function (x) { return x.id === a.providerId; });
@@ -4323,7 +4524,14 @@ window.__CFG__ = (function () {
       '<label>状态<select data-af="enabled"><option value="1" ' + (a.enabled !== false ? 'selected' : '') + '>启用</option><option value="0" ' + (a.enabled === false ? 'selected' : '') + '>停用</option></select></label>' +
       '<label class="wide">职责<input data-af="duty" value="' + esc(a.duty || '') + '"></label>' +
       '<label class="wide">系统提示词<textarea data-af="prompt">' + esc(a.prompt || '') + '</textarea></label>' +
-      '<label class="wide">Skill（每行一个）<textarea data-af="skills">' + esc((a.skills || []).join('\n')) + '</textarea></label>' +
+      (function () {
+        var sks = skillList().filter(function (s) { return s.scenario === sc || s.scenario === 'common'; });
+        return '<div class="wide cfg-block"><span class="cfg-caption">Skill（来自「配置 → Skill库」，仅列出本场景与通用技能；如需新增/编辑请到 Skill库）</span><div class="cfg-pick">' +
+          (sks.length ? sks.map(function (s) {
+            var on = hasSkill(a, s);
+            return '<label class="' + (on ? 'on' : '') + (s.enabled === false ? ' off' : '') + '"><input type="checkbox" data-af="skills" value="' + esc(s.id) + '" ' + (on ? 'checked' : '') + '><span>' + esc(s.name) + '<small>' + esc(s.category || '') + ' · ' + esc(s.id) + ' · MCP ' + (s.tools || []).length + '</small></span></label>';
+          }).join('') : '<span class="muted">Skill库暂无该场景技能，请先到「配置 → Skill库」添加。</span>') + '</div></div>';
+      })() +
       '<div class="wide cfg-block"><span class="cfg-caption">责任资源域</span><div class="cfg-pick">' + domains.map(function (d) {
         var on = (a.domains || []).indexOf(d) >= 0;
         return '<label class="' + (on ? 'on' : '') + '"><input type="checkbox" data-af="domains" value="' + esc(d) + '" ' + (on ? 'checked' : '') + '><span>' + esc(d) + '</span></label>';
@@ -4356,6 +4564,7 @@ window.__CFG__ = (function () {
     var covered = (a.datasources || []).map(function (d) { return (dsInfo(d) || {}).domain; });
     (a.domains || []).forEach(function (dm) { if (covered.indexOf(dm) < 0) out.push('责任资源域「' + dm + '」没有对应数据源'); });
     if (!(a.skills || []).length) out.push('未配置 Skill');
+    (a.skills || []).forEach(function (k) { var i = skillInfo(k); if (!i.ok) out.push('Skill 不存在：' + k); else if (i.off) out.push('Skill 已停用：' + i.name); else if (i.scenario !== a.scenario && i.scenario !== 'common') out.push('跨场景 Skill：' + i.name); });
     return out;
   }
 
@@ -4389,7 +4598,7 @@ window.__CFG__ = (function () {
         '<button class="secondary" type="button" data-ag="delete" data-av="' + esc(a.id) + '">删除</button></div></div>' +
         '<div class="cfg-meta">' +
         '<span style="grid-column:1/-1"><b>职责</b>' + esc(a.duty) + '</span>' +
-        '<span style="grid-column:1/-1"><b>Skill</b>' + ((a.skills || []).map(function (s) { return '<span class="cfg-chip on">' + esc(s) + '</span>'; }).join('') || '<span class="muted">未配置</span>') + '</span>' +
+        '<span style="grid-column:1/-1"><b>Skill ' + (a.skills || []).length + '</b>' + ((a.skills || []).map(function (s) { var i = skillInfo(s); return '<span class="cfg-chip' + (i.ok && !i.off ? ' on' : '') + '" title="' + esc(i.id) + '">' + esc(i.name) + (i.off ? '（停用）' : '') + '</span>'; }).join('') || '<span class="muted">未配置</span>') + '</span>' +
         '<span style="grid-column:1/-1"><b>MCP 工具 ' + (a.mcpTools || []).length + '</b>' + ((a.mcpTools || []).map(function (t) {
           var i = toolInfo(t); return '<span class="cfg-chip' + (i.ok ? ' on' : '') + '" title="' + esc(i.name) + '">' + esc(t) + '</span>';
         }).join('') || '<span class="muted">未配置</span>') + '</span>' +
@@ -4411,7 +4620,7 @@ window.__CFG__ = (function () {
     return { id: String(d.id || '').trim(), name: String(d.name || '').trim(), scenario: d.scenario,
       providerId: m[0] || '', modelId: m[1] || '', temperature: Number(d.temperature) || 0,
       enabled: d.enabled !== '0', duty: String(d.duty || '').trim(), prompt: String(d.prompt || '').trim(),
-      skills: String(d.skills || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean),
+      skills: Array.isArray(d.skills) ? d.skills : (d.skills ? [d.skills] : []),
       domains: d.domains || [], mcpTools: d.mcpTools || [], datasources: d.datasources || [] };
   }
   function commit(isNew) {
@@ -4455,6 +4664,8 @@ window.__CFG__ = (function () {
         var t = ui.editing === '__new__' ? cur : Object.assign({}, db.find(ui.editing), cur);
         var keep = fnList().filter(function (f) { return f.scenario === cur.scenario || f.scenario === 'common'; }).map(mcpOf);
         t.mcpTools = (t.mcpTools || []).filter(function (x) { return keep.indexOf(x) >= 0; });
+        var keepSk = skillList().filter(function (s) { return s.scenario === cur.scenario || s.scenario === 'common'; });
+        t.skills = (t.skills || []).filter(function (k) { return keepSk.some(function (s) { return s.id === k || s.name === k; }); });
         t.domains = (SCEN.find(function (s) { return s.code === cur.scenario; }) || {}).domains || t.domains;
         var host = ui.editing === '__new__' ? $('agentNewForm') : e.target.closest('.cfg-card');
         if (!host) { render(); return; }   // 容器不在预期位置时整体重绘，避免写入 null
