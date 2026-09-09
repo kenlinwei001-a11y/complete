@@ -4,7 +4,7 @@ import { seedDemoPropagationRules } from "../src/seed.js";
 import { PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
 import { PgSimRepo } from "../src/repo/pg.js";
 import { createMemoryRepos } from "../src/repo/memory.js";
-import { diffTickStates, partitionPropagationRules, type SimCounterfactualResult, type SimSession } from "@platform/contracts";
+import { diffTickStates, isReactionRule, partitionPropagationRules, type SimCounterfactualResult, type SimSession } from "@platform/contracts";
 
 /**
  * WO-ACTIVE-EDGE-UX · **后端接缝门**：关掉一条传导边 → 推演结果真的变 → 且对照跑不写世界态。
@@ -166,7 +166,18 @@ describe("WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → �
     expect(out.ticks).toBe(2);
     expect(out.disabledRuleKeys).toEqual([RULE_KEY]);
     // 屏蔽的那条边**结构要回带** —— §3.3「关掉的边在图上要可见地降级，不是从图上消失」。
-    expect(out.suppressedRules.map((x) => x.key)).toEqual([RULE_KEY]);
+    //
+    // ⚠ 原写 `toEqual([RULE_KEY])`。**行为是被有意改的**（`0c759423` + `db162d1a`
+    //   WO-ADVERSARY-REACTION）：`app.ts sessionPropRules` 把「本会话屏蔽的」与
+    //   「对抗方开关关着而没参与的还手边」**合并进同一份降级清单**（该处原文：
+    //   「屏上都是"这条边这次没参与"，但成因不同，故对抗方那几条另有 `adversary` 栏点名」）。
+    //   demo 租户 `sim.propagation.adversary` 属暗发集（`features.ts` 把它从 L2 battery
+    //   模板的「全开」里减掉）⇒ 还手边 `demo_customer_reaction_cut_order` 恒在这份清单里。
+    //   判据因此从「清单恰好等于我关的那一条」收窄成两句，**咬合力不降**：
+    //   ① 我关的那条必须在；② 其余每一条都只能是还手边 —— 别的边混进降级清单即红。
+    const suppressedKeys = out.suppressedRules.map((x) => x.key);
+    expect(suppressedKeys).toContain(RULE_KEY);
+    expect(out.suppressedRules.filter((r) => r.key !== RULE_KEY && !isReactionRule(r)).map((r) => r.key)).toEqual([]);
     // 诚实位：这条边在基线那版确实触发过 ⇒ 差值为空时才分得清"没影响"与"本来就没动"。
     expect(out.suppressedRulesFiredInBaseline).toEqual([RULE_KEY]);
 
