@@ -748,7 +748,34 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
         <section id="functions">
           <div class="kpis" id="functionKpis"></div>
           <div class="panel"><div class="panel-head"><div><h2>函数关系库</h2><p>20余种预测模型，覆盖人口增长、产业发展、经济财政等维度。每个模型含公式、参数说明与适用场景，可直接接入推演计算。</p></div><form class="quick-form compact-form" data-create="functions"><input name="name" placeholder="模型名称" required><input name="domain" placeholder="领域"><input name="formula" placeholder="公式"><input name="useCase" placeholder="适用场景"><button class="primary">新增</button></form></div><div class="chipbar"><span class="chip active">全部模型 (24)</span><span class="chip">人口增长 (6)</span><span class="chip">产业发展 (7)</span><span class="chip">经济财政 (6)</span><span class="chip">城市建设 (4)</span><span class="chip">能源环境 (3)</span></div><div id="functionGrid"></div></div>
-        </section>
+        
+  <div id="emgFunctions" class="panel">
+    <div class="panel-head">
+      <div><h2>应急处置函数库 · MCP 可调用</h2><p>按 <b>L1 场景域 → L2 能力层 → L3 原子函数</b> 分层组织：每个函数有唯一 MCP 名称、带单位的参数 schema、可求值公式、关联资源域，以及“何时使用/何时不要使用/易混淆函数”，用于避免 Agent 调用时选错工具。</p></div>
+      <div class="card-actions"><button class="primary" type="button" data-fl="new">＋ 新增函数</button></div>
+    </div>
+    <div id="flKpis" class="resource-kpis"></div>
+    <div id="flTabs" class="fl-tabs"></div>
+    <div class="fl-toolbar"><input id="flSearch" type="search" placeholder="搜索函数名 / MCP 名 / 公式 / 关键词 / 资源域"></div>
+    <div id="flMessage" class="fl-msg"></div>
+    <div id="flNewForm"></div>
+    <div id="flTable"></div>
+    <div class="panel-head" style="margin-top:8px"><div><h3>调用一致性校验</h3><p>MCP 名称唯一性、公式变量与参数 schema 一致性、默认参数可求值、关联资源域是否存在于资源库、使用/禁用说明完整性。</p></div></div>
+    <div id="flAudit" class="fl-audit"></div>
+    <div class="panel-head" style="margin-top:14px">
+      <div><h3>整库 JSON / MCP tools 清单</h3><p>左侧 JSON 可编辑保存（保存即权威）；右侧为按当前函数库生成的 MCP tools 声明，可直接注册。</p></div>
+      <div class="card-actions">
+        <button class="secondary" type="button" data-fl="validate-json">校验 JSON</button>
+        <button class="secondary" type="button" data-fl="reset-json">恢复基线</button>
+        <button class="primary" type="button" data-fl="save-json">保存 JSON</button>
+      </div>
+    </div>
+    <div class="fl-split">
+      <div><h4 class="muted">函数库 JSON（可编辑）</h4><textarea id="flJson" class="fl-json" spellcheck="false"></textarea></div>
+      <div><h4 class="muted">MCP tools（只读，自动生成）</h4><textarea id="flMcpAll" class="fl-json" readonly spellcheck="false"></textarea></div>
+    </div>
+  </div>
+</section>
 
           </div>
           <div id="configAgents" class="config-pane">
@@ -1691,7 +1718,7 @@ const ATOMIC_RESOURCE_LIBRARY = (()=>{
   life.forEach(x=>add('生活与安置资源',x[0].includes('水')||x[0].includes('食品')?'食品饮水':'安置物资',x[0],x[1],x[2],x[3],'物资储备库', [['储存条件','受仓储容量和防潮防损要求限制'],['运输批次','受车辆载荷和装卸能力限制'],['人均配给','按受灾人口和保障标准计算']], [['中型货车','10吨','道路可通行'],['重型货车','25吨','道路承载力满足']], [['保障消耗','按人数×天数×保障标准']], ['仓库','运输车辆','道路']));
   // comm power rescue personnel
   const other=[['卫星电话','套',3000,2500,'通信资源'],['应急基站','套',1200,900,'通信资源'],['应急通信车','辆',180,140,'通信资源'],['短波电台','套',5000,4000,'通信资源'],['应急发电机','台',6000,4500,'电力资源'],['移动电源','套',12000,9500,'电力资源'],['移动变电设备','套',300,220,'电力资源'],['生命探测仪','套',2500,1900,'搜救资源'],['破拆工具组','套',5000,4000,'搜救资源'],['搜救犬','只',800,620,'搜救资源'],['消防救援人员','人',18000,14200,'人员资源'],['专业地震救援人员','人',6000,4700,'人员资源'],['医疗救援人员','人',10000,7200,'人员资源'],['工程抢险人员','人',12000,9000,'人员资源']];
-  other.forEach(x=>add(x[3],x[0].includes('人员')?'专业人员':x[0].includes('电')?'装备':x[0],x[0],x[1],x[2],x[2]*0.78,'应急保障机构', [['人员/设备可用性','受在岗状态和维护状态限制'],['任务覆盖','受调度距离与持续工作时间限制']], [['车辆运输','按设备尺寸/人数','道路可通行']], [['任务消耗','按使用时长或任务次数']], ['人员','车辆','通信/电力保障']));
+  other.forEach(x=>add(x[4],x[0].includes('人员')?'专业人员':x[0].includes('电')?'装备':x[0],x[0],x[1],x[2],x[3],'应急保障机构', [['人员/设备可用性','受在岗状态和维护状态限制'],['任务覆盖','受调度距离与持续工作时间限制']], [['车辆运输','按设备尺寸/人数','道路可通行']], [['任务消耗','按使用时长或任务次数']], ['人员','车辆','通信/电力保障']));
   return rows;
 })();
 /* 资源库执行链统一：数据源/渲染/事件绑定全部由文件末尾的 resource-module-single 接管。
@@ -2943,6 +2970,741 @@ load().catch((error) => toast(error.message));
   });
 })();
 </script>
+<style id="function-library-style">
+#emgFunctions .fl-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+#emgFunctions .fl-tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 14px;font-size:12.5px;cursor:pointer;color:var(--ink)}
+#emgFunctions .fl-tab.active{background:var(--rail);border-color:var(--rail);color:#fff}
+#emgFunctions .fl-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0 12px}
+#emgFunctions .fl-toolbar input[type=search]{min-width:min(340px,45%);min-height:34px}
+#emgFunctions .fl-group{margin-bottom:16px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+#emgFunctions .fl-group-head{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;background:var(--soft);border-bottom:1px solid var(--line);font-weight:700}
+#emgFunctions .fl-group-head small{color:var(--muted);font-weight:500}
+#emgFunctions table.fl-table{width:100%;border-collapse:collapse}
+#emgFunctions table.fl-table th,#emgFunctions table.fl-table td{padding:9px 14px;border-bottom:1px solid #eef2f6;text-align:left;vertical-align:top;font-size:12.6px}
+#emgFunctions table.fl-table th{color:var(--muted);font-weight:600;background:#fcfdfe}
+#emgFunctions table.fl-table tr:last-child td{border-bottom:0}
+#emgFunctions .fl-mcp{font-family:Consolas,"Courier New",monospace;background:#eef3f9;color:#1c4b86;border-radius:4px;padding:1px 6px;font-size:12px}
+#emgFunctions .fl-formula{font-family:Consolas,"Courier New",monospace;background:#f2f5f9;border-radius:4px;padding:2px 6px;font-size:12px;display:inline-block}
+#emgFunctions .fl-rowact{white-space:nowrap;text-align:right}
+#emgFunctions .fl-rowact button{margin-left:6px}
+#emgFunctions .fl-detail{border:1px solid var(--blue);border-radius:12px;padding:14px 16px;background:#f8fbff;margin:12px 0}
+#emgFunctions .fl-detail h3{margin:14px 0 6px}
+#emgFunctions .fl-kv{display:grid;grid-template-columns:150px 1fr;gap:6px 12px;font-size:12.8px}
+#emgFunctions .fl-kv b{color:var(--muted);font-weight:600}
+#emgFunctions .fl-run{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin:8px 0}
+#emgFunctions .fl-run label{display:grid;gap:3px;font-size:12.3px;color:var(--muted)}
+#emgFunctions .fl-run input{min-height:32px;border:1px solid var(--line);border-radius:8px;padding:5px 9px;color:var(--ink)}
+#emgFunctions .fl-result{font-size:15px;font-weight:750;color:var(--teal);margin:6px 0}
+#emgFunctions .fl-json,#emgFunctions .fl-mcpjson{width:100%;min-height:200px;font-family:Consolas,"Courier New",monospace;font-size:12.3px;line-height:1.55;border:1px solid var(--line);border-radius:10px;padding:11px;background:#fbfcfe;color:var(--ink)}
+#emgFunctions .fl-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:10px 0}
+#emgFunctions .fl-form label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+#emgFunctions .fl-form label.wide{grid-column:1/-1}
+#emgFunctions .fl-form input,#emgFunctions .fl-form select,#emgFunctions .fl-form textarea{min-height:34px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--ink);background:#fff}
+#emgFunctions .fl-form textarea{min-height:58px}
+#emgFunctions .fl-msg{margin:8px 0;font-size:12.5px;min-height:20px}
+#emgFunctions .fl-msg.ok{color:var(--teal)} #emgFunctions .fl-msg.err{color:var(--red)}
+#emgFunctions .fl-audit{display:grid;gap:6px;font-size:12.6px}
+#emgFunctions .fl-audit div{padding:7px 11px;border-radius:8px;background:#f5f7fa;border-left:3px solid var(--teal)}
+#emgFunctions .fl-audit div.bad{border-left-color:var(--red);background:#fdf5f5;color:var(--red)}
+#emgFunctions .fl-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px;align-items:start}
+#emgFunctions .fl-chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:11.5px;color:var(--muted);margin:0 4px 4px 0}
+</style>
+<script id="function-library-single">
+/* =============================================================================
+   应急处置函数库（配置 → 函数库）· MCP 可调用
+   分层：L1 场景域（通用/地震/反恐维稳/火灾/洪涝/疫情/雨雪冰冻）
+        L2 能力层（态势研判/需求测算/资源匹配/运输调度/风险校验/成本效益）
+        L3 原子函数（唯一 MCP 名 = 场景_能力_函数，公式可求值）
+   为避免 MCP 调用不精准：每个函数带 when_to_use / when_not_to_use / 易混淆函数、
+   带单位的参数 schema、关联资源域；并提供命名冲突与公式变量一致性校验。
+   ============================================================================= */
+(function () {
+  'use strict';
+  var KEY = 'workbench.function-library.v1';
+  var esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var $ = function (id) { return document.getElementById(id); };
+  var notify = function (m) { if (typeof toast === 'function') toast(m); else console.info('[函数库]', m); };
+  var SCENARIOS = [
+    { code: 'common', name: '通用处置' }, { code: 'eq', name: '地震抗灾' }, { code: 'ct', name: '反恐维稳' },
+    { code: 'fire', name: '火灾扑救' }, { code: 'flood', name: '抗洪抢险' }, { code: 'epi', name: '疫情防控' },
+    { code: 'snow', name: '雨雪冰冻' }
+  ];
+  var CAPS = [
+    { code: 'assess', name: '态势研判' }, { code: 'demand', name: '需求测算' }, { code: 'supply', name: '资源匹配' },
+    { code: 'logistics', name: '运输调度' }, { code: 'risk', name: '风险校验' }, { code: 'cost', name: '成本效益' }
+  ];
+  var scName = function (c) { var x = SCENARIOS.find(function (s) { return s.code === c; }); return x ? x.name : c; };
+  var capName = function (c) { var x = CAPS.find(function (s) { return s.code === c; }); return x ? x.name : c; };
+  // ---- 函数基线：7 场景 × 6 能力层，公式可求值，附 MCP 调用描述 ---------------
+  // F(id, 场景, 能力, 名称, 公式, 参数, 输出单位, 关联资源域, 何时使用, 何时不要用, 易混淆, 关键词)
+  // 参数格式："键|标签|单位|默认值"
+  function F(id, sc, cap, name, formula, params, unit, domains, use, notUse, conf, tags) {
+    return {
+      id: id, scenario: sc, capability: cap, name: name, formula: formula, unit: unit,
+      params: params.map(function (s) { var a = s.split('|'); return { key: a[0], label: a[1], unit: a[2] || '', def: Number(a[3]) }; }),
+      domains: domains, whenToUse: use, whenNotToUse: notUse, confusable: conf || [], tags: tags || []
+    };
+  }
+  var FN_BASE = [
+    // ===== 通用处置（跨场景复用，先于场景函数被选用）=====
+    F('cm.assess.affected_population', 'common', 'assess', '受影响人口估算',
+      'area_km2 * pop_density * impact_ratio',
+      ['area_km2|受影响面积|km²|120', 'pop_density|人口密度|人/km²|850', 'impact_ratio|影响系数|0-1|0.6'],
+      '人', [], '已知受影响范围与人口密度，需要先得到受影响人口基数时',
+      '不要用于已有实测受灾人口统计的情形（应直接使用统计值）', ['cm.assess.displaced_population'],
+      ['受灾人口', '影响范围', '基数']),
+    F('cm.assess.displaced_population', 'common', 'assess', '需转移安置人口',
+      'affected_population * displace_ratio * (1 - self_resettle_ratio)',
+      ['affected_population|受影响人口|人|61200', 'displace_ratio|需转移比例|0-1|0.35', 'self_resettle_ratio|自行安置比例|0-1|0.4'],
+      '人', ['生活与安置资源'], '需要计算集中安置规模（帐篷/板房/床位）时',
+      '不要用于计算伤亡或医疗需求', ['cm.assess.affected_population', 'cm.demand.shelter_tents'],
+      ['转移安置', '集中安置', '避难']),
+    F('cm.demand.shelter_tents', 'common', 'demand', '救灾帐篷需求量',
+      'ceil(displaced_population / persons_per_tent)',
+      ['displaced_population|集中安置人口|人|12852', 'persons_per_tent|每顶帐篷安置人数|人/顶|4'],
+      '顶', ['生活与安置资源'], '集中安置点搭建规模测算',
+      '不要用于活动板房（长期安置）测算', ['cm.assess.displaced_population'],
+      ['帐篷', '安置点', '生活物资']),
+    F('cm.demand.water_daily', 'common', 'demand', '饮用水日需求量',
+      'affected_population * liters_per_capita * days / 1000',
+      ['affected_population|保障人口|人|61200', 'liters_per_capita|人均日供水|L/人·日|4', 'days|保障天数|日|3'],
+      '吨', ['生活与安置资源'], '测算饮用水调运总量与批次',
+      '不要用于消防用水或工业用水测算（见 fire.demand.water_flow）', ['fire.demand.water_flow'],
+      ['饮用水', '生活保障', '日耗']),
+    F('cm.demand.food_daily', 'common', 'demand', '食品日需求量',
+      'affected_population * kg_per_capita * days / 1000',
+      ['affected_population|保障人口|人|61200', 'kg_per_capita|人均日口粮|kg/人·日|1.2', 'days|保障天数|日|3'],
+      '吨', ['生活与安置资源'], '即食食品/方便食品调运量测算',
+      '不要用于长期口粮储备规划', [], ['食品', '口粮', '生活保障']),
+    F('cm.supply.effective_available', 'common', 'supply', '资源有效可调量',
+      'max(0, available - reserved - safety_stock)',
+      ['available|资源库可用量|按资源单位|9800', 'reserved|已预占量|按资源单位|490', 'safety_stock|最低安全库存|按资源单位|1800'],
+      '按资源单位', ['燃料能源', '生活与安置资源', '医疗资源', '血液资源'],
+      '任何资源投放前的第一步：把资源库“可用量”折算为真正可调量',
+      '不要直接使用资源库 available 字段做决策（未扣预占与安全库存）', ['cm.supply.gap'],
+      ['有效可调', '安全库存', '预占']),
+    F('cm.supply.coverage_ratio', 'common', 'supply', '需求保障覆盖率',
+      'min(1, effective_available / max(demand, 0.000001))',
+      ['effective_available|有效可调量|按资源单位|7510', 'demand|需求量|按资源单位|9200'],
+      '0-1', [], '判断某类资源能否满足需求、缺口多大的比例口径',
+      '不要用于跨资源类型的综合评分', ['cm.supply.gap'], ['覆盖率', '保障率', '满足度']),
+    F('cm.supply.gap', 'common', 'supply', '资源缺口量',
+      'max(0, demand - effective_available)',
+      ['demand|需求量|按资源单位|9200', 'effective_available|有效可调量|按资源单位|7510'],
+      '按资源单位', [], '需要给出请求上级支援/跨区调拨的具体数量时',
+      '不要用于比例判断（用 cm.supply.coverage_ratio）', ['cm.supply.coverage_ratio'],
+      ['缺口', '支援', '跨区调拨']),
+    F('cm.logistics.vehicle_trips', 'common', 'logistics', '运输车次测算',
+      'ceil(tonnage / max(payload * load_factor, 0.000001))',
+      ['tonnage|待运物资总量|吨|860', 'payload|车辆额定载荷|吨/车|10', 'load_factor|实际装载系数|0-1|0.85'],
+      '车次', ['地面车辆'], '公路运输批次与车辆数量测算',
+      '不要用于空运架次（见 cm.logistics.air_sorties）', ['cm.logistics.air_sorties'],
+      ['车次', '载荷', '公路运输']),
+    F('cm.logistics.air_sorties', 'common', 'logistics', '航空运输架次',
+      'ceil(tonnage / max(aircraft_payload, 0.000001)) + ceil(evacuees / max(seats, 0.000001))',
+      ['tonnage|空运物资量|吨|24', 'aircraft_payload|机型载重|吨/架次|4', 'evacuees|需空运人员|人|60', 'seats|每架次载员|人/架次|20'],
+      '架次', ['航空资源'], '道路中断、需直升机/运输机投送时',
+      '不要用于无人机侦察架次（见 eq.assess.uav_survey_sorties）', ['cm.logistics.vehicle_trips', 'eq.assess.uav_survey_sorties'],
+      ['空运', '架次', '直升机']),
+    F('cm.logistics.transport_time', 'common', 'logistics', '单趟运输时长',
+      'distance_km / max(speed_kmh, 0.000001) + load_hours + unload_hours',
+      ['distance_km|单程距离|km|180', 'speed_kmh|平均车速|km/h|45', 'load_hours|装车时长|h|0.8', 'unload_hours|卸车时长|h|0.6'],
+      '小时', ['地面车辆'], '排定到达时间、计算轮次周转时',
+      '不要用于含往返多轮次的总时长（乘以轮次后再累加）', ['cm.logistics.round_trips_per_day'],
+      ['时效', '到达时间', '周转']),
+    F('cm.logistics.round_trips_per_day', 'common', 'logistics', '单车日周转轮次',
+      'floor(work_hours / max(2 * transport_time, 0.000001))',
+      ['work_hours|单日可作业时长|h|16', 'transport_time|单趟运输时长|h|5.4'],
+      '轮次/日', ['地面车辆'], '车辆数量不足时评估分批投送能力',
+      '不要用于连续昼夜不间断作业的理想估计', ['cm.logistics.transport_time'],
+      ['周转', '轮次', '运力']),
+    F('cm.logistics.fuel_consumption', 'common', 'logistics', '运输燃料消耗',
+      'trips * distance_km * 2 * fuel_per_100km / 100 * fuel_density / 1000',
+      ['trips|车次|车次|101', 'distance_km|单程距离|km|180', 'fuel_per_100km|百公里油耗|L/100km|28', 'fuel_density|燃油密度|kg/L|0.84'],
+      '吨', ['燃料能源'], '把运输方案换算为柴油/汽油消耗，回写燃料资源占用',
+      '不要用于航空燃油（按飞行小时另计）', ['cm.cost.transport_cost'],
+      ['油耗', '柴油', '燃料保障']),
+    F('cm.risk.stock_days', 'common', 'risk', '资源可支撑天数',
+      'effective_available / max(daily_consumption, 0.000001)',
+      ['effective_available|有效可调量|按资源单位|7510', 'daily_consumption|日消耗量|按资源单位/日|734'],
+      '日', [], '判断续航能力、决定补充调拨时机',
+      '不要用于一次性投放类资源（如装备台数）', ['cm.supply.coverage_ratio'],
+      ['续航', '可支撑', '补给时机']),
+    F('cm.cost.transport_cost', 'common', 'cost', '调运成本估算',
+      'trips * distance_km * 2 * cost_per_km + tonnage * handling_cost_per_ton',
+      ['trips|车次|车次|101', 'distance_km|单程距离|km|180', 'cost_per_km|单公里运价|元/km|6.5', 'tonnage|物资量|吨|860', 'handling_cost_per_ton|装卸单价|元/吨|35'],
+      '元', ['资金资源'], '编制资金申请、比较不同调运方案时',
+      '不要用于物资采购成本（仅含运输与装卸）', ['cm.cost.funding_gap'],
+      ['成本', '运价', '资金']),
+    F('cm.cost.funding_gap', 'common', 'cost', '应急资金缺口',
+      'max(0, total_cost - available_fund)',
+      ['total_cost|方案总费用|元|1500000', 'available_fund|可用应急资金|元|1200000'],
+      '元', ['资金资源'], '判断是否需要启动中央/社会资金渠道',
+      '不要用于长期重建资金测算', ['cm.cost.transport_cost'], ['资金缺口', '专项资金']),
+
+    // ===== 地震抗灾 / 地震灾害 =====
+    F('eq.assess.building_collapse', 'eq', 'assess', '建筑倒损量估算',
+      'buildings * collapse_rate_by_intensity',
+      ['buildings|建筑总栋数|栋|4200', 'collapse_rate_by_intensity|烈度对应倒损率|0-1|0.12'],
+      '栋', [], '按烈度圈估算倒塌/严重损坏建筑数量',
+      '不要用于次生地质灾害（滑坡、堰塞湖）评估', ['eq.assess.trapped_population'],
+      ['地震', '倒塌', '烈度']),
+    F('eq.assess.trapped_population', 'eq', 'assess', '被困人员估算',
+      'collapsed_buildings * persons_per_building * trapped_ratio * (1 - early_warning_effect)',
+      ['collapsed_buildings|倒损建筑|栋|504', 'persons_per_building|户均在室人数|人/栋|3.2', 'trapped_ratio|压埋比例|0-1|0.22', 'early_warning_effect|预警疏散折减|0-1|0.15'],
+      '人', ['搜救资源'], '确定搜救投入规模的输入量',
+      '不要用于伤亡人数直接上报（需现场核实）', ['eq.assess.casualty_estimate'],
+      ['被困', '压埋', '搜救需求']),
+    F('eq.assess.casualty_estimate', 'eq', 'assess', '伤亡人数估算',
+      'trapped_population * (fatality_rate + injury_rate)',
+      ['trapped_population|被困人员|人|318', 'fatality_rate|死亡率|0-1|0.18', 'injury_rate|受伤率|0-1|0.55'],
+      '人', ['医疗资源'], '医疗资源与血液需求测算的上游输入',
+      '不要作为对外发布的伤亡数据', ['eq.demand.medical_beds'],
+      ['伤亡', '医疗需求', '地震']),
+    F('eq.assess.uav_survey_sorties', 'eq', 'assess', '无人机侦察架次',
+      'ceil(survey_area_km2 / max(coverage_per_sortie, 0.000001)) * repeat_times',
+      ['survey_area_km2|需侦察面积|km²|120', 'coverage_per_sortie|单架次覆盖|km²/架次|8', 'repeat_times|复飞轮次|次|2'],
+      '架次', ['无人机资源'], '灾情侦察、道路阻断判读的飞行任务量',
+      '不要用于物资空投架次（见 cm.logistics.air_sorties）', ['cm.logistics.air_sorties'],
+      ['无人机', '侦察', '灾情判读']),
+    F('eq.demand.rescue_team', 'eq', 'demand', '搜救队伍规模',
+      'ceil(trapped_population * hours_per_victim / max(shift_hours * team_efficiency, 0.000001))',
+      ['trapped_population|被困人员|人|318', 'hours_per_victim|单人平均搜救工时|工时/人|9', 'shift_hours|单班作业时长|h|8', 'team_efficiency|队伍效率系数|0-1|0.75'],
+      '人', ['人员资源', '搜救资源'], '确定专业地震救援人员投入规模',
+      '不要用于消防灭火人员测算（见 fire.supply.crew_rotation）', ['fire.supply.crew_rotation', 'flood.supply.embankment_crew'],
+      ['搜救队伍', '地震救援', '人员投入']),
+    F('eq.demand.detection_kits', 'eq', 'demand', '搜救装备套数',
+      'ceil(rescue_team / max(persons_per_kit, 0.000001)) + search_dogs',
+      ['rescue_team|搜救人员|人|478', 'persons_per_kit|每套装备配备人数|人/套|12', 'search_dogs|搜救犬需求|只|8'],
+      '套', ['搜救资源'], '生命探测仪、破拆工具组与搜救犬的配套测算',
+      '不要用于工程机械（见 eq.demand.heavy_equipment）', ['eq.demand.heavy_equipment'],
+      ['生命探测仪', '破拆', '搜救犬']),
+    F('eq.demand.heavy_equipment', 'eq', 'demand', '工程机械需求',
+      'ceil(collapsed_buildings * machines_per_building / max(rotation, 0.000001))',
+      ['collapsed_buildings|倒损建筑|栋|504', 'machines_per_building|每栋所需机械|台/栋|0.35', 'rotation|机械周转系数|轮|2'],
+      '台', ['工程抢险资源'], '挖掘机/起重机/装载机投入量测算',
+      '不要用于道路抢通专用车辆（另按公里测算）', ['eq.demand.detection_kits', 'snow.demand.clearing_machines'],
+      ['工程机械', '挖掘机', '起重机']),
+    F('eq.demand.medical_beds', 'eq', 'demand', '床位需求（分级）',
+      'ceil(injured * hospitalization_rate) + ceil(injured * severe_ratio * icu_multiplier)',
+      ['injured|受伤人数|人|175', 'hospitalization_rate|住院率|0-1|0.55', 'severe_ratio|危重比例|0-1|0.12', 'icu_multiplier|ICU 折算系数|倍|1'],
+      '张', ['医疗资源'], '创伤救治床位与 ICU 床位的合并需求',
+      '不要用于传染病隔离床位（见 epi.demand.isolation_beds）', ['epi.demand.isolation_beds'],
+      ['床位', 'ICU', '创伤救治']),
+    F('eq.demand.blood_units', 'eq', 'demand', '血液制品需求',
+      'severe_injured * units_per_case * blood_type_ratio',
+      ['severe_injured|危重伤员|人|21', 'units_per_case|人均用血量|单位/人|6', 'blood_type_ratio|该血型人群占比|0-1|0.34'],
+      '单位', ['血液资源'], '按血型分别测算红细胞/血浆/血小板调拨量',
+      '不要一次性汇总所有血型（须按型分别调用）', ['eq.demand.medical_beds'],
+      ['血液', '红细胞', '输血']),
+    F('eq.logistics.ambulance_fleet', 'eq', 'demand', '救护车需求',
+      'ceil(injured * transfer_ratio / max(capacity_per_vehicle * round_trips, 0.000001))',
+      ['injured|需转运伤员|人|175', 'transfer_ratio|需转运比例|0-1|0.6', 'capacity_per_vehicle|单车载员|人/车次|2', 'round_trips|单车轮次|轮次|4'],
+      '辆', ['地面车辆', '医疗资源'], '伤员转运车辆投放量测算',
+      '不要用于物资运输车辆（见 cm.logistics.vehicle_trips）', ['cm.logistics.vehicle_trips'],
+      ['救护车', '伤员转运']),
+
+    // ===== 反恐维稳 =====
+    F('ct.assess.threat_score', 'ct', 'assess', '威胁等级评分',
+      'w_intel * intel_level + w_crowd * crowd_level + w_target * target_value',
+      ['w_intel|情报权重|0-1|0.45', 'intel_level|情报可信等级|1-5|4', 'w_crowd|人群权重|0-1|0.3', 'crowd_level|人群密集等级|1-5|3', 'w_target|目标权重|0-1|0.25', 'target_value|目标重要度|1-5|5'],
+      '分(1-5)', [], '判定响应级别、决定力量投入档位',
+      '不要用于自然灾害等级判定', [], ['威胁等级', '响应级别', '反恐']),
+    F('ct.demand.police_force', 'ct', 'demand', '处置力量需求',
+      'max(min_force, ceil(crowd_size / max(officer_ratio, 0.000001)) * threat_multiplier)',
+      ['crowd_size|现场人群规模|人|8000', 'officer_ratio|警力配比|人/名|60', 'min_force|最低投入|名|60', 'threat_multiplier|威胁等级系数|倍|1.4'],
+      '名', ['人员资源'], '现场处置、秩序维护人员投入测算',
+      '不要用于救援人员测算（见 eq.demand.rescue_team）', ['eq.demand.rescue_team'],
+      ['警力', '处置力量', '维稳']),
+    F('ct.demand.cordon_resources', 'ct', 'demand', '警戒封控资源',
+      'ceil(perimeter_m / max(spacing_m, 0.000001)) + checkpoints * officers_per_checkpoint',
+      ['perimeter_m|警戒线周长|m|1800', 'spacing_m|执勤间距|m/名|25', 'checkpoints|查控点数量|个|6', 'officers_per_checkpoint|每点位人数|名/点|4'],
+      '名', ['人员资源'], '封控圈、查控点的人员部署量',
+      '不要用于交通疏导车辆测算', ['ct.demand.police_force'], ['警戒', '封控', '查控点']),
+    F('ct.supply.comm_devices', 'ct', 'demand', '通信装备需求',
+      'ceil(teams * radios_per_team) + satellite_phones + mobile_stations',
+      ['teams|参战分队数|队|18', 'radios_per_team|每队电台|套/队|3', 'satellite_phones|卫星电话|套|6', 'mobile_stations|应急基站|套|2'],
+      '套', ['通信资源'], '现场指挥通信保障配备量',
+      '不要用于电力保障（见 snow.demand.power_crew 或电力资源）', [],
+      ['通信保障', '电台', '卫星电话']),
+    F('ct.risk.medical_standby', 'ct', 'risk', '现场医疗待命配置',
+      'ceil(crowd_size * casualty_rate * (1 - evacuation_effect))',
+      ['crowd_size|现场人群规模|人|8000', 'casualty_rate|预估伤亡率|0-1|0.004', 'evacuation_effect|疏散折减|0-1|0.35'],
+      '人', ['医疗资源', '地面车辆'], '按预估伤亡配置现场救护力量与救护车',
+      '不要用于大规模灾害医疗（见 eq.demand.medical_beds）', ['eq.demand.medical_beds'],
+      ['医疗待命', '现场救护']),
+
+    // ===== 火灾扑救 =====
+    F('fire.assess.spread_area', 'fire', 'assess', '火场蔓延面积',
+      'initial_area * exp(spread_coef * minutes / 60)',
+      ['initial_area|初期过火面积|m²|400', 'spread_coef|蔓延系数|/h|0.8', 'minutes|发展时长|min|45'],
+      'm²', [], '预测到场时的火场规模，驱动力量与用水测算',
+      '不要用于森林火线长度推演（另用蔓延速率模型）', ['fire.demand.water_flow'],
+      ['火场', '蔓延', '过火面积']),
+    F('fire.demand.water_flow', 'fire', 'demand', '灭火用水流量',
+      'fire_area * water_intensity * safety_factor',
+      ['fire_area|过火面积|m²|1150', 'water_intensity|供水强度|L/min·m²|0.12', 'safety_factor|安全系数|倍|1.3'],
+      'L/min', ['消防资源'], '确定供水强度，进而推算消防车与水源需求',
+      '不要用于生活饮用水（见 cm.demand.water_daily）', ['cm.demand.water_daily'],
+      ['供水强度', '灭火用水']),
+    F('fire.demand.fire_engines', 'fire', 'demand', '消防车需求',
+      'ceil(water_flow / max(engine_flow, 0.000001)) + special_vehicles',
+      ['water_flow|所需流量|L/min|179', 'engine_flow|单车供水能力|L/min|1200', 'special_vehicles|专勤车辆|辆|2'],
+      '辆', ['消防资源'], '水罐车/泡沫车/抢险救援车的投入量',
+      '不要用于工程机械（见 eq.demand.heavy_equipment）', ['eq.demand.heavy_equipment'],
+      ['消防车', '水罐车', '泡沫车']),
+    F('fire.demand.foam_agent', 'fire', 'demand', '泡沫灭火剂用量',
+      'fire_area * foam_intensity * duration_min * mix_ratio / 100',
+      ['fire_area|过火面积|m²|1150', 'foam_intensity|供给强度|L/min·m²|0.08', 'duration_min|持续供给时长|min|30', 'mix_ratio|混合比|%|3'],
+      'L', ['消防资源'], '油类/化工火灾泡沫消耗量测算',
+      '不要用于普通固体火灾（以水为主）', ['fire.demand.water_flow'], ['泡沫', '化工火灾']),
+    F('fire.demand.aerial_drops', 'fire', 'demand', '直升机洒水架次',
+      'ceil(water_demand_ton / max(bucket_capacity_ton * sorties_per_hour * hours, 0.000001))',
+      ['water_demand_ton|需空中洒水量|吨|180', 'bucket_capacity_ton|吊桶容量|吨/次|3', 'sorties_per_hour|每小时架次|次/h|4', 'hours|可作业时长|h|5'],
+      '架次', ['航空资源'], '高层/山林火灾需要空中投水时',
+      '不要用于人员空运（见 cm.logistics.air_sorties）', ['cm.logistics.air_sorties'],
+      ['直升机', '洒水', 'Ka-32']),
+    F('fire.supply.crew_rotation', 'fire', 'supply', '消防员轮换人数',
+      'ceil(front_line_posts * shifts * (1 + reserve_ratio))',
+      ['front_line_posts|一线战斗岗位|个|48', 'shifts|轮换班次|班|3', 'reserve_ratio|预备比例|0-1|0.2'],
+      '人', ['人员资源'], '持续作战时的人员轮换总量',
+      '不要用于地震搜救队伍（见 eq.demand.rescue_team）', ['eq.demand.rescue_team'],
+      ['轮换', '战斗员', '持续作战']),
+
+    // ===== 抗洪抢险 =====
+    F('flood.assess.inundation_area', 'flood', 'assess', '淹没面积估算',
+      'area_coef * pow(max(water_level - threshold_level, 0), area_exponent)',
+      ['water_level|当前水位|m|8.6', 'threshold_level|起淹水位|m|7.2', 'area_coef|面积系数|km²|18', 'area_exponent|水位指数|—|1.4'],
+      'km²', [], '按水位-面积关系估算淹没范围',
+      '不要用于溃坝瞬时淹没模拟（需水动力模型）', ['cm.assess.affected_population'],
+      ['淹没', '水位', '洪涝']),
+    F('flood.demand.sandbags', 'flood', 'demand', '子堤/沙袋用量',
+      'levee_length_m * pow(freeboard_m, 2) * section_coef / bag_volume',
+      ['levee_length_m|需加高堤段长度|m|1200', 'freeboard_m|加高高度|m|0.8', 'section_coef|断面系数|—|1.6', 'bag_volume|单袋体积|m³/袋|0.03'],
+      '袋', ['生活与安置资源', '工程抢险资源'], '堤防加高子堤、堵口抢险的土石方与沙袋量',
+      '不要用于永久性堤防工程量', [], ['沙袋', '子堤', '堤防']),
+    F('flood.demand.pump_capacity', 'flood', 'demand', '排涝能力需求',
+      'inundated_volume_m3 / max(target_hours * 3600, 0.000001)',
+      ['inundated_volume_m3|需排除水量|m³|450000', 'target_hours|目标排空时长|h|24'],
+      'm³/s', ['电力资源', '工程抢险资源'], '城市内涝、圩区排涝的泵组与配套发电机测算',
+      '不要用于河道行洪能力计算', ['flood.demand.power_gensets'], ['排涝', '泵站', '内涝']),
+    F('flood.demand.power_gensets', 'flood', 'demand', '应急发电机需求',
+      'ceil(pump_power_kw * (1 + margin) / max(genset_kw, 0.000001))',
+      ['pump_power_kw|泵组总功率|kW|860', 'margin|裕度|0-1|0.25', 'genset_kw|单台发电机功率|kW|200'],
+      '台', ['电力资源'], '排涝泵组、安置点用电的电源配置',
+      '不要用于电网抢修力量（见 snow.demand.power_crew）', ['snow.demand.power_crew'],
+      ['发电机', '应急电源']),
+    F('flood.demand.evacuation_transport', 'flood', 'demand', '群众转移运力',
+      'ceil(evacuees / max(vehicle_capacity * trips, 0.000001))',
+      ['evacuees|需转移人数|人|9600', 'vehicle_capacity|单车载员|人/车次|40', 'trips|可执行轮次|轮次|3'],
+      '辆', ['地面车辆'], '按人数与可用轮次测算转移车辆',
+      '不要用于物资运输（见 cm.logistics.vehicle_trips）', ['cm.logistics.vehicle_trips'],
+      ['群众转移', '运力', '疏散']),
+    F('flood.supply.embankment_crew', 'flood', 'supply', '巡堤查险人员',
+      'ceil(levee_length_km / max(km_per_group, 0.000001)) * persons_per_group * shifts',
+      ['levee_length_km|责任堤段长度|km|36', 'km_per_group|每组责任段|km/组|2', 'persons_per_group|每组人数|人/组|4', 'shifts|班次|班|3'],
+      '人', ['人员资源'], '汛期巡堤查险与抢险队伍编成',
+      '不要用于搜救人员（见 eq.demand.rescue_team）', ['eq.demand.rescue_team', 'fire.supply.crew_rotation'],
+      ['巡堤', '查险', '抢险队']),
+    F('flood.risk.route_derate', 'flood', 'risk', '道路通行折损',
+      'base_time_h / max(1 - blocked_ratio, 0.05)',
+      ['base_time_h|正常运输时长|h|5.4', 'blocked_ratio|受阻路段比例|0-1|0.3'],
+      '小时', ['地面车辆'], '积水/塌方导致绕行时的到达时间修正',
+      '不要用于冰雪路面折损（见 snow.risk.icy_road_derate）', ['snow.risk.icy_road_derate'],
+      ['绕行', '通行折损', '到达时间']),
+
+    // ===== 疫情防控 =====
+    F('epi.assess.new_cases', 'epi', 'assess', '新增病例推演（SEIR 单步）',
+      'beta * susceptible * infectious / max(population, 0.000001) * (1 - intervention_effect)',
+      ['beta|有效接触率|/日|0.42', 'susceptible|易感人群|人|980000', 'infectious|现存感染者|人|1200', 'population|区域总人口|人|1000000', 'intervention_effect|管控措施折减|0-1|0.45'],
+      '人/日', [], '推演次日新增，驱动床位与物资需求',
+      '不要用于长期流行趋势拟合（需完整 SEIR 迭代）', ['epi.assess.rt'],
+      ['SEIR', '新增病例', '传播']),
+    F('epi.assess.rt', 'epi', 'assess', '实时再生数 Rt',
+      'beta * infectious_period * (1 - intervention_effect) * susceptible / max(population, 0.000001)',
+      ['beta|有效接触率|/日|0.42', 'infectious_period|平均传染期|日|5', 'intervention_effect|管控措施折减|0-1|0.45', 'susceptible|易感人群|人|980000', 'population|区域总人口|人|1000000'],
+      '—', [], '判断疫情是否收敛（Rt<1）与管控强度是否足够',
+      '不要用于单日新增预测（见 epi.assess.new_cases）', ['epi.assess.new_cases'],
+      ['Rt', '再生数', '收敛']),
+    F('epi.demand.isolation_beds', 'epi', 'demand', '隔离床位需求',
+      'ceil(new_cases * hospitalization_rate * length_of_stay)',
+      ['new_cases|日新增病例|人/日|220', 'hospitalization_rate|住院/隔离比例|0-1|0.35', 'length_of_stay|平均占床天数|日|10'],
+      '张', ['医疗资源'], '方舱/隔离点床位规模测算',
+      '不要用于创伤床位（见 eq.demand.medical_beds）', ['eq.demand.medical_beds'],
+      ['隔离床位', '方舱', '收治能力']),
+    F('epi.demand.medical_staff', 'epi', 'demand', '医护人员需求',
+      'ceil(beds / max(beds_per_nurse, 0.000001)) * shifts * (1 + reserve_ratio)',
+      ['beds|开放床位|张|770', 'beds_per_nurse|护床比|张/人|6', 'shifts|班次|班|3', 'reserve_ratio|机动预备比例|0-1|0.15'],
+      '人', ['人员资源', '医疗资源'], '按护床比测算医护排班总量',
+      '不要用于院前急救人员（另按车组测算）', ['eq.demand.rescue_team'],
+      ['医护', '护床比', '排班']),
+    F('epi.demand.ppe_daily', 'epi', 'demand', '防护物资日消耗',
+      'staff * sets_per_shift * shifts + sampling_points * sets_per_point',
+      ['staff|一线医护/采样人员|人|1155', 'sets_per_shift|每班每人套数|套|2', 'shifts|班次|班|3', 'sampling_points|采样点数|个|120', 'sets_per_point|每点位日耗|套/点|25'],
+      '套/日', ['医疗资源'], '防护服/口罩等日耗与储备天数测算',
+      '不要用于药品消耗测算', ['cm.risk.stock_days'], ['防护服', '日耗', '物资储备']),
+    F('epi.demand.testing_capacity', 'epi', 'demand', '核酸检测能力需求',
+      'ceil(population * coverage_ratio / max(pool_size * machines * throughput_per_hour * hours, 0.000001))',
+      ['population|需检人口|人|1000000', 'coverage_ratio|检测覆盖率|0-1|1', 'pool_size|混检人数|人/管|10', 'machines|设备台数|台|20', 'throughput_per_hour|单机通量|管/h|96', 'hours|作业时长|h|16'],
+      '轮(不足1轮需扩容)', ['医疗资源'], '判断现有检测能力能否在窗口期内完成筛查',
+      '不要用于抗原自测组织量', [], ['核酸', '检测能力', '筛查']),
+
+    // ===== 雨雪冰冻灾害 =====
+    F('snow.assess.icing_risk', 'snow', 'assess', '道路结冰风险指数',
+      '(1 - min(1, max(temperature + 4, 0) / 8)) * min(1, precipitation / 10) * (0.6 + 0.4 * min(1, wind_speed / 12))',
+      ['temperature|气温|℃|-3', 'precipitation|降水量|mm|6', 'wind_speed|风速|m/s|7'],
+      '0-1', [], '判断路面结冰概率，决定融雪剂与除雪机械投放',
+      '不要用于电线覆冰厚度计算（另用覆冰模型）', ['snow.assess.line_icing'],
+      ['结冰', '路面', '风险指数']),
+    F('snow.assess.line_icing', 'snow', 'assess', '线路覆冰厚度估算',
+      'icing_coef * pow(precipitation, 0.6) * (1 + wind_speed / 20) * max(0, (0 - temperature)) / 5',
+      ['icing_coef|覆冰系数|—|2.4', 'precipitation|降水量|mm|6', 'wind_speed|风速|m/s|7', 'temperature|气温|℃|-3'],
+      'mm', ['电力资源'], '评估输电线路覆冰导致断线的风险',
+      '不要用于路面结冰（见 snow.assess.icing_risk）', ['snow.assess.icing_risk'],
+      ['覆冰', '输电线路', '断线']),
+    F('snow.demand.deicing_salt', 'snow', 'demand', '融雪剂需求量',
+      'road_km * road_width_m * spread_rate / 1000 * rounds',
+      ['road_km|需处置路段|km|180', 'road_width_m|路面宽度|m|12', 'spread_rate|撒布强度|g/m²|25', 'rounds|撒布轮次|轮|3'],
+      '吨', ['生活与安置资源'], '道路除冰物资储备与投放量',
+      '不要用于机场跑道除冰（另有专用除冰液标准）', ['snow.demand.clearing_machines'],
+      ['融雪剂', '除冰', '道路保通']),
+    F('snow.demand.clearing_machines', 'snow', 'demand', '除雪机械需求',
+      'ceil(road_km / max(machine_speed_kmh * work_hours, 0.000001))',
+      ['road_km|需清理里程|km|180', 'machine_speed_kmh|作业速度|km/h|8', 'work_hours|可作业时长|h|10'],
+      '台', ['工程抢险资源'], '道路清障保通的机械投放量',
+      '不要用于地震废墟清理（见 eq.demand.heavy_equipment）', ['eq.demand.heavy_equipment'],
+      ['除雪', '保通', '推土机']),
+    F('snow.demand.power_crew', 'snow', 'demand', '电力抢修力量',
+      'ceil(broken_lines * hours_per_line / max(shift_hours * crew_efficiency, 0.000001))',
+      ['broken_lines|断线/倒杆处数|处|46', 'hours_per_line|单处抢修工时|工时/处|12', 'shift_hours|单班时长|h|8', 'crew_efficiency|班组效率|0-1|0.7'],
+      '人', ['人员资源', '电力资源'], '覆冰断线后的抢修队伍与变电设备投入',
+      '不要用于排涝发电机配置（见 flood.demand.power_gensets）', ['flood.demand.power_gensets'],
+      ['电力抢修', '断线', '倒杆']),
+    F('snow.demand.warm_supplies', 'snow', 'demand', '保暖物资需求',
+      'stranded_population * (quilts_per_capita + clothes_per_capita)',
+      ['stranded_population|滞留/受困人口|人|15000', 'quilts_per_capita|人均棉被|床/人|1', 'clothes_per_capita|人均保暖衣物|套/人|1'],
+      '件', ['生活与安置资源'], '滞留旅客、受困群众的棉被与保暖衣物调运',
+      '不要用于夏季安置物资', ['cm.demand.shelter_tents'], ['棉被', '保暖', '滞留旅客']),
+    F('snow.risk.icy_road_derate', 'snow', 'risk', '冰雪路面运力折损',
+      'payload * (1 - derate_ratio) * (1 - detour_ratio)',
+      ['payload|车辆额定载荷|吨/车|10', 'derate_ratio|冰雪限载折减|0-1|0.3', 'detour_ratio|绕行损耗|0-1|0.15'],
+      '吨/车', ['地面车辆', '燃料能源'], '冰雪条件下修正实际可运载量，再回代车次测算',
+      '不要用于洪涝绕行（见 flood.risk.route_derate）', ['flood.risk.route_derate', 'cm.logistics.vehicle_trips'],
+      ['限载', '折损', '冰雪路面'])
+  ];
+
+  var BASE = FN_BASE.map(function (x) { return JSON.parse(JSON.stringify(x)); });
+  var items = BASE.map(function (x) { return JSON.parse(JSON.stringify(x)); });
+  var ui = { scenario: '全部', q: '', open: null, editing: null, run: {} };
+
+  function load() {
+    var raw = null; try { raw = localStorage.getItem(KEY); } catch (e) { return; }
+    if (!raw) return;
+    try {
+      var saved = JSON.parse(raw);
+      // 界面保存即权威：新增/修改/删除原样生效，数据不合法才回退基线。
+      if (Array.isArray(saved) && saved.length && saved.every(function (x) { return x && x.id && x.name && x.formula; })) items = saved;
+      else console.warn('[函数库] 本地数据不合法，已回退基线');
+    } catch (e) { console.warn('[函数库] 本地数据损坏，已回退基线', e); }
+  }
+  function persist() { try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) { console.warn('[函数库] 持久化失败', e); } }
+
+  // ---- 公式求值（受限字符集 + 白名单数学函数）--------------------------------
+  var MATH_KEYS = ['min', 'max', 'ceil', 'floor', 'round', 'abs', 'sqrt', 'exp', 'ln', 'pow', 'PI'];
+  var MATH_VALS = [Math.min, Math.max, Math.ceil, Math.floor, Math.round, Math.abs, Math.sqrt, Math.exp, Math.log, Math.pow, Math.PI];
+  function evaluate(fn, values) {
+    if (!/^[\w\s+\-*/%().,<>=!?:&|]+$/.test(fn.formula)) throw new Error('公式包含不允许的字符');
+    var keys = fn.params.map(function (p) { return p.key; });
+    var args = keys.map(function (k) { var v = Number(values[k]); return isFinite(v) ? v : 0; });
+    var body = 'return (' + fn.formula + ');';
+    var f = Function.apply(null, MATH_KEYS.concat(keys).concat([body]));
+    var out = f.apply(null, MATH_VALS.concat(args));
+    if (typeof out !== 'number' || !isFinite(out)) throw new Error('计算结果不是有限数值');
+    return out;
+  }
+  function formulaVars(fn) {
+    var found = String(fn.formula).match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+    return found.filter(function (v) { return MATH_KEYS.indexOf(v) < 0; });
+  }
+  var mcpName = function (fn) { return String(fn.id).replace(/[.\-]/g, '_'); };
+
+  // ---- MCP 工具描述 ---------------------------------------------------------
+  function mcpDescriptor(fn) {
+    var props = {}, required = [];
+    fn.params.forEach(function (p) {
+      props[p.key] = { type: 'number', description: p.label + (p.unit ? '（' + p.unit + '）' : ''), default: p.def };
+      required.push(p.key);
+    });
+    return {
+      name: mcpName(fn),
+      title: scName(fn.scenario) + '·' + capName(fn.capability) + '·' + fn.name,
+      description: fn.name + '。何时使用：' + fn.whenToUse + '。何时不要使用：' + fn.whenNotToUse +
+        (fn.confusable && fn.confusable.length ? '。易混淆函数：' + fn.confusable.map(function (i) { return String(i).replace(/[.\-]/g, '_'); }).join('、') : ''),
+      inputSchema: { type: 'object', properties: props, required: required, additionalProperties: false },
+      output: { type: 'number', unit: fn.unit },
+      annotations: {
+        scenario: fn.scenario, scenario_label: scName(fn.scenario),
+        capability: fn.capability, capability_label: capName(fn.capability),
+        formula: fn.formula, reads_resource_domains: fn.domains || [],
+        keywords: fn.tags || [], readOnlyHint: true, idempotentHint: true
+      }
+    };
+  }
+
+  // ---- 一致性校验（保证 MCP 调用可判别）-------------------------------------
+  function audit() {
+    var out = [];
+    var names = new Map();
+    items.forEach(function (f) { var n = mcpName(f); names.set(n, (names.get(n) || 0) + 1); });
+    var dup = []; names.forEach(function (n, k) { if (n > 1) dup.push(k); });
+    out.push({ ok: !dup.length, text: dup.length ? 'MCP 名称重复：' + dup.join('、') : 'MCP 名称唯一性：' + items.length + ' 个函数无重名' });
+
+    var badVars = items.filter(function (f) {
+      var keys = f.params.map(function (p) { return p.key; });
+      return formulaVars(f).some(function (v) { return keys.indexOf(v) < 0; });
+    });
+    out.push({ ok: !badVars.length, text: badVars.length ? '公式变量未在参数中声明：' + badVars.map(function (f) { return f.id; }).join('、') : '公式变量与参数 schema 一致' });
+
+    var evalBad = [];
+    items.forEach(function (f) {
+      try { var v = {}; f.params.forEach(function (p) { v[p.key] = p.def; }); evaluate(f, v); } catch (e) { evalBad.push(f.id); }
+    });
+    out.push({ ok: !evalBad.length, text: evalBad.length ? '默认参数下无法求值：' + evalBad.join('、') : '全部函数默认参数可求值' });
+
+    var resDomains = new Set(((window.__RESOURCE_MODULE__ && window.__RESOURCE_MODULE__.list()) || []).map(function (r) { return r.domain; }));
+    var missing = [];
+    items.forEach(function (f) { (f.domains || []).forEach(function (d) { if (resDomains.size && !resDomains.has(d) && missing.indexOf(d) < 0) missing.push(d); }); });
+    out.push({ ok: !missing.length, text: missing.length ? '关联的资源域在资源库中不存在：' + missing.join('、') : '关联资源域全部存在于资源库（' + resDomains.size + ' 个域）' });
+
+    var noHint = items.filter(function (f) { return !f.whenToUse || !f.whenNotToUse; });
+    out.push({ ok: !noHint.length, text: noHint.length ? '缺少使用/禁用说明（MCP 易误调）：' + noHint.map(function (f) { return f.id; }).join('、') : '全部函数具备 when_to_use / when_not_to_use' });
+    return out;
+  }
+
+  // ---- 渲染 -----------------------------------------------------------------
+  function message(t, ok) { var el = $('flMessage'); if (el) { el.textContent = t || ''; el.className = 'fl-msg ' + (t ? (ok ? 'ok' : 'err') : ''); } }
+
+  function detailHtml(fn) {
+    var vals = ui.run[fn.id] || {};
+    fn.params.forEach(function (p) { if (vals[p.key] === undefined) vals[p.key] = p.def; });
+    ui.run[fn.id] = vals;
+    var res;
+    try { res = evaluate(fn, vals); } catch (e) { res = null; }
+    return '<div class="fl-detail"><div class="detail-head"><div><h2>' + esc(fn.name) + '</h2>' +
+      '<p><span class="fl-mcp">' + esc(mcpName(fn)) + '</span> · ' + esc(scName(fn.scenario)) + ' / ' + esc(capName(fn.capability)) + '</p></div>' +
+      '<button class="secondary" type="button" data-fl="close">关闭</button></div>' +
+      '<div class="fl-kv"><b>公式</b><span class="fl-formula">' + esc(fn.formula) + '</span>' +
+      '<b>输出</b><span>' + esc(fn.unit) + '</span>' +
+      '<b>何时使用</b><span>' + esc(fn.whenToUse) + '</span>' +
+      '<b>何时不要用</b><span>' + esc(fn.whenNotToUse) + '</span>' +
+      '<b>易混淆函数</b><span>' + (fn.confusable && fn.confusable.length ? fn.confusable.map(function (i) { return '<span class="fl-chip">' + esc(i) + '</span>'; }).join('') : '<span class="muted">无</span>') + '</span>' +
+      '<b>关联资源域</b><span>' + ((fn.domains || []).map(function (d) { return '<span class="fl-chip">' + esc(d) + '</span>'; }).join('') || '<span class="muted">不直接占用资源</span>') + '</span>' +
+      '<b>检索关键词</b><span>' + ((fn.tags || []).map(function (t) { return '<span class="fl-chip">' + esc(t) + '</span>'; }).join('') || '—') + '</span></div>' +
+      '<h3>参数试算</h3><div class="fl-run">' + fn.params.map(function (p) {
+        return '<label>' + esc(p.label) + (p.unit ? '（' + esc(p.unit) + '）' : '') +
+          '<input type="number" step="any" data-fp="' + esc(p.key) + '" value="' + esc(vals[p.key]) + '"></label>';
+      }).join('') + '</div>' +
+      '<div class="fl-result">= ' + (res === null ? '公式无法求值' : (Math.round(res * 10000) / 10000) + ' ' + esc(fn.unit)) + '</div>' +
+      '<div class="card-actions"><button class="primary" type="button" data-fl="run">计算</button>' +
+      '<button class="secondary" type="button" data-fl="reset-run">恢复默认参数</button>' +
+      '<button class="secondary" type="button" data-fl="edit" data-fv="' + esc(fn.id) + '">编辑此函数</button></div>' +
+      '<h3>MCP 工具描述（可直接注册为 tool）</h3>' +
+      '<textarea class="fl-mcpjson" readonly spellcheck="false">' + esc(JSON.stringify(mcpDescriptor(fn), null, 2)) + '</textarea></div>';
+  }
+
+  function formHtml(d, isNew) {
+    return '<div class="fl-form">' +
+      '<label>函数 ID（点分三段：场景.能力.名称）<input data-ff="id" value="' + esc(d.id || '') + '" ' + (isNew ? '' : 'readonly') + ' placeholder="fire.demand.water_flow"></label>' +
+      '<label>名称<input data-ff="name" value="' + esc(d.name || '') + '"></label>' +
+      '<label>场景域<select data-ff="scenario">' + SCENARIOS.map(function (s) { return '<option value="' + s.code + '" ' + (d.scenario === s.code ? 'selected' : '') + '>' + s.name + '</option>'; }).join('') + '</select></label>' +
+      '<label>能力层<select data-ff="capability">' + CAPS.map(function (s) { return '<option value="' + s.code + '" ' + (d.capability === s.code ? 'selected' : '') + '>' + s.name + '</option>'; }).join('') + '</select></label>' +
+      '<label class="wide">公式（变量须与参数键一致；可用 min/max/ceil/floor/round/abs/sqrt/exp/ln/pow）<input data-ff="formula" value="' + esc(d.formula || '') + '"></label>' +
+      '<label class="wide">参数（每行一个：键|标签|单位|默认值）<textarea data-ff="params">' + esc((d.params || []).map(function (p) { return [p.key, p.label, p.unit, p.def].join('|'); }).join('\n')) + '</textarea></label>' +
+      '<label>输出单位<input data-ff="unit" value="' + esc(d.unit || '') + '"></label>' +
+      '<label>关联资源域（逗号分隔）<input data-ff="domains" value="' + esc((d.domains || []).join('，')) + '"></label>' +
+      '<label class="wide">何时使用<input data-ff="whenToUse" value="' + esc(d.whenToUse || '') + '"></label>' +
+      '<label class="wide">何时不要使用<input data-ff="whenNotToUse" value="' + esc(d.whenNotToUse || '') + '"></label>' +
+      '<label>易混淆函数 ID（逗号分隔）<input data-ff="confusable" value="' + esc((d.confusable || []).join('，')) + '"></label>' +
+      '<label>检索关键词（逗号分隔）<input data-ff="tags" value="' + esc((d.tags || []).join('，')) + '"></label>' +
+      '</div><div class="card-actions"><button class="primary" type="button" data-fl="' + (isNew ? 'create-commit' : 'edit-commit') + '">' + (isNew ? '新增函数' : '保存修改') + '</button>' +
+      '<button class="secondary" type="button" data-fl="edit-cancel">取消</button></div>';
+  }
+
+  function render() {
+    if (!$('flTable')) return;
+    var domains = []; items.forEach(function (f) { (f.domains || []).forEach(function (d) { if (domains.indexOf(d) < 0) domains.push(d); }); });
+    var a = audit(), bad = a.filter(function (x) { return !x.ok; }).length;
+    $('flKpis').innerHTML = [
+      ['应急函数', items.length, '个（L3 原子函数）'],
+      ['场景域', SCENARIOS.length, '类（L1）'],
+      ['能力层', CAPS.length, '类（L2）'],
+      ['关联资源域', domains.length, '个（对照资源库）'],
+      ['一致性校验', bad ? bad + ' 项异常' : '全部通过', 'MCP 可调用性']
+    ].map(function (k) { return '<div class="kpi"><span>' + k[0] + '</span><b>' + k[1] + '</b><small>' + k[2] + '</small></div>'; }).join('');
+
+    $('flTabs').innerHTML = ['全部'].concat(SCENARIOS.map(function (s) { return s.name; })).map(function (n) {
+      var code = n === '全部' ? '全部' : SCENARIOS.find(function (s) { return s.name === n; }).code;
+      var cnt = code === '全部' ? items.length : items.filter(function (f) { return f.scenario === code; }).length;
+      return '<button class="fl-tab ' + (ui.scenario === code ? 'active' : '') + '" type="button" data-fl="scenario" data-fv="' + code + '">' + esc(n) + ' ' + cnt + '</button>';
+    }).join('');
+    var s = $('flSearch'); if (s && document.activeElement !== s) s.value = ui.q;
+
+    var q = ui.q.toLowerCase();
+    var rows = items.filter(function (f) {
+      if (ui.scenario !== '全部' && f.scenario !== ui.scenario) return false;
+      if (!q) return true;
+      return [f.id, f.name, f.formula, f.unit, (f.tags || []).join(' '), (f.domains || []).join(' '), f.whenToUse].join(' ').toLowerCase().indexOf(q) >= 0;
+    });
+
+    var groups = [];
+    CAPS.forEach(function (c) {
+      var list = rows.filter(function (f) { return f.capability === c.code; });
+      if (list.length) groups.push({ cap: c, list: list });
+    });
+
+    $('flTable').innerHTML = groups.length ? groups.map(function (g) {
+      return '<div class="fl-group"><div class="fl-group-head"><span>L2 ' + esc(g.cap.name) + '</span><small>' + g.list.length + ' 个函数</small></div>' +
+        '<table class="fl-table"><thead><tr><th style="width:210px">MCP 名称</th><th style="width:150px">函数</th><th>公式</th><th style="width:90px">输出</th><th style="width:150px">关联资源域</th><th style="width:170px"></th></tr></thead><tbody>' +
+        g.list.map(function (f) {
+          return '<tr><td><span class="fl-mcp">' + esc(mcpName(f)) + '</span><br><small class="muted">' + esc(scName(f.scenario)) + '</small></td>' +
+            '<td><b>' + esc(f.name) + '</b></td>' +
+            '<td><span class="fl-formula">' + esc(f.formula) + '</span></td>' +
+            '<td>' + esc(f.unit) + '</td>' +
+            '<td>' + ((f.domains || []).map(function (d) { return '<span class="fl-chip">' + esc(d) + '</span>'; }).join('') || '<span class="muted">—</span>') + '</td>' +
+            '<td class="fl-rowact"><button class="secondary" type="button" data-fl="open" data-fv="' + esc(f.id) + '">详情/试算</button>' +
+            '<button class="secondary" type="button" data-fl="edit" data-fv="' + esc(f.id) + '">编辑</button>' +
+            '<button class="secondary" type="button" data-fl="delete" data-fv="' + esc(f.id) + '">删除</button></td></tr>' +
+            (ui.open === f.id ? '<tr><td colspan="6">' + detailHtml(f) + '</td></tr>' : '') +
+            (ui.editing === f.id ? '<tr><td colspan="6">' + formHtml(f, false) + '</td></tr>' : '');
+        }).join('') + '</tbody></table></div>';
+    }).join('') : '<p class="muted" style="padding:12px 0">没有匹配的函数。</p>';
+
+    $('flNewForm').innerHTML = ui.editing === '__new__' ? formHtml({ scenario: 'common', capability: 'demand', params: [] }, true) : '';
+
+    $('flAudit').innerHTML = a.map(function (x) { return '<div class="' + (x.ok ? '' : 'bad') + '">' + (x.ok ? '✓ ' : '✗ ') + esc(x.text) + '</div>'; }).join('');
+
+    var ta = $('flJson'); if (ta && document.activeElement !== ta) ta.value = JSON.stringify(items, null, 2);
+    var mt = $('flMcpAll'); if (mt && document.activeElement !== mt) mt.value = JSON.stringify({ tools: items.map(mcpDescriptor) }, null, 2);
+  }
+
+  function find(id) { return items.find(function (f) { return String(f.id) === String(id); }) || null; }
+
+  function readForm() {
+    var d = {};
+    document.querySelectorAll('#emgFunctions [data-ff]').forEach(function (el) { d[el.dataset.ff] = el.value; });
+    var list = String(d.params || '').split('\n').map(function (l) { return l.trim(); }).filter(Boolean).map(function (l) {
+      var a = l.split('|'); return { key: (a[0] || '').trim(), label: (a[1] || a[0] || '').trim(), unit: (a[2] || '').trim(), def: Number(a[3]) || 0 };
+    });
+    var split = function (v) { return String(v || '').split(/[，,]/).map(function (x) { return x.trim(); }).filter(Boolean); };
+    return {
+      id: String(d.id || '').trim(), name: String(d.name || '').trim(), scenario: d.scenario, capability: d.capability,
+      formula: String(d.formula || '').trim(), params: list, unit: String(d.unit || '').trim(),
+      domains: split(d.domains), whenToUse: String(d.whenToUse || '').trim(), whenNotToUse: String(d.whenNotToUse || '').trim(),
+      confusable: split(d.confusable), tags: split(d.tags)
+    };
+  }
+
+  function commit(isNew) {
+    var d = readForm();
+    if (!d.id) return message('函数 ID 不能为空', false);
+    if (!d.name) return message('名称不能为空', false);
+    if (!d.formula) return message('公式不能为空', false);
+    if (isNew && find(d.id)) return message('函数 ID 已存在：' + d.id, false);
+    var keys = d.params.map(function (p) { return p.key; });
+    var undeclared = formulaVars(d).filter(function (v) { return keys.indexOf(v) < 0; });
+    if (undeclared.length) return message('公式变量未在参数中声明：' + undeclared.join('、'), false);
+    try { var v = {}; d.params.forEach(function (p) { v[p.key] = p.def; }); evaluate(d, v); }
+    catch (e) { return message('公式无法求值：' + e.message, false); }
+    if (isNew) items.push(d);
+    else { var t = find(ui.editing); if (!t) return message('函数不存在', false); Object.assign(t, d, { id: t.id }); }
+    ui.editing = null; persist(); render();
+    message((isNew ? '已新增函数 ' : '已保存函数 ') + d.id + '（MCP 名 ' + mcpName(d) + '）', true);
+    notify(isNew ? '已新增函数' : '已保存函数');
+  }
+
+  function remove(id) {
+    var i = items.findIndex(function (f) { return String(f.id) === String(id); });
+    if (i < 0) return;
+    var refs = items.filter(function (f) { return (f.confusable || []).indexOf(id) >= 0; }).map(function (f) { return f.id; });
+    items.splice(i, 1); if (ui.open === id) ui.open = null;
+    persist(); render();
+    if (refs.length) message('已删除 ' + id + '；仍被以下函数列为易混淆项：' + refs.join('、'), false);
+    else message('已删除 ' + id + '。', true);
+    notify('已删除函数 ' + id);
+  }
+
+  function parseJson() {
+    var ta = $('flJson'); if (!ta) return { ok: false, error: '编辑器不可用' };
+    var data; try { data = JSON.parse(ta.value); } catch (e) { return { ok: false, error: 'JSON 语法错误：' + e.message }; }
+    if (!Array.isArray(data)) return { ok: false, error: 'JSON 根节点必须是数组' };
+    var ids = new Set(), mcps = new Set();
+    for (var i = 0; i < data.length; i++) {
+      var x = data[i];
+      if (!x || typeof x !== 'object') return { ok: false, error: '第 ' + (i + 1) + ' 项必须是对象' };
+      if (!x.id || !x.name || !x.formula) return { ok: false, error: '第 ' + (i + 1) + ' 项缺少 id/name/formula' };
+      if (!Array.isArray(x.params)) return { ok: false, error: x.id + ' 的 params 必须是数组' };
+      if (ids.has(String(x.id))) return { ok: false, error: 'id 重复：' + x.id };
+      var n = mcpName(x); if (mcps.has(n)) return { ok: false, error: 'MCP 名称重复：' + n };
+      ids.add(String(x.id)); mcps.add(n);
+    }
+    return { ok: true, data: data };
+  }
+
+  function wire() {
+    var root = $('emgFunctions'); if (!root || root.dataset.flWired === '1') return;
+    root.dataset.flWired = '1';
+    root.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-fl]'); if (!btn) return;
+      e.preventDefault();
+      var act = btn.dataset.fl, val = btn.dataset.fv;
+      if (act === 'scenario') { ui.scenario = val; ui.open = null; render(); }
+      else if (act === 'open') { ui.open = ui.open === val ? null : val; ui.editing = null; render(); }
+      else if (act === 'close') { ui.open = null; render(); }
+      else if (act === 'edit') { ui.editing = val; ui.open = null; render(); }
+      else if (act === 'edit-cancel') { ui.editing = null; render(); message(''); }
+      else if (act === 'edit-commit') { commit(false); }
+      else if (act === 'new') { ui.editing = '__new__'; ui.open = null; render(); }
+      else if (act === 'create-commit') { commit(true); }
+      else if (act === 'delete') { remove(val); }
+      else if (act === 'run') {
+        var fn = find(ui.open); if (!fn) return;
+        var vals = {}; document.querySelectorAll('#emgFunctions [data-fp]').forEach(function (el) { vals[el.dataset.fp] = Number(el.value); });
+        ui.run[fn.id] = vals; render();
+        try { message('计算完成：' + fn.name + ' = ' + (Math.round(evaluate(fn, vals) * 10000) / 10000) + ' ' + fn.unit, true); }
+        catch (err) { message('计算失败：' + err.message, false); }
+      }
+      else if (act === 'reset-run') { var f2 = find(ui.open); if (f2) { delete ui.run[f2.id]; render(); message('已恢复默认参数', true); } }
+      else if (act === 'save-json') {
+        var r = parseJson(); if (!r.ok) return message(r.error, false);
+        items = r.data; persist(); render(); message('已保存 ' + items.length + ' 个函数。', true); notify('函数库已保存');
+      }
+      else if (act === 'validate-json') { var v2 = parseJson(); message(v2.ok ? 'JSON 校验通过：' + v2.data.length + ' 个函数。' : v2.error, v2.ok); }
+      else if (act === 'reset-json') { items = BASE.map(function (x) { return JSON.parse(JSON.stringify(x)); }); ui.editing = null; ui.open = null; persist(); render(); message('已恢复内置基线（' + items.length + ' 个函数）。', true); notify('函数库已恢复基线'); }
+    });
+    root.addEventListener('input', function (e) {
+      if (e.target.id === 'flSearch') {
+        ui.q = e.target.value.trim(); render();
+        var s2 = $('flSearch'); if (s2) { s2.focus(); s2.setSelectionRange(s2.value.length, s2.value.length); }
+      }
+    });
+  }
+
+  load();
+  window.__FUNCTION_LIBRARY__ = {
+    list: function () { return items; }, get: find, render: render, audit: audit,
+    mcpTools: function () { return items.map(mcpDescriptor); },
+    call: function (name, args) {   // 供 Agent/MCP 侧按名调用
+      var fn = items.find(function (f) { return mcpName(f) === name || f.id === name; });
+      if (!fn) throw new Error('未找到函数：' + name);
+      var vals = {}; fn.params.forEach(function (p) { vals[p.key] = (args && args[p.key] !== undefined) ? Number(args[p.key]) : p.def; });
+      return { name: mcpName(fn), value: evaluate(fn, vals), unit: fn.unit, inputs: vals };
+    }
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(); render(); }, { once: true });
+  else { wire(); render(); }
+})();
+</script>
+
 <style id="constraint-library-style">
 #constraints .cl-json{width:100%;min-height:300px;font-family:Consolas,"Courier New",monospace;font-size:12.5px;line-height:1.6;border:1px solid var(--line);border-radius:10px;padding:12px;background:#fbfcfe;color:var(--ink)}
 #constraints .cl-msg{margin:8px 0;font-size:12.5px;min-height:20px}
