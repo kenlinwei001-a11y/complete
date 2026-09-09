@@ -4401,6 +4401,10 @@ window.__CFG__ = (function () {
 #plans .pl-legend span i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
 #plans .pl-msg{margin:8px 0;font-size:12.5px;min-height:20px}
 #plans .pl-msg.ok{color:var(--teal)} #plans .pl-msg.err{color:var(--red)}
+#plans .pl-fact-table td{vertical-align:middle}
+#plans .pl-fact-table input,#plans .pl-fact-table select{width:100%;min-height:30px;border:1px solid var(--line);border-radius:7px;padding:4px 8px;color:var(--ink);background:#fff;font:inherit}
+#plans .pl-fact-table tr.pl-fact-miss{background:#fdf6f6}
+#plans .pl-req{display:inline-block;background:#fdeaea;color:var(--red);border-radius:5px;padding:0 6px;font-size:11px;font-weight:600}
 </style>
 <script id="plan-library-single">
 /* =============================================================================
@@ -4420,6 +4424,99 @@ window.__CFG__ = (function () {
   var tName = function (c) { var t = TYPES.find(function (x) { return x.code === c; }); return t ? t.name : c; };
   var NODE_COLORS = { '工作组': '#245fa7', '机构': '#138678', '灾害分级': '#b86a19', '响应级别': '#bd2d2d', '响应措施': '#5b4b8a', '保障措施': '#2f7d5c', '其他地震事件': '#7a6a3a' };
   var today = function () { return new Date().toISOString().slice(0, 10); };
+  // ---- 必需事实信息 schema（按灾害类型；地震取自本体 EarthquakeEvent + RULE-LX-GRADE）----
+  // 字段：{key, label, type(number/text/date/datetime/enum/bool), unit, required, enumv, source}
+  var FACT_SCHEMAS = {
+    eq: [
+      { key: 'origin_time', label: '发震时刻', type: 'datetime', required: true, source: '中国地震台网 / 甘肃省地震局 / 州地震局速报' },
+      { key: 'magnitude', label: '震级 M', type: 'number', required: true, source: '官方发布，不得由模型估算（EQ-LX-INGEST 硬规则）' },
+      { key: 'depth_km', label: '震源深度', type: 'number', unit: 'km', source: '官方发布' },
+      { key: 'epicenter_place', label: '震中位置', type: 'text', required: true, source: '台网速报' },
+      { key: 'max_intensity', label: '最大烈度', type: 'enum', enumv: ['Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ', 'Ⅺ'], source: '省/中国地震局烈度调查成果 · WG-LX-03' },
+      { key: 'pop_density_within_50km', label: '震中50km内人口密度', type: 'number', unit: '人/km²', required: true, source: '县地震局确认口径（分级判据区域，≥200 成立）' },
+      { key: 'is_key_area', label: '是否重要地区', type: 'bool', source: 'Ⅰ级震级判据（≥7.0 且重要地区→特别重大）' },
+      { key: 'is_urban', label: '是否发生在州内城市', type: 'bool', source: '§4.2 速报阈值（城市3.5级/农村4.0级）' },
+      { key: 'death_missing', label: '死亡（含失踪）人数', type: 'number', unit: '人', source: '州应急局灾情上报系统（滞后，用于复判）' },
+      { key: 'is_minority_area', label: '是否少数民族聚居/特殊地区', type: 'bool', source: '§3.2.2 可适当提高响应级别（辖域常态覆盖）' },
+      { key: 'affected_population', label: '受灾人口', type: 'number', unit: '人', source: '灾情摸排（供需求测算）' }
+    ],
+    ct: [
+      { key: 'event_time', label: '事发时间', type: 'datetime', required: true, source: '指挥中心接报' },
+      { key: 'location', label: '事发地点', type: 'text', required: true, source: '现场上报' },
+      { key: 'crowd_size', label: '现场人群规模', type: 'number', unit: '人', required: true, source: '现场处置力量测算输入' },
+      { key: 'threat_level', label: '情报威胁等级', type: 'enum', enumv: ['1', '2', '3', '4', '5'], required: true, source: '情报部门研判' },
+      { key: 'target_value', label: '目标重要度', type: 'enum', enumv: ['1', '2', '3', '4', '5'], source: '安保评估' },
+      { key: 'casualty', label: '已知伤亡', type: 'number', unit: '人', source: '现场核报' }
+    ],
+    fire: [
+      { key: 'alarm_time', label: '报警时间', type: 'datetime', required: true, source: '119 接警' },
+      { key: 'location', label: '起火地点', type: 'text', required: true, source: '接警/现场' },
+      { key: 'fire_type', label: '火灾类型', type: 'enum', enumv: ['建筑', '森林草原', '化工', '油类', '其他'], required: true, source: '现场研判（决定是否算泡沫用量）' },
+      { key: 'fire_area', label: '过火面积', type: 'number', unit: 'm²', required: true, source: '现场侦察/无人机测绘' },
+      { key: 'trapped', label: '被困人数', type: 'number', unit: '人', source: '现场核实' },
+      { key: 'wind_speed', label: '风速', type: 'number', unit: 'm/s', source: '气象' }
+    ],
+    flood: [
+      { key: 'report_time', label: '险情时间', type: 'datetime', required: true, source: '防指接报' },
+      { key: 'river_section', label: '河段/圩区', type: 'text', required: true, source: '水务' },
+      { key: 'water_level', label: '当前水位', type: 'number', unit: 'm', required: true, source: '水文站' },
+      { key: 'threshold_level', label: '警戒/起淹水位', type: 'number', unit: 'm', required: true, source: '水务基础数据' },
+      { key: 'affected_population', label: '受影响人口', type: 'number', unit: '人', source: '淹没分析' },
+      { key: 'levee_length', label: '责任堤段长度', type: 'number', unit: 'km', source: '河道管理' }
+    ],
+    epi: [
+      { key: 'report_date', label: '报告日期', type: 'date', required: true, source: '疾控日报' },
+      { key: 'region_population', label: '区域总人口', type: 'number', unit: '人', required: true, source: '统计口径' },
+      { key: 'infectious', label: '现存感染者', type: 'number', unit: '人', required: true, source: '疾控' },
+      { key: 'new_cases', label: '日新增病例', type: 'number', unit: '人', required: true, source: '疾控' },
+      { key: 'beta', label: '有效接触率 β', type: 'number', source: '流行病学参数' },
+      { key: 'intervention_effect', label: '管控措施折减', type: 'number', unit: '0-1', source: '防控强度评估' }
+    ],
+    snow: [
+      { key: 'forecast_time', label: '预警时间', type: 'datetime', required: true, source: '气象预警' },
+      { key: 'region', label: '影响区域', type: 'text', required: true, source: '气象/交通' },
+      { key: 'temperature', label: '气温', type: 'number', unit: '℃', required: true, source: '气象' },
+      { key: 'precipitation', label: '降水量', type: 'number', unit: 'mm', required: true, source: '气象' },
+      { key: 'road_km', label: '需处置路段', type: 'number', unit: 'km', source: '交通' },
+      { key: 'stranded_population', label: '滞留/受困人口', type: 'number', unit: '人', source: '交通/文旅' }
+    ],
+    common: [
+      { key: 'event_time', label: '事件时间', type: 'datetime', required: true, source: '接报' },
+      { key: 'location', label: '事发地点', type: 'text', required: true, source: '现场' },
+      { key: 'affected_population', label: '受影响人口', type: 'number', unit: '人', required: true, source: '灾情摸排' },
+      { key: 'resource_demand', label: '主要资源需求', type: 'text', source: '需求测算' }
+    ]
+  };
+  function factSchemaFor(p) {
+    return (Array.isArray(p.factSchema) && p.factSchema.length) ? p.factSchema : (FACT_SCHEMAS[p.type] || FACT_SCHEMAS.common);
+  }
+  // 地震初判定级（RULE-LX-GRADE）：in_criterion_area = 震中50km内人口密度≥200；取震级与死亡两支路的更高级别
+  function judgeEq(v) {
+    var m = parseFloat(v.magnitude), dens = parseFloat(v.pop_density_within_50km), death = parseFloat(v.death_missing);
+    var key = v.is_key_area === '是' || v.is_key_area === true;
+    var inArea = (dens >= 200) || /临夏市/.test(v.epicenter_place || '');
+    if (isNaN(m) && isNaN(death)) return null;
+    var byMag = null;
+    if (!isNaN(m)) {
+      if (key && m >= 7.0) byMag = 'Ⅰ 特别重大';
+      else if (inArea && m >= 6.0 && m < 7.0) byMag = 'Ⅱ 重大';
+      else if (inArea && m >= 5.0 && m < 6.0) byMag = 'Ⅲ 较大';
+      else if (inArea && m >= 4.5 && m < 5.0) byMag = 'Ⅳ 一般';
+      else if (m < 4.5) byMag = '不构成分级（<4.5，按强有感地震事件处置）';
+      else byMag = '未落入判据区域（震中50km内人口密度<200 且非临夏市）';
+    }
+    var byDeath = null;
+    if (!isNaN(death)) {
+      if (death >= 300) byDeath = 'Ⅰ 特别重大';
+      else if (death >= 50) byDeath = 'Ⅱ 重大';
+      else if (death >= 10) byDeath = 'Ⅲ 较大';
+      else byDeath = 'Ⅳ 一般';
+    }
+    var rank = function (s) { return s && s.indexOf('Ⅰ') === 0 ? 4 : s && s.indexOf('Ⅱ') === 0 ? 3 : s && s.indexOf('Ⅲ') === 0 ? 2 : s && s.indexOf('Ⅳ') === 0 ? 1 : 0; };
+    var final = rank(byMag) >= rank(byDeath) ? byMag : byDeath;
+    var tier = { 4: '省抗震救灾指挥部', 3: '省抗震救灾指挥部', 2: '州党委政府', 1: '县党委政府' }[rank(final)] || '—';
+    return { byMag: byMag, byDeath: byDeath, final: final, tier: tier, minority: v.is_minority_area === '是' || v.is_minority_area === true };
+  }
 
   function seedPlan() {
     var s = window.__PLAN_SEED__;
@@ -4627,9 +4724,55 @@ window.__CFG__ = (function () {
     }).join('') || '<p class="muted">该灾害类型下暂无预案，可点击右上角“＋ 导入预案”。</p>';
   }
 
+  // ---- 事实录入在线表格 ----
+  function factInput(f, val) {
+    var v = val == null ? '' : val;
+    if (f.type === 'bool') return '<select data-pfact="' + esc(f.key) + '"><option value="" ' + (v === '' ? 'selected' : '') + '>—</option><option ' + (v === '是' ? 'selected' : '') + '>是</option><option ' + (v === '否' ? 'selected' : '') + '>否</option></select>';
+    if (f.type === 'enum') return '<select data-pfact="' + esc(f.key) + '"><option value="">—</option>' + (f.enumv || []).map(function (o) { return '<option ' + (String(v) === String(o) ? 'selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
+    var it = f.type === 'number' ? 'number' : (f.type === 'date' ? 'date' : (f.type === 'datetime' ? 'datetime-local' : 'text'));
+    var step = f.type === 'number' ? ' step="any"' : '';
+    return '<input type="' + it + '"' + step + ' data-pfact="' + esc(f.key) + '" value="' + esc(v) + '" placeholder="' + esc(f.unit ? '单位：' + f.unit : '') + '">';
+  }
+  function factHtml(p) {
+    var schema = factSchemaFor(p), vals = p.factValues || {};
+    var req = schema.filter(function (f) { return f.required; });
+    var reqFilled = req.filter(function (f) { return vals[f.key] != null && String(vals[f.key]).trim() !== ''; }).length;
+    var allFilled = schema.filter(function (f) { return vals[f.key] != null && String(vals[f.key]).trim() !== ''; }).length;
+    var pct = req.length ? Math.round(reqFilled / req.length * 100) : 100;
+    var head = '<div class="pl-toolbar"><span class="muted">推演/报告生成前须录入的事实信息 · 必填 <b>' + reqFilled + '/' + req.length + '</b>（' + pct + '%） · 已填 ' + allFilled + '/' + schema.length + '</span>' +
+      '<span class="pl-state ' + (reqFilled >= req.length ? 'ok' : 'warn') + '">' + (reqFilled >= req.length ? '必填项齐备' : '尚缺 ' + (req.length - reqFilled) + ' 项必填') + '</span></div>' +
+      '<div class="card-actions" style="margin:2px 0 8px"><button class="primary" type="button" data-pl="fact-save">保存事实信息</button>' +
+      '<button class="secondary" type="button" data-pl="fact-clear">清空</button>' +
+      '<button class="secondary" type="button" data-pl="fact-add">＋ 增加事实字段</button></div>';
+    var rows = '<table class="cfg-table pl-fact-table"><thead><tr><th style="width:34px">必填</th><th style="width:180px">事实项</th><th style="width:70px">类型</th><th style="width:230px">录入</th><th>权威来源 / 口径</th><th style="width:56px"></th></tr></thead><tbody>' +
+      schema.map(function (f) {
+        var miss = f.required && (vals[f.key] == null || String(vals[f.key]).trim() === '');
+        return '<tr class="' + (miss ? 'pl-fact-miss' : '') + '">' +
+          '<td>' + (f.required ? '<span class="pl-req">必填</span>' : '<span class="muted">选填</span>') + '</td>' +
+          '<td><b>' + esc(f.label) + '</b><div class="muted" style="font-size:11px">' + esc(f.key) + (f.unit ? ' · ' + esc(f.unit) : '') + '</div></td>' +
+          '<td class="muted">' + esc(f.type) + '</td>' +
+          '<td>' + factInput(f, vals[f.key]) + '</td>' +
+          '<td class="muted" style="font-size:12px">' + esc(f.source || '—') + '</td>' +
+          '<td>' + (f.custom ? '<button class="secondary" type="button" data-pl="fact-del" data-pv="' + esc(f.key) + '">删除</button>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    var judge = '';
+    if (p.type === 'eq') {
+      var j = judgeEq(vals);
+      if (j) judge = '<div class="pl-node-form" style="background:#f8fbff"><h4 style="margin:0 0 6px">初判定级（RULE-LX-GRADE，随录入自动推演）</h4>' +
+        '<div class="cfg-meta">' +
+        '<span><b>震级支路</b>' + esc(j.byMag || '—') + '</span>' +
+        '<span><b>死亡支路</b>' + esc(j.byDeath || '（伤亡数据待回传）') + '</span>' +
+        '<span><b>初判级别（取高）</b><span class="pl-state ' + (j.final && j.final.indexOf('Ⅰ') === 0 ? 'err' : (j.final && (j.final.indexOf('Ⅱ') === 0 || j.final.indexOf('Ⅲ') === 0) ? 'warn' : 'ok')) + '">' + esc(j.final || '—') + '</span></span>' +
+        '<span><b>分级应对（RULE-LX-TIER）</b>' + esc(j.tier) + '</span>' +
+        (j.minority ? '<span style="grid-column:1/-1;color:var(--amber)"><b>提级提示</b>少数民族聚居/特殊地区，§3.2.2 可适当提高响应级别（双结论，最终由指挥部裁定）</span>' : '') +
+        '</div><div class="muted" style="margin-top:6px;font-size:11.5px">说明：震级、震源深度、烈度须引用官方发布；伤亡统计滞后于震级，初判优先走震级支路，伤亡回传后复判取更高级别。</div></div>';
+    }
+    return head + '<div style="overflow:auto">' + rows + '</div>' + judge;
+  }
+
   function detailHtml(p) {
     var st = state(p);
-    var tabs = ['原文', '图谱', '切片'];
+    var tabs = ['原文', '图谱', '切片', '事实录入'];
     var body = '';
     if (ui.tab === '原文') {
       body = '<div class="pl-toolbar"><input type="search" id="plDocSearch" placeholder="在原文中搜索并高亮" value="' + esc(ui.docQuery) + '">' +
@@ -4642,8 +4785,10 @@ window.__CFG__ = (function () {
         '<button class="primary" type="button" data-pl="yaml-save">保存 YAML</button></div>' +
         '<textarea class="pl-yaml" id="plYaml" spellcheck="false">' + esc(p.ontologyYaml || '') + '</textarea></div>' +
         '<div><h4 class="muted">关系网络（点击节点编辑）</h4>' + graphSvg(p) + (ui.node ? nodeForm(p) : graphEditor(p)) + '</div></div>';
-    } else {
+    } else if (ui.tab === '切片') {
       body = chunksHtml(p);
+    } else {
+      body = factHtml(p);
     }
     return '<div class="panel"><div class="pl-detail-head"><div>' +
       '<h2>' + esc(p.title) + '</h2>' +
@@ -4773,6 +4918,36 @@ window.__CFG__ = (function () {
         });
         p.graph.edges = r.edges; db.save(); render();
         msg('已按 YAML 的 edges 段重建关系：' + r.edges.length + ' 条', true);
+      }
+      else if (act === 'fact-save') {
+        if (!p) return;
+        p.factValues = p.factValues || {};
+        document.querySelectorAll('#plans [data-pfact]').forEach(function (x) { p.factValues[x.getAttribute('data-pfact')] = x.value; });
+        db.save(); render();
+        var schema = factSchemaFor(p), req = schema.filter(function (f) { return f.required; });
+        var miss = req.filter(function (f) { return !p.factValues[f.key] || String(p.factValues[f.key]).trim() === ''; });
+        msg(miss.length ? '已保存，但仍缺 ' + miss.length + ' 项必填：' + miss.map(function (f) { return f.label; }).join('、') : '事实信息已保存，必填项齐备。', !miss.length);
+        C.notify('预案事实信息已保存');
+      }
+      else if (act === 'fact-clear') {
+        if (!p) return;
+        document.querySelectorAll('#plans [data-pfact]').forEach(function (x) { p.factValues && delete p.factValues[x.getAttribute('data-pfact')]; });
+        p.factValues = {}; db.save(); render(); msg('已清空事实信息', true);
+      }
+      else if (act === 'fact-add') {
+        if (!p) return;
+        var label = window.prompt('新增事实字段名称（如：受灾乡镇数）'); if (!label) return;
+        var key = 'fact_' + Date.now().toString().slice(-6);
+        var schema = (Array.isArray(p.factSchema) && p.factSchema.length) ? p.factSchema : factSchemaFor(p).map(function (f) { return Object.assign({}, f); });
+        var req = window.confirm('该字段是否为必填？（确定=必填）');
+        schema.push({ key: key, label: label, type: 'text', required: req, custom: true, source: '自定义' });
+        p.factSchema = schema; db.save(); render(); msg('已新增事实字段：' + label, true);
+      }
+      else if (act === 'fact-del') {
+        if (!p || !Array.isArray(p.factSchema)) return;
+        p.factSchema = p.factSchema.filter(function (f) { return f.key !== val; });
+        if (p.factValues) delete p.factValues[val];
+        db.save(); render(); msg('已删除事实字段 ' + val, true);
       }
     });
     root.addEventListener('input', function (e) {
