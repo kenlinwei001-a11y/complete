@@ -99,8 +99,16 @@ const C05_CAVEAT = BASE.caveats.find((c) => c.ruleKey === PARTIAL_ONE.evidence.r
  * ⚠ **宿主上下文必须与生产一致**（2026-09-09 · WO-B9-FRONTEND-REDS 修红时补）。
  *
  * 本页自 `1d42c269`（WO-ORDER-JOURNEY，2026-08-14）起在每条阻滞点上就地嵌入 `DecisionPlayEmbed`，
- * 其 `TriggerVerdictStrip` 在**抽屉之外**无条件 `useQuery`（`DecisionPlayPanel.tsx` 的
- * `queryKey: ["a","decision_play",…]`）⇒ 渲染这张页面必须有 `QueryClientProvider`。
+ * 但**那一版还不会红**：当时 `DecisionPlayEmbed` 整个 return 只有一个 `<details>`，
+ * 而 `DecisionPlayPanel` 写在 `{open ? … : null}` 里 ⇒ 抽屉不展开就不挂载、一次 `useQuery` 都不发，
+ * 裸 `render` 照样绿（复验：`git show 1d42c269:apps/frontend-shell/src/views/DecisionPlayPanel.tsx`
+ * 里 `DecisionPlayEmbed` 的函数体，无 `TriggerVerdictStrip`）。
+ * **真正把红引进来的是 `a1880293`（2026-09-08「缺口2 触发判定条上第一层」）**：
+ * 它把 `TriggerVerdictStrip` 挂到了**抽屉之外**，而该组件无条件 `useQuery`
+ * （`DecisionPlayPanel.tsx` 的 `TriggerVerdictStrip` 里 `queryKey: ["a","decision_play",…]`，
+ * 函数体第一句就是它，没有任何提前 return 挡着）⇒ 渲染这张页面必须有 `QueryClientProvider`。
+ * ⚠ 别把这两个提交合成一句 ——「嵌了 DecisionPlayEmbed」不度量「会发 useQuery」，
+ * 挂在抽屉里还是抽屉外才是那个变量（铁律 0.6：拿一个看起来相关的事实当判据）。
  * 生产侧一直有（`App.tsx` 的 `AppProviders`），**只有本文件的裸 `render` 没有** ——
  * 于是整棵树在 `beginWork` 阶段抛 `No QueryClient set`，`ci-root` 之后一个 testid 都挂不上，
  * 表现成 `Unable to find [data-testid="ci-summary"]`（testid 在源码里明明存在）。

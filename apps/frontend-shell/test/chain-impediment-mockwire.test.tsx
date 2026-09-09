@@ -39,8 +39,13 @@ describe("mock 模式的真链路（不打桩 runSolver）", () => {
 
   it("整页在 mock 模式下真渲染出三类分组 + 诚实位徽标（端到端，不是只有请求通）", async () => {
     const View = getRenderer("chain-impediments")!;
-    // ⚠ `QueryClientProvider` 不是装饰：本页每条阻滞点嵌 `DecisionPlayEmbed`，其 `TriggerVerdictStrip`
-    //    在抽屉之外无条件 `useQuery` ⇒ 没有宿主 client 就在渲染阶段抛。生产由 `AppProviders` 提供，
+    // ⚠ `QueryClientProvider` 不是装饰：本页每条阻滞点嵌 `DecisionPlayEmbed`，而 `a1880293`
+    //    （2026-09-08）把 `TriggerVerdictStrip` 挂到了**抽屉之外**，该组件无条件 `useQuery`
+    //    ⇒ 没有宿主 client 就在渲染阶段抛 `No QueryClient set`。生产由 `App.tsx` 的
+    //    `QueryClientProvider` 提供，只有这里的裸 `render` 没有。
+    //    （⚠ 不是 `1d42c269` 嵌入 embed 那一版：那版 embed 只有 `<details>`、面板写在 `{open ? …}` 里，
+    //     不展开就不发 query —— 判据是「挂在抽屉里还是抽屉外」，不是「嵌没嵌 embed」。
+    //     详细取证见 `chain-impediment.seam.test.tsx` 同名注释块。）
     //    这里用**同一个** `queryClient` 实例，好让 `test/setup.ts` 的 afterEach 取消得到在途请求。
     render(
       <QueryClientProvider client={queryClient}>
