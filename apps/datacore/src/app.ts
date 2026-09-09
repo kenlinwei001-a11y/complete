@@ -6130,7 +6130,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         // 即席切片不是发布物，没有任何 plan/intent/agent 会引用它 ⇒ ①②层恒空是**真结论**，
         // 不是"没查"。层投影自己的 absentReason 会说明缺的是上报方。
         references: [],
-        actionTypeKeys: actionTypeList.map((a) => a.key).sort(),
+        // WO-CLOSE-SIM-ONTO-2：带上归因键 `targetTypeKey`（§⑮ 靠它 join 动作→对象类型）。
+        // 只投影 key 等于在入口处把 join 键扔掉，然后让 §⑮ 回头声称"没有 join 键"。
+        actionTypes: actionTypeList
+          .map((a) => ({ key: a.key, ...(a.targetTypeKey !== undefined ? { targetTypeKey: a.targetTypeKey } : {}) }))
+          .sort((x, y) => x.key.localeCompare(y.key)),
         derivationSpecKeys: derivSpecs.map((d) => ({ specKey: d.specKey, targetType: d.targetType, targetProp: d.targetProp, formula: d.formula })),
         args: {},
         rootObjectTotal: objectCounts.get(definition!.carrierTypeKey) ?? 0,
@@ -8296,7 +8300,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       exceptionEventTotal: excObjs.length,
       exceptionRefTypes,
       references: references.map((r) => ({ refKind: r.refKind, key: r.key, where: r.where })),
-      actionTypeKeys: actionTypeList.map((a) => a.key).sort(),
+      // WO-CLOSE-SIM-ONTO-2：同上 —— §⑮ 的 join 键必须一路带到投影层。
+      actionTypes: actionTypeList
+        .map((a) => ({ key: a.key, ...(a.targetTypeKey !== undefined ? { targetTypeKey: a.targetTypeKey } : {}) }))
+        .sort((x, y) => x.key.localeCompare(y.key)),
       derivationSpecKeys: derivSpecs.map((d) => ({ specKey: d.specKey, targetType: d.targetType, targetProp: d.targetProp, formula: d.formula })),
       args,
       rootObjectTotal,
