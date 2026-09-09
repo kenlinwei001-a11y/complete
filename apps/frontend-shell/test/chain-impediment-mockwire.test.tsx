@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { describe, expect, it, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "@/store/queryClient";
 import { getRenderer } from "@/views/registry";
 import { runSolver } from "@/api/endpoints";
 import { ChainImpedimentPayloadSchema, DATA_MODE_LABEL } from "@/views/sim/chainImpediment";
@@ -37,10 +39,15 @@ describe("mock 模式的真链路（不打桩 runSolver）", () => {
 
   it("整页在 mock 模式下真渲染出三类分组 + 诚实位徽标（端到端，不是只有请求通）", async () => {
     const View = getRenderer("chain-impediments")!;
+    // ⚠ `QueryClientProvider` 不是装饰：本页每条阻滞点嵌 `DecisionPlayEmbed`，其 `TriggerVerdictStrip`
+    //    在抽屉之外无条件 `useQuery` ⇒ 没有宿主 client 就在渲染阶段抛。生产由 `AppProviders` 提供，
+    //    这里用**同一个** `queryClient` 实例，好让 `test/setup.ts` 的 afterEach 取消得到在途请求。
     render(
-      <Suspense fallback={<div />}>
-        <View view={{ key: "chain-impediments", title: "阻滞点" } as never} />
-      </Suspense>,
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={<div />}>
+          <View view={{ key: "chain-impediments", title: "阻滞点" } as never} />
+        </Suspense>
+      </QueryClientProvider>,
     );
     await screen.findByTestId("ci-summary");
     for (const kind of ["BOTTLENECK", "CONGESTION", "BREAK"] as const) {

@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "@/store/queryClient";
 import { ChainImpedimentSchema, compareChainImpediment } from "@platform/contracts";
 
 /**
@@ -93,14 +95,32 @@ const PARTIAL_ONE = BASE.impediments.find((i) => i.dataMode === "PARTIAL")!;
 const SYNTH_ONE = BASE.impediments.find((i) => i.dataMode === "SYNTHETIC")!;
 const C05_CAVEAT = BASE.caveats.find((c) => c.ruleKey === PARTIAL_ONE.evidence.ruleKey)!;
 
+/**
+ * ⚠ **宿主上下文必须与生产一致**（2026-09-09 · WO-B9-FRONTEND-REDS 修红时补）。
+ *
+ * 本页自 `1d42c269`（WO-ORDER-JOURNEY，2026-08-14）起在每条阻滞点上就地嵌入 `DecisionPlayEmbed`，
+ * 其 `TriggerVerdictStrip` 在**抽屉之外**无条件 `useQuery`（`DecisionPlayPanel.tsx` 的
+ * `queryKey: ["a","decision_play",…]`）⇒ 渲染这张页面必须有 `QueryClientProvider`。
+ * 生产侧一直有（`App.tsx` 的 `AppProviders`），**只有本文件的裸 `render` 没有** ——
+ * 于是整棵树在 `beginWork` 阶段抛 `No QueryClient set`，`ci-root` 之后一个 testid 都挂不上，
+ * 表现成 `Unable to find [data-testid="ci-summary"]`（testid 在源码里明明存在）。
+ * 形态（铁律 0.6 句式）：「我用『组件自己不用 react-query』当作『裸渲染够用』的证据，
+ * 而前者并不度量后者 —— 它嵌进来的子树用。」
+ *
+ * 用**应用同一个** `queryClient` 实例（不是 `test/utils.tsx` 的 `renderWithClient` 新建的那个）：
+ * `test/setup.ts` 的 `afterEach` 只对这一个做 `cancelQueries()+clear()`，
+ * 换成新实例则在途请求不会被取消 ⇒ 复现「caught after test environment was torn down」那类随机红。
+ */
 async function mount(options?: Record<string, unknown>) {
   const View = getRenderer("chain-impediments");
   expect(View, "registry 里没有 chain-impediments —— 组件再绿也没有任何路由渲染得到它").toBeDefined();
   const Lazy = View!;
   const utils = render(
-    <Suspense fallback={<div data-testid="ci-suspense" />}>
-      <Lazy view={{ key: "chain-impediments", title: "阻滞点", ...(options ? { options } : {}) } as never} />
-    </Suspense>,
+    <QueryClientProvider client={queryClient}>
+      <Suspense fallback={<div data-testid="ci-suspense" />}>
+        <Lazy view={{ key: "chain-impediments", title: "阻滞点", ...(options ? { options } : {}) } as never} />
+      </Suspense>
+    </QueryClientProvider>,
   );
   await screen.findByTestId("ci-root");
   return utils;
