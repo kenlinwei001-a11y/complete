@@ -728,7 +728,7 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
         </section>
 
         <section id="config" class="view">
-          <div class="panel"><div class="panel-head"><div><h2>配置</h2><p>统一管理函数库、Agent、大模型、小插件与权限审计等系统配置能力。</p></div></div><div class="tabbar"><button class="tab active" type="button" data-config-tab="functions">函数库</button><button class="tab" type="button" data-config-tab="agents">Agent配置</button><button class="tab" type="button" data-config-tab="models">大模型配置</button><button class="tab" type="button" data-config-tab="tools">小插件</button><button class="tab" type="button" data-config-tab="audit">权限与审计</button></div></div>
+          <div class="panel"><div class="panel-head"><div><h2>配置</h2><p>统一管理函数库、Agent、大模型、小插件与权限审计等系统配置能力。</p></div></div><div class="tabbar"><button class="tab active" type="button" data-config-tab="functions">函数库</button><button class="tab" type="button" data-config-tab="agents">Agent配置</button><button class="tab" type="button" data-config-tab="models">大模型配置</button><button class="tab" type="button" data-config-tab="tools">小插件</button><button class="tab" type="button" data-config-tab="constraints">约束条件库</button><button class="tab" type="button" data-config-tab="audit">权限与审计</button></div></div>
           <div id="configFunctions" class="config-pane active">
         <section id="functions">
           <div class="kpis" id="functionKpis"></div>
@@ -786,6 +786,34 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
           </div>
         </section>
 
+          </div>
+          <div id="configConstraints" class="config-pane">
+            <section id="constraints">
+              <div class="panel">
+                <div class="panel-head">
+                  <div><h2>约束条件库</h2><p>全局唯一的约束条件定义源。资源库中每个原子资源的“约束”均以 ID 引用本库条目，不再各自内联文本；本库以 JSON 维护，保存后资源库即时生效。</p></div>
+                  <span class="pill ok">唯一数据源</span>
+                </div>
+                <div id="clKpis" class="resource-kpis"></div>
+              </div>
+              <div class="panel">
+                <div class="panel-head"><div><h3>条目一览</h3><p>“被引用”为当前引用该约束的原子资源数量。</p></div></div>
+                <div id="clTable" class="rm-list"></div>
+              </div>
+              <div class="panel">
+                <div class="panel-head">
+                  <div><h3>JSON 编辑</h3><p>数组结构；每项必须含唯一 id 与 name，可选 type / expression / description / severity。保存即权威：删除的条目不会自动恢复，若仍被资源引用会在资源侧标记“引用缺失”，可用“恢复基线”找回。</p></div>
+                  <div class="card-actions">
+                    <button class="secondary" type="button" data-cl="format">格式化</button>
+                    <button class="secondary" type="button" data-cl="validate">校验 JSON</button>
+                    <button class="secondary" type="button" data-cl="reset">恢复基线</button>
+                    <button class="primary" type="button" data-cl="save">保存约束条件库</button>
+                  </div>
+                </div>
+                <div id="clMessage" class="cl-msg"></div>
+                <textarea id="clJson" class="cl-json" spellcheck="false"></textarea>
+              </div>
+            </section>
           </div>
         </section>
         <section id="output" class="view">
@@ -2420,7 +2448,7 @@ function renderModelConfigs(){ const el=$("modelConfigList"); if(!el)return; el.
 function saveConfigData(){localStorage.setItem("workbench_agent_configs",JSON.stringify(agentConfigs));localStorage.setItem("workbench_model_configs",JSON.stringify(modelConfigs));}
 setTimeout(()=>{renderAgentConfigs();renderModelConfigs();$("saveAgentBtn")?.addEventListener("click",()=>{const n=$("agentName").value.trim();if(!n)return toast("请输入Agent名称");agentConfigs.push({name:n,model:$("agentModel").value,status:$("agentStatus").value,desc:$("agentPrompt").value.trim()||"未填写职责说明"});saveConfigData();renderAgentConfigs();toast("Agent配置已保存");});$("saveModelBtn")?.addEventListener("click",()=>{const n=$("modelName").value.trim();if(!n)return toast("请输入模型名称");modelConfigs.push({name:n,type:$("modelType").value,context:$("modelContext").value.trim()||"未设置",endpoint:$("modelEndpoint").value.trim()||"未设置",status:$("modelStatus").value});saveConfigData();renderModelConfigs();toast("大模型配置已保存");});},0);
 document.querySelectorAll("[data-sentiment-tab]").forEach(x=>x.classList.toggle("active",x===btn)); $("sentimentNews").classList.toggle("active",t==="news"); $("sentimentBids").classList.toggle("active",t==="bids"); }));
-document.querySelectorAll("[data-config-tab]").forEach(btn => btn.addEventListener("click", () => { const t=btn.dataset.configTab; document.querySelectorAll("[data-config-tab]").forEach(x=>x.classList.toggle("active",x===btn)); $("configFunctions").classList.toggle("active",t==="functions"); $("configAgents").classList.toggle("active",t==="agents"); $("configModels").classList.toggle("active",t==="models"); $("configTools").classList.toggle("active",t==="tools"); $("configAudit").classList.toggle("active",t==="audit"); }));
+document.querySelectorAll("[data-config-tab]").forEach(btn => btn.addEventListener("click", () => { const t=btn.dataset.configTab; document.querySelectorAll("[data-config-tab]").forEach(x=>x.classList.toggle("active",x===btn)); /* 通用切换：pane id 约定为 config + 首字母大写的 tab 名，新增页签无需再改这里 */ const paneId="config"+t.charAt(0).toUpperCase()+t.slice(1); document.querySelectorAll(".config-pane").forEach(pane=>pane.classList.toggle("active",pane.id===paneId)); if(t==="constraints"&&window.__CONSTRAINT_LIBRARY__) window.__CONSTRAINT_LIBRARY__.render(); }));
 const viewHistory = [];
 function activeViewId() {
   return document.querySelector(".view.active")?.id || null;
@@ -2862,6 +2890,198 @@ load().catch((error) => toast(error.message));
 </script>
 
 
+<style id="constraint-library-style">
+#constraints .cl-json{width:100%;min-height:340px;font-family:Consolas,"Courier New",monospace;font-size:12.5px;line-height:1.6;border:1px solid var(--line);border-radius:10px;padding:12px;background:#fbfcfe;color:var(--ink)}
+#constraints .cl-msg{margin:8px 0;font-size:12.5px;min-height:20px}
+#constraints .cl-msg.ok{color:var(--teal)} #constraints .cl-msg.err{color:var(--red)}
+#constraints .cl-expr,#resources .cl-expr{font-family:Consolas,"Courier New",monospace;background:#f2f5f9;border-radius:4px;padding:1px 6px}
+#resources .cl-pick{display:grid;gap:8px;margin:6px 0 16px}
+#resources .cl-pick label{display:grid;grid-template-columns:20px 1fr;gap:10px;align-items:start;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:#fff;cursor:pointer}
+#resources .cl-pick label.on{border-color:var(--blue);background:#f6f9fd}
+#resources .cl-pick small{color:var(--muted);display:block}
+#resources .cl-missing{color:var(--red)}
+#resources .cl-filter{display:flex;gap:12px;align-items:center;margin:10px 0}
+#resources .cl-filter input[type=text],#resources .cl-filter #crefFilter{flex:1;min-height:34px}
+#resources .cl-filter label{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:12.5px;white-space:nowrap}
+</style>
+<script id="constraint-library-single">
+/* =============================================================================
+   约束条件库（配置 → 约束条件库）· 全局唯一定义源
+   - 基线由 ATOMIC_RESOURCE_LIBRARY 内联约束去重派生，并补充通用调度约束
+   - 唯一持久化键 workbench.constraint-library.v1，JSON 数组格式，可在界面直接编辑
+   - 资源库只保存 constraintRefs（ID 引用），约束文本永远只存在于本库一份
+   ============================================================================= */
+(function () {
+  'use strict';
+  var KEY = 'workbench.constraint-library.v1';
+  var esc = function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var $ = function (id) { return document.getElementById(id); };
+  var notify = function (m) { if (typeof toast === 'function') toast(m); else console.info('[约束条件库]', m); };
+
+  // 通用调度约束（与具体资源无关，可被任意资源引用）
+  var GENERIC = [
+    { id: 'C_GEN_0001', name: '最低安全库存', type: '库存约束', expression: 'available >= safetyStock', description: '可调用库存不得突破最低安全库存', severity: 'hard' },
+    { id: 'C_GEN_0002', name: '危险品操作人员', type: '人员约束', expression: 'qualifiedOperators >= 1', description: '危化资源装卸和运输必须配置合格人员', severity: 'hard' },
+    { id: 'C_GEN_0003', name: '装卸设备可用', type: '设备约束', expression: 'loadingEquipment.status == "available"', description: '调拨前必须存在可用装卸设备', severity: 'hard' },
+    { id: 'C_GEN_0004', name: '道路通行能力', type: '基础设施约束', expression: 'roadAccess == true && roadLevel >= 3', description: '道路运输前必须确认通行条件与道路等级', severity: 'hard' },
+    { id: 'C_GEN_0005', name: '仓储容量', type: '容量约束', expression: 'storage.freeCapacity >= incoming', description: '调入资源不得超过仓储可用容量', severity: 'hard' },
+    { id: 'C_GEN_0006', name: '最大载荷', type: '设备约束', expression: 'load <= ratedCapacity', description: '单次装载不得超过运输工具额定载荷', severity: 'hard' },
+    { id: 'C_GEN_0007', name: '人员能力匹配', type: '人员约束', expression: 'qualifiedPersonnel >= taskRequirement', description: '专业人员能力必须满足任务需求', severity: 'soft' }
+  ];
+
+  function typeOf(name, desc) {
+    var t = name + ' ' + desc;
+    if (/库存|储备|有效期/.test(t)) return '库存约束';
+    if (/人员|驾驶员|操作员|机组|医护/.test(t)) return '人员约束';
+    if (/设备|装卸|维护|适航|车辆/.test(t)) return '设备约束';
+    if (/道路|铁路|空域|管网|通行|起降/.test(t)) return '基础设施约束';
+    if (/容量|载荷|仓储|工位/.test(t)) return '容量约束';
+    if (/天气|温控|冷链|环境/.test(t)) return '环境约束';
+    if (/资质|审批|许可|合规|匹配规则/.test(t)) return '合规约束';
+    return '调度约束';
+  }
+  function slug(name, desc) { return name + '||' + desc; }
+
+  // ---- 基线：从资源基线内联约束去重派生 -------------------------------------
+  var index = new Map();   // slug -> id
+  function baseline() {
+    index = new Map();
+    var out = GENERIC.map(function (x) { return Object.assign({}, x); });
+    GENERIC.forEach(function (x) { index.set(slug(x.name, x.description), x.id); });
+    var src = (typeof ATOMIC_RESOURCE_LIBRARY !== 'undefined' && Array.isArray(ATOMIC_RESOURCE_LIBRARY)) ? ATOMIC_RESOURCE_LIBRARY : [];
+    var seq = 0;
+    src.forEach(function (r) {
+      (r.constraints || []).forEach(function (c) {
+        var name = String(c[0] == null ? '' : c[0]), desc = String(c[1] == null ? '' : c[1]);
+        if (!name) return;
+        var key = slug(name, desc);
+        if (index.has(key)) return;
+        var id = 'C_RES_' + String(++seq).padStart(4, '0');
+        index.set(key, id);
+        out.push({ id: id, name: name, type: typeOf(name, desc), expression: '', description: desc, severity: 'hard' });
+      });
+    });
+    return out;
+  }
+
+  var BASE = baseline();          // index 同时建立，供资源基线换算 refs
+  var items = BASE.map(function (x) { return Object.assign({}, x); });
+
+  function load() {
+    var raw = null;
+    try { raw = localStorage.getItem(KEY); } catch (e) { return; }
+    if (!raw) return;
+    try {
+      var saved = JSON.parse(raw);
+      // 本库由 JSON 编辑器显式维护，保存结果即权威：改名、新增、删除都原样生效，
+      // 不再与基线二次合并（否则“删掉的条目刷新后又回来”）。数据损坏/为空才回退基线。
+      if (Array.isArray(saved) && saved.length && saved.every(function (x) { return x && x.id && x.name; })) items = saved;
+      else console.warn('[约束条件库] 本地数据不合法，已回退基线');
+    } catch (e) { console.warn('[约束条件库] 本地数据损坏，已回退基线', e); }
+  }
+  function persist() { try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) { console.warn('[约束条件库] 持久化失败', e); } }
+
+  // ---- 对外 API（资源库通过它解析引用）--------------------------------------
+  function byId(id) { return items.find(function (x) { return String(x.id) === String(id); }) || null; }
+  function idFor(name, desc) { return index.get(slug(String(name == null ? '' : name), String(desc == null ? '' : desc))) || null; }
+  function refsFor(row) {
+    return (row.constraints || []).map(function (c) { return idFor(c[0], c[1]); }).filter(Boolean);
+  }
+  function resolve(refs) {
+    return (refs || []).map(function (id) { return byId(id) || { id: id, name: '引用缺失', type: '—', description: '约束条件库中不存在 ID ' + id, missing: true }; });
+  }
+  function usage() {
+    var map = new Map();
+    var list = (window.__RESOURCE_MODULE__ && window.__RESOURCE_MODULE__.list()) || [];
+    list.forEach(function (r) { (r.constraintRefs || []).forEach(function (id) { map.set(id, (map.get(id) || 0) + 1); }); });
+    return map;
+  }
+
+  // ---- 渲染（配置 → 约束条件库）--------------------------------------------
+  function message(text, ok) { var el = $('clMessage'); if (el) { el.textContent = text || ''; el.className = 'cl-msg ' + (text ? (ok ? 'ok' : 'err') : ''); } }
+
+  function render() {
+    if (!$('clTable')) return;
+    var used = usage();
+    var types = []; items.forEach(function (x) { if (types.indexOf(x.type) < 0) types.push(x.type); });
+    var orphan = items.filter(function (x) { return !used.get(x.id); }).length;
+    $('clKpis').innerHTML = [
+      ['约束条件', items.length, '条'], ['约束类型', types.length, '类'],
+      ['被引用', items.length - orphan, '条'], ['未被引用', orphan, '条'],
+      ['引用总次数', Array.from(used.values()).reduce(function (s, n) { return s + n; }, 0), '次']
+    ].map(function (k) { return '<div class="kpi"><span>' + k[0] + '</span><b>' + k[1] + '</b><small>' + k[2] + '</small></div>'; }).join('');
+
+    $('clTable').innerHTML = '<table class="rm-table"><thead><tr><th>ID</th><th>名称</th><th>类型</th><th>表达式</th><th>说明</th><th>被引用</th></tr></thead><tbody>' +
+      items.map(function (x) {
+        return '<tr><td><code>' + esc(x.id) + '</code></td><td><b>' + esc(x.name) + '</b></td><td>' + esc(x.type || '—') + '</td>' +
+          '<td>' + (x.expression ? '<span class="cl-expr">' + esc(x.expression) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+          '<td>' + esc(x.description || '') + '</td><td>' + (used.get(x.id) || 0) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+
+    var ta = $('clJson');
+    if (ta && document.activeElement !== ta) ta.value = JSON.stringify(items, null, 2);
+  }
+
+  function parseEditor() {
+    var ta = $('clJson'); if (!ta) return { ok: false, error: '编辑器不可用' };
+    var data;
+    try { data = JSON.parse(ta.value); } catch (e) { return { ok: false, error: 'JSON 语法错误：' + e.message }; }
+    if (!Array.isArray(data)) return { ok: false, error: 'JSON 根节点必须是数组' };
+    var ids = new Set();
+    for (var i = 0; i < data.length; i++) {
+      var x = data[i];
+      if (!x || typeof x !== 'object' || Array.isArray(x)) return { ok: false, error: '第 ' + (i + 1) + ' 项必须是对象' };
+      if (!x.id) return { ok: false, error: '第 ' + (i + 1) + ' 项缺少 id' };
+      if (!x.name) return { ok: false, error: '第 ' + (i + 1) + ' 项（' + x.id + '）缺少 name' };
+      if (ids.has(String(x.id))) return { ok: false, error: 'id 重复：' + x.id };
+      ids.add(String(x.id));
+    }
+    return { ok: true, data: data, ids: ids };
+  }
+
+  function save() {
+    var r = parseEditor();
+    if (!r.ok) { message(r.error, false); notify('约束条件库未保存：' + r.error); return; }
+    items = r.data;
+    persist();
+    // 引用完整性检查：被资源引用但库中已不存在的 ID
+    var used = usage(), lost = [];
+    used.forEach(function (n, id) { if (!r.ids.has(String(id))) lost.push(id); });
+    render();
+    if (window.__RESOURCE_MODULE__) window.__RESOURCE_MODULE__.render();
+    if (lost.length) { message('已保存，但有 ' + lost.length + ' 个仍被资源引用的 ID 被删除：' + lost.join('、') + '（资源侧会标记“引用缺失”）', false); notify('已保存，存在 ' + lost.length + ' 个悬空引用'); }
+    else { message('已保存 ' + items.length + ' 条约束条件，资源库引用已同步。', true); notify('约束条件库已保存'); }
+  }
+
+  function wire() {
+    var root = $('constraints'); if (!root || root.dataset.clWired === '1') return;
+    root.dataset.clWired = '1';
+    root.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-cl]'); if (!btn) return;
+      e.preventDefault();
+      var act = btn.dataset.cl;
+      if (act === 'save') return save();
+      if (act === 'validate') { var r = parseEditor(); return message(r.ok ? 'JSON 校验通过：' + r.data.length + ' 条约束条件。' : r.error, r.ok); }
+      if (act === 'format') { var f = parseEditor(); if (!f.ok) return message(f.error, false); $('clJson').value = JSON.stringify(f.data, null, 2); return message('已格式化。', true); }
+      if (act === 'reset') {
+        items = BASE.map(function (x) { return Object.assign({}, x); });
+        persist(); render();
+        if (window.__RESOURCE_MODULE__) window.__RESOURCE_MODULE__.render();
+        message('已恢复内置基线（' + items.length + ' 条）。', true); notify('约束条件库已恢复基线');
+      }
+    });
+  }
+
+  load();
+  window.__CONSTRAINT_LIBRARY__ = {
+    list: function () { return items; }, byId: byId, idFor: idFor, refsFor: refsFor,
+    resolve: resolve, render: render, reload: function () { load(); render(); }
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(); render(); }, { once: true });
+  else { wire(); render(); }
+})();
+</script>
+
 <style id="resource-module-single-style">
 #resources .rm-graph{width:100%;max-width:760px;height:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
 #resources .rm-graph text{font-size:11px;fill:#182230}
@@ -2882,6 +3102,7 @@ load().catch((error) => toast(error.message));
      - 唯一渲染    只有 render() 写 #atomicResourceKpis/#resourceDomainList/
                    #atomicResourceList/#atomicResourceDetail，不整体替换 #resources
      - 唯一绑定    #resources 上一次性事件委托，重绘不重复绑定、不产生监听器泄漏
+     - 约束引用    资源只保存 constraintRefs（ID），约束文本由“配置 → 约束条件库”统一定义
    ============================================================================= */
 (function () {
   'use strict';
@@ -2898,6 +3119,9 @@ load().catch((error) => toast(error.message));
   var num = function (v) { return Number(v) || 0; };
   var notify = function (msg) { if (typeof toast === 'function') toast(msg); else console.info('[资源库]', msg); };
   var $ = function (id) { return document.getElementById(id); };
+  // 约束条件库是约束文本的唯一来源；这里只按 ID 引用，绝不复制文本。
+  var CL = function () { return window.__CONSTRAINT_LIBRARY__ || null; };
+  var refItems = function (refs) { var c = CL(); return c ? c.resolve(refs) : []; };
 
   // ---- 本体切片（旧 RESOURCE_MODULE_V1 的能力，并入唯一模块）-----------------
   function buildSlice(r) {
@@ -2938,6 +3162,10 @@ load().catch((error) => toast(error.message));
       row.location = row.location || '未设置';
       row.status = row.status || (row.available > 0 ? '可调用' : '不可用');
       ['constraints', 'transport', 'consumption', 'deps'].forEach(function (k) { if (!Array.isArray(row[k])) row[k] = []; });
+      // 约束改为引用：内联文本换算成约束条件库的 ID，并从资源上删除，避免出现第二份定义。
+      var c = CL();
+      row.constraintRefs = c ? c.refsFor(row) : [];
+      delete row.constraints;
       row.ontologySlice = buildSlice(row);
       return row;
     });
@@ -2951,9 +3179,10 @@ load().catch((error) => toast(error.message));
       var patch = byCode.get(String(b.code));
       if (!patch) return b;
       var merged = Object.assign({}, b, patch);
-      ['constraints', 'transport', 'consumption', 'deps'].forEach(function (k) {
-        if (!Array.isArray(patch[k]) || !patch[k].length) merged[k] = b[k];
+      ['constraintRefs', 'transport', 'consumption', 'deps'].forEach(function (k) {
+        if (!Array.isArray(patch[k])) merged[k] = b[k];
       });
+      delete merged.constraints;
       merged.id = b.id; merged.code = b.code;
       merged.ontologySlice = b.ontologySlice;
       return merged;
@@ -2962,7 +3191,8 @@ load().catch((error) => toast(error.message));
     saved.forEach(function (x) {
       if (x && x.custom === true && x.code && !known.has(String(x.code))) {
         var row = clone(x);
-        ['constraints', 'transport', 'consumption', 'deps'].forEach(function (k) { if (!Array.isArray(row[k])) row[k] = []; });
+        ['constraintRefs', 'transport', 'consumption', 'deps'].forEach(function (k) { if (!Array.isArray(row[k])) row[k] = []; });
+        delete row.constraints;
         row.ontologySlice = buildSlice(row);
         out.push(row);
       }
@@ -2978,7 +3208,7 @@ load().catch((error) => toast(error.message));
     try { var old = JSON.parse(localStorage.getItem(LEGACY_KEY) || '[]'); return Array.isArray(old) ? old : []; } catch (e) { return []; }
   }
 
-  var state = { resources: [], domain: '全部', id: null, tab: '基础信息', q: '', status: '' };
+  var state = { resources: [], domain: '全部', id: null, tab: '基础信息', q: '', status: '', crefQ: '', crefOnly: false };
 
   function reload() {
     var base = baseline();
@@ -3028,7 +3258,7 @@ load().catch((error) => toast(error.message));
   }
 
   function detailHtml(r) {
-    var tabs = ['基础信息', '库存现状', '存储位置', '运输约束', '消耗模型', '依赖与图谱'];
+    var tabs = ['基础信息', '库存现状', '存储位置', '约束', '消耗模型', '依赖与图谱'];
     var c = '';
     if (state.tab === '基础信息') {
       c = '<div class="detail-grid">' +
@@ -3048,18 +3278,40 @@ load().catch((error) => toast(error.message));
         '<div class="panel-lite"><h3>有效可调度能力</h3><p><b>' + Math.max(0, num(r.available) - num(r.reserved)) + '</b> ' + esc(r.unit) +
         '</p><small>Effective Available = Available − Reserved</small></div></div>';
     } else if (state.tab === '存储位置') {
-      var store = (r.constraints || []).filter(function (x) { return /库存|储存|冷链|安全|仓储/.test(x[0] + x[1]); });
+      var store = refItems(r.constraintRefs).filter(function (x) { return /库存|储存|冷链|安全|仓储|容量/.test(x.name + x.description + (x.type || '')); });
       c = '<div class="detail-grid"><label>所在区域/机构<input data-rf="location" value="' + esc(r.location) + '"></label>' +
         '<div class="panel-lite"><h3>存储/部署约束</h3>' +
-        (store.map(function (x) { return '<p><b>' + esc(x[0]) + '</b>：' + esc(x[1]) + '</p>'; }).join('') || '<p>可配置仓储容量、温控、安全库存和部署条件。</p>') +
+        (store.map(function (x) { return '<p><b>' + esc(x.name) + '</b>：' + esc(x.description) + ' <small class="muted">(' + esc(x.id) + ')</small></p>'; }).join('') || '<p>可配置仓储容量、温控、安全库存和部署条件。</p>') +
         '</div></div>';
-    } else if (state.tab === '运输约束') {
-      c = '<table class="constraint-table"><thead><tr><th>运输工具</th><th>单次装载能力</th><th>约束条件</th></tr></thead><tbody>' +
+    } else if (state.tab === '约束') {
+      var lib = CL() ? CL().list() : [];
+      var on = new Set((r.constraintRefs || []).map(String));
+      // 已引用置顶 + 关键词过滤：条目多时也能快速定位，勾选状态由 constraintRefs 决定。
+      var cq = state.crefQ.toLowerCase();
+      lib = lib.slice().sort(function (a, b) { return (on.has(String(b.id)) ? 1 : 0) - (on.has(String(a.id)) ? 1 : 0); })
+        .filter(function (x) {
+          if (state.crefOnly && !on.has(String(x.id))) return false;
+          if (!cq) return true;
+          return [x.id, x.name, x.type, x.expression, x.description].join(' ').toLowerCase().indexOf(cq) >= 0;
+        });
+      var missing = refItems(r.constraintRefs).filter(function (x) { return x.missing; });
+      c = '<h3>引用的约束条件</h3>' +
+        '<p class="muted">勾选即引用「配置 → 约束条件库」中的条目；约束定义只存在于该库一份，此处仅保存 ID。</p>' +
+        (missing.length ? '<p class="cl-missing">⚠ 存在 ' + missing.length + ' 个引用缺失：' + missing.map(function (x) { return esc(x.id); }).join('、') + '（该 ID 已从约束条件库删除，可在配置页“恢复基线”找回；此处保存会清除失效引用）</p>' : '') +
+        '<div class="cl-filter"><input id="crefFilter" placeholder="按名称/类型/ID/表达式过滤约束条件" value="' + esc(state.crefQ) + '">' +
+        '<label><input type="checkbox" id="crefOnly" ' + (state.crefOnly ? 'checked' : '') + '>只看已引用（' + on.size + '/' + (CL() ? CL().list().length : 0) + '）</label></div>' +
+        (lib.length ? '<div class="cl-pick">' + lib.map(function (x) {
+          return '<label class="' + (on.has(String(x.id)) ? 'on' : '') + '">' +
+            '<input type="checkbox" data-cref="' + esc(x.id) + '" ' + (on.has(String(x.id)) ? 'checked' : '') + '>' +
+            '<span><b>' + esc(x.name) + '</b> <span class="tag">' + esc(x.type || '—') + '</span>' +
+            (x.expression ? ' <span class="cl-expr">' + esc(x.expression) + '</span>' : '') +
+            '<small>' + esc(x.id) + ' · ' + esc(x.description || '') + '</small></span></label>';
+        }).join('') + '</div>' : '<p class="rm-empty">没有匹配的约束条件。</p>') +
+        '<h3 style="margin-top:14px">运输关系</h3>' +
+        '<table class="constraint-table"><thead><tr><th>运输工具</th><th>单次装载能力</th><th>通行/装载条件</th></tr></thead><tbody>' +
         ((r.transport || []).map(function (x) {
           return '<tr><td>' + esc(x[0]) + '</td><td>' + esc(x[1]) + '</td><td>' + esc(x[2]) + '</td></tr>';
-        }).join('') || '<tr><td colspan="3">该资源暂未配置运输关系</td></tr>') + '</tbody></table>' +
-        '<h3 style="margin-top:14px">资源约束条件</h3>' +
-        ((r.constraints || []).map(function (x) { return '<div class="transport-card"><b>' + esc(x[0]) + '</b><p>' + esc(x[1]) + '</p></div>'; }).join('') || '<p class="rm-empty">暂无约束条件</p>');
+        }).join('') || '<tr><td colspan="3">该资源暂未配置运输关系</td></tr>') + '</tbody></table>';
     } else if (state.tab === '消耗模型') {
       c = '<h3>消耗/能力模型</h3>' +
         ((r.consumption || []).map(function (x) { return '<div class="transport-card"><b>' + esc(x[0]) + '</b><p>' + esc(x[1]) + '</p></div>'; }).join('') ||
@@ -3072,8 +3324,10 @@ load().catch((error) => toast(error.message));
         '<h3 style="margin-top:16px">本体切片关系图</h3>' + graphSvg(slice) +
         '<h3 style="margin-top:16px">关系三元组</h3><div class="rm-kv">' +
         slice.relations.map(function (x) { return '<b>' + esc(x.predicate) + '</b><span>' + esc(x.source) + ' → ' + esc(x.target) + '</span>'; }).join('') + '</div>' +
-        '<h3>约束节点</h3>' +
-        ((r.constraints || []).map(function (x) { return '<div class="transport-card"><b>CONSTRAINED_BY · ' + esc(x[0]) + '</b><p>' + esc(x[1]) + '</p></div>'; }).join('') || '<p class="rm-empty">暂无约束节点</p>');
+        '<h3>约束节点（引用自约束条件库）</h3>' +
+        (refItems(r.constraintRefs).map(function (x) {
+          return '<div class="transport-card' + (x.missing ? ' cl-missing' : '') + '"><b>CONSTRAINED_BY · ' + esc(x.name) + '</b><p>' + esc(x.description || '') + '</p><small class="muted">' + esc(x.id) + (x.expression ? ' · ' + esc(x.expression) : '') + '</small></div>';
+        }).join('') || '<p class="rm-empty">暂无约束引用</p>');
     }
     return '<div class="detail-head"><div><h2>' + esc(r.name) + '</h2><p>' + esc(r.code) + ' · ' + esc(r.domain) + ' / ' + esc(r.category) + '</p></div>' +
       '<button class="secondary" type="button" data-ra="close">关闭详情</button></div>' +
@@ -3092,10 +3346,10 @@ load().catch((error) => toast(error.message));
     var all = state.resources;
     var totalQty = all.reduce(function (s, x) { return s + num(x.total); }, 0);
     var availQty = all.reduce(function (s, x) { return s + num(x.available); }, 0);
-    var cons = all.reduce(function (s, x) { return s + (x.constraints || []).length; }, 0);
+    var cons = all.reduce(function (s, x) { return s + (x.constraintRefs || []).length; }, 0);
     $('atomicResourceKpis').innerHTML = [
       ['原子资源', all.length, '个'], ['资源总量', totalQty.toLocaleString(), '库存/能力汇总'],
-      ['当前可调用', availQty.toLocaleString(), '可调度能力'], ['约束条件', cons, '条'],
+      ['当前可调用', availQty.toLocaleString(), '可调度能力'], ['约束引用', cons, '条'],
       ['资源域', domains().length - 1, '类']
     ].map(function (k) { return '<div class="kpi"><span>' + k[0] + '</span><b>' + k[1] + '</b><small>' + k[2] + '</small></div>'; }).join('');
 
@@ -3113,7 +3367,7 @@ load().catch((error) => toast(error.message));
         '<div>总量 <b>' + num(x.total) + '</b> ' + esc(x.unit) + '</div>' +
         '<div>可用 <b>' + num(x.available) + '</b> ' + esc(x.unit) + '</div>' +
         '<div><span class="tag">' + esc(x.status) + '</span></div>' +
-        '<div>' + (x.constraints || []).length + ' 条约束<br><small>' + (x.transport || []).length + ' 种运输关系</small></div>' +
+        '<div>' + (x.constraintRefs || []).length + ' 条约束引用<br><small>' + (x.transport || []).length + ' 种运输关系</small></div>' +
         '<button class="secondary" type="button">详情</button></div>';
     }).join('') || '<p class="rm-empty">当前筛选条件下没有资源。</p>';
 
@@ -3141,6 +3395,16 @@ load().catch((error) => toast(error.message));
     document.querySelectorAll('#atomicResourceDetail [data-rf]').forEach(function (el) {
       r[el.dataset.rf] = el.dataset.rfNum ? num(el.value) : el.value;
     });
+    // 约束引用：只在“当前可见的条目”范围内增删，过滤掉的已有引用不受影响；
+    // 同时清除库中已不存在的失效 ID。
+    if (state.tab === '约束') {
+      var boxes = document.querySelectorAll('#atomicResourceDetail [data-cref]');
+      var visible = new Set(Array.prototype.map.call(boxes, function (b) { return b.dataset.cref; }));
+      var checked = new Set(Array.prototype.filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return b.dataset.cref; }));
+      var kept = (r.constraintRefs || []).filter(function (id) { return !visible.has(id) && CL() && CL().byId(id); });
+      var order = CL() ? CL().list().map(function (x) { return String(x.id); }) : [];
+      r.constraintRefs = kept.concat(Array.from(checked)).sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
+    }
     persist(); render(); notify('原子资源已保存');
   }
 
@@ -3150,7 +3414,7 @@ load().catch((error) => toast(error.message));
       id: 'custom_' + stamp, code: 'CUSTOM-' + String(stamp).slice(-6), custom: true,
       domain: '自定义资源域', category: '自定义品类', name: '新原子资源', unit: '个',
       total: 0, available: 0, reserved: 0, location: '待填写', status: '可调用',
-      constraints: [['调度条件', '待配置']], transport: [], consumption: [], deps: []
+      constraintRefs: [], transport: [], consumption: [], deps: []
     };
     row.ontologySlice = buildSlice(row);
     state.resources.push(row); persist(); open(row.id);
@@ -3174,6 +3438,16 @@ load().catch((error) => toast(error.message));
     });
     root.addEventListener('input', function (e) {
       if (e.target.id === 'resourceSearch') { state.q = e.target.value.trim(); render(); }
+      if (e.target.id === 'crefFilter') {
+        state.crefQ = e.target.value.trim(); render();
+        var f = $('crefFilter'); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+      }
+    });
+    root.addEventListener('change', function (e) {
+      if (e.target.dataset && e.target.dataset.cref) {
+        var label = e.target.closest('label'); if (label) label.classList.toggle('on', e.target.checked);
+      }
+      if (e.target.id === 'crefOnly') { state.crefOnly = e.target.checked; render(); }
     });
     root.addEventListener('change', function (e) {
       if (e.target.id === 'resourceStatusFilter') { state.status = e.target.value; render(); }
