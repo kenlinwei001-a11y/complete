@@ -109,6 +109,7 @@ import EdgeActivePanel from "../EdgeActivePanel";
 import { SandboxOpt } from "./SandboxOpt";
 import css from "./SandboxOpt.module.css";
 import { consoleHostProps, useConsoleSession, type ConsoleSession } from "./useConsoleSession";
+import { useWorldStateVersion } from "./useWorldStateVersion";
 
 /**
  * 宿主参数组装口 —— **前沿图这一半的唯一入口**（`SandboxOptRoute` 只调它，不再自己拼）。
@@ -162,9 +163,18 @@ export const PARETO_ASSEMBLE_ENDPOINT = "/a/v1/sim/optimize-pareto/assemble" as 
 function useAssembledParetoRequest(session: ConsoleSession, enabled: boolean): ParetoRequest | undefined {
   const sessionId = session.sessionId;
   const body = sessionId ? { sessionId } : {};
+  // WO-CLOSE-SIM-ONTO-2 · §8 `G-PARETO-WORLDSTATE-CACHE`：键里补上**世界态版本**。
+  // 后端这一口逐格读世界态（`assembleParetoModel → buildWorldReadView`），
+  // 而旧键 `["a","sim-pareto-assemble", sessionId]` 只认会话身份 ⇒ 同一会话内施完扰动
+  // 命中旧缓存、屏上一格不动，用户据此得出「这个杠杆没用」的**相反结论**。
+  // ⛔ 修法不是关缓存（那是拿正确性换性能，且键仍在说谎）——是让键说真话：
+  //    世界变 ⇒ 键变 ⇒ 重取；世界没变 ⇒ 键不变 ⇒ **照常命中缓存**（对照实验第 2 行）。
+  const worldVersion = useWorldStateVersion(sessionId);
   const q = useQuery({
-    queryKey: ["a", "sim-pareto-assemble", sessionId ?? ""],
-    enabled: enabled && session.reason !== "loading",
+    queryKey: ["a", "sim-pareto-assemble", sessionId ?? "", worldVersion ?? ""],
+    // 版本没算出来就**不发** —— 先用占位版本取一次、回来再换真版本取第二次，
+    // 等于开页两次装配，且第一份被缓存在一个假版本下（比不缓存更坏）。
+    enabled: enabled && session.reason !== "loading" && worldVersion !== undefined,
     retry: false,
     queryFn: () => api.a<unknown>(PARETO_ASSEMBLE_ENDPOINT, { body }),
   });

@@ -39,7 +39,15 @@ const LABEL_TO_KEYS: Record<string, readonly (readonly string[])[]> = {
   //   ["a","sim-sessions"]            SandboxView.tsx sessionsQuery（世界列表 rail）
   //   ["a","sim-world", sessionId]    SandboxView.tsx worldQuery（当前世界态·前缀失效盖住所有会话）
   "sim-sessions": [["a", "sim-sessions"]],
-  "sim-world": [["a", "sim-world"]],
+  // WO-CLOSE-SIM-ONTO-2 · §8 `G-PARETO-WORLDSTATE-CACHE`：方案寻优的**模型装配**同挂此标签。
+  //   ["a","sim-pareto-assemble", sessionId, worldVersion]   SandboxOptRoute.tsx useAssembledParetoRequest
+  // 后端 `POST …/optimize-pareto/assemble` 逐格读世界态（`assembleParetoModel → buildWorldReadView`），
+  // 所以它的有效期就是「世界态没变」——世界一动就该重取，与 `sim-world` 同生共死。
+  // ⚠ 这是**第二道**，不是唯一那道：主修法是把世界态版本写进键本身
+  //   （`console/useWorldStateVersion.ts`）。挂在这里是为了让**任何**失效 `sim-world` 的事件
+  //   都能捎上它 —— 键只认「tick + 扰动集」两条路，别的世界写入路（如 `/act`）靠这一行兜。
+  //   前缀失效（TanStack 前缀匹配）故只写到 sessionId 之前那一段。
+  "sim-world": [["a", "sim-world"], ["a", "sim-pareto-assemble"]],
   // WO-ENTERPRISE-STATE · 企业状态快照（真消费方 = views/sim/EnterpriseStatePanel.tsx 的
   // `useQuery(["a","enterprise-states", worldId])`；前缀失效盖住所有世界）。
   "enterprise-states": [["a", "enterprise-states"]],
