@@ -1348,16 +1348,18 @@ async function load() {
   renderAll();
 }
 function renderAll() {
-  renderPermissionBar();
-  renderProjects();
-  renderWizard();
-  renderStudio();
-  renderCorpus();
-  renderAdmin();
-  renderWorkbenchModules();
-  // 资源库必须独立渲染：其他页面模块报错不能阻断资源库。
-  try { renderResources(); wireResources(); } catch (e) { console.error("资源库渲染失败", e); }
-  renderOutputPlaceholder();
+  // 故障隔离：任一模块因缺少 DOM 容器等原因抛错时，只跳过它自己，
+  // 不再中断整个 renderAll（此前 renderWizard 抛错会连带让语料库/报告工作区/
+  // 权限审计/工作台模块全部空白）。
+  [
+    ["权限条", renderPermissionBar], ["项目", renderProjects], ["向导", renderWizard],
+    ["报告工作区", renderStudio], ["语料库", renderCorpus], ["权限与审计", renderAdmin],
+    ["工作台模块", renderWorkbenchModules],
+    ["资源库", function () { renderResources(); wireResources(); }],
+    ["输出占位", renderOutputPlaceholder]
+  ].forEach(function (m) {
+    try { m[1](); } catch (e) { console.error("[renderAll] " + m[0] + " 渲染失败（已跳过，不影响其他模块）", e); }
+  });
 }
 function reportProcessChain(contextPlan = null, location = "wizard") {
   const report = currentReport();
@@ -1689,6 +1691,9 @@ function ensureScheme(type = currentReportType()) {
 }
 function renderSchemeConfig() {
   const scheme = ensureScheme();
+  // #schemeGrid 在当前版面中不存在；缺容器时安全退出，否则整个 renderAll 会在这里中断，
+  // 导致语料库/报告工作区/权限审计/工作台模块全部不渲染。
+  if (!$("schemeGrid")) return;
   const labels = { policies: "政策范围", agents: "写作 Agent", functions: "函数包" };
   const placeholders = { policies: "新增政策文件/范围", agents: "新增 Agent", functions: "新增函数" };
   $("schemeGrid").innerHTML = `<div class="scheme-flow">${["选择报告类型", "配置政策范围", "配置写作 Agent", "配置函数包", "确认生成方案", "创建报告 / 0-1 生成"].map((step, index) => `<div class="scheme-step"><b>${index + 1}</b><span>${step}</span></div>`).join("")}</div>` + Object.entries(labels).map(([key, label]) => `<div class="scheme-card">
@@ -1770,7 +1775,8 @@ function renderWizard() {
   renderSchemeConfig();
   setFormDisabled($("zeroForm"), !can("writer"));
   renderZeroResult();
-  $("similarityList").innerHTML = `<div class="card-actions"><button class="primary" id="quickReportBtn" type="button" ${disabled}>按当前项目快速创建</button><button class="secondary" id="previewCorpusBtn" type="button">查看选中语料</button></div>` + corpusScores().map(({ c, score }) => `<div class="sim" data-corpus-detail="${c.id}">
+  // #similarityList 在当前版面中不存在：缺容器时跳过这一段，避免中断 renderWizard 其余部分。
+  if ($("similarityList")) $("similarityList").innerHTML = `<div class="card-actions"><button class="primary" id="quickReportBtn" type="button" ${disabled}>按当前项目快速创建</button><button class="secondary" id="previewCorpusBtn" type="button">查看选中语料</button></div>` + corpusScores().map(({ c, score }) => `<div class="sim" data-corpus-detail="${c.id}">
     <div class="score">${score}%</div><div><b>${c.permission === "usable_hidden" ? "受限同类项目语料" : c.title}</b>
     <p>${c.domain} · ${permissionName(c.permission)}</p><div class="bar"><i style="width:${score}%"></i></div></div>
     <div class="card-actions"><button class="secondary" data-corpus-view="${c.id}" type="button">详情</button><button class="secondary" data-pick-corpus="${c.id}" type="button" ${disabled}>选为起点</button></div></div>`).join("");
@@ -3732,12 +3738,19 @@ load().catch((error) => toast(error.message));
 .cfg-chip.on{border-color:var(--blue);color:var(--blue);background:#f5f9ff}
 .cfg-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:10px 0}
 .cfg-form label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
-.cfg-form label.wide{grid-column:1/-1}
+.cfg-form label.wide,.cfg-form .wide{grid-column:1/-1}
 .cfg-form input,.cfg-form select,.cfg-form textarea{min-height:34px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--ink);background:#fff;font:inherit}
+/* 勾选框不是输入框：不套用上面的高度/内边距，否则会被撑成大方块 */
+.cfg-form input[type=checkbox],.cfg-form input[type=radio],.cfg-pick input{min-height:0;width:15px;height:15px;padding:0;margin:2px 0 0;border-radius:3px;accent-color:var(--blue)}
+.cfg-block{display:grid;gap:6px}
+.cfg-caption{font-size:12.5px;color:var(--muted)}
 .cfg-form textarea{min-height:70px}
-.cfg-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px;max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:9px;background:#fbfcfe}
-.cfg-pick label{display:flex;gap:8px;align-items:flex-start;font-size:12.3px;color:var(--ink);cursor:pointer}
-.cfg-pick small{color:var(--muted);display:block}
+.cfg-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:7px;max-height:280px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px;background:#fbfcfe}
+/* 每个勾选项固定为「勾选框 + 文本」两列，文本左对齐、可换行，不再被父级 label 的栅格样式带偏 */
+.cfg-pick label{display:grid;grid-template-columns:16px minmax(0,1fr);gap:9px;align-items:start;text-align:left;font-size:12.3px;line-height:1.45;color:var(--ink);cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:#fff;overflow-wrap:anywhere}
+.cfg-pick label:hover{border-color:var(--blue)}
+.cfg-pick label.on{border-color:var(--blue);background:#f5f9ff}
+.cfg-pick small{color:var(--muted);display:block;margin-top:2px}
 .cfg-msg{margin:8px 0;font-size:12.5px;min-height:20px}
 .cfg-msg.ok{color:var(--teal)} .cfg-msg.err{color:var(--red)}
 .cfg-key{font-family:Consolas,"Courier New",monospace;background:#f2f5f9;border-radius:4px;padding:1px 6px}
@@ -4285,19 +4298,20 @@ window.__CFG__ = (function () {
       '<label class="wide">职责<input data-af="duty" value="' + esc(a.duty || '') + '"></label>' +
       '<label class="wide">系统提示词<textarea data-af="prompt">' + esc(a.prompt || '') + '</textarea></label>' +
       '<label class="wide">Skill（每行一个）<textarea data-af="skills">' + esc((a.skills || []).join('\n')) + '</textarea></label>' +
-      '<label class="wide">责任资源域<div class="cfg-pick">' + domains.map(function (d) {
-        return '<label><input type="checkbox" data-af="domains" value="' + esc(d) + '" ' + ((a.domains || []).indexOf(d) >= 0 ? 'checked' : '') + '><span>' + esc(d) + '</span></label>';
-      }).join('') + '</div></label>' +
-      '<label class="wide">MCP 工具（仅列出本场景与通用函数，避免跨场景误调；切换场景后重新打开编辑可刷新列表）<div class="cfg-pick">' +
+      '<div class="wide cfg-block"><span class="cfg-caption">责任资源域</span><div class="cfg-pick">' + domains.map(function (d) {
+        var on = (a.domains || []).indexOf(d) >= 0;
+        return '<label class="' + (on ? 'on' : '') + '"><input type="checkbox" data-af="domains" value="' + esc(d) + '" ' + (on ? 'checked' : '') + '><span>' + esc(d) + '</span></label>';
+      }).join('') + '</div></div>' +
+      '<div class="wide cfg-block"><span class="cfg-caption">MCP 工具（仅列出本场景与通用函数，避免跨场景误调；切换场景后重新打开编辑可刷新列表）</span><div class="cfg-pick">' +
       fns.map(function (f) {
         var n = mcpOf(f);
-        return '<label><input type="checkbox" data-af="mcpTools" value="' + esc(n) + '" ' + (picked.indexOf(n) >= 0 ? 'checked' : '') + '><span>' + esc(f.name) +
+        return '<label class="' + (picked.indexOf(n) >= 0 ? 'on' : '') + '"><input type="checkbox" data-af="mcpTools" value="' + esc(n) + '" ' + (picked.indexOf(n) >= 0 ? 'checked' : '') + '><span>' + esc(f.name) +
           '<small>' + esc(n) + ' · 输出 ' + esc(f.unit) + '</small></span></label>';
-      }).join('') + '</div></label>' +
-      '<label class="wide">数据源<div class="cfg-pick">' + dss.map(function (d) {
-        return '<label><input type="checkbox" data-af="datasources" value="' + esc(d.id) + '" ' + ((a.datasources || []).indexOf(d.id) >= 0 ? 'checked' : '') + '><span>' + esc(d.name) +
+      }).join('') + '</div></div>' +
+      '<div class="wide cfg-block"><span class="cfg-caption">数据源</span><div class="cfg-pick">' + dss.map(function (d) {
+        return '<label class="' + ((a.datasources || []).indexOf(d.id) >= 0 ? 'on' : '') + '"><input type="checkbox" data-af="datasources" value="' + esc(d.id) + '" ' + ((a.datasources || []).indexOf(d.id) >= 0 ? 'checked' : '') + '><span>' + esc(d.name) +
           '<small>' + esc(window.__DATASOURCES__.kindName(d.kind)) + ' · ' + esc(d.domain) + '</small></span></label>';
-      }).join('') + '</div></label>' +
+      }).join('') + '</div></div>' +
       '</div><div class="card-actions"><button class="primary" type="button" data-ag="' + (isNew ? 'create-commit' : 'edit-commit') + '">' + (isNew ? '新增 Agent' : '保存修改') + '</button>' +
       '<button class="secondary" type="button" data-ag="edit-cancel">取消</button></div>';
   }
@@ -4406,6 +4420,9 @@ window.__CFG__ = (function () {
       else if (act === 'reset') { db.reset(); ui.editing = null; render(); C.message('agentMessage', '已恢复内置基线（' + db.list().length + ' 个 Agent）。', true); }
     });
     root.addEventListener('change', function (e) {
+      if (e.target.type === 'checkbox' && e.target.getAttribute('data-af')) {
+        var lb = e.target.closest('label'); if (lb) lb.classList.toggle('on', e.target.checked);
+      }
       // 切换场景时刷新可选 MCP 工具列表（只保留本场景 + 通用）
       if (e.target.getAttribute && e.target.getAttribute('data-af') === 'scenario' && ui.editing) {
         var cur = readForm(); cur.id = ui.editing === '__new__' ? cur.id : ui.editing;
@@ -4413,9 +4430,9 @@ window.__CFG__ = (function () {
         var keep = fnList().filter(function (f) { return f.scenario === cur.scenario || f.scenario === 'common'; }).map(mcpOf);
         t.mcpTools = (t.mcpTools || []).filter(function (x) { return keep.indexOf(x) >= 0; });
         t.domains = (SCEN.find(function (s) { return s.code === cur.scenario; }) || {}).domains || t.domains;
-        var host = ui.editing === '__new__' ? $('agentNewForm') : null;
-        if (host) host.innerHTML = '<div class="cfg-card">' + formHtml(t, true) + '</div>';
-        else { var card = e.target.closest('.cfg-card'); if (card) card.innerHTML = formHtml(t, false); }
+        var host = ui.editing === '__new__' ? $('agentNewForm') : e.target.closest('.cfg-card');
+        if (!host) { render(); return; }   // 容器不在预期位置时整体重绘，避免写入 null
+        host.innerHTML = ui.editing === '__new__' ? '<div class="cfg-card">' + formHtml(t, true) + '</div>' : formHtml(t, false);
       }
     });
   }
@@ -4853,6 +4870,9 @@ window.__CFG__ = (function () {
       var patch = byCode.get(String(b.code));
       if (!patch) return b;
       var merged = Object.assign({}, b, patch);
+      // 兼容“资源域修正之前”的陈旧快照：域被写成数字（如 2500）时回退基线域，
+      // 避免这类伪资源域污染下游（Agent 责任资源域、数据源覆盖、函数关联域）。
+      if (!merged.domain || /^\s*[\d.]+\s*$/.test(String(merged.domain))) merged.domain = b.domain;
       ['constraintRefs', 'transport', 'consumption', 'deps'].forEach(function (k) {
         if (!Array.isArray(patch[k])) merged[k] = b[k];
       });
