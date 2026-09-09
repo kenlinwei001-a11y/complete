@@ -4306,7 +4306,8 @@ export const handlers = [
       // `aopBaseRev` = 基准情景年营收 = 供给侧年口径 322.2 × P̄ 1.8667（亿元·实测 601.5，旧值 240）。
       // 复验（三条任一即可，都不需要读本文件）：
       //   ① 值的单一来源在 `apps/frontend-shell/src/mocks/sopScale.ts`
-      //      （`SUPPLY_V7_WAN` :363 取定稿行的 supply · `AOP_BASE_REVENUE_YI` :369 = 计划年产能 × 均价）；
+      //      （`SUPPLY_V7_WAN` 取定稿行的 supply · `AOP_BASE_REVENUE_YI` = 计划年产能 × 均价）；
+      //      ⚠ 这里**只给符号名不给行号**：行号会漂，写死行号的引用天生带保质期（CLAUDE.md 铁律 0.5 第 5 条）；
       //   ② 真后端：`SEED_DEMO=1` 起 datacore，`POST /a/v1/solvers/sop_versions/invoke` 读定稿行 supply；
       //   ③ 离线：`grep -n "SUPPLY_V7_WAN\|AOP_BASE_REVENUE_YI" apps/frontend-shell/src/mocks/sopScale.ts`。
       // ⚠ 601.5 是**供给侧计划口径**，不是订单簿总额（订单簿是 454.64 亿）—— 两者不同源，别当同一个量。
@@ -4314,7 +4315,7 @@ export const handlers = [
       // `revAttainPct` 写死的 **102 已过期且方向相反**。102 抄的是真后端修前那个
       // 恒等式读数（`rolling ÷ budget ≡ 1/0.98`，与订单簿多少无关）；真后端现改成
       // 成交侧订单簿计划年成交额 ÷ 年度收入预算 ⇒ 实测 **59.4**（越线转红）。
-      // 复验：`REV_ATTAIN_PCT` 的算式就在 `apps/frontend-shell/src/mocks/sopScale.ts:316`
+      // 复验：`REV_ATTAIN_PCT` 的算式就在 `apps/frontend-shell/src/mocks/sopScale.ts`（按符号名找，别按行号）
       // （= ORDER_BOOK_PLAN_YEAR_REVENUE_YI ÷ SOP_REVENUE_BUDGET_YI ×100），两个分子分母都在同文件；
       // 真后端侧：`SEED_DEMO=1` + `POST /a/v1/solvers/cockpit_kpi/invoke` 读回 `revAttainPct`。
       // 同一块屏上 mock 读「超额完成 2 个点」而真后端读「只完成 59.4%」，那是两个相反的结论 ——
