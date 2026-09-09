@@ -41,6 +41,13 @@ button, input, select, textarea { font: inherit; }
 }
 .nav:hover, .nav.active { background: #1d2937; color: white; border-left-color: var(--blue); }
 .nav-ic { width: 16px; text-align: center; opacity: .9; font-size: 14px; }
+.nav-subs { display: none; background: #131d2b; padding: 4px 0 6px; border-left: 3px solid var(--blue); }
+.nav-subs.open { display: block; }
+.nav-sub { display: block; width: 100%; border: 0; background: transparent; color: var(--rail-text);
+  text-align: left; padding: 6px 16px 6px 39px; font-size: 12.5px; cursor: pointer; }
+.nav-sub::before { content: "· "; opacity: .6; }
+.nav-sub:hover { color: #fff; background: #1d2937; }
+.nav-sub.active { color: #fff; font-weight: 600; }
 .rail-foot { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; border-top: 1px solid #24334a; font-size: 11px; line-height: 1.6; }
 .rail-foot b { display: block; color: white; font-size: 13px; }
 .rail-foot span, .rail-foot small { display: block; color: var(--rail-text); }
@@ -484,6 +491,14 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
         <button class="nav" data-view="studio"><span class="nav-ic">✎</span>报告工作区</button>
         <button class="nav" data-view="links"><span class="nav-ic">◎</span>浏览</button>
         <button class="nav" data-view="config"><span class="nav-ic">⚙</span>配置</button>
+        <div class="nav-subs" id="navConfigSubs">
+          <button class="nav-sub" data-config-sub="functions">函数库</button>
+          <button class="nav-sub" data-config-sub="agents">Agent配置</button>
+          <button class="nav-sub" data-config-sub="models">大模型配置</button>
+          <button class="nav-sub" data-config-sub="tools">小插件</button>
+          <button class="nav-sub" data-config-sub="constraints">约束条件库</button>
+          <button class="nav-sub" data-config-sub="audit">权限与审计</button>
+        </div>
         <div class="rail-foot">
           <b id="railUser">李工</b>
           <span id="railRole">项目负责人 · 咨询一部</span>
@@ -2890,19 +2905,50 @@ load().catch((error) => toast(error.message));
 </script>
 
 
+
+<script id="config-subnav">
+/* 左侧导航“配置”二级目录：与配置页 tabbar 同一套 data-config-tab 分发，不新增第二条执行链。 */
+(function(){
+  'use strict';
+  function subs(){ return document.getElementById('navConfigSubs'); }
+  function open(on){ var el=subs(); if(el) el.classList.toggle('open', !!on); }
+  function mark(tab){
+    document.querySelectorAll('.nav-sub').forEach(function(b){ b.classList.toggle('active', b.dataset.configSub===tab); });
+  }
+  function go(tab){
+    if (typeof window.__switchWorkbenchView === 'function') window.__switchWorkbenchView('config');
+    else if (typeof show === 'function') show('config');
+    var btn=document.querySelector('[data-config-tab="'+tab+'"]');
+    if (btn) btn.click();
+    open(true); mark(tab);
+  }
+  document.addEventListener('click', function(e){
+    var sub = e.target.closest ? e.target.closest('.nav-sub') : null;
+    if (sub) { e.preventDefault(); e.stopPropagation(); return go(sub.dataset.configSub); }
+    var nav = e.target.closest ? e.target.closest('.nav[data-view]') : null;
+    if (!nav) return;
+    if (nav.dataset.view === 'config') { var el=subs(); open(!(el && el.classList.contains('open'))); }
+    else open(false);
+  }, true);
+  // 配置页 tabbar 与二级目录高亮保持一致
+  document.addEventListener('click', function(e){
+    var t = e.target.closest ? e.target.closest('[data-config-tab]') : null;
+    if (t) mark(t.dataset.configTab);
+  });
+})();
+</script>
 <style id="constraint-library-style">
 #constraints .cl-json{width:100%;min-height:340px;font-family:Consolas,"Courier New",monospace;font-size:12.5px;line-height:1.6;border:1px solid var(--line);border-radius:10px;padding:12px;background:#fbfcfe;color:var(--ink)}
 #constraints .cl-msg{margin:8px 0;font-size:12.5px;min-height:20px}
 #constraints .cl-msg.ok{color:var(--teal)} #constraints .cl-msg.err{color:var(--red)}
 #constraints .cl-expr,#resources .cl-expr{font-family:Consolas,"Courier New",monospace;background:#f2f5f9;border-radius:4px;padding:1px 6px}
-#resources .cl-pick{display:grid;gap:8px;margin:6px 0 16px}
-#resources .cl-pick label{display:grid;grid-template-columns:20px 1fr;gap:10px;align-items:start;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:#fff;cursor:pointer}
-#resources .cl-pick label.on{border-color:var(--blue);background:#f6f9fd}
-#resources .cl-pick small{color:var(--muted);display:block}
+#resources .cl-add{display:flex;gap:12px;align-items:center;margin:10px 0 14px;flex-wrap:wrap}
+#resources .cl-add select{min-width:min(420px,60%);min-height:36px}
+#resources .cl-picked{display:grid;gap:8px;margin-bottom:6px}
+#resources .cl-item{display:flex;gap:12px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:10px;padding:9px 12px;background:#fff}
+#resources .cl-item small{color:var(--muted);display:block;margin-top:2px}
+#resources .cl-item.cl-missing{border-left-color:var(--red)}
 #resources .cl-missing{color:var(--red)}
-#resources .cl-filter{display:flex;gap:12px;align-items:center;margin:10px 0}
-#resources .cl-filter input[type=text],#resources .cl-filter #crefFilter{flex:1;min-height:34px}
-#resources .cl-filter label{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:12.5px;white-space:nowrap}
 </style>
 <script id="constraint-library-single">
 /* =============================================================================
@@ -3208,7 +3254,7 @@ load().catch((error) => toast(error.message));
     try { var old = JSON.parse(localStorage.getItem(LEGACY_KEY) || '[]'); return Array.isArray(old) ? old : []; } catch (e) { return []; }
   }
 
-  var state = { resources: [], domain: '全部', id: null, tab: '基础信息', q: '', status: '', crefQ: '', crefOnly: false };
+  var state = { resources: [], domain: '全部', id: null, tab: '基础信息', q: '', status: '' };
 
   function reload() {
     var base = baseline();
@@ -3285,28 +3331,25 @@ load().catch((error) => toast(error.message));
         '</div></div>';
     } else if (state.tab === '约束') {
       var lib = CL() ? CL().list() : [];
+      var picked = refItems(r.constraintRefs);          // 只展示已引用的条目
       var on = new Set((r.constraintRefs || []).map(String));
-      // 已引用置顶 + 关键词过滤：条目多时也能快速定位，勾选状态由 constraintRefs 决定。
-      var cq = state.crefQ.toLowerCase();
-      lib = lib.slice().sort(function (a, b) { return (on.has(String(b.id)) ? 1 : 0) - (on.has(String(a.id)) ? 1 : 0); })
-        .filter(function (x) {
-          if (state.crefOnly && !on.has(String(x.id))) return false;
-          if (!cq) return true;
-          return [x.id, x.name, x.type, x.expression, x.description].join(' ').toLowerCase().indexOf(cq) >= 0;
-        });
-      var missing = refItems(r.constraintRefs).filter(function (x) { return x.missing; });
+      var missing = picked.filter(function (x) { return x.missing; });
+      var options = lib.filter(function (x) { return !on.has(String(x.id)); });
       c = '<h3>引用的约束条件</h3>' +
-        '<p class="muted">勾选即引用「配置 → 约束条件库」中的条目；约束定义只存在于该库一份，此处仅保存 ID。</p>' +
-        (missing.length ? '<p class="cl-missing">⚠ 存在 ' + missing.length + ' 个引用缺失：' + missing.map(function (x) { return esc(x.id); }).join('、') + '（该 ID 已从约束条件库删除，可在配置页“恢复基线”找回；此处保存会清除失效引用）</p>' : '') +
-        '<div class="cl-filter"><input id="crefFilter" placeholder="按名称/类型/ID/表达式过滤约束条件" value="' + esc(state.crefQ) + '">' +
-        '<label><input type="checkbox" id="crefOnly" ' + (state.crefOnly ? 'checked' : '') + '>只看已引用（' + on.size + '/' + (CL() ? CL().list().length : 0) + '）</label></div>' +
-        (lib.length ? '<div class="cl-pick">' + lib.map(function (x) {
-          return '<label class="' + (on.has(String(x.id)) ? 'on' : '') + '">' +
-            '<input type="checkbox" data-cref="' + esc(x.id) + '" ' + (on.has(String(x.id)) ? 'checked' : '') + '>' +
-            '<span><b>' + esc(x.name) + '</b> <span class="tag">' + esc(x.type || '—') + '</span>' +
+        '<p class="muted">约束定义只存在于「配置 → 约束条件库」一份，此处仅保存 ID 引用。</p>' +
+        (missing.length ? '<p class="cl-missing">⚠ 存在 ' + missing.length + ' 个引用缺失：' + missing.map(function (x) { return esc(x.id); }).join('、') + '（该 ID 已从约束条件库删除，可在配置页“恢复基线”找回）</p>' : '') +
+        '<div class="cl-add"><select id="crefAdd"><option value="">＋ 添加约束条件…</option>' +
+        options.map(function (x) {
+          return '<option value="' + esc(x.id) + '">' + esc(x.name) + '（' + esc(x.type || '—') + ' · ' + esc(x.id) + '）</option>';
+        }).join('') + '</select>' +
+        '<span class="muted">已引用 ' + picked.length + ' 条 / 库内共 ' + lib.length + ' 条' + (options.length ? '' : '（已全部引用）') + '</span></div>' +
+        (picked.length ? '<div class="cl-picked">' + picked.map(function (x) {
+          return '<div class="cl-item' + (x.missing ? ' cl-missing' : '') + '">' +
+            '<div><b>' + esc(x.name) + '</b> <span class="tag">' + esc(x.type || '—') + '</span>' +
             (x.expression ? ' <span class="cl-expr">' + esc(x.expression) + '</span>' : '') +
-            '<small>' + esc(x.id) + ' · ' + esc(x.description || '') + '</small></span></label>';
-        }).join('') + '</div>' : '<p class="rm-empty">没有匹配的约束条件。</p>') +
+            '<small>' + esc(x.id) + (x.description ? ' · ' + esc(x.description) : '') + '</small></div>' +
+            '<button class="secondary" type="button" data-ra="cref-del" data-rv="' + esc(x.id) + '">移除引用</button></div>';
+        }).join('') + '</div>' : '<p class="rm-empty">该资源暂未引用任何约束条件，请从上方下拉菜单添加。</p>') +
         '<h3 style="margin-top:14px">运输关系</h3>' +
         '<table class="constraint-table"><thead><tr><th>运输工具</th><th>单次装载能力</th><th>通行/装载条件</th></tr></thead><tbody>' +
         ((r.transport || []).map(function (x) {
@@ -3395,17 +3438,26 @@ load().catch((error) => toast(error.message));
     document.querySelectorAll('#atomicResourceDetail [data-rf]').forEach(function (el) {
       r[el.dataset.rf] = el.dataset.rfNum ? num(el.value) : el.value;
     });
-    // 约束引用：只在“当前可见的条目”范围内增删，过滤掉的已有引用不受影响；
-    // 同时清除库中已不存在的失效 ID。
-    if (state.tab === '约束') {
-      var boxes = document.querySelectorAll('#atomicResourceDetail [data-cref]');
-      var visible = new Set(Array.prototype.map.call(boxes, function (b) { return b.dataset.cref; }));
-      var checked = new Set(Array.prototype.filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return b.dataset.cref; }));
-      var kept = (r.constraintRefs || []).filter(function (id) { return !visible.has(id) && CL() && CL().byId(id); });
-      var order = CL() ? CL().list().map(function (x) { return String(x.id); }) : [];
-      r.constraintRefs = kept.concat(Array.from(checked)).sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
-    }
+    // 约束引用由下拉添加 / 移除按钮即时写入，无需在此收集表单。
     persist(); render(); notify('原子资源已保存');
+  }
+
+  function sortRefs(refs) {
+    var order = CL() ? CL().list().map(function (x) { return String(x.id); }) : [];
+    return refs.slice().sort(function (a, b) { return order.indexOf(String(a)) - order.indexOf(String(b)); });
+  }
+  function addRef(id) {
+    var r = find(state.id); if (!r || !id) return;
+    r.constraintRefs = r.constraintRefs || [];
+    if (r.constraintRefs.indexOf(id) < 0) r.constraintRefs = sortRefs(r.constraintRefs.concat([id]));
+    persist(); render();
+    var c = CL(), item = c && c.byId(id);
+    notify('已引用约束条件：' + (item ? item.name : id));
+  }
+  function removeRef(id) {
+    var r = find(state.id); if (!r) return;
+    r.constraintRefs = (r.constraintRefs || []).filter(function (x) { return String(x) !== String(id); });
+    persist(); render(); notify('已移除约束引用 ' + id);
   }
 
   function addResource() {
@@ -3435,19 +3487,13 @@ load().catch((error) => toast(error.message));
       else if (act === 'tab') { state.tab = val; render(); }
       else if (act === 'close') { state.id = null; render(); }
       else if (act === 'save-detail') { saveDetail(); }
+      else if (act === 'cref-del') { removeRef(val); }
     });
     root.addEventListener('input', function (e) {
       if (e.target.id === 'resourceSearch') { state.q = e.target.value.trim(); render(); }
-      if (e.target.id === 'crefFilter') {
-        state.crefQ = e.target.value.trim(); render();
-        var f = $('crefFilter'); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
-      }
     });
     root.addEventListener('change', function (e) {
-      if (e.target.dataset && e.target.dataset.cref) {
-        var label = e.target.closest('label'); if (label) label.classList.toggle('on', e.target.checked);
-      }
-      if (e.target.id === 'crefOnly') { state.crefOnly = e.target.checked; render(); }
+      if (e.target.id === 'crefAdd') { var v = e.target.value; e.target.value = ''; addRef(v); }
     });
     root.addEventListener('change', function (e) {
       if (e.target.id === 'resourceStatusFilter') { state.status = e.target.value; render(); }
