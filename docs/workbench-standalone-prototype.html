@@ -825,27 +825,40 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
             <div class="panel-head">
               <div>
                 <h2>权限与审计</h2>
-                <p>内测版提供用户角色、规则配置、闸门配置和操作记录。</p>
+                <p>面向双系统决策平台的租户级权限治理：多租户隔离、角色与功能开关（Entitlement 先于鉴权）、行级数据过滤、Action 审批闭环，以及跨系统操作审计。所有读写均带 tenantId，跨租户一律 403/404。</p>
               </div>
               <span class="pill ok">当前权限实时生效</span>
             </div>
-            <div id="auditKpis" class="audit-kpis"></div>
-            <div class="audit-layout">
-              <div class="audit-users">
-                <h2>用户权限</h2>
-                <div id="userList"></div>
-              </div>
-              <div class="audit-config">
-                <div id="ruleList"></div>
-                <div id="gateList"></div>
-              </div>
+            <div class="pa-tenantbar" id="paTenantBar"></div>
+            <div id="paKpis" class="cfg-kpis"></div>
+            <div id="paMessage" class="cfg-msg"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h3>角色与权限矩阵</h3><p>演示租户 <b>demo</b> 内置角色：admin（admin+planner+catalog_admin）/ planner / base_manager。切换“调试身份”即以 <code>X-Debug-User</code> 口径预览该角色的导航、视图与操作权限。</p></div></div>
+            <div id="paRoleCards" class="pa-roles"></div>
+            <div class="pa-matrix-wrap"><table class="pa-matrix" id="paMatrix"></table></div>
+          </div>
+          <div class="pa-two">
+            <div class="panel">
+              <div class="panel-head"><div><h3>功能开关 · Entitlement</h3><p>功能关闭 = 不存在：关闭后对应模块返回 <code>404 FEATURE_NOT_FOUND</code>，先于鉴权生效。</p></div></div>
+              <div id="paEntitlements" class="pa-list"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><div><h3>行级数据过滤（A6）</h3><p>按角色对资源库/项目库做行级可见范围裁剪；base_manager 仅见本辖区数据。</p></div></div>
+              <div id="paRowFilter" class="pa-list"></div>
             </div>
           </div>
-          <div class="audit-bottom">
-            <div class="panel">
-              <h2>审计日志</h2>
-              <div id="auditList"></div>
-            </div>
+          <div class="panel">
+            <div class="panel-head"><div><h3>Action 审批闭环（S2）</h3><p>资源调拨、跨区增援、凭据变更等高风险动作需按阈值进入审批；下方为待办与历史。</p></div></div>
+            <div id="paApprovals"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h3>认证链路</h3><p>生产：DataCore 签发 <code>Bearer JWT</code>（RS256 + JWKS，claim <code>tid/sub/roles</code>），AgentCore 经 JWKS 验签；开发：<code>X-Debug-User: tenantId:userId:role1|role2</code>；服务间：<code>SERVICE_TOKEN</code>。凭据 AES-GCM 落库，响应仅回显 credentialRef。</p></div></div>
+            <div id="paAuth" class="pa-auth"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h3>操作审计日志</h3><p>记录跨 DataCore / AgentCore 的关键操作，含租户、操作者、角色、请求 ID 与结果；可按类型过滤。</p></div><div class="card-actions"><button class="secondary" type="button" data-pa="export-log">导出日志</button></div></div>
+            <div id="paAuditLog"></div>
           </div>
         </section>
 
@@ -2259,6 +2272,10 @@ function renderFunctionLibrary() {
   }));
 }
 function renderAdmin() {
+  // 权限与审计已由文件末尾的 permission-audit-single 模块（对齐当前应急决策系统）接管，
+  // 旧的报告系统权限渲染在此停用，避免向已移除的 DOM 写入。
+  if (window.__PERMISSION_AUDIT__) { window.__PERMISSION_AUDIT__.render(); return; }
+  if (!document.getElementById("userList")) return;
   const roleTips = {
     admin: "管理全系统数据、规则、闸门和用户。",
     manager: "创建项目报告、配置规则闸门、审核出稿。",
@@ -2515,7 +2532,7 @@ function renderModelConfigs(){ const el=$("modelConfigList"); if(!el)return; el.
 function saveConfigData(){localStorage.setItem("workbench_agent_configs",JSON.stringify(agentConfigs));localStorage.setItem("workbench_model_configs",JSON.stringify(modelConfigs));}
 setTimeout(()=>{renderAgentConfigs();renderModelConfigs();$("saveAgentBtn")?.addEventListener("click",()=>{const n=$("agentName").value.trim();if(!n)return toast("请输入Agent名称");agentConfigs.push({name:n,model:$("agentModel").value,status:$("agentStatus").value,desc:$("agentPrompt").value.trim()||"未填写职责说明"});saveConfigData();renderAgentConfigs();toast("Agent配置已保存");});$("saveModelBtn")?.addEventListener("click",()=>{const n=$("modelName").value.trim();if(!n)return toast("请输入模型名称");modelConfigs.push({name:n,type:$("modelType").value,context:$("modelContext").value.trim()||"未设置",endpoint:$("modelEndpoint").value.trim()||"未设置",status:$("modelStatus").value});saveConfigData();renderModelConfigs();toast("大模型配置已保存");});},0);
 document.querySelectorAll("[data-sentiment-tab]").forEach(x=>x.classList.toggle("active",x===btn)); $("sentimentNews").classList.toggle("active",t==="news"); $("sentimentBids").classList.toggle("active",t==="bids"); }));
-document.querySelectorAll("[data-config-tab]").forEach(btn => btn.addEventListener("click", () => { const t=btn.dataset.configTab; document.querySelectorAll("[data-config-tab]").forEach(x=>x.classList.toggle("active",x===btn)); /* 通用切换：pane id 约定为 config + 首字母大写的 tab 名，新增页签无需再改这里 */ const paneId="config"+t.charAt(0).toUpperCase()+t.slice(1); document.querySelectorAll(".config-pane").forEach(pane=>pane.classList.toggle("active",pane.id===paneId)); if(t==="constraints"&&window.__CONSTRAINT_LIBRARY__) window.__CONSTRAINT_LIBRARY__.render(); if(t==="models"&&window.__LLM_PROVIDERS__) window.__LLM_PROVIDERS__.render(); if(t==="datasources"&&window.__DATASOURCES__) window.__DATASOURCES__.render(); if(t==="agents"&&window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render(); if(t==="skills"&&window.__SKILL_LIBRARY__) window.__SKILL_LIBRARY__.render(); }));
+document.querySelectorAll("[data-config-tab]").forEach(btn => btn.addEventListener("click", () => { const t=btn.dataset.configTab; document.querySelectorAll("[data-config-tab]").forEach(x=>x.classList.toggle("active",x===btn)); /* 通用切换：pane id 约定为 config + 首字母大写的 tab 名，新增页签无需再改这里 */ const paneId="config"+t.charAt(0).toUpperCase()+t.slice(1); document.querySelectorAll(".config-pane").forEach(pane=>pane.classList.toggle("active",pane.id===paneId)); if(t==="constraints"&&window.__CONSTRAINT_LIBRARY__) window.__CONSTRAINT_LIBRARY__.render(); if(t==="models"&&window.__LLM_PROVIDERS__) window.__LLM_PROVIDERS__.render(); if(t==="datasources"&&window.__DATASOURCES__) window.__DATASOURCES__.render(); if(t==="agents"&&window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render(); if(t==="skills"&&window.__SKILL_LIBRARY__) window.__SKILL_LIBRARY__.render(); if(t==="audit"&&window.__PERMISSION_AUDIT__) window.__PERMISSION_AUDIT__.render(); }));
 const viewHistory = [];
 function activeViewId() {
   return document.querySelector(".view.active")?.id || null;
@@ -4694,6 +4711,254 @@ window.__CFG__ = (function () {
   }
 
   window.__AGENT_CONFIG__ = { list: function () { return db.list(); }, render: render, issues: issues, scenarios: SCEN };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(); render(); }, { once: true });
+  else { wire(); render(); }
+})();
+</script>
+
+<style id="permission-audit-style">
+#audit .pa-tenantbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0 12px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#f7f9fc}
+#audit .pa-tenantbar .pa-tenant{font-size:12.6px}#audit .pa-tenantbar .pa-tenant b{color:var(--blue)}
+#audit .pa-seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-left:auto}
+#audit .pa-seg button{border:0;background:#fff;padding:7px 13px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--ink);border-left:1px solid var(--line)}
+#audit .pa-seg button:first-child{border-left:0}#audit .pa-seg button.on{background:var(--blue);color:#fff}
+#audit .pa-roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:6px 0 14px}
+#audit .pa-role{border:1px solid var(--line);border-top:3px solid var(--blue);border-radius:10px;padding:11px 13px;background:#fff}
+#audit .pa-role.on{box-shadow:0 0 0 2px rgba(37,99,168,.18)}
+#audit .pa-role h4{margin:0 0 3px;font-size:13.5px}#audit .pa-role .rc{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);margin-bottom:5px}
+#audit .pa-role p{margin:0;font-size:12px;color:#5a6b7b}
+#audit .pa-matrix-wrap{overflow-x:auto}
+#audit .pa-matrix{width:100%;border-collapse:collapse;font-size:12.6px;min-width:620px}
+#audit .pa-matrix th,#audit .pa-matrix td{border-bottom:1px solid #eef2f6;padding:9px 11px;text-align:center}
+#audit .pa-matrix th:first-child,#audit .pa-matrix td:first-child{text-align:left}
+#audit .pa-matrix thead th{background:#f7f9fc;color:var(--muted);font-weight:600}
+#audit .pa-matrix col.on,#audit .pa-matrix th.on{background:#eef5ff}
+#audit .pa-matrix td.on{background:#f4f8ff}
+#audit .pa-yes{color:#2f8f5b;font-weight:700}#audit .pa-row{color:#b86a19;font-weight:700}#audit .pa-no{color:#c2ccd6}#audit .pa-req{color:#2563a8;font-weight:700}
+#audit .pa-two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:900px){#audit .pa-two{grid-template-columns:1fr}}
+#audit .pa-list{display:flex;flex-direction:column;gap:8px}
+#audit .pa-item{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:#fff}
+#audit .pa-item .pa-in b{font-size:12.8px}#audit .pa-item .pa-in small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+#audit .pa-item code{font-family:ui-monospace,monospace;font-size:11px;background:#f2f4f7;border-radius:5px;padding:1px 6px}
+#audit .pa-switch{position:relative;width:42px;height:23px;flex:none;border:0;border-radius:999px;background:#c9d3de;cursor:pointer;transition:.15s}
+#audit .pa-switch.on{background:#2f8f5b}#audit .pa-switch i{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;transition:.15s}
+#audit .pa-switch.on i{left:21px}
+#audit .pa-404{font-size:11px;color:var(--red);font-weight:600}
+#audit .pa-appr{width:100%;border-collapse:collapse;font-size:12.6px}
+#audit .pa-appr th,#audit .pa-appr td{border-bottom:1px solid #eef2f6;padding:9px 10px;text-align:left;vertical-align:middle}
+#audit .pa-appr thead th{background:#f7f9fc;color:var(--muted);font-weight:600}
+#audit .pa-badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600}
+#audit .pa-b-hi{background:#fbe4e4;color:#d64545}#audit .pa-b-md{background:#fdf0db;color:#b86a19}#audit .pa-b-wait{background:#e8f0fb;color:#2563a8}#audit .pa-b-ok{background:#e6f4ec;color:#2f8f5b}#audit .pa-b-no{background:#f0f2f5;color:#6b7787}
+#audit .pa-appr .card-actions button{padding:5px 11px;font-size:12px}
+#audit .pa-auth{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+#audit .pa-authcard{border:1px solid var(--line);border-radius:10px;padding:11px 13px;background:#fff}
+#audit .pa-authcard h4{margin:0 0 6px;font-size:13px}#audit .pa-authcard .pa-code{font-family:ui-monospace,monospace;font-size:11px;background:#f7f9fc;border:1px solid var(--line);border-radius:7px;padding:7px 9px;word-break:break-all;color:#33414f}
+#audit .pa-authcard p{margin:6px 0 0;font-size:11.5px;color:var(--muted)}
+#audit .pa-log{width:100%;border-collapse:collapse;font-size:12.3px}
+#audit .pa-log th,#audit .pa-log td{border-bottom:1px solid #eef2f6;padding:8px 10px;text-align:left;white-space:nowrap}
+#audit .pa-log thead th{background:#f7f9fc;color:var(--muted);font-weight:600}
+#audit .pa-log .rid{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--muted)}
+#audit .pa-sys{display:inline-block;padding:1px 7px;border-radius:5px;font-size:10.5px;font-weight:600}
+#audit .pa-sys-a{background:#eef5ff;color:#2563a8}#audit .pa-sys-b{background:#f0f7f0;color:#2f8f5b}
+#audit .pa-filter{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+#audit .pa-log-wrap{overflow-x:auto}
+</style>
+
+<script id="permission-audit-single">
+/* =============================================================================
+   权限与审计（配置 → 权限与审计）· 对齐当前双系统应急决策平台
+   - 多租户隔离 + 角色权限矩阵（Entitlement 先于鉴权）
+   - 功能开关（关闭=404 FEATURE_NOT_FOUND）· 行级数据过滤（A6）
+   - Action 审批闭环（S2）· 认证链路 · 跨系统操作审计
+   ============================================================================= */
+(function () {
+  'use strict';
+  var C = window.__CFG__, esc = C.esc, $ = C.el;
+  var TENANT = 'demo';
+  var ROLES = [
+    { code: 'admin', name: '管理员', claim: 'admin+planner+catalog_admin', duty: '系统管理、全量数据、配置与审批终审', user: 'admin 张工' },
+    { code: 'planner', name: '规划/研判员', claim: 'planner', duty: '创建项目、推演、生成报告、发起调拨审批', user: 'planner 王工' },
+    { code: 'base_manager', name: '基地管理员（常州）', claim: 'base_manager', duty: '本辖区资源维护与执行，受行级过滤', user: 'base_manager 陈工' }
+  ];
+  var rName = function (c) { var r = ROLES.find(function (x) { return x.code === c; }); return r ? r.name : c; };
+  // 权限矩阵：full 全量 / row 受行级过滤 / req 可发起需审批 / none 无（关闭功能返回404）
+  var MATRIX = [
+    ['项目库 · 查看', 'full', 'full', 'row'],
+    ['项目库 · 创建/编辑项目', 'full', 'full', 'row'],
+    ['资源库 · 查看', 'full', 'full', 'row'],
+    ['资源库 · 编辑库存', 'full', 'none', 'row'],
+    ['预案库 · 查看', 'full', 'full', 'full'],
+    ['预案库 · 编辑图谱/切片', 'full', 'full', 'none'],
+    ['报告工作区 · 生成/导出', 'full', 'full', 'none'],
+    ['配置 · 函数库/Agent/Skill/大模型/数据源', 'full', 'none', 'none'],
+    ['配置 · 约束条件库', 'full', 'full', 'none'],
+    ['配置 · 权限与审计', 'full', 'none', 'none'],
+    ['Action · 发起资源调拨/跨区增援', 'req', 'req', 'req'],
+    ['Action · 审批 / 驳回', 'full', 'none', 'none']
+  ];
+  var CELL = { full: ['pa-yes', '✓'], row: ['pa-row', '△行级'], req: ['pa-req', '可发起'], none: ['pa-no', '✕'] };
+
+  var ENT_BASE = [
+    { id: 'feat_solver', name: '求解器 / 本体推演（S1）', module: 'DataCore A4/S1', enabled: true },
+    { id: 'feat_sop', name: 'S&OP 产销协同（S1.8）', module: 'DataCore S1.8', enabled: true },
+    { id: 'feat_timeseries', name: '时序 + 模拟时钟（A8）', module: 'DataCore A8', enabled: true },
+    { id: 'feat_synthetic', name: '合成数据生成（A7）', module: 'DataCore A7', enabled: false },
+    { id: 'feat_action', name: 'Action 审批（S2）', module: 'DataCore S2', enabled: true },
+    { id: 'feat_kb', name: '知识库（S4）', module: 'DataCore S4', enabled: true },
+    { id: 'feat_mcp', name: 'MCP 工具编排（B3）', module: 'AgentCore B3', enabled: true }
+  ];
+  var entDb = C.store('workbench.entitlements.v1', ENT_BASE, function (x) { return x && x.id && x.name; });
+
+  var ROWFILTER = [
+    { role: 'admin', pred: "tenant_id = 'demo'", note: '租户内全量可见（跨辖区读写）' },
+    { role: 'planner', pred: "tenant_id = 'demo'", note: '全域可读；调拨、库存变更需审批' },
+    { role: 'base_manager', pred: "tenant_id = 'demo' AND region.city = '常州市' AND owner = :me", note: '仅本辖区资源与本人创建项目' }
+  ];
+
+  var APPR_BASE = {
+    pending: [
+      { id: 'ACT-2043', action: '跨区增援调拨', detail: '积石山6.2级 · 省级库(兰州)→柳沟乡：帐篷 1800 顶 / 棉被 3400 床', requester: 'planner 王工', risk: 'hi', rule: '跨区 或 金额>50万', at: '2026-09-09 09:41' },
+      { id: 'ACT-2044', action: '库存核销', detail: '常州基地：0号柴油 -120 吨（演练消耗）', requester: 'base_manager 陈工', risk: 'md', rule: '单次核销>100吨', at: '2026-09-09 09:52' }
+    ],
+    history: [
+      { id: 'ACT-2039', action: '资源调拨', detail: '临夏州中心→积石山县库：净水设备 6 台', requester: 'planner 王工', risk: 'md', result: 'ok', by: 'admin 张工', at: '2026-09-09 08:20' },
+      { id: 'ACT-2037', action: 'LLM 供应商凭据变更', detail: '更新 Anthropic API Key（AES-GCM 落库，仅回显 credentialRef）', requester: 'admin 张工', risk: 'hi', result: 'ok', by: 'admin 张工', at: '2026-09-09 07:55' },
+      { id: 'ACT-2031', action: '跨区增援调拨', detail: '省级库→民和中转：小型发电机组 36 台', requester: 'planner 王工', risk: 'hi', result: 'no', by: 'admin 张工', at: '2026-09-08 22:10' }
+    ]
+  };
+  var APPR_KEY = 'workbench.approvals.v1', _appr = null;
+  function appr() {
+    if (_appr) return _appr;
+    try { var raw = localStorage.getItem(APPR_KEY); if (raw) { var v = JSON.parse(raw); if (v && Array.isArray(v.pending) && Array.isArray(v.history)) { _appr = v; return _appr; } } } catch (e) { }
+    _appr = JSON.parse(JSON.stringify(APPR_BASE)); return _appr;
+  }
+
+  var LOG_BASE = [
+    ['2026-09-09 09:52', 'base_manager 陈工', 'base_manager', '发起审批', '库存核销 ACT-2044', 'A', 'req-8f2a41', '待审批'],
+    ['2026-09-09 09:41', 'planner 王工', 'planner', '发起审批', '跨区增援 ACT-2043', 'A', 'req-8f2a17', '待审批'],
+    ['2026-09-09 09:20', 'planner 王工', 'planner', '生成报告', '积石山6.2级处置方案（下发件）', 'B', 'req-8e91c3', '成功'],
+    ['2026-09-09 09:05', 'planner 王工', 'planner', '调用 Agent', '地震应急处置 Agent · MCP×12', 'B', 'req-8e90a7', '成功'],
+    ['2026-09-09 08:20', 'admin 张工', 'admin', '审批通过', '资源调拨 ACT-2039', 'A', 'req-8e7d55', '成功'],
+    ['2026-09-09 08:02', 'base_manager 陈工', 'base_manager', '越权访问被拒', '读取 常州 辖区外资源', 'A', 'req-8e7a10', '403 拒绝'],
+    ['2026-09-09 07:55', 'admin 张工', 'admin', '凭据变更', 'Anthropic API Key（credentialRef）', 'A', 'req-8e78f0', '成功'],
+    ['2026-09-09 07:40', 'planner 王工', 'planner', '功能被拒', '调用合成数据（A7 已关闭）', 'A', 'req-8e7702', '404 FEATURE_NOT_FOUND'],
+    ['2026-09-09 07:10', 'admin 张工', 'admin', '登录', 'Bearer JWT (RS256) 签发', 'A', 'req-8e7000', '成功']
+  ];
+
+  var ui = { role: 'admin', logFilter: '全部' };
+  var COLIDX = { admin: 1, planner: 2, base_manager: 3 };
+
+  function render() {
+    if (!$('paKpis')) return;
+    var ents = entDb.list();
+    var A = appr();
+    // 租户条 + 调试身份切换
+    $('paTenantBar').innerHTML =
+      '<span class="pa-tenant">当前租户 <b>' + TENANT + '</b> · 跨租户访问一律 <code>403/404</code></span>' +
+      '<span class="pa-tenant">调试身份 <code>X-Debug-User: ' + TENANT + ':u_' + ui.role + ':' + esc((ROLES.find(function (r) { return r.code === ui.role; }) || {}).claim || ui.role) + '</code></span>' +
+      '<span class="pa-seg">' + ROLES.map(function (r) { return '<button type="button" data-pa="role" data-pv="' + r.code + '" class="' + (ui.role === r.code ? 'on' : '') + '">' + esc(r.name) + '</button>'; }).join('') + '</span>';
+
+    var offCnt = ents.filter(function (e) { return !e.enabled; }).length;
+    $('paKpis').innerHTML = [
+      ['角色', ROLES.length, '演示租户 demo'],
+      ['功能开关', (ents.length - offCnt) + '/' + ents.length, offCnt ? offCnt + ' 项关闭→404' : '全部开启'],
+      ['待审批 Action', A.pending.length, '高风险动作'],
+      ['审计记录', LOG_BASE.length, '跨双系统'],
+      ['认证方式', 3, 'JWT/Debug/服务间']
+    ].map(function (k) { return '<div class="kpi"><span>' + k[0] + '</span><b>' + esc(k[1]) + '</b><small>' + esc(k[2]) + '</small></div>'; }).join('');
+
+    // 角色卡
+    $('paRoleCards').innerHTML = ROLES.map(function (r) {
+      return '<div class="pa-role ' + (ui.role === r.code ? 'on' : '') + '" data-pa="role" data-pv="' + r.code + '"><h4>' + esc(r.name) + '</h4><div class="rc">roles: ' + esc(r.claim) + '</div><p>' + esc(r.duty) + '<br><span class="muted">演示账号：' + esc(r.user) + ' · demo1234</span></p></div>';
+    }).join('');
+
+    // 权限矩阵（高亮当前角色列）
+    var col = COLIDX[ui.role];
+    $('paMatrix').innerHTML =
+      '<colgroup><col><col class="' + (col === 1 ? 'on' : '') + '"><col class="' + (col === 2 ? 'on' : '') + '"><col class="' + (col === 3 ? 'on' : '') + '"></colgroup>' +
+      '<thead><tr><th>能力 / 操作</th>' + ROLES.map(function (r, i) { return '<th class="' + (col === i + 1 ? 'on' : '') + '">' + esc(r.name) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      MATRIX.map(function (m) {
+        return '<tr><td>' + esc(m[0]) + '</td>' + [1, 2, 3].map(function (i) { var c = CELL[m[i]] || CELL.none; return '<td class="' + (col === i ? 'on' : '') + '"><span class="' + c[0] + '">' + c[1] + '</span></td>'; }).join('') + '</tr>';
+      }).join('') + '</tbody>';
+
+    // 功能开关
+    $('paEntitlements').innerHTML = ents.map(function (e) {
+      return '<div class="pa-item"><div class="pa-in"><b>' + esc(e.name) + '</b><small>' + esc(e.module) + ' · ' + (e.enabled ? '开启' : '<span class="pa-404">关闭 → 404 FEATURE_NOT_FOUND</span>') + '</small></div>' +
+        '<button type="button" class="pa-switch ' + (e.enabled ? 'on' : '') + '" data-pa="ent" data-pv="' + esc(e.id) + '" aria-label="toggle"><i></i></button></div>';
+    }).join('');
+
+    // 行级过滤（高亮当前角色）
+    $('paRowFilter').innerHTML = ROWFILTER.map(function (f) {
+      return '<div class="pa-item" style="' + (f.role === ui.role ? 'border-color:var(--blue);background:#f4f8ff' : '') + '"><div class="pa-in"><b>' + esc(rName(f.role)) + '</b><small>' + esc(f.note) + '</small><div style="margin-top:5px"><code>' + esc(f.pred) + '</code></div></div></div>';
+    }).join('');
+
+    // Action 审批
+    var canApprove = ui.role === 'admin';
+    var pend = A.pending.length ? '<table class="pa-appr"><thead><tr><th>编号</th><th>动作</th><th>详情</th><th>发起人</th><th>触发规则</th><th>风险</th><th>操作</th></tr></thead><tbody>' +
+      A.pending.map(function (p) {
+        return '<tr><td class="rid">' + esc(p.id) + '</td><td><b>' + esc(p.action) + '</b><br><small class="muted">' + esc(p.at) + '</small></td><td>' + esc(p.detail) + '</td><td>' + esc(p.requester) + '</td><td><small class="muted">' + esc(p.rule) + '</small></td><td><span class="pa-badge ' + (p.risk === 'hi' ? 'pa-b-hi' : 'pa-b-md') + '">' + (p.risk === 'hi' ? '高' : '中') + '</span></td>' +
+          '<td class="card-actions">' + (canApprove ? '<button class="primary" type="button" data-pa="approve" data-pv="' + esc(p.id) + '">通过</button> <button class="secondary" type="button" data-pa="reject" data-pv="' + esc(p.id) + '">驳回</button>' : '<span class="pa-badge pa-b-wait">需 admin 审批</span>') + '</td></tr>';
+      }).join('') + '</tbody></table>' : '<p class="muted">暂无待审批动作。</p>';
+    var hist = A.history.length ? '<h4 style="margin:14px 0 6px;font-size:13px">审批历史</h4><table class="pa-appr"><thead><tr><th>编号</th><th>动作</th><th>详情</th><th>发起人</th><th>结果</th><th>审批人</th><th>时间</th></tr></thead><tbody>' +
+      A.history.map(function (h) {
+        return '<tr><td class="rid">' + esc(h.id) + '</td><td>' + esc(h.action) + '</td><td>' + esc(h.detail) + '</td><td>' + esc(h.requester) + '</td><td><span class="pa-badge ' + (h.result === 'ok' ? 'pa-b-ok' : 'pa-b-no') + '">' + (h.result === 'ok' ? '通过' : '驳回') + '</span></td><td>' + esc(h.by || '—') + '</td><td><small class="muted">' + esc(h.at) + '</small></td></tr>';
+      }).join('') + '</tbody></table>' : '';
+    $('paApprovals').innerHTML = pend + hist;
+
+    // 认证链路
+    $('paAuth').innerHTML = [
+      ['生产 · Bearer JWT', 'Authorization: Bearer eyJhbGciOiJSUzI1Ni»…\nclaims: { tid:"demo", sub:"u_planner", roles:["planner"] }', 'DataCore 签发（RS256），AgentCore 经 JWKS 验签；refresh token 走 httpOnly cookie。'],
+      ['开发 · X-Debug-User', 'X-Debug-User: demo:u_planner:planner\n（角色可含 CJK，可 URI 编码）', '仅开发链路；生产环境忽略，一律走 JWT。'],
+      ['服务间 · SERVICE_TOKEN', 'X-Service-Token: ••••••••••••（两服务同值）', 'B→A 服务间路由与凭据读取；用户 JWT 调用一律 403。凭据 AES-GCM 落库，响应仅回显 credentialRef。']
+    ].map(function (a) { return '<div class="pa-authcard"><h4>' + esc(a[0]) + '</h4><div class="pa-code">' + esc(a[1]) + '</div><p>' + esc(a[2]) + '</p></div>'; }).join('');
+
+    // 审计日志
+    var actions = ['全部'].concat(LOG_BASE.map(function (l) { return l[3]; }).filter(function (v, i, arr) { return arr.indexOf(v) === i; }));
+    var rows = ui.logFilter === '全部' ? LOG_BASE : LOG_BASE.filter(function (l) { return l[3] === ui.logFilter; });
+    $('paAuditLog').innerHTML = '<div class="pa-filter">' + actions.map(function (a) { return '<button class="cfg-tab ' + (ui.logFilter === a ? 'active' : '') + '" type="button" data-pa="logfilter" data-pv="' + esc(a) + '">' + esc(a) + '</button>'; }).join('') + '</div>' +
+      '<div class="pa-log-wrap"><table class="pa-log"><thead><tr><th>时间</th><th>操作者</th><th>角色</th><th>操作</th><th>对象</th><th>系统</th><th>请求ID</th><th>结果</th></tr></thead><tbody>' +
+      rows.map(function (l) {
+        var res = l[7], cls = /403|404|拒绝/.test(res) ? 'pa-b-hi' : /待/.test(res) ? 'pa-b-wait' : 'pa-b-ok';
+        return '<tr><td>' + esc(l[0]) + '</td><td>' + esc(l[1]) + '</td><td>' + esc(rName(l[2])) + '</td><td>' + esc(l[3]) + '</td><td>' + esc(l[4]) + '</td><td><span class="pa-sys ' + (l[5] === 'A' ? 'pa-sys-a' : 'pa-sys-b') + '">' + (l[5] === 'A' ? 'DataCore' : 'AgentCore') + '</span></td><td class="rid">' + esc(l[6]) + '</td><td><span class="pa-badge ' + cls + '">' + esc(res) + '</span></td></tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+
+  function saveAppr(A) { _appr = A; try { localStorage.setItem(APPR_KEY, JSON.stringify(A)); } catch (e) { } }
+
+  function wire() {
+    var root = $('audit'); if (!root || root.dataset.paWired === '1') return;
+    root.dataset.paWired = '1';
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pa]'); if (!b) return;
+      e.preventDefault();
+      var act = b.dataset.pa, val = b.dataset.pv;
+      if (act === 'role') { ui.role = val; render(); }
+      else if (act === 'logfilter') { ui.logFilter = val; render(); }
+      else if (act === 'ent') { var l = entDb.list(); var t = l.find(function (x) { return x.id === val; }); if (t) { t.enabled = !t.enabled; entDb.save(); render(); C.message('paMessage', '功能「' + t.name + '」已' + (t.enabled ? '开启' : '关闭（相关接口将返回 404 FEATURE_NOT_FOUND）'), t.enabled); } }
+      else if (act === 'approve' || act === 'reject') {
+        if (ui.role !== 'admin') { C.message('paMessage', '仅 admin 可审批，请先在上方切换调试身份为「管理员」', false); return; }
+        var A = appr(); var idx = A.pending.findIndex(function (p) { return p.id === val; }); if (idx < 0) return;
+        var p = A.pending.splice(idx, 1)[0];
+        A.history.unshift({ id: p.id, action: p.action, detail: p.detail, requester: p.requester, risk: p.risk, result: act === 'approve' ? 'ok' : 'no', by: 'admin 张工', at: new Date().toLocaleString('zh-CN') });
+        saveAppr(A); render();
+        C.message('paMessage', (act === 'approve' ? '已通过 ' : '已驳回 ') + p.id + ' · ' + p.action, act === 'approve');
+        C.notify(act === 'approve' ? 'Action 已通过' : 'Action 已驳回');
+      }
+      else if (act === 'export-log') {
+        try {
+          var head = ['时间', '操作者', '角色', '操作', '对象', '系统', '请求ID', '结果'];
+          var csv = [head.join(',')].concat(LOG_BASE.map(function (l) { return [l[0], l[1], rName(l[2]), l[3], l[4], l[5] === 'A' ? 'DataCore' : 'AgentCore', l[6], l[7]].map(function (x) { return '"' + String(x).replace(/"/g, '""') + '"'; }).join(','); })).join('\n');
+          var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+          var url = URL.createObjectURL(blob), a = document.createElement('a');
+          a.href = url; a.download = '权限审计日志_' + TENANT + '.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+          C.message('paMessage', '已导出审计日志 CSV（' + LOG_BASE.length + ' 条）', true);
+        } catch (err) { C.message('paMessage', '导出失败：' + err.message, false); }
+      }
+    });
+  }
+
+  window.__PERMISSION_AUDIT__ = { render: render, roles: ROLES };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(); render(); }, { once: true });
   else { wire(); render(); }
 })();
