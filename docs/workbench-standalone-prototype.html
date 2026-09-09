@@ -481,15 +481,12 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
   <body>
     <div class="app">
       <aside class="rail">
-        <div class="brand">综合工作台<span>知识 · 项目 · 资讯 · 工具</span></div>
+        <div class="brand">综合工作台<span>语料 · 项目 · 资源 · 配置</span></div>
         <button class="nav active" data-view="wizard"><span class="nav-ic">＋</span>新建报告向导</button>
         <button class="nav" data-view="corpus"><span class="nav-ic">▧</span>语料库</button>
         <button class="nav" data-view="resources"><span class="nav-ic">▰</span>资源库</button>
         <button class="nav" data-view="projects"><span class="nav-ic">▦</span>项目管理</button>
-        <button class="nav" data-view="knowledge"><span class="nav-ic">▤</span>个人知识库</button>
-        <button class="nav" data-view="sentiment"><span class="nav-ic">◉</span>舆情信息</button>
         <button class="nav" data-view="studio"><span class="nav-ic">✎</span>报告工作区</button>
-        <button class="nav" data-view="links"><span class="nav-ic">◎</span>浏览</button>
         <button class="nav" data-view="config"><span class="nav-ic">⚙</span>配置</button>
         <div class="nav-subs" id="navConfigSubs">
           <button class="nav-sub" data-config-sub="functions">函数库</button>
@@ -513,7 +510,7 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
             <h1 id="pageTitle">新建报告向导</h1>
           </div>
           <div class="top-actions">
-            <input class="global-search" placeholder="搜索知识库、项目、新闻..." />
+            <input class="global-search" placeholder="搜索语料、项目、资源..." />
             <label class="account-select">当前账号<select id="userSelect"></select></label>
             <span id="roleBadge" class="avatar">--</span>
             <button id="generateBtn" class="primary">生成报告</button>
@@ -673,75 +670,6 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
         </section>
 
         <section id="corpusDetail" class="view"><div class="panel"><h2 id="corpusDetailTitle">语料详情</h2><p>完整文件内容、本体图谱与函数调用关系。</p><div id="corpusDetailContent"></div></div></section>
-        <section id="knowledge" class="view">
-          <div class="panel">
-            <div class="panel-head">
-              <div><h2>个人知识库</h2><p>区别于公司公共知识库，个人知识库按专业领域与类别自主划分，支持独立标签、检索与权限隔离。</p></div>
-              <form class="quick-form compact-form" data-create="knowledge"><input name="title" placeholder="知识单元名称" required><input name="category" placeholder="分类" required><input name="tag" placeholder="标签"><input name="summary" placeholder="摘要"><button class="primary">新增</button></form>
-            </div>
-            <div class="tabbar"><button class="tab active" type="button" data-kb-filter="全部">全部</button><button class="tab" type="button" data-kb-filter="工程咨询">工程咨询</button><button class="tab" type="button" data-kb-filter="产业研究">产业研究</button><button class="tab" type="button" data-kb-filter="政策法规">政策法规</button></div>
-            <div class="chipbar"><span class="chip active" data-kb-filter="全部">全部 (12)</span><span class="chip" data-kb-filter="工程咨询">工程咨询 (5)</span><span class="chip" data-kb-filter="产业研究">产业研究 (3)</span><span class="chip" data-kb-filter="经济财政">经济财政 (2)</span><span class="chip" data-kb-filter="政策法规">政策法规 (2)</span></div>
-            <div id="knowledgeGrid" class="grid kb-grid"></div>
-          </div>
-          <div class="panel">
-            <h2>公司公共知识库 <span class="pill">只读</span></h2>
-            <p>公司统一维护的标准库、定额库与历史报告库，可引用至个人知识库进行组合检索。</p>
-            <div id="publicKnowledgeGrid" class="grid"></div>
-          </div>
-        </section>
-
-        <section id="sentiment" class="view">
-          <div class="panel"><div class="panel-head"><div><h2>舆情信息</h2><p>统一汇集新闻日报与招投标信息，支持资讯跟踪、舆情分析和商机监测。</p></div></div><div class="tabbar"><button class="tab active" type="button" data-sentiment-tab="news">新闻日报</button><button class="tab" type="button" data-sentiment-tab="bids">招投标栏</button></div></div>
-          <div id="sentimentNews" class="sentiment-pane active">
-        <section id="news">
-          <div class="kpis" id="newsKpis"></div>
-          <div class="panel keyword-panel">
-            <div class="panel-head">
-              <div>
-                <h2>关键词设定</h2>
-                <p>系统按设定关键词自动检索当日新闻，AI 汇编生成结构化日报。关键词可按分组管理，支持布尔逻辑。</p>
-              </div>
-              <span class="pill ok">自动任务运行中</span>
-            </div>
-            <div class="keyword-layout">
-              <div class="keyword-box">
-                <div class="keyword-title"><b>核心关键词</b><span>必须命中</span></div>
-                <div class="chipbar" id="coreKeywords"></div>
-              </div>
-              <div class="keyword-box warm">
-                <div class="keyword-title"><b>扩展关键词</b><span>OR 关系 · 加权排序</span></div>
-                <div class="chipbar warm" id="extraKeywords"></div>
-              </div>
-            </div>
-            <div class="setting-grid">
-              <label>检索范围<select><option>全部订阅源（15个）</option><option>仅党报要闻（3个）</option><option>经济财经源（4个）</option></select></label>
-              <label>日报类型<select><option>综合日报（全领域）</option><option>投资专报</option><option>政策专报</option><option>产业专报</option></select></label>
-              <label>生成时间<select><option>每日 09:00 自动生成</option><option>每日 08:30 自动生成</option><option>手动生成</option></select></label>
-            </div>
-            <div class="keyword-actions">
-              <form class="quick-form inline-news-form" data-create="news"><input name="title" placeholder="手工补充资讯标题" required><input name="source" placeholder="来源"><input name="keyword" placeholder="关键词"><input name="summary" placeholder="摘要"><button class="secondary">新增资讯</button></form>
-              <div class="action-buttons"><button class="secondary" id="saveNewsConfig" type="button">保存配置</button><button class="primary" id="generateNewsBtn" type="button">生成今日日报 →</button></div>
-            </div>
-          </div>
-          <div class="panel"><div class="panel-head"><div><h2>今日日报 <span class="pill ok">AI 已生成</span></h2><p>基于关键词检索资讯源，生成工程咨询行业日报摘要。</p></div><div class="card-actions"><button class="secondary" type="button" id="exportNewsBtn">导出 Word</button><button class="secondary" type="button" id="saveNewsBtn">存入知识库</button></div></div><div class="report-box" id="newsReport"></div><div id="newsGrid" class="news-list"></div></div>
-          <div class="panel"><h2>订阅源管理</h2><p>按照设定新闻源与检索频率，系统每日定时抓取后按关键词过滤并生成日报。</p><div id="sourceTable"></div></div>
-          <div class="panel"><h2>历史日报</h2><p>已生成日报自动归档，可回溯检索、对比趋势或存入知识库。</p><div id="historyTable"></div></div>
-        </section>
-
-          </div>
-          <div id="sentimentBids" class="sentiment-pane">
-        <section id="bids">
-          <div class="kpis" id="bidKpis"></div>
-          <div class="panel"><div class="panel-head"><div><h2>招投标栏</h2><p>一键生成商务部分，技术部分从个人技术素材支持库中智能匹配调用。</p></div><form class="quick-form compact-form" data-create="bids"><input name="title" placeholder="标的名称" required><input name="client" placeholder="招标方"><input name="budget" placeholder="预算金额"><input name="deadline" placeholder="截止日期"><button class="primary">新增</button></form></div><div class="tabbar"><button class="tab active" type="button" data-bid-tab="track">跟踪标的</button><button class="tab" type="button" data-bid-tab="business">商务部分生成</button><button class="tab" type="button" data-bid-tab="materials">技术素材库</button></div><div id="bidGrid"></div></div>
-        </section>
-
-          </div>
-        </section>
-        <section id="links" class="view">
-          <div class="kpis" id="linkKpis"></div>
-          <div class="panel"><div class="panel-head"><div><h2>浏览 · 知识生态链接</h2><p>链接外部知识库、学术文献、统计数据与研究报告平台，支持站内检索、一键收藏与存入个人知识库。</p></div><form class="quick-form compact-form" data-create="links"><input name="title" placeholder="平台名称" required><input name="category" placeholder="分类"><input name="url" placeholder="URL"><button class="primary">新增</button></form></div><div class="tabbar"><button class="tab active" type="button">知识平台</button><button class="tab" type="button">我的收藏</button><button class="tab" type="button">待读列表</button></div><div class="chipbar"><span class="chip active">全部 (32)</span><span class="chip">学术文献 (8)</span><span class="chip">统计数据 (6)</span><span class="chip">研究报告 (6)</span><span class="chip">政策法规 (5)</span><span class="chip">标准规范 (4)</span><span class="chip">行业资讯 (3)</span></div><div id="linkGrid"></div></div>
-        </section>
-
         <section id="config" class="view">
           <div class="panel"><div class="panel-head"><div><h2>配置</h2><p>统一管理应急函数库、Agent、大模型、数据源与数据库、约束条件库与权限审计等系统配置能力。</p></div></div><div class="tabbar"><button class="tab active" type="button" data-config-tab="functions">函数库</button><button class="tab" type="button" data-config-tab="agents">Agent配置</button><button class="tab" type="button" data-config-tab="models">大模型配置</button><button class="tab" type="button" data-config-tab="datasources">数据源与数据库</button><button class="tab" type="button" data-config-tab="constraints">约束条件库</button><button class="tab" type="button" data-config-tab="audit">权限与审计</button></div></div>
           <div id="configFunctions" class="config-pane active">
@@ -954,14 +882,9 @@ const viewAccess = {
   projects: "viewer",
   wizard: "viewer",
   studio: "viewer",
-  knowledge: "viewer",
-  sentiment: "viewer",
   config: "viewer",
-  news: "viewer",
-  bids: "viewer",
   functions: "viewer",
   tools: "viewer",
-  links: "viewer",
   corpus: "viewer",
   audit: "viewer",
   output: "viewer"
@@ -1524,7 +1447,7 @@ function openProjectEditor(projectId) {
       <label class="wide">项目说明<textarea name="description" placeholder="补充建设内容、资料状态、近期交付要求。">${project.description || ""}</textarea></label>
       <div class="modal-actions"><button class="primary" type="submit">保存项目</button><button class="secondary" type="button" data-close-project-edit>取消</button></div>
     </form>`);
-  $("projectEditModalForm").addEventListener("submit", async (event) => {
+  $("projectEditModalForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
     if (state.projects.some((item) => item.id === projectId)) {
@@ -1941,12 +1864,12 @@ function renderStudio() {
       <span>${fact.unit}</span>
       <button class="secondary" data-del-fact="${fact.key}" ${fact.status === "derived" || !can("writer") ? "disabled" : ""}>删除</button></div>`).join("");
   setFormDisabled($("factForm"), !can("writer"));
-  $("inheritBtn").addEventListener("click", async () => {
+  $("inheritBtn")?.addEventListener("click", async () => {
     await request(`/api/reports/${report.id}/inherit`, { method: "POST", body: JSON.stringify({ corpusId: bestCorpus()?.id || "c_research" }) });
     await load();
     toast("已按最佳语料预填，继承值需确认");
   });
-  $("confirmInheritBtn").addEventListener("click", async () => {
+  $("confirmInheritBtn")?.addEventListener("click", async () => {
     await request(`/api/reports/${report.id}/confirm-inherited`, { method: "POST" });
     await load();
     toast("继承值已确认");
@@ -2161,7 +2084,7 @@ function renderDocumentPipeline() {
       <div class="panel-lite"><h3>事实图谱</h3>${renderMiniFactGraph(doc.facts, doc.edges)}</div>
     </div>` : `<div class="empty-note">等待上传或粘贴文档。处理后会在这里展示切片、Claim、事实节点和事实图谱。</div>`}
   </div>`;
-  $("processDocBtn").addEventListener("click", async () => {
+  $("processDocBtn")?.addEventListener("click", async () => {
     const file = $("docPipelineFile").files?.[0];
     if (!file) return toast("请先选择 txt/md 文档");
     documentPipeline = buildDocumentPipeline(await file.text(), file.name);
@@ -2169,7 +2092,7 @@ function renderDocumentPipeline() {
     renderDocumentPipeline();
     toast("文档处理完成");
   });
-  $("processTextBtn").addEventListener("click", () => {
+  $("processTextBtn")?.addEventListener("click", () => {
     const text = $("docPipelineText").value.trim();
     if (!text) return toast("请先粘贴项目资料文本");
     documentPipeline = buildDocumentPipeline(text, "粘贴文本");
@@ -2177,7 +2100,7 @@ function renderDocumentPipeline() {
     renderDocumentPipeline();
     toast("文本处理完成");
   });
-  if ($("writeDocFactsBtn")) $("writeDocFactsBtn").addEventListener("click", async () => {
+  if ($("writeDocFactsBtn")) $("writeDocFactsBtn")?.addEventListener("click", async () => {
     const report = currentReport();
     if (!report || !documentPipeline) return;
     const selected = documentPipeline.facts.filter((fact) => document.querySelector(`[data-doc-fact="${fact.key}"]`)?.checked);
@@ -2283,48 +2206,14 @@ function renderWorkbenchModules() {
       renderWorkbenchModules();
     };
   });
-  $("knowledgeGrid").innerHTML = (knowledge.length ? knowledge.map((x) => `<div class="card kb-card" data-kb-detail="${encodeURIComponent(x.title)}"><h2>${x.title}</h2><div class="meta">${x.category} · ${x.tag}<br>条目 ${x.count || 29} · 更新 ${x.updatedAt}</div><div><span class="pill info">${x.tag}</span><span class="pill">${x.category}</span></div><p>${x.summary}</p><div class="card-actions"><button class="secondary" type="button" data-kb-detail="${encodeURIComponent(x.title)}">查看详情</button><button class="secondary" type="button" data-kb-delete="${encodeURIComponent(x.title)}" ${can("writer") ? "" : "disabled"}>删除</button></div></div>`).join("") : `<div class="empty-note">当前筛选下暂无知识单元。</div>`) + `<div class="card add-card" data-add-knowledge>＋ 新建知识单元</div>`;
-  $("publicKnowledgeGrid").innerHTML = publicKnowledge.map((x) => `<div class="card locked-card"><h2>${x[0]}</h2><div class="meta">来源：${x[1]}<br>更新：${x[2]} · ${x[3]}</div><span class="pill info">${x[4]}</span><span class="pill">${x[5]}</span></div>`).join("");
-  $("coreKeywords").innerHTML = newsCoreKeywords.map((word) => `<span class="chip active" data-remove-keyword="core:${word}">${word} ×</span>`).join("") + `<span class="chip add" data-add-keyword="core">＋ 添加关键词</span>`;
-  $("extraKeywords").innerHTML = newsExtraKeywords.map((word) => `<span class="chip" data-remove-keyword="extra:${word}">${word} ×</span>`).join("") + `<span class="chip add" data-add-keyword="extra">＋ 添加关键词</span>`;
-  $("newsKpis").innerHTML = [["今日抓取", 286 + state.news.length, "条原始资讯"], ["关键词命中", 42 + state.news.length, "条相关"], ["本期日报", "已生成", `第${String(newsVersion).padStart(3, "0")}期`], ["历史日报", newsVersion, "累计期数"]].map(kpiHtml).join("");
-  const allNewsKeywords = newsCoreKeywords.concat(newsExtraKeywords);
-  $("newsReport").innerHTML = `<h3>工程咨询行业资讯日报</h3><small>2026年8月24日 · 第${String(newsVersion).padStart(3, "0")}期 · 综合日报 · 关键词：${newsCoreKeywords.join(" / ")}</small><h4>一、今日要闻综述</h4><p>今日共监测到与核心关键词相关的重要资讯 ${42 + state.news.length} 条。国务院常务会议部署深化改革，强调持续优化营商环境、激发市场主体活力；国家发改委发布上半年经济运行数据，GDP 同比增长 5.3%，固定资产投资增长 4.8%，其中高技术制造业投资增速领跑。</p><p>扩展关键词覆盖 ${newsExtraKeywords.join("、")}，可用于补充政策、财政、产业和绿色低碳素材。</p><h4>二、政策动向</h4>${sampleNews.concat(state.news.map((x) => [x.title, x.source || "手工补充", x.summary || "待完善摘要。", x.keyword || newsCoreKeywords[0]])).map((x, i) => `<p><b>${i + 1}. ${x[0]}</b>（${x[1]}）—— ${x[2]} <span class="pill info">与「${x[3]}」相关</span></p>`).join("")}<h4>三、投资与财政数据速览</h4><div class="data-cells"><div><span>GDP 同比增速</span><b>5.3%</b><small>上半年 · +0.2pp</small></div><div><span>固定资产投资增速</span><b>4.8%</b><small>上半年 · +0.3pp</small></div><div><span>新增专项债已发</span><b>2.1万亿</b><small>占限额 65%</small></div><div><span>REITs 总市值</span><b>1500亿</b><small>45只 · 年增7只</small></div></div><h4>四、产业动态</h4><p><b>新能源汽车</b>——1-7月销量同比增长 31.5%，充电基础设施同步增长 58%，产业链上下游投资活跃。</p><p><b>半导体</b>——国产替代进程加速，设备国产化率达 28%，刻蚀、清洗、检测等环节突破明显。</p><p><b>绿色建筑</b>——新版评价标准新增碳排放计算要求，对可研报告中节能评估章节影响显著。</p><h4>五、与可研编制的关联分析</h4><p>① 新版绿色建筑评价标准将影响节能评估章节，建议补充碳排放计算内容；② 专项债投向持续聚焦市政及产业园区，建议在资金来源分析中纳入专项债渠道；③ REITs 市场扩容可为产业园区退出渠道分析提供新素材。</p><div class="report-meta"><b>检索关键词：</b>${allNewsKeywords.join(" · ")} | <b>数据来源：</b>人民日报 / 新华社 / 求是网 / 经济日报 / 21世纪经济报道 / 各省发改委官网 | <b>生成时间：</b>${newsGeneratedAt} · 命中条数：${42 + state.news.length} / ${286 + state.news.length}</div>`;
-  $("newsGrid").innerHTML = state.news.map((x) => `<div class="news-item"><b>${x.title}</b><span>${x.source} · ${x.keyword}</span><p>${x.summary}</p></div>`).join("");
-  $("sourceTable").innerHTML = `<table><tr><th>订阅源</th><th>类型</th><th>覆盖关键词</th><th>更新频率</th><th>状态</th><th>操作</th></tr>${newsSources.map((x, i) => `<tr><td>${x[0]}</td><td>${x[1]}</td><td>${x[2]}</td><td>${x[3]}</td><td><span class="pill ${x[4] === "运行中" ? "ok" : "warn"}">${x[4]}</span></td><td><button class="secondary" type="button" data-source-edit="${i}">编辑</button></td></tr>`).join("")}</table>`;
-  $("historyTable").innerHTML = `<table><tr><th>期号</th><th>日期</th><th>类型</th><th>命中条数</th><th>关键词</th><th>操作</th></tr>${newsHistory.map((x, i) => `<tr><td>${x[0]}</td><td>${x[1]}</td><td>${x[2]}</td><td>${x[3]}</td><td>${x[4].map((tag) => `<span class="pill info">${tag}</span>`).join("")}</td><td><button class="secondary" type="button" data-history-view="${i}">查看</button> <button class="secondary" type="button" data-history-save="${i}">存入知识库</button></td></tr>`).join("")}</table><div class="load-more">加载更多 ↓</div>`;
+  // 个人知识库视图已删除；allKnowledge 数据行保留，wireWorkbenchActions 仍在使用。
+  // 舆情信息视图已删除（新闻与招投标面板一并移除）。
   const bids = mergeBidRows(sampleBids, state.bids);
-  const bidStatusList = ["全部", "备标中", "待开标", "即将截止", "已提交"];
-  const filteredBids = currentBidStatus === "全部" ? bids : bids.filter((item) => item.status === currentBidStatus);
-  $("bidKpis").innerHTML = [["跟踪标的", 6, "进行中"], ["已生成商务部分", 3, "本月"], ["技术素材条目", "1,248", "支持库"], ["中标率", "42%", "近12个月"]].map(kpiHtml).join("");
-  document.querySelectorAll("[data-bid-tab]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.bidTab === currentBidTab);
-    button.onclick = () => {
-      currentBidTab = button.dataset.bidTab;
-      renderWorkbenchModules();
-    };
-  });
-  const bidFilters = `<div class="chipbar">${bidStatusList.map((status) => `<span class="chip ${status === currentBidStatus ? "active" : ""}" data-bid-status="${status}">${status} (${status === "全部" ? bids.length : bids.filter((item) => item.status === status).length})</span>`).join("")}</div>`;
-  $("bidGrid").innerHTML = currentBidTab === "business"
-    ? `<table><tr><th>标的名称</th><th>资质材料</th><th>报价检查</th><th>商务响应</th><th>操作</th></tr>${bids.slice(0, 4).map((x, i) => `<tr><td><b>${x.title}</b></td><td>${i % 2 ? "需补授权书" : "已匹配"}</td><td>${x.budget} · ${i % 2 ? "待确认" : "通过"}</td><td><span class="pill ${i % 2 ? "warn" : "ok"}">${i % 2 ? "草稿" : "已生成"}</span></td><td><button class="secondary" type="button" data-bid-business="${encodeURIComponent(x.title)}">生成商务</button></td></tr>`).join("")}</table>`
-    : currentBidTab === "materials"
-      ? `<div class="grid">${["公司资质与证照", "同类项目业绩", "人员证书与简历", "服务承诺模板", "报价测算说明", "投标函格式"].map((title, i) => `<div class="card" data-material="${title}"><h2>${title}</h2><p>${["营业执照、资质证书、信用记录。", "可研、咨询、专项评估等案例素材。", "项目负责人、咨询工程师和专业人员简历。", "进度、质量、保密、廉洁承诺文本。", "人工、差旅、管理费与税费测算口径。", "投标函、授权书、偏离表基础模板。"][i]}</p><span class="pill info">可调用</span></div>`).join("")}</div>`
-      : `${bidFilters}<table><tr><th>标的名称</th><th>招标方</th><th>预算金额</th><th>截止日期</th><th>状态</th><th>操作</th></tr>${filteredBids.map((x) => `<tr><td><b>${x.title}</b></td><td>${x.client}</td><td>${x.budget}</td><td>${x.deadline}</td><td><span class="pill ${x.status.includes("截止") ? "bad" : x.status.includes("提交") ? "ok" : "warn"}">${x.status}</span></td><td><button class="secondary" type="button" data-bid-business="${encodeURIComponent(x.title)}">生成商务</button></td></tr>`).join("")}</table>`;
-  // 旧“函数关系库（24 预测模型）”面板已从配置→函数库移除，该页现由 emgFunctions 应急处置函数库承担。
   // 数据行保留：语料库/浏览页的“函数”视图与 wireWorkbenchActions 的函数详情仍依赖它。
   const functionRows = sampleFunctions.concat(state.functions.map((x) => [x.domain, x.name, x.formula, x.useCase, "自定义"]));
   const tools = sampleTools.concat(state.tools.map((x) => [x.group, "工", x.name, x.description]));
   // 小插件面板已移除；tools 数据行保留，wireWorkbenchActions 与工作台快捷入口仍在使用。
-  $("linkKpis").innerHTML = [["已链接平台", 32, "6大类"], ["收藏文献", 128, "累计"], ["本周检索", 46, "次"], ["待读文献", 18, "未读"]].map(kpiHtml).join("");
-  const linkRows = sampleLinks.concat(state.links.map((x) => [x.category, x.title.slice(0, 1), x.title, x.url, "外部知识平台入口。", x.favorite]));
-  wireLinkControls();
-  const visibleLinks = linkRows.filter((row) => {
-    const favorite = row[5] || favoriteLinks.has(row[2]);
-    const categoryOk = currentLinkFilter === "全部" || row[0].includes(currentLinkFilter);
-    const tabOk = currentLinkTab === "all" || (currentLinkTab === "fav" ? favorite : !favorite);
-    return categoryOk && tabOk;
-  });
-  $("linkGrid").innerHTML = groupFunctions(visibleLinks).map(([group, rows]) => `<div class="sec-title">${group} <span>${rows.length} 个平台</span></div><div class="link-grid">${rows.map((x, idx) => { const title = x[2]; const favorite = x[5] || favoriteLinks.has(title); return `<div class="card link-card" data-open-link="${safeUrl(x[3])}"><div class="link-icon c${idx % 5}">${x[1]}</div><div><h2>${title}</h2><code>${x[3]}</code><p>${x[4]}</p></div><button class="star ${favorite ? "on" : ""}" type="button" data-link-star="${encodeURIComponent(title)}">★</button></div>`; }).join("")}</div>`).join("") || `<div class="empty-note">当前筛选下暂无链接。</div>`;
+  // 浏览视图已删除（链接 KPI/网格与筛选一并移除）。
   wireWorkbenchActions(allKnowledge, functionRows, bids, tools);
 }
 function chipValue(text) {
@@ -2558,7 +2447,7 @@ function show(id, options = {}) {
   document.querySelectorAll(".view").forEach((node) => node.classList.remove("active"));
   $(id).classList.add("active");
   document.querySelectorAll(".nav").forEach((node) => node.classList.toggle("active", node.dataset.view === id));
-  $("pageTitle").textContent = ({ projects: "项目管理", resources: "资源库", wizard: "新建报告向导", studio: "报告工作区", knowledge: "个人知识库", sentiment: "舆情信息", config: "配置", news: "新闻日报", bids: "招投标栏", functions: "函数关系库", tools: "小插件", links: "浏览", corpus: "语料库", corpusDetail: "语料详情", audit: "权限与审计", output: "报告输出" })[id] || "工作台";
+  $("pageTitle").textContent = ({ projects: "项目管理", resources: "资源库", wizard: "新建报告向导", studio: "报告工作区", config: "配置", functions: "函数关系库", tools: "小插件", links: "浏览", corpus: "语料库", corpusDetail: "语料详情", audit: "权限与审计", output: "报告输出" })[id] || "工作台";
   updateBackButtons();
 }
 function downloadText(filename, content) {
@@ -2686,7 +2575,7 @@ document.querySelectorAll(".view").forEach((view) => {
 document.querySelectorAll("[data-view-back]").forEach((button) => button.addEventListener("click", goBack));
 updateBackButtons();
 document.querySelectorAll(".nav").forEach((node) => node.addEventListener("click", () => show(node.dataset.view || "projects")));
-$("userSelect").addEventListener("change", (event) => {
+$("userSelect")?.addEventListener("change", (event) => {
   currentUserId = event.target.value;
   localStorage.setItem("currentUserId", currentUserId);
   renderAll();
@@ -2694,16 +2583,16 @@ $("userSelect").addEventListener("change", (event) => {
   if (!can(viewAccess[active] || "viewer")) show("projects");
   toast(`已切换到 ${state.users.find((u) => u.id === currentUserId)?.name || currentUserId}`);
 });
-$("generateBtn").addEventListener("click", generate);
-$("exportBtn").addEventListener("click", () => { const report = currentReport(); if (report) window.location.href = `/api/reports/${report.id}/export`; });
-$("exportNewsBtn").addEventListener("click", () => downloadText(`工程咨询行业资讯日报-第${String(newsVersion).padStart(3, "0")}期.txt`, $("newsReport").innerText));
-$("saveNewsBtn").addEventListener("click", () => toast("今日日报已存入个人知识库"));
-$("modalClose").addEventListener("click", closeModal);
-$("modal").addEventListener("click", (event) => {
+$("generateBtn")?.addEventListener("click", generate);
+$("exportBtn")?.addEventListener("click", () => { const report = currentReport(); if (report) window.location.href = `/api/reports/${report.id}/export`; });
+$("exportNewsBtn")?.addEventListener("click", () => downloadText(`工程咨询行业资讯日报-第${String(newsVersion).padStart(3, "0")}期.txt`, $("newsReport").innerText));
+$("saveNewsBtn")?.addEventListener("click", () => toast("今日日报已存入个人知识库"));
+$("modalClose")?.addEventListener("click", closeModal);
+$("modal")?.addEventListener("click", (event) => {
   if (event.target.id === "modal") closeModal();
 });
-$("saveNewsConfig").addEventListener("click", () => toast("关键词与订阅配置已保存"));
-$("generateNewsBtn").addEventListener("click", () => {
+$("saveNewsConfig")?.addEventListener("click", () => toast("关键词与订阅配置已保存"));
+$("generateNewsBtn")?.addEventListener("click", () => {
   if (!can("writer")) return toast("当前角色无权生成日报");
   newsVersion += 1;
   newsGeneratedAt = new Date().toLocaleString("zh-CN", { hour12: false });
@@ -2720,7 +2609,7 @@ $("projectFiles")?.addEventListener("change", () => {
   renderProjectImportResult();
   toast("已识别项目资料并推荐历史语料");
 });
-$("projectForm").addEventListener("submit", async (event) => {
+$("projectForm")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!can("manager")) return toast("当前角色无权创建项目");
   const form = new FormData(event.currentTarget);
@@ -2788,7 +2677,7 @@ async function createReportFromWizard(formNode) {
     }
   }
 }
-$("reportForm").addEventListener("submit", async (event) => {
+$("reportForm")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   await createReportFromWizard(event.currentTarget);
 });
@@ -2839,7 +2728,7 @@ $("zeroForm")?.addEventListener("submit", async (event) => {
     toast(error.message || "0-1 生成失败");
   }
 });
-$("factForm").addEventListener("submit", async (event) => {
+$("factForm")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!can("writer")) return toast("当前角色无权编辑事实");
   const report = currentReport();
@@ -2849,7 +2738,7 @@ $("factForm").addEventListener("submit", async (event) => {
   await load();
   toast("事实节点已新增");
 });
-$("corpusForm").addEventListener("submit", async (event) => {
+$("corpusForm")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!can("writer")) return toast("当前角色无权上传语料");
   const form = new FormData(event.currentTarget);
@@ -2922,7 +2811,7 @@ load().catch((error) => toast(error.message));
 <script>
 /* ===== 左侧导航独立修复：不依赖原页面 show()/load() 执行链 ===== */
 (function(){
-  const titles={wizard:'新建报告向导',corpus:'语料库',resources:'资源库',projects:'项目管理',knowledge:'个人知识库',sentiment:'舆情信息',studio:'报告工作区',links:'浏览',config:'配置',output:'报告输出',corpusDetail:'语料详情'};
+  const titles={wizard:'新建报告向导',corpus:'语料库',resources:'资源库',projects:'项目管理',studio:'报告工作区',config:'配置',output:'报告输出',corpusDetail:'语料详情'};
   function switchView(id){
     const view=document.getElementById(id);
     if(!view){ console.warn('未找到页面:',id); return false; }
