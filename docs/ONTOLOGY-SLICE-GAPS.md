@@ -5,9 +5,9 @@
 
 ## 连通图摘要
 
-- 本体：类型 **97**，链路 **115**
-- 切片库：**60**（域内 7 · 跨域 53）
-- 连通边：**768**（shared-type 221 · bridge-link 547）
+- 本体：类型 **97**，链路 **116**
+- 切片库：**61**（域内 7 · 跨域 54）
+- 连通边：**796**（shared-type 228 · bridge-link 568）
 - 孤岛：**0**（豁免 1 · 非豁免 0）
 
 ## 孤岛表
@@ -21,10 +21,10 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | 切片 A | 切片 B | join（linkKey: from→to） |
 |---|---|---|
 | `biz.commercial.arinvoice` | `biz.x.customerlocation_to_region` | custloc_of_customer: CustomerLocation→Customer |
-| `biz.commercial.arinvoice` | `biz.x.order_to_orderpromise` | order_of_customer: Order→Customer |
-| `biz.commercial.arinvoice` | `biz.x.order_to_plantarget` | order_of_customer: Order→Customer |
-| `biz.commercial.arinvoice` | `biz.x.orderpromise_to_order` | order_of_customer: Order→Customer |
-| `biz.commercial.arinvoice` | `biz.x.workorder_to_order` | order_of_customer: Order→Customer |
+| `biz.commercial.arinvoice` | `biz.x.order_to_orderpromise` | customer_places_order: Customer→Order |
+| `biz.commercial.arinvoice` | `biz.x.order_to_plantarget` | customer_places_order: Customer→Order |
+| `biz.commercial.arinvoice` | `biz.x.orderpromise_to_order` | customer_places_order: Customer→Order |
+| `biz.commercial.arinvoice` | `biz.x.workorder_to_order` | customer_places_order: Customer→Order |
 | `biz.equip.equipment` | `biz.x.exceptionevent_to_materialbalance` | exc_sourced_from: ExceptionEvent→EquipmentDowntime |
 | `biz.equip.equipment` | `biz.x.exceptionevent_to_triggerrule` | exc_sourced_from: ExceptionEvent→EquipmentDowntime |
 | `biz.equip.equipment` | `biz.x.line_to_process` | equip_used_in: Equipment→Process |
@@ -58,6 +58,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.people.operatorattendance` | `biz.x.shiftplan_to_line` | att_for_line: OperatorAttendance→Line |
 | `biz.people.operatorattendance` | `biz.x.wiplot_to_line` | att_for_line: OperatorAttendance→Line |
 | `biz.people.operatorattendance` | `biz.x.workorder_to_line` | att_for_line: OperatorAttendance→Line |
+| `biz.plan.annualscenario` | `biz.x.customer_to_order` | order_to_plantarget: Order→PlanTarget |
 | `biz.plan.annualscenario` | `biz.x.metric_to_principal` | plantarget_ownedby: PlanTarget→Principal |
 | `biz.plan.annualscenario` | `biz.x.order_to_customer` | order_to_plantarget: Order→PlanTarget |
 | `biz.plan.annualscenario` | `biz.x.order_to_orderpromise` | order_to_plantarget: Order→PlanTarget |
@@ -195,11 +196,31 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.bomdetail_to_material` | `biz.x.qualitystandard_to_model` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.routing_to_model` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.workorder_to_model` | material_used_by_model: Material→Model |
+| `biz.x.customer_to_order` | `biz.x.customerlocation_to_region` | custloc_of_customer: CustomerLocation→Customer |
+| `biz.x.customer_to_order` | `biz.x.finishedgoodsinventory_to_model` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.interbasetransfer_to_model` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.inventorytxn_to_workorder` | fulfills: WorkOrder→Order |
+| `biz.x.customer_to_order` | `biz.x.line_to_workorder` | fulfills: WorkOrder→Order |
+| `biz.x.customer_to_order` | `biz.x.material_to_model` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.model_to_base` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.model_to_certification` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.model_to_changeovermatrix` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.model_to_finishedgoodsinventory` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.model_to_line` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.model_to_material` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.plantarget_to_principal` | order_to_plantarget: Order→PlanTarget |
+| `biz.x.customer_to_order` | `biz.x.qualitylot_to_workorder` | fulfills: WorkOrder→Order |
+| `biz.x.customer_to_order` | `biz.x.qualitystandard_to_model` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.routing_to_model` | model_demanded_by_order: Model→Order |
+| `biz.x.customer_to_order` | `biz.x.workorder_to_capacitypool` | fulfills: WorkOrder→Order |
+| `biz.x.customer_to_order` | `biz.x.workorder_to_line` | fulfills: WorkOrder→Order |
+| `biz.x.customer_to_order` | `biz.x.workorder_to_model` | fulfills: WorkOrder→Order |
+| `biz.x.customer_to_order` | `biz.x.workorder_to_qualitylot` | fulfills: WorkOrder→Order |
 | `biz.x.customer_to_overduerecord` | `biz.x.customerlocation_to_region` | custloc_of_customer: CustomerLocation→Customer |
-| `biz.x.customer_to_overduerecord` | `biz.x.order_to_orderpromise` | order_of_customer: Order→Customer |
-| `biz.x.customer_to_overduerecord` | `biz.x.order_to_plantarget` | order_of_customer: Order→Customer |
-| `biz.x.customer_to_overduerecord` | `biz.x.orderpromise_to_order` | order_of_customer: Order→Customer |
-| `biz.x.customer_to_overduerecord` | `biz.x.workorder_to_order` | order_of_customer: Order→Customer |
+| `biz.x.customer_to_overduerecord` | `biz.x.order_to_orderpromise` | customer_places_order: Customer→Order |
+| `biz.x.customer_to_overduerecord` | `biz.x.order_to_plantarget` | customer_places_order: Customer→Order |
+| `biz.x.customer_to_overduerecord` | `biz.x.orderpromise_to_order` | customer_places_order: Customer→Order |
+| `biz.x.customer_to_overduerecord` | `biz.x.workorder_to_order` | customer_places_order: Customer→Order |
 | `biz.x.customerlocation_to_region` | `biz.x.finishedgoodsinventory_to_warehouse` | warehouse_located_in: Warehouse→Region |
 | `biz.x.customerlocation_to_region` | `biz.x.interbasetransfer_to_base` | base_located_in: Base→Region |
 | `biz.x.customerlocation_to_region` | `biz.x.model_to_base` | base_located_in: Base→Region |
