@@ -883,6 +883,38 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
     return ca - cb || curOfCard(b) - curOfCard(a) || num(b.peak) - num(a.peak) || (str(a.base) < str(b.base) ? -1 : 1);
   });
   const shown = cards.slice(0, p.maxCards);
+  // ── WO-RISKBOARD-TRUNCATION · 截断诚实位（加性·只在真被截断时置键）──────────────────────────
+  // 病历：上一行的 `slice` 是**静默**的。实测（seed 42·horizon 30·阈值 85·采纳 常州·瓶颈工序·reroute）
+  // 常州峰值从 98 降到 97.9531、比成都的 97.9935 低 0.047 个张力点 ⇒ 掉出前 8 ⇒ 整张卡从回包消失，
+  // **而它的 `crossDay` 仍然是 1（第 1 天就越线，一次都没被消解）**。屏上没有任何一个字说"还有基地在越线"，
+  // 于是「常州不在榜上」被读成「常州没事了」—— 这不是记账错误，是用户会据此不派人去常州。
+  // 与 `kit_readiness` 的 `orderPoolTotal`/`sampled` 是**同一个命题**（"算了几张" ≠ "算的是谁"）：
+  // 榜上 8 张的正确读法是「越线的 N 个里排前 8 的那 8 个」，不是「全网只有 8 个越线」。
+  //
+  // ⚠ 计数口径（两个候选里选了哪个·另一个为什么是错的）：
+  //   本行取的是 **`cards` 与 `shown` 的集合差里 `crossDay !== null` 的那些**，
+  //   **不是**「全部越线数 − 榜上卡数」。后者在**榜上混有不越线的卡**时给出错数：
+  //   `forced` 卡（显式点名基地 → 上方 `pairs.push({...forced: scopeBaseId !== null})`）
+  //   即使 `crossDay === null` 也恒出卡 ⇒ 问一个本 horizon 内不越线的基地时，
+  //   「越线总数 0 − 榜上 1 张」= **−1**：一个负的"还有 N 个基地在越线"本身就是第二个错答。
+  //   集合差写法对 `shown` 是不是数组前缀**不敏感**，日后排序或筛选改了也不会悄悄算错。
+  //   守恒（测试咬死）：`crossingTotal === shownCrossing + count`。
+  // `!= null` 是**故意**的松比较：今天 `crossDay` 恒被显式赋值（`number | null`），但用严格 `!== null`
+  // 时一旦哪天变成 `undefined`，那张卡会被算成"越线"⇒ **多报**一个越线基地 = 又一个错答。
+  // 宁可对 undefined 与 null 一视同仁（都不算越线），也不要造出一个凭空多出来的越线基地。
+  const isCrossing = (x: Record<string, unknown>): boolean => (x.crossDay as number | null | undefined) != null;
+  const shownSet = new Set(shown);
+  // 只取五个标量字段：被截掉的卡此刻还挂着 `__exposureDraft` 等内部半成品（见下方回填），整卡外泄会带出内部键。
+  const unlistedBases = cards
+    .filter((x) => !shownSet.has(x) && isCrossing(x))
+    .map((x) => ({
+      base: str(x.base),
+      baseId: str(x.baseId),
+      factor: str(x.factor),
+      crossDay: num(x.crossDay),
+      peak: num(x.peak),
+    }));
+  const crossingTotal = cards.filter(isCrossing).length;
   // 顶层 dataMode：全 LIVE→LIVE，全 MOCK→MOCK，混合→PARTIAL（前端据此提示"部分估算"）。
   const modes = new Set(shown.map((c2) => c2.dataMode as string));
   const dataMode = modes.size === 0 ? "MOCK" : modes.size === 1 ? [...modes][0] : "PARTIAL";
@@ -936,6 +968,22 @@ export function riskTimeline(c0: SolverContext, args: RiskTimelineArgs): Record<
       ? { scope: "BASE", scopeBaseId, scopeBaseName: baseName(c, scopeBaseId), scopeNote: `仅 ${baseName(c, scopeBaseId)} 基地（该基地${args.factor ? `「${str(args.factor)}」因素` : "全部因素"}·非全网）` }
       : { scope: "ALL", scopeNote: "全网（未指定基地·跨全部基地取越线卡）" }),
     cards: shown,
+    // WO-RISKBOARD-TRUNCATION · 「越线但未上榜」（加性·**仅在真被截断时置键**）。
+    // 没被截断时整块缺席 —— 不是显示「还有 0 个」：没有被藏起来的东西时，多出来的那句话本身就是噪声，
+    // 且缺省必须与本诚实位引入前**逐字节相同**（同 `adoptedMitigation` / `scope` 两处加性键的口径）。
+    // `count` 由 `bases.length` 派生（同一出处·不另算）⇒ 数与名单永远不会互相打架（R-一致）。
+    ...(unlistedBases.length > 0
+      ? {
+        unlistedCrossings: {
+          count: unlistedBases.length,
+          crossingTotal,
+          shownCrossing: crossingTotal - unlistedBases.length,
+          cap: p.maxCards,
+          bases: unlistedBases,
+          note: `未来 ${horizon} 天内共 ${crossingTotal} 个基地越过阈值 ${p.threshold}，看板按「越线日↑ → 当前张力↓ → 峰值↓」只列前 ${p.maxCards} 个；另 ${unlistedBases.length} 个同样已越线，未列出。`,
+        },
+      }
+      : {}),
     // WO-SANDBOX-D4 ① · 全平台这批单的准时率（加性）：跨卡按 so **去重**取最差余量那一次——
     // 一张订单可挂多个产地（Order.bases[]），各卡相加会把同一单算两遍（守恒：合并后 total = 去重订单数）。
     otdBatch: mergeOtdBatches(shown.map((c2) => c2.otd).filter((x): x is ReturnType<typeof otdFromRiskCard> => x != null)),
