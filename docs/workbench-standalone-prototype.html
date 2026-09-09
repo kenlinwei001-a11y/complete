@@ -495,7 +495,7 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
           <button class="nav-sub" data-config-sub="functions">函数库</button>
           <button class="nav-sub" data-config-sub="agents">Agent配置</button>
           <button class="nav-sub" data-config-sub="models">大模型配置</button>
-          <button class="nav-sub" data-config-sub="tools">小插件</button>
+          <button class="nav-sub" data-config-sub="datasources">数据源与数据库</button>
           <button class="nav-sub" data-config-sub="constraints">约束条件库</button>
           <button class="nav-sub" data-config-sub="audit">权限与审计</button>
         </div>
@@ -743,7 +743,7 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
         </section>
 
         <section id="config" class="view">
-          <div class="panel"><div class="panel-head"><div><h2>配置</h2><p>统一管理函数库、Agent、大模型、小插件与权限审计等系统配置能力。</p></div></div><div class="tabbar"><button class="tab active" type="button" data-config-tab="functions">函数库</button><button class="tab" type="button" data-config-tab="agents">Agent配置</button><button class="tab" type="button" data-config-tab="models">大模型配置</button><button class="tab" type="button" data-config-tab="tools">小插件</button><button class="tab" type="button" data-config-tab="constraints">约束条件库</button><button class="tab" type="button" data-config-tab="audit">权限与审计</button></div></div>
+          <div class="panel"><div class="panel-head"><div><h2>配置</h2><p>统一管理应急函数库、Agent、大模型、数据源与数据库、约束条件库与权限审计等系统配置能力。</p></div></div><div class="tabbar"><button class="tab active" type="button" data-config-tab="functions">函数库</button><button class="tab" type="button" data-config-tab="agents">Agent配置</button><button class="tab" type="button" data-config-tab="models">大模型配置</button><button class="tab" type="button" data-config-tab="datasources">数据源与数据库</button><button class="tab" type="button" data-config-tab="constraints">约束条件库</button><button class="tab" type="button" data-config-tab="audit">权限与审计</button></div></div>
           <div id="configFunctions" class="config-pane active">
         <section id="functions">
         
@@ -778,23 +778,51 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
           </div>
           <div id="configAgents" class="config-pane">
             <section id="agents">
-              <div class="panel"><div class="panel-head"><div><h2>Agent配置</h2><p>配置推演链路中的专业 Agent、职责边界、输入输出和调用模型。支持启停和编辑。</p></div><button class="primary" type="button" id="addAgentBtn">新增 Agent</button></div><div class="detail-list" id="agentConfigList"></div></div>
-              <div class="panel"><h2>Agent编辑</h2><div class="form-grid"><label>Agent名称<input id="agentName" placeholder="例如：事实抽取Agent"></label><label>调用模型<select id="agentModel"><option>推理模型</option><option>通用模型</option><option>多模态模型</option></select></label><label>状态<select id="agentStatus"><option>启用</option><option>停用</option></select></label><label class="wide">职责说明<textarea id="agentPrompt" placeholder="定义Agent的任务范围、输入、输出和约束"></textarea></label><button class="primary" type="button" id="saveAgentBtn">保存Agent配置</button></div></div>
+              <div class="panel">
+                <div class="panel-head">
+                  <div><h2>Agent 配置 · 按灾害场景</h2><p>每类灾害对应专属 Agent：绑定大模型、配置 Skill、勾选 MCP 工具（来自应急函数库，按场景过滤避免误调）、挂接数据源（文件上传 / 连接器 / 数据库直连），并声明责任资源域。</p></div>
+                  <div class="card-actions"><button class="secondary" type="button" data-ag="reset">恢复基线</button><button class="primary" type="button" data-ag="new">＋ 新增 Agent</button></div>
+                </div>
+                <div id="agentKpis" class="cfg-kpis"></div>
+                <div id="agentTabs" class="cfg-toolbar"></div>
+                <div id="agentMessage" class="cfg-msg"></div>
+                <div id="agentNewForm"></div>
+                <div id="agentList" class="cfg-list"></div>
+              </div>
             </section>
           </div>
           <div id="configModels" class="config-pane">
             <section id="models">
-              <div class="panel"><div class="panel-head"><div><h2>大模型配置</h2><p>统一管理模型供应商、模型版本、能力类型、上下文长度与默认调用策略。</p></div><button class="primary" type="button" id="addModelBtn">新增模型</button></div><div class="detail-list" id="modelConfigList"></div></div>
-              <div class="panel"><h2>模型编辑</h2><div class="form-grid"><label>模型名称<input id="modelName" placeholder="例如：推演推理模型"></label><label>模型类型<select id="modelType"><option>推理模型</option><option>通用文本模型</option><option>多模态模型</option></select></label><label>上下文长度<input id="modelContext" placeholder="例如：128K"></label><label>调用地址<input id="modelEndpoint" placeholder="API Endpoint / 本地服务地址"></label><label>状态<select id="modelStatus"><option>启用</option><option>停用</option></select></label><button class="primary" type="button" id="saveModelBtn">保存模型配置</button></div></div>
+              <div class="panel">
+                <div class="panel-head">
+                  <div><h2>大模型配置 · 多供应商</h2><p>支持 Anthropic、OpenAI 兼容、Azure、阿里云百炼、智谱、DeepSeek、本地 Ollama 与自定义 HTTP 网关；每个供应商可配 Base URL、API Key 与模型清单，密钥以掩码保存、不回显明文。</p></div>
+                  <div class="card-actions"><button class="secondary" type="button" data-llm="reset">恢复基线</button><button class="primary" type="button" data-llm="new">＋ 新增供应商</button></div>
+                </div>
+                <div id="llmKpis" class="cfg-kpis"></div>
+                <div id="llmMessage" class="cfg-msg"></div>
+                <div id="llmNewForm"></div>
+                <div id="llmList" class="cfg-list"></div>
+              </div>
             </section>
           </div>
-          <div id="configTools" class="config-pane">
-        <section id="tools">
-          <div class="kpis" id="toolKpis"></div>
-          <div class="panel"><div class="panel-head"><div><h2>小插件中心</h2><p>覆盖报告编制全流程的辅助工具集，点击即用，支持批量处理与自定义配置。</p></div><form class="quick-form compact-form" data-create="tools"><input name="name" placeholder="插件名称" required><input name="group" placeholder="分组"><input name="description" placeholder="描述"><button class="primary">新增</button></form></div><div class="chipbar"><span class="chip active">全部 (14)</span><span class="chip">报告相关 (5)</span><span class="chip">数据处理 (3)</span><span class="chip">行政办公 (3)</span><span class="chip">人资管理 (2)</span><span class="chip">制图辅助 (1)</span></div><div id="toolGrid"></div></div>
-          <div class="panel"><h2>财务快算</h2><div class="quick-form calc-form"><input id="calcRev" type="number" placeholder="收入 万元"><input id="calcCost" type="number" placeholder="成本 万元"><input id="calcTax" type="number" value="25" placeholder="税率 %"><button id="calcBtn" class="secondary" type="button">计算</button></div><div id="calcOut" class="validation ok">输入收入和成本后可计算毛利、所得税、净利润。</div></div>
-        </section>
-
+          <div id="configDatasources" class="config-pane">
+            <section id="datasources">
+              <div class="panel">
+                <div class="panel-head">
+                  <div><h2>数据源与数据库</h2><p>按资源域分别接入数据库/接口/文件/连接器，字段映射到资源库口径（总量、可用量、预占量、存储位置），供 Agent 调用与资源库刷新。</p></div>
+                  <div class="card-actions"><button class="secondary" type="button" data-ds="reset">恢复基线</button><button class="primary" type="button" data-ds="new">＋ 新增数据源</button></div>
+                </div>
+                <div id="dsKpis" class="cfg-kpis"></div>
+                <div id="dsTabs" class="cfg-toolbar"></div>
+                <div id="dsMessage" class="cfg-msg"></div>
+                <div id="dsNewForm"></div>
+                <div id="dsList" class="cfg-list"></div>
+              </div>
+              <div class="panel">
+                <div class="panel-head"><div><h3>资源域接入覆盖</h3><p>对照资源库的资源域，检查是否存在“有资源无数据源”。</p></div></div>
+                <table class="cfg-table"><thead><tr><th style="width:220px">资源域</th><th style="width:200px">资源库规模</th><th>数据源接入</th></tr></thead><tbody id="dsCoverage"></tbody></table>
+              </div>
+            </section>
           </div>
           <div id="configAudit" class="config-pane">
         <section id="audit">
@@ -2280,10 +2308,7 @@ function renderWorkbenchModules() {
   // 数据行保留：语料库/浏览页的“函数”视图与 wireWorkbenchActions 的函数详情仍依赖它。
   const functionRows = sampleFunctions.concat(state.functions.map((x) => [x.domain, x.name, x.formula, x.useCase, "自定义"]));
   const tools = sampleTools.concat(state.tools.map((x) => [x.group, "工", x.name, x.description]));
-  $("toolKpis").innerHTML = [["插件总数", 14, "覆盖5类"], ["报告相关", 5, "排版/大纲/校验"], ["数据处理", 3, "识别/合并/换算"], ["行政办公", 3, "报销/纪要/提醒"]].map(kpiHtml).join("");
-  wireStaticChips("tools", currentToolFilter, (value) => { currentToolFilter = value; renderWorkbenchModules(); });
-  const visibleTools = currentToolFilter === "全部" ? tools : tools.filter((row) => row[0].includes(currentToolFilter));
-  $("toolGrid").innerHTML = groupFunctions(visibleTools).map(([group, rows]) => `<div class="sec-title">${group} <span>${rows.length} 个插件</span></div><div class="tool-grid">${rows.map((x, idx) => `<div class="card tool-card" data-tool="${x[2]}"><div class="tool-icon c${idx % 5}">${x[1]}</div><h2>${x[2]}</h2><p>${x[3]}</p><button class="secondary" type="button" data-tool="${x[2]}">启动</button></div>`).join("")}</div>`).join("") || `<div class="empty-note">当前分类下暂无插件。</div>`;
+  // 小插件面板已移除；tools 数据行保留，wireWorkbenchActions 与工作台快捷入口仍在使用。
   $("linkKpis").innerHTML = [["已链接平台", 32, "6大类"], ["收藏文献", 128, "累计"], ["本周检索", 46, "次"], ["待读文献", 18, "未读"]].map(kpiHtml).join("");
   const linkRows = sampleLinks.concat(state.links.map((x) => [x.category, x.title.slice(0, 1), x.title, x.url, "外部知识平台入口。", x.favorite]));
   wireLinkControls();
@@ -2491,7 +2516,7 @@ function renderModelConfigs(){ const el=$("modelConfigList"); if(!el)return; el.
 function saveConfigData(){localStorage.setItem("workbench_agent_configs",JSON.stringify(agentConfigs));localStorage.setItem("workbench_model_configs",JSON.stringify(modelConfigs));}
 setTimeout(()=>{renderAgentConfigs();renderModelConfigs();$("saveAgentBtn")?.addEventListener("click",()=>{const n=$("agentName").value.trim();if(!n)return toast("请输入Agent名称");agentConfigs.push({name:n,model:$("agentModel").value,status:$("agentStatus").value,desc:$("agentPrompt").value.trim()||"未填写职责说明"});saveConfigData();renderAgentConfigs();toast("Agent配置已保存");});$("saveModelBtn")?.addEventListener("click",()=>{const n=$("modelName").value.trim();if(!n)return toast("请输入模型名称");modelConfigs.push({name:n,type:$("modelType").value,context:$("modelContext").value.trim()||"未设置",endpoint:$("modelEndpoint").value.trim()||"未设置",status:$("modelStatus").value});saveConfigData();renderModelConfigs();toast("大模型配置已保存");});},0);
 document.querySelectorAll("[data-sentiment-tab]").forEach(x=>x.classList.toggle("active",x===btn)); $("sentimentNews").classList.toggle("active",t==="news"); $("sentimentBids").classList.toggle("active",t==="bids"); }));
-document.querySelectorAll("[data-config-tab]").forEach(btn => btn.addEventListener("click", () => { const t=btn.dataset.configTab; document.querySelectorAll("[data-config-tab]").forEach(x=>x.classList.toggle("active",x===btn)); /* 通用切换：pane id 约定为 config + 首字母大写的 tab 名，新增页签无需再改这里 */ const paneId="config"+t.charAt(0).toUpperCase()+t.slice(1); document.querySelectorAll(".config-pane").forEach(pane=>pane.classList.toggle("active",pane.id===paneId)); if(t==="constraints"&&window.__CONSTRAINT_LIBRARY__) window.__CONSTRAINT_LIBRARY__.render(); }));
+document.querySelectorAll("[data-config-tab]").forEach(btn => btn.addEventListener("click", () => { const t=btn.dataset.configTab; document.querySelectorAll("[data-config-tab]").forEach(x=>x.classList.toggle("active",x===btn)); /* 通用切换：pane id 约定为 config + 首字母大写的 tab 名，新增页签无需再改这里 */ const paneId="config"+t.charAt(0).toUpperCase()+t.slice(1); document.querySelectorAll(".config-pane").forEach(pane=>pane.classList.toggle("active",pane.id===paneId)); if(t==="constraints"&&window.__CONSTRAINT_LIBRARY__) window.__CONSTRAINT_LIBRARY__.render(); if(t==="models"&&window.__LLM_PROVIDERS__) window.__LLM_PROVIDERS__.render(); if(t==="datasources"&&window.__DATASOURCES__) window.__DATASOURCES__.render(); if(t==="agents"&&window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render(); }));
 const viewHistory = [];
 function activeViewId() {
   return document.querySelector(".view.active")?.id || null;
@@ -2846,15 +2871,7 @@ document.querySelectorAll("[data-create]").forEach((form) => form.addEventListen
     toast(error.message || "新增失败");
   }
 }));
-$("calcBtn").addEventListener("click", () => {
-  const rev = Number($("calcRev").value || 0);
-  const cost = Number($("calcCost").value || 0);
-  const taxRate = Number($("calcTax").value || 0) / 100;
-  const gross = rev - cost;
-  const tax = gross > 0 ? gross * taxRate : 0;
-  const net = gross - tax;
-  $("calcOut").innerHTML = `<b>测算结果</b><p>毛利 ${gross.toFixed(1)} 万元，所得税 ${tax.toFixed(1)} 万元，净利润 ${net.toFixed(1)} 万元。</p>`;
-});
+// 财务快算随“小插件”面板一并移除（其 DOM 已不存在，保留监听会中断后续脚本）。
 document.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
@@ -3695,6 +3712,715 @@ load().catch((error) => toast(error.message));
       return { name: mcpName(fn), value: evaluate(fn, vals), unit: fn.unit, inputs: vals };
     }
   };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(); render(); }, { once: true });
+  else { wire(); render(); }
+})();
+</script>
+
+<style id="config-modules-style">
+.cfg-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:10px 0}
+.cfg-list{display:grid;gap:10px;margin:10px 0}
+.cfg-card{border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:12px;padding:12px 14px;background:#fff}
+.cfg-card.off{border-left-color:var(--muted);opacity:.75}
+.cfg-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.cfg-card-head h4{margin:0;font-size:14px}
+.cfg-card-head .cfg-sub{color:var(--muted);font-size:12px;margin-top:3px}
+.cfg-actions{white-space:nowrap} .cfg-actions button{margin-left:6px}
+.cfg-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:6px 16px;margin-top:9px;font-size:12.4px}
+.cfg-meta b{color:var(--muted);font-weight:600;margin-right:6px}
+.cfg-chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:11.5px;color:var(--muted);margin:0 4px 4px 0;background:#fbfcfe}
+.cfg-chip.on{border-color:var(--blue);color:var(--blue);background:#f5f9ff}
+.cfg-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:10px 0}
+.cfg-form label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.cfg-form label.wide{grid-column:1/-1}
+.cfg-form input,.cfg-form select,.cfg-form textarea{min-height:34px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--ink);background:#fff;font:inherit}
+.cfg-form textarea{min-height:70px}
+.cfg-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px;max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:9px;background:#fbfcfe}
+.cfg-pick label{display:flex;gap:8px;align-items:flex-start;font-size:12.3px;color:var(--ink);cursor:pointer}
+.cfg-pick small{color:var(--muted);display:block}
+.cfg-msg{margin:8px 0;font-size:12.5px;min-height:20px}
+.cfg-msg.ok{color:var(--teal)} .cfg-msg.err{color:var(--red)}
+.cfg-key{font-family:Consolas,"Courier New",monospace;background:#f2f5f9;border-radius:4px;padding:1px 6px}
+.cfg-pill{display:inline-block;border-radius:999px;padding:1px 10px;font-size:11.5px;font-weight:600}
+.cfg-pill.ok{background:#e8f5f2;color:var(--teal)} .cfg-pill.warn{background:#fdf3e6;color:var(--amber)} .cfg-pill.err{background:#fdeaea;color:var(--red)}
+.cfg-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.cfg-tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 13px;font-size:12.5px;cursor:pointer;color:var(--ink)}
+.cfg-tab.active{background:var(--rail);border-color:var(--rail);color:#fff}
+.cfg-table{width:100%;border-collapse:collapse;margin-top:8px}
+.cfg-table th,.cfg-table td{padding:8px 12px;border-bottom:1px solid #eef2f6;text-align:left;font-size:12.5px;vertical-align:top}
+.cfg-table th{color:var(--muted);font-weight:600;background:#fcfdfe}
+.cfg-upload{border:1px dashed var(--line);border-radius:10px;padding:12px;background:#fbfcfe;font-size:12.5px}
+</style>
+<script id="config-modules-shared">
+/* 配置模块公共工具：统一的转义/存取/掩码/校验，供大模型、数据源、Agent 三个模块复用。 */
+window.__CFG__ = (function () {
+  'use strict';
+  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function clone(v) { return JSON.parse(JSON.stringify(v)); }
+  function notify(m) { if (typeof toast === 'function') toast(m); else console.info('[配置]', m); }
+  function el(id) { return document.getElementById(id); }
+  function store(key, base, valid) {
+    var items = clone(base);
+    try {
+      var raw = localStorage.getItem(key);
+      if (raw) {
+        var saved = JSON.parse(raw);
+        // 界面保存即权威：新增/修改/删除原样生效；数据不合法才回退基线。
+        if (Array.isArray(saved) && saved.length && saved.every(valid)) items = saved;
+        else if (raw) console.warn('[配置] ' + key + ' 本地数据不合法，已回退基线');
+      }
+    } catch (e) { console.warn('[配置] ' + key + ' 本地数据损坏，已回退基线', e); }
+    return {
+      list: function () { return items; },
+      set: function (v) { items = v; this.save(); },
+      reset: function () { items = clone(base); this.save(); return items; },
+      save: function () { try { localStorage.setItem(key, JSON.stringify(items)); } catch (e) { console.warn('[配置] 持久化失败', e); } },
+      find: function (id) { return items.find(function (x) { return String(x.id) === String(id); }) || null; },
+      remove: function (id) { var i = items.findIndex(function (x) { return String(x.id) === String(id); }); if (i >= 0) { items.splice(i, 1); this.save(); return true; } return false; }
+    };
+  }
+  // 凭据不回显：列表与导出一律掩码，仅编辑态可临时显示。
+  function mask(k) {
+    var s = String(k || ''); if (!s) return '未配置';
+    if (s.length <= 8) return s.slice(0, 2) + '****';
+    return s.slice(0, 5) + '****' + s.slice(-4);
+  }
+  function message(id, text, ok) { var e = el(id); if (e) { e.textContent = text || ''; e.className = 'cfg-msg ' + (text ? (ok ? 'ok' : 'err') : ''); } }
+  function readFields(scopeId, attr) {
+    var d = {};
+    document.querySelectorAll('#' + scopeId + ' [' + attr + ']').forEach(function (x) {
+      var k = x.getAttribute(attr);
+      if (x.type === 'checkbox') { if (!Array.isArray(d[k])) d[k] = []; if (x.checked) d[k].push(x.value); }
+      else d[k] = x.value;
+    });
+    return d;
+  }
+  function splitList(v) { return String(v || '').split(/[，,\n]/).map(function (x) { return x.trim(); }).filter(Boolean); }
+  function resourceDomains() {
+    var l = (window.__RESOURCE_MODULE__ && window.__RESOURCE_MODULE__.list()) || [];
+    var out = []; l.forEach(function (r) { if (out.indexOf(r.domain) < 0) out.push(r.domain); });
+    return out;
+  }
+  return { esc: esc, clone: clone, notify: notify, el: el, store: store, mask: mask, message: message, readFields: readFields, splitList: splitList, resourceDomains: resourceDomains };
+})();
+</script>
+<script id="llm-provider-single">
+/* =============================================================================
+   大模型配置 · 多供应商 + 密钥管理（配置 → 大模型配置）
+   - 供应商：Anthropic / OpenAI 兼容 / Azure OpenAI / 阿里云百炼 / 智谱 / DeepSeek / 本地 Ollama / 自定义 HTTP
+   - 每个供应商可配 Base URL、API Key（掩码存储、不回显明文）、若干模型及能力标签
+   - 支持设默认模型、启用/停用、连通性自检（离线原型：校验配置完备性而非真实联网）
+   ============================================================================= */
+(function () {
+  'use strict';
+  var C = window.__CFG__, esc = C.esc, $ = C.el;
+  var VENDORS = [
+    { code: 'anthropic', name: 'Anthropic', base: 'https://api.anthropic.com', keyHint: 'sk-ant-...' },
+    { code: 'openai_compat', name: 'OpenAI 兼容', base: 'https://api.openai.com/v1', keyHint: 'sk-...' },
+    { code: 'azure_openai', name: 'Azure OpenAI', base: 'https://{resource}.openai.azure.com', keyHint: 'azure key' },
+    { code: 'bailian', name: '阿里云百炼', base: 'https://dashscope.aliyuncs.com/compatible-mode/v1', keyHint: 'sk-...' },
+    { code: 'zhipu', name: '智谱 GLM', base: 'https://open.bigmodel.cn/api/paas/v4', keyHint: 'id.secret' },
+    { code: 'deepseek', name: 'DeepSeek', base: 'https://api.deepseek.com', keyHint: 'sk-...' },
+    { code: 'ollama', name: '本地 Ollama', base: 'http://127.0.0.1:11434/v1', keyHint: '本地部署可留空' },
+    { code: 'custom_http', name: '自定义 HTTP', base: '', keyHint: '按网关要求填写' }
+  ];
+  var CAPS = ['推理', '长文本', '函数调用', '视觉', '嵌入', '快速响应'];
+  var vName = function (c) { var v = VENDORS.find(function (x) { return x.code === c; }); return v ? v.name : c; };
+
+  var BASE = [
+    { id: 'llm_anthropic', name: 'Anthropic 主用', vendor: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: '', enabled: true,
+      models: [{ id: 'claude-opus-5', name: 'Claude Opus 5', context: 200000, caps: ['推理', '长文本', '函数调用', '视觉'], default: true },
+               { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', context: 200000, caps: ['快速响应', '函数调用'], default: false }],
+      note: '主推理与研判 Agent 使用' },
+    { id: 'llm_openai', name: 'OpenAI 兼容网关', vendor: 'openai_compat', baseUrl: 'https://api.openai.com/v1', apiKey: '', enabled: true,
+      models: [{ id: 'gpt-4o', name: 'GPT-4o', context: 128000, caps: ['推理', '函数调用', '视觉'], default: false },
+               { id: 'text-embedding-3-large', name: 'Embedding 3 Large', context: 8191, caps: ['嵌入'], default: false }],
+      note: '备份通道与向量化' },
+    { id: 'llm_bailian', name: '阿里云百炼', vendor: 'bailian', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', apiKey: '', enabled: true,
+      models: [{ id: 'qwen-max', name: '通义千问 Max', context: 32000, caps: ['推理', '函数调用'], default: false }], note: '国产化合规通道' },
+    { id: 'llm_deepseek', name: 'DeepSeek', vendor: 'deepseek', baseUrl: 'https://api.deepseek.com', apiKey: '', enabled: false,
+      models: [{ id: 'deepseek-chat', name: 'DeepSeek Chat', context: 64000, caps: ['推理', '函数调用'], default: false }], note: '成本敏感任务备选' },
+    { id: 'llm_ollama', name: '本地 Ollama（内网）', vendor: 'ollama', baseUrl: 'http://127.0.0.1:11434/v1', apiKey: '', enabled: false,
+      models: [{ id: 'qwen2.5:14b', name: 'Qwen2.5 14B', context: 32000, caps: ['推理', '快速响应'], default: false }], note: '涉密/断网环境本地推理' }
+  ];
+  var db = C.store('workbench.llm-providers.v1', BASE, function (x) { return x && x.id && x.name && Array.isArray(x.models); });
+  var ui = { editing: null, showKey: false };
+
+  function allModels() {
+    var out = [];
+    db.list().forEach(function (p) { (p.models || []).forEach(function (m) { out.push({ provider: p, model: m }); }); });
+    return out;
+  }
+  function defaultModel() { var d = allModels().find(function (x) { return x.model.default; }); return d || allModels()[0] || null; }
+  function status(p) {
+    if (!p.enabled) return { cls: 'warn', text: '已停用' };
+    if (p.vendor !== 'ollama' && !p.apiKey) return { cls: 'err', text: '缺少 API Key' };
+    if (!p.baseUrl) return { cls: 'err', text: '缺少 Base URL' };
+    if (!(p.models || []).length) return { cls: 'err', text: '未配置模型' };
+    return { cls: 'ok', text: '配置完备' };
+  }
+
+  function formHtml(p, isNew) {
+    var v = VENDORS.find(function (x) { return x.code === p.vendor; }) || VENDORS[0];
+    return '<div class="cfg-form">' +
+      '<label>供应商 ID<input data-lf="id" value="' + esc(p.id || '') + '" ' + (isNew ? '' : 'readonly') + ' placeholder="llm_xxx"></label>' +
+      '<label>显示名称<input data-lf="name" value="' + esc(p.name || '') + '"></label>' +
+      '<label>供应商类型<select data-lf="vendor">' + VENDORS.map(function (x) { return '<option value="' + x.code + '" ' + (p.vendor === x.code ? 'selected' : '') + '>' + x.name + '</option>'; }).join('') + '</select></label>' +
+      '<label>状态<select data-lf="enabled"><option value="1" ' + (p.enabled !== false ? 'selected' : '') + '>启用</option><option value="0" ' + (p.enabled === false ? 'selected' : '') + '>停用</option></select></label>' +
+      '<label class="wide">Base URL<input data-lf="baseUrl" value="' + esc(p.baseUrl || v.base) + '" placeholder="' + esc(v.base) + '"></label>' +
+      '<label class="wide">API Key（' + esc(v.keyHint) + '）<input data-lf="apiKey" type="' + (ui.showKey ? 'text' : 'password') + '" value="' + esc(p.apiKey || '') + '" placeholder="留空表示不修改已保存的密钥" autocomplete="off"></label>' +
+      '<label class="wide">模型清单（每行一个：模型ID|显示名|上下文|能力,逗号分隔|是否默认(1/0)）<textarea data-lf="models">' +
+      esc((p.models || []).map(function (m) { return [m.id, m.name, m.context, (m.caps || []).join(','), m.default ? 1 : 0].join('|'); }).join('\n')) + '</textarea></label>' +
+      '<label class="wide">备注<input data-lf="note" value="' + esc(p.note || '') + '"></label>' +
+      '</div><div class="card-actions">' +
+      '<button class="primary" type="button" data-llm="' + (isNew ? 'create-commit' : 'edit-commit') + '">' + (isNew ? '新增供应商' : '保存修改') + '</button>' +
+      '<button class="secondary" type="button" data-llm="toggle-key">' + (ui.showKey ? '隐藏密钥' : '显示密钥') + '</button>' +
+      '<button class="secondary" type="button" data-llm="edit-cancel">取消</button></div>';
+  }
+
+  function render() {
+    if (!$('llmList')) return;
+    var list = db.list(), models = allModels(), dm = defaultModel();
+    var ready = list.filter(function (p) { return status(p).cls === 'ok'; }).length;
+    $('llmKpis').innerHTML = [
+      ['供应商', list.length, '个'], ['可用模型', models.length, '个'],
+      ['配置完备', ready, '个供应商'], ['已配密钥', list.filter(function (p) { return !!p.apiKey; }).length, '个'],
+      ['默认模型', dm ? dm.model.name : '未设置', dm ? vName(dm.provider.vendor) : '请设置默认']
+    ].map(function (k) { return '<div class="kpi"><span>' + k[0] + '</span><b>' + esc(k[1]) + '</b><small>' + esc(k[2]) + '</small></div>'; }).join('');
+
+    $('llmList').innerHTML = list.map(function (p) {
+      var st = status(p);
+      if (ui.editing === p.id) return '<div class="cfg-card">' + formHtml(p, false) + '</div>';
+      return '<div class="cfg-card' + (p.enabled === false ? ' off' : '') + '">' +
+        '<div class="cfg-card-head"><div><h4>' + esc(p.name) + ' <span class="cfg-pill ' + st.cls + '">' + st.text + '</span></h4>' +
+        '<div class="cfg-sub">' + esc(vName(p.vendor)) + ' · ' + esc(p.baseUrl || '—') + ' · Key <span class="cfg-key">' + esc(C.mask(p.apiKey)) + '</span></div></div>' +
+        '<div class="cfg-actions">' +
+        '<button class="secondary" type="button" data-llm="test" data-lv="' + esc(p.id) + '">连通性自检</button>' +
+        '<button class="secondary" type="button" data-llm="toggle" data-lv="' + esc(p.id) + '">' + (p.enabled === false ? '启用' : '停用') + '</button>' +
+        '<button class="secondary" type="button" data-llm="edit" data-lv="' + esc(p.id) + '">编辑</button>' +
+        '<button class="secondary" type="button" data-llm="delete" data-lv="' + esc(p.id) + '">删除</button></div></div>' +
+        '<table class="cfg-table"><thead><tr><th style="width:230px">模型 ID</th><th style="width:170px">名称</th><th style="width:110px">上下文</th><th>能力</th><th style="width:120px">默认</th></tr></thead><tbody>' +
+        ((p.models || []).map(function (m) {
+          return '<tr><td><span class="cfg-key">' + esc(m.id) + '</span></td><td>' + esc(m.name) + '</td><td>' + esc((m.context || 0).toLocaleString()) + '</td>' +
+            '<td>' + (m.caps || []).map(function (c) { return '<span class="cfg-chip">' + esc(c) + '</span>'; }).join('') + '</td>' +
+            '<td>' + (m.default ? '<span class="cfg-pill ok">默认</span>' : '<button class="secondary" type="button" data-llm="set-default" data-lv="' + esc(p.id) + '::' + esc(m.id) + '">设为默认</button>') + '</td></tr>';
+        }).join('') || '<tr><td colspan="5" class="muted">未配置模型</td></tr>') + '</tbody></table>' +
+        (p.note ? '<div class="cfg-meta"><span><b>备注</b>' + esc(p.note) + '</span></div>' : '') + '</div>';
+    }).join('');
+    $('llmNewForm').innerHTML = ui.editing === '__new__' ? '<div class="cfg-card">' + formHtml({ vendor: 'openai_compat', enabled: true, models: [] }, true) + '</div>' : '';
+  }
+
+  function readForm() {
+    var d = C.readFields('models', 'data-lf');
+    return {
+      id: String(d.id || '').trim(), name: String(d.name || '').trim(), vendor: d.vendor,
+      baseUrl: String(d.baseUrl || '').trim(), apiKey: String(d.apiKey || ''), enabled: d.enabled !== '0',
+      note: String(d.note || '').trim(),
+      models: String(d.models || '').split('\n').map(function (l) { return l.trim(); }).filter(Boolean).map(function (l) {
+        var a = l.split('|');
+        return { id: (a[0] || '').trim(), name: (a[1] || a[0] || '').trim(), context: Number(a[2]) || 0, caps: (a[3] || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean), default: String(a[4]).trim() === '1' };
+      })
+    };
+  }
+
+  function commit(isNew) {
+    var d = readForm();
+    if (!d.id) return C.message('llmMessage', '供应商 ID 不能为空', false);
+    if (!d.name) return C.message('llmMessage', '显示名称不能为空', false);
+    if (isNew && db.find(d.id)) return C.message('llmMessage', '供应商 ID 已存在：' + d.id, false);
+    if (!d.models.length) return C.message('llmMessage', '至少配置一个模型', false);
+    if (d.vendor !== 'ollama' && !d.apiKey && !(db.find(d.id) || {}).apiKey) C.message('llmMessage', '提示：未填写 API Key，该供应商将标记为“缺少 API Key”。', false);
+    if (isNew) db.list().push(d);
+    else {
+      var t = db.find(ui.editing); if (!t) return C.message('llmMessage', '供应商不存在', false);
+      if (!d.apiKey) d.apiKey = t.apiKey;               // 留空表示不修改已保存密钥
+      Object.assign(t, d, { id: t.id });
+    }
+    ui.editing = null; ui.showKey = false; db.save(); render();
+    C.message('llmMessage', (isNew ? '已新增供应商 ' : '已保存供应商 ') + d.name + '（密钥以掩码显示，不回显明文）', true);
+    C.notify(isNew ? '已新增大模型供应商' : '已保存大模型供应商');
+    if (window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render();
+  }
+
+  function test(id) {
+    var p = db.find(id); if (!p) return;
+    var st = status(p);
+    if (st.cls !== 'ok') return C.message('llmMessage', p.name + ' 自检未通过：' + st.text, false);
+    C.message('llmMessage', p.name + ' 自检通过：Base URL、密钥与 ' + p.models.length + ' 个模型均已配置（离线原型不发起真实请求）。', true);
+  }
+
+  function wire() {
+    var root = $('models'); if (!root || root.dataset.llmWired === '1') return;
+    root.dataset.llmWired = '1';
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-llm]'); if (!b) return;
+      e.preventDefault();
+      var act = b.dataset.llm, val = b.dataset.lv;
+      if (act === 'edit') { ui.editing = val; ui.showKey = false; render(); }
+      else if (act === 'edit-cancel') { ui.editing = null; render(); C.message('llmMessage', ''); }
+      else if (act === 'edit-commit') { commit(false); }
+      else if (act === 'new') { ui.editing = '__new__'; render(); }
+      else if (act === 'create-commit') { commit(true); }
+      else if (act === 'toggle-key') { ui.showKey = !ui.showKey; render(); }
+      else if (act === 'toggle') { var p = db.find(val); if (p) { p.enabled = p.enabled === false; db.save(); render(); C.message('llmMessage', p.name + (p.enabled ? ' 已启用' : ' 已停用'), true); } }
+      else if (act === 'delete') {
+        var used = (window.__AGENT_CONFIG__ ? window.__AGENT_CONFIG__.list() : []).filter(function (a) { return a.providerId === val; });
+        db.remove(val); render();
+        C.message('llmMessage', used.length ? '已删除，但有 ' + used.length + ' 个 Agent 仍绑定该供应商：' + used.map(function (a) { return a.name; }).join('、') : '已删除供应商 ' + val, !used.length);
+        if (window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render();
+      }
+      else if (act === 'set-default') {
+        var parts = String(val).split('::');
+        db.list().forEach(function (p2) { (p2.models || []).forEach(function (m) { m.default = (p2.id === parts[0] && m.id === parts[1]); }); });
+        db.save(); render(); C.message('llmMessage', '默认模型已设为 ' + parts[1], true);
+        if (window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render();
+      }
+      else if (act === 'test') { test(val); }
+      else if (act === 'reset') { db.reset(); ui.editing = null; render(); C.message('llmMessage', '已恢复内置基线（' + db.list().length + ' 个供应商，密钥已清空）。', true); }
+    });
+  }
+
+  window.__LLM_PROVIDERS__ = {
+    list: function () { return db.list(); }, models: allModels, defaultModel: defaultModel,
+    render: render, vendorName: vName, status: status
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(); render(); }, { once: true });
+  else { wire(); render(); }
+})();
+</script>
+<script id="datasource-single">
+/* =============================================================================
+   数据源与数据库（配置 → 数据源与数据库）
+   - 每个资源域一套数据库/数据源，字段映射到资源库的 total / available / reserved 等口径
+   - 接入方式：数据库直连（PostgreSQL/MySQL/达梦）、REST API、文件上传（CSV/Excel）、连接器
+   - 与资源库双向对照：未覆盖的资源域会显式列出，避免“有资源无数据源”
+   ============================================================================= */
+(function () {
+  'use strict';
+  var C = window.__CFG__, esc = C.esc, $ = C.el;
+  var KINDS = [
+    { code: 'postgres', name: 'PostgreSQL 直连' }, { code: 'mysql', name: 'MySQL 直连' },
+    { code: 'dm', name: '达梦/国产库直连' }, { code: 'rest_api', name: 'REST API' },
+    { code: 'file_upload', name: '文件上传（CSV/Excel）' }, { code: 'connector', name: '连接器（政务共享平台）' }
+  ];
+  var SYNC = ['实时', '每 5 分钟', '每小时', '每日', '手动'];
+  var kName = function (c) { var k = KINDS.find(function (x) { return x.code === c; }); return k ? k.name : c; };
+  var isFile = function (k) { return k === 'file_upload'; };
+  var isConn = function (k) { return k === 'connector'; };
+  var isDb = function (k) { return ['postgres', 'mysql', 'dm'].indexOf(k) >= 0; };
+
+  function D(id, name, kind, domain, conn, table, mapping, sync, owner) {
+    return { id: id, name: name, kind: kind, domain: domain, conn: conn, table: table, mapping: mapping, sync: sync, owner: owner, enabled: true, lastSync: '', files: [] };
+  }
+  var M_STOCK = 'name→资源名称, total_qty→总量, available_qty→可用量, reserved_qty→预占量, location→存储位置';
+  var BASE = [
+    D('ds_fuel', '区域油库库存库', 'postgres', '燃料能源', 'postgres://oil_ro@10.20.7.11:5432/oil_stock', 'stock_fuel', M_STOCK, '每 5 分钟', '应急管理局·物资保障处'),
+    D('ds_medical', '医疗机构床位库', 'rest_api', '医疗资源', 'https://health.gov.local/api/v1/beds', 'beds/current', 'ward_type→资源名称, beds_total→总量, beds_free→可用量, icu_free→可用量(ICU)', '实时', '卫健委·医政医管处'),
+    D('ds_blood', '中心血站库存库', 'rest_api', '血液资源', 'https://blood.gov.local/api/inventory', 'inventory/by_type', 'blood_type→资源名称, units_total→总量, units_available→可用量, expire_days→有效期', '每小时', '中心血站'),
+    D('ds_vehicle', '车辆与工程装备台账', 'mysql', '地面车辆', 'mysql://fleet_ro@10.20.7.21:3306/fleet', 'vehicles', M_STOCK, '每小时', '应急管理局·装备处'),
+    D('ds_engineering', '工程抢险装备台账', 'mysql', '工程抢险资源', 'mysql://fleet_ro@10.20.7.21:3306/fleet', 'engineering_equipment', M_STOCK, '每小时', '住建局·市政抢险中心'),
+    D('ds_fire', '消防车辆战备库', 'connector', '消防资源', '消防救援总队数据共享连接器', 'fire_vehicles', M_STOCK, '实时', '消防救援支队'),
+    D('ds_air', '航空救援资源库', 'connector', '航空资源', '民航/通航调度连接器', 'aircraft_status', 'model→资源名称, fleet_size→总量, airworthy→可用量, base→存储位置', '每小时', '航空救援基地'),
+    D('ds_uav', '无人机装备库', 'file_upload', '无人机资源', '月度台账（CSV 上传）', 'uav_ledger.csv', M_STOCK, '手动', '应急管理局·科技信息处'),
+    D('ds_relief', '救灾物资储备库', 'postgres', '生活与安置资源', 'postgres://relief_ro@10.20.7.31:5432/relief', 'stock_relief', M_STOCK, '每 5 分钟', '粮食和物资储备局'),
+    D('ds_comm', '应急通信装备库', 'mysql', '通信资源', 'mysql://comm_ro@10.20.7.41:3306/comm', 'comm_devices', M_STOCK, '每小时', '通信管理局'),
+    D('ds_power', '电力应急装备库', 'connector', '电力资源', '电网公司应急资源连接器', 'power_equipment', M_STOCK, '每小时', '国网地市供电公司'),
+    D('ds_rescue', '搜救装备与犬只库', 'mysql', '搜救资源', 'mysql://rescue_ro@10.20.7.51:3306/rescue', 'rescue_kits', M_STOCK, '每日', '地震局·救援保障中心'),
+    D('ds_person', '应急队伍人员库', 'postgres', '人员资源', 'postgres://hr_ro@10.20.7.61:5432/emergency_hr', 'teams_roster', 'team→资源名称, headcount→总量, on_duty→可用量, base→存储位置', '每小时', '应急管理局·指挥中心'),
+    D('ds_fund', '应急资金台账', 'file_upload', '资金资源', '财政拨付台账（Excel 上传）', 'fund_ledger.xlsx', 'fund_type→资源名称, budget→总量, balance→可用量, committed→预占量', '手动', '财政局·预算处')
+  ];
+  var db = C.store('workbench.datasources.v1', BASE, function (x) { return x && x.id && x.name && x.kind; });
+  var ui = { editing: null, kind: '全部' };
+
+  function coverage() {
+    var domains = C.resourceDomains();
+    var covered = {}; db.list().forEach(function (d) { if (d.enabled !== false) covered[d.domain] = (covered[d.domain] || 0) + 1; });
+    return { domains: domains, covered: covered, missing: domains.filter(function (x) { return !covered[x]; }) };
+  }
+  function resourceCount(domain) {
+    var l = (window.__RESOURCE_MODULE__ && window.__RESOURCE_MODULE__.list()) || [];
+    return l.filter(function (r) { return r.domain === domain; }).length;
+  }
+
+  function formHtml(d, isNew) {
+    var domains = C.resourceDomains();
+    if (d.domain && domains.indexOf(d.domain) < 0) domains = [d.domain].concat(domains);
+    return '<div class="cfg-form">' +
+      '<label>数据源 ID<input data-df="id" value="' + esc(d.id || '') + '" ' + (isNew ? '' : 'readonly') + ' placeholder="ds_xxx"></label>' +
+      '<label>名称<input data-df="name" value="' + esc(d.name || '') + '"></label>' +
+      '<label>接入方式<select data-df="kind">' + KINDS.map(function (k) { return '<option value="' + k.code + '" ' + (d.kind === k.code ? 'selected' : '') + '>' + k.name + '</option>'; }).join('') + '</select></label>' +
+      '<label>对应资源域<select data-df="domain">' + domains.map(function (x) { return '<option ' + (d.domain === x ? 'selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></label>' +
+      '<label class="wide">连接串 / 接口地址 / 连接器名称<input data-df="conn" value="' + esc(d.conn || '') + '" placeholder="postgres://user@host:5432/db 或 https://... 或 连接器名称"></label>' +
+      '<label>数据表 / 接口路径 / 文件名<input data-df="table" value="' + esc(d.table || '') + '"></label>' +
+      '<label>同步频率<select data-df="sync">' + SYNC.map(function (x) { return '<option ' + (d.sync === x ? 'selected' : '') + '>' + x + '</option>'; }).join('') + '</select></label>' +
+      '<label>责任单位<input data-df="owner" value="' + esc(d.owner || '') + '"></label>' +
+      '<label>状态<select data-df="enabled"><option value="1" ' + (d.enabled !== false ? 'selected' : '') + '>启用</option><option value="0" ' + (d.enabled === false ? 'selected' : '') + '>停用</option></select></label>' +
+      '<label class="wide">字段映射（源字段→资源库口径，逗号分隔）<textarea data-df="mapping">' + esc(d.mapping || '') + '</textarea></label>' +
+      '</div>' +
+      (isFile(d.kind) ? '<div class="cfg-upload">文件上传：<input type="file" data-dsfile="' + esc(d.id || '__new__') + '" accept=".csv,.xlsx,.xls,.json"> <span class="muted">原型模式仅登记文件名、大小与表头，不上传到服务器。</span></div>' : '') +
+      '<div class="card-actions"><button class="primary" type="button" data-ds="' + (isNew ? 'create-commit' : 'edit-commit') + '">' + (isNew ? '新增数据源' : '保存修改') + '</button>' +
+      '<button class="secondary" type="button" data-ds="edit-cancel">取消</button></div>';
+  }
+
+  function render() {
+    if (!$('dsList')) return;
+    var list = db.list(), cov = coverage();
+    $('dsKpis').innerHTML = [
+      ['数据源', list.length, '个'], ['数据库直连', list.filter(function (d) { return isDb(d.kind); }).length, '个'],
+      ['接口/连接器', list.filter(function (d) { return d.kind === 'rest_api' || isConn(d.kind); }).length, '个'],
+      ['文件上传', list.filter(function (d) { return isFile(d.kind); }).length, '个'],
+      ['资源域覆盖', (cov.domains.length - cov.missing.length) + '/' + cov.domains.length, cov.missing.length ? '缺 ' + cov.missing.join('、') : '全部覆盖']
+    ].map(function (k) { return '<div class="kpi"><span>' + k[0] + '</span><b>' + esc(k[1]) + '</b><small>' + esc(k[2]) + '</small></div>'; }).join('');
+
+    $('dsTabs').innerHTML = ['全部'].concat(KINDS.map(function (k) { return k.name; })).map(function (n) {
+      var code = n === '全部' ? '全部' : KINDS.find(function (k) { return k.name === n; }).code;
+      var cnt = code === '全部' ? list.length : list.filter(function (d) { return d.kind === code; }).length;
+      return '<button class="cfg-tab ' + (ui.kind === code ? 'active' : '') + '" type="button" data-ds="kind" data-dv="' + esc(code) + '">' + esc(n) + ' ' + cnt + '</button>';
+    }).join('');
+
+    var rows = ui.kind === '全部' ? list : list.filter(function (d) { return d.kind === ui.kind; });
+    $('dsList').innerHTML = rows.map(function (d) {
+      if (ui.editing === d.id) return '<div class="cfg-card">' + formHtml(d, false) + '</div>';
+      var n = resourceCount(d.domain);
+      return '<div class="cfg-card' + (d.enabled === false ? ' off' : '') + '">' +
+        '<div class="cfg-card-head"><div><h4>' + esc(d.name) + ' <span class="cfg-pill ' + (d.enabled === false ? 'warn' : 'ok') + '">' + (d.enabled === false ? '已停用' : kName(d.kind)) + '</span></h4>' +
+        '<div class="cfg-sub">对应资源域 <b>' + esc(d.domain) + '</b>（资源库 ' + n + ' 个原子资源）· 同步 ' + esc(d.sync) + (d.lastSync ? ' · 上次同步 ' + esc(d.lastSync) : '') + '</div></div>' +
+        '<div class="cfg-actions">' +
+        '<button class="secondary" type="button" data-ds="sync" data-dv="' + esc(d.id) + '">同步测试</button>' +
+        '<button class="secondary" type="button" data-ds="toggle" data-dv="' + esc(d.id) + '">' + (d.enabled === false ? '启用' : '停用') + '</button>' +
+        '<button class="secondary" type="button" data-ds="edit" data-dv="' + esc(d.id) + '">编辑</button>' +
+        '<button class="secondary" type="button" data-ds="delete" data-dv="' + esc(d.id) + '">删除</button></div></div>' +
+        '<div class="cfg-meta">' +
+        '<span><b>连接</b><span class="cfg-key">' + esc(d.conn) + '</span></span>' +
+        '<span><b>表/路径/文件</b>' + esc(d.table) + '</span>' +
+        '<span><b>责任单位</b>' + esc(d.owner || '—') + '</span>' +
+        '<span style="grid-column:1/-1"><b>字段映射</b>' + esc(d.mapping) + '</span>' +
+        ((d.files || []).length ? '<span style="grid-column:1/-1"><b>已上传</b>' + d.files.map(function (f) { return '<span class="cfg-chip on">' + esc(f) + '</span>'; }).join('') + '</span>' : '') +
+        '</div></div>';
+    }).join('') || '<p class="muted">该接入方式下暂无数据源。</p>';
+
+    $('dsNewForm').innerHTML = ui.editing === '__new__' ? '<div class="cfg-card">' + formHtml({ kind: 'postgres', domain: C.resourceDomains()[0] || '', sync: '每小时', enabled: true }, true) + '</div>' : '';
+
+    $('dsCoverage').innerHTML = cov.domains.map(function (dm) {
+      var c = cov.covered[dm] || 0;
+      return '<tr><td>' + esc(dm) + '</td><td>' + resourceCount(dm) + ' 个原子资源</td><td>' + (c ? '<span class="cfg-pill ok">已接入 ' + c + ' 个数据源</span>' : '<span class="cfg-pill err">未接入</span>') + '</td></tr>';
+    }).join('');
+  }
+
+  function readForm() {
+    var d = C.readFields('datasources', 'data-df');
+    return { id: String(d.id || '').trim(), name: String(d.name || '').trim(), kind: d.kind, domain: d.domain,
+      conn: String(d.conn || '').trim(), table: String(d.table || '').trim(), mapping: String(d.mapping || '').trim(),
+      sync: d.sync, owner: String(d.owner || '').trim(), enabled: d.enabled !== '0' };
+  }
+  function commit(isNew) {
+    var d = readForm();
+    if (!d.id) return C.message('dsMessage', '数据源 ID 不能为空', false);
+    if (!d.name) return C.message('dsMessage', '名称不能为空', false);
+    if (isNew && db.find(d.id)) return C.message('dsMessage', 'ID 已存在：' + d.id, false);
+    if (!isFile(d.kind) && !d.conn) return C.message('dsMessage', '该接入方式必须填写连接串/接口地址/连接器名称', false);
+    if (!d.mapping) return C.message('dsMessage', '字段映射不能为空（需说明源字段如何对应资源库口径）', false);
+    if (isNew) { d.files = []; d.lastSync = ''; db.list().push(d); }
+    else { var t = db.find(ui.editing); if (!t) return; Object.assign(t, d, { id: t.id, files: t.files || [], lastSync: t.lastSync || '' }); }
+    ui.editing = null; db.save(); render();
+    C.message('dsMessage', (isNew ? '已新增数据源 ' : '已保存数据源 ') + d.name + '（资源域：' + d.domain + '）', true);
+    C.notify(isNew ? '已新增数据源' : '已保存数据源');
+    if (window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render();
+  }
+
+  function wire() {
+    var root = $('datasources'); if (!root || root.dataset.dsWired === '1') return;
+    root.dataset.dsWired = '1';
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-ds]'); if (!b) return;
+      e.preventDefault();
+      var act = b.dataset.ds, val = b.dataset.dv;
+      if (act === 'kind') { ui.kind = val; render(); }
+      else if (act === 'edit') { ui.editing = val; render(); }
+      else if (act === 'edit-cancel') { ui.editing = null; render(); C.message('dsMessage', ''); }
+      else if (act === 'edit-commit') { commit(false); }
+      else if (act === 'new') { ui.editing = '__new__'; render(); }
+      else if (act === 'create-commit') { commit(true); }
+      else if (act === 'toggle') { var d = db.find(val); if (d) { d.enabled = d.enabled === false; db.save(); render(); } }
+      else if (act === 'delete') {
+        var used = (window.__AGENT_CONFIG__ ? window.__AGENT_CONFIG__.list() : []).filter(function (a) { return (a.datasources || []).indexOf(val) >= 0; });
+        db.remove(val); render();
+        C.message('dsMessage', used.length ? '已删除，但有 ' + used.length + ' 个 Agent 仍引用该数据源：' + used.map(function (a) { return a.name; }).join('、') : '已删除数据源 ' + val, !used.length);
+        if (window.__AGENT_CONFIG__) window.__AGENT_CONFIG__.render();
+      }
+      else if (act === 'sync') {
+        var s = db.find(val); if (!s) return;
+        if (isFile(s.kind) && !(s.files || []).length) return C.message('dsMessage', s.name + '：文件型数据源尚未上传文件', false);
+        s.lastSync = new Date().toLocaleString('zh-CN'); db.save(); render();
+        C.message('dsMessage', s.name + ' 同步测试完成：映射 ' + s.mapping.split(/[，,]/).length + ' 个字段 → 资源域「' + s.domain + '」（离线原型不发起真实连接）', true);
+      }
+      else if (act === 'reset') { db.reset(); ui.editing = null; render(); C.message('dsMessage', '已恢复内置基线（' + db.list().length + ' 个数据源）。', true); }
+    });
+    root.addEventListener('change', function (e) {
+      var inp = e.target.closest('[data-dsfile]'); if (!inp || !inp.files || !inp.files[0]) return;
+      var f = inp.files[0], id = inp.dataset.dsfile;
+      var target = id === '__new__' ? null : db.find(id);
+      var label = f.name + '（' + Math.max(1, Math.round(f.size / 1024)) + ' KB）';
+      if (target) { target.files = (target.files || []).concat([label]); target.lastSync = new Date().toLocaleString('zh-CN'); db.save(); }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var head = String(reader.result || '').split('\n')[0].slice(0, 160);
+        C.message('dsMessage', '已登记文件 ' + label + (head ? '；首行表头：' + head : ''), true);
+        render();
+      };
+      reader.onerror = function () { C.message('dsMessage', '已登记文件 ' + label + '（无法读取表头）', true); render(); };
+      reader.readAsText(f.slice(0, 4096));
+    });
+  }
+
+  window.__DATASOURCES__ = { list: function () { return db.list(); }, render: render, kindName: kName, coverage: coverage };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(); render(); }, { once: true });
+  else { wire(); render(); }
+})();
+</script>
+<script id="agent-config-single">
+/* =============================================================================
+   Agent 配置 · 按灾害场景编排（配置 → Agent配置）
+   每个灾害场景一个专属 Agent，可配置：
+     - 绑定大模型（供应商 + 模型，来自“大模型配置”）
+     - Skill（处置技能，含触发条件与产出）
+     - MCP 工具（来自“函数库”的应急函数，按场景过滤，避免跨场景误调）
+     - 数据源（来自“数据源与数据库”，文件上传或连接器/直连）
+     - 责任资源域（对照资源库）
+   ============================================================================= */
+(function () {
+  'use strict';
+  var C = window.__CFG__, esc = C.esc, $ = C.el;
+  var SCEN = [
+    { code: 'eq', name: '地震抗灾', domains: ['搜救资源', '人员资源', '医疗资源', '血液资源', '工程抢险资源', '航空资源', '无人机资源'] },
+    { code: 'ct', name: '反恐维稳', domains: ['人员资源', '通信资源', '医疗资源', '地面车辆'] },
+    { code: 'fire', name: '火灾扑救', domains: ['消防资源', '人员资源', '航空资源', '燃料能源'] },
+    { code: 'flood', name: '抗洪抢险', domains: ['工程抢险资源', '电力资源', '地面车辆', '人员资源', '生活与安置资源'] },
+    { code: 'epi', name: '疫情防控', domains: ['医疗资源', '人员资源', '生活与安置资源'] },
+    { code: 'snow', name: '雨雪冰冻', domains: ['工程抢险资源', '电力资源', '生活与安置资源', '地面车辆'] },
+    { code: 'common', name: '通用调度', domains: ['资金资源', '燃料能源', '地面车辆', '生活与安置资源'] }
+  ];
+  var scName = function (c) { var s = SCEN.find(function (x) { return x.code === c; }); return s ? s.name : c; };
+
+  function A(id, sc, name, duty, prompt, skills, tools, ds, temp) {
+    return { id: id, scenario: sc, name: name, duty: duty, prompt: prompt, skills: skills, mcpTools: tools, datasources: ds,
+      domains: (SCEN.find(function (x) { return x.code === sc; }) || {}).domains || [], providerId: 'llm_anthropic', modelId: 'claude-opus-5',
+      temperature: temp, enabled: true, autoApprove: false };
+  }
+  var BASE = [
+    A('agent_eq', 'eq', '地震应急处置 Agent', '震后灾情研判、搜救力量与医疗资源测算、跨区调拨建议',
+      '你是地震应急处置助手。先用态势研判函数估算倒损与被困人数，再依次测算搜救队伍、装备、床位与血液需求；所有资源必须先用 cm_supply_effective_available 折算有效可调量，再给出缺口与调拨建议。禁止跨场景使用消防或防汛函数。',
+      ['震情快速研判', '搜救力量编成', '伤员分级转运', '跨区调拨方案生成'],
+      ['eq_assess_building_collapse', 'eq_assess_trapped_population', 'eq_assess_casualty_estimate', 'eq_demand_rescue_team', 'eq_demand_detection_kits', 'eq_demand_heavy_equipment', 'eq_demand_medical_beds', 'eq_demand_blood_units', 'eq_logistics_ambulance_fleet', 'cm_supply_effective_available', 'cm_supply_gap', 'cm_logistics_air_sorties'],
+      ['ds_rescue', 'ds_person', 'ds_medical', 'ds_blood', 'ds_engineering', 'ds_air', 'ds_uav'], 0.2),
+    A('agent_ct', 'ct', '反恐维稳处置 Agent', '威胁研判、处置力量与警戒封控配置、通信与医疗待命',
+      '你是反恐维稳处置助手。先评估威胁等级，再据此计算处置力量、封控点位与通信装备；医疗待命按预估伤亡配置。不要调用自然灾害类函数。',
+      ['威胁等级研判', '处置力量编成', '警戒封控部署', '通信保障配置'],
+      ['ct_assess_threat_score', 'ct_demand_police_force', 'ct_demand_cordon_resources', 'ct_supply_comm_devices', 'ct_risk_medical_standby', 'cm_supply_effective_available'],
+      ['ds_person', 'ds_comm', 'ds_medical', 'ds_vehicle'], 0.15),
+    A('agent_fire', 'fire', '火灾扑救处置 Agent', '火场蔓延预测、供水强度与消防力量测算、空中支援建议',
+      '你是火灾扑救处置助手。先预测火场蔓延面积，再计算灭火用水流量与消防车数量；化工/油类火灾必须计算泡沫用量；需要空中支援时才调用直升机洒水架次。注意生活饮水与灭火用水是两个函数，不要混用。',
+      ['火场态势预测', '灭火力量编成', '供水与泡沫保障', '消防员轮换排班'],
+      ['fire_assess_spread_area', 'fire_demand_water_flow', 'fire_demand_fire_engines', 'fire_demand_foam_agent', 'fire_demand_aerial_drops', 'fire_supply_crew_rotation', 'cm_logistics_fuel_consumption'],
+      ['ds_fire', 'ds_person', 'ds_air', 'ds_fuel'], 0.2),
+    A('agent_flood', 'flood', '抗洪抢险处置 Agent', '淹没范围推演、堤防抢险与排涝、群众转移运力',
+      '你是抗洪抢险处置助手。按水位推演淹没面积与受影响人口，测算子堤沙袋、排涝能力与配套电源，安排群众转移运力；运输时长必须用洪涝通行折损修正，不要用冰雪折损函数。',
+      ['汛情推演', '堤防抢险方案', '排涝与电源保障', '群众转移组织'],
+      ['flood_assess_inundation_area', 'flood_demand_sandbags', 'flood_demand_pump_capacity', 'flood_demand_power_gensets', 'flood_demand_evacuation_transport', 'flood_supply_embankment_crew', 'flood_risk_route_derate', 'cm_assess_affected_population', 'cm_assess_displaced_population'],
+      ['ds_engineering', 'ds_power', 'ds_vehicle', 'ds_person', 'ds_relief'], 0.2),
+    A('agent_epi', 'epi', '疫情防控处置 Agent', '传播态势推演、隔离床位与医护测算、防护物资与检测能力',
+      '你是疫情防控处置助手。先推演新增与 Rt，再测算隔离床位、医护人数、防护物资日耗与检测能力；隔离床位与创伤床位是不同函数，不要相互替代。物资须给出可支撑天数。',
+      ['传播态势推演', '收治能力测算', '防护物资保障', '检测能力评估'],
+      ['epi_assess_new_cases', 'epi_assess_rt', 'epi_demand_isolation_beds', 'epi_demand_medical_staff', 'epi_demand_ppe_daily', 'epi_demand_testing_capacity', 'cm_risk_stock_days'],
+      ['ds_medical', 'ds_person', 'ds_relief'], 0.15),
+    A('agent_snow', 'snow', '雨雪冰冻处置 Agent', '结冰与覆冰风险研判、道路保通、电力抢修与保暖物资',
+      '你是雨雪冰冻处置助手。先判断路面结冰与线路覆冰风险，再测算融雪剂、除雪机械、电力抢修力量与保暖物资；运输量必须先用冰雪运力折损修正再算车次。',
+      ['冰冻风险研判', '道路保通方案', '电力抢修组织', '滞留人员保障'],
+      ['snow_assess_icing_risk', 'snow_assess_line_icing', 'snow_demand_deicing_salt', 'snow_demand_clearing_machines', 'snow_demand_power_crew', 'snow_demand_warm_supplies', 'snow_risk_icy_road_derate', 'cm_logistics_vehicle_trips'],
+      ['ds_engineering', 'ds_power', 'ds_relief', 'ds_vehicle'], 0.2),
+    A('agent_common', 'common', '综合调度 Agent', '跨场景资源匹配、运输组织与成本资金测算',
+      '你是综合调度助手，负责跨场景的资源匹配与运输组织。任何调拨先算有效可调量与缺口，再算车次/架次、时长、油耗与成本；场景专有的需求测算交给对应灾害 Agent，不要自行代算。',
+      ['资源匹配与缺口分析', '运输方案编制', '成本与资金测算', '续航能力评估'],
+      ['cm_supply_effective_available', 'cm_supply_coverage_ratio', 'cm_supply_gap', 'cm_logistics_vehicle_trips', 'cm_logistics_transport_time', 'cm_logistics_round_trips_per_day', 'cm_logistics_fuel_consumption', 'cm_risk_stock_days', 'cm_cost_transport_cost', 'cm_cost_funding_gap'],
+      ['ds_fuel', 'ds_vehicle', 'ds_relief', 'ds_fund'], 0.1)
+  ];
+  var db = C.store('workbench.agents.v1', BASE, function (x) { return x && x.id && x.name && x.scenario; });
+  var ui = { editing: null, scenario: '全部' };
+
+  var fnList = function () { return (window.__FUNCTION_LIBRARY__ ? window.__FUNCTION_LIBRARY__.list() : []); };
+  var mcpOf = function (f) { return String(f.id).replace(/[.\-]/g, '_'); };
+  function toolInfo(name) {
+    var f = fnList().find(function (x) { return mcpOf(x) === name; });
+    return f ? { ok: true, name: f.name, scenario: f.scenario, unit: f.unit } : { ok: false, name: '未找到函数', scenario: '', unit: '' };
+  }
+  function dsInfo(id) {
+    var d = (window.__DATASOURCES__ ? window.__DATASOURCES__.list() : []).find(function (x) { return x.id === id; });
+    return d ? { ok: true, name: d.name, domain: d.domain, kind: window.__DATASOURCES__.kindName(d.kind), off: d.enabled === false } : { ok: false, name: '数据源已删除', domain: '', kind: '' };
+  }
+  function modelInfo(a) {
+    var ps = (window.__LLM_PROVIDERS__ ? window.__LLM_PROVIDERS__.list() : []);
+    var p = ps.find(function (x) { return x.id === a.providerId; });
+    if (!p) return { ok: false, text: '未绑定或供应商已删除' };
+    var m = (p.models || []).find(function (x) { return x.id === a.modelId; });
+    if (!m) return { ok: false, text: p.name + ' · 模型已不存在' };
+    return { ok: true, text: p.name + ' · ' + m.name, disabled: p.enabled === false, noKey: p.vendor !== 'ollama' && !p.apiKey };
+  }
+
+  function formHtml(a, isNew) {
+    var providers = (window.__LLM_PROVIDERS__ ? window.__LLM_PROVIDERS__.list() : []);
+    var modelOpts = [];
+    providers.forEach(function (p) { (p.models || []).forEach(function (m) { modelOpts.push({ v: p.id + '::' + m.id, t: p.name + ' · ' + m.name + (p.enabled === false ? '（停用）' : '') }); }); });
+    var sc = a.scenario || 'common';
+    var fns = fnList().filter(function (f) { return f.scenario === sc || f.scenario === 'common'; });
+    var picked = a.mcpTools || [];
+    var dss = (window.__DATASOURCES__ ? window.__DATASOURCES__.list() : []);
+    var domains = C.resourceDomains();
+    return '<div class="cfg-form">' +
+      '<label>Agent ID<input data-af="id" value="' + esc(a.id || '') + '" ' + (isNew ? '' : 'readonly') + ' placeholder="agent_xxx"></label>' +
+      '<label>名称<input data-af="name" value="' + esc(a.name || '') + '"></label>' +
+      '<label>灾害场景<select data-af="scenario">' + SCEN.map(function (s) { return '<option value="' + s.code + '" ' + (sc === s.code ? 'selected' : '') + '>' + s.name + '</option>'; }).join('') + '</select></label>' +
+      '<label>绑定模型<select data-af="model">' + (modelOpts.length ? modelOpts.map(function (o) { return '<option value="' + esc(o.v) + '" ' + (a.providerId + '::' + a.modelId === o.v ? 'selected' : '') + '>' + esc(o.t) + '</option>'; }).join('') : '<option value="">请先在“大模型配置”添加模型</option>') + '</select></label>' +
+      '<label>温度<input data-af="temperature" type="number" step="0.05" min="0" max="1" value="' + esc(a.temperature == null ? 0.2 : a.temperature) + '"></label>' +
+      '<label>状态<select data-af="enabled"><option value="1" ' + (a.enabled !== false ? 'selected' : '') + '>启用</option><option value="0" ' + (a.enabled === false ? 'selected' : '') + '>停用</option></select></label>' +
+      '<label class="wide">职责<input data-af="duty" value="' + esc(a.duty || '') + '"></label>' +
+      '<label class="wide">系统提示词<textarea data-af="prompt">' + esc(a.prompt || '') + '</textarea></label>' +
+      '<label class="wide">Skill（每行一个）<textarea data-af="skills">' + esc((a.skills || []).join('\n')) + '</textarea></label>' +
+      '<label class="wide">责任资源域<div class="cfg-pick">' + domains.map(function (d) {
+        return '<label><input type="checkbox" data-af="domains" value="' + esc(d) + '" ' + ((a.domains || []).indexOf(d) >= 0 ? 'checked' : '') + '><span>' + esc(d) + '</span></label>';
+      }).join('') + '</div></label>' +
+      '<label class="wide">MCP 工具（仅列出本场景与通用函数，避免跨场景误调；切换场景后重新打开编辑可刷新列表）<div class="cfg-pick">' +
+      fns.map(function (f) {
+        var n = mcpOf(f);
+        return '<label><input type="checkbox" data-af="mcpTools" value="' + esc(n) + '" ' + (picked.indexOf(n) >= 0 ? 'checked' : '') + '><span>' + esc(f.name) +
+          '<small>' + esc(n) + ' · 输出 ' + esc(f.unit) + '</small></span></label>';
+      }).join('') + '</div></label>' +
+      '<label class="wide">数据源<div class="cfg-pick">' + dss.map(function (d) {
+        return '<label><input type="checkbox" data-af="datasources" value="' + esc(d.id) + '" ' + ((a.datasources || []).indexOf(d.id) >= 0 ? 'checked' : '') + '><span>' + esc(d.name) +
+          '<small>' + esc(window.__DATASOURCES__.kindName(d.kind)) + ' · ' + esc(d.domain) + '</small></span></label>';
+      }).join('') + '</div></label>' +
+      '</div><div class="card-actions"><button class="primary" type="button" data-ag="' + (isNew ? 'create-commit' : 'edit-commit') + '">' + (isNew ? '新增 Agent' : '保存修改') + '</button>' +
+      '<button class="secondary" type="button" data-ag="edit-cancel">取消</button></div>';
+  }
+
+  function issues(a) {
+    var out = [];
+    var mi = modelInfo(a);
+    if (!mi.ok) out.push(mi.text);
+    else { if (mi.disabled) out.push('绑定的供应商已停用'); if (mi.noKey) out.push('绑定的供应商缺少 API Key'); }
+    (a.mcpTools || []).forEach(function (t) { if (!toolInfo(t).ok) out.push('MCP 工具不存在：' + t); });
+    (a.mcpTools || []).forEach(function (t) {
+      var f = fnList().find(function (x) { return mcpOf(x) === t; });
+      if (f && f.scenario !== a.scenario && f.scenario !== 'common') out.push('跨场景工具：' + t + '（属于' + f.scenario + '）');
+    });
+    (a.datasources || []).forEach(function (d) { var i = dsInfo(d); if (!i.ok) out.push('数据源不存在：' + d); else if (i.off) out.push('数据源已停用：' + i.name); });
+    var covered = (a.datasources || []).map(function (d) { return (dsInfo(d) || {}).domain; });
+    (a.domains || []).forEach(function (dm) { if (covered.indexOf(dm) < 0) out.push('责任资源域「' + dm + '」没有对应数据源'); });
+    if (!(a.skills || []).length) out.push('未配置 Skill');
+    return out;
+  }
+
+  function render() {
+    if (!$('agentList')) return;
+    var list = db.list();
+    var probs = list.reduce(function (s, a) { return s + issues(a).length; }, 0);
+    $('agentKpis').innerHTML = [
+      ['Agent', list.length, '个'], ['覆盖灾害场景', new Set(list.map(function (a) { return a.scenario; })).size + '/' + SCEN.length, '类'],
+      ['绑定 MCP 工具', list.reduce(function (s, a) { return s + (a.mcpTools || []).length; }, 0), '次引用'],
+      ['绑定数据源', new Set([].concat.apply([], list.map(function (a) { return a.datasources || []; }))).size, '个'],
+      ['配置问题', probs ? probs + ' 项' : '无', probs ? '见各卡片提示' : '全部就绪']
+    ].map(function (k) { return '<div class="kpi"><span>' + k[0] + '</span><b>' + esc(k[1]) + '</b><small>' + esc(k[2]) + '</small></div>'; }).join('');
+
+    $('agentTabs').innerHTML = ['全部'].concat(SCEN.map(function (s) { return s.name; })).map(function (n) {
+      var code = n === '全部' ? '全部' : SCEN.find(function (s) { return s.name === n; }).code;
+      var cnt = code === '全部' ? list.length : list.filter(function (a) { return a.scenario === code; }).length;
+      return '<button class="cfg-tab ' + (ui.scenario === code ? 'active' : '') + '" type="button" data-ag="scenario" data-av="' + esc(code) + '">' + esc(n) + ' ' + cnt + '</button>';
+    }).join('');
+
+    var rows = ui.scenario === '全部' ? list : list.filter(function (a) { return a.scenario === ui.scenario; });
+    $('agentList').innerHTML = rows.map(function (a) {
+      if (ui.editing === a.id) return '<div class="cfg-card">' + formHtml(a, false) + '</div>';
+      var mi = modelInfo(a), iss = issues(a);
+      return '<div class="cfg-card' + (a.enabled === false ? ' off' : '') + '">' +
+        '<div class="cfg-card-head"><div><h4>' + esc(a.name) + ' <span class="cfg-pill ' + (iss.length ? 'warn' : 'ok') + '">' + (iss.length ? iss.length + ' 项待处理' : '就绪') + '</span></h4>' +
+        '<div class="cfg-sub">' + esc(scName(a.scenario)) + ' · ' + esc(mi.text) + ' · 温度 ' + esc(a.temperature) + '</div></div>' +
+        '<div class="cfg-actions">' +
+        '<button class="secondary" type="button" data-ag="toggle" data-av="' + esc(a.id) + '">' + (a.enabled === false ? '启用' : '停用') + '</button>' +
+        '<button class="secondary" type="button" data-ag="edit" data-av="' + esc(a.id) + '">编辑</button>' +
+        '<button class="secondary" type="button" data-ag="delete" data-av="' + esc(a.id) + '">删除</button></div></div>' +
+        '<div class="cfg-meta">' +
+        '<span style="grid-column:1/-1"><b>职责</b>' + esc(a.duty) + '</span>' +
+        '<span style="grid-column:1/-1"><b>Skill</b>' + ((a.skills || []).map(function (s) { return '<span class="cfg-chip on">' + esc(s) + '</span>'; }).join('') || '<span class="muted">未配置</span>') + '</span>' +
+        '<span style="grid-column:1/-1"><b>MCP 工具 ' + (a.mcpTools || []).length + '</b>' + ((a.mcpTools || []).map(function (t) {
+          var i = toolInfo(t); return '<span class="cfg-chip' + (i.ok ? ' on' : '') + '" title="' + esc(i.name) + '">' + esc(t) + '</span>';
+        }).join('') || '<span class="muted">未配置</span>') + '</span>' +
+        '<span style="grid-column:1/-1"><b>数据源</b>' + ((a.datasources || []).map(function (d) {
+          var i = dsInfo(d); return '<span class="cfg-chip' + (i.ok && !i.off ? ' on' : '') + '">' + esc(i.name) + (i.domain ? ' · ' + esc(i.domain) : '') + '</span>';
+        }).join('') || '<span class="muted">未配置</span>') + '</span>' +
+        '<span style="grid-column:1/-1"><b>责任资源域</b>' + ((a.domains || []).map(function (d) { return '<span class="cfg-chip">' + esc(d) + '</span>'; }).join('') || '—') + '</span>' +
+        '<span style="grid-column:1/-1"><b>系统提示词</b>' + esc(a.prompt) + '</span>' +
+        (iss.length ? '<span style="grid-column:1/-1;color:var(--red)"><b>待处理</b>' + esc(iss.join('；')) + '</span>' : '') +
+        '</div></div>';
+    }).join('') || '<p class="muted">该场景下暂无 Agent。</p>';
+
+    $('agentNewForm').innerHTML = ui.editing === '__new__' ? '<div class="cfg-card">' + formHtml({ scenario: 'common', temperature: 0.2, enabled: true, skills: [], mcpTools: [], datasources: [], domains: [] }, true) + '</div>' : '';
+  }
+
+  function readForm() {
+    var d = C.readFields('agents', 'data-af');
+    var m = String(d.model || '').split('::');
+    return { id: String(d.id || '').trim(), name: String(d.name || '').trim(), scenario: d.scenario,
+      providerId: m[0] || '', modelId: m[1] || '', temperature: Number(d.temperature) || 0,
+      enabled: d.enabled !== '0', duty: String(d.duty || '').trim(), prompt: String(d.prompt || '').trim(),
+      skills: String(d.skills || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean),
+      domains: d.domains || [], mcpTools: d.mcpTools || [], datasources: d.datasources || [] };
+  }
+  function commit(isNew) {
+    var a = readForm();
+    if (!a.id) return C.message('agentMessage', 'Agent ID 不能为空', false);
+    if (!a.name) return C.message('agentMessage', '名称不能为空', false);
+    if (isNew && db.find(a.id)) return C.message('agentMessage', 'ID 已存在：' + a.id, false);
+    if (!a.providerId || !a.modelId) return C.message('agentMessage', '必须绑定一个大模型（请先在“大模型配置”中添加）', false);
+    if (isNew) db.list().push(a);
+    else { var t = db.find(ui.editing); if (!t) return; Object.assign(t, a, { id: t.id }); }
+    ui.editing = null; db.save(); render();
+    var iss = issues(db.find(a.id) || a);
+    C.message('agentMessage', (isNew ? '已新增 Agent ' : '已保存 Agent ') + a.name + '（MCP 工具 ' + a.mcpTools.length + ' 个 · 数据源 ' + a.datasources.length + ' 个）' + (iss.length ? '；待处理：' + iss.join('；') : ''), !iss.length);
+    C.notify(isNew ? '已新增 Agent' : '已保存 Agent');
+  }
+
+  function wire() {
+    var root = $('agents'); if (!root || root.dataset.agWired === '1') return;
+    root.dataset.agWired = '1';
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-ag]'); if (!b) return;
+      e.preventDefault();
+      var act = b.dataset.ag, val = b.dataset.av;
+      if (act === 'scenario') { ui.scenario = val; ui.editing = null; render(); }
+      else if (act === 'edit') { ui.editing = val; render(); }
+      else if (act === 'edit-cancel') { ui.editing = null; render(); C.message('agentMessage', ''); }
+      else if (act === 'edit-commit') { commit(false); }
+      else if (act === 'new') { ui.editing = '__new__'; render(); }
+      else if (act === 'create-commit') { commit(true); }
+      else if (act === 'toggle') { var a = db.find(val); if (a) { a.enabled = a.enabled === false; db.save(); render(); } }
+      else if (act === 'delete') { db.remove(val); render(); C.message('agentMessage', '已删除 Agent ' + val, true); }
+      else if (act === 'reset') { db.reset(); ui.editing = null; render(); C.message('agentMessage', '已恢复内置基线（' + db.list().length + ' 个 Agent）。', true); }
+    });
+    root.addEventListener('change', function (e) {
+      // 切换场景时刷新可选 MCP 工具列表（只保留本场景 + 通用）
+      if (e.target.getAttribute && e.target.getAttribute('data-af') === 'scenario' && ui.editing) {
+        var cur = readForm(); cur.id = ui.editing === '__new__' ? cur.id : ui.editing;
+        var t = ui.editing === '__new__' ? cur : Object.assign({}, db.find(ui.editing), cur);
+        var keep = fnList().filter(function (f) { return f.scenario === cur.scenario || f.scenario === 'common'; }).map(mcpOf);
+        t.mcpTools = (t.mcpTools || []).filter(function (x) { return keep.indexOf(x) >= 0; });
+        t.domains = (SCEN.find(function (s) { return s.code === cur.scenario; }) || {}).domains || t.domains;
+        var host = ui.editing === '__new__' ? $('agentNewForm') : null;
+        if (host) host.innerHTML = '<div class="cfg-card">' + formHtml(t, true) + '</div>';
+        else { var card = e.target.closest('.cfg-card'); if (card) card.innerHTML = formHtml(t, false); }
+      }
+    });
+  }
+
+  window.__AGENT_CONFIG__ = { list: function () { return db.list(); }, render: render, issues: issues, scenarios: SCEN };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(); render(); }, { once: true });
   else { wire(); render(); }
 })();
