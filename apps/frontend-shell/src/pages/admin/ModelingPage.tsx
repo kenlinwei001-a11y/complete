@@ -227,7 +227,7 @@ function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: (
       <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>{t.newDraftHint}</p>
       {/* 无 LLM 供应商 → 在用户点主按钮**之前**就把两件事说清楚：①去哪配 ②现在能用哪条路。 */}
       {llmBlocked && (
-        <div className={styles.llmNotice} data-testid="modeling-llm-unavailable" role="note">
+        <div className={styles.llmNotice} id="modeling-llm-unavailable-note" data-testid="modeling-llm-unavailable" role="note">
           <strong className={styles.llmNoticeTitle}>{t.llmUnavailableTitle}</strong>
           <span>{t.llmUnavailableHint}</span>
           <Link className="btn sm" to="/admin/llm-providers" data-testid="modeling-llm-config-link">
@@ -261,11 +261,18 @@ function SuggestModal({ onClose, onCreated, initialSelected = [] }: { onClose: (
         >
           确定性建模（全字段）
         </button>
+        {/* ⚠ 这里**不许**再挂 `title={t.llmUnavailableHint}`（`dfe86da6` WO-MODELING-NO-LLM 挂过，
+            2026-09-09 被 `provenance-popover-legibility` 的原生 title 棘轮当场报红：94 > 基线 93）。
+            规范 §2 R-UI-3 禁止用原生 `title=` 充当浮层。**这一处不需要任何替代浮层**：
+            同一句 `t.llmUnavailableHint` 已经在上方 `modeling-llm-unavailable` 提示块里**逐字可见**，
+            且两者的显示条件都是 `llmBlocked` —— 完全相同，故该 title 从来没多说一个字。
+            改挂 `aria-describedby` 指向那段可见文本：**一个字没删，只换承载位**，
+            置灰按钮的"为什么不能点"对读屏用户也仍然拿得到。 */}
         <button
           className="btn primary"
           disabled={selected.length === 0 || suggestMut.isPending || llmBlocked}
           data-testid="modeling-suggest-run"
-          title={llmBlocked ? t.llmUnavailableHint : undefined}
+          aria-describedby={llmBlocked ? "modeling-llm-unavailable-note" : undefined}
           onClick={() => suggestMut.mutate()}
         >
           {t.suggestRun}
