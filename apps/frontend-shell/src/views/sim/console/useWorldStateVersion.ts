@@ -6,7 +6,16 @@
  * `["a","sim-pareto-assemble", sessionId]` —— **只认会话身份，不认这个会话现在是什么样**。
  * 而后端 `POST /a/v1/sim/optimize-pareto/assemble` 走
  * `SolverService.assembleParetoModel → buildWorldReadView(repos, ctx, sessionId)`，
- * 逐格读的就是**世界态**。实测（真后端 `SEED_DEMO=1`，会话 `sims_demo_seed_world`）：
+ * 逐格读的就是**世界态**。
+ *
+ * **实测于 2026-09-09**（真后端 `SEED_DEMO=1` + 真浏览器从登录走起、禁 `VITE_MOCK`，
+ * 会话 `sims_demo_seed_world`）。**复验方式**（任何人可重跑，两条命令）：
+ * ```
+ * PORT=4801 JWT_SECRET=dev BLOB_DIR=/tmp/blobs SEED_DEMO=1 CREDENTIAL_KEY=<64hex> \
+ *   node apps/datacore/dist/server.js
+ * # 施扰动：POST /a/v1/sim/perturbations ×3（三基地 loadIndex→0），再
+ * # POST /a/v1/sim/optimize-pareto/assemble {sessionId} 比对前后回包的 capacity
+ * ```
  * 施三条 `loadIndex→0` 扰动（http 201×3）后同一条 assemble 回包里
  * `jiangmen 5879.216357 → 56500.941444`、`meishan 2642.394601 → 26982.916866`、
  * `xiamen 4599.803718 → 45258.402093`（13 条产线总 capacity `24838.238169 → 140459.083896`）
