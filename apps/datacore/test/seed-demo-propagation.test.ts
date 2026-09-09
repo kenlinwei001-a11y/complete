@@ -532,3 +532,116 @@ describe("WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检", () => {
     expect(rows[0]!.version).toBe(1);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// §5 用量项真的进了公式（WO-COEF-FROM-BOM 的**真种子**回归闸）
+// ══════════════════════════════════════════════════════════════════════════════
+/**
+ * **这一节堵的是一个真实存在过的洞，不是补测试覆盖率。**
+ *
+ * 病灶（仓主 2026-08-28 亲手揪出，CLAUDE.md 铁律 1.5 的来历）：
+ * `amount = coeff × sourceVal × factor` **没有用量项** ⇒ 贵重料与边角料各涨 15%
+ * 给出**逐字节相同**的 `Model.costPressure`（实测同为 `15 × 0.65 = 9.75`）。
+ * 修法 = 该边声明 `weightRef: { basis: "bom_cost_share" }`，按 BOM 成本占比逐对分摊。
+ *
+ * ⚠ **为什么非加这一节不可**：修是 2026-09-03 落的，而当时**没有任何东西守着这条边的种子声明**。
+ * 2026-09-09 实测复核时把 `seed.ts` 那行改成 `weightRef: null`、重 build、跑服务 ——
+ * **四个数当场退回 9.75/9.75（病完全复发），而 datacore 全套测试照样能绿**：
+ * 引擎侧 `sim-propagation.test.ts` 那五条用的是**合成 FAN 图 + 手喂权重表**，
+ * 它咬的是「引擎给了表会不会用」，**度量不到**「真种子有没有把表接上」。
+ * 兄弟边 `demo_order_cost_to_customer_receivable` 早有这道闸
+ * （`edge-money-weight.seam.test.ts` §4），本条边**一直漏着**。
+ *
+ * 形态（照铁律 0.6 句式）：
+ * > 「我用『引擎分摊逻辑有测试且全绿』当作『这条边真的在按用量分摊』的证据，
+ * >  而前者并不度量后者 —— 中间隔着"种子有没有声明口径"这一步，没有任何断言站在那里。」
+ *
+ * 判据落在**对照实验**（铁律 1.5 判据一）而不是「跑得起来」：
+ * 同一个型号上换两种 BOM 占比不同的物料，读数**必须按占比拉开**；且拉开的倍数
+ * 由回包自带的出处**独立复算**，不写死金值 —— 写死就成了"跑一遍把期望贴上去"。
+ */
+describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", () => {
+  it("种子把 bom_cost_share 接上了（兄弟边 edge-money-weight §4 的同款闸，本条边此前漏着）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/seed.ts", import.meta.url), "utf8");
+    // 🐤 金丝雀：真读到种子了（读空文件时"没找到那行"是句空话）。
+    expect(src.length, "seed.ts 读成空 ⇒ 读取坏了，不是『种子里没有』").toBeGreaterThan(10000);
+    const at = src.indexOf('key: "demo_material_price_to_model_cost"');
+    expect(at, "种子里找不到这条边").toBeGreaterThan(0);
+    expect(
+      src.slice(at, at + 2000),
+      "这条边没声明按 BOM 成本占比分摊 ⇒ 贵重料与边角料又会拿到同一个数（9.75），" +
+        "而引擎侧那几条合成图用例照样全绿 —— 那正是本节要堵的假绿",
+    ).toContain('weightRef: { basis: "bom_cost_share" }');
+  });
+
+  it("🔴 对照实验：同一型号上，BOM 占比不同的两种物料各涨 15 ⇒ 读数必须按占比拉开（修前同为 9.75）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+
+    const SHOCK = 15; // 涨价 15 个百分点
+    const COEFF = 0.65; // 该边的整条边强度（种子值；下面只用它复算，不改它）
+
+    /** 对某个物料施加 priceShock=SHOCK，跑一拍，回读该型号的 costPressure + 这一对的权重出处。 */
+    const drive = async (materialId: string, modelId: string) => {
+      const sid = (await (await t.app.inject({
+        method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
+        payload: { baseSnapshot: { [materialId]: { priceShock: SHOCK }, [modelId]: { costPressure: 0 } } },
+      })).json()).id as string;
+      const tick = await t.app.inject({
+        method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 },
+      });
+      expect(tick.statusCode).toBe(200);
+      const body = tick.json() as {
+        state: Record<string, Record<string, number>>;
+        pairWeighting?: { report: { explain: { ruleKey: string; sourceObjectId: string; targetObjectId: string; weight: number; numerator: number; denominator: number; formula: string }[] } };
+      };
+      const ex = body.pairWeighting?.report.explain.find(
+        (e) => e.ruleKey === "demo_material_price_to_model_cost" && e.sourceObjectId === materialId && e.targetObjectId === modelId,
+      );
+      return { read: body.state[modelId]?.costPressure ?? 0, ex };
+    };
+
+    // 沿**真链路表**挑一个「同一型号、两种物料」的三元组，并要求两者 BOM 占比确实不同。
+    // 不写死 obj_material_* —— 种子换料时这条用例应当跟着走，而不是变成假绿。
+    const links = await t.repos.links.list("demo", (l) => l.type === "material_used_by_model");
+    expect(links.length, "真链路表里没有 material_used_by_model ⇒ 下面测了个寂寞").toBeGreaterThan(0);
+    const byModel = new Map<string, string[]>();
+    for (const l of links) (byModel.get(l.toId) ?? byModel.set(l.toId, []).get(l.toId)!).push(l.fromId);
+    const modelId = [...byModel.keys()].sort().find((m) => (byModel.get(m) ?? []).length >= 2);
+    expect(modelId, "没有任何型号同时用到 ≥2 种物料 ⇒ 这条边根本分不了摊").toBeDefined();
+
+    // 逐物料驱动，取占比**最大**与**最小**的那两种（差距最大 ⇒ 病若复发最刺眼）。
+    const mats = [...(byModel.get(modelId!) ?? [])].sort();
+    const runs = [];
+    for (const m of mats) runs.push({ materialId: m, ...(await drive(m, modelId!)) });
+    const scored = runs.filter((r) => r.ex !== undefined).sort((a, b) => a.ex!.weight - b.ex!.weight);
+    expect(scored.length, "一对权重出处都没拿到 ⇒ 可披露这条没落地，或该边没在分摊").toBeGreaterThanOrEqual(2);
+    const lo = scored[0]!, hi = scored[scored.length - 1]!;
+
+    // ── 判据 ①：两个读数**必须不同**。修前它们逐字节相同（同为 9.75），这一条就是病本身。
+    expect(
+      hi.read,
+      `占比最大(${hi.ex!.weight})与最小(${lo.ex!.weight})的两种物料给出同一个读数 ⇒ ` +
+        "用量项又从公式里掉了（修前形态复现：amount = coeff × sourceVal，与用多少无关）",
+    ).not.toBe(lo.read);
+    expect(hi.read).toBeGreaterThan(lo.read); // 占比大的那个必须更疼
+
+    // ── 判据 ②：读数 = 强度 × 占比 × 源态，占比从回包出处**独立复算**（不写死金值）。
+    for (const r of [lo, hi]) {
+      const expected = Math.round(COEFF * r.ex!.weight * SHOCK * 1e12) / 1e12;
+      expect(r.read, `${r.materialId} 的读数与「强度 × BOM 占比 × 涨幅」对不上`).toBe(expected);
+      // 出处必须真的来自 BOM 用量，而不是某个凭空的份额。
+      expect(r.ex!.formula).toContain("单台用量");
+      expect(r.ex!.denominator).toBeGreaterThan(0);
+    }
+
+    // ── 判据 ③：修前那个数**不许**再出现。9.75 = 0.65 × 15，是"没有用量项"的指纹。
+    const preFix = Math.round(COEFF * SHOCK * 1e12) / 1e12;
+    for (const r of runs) {
+      expect(r.read, `读数回到 ${preFix} ⇒ 该对的权重被当成 1 了（"查不到用量"绝不等于"用量为 1"）`).not.toBe(preFix);
+    }
+  });
+});
