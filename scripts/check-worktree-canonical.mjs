@@ -26,6 +26,52 @@
  * ③ 补的正是①②的盲区：**名字对不代表树是新的**。本地 ref 叫 canonical，却可以停在 112 个提交之前，
  * ①② 双绿而整棵树是旧的 —— 在它里面 grep，会把「这棵树里还没有」读成「全仓没有」。
  *
+ * ## ⚠️ 两种环境两套判据（2026-09-09 · WO-CI-WORKTREE-GATE）—— 不是「CI 就跳过」
+ *
+ * **实测**（GitHub Actions run 34211897255，`pull_request` 事件，PR #4）：
+ * 本门在 CI 上**结构性必红**，原文即
+ * `主工作目录 /home/runner/work/complete/complete 当前在分支 \`(detached)\`，不是 canonical`。
+ * 原因不在代码质量：`actions/checkout@v4` **恒留 detached HEAD**，
+ * 于是判据①（分支名 === canonical）在 CI 上**永远不可能成立**。
+ * 它是这条 `pnpm gates` 链上的第 **31/71** 道门 —— 当时链还是 `&&` 串联，
+ * **它一红就把后面 40 道门全短路掉**，那 40 道在 CI 上是绿是红，至今无人知道。
+ *
+ * ⛔ **修法禁止写成「`if (CI) return 0`」** —— 那是把门做成装饰品，本仓明令禁止。
+ * 这道门防的错是真的（gate 跑在一棵不是你以为的那棵树上），CI 上照样能犯，
+ * 只是**犯法不同**：CI 不会「待在别名分支上」，但会「checkout 漂了 / 工作树脏了 /
+ * 验的对象跟本次事件对不上号」。
+ *
+ * **真正的洞察：detached HEAD 在 CI 上不是缺陷，是比分支名更强的保证。**
+ * 分支名度量的是「某个名字**当前**指向哪」——它会漂；
+ * 而 detached HEAD 精确钉在**被测的那个 SHA** 上，钉死了就不漂。
+ * ⇒ 该换的是判据，不是强度：**不问分支名，问「当前 HEAD 是不是就是 CI 声称在验的那个对象，
+ * 且它确实绑在本次事件上、在 canonical 那一族历史里」。**
+ *
+ * CI 态四条判据（见 `judgeCi()`，任一不成立即 RC=1，与本机同样地红）：
+ *   · **C1 对象可指认** —— `git rev-parse HEAD` === `GITHUB_SHA`。
+ *     咬的是「checkout 漂了 / 门跑在另一个目录 / 有人中途换了 commit」。
+ *   · **C2 工作树干净** —— `git status --porcelain` 为空。
+ *     咬的是「被扫的文件 ≠ 那个 commit」（本机版判据①②③一条都不查这个）。
+ *   · **C3 对象绑在本次事件上** —— 按事件分流，两种事件**必须分开处理**：
+ *       - `push`：`GITHUB_SHA` 就是被测对象，且必须在 `origin/<GITHUB_REF_NAME>` 那条线上。
+ *       - `pull_request`：⚠️ `GITHUB_SHA` **不是** PR head，是 GitHub 现造的**合并预演提交**。
+ *         实测（PR #4，2026-09-09）：`refs/pull/4/head` = `962dd3be`（= canonical tip），
+ *         而 `refs/pull/4/merge` = `0a8aece4`，其双亲为
+ *         `778cc589`（base=main）× `962dd3be`（head）。
+ *         这个预演提交**不在 canonical 线上**（它压根不在任何分支上）——
+ *         照搬 push 的判据会把每个 PR 都判红，这正是本门必须分流的理由。
+ *         判法：HEAD === `GITHUB_SHA` 且 **`HEAD^2` === 事件载荷里的 `pull_request.head.sha`**、
+ *         `HEAD^1` === `base.sha`。被测对象 = `HEAD^2`（PR head），不是 HEAD。
+ *         ⚠️ 这里**必须拿事件载荷去对**，不许直接把 `HEAD^2` 当答案 ——
+ *         那样两边同源，等于自己证明自己，变异反证一咬就穿。
+ *   · **C4 与 canonical 同源** —— 被测对象与 `origin/<canonical>` 有 merge-base。
+ *     咬的是本仓真出过的那件事：**两条无共同祖先的平行历史**（PR #4 正文原话）。
+ *     取不到 `origin/<canonical>` ⇒ 报「**未判定**」，不许报「干净」。
+ *
+ * **本机行为一个字节没动**：CI 态只在 `GITHUB_ACTIONS === "true"` **且 HEAD 处于 detached** 时进入。
+ * 本机跑 gate 时 HEAD 在分支上 ⇒ 恒走原判据①②③ ⇒ 不在 canonical 上仍然红、仍然点名分支。
+ * 光设 `GITHUB_ACTIONS=1` 骗不进 CI 态（本机在分支上），这就是要求 detached 的用意。
+ *
  * ## 金丝雀
  *
  * 报「一切正常」之前，先证明本脚本真的能解析出 worktree 列表与当前分支：
@@ -55,7 +101,8 @@ function gateToolBroken(e) {
 }
 
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 const CANONICAL = process.env.CANONICAL_BRANCH || "claude/inspiring-gates-aqczjg";
 
@@ -70,6 +117,41 @@ function gitAt(cwd, args) {
   } catch {
     return null;
   }
+}
+
+/**
+ * 在指定 worktree 里跑 git，**失败就抛**（由顶层兜底转成 RC=2）。
+ *
+ * ⚠️ 为什么不能复用上面的 `gitAt`：它把「命令失败」和「输出为空」**都**折成 `null`。
+ * 拿它读 `git status --porcelain` 会把「git 挂了」读成「工作树干净」——
+ * 正是本仓那个老形态：**「我用『探针没报告问题』当作『没有问题』的证据，而探针根本没跑成。」**
+ * 干净与挂掉必须可分辨，所以这里如实返回字符串（含空串），出错则抛。
+ */
+function gitAtStrict(cwd, args) {
+  return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+/**
+ * `a` 与 `b` 有没有共同祖先。**必须按退出码分辨三态**，不许看输出空不空：
+ * RC=0 有 · RC=1 无（真的是两条平行历史）· 其他 RC = git 自己坏了 ⇒ 抛，转 RC=2。
+ * （`--is-ancestor` 答不了这个问题：无共同祖先与「不是祖先」都返回假。）
+ */
+function hasMergeBase(cwd, a, b) {
+  const r = spawnGit(cwd, ["merge-base", a, b]);
+  if (r.status === 0) return true;
+  if (r.status === 1) return false;
+  throw new Error(`git merge-base ${a} ${b} 退出码 ${r.status}（既非 0 也非 1）⇒ 不是「无共同祖先」，是命令本身失败`);
+}
+
+/**
+ * 起一条 git 并**如实交出退出码**。
+ * ⚠️ 不许用 `execFileSync` 实现：它对任何非 0 退出**一律抛**，于是 RC=1（无共同祖先，
+ * 一个有意义的答案）与 RC=128（git 坏了）被折成同一种情况，`hasMergeBase` 的三态判别当场失效。
+ */
+function spawnGit(cwd, args) {
+  const r = spawnSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  if (r.error) throw r.error;
+  return { status: r.status, stdout: r.stdout ?? "" };
 }
 
 /** 单一来源①：解析 `git worktree list --porcelain` → [{path, branch|null, bare}] */
@@ -125,6 +207,147 @@ function shaOf(ref) {
   }
 }
 
+// ---------------- CI 态：判据与它的纯函数实现 ----------------
+
+/**
+ * 单一来源④：CI 态四条判据（C1–C4）的**唯一实现**。
+ *
+ * 刻意写成**纯函数**：所有 git / 环境事实都由调用方注入。理由只有一个 ——
+ * **这样金丝雀才能喂合成事实做双向反证**（已知必绿的一组必须 0 问题、已知必红的一组必须 ≥1 问题）。
+ * 若把 git 调用写在函数体里，金丝雀就只能另抄一份判据 ⇒ 抄了就是装饰品
+ * （改主判据时金丝雀拿旧的去测、照样绿 —— 本仓 2026-08-08 实测过这个形态）。
+ *
+ * ⚠️ **单向金丝雀不够**（铁律 1.6 同源教训：「空闲时正确」不度量「忙时正确」）：
+ * 只验「好样例过」会漏掉「判据被写成恒真」这一整类做坏法，故两组都必须咬。
+ *
+ * @param {object} f 注入的事实
+ * @param {string}  f.declaredSha   CI 声称在验的对象（`GITHUB_SHA`）
+ * @param {string}  f.headSha       主工作目录 HEAD 的真实 sha
+ * @param {boolean} f.dirty         主工作目录有未提交改动
+ * @param {string}  f.event         `GITHUB_EVENT_NAME`
+ * @param {string}  f.refName       `GITHUB_REF_NAME`
+ * @param {string[]} f.parents      HEAD 的父提交 sha 列表（push 事件用不到）
+ * @param {?string} f.prHeadSha     事件载荷 `pull_request.head.sha`（非 PR 事件为 null）
+ * @param {?string} f.prBaseSha     事件载荷 `pull_request.base.sha`
+ * @param {?boolean} f.onRefLine    被测对象是否在 `origin/<refName>` 那条线上（取不到 ref 为 null）
+ * @param {?boolean} f.relatedToCanonical 被测对象与 `origin/<canonical>` 有无 merge-base（取不到为 null）
+ * @returns {{problems:string[], notes:string[], undetermined:string[], subject:?string}}
+ *
+ * ⚠️ `undetermined` 不是装饰：判据取不到料时（ref 没 fetch / C3 没指认出对象）**不许**在通过语里
+ * 声称它成立 —— 那就是本仓最贵的那个老病「『我没查出来』被读成『它没问题』」。
+ * 调用方必须按它裁剪通过语。
+ */
+export function judgeCi(f) {
+  const problems = [];
+  const notes = [];
+  const undetermined = [];
+  const short = (s) => (typeof s === "string" && s.length >= 8 ? s.slice(0, 8) : String(s));
+  const isPr = f.event === "pull_request" || f.event === "pull_request_target";
+
+  // ── C1 对象可指认：HEAD 必须就是 CI 声称在验的那个 sha ──────────────────────
+  // 本门在本机守的那件事（「gate 验的不是你以为的那个 commit」）在 CI 上的对应形态。
+  if (f.headSha !== f.declaredSha) {
+    problems.push(
+      `C1 对象对不上号：CI 声称在验 \`${short(f.declaredSha)}\`（GITHUB_SHA），` +
+        `而主工作目录 HEAD 是 \`${short(f.headSha)}\`。\n` +
+        `      ⇒ 这道 gate 验的**不是** CI 报告上那个 commit。结论不可采信。`,
+    );
+  }
+
+  // ── C2 工作树干净：被扫的文件必须就是那个 commit 的内容 ─────────────────────
+  if (f.dirty) {
+    problems.push(
+      `C2 工作树不干净：有未提交改动 ⇒ 被扫的文件 ≠ \`${short(f.declaredSha)}\` 的内容。\n` +
+        `      ⇒ 门即便全绿，绿的也是一棵没人能复现的树。`,
+    );
+  }
+
+  // ── C3 对象绑在本次事件上（两种事件分开处理，不许合并）─────────────────────
+  let subject = f.headSha;
+  if (isPr) {
+    // `GITHUB_SHA` 是**合并预演提交**（GitHub 现造，不在任何分支上），不是 PR head。
+    // 被测对象 = PR head = 预演提交的第二个父。必须拿**事件载荷**去对，不许自证。
+    if (!f.prHeadSha) {
+      problems.push(`C3 事件载荷里取不到 \`pull_request.head.sha\` ⇒ 无法证明 HEAD 是本 PR 的合并预演。`);
+      subject = null;
+    } else if (f.parents.length !== 2) {
+      problems.push(
+        `C3 \`${f.event}\` 事件下 HEAD \`${short(f.headSha)}\` 有 ${f.parents.length} 个父提交，应为 2` +
+          `（合并预演 = base × head）⇒ 它不是合并预演提交。`,
+      );
+      subject = null;
+    } else if (f.parents[1] !== f.prHeadSha) {
+      problems.push(
+        `C3 合并预演对不上本 PR：HEAD^2 = \`${short(f.parents[1])}\`，` +
+          `而事件载荷说 PR head 是 \`${short(f.prHeadSha)}\`。\n` +
+          `      ⇒ 正在验的是**另一个** PR / 另一棵树的预演。`,
+      );
+      subject = null;
+    } else {
+      subject = f.parents[1];
+      if (f.prBaseSha && f.parents[0] !== f.prBaseSha) {
+        problems.push(
+          `C3 合并预演的 base 对不上：HEAD^1 = \`${short(f.parents[0])}\`，` +
+            `事件载荷说 base 是 \`${short(f.prBaseSha)}\`。`,
+        );
+      }
+      notes.push(`C3 ✓ HEAD 是本 PR 的合并预演（base \`${short(f.parents[0])}\` × head \`${short(subject)}\`）；被测对象取 PR head。`);
+    }
+  } else {
+    // push / workflow_dispatch / schedule：`GITHUB_SHA` 就是被测对象本身。
+    if (f.onRefLine === null) {
+      undetermined.push("C3");
+      notes.push(`⚠️ C3 未判定：本地没有 \`origin/${f.refName}\` 引用 —— 这不等于「在线上」。`);
+    } else if (f.onRefLine === false) {
+      problems.push(
+        `C3 被测对象 \`${short(subject)}\` **不在** \`origin/${f.refName}\` 那条线上` +
+          `（\`${f.event}\` 事件声称它是该 ref 的推送对象）。\n` +
+          `      ⇒ ref 与 sha 对不上号，指认失败。`,
+      );
+    } else {
+      notes.push(`C3 ✓ 被测对象在 \`origin/${f.refName}\` 线上。`);
+    }
+  }
+
+  // ── C4 与 canonical 同源 ────────────────────────────────────────────────────
+  // 咬本仓真出过的那件事：`main` 与 canonical 曾是**两条无共同祖先的历史**（PR #4 正文）。
+  if (subject === null) {
+    undetermined.push("C4");
+    notes.push("⚠️ C4 未判定：C3 没能指认出被测对象。");
+  } else if (f.relatedToCanonical === null) {
+    undetermined.push("C4");
+    notes.push(`⚠️ C4 未判定：本地没有 \`origin/${CANONICAL}\` 引用 —— 这不等于「同源」。`);
+  } else if (f.relatedToCanonical === false) {
+    problems.push(
+      `C4 被测对象 \`${short(subject)}\` 与 \`origin/${CANONICAL}\` **没有共同祖先**（merge-base 为空）。\n` +
+        `      ⚠️ 本仓真出过这件事：\`main\` 与 canonical 曾是两条无共同祖先的平行历史。\n` +
+        `      ⇒ 在这样一棵树上跑门，结论与 canonical 无关。`,
+    );
+  } else {
+    notes.push(`C4 ✓ 被测对象与 \`origin/${CANONICAL}\` 同源。`);
+  }
+
+  return { problems, notes, undetermined, subject };
+}
+
+/** 金丝雀样例 · **已知必绿**：照 PR #4 的真实形状造（合并预演 base × head 都对得上）。 */
+const CI_CANARY_GOOD = {
+  declaredSha: "0a8aece43da0970ca361a4b255f55d4fe92641a6",
+  headSha: "0a8aece43da0970ca361a4b255f55d4fe92641a6",
+  dirty: false,
+  event: "pull_request",
+  refName: "4/merge",
+  parents: ["778cc589c6c06089304ddbc666cf7d0721ad492d", "962dd3beaebdaab8fc4e615679e7f942c673a09d"],
+  prHeadSha: "962dd3beaebdaab8fc4e615679e7f942c673a09d",
+  prBaseSha: "778cc589c6c06089304ddbc666cf7d0721ad492d",
+  onRefLine: null,
+  relatedToCanonical: true,
+};
+/** 金丝雀样例 · **已知必红**：同一组事实，只把 HEAD 换成别的 sha（C1 必须咬住）。 */
+const CI_CANARY_BAD_SHA = { ...CI_CANARY_GOOD, headSha: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" };
+/** 金丝雀样例 · **已知必红**：合并预演的 head 父与事件载荷说的 PR head 不符（C3 必须咬住）。 */
+const CI_CANARY_BAD_PR = { ...CI_CANARY_GOOD, prHeadSha: "0123456789012345678901234567890123456789" };
+
 // ---------------- 金丝雀（与主逻辑共用上面两个函数）----------------
 const worktrees = parseWorktrees();
 const branch = currentBranch();
@@ -145,12 +368,25 @@ if (headSha && parentSha && isAncestor(headSha, parentSha)) canaryProblems.push(
 // 真正兜住这件事的是**捕获退出码**，不是 `--verify -q`。
 // 一条打不响的金丝雀就是装饰品，比没有更坏（它让人以为这里被守着），故删掉并留此说明。
 // `--verify -q` 仍然留着当纵深防御（换 git 版本 / 换调用形态时它是对的），但**不声称有金丝雀守它**。
+// CI 态判据的**双向**金丝雀（与主路径共用 `judgeCi`，不另抄一份判据）。
+// 已知必绿的一组若报问题 ⇒ 判据被写死成恒假；已知必红的两组若放行 ⇒ 判据被写成恒真（装饰品）。
+// 两个方向都要咬 —— 只验一个方向的金丝雀，正是本仓「空闲报 0 就以为量法对」那个老病。
+const ciCanaryGood = judgeCi(CI_CANARY_GOOD).problems;
+const ciCanaryBadSha = judgeCi(CI_CANARY_BAD_SHA).problems;
+const ciCanaryBadPr = judgeCi(CI_CANARY_BAD_PR).problems;
+if (ciCanaryGood.length) canaryProblems.push(`judgeCi 把「已知必绿」的合成 CI 事实判成 ${ciCanaryGood.length} 个问题 —— CI 判据恒假`);
+if (!ciCanaryBadSha.length) canaryProblems.push("judgeCi 放行了「HEAD ≠ GITHUB_SHA」的合成事实 —— C1 是装饰品");
+if (!ciCanaryBadPr.length) canaryProblems.push("judgeCi 放行了「合并预演对不上本 PR」的合成事实 —— C3 是装饰品");
+
 if (canaryProblems.length) {
   console.error("⛔ 门自己坏了（金丝雀不中）—— 这不是「工作目录干净」，是本脚本没读到东西：");
   for (const p of canaryProblems) console.error(`   · ${p}`);
   process.exit(2);
 }
-console.log(`金丝雀：解析到 ${worktrees.length} 个 worktree · 当前分支 = ${branch ?? "(detached)"} · 祖先判定器双向有效 ⇒ 解析器有效`);
+console.log(
+  `金丝雀：解析到 ${worktrees.length} 个 worktree · 当前分支 = ${branch ?? "(detached)"} · ` +
+    `祖先判定器双向有效 · CI 判据双向有效（好样例 0 问题 / 坏样例各 ${ciCanaryBadSha.length}、${ciCanaryBadPr.length} 问题）⇒ 解析器有效`,
+);
 
 // ---------------- 主判据 ----------------
 const problems = [];
@@ -158,6 +394,106 @@ const problems = [];
 // ① 主工作目录（= 列表第一项，git 保证主 worktree 排第一）必须在 canonical 上
 const main = worktrees[0];
 const mainBranch = main?.branch ?? null;
+
+// ---------------- 分流：CI 态走 C1–C4，本机态走原判据①②③ ----------------
+//
+// **进入 CI 态要两个条件同时成立**，缺一不可：
+//   (a) `GITHUB_ACTIONS === "true"`；(b) HEAD **确实 detached**。
+// (b) 不是冗余：`actions/checkout@v4` 恒留 detached HEAD，所以真 CI 必然满足；
+// 而本机跑 gate 时 HEAD 在分支上 ⇒ 光设一个环境变量**进不来**，本机判据一个字节不变。
+// 若 (a) 成立而 (b) 不成立 ⇒ 环境自相矛盾，**回落到本机判据**（偏保守，宁可多红）。
+const CI_EVENT = (process.env.GITHUB_EVENT_NAME || "").trim();
+const CI_SHA = (process.env.GITHUB_SHA || "").trim();
+const inCi =
+  process.env.GITHUB_ACTIONS === "true" && branch === null && /^[0-9a-f]{40}$/.test(CI_SHA) && CI_EVENT !== "";
+
+if (process.env.GITHUB_ACTIONS === "true" && !inCi) {
+  console.log(
+    `⚠️ 声称 CI（GITHUB_ACTIONS=true）但环境不自洽` +
+      `（HEAD ${branch === null ? "detached" : `在分支 \`${branch}\``} · GITHUB_SHA=${CI_SHA ? "有" : "缺"} · GITHUB_EVENT_NAME=${CI_EVENT || "缺"}）` +
+      ` ⇒ **回落到本机判据**，不走 CI 判据。`,
+  );
+}
+
+if (inCi) {
+  const mainPath = main?.path || process.cwd();
+  // 这三个都走**必须成功**的读法：读不出来是「我没查出来」(RC=2)，不许静默折成「干净」。
+  const headSha = gitAtStrict(mainPath, ["rev-parse", "HEAD"]);
+  const status = gitAtStrict(mainPath, ["status", "--porcelain"]);
+  const revLine = gitAtStrict(mainPath, ["rev-list", "--parents", "-n", "1", "HEAD"]);
+  const parents = revLine.split(/\s+/).filter(Boolean).slice(1);
+
+  // 事件载荷 = PR head/base 的**独立出处**。取不到就不许硬判，按三分约定退 2（「我没查出来」）。
+  let prHeadSha = null;
+  let prBaseSha = null;
+  const isPrEvent = CI_EVENT === "pull_request" || CI_EVENT === "pull_request_target";
+  if (isPrEvent) {
+    const evPath = process.env.GITHUB_EVENT_PATH;
+    if (!evPath) {
+      console.error(`⛔ \`${CI_EVENT}\` 事件下没有 GITHUB_EVENT_PATH ⇒ 拿不到 PR head/base 的独立出处。`);
+      console.error("   本次结论作废：**不许**读作「通过」——本门这次没能指认被测对象。");
+      process.exit(2); // 2 = 我没查出来，不是「你的代码有问题」
+    }
+    try {
+      const ev = JSON.parse(readFileSync(evPath, "utf8"));
+      prHeadSha = ev?.pull_request?.head?.sha ?? null;
+      prBaseSha = ev?.pull_request?.base?.sha ?? null;
+    } catch (e) {
+      console.error(`⛔ 读不出事件载荷 ${evPath}（${e?.message || e}）⇒ 拿不到 PR head/base。`);
+      console.error("   本次结论作废：**不许**读作「通过」。");
+      process.exit(2);
+    }
+  }
+
+  // C3(push 支) 与 C4 要的两个祖先关系 —— 与本机判据③**共用同一个 `isAncestor`**，不另抄。
+  const refName = (process.env.GITHUB_REF_NAME || "").trim();
+  const refTip = refName ? shaOf(`refs/remotes/origin/${refName}`) : null;
+  const onRefLine = !isPrEvent && headSha ? (refTip === null ? null : isAncestor(headSha, refTip)) : null;
+
+  const canonicalTip = shaOf(`refs/remotes/origin/${CANONICAL}`);
+  const subjectGuess = isPrEvent ? (parents[1] ?? null) : headSha;
+  let relatedToCanonical = null;
+  if (canonicalTip && subjectGuess) {
+    // merge-base 为空 ⇒ 两条无共同祖先的历史。`--is-ancestor` 答不了这个，必须真求 merge-base，
+    // 且按退出码分辨「无共同祖先(1)」与「git 坏了(其他)」—— 后者抛出去转 RC=2。
+    relatedToCanonical = hasMergeBase(mainPath, subjectGuess, canonicalTip);
+  }
+
+  const verdict = judgeCi({
+    declaredSha: CI_SHA,
+    headSha,
+    dirty: status !== "",
+    event: CI_EVENT,
+    refName,
+    parents,
+    prHeadSha,
+    prBaseSha,
+    onRefLine,
+    relatedToCanonical,
+  });
+
+  for (const n of verdict.notes) console.log(`   ${n}`);
+  if (verdict.problems.length) {
+    console.error(`\n🔴 worktree-canonical:check 失败（CI 态 · ${verdict.problems.length} 项）\n`);
+    for (const p of verdict.problems) console.error(`   · ${p}\n`);
+    process.exit(1);
+  }
+  // ⚠️ 通过语只许声称**真判过**的那几条。C3/C4 未判定时若照样写「绑定本次事件 · 与 canonical 同源」，
+  // 就是把「我没查出来」写成了「它没问题」—— 本仓最贵的那个老病，绝不许在通过语里复发。
+  const decided = ["C1 对象可指认", "C2 工作树干净"];
+  if (!verdict.undetermined.includes("C3")) decided.push("C3 绑定本次事件");
+  if (!verdict.undetermined.includes("C4")) decided.push(`C4 与 canonical 同源`);
+  const caveat = verdict.undetermined.length
+    ? `\n   ⚠️ 但 ${verdict.undetermined.join("/")} **未判定**（见上）——本门这次没证明这一条，不许读作它成立。`
+    : "";
+  console.log(
+    `✅ CI 态（事件 \`${CI_EVENT}\`）：被测对象 \`${(verdict.subject || "?").slice(0, 8)}\` · ` +
+      `已判过 ${decided.join(" · ")}。${caveat}\n` +
+      `   （CI 上 detached HEAD 不是缺陷：它比分支名更强 —— 分支名会漂，钉死的 SHA 不会。）`,
+  );
+  process.exit(0);
+}
+
 if (mainBranch !== CANONICAL) {
   problems.push(
     `主工作目录 ${main?.path} 当前在分支 \`${mainBranch ?? "(detached)"}\`，不是 canonical \`${CANONICAL}\`。\n` +

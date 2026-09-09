@@ -1968,7 +1968,7 @@ const metricProps: PropertyDef[] = [
    * ⚠ 口径由**后端下发**、前端零写死（R14）：前端只渲染这一串，不许自己拼口径文案。
    * ⚠ 只写**业务事实**（口径名 / 时间窗 / 条数 / 目标出处），不写源码文件名行号（R-UI-4）。
    */
-  { propKey: "basis", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "basis", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "本指标的口径自述：一句话说明 `actual` 与 `target` 各自取自哪条链、怎么算、时间窗多大。取值形如「成交侧 · 订单簿计划年窗（交期落计划年的已签订单，Σ 数量×单价）；目标来自计划侧年度目标登记册」——首段是口径名，区分取数来源（成交侧 | 需求侧 | 需求预测侧 | 物料侧 | 计划侧 | 诚实合成种子）。存在的理由：同一块经营指标条上并排的几个数口径互不相同（营收＝成交侧订单簿 · 毛利＝需求预测侧 · 份额＝合成种子），数字本身没错的时候缺的就是这一行，故它是 Metric 的一等属性、不是样式。逐条随指标由后端下发，前端只原样渲染、不自拼口径文案；内容只写业务事实（口径名 / 时间窗 / 条数 / 目标出处）。" },
 ];
 const metricDerived: DerivedPropertyDef[] = [
   { propKey: "delta", formula: "actual - target", unit: "dimensionless", scale: "absolute" }, // 差异（带符号）
