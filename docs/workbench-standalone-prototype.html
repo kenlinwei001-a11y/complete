@@ -483,7 +483,7 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
       <aside class="rail">
         <div class="brand">综合工作台<span>项目 · 资源 · 预案 · 配置</span></div>
         <button class="nav active" data-view="wizard"><span class="nav-ic">＋</span>新建报告向导</button>
-        <button class="nav" data-view="corpus"><span class="nav-ic">▧</span>历史项目库</button>
+        <button class="nav" data-view="corpus"><span class="nav-ic">▧</span>项目库</button>
         <button class="nav" data-view="resources"><span class="nav-ic">▰</span>资源库</button>
         <button class="nav" data-view="plans"><span class="nav-ic">▤</span>预案库</button>
         <button class="nav" data-view="projects"><span class="nav-ic">▦</span>项目管理</button>
@@ -660,8 +660,8 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
         <section id="corpus" class="view">
           <div class="panel">
             <div class="panel-head">
-              <div><h2>历史项目库</h2><p>按 7 种灾害类型分类组织历史项目：每个项目以卡片呈现颁布/生效/有效期与导入时间，点击卡片可查看<b>原文在线预览</b>、<b>本体图谱（YAML + 关系网络，可编辑）</b>、<b>检索切片</b>与<b>事实录入</b>——与预案库页面逻辑一致。</p></div>
-              <div class="card-actions"><button class="primary" type="button" data-pl="import">＋ 导入项目</button></div>
+              <div><h2>项目库</h2><p>按 7 种灾害类型分类组织历史项目：每个项目以卡片呈现颁布/生效/有效期与导入时间，点击卡片可查看<b>原文在线预览</b>、<b>本体图谱（YAML + 关系网络，可编辑）</b>、<b>检索切片</b>与<b>事实录入</b>——与预案库页面逻辑一致。</p></div>
+              <div class="card-actions"><button class="primary" type="button" data-pw="create">＋ 创建项目</button><button class="secondary" type="button" data-pl="import">导入项目</button></div>
             </div>
             <div id="cpKpis" class="cfg-kpis"></div>
           </div>
@@ -674,6 +674,7 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
             </div>
           </div>
           <div id="cpDetail"></div>
+          <div id="pwWizard" style="display:none"></div>
         </section>
         <section id="plans" class="view">
           <div class="panel">
@@ -2497,7 +2498,7 @@ function show(id, options = {}) {
   document.querySelectorAll(".view").forEach((node) => node.classList.remove("active"));
   $(id).classList.add("active");
   document.querySelectorAll(".nav").forEach((node) => node.classList.toggle("active", node.dataset.view === id));
-  $("pageTitle").textContent = ({ projects: "项目管理", resources: "资源库", plans: "预案库", wizard: "新建报告向导", studio: "报告工作区", config: "配置", functions: "函数关系库", tools: "小插件", links: "浏览", corpus: "历史项目库", corpusDetail: "历史项目详情", audit: "权限与审计", output: "报告输出" })[id] || "工作台";
+  $("pageTitle").textContent = ({ projects: "项目管理", resources: "资源库", plans: "预案库", wizard: "新建报告向导", studio: "报告工作区", config: "配置", functions: "函数关系库", tools: "小插件", links: "浏览", corpus: "项目库", corpusDetail: "项目详情", audit: "权限与审计", output: "报告输出" })[id] || "工作台";
   updateBackButtons();
 }
 function downloadText(filename, content) {
@@ -2861,7 +2862,7 @@ load().catch((error) => toast(error.message));
 <script>
 /* ===== 左侧导航独立修复：不依赖原页面 show()/load() 执行链 ===== */
 (function(){
-  const titles={wizard:'新建报告向导',corpus:'历史项目库',resources:'资源库',plans:'预案库',projects:'项目管理',studio:'报告工作区',config:'配置',output:'报告输出',corpusDetail:'历史项目详情'};
+  const titles={wizard:'新建报告向导',corpus:'项目库',resources:'资源库',plans:'预案库',projects:'项目管理',studio:'报告工作区',config:'配置',output:'报告输出',corpusDetail:'历史项目详情'};
   function switchView(id){
     const view=document.getElementById(id);
     if(!view){ console.warn('未找到页面:',id); return false; }
@@ -5671,11 +5672,405 @@ window.__CFG__ = (function () {
     });
   }
 
-  window.__CORPUS_LIBRARY__ = { list: function () { return db.list(); }, render: render, types: TYPES, state: state };
+  window.__CORPUS_LIBRARY__ = { list: function () { return db.list(); }, render: render, types: TYPES, state: state,
+    add: function (rec) { db.list().push(rec); db.save(); render(); }, open: function (id) { ui.open = id; ui.tab = "原文"; render(); } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { wire(); render(); }, { once: true });
   else { wire(); render(); }
 })();
 </script>
+<style id="project-workflow-style">
+#corpus .pw-steps{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 14px}
+#corpus .pw-step{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;color:var(--muted);background:#fff}
+#corpus .pw-step b{width:19px;height:19px;border-radius:50%;background:#e6ebf1;color:var(--muted);display:grid;place-items:center;font-size:11.5px;font-weight:700}
+#corpus .pw-step.active{border-color:var(--blue);color:var(--blue)} #corpus .pw-step.active b{background:var(--blue);color:#fff}
+#corpus .pw-step.done{border-color:var(--teal);color:var(--teal)} #corpus .pw-step.done b{background:var(--teal);color:#fff}
+#corpus .pw-body{border:1px solid var(--line);border-radius:12px;background:#fff;padding:16px 18px;min-height:320px}
+#corpus .pw-body h3{margin:2px 0 10px;font-size:15px}
+#corpus .pw-foot{display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+#corpus .pw-foot .muted{font-size:12.5px}
+#corpus .pw-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#corpus .pw-form label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+#corpus .pw-form label.wide{grid-column:1/-1}
+#corpus .pw-form input,#corpus .pw-form select,#corpus .pw-form textarea{min-height:34px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--ink);background:#fff;font:inherit}
+#corpus .pw-form textarea{min-height:70px}
+#corpus .pw-upload{border:1px dashed var(--line);border-radius:10px;padding:11px;background:#fbfcfe;font-size:12.5px;grid-column:1/-1}
+#corpus .pw-pick{display:grid;gap:8px}
+#corpus .pw-opt{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;padding:10px 13px;background:#fff;cursor:pointer}
+#corpus .pw-opt.on{border-color:var(--blue);background:#f5f9ff}
+#corpus .pw-opt.top{border-left:3px solid var(--teal)}
+#corpus .pw-opt small{color:var(--muted);display:block;margin-top:2px}
+#corpus .pw-badge{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:600;background:#e8f5f2;color:var(--teal)}
+#corpus .pw-table{width:100%;border-collapse:collapse;margin-top:6px;font-size:12.6px}
+#corpus .pw-table th,#corpus .pw-table td{border-bottom:1px solid #eef2f6;padding:8px 11px;text-align:left}
+#corpus .pw-table th{color:var(--muted);font-weight:600;background:#fcfdfe}
+#corpus .pw-bar{height:9px;border-radius:5px;background:#eef2f6;overflow:hidden;min-width:90px}
+#corpus .pw-bar i{display:block;height:100%}
+#corpus .pw-gap{color:var(--red);font-weight:700} #corpus .pw-ok{color:var(--teal);font-weight:700}
+/* 推演预览（推演孪生风格）*/
+#corpus .pw-dash{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+#corpus .pw-kpi{border:1px solid var(--line);border-top:3px solid var(--blue);border-radius:10px;padding:10px 13px;background:#fff}
+#corpus .pw-kpi span{font-size:11.5px;color:var(--muted)} #corpus .pw-kpi b{display:block;font-size:20px;margin-top:2px}
+#corpus .pw-chain{display:flex;gap:6px;align-items:stretch;flex-wrap:wrap;margin:8px 0}
+#corpus .pw-chain .n{flex:1;min-width:120px;border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:#f7f9fb;font-size:12.3px}
+#corpus .pw-chain .n b{display:block;font-size:13px;color:var(--inst,#2563a8)}
+#corpus .pw-chain .ar{align-self:center;color:var(--muted);font-weight:700}
+#corpus .pw-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#corpus .pw-card{border:1px solid var(--line);border-radius:10px;padding:11px 13px;background:#fff}
+#corpus .pw-card h4{margin:0 0 7px;font-size:13.5px}
+/* 生成报告（可研图谱版风格）*/
+#corpus .pw-report{display:grid;grid-template-columns:210px minmax(0,1fr) 300px;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;min-height:520px}
+#corpus .pw-toc{border-right:1px solid var(--line);background:#fafcfd;padding:12px 0;overflow:auto;max-height:640px}
+#corpus .pw-toc a{display:block;padding:7px 16px;font-size:12.6px;color:var(--ink);cursor:pointer;border-left:3px solid transparent}
+#corpus .pw-toc a.on,#corpus .pw-toc a:hover{background:#eef4f6;border-left-color:var(--teal);color:var(--teal)}
+#corpus .pw-doc{padding:20px 26px;overflow:auto;max-height:640px;line-height:1.9;font-size:13.6px}
+#corpus .pw-doc h2{font-size:16px;color:#0e5c6b;margin:20px 0 8px;border-bottom:1px solid var(--line);padding-bottom:5px}
+#corpus .pw-doc h2:first-child{margin-top:0}
+#corpus .pw-doc p{margin:6px 0;text-indent:2em}
+#corpus .pw-doc table{width:100%;border-collapse:collapse;margin:8px 0;font-size:12.5px}
+#corpus .pw-doc th,#corpus .pw-doc td{border:1px solid var(--line);padding:6px 9px;text-align:left}
+#corpus .pw-doc .cite{color:#0e5c6b;font-size:11px;vertical-align:super;cursor:pointer}
+#corpus .pw-insp{border-left:1px solid var(--line);background:#fafcfd;padding:14px 15px;overflow:auto;max-height:640px}
+#corpus .pw-insp h4{margin:0 0 8px;font-size:13px}
+#corpus .pw-ev{border:1px solid var(--line);border-left:3px solid #0e5c6b;border-radius:8px;padding:8px 11px;margin-bottom:8px;background:#fff;font-size:12.3px}
+#corpus .pw-ev b{display:block;margin-bottom:2px}
+#corpus .pw-msg{font-size:12.5px;min-height:18px;margin:6px 0}
+#corpus .pw-msg.ok{color:var(--teal)} #corpus .pw-msg.err{color:var(--red)}
+</style>
+<script id="project-workflow-single">
+/* =============================================================================
+   项目库 · 创建项目工作流（8 步）
+   类型→在线表单(+灾情简报自动填充)→选预案(自动置顶)→关联报告→选智能体(自动置顶)
+   →需求与供需匹配→运力筹措与路径规划→推演预览(推演孪生风格)→生成报告(可研图谱风格)
+   复用 __PLAN_LIBRARY__ / __CORPUS_LIBRARY__ / __AGENT_CONFIG__ / __RESOURCE_MODULE__
+   ============================================================================= */
+(function () {
+  'use strict';
+  var C = window.__CFG__ || { esc: function (v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }, notify: function (m) { if (typeof toast === 'function') toast(m); } };
+  var esc = C.esc, $ = function (id) { return document.getElementById(id); };
+  var TYPES = [{ code: 'eq', name: '地震灾害' }, { code: 'ct', name: '反恐维稳' }, { code: 'fire', name: '火灾扑救' }, { code: 'flood', name: '抗洪抢险' }, { code: 'epi', name: '疫情防控' }, { code: 'snow', name: '雨雪冰冻' }, { code: 'common', name: '综合/其他' }];
+  var tName = function (c) { var t = TYPES.find(function (x) { return x.code === c; }); return t ? t.name : c; };
+  var STEPS = ['项目与灾情表单', '选择预案', '关联报告', '选择智能体', '需求与供需匹配', '运力与路径', '推演预览', '生成报告'];
+
+  // 每类灾害的在线表单字段（驱动需求测算）
+  var FORMS = {
+    eq: [['event_time', '发震时刻', 'datetime', 1], ['location', '受灾区域', 'text', 1], ['magnitude', '震级 M', 'number', 1], ['in_city', '震中是否本市', 'bool', 0], ['max_intensity', '最大烈度', 'text', 0], ['affected_population', '受灾人口(人)', 'number', 1], ['death_missing', '死亡(含失踪)', 'number', 0], ['days', '保障天数', 'number', 0]],
+    flood: [['event_time', '险情时间', 'datetime', 1], ['location', '受影响区域', 'text', 1], ['water_level', '当前水位(m)', 'number', 0], ['affected_population', '受影响人口(人)', 'number', 1], ['levee_length', '责任堤段(km)', 'number', 0], ['days', '保障天数', 'number', 0]],
+    fire: [['event_time', '报警时间', 'datetime', 1], ['location', '起火地点', 'text', 1], ['fire_area', '过火面积(m²)', 'number', 1], ['trapped', '被困人数(人)', 'number', 0], ['affected_population', '受影响人口(人)', 'number', 0], ['days', '保障天数', 'number', 0]],
+    epi: [['event_time', '报告时间', 'datetime', 1], ['location', '疫情区域', 'text', 1], ['region_population', '区域人口(人)', 'number', 1], ['infectious', '现存感染者(人)', 'number', 1], ['affected_population', '受影响人口(人)', 'number', 0], ['days', '保障天数', 'number', 0]],
+    snow: [['event_time', '预警时间', 'datetime', 1], ['location', '影响区域', 'text', 1], ['temperature', '气温(℃)', 'number', 0], ['road_km', '需处置路段(km)', 'number', 0], ['affected_population', '受影响/滞留人口(人)', 'number', 1], ['days', '保障天数', 'number', 0]],
+    ct: [['event_time', '事发时间', 'datetime', 1], ['location', '事发地点', 'text', 1], ['crowd_size', '现场人群(人)', 'number', 1], ['affected_population', '受影响人口(人)', 'number', 0], ['days', '保障天数', 'number', 0]],
+    common: [['event_time', '事件时间', 'datetime', 1], ['location', '事发地点', 'text', 1], ['affected_population', '受影响人口(人)', 'number', 1], ['days', '保障天数', 'number', 0]]
+  };
+
+  var ui = { active: false, step: 0, proj: null };
+  function blank() {
+    return { id: 'PRJ-' + Date.now().toString().slice(-8), type: 'eq', name: '', createdAt: new Date().toLocaleString('zh-CN'), form: { days: 3 }, planId: '', relatedIds: [], agentId: '', brief: '' };
+  }
+
+  // ---------- 需求测算 / 供需匹配 ----------
+  function num(v) { return Number(v) || 0; }
+  function demand(p) {
+    var f = p.form, pop = num(f.affected_population), days = num(f.days) || 3;
+    var displaced = Math.round(pop * 0.35 * 0.6);
+    var injured = Math.round(pop * 0.02);
+    var rows = [];
+    var push = function (item, unit, qty, domain) { rows.push({ item: item, unit: unit, demand: Math.max(0, Math.round(qty)), domain: domain }); };
+    push('救灾帐篷', '顶', displaced / 4, '生活与安置资源');
+    push('饮用水', '吨', pop * 4 * days / 1000, '生活与安置资源');
+    push('即食食品', '吨', pop * 1.2 * days / 1000, '生活与安置资源');
+    push('棉被', '床', displaced, '生活与安置资源');
+    if (p.type === 'eq' || p.type === 'fire' || p.type === 'flood') { push('创伤救治床位', '张', injured * 0.55, '医疗资源'); push('救护车', '辆', injured * 0.6 / 8, '地面车辆'); }
+    if (p.type === 'eq') { push('专业地震救援人员', '人', num(f.death_missing) * 9 / 6, '人员资源'); push('生命探测仪', '套', displaced / 2000 + 5, '搜救资源'); }
+    if (p.type === 'fire') { push('消防水罐车', '辆', num(f.fire_area) * 0.12 / 1200 + 3, '消防资源'); }
+    if (p.type === 'flood') { push('应急发电机', '台', 6, '电力资源'); push('冲锋舟/救生装备', '套', displaced / 500 + 4, '工程抢险资源'); }
+    if (p.type === 'epi') { push('隔离床位', '张', num(f.new_cases || f.infectious) * 0.35 * 10 / 100 + 50, '医疗资源'); }
+    if (p.type === 'snow') { push('融雪剂', '吨', num(f.road_km) * 12 * 25 / 1000 * 3, '生活与安置资源'); push('除雪机械', '台', num(f.road_km) / 80 + 2, '工程抢险资源'); }
+    // 供需匹配
+    var res = (window.__RESOURCE_MODULE__ ? window.__RESOURCE_MODULE__.list() : []);
+    var availByDomain = {};
+    res.forEach(function (r) { availByDomain[r.domain] = (availByDomain[r.domain] || 0) + num(r.available); });
+    rows.forEach(function (row) {
+      var byName = res.filter(function (r) { return r.name.indexOf(row.item.slice(0, 3)) >= 0 && r.domain === row.domain; });
+      row.available = byName.length ? byName.reduce(function (s, r) { return s + num(r.available); }, 0) : Math.round((availByDomain[row.domain] || 0) * 0.2);
+      row.gap = Math.max(0, row.demand - row.available);
+      row.cover = row.demand ? Math.min(100, Math.round(row.available / row.demand * 100)) : 100;
+    });
+    return { rows: rows, displaced: displaced, injured: injured, days: days, pop: pop };
+  }
+  function transport(p, dem) {
+    var tons = dem.rows.filter(function (r) { return r.unit === '吨'; }).reduce(function (s, r) { return s + r.demand; }, 0);
+    var tents = dem.rows.filter(function (r) { return r.item === '救灾帐篷'; }).reduce(function (s, r) { return s + r.demand * 0.05; }, 0);
+    var quilts = dem.rows.filter(function (r) { return r.item === '棉被'; }).reduce(function (s, r) { return s + r.demand * 0.003; }, 0);
+    var tonnage = Math.round(tons + tents + quilts);
+    var payload = 10, lf = 0.85;
+    var trips = Math.ceil(tonnage / (payload * lf));
+    var perTrip = 180 / 45 + 1.4;
+    var route = [
+      { node: '市级救灾物资储备库', role: '起运', km: 0 },
+      { node: '高速服务区中转站', role: '中转/编队', km: 95 },
+      { node: '灾区救援物资集散点', role: '卸载', km: 180 }
+    ];
+    return { tonnage: tonnage, trips: trips, perTrip: Math.round(perTrip * 10) / 10, fuel: Math.round(trips * 180 * 2 * 28 / 100 * 0.84 / 1000 * 10) / 10, route: route };
+  }
+  function grade(p) {
+    if (p.type !== 'eq') return null;
+    var m = num(p.form.magnitude), inCity = p.form.in_city === '是', death = num(p.form.death_missing);
+    var byMag = inCity && m >= 7 ? 'Ⅰ 特别重大' : ((inCity && m >= 6.5) || (!inCity && m >= 7)) ? 'Ⅱ 重大' : ((inCity && m >= 6) || (!inCity && m >= 6.5)) ? 'Ⅲ 较大' : ((inCity && m >= 5) || (!inCity && m >= 6)) ? 'Ⅳ 一般' : '待判定';
+    var byDeath = death >= 200 ? 'Ⅰ 特别重大' : death >= 30 ? 'Ⅱ 重大' : death >= 10 ? 'Ⅲ 较大' : death > 0 ? 'Ⅳ 一般' : '';
+    var rk = function (s) { return (s || '').indexOf('Ⅰ') === 0 ? 4 : (s || '').indexOf('Ⅱ') === 0 ? 3 : (s || '').indexOf('Ⅲ') === 0 ? 2 : (s || '').indexOf('Ⅳ') === 0 ? 1 : 0; };
+    return rk(byDeath) > rk(byMag) ? byDeath : byMag;
+  }
+
+  // ---------- 各步渲染 ----------
+  function stepBar() {
+    return '<div class="pw-steps">' + STEPS.map(function (t, i) {
+      var cls = i === ui.step ? 'active' : (i < ui.step ? 'done' : '');
+      return '<div class="pw-step ' + cls + '"><b>' + (i < ui.step ? '✓' : (i + 1)) + '</b>' + esc(t) + '</div>';
+    }).join('') + '</div>';
+  }
+  function foot(msg) {
+    var p = ui.proj;
+    return '<div class="pw-msg" id="pwMsg">' + (msg || '') + '</div><div class="pw-foot">' +
+      '<button class="secondary" type="button" data-pw="cancel">退出创建</button>' +
+      '<div>' + (ui.step > 0 ? '<button class="secondary" type="button" data-pw="prev">← 上一步</button> ' : '') +
+      (ui.step < STEPS.length - 1 ? '<button class="primary" type="button" data-pw="next">下一步 →</button>' : '<button class="primary" type="button" data-pw="finish">保存到项目库</button>') + '</div></div>';
+  }
+
+  function s1() {
+    var p = ui.proj, fields = FORMS[p.type] || FORMS.common;
+    var inp = function (f) {
+      var k = f[0], v = p.form[k] == null ? '' : p.form[k];
+      if (f[2] === 'bool') return '<select data-pwf="' + k + '"><option value="">—</option><option ' + (v === '是' ? 'selected' : '') + '>是</option><option ' + (v === '否' ? 'selected' : '') + '>否</option></select>';
+      var it = f[2] === 'number' ? 'number' : (f[2] === 'datetime' ? 'datetime-local' : 'text');
+      return '<input type="' + it + '"' + (f[2] === 'number' ? ' step="any"' : '') + ' data-pwf="' + k + '" value="' + esc(v) + '">';
+    };
+    return '<h3>1 · 创建项目 · 选择灾害类型并填写在线表单</h3>' +
+      '<div class="pw-form">' +
+      '<label class="wide">项目名称<input data-pwf="__name" value="' + esc(p.name) + '" placeholder="如：XX县6.2级地震应急处置项目"></label>' +
+      '<label>灾害类型<select data-pw="type">' + TYPES.map(function (t) { return '<option value="' + t.code + '" ' + (p.type === t.code ? 'selected' : '') + '>' + t.name + '</option>'; }).join('') + '</select></label>' +
+      '<label>创建时间<input value="' + esc(p.createdAt) + '" disabled></label>' +
+      fields.map(function (f) { return '<label' + (f[2] === 'text' && f[0] === 'location' ? ' class="wide"' : '') + '>' + esc(f[1]) + (f[3] ? ' <span style="color:var(--red)">*</span>' : '') + inp(f) + '</label>'; }).join('') +
+      '<div class="pw-upload">上传灾情简报（.txt/.md，自动提取震级/伤亡/受灾人口/地点填充表单）：<input type="file" data-pwfile="brief" accept=".txt,.md"> <span class="muted" id="pwBriefNote"></span></div>' +
+      '</div>' + foot();
+  }
+  function bestPlan(p) {
+    var plans = (window.__PLAN_LIBRARY__ ? window.__PLAN_LIBRARY__.list() : []);
+    var same = plans.filter(function (x) { return x.type === p.type; });
+    return { list: plans, top: same[0] || plans[0] || null };
+  }
+  function s2() {
+    var p = ui.proj, bp = bestPlan(p);
+    if (!p.planId && bp.top) p.planId = bp.top.id;
+    var opts = bp.list.slice().sort(function (a, b) { return (b.type === p.type) - (a.type === p.type); });
+    return '<h3>2 · 选择预案（系统按灾害类型自动匹配置顶，可下拉改选）</h3>' +
+      '<p class="muted" style="font-size:12.5px">当前灾害类型：<b>' + esc(tName(p.type)) + '</b>。系统已置顶最匹配的预案，可在下拉中改选其他预案。</p>' +
+      '<label class="wide" style="display:block;margin:8px 0">改选预案：<select data-pw="plan" style="min-width:min(480px,80%);min-height:34px">' +
+      (opts.length ? opts.map(function (x) { return '<option value="' + esc(x.id) + '" ' + (p.planId === x.id ? 'selected' : '') + '>' + (x.type === p.type ? '★ ' : '') + esc(x.title) + '（' + tName(x.type) + '）</option>'; }).join('') : '<option value="">预案库暂无预案</option>') + '</select></label>' +
+      (function () { var pl = bp.list.find(function (x) { return x.id === p.planId; }); return pl ? '<div class="pw-opt top on"><div><b>' + esc(pl.title) + '</b> <span class="pw-badge">自动匹配</span><small>' + esc(pl.issuer || '') + ' · ' + esc(pl.docNo || '') + ' · ' + (pl.chunks || []).length + ' 切片 / ' + ((pl.graph || {}).nodes || []).length + ' 图谱节点</small></div><a class="cite" data-pw="goplan" data-pv="' + esc(pl.id) + '">在预案库打开 →</a></div>' : '<p class="muted">未选择预案。</p>'; })() +
+      foot();
+  }
+  function s3() {
+    var p = ui.proj, list = (window.__CORPUS_LIBRARY__ ? window.__CORPUS_LIBRARY__.list() : []).filter(function (x) { return x.id !== p.id; });
+    return '<h3>3 · 从项目库选择关联报告（同一灾情可陆续产出多份报告，可多选）</h3>' +
+      '<p class="muted" style="font-size:12.5px">勾选与本次灾情相关的既有项目/报告，作为本项目的关联与延续。</p>' +
+      '<div class="pw-pick">' + (list.length ? list.map(function (x) {
+        var on = p.relatedIds.indexOf(x.id) >= 0;
+        return '<label class="pw-opt ' + (on ? 'on' : '') + '"><span><b>' + esc(x.title) + '</b><small>' + tName(x.type) + ' · ' + esc(x.issuer || x.docNo || '') + ' · 导入 ' + esc(x.importedAt || '') + '</small></span><input type="checkbox" data-pwrel="' + esc(x.id) + '" ' + (on ? 'checked' : '') + '></label>';
+      }).join('') : '<p class="muted">项目库暂无其他条目可关联。</p>') + '</div>' + foot();
+  }
+  function bestAgent(p) {
+    var ags = (window.__AGENT_CONFIG__ ? window.__AGENT_CONFIG__.list() : []);
+    var same = ags.filter(function (x) { return x.scenario === p.type; });
+    return { list: ags, top: same[0] || ags[0] || null };
+  }
+  function s4() {
+    var p = ui.proj, ba = bestAgent(p);
+    if (!p.agentId && ba.top) p.agentId = ba.top.id;
+    var opts = ba.list.slice().sort(function (a, b) { return (b.scenario === p.type) - (a.scenario === p.type); });
+    var cur = ba.list.find(function (x) { return x.id === p.agentId; });
+    return '<h3>4 · 选择智能体（系统按灾害类型自动匹配置顶，可下拉改选）</h3>' +
+      '<label class="wide" style="display:block;margin:8px 0">改选智能体：<select data-pw="agent" style="min-width:min(480px,80%);min-height:34px">' +
+      (opts.length ? opts.map(function (x) { return '<option value="' + esc(x.id) + '" ' + (p.agentId === x.id ? 'selected' : '') + '>' + (x.scenario === p.type ? '★ ' : '') + esc(x.name) + '（' + tName(x.scenario) + '）</option>'; }).join('') : '<option value="">暂无智能体，请在配置→Agent配置添加</option>') + '</select></label>' +
+      (cur ? '<div class="pw-opt top on"><div><b>' + esc(cur.name) + '</b> <span class="pw-badge">自动匹配</span><small>' + esc(cur.duty || '') + '<br>MCP 工具 ' + (cur.mcpTools || []).length + ' 个 · 数据源 ' + (cur.datasources || []).length + ' 个 · Skill ' + (cur.skills || []).length + ' 项</small></div></div>' : '<p class="muted">未选择智能体。</p>') +
+      foot();
+  }
+  function s5() {
+    var p = ui.proj, d = demand(p); p._dem = d;
+    var totalCover = d.rows.length ? Math.round(d.rows.reduce(function (s, r) { return s + r.cover; }, 0) / d.rows.length) : 0;
+    return '<h3>5 · 需求测算与供需匹配</h3>' +
+      '<p class="muted" style="font-size:12.5px">依据在线表单事实，调用应急函数测算需求，并与资源库可用量匹配。受灾人口 ' + d.pop.toLocaleString() + ' · 需转移安置 ' + d.displaced.toLocaleString() + ' · 估算受伤 ' + d.injured.toLocaleString() + ' · 保障 ' + d.days + ' 天 · 综合满足率 <b>' + totalCover + '%</b></p>' +
+      '<table class="pw-table"><thead><tr><th>需求项</th><th>关联资源域</th><th>需求量</th><th>资源库可用</th><th>缺口</th><th style="width:150px">满足率</th></tr></thead><tbody>' +
+      d.rows.map(function (r) {
+        return '<tr><td><b>' + esc(r.item) + '</b></td><td>' + esc(r.domain) + '</td><td>' + r.demand.toLocaleString() + ' ' + r.unit + '</td><td>' + r.available.toLocaleString() + ' ' + r.unit + '</td>' +
+          '<td class="' + (r.gap ? 'pw-gap' : 'pw-ok') + '">' + (r.gap ? r.gap.toLocaleString() + ' ' + r.unit : '满足') + '</td>' +
+          '<td><div class="pw-bar"><i style="width:' + r.cover + '%;background:' + (r.cover >= 100 ? 'var(--teal)' : r.cover >= 60 ? 'var(--amber)' : 'var(--red)') + '"></i></div><small class="muted">' + r.cover + '%</small></td></tr>';
+      }).join('') + '</tbody></table>' + foot();
+  }
+  function s6() {
+    var p = ui.proj, d = p._dem || demand(p), t = transport(p, d); p._trans = t;
+    return '<h3>6 · 运力筹措与路径规划</h3>' +
+      '<div class="pw-dash">' +
+      '<div class="pw-kpi"><span>待运物资总量</span><b>' + t.tonnage.toLocaleString() + ' 吨</b></div>' +
+      '<div class="pw-kpi"><span>所需车次(10吨/车)</span><b>' + t.trips + '</b></div>' +
+      '<div class="pw-kpi"><span>单趟运输时长</span><b>' + t.perTrip + ' h</b></div>' +
+      '<div class="pw-kpi"><span>预计油耗</span><b>' + t.fuel + ' 吨</b></div></div>' +
+      '<div class="pw-card"><h4>调运路径</h4><div class="pw-chain">' +
+      t.route.map(function (r, i) { return (i ? '<div class="ar">→ ' + (r.km - t.route[i - 1].km) + 'km</div>' : '') + '<div class="n"><b>' + esc(r.node) + '</b>' + esc(r.role) + (r.km ? ' · 累计 ' + r.km + 'km' : '') + '</div>'; }).join('') +
+      '</div><p class="muted" style="font-size:12px;margin:6px 0 0">路径依据资源库存储位置与道路通行能力约束生成；跨区不足部分由综合调度智能体请求上级支援。</p></div>' + foot();
+  }
+  function s7() {
+    var p = ui.proj, d = p._dem || demand(p), t = p._trans || transport(p, d), g = grade(p);
+    var cover = d.rows.length ? Math.round(d.rows.reduce(function (s, r) { return s + r.cover; }, 0) / d.rows.length) : 0;
+    var gap = d.rows.filter(function (r) { return r.gap > 0; }).length;
+    var ag = (window.__AGENT_CONFIG__ ? window.__AGENT_CONFIG__.list() : []).find(function (x) { return x.id === p.agentId; });
+    var pl = (window.__PLAN_LIBRARY__ ? window.__PLAN_LIBRARY__.list() : []).find(function (x) { return x.id === p.planId; });
+    return '<h3>7 · 推演预览</h3>' +
+      '<div class="pw-dash">' +
+      '<div class="pw-kpi"><span>受灾人口</span><b>' + d.pop.toLocaleString() + '</b></div>' +
+      (g ? '<div class="pw-kpi"><span>初判定级</span><b style="color:' + (g.indexOf('Ⅰ') === 0 ? 'var(--red)' : g.indexOf('Ⅱ') === 0 || g.indexOf('Ⅲ') === 0 ? 'var(--amber)' : 'var(--teal)') + '">' + esc(g) + '</b></div>' : '') +
+      '<div class="pw-kpi"><span>综合满足率</span><b>' + cover + '%</b></div>' +
+      '<div class="pw-kpi"><span>缺口项</span><b style="color:' + (gap ? 'var(--red)' : 'var(--teal)') + '">' + gap + ' 项</b></div>' +
+      '<div class="pw-kpi"><span>调运车次</span><b>' + t.trips + '</b></div></div>' +
+      '<div class="pw-card"><h4>主推演链 · 从灾情到调运</h4><div class="pw-chain">' +
+      ['<b>灾情输入</b>受灾 ' + d.pop.toLocaleString() + ' 人', '<b>需求测算</b>' + d.rows.length + ' 类物资/力量', '<b>供需匹配</b>满足率 ' + cover + '%，缺口 ' + gap + ' 项', '<b>运力筹措</b>' + t.trips + ' 车次 / ' + t.tonnage + ' 吨', '<b>处置建议</b>' + (pl ? '依 ' + esc(pl.title) : '按预案') + ' · ' + (ag ? esc(ag.name) : '智能体')].map(function (x, i) { return (i ? '<div class="ar">→</div>' : '') + '<div class="n">' + x + '</div>'; }).join('') +
+      '</div></div>' +
+      '<div class="pw-two" style="margin-top:12px">' +
+      '<div class="pw-card"><h4>供需缺口 TOP</h4>' + (function () { var top = d.rows.slice().sort(function (a, b) { return b.gap - a.gap; }).slice(0, 5); return '<table class="pw-table"><tbody>' + top.map(function (r) { return '<tr><td>' + esc(r.item) + '</td><td>' + (r.gap ? '<span class="pw-gap">缺 ' + r.gap.toLocaleString() + ' ' + r.unit + '</span>' : '<span class="pw-ok">满足</span>') + '</td><td style="width:110px"><div class="pw-bar"><i style="width:' + r.cover + '%;background:' + (r.cover >= 100 ? 'var(--teal)' : r.cover >= 60 ? 'var(--amber)' : 'var(--red)') + '"></i></div></td></tr>'; }).join('') + '</tbody></table>'; })() + '</div>' +
+      '<div class="pw-card"><h4>关键假设与依据</h4><div class="pw-ev">转移安置比例 35%、自行安置 40%（通用处置模型）</div><div class="pw-ev">人均日供水 4L、日口粮 1.2kg，保障 ' + d.days + ' 天</div><div class="pw-ev">分级/响应依据：' + (pl ? esc(pl.title) : '所选预案') + '</div><div class="pw-ev">测算由智能体「' + (ag ? esc(ag.name) : '未选') + '」经 MCP 应急函数完成</div></div>' +
+      '</div>' + foot('推演预览为离线原型演算，正式推演由所选智能体经 MCP 函数与实时数据源完成。');
+  }
+  function report(p) {
+    var d = p._dem || demand(p), t = p._trans || transport(p, d), g = grade(p);
+    var pl = (window.__PLAN_LIBRARY__ ? window.__PLAN_LIBRARY__.list() : []).find(function (x) { return x.id === p.planId; });
+    var ag = (window.__AGENT_CONFIG__ ? window.__AGENT_CONFIG__.list() : []).find(function (x) { return x.id === p.agentId; });
+    var rel = (window.__CORPUS_LIBRARY__ ? window.__CORPUS_LIBRARY__.list() : []).filter(function (x) { return p.relatedIds.indexOf(x.id) >= 0; });
+    var cover = d.rows.length ? Math.round(d.rows.reduce(function (s, r) { return s + r.cover; }, 0) / d.rows.length) : 0;
+    var chaps = [
+      { id: 'c1', t: '一、灾情概况', ev: ['在线表单录入', '灾情简报'], body: '<p>' + esc(p.name || tName(p.type) + '应急处置项目') + '。' + esc(p.form.location || '') + '于' + esc(p.form.event_time || '事发时间') + '发生' + tName(p.type) + '，受影响人口约 ' + d.pop.toLocaleString() + ' 人，需转移安置约 ' + d.displaced.toLocaleString() + ' 人，估算受伤约 ' + d.injured.toLocaleString() + ' 人。</p>' },
+      { id: 'c2', t: '二、初判定级', ev: [pl ? pl.title + ' 分级标准' : '预案分级标准'], body: g ? '<p>依据' + (pl ? '《' + esc(pl.title) + '》' : '所选预案') + '分级标准，结合震级与伤亡研判，本次事件初判为<b>' + esc(g) + '</b>。响应启动与指挥层级按预案对应条款执行。</p>' : '<p>依据所选预案对事件影响与发展趋势综合研判，确定响应级别与指挥层级。</p>' },
+      { id: 'c3', t: '三、需求测算', ev: ['应急函数库', (ag ? ag.name : '智能体')], body: '<p>经智能体「' + esc(ag ? ag.name : '') + '」调用应急函数测算，主要保障需求如下（保障 ' + d.days + ' 天）：</p><table><tr><th>需求项</th><th>数量</th><th>关联资源域</th></tr>' + d.rows.map(function (r) { return '<tr><td>' + esc(r.item) + '</td><td>' + r.demand.toLocaleString() + ' ' + r.unit + '</td><td>' + esc(r.domain) + '</td></tr>'; }).join('') + '</table>' },
+      { id: 'c4', t: '四、供需匹配与缺口', ev: ['资源库'], body: '<p>与资源库可用量匹配，综合满足率 <b>' + cover + '%</b>，其中缺口项 ' + d.rows.filter(function (r) { return r.gap > 0; }).length + ' 项：</p><table><tr><th>需求项</th><th>需求</th><th>可用</th><th>缺口</th></tr>' + d.rows.map(function (r) { return '<tr><td>' + esc(r.item) + '</td><td>' + r.demand.toLocaleString() + '</td><td>' + r.available.toLocaleString() + '</td><td>' + (r.gap ? r.gap.toLocaleString() : '—') + '</td></tr>'; }).join('') + '</table>' },
+      { id: 'c5', t: '五、运力筹措与路径', ev: ['地面车辆', '道路通行能力'], body: '<p>待运物资约 ' + t.tonnage.toLocaleString() + ' 吨，按 10 吨/车、装载系数 0.85 测算需 <b>' + t.trips + '</b> 车次，单趟约 ' + t.perTrip + ' 小时，预计油耗 ' + t.fuel + ' 吨。调运路径：' + t.route.map(function (r) { return esc(r.node); }).join(' → ') + '。</p>' },
+      { id: 'c6', t: '六、处置建议', ev: [pl ? pl.title : '预案', (ag ? ag.name : '智能体')], body: '<p>建议按' + (pl ? '《' + esc(pl.title) + '》' : '所选预案') + '启动对应响应，优先保障搜救、医疗与群众安置；缺口项由综合调度智能体请求跨区支援。' + (rel.length ? '本项目关联既有报告 ' + rel.length + ' 份，形成同一灾情的连续处置链条。' : '') + '</p>' }
+    ];
+    p._report = { chaps: chaps, pl: pl, ag: ag, rel: rel, cover: cover, grade: g };
+    return chaps;
+  }
+  function s8() {
+    var p = ui.proj, chaps = report(p);
+    ui.focus = ui.focus || 'c1';
+    var foc = chaps.find(function (c) { return c.id === ui.focus; }) || chaps[0];
+    return '<h3>8 · 生成报告</h3>' +
+      '<div class="pw-report">' +
+      '<div class="pw-toc">' + chaps.map(function (c) { return '<a class="' + (ui.focus === c.id ? 'on' : '') + '" data-pw="focus" data-pv="' + c.id + '">' + esc(c.t) + '</a>'; }).join('') + '</div>' +
+      '<div class="pw-doc" id="pwDoc">' + chaps.map(function (c) { return '<h2 id="pw-' + c.id + '">' + esc(c.t) + '</h2>' + c.body.replace(/<p>/g, '<p>').replace('</p>', ' <span class="cite" title="依据">[' + c.ev.length + ']</span></p>'); }).join('') + '</div>' +
+      '<div class="pw-insp"><h4>依据 · ' + esc(foc.t) + '</h4>' + foc.ev.map(function (e) { return '<div class="pw-ev"><b>' + esc(e) + '</b>本章结论引用该来源，可在预案库/函数库/资源库回溯。</div>'; }).join('') +
+      '<h4 style="margin-top:12px">报告要素</h4><div class="pw-ev"><b>预案</b>' + esc((p._report.pl || {}).title || '未选') + '</div><div class="pw-ev"><b>智能体</b>' + esc((p._report.ag || {}).name || '未选') + '</div><div class="pw-ev"><b>综合满足率</b>' + p._report.cover + '%</div>' + (p._report.grade ? '<div class="pw-ev"><b>初判定级</b>' + esc(p._report.grade) + '</div>' : '') + '</div>' +
+      '</div>' + foot('点击左侧目录切换章节，右栏显示该章依据；“保存到项目库”后本项目将作为卡片入库。');
+  }
+
+  function render() {
+    var w = $('pwWizard'); if (!w) return;
+    var fn = [s1, s2, s3, s4, s5, s6, s7, s8][ui.step];
+    w.innerHTML = stepBar() + '<div class="pw-body">' + fn() + '</div>';
+  }
+  function show(on) {
+    ui.active = on;
+    var b = $('cpBrowse'), d = $('cpDetail'), w = $('pwWizard');
+    if (b) b.style.display = on ? 'none' : '';
+    if (d) d.style.display = on ? 'none' : '';
+    if (w) w.style.display = on ? 'block' : 'none';
+    if (on) render();
+    else if (window.__CORPUS_LIBRARY__) window.__CORPUS_LIBRARY__.render();
+  }
+  function msg(t, ok) { var e = $('pwMsg'); if (e) { e.textContent = t || ''; e.className = 'pw-msg ' + (ok === false ? 'err' : 'ok'); } }
+  function collectForm() {
+    var p = ui.proj;
+    document.querySelectorAll('#pwWizard [data-pwf]').forEach(function (x) { var k = x.getAttribute('data-pwf'); if (k === '__name') p.name = x.value; else p.form[k] = x.value; });
+  }
+  function requiredOk() {
+    var p = ui.proj, fields = FORMS[p.type] || FORMS.common;
+    var miss = fields.filter(function (f) { return f[3] && (p.form[f[0]] == null || String(p.form[f[0]]).trim() === ''); });
+    return miss;
+  }
+
+  function wire() {
+    var root = $('corpus'); if (!root || root.dataset.pwWired === '1') return;
+    root.dataset.pwWired = '1';
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pw]'); if (!b) return;
+      e.preventDefault();
+      var act = b.dataset.pw, val = b.dataset.pv;
+      if (act === 'create') { ui.proj = blank(); ui.step = 0; ui.focus = 'c1'; show(true); }
+      else if (act === 'cancel') { show(false); }
+      else if (act === 'type') { collectForm(); ui.proj.type = b.value; ui.proj.planId = ''; ui.proj.agentId = ''; render(); }
+      else if (act === 'plan') { ui.proj.planId = b.value; render(); }
+      else if (act === 'agent') { ui.proj.agentId = b.value; render(); }
+      else if (act === 'goplan') { show(false); if (window.__PLAN_LIBRARY__) { /* switch to plans view */ } if (typeof window.__switchWorkbenchView === 'function') window.__switchWorkbenchView('plans'); if (window.__PLAN_LIBRARY__ && window.__PLAN_LIBRARY__.render) window.__PLAN_LIBRARY__.render(); }
+      else if (act === 'focus') { ui.focus = val; render(); var el = $('pw-' + val); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      else if (act === 'prev') { collectForm(); ui.step = Math.max(0, ui.step - 1); render(); }
+      else if (act === 'next') {
+        collectForm();
+        if (ui.step === 0) { if (!ui.proj.name) return msg('请填写项目名称', false); var miss = requiredOk(); if (miss.length) return msg('请填写必填项：' + miss.map(function (f) { return f[1]; }).join('、'), false); }
+        ui.step = Math.min(STEPS.length - 1, ui.step + 1); render();
+      }
+      else if (act === 'finish') {
+        collectForm();
+        var p = ui.proj;
+        // 汇总为一条项目库卡片
+        var rec = {
+          id: p.id, type: p.type, title: p.name || (tName(p.type) + '应急处置项目'),
+          issuer: '本系统创建', drafted: (p._report && p._report.ag ? p._report.ag.name : '智能体'), docNo: '项目 ' + p.id,
+          issueDate: new Date().toISOString().slice(0, 10), effectiveDate: new Date().toISOString().slice(0, 10),
+          expireDate: '', importedAt: p.createdAt, effectiveNote: '由创建项目工作流生成',
+          scope: p.form.location || '', structure: '灾情表单 / 预案 / 关联报告 / 智能体 / 需求匹配 / 运力 / 推演 / 报告',
+          sourceFile: '创建项目工作流', doc: pwDoc(p), chunks: [], graph: { nodes: [], edges: [] },
+          factSchema: (FORMS[p.type] || FORMS.common).map(function (f) { return { key: f[0], label: f[1], type: f[2] === 'bool' ? 'bool' : (f[2] === 'number' ? 'number' : (f[2] === 'datetime' ? 'datetime' : 'text')), required: !!f[3], source: '创建项目录入' }; }),
+          factValues: Object.assign({}, p.form),
+          project: { planId: p.planId, agentId: p.agentId, relatedIds: p.relatedIds, demand: p._dem, transport: p._trans }
+        };
+        if (window.__CORPUS_LIBRARY__ && window.__CORPUS_LIBRARY__.add) { window.__CORPUS_LIBRARY__.add(rec); C.notify('项目已保存到项目库'); }
+        show(false);
+        if (window.__CORPUS_LIBRARY__ && window.__CORPUS_LIBRARY__.open) window.__CORPUS_LIBRARY__.open(rec.id);
+      }
+    });
+    root.addEventListener('change', function (e) {
+      var f = e.target.closest('[data-pwfile]'); if (!f || !f.files || !f.files[0]) return;
+      var r = new FileReader();
+      r.onload = function () {
+        var txt = String(r.result || ''); ui.proj.brief = txt.slice(0, 4000);
+        collectForm();
+        var p = ui.proj, fm = p.form, hit = [];
+        var mm = txt.match(/([0-9]+(?:\.[0-9])?)\s*级/); if (mm) { fm.magnitude = mm[1]; hit.push('震级 ' + mm[1]); }
+        var dd = txt.match(/死亡[^0-9]{0,4}([0-9]+)/) || txt.match(/([0-9]+)\s*人死亡/); if (dd) { fm.death_missing = dd[1]; hit.push('死亡 ' + dd[1]); }
+        var ap = txt.match(/受灾(?:群众|人口)[^0-9]{0,4}([0-9\.]+)\s*(万)?/); if (ap) { fm.affected_population = ap[2] ? Math.round(parseFloat(ap[1]) * 10000) : ap[1]; hit.push('受灾人口 ' + fm.affected_population); }
+        var lc = txt.match(/([一-龥]{2,10}(?:县|市|区|镇|乡))/); if (lc && !fm.location) { fm.location = lc[1]; hit.push('地点 ' + lc[1]); }
+        render();
+        var note = $('pwBriefNote'); if (note) note.textContent = hit.length ? '已自动填充：' + hit.join('、') : '未识别到可填充字段，请手动录入';
+        msg(hit.length ? '灾情简报已解析并填充 ' + hit.length + ' 项' : '简报已载入，未识别到结构化字段', hit.length > 0);
+      };
+      r.readAsText(f.files[0].slice(0, 200000));
+    });
+    root.addEventListener('input', function (e) {
+      if (e.target.closest('[data-pwrel]')) { }
+    });
+    root.addEventListener('change', function (e) {
+      var rel = e.target.closest('[data-pwrel]'); if (rel) { var id = rel.getAttribute('data-pwrel'); var arr = ui.proj.relatedIds; var i = arr.indexOf(id); if (rel.checked && i < 0) arr.push(id); if (!rel.checked && i >= 0) arr.splice(i, 1); var lb = rel.closest('.pw-opt'); if (lb) lb.classList.toggle('on', rel.checked); }
+    });
+  }
+  function pwDoc(p) {
+    var chaps = report(p);
+    var doc = [{ t: 'p', x: (p.name || tName(p.type) + '应急处置项目') + '（创建项目工作流生成）' }];
+    chaps.forEach(function (c) { doc.push({ t: 'p', x: c.t }); doc.push({ t: 'p', x: c.body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() }); });
+    return doc;
+  }
+
+  window.__PROJECT_WORKFLOW__ = { active: function () { return ui.active; }, open: function () { ui.proj = blank(); ui.step = 0; show(true); } };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire, { once: true });
+  else wire();
+})();
+</script>
+
 
 
 <style id="constraint-library-style">
