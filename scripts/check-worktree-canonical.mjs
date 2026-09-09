@@ -231,11 +231,16 @@ function shaOf(ref) {
  * @param {?string} f.prBaseSha     事件载荷 `pull_request.base.sha`
  * @param {?boolean} f.onRefLine    被测对象是否在 `origin/<refName>` 那条线上（取不到 ref 为 null）
  * @param {?boolean} f.relatedToCanonical 被测对象与 `origin/<canonical>` 有无 merge-base（取不到为 null）
- * @returns {{problems:string[], notes:string[], subject:?string}}
+ * @returns {{problems:string[], notes:string[], undetermined:string[], subject:?string}}
+ *
+ * ⚠️ `undetermined` 不是装饰：判据取不到料时（ref 没 fetch / C3 没指认出对象）**不许**在通过语里
+ * 声称它成立 —— 那就是本仓最贵的那个老病「『我没查出来』被读成『它没问题』」。
+ * 调用方必须按它裁剪通过语。
  */
 export function judgeCi(f) {
   const problems = [];
   const notes = [];
+  const undetermined = [];
   const short = (s) => (typeof s === "string" && s.length >= 8 ? s.slice(0, 8) : String(s));
   const isPr = f.event === "pull_request" || f.event === "pull_request_target";
 
@@ -291,6 +296,7 @@ export function judgeCi(f) {
   } else {
     // push / workflow_dispatch / schedule：`GITHUB_SHA` 就是被测对象本身。
     if (f.onRefLine === null) {
+      undetermined.push("C3");
       notes.push(`⚠️ C3 未判定：本地没有 \`origin/${f.refName}\` 引用 —— 这不等于「在线上」。`);
     } else if (f.onRefLine === false) {
       problems.push(
@@ -306,8 +312,10 @@ export function judgeCi(f) {
   // ── C4 与 canonical 同源 ────────────────────────────────────────────────────
   // 咬本仓真出过的那件事：`main` 与 canonical 曾是**两条无共同祖先的历史**（PR #4 正文）。
   if (subject === null) {
+    undetermined.push("C4");
     notes.push("⚠️ C4 未判定：C3 没能指认出被测对象。");
   } else if (f.relatedToCanonical === null) {
+    undetermined.push("C4");
     notes.push(`⚠️ C4 未判定：本地没有 \`origin/${CANONICAL}\` 引用 —— 这不等于「同源」。`);
   } else if (f.relatedToCanonical === false) {
     problems.push(
@@ -319,7 +327,7 @@ export function judgeCi(f) {
     notes.push(`C4 ✓ 被测对象与 \`origin/${CANONICAL}\` 同源。`);
   }
 
-  return { problems, notes, subject };
+  return { problems, notes, undetermined, subject };
 }
 
 /** 金丝雀样例 · **已知必绿**：照 PR #4 的真实形状造（合并预演 base × head 都对得上）。 */
@@ -470,9 +478,17 @@ if (inCi) {
     for (const p of verdict.problems) console.error(`   · ${p}\n`);
     process.exit(1);
   }
+  // ⚠️ 通过语只许声称**真判过**的那几条。C3/C4 未判定时若照样写「绑定本次事件 · 与 canonical 同源」，
+  // 就是把「我没查出来」写成了「它没问题」—— 本仓最贵的那个老病，绝不许在通过语里复发。
+  const decided = ["C1 对象可指认", "C2 工作树干净"];
+  if (!verdict.undetermined.includes("C3")) decided.push("C3 绑定本次事件");
+  if (!verdict.undetermined.includes("C4")) decided.push(`C4 与 canonical 同源`);
+  const caveat = verdict.undetermined.length
+    ? `\n   ⚠️ 但 ${verdict.undetermined.join("/")} **未判定**（见上）——本门这次没证明这一条，不许读作它成立。`
+    : "";
   console.log(
-    `✅ CI 态（事件 \`${CI_EVENT}\`）：被测对象 \`${(verdict.subject || "?").slice(0, 8)}\` 可指认 · ` +
-      `HEAD === GITHUB_SHA · 工作树干净 · 绑定本次事件 · 与 canonical 同源。\n` +
+    `✅ CI 态（事件 \`${CI_EVENT}\`）：被测对象 \`${(verdict.subject || "?").slice(0, 8)}\` · ` +
+      `已判过 ${decided.join(" · ")}。${caveat}\n` +
       `   （CI 上 detached HEAD 不是缺陷：它比分支名更强 —— 分支名会漂，钉死的 SHA 不会。）`,
   );
   process.exit(0);
