@@ -1699,7 +1699,24 @@ function renderSchemeConfig() {
 
 const ATOMIC_RESOURCE_LIBRARY = (()=>{
   const rows=[]; let i=1;
-  const add=(domain,category,name,unit,total,available,location,constraints=[],transport=[],consumption=[],deps=[])=>rows.push({id:'ar_'+i++,code:'RES-'+String(i-1).padStart(4,'0'),domain,category,name,unit,total,available,reserved:Math.max(0,Math.round(total*0.05)),location,status:available>0?'可调用':'不可用',constraints,transport,consumption,deps});
+  // 存储位置网络：同一资源分布在多个库点，库存/距离/路况/限高限重各异（交付级真实场景）
+  const SITE_POOL=[
+    {loc:'省级中心储备库（兰州）',km:210,road:'高速良好（震区段可能绕行）',h:4.0,t:30,wA:0.42,wB:0.40},
+    {loc:'地市储备中心（临夏州）',km:95,road:'国道良好',h:4.5,t:40,wA:0.30,wB:0.32},
+    {loc:'县级就近储备库',km:25,road:'县道（局部受损可抢通）',h:4.5,t:30,wA:0.20,wB:0.20},
+    {loc:'前置投送点/乡镇网点',km:6,road:'通乡道路（灾时易中断，需空运/人力）',h:3.5,t:8,wA:0.08,wB:0.08}
+  ];
+  const genLocations=(total,available)=>{
+    var sites=SITE_POOL, accT=0,accA=0, out=[];
+    sites.forEach(function(s,idx){
+      var tt=idx===sites.length-1?Math.max(0,total-accT):Math.round(total*s.wA);
+      var aa=idx===sites.length-1?Math.max(0,available-accA):Math.min(tt,Math.round(available*s.wB));
+      accT+=tt; accA+=aa;
+      out.push({loc:s.loc,total:tt,available:aa,km:s.km,road:s.road,h:s.h,t:s.t,status:aa>0?(/中断/.test(s.road)?'受限·空运':'可调用'):'缺货'});
+    });
+    return out;
+  };
+  const add=(domain,category,name,unit,total,available,location,constraints=[],transport=[],consumption=[],deps=[])=>rows.push({id:'ar_'+i++,code:'RES-'+String(i-1).padStart(4,'0'),domain,category,name,unit,total,available,reserved:Math.max(0,Math.round(total*0.05)),location,locations:genLocations(total,available),status:available>0?'可调用':'不可用',constraints,transport,consumption,deps});
   // 资金与金融
   [['应急专项资金','万元',50000,42000],['中央专项救灾资金','万元',20000,16800],['地方财政应急资金','万元',15000,12600],['社会捐赠资金','万元',8000,6100],['应急周转资金','万元',5000,4300]].forEach(x=>add('资金资源','资金',x[0],x[1],x[2],x[3],'财政/应急部门',[['审批时效','重大紧急任务可走绿色审批通道'],['专款专用','仅可用于授权应急用途']]));
   // fuel atomic
@@ -5837,6 +5854,23 @@ window.__CFG__ = (function () {
 #corpus .pw-ev b{display:block;margin-bottom:2px}
 #corpus .pw-msg{font-size:12.5px;min-height:18px;margin:6px 0}
 #corpus .pw-msg.ok{color:var(--teal)} #corpus .pw-msg.err{color:var(--red)}
+/* 多存储位置 / 多方案对比 */
+#corpus .pw-dist th,#corpus .pw-dist td{text-align:center;white-space:nowrap}
+#corpus .pw-dist td:first-child,#corpus .pw-dist th:first-child{text-align:left}
+#corpus .pw-depots{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin-top:10px}
+#corpus .pw-depot{border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:8px;padding:7px 10px;background:#fafcfe}
+#corpus .pw-depot b{font-size:12.4px} #corpus .pw-depot small{display:block;font-size:11px;color:#5a6b7b;margin-top:2px}
+#corpus .pw-depot small.muted{color:var(--muted)}
+#corpus .pw-cmp th,#corpus .pw-cmp td{vertical-align:middle}
+#corpus .pw-cmp tr.pw-sel{background:#eef6f4}
+#corpus .pw-cmp input[type=radio]{width:16px;height:16px;accent-color:var(--teal);cursor:pointer}
+#corpus .pw-risk{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:600}
+#corpus .pw-risk-lo{background:#e6f4ec;color:#2f8f5b} #corpus .pw-risk-md{background:#fdf0db;color:#b86a19} #corpus .pw-risk-hi{background:#fbe4e4;color:#d64545}
+#corpus .pw-branch{border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin:8px 0;background:#f7f9fb}
+#corpus .pw-branch .bh{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:4px}
+#corpus .pw-branch small{display:block;margin-top:4px;font-size:11px}
+#corpus .pw-card h4 .sub{float:right;font-weight:400;font-size:11.5px;color:var(--muted)}
+#corpus .pw-gap{color:var(--red);font-weight:600} #corpus .pw-ok{color:var(--teal)}
 </style>
 <script id="project-workflow-single">
 /* =============================================================================
@@ -5997,29 +6031,154 @@ window.__CFG__ = (function () {
       (cur ? '<div class="pw-opt top on"><div><b>' + esc(cur.name) + '</b> <span class="pw-badge">自动匹配</span><small>' + esc(cur.duty || '') + '<br>MCP 工具 ' + (cur.mcpTools || []).length + ' 个 · 数据源 ' + (cur.datasources || []).length + ' 个 · Skill ' + (cur.skills || []).length + ' 项</small></div></div>' : '<p class="muted">未选择智能体。</p>') +
       foot();
   }
+  // ========== 仓储网络 · 多存储位置 / 道路约束 / 多方案对比 ==========
+  // 每个仓库：名称、距灾区(柳沟乡)km、路况、限高m、限重t、通行状态、预计单程时长h、各资源库存
+  function depots(p) {
+    if (p.sim) return [
+      { id: 'D1', name: '积石山县救灾物资储备库', km: 18, road: '路面受损（局部塌方已抢通单幅）', h: 4.5, t: 40, status: '受控通行', eta: 0.9, mode: '公路',
+        stock: { '帐篷': 5200, '棉被': 11600, '饮用水': 0, '净水设备': 0, '卫星电话': 36, '小型发电机组': 74 } },
+      { id: 'D2', name: '临夏州救灾物资储备中心', km: 95, road: '国道良好', h: 4.5, t: 40, status: '通行', eta: 2.2, mode: '公路',
+        stock: { '帐篷': 8000, '棉被': 15000, '饮用水': 60, '净水设备': 6, '卫星电话': 40, '小型发电机组': 60 } },
+      { id: 'D3', name: '民和县（青海）中转库', km: 40, road: '山区道路+隧道', h: 3.8, t: 20, status: '受控通行（隧道限高3.8m/限重20t）', eta: 1.6, mode: '公路',
+        stock: { '帐篷': 1500, '棉被': 3000, '饮用水': 0, '净水设备': 0, '卫星电话': 5, '小型发电机组': 10 } },
+      { id: 'D4', name: '省级救灾物资储备库（兰州）', km: 210, road: '高速良好（震区段绕行约30km）', h: 4.0, t: 30, status: '通行', eta: 4.6, mode: '公路',
+        stock: { '帐篷': 20000, '棉被': 40000, '饮用水': 500, '净水设备': 30, '卫星电话': 200, '小型发电机组': 300 } },
+      { id: 'D5', name: '柳沟乡前置投送点', km: 3, road: '通乡道路中断（需空运/人力）', h: 0, t: 2, status: '中断·空运', eta: 0.5, mode: '空运',
+        stock: { '帐篷': 200, '棉被': 300, '饮用水': 0, '净水设备': 0, '卫星电话': 0, '小型发电机组': 0 } }
+    ];
+    // 非模拟：从资源库存储位置泛化出 3 个仓库（按域可用量估算库存）
+    var res = (window.__RESOURCE_MODULE__ ? window.__RESOURCE_MODULE__.list() : []);
+    var byItem = {};
+    res.forEach(function (r) { byItem[r.name] = (byItem[r.name] || 0) + num(r.available); });
+    var mk = function (id, name, km, eta, road, h, t, status, frac) {
+      var stock = {}; Object.keys(byItem).forEach(function (n) { stock[n] = Math.round(byItem[n] * frac); });
+      return { id: id, name: name, km: km, eta: eta, road: road, h: h, t: t, status: status, mode: '公路', stock: stock };
+    };
+    return [
+      mk('G1', '就近储备库', 25, 0.8, '县道良好', 4.5, 30, '通行', 0.45),
+      mk('G2', '地市储备中心', 90, 2.0, '国道良好', 4.5, 40, '通行', 0.35),
+      mk('G3', '省级储备库', 200, 4.2, '高速良好', 4.0, 30, '通行', 0.2)
+    ];
+  }
+  // 待运物资（可公路/空运的实物）——吨位换算权重
+  var UNIT_WT = { '帐篷': 0.04, '棉被': 0.0025, '净水设备': 0.6, '卫星电话': 0.002, '小型发电机组': 0.25, '饮用水': 1, '救灾帐篷': 0.04, '即食食品': 1 };
+  function matDemand(p) {
+    var rows = matchRows(p);
+    return rows.filter(function (g) { return UNIT_WT[g.item] !== undefined; }).map(function (g) { return { item: g.item, unit: g.unit, need: g.demand }; });
+  }
+  // 生成候选方案：从给定仓库集合按就近顺序分配，算满足率/交期/车次/受限/成本/风险
+  function makePlan(p, name, tag, depotIds, note) {
+    var dps = depots(p).filter(function (d) { return depotIds.indexOf(d.id) >= 0; }).sort(function (a, b) { return a.km - b.km; });
+    var mats = matDemand(p);
+    var alloc = {}, tonByDepot = {}, filled = {};
+    mats.forEach(function (m) {
+      var remain = m.need; filled[m.item] = 0;
+      dps.forEach(function (d) {
+        if (remain <= 0) return; var have = (d.stock[m.item] || 0); var take = Math.min(have, remain);
+        if (take > 0) { remain -= take; filled[m.item] += take; alloc[d.id] = alloc[d.id] || {}; alloc[d.id][m.item] = take; tonByDepot[d.id] = (tonByDepot[d.id] || 0) + take * (UNIT_WT[m.item] || 0); }
+      });
+    });
+    var covers = mats.map(function (m) { return m.need ? Math.min(100, Math.round(filled[m.item] / m.need * 100)) : 100; });
+    var cover = covers.length ? Math.round(covers.reduce(function (s, c) { return s + c; }, 0) / covers.length) : 0;
+    var totTon = 0, cost = 0, etaW = 0, trips = 0, limits = [], maxEta = 0;
+    dps.forEach(function (d) {
+      var ton = tonByDepot[d.id] || 0; if (ton <= 0) return; totTon += ton;
+      var cap = d.mode === '空运' ? 2 : Math.min(10, d.t * 0.25); // 单车/单架有效载
+      var dtrips = Math.ceil(ton / (cap * 0.85)); trips += dtrips;
+      etaW += ton * d.eta; if (d.eta > maxEta) maxEta = d.eta; cost += Math.round(ton * d.km * (d.mode === '空运' ? 42 : 6.5));
+      if (d.h && d.h < 4.2) limits.push(d.name.slice(0, 6) + ' 限高' + d.h + 'm');
+      if (d.t < 30) limits.push(d.name.slice(0, 6) + ' 限重' + d.t + 't');
+      if (/中断|空运/.test(d.status)) limits.push(d.name.slice(0, 6) + ' 需空运');
+      else if (/受损|绕行/.test(d.road)) limits.push(d.name.slice(0, 6) + ' 路况受限');
+    });
+    var eta = totTon ? Math.round(etaW / totTon * 10) / 10 : 0;
+    var risk = (dps.filter(function (d) { return /中断|受损/.test(d.status + d.road); }).length) + (cover < 90 ? 1 : 0) + (maxEta > 4 ? 1 : 0);
+    var riskT = risk >= 3 ? '高' : risk >= 2 ? '中' : '低';
+    return { name: name, tag: tag, depots: dps, alloc: alloc, cover: cover, eta: eta, maxEta: maxEta, trips: trips, ton: Math.round(totTon), cost: cost, limits: limits.slice(0, 4), risk: riskT, note: note, filled: filled, mats: mats };
+  }
+  function plans(p) {
+    if (p.sim) return [
+      makePlan(p, '方案A · 就近优先', '最快到达', ['D1', 'D3', 'D5'], '县库+民和中转就近调运，到达最快；但库存有限、净水/饮水缺口大，民和隧道限高3.8m/限重20t制约大件运输。'),
+      makePlan(p, '方案B · 均衡调运', '时效与满足平衡', ['D1', 'D2'], '县库打底、州中心补齐，满足率与交期平衡，综合最优——推荐方案。'),
+      makePlan(p, '方案C · 跨区增援', '满足率最高', ['D1', 'D2', 'D4'], '叠加省级储备库，满足率最高；但交期最长（省道绕行约30km）、成本最高。')
+    ];
+    return [makePlan(p, '方案A · 就近优先', '最快', ['G1'], '就近库直供，最快但可能不足。'),
+    makePlan(p, '方案B · 均衡调运', '平衡', ['G1', 'G2'], '就近+地市补齐，推荐方案。'),
+    makePlan(p, '方案C · 跨区增援', '满足最高', ['G1', 'G2', 'G3'], '叠加省级增援，满足率最高、交期最长。')];
+  }
+  // 需求/供需匹配行（sim 取推演缺口口径；非 sim 现算）
+  function matchRows(p) {
+    if (p.sim) {
+      var D = twinData(p);
+      return D.gaps.map(function (g) { return { item: g.item, unit: g.unit, demand: g.need, available: g.all, gap: g.gap, cover: g.cover, domain: g.dom }; });
+    }
+    return demand(p).rows;
+  }
   function s5() {
-    var p = ui.proj, d = demand(p); p._dem = d;
-    var totalCover = d.rows.length ? Math.round(d.rows.reduce(function (s, r) { return s + r.cover; }, 0) / d.rows.length) : 0;
+    var p = ui.proj, rows = matchRows(p); p._dem = demand(p);
+    var totalCover = rows.length ? Math.round(rows.reduce(function (s, r) { return s + r.cover; }, 0) / rows.length) : 0;
+    var nGap = rows.filter(function (r) { return r.gap > 0; }).length;
+    var dps = depots(p), mats = matDemand(p);
+    // 存储位置库存分布表
+    var distHead = '<tr><th>物资</th>' + dps.map(function (d) { return '<th>' + esc(d.id) + '</th>'; }).join('') + '<th>合计可用</th><th>需求</th><th>缺口</th></tr>';
+    var distBody = mats.map(function (m) {
+      var row = rows.filter(function (r) { return r.item === m.item; })[0] || {};
+      var tot = 0, cells = dps.map(function (d) { var s = d.stock[m.item] || 0; tot += s; return '<td>' + (s ? s.toLocaleString() : '<span class="muted">0</span>') + '</td>'; }).join('');
+      var gap = Math.max(0, m.need - tot);
+      return '<tr><td><b>' + esc(m.item) + '</b><small class="muted"> ' + esc(m.unit) + '</small></td>' + cells + '<td><b>' + tot.toLocaleString() + '</b></td><td>' + m.need.toLocaleString() + '</td><td class="' + (gap ? 'pw-gap' : 'pw-ok') + '">' + (gap ? gap.toLocaleString() : '满足') + '</td></tr>';
+    }).join('');
+    var dlegend = dps.map(function (d) { return '<div class="pw-depot"><b>' + esc(d.id) + ' · ' + esc(d.name) + '</b><small>距灾区 ' + d.km + 'km · 单程≈' + d.eta + 'h · ' + esc(d.mode) + ' · 限高' + (d.h ? d.h + 'm' : '—') + '/限重' + d.t + 't</small><small class="muted">路况：' + esc(d.road) + '　|　通行：' + esc(d.status) + '</small></div>'; }).join('');
     return '<h3>5 · 需求测算与供需匹配</h3>' +
-      '<p class="muted" style="font-size:12.5px">依据在线表单事实，调用应急函数测算需求，并与资源库可用量匹配。受灾人口 ' + d.pop.toLocaleString() + ' · 需转移安置 ' + d.displaced.toLocaleString() + ' · 估算受伤 ' + d.injured.toLocaleString() + ' · 保障 ' + d.days + ' 天 · 综合满足率 <b>' + totalCover + '%</b></p>' +
-      '<table class="pw-table"><thead><tr><th>需求项</th><th>关联资源域</th><th>需求量</th><th>资源库可用</th><th>缺口</th><th style="width:150px">满足率</th></tr></thead><tbody>' +
-      d.rows.map(function (r) {
-        return '<tr><td><b>' + esc(r.item) + '</b></td><td>' + esc(r.domain) + '</td><td>' + r.demand.toLocaleString() + ' ' + r.unit + '</td><td>' + r.available.toLocaleString() + ' ' + r.unit + '</td>' +
+      '<p class="muted" style="font-size:12.5px">依据在线表单事实调用应急函数测算需求，并与<b>各存储位置实际库存</b>匹配。受灾人口 ' + (p.sim ? '68,500' : (p._dem.pop || 0).toLocaleString()) + ' · 需转移安置 ' + (p.sim ? '12,400' : (p._dem.displaced || 0).toLocaleString()) + ' · 综合满足率 <b style="color:' + (totalCover >= 90 ? 'var(--teal)' : 'var(--red)') + '">' + totalCover + '%</b> · <b style="color:var(--red)">' + nGap + ' 项存在缺口</b></p>' +
+      '<table class="pw-table"><thead><tr><th>需求项</th><th>关联资源域</th><th>需求量</th><th>多库可用合计</th><th>缺口</th><th style="width:140px">满足率</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td><b>' + esc(r.item) + '</b></td><td>' + esc(r.domain) + '</td><td>' + r.demand.toLocaleString() + ' ' + r.unit + '</td><td>' + (r.available || 0).toLocaleString() + ' ' + r.unit + '</td>' +
           '<td class="' + (r.gap ? 'pw-gap' : 'pw-ok') + '">' + (r.gap ? r.gap.toLocaleString() + ' ' + r.unit : '满足') + '</td>' +
           '<td><div class="pw-bar"><i style="width:' + r.cover + '%;background:' + (r.cover >= 100 ? 'var(--teal)' : r.cover >= 60 ? 'var(--amber)' : 'var(--red)') + '"></i></div><small class="muted">' + r.cover + '%</small></td></tr>';
-      }).join('') + '</tbody></table>' + foot();
+      }).join('') + '</tbody></table>' +
+      '<div class="pw-card" style="margin-top:14px"><h4>存储位置库存分布（按仓库）</h4>' +
+      '<div style="overflow-x:auto"><table class="pw-table pw-dist"><thead>' + distHead + '</thead><tbody>' + distBody + '</tbody></table></div>' +
+      '<div class="pw-depots">' + dlegend + '</div>' +
+      '<p class="muted" style="font-size:12px;margin:8px 0 0">县域可用（D1/就近库）不足以覆盖全部需求，<b>净水设备、饮用水县域库存为 0</b>，须跨库/省级增援——详见下一步的多方案对比。</p></div>' +
+      foot();
   }
   function s6() {
     var p = ui.proj, d = p._dem || demand(p), t = transport(p, d); p._trans = t;
-    return '<h3>6 · 运力筹措与路径规划</h3>' +
-      '<div class="pw-dash">' +
-      '<div class="pw-kpi"><span>待运物资总量</span><b>' + t.tonnage.toLocaleString() + ' 吨</b></div>' +
-      '<div class="pw-kpi"><span>所需车次(10吨/车)</span><b>' + t.trips + '</b></div>' +
-      '<div class="pw-kpi"><span>单趟运输时长</span><b>' + t.perTrip + ' h</b></div>' +
-      '<div class="pw-kpi"><span>预计油耗</span><b>' + t.fuel + ' 吨</b></div></div>' +
-      '<div class="pw-card"><h4>调运路径</h4><div class="pw-chain">' +
-      t.route.map(function (r, i) { return (i ? '<div class="ar">→ ' + (r.km - t.route[i - 1].km) + 'km</div>' : '') + '<div class="n"><b>' + esc(r.node) + '</b>' + esc(r.role) + (r.km ? ' · 累计 ' + r.km + 'km' : '') + '</div>'; }).join('') +
-      '</div><p class="muted" style="font-size:12px;margin:6px 0 0">路径依据资源库存储位置与道路通行能力约束生成；跨区不足部分由综合调度智能体请求上级支援。</p></div>' + foot();
+    var ps = plans(p); p._plans = ps;
+    if (!p.planChoice || !ps.some(function (x) { return x.name === p.planChoice; })) p.planChoice = ps[1] ? ps[1].name : (ps[0] || {}).name;
+    var sel = ps.filter(function (x) { return x.name === p.planChoice; })[0] || ps[0];
+    // 方案对比表
+    var cmp = '<div style="overflow-x:auto"><table class="pw-table pw-cmp"><thead><tr><th style="width:44px">选择</th><th>方案</th><th>满足率</th><th>平均交期</th><th>车/架次</th><th>吨位</th><th>成本(元)</th><th>受限路段</th><th>风险</th></tr></thead><tbody>' +
+      ps.map(function (x) {
+        var on = x.name === p.planChoice;
+        return '<tr class="' + (on ? 'pw-sel' : '') + '"><td style="text-align:center"><input type="radio" name="pwplan" data-pw="pickplan" data-pv="' + esc(x.name) + '" ' + (on ? 'checked' : '') + '></td>' +
+          '<td><b>' + esc(x.name) + '</b><br><small class="muted">' + esc(x.tag) + '</small></td>' +
+          '<td><b style="color:' + (x.cover >= 90 ? 'var(--teal)' : x.cover >= 70 ? 'var(--amber)' : 'var(--red)') + '">' + x.cover + '%</b></td>' +
+          '<td>' + x.eta + ' h<br><small class="muted">最远 ' + x.maxEta + 'h</small></td><td>' + x.trips + '</td><td>' + x.ton.toLocaleString() + ' t</td><td>' + x.cost.toLocaleString() + '</td>' +
+          '<td><small class="muted">' + (x.limits.length ? x.limits.join('；') : '无') + '</small></td>' +
+          '<td><span class="pw-risk pw-risk-' + (x.risk === '高' ? 'hi' : x.risk === '中' ? 'md' : 'lo') + '">' + x.risk + '</span></td></tr>';
+      }).join('') + '</tbody></table></div>';
+    // 选定方案的调运路径（按仓库分支）
+    var branches = sel.depots.filter(function (dp) { return (sel.alloc[dp.id] && Object.keys(sel.alloc[dp.id]).length); }).map(function (dp) {
+      var items = Object.keys(sel.alloc[dp.id]).map(function (k) { return k + ' ' + sel.alloc[dp.id][k].toLocaleString(); }).join('、');
+      return '<div class="pw-branch"><div class="bh"><b>' + esc(dp.name) + '</b><span class="pw-risk pw-risk-' + (/中断|受损/.test(dp.status + dp.road) ? 'md' : 'lo') + '">' + esc(dp.mode) + '</span></div>' +
+        '<div class="pw-chain"><div class="n"><b>' + esc(dp.name) + '</b>起运 · ' + esc(items) + '</div><div class="ar">→ ' + dp.km + 'km / ≈' + dp.eta + 'h</div><div class="n"><b>柳沟乡集散点</b>卸载分发</div></div>' +
+        '<small class="muted">路况：' + esc(dp.road) + '　|　限高 ' + (dp.h ? dp.h + 'm' : '—') + ' / 限重 ' + dp.t + 't　|　通行：' + esc(dp.status) + '</small></div>';
+    }).join('');
+    return '<h3>6 · 运力筹措与路径规划 · 多方案对比</h3>' +
+      '<p class="muted" style="font-size:12.5px">不同存储位置的距离、路况、限高限重导致<b>运力、交期、成本、满足率各异</b>。系统生成 ' + ps.length + ' 套候选调运方案，请人工选择 1 套执行（已按综合最优置顶推荐）。</p>' +
+      cmp +
+      '<div class="pw-card" style="margin-top:12px"><h4>已选：' + esc(sel.name) + ' · 调运路径与分配<span class="sub">' + esc(sel.note) + '</span></h4>' +
+      '<div class="pw-dash" style="margin:6px 0 10px">' +
+      '<div class="pw-kpi"><span>综合满足率</span><b style="color:' + (sel.cover >= 90 ? 'var(--teal)' : 'var(--red)') + '">' + sel.cover + '%</b></div>' +
+      '<div class="pw-kpi"><span>平均交期</span><b>' + sel.eta + ' h</b></div>' +
+      '<div class="pw-kpi"><span>总车/架次</span><b>' + sel.trips + '</b></div>' +
+      '<div class="pw-kpi"><span>待运吨位</span><b>' + sel.ton.toLocaleString() + ' t</b></div>' +
+      '<div class="pw-kpi"><span>运输成本</span><b>' + sel.cost.toLocaleString() + ' 元</b></div>' +
+      '<div class="pw-kpi"><span>风险</span><b>' + sel.risk + '</b></div></div>' +
+      branches +
+      (sel.cover < 100 ? '<p class="muted" style="font-size:12px;margin:8px 0 0;color:var(--red)">注：该方案仍有 ' + (100 - sel.cover) + '% 缺口（净水设备/饮用水等县域为 0），须同步请求省级增援或启用移动净水/送水保障。</p>' : '') +
+      '</div>' + foot();
   }
   // ========== 推演孪生（本体推演孪生 · 1:1 复刻结构，匹配积石山6.2级）==========
   function twinData(p) {
@@ -6291,6 +6450,7 @@ window.__CFG__ = (function () {
       else if (act === 'goplan') { show(false); if (window.__PLAN_LIBRARY__) { /* switch to plans view */ } if (typeof window.__switchWorkbenchView === 'function') window.__switchWorkbenchView('plans'); if (window.__PLAN_LIBRARY__ && window.__PLAN_LIBRARY__.render) window.__PLAN_LIBRARY__.render(); }
       else if (act === 'focus') { ui.focus = val; render(); var el = $('pw-' + val) || $(val); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
       else if (act === 'twintab') { ui.twinTab = val; render(); }
+      else if (act === 'pickplan') { ui.proj.planChoice = val; render(); }
       else if (act === 'prev') { collectForm(); ui.step = Math.max(0, ui.step - 1); render(); }
       else if (act === 'next') {
         collectForm();
@@ -6688,6 +6848,12 @@ window.__CFG__ = (function () {
 </script>
 
 <style id="resource-module-single-style">
+#resources .rm-loc td,#resources .rm-loc th{padding:8px 9px;font-size:12.5px}
+#resources .rm-loc tfoot td{border-top:2px solid var(--line)}
+#resources .rm-loc .muted{color:var(--muted);font-weight:400}
+#resources .rm-loc-ok{color:#2f8f5b;font-weight:600}
+#resources .rm-loc-warn{color:#b86a19;font-weight:600}
+#resources .rm-loc-bad{color:#d64545;font-weight:600}
 #resources .rm-graph{width:100%;max-width:760px;height:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
 #resources .rm-graph text{font-size:11px;fill:#182230}
 #resources .rm-graph line{stroke:#c7d3e0;stroke-width:1.4}
@@ -6794,6 +6960,7 @@ window.__CFG__ = (function () {
       delete merged.constraints;
       merged.id = b.id; merged.code = b.code;
       merged.ontologySlice = b.ontologySlice;
+      merged.locations = b.locations; // 多库分布为基线派生，始终取基线，避免陈旧快照缺失
       return merged;
     });
     var known = new Set(base.map(function (b) { return String(b.code); }));
@@ -6890,7 +7057,17 @@ window.__CFG__ = (function () {
         '</p><small>Effective Available = Available − Reserved</small></div></div>';
     } else if (state.tab === '存储位置') {
       var store = refItems(r.constraintRefs).filter(function (x) { return /库存|储存|冷链|安全|仓储|容量/.test(x.name + x.description + (x.type || '')); });
-      c = '<div class="detail-grid"><label>所在区域/机构<input data-rf="location" value="' + esc(r.location) + '"></label>' +
+      var locs = r.locations || [];
+      var sumT = locs.reduce(function (s, x) { return s + num(x.total); }, 0), sumA = locs.reduce(function (s, x) { return s + num(x.available); }, 0);
+      c = '<h3>多存储位置分布<span class="muted" style="font-weight:400;font-size:12px">（同一资源分布在多个库点，距离/路况/限高限重各异，直接影响调运运力与交期）</span></h3>' +
+        '<div style="overflow-x:auto"><table class="constraint-table rm-loc"><thead><tr><th>存储位置</th><th>总量</th><th>可用</th><th>距灾区</th><th>限高/限重</th><th>路况</th><th>状态</th></tr></thead><tbody>' +
+        (locs.length ? locs.map(function (x) {
+          return '<tr><td><b>' + esc(x.loc) + '</b></td><td>' + num(x.total).toLocaleString() + ' ' + esc(r.unit) + '</td><td>' + num(x.available).toLocaleString() + ' ' + esc(r.unit) + '</td>' +
+            '<td>' + x.km + ' km</td><td>' + (x.h ? x.h + 'm' : '—') + ' / ' + x.t + 't</td><td><small>' + esc(x.road) + '</small></td>' +
+            '<td><span class="rm-loc-' + (x.status === '可调用' ? 'ok' : x.status === '缺货' ? 'bad' : 'warn') + '">' + esc(x.status) + '</span></td></tr>';
+        }).join('') : '<tr><td colspan="7">暂无分库存储数据</td></tr>') +
+        '</tbody><tfoot><tr><td><b>合计</b></td><td><b>' + sumT.toLocaleString() + ' ' + esc(r.unit) + '</b></td><td><b>' + sumA.toLocaleString() + ' ' + esc(r.unit) + '</b></td><td colspan="4" class="muted">可用合计应与“库存现状·可用数量”一致</td></tr></tfoot></table></div>' +
+        '<div class="detail-grid" style="margin-top:12px"><label>主所在区域/机构<input data-rf="location" value="' + esc(r.location) + '"></label>' +
         '<div class="panel-lite"><h3>存储/部署约束</h3>' +
         (store.map(function (x) { return '<p><b>' + esc(x.name) + '</b>：' + esc(x.note || x.description) + ' <small class="muted">(' + esc(x.id) + ')</small></p>'; }).join('') || '<p>可配置仓储容量、温控、安全库存和部署条件。</p>') +
         '</div></div>';
