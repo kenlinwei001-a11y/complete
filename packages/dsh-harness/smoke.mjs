@@ -5,6 +5,8 @@
 //   case A（governance deny echo_tool）   → execute 计数 == 0，turn 仍 completed
 //   case B（无治理拒绝，基线）            → execute 计数 == 1
 //   case C（setup.tools 允许表不含 echo_tool）→ execute 计数 == 0（允许表强执）
+// ⚠ 必须排在**所有**其他 import 之前（病因详见 ./runtime-compat.mjs 头注）。
+import { RUNTIME_COMPAT_URL } from './runtime-compat.mjs'
 import { HarnessClient } from '@deepseek-ai/dsh-sdk-client'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -12,6 +14,12 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 
 const here = dirname(fileURLToPath(import.meta.url))
+
+// 本进程装好补齐**不等于**子进程装好：下面每个 case 都 spawn 一只独立 dsh host（jsonrpc-demo bin），
+// 而 agent-loop 的 `Promise.withResolvers` 是在**那只子进程**里调的 —— 不带过去，Node 20 上
+// 子进程注册不出 agent 工厂，父进程只看到一句 `no agent factory registered (load an agent-loop plugin)`，
+// 与治理/允许表这些本冒烟真正要验的东西毫无关系。追加而非覆盖：保住外部传进来的 NODE_OPTIONS。
+const CHILD_NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ''} --import ${RUNTIME_COMPAT_URL}`.trim()
 
 async function runCase(label, { extraEnv = {}, setup } = {}) {
   const countFile = join(mkdtempSync(join(tmpdir(), 'dsh-s2-')), 'count')
@@ -23,7 +31,7 @@ async function runCase(label, { extraEnv = {}, setup } = {}) {
     args: [join(here, 'node_modules/@deepseek-ai/dsh-sdk-jsonrpc-demo/lib/bin.js'), 'cordis.poc.yml'], // WO-DSH-N1-PROVIDER：测试专档（生产档 cordis.yml 只挂 platform-llm）
     cwd: here,
     requestTimeoutMs: 30000,
-    env: { ...process.env, ECHO_COUNT_FILE: countFile, ...extraEnv },
+    env: { ...process.env, NODE_OPTIONS: CHILD_NODE_OPTIONS, ECHO_COUNT_FILE: countFile, ...extraEnv },
   })
   const sessionId = `s2-${label}`
   const sub = client.subscribeSessionTree(sessionId)

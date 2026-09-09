@@ -10,6 +10,12 @@
  *
  * 六项在本文件里就是六个 `<section>`，顺序与判据原文逐字对齐（① … ⑥）。
  *
+ * ⚠ **对抗方那一块刻意是 ③ 里的一个 `<div>`，不是第七个 `<section>`**（2026-09-08 补）：
+ * 判据原文只有六项，凭空长出第七节会让「六节对齐判据」这句话下次就对不上；
+ * 而对抗方在契约里本来就住在 `rules.adversary` 里 —— 它讲的是**规则**，
+ * 只是把「哪几条是对手主动做的事」从「哪几条是世界的物理传导」里分出来。
+ * 排在 ③ 最前是因为「有没有人在跟我博弈」比「喂了几条边」更早被问到。
+ *
  * ── 三条文体硬约束（仓主明令·违反即返工）────────────────────────────────────
  *  ① **屏上不许出现描述性句子**，只给「标签 + 值 + 状态」。
  *     合格：`切片 GLOBAL · 跳数 1 · 节点 12,745 · 边 12,192`
@@ -38,7 +44,7 @@
  * **不许**渲染成一片 0 —— 那会让「引擎没跑」与「披露没要」在屏上长成同一个样子，
  * 正是本仓「静默错答」要根治的形态。
  */
-import type { SimRunDisclosure } from "@platform/contracts";
+import { adversaryMoveNameOf, adversarySelectorNameOf, type SimRunDisclosure } from "@platform/contracts";
 import styles from "./DisclosurePanel.module.css";
 
 /** 千分位。读数是给人看的，`12745` 与 `12,745` 在一列数字里差别很大。 */
@@ -77,6 +83,43 @@ const CADENCE_SKIP_LABEL: Readonly<Record<string, string>> = {
   NOT_INTEGER_TICKS: "周期非整拍",
 };
 
+/**
+ * ══ 对抗方这一栏的**四态** —— 四句话必须在屏上长得不一样 ═══════════════════════
+ *
+ * 判据原文（本单立单依据，一字不改）：
+ * > `无对抗方数据` 与 `对抗方反应为 0` **是两个结论，不许在屏上长成一样**。
+ *
+ * 后端 `rules.adversary` 是**必给**的一栏（关闭态也给），故这四态由两个字段现算，
+ * 不靠前端猜：
+ *
+ * | 态 | 判据 | 屏上说的那句话 |
+ * |---|---|---|
+ * | `ABSENT`     | 整栏 `undefined` —— 后端这一版没给 | 「未取到对抗方回执」（**不是**一片 0） |
+ * | `ONE_SIDED`  | `enabled === false` | 「单方推演」+ 挂起条数 —— 对手**根本没被算** |
+ * | `NO_REACTION`| `enabled && fired === 0` | 「无人越过容忍线」—— 对手**算了，答案是零** |
+ * | `REACTED`    | `enabled && fired > 0` | 逐条列出：谁、动了什么、多少、凭哪条规则 |
+ *
+ * ⚠ `ONE_SIDED` 与 `NO_REACTION` 是本栏存在的全部理由：
+ *   前者「对手没上场」，后者「对手上场了但没动手」——把两者都渲染成 `0 项`，
+ *   读者会把一次**单方推演**误读成「对手确实不还手」，那是拿缺席冒充结论。
+ */
+type AdversaryState = "ABSENT" | "ONE_SIDED" | "NO_REACTION" | "REACTED";
+
+function adversaryStateOf(a: SimRunDisclosure["rules"]["adversary"] | undefined): AdversaryState {
+  if (a === undefined || a === null) return "ABSENT";
+  if (!a.enabled) return "ONE_SIDED";
+  return a.fired > 0 ? "REACTED" : "NO_REACTION";
+}
+
+/**
+ * 动作 key → 人话名。**取自契约登记册，前端不另抄一份表** ——
+ * 抄一份的下场是登记册加了第四种动作而屏上永远只认三种（本仓已登记的老病）。
+ * 登记册里查不到 ⇒ 原样显示那个 key，**不编**一个像模像样的名字。
+ */
+const moveLabel = (key: string): string => adversaryMoveNameOf(key) ?? key;
+/** 选择方 key → 人话名。同上，同一条纪律。 */
+const selectorLabel = (key: string): string => adversarySelectorNameOf(key) ?? key;
+
 /** 一对「标签 值」。**没有句子**，标点只有分隔用的 `·`。 */
 function KV({ k, v, mono }: { k: string; v: string; mono?: boolean }): JSX.Element {
   return (
@@ -98,11 +141,29 @@ export default function DisclosurePanel({ disclosure: d }: DisclosurePanelProps)
   if (d === undefined) return null;
 
   const { data, slice, rules, constraints, agent, timings } = d;
+  /**
+   * ⚠ 用 `?.` 取而不是直接解构：这一栏是**后端加的新字段**，
+   * 而本面板同时服务于**不带这一栏的旧回包**（以及不产这一栏的桩）。
+   * 直接解构 ⇒ 那些场景下整块面板白屏；`ABSENT` 态才是它们的真相。
+   */
+  const adv = rules.adversary as SimRunDisclosure["rules"]["adversary"] | undefined;
+  const advState = adversaryStateOf(adv);
 
   return (
     <details className={styles.wrap} data-testid="sim-disclosure">
       <summary data-testid="sim-disclosure-summary">
         推演过程 · 第 {n(d.fromTick)} → {n(d.toTick)} 拍
+        {/* 面板默认收起 ⇒ 对抗方这一句必须**在收起态就看得见**，
+            否则「有没有人在跟我博弈」这件事仍然要点开两层才知道。 */}
+        <span className={styles.tag} data-testid="sim-disclosure-adversary-flag" data-state={advState}>
+          {advState === "ABSENT"
+            ? "对抗方未取到"
+            : advState === "ONE_SIDED"
+              ? "单方推演"
+              : advState === "NO_REACTION"
+                ? "对抗方未越线"
+                : `对抗方还手 ${n(adv!.fired)} 条`}
+        </span>
       </summary>
       <div className={styles.body}>
         {/* ── ① 引用的数据 ───────────────────────────────────────────────── */}
@@ -182,6 +243,65 @@ export default function DisclosurePanel({ disclosure: d }: DisclosurePanelProps)
         {/* ── ③ 命中的规则 ───────────────────────────────────────────────── */}
         <section className={styles.sec} data-testid="sim-disclosure-rules">
           <p className={styles.secHead}>命中的规则</p>
+
+          {/* ── 对抗方 —— 排在本节最前，因为「有没有人在跟我博弈」比「喂了几条边」更早被问到。
+                 四态各说各的话，见本文件 `adversaryStateOf` 头注那张表。 */}
+          <div
+            className={styles.sec}
+            data-testid="sim-disclosure-adversary"
+            data-state={advState}
+            data-enabled={adv === undefined ? "" : adv.enabled ? "1" : "0"}
+            data-fired={adv?.fired ?? ""}
+          >
+            <p className={styles.secHead}>对抗方</p>
+
+            {advState === "ABSENT" ? (
+              /* 「没取到」**不许**渲染成一片 0 —— 那会让「后端没给这一栏」与
+                 「对手确实没还手」在屏上长成同一个样子。 */
+              <p className={styles.absent} data-testid="sim-disclosure-adversary-absent">
+                <KV k="本次" v="未取到对抗方回执" />
+              </p>
+            ) : advState === "ONE_SIDED" ? (
+              /* 对手**没上场**。挂起条数必须点名：它证明「规则是在的，只是这次没算」，
+                 而不是「这个世界压根没有对手方规则」。 */
+              <>
+                <p className={styles.warn} data-testid="sim-disclosure-adversary-onesided">
+                  <KV k="本次" v="单方推演 · 对抗方未参与" />
+                </p>
+                <p className={styles.kv}>
+                  <KV k="挂起还手规则" v={`${n(adv!.suppressed)} 条`} />
+                  {SEP}
+                  <KV k="参与" v={`${n(adv!.declared)} 条`} />
+                </p>
+              </>
+            ) : (
+              <>
+                {/* 对手**上场了**。先给三个数，再按有没有还手分叉。 */}
+                <p className={styles.kv}>
+                  <KV k="在册还手规则" v={`${n(adv!.declared)} 条`} />
+                  {SEP}
+                  <KV k="本拍还手" v={`${n(adv!.fired)} 条`} />
+                  {SEP}
+                  <KV k="越线对手" v={`${n(adv!.triggeredActors)} 个`} />
+                </p>
+                {advState === "NO_REACTION" ? (
+                  /* 对手算了，答案是零 —— 这是**结论**不是缺席，故写成一句判断，
+                     而不是再列一张 0 项的空表。 */
+                  <p className={styles.kv} data-testid="sim-disclosure-adversary-noreaction">
+                    <KV k="本拍" v="无人越过容忍线 · 对手未还手" />
+                  </p>
+                ) : (
+                  <p className={styles.kv} data-testid="sim-disclosure-adversary-moves">
+                    <KV k="还手动作" v={adv!.moves.map(moveLabel).join(" · ")} />
+                    {SEP}
+                    {/* 「这一步是谁选的」—— 恒写，不留白：留白会让人以为是模型挑的。 */}
+                    <KV k="选择方" v={adv!.selectors.map(selectorLabel).join(" · ")} />
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+
           <p className={styles.kv}>
             <KV k="喂入" v={n(rules.declared)} />
             {SEP}
@@ -223,9 +343,41 @@ export default function DisclosurePanel({ disclosure: d }: DisclosurePanelProps)
               <summary data-testid="sim-disclosure-rule-items-toggle">逐规则系数与口径</summary>
               <ul className={styles.rows} data-testid="sim-disclosure-rule-items">
                 {rules.items.map((r) => (
-                  <li key={r.ruleKey} className={styles.row} data-fired={r.fired ? "1" : "0"}>
+                  <li
+                    key={r.ruleKey}
+                    className={styles.row}
+                    data-fired={r.fired ? "1" : "0"}
+                    data-reaction={r.isReaction ? "1" : "0"}
+                  >
                     <span className={styles.tag}>{r.fired ? "命中" : "未命中"}</span>
+                    {/* 还手边与物理传导边**必须在同一张表里分得开**：两者数值机制相同、
+                        业务含义完全不同（一个是世界的物理传导，一个是对手主动做的一件事）。
+                        混在一起 ⇒ 读者会把「客户砍单」读成「物理规律」。 */}
+                    {r.isReaction ? <span className={styles.tag}>对手还手</span> : null}
                     <span className={styles.mono}>{r.ruleKey}</span>
+                    {/* 还手三件套：谁在还手 · 还了什么手 · 容忍线在哪。
+                        这三项加上下面的 `系数`，就是「一个看不到代码的人凭它能自己判断
+                        这是真推演还是查表」那一问的落点。 */}
+                    {r.isReaction && r.reactionActorTypeKey !== null ? (
+                      <KV k="还手方" v={r.reactionActorTypeKey} mono />
+                    ) : null}
+                    {r.isReaction && r.reactionMove !== null ? (
+                      <KV k="动作" v={r.reactionMoveName ?? moveLabel(r.reactionMove)} />
+                    ) : null}
+                    {r.isReaction && r.reactionTolerance !== null ? (
+                      <KV k="容忍线" v={String(r.reactionTolerance)} />
+                    ) : null}
+                    {r.isReaction && r.reactionTriggeredActors !== null ? (
+                      <KV k="越线对手" v={`${n(r.reactionTriggeredActors)} 个`} />
+                    ) : null}
+                    {r.isReaction && r.reactionSelectedBy !== null ? (
+                      <KV k="选择方" v={r.reactionSelectedByName ?? selectorLabel(r.reactionSelectedBy)} />
+                    ) : null}
+                    {/* `selectorRef` 只有编排层选规则时才有值；规则表直选恒 null ⇒ 整项不渲染，
+                        **不许**打一个空串让人以为编排层参与过。 */}
+                    {r.isReaction && r.reactionSelectorRef !== null ? (
+                      <KV k="选择出处" v={r.reactionSelectorRef} mono />
+                    ) : null}
                     <KV k="系数" v={String(r.coefficient)} />
                     {/* 「声明了引用」≠「系数来自配置」：引用取不到时引擎回落内联，这里按**解析结果**说。 */}
                     <span className={styles.tag}>

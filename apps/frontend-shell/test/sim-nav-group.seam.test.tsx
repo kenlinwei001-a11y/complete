@@ -6,7 +6,9 @@ import {
   CONSOLIDATED_INTO_SANDBOX,
   GROUP_CONSOLIDATION_EXEMPT,
   ROUTE_NO_NAV,
+  isViewConsolidatedAway,
 } from "@/pages/ShellLayout";
+import type { Workspace } from "@/api/types";
 
 /**
  * WO-SIM-NAV-GROUP · 指控台四页归「推演」组 + 同名歧义消除 —— 前端那一半。
@@ -281,16 +283,45 @@ describe("WO-SIM-NAV-GROUP · §A 四个 viewKey 落在「推演」组", () => {
     // 四个台**两张表都在**。若顺序反了（先查无条件表），它们会被**无条件**滤掉 ——
     // 沙盘关着时本该回退单列的语义当场失效。上一版 A4 担心的正是这一条，
     // 当时的修法是「不许进收编表」；今天的修法是「进表，但靠顺序保证条件分支赢」。
-    // 断言落在**源码顺序**上（纯结构、无渲染），与门判据⑧a 的免责条件同源。
-    const shellSrc = readFileSync(join(REPO_ROOT, "apps/frontend-shell/src/pages/ShellLayout.tsx"), "utf8");
-    const condIdx = shellSrc.indexOf("if (when !== undefined) return !featureOn(workspace, when);");
-    const uncondIdx = shellSrc.indexOf("return !CONSOLIDATED_INTO_SANDBOX[key];");
-    expect(condIdx, "找不到条件收编那一行 ⇒ 本条断言失去被测对象（抽取器坏了，不许读成「顺序对」）").toBeGreaterThan(-1);
-    expect(uncondIdx, "找不到无条件收编那一行 ⇒ 同上").toBeGreaterThan(-1);
+    //
+    // ⚠ **2026-09-08：断言从「源码字面量」改成「行为」**。上一版按
+    //   `shellSrc.indexOf("if (when !== undefined) return !featureOn(workspace, when);")`
+    //   在 ShellLayout.tsx 的文本里找那两行。后来这段内联谓词被**提取成导出函数**
+    //   `isViewConsolidatedAway(viewKey, workspace)`，极性随函数名反转
+    //   （原谓词答「留不留下」故带 `!`，新函数答「是否已被收编」故不带）、`key`→`viewKey`
+    //   ⇒ 探针命中 0、测试红，而**它要守的那条顺序不变量一直成立**（新函数里仍是
+    //   先查 CONDITIONAL_CONSOLIDATION、后查 CONSOLIDATED_INTO_SANDBOX）。
+    //   形态（CLAUDE.md 铁律 0.6 句式）：
+    //   **「我用『源码里存在这一行字面量』当作『那条顺序不变量成立』的证据，而前者并不度量后者。」**
+    //   源码字面量探针天生带保质期 —— 重命名、提函数、翻极性都会让它失配，
+    //   而它失配的方向是**红**（好过静默绿），但代价是把一次正确的重构报成回归。
+    //   改成行为断言：直接调那个函数，两态各断言一次，对重命名/提取/极性翻转全免疫。
+    const wsSandboxOff = { features: [] } as unknown as Workspace; // 沙盘**关**
+    const wsSandboxOn = { features: ["sim.sandbox"] } as unknown as Workspace; // 沙盘**开**
+
+    // 金丝雀：本条必须真有被测对象 —— 四个键得**同时**在两张表里，否则它测的是空集、恒绿。
+    const inBothTables = CONSOLE_KEYS.filter(
+      (k) =>
+        CONSOLIDATED_INTO_SANDBOX[k] !== undefined &&
+        simGroup!.items.some(
+          (it) => it.key === k && "consolidatedWhen" in it && it.consolidatedWhen === "sim.sandbox",
+        ),
+    );
     expect(
-      condIdx,
-      "无条件收编排在了条件收编**前面** ⇒ 四个台会被无条件滤掉，沙盘关着时它们连回退单列都没有",
-    ).toBeLessThan(uncondIdx);
+      inBothTables,
+      "没有一个键同时在两张表里 ⇒ 本条断言失去被测对象（抽取器坏了，不许读成「顺序对」）",
+    ).toEqual([...CONSOLE_KEYS]);
+
+    for (const key of inBothTables) {
+      expect(
+        isViewConsolidatedAway(key, wsSandboxOff),
+        `${key}：沙盘**关着**时仍被判成「已收编」⇒ 无条件收编排在了条件收编前面，该页连回退单列都没有`,
+      ).toBe(false);
+      expect(
+        isViewConsolidatedAway(key, wsSandboxOn),
+        `${key}：沙盘**开着**时没被判成「已收编」⇒ 它会与合并壳里的页签构成重复入口`,
+      ).toBe(true);
+    }
   });
 
   it("A5 · 四条**陈旧豁免必须已删**，合并壳自己则必须登记（判据⑨ 的账要平）", () => {

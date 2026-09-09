@@ -1961,11 +1961,42 @@ agent 只负责调动工具、本体、规则等等输出结果，然后基于�
   修前这两个数会逐字节相同 —— 那正是本仓已登记的「东风/零跑同为 4 单、压力相同 15.137」病灶的同一形态。
 - **§4 确定性**：同 seed 同应对重跑两次逐字节相同。**§5 金丝雀**：同一把尺子量"确定会变的量"必须变（见测试头注）。
 
-**屏上现状（诚实缺席）**：还手边本身**已在屏上**（统一推演控制台右栏「扰动因素·关掉看变化」，
-显人话名 + `Customer.receivablePressure –customer_places_order→ Order.orderChurn` + 系数 0.35 + 延迟 1，
-边计数 46 → **47**）；但**还手专有字段**（砍单 / 容忍线 / 越线对手数 / 对抗方汇总栏）**无展示位** ——
-`views/sim/` 受仓主禁令 2 冻结，须逐案批准后另立单。且该面板读的是**目录**（不受开关过滤），
-故**屏上今天分不出对抗方开没开** —— 这是已知残口，不是漏做。
+**屏上现状（WO-ADVERSARY-ONSCREEN · 2026-09-08 · 仓主逐案批准后已闭）**：
+
+⚠ **本段 2026-09-08 整段改写**。原文写的是「还手专有字段**无展示位** … **屏上今天分不出对抗方开没开**
+—— 这是已知残口」。**该残口已闭**，原文若留着会被下一张单当成未做的活派出去（铁律 0.6 第 5 条）。
+
+还手边本身早已在屏上（统一推演控制台右栏「扰动因素·关掉看变化」，显人话名 +
+`Customer.receivablePressure –customer_places_order→ Order.orderChurn` + 系数 0.35 + 延迟 1，边计数 46 → **47**）。
+**现在补上的是还手专有字段**，落点是**推演过程披露面板**（左栏扰动轨「施加并推演」之后那一块）：
+- **汇总栏**：在册还手规则条数 · 本拍还手条数 · 越线对手数 · 还手动作（人话名）· 选择方（人话名）；
+- **逐规则**：还手边打「对手还手」标记与物理传导边分开，并给 还手方 / 动作 / 容忍线 / 越线对手数 /
+  选择方（`selectorRef` 恒 `null` 时**整项不渲染**，不留空串让人以为编排层参与过）；
+- **收起态**也给一句结论 —— 否则「有没有人在跟我博弈」仍要点开两层才知道。
+
+**🔴 展示的要害是四态可分辨**（这是本段唯一值得记的不变量）：
+| 态 | 判据 | 屏上那句话 | 业务含义 |
+|---|---|---|---|
+| `ABSENT` | 回包无 `rules.adversary` | 「未取到对抗方回执」 | 后端这一版没给，**不是**对手没反应 |
+| `ONE_SIDED` | `enabled=false` | 「单方推演 · 对抗方未参与」+ 挂起条数 | 对手**没上场** |
+| `NO_REACTION` | `enabled ∧ fired=0` | 「无人越过容忍线 · 对手未还手」 | 对手**上场了，答案是零** |
+| `REACTED` | `enabled ∧ fired>0` | 动作 + 越线对手数 + 选择方 | 对手**动手了** |
+
+⛔ `ONE_SIDED` 与 `NO_REACTION` **不许在屏上长成一样** —— 把「对手缺席」渲染成「对手没还手」，
+读者会拿一次单方推演当成对抗结论，那是拿缺席冒充结论（同「agent 是否参与」那条纪律的同源形态）。
+两条**变异反证**钉住它：把 `ONE_SIDED` 的文案塌成 `NO_REACTION`、把 `ABSENT` 判成 `NO_REACTION`，
+接缝测试各当场变红（分别红 1 / 3 个用例）。
+
+**取证（真后端 `SEED_DEMO=1` 端口 4801 · 真前端 · 禁 `VITE_MOCK` · 2026-09-08）**：
+同一条 UI 动线（选状态量 → 选类型 → 选对象 → 填幅度 → 点「施加并推演」），
+**只改扰动幅度这一个变量**：幅度 1（< 容忍线 12）⇒ 屏上 `NO_REACTION`「本拍还手 0 条 · 越线对手 0 个」；
+幅度 96 ⇒ `REACTED`「本拍还手 1 条 · 越线对手 1 个 · 砍单 · 规则表直选」；
+再把开关关回缺省、同一幅度重走 ⇒ `ONE_SIDED`「挂起还手规则 1 条 · 参与 0 条」。
+全程 42 次真实回包、3 次真 tick，origin 全称等于真后端（零 mock 拦截层）。
+
+**门禁未动**：`sim.propagation.adversary` 仍是 `defaultOn:false` **且**仍在 `WORLD_DARK_LAUNCH_FEATURES`
+—— 上屏**没有**顺带把它打开。缺省态（对抗方关）屏上给的就是 `ONE_SIDED` 那句话，
+而不是一块恒空的展示位。要看到还手，需按租户下 L3 override 显式开启。
 
 ### 展示名链路 · 状态变量单源表 → 两条读时投影 → 屏上人话名（WO-STATEVAR-DISPLAYNAME · 2026-08-17）
 
@@ -3620,6 +3651,7 @@ fetchOntologyInvariants()                 evaluateOntologyInvariants(overrides)
 | G-ONTO-TRUNCATE-NO-GATE | **「提交信息声称已回写」而 diff 把 2127 行本体写成空 blob，且当时没有任何门看守这个动作**（2026-08-17 真事故 `3298add3`，详账见 `G-OEE-DUAL-TRUTH` 行内「为什么停在等裁决一整天」段）。形态（铁律 0.6 句式）：**「我用『提交信息里写了已回写』当作『本体真被回写了』的证据，而前者并不度量后者。」** 事故后的真实状态：救援合并 `8d70bcdb` 把文件救回，但「一个大文件可以被一次提交无声清空」这条**通道本身**一直敞开 —— 仓库的准入闸在收编进 canonical，而收编靠的是人读 diffstat，人恰恰是被提交信息骗过去的那一环。✅ 已闭（2026-08-18 · WO-ONTO-TRUNCATE-GUARD）：新门 `file-truncation:check`（§7 · `scripts/check-file-truncation.mjs` · 已并入 `pnpm gates`），判据只落行数比：`new=0`（清空/整删）⇒ 红；`old≥100 且剩余比≤0.2` ⇒ 红；区间 `merge-base..HEAD` 逐提交审；唯一放行路是 `scripts/file-truncation-exemptions.json` 带 ≥20 字理由的 (commit,path) 豁免。⚠️ 阈值为实测修正：`G-OEE-DUAL-TRUTH` 行内预案的「少 50%」单阈值被 926 样本历史分布取证推翻（合法收紧 10→1/89→6 会被误报），双阈值下全历史唯事故命中。金丝雀双向含真史：`3298add3` 必咬、正常小改 `2e94e7ff` 必不咬。 | `docs/SYSTEM-ONTOLOGY.md` 等受保护文件 <-- `check-file-truncation.mjs`（收编前拦门） | ✅ 已闭（WO-ONTO-TRUNCATE-GUARD · 2026-08-18） |
 | G-FACT-USAGE-UNREGISTERED | **没有「事实 → 读取它的页面集合」注册表 ⇒ B-3（U5 跨屏面）连该比哪两个数都列不出来**（WO-GATE-B-SPLITACCOUNT 2026-08-16 把 B-3 判为「不能机检，且缺的前置比 B-1 更靠前」时点名的前置缺口；`G-SPLITACCOUNT-PROMISE-ONLY` 缩小后缺口③）。**断的不是判据是对象**：「同一事实在两屏上的值是否相等」这条断言，第一步是枚举「哪个事实出现在哪两屏」——本仓 226 个前端源文件 / 80 页，读取位散在各页组件与共享面板的 import 闭包里，**没有任何可枚举的注册表**，于是 B-3 只能停在「承诺要比」这一层（`G-SPLITACCOUNT-PROMISE-ONLY` 的同族形态：账挂着，受理方缺一块地基）。**形态**（铁律 0.6 句式）：**「我用『B-3 在明账上挂着』当作『B-3 有人能验』的证据，而前者并不度量后者。」** | `apps/frontend-shell/src/**`（页组件 + 共享面板的读取位）⊗ `api/endpoints.ts`（端点真值源）⊗ `views/registry.ts` + `App.tsx`（页名册真值源）→ 注册表 `scripts/lib/fact-usage.mjs`（现算）→ B-3 跨屏比对（`WO-GATE-B-BROWSER-HARNESS` 待派） | ✅ **已闭（WO-FACT-USAGE-REGISTRY · 2026-08-17 建门 · 2026-08-18 收口接线）**：注册表现算器 + 门 `fact-usage:check`（§7）已并入 `pnpm gates` 并入账。2026-08-18 现算：页 80 · 事实 462 条（solver 151 · object 49 · rest 262）· 跨 ≥2 屏 72 条 ⇒ B-3 该比的跨屏对 **824 组全部列得出**（同口径应相等 818 · 口径分家 6），每条带 file:line 依据链；全量落账 `docs/AUDIT-fact-usage-registry.md`。⚠️ **闭的是「清单列得出」这一半，不是 B-3 本身**：两屏的值相不相等要真渲染读 DOM，归 `WO-GATE-B-BROWSER-HARNESS`——注册表收口后它已可派（6 组口径分家对是它的真候选输入）。 |
 | G-OBJECTS-QUERY-1000-CAP | **对象查询 ≤1000 截断 vs 5460 行事实表 ⇒ 逐行路只能拿到 18%**（WO-OEE-SSOT-C 2026-08-19 复核登记；债本身由 WO-OEE-UNIFY 期间在 `views/sim/physicalTopology.ts` 头注实测记档：/5460 行只拿 1000/）。**实测链**：`GET /a/v1/objects?type=EquipmentOEE` 内部写死 `queryObjects(ctx, type, {}, 1000)`；`POST /a/v1/objects/query` 的 `limit` 被契约夹在 ≤1000（传 6000 → 400 VALIDATION_ERROR）；而 `EquipmentOEE` 事实表实测 **5460 行**（13 基地 × 60 台 × 7 天）⇒ 逐行枚举路天然只能覆盖 18%。**现状不是「屏上错数」**：物理拓扑屏已改走 `POST /a/v1/objects/aggregate`（服务端全量读，`ontology-governance.ts` 明写不受 ≤1000 截断影响）⇒ 该屏的 OEE 格是真值；伤口留在「任何想逐行消费大表的调用方」这一层。**修法归属**：截断在 `app.ts`/`ontology.ts` 的查询层（分页参数或流式枚举），**不在** `views/sim/**`——该屏已是绕过方而非病灶；属后续单（数据层分页通道），与 `G-YIELD-SERIES-SOURCE-MISMATCH` 的「SolverContext 无时序通道」同类（都是缺一条数据通道，不是改两行加载清单）。 | `apps/datacore/src/app.ts`（`/a/v1/objects` 写死 1000）· 契约 `objects/query` limit≤1000 → 逐行消费方（现仅 `views/sim/physicalTopology.ts`，已绕走 `/objects/aggregate`） | 🔴 未修（已绕过·不误导屏上数；2026-08-19 WO-OEE-SSOT-C 复核：绕过路径在、截断伤口在） |
+| G-RISKBOARD-SILENT-TRUNCATION | **风险榜 `slice(0, maxCards=8)` 静默截断 ⇒ 屏上「风险基地 8」而真值是 13**（WO-RISKBOARD-TRUNCATION 2026-09-08 真后端 + 真浏览器实测）。**同 `G-WHATIF-HARDCODED-LEVERS` 的排序后 `slice` 家族**，但这一条直接落在用户读数上。**实测链**（seed 42·H30·阈值 85·**零采纳**）：13 个基地**全部**越线，`risk.ts` 按「越线日↑ → 当前张力↓ → 峰值↓」排序后只取前 8，**被截掉的 5 个连同『它已越线』这个事实一起从回包消失**；契约 `cards: z.array(RiskCardSchema).max(8)` 又把上限钉死 ⇒ 屏上那 8 张究竟是「全网只有 8 个越线」还是「越线 13 个里的前 8」**无法区分**。⚠ **截断是这块看板的默认状态，不是边角情形**。采纳「常州·瓶颈工序·工艺路线调整」(eff=9/T+3) 后更难看：常州峰值 98.0000 → **97.9531**，比成都 97.9935 低 **0.047 个张力点** ⇒ 掉出前 8 ⇒ 整张卡消失，**而它的 `crossDay` 仍是 1**（第 1 天就越线、一次都没被消解）⇒「常州不在榜上」被读成「常州没事了」。**补闭**（加性·不改 `cards[]` 既有内容与排序·不新增对象类型/链路/事件/求解器 → 金值不变）：回包加 `unlistedCrossings`（条数 / 越线总数 / 榜上越线数 / 容量 / 被截名单含各自 `crossDay` / 口径原文），**仅在真被截断时置键**，未截断时整块缺席、回包与上线前逐字节一致；前端 KPI 改显 `8/13` + 第一层记号「另有 N 个基地已越线未上榜」+ 可展开名单。**计数口径**取「`cards` 与 `shown` 的集合差 ∩ 越线」，**不是**「越线总数 − 榜上卡数」——后者在 `forced` 非越线卡在榜时算出**负数**（实测 `{base:常州, factor:设备OEE}` → `0 − 1 = -1`）。守恒 `crossingTotal === shownCrossing + count`。⚠ 变异反证诚实交代：去掉诚实位 ⇒ 7 条里 5 条转红；**把口径换成上述错的那个 ⇒ 全绿不红**（结构性重合：诚实位只在截断时下发，而截断只发生在全网路，那里榜上每张都越线）——放开「榜上可混进不越线的卡」时需另加断言。 | `apps/datacore/src/solvers/risk.ts`（`shown`/`unlistedBases`）· `packages/contracts/src/solvers.ts`（`unlistedCrossings`）· `apps/frontend-shell/src/views/RiskBoardView.tsx`（`risk-unlisted*`）· 测 `datacore/test/riskboard-truncation.seam.test.ts` | ✅ 已闭（2026-09-08·真浏览器 10/10 从登录走起） |
 
 
 > **WO-CAPACITY-PAGE-100PCT 残口补闭（2026-07-30 · 「产能推演」页 100% 实证 LOOP · 台账 `docs/capacity-page-audit-ledger.md`）**

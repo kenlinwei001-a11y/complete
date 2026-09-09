@@ -216,6 +216,9 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   // 可切回求解器数组序（越线日↑→张力↓）。两个序都留着，因为它们回答的是两个不同的问题
   // （"谁最快出事" vs "出事落在谁身上"），把其中一个藏起来就是替用户做了他该做的判断。
   const [orderMode, setOrderMode] = useState<"exposure" | "solver">("exposure");
+  // WO-RISKBOARD-TRUNCATION：「越线但未上榜」名单的展开态（默认收起 —— 第一层只放那个**数**，
+  // 名单是点开才看的第二层；但那个数本身不许折叠，它改变整块榜的读法）。
+  const [openUnlisted, setOpenUnlisted] = useState(false);
   /**
    * 判据 U2 步骤态。默认末步 = 完整结果（与改前屏面逐字节一致 ⇒ 存量测试零回归）。
    * `upto(n)` 是本页唯一分段闸：点第 N 步 ⇒ 屏上的数只显示到第 N 步为止。
@@ -302,6 +305,11 @@ export default function RiskBoardView(_props: ViewRendererProps) {
   const crossDays = cards.map((c) => c.crossDay).filter((d): d is number => d != null);
   const earliestCross = crossDays.length ? Math.min(...crossDays) : null;
 
+  // WO-RISKBOARD-TRUNCATION · 「越线但未上榜」：后端**只在真被截断时**下发这一整块。
+  // 缺席 ⇒ 下面整段不渲染（不是渲染「还有 0 个」）—— 没有被藏起来的东西时，多出来的那句话本身就是噪声。
+  // ⚠ 前端**一个数都不自己算**：条数/总数/名单/口径原文全取回包。自己拿 `cards.length` 反推
+  //   会造出第二套口径，而它在「榜上混有不越线的卡」时给的数与后端不一致（那正是本单要治的病的变体）。
+  const unlisted = data.unlistedCrossings;
   const openCard = openBase ? cards.find((c) => c.base === openBase) ?? null : null;
   // WO-LIVE-DISPOSITION：处置表数据源 = 点过「生成/重算」则用**重算结果**（吃当前杠杆推演态），否则基线查询结果。
   const planRows: PlanRow[] = livePlan?.rows ?? data.planRows ?? [];
@@ -403,12 +411,96 @@ export default function RiskBoardView(_props: ViewRendererProps) {
           U2 分段闸：五个指标**逐个挂在它自己那一层** —— 基地数/因素点来自逐日推演（第 2 步）、
           最早越线日来自越线判定（第 3 步）、订单与客户来自影响面（第 4 步）。 */}
       <div className={styles.rkKpi} data-testid="risk-kpi">
-        {upto(2) && <RkK testId="risk-kpi-bases" value={String(cards.length)} label="风险基地" color="#E0626C" />}
+        {/* WO-RISKBOARD-TRUNCATION：这个数原本是**本页最容易被读错的一个** —— 它是"榜上几张卡"，
+            却挂着「风险基地」的名字，于是 8 被读成"全网只有 8 个基地有风险"（实测：真值 13）。
+            截断发生时改显 `榜上/越线总数` 两个数（同 `kit_readiness` 抽样两数进第一层的口径：
+            分母变了，结论的读法就跟着变，不能只把它留在浮层里）；没截断时**逐字节保持原样**。 */}
+        {upto(2) && (
+          <RkK
+            testId="risk-kpi-bases"
+            value={unlisted ? `${unlisted.shownCrossing}/${unlisted.crossingTotal}` : String(cards.length)}
+            label={unlisted ? "风险基地（榜上/越线）" : "风险基地"}
+            color="#E0626C"
+          />
+        )}
         {upto(2) && <RkK testId="risk-kpi-factorpts" value={String(riskFactorPoints)} label="风险因素点" color="var(--c-solver)" />}
         {upto(4) && <RkK testId="risk-kpi-orders" value={allOrders.size > 0 ? String(allOrders.size) : "—"} label="受影响订单(批)" color="var(--c-forecast)" />}
         {upto(4) && <RkK testId="risk-kpi-custs" value={allCusts.size > 0 ? String(allCusts.size) : "—"} label="涉及客户" color="var(--c-capacity)" />}
         {upto(3) && <RkK testId="risk-kpi-earliest" value={earliestCross != null ? `T+${earliestCross}` : "—"} label="最早越线日" color="var(--c-solver)" />}
       </div>
+
+      {/* ── WO-RISKBOARD-TRUNCATION ·「越线但未上榜」诚实位 ────────────────────────────────────
+          后端**只在真被截断时**下发整块 ⇒ 这里 `unlisted &&` 一并缺席，屏面与本诚实位引入前逐字节一致
+          （**不是**渲染「还有 0 个」——没有被藏起来的东西时，多出来的那句话本身就是噪声）。
+          病历：采纳「常州·瓶颈工序·工艺路线调整」后常州峰值 98.0000 → 97.9531，比成都 97.9935
+          低 0.047 个张力点 ⇒ 掉出前 8 ⇒ 卡片整张消失，**而它第 1 天就越线、一次都没被消解**。
+          修前屏上没有任何一个字提到它，「不在榜上」被读成「没事了」。
+          分层（`docs/CONVENTION-ui-information-layering.md` §1）：**条数与读法在第一层**
+          （它们改变整块榜的读法 = 结论本身），口径与"为什么会这样"进 `?` 浮层，名单点开是第二层。 */}
+      {unlisted && (
+        <div
+          className={styles.rkDet}
+          data-testid="risk-unlisted"
+          data-count={unlisted.count}
+          data-crossing-total={unlisted.crossingTotal}
+          style={{ margin: "0 0 10px", borderLeft: "3px solid #E8B54A", padding: "8px 12px" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span
+              data-testid="risk-unlisted-chip"
+              style={{
+                display: "inline-flex", alignItems: "center", padding: "1px 8px", borderRadius: 999,
+                border: "1px solid #E8B54A", color: "#E8B54A", fontSize: 12, lineHeight: 1.7, whiteSpace: "nowrap",
+              }}
+            >
+              {zh.risk.unlisted.chip(unlisted.count)}
+            </span>
+            <InfoPopover topic={zh.risk.unlisted.topic} testId="risk-unlisted">
+              {/* 口径原文直接取回包，前端一个字不编（后端改了口径这里自动跟着变·不会漂）。 */}
+              <p data-testid="risk-unlisted-note">{unlisted.note}</p>
+              <p>{zh.risk.unlisted.why}</p>
+            </InfoPopover>
+            <span
+              className={styles.tierChip}
+              data-testid="risk-unlisted-toggle"
+              role="button"
+              tabIndex={0}
+              onClick={() => setOpenUnlisted((v) => !v)}
+              onKeyDown={(e) => e.key === "Enter" && setOpenUnlisted((v) => !v)}
+            >
+              {openUnlisted ? zh.risk.unlisted.collapse : zh.risk.unlisted.expand}
+            </span>
+          </div>
+          {/* 结论性读法：两个数并排。**不用 `cards.length` 反推** —— 榜上可能混有不越线的卡，
+              自己算会与后端给的数打架（同一事实两个出处 = 本仓反复出事的病根）。 */}
+          <div data-testid="risk-unlisted-reading" style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+            {zh.risk.unlisted.reading(unlisted.shownCrossing, unlisted.crossingTotal)}
+          </div>
+          {openUnlisted && (
+            <table className="cmp" data-testid="risk-unlisted-table" style={{ marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th>{zh.risk.unlisted.colBase}</th>
+                  <th>{zh.risk.unlisted.colFactor}</th>
+                  <th>{zh.risk.crossDay}</th>
+                  <th>{zh.risk.unlisted.colPeak}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unlisted.bases.map((b) => (
+                  <tr key={b.baseId} data-testid={`risk-unlisted-row-${b.base}`} data-cross-day={b.crossDay}>
+                    <td>{b.base}</td>
+                    <td>{b.factor}</td>
+                    {/* 越线日是本条最该被看见的数：它证明"没上榜"不等于"没越线"。 */}
+                    <td data-testid={`risk-unlisted-crossday-${b.base}`}>{zh.risk.unlisted.dayNo(b.crossDay)}</td>
+                    <td>{formatTightness(b.peak)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {/* 订单聚合 tab → 经营聚合表 + 订单明细（真 affected_orders·无源列诚实空态）。 */}
       {riskTab === "order" && <OrderAggView horizon={horizon} />}
