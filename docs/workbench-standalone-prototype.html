@@ -746,8 +746,6 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
           <div class="panel"><div class="panel-head"><div><h2>配置</h2><p>统一管理函数库、Agent、大模型、小插件与权限审计等系统配置能力。</p></div></div><div class="tabbar"><button class="tab active" type="button" data-config-tab="functions">函数库</button><button class="tab" type="button" data-config-tab="agents">Agent配置</button><button class="tab" type="button" data-config-tab="models">大模型配置</button><button class="tab" type="button" data-config-tab="tools">小插件</button><button class="tab" type="button" data-config-tab="constraints">约束条件库</button><button class="tab" type="button" data-config-tab="audit">权限与审计</button></div></div>
           <div id="configFunctions" class="config-pane active">
         <section id="functions">
-          <div class="kpis" id="functionKpis"></div>
-          <div class="panel"><div class="panel-head"><div><h2>函数关系库</h2><p>20余种预测模型，覆盖人口增长、产业发展、经济财政等维度。每个模型含公式、参数说明与适用场景，可直接接入推演计算。</p></div><form class="quick-form compact-form" data-create="functions"><input name="name" placeholder="模型名称" required><input name="domain" placeholder="领域"><input name="formula" placeholder="公式"><input name="useCase" placeholder="适用场景"><button class="primary">新增</button></form></div><div class="chipbar"><span class="chip active">全部模型 (24)</span><span class="chip">人口增长 (6)</span><span class="chip">产业发展 (7)</span><span class="chip">经济财政 (6)</span><span class="chip">城市建设 (4)</span><span class="chip">能源环境 (3)</span></div><div id="functionGrid"></div></div>
         
   <div id="emgFunctions" class="panel">
     <div class="panel-head">
@@ -2278,12 +2276,9 @@ function renderWorkbenchModules() {
     : currentBidTab === "materials"
       ? `<div class="grid">${["公司资质与证照", "同类项目业绩", "人员证书与简历", "服务承诺模板", "报价测算说明", "投标函格式"].map((title, i) => `<div class="card" data-material="${title}"><h2>${title}</h2><p>${["营业执照、资质证书、信用记录。", "可研、咨询、专项评估等案例素材。", "项目负责人、咨询工程师和专业人员简历。", "进度、质量、保密、廉洁承诺文本。", "人工、差旅、管理费与税费测算口径。", "投标函、授权书、偏离表基础模板。"][i]}</p><span class="pill info">可调用</span></div>`).join("")}</div>`
       : `${bidFilters}<table><tr><th>标的名称</th><th>招标方</th><th>预算金额</th><th>截止日期</th><th>状态</th><th>操作</th></tr>${filteredBids.map((x) => `<tr><td><b>${x.title}</b></td><td>${x.client}</td><td>${x.budget}</td><td>${x.deadline}</td><td><span class="pill ${x.status.includes("截止") ? "bad" : x.status.includes("提交") ? "ok" : "warn"}">${x.status}</span></td><td><button class="secondary" type="button" data-bid-business="${encodeURIComponent(x.title)}">生成商务</button></td></tr>`).join("")}</table>`;
-  $("functionKpis").innerHTML = [["预测模型总数", 24, "覆盖5大领域"], ["人口增长模型", 6, "含Logistic等"], ["产业发展模型", 7, "含S曲线等"], ["经济财政模型", 6, "含税收弹性"], ["城市建设模型", 4, "用地/人口"], ["能源环境模型", 3, "碳排放等"]].map(kpiHtml).join("");
+  // 旧“函数关系库（24 预测模型）”面板已从配置→函数库移除，该页现由 emgFunctions 应急处置函数库承担。
+  // 数据行保留：语料库/浏览页的“函数”视图与 wireWorkbenchActions 的函数详情仍依赖它。
   const functionRows = sampleFunctions.concat(state.functions.map((x) => [x.domain, x.name, x.formula, x.useCase, "自定义"]));
-  wireStaticChips("functions", currentFunctionFilter, (value) => { currentFunctionFilter = value; renderWorkbenchModules(); });
-  const visibleFunctions = currentFunctionFilter === "全部" ? functionRows : functionRows.filter((row) => row[0].includes(currentFunctionFilter));
-  $("functionGrid").innerHTML = groupFunctions(visibleFunctions).map(([group, rows]) => `<div class="sec-title">${group} <span>${rows.length} 个</span></div><div class="panel-lite">${rows.map((x) => { const callers=state.corpora.filter(c=>c.domain.includes(group)||`${c.title} ${c.content}`.includes(x[0])).slice(0,4); return `<div class="function-row" data-fn-detail="${encodeURIComponent(x[1])}"><div><b>${x[1]}</b><span class="pill info">${x[4]}</span></div><code>${x[2]}</code><span>适用：${x[3]}</span><div>${callers.length?callers.map(c=>`<span class="corpus-call-tag" data-corpus-library-detail="${c.id}">${c.title}</span>`).join(""):`<span class="meta">暂无语料调用</span>`}</div></div>`; }).join("")}</div>`).join("") || `<div class="empty-note">当前分类下暂无模型。</div>`;
- document.querySelectorAll("#functionGrid [data-corpus-library-detail]").forEach(n=>n.addEventListener("click",e=>{e.stopPropagation();showCorpusDetail(n.dataset.corpusLibraryDetail);}));
   const tools = sampleTools.concat(state.tools.map((x) => [x.group, "工", x.name, x.description]));
   $("toolKpis").innerHTML = [["插件总数", 14, "覆盖5类"], ["报告相关", 5, "排版/大纲/校验"], ["数据处理", 3, "识别/合并/换算"], ["行政办公", 3, "报销/纪要/提醒"]].map(kpiHtml).join("");
   wireStaticChips("tools", currentToolFilter, (value) => { currentToolFilter = value; renderWorkbenchModules(); });
