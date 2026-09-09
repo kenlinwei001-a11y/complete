@@ -51,8 +51,19 @@ export interface SliceLayerInput {
   exceptionRefTypes: Record<string, number>;
   /** 该切片被哪些 plan/intent/agent 引用（governance.sliceReferences 的结果）。 */
   references: { refKind: string; key: string; where: string }[];
-  /** 全租户 ActionType（无 targetTypeKey 字段 ⇒ 无法机械归因到类型，见 §⑮）。 */
-  actionTypeKeys: string[];
+  /**
+   * 全租户 ActionType，**带归因键**（`targetTypeKey` · 见 §⑮）。
+   *
+   * ⚠ **2026-09-09 实测订正（WO-CLOSE-SIM-ONTO-2）**：本字段原名 `actionTypeKeys: string[]`，
+   * 注释原文「**无 `targetTypeKey` 字段 ⇒ 无法机械归因到类型**」——**这句话今天是假的**，
+   * 而且它以 `absentReason` 的形态**打在用户屏上**（实测 `coverage_base` 回包逐字带着它）。
+   * `ActionTypeSchema.targetTypeKey` 早已由 `WO-ACTIONTYPE-TARGET` 补上
+   * （`packages/contracts/src/actions.ts`），`app.ts scopeActions` 也已按它归因。
+   * 只投影 `key`（丢掉 `targetTypeKey`）等于**在入口处把 join 键扔了**，
+   * 于是 §⑮ 只能去读 `ObjectTypeDef.actions[]`，然后回头声称"没有 join 键"——
+   * 这是铁律 1.5 判据四那个形态：**注释说的不度量真实**。
+   */
+  actionTypes: { key: string; targetTypeKey?: string }[];
   /** 切片类型上的派生规格（证据层：派生 inputs 快照的规格来源）。 */
   derivationSpecKeys: { specKey: string; targetType: string; targetProp: string; formula: string }[];
   /** 本次 resolve 实际收到的试切参数（用于判定「子图为空」是不是缺参导致）。 */
@@ -489,29 +500,73 @@ export function projectSliceLayers(input: SliceLayerInput): SliceLayersResponse 
       ].sort((a, b) => by(a.key, b.key)),
     },
     // ── ⑮ 行动 ────────────────────────────────────────────────────────────────
-    // 真结构缺口：ActionType **没有 targetTypeKey 字段**（app.ts:1728 已注明「按全本体计数」），
-    // ObjectTypeDef.actions 又实测全空 ⇒ 全局有动作，但无法归因到本切片的类型。
-    // 这是唯一一层「即使补取数也取不出来」的——必须诚实说明缺的是 join 键。
+    //
+    // ══ 今天的行为是 X，应该是 Y（WO-CLOSE-SIM-ONTO-2 · 2026-09-09 真后端实测）══════
+    // **X（修前）**：本层只读 `ObjectTypeDef.actions[]` 一条路，取不到就回一句
+    //   「ActionType **无 targetTypeKey 字段**，无法机械 join 到对象类型」。
+    //   而 `targetTypeKey` **早就有了**（`WO-ACTIONTYPE-TARGET` 补进 `ActionTypeSchema`，
+    //   `app.ts scopeActions` 已按它归因）⇒ 本层一边**不用**那把已经存在的钥匙，
+    //   一边在用户屏上**声称这把钥匙不存在**。两头都错，且第二头是错答不是缺答。
+    // **Y（应该）**：两条归因路**都走**，取并集：
+    //   ① 类型级绑定 `ObjectTypeDef.actions[]`（"这个类型上挂了哪些动作"）；
+    //   ② 归因键 `ActionType.targetTypeKey`（"哪些动作**写**这个类型"）。
+    //   取不到时说的是**真实**缺口（哪几条动作不可静态归因），不是一句过期的结构断言。
+    //
+    // ══ 真后端实测底数（`SEED_DEMO=1` · 租户 demo · 亲手 HTTP 取，非台账）════════════
+    //   · 对象类型 **100** 个（§8 原文写 94，**过期**）；金丝雀：100 个都有非空 `properties[]`
+    //     ⇒ 解析没坏，「2」这个数是真的不是零命中。
+    //   · `ObjectTypeDef.actions[]` 非空的 **2** 个（`ARInvoice` / `OverdueRecord` → `对象数据变更`，
+    //     来自 `battery.ts BATTERY_TYPE_INTERFACE_BINDINGS`）—— §8 原文写「94 类**全空**」，**过期**。
+    //   · ActionType **11** 个，其中带 `targetTypeKey` 的 **2** 个
+    //     （`adopt_mitigation → AdoptedMitigation`、`采纳产能预测结论 → ForecastAdoption`）。
+    //
+    // ⛔ **零编造**：`targetTypeKey` 只取种子里**执行器真写那个类型**的声明
+    //   （如 `adopt_mitigation` 的执行器唯一写 `AdoptedMitigation`），**不按名字猜着连** ——
+    //   照属性猜着连就是造一条悬空边。剩下 9 条 `targetTypeKey` 缺省的**诚实留空并在下面逐条点名**，
+    //   `undefined` ≡ **不可静态归因**（≠「无目标」，三种情形见 `ActionTypeSchema.targetTypeKey` 注释）。
+    //   **不可归因必须作为不可归因可见，空集不许冒充"没问题"。**
     action: {
-      carrier: "object_types.actions[]（类型级绑定）+ action_types（全局注册表）",
+      carrier: "action_types.targetTypeKey（动作→类型归因键）+ object_types.actions[]（类型级绑定）",
       unit: "个",
-      platformCount: input.actionTypeKeys.length,
-      items: sliceTypes
-        .flatMap((t) => (t.actions ?? []).map((a) => ({ key: `${t.key}:${a.actionTypeKey}`, label: a.actionTypeKey, group: t.key })))
-        .sort((a, b) => by(a.key, b.key)),
-      // 复核修正（WO-SLICE-16-LAYERS 接续单 · 2026-08-10 实测）：前稿把 actions 恒空写成
-      //「接了线没数据」，只说对了一半。追一层调用发现是**两道口子叠在一起**：
-      //   ① 生产方确实不产：种子 battery.ts 里 `actions:` 与 `stateVariables` 命中数皆为 0
-      //      （金丝雀 `derivedProperties` 同文件 14 命中 ⇒ grep 工具正常，是真的 0）。
-      //   ② 就算产了也落不了库：`pipeline/subgraph.ts:53-57` 确实构造了 stateVariables/actions/
-      //      functions/security，但唯一入库口 `ontology.ts:199 upsertType` 逐字段列举重建 def，
-      //      这四个字段一个都没抄 ⇒ 写进去也丢（与 docs/ONTOLOGY-7ELEM-AUDIT.md §2.1(b) 同结论）。
-      // 二者定性不同、修法不同（补种子 vs 补持久化窄门），必须一起说，否则会去修错那一头。
-      absentReason:
-        `全局注册了 ${input.actionTypeKeys.length} 个 ActionType，但归因不到本切片的类型，缺口有两道：` +
-        `(1) 结构缺口 —— ActionType 无 targetTypeKey 字段，无法机械 join 到对象类型；` +
-        `(2) 持久化窄门 —— object_types.actions[] 全空，且对象类型入库时逐字段重建定义，不抄 actions/stateVariables/functions/security，` +
-        `即便建模流水线产出了也落不了库。补种子与补窄门是两件事，不许当一件做。`,
+      platformCount: input.actionTypes.length,
+      items: (() => {
+        const seen = new Set<string>();
+        const out: { key: string; label: string; group: string; detail: string }[] = [];
+        const push = (typeKey: string, actionKey: string, detail: string): void => {
+          const key = `${typeKey}:${actionKey}`;
+          if (seen.has(key)) return; // 两条路指向同一对 (类型,动作) 时只算一个，别把 1 个动作数成 2 个
+          seen.add(key);
+          out.push({ key, label: actionKey, group: typeKey, detail });
+        };
+        // ① 类型级绑定（既有路，逐字节保留）。
+        for (const t of sliceTypes) for (const a of t.actions ?? []) push(t.key, a.actionTypeKey, "类型级绑定（object_types.actions[]）");
+        // ② 归因键（本次接上的那把钥匙）。
+        for (const a of input.actionTypes) {
+          if (a.targetTypeKey !== undefined && typeKeySet.has(a.targetTypeKey)) {
+            push(a.targetTypeKey, a.key, "归因（action_types.targetTypeKey · 执行器写该类型）");
+          }
+        }
+        return out.sort((x, y) => by(x.key, y.key));
+      })(),
+      // 取不到时，说清楚**是哪一种取不到** —— 「这个类型没有动作」与「动作归不了因」是两个结论，
+      // 长成一句话就等于把后者伪装成前者（那正是本层修前干的事）。
+      absentReason: (() => {
+        const unattributed = input.actionTypes.filter((a) => a.targetTypeKey === undefined).map((a) => a.key);
+        const attributed = input.actionTypes.filter((a) => a.targetTypeKey !== undefined);
+        const head =
+          `全局注册了 ${input.actionTypes.length} 个 ActionType，本切片的 ${sliceTypes.length} 个对象类型上**一个都没有** ——` +
+          `既没有类型级绑定（object_types.actions[]），也没有任何 ActionType 的归因键 targetTypeKey 指向它们。`;
+        const attr =
+          attributed.length > 0
+            ? `可静态归因的 ${attributed.length} 个各自指向 ${uniqSorted(attributed.map((a) => a.targetTypeKey as string)).join("、")}，都不在本切片内。`
+            : `平台上目前没有任何 ActionType 声明了归因键。`;
+        const rest =
+          unattributed.length > 0
+            ? `另有 ${unattributed.length} 个**不可静态归因**（targetTypeKey 缺省 ⇒ 目标由 payload 运行期决定 / 主目标多类型 / 写的根本不是本体对象）：` +
+              `${unattributed.join("、")}。这 ${unattributed.length} 个**不计入任何类型**，也不许冒充计入。`
+            : "";
+        return `${head}${attr}${rest}`;
+      })(),
     },
     // ── ⑯ 治理与溯源 ──────────────────────────────────────────────────────────
     // 本单最重的一条：executeSlice 原本在 nodes.set 时丢掉了 o.origin / o.epoch
