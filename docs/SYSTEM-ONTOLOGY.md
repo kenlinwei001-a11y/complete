@@ -1929,6 +1929,17 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 ⚠ **只写 `defaultOn:false` 拦不住 demo 租户** —— L2 行业模板对 battery 是「ALL_FEATURE_KEYS 全开减暗发集」；
 实测未进暗发集时 `resolve("demo")` 里它**在**（金丝雀：同为 `defaultOn:false` 的 `sim.checkpoint` **同样在**）。
 关闭态下还手边被 `sessionPropRules` 滤出引擎，**目录仍可见**（§3.3「关掉的边要可见地降级，不是从图上消失」）。
+⚠ **2026-09-09 订正（WO-B9-DATACORE-REDS 实测）**：这道闸要挂的不是「引擎」这一个点，而是
+**每一处回答「这台引擎待会儿真会跑哪些边」的路**。原文只点了 `sessionPropRules`，于是
+`sim/change-impact.ts buildChangeImpactWorld`（变更传播预览）漏挂 —— 它直接吃
+`listPropagationRules(tenant, true)` 全量已发布集，沿一条引擎不会跑的还手边做 1:N 扇出展开：
+同一焦点**预览 5508 格 vs 真跑 1641 格**（`test/change-impact-preview.seam.test.ts` 头号判据
+「预览与实际一致」当场红）。已补挂，闸复用 `partitionAdversaryRules` 同一支。
+**形态**：「我用『引擎路挂了闸』当作『所有预告引擎行为的路都挂了闸』的证据，而前者并不度量后者。」
+⚠ **同族尚未收口的一处（只登记，未改）**：`app.ts POST …/counterfactual` 的**基线**跑仍用未过闸的
+`published`（反事实那一版用的是过了闸的 `active`）⇒ 关闭态下基线与真 tick 走的规则集不同，
+还手边一旦在基线里触发，其效果会被算进 `diffs` 记到「用户关了那条边」头上。今天种子世界里
+`Customer.receivablePressure` 恒 0 故未触发，属**潜伏**缺陷，无红测试守。
 
 **计算由谁做（仓主 2026-09-08 架构原则）**：「**所有计算原则上使用求解器而不是 agent(LLM) 来计算，
 agent 只负责调动工具、本体、规则等等输出结果，然后基于结果推演**」。本链路据此**切成两半**：
