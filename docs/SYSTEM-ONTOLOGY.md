@@ -1934,6 +1934,26 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 ⚠ **只写 `defaultOn:false` 拦不住 demo 租户** —— L2 行业模板对 battery 是「ALL_FEATURE_KEYS 全开减暗发集」；
 实测未进暗发集时 `resolve("demo")` 里它**在**（金丝雀：同为 `defaultOn:false` 的 `sim.checkpoint` **同样在**）。
 关闭态下还手边被 `sessionPropRules` 滤出引擎，**目录仍可见**（§3.3「关掉的边要可见地降级，不是从图上消失」）。
+⚠ **2026-09-09 订正（WO-B9-DATACORE-REDS 实测）**：这道闸要挂的不是「引擎」这一个点，而是
+**每一处回答「这台引擎待会儿真会跑哪些边」的路**。原文只点了 `sessionPropRules`，于是
+`sim/change-impact.ts buildChangeImpactWorld`（变更传播预览）漏挂 —— 它直接吃
+`listPropagationRules(tenant, true)` 全量已发布集，沿一条引擎不会跑的还手边做 1:N 扇出展开：
+同一焦点**预览 5508 格 vs 真跑 1641 格**（`test/change-impact-preview.seam.test.ts` 头号判据
+「预览与实际一致」当场红）。已补挂，闸复用 `partitionAdversaryRules` 同一支。
+**形态**：「我用『引擎路挂了闸』当作『所有预告引擎行为的路都挂了闸』的证据，而前者并不度量后者。」
+⚠ **同族尚未收口的一处（只登记，未改）**：`app.ts POST …/counterfactual` 的**基线**跑仍用未过闸的
+`published`（反事实那一版用的是过了闸的 `active`）⇒ 关闭态下基线与真 tick 走的规则集不同，
+还手边一旦在基线里触发，其效果会被算进 `diffs` 记到「用户关了那条边」头上。今天种子世界里
+`Customer.receivablePressure` 恒 0 故未触发，属**潜伏**缺陷。
+⚠ **2026-09-09 实测订正本段自己的上一句**：原文写「**无红测试守**」——**不准，照它读会以为这条踩下去悄无声息**。
+实测 `edge-active-counterfactual.test.ts` 那句 `expect(out.suppressedRulesFiredInBaseline).toEqual([RULE_KEY])`
+是一根**绊线**：闸关着时还手边本就在 `suppressedRules` 里，而基线跑的是未过闸的 `published` ⇒
+它一旦真触发就落进 `suppressedRulesFiredInBaseline`，该断言当场红。
+探针（临时、未进正线）：`Customer.receivablePressure` 喂 30（> 容忍线 12）·n=3 ⇒
+`firedInBaseline` 从 `["demo_base_load_to_line_util"]` 变成
+`["demo_base_load_to_line_util","demo_customer_reaction_cut_order"]`，断言实测转红。
+⇒ 准确的说法是「**潜伏，但有一根绊线守着它转为显性的那一刻**」，不是「无人守」。
+**形态**：「我用『没有一条测试点名这个缺陷』当作『没有测试会因它变红』的证据，而前者并不度量后者。」
 
 **计算由谁做（仓主 2026-09-08 架构原则）**：「**所有计算原则上使用求解器而不是 agent(LLM) 来计算，
 agent 只负责调动工具、本体、规则等等输出结果，然后基于结果推演**」。本链路据此**切成两半**：

@@ -3220,7 +3220,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/sim/change-impact-preview", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.propagation");
     const body = parseBody(ChangeImpactPreviewRequestSchema, req.body ?? {});
-    const world = await buildChangeImpactWorld(repos, c.tenantId);
+    // 对抗方闸与引擎路（`sessionPropRules`）取同一个开关：预览要预的是**这台引擎待会儿真会跑的那些边**，
+    // 不是规则目录。目录路（`GET /sim/propagation-rules`）照旧不过滤 —— 那是"可见地降级"，两回事。
+    const world = await buildChangeImpactWorld(repos, c.tenantId, await features.enabled(c.tenantId, ADVERSARY_FEATURE_KEY));
     return previewChangeImpact(world, body.focus);
   });
   /**

@@ -41,6 +41,8 @@ interface LocusPlay {
 interface DecisionPlayOut {
   rootCause: { factorId: string } | null;
   options: { optionId: string }[];
+  /** 依据够不着而**诚实不下发**的战略方案（WO-DECISION-PLAY-OPTIONS）。 */
+  optionsOmitted: { optionId: string; label: string; reason: string }[];
   locusPlay?: LocusPlay;
 }
 
@@ -118,7 +120,22 @@ describe("WO-ORDER-JOURNEY · decision_play 落点挂载点 SEAM", () => {
     // 「上面三条战略」与「这个落点自己的解法」不许合并成一张表 —— 这句话必须在回包里。
     expect(lp.optionsNote).toContain("公司级战略");
     // 六维方案卡一条都没被动过（本单不改 options）。
-    expect(out.options.length).toBe(3);
+    //
+    // ⚠ 原写 `toBe(3)`。**行为是被有意改的**：`916c9112`（WO-DECISION-PLAY-OPTIONS，
+    //   与本文件 `d990676c` 同日、晚 51 分钟的另一条并行分支）给三条公司级战略加了
+    //   「依据可核对才下发」——方案的 `provenance.drillType/drillId` 必须能在本次归因树的
+    //   落点集里核对到，够不着就**诚实不下发**并在 `optionsOmitted` 逐条留名。该处原文：
+    //   「现金域根因…与份额域…树上没有长协/备份池 ⇒ 三条战略方案**一条都不下发**；
+    //     修前它们照样贴上去，这正是「贴上去的装饰」的实证」。
+    //   本用例**不传 metricKey** ⇒ 走缺省根因域，落到没有 LongTermAgreement/BackupSupplierPool
+    //   落点的那棵树上 ⇒ 3 → 0。写死的 3 度量的是「那天的缺省根因域恰好有长协落点」，
+    //   而这一行注释要说的是「**locus 块不许动 options**」——两者不是一回事。
+    // 判据回到注释的原意：与**不锚落点**的同一次调用逐项相同。locus 块哪天把 options 弄空/弄脏，这里当场红。
+    const bare = (await invoke(t, "decision_play", {})) as unknown as DecisionPlayOut;
+    expect(out.options).toEqual(bare.options);
+    // 金丝雀：别让「两边都空」把上面那条变成恒真 —— 三条卡必须**确实存在过**，
+    // 只是被诚实挡下；下发几条 + 留名几条恒等于 3。
+    expect(out.options.length + out.optionsOmitted.length).toBe(3);
   });
 
   it("OJ-3 · **对上率**：MaterialBatch 落点对到本单补的 cf-batch-idle，且精度是 TYPE（不许冒充 EXACT）", async () => {

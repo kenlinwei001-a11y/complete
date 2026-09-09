@@ -350,14 +350,21 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
 
     // 变异：删掉 `line_runs_work_order` 的全部实例（规则一条不动、条数一条不少）。
     // 若本门咬的是"规则条数"，这一步不会有任何影响 —— 那就说明门是装饰品。
+    //
+    // ⚠ 这一格原写死 `toBe(46)`，**三次随种子长而漂**（35 → 38 → 46 → 47）。最后一次是
+    //   `0c759423` 有意补的对抗方还手边 `demo_customer_reaction_cut_order`（Customer
+    //   --customer_places_order--> Order · PUBLISHED）。注释里早就写着判据是"删边前后同一个数"，
+    //   而代码写的是"这个数是 46" —— **写死的字面量并不度量那句话**，于是每补一条种子就假红一次，
+    //   把一道真门的注意力耗在改数字上。现按注释的原意**现取前后两次**：种子再长本条也不动，
+    //   而"变异误伤了规则表"这件事照样当场红。
+    const rulesBefore = (await t.repos.sim.listPropagationRules("demo", true)).length;
+    expect(rulesBefore).toBeGreaterThan(0); // 金丝雀：别在空规则集上比"前后相同"（0===0 恒真）
     const doomed = await t.repos.links.list("demo", (l) => l.type === "line_runs_work_order");
     expect(doomed.length).toBeGreaterThan(0); // 变异必须真的有东西可删
     for (const l of doomed) await t.repos.links.remove("demo", l.id);
     expect((await t.repos.links.list("demo", (l) => l.type === "line_runs_work_order")).length).toBe(0);
     // 规则条数**没变** —— 这正是"条数不度量链路通不通"的当场证据。
-    // （38 = 本档 35 + WO-SIM-ROOT-PROCUREMENT 的 3 条根源边；这里要的是"删边前后同一个数"，
-    //   不是"这个数是 35"——数字随种子长，判据不随。）
-    expect((await t.repos.sim.listPropagationRules("demo", true)).length).toBe(46);
+    expect((await t.repos.sim.listPropagationRules("demo", true)).length).toBe(rulesBefore);
 
     const baseSnapshot: Record<string, Record<string, number>> = {};
     for (const id of idsOf("Order")) baseSnapshot[id] = { demandPressure: 10 };

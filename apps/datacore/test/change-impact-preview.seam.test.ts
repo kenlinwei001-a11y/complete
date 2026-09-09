@@ -439,7 +439,8 @@ describe("WO-CHANGE-IMPACT-PREVIEW · 对抗审查 REAL-BUG 复发闸", () => {
       properties: [{ propKey: "g", dataType: "number", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
     });
     await t.repos.objects.put({ origin: { type: "MANUAL" }, id: "g1", tenantId: "demo", type: "Ghost", props: { g: 1 } });
-    const world = await buildChangeImpactWorld(t.repos, "demo");
+    // 第三参 = 对抗方闸（本用例断言的是"物化不过滤 status"，与闸无关，传 false 即 demo 租户真值）。
+    const world = await buildChangeImpactWorld(t.repos, "demo", false);
     expect(world.objects.some((o) => o.id === "g1")).toBe(true);
     // 且派生族的 ACTIVE 过滤仍然成立（DRAFT 类型的 derivedProperties 不进世界）。
     expect(world.derivedTypes.some((d) => d.typeKey === "Ghost")).toBe(false);

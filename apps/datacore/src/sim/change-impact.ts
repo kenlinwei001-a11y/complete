@@ -32,6 +32,7 @@
  *     unresolved[] 并写明「什么追不到、缺什么」；
  *   · items 空 + unresolved 空 = 焦点确为叶子（真没有下游），与「算不出来」在响应里分得开。
  */
+import { partitionAdversaryRules } from "@platform/contracts";
 import { evalArithmetic, parseAggregate } from "../ontology.js";
 import { parseExpression } from "../ruledsl.js";
 import type { Repos } from "../repo/repo.js";
@@ -627,7 +628,27 @@ export function recomputeStateVars(preview: ChangeImpactPreview): string[] {
 // 规则只 PUBLISHED；派生/规格/规则表达式各自按运行引擎同款过滤）
 // ---------------------------------------------------------------------------
 
-export async function buildChangeImpactWorld(repos: Repos, tenantId: string): Promise<ChangeImpactWorld> {
+/**
+ * @param adversaryEnabled 本租户 `sim.propagation.adversary` 的**resolve 之后**取值。
+ *
+ * ⛔ **必须由调用方传进来，不给默认值** —— 给了默认值就等于在这里替某个租户猜开关，
+ * 而这正是本参数要修的那个病：预览原先直接吃 `listPropagationRules(tenantId, true)`
+ * 全量已发布集，**没有对抗方闸**；而引擎路（`app.ts sessionPropRules → tickSimSessionWorld`）
+ * 有。开关关着时（demo 租户即是：`features.ts` 把 `sim.propagation.adversary` 放进暗发集，
+ * L2 battery 模板的「全开」减掉它）两边看到的规则集不同 ⇒
+ * **预览沿着一条引擎根本不会跑的边展开**，把波及面报大。
+ *
+ * 实测（`0c759423` 补进还手边 `demo_customer_reaction_cut_order`
+ * `Customer.receivablePressure --customer_places_order--> Order.orderChurn` 之后）：
+ * 同一个焦点，预览 **5508** 格 vs 真跑 **1641** 格 —— 多出来的 3867 格全部来自这一条边的
+ * 1:N 扇出（一个客户 → 名下全部订单，再顺着 `Order.costPressure → Customer.receivablePressure`
+ * 绕回去）。这不是"预览更保守"，是**预览在说假话**：用户照它按下去，那 3867 格一格都不会动。
+ */
+export async function buildChangeImpactWorld(
+  repos: Repos,
+  tenantId: string,
+  adversaryEnabled: boolean,
+): Promise<ChangeImpactWorld> {
   // 传导图物化**不过滤 status**——镜像 buildPropagationInputs（propagation-inputs.ts :72）：
   // propagateTick 的 typeOf/idsByType 收全类型对象，非 ACTIVE 类型的对象与边在真传导图里，
   // 预览少了它们 = recompute 桶假阴性（对抗审查实证：曾把派生族的 ACTIVE 过滤漏进图物化）。
@@ -645,7 +666,12 @@ export async function buildChangeImpactWorld(repos: Repos, tenantId: string): Pr
     toId: l.toId,
     linkKey: l.type,
   }));
-  const propagationRules = (await repos.sim.listPropagationRules(tenantId, true)).map((r) => ({
+  // 对抗方闸：**复用引擎那一支** `partitionAdversaryRules`，不在这里另抄一遍
+  // `reaction != null` 的判据 —— 抄一份就是第二套真相源，改一处漏一处（本仓已栽过）。
+  const propagationRules = partitionAdversaryRules(
+    await repos.sim.listPropagationRules(tenantId, true),
+    adversaryEnabled,
+  ).active.map((r) => ({
     key: r.key,
     sourceTypeKey: r.sourceTypeKey,
     sourceStateVar: r.sourceStateVar,
