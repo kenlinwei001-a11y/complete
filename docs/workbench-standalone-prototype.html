@@ -470,10 +470,7 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
 .resource-ontology-layout{display:grid;grid-template-columns:240px 1fr;gap:14px;margin-top:14px}.resource-domain-list{display:flex;flex-direction:column;gap:6px}.resource-domain-item{width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:8px;padding:10px 12px;cursor:pointer}.resource-domain-item.active{border-color:var(--blue);background:#eef5ff}.resource-list-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px}.resource-list-toolbar input{flex:1}.atomic-resource-list{display:grid;gap:8px}.atomic-resource-row{display:grid;grid-template-columns:1.3fr .8fr .7fr .7fr .8fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff;cursor:pointer}.atomic-resource-row:hover{border-color:var(--blue)}.resource-code{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted)}.constraint-badge{display:inline-block;padding:3px 7px;border-radius:999px;background:#f2f4f7;font-size:12px;margin:2px}.atomic-resource-detail{margin-top:14px}.hidden{display:none!important}.detail-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.detail-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.detail-tab{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer}.detail-tab.active{background:var(--blue);color:#fff;border-color:var(--blue)}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.constraint-table{width:100%;border-collapse:collapse}.constraint-table th,.constraint-table td{border-bottom:1px solid var(--line);padding:9px;text-align:left}.transport-card{border:1px solid var(--line);padding:12px;border-radius:10px;margin-bottom:8px}.ontology-chain{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ontology-node{padding:8px 10px;border-radius:8px;background:var(--soft);border:1px solid var(--line)}@media(max-width:900px){.resource-ontology-layout{grid-template-columns:1fr}.atomic-resource-row{grid-template-columns:1fr 1fr}.detail-grid{grid-template-columns:1fr}}
 
 </style>
-  
-<style id="resource-ontology-v2-style">
-.ontology-json{width:100%;min-height:320px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.55;background:#101826;color:#d9f2ff;border:1px solid #24344b;border-radius:10px;padding:12px;box-sizing:border-box}.ontology-editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.ontology-node-list,.ontology-rel-list{display:grid;gap:8px}.ontology-item{border:1px solid var(--line);border-radius:8px;padding:9px;background:#fff;display:flex;gap:8px;align-items:center}.ontology-item input{min-width:0;flex:1}.resource-create-page{max-width:1200px}.library-table{width:100%;border-collapse:collapse}.library-table th,.library-table td{padding:10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.library-link{cursor:pointer;color:var(--blue);text-decoration:underline}.ref-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid #cfe0f4;border-radius:999px;background:#f4f8fc;margin:3px;cursor:pointer}.ref-chip:hover{background:#eaf3fc}.multi-ref{width:100%;min-height:140px}.slice-graph{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fbfcfe;min-height:150px}.slice-graph-node{display:inline-block;margin:7px;padding:9px 11px;border:1px solid #cddceb;border-radius:9px;background:#fff}.slice-graph-edge{display:inline-block;color:#5d7085;margin:0 3px}.config-pane{display:none}.config-pane.active{display:block}@media(max-width:900px){.ontology-editor-grid{grid-template-columns:1fr}}
-</style></head>
+  </head>
   <body>
     <div class="app">
       <aside class="rail">
@@ -599,33 +596,9 @@ th, td { border-bottom: 1px solid var(--line); padding: 9px; text-align: left; }
   </div>
   <div class="resource-ontology-layout">
     <aside class="panel resource-domain-panel"><h3>资源域</h3><div id="resourceDomainList" class="resource-domain-list"></div></aside>
-    <main class="panel resource-list-panel"><div class="resource-list-toolbar"><input id="resourceSearch" placeholder="搜索原子资源、型号、用途或运输方式"/><select id="resourceStatusFilter"><option value="">全部状态</option><option>可调用</option><option>部分可用</option><option>不可用</option></select><span id="resourceListSummary" class="muted"></span></div><div id="atomicResourceList" class="atomic-resource-list"></div>
-</main>
+    <main class="panel resource-list-panel"><div class="resource-list-toolbar"><input id="resourceSearch" placeholder="搜索原子资源、型号、用途或运输方式"/><select id="resourceStatusFilter"><option value="">全部状态</option><option>可调用</option><option>部分可用</option><option>不可用</option></select><span id="resourceListSummary" class="muted"></span></div><div id="atomicResourceList" class="atomic-resource-list"></div></main>
   </div>
   <div id="atomicResourceDetail" class="panel atomic-resource-detail hidden"></div>
-</section>
-
-<section id="resourceCreate" class="view resource-create-page">
-  <div class="panel">
-    <div class="detail-head"><div><h2>新增原子资源 · 本体切片建模</h2><p>输入节点名称后自动生成至少 5 个关联节点的本体切片，可继续人工编辑节点、关系、运输约束引用和约束条件引用。</p></div><button id="backToResourcesFromCreate" class="secondary" type="button">← 返回资源库</button></div>
-    <div class="form-grid" style="margin-top:14px">
-      <label>原子资源名称<input id="newAtomicName" placeholder="例如：RP-3航空煤油"></label>
-      <label>资源域<input id="newAtomicDomain" placeholder="例如：燃料能源"></label>
-      <label>资源品类<input id="newAtomicCategory" placeholder="例如：航空燃油"></label>
-      <label>计量单位<input id="newAtomicUnit" value="吨"></label>
-      <button id="generateOntologySliceBtn" class="primary" type="button">自动创建本体切片</button>
-    </div>
-  </div>
-  <div class="panel">
-    <h2>本体切片编辑器</h2><div id="newOntologyEditor"></div>
-  </div>
-  <div class="panel">
-    <div class="ontology-editor-grid">
-      <div><h3>引用运输约束库</h3><select id="newTransportRefs" class="multi-ref" multiple></select></div>
-      <div><h3>引用约束条件库</h3><select id="newConstraintRefs" class="multi-ref" multiple></select></div>
-    </div>
-    <div class="card-actions" style="margin-top:14px"><button id="saveNewAtomicResource" class="primary" type="button">保存原子资源</button></div>
-  </div>
 </section>
 
         <section id="studio" class="view">
@@ -1086,37 +1059,8 @@ const embeddedInitialDb = {"users":[{"id":"u_admin","name":"张工","role":"admi
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function logLocal(userId, action, detail) { return { id: "log_" + Date.now() + "_" + Math.random().toString(16).slice(2), userId, action, detail, createdAt: new Date().toISOString() }; }
 function readLocalDb() {
-  // 完整执行链修复：历史 localStorage 不再直接替换整套初始数据。
-  // 对每个集合做基线合并，避免旧版本/异常版本把语料库等模块保存成空数组后永久“清空”。
-  let saved = null;
-  try {
-    const raw = localStorage.getItem("standaloneWorkbenchDb");
-    saved = raw ? JSON.parse(raw) : null;
-  } catch (error) {
-    console.error("本地工作台数据损坏，已回退到内置基线", error);
-  }
-  const base = clone(embeddedInitialDb);
-  if (!saved || typeof saved !== "object") return base;
-  const merged = { ...base, ...saved };
-  const collections = ["users","projects","reports","corpora","rules","gates","auditLogs","knowledge","news","bids","functions","tools","links"];
-  for (const key of collections) {
-    const baseRows = Array.isArray(base[key]) ? base[key] : [];
-    const savedRows = Array.isArray(saved[key]) ? saved[key] : [];
-    // 关键：空数组视为异常/旧版本占位，不覆盖内置基线。
-    if (!savedRows.length) { merged[key] = baseRows; continue; }
-    const map = new Map(savedRows.filter(Boolean).map((x, i) => [x && x.id ? x.id : `__idx_${i}`, x]));
-    const used = new Set();
-    const rows = baseRows.map((b, i) => {
-      const keyId = b && b.id ? b.id : `__idx_${i}`;
-      const v = map.get(keyId);
-      if (v) used.add(keyId);
-      return v && typeof v === "object" ? { ...b, ...v } : b;
-    });
-    for (const [id, v] of map) if (!used.has(id)) rows.push(v);
-    merged[key] = rows;
-  }
-  merged.validations = (saved.validations && typeof saved.validations === "object") ? saved.validations : (base.validations || {});
-  return merged;
+  const saved = localStorage.getItem("standaloneWorkbenchDb");
+  return saved ? JSON.parse(saved) : clone(embeddedInitialDb);
 }
 function writeLocalDb(db) {
   localStorage.setItem("standaloneWorkbenchDb", JSON.stringify(db));
@@ -1701,82 +1645,18 @@ const ATOMIC_RESOURCE_LIBRARY = (()=>{
   other.forEach(x=>add(x[3],x[0].includes('人员')?'专业人员':x[0].includes('电')?'装备':x[0],x[0],x[1],x[2],x[2]*0.78,'应急保障机构', [['人员/设备可用性','受在岗状态和维护状态限制'],['任务覆盖','受调度距离与持续工作时间限制']], [['车辆运输','按设备尺寸/人数','道路可通行']], [['任务消耗','按使用时长或任务次数']], ['人员','车辆','通信/电力保障']));
   return rows;
 })();
-let atomicResourceState=[];
-// 提前声明：loadAtomicResourceState() 在下方立即调用并回写 resourceState，晚声明会触发 TDZ。
-let resourceState=[];
-function loadAtomicResourceState(){
-  // 永远先恢复 HTML 内置的完整原子资源基线；localStorage 只能覆盖同编码的字段，不能删除基线资源。
-  const base = Array.isArray(ATOMIC_RESOURCE_LIBRARY) ? ATOMIC_RESOURCE_LIBRARY.map(x=>JSON.parse(JSON.stringify(x))) : [];
-  let saved=[];
-  try {
-    const raw=localStorage.getItem('workbench-atomic-resource-library');
-    const parsed=raw ? JSON.parse(raw) : [];
-    saved=Array.isArray(parsed)?parsed:[];
-  } catch(e) { console.warn('原子资源本地数据损坏，忽略并恢复内置资源',e); saved=[]; }
-  const byCode=new Map(saved.filter(x=>x&&typeof x==='object'&&x.code).map(x=>[String(x.code),x]));
-  atomicResourceState=base.map(x=>{
-    const patch=byCode.get(String(x.code));
-    // 不允许历史数据用空值/空数组覆盖内置约束和运输关系
-    if(!patch) return x;
-    const merged={...x,...patch};
-    if(!Array.isArray(patch.constraints)||patch.constraints.length===0) merged.constraints=x.constraints;
-    if(!Array.isArray(patch.transport)||patch.transport.length===0) merged.transport=x.transport;
-    if(!Array.isArray(patch.consumption)||patch.consumption.length===0) merged.consumption=x.consumption;
-    if(!Array.isArray(patch.deps)||patch.deps.length===0) merged.deps=x.deps;
-    return merged;
-  });
-  const custom=saved.filter(x=>x&&x.custom===true&&x.code&&!byCode.has('__never__'));
-  for(const item of custom){ if(!atomicResourceState.some(x=>x.code===item.code)) atomicResourceState.push(item); }
-  // 最终安全兜底：基线存在时资源库绝不能为空
-  if(atomicResourceState.length===0 && base.length) atomicResourceState=base;
-  resourceState=atomicResourceState;
-  return atomicResourceState;
+/* 资源库执行链统一：数据源/渲染/事件绑定全部由文件末尾的 resource-module-single 接管。
+   这里只保留向后兼容的转发桩，任何历史调用点都汇聚到同一个模块，不再产生第二套渲染。 */
+function loadAtomicResourceState(){ return window.__RESOURCE_MODULE__ ? window.__RESOURCE_MODULE__.reload() : []; }
+function renderResources(){ if (window.__RESOURCE_MODULE__) window.__RESOURCE_MODULE__.render(); }
+function wireResources(){ /* 事件绑定由唯一模块内部一次性委托完成，此处不再重复绑定 */ }
+function openAtomicResource(id){ if (window.__RESOURCE_MODULE__) window.__RESOURCE_MODULE__.open(id); }
+function openResourceDetailById(id){
+  if (typeof window.__switchWorkbenchView === 'function') window.__switchWorkbenchView('resources');
+  else if (typeof show === 'function') show('resources');
+  openAtomicResource(id);
 }
-loadAtomicResourceState();
-let activeResourceDomain='全部', activeResourceId=null, activeResourceTab='基础信息';
-function resourceDomains(){return ['全部',...Array.from(new Set(atomicResourceState.map(x=>x.domain)))];}
-function renderResources(){
-  const k=document.getElementById('atomicResourceKpis'); if(!k)return;
-  const total=atomicResourceState.reduce((s,x)=>s+(+x.total||0),0), avail=atomicResourceState.reduce((s,x)=>s+(+x.available||0),0), constraints=atomicResourceState.reduce((s,x)=>s+(x.constraints||[]).length,0), types=atomicResourceState.length;
-  k.innerHTML=[['原子资源',types,'个'],['资源总量',total.toLocaleString(),'库存/能力汇总'],['当前可调用',avail.toLocaleString(),'可调度能力'],['约束条件',constraints,'条'],['资源域',resourceDomains().length-1,'个']].map(x=>`<div class="kpi"><span>${x[0]}</span><b>${x[1]}</b><small>${x[2]}</small></div>`).join('');
-  document.getElementById('resourceDomainList').innerHTML=resourceDomains().map(d=>`<button class="resource-domain-item ${d===activeResourceDomain?'active':''}" data-domain="${d}">${d}<span style="float:right">${d==='全部'?atomicResourceState.length:atomicResourceState.filter(x=>x.domain===d).length}</span></button>`).join('');
-  document.querySelectorAll('[data-domain]').forEach(b=>b.onclick=()=>{activeResourceDomain=b.dataset.domain;renderResources()});
-  const q=(document.getElementById('resourceSearch')?.value||'').toLowerCase(), status=document.getElementById('resourceStatusFilter')?.value||'';
-  const rows=atomicResourceState.filter(x=>(activeResourceDomain==='全部'||x.domain===activeResourceDomain)&&(!status||x.status===status)&&(!q||[x.name,x.category,x.domain,x.code,...(x.transport||[]).map(t=>t[0])].join(' ').toLowerCase().includes(q)));
-  document.getElementById('resourceListSummary').textContent=`显示 ${rows.length} / ${atomicResourceState.length} 个原子资源`;
-  document.getElementById('atomicResourceList').innerHTML=rows.map(x=>`<div class="atomic-resource-row" data-resource-open="${x.id}"><div><b>${x.name}</b><div class="resource-code">${x.code} · ${x.domain} / ${x.category}</div></div><div>总量 <b>${x.total}</b> ${x.unit}</div><div>可用 <b>${x.available}</b> ${x.unit}</div><div><span class="tag">${x.status}</span></div><div>${(x.constraints||[]).length} 条约束<br><small>${(x.transport||[]).length} 种运输关系</small></div><button class="secondary" type="button">详情</button></div>`).join('');
-  document.querySelectorAll('[data-resource-open]').forEach(el=>el.onclick=()=>openAtomicResource(el.dataset.resourceOpen));
-  document.getElementById('resourceSearch').oninput=()=>renderResources(); document.getElementById('resourceStatusFilter').onchange=()=>renderResources();
-}
-// 资源库硬恢复：任何渲染异常都先恢复基线，再输出可诊断信息，避免空白页面。
-const __renderResourcesCore = renderResources;
-renderResources = function(){
-  if(!Array.isArray(atomicResourceState) || atomicResourceState.length===0) loadAtomicResourceState();
-  return __renderResourcesCore();
-};
-function openAtomicResource(id){activeResourceId=id;activeResourceTab='基础信息';renderAtomicResourceDetail();document.getElementById('atomicResourceDetail').scrollIntoView({behavior:'smooth',block:'start'});}
-function openResourceDetailById(id){showView('resources');openAtomicResource(id);}
-function renderAtomicResourceDetail(){
-  const r=atomicResourceState.find(x=>String(x.id)===String(activeResourceId)), box=document.getElementById('atomicResourceDetail'); if(!r)return;
-  box.classList.remove('hidden'); const tabs=['基础信息','库存现状','存储位置','运输约束','消耗模型','依赖与图谱'];
-  const tab=t=>`<button class="detail-tab ${activeResourceTab===t?'active':''}" data-rtab="${t}">${t}</button>`;
-  let content='';
-  if(activeResourceTab==='基础信息')content=`<div class="detail-grid"><label>资源名称<input id="arName" value="${r.name}"></label><label>资源编码<input value="${r.code}" disabled></label><label>资源域<input id="arDomain" value="${r.domain}"></label><label>资源品类<input id="arCategory" value="${r.category}"></label><label>单位<input id="arUnit" value="${r.unit}"></label><label>状态<select id="arStatus"><option ${r.status==='可调用'?'selected':''}>可调用</option><option ${r.status==='部分可用'?'selected':''}>部分可用</option><option ${r.status==='不可用'?'selected':''}>不可用</option></select></label></div>`;
-  if(activeResourceTab==='库存现状')content=`<div class="detail-grid"><label>总数量<input id="arTotal" type="number" value="${r.total}"></label><label>可用数量<input id="arAvailable" type="number" value="${r.available}"></label><label>预占数量<input id="arReserved" type="number" value="${r.reserved||0}"></label><div class="panel-lite"><h3>有效可调度能力</h3><p><b>${Math.max(0,(+r.available||0)-(+r.reserved||0))}</b> ${r.unit}</p><small>Effective Available = Available − Reserved</small></div></div>`;
-  if(activeResourceTab==='存储位置')content=`<div class="detail-grid"><label>所在区域/机构<input id="arLocation" value="${r.location}"></label><div class="panel-lite"><h3>存储/部署约束</h3>${(r.constraints||[]).filter(x=>/库存|储存|冷链|安全/.test(x[0]+x[1])).map(x=>`<p><b>${x[0]}</b>：${x[1]}</p>`).join('')||'<p>可配置仓储容量、温控、安全库存和部署条件。</p>'}</div></div>`;
-  if(activeResourceTab==='运输约束')content=`<table class="constraint-table"><thead><tr><th>运输工具</th><th>单次装载能力</th><th>约束条件</th></tr></thead><tbody>${(r.transport||[]).map(x=>`<tr><td>${x[0]}</td><td>${x[1]}</td><td>${x[2]}</td></tr>`).join('')||'<tr><td colspan="3">该资源暂未配置运输关系</td></tr>'}</tbody></table><h3 style="margin-top:14px">资源约束条件</h3>${(r.constraints||[]).map(x=>`<span class="constraint-badge"><b>${x[0]}</b>：${x[1]}</span>`).join('')}`;
-  if(activeResourceTab==='消耗模型')content=`<h3>消耗/能力模型</h3>${(r.consumption||[]).map(x=>`<div class="transport-card"><b>${x[0]}</b><p>${x[1]}</p></div>`).join('')||'<p>可配置单位任务消耗、单位工时能力或人均保障标准。</p>'}`;
-  if(activeResourceTab==='依赖与图谱')content=`<div class="ontology-chain"><span class="ontology-node">${r.domain}</span><b>→</b><span class="ontology-node">${r.category}</span><b>→</b><span class="ontology-node">${r.name}</span>${(r.deps||[]).map(d=>`<b>→</b><span class="ontology-node">依赖：${d}</span>`).join('')}</div><h3 style="margin-top:18px">约束节点</h3>${(r.constraints||[]).map(x=>`<div class="transport-card"><b>CONSTRAINED_BY · ${x[0]}</b><p>${x[1]}</p></div>`).join('')}`;
-  box.innerHTML=`<div class="detail-head"><div><h2>${r.name}</h2><p>${r.code} · ${r.domain} / ${r.category}</p></div><button id="closeAtomicDetail" class="secondary">关闭详情</button></div><div class="detail-tabs">${tabs.map(tab).join('')}</div><div id="resourceDetailContent">${content}</div><div class="card-actions" style="margin-top:16px"><button id="saveAtomicDetail" class="primary">保存修改</button></div>`;
-  document.querySelectorAll('[data-rtab]').forEach(b=>b.onclick=()=>{activeResourceTab=b.dataset.rtab;renderAtomicResourceDetail()}); document.getElementById('closeAtomicDetail').onclick=()=>box.classList.add('hidden');
-  document.getElementById('saveAtomicDetail').onclick=()=>{const set=(id,key,number=false)=>{const e=document.getElementById(id);if(e)r[key]=number?(Number(e.value)||0):e.value};set('arName','name');set('arDomain','domain');set('arCategory','category');set('arUnit','unit');set('arStatus','status');set('arTotal','total',true);set('arAvailable','available',true);set('arReserved','reserved',true);set('arLocation','location'); localStorage.setItem('workbench-atomic-resource-library',JSON.stringify(atomicResourceState)); renderResources(); toast('原子资源已保存');};
-}
-function wireResources(){
-  document.getElementById('addAtomicResourceBtn')?.addEventListener('click',()=>{const id='custom_'+Date.now();atomicResourceState.push({id,code:'CUSTOM-'+Date.now().toString().slice(-6),domain:'自定义资源域',category:'自定义品类',name:'新原子资源',unit:'个',total:0,available:0,reserved:0,location:'待填写',status:'可调用',constraints:[['调度条件','待配置']],transport:[],consumption:[],deps:[],custom:true});renderResources();openAtomicResource(id)});
-  document.getElementById('saveAtomicResourceBtn')?.addEventListener('click',()=>{localStorage.setItem('workbench-atomic-resource-library',JSON.stringify(atomicResourceState));toast('资源本体库已保存')});
-}
-// Backward compatibility with old callers
-resourceState=atomicResourceState;
+function atomicResources(){ return window.__RESOURCE_MODULE__ ? window.__RESOURCE_MODULE__.list() : []; }
 
 function renderWizard() {
   document.querySelectorAll("[data-import-mode]").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll("[data-import-mode]").forEach(x=>x.classList.toggle("active",x===btn)); document.querySelectorAll("[data-import-pane]").forEach(x=>x.classList.toggle("active",x.dataset.importPane===btn.dataset.importMode));}));
@@ -2917,8 +2797,7 @@ currentUserId = localStorage.getItem("currentUserId") || currentUserId;
 load().catch((error) => toast(error.message));
 
 
-// Atomic resource library independent execution chain
-document.addEventListener('DOMContentLoaded',()=>{try{loadAtomicResourceState();resourceState=atomicResourceState;renderResources();wireResources();}catch(e){console.error('Atomic resource init failed',e)}});
+// 资源库初始化由文件末尾的 resource-module-single 自举，不再保留第二条独立执行链。
 
 
 /* ===== 交互执行链修复：统一事件委托 + 安全初始化 ===== */
@@ -2939,16 +2818,10 @@ document.addEventListener('DOMContentLoaded',()=>{try{loadAtomicResourceState();
       if (el.dataset && el.dataset.view) { event.preventDefault(); safeCall(()=>show(el.dataset.view)); return; }
       if (el.dataset && el.dataset.chainView) { event.preventDefault(); safeCall(()=>show(el.dataset.chainView)); return; }
       if (el.dataset && el.dataset.resourceOpen) { event.preventDefault(); safeCall(()=>openAtomicResource(el.dataset.resourceOpen)); return; }
-      if (el.matches('#addAtomicResourceBtn')) { event.preventDefault(); safeCall(()=>{const id='custom_'+Date.now(); atomicResourceState.push({id,code:'CUSTOM-'+Date.now().toString().slice(-6),domain:'自定义资源域',category:'自定义品类',name:'新原子资源',unit:'个',total:0,available:0,reserved:0,location:'待填写',status:'可调用',constraints:[['调度条件','待配置']],transport:[],consumption:[],deps:[],custom:true}); renderResources(); openAtomicResource(id);}); return; }
-      if (el.matches('#saveAtomicResourceBtn')) { event.preventDefault(); safeCall(()=>{localStorage.setItem('workbench-atomic-resource-library',JSON.stringify(atomicResourceState)); toast('资源本体库已保存');}); return; }
-      if (el.matches('#closeAtomicDetail')) { event.preventDefault(); const b=document.getElementById('atomicResourceDetail'); if(b)b.classList.add('hidden'); return; }
     }, true);
     safeRenderResources();
-    setTimeout(safeRenderResources, 50);
-    setTimeout(safeRenderResources, 300);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, {once:true}); else boot();
-  window.addEventListener('load', safeRenderResources);
 })();
 </script>
   
@@ -2963,12 +2836,9 @@ document.addEventListener('DOMContentLoaded',()=>{try{loadAtomicResourceState();
     view.classList.add('active');
     document.querySelectorAll('.nav[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===id));
     const title=document.getElementById('pageTitle'); if(title) title.textContent=titles[id]||id;
-    if(id==='resources'){
-      try{
-        if(typeof loadAtomicResourceState==='function') loadAtomicResourceState();
-        if(typeof renderResources==='function') renderResources();
-        if(typeof wireResources==='function') wireResources();
-      }catch(e){ console.error('资源库渲染失败',e); }
+    if(id==='resources' && window.__RESOURCE_MODULE__){
+      // 唯一渲染入口：不再各自 load/render/wire，避免重复执行链。
+      try{ window.__RESOURCE_MODULE__.render(); }catch(e){ console.error('资源库渲染失败',e); }
     }
     window.scrollTo({top:0,behavior:'auto'});
     return true;
@@ -2989,243 +2859,339 @@ document.addEventListener('DOMContentLoaded',()=>{try{loadAtomicResourceState();
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true}); else init();
 })();
-
-/* ===== 全局数据与渲染执行链审计修复 ===== */
-(function(){
-  const originalLoad = window.load;
-  const baselineCorpusIds = new Set(['c_research','c_hidden']);
-  function ensureCoreData(){
-    try {
-      if (!Array.isArray(state.corpora) || state.corpora.length === 0) {
-        const base = clone(embeddedInitialDb);
-        state.corpora = base.corpora || [];
-      }
-      const base = clone(embeddedInitialDb);
-      if (Array.isArray(base.corpora)) {
-        const have = new Set((state.corpora||[]).map(x=>x&&x.id));
-        base.corpora.forEach(x=>{ if(x && x.id && !have.has(x.id)) state.corpora.push(x); });
-      }
-      if (!Array.isArray(atomicResourceState) || atomicResourceState.length === 0) loadAtomicResourceState();
-    } catch(e){ console.error('核心数据恢复失败',e); }
-  }
-  function safeRender(fn){ try { fn && fn(); } catch(e){ console.error('独立渲染失败',e); } }
-  function repairAndRender(){
-    ensureCoreData();
-    safeRender(renderCorpus);
-    safeRender(renderResources);
-    safeRender(wireResources);
-  }
-  // 页面解析完成、完整 load 结束、以及异步 load 后均独立校验，避免任意模块异常清空核心页面。
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', repairAndRender, {once:true});
-  else repairAndRender();
-  window.addEventListener('load', ()=>setTimeout(repairAndRender, 0), {once:true});
-  setTimeout(repairAndRender, 100);
-  setTimeout(repairAndRender, 500);
-})();
 </script>
 
 
-<script>
-/* ===== 资源库完全独立重建：不依赖 state / localStorage / 旧 renderResources 执行链 ===== */
-(function(){
-  const seed={
-    '资金资源':['应急专项资金','中央专项救灾资金','地方财政应急资金','社会捐赠资金','应急周转资金'],
-    '燃料能源':['92号汽油','95号汽油','0号柴油','-10号柴油','RP-3航空煤油','Jet A-1航空燃油','液化天然气','发电机燃料'],
-    '航空资源':['Mi-171运输直升机','AC313直升机','Ka-32消防直升机','Bell 412救援直升机','固定翼运输机'],
-    '无人机资源':['多旋翼侦察无人机','固定翼测绘无人机','垂直起降无人机','重载运输无人机','长航时通信无人机'],
-    '医疗资源':['普通床位','ICU床位','急诊床位','创伤救治床位','隔离床位','急诊医生','创伤外科医生','麻醉医生','护士','急救人员'],
-    '血液资源':['O型红细胞','A型红细胞','B型红细胞','AB型红细胞','血浆','血小板'],
-    '消防资源':['消防水罐车','泡沫消防车','抢险救援消防车','举高消防车','消防救援人员'],
-    '地面车辆':['救护车','重型运输货车','中型运输货车','越野救援车','指挥车辆'],
-    '工程抢险资源':['挖掘机','装载机','起重机','推土机','道路抢通车辆'],
-    '生活与安置资源':['救灾帐篷','折叠床','棉被','饮用水','即食食品','活动板房','移动厕所','保暖衣物'],
-    '通信资源':['卫星电话','应急基站','应急通信车','短波电台','卫星便携站'],
-    '电力资源':['应急发电机','移动电源','移动变电设备','应急照明塔','储能电源'],
-    '搜救资源':['生命探测仪','破拆工具组','搜救犬','热成像仪','无人生命探测设备'],
-    '人员资源':['专业地震救援人员','医疗救援人员','工程抢险人员','志愿者','心理救援人员'],
-    '仓储物流资源':['区域物资仓库','冷链仓库','油料储罐','应急装卸设备','移动仓储单元'],
-    '水运资源':['应急运输船','冲锋舟','橡皮艇','救援艇','浮桥装备'],
-    '防疫资源':['口罩','防护服','消杀设备','移动检测设备','疫苗冷链箱'],
-    '后勤保障资源':['野战厨房','移动淋浴车','移动洗衣设备','应急厕所保障车','后勤保障人员'],
-    '特种装备':['生命支持设备','移动CT','卫星遥感设备','应急机器人','重型破拆装备'],
-    '道路与通行资源':['道路抢通能力','桥梁通行能力','临时便道','应急交通管制资源','道路监测设备']
+<style id="resource-module-single-style">
+#resources .rm-graph{width:100%;max-width:760px;height:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
+#resources .rm-graph text{font-size:11px;fill:#182230}
+#resources .rm-graph line{stroke:#c7d3e0;stroke-width:1.4}
+#resources .rm-kv{display:grid;grid-template-columns:180px 1fr;gap:6px 12px;margin:10px 0}
+#resources .rm-kv b{color:var(--muted);font-weight:600}
+#resources .rm-empty{color:var(--muted);padding:18px 0}
+</style>
+<script id="resource-module-single">
+/* =============================================================================
+   资源库唯一执行链（Single Source · Single Render · Single Wiring）
+   本模块是 #resources 的唯一属主。此前的三套并存实现已全部删除：
+     1) 旧 atomicResourceState / renderResources / wireResources 直接渲染链
+     2) resource-module-replacement（RESOURCE_MODULE_V1，整体 innerHTML 替换）
+     3) resource-module-final-hard-replacement（再次替换 + MutationObserver 抢 DOM）
+   约定：
+     - 唯一数据源  ATOMIC_RESOURCE_LIBRARY 完整基线 + 唯一持久化键 STORE_KEY 字段级合并
+     - 唯一渲染    只有 render() 写 #atomicResourceKpis/#resourceDomainList/
+                   #atomicResourceList/#atomicResourceDetail，不整体替换 #resources
+     - 唯一绑定    #resources 上一次性事件委托，重绘不重复绑定、不产生监听器泄漏
+   ============================================================================= */
+(function () {
+  'use strict';
+
+  var STORE_KEY = 'workbench.resource-store.v2';
+  var LEGACY_KEY = 'workbench-atomic-resource-library';
+
+  var esc = function (v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
   };
-  const units={ '资金资源':'万元','燃料能源':'吨','航空资源':'架','无人机资源':'架','医疗资源':'个/人','血液资源':'单位','消防资源':'辆/人','地面车辆':'辆','工程抢险资源':'台/辆','生活与安置资源':'套/吨','通信资源':'套','电力资源':'台/套','搜救资源':'套/只','人员资源':'人','仓储物流资源':'处/套','水运资源':'艘/套','防疫资源':'套/件','后勤保障资源':'套/人','特种装备':'套','道路与通行资源':'项' };
-  const data=[]; let n=1;
-  Object.entries(seed).forEach(([domain,names])=>names.forEach(name=>{
-    const total= domain==='资金资源'?10000+n*500:domain==='医疗资源'?1000+n*80:100+n*20;
-    data.push({id:'fallback_'+n,code:'FB-'+String(n).padStart(4,'0'),domain,name,unit:units[domain]||'个',total,available:Math.max(1,Math.floor(total*.78)),status:'可调用',constraints:['库存/能力上限','调度可用性','人员与设备依赖'],transport: domain==='燃料能源'?['20吨油罐车：20吨/次','30吨油罐车：30吨/次','铁路罐车：50吨/次']:['道路运输：受道路通行条件限制'],location:'应急保障储备点'}); n++;
-  }));
-  window.__resourceFallbackData=data;
-  function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
-  function renderStandalone(){
-    const k=document.getElementById('atomicResourceKpis'), dl=document.getElementById('resourceDomainList'), list=document.getElementById('atomicResourceList');
-    if(!k||!dl||!list) return false;
-    const domains=['全部',...seed?Object.keys(seed):[]];
-    const active=window.__fallbackDomain||'全部'; const q=(document.getElementById('resourceSearch')?.value||'').trim().toLowerCase();
-    const status=document.getElementById('resourceStatusFilter')?.value||'';
-    const rows=data.filter(x=>(active==='全部'||x.domain===active)&&(!status||x.status===status)&&(!q||(`${x.name} ${x.domain} ${x.code} ${x.transport.join(' ')}`).toLowerCase().includes(q)));
-    k.innerHTML=`<div class="kpi"><span>原子资源</span><b>${data.length}</b><small>个</small></div><div class="kpi"><span>资源域</span><b>${Object.keys(seed).length}</b><small>个</small></div><div class="kpi"><span>当前可调用</span><b>${data.reduce((s,x)=>s+x.available,0).toLocaleString()}</b><small>能力汇总</small></div><div class="kpi"><span>资源约束</span><b>${data.length*3}</b><small>条</small></div>`;
-    dl.innerHTML=domains.map(d=>`<button class="resource-domain-item ${d===active?'active':''}" data-fb-domain="${esc(d)}">${esc(d)}<span style="float:right">${d==='全部'?data.length:data.filter(x=>x.domain===d).length}</span></button>`).join('');
-    list.innerHTML=rows.map(x=>`<div class="atomic-resource-row" data-fb-open="${x.id}"><div><b>${esc(x.name)}</b><div class="resource-code">${x.code} · ${esc(x.domain)}</div></div><div>总量 <b>${x.total}</b> ${esc(x.unit)}</div><div>可用 <b>${x.available}</b> ${esc(x.unit)}</div><div><span class="tag">${x.status}</span></div><div>${x.constraints.length} 条约束<br><small>${x.transport.length} 种运输关系</small></div><button class="secondary" type="button">详情</button></div>`).join('') || '<div class="empty-note">没有符合条件的资源。</div>';
-    const summary=document.getElementById('resourceListSummary'); if(summary)summary.textContent=`显示 ${rows.length} / ${data.length} 个原子资源`;
-    dl.querySelectorAll('[data-fb-domain]').forEach(b=>b.onclick=()=>{window.__fallbackDomain=b.dataset.fbDomain;renderStandalone();});
-    list.querySelectorAll('[data-fb-open]').forEach(r=>r.onclick=()=>openStandalone(r.dataset.fbOpen));
-    const search=document.getElementById('resourceSearch'); if(search) search.oninput=renderStandalone;
-    const filter=document.getElementById('resourceStatusFilter'); if(filter) filter.onchange=renderStandalone;
-    return true;
+  var clone = function (v) { return JSON.parse(JSON.stringify(v)); };
+  var num = function (v) { return Number(v) || 0; };
+  var notify = function (msg) { if (typeof toast === 'function') toast(msg); else console.info('[资源库]', msg); };
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---- 本体切片（旧 RESOURCE_MODULE_V1 的能力，并入唯一模块）-----------------
+  function buildSlice(r) {
+    var id = r.id, med = /医疗|血液/.test(r.domain || '');
+    return {
+      resourceId: id,
+      nodes: [
+        { id: id, type: 'AtomicResource', name: r.name },
+        { id: id + '_facility', type: 'StorageFacility', name: med ? '医疗机构' : '资源储存/部署设施' },
+        { id: id + '_equipment', type: 'LoadingEquipment', name: med ? '专业医疗设备' : '装卸/调拨设备' },
+        { id: id + '_carrier', type: 'TransportCarrier', name: (r.transport && r.transport[0] && r.transport[0][0]) || '运输工具' },
+        { id: id + '_person', type: 'Personnel', name: med ? '专业医护人员' : '专业操作人员' },
+        { id: id + '_task', type: 'EmergencyTask', name: '应急保障任务' }
+      ],
+      relations: [
+        { source: id, predicate: 'STORED_IN', target: id + '_facility' },
+        { source: id, predicate: 'LOADED_BY', target: id + '_equipment' },
+        { source: id, predicate: 'TRANSPORTED_BY', target: id + '_carrier' },
+        { source: id + '_person', predicate: 'OPERATES', target: id + '_carrier' },
+        { source: id, predicate: 'SUPPORTS', target: id + '_task' }
+      ]
+    };
   }
-  function openStandalone(id){
-    const x=data.find(v=>v.id===id), box=document.getElementById('atomicResourceDetail'); if(!x||!box)return;
-    box.classList.remove('hidden');
-    box.innerHTML=`<div class="detail-head"><div><h2>${esc(x.name)}</h2><p>${x.code} · ${esc(x.domain)}</p></div><button class="secondary" type="button" id="fbClose">关闭详情</button></div><div class="detail-tabs"><button class="detail-tab active">基础信息</button><button class="detail-tab">运输约束</button><button class="detail-tab">约束条件</button></div><div class="detail-grid"><div class="panel-lite"><h3>库存现状</h3><p>总量：<b>${x.total}</b> ${esc(x.unit)}</p><p>可用：<b>${x.available}</b> ${esc(x.unit)}</p><p>位置：${esc(x.location)}</p></div><div class="panel-lite"><h3>约束条件</h3>${x.constraints.map(c=>`<p>• ${esc(c)}</p>`).join('')}</div></div><div class="panel-lite" style="margin-top:12px"><h3>运输 / 调度关系</h3>${x.transport.map(t=>`<p>${esc(t)}</p>`).join('')}</div>`;
-    document.getElementById('fbClose').onclick=()=>box.classList.add('hidden'); box.scrollIntoView({behavior:'smooth',block:'start'});
+
+  // ---- 唯一数据源 ------------------------------------------------------------
+  function baseline() {
+    var src = (typeof ATOMIC_RESOURCE_LIBRARY !== 'undefined' && Array.isArray(ATOMIC_RESOURCE_LIBRARY)) ? ATOMIC_RESOURCE_LIBRARY : [];
+    return src.map(function (r, i) {
+      var row = clone(r);
+      row.id = row.id || 'ar_' + (i + 1);
+      row.code = row.code || 'RES-' + String(i + 1).padStart(4, '0');
+      row.name = row.name || '未命名资源 ' + (i + 1);
+      row.domain = row.domain || '综合保障';
+      row.category = row.category || '原子资源';
+      row.unit = row.unit || '个';
+      // 基线里部分资源用比例算可用量，会产生小数；统一取整后再进入唯一数据源。
+      row.total = Math.round(num(row.total)); row.available = Math.round(num(row.available)); row.reserved = Math.round(num(row.reserved));
+      row.location = row.location || '未设置';
+      row.status = row.status || (row.available > 0 ? '可调用' : '不可用');
+      ['constraints', 'transport', 'consumption', 'deps'].forEach(function (k) { if (!Array.isArray(row[k])) row[k] = []; });
+      row.ontologySlice = buildSlice(row);
+      return row;
+    });
   }
-  window.renderStandaloneResources=renderStandalone;
-  function force(){ try{renderStandalone();}catch(e){console.error('独立资源库渲染失败',e);} }
-  document.addEventListener('DOMContentLoaded',force,{once:false});
-  window.addEventListener('load',force);
-  document.addEventListener('click',e=>{const nav=e.target.closest?.('.nav[data-view="resources"]');if(nav)setTimeout(force,0);},true);
-  setInterval(()=>{const v=document.getElementById('resources'); if(v&&v.classList.contains('active')&&document.getElementById('atomicResourceList')?.children.length===0)force();},500);
+
+  // 历史缓存只能覆盖同编码资源的字段，永远不能删除或整体替换基线。
+  function mergeSaved(base, saved) {
+    if (!Array.isArray(saved) || !saved.length) return base;
+    var byCode = new Map(saved.filter(function (x) { return x && x.code; }).map(function (x) { return [String(x.code), x]; }));
+    var out = base.map(function (b) {
+      var patch = byCode.get(String(b.code));
+      if (!patch) return b;
+      var merged = Object.assign({}, b, patch);
+      ['constraints', 'transport', 'consumption', 'deps'].forEach(function (k) {
+        if (!Array.isArray(patch[k]) || !patch[k].length) merged[k] = b[k];
+      });
+      merged.id = b.id; merged.code = b.code;
+      merged.ontologySlice = b.ontologySlice;
+      return merged;
+    });
+    var known = new Set(base.map(function (b) { return String(b.code); }));
+    saved.forEach(function (x) {
+      if (x && x.custom === true && x.code && !known.has(String(x.code))) {
+        var row = clone(x);
+        ['constraints', 'transport', 'consumption', 'deps'].forEach(function (k) { if (!Array.isArray(row[k])) row[k] = []; });
+        row.ontologySlice = buildSlice(row);
+        out.push(row);
+      }
+    });
+    return out;
+  }
+
+  function readSaved() {
+    var raw = null;
+    try { raw = localStorage.getItem(STORE_KEY); } catch (e) { return []; }
+    if (raw) { try { var v = JSON.parse(raw); return Array.isArray(v) ? v : (Array.isArray(v && v.resources) ? v.resources : []); } catch (e) { return []; } }
+    // 一次性迁移旧键，迁移后旧键不再被读取（消除“多份数据源”）。
+    try { var old = JSON.parse(localStorage.getItem(LEGACY_KEY) || '[]'); return Array.isArray(old) ? old : []; } catch (e) { return []; }
+  }
+
+  var state = { resources: [], domain: '全部', id: null, tab: '基础信息', q: '', status: '' };
+
+  function reload() {
+    var base = baseline();
+    state.resources = mergeSaved(base, readSaved());
+    // 硬性完整性保护：资源数量永远不能低于完整基线。
+    if (state.resources.length < base.length) state.resources = base;
+    return state.resources;
+  }
+  function persist() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state.resources)); } catch (e) { console.warn('[资源库] 持久化失败', e); }
+  }
+  function find(id) { return state.resources.find(function (x) { return String(x.id) === String(id); }); }
+  function domains() {
+    var set = []; state.resources.forEach(function (x) { if (set.indexOf(x.domain) < 0) set.push(x.domain); });
+    return ['全部'].concat(set);
+  }
+  function visible() {
+    var q = state.q.toLowerCase();
+    return state.resources.filter(function (x) {
+      if (state.domain !== '全部' && x.domain !== state.domain) return false;
+      if (state.status && x.status !== state.status) return false;
+      if (!q) return true;
+      return [x.name, x.code, x.domain, x.category].concat((x.transport || []).map(function (t) { return t[0]; })).join(' ').toLowerCase().indexOf(q) >= 0;
+    });
+  }
+
+  // ---- 唯一渲染 --------------------------------------------------------------
+  function graphSvg(slice) {
+    var ns = slice.nodes, cx = 380, cy = 175, R = 122;
+    var pos = ns.map(function (n, i) {
+      var a = i * 2 * Math.PI / ns.length - Math.PI / 2;
+      return { n: n, x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) };
+    });
+    var at = function (id) { return pos.find(function (p) { return p.n.id === id; }); };
+    var lines = slice.relations.map(function (r) {
+      var a = at(r.source), b = at(r.target);
+      if (!a || !b) return '';
+      return '<line x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"/>' +
+        '<text x="' + ((a.x + b.x) / 2) + '" y="' + ((a.y + b.y) / 2 - 4) + '" text-anchor="middle" fill="#667085">' + esc(r.predicate) + '</text>';
+    }).join('');
+    var nodes = pos.map(function (p) {
+      return '<g><rect x="' + (p.x - 62) + '" y="' + (p.y - 17) + '" width="124" height="34" rx="8" fill="#f5f7fa" stroke="#245fa7"/>' +
+        '<text x="' + p.x + '" y="' + (p.y - 2) + '" text-anchor="middle" font-weight="700">' + esc(p.n.name.slice(0, 9)) + '</text>' +
+        '<text x="' + p.x + '" y="' + (p.y + 11) + '" text-anchor="middle" fill="#667085">' + esc(p.n.type) + '</text></g>';
+    }).join('');
+    return '<svg class="rm-graph" viewBox="0 0 760 350">' + lines + nodes + '</svg>';
+  }
+
+  function detailHtml(r) {
+    var tabs = ['基础信息', '库存现状', '存储位置', '运输约束', '消耗模型', '依赖与图谱'];
+    var c = '';
+    if (state.tab === '基础信息') {
+      c = '<div class="detail-grid">' +
+        '<label>资源名称<input data-rf="name" value="' + esc(r.name) + '"></label>' +
+        '<label>资源编码<input value="' + esc(r.code) + '" disabled></label>' +
+        '<label>资源域<input data-rf="domain" value="' + esc(r.domain) + '"></label>' +
+        '<label>资源品类<input data-rf="category" value="' + esc(r.category) + '"></label>' +
+        '<label>单位<input data-rf="unit" value="' + esc(r.unit) + '"></label>' +
+        '<label>状态<select data-rf="status">' + ['可调用', '部分可用', '不可用'].map(function (s) {
+          return '<option ' + (r.status === s ? 'selected' : '') + '>' + s + '</option>';
+        }).join('') + '</select></label></div>';
+    } else if (state.tab === '库存现状') {
+      c = '<div class="detail-grid">' +
+        '<label>总数量<input data-rf="total" data-rf-num="1" type="number" value="' + num(r.total) + '"></label>' +
+        '<label>可用数量<input data-rf="available" data-rf-num="1" type="number" value="' + num(r.available) + '"></label>' +
+        '<label>预占数量<input data-rf="reserved" data-rf-num="1" type="number" value="' + num(r.reserved) + '"></label>' +
+        '<div class="panel-lite"><h3>有效可调度能力</h3><p><b>' + Math.max(0, num(r.available) - num(r.reserved)) + '</b> ' + esc(r.unit) +
+        '</p><small>Effective Available = Available − Reserved</small></div></div>';
+    } else if (state.tab === '存储位置') {
+      var store = (r.constraints || []).filter(function (x) { return /库存|储存|冷链|安全|仓储/.test(x[0] + x[1]); });
+      c = '<div class="detail-grid"><label>所在区域/机构<input data-rf="location" value="' + esc(r.location) + '"></label>' +
+        '<div class="panel-lite"><h3>存储/部署约束</h3>' +
+        (store.map(function (x) { return '<p><b>' + esc(x[0]) + '</b>：' + esc(x[1]) + '</p>'; }).join('') || '<p>可配置仓储容量、温控、安全库存和部署条件。</p>') +
+        '</div></div>';
+    } else if (state.tab === '运输约束') {
+      c = '<table class="constraint-table"><thead><tr><th>运输工具</th><th>单次装载能力</th><th>约束条件</th></tr></thead><tbody>' +
+        ((r.transport || []).map(function (x) {
+          return '<tr><td>' + esc(x[0]) + '</td><td>' + esc(x[1]) + '</td><td>' + esc(x[2]) + '</td></tr>';
+        }).join('') || '<tr><td colspan="3">该资源暂未配置运输关系</td></tr>') + '</tbody></table>' +
+        '<h3 style="margin-top:14px">资源约束条件</h3>' +
+        ((r.constraints || []).map(function (x) { return '<div class="transport-card"><b>' + esc(x[0]) + '</b><p>' + esc(x[1]) + '</p></div>'; }).join('') || '<p class="rm-empty">暂无约束条件</p>');
+    } else if (state.tab === '消耗模型') {
+      c = '<h3>消耗/能力模型</h3>' +
+        ((r.consumption || []).map(function (x) { return '<div class="transport-card"><b>' + esc(x[0]) + '</b><p>' + esc(x[1]) + '</p></div>'; }).join('') ||
+          '<p class="rm-empty">可配置单位任务消耗、单位工时能力或人均保障标准。</p>');
+    } else {
+      var slice = r.ontologySlice || buildSlice(r);
+      c = '<div class="ontology-chain"><span class="ontology-node">' + esc(r.domain) + '</span><b>→</b><span class="ontology-node">' + esc(r.category) +
+        '</span><b>→</b><span class="ontology-node">' + esc(r.name) + '</span>' +
+        (r.deps || []).map(function (d) { return '<b>→</b><span class="ontology-node">依赖：' + esc(d) + '</span>'; }).join('') + '</div>' +
+        '<h3 style="margin-top:16px">本体切片关系图</h3>' + graphSvg(slice) +
+        '<h3 style="margin-top:16px">关系三元组</h3><div class="rm-kv">' +
+        slice.relations.map(function (x) { return '<b>' + esc(x.predicate) + '</b><span>' + esc(x.source) + ' → ' + esc(x.target) + '</span>'; }).join('') + '</div>' +
+        '<h3>约束节点</h3>' +
+        ((r.constraints || []).map(function (x) { return '<div class="transport-card"><b>CONSTRAINED_BY · ' + esc(x[0]) + '</b><p>' + esc(x[1]) + '</p></div>'; }).join('') || '<p class="rm-empty">暂无约束节点</p>');
+    }
+    return '<div class="detail-head"><div><h2>' + esc(r.name) + '</h2><p>' + esc(r.code) + ' · ' + esc(r.domain) + ' / ' + esc(r.category) + '</p></div>' +
+      '<button class="secondary" type="button" data-ra="close">关闭详情</button></div>' +
+      '<div class="detail-tabs">' + tabs.map(function (t) {
+        return '<button class="detail-tab ' + (state.tab === t ? 'active' : '') + '" type="button" data-ra="tab" data-rv="' + t + '">' + t + '</button>';
+      }).join('') + '</div>' +
+      '<div id="resourceDetailContent">' + c + '</div>' +
+      '<div class="card-actions" style="margin-top:16px"><button class="primary" type="button" data-ra="save-detail">保存修改</button></div>';
+  }
+
+  function render() {
+    var listEl = $('atomicResourceList');
+    if (!listEl) return;                       // 资源库 DOM 不存在时安全退出
+    if (!state.resources.length) reload();
+
+    var all = state.resources;
+    var totalQty = all.reduce(function (s, x) { return s + num(x.total); }, 0);
+    var availQty = all.reduce(function (s, x) { return s + num(x.available); }, 0);
+    var cons = all.reduce(function (s, x) { return s + (x.constraints || []).length; }, 0);
+    $('atomicResourceKpis').innerHTML = [
+      ['原子资源', all.length, '个'], ['资源总量', totalQty.toLocaleString(), '库存/能力汇总'],
+      ['当前可调用', availQty.toLocaleString(), '可调度能力'], ['约束条件', cons, '条'],
+      ['资源域', domains().length - 1, '类']
+    ].map(function (k) { return '<div class="kpi"><span>' + k[0] + '</span><b>' + k[1] + '</b><small>' + k[2] + '</small></div>'; }).join('');
+
+    $('resourceDomainList').innerHTML = domains().map(function (d) {
+      var n = d === '全部' ? all.length : all.filter(function (x) { return x.domain === d; }).length;
+      return '<button class="resource-domain-item ' + (d === state.domain ? 'active' : '') + '" type="button" data-ra="domain" data-rv="' + esc(d) + '">' +
+        esc(d) + '<span style="float:right">' + n + '</span></button>';
+    }).join('');
+
+    var rows = visible();
+    $('resourceListSummary').textContent = '显示 ' + rows.length + ' / ' + all.length + ' 个原子资源';
+    listEl.innerHTML = rows.map(function (x) {
+      return '<div class="atomic-resource-row" data-ra="open" data-rv="' + esc(x.id) + '">' +
+        '<div><b>' + esc(x.name) + '</b><div class="resource-code">' + esc(x.code) + ' · ' + esc(x.domain) + ' / ' + esc(x.category) + '</div></div>' +
+        '<div>总量 <b>' + num(x.total) + '</b> ' + esc(x.unit) + '</div>' +
+        '<div>可用 <b>' + num(x.available) + '</b> ' + esc(x.unit) + '</div>' +
+        '<div><span class="tag">' + esc(x.status) + '</span></div>' +
+        '<div>' + (x.constraints || []).length + ' 条约束<br><small>' + (x.transport || []).length + ' 种运输关系</small></div>' +
+        '<button class="secondary" type="button">详情</button></div>';
+    }).join('') || '<p class="rm-empty">当前筛选条件下没有资源。</p>';
+
+    var search = $('resourceSearch'), status = $('resourceStatusFilter');
+    if (search && search.value !== state.q) search.value = state.q;
+    if (status && status.value !== state.status) status.value = state.status;
+
+    var box = $('atomicResourceDetail');
+    if (box) {
+      var r = state.id ? find(state.id) : null;
+      if (r) { box.classList.remove('hidden'); box.innerHTML = detailHtml(r); }
+      else { box.classList.add('hidden'); box.innerHTML = ''; }
+    }
+  }
+
+  function open(id) {
+    if (!find(id)) return;
+    state.id = id; state.tab = '基础信息'; render();
+    var box = $('atomicResourceDetail');
+    if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function saveDetail() {
+    var r = find(state.id); if (!r) return;
+    document.querySelectorAll('#atomicResourceDetail [data-rf]').forEach(function (el) {
+      r[el.dataset.rf] = el.dataset.rfNum ? num(el.value) : el.value;
+    });
+    persist(); render(); notify('原子资源已保存');
+  }
+
+  function addResource() {
+    var stamp = Date.now();
+    var row = {
+      id: 'custom_' + stamp, code: 'CUSTOM-' + String(stamp).slice(-6), custom: true,
+      domain: '自定义资源域', category: '自定义品类', name: '新原子资源', unit: '个',
+      total: 0, available: 0, reserved: 0, location: '待填写', status: '可调用',
+      constraints: [['调度条件', '待配置']], transport: [], consumption: [], deps: []
+    };
+    row.ontologySlice = buildSlice(row);
+    state.resources.push(row); persist(); open(row.id);
+  }
+
+  // ---- 唯一事件绑定（一次性委托，重绘不重复绑定）-----------------------------
+  function wire() {
+    var root = $('resources'); if (!root || root.dataset.rmWired === '1') return;
+    root.dataset.rmWired = '1';
+    root.addEventListener('click', function (e) {
+      var el = e.target.closest('[data-ra],#addAtomicResourceBtn,#saveAtomicResourceBtn'); if (!el) return;
+      if (el.id === 'addAtomicResourceBtn') { e.preventDefault(); return addResource(); }
+      if (el.id === 'saveAtomicResourceBtn') { e.preventDefault(); persist(); return notify('资源本体库已保存'); }
+      var act = el.dataset.ra, val = el.dataset.rv;
+      e.preventDefault();
+      if (act === 'domain') { state.domain = val; render(); }
+      else if (act === 'open') { open(val); }
+      else if (act === 'tab') { state.tab = val; render(); }
+      else if (act === 'close') { state.id = null; render(); }
+      else if (act === 'save-detail') { saveDetail(); }
+    });
+    root.addEventListener('input', function (e) {
+      if (e.target.id === 'resourceSearch') { state.q = e.target.value.trim(); render(); }
+    });
+    root.addEventListener('change', function (e) {
+      if (e.target.id === 'resourceStatusFilter') { state.status = e.target.value; render(); }
+    });
+  }
+
+  function boot() { reload(); wire(); render(); }
+
+  // 对外唯一入口：所有旧调用点（renderAll / 左侧导航 / 兼容桩）都汇聚到这里。
+  window.__RESOURCE_MODULE__ = {
+    render: render, open: open, reload: function () { reload(); render(); return state.resources; },
+    list: function () { return state.resources; }, state: state
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
+  else boot();
 })();
 </script>
 
-
-<script id="resource-ontology-v2">
-(function(){
-'use strict';
-const $=id=>document.getElementById(id);
-const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-const TKEY='workbench-transport-constraint-library-v2';
-const CKEY='workbench-condition-library-v2';
-const clone=x=>JSON.parse(JSON.stringify(x));
-const TBASE=[
-{id:'TC_FUEL_TANKER_20T',name:'20吨油罐车运输',carrier:'油罐车',capacity:'20吨/车',rules:['危化资质','道路可通行','专职驾驶员']},
-{id:'TC_FUEL_TANKER_30T',name:'30吨油罐车运输',carrier:'油罐车',capacity:'30吨/车',rules:['危化资质','道路等级≥三级','装卸设备可用']},
-{id:'TC_RAIL_TANK',name:'铁路罐车运输',carrier:'铁路罐车',capacity:'50吨/车',rules:['铁路线路可用','站场调度许可']},
-{id:'TC_ROAD_CARGO',name:'道路货运',carrier:'货运车辆',capacity:'按车型载荷',rules:['道路通行','驾驶员可用','车辆可用']}
-];
-const CBASE=[
-{id:'C_MIN_STOCK',name:'最低安全库存',type:'库存约束',expression:'available >= safety_stock',description:'可调用库存不得突破最低安全库存'},
-{id:'C_HAZMAT_OPERATOR',name:'危险品操作人员',type:'人员约束',expression:'qualified_operator >= 1',description:'危化资源装卸和运输必须配置合格人员'},
-{id:'C_LOADING_EQUIPMENT',name:'装卸设备可用',type:'设备约束',expression:'loading_equipment.status == available',description:'调拨前必须存在可用装卸设备'},
-{id:'C_ROAD_ACCESS',name:'道路通行能力',type:'基础设施约束',expression:'road_access == true',description:'道路运输前必须确认通行条件'},
-{id:'C_STORAGE_CAPACITY',name:'仓储容量',type:'容量约束',expression:'storage.free_capacity >= incoming',description:'调入资源不得超过仓储可用容量'},
-{id:'C_PERSONNEL_CAPACITY',name:'人员能力匹配',type:'人员约束',expression:'qualified_personnel >= task_requirement',description:'专业人员能力必须满足任务需求'}
-];
-function load(key,base){try{let v=JSON.parse(localStorage.getItem(key)||'null');return Array.isArray(v)&&v.length?v:clone(base)}catch(e){return clone(base)}}
-let TL=load(TKEY,TBASE),CL=load(CKEY,CBASE);
-function saveLib(){localStorage.setItem(TKEY,JSON.stringify(TL));localStorage.setItem(CKEY,JSON.stringify(CL))}
-function slice(r){let id=String(r.id||'preview').replace(/[^\w-]/g,'_');let nodes=[
-{id:id,type:'AtomicResource',name:r.name||'原子资源'},
-{id:id+'_storage',type:'StorageFacility',name:(r.domain||'资源')+'储存/部署设施'},
-{id:id+'_carrier',type:'TransportCarrier',name:'运输工具'},
-{id:id+'_operator',type:'Personnel',name:'专业操作人员'},
-{id:id+'_loader',type:'LoadingEquipment',name:'装载/调拨设备'},
-{id:id+'_task',type:'EmergencyTask',name:'应急保障任务'}
-];return {resourceId:r.id,nodes:nodes,relations:[
-{source:nodes[0].id,predicate:'STORED_IN',target:nodes[1].id},
-{source:nodes[0].id,predicate:'TRANSPORTED_BY',target:nodes[2].id},
-{source:nodes[3].id,predicate:'OPERATES',target:nodes[2].id},
-{source:nodes[0].id,predicate:'LOADED_BY',target:nodes[4].id},
-{source:nodes[0].id,predicate:'SUPPORTS',target:nodes[5].id}
-]}}
-function ensure(){(window.atomicResourceState||[]).forEach(r=>{if(!r.ontologySlice||!Array.isArray(r.ontologySlice.nodes)||r.ontologySlice.nodes.length<5)r.ontologySlice=slice(r);if(!Array.isArray(r.transportConstraintRefs))r.transportConstraintRefs=['TC_FUEL_TANKER_20T','TC_ROAD_CARGO'];if(!Array.isArray(r.constraintRefs))r.constraintRefs=['C_MIN_STOCK','C_LOADING_EQUIPMENT','C_PERSONNEL_CAPACITY']})}
-function resourceSave(){localStorage.setItem('workbench-atomic-resource-library',JSON.stringify(window.atomicResourceState||[]))}
-function refs(lib,ids){return (ids||[]).map(id=>lib.find(x=>x.id===id)).filter(Boolean)}
-function setView(id){document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));let e=$(id);if(e)e.classList.add('active');document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===id));let pt=$('pageTitle');if(pt)pt.textContent=id==='resourceCreate'?'新增原子资源':'资源库'}
-function openConfig(tab,id){setView('config');let b=document.querySelector('[data-config-tab="'+tab+'"]');if(b)b.click();setTimeout(()=>{let e=document.querySelector('[data-id="'+id+'"]');if(e){e.scrollIntoView({behavior:'smooth',block:'center'});e.focus()}},50)}
-function detail(r,tab){let box=$('atomicResourceDetail');if(!box)return;box.classList.remove('hidden');let content='';
-if(tab==='运输约束'){let rows=refs(TL,r.transportConstraintRefs);content='<div class="card-actions"><button class="secondary" id="goTL">管理运输约束库</button></div><table class="constraint-table"><thead><tr><th>名称</th><th>运输工具</th><th>装载能力</th><th>规则</th></tr></thead><tbody>'+rows.map(x=>'<tr><td><button class="library-link" data-tid="'+x.id+'">'+esc(x.name)+'</button></td><td>'+esc(x.carrier)+'</td><td>'+esc(x.capacity)+'</td><td>'+x.rules.map(esc).join('、')+'</td></tr>').join('')+'</tbody></table>'}
-else if(tab==='约束条件'){let rows=refs(CL,r.constraintRefs);content='<div class="card-actions"><button class="secondary" id="goCL">管理约束条件库</button></div>'+rows.map(x=>'<div class="transport-card"><button class="library-link" data-cid="'+x.id+'">'+esc(x.name)+'</button><p>'+esc(x.type)+' · <code>'+esc(x.expression)+'</code></p><p>'+esc(x.description)+'</p></div>').join('')}
-else if(tab==='本体关系'){let o=r.ontologySlice;content='<div class="card-actions"><button class="secondary" id="addNode">＋ 节点</button><button class="secondary" id="addRel">＋ 关系</button></div><div class="slice-graph">'+o.relations.map(e=>{let a=o.nodes.find(n=>n.id===e.source)||{},b=o.nodes.find(n=>n.id===e.target)||{};return '<span class="slice-graph-node">'+esc(a.name||e.source)+'</span><span class="slice-graph-edge">— '+esc(e.predicate)+' →</span><span class="slice-graph-node">'+esc(b.name||e.target)+'</span>'}).join('<br>')+'</div><div class="ontology-editor-grid"><div><h3>节点</h3><div id="nodeEditor">'+o.nodes.map((n,i)=>'<div class="ontology-item"><input data-ni="'+i+'" data-nf="name" value="'+esc(n.name)+'"><input data-ni="'+i+'" data-nf="type" value="'+esc(n.type)+'"><button class="secondary" data-dn="'+i+'">删除</button></div>').join('')+'</div></div><div><h3>关系</h3><div id="relEditor">'+o.relations.map((e,i)=>'<div class="ontology-item"><input data-ri="'+i+'" data-rf="source" value="'+esc(e.source)+'"><input data-ri="'+i+'" data-rf="predicate" value="'+esc(e.predicate)+'"><input data-ri="'+i+'" data-rf="target" value="'+esc(e.target)+'"><button class="secondary" data-dr="'+i+'">删除</button></div>').join('')+'</div></div></div><h3>JSON</h3><textarea id="ontologyJson" class="ontology-json">'+esc(JSON.stringify(o,null,2))+'</textarea><div class="card-actions"><button id="applyJson" class="primary">应用 JSON</button></div>'}
-else {content='<div class="detail-grid"><div class="panel-lite"><h3>资源名称</h3><p>'+esc(r.name)+'</p></div><div class="panel-lite"><h3>资源域</h3><p>'+esc(r.domain)+' / '+esc(r.category)+'</p></div><div class="panel-lite"><h3>总量 / 可用</h3><p>'+r.total+' / '+r.available+' '+esc(r.unit)+'</p></div><div class="panel-lite"><h3>本体节点</h3><p>'+r.ontologySlice.nodes.length+' 个节点</p></div></div>'}
-let tabs=['基础信息','运输约束','约束条件','本体关系'];box.innerHTML='<div class="detail-head"><div><h2>'+esc(r.name)+'</h2><p>'+esc(r.code)+' · '+esc(r.domain)+' / '+esc(r.category)+'</p></div><button id="closeV2" class="secondary">关闭详情</button></div><div class="detail-tabs">'+tabs.map(t=>'<button class="detail-tab '+(t===tab?'active':'')+'" data-tab2="'+t+'">'+t+'</button>').join('')+'</div><div>'+content+'</div><div class="card-actions" style="margin-top:14px"><button id="saveV2" class="primary">保存本体关系</button></div>';
-box.querySelectorAll('[data-tab2]').forEach(b=>b.onclick=()=>detail(r,b.dataset.tab2));box.querySelector('#closeV2').onclick=()=>box.classList.add('hidden');box.querySelector('#goTL')?.addEventListener('click',()=>openConfig('transport',''));box.querySelector('#goCL')?.addEventListener('click',()=>openConfig('conditions',''));box.querySelectorAll('[data-tid]').forEach(b=>b.onclick=()=>openConfig('transport',b.dataset.tid));box.querySelectorAll('[data-cid]').forEach(b=>b.onclick=()=>openConfig('conditions',b.dataset.cid));
-box.querySelectorAll('[data-ni]').forEach(i=>i.onchange=()=>{r.ontologySlice.nodes[+i.dataset.ni][i.dataset.nf]=i.value});box.querySelectorAll('[data-ri]').forEach(i=>i.onchange=()=>{r.ontologySlice.relations[+i.dataset.ri][i.dataset.rf]=i.value});box.querySelector('#addNode')?.addEventListener('click',()=>{let i=r.ontologySlice.nodes.length;r.ontologySlice.nodes.push({id:r.id+'_node_'+i,type:'OntologyNode',name:'新节点'});detail(r,'本体关系')});box.querySelector('#addRel')?.addEventListener('click',()=>{let n=r.ontologySlice.nodes;r.ontologySlice.relations.push({source:n[0].id,predicate:'RELATED_TO',target:n[n.length-1].id});detail(r,'本体关系')});box.querySelectorAll('[data-dn]').forEach(b=>b.onclick=()=>{r.ontologySlice.nodes.splice(+b.dataset.dn,1);detail(r,'本体关系')});box.querySelectorAll('[data-dr]').forEach(b=>b.onclick=()=>{r.ontologySlice.relations.splice(+b.dataset.dr,1);detail(r,'本体关系')});box.querySelector('#applyJson')?.addEventListener('click',()=>{try{let o=JSON.parse($('ontologyJson').value);if(!Array.isArray(o.nodes)||o.nodes.length<5)throw Error('至少需要5个节点');r.ontologySlice=o;detail(r,'本体关系')}catch(e){alert('JSON错误：'+e.message)}});box.querySelector('#saveV2').onclick=()=>{resourceSave();if(window.renderResources)window.renderResources();if(window.toast)toast('本体关系已保存')};}
-function renderTL(){let e=$('transportLibraryList');if(!e)return;e.innerHTML='<table class="library-table"><thead><tr><th>ID</th><th>名称</th><th>运输工具</th><th>装载能力</th><th>规则</th><th></th></tr></thead><tbody>'+TL.map(x=>'<tr><td>'+x.id+'</td><td><input data-id="'+x.id+'" data-f="name" value="'+esc(x.name)+'"></td><td><input data-id="'+x.id+'" data-f="carrier" value="'+esc(x.carrier)+'"></td><td><input data-id="'+x.id+'" data-f="capacity" value="'+esc(x.capacity)+'"></td><td><input data-id="'+x.id+'" data-f="rules" value="'+esc(x.rules.join('、'))+'"></td><td><button class="secondary" data-st="'+x.id+'">保存</button></td></tr>').join('')+'</tbody></table>';e.querySelectorAll('[data-st]').forEach(b=>b.onclick=()=>{let x=TL.find(z=>z.id===b.dataset.st);e.querySelectorAll('[data-id="'+x.id+'"]').forEach(i=>x[i.dataset.f]=i.dataset.f==='rules'?i.value.split('、'):i.value);saveLib();if(window.toast)toast('运输约束库已更新')})}
-function renderCL(){let e=$('conditionLibraryList');if(!e)return;e.innerHTML='<table class="library-table"><thead><tr><th>ID</th><th>名称</th><th>类型</th><th>表达式</th><th>说明</th><th></th></tr></thead><tbody>'+CL.map(x=>'<tr><td>'+x.id+'</td><td><input data-id="'+x.id+'" data-f="name" value="'+esc(x.name)+'"></td><td><input data-id="'+x.id+'" data-f="type" value="'+esc(x.type)+'"></td><td><input data-id="'+x.id+'" data-f="expression" value="'+esc(x.expression)+'"></td><td><input data-id="'+x.id+'" data-f="description" value="'+esc(x.description)+'"></td><td><button class="secondary" data-sc="'+x.id+'">保存</button></td></tr>').join('')+'</tbody></table>';e.querySelectorAll('[data-sc]').forEach(b=>b.onclick=()=>{let x=CL.find(z=>z.id===b.dataset.sc);e.querySelectorAll('[data-id="'+x.id+'"]').forEach(i=>x[i.dataset.f]=i.value);saveLib();if(window.toast)toast('约束条件库已更新')})}
-function install(){ensure();let tabbar=document.querySelector('#config .tabbar');if(tabbar&&!document.querySelector('[data-config-tab="transport"]')){tabbar.insertAdjacentHTML('beforeend','<button class="tab" type="button" data-config-tab="transport">运输约束</button><button class="tab" type="button" data-config-tab="conditions">约束条件</button>');$('config').insertAdjacentHTML('beforeend','<div id="configTransport" class="config-pane"><div class="panel"><div class="panel-head"><div><h2>运输约束库</h2><p>资源通过引用 ID 使用本库；修改后所有引用自动读取新值。</p></div></div><div id="transportLibraryList"></div></div></div><div id="configConditions" class="config-pane"><div class="panel"><div class="panel-head"><div><h2>约束条件库</h2><p>统一维护库存、人员、设备和基础设施约束表达式。</p></div></div><div id="conditionLibraryList"></div></div></div>');document.querySelectorAll('[data-config-tab]').forEach(b=>b.addEventListener('click',()=>{let t=b.dataset.configTab;if(t==='transport'){document.querySelectorAll('.config-pane').forEach(x=>x.classList.remove('active'));$('configTransport').classList.add('active');renderTL()}if(t==='conditions'){document.querySelectorAll('.config-pane').forEach(x=>x.classList.remove('active'));$('configConditions').classList.add('active');renderCL()}}))}
-$('addAtomicResourceBtn')?.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();setView('resourceCreate');let t=$('newTransportRefs'),c=$('newConstraintRefs');if(t)t.innerHTML=TL.map(x=>'<option value="'+x.id+'">'+esc(x.name)+' · '+esc(x.capacity)+'</option>').join('');if(c)c.innerHTML=CL.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('')},true);
-$('generateOntologySliceBtn')?.addEventListener('click',()=>{let o=slice({id:'preview',name:$('newAtomicName').value||'新原子资源',domain:$('newAtomicDomain').value||'资源域'});$('newOntologyEditor').innerHTML='<textarea id="newOntologyJson" class="ontology-json">'+esc(JSON.stringify(o,null,2))+'</textarea>'});
-$('saveNewAtomicResource')?.addEventListener('click',()=>{let name=$('newAtomicName').value.trim();if(!name)return alert('请输入节点名称');let o;try{o=JSON.parse($('newOntologyJson').value);if(!o.nodes||o.nodes.length<5)throw Error('至少5节点')}catch(e){return alert('本体JSON错误：'+e.message)}let id='custom_'+Date.now();o.resourceId=id;let r={id:id,code:'CUSTOM-'+Date.now().toString().slice(-6),domain:$('newAtomicDomain').value||'自定义资源域',category:$('newAtomicCategory').value||'自定义品类',name:name,unit:$('newAtomicUnit').value||'个',total:0,available:0,reserved:0,location:'待填写',status:'可调用',constraints:[],transport:[],consumption:[],deps:[],transportConstraintRefs:[...$('newTransportRefs').selectedOptions].map(x=>x.value),constraintRefs:[...$('newConstraintRefs').selectedOptions].map(x=>x.value),ontologySlice:o,custom:true};window.atomicResourceState.push(r);resourceSave();if(window.renderResources)window.renderResources();setView('resources');detail(r,'本体关系')});
-$('backToResourcesFromCreate')?.addEventListener('click',()=>setView('resources'));
-const oldOpen=window.openAtomicResource;window.openAtomicResource=function(id){ensure();let r=(window.atomicResourceState||[]).find(x=>String(x.id)===String(id));if(r){window.activeResourceId=id;detail(r,'基础信息');$('atomicResourceDetail')?.scrollIntoView({behavior:'smooth',block:'start'})}else if(oldOpen)oldOpen(id)};
-}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
-})();
-
-</script><script>/* Verified interaction fallback layer: isolated from legacy render chain */
-(()=>{
- const $=id=>document.getElementById(id);
- const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- const slice=(id,name,domain)=>({resourceId:id,nodes:[{id:id,type:'AtomicResource',name},{id:id+'_facility',type:'StorageFacility',name:'配套设施'},{id:id+'_carrier',type:'TransportCarrier',name:'运输工具'},{id:id+'_operator',type:'Personnel',name:'专业操作人员'},{id:id+'_loader',type:'LoadingEquipment',name:'装载/调拨设备'},{id:id+'_task',type:'EmergencyTask',name:'应急保障任务'}],relations:[{source:id,predicate:'STORED_IN',target:id+'_facility'},{source:id,predicate:'TRANSPORTED_BY',target:id+'_carrier'},{source:id+'_operator',predicate:'OPERATES',target:id+'_carrier'},{source:id,predicate:'LOADED_BY',target:id+'_loader'},{source:id,predicate:'SUPPORTS',target:id+'_task'}]});
- const ensure=()=>{
-   if(!Array.isArray(window.__RESOURCE_UI_DATA)||!window.__RESOURCE_UI_DATA.length){
-     const base=Array.isArray(window.atomicResourceState)&&window.atomicResourceState.length?window.atomicResourceState:[];
-     window.__RESOURCE_UI_DATA=base.map((r,i)=>({...r,transportConstraintRefs:r.transportConstraintRefs||['TC-001'],constraintRefs:r.constraintRefs||['C-001'],ontologySlice:r.ontologySlice||slice(r.id||('res'+i),r.name||('资源'+i),r.domain||'资源域')}));
-   }
-   if(!window.__RESOURCE_UI_DATA.length) window.__RESOURCE_UI_DATA=[{id:'demo-rp3',code:'RES-RP3',name:'RP-3航空煤油',domain:'燃料能源',category:'航空燃料',unit:'吨',total:10000,available:7500,status:'可调用',transportConstraintRefs:['TC-001'],constraintRefs:['C-001'],ontologySlice:slice('demo-rp3','RP-3航空煤油','燃料能源')}];
-   window.__TRANSPORT_LIB=window.__TRANSPORT_LIB||[{id:'TC-001',name:'30吨危化油罐车运输',carrier:'30吨油罐车',capacity:'30吨/车次',rules:['危化资质','道路通行']},{id:'TC-002',name:'铁路罐车运输',carrier:'铁路罐车',capacity:'50吨/车次',rules:['铁路线路可用']}];
-   window.__CONSTRAINT_LIB=window.__CONSTRAINT_LIB||[{id:'C-001',name:'最低安全库存',expression:'可用库存 ≥ 安全库存',description:'库存调度下限'},{id:'C-002',name:'专业人员约束',expression:'操作人员资质=合格',description:'人员必须满足资质'}];
- };
- function setView(id){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===id));}
- function render(){ensure();const list=$('atomicResourceList');if(!list)return;list.innerHTML=window.__RESOURCE_UI_DATA.map(r=>`<div class="atomic-resource-row" data-v2-open="${esc(r.id)}"><div><b>${esc(r.name)}</b><div class="resource-code">${esc(r.code)} · ${esc(r.domain)} / ${esc(r.category)}</div></div><div>总量 <b>${esc(r.total)}</b> ${esc(r.unit)}</div><div>可用 <b>${esc(r.available)}</b> ${esc(r.unit)}</div><div><span class="tag">${esc(r.status)}</span></div><div>${r.constraintRefs.length} 条约束<br><small>${r.transportConstraintRefs.length} 种运输关系</small></div><button class="secondary">详情</button></div>`).join('');const s=$('resourceListSummary');if(s)s.textContent=`显示 ${window.__RESOURCE_UI_DATA.length} 个原子资源`}
- function open(id,tab='基础信息'){ensure();const r=window.__RESOURCE_UI_DATA.find(x=>String(x.id)===String(id));const box=$('atomicResourceDetail');if(!r||!box)return;box.classList.remove('hidden');let content='';
-  if(tab==='运输约束'){content=r.transportConstraintRefs.map(x=>{let t=window.__TRANSPORT_LIB.find(z=>z.id===x);return t?`<button class="library-link" data-v2-t="${t.id}">${esc(t.name)} · ${esc(t.capacity)}</button>`:''}).join('');}
-  else if(tab==='约束条件'){content=r.constraintRefs.map(x=>{let c=window.__CONSTRAINT_LIB.find(z=>z.id===x);return c?`<button class="library-link" data-v2-c="${c.id}">${esc(c.name)} · ${esc(c.expression)}</button>`:''}).join('');}
-  else if(tab==='本体关系'){content=`<textarea id="v2Json" class="ontology-json" style="width:100%;min-height:360px">${esc(JSON.stringify(r.ontologySlice,null,2))}</textarea><div class="card-actions"><button id="v2Apply" class="primary">应用 JSON</button></div>`;}
-  else content=`<div class="detail-grid"><div class="detail-card"><b>资源名称</b>${esc(r.name)}</div><div class="detail-card"><b>资源域</b>${esc(r.domain)}</div><div class="detail-card"><b>本体节点</b>${r.ontologySlice.nodes.length} 个</div></div>`;
-  box.innerHTML=`<div class="detail-head"><h2>${esc(r.name)}</h2><button class="secondary" data-v2-close>关闭</button></div><div class="detail-tabs">${['基础信息','运输约束','约束条件','本体关系'].map(t=>`<button class="detail-tab ${t===tab?'active':''}" data-v2-tab="${t}">${t}</button>`).join('')}</div><div class="v2-content">${content}</div><div class="card-actions"><button class="primary" data-v2-save>保存</button></div>`;
-  box.dataset.rid=r.id;
- }
- document.addEventListener('click',e=>{
-   const nav=e.target.closest('.nav[data-view]');if(nav){setView(nav.dataset.view);if(nav.dataset.view==='resources')render();}
-   const row=e.target.closest('[data-v2-open]');if(row){open(row.dataset.v2Open);}
-   const tab=e.target.closest('[data-v2-tab]');if(tab){open($('atomicResourceDetail').dataset.rid,tab.dataset.v2Tab);}
-   const tl=e.target.closest('[data-v2-t]');if(tl){setView('config');const c=$('atomicResourceDetail');if(c)c.innerHTML=`<div class="panel"><h2>运输约束详情</h2><pre>${esc(JSON.stringify(window.__TRANSPORT_LIB.find(x=>x.id===tl.dataset.v2T),null,2))}</pre><button class="secondary" data-v2-back>← 返回资源详情</button></div>`;}
-   const back=e.target.closest('[data-v2-back]');if(back){const id=$('atomicResourceDetail').dataset.rid||window.__RESOURCE_UI_DATA[0].id;setView('resources');open(id,'运输约束');}
-   const close=e.target.closest('[data-v2-close]');if(close)$('atomicResourceDetail').classList.add('hidden');
-   const apply=e.target.closest('#v2Apply');if(apply){try{const r=window.__RESOURCE_UI_DATA.find(x=>x.id===$('atomicResourceDetail').dataset.rid),o=JSON.parse($('v2Json').value);if(!Array.isArray(o.nodes)||o.nodes.length<5)throw Error('至少需要5个节点');r.ontologySlice=o;open(r.id,'本体关系');}catch(err){alert(err.message)}}
-   const save=e.target.closest('[data-v2-save]');if(save){try{localStorage.setItem('resource-ui-data',JSON.stringify(window.__RESOURCE_UI_DATA));alert('保存成功');}catch(err){alert('保存失败：'+err.message)}}
-   const add=e.target.closest('#addAtomicResourceBtn');if(add){setView('resourceCreate');ensure();if($('newTransportRefs'))$('newTransportRefs').innerHTML=window.__TRANSPORT_LIB.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');if($('newConstraintRefs'))$('newConstraintRefs').innerHTML=window.__CONSTRAINT_LIB.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');}
-   const gen=e.target.closest('#generateOntologySliceBtn');if(gen){const name=$('newAtomicName')?.value?.trim()||'新原子资源';const o=slice('new-preview',name,'');const ed=$('newOntologyEditor');if(ed)ed.innerHTML=`<textarea id="newOntologyJson" class="ontology-json" style="width:100%;min-height:360px">${esc(JSON.stringify(o,null,2))}</textarea>`;}
-   const saveNew=e.target.closest('#saveNewAtomicResource');if(saveNew){try{const name=$('newAtomicName').value.trim();const o=JSON.parse($('newOntologyJson').value);if(!name)throw Error('请输入名称');if(!Array.isArray(o.nodes)||o.nodes.length<5)throw Error('至少需要5个节点');ensure();const id='custom_'+Date.now();window.__RESOURCE_UI_DATA.push({id,code:'CUSTOM-'+String(Date.now()).slice(-6),name,domain:$('newAtomicDomain')?.value||'自定义资源域',category:$('newAtomicCategory')?.value||'自定义品类',unit:$('newAtomicUnit')?.value||'个',total:0,available:0,status:'可调用',transportConstraintRefs:[...($('newTransportRefs')?.selectedOptions||[])].map(x=>x.value),constraintRefs:[...($('newConstraintRefs')?.selectedOptions||[])].map(x=>x.value),ontologySlice:{...o,resourceId:id}});render();setView('resources');open(id,'本体关系');}catch(err){alert('保存失败：'+err.message)}}
-   const backCreate=e.target.closest('#backToResourcesFromCreate');if(backCreate){setView('resources');render();}
- },true);
- document.addEventListener('DOMContentLoaded',()=>{ensure();render();const saved=localStorage.getItem('resource-ui-data');if(saved){try{const d=JSON.parse(saved);if(Array.isArray(d)&&d.length)window.__RESOURCE_UI_DATA=d;}catch{}}render();});
- setTimeout(()=>{ensure();render()},500);
-})();
-</script><script id="resource-prd-p0-fix">
-(function(){
-'use strict';
-const $=id=>document.getElementById(id);
-function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-const store=window.__RESOURCE_STORE||(window.__RESOURCE_STORE={resources:[]});
-function norm(r,i){r.id=r.id||('res_'+i);r.name=r.name||r.resourceName||('未命名资源 '+r.id);r.domain=r.domain||'资源域';r.category=r.category||'原子品类';r.unit=r.unit||'个';r.total=Number(r.total??r.totalQty??0);r.available=Number(r.available??r.availableQty??0);r.reserved=Number(r.reserved??0);r.frozen=Number(r.frozen??0);r.safetyStock=Number(r.safetyStock??0);r.location=r.location||'待配置';r.status=r.status||'未知';r.transportConstraintRefs=r.transportConstraintRefs||[];r.constraintRefs=r.constraintRefs||[];r.deps=r.deps||[];r.ontologySlice=r.ontologySlice||makeSlice(r);return r;}
-function makeSlice(r){const n=r.name||'新资源',d=r.domain||'资源域',id=r.id||'preview';let kind=/油|燃料|煤油/.test(n)?['StorageFacility','航空燃油储罐','LoadingEquipment','油料装卸设备','TransportCarrier','危险品油罐车','Personnel','危险品运输操作人员','EmergencyTask','航空救援保障任务']:/医院|床位|医生|护士/.test(n)?['StorageFacility','医疗机构','Equipment','医疗设备','Personnel','专业医护人员','TransportCarrier','医疗转运车辆','EmergencyTask','医疗救治任务']:['StorageFacility','资源部署设施','LoadingEquipment','调拨装卸设备','TransportCarrier','运输工具','Personnel','专业操作人员','EmergencyTask','应急保障任务'];let nodes=[{id:id,type:'AtomicResource',name:n}];for(let i=0;i<kind.length;i+=2)nodes.push({id:id+'_n'+(i/2+1),type:kind[i],name:kind[i+1]});let rel=[{source:id,predicate:'STORED_IN',target:id+'_n1'},{source:id,predicate:'LOADED_BY',target:id+'_n2'},{source:id,predicate:'TRANSPORTED_BY',target:id+'_n3'},{source:id+'_n4',predicate:'OPERATES',target:id+'_n3'},{source:id,predicate:'SUPPORTS',target:id+'_n5'}];return {resourceId:id,nodes,relations:rel};}
-let base=Array.isArray(window.__RESOURCE_UI_DATA)&&window.__RESOURCE_UI_DATA.length?window.__RESOURCE_UI_DATA:(Array.isArray(window.atomicResourceState)?window.atomicResourceState:[]);store.resources=base.map(norm);window.__RESOURCE_UI_DATA=store.resources;window.atomicResourceState=store.resources;
-function save(){localStorage.setItem('resource-ui-data',JSON.stringify(store.resources));localStorage.setItem('workbench-atomic-resource-library',JSON.stringify(store.resources));}
-function graph(o){let pts=o.nodes.map((n,i)=>{let a=2*Math.PI*i/o.nodes.length-Math.PI/2;return {n,x:50+38*Math.cos(a),y:50+34*Math.sin(a)}}),p=Object.fromEntries(pts.map(x=>[x.n.id,x]));return `<svg viewBox="0 0 100 100" style="width:100%;height:430px;border:1px solid #d9e1ea;border-radius:10px;background:#fbfdff"><defs><marker id="arrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5z" fill="#718096"/></marker></defs>${o.relations.map(e=>{let a=p[e.source],b=p[e.target];if(!a||!b)return '';return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" marker-end="url(#arrow)"/><text x="${(a.x+b.x)/2}" y="${(a.y+b.y)/2-2}">${esc(e.predicate)}</text>`}).join('')}${pts.map(x=>`<circle cx="${x.x}" cy="${x.y}" r="7" fill="#eaf2fb" stroke="#4b78a8"/><text x="${x.x}" y="${x.y+1}">${esc(x.n.name).slice(0,8)}</text>`).join('')}</svg>`}
-function detail(id,tab='基础信息'){let r=store.resources.find(x=>String(x.id)===String(id)),box=$('atomicResourceDetail');if(!r||!box)return;box.classList.remove('hidden');box.dataset.rid=r.id;let tabs=['基础信息','库存现状','本体关系','运输约束','约束条件','资源依赖关系','编辑资源'];let content='';
-if(tab==='基础信息')content=`<div class="detail-grid"><div class="panel-lite"><h3>资源名称</h3><p>${esc(r.name)}</p></div><div class="panel-lite"><h3>资源域 / 品类</h3><p>${esc(r.domain)} / ${esc(r.category)}</p></div><div class="panel-lite"><h3>资源位置</h3><p>${esc(r.location)}</p></div><div class="panel-lite"><h3>状态</h3><p>${esc(r.status)}</p></div></div>`;
-else if(tab==='库存现状')content=`<div class="detail-grid"><div class="panel-lite"><h3>总量</h3><p><b>${r.total}</b> ${esc(r.unit)}</p></div><div class="panel-lite"><h3>可用</h3><p><b>${r.available}</b> ${esc(r.unit)}</p></div><div class="panel-lite"><h3>预占</h3><p><b>${r.reserved}</b> ${esc(r.unit)}</p></div><div class="panel-lite"><h3>冻结</h3><p><b>${r.frozen}</b> ${esc(r.unit)}</p></div><div class="panel-lite"><h3>安全库存</h3><p><b>${r.safetyStock}</b> ${esc(r.unit)}</p></div><div class="panel-lite"><h3>有效可调度</h3><p><b>${Math.max(0,r.available-r.reserved-r.frozen)}</b> ${esc(r.unit)}</p></div></div>`;
-else if(tab==='本体关系'){let o=r.ontologySlice;content=`<h3>本体关系图</h3>${graph(o)}<div class="ontology-editor-grid"><div><h3>节点编辑</h3><div id="nodeEditor">${o.nodes.map((n,i)=>`<div class="ontology-item"><input data-ni="${i}" data-nf="name" value="${esc(n.name)}"><input data-ni="${i}" data-nf="type" value="${esc(n.type)}"><button data-dn="${i}" class="secondary">删除</button></div>`).join('')}<button id="addNode" class="secondary">＋ 新增节点</button></div><div><h3>关系编辑</h3><div id="relEditor">${o.relations.map((e,i)=>`<div class="ontology-item"><select data-ri="${i}" data-rf="source">${o.nodes.map(n=>`<option ${n.id===e.source?'selected':''} value="${esc(n.id)}">${esc(n.name)}</option>`).join('')}</select><input data-ri="${i}" data-rf="predicate" value="${esc(e.predicate)}"><select data-ri="${i}" data-rf="target">${o.nodes.map(n=>`<option ${n.id===e.target?'selected':''} value="${esc(n.id)}">${esc(n.name)}</option>`).join('')}</select><button data-dr="${i}" class="secondary">删除</button></div>`).join('')}<button id="addRel" class="secondary">＋ 新增关系</button></div></div></div><h3>本体 JSON</h3><textarea id="ontologyJson" class="ontology-json">${esc(JSON.stringify(o,null,2))}</textarea><div class="card-actions"><button id="applyJson" class="primary">应用 JSON</button><button id="saveSlice" class="secondary">保存本体切片</button></div>`}
-else if(tab==='运输约束'){let lib=window.__TRANSPORT_LIB||[],rows=r.transportConstraintRefs.map(id=>lib.find(x=>x.id===id)||{id,name:'缺失约束'});content=`<table class="library-table"><thead><tr><th>ID</th><th>运输约束</th><th>装载能力</th><th>操作</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.name)}</td><td>${esc(x.capacity||x.rule||'—')}</td><td><button class="library-link" data-open-transport="${esc(x.id)}">进入运输约束库</button></td></tr>`).join('')}</tbody></table>`}
-else if(tab==='约束条件'){let lib=window.__CONSTRAINT_LIB||[],rows=r.constraintRefs.map(id=>lib.find(x=>x.id===id)||{id,name:'缺失条件'});content=`<table class="library-table"><thead><tr><th>ID</th><th>约束条件</th><th>表达式</th><th>操作</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.id)}</td><td>${esc(x.name)}</td><td>${esc(x.expression||x.rule||'—')}</td><td><button class="library-link" data-open-condition="${esc(x.id)}">进入约束条件库</button></td></tr>`).join('')}</tbody></table>`}
-else if(tab==='资源依赖关系')content=`<div class="slice-graph">${r.ontologySlice.nodes.map(n=>`<span class="slice-graph-node">${esc(n.name)}<small> · ${esc(n.type)}</small></span>`).join('')}<hr><h3>依赖对象</h3>${r.deps.map(d=>`<span class="ref-chip">${esc(d)}</span>`).join('')||'<p>暂无额外依赖，可通过本体关系新增。</p>'}</div>`;
-else content=`<div class="detail-grid"><label>资源名称<input id="editName" value="${esc(r.name)}"></label><label>资源域<input id="editDomain" value="${esc(r.domain)}"></label><label>原子品类<input id="editCategory" value="${esc(r.category)}"></label><label>单位<input id="editUnit" value="${esc(r.unit)}"></label><label>总量<input id="editTotal" type="number" value="${r.total}"></label><label>可用<input id="editAvailable" type="number" value="${r.available}"></label><label>预占<input id="editReserved" type="number" value="${r.reserved}"></label><label>冻结<input id="editFrozen" type="number" value="${r.frozen}"></label><label>安全库存<input id="editSafety" type="number" value="${r.safetyStock}"></label><label>位置<input id="editLocation" value="${esc(r.location)}"></label><label>状态<input id="editStatus" value="${esc(r.status)}"></label></div><div class="card-actions"><button id="saveResourceEdit" class="primary">保存资源编辑</button></div>`;
-box.innerHTML=`<div class="detail-head"><div><h2>${esc(r.name)}</h2><p>${esc(r.code||'')} · ${esc(r.domain)} / ${esc(r.category)}</p></div><button id="closeAtomicDetail" class="secondary">关闭详情</button></div><div class="detail-tabs">${tabs.map(t=>`<button class="detail-tab ${t===tab?'active':''}" data-tab="${t}">${t}</button>`).join('')}</div><div id="resourceDetailContent">${content}</div>`;
-box.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>detail(r.id,b.dataset.tab));box.querySelector('#closeAtomicDetail').onclick=()=>box.classList.add('hidden');
-box.querySelectorAll('[data-ni]').forEach(e=>e.onchange=()=>{r.ontologySlice.nodes[+e.dataset.ni][e.dataset.nf]=e.value});box.querySelectorAll('[data-ri]').forEach(e=>e.onchange=()=>{r.ontologySlice.relations[+e.dataset.ri][e.dataset.rf]=e.value});box.querySelector('#addNode')?.addEventListener('click',()=>{let i=r.ontologySlice.nodes.length;r.ontologySlice.nodes.push({id:r.id+'_node_'+i,type:'OntologyNode',name:'新节点'});detail(r.id,'本体关系')});box.querySelector('#addRel')?.addEventListener('click',()=>{let n=r.ontologySlice.nodes;if(n.length>=2)r.ontologySlice.relations.push({source:n[0].id,predicate:'RELATED_TO',target:n[n.length-1].id});detail(r.id,'本体关系')});box.querySelectorAll('[data-dn]').forEach(b=>b.onclick=()=>{r.ontologySlice.nodes.splice(+b.dataset.dn,1);r.ontologySlice.relations=r.ontologySlice.relations.filter(e=>r.ontologySlice.nodes.some(n=>n.id===e.source)&&r.ontologySlice.nodes.some(n=>n.id===e.target));detail(r.id,'本体关系')});box.querySelectorAll('[data-dr]').forEach(b=>b.onclick=()=>{r.ontologySlice.relations.splice(+b.dataset.dr,1);detail(r.id,'本体关系')});box.querySelector('#applyJson')?.addEventListener('click',()=>{try{let o=JSON.parse($('ontologyJson').value);if(!Array.isArray(o.nodes)||o.nodes.length<5)throw Error('至少需要5个节点');if(!Array.isArray(o.relations))throw Error('relations 必须为数组');r.ontologySlice=o;detail(r.id,'本体关系')}catch(e){alert('JSON错误：'+e.message)}});box.querySelector('#saveSlice')?.addEventListener('click',()=>{save();alert('本体切片已保存')});box.querySelector('#saveResourceEdit')?.addEventListener('click',()=>{['Name','Domain','Category','Unit','Location','Status'].forEach(k=>r[k.charAt(0).toLowerCase()+k.slice(1)]=$('edit'+k).value);['Total','Available','Reserved','Frozen','Safety'].forEach(k=>{let key=k==='Safety'?'safetyStock':k.toLowerCase();r[key]=Number($('edit'+k).value)||0});save();render();detail(r.id,'基础信息')});box.querySelectorAll('[data-open-transport]').forEach(b=>b.onclick=()=>openLibrary('transport',b.dataset.openTransport));box.querySelectorAll('[data-open-condition]').forEach(b=>b.onclick=()=>openLibrary('condition',b.dataset.openCondition));}
-function render(){let list=$('atomicResourceList');if(!list)return;list.innerHTML=store.resources.map(r=>`<div class="atomic-resource-row" data-open-resource="${esc(r.id)}"><div><b>${esc(r.name)}</b><div class="resource-code">${esc(r.code||'')} · ${esc(r.domain)} / ${esc(r.category)}</div></div><div>总量 <b>${r.total}</b> ${esc(r.unit)}</div><div>可用 <b>${r.available}</b> ${esc(r.unit)}</div><div><span class="tag">${esc(r.status)}</span></div><div>${r.constraintRefs.length} 条约束<br><small>${r.transportConstraintRefs.length} 种运输关系</small></div><button class="secondary">详情</button></div>`).join('');let s=$('resourceListSummary');if(s)s.textContent=`显示 ${store.resources.length} 个原子资源`;}
-function openLibrary(type,id){let view=type==='transport'?'configTransport':'configConditions';if(typeof window.show==='function')try{window.show('config')}catch(e){};document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$('config')?.classList.add('active');document.querySelectorAll('.config-pane').forEach(p=>p.classList.remove('active'));$(view)?.classList.add('active');let el=$(type==='transport'?'transportConstraintList':'constraintConditionList');if(el)el.dataset.focus=id;}
-document.addEventListener('click',e=>{let row=e.target.closest('[data-open-resource]');if(row){e.preventDefault();detail(row.dataset.openResource,'基础信息');}let add=e.target.closest('#addAtomicResourceBtn');if(add){e.preventDefault();document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$('resourceCreate')?.classList.add('active');let tl=window.__TRANSPORT_LIB||[],cl=window.__CONSTRAINT_LIB||[];if($('newTransportRefs'))$('newTransportRefs').innerHTML=tl.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');if($('newConstraintRefs'))$('newConstraintRefs').innerHTML=cl.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');}},true);
-$('generateOntologySliceBtn')?.addEventListener('click',()=>{let r={id:'preview',name:$('newAtomicName').value.trim()||'新原子资源',domain:$('newAtomicDomain').value||'资源域'};$('newOntologyEditor').innerHTML=`<textarea id="newOntologyJson" class="ontology-json">${esc(JSON.stringify(makeSlice(r),null,2))}</textarea>`});
-$('saveNewAtomicResource')?.addEventListener('click',()=>{let name=$('newAtomicName')?.value.trim();if(!name)return alert('请输入节点名称');let o;try{o=JSON.parse($('newOntologyJson').value);if(!Array.isArray(o.nodes)||o.nodes.length<5)throw Error('至少需要5个节点')}catch(e){return alert('本体JSON错误：'+e.message)};let id='custom_'+Date.now(),r=norm({id,code:'CUSTOM-'+Date.now().toString().slice(-6),name,domain:$('newAtomicDomain').value||'自定义资源域',category:$('newAtomicCategory').value||'自定义品类',unit:$('newAtomicUnit').value||'个',status:'可调用',transportConstraintRefs:[...$('newTransportRefs').selectedOptions].map(x=>x.value),constraintRefs:[...$('newConstraintRefs').selectedOptions].map(x=>x.value),ontologySlice:o},store.resources.length);o.resourceId=id;store.resources.push(r);save();render();document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$('resources')?.classList.add('active');detail(id,'本体关系')});
-window.openAtomicResource=id=>detail(id,'基础信息');window.renderResources=render;setTimeout(render,0);
-})();
-
-</script>
 </body>
 </html>
