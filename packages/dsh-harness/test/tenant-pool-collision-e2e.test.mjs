@@ -8,6 +8,10 @@
 // P2 whoami 路由串 tenant（回 tenantAlpha 标记）⇒ 红。
 // 标记选型同 agentcore 侧：大小写混合防 base36 假撞。
 
+// ⚠ 必须排在**所有**其他 import 之前：dsh 供应链在 Node 20 上缺 `Promise.withResolvers`，
+// 不补齐则 mcp-client 连接建不起来，本文件的失败表象是 `unknown tool "mcp__erp__whoami"`
+// （工具压根没注册上），与租户隔离无关。病因详见 ../runtime-compat.mjs 头注。
+import '../runtime-compat.mjs'
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
