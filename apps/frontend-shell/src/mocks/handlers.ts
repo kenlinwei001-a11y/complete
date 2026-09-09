@@ -4301,11 +4301,22 @@ export const handlers = [
       });
     if (key === "cockpit_kpi")
       // DS.2 富 KPI（mock：从对象派生的 5 标量确定性示例）。
-      // WO-MOCK-SCALE-TRUTH：`supplyV7` = 定稿版 SopVersionRow.supply（万套/年·真后端实测 379，旧值 132）；
-      // `aopBaseRev` = 基准情景年营收 = 供给侧年口径 322.2 × P̄ 1.8667（亿元·真后端实测 601.5，旧值 240）。
-      // WO-METRIC-IDENTITY：`revAttainPct` 写死的 **102 已过期且方向相反**。102 抄的是真后端修前那个
+      // WO-MOCK-SCALE-TRUTH（真后端实测 **2026-08-15**，提交 `d8242445`）：
+      // `supplyV7` = 定稿版 SopVersionRow.supply（万套/年·实测 379，旧值 132）；
+      // `aopBaseRev` = 基准情景年营收 = 供给侧年口径 322.2 × P̄ 1.8667（亿元·实测 601.5，旧值 240）。
+      // 复验（三条任一即可，都不需要读本文件）：
+      //   ① 值的单一来源在 `apps/frontend-shell/src/mocks/sopScale.ts`
+      //      （`SUPPLY_V7_WAN` :363 取定稿行的 supply · `AOP_BASE_REVENUE_YI` :369 = 计划年产能 × 均价）；
+      //   ② 真后端：`SEED_DEMO=1` 起 datacore，`POST /a/v1/solvers/sop_versions/invoke` 读定稿行 supply；
+      //   ③ 离线：`grep -n "SUPPLY_V7_WAN\|AOP_BASE_REVENUE_YI" apps/frontend-shell/src/mocks/sopScale.ts`。
+      // ⚠ 601.5 是**供给侧计划口径**，不是订单簿总额（订单簿是 454.64 亿）—— 两者不同源，别当同一个量。
+      // WO-METRIC-IDENTITY（真后端实测 **2026-09-07**，提交 `47f85eec`）：
+      // `revAttainPct` 写死的 **102 已过期且方向相反**。102 抄的是真后端修前那个
       // 恒等式读数（`rolling ÷ budget ≡ 1/0.98`，与订单簿多少无关）；真后端现改成
       // 成交侧订单簿计划年成交额 ÷ 年度收入预算 ⇒ 实测 **59.4**（越线转红）。
+      // 复验：`REV_ATTAIN_PCT` 的算式就在 `apps/frontend-shell/src/mocks/sopScale.ts:316`
+      // （= ORDER_BOOK_PLAN_YEAR_REVENUE_YI ÷ SOP_REVENUE_BUDGET_YI ×100），两个分子分母都在同文件；
+      // 真后端侧：`SEED_DEMO=1` + `POST /a/v1/solvers/cockpit_kpi/invoke` 读回 `revAttainPct`。
       // 同一块屏上 mock 读「超额完成 2 个点」而真后端读「只完成 59.4%」，那是两个相反的结论 ——
       // 本文件头注那句「mock 不许比真后端宽松」说的正是这种情形。改走 `REV_ATTAIN_PCT` 单一来源。
       return HttpResponse.json({ data: { supplyV7: SUPPLY_V7_WAN, revAttainPct: REV_ATTAIN_PCT, utilPeak: 88, aopBaseRev: AOP_BASE_REVENUE_YI, cashCushion: 58 }, snapshotVersion: "ov-12" });
@@ -6002,9 +6013,12 @@ export const handlers = [
     if (key === "finance_pnl")
       // WO-MOCK-SCALE-TRUTH：量价本利科目表是**年**口径（亿元/年）。旧 mock 写 240/248/39.4，
       // 与真后端同一张表差 2.8 倍。这一族**不随**量轴改月：钱轴与量轴期间不同是真后端自己的设计。
-      // WO-METRIC-IDENTITY：真后端预算列已从「滚动×0.98」换成年度目标登记册 ⇒ 实测
+      // WO-METRIC-IDENTITY（真后端实测 **2026-09-07**，提交 `47f85eec`）：预算列已从「滚动×0.98」
+      // 换成年度目标登记册 ⇒ 实测
       // 收入 **700**/700、销售成本 588/581.1、毛利 **112**/118.9，毛利率 16.0%→17.0%（+1.0pp，修前恒 0.0）。
       // 数值与派生全部走 `mocks/sopScale.ts` 的 `FINANCE_PNL_YEAR` 单一来源，本处不抄第二份。
+      // 复验：真后端 `SEED_DEMO=1` + `POST /a/v1/solvers/finance_pnl/invoke` 读回同一张表；
+      // 本侧读数 `grep -n "FINANCE_PNL_YEAR" apps/frontend-shell/src/mocks/sopScale.ts`。
       return HttpResponse.json({
         data: {
           pnl: FINANCE_PNL_YEAR.pnl.map((row) => ({ ...row })),

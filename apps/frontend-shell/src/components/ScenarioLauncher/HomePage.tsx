@@ -81,6 +81,15 @@ export function routeEntriesForHome(workspace: Parameters<typeof featureOn>[0]):
  *
  * ⚠ **不许在这里写死键清单**：写死了下次谁往 `CONSOLIDATED_INTO_SANDBOX` 或
  * `NAV_GROUPS` 加一项，首页这份不会跟着变 —— 本病换个键再犯一次，且没有任何东西会说话。
+ *
+ * ── 怎么复验那个 11（别只信这段话）────────────────────────────────────────────
+ * · **判定单源**：`apps/frontend-shell/src/pages/ShellLayout.tsx` 的 `isViewConsolidatedAway`
+ *   （两个分支：`CONDITIONAL_CONSOLIDATION` 走 `featureOn`，其余看 `CONSOLIDATED_INTO_SANDBOX`）。
+ * · **离线**：`node -e` 拉起同一份表分别数两侧长度；或
+ *   `grep -n "isViewConsolidatedAway" apps/frontend-shell/src/pages/ShellLayout.tsx apps/frontend-shell/src/components/ScenarioLauncher/HomePage.tsx`
+ *   —— 两处都命中即本病已修（修前只有 ShellLayout 一处）。
+ * · **在线**：`SEED_DEMO=1` 起 datacore，`GET /a/v1/me/workspace` 取 `navigation`，
+ *   按 `group !== "admin"` 过滤得侧栏输入面，再跑上面那个判定，两侧条数之差即此处的 11。
  */
 function businessViewsForHome(
   navigation: { key: string; label?: string; viewKey?: string; group?: string }[],

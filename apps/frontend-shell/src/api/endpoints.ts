@@ -1477,8 +1477,12 @@ export interface ScenarioCardVM {
  *
  * **今天的行为（X）**：`CommandPalette` 的检索面是 `[name, triggerQuestion, sNo, summary]` 四个字段
  *   （见该文件那一行 `.some((s) => s?.toLowerCase().includes(needle))`）。用户嘴里的**业务事件词**
- *   一个都不在这四个字段里 ⇒ 真浏览器逐词实测：`物料延期`/`延期`/`停机`/`插单` **全 0 命中**
+ *   一个都不在这四个字段里 ⇒ 真浏览器逐词实测（**2026-09-07**，提交 `63f47da0` 当天）：
+ *   `物料延期`/`延期`/`停机`/`插单` **全 0 命中**
  *   （金丝雀：同面板 `物料` 3 条、`订单` 4 条 ⇒ 面板是好的，那 4 个 0 是真 0）。
+ *   复验：`SEED_DEMO=1` 起 datacore + 前端，登录 demo/admin，⌘K 逐词输入上面 6 个词数命中条数；
+ *   离线复验同一判据 —— `grep -n "includes(needle)" apps/frontend-shell/src/components/ScenarioLauncher/CommandPalette.tsx`（今日 1 处命中，:44）
+ *   读出检索面字段列表，再对 `SYNONYMS_BY_SNO`（本文件）比对哪些词进得了那四个字段。
  * **应该的行为（Y）**：用户打得出的那个事件词，能命中**真能答这件事**的那张卡。
  *
  * ⚠ 为什么改这里、不改 `CommandPalette.tsx`：本轮另有 `WO-PALETTE-USABLE` 在改该文件

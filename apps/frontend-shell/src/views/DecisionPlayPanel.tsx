@@ -847,9 +847,13 @@ export function DecisionPlayPanel({ metricKey, factorId = "", locus = null, entr
  *
  * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
  * **X**：触发判定（哪条信号 · 该越多少 · 现在多少 · 越没越 · 阈值来自哪）**引擎早就在算**，
- * 而屏上一个字都没有。真浏览器实测（登录走起 · 禁 VITE_MOCK）：`/v/order-chain`、
- * `/v/sim-unified`、`/v/risk` 三屏对 6 个探针串（触发动作名 / 阈值出处标签）**全 0 命中**
- * （扫屏金丝雀 `admin` 同一把尺子命中 ⇒ 量法是好的，不是"我没找到"）。
+ * 而屏上一个字都没有。真浏览器实测 **2026-09-08**（提交 `a1880293` 当天 · 登录走起 · 禁 VITE_MOCK）：
+ * `/v/order-chain`、`/v/sim-unified`、`/v/risk` 三屏对 6 个探针串（触发动作名 / 阈值出处标签）
+ * **全 0 命中**（扫屏金丝雀 `admin` 同一把尺子命中 ⇒ 量法是好的，不是"我没找到"）。
+ * **复验**：`SEED_DEMO=1` 起 datacore + agentcore + 前端（**禁 `VITE_MOCK`**），
+ * 登录 demo/admin 走上面三条路由；引擎侧那份判定读
+ * `POST /a/v1/solvers/decision_play/invoke` 的 `triggers[]`（本文件 `TriggerVerdictStrip` 的取数口）——
+ * 屏上有没有那几段，与该回包有没有 `triggers` 是两件事，必须**分别**看。
  * 病因不是没接线，是**接在折叠抽屉里**：`DecisionPlayEmbed` 默认收起，
  * `<details>` 未展开时整棵子树不挂载 ⇒ 用户不点开就永远看不见。
  * 后果是实的：把阈值从 12 改到 30（真 REST 发布一条规则参数）之后，引擎当场

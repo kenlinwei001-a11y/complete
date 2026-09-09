@@ -250,7 +250,10 @@ export const SOP_WIZARD_SEGMENTS = SOP_SEG_MONTH_TARGET.map((s) => {
  * 同一个病还把毛利率差杀成常数：`budgetPct = gm.budget/rev.budget`、`rollPct = gm.rolling/rev.rolling`，
  * ×0.98 上下相消 ⇒ 旧 `gmRow` 那组 **17 / 17 / diffPp 0** 是**结构上恒 0**，不是"今年恰好没差"。
  *
- * **新值**（真后端 `generateBattery(42,"S")` 实测，2026-09-07）：预算列改取 `GOAL_REGISTRY`
+ * **新值**（真后端 `generateBattery(42,"S")` 实测，2026-09-07；发生器在
+ * `apps/datacore/src/synthetic/battery.ts`，`GOAL_REGISTRY` 亦在该树内。
+ * 复验：`SEED_DEMO=1` 起 datacore 后 `POST /a/v1/solvers/finance_pnl/invoke`，
+ * 或离线 `grep -n "GOAL_REGISTRY" apps/datacore/src/synthetic/battery.ts` 读目标登记册）：预算列改取 `GOAL_REGISTRY`
  * 计划侧年度目标 —— 收入 **700**（`revenue.target`）、毛利 **112**（`gross_profit.target`）、
  * 销售成本 **588**（= 700 − 112，同一步派生，保住"收入 = 成本 + 毛利"逐位成立）。
  * 滚动列（需求侧预测）一个字节没动：700 / 581.1 / 118.9。
@@ -280,7 +283,9 @@ export const FINANCE_PNL_YEAR = {
 } as const;
 
 /**
- * `cockpit_kpi.revAttainPct` = **订单簿计划年成交额 ÷ 收入行年度预算** ×100（真后端实测 **59.4**）。
+ * `cockpit_kpi.revAttainPct` = **订单簿计划年成交额 ÷ 收入行年度预算** ×100
+ * （真后端实测 **59.4**，实测日 **2026-09-07**，提交 `47f85eec`；
+ *  复验：`SEED_DEMO=1` 起 datacore 后 `POST /a/v1/solvers/cockpit_kpi/invoke` 读 `revAttainPct`）。
  *
  * **旧 mock 写死 102，那是错的**：它抄的是真后端修前那个恒等式的读数
  * （`rolling ÷ budget ≡ 1/0.98`），**与订单簿多少无关** —— 真后端把订单簿砍到 1/5 它照读 102。

@@ -412,7 +412,11 @@ export default function RiskBoardView(_props: ViewRendererProps) {
           最早越线日来自越线判定（第 3 步）、订单与客户来自影响面（第 4 步）。 */}
       <div className={styles.rkKpi} data-testid="risk-kpi">
         {/* WO-RISKBOARD-TRUNCATION：这个数原本是**本页最容易被读错的一个** —— 它是"榜上几张卡"，
-            却挂着「风险基地」的名字，于是 8 被读成"全网只有 8 个基地有风险"（实测：真值 13）。
+            却挂着「风险基地」的名字，于是 8 被读成"全网只有 8 个基地有风险"
+            （实测 **2026-09-08**，提交 `cc550cfc` 当天：榜上 8 / 越线真值 13。
+             复验：`SEED_DEMO=1` 起 datacore，`POST /a/v1/solvers/risk_timeline/invoke`
+             读回包里 `unlisted.crossingTotal`（越线总数）与 `cards.length`（榜上）两个数比一比；
+             屏上同一对数在 `data-testid="risk-kpi-bases"` 上）。
             截断发生时改显 `榜上/越线总数` 两个数（同 `kit_readiness` 抽样两数进第一层的口径：
             分母变了，结论的读法就跟着变，不能只把它留在浮层里）；没截断时**逐字节保持原样**。 */}
         {upto(2) && (
@@ -896,8 +900,12 @@ function CardAdoptedLine({ card }: { card: RiskCard }) {
  * 但它**寄生在卡片上**。而卡片只在「本窗越线」时才出（引擎侧
  * `if (!pair.forced && crossDay === null) continue;`）—— 一条处置**把越线彻底消解掉**时，
  * 卡片整张消失，`CardAdoptedLine` 连同它一起消失，下一个基地顶上这个位置。
- * 实测：常州·瓶颈工序采 `reroute`(eff 9,T+3) ⇒ 卡没了、记录也没了；
+ * 实测 **2026-09-08**（提交 `34feb6ee` 当天）：常州·瓶颈工序采 `reroute`(eff 9,T+3) ⇒ 卡没了、记录也没了；
  * 采 `debottleneck`(eff 13,T+6·第 6 天前仍越线) ⇒ 卡还在、记录看得见。
+ * 复验（对照实验·两次只差 planKey 一个字）：`SEED_DEMO=1` 起 datacore，
+ * `POST /a/v1/solvers/mitigation_select/invoke` 采纳其一，再
+ * `POST /a/v1/solvers/risk_timeline/invoke` 读 `cards[]` 里还有没有常州那张
+ * —— `reroute` 那次应当没有、`debottleneck` 那次应当还在；`adoptionLedger[]` 两次都必须有记录。
  * ⇒ **「把问题解决了」与「记录被抹掉了」在屏上长得一模一样，且措施越有效证据消失得越彻底。**
  *
  * **Y**：台账有自己的屏位，来源是引擎新下发的 `adoptionLedger`（遍历源 = ACTIVE 台账对象，

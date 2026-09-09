@@ -36,7 +36,9 @@ export const zh = {
     fallbackTenant: "全域决策支撑",
     hint: "一键启动高频场景直达推演，或进入业务视图。按 ⌘K 随处快搜场景。",
     hotScenarios: "⚡ 高频场景",
-    // WO-HOME-ENTRY-FLOW：首页并列 12 个推演类入口却无一句指引说「物料延期该点哪个」（真浏览器实测）。
+    // WO-HOME-ENTRY-FLOW：首页并列 12 个推演类入口却无一句指引说「物料延期该点哪个」
+    // （真浏览器实测 **2026-09-07**，提交 `63f47da0` 当天；复验：SEED_DEMO=1 起 datacore + 前端，
+    //  登录 demo/admin 看首页 —— 数「⚡ 高频场景」下的卡片数，并找有没有一句按业务事件分类的指引）。
     // 这两句就是那个答案的标题与引导语；逐条指引在 `config/eventGuidance.ts`。
     eventGuidance: "🧭 遇到这些事，先点这里",
     eventGuidanceHint: "按你嘴里说得出的那件事挑 —— 点一下直接起推演；这些词在 ⌘K 里也搜得到。",
