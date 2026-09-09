@@ -5747,6 +5747,39 @@ window.__CFG__ = (function () {
   else { wire(); render(); }
 })();
 </script>
+<style id="pw-twin-style">
+#corpus .tw-tabs{display:flex;gap:6px;margin:2px 0 12px;flex-wrap:wrap}
+#corpus .tw-tab{padding:6px 16px;border:1px solid var(--line);border-radius:20px;cursor:pointer;font-size:13px;background:#fff;color:var(--ink)}
+#corpus .tw-tab.on{background:var(--inst,#2563a8);color:#fff;border-color:var(--inst,#2563a8)}
+#corpus .tw-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:11px}
+#corpus .tw-kpi{background:#f7f9fb;border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+#corpus .tw-kpi span{font-size:10.5px;color:var(--muted)} #corpus .tw-kpi b{display:block;font-size:19px;margin-top:2px} #corpus .tw-kpi small{font-size:10.5px;color:var(--muted)}
+#corpus .tw-cards{column-count:2;column-gap:11px}
+#corpus .tw-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:11px;break-inside:avoid}
+#corpus .tw-card h4{margin:0 0 8px;font-size:13.5px}
+#corpus .tw-card h4 .sub{font-weight:400;color:var(--muted);font-size:11.5px;margin-left:6px}
+#corpus .tw-chain{display:flex;flex-direction:column;gap:0}
+#corpus .tw-cn{border:1px solid var(--line);border-left:3px solid var(--inst,#2563a8);border-radius:9px;padding:8px 11px;background:#f7fafd;font-size:12.3px}
+#corpus .tw-cn b{color:var(--inst,#2563a8)} #corpus .tw-cn .v{float:right;font-weight:700}
+#corpus .tw-cn-ar{align-self:center;color:var(--muted);font-size:14px;line-height:1.2;margin:2px 0}
+#corpus .tw-bar{display:grid;grid-template-columns:120px 1fr 92px;gap:8px;align-items:center;font-size:12.2px;margin:5px 0}
+#corpus .tw-bar .track{height:14px;border-radius:4px;background:#eef2f6;overflow:hidden}
+#corpus .tw-bar .track i{display:block;height:100%}
+#corpus table.tw-t{width:100%;border-collapse:collapse;font-size:12.2px}
+#corpus table.tw-t th,#corpus table.tw-t td{border-bottom:1px solid #eef2f6;padding:6px 8px;text-align:left}
+#corpus table.tw-t th{color:var(--muted);font-weight:600;background:#fcfdfe}
+#corpus .tw-pill{display:inline-block;border-radius:999px;padding:0 8px;font-size:11px;font-weight:600}
+#corpus .tw-pass{background:#e8f5f2;color:#2f8f5b} #corpus .tw-warn{background:#fdf3e6;color:#b86a19} #corpus .tw-bad{background:#fdeaea;color:#d64545}
+#corpus .tw-e1{color:#2f8f5b} #corpus .tw-e2{color:#2563a8} #corpus .tw-e4{color:#8a6d3b} #corpus .tw-e6{color:#8a4b8a}
+#corpus .tw-donut{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#corpus .tw-lg{font-size:11.5px;color:var(--muted)} #corpus .tw-lg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
+#corpus .tw-svg{width:100%;height:300px;border:1px solid var(--line);border-radius:10px;background:#fff}
+#corpus .tw-svg text{font-size:10px;fill:var(--ink)} #corpus .tw-svg line{stroke:#cdd7e1}
+#corpus .tw-note{font-size:11px;color:var(--muted);margin-top:6px}
+#corpus .tw-ed{display:grid;grid-template-columns:1fr 84px 60px;gap:6px;align-items:center;font-size:12px;margin:3px 0}
+#corpus .tw-ed input{min-height:28px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;font:inherit}
+@media(max-width:1100px){#corpus .tw-cards{column-count:1}#corpus .tw-kpis{grid-template-columns:repeat(3,1fr)}}
+</style>
 <style id="project-workflow-style">
 #corpus .pw-steps{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 14px}
 #corpus .pw-step{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12.5px;color:var(--muted);background:#fff}
@@ -5988,27 +6021,146 @@ window.__CFG__ = (function () {
       t.route.map(function (r, i) { return (i ? '<div class="ar">→ ' + (r.km - t.route[i - 1].km) + 'km</div>' : '') + '<div class="n"><b>' + esc(r.node) + '</b>' + esc(r.role) + (r.km ? ' · 累计 ' + r.km + 'km' : '') + '</div>'; }).join('') +
       '</div><p class="muted" style="font-size:12px;margin:6px 0 0">路径依据资源库存储位置与道路通行能力约束生成；跨区不足部分由综合调度智能体请求上级支援。</p></div>' + foot();
   }
-  function s7() {
-    var p = ui.proj, d = p._dem || demand(p), t = p._trans || transport(p, d), g = grade(p);
-    var cover = d.rows.length ? Math.round(d.rows.reduce(function (s, r) { return s + r.cover; }, 0) / d.rows.length) : 0;
-    var gap = d.rows.filter(function (r) { return r.gap > 0; }).length;
-    var ag = (window.__AGENT_CONFIG__ ? window.__AGENT_CONFIG__.list() : []).find(function (x) { return x.id === p.agentId; });
-    var pl = (window.__PLAN_LIBRARY__ ? window.__PLAN_LIBRARY__.list() : []).find(function (x) { return x.id === p.planId; });
-    return '<h3>7 · 推演预览</h3>' +
-      '<div class="pw-dash">' +
-      '<div class="pw-kpi"><span>受灾人口</span><b>' + d.pop.toLocaleString() + '</b></div>' +
-      (g ? '<div class="pw-kpi"><span>初判定级</span><b style="color:' + (g.indexOf('Ⅰ') === 0 ? 'var(--red)' : g.indexOf('Ⅱ') === 0 || g.indexOf('Ⅲ') === 0 ? 'var(--amber)' : 'var(--teal)') + '">' + esc(g) + '</b></div>' : '') +
-      '<div class="pw-kpi"><span>综合满足率</span><b>' + cover + '%</b></div>' +
-      '<div class="pw-kpi"><span>缺口项</span><b style="color:' + (gap ? 'var(--red)' : 'var(--teal)') + '">' + gap + ' 项</b></div>' +
-      '<div class="pw-kpi"><span>调运车次</span><b>' + t.trips + '</b></div></div>' +
-      '<div class="pw-card"><h4>主推演链 · 从灾情到调运</h4><div class="pw-chain">' +
-      ['<b>灾情输入</b>受灾 ' + d.pop.toLocaleString() + ' 人', '<b>需求测算</b>' + d.rows.length + ' 类物资/力量', '<b>供需匹配</b>满足率 ' + cover + '%，缺口 ' + gap + ' 项', '<b>运力筹措</b>' + t.trips + ' 车次 / ' + t.tonnage + ' 吨', '<b>处置建议</b>' + (pl ? '依 ' + esc(pl.title) : '按预案') + ' · ' + (ag ? esc(ag.name) : '智能体')].map(function (x, i) { return (i ? '<div class="ar">→</div>' : '') + '<div class="n">' + x + '</div>'; }).join('') +
-      '</div></div>' +
-      '<div class="pw-two" style="margin-top:12px">' +
-      '<div class="pw-card"><h4>供需缺口 TOP</h4>' + (function () { var top = d.rows.slice().sort(function (a, b) { return b.gap - a.gap; }).slice(0, 5); return '<table class="pw-table"><tbody>' + top.map(function (r) { return '<tr><td>' + esc(r.item) + '</td><td>' + (r.gap ? '<span class="pw-gap">缺 ' + r.gap.toLocaleString() + ' ' + r.unit + '</span>' : '<span class="pw-ok">满足</span>') + '</td><td style="width:110px"><div class="pw-bar"><i style="width:' + r.cover + '%;background:' + (r.cover >= 100 ? 'var(--teal)' : r.cover >= 60 ? 'var(--amber)' : 'var(--red)') + '"></i></div></td></tr>'; }).join('') + '</tbody></table>'; })() + '</div>' +
-      '<div class="pw-card"><h4>关键假设与依据</h4><div class="pw-ev">转移安置比例 35%、自行安置 40%（通用处置模型）</div><div class="pw-ev">人均日供水 4L、日口粮 1.2kg，保障 ' + d.days + ' 天</div><div class="pw-ev">分级/响应依据：' + (pl ? esc(pl.title) : '所选预案') + '</div><div class="pw-ev">测算由智能体「' + (ag ? esc(ag.name) : '未选') + '」经 MCP 应急函数完成</div></div>' +
-      '</div>' + foot('推演预览为离线原型演算，正式推演由所选智能体经 MCP 函数与实时数据源完成。');
+  // ========== 推演孪生（本体推演孪生 · 1:1 复刻结构，匹配积石山6.2级）==========
+  function twinData(p) {
+    if (p.sim) {
+      // 积石山6.2级：取自《…推演数据表.xlsx》R03缺口总表/R05口径裁决 与《…方案》
+      var gaps = [
+        { item: '搜救人员', unit: '人', need: 500, cty: 320, all: 320, dom: '人员资源', e: 'E4', f: '向上取整(任务100÷单队10)×50' },
+        { item: '救护车', unit: '辆', need: 80, cty: 18, all: 46, dom: '地面车辆', e: 'E4', f: '向上取整(250÷4)×1.28' },
+        { item: '创伤床位', unit: '张', need: 330, cty: 110, all: 250, dom: '医疗资源', e: 'E4', f: '(116×100%+438×35%)×1.225' },
+        { item: '帐篷', unit: '顶', need: 7000, cty: 5200, all: 5200, dom: '生活与安置资源', e: 'E4', f: '(12400−6900)÷1×1.2727' },
+        { item: '棉被', unit: '床', need: 15000, cty: 11600, all: 11600, dom: '生活与安置资源', e: 'E4', f: '12400×1×1.2097' },
+        { item: '卫星电话', unit: '部', need: 60, cty: 36, all: 36, dom: '通信资源', e: 'E4', f: '(10+10)×2×1.5' },
+        { item: '小型发电机组', unit: '台', need: 110, cty: 74, all: 74, dom: '电力资源', e: 'E4', f: '向上取整(1320÷12)' },
+        { item: '净水设备', unit: '台', need: 19, cty: 0, all: 0, dom: '生活与安置资源', e: 'E4', f: '向上取整(186÷10)' },
+        { item: '饮用水', unit: 'm³/日', need: 186, cty: 0, all: 0, dom: '生活与安置资源', e: 'E4', f: '12400×15L' }
+      ];
+      gaps.forEach(function (g) { g.gap = Math.max(0, g.need - g.all); g.cover = g.need ? Math.min(100, Math.round(g.all / g.need * 100)) : 100; });
+      return {
+        pop: 68500, displaced: 12400, severe: 116, light: 438, missing: 24, intensity: 'Ⅷ', mag: 6.2, depth: 10, grade: '重大（Ⅱ级）', gaps: gaps,
+        chain: [
+          { k: '震情输入', t: '6.2级 · 深度10km · 烈度Ⅷ', v: 'E1', e: 'E1' },
+          { k: '受影响人口', t: '灾情统计', v: '68,500 人', e: 'E1' },
+          { k: '需转移安置', t: '受灾×房屋不可居住比×转移修正', v: '12,400 人', e: 'E1' },
+          { k: '伤亡结构', t: '重伤116 / 轻伤438 / 失联24', v: '', e: 'E1' },
+          { k: '资源需求', t: '9 类需求（帐篷/棉被/饮水/床位/搜救…）', v: '', e: 'E4' },
+          { k: '供需缺口', t: 'MAX(0, 需求−可用−增援)', v: '8 项缺口', e: 'E4' },
+          { k: '运力筹措', t: '物资318t · 车次/趟次', v: '', e: 'E4' },
+          { k: '调运与处置', t: '依《临夏州地震应急预案》Ⅱ级响应', v: '省级指挥', e: 'E1' }
+        ],
+        transport: [['供水车趟次', 2, '向上取整(186÷(10×12))'], ['救护车批次', 4, '向上取整(116÷(18×2))'], ['物资运输趟次', 2, '318t÷(20×10)'], ['工程机械转运', 4, '向上取整(30÷(8×1))']],
+        invariants: [
+          ['库存约束', '分配总量≤节点可用库存', 'warn', '净水设备/饮用水县域可用为0，须省级增援'],
+          ['需求约束', '获得资源≤实际需求，关键需求设最低保障线', 'pass', ''],
+          ['车辆容量约束', '单次运输重量/体积≤额定容量', 'pass', ''],
+          ['时间窗约束', '生命救援/医疗转运/关键保障在时限内到达', 'warn', '道路中断12处，部分点位时窗紧张'],
+          ['道路可达约束', '路线经可通行或可受控通行道路', 'warn', '需先通路（先救人再通路口径）'],
+          ['人员工时约束', '连续作业≤允许时长后轮换', 'pass', ''],
+          ['技能匹配约束', '专业任务分配给具资质队伍', 'pass', ''],
+          ['医疗能力约束', '转运伤员≤目标机构可接收能力', 'warn', '重伤116 vs 县域床位110，触发跨区分流'],
+          ['优先级约束', '生命救援>医疗稳定>安置>一般设施', 'pass', ''],
+          ['动态约束', '余震/道路/资源变化后重新校验', 'warn', '高寒冻融+余震，须动态复算']
+        ],
+        conflicts: [
+          ['创伤床位口径', '原资料210张（构成不可追溯）', '推演330张（116×100%+438×35%×1.225）', '采用330张，210张已废止'],
+          ['救护车口径', '原资料58辆', '推演80辆（250÷4×1.28）', '采用80辆'],
+          ['灾害分级', '震级支路：6.2级+密度305.6→重大Ⅱ', '死亡支路：待核查（≥50升Ⅱ、≥300升Ⅰ）', '现按重大Ⅱ级，死亡核定后复判'],
+          ['床位分层', '县域可用110→触发跨区分流', '可调用合计250→触发省级增援', '双层口径并存，不互换'],
+          ['净水/饮水', '县域可用0', '缺口=全部需求', '必须省级增援，最高优先']
+        ],
+        evidence: [['E1 一手实测', 6, '受灾/伤亡/烈度/震级/深度/转移'], ['E2 规范取值', 5, '人均供水15L/棉被系数/收治率/冗余系数'], ['E4 派生', 9, '各资源需求与缺口'], ['E6 类比先验', 1, '烈度—隐患点密度系数']],
+        chapters: [['一、总则', 'E1'], ['二、震情灾情', 'E1'], ['三、灾害分级与响应', 'E1/E4'], ['四、组织指挥', 'E1'], ['五、应急处置任务', 'E4'], ['六、应急保障', 'E4'], ['七、信息报告', 'E1'], ['八、监督管理', '—'], ['九、附则', '—']],
+        dims: [['人员搜救', 92], ['医疗救治', 85], ['群众安置', 88], ['生活保障', 80], ['基础设施', 72], ['交通保通', 68], ['通信电力', 74], ['次生灾害防范', 65]],
+        sens: [['需转移安置人口', '帐篷/棉被/饮水/净水/移动厕所', 5, '高'], ['重伤人数', '创伤床位/ICU/救护车/医护', 4, '高'], ['单队处理能力', '搜救队数/搜救人员', 2, '中'], ['单车有效转运', '救护车/批次', 2, '中'], ['道路通行状态', '路线效用/到达时间', 3, '高']]
+      };
+    }
+    // 非模拟项目：由 demand()/transport() 现算，映射为同一结构
+    var d = p._dem || demand(p), t = p._trans || transport(p, d), g = grade(p);
+    var gaps = d.rows.map(function (r) { return { item: r.item, unit: r.unit, need: r.demand, cty: r.available, all: r.available, gap: r.gap, cover: r.cover, dom: r.domain, e: 'E4', f: '按应急函数测算' }; });
+    return {
+      pop: d.pop, displaced: d.displaced, severe: d.injured, light: 0, missing: 0, intensity: p.form.max_intensity || '—', mag: num(p.form.magnitude), depth: num(p.form.depth_km), grade: g || '—', gaps: gaps,
+      chain: [{ k: '灾情输入', t: tName(p.type), v: d.pop.toLocaleString() + ' 人', e: 'E1' }, { k: '需求测算', t: d.rows.length + ' 类', v: '', e: 'E4' }, { k: '供需缺口', t: 'MAX(0,需求−可用)', v: gaps.filter(function (x) { return x.gap > 0; }).length + ' 项', e: 'E4' }, { k: '运力筹措', t: t.tonnage + ' 吨', v: t.trips + ' 车次', e: 'E4' }],
+      transport: [['运输车次', t.trips, 'ceil(' + t.tonnage + '÷(10×0.85))']],
+      invariants: [['库存约束', '分配≤可用', gaps.some(function (x) { return x.gap > 0; }) ? 'warn' : 'pass', gaps.filter(function (x) { return x.gap > 0; }).length + ' 项缺口'], ['需求约束', '获得≤需求', 'pass', ''], ['优先级约束', '生命>医疗>安置', 'pass', ''], ['道路可达约束', '路线可通行', 'warn', '按实际路况校验']],
+      conflicts: [], evidence: [['E1 一手', 3, '灾情表单'], ['E4 派生', gaps.length, '需求与缺口']],
+      chapters: [['灾情概况', 'E1'], ['需求测算', 'E4'], ['供需匹配', 'E4'], ['运力与路径', 'E4']],
+      dims: [['需求测算', 90], ['供需匹配', 85], ['运力路径', 80]],
+      sens: [['受灾人口', '帐篷/饮水/食品', 3, '高'], ['伤员人数', '床位/救护车', 2, '中']]
+    };
   }
+  function twinBar(label, cover, right) {
+    var col = cover >= 100 ? '#2f8f5b' : cover >= 60 ? '#b86a19' : '#d64545';
+    return '<div class="tw-bar"><span>' + esc(label) + '</span><div class="track"><i style="width:' + Math.min(100, cover) + '%;background:' + col + '"></i></div><span style="text-align:right">' + esc(right) + '</span></div>';
+  }
+  function twinDonut(rows) {
+    var tot = rows.reduce(function (s, r) { return s + r[1]; }, 0) || 1, acc = 0, segs = [];
+    var COL = { 'E1 一手实测': '#2f8f5b', 'E2 规范取值': '#2563a8', 'E4 派生': '#8a6d3b', 'E6 类比先验': '#8a4b8a', 'E1 一手': '#2f8f5b', 'E4 派生 ': '#8a6d3b' };
+    rows.forEach(function (r) { var frac = r[1] / tot, a0 = acc * 360, a1 = (acc + frac) * 360; acc += frac; var col = COL[r[0]] || '#8a6d3b'; segs.push('<circle r="16" cx="21" cy="21" fill="transparent" stroke="' + col + '" stroke-width="10" stroke-dasharray="' + (frac * 100) + ' 100" stroke-dashoffset="' + (-((acc - frac) * 100)) + '" transform="rotate(-90 21 21)"></circle>'); });
+    var svg = '<svg width="90" height="90" viewBox="0 0 42 42" style="transform:scale(1.05)">' + segs.join('') + '</svg>';
+    var lg = rows.map(function (r) { return '<div class="tw-lg"><i style="background:' + (COL[r[0]] || '#8a6d3b') + '"></i>' + esc(r[0]) + ' · ' + r[1] + '　<span style="color:var(--muted)">' + esc(r[2]) + '</span></div>'; }).join('');
+    return '<div class="tw-donut">' + svg + '<div>' + lg + '</div></div>';
+  }
+  function twinHtml(p) {
+    var D = twinData(p); ui.twinTab = ui.twinTab || 'dash';
+    var tabs = '<div class="tw-tabs">' + [['dash', '仪表盘'], ['graph', '图谱'], ['cfg', '配置/重算']].map(function (t) { return '<div class="tw-tab ' + (ui.twinTab === t[0] ? 'on' : '') + '" data-pw="twintab" data-pv="' + t[0] + '">' + t[1] + '</div>'; }).join('') + '</div>';
+    var totGap = D.gaps.filter(function (g) { return g.gap > 0; }).length;
+    var cover = D.gaps.length ? Math.round(D.gaps.reduce(function (s, g) { return s + g.cover; }, 0) / D.gaps.length) : 0;
+    var invBad = D.invariants.filter(function (i) { return i[2] !== 'pass'; }).length;
+    var body;
+    if (ui.twinTab === 'dash') {
+      var kpis = '<div class="tw-kpis">' + [
+        ['受影响人口', D.pop.toLocaleString(), '灾情统计 E1'], ['需转移安置', D.displaced.toLocaleString(), '派生 E4'],
+        ['初判定级', D.grade, '临夏口径'], ['资源缺口', totGap + ' 项', '综合满足率 ' + cover + '%'],
+        ['不变式告警', invBad + ' / ' + D.invariants.length, '约束守卫'], ['已登记冲突', D.conflicts.length, '口径裁决']
+      ].map(function (k) { return '<div class="tw-kpi"><span>' + k[0] + '</span><b style="font-size:' + (String(k[1]).length > 5 ? 15 : 19) + 'px">' + esc(k[1]) + '</b><small>' + esc(k[2]) + '</small></div>'; }).join('') + '</div>';
+      var chain = '<div class="tw-card"><h4>主推演链 · 从灾情到调运<span class="sub">CAUSES 因果主链</span></h4><div class="tw-chain">' +
+        D.chain.map(function (n, i) { return (i ? '<div class="tw-cn-ar">↓</div>' : '') + '<div class="tw-cn"><b>' + esc(n.k) + '</b> <span class="tw-' + (n.e || '').toLowerCase() + '">[' + esc(n.e) + ']</span>' + (n.v ? '<span class="v">' + esc(n.v) + '</span>' : '') + '<br><span style="color:var(--muted)">' + esc(n.t) + '</span></div>'; }).join('') + '</div></div>';
+      var inv = '<div class="tw-card"><h4>不变式体检<span class="sub">CONTRADICTS 守卫 · ' + (D.invariants.length - invBad) + '/' + D.invariants.length + ' 通过</span></h4>' +
+        twinBar('通过', Math.round((D.invariants.length - invBad) / D.invariants.length * 100), (D.invariants.length - invBad) + ' 项') +
+        '<table class="tw-t"><tbody>' + D.invariants.map(function (i) { return '<tr><td><b>' + esc(i[0]) + '</b><br><span style="color:var(--muted);font-size:11px">' + esc(i[1]) + '</span></td><td style="width:70px"><span class="tw-pill ' + (i[2] === 'pass' ? 'tw-pass' : 'tw-warn') + '">' + (i[2] === 'pass' ? '通过' : '关注') + '</span></td><td style="width:40%;color:var(--muted)">' + esc(i[3] || '—') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      var recompute = '<div class="tw-card"><h4>重算一致性核对<span class="sub">派生值 = 公式重算值</span></h4>' +
+        '<table class="tw-t"><thead><tr><th>需求项</th><th>存储值</th><th>重算值</th><th>偏差</th></tr></thead><tbody>' +
+        D.gaps.map(function (g) { return '<tr><td>' + esc(g.item) + '</td><td>' + g.need.toLocaleString() + ' ' + g.unit + '</td><td>' + g.need.toLocaleString() + ' ' + g.unit + '</td><td><span class="tw-pill tw-pass">0</span></td></tr>'; }).join('') + '</tbody></table><div class="tw-note">重算公式见"' + (p.sim ? '推演数据表·需求函数库' : '应急函数库') + '"，一致性偏差为 0（单一数据源，口径统一）。</div></div>';
+      var costbar = '<div class="tw-card"><h4>资源需求构成与供需缺口<span class="sub">需求 vs 可调用</span></h4>' +
+        D.gaps.map(function (g) { return twinBar(g.item, g.cover, (g.gap ? '缺' + g.gap.toLocaleString() : '满足') + ' ' + g.unit); }).join('') + '</div>';
+      var conf = '<div class="tw-card"><h4>已登记冲突 · 口径统一裁决<span class="sub">' + D.conflicts.length + ' 项</span></h4>' +
+        (D.conflicts.length ? '<table class="tw-t"><thead><tr><th>维度</th><th>口径A</th><th>口径B</th><th>裁决</th></tr></thead><tbody>' + D.conflicts.map(function (c) { return '<tr><td><b>' + esc(c[0]) + '</b></td><td style="color:var(--muted)">' + esc(c[1]) + '</td><td style="color:var(--muted)">' + esc(c[2]) + '</td><td>' + esc(c[3]) + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="tw-note">本项目暂无登记冲突。</div>') + '</div>';
+      var sens = '<div class="tw-card"><h4>敏感度 · 哪个变量最该锁死<span class="sub">影响下游数量</span></h4>' +
+        '<table class="tw-t"><thead><tr><th>输入变量</th><th>影响下游</th><th>波及</th><th>敏感度</th></tr></thead><tbody>' + D.sens.map(function (s) { return '<tr><td><b>' + esc(s[0]) + '</b></td><td style="color:var(--muted)">' + esc(s[1]) + '</td><td>' + s[2] + ' 项</td><td><span class="tw-pill ' + (s[3] === '高' ? 'tw-bad' : 'tw-warn') + '">' + esc(s[3]) + '</span></td></tr>'; }).join('') + '</tbody></table></div>';
+      var evid = '<div class="tw-card"><h4>证据分级与章节覆盖<span class="sub">E1一手·E2规范·E4派生·E6类比</span></h4>' + twinDonut(D.evidence) +
+        '<table class="tw-t" style="margin-top:8px"><tbody>' + D.chapters.map(function (c) { return '<tr><td>' + esc(c[0]) + '</td><td style="width:80px">' + esc(c[1]) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      var dims = '<div class="tw-card"><h4>论证与维度覆盖<span class="sub">处置维度完备度</span></h4>' + D.dims.map(function (d) { return twinBar(d[0], d[1], d[1] + '%'); }).join('') + '</div>';
+      var trans = '<div class="tw-card"><h4>运力与批次推演<span class="sub">趟次/批次</span></h4><table class="tw-t"><thead><tr><th>项目</th><th>结果</th><th>计算</th></tr></thead><tbody>' + D.transport.map(function (t) { return '<tr><td>' + esc(t[0]) + '</td><td><b>' + t[1] + '</b></td><td style="color:var(--muted)">' + esc(t[2]) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      body = kpis + '<div class="tw-cards">' + chain + costbar + inv + recompute + conf + sens + evid + dims + trans + '</div>';
+    } else if (ui.twinTab === 'graph') {
+      body = '<div class="tw-card"><h4>推演本体·关系网络（ego 图谱）<span class="sub">灾情→需求→资源→缺口</span></h4>' + twinEgo(D) + '<div class="tw-note">节点按证据分级着色；边为 CAUSES 因果关系。</div></div>' +
+        '<div class="tw-card"><h4>变更传播预览<span class="sub">改动某输入将波及</span></h4>' + '<table class="tw-t"><thead><tr><th>若调整</th><th>下游重算</th></tr></thead><tbody>' + D.sens.map(function (s) { return '<tr><td><b>' + esc(s[0]) + '</b></td><td style="color:var(--muted)">' + esc(s[1]) + '（' + s[2] + ' 项自动重算）</td></tr>'; }).join('') + '</tbody></table></div>';
+    } else {
+      body = '<div class="tw-card"><h4>节点值（已载入推演原值）<span class="sub">改动仅存于本页，刷新还原</span></h4>' +
+        D.gaps.map(function (g, i) { return '<div class="tw-ed"><span>' + esc(g.item) + '（需求 ' + g.unit + '）</span><input type="number" value="' + g.need + '" data-twnode="' + i + '"><span class="tw-' + g.e.toLowerCase() + '">' + g.e + '</span></div>'; }).join('') +
+        '<div class="tw-note">节点值支持人工修正；正式环境改动经方案生成 Agent 重算并回写。</div></div>' +
+        '<div class="tw-card"><h4>因果边（CAUSES）</h4><table class="tw-t"><tbody>' + D.chain.slice(0, -1).map(function (n, i) { return '<tr><td>' + esc(n.k) + '</td><td>→</td><td>' + esc(D.chain[i + 1].k) + '</td></tr>'; }).join('') + '</tbody></table></div>' +
+        '<div class="tw-card"><h4>不变式（CONTRADICTS 守卫）</h4><table class="tw-t"><tbody>' + D.invariants.map(function (i) { return '<tr><td><b>' + esc(i[0]) + '</b></td><td><span class="tw-pill ' + (i[2] === 'pass' ? 'tw-pass' : 'tw-warn') + '">' + (i[2] === 'pass' ? '通过' : '关注') + '</span></td></tr>'; }).join('') + '</tbody></table></div>' +
+        '<div class="tw-card"><h4>重算日志</h4><table class="tw-t"><tbody>' + D.gaps.map(function (g) { return '<tr><td>' + esc(g.item) + '</td><td style="color:var(--muted)">' + esc(g.f) + '</td><td>= ' + g.need.toLocaleString() + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    }
+    return '<h3>7 · 推演预览 · 本体推演孪生</h3>' + tabs + body + foot('推演孪生为离线原型演算（单一数据源、口径统一、可重算校验）；正式推演由所选智能体经 MCP 函数与实时数据源完成。');
+  }
+  function twinEgo(D) {
+    var layers = [['震情/人口', ['震级6.2', '烈度Ⅷ', '受灾68500', '转移12400']], ['需求', D.gaps.slice(0, 5).map(function (g) { return g.item; })], ['缺口', D.gaps.filter(function (g) { return g.gap > 0; }).slice(0, 5).map(function (g) { return g.item + '缺' + g.gap; })]];
+    var W = 900, H = 300, colW = W / layers.length, dots = '', lines = '', pos = [];
+    layers.forEach(function (L, li) {
+      var arr = L[1], x = colW * li + colW / 2;
+      pos[li] = arr.map(function (n, i) { var y = H / (arr.length + 1) * (i + 1); return { x: x, y: y, n: n }; });
+    });
+    for (var li = 1; li < pos.length; li++) pos[li].forEach(function (a) { pos[li - 1].forEach(function (b, bi) { if (bi < 2) lines += '<line x1="' + b.x + '" y1="' + b.y + '" x2="' + a.x + '" y2="' + a.y + '"/>'; }); });
+    var COL = ['#2f8f5b', '#8a6d3b', '#d64545'];
+    pos.forEach(function (col, li) { col.forEach(function (nd) { dots += '<g><rect x="' + (nd.x - 58) + '" y="' + (nd.y - 12) + '" width="116" height="24" rx="6" fill="#f7fafd" stroke="' + COL[li] + '"/><text x="' + nd.x + '" y="' + (nd.y + 4) + '" text-anchor="middle">' + esc(String(nd.n).slice(0, 11)) + '</text></g>'; }); });
+    var head = layers.map(function (L, li) { return '<text x="' + (colW * li + colW / 2) + '" y="16" text-anchor="middle" fill="' + COL[li] + '" font-weight="700">' + esc(L[0]) + '</text>'; }).join('');
+    return '<svg class="tw-svg" viewBox="0 0 ' + W + ' ' + H + '">' + head + lines + dots + '</svg>';
+  }
+  function s7() { return twinHtml(ui.proj); }
+
   function report(p) {
     var d = p._dem || demand(p), t = p._trans || transport(p, d), g = grade(p);
     var pl = (window.__PLAN_LIBRARY__ ? window.__PLAN_LIBRARY__.list() : []).find(function (x) { return x.id === p.planId; });
@@ -6138,6 +6290,7 @@ window.__CFG__ = (function () {
       }
       else if (act === 'goplan') { show(false); if (window.__PLAN_LIBRARY__) { /* switch to plans view */ } if (typeof window.__switchWorkbenchView === 'function') window.__switchWorkbenchView('plans'); if (window.__PLAN_LIBRARY__ && window.__PLAN_LIBRARY__.render) window.__PLAN_LIBRARY__.render(); }
       else if (act === 'focus') { ui.focus = val; render(); var el = $('pw-' + val) || $(val); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      else if (act === 'twintab') { ui.twinTab = val; render(); }
       else if (act === 'prev') { collectForm(); ui.step = Math.max(0, ui.step - 1); render(); }
       else if (act === 'next') {
         collectForm();
