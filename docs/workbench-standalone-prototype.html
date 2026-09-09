@@ -5850,7 +5850,7 @@ window.__CFG__ = (function () {
       '<label>灾害类型<select data-pw="type">' + TYPES.map(function (t) { return '<option value="' + t.code + '" ' + (p.type === t.code ? 'selected' : '') + '>' + t.name + '</option>'; }).join('') + '</select></label>' +
       '<label>创建时间<input value="' + esc(p.createdAt) + '" disabled></label>' +
       fields.map(function (f) { return '<label' + (f[2] === 'text' && f[0] === 'location' ? ' class="wide"' : '') + '>' + esc(f[1]) + (f[3] ? ' <span style="color:var(--red)">*</span>' : '') + inp(f) + '</label>'; }).join('') +
-      '<div class="pw-upload">上传灾情简报（.txt/.md，自动提取震级/伤亡/受灾人口/地点填充表单）：<input type="file" data-pwfile="brief" accept=".txt,.md"> <span class="muted" id="pwBriefNote"></span></div>' +
+      '<div class="pw-upload">灾情简报：可<b>上传文件</b>（.txt/.md）或<b>直接粘贴文字</b>，系统自动提取震级/伤亡/受灾人口/地点填充表单。' + '<div style="margin:7px 0"><input type="file" data-pwfile="brief" accept=".txt,.md"></div>' + '<textarea data-pwbrief style="width:100%;min-height:84px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit" placeholder="在此粘贴灾情简报/情况通报全文……">' + esc(p.brief || '') + '</textarea>' + '<div style="margin-top:6px"><button class="secondary" type="button" data-pw="parse-brief">解析并填充表单</button> <span class="muted" id="pwBriefNote"></span></div></div>' +
       '</div>' + foot();
   }
   function bestPlan(p) {
@@ -5984,9 +5984,20 @@ window.__CFG__ = (function () {
     else if (window.__CORPUS_LIBRARY__) window.__CORPUS_LIBRARY__.render();
   }
   function msg(t, ok) { var e = $('pwMsg'); if (e) { e.textContent = t || ''; e.className = 'pw-msg ' + (ok === false ? 'err' : 'ok'); } }
+  function extractBrief(txt) {
+    var p = ui.proj, fm = p.form, hit = [];
+    p.brief = String(txt || '').slice(0, 8000);
+    var mm = txt.match(/([0-9]+(?:\.[0-9])?)\s*级/); if (mm) { fm.magnitude = mm[1]; hit.push('震级 ' + mm[1]); }
+    var dd = txt.match(/死亡[^0-9]{0,4}([0-9]+)/) || txt.match(/([0-9]+)\s*人死亡/); if (dd) { fm.death_missing = dd[1]; hit.push('死亡 ' + dd[1]); }
+    var ap = txt.match(/受灾(?:群众|人口)[^0-9]{0,4}([0-9\.]+)\s*(万)?/); if (ap) { fm.affected_population = ap[2] ? Math.round(parseFloat(ap[1]) * 10000) : ap[1]; hit.push('受灾人口 ' + fm.affected_population); }
+    var dp = txt.match(/震源深度[^0-9]{0,4}([0-9\.]+)/); if (dp && fm.depth_km !== undefined) { fm.depth_km = dp[1]; hit.push('震源深度 ' + dp[1]); }
+    var lc = txt.match(/([\u4e00-\u9fa5]{2,8}(?:县|市|区|自治州|镇|乡))/); if (lc && !fm.location) { var loc = lc[1].replace(/^[日号月年时分秒讯电]+/, ''); fm.location = loc; hit.push('地点 ' + loc); }
+    return hit;
+  }
   function collectForm() {
     var p = ui.proj;
     document.querySelectorAll('#pwWizard [data-pwf]').forEach(function (x) { var k = x.getAttribute('data-pwf'); if (k === '__name') p.name = x.value; else p.form[k] = x.value; });
+    var ta = document.querySelector('#pwWizard [data-pwbrief]'); if (ta) p.brief = ta.value;
   }
   function requiredOk() {
     var p = ui.proj, fields = FORMS[p.type] || FORMS.common;
@@ -6003,6 +6014,15 @@ window.__CFG__ = (function () {
       var act = b.dataset.pw, val = b.dataset.pv;
       if (act === 'create') { ui.proj = blank(); ui.step = 0; ui.focus = 'c1'; show(true); }
       else if (act === 'cancel') { show(false); }
+      else if (act === 'parse-brief') {
+        collectForm();
+        var ta = root.querySelector('[data-pwbrief]'); var txt = ta ? ta.value : '';
+        if (!txt.trim()) return msg('请先粘贴灾情简报文字', false);
+        var hit = extractBrief(txt);
+        render();
+        var note = $('pwBriefNote'); if (note) note.textContent = hit.length ? '已自动填充：' + hit.join('、') : '未识别到可填充字段，请手动录入';
+        msg(hit.length ? '已从粘贴文字解析并填充 ' + hit.length + ' 项' : '文字已载入，未识别到结构化字段', hit.length > 0);
+      }
       else if (act === 'type') { collectForm(); ui.proj.type = b.value; ui.proj.planId = ''; ui.proj.agentId = ''; render(); }
       else if (act === 'plan') { ui.proj.planId = b.value; render(); }
       else if (act === 'agent') { ui.proj.agentId = b.value; render(); }
@@ -6038,13 +6058,8 @@ window.__CFG__ = (function () {
       var f = e.target.closest('[data-pwfile]'); if (!f || !f.files || !f.files[0]) return;
       var r = new FileReader();
       r.onload = function () {
-        var txt = String(r.result || ''); ui.proj.brief = txt.slice(0, 4000);
         collectForm();
-        var p = ui.proj, fm = p.form, hit = [];
-        var mm = txt.match(/([0-9]+(?:\.[0-9])?)\s*级/); if (mm) { fm.magnitude = mm[1]; hit.push('震级 ' + mm[1]); }
-        var dd = txt.match(/死亡[^0-9]{0,4}([0-9]+)/) || txt.match(/([0-9]+)\s*人死亡/); if (dd) { fm.death_missing = dd[1]; hit.push('死亡 ' + dd[1]); }
-        var ap = txt.match(/受灾(?:群众|人口)[^0-9]{0,4}([0-9\.]+)\s*(万)?/); if (ap) { fm.affected_population = ap[2] ? Math.round(parseFloat(ap[1]) * 10000) : ap[1]; hit.push('受灾人口 ' + fm.affected_population); }
-        var lc = txt.match(/([一-龥]{2,10}(?:县|市|区|镇|乡))/); if (lc && !fm.location) { fm.location = lc[1]; hit.push('地点 ' + lc[1]); }
+        var hit = extractBrief(String(r.result || ''));
         render();
         var note = $('pwBriefNote'); if (note) note.textContent = hit.length ? '已自动填充：' + hit.join('、') : '未识别到可填充字段，请手动录入';
         msg(hit.length ? '灾情简报已解析并填充 ' + hit.length + ' 项' : '简报已载入，未识别到结构化字段', hit.length > 0);
