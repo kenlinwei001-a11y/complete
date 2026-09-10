@@ -22,8 +22,18 @@
  *    正是本仓最恨的「事发生了，只是写在你不会去读的那一格」。
  */
 
-/** 一格的三态 + 第四态。设计稿只画了三态；`gap` 是实测逼出来的第四态，见文件头注 ②。 */
-export type SpineState = "done" | "now" | "todo" | "gap";
+/**
+ * 一格的态。设计稿只画了三态（done/now/todo）；后两态是实测逼出来的：
+ * · `gap`     —— 今天没有落点，见文件头注 ②；
+ * · `unknown` —— **该格的读端还没回来**。
+ *
+ * ⚠ `unknown` 是真浏览器走查当场抓出来的 bug：修前 `ready === undefined` 会落进
+ * `ready ? "done" : "todo"` 的 else 支，于是**「还没读到」被画成「待建」**。
+ * 实测截到过一屏：规则/数据/场景/发布四格明明各有 30 / 89 / 63 / v1，
+ * 在读端回来之前全被涂成「待建」—— 屏上等于说「这四步你都还没做」，**与事实相反**。
+ * 形态正是本文件头注在防的那一个：**「我用『我没读到』当作『它不存在』的证据。」**
+ */
+export type SpineState = "done" | "now" | "todo" | "gap" | "unknown";
 
 export interface SpineStepDef {
   /** 屏上的序号，如 "01"。 */
@@ -171,10 +181,17 @@ export function computeSpine(facts: SpineFacts): SpineCell[] {
 
   const nowIdx = base.findIndex((c) => c.def.href !== null && c.ready === false);
 
-  return base.map((c, i) => ({
-    def: c.def,
-    count: c.count,
-    ready: c.ready,
-    state: c.def.href === null ? "gap" : i === nowIdx ? "now" : c.ready ? "done" : "todo",
-  }));
+  return base.map((c, i) => {
+    // 顺序即优先级，改动前先读这四句：
+    //  ① 没落点 ⇒ gap（永远不参与 now）
+    //  ② 读端没回来 ⇒ unknown（⛔ 绝不落 todo —— 那是「没读到」冒充「没建成」）
+    //  ③ 动线作业面 ⇒ now
+    //  ④ 其余按 ready 二分
+    const state: SpineState =
+      c.def.href === null ? "gap"
+        : c.ready === undefined ? "unknown"
+          : i === nowIdx ? "now"
+            : c.ready ? "done" : "todo";
+    return { def: c.def, count: c.count, ready: c.ready, state };
+  });
 }

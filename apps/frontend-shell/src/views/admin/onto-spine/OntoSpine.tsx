@@ -78,9 +78,11 @@ export default function OntoSpine({ now }: { now?: string }) {
     <>
       <div className={css.spine} data-testid="onto-spine" role="navigation" aria-label="本体建模动线">
         {cells.map((c) => {
-          // `now` 入参只是**当前页面的自报**；它不改完成度，只在该格本就不是 gap 时覆盖高亮，
+          // `now` 入参只是**当前页面的自报**；它不改完成度，只覆盖高亮，
           // 让「我正站在哪一页」与「动线算出来的作业面」都能看见。
-          const state = now && c.def.key === now && c.state !== "gap" ? "now" : c.state;
+          // ⛔ 两种格不许被自报覆盖：`gap`（点不进去的门）与 `unknown`（读端还没回来）——
+          //    后者若被涂成 now，屏上就会在数字还没到之前先说「你在这一步」，等于凭空断言。
+          const state = now && c.def.key === now && c.state !== "gap" && c.state !== "unknown" ? "now" : c.state;
           const cls = `${css.cell} ${css[state]}`;
           const title = c.def.gapNote
             ? `${c.def.title} · ${c.def.gapNote}`
@@ -113,7 +115,11 @@ export default function OntoSpine({ now }: { now?: string }) {
         <span><i className={css.legendDot} style={{ background: "var(--accent-solid)" }} />作业面</span>
         <span><i className={css.legendDot} style={{ background: "var(--line)" }} />待建</span>
         <span><i className={css.legendDot} style={{ background: "var(--warn)" }} />今天没有落点</span>
-        <span>计数为本租户此刻真实读数，非预设值；`—` = 该读端未返回，不代表 0。</span>
+        <span>计数为本租户此刻真实读数，非预设值；`—` = 该读端未返回（虚点边框），**不代表 0**。</span>
+        {/* 分母诚实位：类型条数今天含**已标下线但顶层仍 ACTIVE** 的类型（下线只写进
+            `deprecation` 那一格，列表读端不过滤）⇒ 第 02/07/09 格的分母不是干净的"在用类型数"。
+            如实说出来，好过让人把它当精确值去用。 */}
+        <span>类型条数含已标下线的类型（下线标记未反映到列表读端），第 02 / 07 / 09 格分母据此理解。</span>
       </div>
     </>
   );

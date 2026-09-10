@@ -77,6 +77,11 @@ a.now:hover { background: var(--accent-solid); border-color: var(--accent); }
 
 .todo .count { color: var(--muted); }
 
+/* `unknown` = 该格读端还没回来。**必须与 todo 看得出区别** ——
+   两者在屏上长一样的话，「还没读到」就会被读成「还没建」，那正是本组件要防的事。 */
+.unknown { border-style: dotted; }
+.unknown .count { color: var(--muted); opacity: 0.55; }
+
 /* `gap` = 今天没有落点。**不可点**，故用虚线边把「这里本该有一扇门」画出来。 */
 .gap {
   border-style: dashed;
