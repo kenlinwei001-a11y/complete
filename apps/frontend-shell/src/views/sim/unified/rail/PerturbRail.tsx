@@ -93,6 +93,7 @@ import {
   ABSENT_TYPE_REASON,
   ORDER_CHANGES,
   buildBusinessFaces,
+  resolveActiveFace,
   resolveOrderChangeVar,
   type BusinessFace,
   type OrderChange,
@@ -204,11 +205,10 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
   /** `"face"` = 业务面（默认）；`"domain"` = 按传导域。 */
   const [axis, setAxis] = useState<"face" | "domain">("face");
   const [faceId, setFaceId] = useState<string | null>(null);
-  const face: BusinessFace | null = useMemo(() => {
-    const fs = facesResult.faces;
-    if (fs.length === 0) return null;
-    return fs.find((f) => f.id === faceId) ?? fs[0] ?? null;
-  }, [facesResult.faces, faceId]);
+  const face: BusinessFace | null = useMemo(
+    () => resolveActiveFace(facesResult.faces, faceId),
+    [facesResult.faces, faceId],
+  );
 
   // ── 受控选中：切片没了就回落到第一片（同 `edgeActiveModel.resolveSelectedSlice` 的理由：
   //    「一个都没选中 ⇒ 一行都不显示」看起来和"这页坏了"一模一样）──

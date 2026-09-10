@@ -181,6 +181,22 @@ export interface BusinessFacesResult {
 }
 
 /**
+ * 该默认停在哪个面上。
+ *
+ * **判据是「这个面今天真有对象类型」，不是「它排第一」** —— 默认停在一个空面上，
+ * 屏上第一眼是「业务对象类型：（空）」，与「这页坏了」逐像素相同。
+ * 全空时才回落到第一个面（此时 `canary.ok === false`，屏上另有一句说明工具坏了）。
+ */
+export function resolveActiveFace(
+  faces: readonly BusinessFace[],
+  wanted: string | null,
+): BusinessFace | null {
+  if (faces.length === 0) return null;
+  const picked = wanted === null ? undefined : faces.find((f) => f.id === wanted);
+  return picked ?? faces.find((f) => f.types.length > 0) ?? faces[0] ?? null;
+}
+
+/**
  * 规则 + 实例清单 → 六个业务面（+ 兜底面）。
  *
  * **一个业务判断都不做**：面的名字与候选类型是本文件的静态声明，
