@@ -122,6 +122,7 @@ import {
 import { MetricWall } from "./MetricWall";
 import { InspectorPane } from "./InspectorPane";
 import { BottomDrawer } from "./BottomDrawer";
+import Console0828 from "./console0828/Console0828";
 import styles from "./UnifiedSimShell.module.css";
 
 /**
@@ -441,6 +442,23 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
   const sessionId = session.sessionId ?? pinnedSessionId ?? undefined;
   const enabled = sessionId !== undefined && sessionId !== "";
 
+  /**
+   * ══ WO-SIM-CONSOLE-0828 · 默认视图 = 08-28 那块屏；8 页签工作台退到「专家模式」后面 ═══
+   *
+   * **今天的行为是 X**：`v/sim-unified` 打开就是 8 档页签 + 卡墙 + 右栏检视 ——
+   * 一屏 40 张状态变量卡，用户要先知道「`Base.loadIndex` 是哪一个量」才动得了它。
+   * **应该是 Y**：默认是「加几件事 → 算一下 → 出钱/卡点/方案」那一条主线；
+   * 工作台**一个字都没删**，退到左栏页脚的「专家模式 ▸」后面。
+   *
+   * 这不是我加的分层 —— 设计稿左栏页脚原文：
+   *   > 「其余 12,675 个对象只在**结果里**出现，不进选择器 …… **专家模式 ▸**」
+   *
+   * ⛔ **不新开 route、不删工作台**：同一条 `v/sim-unified`，同一个 `sessionId`，
+   *   同一份 TanStack 缓存（两边取数用的是逐字相同的 `queryKey`）⇒ 来回切不重发请求、
+   *   也不会出现「两块屏各自算出一套数」。
+   */
+  const [expert, setExpert] = useState(false);
+
   const [mode, setMode] = useState<UnifiedMode>("now");
   const [selected, setSelected] = useState<string | null>(null);
   const [railOpen, setRailOpen] = useState(true);
@@ -753,8 +771,34 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
     ],
   });
 
+  /**
+   * 默认视图（08-28 控制台）。**壳的会话解析与钉住逻辑在它上面已经跑完** ⇒
+   * 它拿到的 `sessionId` 与工作台是同一个，不各自解析一遍。
+   */
+  if (!expert) {
+    return (
+      <div className={styles.shell} data-testid="usim-shell" data-view="console0828">
+        <Console0828 sessionId={sessionId} onExpert={() => setExpert(true)} />
+      </div>
+    );
+  }
+
   return (
-    <div className={styles.shell} data-testid="usim-shell">
+    <div className={styles.shell} data-testid="usim-shell" data-view="expert">
+      {/* ── 回到默认视图（专家模式是**退到后面**，不是取代它）── */}
+      <div className={styles.status} data-testid="usim-expert-bar">
+        <span className={styles.statusKey}>专家模式</span>
+        <span className={styles.calibre}>8 档页签 · 指标卡墙 · 右栏检视</span>
+        <button
+          type="button"
+          className={styles.tab}
+          data-testid="usim-back-console"
+          onClick={() => setExpert(false)}
+        >
+          ◂ 回到「推演与对策」
+        </button>
+      </div>
+
       {/* ── 区① 顶部模式页签（顺序与分组 = `unifiedModes.ts`，本处不另排一套）──
           `role="tablist"` + `aria-selected`：这排按钮换的是**同一屏的哪一面**，不是导航到别处，
           故用 tab 语义而不是链接（与规格 `.modes[role=tablist]` 一致）。 */}
