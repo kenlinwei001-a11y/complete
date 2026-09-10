@@ -140,6 +140,18 @@ function cfg(): SandboxViewConfig {
   } as unknown as SandboxViewConfig;
 }
 
+/**
+ * 订单簿。**单独具名**（而不是只活在 `OBJECTS.Order` 里）——
+ * 本包开了 `noUncheckedIndexedAccess`，`OBJECTS.Order` 取出来是 `T | undefined`，
+ * 用例里要拿它现算期望值就得先判空。具名之后期望值是从**同一份 fixture** 算出来的，
+ * 而不是另抄一个字面量：抄一份就等于「期望值和被测数据各自漂」，改了 fixture 测试照样绿。
+ */
+const ORDERS: { id: string; props: Record<string, unknown> }[] = [
+  { id: "ord_1", props: { cust: "宁德时代", qty: 1200, value: 30_000_000, due: "2026-10-01", status: "CONFIRMED", model: "M1" } },
+  { id: "ord_2", props: { cust: "宁德时代", qty: 800, value: 20_000_000, due: "2026-11-01", status: "PLANNED", model: "M2" } },
+  { id: "ord_3", props: { cust: "比亚迪", qty: 500, value: 12_000_000, due: "2026-12-01", status: "CONFIRMED", model: "M1" } },
+];
+
 /** 对象层。名字只从这里来（组件取 `props.name` / `props.cust` 等，取不到就回落 id，不编）。 */
 const OBJECTS: Record<string, { id: string; props: Record<string, unknown> }[]> = {
   Material: [
@@ -150,11 +162,7 @@ const OBJECTS: Record<string, { id: string; props: Record<string, unknown> }[]> 
     { id: "base_cz", props: { name: "常州基地" } },
     { id: "base_zz", props: { name: "枣庄基地" } },
   ],
-  Order: [
-    { id: "ord_1", props: { cust: "宁德时代", qty: 1200, value: 30_000_000, due: "2026-10-01", status: "CONFIRMED", model: "M1" } },
-    { id: "ord_2", props: { cust: "宁德时代", qty: 800, value: 20_000_000, due: "2026-11-01", status: "PLANNED", model: "M2" } },
-    { id: "ord_3", props: { cust: "比亚迪", qty: 500, value: 12_000_000, due: "2026-12-01", status: "CONFIRMED", model: "M1" } },
-  ],
+  Order: ORDERS,
   Customer: [
     { id: "cust_a", props: { name: "宁德时代" } },
     { id: "cust_b", props: { name: "比亚迪" } },
@@ -462,7 +470,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     // 敞口来自**差分 ∩ 订单**（ord_1 + ord_2 动了，ord_3 没动）——
     // 写死期望会让「差分算错」这件事测不出来，故期望值由 fixture 现算。
     const moved = ["ord_1", "ord_2"];
-    const expected = OBJECTS.Order.filter((o) => moved.includes(o.id)).reduce(
+    const expected = ORDERS.filter((o) => moved.includes(o.id)).reduce(
       (s, o) => s + (o.props.value as number),
       0,
     );
