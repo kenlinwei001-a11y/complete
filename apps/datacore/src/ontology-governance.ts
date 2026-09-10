@@ -54,6 +54,40 @@ const SIGNOFF_BEHALF_HOURS = 72;
 const SIGNOFF_EXPIRE_DAYS = 7;
 
 /**
+ * WO-ONTO-WIRE-4 · **对象类型的两格 `status` 收敛成一个真相源**。
+ *
+ * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
+ * **X（改前 · 2026-09-10 真后端实测 SEED_DEMO=1）**：`ObjectTypeDef` 上有两格状态：
+ *   顶层 `status: "ACTIVE" | "RETIRED"` 与 `deprecation.status: ACTIVE|DEPRECATED|RETIRED`。
+ *   而**全仓没有任何一条代码路径把顶层 `status` 写成 `"RETIRED"`** —— `deprecate()` 与
+ *   `retire()` 都只写 `deprecation`。实测建一个探针类型走完全程：
+ *     建好      → 顶层 ACTIVE · deprecation 无     · 在列表 · 在能力清单
+ *     deprecate → 顶层 ACTIVE · deprecation 已弃用 · 在列表 · 在能力清单
+ *     **retire**   → 顶层 **ACTIVE** · deprecation **RETIRED** · **仍在列表** · **仍在能力清单**
+ *   ⇒ `POST …/retire` 回 200 `{status:"RETIRED"}`，而这个类型**继续被当成在用的**：
+ *   `ontology.ts` 的 `listTypes()` 第一句就是 `t.status === "ACTIVE"` 过滤，
+ *   于是求解器 / 时序 / 数据模版 / 实体目录 / 切片覆盖 / 能力清单**十余处读点**
+ *   一律照常拿到它。**读顶层的说「在用」，读 `deprecation` 的说「已下线」，两个都是系统自己写的。**
+ *
+ * **Y（改后）**：`deprecation.status` 是**唯一权威**（治理增量 §2.2 的状态机只写它），
+ *   顶层 `status` 降级为它的**派生投影**，语义收窄成一句「**这个类型还能不能用**」：
+ *   `RETIRED ⇒ "RETIRED"`，其余（含 `DEPRECATED`）⇒ `"ACTIVE"`。派生只此一处实现。
+ *
+ * ── 为什么 `DEPRECATED` 仍投影成 `ACTIVE`，这不是把矛盾留着 ────────────────────
+ * `deprecate()` 会写 `graceUntil = +90d` —— **宽限期的定义就是「还能用，但正在退役」**。
+ * 把它投影成非 ACTIVE 会让类型在宣告弃用的**当天**从所有读点消失，宽限期直接失效，
+ * 那是把一个记账问题修成一个真事故。故 `ACTIVE + DEPRECATED` 是**自洽的一对**
+ * （能用 · 正在退役），由 `deprecationWarnings` / `X-Deprecated-Refs` 负责喊话；
+ * 真正自相矛盾的只有 `ACTIVE + RETIRED` 那一档，本函数只收敛这一档。
+ *
+ * ⚠ `LinkTypeDef` 结构上**只有 `deprecation` 一格、没有顶层 `status`**（`domain.ts`）——
+ * 结构边本来就是一个真相源。本次收敛是**把对象类型对齐到结构边**，不是新立一套。
+ */
+function lifecycleStatus(dep: DeprecationMeta | undefined): "ACTIVE" | "RETIRED" {
+  return dep?.status === "RETIRED" ? "RETIRED" : "ACTIVE";
+}
+
+/**
  * 治理增量 §1 单位字典（场景包级；电池模板内置）。
  *
  * ── WO-UNIT-KWH：改为**从 `PropertyUnit` 派生**，不再手抄一份 ────────────────────
@@ -212,6 +246,8 @@ export class OntologyGovernanceService {
       const t = (await this.repos.ontologyTypes.list(ctx.tenantId, (x) => x.key === key))[0];
       if (!t) throw notFound(`type ${key}`);
       t.deprecation = deprecation;
+      // 派生投影（唯一实现）。DEPRECATED ⇒ 仍 ACTIVE：宽限期内还能用，见 `lifecycleStatus` 头注。
+      t.status = lifecycleStatus(deprecation);
       await this.repos.ontologyTypes.put(t);
     } else {
       const l = (await this.repos.ontologyLinks.list(ctx.tenantId, (x) => x.key === key))[0];
@@ -269,8 +305,12 @@ export class OntologyGovernanceService {
     // 读到一条「已启用但带着宽限期」的自相矛盾记录。
     const deprecation: DeprecationMeta = { status: "ACTIVE" };
     cur.deprecation = undefined;
-    if (kind === "type") await this.repos.ontologyTypes.put(cur as ObjectTypeDef);
-    else await this.repos.ontologyLinks.put(cur as LinkTypeDef);
+    if (kind === "type") {
+      // 同一个派生投影：弃用记录清掉 ⇒ 顶层回 ACTIVE。两格永远由 `deprecation` 一格算出来，
+      // 不存在「清了 deprecation 却忘了拨顶层」这种只可能靠人记得的状态。
+      (cur as ObjectTypeDef).status = lifecycleStatus(undefined);
+      await this.repos.ontologyTypes.put(cur as ObjectTypeDef);
+    } else await this.repos.ontologyLinks.put(cur as LinkTypeDef);
     return { key, deprecation };
   }
 
@@ -288,6 +328,10 @@ export class OntologyGovernanceService {
       const t = (await this.repos.ontologyTypes.list(ctx.tenantId, (x) => x.key === key))[0];
       if (!t) throw notFound(`type ${key}`);
       t.deprecation = { ...(t.deprecation ?? { status: "DEPRECATED" }), status: "RETIRED", retiredAt: now };
+      // 这一行就是本单要收敛的那一档：改前 retire 回 200「RETIRED」而顶层仍是 ACTIVE，
+      // 于是 `listTypes()`（`t.status === "ACTIVE"` 过滤）继续把已下线的类型发给
+      // 求解器 / 时序 / 数据模版 / 实体目录 / 切片覆盖 / 能力清单。
+      t.status = lifecycleStatus(t.deprecation);
       await this.repos.ontologyTypes.put(t);
     } else {
       const l = (await this.repos.ontologyLinks.list(ctx.tenantId, (x) => x.key === key))[0];
