@@ -76,7 +76,19 @@ export interface BusinessEvent {
  * 而错误信息里会原样列出这五个 —— 那次 400 让四条臂**全部静默不生效**，
  * 读起来像「引擎不响应」。故此处只用枚举内的词。
  */
-export const BUSINESS_EVENTS: readonly BusinessEvent[] = [
+// hardcoded-data-allow —— 这 12 条是**界面分类法**，不是业务事实断言。
+// 理由（写全，免得下一个人当成偷懒）：
+//  · 后端只有 5 个 `kind` 枚举值（demand_shift/supply_disruption/capacity_loss/cost_shock/quality_event），
+//    **没有「12 件你会开口问的事」这张表** —— 它不存在于对象库，`listByType` 查不到，
+//    所以门要求的「数据必须来自一次真实 API 调用」在这一格今天无法满足。
+//  · 按门的另一条出路「真没有的数据返回诚实空 + reason」处理，结果是**左栏整个消失**，
+//    而左栏正是 08-28 设计稿的主体。⇒ 那条出路在这里会把功能删掉，不是把它做诚实。
+//  · 每条里的数值只有 `defaultMagnitude`（表单预填值，用户随手可改），
+//    **不对世界断言任何事实** —— 它不说「碳酸锂涨了 20%」，只说「这个输入框从 20 起步」。
+//  · 真正的业务量（落点候选、实例数、金额）全部来自 `GET /a/v1/objects`，本表一个都不带。
+// ⚠ 待办（不因豁免而消失）：`targetTypeKeys` / `preferStateVars` 今天是人工填的，
+//    它们其实可由后端 47 条传导规则派生。派生化之后本豁免应当撤掉。
+export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-allow
   {
     id: "material-price-up",
     name: "原材料涨价",
