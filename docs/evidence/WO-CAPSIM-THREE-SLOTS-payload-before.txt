@@ -1,0 +1,74 @@
+cards: 8 bases: 江门/邯郸/自贡/信阳/常州/枣庄/合肥/金华
+
+金丝雀「违约金」命中 16 条 ⇒ 抓法有鉴别力
+回包里 ≥24 字的串共 710 条
+
+按字段路径归类：34 种
+    42×  max= 784字  $.planRows[].options.options[].levers[].sideEffects[].detail
+        按「优先级低者先让 → 交期晚者先让 → 订单号」挑，直到覆盖跨基地吸收量 91185.96 套；每张单延后天数 = 被挤占量 ÷ 该单基地空闲日产能（Line.capacityDaily 真派生）。…
+    48×  max= 784字  $.planRows[].options.options[].sideEffects[].detail
+        按「优先级低者先让 → 交期晚者先让 → 订单号」挑，直到覆盖跨基地吸收量 91185.96 套；每张单延后天数 = 被挤占量 ÷ 该单基地空闲日产能（Line.capacityDaily 真派生）。…
+     8×  max= 316字  $.cards[].doNothing.penalty.reason
+        违约金/罚则**当前本体无承载**：已发布规则 30 条（C01/C02/C03/C04/C05/C06/C08/C09/C10/C11/C12/C13/C15/C16/C18/C21/C22/C23…
+    16×  max= 148字  $.planRows[].options.coefficients[].note
+        规则 base_outlook_coeffs 未发布（或其 params 无 crossBaseAbsorbPct）→ 本值是**代码兜底默认**，不是被治理过的口径；要让它可校准，需在场景包规则表里…
+    42×  max= 146字  $.planRows[].options.options[].levers[].rationale
+        第2天：跨基地吸收残余的 60%（残余 20861.7套）→ 收窄 12517.02套（溯 WorkOrder.qtyActual=0）· 前置期 1 天（溯 InterBaseTransfer.tr…
+    36×  max= 144字  $.planRows[].steps[].rationale
+        第2天残余缺口 20861.7套 → 跨基地吸收 60% 收窄 12517.02套（溯 WorkOrder.qtyActual=0）· 前置期 1 天（溯 InterBaseTransfer.tran…
+    12×  max= 122字  $.planRows[].options.options[].levers[].cost.source.formula
+        运费单价(元/套) = InterBaseTransfer.freightCost(1465230) ÷ InterBaseTransfer.qty(4400)；本步成本 = 收窄量(91185.96…
+    69×  max= 117字  $.cards[].doNothing.delay.orders[].basisNote
+        delay = max(1, round((峰值 − 阈值 85) ÷ 8) + hash(so) mod 3)——确定性估算（R6 可重跑），**非实测交付延误**；要变成实测需接 Shipment…
+     8×  max= 117字  $.cards[].doNothing.delay.note
+        delay = max(1, round((峰值 − 阈值 85) ÷ 8) + hash(so) mod 3)——确定性估算（R6 可重跑），**非实测交付延误**；要变成实测需接 Shipment…
+     8×  max= 117字  $.cards[].doNothing.summary
+        不处置：25 张单 / 9 个客户 / 33.3869 亿元敞口受影响，最坏延误 4 天（估算·非实测）；缺口按本基地空闲产能自然消化需 724.09 天；违约金**算不出**（规则库无交付罚则承载，…
+    30×  max= 109字  $.planRows[].options.options[].levers[].cost.reason
+        本体无外协单价/加工费承载字段（Supplier 只有 leadTime/minOrderQty/onTimeRate；Material.outsourceYield 是良率不是价）→ 外协成本算不出…
+    30×  max= 109字  $.planRows[].options.options[].cost.missing[].reason
+        本体无外协单价/加工费承载字段（Supplier 只有 leadTime/minOrderQty/onTimeRate；Material.outsourceYield 是良率不是价）→ 外协成本算不出…
+    24×  max=  87字  $.cards[].doNothing.penalty.checked[]
+        Order.*（so/cust/qty/due/pri/unitPrice/creditUsedRatio/outsourceRatio/leadDays —— 无罚则字段）
+     8×  max=  84字  $.planRows[].options.summary
+        触发缺口 152927套（第1天）· 3 个可比方案：A=收窄152927/残留0 · B=收窄152927/残留0 · C=收窄152927/残留0 · 残留最小=A
+     1×  max=  70字  $.unlistedCrossings.note
+        未来 30 天内共 13 个基地越过阈值 85，看板按「越线日↑ → 当前张力↓ → 峰值↓」只列前 8 个；另 5 个同样已越线，未列出。
+     6×  max=  69字  $.cards[].doNothing.catchUp.formula
+        缺口(套) ÷ 空闲日产能(套/日)；空闲日产能 = Σ Line.capacityDaily × (1 − Base.util/100)
+    87×  max=  63字  $.cards[].events[].desc
+        SO-900056·上汽通用五菱 交付 5281 万套到期：当周产线排产负载 +12 个百分点，需额外工时约 8450 人·班
+    12×  max=  59字  $.planRows[].steps[].leadTime.reason
+        本体无「加班启动前置期」承载字段（Line/Base 均无该属性）——步骤日期按触发日给出，未断言「加班 0 天起效」
+    12×  max=  59字  $.planRows[].options.options[].levers[].leadTime.reason
+        本体无「加班启动前置期」承载字段（Line/Base 均无该属性）——步骤日期按触发日给出，未断言「加班 0 天起效」
+    18×  max=  57字  $.planRows[].options.options[].strategy
+        按真前置期升序执行（跨基地调剂(3天) → 外协补足(12天) → 加班承接(前置期未知·排末)），交期最紧时用。
+     2×  max=  52字  $.planRows[].options.emptyReason
+        shortfall<=0：本窗可用产能已覆盖在产+未来订单，没有需要收窄的缺口 —— 不臆造「备选方案」
+    16×  max=  49字  $.planRows[].det
+        触发缺口 152927套 · 3 步收窄 152927套 · 残留 0套 · 峰值98·产线负载率
+     2×  max=  44字  $.cards[].doNothing.catchUp.reason
+        本窗无产能缺口（可用产能覆盖在产+未来订单）→ 不存在"自然消化天数"这件事，不编一个数
+    12×  max=  33字  $.planRows[].steps[].leadTime.source.objectId
+        XFER-CELL-zaozhuang-handan-方形-LFP
+    12×  max=  33字  $.planRows[].options.options[].levers[].leadTime.source.objectId
+        XFER-CELL-zaozhuang-handan-方形-LFP
+    12×  max=  33字  $.planRows[].options.options[].levers[].cost.source.objectId
+        XFER-CELL-zaozhuang-handan-方形-LFP
+     1×  max=  33字  $.planRows[].act
+        反提月度计划差异（江门、邯郸、自贡、信阳、常州、枣庄、合肥、金华）
+     2×  max=  32字  $.evaluatedRules[].evidence
+        该求解器输出未含此规则字段（P2 续：补 payload 映射）
+    30×  max=  30字  $.planRows[].options.options[].levers[].cost.missingField
+        Supplier.outsourcePricePerUnit
+    30×  max=  30字  $.planRows[].options.options[].cost.missing[].missingField
+        Supplier.outsourcePricePerUnit
+    24×  max=  28字  $.cards[].doNothing.penalty.missingFields[]
+        Customer.contractPenaltyRate
+    24×  max=  26字  $.planRows[].options.options[].levers[].sideEffects[].title
+        外协比例 12.29%（C08 红线 20%·未越）
+    24×  max=  26字  $.planRows[].options.options[].sideEffects[].title
+        外协比例 12.29%（C08 红线 20%·未越）
+     2×  max=  26字  $.evaluatedRules[].expression
+        MaterialBalance.gapTon > 0
