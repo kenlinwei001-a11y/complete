@@ -188,6 +188,75 @@ describe("WO-RELATION-EDIT-GAPS · 接缝：关系的改/建/停/启四条写路
     expect(reType.statusCode).toBe(200);
     expect((JSON.parse(reType.body) as { deprecation: { status: string } }).deprecation.status).toBe("ACTIVE");
   });
+
+  /**
+   * WO-ONTO-WIRE-4 · 接缝：**下线一个类型，读出面必须真的看不见它**。
+   *
+   * ── 今天的行为是 X，应该是 Y（2026-09-10 真后端 4741 口实测）────────────────
+   * **X**：`POST types/:key/retire` → 200 `{status:"RETIRED"}`，只写 `deprecation`；
+   *   顶层 `status` 仍是 `ACTIVE`，而 `ontology.ts` 的 `listTypes()` 恰恰按
+   *   `t.status === "ACTIVE"` 过滤 ⇒ 已下线的类型**继续出现在类型列表与能力清单里**，
+   *   求解器 / 时序 / 数据模版 / 实体目录 / 切片覆盖照常拿到它。
+   *   读顶层的说「在用」，读 `deprecation` 的说「已下线」，两个都是系统自己写的。
+   * **Y**：`deprecation.status` 是唯一权威，顶层 `status` 是它的派生投影 ⇒ retire 之后
+   *   类型从读出面消失；而 **DEPRECATED 仍留在读出面**（宽限期 90 天内还能用）。
+   *
+   * ── 这道断言为什么必须带对照臂 ──────────────────────────────────────────
+   * 只断言「retire 后不在了」，`listTypes` 整个坏掉（返回空）也会绿。
+   * 故同一用例里放一条**只 deprecate** 的类型，要求它**仍在**：
+   * 「该消失的消失了」与「什么都没了」这两件事，靠这条对照臂才分得开。
+   */
+  it("⑤ 下线收敛：retire 后类型从读出面消失，而只 deprecate 的仍在（对照臂）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    const mk = (key: string) =>
+      t.app.inject({
+        method: "POST",
+        url: "/a/v1/ontology/object-types",
+        headers: ADMIN,
+        payload: {
+          key,
+          displayName: "生命周期探针",
+          domain: "unassigned",
+          properties: [{ propKey: "pid", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }],
+        },
+      });
+    const listedKeys = async (): Promise<string[]> => {
+      const res = await t.app.inject({ method: "GET", url: "/a/v1/ontology/object-types", headers: ADMIN });
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body) as { items?: { key: string }[] } | { key: string }[];
+      const arr = Array.isArray(body) ? body : (body.items ?? []);
+      return arr.map((x) => x.key);
+    };
+
+    expect((await mk("ZzLifeCtl")).statusCode).toBe(201);
+    expect((await mk("ZzLifeRet")).statusCode).toBe(201);
+    // 金丝雀：两条都在。它若不成立，下面任何「不在」都不许当结论。
+    const born = await listedKeys();
+    expect(born, "金丝雀·新建的两个类型都该在读出面").toEqual(expect.arrayContaining(["ZzLifeCtl", "ZzLifeRet"]));
+
+    expect((await post(t, "/a/v1/ontology/types/ZzLifeCtl/deprecate")).statusCode).toBe(200);
+    expect((await post(t, "/a/v1/ontology/types/ZzLifeRet/deprecate")).statusCode).toBe(200);
+    // 宽限期语义：DEPRECATED **不**从读出面消失，否则宣告弃用的当天就等于删库。
+    expect(await listedKeys(), "DEPRECATED 仍须可见（90 天宽限期）").toEqual(
+      expect.arrayContaining(["ZzLifeCtl", "ZzLifeRet"]),
+    );
+
+    expect((await post(t, "/a/v1/ontology/types/ZzLifeRet/retire")).statusCode).toBe(200);
+    const after = await listedKeys();
+    expect(after, "retire 之后必须从读出面消失").not.toContain("ZzLifeRet");
+    // 对照臂：同一次读取里它必须还在 —— 这条把「该消失的消失了」与「全都没了」分开。
+    expect(after, "对照臂·只 deprecate 的仍须在").toContain("ZzLifeCtl");
+
+    // 能力清单是同一条读出面的下游（`listTypes` → `buildInventory`），一并咬住：
+    // 已下线的类型不许继续被当成「本租户具备的能力」对外宣称。
+    const inv = await t.app.inject({ method: "GET", url: "/a/v1/capability-inventory", headers: ADMIN });
+    expect(inv.statusCode).toBe(200);
+    const objectTypes = (JSON.parse(inv.body) as { objectTypes: string[] }).objectTypes;
+    expect(objectTypes, "能力清单不许宣称已下线的类型").not.toContain("ZzLifeRet");
+    expect(objectTypes, "对照臂·只 deprecate 的仍在能力清单").toContain("ZzLifeCtl");
+  });
 });
 
 /* ══════════════════════════════════════════════════════════════════════════════
