@@ -88,6 +88,29 @@ details.trace[open] summary::before{content:"▾ ";}
 .f.over .fb i{background:var(--danger-txt)}
 .f .fl{font-size:11.5px;color:var(--muted2);font-family:var(--font-mono)}
 
+/* ── 30 天轨迹网格（补：原设计漏了时间维，而后端 factorSeries 一直在下发）── */
+.traj{display:flex;flex-direction:column;gap:3px}
+.trh{display:grid;grid-template-columns:210px 1fr;gap:12px;align-items:end;padding:0 0 4px}
+.trh .axis{display:grid;grid-template-columns:repeat(30,1fr);font-size:11px;color:var(--muted2);font-family:var(--font-mono)}
+.trh .axis span{grid-column:span 5;text-align:left}
+.trow2{display:grid;grid-template-columns:210px 1fr;gap:12px;align-items:center;padding:5px 0;border-top:1px solid var(--line)}
+.trow2.cross{background:rgba(240,180,184,.05)}
+.lbl{display:flex;flex-direction:column;gap:1px;min-width:0}
+.lbl .nm{font-size:13px;font-weight:600}
+.trow2.cross .lbl .nm{color:var(--danger-txt)}
+.trow2.safe .lbl .nm{color:var(--muted)}
+.lbl .when{font-size:12px;font-family:var(--font-mono)}
+.trow2.cross .lbl .when{color:var(--danger-txt);font-weight:600}
+.trow2.safe .lbl .when{color:var(--muted2)}
+.cells{display:grid;grid-template-columns:repeat(30,1fr);gap:2px;height:20px}
+.cells i{border-radius:3px;display:block}
+.redline{position:relative}
+.redline::after{content:"红线 85";position:absolute;right:0;top:-15px;font-size:11px;color:var(--danger-txt);font-family:var(--font-mono)}
+.safefold{font-size:12px;color:var(--muted2);padding:7px 0 0;border-top:1px solid var(--line)}
+.safefold summary{cursor:pointer;list-style:none;color:var(--accent-txt)}
+.safefold summary::before{content:"▸ "}
+.safefold[open] summary::before{content:"▾ "}
+
 /* ── 表 ── */
 .tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .tbl th{text-align:left;font-weight:500;color:var(--muted2);font-size:12px;padding:0 8px 6px;border-bottom:1px solid var(--line2);white-space:nowrap}
@@ -211,23 +234,34 @@ details.trace[open] summary::before{content:"▾ ";}
     <p class="note">「怎么办」给不出时<b>明写「今天没有对策」</b>——把它留白，会被读成页面没加载出来。</p>
   </section>
 
-  <!-- ══ 区③ 七因子 ══ -->
+  <!-- ══ 区③ 30 天轨迹（改：原稿只画了当期紧度，丢了时间维）══ -->
   <section class="panel">
     <div class="hd">
-      <span class="ztag"><span class="zn">3</span>七个因子哪个先顶到红线</span>
-      <h3>常州 · 阈值 85</h3>
-      <span class="r">越线的才是要管的；其余六个只是背景</span>
+      <span class="ztag"><span class="zn">3</span>哪个因子、第几天顶到红线</span>
+      <h3>常州 · 往后 30 天 · 红线 85</h3>
+      <span class="r redline">越线的排前面；不越线的折起来</span>
     </div>
-    <div class="fac">
-      <div class="f over"><span class="fn">瓶颈工序</span><span class="fv">90</span><span class="fb"><i style="width:90%"></i></span><span class="fl">越线 +5</span></div>
-      <div class="f"><span class="fn">良率波动</span><span class="fv">68</span><span class="fb"><i style="width:68%"></i></span><span class="fl">还差 17</span></div>
-      <div class="f"><span class="fn">人力工时</span><span class="fv">64</span><span class="fb"><i style="width:64%"></i></span><span class="fl">还差 21</span></div>
-      <div class="f"><span class="fn">物料齐套</span><span class="fv">64</span><span class="fb"><i style="width:64%"></i></span><span class="fl">还差 21</span></div>
-      <div class="f"><span class="fn">物流时长</span><span class="fv">64</span><span class="fb"><i style="width:64%"></i></span><span class="fl">还差 21</span></div>
-      <div class="f"><span class="fn">设备 OEE</span><span class="fv">63</span><span class="fb"><i style="width:63%"></i></span><span class="fl">还差 22</span></div>
-      <div class="f"><span class="fn">换型损失</span><span class="fv">63</span><span class="fb"><i style="width:63%"></i></span><span class="fl">还差 22</span></div>
+    <div class="traj">
+      <div class="trh"><span></span><div class="axis"><span>D+1</span><span>D+6</span><span>D+11</span><span>D+16</span><span>D+21</span><span>D+26</span></div></div>
+<div class="trow2 cross"><div class="lbl"><span class="nm">瓶颈工序</span><span class="when">第 1 天顶到红线 · 最高 97.8</span></div><div class="cells"><i style="background:rgba(240,180,184,0.59)"></i><i style="background:rgba(240,180,184,0.59)"></i><i style="background:rgba(240,180,184,0.63)"></i><i style="background:rgba(240,180,184,0.63)"></i><i style="background:rgba(240,180,184,0.63)"></i><i style="background:rgba(240,180,184,0.63)"></i><i style="background:rgba(240,180,184,0.67)"></i><i style="background:rgba(240,180,184,0.67)"></i><i style="background:rgba(240,180,184,0.67)"></i><i style="background:rgba(240,180,184,0.67)"></i><i style="background:rgba(240,180,184,0.71)"></i><i style="background:rgba(240,180,184,0.71)"></i><i style="background:rgba(240,180,184,0.71)"></i><i style="background:rgba(240,180,184,0.71)"></i><i style="background:rgba(240,180,184,0.71)"></i><i style="background:rgba(240,180,184,0.75)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.83)"></i><i style="background:rgba(240,180,184,0.85)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.85)"></i><i style="background:rgba(240,180,184,0.83)"></i><i style="background:rgba(240,180,184,0.83)"></i><i style="background:rgba(240,180,184,0.85)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.85)"></i><i style="background:rgba(240,180,184,0.83)"></i></div></div>
+<div class="trow2 cross"><div class="lbl"><span class="nm">物料齐套</span><span class="when">第 1 天顶到红线 · 最高 97.8</span></div><div class="cells"><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.83)"></i><i style="background:rgba(240,180,184,0.85)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.85)"></i><i style="background:rgba(240,180,184,0.83)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.79)"></i><i style="background:rgba(240,180,184,0.83)"></i><i style="background:rgba(240,180,184,0.85)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.86)"></i><i style="background:rgba(240,180,184,0.85)"></i></div></div>
+<div class="trow2 cross"><div class="lbl"><span class="nm">设备OEE</span><span class="when">第 18 天顶到红线 · 最高 88</span></div><div class="cells"><i style="background:rgba(210,176,76,0.35)"></i><i style="background:rgba(210,176,76,0.37)"></i><i style="background:rgba(210,176,76,0.39)"></i><i style="background:rgba(210,176,76,0.40)"></i><i style="background:rgba(210,176,76,0.42)"></i><i style="background:rgba(210,176,76,0.43)"></i><i style="background:rgba(210,176,76,0.43)"></i><i style="background:rgba(210,176,76,0.45)"></i><i style="background:rgba(210,176,76,0.46)"></i><i style="background:rgba(210,176,76,0.48)"></i><i style="background:rgba(210,176,76,0.49)"></i><i style="background:rgba(210,176,76,0.51)"></i><i style="background:rgba(210,176,76,0.52)"></i><i style="background:rgba(210,176,76,0.54)"></i><i style="background:rgba(210,176,76,0.55)"></i><i style="background:rgba(210,176,76,0.57)"></i><i style="background:rgba(210,176,76,0.58)"></i><i style="background:rgba(240,180,184,0.35)"></i><i style="background:rgba(240,180,184,0.39)"></i><i style="background:rgba(240,180,184,0.43)"></i><i style="background:rgba(240,180,184,0.43)"></i><i style="background:rgba(240,180,184,0.47)"></i><i style="background:rgba(240,180,184,0.47)"></i><i style="background:rgba(240,180,184,0.47)"></i><i style="background:rgba(240,180,184,0.47)"></i><i style="background:rgba(240,180,184,0.47)"></i><i style="background:rgba(240,180,184,0.47)"></i><i style="background:rgba(240,180,184,0.47)"></i><i style="background:rgba(240,180,184,0.47)"></i><i style="background:rgba(240,180,184,0.47)"></i></div></div>
+<div class="trow2 cross"><div class="lbl"><span class="nm">人力工时</span><span class="when">第 19 天顶到红线 · 最高 88</span></div><div class="cells"><i style="background:rgba(210,176,76,0.37)"></i><i style="background:rgba(210,176,76,0.37)"></i><i style="background:rgba(210,176,76,0.39)"></i><i style="background:rgba(210,176,76,0.39)"></i><i style="background:rgba(210,176,76,0.40)"></i><i style="background:rgba(210,176,76,0.42)"></i><i style="background:rgba(210,176,76,0.42)"></i><i style="background:rgba(210,176,76,0.43)"></i><i style="background:rgba(210,176,76,0.43)"></i><i style="background:rgba(210,176,76,0.45)"></i><i style="background:rgba(210,176,76,0.46)"></i><i style="background:rgba(210,176,76,0.46)"></i><i style="background:rgba(210,176,76,0.48)"></i><i style="background:rgba(210,176,76,0.48)"></i><i style="background:rgba(210,176,76,0.49)"></i><i style="background:rgba(210,176,76,0.51)"></i><i style="background:rgba(210,176,76,0.54)"></i><i style="background:rgba(210,176,76,0.57)"></i><i style="background:rgba(240,180,184,0.35)"></i><i style="background:rgba(240,180,184,0.43)"></i><i style="background:rgba(240,180,184,0.39)"></i><i style="background:rgba(240,180,184,0.35)"></i><i style="background:rgba(210,176,76,0.58)"></i><i style="background:rgba(210,176,76,0.58)"></i><i style="background:rgba(240,180,184,0.35)"></i><i style="background:rgba(240,180,184,0.43)"></i><i style="background:rgba(240,180,184,0.47)"></i><i style="background:rgba(240,180,184,0.43)"></i><i style="background:rgba(240,180,184,0.35)"></i><i style="background:rgba(210,176,76,0.58)"></i></div></div>
+      <div class="trow2 safe"><div class="lbl"><span class="nm" style="color:var(--muted2)">物流时长 · 换型损失 · 良率波动</span>
+        <span class="when" style="color:var(--warn-txt)">本稿未取到这 3 条的 30 天轨迹</span></div>
+        <div class="cells" style="grid-template-columns:1fr;height:auto;align-items:center">
+          <span style="font-size:12px;color:var(--muted2);line-height:1.6">
+            取证时回包被截断，只拿到 4 条 <span class="mono">factorSeries</span>。<b style="color:var(--warn-txt)">这三条留空，不是没问题，是没取到</b> ——
+            ⛔ 编三条曲线画上去，比留空坏得多。当期紧度是 64 / 63 / 68（<span class="mono">bottleneck_matrix</span> 实测），但那不是轨迹。
+          </span>
+        </div></div>
     </div>
-    <p class="note">这七个数<b>是合成的，不是产线实测</b>。柜位数 1,849、节拍 93 套/柜/天、已排 166,768 套/天 —— 这三个是真值。</p>
+    <p class="note">
+      改前这一格画的是<b>七个当期数字</b>，把「第几天顶上去」整个丢了 —— 而后端 <span class="mono">risk_timeline.factorSeries</span>
+      一直在下发 30 拍轨迹与 <span class="mono">crossDay</span>。<b>「什么时候」是「问题是什么」的一半，不能省。</b><br>
+      屏上不写「张力 95/100」这类内部说法 —— COO 要的是<b>第几天顶到红线</b>；那个刻度收在第二层。
+      这七条轨迹<b>是合成的</b>（<span class="mono">dataMode:MOCK</span>），柜位数 / 节拍 / 已排量才是真值。
+    </p>
   </section>
 
   <!-- ══ 区④ 落在谁头上 ══ -->
