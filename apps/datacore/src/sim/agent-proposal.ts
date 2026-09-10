@@ -31,6 +31,7 @@ import {
   type ParetoObjective,
   type ProposalMenu,
   type ProposalProvenance,
+  resolveProposalToLevers,
 } from "@platform/contracts";
 import { canonicalJson } from "../prng.js";
 
@@ -157,8 +158,41 @@ export async function generateAndFreeze(
       const parsedDraft = AgentProposalDraftSchema.safeParse(out.draft);
       const prov = out.provenance as ProposalProvenance | undefined;
       if (parsedDraft.success && prov && prov.agentInvolved) {
-        draft = parsedDraft.data;
-        provenance = prov;
+        // ⚠ **收下之前先兑现一遍**（WO-AGENT-INTO-SIM 变异反证逼出来的第三道关）。
+        //
+        // 前两关都拦不住越界下标：`expectsSchema` 只认 type/properties/required，
+        // `AgentProposalDraftSchema` 只认「是非负整数」——**都不认识菜单**，
+        // 而「第几档」越没越界只有对着菜单才知道。于是越界下标一路绿灯走到定版。
+        //
+        // 实测后果（真跑出来的，不是推演的）：一份越界 draft 被 `putProposal` **定版落盘**，
+        // 随后 `resolveProposalToLevers` 抛 ⇒ 路由 500。而定版是按 `inputFingerprint` 复用的，
+        // 于是**这个会话在这个世界态下永远 500** —— 重试只会把那份坏定版再取出来抛一次。
+        // 亲手复现：同一 sessionId 连打两次，第二次仍是
+        // `INTERNAL_ERROR ... 引用了不存在的档位下标 8（该杠杆只有 3 档）`。
+        //
+        // 形态（铁律 0.6 句式）：
+        // **「我用『draft 合 schema』当作『draft 兑现得出来』的证据，而前者并不度量后者
+        //   —— schema 不认识菜单。」**
+        //
+        // ⛔ 修法**不是**让 `resolveProposalToLevers` 变宽容（夹到末档 / 跳过越界项）：
+        //   那会让「agent 挑了第 8 档」静默变成「第 3 档」，屏上一切正常而方案已被悄悄换掉 ——
+        //   比 500 坏得多。兑现层必须继续**抛**（`agent-proposal.seam.test.ts` §2 咬着它）。
+        //   正确的位置是**收下之前**：兑现不出来的 draft 与「不合契约」同一处置 ——
+        //   拒收 + 诚实降级到确定性兜底，`agentInvolved:false` + 写清原因。坏产出一步都进不了定版。
+        let resolvable = true;
+        let resolveErr = "";
+        try {
+          resolveProposalToLevers(args.menu, parsedDraft.data);
+        } catch (e) {
+          resolvable = false;
+          resolveErr = (e as Error).message;
+        }
+        if (resolvable) {
+          draft = parsedDraft.data;
+          provenance = prov;
+        } else {
+          provenance = noAgentProvenance(`agent 产出兑现不出杠杆网格（下标越界，已拒收）：${resolveErr.slice(0, 200)}`);
+        }
       } else {
         provenance = noAgentProvenance(prov?.fallbackReason ?? "agent 未返回合契约的提案");
       }
