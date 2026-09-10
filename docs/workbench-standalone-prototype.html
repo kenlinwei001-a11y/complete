@@ -4779,7 +4779,7 @@ window.__CFG__ = (function () {
   var ROLES = [
     { code: 'admin', name: '管理员', claim: 'admin+planner+catalog_admin', duty: '系统管理、全量数据、配置与审批终审', user: 'admin 张工' },
     { code: 'planner', name: '规划/研判员', claim: 'planner', duty: '创建项目、推演、生成报告、发起调拨审批', user: 'planner 王工' },
-    { code: 'base_manager', name: '基地管理员（常州）', claim: 'base_manager', duty: '本辖区资源维护与执行，受行级过滤', user: 'base_manager 陈工' }
+    { code: 'base_manager', name: '辖区应急管理员（临夏州）', claim: 'base_manager', duty: '本辖区资源维护与执行，受行级过滤', user: 'base_manager 陈工' }
   ];
   var rName = function (c) { var r = ROLES.find(function (x) { return x.code === c; }); return r ? r.name : c; };
   // 权限矩阵：full 全量 / row 受行级过滤 / req 可发起需审批 / none 无（关闭功能返回404）
@@ -4801,25 +4801,25 @@ window.__CFG__ = (function () {
 
   var ENT_BASE = [
     { id: 'feat_solver', name: '求解器 / 本体推演（S1）', module: 'DataCore A4/S1', enabled: true },
-    { id: 'feat_sop', name: 'S&OP 产销协同（S1.8）', module: 'DataCore S1.8', enabled: true },
+    { id: 'feat_sop', name: '供需与运力协同调度（S1.8）', module: 'DataCore S1.8', enabled: true },
     { id: 'feat_timeseries', name: '时序 + 模拟时钟（A8）', module: 'DataCore A8', enabled: true },
     { id: 'feat_synthetic', name: '合成数据生成（A7）', module: 'DataCore A7', enabled: false },
     { id: 'feat_action', name: 'Action 审批（S2）', module: 'DataCore S2', enabled: true },
     { id: 'feat_kb', name: '知识库（S4）', module: 'DataCore S4', enabled: true },
     { id: 'feat_mcp', name: 'MCP 工具编排（B3）', module: 'AgentCore B3', enabled: true }
   ];
-  var entDb = C.store('workbench.entitlements.v1', ENT_BASE, function (x) { return x && x.id && x.name; });
+  var entDb = C.store('workbench.entitlements.v2', ENT_BASE, function (x) { return x && x.id && x.name; });
 
   var ROWFILTER = [
     { role: 'admin', pred: "tenant_id = 'demo'", note: '租户内全量可见（跨辖区读写）' },
     { role: 'planner', pred: "tenant_id = 'demo'", note: '全域可读；调拨、库存变更需审批' },
-    { role: 'base_manager', pred: "tenant_id = 'demo' AND region.city = '常州市' AND owner = :me", note: '仅本辖区资源与本人创建项目' }
+    { role: 'base_manager', pred: "tenant_id = 'demo' AND region.city = '临夏回族自治州' AND owner = :me", note: '仅本辖区资源与本人创建项目' }
   ];
 
   var APPR_BASE = {
     pending: [
       { id: 'ACT-2043', action: '跨区增援调拨', detail: '积石山6.2级 · 省级库(兰州)→柳沟乡：帐篷 1800 顶 / 棉被 3400 床', requester: 'planner 王工', risk: 'hi', rule: '跨区 或 金额>50万', at: '2026-09-09 09:41' },
-      { id: 'ACT-2044', action: '库存核销', detail: '常州基地：0号柴油 -120 吨（演练消耗）', requester: 'base_manager 陈工', risk: 'md', rule: '单次核销>100吨', at: '2026-09-09 09:52' }
+      { id: 'ACT-2044', action: '库存核销', detail: '临夏州辖区库：0号柴油 -120 吨（演练消耗）', requester: 'base_manager 陈工', risk: 'md', rule: '单次核销>100吨', at: '2026-09-09 09:52' }
     ],
     history: [
       { id: 'ACT-2039', action: '资源调拨', detail: '临夏州中心→积石山县库：净水设备 6 台', requester: 'planner 王工', risk: 'md', result: 'ok', by: 'admin 张工', at: '2026-09-09 08:20' },
@@ -4840,7 +4840,7 @@ window.__CFG__ = (function () {
     ['2026-09-09 09:20', 'planner 王工', 'planner', '生成报告', '积石山6.2级处置方案（下发件）', 'B', 'req-8e91c3', '成功'],
     ['2026-09-09 09:05', 'planner 王工', 'planner', '调用 Agent', '地震应急处置 Agent · MCP×12', 'B', 'req-8e90a7', '成功'],
     ['2026-09-09 08:20', 'admin 张工', 'admin', '审批通过', '资源调拨 ACT-2039', 'A', 'req-8e7d55', '成功'],
-    ['2026-09-09 08:02', 'base_manager 陈工', 'base_manager', '越权访问被拒', '读取 常州 辖区外资源', 'A', 'req-8e7a10', '403 拒绝'],
+    ['2026-09-09 08:02', 'base_manager 陈工', 'base_manager', '越权访问被拒', '读取 临夏州 辖区外资源', 'A', 'req-8e7a10', '403 拒绝'],
     ['2026-09-09 07:55', 'admin 张工', 'admin', '凭据变更', 'Anthropic API Key（credentialRef）', 'A', 'req-8e78f0', '成功'],
     ['2026-09-09 07:40', 'planner 王工', 'planner', '功能被拒', '调用合成数据（A7 已关闭）', 'A', 'req-8e7702', '404 FEATURE_NOT_FOUND'],
     ['2026-09-09 07:10', 'admin 张工', 'admin', '登录', 'Bearer JWT (RS256) 签发', 'A', 'req-8e7000', '成功']
