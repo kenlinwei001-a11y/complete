@@ -159,8 +159,12 @@ export function buildMoneyView(
   }
   const ranked = [...byCause.entries()].sort((a, b) => b[1] - a[1]);
   // 只有一件事时它当然是主因；多件事时必须**真的领先**才敢说「主要是它」，否则不说。
+  // ⚠ 逐个解构再判空，不写 `ranked[0][1] > ranked[1][1]` —— 本包开了
+  //   `noUncheckedIndexedAccess`，下标取值是 `T | undefined`，链式下标当场 TS2532。
+  const first = ranked[0];
+  const second = ranked[1];
   const mainCause =
-    ranked.length === 0 ? null : ranked.length === 1 ? ranked[0][0] : ranked[0][1] > ranked[1][1] ? ranked[0][0] : null;
+    first === undefined ? null : second === undefined ? first[0] : first[1] > second[1] ? first[0] : null;
 
   return {
     exposure,
@@ -172,6 +176,7 @@ export function buildMoneyView(
       { label: "多花的成本", cell: { kind: "nocalc", why: NOCALC_WHY.cost } },
       { label: "压住的应收", cell: { kind: "nocalc", why: NOCALC_WHY.receivable } },
     ],
+    mainCause,
     ordersSeen: orders.length,
   };
 }
