@@ -1,7 +1,7 @@
 import type { DispositionOption, DispositionSideEffect, RiskTimelineOutput } from "@platform/contracts";
 import { InfoPopover } from "@/components/InfoPopover";
 import { RuleRef } from "@/components/RuleRef";
-import { AbsentNote, LeadTimeReading, SubSection } from "./decisionInfoShared";
+import { AbsentNote, LeadTimeReading, NoCalc, RichText, SubSection } from "./decisionInfoShared";
 import styles from "../RiskBoardView.module.css";
 
 type PlanRow = NonNullable<RiskTimelineOutput["planRows"]>[number];
@@ -150,7 +150,11 @@ function OptionDetail({ option, unit }: { option: DispositionOption; unit: strin
         )}
         {option.levers.length === 0 ? (
           <div data-testid={`disposition-option-nolever-${option.optionId}`} style={{ color: "var(--muted2)" }}>
-            本方案未取用任何杠杆（后端未产出 levers）——不臆造动作。
+            <b><NoCalc>本方案未取用任何杠杆</NoCalc></b>
+            <InfoPopover topic="为什么这个方案没有动作" testId={`disposition-option-nolever-why-${option.optionId}`}>
+              后端未产出 <span className="mono">levers</span> —— 不臆造动作。
+              「没有动作」是结论，不是"还没加载出来"。
+            </InfoPopover>
           </div>
         ) : (
           option.levers.map((lv, i) => (
@@ -169,9 +173,23 @@ function OptionDetail({ option, unit }: { option: DispositionOption; unit: strin
                 成本：{lv.cost == null ? (
                   <span style={{ color: "var(--muted2)" }}>后端未装配该杠杆成本（字段缺席）</span>
                 ) : lv.cost.status === "OK" && lv.cost.amountYuan != null ? (
-                  <span className="mono"><b>{lv.cost.amountYuan}</b> {lv.cost.unit}{lv.cost.source ? <span style={{ color: "var(--muted2)" }}>（{lv.cost.source.formula}）</span> : null}</span>
+                  <span className="mono">
+                    <b>{lv.cost.amountYuan}</b> {lv.cost.unit}
+                    {/* 运费单价的算式（R-UI-3 点名的 `A ÷ B` 形态·实测 max 122 字）→ 浮层，第一层只留金额。 */}
+                    {lv.cost.source ? (
+                      <InfoPopover topic="这笔成本怎么算的" testId={`disposition-lever-cost-formula-${option.optionId}-${lv.leverKey}`}>
+                        <RichText>{lv.cost.source.formula}</RichText>
+                      </InfoPopover>
+                    ) : null}
+                  </span>
                 ) : (
-                  <span style={{ color: "var(--muted2)" }}>算不出（缺 <span className="mono">{lv.cost.missingField ?? "?"}</span>）· {lv.cost.reason ?? ""}</span>
+                  <span style={{ color: "var(--muted2)" }}>
+                    <NoCalc>算不出</NoCalc>
+                    <InfoPopover topic="这笔成本为什么算不出" testId={`disposition-lever-cost-why-${option.optionId}-${lv.leverKey}`}>
+                      <div>缺 <span className="mono">{lv.cost.missingField ?? "?"}</span></div>
+                      {lv.cost.reason ? <div style={{ marginTop: 6 }}><RichText>{lv.cost.reason}</RichText></div> : null}
+                    </InfoPopover>
+                  </span>
                 )}
               </div>
             </div>
@@ -180,7 +198,13 @@ function OptionDetail({ option, unit }: { option: DispositionOption; unit: strin
         <div style={{ marginTop: 2 }}>
           <b>副作用（要付的代价）</b>
           {option.sideEffects.length === 0 ? (
-            <div style={{ color: "var(--muted2)" }} data-testid={`disposition-sfx-none-${option.optionId}`}>后端未回传副作用条目 —— 不代表"没有副作用"，只代表本次没算。</div>
+            <div style={{ color: "var(--muted2)" }} data-testid={`disposition-sfx-none-${option.optionId}`}>
+              <NoCalc>副作用：本次未算</NoCalc>
+              <InfoPopover topic="没有副作用条目是什么意思" testId={`disposition-sfx-none-why-${option.optionId}`}>
+                后端未回传副作用条目 —— <b>不代表"没有副作用"</b>，只代表本次没算。
+                两者差别很大：前者是结论，后者是未知。此处按未知渲染，划线记号就是那个记号。
+              </InfoPopover>
+            </div>
           ) : (
             option.sideEffects.map((se, i) => (
               <SideEffect key={`${se.kind}-${se.leverKey}-${i}`} se={se} testId={`disposition-sfx-${option.optionId}-${i}`} />
@@ -196,8 +220,16 @@ function SideEffect({ se, testId }: { se: DispositionSideEffect; testId: string 
   return (
     <div data-testid={testId} data-sfx-kind={se.kind} style={{ marginTop: 3 }}>
       <span className="badge" style={{ marginRight: 5 }}>{KIND_LABEL[se.kind]}</span>
+      {/*
+       * 第一层只留 `title` —— 后端**早就把结论与证明分开了**（`title` 是短结论「挤占 3 张其他基地在手单
+       * （1,234 套）」，`detail` 是长证明）。修前前端把 `detail` 也裸渲染在第一层：
+       * 真后端实测该字段 **max 784 字 × 48 条**，是整屏最长的一批文案。
+       * 现在 `detail` 降进浮层（证据库·原文一字未删），第一层是「结论 + `?`」。
+       */}
       <b>{se.title}</b>
-      <div style={{ color: "var(--muted2)", marginTop: 1 }}>{se.detail}</div>
+      <InfoPopover topic="这条副作用凭什么这么说" testId={`${testId}-detail`}>
+        <RichText>{se.detail}</RichText>
+      </InfoPopover>
       {se.rule && (
         <div style={{ marginTop: 2 }} data-testid={`${testId}-rule`}>
           规则 <RuleRef code={se.rule.ruleKey} />：阈值 <span className="mono">{se.rule.threshold}</span> · 实际 <span className="mono">{se.rule.actual}</span> ·{" "}
@@ -262,7 +294,11 @@ function StepLeadTimes({ row }: { row: PlanRow }) {
       <b>本行处置步骤的前置期读数（R13）</b>
       {withLead.length === 0 ? (
         <div style={{ color: "var(--muted2)", marginTop: 2 }} data-testid="disposition-step-leadtimes-absent">
-          本次响应的 steps 未带 <span className="mono">leadTime</span> 字段（契约中为 optional）—— 故不解释各步日期由来，不臆造前置期。
+          <NoCalc>各步前置期：本次未返回</NoCalc>
+          <InfoPopover topic="为什么不解释各步日期由来" testId="disposition-step-leadtimes-absent-why">
+            本次响应的 steps 未带 <span className="mono">leadTime</span> 字段（契约中为 optional）——
+            故不解释各步日期由来，<b>不臆造前置期</b>。
+          </InfoPopover>
         </div>
       ) : (
         <ul style={{ margin: "2px 0 0", paddingLeft: 16 }}>

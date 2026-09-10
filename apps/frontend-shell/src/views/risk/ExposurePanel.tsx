@@ -1,7 +1,7 @@
 import type { Exposure } from "@platform/contracts";
 import { Provenance } from "@/components/Provenance";
 import { InfoPopover } from "@/components/InfoPopover";
-import { AbsentNote, SubSection } from "./decisionInfoShared";
+import { AbsentNote, NoCalc, SubSection } from "./decisionInfoShared";
 import styles from "../RiskBoardView.module.css";
 
 /**
@@ -49,11 +49,19 @@ export function ExposurePanel({ exposure, baseName }: { exposure?: Exposure; bas
             <div style={{ marginTop: 5 }} data-testid={`exposure-next-outside-${baseName}`}>
               窗外最近一张：<b className="mono">{nx.so}</b> · {nx.cust} · <b className="mono">{nx.qty}</b> {u.qty} ·
               交期 <span className="mono">{nx.due}</span>（D+{nx.dueDay}）· <b>超出本窗 {nx.daysBeyondWindow} 天</b>
-              <span style={{ color: "var(--muted2)" }}> —— 风险不是不存在，只是不在这个窗里。</span>
+              {/* 「风险不是不存在，只是不在这个窗里」是**可信度**（怕人把零敞口读成没风险），不是决策信息 → 浮层。 */}
+              <InfoPopover topic="零敞口是不是等于没风险" testId={`exposure-next-outside-why-${baseName}`}>
+                不等于。风险不是不存在，只是<b>不在这个窗里</b> —— 上面那张单就是证据：
+                它超出本窗 {nx.daysBeyondWindow} 天，把窗口拉长就会进来。
+              </InfoPopover>
             </div>
           ) : (
             <div style={{ marginTop: 5, color: "var(--muted2)" }} data-testid={`exposure-next-outside-${baseName}`}>
-              窗外也没有可查的订单（后端 nextOutsideWindow 为空）—— 不臆造"还有多少在后头"。
+              <NoCalc>窗外订单：查不到</NoCalc>
+              <InfoPopover topic="窗外为什么也是空的" testId={`exposure-next-outside-why-${baseName}`}>
+                后端 <span className="mono">nextOutsideWindow</span> 为空 —— 不臆造"还有多少在后头"。
+                这是「查过确实没有」，不是「没查」。
+              </InfoPopover>
             </div>
           )}
         </div>

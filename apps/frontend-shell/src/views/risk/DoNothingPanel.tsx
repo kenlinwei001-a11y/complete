@@ -1,7 +1,7 @@
 import type { DoNothing } from "@platform/contracts";
 import { InfoPopover } from "@/components/InfoPopover";
 import { Provenance } from "@/components/Provenance";
-import { AbsentNote, MissingEvidenceNote, SubSection } from "./decisionInfoShared";
+import { AbsentNote, MarkLegend, MissingEvidenceNote, NoCalc, RichText, SubSection } from "./decisionInfoShared";
 
 /**
  * WO-DECISION-INFO-FE ② · 不作为后果（`RiskCard.doNothing`）：**不处置的话会怎样**。
@@ -39,12 +39,22 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
       sub={
         <>
           三块状态 <b data-testid={`donothing-status-${baseName}`}>{doNothing.status}</b>
-          （OK=三块都算得出 / PARTIAL=部分算得出 / EMPTY=都算不出）· 逾期营收敞口 {doNothing.revenueAtRiskYi} {u.revenue}
+          {/* 分层：三态图例是**口径**（「怀疑这个数那一刻」才要），降进浮层；第一层只留状态字母本身。 */}
+          <InfoPopover topic="三块状态怎么读" testId={`donothing-status-legend-${baseName}`}>
+            <div><b>OK</b> = 三块都算得出</div>
+            <div><b>PARTIAL</b> = 部分算得出</div>
+            <div><b>EMPTY</b> = 都算不出</div>
+            <div style={{ marginTop: 6, color: "var(--muted2)" }}>
+              三块（缺口自然消化 / 逐单延误 / 违约金）各自独立标状态 —— 后端刻意不合成一个"总状态"，
+              前端也不合并：合并即抹平 EMPTY，等于把「算不出」偷偷说成「没影响」。
+            </div>
+          </InfoPopover>
+          · 逾期营收敞口 {doNothing.revenueAtRiskYi} {u.revenue}
         </>
       }
     >
       <div style={{ fontSize: 12, lineHeight: 1.7, color: "var(--muted)", marginBottom: 8 }} data-testid={`donothing-summary-${baseName}`}>
-        {doNothing.summary}
+        <RichText>{doNothing.summary}</RichText>
       </div>
 
       {/* ── ②a 缺口自然消化天数 ──────────────────────────────────────────── */}
@@ -111,8 +121,12 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
                 ))}
               </tbody>
             </table>
+            {/* 分层：`delay.note` 是**公式 + 它为什么不是实测**（R-UI-3 点名的形态）——降进浮层，
+                第一层留上方那个「估算 · 非实测」徽标当可见记号。原文一字未删。 */}
             <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 4 }} data-testid={`donothing-delay-note-${baseName}`}>
-              {delay.note}
+              <InfoPopover topic="这个延误天数怎么来的" testId={`donothing-delay-caliber-${baseName}`}>
+                <RichText>{delay.note}</RichText>
+              </InfoPopover>
             </div>
           </>
         ) : (
@@ -137,20 +151,27 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
             </Provenance>
           </div>
         ) : (
+          /*
+           * WO-CAPSIM-THREE-SLOTS · 仓主逐条判定的样板就是这一块，照它判其余各条。
+           *
+           * 修前第一层摆着：结论 + 30 条规则 key + 33 处承载物 + C27 口径辨析 + 补齐清单
+           * + 一整段「为什么不显示 0」——**第一层 9 类内容**。
+           * 修后第一层**只剩 1 条**：`verdict` 一句 + **删除线记号**；其余 6 类全进浮层（证据库），
+           * 补齐清单标明读者是建模负责人（1 类该移走），共 1 个字面 `**` 泄漏 bug 修掉。
+           *
+           * ⛔ 那段「刻意不显示金额（不是 0）」**不需要一段话，一个记号就够** ——
+           * 08-28 设计稿已定：**删除线 = 这次算不出来，不是 0，也不是「无变化」**。
+           * 记号本身就承载了那个断言；解释降进 `MarkLegend` 浮层，**一次说明服务全屏所有记号**，
+           * 不必每个空格子重复一遍。⛔ 不另发明记号。
+           *
+           * 这是**降层不是删除**：那段原文一字未删，见 `decisionInfoShared.MarkLegend`。
+           */
           <>
             <MissingEvidenceNote testId={`donothing-penalty-empty-${baseName}`} title="违约金 / 罚则：本平台未承载" ev={penalty} />
-            <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 3 }} data-testid={`donothing-penalty-nozero-${baseName}`}>
-              此处<b>刻意不显示金额</b>（不是 0）：显示 0 等于断言「不赔钱」，而本仓没有任何规则/字段支持该断言。
-              {/*
-               * 分层（规范 §1）：诚实位**允许降到浮层、绝不允许删除** ——
-               * 「本平台未承载违约金口径」这句原文原封不动搬进浮层，第一层留「未承载」徽标 + `?` 记号。
-               */}
-              <InfoPopover topic="为什么这里空着" testId={`donothing-penalty-caliber-${baseName}`}>
-                本平台未承载违约金口径：唯一带罚金的字段是供应商长协的欠交罚金，
-                说的是<b>供应商欠我方</b>，不是<b>我方晚交客户</b> —— 拿它回答这里等于张冠李戴。
-                要点亮此块，需数据侧补齐订单的逐日违约金率与对应罚则规则。
-              </InfoPopover>
-            </div>
+            {/* 记号的统一说明（「为什么不显示 0」原文在这里，一字未删 —— 只是从第一层换到了浮层）。 */}
+            <span data-testid={`donothing-penalty-nozero-${baseName}`}>
+              <MarkLegend testId={`donothing-penalty-caliber-${baseName}`} />
+            </span>
           </>
         )}
       </div>
@@ -175,8 +196,17 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
                       {c.customerObject.custId} · 账期 {c.customerObject.termDays} 天 · 额度 {c.customerObject.creditLimit}
                     </span>
                   ) : (
-                    <span data-testid={`donothing-custobj-empty-${c.cust}`} style={{ color: "var(--muted2)", fontSize: 12 }} title={c.customerObject.reason}>
-                      连不到 Customer 对象（缺 <span className="mono">{c.customerObject.missingFields[0] ?? "?"}</span>）—— 拒绝给一个张冠李戴的账期
+                    /* 分层 + 修原生 `title=`（规范 §2 明令禁止 title 充当浮层：OS 绘制、移动端不可达、移开滞留）。
+                       第一层留「连不到 Customer 对象」这个结论 + `?`；缺哪个字段、后端 reason 全文进浮层。 */
+                    <span data-testid={`donothing-custobj-empty-${c.cust}`} style={{ color: "var(--muted2)", fontSize: 12 }}>
+                      <NoCalc>连不到 Customer 对象</NoCalc>
+                      <InfoPopover topic="为什么连不到这个客户" testId={`donothing-custobj-why-${c.cust}`}>
+                        <div>
+                          缺 <span className="mono">{c.customerObject.missingFields[0] ?? "?"}</span> ——
+                          拒绝给一个<b>张冠李戴</b>的账期（错的账期比没有账期更危险）。
+                        </div>
+                        <div style={{ marginTop: 6 }}><RichText>{c.customerObject.reason}</RichText></div>
+                      </InfoPopover>
                     </span>
                   )}
                 </td>
@@ -186,7 +216,11 @@ export function DoNothingPanel({ doNothing, baseName }: { doNothing?: DoNothing;
         </table>
       ) : (
         <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid={`donothing-cust-empty-${baseName}`}>
-          受影响客户名单为空（与影响面同一出处：本窗无订单敞口 → 没有客户可列，不臆造）。
+          {/* 第一层只留结论；「凭什么说是空的」降进浮层。 */}
+          <b><NoCalc>受影响客户：无</NoCalc></b>
+          <InfoPopover topic="为什么客户名单是空的" testId={`donothing-cust-empty-why-${baseName}`}>
+            受影响客户名单为空（与影响面同一出处：本窗无订单敞口 → 没有客户可列，不臆造）。
+          </InfoPopover>
         </div>
       )}
     </SubSection>
