@@ -71,15 +71,17 @@ describe("WO-AGENT-NEW-DSH ③ · 新建路建出的 EXTERNAL agent 跑得起来
       // mock 治理的 deny 清单（platform-governance.mjs：env 优先于 config.deny）。
       process.env.PLATFORM_GOV_DENY = DENIED_TOOL;
 
+      const usage = { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 };
       const stub = await startStubOpenAi([
         // 第 1 轮：模型去调那件**会被治理拒掉**的工具。
-        { toolCall: { name: DENIED_TOOL, arguments: JSON.stringify({ objectType: "Order", filter: {} }) } },
+        { toolCall: { name: DENIED_TOOL, arguments: JSON.stringify({ objectType: "Order", filter: {} }) }, usage },
         // 第 2 轮：收尾。此时上一轮的 tool_result（拒绝原文）已回灌进消息里。
         {
           toolCall: {
             name: "final_answer",
             arguments: JSON.stringify({ blocks: [{ type: "text", markdown: "结束。" }], provenance: [] }),
           },
+          usage,
         },
       ]);
       const t: TestApp = await createTestApp({
