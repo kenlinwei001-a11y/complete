@@ -104,6 +104,10 @@ import {
 import { getRenderer } from "@/views/registry";
 import { UNIFIED_MODES, UNIFIED_MODE_SPEC, type UnifiedMode, type UnifiedModeCounts } from "./unifiedModes";
 import { stateVarLabel } from "../stateVarLabel";
+import { PerturbationTimeline } from "../PerturbationTimeline";
+import { ExportReportButton } from "../shared";
+import type { ProvenanceReport } from "../exportProvenance";
+import { useObjectFacts } from "./useObjectFacts";
 import { useConsoleSession, type ConsoleSessionReason } from "../console/useConsoleSession";
 import { metricSeriesPath } from "../console/useParetoFrontier";
 import PerturbRail from "./rail/PerturbRail";
@@ -118,6 +122,7 @@ import {
 import { MetricWall } from "./MetricWall";
 import { InspectorPane } from "./InspectorPane";
 import { BottomDrawer } from "./BottomDrawer";
+import Console0828 from "./console0828/Console0828";
 import styles from "./UnifiedSimShell.module.css";
 
 /**
@@ -437,6 +442,23 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
   const sessionId = session.sessionId ?? pinnedSessionId ?? undefined;
   const enabled = sessionId !== undefined && sessionId !== "";
 
+  /**
+   * ══ WO-SIM-CONSOLE-0828 · 默认视图 = 08-28 那块屏；8 页签工作台退到「专家模式」后面 ═══
+   *
+   * **今天的行为是 X**：`v/sim-unified` 打开就是 8 档页签 + 卡墙 + 右栏检视 ——
+   * 一屏 40 张状态变量卡，用户要先知道「`Base.loadIndex` 是哪一个量」才动得了它。
+   * **应该是 Y**：默认是「加几件事 → 算一下 → 出钱/卡点/方案」那一条主线；
+   * 工作台**一个字都没删**，退到左栏页脚的「专家模式 ▸」后面。
+   *
+   * 这不是我加的分层 —— 设计稿左栏页脚原文：
+   *   > 「其余 12,675 个对象只在**结果里**出现，不进选择器 …… **专家模式 ▸**」
+   *
+   * ⛔ **不新开 route、不删工作台**：同一条 `v/sim-unified`，同一个 `sessionId`，
+   *   同一份 TanStack 缓存（两边取数用的是逐字相同的 `queryKey`）⇒ 来回切不重发请求、
+   *   也不会出现「两块屏各自算出一套数」。
+   */
+  const [expert, setExpert] = useState(false);
+
   const [mode, setMode] = useState<UnifiedMode>("now");
   const [selected, setSelected] = useState<string | null>(null);
   const [railOpen, setRailOpen] = useState(true);
@@ -613,6 +635,13 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
   );
   const summary = useMemo(() => buildRailSummary(applied, wall), [applied, wall]);
 
+  /**
+   * ② 选中落点对象的**业务面**（WO-SIM-UNIFIED-WIRE-4）。
+   * 判据与实测证据在 `objectFacts.ts`；为什么这一跳失败也不许崩，在 `useObjectFacts.ts`。
+   * 类型反查只认后端下发的 `cfg.nodeObjectIds` 登记册，**不按 id 前缀猜**。
+   */
+  const objectFacts = useObjectFacts(inspector?.card.objectId ?? null, cfg?.nodeObjectIds);
+
   const windowDays =
     seriesQ.data === undefined ? null : seriesQ.data.ticks.length * (seriesQ.data.tickDays ?? 1);
 
@@ -685,8 +714,91 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
     [cfg?.propagationCount, cfg?.stateVars],
   );
 
+  /**
+   * ══ WO-SIM-UNIFIED-WIRE-4 · ④ 控制台内 0 导出 ══════════════════════════════
+   *
+   * **今天的行为是 X**（本单开工实测）：`unified/` 全树 `download` / `导出` /
+   * `ExportChip` / `downloadProvenanceReport` **零命中**
+   * （金丝雀：`downloadProvenanceReport` 真实存在于 `../exportProvenance.ts:126`，
+   *  经 `../shared.tsx:131` 的 `ExportReportButton` 挂在 `GlobalSimView.tsx:764`
+   *  ⇒ 我搜得到导出，不是工具坏了）。
+   * 于是这块屏推完一轮，**结论带不走** —— 出不了决议附件。
+   *
+   * **应该是 Y**：复用**同一个** `ExportReportButton`。⛔ 不写第二份导出实现 ——
+   * 第二份迟早与 `exportProvenance` 那份漂开，而导出物的口径措辞漂了就没人能复算。
+   *
+   * `build` 是**函数**（`ExportReportButton` 的契约）：导出要的是「点下去那一刻屏上的数」。
+   * ⚠ 这里一个数都不新算：`basis` 与三段表全部取**屏上已有**的派生结果
+   * （`origin` / `modeCounts` / `wall` / `applied`），本函数零算术。
+   * ⚠ `basis` 至少一条，否则 `exportProvenance` 直接抛 —— 那是它与「随便导个 CSV」的全部区别。
+   */
+  const buildReport = (): ProvenanceReport => ({
+    docName: "统一推演控制台",
+    basis: [
+      `推演会话 ${sessionId ?? "—"} · 第 ${current?.curTick ?? "—"} 拍 · 状态 ${
+        statusState.kind === "known" ? SESSION_STATUS_TEXT[statusState.status] : "—"
+      }`,
+      // 世界态出处 = 诚实位。导出物里**必须**带它：这一屏的数多数是结构派生的占位，
+      // 不带这一句，附件的读者会把它们当实测读 —— 那正是屏上那条状态条要防的事。
+      origin === null
+        ? "世界态出处：这条会话没有带出处记号 ⇒ 出处不明，本表一律按「非实测」读"
+        : `世界态出处：${originKindText(origin.kind)}${
+            origin.measuredCells === null || origin.cells === null
+              ? ""
+              : ` · 实测格 ${origin.measuredCells}/${origin.cells}`
+          }`,
+      `传导规则 ${modeCounts.propagationRules ?? "—"} 条 · 状态变量 ${modeCounts.stateVars ?? "—"} 个 · 本次未调用 agent（推演路零 LLM）`,
+    ],
+    sections: [
+      {
+        heading: "已施加的扰动",
+        head: ["落点量", "幅度", "说明"],
+        // 与收起态摘要条同一个 `applied` ⇒ 导出物与屏上不可能各说各话。
+        // `targetLabel` 是 `StateVarLabel` 对象不是串 —— 取 `.text`（查不到名字时它
+        // 回落成裸键本身，绝不为空串，故这里不需要再兜一层）。
+        rows: applied.map((p) => [p.targetLabel.text, `${p.mode} ${p.magnitude}`, p.label]),
+      },
+      {
+        heading: "指标读数",
+        head: ["指标", "基线", "当前", "Δ"],
+        rows: wall.cards.map((c) => [
+          c.label.text,
+          c.baseline === null ? "—" : c.baseline,
+          c.current === null ? "—" : c.current,
+          c.delta === null ? "—" : c.delta,
+        ]),
+      },
+    ],
+  });
+
+  /**
+   * 默认视图（08-28 控制台）。**壳的会话解析与钉住逻辑在它上面已经跑完** ⇒
+   * 它拿到的 `sessionId` 与工作台是同一个，不各自解析一遍。
+   */
+  if (!expert) {
+    return (
+      <div className={styles.shell} data-testid="usim-shell" data-view="console0828">
+        <Console0828 sessionId={sessionId} onExpert={() => setExpert(true)} />
+      </div>
+    );
+  }
+
   return (
-    <div className={styles.shell} data-testid="usim-shell">
+    <div className={styles.shell} data-testid="usim-shell" data-view="expert">
+      {/* ── 回到默认视图（专家模式是**退到后面**，不是取代它）── */}
+      <div className={styles.status} data-testid="usim-expert-bar">
+        <span className={styles.statusKey}>专家模式</span>
+        <span className={styles.calibre}>8 档页签 · 指标卡墙 · 右栏检视</span>
+        <button
+          type="button"
+          className={styles.tab}
+          data-testid="usim-back-console"
+          onClick={() => setExpert(false)}
+        >
+          ◂ 回到「推演与对策」
+        </button>
+      </div>
+
       {/* ── 区① 顶部模式页签（顺序与分组 = `unifiedModes.ts`，本处不另排一套）──
           `role="tablist"` + `aria-selected`：这排按钮换的是**同一屏的哪一面**，不是导航到别处，
           故用 tab 语义而不是链接（与规格 `.modes[role=tablist]` 一致）。 */}
@@ -789,6 +901,10 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
             {describeWriteFailure(statusM.error)}
           </span>
         ) : null}
+        {/* ④ 导出 —— 复用 `../shared` 那**一份**实现（判据见上面 `buildReport` 头注）。
+            第一层只留动作本身（一个按钮 + 一个 `?` 记号）；「导出物里有什么、凭什么能复算」
+            是口径，已由 `ExportReportButton` 自己收在 `InfoPopover` 里（规范 §1/§2 R-UI-3）。 */}
+        <ExportReportButton pageKey="sim-unified" build={buildReport} />
       </div>
 
       {/* 左栏收起后的常驻摘要条（仓主明确要的那条） */}
@@ -843,6 +959,36 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
               两边一漂就各说各话 —— 那正是本仓治过多次的第二套真相源。
             */}
             <PerturbRail sessionId={sessionId} />
+            {/* ══ WO-SIM-UNIFIED-WIRE-4 · ① 控制台里关不掉扰动 ══════════════════════
+                **今天的行为是 X**（本单开工实测）：`PerturbationTimeline`（**含删除写口** ——
+                `PerturbationTimeline.tsx:123` 调 `deleteSimPerturbation`）只挂在推演沙盘
+                `SandboxView.tsx:1728`；本壳这一支只 `import { PERTURBATION_KINDS }`
+                这个**常量**（`rail/PerturbRail.tsx:66`），组件一次都没挂。
+                后果是实的：种子世界一开机就带一条 `obj_material_elyte.shortageRisk delta +100`
+                的扰动（真后端日志逐字回显，下游 572 格），它一直在生效，而这块屏
+                **关不掉它** ⇒ 用户的每一个读数里都掺着别人的扰动却无从剔除。
+
+                **应该是 Y**：把那个**已有**组件挂进来。⛔ 不重写一个 ——
+                重写等于给「已施加了什么 / 怎么删」造第二套实现，两边一漂就各说各话。
+
+                · `curTick` 与 `PerturbRail` 同源（都从 `sessionsQ` 那一行会话取），
+                  不另发一跳、也不另算一个「当前拍」。
+                · 它的清单查询键 `["a","sim-perturbations", sessionId]` 与本壳 `perturbQ`
+                  **逐字相同** ⇒ 同一份缓存；删成功后它失效这个键，本壳的
+                  `applied`/`summary`（收起态摘要条）**自动跟着变**，这里不接任何回调。
+
+                ⛔ **`curTick` 不知道时不渲染它，而不是传 `0` 顶上**：`curTick` 是那条
+                「现在」竖线的位置，也是它三态判据（还没轮到 / 正在生效 / 已过期）的 `t`。
+                传 0 会把「不知道现在第几拍」画成「现在是第 0 拍」，于是每条扰动都被判成
+                「还没轮到」—— 一个**看起来正常、逐条都错**的时间轴。本壳同一条纪律
+                在上面状态条上已经写过：「还不知道」与「第 0 拍」是两个命题。 */}
+            {current === undefined ? (
+              <div className={styles.calibre} data-testid="usim-timeline-absent">
+                扰动时间轴要等会话回来才画得出 —— 现在还不知道世界在第几拍（不是第 0 拍）
+              </div>
+            ) : (
+              <PerturbationTimeline sessionId={sessionId ?? null} curTick={current.curTick} />
+            )}
           </aside>
         ) : null}
 
@@ -871,6 +1017,7 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
                   那条回调随之一次都不会被调到 ⇒ 连同 props 一起删掉，不留谁也不调的回调。 */}
               <InspectorPane
                 view={inspector}
+                facts={objectFacts}
                 onExpand={() => {
                   setDrawerOpen(true);
                   say(`展开抽屉 ${inspector?.card.stateVar ?? ""}`);
