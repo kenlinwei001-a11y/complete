@@ -1158,6 +1158,63 @@ export const createSimPerturbation = (
 /** 列出「这个世界受过哪些扰动」（按 startTick→id 稳定排序·确定性 R6）。 */
 export const fetchSimPerturbations = (sessionId: string) =>
   api.a<{ items: Perturbation[] }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/perturbations`);
+
+// ── WO-AGENT-INTO-SIM · 让 agent 参与出方案 ──────────────────────────────────────
+/**
+ * `POST /a/v1/sim/optimize-pareto/propose` —— **请 agent 就本次世界态出候选对策**。
+ *
+ * ══ 分工（仓主 2026-09-08 架构原则）════════════════════════════════════════════
+ * > 「所有计算原则上使用**求解器**而不是 agent(LLM) 来计算，agent 只负责调动工具、本体、
+ * >   规则等等输出结果，然后基于结果推演，形成多个方案和方案比对。」
+ *
+ * ⇒ **回包里 agent 没产过一个数**：`proposal.draft` 只有 `{leverIndex, valueIndex}` 下标与文字，
+ *   数值全部由 A 侧从 `proposal.menu`（装配器读本体真值算出来的档位）兑现，
+ *   兑现结果在 `request.levers` 里原样回显。前端**照抄这两样，一个数都不许自己算**。
+ *
+ * ⚠ `provenance` 必须原样上屏，尤其 `agentInvolved`：
+ *   它为 `false` 时回的是**确定性兜底方案**（不是 agent 想的），此时 `fallbackReason` 写着原因。
+ *   把兜底方案当成 agent 的产出展示，就是本仓最忌的那种「会说谎的诚实位」。
+ */
+export interface SimProposalResponse {
+  applicable: boolean;
+  /** `applicable:false` 时给：装配器缺哪些角色（屏上照实说缺什么，不留白）。 */
+  missingRoles?: string[];
+  note?: string;
+  proposal?: {
+    proposalId: string;
+    version: number;
+    inputFingerprint: string;
+    menu: {
+      levers: { key: string; label: string; values: number[]; note?: string }[];
+      objectives: { key: string; label?: string; dir: "max" | "min" }[];
+      worldDigest: {
+        events: { kind: string; target: string; magnitude: number | null }[];
+        baselineMetrics: Record<string, number>;
+        counts: Record<string, number>;
+      };
+    };
+    draft: {
+      options: { name: string; rationale: string; picks: { leverIndex: number; valueIndex: number }[] }[];
+      comparisonNote: string;
+    };
+    /** 诚实位：这一份到底是不是 agent 想的。 */
+    provenance: {
+      agentInvolved: boolean;
+      route: "NONE" | "NATIVE" | "EXTERNAL";
+      provider: string | null;
+      model: string | null;
+      agentId: string | null;
+      elapsedMs: number | null;
+      fallbackReason: string | null;
+    };
+  };
+  /** 指纹命中已有定版 ⇒ 复用，**没有再调一次模型**（屏上要分得开）。 */
+  reused?: boolean;
+  /** 兑现出来的杠杆网格（数值的唯一产地）。 */
+  request?: { levers: { key: string; label: string; values: number[] }[] };
+}
+export const proposeSimCandidates = (sessionId: string, agentId: string) =>
+  api.a<SimProposalResponse>(`/a/v1/sim/optimize-pareto/propose`, { body: { sessionId, agentId } });
 /** 删一条扰动记录（**不回滚世界态** —— 回滚走 checkpoint/rollback，那是既有的有语义的回退口）。 */
 export const deleteSimPerturbation = (sessionId: string, perturbationId: string) =>
   api.a<{ deleted: boolean }>(
