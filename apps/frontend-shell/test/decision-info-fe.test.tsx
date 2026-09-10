@@ -68,6 +68,7 @@ function mkExposure(baseId: string, baseName: string, rank: number, has: boolean
 
 const PENALTY_EMPTY = {
   status: "EMPTY" as const,
+  verdict: "违约金：算不出（本体无交付罚则承载）",
   reason: "违约金/罚则当前本体无承载：规则库逐条核过，没有一条带交付延误罚金/费率。",
   missingFields: ["Order.latePenaltyRatePerDay"],
   checked: ["RuleEntry.C08", "LongTermAgreement.breachPenaltyWan（供应商长协欠交·非交付延误）"],
@@ -104,6 +105,7 @@ function mkDoNothing(baseId: string, baseName: string, exposure: Exposure): DoNo
         worstDelayDays: 5,
         customerObject: {
           status: "EMPTY",
+          verdict: "客户档案：连不上（账期/额度算不出）",
           reason: "order_of_customer 边按订单序轮转绑定，与 Order.cust 名称无对应关系",
           missingFields: ["Customer.custName ↔ Order.cust 的真实对应"],
           checked: ["link:order_of_customer"],

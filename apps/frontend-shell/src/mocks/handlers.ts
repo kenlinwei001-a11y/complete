@@ -326,6 +326,8 @@ function mockAssignRanks(list: Omit<Exposure, "rank">[]): Exposure[] {
  */
 const MOCK_PENALTY_EMPTY: MissingEvidence = {
   status: "EMPTY",
+  // 与真后端 `buildPenaltyEvidence` 逐字同结论：短结论进第一层，长证明留 `reason` 进第二层。
+  verdict: "违约金：算不出（本体无交付罚则承载）",
   reason:
     "违约金/罚则**当前本体无承载**：规则库 C01–C33 逐条核过，没有一条带交付延误罚金/费率（财务类均为闸门谓词、不带金额）；" +
     "唯一带罚金的字段 LongTermAgreement.breachPenaltyWan 是**供应商长协欠交**罚金（C27 口径），与「我方晚交客户单要赔多少」不是一回事 —— 拒绝挪用。",
@@ -387,6 +389,7 @@ function mockDoNothing(card: MockCard, exposure: Omit<Exposure, "rank">, shortfa
     // 且换成类型标注在语义上更好：窄化由契约类型给，不由 `as const` 给。
     const customerObject: MissingEvidence = {
       status: "EMPTY",
+      verdict: "客户档案：连不上（账期/额度算不出）",
       reason: `订单客户「${cu.cust}」连不到 Customer 对象：order_of_customer 边由 synthetic 按订单序**轮转**绑定（custIds[i % n]），与 Order.cust 名称无对应关系 —— 拒绝拿这条边回答账期/信用额度（张冠李戴的数比没有更危险）。`,
       missingFields: ["Customer.custName ↔ Order.cust 的真实对应（或 Order.custId 外键）"],
       checked: ["link:order_of_customer", "Customer.custName", "Customer.termDays", "Customer.creditLimit"],

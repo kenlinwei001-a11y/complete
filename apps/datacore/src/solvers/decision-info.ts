@@ -215,6 +215,8 @@ export function buildPenaltyEvidence(c: SolverContext): MissingEvidence {
   const ruleKeys = Object.keys(c.rules ?? {}).sort();
   return {
     status: "EMPTY",
+    // 第一层只留这一句（决策信息）。证明过程全在 `reason`/`checked` 里，一个字没删（降层≠删除）。
+    verdict: "违约金：算不出（本体无交付罚则承载）",
     reason:
       `违约金/罚则**当前本体无承载**：已发布规则 ${ruleKeys.length} 条（${ruleKeys.join("/")}）逐条核过，` +
       `没有一条带交付延误罚金/费率（财务类 C13/C15/C18/C23/C24/C32 均为闸门谓词、不带金额）；` +
@@ -263,6 +265,7 @@ export function buildDoNothing(
         }
       : {
           status: "EMPTY",
+          verdict: shortfall <= 0 ? "缺口自然消化：本窗无缺口，不适用" : "缺口自然消化：算不出（空闲日产能为 0）",
           reason:
             shortfall <= 0
               ? `本窗无产能缺口（可用产能覆盖在产+未来订单）→ 不存在"自然消化天数"这件事，不编一个数`
@@ -296,6 +299,7 @@ export function buildDoNothing(
       ? { status: "OK", worstDays: delayOrders[0]!.delayDays, orders: delayOrders, note: delayNote }
       : {
           status: "EMPTY",
+          verdict: "逐单延误：本窗无受影响订单，不适用",
           reason: `本窗无受影响订单（见 exposure.emptyReason）→ 没有"晚交几天"这件事可算`,
           missingFields: [],
           checked: ["Order.due(窗内)", "affected_orders.delay"],
@@ -309,6 +313,7 @@ export function buildDoNothing(
   //   那条边去回答（那会给出一个**看着合理、实际张冠李戴**的账期）。
   const custLinkEvidence = (cust: string): MissingEvidence => ({
     status: "EMPTY",
+    verdict: "客户档案：连不上（账期/额度算不出）",
     reason:
       `订单客户「${cust}」连不到 Customer 对象：该名字不在客户名册（CUSTOMER_REGISTRY）里，` +
       `因而没有对应的 Customer 主数据、也建不出 order_of_customer 边` +
