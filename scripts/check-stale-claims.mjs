@@ -1886,7 +1886,7 @@ function main() {
     if (live["truth.widgetKeysMultiSource"] < 5) {
       blind.push(`⑧ widget 槽位里被 ≥2 真相源登记的只有 ${live["truth.widgetKeysMultiSource"]} 个（<5）—— 只剩单边就查不出分叉，这条槽位等于没开`);
     }
-    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==39
+    // ⑥b 扫描规模下限：记号在生产源码里**今天真有实例**（@stale-self marks.production ==40
     //    ⇒ 这个数不再是传说，它由本门每次现算并对账）。抽到 0 条 ⇒ 报「工具坏了」，
     //    **不许**报「全仓记号都通过」—— 那正是本门自己在治的那种「我没找到 ≠ 它不存在」。
     if (markSweep.files < 100) blind.push(`⑥b 记号扫描只走到 ${markSweep.files} 个源文件（<100）—— srcRoots 是不是没读到？`);
@@ -2137,7 +2137,7 @@ try {
  *        `frontend-shell/locales/zh.ts` ×2 · `frontend-shell/views/sim/sandboxConsoleModel.ts` ×6）。
  *        WO-STALE-TEXT-SWEEP 当天就补上了生产实例，而这句自述留在原地 ——
  *        **它把「已经在用」写成了「还没在用」，方向正好相反**。
- *        赌注：@stale-self marks.production ==39
+ *        赌注：@stale-self marks.production ==40
  *        ⚠ **2026-08-29 由 37 改到 39**（收编 integ-batch-2 / STALE-5）：本体关系页删/停用因果边
  *          的波及预览里那句「这条边确为**叶子**：**四类**波及一条都没有」按 ⑤ 补挂记号
  *          ⇒ 生产实例 37 → 39。**同样不是放宽**：那句话的运行时守卫只覆盖两个"空"，
@@ -2177,8 +2177,15 @@ try {
  *      `expectedSlipDays = 供应商段天数 ×(1−onTimeRate)`，经 `kitReadiness` 挂在
  *      已注册求解器 `kit_readiness` 上）。给一句已知是假的话挂赌注 = 把假话钉死在门里，
  *      故留给裁决：**改文案还是把那个 `effect: inert` 一并解除**，属行为判断，不由记号单决定。
- *      @stale-self marks.production ==39 —— 2026-08-29 先由 35 改到 37，收编 integ-batch-2 时
- *      再由 37 改到 39，两次都见上面那条的说明）、
+ *      @stale-self marks.production ==40 —— 2026-08-29 先由 35 改到 37，收编 integ-batch-2 时
+ *      再由 37 改到 39，两次都见上面那条的说明；**2026-09-10 由 39 改到 40**（WO-C0828-GAPS）：
+ *      08-28 决策屏「看板缺列诚实披露」里那句「一条对策身上带的量**只有三个**（超阈幅度 /
+ *      严重度 / 产能 cellsPerDayP50 合计）」按 ⑤ 补挂记号，赌
+ *      `apps/datacore/src/solvers/impediment-options.ts` 的 /betterWhen: / ==3
+ *      ⇒ 生产实例 39 → 40。**同样不是放宽**：引擎给对策多挂一个维时，屏上那句话会立刻
+ *      变成假话而运行时不会有任何守卫发现（它只是段说明文字，没有任何断言在守），
+ *      挂上之后第 4 个维一出现当场红。两次金丝雀：/betterWhen: / 现算 3、
+ *      同文件 /zzz_nope/ 现算 0 ⇒ 计数器本身有鉴别力）、
  *      **基线赌注路径今天 0 条数据**（@stale-self baseline.factChecks ==0；属「接了线没数据」，
  *      不是「没接线」——`runBaselineFactChecks` 仍被主流程无条件调用）。
  *    ⇒ 复验命令：`node scripts/check-stale-claims.mjs`（末行直接打印这三个现算值）。

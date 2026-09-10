@@ -1346,6 +1346,18 @@ export default function Console0828({
                     <ul className={styles.restoreList} data-testid="c0828-missing-why">
                       <li>
                         <b>最快见效</b> · <b>最低代价</b> —— <b>今天没有出处</b>。
+                        {/*
+                         * ⚠ 下一行那句「只有三个」是一条**枚举断言** —— 引擎哪天给对策多挂一个维，
+                         * 它就从「诚实披露」变成「屏上说谎」，而**不会有任何人被通知**。
+                         * 故把它赌的那个计数写下来（`stale-claims` 门与本记号同一个执行器现算）：
+                         * 三个维在 `impediment-options.ts` 里各带一行 `betterWhen:`，
+                         * 长出第四个维 ⇒ 现算变 4 ⇒ 当场红，逼着回来改这句话。
+                         * ⚠ 赌注刻意挂在**引擎**那一侧而不是本文件：本文件只是转述，
+                         * 真相源是产维的那段代码 —— 赌自己等于没赌。
+                         * ⚠ 记号必须**紧贴被赌的那一行**：门的 `markScopeRange` 从命中行向上走，
+                         * 一遇到非注释行就停 —— 隔着 `<li>` 挂在列表外面，门一个字都看不见。
+                         * @stale-fact apps/datacore/src/solvers/impediment-options.ts /betterWhen: / ==3
+                         */}
                         一条对策身上带的量只有三个（超阈幅度 / 严重度 / 产能 cellsPerDayP50 合计），
                         <b>没有一个是时间，也没有一个是代价</b>。
                         要摆上来就得给每条对策拍一个「几天见效」「代价高中低」，那是造口径。
