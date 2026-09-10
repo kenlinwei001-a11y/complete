@@ -149,4 +149,8 @@
 **零新增 API**（9 个 fetcher 全是既有的）· **零新增门/棘轮/基线 JSON**（守冻结令）· **未碰** `views/sim/**`、边界册治理页、`apps/datacore/src/{ontology*,domain.ts,units.ts}` 与种子。
 
 **未跑全量 gate，原因：全机 CPU 争抢（实测 7 个并发 vitest、load 18–71），由收编方统一验。**
-本单已跑：`pnpm --filter frontend-shell typecheck` **绿**（3 次，最后一次在 `unknown` 态修复后启动，因 load 过高被移入后台，结果未及回收）。
+本单已跑：`tsc -p tsconfig.json --noEmit`（frontend-shell）**在 `unknown` 态修复后 `TSC_RC=0`**
+—— ⛔ 退出码是**直接捕获**的，不走 `cmd | tail`（那样取到的是 `tail` 的码，恒 0）。
+
+**收尾清理**：本单起的 datacore(4741·pid 27477) 与 vite(5741·pid 22090) 已按各自 log 记录的 pid 定点 kill
+（⛔ 未用 `pkill -f`）。datacore 是内存态 ⇒ 随进程消亡，上文那条未删的 `wo_spine11_ui_probe` 结构边**已随之清除**。
