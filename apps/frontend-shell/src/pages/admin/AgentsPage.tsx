@@ -765,6 +765,13 @@ function AgentEditor({ agent, onChanged, onForked }: { agent: AgentDefinition; o
     tools: agent.tools,
     ruleBindings: agent.ruleBindings,
     skills: agent.skills,
+    // WO-AGENT-NEW-DSH · `mcpServers` **此前不在表单里** —— 编辑器整个没有它的写口，
+    // 于是任何在 UI 里建/改的 agent 恒为 `mcpServers: []`。这对原生内核无害（原生路的 MCP
+    // 工具走 `tools` 的 MCP ref，见 expandAgentTools），但 **DSH 路只认 `agent.mcpServers`**
+    // （engine.ts:642/644 是全仓唯一运行时消费方；`tools` 的 MCP ref 在那儿只用来取 toolFilter）
+    // ⇒ 挂了 MCP 工具的 EXTERNAL agent，SetupSpec 里一个 mcpServers 都没有，子进程静默连不上，
+    // 屏上无任何提示。此处补上写口，形态与 skills 同（表单持有 → 保存原样回传）。
+    mcpServers: agent.mcpServers,
     scopeDeclaration: agent.scopeDeclaration,
     budget: agent.budget ?? {},
   });
@@ -928,6 +935,40 @@ function AgentEditor({ agent, onChanged, onForked }: { agent: AgentDefinition; o
         </button>
       )}
       {editable && (mcpConfigs?.length ?? 0) === 0 && <RefEmptyLink to="/admin/mcp" label="MCP 服务器" testid="agent-mcp-empty" />}
+
+      {/* WO-AGENT-NEW-DSH · MCP 挂载（DSH 四要素之一）。
+          与上面「MCP 工具」不是一回事，两者缺一不可，故分开画：
+           · 上面那节写 `tools` 的 MCP ref —— 决定**模型看得见哪些工具**（含 toolFilter）；
+           · 本节写 `agent.mcpServers` —— 决定**外部运行时到底去连哪几台 server**
+             （engine.ts:642/644 是它唯一的运行时消费方，映射成 SetupSpec.mcpServers）。
+          原生内核不读本节（读了也无用），所以只在 EXTERNAL 时才提示缺挂载。 */}
+      <div className="section-title">MCP 挂载（DSH 外部运行时）</div>
+      {(mcpConfigs ?? []).length === 0 && <RefEmptyLink to="/admin/mcp" label="MCP 服务器" testid="agent-mcpmount-empty" />}
+      {(mcpConfigs ?? []).map((m) => {
+        const mounted = form.mcpServers.some((x) => x.mcpConfigId === m.id);
+        return (
+          <label key={m.id} style={{ display: "inline-flex", gap: 4, alignItems: "center", marginRight: 10 }}>
+            <input
+              type="checkbox"
+              checked={mounted}
+              disabled={!editable}
+              aria-label={`挂载 ${m.name}`}
+              data-testid={`agent-mcpmount-${m.id}`}
+              onChange={() =>
+                set("mcpServers", mounted ? form.mcpServers.filter((x) => x.mcpConfigId !== m.id) : [...form.mcpServers, { mcpConfigId: m.id }])
+              }
+            />
+            <span className="mono" style={{ fontSize: 12 }}>{m.name}</span>
+          </label>
+        );
+      })}
+      {/* 静默失败的唯一可见处：EXTERNAL + 挂了 MCP 工具 + 没挂载 ⇒ 子进程连不上，运行时不报错。 */}
+      {form.kernel === "EXTERNAL" &&
+        mcpRefs.some((r) => !form.mcpServers.some((x) => x.mcpConfigId === r.mcpConfigId)) && (
+          <p className="badge amber" data-testid="agent-mcpmount-warn" style={{ display: "block", marginTop: 6 }}>
+            这些 MCP 工具所属的服务器没有勾选挂载：外部运行时不会去连它们，工具在子进程里不存在（且不会报错）。
+          </p>
+        )}
 
       <div className="section-title">{t.workflowTools}</div>
       {wfRefs.map((ref, i) => (
