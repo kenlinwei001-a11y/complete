@@ -1232,6 +1232,28 @@ export const zh = {
         llmNoReasoningTopic: "关推理",
         llmNoReasoningBody:
           "关掉该用途的推理（分类 / 选型等本不需推理）：推理型模型改用同 provider 的非推理兄弟出快答，是治本的降时延手段。",
+        /**
+         * ══ WO-SIM-UNIFIED-WIRE-4 · ⑤ 统一控制台左栏（`unified/rail/PerturbRail`）的浮层标题 ══
+         *
+         * **只增不改** —— 下面七条全是新键，一条既有键都没动。
+         *
+         * 为什么新增这一批：设计稿自己写的那句
+         * 「**公式、口径、机器编号、规则码全部收在第二层（点开才看）**」，
+         * 而该文件第一层长说明串实测 **2 → 13**、第二层/浮层 **5 → 4 没涨**
+         * ⇒ 门 `ui-first-layer:check` 判「纯往第一层堆」（D1 + D2b + D4 三条同时红）。
+         * 修法是把成段说明沉进 `InfoPopover`，第一层只留「数值 / 状态 / 名字」。
+         *
+         * ⚠ 这里只放**标题**（`?` 的 topic）；正文留在组件里，因为多数正文要**现算**
+         * （拍号、条数、量名都来自当次回包）—— 搬进 locale 就得把实参再传一遍，
+         * 那是把一句话拆到两个文件，改一次要改两处。
+         */
+        railFaceCanary: "业务面为什么一个类型都没有",
+        railNoPages: "为什么这里没有可扰的量",
+        railOrderChange: "这一项今天落到哪个量",
+        railStartTick: "起始拍这一档的口径",
+        railEquipment: "设备面「扰不动」是什么意思",
+        railDemandBias: "预测偏差扰不扰得动",
+        railScope: "沙盘改的是什么、不改什么",
         /** `?` 触发器：hover / focus 出浮层，移开或 Esc 即消失。 */
         trigger: "?",
         triggerAria: (topic: string) => `${topic} —— 说明（悬停或聚焦查看）`,

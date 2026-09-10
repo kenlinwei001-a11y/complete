@@ -12,6 +12,7 @@
  */
 import type { InspectorView } from "./metricWallModel";
 import { sparkGeometry } from "./sparkline";
+import { FACTS_ABSENCE_TEXT, type ObjectFactsView } from "./objectFacts";
 import styles from "./UnifiedSimShell.module.css";
 
 function fmt(n: number): string {
@@ -47,10 +48,55 @@ export const PENDING_ACTION_TEXT = {
   trace: "顺着这个指标往上游一路追，看它是被哪几条因果边推成今天这样的。这个功能还没有做好，所以现在点不动 —— 不是你点错了。",
 } as const;
 
+/**
+ * ══ WO-SIM-UNIFIED-WIRE-4 · ② 落点对象不再只是一串 id ══
+ *
+ * **今天的行为是 X**（本单开工实测，真后端 `SEED_DEMO=1`）：本栏「这是什么」里
+ * 落点对象只印一个裸 id（`obj_order_SO-3391`），而推演层那一条**只有四个 0–100 的压力数**
+ * （实测 500 张单 · 2000 个数值格 · **非数值格 0 个**）⇒ 屏上无从分辨
+ * 「1.61 亿的广汽单」与一张小单。COO 据此排优先级会排反。
+ *
+ * **应该是 Y**：把对象层已有的业务字段 join 上来（客户 · 套数 · 金额 · 交期 · 型号）。
+ * 取数与判据在 `useObjectFacts.ts` / `objectFacts.ts`，本文件仍**零算术、零取数**。
+ */
 export interface InspectorPaneProps {
   view: InspectorView | null;
+  /**
+   * 选中落点对象的业务面（`useObjectFacts` 的产出）。
+   * **刻意做成必传** —— 给它一个 `?` 默认值就等于允许调用方悄悄不接，
+   * 而「没接线」与「接了线取不到」在屏上会长得一模一样（本仓治过多次的那类混淆）。
+   */
+  facts: ObjectFactsView;
   /** 底部抽屉展开（右栏「展开」进抽屉）—— **今天右栏唯一活的动作**。 */
   onExpand: () => void;
+}
+
+/**
+ * 落点对象那一行：id + 业务面。
+ * 业务面取不到时**照实说是哪一种取不到**（四态措辞的唯一出处在 `objectFacts.ts`）。
+ */
+function ObjectFactsLine({ objectId, facts }: { objectId: string | null; facts: ObjectFactsView }): JSX.Element {
+  return (
+    <div
+      className={styles.calibre}
+      data-testid="usim-inspector-objectfacts"
+      data-typekey={facts.typeKey ?? ""}
+      data-absence={facts.absence ?? ""}
+      data-factcount={facts.facts.length}
+    >
+      落点对象 {objectId ?? "—"}
+      {facts.absence === null
+        ? facts.facts.map((f) => (
+            <span key={f.label} data-testid={`usim-fact-${f.label}`}>
+              {" · "}
+              {f.label} {f.text}
+            </span>
+          ))
+        : objectId === null
+          ? ""
+          : ` · 业务面：${FACTS_ABSENCE_TEXT[facts.absence]}`}
+    </div>
+  );
 }
 
 /**
@@ -60,7 +106,7 @@ export interface InspectorPaneProps {
  * （本仓「只有 test 引用 = 已排练，不是已实现」的同族形态）。
  * 将来真接线时，连同那时要发的请求一起加回来即可 —— 那才是它第一次有意义。
  */
-export function InspectorPane({ view, onExpand }: InspectorPaneProps): JSX.Element {
+export function InspectorPane({ view, facts, onExpand }: InspectorPaneProps): JSX.Element {
   if (view === null) {
     return (
       <div data-testid="usim-inspector-empty" className={styles.calibre}>
@@ -83,9 +129,8 @@ export function InspectorPane({ view, onExpand }: InspectorPaneProps): JSX.Eleme
           {c.layerKnown ? "" : "（后端未下发层级：它不在传导图里 —— 与「它是末端」是两回事）"} · 量纲{" "}
           {c.unit ?? "无（全平台没有状态变量→单位的登记册，编一个就是造口径）"}
         </div>
-        <div className={styles.calibre}>
-          落点对象 {c.objectId ?? "—"} · 本变量共 {c.cellCount} 格
-        </div>
+        <ObjectFactsLine objectId={c.objectId} facts={facts} />
+        <div className={styles.calibre}>本变量共 {c.cellCount} 格</div>
       </section>
 
       {/* ② 变了多少 */}
