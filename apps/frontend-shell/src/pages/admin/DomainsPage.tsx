@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchDomains } from "@/api/endpoints";
 import { api } from "@/api/apiClient";
 import { toastError, toast } from "@/store/toastStore";
+import OntoSpine from "@/views/admin/onto-spine/OntoSpine";
 
 /**
  * 域管理（本体治理增量 §1：域升为一等治理单元）：列出域 + 新建域（归域、颜色、负责人）。
@@ -27,6 +28,8 @@ export default function DomainsPage() {
 
   return (
     <div data-testid="domains-page">
+      {/* WO-ONTO-SPINE-11 · 动线主脊：本页是第 01 步「域」。 */}
+      <OntoSpine now="domain" />
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>域管理</h2>
       <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         域是一等治理单元——对象类型归域、按域分组图谱、域 owner 会签发布。

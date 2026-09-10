@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchObjectTypeStats, fetchBusinessDomains, fetchObjectTypes, queryObjectsPaged, type ObjectTypeStat } from "@/api/endpoints";
 import { InfoPopover } from "@/components/InfoPopover";
+import OntoSpine from "@/views/admin/onto-spine/OntoSpine";
 import styles from "./ObjectTypesBrowserPage.module.css";
 
 /**
@@ -89,6 +90,8 @@ export default function ObjectTypesBrowserPage() {
 
   return (
     <div data-testid="object-types-page">
+      {/* WO-ONTO-SPINE-11 · 动线主脊：本页是第 02 步「对象 · 类型属性」。 */}
+      <OntoSpine now="object" />
       <h2 style={{ fontSize: 16, marginBottom: 12 }}>对象/类型浏览器</h2>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, fontSize: 12, flexWrap: "wrap" }}>
         <select data-testid="ot-domain-filter" value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)}>

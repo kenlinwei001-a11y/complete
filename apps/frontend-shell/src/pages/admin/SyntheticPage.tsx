@@ -4,6 +4,7 @@ import { createSyntheticJob, fetchIndustryTemplates, fetchSyntheticJob, fetchRaw
 import { ConfirmModal } from "@/components/ui/Modal";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import OntoSpine from "@/views/admin/onto-spine/OntoSpine";
 import styles from "./SyntheticPage.module.css";
 
 const t = zh.admin.synthetic;
@@ -24,7 +25,12 @@ export default function SyntheticPage() {
   const step = jobId == null ? 0 : job?.status === "SUCCEEDED" || job?.status === "FAILED" ? 2 : 1;
 
   return (
-    <div style={{ maxWidth: 880 }}>
+    // 脊放在 `maxWidth:880` 的容器**之外**：11 格挤进 880px 会退化成横向滚动条，
+    // 而脊的价值恰恰是「一眼看完 11 步」——看不完就等于没有。
+    <>
+      {/* WO-ONTO-SPINE-11 · 动线主脊：本页是第 09 步「数据 · 灌入对账」。 */}
+      <OntoSpine now="data" />
+      <div style={{ maxWidth: 880 }}>
       <h2 style={{ fontSize: 16, marginBottom: 14 }}>{t.title}</h2>
       <div className={styles.steps}>
         {[t.step1, t.step2, t.step3].map((label, i) => (
@@ -38,7 +44,8 @@ export default function SyntheticPage() {
       {step >= 1 && job && <PhaseStepper job={job} />}
       {step === 2 && job?.report && <Report report={job.report} onRerun={() => setJobId(null)} />}
       {step === 2 && <DataDetailPanel />}
-    </div>
+      </div>
+    </>
   );
 }
 

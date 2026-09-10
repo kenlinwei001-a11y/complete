@@ -7,6 +7,7 @@ import {
   type SolverCatalogItem,
 } from "@/api/endpoints";
 import ReferencesPanel from "@/components/ReferencesPanel";
+import OntoSpine from "@/views/admin/onto-spine/OntoSpine";
 import { InfoPopover } from "@/components/InfoPopover";
 import zh from "@/locales/zh";
 
@@ -73,6 +74,8 @@ export default function SolversPage() {
 
   return (
     <div data-testid="solvers-page">
+      {/* WO-ONTO-SPINE-11 · 动线主脊：本页是第 10 步「场景 · 求解」。 */}
+      <OntoSpine now="scenario" />
       {/*
         WO-BEFE-CLEANUP · 信息分层（规范 §1 / §2 R-UI-3）。
         「这一页的数据从哪来 / 谁引用它 / 怎么新增」是**数据来源与口径**，规范归浮层；

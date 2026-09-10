@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import OntoSpine from "@/views/admin/onto-spine/OntoSpine";
 // ⚠ 这一行不能写成 `import type`：`OBJECT_CONSTRAINT_KIND_LABELS` 是**值**不是类型。
 import {
   OBJECT_CONSTRAINT_KIND_LABELS,
@@ -704,6 +705,10 @@ export default function OntologyRelationsPage() {
 
   return (
     <div data-testid="ontology-relations-page">
+      {/* WO-ONTO-SPINE-11 · 动线主脊。本页同时承载第 03（结构边）/04（状态变量）/07（对象约束）/
+          08（因果边）/11（发布会签）五步 —— 脊上那四格带 `#onto-*` 锚点直接落到对应小节，
+          否则点进来还要在 1800 行里自己找。`now="relation"` 只是本页自报站位，不改完成度。 */}
+      <OntoSpine now="relation" />
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>本体关系</h2>
       {/* 分层规范 §1：第一层只放「数值 / 状态 / 名字」，成段口径说明降浮层。
           ⚠ 降层不是删除 —— 两段原文一字未改，只是从常驻第一层挪进 `?` 浮层，
@@ -733,7 +738,9 @@ export default function OntologyRelationsPage() {
       </div>
 
       {/* ═══════════ 结构边 ═══════════ */}
-      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>结构边 · 关系类型</h3>
+      {/* 锚点（WO-ONTO-SPINE-11）：动线主脊第 03 步「关系」落到这里。`scrollMarginTop` 让锚点
+          跳转后标题不被顶栏盖住 —— 没有它，跳过来第一眼看到的是本小节的表头而不是标题。 */}
+      <h3 id="onto-structural" style={{ fontSize: 13.5, margin: "16px 0 6px", scrollMarginTop: 12 }}>结构边 · 关系类型</h3>
       <div className="panel" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <input
           data-testid="orel-link-key"
@@ -995,7 +1002,9 @@ export default function OntologyRelationsPage() {
       </div>
 
       {/* ═══════════ 因果边 ═══════════ */}
-      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>因果边 · 传导规则</h3>
+      {/* 锚点（WO-ONTO-SPINE-11）：第 08 步「因果」落到这里；第 04 步「状态」也落这里 ——
+          状态变量今天没有独立建模面，它是本小节里源/目标端状态变量的去重投影。 */}
+      <h3 id="onto-causal" style={{ fontSize: 13.5, margin: "16px 0 6px", scrollMarginTop: 12 }}>因果边 · 传导规则</h3>
       <div className="panel" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <input
           data-testid="orel-rule-key"
@@ -1585,7 +1594,8 @@ export default function OntologyRelationsPage() {
       </div>
 
       {/* ═══════════ 对象约束 · 引用规则库（WO-CONSTRAINT-REFS）═══════════ */}
-      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>对象约束 · 引用规则库</h3>
+      {/* 锚点（WO-ONTO-SPINE-11）：第 07 步「约束」落到这里。 */}
+      <h3 id="onto-constraint" style={{ fontSize: 13.5, margin: "16px 0 6px", scrollMarginTop: 12 }}>对象约束 · 引用规则库</h3>
       <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.7 }}>
         给一类对象挂上<b>它自己的约束条件</b>——比如「设备的产能上限」「产线利用率不得超过 X」。
         约束<b>不在这里写表达式</b>，而是<b>引用规则库里已发布的那条规则</b>：阈值改在规则库一处，
@@ -1795,7 +1805,9 @@ export default function OntologyRelationsPage() {
       )}
 
       {/* ═══════════ 发布会签（R4）═══════════ */}
-      <h3 style={{ fontSize: 13.5, margin: "16px 0 6px" }}>发布会签（R4）</h3>
+      {/* 锚点（WO-ONTO-SPINE-11）：第 11 步「发布」落到这里 —— 本页刻意不给「直接发布」按钮，
+          这条会签路是发布的唯一出口，故脊上第 11 格指的就是它。 */}
+      <h3 id="onto-publish" style={{ fontSize: 13.5, margin: "16px 0 6px", scrollMarginTop: 12 }}>发布会签（R4）</h3>
       <div className="muted" style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.7 }}>
         上面的建/停/下线写的是<b>工作集</b>，不是已发布真值。真值是 <code>OntologyVersion</code> 快照 ——
         经<b>各域 owner 会签</b>后由后端自动固化（全域 APPROVE → <code>publishVersion</code>）。

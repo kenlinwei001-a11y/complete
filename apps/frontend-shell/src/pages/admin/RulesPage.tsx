@@ -7,6 +7,7 @@ import ReferencesPanel from "@/components/ReferencesPanel";
 import { Modal } from "@/components/ui/Modal";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import OntoSpine from "@/views/admin/onto-spine/OntoSpine";
 import { DslTextarea, type DslSchema } from "./DslTextarea";
 
 const t = zh.admin.rules;
@@ -95,6 +96,8 @@ export default function RulesPage() {
 
   return (
     <div>
+      {/* WO-ONTO-SPINE-11 · 动线主脊：本页是第 06 步「规则」。 */}
+      <OntoSpine now="rule" />
       <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}>
         <h2 style={{ fontSize: 16 }}>{t.title}</h2>
         <button className="btn primary sm" style={{ marginLeft: "auto" }} onClick={() => setEditing("new")} data-testid="rule-create">

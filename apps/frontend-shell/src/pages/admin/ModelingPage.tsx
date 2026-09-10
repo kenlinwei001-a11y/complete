@@ -21,6 +21,7 @@ import { Modal } from "@/components/ui/Modal";
 import { DataSourcePanel } from "@/components/DataSourcePanel";
 import { toast, toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
+import OntoSpine from "@/views/admin/onto-spine/OntoSpine";
 import styles from "./ModelingPage.module.css";
 
 const t = zh.admin.modeling;
@@ -79,6 +80,9 @@ export default function ModelingPage() {
 
   return (
     <div>
+      {/* WO-ONTO-SPINE-11 · 动线主脊。本页是建模组的落地页，故**不自报站位** ——
+          高亮交给脊自己算出来的作业面，让「下一步该干什么」由数据说话而不是由页面说话。 */}
+      <OntoSpine />
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <h2 style={{ fontSize: 16 }}>{t.title}</h2>
         <select value={draft?.id ?? ""} onChange={(e) => setDraftId(e.target.value)} aria-label="选择草案">
