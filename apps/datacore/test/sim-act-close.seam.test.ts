@@ -112,6 +112,68 @@ function topLevelSegments(src: string, open: number): string[] {
 const KEY_RE = /^\s*(?:["']([A-Za-z_$][\w$]*)["']|([A-Za-z_$][\w$]*))\s*(?::|$)/;
 
 /**
+ * 一个 `...` 展开段里**可能被传出去的**一级键。
+ *
+ * ══ 为什么要教它这个，而不是让展开段静默返回 [] ══════════════════════════════
+ * 本抽取器的立身之本是「**不许静默漏掉一个字段**」——注释里那句「那正是它第一次骗人的形态」
+ * 说的就是：漏一个字段不会红，只会让①⑤ 的断言拿着一份**缺项的形状**去比对，
+ * 于是「入口清单变了」这类断言报了红却说不出它到底传什么。
+ * ⇒ 展开段必须被**真读懂**，读不懂就抛。
+ *
+ * ══ 取并集，不取某一支 ═══════════════════════════════════════════════════
+ * `...(cond ? {} : { startTick })` 运行期只走一条分支，
+ * 但接缝断言问的是「**这次调用可能传哪些字段**」——只取一支会漏掉另一支的字段。
+ * 故取两支的并集；顺序按出现先后，去重。
+ *
+ * ⛔ 段里一个对象字面量都没有（如 `...someVar` / `...(cond ? a : b)`）⇒ **抛**，
+ *    因为那种写法的形状在本文件里读不出来，返回空就是那个骗人的形态。
+ */
+function spreadUnionKeys(seg: string): string[] {
+  const keys: string[] = [];
+  let found = 0;
+  for (let i = 0; i < seg.length; i += 1) {
+    if (seg[i] !== "{") continue;
+    found += 1;
+    for (const inner of topLevelSegments(seg, i)) {
+      if (inner.trim() === "") continue;
+      const m = KEY_RE.exec(inner);
+      if (m === null)
+        throw new Error(
+          `[sim-act-close] 展开段里的分支仍有读不懂的写法：${JSON.stringify(inner.trim().slice(0, 60))}` +
+            " —— 先教会抽取器，不许静默漏掉一个字段",
+        );
+      const k = (m[1] ?? m[2])!;
+      if (!keys.includes(k)) keys.push(k);
+    }
+    // 跳过这个对象字面量的整段，免得它内部的嵌套 `{` 被当成新起点、把二级键混成一级键。
+    let depth = 0;
+    let j = i;
+    for (; j < seg.length; j += 1) {
+      const c = seg[j]!;
+      if (c === '"' || c === "\'" || c === "`") {          // 串：整段跳过，别把串里的括号当结构
+        const q = c;
+        j += 1;
+        while (j < seg.length) {
+          if (seg[j] === "\\") { j += 2; continue; }
+          if (seg[j] === q) break;
+          j += 1;
+        }
+        continue;
+      }
+      if ("({[".includes(c)) depth += 1;
+      else if (")}]".includes(c)) { depth -= 1; if (depth === 0) break; }
+    }
+    i = j;
+  }
+  if (found === 0)
+    throw new Error(
+      `[sim-act-close] 展开段里没有对象字面量，形状读不出来：${JSON.stringify(seg.trim().slice(0, 60))}` +
+        " —— 先教会抽取器，⛔ 不许当成「这段没有字段」",
+    );
+  return keys;
+}
+
+/**
  * 抽出 `src` 中位于 `callAt` 的那次 `createSimPerturbation(…, { … })` 调用真正传的 body 一级键。
  *
  * ⚠ **这个抽取器骗过我两次，两次原样记在这里**（铁律 0.6：第 1 次修+记账，第 2 次建机制）：
@@ -179,10 +241,12 @@ function perturbationCallKeys(
   }
   return topLevelSegments(body, brace).flatMap((seg) => {
     if (seg.trim() === "") return []; // 尾逗号后的空白段
+    // `...` 展开：读两支的并集（见 spreadUnionKeys 头注）。读不懂仍然抛。
+    if (seg.trimStart().startsWith("...")) return spreadUnionKeys(seg);
     const m = KEY_RE.exec(seg);
     if (m === null)
       throw new Error(
-        `[sim-act-close] body 里有本抽取器不认识的写法（展开/计算属性？）：${JSON.stringify(seg.trim().slice(0, 60))}` +
+        `[sim-act-close] body 里有本抽取器不认识的写法（计算属性？）：${JSON.stringify(seg.trim().slice(0, 60))}` +
           " —— 先教会抽取器，不许静默漏掉一个字段（那正是它第一次骗人的形态）",
       );
     return [(m[1] ?? m[2])!];
@@ -323,6 +387,14 @@ describe("WO-SIM-ACT-CLOSE · 扰动闭环接缝（前端入口 → 传导 → K
         // 下面的入口普查会拿它逐字打真后端（201 + 世界态真的变），不是在这里写一行了事。
         // ⚠ 它的 body 构造在同目录的 `perturbRailModel.ts` 里、调用处传的是 `built.body`，
         //   抽取器为此新增了「第二实参是变量 ⇒ 同目录追一层」的解析（追不到就抛错，不返回空）。
+        shapeOf(["kind", "targetObjectId", "targetStateVar", "magnitude", "label", "startTick", "durationTicks", "mode"]),
+        // 统一控制台 08-28 决策屏 `unified/console0828/Console0828.tsx`（第 5 个入口）。
+        // **形状与上面那个 PerturbRail 入口逐键相同**（同样 8 键，只是字面顺序不同，shapeOf 已归一）——
+        // 不是形状漂移，是同一套 body 从第二个界面也发得出去。
+        // ⚠ 它的 `startTick` 用**条件展开**写：`...(s.startTick === null ? {} : { startTick: s.startTick })`
+        //   —— 因为「不传」与「传 null」在后端不是一回事（不传才回落 curTick）。
+        //   抽取器为此新增了 `spreadUnionKeys`（取两支并集；段里没有对象字面量就抛，⛔ 不返回空）。
+        // ⚠ 下面的入口普查会拿这个形状**逐字打真后端**（201 + 世界态真的变），不是在这里写一行了事。
         shapeOf(["kind", "targetObjectId", "targetStateVar", "magnitude", "label", "startTick", "durationTicks", "mode"]),
       ].sort(),
     );

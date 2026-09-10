@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PropagationRule, SandboxViewConfig, SimMetricSeriesResponse } from "@platform/contracts";
@@ -244,11 +244,36 @@ vi.mock("@/api/endpoints", () => ({
 import UnifiedSimShell, { SESSION_STATUS_TEXT } from "@/views/sim/unified/UnifiedSimShell";
 
 function mount() {
-  return render(
+  const r = render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <UnifiedSimShell />
     </QueryClientProvider>,
   );
+  enterExpert();
+  return r;
+}
+
+/**
+ * 走进「专家模式」——本文件测的那套工作台从 2026-09-10 起退到了它后面。
+ *
+ * ══ 为什么是在这里补一步，而不是改断言 ═══════════════════════════════════════
+ * 08-28 决策屏（`console0828`）成了 `UnifiedSimShell` 的**默认视图**
+ * （`UnifiedSimShell.tsx:778` `if (!expert)` 提前 return），工作台连同它那 80 个 `usim-*` 锚点
+ * 整体挪到 `data-view="expert"` 那一支里。
+ * **功能一个没少，变的是到达路径** —— 这正是 08-28 设计稿页脚写的那句「专家模式 ▸」。
+ * ⇒ 测试要测工作台，就得先走到工作台；改断言去迁就默认屏，测的就不是这套东西了。
+ *
+ * ⛔ **按钮找不到就抛，不静默跳过。** 静默跳过会让下面每一条断言红在
+ * 「找不到 usim-xxx」上，指向一个跟病因毫不相干的地方 —— 正是本仓反复栽的那个形态。
+ */
+function enterExpert(): void {
+  const btn = screen.queryByTestId("c0828-expert");
+  if (btn === null)
+    throw new Error(
+      "[mount] 默认屏上没有「专家模式」按钮（c0828-expert）—— 到达路径断了，" +
+        "本文件所有断言都会红在「找不到 usim-*」上而指向错误的病因。先修到达路径。",
+    );
+  fireEvent.click(btn);
 }
 
 /** 等到会话解析完（状态位不再是 `loading`）—— 不等就会断言在「还在路上」那一帧上。 */
@@ -375,6 +400,7 @@ describe("WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门",
         />
       </QueryClientProvider>,
     );
+    enterExpert(); // 这处是内联 render，没走 mount() ⇒ 得自己走一步（见 enterExpert 头注）
     const bar2 = await lifecycleReady();
     await waitFor(() => expect(bar2.getAttribute("data-status")).toBe("absent"));
     const absentText2 = screen.getByTestId("usim-status-absent").textContent ?? "";

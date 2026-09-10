@@ -150,7 +150,30 @@ export default function DisclosurePanel({ disclosure: d }: DisclosurePanelProps)
   const advState = adversaryStateOf(adv);
 
   return (
-    <details className={styles.wrap} data-testid="sim-disclosure">
+    /**
+     * ══ WO-SIM-UNIFIED-WIRE-4 · ③ 披露层默认折叠 ═════════════════════════════
+     *
+     * **今天的行为是 X**（本单开工实测（**实测于 2026-09-10**；复验：`grep -rc "<details" apps/frontend-shell/src/views/sim/unified`））：这一行 `<details>` **没有 `open`** ⇒ 整块折叠。
+     * 全树 `<details>` 共 8 个、带 `open` 的 **0** 个。设计稿要的是
+     * 「运行日志**常驻**，且含**没动什么**」—— 今天两条都要点开才看得见运行日志本身。
+     *
+     * **应该是 Y**：**只给最外这一层 `open`**，让运行日志常驻。
+     *
+     * ── 为什么是「给 open」而不是「把关键两行提到常驻层」（这两条只能选一条）──────
+     * 因为「没动什么」那两个数**已经在常驻层了**，再提一次就是给同一事实造第二个出处：
+     *   · `实测格 N/M` 在常驻状态条上（`unified/UnifiedSimShell.tsx` 的 `usim-origin` 那一段）；
+     *   · `今天扰不动的量（N）` 挂在 `PerturbRail` 的 `<summary>` 上，**折叠态也可见**。
+     * 真正缺的只有「运行日志这块本身要不要常驻」这一件 —— 那是**层级**问题，不是数据缺失。
+     * 两样都做会把第一层堆得更满，正是同单 ⑤ 要往回收的那件事。
+     *
+     * ⚠ 里面那 7 个 `<details className={styles.more}>`（逐类型条数 / 逐规则明细）
+     * **刻意仍然折叠**：它们是第三层明细，常驻会把这一栏变成一堵字墙。
+     * ⚠ 门口径无副作用：`check-ui-first-layer.mjs` 的 `DEFER_DOM` 认的是 `details` 这个**标签**，
+     * 与 `open` 无关 ⇒ 本改动不给第一层加一个信息块（已核过该门源码）。
+     * ⚠ 非受控用法（只给初值、不接 `onToggle`）：用户仍可自行收起 —— 与
+     * `SandboxConsole.tsx` 那两处 `open={s.defaultOpen ?? …}` 同一种写法。
+     */
+    <details className={styles.wrap} data-testid="sim-disclosure" open>
       <summary data-testid="sim-disclosure-summary">
         推演过程 · 第 {n(d.fromTick)} → {n(d.toTick)} 拍
         {/* 面板默认收起 ⇒ 对抗方这一句必须**在收起态就看得见**，

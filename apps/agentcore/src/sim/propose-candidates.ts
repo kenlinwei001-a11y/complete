@@ -198,6 +198,29 @@ export async function proposeCandidates(engine: ProposeEngineLike, input: Propos
   }
   const elapsedMs = Date.now() - started;
   // 内核标识取**真跑过之后**engine 标的那个值（不预测、不复刻分叉表达式）。
+  //
+  // ⚠⚠ 已知缺陷 · 本行今天会**把「没测到」报成「NATIVE」**（WO-AGENT-INTO-SIM 实测，未修）
+  // ────────────────────────────────────────────────────────────────────────────
+  // 三元只把 `"EXTERNAL"` 挑出来，**其余一律落 `"NATIVE"`** —— 而「其余」里混着两件事：
+  //   · `kernel === "NATIVE"`：engine 真标了，确实走内置循环 ⇒ 报 NATIVE 是对的；
+  //   · `kernel === undefined`：engine **根本没标**    ⇒ 报 NATIVE 是**编的**。
+  //
+  // 而第二种不是罕见分支，是**今天的常态**：本机实测出厂 agent 里声明 `kernel` 的有 **0 个**
+  //（`grep -c kernel apps/agentcore/src/mocks/seed.ts` = 0；金丝雀：同文件 agent key 抓得到），
+  // 它们全部缺省回落 `DSH_HARNESS` env ⇒ 绝大多数真实调用走的正是 `undefined` 那一支。
+  //
+  // 形态（铁律 0.6 句式）：
+  // **「我用『kernel 字段不是 EXTERNAL』当作『它跑在 NATIVE 内核上』的证据，
+  //   而前者并不度量后者 —— 字段缺席时，两者在这一行里分不开。」**
+  //
+  // 后果不在这一层，在**屏上**：推演控制台把 `route` 当业务事实印出来（「路由 NATIVE」），
+  // 于是一个从没被测量过的值，长成了一句看起来很确定的话。这与本仓 `gate.sh` 那条
+  // 「截断/残留一律降 NOT-MEASURED，且只降 PASS 不动 FAIL」是同一条纪律的反例。
+  //
+  // ⛔ 为什么本单没有直接修：正解是给 `ProposalRouteSchema` 加一个 `"UNKNOWN"`（或让 `route`
+  //   可空），让「没测到」有地方可放 —— 那要改 `packages/contracts/src/sim-proposal.ts`，
+  //   **在本单的 🚦范围边界之外**（契约是跨包共享面，改它要单独评估两侧消费方）。
+  //   在契约放开之前，这里**不许**自作主张把缺席当成任何一种内核；本注释即是顶回来的记账。
   const route: ProposalRoute = result.run?.kernel === "EXTERNAL" ? "EXTERNAL" : "NATIVE";
   const model = result.run?.model ?? null;
   const base = { agentInvolved: true, route, provider: model ? model.split(":")[0] ?? null : null, model, agentId: input.agentId, elapsedMs };
