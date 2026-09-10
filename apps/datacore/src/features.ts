@@ -294,18 +294,27 @@ export const WORLD_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
  */
 export const INCOMPLETE_DATA_DARK_LAUNCH_FEATURES: ReadonlySet<string> = new Set([
   "process.runtime",
-  // WO-AGENT-IN-LOOP · 方案生成让 agent 参与 —— **依赖尚缺**，与 `process.runtime` 同族语义。
+  // ⚠ WO-AGENT-INTO-SIM（2026-09-10）·`sim.agent-proposals` **已从本集合移出**，定档 tiered。
+  //   留此墓碑是因为「为什么移出」比「移出了」更容易被下一个人判错，而判错的方向是**把它加回来**。
   //
-  // ⚠ 本键差点重蹈上面那条注释点名的坑：初版只写了 `defaultOn:false` 就以为暗发了，
-  //   实测 `POST /a/v1/sim/optimize-pareto/propose` 对 demo 租户**返回 200 而不是 404**
-  //   —— L2 模板「all on」把它无条件抬开了。**「我以为暗发了」和「它真的关着」是两个命题。**
-  //   （这一条不是照抄格式，是本单实测撞上、按上面那段警告修的。）
+  //   原定性是「依赖尚缺」，逐字点名两条依赖。本单**逐条实测**，结论一条成立一条不成立：
+  //     ② 「一个已发布、且 kernel 配好的 agent」—— **早已满足**，不是尚缺：
+  //        `apps/agentcore/src/mocks/seed.ts:1382` 的 `agt_seed_analyst`（key=analyst·version=1），
+  //        同文件另有 capacity_planner / finance_analyst / coordinator 等，共 11 个已发布 agent。
+  //     ① 「A→B 服务间通路」—— **当时确实不通，但缺口不在代码、在部署面**：
+  //        A 侧 `httpProposerClient`（`sim/agent-proposal.ts`）与 B 侧 `/b/v1/sim/propose-candidates`
+  //        两端都在且形态对，唯独 `docker-compose.yml` 从没给 datacore 传 `AGENTCORE_BASE_URL`
+  //        ⇒ `proposerClient` 恒 `null` ⇒ 每次都落确定性兜底。本单把那一行补上，① 随即成立。
   //
-  // 为什么属「依赖尚缺」：引擎两端都就绪，但它要 **A→B 服务间通路**（`AGENTCORE_BASE_URL`
-  // + `SERVICE_TOKEN`）**加一个已发布、且 `kernel` 配好的 agent**。两者缺一，每次提案都落
-  // 确定性兜底 ⇒ 「本次未调用 agent」成为常态而无人察觉 —— 那正是一个会说谎的诚实位
-  // （与 process.runtime 那条「空面板与一切顺利在界面上分不开」同一形态）。
-  "sim.agent-proposals",
+  //   ⇒ 两条依赖同时成立，「依赖尚缺」这个定性**到期**。留在集合里就变成
+  //     「注释说的不度量真实」（铁律 1.5 判据四）—— 那正是本仓反复栽的坑。
+  //
+  //   ⚠ 原注释真正担心的东西**不是**依赖本身，是「『本次未调用 agent』成为常态而无人察觉」。
+  //     那个担心**仍然成立**（未配 `AGENTCORE_BASE_URL` 的部署照样落兜底），但**藏起这个功能
+  //     并不能解决它** —— 藏起来只是让没人看见，不是让没人被骗。本单改用可见性解决：
+  //     披露层把 `agentInvolved` / `provider` / `model` / `route` / 耗时直接印在屏上
+  //     （区⑤ agent 徽标 + 全屏诚实位），落兜底时屏上原话就是「本次未调用 agent」+ 原因。
+  //     **判据从「它开没开」换成「屏上说没说实话」**，后者才是那句担心真正要的度量。
 ]);
 
 /** Workspace view key → controlling feature (server-side navigation filter). */
