@@ -62,6 +62,8 @@ import {
   fetchSimViewConfig,
 } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
 import { stateVarLabel } from "../../stateVarLabel";
 import { PERTURBATION_KINDS } from "../../PerturbationTimeline";
 import type { PerturbationBrief } from "../metricWallModel";
@@ -69,6 +71,7 @@ import {
   BLOCKED_REASON_TEXT,
   BLOCK_REASON_TEXT,
   DOWNSTREAM_NOTE,
+  ROOT_LAYER,
   buildApplyReceipt,
   buildBlockedFactors,
   buildPerturbBody,
@@ -88,6 +91,15 @@ import {
   type RailVarOption,
   type WorldCells,
 } from "./perturbRailModel";
+import {
+  ABSENT_TYPE_REASON,
+  ORDER_CHANGES,
+  buildBusinessFaces,
+  resolveActiveFace,
+  resolveOrderChangeVar,
+  type BusinessFace,
+  type OrderChange,
+} from "./businessFaces";
 import DisclosurePanel from "./DisclosurePanel";
 import styles from "./PerturbRail.module.css";
 
@@ -180,6 +192,26 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
   );
   const blocked = useMemo(() => buildBlockedFactors(cfg?.stateVars ?? []), [cfg?.stateVars]);
 
+  /**
+   * ══ WO-SIM-UNIFIED-RESTORE · 业务面（设计稿的六个子页）════════════════════════
+   *
+   * 与域分片是**两条轴**，不是二选一（判据见 `businessFaces.ts` 头注）：
+   *  · 业务轴 = 从「一张订单 / 一台设备」进入 —— 设计稿要的那一排，**默认**；
+   *  · 建模轴 = 从「传导域 D05」进入 —— 原有那一排，降为第二排。
+   * 两排都常驻 DOM：切轴只换表单的取数方向，不卸载另一排（卸载了就等于把一条入口藏起来）。
+   */
+  const facesResult = useMemo(
+    () => buildBusinessFaces(rules, cfg?.nodeObjectIds),
+    [rules, cfg?.nodeObjectIds],
+  );
+  /** `"face"` = 业务面（默认）；`"domain"` = 按传导域。 */
+  const [axis, setAxis] = useState<"face" | "domain">("face");
+  const [faceId, setFaceId] = useState<string | null>(null);
+  const face: BusinessFace | null = useMemo(
+    () => resolveActiveFace(facesResult.faces, faceId),
+    [facesResult.faces, faceId],
+  );
+
   // ── 受控选中：切片没了就回落到第一片（同 `edgeActiveModel.resolveSelectedSlice` 的理由：
   //    「一个都没选中 ⇒ 一行都不显示」看起来和"这页坏了"一模一样）──
   const [sliceId, setSliceId] = useState<string | null>(null);
@@ -199,6 +231,11 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
   }, [enabled, sessionsQ.data, sessionId]);
 
   const [stateVar, setStateVar] = useState("");
+  /**
+   * 订单面「改什么」（设计稿订单子页第三个下拉）。`null` = 还没挑，
+   * 此时「落到哪个量」由用户自己选 —— 不替他预设一个方向。
+   */
+  const [orderChangeId, setOrderChangeId] = useState<string | null>(null);
   const [typeKey, setTypeKey] = useState("");
   const [objectId, setObjectId] = useState("");
   const [kind, setKind] = useState<PerturbationKind>(FIRST_KIND);
@@ -237,18 +274,63 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
     setStartTickRaw(String(defaultStartTick(curTick)));
   }, [curTick, startTickTouched]);
 
+  /** 层级字典 —— 业务面里要按同一份后端回包给量分组（⛔ 前端不再算一份度数）。 */
+  const layerOf = useMemo(
+    () => new Map((layersQ.data?.layers ?? []).map((r) => [r.stateVar, r.layer] as const)),
+    [layersQ.data],
+  );
+
+  /**
+   * 业务面里选中的**落点对象类型** —— 业务轴上它是第一级（用户先认对象，再说扰它哪一项）。
+   * 默认落在**今天真有实例**的第一个类型上：默认停在一个 0 实例的类型，
+   * 屏上第一眼就是「落点对象：空」，与「这页坏了」长得一模一样。
+   */
+  const [faceTypeKey, setFaceTypeKey] = useState("");
+  const faceTypes = face?.types ?? [];
+  const selectedFaceType = useMemo(() => {
+    if (faceTypes.length === 0) return null;
+    return (
+      faceTypes.find((t) => t.typeKey === faceTypeKey) ??
+      faceTypes.find((t) => (t.instanceCount ?? 0) > 0) ??
+      faceTypes[0] ??
+      null
+    );
+  }, [faceTypes, faceTypeKey]);
+
+  /** 业务面的可选量：选中那个对象类型今天承载的量，根源在前（层级取后端回包）。 */
+  const faceOptions: readonly RailVarOption[] = useMemo(() => {
+    if (selectedFaceType === null) return [];
+    const opts = selectedFaceType.stateVars.map((sv): RailVarOption => {
+      const layer = layerOf.get(sv) ?? null;
+      return {
+        stateVar: sv,
+        label: stateVarLabel(sv, names),
+        layer,
+        isRoot: layer === ROOT_LAYER,
+        typeKeys: [selectedFaceType.typeKey],
+      };
+    });
+    return [...opts.filter((o) => o.isRoot), ...opts.filter((o) => !o.isRoot)];
+  }, [selectedFaceType, layerOf, names]);
+
   /** 当前片的可选项：根源在前（默认选中第一个根源），枢纽/末端在后。 */
-  const options: readonly RailVarOption[] = useMemo(
+  const domainOptions: readonly RailVarOption[] = useMemo(
     () => (page === null ? [] : [...page.roots, ...page.downstream]),
     [page],
   );
+  const options: readonly RailVarOption[] = axis === "face" ? faceOptions : domainOptions;
   const selectedVar = useMemo(
     () => options.find((o) => o.stateVar === stateVar) ?? options[0] ?? null,
     [options, stateVar],
   );
-  /** 落点类型：跟着选中的量走（承载它的类型由后端规则给，前端不猜）。 */
-  const typeKeys = selectedVar?.typeKeys ?? [];
-  const selectedType = typeKeys.includes(typeKey) ? typeKey : (typeKeys[0] ?? null);
+  /** 落点类型：业务轴上由用户直接选；建模轴上跟着选中的量走（承载它的类型由后端规则给）。 */
+  const typeKeys = axis === "face" ? faceTypes.map((t) => t.typeKey) : (selectedVar?.typeKeys ?? []);
+  const selectedType =
+    axis === "face"
+      ? (selectedFaceType?.typeKey ?? null)
+      : typeKeys.includes(typeKey)
+        ? typeKey
+        : (typeKeys[0] ?? null);
   const choice = useMemo(
     () => objectChoices(cfg?.nodeObjectIds, selectedType),
     [cfg?.nodeObjectIds, selectedType],
@@ -401,19 +483,80 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
 
   return (
     <div className={styles.rail} data-testid="rail-root" data-pages={pages.length}>
+      {/* ══ 业务面子页签（设计稿的那一排：物料 / 订单 / 设备 / 需求 / 产能 / 财务）══════
+             用户从**他认识的业务对象**进入。第二排「按传导域」是建模轴，见下。
+             `data-claimed` / `data-types-in-rules` 是金丝雀读数：两个都非 0 才允许把
+             「这个面没有对象」读成业务事实，否则那是遍历坏了。 */}
+      <div
+        className={styles.tabs}
+        role="tablist"
+        aria-label="扰动因素 · 业务子页"
+        data-testid="rail-facelist"
+        data-faces={facesResult.faces.length}
+        data-claimed={facesResult.canary.claimed}
+        data-types-in-rules={facesResult.canary.typesInRules}
+      >
+        {facesResult.faces.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            role="tab"
+            aria-selected={axis === "face" && face?.id === f.id}
+            data-testid={`rail-face-${f.id}`}
+            data-types={f.types.length}
+            className={`${styles.tab} ${axis === "face" && face?.id === f.id ? styles.tabOn : ""}`}
+            onClick={() => {
+              setAxis("face");
+              setFaceId(f.id);
+              setFaceTypeKey("");
+              setStateVar("");
+              setObjectId("");
+              setOrderChangeId(null);
+            }}
+          >
+            {f.name}
+            <span className={styles.count}>{f.types.length}</span>
+          </button>
+        ))}
+      </div>
+      {facesResult.canary.ok ? null : (
+        <p className={styles.absent} data-testid="rail-faces-canary-failed">
+          业务面 0 个类型 · 取数或遍历坏了
+          <InfoPopover topic={zh.sim.sandbox.info.railFaceCanary} testId="rail-face-canary">
+            <span data-testid="rail-face-canary-body">
+              一个对象类型都没认领到 —— 这是取数或遍历坏了，不是「没有可扰的业务对象」。
+              先看传导规则这一跳回来了没有，别据此下「沙盘扰不动任何东西」的结论。
+            </span>
+          </InfoPopover>
+        </p>
+      )}
+
       {/* ── 子页签：一片 = 一个后端下发的业务域（未归域垫底并说明原因）── */}
-      <div className={styles.tabs} role="tablist" aria-label="扰动子页" data-testid="rail-tablist">
+      <div
+        className={styles.tabs}
+        role="tablist"
+        aria-label="扰动子页 · 按传导域"
+        data-testid="rail-tablist"
+        data-axis={axis}
+      >
+        {/* 这一排是**第二条轴**（建模轴），不是与上面六个面并列的第 7…16 个子页。
+            不加这个记号，屏上就是 16 个看起来平级的页签 —— 用户读不出「上面按业务、
+            下面按传导域」这件事，而那正是两排唯一的区别。 */}
+        <span className={styles.count} data-testid="rail-tablist-label">
+          按传导域
+        </span>
         {pages.map((p) => (
           <button
             key={p.sliceId}
             type="button"
             role="tab"
-            aria-selected={page?.sliceId === p.sliceId}
+            aria-selected={axis === "domain" && page?.sliceId === p.sliceId}
             data-testid={`rail-tab-${p.sliceId}`}
             data-slice={p.sliceId}
             data-rules={p.ruleCount}
-            className={`${styles.tab} ${page?.sliceId === p.sliceId ? styles.tabOn : ""}`}
+            className={`${styles.tab} ${axis === "domain" && page?.sliceId === p.sliceId ? styles.tabOn : ""}`}
             onClick={() => {
+              setAxis("domain");
               setSliceId(p.sliceId);
               setStateVar("");
               setTypeKey("");
@@ -439,40 +582,169 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
         )}
       </p>
 
-      {page === null ? (
+      {(axis === "face" ? face === null : page === null) ? (
         <p className={styles.absent} data-testid="rail-no-pages">
-          {rulesQ.isLoading
-            ? "传导规则还在路上 —— 还不知道有哪些扰动因素"
-            : "这个租户一条已发布的传导规则都没有 ⇒ 没有可扰的量（不是取不到）"}
+          {rulesQ.isLoading ? "传导规则还在路上" : "没有可扰的量"}
+          <InfoPopover topic={zh.sim.sandbox.info.railNoPages} testId="rail-no-pages">
+            <span data-testid="rail-no-pages-body">
+              {rulesQ.isLoading
+                ? "这一跳还没回来 —— 还不知道有哪些扰动因素（这与「一个都没有」是两个命题）。"
+                : "这个租户一条已发布的传导规则都没有 ⇒ 没有可扰的量。这是结论，不是取不到。"}
+            </span>
+          </InfoPopover>
         </p>
       ) : (
-        <div className={styles.body} role="tabpanel" data-testid={`rail-panel-${page.sliceId}`}>
-          {page.detail === null ? null : (
+        <div
+          className={styles.body}
+          role="tabpanel"
+          data-testid={axis === "face" ? `rail-panel-face-${face?.id ?? ""}` : `rail-panel-${page?.sliceId ?? ""}`}
+        >
+          {axis === "face" ? (
+            <p className={styles.hint} data-testid="rail-face-blurb">
+              {face?.blurb ?? ""}
+            </p>
+          ) : page?.detail == null ? null : (
             <p className={styles.absent} data-testid="rail-slice-detail">
               {page.detail}
             </p>
           )}
 
+          {/* ── 业务轴：先认对象（类型 → 实例），再说扰它哪一项。设计稿的进入顺序 ── */}
+          {axis === "face" ? (
+            <>
+              <label className={styles.fld}>
+                <span className={styles.lbl}>业务对象类型</span>
+                <select
+                  data-testid="rail-face-typekey"
+                  value={selectedFaceType?.typeKey ?? ""}
+                  onChange={(e) => {
+                    setFaceTypeKey(e.target.value);
+                    setStateVar("");
+                    setObjectId("");
+                  }}
+                >
+                  {faceTypes.map((t) => (
+                    <option key={t.typeKey} value={t.typeKey}>
+                      {t.typeName ?? t.typeKey}
+                      {t.instanceCount === null ? " · 实例数未知" : ` · ${t.instanceCount} 个`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {/* 声明了、后端却没有的类型：**列出来说原因**，不静默丢
+                  （今天：需求面的 `DemandSegment`、产能面的 `ProductionLine`）。 */}
+              {(face?.absentTypes.length ?? 0) === 0 ? null : (
+                <p
+                  className={styles.absent}
+                  data-testid="rail-face-absent-types"
+                  data-count={face?.absentTypes.length ?? 0}
+                >
+                  这个面还声明了{" "}
+                  {face?.absentTypes
+                    .map(
+                      (a) =>
+                        `${a.typeKey}（${a.reason === "not-in-ontology" ? "本体里没有这个类型名" : "本体里有，但没有任何传导边"}）`,
+                    )
+                    .join("、")}
+                  —— {ABSENT_TYPE_REASON}
+                </p>
+              )}
+            </>
+          ) : null}
+
+          {/* ── 订单面「改什么」（设计稿订单子页第三个下拉）──────────────────────
+                 每一项都**预选一个真实存在的落点量**；候选量一个都不在这个类型今天承载的
+                 量里时，屏上直说「今天落不到」，⛔ 不许随便挑一个量顶上去。 */}
+          {axis === "face" && face?.id === "order" ? (
+            <>
+              <label className={styles.fld}>
+                <span className={styles.lbl}>改什么</span>
+                <select
+                  data-testid="rail-order-change"
+                  value={orderChangeId ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setOrderChangeId(id === "" ? null : id);
+                    const c = ORDER_CHANGES.find((x) => x.id === id);
+                    const v =
+                      c === undefined
+                        ? null
+                        : resolveOrderChangeVar(c, faceOptions.map((o) => o.stateVar));
+                    if (v !== null) setStateVar(v);
+                  }}
+                >
+                  <option value="">（先挑一项）</option>
+                  {ORDER_CHANGES.map((c: OrderChange) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {orderChangeId === null ? null : (
+                <p
+                  className={styles.hint}
+                  data-testid="rail-order-change-note"
+                  data-resolved={
+                    resolveOrderChangeVar(
+                      ORDER_CHANGES.find((c) => c.id === orderChangeId) as OrderChange,
+                      faceOptions.map((o) => o.stateVar),
+                    ) ?? ""
+                  }
+                >
+                  {/* 第一层只留「落到哪 / 落不到」这个状态；候选量清单与怎么办属口径，进浮层。 */}
+                  {(() => {
+                    const c = ORDER_CHANGES.find((x) => x.id === orderChangeId);
+                    if (c === undefined) return "";
+                    const v = resolveOrderChangeVar(c, faceOptions.map((o) => o.stateVar));
+                    return v === null ? `${c.effect} · 今天落不到` : `${c.effect} · 落到 ${stateVarLabel(v, names).text}`;
+                  })()}
+                  <InfoPopover topic={zh.sim.sandbox.info.railOrderChange} testId="rail-order-change">
+                    <span data-testid="rail-order-change-body">
+                      {(() => {
+                        const c = ORDER_CHANGES.find((x) => x.id === orderChangeId);
+                        if (c === undefined) return "";
+                        const v = resolveOrderChangeVar(c, faceOptions.map((o) => o.stateVar));
+                        return v === null
+                          ? `这个对象类型今天没有承载它的量（候选：${c.preferStateVars.join(" / ")}），所以落不到。` +
+                              "换个业务对象类型，或在下面自己挑一个量。"
+                          : "已替你把「落到哪个量」选好，可以自己改成别的量。";
+                      })()}
+                    </span>
+                  </InfoPopover>
+                </p>
+              )}
+            </>
+          ) : null}
+
           {/* ① 扰什么 —— 根源排前且默认可选；枢纽/末端归到第二组并标明「半路插入」 */}
           <label className={styles.fld}>
-            <span className={styles.lbl}>扰什么 · 根源优先</span>
+            <span className={styles.lbl}>
+              {axis === "face" && face?.id === "order" ? "落到哪个量 · 根源优先" : "扰什么 · 根源优先"}
+            </span>
             <select
               data-testid="rail-statevar"
               value={selectedVar?.stateVar ?? ""}
               onChange={(e) => {
                 setStateVar(e.target.value);
-                setTypeKey("");
+                if (axis === "domain") setTypeKey("");
                 setObjectId("");
               }}
             >
-              {page.roots.length === 0 ? null : (
-                <optgroup label={`根源（${page.roots.length}）· 没人喂它，扰它才是从源头扰`} data-testid="rail-group-root">
-                  {page.roots.map(varOption)}
+              {options.filter((o) => o.isRoot).length === 0 ? null : (
+                <optgroup
+                  label={`根源（${options.filter((o) => o.isRoot).length}）· 没人喂它，扰它才是从源头扰`}
+                  data-testid="rail-group-root"
+                >
+                  {options.filter((o) => o.isRoot).map(varOption)}
                 </optgroup>
               )}
-              {page.downstream.length === 0 ? null : (
-                <optgroup label={`枢纽 / 末端（${page.downstream.length}）· 半路插入`} data-testid="rail-group-downstream">
-                  {page.downstream.map(varOption)}
+              {options.filter((o) => !o.isRoot).length === 0 ? null : (
+                <optgroup
+                  label={`枢纽 / 末端（${options.filter((o) => !o.isRoot).length}）· 半路插入`}
+                  data-testid="rail-group-downstream"
+                >
+                  {options.filter((o) => !o.isRoot).map(varOption)}
                 </optgroup>
               )}
             </select>
@@ -491,24 +763,27 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
                 : `层级「${selectedVar.layer ?? "未下发"}」 —— ${DOWNSTREAM_NOTE}`}
           </p>
 
-          {/* ② 落点：类型 → 实例。两级都来自后端，缺格说得出为什么缺 */}
-          <label className={styles.fld}>
-            <span className={styles.lbl}>落点对象类型</span>
-            <select
-              data-testid="rail-typekey"
-              value={selectedType ?? ""}
-              onChange={(e) => {
-                setTypeKey(e.target.value);
-                setObjectId("");
-              }}
-            >
-              {typeKeys.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
+          {/* ② 落点：类型 → 实例。两级都来自后端，缺格说得出为什么缺。
+                 业务轴上类型已经在最上面选过了（`rail-face-typekey`），这里不再摆第二份。 */}
+          {axis === "domain" ? (
+            <label className={styles.fld}>
+              <span className={styles.lbl}>落点对象类型</span>
+              <select
+                data-testid="rail-typekey"
+                value={selectedType ?? ""}
+                onChange={(e) => {
+                  setTypeKey(e.target.value);
+                  setObjectId("");
+                }}
+              >
+                {typeKeys.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className={styles.fld}>
             <span className={styles.lbl}>落点对象</span>
             <select
@@ -569,18 +844,36 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
               }}
             />
           </label>
+          {/* ── ⑤ 分层（WO-SIM-UNIFIED-WIRE-4）────────────────────────────────────
+                 改前这一处**一个 `<p>` 里塞了五段口径**（`prose` 13 条里它一个人占 5 条），
+                 其中「多吃一拍传导」那一段是**纯口径**，正是设计稿说的「点开才看」那一类。
+                 现在第一层只留**这一档是什么**（一句话、可读出拍号），口径全进浮层。
+                 ⛔ 没有删任何一句 —— 降层不是删除（规范 §1），浮层里逐句都在。 */}
           <p className={styles.hint} data-testid="rail-starttick-note" data-phase={phase ?? ""}>
             {curTick === null
-              ? "还不知道世界在第几拍 —— 起始拍没有基准，先不填（这一档不许提交，猜一个 0 就是那个「请求成功、屏上不动」的坑）"
+              ? "起始拍没有基准 · 先不填"
               : phase === "past"
-                ? `第 ${draft.startTick} 拍已经推过去了 —— 这一档不许提交（改成 ${curTick} 或更大）`
+                ? `第 ${draft.startTick} 拍已推过 · 不许提交`
                 : phase === "now"
-                  ? `第 ${curTick} 拍 = 现在就发生（后端「不填起始拍」的默认语义）。` +
-                    `⚠ 这一档从本拍起就生效，而这次「施加并推演」还要再走一拍 ⇒ 下游会比默认档多吃一拍传导；` +
-                    `想让下游读数正好等于屏上公示系数的那一次传导，用第 ${curTick + 1} 拍。`
+                  ? `第 ${curTick} 拍 = 现在就发生`
                   : phase === "next"
-                    ? `第 ${curTick + 1} 拍 = 下一拍 —— 正是这次「施加并推演」要推的那一拍（默认值）`
-                    : `第 ${draft.startTick} 拍在将来 —— 本次只推到第 ${curTick + 1} 拍，还要再推 ${draft.startTick - curTick - 1} 拍它才落地`}
+                    ? `第 ${curTick + 1} 拍 = 下一拍（默认）`
+                    : `第 ${draft.startTick} 拍在将来 · 还要再推 ${draft.startTick - curTick - 1} 拍`}
+            <InfoPopover topic={zh.sim.sandbox.info.railStartTick} testId="rail-starttick">
+              <span data-testid="rail-starttick-body">
+                {curTick === null
+                  ? "还不知道世界在第几拍，起始拍就没有基准 —— 这一档不许提交。猜一个 0 就是那个「请求成功、屏上不动」的坑。"
+                  : phase === "past"
+                    ? `这一拍已经推过去了，补填不会追溯生效 —— 改成第 ${curTick} 拍或更大才提交得了。`
+                    : phase === "now"
+                      ? `第 ${curTick} 拍是后端「不填起始拍」的默认语义。注意这一档从本拍起就生效，` +
+                        `而这次「施加并推演」还要再走一拍 ⇒ 下游会比默认档多吃一拍传导；` +
+                        `想让下游读数正好等于屏上公示系数的那一次传导，用第 ${curTick + 1} 拍。`
+                      : phase === "next"
+                        ? `第 ${curTick + 1} 拍正是这次「施加并推演」要推的那一拍，所以它是默认值。`
+                        : `本次只推到第 ${curTick + 1} 拍，这条要等到第 ${draft.startTick} 拍才落地 —— 在那之前屏上不会动。`}
+              </span>
+            </InfoPopover>
           </p>
           <label className={styles.fld}>
             <span className={styles.lbl}>持续拍数（留空 = 永久）</span>
@@ -613,6 +906,66 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
               ? ""
               : `${selectedVar.label.text} ${magnitudeText(mode, draft.magnitude)} · ${durationText(draft.startTick, draft.durationTicks)}`}
           </p>
+
+          {/* ══ 设计稿如实标出的两处「今天做不到」════════════════════════════════════
+                 设计稿原话：「这些不是设计缺陷，是系统现状。画出来是为了让你看见代价，
+                 不是为了好看。」⇒ 照抄它的**位置**（紧挨施加按钮），但**不照抄它的措辞**：
+                 措辞必须由今天的实测现算，否则就是把一句可能已经过期的话刻在屏上。
+
+                 · 设备面：`blocked` 是「因子册 差 世界态」的差集（`buildBlockedFactors`），
+                   谁哪天把 `oee_current` 接进传导图，这一条**自己消失**，不用人回来改。
+                 · 需求面：设计稿写的是「预测偏差没有独立变量」—— **这句今天已经不成立**
+                   （2026-09-10 实测：`forecastBias` 在 `view-config.stateVars` 里、层级回包里是
+                   「根源」、中文名「销售预测偏差（正=高估）」方向写在名字里；复验方式
+                   `GET /a/v1/sim/view-config` 看 `stateVars` 含不含 `forecastBias`）。
+                   把它照抄上屏就是在屏上撒谎，所以这里改成**现算三态**：在 ⇒ 说它在哪；
+                   不在 ⇒ 才说设计稿那句话。 */}
+          {axis === "face" && face?.id === "equipment" ? (
+            <p
+              className={styles.absent}
+              data-testid="rail-face-warn-equipment"
+              data-blocked-count={blocked.filter((b) => b.objectType === "Equipment").length}
+            >
+              {/* 第一层：**数**（几个扰不动）+ 名字；「为什么扰不动」是口径 ⇒ 浮层。 */}
+              {blocked.filter((b) => b.objectType === "Equipment").length === 0
+                ? "设备面 0 个扰不动的量"
+                : `⚠ ${blocked.filter((b) => b.objectType === "Equipment").length} 个设备量扰不动：` +
+                  `${blocked
+                    .filter((b) => b.objectType === "Equipment")
+                    .map((b) => `${b.factorName}（${b.prop}）`)
+                    .join("、")}`}
+              <InfoPopover topic={zh.sim.sandbox.info.railEquipment} testId="rail-equipment">
+                <span data-testid="rail-equipment-body">
+                  {blocked.filter((b) => b.objectType === "Equipment").length === 0
+                    ? "设备面这一批因子今天都已经进了推演世界态 —— 没有「选了却扰不动」的量。这一句是现算的差集，不是写死的。"
+                    : BLOCKED_REASON_TEXT}
+                </span>
+              </InfoPopover>
+            </p>
+          ) : null}
+          {axis === "face" && face?.id === "demand" ? (
+            <p
+              className={styles.absent}
+              data-testid="rail-face-warn-demand"
+              data-forecastbias={liveStateVars === null ? "unknown" : liveStateVars.has("forecastBias") ? "live" : "absent"}
+            >
+              {/* 第一层：三态各自的**结论**（在 / 不在 / 还不知道）+ 量名；理由进浮层。 */}
+              {liveStateVars === null
+                ? "预测偏差：现在答不了"
+                : liveStateVars.has("forecastBias")
+                  ? `预测偏差：有独立变量 ${stateVarLabel("forecastBias", names).text}`
+                  : "⚠ 预测偏差：今天没有独立变量"}
+              <InfoPopover topic={zh.sim.sandbox.info.railDemandBias} testId="rail-demand-bias">
+                <span data-testid="rail-demand-bias-body">
+                  {liveStateVars === null
+                    ? "还不知道这个世界有哪些量 —— 「预测偏差扰不扰得动」这一条现在答不了。这与答「不行」是两个命题。"
+                    : liveStateVars.has("forecastBias")
+                      ? "方向写在它自己的名字里（正 = 高估），所以这里不需要另设一个方向开关。"
+                      : "只能借需求压力代替，而压力没有方向、预测偏差有（高估 / 低估）—— 借用会把方向这一维丢掉。"}
+                </span>
+              </InfoPopover>
+            </p>
+          ) : null}
 
           <button
             type="button"
@@ -691,8 +1044,14 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
         </ul>
       </details>
 
+      {/* 红线本身是**状态**（这屏改不改真值），一句话留第一层；
+          「那怎么才算落地」是口径，进浮层。正文直接引 `zh.sim.sandbox.plays.r4` ——
+          它是这条红线的既有单源（同一句话已在沙盘那边用），⛔ 不在这里另抄一份措辞。 */}
       <p className={styles.hint} data-testid="rail-scope-note">
-        沙盘改的只是这个推演世界，不写真实数据。结论要落地须走 Action 审批。
+        不写真实数据
+        <InfoPopover topic={zh.sim.sandbox.info.railScope} testId="rail-scope">
+          <span data-testid="rail-scope-body">{zh.sim.sandbox.plays.r4}</span>
+        </InfoPopover>
       </p>
     </div>
   );
