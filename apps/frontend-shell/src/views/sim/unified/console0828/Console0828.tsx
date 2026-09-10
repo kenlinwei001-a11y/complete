@@ -551,12 +551,22 @@ export default function Console0828({
                   data-testid={`c0828-ev-${ev.id}`}
                   data-open={isOpen ? "1" : "0"}
                   data-landable={ok ? "1" : "0"}
-                  disabled={!ok}
-                  title={ok ? ev.detail : L === undefined ? "还在判定" : LANDING_ABSENCE_TEXT[L.kind as "no-instance" | "no-statevar"]}
+                  /* ⚠ 这里刻意**不加** `disabled`，也**不加**原生 `title=` —— 两者叠在一起制造过一个三重不可见：
+                   *  ① 「为什么这件事今天落不了地」的解释写在下面 `c0828-absent-{id}` 面板里；
+                   *  ② 那个面板靠**点击**打开，而按钮当时是 `disabled` ⇒ 点不动；
+                   *  ③ 兜底的原生 `title` 在 **disabled 元素上多数浏览器根本不渲染**。
+                   * ⇒ 解释写好了，用户三条路都看不到 —— 屏上只剩一句「今天落不了地」而说不出为什么。
+                   * 现在：落不了地的也点得开，点开就是那条解释（`openForm` 只 set state，
+                   * 真正的写口 `addStaged` 另有 `kind !== "ok"` 早退守着，点开不等于加得进去）。
+                   * 顺带满足 R-UI-3 / `provenance-popover-legibility` 那条棘轮：口径不进原生 title。 */
                   onClick={() => (isOpen ? setOpenEvent(null) : openForm(ev))}
                 >
                   <span>{ev.name}</span>
-                  <span className={styles.evHint}>{ok ? ev.hint : "今天落不了地"}</span>
+                  {/* 落不了地时**把理由摆在第一层**，不是一句无信息量的「今天落不了地」——
+                      理由是决策信息（它决定你要不要去补那个对象/状态量），该上屏。 */}
+                  <span className={styles.evHint}>
+                    {ok ? ev.hint : L === undefined ? "还在判定" : LANDING_ABSENCE_TEXT[L.kind as "no-instance" | "no-statevar"]}
+                  </span>
                   <span className={styles.evPlus}>{isOpen ? "－" : "＋"}</span>
                 </button>
 

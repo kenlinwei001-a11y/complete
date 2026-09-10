@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
@@ -271,11 +271,36 @@ const TABS: readonly TabUnderTest[] = [
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const r = render(
     <QueryClientProvider client={qc}>
       <UnifiedSimShell />
     </QueryClientProvider>,
   );
+  enterExpert();
+  return r;
+}
+
+/**
+ * 走进「专家模式」——本文件测的那套工作台从 2026-09-10 起退到了它后面。
+ *
+ * ══ 为什么是在这里补一步，而不是改断言 ═══════════════════════════════════════
+ * 08-28 决策屏（`console0828`）成了 `UnifiedSimShell` 的**默认视图**
+ * （`UnifiedSimShell.tsx` 的 `if (!expert)` 提前 return），工作台连同它那批 `usim-*` 锚点
+ * 整体挪进 `data-view="expert"` 那一支。
+ * **功能一个没少，变的是到达路径** —— 正是 08-28 设计稿页脚那句「专家模式 ▸」。
+ * ⇒ 测试要测工作台就得先走到工作台；改断言去迁就默认屏，测的就不是这套东西了。
+ *
+ * ⛔ **按钮找不到就抛，不静默跳过。** 静默跳过会让下面每一条断言红在
+ * 「找不到 usim-xxx」上，指向一个跟病因毫不相干的地方 —— 本仓反复栽的那个形态。
+ */
+function enterExpert(): void {
+  const btn = screen.queryByTestId("c0828-expert");
+  if (btn === null)
+    throw new Error(
+      "[enterExpert] 默认屏上没有「专家模式」按钮（c0828-expert）—— 到达路径断了，" +
+        "本文件所有断言都会红在「找不到 usim-*」上而指向错误的病因。先修到达路径。",
+    );
+  fireEvent.click(btn);
 }
 
 /** 等卡墙把第一屏铺完。探针落在 `data-series`（时序这一跳到底回来没有），不是 `data-total`。 */
