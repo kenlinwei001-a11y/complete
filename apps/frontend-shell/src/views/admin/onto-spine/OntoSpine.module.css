@@ -1,0 +1,111 @@
+/* WO-ONTO-SPINE-11 · 动线主脊步骤条。
+   颜色**全部走既有 tokens**，不新造颜色常数 —— canonical 刚修完「幽灵主题令牌 14 处」
+   （令牌在某主题下未定义 → 兜底色在暗皮下渲染成浅底近白字，读不了）。
+   本文件用到的 --accent/--line/--line2/--muted/--txt/--panel/--hover-tint/--ok/--warn/
+   --accent-txt/--ok-txt/--warn-txt/--on-accent 均已核实在 tokens.css `:root` 有定义。 */
+
+.spine {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line2);
+  scrollbar-width: thin;
+}
+
+/* 一格。窄屏下允许横向滚动而不是压扁到读不了 —— 11 格塞不进手机宽度是常态。 */
+.cell {
+  flex: 1 1 0;
+  min-width: 104px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px 7px;
+  background: var(--panel);
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  transition: background 120ms, border-color 120ms;
+}
+a.cell:hover {
+  background: var(--hover-tint);
+  border-color: var(--accent);
+}
+
+.no {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 1px;
+}
+.title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--txt);
+  line-height: 1.25;
+}
+.sub {
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.3;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.count {
+  font-size: 12px;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+  color: var(--txt);
+}
+
+/* ── 四态 ────────────────────────────────────────────────────────────── */
+
+.done .no { color: var(--ok-txt); }
+.done .count { color: var(--ok-txt); }
+.done { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+
+/* `now` = 作业面：整格实心高亮，屏上一眼看得出「我在这一步」。 */
+.now {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+}
+.now .no, .now .sub { color: var(--on-accent); opacity: 0.82; }
+.now .title, .now .count { color: var(--on-accent); }
+a.now:hover { background: var(--accent-solid); border-color: var(--accent); }
+
+.todo .count { color: var(--muted); }
+
+/* `gap` = 今天没有落点。**不可点**，故用虚线边把「这里本该有一扇门」画出来。 */
+.gap {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
+  cursor: not-allowed;
+}
+.gap .title, .gap .count { color: var(--warn-txt); }
+
+/* 派生投影的角标（第 04 步）。 */
+.derived {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  margin: -4px 0 14px;
+}
+.legendDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: baseline;
+}
