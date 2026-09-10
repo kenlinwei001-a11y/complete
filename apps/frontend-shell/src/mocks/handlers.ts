@@ -361,6 +361,7 @@ function mockDoNothing(card: MockCard, exposure: Omit<Exposure, "rank">, shortfa
         }
       : {
           status: "EMPTY",
+          verdict: shortfall <= 0 ? "缺口自然消化：本窗无缺口，不适用" : "缺口自然消化：算不出（空闲日产能为 0）",
           reason:
             shortfall <= 0
               ? "本窗无产能缺口（可用产能覆盖窗内订单）→ 不存在\"自然消化天数\"这件事，不编一个数"
@@ -375,7 +376,7 @@ function mockDoNothing(card: MockCard, exposure: Omit<Exposure, "rank">, shortfa
   const delay: DoNothing["delay"] =
     delayOrders.length > 0
       ? { status: "OK", worstDays: delayOrders[0]!.delayDays, orders: delayOrders, note: delayNote }
-      : { status: "EMPTY", reason: "本窗无受影响订单（见 exposure.emptyReason）→ 没有\"晚交几天\"这件事可算", missingFields: [], checked: ["Order.due(窗内)", "affected_orders.delay"] };
+      : { status: "EMPTY", verdict: "逐单延误：本窗无受影响订单，不适用", reason: "本窗无受影响订单（见 exposure.emptyReason）→ 没有\"晚交几天\"这件事可算", missingFields: [], checked: ["Order.due(窗内)", "affected_orders.delay"] };
 
   const worstByCust = new Map<string, number>();
   for (const d of delayOrders) worstByCust.set(d.cust, Math.max(worstByCust.get(d.cust) ?? 0, d.delayDays));

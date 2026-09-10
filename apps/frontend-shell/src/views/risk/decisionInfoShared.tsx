@@ -294,7 +294,10 @@ export function DecisionSlots({
             key={m.key}
             data-testid={`${testId}-${m.key}`}
             data-unavailable={s.unavailable ? "1" : "0"}
-            style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 13, lineHeight: 1.6 }}
+            /* ⚠ 字号必须与本文件其余部分同级（12px）：门 D3（规范 §2 R-UI-2「一屏之内最多三级字号」）
+               是**只降不升**的棘轮，本文件基线是 1 级。第一版这里写 13px 被门当场判「字号层级 1 → 2」——
+               三槽要的是**视觉层级**不是**字号层级**，用字重/留白拉开即可，不必多开一级字号。 */
+            style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12, lineHeight: 1.6 }}
           >
             <span style={{ color: "var(--muted2)", flex: "0 0 auto", fontSize: 12 }}>
               {m.no} {m.label}
