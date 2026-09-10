@@ -89,6 +89,13 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       # PRD-fde §8d 组合最优化：自托管 CP-SAT sidecar（内部网络发现；未配则 selection_optimize 报"未接入"）
       OPTIMIZER_BASE_URL: ${OPTIMIZER_BASE_URL:-http://optimizer:4003}
+      # WO-AGENT-INTO-SIM · A→B 出站（既有服务间通路，与上面 SERVICE_TOKEN 配对使用）。
+      # ⚠ 这一行**此前是缺的**，而缺的后果完全静默：`app.ts` 里
+      #   `proposerClient = AGENTCORE_BASE_URL && SERVICE_TOKEN ? httpProposerClient(...) : null`
+      #   ⇒ 恒 `null` ⇒ 方案生成每次都落确定性兜底，回包老老实实写着「本次未调用 agent」，
+      #   于是**两端代码都对、门也全绿，而这条链在部署态一次都没真跑过**。
+      #   （反向金丝雀：agentcore 侧 `DATACORE_BASE_URL` 一直都在 —— B→A 通着，A→B 不通。）
+      AGENTCORE_BASE_URL: ${AGENTCORE_BASE_URL:-http://agentcore:4002}
     volumes:
       - blob-data:/data/blobs
     ports:

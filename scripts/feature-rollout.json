@@ -31,6 +31,10 @@
     "sim.branch": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
     "sim.certification": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
     "sim.commander": { "stage": "tiered", "why": "同 sim.sandbox 一批。" },
+    "sim.agent-proposals": {
+      "stage": "tiered",
+      "why": "WO-AGENT-INTO-SIM 实测后定档，**不是照抄 sim.* 那一批**。原先它进 INCOMPLETE_DATA_DARK_LAUNCH_FEATURES 的理由白纸黑字写着两条依赖：①A→B 服务间通路（AGENTCORE_BASE_URL+SERVICE_TOKEN）②一个已发布且 kernel 配好的 agent。逐条实测：②**早已满足**（apps/agentcore/src/mocks/seed.ts:1382 `agt_seed_analyst` key=analyst version=1，另有 capacity_planner/finance_analyst/coordinator 等共 11 个）；①**当时确实不满足，但缺口不在代码而在部署面** —— httpProposerClient(apps/datacore/src/sim/agent-proposal.ts:99) 与 B 侧 /b/v1/sim/propose-candidates 两端都在，只是 docker-compose.yml 从没给 datacore 传 AGENTCORE_BASE_URL（金丝雀：同文件 DATACORE_BASE_URL:120 与 OPTIMIZER_BASE_URL:91 都在，故不是 grep 坏了）。本单补上那一行后两条依赖同时成立 ⇒「依赖尚缺」这个定性到期，故从暗发集移出、定 tiered，与其余 7 个 sim.* 同列（A7 要求 tiered 不得在任何暗发集里）。⚠ 残余风险（未配 AGENTCORE_BASE_URL 的部署仍会落确定性兜底）不再靠藏着这个功能来防，而是靠披露层把「本次未调用 agent」直接印在屏上（Console0828 区⑤ agent 徽标 + 诚实位），即原注释担心的「无人察觉」由可见性解决，不由不可见解决。"
+    },
     "decision.causal-graph": {
       "stage": "tiered",
       "why": "产品分档特性，与 sim.* 同列：随行业模板开，不进任何 *_DARK_LAUNCH_FEATURES 集合。判据写死在 apps/datacore/test/decision-causal-graph.test.ts:194-196 —— 该用例断言 `enabled('demo','decision.causal-graph')` 必须**等于** `enabled('demo','sim.sandbox')`。⚠ 收编时踩过一次坑记此：features.ts 该条注释里的「暗发 defaultOn:false」说的是 **L1 平台默认关**，不是本门 taxonomy 里的 stage=dark；照字面填 dark 会被 A5 逼着塞进暗发集合，而那样做 demo 租户就再也看不见它，A0 用例当场变红（实测：15 passed / 1 failed）。defaultOn:false ≠ stage:dark，两者度量的不是同一件事。"

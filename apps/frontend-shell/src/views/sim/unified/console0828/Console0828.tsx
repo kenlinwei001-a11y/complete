@@ -33,7 +33,7 @@
  *     且**在检查点那一拍写扰动会污染检查点本身**。⇒ 左栏的 ✕ 只从**待施加清单**里拿掉，
  *     世界已经吃过的那一下要靠重算；屏上把这件事说清楚，不装作删了就没发生过。
  */
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PropagationRulesResponse, SandboxViewConfig } from "@platform/contracts";
 import {
@@ -41,9 +41,11 @@ import {
   fetchAllObjects,
   fetchPropagationRules,
   fetchSimViewConfig,
+  proposeSimCandidates,
   runSolver,
   simTick,
   simWorld,
+  type SimProposalResponse,
 } from "@/api/endpoints";
 import {
   BUSINESS_EVENTS,
@@ -137,6 +139,17 @@ function readDisclosure(raw: unknown): DisclosureBrief | null {
 }
 
 const pct = (x: number): string => `${(x * 100).toFixed(1)}%`;
+
+/**
+ * WO-AGENT-INTO-SIM · 出方案用哪个 agent。
+ *
+ * 用出厂 analyst（`agt_seed_analyst`，`mocks/seed.ts` 的 key=`analyst`·version=1）——
+ * 它是全对象域 / 全工具的那一个，也是场景入口 `scn_graph` 已经绑着的默认 agent。
+ * ⚠ 这里**不做 agent 选择器**：本单要证明的是「这条链通不通」，
+ *   而「让用户挑哪个 agent 出方案」是另一个产品决策（谁有权用哪个 agent 是 authz 的事）。
+ *   写死一个 + 把它的 key 印在屏上（`provenance.agentId`），比给一个空下拉诚实。
+ */
+const AGENT_FOR_PROPOSALS = "agt_seed_analyst";
 
 export default function Console0828({
   sessionId,
@@ -384,8 +397,38 @@ export default function Console0828({
     if (m === undefined || m === null) return null;
     const all = m.groups.flatMap((g) => g.items);
     const actionable = all.filter((i) => i.candidates.length > 0);
-    const watchOnly = all.filter((i) => i.candidates.length === 0);
-    return { all, actionable, watchOnly, model: m };
+    const raw = all.filter((i) => i.candidates.length === 0);
+
+    /**
+     * ── 「只能盯着」的排序尺子：**超线倍数**，不是 severity ──────────────────────
+     *
+     * ⚠ 这不是审美选择，是 severity **在这一段没有区分度**（本机实测，非读码推断）：
+     *   14 处里有 **2 处 severity 双双封顶 100**（常州 / 枣庄）⇒ 谁排第一由数组顺序决定，
+     *   而数组顺序是引擎分组的副产物，不承载「哪个更要紧」。
+     *   于是屏上那句「最严重的是 X 与 Y」其实是**在报一个任意顺序**，而它读起来像个结论。
+     *
+     *   形态（铁律 0.6 句式）：
+     *   **「我用『它排在数组第一个』当作『它最要紧』的证据，而前者并不度量后者。」**
+     *
+     * 换成 `metricValue / threshold`（超出红线多少倍）：两者当场分开 —— 实测
+     * 常州 3974.32/1760 = 2.26×，枣庄 2985.92/620 = 4.82×。两个数都是引擎给的真值，
+     * 比值是纯算术，**没有引入任何新口径**。
+     *
+     * ⛔ 为什么**不**按「敞口金额 × 频次」排（那才是业务上最该用的尺子）：
+     *   `chain_impediments` 的每条记录里**根本没有金额**（字段只有 locus / severity /
+     *   evidence{metricValue,threshold,unit,ruleKey}）。屏上那个 454.6 亿是**订单簿总额**，
+     *   是全局量，把它摊到某一处卡点头上就是**编一个不存在的归因** —— 那正是本仓最忌的造数。
+     *   ⇒ 今天能诚实做到的最好排序就是超线倍数；金额排序要等引擎给出逐卡点敞口，另立单。
+     *   这条缺口写在屏上（见下「这把尺子是什么」），不藏着。
+     */
+    const ratioOf = (i: (typeof raw)[number]): number => {
+      const t = i.evidence.threshold;
+      // 红线为 0 时比值无定义（除零）——退回 severity，且**不假装**它有区分度。
+      return t === 0 ? Number.NEGATIVE_INFINITY : i.evidence.metricValue / t;
+    };
+    const watchOnly = [...raw].sort((a, b) => ratioOf(b) - ratioOf(a) || b.severity - a.severity);
+    const severityTied = raw.filter((i) => i.severity >= 100).length;
+    return { all, actionable, watchOnly, model: m, ratioOf, severityTied };
   }, [result]);
 
   const picked = useMemo(() => {
@@ -393,6 +436,56 @@ export default function Console0828({
     const id = pickedFix ?? impGroups.actionable[0]?.impedimentId ?? null;
     return impGroups.actionable.find((i) => i.impedimentId === id) ?? impGroups.actionable[0] ?? null;
   }, [impGroups, pickedFix]);
+
+  /* ── WO-AGENT-INTO-SIM · 「让 agent 想想办法」──────────────────────────────────
+   *
+   * 落点是**只能盯着的那几处**：引擎枚举跑完了、结论是本体上没有可拨的杠杆
+   * （`candidates.length === 0`）。那句「今天一条对策也给不出」本身是结论，不是加载失败 ——
+   * 但它是**引擎这一条路**的结论，不是「这件事没救」。agent 的价值正在这里：
+   * 它读同一份世界态与同一份杠杆菜单，去凑一组**引擎枚举器没往那儿看**的组合。
+   *
+   * ⚠ 三条纪律，缺一条这块屏就开始说谎：
+   *  ① **agent 不产数**：回来的只有 {leverIndex,valueIndex} 下标，数值一律从后端兑现好的
+   *    `request.levers` / `menu.levers` 里取，前端一个数都不算。
+   *  ② **产地必须上屏**：`provenance.agentInvolved` 为 false 时回的是**确定性兜底**，
+   *    此时必须写明「本次未调用 agent」+ 原因，**不许**当成 agent 的产出摆着。
+   *  ③ **一处一问**：`agentFor` 记的是「问的是哪一处卡点」，换一处要重新问 ——
+   *    否则 A 处的方案会挂在 B 处名下（第 4 格对照实验要的正是「没问的那处不许动」）。
+   */
+  const [agentFor, setAgentFor] = useState<string | null>(null);
+  const [agentRes, setAgentRes] = useState<SimProposalResponse | null>(null);
+  const [agentErr, setAgentErr] = useState<string | null>(null);
+  const agentM = useMutation({
+    mutationFn: async (impedimentId: string): Promise<SimProposalResponse> => {
+      setAgentFor(impedimentId);
+      setAgentErr(null);
+      return proposeSimCandidates(sessionId as string, AGENT_FOR_PROPOSALS);
+    },
+    onSuccess: (r) => { setAgentRes(r); },
+    // ⛔ 不静默吞：「没问出来」与「问了但没有方案」处置相反，屏上必须分得开。
+    onError: (e: unknown) => { setAgentRes(null); setAgentErr(e instanceof Error ? e.message : String(e)); },
+  });
+
+  /** agent 方案 → 四栏表要的那几格。**数值只从后端兑现结果里取**（前端零计算）。 */
+  const agentOptions = useMemo(() => {
+    const p = agentRes?.proposal;
+    if (p === undefined || agentRes?.applicable !== true) return null;
+    return p.draft.options.map((o, idx) => ({
+      id: `agent-${String(idx)}`,
+      name: o.name,
+      rationale: o.rationale,
+      // 「动哪个 / 动到几档」：逐条从菜单里把 agent 挑的那一档的**数值**取出来。
+      moves: o.picks.map((pk) => {
+        const lv = p.menu.levers[pk.leverIndex];
+        return {
+          key: lv?.key ?? `杠杆#${String(pk.leverIndex)}`,
+          label: lv?.label ?? lv?.key ?? `杠杆#${String(pk.leverIndex)}`,
+          value: lv?.values[pk.valueIndex] ?? null,
+          slot: `第 ${String(pk.valueIndex + 1)} / ${String(lv?.values.length ?? 0)} 档`,
+        };
+      }),
+    }));
+  }, [agentRes]);
 
   /* ── 渲染 ─────────────────────────────────────────────────────────────── */
   const zone = (n: string, t: string): JSX.Element => (
@@ -914,13 +1007,71 @@ export default function Console0828({
                           "这次每一处都有对策。"
                         ) : (
                           <>
-                            最严重的是 <b>{impGroups.watchOnly[0]?.locus.label ?? "—"}</b>
-                            {impGroups.watchOnly.length > 1 ? <> 与 <b>{impGroups.watchOnly[1]?.locus.label}</b></> : null}
+                            超线最多的是 <b>{impGroups.watchOnly[0]?.locus.label ?? "—"}</b>
+                            {impGroups.watchOnly[0] !== undefined && Number.isFinite(impGroups.ratioOf(impGroups.watchOnly[0]))
+                              ? <>（{impGroups.ratioOf(impGroups.watchOnly[0]).toFixed(2)}×）</>
+                              : null}
+                            {impGroups.watchOnly.length > 1 ? (
+                              <> 与 <b>{impGroups.watchOnly[1]?.locus.label}</b>
+                                {impGroups.watchOnly[1] !== undefined && Number.isFinite(impGroups.ratioOf(impGroups.watchOnly[1]))
+                                  ? <>（{impGroups.ratioOf(impGroups.watchOnly[1]).toFixed(2)}×）</>
+                                  : null}
+                              </>
+                            ) : null}
                             ，今天没有对策。
                             <div style={{ marginTop: 5 }}>
                               这 {impGroups.watchOnly.length} 处今天一条对策也给不出 ——
                               <b> 这本身是结论，不是页面没加载出来。</b>
                             </div>
+                            {/* ══ WO-AGENT-INTO-SIM · 入口就开在这句结论旁边 ══
+                                上面那句是**引擎枚举器**的结论（它跑完了，本体上没有可拨的杠杆）。
+                                agent 走的是另一条路：读同一份杠杆菜单去凑组合。
+                                两条路的结论并列摆着，用户才知道「还有一条没走过的路」。 */}
+                            <div style={{ marginTop: 9, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                className={styles.btn}
+                                data-testid="c0828-ask-agent"
+                                disabled={agentM.isPending}
+                                onClick={() => { agentM.mutate(impGroups.watchOnly[0]?.impedimentId ?? "watch-0"); }}
+                              >
+                                {agentM.isPending ? "agent 正在想…" : "让 agent 想想办法 ▸"}
+                              </button>
+                              <span className={styles.calibre}>
+                                引擎这条路走完了；换 agent 读同一份杠杆菜单再试一次。
+                              </span>
+                            </div>
+                            {/* ⚠ 收敛这一步必须可审：一次只问**一处**，且要说清「凭什么是这一处」。
+                                不写出来的话，屏上看起来就像「agent 替你把所有卡点都想了一遍」，
+                                而那是做不到的，也不是这里发生的事。 */}
+                            <details className={styles.more} style={{ marginTop: 6 }}>
+                              <summary>这把尺子是什么 · 为什么一次只问一处</summary>
+                              <div className={styles.moreBody}>
+                                <p>
+                                  一次只问<b>超线最多的那一处</b>（
+                                  {impGroups.watchOnly[0]?.locus.label ?? "—"}），不是把这
+                                  {impGroups.watchOnly.length} 处一起丢给 agent —— 一起丢等于让它替你排优先级，
+                                  而排序该由你看着尺子定，系统不给推荐。
+                                </p>
+                                <p>
+                                  尺子是<b>超线倍数</b>（实测 ÷ 红线），不是严重度：这一批里有{" "}
+                                  <b>{impGroups.severityTied}</b> 处严重度双双封顶 100，
+                                  排名会失去区分度 —— 那时候「排第一」只反映数组顺序，不反映哪个更要紧。
+                                </p>
+                                <p>
+                                  ⚠ 业务上更该用的尺子是<b>敞口金额 × 频次</b>，今天<b>给不出</b>：
+                                  卡点记录里没有逐处金额（只有实测/红线/单位/规则码）。
+                                  屏上那个订单簿总额是<b>全局量</b>，摊到某一处头上就是编一个不存在的归因，
+                                  所以这里不那么做，而是照实说这条缺口。
+                                </p>
+                              </div>
+                            </details>
+                            {agentErr !== null ? (
+                              <div className={styles.calibre} style={{ marginTop: 6 }} data-testid="c0828-agent-err">
+                                没问出来：{agentErr}
+                                <br />—— 这是<b>没问出来</b>，不是「agent 说没办法」。两者处置相反，故分开说。
+                              </div>
+                            ) : null}
                           </>
                         )}
                       </div>
@@ -1118,6 +1269,165 @@ export default function Console0828({
                   第四栏没有按钮 —— 什么都不做不需要按钮，它是默认发生的。
                   它存在的理由：没有它，前三栏的代价看起来都是净支出；有了它，前三栏才有参照。
                 </p>
+              </section>
+            ) : null}
+
+            {/* ══ 区⑤c · agent 提的方案（同一张四栏表，产地必须一眼分得出来）══ */}
+            {agentRes !== null ? (
+              <section className={styles.panel} data-testid="c0828-agent-options">
+                <div className={styles.head}>
+                  {zone("5", "agent 还能想出什么")}
+                  <h3 className={styles.headTitle}>
+                    {(() => {
+                      const im = impGroups?.all.find((i) => i.impedimentId === agentFor);
+                      return im === undefined ? "agent 方案" : `${im.locus.label} · agent 方案`;
+                    })()}
+                  </h3>
+                  <span className={styles.headRight}>系统不给推荐 —— 选择是你的</span>
+                </div>
+
+                {/* ── 诚实位：这一份到底是不是 agent 想的 ────────────────────────────
+                    ⚠ 本单最强的验收信号就是这一条：接通前它恒为「本次未调用 agent」。
+                    它为 false 时下面那些方案是**确定性兜底**，不是 agent 的产出 —— 必须写明，
+                    否则就是一个会说谎的诚实位。R-UI-4：不打源码文件名/行号，
+                    但 agent key / 模型 / 路由 / 耗时 / 条数是**业务事实**，必须给。 */}
+                <div className={styles.agentBar} data-testid="c0828-agent-prov">
+                  {agentRes.proposal?.provenance.agentInvolved === true ? (
+                    <>
+                      <span className={styles.agentTag}>◆ agent 提的</span>
+                      <span>
+                        agent <code>{agentRes.proposal.provenance.agentId ?? "—"}</code> ·
+                        模型 <code>{agentRes.proposal.provenance.model ?? "—"}</code> ·
+                        路由 <code>{agentRes.proposal.provenance.route}</code> ·
+                        耗时 <code>{agentRes.proposal.provenance.elapsedMs ?? "—"}</code> 毫秒 ·
+                        菜单 <code>{agentRes.proposal.menu.levers.length}</code> 根杠杆 ·
+                        出 <code>{agentRes.proposal.draft.options.length}</code> 个方案
+                        {agentRes.reused === true ? " ·（复用已定版，本次没有再调模型）" : ""}
+                      </span>
+                    </>
+                  ) : (
+                    <span data-testid="c0828-agent-fallback">
+                      <b>本次未调用 agent</b> —— 下面是确定性兜底方案，
+                      <b>不是</b> agent 想的。原因：{agentRes.proposal?.provenance.fallbackReason ?? "未给原因"}
+                    </span>
+                  )}
+                </div>
+
+                {agentRes.applicable !== true ? (
+                  <p className={styles.empty} data-testid="c0828-agent-inapplicable">
+                    这次装配不出杠杆菜单{agentRes.missingRoles !== undefined && agentRes.missingRoles.length > 0
+                      ? `（缺：${agentRes.missingRoles.join("、")}）`
+                      : ""}
+                    —— 连菜单都没有就不请 agent 了，请了它也只能凭空编杠杆。
+                  </p>
+                ) : (
+                  <>
+                    <div className={styles.opts} data-testid="c0828-agent-grid">
+                      {(agentOptions ?? []).slice(0, 3).map((o) => (
+                        <div key={o.id} className={`${styles.opt} ${styles.optAgent}`} data-testid={`c0828-agent-opt-${o.id}`}>
+                          <div className={styles.optHead}>
+                            <h5 className={styles.optTitle}>{o.name}</h5>
+                            <span className={styles.agentTag}>◆ agent 提的</span>
+                          </div>
+                          <div className={styles.dims}>
+                            {o.moves.slice(0, 4).map((mv) => (
+                              <Fragment key={mv.key}>
+                                <span className={styles.dimKey}>{mv.label}</span>
+                                <span className={styles.dimVal}>
+                                  {mv.value === null ? <span className={styles.na}>——</span> : mv.value.toLocaleString("zh-CN")}
+                                </span>
+                              </Fragment>
+                            ))}
+                          </div>
+                          <div className={styles.saves}>
+                            <span className={styles.savesTitle}>它凭什么</span>
+                            <div style={{ lineHeight: 1.75 }}>{o.rationale}</div>
+                            <details className={styles.more}>
+                              <summary>档位出处</summary>
+                              <div className={styles.moreBody}>
+                                {o.moves.map((mv) => (
+                                  <p key={mv.key}>
+                                    {mv.label}：{mv.slot}（档位数值由本体真值算出，agent 只挑了下标）
+                                  </p>
+                                ))}
+                              </div>
+                            </details>
+                          </div>
+                          <button type="button" className={`${styles.btn} ${styles.btnPrimary} ${styles.pick}`}>
+                            就这么办
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* ⚠ 第四栏是设计核心，**agent 这张表里同样不许省** */}
+                      {(() => {
+                        const im = impGroups?.all.find((i) => i.impedimentId === agentFor);
+                        return (
+                          <div className={`${styles.opt} ${styles.optNone}`} data-testid="c0828-agent-donothing">
+                            <h5 className={styles.optTitle}>什么都不做</h5>
+                            <div className={styles.dims}>
+                              <span className={styles.dimKey}>多久见效</span>
+                              <span className={`${styles.dimVal} ${styles.na}`}>——</span>
+                              <span className={styles.dimKey}>代价</span>
+                              <span className={`${styles.dimVal} ${styles.na}`}>见下</span>
+                            </div>
+                            <div className={styles.saves}>
+                              <span className={styles.savesTitle}>这一处会继续超线</span>
+                              {im === undefined ? (
+                                <div className={styles.na}>这次没取到这一处的实测/红线。</div>
+                              ) : (
+                                <ul className={styles.savesList}>
+                                  <li><span>实测</span><span className={styles.late}>{im.evidence.metricValue.toFixed(2)}</span></li>
+                                  <li><span>红线</span><span>{im.evidence.threshold.toFixed(2)}</span></li>
+                                  <li><span>超出</span><span className={styles.late}>{im.evidence.breach.toFixed(2)}</span></li>
+                                </ul>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <p className={styles.calibre} style={{ marginTop: 10 }} data-testid="c0828-agent-compare">
+                      {agentRes.proposal?.draft.comparisonNote === ""
+                        ? "agent 这次没有给方案之间的权衡说明。"
+                        : agentRes.proposal?.draft.comparisonNote}
+                    </p>
+                    <details className={styles.more}>
+                      <summary>这几栏的数是哪来的</summary>
+                      <div className={styles.moreBody}>
+                        <p>
+                          agent <b>一个数都没有产</b>：它的产出里只有「第几根杠杆、第几档」这样的下标与文字。
+                          上面每一格数值，都是按它挑的下标去<b>杠杆菜单</b>里取出来的，
+                          而菜单的档位由本体真值算出、基线读数由求解器算出。
+                        </p>
+                        <p>
+                          这也是为什么它挑不出菜单上没有的数：挑一个不存在的下标会被当场拒收，
+                          屏上会退回「本次未调用 agent」并写明原因，而不是悄悄换成一个相近的档位。
+                        </p>
+                        <p>
+                          本次提案版本 <code>{agentRes.proposal?.version ?? "—"}</code>，
+                          世界态指纹 <code>{agentRes.proposal?.inputFingerprint.slice(0, 12) ?? "—"}</code>
+                          —— 世界态不变时重问会复用同一版，不会每点一次就换一批方案。
+                        </p>
+                        {/* ⚠⚠ 这一段是**诚实位**，不许删：标题写着「某处 · agent 方案」，
+                            很容易读成「agent 专门为这一处想的」，而今天**不是**。 */}
+                        <p>
+                          ⚠ <b>今天这几个方案不是只为「这一处」定制的。</b>
+                          agent 读到的是<b>整个世界态</b>（本次事件 + 求解器基线读数 + 对象条数）
+                          和<b>全局杠杆菜单</b>，它并不知道你是从哪一处卡点点进来的 ——
+                          这一处的名字是<b>你选的</b>，不是它挑的。
+                        </p>
+                        <p>
+                          所以该这么读它：这是「针对<b>当前世界态</b>的几组杠杆组合」，
+                          而你正拿它来对付这一处。要让 agent 真正<b>盯着某一处</b>出方案，
+                          得把那一处的落点与判据一起送进菜单 —— 那要改跨包契约，不在本次改动范围内，
+                          <b>没做就照实说，不假装已经做了</b>。
+                        </p>
+                      </div>
+                    </details>
+                  </>
+                )}
               </section>
             ) : null}
 
