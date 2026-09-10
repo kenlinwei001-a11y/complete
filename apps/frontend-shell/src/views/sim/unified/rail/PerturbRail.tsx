@@ -532,6 +532,12 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
         data-testid="rail-tablist"
         data-axis={axis}
       >
+        {/* 这一排是**第二条轴**（建模轴），不是与上面六个面并列的第 7…16 个子页。
+            不加这个记号，屏上就是 16 个看起来平级的页签 —— 用户读不出「上面按业务、
+            下面按传导域」这件事，而那正是两排唯一的区别。 */}
+        <span className={styles.count} data-testid="rail-tablist-label">
+          按传导域
+        </span>
         {pages.map((p) => (
           <button
             key={p.sliceId}
