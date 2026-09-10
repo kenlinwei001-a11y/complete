@@ -62,6 +62,8 @@ import {
   fetchSimViewConfig,
 } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
+import { InfoPopover } from "@/components/InfoPopover";
+import zh from "@/locales/zh";
 import { stateVarLabel } from "../../stateVarLabel";
 import { PERTURBATION_KINDS } from "../../PerturbationTimeline";
 import type { PerturbationBrief } from "../metricWallModel";
@@ -519,8 +521,13 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
       </div>
       {facesResult.canary.ok ? null : (
         <p className={styles.absent} data-testid="rail-faces-canary-failed">
-          业务面一个对象类型都没认领到 —— 这是**取数或遍历坏了**，不是「没有可扰的业务对象」。
-          先看传导规则这一跳回来了没有，别据此下「沙盘扰不动任何东西」的结论。
+          业务面 0 个类型 · 取数或遍历坏了
+          <InfoPopover topic={zh.sim.sandbox.info.railFaceCanary} testId="rail-face-canary">
+            <span data-testid="rail-face-canary-body">
+              一个对象类型都没认领到 —— 这是取数或遍历坏了，不是「没有可扰的业务对象」。
+              先看传导规则这一跳回来了没有，别据此下「沙盘扰不动任何东西」的结论。
+            </span>
+          </InfoPopover>
         </p>
       )}
 
@@ -577,9 +584,14 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
 
       {(axis === "face" ? face === null : page === null) ? (
         <p className={styles.absent} data-testid="rail-no-pages">
-          {rulesQ.isLoading
-            ? "传导规则还在路上 —— 还不知道有哪些扰动因素"
-            : "这个租户一条已发布的传导规则都没有 ⇒ 没有可扰的量（不是取不到）"}
+          {rulesQ.isLoading ? "传导规则还在路上" : "没有可扰的量"}
+          <InfoPopover topic={zh.sim.sandbox.info.railNoPages} testId="rail-no-pages">
+            <span data-testid="rail-no-pages-body">
+              {rulesQ.isLoading
+                ? "这一跳还没回来 —— 还不知道有哪些扰动因素（这与「一个都没有」是两个命题）。"
+                : "这个租户一条已发布的传导规则都没有 ⇒ 没有可扰的量。这是结论，不是取不到。"}
+            </span>
+          </InfoPopover>
         </p>
       ) : (
         <div
@@ -680,15 +692,26 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
                     ) ?? ""
                   }
                 >
+                  {/* 第一层只留「落到哪 / 落不到」这个状态；候选量清单与怎么办属口径，进浮层。 */}
                   {(() => {
                     const c = ORDER_CHANGES.find((x) => x.id === orderChangeId);
                     if (c === undefined) return "";
                     const v = resolveOrderChangeVar(c, faceOptions.map((o) => o.stateVar));
-                    return v === null
-                      ? `${c.effect} —— 但这个对象类型今天没有承载它的量（候选：${c.preferStateVars.join(" / ")}），` +
-                          "所以落不到。换个业务对象类型，或在下面自己挑一个量。"
-                      : `${c.effect} 已替你把「落到哪个量」选成 ${stateVarLabel(v, names).text}，可以自己改。`;
+                    return v === null ? `${c.effect} · 今天落不到` : `${c.effect} · 落到 ${stateVarLabel(v, names).text}`;
                   })()}
+                  <InfoPopover topic={zh.sim.sandbox.info.railOrderChange} testId="rail-order-change">
+                    <span data-testid="rail-order-change-body">
+                      {(() => {
+                        const c = ORDER_CHANGES.find((x) => x.id === orderChangeId);
+                        if (c === undefined) return "";
+                        const v = resolveOrderChangeVar(c, faceOptions.map((o) => o.stateVar));
+                        return v === null
+                          ? `这个对象类型今天没有承载它的量（候选：${c.preferStateVars.join(" / ")}），所以落不到。` +
+                              "换个业务对象类型，或在下面自己挑一个量。"
+                          : "已替你把「落到哪个量」选好，可以自己改成别的量。";
+                      })()}
+                    </span>
+                  </InfoPopover>
                 </p>
               )}
             </>
@@ -821,18 +844,36 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
               }}
             />
           </label>
+          {/* ── ⑤ 分层（WO-SIM-UNIFIED-WIRE-4）────────────────────────────────────
+                 改前这一处**一个 `<p>` 里塞了五段口径**（`prose` 13 条里它一个人占 5 条），
+                 其中「多吃一拍传导」那一段是**纯口径**，正是设计稿说的「点开才看」那一类。
+                 现在第一层只留**这一档是什么**（一句话、可读出拍号），口径全进浮层。
+                 ⛔ 没有删任何一句 —— 降层不是删除（规范 §1），浮层里逐句都在。 */}
           <p className={styles.hint} data-testid="rail-starttick-note" data-phase={phase ?? ""}>
             {curTick === null
-              ? "还不知道世界在第几拍 —— 起始拍没有基准，先不填（这一档不许提交，猜一个 0 就是那个「请求成功、屏上不动」的坑）"
+              ? "起始拍没有基准 · 先不填"
               : phase === "past"
-                ? `第 ${draft.startTick} 拍已经推过去了 —— 这一档不许提交（改成 ${curTick} 或更大）`
+                ? `第 ${draft.startTick} 拍已推过 · 不许提交`
                 : phase === "now"
-                  ? `第 ${curTick} 拍 = 现在就发生（后端「不填起始拍」的默认语义）。` +
-                    `⚠ 这一档从本拍起就生效，而这次「施加并推演」还要再走一拍 ⇒ 下游会比默认档多吃一拍传导；` +
-                    `想让下游读数正好等于屏上公示系数的那一次传导，用第 ${curTick + 1} 拍。`
+                  ? `第 ${curTick} 拍 = 现在就发生`
                   : phase === "next"
-                    ? `第 ${curTick + 1} 拍 = 下一拍 —— 正是这次「施加并推演」要推的那一拍（默认值）`
-                    : `第 ${draft.startTick} 拍在将来 —— 本次只推到第 ${curTick + 1} 拍，还要再推 ${draft.startTick - curTick - 1} 拍它才落地`}
+                    ? `第 ${curTick + 1} 拍 = 下一拍（默认）`
+                    : `第 ${draft.startTick} 拍在将来 · 还要再推 ${draft.startTick - curTick - 1} 拍`}
+            <InfoPopover topic={zh.sim.sandbox.info.railStartTick} testId="rail-starttick">
+              <span data-testid="rail-starttick-body">
+                {curTick === null
+                  ? "还不知道世界在第几拍，起始拍就没有基准 —— 这一档不许提交。猜一个 0 就是那个「请求成功、屏上不动」的坑。"
+                  : phase === "past"
+                    ? `这一拍已经推过去了，补填不会追溯生效 —— 改成第 ${curTick} 拍或更大才提交得了。`
+                    : phase === "now"
+                      ? `第 ${curTick} 拍是后端「不填起始拍」的默认语义。注意这一档从本拍起就生效，` +
+                        `而这次「施加并推演」还要再走一拍 ⇒ 下游会比默认档多吃一拍传导；` +
+                        `想让下游读数正好等于屏上公示系数的那一次传导，用第 ${curTick + 1} 拍。`
+                      : phase === "next"
+                        ? `第 ${curTick + 1} 拍正是这次「施加并推演」要推的那一拍，所以它是默认值。`
+                        : `本次只推到第 ${curTick + 1} 拍，这条要等到第 ${draft.startTick} 拍才落地 —— 在那之前屏上不会动。`}
+              </span>
+            </InfoPopover>
           </p>
           <label className={styles.fld}>
             <span className={styles.lbl}>持续拍数（留空 = 永久）</span>
@@ -885,13 +926,21 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
               data-testid="rail-face-warn-equipment"
               data-blocked-count={blocked.filter((b) => b.objectType === "Equipment").length}
             >
+              {/* 第一层：**数**（几个扰不动）+ 名字；「为什么扰不动」是口径 ⇒ 浮层。 */}
               {blocked.filter((b) => b.objectType === "Equipment").length === 0
-                ? "设备面这一批因子今天都已经进了推演世界态 —— 没有「选了却扰不动」的量。"
-                : `⚠ 这 ${blocked.filter((b) => b.objectType === "Equipment").length} 个设备量今天扰不动：` +
+                ? "设备面 0 个扰不动的量"
+                : `⚠ ${blocked.filter((b) => b.objectType === "Equipment").length} 个设备量扰不动：` +
                   `${blocked
                     .filter((b) => b.objectType === "Equipment")
                     .map((b) => `${b.factorName}（${b.prop}）`)
-                    .join("、")} —— ${BLOCKED_REASON_TEXT}`}
+                    .join("、")}`}
+              <InfoPopover topic={zh.sim.sandbox.info.railEquipment} testId="rail-equipment">
+                <span data-testid="rail-equipment-body">
+                  {blocked.filter((b) => b.objectType === "Equipment").length === 0
+                    ? "设备面这一批因子今天都已经进了推演世界态 —— 没有「选了却扰不动」的量。这一句是现算的差集，不是写死的。"
+                    : BLOCKED_REASON_TEXT}
+                </span>
+              </InfoPopover>
             </p>
           ) : null}
           {axis === "face" && face?.id === "demand" ? (
@@ -900,12 +949,21 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
               data-testid="rail-face-warn-demand"
               data-forecastbias={liveStateVars === null ? "unknown" : liveStateVars.has("forecastBias") ? "live" : "absent"}
             >
+              {/* 第一层：三态各自的**结论**（在 / 不在 / 还不知道）+ 量名；理由进浮层。 */}
               {liveStateVars === null
-                ? "还不知道这个世界有哪些量 —— 「预测偏差扰不扰得动」这一条现在答不了（不是答「不行」）。"
+                ? "预测偏差：现在答不了"
                 : liveStateVars.has("forecastBias")
-                  ? `「预测偏差」今天有独立变量：${stateVarLabel("forecastBias", names).text} —— ` +
-                    "方向写在它自己的名字里（正 = 高估），不需要在这里另设一个方向开关。"
-                  : "⚠ 「预测偏差」今天没有独立变量，只能借需求压力，而压力没有方向而预测偏差有（高估 / 低估）。"}
+                  ? `预测偏差：有独立变量 ${stateVarLabel("forecastBias", names).text}`
+                  : "⚠ 预测偏差：今天没有独立变量"}
+              <InfoPopover topic={zh.sim.sandbox.info.railDemandBias} testId="rail-demand-bias">
+                <span data-testid="rail-demand-bias-body">
+                  {liveStateVars === null
+                    ? "还不知道这个世界有哪些量 —— 「预测偏差扰不扰得动」这一条现在答不了。这与答「不行」是两个命题。"
+                    : liveStateVars.has("forecastBias")
+                      ? "方向写在它自己的名字里（正 = 高估），所以这里不需要另设一个方向开关。"
+                      : "只能借需求压力代替，而压力没有方向、预测偏差有（高估 / 低估）—— 借用会把方向这一维丢掉。"}
+                </span>
+              </InfoPopover>
             </p>
           ) : null}
 
@@ -986,8 +1044,14 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
         </ul>
       </details>
 
+      {/* 红线本身是**状态**（这屏改不改真值），一句话留第一层；
+          「那怎么才算落地」是口径，进浮层。正文直接引 `zh.sim.sandbox.plays.r4` ——
+          它是这条红线的既有单源（同一句话已在沙盘那边用），⛔ 不在这里另抄一份措辞。 */}
       <p className={styles.hint} data-testid="rail-scope-note">
-        沙盘改的只是这个推演世界，不写真实数据。结论要落地须走 Action 审批。
+        不写真实数据
+        <InfoPopover topic={zh.sim.sandbox.info.railScope} testId="rail-scope">
+          <span data-testid="rail-scope-body">{zh.sim.sandbox.plays.r4}</span>
+        </InfoPopover>
       </p>
     </div>
   );
