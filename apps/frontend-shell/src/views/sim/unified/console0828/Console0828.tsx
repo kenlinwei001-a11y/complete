@@ -397,8 +397,38 @@ export default function Console0828({
     if (m === undefined || m === null) return null;
     const all = m.groups.flatMap((g) => g.items);
     const actionable = all.filter((i) => i.candidates.length > 0);
-    const watchOnly = all.filter((i) => i.candidates.length === 0);
-    return { all, actionable, watchOnly, model: m };
+    const raw = all.filter((i) => i.candidates.length === 0);
+
+    /**
+     * ── 「只能盯着」的排序尺子：**超线倍数**，不是 severity ──────────────────────
+     *
+     * ⚠ 这不是审美选择，是 severity **在这一段没有区分度**（本机实测，非读码推断）：
+     *   14 处里有 **2 处 severity 双双封顶 100**（常州 / 枣庄）⇒ 谁排第一由数组顺序决定，
+     *   而数组顺序是引擎分组的副产物，不承载「哪个更要紧」。
+     *   于是屏上那句「最严重的是 X 与 Y」其实是**在报一个任意顺序**，而它读起来像个结论。
+     *
+     *   形态（铁律 0.6 句式）：
+     *   **「我用『它排在数组第一个』当作『它最要紧』的证据，而前者并不度量后者。」**
+     *
+     * 换成 `metricValue / threshold`（超出红线多少倍）：两者当场分开 —— 实测
+     * 常州 3974.32/1760 = 2.26×，枣庄 2985.92/620 = 4.82×。两个数都是引擎给的真值，
+     * 比值是纯算术，**没有引入任何新口径**。
+     *
+     * ⛔ 为什么**不**按「敞口金额 × 频次」排（那才是业务上最该用的尺子）：
+     *   `chain_impediments` 的每条记录里**根本没有金额**（字段只有 locus / severity /
+     *   evidence{metricValue,threshold,unit,ruleKey}）。屏上那个 454.6 亿是**订单簿总额**，
+     *   是全局量，把它摊到某一处卡点头上就是**编一个不存在的归因** —— 那正是本仓最忌的造数。
+     *   ⇒ 今天能诚实做到的最好排序就是超线倍数；金额排序要等引擎给出逐卡点敞口，另立单。
+     *   这条缺口写在屏上（见下「这把尺子是什么」），不藏着。
+     */
+    const ratioOf = (i: (typeof raw)[number]): number => {
+      const t = i.evidence.threshold;
+      // 红线为 0 时比值无定义（除零）——退回 severity，且**不假装**它有区分度。
+      return t === 0 ? Number.NEGATIVE_INFINITY : i.evidence.metricValue / t;
+    };
+    const watchOnly = [...raw].sort((a, b) => ratioOf(b) - ratioOf(a) || b.severity - a.severity);
+    const severityTied = raw.filter((i) => i.severity >= 100).length;
+    return { all, actionable, watchOnly, model: m, ratioOf, severityTied };
   }, [result]);
 
   const picked = useMemo(() => {
@@ -977,8 +1007,17 @@ export default function Console0828({
                           "这次每一处都有对策。"
                         ) : (
                           <>
-                            最严重的是 <b>{impGroups.watchOnly[0]?.locus.label ?? "—"}</b>
-                            {impGroups.watchOnly.length > 1 ? <> 与 <b>{impGroups.watchOnly[1]?.locus.label}</b></> : null}
+                            超线最多的是 <b>{impGroups.watchOnly[0]?.locus.label ?? "—"}</b>
+                            {impGroups.watchOnly[0] !== undefined && Number.isFinite(impGroups.ratioOf(impGroups.watchOnly[0]))
+                              ? <>（{impGroups.ratioOf(impGroups.watchOnly[0]).toFixed(2)}×）</>
+                              : null}
+                            {impGroups.watchOnly.length > 1 ? (
+                              <> 与 <b>{impGroups.watchOnly[1]?.locus.label}</b>
+                                {impGroups.watchOnly[1] !== undefined && Number.isFinite(impGroups.ratioOf(impGroups.watchOnly[1]))
+                                  ? <>（{impGroups.ratioOf(impGroups.watchOnly[1]).toFixed(2)}×）</>
+                                  : null}
+                              </>
+                            ) : null}
                             ，今天没有对策。
                             <div style={{ marginTop: 5 }}>
                               这 {impGroups.watchOnly.length} 处今天一条对策也给不出 ——
@@ -1002,6 +1041,31 @@ export default function Console0828({
                                 引擎这条路走完了；换 agent 读同一份杠杆菜单再试一次。
                               </span>
                             </div>
+                            {/* ⚠ 收敛这一步必须可审：一次只问**一处**，且要说清「凭什么是这一处」。
+                                不写出来的话，屏上看起来就像「agent 替你把所有卡点都想了一遍」，
+                                而那是做不到的，也不是这里发生的事。 */}
+                            <details className={styles.more} style={{ marginTop: 6 }}>
+                              <summary>这把尺子是什么 · 为什么一次只问一处</summary>
+                              <div className={styles.moreBody}>
+                                <p>
+                                  一次只问<b>超线最多的那一处</b>（
+                                  {impGroups.watchOnly[0]?.locus.label ?? "—"}），不是把这
+                                  {impGroups.watchOnly.length} 处一起丢给 agent —— 一起丢等于让它替你排优先级，
+                                  而排序该由你看着尺子定，系统不给推荐。
+                                </p>
+                                <p>
+                                  尺子是<b>超线倍数</b>（实测 ÷ 红线），不是严重度：这一批里有{" "}
+                                  <b>{impGroups.severityTied}</b> 处严重度双双封顶 100，
+                                  排名会失去区分度 —— 那时候「排第一」只反映数组顺序，不反映哪个更要紧。
+                                </p>
+                                <p>
+                                  ⚠ 业务上更该用的尺子是<b>敞口金额 × 频次</b>，今天<b>给不出</b>：
+                                  卡点记录里没有逐处金额（只有实测/红线/单位/规则码）。
+                                  屏上那个订单簿总额是<b>全局量</b>，摊到某一处头上就是编一个不存在的归因，
+                                  所以这里不那么做，而是照实说这条缺口。
+                                </p>
+                              </div>
+                            </details>
                             {agentErr !== null ? (
                               <div className={styles.calibre} style={{ marginTop: 6 }} data-testid="c0828-agent-err">
                                 没问出来：{agentErr}
