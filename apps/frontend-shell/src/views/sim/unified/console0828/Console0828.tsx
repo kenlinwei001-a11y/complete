@@ -42,6 +42,7 @@ import {
   createSimPerturbation,
   fetchAllObjects,
   fetchPropagationRules,
+  fetchSimPerturbations,
   fetchSimViewConfig,
   proposeSimCandidates,
   runSolver,
@@ -49,6 +50,8 @@ import {
   simWorld,
   type SimProposalResponse,
 } from "@/api/endpoints";
+import { BASE_REGISTRY } from "@platform/contracts";
+import { formatScope } from "../../chainImpediment";
 import {
   BUSINESS_EVENTS,
   LANDING_ABSENCE_TEXT,
@@ -243,6 +246,59 @@ export default function Console0828({
   const [result, setResult] = useState<RunResult | null>(null);
   const [pickedFix, setPickedFix] = useState<string | null>(null);
 
+  /**
+   * ══ 顶栏 · 范围选择器（设计稿「常州 · 全网」那半截）════════════════════════════
+   *
+   * ── 今天的行为是 X ──
+   * `runSolver(chain_impediments, { scope: {} })` —— **写死空 scope**，屏上只好写
+   * 「本次扫描范围未限定 ⇒ 结果是全域的」。那句话本身没错，但它描述的是一个
+   * **前端自己造成**的限制，不是引擎的限制。
+   *
+   * ── 应该是 Y ──
+   * 引擎**收** `scope.baseIds` 且**真的裁**。2026-09-10 本机对照实验（datacore :48317，
+   * `POST /a/v1/solvers/chain_impediments/invoke`）：
+   *   · `scope={}`                      → 18 处卡点，落点含 常州 / 枣庄 / 武汉 / 自贡分容线 / 金华分切线
+   *   · `scope={baseIds:["changzhou"]}` → 14 处卡点，**常州在、枣庄与武汉不在**
+   *   · `scope={baseIds:["zaozhuang"]}` → 14 处卡点，**枣庄在、常州不在**
+   * 三次 `scopeUnscoped` 依次为 true / false / false，且 `scope` 原样回带。
+   * ⇒ 这不是「选了不生效」的装饰控件，选择**真的改变结论集**。
+   *
+   * ⚠ **「往后 30 天」那半截刻意不做**：推演世界的时间单位是「拍」，而「一拍等于几天」
+   *   全平台没有登记册；把拍读成天就是造口径（与区④ 时间线同一条纪律，屏上已有原话）。
+   *   横轴长度由左栏「推几拍」控制，那是**真的**有出处的那个量。
+   *
+   * ⚠ 基地清单取自 `BASE_REGISTRY` 单源（13 个），**前端不另抄一份**；
+   *   `null` = 未限定，**不等于**「全选 13 个」—— 后者会把「归属 UNKNOWN」的落点漏掉。
+   */
+  const [scopeBaseId, setScopeBaseId] = useState<string | null>(null);
+
+  /**
+   * ══ 顶栏 · 会话恢复（设计稿「上次这条推演 · 已恢复」）════════════════════════════
+   *
+   * ── 今天的行为是 X ──
+   * 屏上**没有对应物**。刷新一次页面，左栏回到「还没有加任何事」，
+   * 而这条推演在**服务端**其实是有历史的 —— 用户看不到，只能以为自己在从零开始。
+   *
+   * ── 应该是 Y ──
+   * `GET /a/v1/sim/sessions/:id/perturbations` **落盘可查**。2026-09-10 本机实测该会话
+   * （`sims_demo_seed_world`，curTick=3）回 **1 条**：`sims_demo_seed_world_p0` ·
+   * kind=`demand_shift` · startTick=1 · 「种子扰动 · 把「短缺风险」抬高一个全距(+100)…」。
+   * ⇒ 这是**真的服务端状态**，不是前端编的一个「已恢复」贴纸。
+   *
+   * ⚠ 措辞必须扛得住追问：屏上写的是「**这条推演上次留下 N 件事**（服务端记着的）」，
+   *   **不是**「你上次的输入已经帮你填回来了」—— 后者是假的：左栏那份待施加清单
+   *   （`staged`）纯属本次浏览器内的草稿，从来不落盘，也**不该**被这条冒充。
+   *   两者是不同的东西，混在一起就是一个会说谎的诚实位。
+   */
+  const restoredQ = useQuery({
+    queryKey: ["a", "sim-perturbations", sessionId ?? ""],
+    queryFn: () => fetchSimPerturbations(sessionId as string),
+    enabled,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const restored = restoredQ.data?.items ?? [];
+
   /** 展开中那件事的落点候选（**按需**取对象层，取到才有名字）。 */
   const openEv = openEvent === null ? null : (BUSINESS_EVENTS.find((e) => e.id === openEvent) ?? null);
   const openLanding = openEvent === null ? null : (landings.get(openEvent) ?? null);
@@ -328,7 +384,10 @@ export default function Console0828({
       let imp: ChainImpedimentModel | null = null;
       let impErr: string | null = null;
       try {
-        const res = await runSolver(CHAIN_IMPEDIMENT_SOLVER_KEY, { scope: {} });
+        // 范围**由顶栏选择器给**，不再写死 `{}`。`null` = 未限定（全域）。
+        // ⛔ 不许在这里编一个默认基地：未限定与「默认某个基地」是两个不同的结论集。
+        const scope = scopeBaseId === null ? {} : { baseIds: [scopeBaseId] };
+        const res = await runSolver(CHAIN_IMPEDIMENT_SOLVER_KEY, { scope });
         imp = buildChainImpedimentModel(ChainImpedimentPayloadSchema.parse(res.data));
       } catch (e) {
         // ⛔ 不许静默吞：卡点这一跳没走通 ≠ 没有卡点。屏上必须分得开。
@@ -498,7 +557,85 @@ export default function Console0828({
   );
 
   return (
-    <div className={styles.wrap} data-testid="c0828-root">
+    <div className={styles.shell} data-testid="c0828-shell">
+      {/* ══ 页内顶栏（设计稿 `.top`）══════════════════════════════════════════
+          稿上四样：标题 · 范围 · 订单/客户计数 · 会话恢复。
+          计数那两个**这里不重复摆** —— 它们已经在区③/③b 的说明句里，且那里离用到它们的
+          地方更近；同一个数在一屏上摆两遍，改一处漏一处就会当场自相矛盾。 */}
+      <div className={styles.topbar} data-testid="c0828-topbar">
+        <span className={styles.topTitle}>推演与对策</span>
+
+        {/* ── 范围选择器（③）──────────────────────────────────────────── */}
+        <label className={styles.scopeBox}>
+          <span className={styles.scopeLbl}>范围</span>
+          <select
+            className={styles.scopeSel}
+            data-testid="c0828-scope-select"
+            value={scopeBaseId ?? ""}
+            onChange={(e) => setScopeBaseId(e.target.value === "" ? null : e.target.value)}
+          >
+            <option value="">全网（未限定）</option>
+            {BASE_REGISTRY.map((b) => (
+              <option key={b.baseId} value={b.baseId}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* 引擎**回带**的那个 scope —— 不是我送出去的那个。两者若不一致，这里会当场看得见。 */}
+        {result?.impediments != null ? (
+          <span className={styles.topTag} data-testid="c0828-scope-echo">
+            引擎这次按 <b>{formatScope(result.impediments.scope, result.impediments.scopeUnscoped)}</b> 扫的
+          </span>
+        ) : (
+          <span className={styles.topDim} data-testid="c0828-scope-pending">
+            改了范围要重新「算 一 下」才生效
+          </span>
+        )}
+
+        {/* ── 会话恢复（②）───────────────────────────────────────────── */}
+        <span className={styles.topRight}>
+          {restoredQ.isPending ? (
+            <span className={styles.topDim} data-testid="c0828-restore-loading">
+              在查这条推演的历史…
+            </span>
+          ) : restoredQ.isError ? (
+            <span className={styles.topDim} data-testid="c0828-restore-error">
+              这条推演的历史没取到（不等于「没有历史」）
+            </span>
+          ) : restored.length === 0 ? (
+            <span className={styles.topDim} data-testid="c0828-restore-none">
+              这条推演在服务端没有留下过扰动
+            </span>
+          ) : (
+            <details className={styles.topDetails} data-testid="c0828-restored">
+              <summary className={styles.topTag}>
+                上次这条推演 · 已恢复 <b>{restored.length}</b> 件
+              </summary>
+              <div className={styles.topPop}>
+                <p>
+                  这 {restored.length} 件是<b>服务端记着的</b>（这条推演过去被施加过的扰动，刷新不丢）。
+                  它们已经算在当前世界里了。
+                </p>
+                <ul className={styles.restoreList}>
+                  {restored.map((p) => (
+                    <li key={p.id} data-testid={`c0828-restored-${p.id}`}>
+                      <b>第 {p.startTick ?? "?"} 拍起</b> · {p.label ?? p.kind}
+                    </li>
+                  ))}
+                </ul>
+                <p className={styles.calibre}>
+                  ⚠ 左栏那份「待施加清单」是本次浏览器里的草稿，<b>从来不落盘</b> ——
+                  它没有被这条恢复回来，也不该被它冒充。两者是不同的东西。
+                </p>
+              </div>
+            </details>
+          )}
+        </span>
+      </div>
+
+      <div className={styles.wrap} data-testid="c0828-root">
       {/* ══ 区① 左栏 ══ */}
       <aside className={styles.rail} data-testid="c0828-rail">
         {zone("1", "加几件事")}
@@ -1198,6 +1335,34 @@ export default function Console0828({
                       能动 {impGroups.actionable.length} 处 · 只能盯着 {impGroups.watchOnly.length} 处。
                       排序用的是引擎给的严重度，系统不给推荐 —— 排序可换，选择是你的。
                     </p>
+                    {/* ══ ① 设计稿有、这里没有的那三列：逐列写明为什么缺 ════════════════
+                        ⚠ **三列缺的理由不一样，不许合并成一句「今天给不出」** ——
+                          合并之后，读者没法判断哪一列是「再接一条线就有」、哪一列是
+                          「今天真的没有出处」。本仓已因为「拿一个笼统数字盖住两个不同事实」
+                          记过账，这里不重犯。 */}
+                    <p data-testid="c0828-board-missing-cols">
+                      稿上还有三列这里<b>没有</b>，逐列说明：
+                    </p>
+                    <ul className={styles.restoreList} data-testid="c0828-missing-why">
+                      <li>
+                        <b>最快见效</b> · <b>最低代价</b> —— <b>今天没有出处</b>。
+                        一条对策身上带的量只有三个（超阈幅度 / 严重度 / 产能 cellsPerDayP50 合计），
+                        <b>没有一个是时间，也没有一个是代价</b>。
+                        要摆上来就得给每条对策拍一个「几天见效」「代价高中低」，那是造口径。
+                        ⚠ 四栏方案里「多久见效 · 代价 · 风险」那三行只出现在
+                        <b>「什么都不做」那一栏</b>，且值是「——／见下／——」的<b>占位符</b>，
+                        不是数据 —— 汇总不上来，因为下面根本没有。
+                      </li>
+                      <li>
+                        <b>不做的话</b>（稿上写「63.16 亿 · 53 张」）—— 要<b>逐处金额</b>，
+                        而卡点记录里只有实测 / 红线 / 单位 / 规则码，全平台没有逐处金额的出处。
+                        与上面区④ 那条边界同一个缺口。
+                      </li>
+                    </ul>
+                    <p className={styles.calibre}>
+                      这三列<b>如实缺着</b>，不摆一个编出来的数占位 ——
+                      「算不出来」与「是 0 / 是低」是两个不同的命题，屏上混了就是骗人。
+                    </p>
                   </div>
                 </details>
               </section>
@@ -1487,6 +1652,7 @@ export default function Console0828({
           </>
         ) : null}
       </main>
+      </div>
     </div>
   );
 }
