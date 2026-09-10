@@ -51,7 +51,7 @@ export const PENDING_ACTION_TEXT = {
 /**
  * ══ WO-SIM-UNIFIED-WIRE-4 · ② 落点对象不再只是一串 id ══
  *
- * **今天的行为是 X**（本单开工实测，真后端 `SEED_DEMO=1`）：本栏「这是什么」里
+ * **今天的行为是 X**（本单开工实测，真后端 `SEED_DEMO=1`）（**实测于 2026-09-10**；复验：起 `SEED_DEMO=1` 的 datacore 后 `GET /a/v1/objects?type=Order&page=1&pageSize=3`，比对回包 `cust/qty/value/due` 与本栏屏上值）：本栏「这是什么」里
  * 落点对象只印一个裸 id（`obj_order_SO-3391`），而推演层那一条**只有四个 0–100 的压力数**
  * （实测 500 张单 · 2000 个数值格 · **非数值格 0 个**）⇒ 屏上无从分辨
  * 「1.61 亿的广汽单」与一张小单。COO 据此排优先级会排反。

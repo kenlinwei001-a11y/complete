@@ -21,7 +21,9 @@
  *   ⑤ `runSolver("chain_impediments")` 出卡点与对策
  * 五步在一个 mutation 里顺序跑完，屏上只有一个按钮。
  *
- * ── ⚠ 三条实测教训，直接写进了本文件的行为（不是注释里的客套）─────────────────
+ * ── ⚠ 三条实测教训，直接写进了本文件的行为（不是注释里的客套）
+ * **三条均实测于 2026-09-10**（真后端 `SEED_DEMO=1`）；复验入口：`POST /a/v1/sim/sessions/:id/perturbations`
+ * 与 `POST /a/v1/sim/sessions/:id/tick`，逐条比对施加前后同一格读数。─────────────────
  *  ① **别拿源格判断扰动生没生效。** 2026-09-10 实测：同一条扰动，源格
  *     `Base.loadIndex` 只动 **0.008248**，而下游 130 条产线合计动了 **148.908054**
  *     —— 差 18,053 倍。源变量被顶在域上界（~99.7/100），分辨率被饱和吃光。
@@ -222,7 +224,7 @@ export default function Console0828({
     return { typesInRules: varsByType.size, landable, ok: varsByType.size > 0 && landable > 0 };
   }, [landings, varsByType]);
 
-  /** 六类「叫得出名字的实体」——条数**现算**，不写死稿上那 6 个数。 */
+  /** 六类「叫得出名字的实体」——条数**现算**，不写死稿上那 6 个数。 现算于渲染期；（**实测于 2026-09-10**；复验：`GET /a/v1/objects?type=Base` 等五型读 `total`，2026-09-10 实测 13/20/15/8/6） */
   const entityCounts = useMemo(
     () =>
       (["Base", "Customer", "Supplier", "Material", "Model", "DemandSegment"] as const).map((t) => ({

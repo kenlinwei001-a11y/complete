@@ -72,7 +72,7 @@ export interface BusinessEvent {
  *
  * `kind` 取值域（契约枚举，五类）：
  *   `demand_shift` · `supply_disruption` · `capacity_loss` · `cost_shock` · `quality_event`
- * 实测过：传五类之外的任何词（我第一版传了 `PRICE`）后端直接 **400 VALIDATION_ERROR**，
+ * 实测过：传五类之外的任何词（我第一版传了 `PRICE`）后端直接 **400 VALIDATION_ERROR**（**实测于 2026-09-10**；复验：`POST /a/v1/sim/sessions/:id/perturbations` 传枚举外的 kind ⇒ 400，报文原样列出五个合法值），
  * 而错误信息里会原样列出这五个 —— 那次 400 让四条臂**全部静默不生效**，
  * 读起来像「引擎不响应」。故此处只用枚举内的词。
  */

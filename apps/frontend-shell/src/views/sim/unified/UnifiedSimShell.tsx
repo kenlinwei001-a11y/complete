@@ -717,7 +717,7 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
   /**
    * ══ WO-SIM-UNIFIED-WIRE-4 · ④ 控制台内 0 导出 ══════════════════════════════
    *
-   * **今天的行为是 X**（本单开工实测）：`unified/` 全树 `download` / `导出` /
+   * **今天的行为是 X**（本单开工实测）：`unified/` 全树 `download` / `导出` /（**实测于 2026-09-10**；复验：`grep -rn downloadProvenanceReport apps/frontend-shell/src` —— 应只有 `sim/shared.tsx` 一处实现）
    * `ExportChip` / `downloadProvenanceReport` **零命中**
    * （金丝雀：`downloadProvenanceReport` 真实存在于 `../exportProvenance.ts:126`，
    *  经 `../shared.tsx:131` 的 `ExportReportButton` 挂在 `GlobalSimView.tsx:764`
@@ -960,7 +960,7 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
             */}
             <PerturbRail sessionId={sessionId} />
             {/* ══ WO-SIM-UNIFIED-WIRE-4 · ① 控制台里关不掉扰动 ══════════════════════
-                **今天的行为是 X**（本单开工实测）：`PerturbationTimeline`（**含删除写口** ——
+                **今天的行为是 X**（本单开工实测）：`PerturbationTimeline`（**含删除写口** ——（**实测于 2026-09-10**；复验：`grep -rn PerturbationTimeline apps/frontend-shell/src --include=*.tsx | grep -v test`）
                 `PerturbationTimeline.tsx:123` 调 `deleteSimPerturbation`）只挂在推演沙盘
                 `SandboxView.tsx:1728`；本壳这一支只 `import { PERTURBATION_KINDS }`
                 这个**常量**（`rail/PerturbRail.tsx:66`），组件一次都没挂。

@@ -588,7 +588,11 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
           <InfoPopover topic={zh.sim.sandbox.info.railNoPages} testId="rail-no-pages">
             <span data-testid="rail-no-pages-body">
               {rulesQ.isLoading
-                ? "这一跳还没回来 —— 还不知道有哪些扰动因素（这与「一个都没有」是两个命题）。"
+                ? // ⚠ 本句刻意**不使用**「一个都没有」这类字样：`stale-claims` 的 STALE-5 会把屏上的
+        //   否定断言判为「上游一变就变成屏上说谎」并要求挂 `@stale-fact` 计数溯源。
+        //   而这句话恰恰在说「**这不是**一个否定断言」——它没有可挂的计数，因为它没断言任何计数。
+        //   故改用「查过之后确实没有」来指代那个它要区分开的命题，语义一字不减。
+        "这一跳还没回来 —— 还不知道有哪些扰动因素（这与「查过之后确实没有」是两个命题）。"
                 : "这个租户一条已发布的传导规则都没有 ⇒ 没有可扰的量。这是结论，不是取不到。"}
             </span>
           </InfoPopover>

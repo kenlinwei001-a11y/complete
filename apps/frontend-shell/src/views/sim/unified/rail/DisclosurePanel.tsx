@@ -153,7 +153,7 @@ export default function DisclosurePanel({ disclosure: d }: DisclosurePanelProps)
     /**
      * ══ WO-SIM-UNIFIED-WIRE-4 · ③ 披露层默认折叠 ═════════════════════════════
      *
-     * **今天的行为是 X**（本单开工实测）：这一行 `<details>` **没有 `open`** ⇒ 整块折叠。
+     * **今天的行为是 X**（本单开工实测（**实测于 2026-09-10**；复验：`grep -rc "<details" apps/frontend-shell/src/views/sim/unified`））：这一行 `<details>` **没有 `open`** ⇒ 整块折叠。
      * 全树 `<details>` 共 8 个、带 `open` 的 **0** 个。设计稿要的是
      * 「运行日志**常驻**，且含**没动什么**」—— 今天两条都要点开才看得见运行日志本身。
      *

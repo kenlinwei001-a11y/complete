@@ -2,6 +2,8 @@
  * ══ WO-SIM-UNIFIED-WIRE-4 · ② 业务面投影的**取数半** ══
  *
  * 判据与实测证据在 `objectFacts.ts` 头注（那里是模型层）。本文件只管「这一跳怎么发」。
+ * **那批实测做于 2026-09-10**（交叉引用不构成本句自己的保质期 —— 这正是 `stale-claims` STALE-1 咬的形态）；
+ * 复验：`GET /a/v1/objects?type=Order&page=1&pageSize=1` 读 `total`（当日 500），以及 `apps/frontend-shell/src/views/sim/unified/objectFacts.ts` 头注里的逐条证据。
  *
  * ── ⚠ 为什么是 `fetchAllObjects` 而不是 `searchObjects` ──────────────────────
  * `GET /a/v1/objects` 默认页长 **50**，而 `Order` 真值 **500**（今日实测 `total=500`）。
