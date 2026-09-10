@@ -819,7 +819,17 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // 引擎里一个业务阈值都不用存（`chain-impediment.ts` 文件头铁律），也不抬 A2 的 literal 棘轮。
   { key: "C34", name: "跨业务线产能争用", expression: "COUNT(Base.segClaims.dailyRate) > 1 AND Base.claimedDailyRate > Base.capacityDailyPacks", severity: "BLOCK", params: {}, category: "产能" },
   // WO-PROP-CLAMP · 推演状态量衰减率。**这条规则存在的唯一理由就是让 λ 可编辑**：
-  // 本仓 42 条传导边的 `coefficientRef` 实测 0 条在用、全部回落内联，引用机制形同虚设；
+  // 本仓 **47** 条传导边的 `coefficientRef` 实测 **0 条在用**、全部回落内联。
+  // ⚠ **订正（WO-COEF-FROM-BOM·2026-09-08 实测）**：原文写「引用机制**形同虚设**」——**这个定性是错的，
+  // 照它修会修错方向**。「形同虚设」读作**没接线**，而实测是铁律 0.5 三分法的**「接了线没数据」**：
+  // 读取方 `sim/propagation.ts effectiveCoefficient` 真在跑、建规则时 `app.ts` 真校验、
+  // 披露层 `sim/disclosure.ts` 真回带 `coefficientSource`。**亲手驱动过一遍**（真起 datacore
+  // `SEED_DEMO=1` + 真 HTTP）：建一条 `coefficientRef → C35.pressureDecayPerTick(0.37)`、
+  // 内联 `coefficient` 故意写成 0.65 的探针边 ⇒ 回包 `coefficientSource:"CONFIG_REF"` ·
+  // `refUnresolved:false` · 生效系数 **0.37**（读数 15.8925 → 9.0465，比值 = 0.37/0.65，
+  // 即内联值**被引用值盖过**）。⇒ 缺的是**种子里没人填 ref**，不是机制不存在。
+  // 两者修法完全不同：前者「填数据」，后者「造机制」——把前者报成后者会直接歪掉排期
+  // （铁律 0.5 ③ 点名的正是这一形态）。原文的「42」同时也已过期（今日现算 47）。
   // 衰减率是「一次冲击几天散掉」这条**经营口径**，必须落在规则库里改一处即改推演，
   // 而不是再往引擎里内联一个常数（`STATE_VAR_DOMAINS` 只存**引用**，不存值）。
   // 出厂值的推导见 `PRESSURE_DECAY_PER_TICK` 注释（从 risk.pulseWindow/pulseDecayDen 派生，非拍脑袋）。
