@@ -1,0 +1,264 @@
+<title>产能推演 · 基地 COO 版</title>
+<style>
+/* 令牌取自 apps/frontend-shell/src/styles/tokens.css 在册令牌（青蓝磨砂）。最小字号 12px。 */
+:root{
+  --bg:#223251; --bg2:#283a5c; --panel-glass:rgba(255,255,255,.06); --panel2:#1c2942;
+  --line:rgba(226,235,245,.08); --line2:rgba(226,235,245,.14);
+  --txt:#e9eef5; --muted:#ced7e1; --muted2:#bbc5ce;
+  --accent:#4c90f0; --accent-solid:#115dc9; --on-accent:#fff; --accent-txt:#a2c6f7;
+  --ok-txt:#91d2a0; --warn-txt:#eabd5d; --danger-txt:#f0b4b8;
+  --c-factory:#5e8fe8; --c-capacity:#43b7d7; --c-forecast:#d2b04c;
+  --font-sans:"Inter","Segoe UI",system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:var(--font-sans);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* ── 顶栏：口径徽章是本设计的第一主张 ── */
+.top{background:var(--panel2);border-bottom:1px solid var(--line);padding:0 20px;height:52px;display:flex;align-items:center;gap:14px}
+.top .ttl{font-size:14px;font-weight:600}
+.top .who{font-size:13px;font-weight:700;color:var(--accent-txt);background:rgba(76,144,240,.16);border:1px solid var(--accent);border-radius:7px;padding:3px 11px}
+.top .crumb{font-size:12px;color:var(--muted)}
+.top .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.tag{border:1px solid var(--line2);border-radius:7px;padding:3px 9px;font-size:12px;color:var(--muted);background:rgba(226,235,245,.04)}
+.tag.syn{border-color:rgba(210,176,76,.5);background:rgba(210,176,76,.13);color:var(--warn-txt)}
+
+.wrap{padding:18px 22px 60px;display:flex;flex-direction:column;gap:16px;max-width:1500px;margin:0 auto}
+.panel{background:var(--panel-glass);border:1px solid var(--line2);border-radius:12px;padding:14px 16px;backdrop-filter:blur(16px) saturate(1.2)}
+.hd{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;margin-bottom:11px}
+.hd h3{margin:0;font-size:13.5px;font-weight:600}
+.hd .r{margin-left:auto;font-size:12px;color:var(--muted2)}
+.zn{width:17px;height:17px;border-radius:50%;background:var(--accent-solid);color:var(--on-accent);display:grid;place-items:center;font-size:11px;font-weight:700;font-family:var(--font-mono);flex:none}
+.ztag{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);font-weight:500}
+
+/* ── 区① 一句话 ── */
+.headline{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding:6px 0 2px}
+.headline .big{font-size:34px;font-weight:700;font-family:var(--font-mono);color:var(--danger-txt);line-height:1.1;letter-spacing:-.01em}
+.headline .say{font-size:15px;color:var(--txt);font-weight:600}
+.headline .sub{font-size:12.5px;color:var(--muted2)}
+.margin-bar{margin-top:12px;height:22px;border-radius:6px;background:rgba(226,235,245,.09);position:relative;overflow:hidden;max-width:760px}
+.margin-bar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--c-capacity),var(--danger-txt));width:99.57%}
+.margin-bar b{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:12px;font-family:var(--font-mono);color:#fff}
+.mb-cap{font-size:12px;color:var(--muted2);margin-top:5px;display:flex;gap:16px;flex-wrap:wrap}
+
+/* ── 三槽卡 ── */
+.cards{display:flex;flex-direction:column;gap:10px}
+.card{border:1px solid var(--line2);border-radius:10px;background:rgba(226,235,245,.04);overflow:hidden}
+.card.hot{border-color:rgba(240,180,184,.55);background:rgba(240,180,184,.06)}
+.slot{display:grid;grid-template-columns:64px 1fr auto;gap:12px;padding:9px 13px;align-items:baseline;border-bottom:1px solid var(--line)}
+.slot:last-of-type{border-bottom:none}
+.slot .k{font-size:12px;color:var(--muted2);font-weight:500;white-space:nowrap}
+.slot .v{font-size:13px;color:var(--txt)}
+.slot .v em{font-style:normal;font-family:var(--font-mono);color:var(--warn-txt);font-weight:600}
+.slot .v s{color:var(--muted2);text-decoration-thickness:1px}
+.slot .n{font-family:var(--font-mono);font-size:12.5px;color:var(--muted);white-space:nowrap}
+.slot.q .v{font-weight:600}
+.slot.q .k{color:var(--danger-txt)}
+.slot.c .k{color:var(--warn-txt)}
+.slot.a .k{color:var(--ok-txt)}
+.nofix{color:var(--muted2)}
+.nofix b{color:var(--warn-txt);font-weight:600}
+
+/* ── 第二层：溯源，点开才看 ── */
+details.trace{border-top:1px solid var(--line2);background:rgba(0,0,0,.16)}
+details.trace summary{cursor:pointer;list-style:none;font-size:12px;color:var(--accent-txt);padding:7px 13px}
+details.trace summary::before{content:"▸ ";}
+details.trace[open] summary::before{content:"▾ ";}
+.tbody{padding:2px 13px 12px;display:flex;flex-direction:column;gap:9px}
+.trow{display:grid;grid-template-columns:92px 1fr;gap:11px;font-size:12px;align-items:baseline}
+.trow .tk{color:var(--muted2);font-family:var(--font-mono);font-size:11.5px}
+.trow .tv{color:var(--muted);font-family:var(--font-mono);font-size:11.5px;word-break:break-all}
+.trow .tv .cite{color:var(--accent-txt)}
+.chip{display:inline-block;font-size:11.5px;padding:1px 6px;border-radius:5px;margin-right:4px;font-family:var(--font-mono)}
+.chip.real{background:rgba(145,210,160,.15);color:var(--ok-txt)}
+.chip.syn{background:rgba(210,176,76,.16);color:var(--warn-txt)}
+.chip.gap{background:rgba(240,180,184,.14);color:var(--danger-txt)}
+
+/* ── 七因子 ── */
+.fac{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+@media(max-width:900px){.fac{grid-template-columns:repeat(3,1fr)}}
+.f{border:1px solid var(--line2);border-radius:8px;padding:8px 9px;background:rgba(226,235,245,.035);display:flex;flex-direction:column;gap:3px}
+.f.over{border-color:rgba(240,180,184,.55);background:rgba(240,180,184,.08)}
+.f .fn{font-size:12px;color:var(--muted2)}
+.f .fv{font-size:19px;font-weight:700;font-family:var(--font-mono);line-height:1.15}
+.f.over .fv{color:var(--danger-txt)}
+.f .fb{height:3px;border-radius:3px;background:rgba(226,235,245,.12);position:relative;margin-top:2px}
+.f .fb i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--c-capacity)}
+.f.over .fb i{background:var(--danger-txt)}
+.f .fl{font-size:11.5px;color:var(--muted2);font-family:var(--font-mono)}
+
+/* ── 表 ── */
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{text-align:left;font-weight:500;color:var(--muted2);font-size:12px;padding:0 8px 6px;border-bottom:1px solid var(--line2);white-space:nowrap}
+.tbl td{padding:6px 8px;border-bottom:1px solid var(--line);color:var(--muted)}
+.tbl tbody tr:last-child td{border-bottom:none}
+.tbl td:first-child{color:var(--txt)}
+.tbl .n{text-align:right;font-family:var(--font-mono);white-space:nowrap}
+.pill{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:6px;white-space:nowrap}
+.pill.mine{background:rgba(76,144,240,.18);color:var(--accent-txt)}
+.pill.other{background:rgba(226,235,245,.07);color:var(--muted2)}
+.pill.d{background:rgba(240,180,184,.14);color:var(--danger-txt)}
+
+.foot{font-size:12px;color:var(--muted2);line-height:1.85;border-top:1px solid var(--line);padding-top:12px}
+.foot b{color:var(--muted)}
+.note{font-size:12px;color:var(--muted2);margin:9px 0 0;line-height:1.7}
+.note b{color:var(--warn-txt)}
+.lead{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+</style>
+
+<div class="top">
+  <span class="ttl">产能推演</span>
+  <span class="who">常州基地</span>
+  <span class="crumb">往后 30 天 · 阈值 85</span>
+  <span class="right">
+    <span class="tag mono">本基地在手 170 单</span>
+    <span class="tag mono">已承诺 838,896 套</span>
+    <span class="tag syn">七因子读数 = 合成，非实测</span>
+  </span>
+</div>
+
+<div class="wrap">
+
+  <!-- ══ 区① 一句话：问题是什么 ══ -->
+  <section class="panel">
+    <div class="hd">
+      <span class="ztag"><span class="zn">1</span>你这个基地现在怎么样</span>
+      <h3>化成柜位的余量只剩 0.43%</h3>
+      <span class="r">全网 13 个基地里，常州的负荷是最高的一个</span>
+    </div>
+    <div class="headline">
+      <span class="big">718</span>
+      <span class="say">套 / 天 —— 这就是常州化成环节今天全部的余量</span>
+      <span class="sub">再多接 719 套/天，化成就排不下</span>
+    </div>
+    <div class="margin-bar"><i></i><b>已占 99.57%</b></div>
+    <div class="mb-cap">
+      <span>产能 <b class="mono">167,486</b> 套/天</span>
+      <span>已排 <b class="mono">166,768</b> 套/天</span>
+      <span>= 1,849 个化成柜位 × 93 套/柜/天</span>
+      <span>负荷率 <b class="mono">88%</b>（全网最高，次高厦门 85）</span>
+    </div>
+  </section>
+
+  <!-- ══ 区② 三槽卡 ══ -->
+  <section class="panel">
+    <div class="hd">
+      <span class="ztag"><span class="zn">2</span>要你拿主意的三件事</span>
+      <h3>问题 · 根因 · 怎么办</h3>
+      <span class="r">每张卡就这三行；口径与出处收在「怎么知道的」里</span>
+    </div>
+    <p class="lead">按〔不做的代价〕排序。系统不给推荐——排序可换，选择是你的。</p>
+
+    <div class="cards">
+
+      <!-- 卡 1 -->
+      <div class="card hot">
+        <div class="slot q"><span class="k">问题</span>
+          <span class="v">化成工序已越线：紧度 <em>90</em>，红线 85</span>
+          <span class="n">第 1 天起</span></div>
+        <div class="slot c"><span class="k">根因</span>
+          <span class="v">1,849 个化成柜位排产已占 <em>99.57%</em>，而在手 170 单里有 <em>28</em> 单的交期落在同一周</span>
+          <span class="n">柜位数 · 排产表</span></div>
+        <div class="slot a"><span class="k">怎么办</span>
+          <span class="v">① 把 3 张储能单挪到眉山（余量 21%）　② 化成节拍 93→96 套/柜/天　③ 与广汽谈 2 天顺延</span>
+          <span class="n">3 条 · 最快 1 天</span></div>
+        <details class="trace"><summary>怎么知道的 · 4 项</summary><div class="tbody">
+          <div class="trow"><span class="tk">口径</span><span class="tv"><span class="chip mine">本基地</span>scope=BASE · baseId=changzhou · horizon=30 · threshold=85</span></div>
+          <div class="trow"><span class="tk">产能出处</span><span class="tv"><span class="chip real">真值</span>process=化成 · unitKind=化成柜位 · units=1849 · unitDailyThroughput=93 → capacityPerDay=167,486.12</span></div>
+          <div class="trow"><span class="tk">需求出处</span><span class="tv"><span class="chip real">真值</span>requiredPerDay=166,768 · shortfallPerDay=0 · binding=false</span></div>
+          <div class="trow"><span class="tk">紧度 90</span><span class="tv"><span class="chip syn">合成</span>七因子读数今天由本体结构派生，<b>不是产线实测</b>；柜位/节拍/排产量是真值</span></div>
+        </div></details>
+      </div>
+
+      <!-- 卡 2 -->
+      <div class="card">
+        <div class="slot q"><span class="k">问题</span>
+          <span class="v">良率波动紧度 <em>68</em>，是常州七因子里第二高</span>
+          <span class="n">未越线</span></div>
+        <div class="slot c"><span class="k">根因</span>
+          <span class="v"><s>说不出</s>　—— 本体里没有常州分批次良率的承载物，只有基地级 OEE 指数 0.8279</span>
+          <span class="n">缺 1 类数据</span></div>
+        <div class="slot a"><span class="k">怎么办</span>
+          <span class="v nofix"><b>今天没有对策</b>　—— 根因说不出，就给不出有根据的动作。这是结论，不是页面没加载出来</span>
+          <span class="n">0 条</span></div>
+        <details class="trace"><summary>怎么知道的 · 3 项</summary><div class="tbody">
+          <div class="trow"><span class="tk">口径</span><span class="tv"><span class="chip mine">本基地</span>常州 · 七因子矩阵行</span></div>
+          <div class="trow"><span class="tk">有的</span><span class="tv"><span class="chip real">真值</span>Base.oeeIndex=0.827867（基地级汇总）</span></div>
+          <div class="trow"><span class="tk">缺的</span><span class="tv"><span class="chip gap">无承载</span>批次级良率 / 工序级不良码 / 返工工时 —— 三项本体里都没有对象承载。<b>补齐后这一格才有根因</b></span></div>
+        </div></details>
+      </div>
+
+      <!-- 卡 3 -->
+      <div class="card">
+        <div class="slot q"><span class="k">问题</span>
+          <span class="v">这次波及 <em>127</em> 单 / <em>730,203</em> 套 / <em>17</em> 家客户，合计 <em>136.27 亿</em></span>
+          <span class="n">全网口径</span></div>
+        <div class="slot c"><span class="k">根因</span>
+          <span class="v">其中真正压在常州的是 <em>3</em> 张（见下表）；其余是别的基地的卡被算进了同一个汇总</span>
+          <span class="n">口径混了</span></div>
+        <div class="slot a"><span class="k">怎么办</span>
+          <span class="v">先按下表只看常州那几张；<s>全网 136.27 亿</s> 这个数<b>不该出现在你的屏上</b></span>
+          <span class="n">已标口径</span></div>
+        <details class="trace"><summary>怎么知道的 · 这是今天最重的一条缺陷</summary><div class="tbody">
+          <div class="trow"><span class="tk">实测</span><span class="tv"><span class="chip gap">口径丢失</span>传 baseId=changzhou，回包仍是 scope=ALL，scopeNote=「全网（未指定基地·跨全部基地取越线卡）」，首卡 base=江门</span></div>
+          <div class="trow"><span class="tk">后果</span><span class="tv">问常州拿到别的基地的卡，而屏上一个字都看不出来 —— 你会拿别人的数做自己的决定</span></div>
+          <div class="trow"><span class="tk">已有</span><span class="tv"><span class="chip real">真值</span>后端 BASE/ALL 两条返回路都带 scope，契约里也声明了；<b>缺的是屏上认它</b></span></div>
+        </div></details>
+      </div>
+
+    </div>
+    <p class="note">「怎么办」给不出时<b>明写「今天没有对策」</b>——把它留白，会被读成页面没加载出来。</p>
+  </section>
+
+  <!-- ══ 区③ 七因子 ══ -->
+  <section class="panel">
+    <div class="hd">
+      <span class="ztag"><span class="zn">3</span>七个因子哪个先顶到红线</span>
+      <h3>常州 · 阈值 85</h3>
+      <span class="r">越线的才是要管的；其余六个只是背景</span>
+    </div>
+    <div class="fac">
+      <div class="f over"><span class="fn">瓶颈工序</span><span class="fv">90</span><span class="fb"><i style="width:90%"></i></span><span class="fl">越线 +5</span></div>
+      <div class="f"><span class="fn">良率波动</span><span class="fv">68</span><span class="fb"><i style="width:68%"></i></span><span class="fl">还差 17</span></div>
+      <div class="f"><span class="fn">人力工时</span><span class="fv">64</span><span class="fb"><i style="width:64%"></i></span><span class="fl">还差 21</span></div>
+      <div class="f"><span class="fn">物料齐套</span><span class="fv">64</span><span class="fb"><i style="width:64%"></i></span><span class="fl">还差 21</span></div>
+      <div class="f"><span class="fn">物流时长</span><span class="fv">64</span><span class="fb"><i style="width:64%"></i></span><span class="fl">还差 21</span></div>
+      <div class="f"><span class="fn">设备 OEE</span><span class="fv">63</span><span class="fb"><i style="width:63%"></i></span><span class="fl">还差 22</span></div>
+      <div class="f"><span class="fn">换型损失</span><span class="fv">63</span><span class="fb"><i style="width:63%"></i></span><span class="fl">还差 22</span></div>
+    </div>
+    <p class="note">这七个数<b>是合成的，不是产线实测</b>。柜位数 1,849、节拍 93 套/柜/天、已排 166,768 套/天 —— 这三个是真值。</p>
+  </section>
+
+  <!-- ══ 区④ 落在谁头上 ══ -->
+  <section class="panel">
+    <div class="hd">
+      <span class="ztag"><span class="zn">4</span>会晚的是谁的单</span>
+      <h3>按口径分开：常州的 / 别的基地的</h3>
+      <span class="r">同一张单可能同时压两个基地，别相加</span>
+    </div>
+    <table class="tbl">
+      <thead><tr><th>订单</th><th>客户</th><th>型号</th><th class="n">数量</th><th>交期</th><th class="n">会晚</th><th>压在哪</th></tr></thead>
+      <tbody>
+        <tr><td>SO-900269</td><td>广汽埃安</td><td>方形-NCM</td><td class="n">2,941</td><td>2026-06-13</td><td class="n">3 天</td>
+          <td><span class="pill mine">常州 · 瓶颈工序 98</span><span class="pill other">金华 · OEE 96</span></td></tr>
+        <tr><td>SO-900321</td><td>蔚来汽车</td><td>2170-NCM</td><td class="n">1,586</td><td>2026-06-12</td><td class="n">3 天</td>
+          <td><span class="pill other">武汉 · 良率 96</span><span class="pill other">厦门 · OEE 96</span></td></tr>
+        <tr><td>SO-900487</td><td>宇通客车</td><td>方形-NCM</td><td class="n">4,167</td><td>2026-06-12</td><td class="n">3 天</td>
+          <td><span class="pill other">成都 · OEE 96</span></td></tr>
+      </tbody>
+    </table>
+    <p class="note">上表 3 张里<b>只有 1 张真的压在常州</b>。今天这一屏把 127 单的汇总原样给你，而其中大部分与常州无关——
+    <b>这正是「问常州拿到江门的卡」那条缺陷在订单层的样子</b>。</p>
+  </section>
+
+  <p class="foot">
+    <b>这一屏的三条规矩：</b><br>
+    ① <b>每个数自带口径</b> —— <span class="pill mine">本基地</span> 与 <span class="pill other">别的基地</span> 一眼分得开，
+    分不开的宁可不显示。②<b>第一层只放三样</b>：问题是什么 · 根因 · 怎么办；口径、公式、规则码、承载物清单
+    全部收进「怎么知道的」，点开才看——<b>第二层不是垃圾桶，是证据库，那里应当更全</b>。
+    ③ <b>诚实位</b>：<s>删除线</s> = 这次算不出来，不是 0，也不是「无变化」；〔合成〕= 本体结构派生，不是产线实测。<br>
+    数据取自真后端 <span class="mono">SEED_DEMO=1</span> 实测：13 基地 / 常州 170 单 / 已承诺 838,896 套 /
+    化成 1,849 柜位 × 93 套 = 167,486.12 套/天 vs 已排 166,768 套/天。
+  </p>
+</div>
