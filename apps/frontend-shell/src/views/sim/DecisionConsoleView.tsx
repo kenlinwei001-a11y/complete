@@ -1036,9 +1036,11 @@ export default function DecisionConsoleView() {
 
                   ── 为什么非有不可（这是「屏上说谎」的一种，不是锦上添花）──────────────
                   上面那两句（「一格都没改动」/「0 条结论因此改变」）都是**真的**，
-                  但它们**只在这一段时间上为真**：实测同一条冲击（`+12.0336 delta @tick1`）
+                  但它们**只在这一段时间上为真**：**实测于 2026-09-11**（真后端 `SEED_DEMO=1` ·
+                  seed 42 · 种子世界 `sims_demo_seed_world`），同一条冲击（`+12.0336 delta @tick1`）
                   在第 3 拍上与对照还差 2.4087，推到第 30 天只剩 0.0763 —— 差 31.6 倍，
-                  **两个读数都对**（取证：`docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.4）。
+                  **两个读数都对**（取证全文：`docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.4；
+                  复验 `POST /a/v1/sim/sessions/sims_demo_seed_world/drill` 只换 `horizonDays` 发两次）。
                   而这一段有多长（`HORIZON_DAYS`）**屏上一处都没写、也改不了**。
                   ⇒ 用户读到的是「我加的事没用」，真相是「你的事被一段看不见的时间拉平了」。
                   **不是写了假话，是漏掉了让那句话成立的前提** —— 补的就是这一句。

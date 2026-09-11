@@ -310,10 +310,12 @@ export const ROUTE_NO_NAV: Record<string, string> = {
  *   「两条同名条目指向两个不同页面，用户不知道点哪个」）。
  *   **那笔账一半已还一半在长**：`decision-play` 确实退出了导航（见 `ROUTE_NO_NAV`），
  *   而「统一推演控制台 / 推演沙盘」这一对是同一个形态换了主角。
- *   代价不是「不好看」：`docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.4 实测，
+ *   代价不是「不好看」：**实测于 2026-09-11**（真后端 `SEED_DEMO=1` · seed 42 ·
+ *   种子世界 `sims_demo_seed_world`；取证全文 `docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.4），
  *   这三页对同一件事的时间口径不同（一个按天一次算完、一个按拍逐步推），
  *   **同一条冲击在两页上能差 31.6 倍，而两个读数都对** —— 点错一条，
  *   拿到的是一个差 31.6 倍的读数，屏上没有任何一处提示他点错了。
+ *   复验：`POST /a/v1/sim/sessions/sims_demo_seed_world/drill` 同一算例只换 `horizonDays` 发两次。
  * **Y**：每条带一行副题，写明**它答哪一问**，让人在导航上就能判断该点哪个。
  *
  * ══ 为什么是**副题**而不是**改名**（不是偷懒，是改名会当场咬红别处）══════════════
