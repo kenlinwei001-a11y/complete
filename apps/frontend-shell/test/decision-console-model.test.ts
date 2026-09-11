@@ -25,6 +25,7 @@ import {
   subjectScopeFor,
   targetIdOf,
   topCustomers,
+  windowPremiseText,
   type BaseCard,
   type Mitigation,
 } from "@/views/sim/decisionConsoleModel";
@@ -588,5 +589,96 @@ describe("⑦ 诚实位：三态分得开", () => {
       riskDataMode: "LIVE",
     });
     expect(notes.length).toBe(0);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * ⑧ WO-NAV-DECAY-HONESTY · 「没改动」这句话的**前提**必须上屏（`windowPremiseText`）
+ *
+ * 它防的是屏上哪一句错话：屏上那两句（「一格都没改动」/「0 条结论因此改变」）
+ * **都是真的**，但只在**这一段时间**上为真 —— 实测同一条冲击在第 3 拍上与对照差 2.4087，
+ * 推到第 30 天只剩 0.0763（差 31.6 倍，两个读数都对；取证
+ * `docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.4）。而这一段有多长，
+ * 屏上此前**一处都没写**。⇒ 用户读到「我加的事没用」，真相是「被一段看不见的时间拉平了」。
+ *
+ * ⚠ 本组里最要紧的是 ⑧-3：**它咬的是「不许写死倍数」这条纪律本身**。
+ *   写死的数不会自己失效 —— 引擎哪天调一次系数，屏上那句话就成了假话，而没有任何东西会红。
+ * ══════════════════════════════════════════════════════════════════════════════ */
+describe("⑧ WO-NAV-DECAY-HONESTY · 「没改动」的前提句", () => {
+  const rep = (over: Partial<DrillReport>): DrillReport =>
+    ({
+      worldId: "w",
+      forkedFromStateId: null,
+      horizonDays: 30,
+      tickDays: 1,
+      ticks: 30,
+      events: [],
+      findings: [],
+      totalByKind: {},
+      truncated: false,
+      appliedLimitPerKind: 50,
+      degraded: [],
+      appliedStateEffects: [],
+      solverRuns: [],
+      summary: { allFailed: false, trustworthy: false, dataMode: "PARTIAL", text: "" },
+      ...over,
+    }) as DrillReport;
+
+  it("⑧-1 窗口的两个数**现取自回包**，不是写死的常量（换一份回包，屏上那句话必须跟着变）", () => {
+    // 判据不是「有没有这句话」，是「这句话里的数会不会跟着回包走」——
+    // 写死 30 的话，下面这条 7 天 / 7 步的回包会打出一句与事实不符的话，而类型系统看不见。
+    const a = windowPremiseText(rep({ horizonDays: 30, ticks: 30 }))!;
+    const b = windowPremiseText(rep({ horizonDays: 7, ticks: 7 }))!;
+    expect(a, "30 天那份没把窗口说出来").toContain("往后 30 天");
+    expect(a).toContain("推了 30 步");
+    expect(b, "换一份 7 天的回包，屏上还在说 30 天 ⇒ 这个数是写死的").toContain("往后 7 天");
+    expect(b).toContain("推了 7 步");
+    expect(b).not.toContain("30");
+  });
+
+  it("⑧-2 没算过就不说（没结果时先解释一个不存在的结论 = 无端吓唬人）", () => {
+    expect(windowPremiseText(null)).toBeNull();
+  });
+
+  it("⑧-3 ⛔ **倍数一律不许出现** —— 逐拍轨迹今天不在回包里，算不出来的数不许写死", () => {
+    const t = windowPremiseText(rep({}))!;
+    // 金丝雀：先证明这把尺子是活的 —— 一个我确定在这句话里的串必须命中。
+    // 它若也不中，报「量法坏了」，⛔ 不许读成「文案很干净」。
+    expect(t, "金丝雀不中 ⇒ 抽取坏了，下面的否定结论一律作废").toContain("往后");
+    for (const forbidden of ["2.4087", "0.0763", "31.6", "倍"]) {
+      expect(t, `屏上出现了写死的倍数「${forbidden}」—— 引擎调一次系数它就是假话，而没有东西会红`).not.toContain(
+        forbidden,
+      );
+    }
+  });
+
+  it("⑧-4 冲击落地点不在第 0 拍时，要说清「从它落地算起还往后看了多久」", () => {
+    const eff = (startTick: number, applied: boolean) => ({
+      eventKind: "MATERIAL_REPRICE" as const,
+      targetObjectId: "obj_material_pos_lfp",
+      targetStateVar: "priceShock",
+      mode: "delta" as const,
+      magnitude: 15,
+      startTick,
+      applied,
+      rawMagnitude: 15,
+      magnitudeBasis: "幅度键本身即百分点，1:1 不换算",
+      targetLabel: "磷酸铁锂正极",
+      rangePct: 15,
+      observedRange: 100,
+      downstream: ["Model.costPressure ×0.65"],
+    });
+    expect(windowPremiseText(rep({ appliedStateEffects: [eff(4, true)] }))!).toContain("往后看了 26 步");
+    // 没打上的那条不算数：算进来会把「还往后看了多久」说小，等于拿一条没发生的事当起点。
+    expect(windowPremiseText(rep({ appliedStateEffects: [eff(4, false)] }))!).not.toContain("往后看了");
+    // 落点就在第 0 拍 ⇒ 这句话与「一共推了 N 步」重复，不说。
+    expect(windowPremiseText(rep({ appliedStateEffects: [eff(0, true)] }))!).not.toContain("往后看了");
+  });
+
+  it("⑧-5 不许写成技术解释：黑名单词一个都不许上屏（用户是基地负责人，不是工程师）", () => {
+    const t = windowPremiseText(rep({}))!;
+    for (const w of ["衰减系数", "判据读数", "传导核", "findingsChanged", "tick", "稀释", "**"]) {
+      expect(t, `屏上出现了开发黑话/未渲染 markdown「${w}」`).not.toContain(w);
+    }
   });
 });
