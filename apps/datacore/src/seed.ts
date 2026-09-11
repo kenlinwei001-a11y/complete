@@ -558,12 +558,23 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "costPressure",
     coefficient: 0.9,
     delayTicks: 0,
-    description: "型号成本上抬 ⇒ 订这个型号的单子毛利被吃掉（型号成本 × 0.9 = 订单成本压力）",
+    description: "型号成本上抬 ⇒ 订这个型号的**在手**单子毛利被吃掉（型号成本 × 0.9 = 订单成本压力；已交付关闭的单不再受涨价影响）",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // ⚠ **这不是给这条率分摊份额**（上一版注释说的「出边不加权」那条理由仍然完全成立）——
+    // 它是 0/1 **闸门**：决定这张单**该不该**收到这个率，不改率本身的大小。
+    //
+    // 修前实测（真后端 SEED_DEMO=1·seed 42）：本条 `weightRef: null` ⇒ 一次原料涨价
+    // 把 **350 张 `COMPLETED`（已交付关闭）** 的单也推了一遍 —— 它们料已耗用、成本已锁定、
+    // 钱已结，占订单簿金额 **65.55%（298.01 亿 / 454.64 亿）**。屏上「被推动 500 张 ·
+    // 占订单簿 100.0%」正是这么来的，而那个 100% 又被当成算毛利的分母。
+    //
+    // 口径出处是**既有登记册** `ON_HAND_ORDER_STATUSES`（`contracts/order-status.ts`），
+    // 不是本文件发明的系数（RL5）。⚠ `IN_PRODUCTION` 今天仍按**全额**推：
+    // 三档需要「已投料比例」，该数据全仓零出处 ⇒ 如实留缺口，不为它编一个 0.5。
+    weightRef: { basis: "target_on_hand_gate" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
