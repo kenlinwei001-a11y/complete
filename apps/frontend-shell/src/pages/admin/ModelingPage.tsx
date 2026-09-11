@@ -14,6 +14,7 @@ import {
   patchModelingDraft,
   publishModelingDraft,
   suggestModeling,
+  upsertObjectTypeConstraints,
   type ModelingDraftVM,
 } from "@/api/endpoints";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -76,6 +77,9 @@ export default function ModelingPage() {
   const [suggestOpen, setSuggestOpen] = useState(preselect.length > 0);
   const openSuggest = (datasets: string[] = []) => { setSuggestSeed(datasets); setSuggestOpen(true); };
   const draft = drafts?.find((d) => d.id === draftId) ?? drafts?.[0];
+  // WO-UX-ONTO #2：`POST /a/v1/ontology/object-types` 本就是 upsert（实测：同 key 二次 POST
+  // 改 displayName/unit 返 201、id 不变、version 递增）——**后端已具备，屏上一直缺入口**。本状态开那个入口。
+  const [typeEditorOpen, setTypeEditorOpen] = useState(false);
 
   return (
     <div>
@@ -88,7 +92,11 @@ export default function ModelingPage() {
             </option>
           ))}
         </select>
-        <button className="btn primary sm" style={{ marginLeft: "auto" }} data-testid="modeling-new-draft" onClick={() => openSuggest()}>
+        {/* 次级动作靠右（规律 2 标题行）：主动作仍是「AI 建议草案」，本按钮排在它左侧、用次级样式。 */}
+        <button className="btn sm" style={{ marginLeft: "auto" }} data-testid="modeling-type-editor" onClick={() => setTypeEditorOpen(true)}>
+          新建 / 改类型
+        </button>
+        <button className="btn primary sm" data-testid="modeling-new-draft" onClick={() => openSuggest()}>
           {t.newDraft}
         </button>
       </div>
@@ -117,6 +125,16 @@ export default function ModelingPage() {
           )}
         </div>
       </div>
+      {typeEditorOpen && (
+        <TypeEditorModal
+          types={publishedTypes ?? []}
+          onClose={() => setTypeEditorOpen(false)}
+          onSaved={async () => {
+            setTypeEditorOpen(false);
+            await queryClient.invalidateQueries({ queryKey: ["a", "object-types"] });
+          }}
+        />
+      )}
       {suggestOpen && (
         <SuggestModal
           initialSelected={suggestSeed}
@@ -139,44 +157,287 @@ export default function ModelingPage() {
  */
 function PublishedOntologyView({ types }: { types: Awaited<ReturnType<typeof fetchObjectTypes>> }) {
   const sorted = [...types].sort((a, b) => a.key.localeCompare(b.key));
+  // WO-UX-ONTO 概览条：五个数**全部由本页已取回的 types 现算**，⛔ 无一个占位数。
+  // 口径就写在每张卡下面（诚实位）——「这个数是什么」必须和数字同屏可见，不许只留数字。
+  const domainCount = new Set(sorted.map((t) => t.domain).filter(Boolean)).size;
+  const propCount = sorted.reduce((s, t) => s + t.properties.length, 0);
+  const derivCount = sorted.reduce((s, t) => s + (t.derivedProperties?.length ?? 0), 0);
+  const noSrcCount = sorted.filter((t) => (t.sourceBindings ?? []).length === 0).length;
+
   return (
     <div data-testid="published-ontology">
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
         <strong style={{ fontSize: 14 }}>已发布本体</strong>
-        <span style={{ color: "var(--muted, #888)", fontSize: 12 }} data-testid="published-ontology-count">
+        <span style={{ color: "var(--muted)", fontSize: 12 }} data-testid="published-ontology-count">
           {sorted.length} 个对象类型（经建模链发布 · 可溯数据源）
         </span>
       </div>
-      <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+
+      {/* 概览条（规律 2）：3–5 张，每张一个真数 + 一句口径。 */}
+      <div className={styles.overview} data-testid="onto-overview">
+        <div className={styles.ovCard} data-testid="ov-types">
+          <div className={styles.ovNum}>{sorted.length}</div>
+          <div className={styles.ovLabel}>对象类型（个）</div>
+          <div className={styles.ovCaliber}>口径：已发布本体，即经建模链 publish 的类型；<b>不含</b>尚未发布的草案。</div>
+        </div>
+        <div className={styles.ovCard} data-testid="ov-domains">
+          <div className={styles.ovNum}>{domainCount}</div>
+          <div className={styles.ovLabel}>业务域（个）</div>
+          <div className={styles.ovCaliber}>口径：按类型的 domain 字段去重计数；未归域的类型不计入。</div>
+        </div>
+        <div className={styles.ovCard} data-testid="ov-props">
+          <div className={styles.ovNum}>{propCount}</div>
+          <div className={styles.ovLabel}>属性（条）</div>
+          <div className={styles.ovCaliber}>口径：各类型 properties 条数合计，含主键；<b>不含</b>派生属性。</div>
+        </div>
+        <div className={styles.ovCard} data-testid="ov-derived">
+          <div className={styles.ovNum}>{derivCount}</div>
+          <div className={styles.ovLabel}>派生属性（条）</div>
+          <div className={styles.ovCaliber}>口径：由公式算出的属性，<b>不是</b>源字段直接映射来的。</div>
+        </div>
+        <div className={`${styles.ovCard} ${noSrcCount > 0 ? styles.ovCardGap : ""}`} data-testid="ov-nosrc">
+          <div className={styles.ovNum}>{noSrcCount}</div>
+          <div className={styles.ovLabel}>无来源类型（个）</div>
+          <div className={styles.ovCaliber}>口径：sourceBindings 为空 ⇒ 追不回数据集（provenance 断链），下表该行显「无来源」。</div>
+        </div>
+      </div>
+
+      <table className={styles.denseTable}>
         <thead>
-          <tr style={{ textAlign: "left", color: "var(--muted, #888)" }}>
-            <th style={{ padding: "4px 8px" }}>类型</th>
-            <th style={{ padding: "4px 8px" }}>域</th>
+          <tr>
+            <th>类型</th>
+            <th>域</th>
             {/* WO-UNIT-MEANING：格内是计数（properties.length / derivedProperties.length），列头须点明"数(个)"，
                 否则「属性 12」易被读成属性值本身。计数字段无 unit 契约可消费，就近标注。 */}
-            <th style={{ padding: "4px 8px" }}>属性数(个)</th>
-            <th style={{ padding: "4px 8px" }}>派生数(个)</th>
-            <th style={{ padding: "4px 8px" }}>来源数据集（provenance）</th>
+            <th>属性数(个)</th>
+            <th>派生数(个)</th>
+            <th>来源数据集（provenance）</th>
           </tr>
         </thead>
         <tbody>
           {sorted.map((ty) => (
-            <tr key={ty.key} style={{ borderTop: "1px solid var(--border, #2a2a2a)" }} data-testid={`pub-type-${ty.key}`}>
-              <td style={{ padding: "4px 8px" }}>
+            <tr key={ty.key} data-testid={`pub-type-${ty.key}`}>
+              <td>
                 <span style={{ fontWeight: 600 }}>{ty.displayName}</span>{" "}
-                <span style={{ color: "var(--muted, #888)" }}>{ty.key}</span>
+                <span style={{ color: "var(--muted)" }}>{ty.key}</span>
               </td>
-              <td style={{ padding: "4px 8px" }}>{ty.domain ?? "—"}</td>
-              <td style={{ padding: "4px 8px" }}>{ty.properties.length}</td>
-              <td style={{ padding: "4px 8px" }}>{ty.derivedProperties?.length ?? 0}</td>
-              <td style={{ padding: "4px 8px" }} data-testid={`pub-type-src-${ty.key}`}>
-                {(ty.sourceBindings ?? []).map((b) => b.dataset).join(", ") || <span style={{ color: "var(--danger-txt, #e55)" }}>无来源</span>}
+              <td>{ty.domain ?? "—"}</td>
+              <td>{ty.properties.length}</td>
+              <td>{ty.derivedProperties?.length ?? 0}</td>
+              <td data-testid={`pub-type-src-${ty.key}`}>
+                {(ty.sourceBindings ?? []).map((b) => b.dataset).join(", ") || <span style={{ color: "var(--danger-txt)" }}>无来源</span>}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      {/* 底部元信息行 + 下钻出口（规律 3）：三个目的地**今天都已存在**，⛔ 未新建任何屏。 */}
+      <div className={styles.metaRow} data-testid="onto-meta">
+        <span>数据源：本体已发布快照（GET /a/v1/ontology/object-types）· 计数为本次读取的即时值，非缓存</span>
+        <span className={styles.drillRow}>
+          <Link className={styles.drill} to="/admin/object-types" data-testid="drill-object-types">查看对象/类型浏览 →</Link>
+          <Link className={styles.drill} to="/admin/domains" data-testid="drill-domains">查看域管理 →</Link>
+          <Link className={styles.drill} to="/admin/ontology-relations" data-testid="drill-relations">查看本体关系 →</Link>
+        </span>
+      </div>
     </div>
+  );
+}
+
+/**
+ * WO-UX-ONTO #2 · 新建 / 改对象类型入口。
+ *
+ * **这不是新能力，是补入口**：`POST /a/v1/ontology/object-types` 早就是 upsert，
+ * 真后端实测（本单）——新建最小类型 **201**；同 key 二次 POST 改 `displayName` + `unit` 仍 **201**，
+ * 读回即为新值。屏上此前没有任何地方能走这条路（全仓搜「新建类型 / createObjectType」= 0 命中，
+ * 金丝雀：同法搜「新建域」命中 DomainsPage）。
+ *
+ * ⚠⚠ **整份 upsert，不是 PATCH**：漏传 `properties` 会把该类型的属性**整表抹掉**。
+ * 故本弹窗在「改类型」模式下，把读回来的 `properties / derivedProperties / sourceBindings /
+ * domain / constraintRefs` **原样回传**，只覆盖用户真正改动的那几格 —— 与 `endpoints.ts`
+ * 里 `upsertObjectTypeConstraints` 顶注写的是同一条纪律（那里也拒绝提供"只传一半"的便捷重载）。
+ *
+ * ⚠ **单位词表不在前端**：合法单位是 datacore `domain.ts` 的编译期闭合联合（`PROPERTY_UNITS`），
+ * **没有任何只读端点下发它**（本单实测：前端零处词表、contracts 零导出、无 `/ontology/units` 路由）。
+ * 故此处**不内联词表**（内联=把业务常数抄进前端，迟早与后端漂移），改为自由输入 +
+ * 后端 400 报文原样回显 —— 那条报文里带着完整可选值。
+ */
+function TypeEditorModal({
+  types,
+  onClose,
+  onSaved,
+}: {
+  types: Awaited<ReturnType<typeof fetchObjectTypes>>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [mode, setMode] = useState<"edit" | "create">("edit");
+  const { data: domainsData } = useQuery({ queryKey: ["a", "business-domains"], queryFn: fetchBusinessDomains });
+  const domains = domainsData?.domains ?? [];
+  const sorted = [...types].sort((a, b) => a.key.localeCompare(b.key));
+
+  // ── 改类型 ──
+  // ⚠ 三个表单态一律**惰性初始化成首个类型的当前真值**（不是空白，也不在渲染期 setState）：
+  // 用户一打开就看见今天生效的那份，改哪格一目了然。
+  const first = sorted[0];
+  const [editKey, setEditKey] = useState(first?.key ?? "");
+  const [editName, setEditName] = useState(first?.displayName ?? "");
+  const [editPropKey, setEditPropKey] = useState(first?.properties[0]?.propKey ?? "");
+  const [editUnit, setEditUnit] = useState(first?.properties[0]?.unit ?? "");
+  const target = sorted.find((t) => t.key === editKey);
+  // 切换目标类型时，把表单重置成该类型**当前的真值**（不是空白）。
+  const syncTarget = (key: string) => {
+    setEditKey(key);
+    const t2 = sorted.find((x) => x.key === key);
+    setEditName(t2?.displayName ?? "");
+    setEditPropKey(t2?.properties[0]?.propKey ?? "");
+    setEditUnit(t2?.properties[0]?.unit ?? "");
+  };
+
+  // ── 新建类型 ──
+  const [newKey, setNewKey] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newDomain, setNewDomain] = useState("");
+  const [newPk, setNewPk] = useState("id");
+
+  const save = useMutation({
+    mutationFn: () => {
+      if (mode === "create") {
+        return upsertObjectTypeConstraints({
+          key: newKey.trim(),
+          displayName: newName.trim(),
+          domain: newDomain || undefined,
+          properties: [{ propKey: newPk.trim(), dataType: "string", isPrimaryKey: true }],
+          derivedProperties: [],
+          sourceBindings: [],
+          constraintRefs: [],
+        });
+      }
+      if (!target) throw new Error("未选中类型");
+      // ⚠ 整份回传：只覆盖 displayName 与被选属性的 unit，其余字段**原样送回**。
+      return upsertObjectTypeConstraints({
+        key: target.key,
+        displayName: editName.trim() || target.displayName,
+        domain: target.domain,
+        properties: target.properties.map((p) =>
+          p.propKey === editPropKey ? { ...p, unit: editUnit.trim() || undefined } : p,
+        ),
+        derivedProperties: target.derivedProperties ?? [],
+        sourceBindings: target.sourceBindings ?? [],
+        constraintRefs: target.constraintRefs ?? [],
+      });
+    },
+    onSuccess: () => {
+      toast(mode === "create" ? "对象类型已创建" : "对象类型已更新", "success");
+      onSaved();
+    },
+    // 后端 400 报文里带着完整单位词表 / 校验原因 —— 原样交给 toastError，⛔ 不吞不改写。
+    onError: toastError,
+  });
+
+  const canSave =
+    mode === "create" ? newKey.trim().length > 0 && newName.trim().length > 0 && newPk.trim().length > 0 : !!target;
+
+  return (
+    <Modal title="新建 / 改对象类型" onClose={onClose} width={520}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button className={`btn sm ${mode === "edit" ? "primary" : ""}`} data-testid="type-editor-mode-edit" onClick={() => setMode("edit")}>
+          改已有类型
+        </button>
+        <button className={`btn sm ${mode === "create" ? "primary" : ""}`} data-testid="type-editor-mode-create" onClick={() => setMode("create")}>
+          新建类型
+        </button>
+      </div>
+
+      {mode === "edit" ? (
+        <>
+          <div className={styles.formRow}>
+            <label htmlFor="te-key">对象类型（{sorted.length} 个已发布）</label>
+            <select id="te-key" data-testid="type-editor-key" value={editKey} onChange={(e) => syncTarget(e.target.value)}>
+              {sorted.map((ty) => (
+                <option key={ty.key} value={ty.key}>
+                  {ty.displayName} · {ty.key}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.formRow}>
+            <label htmlFor="te-name">显示名</label>
+            <input id="te-name" data-testid="type-editor-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+          </div>
+          <div className={styles.formRow}>
+            <label htmlFor="te-prop">属性（改它的单位）</label>
+            <select
+              id="te-prop"
+              data-testid="type-editor-prop"
+              value={editPropKey}
+              onChange={(e) => {
+                setEditPropKey(e.target.value);
+                setEditUnit(target?.properties.find((p) => p.propKey === e.target.value)?.unit ?? "");
+              }}
+            >
+              {(target?.properties ?? []).map((p) => (
+                <option key={p.propKey} value={p.propKey}>
+                  {p.displayName ?? p.propKey} · 当前单位 {p.unit ?? "（未设）"}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.formRow}>
+            <label htmlFor="te-unit">单位</label>
+            <input id="te-unit" data-testid="type-editor-unit" value={editUnit} onChange={(e) => setEditUnit(e.target.value)} placeholder="如 吨 / kWh / dimensionless" />
+            <span className={styles.formHint}>
+              单位词表由后端校验，<b>本页不内联词表</b>（内联会与 datacore 漂移）。填了不认识的单位会返回 400，
+              报文里带着当前完整可选值，原样显示给你。
+            </span>
+          </div>
+          <div className={styles.formHint} style={{ marginBottom: 10 }}>
+            ⚠ 本操作是<b>整份 upsert</b>：该类型的属性 / 派生 / 来源绑定 / 约束引用会被
+            <b>原样回传</b>，只覆盖上面这两格。同 key 保存 = 改，不会新建第二个类型。
+          </div>
+        </>
+      ) : (
+        <>
+          <div className={styles.formRow}>
+            <label htmlFor="te-nkey">类型 key</label>
+            <input id="te-nkey" data-testid="type-editor-new-key" value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="如 SupplierAudit" />
+          </div>
+          <div className={styles.formRow}>
+            <label htmlFor="te-nname">显示名</label>
+            <input id="te-nname" data-testid="type-editor-new-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="如 供应商审核" />
+          </div>
+          <div className={styles.formRow}>
+            <label htmlFor="te-ndomain">业务域</label>
+            <select id="te-ndomain" data-testid="type-editor-new-domain" value={newDomain} onChange={(e) => setNewDomain(e.target.value)}>
+              <option value="">（不归域）</option>
+              {domains.map((d) => (
+                <option key={d.key} value={d.key}>
+                  {d.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.formRow}>
+            <label htmlFor="te-npk">主键属性 propKey</label>
+            <input id="te-npk" data-testid="type-editor-new-pk" value={newPk} onChange={(e) => setNewPk(e.target.value)} />
+            <span className={styles.formHint}>
+              新类型至少要有一个主键属性（dataType=string）。建完后可在本弹窗「改已有类型」里继续补单位，
+              或走「AI 建议草案 / 确定性建模」从数据集补齐属性。
+            </span>
+          </div>
+        </>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+        <button className="btn" onClick={onClose}>
+          {zh.common.back}
+        </button>
+        <button className="btn primary" data-testid="type-editor-save" disabled={!canSave || save.isPending} onClick={() => save.mutate()}>
+          保存
+        </button>
+      </div>
+    </Modal>
   );
 }
 
