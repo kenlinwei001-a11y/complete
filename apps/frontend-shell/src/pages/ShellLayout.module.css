@@ -167,7 +167,12 @@
 .navItem {
   display: flex;
   align-items: center;
-  gap: 9px;
+  /* WO-NAV-DECAY-HONESTY：`gap: 9px` 拆成两轴 —— 带副题的条目会换行，
+     行间距若跟着列间距走 9px，副题会被推得离标题老远、读起来不像同一条。
+     不带副题的条目一行到底，行间距用不上 ⇒ 对它们逐像素等价于改之前。 */
+  column-gap: 9px;
+  row-gap: 2px;
+  flex-wrap: wrap;
   padding: 8px 11px;
   border-radius: 9px;
   border: 1px solid transparent;
@@ -183,6 +188,31 @@
   background: var(--nav-active-bg);
   border-color: var(--nav-active-border);
   color: var(--nav-active-txt);
+}
+
+/**
+ * WO-NAV-DECAY-HONESTY · 导航条目副题（「这一条答哪一问」）。
+ *
+ * `flex-basis: 100%` ⇒ 在 `.navItem` 那个 wrap 容器里独占第二行；
+ * 左边距 27px = 图标 18px + 列间距 9px ⇒ 首字与上一行标题的首字对齐。
+ *
+ * ⚠ **字号不许降到 12px 以下**：`check-text-legibility.mjs` 的判据 B 是 12px 硬底，
+ *   而判据 A（尺寸加权对比度）在 12px 上要求 72/12 = 6.0 —— `--muted2` 三个主题实测
+ *   6.09 / 6.13 / 6.07，**刚好过线**。再小一档（11px）要求升到 6.55，`--muted2` 当场不达标
+ *   （门的存量清单里那一串 11px + `--muted2` 就是这么红的）。
+ * ⚠ 活跃态**跟随父级文字色**（`color: inherit`），不另写颜色：活跃 pill 的底色是
+ *   `--nav-active-bg`，在它上面继续用 `--muted2` 会糊成一片；而写死一个新颜色
+ *   又得自己去过一遍对比度判据。跟随父级 = 与标题同色，对比度由既有的活跃态保证。
+ */
+.navSub {
+  flex-basis: 100%;
+  margin-left: 27px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted2);
+}
+.navItem.active .navSub {
+  color: inherit;
 }
 
 .dot {
