@@ -150,8 +150,17 @@ export const CONSOLIDATED_INTO_SANDBOX: Record<
   // ── 四个独立推演页（原「推演」/「归因与风险」组的专用 route 入口）──────────────
   // 收进沙盘顶部的**模式切换**（决策链序：现状 → 归因 → 试一手 → 求最优 → 影响半径）。
   // 与上面五个的关键差别：这四个页**不受 `sim.sandbox` 门控**（人人可进）。
-  // 故它们在 NAV_GROUPS 里的条目**保留**，只是带 `consolidatedWhen: "sim.sandbox"` ——
-  // 沙盘开 → 隐藏（已在沙盘里）；沙盘关 → 照旧单列（否则这四个页会随沙盘一起从 IA 里蒸发）。
+  // 故它们在 NAV_GROUPS 里的条目**保留**，只是带 `consolidatedWhen: "view.sim-sandbox"` ——
+  // 沙盘这一页在 → 隐藏（已在沙盘里）；沙盘这一页不在 → 照旧单列（否则这四个页会随沙盘一起从 IA 里蒸发）。
+  //
+  // ── WO-SIM-GATE-DECOUPLE · 这个键为什么必须是**页面闸**而不是能力族总闸 ────────────
+  // 收编这件事回答的是「**宿主那一页还在不在**」：在，则单列是重复入口；不在，则单列是唯一入口。
+  // 它度量的从来就不是「推演能力开没开」。此前两者共用一个字符串，这个区别看不出来；
+  // 本单把闸拆开之后，差别立刻变成可观测的后果：
+  //   · 若仍挂能力闸 `sim.sandbox` ⇒ 把沙盘这一页退役（只关 `view.sim-sandbox`）时，
+  //     收编标记**依然命中** ⇒ 这 11 条的单列入口**不回来** ⇒ 宿主没了、入口也没了
+  //     = 正是本表反复警告的「把 IA 整理做成了功能消失」。
+  //   · 挂页面闸 `view.sim-sandbox` ⇒ 宿主一退役，11 条单列入口**自动全部回来**。收编 ≠ 删除。
   "cleanroom-attr": { via: "static-route", host: "sim-sandbox", where: "沙盘模式切换 →「归因」→ 档「净室归因」（沙盘关则回退为导航单列）" },
   "what-if": { via: "static-route", host: "sim-sandbox", where: "沙盘模式切换 →「试一手」（沙盘关则回退为导航单列）" },
   "optimize-whatif": { via: "static-route", host: "sim-sandbox", where: "沙盘模式切换 →「求最优」（沙盘关则回退为导航单列）" },
@@ -376,17 +385,22 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       //   各占一行」，恰好是仓主要求的**反面**。
       // **Y**：合并壳置于本组之首做主入口；四个台带 `consolidatedWhen` 降为壳内页签，不再单列。
       //
-      // ⚠ 为什么**不给** `feature: "sim.sandbox"`：`feature` 的语义是「暗发页，页面侧本就有 Guard」
-      //   （见 NavItemRef 定义处）。`UnifiedSimShell` **没有任何 entitlement Guard**（实测：
-      //   `grep -c "feature\|Guard" views/sim/unified/UnifiedSimShell.tsx` = 0，金丝雀 `import|export` = 20）。
-      //   填上就成了「导航里藏起来、URL 照样进得去」——把暗发做成假的。故本条不带 `feature`，
-      //   转而逐条登记在 `GROUP_CONSOLIDATION_EXEMPT`（判据⑨ 要求：组内有收编承诺时其余成员须登记）。
-      { kind: "route" as const, key: "sim-unified", label: "统一推演控制台" },
+      // ⚠ 上一版这里写的是「**为什么不给** `feature`」，原文逐字：
+      //     「`feature` 的语义是『暗发页，页面侧本就有 Guard』…`UnifiedSimShell` **没有任何
+      //       entitlement Guard**…填上就成了『导航里藏起来、URL 照样进得去』——把暗发做成假的。」
+      //   **那条理由今天到期了，不是漏改，是前提变了**：WO-SIM-GATE-DECOUPLE 已在
+      //   `App.tsx` 给 `v/sim-unified` 补上 `SimUnifiedGuard`（查 `view.sim-unified`）。
+      //   页面侧有了 Guard ⇒ `feature` 的前提满足 ⇒ 不填才是错的（填了才是「入口与页面两道闸
+      //   方向一致」，不填就成了「页面 404 而导航里还挂着一条点进去就坏的入口」）。
+      { kind: "route" as const, key: "sim-unified", label: "统一推演控制台", feature: "view.sim-unified" },
       // 旧沙盘**保留单列**：它是 `CONSOLIDATED_INTO_SANDBOX` 里 12 个键的收编宿主
       //   （那张表每条 `where` 都写着「沙盘模式切换 →…」）。把它从导航拿掉 = 那 12 页的
       //   到达路径当场断掉 —— 那是「把 IA 整理做成了功能消失」，本单硬红线禁止。
       //   两者不同名、不同页：合并壳答「这次扰动之后看哪一面」，旧沙盘答「五问」。
-      { kind: "route" as const, key: "sim-sandbox", label: "推演沙盘", feature: "sim.sandbox" },
+      //   WO-SIM-GATE-DECOUPLE：`feature` 从能力族总闸 `sim.sandbox` 改为**页面闸**
+      //   `view.sim-sandbox`（与 `App.tsx` 的 `SimSandboxGuard` 查同一个键 —— 入口与页面两道闸
+      //   必须同键，否则又是「导航藏起来、URL 进得去」）。语义方向一字未动：闸关 → 入口消失。
+      { kind: "route" as const, key: "sim-sandbox", label: "推演沙盘", feature: "view.sim-sandbox" },
       // ── WO-SIM-NAV-GROUP · 指控台四页归入本组（此前**一条都没登记**）────────────────
       //
       // **X（改之前的屏上行为·仓主真服务真浏览器实测）**：本表里 `sim-console` /
@@ -430,9 +444,11 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       //   更糟的是这四页会**悄悄退出 UX 判据的受检面**。带 `consolidatedWhen` 则两全：
       //   屏上不单列（IA 干净），名册里还在（照旧受检）。
       //
-      // ⚠ `consolidatedWhen` 的值必须**恰好是 `"sim.sandbox"`**，不许另起一个键：判据⑨ 规定
+      // ⚠ `consolidatedWhen` 的值必须**全组同一个键**，不许另起一个：判据⑨ 规定
       //   「一组里出现两个不同的 `consolidatedWhen` 值时，带 X 的成员对 Y 那条承诺同样算掏空」，
-      //   而本组既有的 `what-if`/`optimize-whatif` 用的就是 `"sim.sandbox"`。
+      //   而本组既有的 `what-if`/`optimize-whatif` 用的就是这个键。
+      //   WO-SIM-GATE-DECOUPLE 起该键是 `"view.sim-sandbox"`（此前是 `"sim.sandbox"`）——
+      //   **改的是「哪把闸」，不是「几把闸」**：全组仍只有一条收编承诺，判据⑨ 的形态一字未变。
       //
       // ⚠ **必须逐条写成对象字面量，不许缩回 `.map()` 形态**（本轮实测踩到，机器先说话）：
       //   上一版这四条是 `...[...].map((key) => ({ kind: "view" as const, key }))`。本轮先按
@@ -447,10 +463,10 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       //   现状（指控台）→ 传导识别 → 损失归因 → 方案寻优。
       // label 一律**不在本表内联** —— `kind:"view"` 项的文案取 `workspace.navigation[].label`，
       // 单一出处在后端那份 view 定义里。本仓最恨双份真相源，这里不许开第二份。
-      { kind: "view" as const, key: "sim-console", consolidatedWhen: "sim.sandbox" },
-      { kind: "view" as const, key: "sim-conduction", consolidatedWhen: "sim.sandbox" },
-      { kind: "view" as const, key: "sim-attribution", consolidatedWhen: "sim.sandbox" },
-      { kind: "view" as const, key: "sim-optimize", consolidatedWhen: "sim.sandbox" },
+      { kind: "view" as const, key: "sim-console", consolidatedWhen: "view.sim-sandbox" },
+      { kind: "view" as const, key: "sim-conduction", consolidatedWhen: "view.sim-sandbox" },
+      { kind: "view" as const, key: "sim-attribution", consolidatedWhen: "view.sim-sandbox" },
+      { kind: "view" as const, key: "sim-optimize", consolidatedWhen: "view.sim-sandbox" },
       // ── 并线单 WO-SANDBOX-UI-INTEGRATE 的一处**方向性裁决**（两条分支在此真对立）─────
       // · WO-IMPEDIMENTS-REACHABLE 要把 `chain-line-map` / `transit-flow` / `physical-topology` /
       //   `node-inspector` / `chain-impediments` 五个键**加进本组**做导航入口 ——
@@ -467,8 +483,8 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // 「决策推演不应该在导航这个位置，而是嵌入到每个需要决策的点」——route 保留（深链契约不动）。
       // ── 已收编进沙盘模式切换的四页：`consolidatedWhen` 开 → 隐藏（详见类型定义处的语义说明）──
       // 沙盘关着的租户仍看得到它们（这四页本身不受 sim.sandbox 门控，人人可进）。
-      { kind: "route" as const, key: "what-if", label: "假设推演", consolidatedWhen: "sim.sandbox" },
-      { kind: "route" as const, key: "optimize-whatif", label: "优化推演", consolidatedWhen: "sim.sandbox" },
+      { kind: "route" as const, key: "what-if", label: "假设推演", consolidatedWhen: "view.sim-sandbox" },
+      { kind: "route" as const, key: "optimize-whatif", label: "优化推演", consolidatedWhen: "view.sim-sandbox" },
     ],
   },
   // WO-ROUTE-NAV-COVERAGE：归因/影响面两页此前**零导航提及**——只能手敲 URL 才进得去。
@@ -497,12 +513,12 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发（租户本体数据 + R3 级联）。
       // WO-SANDBOX-NAV-CONSOLIDATE：已收编为沙盘「归因」模式的**模板层档**，故带 consolidatedWhen；
       // 条目**保留**（本页不受 sim.sandbox 门控）—— 沙盘关 ⇒ 照旧单列，不让页跟着沙盘蒸发。
-      { kind: "view" as const, key: "process-wait", consolidatedWhen: "sim.sandbox" },
+      { kind: "view" as const, key: "process-wait", consolidatedWhen: "view.sim-sandbox" },
       // WO-R9-NAVREACH：采购四段腿分解（「该找谁」页）——回答「这批料晚在哪一段、今天该打哪通电话」。
       // kind:"view" 而非 route —— 它经后端 BUILTIN_VIEWS 下发
       // （租户本体数据 + R3 级联 + `view.options` 只有 ViewConfig 这条路送得到，见后端该行注释）。
       // WO-SANDBOX-NAV-CONSOLIDATE：已收编为沙盘「归因」模式的**责任方档**（同上，条目保留做回退）。
-      { kind: "view" as const, key: "procurement-legs", consolidatedWhen: "sim.sandbox" },
+      { kind: "view" as const, key: "procurement-legs", consolidatedWhen: "view.sim-sandbox" },
       // WO-PROCESS-INSTANCE：流程卡点（**实例层**）——与 `process-wait` 是**两页**，不是重复入口：
       //   · `process-wait`（模板层）答「这**类**流程通常在等哪一类东西」（65 条定义的 waitKind，平均值）；
       //   · `process-stuck`（实例层）答「**这一张单**此刻卡在第几步、等谁、等了多久」（现场值）。
@@ -516,9 +532,9 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // ⚠ 收编后 R3 守卫**没有丢**：沙盘里那一档走的是与 `ViewPage` 逐字同构的双闸分发
       //   （features 有没有 `view.process-stuck` + `workspace.views` 有没有它），
       //   暗发键关着时**连档位按钮都不渲染**（不是禁用按钮 —— 禁用同样泄露存在性）。
-      { kind: "view" as const, key: "process-stuck", consolidatedWhen: "sim.sandbox" },
-      { kind: "route" as const, key: "cleanroom-attr", label: "净室归因", consolidatedWhen: "sim.sandbox" },
-      { kind: "route" as const, key: "disruption-radius", label: "断供影响半径", consolidatedWhen: "sim.sandbox" },
+      { kind: "view" as const, key: "process-stuck", consolidatedWhen: "view.sim-sandbox" },
+      { kind: "route" as const, key: "cleanroom-attr", label: "净室归因", consolidatedWhen: "view.sim-sandbox" },
+      { kind: "route" as const, key: "disruption-radius", label: "断供影响半径", consolidatedWhen: "view.sim-sandbox" },
     ],
   },
   { title: "台账与地图", items: ["order", "geo-map"].map((key) => ({ kind: "view" as const, key })) },
