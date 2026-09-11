@@ -7,6 +7,45 @@
  * ⚠ **最小 12px** —— 门 `check-text-legibility` 判据：10px 中文在本调色板内无解。
  */
 
+/* ══ 外壳 ═══════════════════════════════════════════════════════════════════
+   顶栏要横跨左栏与正文，故 `.wrap`（两栏网格）之上再包一层。
+   `container-type: inline-size` 是**④ 那处排版被挤的真正修法**，理由见下面 `.opts`。 */
+.shell {
+  container-type: inline-size;
+  container-name: c0828;
+}
+
+/* ── 页内顶栏 ─────────────────────────────────────────────── */
+.topbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 14px; border-bottom: 1px solid var(--line);
+  background: var(--panel2); font-size: 12px; color: var(--muted);
+}
+.topTitle { font-size: 13px; font-weight: 700; color: var(--txt); }
+.scopeBox { display: inline-flex; align-items: center; gap: 6px; }
+.scopeLbl { color: var(--muted2); }
+.scopeSel {
+  font: inherit; font-family: var(--font-sans); color: var(--txt);
+  background: var(--panel); border: 1px solid var(--line2); border-radius: 7px;
+  padding: 3px 8px; min-width: 9em;
+}
+.topTag {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--line2); border-radius: 999px; padding: 2px 9px;
+  color: var(--muted); cursor: pointer;
+}
+.topDim { color: var(--muted2); }
+.topRight { margin-left: auto; position: relative; }
+.topDetails { position: relative; }
+.topPop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 20;
+  width: min(30em, 80vw); padding: 11px 13px; line-height: 1.75;
+  background: var(--panel); border: 1px solid var(--line2); border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34); color: var(--muted);
+}
+.restoreList { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.restoreList li { line-height: 1.7; }
+
 .wrap {
   display: grid;
   grid-template-columns: 320px 1fr;
@@ -15,7 +54,9 @@
   font-size: 13px;
   color: var(--txt);
 }
-@media (max-width: 980px) {
+/* ⚠ 判据落在**容器**宽度上，不落在视口宽度上 —— 这个控制台活在应用外壳里，
+   左侧导航先吃掉 ~290px，视口再宽也不代表这里宽。理由详见 `.opts`。 */
+@container c0828 (max-width: 980px) {
   .wrap { grid-template-columns: 1fr; }
 }
 
@@ -132,6 +173,8 @@
 @media (max-width: 640px) { .main { padding: 14px 12px 32px; } }
 
 .panel {
+  /* 每块面板都是自己内部网格的**度量基准**（④ 的修法，理由见 `.opts`）。 */
+  container-type: inline-size;
   background: var(--panel-glass); border: 1px solid var(--line2); border-radius: 12px;
   padding: 14px 16px;
   backdrop-filter: blur(16px) saturate(1.2);
@@ -185,7 +228,8 @@
 .pillDanger { background: rgba(240, 180, 184, 0.14); color: var(--danger-txt); }
 
 .two { display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; }
-@media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+/* 同 `.opts`：量自己那块面板，不量视口。 */
+@container (max-width: 860px) { .two { grid-template-columns: 1fr; } }
 .stat { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .statCell {
   flex: 1; min-width: 92px; border: 1px solid var(--line2); border-radius: 8px; padding: 9px 10px;
@@ -244,10 +288,31 @@
 .board tr[data-dim="1"] td { color: var(--muted2); }
 .na { color: var(--muted2); font-family: var(--font-sans); }
 
-/* 区⑤b 四栏 */
+/* ══ 区⑤b 四栏 ═════════════════════════════════════════════════════════════
+ *
+ * ── 今天的行为是 X ──
+ * 断点写的是 `@media (max-width: 1080px)`，量的是**视口**。而这个控制台并不占满视口：
+ * 应用外壳左侧导航先吃掉 ~290px，`.wrap` 的左栏再吃掉 320px。
+ * ⇒ 视口 1582px 时，`.opts` 实际只有 ~950px，可 `@media` 看到的是 1582 > 1080，
+ *   于是**四栏照旧挤在一起**：每栏 (950 − 3×12) / 4.1 ≈ **222px**，
+ *   方案名「产线·利用率 ↓ 89.9153（瓶颈工序·LINE-WS-jinhua-slitting）」要折**三行**。
+ *
+ * **形态**：「我用『视口有多宽』当作『这个组件有多宽』的证据，而前者并不度量后者。」
+ * 这就是为什么改断点数值治不好它 —— 数值再调也还是在量错的那个东西上调。
+ *
+ * ── 应该是 Y ──
+ * 用 `@container` 量**它自己那块面板**的宽度。面板宽多少就按多少排，与外壳、
+ * 与左栏、与视口全都解耦：以后外壳导航加宽/收起，这里自动跟着变，不用再回来调数字。
+ *
+ * ⚠ 四栏**不许省成三栏**：「什么都不做」那一栏是设计核心（没有它，前三栏的代价
+ *   看起来都是净支出）。故窄下来时是 2×2 **换行**，不是丢掉第四栏。
+ */
 .opts { display: grid; grid-template-columns: repeat(3, 1fr) 1.1fr; gap: 12px; }
-@media (max-width: 1080px) { .opts { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 620px) { .opts { grid-template-columns: 1fr; } }
+/* ~1120px 是量出来的：再窄下去每栏就 < 260px，方案名开始折第三行。 */
+@container (max-width: 1120px) { .opts { grid-template-columns: 1fr 1fr; } }
+@container (max-width: 560px) { .opts { grid-template-columns: 1fr; } }
+/* 长方案名在窄栏里要能断行，否则会把栏撑破（中文可断，型号 id 是长 ASCII 串必须显式许可）。 */
+.optTitle { overflow-wrap: anywhere; }
 .opt {
   border: 1px solid var(--line2); border-radius: 12px; padding: 13px;
   display: flex; flex-direction: column; gap: 10px; background: rgba(226, 235, 245, 0.04);
