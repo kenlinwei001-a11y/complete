@@ -42,11 +42,13 @@
 import {
   FINANCE_WORLD_DEFAULT_LINE_ROLES,
   FINANCE_WORLD_PRESSURE_DIVISOR,
+  type FinanceWorldBaselineKind,
   type FinanceWorldBasis,
   type FinanceWorldCash,
   type FinanceWorldChainHop,
   type FinanceWorldLine,
   type FinanceWorldPressure,
+  type FinanceWorldPressureBaseline,
   type FinanceWorldProjectionOutput,
   type FinanceWorldRecon,
   type FinanceWorldStateSource,
@@ -241,10 +243,84 @@ export async function projectFinanceWorld(
   const arAgg = aggregatePressure(customers, worldState, "receivablePressure", (o) => custWeight.get(o.id) ?? 0);
   const overdueAgg = aggregatePressure(invoices, worldState, "overduePressure", invoiceAmount);
 
+  // ── ③a WO-SIM-MONEY-HONESTY · t0 基线来源 + t0 同口径读数（G-DATAMODE-PROV 金额侧）────────
+  /**
+   * 今天的行为是 X：本求解器对「种子世界 t0 是派生占位」**零感知** —— `measuredCells` 只躺在
+   * 会话 `scope.baseSnapshotOrigin` 上，而绝对水位（projected/arProjected）照算照发，
+   * 前端拿到一个 −422 亿级别的毛利投影，**看起来和真数一模一样**。
+   * 应该是 Y：① 逐 stateVar 披露 t0 基线来源；② 占位/混合 ⇒ 绝对水位标 `absoluteAvailable:false`；
+   * ③ Δ 锚在**世界自己的 t0**（baseSnapshot），不锚在绝对 0 —— 传导增量不依赖起点值，
+   *    故「当前 − t0」在占位/实测两种基线下同值，这才是两种情况下都可用的那个 Δ。
+   *
+   * t0 聚合刻意复用同一个 `aggregatePressure` 喂 `world.baseSnapshot`（与 ③b 世界线同一条纪律：
+   * 口径一旦分叉，Δ 的两端就对不上，而两边各自都"对"）。
+   */
+  const costT0 = aggregatePressure(orders, world.baseSnapshot, "costPressure", orderValue);
+  const arT0 = aggregatePressure(customers, world.baseSnapshot, "receivablePressure", (o) => custWeight.get(o.id) ?? 0);
+  const overdueT0 = aggregatePressure(invoices, world.baseSnapshot, "overduePressure", invoiceAmount);
+
+  /**
+   * t0 基线来源探测 —— 与播种器 `deriveSeedBaseSnapshot` **同一条规则**：
+   * 对象属性上是有限 number ⇒ 实测格；否则 ⇒ 派生占位格。
+   * 只数 baseSnapshot 里真带这个 stateVar 的对象（键不在 = 世界不承载它，既不是实测也不是占位）。
+   */
+  const probeBaseline = (
+    objects: ObjectInstance[],
+    stateVar: string,
+    t0: PressureAgg,
+  ): FinanceWorldPressureBaseline => {
+    let measuredCells = 0;
+    let placeholderCells = 0;
+    // R6：遍历序只影响计数不影响结果，但保持与 aggregatePressure 同一条排序纪律，读起来不歧义。
+    for (const o of [...objects].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+      if (stateOf(world.baseSnapshot, o.id, stateVar) === undefined) continue;
+      const real = o.props[stateVar];
+      if (typeof real === "number" && Number.isFinite(real)) measuredCells += 1;
+      else placeholderCells += 1;
+    }
+    const kind: FinanceWorldBaselineKind =
+      measuredCells > 0 && placeholderCells === 0
+        ? "MEASURED"
+        : measuredCells === 0 && placeholderCells > 0
+          ? "PLACEHOLDER"
+          : measuredCells > 0
+            ? "MIXED"
+            : "NONE";
+    const note =
+      kind === "MEASURED"
+        ? `t0 基线 ${measuredCells} 格全部真从对象属性读到 —— 站在实测起点上，绝对水位可用。`
+        : kind === "PLACEHOLDER"
+          ? `t0 基线 ${placeholderCells} 格全是派生占位（对象上没有这个状态变量的真读数）—— ` +
+            "绝对水位不可用，只有相对 t0 的 Δ 可用。"
+          : kind === "MIXED"
+            ? `t0 基线 ${measuredCells} 格实测 + ${placeholderCells} 格派生占位 —— 绝对水位不可用（占位占比说不清）。`
+            : "t0 没有对象承载这个状态变量 —— 这个世界不承载它，无所谓基线。";
+    return { kind, t0Value: round(t0.value, 6), measuredCells, placeholderCells, note };
+  };
+
+  const costBaseline = probeBaseline(orders, "costPressure", costT0);
+  const arBaselineSrc = probeBaseline(customers, "receivablePressure", arT0);
+  const overdueBaselineSrc = probeBaseline(invoices, "overduePressure", overdueT0);
+
+  /** 绝对水位可用位：驱动压力的 t0 基线**全实测**才可；原因在不可用时必须给。 */
+  const absoluteGate = (b: FinanceWorldPressureBaseline, label: string): { ok: boolean; reason?: string } =>
+    b.kind === "MEASURED"
+      ? { ok: true }
+      : {
+          ok: false,
+          reason:
+            `${label}的 t0 基线是${b.kind === "PLACEHOLDER" ? "派生占位" : b.kind === "MIXED" ? "实测+占位混合" : "无承载"} ⇒ ` +
+            "绝对水位不是事实，屏上只摆相对 t0 的 Δ（G-DATAMODE-PROV 金额侧）。",
+        };
+  const costAbsGate = absoluteGate(costBaseline, "成本压力");
+  const arAbsGate = absoluteGate(arBaselineSrc, "应收压力");
+  const overdueAbsGate = absoluteGate(overdueBaselineSrc, "逾期压力");
+
   const pressureRow = (
     stateVar: string,
     objectType: string,
     agg: PressureAgg,
+    baseline: FinanceWorldPressureBaseline,
   ): FinanceWorldPressure => ({
     stateVar,
     objectType,
@@ -261,12 +337,13 @@ export async function projectFinanceWorld(
       drillField: stateVar,
       drillValue: round(agg.topCarrier?.pressure ?? agg.value, 6),
     },
+    baseline,
   });
 
   const pressures: FinanceWorldPressure[] = [
-    pressureRow("costPressure", "Order", costAgg),
-    pressureRow("receivablePressure", "Customer", arAgg),
-    pressureRow("overduePressure", "ARInvoice", overdueAgg),
+    pressureRow("costPressure", "Order", costAgg, costBaseline),
+    pressureRow("receivablePressure", "Customer", arAgg, arBaselineSrc),
+    pressureRow("overduePressure", "ARInvoice", overdueAgg, overdueBaselineSrc),
   ];
 
   // ── ③b 回合动力学（WO-TURN-LOOP）────────────────────────────────────────────────
@@ -339,6 +416,11 @@ export async function projectFinanceWorld(
 
   const pct = (deltaV: number, baseV: number) => (baseV === 0 ? 0 : round((deltaV / Math.abs(baseV)) * 100, 4));
 
+  // WO-SIM-MONEY-HONESTY：Δ 锚在世界自己的 t0 —— 传导增量不依赖起点值 ⇒ 占位/实测两种基线下同值。
+  // Δ收入VsT0 = 0（本链不驱动收入，理由同收入行 formula 里那句，不擅自折算）。
+  const cogsDeltaVsT0 = money((cogsRolling * (costAgg.value - costT0.value)) / divisor);
+  const gmDeltaVsT0 = money(0 - cogsDeltaVsT0);
+
   const lines: FinanceWorldLine[] = [];
   const projectedOf = new Map<string, number>([
     ...(revenuePlan ? ([[revenuePlan.id, revProjected]] as [string, number][]) : []),
@@ -353,6 +435,9 @@ export async function projectFinanceWorld(
     const rolling = money(num(o.props.rolling));
     const projected = money(projectedOf.get(o.id) ?? rolling);
     const delta = money(projected - rolling);
+    // 被成本压力驱动的行才谈得上「绝对水位受基线来源污染」；其余行 projected 恒等于本体真值。
+    const costDriven = role === "COST" || role === "MARGIN";
+    const deltaVsT0 = role === "COST" ? cogsDeltaVsT0 : role === "MARGIN" ? gmDeltaVsT0 : 0;
     lines.push({
       subject: str(o.props.line),
       role,
@@ -377,6 +462,10 @@ export async function projectFinanceWorld(
         drillField: "rolling",
         drillValue: num(o.props.rolling),
       },
+      absoluteAvailable: costDriven ? costAbsGate.ok : true,
+      ...(costDriven && !costAbsGate.ok ? { absoluteUnavailableReason: costAbsGate.reason } : {}),
+      deltaVsT0,
+      deltaVsT0Pct: pct(deltaVsT0, rolling),
     });
   }
   if (!revenuePlan) notes.push(`FinancePlan 里没有 line="${roles.revenueLine}" 的收入行 ⇒ 收入侧诚实缺席（可用 args.revenueLine 指定行名）。`);
@@ -396,6 +485,8 @@ export async function projectFinanceWorld(
   let arBaseline = 0;
   let arProjected = 0;
   let overdueExposure = 0;
+  let arDeltaVsT0Acc = 0;
+  let overdueDeltaVsT0Acc = 0;
   let invoiceCarriers = 0;
   let customerLinked = 0;
   let topInvoice: { id: string; amount: number; invoiceId: string } | null = null;
@@ -406,9 +497,14 @@ export async function projectFinanceWorld(
     if (cid) customerLinked += 1;
     const custPressure = cid ? (stateOf(worldState, cid, "receivablePressure") ?? 0) : 0;
     arProjected += amount * (1 + custPressure / divisor);
+    // WO-SIM-MONEY-HONESTY：Δ 锚在该客户/该发票自己的 t0 读数上，不锚绝对 0。
+    const custPressureT0 = cid ? (stateOf(world.baseSnapshot, cid, "receivablePressure") ?? 0) : 0;
+    arDeltaVsT0Acc += amount * ((custPressure - custPressureT0) / divisor);
     const od = stateOf(worldState, inv.id, "overduePressure");
     if (od !== undefined) invoiceCarriers += 1;
     overdueExposure += amount * ((od ?? 0) / divisor);
+    const odT0 = stateOf(world.baseSnapshot, inv.id, "overduePressure") ?? 0;
+    overdueDeltaVsT0Acc += amount * (((od ?? 0) - odT0) / divisor);
     // 下钻落点 = 金额最大的那张发票（平手取 id 小者 ⇒ R6 稳定）。**在循环里就把真主键 `invoiceId` 记下**，
     // 不留到下面再去 `invoices.find(...)` 回查 —— 回查那种写法既多一次 O(n) 扫描、又把"取哪张"的规则
     // 拆到两处，改一处忘一处就会静默指错发票。
@@ -441,6 +537,12 @@ export async function projectFinanceWorld(
       drillField: "amount",
       drillValue: topInvoice?.amount ?? 0,
     },
+    arAbsoluteAvailable: arAbsGate.ok,
+    ...(arAbsGate.ok ? {} : { arAbsoluteUnavailableReason: arAbsGate.reason }),
+    overdueAbsoluteAvailable: overdueAbsGate.ok,
+    ...(overdueAbsGate.ok ? {} : { overdueAbsoluteUnavailableReason: overdueAbsGate.reason }),
+    arDeltaVsT0: money(arDeltaVsT0Acc),
+    overdueDeltaVsT0: money(overdueDeltaVsT0Acc),
   };
   if (invoices.length > 0 && customerLinked === 0) {
     notes.push(
@@ -493,6 +595,22 @@ export async function projectFinanceWorld(
   const reconciled = reconChecks.length > 0 && reconChecks.every((c) => c.ok);
 
   // ── ⑧ 可用性判定（不可用**必须**给原因；前端据此退回诚实缺口记号，不许显示 0）──────────
+  // WO-SIM-MONEY-HONESTY：任何一个基线含占位 ⇒ 在 notes 里点名（notes 是前端第一层的诚实位集合）。
+  const baselineRows: Array<[string, FinanceWorldPressureBaseline]> = [
+    ["成本压力", costBaseline],
+    ["应收压力", arBaselineSrc],
+    ["逾期压力", overdueBaselineSrc],
+  ];
+  const taintedBaselines = baselineRows.filter(([, b]) => b.kind === "PLACEHOLDER" || b.kind === "MIXED");
+  if (taintedBaselines.length > 0) {
+    notes.push(
+      "基线诚实位：" +
+        taintedBaselines
+          .map(([label, b]) => `${label} t0 ${b.kind === "PLACEHOLDER" ? "全是" : "含"}派生占位格（实测 ${b.measuredCells} / 占位 ${b.placeholderCells}）`)
+          .join("；") +
+        " ⇒ 受影响的绝对水位已逐项标 absoluteAvailable:false —— 屏上只摆相对 t0 的 Δ，不摆绝对投影（G-DATAMODE-PROV 金额侧）。",
+    );
+  }
   const missingPlans = !revenuePlan && !costPlan && !marginPlan;
   let available = true;
   let unavailableReason: string | undefined;

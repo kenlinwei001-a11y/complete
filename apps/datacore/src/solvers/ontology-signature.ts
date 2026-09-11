@@ -427,13 +427,18 @@ export const SOLVER_ONTOLOGY_SIGNATURES: Record<string, SolverOntologySignature>
    *
    * ⚠ 世界态（`SimSession.baseSnapshot` / `SimTickState.state`）**不在本表内**：它不是本体对象，
    *   列级策略也不作用于它。这不是漏声明 —— 是它压根不属于 `OntologyReadSurface` 的论域。
+   *
+   * WO-SIM-MONEY-HONESTY 增补（2026-09-11）：t0 基线来源探测要读三个 stateVar 同名属性
+   * （与播种器 `deriveSeedBaseSnapshot` 同一条「有限 number 即实测」规则）——
+   *  `Order.costPressure` / `Customer.receivablePressure` / `ARInvoice.overduePressure`。
+   *  读不到 ⇒ 该格判派生占位（绝对水位标不可用），金额本身不变；但这三个读是**真读**，照样入册。
    */
   finance_world_projection: {
     reads: [
       { typeKey: "FinancePlan", propKeys: ["budget", "finId", "line", "rolling"] },
-      { typeKey: "Order", propKeys: ["qty", "unitPrice"] },
-      { typeKey: "Customer", propKeys: [], linkKeys: ["customer_has_invoice"] },
-      { typeKey: "ARInvoice", propKeys: ["amount", "invoiceId"] },
+      { typeKey: "Order", propKeys: ["costPressure", "qty", "unitPrice"] },
+      { typeKey: "Customer", propKeys: ["receivablePressure"], linkKeys: ["customer_has_invoice"] },
+      { typeKey: "ARInvoice", propKeys: ["amount", "invoiceId", "overduePressure"] },
     ],
   },
 
