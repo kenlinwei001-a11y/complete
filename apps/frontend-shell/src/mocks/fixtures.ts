@@ -265,7 +265,15 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   // **但那是 L1**：demo 租户的 L2 行业模板（battery = ALL_FEATURE_KEYS − QOS/PERF 暗发集）把 sim.* 全开了
   // （见 `apps/datacore/src/seed.ts:71-79` 的实测注记）。mock 若照抄 L1 的 false，
   // 四个视图会被级联过滤掉 —— 那是「接了线没数据」，跟没接线一样测不出东西。故此处 defaultOn: true。
-  { key: "sim.sandbox", name: "推演沙盘", level: "VIEW", defaultOn: true },
+  { key: "sim.sandbox", name: "推演能力族", level: "VIEW", defaultOn: true },
+  // ── WO-SIM-GATE-DECOUPLE · 两个**页面闸**（mock 如实复刻生产）────────────────────
+  // 生产 `features.ts` 两条都是 `defaultOn: true`（理由见那边的长注：四层叠加下
+  // `true`/`false` 运行期等价，取 `true` 以免多两条投放台账），故此处**同值**，
+  // 不构成 `feature-default-parity:check` 要登记的「两侧反向」。
+  // ⚠ 缺这两条 mock 会 404：`App.tsx` 的 `SimSandboxGuard`/`SimUnifiedGuard` 查的就是这两个键 ——
+  //   与下面四页当年那次「mock 与生产不同形、且是失败危险那一侧」完全同型。
+  { key: "view.sim-sandbox", name: "推演沙盘（页面）", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
+  { key: "view.sim-unified", name: "统一推演控制台（页面）", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
   { key: "view.chain-line-map", name: "全链线路图", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"], bindings: { solverKeys: ["chain_loss_attribution"] } },
   { key: "view.transit-flow", name: "在途与在制", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
   { key: "view.physical-topology", name: "物理拓扑", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
@@ -292,10 +300,14 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   // **Y**：照生产补齐四条。`requires: ["sim.sandbox"]` 复刻生产的级联语义（沙盘关 ⇒ 四页一起关），
   //   与上面五个沙盘子视图的写法逐字同构。补完之后 `featureKeyOf` 的默认规则自然成立，不需要特例。
   // 复验：`node scripts/check-nav-group-coverage.mjs` ＋ 真浏览器 SPA 内跳 `/v/sim-console`（应见页面而非 404）。
-  { key: "view.sim-console", name: "推演指控台", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
-  { key: "view.sim-conduction", name: "传导识别", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
-  { key: "view.sim-attribution", name: "损失归因", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
-  { key: "view.sim-optimize", name: "方案寻优", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
+  // ⚠ WO-SIM-GATE-DECOUPLE：`requires` 从 `sim.sandbox` 改挂 `view.sim-unified` —— 复刻生产
+  //   `VIEW_FEATURE_MAP` 的新受控键（`SANDBOX_CONSOLE_FEATURE_KEY` = 宿主那一页的页面闸）。
+  //   级联语义没被削弱：`view.sim-unified` 自己 `requires: ["sim.sandbox"]` ⇒ 能力关时这四页
+  //   照旧**传递地**一起关；多出来的只是「能力开着、而控制台这一页单独关掉」这一种新状态。
+  { key: "view.sim-console", name: "推演指控台", level: "VIEW", defaultOn: true, requires: ["view.sim-unified"] },
+  { key: "view.sim-conduction", name: "传导识别", level: "VIEW", defaultOn: true, requires: ["view.sim-unified"] },
+  { key: "view.sim-attribution", name: "损失归因", level: "VIEW", defaultOn: true, requires: ["view.sim-unified"] },
+  { key: "view.sim-optimize", name: "方案寻优", level: "VIEW", defaultOn: true, requires: ["view.sim-unified"] },
   // WO-WAITING-STATES-FE：流程等待态（后端 BUILTIN_VIEWS 同批入册·seed:true）。
   // 不挂 requires —— 业务流程层是配置驱动的主数据，与 sim.sandbox 无从属关系（挂上去是假依赖）。
   { key: "view.process-wait", name: "流程等待态", level: "VIEW", defaultOn: true },

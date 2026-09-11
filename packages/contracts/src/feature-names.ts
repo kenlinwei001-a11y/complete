@@ -61,7 +61,16 @@ export const SHARED_FEATURE_NAMES: Readonly<Record<string, string>> = {
   "view.order-chain": "订单进展与卡因",
   "view.geo-map": "基地地理视图",
   "view.review": "运营复盘",
-  "sim.sandbox": "推演沙盘",
+  // WO-SIM-GATE-DECOUPLE · 本键已降为**能力族总闸**（41 道后端推演门的总开关），
+  // 「推演沙盘」那一页的入口另由 `view.sim-sandbox` 管 ⇒ 名字随职责改。
+  // ⚠ 这是本单**唯一**一处上屏文案改动，只出现在管理端「功能开通配置」页的功能名列表
+  //   （`pages/admin/FeaturesPage.tsx` 渲染 `{def.name}`），不进导航、不进任何业务页。
+  //   旧名正是这份别扭的来源：一个叫「推演沙盘」的键关掉之后，死的是整族推演能力。
+  "sim.sandbox": "推演能力族",
+  // 两个**页面闸**（WO-SIM-GATE-DECOUPLE）：被 DataCore 与前端 mock 两份注册表声明
+  // ⇒ 按本册收录判据「≥2 份声明即必须在册」收进来。
+  "view.sim-sandbox": "推演沙盘（页面）",
+  "view.sim-unified": "统一推演控制台（页面）",
   "process.runtime": "流程运行时（实例·卡点）",
   // ── BLOCK 级 · 视图内区块 ──
   "view.task-dag": "任务详情·编排 DAG",

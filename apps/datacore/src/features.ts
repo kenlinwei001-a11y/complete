@@ -110,11 +110,27 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   // `requires: ["sim.sandbox"]` 是向后兼容的那一笔：能力关 ⇒ 页面经 `cascade` 自动关，
   // 与本单之前的行为**逐字节相同**；能力开 ⇒ 页面可以**单独**关掉而不碰能力 —— 这正是本单买的东西。
   // ⚠ 方向是**单向**的：不存在「页面开着而能力关着」的绕过态，R3「entitlement 先于 authz」不被削弱。
-  // ⚠ `defaultOn:false` 与同族的 `sim.*` 一致（L1 平台默认关、按租户分档），demo 这类
-  //   battery 租户由 L2 行业模板（`ALL_FEATURE_KEYS` 减暗发集）抬开 ⇒ 今天的屏幕行为不变。
-  //   **刻意不进任何 `*_DARK_LAUNCH_FEATURES` 集合**：进了就等于对 demo 关掉这两页。
-  { key: "view.sim-sandbox", name: "推演沙盘（页面）", level: "VIEW", defaultOn: false, requires: ["sim.sandbox"] },
-  { key: "view.sim-unified", name: "统一推演控制台（页面）", level: "VIEW", defaultOn: false, requires: ["sim.sandbox"] },
+  //
+  // ── `defaultOn: true` 是**刻意**的，不是忘了跟同族的 `sim.*` 对齐 ────────────────
+  // 这两把闸存在的目的是「**将来能被显式关掉**」，不是「暗发一个新功能」。它们不带来任何
+  // 新能力：屏上多出的东西为零，只是把既有的显隐判断换了个更精确的挂点。
+  // 两种写法**运行期完全等价**，逐层核过：
+  //   · L1：`true` ⇒ 开；`false` ⇒ 关。
+  //   · L2 battery（demo 走这条）：模板 = `ALL_FEATURE_KEYS` 减四个暗发集，本键不在暗发集里
+  //     ⇒ **两种写法都被抬成开**。
+  //   · L2 自定义行业模板：`for (k of [...on]) if (!tmpl.has(k)) on.delete(k)` ⇒ 模板没写就删，
+  //     **两种写法都被删**（这是 `defaultOn` 管不到的一层，见下「诚实边界」）。
+  //   · 无行业的租户（无 L2）：`true` 在 L1 开着，但 `cascade` 回溯到祖先 `sim.sandbox`
+  //     （`defaultOn:false`）为关 ⇒ **有效值仍是关**，与 `false` 写法同结果。
+  // ⇒ 四层里没有一层能把两种写法分开 ⇒ 选 `true` 的净收益是**不新增两条投放台账记录**：
+  //   `dark-launch:check` 的 A1「每个 `defaultOn:false` 必须在 `feature-rollout.json` 里声明」
+  //   与 `feature-default-parity:check` 的 A1「未登记的两侧反向即红」都不再被触发
+  //   （mock 那份如实复刻有效值 = `true`，两侧同值 ⇒ 本来就没有反向可登记）。
+  // ⚠ **诚实边界**：自定义行业模板的租户拿不到这两个键 ⇒ 这两页会消失。该风险与
+  //   `defaultOn` 无关、且**对本仓每一个新增功能键都成立**（L2 是白名单不是补充），
+  //   本单不引入新机制也修不掉它；demo（battery）不在此列。
+  { key: "view.sim-sandbox", name: "推演沙盘（页面）", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
+  { key: "view.sim-unified", name: "统一推演控制台（页面）", level: "VIEW", defaultOn: true, requires: ["sim.sandbox"] },
   { key: "sim.propagation", name: "系数传导", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.propagation.delay", name: "延迟传导", level: "BLOCK", defaultOn: false, requires: ["sim.propagation"] },
   // WO-ADVERSARY-REACTION · 对手方（客户/供应商/竞争对手）会对我方应对**做出反应**并回流进世界态。
