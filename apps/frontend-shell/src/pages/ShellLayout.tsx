@@ -356,6 +356,15 @@ export const NAV_ITEM_SUBTITLE: Record<string, string> = {
   //   回到某个存档走 `POST …/rollback`（同文件「回到某个存档」那段）。
   //   ⚠ 不写「五问」这类内部说法：用户不知道哪五问。
   "sim-sandbox": "反复试手的地方：可存档、可分支比对、可回到上一个存档",
+  // ⚠ **第四条，是在真浏览器里看见才补上的**（不是读代码想到的）：登录后截图一看，
+  //   「推演」组里还并排挂着一条 `risk`，后端给它的标题是**「产能推演」**
+  //   （`apps/datacore/src/synthetic/view-manifest.ts` 的 `{ key: "risk", title: "产能推演" }`）——
+  //   **同一组里第三条带「推演」二字的条目**。只改前两条就等于把这笔账还了一半又留一半，
+  //   而那正是本文件上面记的「一半已还一半在长」的形态本身。
+  //   形态（铁律 0.6 句式）：「我用『派单里点名的那两条』当作『屏上会被混淆的全部条目』的证据。」
+  //   它答的不是「改一个假设会怎样」，是「哪个基地哪天会绷不住、该怎么处置」——
+  //   实测屏上给的正是越线日（首个张力 ≥ 阈值之日）与处置计划表（`views/RiskBoardView.tsx`）。
+  risk: "哪个基地哪天会绷不住，以及那天之前该做什么",
 };
 
 export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
