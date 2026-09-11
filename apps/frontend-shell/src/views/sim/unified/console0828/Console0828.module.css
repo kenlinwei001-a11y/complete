@@ -46,16 +46,27 @@
 .restoreList { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
 .restoreList li { line-height: 1.7; }
 
+/* ══ WO-UX-UNIFY · 两栏 → 三栏（左扰动 · 中内容 · 右 AI 常驻）═══════════════════
+   改前是 `320px 1fr` 两栏，右侧没有常驻栏 ⇒ agent 的产出（对策提案、产地诚实位）
+   只能排在正文瀑布的**最底下**，要滚过五块面板才看得见。
+   改后第三栏 340px 常驻：**不弹窗、不抽屉、不遮内容**（本轮版面纪律第 1 条）。
+
+   ⚠ 断点分两级，且判据仍落在**容器**宽度上而不是视口上 —— 这个控制台活在应用外壳里，
+   左侧导航先吃掉 ~290px，视口再宽也不代表这里宽（原注释的判据，一个字没改，只是多了一级）：
+     · ≤1280px：AI 栏落到正文下方（仍常驻在 DOM 里，不是收起）
+     · ≤980px ：三栏全部堆成单列 */
 .wrap {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 320px minmax(0, 1fr) 340px;
   gap: 0;
   min-height: 60vh;
   font-size: 13px;
   color: var(--txt);
 }
-/* ⚠ 判据落在**容器**宽度上，不落在视口宽度上 —— 这个控制台活在应用外壳里，
-   左侧导航先吃掉 ~290px，视口再宽也不代表这里宽。理由详见 `.opts`。 */
+@container c0828 (max-width: 1280px) {
+  .wrap { grid-template-columns: 320px minmax(0, 1fr); }
+  .ai { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--line); }
+}
 @container c0828 (max-width: 980px) {
   .wrap { grid-template-columns: 1fr; }
 }
@@ -176,6 +187,101 @@
 /* ── 主区 ─────────────────────────────────────────────────── */
 .main { padding: 18px 20px 48px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 @media (max-width: 640px) { .main { padding: 14px 12px 32px; } }
+
+/* ══ WO-UX-UNIFY · 中栏节奏（本轮版面纪律第 2 条）════════════════════════════
+   标题行 → 页签行 → KPI 条 → 面板网格（先 2 列大块，再 3 列小块）→ 底部元信息行。
+   改前中栏是**一条瀑布**：六块面板全部整幅宽、依次往下排，没有标题行、没有 KPI 条，
+   于是「本次推演结论是什么」这件事要滚三屏才拼得出来。 */
+
+/* ① 标题行 —— 标题 + 状态徽章 + 右侧次级动作 */
+.pageHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pageTitle { margin: 0; font-size: 13px; font-weight: 700; color: var(--txt); }
+.pageSub { font-size: 12px; color: var(--muted2); width: 100%; margin: 0; line-height: 1.7; }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  border: 1px solid var(--accent); color: var(--accent-txt); background: var(--primary-soft);
+}
+/* 「推演中」用同一枚徽章的低调态：⛔ 不换成琥珀 —— 进行中不是告警（纪律第 4 条）。 */
+.badgeQuiet { border-color: var(--line2); color: var(--muted2); background: none; }
+.pageActs { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+
+/* ② 页签行 —— 「另一种看法」，不是「数据子集」（纪律第 6 条）。
+   ⚠ 本页只有 **2 个真页签**：本控制台 与 既有的 8 档专家工作台。
+   两者是同一个会话、同一份查询缓存上的**两套 UX**，正是参考图那句「每个页签是不同的 UX」。
+   ⛔ 没有把「财务影响 / 客户 / 卡点 / 对策」拆成页签 —— 它们是**同一次推演结果的四个切面**，
+   拆开就成了"数据子集"，恰是第 6 条点名禁止的那种页签；且它们必须同时在场才能互相对账。 */
+.lens { display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line2); }
+.lensTab {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  padding: 7px 13px; margin-bottom: -1px; cursor: pointer;
+  font-family: inherit; font-size: 13px; color: var(--muted2);
+}
+.lensTab:hover { color: var(--txt); }
+.lensTabOn { color: var(--accent-txt); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* ③ KPI 条 —— 3–5 张并排。
+   ⚠⚠ **每张卡的口径说明 `.kpiCal` 是默认可见的那一层，⛔ 不许折叠、不许缩成图标。**
+   本仓最值钱的就是这一位：它防的正是「屏上摆一个看起来像真的假数」。
+   版面先给口径文字留位置（`.kpiCal` 不设 max-height、不 ellipsis），再排别的。 */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.kpi {
+  border: 1px solid var(--line2); border-radius: 10px; padding: 11px 13px;
+  background: var(--panel-glass); display: flex; flex-direction: column; gap: 3px; min-width: 0;
+}
+.kpiKey { font-size: 12px; color: var(--muted); font-weight: 500; }
+.kpiBig { font-size: 30px; font-weight: 700; line-height: 1.1; font-family: var(--font-mono); color: var(--txt); }
+/* 数值偏中等长度时（金额串）30px 会撑破卡 —— 用容器查询降到正文级，**不新增字号档**。 */
+.kpiBigSm { font-size: 13px; }
+.kpiCmp { font-size: 12px; color: var(--muted2); }
+.kpiCal { font-size: 12px; color: var(--muted2); line-height: 1.65; margin: 2px 0 0; }
+/* 告警态：只有**越线**才染色（纪律第 4 条：红/黄/橙专用于告警）。 */
+.kpiAlert .kpiBig { color: var(--danger-txt); }
+
+/* ④ 面板网格 —— 先 2 列大块，再 3 列小块 */
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; align-items: start; }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; align-items: start; }
+
+/* ⑤ 每块右下角的下钻出口（纪律第 3 条）——「面板是入口不是终点」。
+   ⛔ 每一个目的地都是**今天已经存在**的那一块（同屏面板 / 同屏 details / 既有专家工作台），
+   一个新目的地都没造。 */
+.drill { display: flex; justify-content: flex-end; margin-top: 10px; }
+.drillBtn {
+  background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
+  font-size: 12px; color: var(--accent-txt);
+}
+.drillBtn:hover { text-decoration: underline; }
+
+/* ══ 右栏 · AI 常驻（纪律第 1 与第 5 条）═════════════════════════════════════
+   四段恒定：会话流 → 结论要点（带 ✓，每条挂一个量化值）→ 建议行动 → 提问入口。 */
+.ai {
+  background: var(--panel2); border-left: 1px solid var(--line);
+  padding: 14px 13px 22px; display: flex; flex-direction: column; gap: 12px;
+  align-self: stretch; min-width: 0;
+}
+.aiHead { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+.aiTitle { margin: 0; font-size: 13px; font-weight: 700; color: var(--txt); }
+.aiSec { display: flex; flex-direction: column; gap: 6px; }
+.aiSecHead {
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  border-top: 1px solid var(--line); padding-top: 10px;
+}
+.aiBubble {
+  border: 1px solid var(--line2); border-radius: 10px; padding: 9px 11px;
+  background: var(--panel-glass); font-size: 12px; line-height: 1.75; color: var(--muted);
+}
+.aiList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.aiList li { display: flex; gap: 7px; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.aiTick { color: var(--accent-txt); font-weight: 700; flex: none; }
+/* 每条要点后面那个**量化值**（纪律第 5 条：每条挂一个量化值）。 */
+.aiQty { color: var(--txt); font-weight: 600; font-family: var(--font-mono); }
+.aiChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.aiChip {
+  border: 1px solid var(--line2); border-radius: 999px; padding: 4px 10px;
+  background: none; color: var(--muted); font-family: inherit; font-size: 12px; cursor: pointer;
+}
+.aiChip:hover { border-color: var(--accent); color: var(--txt); }
+.aiChip:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .panel {
   /* 每块面板都是自己内部网格的**度量基准**（④ 的修法，理由见 `.opts`）。 */
