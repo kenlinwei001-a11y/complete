@@ -23,8 +23,8 @@
  * 分两类，**分开说，不合并**：
  *  ① **算得出来的**：波及订单的**敞口金额** = Σ`Order.value`（对象层真值，元）。
  *     它不是「少赚了多少」，它是「**有多少钱的单被这次扰动碰到了**」—— 口径写在第二层。
- *  ② **算不出来的**：毛利差 / 多花的成本 / 压住的应收 ⇒ 一律 `nocalc`（删除线），
- *     **且删除线的语义是「这次算不出来」，不是 0、不是「无变化」**（稿子页脚原话）。
+ *  ② **算不出来的**：毛利差额 / 新增成本 / 占压应收 ⇒ 一律 `nocalc`（删除线），
+ *     **且删除线的语义是「本次无法计算」，不是 0、不是「无变化」**（稿子页脚原话）。
  *
  * ⚠ 这不是偷懒，是判据：本仓铁律 1.5 的原话是「**跑得起来不度量算得对**」。
  *   摆一个编出来的毛利，屏上会好看很多，而它恰好是那条铁律点名的那种病。
@@ -40,6 +40,13 @@
  * ⚠ 同族三个数**不是订单量，别拿来当订单相关口径**：601.50 亿 = 供给侧 AOP 计划 ·
  *   700.00 亿 = 需求 P50 预测 · 250.60 亿 = 方案寻优毛利。只有订单簿总额随订单簿变。
  */
+
+import { daysForTicks } from "@platform/contracts";
+import type {
+  CandidateEffectKind,
+  CandidateJoinKind,
+  CandidateRungKind,
+} from "@platform/contracts";
 
 /** 推演世界一格的读数表：`objectId → { stateVar: number }`。 */
 export type WorldCells = Readonly<Record<string, Readonly<Record<string, number>>>>;
@@ -119,12 +126,21 @@ export interface MoneyView {
 /** 三个算不出来的量，各自的原因（**唯一出处**，组件不拼串）。 */
 export const NOCALC_WHY = {
   margin:
-    "推演层的订单只有 0–100 的压力数，没有一格是金额；把压力换算成毛利需要一个全平台没有登记的系数，编一个就是造口径。",
+    "推演层订单仅有 0–100 的压力读数，无金额字段；将压力折算为毛利需要一个全平台未登记的系数，自拟系数即构造口径。",
   cost:
-    "同上：成本增量要从压力数折算，而折算系数今天没有出处。",
+    "同上：成本增量需由压力读数折算，而折算系数无出处。",
   receivable:
-    "客户对象上确有应收数，但它的单位（元还是万元）今天没有任何登记册说得清，差一个 10000 倍，故不摆上屏。",
+    "客户对象确有应收数，但其计量单位（元 / 万元）无登记册可据，两者相差 10000 倍，故不上屏。",
 } as const;
+
+/**
+ * 三行拆解的**栏目名**（唯一出处 —— 组件与接缝门都从这里取，不各抄一份字面量）。
+ *
+ * ⚠ 这三个串同时是 `data-testid="c0828-nocalc-{label}"` 的后缀。改名即改 testid，
+ *   故门里的循环也从本常量取，**不许在测试里另写一份数组** —— 抄一份就是
+ *   「期望值与被测数据各自漂」，改了一边照样绿（本仓 `quantile-field-naming` 记过这笔账）。
+ */
+export const MONEY_BREAKDOWN_LABELS = ["毛利差额", "新增成本", "占压应收"] as const;
 
 /**
  * 区③。
@@ -172,9 +188,9 @@ export function buildMoneyView(
     bookTotal,
     bookOrders: orders.length,
     breakdown: [
-      { label: "毛利差", cell: { kind: "nocalc", why: NOCALC_WHY.margin } },
-      { label: "多花的成本", cell: { kind: "nocalc", why: NOCALC_WHY.cost } },
-      { label: "压住的应收", cell: { kind: "nocalc", why: NOCALC_WHY.receivable } },
+      { label: MONEY_BREAKDOWN_LABELS[0], cell: { kind: "nocalc", why: NOCALC_WHY.margin } },
+      { label: MONEY_BREAKDOWN_LABELS[1], cell: { kind: "nocalc", why: NOCALC_WHY.cost } },
+      { label: MONEY_BREAKDOWN_LABELS[2], cell: { kind: "nocalc", why: NOCALC_WHY.receivable } },
     ],
     mainCause,
     ordersSeen: orders.length,
@@ -251,27 +267,203 @@ export function buildCustomerView(
  */
 export { fmtXTick as fmtMoney } from "../../console/ParetoChart";
 
-/** 区④ 时间线上的一站。 */
-export interface TimelinePoint {
-  /** 第几拍（推演的时间单位；**不叫「天」** —— 拍与天的换算今天没有登记册）。 */
-  readonly tick: number;
-  readonly label: string;
-  readonly detail: string;
+/* ══════════════════════════════════════════════════════════════════════════════
+ * 拍 ↔ 日期（WO-C0828-VOICE · 屏上时间轴改用真实日期）
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 今天的行为是 X ──
+ * 屏上一律写「第 N 拍」，并在第二层给了一句理由：
+ *   > 「推演世界的时间单位是『拍』，而『一拍等于几天』今天**全平台没有登记册**。」
+ * ── 应该是 Y ──
+ * **那句话不成立** —— **实测于 2026-09-11**（不是读注释，是逐个打开读的）。复验：
+ * `grep -n "tickDays\|createdAt\|daysForTicks" packages/contracts/src/sim.ts`
+ * （金丝雀：同文件必中的 `durationTicks` 同法命中非 0 ⇒ 工具没坏）。三处坐标：
+ *   · `SimSession` 上**同时**有 `tickDays`（`packages/contracts/src/sim.ts` 该字段，
+ *     `z.number().int().min(1).optional()`，契约注释明写「缺省 1」）与 `createdAt`；
+ *   · 换算函数 `daysForTicks(ticks, tickDays)` 也在契约里，**早就存在**；
+ *   · **同一个应用的另一块屏已经在用它**（`views/sim/unified/metricWallModel.ts` 的
+ *     `firstCrossDays`），且 `views/sim/console/tickAxis.ts` 是那条线的单一换算点。
+ * ⇒ 真相是本仓三态里的第三态「**接了线接错地方**」：口径与函数都在，只有这块屏没挂上去。
+ *   形态（铁律 0.6 句式）：**「我用『我这块屏没接这条线』当作『全平台没有这个登记』的证据。」**
+ *
+ * ⚠ 顺带一个会骗人的坐标，别信：`packages/contracts/src/sim.ts` 里 `tickDays` 字段
+ *   **正上方那段注释**白纸黑字写着「实测 `grep -rn tickDays` 全仓 **0 命中**」——
+ *   而它自己下面几行就定义了这个字段，今日实测全仓 **40+ 命中**。那段是**引入前**的观测，
+ *   留在活注释里就被读成现状。（铁律 1.5 判据四：信注释 = 信台账，同样要实测。）
+ *
+ * ── ⛔ 为什么算术不自己写 ────────────────────────────────────────────────────
+ * 「第 N 拍等于第几天」只有一份实现 —— 契约的 `daysForTicks`。各写一份 = 第二套真相源，
+ * 引擎按 `ceil(N / tickDays)` 推拍、屏上按另一套算天，**这种错不会崩，只会静默算错**。
+ * 本文件只做「天 → 日历日」这一段（契约不管日历），乘法一律转调契约。
+ */
+
+/** 会话的日历口径 —— 有它才谈得上日期。 */
+export interface TickCalendar {
+  /** 第 0 拍那一天（= 会话创建日，仓主 2026-09-11 裁决「起点用推演发起的那一天」）。 */
+  readonly originMs: number;
+  /** 一拍等于几天（会话 `tickDays`，缺省 1 —— 契约原话「缺失与 1 同义」）。 */
+  readonly tickDays: number;
 }
 
 /**
- * 区④ 的时间线。
+ * 会话 → 日历口径。**拿不到就返回 `null`，⛔ 不许编一个「今天」顶上。**
  *
- * ⚠ 设计稿把横轴写成「第 2 天 / 第 8 天 …往后 30 天」。**今天没有「拍→天」的换算出处**，
- *   把拍直接读成天就是造口径。故本函数只按**拍**给点位，屏上也只写「第 N 拍」，
- *   并在第二层说明为什么不写天。
+ * 「取不到 `createdAt`」与「这个会话没有起始日」是两个命题，而后者根本不存在
+ * （`createdAt` 在契约里是必填 `z.string()`）⇒ 读不到就是**取数这一跳没到**，
+ * 屏上必须退回「第 N 拍」并说明，不是悄悄拿当天日期糊上去 ——
+ * 那会让一个**错了一整年也没人看得出来**的日期摆在决策屏上。
  */
-export function buildTimeline(
-  series: readonly { readonly tick: number; readonly touched: number; readonly exposure: number }[],
-): readonly TimelinePoint[] {
-  return series.map((s) => ({
-    tick: s.tick,
-    label: `第 ${s.tick} 拍`,
-    detail: `这一拍有 ${s.touched} 张单被推动`,
-  }));
+export function buildTickCalendar(
+  createdAt: string | undefined | null,
+  tickDays: number | undefined | null,
+): TickCalendar | null {
+  if (typeof createdAt !== "string" || createdAt.trim() === "") return null;
+  const ms = Date.parse(createdAt);
+  if (!Number.isFinite(ms)) return null;
+  return { originMs: ms, tickDays: Math.max(1, Math.floor(tickDays ?? 1)) };
 }
+
+const DAY_MS = 86_400_000;
+
+/**
+ * 第 `tick` 拍那一天，`YYYY-MM-DD`。
+ *
+ * ⚠ 一律按 **UTC 日历日**取，不走本地时区：同一个会话在两台时区不同的机器上必须显示同一天
+ * （R6 确定性；后端 `createdAt` 本身就是 `…Z`）。用本地时区会让门在 CI 与本机各说一套。
+ *
+ * ⚠ `tickDays > 1` 时一拍横跨多天，这里给的是**该拍的起始日**。
+ *   理由：扰动按「起始拍」施加，引擎在**那一拍的开头**吃掉它；且时间轴上最多 8 个点位，
+ *   每点摆一个区间会把标签挤成两行。区间长度在第二层的口径说明里给出，不藏着。
+ */
+export function tickDateISO(cal: TickCalendar | null, tick: number): string | null {
+  if (cal === null || !Number.isFinite(tick)) return null;
+  // 乘法转调契约的唯一实现（`daysForTicks(t, td) = t * td`），本文件不自己写 `t * td`。
+  const d = new Date(cal.originMs + daysForTicks(tick, cal.tickDays) * DAY_MS);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * 屏上主口径：`2026-09-16（第 6 拍）`。
+ *
+ * ⛔ 「拍」不许删干净 —— 引擎的量就是拍，两层对不上账时没有别的东西可追。
+ * 拿不到日历就**只剩拍**，此时屏上另有一句说明它为什么没有日期（见组件 `calShortfall`）。
+ */
+export function tickLabel(cal: TickCalendar | null, tick: number, opts?: { readonly short?: boolean }): string {
+  const iso = tickDateISO(cal, tick);
+  if (iso === null) return `第 ${tick} 拍`;
+  return `${opts?.short === true ? iso.slice(5) : iso}（第 ${tick} 拍）`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * 对策三栏的**业务语域译名**（WO-C0828-VOICE 第 4 批）
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 今天的行为是 X ──
+ * 四栏方案的「怎么连上 / 动哪个 / 效果」三行，直接渲染共享派生层
+ * `views/sim/chainImpediment.ts` 的 `CANDIDATE_JOIN_LABEL` / `_RUNG_` / `_EFFECT_`。
+ * 那三张表的措辞是**建模语域**，仓主逐句点名「都太『技术』，COO 看不懂」，原文例如：
+ *   · 「阻滞点落在的那个对象自己就承载这个**可拨动因子**（**join 键** = **对象实例**本身，最强）」
+ *   · 「沿**一等关系行（links 表）**一跳可达。关系是数据不是代码里的**类型对照表**」
+ *   · 「**判据读数**纹丝不动，但下游产能真的变了」
+ *
+ * ── 应该是 Y ──
+ * 同样三态、同样语义，换成经营会上说得出口的话。**一个态都不合并** ——
+ * 合并就把「这个杠杆长在哪」这条真区分抹掉了。
+ *
+ * ── ⛔ 为什么译在这里，而不是去改那三张表 ────────────────────────────────────
+ * `chainImpediment.ts` 是**共享派生层**，同时喂着另一块屏（`views/sim/ChainImpedimentView.tsx`
+ * —— 那一页的读者是建模方，技术语域在那里是对的）。本单的范围边界写死
+ * 「不碰 console0828 以外的文件（那是别人的屏）」，改共享表等于替别人改屏。
+ * ⇒ 译名留在本屏，共享层一行不动。**两屏各自说各自读者的话，这不是重复，是分工。**
+ *
+ * ── 机制：`satisfies Record<…>` 是这里的门 ──────────────────────────────────
+ * 契约哪天加一个 join / rung / effect 态而这里没跟上 ⇒ **TS 当场红**，
+ * 不会静默把新态渲染成空白（与共享层那三张表同一条机制）。
+ * ⛔ 别改成 `Partial<Record<…>>` —— 那正好把这道门关掉。
+ */
+
+/** 这个杠杆**长在哪** —— 原 `join`。 */
+export const BIZ_JOIN = {
+  LOCUS_PROP: {
+    label: "就在这个环节上",
+    why: "这个杠杆就长在卡住的那个环节上，动它最直接。",
+  },
+  LINK_HOP: {
+    label: "在直接相连的上一环",
+    why: "这个杠杆不在卡住的环节本身，在与它直接相连的上一环 —— 谁连着谁取自现场数据，不是写死的对照表。",
+  },
+  KEY_JOIN: {
+    label: "同一个编号对上的另一处",
+    why: "两处记的是同一个东西（编号一致），所以动那一处也管这一处。一个编号对上不止一处时一律不用 —— 分不清动的是哪一个。",
+  },
+  RULE_GATE: {
+    label: "同一条红线管着的",
+    why: "这处受阻环节与这个杠杆归同一条业务规则管（判据列那个规则码就是它），拨它能松这条线。",
+  },
+} as const satisfies Record<CandidateJoinKind, { readonly label: string; readonly why: string }>;
+
+/** 目标值**是怎么定的** —— 原 `rung`。三档全部取自数据里真实存在的值，没有一个是拍的。 */
+export const BIZ_RUNG = {
+  THRESHOLD: {
+    label: "拉回红线以内",
+    why: "目标值就是这条红线本身 —— 取自规则，不是这里拍的数。",
+  },
+  PEER_NEXT: {
+    label: "同类里的下一档",
+    why: "目标值取自同类里紧挨着当前值的下一个真实数 —— 数据里真有对象在这个数上，不是拍的。",
+  },
+  PEER_BEST: {
+    label: "同类做到过的最好水平",
+    why: "目标值取自同类已经达到过的最好水平 —— 不是拍的，同类里真有人做到。",
+  },
+} as const satisfies Record<CandidateRungKind, { readonly label: string; readonly why: string }>;
+
+/**
+ * 动完之后**真变了什么** —— 原 `effect`。
+ *
+ * ⚠ 三态是**实测出来的**（拨到目标值后重算，看动了什么就是什么），不是预先分的类。
+ * ⚠ `DOWNSTREAM_ONLY` 那句里的「堵点」**刻意保留** —— 它是引擎三类之一（`CONGESTION`）的名字，
+ *   不是修饰语。换成泛称就把「能力不够」与「流不动」两类合并了，而两者**处置相反**
+ *   （前者加产能有用，后者加产能没用）。见下 `IMPEDIMENT_KIND_PLAIN`。
+ */
+export const BIZ_EFFECT = {
+  METRIC_SELF: {
+    label: "直接把超线的指标压回来",
+    why: "直接把超线的那个指标拉回红线以内。",
+  },
+  METRIC_DERIVED: {
+    label: "间接带动超线的指标",
+    why: "动的不是超线那个指标本身，但算下来它真的跟着变好了。",
+  },
+  DOWNSTREAM_ONLY: {
+    label: "指标不变，产能真上去",
+    why: "这一招不会让超线的那个数变好看，但产能是真的上去了 —— 遇到「能力够却流不动」那一类（屏上标「堵点」），只有这一类管用。",
+  },
+} as const satisfies Record<CandidateEffectKind, { readonly label: string; readonly why: string }>;
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * 卡点 / 堵点 / 断点 —— **三个量，不是一个量的三种叫法**
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 查清楚了再说（⛔ 没有不查就合并）────────────────────────────────────────
+ * **实测于 2026-09-11**，真后端 `SEED_DEMO=1`（本机 datacore :49317）。复验：
+ *   `curl -sX POST -H 'X-Debug-User: demo:admin:admin' -H 'content-type: application/json' \
+ *    -d '{"scope":{}}' http://<datacore>/a/v1/solvers/chain_impediments/invoke` 读 `data.counts`。
+ * 当日回包：
+ *   `counts = { total: 18, BOTTLENECK: 5, CONGESTION: 6, BREAK: 7 }`
+ * ⇒ 引擎回包里每条都带 `kind`，**三类各有实例**，是三个不同的量。
+ *
+ * ── 今天的行为是 X ──
+ * 区④ 标题写「全流程卡点与堵点」：**只点了三类里的两类**，而漏掉的 `BREAK`（断点）
+ * 恰好是**条数最多的那一类（7 / 18）**；同时「卡点」又被当成三类的**统称**在别处用
+ * （「扫出 N 处」「N 处卡点」）⇒ 同一个词在同一块屏上有两个意思。
+ * ── 应该是 Y ──
+ * 统称改用 **「受阻环节」**（不与任一类重名），三类各自保留本名并在屏上给出一句可判定含义。
+ * ⛔ 不合并：三类的处置**相反**（卡点加产能有用 · 堵点加产能没用 · 断点得先接上），
+ *   合并等于把这个区分抹掉 —— 而这正是本单明令不许干的那一类改动。
+ */
+export const IMPEDIMENT_KIND_PLAIN: Readonly<Record<string, string>> = {
+  BOTTLENECK: "能力不够，做不过来 —— 加产能有用",
+  CONGESTION: "能力够，但流不动（在排队 / 在途积压）—— 加产能没用",
+  BREAK: "链条接不上，上一环给不了这一环要的",
+};
