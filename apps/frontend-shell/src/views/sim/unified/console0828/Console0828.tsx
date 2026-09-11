@@ -596,7 +596,10 @@ export default function Console0828({
   /**
    * 一处卡点的**辨识串** —— 光有 `locus.label` 不够。
    *
-   * 本机实测（真后端 `SEED_DEMO=1`，`POST /a/v1/solvers/chain_impediments/invoke` 18 处）：
+   * **实测于 2026-09-11**（真后端 `SEED_DEMO=1`，本机 datacore :49317）。复验：
+   *   `curl -sX POST -H 'X-Debug-User: demo:admin:admin' -H 'content-type: application/json' \
+   *    -d '{"scope":{}}' http://<datacore>/a/v1/solvers/chain_impediments/invoke`
+   *   再对 `data.impediments[].locus.label` 做词频。当日 18 处：
    * **5 个标签各自出现 2 次**（电解液 / 铜箔 / 磷酸铁锂正极 / 三元正极 / 石墨负极）。
    * 逐条追到底，重名的两行**既不是同一对象的两条判据，也不只是两个实例**，而是两者同时：
    *   · `磷酸铁锂正极` ① `MaterialBatch·pos_lfp_b2`  判据 `C28`（批次滞留）
@@ -1481,7 +1484,9 @@ export default function Console0828({
                           >
                             <td>
                               {i.locus.label}
-                              {/* 同名两行靠这一格分开（实测同名标签 5 组 × 2 行）。 */}
+                              {/* 同名两行靠这一格分开（**实测于 2026-09-11**：同名标签 5 组 × 2 行）。
+                                  复验：`POST /a/v1/solvers/chain_impediments/invoke` 读
+                                  `data.impediments[].locus.label` 做词频；判据见本文件 `fixTag` 头注。 */}
                               <br />
                               <span className={styles.calibre}>
                                 {i.kindLabel} · 落点 {i.locus.objectId}
@@ -1584,7 +1589,9 @@ export default function Console0828({
                   <h3 className={styles.headTitle} data-testid="c0828-options-title">
                     {picked.locus.label} · {picked.candidates.length} 种对策
                   </h3>
-                  {/* 重名的两处靠这一行分开（实测同名标签 5 组 × 2 行，见上 `fixTag` 头注）。 */}
+                  {/* 重名的两处靠这一行分开（**实测于 2026-09-11**：同名标签 5 组 × 2 行）。
+                      复验：`POST /a/v1/solvers/chain_impediments/invoke` 读
+                      `data.impediments[].locus.label` 做词频；判据见上 `fixTag` 头注。 */}
                   <span className={styles.headRight} data-testid="c0828-options-tag">
                     {fixTag(picked)} · 系统不给推荐，决策由使用方作出
                   </span>

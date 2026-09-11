@@ -275,7 +275,9 @@ export { fmtXTick as fmtMoney } from "../../console/ParetoChart";
  * 屏上一律写「第 N 拍」，并在第二层给了一句理由：
  *   > 「推演世界的时间单位是『拍』，而『一拍等于几天』今天**全平台没有登记册**。」
  * ── 应该是 Y ──
- * **那句话不成立**，本单开工实测（不是读注释，是逐个打开读的）：
+ * **那句话不成立** —— **实测于 2026-09-11**（不是读注释，是逐个打开读的）。复验：
+ * `grep -n "tickDays\|createdAt\|daysForTicks" packages/contracts/src/sim.ts`
+ * （金丝雀：同文件必中的 `durationTicks` 同法命中非 0 ⇒ 工具没坏）。三处坐标：
  *   · `SimSession` 上**同时**有 `tickDays`（`packages/contracts/src/sim.ts` 该字段，
  *     `z.number().int().min(1).optional()`，契约注释明写「缺省 1」）与 `createdAt`；
  *   · 换算函数 `daysForTicks(ticks, tickDays)` 也在契约里，**早就存在**；
@@ -443,8 +445,11 @@ export const BIZ_EFFECT = {
  * 卡点 / 堵点 / 断点 —— **三个量，不是一个量的三种叫法**
  * ══════════════════════════════════════════════════════════════════════════════
  *
- * ── 查清楚了再说（本单开工实测，⛔ 没有不查就合并）──────────────────────────
- * 真后端 `SEED_DEMO=1` · `POST /a/v1/solvers/chain_impediments/invoke`（未限定范围）：
+ * ── 查清楚了再说（⛔ 没有不查就合并）────────────────────────────────────────
+ * **实测于 2026-09-11**，真后端 `SEED_DEMO=1`（本机 datacore :49317）。复验：
+ *   `curl -sX POST -H 'X-Debug-User: demo:admin:admin' -H 'content-type: application/json' \
+ *    -d '{"scope":{}}' http://<datacore>/a/v1/solvers/chain_impediments/invoke` 读 `data.counts`。
+ * 当日回包：
  *   `counts = { total: 18, BOTTLENECK: 5, CONGESTION: 6, BREAK: 7 }`
  * ⇒ 引擎回包里每条都带 `kind`，**三类各有实例**，是三个不同的量。
  *
