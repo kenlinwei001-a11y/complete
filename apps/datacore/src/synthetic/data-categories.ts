@@ -21,8 +21,11 @@ export function batteryDataCategories(): DataCategory[] {
       typeKeys: ["PlanTarget", "AnnualScenario", "ScenarioTrigger", "DemandSegment", "SopVersionRow", "PipelineOpportunity", "Cadence"], modes: [...BOTH], defaultMode: "FILE_UPLOAD", connectorTypeKeys: ["file_upload", "rest_api"],
     },
     {
-      key: "customer_ar", displayName: "客户与应收", description: "客户主数据（信用/账期）与应收发票。",
-      typeKeys: ["Customer", "CustomerLocation", "ARInvoice"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["salesforce_crm", "sap_erp", "file_upload"],
+      key: "customer_ar", displayName: "客户与应收", description: "客户主数据（信用/账期/集团归属）与应收发票。",
+      // WO-CUSTOMER-GROUP：`CustomerGroup` 归本类目 —— 它的取值就是本类目 `Customer` 台账里
+      // 那一列 `groupRef`，与客户主数据同源（CRM 侧的集团/父客户字段），
+      // 与 `Region` 同一个路子（把主数据上的一列升格成可被指向的维度）。
+      typeKeys: ["Customer", "CustomerGroup", "CustomerLocation", "ARInvoice"], modes: [...BOTH], defaultMode: "SYSTEM_INTEGRATION", connectorTypeKeys: ["salesforce_crm", "sap_erp", "file_upload"],
     },
     {
       key: "commercial_intelligence", displayName: "商务情报", description: "竞品份额/价格、投标记录、赢丢单与价格实现（市场份额与营收根因下钻真源）。",

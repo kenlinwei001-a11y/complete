@@ -2849,6 +2849,7 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   // WO-WAREHOUSE-CUSTLOC：仓库归 factory 域（库存仓位属工厂设施）
   Warehouse: "factory",
   Region: "factory", // WO-LAST3-RELATIONS：行政区（地理归属·三类设施的共同落点，同 Warehouse 归 factory 域）
+  CustomerGroup: "commercial", // WO-CUSTOMER-GROUP：客户集团（客户的归属落点·同 Customer 归 commercial 域）
   InterBaseTransfer: "capacity", // WO-INTERBASE-TRANSFER：跨基地调拨（在途运力·同 Shipment 归 capacity 域）
   CapacityPool: "capacity", // WO-CAPACITY-EDGE：产能池（产能升格为一等对象·归 capacity 域）
   ProductPlatform: "product", ProductSeries: "product", ProductVersion: "product",
