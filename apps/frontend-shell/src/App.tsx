@@ -120,15 +120,45 @@ const admin = (path: string, node: ReactNode): RouteObject => ({
 });
 
 /**
- * 推演沙盘 entitlement 守卫（增量 4 · 暗发）：先查 sim.sandbox feature（关 → 404，FEATURE_NOT_FOUND 语义，
- * 不泄露功能存在性），复用 ViewPage 同款「feature 先于权限」机制。workspace 未下发 features 时向后兼容放行。
+ * 推演沙盘 entitlement 守卫（增量 4 · 暗发）：先查**页面闸** feature（关 → 404，FEATURE_NOT_FOUND
+ * 语义，不泄露功能存在性），复用 ViewPage 同款「feature 先于权限」机制。
+ * workspace 未下发 features 时向后兼容放行。
+ *
+ * ── WO-SIM-GATE-DECOUPLE · 这里查的键从 `sim.sandbox` 改成了 `view.sim-sandbox` ─────────
+ * **今天的行为 X（本单之前）**：本守卫查能力族总闸 `sim.sandbox` ⇒ 「让沙盘这一页退役」
+ *   与「关掉整族推演能力」是同一个动作，没有任何机制能只做前者。
+ * **应该的行为 Y**：本守卫只管「这一页在不在」，查页面闸；能力族由 `sim.sandbox` 单独管。
+ * ⚠ R3 未被削弱：`view.sim-sandbox` `requires: ["sim.sandbox"]` ⇒ 能力关时页面闸经 `cascade`
+ *   必然一起关，不存在「页面开着而能力关着」的绕过态。
  */
 function SimSandboxGuard() {
   const { data: workspace } = useWorkspace();
   if (!workspace) return <div className="empty-state">{zh.common.loading}</div>;
   const features = workspace.features;
-  if (features && !features.includes("sim.sandbox")) return <NotFoundPage />;
+  if (features && !features.includes("view.sim-sandbox")) return <NotFoundPage />;
   return lazyWrap(<SandboxView />);
+}
+
+/**
+ * 统一推演控制台 entitlement 守卫（WO-SIM-GATE-DECOUPLE · 新增）。
+ *
+ * ── 它补的是一个**现存的 R3 空洞**，不是新加一道闸 ──────────────────────────────
+ * **今天的行为 X（本单之前）**：`v/sim-unified` 这条 route **一道 Guard 都没有**，
+ *   而它发出的每一个数据请求都过后端 `requireSim(c, "sim.sandbox")`。
+ *   ⇒ 关掉 `sim.sandbox` 之后，这一页**照样渲染出来**，然后每个调用拿回 404 FEATURE_NOT_FOUND。
+ *   用户看到的不是「此功能未开通」，是**一个坏掉的页面** —— 这正是 R3 要防的那件事的反面。
+ * **应该的行为 Y**：与同族的 `SimSandboxGuard` 同构 —— 闸关则 404，不泄露存在性。
+ *
+ * ⚠ 有了这道 Guard，`ShellLayout` 那条导航项才可以带 `feature`：`feature` 的语义是
+ *   「暗发页，**页面侧本就有 Guard**」；没有 Guard 就填 `feature`，等于「导航里藏起来、
+ *   URL 照样进得去」= 把暗发做成假的（见 ShellLayout 该条目处的长注）。
+ */
+function SimUnifiedGuard() {
+  const { data: workspace } = useWorkspace();
+  if (!workspace) return <div className="empty-state">{zh.common.loading}</div>;
+  const features = workspace.features;
+  if (features && !features.includes("view.sim-unified")) return <NotFoundPage />;
+  return lazyWrap(<UnifiedSimShell />);
 }
 
 /** 路由表（PRD §3，对外不可变更） */
@@ -157,7 +187,9 @@ export const routes: RouteObject[] = [
       // ⚠ WO-SIM-NAV-UNIFIED：上一版这里写着「刻意**不占导航位**…登记 `ShellLayout.ROUTE_NO_NAV`」——
       //   **该说法已作废**，仓主已裁决本页为「推演」组主入口，`ROUTE_NO_NAV` 里那条豁免同批删除。
       //   现在的到达路径有两条：左导航「推演」组之首「统一推演控制台」 + 本 route 的深链。
-      { path: "v/sim-unified", element: lazyWrap(<UnifiedSimShell />) },
+      // WO-SIM-GATE-DECOUPLE：补上页面侧 Guard（此前这一页在 entitlement 上一道闸都没有，
+      //   关掉推演能力后它会渲染出来然后全线 404 —— 见 `SimUnifiedGuard` 处的长注）。
+      { path: "v/sim-unified", element: <SimUnifiedGuard /> },
       // WO-DECISION-CONSOLE · 经营决策者版专用 route（静态段先于 :viewKey 匹配·免依赖 workspace.views 下发即可达）。
       // ⚠ **刻意不占导航位**，已登记 `ShellLayout.ROUTE_NO_NAV`：导航信息架构属产品决策，
       //   本单只拿到「这一页」的逐案批准，没拿到「动导航」的批准 —— 深链先通，入口另议。
