@@ -48,6 +48,38 @@ export const FinanceWorldStateSourceSchema = z.enum([
 ]);
 export type FinanceWorldStateSource = z.infer<typeof FinanceWorldStateSourceSchema>;
 
+// ── WO-SIM-MONEY-HONESTY · t0 基线来源披露（G-DATAMODE-PROV 金额侧）──────────────────
+/**
+ * 「这个绝对水位是站在什么起点上算出来的」—— 种子世界的 t0 格子可能是**派生占位**
+ * （`deriveSeedBaseSnapshot`：对象属性上探不到真读数 ⇒ `round(hash01(objectId|stateVar)×100)`，
+ * demo 实测 `measuredCells:0`）。站在占位起点上算出的**绝对水位**不是事实；
+ * 而「当前值 − t0 值」的 Δ 与基线种类无关（传导增量不依赖起点值），两种基线下同值、可用。
+ * 本组字段让前端**逐格**读到：这一行/这一侧的基线是实测还是占位、Δ 是多少、
+ * 绝对水位可不可渲染。全部 **optional**（RL9 additive；DataCore 恒填）——
+ * 旧回包不带这些键也照样通过校形，行为逐字节不变。
+ */
+export const FinanceWorldBaselineKindSchema = z.enum([
+  "MEASURED", // t0 该 stateVar 的承载格全部真从对象属性读到
+  "PLACEHOLDER", // t0 一格真读数都没有、全是派生占位 ⇒ 绝对水位不可用
+  "MIXED", // 一部分实测一部分占位 ⇒ 绝对水位同样不可用（占位占比说不清）
+  "NONE", // t0 没有对象承载这个 stateVar（这个世界不承载该变量）
+]);
+export type FinanceWorldBaselineKind = z.infer<typeof FinanceWorldBaselineKindSchema>;
+
+/** 一个压力量的 t0 基线来源（逐 stateVar 一份 —— 三行钱各自踩的基线可能不同来源）。 */
+export const FinanceWorldPressureBaselineSchema = z.object({
+  kind: FinanceWorldBaselineKindSchema,
+  /** t0（baseSnapshot）按**同一聚合法**算出的读数 —— Δ 的锚：Δ压力 = 当前值 − 它。 */
+  t0Value: z.number(),
+  /** t0 承载格里真从对象属性读到的格数（探测规则与播种器同一条：有限 number 即实测）。 */
+  measuredCells: z.number().int(),
+  /** t0 承载格里派生占位的格数。 */
+  placeholderCells: z.number().int(),
+  /** 人话口径（前端可直接展示，不必自己拼一句）。 */
+  note: z.string(),
+});
+export type FinanceWorldPressureBaseline = z.infer<typeof FinanceWorldPressureBaselineSchema>;
+
 /** 压力 → 金额的量纲桥。**随回包下发**，不是藏在代码里的魔数。 */
 export const FinanceWorldBasisSchema = z.object({
   /** 恒 `"PROJECTION"`：这是推演投影不是实测值（前端第一层诚实位的机器判据）。 */
@@ -78,6 +110,8 @@ export const FinanceWorldPressureSchema = z.object({
   /** 为什么是这个加权口径（`EQUAL` 时必须写明是哪个字段拿不到）。 */
   weightingNote: z.string(),
   provenance: GapProvenanceSchema,
+  /** WO-SIM-MONEY-HONESTY：t0 基线来源（实测/占位/混合/无）。占位 ⇒ 下游绝对水位不可用。 */
+  baseline: FinanceWorldPressureBaselineSchema.optional(),
 });
 export type FinanceWorldPressure = z.infer<typeof FinanceWorldPressureSchema>;
 
@@ -152,6 +186,19 @@ export const FinanceWorldLineSchema = z.object({
   /** 逐字可读的算式（把"凭什么是这个数"写在回包里，不让前端去猜）。 */
   formula: z.string(),
   provenance: GapProvenanceSchema,
+  /**
+   * WO-SIM-MONEY-HONESTY：绝对水位（`projected`）可否渲染当真值。
+   * 仅当驱动压力的 t0 基线**全实测**时才可；占位/混合 ⇒ `false` 且必须配原因。
+   * 不被压力驱动的行（REVENUE/PASSTHROUGH，projected 恒等于本体真值）恒 `true`。
+   */
+  absoluteAvailable: z.boolean().optional(),
+  absoluteUnavailableReason: z.string().optional(),
+  /**
+   * 相对世界 t0 的金额变化 —— **基线种类无关**（传导增量不依赖起点值），
+   * 占位/实测两种基线下同值。占位基线时屏上**只摆它**，不摆 `projected`。
+   */
+  deltaVsT0: z.number().optional(),
+  deltaVsT0Pct: z.number().optional(),
 });
 export type FinanceWorldLine = z.infer<typeof FinanceWorldLineSchema>;
 
@@ -170,6 +217,16 @@ export const FinanceWorldCashSchema = z.object({
   customerLinked: z.number().int(), // 经 `customer_has_invoice` 真找到客户的发票数
   formula: z.string(),
   provenance: GapProvenanceSchema,
+  /** WO-SIM-MONEY-HONESTY：应收绝对水位可否渲染当真值（receivablePressure 的 t0 基线全实测才可）。 */
+  arAbsoluteAvailable: z.boolean().optional(),
+  arAbsoluteUnavailableReason: z.string().optional(),
+  /** WO-SIM-MONEY-HONESTY：逾期敞口绝对水位可否渲染当真值（overduePressure 的 t0 基线全实测才可）。 */
+  overdueAbsoluteAvailable: z.boolean().optional(),
+  overdueAbsoluteUnavailableReason: z.string().optional(),
+  /** 应收投影相对 t0 的 Δ —— 基线种类无关，两种基线下同值。 */
+  arDeltaVsT0: z.number().optional(),
+  /** 逾期敞口相对 t0 的 Δ —— 基线种类无关，两种基线下同值。 */
+  overdueDeltaVsT0: z.number().optional(),
 });
 export type FinanceWorldCash = z.infer<typeof FinanceWorldCashSchema>;
 
