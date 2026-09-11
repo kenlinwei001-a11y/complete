@@ -85,7 +85,7 @@ describe("WO-SIM-MONEY-HONESTY · 推演金额的诚实位（G-DATAMODE-PROV 金
     const { materialId, orderId } = await costChainInstance(t);
 
     // ── 第一臂 · 占位基线：订单对象上**没有** costPressure 真读数（demo 台账常态）────────
-    const snapshot = { [materialId]: { priceShock: 0 }, [orderId]: { costPressure: 50 } };
+    const snapshot: Record<string, Record<string, number>> = { [materialId]: { priceShock: 0 }, [orderId]: { costPressure: 50 } };
     const sidPh = await createWorld(t, snapshot);
     expect((await perturb(t, sidPh, materialId)).statusCode).toBe(201);
     expect((await tick(t, sidPh, 2)).statusCode).toBe(200);
