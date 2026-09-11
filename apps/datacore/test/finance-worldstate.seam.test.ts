@@ -572,4 +572,106 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     //    （0.65 × 15 × 3 = 29.25，即修前那个"人人都拿满额"的数）。
     expect(hiPressure).toBeLessThan(29.25);
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // WO-PRESSURE-TO-MONEY · 上一条的**订单金额形态**（同一个病的另一半，此前无人守）
+  //
+  // ── 为什么必须单独有这一条 ─────────────────────────────────────────────────
+  // 上一条（贵料 vs 边角料）咬的是 `Material → Model` 那一跳的 **BOM 用量**权重，
+  // 咬不到本条：压力折成**钱**这一步走的是 `aggregatePressure(orders, …, orderValue)`，
+  // 权重是 `Order.qty × unitPrice`，**与 BOM 一点关系都没有**。
+  // 实测本文件此前 `VALUE` / `weighting` 两个词 **0 命中**（金丝雀：本文件 12 个 `it(`）
+  // ⇒ 「同额扰动落在 1.61 亿的单 vs 0.116 亿的单，钱上必须拉开」这条因果
+  //    在修本条之前**没有任何测试在守**。
+  //
+  // ── 今天的行为是 X / 应该是 Y ──────────────────────────────────────────────
+  // 若有人把 `orderValue` 换成等权（或把分母从全域基数改成承载集），
+  // 两张金额差 13.9 倍的单会给出**逐字节相同**的毛利差 —— 屏上照样有数、四包照样全绿，
+  // 与 2026-08-28 `Material.priceShock ×0.65` 那次（碳酸锂与铝箔同得 9.75）**同构**。
+  // 应该是：毛利差之比 == 两张单的 `qty × unitPrice` 之比。
+  //
+  // ── 判据写成**比值 == 订单金额之比**，不写死数字 ────────────────────────────
+  // 数学出处（`aggregatePressure`）：只有 X 一张单承载压力 P 时，
+  //   加权均值 = w_X × P ÷ Σw_全域  ⇒  两臂之比恒等于 w_大 ÷ w_小，与 P、与 Σw 都无关。
+  // 故这条断言咬的是**因果**（金额真的进了公式），不是"有差别就行"。
+  // ══════════════════════════════════════════════════════════════════════════
+  it("🔴 SEAM：同额扰动落在大单 vs 小单 —— 毛利差之比 == 两张单的 qty×unitPrice 之比", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+
+    // 🐤 金丝雀（工具自证）：订单台账非空且真有金额 —— 金额全 0 会让 `aggregatePressure`
+    //    悄悄回落等权（`weighting:"EQUAL"`），那时"两臂相等"是回落所致而非本单的病，
+    //    读不出来就会把一次回落误报成一次回归。
+    const orders = await t.repos.objects.listByType("demo", "Order");
+    expect(orders.length, "Order 台账为空 ⇒ 取数坏了，不是『这个租户没订单』").toBeGreaterThan(1);
+    // 与生产**同一个式子**（`finance-world.ts` 的 `orderValue`），不另起第二套金额口径。
+    const valueOf = (o: (typeof orders)[number]) => Number(o.props.qty ?? 0) * Number(o.props.unitPrice ?? 0);
+    const ranked = [...orders].filter((o) => valueOf(o) > 0).sort((a, b) => valueOf(b) - valueOf(a) || a.id.localeCompare(b.id));
+    expect(ranked.length, "没有一张单算得出 qty×unitPrice > 0 ⇒ 金额权重拿不到，本用例前提不成立").toBeGreaterThan(1);
+    const big = ranked[0]!;
+    const small = ranked[ranked.length - 1]!;
+    const ratio = valueOf(big) / valueOf(small);
+    expect(ratio, "最大单与最小单金额差不到 2 倍 ⇒ 演示不出「按金额拉开」，前提不成立").toBeGreaterThan(2);
+
+    /**
+     * 对某一张订单的 `costPressure` 施加**同一个**幅度（走真扰动路由），推 1 拍，
+     * 回读「加权后的成本压力」与「毛利行的 projected」。
+     *
+     * ⚠ 世界只放这一张单的那一格 ⇒ 其余订单压力读作 0（全域基数分母不变），
+     *   两臂**唯一的差别就是「扰动落在哪张单上」** —— 这是本对照实验的全部要害。
+     */
+    const MAG = 10;
+    const shockOrder = async (orderId: string) => {
+      const sid = await createWorld(t, { [orderId]: { costPressure: 0 } });
+      const created = await t.app.inject({
+        method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: ADMIN,
+        payload: { kind: "cost_shock", targetObjectId: orderId, targetStateVar: "costPressure", magnitude: MAG, mode: "set", label: `${orderId} costPressure=${MAG}` },
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      expect((await tick(t, sid, 1)).statusCode).toBe(200);
+      const out = await project(t, sid);
+      const gm = lineOf(out, "MARGIN");
+      return {
+        pressure: pressureOf(out, "costPressure").value,
+        margin: gm.projected,
+        /** 未投影的基线（`FinancePlan.rolling` 真值）—— 毛利差 = 基线 − 投影。 */
+        marginBase: gm.rolling,
+        cost: lineOf(out, "COST").projected,
+      };
+    };
+
+    const hi = await shockOrder(big.id);
+    const lo = await shockOrder(small.id);
+
+    // ① 两臂都真的动了（都为 0 ⇒ 链没通，比值无从谈起）。
+    expect(hi.pressure, `大单 ${big.id} 的加权成本压力为 0 ⇒ 扰动没进公式`).toBeGreaterThan(0);
+    expect(lo.pressure, `小单 ${small.id} 的加权成本压力为 0 ⇒ 同上`).toBeGreaterThan(0);
+    // ② 🔴 头号判据：两张单**不相等**（相等就是 2026-08-28 那个病的订单金额形态）。
+    expect(hi.pressure).not.toBe(lo.pressure);
+    expect(hi.pressure).toBeGreaterThan(lo.pressure);
+    // ③ 而且差得**恰好是两张单的金额之比** —— 咬因果，不是咬「有差别就行」。
+    //
+    // ⚠ 容差**由传输精度现算，不是拍一个数**：`pressureRow` 对外 `round(agg.value, 6)`
+    //   ⇒ 每臂绝对误差 ≤ 5e-7；小臂的量级只有 ~1e-3，故比值的相对误差上界是
+    //   `5e-7/hi + 5e-7/lo`（实测 3.04e5 : 1.00e4 两个比值差 1.6e-5 相对，正落在界内）。
+    //   写死 `toBeCloseTo(ratio, 6)` 会要求 5e-7 **绝对**精度 —— 那不是本机制的精度，
+    //   是传输的四舍五入，拿它当判据就是在测 `round()` 而不是测金额有没有进公式。
+    const relTol = 5e-7 / hi.pressure + 5e-7 / lo.pressure;
+    const relErr = Math.abs(hi.pressure / lo.pressure / ratio - 1);
+    expect(
+      relErr,
+      `压力之比 ${hi.pressure / lo.pressure} 与订单金额之比 ${ratio} 的相对差 ${relErr} 超出传输精度上界 ${relTol}` +
+        ` ⇒ 金额没有按比例进公式（而不是四舍五入的锅）`,
+    ).toBeLessThan(Math.max(relTol, 1e-9) * 4);
+    // ④ 接缝真的延伸到**钱**：成本行更高、毛利行更低，且**毛利差**同样按金额拉开。
+    //    只咬压力会漏掉「压力分开了、但折钱那一步把它抹平」这一形态。
+    //    ⚠ 基线取回包自带的 `rolling`（`FinancePlan` 真值），**不另建空世界**去问一次 ——
+    //      空世界那一档 `available:false`、`lines` 为空，`lineOf` 会拿到 undefined 当场炸。
+    expect(hi.cost).toBeGreaterThan(lo.cost);
+    expect(hi.margin).toBeLessThan(lo.margin);
+    expect(hi.marginBase - hi.margin, "大单的毛利差必须为正 ⇒ 成本压力真的压到了毛利").toBeGreaterThan(0);
+    expect(hi.marginBase - hi.margin).toBeGreaterThan(lo.marginBase - lo.margin);
+  });
 });
