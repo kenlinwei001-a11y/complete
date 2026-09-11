@@ -149,6 +149,8 @@
 }
 .btn:hover { border-color: var(--accent); }
 .btnPrimary { background: var(--accent-solid); border-color: var(--accent-solid); color: #fff; font-weight: 600; }
+/* 当前四栏面板画的是哪一处 —— 与 `aria-pressed` 同步，不是单靠颜色说话。 */
+.btnOn { border-color: var(--accent-solid); background: rgba(94, 158, 255, 0.16); font-weight: 600; }
 
 /* 整屏最亮的只有这一个 */
 .go {
@@ -253,6 +255,9 @@
   border: 1px solid var(--line2); border-radius: 8px; padding: 8px 11px; font-size: 12px;
   display: flex; align-items: center; gap: 9px; background: rgba(226, 235, 245, 0.04);
 }
+/* 选中那一条整行也标出来 —— 只标按钮的话，视线在左侧标签上时看不见。 */
+.fixList li[data-on="1"] { border-color: var(--accent-solid); background: rgba(94, 158, 255, 0.09); }
+.fixList li > span:first-child { line-height: 1.6; }
 .fixCount { margin-left: auto; font-size: 12px; color: var(--accent-txt); white-space: nowrap; }
 .watch {
   border: 1px solid var(--line2); border-radius: 8px; padding: 11px 12px;
