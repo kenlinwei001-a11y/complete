@@ -150,7 +150,10 @@
 .btn:hover { border-color: var(--accent); }
 .btnPrimary { background: var(--accent-solid); border-color: var(--accent-solid); color: #fff; font-weight: 600; }
 /* 当前四栏面板画的是哪一处 —— 与 `aria-pressed` 同步，不是单靠颜色说话。 */
-.btnOn { border-color: var(--accent-solid); background: rgba(94, 158, 255, 0.16); font-weight: 600; }
+/* WO-UX-UNIFY：`rgba(94,158,255,.16)` = #5e9eff，**不在本系统调色板里**（系统主色 #4c90f0 / #3b5bdb / #115dc9）。
+   本仓已有同语义的在册令牌 `--primary-soft` = rgba(76,144,240,.16) —— 逐主题定义、alpha 与本行相同，
+   且「选中态染色底」正是它被造出来的用途（见 tokens.css 的 WO-FE-RED-7 账）。⇒ 换令牌，不再写字面色。 */
+.btnOn { border-color: var(--accent-solid); background: var(--primary-soft); font-weight: 600; }
 
 /* 整屏最亮的只有这一个 */
 .go {
@@ -167,7 +170,7 @@
 .railFoot b { color: var(--muted); font-weight: 600; }
 .expertBtn {
   background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
-  color: var(--accent-txt); font-size: 12px; border-bottom: 1px solid rgba(162, 198, 247, 0.35);
+  color: var(--accent-txt); font-size: 12px; border-bottom: 1px solid rgba(76, 144, 240, 0.5);
 }
 
 /* ── 主区 ─────────────────────────────────────────────────── */
@@ -199,8 +202,14 @@
 .money { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 0 12px; }
 .moneyRow { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; justify-content: center; }
 .moneyLabel { color: var(--muted); }
+/* WO-UX-UNIFY：改前是 `--warn-txt`（琥珀）。「被推动的订单敞口」是一个**量级**，不是告警 ——
+   本轮版面纪律第 4 条：**深色 + 单一蓝强调色，红/黄/橙只用于告警**。用琥珀画它，
+   等于对每一次推演结果都喊一次警报，于是真正该报警的地方（超线 `.late`、`.warnBox`）反而没了重量。
+   ⇒ 改 `--accent-txt`（在册·逐主题·压 `--panel-glass` 实测 7.41，远高于 30px 所需）。
+   ⚠ 旁边那枚〔估〕徽章 `.est` **保持琥珀不动** —— 它标的是「这个数是推演出来的不是实测」，
+   那是**口径警示**，本来就该用警示色，且它正是本仓最值钱的诚实位。 */
 .moneyBig {
-  font-size: 30px; font-weight: 700; color: var(--warn-txt);
+  font-size: 30px; font-weight: 700; color: var(--accent-txt);
   line-height: 1.15; font-family: var(--font-mono);
 }
 .brk {
@@ -256,7 +265,9 @@
   display: flex; align-items: center; gap: 9px; background: rgba(226, 235, 245, 0.04);
 }
 /* 选中那一条整行也标出来 —— 只标按钮的话，视线在左侧标签上时看不见。 */
-.fixList li[data-on="1"] { border-color: var(--accent-solid); background: rgba(94, 158, 255, 0.09); }
+/* WO-UX-UNIFY：同 `.btnOn` 那笔账 —— #5e9eff 不在系统调色板里。这里 alpha 比选中态更淡（0.09），
+   故不复用 `--primary-soft`（0.16），改用**系统主色** #4c90f0 的同 alpha 半透，色相归位到在册主色。 */
+.fixList li[data-on="1"] { border-color: var(--accent-solid); background: rgba(76, 144, 240, 0.09); }
 .fixList li > span:first-child { line-height: 1.6; }
 .fixCount { margin-left: auto; font-size: 12px; color: var(--accent-txt); white-space: nowrap; }
 /* 三类受阻环节各自的条数与含义 —— 三者处置相反，屏上不许合并成一个词。 */
@@ -340,9 +351,13 @@
    屏上就再也答不了「这条是谁想的」—— 而这两者的可信度依据完全不同：
    引擎候选可回溯到 join/rung/effect 三段本体证据，agent 候选的依据是它自己的推演文字。
    故 agent 栏用独立描边 + 角标，**不靠颜色深浅**（色觉差异下会退化成没有区别）。 */
+/* WO-UX-UNIFY：`rgba(126,200,227,…)` = #7ec8e3，是**青**；本系统的青是语义色 `--c-capacity` #43b7d7
+   （产能域专用），拿它当「agent 产地」的底是**借了别人的语义**，且违反「深色 + 单一强调色」。
+   ⇒ 归位到系统主色 #4c90f0 的半透。**产地仍靠独立描边 + ◆ 角标区分，不靠色相** ——
+   本块头注自己写的那条纪律（色觉差异下颜色会退化成没有区别）因此一个字都不用改。 */
 .optAgent {
-  border-color: var(--accent); background: rgba(126, 200, 227, 0.07);
-  box-shadow: inset 0 0 0 1px rgba(126, 200, 227, 0.2);
+  border-color: var(--accent); background: rgba(76, 144, 240, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(76, 144, 240, 0.2);
 }
 .agentTag {
   display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600;

@@ -34,9 +34,13 @@
   font-size: 12px;
   cursor: pointer;
 }
+/* WO-UX-UNIFY：两个兜底值都不是本系统的色 —— `#0969da` 是外部参考图的蓝（本系统主色是
+   `--accent` #4c90f0），`#fff` 作 `--bg` 的兜底更危险：`--bg` 是**深蓝** #223251，
+   兜底一旦真的生效就是**白底**，整块反色。两个令牌都在 `styles/tokens.css` 有真定义
+   ⇒ 从未渲染过，但留着就是给幽灵令牌预留藏身处，故连兜底一起删。 */
 .tabOn {
-  border-color: var(--accent, #0969da);
-  background: var(--bg, #fff);
+  border-color: var(--accent);
+  background: var(--bg);
   font-weight: 600;
 }
 .count {
