@@ -58,9 +58,23 @@
 | **`sim-unified` 专家屏** | ❌ **零** | 见下金丝雀 |
 | `sim-sandbox` | ✅ 有 | `useActionDraft()`(`SandboxView.tsx:668`，注释「采纳 → R4 Action 草稿」)，采纳理由串在 :1198 |
 
-**金丝雀（否定结论必须配）**：同一条 grep 在 `Console0828.tsx` + `UnifiedSimShell.tsx` +
-`BottomDrawer.tsx` + `PerturbRail.tsx` 上找 `useActionDraft|ActionDraft|/a/v1/actions|/a/v1/decisions|审批`
-= **0 命中**；同一时刻同两个文件的 `^import` 计数 = **10 / 24** ⇒ 文件读得到、尺子没坏，是真的没有。
+**这条否定结论我验了两遍，第二遍是全枚举（最强的那种证据）**：
+
+- **第一遍（同文件 grep + 金丝雀）**：在 `Console0828.tsx` + `UnifiedSimShell.tsx` +
+  `BottomDrawer.tsx` + `PerturbRail.tsx` 上找 `useActionDraft|ActionDraft|/a/v1/actions|/a/v1/decisions|审批`
+  = **0 命中**；同一时刻同两文件 `^import` 计数 = **10 / 24** ⇒ 文件读得到、尺子没坏。
+- **第二遍（全前端枚举出口，再逐个查挂载点）** —— 这一遍才排除了"**间接挂载**"这个 grep 看不见的形态
+  （CLAUDE.md 铁律 0.5 判据 3 点名的那一类）：
+  - 全前端 `useActionDraft()` **真调用点共 13 处**：`RiskBoardView:1866/2138` · `OrderChainView:1136` ·
+    `CustomerImpactBar:67` · `GlobalSimView:578` · `ProjectSimView:1089` · **`SandboxView:668`** ·
+    `DynamicLeverPanel:177` · **`DecisionConsoleView:423`** · `PlanGenerateView:161` ·
+    `SandboxPlaysPanel:178` · `SopBalanceView:323` · `WhatIfView:608`。
+  - 全前端 `/a/v1/decisions` 真调用点：**仅 `DecisionPlayPanel:1948/1951`**（其余 2 处在 `mocks/handlers.ts`）。
+  - 其中三个"可能被间接挂进统一推演控制台"的面板，**逐个查了挂载点，没有一个挂在它上面**：
+    `DynamicLeverPanel` → `RiskBoardView:1480` / `ProjectSimView:1048`；
+    `CustomerImpactBar` → `GlobalSimView:1455`；`SandboxPlaysPanel` → `SandboxView:1668`。
+
+⇒ **`sim-unified` 两屏与全部 13 个审批出口、全部 2 个 `/a/v1/decisions` 出口，一个都不沾。**
 
 ⇒ **裁决含义完全反过来**：仓主裁定为「推演组主入口」的那一页，是四页里**唯一算完了没有出口**的。
 合并时若以它为宿主，等于把三条已经通到 S2 审批链的出口合成零条。
@@ -544,4 +558,18 @@ B 的收益（少一个导航条目）**小于**它的两个风险（审批出�
    要把这份表当交付依据用，建议先把探针脚本重跑一遍并**去掉所有 `head`**。
 8. **我引用的行号都会漂。** CLAUDE.md 自己记着「写死行号的引用天生带保质期」。
    本报告行号只对 `3f5dbe1a` 这一棵树成立，且其中 `Console0828.tsx` 正在被另一个 dev 改。
+9. ⚠ **两种量法各有系统性偏差，我两种都跑了，读者要知道差别在哪**：
+   - **手点文件名单**（§2 主表用的）：**会漏**。就是它把 `DrillPanel` 漏掉的（见自纠）。
+   - **import 闭包**（我事后补跑的复核）：**会多**。闭包里出现一个文件，只证明它**可被 import**，
+     不证明这一页**用了**它。实测就撞上一次：按闭包算，`unified专家屏` 的"落到审批"会命中
+     `shared.tsx:3`（因为闭包含 `shared.tsx`，而它**定义**了 `useActionDraft`）——
+     **若照闭包下结论，就会得出与事实相反的"专家屏有审批出口"。**
+   - ⇒ **两种量法都不能单独用**。本报告最要紧的那一格（#14）因此走了第三条路：
+     **全前端枚举真调用点 + 逐个查挂载点**（见订正 ②）。其余各行**没有**享受这个待遇。
+   - **闭包规模备查**（供后续单复核用）：decision-play **23** 文件 · decision-console **8** ·
+     unified默认屏 **8** · unified专家屏 **36** · sim-sandbox **85**。
+10. **§2 表里每一格都依赖"我选的探针词"。** 换一组词，格子会变。
+    实测撞到两次：「指标卡墙」在沙盘上，用 `MetricWall|metricWall` 扫是 `—`，
+    加上中文「指标卡|卡墙」就命中 `SandboxConsole:1325`；「多目标权衡」同理（靠「权衡」二字命中）。
+    ⇒ **表里的 `—` 读作「我这组词没扫到」，不读作「这一页没有」。**
 
