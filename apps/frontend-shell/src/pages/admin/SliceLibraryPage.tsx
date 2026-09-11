@@ -86,7 +86,7 @@ function LibraryTab() {
                   <button
                     data-testid={`slice-library-row-${entry.sliceKey}`}
                     onClick={() => setExpanded((k) => (k === entry.sliceKey ? null : entry.sliceKey))}
-                    style={{ font: "inherit", fontFamily: "var(--mono, monospace)", background: "none", border: 0, color: "var(--accent-txt)", cursor: "pointer", padding: 0 }}
+                    style={{ font: "inherit", fontFamily: "var(--font-mono)", background: "none", border: 0, color: "var(--accent-txt)", cursor: "pointer", padding: 0 }}
                     title="就地展开内联子图（不跳转图谱模块）"
                   >
                     {expanded === entry.sliceKey ? "▾ " : "▸ "}{entry.sliceKey}
@@ -103,7 +103,7 @@ function LibraryTab() {
               </tr>
               {expanded === entry.sliceKey && (
                 <tr data-testid={`slice-library-expanded-${entry.sliceKey}`}>
-                  <td colSpan={5} style={{ background: "var(--panel-2, transparent)" }}>
+                  <td colSpan={5} style={{ background: "var(--panel2)" }}>
                     <SliceInspector
                       sliceKey={entry.sliceKey}
                       canEdit={canEdit}

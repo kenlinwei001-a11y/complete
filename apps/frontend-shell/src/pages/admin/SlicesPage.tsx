@@ -142,7 +142,7 @@ export default function SlicesPage() {
                     className="linklike"
                     data-testid={`slice-row-${s.sliceKey}`}
                     onClick={() => setExpanded((k) => (k === s.sliceKey ? null : s.sliceKey))}
-                    style={{ font: "inherit", fontFamily: "var(--mono, monospace)", background: "none", border: 0, color: "var(--accent-txt)", cursor: "pointer", padding: 0 }}
+                    style={{ font: "inherit", fontFamily: "var(--font-mono)", background: "none", border: 0, color: "var(--accent-txt)", cursor: "pointer", padding: 0 }}
                     title="就地展开内联子图（不跳转图谱模块）"
                   >
                     {expanded === s.sliceKey ? "▾ " : "▸ "}{s.sliceKey}
@@ -184,7 +184,7 @@ export default function SlicesPage() {
               </tr>
               {expanded === s.sliceKey && (
                 <tr data-testid={`slice-expanded-${s.sliceKey}`}>
-                  <td colSpan={8} style={{ background: "var(--panel-2, transparent)" }}>
+                  <td colSpan={8} style={{ background: "var(--panel2)" }}>
                     {/* WO-REFERENCES-FAMILY（`GET /a/v1/ontology/slices/:key/references`）：
                         改一条切片的 root/paths 会波及哪些已上报的 plan/intent/agent。
                         事实源是 B→A 的上报登记表（`reportedRefs`），与 B 侧那几条同族但不同源 ——
@@ -289,7 +289,7 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
                   key={o.value}
                   className={`badge ${targets.includes(o.value) ? "blue" : ""}`}
                   data-testid={`slice-target-${o.value}`}
-                  style={{ cursor: "pointer", border: targets.includes(o.value) ? "1px solid var(--accent)" : "1px solid var(--border,#3334)" }}
+                  style={{ cursor: "pointer", border: targets.includes(o.value) ? "1px solid var(--accent)" : "1px solid var(--line2)" }}
                   onClick={() => toggleTarget(o.value)}
                 >
                   {o.value}

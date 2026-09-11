@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { fetchBoundaryImpact, fetchBoundaryVersion } from "@/api/endpoints";
 import zh from "@/locales/zh";
+import styles from "./BoundaryPage.module.css";
 
 /**
  * DF.12 边界册治理面板（GenerationBoundary 单一来源可视）：
@@ -13,10 +15,41 @@ export default function BoundaryPage() {
 
   if (isLoading || !imp) return <div className="empty-state" data-testid="boundary-loading">{zh.common.loading}</div>;
 
+  // WO-UX-ONTO #6 概览条：四个数**全部由 /a/v1/boundary/impact 的回包现算**，⛔ 无一个占位数。
+  // 这一页此前把「波及面」这份富数据平铺在三块长列表里，第一眼读不出规模 —— 概览条补的就是那一眼。
+  const regCount = imp.impact.length;
+  const memberCount = imp.impact.reduce((s, b) => s + b.members, 0);
+  const consumerCount = imp.impact.reduce((s, b) => s + b.consumers.length, 0);
+  const downstreamCount = imp.impact.reduce((s, b) => s + b.downstream.length, 0);
+
   return (
     <div data-testid="boundary-page">
       <h2>{zh.boundary.title}</h2>
       <div className="sub" style={{ color: "var(--muted2)", marginBottom: 12 }}>{zh.boundary.sub}</div>
+
+      {/* 概览条（规律 2）：每张卡一个真数 + 一句口径。本页**只读**，故这里也只有数字没有控件。 */}
+      <div className={styles.overview} data-testid="boundary-overview">
+        <div className={styles.ovCard} data-testid="bd-ov-registries">
+          <div className={styles.ovNum}>{regCount}</div>
+          <div className={styles.ovLabel}>常数册（本）</div>
+          <div className={styles.ovCaliber}>口径：受 boundary-singlesource 门管辖的册数；册是 @platform/contracts 单一来源。</div>
+        </div>
+        <div className={styles.ovCard} data-testid="bd-ov-members">
+          <div className={styles.ovNum}>{memberCount}</div>
+          <div className={styles.ovLabel}>业务常数（条）</div>
+          <div className={styles.ovCaliber}>口径：各册 members 合计 —— 改任一条都要经改代码 + 过门，不是配置项。</div>
+        </div>
+        <div className={styles.ovCard} data-testid="bd-ov-consumers">
+          <div className={styles.ovNum}>{consumerCount}</div>
+          <div className={styles.ovLabel}>派生消费端（处）</div>
+          <div className={styles.ovCaliber}>口径：门强制其从册派生、不内联的代码位；<b>不是</b>运行时调用次数。</div>
+        </div>
+        <div className={styles.ovCard} data-testid="bd-ov-downstream">
+          <div className={styles.ovNum}>{downstreamCount}</div>
+          <div className={styles.ovLabel}>下游受影响面（个）</div>
+          <div className={styles.ovCaliber}>口径：改册会波及的对象库 / 视图 / 求解器，逐册列举于下方；即「改 X 影响什么」的答案面。</div>
+        </div>
+      </div>
 
       {/* 版本指纹（改值留痕） */}
       {ver && (
@@ -32,9 +65,10 @@ export default function BoundaryPage() {
         </div>
       )}
 
-      {/* 影响图：每册 → 消费端（门强制派生）+ 下游受影响面 */}
+      {/* 影响图：每册 → 消费端（门强制派生）+ 下游受影响面 —— 三块等价并列，故用 2 列网格而非纵向堆叠 */}
+      <div className={styles.grid}>
       {imp.impact.map((b) => (
-        <div key={b.registry} className="panel" data-testid={`boundary-reg-${b.registry}`} style={{ marginBottom: 12 }}>
+        <div key={b.registry} className="panel" data-testid={`boundary-reg-${b.registry}`}>
           <div className="section-title">{b.title}（{b.registry} · {b.members} 条）</div>
           <div style={{ fontSize: 12, marginBottom: 6 }}>
             <b>{zh.boundary.consumers}</b>（{zh.boundary.consumersNote}）：
@@ -56,6 +90,21 @@ export default function BoundaryPage() {
           </div>
         </div>
       ))}
+      </div>
+
+      {/* 底部元信息行 + 下钻出口（规律 3）：三个目的地**今天都已存在**（adminRegistry 里的 path），
+          且都是上面「下游受影响面」里点名过的那类承载物。⛔ 未新建任何屏。 */}
+      <div className={styles.metaRow} data-testid="boundary-meta">
+        <span>
+          数据源：GET /a/v1/boundary/impact（本次读取的即时值）
+          {ver ? ` · 册版本 ${ver.semver} · digest ${ver.digest}` : ""} · 本页只读：改册值 = 改代码，经 boundary-singlesource 门
+        </span>
+        <span className={styles.drillRow}>
+          <Link className={styles.drill} to="/admin/synthetic" data-testid="bd-drill-synthetic">查看合成数据 →</Link>
+          <Link className={styles.drill} to="/admin/solvers" data-testid="bd-drill-solvers">查看求解器 →</Link>
+          <Link className={styles.drill} to="/admin/object-types" data-testid="bd-drill-object-types">查看对象/类型浏览 →</Link>
+        </span>
+      </div>
     </div>
   );
 }
