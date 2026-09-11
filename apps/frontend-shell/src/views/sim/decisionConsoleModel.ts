@@ -867,3 +867,57 @@ export function nothingMovedText(report: DrillReport | null): string | null {
   if (total > 0) return null;
   return "算完了，一项都没动 —— 是「比过了，一项都没动」，不是「没比」。";
 }
+
+/**
+ * WO-NAV-DECAY-HONESTY · **让「没改动」这句话成立的那个前提** —— 屏上必须同屏给出。
+ *
+ * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════════
+ * **X（改之前）**：本页两处「一格都没改动 / 0 条结论因此改变」把结论说完了，
+ *   却**没有一处**告诉用户这句话是**在多长的一段上**说的。而这一段的长度
+ *   （本页写死 `HORIZON_DAYS = 30`，屏上无控件）恰恰决定了那句话成不成立 ——
+ *   **实测于 2026-09-11**（真后端 `SEED_DEMO=1` · seed 42 · demo 租户 · 种子世界
+ *   `sims_demo_seed_world`；取证全文 `docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.4）：
+ *   同一条冲击（`+12.0336 delta @tick1`，落点 `obj_material_elyte.priceShock`），
+ *   在第 3 拍上与对照差 **2.4087**，推到第 30 天只剩 **0.0763** —— 差 31.6 倍，
+ *   **而两个读数都是对的**。
+ *   复验：`POST /a/v1/sim/sessions/sims_demo_seed_world/drill` 同一算例只换 `horizonDays`
+ *   （3 与 30 各发一次），比两次回包在该落点上的读数。
+ *   于是用户读到的是「我加的事没用」，
+ *   真相是「你的事被一段看不见的时间拉平了」。**这是屏上说谎的一种：
+ *   不是写了假话，是漏掉了让那句话成立的前提。**
+ * **Y（应该）**：结论旁边同屏写明「看的是多长的一段」，并说清「看得越远影响越淡」。
+ *
+ * ══ 为什么这里**不给倍数** ═════════════════════════════════════════════════════
+ * ⛔ `2.4087` / `0.0763` / `31.6` **一个都不许写进前端**。
+ * 理由不是保守，是这三个数**今天算不出来**：`DrillReport` 只回**这一次**演习的终态
+ * （`worldCellsMoved` / `findingsChanged` / `findingsBaseline`），**不回逐拍轨迹**
+ * （编排器侧同样只原样透传，见 `apps/datacore/src/sim/drill-orchestrator.ts` 那两个
+ * 「只有调用方跑得出对照推进」的字段注）。要给倍数就得再发一次短窗口演习并比两回包 ——
+ * 那是另一张单的事。**写死的数不会自己失效**，三周后引擎调一次系数它就成了屏上的假话。
+ * ⇒ 本函数只说**窗口**，窗口的每个数都现取自 `report`（后端这次真跑出来的那一份）。
+ *
+ * `null` = 还没算过（没结果时不该先解释一个不存在的结论）。
+ */
+export function windowPremiseText(report: DrillReport | null): string | null {
+  if (!report) return null;
+  // 现算，不写死：这三个数都是后端这一次演习的回包字段。
+  const days = report.horizonDays;
+  const steps = report.ticks;
+  // 「从你加的这几件事落地那一刻起，还往后看了多久」—— 比「总共多久」更贴用户问的那句话。
+  // `startTick` 取真正打上了的那几条（`applied:false` 的没落地，算进来会把这个数说小）。
+  const landed = report.appliedStateEffects.filter((e) => e.applied).map((e) => e.startTick);
+  const tailSteps = landed.length > 0 ? steps - Math.min(...landed) : steps;
+  const tail =
+    landed.length > 0 && tailSteps > 0 && tailSteps !== steps
+      ? `其中从你加的这几件事落地那一刻算起，往后看了 ${tailSteps} 步。`
+      : "";
+  // ⛔ 这几句里不许出现 markdown 星号：本页这类文案**按纯文本渲染**，
+  //    写 `**X**` 只会把星号原样印到屏上（`check-dev-jargon-onscreen.mjs` 的「未渲染md星号」形态）。
+  // ⚠ 开头必须自带主语（「上面那个 0」），因为这句话**独立成行**挂在那一排格子下面，
+  //    写成「这句话…」时它指谁全靠版面位置，换个版面就成了一句没有主语的话。
+  return (
+    `上面那个 0，是按「往后 ${days} 天」这一段数出来的（这一次一共往前推了 ${steps} 步）。${tail}` +
+    `同一件事，看得越远、留到这一段末尾的影响越小 —— 所以「没改动」说的是这一段看下来没改动，不是这件事没发生。` +
+    `这一段有多长由本页定好，屏上改不了；想按更短的一段看同一件事，去「统一推演控制台」那一页，那里「推几拍」可以自己填。`
+  );
+}

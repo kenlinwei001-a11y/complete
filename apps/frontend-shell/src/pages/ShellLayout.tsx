@@ -296,6 +296,79 @@ export const ROUTE_NO_NAV: Record<string, string> = {
   //   仓主已裁决（原话见 NAV_GROUPS「推演」组之首的长注），统一推演控制台就是本组的主入口。
   //   条目留着就是**陈旧豁免**：门判据④ 会红出「这个 route 明明在导航里，却还挂着『刻意不占导航位』」。
 };
+
+/**
+ * WO-NAV-DECAY-HONESTY · **导航条目的一行副题**（键 = 导航键，与 `NAV_GROUPS` 同一套键）。
+ *
+ * ══ 今天的行为是 X，应该是 Y ═══════════════════════════════════════════════════
+ * **X（改之前的屏上行为）**：左导航里并排挂着「统一推演控制台」与「推演沙盘」，
+ *   顶层组第 2 项还有「事件影响与对策」——**三条都是推演域、两条名字里都带「推演」二字，
+ *   指三个不同页面，而屏上没有一个字告诉用户它们分别答哪一问。**
+ *   这正是本文件 `decision-console` 那条旁边已经记过一次的账（原文逐字：
+ *   「两条名字只差一个字却指两个不同页面，用户不知道点哪个，这是本仓已记过一次的账」），
+ *   以及「推演」组之首记的那个 `G-NAV-FALLBACK-BUCKET` 第五次复现（原文：
+ *   「两条同名条目指向两个不同页面，用户不知道点哪个」）。
+ *   **那笔账一半已还一半在长**：`decision-play` 确实退出了导航（见 `ROUTE_NO_NAV`），
+ *   而「统一推演控制台 / 推演沙盘」这一对是同一个形态换了主角。
+ *   代价不是「不好看」：**实测于 2026-09-11**（真后端 `SEED_DEMO=1` · seed 42 ·
+ *   种子世界 `sims_demo_seed_world`；取证全文 `docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.4），
+ *   这三页对同一件事的时间口径不同（一个按天一次算完、一个按拍逐步推），
+ *   **同一条冲击在两页上能差 31.6 倍，而两个读数都对** —— 点错一条，
+ *   拿到的是一个差 31.6 倍的读数，屏上没有任何一处提示他点错了。
+ *   复验：`POST /a/v1/sim/sessions/sims_demo_seed_world/drill` 同一算例只换 `horizonDays` 发两次。
+ * **Y**：每条带一行副题，写明**它答哪一问**，让人在导航上就能判断该点哪个。
+ *
+ * ══ 为什么是**副题**而不是**改名**（不是偷懒，是改名会当场咬红别处）══════════════
+ * 这两条 label 是**字符串数据键**，被 `test/sim-nav-group.seam.test.tsx` 三处写死断言：
+ * `toEqual(["统一推演控制台", "推演沙盘"])`（B 组可见集）· `toBe("统一推演控制台")`（B2）·
+ * `toBe("推演沙盘")`（B3 「旧页一个字没动」）。改名 ⇒ 那三条当场红，而 `typecheck` 全绿 ——
+ * 正是 CLAUDE.md 铁律 0.6 第 4 条那条「改名要连断言一起改，三包 typecheck 不度量这件事」。
+ * 那几个断言**本身是对的**（它们钉的是「两条不许同名」这条产品约束），不该为了加说明去动它。
+ * ⇒ 副题是**加信息**不是**改标识**：label 一个字节没动，三条断言照旧成立，
+ *   而「用户分不清点哪个」这个真问题被解决。
+ *
+ * ══ 为什么另起一张表，而不是给 `NavItemRef` 加字段 ═══════════════════════════════
+ * `NAV_GROUPS` 的条目正被**三个按行读源码的解析器**扫着，它们都认「一行一条」的写法：
+ *  · `scripts/lib/sim-page-roster.mjs` 的 `parseNavGroups` —— 逐行正则
+ *    `kind:\s*"(?:route|view)"\s*as\s*const,\s*key:\s*"…"`，**条目一旦被排版换行就抓不到**；
+ *    抓不到 ⇒ R3 名册缩水 ⇒ `check-edge-active-mounts.mjs` 的名册缩水棘轮当场红。
+ *  · `scripts/check-nav-group-coverage.mjs` 的 `parseNavRouteKeys` —— `[^}]*?` 跨不过 `}`。
+ * 副题是长中文串，塞进条目里必然把行撑长、迟早被人顺手换行。**把它放在另一张表里，
+ * `NAV_GROUPS` 的字节一个不动** ⇒ 上面那些解析器一个都碰不到。
+ * （同源教训见 `parseNavRouteKeys` 头注那条「不许再把字段的排列顺序写进正则」。）
+ *
+ * ⚠ 键不在本表里 = 那条没有副题（不是错误）：只有**会被混淆的条目**才需要副题，
+ *   全都加一行会把侧栏撑成一堵字墙，等于没有重点。
+ */
+export const NAV_ITEM_SUBTITLE: Record<string, string> = {
+  // ── 推演域三条：它们的区别是**时间口径与要不要动真数**，不是名字好听不好听 ──────
+  //
+  // 每一句都必须是**实测得住的**（屏上说的话就是承诺，下面三条逐条给出处）：
+  //
+  // `decision-console`：只读 —— 演习走 `persist:false`，实测跑完会话 `curTick` 仍为 0
+  //   （取证 `docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.3「落盘」行）；
+  //   屏上给的正是「这 N 天交不出去的货（亿）」与「事情按这个顺序发生」两样。
+  "decision-console": "只算不动真数：这几件事发生了，会赔多少、哪儿先出事",
+  // `sim-unified`：真往前走 —— `simTick` 走 `persist:true`（同上 §3.3），
+  //   且「推几拍」是用户可填的输入框（`console0828` 的 `c0828-horizon`，默认 3 拍）。
+  //   ⇒ 「一步一步」「自己定看多远」两句都有屏上对应物。
+  "sim-unified": "一步一步往前推，每步看一次变化，看多远自己定",
+  // `sim-sandbox`：实验室 —— 控制条上真有这三颗按钮（`views/sim/SandboxView.tsx` 的
+  //   `sandbox-checkpoint-btn`「存档检查点」/ `sandbox-branch-btn`「分支（多场景对比）」），
+  //   回到某个存档走 `POST …/rollback`（同文件「回到某个存档」那段）。
+  //   ⚠ 不写「五问」这类内部说法：用户不知道哪五问。
+  "sim-sandbox": "反复试手的地方：可存档、可分支比对、可回到上一个存档",
+  // ⚠ **第四条，是在真浏览器里看见才补上的**（不是读代码想到的）：登录后截图一看，
+  //   「推演」组里还并排挂着一条 `risk`，后端给它的标题是**「产能推演」**
+  //   （`apps/datacore/src/synthetic/view-manifest.ts` 的 `{ key: "risk", title: "产能推演" }`）——
+  //   **同一组里第三条带「推演」二字的条目**。只改前两条就等于把这笔账还了一半又留一半，
+  //   而那正是本文件上面记的「一半已还一半在长」的形态本身。
+  //   形态（铁律 0.6 句式）：「我用『派单里点名的那两条』当作『屏上会被混淆的全部条目』的证据。」
+  //   它答的不是「改一个假设会怎样」，是「哪个基地哪天会绷不住、该怎么处置」——
+  //   实测屏上给的正是越线日（首个张力 ≥ 阈值之日）与处置计划表（`views/RiskBoardView.tsx`）。
+  risk: "哪个基地哪天会绷不住，以及那天之前该做什么",
+};
+
 export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: NavItemRef[] }[] = [
   {
     title: null,
@@ -760,14 +833,35 @@ function NavIcon({ nav }: { nav: string }) {
   );
 }
 
-function NavItemLink({ item }: { item: NavItemVM }) {
+/**
+ * WO-NAV-DECAY-HONESTY · 条目副题（`NAV_ITEM_SUBTITLE` 里有才渲染）。
+ *
+ * ⚠ **必须是 label 的兄弟节点，不许把 label 包进一层 `<span>`**：
+ * testing-library 的 `getByText` 比的是 `getNodeText` = **该元素的直接文本子节点**。
+ * label 今天就是 `<NavLink>` 的直接文本子节点，包一层就换了宿主元素 ——
+ * 一堆按文案找导航项的既有断言会跟着漂。做兄弟节点则两边都成立：
+ * `<NavLink>` 的直接文本仍只有 label，副题自己是另一个元素、匹配自己那句话。
+ *
+ * 版面：`.navItem` 加了 `flex-wrap`，本行 `flex-basis:100%` ⇒ 自然落到第二行；
+ * 左边距对齐到 label（图标 18px + 列间距 9px）。
+ */
+function NavSub({ navKey }: { navKey: string }) {
+  const sub = NAV_ITEM_SUBTITLE[navKey];
+  if (!sub) return null;
   return (
-    <NavLink
-      to={`/v/${item.viewKey ?? item.key}`}
-      className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}
-    >
-      <NavIcon nav={item.viewKey ?? item.key} />
+    <span className={styles.navSub} data-testid={`nav-sub-${navKey}`}>
+      {sub}
+    </span>
+  );
+}
+
+function NavItemLink({ item }: { item: NavItemVM }) {
+  const navKey = item.viewKey ?? item.key;
+  return (
+    <NavLink to={`/v/${navKey}`} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ""}`}>
+      <NavIcon nav={navKey} />
       {item.label}
+      <NavSub navKey={navKey} />
     </NavLink>
   );
 }
@@ -785,6 +879,7 @@ function RouteItemLink({ routeKey, label }: { routeKey: string; label: string })
     >
       <NavIcon nav={routeKey} />
       {label}
+      <NavSub navKey={routeKey} />
     </NavLink>
   );
 }
