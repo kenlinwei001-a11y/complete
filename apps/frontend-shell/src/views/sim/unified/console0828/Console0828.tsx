@@ -2135,6 +2135,236 @@ export default function Console0828({
           </>
         ) : null}
       </main>
+
+      {/* ══ WO-UX-UNIFY · 右栏 AI 常驻（纪律第 1 与第 5 条）══════════════════════
+       *
+       * **不弹窗、不抽屉、不遮内容** —— 它与正文同时在场。
+       * 四段恒定：① 会话流 → ② 结论要点（带 ✓，每条挂一个量化值）→ ③ 建议行动 → ④ 提问入口。
+       *
+       * ⛔ **本栏一个新数据源都没有，一个新求解器调用都没有。** 逐段出处：
+       *   ① `result.disclosure` —— `simTick(…, disclose:true)` 本来就回带的披露层
+       *   ② `money` / `custView` / `impGroups` —— 与中栏三块面板**同一份 memo**，
+       *      ⛔ 不另算一遍（另算就是给同一个事实造第二个出处，本仓治过多次）
+       *   ③ `picked.candidates` 与既有的 `agentM` mutation（「交由 agent 生成对策」
+       *      原本埋在受阻环节面板里，本轮**挪到**这里 —— 它本来就是"AI 建议"，
+       *      挪过来是归位，不是新增；原位置的按钮同时保留，两处调的是同一个 mutation）
+       *   ④ **今天没有本栏独立的对话框** —— 如实写明，⛔ 不摆一个点了没反应的输入框（假旋钮）
+       */}
+      <aside className={styles.ai} data-testid="c0828-ai">
+        <div className={styles.aiHead}>
+          <h2 className={styles.aiTitle}>推演助手</h2>
+          <span className={styles.calibre}>
+            {result?.disclosure?.agentInvoked === true ? "本次调用了 agent" : "本次未调用 agent"}
+          </span>
+        </div>
+
+        {/* ── ① 会话流 ───────────────────────────────────────────────── */}
+        <div className={styles.aiSec} data-testid="c0828-ai-stream">
+          <span className={styles.aiSecHead}>① 本次推演做了什么</span>
+          {result === null ? (
+            <div className={styles.aiBubble}>
+              尚未推演。左栏选事件、定推演时长，点「开始推演」后，这里会逐项列出本次引用的数据、
+              走过的本体切片、命中的规则与耗时。
+              <br />
+              <b>现在这里是空的，是因为还没算 —— 不是因为算不出来。</b>
+            </div>
+          ) : (
+            <div className={styles.aiBubble}>
+              一次操作依次执行：施加扰动 · 推进世界 · 财务影响 · 卡点识别 · 对策生成，共五次服务调用。
+              世界态自 {tickLabel(cal, result.beforeTick)} 推进至 {tickLabel(cal, result.afterTick)}。
+              {result.disclosure === null ? (
+                <>
+                  <br />
+                  后端本次未返回披露层 —— <b>「未取到」不等于「不存在」</b>。
+                </>
+              ) : (
+                <>
+                  <br />
+                  引用对象 <b className={styles.mono}>{result.disclosure.objects ?? "—"}</b> 个 · 关系{" "}
+                  <b className={styles.mono}>{result.disclosure.links ?? "—"}</b> 条 · 切片{" "}
+                  <b className={styles.mono}>{result.disclosure.sliceKey ?? "—"}</b> · 跳数{" "}
+                  <b className={styles.mono}>{result.disclosure.hops ?? "—"}</b>。
+                  <br />
+                  规则已声明 <b className={styles.mono}>{result.disclosure.rulesDeclared ?? "—"}</b> 条，
+                  本次触发 <b className={styles.mono}>{result.disclosure.rulesFired ?? "—"}</b> 条；
+                  其中系数来自配置的 <b className={styles.mono}>{result.disclosure.withCoefficientRef ?? "—"}</b> 条
+                  —— 其余是内联常数。耗时合计{" "}
+                  <b className={styles.mono}>{result.disclosure.totalMs ?? "—"}</b> 毫秒。
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── ② 结论要点（带 ✓，每条挂一个量化值）─────────────────────── */}
+        <div className={styles.aiSec} data-testid="c0828-ai-points">
+          <span className={styles.aiSecHead}>② 本次结论要点</span>
+          {result === null || money === null ? (
+            <p className={styles.calibre}>推演后在此列出，每条后面挂它的量化值。</p>
+          ) : (
+            <ul className={styles.aiList}>
+              <li>
+                <span className={styles.aiTick}>✓</span>
+                <span>
+                  被推动的订单敞口 <span className={styles.aiQty}>{fmtMoney(money.exposure, "元")}</span>
+                  （占订单簿 {pct(money.bookTotal === 0 ? 0 : money.exposure / money.bookTotal)}）
+                  —— 是受影响订单的<b>金额规模</b>，不是利润损失。
+                </span>
+              </li>
+              <li>
+                <span className={styles.aiTick}>✓</span>
+                <span>
+                  受影响订单 <span className={styles.aiQty}>{money.exposedOrders}</span> 张 / 共{" "}
+                  {money.bookOrders} 张
+                  {custView === null ? null : (
+                    <>
+                      ，落在 <span className={styles.aiQty}>{custView.touchedCustomers}</span> 家客户上
+                      （共 {custView.totalCustomers} 家）
+                    </>
+                  )}
+                  。
+                </span>
+              </li>
+              <li>
+                <span className={styles.aiTick}>✓</span>
+                <span>
+                  {money.mainCause === null ? (
+                    <>
+                      <b>多因叠加，无法归因到单一事件</b> —— 本次施加{" "}
+                      <span className={styles.aiQty}>{result.staged.length}</span> 件，
+                      差分层看不出某一格是谁推的，<b>不猜</b>。
+                    </>
+                  ) : (
+                    <>
+                      主因是 <b>{money.mainCause}</b>（本次仅施加{" "}
+                      <span className={styles.aiQty}>1</span> 件扰动，故可归因）。
+                    </>
+                  )}
+                </span>
+              </li>
+              <li>
+                <span className={styles.aiTick}>✓</span>
+                <span>
+                  {impGroups === null ? (
+                    <>受阻环节本次<b>未取到</b> —— 这是调用失败，不是「无卡点」。</>
+                  ) : (
+                    <>
+                      扫出受阻环节 <span className={styles.aiQty}>{impGroups.all.length}</span> 处：
+                      可处置 <span className={styles.aiQty}>{impGroups.actionable.length}</span> 处、
+                      仅可监控 <span className={styles.aiQty}>{impGroups.watchOnly.length}</span> 处。
+                      {impGroups.watchOnly[0] === undefined ? null : (
+                        <>
+                          {" "}
+                          超线倍数最高的是 <b>{impGroups.watchOnly[0].locus.label}</b>
+                          {Number.isFinite(impGroups.ratioOf(impGroups.watchOnly[0])) ? (
+                            <>（<span className={styles.aiQty}>{impGroups.ratioOf(impGroups.watchOnly[0]).toFixed(2)}×</span>）</>
+                          ) : null}
+                          ，当前<b>无对策</b>。
+                        </>
+                      )}
+                    </>
+                  )}
+                </span>
+              </li>
+              <li>
+                <span className={styles.aiTick}>✓</span>
+                <span>
+                  本次 <span className={styles.aiQty}>{result.deltas.length}</span> 格读数发生变化；
+                  金丝雀：读到 <span className={styles.aiQty}>{money.ordersSeen}</span> 张单
+                  （为 0 表示遍历失效，<b>不是「无波及」</b>）。
+                </span>
+              </li>
+            </ul>
+          )}
+          <p className={styles.kpiCal}>
+            口径：以上各数与中栏「财务影响 / 客户与订单敞口 / 受阻环节」<b>同源同一份计算</b>，
+            不是本栏另算的第二份；两边若出现不一致，即为缺陷，不是口径差异。
+          </p>
+        </div>
+
+        {/* ── ③ 建议行动 ─────────────────────────────────────────────── */}
+        <div className={styles.aiSec} data-testid="c0828-ai-actions">
+          <span className={styles.aiSecHead}>③ 可选行动</span>
+          {picked === null ? (
+            <p className={styles.calibre}>
+              {result === null
+                ? "推演后，这里列出引擎为选中那一处枚举出的对策。"
+                : "本次没有任何一处带可用对策 —— 这是引擎枚举结果，不是本栏没取到。"}
+            </p>
+          ) : (
+            <>
+              <ul className={styles.aiList}>
+                {picked.candidates.slice(0, 3).map((c) => (
+                  <li key={c.candidateId}>
+                    <span className={styles.aiTick}>▸</span>
+                    <span>
+                      {c.label}
+                      <br />
+                      <span className={styles.calibre}>
+                        调到哪：{BIZ_RUNG[c.rung.kind].label} · 杠杆：{BIZ_JOIN[c.join.kind].label}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+                <li>
+                  <span className={styles.aiTick}>▸</span>
+                  <span>
+                    <b>不处置</b> —— 该处将持续超线：实测{" "}
+                    <span className={styles.aiQty}>{picked.evidence.metricValue.toFixed(2)}</span> / 红线{" "}
+                    {picked.evidence.threshold.toFixed(2)}（超出{" "}
+                    <span className={styles.aiQty}>{picked.evidence.breach.toFixed(2)}</span>）。
+                  </span>
+                </li>
+              </ul>
+              <p className={styles.kpiCal}>
+                口径：<b>系统不给推荐，决策由使用方作出。</b>
+                四栏完整比较（含「不处置」那一栏）在中栏「对策方案」面板里，本栏只列出名与两维。
+              </p>
+            </>
+          )}
+          <div className={styles.aiChips}>
+            <button
+              type="button"
+              className={styles.aiChip}
+              data-testid="c0828-ai-goto-options"
+              disabled={picked === null}
+              onClick={() => optionsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+            >
+              查看四栏对策 →
+            </button>
+            {/* ⚠ 与受阻环节面板里那个「交由 agent 生成对策 ▸」是**同一个 mutation**。 */}
+            <button
+              type="button"
+              className={styles.aiChip}
+              data-testid="c0828-ai-ask-agent"
+              disabled={picked === null || agentM.isPending}
+              onClick={() => { if (picked !== null) agentM.mutate(picked.impedimentId); }}
+            >
+              {agentM.isPending ? "agent 生成中…" : "交由 agent 生成对策 →"}
+            </button>
+          </div>
+          {agentErr === null ? null : (
+            <p className={styles.calibre} data-testid="c0828-ai-agent-err">
+              agent 未答成：{agentErr} —— 这是<b>调用失败</b>，不是「没有方案」。
+            </p>
+          )}
+        </div>
+
+        {/* ── ④ 提问入口 ─────────────────────────────────────────────── */}
+        <div className={styles.aiSec} data-testid="c0828-ai-ask">
+          <span className={styles.aiSecHead}>④ 追问</span>
+          {/* ⛔⛔ 这里**刻意没有输入框**。参考稿第四段是「输入框 + 发送 + 快捷 chip」，
+              而本控制台今天**没有自己的问答端点** —— 摆一个输入框上去，敲进去没有任何后端会收，
+              那正是本仓最恨的假旋钮。⇒ 如实写明缺什么，并指向屏上**真的存在**的那个提问入口。 */}
+          <p className={styles.calibre} data-testid="c0828-ai-noinput">
+            本栏<b>没有独立的对话输入框</b> —— 这块控制台今天没有自己的问答端点，
+            摆一个敲进去没人收的输入框即是假旋钮。
+            <br />
+            自由提问请用<b>屏幕底部那条全局提问条</b>（它已接通查询编排，是真入口）；
+            本栏只负责把本次推演的结论与可选行动摆在正文旁边，不另起一套对话。
+          </p>
+        </div>
+      </aside>
       </div>
     </div>
   );
