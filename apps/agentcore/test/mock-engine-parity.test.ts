@@ -238,7 +238,14 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     // 独立复算：另写脚本（不 import 本文件的抽取器）对两侧各跑一遍正则求差集 ⇒ 补镜像前
     // battery **63** · mock **62** · missing 恰为 `Region` 一条 · extra **0**；
     // 金丝雀两条同时验过（`Base` 两侧必中 = true ∧ 合成键 `ZzzNotAType` 必不中 = false）。
-    expect(graph.types.length, "类型数与探针独立口径不符（今日 63）").toBe(63);
+    // 63→64 于 2026-09-11（`WO-CUSTOMER-GROUP`）：A 侧 `batteryObjectTypes()` 加 `CustomerGroup`
+    // （客户集团·归 commercial 域·`customer_belongs_to_group` 的锚点）。同 `Region` 那次一样
+    // 经 `plainD(...)` 落在 `batteryObjectTypes()` 里，故这里 +1。
+    // 独立复算：另写一份脚本（**不 import 本文件的抽取器**）对两侧各跑一遍正则求差集 ⇒ 补镜像前
+    // battery **64** · mock **63** · missing 恰为 `CustomerGroup` 一条 · extra **0**；
+    // 双向金丝雀六条同时验过（`Base` 两侧必中 = true ∧ 合成键 `ZzzNotAType` 两侧必不中 = true，
+    // 链路侧 `model_producible_at|Model|Base` 两侧必中 ∧ 合成链必不中）。
+    expect(graph.types.length, "类型数与探针独立口径不符（今日 64）").toBe(64);
     // 101→103 于 2026-08-26：A 侧 d2542195 加两条**补货逆边** `po_replenishes_material`
     // (PurchaseOrder→Material) 与 `batch_replenishes_material`(MaterialBatch→Material)。
     // 按本注释的要求**两侧独立复算过**，没有照抄报错里的 received：拿 battery.ts 与
@@ -314,7 +321,15 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     //   金丝雀三条同时验过：`model_producible_at|Model|Base` 两侧必中 = true ∧
     //   合成键 `zz_synthetic_never|Foo|Bar` 两侧必不中 = false ∧ 注释假阳性 `X|Y|Z` 必已消除 = false。
     // ⚠ 类型数不动（仍 63）：`Customer` 与 `Order` 两端早就都在本体里，本次只加一条链路声明。
-    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 116）").toBe(116);
+    // 116→117 于 2026-09-11（`WO-CUSTOMER-GROUP`）：A 侧加 `customer_belongs_to_group`
+    // (Customer→CustomerGroup)，把客户从一排平行字符串接到集团这一层。
+    // 照本注释的要求**两侧独立复算过，没有照抄报错里的 received**：另写一份脚本、不 import 本文件的
+    // 抽取器，对 battery.ts `batteryLinkTypes()` 与 ontology-graph.ts `MOCK_ONTOLOGY_LINKS`
+    // 各跑一遍同一条 `fromTypeKey:` 正则求差集 ⇒ battery **117** · mock **116** ·
+    // missing 恰为 `customer_belongs_to_group|Customer|CustomerGroup` 一条 · extra **0**。
+    // ⚠ A 侧只声明**一个方向**、刻意不落逆边（「这个集团有哪些客户」由检索侧 `direction:"in"`
+    //   反着走，同 `located_in` 三条与 `fulfills` 那把尺子）⇒ 仍是 +1；镜像表同样只补这一条。
+    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 117）").toBe(117);
   });
 
   it("§2 mock 镜像图 == battery.ts 现算图（集合相等·缺谁多谁点名）", () => {

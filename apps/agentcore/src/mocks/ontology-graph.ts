@@ -36,6 +36,8 @@ export const MOCK_ONTOLOGY_TYPES: MockOntologyType[] = [
   { key: "Cadence", domain: "capacity" },
   // WO-CAPACITY-EDGE：产能池（A 侧 `batteryObjectTypes()` 新增·产能升格为一等对象）。
   { key: "CapacityPool", domain: "capacity" },
+  // WO-CUSTOMER-GROUP：客户集团（A 侧 `batteryObjectTypes()` 新增·客户归属升格为一等对象）。
+  { key: "CustomerGroup", domain: "commercial" },
   { key: "DataSourceHealth", domain: "quality" },
   { key: "DefectRecord", domain: "quality" },
   { key: "DemandSegment", domain: "forecast" },
@@ -211,6 +213,8 @@ export const MOCK_ONTOLOGY_LINKS: MockOntologyLink[] = [
   { linkKey: "order_has_promise", fromTypeKey: "Order", toTypeKey: "OrderPromise" },
   { linkKey: "customer_has_location", fromTypeKey: "Customer", toTypeKey: "CustomerLocation" },
   { linkKey: "customer_has_overdue_record", fromTypeKey: "Customer", toTypeKey: "OverdueRecord" },
+  // WO-CUSTOMER-GROUP：客户归属集团（A 侧只声明正向一条·刻意不落逆边，同 `fulfills`/`located_in` 那把尺子）。
+  { linkKey: "customer_belongs_to_group", fromTypeKey: "Customer", toTypeKey: "CustomerGroup" },
   { linkKey: "material_has_alternative", fromTypeKey: "Material", toTypeKey: "MaterialAlternative" },
   { linkKey: "material_has_balance", fromTypeKey: "Material", toTypeKey: "MaterialBalance" },
   { linkKey: "base_dispatches_transfer", fromTypeKey: "Base", toTypeKey: "InterBaseTransfer" },

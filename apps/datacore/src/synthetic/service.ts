@@ -46,6 +46,8 @@ import {
   capacityPoolIdOfLine,
   // WO-LAST3-RELATIONS：`located_in` 锚点行的**唯一派生式**（省名并集 → 行政区行）。
   buildRegions,
+  // WO-CUSTOMER-GROUP：`customer_belongs_to_group` 锚点行的**唯一派生式**（客户归属 → 集团行）。
+  buildCustomerGroups,
   // WO-COMPUTED-EDGE：型号归段的**唯一**出处（图谱边与 Model.unitPrice 共用），替代已死的 S192/L148 串匹配。
   segKeyOfModelPos,
   // WO-COMPUTED-EDGE：异常源类型 → 溯源边 key 的**唯一**对照（声明侧与实例侧共用一份）。
@@ -822,6 +824,17 @@ export class SyntheticService {
     await putAll("Supplier", ext.suppliers, "supplierId");
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
     await putAll("Customer", ext.customers, "custId");
+    // WO-CUSTOMER-GROUP · `customer_belongs_to_group` 的锚点类型：**客户集团**。
+    // 行数与取值全部由客户既有的 `groupRef` 派生（零新业务事实·零 rng·按 groupId 排序确定性），
+    // 与 `Region` 同款做法。⚠ 必须放在 `ext.customers` 之后：集团行由客户成员现数而来
+    // （`groupType` = 成员数 >1 ? GROUP : STANDALONE），客户没齐就数不准。
+    const customerGroupRows = buildCustomerGroups(
+      (ext.customers as { groupRef?: string; custName?: string }[]).map((c) => ({
+        groupId: c.groupRef ?? "",
+        fallbackName: c.custName ?? "",
+      })),
+    );
+    await putAll("CustomerGroup", customerGroupRows, "groupId");
     await putAll("CustomerLocation", ext.customerLocations, "locId"); // WO-WAREHOUSE-CUSTLOC：客户交付地点（交付地理落点）
     // WO-LAST3-RELATIONS · `located_in` 的锚点类型：**行政区**。
     // 行数与取值全部由三个载体既有的 `province` 取值**并集**派生（零新业务事实·零 rng·按省名排序确定性）——
@@ -1187,6 +1200,13 @@ export class SyntheticService {
     for (const inv of ext.arInvoices) {
       const cid = custByName.get(String(P(inv).custName));
       if (cid) await putLink(`lnk_chi_${P(inv).invoiceId}`, "customer_has_invoice", oid("Customer", cid), oid("ARInvoice", P(inv).invoiceId));
+    }
+    // WO-CUSTOMER-GROUP · commercial: Customer → CustomerGroup（cust.groupRef）。
+    // 每个客户恒有一条（含单体集团与规模补足客户）—— 「恒不为空」这条不变量在这里落地成
+    // 「边数 == 客户数」，下游据此可以放心地**只走图**算集团敞口，不必再兼容「没有集团」那一支。
+    for (const c of ext.customers) {
+      const gid = P(c).groupRef as string | undefined;
+      if (gid) await putLink(`lnk_cbg_${P(c).custId}`, "customer_belongs_to_group", oid("Customer", P(c).custId), oid("CustomerGroup", gid));
     }
     // WO-WAREHOUSE-CUSTLOC · commercial: CustomerLocation → Customer（loc.customerRef；参照 order_of_customer 方向）
     for (const loc of ext.customerLocations) {
