@@ -42,6 +42,11 @@
  */
 
 import { daysForTicks } from "@platform/contracts";
+import type {
+  CandidateEffectKind,
+  CandidateJoinKind,
+  CandidateRungKind,
+} from "@platform/contracts";
 
 /** 推演世界一格的读数表：`objectId → { stateVar: number }`。 */
 export type WorldCells = Readonly<Record<string, Readonly<Record<string, number>>>>;
@@ -346,3 +351,114 @@ export function tickLabel(cal: TickCalendar | null, tick: number, opts?: { reado
   if (iso === null) return `第 ${tick} 拍`;
   return `${opts?.short === true ? iso.slice(5) : iso}（第 ${tick} 拍）`;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * 对策三栏的**业务语域译名**（WO-C0828-VOICE 第 4 批）
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 今天的行为是 X ──
+ * 四栏方案的「怎么连上 / 动哪个 / 效果」三行，直接渲染共享派生层
+ * `views/sim/chainImpediment.ts` 的 `CANDIDATE_JOIN_LABEL` / `_RUNG_` / `_EFFECT_`。
+ * 那三张表的措辞是**建模语域**，仓主逐句点名「都太『技术』，COO 看不懂」，原文例如：
+ *   · 「阻滞点落在的那个对象自己就承载这个**可拨动因子**（**join 键** = **对象实例**本身，最强）」
+ *   · 「沿**一等关系行（links 表）**一跳可达。关系是数据不是代码里的**类型对照表**」
+ *   · 「**判据读数**纹丝不动，但下游产能真的变了」
+ *
+ * ── 应该是 Y ──
+ * 同样三态、同样语义，换成经营会上说得出口的话。**一个态都不合并** ——
+ * 合并就把「这个杠杆长在哪」这条真区分抹掉了。
+ *
+ * ── ⛔ 为什么译在这里，而不是去改那三张表 ────────────────────────────────────
+ * `chainImpediment.ts` 是**共享派生层**，同时喂着另一块屏（`views/sim/ChainImpedimentView.tsx`
+ * —— 那一页的读者是建模方，技术语域在那里是对的）。本单的范围边界写死
+ * 「不碰 console0828 以外的文件（那是别人的屏）」，改共享表等于替别人改屏。
+ * ⇒ 译名留在本屏，共享层一行不动。**两屏各自说各自读者的话，这不是重复，是分工。**
+ *
+ * ── 机制：`satisfies Record<…>` 是这里的门 ──────────────────────────────────
+ * 契约哪天加一个 join / rung / effect 态而这里没跟上 ⇒ **TS 当场红**，
+ * 不会静默把新态渲染成空白（与共享层那三张表同一条机制）。
+ * ⛔ 别改成 `Partial<Record<…>>` —— 那正好把这道门关掉。
+ */
+
+/** 这个杠杆**长在哪** —— 原 `join`。 */
+export const BIZ_JOIN = {
+  LOCUS_PROP: {
+    label: "就在这个环节上",
+    why: "这个杠杆就长在卡住的那个环节上，动它最直接。",
+  },
+  LINK_HOP: {
+    label: "在直接相连的上一环",
+    why: "这个杠杆不在卡住的环节本身，在与它直接相连的上一环 —— 谁连着谁取自现场数据，不是写死的对照表。",
+  },
+  KEY_JOIN: {
+    label: "同一个编号对上的另一处",
+    why: "两处记的是同一个东西（编号一致），所以动那一处也管这一处。一个编号对上不止一处时一律不用 —— 分不清动的是哪一个。",
+  },
+  RULE_GATE: {
+    label: "同一条红线管着的",
+    why: "这处受阻环节与这个杠杆归同一条业务规则管（判据列那个规则码就是它），拨它能松这条线。",
+  },
+} as const satisfies Record<CandidateJoinKind, { readonly label: string; readonly why: string }>;
+
+/** 目标值**是怎么定的** —— 原 `rung`。三档全部取自数据里真实存在的值，没有一个是拍的。 */
+export const BIZ_RUNG = {
+  THRESHOLD: {
+    label: "拉回红线以内",
+    why: "目标值就是这条红线本身 —— 取自规则，不是这里拍的数。",
+  },
+  PEER_NEXT: {
+    label: "同类里的下一档",
+    why: "目标值取自同类里紧挨着当前值的下一个真实数 —— 数据里真有对象在这个数上，不是拍的。",
+  },
+  PEER_BEST: {
+    label: "同类做到过的最好水平",
+    why: "目标值取自同类已经达到过的最好水平 —— 不是拍的，同类里真有人做到。",
+  },
+} as const satisfies Record<CandidateRungKind, { readonly label: string; readonly why: string }>;
+
+/**
+ * 动完之后**真变了什么** —— 原 `effect`。
+ *
+ * ⚠ 三态是**实测出来的**（拨到目标值后重算，看动了什么就是什么），不是预先分的类。
+ * ⚠ `DOWNSTREAM_ONLY` 那句里的「堵点」**刻意保留** —— 它是引擎三类之一（`CONGESTION`）的名字，
+ *   不是修饰语。换成泛称就把「能力不够」与「流不动」两类合并了，而两者**处置相反**
+ *   （前者加产能有用，后者加产能没用）。见下 `IMPEDIMENT_KIND_PLAIN`。
+ */
+export const BIZ_EFFECT = {
+  METRIC_SELF: {
+    label: "直接把超线的指标压回来",
+    why: "直接把超线的那个指标拉回红线以内。",
+  },
+  METRIC_DERIVED: {
+    label: "间接带动超线的指标",
+    why: "动的不是超线那个指标本身，但算下来它真的跟着变好了。",
+  },
+  DOWNSTREAM_ONLY: {
+    label: "指标不变，产能真上去",
+    why: "这一招不会让超线的那个数变好看，但产能是真的上去了 —— 遇到「能力够却流不动」那一类（屏上标「堵点」），只有这一类管用。",
+  },
+} as const satisfies Record<CandidateEffectKind, { readonly label: string; readonly why: string }>;
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * 卡点 / 堵点 / 断点 —— **三个量，不是一个量的三种叫法**
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 查清楚了再说（本单开工实测，⛔ 没有不查就合并）──────────────────────────
+ * 真后端 `SEED_DEMO=1` · `POST /a/v1/solvers/chain_impediments/invoke`（未限定范围）：
+ *   `counts = { total: 18, BOTTLENECK: 5, CONGESTION: 6, BREAK: 7 }`
+ * ⇒ 引擎回包里每条都带 `kind`，**三类各有实例**，是三个不同的量。
+ *
+ * ── 今天的行为是 X ──
+ * 区④ 标题写「全流程卡点与堵点」：**只点了三类里的两类**，而漏掉的 `BREAK`（断点）
+ * 恰好是**条数最多的那一类（7 / 18）**；同时「卡点」又被当成三类的**统称**在别处用
+ * （「扫出 N 处」「N 处卡点」）⇒ 同一个词在同一块屏上有两个意思。
+ * ── 应该是 Y ──
+ * 统称改用 **「受阻环节」**（不与任一类重名），三类各自保留本名并在屏上给出一句可判定含义。
+ * ⛔ 不合并：三类的处置**相反**（卡点加产能有用 · 堵点加产能没用 · 断点得先接上），
+ *   合并等于把这个区分抹掉 —— 而这正是本单明令不许干的那一类改动。
+ */
+export const IMPEDIMENT_KIND_PLAIN: Readonly<Record<string, string>> = {
+  BOTTLENECK: "能力不够，做不过来 —— 加产能有用",
+  CONGESTION: "能力够，但流不动（在排队 / 在途积压）—— 加产能没用",
+  BREAK: "链条接不上，上一环给不了这一环要的",
+};

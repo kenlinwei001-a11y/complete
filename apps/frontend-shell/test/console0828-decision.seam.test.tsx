@@ -267,6 +267,7 @@ vi.mock("@/api/apiClient", () => ({
 
 import UnifiedSimShell from "@/views/sim/unified/UnifiedSimShell";
 import { BUSINESS_EVENTS } from "@/views/sim/unified/console0828/eventCatalog";
+import { MONEY_BREAKDOWN_LABELS } from "@/views/sim/unified/console0828/console0828Model";
 
 function mount() {
   return render(
@@ -378,7 +379,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     // 路 ②：口径不许塞进原生 title（disabled 元素上多数浏览器根本不渲染它；且违反 R-UI-3）。
     expect(btn.getAttribute("title")).toBeNull();
     // 路 ③：理由在第一层就已经摆着，不用点开也读得到。
-    expect(btn.textContent ?? "").toContain("一个实例都没有");
+    expect(btn.textContent ?? "").toContain("无任何实例");
 
     // 点开 ⇒ 解释面板出现，且**有字**（空面板与「没有面板」在屏上一样难用）。
     fireEvent.click(btn);
@@ -402,7 +403,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     expect(rush.getAttribute("data-landable")).toBe("0");
     fireEvent.click(rush);
     const statevar = await screen.findByTestId("c0828-absent-rush-order");
-    expect(statevar.textContent ?? "").toContain("没有传导路径");
+    expect(statevar.textContent ?? "").toContain("无传导路径");
 
     // 同为「落不了地」，措辞必须与 no-instance 那条不同 —— 合并即红。
     fireEvent.click(screen.getByTestId("c0828-ev-equipment-down"));
@@ -510,7 +511,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
 
     expect(perturbCalls).toHaveLength(2);
     const cause = screen.getByTestId("c0828-maincause").textContent ?? "";
-    expect(cause).toContain("说不清主要是哪一件");
+    expect(cause).toContain("无法归因到单一事件");
     expect(cause).not.toContain("原材料涨价");
   });
 
@@ -522,10 +523,13 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     await screen.findByTestId("c0828-money");
 
     // 三行各自有自己的位置，且都是「算不出来」这一态 —— 三行塌成一行、或悄悄变 0，都在这里红。
-    for (const label of ["毛利差", "多花的成本", "压住的应收"]) {
+    // ⚠ 栏目名从**被测代码的单源**取（`MONEY_BREAKDOWN_LABELS`），⛔ 不在这里另抄一份数组 ——
+    //   抄一份就是「期望值与被测数据各自漂」，改了一边照样绿。
+    expect(MONEY_BREAKDOWN_LABELS).toHaveLength(3);
+    for (const label of MONEY_BREAKDOWN_LABELS) {
       const cell = screen.getByTestId(`c0828-nocalc-${label}`);
       const txt = (cell.textContent ?? "").trim();
-      expect(txt).toBe("这次算不出来");
+      expect(txt).toBe("本次无法计算");
       // 「算不出来」与「等于 0」是两个命题 —— 这两条断言就是那条界线本身。
       expect(txt).not.toBe("0");
       expect(txt).not.toBe("");
@@ -534,7 +538,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
 
     // 全屏诚实位把这条语义写在字面上，不靠用户自己领会删除线。
     const honesty = screen.getByTestId("c0828-honesty").textContent ?? "";
-    expect(honesty).toContain("这次算不出来");
+    expect(honesty).toContain("本次无法计算");
     expect(honesty).toContain("不是 0");
   });
 
@@ -546,9 +550,9 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     fireEvent.click(screen.getByTestId("c0828-go"));
 
     const err = await screen.findByTestId("c0828-run-error");
-    expect(err.textContent ?? "").toContain("这次没算成");
+    expect(err.textContent ?? "").toContain("本次推演未完成");
     // 屏上必须写明这是「这一跳失败」，与「结果是 0」分开 —— 两者处置相反。
-    expect(err.textContent ?? "").toContain("不是「结果是 0」");
+    expect(err.textContent ?? "").toContain("不是「结果为 0」");
 
     // 且**一个数都不许摆出来**：没有结果就没有钱那三行、没有卡点、没有看板。
     expect(screen.queryByTestId("c0828-money")).toBeNull();
@@ -571,8 +575,8 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
 
     // 卡点这一半照实说「没问出来」，且与「没有卡点」字面分开。
     const impErr = await screen.findByTestId("c0828-imp-error");
-    expect(impErr.textContent ?? "").toContain("卡点这一跳没走通");
-    expect(impErr.textContent ?? "").toContain("不是「没有卡点」");
+    expect(impErr.textContent ?? "").toContain("卡点识别未完成");
+    expect(impErr.textContent ?? "").toContain("不是「无卡点」");
     // 没问出来 ⇒ 看板不许摆出来（摆一张空看板 = 说「一处卡点都没有」）。
     expect(screen.queryByTestId("c0828-board")).toBeNull();
   });
