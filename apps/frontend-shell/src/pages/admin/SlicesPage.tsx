@@ -289,7 +289,7 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
                   key={o.value}
                   className={`badge ${targets.includes(o.value) ? "blue" : ""}`}
                   data-testid={`slice-target-${o.value}`}
-                  style={{ cursor: "pointer", border: targets.includes(o.value) ? "1px solid var(--accent)" : "1px solid var(--border,#3334)" }}
+                  style={{ cursor: "pointer", border: targets.includes(o.value) ? "1px solid var(--accent)" : "1px solid var(--line2)" }}
                   onClick={() => toggleTarget(o.value)}
                 >
                   {o.value}

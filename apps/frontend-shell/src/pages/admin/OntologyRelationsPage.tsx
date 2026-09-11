@@ -109,9 +109,9 @@ const UNASSIGNED = "unassigned";
  * 少了这一支就会掉进末尾的兜底，拨回启用之后屏上仍显示「已停用」。
  */
 function statusLabel(dep: DeprecationMetaVM | undefined): { status: "ACTIVE" | "DEPRECATED" | "RETIRED"; text: string; tone: string } {
-  if (!dep || dep.status === "ACTIVE") return { status: "ACTIVE", text: "启用", tone: "var(--ok, #2e7d32)" };
-  if (dep.status === "RETIRED") return { status: "RETIRED", text: "已下线", tone: "var(--muted, #888)" };
-  return { status: "DEPRECATED", text: "已停用", tone: "var(--warn, #b26a00)" };
+  if (!dep || dep.status === "ACTIVE") return { status: "ACTIVE", text: "启用", tone: "var(--ok)" };
+  if (dep.status === "RETIRED") return { status: "RETIRED", text: "已下线", tone: "var(--muted)" };
+  return { status: "DEPRECATED", text: "已停用", tone: "var(--warn)" };
 }
 
 export default function OntologyRelationsPage() {
@@ -1269,7 +1269,7 @@ export default function OntologyRelationsPage() {
                           data-testid={`orel-rule-delete-${r0.key}`}
                           aria-label={`删除因果边 ${r0.key}`}
                           onClick={() => void askImpact(r0, "delete")}
-                          style={{ color: "var(--danger, #c62828)" }}
+                          style={{ color: "var(--danger)" }}
                         >
                           ✕
                         </button>
@@ -1312,7 +1312,7 @@ export default function OntologyRelationsPage() {
           「空集不许冒充『没有波及』」—— items 空 **且** unresolved 空 = 焦点确为叶子；
           unresolved 非空 = 有算不出来的部分。两者屏上必须分开说，合成一句就是本仓最恨的那种谎。 */}
       {pending && (
-        <div className="panel" data-testid="orel-impact-gate" style={{ marginBottom: 18, borderColor: "var(--danger, #c62828)" }}>
+        <div className="panel" data-testid="orel-impact-gate" style={{ marginBottom: 18, borderColor: "var(--danger)" }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>
             {pending.act === "delete" ? "删除" : "停用"}因果边 <span className="mono">{pending.rule.key}</span>：先看波及面
           </div>
@@ -1323,7 +1323,7 @@ export default function OntologyRelationsPage() {
           {pending.loading && <div className="muted" data-testid="orel-impact-loading" style={{ fontSize: 12 }}>{zh.common.loading}</div>}
 
           {!pending.loading && pending.preview === null && (
-            <div data-testid="orel-impact-failed" style={{ fontSize: 12, color: "var(--danger-txt, #c62828)", lineHeight: 1.7 }}>
+            <div data-testid="orel-impact-failed" style={{ fontSize: 12, color: "var(--danger-txt)", lineHeight: 1.7 }}>
               <b>这次没算出波及面</b>（预览请求失败）。这与「没有波及」<b>不是一回事</b> ——
               下面的按钮仍然可用，但你是在没有波及面的情况下按的。
             </div>
@@ -1352,7 +1352,7 @@ export default function OntologyRelationsPage() {
 
                 {/* 「一条都没算到」与「算到了 0 条」在屏上必须长得不一样 */}
                 {p.items.length === 0 && p.unresolved.length === 0 && (
-                  <div data-testid="orel-impact-leaf" style={{ color: "var(--ok, #2e7d32)" }}>
+                  <div data-testid="orel-impact-leaf" style={{ color: "var(--ok)" }}>
                     {/*
                      * ⚠ 下面那句话里的「四类」赌的是一个**静态事实**：波及桶枚举恰好 4 个成员。
                      * 它头顶的运行时守卫 `p.items.length === 0 && p.unresolved.length === 0`
@@ -1374,7 +1374,7 @@ export default function OntologyRelationsPage() {
                   </div>
                 )}
                 {p.unresolved.length > 0 && (
-                  <div data-testid="orel-impact-unresolved" style={{ color: "var(--warn, #b26a00)" }}>
+                  <div data-testid="orel-impact-unresolved" style={{ color: "var(--warn)" }}>
                     <b>这次没算全</b>（{p.unresolved.length} 处追不到）——{p.items.length === 0 ? "所以上面那排 0 不等于「没有波及」，" : ""}
                     下面逐条写明什么追不到、缺什么：
                     <ul style={{ margin: "2px 0 0 16px" }}>
@@ -1385,7 +1385,7 @@ export default function OntologyRelationsPage() {
                   </div>
                 )}
                 {p.truncated && (
-                  <div data-testid="orel-impact-truncated" style={{ color: "var(--warn, #b26a00)" }}>
+                  <div data-testid="orel-impact-truncated" style={{ color: "var(--warn)" }}>
                     已到 {p.maxHops} 跳保险丝，更远的没有继续追 —— 波及面<b>至少</b>这么大，不是恰好这么大。
                   </div>
                 )}
@@ -1409,7 +1409,7 @@ export default function OntologyRelationsPage() {
               className="btn sm"
               data-testid="orel-impact-confirm"
               disabled={pending.loading || toggleRule.isPending || removeRule.isPending}
-              style={{ color: "var(--danger, #c62828)" }}
+              style={{ color: "var(--danger)" }}
               onClick={() =>
                 pending.act === "delete"
                   ? removeRule.mutate(pending.rule)
