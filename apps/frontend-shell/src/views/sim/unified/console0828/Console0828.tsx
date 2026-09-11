@@ -932,7 +932,13 @@ export default function Console0828({
 
                 {isOpen && !ok && L !== undefined && L.kind !== "ok" ? (
                   <div className={styles.expand} data-testid={`c0828-absent-${ev.id}`}>
-                    <p className={styles.calibre}>{LANDING_ABSENCE_TEXT[L.kind]}</p>
+                    {/* ⚠ 这一句**单独挂锚点**：接缝门 ②b 要咬的命题是「两种缺失措辞不许一样」，
+                        而整块面板的 textContent 里还混着「它找过哪些落点」那段逐事件明细 ——
+                        拿整块去比，两种措辞**改成一模一样也照样不相等**，断言等于没咬。
+                        （本单实测：把两条措辞改成同一句，门仍然全绿。）*/}
+                    <p className={styles.calibre} data-testid={`c0828-absent-why-${ev.id}`}>
+                      {LANDING_ABSENCE_TEXT[L.kind]}
+                    </p>
                     <details className={styles.more}>
                       <summary>它找过哪些落点</summary>
                       <div className={styles.moreBody}>
