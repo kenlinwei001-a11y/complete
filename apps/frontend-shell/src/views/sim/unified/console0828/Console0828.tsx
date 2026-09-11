@@ -584,6 +584,10 @@ export default function Console0828({
    * · ② 因此自动闭合：点第一项 ⇒ 仍然滚动 + 选中态成立，反馈与点别的项一模一样。
    */
   const optionsRef = useRef<HTMLElement | null>(null);
+  /* WO-UX-UNIFY：下钻出口的落点。与 `optionsRef` 同一套做法（含 `?.` ——
+     jsdom 不实现 `scrollIntoView`，少了它接缝门会红在一个与本单无关的地方）。 */
+  const impedimentRef = useRef<HTMLElement | null>(null);
+  const boardRef = useRef<HTMLElement | null>(null);
   const revealFix = (impedimentId: string): void => {
     setPickedFix(impedimentId);
     // 面板要等这一次 state 落地后才在正确的位置上 —— 故推到下一帧再滚。
@@ -1278,6 +1282,12 @@ export default function Console0828({
 
         {result !== null && money !== null ? (
           <>
+            {/* ══ WO-UX-UNIFY ④ 面板网格 · 先 2 列大块（纪律第 2 条）═══════════════
+                改前财务影响与客户敞口是**两条整幅宽的瀑布**，中间隔着一整屏；
+                而它们答的是同一个问题的两半（多少钱 · 落在谁头上），并排才对得上账。
+                ⚠ 两块都仍**挂在 DOM 里**（没有做成互斥页签）—— 既有接缝门要求
+                money / cust / impediment / board **同时在场**，且它们本来就要互相印证。 */}
+            <div className={styles.grid2}>
             {/* ══ 区③ 钱上差多少 ══ */}
             <section className={styles.panel} data-testid="c0828-money">
               <div className={styles.head}>
@@ -1355,6 +1365,17 @@ export default function Console0828({
                   )}
                 </div>
               </details>
+              {/* 下钻出口（纪律第 3 条）—— 目的地是**同屏已有**的受阻环节面板，不新建目的地。 */}
+              <div className={styles.drill}>
+                <button
+                  type="button"
+                  className={styles.drillBtn}
+                  data-testid="c0828-drill-money"
+                  onClick={() => impedimentRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+                >
+                  查看这笔敞口卡在哪些环节 →
+                </button>
+              </div>
             </section>
 
             {/* ══ 区③b 落在谁头上 ══ */}
@@ -1460,11 +1481,22 @@ export default function Console0828({
                     </div>
                   </div>
                 </div>
+                <div className={styles.drill}>
+                  <button
+                    type="button"
+                    className={styles.drillBtn}
+                    data-testid="c0828-drill-cust"
+                    onClick={() => boardRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+                  >
+                    查看逐处受阻环节与对策数 →
+                  </button>
+                </div>
               </section>
             ) : null}
+            </div>
 
             {/* ══ 区④ 哪儿会出事 ══ */}
-            <section className={styles.panel} data-testid="c0828-impediment">
+            <section className={styles.panel} data-testid="c0828-impediment" ref={impedimentRef}>
               <div className={styles.head}>
                 {zone("4", "受阻环节")}
                 <h3 className={styles.headTitle}>全流程扫描结果</h3>
@@ -1669,7 +1701,7 @@ export default function Console0828({
 
             {/* ══ 区⑤ 对策看板 ══ */}
             {impGroups !== null && impGroups.all.length > 0 ? (
-              <section className={styles.panel} data-testid="c0828-board">
+              <section className={styles.panel} data-testid="c0828-board" ref={boardRef}>
                 <div className={styles.head}>
                   {zone("5", "对策清单")}
                   <h3 className={styles.headTitle}>对策看板 · {impGroups.all.length} 处受阻环节</h3>
@@ -1793,6 +1825,18 @@ export default function Console0828({
                     </p>
                   </div>
                 </details>
+                <div className={styles.drill}>
+                  <button
+                    type="button"
+                    className={styles.drillBtn}
+                    data-testid="c0828-drill-board"
+                    disabled={picked === null}
+                    title={picked === null ? "本次无可处置卡点，故无对策面板可去" : undefined}
+                    onClick={() => optionsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+                  >
+                    查看选中那一处的四栏对策 →
+                  </button>
+                </div>
               </section>
             ) : null}
 
