@@ -1,4 +1,10 @@
-import { pairWeightNormalizeOf, type PairWeightNormalize, type PropagationRule } from "@platform/contracts";
+import {
+  isOnHandOrderStatus,
+  ON_HAND_ORDER_STATUSES,
+  pairWeightNormalizeOf,
+  type PairWeightNormalize,
+  type PropagationRule,
+} from "@platform/contracts";
 import { bomRowCost, selectEffectiveBom } from "../bom.js";
 import type { ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
@@ -443,6 +449,60 @@ export async function buildPairWeights(
             `（分母是**源池均值** ${totalExposure} ÷ ${pool.length} —— 均值=1、无量纲，` +
             `保住不同对手方之间的**绝对金额比**；组内归一在 1:N 扇出上恒为 1、度量不了这件事）`,
           fields: [`${rule.targetTypeKey}.qty`, `${rule.targetTypeKey}.unitPrice`],
+          bomId: null,
+        });
+      }
+      weights[rule.key] = table;
+      done(edges.length, zeroPairs);
+      continue;
+    }
+
+    if (basis === "target_on_hand_gate") {
+      // ── 目标订单**还在不在手**的 0/1 闸门（WO-PRESSURE-TO-MONEY）──────────────────
+      //
+      // 病灶（修前实测·真后端 SEED_DEMO=1·seed 42）：推演层不看订单状态 ⇒
+      // 一次原料涨价把 **350 张 `COMPLETED`（已交付关闭）** 的单也推了一遍，
+      // 它们占订单簿金额 **65.55%（298.01 亿 / 454.64 亿）**。
+      // 料已耗用、成本已锁定的单被算进"多花的成本"，是把敞口分母直接做错。
+      //
+      // 🔴 判据来自**既有登记册**，不是本模块发明的系数：
+      //    `isOnHandOrderStatus` / `ON_HAND_ORDER_STATUSES`（`contracts/order-status.ts`），
+      //    该文件原文明令「逐处 `!== "COMPLETED"` 的字面量比较一律换成本函数」。
+      //    0/1 是那条谓词的真假值 —— 不是强度参数，故不触 RL5。
+      //
+      // ⚠ **闸门不归一**（`normalize:"NONE"`）：这条边是 1:N 出边、每张单只有一条入边，
+      //    任何组内归一都会把 0/1 归一回 1（闸门失效），且把已完成单的份额**摊给别人**
+      //    ——总量不变只是换人承担，而本条要的是总量真的变小。理由全文见契约该口径上方。
+      const targets = await byType(rule.targetTypeKey);
+      const statusOf = new Map(targets.map((o) => [o.id, o.props.status]));
+      // 🐤 金丝雀：目标类型**一格 status 都没有** ⇒ 不是"全都不在手"，是取数坏了/本体没这一列。
+      //    此时报缺而不是把全表压成 0 —— 压成 0 会让整条边静默停摆，且看起来像"闸门生效了"。
+      const withStatus = targets.filter((o) => typeof o.props.status === "string").length;
+      if (targets.length === 0 || withStatus === 0) {
+        fail(
+          `本租户 ${rule.targetTypeKey} ${targets.length} 个实例、其中带 status 的 ${withStatus} 个 ⇒ 判不了"在不在手"。` +
+            `本条流不传导——把全表压成 0 会让这条边静默停摆，且与"闸门正常工作"在屏上长得一模一样。`,
+        );
+        continue;
+      }
+      const table: Record<string, number> = {};
+      let zeroPairs = 0;
+      // R6：按 (源 id, 目标 id) 升序写入 —— 键序会被逐字节快照咬到。
+      for (const e of [...edges].sort((a, b) => a.fromId.localeCompare(b.fromId) || a.toId.localeCompare(b.toId))) {
+        const st = statusOf.get(e.toId);
+        const onHand = isOnHandOrderStatus(st);
+        const w = onHand ? 1 : 0;
+        if (w === 0) zeroPairs += 1;
+        table[pairWeightKey(e.fromId, e.toId)] = w;
+        report.explain.push({
+          ruleKey: rule.key, basis, sourceObjectId: e.fromId, targetObjectId: e.toId,
+          weight: w, numerator: w, denominator: 1, normalize,
+          formula:
+            `${rule.targetTypeKey}.status = ${typeof st === "string" ? st : "（缺）"} ⇒ ` +
+            `${onHand ? "在手" : "已交付关闭"} ⇒ 权重 ${w}` +
+            `（口径出处：contracts/order-status.ts 的 ON_HAND_ORDER_STATUSES = ${ON_HAND_ORDER_STATUSES.join(" + ")}；` +
+            `闸门**不归一**：0/1 原样进 amount = 强度 × 权重 × 源态，不把已完成单的份额摊给别人）`,
+          fields: [`${rule.targetTypeKey}.status`],
           bomId: null,
         });
       }
