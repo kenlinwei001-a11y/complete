@@ -984,12 +984,18 @@ export default function Console0828({
           className={styles.go}
           data-testid="c0828-go"
           disabled={!enabled || staged.length === 0 || runM.isPending}
+          /**
+           * ⚠ `title` 只放**为什么现在点不动**，⛔ 不放口径。
+           *
+           * 我第一版把「一次执行：施加扰动 · 推进世界 · …」这串放进了 `title`，
+           * 被 `provenance-popover-legibility` 那道棘轮当场咬红（**按渲染文本计 94 > 基线 93**）——
+           * 规范 §2 R-UI-3 明禁用原生 `title` 充当浮层：它在 disabled 元素上多数浏览器
+           * 根本不渲染，键盘与读屏也拿不到，写进去等于**写了没人看得见**。
+           * 那五步现在只在第一层的「本次推演执行记录」里给（展开即见），这里不重复一份。
+           * ⇒ 可点时**不给 title**（`undefined`，React 会整个不渲染这个属性）。
+           */
           title={
-            !enabled
-              ? "需先建立推演会话"
-              : staged.length === 0
-                ? "请先添加至少一件扰动事件"
-                : "一次执行：施加扰动 · 推进世界 · 财务影响 · 卡点识别 · 对策生成"
+            !enabled ? "需先建立推演会话" : staged.length === 0 ? "请先添加至少一件扰动事件" : undefined
           }
           onClick={() => runM.mutate()}
         >
