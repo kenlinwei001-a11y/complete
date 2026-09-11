@@ -112,8 +112,24 @@ export const SANDBOX_CONSOLE_VIEWS: SandboxConsoleView[] = [
   { key: "sim-optimize", title: "方案寻优", renderer: "sim-optimize" },
 ];
 
-/** 四视图的受控功能键 —— **与沙盘主屏同一把闸**，不另起一个（见上文长注）。 */
-export const SANDBOX_CONSOLE_FEATURE_KEY = "sim.sandbox";
+/**
+ * 四视图的受控功能键。
+ *
+ * ── WO-SIM-GATE-DECOUPLE（2026-09-11）· 本行的值变了，理由照实回写 ────────────────
+ * **上一版原文**：`= "sim.sandbox"`，注释写「**与沙盘主屏同一把闸**，不另起一个」。
+ * 那句话在当时是对的 —— 当时 `sim.sandbox` 既是能力族总闸、又是沙盘那一页的入口闸，
+ * 四视图挂它等于「挂在推演这一族上」。
+ * **今天前提已变**：`sim.sandbox` 已降为**纯能力族总闸**，页面入口另由两个 `view.*` 闸管
+ * （见 `features.ts` 该键处的长注）。四视图是**统一推演控制台**的四个页签（宿主是
+ * `/v/sim-unified`，不是旧沙盘 —— 见 `ShellLayout.CONSOLIDATED_INTO_SANDBOX` 那四条的 `host`），
+ * 故它们的受控键应当是**宿主那一页的页面闸**。
+ *
+ * ⚠ 语义未被削弱：`view.sim-unified` `requires: ["sim.sandbox"]` ⇒ 能力关，这四视图照旧一起消失
+ *   （`cascade` 逐键回溯祖先）。变的只是**多了一种状态**：能力开着、而控制台这一页被单独关掉。
+ * ⚠ 单一出处仍是本行：`features.ts` 的 `VIEW_FEATURE_MAP` 与 `app.ts` 的 `view.*` 别名行
+ *   都读这一个常量，改一处两处一起变。
+ */
+export const SANDBOX_CONSOLE_FEATURE_KEY = "view.sim-unified";
 
 /** 派生：四个 viewKey（`service.ts` 增量视图桶 / `features.ts` VIEW_FEATURE_MAP / `app.ts` 路由别名共用）。 */
 export const SANDBOX_CONSOLE_VIEW_KEYS: string[] = SANDBOX_CONSOLE_VIEWS.map((v) => v.key);
