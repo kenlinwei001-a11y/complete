@@ -695,8 +695,16 @@ export default function Console0828({
     /** 金额串用 30px 会撑破卡 ⇒ 降到正文级（**不新增字号档**，仍是 12/13/30 三级）。 */
     readonly small?: boolean;
     readonly cmp: string;
-    /** ⚠ 口径说明 —— **默认可见的那一层，不许折叠**。 */
-    readonly cal: string;
+    /**
+     * ⚠ 口径说明 —— **默认可见的那一层，不许折叠**。
+     *
+     * ⚠ 类型是 `JSX.Element` 而不是 `string`，这是**实测逼出来的**：第一版写成字符串并在里面
+     * 用了 `**…**` 做强调，真浏览器上**原样渲染成了星号**（JSX 文本节点不解析 markdown）——
+     * 屏上出现「按**世界差分全集**判定」这种脏字。
+     * 形态：「我用『我在源码里写了强调标记』当作『屏上会显示为强调』的证据，而前者并不度量后者。」
+     * ⇒ 强调一律用 `<b>`；屏上也不再打 ⛔ 这类工单黑话记号（那是给派单看的，不是给用户看的）。
+     */
+    readonly cal: JSX.Element;
     readonly alert?: boolean;
   }
 
@@ -711,21 +719,21 @@ export default function Console0828({
           value: fmtMoney(bookTotalRaw, "元"),
           small: true,
           cmp: `${orders.length} 张单 · ${new Set(orders.map((o) => o.cust ?? "")).size} 家客户`,
-          cal: "口径：对象层 Order.value 逐页取全后加总，为**已签成交额**；≠ 年度计划营收，也 ≠ 需求预测。",
+          cal: (<>口径：对象层 Order.value 逐页取全后加总，为<b>已签成交额</b>；≠ 年度计划营收，也 ≠ 需求预测。</>),
         },
         {
           key: "staged",
           label: "待施加扰动",
           value: String(staged.length),
           cmp: staged.length === 0 ? "尚未添加" : `推演时长 ${horizon} 拍`,
-          cal: "口径：左栏本地草稿，**不落盘**；与顶栏「服务端历史扰动」不是同一份，两者不可相加。",
+          cal: (<>口径：左栏本地草稿，<b>不落盘</b>；与顶栏「服务端历史扰动」不是同一份，两者不可相加。</>),
         },
         {
           key: "entity",
           label: "可落点实体",
           value: String(entityTotal),
           cmp: entityCounts.map((e) => `${e.label}${e.n}`).join(" · "),
-          cal: "口径：12 类扰动事件可落到的**具名实体**；其余对象只作传播介质，不进选择器。",
+          cal: (<>口径：12 类扰动事件可落到的<b>具名实体</b>；其余对象只作传播介质，不进选择器。</>),
         },
       ];
     }
@@ -738,21 +746,21 @@ export default function Console0828({
         value: fmtMoney(money.exposure, "元"),
         small: true,
         cmp: `占订单簿 ${pct(share)} · 基数 ${fmtMoney(money.bookTotal, "元")}`,
-        cal: "口径：本次推演中读数发生变化的订单，按对象层成交额合计 —— 是「**受影响订单的金额规模**」，**不是利润损失**（毛利/成本/应收三项本次无法计算，见下方「金额勾稽」）。",
+        cal: (<>口径：本次推演中读数发生变化的订单，按对象层成交额合计 —— 是「<b>受影响订单的金额规模</b>」，<b>不是利润损失</b>（毛利 / 成本 / 应收三项本次无法计算，见下方「金额勾稽」）。</>),
       },
       {
         key: "orders",
         label: "受影响订单",
         value: String(money.exposedOrders),
         cmp: `共 ${money.bookOrders} 张 · 读到 ${money.ordersSeen} 张`,
-        cal: "口径：按**世界差分全集**判定，⛔ 不按被扰动的源格判定 —— 源变量常被顶在域上界，源格只动千分之几而下游动千百倍。读到 0 张表示遍历失效，不是「无波及」。",
+        cal: (<>口径：按<b>世界差分全集</b>判定，<b>不按</b>被扰动的源格判定 —— 源变量常被顶在域上界，源格只动千分之几而下游动千百倍。读到 0 张表示遍历失效，不是「无波及」。</>),
       },
       {
         key: "cust",
         label: "受影响客户",
         value: custView === null ? "—" : String(custView.touchedCustomers),
         cmp: custView === null ? "客户视图本次未取到" : `共 ${custView.totalCustomers} 家`,
-        cal: "口径：由受影响订单按 Order.cust 归并得到，**非独立的客户级读数**；客户对象自带的应收数因计量单位无登记册（元/万元差 10000 倍）**不上屏**。",
+        cal: (<>口径：由受影响订单按 Order.cust 归并得到，<b>非独立的客户级读数</b>；客户对象自带的应收数因计量单位无登记册（元 / 万元差 10000 倍）<b>不上屏</b>。</>),
       },
       {
         key: "imp",
@@ -762,7 +770,7 @@ export default function Console0828({
           impGroups === null
             ? "本次未取到"
             : impGroups.model.groups.map((g) => `${g.label}${g.items.length}`).join(" · "),
-        cal: "口径：卡点 / 堵点 / 断点是引擎回包里 kind 的**三个不同取值**，处置相反，⛔ 不合并成一个词。取不到时显「—」，那是**调用失败**不是「无卡点」。",
+        cal: (<>口径：卡点 / 堵点 / 断点是引擎回包里 kind 的<b>三个不同取值</b>，处置相反，<b>不合并</b>成一个词。取不到时显「—」，那是<b>调用失败</b>，不是「无卡点」。</>),
       },
       {
         key: "fix",
@@ -771,7 +779,7 @@ export default function Console0828({
         cmp: impGroups === null ? "本次未取到" : `仅可监控 ${impGroups.watchOnly.length} 处`,
         // 「一处都动不了」是真告警 ⇒ 这一张才允许染色（纪律第 4 条）。
         alert: impGroups !== null && impGroups.all.length > 0 && impGroups.actionable.length === 0,
-        cal: "口径：「可处置」= 引擎为该处**枚举出了至少一条对策**；「仅可监控」= 一条都没有。系统不给推荐，决策由使用方作出。",
+        cal: (<>口径：「可处置」= 引擎为该处<b>枚举出了至少一条对策</b>；「仅可监控」= 一条都没有。<b>系统不给推荐，决策由使用方作出。</b></>),
       },
     ];
   }, [result, money, custView, impGroups, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts]);
@@ -1233,11 +1241,11 @@ export default function Console0828({
             </div>
             {/* 诚实位：参考稿每张卡都有走势线，本屏**没有数据源**画它。 */}
             <p className={styles.calibre} data-testid="c0828-kpi-nospark">
-              各卡<b>不带迷你走势线</b> —— 本次推演一次跳 {horizon} 拍后只读**一次**终态，
+              各卡<b>不带迷你走势线</b> —— 本次推演一次跳 {horizon} 拍后只读<b>一次</b>终态，
               全屏只有「扰动前」「扰动后」两个观测点，中间每一拍的读数从未取回。
               两点画不出走势，补一条即是编造历史。<b>这是缺数据源，不是缺实现</b>。
               各卡第二行给的是<b>同次推演内的真实对比</b>（占订单簿 / 占总数），
-              ⛔ 不是「较上周」—— 本屏不留存历史推演，没有上一期可比。
+              <b>不是</b>「较上周」—— 本屏不留存历史推演，没有上一期可比。
             </p>
           </>
         )}
