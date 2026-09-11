@@ -192,43 +192,159 @@ export function baseServeCostWan(baseId: string): number {
  * 相差 1 个百分点以内（见交付报告实测表）。权重和 = 1000，仅作相对比例用；
  * 24 张锚点单的客户是**固定**的，会叠加在加权结果之上，故实测占比与名义权重略有出入。
  */
-export const CUSTOMER_REGISTRY: { name: string; businessType: BusinessType; weight: number }[] = [
+/**
+ * WO-CUSTOMER-GROUP · **集团名册**（`CustomerGroup` 对象类型的单一来源）。
+ *
+ * ## 这张表解决的病（仓主原话：「目前**客户名称是重复出现的**，需要修正」）
+ *
+ * **今天的行为**：`CUSTOMER_REGISTRY` 是一张**平坦的 20 行表**，行与行之间零关系。
+ * 「广汽埃安 / 广汽新能源 / 广汽集团 同属一个集团」这件事**只写在注释里**
+ * （见下 `广汽集团` 那行的行尾注「三者并列是真实的集团—子品牌结构」）——
+ * 注释不是数据，下游一个字都读不到。于是前端客户表按 `Order.cust` 这个**字符串**分组，
+ * 广汽系三个主体成了三行互不相干的客户。
+ *
+ * **应该的行为**：集团是**一等对象**，客户经 `customer_belongs_to_group` 指向它 ⇒
+ * 「丢掉广汽会怎样」由下游沿图把成员敞口**现算**加总，而不是要 COO 自己把三行加起来。
+ *
+ * ## ⚠ 这不是「实体合并」，别用错机制
+ * 本仓已有 `POST /a/v1/objects/merge-candidates/:id/merge`（`app.ts` 实体合并），
+ * 它解决的是**「两条记录其实是同一个实体」**（脏数据去重 → 金记录）。
+ * 而广汽埃安与广汽集团是**两个不同的法人实体**，各自有独立的订单、应收、交付地点 ——
+ * 合并会把它们**烧成一条记录**，敞口就再也拆不开了。归属关系要的是**加一条边**，不是少一条记录。
+ *
+ * ## 归属判据（⛔ 不许按字符串前缀归）
+ * 判据是**真实世界的控股 / 母子公司 / 子品牌关系**，逐条依据见各行行尾注。
+ * ⚠ **`国家电网` 与 `国家电投` 前缀相同但毫无隶属关系** —— 前者是国家电网有限公司（电网），
+ * 后者是国家电力投资集团（五大发电集团之一），**两家独立中央企业**。
+ * 按前缀归会把它们并成一个集团，且**不报错** —— 这类误归比不归坏得多：
+ * 它让 COO 以为自己看的是集团敞口，而那个数是假的。故二者各自成单体集团。
+ *
+ * ## 独立客户也有归属（⛔ 不许留 null）
+ * 没有母集团的客户**自成单体集团**（`groupType: "STANDALONE"`），
+ * 而不是留空让下游各自兜底 —— 留空会变成「有的客户有集团、有的没有」，
+ * 前端就得写两套分支，而那两套迟早会漂。
+ *
+ * ## 这张表**不含任何汇总数**
+ * 集团敞口 = 成员敞口之和，**由下游现算**。本表只声明「谁属于谁」这一个事实；
+ * 写死一个合计数就会与订单簿漂移，且漂了不报错。
+ */
+export const CUSTOMER_GROUP_REGISTRY = [
+  { groupId: "grp_gac", name: "广汽集团" },
+  { groupId: "grp_changan", name: "长安汽车集团" },
+  { groupId: "grp_saic", name: "上汽集团" },
+  { groupId: "grp_geely", name: "吉利控股集团" },
+  { groupId: "grp_dongfeng", name: "东风汽车集团" },
+  { groupId: "grp_xpeng", name: "小鹏汽车" },
+  { groupId: "grp_leapmotor", name: "零跑汽车" },
+  { groupId: "grp_nio", name: "蔚来汽车" },
+  { groupId: "grp_hycan", name: "合创汽车" },
+  { groupId: "grp_xiaomi", name: "小米集团" },
+  { groupId: "grp_yutong", name: "宇通集团" },
+  { groupId: "grp_sgcc", name: "国家电网" },
+  { groupId: "grp_csg", name: "南方电网" },
+  { groupId: "grp_spic", name: "国家电力投资集团" },
+  { groupId: "grp_vw", name: "大众汽车集团" },
+  { groupId: "grp_hyundai", name: "现代汽车集团" },
+] as const;
+
+/**
+ * 集团 id 的**联合类型** —— 这是「⛔ 不许留 null / 不许拼错」的**机器实现**。
+ * `CUSTOMER_REGISTRY` 的 `group` 字段用它做类型 ⇒ 漏填一个客户的集团、或把 `grp_gac`
+ * 拼成 `grp_gca`，都是**编译期红**，不是运行期才发现（更不是屏上少一段没人察觉）。
+ * ⚠ 这一条是本单唯一不靠人自觉的地方：机器先说话。
+ */
+export type CustomerGroupId = (typeof CUSTOMER_GROUP_REGISTRY)[number]["groupId"];
+
+/** 规模补足客户（`客户001`…·仅 XL）的**生成集团** id 前缀：一人一集团，不进声明册。 */
+export const GENERATED_GROUP_PREFIX = "grp_x";
+
+export const CUSTOMER_REGISTRY: { name: string; businessType: BusinessType; weight: number; group: CustomerGroupId }[] = [
   // ── 龙头两家：权重直接取真实装机占比（2023 年 1–10 月国内新能源乘用车装机结构）──
   //    广汽埃安 46.7%（9.3 GWh）· 小鹏 17.3%（3.4 GWh）· 两家合计 ≈64%。
   //    ⚠ **TOP1 接近一半**不是造数造歪了，这正是主体企业真实的收入结构；
   //    也正因为如此，「丢掉最大客户会怎样 / 我的收入结构安全吗」才是一道生死题而不是纸面练习。
-  { name: "广汽埃安", businessType: "passenger", weight: 467 },
-  { name: "小鹏汽车", businessType: "passenger", weight: 173 },
+  { name: "广汽埃安", businessType: "passenger", weight: 467, group: "grp_gac" }, // 广汽集团控股的新能源整车子公司
+  { name: "小鹏汽车", businessType: "passenger", weight: 173, group: "grp_xpeng" }, // 独立上市集团·无母集团 ⇒ 单体
   // ── 真实客户名单第 3–10 名（零跑 / 广汽新能源 / 长安 / 深蓝 / 合创 / 蔚来 / 吉利）──
-  { name: "零跑汽车", businessType: "passenger", weight: 42 },
-  { name: "广汽新能源", businessType: "passenger", weight: 36 },
-  { name: "长安汽车", businessType: "passenger", weight: 33 }, // 锚点
-  { name: "深蓝汽车", businessType: "passenger", weight: 23 },
-  { name: "合创汽车", businessType: "passenger", weight: 19 },
-  { name: "蔚来汽车", businessType: "passenger", weight: 17 },
-  { name: "吉利汽车", businessType: "passenger", weight: 18 }, // 锚点
+  { name: "零跑汽车", businessType: "passenger", weight: 42, group: "grp_leapmotor" }, // 独立上市集团（Stellantis 为少数股东·非控股）⇒ 单体
+  { name: "广汽新能源", businessType: "passenger", weight: 36, group: "grp_gac" }, // 广汽集团新能源整车主体（2020 年更名广汽埃安·同一血缘，见下「存疑」①）
+  { name: "长安汽车", businessType: "passenger", weight: 33, group: "grp_changan" }, // 锚点·集团母体
+  { name: "深蓝汽车", businessType: "passenger", weight: 23, group: "grp_changan" }, // 长安汽车控股的新能源品牌（原长安新能源）
+  { name: "合创汽车", businessType: "passenger", weight: 19, group: "grp_hycan" }, // ⚠ 见下「存疑」②：广汽埃安仅参股 25%，控股方另有其人 ⇒ **不归广汽系**
+  { name: "蔚来汽车", businessType: "passenger", weight: 17, group: "grp_nio" }, // 独立上市集团 ⇒ 单体
+  { name: "吉利汽车", businessType: "passenger", weight: 18, group: "grp_geely" }, // 锚点·本册内无其他吉利系主体 ⇒ 实际单体
   // ── 储能业务线（主体企业动力+储能双线经营）──
   //    这三家是**锚点里本来就有的真实电网/发电集团**，不是编的：实测 24 张锚点订单里
   //    有 9 张（37.5%）是储能单，全部落在这三家名下。车企名单里没有储能客户，
   //    所以此处**一家新的都不加**（宁可少，不许编），只保留这三家真实存在的。
-  { name: "国家电网", businessType: "storage", weight: 34 }, // 锚点
-  { name: "南方电网", businessType: "storage", weight: 25 }, // 锚点
-  { name: "国家电投", businessType: "storage", weight: 15 }, // 锚点
+  // ⚠ 三家**互不隶属**的独立中央企业，各自成单体集团。`国家电网` 与 `国家电投` 前缀相同纯属巧合：
+  //    前者是国家电网有限公司（电网运营），后者是国家电力投资集团（五大发电集团之一）。
+  //    按前缀归会把两家并成一个集团**且不报错** —— 这正是「错连比不连坏得多」的样板。
+  { name: "国家电网", businessType: "storage", weight: 34, group: "grp_sgcc" }, // 锚点·独立央企
+  { name: "南方电网", businessType: "storage", weight: 25, group: "grp_csg" }, // 锚点·独立央企
+  { name: "国家电投", businessType: "storage", weight: 15, group: "grp_spic" }, // 锚点·独立央企（≠ 国家电网）
   // ── 真实客户名单尾部 + 已进入供应链的海外/合资车企（大众 / 现代）──
-  { name: "上汽通用五菱", businessType: "passenger", weight: 12 },
-  { name: "小米汽车", businessType: "passenger", weight: 9 },
-  { name: "广汽集团", businessType: "passenger", weight: 7 }, // 锚点（埃安/新能源的母集团，三者并列是真实的集团—子品牌结构）
-  { name: "智己汽车", businessType: "passenger", weight: 10 },
+  { name: "上汽通用五菱", businessType: "passenger", weight: 12, group: "grp_saic" }, // 上汽集团控股 50.1%（通用 44%·五菱 5.9%）·并表主体
+  { name: "小米汽车", businessType: "passenger", weight: 9, group: "grp_xiaomi" }, // 小米集团造车主体（母集团不在本册）⇒ 册内单体
+  // 锚点·广汽系母体。⚠ 行尾原注「三者并列是真实的集团—子品牌结构」**说的没错，错的是它只是注释**：
+  // 三者并列确实是真实结构，但「它们同属一个集团」这件事此前零处可被机器读到（WO-CUSTOMER-GROUP 补上）。
+  { name: "广汽集团", businessType: "passenger", weight: 7, group: "grp_gac" },
+  { name: "智己汽车", businessType: "passenger", weight: 10, group: "grp_saic" }, // 上汽集团控股的高端智能电动品牌
   // 锚点·唯一商用车客户。权重 40 是**实测逼出来的**，不是拍的：按纯乘用车装机比例摊，
   // 商用车只剩 5 单，且 `IN_PRODUCTION × commercial` 这一格**恰好为 0** ——
   // 三业务线（乘/商/储）是系统建模的一等维度（WO-W5 三重张力），一格空掉这维就废了。
   // 真实装机表只覆盖**乘用车**，对商用车份额一个字都没说，所以这个权重不与任何公开数字冲突；
   // 补的量全部从中部乘用车客户里出，**TOP1/TOP2 这两个有出处的数一分未动**。
-  { name: "宇通客车", businessType: "commercial", weight: 40 },
-  { name: "大众", businessType: "passenger", weight: 9 },
-  { name: "东风汽车", businessType: "passenger", weight: 2 }, // 锚点
-  { name: "现代", businessType: "passenger", weight: 9 },
+  { name: "宇通客车", businessType: "commercial", weight: 40, group: "grp_yutong" }, // 郑州宇通集团旗下上市主体（母集团不在本册）⇒ 册内单体
+  { name: "大众", businessType: "passenger", weight: 9, group: "grp_vw" }, // 大众汽车集团 ⇒ 册内单体
+  { name: "东风汽车", businessType: "passenger", weight: 2, group: "grp_dongfeng" }, // 锚点·本册内无其他东风系主体 ⇒ 实际单体
+  { name: "现代", businessType: "passenger", weight: 9, group: "grp_hyundai" }, // 现代汽车集团 ⇒ 册内单体
 ];
+
+/**
+ * WO-CUSTOMER-GROUP · 客户 → 集团 id。名册外返回 undefined（诚实缺席·调用方据此不建边），
+ * 与同文件 `custIdOfCustomer` 同款口径。
+ */
+export function groupIdOfCustomer(name: string): CustomerGroupId | undefined {
+  return CUSTOMER_REGISTRY.find((c) => c.name === name)?.group;
+}
+
+/**
+ * WO-CUSTOMER-GROUP · 由**客户成员**派生集团行（照 `buildRegions` 的老规矩：
+ * 行数与取值全部由载体既有字段派生·零新业务事实·零 rng·排序确定性）。
+ *
+ * ⚠ **不产出任何汇总数** —— 集团敞口、成员家数都由下游沿 `customer_belongs_to_group` 现算。
+ * 这里写死一个合计数，它就会与订单簿漂移，且**漂了不报错**；
+ * 更阴的是 A6 行级过滤下「存量成员数」与「本人看得见的成员数」本就不是同一个量，
+ * 物化哪一个都会在另一个口径下变成谎报。
+ * `groupType` 例外：它描述的是**真实世界的结构**（广汽集团本身就是多主体集团），
+ * 与「谁看得见几行」无关，故可安全物化。
+ *
+ * @param members 每个客户一条：`groupId` + `fallbackName`（仅生成集团用得上）
+ */
+export function buildCustomerGroups(
+  members: { groupId: string; fallbackName: string }[],
+): { groupId: string; name: string; groupType: string }[] {
+  const counts = new Map<string, number>();
+  const names = new Map<string, string>();
+  for (const m of members) {
+    counts.set(m.groupId, (counts.get(m.groupId) ?? 0) + 1);
+    if (names.has(m.groupId)) continue;
+    const declared = CUSTOMER_GROUP_REGISTRY.find((g) => g.groupId === m.groupId);
+    // 照 `PROVINCE_MACRO_REGION` 的老规矩：查不到即 **throw**，不静默回落 ——
+    // 静默回落会让一个拼错的集团 id 变成一个**自己一个人的集团**，而那正好不报错。
+    // 例外只有生成集团（规模补足客户·一人一集团），它们本就不进声明册。
+    if (!declared && !m.groupId.startsWith(GENERATED_GROUP_PREFIX)) {
+      throw new Error(`[battery] 集团「${m.groupId}」不在 CUSTOMER_GROUP_REGISTRY（WO-CUSTOMER-GROUP）`);
+    }
+    names.set(m.groupId, declared ? declared.name : m.fallbackName);
+  }
+  return [...counts.keys()].sort().map((groupId) => ({
+    groupId,
+    name: names.get(groupId)!,
+    groupType: counts.get(groupId)! > 1 ? "GROUP" : "STANDALONE",
+  }));
+}
 
 /** 客户名池（订单 `cust` 取值域）—— 由名册派生，不再另写一份。 */
 const CUSTOMERS = CUSTOMER_REGISTRY.map((c) => c.name);
@@ -2090,6 +2206,21 @@ const warehouseProps: PropertyDef[] = [
  *   故省名即主键 ⇒ 零转换、零 `anchorProperty`。换成代理键会立刻需要一张对照表，
  *   而那张表就是下一个漂移源。
  */
+/**
+ * WO-CUSTOMER-GROUP · 集团（`CustomerGroup`）属性。
+ *
+ * ⚠ **为什么 PK 是 ascii 而不是集团中文名**：照同文件 `custId`（`cust_0`…）那条已写明的老规矩
+ * ——「刻意不用中文名当主键，中文经 id sanitize 后会碰撞」。集团名同样是中文，同样会碰。
+ * 这也是本类型与 `Region` 的**唯一**取舍差异：`Region` 的 PK 是省名，因为三个载体上
+ * **存的就是省名字符串**（零转换对齐）；而集团 id 是本单新造的，没有既存字符串要对齐，
+ * 于是按本文件更强的那条先例（ascii PK）走。
+ */
+const customerGroupProps: PropertyDef[] = [
+  { propKey: "groupId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "集团主键（ascii·`grp_*`）——中文名经 id sanitize 后会碰撞，故不用中文当 PK（同 `custId` 口径）。" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true, description: "集团显示名（如「广汽集团」）。" },
+  { propKey: "groupType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "GROUP = 册内有多个主体的真集团；STANDALONE = 册内仅一个主体的单体集团（独立客户自成一集团，不留 null）。" },
+];
+
 const regionProps: PropertyDef[] = [
   { propKey: "regionId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "省级行政区名（业务主键 = 三个载体 props.province 存的那个串，零转换对齐）。" },
   { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true, description: "行政区显示名（与主键同值：省名本身就是人话，不另造展示串——两份会漂）。" },
@@ -2718,6 +2849,7 @@ export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
   // WO-WAREHOUSE-CUSTLOC：仓库归 factory 域（库存仓位属工厂设施）
   Warehouse: "factory",
   Region: "factory", // WO-LAST3-RELATIONS：行政区（地理归属·三类设施的共同落点，同 Warehouse 归 factory 域）
+  CustomerGroup: "commercial", // WO-CUSTOMER-GROUP：客户集团（客户的归属落点·同 Customer 归 commercial 域）
   InterBaseTransfer: "capacity", // WO-INTERBASE-TRANSFER：跨基地调拨（在途运力·同 Shipment 归 capacity 域）
   CapacityPool: "capacity", // WO-CAPACITY-EDGE：产能池（产能升格为一等对象·归 capacity 域）
   ProductPlatform: "product", ProductSeries: "product", ProductVersion: "product",
@@ -3530,6 +3662,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("Warehouse", "仓库", warehouseProps),
     // WO-LAST3-RELATIONS：行政区（`located_in` 的锚点·地域从字符串升格为可遍历节点）。
     plainD("Region", "行政区", "省级行政区。基地/仓库/客户交付点经 `*_located_in` 指向它，令「华东产能」这类按地域的聚合可沿图走，而不是只能按字段过滤。行数由三个载体既有的 province 取值并集派生，不引入新的经营事实。", regionProps),
+    // WO-CUSTOMER-GROUP：集团（`customer_belongs_to_group` 的锚点·客户从一排平行字符串升格为有归属的主体）。
+    plainD("CustomerGroup", "客户集团", "客户所属集团。客户经 `customer_belongs_to_group` 指向它，令「丢掉广汽会怎样」这类按集团的敞口聚合可沿图走 —— 此前广汽埃安/广汽新能源/广汽集团在屏上是三行互不相干的客户，要 COO 自己把三行加起来。行数由客户名册既有的归属字段派生，不引入新的经营事实，也不含任何汇总金额（集团敞口由下游现算）。", customerGroupProps),
     // WO-INVENTORY-3TIER：成品库存（qtyAvailable 派生）+ 统一库存流水。
     { key: "FinishedGoodsInventory", displayName: "成品库存", domain: "supply", properties: withGovernance("FinishedGoodsInventory", finishedGoodsInvProps), derivedProperties: finishedGoodsInvDerived, sourceBindings: BINDINGS.FinishedGoodsInventory ?? [] },
     plain("InventoryTxn", "库存流水", inventoryTxnProps),
@@ -3688,6 +3822,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "base_located_in", fromTypeKey: "Base", toTypeKey: "Region", cardinality: "N:1" }, // factory（基地属地）
     { key: "warehouse_located_in", fromTypeKey: "Warehouse", toTypeKey: "Region", cardinality: "N:1" }, // factory（仓库属地）
     { key: "custloc_located_in", fromTypeKey: "CustomerLocation", toTypeKey: "Region", cardinality: "N:1" }, // commercial（交付点属地）
+    // WO-CUSTOMER-GROUP：客户归属集团。**只落正向边**，照上面 `located_in` 三条同一把尺子 ——
+    // 「这个集团有哪些客户」由检索侧 `direction:"in"` 反着走，逆边落了是纯增重。
+    { key: "customer_belongs_to_group", fromTypeKey: "Customer", toTypeKey: "CustomerGroup", cardinality: "N:1" }, // commercial（客户归属集团）
     // `depends_on`：同一工艺路线内「本工序依赖上一道」。承载是 `Operation.predecessorOperationId`
     // （末位追加的派生 FK，见 operationProps 头注）—— 不是 `operationSeq` 对 `operationSeq`：
     // 后者会把 15 条工艺路线的同序号工序连成叉积，且不报错。
