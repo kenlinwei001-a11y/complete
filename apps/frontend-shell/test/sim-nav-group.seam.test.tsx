@@ -142,8 +142,9 @@ function visibleSimGroupLabels(
   const out: string[] = [];
   for (const it of simGroup!.items) {
     if (it.kind === "admin") continue;
-    // `consolidatedWhen` 命中（sim.sandbox 开着）⇒ 该条目不出现（见 UnifiedNav :543 / :500）
-    if (!ignoreConsolidation && it.consolidatedWhen === "sim.sandbox") continue;
+    // `consolidatedWhen` 命中（宿主那一页在）⇒ 该条目不出现（见 UnifiedNav）。
+    // WO-SIM-GATE-DECOUPLE：收编键从能力族总闸 `sim.sandbox` 改为**页面闸** `view.sim-sandbox`。
+    if (!ignoreConsolidation && it.consolidatedWhen === "view.sim-sandbox") continue;
     if (it.kind === "route") {
       out.push(it.label);
       continue;
@@ -258,8 +259,8 @@ describe("WO-SIM-NAV-GROUP · §A 四个 viewKey 落在「推演」组", () => {
       // 直接取属性 tsc 会报 TS2339（vitest 不做类型检查，只有 typecheck 会红）。
       expect(
         "consolidatedWhen" in item ? item.consolidatedWhen : undefined,
-        `${key} 没带 consolidatedWhen ⇒ 沙盘开着时它仍单列 = 与合并壳里的页签构成重复入口`,
-      ).toBe("sim.sandbox");
+        `${key} 没带 consolidatedWhen ⇒ 宿主那一页在时它仍单列 = 与合并壳里的页签构成重复入口`,
+      ).toBe("view.sim-sandbox");
       const entry = CONSOLIDATED_INTO_SANDBOX[key];
       expect(entry, `${key} 不在 CONSOLIDATED_INTO_SANDBOX ⇒ 判据⑧f RC=1（收编只写了一半）`).toBeTruthy();
       // `via` 必须是 view-defs：写成 workspace.views 会被 sim-page-roster 的排除判据 X1
@@ -297,14 +298,15 @@ describe("WO-SIM-NAV-GROUP · §A 四个 viewKey 落在「推演」组", () => {
     //   而它失配的方向是**红**（好过静默绿），但代价是把一次正确的重构报成回归。
     //   改成行为断言：直接调那个函数，两态各断言一次，对重命名/提取/极性翻转全免疫。
     const wsSandboxOff = { features: [] } as unknown as Workspace; // 沙盘**关**
-    const wsSandboxOn = { features: ["sim.sandbox"] } as unknown as Workspace; // 沙盘**开**
+    // WO-SIM-GATE-DECOUPLE：收编看的是**宿主那一页在不在**（页面闸），不是能力族开没开。
+    const wsSandboxOn = { features: ["view.sim-sandbox"] } as unknown as Workspace; // 沙盘那一页**在**
 
     // 金丝雀：本条必须真有被测对象 —— 四个键得**同时**在两张表里，否则它测的是空集、恒绿。
     const inBothTables = CONSOLE_KEYS.filter(
       (k) =>
         CONSOLIDATED_INTO_SANDBOX[k] !== undefined &&
         simGroup!.items.some(
-          (it) => it.key === k && "consolidatedWhen" in it && it.consolidatedWhen === "sim.sandbox",
+          (it) => it.key === k && "consolidatedWhen" in it && it.consolidatedWhen === "view.sim-sandbox",
         ),
     );
     expect(
@@ -395,17 +397,23 @@ describe("WO-SIM-NAV-GROUP · §B 导航里没有重名条目", () => {
     ).toEqual([]);
   });
 
-  it("B3 · 旧页一个字没动：sim-sandbox 仍是 label「推演沙盘」+ feature「sim.sandbox」", () => {
+  it("B3 · 旧页仍是 label「推演沙盘」+ feature 为**页面闸**（入口闸与页面 Guard 必须同键）", () => {
     const old = simGroup!.items.find((it) => it.kind === "route" && it.key === "sim-sandbox");
     expect(old, "旧沙盘 route 条目不见了 —— 本单明令不动它").toBeTruthy();
     expect(
       old!.kind === "route" ? old!.label : undefined,
       "改的是旧页而不是新页 —— 方向反了（`/v/sim-sandbox` 是既有产品行为）",
     ).toBe("推演沙盘");
+    // ── WO-SIM-GATE-DECOUPLE · 本条期望值从 `sim.sandbox` 改为 `view.sim-sandbox` ──────────
+    // 上一版断言的是「旧沙盘的暗发 entitlement 一个字没动」。今天**有意动了**：
+    // `sim.sandbox` 已降为能力族总闸，沙盘这一页的入口由页面闸 `view.sim-sandbox` 管。
+    // 本条守的**不变量没变**，只是挂点更精确了：导航入口的 `feature` 必须与
+    // `App.tsx` 里 `SimSandboxGuard` 查的键**是同一个**——两边不同键就会出现
+    // 「导航里藏起来、URL 照样进得去」（把暗发做成假的）或反过来「入口在、点进去 404」。
     expect(
       old!.kind === "route" ? old!.feature : undefined,
-      "旧沙盘的暗发 entitlement 被动过了（关 → 入口消失，R3 不泄露存在性）",
-    ).toBe("sim.sandbox");
+      "沙盘入口的 feature 与 SimSandboxGuard 查的键不一致 ⇒ 入口与页面两道闸会各关各的",
+    ).toBe("view.sim-sandbox");
   });
 
   it("B4 · 新标题不与任何内联 route label 相撞（不只是不撞「推演沙盘」这一条）", () => {

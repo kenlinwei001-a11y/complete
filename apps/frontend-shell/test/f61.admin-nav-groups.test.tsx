@@ -181,7 +181,7 @@ describe("WO-NAV-GATE · 业务视图归组守卫（不得落「其它」兜底�
       expect(hrefs, "sim.sandbox 关着，沙盘入口仍在 —— override 没生效，本条断言全是空转").not.toContain("/v/sim-sandbox");
       // ① 专用 route 那一支：条目是 kind:"route" + consolidatedWhen
       const routeFallback = NAV_GROUPS.flatMap((g) => g.items)
-        .filter((it) => it.kind === "route" && it.consolidatedWhen === "sim.sandbox")
+        .filter((it) => it.kind === "route" && it.consolidatedWhen === "view.sim-sandbox")
         .map((it) => it.key);
       // ② 后端下发那一支：条目是 kind:"view" + consolidatedWhen。
       //    暗发页（如 process-stuck，挂 process.runtime defaultOn:false）此刻本就不下发 ⇒
@@ -193,7 +193,7 @@ describe("WO-NAV-GATE · 业务视图归组守卫（不得落「其它」兜底�
       );
       const features = new Set(ws.features ?? []);
       const viewFallback = NAV_GROUPS.flatMap((g) => g.items)
-        .filter((it) => it.kind === "view" && it.consolidatedWhen === "sim.sandbox")
+        .filter((it) => it.kind === "view" && it.consolidatedWhen === "view.sim-sandbox")
         .map((it) => it.key)
         .filter((k) => features.has(`view.${k}`));
       expect(routeFallback.length, "带 consolidatedWhen 的 route 条目为空 ⇒ 那一支恒真").toBeGreaterThan(0);
@@ -319,7 +319,19 @@ describe("WO-ROUTE-NAV-COVERAGE · 专用 route 必须在侧栏真出现（可�
       // 而没有页面侧 Guard 的路由页本就人人可进，无可泄露 ⇒ 不受 entitlement 影响。
       // ⚠ 收编项（consolidatedWhen: "sim.sandbox"）在这一档**必须回来**：沙盘不在了，收编也就不成立。
       // ⚠ ROUTE_NO_NAV 豁免项（decision-play）在这一档**不回来**：它不是被收编，是仓主裁决刻意不给导航入口。
-      const gateless = dedicatedRouteKeys.filter((k) => k !== "sim-sandbox" && k !== "sim-init" && !(k in ROUTE_NO_NAV));
+      // ⚠ WO-SIM-GATE-DECOUPLE：「哪些 route 带闸」**现算**，不再写死 `k !== "sim-sandbox"` 这种名单。
+      //   上一版把带闸集手写成 `sim-sandbox` / `sim-init` 两个；本单给 `v/sim-unified` 补了
+      //   `SimUnifiedGuard`（补一个现存的 R3 空洞：此前那一页一道闸都没有，关掉推演能力后它会
+      //   渲染出来然后全线 404），于是手写名单当场过期、把一次**正确**的加固报成回归。
+      //   判据落在声明上：NAV_GROUPS 里带 `feature` 的 route = 有页面侧 Guard 的暗发页。
+      const gatedRouteKeys = new Set(
+        NAV_GROUPS.flatMap((g) => g.items)
+          .filter((it) => it.kind === "route" && it.feature !== undefined)
+          .map((it) => it.key),
+      );
+      // 金丝雀：带闸集不许为空 —— 空了下面就退化成「所有 route 都该在」，这条断言随之失去鉴别力。
+      expect(gatedRouteKeys.size, "金丝雀：带 feature 的 route 集为空 ⇒ 量法坏了").toBeGreaterThan(0);
+      const gateless = dedicatedRouteKeys.filter((k) => !gatedRouteKeys.has(k) && k !== "sim-init" && !(k in ROUTE_NO_NAV));
       const missing = gateless.filter((k) => !hrefs.has(`/v/${k}`));
       expect(missing, `无 Guard 的专用 route 入口不该随 sim.sandbox 消失：[${missing.join(", ")}]`).toEqual([]);
     } finally {

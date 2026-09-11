@@ -142,7 +142,7 @@ describe("WO-HOME-CONSOLIDATE-PARITY · 首页与侧栏同源收编", () => {
     await screen.findByTestId("home-page");
 
     const consolidatedKeys = NAV_GROUPS.flatMap((g) => g.items)
-      .filter((it) => it.kind === "view" && it.consolidatedWhen === "sim.sandbox")
+      .filter((it) => it.kind === "view" && it.consolidatedWhen === "view.sim-sandbox")
       .map((it) => it.key);
     // 金丝雀：这批不许为空 —— 空的话下面的 for 一次都不跑然后「全过」。
     expect(consolidatedKeys.length, "金丝雀：条件收编集为空 ⇒ 量法坏了").toBeGreaterThan(0);
@@ -190,7 +190,7 @@ describe("WO-HOME-CONSOLIDATE-PARITY · 首页与侧栏同源收编", () => {
     // 现算：此刻**仍被下发**、且带条件收编的键 —— 沙盘关着，它们必须两面都在。
     const delivered = ws.navigation.filter((n) => n.group !== "admin").map((n) => n.viewKey ?? n.key);
     const conditionalKeys = NAV_GROUPS.flatMap((g) => g.items)
-      .filter((it) => it.kind === "view" && it.consolidatedWhen === "sim.sandbox")
+      .filter((it) => it.kind === "view" && it.consolidatedWhen === "view.sim-sandbox")
       .map((it) => it.key)
       .filter((k) => delivered.includes(k));
 
@@ -220,8 +220,19 @@ describe("WO-HOME-CONSOLIDATE-PARITY · 首页与侧栏同源收编", () => {
       .filter((it) => !it.feature && !it.consolidatedWhen);
 
     expect(alwaysVisibleRoutes.length, "金丝雀：无条件 route 集为空 ⇒ 量法坏了").toBeGreaterThan(0);
-    // 主流程起点必须在这批里（它正是上一张单实测中首页缺掉的那一个）
-    expect(alwaysVisibleRoutes.map((r) => r.key)).toContain("sim-unified");
+    // ── WO-SIM-GATE-DECOUPLE · 上一版这里断言 `sim-unified` 在**无条件**集里，现已移出 ──────
+    // 那条断言的前提逐字是「主流程起点必须在这批里（它正是上一张单实测中首页缺掉的那一个）」。
+    // 今天前提变了：本单给 `v/sim-unified` 补了页面侧 Guard（补一个现存的 R3 空洞 —— 此前
+    // 关掉推演能力后那一页会照常渲染然后每个请求 404），条目随之带上 `feature`
+    // ⇒ 它**按定义**不再属于「无条件显示」那一批，而不是被本次过滤误伤。
+    // 替换成同等强度的金丝雀：它必须仍是 route 条目、且带的正是那把页面闸 —— 两个方向都有鉴别力
+    // （条目被删会红；`feature` 挂错键也会红），比原来那条只验「在不在集合里」的更严。
+    const unified = NAV_GROUPS.flatMap((g) => g.items).find((it) => it.kind === "route" && it.key === "sim-unified");
+    expect(unified, "统一推演控制台的 route 条目不见了 —— 主流程起点没了").toBeTruthy();
+    expect(
+      unified && unified.kind === "route" ? unified.feature : undefined,
+      "控制台入口的 feature 不是它的页面闸 ⇒ 入口与 SimUnifiedGuard 会各关各的",
+    ).toBe("view.sim-unified");
 
     const home = homeViewKeys(container);
     for (const r of alwaysVisibleRoutes) {

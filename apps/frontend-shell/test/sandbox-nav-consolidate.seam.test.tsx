@@ -76,7 +76,8 @@ describe("WO-SANDBOX-NAV-CONSOLIDATE · §0 金丝雀（不中就报「前提不
     const group = NAV_GROUPS.find((g) => g.title === "归因与风险");
     expect(group, "组都没有了 ⇒ 下面每条断言都在空集合上跑，恒真恒绿").toBeTruthy();
     expect(group!.items.length, "组里少于 5 项 ⇒ 本单收编的那三项没进来，断言面不对").toBeGreaterThanOrEqual(5);
-    const naked = group!.items.filter((it) => it.kind !== "admin" && it.consolidatedWhen !== "sim.sandbox");
+    // WO-SIM-GATE-DECOUPLE：收编键 = **宿主那一页的页面闸**（此前是能力族总闸 `sim.sandbox`）。
+    const naked = group!.items.filter((it) => it.kind !== "admin" && it.consolidatedWhen !== "view.sim-sandbox");
     expect(
       naked.map((it) => it.key),
       "这些项没带 consolidatedWhen ⇒ 沙盘开着时组不会自动隐藏，仓主问的那件事没解决",

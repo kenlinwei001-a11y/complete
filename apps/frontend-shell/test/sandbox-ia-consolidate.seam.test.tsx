@@ -255,8 +255,9 @@ describe("§件二 · 收编后的九个键：导航不单列，但路由仍可�
       expect(item, `${key} 声明收编，却已无 kind:"route" 回退条目 ⇒ 沙盘关掉时这一页从 IA 里蒸发`).toBeTruthy();
       expect(
         item!.consolidatedWhen,
-        `${key} 的条目没带 consolidatedWhen ⇒ 沙盘开着时它仍会单列 = 重复入口`,
-      ).toBe("sim.sandbox");
+        `${key} 的条目没带 consolidatedWhen ⇒ 宿主那一页在时它仍会单列 = 重复入口`,
+        // WO-SIM-GATE-DECOUPLE：收编键 = 宿主那一页的**页面闸**，不是能力族总闸。
+      ).toBe("view.sim-sandbox");
     }
   });
 
