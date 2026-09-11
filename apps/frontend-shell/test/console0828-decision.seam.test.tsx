@@ -196,8 +196,49 @@ const DISCLOSURE = {
   timings: { total: 812 },
 };
 
+/**
+ * 卡点载荷。基线 fixture **一个字节都不改**（仓主 2026-08-20 禁令 3：不新增基线 JSON），
+ * 要对策时就地给前两处各挂一条 —— 形状逐字段抄自真引擎回包
+ * （本单实测 `POST /a/v1/solvers/chain_impediments/invoke` 的
+ * `cand_…_Material.leadTime_pos_lfp_PEER_BEST_10`），不是我想出来的结构。
+ */
 function impedimentPayload(): unknown {
-  return JSON.parse(readFileSync(join(FIX, "chain-impediment-baseline.json"), "utf8")) as unknown;
+  const raw = JSON.parse(readFileSync(join(FIX, "chain-impediment-baseline.json"), "utf8")) as {
+    impediments: { impedimentId: string; locus: { objectType: string; objectId: string }; candidates: unknown[] }[];
+  };
+  if (!withCandidates) return raw;
+  for (const im of raw.impediments.slice(0, 2)) {
+    im.candidates = [
+      {
+        candidateId: `cand_${im.impedimentId}_lead`,
+        impedimentId: im.impedimentId,
+        label: `物料·到货周期 ↓ 10（${im.locus.objectId}）`,
+        lever: {
+          objectType: "Material", objectId: im.locus.objectId, prop: "leadTime",
+          factorName: "物料到货", factorMark: "⑮", grain: "model-material", unit: "天", valueKind: "days",
+        },
+        fromValue: 26, toValue: 10,
+        join: { kind: "LINK_HOP", path: "batch_replenishes_material: MaterialBatch→Material" },
+        rungKind: "PEER_BEST",
+        rungSource: "同侪 Material.leadTime 真实极值（最小） 10",
+        effectKind: "DOWNSTREAM_ONLY",
+        // ⚠ `dims` 至少要有**一维真的动了**（契约 `superRefine`：不动的不是方案）——
+        //    第一版我把 value 与 baseline 写成同一个数，`ChainImpedimentPayloadSchema.parse()`
+        //    当场抛，屏上退成「卡点识别未完成」，而我差点把它读成「注入没生效」。
+        dims: [
+          { key: "breach", label: "超阈幅度（Batch.idleDays）", value: 19, baseline: 19, unit: "天", betterWhen: "lower", dataMode: "SYNTHETIC" },
+          { key: "capacityP50", label: "产能 cellsPerDayP50 合计（电芯/日）", value: 36_603_161.75, baseline: 32_081_231.89, unit: "电芯/日", betterWhen: "higher", dataMode: "SYNTHETIC" },
+        ],
+        provenance: {
+          solverKey: "chain_impediments",
+          formula: "patchCapacityContext(Material.leadTime: 26→10) → 判据重算 + Σ cellsPerDayP50 重算",
+          inputs: ["Material.leadTime", "Batch.idleDays", "rule:C28"],
+        },
+        dataMode: "SYNTHETIC",
+      },
+    ];
+  }
+  return raw;
 }
 
 // ── 可变桩开关（每个用例 beforeEach 重置） ────────────────────────────────────
@@ -205,8 +246,17 @@ function impedimentPayload(): unknown {
 let tickFails = false;
 /** 求解器这一跳失败 ⇒ 钱还在，卡点那半说「没问出来」（⑤ 的 `c0828-imp-error` 臂）。 */
 let solverFails = false;
-/** 每次「算一下」真正打出去的扰动请求（③④ 断言「打的是我选的那个落点」）。 */
+/** 每次「开始推演」真正打出去的扰动请求（③④ 断言「打的是我选的那个落点」）。 */
 let perturbCalls: Record<string, unknown>[] = [];
+/**
+ * 会话的 `tickDays`（`null` = 回包里压根没有这一格 ⇒ 契约「缺省 1」）。
+ * ⑥ 的对照实验就是拨它：**同一条会话、同一个第 6 拍，`tickDays` 1 vs 3 必须给出不同的日期**。
+ */
+let sessionTickDays: number | null = null;
+/** 会话创建日 —— 第 0 拍那一天。`null` ⇒ 取不到，屏上必须退回「第 N 拍」而**不是编一个今天**。 */
+let sessionCreatedAtRaw: string | null = "2026-09-10T00:00:00.000Z";
+/** 卡点载荷要不要带对策（基线 8 处全是 0 对策 ⇒ 四栏面板根本不渲染，⑦ 就没东西可咬）。 */
+let withCandidates = false;
 
 vi.mock("@/api/endpoints", () => ({
   // ── console0828 这一屏用到的六个 ──
@@ -243,7 +293,8 @@ vi.mock("@/api/endpoints", () => ({
         status: "RUNNING",
         curTick: 0,
         parentCheckpointId: null,
-        createdAt: "2026-09-10T00:00:00.000Z",
+        ...(sessionCreatedAtRaw === null ? {} : { createdAt: sessionCreatedAtRaw }),
+        ...(sessionTickDays === null ? {} : { tickDays: sessionTickDays }),
         scope: {},
       },
     ],
@@ -319,6 +370,9 @@ beforeEach(() => {
   tickFails = false;
   solverFails = false;
   perturbCalls = [];
+  sessionTickDays = null;
+  sessionCreatedAtRaw = "2026-09-10T00:00:00.000Z";
+  withCandidates = false;
 });
 afterEach(cleanup);
 
@@ -405,9 +459,28 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     const statevar = await screen.findByTestId("c0828-absent-rush-order");
     expect(statevar.textContent ?? "").toContain("无传导路径");
 
+    // ⚠ 左栏一次只展开一件事 ⇒ 先把这一句取下来再去点下一件，否则它的面板已经收走了。
+    const whyStateVar = screen.getByTestId("c0828-absent-why-rush-order").textContent ?? "";
+
     // 同为「落不了地」，措辞必须与 no-instance 那条不同 —— 合并即红。
     fireEvent.click(screen.getByTestId("c0828-ev-equipment-down"));
     const noinst = await screen.findByTestId("c0828-absent-equipment-down");
+    /**
+     * ⚠ **咬「那句措辞」本身，不咬整块面板**（本单实测修正的一处假绿）：
+     * 整块面板里还混着「它找过哪些落点」那段**逐事件明细**，两个事件的明细天然不同 ⇒
+     * 把两条措辞改成**一模一样**，`noinst.textContent !== statevar.textContent` **仍然成立**，
+     * 门全绿。变异反证当场抖出来的：把 `LANDING_ABSENCE_TEXT` 两条改成同一句 ⇒ 14/14 全过。
+     * 形态（铁律 0.6 句式）：
+     * 「我用『两块面板的文本不相等』当作『两种措辞不一样』的证据，而前者并不度量后者。」
+     * 故改咬 `c0828-absent-why-*` —— 那个锚点上**只有**那一句措辞。
+     */
+    const whyNoInst = screen.getByTestId("c0828-absent-why-equipment-down").textContent ?? "";
+    expect(whyStateVar.trim().length).toBeGreaterThan(10);
+    expect(whyNoInst.trim().length).toBeGreaterThan(10);
+    expect(whyNoInst).not.toBe(whyStateVar);
+    // 两句各自的**可判定内核**也要在（只比"不相等"的话，改一个标点就能骗过去）。
+    expect(whyNoInst).toContain("无任何实例");
+    expect(whyStateVar).toContain("无传导路径");
     expect(noinst.textContent).not.toBe(statevar.textContent);
 
     // 而同一个 Order 上换一个量就落得了地 ⇒ 上面那个 "0" 是**这个量**的结论，不是「Order 取不到数」。
@@ -487,7 +560,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
 
     // 卡点两半都来自引擎基线（8 处），前端零判定。
     expect(screen.getByTestId("c0828-impediment").textContent ?? "").toContain("扫出 8 处");
-    expect(screen.getByTestId("c0828-board").textContent ?? "").toContain("8 处卡点");
+    expect(screen.getByTestId("c0828-board").textContent ?? "").toContain("8 处受阻环节");
     expect(screen.queryByTestId("c0828-imp-error")).toBeNull();
 
     // 披露层上屏（铁律 1.5 判据二：推演过程必须可披露，且「没调 agent」要明写不许留白）。
@@ -579,5 +652,145 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     expect(impErr.textContent ?? "").toContain("不是「无卡点」");
     // 没问出来 ⇒ 看板不许摆出来（摆一张空看板 = 说「一处卡点都没有」）。
     expect(screen.queryByTestId("c0828-board")).toBeNull();
+  });
+
+  /* ════════════════════════════════════════════════════════════════════════════
+   * ⑥ 拍 → 真实日期（WO-C0828-VOICE · 仓主 2026-09-11「从几拍太模糊了，为何不调整为日期」）
+   * ════════════════════════════════════════════════════════════════════════════
+   * **铁律 1.5 判据一要的那条对照实验**：不是「跑得起来吗」，而是
+   * 「当我把 `tickDays` 从 1 改成 3，第 N 拍的日期必须按可预言的方式变化」。
+   * 判据：`Δ = N × (3 − 1)` 天。四个数（两种 tickDays × 第 0 拍 / 第 6 拍）缺一个不算交付。
+   * ⚠ 用 UTC 日历日算期望值，不走本地时区 —— 否则这条门在 CI 与本机会各说一套。
+   */
+  const D0 = Date.parse("2026-09-10T00:00:00.000Z");
+  const iso = (days: number): string => new Date(D0 + days * 86_400_000).toISOString().slice(0, 10);
+
+  async function tickTextAt(td: number | null, horizonTicks: number): Promise<string> {
+    // ⚠ 两次量测在**同一个用例**里，而 `beforeEach` 只在用例之间跑 ——
+    //    不清零的话第二次 `simWorld` 会按「已经施过扰动」回 tick 3，
+    //    于是「第 0 拍」那两个数就不是第 0 拍了（第一版实测正是栽在这里）。
+    perturbCalls = [];
+    sessionTickDays = td;
+    mount();
+    await railReady();
+    fireEvent.change(screen.getByTestId("c0828-horizon"), { target: { value: String(horizonTicks) } });
+    await addEvent("material-price-up", "mat_licarb", 15);
+    fireEvent.click(screen.getByTestId("c0828-go"));
+    await screen.findByTestId("c0828-money");
+    return screen.getByTestId("c0828-tl-head").textContent ?? "";
+  }
+
+  it("⑥ 对照实验 · tickDays 1 vs 3：同一个第 6 拍必须给出不同日期，且差值 = 6×(3−1) = 12 天", async () => {
+    // 桩里 `simTick` 回 `curTick = n` ⇒ 推 6 拍后终点就是第 6 拍，起点第 0 拍。
+    const t1 = await tickTextAt(1, 6);
+    cleanup();
+    const t3 = await tickTextAt(3, 6);
+
+    // 四个数，逐个写出来（缺一个不算交付）。
+    const d0_td1 = iso(0);            // tickDays=1 · 第 0 拍
+    const d6_td1 = iso(6 * 1);        // tickDays=1 · 第 6 拍
+    const d0_td3 = iso(0);            // tickDays=3 · 第 0 拍（起点与 tickDays 无关）
+    const d6_td3 = iso(6 * 3);        // tickDays=3 · 第 6 拍
+    expect([d0_td1, d6_td1, d0_td3, d6_td3]).toEqual(["2026-09-10", "2026-09-16", "2026-09-10", "2026-09-28"]);
+
+    expect(t1).toContain(d0_td1);
+    expect(t1).toContain(d6_td1);
+    expect(t3).toContain(d0_td3);
+    expect(t3).toContain(d6_td3);
+
+    // 这一条才是对照实验本身：**换了口径，屏上的数必须真的跟着变**。
+    expect(d6_td3).not.toBe(d6_td1);
+    expect((Date.parse(d6_td3) - Date.parse(d6_td1)) / 86_400_000).toBe(12);
+    expect(t3).not.toContain(d6_td1);
+
+    // 「拍」不许被日期挤掉 —— 引擎收发的量就是拍，两层对不上账时要靠它追。
+    expect(t1).toContain("第 6 拍");
+    expect(t3).toContain("第 6 拍");
+  });
+
+  it("⑥b 取不到起始日 ⇒ 退回「第 N 拍」并说明，⛔ 不许编一个今天顶上", async () => {
+    sessionCreatedAtRaw = null;
+    mount();
+    await railReady();
+    await addEvent("material-price-up", "mat_licarb", 15);
+    fireEvent.click(screen.getByTestId("c0828-go"));
+    await screen.findByTestId("c0828-money");
+
+    const head = screen.getByTestId("c0828-tl-head").textContent ?? "";
+    expect(head).toContain("第 0 拍");
+    // 「没取到」与「没有」是两个命题，且都不许变成一个编出来的日期。
+    expect(head).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    const why = screen.getByTestId("c0828-tl-calibre").textContent ?? "";
+    expect(why.trim().length).toBeGreaterThan(10);
+    expect(why).toContain("按拍显示");
+    // 今天的日期一个字都不许出现 —— 这正是「编一个今天顶上」的指纹。
+    expect(why).not.toContain(new Date().toISOString().slice(0, 10));
+  });
+
+  /* ════════════════════════════════════════════════════════════════════════════
+   * ⑦ 「N 种对策 ▸」点了要有反应（仓主实拍：点了没反应）
+   * ════════════════════════════════════════════════════════════════════════════
+   * 三条病因叠在一起，故断言也咬三条：面板**标题跟着选择走** · 选中态在按钮上
+   * （`aria-pressed`）· **点默认那一项也算数**（它原本是「`picked` 前后完全相同」那一条）。
+   * 变异反证：把 `setPickedFix` 改成空函数 ⇒ 本用例第一条断言必红。
+   */
+  it("⑦ 对策面板跟着选择走：点 A 标题是 A，点 B 变成 B，且选中态落在按钮上", async () => {
+    withCandidates = true;
+    mount();
+    await railReady();
+    await addEvent("material-price-up", "mat_licarb", 15);
+    fireEvent.click(screen.getByTestId("c0828-go"));
+    await screen.findByTestId("c0828-money");
+
+    // 载荷里前两处带了对策 ⇒ 两条可选，够做 A/B 对照（一条的话这条臂等于没跑）。
+    const buttons = screen.getAllByTestId(/^c0828-fixbtn-/);
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
+    const [btnA, btnB] = buttons as [HTMLElement, HTMLElement];
+    const idA = (btnA.getAttribute("data-testid") ?? "").replace("c0828-fixbtn-", "");
+    const idB = (btnB.getAttribute("data-testid") ?? "").replace("c0828-fixbtn-", "");
+    expect(idA).not.toBe(idB);
+
+    // 默认就画着第一处 ⇒ 选中态必须**一进来就标在它头上**，
+    // 否则屏上会出现「面板画着 A，而 A 没被标选中」这种自相矛盾。
+    expect(btnA.getAttribute("aria-pressed")).toBe("true");
+    expect(btnB.getAttribute("aria-pressed")).toBe("false");
+
+    // ⚠ 点**默认那一项**：`picked` 前后相同，但反馈不许因此消失。
+    fireEvent.click(btnA);
+    await waitFor(() => {
+      expect(screen.getByTestId("c0828-fixbtn-" + idA).getAttribute("aria-pressed")).toBe("true");
+    });
+    const tagA = screen.getByTestId("c0828-options-tag").textContent ?? "";
+
+    // 点 B ⇒ 面板**真的换了一处**（标题与辨识串同时变）。
+    fireEvent.click(screen.getByTestId("c0828-fixbtn-" + idB));
+    await waitFor(() => {
+      expect(screen.getByTestId("c0828-fixbtn-" + idB).getAttribute("aria-pressed")).toBe("true");
+    });
+    expect(screen.getByTestId("c0828-fixbtn-" + idA).getAttribute("aria-pressed")).toBe("false");
+    const tagB = screen.getByTestId("c0828-options-tag").textContent ?? "";
+
+    // 这一条就是变异反证咬住的那个命题：`setPickedFix` 一被掐掉，两者当场相等。
+    expect(tagB).not.toBe(tagA);
+    // 辨识串必须真的指向被选中的那一处（重名两行靠它分开）。
+    expect(tagB).toContain(idB.split("_").at(-1) ?? "");
+  });
+
+  it("⑦b 同名两行必须分得开：辨识串带判据码 + 落点，⛔ 不是「①②」这种序号", async () => {
+    withCandidates = true;
+    mount();
+    await railReady();
+    await addEvent("material-price-up", "mat_licarb", 15);
+    fireEvent.click(screen.getByTestId("c0828-go"));
+    await screen.findByTestId("c0828-money");
+
+    const rows = screen.getAllByTestId(/^c0828-fix-/);
+    const tags = rows.map((r) => r.textContent ?? "");
+    // 两行的可见文本不许一字不差 —— 这正是实拍里那两行「磷酸铁锂正极」的病。
+    expect(new Set(tags).size).toBe(tags.length);
+    for (const t of tags) {
+      expect(t).toContain("判据 ");
+      expect(t).toContain("落点 ");
+    }
   });
 });
