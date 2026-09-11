@@ -90,7 +90,31 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   { key: "act.aop-finalize", name: "AOP 情景拍板", level: "ACTION", defaultOn: true, requires: ["view.annual-scenario"] },
   // 推演沙盘（G-11·SPEC §4）：全部暗发 defaultOn:false——按租户开不同档（lite/Pro/旗舰），
   // 关 = /a/v1/sim/* 该能力 404 FEATURE_NOT_FOUND（R3 先于 authz）。现有租户零影响（RL2 暗发）。
-  { key: "sim.sandbox", name: "推演沙盘", level: "VIEW", defaultOn: false },
+  // WO-SIM-GATE-DECOUPLE · **本键从此只是「能力族总闸」，不再兼任「沙盘那一页的入口闸」。**
+  //
+  // ── 今天的行为 X（本单之前）──────────────────────────────────────────────────
+  // `sim.sandbox` 一个字符串同时承担两件事：① 41 道后端门（21 道直接挂它、其余经 `requires`
+  // 间接挂它）的能力总开关；② 「推演沙盘」这一页在导航/路由上的入口开关。
+  // ⇒ 想让沙盘那一页退役，**只能连能力一起关**，而那会一并带走统一推演控制台的全部动作、
+  //   传导规则库、链损矩阵、5 个出厂视图……（实测差集：features −17 / navigation −9）。
+  // ── 应该的行为 Y（本单之后）──────────────────────────────────────────────────
+  // 能力闸与页面闸分开：本键留原名只管能力；两个 `view.*` 页面闸各管一页的入口。
+  //
+  // ⚠ **键名一字不改**是本方案的关键：`featureConfigs.overrides` 以**键名字符串**为主键落库，
+  //   而读路（`layeredSet` L3）对未知键**不校验**、`cascade` 又把无定义的键判通过 ⇒ 改名会让
+  //   「刻意关掉沙盘的租户」悄悄地重新打开该功能，**没有日志、没有报错**。故只改 `name` 这个
+  //   纯展示字段（它进不了任何判定），不动键名。
+  { key: "sim.sandbox", name: "推演能力族", level: "VIEW", defaultOn: false },
+  // ── 两个**页面闸**：只守「这张页在不在导航/路由上」，一道后端能力门都不守 ──────────
+  //
+  // `requires: ["sim.sandbox"]` 是向后兼容的那一笔：能力关 ⇒ 页面经 `cascade` 自动关，
+  // 与本单之前的行为**逐字节相同**；能力开 ⇒ 页面可以**单独**关掉而不碰能力 —— 这正是本单买的东西。
+  // ⚠ 方向是**单向**的：不存在「页面开着而能力关着」的绕过态，R3「entitlement 先于 authz」不被削弱。
+  // ⚠ `defaultOn:false` 与同族的 `sim.*` 一致（L1 平台默认关、按租户分档），demo 这类
+  //   battery 租户由 L2 行业模板（`ALL_FEATURE_KEYS` 减暗发集）抬开 ⇒ 今天的屏幕行为不变。
+  //   **刻意不进任何 `*_DARK_LAUNCH_FEATURES` 集合**：进了就等于对 demo 关掉这两页。
+  { key: "view.sim-sandbox", name: "推演沙盘（页面）", level: "VIEW", defaultOn: false, requires: ["sim.sandbox"] },
+  { key: "view.sim-unified", name: "统一推演控制台（页面）", level: "VIEW", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.propagation", name: "系数传导", level: "BLOCK", defaultOn: false, requires: ["sim.sandbox"] },
   { key: "sim.propagation.delay", name: "延迟传导", level: "BLOCK", defaultOn: false, requires: ["sim.propagation"] },
   // WO-ADVERSARY-REACTION · 对手方（客户/供应商/竞争对手）会对我方应对**做出反应**并回流进世界态。
