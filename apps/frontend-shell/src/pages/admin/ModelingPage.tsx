@@ -232,9 +232,13 @@ function PublishedOntologyView({ types }: { types: Awaited<ReturnType<typeof fet
         </tbody>
       </table>
 
-      {/* 底部元信息行 + 下钻出口（规律 3）：三个目的地**今天都已存在**，⛔ 未新建任何屏。 */}
+      {/* 底部元信息行 + 下钻出口（规律 3）：三个目的地**今天都已存在**，⛔ 未新建任何屏。
+
+          ⚠ 数据源读的是 `GET /a/v1/ontology/object-types` —— 这条**接口路径留在注释层，不上屏**：
+          用户读了它做不出任何决定（`dev-jargon:check` 的判据），出处属工程师层。
+          屏上只保留口径那一层：已发布快照 · 即时值不走缓存。 */}
       <div className={styles.metaRow} data-testid="onto-meta">
-        <span>数据源：本体已发布快照（GET /a/v1/ontology/object-types）· 计数为本次读取的即时值，非缓存</span>
+        <span>数据源：本体已发布快照 · 计数为本次读取的即时值，非缓存</span>
         <span className={styles.drillRow}>
           <Link className={styles.drill} to="/admin/object-types" data-testid="drill-object-types">查看对象/类型浏览 →</Link>
           <Link className={styles.drill} to="/admin/domains" data-testid="drill-domains">查看域管理 →</Link>

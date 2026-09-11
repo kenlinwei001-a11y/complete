@@ -93,10 +93,14 @@ export default function BoundaryPage() {
       </div>
 
       {/* 底部元信息行 + 下钻出口（规律 3）：三个目的地**今天都已存在**（adminRegistry 里的 path），
-          且都是上面「下游受影响面」里点名过的那类承载物。⛔ 未新建任何屏。 */}
+          且都是上面「下游受影响面」里点名过的那类承载物。⛔ 未新建任何屏。
+
+          ⚠ 数据源读的是 `GET /a/v1/boundary/impact` —— 这条**接口路径留在注释层，不上屏**：
+          用户读了它做不出任何决定（`dev-jargon:check` 的判据），出处属工程师层。
+          屏上只保留「这个数是什么口径」这一层：边界册影响面 · 即时值不走缓存。 */}
       <div className={styles.metaRow} data-testid="boundary-meta">
         <span>
-          数据源：GET /a/v1/boundary/impact（本次读取的即时值）
+          数据源：边界册影响面（本次读取的即时值，不走缓存）
           {ver ? ` · 册版本 ${ver.semver} · digest ${ver.digest}` : ""} · 本页只读：改册值 = 改代码，经 boundary-singlesource 门
         </span>
         <span className={styles.drillRow}>
