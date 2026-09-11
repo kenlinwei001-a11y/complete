@@ -71,9 +71,13 @@ import {
   type LandingState,
 } from "./eventCatalog";
 import {
+  BIZ_EFFECT,
+  BIZ_JOIN,
+  BIZ_RUNG,
   buildCustomerView,
   buildMoneyView,
   buildTickCalendar,
+  IMPEDIMENT_KIND_PLAIN,
   diffWorld,
   fmtMoney,
   NOCALC_WHY,
@@ -904,7 +908,7 @@ export default function Console0828({
                           该情形后端不返回任何提示，故在此说明。
                         </p>
                         <p>
-                          本事件落点：{L.typeKey} 的 {L.stateVar}；{ev.detail}
+                          本事件落到 {L.typeKey} 的 {L.stateVar} 上；{ev.detail}
                         </p>
                       </div>
                     </details>
@@ -934,7 +938,7 @@ export default function Console0828({
                       <div className={styles.moreBody}>
                         {L.kind === "no-instance"
                           ? `找过这些对象类型：${L.triedTypes.join(" / ")}，本世界里都没有实例。`
-                          : `${L.typeKey} 有实例，但它今天承载的量里没有：${L.triedVars.join(" / ")}。`}
+                          : `${L.typeKey} 有实例，但这类对象今天记着的指标里没有这几项：${L.triedVars.join(" / ")}。`}
                       </div>
                     </details>
                   </div>
@@ -1238,7 +1242,7 @@ export default function Console0828({
             {/* ══ 区④ 哪儿会出事 ══ */}
             <section className={styles.panel} data-testid="c0828-impediment">
               <div className={styles.head}>
-                {zone("4", "卡点与堵点")}
+                {zone("4", "受阻环节")}
                 <h3 className={styles.headTitle}>全流程扫描结果</h3>
                 <span className={styles.headRight}>
                   {impGroups === null ? "本次调用未完成" : `扫出 ${impGroups.all.length} 处`}
@@ -1254,6 +1258,19 @@ export default function Console0828({
                 <p className={styles.empty}>本次未取到卡点数据。</p>
               ) : (
                 <>
+                  {/* ⚠ 「卡点 / 堵点 / 断点」是引擎回包里 `kind` 的**三个不同取值**，
+                      不是一个量的三种叫法（实测 counts = 5 / 6 / 7，三类各有实例）。
+                      三者处置相反，故屏上逐类给条数 + 一句可判定含义，⛔ 不合并成一个词。 */}
+                  <div className={styles.kinds} data-testid="c0828-kinds">
+                    {impGroups.model.groups.map((g) => (
+                      <div key={g.kind} className={styles.kindRow} data-testid={`c0828-kind-${g.kind}`}>
+                        <span className={styles.kindName}>
+                          {g.label} <b className={styles.mono}>{g.items.length}</b> 处
+                        </span>
+                        <span className={styles.calibre}>{IMPEDIMENT_KIND_PLAIN[g.kind] ?? g.meaning}</span>
+                      </div>
+                    ))}
+                  </div>
                   <div className={styles.two}>
                     <div>
                       <h4 className={styles.subHead}>
@@ -1431,14 +1448,14 @@ export default function Console0828({
               <section className={styles.panel} data-testid="c0828-board">
                 <div className={styles.head}>
                   {zone("5", "对策清单")}
-                  <h3 className={styles.headTitle}>对策看板 · {impGroups.all.length} 处卡点</h3>
+                  <h3 className={styles.headTitle}>对策看板 · {impGroups.all.length} 处受阻环节</h3>
                   <span className={styles.headRight}>按严重度排序 · 系统不给推荐</span>
                 </div>
                 <div className={styles.tblWrap}>
                   <table className={styles.board}>
                     <thead>
                       <tr>
-                        <th>卡点位置</th>
+                        <th>受阻环节</th>
                         <th className={styles.num}>严重度</th>
                         <th className={styles.num}>对策数</th>
                         <th className={styles.num}>实测 / 红线</th>
@@ -1456,7 +1473,14 @@ export default function Console0828({
                             data-dim={i.candidates.length === 0 ? "1" : "0"}
                             data-testid={`c0828-row-${i.impedimentId}`}
                           >
-                            <td>{i.locus.label}</td>
+                            <td>
+                              {i.locus.label}
+                              {/* 同名两行靠这一格分开（实测同名标签 5 组 × 2 行）。 */}
+                              <br />
+                              <span className={styles.calibre}>
+                                {i.kindLabel} · 落点 {i.locus.objectId}
+                              </span>
+                            </td>
                             <td className={styles.num}>{i.severity.toFixed(0)}</td>
                             <td className={styles.num}>
                               {i.candidates.length === 0 ? (
@@ -1534,7 +1558,7 @@ export default function Console0828({
                       <li>
                         <b>不处置的后果</b> —— 需<b>逐处金额</b>，
                         而卡点记录仅有实测 / 红线 / 单位 / 规则码，全平台无逐处金额出处。
-                        与上文「卡点与堵点」一节指出的是同一缺口。
+                        与上文「受阻环节」一节指出的是同一缺口。
                       </li>
                     </ul>
                     <p className={styles.calibre}>
@@ -1564,21 +1588,27 @@ export default function Console0828({
                     <div key={c.candidateId} className={styles.opt} data-testid={`c0828-opt-${c.candidateId}`}>
                       <h5 className={styles.optTitle}>{c.label}</h5>
                       <div className={styles.dims}>
-                        <span className={styles.dimKey}>调节杠杆</span>
-                        <span className={styles.dimVal}>{c.rung.label}</span>
-                        <span className={styles.dimKey}>传导路径</span>
-                        <span className={styles.dimVal}>{c.join.label}</span>
-                        <span className={styles.dimKey}>预期效果</span>
-                        <span className={`${styles.dimVal} ${styles.mid}`}>{c.effect.label}</span>
+                        <span className={styles.dimKey}>调到哪</span>
+                        <span className={styles.dimVal}>{BIZ_RUNG[c.rung.kind].label}</span>
+                        <span className={styles.dimKey}>杠杆在哪</span>
+                        <span className={styles.dimVal}>{BIZ_JOIN[c.join.kind].label}</span>
+                        <span className={styles.dimKey}>动完会怎样</span>
+                        <span className={`${styles.dimVal} ${styles.mid}`}>{BIZ_EFFECT[c.effect.kind].label}</span>
                       </div>
                       <div className={styles.saves}>
                         <span className={styles.savesTitle}>判定依据</span>
                         <details className={styles.more}>
                           <summary>明细</summary>
-                          <div className={styles.moreBody}>
-                            <p>{c.rung.why}</p>
-                            <p>{c.join.why}</p>
-                            <p>{c.effect.why}</p>
+                          <div className={styles.moreBody} data-testid={`c0828-opt-why-${c.candidateId}`}>
+                            <p>{BIZ_RUNG[c.rung.kind].why}</p>
+                            <p>{BIZ_JOIN[c.join.kind].why}</p>
+                            <p>{BIZ_EFFECT[c.effect.kind].why}</p>
+                            {/* 业务事实（规则码 / 真值 / 单位）**必须给** —— 铁律 1.5 判据二。
+                                该消失的是「它在代码里长什么样」，不是「这个数打哪来」。 */}
+                            <p className={styles.calibre}>
+                              取值：{c.fromText} → {c.toText}
+                              {c.lever.factorName === null ? "" : ` · 因子「${c.lever.factorName}」`}
+                            </p>
                           </div>
                         </details>
                       </div>
@@ -1665,8 +1695,8 @@ export default function Console0828({
                     </>
                   ) : (
                     <span data-testid="c0828-agent-fallback">
-                      <b>本次未调用 agent</b> —— 以下为确定性兜底方案，
-                      <b>非</b> agent 生成。原因：{agentRes.proposal?.provenance.fallbackReason ?? "未给原因"}
+                      <b>本次未调用 agent</b> —— 以下是系统按固定规则给出的<b>备用方案</b>，
+                      <b>不是</b> agent 生成的。原因：{agentRes.proposal?.provenance.fallbackReason ?? "未给原因"}
                     </span>
                   )}
                 </div>
@@ -1705,7 +1735,7 @@ export default function Console0828({
                               <div className={styles.moreBody}>
                                 {o.moves.map((mv) => (
                                   <p key={mv.key}>
-                                    {mv.label}：{mv.slot}（档位数值由本体真值算出，agent 仅选择下标）
+                                    {mv.label}：{mv.slot}（档位数值由真实数据算出，agent 只负责选哪一档）
                                   </p>
                                 ))}
                               </div>
@@ -1755,13 +1785,13 @@ export default function Console0828({
                       <summary>数据来源</summary>
                       <div className={styles.moreBody}>
                         <p>
-                          agent <b>不产出任何数值</b>：其输出只有「第几根杠杆、第几档」这类下标与文字。
-                          上表每一格数值，均按它选择的下标从<b>杠杆菜单</b>中取出；
-                          菜单档位由本体真值算出，基线读数由求解器算出。
+                          agent <b>不产出任何数值</b>：它交回来的只有「选第几根杠杆、第几档」和一段说明。
+                          上表每一格数值，都是按它选的那一档从<b>杠杆菜单</b>里取出来的；
+                          菜单上的档位由真实数据算出，基线读数由求解器算出。
                         </p>
                         <p>
-                          因此它给不出菜单之外的数值：选择不存在的下标会被直接拒收，
-                          屏上退回「本次未调用 agent」并写明原因，不会静默替换为相近档位。
+                          因此它给不出菜单之外的数值：选一个菜单上没有的档位会被当场拒收，
+                          屏上退回「本次未调用 agent」并写明原因，不会悄悄换成一个相近的档位。
                         </p>
                         <p>
                           本次提案版本 <code>{agentRes.proposal?.version ?? "—"}</code>，
@@ -1791,7 +1821,7 @@ export default function Console0828({
 
             {/* ══ 诚实位 · 贯穿全屏 ══ */}
             <p className={styles.pgFoot} data-testid="c0828-honesty">
-              〔估〕= 推演投影，不是实测。<span className={styles.nocalc}>删除线</span> = 本次无法计算，
+              〔估〕= 推演算出来的数，不是实测值。<span className={styles.nocalc}>删除线</span> = 本次无法计算，
               不是 0，也不是「无变化」。
               <details className={styles.more}>
                 <summary>本次推演的计算口径</summary>

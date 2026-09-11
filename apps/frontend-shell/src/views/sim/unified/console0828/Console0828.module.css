@@ -259,6 +259,15 @@
 .fixList li[data-on="1"] { border-color: var(--accent-solid); background: rgba(94, 158, 255, 0.09); }
 .fixList li > span:first-child { line-height: 1.6; }
 .fixCount { margin-left: auto; font-size: 12px; color: var(--accent-txt); white-space: nowrap; }
+/* 三类受阻环节各自的条数与含义 —— 三者处置相反，屏上不许合并成一个词。 */
+.kinds {
+  display: flex; flex-direction: column; gap: 5px;
+  border: 1px solid var(--line2); border-radius: 8px; padding: 9px 12px; margin-bottom: 13px;
+  background: rgba(226, 235, 245, 0.04);
+}
+.kindRow { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.kindName { color: var(--txt); font-weight: 600; white-space: nowrap; min-width: 84px; }
+
 .watch {
   border: 1px solid var(--line2); border-radius: 8px; padding: 11px 12px;
   background: rgba(226, 235, 245, 0.04); font-size: 12px; color: var(--muted); line-height: 1.7;
