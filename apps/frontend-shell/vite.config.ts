@@ -32,6 +32,20 @@ export default defineConfig({
   //     （AgentCore 需允许 http://127.0.0.1:5173 跨源；DataCore 侧已实测放行同款 Origin）。
   server: {
     port: 5173,
+    // 远程开发（Codespaces / devcontainer / gitpod）转发出来的域名要显式放行，
+    // 否则 vite ≥5.4.12 的 Host 校验会把整个页面挡成
+    // `Blocked request. This host ("xxx-5173.app.github.dev") is not allowed.`
+    //
+    // ⚠️ 三条实测订正（2026-09-11 亲手跑的，都与「网上通用做法」相反）：
+    //   ① `__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=.app.github.dev` **不生效**（仍被拦）；
+    //   ② `vite --allowedHosts` **这个 CLI 选项不存在** —— v5.4.21 直接 `CACError: Unknown option`；
+    //   ③ `pnpm --filter <pkg> dev -- --host` 会**把参数吞掉**（日志仍打
+    //      「Network: use --host to expose」）⇒ 想传 flag 得进包目录跑 `npx vite --host ...`。
+    //      ⚠ 这一条最阴：它让前两条的测试**看起来**都是「被拦」，而其实那两次 vite 压根没收到参数。
+    //
+    // ⛔ 不写 `allowedHosts: true` —— 那是把这道 Host 校验整个关掉（它挡的是 DNS rebinding）。
+    //    这里只放行远程开发平台的域名后缀；别的域名照旧拦（有金丝雀守着：evil.example.com 必须仍被拦）。
+    allowedHosts: [".app.github.dev", ".githubpreview.dev", ".gitpod.io", ".github.dev"],
     fs: { allow: [searchForWorkspaceRoot(process.cwd())] },
     proxy: {
       "/a/v1": { target: process.env.VITE_DEV_DATACORE ?? "http://127.0.0.1:4001", changeOrigin: true },
