@@ -44,8 +44,31 @@ describe("WO-HOME-ENTRY-FLOW · 首页入口 ⊇ 侧栏 route 项 + 遇事指引
 
     // 金丝雀：这批不许是空的 —— 空集合会让下面的 for 循环一次都不跑，然后"全过"。
     expect(alwaysVisibleRoutes.length).toBeGreaterThan(0);
-    // 主流程起点必须在这批里（它正是真浏览器实测中首页缺掉的那一个）。
-    expect(alwaysVisibleRoutes.map((r) => r.key)).toContain("sim-unified");
+
+    // ── WO-SIM-GATE-DECOUPLE · 「主流程起点」这一条改为按**当前 workspace 现算** ──────────
+    // 上一版断言它在**无条件显示**那批里（`!feature && !consolidatedWhen`）。本单给
+    // `v/sim-unified` 补了页面侧 Guard（补一个现存的 R3 空洞：此前关掉推演能力后那一页会
+    // 照常渲染然后每个请求 404），条目随之带上 `feature` ⇒ 它**按定义**退出了"无条件"那一批。
+    // ⚠ 但本条要守的东西一点没变 —— **「首页必须有主流程起点」** —— 故不是删掉，而是换成
+    //   与 `UnifiedNav` 同一把尺子（`isRouteRefHidden`）现算：闸开着就必须真的铺在首页上。
+    //   这比原来那条更严：原来只验「它在某个集合里」，现在验「它此刻真渲染出来了」。
+    const unified = NAV_GROUPS.flatMap((g) => g.items).find(
+      (it): it is Extract<(typeof NAV_GROUPS)[number]["items"][number], { kind: "route" }> =>
+        it.kind === "route" && it.key === "sim-unified",
+    );
+    expect(unified, "统一推演控制台的 route 条目不见了 —— 主流程起点没了").toBeTruthy();
+    // ① 结构：它带的必须正是自己那把页面闸（与 `App.tsx` 的 `SimUnifiedGuard` 同键 ——
+    //    两边不同键就会出现「入口在、点进去 404」或「藏起来但 URL 进得去」）。
+    expect(
+      unified!.feature,
+      "控制台入口的 feature 不是它的页面闸 ⇒ 入口与 SimUnifiedGuard 会各关各的",
+    ).toBe("view.sim-unified");
+    // ② 行为：mock fixtures 里这把闸是开的 ⇒ 首页**必须真的**铺出它来。
+    //    `getByTestId` 找不到即抛，故这一条不可能退化成静默通过。
+    expect(
+      screen.getByTestId("home-view-sim-unified"),
+      "闸开着，首页却没有主流程起点（正是真浏览器实测中首页缺掉的那一个）",
+    ).toBeInTheDocument();
 
     for (const r of alwaysVisibleRoutes) {
       const el = screen.getByTestId(`home-view-${r.key}`);

@@ -147,8 +147,9 @@ describe("WO-WAITING-STATES-FE · §A 可达性（可达 ≠ 已注册·从 URL 
     // 条目**必须留着**：本页不受 sim.sandbox 门控，删了 = 沙盘关着的租户这一页从 IA 里蒸发
     expect(
       hit[0]!.kind === "view" ? hit[0]!.consolidatedWhen : undefined,
-      "条目没带 consolidatedWhen ⇒ 沙盘开着时它仍会单列（重复入口），组也不会自动隐藏",
-    ).toBe("sim.sandbox");
+      "条目没带 consolidatedWhen ⇒ 宿主那一页在时它仍会单列（重复入口），组也不会自动隐藏",
+      // WO-SIM-GATE-DECOUPLE：收编键 = 宿主那一页的**页面闸**（此前是能力族总闸 `sim.sandbox`）。
+    ).toBe("view.sim-sandbox");
   });
 
   /**

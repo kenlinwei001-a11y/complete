@@ -284,8 +284,9 @@ describe("WO-R9-NAVREACH · §B 可发现（可达 ≠ 可发现·不许落「�
     expect(hit[0]!.kind).toBe("view");
     expect(
       hit[0]!.kind === "view" ? hit[0]!.consolidatedWhen : undefined,
-      `${VIEW_KEY} 的条目没带 consolidatedWhen ⇒ 沙盘开着时它仍会单列 = 重复入口`,
-    ).toBe("sim.sandbox");
+      `${VIEW_KEY} 的条目没带 consolidatedWhen ⇒ 宿主那一页在时它仍会单列 = 重复入口`,
+      // WO-SIM-GATE-DECOUPLE：收编键 = 宿主那一页的**页面闸**（此前是能力族总闸 `sim.sandbox`）。
+    ).toBe("view.sim-sandbox");
   });
 
   it("B4 · 在收编表里，且 where 答得出「点哪里能到」；沙盘开时侧栏确实不单列它", async () => {

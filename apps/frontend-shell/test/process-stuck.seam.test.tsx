@@ -249,8 +249,11 @@ describe("WO-PROCESS-INSTANCE FE · §0.5 结构守卫与 R3（暗发默认关�
     // 靠 consolidatedWhen 在沙盘开着时隐藏 —— 删条目 = 沙盘关的租户这一页从 IA 里蒸发。
     expect(
       hit[0]!.kind === "view" ? hit[0]!.consolidatedWhen : undefined,
-      "条目没带 consolidatedWhen ⇒ 沙盘开着时它仍会单列（重复入口），「归因与风险」组也不会自动隐藏",
-    ).toBe("sim.sandbox");
+      "条目没带 consolidatedWhen ⇒ 宿主那一页在时它仍会单列（重复入口），「归因与风险」组也不会自动隐藏",
+      // WO-SIM-GATE-DECOUPLE：收编键 = 宿主那一页的**页面闸**（此前是能力族总闸 `sim.sandbox`）。
+      // 收编度量的是「宿主还在不在」，不是「推演能力开没开」——挂能力闸会让沙盘页退役时
+      // 本条目的单列入口**回不来**，那正是本断言要防的「从 IA 里蒸发」。
+    ).toBe("view.sim-sandbox");
   });
 
   /**
