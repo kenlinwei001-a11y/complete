@@ -1,6 +1,7 @@
 import {
   isOnHandOrderStatus,
   ON_HAND_ORDER_STATUSES,
+  ORDER_STATUSES,
   pairWeightNormalizeOf,
   type PairWeightNormalize,
   type PropagationRule,
@@ -475,12 +476,22 @@ export async function buildPairWeights(
       //    ——总量不变只是换人承担，而本条要的是总量真的变小。理由全文见契约该口径上方。
       const targets = await byType(rule.targetTypeKey);
       const statusOf = new Map(targets.map((o) => [o.id, o.props.status]));
-      // 🐤 金丝雀：目标类型**一格 status 都没有** ⇒ 不是"全都不在手"，是取数坏了/本体没这一列。
-      //    此时报缺而不是把全表压成 0 —— 压成 0 会让整条边静默停摆，且看起来像"闸门生效了"。
-      const withStatus = targets.filter((o) => typeof o.props.status === "string").length;
-      if (targets.length === 0 || withStatus === 0) {
+      /**
+       * 🐤 金丝雀：目标类型有多少格带着**在册的订单状态**。
+       *
+       * ⚠ 判据是「**status 的取值在不在 `ORDER_STATUSES` 里**」，**不是**「有没有 status 这一列」——
+       *   这一条是被本单自己的接缝测试**当场报红逼出来的**，不是设计时想到的：
+       *   `Model` 也有 `status`，取值却是 `"量产"`（另一套词汇）。按"有没有这一列"判，
+       *   闸门会认为"查得到状态"然后把**整条边静默压成 0**（每一格都不在手）——
+       *   而那与"闸门正常工作"在屏上**长得一模一样**，正是本仓反复治的那种假绿。
+       *   形态：**「我用『有 status 这一列』当作『那是订单状态』的证据，而前者并不度量后者。」**
+       */
+      const recognized = targets.filter((o) => (ORDER_STATUSES as readonly string[]).includes(String(o.props.status))).length;
+      if (targets.length === 0 || recognized === 0) {
+        const seen = [...new Set(targets.map((o) => String(o.props.status)))].sort().slice(0, 5);
         fail(
-          `本租户 ${rule.targetTypeKey} ${targets.length} 个实例、其中带 status 的 ${withStatus} 个 ⇒ 判不了"在不在手"。` +
+          `本租户 ${rule.targetTypeKey} ${targets.length} 个实例，其中 status 取值在册（${ORDER_STATUSES.join("/")}）的 ${recognized} 个` +
+            `（实际见到的取值：${seen.length > 0 ? seen.join("/") : "（无）"}）⇒ 判不了"在不在手"。` +
             `本条流不传导——把全表压成 0 会让这条边静默停摆，且与"闸门正常工作"在屏上长得一模一样。`,
         );
         continue;

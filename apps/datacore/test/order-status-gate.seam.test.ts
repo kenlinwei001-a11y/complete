@@ -151,10 +151,15 @@ describe("§1 状态闸门：已交付关闭的单不再被涨价推动（真种
     }
   });
 
-  it("诚实报缺：目标类型一格 status 都没有 ⇒ unresolved + 原因，**不把整张表压成 0**", async () => {
+  /**
+   * ⚠ 本用例**当场咬出过一个真 bug**（不是摆设）：第一版实现按「有没有 `status` 这一列」
+   * 判金丝雀，而 `Model` 也有 `status`、取值却是 `"量产"` ⇒ 闸门把**整条边静默压成 0**，
+   * 屏上与"闸门正常工作"一模一样。判据因此改成「取值在不在 `ORDER_STATUSES` 在册词表里」。
+   */
+  it("诚实报缺：目标类型的 status 是**另一套词汇** ⇒ unresolved + 原因，**不把整张表压成 0**", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    // 造一条指向**没有 status 这一列**的类型的规则（Model 上没有 status）。
+    // 造一条指向 `Model` 的规则：它**有** status 这一列，但取值是 `"量产"` 这套词汇。
     const rule = costRule({
       key: "gate_on_typeless",
       sourceTypeKey: "Order",
@@ -170,7 +175,10 @@ describe("§1 状态闸门：已交付关闭的单不再被涨价推动（真种
     };
     const { weights, report } = await buildPairWeights(t.repos, "demo", [rule], flipped);
     expect(report.unresolved.map((u) => u.ruleKey)).toContain(rule.key);
-    expect(report.unresolved.find((u) => u.ruleKey === rule.key)!.reason).toMatch(/status|在不在手/);
+    const reason = report.unresolved.find((u) => u.ruleKey === rule.key)!.reason;
+    expect(reason).toMatch(/在不在手/);
+    // 原因里要**点名实际见到的取值** —— 只说"判不了"会让人去查链路，而病根在词汇不对。
+    expect(reason).toContain("量产");
     // ⛔ 关键：**没有**给一张全 0 的表 —— 全 0 表会让边静默停摆，且与"闸门正常工作"读起来一样。
     expect(weights[rule.key]).toBeUndefined();
   });
