@@ -875,10 +875,14 @@ export function nothingMovedText(report: DrillReport | null): string | null {
  * **X（改之前）**：本页两处「一格都没改动 / 0 条结论因此改变」把结论说完了，
  *   却**没有一处**告诉用户这句话是**在多长的一段上**说的。而这一段的长度
  *   （本页写死 `HORIZON_DAYS = 30`，屏上无控件）恰恰决定了那句话成不成立 ——
- *   `docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.4 实测：同一条冲击
- *   （`+12.0336 delta @tick1`，落点 `obj_material_elyte.priceShock`），
+ *   **实测于 2026-09-11**（真后端 `SEED_DEMO=1` · seed 42 · demo 租户 · 种子世界
+ *   `sims_demo_seed_world`；取证全文 `docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.4）：
+ *   同一条冲击（`+12.0336 delta @tick1`，落点 `obj_material_elyte.priceShock`），
  *   在第 3 拍上与对照差 **2.4087**，推到第 30 天只剩 **0.0763** —— 差 31.6 倍，
- *   **而两个读数都是对的**。于是用户读到的是「我加的事没用」，
+ *   **而两个读数都是对的**。
+ *   复验：`POST /a/v1/sim/sessions/sims_demo_seed_world/drill` 同一算例只换 `horizonDays`
+ *   （3 与 30 各发一次），比两次回包在该落点上的读数。
+ *   于是用户读到的是「我加的事没用」，
  *   真相是「你的事被一段看不见的时间拉平了」。**这是屏上说谎的一种：
  *   不是写了假话，是漏掉了让那句话成立的前提。**
  * **Y（应该）**：结论旁边同屏写明「看的是多长的一段」，并说清「看得越远影响越淡」。
