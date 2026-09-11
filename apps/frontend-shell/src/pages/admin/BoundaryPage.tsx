@@ -17,6 +17,11 @@ export default function BoundaryPage() {
 
   // WO-UX-ONTO #6 概览条：四个数**全部由 /a/v1/boundary/impact 的回包现算**，⛔ 无一个占位数。
   // 这一页此前把「波及面」这份富数据平铺在三块长列表里，第一眼读不出规模 —— 概览条补的就是那一眼。
+  //
+  // 实测日期：2026-09-11（真后端 SEED_DEMO=1，非 mock）。屏上读数 3/22/10/9，
+  // 且 13+3+6=22 与册版本指纹自洽。
+  // 复验方式：起内存态 datacore 后 `GET /a/v1/boundary/impact`，把回包按下面四条 reduce 自己算一遍，
+  // 与屏上四张卡逐数比对；不等即为本注释过期。
   const regCount = imp.impact.length;
   const memberCount = imp.impact.reduce((s, b) => s + b.members, 0);
   const consumerCount = imp.impact.reduce((s, b) => s + b.consumers.length, 0);

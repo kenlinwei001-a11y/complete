@@ -79,6 +79,10 @@ export default function ModelingPage() {
   const draft = drafts?.find((d) => d.id === draftId) ?? drafts?.[0];
   // WO-UX-ONTO #2：`POST /a/v1/ontology/object-types` 本就是 upsert（实测：同 key 二次 POST
   // 改 displayName/unit 返 201、id 不变、version 递增）——**后端已具备，屏上一直缺入口**。本状态开那个入口。
+  //
+  // 实测日期：2026-09-11（真后端 SEED_DEMO=1，非 mock）。
+  // 复验方式：对同一个 key 连发两次 POST（第二次改 displayName + unit），两次都应 201 且 id 不变；
+  // 再发一次非法 unit 应 400 且回包带完整词表。三个响应码任一变了，本注释即过期。
   const [typeEditorOpen, setTypeEditorOpen] = useState(false);
 
   return (
@@ -253,9 +257,14 @@ function PublishedOntologyView({ types }: { types: Awaited<ReturnType<typeof fet
  * WO-UX-ONTO #2 · 新建 / 改对象类型入口。
  *
  * **这不是新能力，是补入口**：`POST /a/v1/ontology/object-types` 早就是 upsert，
- * 真后端实测（本单）——新建最小类型 **201**；同 key 二次 POST 改 `displayName` + `unit` 仍 **201**，
- * 读回即为新值。屏上此前没有任何地方能走这条路（全仓搜「新建类型 / createObjectType」= 0 命中，
+ * 真后端实测（**2026-09-11**，SEED_DEMO=1 内存态，非 mock）——新建最小类型 **201**；
+ * 同 key 二次 POST 改 `displayName` + `unit` 仍 **201**，读回即为新值。
+ * 屏上此前没有任何地方能走这条路（全仓搜「新建类型 / createObjectType」= 0 命中，
  * 金丝雀：同法搜「新建域」命中 DomainsPage）。
+ *
+ * 复验方式：起内存态 datacore，对同一 key 连发两次 POST（第二次改 displayName + unit），
+ * 两次都应 201；再发一次非法 unit 应 400 且回包带完整词表。
+ * 三个响应码任一变了，或上面那条 0 命中变成非 0，本段即过期，必须重测重写。
  *
  * ⚠⚠ **整份 upsert，不是 PATCH**：漏传 `properties` 会把该类型的属性**整表抹掉**。
  * 故本弹窗在「改类型」模式下，把读回来的 `properties / derivedProperties / sourceBindings /
