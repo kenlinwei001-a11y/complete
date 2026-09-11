@@ -779,7 +779,11 @@ export default function Console0828({
         cmp: impGroups === null ? "本次未取到" : `仅可监控 ${impGroups.watchOnly.length} 处`,
         // 「一处都动不了」是真告警 ⇒ 这一张才允许染色（纪律第 4 条）。
         alert: impGroups !== null && impGroups.all.length > 0 && impGroups.actionable.length === 0,
-        cal: (<>口径：「可处置」= 引擎为该处<b>枚举出了至少一条对策</b>；「仅可监控」= 一条都没有。<b>系统不给推荐，决策由使用方作出。</b></>),
+        // 这两句是**阈值式定义**，不是断言：逐字对应上面 `impGroups` 的两条 filter
+        // （`candidates.length > 0` / `=== 0`），每次渲染现算 ⇒ 不存在「过时」这一态，
+        // 故**不挂** `@stale-fact`。⛔ 别写成「一条都没有」那种否定断言形态：
+        // 同一个意思，前者是定义（恒真），后者读起来像在报一个当下的事实（会过时）。
+        cal: (<>口径：「可处置」= 引擎为该处<b>枚举出的对策条数 ≥ 1</b>；「仅可监控」= 该条数<b>为 0</b>。<b>系统不给推荐，决策由使用方作出。</b></>),
       },
     ];
   }, [result, money, custView, impGroups, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts]);
@@ -1239,10 +1243,16 @@ export default function Console0828({
                 </div>
               ))}
             </div>
-            {/* 诚实位：参考稿每张卡都有走势线，本屏**没有数据源**画它。 */}
+            {/* 诚实位：参考稿每张卡都有走势线，本屏**没有数据源**画它。
+                下面那句「只有两个观测点」是**真会过时**的一条（上游一给逐拍序列它就变假），
+                故挂了一条可执行赌注。⚠ 赌注**钉在上游契约**（`endpoints.ts` 的 `simTick` 回包型）
+                而不是本文件自己的字符串 —— 自指的赌注等于没赌。
+                今天那个型是 `{ curTick; state; trace?; disclosure? }`：**一个终态，没有逐拍序列**。
+                谁往回包里加了 `series`/`perTick`（或改了这四个字段），门当场红，
+                届时要么屏上这句话改对、要么真把走势线画上，二选一。 */}
             <p className={styles.calibre} data-testid="c0828-kpi-nospark">
               各卡<b>不带迷你走势线</b> —— 本次推演一次跳 {horizon} 拍后只读<b>一次</b>终态，
-              全屏只有「扰动前」「扰动后」两个观测点，中间每一拍的读数从未取回。
+              全屏只有「扰动前」「扰动后」两个观测点，中间每一拍的读数从未取回。{/* @stale-fact apps/frontend-shell/src/api/endpoints.ts /curTick: number; state: TickState; trace\?: unknown\[\]; disclosure\?: SimRunDisclosure/ ==1 */}{" "}
               两点画不出走势，补一条即是编造历史。<b>这是缺数据源，不是缺实现</b>。
               各卡第二行给的是<b>同次推演内的真实对比</b>（占订单簿 / 占总数），
               <b>不是</b>「较上周」—— 本屏不留存历史推演，没有上一期可比。
@@ -2297,7 +2307,10 @@ export default function Console0828({
             <p className={styles.calibre}>
               {result === null
                 ? "推演后，这里列出引擎为选中那一处枚举出的对策。"
-                : "本次没有任何一处带可用对策 —— 这是引擎枚举结果，不是本栏没取到。"}
+                : // 同 KPI「可处置」那条：这是**运行期条件文案**，只在 `picked === null`
+                  // （即 `impGroups.actionable` 为空）时才渲染 ⇒ 它报的是本次这一跑的现算结果，
+                  // 不是一条静态事实，故**不挂** `@stale-fact`，只把否定断言改成计数形态。
+                  "本次带可用对策的处数为 0 —— 这是引擎枚举结果，不是本栏没取到。"}
             </p>
           ) : (
             <>
