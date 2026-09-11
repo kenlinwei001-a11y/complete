@@ -336,7 +336,11 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       { kind: "route" as const, key: "decision-console", label: "事件影响与对策" },
     ],
   },
-  { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate", "review"].map((key) => ({ kind: "view" as const, key })) },
+  // 「运营复盘」(`review`) 于 2026-09-11 按仓主指令摘掉导航位。
+  // ⚠ 只摘入口，**不删屏也不删组件**：后端仍下发 `review` 视图，`/v/review` 深链照常可达，
+  //    历史证据链（参数校准史 / S&OP 版本史 / Action 审计史 / 规则演进）一条都没丢。
+  //    重组定稿后它归入哪个页签另议；在那之前它不占一级导航位。
+  { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate"].map((key) => ({ kind: "view" as const, key })) },
   // WO-NAV-SANDBOX-GROUP：沙盘一家五口此前**一个都没登记**——
   //   · `sim-sandbox` / `sim-init` 落「裸挂」（排在全部 13 个分组之后，屏幕最底）；
   //   · 四个子视图落「其它」兜底组，而那个组里**不多不少正好只有它们四个**
