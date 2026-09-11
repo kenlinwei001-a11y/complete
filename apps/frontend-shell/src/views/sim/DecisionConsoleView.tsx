@@ -35,6 +35,7 @@ import {
   subjectScopeFor,
   targetIdOf,
   topCustomers,
+  windowPremiseText,
   SUBJECT_FALLBACK,
   type BaseCard,
   type HonestyNote,
@@ -603,6 +604,13 @@ export default function DecisionConsoleView() {
   const nothingMoved = nothingMovedText(result?.report ?? null);
   /** 「屏上哪几个数不吃你加的事」—— 判据在 model 层（可测），这里只负责显示。 */
   const invariantNote = invariantNumbersNote(result?.report ?? null);
+  /**
+   * WO-NAV-DECAY-HONESTY · 「这句『没改动』是在多长的一段上说的」。
+   * 下面两格（动了 N 格 / N 条结论因此改变）**报 0 时**必须同屏带上它 ——
+   * 少了这一句，屏上那两句就是「漏掉前提的真话」，用户会读成「我加的事没用」。
+   * 判据与措辞的单一出处在 model 层（`windowPremiseText`，可测），这里只负责显示。
+   */
+  const windowPremise = windowPremiseText(result?.report ?? null);
 
   // ── 渲染 ────────────────────────────────────────────────────────────────
   return (
@@ -1021,6 +1029,35 @@ export default function DecisionConsoleView() {
                     </div>
                   ) : null}
                 </div>
+
+                {/*
+                  🔴 WO-NAV-DECAY-HONESTY · **让上面那两个 0 成立的前提**，第一层给出、不折叠。
+                  紧挨着那一排格子（`.split` 是一行网格），因为它解释的就是那一排里报 0 的格。
+
+                  ── 为什么非有不可（这是「屏上说谎」的一种，不是锦上添花）──────────────
+                  上面那两句（「一格都没改动」/「0 条结论因此改变」）都是**真的**，
+                  但它们**只在这一段时间上为真**：实测同一条冲击（`+12.0336 delta @tick1`）
+                  在第 3 拍上与对照还差 2.4087，推到第 30 天只剩 0.0763 —— 差 31.6 倍，
+                  **两个读数都对**（取证：`docs/evidence/SIM-PAGES-CONSOLIDATION-20260911.md` §3.4）。
+                  而这一段有多长（`HORIZON_DAYS`）**屏上一处都没写、也改不了**。
+                  ⇒ 用户读到的是「我加的事没用」，真相是「你的事被一段看不见的时间拉平了」。
+                  **不是写了假话，是漏掉了让那句话成立的前提** —— 补的就是这一句。
+
+                  ⚠ **三条纪律，改这一段之前先读**：
+                   ① ⛔ 倍数不许上屏：`2.4087 / 0.0763 / 31.6` 这三个数**今天现算不出来**
+                     （回包只有终态，没有逐拍轨迹），写死的数三周后就是屏上的假话。
+                     故本行**只说窗口、不说倍数** —— 窗口的每个数都现取自本次回包。
+                   ② 措辞与取数的单一出处在 `windowPremiseText`（model 层，可测），此处只负责显示。
+                   ③ 判据是「两格里**任一格**报 0 就要说」：窗口同时管着这两个数，
+                     只在其中一格旁边说，另一格就还在说半句话。
+                */}
+                {windowPremise &&
+                result.report.appliedStateEffects.length > 0 &&
+                (result.report.worldCellsMoved === 0 || result.report.findingsChanged === 0) ? (
+                  <p className={styles.greyLine} data-testid="dc-window-premise">
+                    {windowPremise}
+                  </p>
+                ) : null}
 
                 {nothingMoved ? <p className={styles.greyLine}>{nothingMoved}</p> : null}
               </section>
