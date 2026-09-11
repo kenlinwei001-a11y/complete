@@ -2206,6 +2206,21 @@ const warehouseProps: PropertyDef[] = [
  *   故省名即主键 ⇒ 零转换、零 `anchorProperty`。换成代理键会立刻需要一张对照表，
  *   而那张表就是下一个漂移源。
  */
+/**
+ * WO-CUSTOMER-GROUP · 集团（`CustomerGroup`）属性。
+ *
+ * ⚠ **为什么 PK 是 ascii 而不是集团中文名**：照同文件 `custId`（`cust_0`…）那条已写明的老规矩
+ * ——「刻意不用中文名当主键，中文经 id sanitize 后会碰撞」。集团名同样是中文，同样会碰。
+ * 这也是本类型与 `Region` 的**唯一**取舍差异：`Region` 的 PK 是省名，因为三个载体上
+ * **存的就是省名字符串**（零转换对齐）；而集团 id 是本单新造的，没有既存字符串要对齐，
+ * 于是按本文件更强的那条先例（ascii PK）走。
+ */
+const customerGroupProps: PropertyDef[] = [
+  { propKey: "groupId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "集团主键（ascii·`grp_*`）——中文名经 id sanitize 后会碰撞，故不用中文当 PK（同 `custId` 口径）。" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true, description: "集团显示名（如「广汽集团」）。" },
+  { propKey: "groupType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "GROUP = 册内有多个主体的真集团；STANDALONE = 册内仅一个主体的单体集团（独立客户自成一集团，不留 null）。" },
+];
+
 const regionProps: PropertyDef[] = [
   { propKey: "regionId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "省级行政区名（业务主键 = 三个载体 props.province 存的那个串，零转换对齐）。" },
   { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true, description: "行政区显示名（与主键同值：省名本身就是人话，不另造展示串——两份会漂）。" },
@@ -3646,6 +3661,8 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     plain("Warehouse", "仓库", warehouseProps),
     // WO-LAST3-RELATIONS：行政区（`located_in` 的锚点·地域从字符串升格为可遍历节点）。
     plainD("Region", "行政区", "省级行政区。基地/仓库/客户交付点经 `*_located_in` 指向它，令「华东产能」这类按地域的聚合可沿图走，而不是只能按字段过滤。行数由三个载体既有的 province 取值并集派生，不引入新的经营事实。", regionProps),
+    // WO-CUSTOMER-GROUP：集团（`customer_belongs_to_group` 的锚点·客户从一排平行字符串升格为有归属的主体）。
+    plainD("CustomerGroup", "客户集团", "客户所属集团。客户经 `customer_belongs_to_group` 指向它，令「丢掉广汽会怎样」这类按集团的敞口聚合可沿图走 —— 此前广汽埃安/广汽新能源/广汽集团在屏上是三行互不相干的客户，要 COO 自己把三行加起来。行数由客户名册既有的归属字段派生，不引入新的经营事实，也不含任何汇总金额（集团敞口由下游现算）。", customerGroupProps),
     // WO-INVENTORY-3TIER：成品库存（qtyAvailable 派生）+ 统一库存流水。
     { key: "FinishedGoodsInventory", displayName: "成品库存", domain: "supply", properties: withGovernance("FinishedGoodsInventory", finishedGoodsInvProps), derivedProperties: finishedGoodsInvDerived, sourceBindings: BINDINGS.FinishedGoodsInventory ?? [] },
     plain("InventoryTxn", "库存流水", inventoryTxnProps),
@@ -3804,6 +3821,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "base_located_in", fromTypeKey: "Base", toTypeKey: "Region", cardinality: "N:1" }, // factory（基地属地）
     { key: "warehouse_located_in", fromTypeKey: "Warehouse", toTypeKey: "Region", cardinality: "N:1" }, // factory（仓库属地）
     { key: "custloc_located_in", fromTypeKey: "CustomerLocation", toTypeKey: "Region", cardinality: "N:1" }, // commercial（交付点属地）
+    // WO-CUSTOMER-GROUP：客户归属集团。**只落正向边**，照上面 `located_in` 三条同一把尺子 ——
+    // 「这个集团有哪些客户」由检索侧 `direction:"in"` 反着走，逆边落了是纯增重。
+    { key: "customer_belongs_to_group", fromTypeKey: "Customer", toTypeKey: "CustomerGroup", cardinality: "N:1" }, // commercial（客户归属集团）
     // `depends_on`：同一工艺路线内「本工序依赖上一道」。承载是 `Operation.predecessorOperationId`
     // （末位追加的派生 FK，见 operationProps 头注）—— 不是 `operationSeq` 对 `operationSeq`：
     // 后者会把 15 条工艺路线的同序号工序连成叉积，且不报错。

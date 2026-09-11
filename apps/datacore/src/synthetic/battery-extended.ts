@@ -1,7 +1,7 @@
 import type { ObjectTypeDef, PropertyDef, PropertyUnit, PropertyScale, NonNumericDataType } from "../domain.js";
 import { WAVE1_SCALE_FACTOR } from "@platform/contracts";
 import { mulberry32, round, hashString } from "../prng.js";
-import { withPropDisplayNames, ORDER_CUST_TO_CUSTOMER, CUSTOMER_REGISTRY } from "./battery.js";
+import { withPropDisplayNames, ORDER_CUST_TO_CUSTOMER, CUSTOMER_REGISTRY, GENERATED_GROUP_PREFIX } from "./battery.js";
 import { MATERIALS as MATERIALS_TABLE, seedMaterials } from "./materials-seed.js";
 
 /**
@@ -288,6 +288,21 @@ export function extendedObjectTypes(): TypeDef[] {
           "本客户在订单上使用的下单品牌名集合（`Order.cust` 口径）——客户主数据的匿名化名册与订单侧品牌名之间的唯一桥。" +
           "由归属册 `ORDER_CUST_TO_CUSTOMER` 反查派生（排序确定性 R6）；`order_of_customer` 边据此绑定，" +
           "空集 = 该客户不在归属册内（不认领任何订单，诚实缺席，不参与轮转）。",
+      },
+      // WO-CUSTOMER-GROUP：客户归属的集团（`customer_belongs_to_group` 的承载）。
+      // ⛔ 不可为空：独立客户自成单体集团，而不是留 null 让下游各自兜底 ——
+      // 留 null 会变成「有的客户有集团、有的没有」，前端就得写两套分支，那两套迟早会漂。
+      {
+        propKey: "groupRef",
+        dataType: "ref",
+        isPrimaryKey: false,
+        refToTypeKey: "CustomerGroup",
+        unit: "dimensionless",
+        scale: "absolute",
+        description:
+          "本客户所属集团（`CustomerGroup.groupId`）。归属判据是真实世界的控股/母子公司/子品牌关系，" +
+          "⛔ 非字符串前缀（「国家电网」与「国家电投」前缀相同但是两家互不隶属的独立央企）。" +
+          "无母集团者自成单体集团（`groupType:\"STANDALONE\"`），恒不为空。",
       },
       n("creditLimit", "万元", "absolute"),
       n("termDays", "天", "absolute"),
@@ -889,6 +904,10 @@ export function generateExtended(
       custId: `cust_${ci}`, // ascii pk（避免中文名 sanitize 后 id 碰撞）
       custName: name,
       orderCustNames: orderCustNamesOf(name),
+      // WO-CUSTOMER-GROUP：集团归属取自名册同一行（`CUSTOMER_REGISTRY.group`）——
+      // 名册是单一来源，这里不另存一份对照表（两份必漂）。`!` 安全：该字段在名册上是
+      // `CustomerGroupId` 联合类型的必填项，漏填是编译期红。
+      groupRef: CUSTOMER_REGISTRY[ci]!.group,
       creditLimit: round((2000 + rng() * 8000) * WAVE1_SCALE_FACTOR, 0),
       termDays: 60,
       receivables: round(rng() * 3000 * WAVE1_SCALE_FACTOR, 0),
@@ -901,6 +920,9 @@ export function generateExtended(
       custId: `cust_x${k}`,
       custName: `客户${String(k + 1).padStart(3, "0")}`,
       orderCustNames: [] as string[], // 规模补足客户不在归属册内 → 无下单品牌名（诚实空，不轮转认领）
+      // WO-CUSTOMER-GROUP：规模补足客户**一人一集团**（生成集团·不进声明册）。
+      // 同样不留 null —— 「恒不为空」这条不变量对补足客户一并成立，否则下游还是得写两套分支。
+      groupRef: `${GENERATED_GROUP_PREFIX}${k}`,
       creditLimit: round((1000 + rng() * 9000) * WAVE1_SCALE_FACTOR, 0),
       termDays: 60,
       receivables: round(rng() * 3000 * WAVE1_SCALE_FACTOR, 0),
