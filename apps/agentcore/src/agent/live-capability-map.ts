@@ -1,6 +1,14 @@
-import type { IntelligenceResource, PageContext, ResourceSearchRequest, ResourceSearchResponse } from "@platform/contracts";
+import type {
+  IntelligenceResource,
+  PageContext,
+  ResourceSearchRequest,
+  ResourceSearchResponse,
+  ResourceSearchResultItem,
+} from "@platform/contracts";
 import type { ToolAuthCtx } from "../tools/clients.js";
 import { domainResolve } from "../router/domain-resolver.js";
+import { extractTieredTags } from "../dril/tag-taxonomy.js";
+import { lexTokens } from "./skill-router.js";
 import type { SolverCatalog, SolverCatalogEntry } from "./navigation-slice.js";
 
 /**
@@ -58,22 +66,51 @@ import type { SolverCatalog, SolverCatalogEntry } from "./navigation-slice.js";
 export const LIVE_CAPABILITY_TOP_N = 12;
 
 /**
- * 相关性门槛（= `ResourceSearchRequestSchema.minScore` 的契约默认值 0.3）。
+ * **详情段**相关性门槛（= `ResourceSearchRequestSchema.minScore` 的契约默认值 0.3）。
  *
  * 为什么必须有门槛：检索**恒返回**排序后的 top-N，分再低也返回。不设门槛 ⇒ 任何问句（哪怕"你好"）
  * 都会被塞进 6 条不相干求解器 —— 那是把"漏 40 条"换成"永远在灌噪声"，并且让下游
  * `buildOntologySemanticContext` 对一堆无关对象类型做真实取数（实测把一次 agent 调用从
  * ~200ms 拖到 ~2s）。改造前"无族信号 ⇒ 不注入"这一条是**对的**，不能丢。
  *
- * 门槛取值有实测依据（test/mock 与真起服务两侧同分布）：
- *   · 无关问句：「三路并查」max 0.219 · 「你好」max 0.245  → 全部 < 0.30 ⇒ 空图（不注入·同改造前）
- *   · 真业务问句：「储能份额为什么没达成目标」top 0.500（11 条 ≥0.30）·「全局联合排产」top 0.405
- * 即 0.30 恰好落在噪声与信号之间。
+ * ⚠️ **WO-RELEVANCE-FLOOR 改判（2026-09-12·50 条问句真服务实测）：下面这段旧依据把两件事合成了一句。**
+ * 旧文写「0.30 恰好落在噪声与信号之间」——**这句话只在「有信号的那批问句」上成立**，
+ * 而它被当成了「0.30 能分辨业务问句与寒暄」。实测这两个命题差得很远：
+ *
+ *   · `score` 里 **0.11 是与问句完全无关的常数** —— `history`(0.1×0.1) + `cost`(0.1×1.0)，
+ *     50 条问句 × 63 个求解器**全部等于 0.11**（`projectSolvers` 不投 quality，运行时质量分表又是空的）。
+ *     它占「你好」那 0.245 的 **45%**。
+ *   · 余下大头是 `semantic`(权重 0.35) 走 `pseudoEmbed` —— 该函数**源码自述**
+ *     "**NOT a production embedding**"（256 维 FNV 字符 uni+bigram 哈希），中文任意两串都有
+ *     0.34~0.40 的碰撞基线，且**基线本身随问句长度/用字浮动**（「谢谢，辛苦了」0.204 vs 「你好」0.245）。
+ *   · 于是「**你能做什么**」(0.2795) **压过 8 条真业务问句**（0.224~0.279）。
+ *     形态（照 CLAUDE.md 铁律 0.6 句式）：
+ *     **「我用『总分离 0.30 有多远』当作『这题与求解器有多相关』的证据，而总分里 45% 是常数、
+ *     大半是哈希噪声，它并不度量相关性。」**
+ *
+ * **结论：0.30 这个数没有错，错的是它守的范围。** 它是照**详情段的代价**标定的，
+ * 却被 `rank === 0 ⇒ return undefined` 拿去**连目录段一起守**。故本常数**一字不改**，
+ * 只把目录段的准入交给 {@link hasBusinessIntent}（见其文档）。
  *
  * 单独的兜底：**确定性路由选出的对口 solver 无条件保留**（见 `domainResolve`），
  * 防"整体分偏低但确有唯一对口 solver"的题被门槛筛空。
  */
 export const LIVE_CAPABILITY_MIN_SCORE = 0.3;
+
+/**
+ * **目录段**准入的词法熟悉度下限：至少这么多个求解器"认得"问句里的词。
+ *
+ * ⚠️ 这是本单引入的**唯一**常数，实测依据（50 条问句·真起服务·见
+ * `docs/AUDIT-relevance-distribution-20260912.md` 分布表）：
+ *   · 寒暄/元问题 14 条：熟悉求解器数 **最大 2**（`{0×11, 1×2, 2×1}`·均值 0.29）
+ *   · 真业务问句 36 条：**中位数 12.5**，36 条里只有 1 条 < 3
+ * 两类之间 2↔3 是一条**空带**，不是我挑的分位点。
+ *
+ * 语义上它问的是：**"这句话里有没有本平台的业务词汇"** —— 一个偶然撞上的 token 只会让 1~2 个
+ * 求解器"认得"（实测「今天天气怎么样」=2、「你是谁」=1），而真业务词（订单/产能/物料/库存/成本…）
+ * 天然被一大批求解器的描述共享。要求 ≥3 就是滤掉这种**单 token 偶然碰撞**。
+ */
+export const LEX_FAMILIAR_MIN_SOLVERS = 3;
 
 /**
  * 检索取回上限（= 契约 `maxResults` 上限 100）。
