@@ -53,7 +53,7 @@ export default function TenantsPage() {
                   <td>
                     <span className={`badge ${x.status === "ACTIVE" ? "green" : "red"}`}>{x.status}</span>
                   </td>
-                  <td className="mono" style={{ fontSize: 11 }}>{x.createdAt?.slice(0, 10) ?? "—"}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{x.createdAt?.slice(0, 10) ?? "—"}</td>
                   <td>
                     <button className="btn sm" onClick={() => setAdminFor(x.id)} data-testid={`tenant-first-admin-${x.id}`}>
                       {t.firstAdmin}

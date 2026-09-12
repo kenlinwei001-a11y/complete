@@ -28,9 +28,11 @@ export function healthFactorOf(params: SolverParamsShape, dataHealth: ObjectInst
 /** 切片对象集合（ONTOLOGY_PROPERTY 因子）：型号认证产线下的 <ObjectType> 实例。 */
 export function sliceObjectsFor(c: SolverContext, modelId: string, objectType: string): ObjectInstance[] {
   const cert = c.certByModel.get(modelId);
-  const lineIds = new Set([...(cert?.keys() ?? [])].map((baseId) => `LINE-${baseId}`));
+  // SA-3 Workshop 层后一个基地有多条产线（LINE-WS-{base}-{suffix}）：
+  // 按对象 baseId 是否在型号认证基地内过滤，而非匹配 LINE-{baseId} 单线名。
   const pool = objectType === "Process" ? c.processes : objectType === "Equipment" ? c.equipment : objectType === "Line" ? c.lines : [];
-  return pool.filter((o) => lineIds.has(str(o.props.lineId)));
+  if (!cert) return [];
+  return pool.filter((o) => cert.has(str(o.props.baseId)));
 }
 
 export function meanProp(objs: ObjectInstance[], prop: string): number {

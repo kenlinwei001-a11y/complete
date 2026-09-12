@@ -53,4 +53,17 @@ describe("taskStreamReducer", () => {
     expect(isTerminalEvent("answer.final")).toBe(true);
     expect(isTerminalEvent("step.completed")).toBe(false);
   });
+
+  it("WO-REASONING-TRACE：agent_narration 伪 step → 带 text 的思考旁白行·与工具步交织", () => {
+    let s = initialStreamState;
+    // 同一轮 thought→action：旁白（思考）先到，再到工具步。
+    s = taskStreamReducer(s, { type: "event", frame: frame("1", "step.completed", { stepId: "narration-0", type: "agent_narration", text: "我先查产能归因" }) });
+    s = taskStreamReducer(s, { type: "event", frame: frame("2", "step.started", { stepId: "s1", type: "invoke_solver" }) });
+    s = taskStreamReducer(s, { type: "event", frame: frame("3", "step.completed", { stepId: "s1", type: "invoke_solver", outcome: "OK", durationMs: 500 }) });
+    const rows = selectStepRows(s);
+    // 旁白行在前、携带 text（💭 展示用）；工具行在后、不含旁白 text（不污染工具步）。
+    expect(rows[0]).toMatchObject({ stepId: "narration-0", type: "agent_narration", text: "我先查产能归因", running: false });
+    expect(rows[1]).toMatchObject({ stepId: "s1", type: "invoke_solver", outcome: "OK", running: false });
+    expect(rows[1]!.text).toBeUndefined();
+  });
 });

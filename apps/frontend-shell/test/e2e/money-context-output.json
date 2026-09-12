@@ -1,0 +1,154 @@
+{
+  "hits": [
+    {
+      "url": "/a/v1/sim/optimize-pareto/assemble",
+      "ctx": [
+        "evenueQtyProp\":\"qty\",\"currencyAligned\":true,\"currencyUnit\":\"元\"},\"objectives\":[{\"key\":\"",
+        "e.serveCost + OrderLine.unitCost × OrderLine.qty)）\",\"unit\":\"元\"},{\"key\":\"serviceRate\",\"",
+        "\"max\",\"label\":\"OrderLine.unitPrice × OrderLine.qty\",\"unit\":\"元\"},{\"key\":\"cost\",\"dir\":\"m",
+        "ase.serveCost + OrderLine.unitCost × OrderLine.qty\",\"unit\":\"元\"}],\"levers\":[{\"key\":\"lin"
+      ]
+    },
+    {
+      "url": "/a/v1/sim/optimize-pareto",
+      "ctx": [
+        "e.serveCost + OrderLine.unitCost × OrderLine.qty)）\",\"unit\":\"元\"},{\"key\":\"serviceRate\",\"",
+        "\"max\",\"label\":\"OrderLine.unitPrice × OrderLine.qty\",\"unit\":\"元\"},{\"key\":\"cost\",\"dir\":\"m",
+        "ase.serveCost + OrderLine.unitCost × OrderLine.qty\",\"unit\":\"元\"}],\"frontier\":[{\"id\":\"pa"
+      ]
+    }
+  ],
+  "fields": {
+    "/a/v1/sim/sessions/sims_demo_seed_world/tick :: amount": {
+      "n": 8991,
+      "sample": [
+        "\"amount\":33.851343280846",
+        "\"amount\":33.311875741401",
+        "\"amount\":31.581242644194",
+        "\"amount\":31.722919961253",
+        "\"amount\":31.358068251084",
+        "\"amount\":33.306753773483"
+      ]
+    },
+    "/a/v1/sim/sessions/sims_demo_seed_world/tick :: value": {
+      "n": 4804,
+      "sample": [
+        "\"value\":83.478636244873",
+        "\"value\":84.959700524685",
+        "\"value\":83.518273324289",
+        "\"value\":84.139150627261",
+        "\"value\":85.362196121044",
+        "\"value\":84.879935318255"
+      ]
+    },
+    "/a/v1/sim/sessions/sims_demo_seed_world/tick :: units": {
+      "n": 31,
+      "sample": [
+        "\"unit\":\"0–100 压力指数\""
+      ]
+    },
+    "/a/v1/sim/optimize-pareto/assemble :: revenue": {
+      "n": 873,
+      "sample": [
+        "\"revenue\":93921718",
+        "\"revenue\":54373242",
+        "\"revenue\":5802972",
+        "\"revenue\":313966268",
+        "\"revenue\":87217658",
+        "\"revenue\":226748610"
+      ]
+    },
+    "/a/v1/sim/optimize-pareto/assemble :: cost": {
+      "n": 11349,
+      "sample": [
+        "\"cost\":3129924.12",
+        "\"cost\":3249724.12",
+        "\"cost\":3210824.12",
+        "\"cost\":3082024.12",
+        "\"cost\":3252324.12",
+        "\"cost\":3138324.12"
+      ]
+    },
+    "/a/v1/sim/optimize-pareto/assemble :: units": {
+      "n": 4,
+      "sample": [
+        "\"unit\":\"元\"",
+        "\"unit\":\"\""
+      ]
+    },
+    "/a/v1/sim/optimize-pareto :: revenue": {
+      "n": 28,
+      "sample": [
+        "\"revenue\":25916645156",
+        "\"revenue\":24424333164",
+        "\"revenue\":24424035906",
+        "\"revenue\":24424919646",
+        "\"revenue\":23717160968",
+        "\"revenue\":23717055060"
+      ]
+    },
+    "/a/v1/sim/optimize-pareto :: cost": {
+      "n": 28,
+      "sample": [
+        "\"cost\":856455213.720001",
+        "\"cost\":800270093.160001",
+        "\"cost\":800634638.960001",
+        "\"cost\":803446610.640001",
+        "\"cost\":776357490.280001",
+        "\"cost\":777382351.240001"
+      ]
+    },
+    "/a/v1/sim/optimize-pareto :: value": {
+      "n": 81,
+      "sample": [
+        "\"value\":138973",
+        "\"value\":138973",
+        "\"value\":138973",
+        "\"value\":70389",
+        "\"value\":138973",
+        "\"value\":138973"
+      ]
+    },
+    "/a/v1/sim/optimize-pareto :: units": {
+      "n": 4,
+      "sample": [
+        "\"unit\":\"元\"",
+        "\"unit\":\"\""
+      ]
+    }
+  },
+  "screen": {
+    "optimizeShot": "12-tab-optimize.png",
+    "optimizeYuan": 84,
+    "optimizeYi": 8,
+    "optimizeWan": 0,
+    "optimizeMoneyHits": [
+      "25060189942.3元",
+      "25916645156.0元",
+      "856455213.7元",
+      "23621473035.4元",
+      "24424919646.0元",
+      "803446610.6元",
+      "23623401267.0元",
+      "24424035906.0元",
+      "800634639.0元",
+      "23624063070.8元",
+      "24424333164.0元",
+      "800270093.2元",
+      "22939159156.0元",
+      "23717205012.0元",
+      "778045856.0元",
+      "22939672708.8元",
+      "23717055060.0元",
+      "777382351.2元",
+      "22940803477.7元",
+      "23717160968.0元",
+      "776357490.3元",
+      "22179839908.4元",
+      "22930296890.0元",
+      "750456981.6元",
+      "22181067974.8元"
+    ],
+    "optimizeTextSample": "跳到主内容\n全域数字化智能决策支撑系统\n全域数字化智能决策支撑系统\n🕐\n健康度\n🌙\nA\nadmin\n▾\n⚡ 场景启动器\n经营驾驶舱\n事件影响与对策\n▾\n规划与平衡\n年度规划\n季度规划\n月度规划\n规划体检\n规划建议\n运营复盘\n▾\n推演\n统一推演控制台\n推演沙盘\n接单可行性\n接单组合优选\n产能推演\n订单进展与卡因\n▾\n台账与地图\n订单台账\n基地地理视图\n▾\n数据接入\n连接器与上传\n规则文档审核\n合成数据\n外部信号\n隔离区\n▾\n建模与图谱\n本体图谱\n本体建模\n对象/类型浏览\n域管理\n对象接口\n本体关系\n本体切片\n切片库\n实体合并\n边界册治理\n原型 intake\n▾\n图谱体系\n▾\n规则与校准\n规则库\n校准报告\n▾\n构建与成长\n数据构建发动机\n构建 Pipeline 配置\n自成长发动机\nAgent 评测\n求解器目录\n求解器审核台\n▾\n编排与场景\n意图目录\nAgent\nWorkflow\nSkill 库\nMCP\n场景入口\n智能资源治理\n计划构建画布\n兜底统计\n视图配置\n▾\n运营与审批\nAction 审批\n组织世界\n运营自动化\n定时任务\n工厂日历\n通知中心\n闭环验证(VLE)\n▾\n平台与系统\n用户管理\n权限策略\n功能开通\nLLM Provider\n配置迁移\n系统自我\n指标态势\n扰动后\n传导识别\n损失归因\n方案寻优\n演习结论\n图\n产销线路图\n底账\n传导边册\n本体与就绪\n会话 sims_demo_seed_world\n自动选中最近一条正在推演的会话\n世界态出处：结构派生的占位读数，不是实测 · 种子世界的 tick0 读数由本体结构派生（确定性占位），不是实测：推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值 —— 「实测格」一项计的就是每次播种现场探到的真读数格数。凡拿它当起点算出的差值，量级不可当实测读。 · 实测格 0/7295\n状态 推演中 —— 世界会随拍推进，可施加扰动\n暂停\n恢复\n结束\n扰动\n收起\n销售与客户\n8\n产品与工程\n6\n采购与供应\n7\n计划与排产\n3\n生产制造\n4\n质量管理\n3\n设备与维护\n2\n基地与仓储交付\n4\n财务与成本\n2\n未归域\n7\n\n世界现在在 第 5 拍 · 点「施加并推演」会推到 第 6 拍\n\n扰什么 · 根源优先\n销售预测偏差（正=高估） · forecastBias\n订单变更压力 · orderChurn\n成本压力 · costPressure\n收货暂扣风险 · deliveryHoldRisk\n需求压力 · demandPressure\n交期承诺风险 · promiseRisk\n应收压力 · receivablePressure\n短缺风险 · shortageRisk\n订单行拆分压力 · splitPressure\n供应风险 · supplyRisk\n\n层级「根源」 —— 由后端按传导图入度/出度现算\n\n落点对象类型\nModel\n落点对象\nobj_model_2170-NCM\nobj_model_4680-LFP\nobj_model_4680-NCM\nobj_model_圆柱-LFP\nobj_model_方形-LFP\nobj_model_方形-NCM\n怎么扰\n设为\n增减\n乘以\n幅度\n起始拍（不早于第 5 拍）\n\n第 6 拍 = 下一拍 —— 正是这次「施加并推演」要推的那一拍（默认值）\n\n持续拍数（留空 = 永久）\n事情的类别\n需求突变\n供应中断\n产能损失\n成本冲击\n质量事件\n\n销售预测偏差（正=高估） +10 · 第 6 拍起 · 永久\n\n施加并推演\n\n已落地在第 5 拍 · 本次推到第 5 拍\n\n销售预测偏差（正=高估）：第 4 拍 11 → 第 5 拍 21（+10）\n\n推到第 5 拍后，世界里共 5523 个格子的读数变了（含世界自身的演化，不只是这一条扰动）\n\n推演过程 · 第 4 → 5 拍\n今天扰不动的量（20）\n\n沙盘改的只是这个推演世界，不写真实数据。结论要落地须走 Action 审批。\n\n◈\n方案寻优\noptimizer console\n◉\n⌗\n01\n◔\n02\n◑\n03\n◕\n▤\n候选方案\n▤ ⤢\n目标 - 毛利（OrderLine.unitPrice × OrderLine.qty − (Base.serveCost + OrderLine.unitCost × OrderLine.qty)） · 成本口径 料(BOM)+占线·不含人工/制造费/物流 最大\n目标 - 获排率（获排单数 ÷ 总单数） 最大\n目标 - OrderLine.unitPrice × OrderLine.qty 最大\n目标 - Base.serveCost + OrderLine.unitCost × OrderLine.qty · 成本口径 料(BOM)+占线·不含人工/制造费/物流 最小\n目标权重\n拖动只改排序 · 候选方案集不变\n毛利（OrderLine.unitPrice × OrderLine.qty − (Base.serveCost + OrderLine.unitCost × OrderLine.qty)） · 成本口径 料(BOM)+占线·不含人工/制造费/物流 ↑\n1\n获排率（获排单数 ÷ 总单数） ↑\n1\nOrderLine"
+  }
+}

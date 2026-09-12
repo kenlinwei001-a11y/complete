@@ -1,0 +1,43 @@
+import type { Decision, DecisionOutcomeStat } from "@platform/contracts";
+
+/**
+ * WO-LEARNING-LOOP-FEEDBACK · 决策成效权重确定性归集（纯函数·R6·无时钟/随机·两跑字节一致）。
+ *
+ * 按 (metricKey, factorId, optionId) 聚合 REALIZED 决策的**实测** effectivenessPct → 平均效果% + 学习权重。
+ * effectivenessPct 是决策级（realizedGapClose ÷ Σpredicted closesGap）——归到该决策每个选定方案（同决策各选方案
+ * 共享该实测效果·最简确定性归属·本单不做逐方案拆分归因，列后续单）。`weight = avgEffectivenessPct/100`（0 地板·
+ * decision_play 排序乘子：高实测效果→高权重）。稳定排序（metricKey→factorId→optionId 字典序·R6）。
+ *
+ * 「落数据 + 一个确定性归集纯函数」：数据 = REALIZED Decision.outcome（已持久化·非另立表）；本函数 = 归集。
+ * 后续 decision_play 排序读此 weight（超范围·列后续单·但结构已为它预留）。
+ */
+export function aggregateOutcomeStats(decisions: Decision[]): DecisionOutcomeStat[] {
+  const groups = new Map<string, { metricKey: string; factorId: string | null; optionId: string; sum: number; samples: number }>();
+  for (const d of decisions) {
+    if (d.status !== "REALIZED" || !d.outcome) continue;
+    const eff = d.outcome.effectivenessPct;
+    for (const optionId of d.chosenOptionIds) {
+      const factorId = d.factorId ?? null;
+      const key = `${d.metricKey}\u0000${factorId ?? ""}\u0000${optionId}`;
+      const g = groups.get(key) ?? { metricKey: d.metricKey, factorId, optionId, sum: 0, samples: 0 };
+      g.sum += eff;
+      g.samples += 1;
+      groups.set(key, g);
+    }
+  }
+  const round1 = (n: number): number => Math.round(n * 10) / 10;
+  const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  return [...groups.values()]
+    .map((g): DecisionOutcomeStat => {
+      const avg = g.samples > 0 ? g.sum / g.samples : 0;
+      return {
+        metricKey: g.metricKey,
+        factorId: g.factorId,
+        optionId: g.optionId,
+        samples: g.samples,
+        avgEffectivenessPct: round1(avg),
+        weight: round1(Math.max(0, avg) / 100),
+      };
+    })
+    .sort((a, b) => cmp(a.metricKey, b.metricKey) || cmp(a.factorId ?? "", b.factorId ?? "") || cmp(a.optionId, b.optionId));
+}

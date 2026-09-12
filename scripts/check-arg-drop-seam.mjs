@@ -1,0 +1,333 @@
+#!/usr/bin/env node
+/**
+ * 门 `arg-drop-seam:check`（WO-SEAM-ARG-DROP · 接缝丢参门 · 堵死整类 · KILL-MOCK-RED · R6 · 闭本体 §8 G-ARG-DROP-SEAM）：
+ *
+ * bug 类（危险级·静默给错答案）：`问句 → resolveCeoRoute(args) → fillSlots(只填 intent.slots) → plan {{slots.X}} → solver`。
+ *   两放大器相交才成灾：(a) 路由解析了实体但 intent.slotNames 漏声明 → `fillSlots`（slots.ts:307 只迭代 intent.slots）静默丢；
+ *   (b) 求解器缺过滤维落"全部/首个/qty=0"默认。(a)×(b) = plausible-but-WRONG（信阳→全12基地 / 敞口→首个客户）。
+ *
+ * 本门两条断言（守 R-ARG-FIDELITY「路由解析出的过滤实体必达求解器或被显式声明/豁免」）：
+ *   ① 数据半（动态·读 agentcore dist 真种子）：每 CEO intent 的「路由可解析过滤实体集」⊆ slotNames ∪ 显式豁免表（EXEMPT）。
+ *      并：plan 的 solverArgs 里每个 `{{slots.X}}` 引用的 X 必 ∈ 声明槽（无孤儿模板引用 → 无运行期 TemplateResolutionError）。
+ *   ② 引擎半（静态哨兵·读 datacore solver 源）：吃过滤维的求解器缺该维时**报错或显式标 scope**（无静默全部/首个）——
+ *      credit_exposure 有 AMBIGUOUS_SCOPE + scope:CUSTOMER/ALL 且**无**首客户静默默认；base_capacity_outlook 缺 baseId throw。
+ *
+ * green→red 有牙：把某 CEO intent 的 slot 删掉（如 ceo_credit_exposure 去 custName）→ 断言① 红；把 credit_exposure 还原成
+ *   `?? customers[0]` 首客户静默默认 → 断言② 红。ROUTER_EMITS 表的单一来源 = `apps/agentcore/src/router/ceo-route.ts`
+ *   的 *ArgsFrom / resolveCeoRoute —— **键集由断言⓪现算比对**（路由加 intent 不登记 ⇒ 当场红）；
+ *   每个 intent 的实体清单仍人工派生登记（ArgsFrom 条件赋值静态证不了），由断言①动态半兜底。
+ *
+ * 用法：node scripts/check-arg-drop-seam.mjs（先 pnpm -r build 或至少 build agentcore）。
+ * 本体登记：docs/SYSTEM-ONTOLOGY.md §5 R-ARG-FIDELITY · §7 门 arg-drop-seam:check · §8 G-ARG-DROP-SEAM。
+ */
+/* ── 退出码纪律 · 顶层兜底（WO-GATE-RC2-DISCIPLINE）─────────────────────────────
+ * 本仓门的退出码是**三分**约定（docs/SOP-reviewer-claim-discipline.md §3）：
+ *   0 = 干净 · 1 = **真有问题**（先修代码）· 2 = **工具自己坏了**（只许说「我没查出来」）。
+ * 而 node 对**未捕获异常一律退 1** —— 恰好撞上「真有问题」这个码。于是「门根本没跑起来」
+ * （缺依赖 / 只读 FS / 权限 / OOM / node 版本差异 / dist 没构建）会被 gate.sh 和人一起
+ * 读成「你的代码有问题」，方向**正好相反**。2026-08-11 一天之内两道门各撞一次，故建此机制。
+ * 形态（铁律 0.6 句式）：「我用『进程非 0 退出』当作『代码有问题』的证据，而前者并不度量后者。」
+ *
+ * 这段只**加**默认失败方向，**不动**任何既有 exit(0)/exit(1)：兜底若把真违规也吞成 2，
+ * 那是拿一个更糟的假绿换掉一个假红。RC=1 仍然只由主判据明确判负产生。
+ * 守门的门：scripts/check-gate-exit-discipline.mjs（新加的门不带兜底会被它当场判红）。 */
+process.on("uncaughtException", (e) => gateToolBroken(e));
+process.on("unhandledRejection", (e) => gateToolBroken(e));
+function gateToolBroken(e) {
+  console.error(`⛔ check-arg-drop-seam.mjs 未预期异常（${e?.message || e}）⇒ **工具坏了，不是代码坏了**。`);
+  console.error("   本次结论作废：**不许**读作「代码干净 / 无违规 / 通过」——本门这次没跑完，它什么都没证明。");
+  console.error("   " + String(e?.stack || "").split("\n").slice(1, 4).join("\n   "));
+  process.exit(2); // 2 = 工具自己坏了（1 留给主判据明确判负那一条路径，两者处置相反，不许合并）
+}
+
+
+import { readFileSync } from "node:fs";
+import { assertDistFresh } from "./dist-freshness.mjs";
+import { extractRosters } from "./lib/roster-hardcode.mjs";
+
+const root = new URL("../", import.meta.url);
+const abs = (rel) => new URL(rel, root);
+const fails = [];
+const notes = [];
+
+// ── 依赖：agentcore dist（真种子 + collectSlotRefs 模板扫描器） ──
+// ⛔ 守卫必须在 import dist **之前**：本门断言①读 dist 真种子，②读 datacore 源码，
+//    dist 一旦落后于 src，①②就在比对两个不同时点的世界，会给出与源码相反的结论且是绿的（欠账 #161）。
+assertDistFresh(["apps/agentcore/dist/mocks/seed.js", "apps/agentcore/dist/util/template.js"], { gate: "arg-drop-seam:check" });
+const distSeed = abs("apps/agentcore/dist/mocks/seed.js");
+const distTemplate = abs("apps/agentcore/dist/util/template.js");
+
+const { seedIntentsAndPlans } = await import(distSeed.href);
+const { collectSlotRefs } = await import(distTemplate.href);
+
+/**
+ * 路由可解析的**过滤实体**集（单一来源 = ceo-route.ts *ArgsFrom / resolveCeoRoute）。
+ * 只列会 scope 答案的实体键；常量键（mode/targetType/targetProp/topK 由专门映射直接注入·非实体）不列。
+ * **键集不再手抄对齐**：断言⓪从 ceo-route.ts 的 CEO_INTENT_KEYS 现算比对，漏登记/死账当场红。
+ */
+const ROUTER_EMITS = {
+  ceo_root_cause: ["metricKey", "factorId"],
+  ceo_decision: ["metricKey", "factorId"],
+  ceo_metric: ["metricKey"],
+  ceo_credit_exposure: ["custName"],
+  ceo_finance_pnl: ["metricKey"],
+  ceo_supply_demand_gap: ["metricKey", "factorId"],
+  ceo_atp_check: ["orderRef"],
+  ceo_bottleneck: ["baseIds"],
+  ceo_base_outlook: ["baseId"],
+  ceo_whatif: ["scopeObjectIds", "factors"],
+  ceo_capacity_threshold: ["modelId", "weeks"],
+};
+
+// ── 断言⓪ 名册键集现算核对（WO-GATE-REACH-SWEEP 加）────────────────────────────
+// ROUTER_EMITS 的**键集**（哪些 CEO intent 被登记）声明「单一来源 = ceo-route.ts」，
+// 但本门此前**从未读过那个文件** —— 键集靠人肉对齐（G-GATE-ROSTER-HANDCOPIED ×
+// G-GATE-SCOPE-MISSES-SUBJECT 双形态叠加：名册写死 + 被守对象不在扫描面里）。
+// 路由侧新增一个 intent 而不同步本表 ⇒ 它永远绿 —— 金丝雀结构上无从知道。
+// 故键集改为**现算比对**：从 ceo-route.ts 的 `CEO_INTENT_KEYS` 抽出真键集，
+// 与 ROUTER_EMITS 的键集双向求差，任一方向有差即真红（RC=1）；
+// 抽不出来（改名/挪动/枚举塌陷）即工具坏（RC=2），**不许**读作「名册没漂」。
+// 每个 intent 的**实体清单**（值）仍是人工派生登记 —— 它由 *ArgsFrom 函数体动态拼出
+// （`if (orderRef) args.orderRef = …` 条件赋值），静态抽取证不了「哪些键会真出现」，
+// 这一半继续靠断言①的动态半兜底（真种子逐 intent 比对）。键集漂 vs 实体清单漂，
+// 机器各管一半，谁也不许假装全管。
+const CEO_ROUTE_SRC = "apps/agentcore/src/router/ceo-route.ts";
+
+/** 唯一实现：从 ceo-route.ts 源码现算 CEO_INTENT_KEYS 键集（主判据与金丝雀共用）。 */
+function ceoIntentKeysFrom(src) {
+  const r = extractRosters(src).find((x) => x.name === "CEO_INTENT_KEYS" && x.kind === "set");
+  if (!r) return null;
+  const keys = new Set(r.strings.filter((s) => /^ceo_/.test(s)));
+  return keys.size ? keys : null;
+}
+
+/** 唯一实现：现算键集 vs 登记键集的双向差（主判据与金丝雀共用）。 */
+function rosterDrift(computedKeys, registeredKeys) {
+  return {
+    missing: [...computedKeys].filter((k) => !registeredKeys.has(k)), // 路由有、门没登记 ⇒ 永远绿
+    dead: [...registeredKeys].filter((k) => !computedKeys.has(k)), // 门登记了、路由已删 ⇒ 死账
+  };
+}
+
+const ceoRouteSrc = readFileSync(abs(CEO_ROUTE_SRC), "utf8");
+
+// 金丝雀（铁律 0.6 · 与主判据共用 ceoIntentKeysFrom / rosterDrift，样例 = **真源码**变异）：
+//  ① 真源码抽出的键集下界自证（<5 ⇒ 枚举塌陷，报工具坏，不报「名册没漂」）；
+//  ② 往真源码的 Set 里注入一个假键 ⇒ 同一套差集逻辑必须当场咬出它（咬不出 = 门瞎了）；
+//  ③ 变异锚点本身失效（replace 没咬到）同样报工具坏 —— 「我没找到」和「它不存在」是两个命题。
+const computedKeys = ceoIntentKeysFrom(ceoRouteSrc);
+{
+  const ANCHOR = '"ceo_metric",';
+  const mutated = ceoRouteSrc.replace(ANCHOR, `${ANCHOR} "ceo_canary_fake",`);
+  const mutatedKeys = mutated !== ceoRouteSrc ? ceoIntentKeysFrom(mutated) : null;
+  const canaryDrift = mutatedKeys ? rosterDrift(mutatedKeys, new Set(Object.keys(ROUTER_EMITS))) : null;
+  const canaryBad =
+    !computedKeys || computedKeys.size < 5 ? `CEO_INTENT_KEYS 只抽到 ${computedKeys?.size ?? 0} 个键（下界 5）—— 枚举塌陷`
+    : mutated === ceoRouteSrc ? `变异锚点 ${ANCHOR} 在 ceo-route.ts 里没咬到 —— 金丝雀失效`
+    : !mutatedKeys?.has("ceo_canary_fake") ? "注入的假键没被抽取器抽出 —— 抽取器瞎了"
+    : !(canaryDrift.missing.length === 1 && canaryDrift.missing[0] === "ceo_canary_fake") ? "注入的假键没被差集逻辑咬出 —— 检测逻辑瞎了"
+    : null;
+  if (canaryBad) {
+    console.error(`⛔ 门自己瞎了（断言⓪金丝雀）：${canaryBad}。`);
+    console.error("   本次结论作废：**不许**读作「ROUTER_EMITS 与 ceo-route.ts 对齐」——本门这次没查成。");
+    process.exit(2);
+  }
+}
+
+// 主判据：键集双向差任一非空即真红。
+{
+  const { missing, dead } = rosterDrift(computedKeys, new Set(Object.keys(ROUTER_EMITS)));
+  if (missing.length) {
+    fails.push(
+      `断言⓪ 名册漏登记：ceo-route.ts 的 CEO_INTENT_KEYS 有 ${missing.map((k) => `「${k}」`).join("、")}，` +
+        `而 ROUTER_EMITS 没登记 —— 这条 intent 的丢参检查**从未被执行过**（写死名册形态：不在名单里的永远绿）。` +
+        `修：在 ROUTER_EMITS 补登记它的路由可解析实体集（及必要的 EXEMPT 豁免理由）。`,
+    );
+  }
+  if (dead.length) {
+    fails.push(
+      `断言⓪ 名册死账：ROUTER_EMITS 登记的 ${dead.map((k) => `「${k}」`).join("、")} 已不在 ceo-route.ts 的 CEO_INTENT_KEYS 里` +
+        ` —— 守着一条不存在的路由。修：从 ROUTER_EMITS/EXEMPT 删除，或把路由加回去。`,
+    );
+  }
+}
+
+/**
+ * 显式豁免表：路由发但**合法地**不作 slot（求解器全域 by design·无 scope 维 / 或独立未接线 seam）——**每条带理由**（防悄悄豁免真断裂）。
+ * 注意：CONFIRMED 项（custName / scopeObjectIds）**绝不**在此——它们必须真进 slotNames，否则门红。
+ */
+const EXEMPT = {
+  ceo_root_cause: {
+    factorId: "gap_attribution 读 args.scope.factorId（非顶层）·顶层 factorId 双端未接=独立 seam（NEEDS-CHECK）·缺 metricKey 时诚实默认最严重越线·非静默错答",
+  },
+  ceo_finance_pnl: {
+    metricKey: "financePnl(ctx) 无 args·全公司 P&L·无 scope 过滤维可误默认（SAFE·全域 by design）",
+  },
+  ceo_supply_demand_gap: {
+    factorId: "supply_demand_gap_attribution 全 S&OP 双向归因·不吃 factorId（SAFE·全域 by design）",
+  },
+};
+
+const { intents, plans } = seedIntentsAndPlans("demo");
+const intentByKey = new Map(intents.map((i) => [i.key, i]));
+const planById = new Map(plans.map((p) => [p.id, p]));
+
+// ── 断言① 数据半 ──
+let ok1 = 0;
+for (const [key, emits] of Object.entries(ROUTER_EMITS)) {
+  const intent = intentByKey.get(key);
+  if (!intent) {
+    fails.push(`断言①：CEO intent「${key}」在种子中缺失（ROUTER_EMITS 登记了它却无对口意图 → 路由落空）`);
+    continue;
+  }
+  const slotNames = new Set((intent.slots ?? []).map((s) => s.name));
+  const exempt = EXEMPT[key] ?? {};
+  // ①a：路由解析实体 ⊆ slotNames ∪ 豁免
+  for (const ent of emits) {
+    if (slotNames.has(ent)) { ok1++; continue; }
+    if (exempt[ent]) { notes.push(`  · 豁免 ${key}.${ent}：${exempt[ent]}`); continue; }
+    fails.push(
+      `断言①a 丢参接缝：intent「${key}」路由解析出过滤实体「${ent}」，但未声明为 slot（slotNames=[${[...slotNames].join(",")}]）且不在豁免表` +
+        ` → fillSlots 会静默丢 → 求解器缺过滤维 → plausible-but-WRONG（G-ARG-DROP-SEAM）。修：seed.ts 补 slotNames + 专门 solverArgs 映射。`,
+    );
+  }
+  // ①b：plan solverArgs 的 {{slots.X}} 引用 ⊆ 声明槽（无孤儿模板引用 → 无运行期 TemplateResolutionError）
+  const plan = planById.get(intent.planId);
+  if (plan) {
+    const invoke = (plan.steps ?? []).find((s) => s.type === "invoke_solver");
+    const refs = invoke ? collectSlotRefs(invoke.params?.args ?? {}) : new Set();
+    for (const r of refs) {
+      if (!slotNames.has(r)) {
+        fails.push(
+          `断言①b 孤儿模板引用：intent「${key}」plan solverArgs 引用 {{slots.${r}}} 但 ${r} 未声明为 slot` +
+            ` → fillSlots 不产出该键 → 运行期 TemplateResolutionError。修：补 slot 声明或改映射。`,
+        );
+      }
+    }
+  }
+}
+
+// ── 断言①·base 族（WO-BASE-ID-FIDELITY·project/QOS 吃 base 作用域维的意图）──
+// bug 类同源（G-ARG-DROP-SEAM·base 族）：路由可解析 base（sim-planner parseCapacityFeasibilityVariant「XX基地」/ 分类器 /
+//   选中基地 / PageContext.focus.base）→ 若 base 未声明为 slot 或 plan 未透传 → fillSlots 静默丢 → 求解器恒全网/首基地
+//   （capacity_forecast「常州基地 4680 加20%」与「4680 加20%」答案相同·affected_orders 缺 base 全域）。
+// 断言：每「吃 base 维」intent 的 base ∈ slotNames ∪ base ∈ plan 任一步的 {{slots.base…}} 引用（声明⊕透传双半齐·任缺即静默丢）。
+const PROJECT_BASE_EMITS = {
+  capacity_feasibility: ["base"], // WO-BASE-ID-FIDELITY 症①（本单补 base 槽 + 专门 solverArgs 透传）
+  affected_orders: ["base"], // 既有 objectRef base 槽（受影响订单限基地）
+  risk_root_cause: ["base"], // 既有 base 槽（基地风险画像）
+  adopt_mitigation: ["base"], // 既有 base 槽（处置方案落基地）
+};
+let okBase = 0;
+for (const [key, emits] of Object.entries(PROJECT_BASE_EMITS)) {
+  const intent = intentByKey.get(key);
+  if (!intent) {
+    fails.push(`断言①·base族：project intent「${key}」在种子中缺失（PROJECT_BASE_EMITS 登记却无对口意图）`);
+    continue;
+  }
+  const slotNames = new Set((intent.slots ?? []).map((s) => s.name));
+  const plan = planById.get(intent.planId);
+  // 全步扫描 {{slots.X}} 引用（base 可经 invoke_solver args / resolve_slice args / evaluate_rules|create_action_draft payload 透传）。
+  const planRefs = plan ? collectSlotRefs(plan.steps ?? []) : new Set();
+  for (const ent of emits) {
+    if (!slotNames.has(ent)) {
+      fails.push(
+        `断言①·base族 丢参接缝：project intent「${key}」吃 base 维但未声明 slot「${ent}」(slotNames=[${[...slotNames].join(",")}])` +
+          ` → fillSlots 静默丢 base → 求解器恒全网/首基地（G-ARG-DROP-SEAM·base 族）。修：seed.ts 补 base 槽。`,
+      );
+      continue;
+    }
+    if (!planRefs.has(ent)) {
+      fails.push(
+        `断言①·base族 断透传：project intent「${key}」声明了 slot「${ent}」但 plan 任一步都未引用 {{slots.${ent}…}}` +
+          ` → base 声明了却没进 solverArgs → 仍静默丢。修：plan 步 args/payload 补 base 映射。`,
+      );
+      continue;
+    }
+    okBase++;
+  }
+}
+
+// ── 断言② 引擎半（静态哨兵·读 solver 源）──
+const extendedSrc = readFileSync(abs("apps/datacore/src/solvers/extended.ts"), "utf8");
+const serviceSrc = readFileSync(abs("apps/datacore/src/solvers/service.ts"), "utf8");
+const capacitySrc = readFileSync(abs("apps/datacore/src/solvers/capacity.ts"), "utf8");
+const riskSrc = readFileSync(abs("apps/datacore/src/solvers/risk.ts"), "utf8");
+
+/** 取 deriveExtendedArgs 里某 case 块（`case "X": {` 到下一 `case "`）。 */
+function caseBlock(src, key) {
+  const start = src.indexOf(`case "${key}":`);
+  if (start < 0) return "";
+  const rest = src.slice(start + 1);
+  const next = rest.indexOf('case "');
+  return next < 0 ? rest : rest.slice(0, next);
+}
+
+const creditBlock = caseBlock(extendedSrc, "credit_exposure");
+if (!creditBlock) {
+  fails.push("断言②：extended.ts 缺 credit_exposure 分支（deriveExtendedArgs）");
+} else {
+  if (!creditBlock.includes("AMBIGUOUS_SCOPE"))
+    fails.push('断言② 引擎半：credit_exposure 缺 AMBIGUOUS_SCOPE 诚实报错（指定客户无匹配须报错·不静默落首客户）');
+  if (!/scope:\s*\{\s*mode:\s*"CUSTOMER"/.test(creditBlock) || !/scope:\s*\{\s*mode:\s*"ALL"/.test(creditBlock))
+    fails.push('断言② 引擎半：credit_exposure 缺 scope:{mode:"CUSTOMER"|"ALL"} 显式作用域标（未指定客户须标全域合计·非首客户）');
+  // 静默首客户回潮哨兵：`.map(props)[0] ?? {}` 是旧的首客户静默默认惯用法
+  if (/customers\s*\?\?\s*\[\]\)\.map\(props\)\[0\]\s*\?\?\s*\{\}/.test(creditBlock) || /\.map\(props\)\[0\]\s*\?\?\s*\{\}/.test(creditBlock))
+    fails.push('断言② 引擎半：credit_exposure 检出首客户静默默认惯用法 `.map(props)[0] ?? {}` 回潮（G-ARG-DROP-SEAM 回归）');
+}
+
+if (!serviceSrc.includes("base_capacity_outlook 需 baseId"))
+  fails.push('断言② 引擎半：base_capacity_outlook 缺「缺 baseId 即 throw」的诚实报错（诚实典范丢失）');
+
+/** 取 service.ts 里某私有方法块（签名起 → 下一个 `\n  private ` 止）。 */
+function methodBlock(src, sig) {
+  const start = src.indexOf(sig);
+  if (start < 0) return "";
+  const rest = src.slice(start + sig.length);
+  const next = rest.indexOf("\n  private ");
+  return next < 0 ? rest : rest.slice(0, next);
+}
+
+// 症②续 base_capacity_outlook（base 族最后一个漏归一的求解器·本门此前对"是否归一"零断言 → 门绿而 bug 活）：
+//   base 标识归一必经单一出处 normalizeBaseRef；回潮成 `str(args.baseId)` 裸比 → 前端地图选中基地写入的真实对象 id
+//   `obj_base_<id>` 硬 404 `Base obj_base_changzhou`（同页同选中对象：已归一的 bottleneck_matrix 却通·一通一炸）。
+const outlookBlock = methodBlock(serviceSrc, "private async baseCapacityOutlook(");
+if (!outlookBlock) {
+  fails.push("断言②·base族 引擎半：service.ts 缺 baseCapacityOutlook 方法块（哨兵失锚·改签名须同步本门）");
+} else if (!/normalizeBaseRef\(\s*args\.baseId\s*\)/.test(outlookBlock)) {
+  fails.push(
+    '断言②·base族 引擎半：base_capacity_outlook 未经 normalizeBaseRef 归一 baseId（症②续）——回潮成 `str(args.baseId)` 裸比' +
+      ' → 地图选中基地传的真实对象 id `obj_base_<id>` 硬 404 `Base obj_base_changzhou`，而同页 bottleneck_matrix（已归一）却通。' +
+      '修：apps/datacore/src/solvers/service.ts baseCapacityOutlook 改用 types.normalizeBaseRef（单一出处·勿另写一套归一）。',
+  );
+}
+
+// ── 断言②·base 族引擎半（静态哨兵·WO-BASE-ID-FIDELITY 三症·删则红）──
+// 症① capacity_forecast：给 base → 收窄该基地 scope:"BASE"；无 base → scope:"ALL" 诚实标（无静默全网冒充某基地）。
+if (!/scope:\s*"BASE"/.test(capacitySrc) || !/scope:\s*"ALL"/.test(capacitySrc))
+  fails.push('断言②·base族 引擎半：capacity.ts 缺 base 作用域诚实标（scope:"BASE"|"ALL"）——症①：删则「常州基地 X 加20%」静默冒充「X 加20%（全网）」');
+// 症① base 归一复用单一出处（capacity.ts 不另起规范化·复用 risk.resolveBaseId）。
+if (!/resolveBaseId\(c,\s*args\.base\)/.test(capacitySrc))
+  fails.push('断言②·base族 引擎半：capacity.ts 未经 resolveBaseId 归一 base（症①/②同源单一规范化出处·勿散落）');
+// 症② resolveBaseId 经 normalizeBaseRef 归一（认 obj_base_<id> 图节点 id）——回潮成裸 find(baseId===ref) 即 obj_base_ 硬 400。
+if (!/normalizeBaseRef/.test(riskSrc))
+  fails.push('断言②·base族 引擎半：risk.ts resolveBaseId 未经 normalizeBaseRef 归一（症②：obj_base_<id> 不 strip → unknown base 硬 400）');
+
+// ── 汇总 ──
+if (notes.length) {
+  console.log("arg-drop-seam:check · 豁免登记（带理由·非静默丢）：");
+  for (const n of notes) console.log(n);
+}
+if (fails.length) {
+  console.error(`\n✗ arg-drop-seam:check 失败（${fails.length}）：`);
+  for (const f of fails) console.error("  - " + f);
+  process.exit(1);
+}
+const emitCount = Object.values(ROUTER_EMITS).reduce((a, b) => a + b.length, 0);
+const baseEmitCount = Object.values(PROJECT_BASE_EMITS).reduce((a, b) => a + b.length, 0);
+console.log(
+  `\n✓ arg-drop-seam:check 通过：${Object.keys(ROUTER_EMITS).length} 个 CEO intent · ${emitCount} 条路由解析实体` +
+    ` 全部 ⊆ slotNames ∪ 豁免（${ok1} 达标 slot）；plan 无孤儿模板引用；credit_exposure/base_capacity_outlook 求解器诚实化在位。` +
+    `\n  base 族（WO-BASE-ID-FIDELITY）：${Object.keys(PROJECT_BASE_EMITS).length} 个吃 base 维 project intent · ${baseEmitCount} 条 base 声明⊕透传齐（${okBase} 达标）；` +
+    `capacity_forecast scope:"BASE"|"ALL" 诚实标 · risk.resolveBaseId 与 service.baseCapacityOutlook 均经 normalizeBaseRef 归一（obj_base_<id> strip）。`,
+);

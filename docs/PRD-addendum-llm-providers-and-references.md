@@ -9,6 +9,14 @@
 
 # Part 1 · LLM Provider 配置体系
 
+## 0. 本体引用与影响（补录）
+
+> 遗留 PRD 追溯补录（治理 #2，prd:check 入图）；仅引用平台真实不变量(§5 R1–R14)/断点(§8 G-1..G-8)。
+
+- **触及不变量**（§5）：R5 · R10
+- **触及断点**（§8）：G-7
+- **范畴**：LLM 多厂商配置 + 统一引用模式变更传播（凭据 no-secrets-echo）
+
 ## 1.1 模型与落位
 
 ```ts
@@ -53,12 +61,13 @@ interface LlmClient {
 | `modeling` | A3 建模建议 | structuredOutput |
 | `template_gen` | A7 行业模板生成 | structuredOutput |
 | `compose` | workflow llm_compose 步骤 | （无硬要求） |
+| `comprehend` | 数据构建发动机：故事脚本意图解析→全栈倒推（听懂任意业务语言；缺则确定性关键词地板） | structuredOutput |
 
 每次 LLM 调用的审计记录补 `{providerId, modelId}`；指标 `qos_llm_tokens_total` 增加 `provider` 标签。
 
 ## 1.4 中台页面 /admin/llm-providers（tenant_admin）
 
-Provider 列表（kind 徽章/状态/模型数/近 7 日 token 用量）→ 编辑器：连接参数、**密钥输入框（write-only，保存后显示 `••• 已配置` + "更换"）**、模型清单管理（增删行 + 能力勾选）、**连接测试按钮**（发一条最小请求，返回延迟与可用模型探测结果）、降级目标选择。第二个 Tab：**用途绑定矩阵**（6 用途 × provider/model 下拉，能力不满足的选项禁用并注明缺什么）。
+Provider 列表（kind 徽章/状态/模型数/近 7 日 token 用量）→ 编辑器：连接参数、**密钥输入框（write-only，保存后显示 `••• 已配置` + "更换"）**、模型清单管理（增删行 + 能力勾选）、**连接测试按钮**（发一条最小请求，返回延迟与可用模型探测结果）、降级目标选择。第二个 Tab：**用途绑定矩阵**（7 用途 × provider/model 下拉，能力不满足的选项禁用并注明缺什么）。
 
 ---
 

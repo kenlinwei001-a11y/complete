@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { createTestApp } from "./helpers.js";
+import type { OntologyClient } from "../src/tools/clients.js";
 
 const CTX = { tenantId: "tenant-demo", userId: "u1", roles: ["planner"] };
+
+/**
+ * 本文件监听的是 queryObjects 的**第 5 个**形参 `asOfEpoch` —— 它由接口
+ * `src/tools/clients.ts` 的 `OntologyClient.queryObjects` 声明，但 `MockDataCore`
+ * （`src/mocks/clients.ts:240`）只实现到第 4 个。TS 允许「少写形参」实现接口，
+ * 于是 mock 的**具体类型**比接口窄，直接往它身上装 5 参函数会 TS2322。
+ *
+ * 这里先把 mock 上转成它自己实现的那个接口再打桩 —— 是**放宽到契约真实形状**，
+ * 不是 `as any`（属性名写错、返回类型不符照样报）。
+ */
+const asOntology = (o: OntologyClient): OntologyClient => o;
 
 /**
  * #2 回归：任务级快照读（§13.1）已接进工具层。执行器（=一次任务运行）首次 query_objects 时
@@ -17,7 +29,7 @@ describe("并发一致性 §13.1 — 工具层任务快照（#2 已接线）", (
       return { epoch: 42 };
     };
     const orig = t.dataCore.ontology.queryObjects.bind(t.dataCore.ontology);
-    t.dataCore.ontology.queryObjects = async (ctx, type, filter, limit, asOfEpoch) => {
+    asOntology(t.dataCore.ontology).queryObjects = async (ctx, type, filter, limit, asOfEpoch) => {
       seenAsOf.push(asOfEpoch);
       return orig(ctx, type, filter, limit);
     };
@@ -41,7 +53,7 @@ describe("并发一致性 §13.1 — 工具层任务快照（#2 已接线）", (
     };
     const seen: (number | undefined)[] = [];
     const orig = t.dataCore.ontology.queryObjects.bind(t.dataCore.ontology);
-    t.dataCore.ontology.queryObjects = async (ctx, type, filter, limit, asOfEpoch) => {
+    asOntology(t.dataCore.ontology).queryObjects = async (ctx, type, filter, limit, asOfEpoch) => {
       seen.push(asOfEpoch);
       return orig(ctx, type, filter, limit);
     };
@@ -60,7 +72,7 @@ describe("并发一致性 §13.1 — 工具层任务快照（#2 已接线）", (
     };
     const seen: (number | undefined)[] = [];
     const orig = t.dataCore.ontology.queryObjects.bind(t.dataCore.ontology);
-    t.dataCore.ontology.queryObjects = async (ctx, type, filter, limit, asOfEpoch) => {
+    asOntology(t.dataCore.ontology).queryObjects = async (ctx, type, filter, limit, asOfEpoch) => {
       seen.push(asOfEpoch);
       return orig(ctx, type, filter, limit);
     };

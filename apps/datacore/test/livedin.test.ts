@@ -46,13 +46,13 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     expect(job.livedIn).toBeDefined();
     const replay = job.livedIn!;
     expect(replay.days).toBe(365);
-    expect(replay.batches).toBe(12);
+    expect(replay.batches).toBe(13);
     expect(replay.points).toBeGreaterThan(50_000); // 5 系列 × 168 实体日 × 365
     // 性能门槛（规范性）：S 规模全量回放 ≤ 5 分钟
     expect(replay.durationMs).toBeLessThan(300_000);
 
     // 全部历史分区有数据（登录即用，零配置）
-    expect(bundle.trend).toHaveLength(12);
+    expect(bundle.trend).toHaveLength(13);
     expect(bundle.deliveredCount).toBe(60);
     expect(bundle.delivered).toHaveLength(60);
     expect(bundle.onTimeRate).toBe(85); // 51/60 按期
@@ -60,7 +60,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     expect(bundle.actionHistory.total).toBe(200);
     expect(bundle.actionStats).toEqual({ executed: 164, rejected: 22, cancelled: 8, failed: 6, total: 200 });
     expect(bundle.mapeSeries).toHaveLength(52);
-    expect(bundle.sopVersions).toHaveLength(12);
+    expect(bundle.sopVersions).toHaveLength(13);
     expect(bundle.ruleVersions.length).toBeGreaterThanOrEqual(5);
     expect(bundle.incubated).toHaveLength(3);
     // 每场景入口 2–6 条任务/对话史（7 入口：dash/risk/project/audit/generate/explore(graph)/review）
@@ -75,7 +75,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     expect(bundle.sopVersions[0]!.attainment).toBe(88);
     expect(bundle.sopVersions[11]!.attainment).toBe(94);
     expect(bundle.sopVersions[11]!.label).toBe("V12");
-    // 运营回顾视图进 workspace（零配置导航）
+    // 运营复盘视图进 workspace（零配置导航）
     const ws = t.app.inject({ method: "GET", url: "/a/v1/me/workspace", headers: ADMIN });
     return ws.then((res) => {
       const body = res.json() as { views: { viewKey: string; renderer: string }[]; navigation: { key: string }[] };
@@ -99,7 +99,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     for (const row of bundle.trend) {
       // 层 1↔2：月度总产出 = Σ 基地月度明细（同月）
       const monthRows = bundle.monthly.filter((m) => m.month === row.month);
-      expect(monthRows).toHaveLength(12);
+      expect(monthRows).toHaveLength(13); // 13 生产基地（yangzhou 回退，luoyang 移除）
       const sum = monthRows.reduce((a, m) => a + m.output, 0);
       expect(Math.abs(sum - row.output)).toBeLessThan(0.05);
     }
@@ -123,7 +123,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
       headers: ADMIN,
       payload: {
         seriesKey: "output:line",
-        entityIds: [`LINE-${baseId}`],
+        entityIds: [`LINE-WS-${baseId}-slurry`],
         window: { from: `${month}-01`, to: new Date(Date.parse(`${month}-28T00:00:00Z`) + 5 * 86400000).toISOString().slice(0, 8) + "01", grain: "week" },
         agg: "sum",
       },
@@ -133,7 +133,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
 
   it("Y4: 叙事互引 —— 危机的案例/Action/C16 变更/MAPE 回弹引用同一时间窗", async () => {
     const win = bundle.crisisWindow;
-    expect(win).toEqual({ from: "2025-11-18", to: "2025-12-01" });
+    expect(win).toEqual({ from: "2025-10-28", to: "2025-11-10" });
     // ① 风险案例 CASE-007
     const crisis = bundle.riskCases.find((c) => c.caseNo === "CASE-007")!;
     expect(crisis.tags).toContain("到货危机");
@@ -158,20 +158,21 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     expect(w21.mape).toBeGreaterThan(w20.mape + 1.2);
     expect(w21.event).toContain("到货危机");
     // 曲线消解可回放：案例 curve 指向危机窗口的真实时序
-    expect(crisis.curve.entityId).toBe("LINE-changzhou");
+    expect(crisis.curve.entityId).toBe("LINE-WS-changzhou-slurry");
     expect(crisis.curve.from < win.from && crisis.curve.to > win.to).toBe(true);
   });
 
   it("Y4b: 危机窗口产出真实下凹后消解（曲线由回放生成，不是画出来的）", async () => {
     const series = (await t.repos.tsSeries.list("demo", (s) => s.seriesKey === "output:line"))[0]!;
-    const points = await t.repos.tsPoints.list("demo", series.id, { entityIds: ["LINE-changzhou"] });
+    const points = await t.repos.tsPoints.list("demo", series.id, { entityIds: ["LINE-WS-changzhou-slurry"] });
     const avg = (from: string, to: string) => {
       const vals = points.filter((p) => p.ts >= `${from}T00:00:00.000Z` && p.ts < `${to}T00:00:00.000Z`).map((p) => p.values.output ?? 0);
       return vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
     };
-    const before = avg("2025-10-20", "2025-11-10");
-    const during = avg("2025-11-18", "2025-11-21");
-    const after = avg("2025-12-05", "2025-12-25");
+    // 危机窗口 2025-10-28~2025-11-10：前(清洁基线)→中(下凹)→后(消解)
+    const before = avg("2025-10-01", "2025-10-23"); // 危机前(下凹自 10-24 起)
+    const during = avg("2025-10-28", "2025-11-01"); // 谷底(depth 0.78，low→adopted)
+    const after = avg("2025-11-18", "2025-12-08"); // 消解后
     expect(during).toBeLessThan(before * 0.85);
     expect(after).toBeGreaterThan(during * 1.15);
   });
@@ -201,7 +202,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
 
   it("Y6: 行级权限作用于历史 —— czmgr 仅见常州月度/案例，聚合按可见范围重算", async () => {
     const { bundle: cz } = await fetchBundle(t, BASE_MANAGER);
-    expect(cz.monthly.length).toBe(12); // 12 个月 × 1 基地
+    expect(cz.monthly.length).toBe(13); // forecastStart 2026-06-10 起回放 365 天跨 13 个日历月
     expect(cz.monthly.every((m) => m.baseId === "changzhou")).toBe(true);
     expect(cz.riskCases.length).toBeGreaterThanOrEqual(1);
     expect(cz.riskCases.every((c) => c.baseId === "changzhou")).toBe(true);
@@ -235,7 +236,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     const shift = rejected.find((p) => p.evidence?.flags.includes("STRUCTURAL_SHIFT"))!;
     expect(shift.method).toBe("EMA");
     // 漂移闸门：危机窗口内观测漂移（证据窗口与危机时间窗重叠）
-    expect(shift.evidence!.windowTo >= "2025-11-18").toBe(true);
+    expect(shift.evidence!.windowTo >= "2025-10-28").toBe(true);
     const noImp = rejected.find((p) => p.evidence?.flags.includes("NO_IMPROVEMENT"))!;
     expect(noImp.evidence!.mapeBefore - noImp.evidence!.simulatedMapeAfter).toBeLessThan(1);
     // 6 次生效提案均带 M11 方法字段 + 预言 vs 实现
@@ -266,7 +267,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     expect(after.trend.map((r) => r.output)).toEqual(before);
     expect(after.trend.find((r) => r.month === "2026-03")!.live).toBe(true);
     expect(after.generatedFrom.liveMonths).toEqual(["2026-03"]);
-    expect(after.generatedFrom.liveRatio).toBeCloseTo(1 / 12, 3);
+    expect(after.generatedFrom.liveRatio).toBeCloseTo(1 / 13, 3);
     // 点位 origin=LIVE（同键覆盖 SYNTHETIC）
     const series = (await t.repos.tsSeries.list("demo", (s) => s.seriesKey === "output:line"))[0]!;
     const march = await t.repos.tsPoints.list("demo", series.id, {
@@ -280,7 +281,7 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     const watermark = wm.json() as { synthetic: boolean; seed: number; liveRatio: number };
     expect(watermark.synthetic).toBe(true);
     expect(watermark.seed).toBe(42);
-    expect(watermark.liveRatio).toBeCloseTo(1 / 12, 3);
+    expect(watermark.liveRatio).toBeCloseTo(1 / 13, 3);
   });
 
   it("Entitlement 先于 authz：view.review 关闭 → history/bundle 404 FEATURE_NOT_FOUND", async () => {

@@ -1,36 +1,668 @@
-import type { IndustryTemplate } from "@platform/contracts";
+import type { IndustryTemplate, BusinessType } from "@platform/contracts";
+import { BASE_REGISTRY, SEG_REGISTRY, PLAN_GOAL_TARGETS, GOAL_REGISTRY, WAVE1_SCALE_FACTOR, packEnergyKwhAnchor, operatingDaysPerYear, scaleAnchorRevenue, WORKSHOP_REGISTRY, EQUIPMENT_TYPE_BY_PROCESS } from "@platform/contracts";
+// DF.13 外协红线单一来源（C08）：规则表达式 / what-if 上限 / 合成越线样本三处**全部派生**，禁内联裸阈值（R14·R-一致）。
+import { OUTSOURCE_REDLINE, OUTSOURCE_SAMPLE, outsourceRedlinePct, outsourceRedlineViolationExpr } from "@platform/contracts";
+// WO-RULE-EXPR-PARAMS：规则 DSL 的命名阈值引用（`params.<名>`）——阈值只存 rule.params 一处，禁在 expression 里复写。
+import { ruleParamRef, parityRuleExpression, parityRuleParams } from "@platform/contracts";
+// WO-ORDER-BOOK-500：订单**头级**三态 + 70:20:10 构成，比例与取值只存契约一处（生成器与断言同读，防双份真相）。
+import { ORDER_STATUSES, orderStatusTargets } from "@platform/contracts";
+import type { OrderStatus } from "@platform/contracts";
+import type { ExcSeverity, ExcStatus } from "@platform/contracts";
+import type { StateVarDomain } from "@platform/contracts";
 import type { DerivedPropertyDef, LinkTypeDef, ObjectTypeDef, PropertyDef } from "../domain.js";
-import { hashString, mulberry32, pick, randInt, round } from "../prng.js";
+import { hashString, mulberry32, randInt, round } from "../prng.js";
+// WO-UNITCOST-LAND：物料价的**单一实现**（`generateExtended` 与本文件共用同一份，不各抄一遍）。
+import { materialUnitPrices } from "./materials-seed.js";
 import { ALL_FEATURE_KEYS } from "../features.js";
+import { SEEDED_VIEW_KEYS } from "./view-manifest.js";
 
 /** Built-in battery-manufacturing template (QOS-PRD §7.6 + addendum §S1/§A8 semantics). */
 
-export const BASES: { baseId: string; name: string; kind: "动力" | "储能" }[] = [
-  { baseId: "changzhou", name: "常州", kind: "动力" },
-  { baseId: "hefei", name: "合肥", kind: "动力" },
-  { baseId: "xian", name: "西安", kind: "动力" },
-  { baseId: "yibin", name: "宜宾", kind: "储能" },
-  { baseId: "liyang", name: "溧阳", kind: "动力" },
-  { baseId: "qingdao", name: "青岛", kind: "储能" },
-  { baseId: "nanjing", name: "南京", kind: "动力" },
-  { baseId: "chengdu", name: "成都", kind: "储能" },
-  { baseId: "fuzhou", name: "福州", kind: "储能" },
-  { baseId: "changsha", name: "长沙", kind: "动力" },
-  { baseId: "huizhou", name: "惠州", kind: "储能" },
-  { baseId: "yancheng", name: "盐城", kind: "动力" },
+// 去电池锁死（R14）：基地经纬度作为对象数据随合成下发（前端 GeoMap 读 Base.props.lon/lat，不再写死）。
+// DF.1 单一来源：基地集从 @platform/contracts BASE_REGISTRY 派生（跨包唯一真相源，灭漂移 G-5/R14）。
+// 命名以 HTML BASE_DATA 为准；datacore 用 {baseId,name,kind,lon,lat} 子集（值字节复现，R6）。
+export const BASES: {
+  baseId: string;
+  name: string;
+  kind: "动力" | "储能" | "动力+储能";
+  lon: number;
+  lat: number;
+  util: number;
+  gwh: number;
+  bottleneck: string;
+  lines: number;
+}[] = BASE_REGISTRY.map((b) => ({
+  baseId: b.baseId,
+  name: b.name,
+  kind: b.kind,
+  lon: b.lon,
+  lat: b.lat,
+  util: b.util,
+  gwh: b.gwh,
+  bottleneck: b.bottleneck,
+  lines: b.lines,
+}));
+
+/**
+ * DF.1 单一来源：**单条基地引用**也查册派生（不只 BASES 集合）——WO-76 修。
+ * 剧本/参数里写死 `baseId: "changzhou"` 与内联整个基地集是同一类漂移（G-5/R14），
+ * 只是粒度为"单条"：册里改 baseId 或删该基地，引用会静默指向不存在的基地。
+ * name 是册自述的"跨端共同 key"；查不到即抛，不留悬空引用。R6：值与迁移前字节一致。
+ */
+export function baseIdOf(name: string): string {
+  const hit = BASE_REGISTRY.find((b) => b.name === name);
+  if (!hit) throw new Error(`[battery] 基地「${name}」不在 BASE_REGISTRY 单一来源册（DF.1/R14）`);
+  return hit.baseId;
+}
+
+// PRD-IND-model 缺口③：型号化学体系 chem(NCM|LFP) + 业态 pos（动力/储能/动力+储能），种子配置（前端零写死）。
+// PRD-IND-order-aggregate：HTML 6 型号（MODEL_DEF L1542），命名以原型为单一真相源。
+export const MODELS: { modelId: string; name: string; chem: "NCM" | "LFP"; pos: string }[] = [
+  { modelId: "4680-NCM", name: "4680 三元圆柱", chem: "NCM", pos: "动力" },
+  { modelId: "4680-LFP", name: "4680 磷酸铁锂圆柱", chem: "LFP", pos: "动力+储能" },
+  { modelId: "2170-NCM", name: "2170 三元圆柱", chem: "NCM", pos: "动力" },
+  { modelId: "方形-LFP", name: "方形 磷酸铁锂", chem: "LFP", pos: "储能" },
+  { modelId: "方形-NCM", name: "方形 三元", chem: "NCM", pos: "动力" },
+  { modelId: "圆柱-LFP", name: "圆柱 磷酸铁锂", chem: "LFP", pos: "储能" },
 ];
 
-export const MODELS: { modelId: string; name: string }[] = [
-  { modelId: "4680-NCM", name: "4680 三元圆柱" },
-  { modelId: "4680-LFP", name: "4680 磷酸铁锂圆柱" },
-  { modelId: "L300-NCM", name: "L300 三元长电芯" },
-  { modelId: "L148-LFP", name: "L148 铁锂方形" },
-  { modelId: "P28-NCM", name: "P28 软包三元" },
-  { modelId: "S192-LFP", name: "S192 储能电芯" },
+// PRD-IND-model / PRD-IND-risk §4.6：型号→可产基地确定性映射（HTML MODEL_DEF 范式，非随机）。
+export const MODEL_BASE_MAP: Record<string, string[]> = {
+  "4680-NCM": ["changzhou", "chengdu", "hefei", "jinhua"], // HTML 4680-NCM → 常州/成都/合肥/金华
+  "4680-LFP": ["changzhou", "zaozhuang"], // HTML 4680-LFP → 常州/枣庄（动力+储能）
+  "2170-NCM": ["xiamen", "wuhan", "zigong"], // HTML 2170-NCM → 厦门/武汉/自贡
+  "方形-LFP": ["jiangmen", "meishan", "handan", "zaozhuang"], // HTML 方形-LFP → 江门/眉山/邯郸/枣庄
+  "方形-NCM": ["changzhou", "chengdu", "jinhua"], // HTML 方形-NCM → 常州/成都/金华
+  "圆柱-LFP": ["xinyang", "yangzhou"], // HTML 圆柱-LFP → 信阳/扬州
+};
+
+// WO-GSIM-1-DATA · 基地间地理距离（haversine）——灭 G-TRANSIT-NOT-GEO（在途天数此前是哈希常量·与地理无关）。
+// 经纬度取自 BASE_REGISTRY 单一来源（R14·不内联坐标）；任意 (fromBase,toBase) 对可查（非仅 MODEL_BASE_MAP 相邻对）。
+// 纯确定性（无 rng/时钟·R6）；同基地→距离 0（→ 运费 0）。
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // 地球平均半径(km)
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** 基地间公路直线距离(km)·haversine 于 BASE_REGISTRY 经纬度（单一来源·R14）。任意基地对可查·同基地=0。 */
+export function baseDistanceKm(fromBase: string, toBase: string): number {
+  const a = BASE_REGISTRY.find((b) => b.baseId === fromBase);
+  const b = BASE_REGISTRY.find((x) => x.baseId === toBase);
+  if (!a || !b) throw new Error(`base not in registry: ${fromBase}/${toBase}`);
+  return haversineKm(a.lat, a.lon, b.lat, b.lon);
+}
+
+// WO-GSIM-1-DATA · 供芯图（G-CELL-PACK-2STAGE 数据半·纯派生函数·非新对象类型→不撞 golden 类型计数）。
+// 电芯→电池包两段制：每个纯 PACK 基地（factory_type==="PACK"）由哪些可产芯基地（CELL/CELL+PACK）就近供芯。
+// factory_type 从生成态 bases 行读（非重派生·守 §2 单一来源）；就近排序按 baseDistanceKm（同距以 baseId 稳定次序断平·R6）。
+export function cellSourceMap(bases: { baseId: string; factory_type?: string }[]): Record<string, string[]> {
+  const cellBases = bases.filter((b) => b.factory_type === "CELL" || b.factory_type === "CELL+PACK");
+  const packBases = bases.filter((b) => b.factory_type === "PACK");
+  const map: Record<string, string[]> = {};
+  for (const p of packBases) {
+    map[p.baseId] = cellBases
+      .map((c) => ({ id: c.baseId, d: baseDistanceKm(p.baseId, c.baseId) }))
+      .sort((x, y) => x.d - y.d || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))
+      .map((x) => x.id);
+  }
+  return map;
+}
+
+/**
+ * WO-OPT-WHATIF-DATA · 基地**选址成本**派生（补 §8 `G-WHATIF-NL-UNREACHABLE` 的**数据半**——
+ * 该断点此前标「✅ 已闭」，实况是只闭了**路由半**：路由通了、求解器在，但 demo 本体没有成本字段 ⇒ 100% 降级）。
+ *
+ * 病根（「接了线没数据」形态②）：`optimize_whatif` 的 `facility_location` 自动装配
+ * （`solvers/service.ts assembleBaselineFromSelection`）要求决策承载类型上存在**命中成本词库
+ * （`solvers/field-role-lexicon.ts ROLE_LEXICON.cost`）的数值字段**才能绑 `open_cost`/`assign_cost` 角色；
+ * 而 demo 的 `Base` 数值属性只有 util/gwh/formationCapDaily/agingCapDaily/lon/lat —— 一个成本字段都没有
+ * ⇒ 装配恒报缺 `open_cost` ⇒ 会话路由虽真命中、真 invoke，仍 100% 降级 path-B，用户拿不到优化结论。
+ *
+ * **R6 命门（本单最大的坑）**：两个成本值**全部由已有量派生、零 rng 消耗**——照 WO-CEO-DATA-2
+ * （`Equipment.oee_current` 由 A×P×Q 派生）同一路子。不抽新随机数 ⇒ `rngTopo`/`rng` 消耗序列一字不动
+ * ⇒ 下游全部合成值零位移、同 (industry,scale,seed) 仍字节一致。
+ *
+ *  - `openCost`（万元/年·年固定开办成本）= 铭牌产能 × 单位产能固定成本 + 产线数 × 单线固定成本。
+ *    两个入参 gwh/lines 都取自 BASE_REGISTRY 单一来源（DF.1·R14·不内联基地字面量）。
+ *  - `serveCost`（万元/需求点·年·单位需求点干线履约成本）= **产能加权全网平均干线距离** × 每公里费率。
+ *    距离走既有 `baseDistanceKm`（haversine on BASE_REGISTRY·单一来源）——西部基地（成都/眉山/自贡）
+ *    网络可达性差 ⇒ 履约成本高，东部基地低，是真地理信号而非随机噪声。
+ */
+export function baseOpenCostWan(gwh: number, lines: number): number {
+  const c = BATTERY_SOLVER_PARAMS.facilityCost as { gwhFixedWan: number; lineFixedWan: number; servePerKmWan: number };
+  return round(gwh * c.gwhFixedWan + lines * c.lineFixedWan, 2);
+}
+
+/** 产能加权全网平均干线距离(km)·haversine 于 BASE_REGISTRY（纯派生·无 rng·同基地距 0 计入权重）。 */
+export function baseNetworkMeanDistanceKm(baseId: string): number {
+  const totalGwh = BASE_REGISTRY.reduce((s, b) => s + b.gwh, 0);
+  const weighted = BASE_REGISTRY.reduce((s, b) => s + b.gwh * baseDistanceKm(baseId, b.baseId), 0);
+  return totalGwh > 0 ? weighted / totalGwh : 0;
+}
+
+export function baseServeCostWan(baseId: string): number {
+  const c = BATTERY_SOLVER_PARAMS.facilityCost as { gwhFixedWan: number; lineFixedWan: number; servePerKmWan: number };
+  return round(baseNetworkMeanDistanceKm(baseId) * c.servePerKmWan, 2);
+}
+
+/**
+ * WO-ORDER-BOOK-500 · **客户名册（单一注册表）** —— 20 家，订单侧与客户主数据侧**同一套名字**。
+ *
+ * ## 这张表解决的病（实测复现过，不是假想）
+ *
+ * 修前是**两套名字各存一份**：订单上写真品牌名（`Order.cust = "东风汽车"`），
+ * 客户主数据里却是匿名代号（`Customer.custName = "海外车企E"`），中间靠 `ORDER_CUST_TO_CUSTOMER`
+ * 一张 14→8 的映射表勉强搭桥。后果是「隐性集中度」求解器问**「哪个客户最集中」回 0 个**：
+ * 该求解器按**主键值**建索引（`solvers/service.ts` `concentrationRisk`：
+ * `idxByType.get(toType).get(refVal)`，索引键 = `Customer` 的主键 `custId` = `cust_0`），
+ * 而订单上拿得出的只有 `"东风汽车"` 这个显示名 ⇒ 每一跳都解析不到 ⇒ 全部断链 ⇒ 集中点 0 个。
+ * 金丝雀同时成立：同一个求解器问**「哪个型号最集中」回 5 个** —— 因为 `Order.model` 存的
+ * 恰好就是 `Model` 的主键值 `"4680-NCM"`。**工具是好的，是数据对不上号。**
+ *
+ * ## 修法（两件，缺一件都不成）
+ *  1. **退役匿名名册**：`Customer.custName` 直接就是本表的 `name`（真品牌名），
+ *     与 `Order.cust` **逐字相同** ⇒ 全仓只剩一套客户名字，不再有「第二份注册表」。
+ *  2. **补真外键**：`Order.customerId` 存 `Customer` 的主键 `custId`，并在 `orderProps` 里
+ *     **声明成 `ref → Customer`** ⇒ 集中度求解器的自动寻路（`databuilder/solver-args.ts`
+ *     `deriveConcentrationRisk` 只走**声明过的** `refToTypeKey`）从此走得通 Order→Customer。
+ *     ⚠ 名字（`cust`）与外键（`customerId`）并存**不是**两份注册表：一个是显示名、一个是主键，
+ *     两者都由本表派生，改名只改这里一处。
+ *
+ * ## 名字从哪来（**没有一个是编的**）
+ * 主体企业 = 中创新航（CALB）。本表 20 家全部来自两个出处，二选一，无第三类：
+ *  1. **24 张锚点订单上原本就写着的 8 家**（`广汽集团` `长安汽车` `吉利汽车` `东风汽车`
+ *     `宇通客车` `国家电网` `南方电网` `国家电投`）—— 全仓测试与文档的坐标，**一个字都不许改**；
+ *  2. **主体企业公开报道的真实客户名单**（2023–2025），与上面 8 家去重后取 12 家：
+ *     广汽埃安 · 小鹏汽车 · 零跑汽车 · 广汽新能源 · 深蓝汽车 · 合创汽车 · 蔚来汽车 ·
+ *     上汽通用五菱 · 小米汽车 · 智己汽车 · 大众 · 现代。
+ *
+ * 名单里的 `丰田` 本轮未纳入（8+12 已满 20，取满即止），需要时从这里补。
+ *
+ * ## `weight` = 订单分配权重（**取自真实装机集中度，不是我编的形状**）
+ * 平均分给 20 家 ⇒「客户集中度」恒等于 5%×20，这个分析就等于做死了。
+ * 本表照主体企业 2023 年 1–10 月国内新能源乘用车装机结构给权重：
+ * **广汽埃安 46.7%（9.3 GWh）· 小鹏 17.3%（3.4 GWh）· 两家合计 ≈64%**，其余摊给十几家。
+ *
+ * 口径说明：权重按**订单数**分配（不是金额）——订单数是生成器直接控制得住的量，
+ * 金额还要叠加型号单价与 qty 波动，对不准反而说不清；实测金额口径的占比与订单数口径
+ * 相差 1 个百分点以内（见交付报告实测表）。权重和 = 1000，仅作相对比例用；
+ * 24 张锚点单的客户是**固定**的，会叠加在加权结果之上，故实测占比与名义权重略有出入。
+ */
+export const CUSTOMER_REGISTRY: { name: string; businessType: BusinessType; weight: number }[] = [
+  // ── 龙头两家：权重直接取真实装机占比（2023 年 1–10 月国内新能源乘用车装机结构）──
+  //    广汽埃安 46.7%（9.3 GWh）· 小鹏 17.3%（3.4 GWh）· 两家合计 ≈64%。
+  //    ⚠ **TOP1 接近一半**不是造数造歪了，这正是主体企业真实的收入结构；
+  //    也正因为如此，「丢掉最大客户会怎样 / 我的收入结构安全吗」才是一道生死题而不是纸面练习。
+  { name: "广汽埃安", businessType: "passenger", weight: 467 },
+  { name: "小鹏汽车", businessType: "passenger", weight: 173 },
+  // ── 真实客户名单第 3–10 名（零跑 / 广汽新能源 / 长安 / 深蓝 / 合创 / 蔚来 / 吉利）──
+  { name: "零跑汽车", businessType: "passenger", weight: 42 },
+  { name: "广汽新能源", businessType: "passenger", weight: 36 },
+  { name: "长安汽车", businessType: "passenger", weight: 33 }, // 锚点
+  { name: "深蓝汽车", businessType: "passenger", weight: 23 },
+  { name: "合创汽车", businessType: "passenger", weight: 19 },
+  { name: "蔚来汽车", businessType: "passenger", weight: 17 },
+  { name: "吉利汽车", businessType: "passenger", weight: 18 }, // 锚点
+  // ── 储能业务线（主体企业动力+储能双线经营）──
+  //    这三家是**锚点里本来就有的真实电网/发电集团**，不是编的：实测 24 张锚点订单里
+  //    有 9 张（37.5%）是储能单，全部落在这三家名下。车企名单里没有储能客户，
+  //    所以此处**一家新的都不加**（宁可少，不许编），只保留这三家真实存在的。
+  { name: "国家电网", businessType: "storage", weight: 34 }, // 锚点
+  { name: "南方电网", businessType: "storage", weight: 25 }, // 锚点
+  { name: "国家电投", businessType: "storage", weight: 15 }, // 锚点
+  // ── 真实客户名单尾部 + 已进入供应链的海外/合资车企（大众 / 现代）──
+  { name: "上汽通用五菱", businessType: "passenger", weight: 12 },
+  { name: "小米汽车", businessType: "passenger", weight: 9 },
+  { name: "广汽集团", businessType: "passenger", weight: 7 }, // 锚点（埃安/新能源的母集团，三者并列是真实的集团—子品牌结构）
+  { name: "智己汽车", businessType: "passenger", weight: 10 },
+  // 锚点·唯一商用车客户。权重 40 是**实测逼出来的**，不是拍的：按纯乘用车装机比例摊，
+  // 商用车只剩 5 单，且 `IN_PRODUCTION × commercial` 这一格**恰好为 0** ——
+  // 三业务线（乘/商/储）是系统建模的一等维度（WO-W5 三重张力），一格空掉这维就废了。
+  // 真实装机表只覆盖**乘用车**，对商用车份额一个字都没说，所以这个权重不与任何公开数字冲突；
+  // 补的量全部从中部乘用车客户里出，**TOP1/TOP2 这两个有出处的数一分未动**。
+  { name: "宇通客车", businessType: "commercial", weight: 40 },
+  { name: "大众", businessType: "passenger", weight: 9 },
+  { name: "东风汽车", businessType: "passenger", weight: 2 }, // 锚点
+  { name: "现代", businessType: "passenger", weight: 9 },
 ];
 
-const CUSTOMERS = ["星辰汽车", "蓝海储能", "极光电动", "云岭新能源", "晨风车业", "沧浪电网"];
+/** 客户名池（订单 `cust` 取值域）—— 由名册派生，不再另写一份。 */
+const CUSTOMERS = CUSTOMER_REGISTRY.map((c) => c.name);
+
+/**
+ * 客户主键 `custId`：**ascii**（`cust_0`…），刻意不用中文名当主键 —— 中文经 id sanitize 后会碰撞。
+ * 序号 = 名册下标，故锚点 8 家恒为 `cust_0`…`cust_7`（`battery-extended.ts` 的
+ * `cf-customer-concentration` 因果因子钉的就是 `cust_0`，序号漂了它会指向别人）。
+ */
+export const CUSTOMER_IDS: Record<string, string> = Object.fromEntries(
+  CUSTOMER_REGISTRY.map((c, i) => [c.name, `cust_${i}`]),
+);
+
+/** 客户名 → `Customer` 主键；名册外返回 undefined（诚实缺席·调用方据此不建边）。 */
+export function custIdOfCustomer(name: string): string | undefined {
+  return CUSTOMER_IDS[name];
+}
+
+/**
+ * 需求层的**分段年量锚**（万套/年）—— `demandSegments` 与客户册业态配比的**共同单一来源**。
+ *
+ * 原先这张表内联在 `generateBattery` 体内，只有需求层读得到；WO-CANONICAL-REDS 把它提到模块级，
+ * 因为**订单层的业态配比必须跟它同锚**（见下 `SEG_VOLUME_SHARE_BY_BUSINESS_TYPE`）。数值一字未动。
+ * 合计 375 万套/年 × `SEG_REGISTRY` 单价 = 700 亿 = `scaleAnchorRevenue.S`（被金值锁死的事实锚）。
+ */
+const SEG_DEMAND_ANCHOR = [
+  { segment: "乘用车", tgt: 201.7, demandWanPerYearP50: 201.7, demandWanPerYearP90: 199.6, act: 200.6 },
+  { segment: "储能", tgt: 139.2, demandWanPerYearP50: 139.2, demandWanPerYearP90: 108.4, act: 100.5 },
+  { segment: "商用车", tgt: 34.1, demandWanPerYearP50: 34.1, demandWanPerYearP90: 34.0, act: 39.5 },
+];
+
+/**
+ * WO-UNCERTAINTY-INPUTS · 需求三点分布的**乐观上界** P10（万套/年）。
+ *
+ * ── 口径（不是拍脑袋的数，是从**已有种子**推的）──────────────────────────────────
+ * 本仓的分位约定是**置信水平**式（SPE/PRMS 储量口径），不是"百分位越大数越大"：
+ *   `PXX = 有 XX% 把握至少达到这个数` ⇒ **P90 ≤ P50 ≤ P10**。
+ * 证据：`contracts/solvers.ts` 自述「P90 是**下**分位 ⇒ 恒 ≤ rolling」，
+ * 且上表三行实测 P90(199.6/108.4/34.0) 逐行 < P50(201.7/139.2/34.1)。
+ * ⇒ 缺的那一端是**乐观上界**，它的名字在这套约定里就是 P10。
+ *
+ * ── 宽度从哪来（出处 = 上表 P90，不新增任何魔数）────────────────────────────────
+ * 取**对数正态**（需求/储量预测的教科书默认分布，其对数以中位数为对称轴）⇒
+ *     P10 / P50 == P50 / P90     即     **P10 = P50² / P90**
+ * 于是"上侧宽度"完全由**已经在种子里的下侧宽度**决定：一个细分的 P90 离 P50 越远，
+ * 它的 P10 也就越远。不引入第二个离散度真相源，改 P90 时 P10 自动跟着动。
+ *
+ * 实测三行（seed 无关·纯常量算术）：
+ *   乘用车 201.7²/199.6 = 203.8 → 区间 199.6–203.8（±1%，长协锁量、可预测）
+ *   储能   139.2²/108.4 = 178.8 → 区间 108.4–178.8（−22%/+28%，本行业最不确定的一档）
+ *   商用车  34.1²/34.0  =  34.2 → 区间  34.0–34.2（±0.3%，体量小且稳）
+ *
+ * ⚠ R6 确定性：纯常量算术，**无 `Math.random`、无 `Date`、不读 seed** ⇒ 同 (industry, scale, seed)
+ * 重跑字节级一致。这也是本单**刻意不引入采样器**的原因——先把输入分布摆正，采样是另一张单。
+ */
+const demandP10FromP90 = (p50: number, p90: number): number => round((p50 * p50) / p90, 1);
+
+export const SEG_DEMAND = SEG_DEMAND_ANCHOR.map((d) => ({
+  ...d,
+  demandWanPerYearP10: demandP10FromP90(d.demandWanPerYearP50, d.demandWanPerYearP90),
+}));
+
+/**
+ * 需求锚的**业态量份额**（passenger / storage / commercial），由 `SEG_DEMAND` 现算。
+ * 实测：乘用车 53.79% · 储能 37.12% · 商用车 9.09%。
+ */
+function segVolumeShareByBusinessType(): Record<string, number> {
+  const total = SEG_DEMAND.reduce((a, d) => a + d.demandWanPerYearP50, 0);
+  const out: Record<string, number> = {};
+  for (const d of SEG_DEMAND) {
+    const bt = businessTypeOfSegment(d.segment);
+    out[bt] = (out[bt] ?? 0) + d.demandWanPerYearP50 / total;
+  }
+  return out;
+}
+
+/**
+ * 客户册权重的**业态级重标定系数**（`CUSTOMER_REGISTRY` 的册内相对权重一字不动，只调三档的总量）。
+ *
+ * ══ 今天的行为是 X，应该是 Y（2026-08-28 WO-CANONICAL-REDS 实测）══════════════════════
+ * **X**：`SEG_DEMAND`（需求层）与 `CUSTOMER_REGISTRY`（订单层）**各自声明同一组 businessType 的配比**，
+ *       两张表从不对账，实测差 5 倍：
+ *         | businessType | 需求锚量份额 | 客户册权重份额 |
+ *         | passenger    | 53.79%       | **88.60%**     |
+ *         | storage      | **37.12%**   | **7.40%**      |
+ *         | commercial   | 9.09%        | 4.00%          |
+ *       病根在册子的来历：那批权重取自**一张只覆盖乘用车的装机排名**（见 `CUSTOMER_REGISTRY` 头注），
+ *       三家储能客户是后补进去的、权重却按同一把尺子给 ⇒ 储能线被压到真实份额的 1/5。
+ *       册子自己的注释就记着反证：「实测 24 张锚点订单里有 9 张（**37.5%**）是储能单」——
+ *       **锚点簿是 37.5%，而它生成的补足段只有 7.4%**，两个数就写在同一段注释里，从没人对过。
+ *       后果不是「储能单少几张」，是**整个订单簿的价盘被抬高 12.24%**（储能 LFP 单价 1.39
+ *       万元/套 vs 动力 NCM ≈2.18）⇒ 订单层年化营收 785.65 亿 vs 需求锚 700 亿 vs AOP 601.5 亿，
+ *       `scale-coherence` 的 `rel(R_order,R_aop)=23.4% > 15%` 当场红。**门是对的，红的是数据。**
+ * **Y**：订单层的业态配比**从需求锚派生**（`SEG_DEMAND` 是唯一来源，与 `Model.unitPrice` 走
+ *       `SEG_REGISTRY` 派生同一条纪律），册内相对权重（真实装机排名）保持不动。
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ⚠ 只重标定**业态总量**、不碰册内相对序：`cust_N` 下标、客户名、册内大小关系全部不变
+ *   （`cf-customer-concentration` 钉的 `cust_0` 仍是广汽埃安）。
+ */
+function customerTypeRescale(): Record<string, number> {
+  const target = segVolumeShareByBusinessType();
+  const total = CUSTOMER_REGISTRY.reduce((a, c) => a + c.weight, 0);
+  const cur: Record<string, number> = {};
+  for (const c of CUSTOMER_REGISTRY) cur[c.businessType] = (cur[c.businessType] ?? 0) + c.weight / total;
+  const out: Record<string, number> = {};
+  for (const [bt, share] of Object.entries(cur)) out[bt] = share > 0 ? (target[bt] ?? share) / share : 1;
+  return out;
+}
+/** 纯常数派生，算一次即可（R6：无随机/无时钟）。 */
+const CUSTOMER_TYPE_RESCALE: Record<string, number> = customerTypeRescale();
+
+/** 客户的**有效**抽样权重 = 册内相对权重 × 业态重标定系数（业态总量对齐需求锚）。 */
+function effectiveCustomerWeight(c: { businessType: BusinessType; weight: number }): number {
+  return c.weight * (CUSTOMER_TYPE_RESCALE[c.businessType] ?? 1);
+}
+
+/**
+ * `Order.unitPrice`（元/套）—— **按这张单服务的细分定价**，单一来源 `SEG_REGISTRY.priceWan`。
+ *
+ * ══ 今天的行为是 X，应该是 Y（2026-08-28 WO-CANONICAL-REDS 实测）══════════════════════
+ * **X**：订单单价直接继承 `Model.unitPrice`，而 `Model.unitPrice` 是按型号的**用途位** `pos` 归段的：
+ *       `SEG_REGISTRY.find(s => s.key === (m.pos === "储能" ? "ess" : "pas"))` —— **严格等于**「储能」。
+ *       两个后果，实测都在数上：
+ *         ① `4680-LFP` 的 `pos` 是「**动力+储能**」⇒ 不等于「储能」⇒ 落 `pas` 价 2.1912 万元/套。
+ *            而 `modelsForBusinessType` 判储能用的是 `pos.includes("储能")` ⇒ 储能客户**买得到它**，
+ *            按乘用车价付钱 ⇒ 储能线的簿面均价 **1.5783** 而不是声明的 **1.4**（+12.7%）。
+ *            同一个 `pos` 字段，定价用 `===`、选型用 `includes`，两处口径不一致 —— 双用型号正好卡在缝里。
+ *         ② 型号表里**根本没有商用车型号**（`pos` 只有 动力 / 储能 / 动力+储能），
+ *            于是 `SEG_REGISTRY.com` 声明的 1.8 万元/套**零个承载者**：商用车客户买动力 NCM，
+ *            簿面均价 **2.1847**（+21.4%）。三分法定性 = 「接了线没数据」。
+ *       合起来把订单簿的价盘抬高，`scale-coherence` 的 `rel(R_order,R_aop)` 越过 15% 报红。
+ * **Y**：`SEG_REGISTRY` 声明的是**按细分**的价，不是按型号用途的价。一张单服务哪个细分，
+ *       由**买方业态**唯一确定（`Order.businessType` 建单时就有）。故订单单价按业态取段价 ——
+ *       双用型号不再需要"猜"它算哪一段（买方说了算），`com` 段价也第一次有了承载者。
+ *       这与 `ORDER_CUST_TO_CUSTOMER` 收敛成恒等映射是同一手法：**把门守的那个缺口从数据层焊死**，
+ *       而不是把门放宽。`Model.unitPrice` 保持不动（那是产品主数据的挂牌价，另一件事）。
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ±`modelPriceVarPpk‰` 的确定性微差沿用既有机制，只把哈希锚从 `modelId` 换成 `so`
+ * （逐单稳定、同 seed 字节一致 R6；锚在型号上会让同型号所有单一个价，掩盖单间价差）。
+ */
+export function orderUnitPriceOf(businessType: BusinessType, so: string): number {
+  const sc = BATTERY_SOLVER_PARAMS.scaleCoherence as { modelPriceVarPpk: number };
+  const seg = SEG_REGISTRY.find((s) => s.key === segKeyOfBusinessType(businessType))!;
+  const priceVar = ((hashString(`${so}:unitprice`) % (2 * sc.modelPriceVarPpk + 1)) - sc.modelPriceVarPpk) / 1000;
+  return Math.round(seg.priceWan * 1e4 * (1 + priceVar));
+}
+
+/**
+ * 长尾加权抽客户：`r ∈ [0,1)` 取自主 rng 的**一次**抽样 —— 与被它替换掉的 `pick(rng, CUSTOMERS)`
+ * 消耗的 rng 次数**完全相同（1 次）**，故补足段的 rng 流步长不位移（R6）。
+ */
+function pickCustomerWeighted(r: number): string {
+  const total = CUSTOMER_REGISTRY.reduce((a, c) => a + effectiveCustomerWeight(c), 0);
+  let acc = r * total;
+  for (const c of CUSTOMER_REGISTRY) {
+    acc -= effectiveCustomerWeight(c);
+    if (acc < 0) return c.name;
+  }
+  return CUSTOMER_REGISTRY[CUSTOMER_REGISTRY.length - 1]!.name;
+}
+
+// WO-W5·业务类型（乘/商/储）单一来源客户册：客户名 → 业务类型（passenger|commercial|storage）。
+// 显式映射（不靠 regex·防「国家电投」不含「电网」被误判乘用车 / 奇瑞·瑞驰不含「客车」被误判乘用车的旧坑）。
+// WO-ORDER-BOOK-500：改由 `CUSTOMER_REGISTRY` 派生 —— 此前是**另抄一份**的字面量表，
+// 加一家客户要记得改两处，漏一处就是「名册里有、业务类型判不出」的静默错分。
+export const CUSTOMER_BUSINESS_TYPE: Record<string, BusinessType> = Object.fromEntries(
+  CUSTOMER_REGISTRY.map((c) => [c.name, c.businessType]),
+) as Record<string, BusinessType>;
+/** 客户 → 业务类型（册命中优先·未知客户按名兜底 regex·仍无 → 乘用车 default）。 */
+export function businessTypeOfCustomer(cust: string): BusinessType {
+  const hit = CUSTOMER_BUSINESS_TYPE[cust];
+  if (hit) return hit;
+  if (/储能|电网|电投|电力/.test(cust)) return "storage";
+  if (/客车|商用/.test(cust)) return "commercial";
+  return "passenger";
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）· **客户归属册**（单一来源 R14）
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * `Order.cust`（订单侧品牌名）→ `Customer.custName`（客户主数据侧名字）的**声明式**归属。
+ * `order_of_customer` 边由本册派生 —— 这是「客户维」在数据层的唯一真相。
+ *
+ * **修前的病 ①（实测·seed 42·scale S）**：`synthetic/service.ts` 用 `custIds[oi % custIds.length]`
+ * **按订单序轮转**绑边，与订单上写的客户名毫无关系：
+ * ```
+ * cust_4 商用车集团G: SO-3431(广汽集团/2170-NCM), SO-3481(广汽集团/4680-NCM), SO-3523(广汽集团/4680-NCM)
+ * cust_7 电网公司F:   SO-3452(国家电网/方形-LFP), SO-3495(南方电网/方形-LFP), SO-3540(宇通客车/2170-NCM)
+ * ```
+ * 「商用车集团」名下三张全是乘用车整车厂的单，「电网公司」名下挂着客车厂的单 ——
+ * 任何沿这条边做客户维的求解（S15 `quote_margin`）拿到的都是**张冠李戴**的订单集。
+ *
+ * **修前的病 ②（WO-ORDER-BOOK-500 修掉的就是它）**：上面那一版把病 ① 修成了「14 个品牌名 →
+ * 8 个**匿名代号**」的映射。边是连对了，但**名字仍然是两套**：订单上写「东风汽车」，
+ * 客户档案上写「海外车企E」。凡是**按名字对号**的工具全部落空 —— 集中度求解器问「哪个客户最集中」
+ * 回 **0 个**（它按 `Customer` 主键建索引，订单侧根本拿不出主键）。
+ * ⇒ 本册现已**退役匿名名册**，收敛成**恒等映射**（`Order.cust` ≡ `Customer.custName`，
+ * 均取自 `CUSTOMER_REGISTRY` 这一处），全仓只剩一套客户名字。
+ *
+ * **可校验不变量（R-CUST-ATTRIB）**：每条 `order_of_customer` 边两端业态必须一致 ——
+ * `businessTypeOfCustomer(Order.cust)` ≡ `customerSegKeyOf(Customer.custName)`
+ * （passenger↔pas / commercial↔com / storage↔ess）。轮转绑定必然违反此式，因此它同时是**变异反证门**。
+ * 收敛成恒等映射后此式**由构造成立**（两边同名同册），门从「可能红」变成「不可能红」——
+ * 这不是把门拆了，是把它守的那个缺口从数据层焊死了。
+ */
+export const ORDER_CUST_TO_CUSTOMER: Record<string, string> = Object.fromEntries(
+  CUSTOMER_REGISTRY.map((c) => [c.name, c.name]),
+);
+
+/**
+ * `Customer.custName` → 细分键（pas|com|ess）。
+ *
+ * WO-ORDER-BOOK-500：改由**名册**判定。此前是按名字里的关键词猜（`includes("商用车")` /
+ * `includes("电网")`），那套只在匿名代号（「商用车集团G」「电网公司F」）上成立 ——
+ * 名字换成真品牌之后它会把「宇通客车」判成 pas（不含「商用车」三个字）、
+ * 把「国家电投」判成 pas（不含「电网」）。同一个坑 `CUSTOMER_BUSINESS_TYPE` 的注释里
+ * 早就点名警告过，只是当时没人把这个函数一起改。
+ */
+export function customerSegKeyOf(custName: string): "pas" | "com" | "ess" {
+  const bt = CUSTOMER_BUSINESS_TYPE[custName];
+  if (bt) return segKeyOfBusinessType(bt);
+  if (custName.includes("商用车") || custName.includes("客车")) return "com";
+  if (custName.includes("储能") || custName.includes("电网") || custName.includes("电投") || custName.includes("电力")) return "ess";
+  return "pas";
+}
+
+/**
+ * WO-COMPUTED-EDGE（裁决③·多态目标）· **异常事件溯源边：一条多态边 → 五条定型边**。
+ * 本常量是这五条边的**单一来源** —— 类型声明（`batteryLinkTypes()`）与实例落库（`synthetic/service.ts`）
+ * 都从这里展开，不许任何一侧另抄一份 refType↔linkKey 的对照表。
+ *
+ * ══ 今天的行为是 X，应该是 Y（真后端 SEED_DEMO=1 实测）════════════════════════════
+ * **X**：只有**一条** `exc_sourced_from`，声明 `toTypeKey: "EquipmentDowntime"`，
+ *   而实例的目标类型**随行变**（`oid(ev.refType, ev.refId)`，5 种源）。
+ *   `LinkTypeDef.toTypeKey` 是**单值**字段，`executeSlice` 按它裁剪可达类型 ⇒
+ *   **实测：372 条实例写进了 `repos.links`，检索只看得见 166 条**
+ *   （`{nodes: 538 = ExceptionEvent 372 + EquipmentDowntime 166, edges: 166, truncated: false}`）。
+ *   另外 **206 条**（`EquipmentAlarm` 111 · `DefectRecord` 85 · `MaterialBalance` 7 · `TriggerRule` 3）
+ *   **写进去了、永远读不出来**，而且不报错 —— 本仓「边写进去了但检索读不到」那一类的又一实例。
+ * **Y**：五个目标类型 = **五条边**，每条一个固定 `toTypeKey`，声明因此不再说谎，
+ *   206 条边从此可被检索到。用户自建时**五种声明今天就够**：
+ *   `viaProperty:"refId", viaWhere:"ExceptionEvent.refType == '<X>'"` —— 零新机制。
+ *
+ * ── 为什么不是「让 toTypeKey 随行变」───────────────────────────────────────────
+ * 那要改 `LinkTypeDef` 的**类型契约**（不是加一个可选字段）：`executeSlice` 的 `mustIncludeTypes`
+ * 断言、`ontology.ts` 物化时 `anchorTypeKey = side === "from" ? def.toTypeKey : def.fromTypeKey`
+ * 的单值取用，都建立在「一条边两端类型确定」这个前提上。代价与收益不成比例。
+ *
+ * ⚠ `exc_sourced_from` 这个 key **原地保留**给 `EquipmentDowntime` 那一源：
+ *   它今天能被检索到的**恰好就是这 166 条**，既有消费方（切片 / 前端披露 fixture / B 侧镜像）
+ *   看到的东西一个字节不变；新增的是另外四条 key。**不是改名，是把说谎的那部分拆出去。**
+ */
+export const EXC_SOURCE_LINKS: { refType: string; linkKey: string }[] = [
+  { refType: "EquipmentDowntime", linkKey: "exc_sourced_from" }, // 原 key 留给它：既有消费方看到的 166 条不变
+  { refType: "EquipmentAlarm", linkKey: "exc_sourced_from_alarm" },
+  { refType: "DefectRecord", linkKey: "exc_sourced_from_defect" },
+  { refType: "MaterialBalance", linkKey: "exc_sourced_from_balance" },
+  { refType: "TriggerRule", linkKey: "exc_sourced_from_trigger" },
+];
+
+/** `ExceptionEvent.refType` → 该源对应的溯源边 key。取不到 ⇒ 不建边（诚实缺席，不兜底落到某一条上）。 */
+export function excSourceLinkKeyOf(refType: string): string | undefined {
+  return EXC_SOURCE_LINKS.find((s) => s.refType === refType)?.linkKey;
+}
+
+/** 业务类型（订单侧口径）→ 细分键（客户名册侧口径）。两套词表的唯一换算处。 */
+export function segKeyOfBusinessType(bt: BusinessType): "pas" | "com" | "ess" {
+  return bt === "commercial" ? "com" : bt === "storage" ? "ess" : "pas";
+}
+
+/**
+ * **型号 → 细分**（`Model.pos` 用途位 → `Segment.segKey`）。型号侧归段的**唯一**出处。
+ *
+ * ══ 今天的行为是 X，应该是 Y（WO-COMPUTED-EDGE 实测）════════════════════════════
+ * **X**：`model_in_segment` 的端点由种子里一句 `modelId.includes("S192") ? "ess"
+ *   : modelId.includes("L148") ? "com" : "pas"` 算出。而 `MODELS` 全表**恰好 6 型**
+ *   （`4680-NCM` `4680-LFP` `2170-NCM` `方形-LFP` `方形-NCM` `圆柱-LFP`，全文件无 `models.push`
+ *   ⇒ 任何 scale 都是这 6 型），**没有任何一个 modelId 含 `S192` 或 `L148`**
+ *   ⇒ **6 条边全部指向 `Segment "pas"`，`ess` / `com` 两个分支从未进入过**。
+ *   边有实例、检索遍历得到、四包全绿 —— 三个细分坍缩成一个，而没有任何东西会红。
+ *   （`S192-LFP`/`L148-LFP` 这两个名字的真出处是求解器参数 `problems.essModels`/`comModels`，
+ *   **不是 `Model` 目录**；照它去匹配型号 id 从第一天起就匹不中。）
+ * **Y**：型号归段由用途位 `pos` 决定 —— 这**不是本函数新发明的口径**，而是本文件
+ *   `Model.unitPrice` 早已在用的那一条（`SEG_REGISTRY.find(s => s.key === (m.pos === "储能" ? "ess" : "pas"))`）。
+ *   两处从此**共用本函数**，不再各写一遍：定价说这个型号是储能、图上说它是乘用车，
+ *   那是同一个问题的第二个答案，比缺一条边危险。
+ *
+ * ── 为什么返回值里**没有** `com`（死分支的处置：删，不是补数据）─────────────────
+ * 型号表里**根本没有商用车型号**：`pos` 的取值域只有 动力 / 储能 / 动力+储能 三种，
+ * 一个「商用」都没有。这不是数据没种够 —— 本文件 `orderUnitPriceOf` 的头注早就把它记成实测结论：
+ * 「`SEG_REGISTRY.com` 声明的 1.8 万元/套**零个承载者**，商用车客户买的是动力 NCM」。
+ * 商用车这个细分在本仓语义下**由买方业态判定**（`customerSegKeyOf` / `segKeyOfBusinessType`，
+ * 走的是 `Order.businessType`），**不由型号判定** ⇒ 型号侧留一个 `com` 分支就是留一个
+ * 永远进不去的分支。**故删掉，而不是往 `MODELS` 里塞一个假型号把它喂活。**
+ *
+ * ⚠ `===` 而不是 `includes`：`4680-LFP` 的 `pos` 是「动力+储能」⇒ 归 `pas`。
+ * 这一条与 `Model.unitPrice` 的归段**必须逐字一致**（同一个函数，想不一致都难）。
+ * 本文件 `orderUnitPriceOf` 头注记的那个「定价用 `===`、选型用 `includes`」的口径不一致，
+ * 是**选型侧**（`modelsForBusinessType`）的账，不在本函数范围内；本函数只保证
+ * 「型号归哪个段」在定价与图谱两处是同一个答案。
+ */
+export function segKeyOfModelPos(pos: string): "pas" | "ess" {
+  return pos === "储能" ? "ess" : "pas";
+}
+
+/**
+ * 订单客户名 → 客户主数据名（无归属登记时返回 `undefined` —— **不兜底、不轮转**）。
+ * 返回 undefined 时调用方必须**不建边**（诚实缺席），而不是随手落一个客户。
+ */
+export function customerNameOfOrderCust(cust: string): string | undefined {
+  return ORDER_CUST_TO_CUSTOMER[cust];
+}
+
+/** 细分名（乘用车/储能/商用车）→ 业务类型枚举（DemandSegment.segment 口径）。 */
+export function businessTypeOfSegment(segment: string): BusinessType {
+  if (/储能/.test(segment)) return "storage";
+  if (/商用/.test(segment)) return "commercial";
+  return "passenger";
+}
+/**
+ * WO-W5·业务类型订单量整形（确定性 R6·体量极小仅商用车）：商用车订单波动大 → 按 volatilityFactors 取模缩放
+ * （hashString(so)%len·同 seed 字节一致），乘用/储能不动（量口径不变·金值安全）。返回 ≥1 的整数套。
+ */
+export function shapeBusinessTypeQty(businessType: BusinessType, qty: number, so: string): number {
+  const reg = (BATTERY_SOLVER_PARAMS.businessTypeRegime as Record<string, { volatilityFactors?: number[] }>)[businessType];
+  const factors = reg?.volatilityFactors;
+  if (!factors || factors.length === 0) return qty;
+  const f = factors[hashString(so) % factors.length]!;
+  return Math.max(1, Math.round(qty * f));
+}
 const BOTTLENECKS = ["电芯", "模组", "PACK", "化成"];
+
+// PRD-IND-order-aggregate §4：HTML 24 单语义基底（so/cust/model/qty/due/pri）。
+// 按年营收 700 亿元企业规模校准：qty 单位=套，均价≈1.8 万元/套，月营收≈58 亿元 →
+// 月需≈32,000 套；200 单/月则单均≈1,600 套。原原型数字（6~18）按「万套」理解偏大、按「套」理解偏小，
+// 统一调整为 500~2,700 套区间，与 extra orders 同分布（randInt 500~2,700），保持相对大小关系不变。
+export const HTML_ORDERS: { so: string; cust: string; model: string; qty: number; due: string; pri: string }[] = [
+  { so: "SO-3391", cust: "广汽集团", model: "4680-NCM", qty: 7259, due: "2026-06-24", pri: "高" },
+  { so: "SO-3402", cust: "长安汽车", model: "4680-NCM", qty: 14518, due: "2026-07-02", pri: "高" },
+  { so: "SO-3415", cust: "吉利汽车", model: "4680-NCM", qty: 4033, due: "2026-07-18", pri: "中" },
+  { so: "SO-3420", cust: "东风汽车", model: "4680-NCM", qty: 10485, due: "2026-07-09", pri: "高" },
+  { so: "SO-3431", cust: "广汽集团", model: "2170-NCM", qty: 8872, due: "2026-06-28", pri: "中" },
+  { so: "SO-3437", cust: "宇通客车", model: "2170-NCM", qty: 5646, due: "2026-07-14", pri: "中" },
+  { so: "SO-3445", cust: "长安汽车", model: "方形-NCM", qty: 12098, due: "2026-07-05", pri: "高" },
+  { so: "SO-3452", cust: "国家电网", model: "方形-LFP", qty: 17744, due: "2026-06-30", pri: "高" },
+  { so: "SO-3458", cust: "南方电网", model: "方形-LFP", qty: 21777, due: "2026-07-12", pri: "高" },
+  { so: "SO-3464", cust: "国家电投", model: "方形-LFP", qty: 8872, due: "2026-07-25", pri: "中" },
+  { so: "SO-3470", cust: "南方电网", model: "圆柱-LFP", qty: 4033, due: "2026-07-08", pri: "中" },
+  { so: "SO-3476", cust: "国家电网", model: "4680-LFP", qty: 7259, due: "2026-07-20", pri: "中" },
+  { so: "SO-3481", cust: "广汽集团", model: "4680-NCM", qty: 10485, due: "2026-07-11", pri: "高" },
+  { so: "SO-3486", cust: "吉利汽车", model: "方形-NCM", qty: 5646, due: "2026-07-22", pri: "中" },
+  { so: "SO-3490", cust: "东风汽车", model: "4680-NCM", qty: 16131, due: "2026-07-06", pri: "高" },
+  { so: "SO-3495", cust: "南方电网", model: "方形-LFP", qty: 19357, due: "2026-07-16", pri: "高" },
+  { so: "SO-3501", cust: "国家电投", model: "方形-LFP", qty: 12098, due: "2026-07-28", pri: "中" },
+  { so: "SO-3506", cust: "宇通客车", model: "2170-NCM", qty: 7259, due: "2026-07-19", pri: "中" },
+  { so: "SO-3512", cust: "长安汽车", model: "方形-NCM", qty: 8872, due: "2026-07-03", pri: "高" },
+  { so: "SO-3518", cust: "国家电网", model: "方形-LFP", qty: 16131, due: "2026-07-24", pri: "中" },
+  { so: "SO-3523", cust: "广汽集团", model: "4680-NCM", qty: 12098, due: "2026-07-13", pri: "高" },
+  { so: "SO-3529", cust: "南方电网", model: "圆柱-LFP", qty: 5646, due: "2026-07-10", pri: "中" },
+  { so: "SO-3534", cust: "东风汽车", model: "4680-NCM", qty: 14518, due: "2026-07-27", pri: "高" },
+  { so: "SO-3540", cust: "宇通客车", model: "2170-NCM", qty: 4033, due: "2026-07-17", pri: "低" },
+];
+
+/**
+ * WO-ORDER-BOOK-500 · 订单簿规模（demo/scale S 的订单条数）—— **条数的单一来源**。
+ *
+ * 上面 24 张是 PRD-IND-order-aggregate 的手写语义锚点（`SO-3391`… 是全仓测试/文档引用的坐标），
+ * **原样保留、字节不动**；`generateBattery` 把簿子补足到本数。
+ */
+export const ORDER_BOOK_SIZE = 500;
+
+/**
+ * 订单簿三态的**确定性**分配（补足段专用）。
+ *
+ * 输入 `sos` = 补足段订单号（按生成序），`targets` = 该段各态还差多少张。
+ * 做法：先按目标条数摊出**恰好**那么多个状态标签，再用 `mulberry32(seed ^ hash("order-status"))`
+ * 做 Fisher–Yates 洗牌打散 —— 于是
+ *  ① **条数精确**（不是概率抽样，不会「大约 70%」）；
+ *  ② 状态与 `so` 的自然序**不相关**（否则会长成「前 350 张全已完成」这种一眼假的块状分布）；
+ *  ③ **不碰主 `rng` 流**（独立种子子流·仿 `deriveOrderLines` 的既有做法）⇒
+ *     L/XL 补足段的 model/qty/due 字节基线不位移（R6）。
+ */
+function assignOrderStatuses(sos: string[], targets: Record<OrderStatus, number>, seed: number): Map<string, OrderStatus> {
+  const labels: OrderStatus[] = [];
+  for (const s of ORDER_STATUSES) for (let k = 0; k < (targets[s] ?? 0); k++) labels.push(s);
+  // 目标与实际条数不等时按实际截断/补 OPEN（诚实兜底：宁可少一态，不许静默改总数）。
+  while (labels.length < sos.length) labels.push("OPEN");
+  labels.length = sos.length;
+  const rngStatus = mulberry32(seed ^ hashString("order-status"));
+  for (let i = labels.length - 1; i > 0; i--) {
+    const j = Math.floor(rngStatus() * (i + 1));
+    [labels[i], labels[j]] = [labels[j] as OrderStatus, labels[i] as OrderStatus];
+  }
+  return new Map(sos.map((so, i) => [so, labels[i] as OrderStatus]));
+}
+
+/**
+ * WO-ORDER-BOOK-500 · 客户业态 → 可下单型号池（**化学体系必须与用途自洽**）。
+ *
+ * 判据不是我拍的，是从 24 张锚点订单实测反推出来的：
+ *  · `passenger` / `commercial` → 只出现 NCM 动力型号（2170-NCM / 4680-NCM / 方形-NCM）
+ *  · `storage`                  → 只出现 LFP 储能型号（4680-LFP / 圆柱-LFP / 方形-LFP）
+ *
+ * 实现读的是 `MODELS` 早就有的 `pos` 列（动力 / 储能 / 动力+储能）—— **不另立一份型号分类**。
+ * 「动力+储能」（4680-LFP）两个池子都进，这正是那个值的含义，不是漏筛。
+ *
+ * 不做这层筛选会开出「国家电网订 2170-NCM」这种单：储能客户买三元动力电芯，
+ * 数据一被追问就穿帮，而且会让「按化学体系看客户结构」这类分析给出反的结论。
+ */
+function modelsForBusinessType<T extends { pos?: string }>(models: T[], businessType: BusinessType): T[] {
+  const want = businessType === "storage" ? "储能" : "动力";
+  const pool = models.filter((m) => String(m.pos ?? "").includes(want));
+  return pool.length > 0 ? pool : models; // 型号表里没有该用途时不静默空池（诚实兜底回全池）
+}
+
+/**
+ * 状态 → 交期相对 `forecastStart` 的天偏移（**交期必须与状态自洽**，否则数据一追问就穿帮：
+ * 「已完成」的单交期却在未来 = 还没到期就完工了，「已下待排产」的单交期在过去 = 一下单就已逾期）。
+ *
+ * `spread` 传入补足段原有的 `randInt(rng, 0, 180)` 抽样值 —— **复用同一次抽样**（不新增 rng 调用）
+ * 只改落点区间，故补足段的 rng 流步长与改前完全一致（R6）。
+ *
+ *  - `COMPLETED`     → 过去 1–180 天（已交付关闭）
+ *  - `IN_PRODUCTION` → 近端 −14…+45 天（在制；留少量已逾期在制单 —— 真实且正是要被看见的问题单）
+ *  - `OPEN`          → 未来 10–180 天（待排产；与 24 张锚点单的 +14…+48 区间同向重叠）
+ */
+function dueDayForStatus(status: OrderStatus, spread: number): number {
+  const s = Math.abs(Math.trunc(spread));
+  if (status === "COMPLETED") return -(1 + (s % 180));
+  if (status === "IN_PRODUCTION") return (s % 60) - 14;
+  return 10 + (s % 171);
+}
 
 // ---------------------------------------------------------------------------
 // §S1 scenario-pack solver parameters (battery defaults — NEVER hardcoded in solver code)
@@ -46,34 +678,269 @@ export const BN_FACTORS = [
   "良率波动",
 ] as const;
 
+// WO-SCALE-COHERENCE（R18 realized 层·断裂点E'）：realized 产出序列 output:line 的锚均值 + 排产达成率。
+// output:line 生成器锚均值（tsGenerators 内 base.mean 单一来源）；per-base 尺度据此派生。
+export const OUTPUT_LINE_BASE_MEAN = 30000;
+// 实现产出 = 基地夹定产能(formationCapDaily=computeRollup dailyCells) × 排产达成率（= attainment:line/base 基准 0.914，
+// 供给紧俏锂电按此达成率兑现）。留 ~8.6% 达成缺口 = 校准良率信号所踏的真实缺口（非尺度断裂）。
+export const REALIZED_ATTAINMENT = 0.55;
+/**
+ * output:line per-base 尺度因子：令 realized(mean-over-lines) = 基地夹定产能 × 排产达成率，与 computeRollup 同锚。
+ * 断裂点E'（dev 原单遗漏的第六层）：capacity(computeRollup) 已按 gwh 派生到 365万套/年锚，但 realized(output:line)
+ * 仍锁死玩具均值 30000（≈148万套/年·40% 达成）→ 校准 predicted/actual 脱尺度 1.3~4.6× → MAPE 恒 134% 淹没良率信号。
+ */
+export function outputLineScaleForBase(baseFormationCapDaily: number): number {
+  if (!(baseFormationCapDaily > 0)) return REALIZED_ATTAINMENT; // 兜底 ≈ 原 30000 尺度
+  return (baseFormationCapDaily * REALIZED_ATTAINMENT) / OUTPUT_LINE_BASE_MEAN;
+}
+
+// 名义工序良率（电池包基线 Process.yield 均值口径·数据侧单一来源）：computeRollup 与 VLE 独立产能链(vle-oracle)
+// 均以「基地代表良率/名义」缩放共享化成/老化封顶——令 gwh 夹点保留良率敏感度（M11 校准杠杆），基线(良率≈名义)
+// 缩放≈1 不动锚。放数据侧(battery)供引擎与 oracle 同口径共享输入常数，不违 oracle 逻辑独立性。
+export const NOMINAL_PROCESS_YIELD = 0.973;
+
+// ---------------------------------------------------------------------------
+// 规则库（A5 · 场景包种子）—— **业务阈值的单一上游真源**
+// ---------------------------------------------------------------------------
+// G-10 P4：本数组必须定义在 `BATTERY_SOLVER_PARAMS` **之前**，因为凡与规则同义的推演系数/阈值
+// （C04 认证系数 · C09 数据健康降级 · C18 现金底线 · C21 产销偏差）一律由 `ruleParamOf()` 从这里派生，
+// 不再在 solver_params 里各写一份同值字面量（此前那份"诱饵"才是求解器真读的，改规则不改推演）。
+// 运行期同源：`RULE_PARAM_BINDINGS` + `RulesService` 发布投影（改规则 → solver_params 随之变）。
+// ── WO-PROP-CLAMP · 推演状态量衰减率（三个记号必须排在 BATTERY_RULES **之前**）──────────
+// 与本段头 G-10 P4 那条同一个理由：C35 的 `params` 直接引用下面两个记号，
+// `const` 有 TDZ，写在 `BATTERY_RULES` 之后会在模块加载期直接 ReferenceError（不是类型问题，是运行期）。
+
+/** 衰减率所在的规则（`BATTERY_RULES` 的 C35）—— 改这条规则即改推演，引擎不内联任何 λ。 */
+export const STATE_DECAY_RULE_KEY = "C35";
+/** 压力族共用的衰减率参数名。 */
+export const STATE_DECAY_PARAM_KEY = "pressureDecayPerTick";
+
+/**
+ * 压力族衰减率 λ —— **从本仓既有的「冲击能持续多久」模型派生**，不是随手挑一个数。
+ *
+ * 出处：`BATTERY_SOLVER_PARAMS.risk` 的 `pulseWindow: 3` / `pulseDecayDen: 4`
+ * （`solvers/risk.ts` `tensionSeries`：事件脉冲按 `1 − dist/pulseDecayDen` 线性衰减，
+ *  超过 `pulseWindow` 拍即不再影响）。即本仓对"一次冲击还剩多少"的既有口径是：
+ *  第 `pulseWindow` 拍上残留 `1 − pulseWindow/pulseDecayDen` = 1 − 3/4 = **0.25**。
+ *
+ * 几何衰减要在同一拍达到同一残留 ⇒ `(1−λ)^pulseWindow = 1 − pulseWindow/pulseDecayDen`
+ *                              ⇒ `λ = 1 − 0.25^(1/3) ≈ 0.370`。
+ *
+ * ── 为什么形状取几何（指数）而不是照抄那条线性式 ──────────────────────────────
+ * 线性衰减 `1 − t/den` 会在 `t = den` 处**穿过 0 并继续变负**，那不是衰减是反号；
+ * 它在 `tensionSeries` 里能用，是因为那里有 `dist > pulseWindow ⇒ continue` 的硬窗口兜着。
+ * 状态量是**逐拍累积**的，没有窗口可言，必须用一个恒正、且对常量入流有**有限稳态**
+ * （`rest + inflow/λ`）的形状 —— 几何衰减是满足这两条的那一个。残留口径仍与既有模型对齐。
+ */
+export const PRESSURE_DECAY_PER_TICK = 0.37;
+
+export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
+  // DF.14：C03/C05/C13/C09 前端 mock 规则库也物化同一条 —— expression 从 `PARITY_RULE_SEEDS` 派生，
+  // 两端只此一处，不再各写一份字面量（此前那份手抄副本正是欠账 #78 的机制面：值对齐过一次，机制没变）。
+  { key: "C03", name: "产能上限约束", expression: parityRuleExpression("C03"), severity: "BLOCK", category: "产能" },
+    // DF.13 C08 外协红线：**表达式与命名阈值同源生成**，禁内联。此前 expression 写死一个比现行更宽的常数，
+    // 而三个求解器、界面文案、livedin 发布态都按现行红线走 —— 规则库与推演各说各话，且四包测试全绿。
+    // WO-RULE-EXPR-PARAMS（闭掉 G-C08-EXPR-PARAM-SPLIT）：expression 现在**引用** `params.outsourceRatioMax`
+    // 而不再把同一个数再渲染一遍字面量 —— 阈值在这条规则上只剩 params 一处，改它即同时改判定与推演
+    // （`RULE_PARAM_BINDINGS` 已补上 C08 → `whatIf.outsourceMax` 那一行，此前该 param 全仓零消费方 = 诱饵）。
+    // ⚠ key/name/severity/category 刻意保持**字面量**：规则码是标识符、不是会漂的业务数，
+    //   且 `rule-closure:check` 靠正则 `key: "Cxx", name:` 扫本表建"已定义规则集"——把 key 也派生会让它瞎掉
+    //   （亲测：改成 OUTSOURCE_REDLINE.ruleKey 后该门立刻报「C08 被引用但未定义」）。**只有阈值该单源**。
+    { key: "C08", name: "外协比例红线", expression: outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { param: OUTSOURCE_REDLINE.paramKey }), severity: "WARN", params: { [OUTSOURCE_REDLINE.paramKey]: OUTSOURCE_REDLINE.maxRatio }, category: "外协" },
+  { key: "C13", name: "客户信用额度", expression: parityRuleExpression("C13"), severity: "BLOCK", category: "财务" },
+  // A8.5 timeseries rules — evaluated against ts_agg_runs by RULE_SCAN (SUSTAIN).
+  { key: "C05", name: "产线利用率持续越线", expression: parityRuleExpression("C05"), severity: "WARN", category: "产能" },
+  { key: "C12", name: "预测偏差触发重校", expression: parityRuleExpression("C12"), severity: "WARN", category: "需求" },
+  // §7.14 年度情景规则校验（情景卡的 C18/C23 行走真实规则引擎）。
+  // C18 params.cashFloor：现金垫底线 —— 出厂值从**目标登记册** `PLAN_GOAL_TARGETS.cashFloor` 派生
+  // （不再写第三份同值 50：此前 sop.cashFloor / planGenerate.targets.cashFloor / C18 expression 各一份）。
+  // 出厂后它是**可编辑的当期口径**：发布新版 C18 即投影进 solver_params 的两处现金底线（见 RULE_PARAM_BINDINGS）。
+  // WO-RULE-EXPR-PARAMS：expression 引用 `params.cashFloor`，不再复写一遍 50 —— 此前改 params 只改了
+  // 求解器算数（sop.cashFloor / planGenerate.targets.cashFloor），C18 自己的判定仍按 expression 里的 50 走。
+  { key: "C18", name: "现金垫底线", expression: `AnnualScenario.cashCushion < ${ruleParamRef("cashFloor")}`, severity: "BLOCK", params: { cashFloor: PLAN_GOAL_TARGETS.cashFloor }, category: "财务" },
+  { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN", category: "财务" },
+  // catalog-battery §3 C26–C33（DSL 表达式 = 违规谓词,expression 真→passed=false；复杂算术取
+  // 去归一化/派生字段：yieldFloor=基线-0.02 / minYieldRate=自产-0.02 / daysToStart=开工日-today
+  // / deviationPct=ABS(实际-计划)/计划。此前硬编码在求解器,规则引擎不可见;现注册为一等规则。
+  { key: "C26", name: "认证资源上限", expression: "Cert.parallelTasks > Cert.engineerGroups", severity: "BLOCK", category: "认证" },
+  { key: "C27", name: "长协执行偏差", expression: "Lta.deviationPct > 0.05", severity: "WARN", category: "物料" },
+  { key: "C28", name: "呆滞预警", expression: "Batch.idleDays > 90", severity: "WARN", category: "物料" },
+  { key: "C29", name: "排产冻结期", expression: "Order.daysToStart < 3", severity: "BLOCK", category: "排产" },
+  { key: "C30", name: "良率连降停线评审", expression: "SUSTAIN(Process.dailyYield < Process.yieldFloor, 3)", severity: "BLOCK", category: "质量" },
+  { key: "C31", name: "外协质量门", expression: "Outsource.yieldRate < Outsource.minYieldRate", severity: "BLOCK", category: "外协" },
+  { key: "C32", name: "逾期冻结", expression: "Customer.maxOverdueDays > 30", severity: "BLOCK", category: "财务" },
+  // C33 碳护照前置：约束 = 目的地EU IMPLIES 碳足迹<=阈值；违规 = NOT(约束)（用 IMPLIES，C33 的招牌用例）。
+  { key: "C33", name: "碳护照前置", expression: "NOT (Order.destination == 'EU' IMPLIES Order.carbonFootprint <= Order.euCarbonThreshold)", severity: "BLOCK", category: "合规" },
+  // 规则即引用（PRD-rules-as-references 附录A）：补全 13 条「被引用但未定义」规则为一等规则——
+  // 消灭前端"（当前库中未找到定义）"、规则闸不再空过。expression 用既有 DSL（无算术/无 param 插值），
+  // 命名阈值落 params（求解器 P2 改读 rule.params 去硬编码；改 param 即改推演）。C15/C24 毛利底线
+  // 不复制 SEG_REGISTRY（单一来源），floorPct 由分段对象字段在求值期解析（params 留空）。
+  // **P4 纪律（不许并存）**：params 只保留「被真消费」的命名阈值——
+  //   ① 被 `RULE_PARAM_BINDINGS` 投影进 solver_params 的（C04/C09/C18/C21）；
+  //   ② 其余阈值若已写在 expression 里并由规则引擎真求值，就**不再复制一份进 params**
+  //      （C11 minBufferDays / C22 maxChangeoverMin / C25 assumeTolerancePct 曾各存一份同值副本、
+  //       全代码库无人读 = 诱饵，已删；阈值单源 = expression）。
+  { key: "C01", name: "产线设计产能上限", expression: parityRuleExpression("C01"), severity: "BLOCK", params: {}, category: "产能" },
+  { key: "C02", name: "化成/老化串并产能口径", expression: parityRuleExpression("C02"), severity: "WARN", params: {}, category: "产能" },
+  // C04 **刻意不引用 params**（别"顺手统一"）：它的 expression 是**分类谓词**（认证状态≠量产），
+  // 里面没有可参数化的数值阈值；而它的两个 params 是**产能折算系数**（算数维，经 RULE_PARAM_BINDINGS
+  // 投影进 `certFactors.*` 供求解器乘）。二者不是同一个数的两份拷贝，故无分叉可言 —— 这条规则
+  // 本来就没有 G-C08-EXPR-PARAM-SPLIT 那个病。硬塞一个 `params.x` 进去只会造出一个新的假阈值。
+  { key: "C04", name: "仅认证产线计入产能", expression: "Line.certStatus != '量产'", severity: "WARN", params: { productionFactor: 1, pendingCertFactor: 0.6 }, category: "认证" },
+  { key: "C06", name: "物料齐套缺口口径(MRP)", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料" },
+  // C09 params：staleHours（何时降级）+ degradedFactor（降到多少）= 规则拥有的两个真阈值，投影进
+  // solver_params `health.*`。**normalFactor 已删**：未降级时的 P90 基线系数 `health.normal` 归 M11 校准
+  // 参数 `p90_health`（QUANTILE 方法按覆盖率反解）所有——规则再声明一份同值就是第二个写者 + 诱饵。
+  // WO-RULE-EXPR-PARAMS：`> params.staleHours` 取代写死的 `> 2` —— 阈值只存 params 一处。
+  // DF.14：表达式与两个 params 都从 `PARITY_RULE_SEEDS` 派生（前端 mock 物化同一条，见 fixtures.ts）。
+  { key: "C09", name: "数据时延临时降级", expression: parityRuleExpression("C09"), severity: "WARN", params: parityRuleParams("C09"), category: "质量" },
+  { key: "C10", name: "场景必填+行动审批留痕", expression: "Action.approver == NULL OR Action.audited == FALSE", severity: "BLOCK", params: {}, category: "合规" },
+  { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", severity: "WARN", params: {}, category: "排产" },
+  { key: "C15", name: "经营毛利底线", expression: "Order.marginPct < Order.floorPct", severity: "BLOCK", params: {}, category: "财务" },
+  { key: "C16", name: "齐套缺口预警", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料" },
+  // WO-RULE-EXPR-PARAMS：`> params.balanceDeviationPct` 取代写死的 `> 0.10`（曾是同值第二份）。
+  { key: "C21", name: "产销平衡偏差", expression: `SopVersionRow.balanceDeviationPct > ${ruleParamRef("balanceDeviationPct")}`, severity: "WARN", params: { balanceDeviationPct: 0.1 }, category: "规划" },
+  { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: {}, category: "换型" },
+  { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {}, category: "财务" },
+  { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: {}, category: "需求" },
+  // ── WO-A6-CONTENTION · 规则库里的**第一条多主体谓词**（`docs/PRD-sandbox-redesign.md` §9 A6 的前半段）──
+  // 病根（`docs/AUDIT-a6-rule-carriers.md` §4.4 实测）：此前 28 条 expression 的形状只有 5 种，
+  // **无一条是多主体谓词** —— 全是「某一个对象的某个量越某条线」。而「同一基地被 ≥2 条业务线争」
+  // 需要**跨多个对象先分桶再比**，规则库里一条都没有 ⇒ 「有没有争用」在规则层结构性判不出来。
+  // 同一份审计也证明这不是死路：DSL 的聚合算子 `SUM|MIN|MAX|COUNT|AVG`（`ruledsl.ts:11/66/502`）
+  // **实现有、测试有、28 条规则 0 条用**（「能力在、零消费方」）。本条就是它的第一个消费方。
+  //
+  // 表达式两个合取项各管一半，缺一条都会把判定变成别的东西：
+  //  ① `COUNT(Base.segClaims.dailyRate) > 1` —— **争的人得 ≥2**。摘掉它，单业务线压满的基地
+  //     （实测 jinhua/handan/zaozhuang 三个都超线）会被判成"跨业务线争用"，而那里根本没有第二条线可裁。
+  //  ② `Base.claimedDailyRate > Base.capacityDailyPacks` —— **索取真越过产能面**。摘掉它，
+  //     只要基地上有两条业务线就报争用，而两条线各占一半、产能绰绰有余时无须任何取舍。
+  // 阈值（产能面）是**另一个字段**而不是数字 ⇒ `readRuleThreshold` 判 source="field"：改数据即改判定，
+  // 引擎里一个业务阈值都不用存（`chain-impediment.ts` 文件头铁律），也不抬 A2 的 literal 棘轮。
+  { key: "C34", name: "跨业务线产能争用", expression: "COUNT(Base.segClaims.dailyRate) > 1 AND Base.claimedDailyRate > Base.capacityDailyPacks", severity: "BLOCK", params: {}, category: "产能" },
+  // WO-PROP-CLAMP · 推演状态量衰减率。**这条规则存在的唯一理由就是让 λ 可编辑**：
+  // 本仓 **47** 条传导边的 `coefficientRef` 实测 **0 条在用**、全部回落内联。
+  // ⚠ **订正（WO-COEF-FROM-BOM·2026-09-08 实测）**：原文写「引用机制**形同虚设**」——**这个定性是错的，
+  // 照它修会修错方向**。「形同虚设」读作**没接线**，而实测是铁律 0.5 三分法的**「接了线没数据」**：
+  // 读取方 `sim/propagation.ts effectiveCoefficient` 真在跑、建规则时 `app.ts` 真校验、
+  // 披露层 `sim/disclosure.ts` 真回带 `coefficientSource`。**亲手驱动过一遍**（真起 datacore
+  // `SEED_DEMO=1` + 真 HTTP）：建一条 `coefficientRef → C35.pressureDecayPerTick(0.37)`、
+  // 内联 `coefficient` 故意写成 0.65 的探针边 ⇒ 回包 `coefficientSource:"CONFIG_REF"` ·
+  // `refUnresolved:false` · 生效系数 **0.37**（读数 15.8925 → 9.0465，比值 = 0.37/0.65，
+  // 即内联值**被引用值盖过**）。⇒ 缺的是**种子里没人填 ref**，不是机制不存在。
+  // 两者修法完全不同：前者「填数据」，后者「造机制」——把前者报成后者会直接歪掉排期
+  // （铁律 0.5 ③ 点名的正是这一形态）。原文的「42」同时也已过期（今日现算 47）。
+  // 衰减率是「一次冲击几天散掉」这条**经营口径**，必须落在规则库里改一处即改推演，
+  // 而不是再往引擎里内联一个常数（`STATE_VAR_DOMAINS` 只存**引用**，不存值）。
+  // 出厂值的推导见 `PRESSURE_DECAY_PER_TICK` 注释（从 risk.pulseWindow/pulseDecayDen 派生，非拍脑袋）。
+  { key: "C35", name: "推演状态量衰减率", expression: `SimStateVar.decayPerTick == ${ruleParamRef(STATE_DECAY_PARAM_KEY)}`, severity: "WARN", params: { [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK }, category: "推演" },
+];
+
+/**
+ * G-10 P4 · **场景包侧单源取值口径**：solver_params 种子里凡与某条规则同义的阈值，一律经此函数从
+ * `BATTERY_RULES` 取——**禁止再写一份同值字面量**（那份就是"改规则不改推演"的诱饵）。
+ * 取不到即**抛错**（种子构建期炸，不静默回落一个看似正常的数）——规则被删/改名要立刻暴露，别让
+ * 推演悄悄换了口径（诚实 > 好看；拒绝 > 静默错数）。
+ */
+export function ruleParamOf(ruleKey: string, param: string): number {
+  const v = BATTERY_RULES.find((r) => r.key === ruleKey)?.params?.[param];
+  if (typeof v !== "number" || !Number.isFinite(v)) {
+    throw new Error(`场景包规则 ${ruleKey}.params.${param} 缺失或非数值 —— solver_params 无法从规则派生（G-10 单源）`);
+  }
+  return v;
+}
+
 export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
-  forecastStart: "2026-07-01",
+  forecastStart: "2026-06-10",
   packCellCount: 96,
-  certFactors: { 量产: 1.0, 认证中: 0.6 },
+  // WO-SCALE-COHERENCE（R14/R18）：gwh↔套 桥常数 + 尺度锚，值来自 @platform/contracts 单一来源（禁内联）。
+  packEnergyKwhAnchor, // 能量/套(kWh)：Base.gwh×1e6/packEnergyKwhAnchor = 名牌套
+  operatingDaysPerYear, // 年运营日：capacityDaily/max_capacity_day 年化口径
+  scaleAnchorRevenue, // 各 scale 档目标年营收锚（亿）
+  // 产能微观参数按 gwhᵢ 派生的确定性系数（令 capacity_rollup 的 min 绑定 gwh 夹点·不改求解器）。
+  scaleCoherence: {
+    lineHeadroom: 1.2, // 线级夹点相对基地(gwh)夹点的余量 → 令 min() 绑基地夹点(化成/老化)而非玩具线级
+    channelOutputBase: 85, // 单化成通道日产(套) 基值
+    channelOutputSpan: 11, // 单化成通道日产抖动幅（确定性 hash·85–95）
+    agingHeadroom: 1.02, // 老化库位相对线级夹点余量
+    serialCellsPerCtSec: 79600, // 保守估：串行工序在最坏 avail/oee/yield/att/util 下 日产(电芯)/(1/ct) 系数 → 据此反解 ctSeconds 令 serial≥夹点
+    ctSecMin: 0.4, // 节拍下限（防大基地 ct 过小失真）
+    ctSecMax: 1.9, // 节拍上限（小基地保留原区间量级）
+    modelPriceVarPpk: 30, // 型号单价 ±30‰ 确定性微差（围绕 SEG.priceWan）
+  },
+  // G-10 P4 单源：认证系数 = C04 的命名阈值（此前这里另存一份同值 { 量产:1.0, 认证中:0.6 }，
+  // 求解器只读这份、C04.params 没人读 → 改规则不改推演）。
+  certFactors: { 量产: ruleParamOf("C04", "productionFactor"), 认证中: ruleParamOf("C04", "pendingCertFactor") },
   ramp: { base: 0.88, step: 0.03, fullWeek: 5 },
   maintMult: 0.72,
   health: { normal: 0.93, degraded: 0.9, staleHours: 2 },
-  whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: 0.2 },
-  logistics: { byAddress: { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 }, defaultDays: 7 },
+  // DF.13：outsourceMax 是 C08 红线在求解器侧的同一个数 → 从 OUTSOURCE_REDLINE 派生（禁内联裸阈值）。
+  whatIf: { nightShiftCoef: 0.06, channelCoef: 0.05, outsourceMax: OUTSOURCE_REDLINE.maxRatio },  logistics: { byAddress: { 上海: 3, 广州: 5, 北京: 4, 成都: 6, 海外: 14 }, defaultDays: 7 },
+  // WO-GSIM-1-DATA · 跨基地调拨物流费率常数（R14：业务常数入册·禁生成环内联魔数）。
+  // transitDays = ceil(baseDistanceKm / dailyTruckKm)（下限 minTransitDays·同区非 0）；
+  // freightCost = baseDistanceKm × tonKmRate × (qty × qtyToTon)（确定性·同基地=0 距=0 费=0）。
+  interbase: { dailyTruckKm: 600, minTransitDays: 1, tonKmRate: 0.55, qtyToTon: 0.4 },
+  // WO-PENALTY-CHANGEOVER-ONTOLOGY · 违约金费率册（R14：业务常数入册·禁生成环内联魔数）。
+  //
+  // `OrderLine.breachPenalty = OrderLine.qty × ratePerUnitYuan[所属订单.pri]`（元/整行）。
+  //
+  // ⚠ **诚实位 `synthetic: true` 不是装饰**：这三个数**没有真实合同条款做出处**。
+  //   来历是前端多目标面板旧版内联的那张「优先级 → 元/套」表（高 26000 / 中 9000 / 低 2600），
+  //   那套系数因为「本体上没有这一格」被整根轴退成显式缺席位；本单把它从**客户端自造口径**
+  //   搬成**本体事实 + 在册费率**，值保持不变以免屏上读数无解释地跳变。
+  // ⚠ 量级自陈（读到这里的人必须知道，别把它当真实 LD 条款）：本租户 `Model.unitPrice`
+  //   约 2.1 万元/件量级 ⇒ 高优先级档的赔付率超过货值本身。真实 LD 条款通常封顶在合同额的
+  //   一个百分比，**本表不是**。要接真实条款：换掉本表的值（或改成从合同对象读），本体那一格不动。
+  // ⚠ 单位为什么写在注释里而不是本体上：本册（PROPERTY_UNITS）在 R-UNIT 裁决下没有
+  //   `元/件`/`元/套` 这类以物理计数作分母的货币单位 ⇒ 费率本身在本平台声明不出来，
+  //   只有乘完 qty 的总额可以（那一格声明的是「元」）。故费率只活在种子侧，且只此一处。
+  breachPenalty: {
+    synthetic: true,
+    ratePerUnitYuan: { 高: 26000, 中: 9000, 低: 2600 },
+    /** `pri` 取到表外值时的兜底档（不静默给 0 —— 给 0 等于"这单赔不赔都行"，是个业务断言）。 */
+    defaultPri: "低",
+  } as { synthetic: boolean; ratePerUnitYuan: Record<string, number>; defaultPri: string },
+  // WO-OPT-WHATIF-DATA · 设施选址成本费率册（R14：业务常数入册·禁生成环内联魔数）。
+  // Base.openCost = gwh × gwhFixedWan + lines × lineFixedWan（规模派生·万元/年）；
+  // Base.serveCost = 产能加权全网平均干线距离km × servePerKmWan（地理派生·万元/需求点·年）。
+  // 三个费率**只在此一处**；两个派生量都不消耗 rng（R6 字节一致，见 baseOpenCostWan/baseServeCostWan）。
+  facilityCost: { gwhFixedWan: 120, lineFixedWan: 260, servePerKmWan: 0.05 },
+  // WO-W5 · 业务类型（乘/商/储）经营场景 regime（R14·入册·禁求解器内联魔数）。三类差异化经营场景的确定性种子参数：
+  //   dedicationWeight：该业务线在共享工厂中的**专线产能配比**——求解器据此按类可产基地年产能 × 权重算类占用率
+  //     （util = 类年需求 / 类年产能×权重）。默认令三类占用率落到产品负责人 spec 的三档：乘用车产能不足(>1)、
+  //     储能~95%稳、商用车空闲(<0.6)。改需求集(勾选) → util 真变（capacity 与需求解耦·非前端假过滤）。
+  //   earlyDeliveryLeadDays：乘用车部分客户需**提前交付**的提前天数（订单加 early 标 + earlyDue 提前交期·additive）。
+  //   earlyDeliveryMod：乘用车订单命中提前交付的确定性取模（hashString(so)%mod===0·同 seed 字节一致 R6）。
+  businessTypeRegime: {
+    passenger: { dedicationWeight: 0.86, earlyDeliveryLeadDays: 14, earlyDeliveryMod: 3 }, // → 占用率≈1.20（产能不足·>1）
+    // 商用车 volatilityFactors：订单量确定性高波动整形（hashString(so)%len 取因子·体量极小仅商用·R6 字节一致）→ 订单波动大。
+    commercial: { dedicationWeight: 1.0, volatilityFactors: [0.32, 2.3, 0.55, 1.9] }, // → 占用率≈0.40（产能空闲·<0.6）+ 订单波动
+    storage: { dedicationWeight: 0.84 }, // → 占用率≈0.95（稳·订单平稳经 util 稳定体现）
+  } as Record<string, { dedicationWeight: number; earlyDeliveryLeadDays?: number; earlyDeliveryMod?: number; volatilityFactors?: number[] }>,
   bottleneck: {
     factors: [...BN_FACTORS],
+    // 基地→主瓶颈因素（HTML 为准：常州·化成=瓶颈工序 92 · 江门·物料齐套 90，dash/sop 同源）。
     primary: {
       常州: "瓶颈工序",
-      合肥: "设备OEE",
-      西安: "人力工时",
-      宜宾: "物料齐套",
-      溧阳: "换型损失",
-      青岛: "物流时长",
-      南京: "良率波动",
+      厦门: "设备OEE",
       成都: "设备OEE",
-      福州: "物料齐套",
-      长沙: "瓶颈工序",
-      惠州: "物流时长",
-      盐城: "人力工时",
+      眉山: "人力工时",
+      武汉: "良率波动",
+      江门: "物料齐套",
+      合肥: "设备OEE",
+      信阳: "物流时长",
+      枣庄: "换型损失",
+      邯郸: "物料齐套",
+      自贡: "人力工时",
+      金华: "设备OEE",
+      扬州: "良率波动",
     },
     defaultPrimary: "瓶颈工序",
     mock: { mod: 9, factorMult: 7, primaryBase: 88, primaryCap: 97, secondaryBase: 55, secondaryCap: 83, utilHigh: 0.82, utilHighAdd: 6, utilLowAdd: 2 },
-    live: { oeeK: 220, oeeBase: 30, utilK: 0.9, utilBase: 8, yieldK: 600, yieldBase: 35 },
+    // WO-SANDBOX-D3 · hardCapShortfallK：硬容量缺口比 → 张力 的换算系数。
+    // 100 表示「上游要求里有 x% 推不进硬容量单元 ⇒ 张力 x」。**未夹定（capacity ≥ required）时张力恒 0**
+    // —— 硬约束不是连续张力，没夹住就不该虚报紧张（这也令基线逐字节不回归）。
+    live: { oeeK: 220, oeeBase: 30, utilK: 0.9, utilBase: 8, yieldK: 600, yieldBase: 35, hardCapShortfallK: 100 },
   },
   risk: {
     threshold: 85,
@@ -140,6 +1007,16 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       essModels: ["S192-LFP"],
       comModels: ["L148-LFP"],
       ruleKeys: { DELIVERY: "C03", MARGIN: "C15", KIT: "C06/C16", CREDIT: "C13" },
+      // PRD-IND-dash ORDER_OVR（L3222-3229）：6 单 override 逐字种子。按 so 命中即覆盖信用/毛利 + why。
+      // 命中 HTML 24 单（SO-3470/3458/3518 压价 mAdj · SO-3437/3506/3540 信用 credit）→ 台账出现"未接/提价接"。
+      overrides: {
+        "SO-3470": { mAdj: -3.2, why: "南方电网 框架价压价" },
+        "SO-3437": { credit: true, why: "宇通客车 在手应收 9.8 亿 + 新单 12.6 亿 > 信用额度 21 亿" },
+        "SO-3506": { credit: true, why: "宇通客车 二次追单，信用敞口进一步放大" },
+        "SO-3458": { mAdj: -3.0, why: "南方电网 框架协议低价条款执行" },
+        "SO-3518": { mAdj: -2.6, why: "国家电网 价格战跟价" },
+        "SO-3540": { credit: true, why: "宇通客车 低优先级单，信用额度已被占满" },
+      },
     },
   },
   // C1 · capex_scenario 年度情景测算（C23 门槛 + 三情景产能项目集）。
@@ -151,17 +1028,17 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     scenarios: {
       // 保守：不新增产能 → 无项目（IRR/util24 不参与，c23pass 视为不适用）
       conservative: { projects: [] },
-      // 基准：合肥四期 8GWh，2027-Q2（窗口起点 2026-Q3 → 第 3 季投产）。IRR≈19% > 15% 门槛。
+      // 命名以 HTML 参考原型为准（用户裁决 2026-06-23）：枣庄储能线（基准，IRR≈19% > 15% 门槛通过）。
       baseline: {
         projects: [
-          { id: "HF4", name: "合肥四期", q0: 3, cap: 3.5, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 },
+          { id: "ZZ", name: "枣庄储能线", q0: 3, cap: 3.5, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 },
         ],
       },
-      // 激进：合肥四期 + 盐城二期（盐城 2027-Q3 → 第 4 季投产）。盐城 IRR≈9% < 15% → C23 不通过。
+      // 激进：枣庄储能线 + 江门动力线（江门 IRR < 15% → C23 不通过）。
       aggressive: {
         projects: [
-          { id: "HF4", name: "合肥四期", q0: 3, cap: 3.5, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 },
-          { id: "YC2", name: "盐城二期", q0: 4, cap: 6.0, capex: [4, 8, 7], m: 1700, salvageRate: 0.05, lifeQuarters: 40 },
+          { id: "ZZ", name: "枣庄储能线", q0: 3, cap: 3.5, capex: [3, 5], m: 1800, salvageRate: 0.05, lifeQuarters: 40 },
+          { id: "JM", name: "江门动力线", q0: 4, cap: 6.0, capex: [4, 8, 7], m: 1700, salvageRate: 0.05, lifeQuarters: 40 },
         ],
       },
     },
@@ -171,7 +1048,7 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     /** 12 个月季节权重（和为 12）：月目标 = 年需求 × w/12 */
     seasonal: [0.92, 0.94, 0.99, 1.01, 1.03, 1.04, 1.06, 1.08, 1.1, 1.04, 0.95, 0.84],
     /** 季度滚动修正（按距 forecastStart 的季度序号），dem = 季度目标 × (1 + corr) */
-    rollingCorrPct: [0.02, 0.08, -0.06, 0, 0, 0],
+    rollingCorrPct: [0.02, 0.08, -0.06, 0.05, 0, 0],
     /** 2027 年目标 = 2026 同季 × (1 + growthYoY) */
     growthYoY: 0.08,
     weeksPerQuarter: 13,
@@ -180,8 +1057,12 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       { quarter: "2027-Q2", name: "合肥四期投产", delta: 2.0 },
       { quarter: "2027-Q3", name: "盐城二期爬坡", delta: 3.0 },
     ],
-    ltaMaterials: ["碳酸锂", "正极材料", "负极材料", "电解液", "隔膜", "铜箔"],
-    /** 强制一行 |偏差|>5%（升级供应风险，与风险看板到货间隙同源） */
+    // PRD-IND-quarter §4.3/§4.5(C)：长协偏差三物料 + 专属配置位（计划吨/季 + 逐行偏差%，确定性 R6，
+    // 不扰动 Shipment 的 C16 齐套逻辑）；actual = planned×(1+dev/100) 实算。
+    ltaMaterials: ["三元正极", "隔膜", "电解液"],
+    ltaPlanned: [2800, 820, 1900],
+    ltaDevPct: [-8, 1, -2],
+    /** 强制一行 |偏差|>5%（升级供应风险，与风险看板到货间隙同源；首行兜底） */
     ltaForcedPct: -8,
     deliveryPeakMin: 5,
     scenarios: {
@@ -204,22 +1085,35 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
     kitFixTons: 200,
     cashHard: 50,
     cashSoft: 55,
-    essShareBaseline: 0.32,
+    essShareBaseline: 49 / 132, // PRD-IND-audit §4.5-A2 取值对齐 HTML（≈0.3712）
     essShareTol: 0.05,
     capexSoft: 10,
-    segMargins: { pas: 18, ess: 13, com: 15 },
-    scoreH: 25,
-    scoreM: 8,
+    segMargins: Object.fromEntries(SEG_REGISTRY.map((s) => [s.key, s.marginPct])) as { pas: number; ess: number; com: number }, // DF.3 单一来源
+    scoreH: 22, // PRD-IND-audit §4.5-A2 取值对齐 HTML（25→22）
+    scoreM: 7, //  PRD-IND-audit §4.5-A2 取值对齐 HTML（8→7）
     passScore: 85,
     condScore: 60,
+    // PRD-IND-audit §4.4：外部信号诊断 E01–E03 阈值（环境感知纳入软风险）。
+    extGmBufferMin: 1.2, // E01 结构毛利与目标缓冲 < 1.2pp → 碳酸锂上行即击穿
+    extDemHigh: 130, // E02 需求 P50 ≥130 → 终端上险不及预期则缺口扩大
   },
   planGenerate: {
-    base: { rev: 100, gm: 0.142, share: 17, turns: 6.0, cash: 70 },
-    targets: { gmFloor: 0.135, cashFloor: 45, capexCap: 20, revGrowthPct: 18, sharePts: 12, turnsFloor: 6.0 },
+    // PRD-IND-plan-generate §4.5 取值对齐 HTML GEN_BASE/GEN_GOALS（rev=100 归一保 growth 评分=revGrowAbs×2.5）。
+    base: { rev: 100, gm: 0.16, share: 18, turns: 5.6, cash: 58 },
+    // DF.4 单一来源：从 PLAN_GOAL_TARGETS 派生（gmFloor=百分÷100，turnsFloor=turns；R6 字节复现 0.155/6.0）。
+    targets: {
+      gmFloor: PLAN_GOAL_TARGETS.gmFloorPct / 100,
+      cashFloor: PLAN_GOAL_TARGETS.cashFloor,
+      capexCap: PLAN_GOAL_TARGETS.capexCap,
+      revGrowthPct: PLAN_GOAL_TARGETS.revGrowthPct,
+      sharePts: PLAN_GOAL_TARGETS.sharePts,
+      turnsFloor: PLAN_GOAL_TARGETS.turns,
+    },
     paths: {
       A: { name: "保毛利型", rev: 1.12, gm: 0.014, share: 6, capex: 0, turns: 0.6, cash: 6 },
       B: { name: "保规模型", rev: 1.22, gm: -0.008, share: 16, capex: 2, turns: -0.4, cash: -4 },
       C: { name: "扩产型", rev: 1.2, gm: 0.002, share: 22, capex: 27, turns: -0.2, cash: -12 },
+      // redline-allow：turns 是**库存周转**增量（次），与外协红线无关；此行含「外协型」只是方案名。
       D: { name: "外协型", rev: 1.16, gm: -0.005, share: 12, capex: 0, turns: 0.2, cash: 2 },
       E: { name: "混合型", rev: 1.18, gm: 0.004, share: 14, capex: 14, turns: 0.3, cash: -2 },
     },
@@ -239,8 +1133,36 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
       D: ["外协质量风险"],
       E: ["中等 CAPEX 投入"],
     },
+    // PRD-IND-plan-generate §4.6：外部信号敏感性（GEN_EXT_SENS 5×3，逐字 HTML L4501-4517；④i18n+②色）。
+    extSens: {
+      A: [["碳酸锂 +9.8%", "守价空间被成本上移部分抵消：方案毛利 +1.4pct → 约 +0.9pct", "#E8B54A"], ["竞争对手储能报价 −6%", "挑单退出的份额更快被竞对承接，客户挽留窗口收窄", "#E8B54A"], ["终端上险 +11% < 假设", "需求走弱反而有利守价路径（供需趋松时保盈利优先正确）", "#62BE77"]],
+      B: [["碳酸锂 +9.8%", "低毛利储能单进一步被成本挤压：毛利 −0.8pct 恶化为约 −1.3pct，更易击穿底线", "#DD7E9E"], ["客户舆情（集成商D）", "冲量路径的应收风险被舆情放大：C13 复核可能直接拒掉部分量", "#DD7E9E"], ["终端上险背离", "冲量目标建立在偏乐观需求上，份额收益可能不及预期", "#E8B54A"]],
+      C: [["四川限电预案", "成都/眉山/自贡化成 7–8 月折减 5–8%：扩产爬坡叠加限电，Q3 供给更紧", "#DD7E9E"], ["欧盟电池法", "新线若供海外，碳足迹护照需与建设同步规划（追溯改造成本高）", "#E8B54A"], ["利率/汇率环境", "CAPEX 融资成本与海外回款汇兑双重敏感", "#E8B54A"]],
+      D: [["竞争动态（利用率 71%）", "行业产能宽松利好外协议价：外协费可再压 3–5%", "#62BE77"], ["舆情（供应商负面）", "外协伙伴经营异常风险需纳入资质名录动态复核", "#E8B54A"], ["碳酸锂 +9.8%", "外协报价随行就市，成本传导更快、毛利侵蚀略增", "#E8B54A"]],
+      E: [["四川限电预案", "枣庄扩高端不受川区限电影响（选址优势）；川区量走外协对冲", "#62BE77"], ["碳酸锂 +9.8%", "高端守价 + 长尾外协的组合对成本上行的缓冲最好（毛利敏感度三案最低）", "#62BE77"], ["欧盟电池法", "枣庄一线规划期同步预留碳足迹数据采集，合规成本最优", "#62BE77"]],
+    },
+    // PRD-IND-plan-generate §4.6：执行关键点 + 必须解决问题（GEN_FOCUS 5×{keys,probs×2}，逐字 HTML L4518-4559；why=推演分析，chain=风险传播链 4 节点[标签,对象,色]）。
+    focus: {
+      A: { keys: "严守 C15 接单毛利线上浮 1pct；主动收缩储能长尾单；乘用车与高端储能守价。", probs: [
+        { n: "储能客户份额流失", kind: "share", rule: "C21", why: "拒掉低毛利储能单后，电网F / 集成商D 类客户会转向竞对；一旦次年框架协议重谈时己方出货占比已降，议价地位反转，\"守价\"反被瓦解。所以退单必须配客户分层挽留与高端替代承接，否则一年后变成\"丢份额又丢价\"。", chain: [["拒低毛利储能单", "C15 上浮执行", "#E8B54A"], ["电网F/集成商D 转单", "储能客户·框架协议", "#54B5C4"], ["次年框架议价权弱化", "长协锁量/价格条款", "#5E8FE8"], ["份额 +6% 不达 · 守价基础动摇", "C21 结构监测", "#DD7E9E"]] },
+        { n: "收入增长缺口 6pct", kind: "share", rule: null, why: "收入增速 12% 低于目标 18%；若叠加行业需求下修，AOP 基准情景将被迫下调并触发年度情景触发项挂牌。必须用高端储能扩量或服务收入主动补位，而不是被动接受缺口。", chain: [["挑单收缩", "接单结构变化", "#E8B54A"], ["收入增速 12% < 目标 18%", "收入预算线", "#54B5C4"], ["AOP 基准情景下修压力", "年度情景触发项", "#5E8FE8"], ["增长目标失守 · 触发挂牌监测", "AOP 触发项", "#DD7E9E"]] }] },
+      B: { keys: "照单全收冲市场份额；信用额度从严（C13）；应收账期按周管控。", probs: [
+        { n: "毛利率击穿底线", kind: "margin", rule: "C15", why: "储能低毛利单放量使结构毛利 −0.8pct，直逼 15.5% 底线；任何原料涨价或细分占比再偏 2pct 即击穿，C15 将阻断接单。必须同步推进储能降本与接单毛利线考核，否则规模是用利润换来的。", chain: [["低毛利储能单放量", "储能占比 37%→42%", "#E8B54A"], ["结构毛利 −0.8pct", "细分结构反推", "#54B5C4"], ["逼近 15.5% 底线 · 缓冲 <0.5pct", "毛利率预算线", "#5E8FE8"], ["击穿即 C15 阻断接单", "规则 C15", "#DD7E9E"]] },
+        { n: "应收与现金垫承压", kind: "cash", rule: "C18", why: "冲量客户议价强、账期长，13 周现金最低点 −4 亿；应收周期再拉 5 天即跌破 50 亿红线，计划将被 C18 阻断、无法定稿。信用动态复核与回款联动必须先于放量启动。", chain: [["冲量客户账期拉长", "应收周期 +5 天", "#E8B54A"], ["13周现金最低点 54 亿", "现金流滚动测算", "#54B5C4"], ["逼近红线 50 亿 · 余量仅 4 亿", "现金安全垫", "#5E8FE8"], ["击穿即定稿阻断", "规则 C18", "#DD7E9E"]] }] },
+      C: { keys: "枣庄+江门新线动工；C23 门槛测算前置（IRR≥15% · 24月利用率≥75%）；爬坡曲线按认证+调试保守化。", probs: [
+        { n: "CAPEX 挤占现金垫", kind: "cash", rule: "C18/C23", why: "27 亿 CAPEX 集中支付使现金垫 58→46 亿，直接击穿 50 亿红线，规划体检即阻断。必须分期支付 / 推后一季 / 配套融资，并先过 C23 门槛测算再写入计划——顺序不能反。", chain: [["CAPEX 27 亿集中支付", "枣庄+江门建设", "#E8B54A"], ["现金垫 58→46 亿", "13周现金最低点", "#54B5C4"], ["击穿红线 50 亿", "现金安全垫", "#5E8FE8"], ["C18 阻断定稿 · C23 门槛未过", "规则 C18/C23", "#DD7E9E"]] },
+        { n: "爬坡滞后吞噬新增产能", kind: "ramp", rule: null, why: "按理论爬坡率排计划，认证 T+20 与调试期未计入；参照常州动力线-B 实绩（爬坡 60% vs 计划 70%），Q3 将累出 6 万套缺口、被迫外协兜底。爬坡假设必须用 PLM 认证记录 + MES 实绩校准。", chain: [["认证 T+20 + 调试未计入", "PLM 认证记录", "#E8B54A"], ["爬坡 60% vs 计划 70%", "常州动力线-B 实绩", "#54B5C4"], ["Q3 供给累缺 6 万套", "季度滚动缺口", "#5E8FE8"], ["交付违约风险 · 外协被动兜底", "订单交期判", "#DD7E9E"]] }] },
+      D: { keys: "CAPEX 不动；外协补量走资质名录；来料/过程质量管控与放量同步。", probs: [
+        { n: "外协比例触红线", kind: "outsource", rule: "C08", why: `缺口全靠外协时比例逼近 ${outsourceRedlinePct()}% 红线，超出部分无法承接；该红线是质量与供应安全的硬约束、不可放宽。外协必须与结构性手段（守价/扩产）组合使用，单押外协等于把承接能力封顶。`, chain: [["缺口全量外协", "外协订单占比 ↗", "#E8B54A"], [`比例逼近 ${outsourceRedlinePct()}%`, "外协比例监测", "#54B5C4"], ["超出部分无法承接", "承接能力封顶", "#5E8FE8"], ["C08 红线 · 触线即拒单", "规则 C08", "#DD7E9E"]] },
+        { n: "外协质量波动反噬", kind: "outsource", rule: null, why: "外协良率低于自产 1–2pct，不良流入会推高质量域不良率、引发客诉与退货；质量成本与商誉损失会吞掉外协省下的 CAPEX。首件鉴定 + 巡检抽检必须与放量同步，不能事后补。", chain: [["外协良率波动 −1~2pct", "QMS 外协批次", "#E8B54A"], ["不良流入 · 客诉上升", "质量域不良类别", "#54B5C4"], ["退货/返工 + 商誉损失", "质量成本", "#5E8FE8"], ["毛利侵蚀 · 大客户信任受损", "毛利率/客户关系", "#DD7E9E"]] }] },
+      E: { keys: "乘用车守价 + 枣庄一线扩高端 + 长尾量外协；三对策在月度 S&OP 第⑤步统一编排时序并设里程碑监测。", probs: [
+        { n: "三对策时序错配", kind: "gap", rule: null, why: "扩产爬坡期、外协切换期、守价谈判期一旦脱节，缺口立即回弹：爬坡未达而外协未就位 = 交付违约；守价先行而供给未稳 = 客户流失。混合型的全部收益建立在协同之上，时序编排不是执行细节、是方案成立的前提。", chain: [["任一对策延期", "扩产/外协/守价 三线", "#E8B54A"], ["爬坡空窗 × 外协未就位", "供给缺口回弹", "#54B5C4"], ["交付违约 + 客户流失 双风险", "订单交期判/客户关系", "#5E8FE8"], ["规模与毛利双失 · 方案收益归零", "综合评分坍塌", "#DD7E9E"]] },
+        { n: "枣庄线认证爬坡风险", kind: "ramp", rule: "C23", why: "4680 高端线认证 T+20 若延期，高端储能供给出现缺口、只能回退外协兜底，外协费会吞掉混合型 +0.4pct 的毛利收益。认证里程碑必须像产能推演一样按时间窗挂牌监测、提前预判。", chain: [["认证 T+20 延期", "PLM 认证里程碑", "#E8B54A"], ["高端储能供给缺口", "枣庄一线产能", "#54B5C4"], ["回退外协兜底 · 外协费上升", "C08 外协占用", "#5E8FE8"], ["+0.4pct 毛利收益被吞噬", "方案收益", "#DD7E9E"]] }] },
+    },
   },
-  sop: { gapRed: 2, dvThreshold: 0.1, cashFloor: 50, monthlyWeeks: 4, gmTolerance: 0.5, revBudget: 248 },
+  // PRD-IND-sop §4.5-5：收入预算口径=240（真预算 SOP_FIN[0].bud），滚动确认收入 248 → 达成率 248/240=103%（非 248/248=100%）。
+  // G-10 P4 单源：dvThreshold ← C21.balanceDeviationPct（产销偏差）· cashFloor ← C18.cashFloor（现金垫底线）。
+  sop: { gapRed: 2, dvThreshold: ruleParamOf("C21", "balanceDeviationPct"), cashFloor: ruleParamOf("C18", "cashFloor"), monthlyWeeks: 4, gmTolerance: 0.5, revBudget: 240 },
   // M11 校准算法层（PRD-addendum-m11-calibration §4）：可校准参数注册表 + 阈值/开关（场景包配置）。
   calibration: {
     alpha: 0.3, // 方法 A · EMA
@@ -271,188 +1193,2285 @@ export const BATTERY_SOLVER_PARAMS: Record<string, unknown> = {
 // ---------------------------------------------------------------------------
 
 const baseProps: PropertyDef[] = [
-  { propKey: "baseId", dataType: "string", isPrimaryKey: true },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "kind", dataType: "enum", isPrimaryKey: false },
-  { propKey: "util", dataType: "number", isPrimaryKey: false },
-  { propKey: "bottleneck", dataType: "enum", isPrimaryKey: false },
-  { propKey: "gwh", dataType: "number", isPrimaryKey: false },
-  { propKey: "formationCapDaily", dataType: "number", isPrimaryKey: false },
-  { propKey: "agingCapDaily", dataType: "number", isPrimaryKey: false },
+  { propKey: "baseId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "kind", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "util", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" },
+  { propKey: "bottleneck", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "gwh", dataType: "number", isPrimaryKey: false, unit: "GWh", scale: "absolute" },
+  { propKey: "formationCapDaily", dataType: "number", isPrimaryKey: false, unit: "电芯/天", scale: "absolute" },
+  { propKey: "agingCapDaily", dataType: "number", isPrimaryKey: false, unit: "电芯/天", scale: "absolute" },
+  // 地理坐标（GeoMap 着色/选址）+ 业态（动力/储能）——全建模，合成数据与字段对齐（R12）。
+  { propKey: "lon", dataType: "number", isPrimaryKey: false, unit: "°", scale: "absolute" },
+  { propKey: "lat", dataType: "number", isPrimaryKey: false, unit: "°", scale: "absolute" },
+  { propKey: "position", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  // SA-4：factory 台账字段（R12 全建模对齐）
+  { propKey: "factory_code", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "province", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "city", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "factory_type", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // CELL | PACK | CELL+PACK
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 运营中 | 在建 | 停产
+  { propKey: "start_date", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  // WO-OPT-WHATIF-DATA · 选址决策成本（**末位追加·不动前序序**·守 R6）。
+  // 这两个字段是 optimize_whatif/facility_location 自动装配唯一缺的那半：`assembleBaselineFromSelection`
+  // 按 ROLE_LEXICON.cost 词库在决策承载类型上找数值字段绑 open_cost / assign_cost，Base 此前一个都没有
+  // ⇒ 装配恒报缺 ⇒ 会话真命中也只能降级 path-B。声明序即角色序：**第一个**命中成本词库的数值字段绑
+  // open_cost（openCost），**第二个**绑 assign_cost（serveCost）——故两者不可换位。
+  { propKey: "openCost", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute", description: "基地年固定开办成本（万元/年）= 铭牌年产能 × 单位产能固定成本 + 产线数 × 单线固定成本；facility_location 的 open_cost 系数源。" },
+  { propKey: "serveCost", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute", description: "单位需求点年均干线履约成本（万元/需求点·年）= 产能加权全网平均干线距离 × 每公里费率；facility_location 的 assign_cost 系数源。" },
 ];
 const baseDerived: DerivedPropertyDef[] = [
-  { propKey: "orderCount", formula: "COUNT(Order.so BY bases)" },
-  { propKey: "committedQty", formula: "SUM(Order.qty BY bases)" },
+  { propKey: "orderCount", formula: "COUNT(Order.so BY bases)", unit: "单", scale: "absolute" },
+  // WO-DIMENSION-ERRORS · 随 `Order.qty` 件→套：本式**字面上**就是 Σ Order.qty，
+  // 只改被加数不改和，会造出「同一个量在两处属于两个计数族」这种更难查的形态。
+  { propKey: "committedQty", formula: "SUM(Order.qty BY bases)", unit: "套", scale: "absolute" },
   // A8/T3: snapshot property (Equipment.oee_current) is a legal leaf of the derivation graph.
-  { propKey: "oeeIndex", formula: "AVG(Equipment.oee_current BY baseId)" },
+  { propKey: "oeeIndex", formula: "AVG(Equipment.oee_current BY baseId)", unit: "dimensionless", scale: "ratio" },
 ];
 
 const modelProps: PropertyDef[] = [
-  { propKey: "modelId", dataType: "string", isPrimaryKey: true },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "bases", dataType: "json", isPrimaryKey: false },
-  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false },
+  { propKey: "modelId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  // PRD-IND-model 缺口③：化学体系 + 业态（step1/DAG 元信息，求解器 nonProducible 判定依据）。
+  { propKey: "chem", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "pos", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "bases", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" },
+  /**
+   * WO-UNITCOST-LAND · **按件履约成本**（元/电芯）—— 成本侧的强度量，单一来源。
+   *
+   * ⚠⚠ **WO-UNIT-MARGIN-96X 订正（照铁律 0.6 回写）：本段原文写「与 `unitPrice` 同阶的强度量」，
+   * 那句是错的，且它错在最容易被信的地方 —— 下游三处照它写了「同阶配对即得单位毛利」。**
+   * 实测（seed 42·scale S）：本格 `unitCost` 的分母是**电芯** —— `BOM_ITEM_TEMPLATES` 8 条模板
+   * （每型号实际 7 行·LFP/NCM 各跳过对方正极）里 `cell_case` 用量 = **1 个**，
+   * 其余各行（正极 1.0–1.05kg / 负极 0.45kg / 隔膜 12㎡ …）都是**单颗电芯**的料，
+   * 而同格 `unitPrice` 的分母是**套** ——
+   * 它由 `seg.priceWan × 1e4` 派生（本文件 `Model` 生成处），种子注释与 `solvers/service.ts`
+   * 的 R18 口径段都明写「元/套」。**两者不同阶，直接相减不是单位毛利。**
+   * 断点登记：`G-UNIT-MARGIN-CROSS-DENOM`（与 `G-QUOTE-BOM-PRICE-UNIT-SCALE` 同族·同一个欠账的另一条出口）。
+   *
+   * ⚠ **不要「乘个 packCellCount 就对齐」——实测那条路是错的**：
+   *   ① `packCellCount`（96）在本仓**全部**价/成本/毛利路径上**一次都没被读过**（金丝雀实测：
+   *      把它改成 1 / 192，`Model.unitPrice`·`Model.unitCost`·`OrderLine.*`·`quote_margin`
+   *      四组读数**逐字节相同**；同一量法下把 `seg.priceWan × 1e4` 乘 2，四组读数全动 ⇒ 量法本身是好的）。
+   *      故「差一个 packCellCount 倍」是**量纲上的名义差**，不是任何一行代码算出来的倍数。
+   *   ② 真实比值是 `unitPrice / unitCost` ≈ **25.7×–40.6×**（6 个型号实测：最低 圆柱-LFP 13902/540.20=25.74，
+   *      最高 4680-LFP 21912/540.20=40.56），
+   *      **不是 96×**。按 96 换算 ⇒ 全订单簿成本/营收 = **286.9%**，每一单都巨亏 ——
+   *      那不是把口径修对了，是把金值改成了另一个同样错的数。
+   *   ⇒ 要真收口，得先按 `docs/DECISION-unit-of-account.md` §1.5（「**套/电芯不得充当金额分母**」，
+   *      钱一律记 元/kWh）重锚种子价与 BOM 价，属**另一张单**，不是本格能补的。
+   *
+   * 值 = Σ over 该型号当期 BOM 的明细行 `quantity ×(1+lossRate)× Material.unitPrice`
+   * （`modelUnitCosts()` 现算，纯派生·零 rng）。量纲前置由本体自证：实测 105/105 条
+   * `BOMDetail.unit === 其 Material.unit` ⇒ `quantity × unitPrice` 无歧义，不内联任何假设。
+   *
+   * ⚠ 单位声明 **`元`**，不是 `元/件` —— 这不是偷懒，是照搬同一格 `unitPrice` 的既有口径：
+   * 本仓表达「每单位多少钱」靠的是**绑定角色**（`unit_revenue` / `unit_cost` + `qty` 那一格），
+   * 不是靠单位串（见 `opt-binding.ts` 的 `revenueFromUnitRate` / `revenueQtyProp` 回包）。
+   * ⚠ 收编订正（WO-INTEG-BATCH-5）：本单原注写「`UNIT_DICTIONARY` 今日只有 9 个词条」——
+   * 集成线上该字典已改为 `[...PROPERTY_UNITS]` 单源（约 48 词条）。结论不变：`元/件` 仍不在词库，
+   * 声明它照样会被发布门 400 拒；变的只是「为什么不在」的理由。
+   */
+  // WO-INTEG-BATCH-5 收编补：`ontology-descriptions:check` 要求 ACTIVE 类型/属性带非空 description
+  // （本单落属性时漏了这一格 ⇒ 该门当场红）。描述照抄本文件 `modelUnitCosts()` 的算法段头，
+  // 不另写一套口径 —— 描述是能力语义，写偏了就是第二份真相源。
+  {
+    propKey: "unitCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute",
+    description:
+      "每型号按件履约成本（元/电芯）= Σ 该型号当期 BOM 明细 [ 用量 × (1 + 投料损耗率) × 物料单价 ]。" +
+      "一型号有多版 BOM 时取 bomId 字典序最小那份（= 初始量产版，判据与随机数无关）；" +
+      "纯派生、零随机零时钟，是成本侧绑定角色 unit_cost 的系数源。" +
+      "⚠ 分母是**电芯**，而同格 unitPrice 的分母是**套**（元/套）——两者不同阶，" +
+      "直接相减得不到单位毛利（断点 G-UNIT-MARGIN-CROSS-DENOM）。",
+  },
   // C33 碳护照前置（NCM 体系碳足迹偏高 → 越线）。
-  { propKey: "carbonFootprint", dataType: "number", isPrimaryKey: false },
+  { propKey: "carbonFootprint", dataType: "number", isPrimaryKey: false, unit: "kgCO2e", scale: "absolute" },
+  // Phase 2：产品工程域扩展属性（R12 全建模对齐）
+  { propKey: "seriesId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductSeries" },
+  { propKey: "productCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "capacity", dataType: "number", isPrimaryKey: false, unit: "Ah", scale: "absolute" }, // Ah
+  { propKey: "voltage", dataType: "number", isPrimaryKey: false, unit: "V", scale: "absolute" }, // V
+  { propKey: "energy", dataType: "number", isPrimaryKey: false, unit: "Wh", scale: "absolute" }, // Wh
+  { propKey: "dimension", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 长×宽×高 mm
+  { propKey: "weight", dataType: "number", isPrimaryKey: false, unit: "g", scale: "absolute" }, // g
+  { propKey: "applicationDomain", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 储能 | 乘用车 | 商用车 | 消费电子
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 量产 | 试产 | 研发中 | 退役
 ];
 const modelDerived: DerivedPropertyDef[] = [
-  { propKey: "totalDemand", formula: "SUM(Order.qty BY model)" },
-  { propKey: "orderCount", formula: "COUNT(Order.so BY model)" },
+  { propKey: "totalDemand", formula: "SUM(Order.qty BY model)", unit: "件", scale: "absolute" },
+  { propKey: "orderCount", formula: "COUNT(Order.so BY model)", unit: "单", scale: "absolute" },
+];
+
+// Phase 2 Wave 1：产品域基础对象（ProductPlatform / ProductSeries / ProductVersion）
+const productPlatformProps: PropertyDef[] = [
+  { propKey: "platformId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "platformCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "category", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // LFP | 三元 | 固态
+  { propKey: "description", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 活跃 | 退役 | 规划中
+];
+
+const productSeriesProps: PropertyDef[] = [
+  { propKey: "seriesId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "seriesCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "platformId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductPlatform" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "category", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 280Ah储能 | 314Ah储能 | 4680动力 | 2170动力 | 刀片动力
+  { propKey: "voltageRange", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "capacityRange", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "targetMarket", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 储能 | 乘用车 | 商用车 | 消费电子
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 活跃 | 退役 | 开发中
+];
+
+const productVersionProps: PropertyDef[] = [
+  { propKey: "versionId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "versionName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "ecnNumber", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 量产 | 试产 | 研发中 | 退役
+  { propKey: "changeReason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+// Phase 2 Wave 3：BOM + 工艺路线 + 工序 + 工艺能力边界
+const bomHeaderProps: PropertyDef[] = [
+  { propKey: "bomId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "bomCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "bomName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "bomLevel", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+const bomDetailProps: PropertyDef[] = [
+  { propKey: "bomDetailId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "bomId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "BOMHeader" },
+  { propKey: "materialId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Material" },
+  { propKey: "sequence", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  // WO-RATE-DIMENSION · 改前声明 `个`，而实测 8 行 BOM 里**只有 1 行**真的是「个」（电芯壳体）：
+  // 正极/负极/铜箔/铝箔 `kg`、隔膜 `㎡`、电解液 `L`（出处 = 同对象下面那一格 `unit`，
+  // 值与 `Material.unit` 逐行一致）。声明成 `个` 等于把 7/8 行的量纲说错。
+  // 参数化之后 `Model.unitCost = Σ quantity(计量单位) × Material.unitPrice(元/计量单位) = 元`
+  // 这个抵消**在模型里可证**，不再只是注释里声称的。
+  { propKey: "quantity", dataType: "number", isPrimaryKey: false, unit: "计量单位", scale: "absolute", unitRefProp: "unit" },
+  { propKey: "lossRate", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "level", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "parentItemId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Material" },
+  { propKey: "isKeyComponent", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+const routingProps: PropertyDef[] = [
+  { propKey: "routingId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "routingCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "routingName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operationCount", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute" },
+  { propKey: "totalStandardTime", dataType: "number", isPrimaryKey: false, unit: "秒", scale: "absolute" },
+  { propKey: "totalYield", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+const operationProps: PropertyDef[] = [
+  { propKey: "operationId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operationCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "routingId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Routing" },
+  { propKey: "operationSeq", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operationName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "description", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operationType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "standardTime", dataType: "number", isPrimaryKey: false, unit: "秒", scale: "absolute" },
+  { propKey: "setupTime", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+  { propKey: "yield", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "isCritical", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "workCenterType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  /**
+   * WO-LAST3-RELATIONS · **前驱工序外键**（`depends_on` 的承载）。**末位追加**，前序键序不动（守 R6）。
+   *
+   * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+   * **X**：工序先后**只靠序号**表达（`operationSeq` 1..10）。要连出「本工序依赖上一道」，
+   *   端点得算出来（`${routingId}-${STD_OPERATIONS[seq-2].operationCode}`）——
+   *   而今天五种声明**一种都算不了端点**：`viaProperty` 只做等值匹配，`anchorProperty`
+   *   换的是对到哪一列（拿 `operationSeq` 对 `operationSeq` 会把**所有工艺路线的同序号工序**
+   *   连成叉积，15 条路线 × 同序号 = 接出一张错网且不报错），`viaWhere` 只筛行不算端点，
+   *   `viaMultiValue` 是数组展开，`viaBridge` 要一张不存在的桥表。
+   * **Y**：前驱**作为外键存下来**，于是零新机制即可 `viaProperty:"predecessorOperationId"`。
+   *
+   * ⚠ **这是补数据，不是造数据**：取值是 `(routingId, operationSeq)` 的**纯函数**——
+   *   两者都已在对象上，本字段只把「本来就已确定的那条边」显式化。首工序（seq=1）无前驱，
+   *   留空串 ⇒ 物化时落空（`unresolved`），**不会**凭空接到别的工艺路线上。
+   */
+  { propKey: "predecessorOperationId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Operation", description: "同一工艺路线内上一道工序（operationSeq−1）的 operationId；首工序为空串。" },
+];
+
+const processCapabilityProps: PropertyDef[] = [
+  { propKey: "capabilityId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operationId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Operation" },
+  { propKey: "parameterName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "paramCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "minValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "maxValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "targetValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "tolerance", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "ucl", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lcl", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+// Phase 2 Wave 4：质量标准 + 检验特性 + 制造能力
+const qualityStandardProps: PropertyDef[] = [
+  { propKey: "standardId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "standardCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "itemName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "itemCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "targetValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "toleranceUpper", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "toleranceLower", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "testMethod", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 真起后端实测 [5,100] ⇒ 0–100 表示法（不是 0–1）
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+const inspectionCharacteristicProps: PropertyDef[] = [
+  { propKey: "charId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "standardId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "QualityStandard" },
+  { propKey: "charName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "charCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "inspectionType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "inspectionMethod", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "samplingRate", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 真起后端实测 [5,100] ⇒ 0–100 表示法（不是 0–1）
+  { propKey: "frequency", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "controlMethod", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+const productLineCapabilityProps: PropertyDef[] = [
+  { propKey: "capId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "productId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "capability", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "maxCapacity", dataType: "number", isPrimaryKey: false, unit: "套/天", scale: "absolute" },
+  { propKey: "cycleTime", dataType: "number", isPrimaryKey: false, unit: "秒", scale: "absolute" },
+  { propKey: "yield", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "priority", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "changeoverTime", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+  { propKey: "constraints", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+const productEquipmentCapabilityProps: PropertyDef[] = [
+  { propKey: "equipCapId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "productId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "equipmentId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Equipment" },
+  { propKey: "capability", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "maxSpeed", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "minSpeed", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "setupTime", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+  { propKey: "qualifiedOperators", dataType: "number", isPrimaryKey: false, unit: "人", scale: "absolute" },
+  { propKey: "certificationRequired", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+// Phase 2 Wave 5：工程变更历史
+const engineeringChangeProps: PropertyDef[] = [
+  { propKey: "changeId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "changeNumber", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "changeType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "versionId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "ProductVersion" },
+  { propKey: "changeReason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "description", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "affectedObjects", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "approvedBy", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "approvedDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+// Phase 2 Wave 2：物料替代关系
+const materialAlternativeProps: PropertyDef[] = [
+  { propKey: "altId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "primaryMaterialId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Material" },
+  { propKey: "alternativeMaterialId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Material" },
+  { propKey: "priority", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "approvalStatus", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "effectiveDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "changeReason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "verifiedBy", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "verifiedDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const orderProps: PropertyDef[] = [
-  { propKey: "so", dataType: "string", isPrimaryKey: true },
-  { propKey: "cust", dataType: "string", isPrimaryKey: false },
-  { propKey: "model", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Model" },
-  { propKey: "qty", dataType: "number", isPrimaryKey: false },
-  { propKey: "due", dataType: "date", isPrimaryKey: false },
-  { propKey: "bases", dataType: "json", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false },
+  { propKey: "so", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "cust", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 客户**显示名**（= Customer.custName 逐字相同·同一名册）
+  // WO-ORDER-BOOK-500 · 客户**外键**（值 = `Customer` 主键 `custId`）。
+  // 为什么非加不可：`Order.cust` 存的是显示名，而所有沿 ref 走图的通用求解器
+  // （`concentration_risk` 等）都按**主键值**建索引 —— 拿显示名去查主键索引恒零命中，
+  // 于是「哪个客户最集中」恒回 0 个，而同一工具问型号回 5 个（`Order.model` 恰好存的就是 Model 主键）。
+  // 声明成 ref 还有第二个作用：`deriveConcentrationRisk` 只沿**声明过的** `refToTypeKey` 自动寻路，
+  // 不声明就等于这条边对自动寻路不存在。
+  {
+    propKey: "customerId",
+    dataType: "ref",
+    isPrimaryKey: false,
+    unit: "dimensionless",
+    scale: "absolute",
+    refToTypeKey: "Customer",
+    description: "下单客户的外键（值 = `Customer.custId` 主键，不是显示名）。沿 ref 走图的通用求解器按主键值建索引，故客户集中度一类问题只认这一格；显示名在同类型的 `cust` 上。",
+  },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  // WO-DIMENSION-ERRORS · 今天的行为：声明 `件`（cell）。应该是：`套`（pack）。
+  // 判据不是名字，是**已被仓主拍板的那份文件**：`docs/DECISION-unit-of-account.md` §1.4 把
+  //「`SO-3391` 的 `unitPrice = 21626 元/套`」当作既定事实用来反推一套多少 kWh。
+  // 派生式 `value = qty * unitPrice` 要得出 `元`，`qty` 就只能是**套**（元/套 × 套 = 元）。
+  // 真起后端对拍（SEED_DEMO=1·500 单）：Σqty = 2,436,095，Σvalue = 454.6 亿元。
+  //   · 读作**套**：占需求锚 375 万套/年 的 65% —— 在手订单簿的合理量级 ✅
+  //   · 读作**件**：= 25,376 套（96 电芯/套），即 500 张单合计只占年需求 0.68%，
+  //     且隐含单价 96 × 21,626 ≈ **207 万元/套** ❌
+  // ⚠ `unitPrice` 保持 `元` 不动：真实分母是「套」，而上述裁决 §1.5 明令「套/电芯不得充当
+  //   金额的分母」⇒ 词库里没有也不许有 `元/套`（`Model.unitCost` 那格已按同一理由声明 `元`）。
+  //   本单只收**可以收的那一半** —— 计数族错；金额分母那一半属该裁决的 17 字段收口，不在本单。
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "套", scale: "absolute" },
+  { propKey: "due", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  /**
+   * WO-COMPUTED-EDGE · **交期月**（`YYYY-MM`）—— `order_to_plantarget` 的连接列。
+   *
+   * **今天的行为是 X**：那条边的端点由种子现算 `PT-${o.due.slice(0,7)}`（前缀 + 日期截断），
+   * 而 `Order` 上没有任何一列长成月份 ⇒ 用户经建边页自建这条边**恒 0 实例**。
+   * **应该是 Y**：把「这张单算在哪个计划月」如实落成一列，边退化成
+   * `viaProperty:"dueMonth" + anchorProperty:"period"`（对到 `PlanTarget.period`，前缀 `PT-` 随之消失）。
+   *
+   * ⚠ **为什么不写成表达式**：`ontology-dsl` 的 `binary "+"` **两侧强制转数**
+   * （`asNumber` 只认有限数字）⇒ `"PT-" + this.period` 求值为 `null` 而**不报错**，
+   * 静默造一条 0 实例的死边。补列绕开这个坑，且可读、可测、不引入新语法。
+   *
+   * ⚠ **口径钉死在 `due` 上，不是 `earlyDue`**：提前交期是履约承诺，计划月归属仍按合同交期算 ——
+   * 两者混用会让同一张单在两个月度目标下各出现一次。
+   */
+  { propKey: "dueMonth", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "合同交期所属的计划月（`YYYY-MM`，由 `due` 截断，非 `earlyDue`）。月度计划目标 `PlanTarget.period` 用的是同一个编码，故这一列就是订单归入哪个月度目标的连接依据。" },
+  { propKey: "pri", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // PRD-IND-order 优先级（高/中/低）
+  { propKey: "bases", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  // WO-ORDER-BOOK-500：**声明 enumValues**（此前 dataType:"enum" 但取值未声明 ⇒ `ontology-validate.ts`
+  // 的 `allowed.length > 0` 短路，订单状态从来没有被任何机器校验过 —— 注释里写着的枚举不算数）。
+  // 声明之后：写进一个不在三态里的值，本体校验当场报 DOMAIN 违规，而不是等人肉眼发现。
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", enumValues: [...ORDER_STATUSES] },
   // 约束扫描所需字段（C03/C08/C13/C29）—— 确定性派生，植入少量越线行让规则真触发。
-  { propKey: "demandDelta", dataType: "number", isPrimaryKey: false },
-  { propKey: "outsourceRatio", dataType: "number", isPrimaryKey: false },
-  { propKey: "creditUsedRatio", dataType: "number", isPrimaryKey: false },
-  { propKey: "leadDays", dataType: "number", isPrimaryKey: false },
+  { propKey: "demandDelta", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "outsourceRatio", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "creditUsedRatio", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "leadDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" },
+  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 按型号反范式化的单价（value 派生依赖）
+  // WO-W5·业务类型维度（乘/商/储·全局推演勾选筛选 + 分口径聚合）。early/earlyDue = 乘用车部分客户提前交付（三重张力之一）。
+  { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // passenger | commercial | storage
+  { propKey: "early", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 是否需提前交付（乘用车部分客户）
+  { propKey: "earlyDue", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 提前交期（early 时·= due − 提前天数）
 ];
-const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice" }];
+const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice", unit: "元", scale: "absolute" }];
 
 const lineProps: PropertyDef[] = [
-  { propKey: "lineId", dataType: "string", isPrimaryKey: true },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
+  { propKey: "lineId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  /**
+   * WO-COMPUTED-EDGE · **所属车间的外键** —— 补的是一个本来就该有的属性，不是绕过机制。
+   *
+   * **今天的行为是 X**：`line_belongs_to_workshop` 的端点由种子现算
+   * （`l.lineId.replace("LINE-", "")`），而 `Line` 上**没有** `workshopId` 这一列 ⇒
+   * 这条边**出厂有实例、用户经建边页自建恒 0 实例**（`viaProperty` 无从声明，下拉里根本没有这一项）。
+   * **应该是 Y**：车间归属和基地归属（同表上一行的 `baseId`）是同一种东西 —— 一个外键列，
+   * 于是这条边退化成 `viaProperty:"workshopId", viaSide:"to"`，与 `line_belongs_to_base` 逐字同构。
+   *
+   * ⚠ 值**不是新真相**：生成侧本来就是 `const lineId = \`LINE-${workshopId}\``，`workshopId` 是
+   * 现成变量（见本文件产线生成段），落列只是把它写下来 —— 与 `Metric.ownerRef` 同一个建模习惯。
+   * 刻意**不**写成「从 lineId 反解」的派生式：两处各算一次就是第二份真相，迟早分叉。
+   */
+  { propKey: "workshopId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Workshop", description: "所属车间的外键（值 = `Workshop.workshopId` 主键）。与同表 `baseId` 同一形态；产线 id 本就是 `LINE-{workshopId}`，本列把这个归属如实落成一列，而不是让每个消费方各自从 id 里反解一次。" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  // 运营指标（利用率 + 时序聚合物化：日实际产出 / 排程达成率）——全建模对齐（R12）。
+  // ⚠⚠ `Line.utilization` 是 **0–100 百分数**，与 `Process.utilization` 的 **0–1 小数**同名不同量纲。
+  //   别照本文件里那个 `utilization: round(0.88 + …, 3)` 的种子值下判断 —— **那一行写的是 Process**，
+  //   而 Line 的值由时序物化**覆盖**：`util:line` 序列 `base:{mean:92}` → 经 `line_util_daily`
+  //   （本文件 tsMaterializations）写进 `Line.utilization`。真起后端实测（SEED_DEMO=1）：
+  //     Line.utilization    = 92.55 / 92.85 / 90.47   ⇒ 0–100 ⇒ `%` + ratio（本行）
+  //     Process.utilization = 0.903 / 0.951 / 0.957   ⇒ 0–1   ⇒ `dimensionless` + ratio
+  //   同一份序列表里 `attainment:line`(mean 0.914) 与 `yield:process`(mean 0.952) 却是 0–1 ——
+  //   **三条序列两种刻度**，这正是裁决书说的「产能利用率同名两套量纲」，现在两侧都能机读区分。
+  //
+  // ── 收编裁决（`WO-DIM-LABEL-3` × `WO-UNIT-KWH` 并线冲突·2026-08-29）──────────────
+  //   两张单都在补这两条同名属性的量纲声明，`unit` 取值不同（见下面 Process 那条）。
+  //   本行两边一致（都判 `%`），故只把 DIM-LABEL-3 的 `description` 并进来 ——
+  //   注释是给读代码的人看的，`description` 是**随契约下发给消费方**的，两者不互相替代。
+  {
+    propKey: "utilization",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "%",
+    scale: "ratio",
+    description:
+      "产线利用率。0–100 百分点存储（非 0–1 比率），显示不再 ×100 —— 与 LEVER_PROP_META['Line.utilization'].kind='percent' 同口径。" +
+      "值由时序 `util:line` 经 `line_util_daily` 物化写入，不在播种期赋值。规则 C05 `SUSTAIN(Line.utilization > 95, 3)` 的红线 95 即按本口径。",
+  },
+  // WO-DIMENSION-ERRORS · 今天的行为：声明 `套/日`（pack）。应该是：`件/日`（cell）。
+  // 证据在生成侧，不在名字上：本字段由时序聚合 `line_output_daily`（`agg:"sum"` over `output:line`）
+  // 回写，而 `output:line` 的尺度锚是 `outputLineScaleForBase(baseFormationCapDaily)` ——
+  // 括号里那个量本文件自陈是 **dailyCells**（"基地夹定产能(formationCapDaily=computeRollup dailyCells)"）
+  // ⇒ 这条序列从生成的第一天起就是**电芯**。
+  // 数值对拍（真起后端 SEED_DEMO=1·130 条 Line）：中位 actual/`max_capacity_day`(件/日) = **4.665**，
+  // 而中位 actual/`capacityDaily`(套/日) = **447.8**。若真是套/日，则每条线的实际产出是其
+  // pack 产能的 447 倍 —— 而同对象 `utilization` 中位只有 **92.1%**，两者不可能同时为真。
+  // （4.665 而非 ~1，是因为 `formationCapDaily` 是**基地级**电芯产能而 `max_capacity_day` 是**单线**级，
+  //   一基地约 10 条线 —— 那是聚合口径问题，与本条量纲无关，不在本单范围。）
+  { propKey: "actual_output_daily", dataType: "number", isPrimaryKey: false, unit: "件/日", scale: "absolute" },
+  { propKey: "schedule_attainment", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  // SA-5：产线台账字段（R12 全建模对齐）
+  { propKey: "line_code", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "max_capacity_day", dataType: "number", isPrimaryKey: false, unit: "件/日", scale: "absolute" }, // 件/日
+  // 线级运营日产能（**套/日**·与需求同口径；supply_demand_gap_attribution 读它 ×300/1e4→万套年化产能）。
+  // 单位口径钉死：demand/gap 皆万套(套=pack)，故此字段=套/日 而非 max_capacity_day 的件/日(cell)，避免单位炸。
+  { propKey: "capacityDaily", dataType: "number", isPrimaryKey: false, unit: "套/日", scale: "absolute" }, // 套/日
+  // ⚠ 行尾原注释写的是「%」，与实际不符：生成式 `round(0.95 + …, 3)`（本文件 target_yield 生成处）
+  // 产出 0.95–0.99 的**0–1 小数**，不是 95–99 的百分数。注释错在最容易被信的地方，故按实测订正为
+  // `dimensionless + ratio`（0–1 表示法）；要显示成百分数由展示层 ×100，不改存储口径。
+  { propKey: "target_yield", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 运行中 | 停机 | 调试
+];
+
+/**
+ * WO-CAPACITY-EDGE · **产能池**（`CapacityPool`）—— 把产能从「节点上的一个标量」升格成**可被指向、
+ * 可被消耗的一等对象**。
+ *
+ * ── 今天的行为 X / 应该的行为 Y（铁律 0.6 第 5 条要求的那一句）────────────────────
+ * **X**：产能只以标量属性存在（`Line.capacityDaily` 套/日 · `Line.max_capacity_day` 件/日 ·
+ *   `Base.gwh`），全仓求解器一律 `lines.reduce((a,l)=>a+num(l.props.capacityDaily))` 这个形态
+ *   （`base-outlook.ts` / `chain-impediment.ts` / `portfolio.ts` / `optimizer-client.ts` 都是）。
+ *   图上**没有任何一条产能边**，于是「这条线还剩多少产能、被谁吃掉的」沿图走不出来。
+ * **Y**：产能是一个**池**（本类型），产线经 `has_capacity` 指向它、活动经 `consumes_capacity`
+ *   吃它，**吃掉多少写在边上**（`LinkInstance.props`）⇒ 余量 = 池产能 − Σ 入边消耗，可沿图算。
+ *
+ * ── 单位：件/日，**不是** 套/日（这一格是本单最容易炸的地方）────────────────────
+ * `Line` 上并存两个日产能：`capacityDaily`（**套/日**·pack）与 `max_capacity_day`（**件/日**·cell），
+ * 两者差一个 `packCellCount` 倍。而 `WorkOrder.qtyPlanned` 的量纲是**件**。
+ * ⇒ 若拿 `qtyPlanned` 去比 `capacityDaily`，一次错两处（件↔套 + 存量↔速率）。
+ * 本池刻意锚在**件**这一族：`capacityCellsDaily` ← `Line.max_capacity_day`（件/日），
+ * 消耗 = `qtyPlanned(件) ÷ spanDays(天)` = 件/日 ⇒ **两侧同族同量纲，不需要任何换算系数**。
+ * 单位全部取自 `PROPERTY_UNITS` 册（`domain.ts`），本文件一个单位字符串都不新造。
+ *
+ * ⚠ **不叫 `capacityDaily`**：`Line.capacityDaily` 是套/日，同名不同量纲正是本仓
+ * `Line.utilization`(0–100) vs `Process.utilization`(0–1) 那个老坑。名字里带 `Cells` 是有意的。
+ *
+ * ⚠ **池上只有「申报产能」一格数，没有「已占用 / 余量」两格**（WO-CAPACITY-EDGE-FIX）。
+ * 后两者是沿 `consumes_capacity` 入边现算的**读数**，不是对象上的数据 —— 理由见下方属性表里那段注释。
+ */
+const capacityPoolProps: PropertyDef[] = [
+  { propKey: "poolId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "产能池业务主键。一线一池，由产线号确定性拼出（`capacityPoolIdOfLine`，全仓唯一拼法）。" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line", description: "本池属于哪条产线（`has_capacity` 边的来源端）。" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base", description: "本池所在基地（随产线，供按基地圈定产能面）。" },
+  {
+    propKey: "capacityCellsDaily",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "件/日",
+    scale: "absolute",
+    description:
+      "本池申报日产能（电芯/日）。**投影自 `Line.max_capacity_day`，不是第二个真值**——同一个数换个承载，改产线即改池。与 `Line.capacityDaily`（套/日）差一个单 PACK 电芯数，切勿混用。",
+  },
+  // ⚠ WO-CAPACITY-EDGE-FIX · **这里刻意没有 `consumedCellsDaily` / `remainingCellsDaily` 两格**。
+  //
+  // ── 今天的行为 X → 应该的行为 Y ──────────────────────────────────────────────
+  // **X**（修前）：两者登记在本 `properties` 表里，而本表的契约是「非派生字段必须被合成填上」
+  //   （`synthetic-field-alignment.test.ts` 的第二例逐类型咬这一条）；播种器一个字节都不写它们，
+  //   两格自己的 description 还写着「派生·不落种子值」⇒ **登记处与描述在同一个类型定义里互相打脸**，
+  //   门只是把这个矛盾读了出来。
+  // **Y**：这两个量的真值只有一处 —— `Σ 入边 consumes_capacity.props.consumedCellsDaily`。
+  //   而「Σ 入边」是**图遍历**，`derivedProperties.formula` 走的 `evalArithmetic` 只认**同一对象上的
+  //   属性算术**，表达不了它。⇒ 它们根本不是对象上的一格数据，是**求解时算出来的读数**，
+  //   只在 `capacity_ledger` 回包里给（`CapacityLedgerPool.{consumedCellsDaily,remainingCellsDaily}`）。
+  //
+  // ── 为什么不选「落真值」（把播种器补上）────────────────────────────────────────
+  // 那会造出**第二个真值源**：边一改（增删一条 `consumes_capacity` / 改边上的量），节点这一格立刻过期，
+  // 而**没有任何东西会红**（「冲突会红，双份不会」）。更要命的是它直接废掉 R-CAP-1「量只在边上」——
+  // 接缝门那条变异反证「抹掉边上的量 ⇒ 读数当场变」在有节点回落值时会失效。且 `loadWorkOrders` /
+  // `demandMultiplier` 两个 what-if 杠杆下「已占用」本就**随参数变**，节点上该写哪个值根本没有答案。
+  //
+  // ── 那边上那个量的**量纲**现在从哪来 ──────────────────────────────────────────
+  // 修前是拿这两格当「边的 PropertyDef 代用表」。删掉后不是没了出处，而是换成**更强的一处**：
+  // 消耗 = `WorkOrder.qtyPlanned`(件) ÷ `WorkOrder.spanDays`(天)，两个除数都是**真声明、真落值**的属性；
+  // 而余量 = 申报 − Σ消耗 只在同族内才是合法减法 ⇒ `capacityCellsDaily.unit` 必须以 `qtyPlanned.unit + "/"`
+  // 开头。这条守卫在 `solvers/service.ts` 的 `capacityUnits` 装配处（把池换成 `Line.capacityDaily`
+  // 那个套/日 的老坑当场 400），比一格永不落值的属性能咬到的东西多。
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "池状态（随产线：运行中 | 调试）。**不参与超载判定** —— 调试线也申报产能，把它排除掉等于悄悄改变产能面。" },
 ];
 
 const processProps: PropertyDef[] = [
-  { propKey: "processId", dataType: "string", isPrimaryKey: true },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "kind", dataType: "enum", isPrimaryKey: false }, // serial | formation | aging
-  { propKey: "yield", dataType: "number", isPrimaryKey: false },
-  { propKey: "shiftHours", dataType: "number", isPrimaryKey: false },
-  { propKey: "shifts", dataType: "number", isPrimaryKey: false },
-  { propKey: "attendance", dataType: "number", isPrimaryKey: false },
-  { propKey: "utilization", dataType: "number", isPrimaryKey: false },
-  { propKey: "channels", dataType: "number", isPrimaryKey: false },
-  { propKey: "channelOutputDaily", dataType: "number", isPrimaryKey: false },
-  { propKey: "agingSlots", dataType: "number", isPrimaryKey: false },
-  { propKey: "agingDays", dataType: "number", isPrimaryKey: false },
+  { propKey: "processId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "kind", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // serial | formation | aging
+  { propKey: "yield", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "yield_baseline", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" }, // 良率基线（时序 EMA 物化）——全建模对齐（R12）
+  { propKey: "shiftHours", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute" },
+  { propKey: "shifts", dataType: "number", isPrimaryKey: false, unit: "班", scale: "absolute" },
+  { propKey: "attendance", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  // WO-DIM-LABEL-3 ③：与 `Line.utilization` **同名但不同量纲** —— 本条存 0–1 比率
+  // （播种：串行工序 `0.88 + rng*0.08` → 实测 0.916 / 0.922；化成与老化恒 1），
+  // 而 `Line.utilization` 存 0–100 百分点。两条同名属性各自声明自己的口径，
+  // 消费方就不必再按取值范围猜（猜法在两套值域哪天重叠时会静默画错 100 倍）。
+  //
+  // ── 收编裁决（`WO-DIM-LABEL-3` × `WO-UNIT-KWH` 并线冲突·2026-08-29）──────────────
+  //   两张单在**本行**判得不一样，取 UNIT-KWH 的 `dimensionless`，不取 DIM-LABEL-3 的 `%`：
+  //     · DIM-LABEL-3 写 `unit:"%"`，而它自己的描述写的是「**0–1 比率存储**，显示时 ×100」——
+  //       在 UNIT-KWH 建立的闭合口径里，`%` 的含义是「**存的就是 0–100 百分点**」
+  //       （`Line.utilization` 那条才是），拿它标一个 0–1 的值就是把量纲说反了 100 倍，
+  //       正是这两张单都想灭掉的那个病。
+  //     · UNIT-KWH 的判据来自**真起后端实测**（SEED_DEMO=1，读数 0.903/0.951/0.957），
+  //       且 `scale:"ratio"` 已经承载了「这是比例量、显示要 ×100」这层意思，不必再借 `%` 表达。
+  //     · 另有一条硬约束：`PropertyDef.scale` 在 UNIT-KWH 之后是**必填**，
+  //       DIM-LABEL-3 那一版没有 `scale`，原样取用 typecheck 当场红。
+  //   `description` 是 DIM-LABEL-3 的真实增量（随契约下发给消费方，注释下发不到），予以保留，
+  //   仅把其中「与 `%` 同口径」的说法改成与本行实际声明一致。
+  {
+    propKey: "utilization",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "dimensionless",
+    scale: "ratio",
+    description:
+      "工序利用率。0–1 比率存储（`unit=dimensionless` + `scale=ratio`），显示时 ×100 —— 与 LEVER_PROP_META['Process.utilization'].kind='ratio' 同口径。" +
+      "注意与 `Line.utilization`（`unit=%`·0–100 百分点存储）同名不同量纲：本条在产能链里作乘数参与 `computeRollup`，故必须是比率。",
+  },
+  { propKey: "channels", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute" },
+  { propKey: "channelOutputDaily", dataType: "number", isPrimaryKey: false, unit: "电芯/天", scale: "absolute" },
+  { propKey: "agingSlots", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute" },
+  { propKey: "agingDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" },
+  // WO-SANDBOX-D3 · 硬容量约束的两个新承载物（只落在**真有**硬容量单元的工序上；串行工序**不带此二属性**，
+  // 消费方据此诚实标 EMPTY，绝不给默认柜位数）。
+  //   capacityUnitKind  —— 硬容量单元语义标签（化成柜位 / 老化库位…），是引擎通用发现硬容量的入口；
+  //                        单元数与速率的**数值单源仍是 channels / agingSlots 本身**（见 contracts
+  //                        `HARD_CAPACITY_UNIT_SPECS`），刻意不另存副本，否则拨 ② 杠杆（Process.channels）
+  //                        会让副本悄悄漂移。
+  //   requiredThroughput —— 上游串行段要求该并行段承接的日吞吐（电芯/天）。**这是本单真正新增的信息**：
+  //                        没有它就无法判「柜位够不够」，只能取 min 而说不出谁夹定、差多少。
+  //                        规则 C02 `Process.parallelThroughput < Process.requiredThroughput` 早已按名引用
+  //                        该量，但此前 Process 上无此属性（故 C02 恒不可评估）。
+  { propKey: "capacityUnitKind", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "硬容量单元类型（化成柜位 | 老化库位）；无此属性 = 该工序不承载硬容量单元" },
+  { propKey: "requiredThroughput", dataType: "number", isPrimaryKey: false, unit: "电芯/天", scale: "absolute", description: "上游串行段要求该并行段承接的日吞吐（判「柜位够不够」的比较基准）" },
 ];
 
 const equipmentProps: PropertyDef[] = [
-  { propKey: "equipId", dataType: "string", isPrimaryKey: true },
-  { propKey: "processId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Process" },
-  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Line" },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "ctSeconds", dataType: "number", isPrimaryKey: false },
-  { propKey: "availFactor", dataType: "number", isPrimaryKey: false },
-  { propKey: "oeeA", dataType: "number", isPrimaryKey: false },
-  { propKey: "oeeP", dataType: "number", isPrimaryKey: false },
-  { propKey: "oeeQ", dataType: "number", isPrimaryKey: false },
+  { propKey: "equipId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "processId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Process" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "ctSeconds", dataType: "number", isPrimaryKey: false, unit: "秒", scale: "absolute" },
+  { propKey: "availFactor", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "oeeA", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "oeeP", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "oeeQ", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "oee_current", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" }, // OEE 当前快照（= EquipmentOEE 事实行 7 日均值·equipmentOeeAtomsDaily 同源派生，baseDerived.oeeIndex 依赖）——全建模对齐（R12）
+  // SA-6：设备台账字段（R12 全建模对齐）
+  { propKey: "equipment_code", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "equipment_type", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 涂布机 | 辊压机 | 分切机 | 卷绕机 | 装配线 | 注液机 | 化成柜 | 老化库 | PACK线
+  { propKey: "manufacturer", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "install_date", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 正常 | 维修中 | 待报废
+  // WO-SA-2：设备可靠性工程字段（故障推演真信号·诚实合成非实测·R12 全建模对齐）
+  { propKey: "mtbf", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute", description: "平均无故障时间（小时·越高越可靠）" },
+  { propKey: "mttr", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute", description: "平均修复时间（小时·越低越好）" },
+  { propKey: "health_score", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio", description: "设备健康度（0-100·越高越健康）" },
+];
+
+// SA-3：车间对象属性（Base↔Workshop↔Line 四层结构）
+const workshopProps: PropertyDef[] = [
+  { propKey: "workshopId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "processType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 制浆 | 涂布 | 辊压 | 分切 | 卷绕 | 装配 | 注液 | 化成 | 分容 | PACK
 ];
 
 const maintPlanProps: PropertyDef[] = [
-  { propKey: "planId", dataType: "string", isPrimaryKey: true },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "week", dataType: "number", isPrimaryKey: false }, // forecast week (1-based, from forecastStart)
-  { propKey: "lastMaintStart", dataType: "date", isPrimaryKey: false }, // aligned dip in the 90d history
+  { propKey: "planId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "week", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // forecast week (1-based, from forecastStart)
+  { propKey: "lastMaintStart", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // aligned dip in the 90d history
 ];
 
 const segmentProps: PropertyDef[] = [
-  { propKey: "segKey", dataType: "string", isPrimaryKey: true },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "gmRate", dataType: "number", isPrimaryKey: false }, // percent
-  { propKey: "baselineShare", dataType: "number", isPrimaryKey: false },
+  { propKey: "segKey", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "gmRate", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // percent
+  { propKey: "baselineShare", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+];
+
+// cockpit P1 绿地：经营驾驶舱富 KPI 数据闭环（数字从本体关系算出，前后端零写死 R14）。
+/**
+ * WO-SANDBOX-D1×E1 接缝 · 节拍对象属性表。
+ *
+ * 行来自 `synthetic/cadence.ts` 的 `cadenceObjectRows()`（种子自身发生序列推导，非拍脑袋）。
+ * `nodeId` 取值受 `CHAIN_NODE_REGISTRY` 约束（契约 §2.5 单源），**不是自由串**。
+ * `dataMode === "EMPTY"` 的行**照样落库**：诚实缺席必须可查询，
+ * 否则「本仓没有这个节拍」与「本仓压根没登记这个环节」在下游长得一模一样。
+ */
+const cadenceProps: PropertyDef[] = [
+  { propKey: "nodeId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "全链节点 id（取值受契约 CHAIN_NODE_REGISTRY 约束，不是自由串）" },
+  { propKey: "label", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "节点人读名（由注册表派生，不在本表另存一份）" },
+  { propKey: "stage", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "所属链路阶段：DEMAND 需求 | ORDER 订单 | CAPACITY 产能 | MATERIAL 物料" },
+  { propKey: "dataMode", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "诚实位：SYNTHETIC=从种子发生序列真推出了周期 | EMPTY=推不出（此时不给默认值，见 emptyReason）" },
+  { propKey: "everyDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute", description: "节拍周期长度：这个环节多久处理一次。EMPTY 行不带此属性（缺席即缺席，不补 0）" },
+  { propKey: "offsetDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute", description: "周期内相位（第几天开闸），∈[0, everyDays)。⚠ 不进等待期望公式——相位移动的是每一次具体等待，不改变期望" },
+  { propKey: "cadenceKind", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "节拍性质：meeting 会议 | batch 攒批 | settlement 结算 | shipping 发运" },
+  { propKey: "flowGate", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "是否产品流要等的闸门。false=周期性停机（如检修窗）——是真周期但产品不是在等它开始，故不摊进全链前置期，否则会凭空多出一段假等待" },
+  { propKey: "intervalCount", dataType: "number", isPrimaryKey: false, unit: "个", scale: "absolute", description: "证据强度：推导该周期时采到的间隔样本数（前端可据此标『证据薄』）" },
+  { propKey: "emptyReason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "推不出周期的机器可读原因：NO_CARRIER 连可查的集合都没有（要加字段）| NO_INTERVAL 发生次数不足两次 | NON_UNIFORM 间隔不等长（那是一串事件，不是一个节拍）。前者要加字段、后两者要补数据，修法不同不可混标" },
+  { propKey: "note", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "口径说明与取证记录（该节拍从哪个集合的哪个时刻字段推出，或为什么查不到）" },
+];
+const demandSegmentProps: PropertyDef[] = [
+  { propKey: "segId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "segment", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 乘用车/储能/商用车
+  { propKey: "tgt", dataType: "number", isPrimaryKey: false, unit: "万套", scale: "absolute" }, // 目标(万)
+  // WO-P50-REMAINING-3：名字自带口径 —— 分母是**年**（Σ=375 万套/年），与 `CapacityForecastOutput.capWanP50`
+  // 的「万套/**窗口**」是两个量。只写「万套」正是让用户在屏上分不出的那半个信息。
+  { propKey: "demandWanPerYearP50", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "需求预测中位口径 P50（万套/年）" },
+  { propKey: "demandWanPerYearP90", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "需求预测保守下分位 P90（万套/年·≤ P50）" },
+  // WO-UNCERTAINTY-INPUTS：三点分布的上界。置信水平式约定 ⇒ P90 ≤ P50 ≤ P10（见 SEG_DEMAND 处口径说明）。
+  { propKey: "demandWanPerYearP10", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "需求预测乐观上分位 P10（万套/年·≥ P50·= P50²/P90 对数正态镜像）" },
+  { propKey: "act", dataType: "number", isPrimaryKey: false, unit: "万套", scale: "absolute" }, // 实际(万)
+  { propKey: "priceWan", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute" }, // 单价(万/万件)
+  { propKey: "marginPct", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 毛利率(%)
+  { propKey: "floorPct", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 毛利底线(%)
+  { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // WO-W5·业务类型（passenger|commercial|storage·= 细分名映射）
+];
+const demandSegmentDerived: DerivedPropertyDef[] = [
+  // ⚠⚠ 这两个字段的**名字和原注释都是错的，差 1e4**（WO-UNIT-KWH 实测订正）。
+  // 名字里的 `Wan` 和原注释「收入(万)/毛利额(万)」都指向「万元」，**实际单位是「亿元」**。
+  // 逐位实证（本文件需求层锚，见 SOP_SEG 那段注释「合计 375 万套/年 … totalRev=700.0亿」）：
+  //   量纲推演：`万套/年` × `万元/套` = (1e4 套) × (1e4 元/套) = **1e8 元 = 亿元**
+  //   数值对拍：201.7×2.2 + 139.2×1.4 + 34.1×1.8 = **700.00**，而 `scaleAnchorRevenue.S = 700`
+  //            的单位注释自述是「**亿**」⇒ ΣrevenueWan 就是 700 亿元，不是 700 万元。
+  //   交叉验证：Σ marginWan / Σ revenueWan = 118.85/700.00 = **17.0%**，与本文件注释自述的
+  //            「gmRate≈17.0%」逐位吻合 ⇒ 两个字段同族同量纲，一起是亿元。
+  // ⇒ 这也是「按字段名机械抄单位」这条捷径的反例：`Wan` 后缀在这里**不度量它的单位**。
+  //   名字暂不改（`revenueWan` 是求解器/前端/金值的接线名，改名要连断言一起改，属另一张单）；
+  //   但机器可读的 `unit` 必须说真话 —— 从今天起以本声明为准，不以名字为准。
+  // ── WO-DIMENSION-ERRORS · 上一单收掉了**倍数**错（万元→亿元），**阶**错还留着 ───────────
+  // 今天的行为：声明 `亿元` = **存量**（"账上有 700 亿"）。
+  // 应该是：`亿元/年` = **速率**（"一年做 700 亿"）—— 因为左因子是 `demandWanPerYearP50`，
+  // 它的名字与声明都自陈分母是**年**（`万套/年`）。逐位：`万套/年 × 万元/套 = 1e8 元/年`。
+  // ⚠ 存量与速率之间**没有换算系数**（不像 万元↔亿元 差 1e4）：它们是两个不同的量。
+  //   上一单把注释从「收入(万)」改成「亿元」时只盯着倍数，分母那一半原样留了下来 ——
+  //   同一行上**两种错并存**，修掉显眼的那个反而更像已经修完了。
+  // ⚠ `priceWan` 保持 `万元` 不动：它的真实分母是「套」，而 `docs/DECISION-unit-of-account.md`
+  //   §1.5 的仓主裁决明令「套/电芯不得充当金额的分母」⇒ 词库里**没有也不许有** `万元/套`。
+  //   本仓表达「每单位多少钱」靠绑定角色 + qty 那一格（同 `Model.unitCost` 的既有口径），
+  //   不靠单位串。故这里只收**时间**这一半的分母 —— 它不触那条裁决。
+  { propKey: "revenueWan", formula: "demandWanPerYearP50 * priceWan", unit: "亿元/年", scale: "absolute" },
+  { propKey: "marginWan", formula: "demandWanPerYearP50 * priceWan * marginPct / 100", unit: "亿元/年", scale: "absolute" },
+];
+const financePlanProps: PropertyDef[] = [
+  { propKey: "finId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "line", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 收入/销售成本/毛利
+  { propKey: "budget", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute" }, // 预算(万)
+  { propKey: "rolling", dataType: "number", isPrimaryKey: false, unit: "万元", scale: "absolute" }, // 滚动预测(万)
+];
+const materialBalanceProps: PropertyDef[] = [
+  { propKey: "matBalId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "material", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 三元正极/隔膜/电解液
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 吨/万㎡（MRP 表单位，PRD-IND-sop §4.4）
+  { propKey: "netDemandTon", dataType: "number", isPrimaryKey: false, unit: "吨", scale: "absolute" },
+  { propKey: "ltaPct", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" }, // 长协覆盖(%)
+  { propKey: "gapTon", dataType: "number", isPrimaryKey: false, unit: "吨", scale: "absolute" }, // 现货缺口(吨)
+  { propKey: "etaDate", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  // WO-V4-INSPECT · 齐套覆盖率（**派生非独立真值**，值由下面 materialBalanceDerived 的公式算出）。
+  // 这里之所以**同时**登记为 PropertyDef，是照 `interBaseTransfer.etaDay` 的既有先例：
+  // DerivedPropertyDef 只有 {propKey, formula} 两个字段，没有 displayName/unit/description 的位置，
+  // 而 R14 要求前端零写死词表（中文名/单位必须随响应下发）⇒ 元数据只能挂在 PropertyDef 上。
+  // ⚠ 它**不占** synthetic-field-alignment 的「非派生字段必须被合成填上」那条判据
+  //   （该测试把 derivedProperties 里出现的键从 nonDerived 集合里剔掉）。
+  {
+    propKey: "coverage",
+    dataType: "number",
+    isPrimaryKey: false,
+    // ⚠ 改前这里写的是 `unit: "%"`，与**同一个字面量下一行的 description**（「0–1 比率存储，显示时 ×100」）
+    //   直接打架 —— 单看 `unit` 会把 0.79 读成 0.79%（真值是 79%）。按 description 的实测口径订正：
+    //   0–1 表示法 = `dimensionless` + `ratio`；`unit:"%"` 在本册专指 0–100 表示法。
+    unit: "dimensionless",
+    scale: "ratio",
+    description: "齐套覆盖率（净需求中已被覆盖的比例）。0–1 比率存储，显示时 ×100 —— 与 LEVER_PROP_META['MaterialBalance.coverage'].kind='ratio' 同口径。派生属性：值由 (netDemandTon − gapTon) / netDemandTon 算出，不是独立录入的真值。",
+  },
+];
+/**
+ * WO-V4-INSPECT · 闭死杠杆 `MaterialBalance.coverage`（PRD-sandbox-v4 §2.2 · 断点 `G-LEVER-DEAD-LANDING`）。
+ *
+ * ── 病灶 ─────────────────────────────────────────────────────────────────────
+ * `LEVER_PROP_META` 登记了 12 条杠杆落点，11 条在 94 个本体类型里解析得到，唯独
+ * `MaterialBalance.coverage` **属性根本不存在**（现读 dist 复验：MaterialBalance 的属性是
+ * matBalId/material/unit/netDemandTon/ltaPct/gapTon/etaDate）。
+ * 既有 `check-lever-binding-drift` 看不见它 —— 那道门验的是「因子层→有没有落点」（覆盖方向），
+ * 本条缺的是反方向「落点→属性是否真存在」，它自己的诚实边界段落白纸黑字写着不证这一维。
+ *
+ * ── 为什么选「派生」而不是「补一个存储属性」（PRD §2.2 的二选一）──────────────
+ * 因为它**不是独立真值**：MRP 表上这一行只有一个自由度 —— 给定 `netDemandTon`，
+ * `ltaPct` 与 `gapTon` 已经互相决定（种子 `battery.ts` 原式：
+ * `gapTon = round(max(0, netDemandTon × (1 − ltaPct/100)), 0)`）。再存一个 `coverage`
+ * 就是**同一个自由度的第三份存储**，三者必然随时间漂开（改一处忘两处），
+ * 正是本仓「零新真值源 / R13 派生投影非新真值」要根治的形态。
+ *
+ * ── 公式为什么用 gapTon 而不是 ltaPct/100（两者今天数值相同，但概念不同）────────
+ * 今日种子里 `(netDemandTon − gapTon)/netDemandTon` 与 `ltaPct/100` 数值上一致
+ * （只差 gapTon 取整那点误差），但**这两个是不同的业务量，不许合并**：
+ *   · `ltaPct` = **长协覆盖率**（长期协议锁定的份额，PROP_DISPLAY_NAMES 已如此命名）；
+ *   · `coverage` = **齐套覆盖率**（净需求里实际不缺的份额）。
+ * 真实 MRP 里现货补货会把缺口补上 ⇒ 齐套覆盖率 > 长协覆盖率。今天二者相等，只是因为
+ * 本种子没有现货采购这一路。用 `ltaPct/100` 当公式 = 把两个概念焊死，
+ * 等哪天补了现货这条路，公式会**静默给出错的数**。故取定义式（缺口口径），不取巧合式。
+ */
+const materialBalanceDerived: DerivedPropertyDef[] = [
+  { propKey: "coverage", formula: "(netDemandTon - gapTon) / netDemandTon", unit: "dimensionless", scale: "ratio" },
+];
+
+// cockpit P2 + SPINE 绿地：规划决策推演 + 根因 DAG + 经营目标-指标-责任骨架。
+// Metric = 指标库一等对象（目标 vs 实际，各视图 KPI 单一出处 R-一致；= cockpit PlanKpi 归一，含 level/ksfRef/ownerRef）；
+// KSF = 关键成功要素（五要素）；Principal = 责任主体；RootCauseChain = 因子→指标的「归因模板」
+// （配成对象 → 求解器据此沿 driverType 取活数据算贡献，「结构=算、模板=配成对象」）。
+const metricProps: PropertyDef[] = [
+  { propKey: "metricId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "key", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "level", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // op/month/quarter/year
+  { propKey: "category", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // profit/scale/material
+  { propKey: "target", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "actual", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "floorVal", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 底线（actual<floor → 越线）
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "weight", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // KSF 权重
+  { propKey: "ksfRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "KSF" }, // 归属 KSF
+  { propKey: "ownerRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Principal" }, // 责任人
+  { propKey: "chainKey", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 越线根因装配 key
+  // WO-SEG-ATTR-SCOPE：细分达成率指标（seg_attain_ess/pas/com）携业态（storage|passenger|commercial·经
+  // businessTypeOfSegment 派生，与 Order.businessType 同源同口径 R-一致），供 gap_attribution 按业态裁订单。
+  // 声明于类型以对齐合成字段（否则 seg Metric 实例的 businessType 成孤儿字段·synthetic-field-alignment 红）。
+  { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // passenger | commercial | storage（仅 seg 指标有·非 seg 指标缺省）
+  /**
+   * WO-METRIC-IDENTITY · **本指标的口径自述**（`actual` 与 `target` 各自从哪条链取数）。
+   *
+   * 存在的理由是实测出来的病：同一块经营指标条上并排的几个数**口径互不相同**
+   * （营收=成交侧订单簿、毛利=需求预测侧、份额=诚实合成种子），而屏上一个字都没说。
+   * 数字本身没错的时候，缺的就是这一行 —— 故它是 `Metric` 的**一等属性**，不是样式。
+   * ⚠ 口径由**后端下发**、前端零写死（R14）：前端只渲染这一串，不许自己拼口径文案。
+   * ⚠ 只写**业务事实**（口径名 / 时间窗 / 条数 / 目标出处），不写源码文件名行号（R-UI-4）。
+   */
+  { propKey: "basis", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "本指标的口径自述：一句话说明 `actual` 与 `target` 各自取自哪条链、怎么算、时间窗多大。取值形如「成交侧 · 订单簿计划年窗（交期落计划年的已签订单，Σ 数量×单价）；目标来自计划侧年度目标登记册」——首段是口径名，区分取数来源（成交侧 | 需求侧 | 需求预测侧 | 物料侧 | 计划侧 | 诚实合成种子）。存在的理由：同一块经营指标条上并排的几个数口径互不相同（营收＝成交侧订单簿 · 毛利＝需求预测侧 · 份额＝合成种子），数字本身没错的时候缺的就是这一行，故它是 Metric 的一等属性、不是样式。逐条随指标由后端下发，前端只原样渲染、不自拼口径文案；内容只写业务事实（口径名 / 时间窗 / 条数 / 目标出处）。" },
+];
+const metricDerived: DerivedPropertyDef[] = [
+  { propKey: "delta", formula: "actual - target", unit: "dimensionless", scale: "absolute" }, // 差异（带符号）
+  { propKey: "gapPct", formula: "(actual - target) / target * 100", unit: "%", scale: "ratio" }, // 缺口%（带符号，越线为负）
+];
+const ksfProps: PropertyDef[] = [
+  { propKey: "ksfId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "key", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // k_dem/k_bal/k_kit/k_cash/k_cost
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "sub", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+const principalProps: PropertyDef[] = [
+  { propKey: "principalId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "kind", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // org/role/person
+  { propKey: "parentRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Principal" },
+];
+// cockpit P5 / sop 绿地：S&OP 版本演进（V1→V7 需求/供给/缺口/备注），驱动 V5/V7 版本切换 + 版本对比表。
+//
+// WO-P50-REMAINING-3 量纲实测（不信注释信算术）：`demBase = round(totalTgt, 0)`，
+// 而 `totalTgt = Σ DemandSegment.tgt` = 201.7+139.2+34.1 = **375 万套/年**（= 700 亿 ÷ 1.8667 万元/套 规模锚）。
+// ⇒ 本表三列全是 **万套/年**，而同屏上方的 S&OP KPI 条（需求/可供给/缺口）是 **万套/月**（实测 26.58 量级）。
+// 两者相差 12 倍、同屏并列、原先**三列一个单位都没写** —— 正是「屏上分不出」的那半个信息。
+// 故此处把量纲写进属性定义（屏上表头由前端 `VersionCompare` 一并写清）。
+const sopVersionRowProps: PropertyDef[] = [
+  { propKey: "verId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "ver", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // V1..V7
+  { propKey: "date", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "demand", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "该版本的年度需求口径（Σ DemandSegment.tgt 派生·万套/年，非 S&OP 月度台账口径）" },
+  { propKey: "supply", dataType: "number", isPrimaryKey: false, unit: "万套/年", scale: "absolute", description: "该版本的年度可供给口径（万套/年·与 demand 同分母）" },
+  { propKey: "note", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "isFinal", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+const sopVersionRowDerived: DerivedPropertyDef[] = [
+  { propKey: "gap", formula: "demand - supply", unit: "万套/年", scale: "absolute" }, // 产销缺口（派生）
+];
+/**
+ * WO-ADOPT-MITIGATION · 已采纳处置方案台账（`adopt_mitigation` Action 审批通过后的**唯一落点**）。
+ *
+ * 病灶：`adopt_mitigation` 审批通过后一个字节不写 → 用户点「采纳」，风险曲线纹丝不动。
+ * 引擎半本来就齐（`risk.ts tensionSeries` 接 `{eff,tn}`、`params.risk.mitigations` 带量化效果），
+ * **唯一缺的是"哪个方案被真采纳了"这条记录**。本类型即那条记录：
+ *   risk_timeline 逐 (baseId,factor) 查 ACTIVE 采纳 → 把 {eff,tn} 喂进**真曲线**（不是"如果采纳"的对照曲线）。
+ * eff/tn 由执行器从 `params.risk.mitigations[factor]` **解出后落库**（非猜、非默认值）：
+ * 解不出即诚实失败，绝不写一个猜的 eff/tn（③ 拒绝 > 静默错数）。
+ * 不变量：同一 (baseId,factor) 至多一条 ACTIVE（执行器写前先把旧的置 REVOKED·② 单源 > 并存）。
+ */
+const adoptedMitigationProps: PropertyDef[] = [
+  { propKey: "adoptionId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "采纳记录唯一标识（一次审批通过写一条）" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base", description: "方案生效的生产基地（经 resolveBaseId 严格解析·解不出即拒写）" },
+  { propKey: "factor", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "被处置的瓶颈因素（params.bottleneck.factors 之一，如 瓶颈工序/设备OEE/物流时长）" },
+  { propKey: "planKey", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "方案库中的方案键（params.risk.mitigations[factor][].key）" },
+  { propKey: "planName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "方案中文名（审计可读·随 planKey 自方案库解出，非自由填写）" },
+  { propKey: "eff", dataType: "number", isPrimaryKey: false, unit: "点", scale: "absolute", description: "张力削减量：生效后风险张力逐日下调的幅度（自方案库解出·拒绝臆造）" },
+  { propKey: "tn", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute", description: "生效天 T+n：自该日起风险曲线开始扣减 eff，之前逐日不变" },
+  { propKey: "adoptedAt", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "采纳时间（ISO 时间戳·审批通过写入时刻）" },
+  { propKey: "actionDraftId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "来源 Action 草稿 id（R13 溯回完整审批链：谁提、谁批、何时执行）" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "采纳状态 ACTIVE｜REVOKED；同一 (baseId,factor) 至多一条 ACTIVE，改采新方案时旧条置 REVOKED" },
+];
+
+const rootCauseChainProps: PropertyDef[] = [
+  { propKey: "chainId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "kpiCategory", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 关联 Metric.category
+  { propKey: "factor", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 根因因子名
+  { propKey: "driverType", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 取证对象类型（DemandSegment/MaterialBalance…）
+  { propKey: "evidenceField", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 量化字段（marginWan/gapTon/act…）
+  { propKey: "selectField", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 叶节点标签字段（segment/material）
+  { propKey: "baseWeight", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 配置基准权重
 ];
 
 const shipmentProps: PropertyDef[] = [
-  { propKey: "shipId", dataType: "string", isPrimaryKey: true },
-  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, refToTypeKey: "Base" },
-  { propKey: "etaDay", dataType: "number", isPrimaryKey: false }, // relative to forecastStart
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // IN_TRANSIT | ARRIVED | DELAYED
-  { propKey: "qtyTons", dataType: "number", isPrimaryKey: false },
-  { propKey: "coverageDays", dataType: "number", isPrimaryKey: false }, // C16 齐套覆盖天数（常州在途偏紧 → 越线）
+  { propKey: "shipId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "etaDay", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" }, // relative to forecastStart
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // IN_TRANSIT | ARRIVED | DELAYED
+  { propKey: "qtyTons", dataType: "number", isPrimaryKey: false, unit: "吨", scale: "absolute" },
+  { propKey: "coverageDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" }, // C16 齐套覆盖天数（常州在途偏紧 → 越线）
 ];
 
+// WO-WAREHOUSE-CUSTLOC：仓库（每基地 N 仓·库存仓位落点·成品仓 FINISHED 必有供 WO-INVENTORY FG 挂位）。
+const warehouseProps: PropertyDef[] = [
+  { propKey: "warehouseId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "whType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // RAW | FINISHED | TRANSIT
+  { propKey: "capacityUnits", dataType: "number", isPrimaryKey: false, unit: "套", scale: "absolute" },
+  { propKey: "province", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "city", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+/**
+ * WO-LAST3-RELATIONS · **行政区**（`Region`）—— 把地理归属从「节点上的一个字符串」升格成**可被指向的对象**。
+ *
+ * ── 今天的行为是 X，应该是 Y ────────────────────────────────────────────────
+ * **X**：地理归属只以字符串属性存在（`Base.province` · `Warehouse.province` · `CustomerLocation.province`
+ *   —— 实测全仓 99 个类型里带 `province`/`city` 的**只有这三个**，且没有任何 `Region`/`Geo` 类型）。
+ *   于是「华东产能有多少」这类按地域的聚合**不能沿图走**，只能按字段过滤：地域不是一等公民，
+ *   两个不同类型的对象「在不在同一个省」这件事，图上答不出来。
+ * **Y**：省是一个**对象**，三类设施经 `*_located_in` 指向它 ⇒ 地域成为可遍历的枢纽节点，
+ *   「这个省里有哪些基地/仓库/客户交付点」变成一次一跳邻接查询。
+ *
+ * ⚠ **本类型不造业务数据**：行数与取值**全部**由既有对象的 `province` 取值并集派生
+ *   （`buildRegions`），不引入任何新的经营事实；`macroRegion` 是公开的行政区划常识，
+ *   与 `battery.ts` 既有的 `baseId→province` 映射同一档次（都是把已知地理事实写下来）。
+ *   ⇒ 改 `BASE_REGISTRY` 或客户地点表，Region 行**自动跟着变**，不会漂。
+ *
+ * ⚠ **为什么 PK 就是省名**：`materializeDeclaredLinks` 的连接口径是
+ *   「carrier.props[viaProperty] === anchor 业务主键」。三个载体上存的**就是省名字符串**，
+ *   故省名即主键 ⇒ 零转换、零 `anchorProperty`。换成代理键会立刻需要一张对照表，
+ *   而那张表就是下一个漂移源。
+ */
+const regionProps: PropertyDef[] = [
+  { propKey: "regionId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", description: "省级行政区名（业务主键 = 三个载体 props.province 存的那个串，零转换对齐）。" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true, description: "行政区显示名（与主键同值：省名本身就是人话，不另造展示串——两份会漂）。" },
+  { propKey: "macroRegion", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", description: "所属大区（华东/华南/华中/西南/华北）——「华东产能」这类聚合的沿图落点。" },
+];
+
+/**
+ * 省 → 大区 对照表（WO-LAST3-RELATIONS 单一来源）。
+ * ⚠ 查不到即 **throw**，照 `baseNameToId` 的老规矩（本文件 `baseDistanceKm` 同款）——
+ * 静默回落会让一个拼错的省名变成一个**自己一个人的大区**，而那正好不报错。
+ */
+const PROVINCE_MACRO_REGION: Record<string, string> = {
+  江苏: "华东", 浙江: "华东", 安徽: "华东", 福建: "华东", 山东: "华东", 上海: "华东",
+  广东: "华南",
+  湖北: "华中", 河南: "华中",
+  四川: "西南", 重庆: "西南",
+  河北: "华北", 北京: "华北",
+};
+
+/** 由既有对象的 `province` 取值并集派生行政区行（确定性：按省名排序·零 rng·零新业务事实）。 */
+export function buildRegions(provinces: string[]): { regionId: string; name: string; macroRegion: string }[] {
+  const uniq = [...new Set(provinces.filter((p) => p && p.length > 0))].sort();
+  return uniq.map((p) => {
+    const macro = PROVINCE_MACRO_REGION[p];
+    if (!macro) throw new Error(`[battery] 省份「${p}」不在 PROVINCE_MACRO_REGION 对照表（WO-LAST3-RELATIONS）`);
+    return { regionId: p, name: p, macroRegion: macro };
+  });
+}
+
+// WO-INTERBASE-TRANSFER：跨基地调拨台账（从字符串杠杆升一等·R13 可溯真对象）。
+// fromBase/toBase→Base(baseId)·model→Model(modelId) 用 ref；status 用 enum；
+// etaDay 走 derivedProperties（数值管线 dispatchDay+transitDays），etaDate/dispatchDate 为 ISO 展示。
+const interBaseTransferProps: PropertyDef[] = [
+  { propKey: "transferId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "fromBase", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "toBase", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "套", scale: "absolute" }, // 套
+  { propKey: "transitDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" }, // 距离派生 = ceil(baseDistanceKm / dailyTruckKm)（WO-GSIM-1-DATA）
+  { propKey: "freightCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 运费 = baseDistanceKm × tonKmRate × (qty × qtyToTon)（WO-GSIM-1-DATA）
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // PLANNED | IN_TRANSIT | DELIVERED | CANCELLED
+  { propKey: "dispatchDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "dispatchDay", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" }, // 相对 forecastStart 的天偏移（etaDay 派生输入）
+  { propKey: "etaDay", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" }, // 派生 = dispatchDay + transitDays（derivedProperties 管线算）
+  { propKey: "etaDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // = forecastStart + etaDay 的 ISO 展示
+  { propKey: "reason", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+// etaDate(到货) = dispatch + transitDays：数值派生管线只支持数值算术，故派生落在 etaDay（天偏移·确定性·无时钟）。
+const interBaseTransferDerived: DerivedPropertyDef[] = [{ propKey: "etaDay", formula: "dispatchDay + transitDays", unit: "天", scale: "absolute" }];
+
 const dataHealthProps: PropertyDef[] = [
-  { propKey: "sourceId", dataType: "string", isPrimaryKey: true },
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "critical", dataType: "boolean", isPrimaryKey: false },
-  { propKey: "lagHours", dataType: "number", isPrimaryKey: false },
+  { propKey: "sourceId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "critical", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lagHours", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute" },
+];
+
+// WO-INVENTORY-3TIER：成品库存（按 model×warehouse 一行）+ 统一库存流水（收/发/移/退）。
+// 三层闭环 WIP(WIPLot)→完工入库事务(InventoryTxn RECEIPT)→成品库存(FinishedGoodsInventory)。
+const finishedGoodsInvProps: PropertyDef[] = [
+  { propKey: "fgId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "warehouseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Warehouse" }, // 成品仓（WO-WAREHOUSE 已落）
+  { propKey: "qtyOnHand", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // = Σ RECEIPT − Σ ISSUE（勾稽）
+  { propKey: "qtyReserved", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "asOf", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+// 可用量派生（qtyAvailable = qtyOnHand − qtyReserved）：派生投影非新真值（R13），走 derivedProperties。
+const finishedGoodsInvDerived: DerivedPropertyDef[] = [{ propKey: "qtyAvailable", formula: "qtyOnHand - qtyReserved", unit: "件", scale: "absolute" }];
+
+// WO-ATP-PROMISE · 订单承诺台账（一订单一承诺行·ATP/CTP「能不能接、何时交」）。
+const orderPromiseProps: PropertyDef[] = [
+  { propKey: "promiseId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Order" },
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "requestedQty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // 订单需求量
+  { propKey: "committableQty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // 可承接量 = min(需求, 现货+在制未交+交期前可排产能)
+  { propKey: "promiseDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 满足全量最早日
+  { propKey: "atpStatus", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // CONFIRMED | PARTIAL | UNMET
+  { propKey: "shortfallQty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // 缺口 = requestedQty − committableQty
+  { propKey: "bottleneck", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 产能 | 库存 | 物料 | 齐套（无缺口 → null）
+  { propKey: "asOf", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 承诺基准日（固定 T0·R6）
+];
+
+// WO-ORDERLINE · 订单明细行（SO→型号行·一单多型号多行·勾稽 Σ行===头·行级独立态）。
+const orderLineProps: PropertyDef[] = [
+  { propKey: "lineId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" }, // SO-3391-L1
+  { propKey: "orderRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Order" }, // 该行属于哪张订单
+  { propKey: "lineNo", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 行号（1 起·首行保原单 model）
+  { propKey: "model", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" }, // 该行型号
+  // WO-DIMENSION-ERRORS · 随 `Order.qty` 件→套：本行注释自陈「Σ BY orderRef === Order.qty」是一条**等式**，
+  // 等式两端必须同族。同理下方 `unitPrice` 保持 `元`（元/套 属该裁决收口范围·见 Order.qty 处长注）。
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "套", scale: "absolute" }, // Σ BY orderRef === Order.qty（勾稽）
+  { propKey: "due", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 交期（继承订单头）
+  { propKey: "lineStatus", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // OPEN | COMMITTED | PARTIAL | SHIPPED
+  { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 按行 model 反范式化（Model.unitPrice 单一来源·R14）
+  // WO-UNITCOST-LAND：按件履约成本，按行 model 反范式化（`Model.unitCost` 单一来源·守 R14·勿写死）。
+  // 与上面 `unitPrice` 同一**取法**（都从 `Model` 反范式化下来），但**不是同一口径**：
+  // ⚠ WO-UNIT-MARGIN-96X 订正 —— 本行原文写「营收侧与成本侧从此同阶，毛利才是单位经济学的毛利」，
+  //   **实测为假**：`unitPrice` 分母是**套**（`seg.priceWan × 1e4` 派生），`unitCost` 分母是**电芯**
+  //   （BOM 单颗电芯用量现算）。两者同声明 `unit:"元"`，故**任何按 `unit` 串做的校验都看不见这个差**
+  //   —— 这正是它能一路活到求解器的原因。断点 `G-UNIT-MARGIN-CROSS-DENOM`，详见 `Model.unitCost` 那格的订正段。
+  // WO-INTEG-BATCH-5 收编补 description（同 `Model.unitCost` 那格的理由：本单落属性时漏了它，
+  // `ontology-descriptions:check` 当场红）。描述明写"值从型号侧反范式化下来"，
+  // 免得有人把这一格当成第二个可独立编辑的成本源。
+  {
+    propKey: "unitCost", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute",
+    description:
+      "该订单行的按件履约成本（元/电芯）—— 值由本行 model 从 `Model.unitCost` 反范式化下来，" +
+      "算法与唯一来源都在型号侧，本格不独立计算、不可单独改口径。" +
+      "⚠ 本格分母是**电芯**，同行 unitPrice 分母是**套**——两者不同阶，" +
+      "`unitPrice − unitCost` 不是该行单位毛利（断点 G-UNIT-MARGIN-CROSS-DENOM）。",
+  },
+  // ── WO-PENALTY-CHANGEOVER-ONTOLOGY · 违约金落到订单行这一层 ──────────────────────
+  //
+  // 今天的行为是 X：`OrderLine` 上没有任何命中违约/成本词库的**总量**数值字段 ⇒
+  //   `opt-assemble.ts` 的 `penProp` 恒 undefined ⇒ 不声明 `penalty` role ⇒ 绑定层
+  //   `num(p["penalty"])` 对 873 行**恒取到 0**。引擎侧其实**全接好了**
+  //   （`inproc-optimizer.ts` 的密度排序含 `wPen·penalty` 项、`objectiveValues.penalty`
+  //   = Σ 被挤单违约金、标量目标含 `−wPen·penalty`），只是没有数据可读 ——
+  //   这是三分法第二态「接了线没数据」，修法是**补数据**不是接线。
+  // 应该是 Y：这一格是本体事实，装配器现扫命中即声明为真轴；改费率 ⇒ 装入次序与目标值真变。
+  //
+  // ⚠ **为什么是「总量（元）」而不是「费率（元/件）」**，两条判据缺一不可：
+  //  ① 语义：违约金是**一行赔多少**的总量。`opt-assemble.ts` 那段注释写得很清楚 ——
+  //     「penalty 是总量（一单赔多少），强度量当不了总量」，故它显式排除 `unitRate` 命中的格。
+  //  ② 量纲：本册（`domain.ts` PROPERTY_UNITS）在 R-UNIT 裁决下**故意没有** `元/套`，
+  //     也没有 `元/件` —— 「套/件」只作物理计数，不得充当金额的分母。
+  //     ⇒ 一个按件的违约费率在本平台的单位字典里**根本声明不出来**。
+  //     费率因此只能是**种子侧的派生输入**（在册于 `BATTERY_SOLVER_PARAMS.breachPenalty`），
+  //     落到本体上的是它乘完 qty 之后的那个总额，单位「元」——与 unitPrice/unitCost 同货币基准。
+  //
+  // ⚠ 放在 `OrderLine` 而不是 `Order`：装配器的 `orderT` 现算挑的就是 `OrderLine`
+  //   （873 行 > Order 500 行，且两个多目标面板已收敛到这个粒度）。挂到 `Order` 上
+  //   `penProp` 仍是 undefined、轴仍然缺席 —— 挂错一层的后果不是报错，是这根轴照旧不存在。
+  {
+    propKey: "breachPenalty", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute",
+    description:
+      "该订单行未能交付时按合同违约条款要赔付的金额总量（元/整行，不是每件费率）。" +
+      "值 = 本行 qty × 所属订单优先级对应的违约费率，费率册在场景包 solver_params.breachPenalty，" +
+      "标注为合成值（本平台无真实合同条款数据源）。多目标推演把它计入「被挤单」那一侧：" +
+      "一行被挤出排产才发生这笔赔付，获排则不发生。",
+  },
+];
+
+const inventoryTxnProps: PropertyDef[] = [
+  { propKey: "txnId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "txnType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // RECEIPT | ISSUE | TRANSFER | RETURN
+  { propKey: "fgRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "FinishedGoodsInventory" },
+  { propKey: "woRef", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WorkOrder" }, // 收货来源工单
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // 带正负
+  { propKey: "fromWarehouse", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "toWarehouse", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "refDoc", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "occurredAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+// Phase 3 MES Domain: Production Planning
+const workOrderProps: PropertyDef[] = [
+  { propKey: "woId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "moNo", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "qtyPlanned", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "qtyActual", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "startDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "endDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  /**
+   * WO-CAPACITY-EDGE · 计划工期（天）= `endDate − startDate`。
+   *
+   * 为什么必须显式落一格：产能是**速率**（件/日），工单量是**存量**（件）——两者相除才同量纲。
+   * 除数此前只能由两个 `date` 现算，于是「吃掉多少产能」这个量在本体里**没有量纲出处**，
+   * `consumes_capacity` 边上的 `spanDays` 也就无处声明单位。本格就是那个声明处（`天` 取自单位册）。
+   */
+  {
+    propKey: "spanDays",
+    dataType: "number",
+    isPrimaryKey: false,
+    unit: "天",
+    scale: "absolute",
+    description:
+      "计划工期（天）= `endDate − startDate`。它是把工单量（件，**存量**）换算成产能占用（件/日，**速率**）的除数，`consumes_capacity` 边上的 `spanDays` 也以本格为量纲出处。恒 ≥7，故换算不需要兜底除数。",
+  },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 已排产 | 生产中 | 已完成 | 已关闭
+  // WO-FULFILLS-EDGE · 本工单兑现的**销售订单外键**（值 = `Order` 主键 `so`）。
+  // 为什么非加不可：此前 `WorkOrder` 的 `refToTypeKey` 只指向 Model/Line/Base，**没有一个指向 Order**，
+  // 而 `batteryLinkTypes()` 里 17 条涉及 Order/WorkOrder 端点的边也没有一条以这两者为端点对 ⇒
+  // 「这张订单靠哪些工单产出来兑现」在本体里**根本表达不了**，产销端到端推演断在最要紧的那一跳。
+  // ⚠ **条件缺席**（先例：同文件 `Order.earlyDue`，声明了但只在 early 单上出现）：
+  // 只有 (modelId, baseId) 与订单簿真对得上的工单才写这个字段，对不上的**不写**——
+  // 见 `deriveFulfills` 的取舍说明，「张冠李戴的数比没有更危险」。
+  {
+    propKey: "orderRef",
+    dataType: "ref",
+    isPrimaryKey: false,
+    unit: "dimensionless",
+    scale: "absolute",
+    refToTypeKey: "Order",
+    description: "本工单在兑现哪张订单（值 = `Order.so` 主键）。条件缺席：只有 (modelId, baseId) 与订单簿真对得上的工单才写这一格，对不上的不写 —— 缺席读作「兑现关系未知」，不读作「不兑现任何订单」。",
+  },
+];
+
+const productionScheduleProps: PropertyDef[] = [
+  { propKey: "schedId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "woId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WorkOrder" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "shift", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 白班 | 夜班
+  { propKey: "scheduledDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "priority", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 已确认 | 已执行 | 已取消
+];
+
+const shiftPlanProps: PropertyDef[] = [
+  { propKey: "shiftId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "shiftName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "plannedHeadcount", dataType: "number", isPrimaryKey: false, unit: "人", scale: "absolute" },
+  { propKey: "actualHeadcount", dataType: "number", isPrimaryKey: false, unit: "人", scale: "absolute" },
+  { propKey: "date", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "hours", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute" },
+];
+
+// Phase 3 MES Domain: WIP Tracking
+const wipLotProps: PropertyDef[] = [
+  { propKey: "lotId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "woId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WorkOrder" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "currentProcess", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 在制 | 待检 | 合格 | 报废
+  { propKey: "startTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lastMoveTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+const wipMoveProps: PropertyDef[] = [
+  { propKey: "moveId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WIPLot" },
+  { propKey: "fromProcess", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "toProcess", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "moveTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operatorId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+const wipQualityCheckpointProps: PropertyDef[] = [
+  { propKey: "checkpointId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WIPLot" },
+  { propKey: "processName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "checkType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 首检 | 巡检 | 末检
+  { propKey: "result", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 通过 | 不通过 | 待定
+  { propKey: "checkTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "inspectorId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+// Phase 3 MES Domain: Quality Execution
+const qualityLotProps: PropertyDef[] = [
+  { propKey: "qlotId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "woId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WorkOrder" },
+  { propKey: "modelId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Model" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "batchSize", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "sampleSize", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "passQty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "failQty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 待检 | 合格 | 不合格 | 特采
+  { propKey: "inspectDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+const inspectionResultProps: PropertyDef[] = [
+  { propKey: "resultId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qlotId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "QualityLot" },
+  { propKey: "charId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "InspectionCharacteristic" },
+  { propKey: "measuredValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "targetValue", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "upperLimit", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lowerLimit", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "result", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 合格 | 不合格
+  { propKey: "inspectTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+const defectRecordProps: PropertyDef[] = [
+  { propKey: "defectId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qlotId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "QualityLot" },
+  { propKey: "lotId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "WIPLot" },
+  { propKey: "defectType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 外观 | 尺寸 | 性能 | 安全
+  { propKey: "severity", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 轻微 | 一般 | 严重
+  { propKey: "qty", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "description", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "foundAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "processName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+// Phase 3 MES Domain: Equipment Execution
+const equipmentOEEProps: PropertyDef[] = [
+  { propKey: "oeeId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "date", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "availability", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "performance", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "quality", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "oee", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
+  { propKey: "plannedProductionTime", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+  { propKey: "actualProductionTime", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+];
+
+const equipmentDowntimeProps: PropertyDef[] = [
+  { propKey: "dtId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "startTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "endTime", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "durationMin", dataType: "number", isPrimaryKey: false, unit: "分钟", scale: "absolute" },
+  { propKey: "reason", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 故障 | 换型 | 待料 | 计划停机 | 其他
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 进行中 | 已恢复
+];
+
+const equipmentAlarmProps: PropertyDef[] = [
+  { propKey: "alarmId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "alarmCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "alarmLevel", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 提示 | 警告 | 紧急
+  { propKey: "message", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "triggeredAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "clearedAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 活跃 | 已确认 | 已清除
+];
+
+// ---------------------------------------------------------------------------
+// WO-EXCEPTION-EVENT · 四源归一「异常事件」聚合投影（G-EXCEPTION-SCATTER）。
+// 病根：EquipmentDowntime / EquipmentAlarm / DefectRecord / TriggerRule（+MaterialBalance 缺料）
+// 五处散落、无统一入口 → Agent「全监听」无处落地。ExceptionEvent = 确定性聚合投影。
+// R6：纯从源行派生（无随机/无时钟/不消费 mulberry32 流·同源同投影字节一致）。
+// R13：refType/refId 保留下钻回源对象。R14：严重度阈值集中配置表（不散落魔数）。
+// ---------------------------------------------------------------------------
+const exceptionEventProps: PropertyDef[] = [
+  { propKey: "excId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "excType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // MATERIAL_SHORTAGE | EQUIPMENT | QUALITY | CUSTOMER
+  { propKey: "source", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // downtime | alarm | defect | trigger | material_balance
+  { propKey: "severity", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // LOW | MEDIUM | HIGH | CRITICAL
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // OPEN | ACK | RESOLVED
+  { propKey: "refType", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 源对象类型键（R13 下钻）
+  { propKey: "refId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 源对象业务主键
+  { propKey: "summary", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", searchable: true },
+  { propKey: "occurredAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 源时间戳或 T0 派生
+];
+
+/** R14：严重度阈值配置表（集中·可审计·非散落魔数）。 */
+export const EXCEPTION_SEVERITY_CONFIG = {
+  // 停机：按 durationMin 分档（分钟·降序命中）。
+  downtime: [
+    { min: 240, sev: "CRITICAL" },
+    { min: 120, sev: "HIGH" },
+    { min: 60, sev: "MEDIUM" },
+    { min: 0, sev: "LOW" },
+  ] as { min: number; sev: ExcSeverity }[],
+  // 告警：按 alarmLevel 枚举（默认 MEDIUM）。
+  alarmLevel: { 紧急: "CRITICAL", 警告: "HIGH", 提示: "LOW" } as Record<string, ExcSeverity>,
+  // 缺陷：按 severity 枚举（默认 MEDIUM）+ qty 升档阈值。
+  defectSeverity: { 严重: "HIGH", 一般: "MEDIUM", 轻微: "LOW" } as Record<string, ExcSeverity>,
+  defectQtyCritical: 4, // qty ≥ 此值 → CRITICAL（大批量不良升级）
+  // 触发规则：按比较算子（默认 MEDIUM）。
+  triggerOp: { ">": "HIGH", ">=": "HIGH", "<": "MEDIUM", "<=": "MEDIUM", "==": "LOW" } as Record<string, ExcSeverity>,
+  // 缺料：按 gapTon 分档（吨·降序命中）。
+  materialGap: [
+    { min: 5000, sev: "CRITICAL" },
+    { min: 2000, sev: "HIGH" },
+    { min: 500, sev: "MEDIUM" },
+    { min: 0, sev: "LOW" },
+  ] as { min: number; sev: ExcSeverity }[],
+};
+
+function bucketByThreshold(value: number, table: { min: number; sev: ExcSeverity }[]): ExcSeverity {
+  for (const row of table) if (value >= row.min) return row.sev;
+  return "LOW";
+}
+
+// 源状态字段 → 统一处置状态（无源状态默认 OPEN）。
+const DOWNTIME_STATUS: Record<string, ExcStatus> = { 进行中: "OPEN", 已恢复: "RESOLVED" };
+const ALARM_STATUS: Record<string, ExcStatus> = { 活跃: "OPEN", 已确认: "ACK", 已清除: "RESOLVED" };
+
+export interface ExceptionSourceBundle {
+  equipmentDowntimes?: Record<string, unknown>[];
+  equipmentAlarms?: Record<string, unknown>[];
+  defectRecords?: Record<string, unknown>[];
+  triggerRules?: Record<string, unknown>[];
+  materialBalances?: Record<string, unknown>[];
+}
+
+/**
+ * 四源（+缺料）归一投影：从各源行确定性投影统一异常事件。
+ * refType/refId 保留下钻回源对象（R13）；occurredAt 取源时间戳或 T0 派生；纯函数（R6）。
+ * 分源投影可拆调（generateBattery 投 4 本地源·service 层投 trigger 源后合并），皆字节一致。
+ */
+export function projectExceptionEvents(src: ExceptionSourceBundle, t0: number): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const t0Iso = new Date(t0).toISOString().slice(0, 10);
+  // 设备停机 → EQUIPMENT
+  for (const dt of src.equipmentDowntimes ?? []) {
+    const dtId = String(dt.dtId);
+    const dur = Number(dt.durationMin ?? 0);
+    out.push({
+      excId: `EXC-DT-${dtId}`,
+      excType: "EQUIPMENT",
+      source: "downtime",
+      severity: bucketByThreshold(dur, EXCEPTION_SEVERITY_CONFIG.downtime),
+      status: DOWNTIME_STATUS[String(dt.status)] ?? "OPEN",
+      refType: "EquipmentDowntime",
+      refId: dtId,
+      summary: `设备 ${String(dt.equipId)} 停机 ${dur} 分钟（${String(dt.reason ?? "")}）`,
+      occurredAt: String(dt.startTime ?? t0Iso),
+    });
+  }
+  // 设备告警 → EQUIPMENT
+  for (const al of src.equipmentAlarms ?? []) {
+    const alarmId = String(al.alarmId);
+    const level = String(al.alarmLevel ?? "");
+    out.push({
+      excId: `EXC-AL-${alarmId}`,
+      excType: "EQUIPMENT",
+      source: "alarm",
+      severity: EXCEPTION_SEVERITY_CONFIG.alarmLevel[level] ?? "MEDIUM",
+      status: ALARM_STATUS[String(al.status)] ?? "OPEN",
+      refType: "EquipmentAlarm",
+      refId: alarmId,
+      summary: `设备 ${String(al.equipId)} 告警 ${String(al.alarmCode ?? "")}（${level}）`,
+      occurredAt: String(al.triggeredAt ?? t0Iso),
+    });
+  }
+  // 缺陷记录 → QUALITY
+  for (const df of src.defectRecords ?? []) {
+    const defectId = String(df.defectId);
+    const qty = Number(df.qty ?? 0);
+    const sevEnum = String(df.severity ?? "");
+    const severity: ExcSeverity =
+      qty >= EXCEPTION_SEVERITY_CONFIG.defectQtyCritical
+        ? "CRITICAL"
+        : EXCEPTION_SEVERITY_CONFIG.defectSeverity[sevEnum] ?? "MEDIUM";
+    out.push({
+      excId: `EXC-DF-${defectId}`,
+      excType: "QUALITY",
+      source: "defect",
+      severity,
+      status: "OPEN",
+      refType: "DefectRecord",
+      refId: defectId,
+      summary: `缺陷 ${String(df.defectType ?? "")} ×${qty}（${sevEnum}·${String(df.processName ?? "")}）`,
+      occurredAt: String(df.foundAt ?? t0Iso),
+    });
+  }
+  // 触发规则 → CUSTOMER（信号阈值→行动的客户/市场侧监听）
+  for (const tr of src.triggerRules ?? []) {
+    const triggerId = String(tr.triggerId);
+    const op = String(tr.op ?? "");
+    out.push({
+      excId: `EXC-TR-${triggerId}`,
+      excType: "CUSTOMER",
+      source: "trigger",
+      severity: EXCEPTION_SEVERITY_CONFIG.triggerOp[op] ?? "MEDIUM",
+      status: "OPEN",
+      refType: "TriggerRule",
+      refId: triggerId,
+      summary: `触发规则 ${String(tr.signalRef ?? "")} ${op} ${String(tr.threshold ?? "")} → ${String(tr.action ?? "")}`,
+      occurredAt: t0Iso,
+    });
+  }
+  // 物料平衡缺口 → MATERIAL_SHORTAGE（仅 gapTon>0，缺料才成异常，缺料域有数据）
+  for (const mb of src.materialBalances ?? []) {
+    const gap = Number(mb.gapTon ?? 0);
+    if (!(gap > 0)) continue;
+    const matBalId = String(mb.matBalId);
+    out.push({
+      excId: `EXC-MB-${matBalId}`,
+      excType: "MATERIAL_SHORTAGE",
+      source: "material_balance",
+      severity: bucketByThreshold(gap, EXCEPTION_SEVERITY_CONFIG.materialGap),
+      status: "OPEN",
+      refType: "MaterialBalance",
+      refId: matBalId,
+      summary: `${String(mb.material ?? "")} 现货缺口 ${gap} ${String(mb.unit ?? "")}`,
+      occurredAt: String(mb.etaDate || t0Iso),
+    });
+  }
+  return out;
+}
+
+// Phase 3 MES Domain: Maintenance Execution
+const maintenanceOrderProps: PropertyDef[] = [
+  { propKey: "moId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "equipId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Equipment" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "maintType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 预防性 | 预测性 |  corrective
+  { propKey: "priority", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 低 | 中 | 高 | 紧急
+  { propKey: "plannedStart", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "plannedEnd", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "actualStart", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "actualEnd", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 待执行 | 执行中 | 已完成 | 已取消
+];
+
+const sparePartConsumptionProps: PropertyDef[] = [
+  { propKey: "consumptionId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "moId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "MaintenanceOrder" },
+  { propKey: "partCode", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "partName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "qtyUsed", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  { propKey: "unit", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "consumedAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+];
+
+// Phase 3 MES Domain: Labor Tracking
+const operatorAttendanceProps: PropertyDef[] = [
+  { propKey: "attId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operatorId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operatorName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "lineId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Line" },
+  { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
+  { propKey: "date", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "shift", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 白班 | 夜班
+  { propKey: "checkIn", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "checkOut", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "hoursWorked", dataType: "number", isPrimaryKey: false, unit: "h", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 正常 | 迟到 | 早退 | 缺勤
+];
+
+const operatorSkillCertProps: PropertyDef[] = [
+  { propKey: "certId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "operatorId", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "skillName", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "skillLevel", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 初级 | 中级 | 高级 | 技师
+  { propKey: "certifiedBy", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "certifiedDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expireDate", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 有效 | 过期 | 吊销
 ];
 
 // §7.14 计划域对象（年度情景 / 触发条件 / 目标分解 —— S&OP 目标线同源对象）
 const annualScenarioProps: PropertyDef[] = [
-  { propKey: "scnId", dataType: "string", isPrimaryKey: true },
-  { propKey: "key", dataType: "enum", isPrimaryKey: false }, // conservative | baseline | aggressive
-  { propKey: "name", dataType: "string", isPrimaryKey: false },
-  { propKey: "year", dataType: "number", isPrimaryKey: false },
-  { propKey: "demand", dataType: "number", isPrimaryKey: false },
-  { propKey: "capacityDecision", dataType: "string", isPrimaryKey: false },
-  { propKey: "ltaLock", dataType: "string", isPrimaryKey: false },
-  { propKey: "revenue", dataType: "number", isPrimaryKey: false },
-  { propKey: "capex", dataType: "number", isPrimaryKey: false },
-  { propKey: "irr", dataType: "number", isPrimaryKey: false },
-  { propKey: "cashCushion", dataType: "number", isPrimaryKey: false },
-  { propKey: "finalized", dataType: "boolean", isPrimaryKey: false },
-  { propKey: "finalizedAt", dataType: "date", isPrimaryKey: false },
+  { propKey: "scnId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "key", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // conservative | baseline | aggressive
+  { propKey: "name", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "year", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "demand", dataType: "number", isPrimaryKey: false, unit: "万套", scale: "absolute" },
+  { propKey: "note", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "capacityDecision", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "ltaLock", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "revenue", dataType: "number", isPrimaryKey: false, unit: "亿元", scale: "absolute" },
+  { propKey: "capex", dataType: "number", isPrimaryKey: false, unit: "亿元", scale: "absolute" },
+  { propKey: "irr", dataType: "number", isPrimaryKey: false, unit: "%", scale: "ratio" },
+  { propKey: "cashCushion", dataType: "number", isPrimaryKey: false, unit: "亿元", scale: "absolute" },
+  { propKey: "finalized", dataType: "boolean", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "finalizedAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const scenarioTriggerProps: PropertyDef[] = [
-  { propKey: "trigId", dataType: "string", isPrimaryKey: true },
-  { propKey: "condition", dataType: "string", isPrimaryKey: false },
-  { propKey: "expr", dataType: "string", isPrimaryKey: false }, // 后端规则扫描表达式（metrics payload）
-  { propKey: "action", dataType: "string", isPrimaryKey: false },
-  { propKey: "status", dataType: "enum", isPrimaryKey: false }, // MONITORING | TRIGGERED
-  { propKey: "triggeredAt", dataType: "date", isPrimaryKey: false },
-  { propKey: "notifiedTo", dataType: "json", isPrimaryKey: false },
+  { propKey: "trigId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "condition", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "expr", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // 后端规则扫描表达式（metrics payload）
+  { propKey: "action", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "status", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // MONITORING | TRIGGERED
+  { propKey: "triggeredAt", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "notifiedTo", dataType: "json", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 const planTargetProps: PropertyDef[] = [
-  { propKey: "tgtId", dataType: "string", isPrimaryKey: true },
-  { propKey: "period", dataType: "string", isPrimaryKey: false }, // "2026" | "2026-Q1" | "2026-01"
-  { propKey: "level", dataType: "enum", isPrimaryKey: false }, // year | quarter | month
-  { propKey: "value", dataType: "number", isPrimaryKey: false },
-  { propKey: "year", dataType: "number", isPrimaryKey: false },
-  { propKey: "scenarioKey", dataType: "string", isPrimaryKey: false },
+  { propKey: "tgtId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
+  { propKey: "period", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // "2026" | "2026-Q1" | "2026-01"
+  { propKey: "level", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // year | quarter | month
+  { propKey: "value", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "year", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
+  { propKey: "scenarioKey", dataType: "string", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 
 /** §7.20 血缘：源系统绑定（连接器·数据集·字段映射），mapping 表与图谱 source 视角共用 */
-const BINDINGS: Record<string, { connId: string; dataset: string; fieldMappings: Record<string, string> }[]> = {
-  Base: [{ connId: "conn-mes", dataset: "mes_base_master", fieldMappings: { baseId: "BASE_ID", name: "BASE_NAME", kind: "BASE_KIND", gwh: "NAMEPLATE_GWH", util: "UTILIZATION" } }],
+export const BINDINGS: Record<string, { connId: string; dataset: string; fieldMappings: Record<string, string> }[]> = {
+  Base: [{ connId: "conn-mes", dataset: "mes_base_master", fieldMappings: { baseId: "BASE_ID", name: "BASE_NAME", kind: "BASE_KIND", gwh: "NAMEPLATE_GWH", util: "UTILIZATION", factory_code: "FACTORY_CODE", province: "PROVINCE", city: "CITY", factory_type: "FACTORY_TYPE", status: "STATUS", start_date: "START_DATE" } }],
   Model: [{ connId: "conn-plm", dataset: "plm_models", fieldMappings: { modelId: "MODEL_ID", name: "MODEL_NAME", unitPrice: "UNIT_PRICE" } }],
   Order: [{ connId: "conn-erp", dataset: "erp_sales_orders", fieldMappings: { so: "SO_NO", cust: "CUSTOMER", model: "MODEL_ID", qty: "QTY", due: "DUE_DATE", status: "STATUS" } }],
-  Line: [{ connId: "conn-mes", dataset: "mes_lines", fieldMappings: { lineId: "LINE_ID", baseId: "BASE_ID", name: "LINE_NAME" } }],
+  Line: [{ connId: "conn-mes", dataset: "mes_lines", fieldMappings: { lineId: "LINE_ID", baseId: "BASE_ID", name: "LINE_NAME", line_code: "LINE_CODE", max_capacity_day: "MAX_CAP_DAY", target_yield: "TARGET_YIELD", status: "STATUS" } }],
+  Workshop: [{ connId: "conn-mes", dataset: "mes_workshops", fieldMappings: { workshopId: "WS_ID", baseId: "BASE_ID", name: "WS_NAME", processType: "PROC_TYPE" } }],
   Process: [{ connId: "conn-mes", dataset: "mes_processes", fieldMappings: { processId: "PROC_ID", lineId: "LINE_ID", name: "PROC_NAME", kind: "PROC_KIND", yield: "YIELD" } }],
-  Equipment: [{ connId: "conn-iot", dataset: "iot_equipment", fieldMappings: { equipId: "EQUIP_ID", processId: "PROC_ID", ctSeconds: "CT_SECONDS", availFactor: "AVAIL", oeeA: "OEE_A", oeeP: "OEE_P", oeeQ: "OEE_Q" } }],
+  Equipment: [{ connId: "conn-iot", dataset: "iot_equipment", fieldMappings: { equipId: "EQUIP_ID", processId: "PROC_ID", ctSeconds: "CT_SECONDS", availFactor: "AVAIL", oeeA: "OEE_A", oeeP: "OEE_P", oeeQ: "OEE_Q", equipment_code: "EQUIP_CODE", equipment_type: "EQUIP_TYPE", manufacturer: "MANUFACTURER", install_date: "INSTALL_DATE", status: "STATUS" } }],
   MaintPlan: [{ connId: "conn-mes", dataset: "mes_maint_plans", fieldMappings: { planId: "PLAN_ID", baseId: "BASE_ID", week: "PLAN_WEEK" } }],
   Segment: [{ connId: "conn-erp", dataset: "erp_segments", fieldMappings: { segKey: "SEG_KEY", name: "SEG_NAME", gmRate: "GM_RATE" } }],
   Shipment: [{ connId: "conn-srm", dataset: "srm_shipments", fieldMappings: { shipId: "SHIP_ID", baseId: "BASE_ID", etaDay: "ETA_DAY", qtyTons: "QTY_TONS" } }],
   DataSourceHealth: [{ connId: "conn-iot", dataset: "iot_source_health", fieldMappings: { sourceId: "SOURCE_ID", lagHours: "LAG_HOURS" } }],
+  // Phase 2：产品工程域源系统绑定
+  ProductPlatform: [{ connId: "conn-plm", dataset: "plm_platforms", fieldMappings: { platformId: "PLATFORM_ID", platformCode: "PLATFORM_CODE", name: "PLATFORM_NAME", category: "CATEGORY", status: "STATUS" } }],
+  ProductSeries: [{ connId: "conn-plm", dataset: "plm_series", fieldMappings: { seriesId: "SERIES_ID", seriesCode: "SERIES_CODE", platformId: "PLATFORM_ID", name: "SERIES_NAME", category: "CATEGORY", voltageRange: "VOLTAGE_RANGE", capacityRange: "CAP_RANGE", targetMarket: "TARGET_MARKET", status: "STATUS" } }],
+  ProductVersion: [{ connId: "conn-plm", dataset: "plm_versions", fieldMappings: { versionId: "VERSION_ID", modelId: "MODEL_ID", versionCode: "VERSION_CODE", versionName: "VERSION_NAME", ecnNumber: "ECN_NO", effectiveDate: "EFF_DATE", expireDate: "EXP_DATE", status: "STATUS", changeReason: "CHANGE_REASON" } }],
+  MaterialAlternative: [{ connId: "conn-plm", dataset: "plm_material_alts", fieldMappings: { altId: "ALT_ID", primaryMaterialId: "PRIMARY_MAT_ID", alternativeMaterialId: "ALT_MAT_ID", priority: "PRIORITY", approvalStatus: "APPROVAL_STATUS", effectiveDate: "EFF_DATE", expireDate: "EXP_DATE", changeReason: "CHANGE_REASON", verifiedBy: "VERIFIED_BY", verifiedDate: "VERIFIED_DATE" } }],
+  // Phase 3 MES Domain bindings
+  WorkOrder: [{ connId: "conn-mes", dataset: "mes_work_orders", fieldMappings: { woId: "WO_ID", moNo: "MO_NO", modelId: "MODEL_ID", lineId: "LINE_ID", baseId: "BASE_ID", qtyPlanned: "QTY_PLANNED", qtyActual: "QTY_ACTUAL", startDate: "START_DATE", endDate: "END_DATE", status: "STATUS" } }],
+  ProductionSchedule: [{ connId: "conn-mes", dataset: "mes_schedules", fieldMappings: { schedId: "SCHED_ID", woId: "WO_ID", lineId: "LINE_ID", shift: "SHIFT", scheduledDate: "SCHED_DATE", qty: "QTY", priority: "PRIORITY", status: "STATUS" } }],
+  // WO-CAPACITY-EDGE：产能池的源就是产线台账那一列（`MAX_CAP_DAY`）——池不是新真值，是同一列换个承载。
+  CapacityPool: [{ connId: "conn-mes", dataset: "mes_lines", fieldMappings: { poolId: "LINE_ID", lineId: "LINE_ID", baseId: "BASE_ID", capacityCellsDaily: "MAX_CAP_DAY", status: "STATUS" } }],
+  ShiftPlan: [{ connId: "conn-mes", dataset: "mes_shift_plans", fieldMappings: { shiftId: "SHIFT_ID", lineId: "LINE_ID", baseId: "BASE_ID", shiftName: "SHIFT_NAME", plannedHeadcount: "PLAN_HC", actualHeadcount: "ACT_HC", date: "SHIFT_DATE", hours: "HOURS" } }],
+  WIPLot: [{ connId: "conn-mes", dataset: "mes_wip_lots", fieldMappings: { lotId: "LOT_ID", woId: "WO_ID", modelId: "MODEL_ID", lineId: "LINE_ID", currentProcess: "CUR_PROC", qty: "QTY", status: "STATUS", startTime: "START_TIME", lastMoveTime: "LAST_MOVE" } }],
+  WIPMove: [{ connId: "conn-mes", dataset: "mes_wip_moves", fieldMappings: { moveId: "MOVE_ID", lotId: "LOT_ID", fromProcess: "FROM_PROC", toProcess: "TO_PROC", qty: "QTY", moveTime: "MOVE_TIME", operatorId: "OP_ID" } }],
+  WIPQualityCheckpoint: [{ connId: "conn-qms", dataset: "qms_wip_checkpoints", fieldMappings: { checkpointId: "CHK_ID", lotId: "LOT_ID", processName: "PROC_NAME", checkType: "CHK_TYPE", result: "RESULT", checkTime: "CHK_TIME", inspectorId: "INSP_ID" } }],
+  QualityLot: [{ connId: "conn-qms", dataset: "qms_quality_lots", fieldMappings: { qlotId: "QLOT_ID", woId: "WO_ID", modelId: "MODEL_ID", lineId: "LINE_ID", batchSize: "BATCH_SIZE", sampleSize: "SAMPLE_SIZE", passQty: "PASS_QTY", failQty: "FAIL_QTY", status: "STATUS", inspectDate: "INSP_DATE" } }],
+  InspectionResult: [{ connId: "conn-qms", dataset: "qms_inspection_results", fieldMappings: { resultId: "RES_ID", qlotId: "QLOT_ID", charId: "CHAR_ID", measuredValue: "MEAS_VAL", targetValue: "TGT_VAL", upperLimit: "UCL", lowerLimit: "LCL", result: "RESULT", inspectTime: "INSP_TIME" } }],
+  DefectRecord: [{ connId: "conn-qms", dataset: "qms_defects", fieldMappings: { defectId: "DEF_ID", qlotId: "QLOT_ID", lotId: "LOT_ID", defectType: "DEF_TYPE", severity: "SEVERITY", qty: "QTY", description: "DESC", foundAt: "FOUND_AT", processName: "PROC_NAME" } }],
+  EquipmentOEE: [{ connId: "conn-iot", dataset: "iot_oee_daily", fieldMappings: { oeeId: "OEE_ID", equipId: "EQUIP_ID", lineId: "LINE_ID", baseId: "BASE_ID", date: "OEE_DATE", availability: "AVAIL", performance: "PERF", quality: "QUAL", oee: "OEE", plannedProductionTime: "PLAN_TIME", actualProductionTime: "ACT_TIME" } }],
+  EquipmentDowntime: [{ connId: "conn-iot", dataset: "iot_downtime", fieldMappings: { dtId: "DT_ID", equipId: "EQUIP_ID", lineId: "LINE_ID", baseId: "BASE_ID", startTime: "START_TIME", endTime: "END_TIME", durationMin: "DUR_MIN", reason: "REASON", status: "STATUS" } }],
+  EquipmentAlarm: [{ connId: "conn-iot", dataset: "iot_alarms", fieldMappings: { alarmId: "ALARM_ID", equipId: "EQUIP_ID", lineId: "LINE_ID", alarmCode: "ALARM_CODE", alarmLevel: "ALARM_LEVEL", message: "MSG", triggeredAt: "TRIG_TIME", clearedAt: "CLR_TIME", status: "STATUS" } }],
+  MaintenanceOrder: [{ connId: "conn-eam", dataset: "eam_maint_orders", fieldMappings: { moId: "MO_ID", equipId: "EQUIP_ID", lineId: "LINE_ID", baseId: "BASE_ID", maintType: "MAINT_TYPE", priority: "PRIORITY", plannedStart: "PLAN_START", plannedEnd: "PLAN_END", actualStart: "ACT_START", actualEnd: "ACT_END", status: "STATUS" } }],
+  SparePartConsumption: [{ connId: "conn-eam", dataset: "eam_spare_parts", fieldMappings: { consumptionId: "CONS_ID", moId: "MO_ID", partCode: "PART_CODE", partName: "PART_NAME", qtyUsed: "QTY_USED", unit: "UNIT", consumedAt: "CONS_AT" } }],
+  OperatorAttendance: [{ connId: "conn-hr", dataset: "hr_attendance", fieldMappings: { attId: "ATT_ID", operatorId: "OP_ID", operatorName: "OP_NAME", lineId: "LINE_ID", baseId: "BASE_ID", date: "ATT_DATE", shift: "SHIFT", checkIn: "CHECK_IN", checkOut: "CHECK_OUT", hoursWorked: "HOURS", status: "STATUS" } }],
+  OperatorSkillCert: [{ connId: "conn-hr", dataset: "hr_skill_certs", fieldMappings: { certId: "CERT_ID", operatorId: "OP_ID", skillName: "SKILL", skillLevel: "LEVEL", certifiedBy: "CERT_BY", certifiedDate: "CERT_DATE", expireDate: "EXP_DATE", status: "STATUS" } }],
 };
 
 /** 治理增量 §1：电池模板各对象类型的归域（与 graphmeta.GRAPH_DOMAIN 同源）。 */
 export const BATTERY_TYPE_DOMAIN: Record<string, string> = {
-  Base: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
+  Cadence: "capacity",
+  Base: "factory", Workshop: "factory", Line: "factory", Process: "process", Equipment: "equip", MaintPlan: "equip",
   Order: "product", Model: "product", Segment: "product", Shipment: "capacity",
+  // WO-WAREHOUSE-CUSTLOC：仓库归 factory 域（库存仓位属工厂设施）
+  Warehouse: "factory",
+  Region: "factory", // WO-LAST3-RELATIONS：行政区（地理归属·三类设施的共同落点，同 Warehouse 归 factory 域）
+  InterBaseTransfer: "capacity", // WO-INTERBASE-TRANSFER：跨基地调拨（在途运力·同 Shipment 归 capacity 域）
+  CapacityPool: "capacity", // WO-CAPACITY-EDGE：产能池（产能升格为一等对象·归 capacity 域）
+  ProductPlatform: "product", ProductSeries: "product", ProductVersion: "product",
+  BOMHeader: "product", BOMDetail: "product", Routing: "process", Operation: "process", ProcessCapabilityWindow: "process",
+  QualityStandard: "quality", InspectionCharacteristic: "quality",
+  ProductLineCapability: "factory", ProductEquipmentCapability: "equip",
+  EngineeringChange: "product", MaterialAlternative: "supply",
+  Supplier: "supply",
   DataSourceHealth: "quality", AnnualScenario: "plan", ScenarioTrigger: "plan", PlanTarget: "plan",
+  // cockpit P1 绿地
+  DemandSegment: "forecast", FinancePlan: "finance", MaterialBalance: "material",
+  // cockpit P2 + SPINE 绿地（规划决策推演 + 根因 DAG + 目标-指标-责任骨架）
+  Metric: "decision", RootCauseChain: "decision", KSF: "decision", Principal: "people",
+  // WO-ADOPT-MITIGATION：已采纳处置方案（决策落地台账·归 decision 域，同 RootCauseChain/DecisionGap）
+  AdoptedMitigation: "decision",
+  // cockpit P5 / sop 绿地（S&OP 版本演进）
+  SopVersionRow: "plan",
+  // Phase 3 MES Domain
+  WorkOrder: "process", ProductionSchedule: "process", ShiftPlan: "people",
+  WIPLot: "process", WIPMove: "process", WIPQualityCheckpoint: "quality",
+  QualityLot: "quality", InspectionResult: "quality", DefectRecord: "quality",
+  EquipmentOEE: "equip", EquipmentDowntime: "equip", EquipmentAlarm: "equip",
+  MaintenanceOrder: "equip", SparePartConsumption: "equip",
+  OperatorAttendance: "people", OperatorSkillCert: "people",
+  // WO-EXCEPTION-EVENT 四源归一异常事件（归 quality 域·跨域聚合投影，DataCategory 归 decision_cockpit）
+  ExceptionEvent: "quality",
+  // WO-INVENTORY-3TIER 库存三层闭环（成品库存 + 统一流水；归 supply 域·refbase 归一化 supply→material）
+  FinishedGoodsInventory: "supply", InventoryTxn: "supply",
+  // WO-ATP-PROMISE 订单承诺台账（ATP/CTP·随订单归 commercial 域·refbase 14 域含 commercial）
+  OrderPromise: "commercial",
+  // WO-ORDERLINE 订单明细行（SO→型号行·与 Order 同域 product·DOMAIN_MAP）
+  OrderLine: "product",
+  // WO-SANDBOX-D2 采购段两段新承载：清关归 supply（责任方=清关行，采购组织协调面）；
+  // 到货检验归 quality（责任方=自家质量部 IQC）——两段分属两个责任方，故分属两个域。
+  CustomsClearance: "supply", IncomingInspection: "quality",
 };
 
-/** 治理增量 §3/§4：名称类字段 searchable=true（A3 建议同语义）+ 单位补充。 */
-function withGovernance(key: string, props: PropertyDef[]): PropertyDef[] {
-  const units: Record<string, Record<string, string>> = {
-    Base: { gwh: "GWh", util: "%" },
-    Model: { unitPrice: "元" },
-    Order: { qty: "件" },
-    Shipment: { qtyTons: "吨" },
-  };
+// ---------------------------------------------------------------------------
+// WO-SCHEMA-ZH · 属性中文业务名（PropertyDef.displayName）单一真值表
+//
+// 病根：本体 Schema 的属性键是英文接线名（Material.leadTime / Equipment.oee_current /
+// Process.yield_baseline），界面直接显示键名 → 没参与建模的业务专家读不懂"这个数字是什么"。
+// 不改 propKey：key 被求解器 / 规则 DSL / 派生公式 / golden 计数 / mock 引用，改它连带打断整条链；
+// 正确做法是**补一层展示名**，与 unit 并列，在此**一处**定义、经 PropertyDef.displayName 全链下发。
+//
+// 单源纪律（单源 > 并存）：
+//  · 前端**不得**自建中文名映射，只消费 `displayName ?? propKey`（缺则诚实回落裸键，不渲染空白）；
+//  · 求解器杠杆标签 LEVER_PROP_META.label（形如「物料·到货周期」= 类型简称 + "·" + 属性中文名）
+//    **由本表派生**，不是另抄一份（WO-FIX-SCHEMA-DISPLAY-NAME，2026-08-22）：
+//    `solvers/lever-meta.ts` 只存"类型简称"那半段，属性中文名一律 `propDisplayName()` 现取 ⇒
+//    改这里，杠杆条上的名字自动跟随，**结构上不可能分叉**。
+//    （旧机制是两份表各写整串、靠门盯着别写歪；实测已经歪过一次：裁决 C 把 Equipment.oee_current
+//     改成带口径标注的名字后只改了本表，杠杆标签留在「设备·OEE」，同一属性两个中文名同时在屏上。）
+//    ⚠ 由此得出一条**改名纪律**：本表的值是屏上真串，被 `test/schema-display-name.seam.test.ts` ①
+//    与 `test/oee-ssot.seam.test.ts` S5 咬着；改一个值前先跑这两个文件 —— 中文名以**字符串字面量**
+//    形态散落在测试里，`typecheck` 一个都看不见（CLAUDE.md 铁律 0.6 第 4 条）。
+//
+// 诚实留白（诚实 > 好看）：**只登记能从代码/注释/规则表达式确证业务含义的属性**。含义未确证者故意不登记
+// （如 Base.position 与 kind 同值语义存疑、Material.devPct 无消费方口径不明），下游回落 propKey，
+// 留白 = 待业务确认的清单，**不臆造中文名**（编错比不编危险：业务专家会照着错的理解）。
+// ---------------------------------------------------------------------------
+export const PROP_DISPLAY_NAMES: Record<string, string> = {
+  // ---- 工厂 / 产线 / 工序 / 设备 ----
+  "Base.baseId": "基地编号", "Base.name": "基地名称", "Base.kind": "业态类型", "Base.util": "产能利用率",
+  "Base.bottleneck": "瓶颈环节", "Base.gwh": "铭牌年产能", "Base.formationCapDaily": "化成日产能",
+  "Base.agingCapDaily": "老化日产能", "Base.lon": "经度", "Base.lat": "纬度",
+  "Base.factory_code": "工厂编码", "Base.province": "省份", "Base.city": "城市",
+  "Base.factory_type": "工厂类型", "Base.status": "运营状态", "Base.start_date": "投产日期",
+  // WO-OPT-WHATIF-DATA · 选址决策成本（optimize_whatif/facility_location 的 open_cost / assign_cost 系数源）
+  "Base.openCost": "年固定开办成本", "Base.serveCost": "单位需求点履约成本",
+  "Line.lineId": "产线编号", "Line.baseId": "所属基地", "Line.name": "产线名称",
+  "Line.workshopId": "所属车间", // WO-COMPUTED-EDGE：与同表 baseId 同形态的归属外键
+  "Line.utilization": "利用率", // ← 杠杆标签「产线·利用率」的后半段由本串派生（lever-meta.ts 不另存）
+  "Line.actual_output_daily": "日实际产出", "Line.schedule_attainment": "排产达成率",
+  "Line.line_code": "产线编码", "Line.max_capacity_day": "日最大产能", "Line.capacityDaily": "日运营产能",
+  "Line.target_yield": "目标良率", "Line.status": "产线状态",
+  // WO-CAPACITY-EDGE：产能池（件/日 口径·与 Line.capacityDaily 的套/日 刻意不同名）
+  "CapacityPool.poolId": "产能池编号", "CapacityPool.lineId": "所属产线", "CapacityPool.baseId": "所属基地",
+  "CapacityPool.capacityCellsDaily": "池日产能(电芯)", "CapacityPool.status": "产能池状态",
+  // ⚠ 这里**没有** `consumedCellsDaily` / `remainingCellsDaily` 两条（WO-CAPACITY-EDGE-FIX）。
+  // 本表的键必须逐条对上真属性 —— `schema-display-name.seam.test.ts` ④ 双向咬这一条
+  //（我第一版把它们留在表里当「读数的中文名」，被该门当场报成「指向不存在的属性」）。
+  // 那两个量是 `capacity_ledger` 回包里的读数，不是池对象上的属性；实测今天**零前端消费方**
+  //（`grep capacity_ledger apps/frontend-shell/src` 零命中，金丝雀 `capacity_forecast` 同路径 3 命中
+  //  ⇒ 是真没有，不是 grep 坏了），故此刻无处可显、也无需登记。
+  // ⚠ 将来台账真上屏时：中文名该随**承载它的那个响应字段**登记，不许倒回来给池加一格假属性。
+  "Workshop.workshopId": "车间编号", "Workshop.baseId": "所属基地", "Workshop.name": "车间名称",
+  "Workshop.processType": "工艺类型",
+  "Process.processId": "工序编号", "Process.lineId": "所属产线", "Process.baseId": "所属基地",
+  "Process.name": "工序名称", "Process.kind": "工序类别", "Process.yield": "良率",
+  "Process.yield_baseline": "良率基线", // ← LEVER「工序·良率基线」
+  "Process.shiftHours": "班次工时", // ← LEVER「工序·班次工时」
+  "Process.shifts": "班次数", // ← LEVER「工序·班次数」
+  "Process.attendance": "出勤率", // ← LEVER「工序·出勤率」
+  "Process.utilization": "利用率", "Process.channels": "化成通道数",
+  "Process.channelOutputDaily": "单通道日产出", "Process.agingSlots": "老化工位数", "Process.agingDays": "老化天数",
+  // WO-SANDBOX-D3 · 硬容量约束
+  "Process.capacityUnitKind": "硬容量单元类型", "Process.requiredThroughput": "上游要求日吞吐",
+  "Equipment.equipId": "设备编号", "Equipment.processId": "所属工序", "Equipment.lineId": "所属产线",
+  "Equipment.baseId": "所属基地", "Equipment.ctSeconds": "节拍", "Equipment.availFactor": "可用系数",
+  // WO-OEE-UNIFY 裁决 C 标注：四个 OEE 属性全部 = EquipmentOEE 日事实表 7 日均值（同源·equipmentOeeAtomsDaily），
+  // 属性表同屏并列时用户能看出是同一套口径；oeeA×oeeP×oeeQ 与 oee_current 之间仅余协方差级残差（实测 ≤0.003）。
+  "Equipment.oeeA": "OEE可用率（事实表7日均值）", "Equipment.oeeP": "OEE表现性（事实表7日均值）", "Equipment.oeeQ": "OEE质量率（事实表7日均值）",
+  // ⚠ 本串带口径标注是**仓主裁决 C**（WO-OEE-UNIFY·docs/DECISION-oee-ssot.md §8.1）的执行结果，不是装饰：
+  //   同屏并列的 oeeA×oeeP×oeeQ 乘起来 ≠ 本值，不标口径用户无从知道差在哪。`test/oee-ssot.seam.test.ts` S5 咬着它。
+  //   杠杆标签「设备·OEE（综合·事实表7日均值）」的后半段即由本串派生 —— 曾因只改本表、没改 lever-meta 而分叉过。
+  "Equipment.oee_current": "OEE（综合·事实表7日均值）", // ← LEVER「设备·<本串>」
+  "Equipment.equipment_code": "设备编码", "Equipment.equipment_type": "设备类型",
+  "Equipment.manufacturer": "制造厂商", "Equipment.install_date": "安装日期", "Equipment.status": "设备状态",
+  "Equipment.mtbf": "平均无故障时间", "Equipment.mttr": "平均修复时间", "Equipment.health_score": "设备健康度",
+  "MaintPlan.planId": "检修计划编号", "MaintPlan.baseId": "所属基地", "MaintPlan.week": "计划周次",
+  "MaintPlan.lastMaintStart": "上次检修开始日",
+  "Warehouse.warehouseId": "仓库编号", "Warehouse.baseId": "所属基地", "Warehouse.name": "仓库名称",
+  "Warehouse.whType": "仓库类型", "Warehouse.capacityUnits": "仓储容量", "Warehouse.province": "省份",
+  "Warehouse.city": "城市",
+  // WO-LAST3-RELATIONS：行政区（`located_in` 锚点）
+  "Region.regionId": "行政区编号", "Region.name": "行政区名称", "Region.macroRegion": "所属大区",
+
+  // ---- 产品 / 工程主数据 ----
+  "Model.modelId": "型号编号", "Model.name": "型号名称", "Model.chem": "化学体系", "Model.pos": "业态定位",
+  "Model.bases": "可产基地", "Model.unitPrice": "单价", "Model.unitCost": "单位成本", "Model.carbonFootprint": "碳足迹",
+  "Model.seriesId": "所属系列", "Model.productCode": "产品编码", "Model.capacity": "电芯容量",
+  "Model.voltage": "标称电压", "Model.energy": "单体能量", "Model.dimension": "外形尺寸",
+  "Model.weight": "单体重量", "Model.applicationDomain": "应用领域", "Model.status": "生命周期状态",
+  "ProductPlatform.platformId": "平台编号", "ProductPlatform.platformCode": "平台编码",
+  "ProductPlatform.name": "平台名称", "ProductPlatform.category": "技术路线",
+  "ProductPlatform.description": "平台说明", "ProductPlatform.status": "平台状态",
+  "ProductSeries.seriesId": "系列编号", "ProductSeries.seriesCode": "系列编码",
+  "ProductSeries.platformId": "所属平台", "ProductSeries.name": "系列名称", "ProductSeries.category": "系列类别",
+  "ProductSeries.voltageRange": "电压范围", "ProductSeries.capacityRange": "容量范围",
+  "ProductSeries.targetMarket": "目标市场", "ProductSeries.status": "系列状态",
+  "ProductVersion.versionId": "版本编号", "ProductVersion.modelId": "所属型号",
+  "ProductVersion.versionCode": "版本编码", "ProductVersion.versionName": "版本名称",
+  "ProductVersion.ecnNumber": "工程变更单号", "ProductVersion.effectiveDate": "生效日期",
+  "ProductVersion.expireDate": "失效日期", "ProductVersion.status": "版本状态",
+  "ProductVersion.changeReason": "变更原因",
+  "BOMHeader.bomId": "BOM编号", "BOMHeader.bomCode": "BOM编码", "BOMHeader.versionId": "所属产品版本",
+  "BOMHeader.modelId": "所属型号", "BOMHeader.bomName": "BOM名称", "BOMHeader.bomLevel": "BOM层级",
+  "BOMHeader.effectiveDate": "生效日期", "BOMHeader.expireDate": "失效日期", "BOMHeader.status": "状态",
+  "BOMDetail.bomDetailId": "BOM明细编号", "BOMDetail.bomId": "所属BOM", "BOMDetail.materialId": "物料",
+  "BOMDetail.sequence": "行序号", "BOMDetail.quantity": "单台用量", "BOMDetail.lossRate": "损耗率",
+  "BOMDetail.unit": "计量单位", "BOMDetail.level": "BOM层级", "BOMDetail.parentItemId": "上级物料",
+  "BOMDetail.isKeyComponent": "是否关键件", "BOMDetail.effectiveDate": "生效日期",
+  "BOMDetail.expireDate": "失效日期",
+  "Routing.routingId": "工艺路线编号", "Routing.routingCode": "工艺路线编码", "Routing.modelId": "适用型号",
+  "Routing.versionId": "适用产品版本", "Routing.routingName": "工艺路线名称", "Routing.operationCount": "工序数",
+  "Routing.totalStandardTime": "标准总工时", "Routing.totalYield": "累计良率", "Routing.status": "状态",
+  "Routing.effectiveDate": "生效日期",
+  "Operation.operationId": "工序编号", "Operation.operationCode": "工序编码",
+  "Operation.routingId": "所属工艺路线", "Operation.operationSeq": "工序顺序",
+  "Operation.predecessorOperationId": "前驱工序", // WO-LAST3-RELATIONS：`depends_on` 承载
+  "Operation.operationName": "工序名称", "Operation.description": "工序说明",
+  "Operation.operationType": "工序类型", "Operation.standardTime": "标准工时",
+  "Operation.setupTime": "准备工时", "Operation.yield": "工序良率", "Operation.isCritical": "是否关键工序",
+  "Operation.workCenterType": "工作中心类型", "Operation.status": "状态",
+  "ProcessCapabilityWindow.capabilityId": "能力边界编号", "ProcessCapabilityWindow.operationId": "所属工序",
+  "ProcessCapabilityWindow.parameterName": "参数名称", "ProcessCapabilityWindow.paramCode": "参数编码",
+  "ProcessCapabilityWindow.unit": "计量单位", "ProcessCapabilityWindow.minValue": "下限值",
+  "ProcessCapabilityWindow.maxValue": "上限值", "ProcessCapabilityWindow.targetValue": "目标值",
+  "ProcessCapabilityWindow.tolerance": "公差", "ProcessCapabilityWindow.ucl": "控制上限",
+  "ProcessCapabilityWindow.lcl": "控制下限", "ProcessCapabilityWindow.status": "状态",
+  "EngineeringChange.changeId": "变更编号", "EngineeringChange.changeNumber": "变更单号",
+  "EngineeringChange.changeType": "变更类型", "EngineeringChange.modelId": "涉及型号",
+  "EngineeringChange.versionId": "涉及产品版本", "EngineeringChange.changeReason": "变更原因",
+  "EngineeringChange.description": "变更说明", "EngineeringChange.affectedObjects": "影响对象",
+  "EngineeringChange.effectiveDate": "生效日期", "EngineeringChange.approvedBy": "批准人",
+  "EngineeringChange.approvedDate": "批准日期", "EngineeringChange.status": "状态",
+  "MaterialAlternative.altId": "替代关系编号", "MaterialAlternative.primaryMaterialId": "主用物料",
+  "MaterialAlternative.alternativeMaterialId": "替代物料", "MaterialAlternative.priority": "替代优先级",
+  "MaterialAlternative.approvalStatus": "审批状态", "MaterialAlternative.effectiveDate": "生效日期",
+  "MaterialAlternative.expireDate": "失效日期", "MaterialAlternative.changeReason": "变更原因",
+  "MaterialAlternative.verifiedBy": "验证人", "MaterialAlternative.verifiedDate": "验证日期",
+  "ProductLineCapability.capId": "产线能力编号", "ProductLineCapability.productId": "型号",
+  "ProductLineCapability.versionId": "产品版本", "ProductLineCapability.lineId": "产线",
+  "ProductLineCapability.capability": "可产能力", "ProductLineCapability.maxCapacity": "最大产能",
+  "ProductLineCapability.cycleTime": "节拍", "ProductLineCapability.yield": "良率",
+  "ProductLineCapability.priority": "优先级", "ProductLineCapability.changeoverTime": "换型时长",
+  "ProductLineCapability.constraints": "约束说明", "ProductLineCapability.status": "状态",
+  "ProductEquipmentCapability.equipCapId": "设备能力编号", "ProductEquipmentCapability.productId": "型号",
+  "ProductEquipmentCapability.versionId": "产品版本", "ProductEquipmentCapability.equipmentId": "设备",
+  "ProductEquipmentCapability.capability": "设备支持能力", "ProductEquipmentCapability.maxSpeed": "最高速度",
+  "ProductEquipmentCapability.minSpeed": "最低速度", "ProductEquipmentCapability.setupTime": "准备工时",
+  "ProductEquipmentCapability.qualifiedOperators": "持证操作工数",
+  "ProductEquipmentCapability.certificationRequired": "是否需持证", "ProductEquipmentCapability.status": "状态",
+
+  // ---- 商务 / 订单 / 交付 ----
+  // WO-ORDER-WORKORDER-UI · 补齐 `Order` 上仅剩的两处未登记项（台账行展开逐格显示，缺一格就是一个裸英文键）。
+  // 两条都**逐字引自本仓既有出处**，不是新起的名：
+  //   · `customerId` ← 该属性自己的 `description`（本文件 `orderProps`）原文「下单客户的**外键**」；
+  //     不写「客户」是因为同类型上 `cust` 已占「客户」（显示名），两格并排时必须能分辨谁是外键。
+  //   · `value`（派生·`qty * unitPrice`）← `solvers/finance-world.ts` 既有注释「订单金额 = 数量 × 单价」，
+  //     与本派生的公式逐字同一件事。
+  "Order.customerId": "下单客户外键", "Order.value": "订单金额",
+  "Order.so": "订单号", "Order.cust": "客户", "Order.model": "型号", "Order.qty": "订单数量",
+  "Order.due": "交期", "Order.pri": "优先级", "Order.bases": "承接基地", "Order.status": "订单状态",
+  "Order.dueMonth": "交期月", // WO-COMPUTED-EDGE：合同交期所属计划月（YYYY-MM），月度目标的连接依据
+  "Order.demandDelta": "需求增量比例", // 有效需求 = 基线 × (1 + demandDelta)（capacity.ts PRD-CAP-DEMANDDELTA）
+  "Order.outsourceRatio": "外协比例", // ← LEVER「订单·外协比例」
+  "Order.creditUsedRatio": "信用额度使用率", "Order.leadDays": "交付前置天数", "Order.unitPrice": "单价",
+  "Order.businessType": "业务类型", "Order.early": "是否提前交付", "Order.earlyDue": "提前交期",
+  "OrderLine.lineId": "订单行号", "OrderLine.orderRef": "所属订单", "OrderLine.lineNo": "行序号",
+  "OrderLine.model": "型号", "OrderLine.qty": "数量", "OrderLine.due": "交期",
+  "OrderLine.lineStatus": "行状态", "OrderLine.unitPrice": "单价", "OrderLine.unitCost": "单位成本",
+  "OrderLine.breachPenalty": "违约金", // WO-PENALTY-CHANGEOVER-ONTOLOGY
+  "OrderPromise.promiseId": "承诺编号", "OrderPromise.orderRef": "所属订单", "OrderPromise.model": "型号",
+  "OrderPromise.requestedQty": "需求量", "OrderPromise.committableQty": "可承接量",
+  "OrderPromise.promiseDate": "承诺交付日", "OrderPromise.atpStatus": "承诺状态",
+  "OrderPromise.shortfallQty": "缺口量", "OrderPromise.bottleneck": "瓶颈环节",
+  "OrderPromise.asOf": "承诺基准日",
+  "Shipment.shipId": "在途批次号", "Shipment.baseId": "目的基地",
+  "Shipment.etaDay": "到货天", // ← LEVER「在途·到货天」
+  "Shipment.status": "在途状态", "Shipment.qtyTons": "数量", "Shipment.coverageDays": "齐套覆盖天数",
+  "InterBaseTransfer.transferId": "调拨单号", "InterBaseTransfer.fromBase": "调出基地",
+  "InterBaseTransfer.toBase": "调入基地", "InterBaseTransfer.model": "型号",
+  "InterBaseTransfer.qty": "调拨数量", "InterBaseTransfer.transitDays": "在途天数",
+  "InterBaseTransfer.freightCost": "运费", "InterBaseTransfer.status": "调拨状态",
+  "InterBaseTransfer.dispatchDate": "发运日期", "InterBaseTransfer.dispatchDay": "发运天",
+  "InterBaseTransfer.etaDay": "到货天", "InterBaseTransfer.etaDate": "预计到货日",
+  "InterBaseTransfer.reason": "调拨原因",
+
+  // ---- 库存 / 物料平衡 ----
+  "FinishedGoodsInventory.fgId": "成品库存编号", "FinishedGoodsInventory.model": "型号",
+  "FinishedGoodsInventory.warehouseId": "所在仓库", "FinishedGoodsInventory.qtyOnHand": "在库数量",
+  "FinishedGoodsInventory.qtyReserved": "已预留数量", "FinishedGoodsInventory.asOf": "统计日期",
+  "InventoryTxn.txnId": "流水号", "InventoryTxn.txnType": "流水类型", "InventoryTxn.fgRef": "关联成品库存",
+  "InventoryTxn.woRef": "来源工单", "InventoryTxn.qty": "数量", "InventoryTxn.fromWarehouse": "调出仓库",
+  "InventoryTxn.toWarehouse": "调入仓库", "InventoryTxn.refDoc": "关联单据", "InventoryTxn.occurredAt": "发生时间",
+  "MaterialBalance.matBalId": "物料平衡编号", "MaterialBalance.material": "物料",
+  "MaterialBalance.unit": "计量单位", "MaterialBalance.netDemandTon": "净需求量",
+  "MaterialBalance.ltaPct": "长协覆盖率", "MaterialBalance.gapTon": "现货缺口",
+  // ← 杠杆标签「物料齐套·覆盖率」的后半段由本串派生（lever-meta.ts 不另存中文名·单源）
+  //    （schema-display-name.seam.test.ts ③b 静态穷举咬这条）。与上一行「长协覆盖率」是**两个业务量**，
+  //    今日数值巧合相等，别合并（理由见 materialBalanceDerived 抬头）。
+  "MaterialBalance.coverage": "覆盖率",
+  "MaterialBalance.etaDate": "预计到货日",
+
+  // ---- 生产执行（MES） ----
+  "WorkOrder.woId": "工单编号", "WorkOrder.moNo": "制造单号", "WorkOrder.modelId": "型号",
+  "WorkOrder.lineId": "产线", "WorkOrder.baseId": "基地", "WorkOrder.qtyPlanned": "计划数量",
+  "WorkOrder.qtyActual": "实际数量", "WorkOrder.startDate": "开工日期", "WorkOrder.endDate": "完工日期",
+  "WorkOrder.status": "工单状态", "WorkOrder.orderRef": "兑现订单",
+  "WorkOrder.spanDays": "计划工期", // WO-CAPACITY-EDGE：件→件/日 的除数（产能是速率，工单量是存量）
+  "ProductionSchedule.schedId": "排程编号", "ProductionSchedule.woId": "关联工单",
+  "ProductionSchedule.lineId": "产线", "ProductionSchedule.shift": "班次",
+  "ProductionSchedule.scheduledDate": "排产日期", "ProductionSchedule.qty": "排产数量",
+  "ProductionSchedule.priority": "优先级", "ProductionSchedule.status": "排程状态",
+  "ShiftPlan.shiftId": "班次计划编号", "ShiftPlan.lineId": "产线", "ShiftPlan.baseId": "基地",
+  "ShiftPlan.shiftName": "班次名称", "ShiftPlan.plannedHeadcount": "计划人数",
+  "ShiftPlan.actualHeadcount": "实际人数", "ShiftPlan.date": "日期", "ShiftPlan.hours": "工时",
+  "WIPLot.lotId": "在制批号", "WIPLot.woId": "关联工单", "WIPLot.modelId": "型号", "WIPLot.lineId": "产线",
+  "WIPLot.currentProcess": "当前工序", "WIPLot.qty": "数量", "WIPLot.status": "批次状态",
+  "WIPLot.startTime": "投产时间", "WIPLot.lastMoveTime": "最后流转时间",
+  "WIPMove.moveId": "流转编号", "WIPMove.lotId": "在制批次", "WIPMove.fromProcess": "来源工序",
+  "WIPMove.toProcess": "去向工序", "WIPMove.qty": "数量", "WIPMove.moveTime": "流转时间",
+  "WIPMove.operatorId": "操作工工号",
+  "WIPQualityCheckpoint.checkpointId": "质检点编号", "WIPQualityCheckpoint.lotId": "在制批次",
+  "WIPQualityCheckpoint.processName": "工序名称", "WIPQualityCheckpoint.checkType": "检验类型",
+  "WIPQualityCheckpoint.result": "检验结论", "WIPQualityCheckpoint.checkTime": "检验时间",
+  "WIPQualityCheckpoint.inspectorId": "检验员",
+
+  // ---- 质量 ----
+  "QualityStandard.standardId": "标准编号", "QualityStandard.standardCode": "标准编码",
+  "QualityStandard.modelId": "适用型号", "QualityStandard.versionId": "适用产品版本",
+  "QualityStandard.itemName": "检验项目", "QualityStandard.itemCode": "项目编码",
+  "QualityStandard.targetValue": "目标值", "QualityStandard.toleranceUpper": "上偏差",
+  "QualityStandard.toleranceLower": "下偏差", "QualityStandard.unit": "计量单位",
+  "QualityStandard.testMethod": "检测方法", "QualityStandard.samplingRate": "抽样比例",
+  "QualityStandard.status": "状态",
+  "InspectionCharacteristic.charId": "检验特性编号", "InspectionCharacteristic.standardId": "所属质量标准",
+  "InspectionCharacteristic.charName": "特性名称", "InspectionCharacteristic.charCode": "特性编码",
+  "InspectionCharacteristic.inspectionType": "检验类型",
+  "InspectionCharacteristic.inspectionMethod": "检验方法",
+  "InspectionCharacteristic.samplingRate": "抽样比例", "InspectionCharacteristic.frequency": "检验频次",
+  "InspectionCharacteristic.controlMethod": "控制方式", "InspectionCharacteristic.status": "状态",
+  "QualityLot.qlotId": "质检批号", "QualityLot.woId": "关联工单", "QualityLot.modelId": "型号",
+  "QualityLot.lineId": "产线", "QualityLot.batchSize": "批量", "QualityLot.sampleSize": "抽样数",
+  "QualityLot.passQty": "合格数", "QualityLot.failQty": "不合格数", "QualityLot.status": "检验状态",
+  "QualityLot.inspectDate": "检验日期",
+  "InspectionResult.resultId": "检验结果编号", "InspectionResult.qlotId": "质检批次",
+  "InspectionResult.charId": "检验特性", "InspectionResult.measuredValue": "实测值",
+  "InspectionResult.targetValue": "目标值", "InspectionResult.upperLimit": "上限值",
+  "InspectionResult.lowerLimit": "下限值", "InspectionResult.result": "判定结论",
+  "InspectionResult.inspectTime": "检验时间",
+  "DefectRecord.defectId": "缺陷编号", "DefectRecord.qlotId": "质检批次", "DefectRecord.lotId": "在制批次",
+  "DefectRecord.defectType": "缺陷类型", "DefectRecord.severity": "严重度", "DefectRecord.qty": "数量",
+  "DefectRecord.description": "缺陷描述", "DefectRecord.foundAt": "发现时间",
+  "DefectRecord.processName": "发生工序",
+
+  // ---- 设备执行 / 维修 / 人员 ----
+  "EquipmentOEE.oeeId": "OEE记录编号", "EquipmentOEE.equipId": "设备", "EquipmentOEE.lineId": "产线",
+  "EquipmentOEE.baseId": "基地", "EquipmentOEE.date": "统计日期", "EquipmentOEE.availability": "可用率",
+  "EquipmentOEE.performance": "表现性", "EquipmentOEE.quality": "质量率", "EquipmentOEE.oee": "综合设备效率",
+  "EquipmentOEE.plannedProductionTime": "计划生产时间", "EquipmentOEE.actualProductionTime": "实际生产时间",
+  "EquipmentDowntime.dtId": "停机编号", "EquipmentDowntime.equipId": "设备",
+  "EquipmentDowntime.lineId": "产线", "EquipmentDowntime.baseId": "基地",
+  "EquipmentDowntime.startTime": "停机开始", "EquipmentDowntime.endTime": "停机结束",
+  "EquipmentDowntime.durationMin": "停机时长", "EquipmentDowntime.reason": "停机原因",
+  "EquipmentDowntime.status": "停机状态",
+  "EquipmentAlarm.alarmId": "告警编号", "EquipmentAlarm.equipId": "设备", "EquipmentAlarm.lineId": "产线",
+  "EquipmentAlarm.alarmCode": "告警代码", "EquipmentAlarm.alarmLevel": "告警级别",
+  "EquipmentAlarm.message": "告警内容", "EquipmentAlarm.triggeredAt": "触发时间",
+  "EquipmentAlarm.clearedAt": "清除时间", "EquipmentAlarm.status": "告警状态",
+  "MaintenanceOrder.moId": "维修工单号", "MaintenanceOrder.equipId": "设备",
+  "MaintenanceOrder.lineId": "产线", "MaintenanceOrder.baseId": "基地",
+  "MaintenanceOrder.maintType": "维修类型", "MaintenanceOrder.priority": "优先级",
+  "MaintenanceOrder.plannedStart": "计划开始", "MaintenanceOrder.plannedEnd": "计划结束",
+  "MaintenanceOrder.actualStart": "实际开始", "MaintenanceOrder.actualEnd": "实际结束",
+  "MaintenanceOrder.status": "工单状态",
+  "SparePartConsumption.consumptionId": "备件消耗编号", "SparePartConsumption.moId": "关联维修工单",
+  "SparePartConsumption.partCode": "备件编码", "SparePartConsumption.partName": "备件名称",
+  "SparePartConsumption.qtyUsed": "消耗数量", "SparePartConsumption.unit": "计量单位",
+  "SparePartConsumption.consumedAt": "消耗时间",
+  "OperatorAttendance.attId": "考勤编号", "OperatorAttendance.operatorId": "操作工工号",
+  "OperatorAttendance.operatorName": "操作工姓名", "OperatorAttendance.lineId": "产线",
+  "OperatorAttendance.baseId": "基地", "OperatorAttendance.date": "日期", "OperatorAttendance.shift": "班次",
+  "OperatorAttendance.checkIn": "上班打卡", "OperatorAttendance.checkOut": "下班打卡",
+  "OperatorAttendance.hoursWorked": "出勤工时", "OperatorAttendance.status": "考勤状态",
+  "OperatorSkillCert.certId": "技能认证编号", "OperatorSkillCert.operatorId": "操作工工号",
+  "OperatorSkillCert.skillName": "技能名称", "OperatorSkillCert.skillLevel": "技能等级",
+  "OperatorSkillCert.certifiedBy": "认证机构", "OperatorSkillCert.certifiedDate": "认证日期",
+  "OperatorSkillCert.expireDate": "失效日期", "OperatorSkillCert.status": "认证状态",
+  "ExceptionEvent.excId": "异常事件编号", "ExceptionEvent.excType": "异常类型", "ExceptionEvent.source": "来源",
+  "ExceptionEvent.severity": "严重度", "ExceptionEvent.status": "处理状态",
+  "ExceptionEvent.refType": "源对象类型", "ExceptionEvent.refId": "源对象主键",
+  "ExceptionEvent.summary": "事件摘要", "ExceptionEvent.occurredAt": "发生时间",
+  "DataSourceHealth.sourceId": "数据源编号", "DataSourceHealth.name": "数据源名称",
+  "DataSourceHealth.critical": "是否关键数据源", "DataSourceHealth.lagHours": "数据时延",
+
+  // ---- 经营 / 计划 / 指标 ----
+  "Segment.segKey": "细分编码", "Segment.name": "细分名称", "Segment.gmRate": "毛利率",
+  "Segment.baselineShare": "基线份额",
+  "DemandSegment.segId": "需求细分编号", "DemandSegment.segment": "细分名称", "DemandSegment.tgt": "目标量",
+  "DemandSegment.demandWanPerYearP50": "需求P50(万套/年)", "DemandSegment.demandWanPerYearP90": "需求P90(万套/年)", "DemandSegment.demandWanPerYearP10": "需求P10(万套/年)", "DemandSegment.act": "实际量",
+  "DemandSegment.priceWan": "单价", "DemandSegment.marginPct": "毛利率", "DemandSegment.floorPct": "毛利底线",
+  "DemandSegment.businessType": "业务类型",
+  "FinancePlan.finId": "财务科目编号", "FinancePlan.line": "科目", "FinancePlan.budget": "预算",
+  "FinancePlan.rolling": "滚动预测",
+  "Metric.metricId": "指标编号", "Metric.key": "指标键", "Metric.name": "指标名称",
+  "Metric.level": "考核周期", "Metric.category": "指标类别", "Metric.target": "目标值",
+  "Metric.actual": "实际值", "Metric.floorVal": "底线值", "Metric.unit": "计量单位", "Metric.weight": "权重",
+  "Metric.ksfRef": "所属关键成功要素", "Metric.ownerRef": "责任人", "Metric.chainKey": "根因链键",
+  "Metric.businessType": "业务类型", "Metric.basis": "口径说明",
+  "KSF.ksfId": "要素编号", "KSF.key": "要素键", "KSF.name": "要素名称", "KSF.sub": "要素说明",
+  "Principal.principalId": "责任主体编号", "Principal.name": "名称", "Principal.kind": "主体类型",
+  "Principal.parentRef": "上级主体",
+  "SopVersionRow.verId": "版本行编号", "SopVersionRow.ver": "版本号", "SopVersionRow.date": "版本日期",
+  "SopVersionRow.demand": "需求量", "SopVersionRow.supply": "供给量", "SopVersionRow.note": "备注",
+  "SopVersionRow.isFinal": "是否定版",
+  "RootCauseChain.chainId": "归因链编号", "RootCauseChain.kpiCategory": "指标类别",
+  "RootCauseChain.factor": "根因因子", "RootCauseChain.driverType": "取证对象类型",
+  "RootCauseChain.evidenceField": "量化字段", "RootCauseChain.selectField": "叶节点标签字段",
+  "RootCauseChain.baseWeight": "基准权重",
+  "AnnualScenario.scnId": "情景编号", "AnnualScenario.key": "情景键", "AnnualScenario.name": "情景名称",
+  "AnnualScenario.year": "年度", "AnnualScenario.demand": "需求量", "AnnualScenario.note": "备注",
+  "AnnualScenario.capacityDecision": "产能决策", "AnnualScenario.ltaLock": "长协锁定",
+  "AnnualScenario.revenue": "营业收入", "AnnualScenario.capex": "资本开支", "AnnualScenario.irr": "内部收益率",
+  "AnnualScenario.cashCushion": "现金垫", "AnnualScenario.finalized": "是否定稿",
+  "AnnualScenario.finalizedAt": "定稿时间",
+  "ScenarioTrigger.trigId": "触发条件编号", "ScenarioTrigger.condition": "触发条件",
+  "ScenarioTrigger.expr": "判定表达式", "ScenarioTrigger.action": "触发行动",
+  "ScenarioTrigger.status": "监控状态", "ScenarioTrigger.triggeredAt": "触发时间",
+  "ScenarioTrigger.notifiedTo": "通知对象",
+  "PlanTarget.tgtId": "计划目标编号", "PlanTarget.period": "期间", "PlanTarget.level": "期间粒度",
+  "PlanTarget.value": "目标值", "PlanTarget.year": "年度", "PlanTarget.scenarioKey": "所属情景",
+
+  // ---- 供应链（对象类型定义在 battery-extended.ts，展示名仍在本表·单源） ----
+  "Material.matId": "物料标识", "Material.name": "物料名称", "Material.unitPrice": "单价",
+  "Material.leadTime": "到货周期", // ← LEVER「物料·到货周期」
+  "Material.onHand": "现货库存", // ← LEVER「物料·现货库存」
+  "Material.carbonFactor": "碳排因子", "Material.bomUnit": "BOM单耗", "Material.dailyUse": "日耗用量",
+  "Material.inTransit": "在途量", "Material.outsourceYield": "外协良率", "Material.materialCode": "物料编码",
+  "Material.category": "物料类别", "Material.spec": "规格型号", "Material.unit": "计量单位",
+  "Material.supplierId": "主供应商", "Material.supplierIds": "合格供应商全集", "Material.shelfLife": "保质期", "Material.isKeyMaterial": "是否关键物料",
+  "Material.status": "物料状态",
+  "Supplier.supplierId": "供应商编号", "Supplier.supplierCode": "供应商编码", "Supplier.name": "供应商名称",
+  "Supplier.category": "供应类别", "Supplier.materialType": "供应物料类型", "Supplier.rating": "供应商评级",
+  "Supplier.region": "所在区域", "Supplier.leadTime": "到货周期", "Supplier.minOrderQty": "最小起订量",
+  "Supplier.onTimeRate": "准时交付率", "Supplier.status": "合作状态",
+  "Supplier.contractedSupplyTon": "合同供货量", "Supplier.actualSupplyTon": "实际供货量",
+  // WO-SANDBOX-D2 采购段责任方维度（清关是否存在 / 在途归谁）
+  "Supplier.sourceMode": "供货模式", "Supplier.originCountry": "原产国",
+  "Supplier.transitDays": "在途运输天数", "Supplier.carrierName": "承运方",
+  "Supplier.deliveryDate": "最近交货日期", "Supplier.poNumber": "最近采购单号",
+  "MaterialBatch.batchId": "批次号", "MaterialBatch.matId": "物料", "MaterialBatch.qty": "批次数量",
+  "MaterialBatch.ageDays": "库龄天数", "MaterialBatch.idleDays": "呆滞天数",
+  // WO-RULE-SCOPE-TRIAD：外协批次（C31 外协质量门承载）
+  "Outsource.outsourceId": "外协批次号", "Outsource.matId": "物料", "Outsource.supplierId": "外协供应商",
+  "Outsource.qty": "外协数量", "Outsource.yieldRate": "实测良率", "Outsource.minYieldRate": "合同最低良率",
+  "PurchaseOrder.poId": "采购单号", "PurchaseOrder.matId": "物料", "PurchaseOrder.qty": "采购数量",
+  "PurchaseOrder.etaDay": "到货天", "PurchaseOrder.delayed": "是否延迟",
+  // WO-SANDBOX-D2 采购段四段日戳 + 责任方
+  "PurchaseOrder.supplierId": "供应商", "PurchaseOrder.sourceMode": "供货模式",
+  "PurchaseOrder.orderDay": "下单天", "PurchaseOrder.shipDay": "发货天", "PurchaseOrder.arriveDay": "到厂天",
+  "CustomsClearance.clearanceId": "清关单号", "CustomsClearance.poId": "采购单",
+  "CustomsClearance.supplierId": "供应商", "CustomsClearance.portName": "口岸",
+  "CustomsClearance.brokerName": "清关行", "CustomsClearance.declaredDay": "申报天",
+  "CustomsClearance.clearedDay": "放行天", "CustomsClearance.holdDays": "查验滞留天数",
+  "CustomsClearance.status": "清关状态",
+  "IncomingInspection.inspectionId": "检验单号", "IncomingInspection.poId": "采购单",
+  "IncomingInspection.matId": "物料", "IncomingInspection.inspectorTeam": "检验班组",
+  "IncomingInspection.arrivedDay": "到货待检天", "IncomingInspection.releasedDay": "检验放行天",
+  "IncomingInspection.sampleQty": "抽检数", "IncomingInspection.defectQty": "不合格数",
+  "IncomingInspection.result": "检验结论",
+  "LongTermAgreement.ltaId": "长协编号", "LongTermAgreement.supplierId": "供应商",
+  "LongTermAgreement.materialType": "物料类型", "LongTermAgreement.contractedQtyTon": "合同量",
+  "LongTermAgreement.actualDeliveredTon": "实际交付量", "LongTermAgreement.priceLinked": "是否价格联动",
+  "LongTermAgreement.breachPenaltyWan": "违约金", "LongTermAgreement.priceFormula": "价格联动公式",
+  "LongTermAgreement.effectiveDate": "生效日期", "LongTermAgreement.expiryDate": "到期日期",
+  "BackupSupplierPool.poolId": "备份供应池编号", "BackupSupplierPool.materialType": "物料类型",
+  "BackupSupplierPool.memberCount": "在册供应商数", "BackupSupplierPool.certWeeks": "认证周期",
+  "BackupSupplierPool.procureFreqPerYear": "年采购频次",
+  "CommodityPriceTrend.trendId": "行情记录编号", "CommodityPriceTrend.commodity": "矿产品种",
+  "CommodityPriceTrend.weekOf": "所属周", "CommodityPriceTrend.pricePerTon": "吨价",
+  "CommodityPriceTrend.pctChange": "环比变动", "CommodityPriceTrend.source": "数据来源",
+  "CommodityPriceTrend.spec": "规格", "CommodityPriceTrend.currency": "币种",
+  "CarbonFactor.factorId": "碳因子编号", "CarbonFactor.kind": "因子类别",
+  "CarbonFactor.key": "关联对象键", "CarbonFactor.factor": "因子值",
+  "EnergyMeter.meterId": "计量点编号", "EnergyMeter.baseId": "所属基地",
+  "EnergyMeter.processKey": "所属工序", "EnergyMeter.energyPerUnit": "单位产品能耗",
+  "EnergyMeter.gridFactor": "电网排放因子",
+  "ChangeoverMatrix.pairId": "换型组合编号", "ChangeoverMatrix.fromModel": "换出型号",
+  "ChangeoverMatrix.toModel": "换入型号", "ChangeoverMatrix.minutes": "时长",
+  "ChangeoverMatrix.hours": "换型小时数", "ChangeoverMatrix.lineId": "产线",
+  "Certification.certId": "认证编号", "Certification.modelId": "型号", "Certification.lineId": "产线",
+  "Certification.status": "认证状态", "Certification.certHours": "认证工时",
+  "Certification.gapContribution": "可解锁产能", // = 求解器 certification_plan 输出的 unlockCapacity
+  "CapexProject.projectId": "投资项目编号", "CapexProject.name": "项目名称",
+  "CapexProject.irr": "内部收益率",
+  "CapexProject.util24": "24月利用率", // 口径同 capex.ts 注释「24 月利用率」与前端既有标签
+  "CapexProject.c23pass": "投资门槛C23是否通过",
+
+  // ---- 商务 / 财务 / 外部信号（CEO 反向归因域·对象类型定义在 battery-extended.ts） ----
+  "Customer.custId": "客户编号", "Customer.custName": "客户名称", "Customer.creditLimit": "信用额度",
+  "Customer.orderCustNames": "下单品牌名", // WO-QUOTE-MARGIN-CUSTOMER：订单侧 `Order.cust` 的归属名集合
+  "Customer.termDays": "账期天数", "Customer.receivables": "应收余额",
+  "Customer.wipUnbilled": "未开票在制金额", "Customer.maxOverdueDays": "最长逾期天数",
+  "CustomerLocation.locId": "客户地点编号", "CustomerLocation.customerRef": "所属客户",
+  "CustomerLocation.province": "省份", "CustomerLocation.city": "城市",
+  "CustomerLocation.address": "详细地址", "CustomerLocation.isDeliveryDefault": "是否默认交付地",
+  "CustomerLocation.lon": "经度", "CustomerLocation.lat": "纬度",
+  "ARInvoice.invoiceId": "发票编号", "ARInvoice.custName": "客户名称",
+  "ARInvoice.amount": "发票金额", "ARInvoice.overdueDays": "逾期天数",
+  "ARAging.agingId": "账龄记录编号", "ARAging.customerRef": "客户", "ARAging.bucket": "账龄区间",
+  "ARAging.amount": "金额", "ARAging.period": "期间",
+  "DSO.dsoId": "周转天数记录编号", "DSO.segment": "细分市场", "DSO.days": "应收周转天数",
+  "DSO.period": "期间",
+  "OverdueRecord.overdueId": "逾期记录编号", "OverdueRecord.invoiceRef": "关联发票",
+  "OverdueRecord.overdueDays": "逾期天数", "OverdueRecord.customerRef": "客户",
+  "OverdueRecord.amount": "逾期金额",
+  "FinanceAccount.accId": "财务账户编号", "FinanceAccount.baseId": "所属基地",
+  "FinanceAccount.cashOnHand": "库存现金", "FinanceAccount.receivable": "应收账款",
+  "FinanceAccount.payable": "应付账款", "FinanceAccount.workingCapital": "营运资金",
+  "FinanceMetric.metricId": "财务指标编号", "FinanceMetric.scenarioKey": "所属情景",
+  "FinanceMetric.cashCushion": "现金垫", "FinanceMetric.irr": "内部收益率",
+  "FinanceMetric.capexSpent": "已投资本开支", "FinanceMetric.netMargin": "净利率",
+  "GrossMarginBridge.bridgeId": "毛利桥编号", "GrossMarginBridge.lever": "影响杠杆",
+  "GrossMarginBridge.segment": "细分市场", "GrossMarginBridge.impactYi": "影响额（亿元）",
+  "GrossMarginBridge.driver": "驱动因子", "GrossMarginBridge.period": "期间",
+  "CompetitorShare.shareId": "份额记录编号", "CompetitorShare.competitor": "竞争对手",
+  "CompetitorShare.segment": "细分市场", "CompetitorShare.sharePct": "市场份额",
+  "CompetitorShare.period": "期间",
+  "CompetitorPrice.priceId": "竞品价格编号", "CompetitorPrice.competitor": "竞争对手",
+  "CompetitorPrice.model": "对标型号", "CompetitorPrice.pricePerKwh": "度电价格",
+  "CompetitorPrice.period": "期间",
+  "PriceRealization.priceId": "价格实现编号", "PriceRealization.model": "型号",
+  "PriceRealization.listPrice": "挂牌价", "PriceRealization.realizedPrice": "实际成交价",
+  "PriceRealization.period": "期间",
+  "BidRecord.bidId": "竞标编号", "BidRecord.segment": "细分市场", "BidRecord.win": "是否中标",
+  "BidRecord.lossReason": "丢标原因", "BidRecord.amount": "竞标金额",
+  "BidRecord.competitorRef": "竞争对手",
+  "PipelineOpportunity.oppId": "商机编号", "PipelineOpportunity.segment": "细分市场",
+  "PipelineOpportunity.stage": "漏斗阶段", "PipelineOpportunity.amount": "商机金额",
+  "PipelineOpportunity.winProb": "赢单概率",
+  "WinLossRecord.recordId": "赢丢单记录编号", "WinLossRecord.oppId": "关联商机",
+  "WinLossRecord.result": "赢丢单结果", "WinLossRecord.reason": "原因", "WinLossRecord.amount": "金额",
+  "TriggerRule.triggerId": "触发规则编号", "TriggerRule.signalRef": "关联信号",
+  "TriggerRule.op": "比较算子", "TriggerRule.threshold": "触发阈值",
+  "TriggerRule.action": "触发行动", "TriggerRule.actionDetail": "行动详情",
+  "TriggerRule.cfgRuleKey": "关联规则键",
+  "DecisionGap.gapId": "决策缺陷编号", "DecisionGap.kind": "缺陷类别",
+  "DecisionGap.description": "缺陷描述", "DecisionGap.severity": "严重度",
+  "DecisionGap.ownerRef": "责任人", "DecisionGap.reviewDate": "评审日期",
+  "DecisionGap.evidence": "评审证据",
+  "CausalFactor.factorId": "因果因子编号", "CausalFactor.label": "因子名称",
+  "CausalFactor.drillType": "下钻对象类型", "CausalFactor.drillId": "下钻对象主键",
+  "CausalFactor.drillField": "下钻字段", "CausalFactor.kind": "因子类别",
+  "CausalFactor.isRoot": "是否根因", "CausalFactor.provenanceSynthetic": "是否合成来源",
+  "CausalFactor.metricKey": "所属指标",
+  "ExternalSignal.signalKey": "信号键", "ExternalSignal.name": "信号名称",
+  "ExternalSignal.category": "信号类别", "ExternalSignal.value": "信号值",
+  "ExternalSignal.unit": "计量单位", "ExternalSignal.asOf": "数据日期",
+  "ExternalSignal.source": "数据来源", "ExternalSignal.trend": "趋势",
+  "ExternalSignal.impact": "影响方向", "ExternalSignal.elasticity": "弹性系数",
+  "ExternalSignal.eventRef": "外部事件编号",
+};
+
+/**
+ * 属性中文业务名解析（`Type.prop` 精确命中；未登记 → undefined = 诚实留白，调用方回落 propKey）。
+ * 单一入口：battery.ts 的 withGovernance 与 battery-extended.ts 的 def() 都经此，不留第二份表。
+ */
+export function propDisplayName(typeKey: string, propKey: string): string | undefined {
+  return PROP_DISPLAY_NAMES[`${typeKey}.${propKey}`];
+}
+
+// ---------------------------------------------------------------------------
+// WO-STATEVAR-DISPLAYNAME · **推演状态变量**中文业务名单一真值表
+//
+// ── 病灶（实测判形态：三分法的「没接线」，不是「接了线没数据」）─────────────────────
+// 推演相关的四处屏（沙盘 KPI 逐变量读数 · 扰动落点下拉 · 传导边开关面板 · 对照差异表）
+// 一律显示**裸键**（`loadIndex` / `demandLoad`）。追调用链后判定为**没接线**：
+//   · 本体侧：`loadIndex` 等在 `apps/datacore/src/synthetic/` **一次都不出现**（实测 RC=1，
+//     金丝雀 `util` RC=0 ⇒ 工具是好的）—— 它们**不是** `PropertyDef`，对象上不带这些值；
+//   · 契约侧：`SandboxViewConfig.stateVars` 是 `string[]`、`PropagationRule` 只有
+//     `sourceTypeName`/`targetTypeName`（对象类型的人话名，那一路早已接通且有数据）——
+//     **全链没有任何字段承载状态变量的名字**；
+//   · 前端侧：`EdgeActivePanel.tsx` 顶注当时如实写着「状态变量在全仓没有任何中文名 …
+//     第一级不给它编一个名字」——那是**诚实缺席**，缺的是真值源，不是渲染。
+// ⇒ 修法是**接线 + 补真值源**（补一张后端单源表 + 两条读时投影 + 前端消费），
+//   不是「补 displayName 数据」（没有可补的宿主字段），更不是前端自己编名字。
+//
+// ── 为什么**不**把它们登记成 `PropertyDef`（顶掉派单里的推荐修法，理由三条）──────────
+//   ① **会撒谎**：`PropertyDef` 的语义是「这个类型的对象带这个属性」。状态变量只活在
+//      `SimTickState.state[objectId][var]`（推演世界态），真对象上**没有**这一格。登记成属性 ⇒
+//      对象详情/目录/求解器字段表里多出一批**永远空**的列，等于用本体断言了一件假事。
+//   ② **会污染喂 LLM 的属性清单**：`type-semantics` 把属性名下发给 B 侧接地 prompt，
+//      多出 36 个对象上取不到值的属性名 = 模型照着要值却恒空（改错不报错的那一类）。
+//   ③ **本体里那个同名字段今天没有数据**：`ObjectTypeDef.stateVariables` 实测 94 类全空。
+//      ⚠️ 2026-08-17 审核方复核订正（本条初稿的病因写错了，照它修会修错方向）：
+//      初稿写「upsertType 逐字段重建 def 时**根本不抄**它 ⇒ 挂上去会落不了库，属『接了线接错地方』」——
+//      **两句都不成立**。实测 `ontology.ts` 的 upsertType 早已是 `{ ...input }` **展开写法**
+//      （`WO-D6` 就是为了修「手抄白名单漏了 7 个 OntoFlow 扩展字段」而改的，那条注释里
+//      逐字列着 `stateVariables`）⇒ **落得了库**。而且它有 5 处真 src 消费方：
+//      `process/inspect.ts` 的属性归属判定 · `pipeline/subgraph.ts` 的 buildTypeDefs 读写 ·
+//      `pipeline/service.ts` 的 STATIC 建模校验 · `app.ts` 的 REST 入参 schema。
+//      ⇒ 正确形态是**「接了线没数据」**（`ontology/slice-layers.ts` 早就这么分类了），
+//      **不是**「没接线」也不是「接了线接错地方」——三者修法完全不同（补数据 / 接线 / 补挂载点）。
+//      **本条的结论不变**（仍然不该拿它承载展示名：它的语义是 OntoFlow 建模产出的状态变量声明，
+//      不是给人看的名字），变的只是理由。留这段订正是因为**写在最容易被信的地方的错误病因，
+//      比没有病因更危险** —— 照初稿去修，会有人去查一个并不存在的落库 bug。
+// 故按本仓已验证过的 `PROP_DISPLAY_NAMES` 同一条纪律：**补一层展示名**，不动接线名、不动本体形状。
+//
+// ── 为什么按**裸变量名**建表，而不是 `Type.var` ──────────────────────────────────
+// 沙盘 KPI 与扰动下拉吃的是 `SandboxViewConfig.stateVars: string[]` —— 它是**跨类型去重**后的
+// 清单，屏上根本拿不到类型。若按 `Type.var` 建表，这两处永远查不到名字（等于没修）。
+// 且实测同名变量跨类型语义一致：`costPressure` 同时挂 Model/Order（皆「成本压力」）、
+// `shortageRisk` 同时挂 Material/Order（皆「短缺风险」）—— 名字属于**变量本身**，不属于 (类型,变量) 对。
+// 按 `Type.var` 建表反而会给同一个变量留下两个中文名的空间 = 自造第二套真相源。
+//
+// ── 诚实留白（同 PROP_DISPLAY_NAMES）───────────────────────────────────────────
+// **只登记能从种子规则注释直接读出业务因果的变量**。本表 36 条**逐条**引自
+// `apps/datacore/src/seed.ts` 的 `DEMO_PROPAGATION_RULES` 段内注释（如「② 型号需求负载 →
+// 沿"型号可产于基地"边推到基地负载指数」⇒ `loadIndex` = 负载指数），不是照英文键面意思意译。
+// 未登记者下游一律回落裸键（不渲染空白、不编名字）。
+// ---------------------------------------------------------------------------
+export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
+  // ── 需求向：Order.demandPressure → Model.demandLoad → Base.loadIndex ──
+  demandPressure: "需求压力", demandLoad: "需求负载", loadIndex: "负载指数",
+  // ── 产能向（卡点 BOTTLENECK）：Base.loadIndex → Line.utilPressure → Process.queuePressure ──
+  utilPressure: "利用率压力", queuePressure: "排队压力",
+  // ── 供应向（断点 MATERIAL）：Supplier.deliveryDelay → Material.shortageRisk → Model.supplyRisk → Order.shortageRisk ──
+  deliveryDelay: "交付延迟", shortageRisk: "短缺风险", supplyRisk: "供应风险",
+  // ── 交付向（时长）：Material.shortageRisk → PurchaseOrder.expeditePressure → IncomingInspection.queueDays ──
+  expeditePressure: "加急压力", queueDays: "排队天数",
+  // ── 成本向（消耗）：Material.priceShock → Model.costPressure → Order.costPressure ──
+  priceShock: "价格冲击", costPressure: "成本压力",
+  // ── 现金向（消耗）：Order.costPressure → Customer.receivablePressure → ARInvoice.overduePressure ──
+  receivablePressure: "应收压力", overduePressure: "逾期压力",
+  // ── D07 生产制造 · 换型 / 执行链：产线利用率 → 工单 → 在制 → 缺陷 → 异常处置 ──
+  changeoverPressure: "换型压力", releasePressure: "工单下达压力", feedPressure: "投料压力",
+  inspectBacklog: "检验积压", defectPressure: "缺陷压力", handlingBacklog: "异常处置积压",
+  // ── D05 采购与供应：批次周转 / 清关排队 / 替代料切换 / MRP 缺口 / 供应商绩效复评 ──
+  turnoverPressure: "批次周转压力", clearanceQueueDays: "清关排队天数",
+  switchPressure: "替代料切换压力", gapPressure: "缺口压力", reviewPressure: "绩效复评压力",
+  // ── D05 采购**根源**（WO-SIM-ROOT-PROCUREMENT · G-ROOT-3）：采购到货延迟 → 物料短缺 ──
+  // 名字取「到货延迟」而不是「采购压力」：它度量的是**天数**（这一单/这一批比计划晚到几天），
+  // 与既有 `deliveryDelay`（供应商履约表现）分属两个抓手 —— 前者挂单据、后者挂供应商画像。
+  procurementDelay: "采购到货延迟",
+  // ── D09 设备与维护：工序排队 → 设备负荷 → 维修派工积压；基地负载 → 检修窗挤压 ──
+  loadPressure: "设备负荷压力", repairBacklog: "维修派工积压", windowSqueeze: "检修窗挤压",
+  // ── WO-SLICE-DOMAINS · 设备侧接回订单与钱的那条链的落点（`seed.ts` 段内注释逐字为凭）──
+  // 名字取「产线受阻压力」而不是「产线阻塞」：该边的 description 原文是
+  // 「工序排队 ⇒ 该产线受阻。落在 blockedPressure 这个新量纲上，是为了不回喂 utilPressure 成正反馈环」
+  // ⇒ 它度量的是**产线被上游工序堵住的程度**，与既有 `utilPressure`（产线本来就满）分属两个成因。
+  // ⚠ 本键**刻意不进 `STATE_VAR_DOMAINS`**：域表只收「写得出出处」的量纲，而本单没有为它
+  //   声明取值域；未登记者引擎不夹不衰减，且在 tick 回执 `undeclaredStateVars` 里被逐个点名 ——
+  //   缺口留在屏上，不留在注释里（与 `queueDays` 等天数族同一条纪律）。
+  blockedPressure: "产线受阻压力",
+  // ── D10 基地与仓储交付：认证排队 / 成品提货 / 来料催交 ──
+  qualificationQueue: "认证排队", drawdownPressure: "成品提货压力",
+  inboundExpeditePressure: "来料催交压力",
+  // ── D06 计划与排产：基地负载 → 跨基地调拨决策压力 ──
+  transferPressure: "跨基地调拨压力",
+  // ── D03 销售与客户：拆行 / 交期承诺 / 收货暂扣 / 逾期催收 ──
+  splitPressure: "订单行拆分压力", promiseRisk: "交期承诺风险",
+  deliveryHoldRisk: "收货暂扣风险", collectionPressure: "逾期催收压力",
+  // ── WO-SIM-ROOT-TRIAD · 三个**根源**扰动因素（入度 0 = 只能被外部打进来）──────────
+  // 名字逐条引自 `seed.ts` 的 `WO-SIM-ROOT-TRIAD` 段头注释，不是照英文键面意思意译。
+  // ⚠ `forecastBias` 是本表**唯一带方向**的量纲（正=高估 / 负=低估），中文名把方向写进去 ——
+  //   下拉里只写「销售预测偏差」，用户填 +10 时无从知道那是"多估了"还是"少估了"，
+  //   而这条边的系数是**负**的（高估 ⇒ 需求压力下修），方向搞反读数就整条反了。
+  forecastBias: "销售预测偏差（正=高估）", orderChurn: "订单变更压力", equipmentFailure: "设备故障率",
+};
+
+/**
+ * 推演状态变量中文业务名解析（裸变量名精确命中；未登记 → `undefined` = 诚实留白，调用方回落裸键）。
+ * **全平台唯一入口** —— 两条读时投影（`GET /a/v1/sim/view-config`、`GET /a/v1/sim/propagation-rules`）
+ * 都经此，前端不留第二份映射（单源 > 并存）。
+ */
+export function stateVarDisplayName(stateVar: string): string | undefined {
+  return STATE_VAR_DISPLAY_NAMES[stateVar];
+}
+
+// ---------------------------------------------------------------------------
+// 推演状态量的**声明取值域 + 衰减引用**（WO-PROP-CLAMP）
+// ---------------------------------------------------------------------------
+//
+// ── 为什么这张表必须存在（实测病灶）────────────────────────────────────────────
+// 传导核是 `next = clone(current)` 后一路 `+=` ⇒ 每格都是**无泄漏纯积分器**。
+// 真后端 `SEED_DEMO=1` 零扰动空转 6 拍实测：t0 全部 7204 格都在 0–100 内，
+// 6 拍后 **5290 格（73.4%）越界**，`loadIndex` 69,134 · `receivablePressure` 408,305。
+// 于是用户扰动被世界自身漂移淹没，屏上那个 Δ 回答不了「有多少是我扰出来的」。
+//
+// ── ⛔ 只登记**有出处**的量纲，其余一律不声明（不许拍脑袋定）────────────────────
+// 判据与 `STATE_VAR_DISPLAY_NAMES` 同一条：写不出出处就不登记，未登记者引擎**不夹不衰减**，
+// 并在 tick 回执 `stateVars.undeclaredStateVars` 里逐个点名（缺口有名字，不是被默默补上）。
+//
+// 本表只用了**两条既有出处**，一条都没有新发明：
+//  ① 量纲分类 —— `sim/drill-scan.ts` 段头原文：
+//     「状态变量的量纲各不相同（**压力 0–100**、天数、件数…）」
+//     ⇒ 压力/风险/指数族 = 0–100；**天数族与件数族它明确划成另一类，故本表不登记**。
+//  ② tick0 生成式 —— `sim/seed-world.ts` `deriveSeedBaseSnapshot`：
+//     `round(hash01(objectId|stateVar) × 100)`，且实测 `measuredCells: 0 / derivedCells: 7204`
+//     ⇒ 出厂世界**每一格**都由这个生成式产出，值域恰为 [0,100]。
+//
+// ── 静息点为什么不一律取 0 ────────────────────────────────────────────────────
+// `forecastBias` 是本平台唯一**带方向**的量纲（正=高估 / 负=低估，见上表该行注释，
+// 且它那条边的系数是负的）。把它的静息点取成下界，等于把负半轴整段抹掉、方向读反。
+// 故它单独声明 [-100,100] / rest 0；压力族静息点 = 下界 0（无入流即无压力）。
+const PRESSURE_DOMAIN_SOURCE =
+  "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；" +
+  "② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）";
+
+/**
+ * 状态量 → 声明取值域（**全平台唯一入口**，与 `STATE_VAR_DISPLAY_NAMES` 同一张登记册的两列）。
+ *
+ * ⚠ 天数族（`queueDays` / `clearanceQueueDays` / `procurementDelay` / `deliveryDelay`）、
+ *   件数/积压族（`inspectBacklog` / `repairBacklog` / `handlingBacklog` / `qualificationQueue`）
+ *   **刻意不在此表**：`drill-scan.ts` 只说了它们"是另一类量纲"，**没说上界是多少**，
+ *   全仓也找不到第二处出处。给它们拍一个 100 天 / 100 件的上界就是本单明令禁止的"拍脑袋定"。
+ *   它们今天仍是纯积分器，且**在 tick 回执里被逐个点名** —— 缺口留在屏上，不留在注释里。
+ */
+export const STATE_VAR_DOMAINS: Record<string, StateVarDomain> = Object.fromEntries(
+  [
+    // 压力 / 风险 / 指数 / 负载族 —— 出处 ①②，静息点 = 下界 0。
+    "demandPressure", "demandLoad", "loadIndex", "utilPressure", "queuePressure",
+    "shortageRisk", "supplyRisk", "expeditePressure", "priceShock", "costPressure",
+    "receivablePressure", "overduePressure", "changeoverPressure", "releasePressure",
+    "feedPressure", "defectPressure", "turnoverPressure", "switchPressure", "gapPressure",
+    "reviewPressure", "loadPressure", "windowSqueeze", "drawdownPressure",
+    "inboundExpeditePressure", "transferPressure", "splitPressure", "promiseRisk",
+    "deliveryHoldRisk", "collectionPressure", "orderChurn", "equipmentFailure",
+  ].map((v): [string, StateVarDomain] => [
+    v,
+    {
+      min: 0, max: 100, restPoint: 0,
+      decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+      unit: "0–100 压力指数",
+      source: PRESSURE_DOMAIN_SOURCE,
+    },
+  ]),
+);
+// 唯一带方向的量纲，单列（静息点 0 ≠ 下界）。
+STATE_VAR_DOMAINS.forecastBias = {
+  min: -100, max: 100, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "−100–100 偏差指数（正=高估）",
+  source:
+    `${PRESSURE_DOMAIN_SOURCE}；方向性出处 = 上表 forecastBias 行注释「唯一带方向的量纲（正=高估/负=低估）」` +
+    `⇒ 静息点取 0 而非下界，下界取 −max 以保持两侧对称`,
+};
+
+/**
+ * 状态量声明取值域查表（**全平台唯一入口**；未登记 → `undefined` = 不夹不衰减 + 回执点名）。
+ */
+export function stateVarDomains(): Record<string, StateVarDomain> {
+  return STATE_VAR_DOMAINS;
+}
+
+/**
+ * 把一批状态变量投影成 `裸键 → 中文名` 字典（**只收登记过的**）。
+ *
+ * 未登记的键**故意不进字典**，而不是填 `null` 或回填裸键：字典里出现 `loadIndex: "loadIndex"`
+ * 会让前端分不出「查到的名字恰好等于键」与「没查到」，屏上也就无从表达"这是回落"。
+ * 键不在字典里 = 明确的"没有名字"，前端据此走回落分支并标记。
+ */
+export function stateVarDisplayNames(stateVars: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const v of [...stateVars].sort()) {
+    const zh = stateVarDisplayName(v);
+    if (zh !== undefined) out[v] = zh;
+  }
+  return out;
+}
+
+/** 给一组 PropertyDef 贴上中文业务名（已自带 displayName 的不覆盖；未登记的保持缺省）。 */
+export function withPropDisplayNames(typeKey: string, props: PropertyDef[]): PropertyDef[] {
   return props.map((p) => {
+    const zh = p.displayName ?? propDisplayName(typeKey, p.propKey);
+    return zh ? { ...p, displayName: zh } : p;
+  });
+}
+
+/**
+ * WO-ORDER-WORKORDER-UI · 同一条纪律施加到**派生属性**上（`Order.value` 一类）。
+ *
+ * ⚠ 为什么单独一个函数而不是塞进 `withGovernance`：`withGovernance` 收的是 `PropertyDef[]`，
+ * 而派生属性挂在类型定义的**另一个字段**上，两者在构造点不经过同一处。本函数吃整份类型定义、
+ * 只改 `derivedProperties`，故可在 `batteryObjectTypes()` 的**唯一出口**上统一施加 ——
+ * 不逐个类型手抄（手抄白名单漏项是本仓 `WO-D6` 已经吃过的亏）。
+ */
+function withDerivedDisplayNames<T extends { key: string; derivedProperties?: DerivedPropertyDef[] }>(t: T): T {
+  if (!t.derivedProperties?.length) return t;
+  return {
+    ...t,
+    derivedProperties: t.derivedProperties.map((d) => {
+      const zh = d.displayName ?? propDisplayName(t.key, d.propKey);
+      return zh ? { ...d, displayName: zh } : d;
+    }),
+  };
+}
+
+/**
+ * 治理增量 §3：名称类字段 searchable=true（A3 建议同语义）。
+ *
+ * ── WO-UNIT-KWH：这里原本还挂着一张**运行时单位回填表** ──────────────────────────
+ * 改前它给 8 个属性补 `unit`（`Base.{gwh,util,openCost,serveCost}` / `Model.unitPrice` /
+ * `Order.{qty,unitPrice}` / `Shipment.qtyTons`），而这些属性的字面量里**并没有**单位。
+ * 于是同一个事实有两个出处，且只有跑到这里才成立 —— 「源码里 grep 不到单位，
+ * 运行时却读得回来」正是量纲普查里最难对齐的那一段（普查按 REST 读回 5 个货币字段，
+ * 而源码字面量里当时只找得到 1 个）。
+ *
+ * 量纲改必填之后，单位在**构造点**就已声明且类型系统兜底，这张表的 8 条已被逐条搬进字面量
+ * （取值逐字不变），故整表退役：**单一出处 > 并存**。
+ */
+function withGovernance(key: string, props: PropertyDef[]): PropertyDef[] {
+  // WO-INTEG-BATCH-5 收编取舍：`wo-unitcost-land` 在此处补过一格 `Model.unitCost: "元"`，
+  // 但集成线已把整张 `units` 覆写表**退役**（量纲改必填后单位在构造点声明，类型系统兜底）。
+  // 故此处保留集成线的「已退役」态，该单的意图改由 `modelProps.unitCost` 的
+  // `unit: "元", scale: "absolute"` 在构造点承接 —— 单一出处 > 并存。
+  return withPropDisplayNames(key, props).map((p) => {
     const out = { ...p };
     if (p.propKey === "name" || p.propKey === "displayName" || (p.isPrimaryKey && p.dataType === "string")) {
       out.searchable = true;
     }
-    const u = units[key]?.[p.propKey];
-    if (u) out.unit = u;
     return out;
   });
 }
@@ -466,21 +3485,111 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     derivedProperties: [],
     sourceBindings: BINDINGS[key] ?? [],
   });
+  /** 同 plain，但带类型级 description（`ontology-descriptions:check` 要求 ACTIVE 类型必须有非空描述）。 */
+  const plainD = (
+    key: string,
+    displayName: string,
+    description: string,
+    properties: PropertyDef[],
+  ): Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status"> => ({ ...plain(key, displayName, properties), description });
   return [
     { key: "Base", displayName: "生产基地", domain: "factory", properties: withGovernance("Base", baseProps), derivedProperties: baseDerived, sourceBindings: BINDINGS.Base ?? [] },
     { key: "Model", displayName: "电池型号", domain: "product", properties: withGovernance("Model", modelProps), derivedProperties: modelDerived, sourceBindings: BINDINGS.Model ?? [] },
+    plain("ProductPlatform", "产品平台", productPlatformProps),
+    plain("ProductSeries", "产品系列", productSeriesProps),
+    plain("ProductVersion", "产品版本", productVersionProps),
+    plain("BOMHeader", "BOM主表", bomHeaderProps),
+    plain("BOMDetail", "BOM明细", bomDetailProps),
+    plain("Routing", "工艺路线", routingProps),
+    plain("Operation", "工序定义", operationProps),
+    plain("ProcessCapabilityWindow", "工艺能力边界", processCapabilityProps),
+    plain("QualityStandard", "质量标准", qualityStandardProps),
+    plain("InspectionCharacteristic", "检验特性", inspectionCharacteristicProps),
+    plain("ProductLineCapability", "产品产线能力", productLineCapabilityProps),
+    plain("ProductEquipmentCapability", "产品设备能力", productEquipmentCapabilityProps),
+    plain("EngineeringChange", "工程变更", engineeringChangeProps),
+    plain("MaterialAlternative", "物料替代关系", materialAlternativeProps),
     { key: "Order", displayName: "销售订单", domain: "product", properties: withGovernance("Order", orderProps), derivedProperties: orderDerived, sourceBindings: BINDINGS.Order ?? [] },
+    // WO-ORDERLINE：订单明细行（SO→型号行·一单多型号多行·紧随 Order·勾稽 Σ行===头）
+    plain("OrderLine", "订单明细行", orderLineProps),
     plain("Line", "产线", lineProps),
+    // WO-CAPACITY-EDGE：产能池（产线的产能升格为一等对象，紧随 Line —— 它就是 Line 那一列的承载）
+    plainD(
+      "CapacityPool",
+      "产能池",
+      "一条产线的日产能资源（电芯/日）。产线经 `has_capacity` 指向它，生产工单经 `consumes_capacity` 吃它、**吃掉多少写在那条边上**；余量 = 本池申报产能 − Σ 入边消耗。它把「产能」从产线上的一个标量升格成可被指向、可被消耗的资源，于是「这条线还剩多少、被谁吃掉的」能沿图走出来，而不只是按字段读数。",
+      capacityPoolProps,
+    ),
+    plain("Workshop", "车间", workshopProps),
     plain("Process", "工序", processProps),
     plain("Equipment", "设备", equipmentProps),
     plain("MaintPlan", "检修计划", maintPlanProps),
     plain("Segment", "应用细分", segmentProps),
     plain("Shipment", "在途批次", shipmentProps),
+    // WO-WAREHOUSE-CUSTLOC：仓库（库存仓位与交付地理落点·factory 域）
+    plain("Warehouse", "仓库", warehouseProps),
+    // WO-LAST3-RELATIONS：行政区（`located_in` 的锚点·地域从字符串升格为可遍历节点）。
+    plainD("Region", "行政区", "省级行政区。基地/仓库/客户交付点经 `*_located_in` 指向它，令「华东产能」这类按地域的聚合可沿图走，而不是只能按字段过滤。行数由三个载体既有的 province 取值并集派生，不引入新的经营事实。", regionProps),
+    // WO-INVENTORY-3TIER：成品库存（qtyAvailable 派生）+ 统一库存流水。
+    { key: "FinishedGoodsInventory", displayName: "成品库存", domain: "supply", properties: withGovernance("FinishedGoodsInventory", finishedGoodsInvProps), derivedProperties: finishedGoodsInvDerived, sourceBindings: BINDINGS.FinishedGoodsInventory ?? [] },
+    plain("InventoryTxn", "库存流水", inventoryTxnProps),
+    // WO-ATP-PROMISE：订单承诺台账（ATP/CTP·净读三源算可承接量+承诺日+瓶颈）
+    plain("OrderPromise", "订单承诺", orderPromiseProps),
+    // WO-INTERBASE-TRANSFER：跨基地调拨台账（etaDay 派生·R13 可溯真对象）。
+    { key: "InterBaseTransfer", displayName: "跨基地调拨", domain: "capacity", properties: withGovernance("InterBaseTransfer", interBaseTransferProps), derivedProperties: interBaseTransferDerived, sourceBindings: BINDINGS.InterBaseTransfer ?? [] },
     plain("DataSourceHealth", "数据源健康度", dataHealthProps),
     plain("AnnualScenario", "年度情景", annualScenarioProps),
     plain("ScenarioTrigger", "情景触发条件", scenarioTriggerProps),
     plain("PlanTarget", "计划目标", planTargetProps),
-  ];
+    // cockpit P1 绿地：经营驾驶舱富 KPI（数字经派生/聚合算出，R14 零写死）。
+    plainD("Cadence", "节拍", "全链各环节的节拍——「这个环节多久处理一次」。等待期望 = everyDays / 2（均匀到达假设），是推演沙盘里最值钱的一维：实测全链损失里等节拍占比最高的一类。值全部由种子自身的发生序列推导，推不出的诚实标 EMPTY 并给机器可读原因，绝不补 0（0 的语义是「随到随办」，等于把节拍当不存在）。⚠ 与设备节拍 CT（秒/只，单件加工时间）是两个口径，勿混用。", cadenceProps),
+    { key: "DemandSegment", displayName: "需求细分", domain: "forecast", properties: withGovernance("DemandSegment", demandSegmentProps), derivedProperties: demandSegmentDerived, sourceBindings: BINDINGS.DemandSegment ?? [] },
+    plain("FinancePlan", "财务预算", financePlanProps),
+    // WO-V4-INSPECT：coverage 走 derivedProperties（值由公式算，非独立真值）——故不能用 plain()（它把 derivedProperties 写死成 []）。
+    { ...plain("MaterialBalance", "物料平衡", materialBalanceProps), derivedProperties: materialBalanceDerived },
+    // cockpit P2 + SPINE 绿地：指标库 Metric（gapPct/delta 派生，各视图 KPI 单一出处 R-一致）+ KSF + Principal + 根因归因模板。
+    { key: "Metric", displayName: "经营指标", domain: "decision", properties: withGovernance("Metric", metricProps), derivedProperties: metricDerived, sourceBindings: BINDINGS.Metric ?? [] },
+    plain("KSF", "关键成功要素", ksfProps),
+    plain("Principal", "责任主体", principalProps),
+    plain("RootCauseChain", "根因归因链", rootCauseChainProps),
+    // WO-ADOPT-MITIGATION：已采纳处置方案台账（adopt_mitigation 执行器落点 → risk_timeline 真曲线消费）。
+    // 出厂**无实例**（运行期由 Action 审批写入），故不入 generation/BINDINGS——注册为一等类型使其可查/可下钻/可审计。
+    plainD(
+      "AdoptedMitigation",
+      "已采纳处置方案",
+      "风险处置方案的采纳台账：记录「哪个基地的哪个瓶颈因素、采纳了哪个方案、何时生效、削减多少张力」。" +
+        "它是 risk_timeline 真曲线的输入——没有这条记录，点了「采纳」曲线也不会动（G-ACTION-NOOP-EXEC）。" +
+        "出厂零实例，运行期由 adopt_mitigation 动作审批通过后写入。",
+      adoptedMitigationProps,
+    ),
+    // cockpit P5 / sop 绿地：S&OP 版本演进（gap 派生）。
+    { key: "SopVersionRow", displayName: "S&OP版本演进", domain: "plan", properties: withGovernance("SopVersionRow", sopVersionRowProps), derivedProperties: sopVersionRowDerived, sourceBindings: BINDINGS.SopVersionRow ?? [] },
+    // Phase 3 MES Domain: Production Planning
+    plain("WorkOrder", "生产工单", workOrderProps),
+    plain("ProductionSchedule", "生产排程", productionScheduleProps),
+    plain("ShiftPlan", "班次计划", shiftPlanProps),
+    // Phase 3 MES Domain: WIP Tracking
+    plain("WIPLot", "在制批次", wipLotProps),
+    plain("WIPMove", "在制移动", wipMoveProps),
+    plain("WIPQualityCheckpoint", "在制质检点", wipQualityCheckpointProps),
+    // Phase 3 MES Domain: Quality Execution
+    plain("QualityLot", "质检批次", qualityLotProps),
+    plain("InspectionResult", "检验结果", inspectionResultProps),
+    plain("DefectRecord", "缺陷记录", defectRecordProps),
+    // Phase 3 MES Domain: Equipment Execution
+    plain("EquipmentOEE", "设备OEE", equipmentOEEProps),
+    plain("EquipmentDowntime", "设备停机", equipmentDowntimeProps),
+    plain("EquipmentAlarm", "设备告警", equipmentAlarmProps),
+    // WO-EXCEPTION-EVENT：四源归一异常事件（EquipmentDowntime/Alarm/DefectRecord/TriggerRule/MaterialBalance 聚合投影）
+    plain("ExceptionEvent", "异常事件", exceptionEventProps),
+    // Phase 3 MES Domain: Maintenance Execution
+    plain("MaintenanceOrder", "维修工单", maintenanceOrderProps),
+    plain("SparePartConsumption", "备件消耗", sparePartConsumptionProps),
+    // Phase 3 MES Domain: Labor Tracking
+    plain("OperatorAttendance", "操作工考勤", operatorAttendanceProps),
+    plain("OperatorSkillCert", "操作工技能认证", operatorSkillCertProps),
+    // WO-ORDER-WORKORDER-UI：派生属性的中文名在**这一个出口**统一贴（同 `withGovernance` 之于 properties）。
+  ].map(withDerivedDisplayNames);
 }
 
 export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "version">[] {
@@ -489,20 +3598,101 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "order_for_model", fromTypeKey: "Order", toTypeKey: "Model", cardinality: "1:N" },
     // §S1.2: certification state lives on the model↔line edge (props.status 量产 | 认证中).
     { key: "model_certified_on", fromTypeKey: "Model", toTypeKey: "Line", cardinality: "N:N" },
-    // 跨域切片 order_fulfillment_360：补全 product→factory→process→equip→supply→commercial 链路边。
-    { key: "line_belongs_to_base", fromTypeKey: "Line", toTypeKey: "Base", cardinality: "N:N" }, // factory（多线归一基地）
+    // SA-3：Workshop 车间层链路（Base→Workshop→Line 四层结构）
+    // 契约 cardinality 只允许 1:1/1:N/N:N；N:1 语义通过翻转方向表达为 1:N。
+    { key: "workshop_belongs_to_base", fromTypeKey: "Base", toTypeKey: "Workshop", cardinality: "1:N" },
+    // WO-WAREHOUSE-CUSTLOC：仓库归属基地（Warehouse N:1 Base；契约方向翻转为 Base 1:N Warehouse，参照 workshop_belongs_to_base）
+    { key: "warehouse_of_base", fromTypeKey: "Base", toTypeKey: "Warehouse", cardinality: "1:N" },
+    { key: "line_belongs_to_workshop", fromTypeKey: "Workshop", toTypeKey: "Line", cardinality: "1:N" },
+    // line_belongs_to_base 保留向后兼容（Workshop 层不删旧链路）
+    { key: "line_belongs_to_base", fromTypeKey: "Base", toTypeKey: "Line", cardinality: "1:N" },
+    // Phase 2：产品域层级链路（ProductPlatform → ProductSeries → Model → ProductVersion → BOM → Routing）
+    { key: "series_belongs_to_platform", fromTypeKey: "ProductSeries", toTypeKey: "ProductPlatform", cardinality: "N:1" },
+    { key: "model_belongs_to_series", fromTypeKey: "Model", toTypeKey: "ProductSeries", cardinality: "N:1" },
+    { key: "version_belongs_to_model", fromTypeKey: "ProductVersion", toTypeKey: "Model", cardinality: "N:1" },
+    { key: "bom_belongs_to_version", fromTypeKey: "BOMHeader", toTypeKey: "ProductVersion", cardinality: "N:1" },
+    { key: "detail_belongs_to_bom", fromTypeKey: "BOMDetail", toTypeKey: "BOMHeader", cardinality: "N:1" },
+    { key: "detail_uses_material", fromTypeKey: "BOMDetail", toTypeKey: "Material", cardinality: "N:1" },
+    { key: "routing_belongs_to_model", fromTypeKey: "Routing", toTypeKey: "Model", cardinality: "N:1" },
+    { key: "operation_belongs_to_routing", fromTypeKey: "Operation", toTypeKey: "Routing", cardinality: "N:1" },
+    { key: "capability_belongs_to_operation", fromTypeKey: "ProcessCapabilityWindow", toTypeKey: "Operation", cardinality: "N:1" },
+    // quality
+    { key: "standard_belongs_to_model", fromTypeKey: "QualityStandard", toTypeKey: "Model", cardinality: "N:1" },
+    { key: "char_belongs_to_standard", fromTypeKey: "InspectionCharacteristic", toTypeKey: "QualityStandard", cardinality: "N:1" },
+    // factory/equip
+    { key: "product_line_capability", fromTypeKey: "ProductLineCapability", toTypeKey: "Line", cardinality: "N:N" },
+    { key: "product_equip_capability", fromTypeKey: "ProductEquipmentCapability", toTypeKey: "Equipment", cardinality: "N:N" },
+    // lifecycle
+    { key: "change_affects_model", fromTypeKey: "EngineeringChange", toTypeKey: "Model", cardinality: "N:1" },
+    // supply（Wave 2：物料替代 + 供应商）
+    { key: "alt_for_material", fromTypeKey: "MaterialAlternative", toTypeKey: "Material", cardinality: "N:N" },
+    // WO-VULNERABILITY-REI：`N:1` → `N:N`。改的不是接线，是**把一直存在的事实说对**：
+    // 8 个物料里 6 个有 2–3 家合格供应商，声明成 N:1 时本体在替数据撒谎（"每个料只有一个供应商"），
+    // 而 `service.ts` 也确实只物化了 `supplierIds[0]` 那一行 —— 声明与物化**一起**把冗余抹平了。
+    { key: "material_supplied_by", fromTypeKey: "Material", toTypeKey: "Supplier", cardinality: "N:N" },
     { key: "line_has_process", fromTypeKey: "Line", toTypeKey: "Process", cardinality: "1:N" }, // process
     { key: "equip_used_in", fromTypeKey: "Equipment", toTypeKey: "Process", cardinality: "N:N" }, // equip（多设备归一工序）
     { key: "model_uses_material", fromTypeKey: "Model", toTypeKey: "Material", cardinality: "N:N" }, // supply
+    // ── WO-P1 · 供应「影响方向」反向边（REQ143 补传导边的地基）──────────────────────────
+    // 为什么必须是**新 key** 而不是往上面三条里反向塞行：
+    //   上面的 `order_for_model`/`model_uses_material`/`material_supplied_by` 表达的是**归属/FK**
+    //   （订单属于哪个型号、型号用哪些料、料的主供是谁），方向是「下游→上游」。
+    //   而扰动传导要的是**物流/影响方向**「上游→下游」（供应商断供 → 物料短缺 → 型号缺料 → 订单交不出）。
+    //   传导引擎只沿 `fromId→toId` 走（`sim/propagation.ts` navOut），拿归属边跑影响传导必然走反。
+    //   实测（`node scripts/…` 全本体盘点）：**没有任何一条边的 toTypeKey 是 Order**——
+    //   `promise_for_order`/`line_of_order` 虽指向 Order，但其 from 端 OrderPromise/OrderLine 自身零入边，
+    //   ⇒ 不补这三条，供应侧扰动在图上**根本走不到 Order**。
+    //   同名 key 反向塞行会违反该 key 自己声明的 fromTypeKey/toTypeKey，并污染既有切片的
+    //   `direction:"out"` 遍历，故一律另立 key、与归属边共存互不干扰。
+    // 三条边的实例全部由既有对象 FK **确定性反投影**（同一份数据换个方向落），无随机/无时钟 ⇒ R6 同 seed 字节一致。
+    // WO-VULNERABILITY-REI：`1:N` → `N:N`（与正边 `material_supplied_by` 同步改）。一个料**可以**有多家供应商，
+    // 这条逆边正是 `demo_supplier_procurement_delay_to_material_shortage` 的 `viaLinkKey`。
+    { key: "supplier_supplies_material", fromTypeKey: "Supplier", toTypeKey: "Material", cardinality: "N:N" }, // supply（影响向·`material_supplied_by` 之逆）
+    { key: "material_used_by_model", fromTypeKey: "Material", toTypeKey: "Model", cardinality: "N:N" }, // supply→product（影响向·`model_uses_material` 之逆）
+    { key: "model_demanded_by_order", fromTypeKey: "Model", toTypeKey: "Order", cardinality: "1:N" }, // product→commercial（影响向·`order_for_model` 之逆）
     { key: "order_of_customer", fromTypeKey: "Order", toTypeKey: "Customer", cardinality: "N:N" }, // commercial（多单归一客户）
+    // WO-ADVERSARY-REACTION 影响向逆边：`order_of_customer` 只能把压力送到**客户**身上，
+    // 送不回订单；而「客户还手（砍单/改期）」这个动作的落点恰恰在**订单**上。
+    // 与 `order_has_line` / `customer_has_location` 是同一种补法（档 2「补影响向逆边」）。
+    { key: "customer_places_order", fromTypeKey: "Customer", toTypeKey: "Order", cardinality: "1:N" }, // commercial（影响向·`order_of_customer` 之逆）
+    // WO-WAREHOUSE-CUSTLOC：客户交付地点归属客户（CustomerLocation N:1 Customer·参照 order_of_customer 方向）
+    { key: "custloc_of_customer", fromTypeKey: "CustomerLocation", toTypeKey: "Customer", cardinality: "N:N" }, // commercial（多地点归一客户）
     // 8 域切片增量：补全 supply 深链 / commercial 深链 / 工厂扩展 / 设备-检修 / 产能 / 质量 / 计划 跨域边。
     { key: "model_has_cert", fromTypeKey: "Model", toTypeKey: "Certification", cardinality: "N:N" }, // factory（认证）
     { key: "customer_has_invoice", fromTypeKey: "Customer", toTypeKey: "ARInvoice", cardinality: "N:N" }, // commercial（应收）
     { key: "material_has_batch", fromTypeKey: "Material", toTypeKey: "MaterialBatch", cardinality: "N:N" }, // supply（批次）
+    // WO-RULE-SCOPE-TRIAD：Material → Outsource（外协批次·C31 承载类型接入本体图）
+    { key: "material_has_outsource", fromTypeKey: "Material", toTypeKey: "Outsource", cardinality: "1:N" }, // supply（外协）
     { key: "material_supplied_by_po", fromTypeKey: "Material", toTypeKey: "PurchaseOrder", cardinality: "N:N" }, // supply（采购）
+    // WO-SANDBOX-D2：采购段按责任方可分解的三条链路（这一单谁供的 / 谁清的关 / 谁检的货）。
+    { key: "po_from_supplier", fromTypeKey: "PurchaseOrder", toTypeKey: "Supplier", cardinality: "N:1" }, // supply（采购责任方）
+    { key: "po_customs_cleared_by", fromTypeKey: "PurchaseOrder", toTypeKey: "CustomsClearance", cardinality: "N:1" }, // supply（清关，仅进口单）
+    { key: "po_inspected_by", fromTypeKey: "PurchaseOrder", toTypeKey: "IncomingInspection", cardinality: "N:1" }, // quality（到货检验）
     { key: "material_carbon", fromTypeKey: "Material", toTypeKey: "CarbonFactor", cardinality: "N:N" }, // supply（碳因子）
     { key: "base_energy_meter", fromTypeKey: "Base", toTypeKey: "EnergyMeter", cardinality: "N:N" }, // factory（能耗）
     { key: "base_has_shipment", fromTypeKey: "Base", toTypeKey: "Shipment", cardinality: "N:N" }, // capacity（在途）
+    // WO-INTERBASE-TRANSFER：跨基地调拨三条链路（调拨→调出基地/调入基地/型号·N:1·下钻到 BASE_REGISTRY 真基地/Model）。
+    { key: "transfer_from_base", fromTypeKey: "InterBaseTransfer", toTypeKey: "Base", cardinality: "N:1" }, // capacity（调出）
+    { key: "transfer_to_base", fromTypeKey: "InterBaseTransfer", toTypeKey: "Base", cardinality: "N:1" }, // capacity（调入）
+    { key: "transfer_of_model", fromTypeKey: "InterBaseTransfer", toTypeKey: "Model", cardinality: "N:1" }, // capacity→product（型号）
+    // ══════════════════════════════════════════════════════════════════════════════
+    // WO-LAST3-RELATIONS · `located_in` 三条（设施 → 行政区）+ `depends_on` 一条（工序 → 前驱工序）
+    //
+    // ⚠ 四条都**不声明 `viaProperty`**，与同文件 `has_capacity` 段落同一个理由，别顺手补上：
+    //   `upsertLinkType` 在 `synthetic/service.ts:700` 种链路类型时就跑一次 `materializeDeclaredLinks`，
+    //   而那一刻对象**一个都没落库**（对象在 :780+ 才 putAll）⇒ 当场 0 条；之后种子再手写一遍，
+    //   而任何人重新 `POST /a/v1/ontology/link-types` 又会补出一批 `lnk_via_*`，与种子的
+    //   `lnk_lin_*`/`lnk_odep_*` **同一条边两个实例、两个 origin**。冲突会红，双份不会。
+    //   ⇒ 只留一个真值源（种子手写），声明侧的可表达性由 `linktype-located-depends.seam.test.ts`
+    //   在**自己的租户**里走真路由证明（那里对象先落库，故 `viaProperty` 一声明就连得出来）。
+    { key: "base_located_in", fromTypeKey: "Base", toTypeKey: "Region", cardinality: "N:1" }, // factory（基地属地）
+    { key: "warehouse_located_in", fromTypeKey: "Warehouse", toTypeKey: "Region", cardinality: "N:1" }, // factory（仓库属地）
+    { key: "custloc_located_in", fromTypeKey: "CustomerLocation", toTypeKey: "Region", cardinality: "N:1" }, // commercial（交付点属地）
+    // `depends_on`：同一工艺路线内「本工序依赖上一道」。承载是 `Operation.predecessorOperationId`
+    // （末位追加的派生 FK，见 operationProps 头注）—— 不是 `operationSeq` 对 `operationSeq`：
+    // 后者会把 15 条工艺路线的同序号工序连成叉积，且不报错。
+    { key: "operation_depends_on", fromTypeKey: "Operation", toTypeKey: "Operation", cardinality: "N:1" }, // process（工序先后）
+    // ══════════════════════════════════════════════════════════════════════════════
     { key: "base_maint_plan", fromTypeKey: "Base", toTypeKey: "MaintPlan", cardinality: "N:N" }, // equip（检修）
     { key: "model_changeover", fromTypeKey: "Model", toTypeKey: "ChangeoverMatrix", cardinality: "N:N" }, // factory（换型）
     { key: "model_in_segment", fromTypeKey: "Model", toTypeKey: "Segment", cardinality: "N:N" }, // product（细分）
@@ -514,6 +3704,144 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "scenario_to_finance", fromTypeKey: "AnnualScenario", toTypeKey: "FinanceMetric", cardinality: "N:N" }, // finance
     // Phase7A plan↔product 连边：订单→月度计划目标（按交期月匹配）→ Order 根直达 plan 域。
     { key: "order_to_plantarget", fromTypeKey: "Order", toTypeKey: "PlanTarget", cardinality: "N:N" }, // plan
+    // SPINE 骨架链：指标→KSF / 指标→责任人 / 目标→责任人（各视图 KPI 单一出处 + 责任闭环的本体连线）。
+    { key: "metric_affects_ksf", fromTypeKey: "Metric", toTypeKey: "KSF", cardinality: "N:N" }, // decision
+    { key: "metric_ownedby", fromTypeKey: "Metric", toTypeKey: "Principal", cardinality: "N:N" }, // decision→people
+    // WO-CEO-2 gap_attribution：因果边（果→因·CausalFactor 一等因果链·gap_attribution 引擎遍历·GAP-ATTR）。
+    { key: "caused_by", fromTypeKey: "CausalFactor", toTypeKey: "CausalFactor", cardinality: "N:N" }, // decision（因果链）
+    { key: "plantarget_ownedby", fromTypeKey: "PlanTarget", toTypeKey: "Principal", cardinality: "N:N" }, // plan→people（责任闭环）
+    // Phase 3 MES Domain links
+    { key: "wo_for_model", fromTypeKey: "WorkOrder", toTypeKey: "Model", cardinality: "N:1" }, // process
+    { key: "wo_on_line", fromTypeKey: "WorkOrder", toTypeKey: "Line", cardinality: "N:1" }, // process
+    // ══════════════════════════════════════════════════════════════════════════════
+    // WO-CAPACITY-EDGE · 产能两条边（`has_capacity` / `consumes_capacity`）
+    //
+    // ① `has_capacity`：Line → CapacityPool（结构边，不带量 —— 产能数在池节点上）。
+    // ② `consumes_capacity`：WorkOrder → CapacityPool，**量写在边上**（`LinkInstance.props`）。
+    //
+    // ⚠ 两条都**不声明 `viaProperty`**，各有各的理由，别顺手补上：
+    //   · `consumes_capacity` 不能：`materializeDeclaredLinks` 写出的 `LinkInstance`
+    //     **一律没有 `props`**（`ontology.ts` 里那次 `origin: { type: "LINK_DERIVED" … }` 的 put），
+    //     而本条边的全部价值就是边上那个量 ⇒ 声明驱动只会得到一条「用了这条线」却
+    //     答不出「吃掉多少」的边，正是本单要消灭的形态。
+    //   · `has_capacity` 技术上能（外键 `CapacityPool.lineId` 指向 `Line` 主键，`viaSide:"to"`），
+    //     但**会造出双份**：`upsertLinkType` 在 `synthetic/service.ts` 种链路类型时就跑物化，
+    //     那一刻对象还一个都没落库 ⇒ 当场 0 条；之后种子再手写一遍，而任何人重新
+    //     `POST /a/v1/ontology/link-types` 又会补出一批 `lnk_via_*`，与种子的 `lnk_hc_*`
+    //     **同一条边两个实例、两个 origin**。冲突会红，双份不会 —— 故只留一个真值源。
+    // ══════════════════════════════════════════════════════════════════════════════
+    { key: "has_capacity", fromTypeKey: "Line", toTypeKey: "CapacityPool", cardinality: "1:1" }, // capacity（结构边·种子物化）
+    { key: "consumes_capacity", fromTypeKey: "WorkOrder", toTypeKey: "CapacityPool", cardinality: "N:1" }, // capacity（量在边上·种子物化）
+    // WO-FULFILLS-EDGE · **工单兑现销售订单**（制造侧 → 商务侧唯一的一跳）。
+    // 只声明这**一个方向**，不落逆边：查询引擎的 `direction:"in"`（`ontology/slice-index.ts:18`
+    // `l.toTypeKey === from ? l.fromTypeKey : undefined`）本来就能从 Order 反着走回 WorkOrder，
+    // 逆边落了是纯增重 —— 与同文件 D07 段那句「归属向今天没有消费方，落了就是纯增重」同一把尺子。
+    { key: "fulfills", fromTypeKey: "WorkOrder", toTypeKey: "Order", cardinality: "N:1" }, // process→commercial
+    { key: "sched_for_wo", fromTypeKey: "ProductionSchedule", toTypeKey: "WorkOrder", cardinality: "N:1" }, // process
+    { key: "shift_for_line", fromTypeKey: "ShiftPlan", toTypeKey: "Line", cardinality: "N:1" }, // people
+    { key: "wip_for_wo", fromTypeKey: "WIPLot", toTypeKey: "WorkOrder", cardinality: "N:1" }, // process
+    { key: "wip_on_line", fromTypeKey: "WIPLot", toTypeKey: "Line", cardinality: "N:1" }, // process
+    { key: "move_for_lot", fromTypeKey: "WIPMove", toTypeKey: "WIPLot", cardinality: "N:1" }, // process
+    { key: "checkpoint_for_lot", fromTypeKey: "WIPQualityCheckpoint", toTypeKey: "WIPLot", cardinality: "N:1" }, // quality
+    { key: "qlot_for_wo", fromTypeKey: "QualityLot", toTypeKey: "WorkOrder", cardinality: "N:1" }, // quality
+    { key: "result_for_qlot", fromTypeKey: "InspectionResult", toTypeKey: "QualityLot", cardinality: "N:1" }, // quality
+    { key: "result_for_char", fromTypeKey: "InspectionResult", toTypeKey: "InspectionCharacteristic", cardinality: "N:1" }, // quality
+    { key: "defect_for_qlot", fromTypeKey: "DefectRecord", toTypeKey: "QualityLot", cardinality: "N:1" }, // quality
+    { key: "defect_for_wiplot", fromTypeKey: "DefectRecord", toTypeKey: "WIPLot", cardinality: "N:1" }, // quality
+    { key: "oee_for_equip", fromTypeKey: "EquipmentOEE", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
+    { key: "dt_for_equip", fromTypeKey: "EquipmentDowntime", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
+    { key: "alarm_for_equip", fromTypeKey: "EquipmentAlarm", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
+    // WO-EXCEPTION-EVENT / WO-COMPUTED-EDGE（裁决③·多态目标）：异常事件→源对象溯源边（R13·全监听下钻），
+    // **五源各一条**。语义、实测读数与「为什么不让 toTypeKey 随行变」见 `EXC_SOURCE_LINKS` 头注。
+    //
+    // ⚠ 这五行**必须逐条字面写死，不许写成 `...EXC_SOURCE_LINKS.map(...)`**：
+    //   B 侧镜像门（`apps/agentcore/test/mock-engine-parity.test.ts`）的抽取器是**对本文件文本跑正则**
+    //   `\{ key: "X", fromTypeKey: "Y", toTypeKey: "Z"` —— 展开写法它一条都看不见，
+    //   于是 A 侧链路数会**掉 1** 而不是 +4，镜像差集反过来报「mock 多了 5 条」。
+    //   那是「抽取器看不见某种写法」这一类的假红，方向与事实相反。
+    //   两处（本表 × `EXC_SOURCE_LINKS`）的一致性由 `linktype-computed-edge.seam.test.ts` §5 逐条断言，
+    //   任一处漏改当场红 —— **机器先说话，不靠人记得**。
+    { key: "exc_sourced_from", fromTypeKey: "ExceptionEvent", toTypeKey: "EquipmentDowntime", cardinality: "N:1" }, // quality（溯源·停机源）
+    { key: "exc_sourced_from_alarm", fromTypeKey: "ExceptionEvent", toTypeKey: "EquipmentAlarm", cardinality: "N:1" }, // quality（溯源·报警源）
+    { key: "exc_sourced_from_defect", fromTypeKey: "ExceptionEvent", toTypeKey: "DefectRecord", cardinality: "N:1" }, // quality（溯源·缺陷源）
+    { key: "exc_sourced_from_balance", fromTypeKey: "ExceptionEvent", toTypeKey: "MaterialBalance", cardinality: "N:1" }, // quality（溯源·物料平衡源）
+    { key: "exc_sourced_from_trigger", fromTypeKey: "ExceptionEvent", toTypeKey: "TriggerRule", cardinality: "N:1" }, // quality（溯源·触发规则源）
+    { key: "maint_for_equip", fromTypeKey: "MaintenanceOrder", toTypeKey: "Equipment", cardinality: "N:1" }, // equip
+    { key: "spare_for_maint", fromTypeKey: "SparePartConsumption", toTypeKey: "MaintenanceOrder", cardinality: "N:1" }, // equip
+    { key: "att_for_line", fromTypeKey: "OperatorAttendance", toTypeKey: "Line", cardinality: "N:1" }, // people
+    { key: "cert_for_operator", fromTypeKey: "OperatorSkillCert", toTypeKey: "OperatorAttendance", cardinality: "N:1" }, // people
+    // WO-INVENTORY-3TIER 库存三层闭环链路（成品库存 → 型号/仓位；流水 → 成品/工单）
+    { key: "fg_of_model", fromTypeKey: "FinishedGoodsInventory", toTypeKey: "Model", cardinality: "N:1" }, // supply
+    { key: "fg_at_warehouse", fromTypeKey: "FinishedGoodsInventory", toTypeKey: "Warehouse", cardinality: "N:1" }, // supply→factory
+    { key: "txn_for_fg", fromTypeKey: "InventoryTxn", toTypeKey: "FinishedGoodsInventory", cardinality: "N:1" }, // supply
+    { key: "txn_from_wo", fromTypeKey: "InventoryTxn", toTypeKey: "WorkOrder", cardinality: "N:1" }, // supply→process（完工入库溯源）
+    // WO-ATP-PROMISE 订单承诺链路（承诺台账 → 订单·一订单一承诺 N:1）
+    { key: "promise_for_order", fromTypeKey: "OrderPromise", toTypeKey: "Order", cardinality: "N:1" }, // commercial（承诺溯源到订单）
+    // WO-ORDERLINE 订单拆行链路（明细行 → 订单·一订单 N 行 N:1 · 明细行 → 型号·N:1）
+    { key: "line_of_order", fromTypeKey: "OrderLine", toTypeKey: "Order", cardinality: "N:1" }, // product（行溯源到订单头）
+    { key: "orderline_for_model", fromTypeKey: "OrderLine", toTypeKey: "Model", cardinality: "N:1" }, // product（行→型号·一单多型号真表达）
+
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // WO-PROCESS-TICK-COVERAGE 档 2 · **影响向逆边**（15 条）—— 沿 WO-P1 立下的同一条范式
+    //
+    // 为什么必须另立 key 而不是往既有 key 里反向塞行（WO-P1 已论证过一次，这里只复述判据）：
+    // 上面绝大多数执行层边都是**归属/FK 边**，方向「子→父」（`wo_on_line` WorkOrder→Line、
+    // `wip_for_wo` WIPLot→WorkOrder、`line_of_order` OrderLine→Order …）。
+    // 而 `sim/propagation.ts` 的 `propagateTick` 只沿 `fromId→toId` 走（navOut），
+    // 传导要的是**影响方向**「上游→下游」（产线吃紧 → 工单积压 → 在制堆积 → 缺陷变多）。
+    // 拿归属边跑影响传导必然走反 —— 这正是 #158 的病。同名 key 反向塞行会违反该 key 自己
+    // 声明的 fromTypeKey/toTypeKey，并污染既有切片的 `direction:"out"` 遍历，故一律另立 key。
+    //
+    // ⚠ 实测订正（本单亲手跑，与派单给的清单不符，以实测为准）：
+    //   上面这批 `wo_on_line` / `wip_on_line` / `qlot_for_wo` / `defect_for_wiplot` /
+    //   `maint_for_equip` / `oee_for_equip` 等 **linkType 声明存在，但 `service.ts` 从未物化过实例**
+    //   （真链路表零命中）。所以本档不是"沿已有 linkType 各加一条 rule"，而是
+    //   **声明逆边 + 在 service.ts 真物化**，两步缺一不可。
+    //
+    // 实例全部由既有对象 FK **确定性反投影**（同一份数据换个方向落），无 rng / 无时钟
+    // ⇒ 同 (industry, scale, seed) 重跑字节一致（R6）。
+    // 契约 cardinality 只允许 1:1/1:N/N:N，父→子恒为 1:N。
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // D07 生产制造执行链：Line → WorkOrder → {WIPLot, QualityLot} → DefectRecord → ExceptionEvent
+    { key: "line_runs_work_order", fromTypeKey: "Line", toTypeKey: "WorkOrder", cardinality: "1:N" }, // process（影响向·`wo_on_line` 之逆）
+    { key: "work_order_yields_wip_lot", fromTypeKey: "WorkOrder", toTypeKey: "WIPLot", cardinality: "1:N" }, // process（影响向·`wip_for_wo` 之逆）
+    { key: "work_order_sampled_by_quality_lot", fromTypeKey: "WorkOrder", toTypeKey: "QualityLot", cardinality: "1:N" }, // quality（影响向·`qlot_for_wo` 之逆）
+    { key: "wip_lot_found_defect", fromTypeKey: "WIPLot", toTypeKey: "DefectRecord", cardinality: "1:N" }, // quality（影响向·`defect_for_wiplot` 之逆）
+    { key: "defect_raises_exception", fromTypeKey: "DefectRecord", toTypeKey: "ExceptionEvent", cardinality: "1:N" }, // quality（影响向·`exc_sourced_from` 之逆·仅 refType=DefectRecord 那一源）
+    // D03 订单交付链：Order → {OrderLine, OrderPromise}；Customer → CustomerLocation
+    { key: "order_has_line", fromTypeKey: "Order", toTypeKey: "OrderLine", cardinality: "1:N" }, // commercial（影响向·`line_of_order` 之逆）
+    { key: "order_has_promise", fromTypeKey: "Order", toTypeKey: "OrderPromise", cardinality: "1:N" }, // commercial（影响向·`promise_for_order` 之逆）
+    { key: "customer_has_location", fromTypeKey: "Customer", toTypeKey: "CustomerLocation", cardinality: "1:N" }, // commercial（影响向·`custloc_of_customer` 之逆）
+    { key: "customer_has_overdue_record", fromTypeKey: "Customer", toTypeKey: "OverdueRecord", cardinality: "1:N" }, // finance（应收压力→催收·按 customerRef 真归属）
+    // D05 采购与供应：Material → {MaterialAlternative, MaterialBalance}
+    { key: "material_has_alternative", fromTypeKey: "Material", toTypeKey: "MaterialAlternative", cardinality: "1:N" }, // supply（影响向·`alt_for_material` 之逆）
+    { key: "material_has_balance", fromTypeKey: "Material", toTypeKey: "MaterialBalance", cardinality: "1:N" }, // supply（MRP 缺口·按物料名归属）
+    // ── WO-SIM-ROOT-PROCUREMENT · 采购**补货向**逆边（G-ROOT-3 的地基）─────────────────────
+    // 既有 `material_supplied_by_po`(Material→PurchaseOrder) / `material_has_batch`(Material→MaterialBatch)
+    // 表达的是**归属**「这个料有哪些采购单 / 哪些批次」，方向「料→单据」。
+    // 而「物料采购」这个**根源扰动**的影响方向恰好相反：**一张采购单到货晚了 ⇒ 它补的那个料短缺**、
+    // **一个批次入库晚了 ⇒ 同样是那个料短缺**。传导核只沿 `fromId→toId` 走（`sim/propagation.ts` navOut），
+    // 拿归属边跑影响传导必然走反（#158 的病）——故照 WO-P1 立下的同一条范式**另立 key**，与归属边共存。
+    // ⚠ 这两条不是"可选的对称补全"：`MaterialBatch` 在本体里**一条出边都没有**（实测
+    //   `fromTypeKey: "MaterialBatch"` 全本体 0 命中），不补它就永远只能当传导的**末端**，
+    //   而根源扰动必须从**源**这一侧打进去 —— 少这条边，批次这一类落点在结构上就不成立。
+    // 实例由既有对象 FK **确定性反投影**（与正向边共用同一个循环变量，见 `service.ts`）⇒ R6 字节一致。
+    { key: "po_replenishes_material", fromTypeKey: "PurchaseOrder", toTypeKey: "Material", cardinality: "N:1" }, // supply（影响向·`material_supplied_by_po` 之逆·一单补一料）
+    { key: "batch_replenishes_material", fromTypeKey: "MaterialBatch", toTypeKey: "Material", cardinality: "N:1" }, // supply（影响向·`material_has_batch` 之逆·一批补一料）
+    // D06 计划与排产：Base → InterBaseTransfer
+    { key: "base_dispatches_transfer", fromTypeKey: "Base", toTypeKey: "InterBaseTransfer", cardinality: "1:N" }, // capacity（影响向·`transfer_from_base` 之逆）
+    // D09 设备与维护：Process → Equipment → MaintenanceOrder
+    { key: "process_uses_equipment", fromTypeKey: "Process", toTypeKey: "Equipment", cardinality: "N:N" }, // equip（影响向·`equip_used_in` 之逆）
+    // WO-SLICE-DOMAINS：Process → Line（影响向·`line_has_process` 之逆·`Process.lineId` 反投影）。
+    // 🔴 **这条边是设备侧唯一的出口**：本单实测 103 条 linkType 里，从 `Equipment` 出发的正向闭包
+    // 恰好是 {Equipment, Process, MaintenanceOrder} —— 四条边全在这三类之间打转
+    // （equip_used_in / equipment_has_maintenance_order / process_uses_equipment / maint_for_equip）。
+    // 于是 `propagateTick`（navOut 只沿 fromId→toId）无论加多少条规则都走不出去，
+    // 设备故障对订单与毛利的贡献**恒为 0**。补这一条之后制造侧才接得回产能主链。
+    { key: "process_belongs_to_line", fromTypeKey: "Process", toTypeKey: "Line", cardinality: "N:1" }, // capacity（影响向·`line_has_process` 之逆）
+    { key: "equipment_has_maintenance_order", fromTypeKey: "Equipment", toTypeKey: "MaintenanceOrder", cardinality: "1:N" }, // equip（影响向·`maint_for_equip` 之逆）
+    // D10 基地与仓储交付：Model → FinishedGoodsInventory
+    { key: "model_stocked_as_finished_goods", fromTypeKey: "Model", toTypeKey: "FinishedGoodsInventory", cardinality: "1:N" }, // supply（影响向·`fg_of_model` 之逆）
   ];
 }
 
@@ -536,9 +3864,16 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
           [
             { linkKey: "order_for_model", direction: "out", project: ["modelId", "name", "unitPrice"] },
             { linkKey: "model_producible_at", direction: "out", project: ["baseId", "name", "kind", "util", "bottleneck", "gwh"] },
-            { linkKey: "line_belongs_to_base", direction: "in", project: ["lineId", "baseId", "name"] },
+            { linkKey: "line_belongs_to_base", direction: "out", project: ["lineId", "baseId", "name"] },
             { linkKey: "line_has_process", direction: "out", project: ["processId", "name", "kind", "yield", "utilization"] },
             { linkKey: "equip_used_in", direction: "in", project: ["equipId", "processId", "ctSeconds", "availFactor", "oeeA", "oeeP", "oeeQ"] },
+          ],
+          // product → factory（经 Workshop 层）→ Line：SA-3 Base→Workshop→Line 四层可达
+          [
+            { linkKey: "order_for_model", direction: "out" },
+            { linkKey: "model_producible_at", direction: "out" },
+            { linkKey: "workshop_belongs_to_base", direction: "out", project: ["workshopId", "baseId", "name", "processType"] },
+            { linkKey: "line_belongs_to_workshop", direction: "out", project: ["lineId", "baseId", "name"] },
           ],
           // product → supply（型号 BOM 物料）
           [
@@ -548,16 +3883,16 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
           // commercial（下单客户信用画像）
           [{ linkKey: "order_of_customer", direction: "out", project: ["custId", "custName", "creditLimit", "termDays", "receivables", "maxOverdueDays"] }],
         ],
-        maxNodes: 500,
+        maxNodes: 600,
         contractFixtures: [
           {
             name: "首单全链可达 6 域",
-            args: { so: "SO-10001" },
+            args: { so: "SO-3391" },
             expect: {
               rootType: "Order",
               minNodes: 10,
-              mustIncludeTypes: ["Order", "Model", "Base", "Line", "Process", "Equipment", "Material", "Customer"],
-              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "line_belongs_to_base", "line_has_process", "equip_used_in", "model_uses_material", "order_of_customer"],
+              mustIncludeTypes: ["Order", "Model", "Base", "Workshop", "Line", "Process", "Equipment", "Material", "Customer"],
+              mustIncludeLinkKeys: ["order_for_model", "model_producible_at", "workshop_belongs_to_base", "line_belongs_to_workshop", "line_has_process", "equip_used_in", "model_uses_material", "order_of_customer"],
             },
           },
         ],
@@ -574,7 +3909,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
           [
             { linkKey: "order_for_model", direction: "out", project: ["modelId", "name", "unitPrice"] },
             { linkKey: "model_producible_at", direction: "out", project: ["baseId", "name", "kind", "util"] },
-            { linkKey: "line_belongs_to_base", direction: "in", project: ["lineId", "name"] },
+            { linkKey: "line_belongs_to_base", direction: "out", project: ["lineId", "name"] },
             { linkKey: "line_has_process", direction: "out", project: ["processId", "name", "kind", "yield"] },
             { linkKey: "equip_used_in", direction: "in", project: ["equipId", "oeeA", "oeeP", "oeeQ"] },
           ],
@@ -620,7 +3955,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
         contractFixtures: [
           {
             name: "首单全链可达 10 域（含财务+计划）",
-            args: { so: "SO-10001" },
+            args: { so: "SO-3391" },
             expect: {
               rootType: "Order",
               minNodes: 15,
@@ -641,7 +3976,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
           [
             { linkKey: "order_for_model", direction: "out", project: ["modelId", "name"] },
             { linkKey: "model_producible_at", direction: "out", project: ["baseId", "name", "kind"] },
-            { linkKey: "line_belongs_to_base", direction: "in", project: ["lineId", "name"] },
+            { linkKey: "line_belongs_to_base", direction: "out", project: ["lineId", "name"] },
             { linkKey: "line_has_process", direction: "out", project: ["processId", "name", "yield"] },
             { linkKey: "equip_used_in", direction: "in", project: ["equipId", "oeeA"] },
           ],
@@ -660,7 +3995,7 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
         contractFixtures: [
           {
             name: "首单最大广度可达 8 域 + 12 类节点",
-            args: { so: "SO-10001" },
+            args: { so: "SO-3391" },
             expect: {
               rootType: "Order",
               minNodes: 20,
@@ -693,6 +4028,394 @@ export function batteryBuiltinSlices(): { sliceKey: string; version: number; spe
               minNodes: 5,
               mustIncludeTypes: ["AnnualScenario", "PlanTarget", "CapexProject", "FinanceMetric"],
               mustIncludeLinkKeys: ["scenario_to_target", "scenario_to_capex", "scenario_to_finance"],
+            },
+          },
+        ],
+      },
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // WO-SLICE-DOMAINS · 反查链（设备根）+ BOM 换算链 + 四条主干域切片
+    //
+    // ── 为什么这批切片是「反向」走的：slice 引擎与传导引擎的可达性不是一回事 ──────────
+    // `propagateTick` 的 navOut **只沿 `fromId→toId`**（`propagation.ts` 的 `targetsOf`），
+    // 而 `executeSlice` 的每一跳带 `direction: "out" | "in"`（`ontology-core.ts` 的
+    // `linkIndexIn`/`linkIndexOut`）—— **`in` 就是沿同一条真边反着走，不新建任何链路**。
+    // 这就是本批切片能做到而传导规则做不到的事：实测 103 条 linkType 里，
+    // 从 `Equipment` 出发的**正向**闭包只有 `{Equipment, Process, MaintenanceOrder}` 三个类型
+    // （出边只有 `equip_used_in` / `equipment_has_maintenance_order` / `process_uses_equipment` /
+    // `maint_for_equip` 四条，全在这三类之间打转），**到不了 Order/Customer/Material**。
+    // 切片靠 `direction:"in"` 借 `line_has_process`(Line→Process) 与
+    // `line_belongs_to_base`(Base→Line) 这两条既有边反向出圈，一条假链路都不用造。
+    // ══════════════════════════════════════════════════════════════════════════════════
+    {
+      /**
+       * 设备影响 360（root = Equipment）——**反查链**：一台设备坏了，牵动哪些订单、哪个客户、哪些料。
+       *
+       * 病灶：本批之前 `rootType=Equipment` 的切片全仓只有 `coverage_equipment` 一条，
+       * 而它是 `batteryCoverageSlices()` 按类型批量生成的**零跳**壳（`paths: []`，见
+       * `data-categories.ts`），只能列设备自己的字段。真正多跳的四条（`order_fulfillment_360` /
+       * `order_to_cash_720` / `enterprise_360` / `aop_scenario_chain`）根全是 Order 或
+       * AnnualScenario ⇒ **只能 Order→Equipment 顺着查，反过来一步都走不了**。
+       *
+       * 链：Equipment → Process → Line → Base → Model → Order → Customer，并岔到 Material→Supplier。
+       * 前三跳里有两跳是 `direction:"in"`（借 `line_has_process` / `line_belongs_to_base` 反走），
+       * 第四跳 `model_producible_at` 也是 `in`（该边声明为 Model→Base）。
+       *
+       * ⚠ `limitPerNode` 不是随手填的：Model→Order 是 1:N 且 demo 有 500 张订单，
+       * 不设限会让一条路径把 600 的 `maxNodes` 吃光 —— 而 `executeSlice` 一旦 `truncated`
+       * 就**整张切片停止展开**（后面的 path 一条都不跑），于是"岔到物料"那几条会静默消失。
+       * 实测 SO 侧扇出取 10 时全图 60 节点 / 88 边 / 10 类型、`truncated=false`。
+       */
+      sliceKey: "equipment_impact_360",
+      version: 1,
+      spec: {
+        root: { typeKey: "Equipment", selector: { byKey: "{{args.equip}}" } },
+        paths: [
+          // 主干：设备 → 工序 → 产线 → 基地 → 型号 → 订单 → 客户（钱的落点）
+          [
+            { linkKey: "equip_used_in", direction: "out", project: ["processId", "lineId", "name", "kind", "yield", "utilization"] },
+            { linkKey: "line_has_process", direction: "in", project: ["lineId", "baseId", "name", "capacityDaily", "utilization", "status"] },
+            { linkKey: "line_belongs_to_base", direction: "in", project: ["baseId", "name", "kind", "util", "bottleneck", "gwh"] },
+            { linkKey: "model_producible_at", direction: "in", project: ["modelId", "name", "unitPrice"] },
+            { linkKey: "model_demanded_by_order", direction: "out", limitPerNode: 10, project: ["so", "cust", "model", "qty", "due", "pri", "status", "unitPrice", "value"] },
+            { linkKey: "order_of_customer", direction: "out", project: ["custId", "custName", "creditLimit", "termDays", "receivables", "maxOverdueDays"] },
+          ],
+          // 岔：型号 → 物料 → 供应商（设备停机改排产时，跟着动的那批料与供方）
+          [
+            { linkKey: "equip_used_in", direction: "out" },
+            { linkKey: "line_has_process", direction: "in" },
+            { linkKey: "line_belongs_to_base", direction: "in" },
+            { linkKey: "model_producible_at", direction: "in" },
+            { linkKey: "model_uses_material", direction: "out", limitPerNode: 10, project: ["matId", "name", "unitPrice", "leadTime", "onHand", "isKeyMaterial"] },
+            { linkKey: "material_supplied_by", direction: "out", project: ["supplierId", "name", "category", "onTimeRate", "region"] },
+          ],
+          // 岔：设备自身的维修工单（这台设备到底修过几次、现在什么状态）
+          [{ linkKey: "equipment_has_maintenance_order", direction: "out", limitPerNode: 20, project: ["moId", "equipId", "maintType", "priority", "plannedStart", "plannedEnd", "status"] }],
+          // 岔：同工序的其它设备（这台停了，负荷被顶到谁头上）
+          [
+            { linkKey: "equip_used_in", direction: "out" },
+            { linkKey: "process_uses_equipment", direction: "out", limitPerNode: 20, project: ["equipId", "oeeA", "oeeP", "oeeQ", "availFactor", "health_score", "status"] },
+          ],
+          // 岔：这条产线在跑的工单（停机直接砸在哪几张工单上）
+          [
+            { linkKey: "equip_used_in", direction: "out" },
+            { linkKey: "line_has_process", direction: "in" },
+            { linkKey: "line_runs_work_order", direction: "out", limitPerNode: 20, project: ["woId", "moNo", "modelId", "qtyPlanned", "qtyActual", "startDate", "status"] },
+          ],
+        ],
+        maxNodes: 600,
+        contractFixtures: [
+          {
+            // 取一台**真有维修工单**的设备当基线：`equipment_has_maintenance_order` 只对
+            // `maintenanceOrders[].equipId` 命中的设备物化（`service.ts` 的 `lnk_ehm_*`），
+            // 随手挑一台（如 …-assembly-E1）会得到 MaintenanceOrder 零节点 —— 那不是切片坏了，
+            // 是那台设备确实没修过。基线必须挑一台修过的，否则这条 fixture 什么都验不到。
+            name: "设备根反查可达 订单/客户/物料/维修单",
+            args: { equip: "LINE-WS-changzhou-assembly-coating-E2" },
+            expect: {
+              rootType: "Equipment",
+              minNodes: 20,
+              mustIncludeTypes: ["Equipment", "Process", "Line", "Base", "Model", "Order", "Customer", "Material", "Supplier", "MaintenanceOrder", "WorkOrder"],
+              mustIncludeLinkKeys: ["equip_used_in", "line_has_process", "line_belongs_to_base", "model_producible_at", "model_demanded_by_order", "order_of_customer", "model_uses_material", "material_supplied_by", "equipment_has_maintenance_order"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      /**
+       * 订单→物料 BOM 换算链（root = Order）——「这一张订单要用多少料、哪一行用哪个料、谁供的」。
+       *
+       * 病灶：本批之前四条业务切片合起来只覆盖 22 / 98 个对象类型，而**订单到物料这条链中间是断的**：
+       * `order_fulfillment_360` 走的是 `Order → Model --model_uses_material--> Material`，
+       * 一步跨过了 BOM —— 于是 `BOMHeader`(15) / `BOMDetail`(105) / `OrderLine`(873) /
+       * `MaterialBalance`(9) / `Supplier`(15) **一个都不在任何业务切片上**。
+       * `model_uses_material` 只说「这个型号用到这些料」，说不出**每台用多少、损耗多少、哪一行**——
+       * 而 BOM 正是这个换算关系的唯一出处，缺了它 agent 填不出「缺多少、谁供的」。
+       *
+       * ⚠ **Model 到 BOMHeader 中间必须过 ProductVersion，这不是绕路**：全表 103 条 linkType 里
+       * BOM 头唯一的上挂边是 `bom_belongs_to_version`(BOMHeader→ProductVersion)，
+       * 没有任何 Model→BOMHeader 的直边（`BOMHeader.modelId` 是**属性**不是链路，
+       * 照属性猜着连就是造一条悬空边 —— `order_of_customer` 那次已登记过同一事实）。
+       * 故本链走 `version_belongs_to_model`(in) → `bom_belongs_to_version`(in) → `detail_belongs_to_bom`(in)。
+       *
+       * 实测 SO-3391：94 节点 / 136 边 / 10 类型，其中 BOMDetail 49 条、Supplier 7 家，`truncated=false`。
+       */
+      sliceKey: "order_to_material_bom",
+      version: 1,
+      spec: {
+        root: { typeKey: "Order", selector: { byKey: "{{args.so}}" } },
+        paths: [
+          // 主干：订单 → 订单行 → 型号 → 版本 → BOM 头 → BOM 行 → 物料 → 供应商
+          [
+            { linkKey: "order_has_line", direction: "out", limitPerNode: 20, project: ["lineId", "orderRef", "lineNo", "model", "qty", "due", "lineStatus", "unitPrice"] },
+            { linkKey: "orderline_for_model", direction: "out", project: ["modelId", "name", "unitPrice", "capacity"] },
+            { linkKey: "version_belongs_to_model", direction: "in", limitPerNode: 10, project: ["versionId", "versionCode", "versionName", "status", "effectiveDate"] },
+            { linkKey: "bom_belongs_to_version", direction: "in", limitPerNode: 10, project: ["bomId", "bomCode", "modelId", "bomName", "bomLevel", "status", "effectiveDate"] },
+            { linkKey: "detail_belongs_to_bom", direction: "in", limitPerNode: 30, project: ["bomDetailId", "bomId", "materialId", "sequence", "quantity", "lossRate", "unit", "level", "isKeyComponent"] },
+            { linkKey: "detail_uses_material", direction: "out", project: ["matId", "name", "unitPrice", "leadTime", "onHand", "dailyUse", "isKeyMaterial"] },
+            { linkKey: "material_supplied_by", direction: "out", project: ["supplierId", "supplierCode", "name", "category", "onTimeRate", "leadTime", "region", "status"] },
+          ],
+          // 岔：物料 → 物料平衡（MRP 缺口——「缺多少」的读数在这，不在 BOM 上）
+          [
+            { linkKey: "order_has_line", direction: "out" },
+            { linkKey: "orderline_for_model", direction: "out" },
+            { linkKey: "version_belongs_to_model", direction: "in" },
+            { linkKey: "bom_belongs_to_version", direction: "in" },
+            { linkKey: "detail_belongs_to_bom", direction: "in", limitPerNode: 30 },
+            { linkKey: "detail_uses_material", direction: "out" },
+            { linkKey: "material_has_balance", direction: "out", project: ["matBalId", "material", "unit", "netDemandTon", "ltaPct", "gapTon", "coverage", "etaDate"] },
+          ],
+          // 岔：订单直挂型号（订单行缺失时仍能落到型号，不至于整条链空掉）
+          [{ linkKey: "order_for_model", direction: "out", project: ["modelId", "name", "unitPrice"] }],
+          // 岔：交期承诺（ATP/CTP 的判定结果——缺口反映在这里）
+          [{ linkKey: "order_has_promise", direction: "out", limitPerNode: 10, project: ["promiseId", "requestedQty", "committableQty", "promiseDate", "atpStatus", "shortfallQty", "bottleneck"] }],
+        ],
+        maxNodes: 800,
+        contractFixtures: [
+          {
+            name: "首单可达 订单行/BOM 头/BOM 行/物料/供应商/物料平衡",
+            args: { so: "SO-3391" },
+            expect: {
+              rootType: "Order",
+              minNodes: 20,
+              mustIncludeTypes: ["Order", "OrderLine", "Model", "ProductVersion", "BOMHeader", "BOMDetail", "Material", "Supplier", "MaterialBalance", "OrderPromise"],
+              mustIncludeLinkKeys: ["order_has_line", "orderline_for_model", "version_belongs_to_model", "bom_belongs_to_version", "detail_belongs_to_bom", "detail_uses_material", "material_supplied_by", "material_has_balance"],
+            },
+          },
+        ],
+      },
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // 四条**主干域**切片（D03 销售与客户 / D04 产品与工程 / D05 采购与供应 / D06 计划与排产）
+    //
+    // ── ⛔ 设计约束：照现状切出来的域切片彼此串不起来，必须每域多走一跳越过边界 ──────────
+    // 域→类型的映射是**现成数据**，不是本批新造的词表：`seed.ts` 的 `DEMO_PROCESS_DEFINITIONS`
+    // 每条流程都带 `domainKey`(D01–D13) + `carrierTypeKey`（承载物）。实测那 65 条流程摊开是
+    // **13 个域 / 64 个去重承载类型，而跨域共享的类型恰好 0 个**（P37/P40 共用
+    // `ProductionSchedule`，但同属 D06 —— 那是域内共用，不是跨域共享）。
+    // ⇒ **只取本域承载物切出来的四张切片两两交集全为空**，谁也 join 不上谁
+    // （`slice-library.ts` 的 `auditSliceConnectivity` 会把它们全判成度 0 的孤岛）。
+    //
+    // 故每条域切片都**显式多走一跳越过自己的边界**，把邻域的锚点类型纳进来：
+    //   D03 ──Model──▶ D04 ──Material/Supplier──▶ D05 ──Line──▶ D06 ──Order──▶ 回到 D03
+    // 实测交集（节点类型，非声明）：D03∩D04={Model,Order} · D04∩D05={Material,Model,Supplier}
+    //                              D05∩D06={Line,Model} · D06∩D03={Model,Order}
+    //
+    // ── ⚠ 三个域各有一批承载类型**进不了切片，且这是数据的实情不是漏写** ───────────────
+    //  · D03 的 `PipelineOpportunity`(2) / `BidRecord`(2) / `WinLossRecord`(2)：
+    //    实测 103 条 linkType 里**这三个类型一条边都没有**（既不当 from 也不当 to）⇒
+    //    任何以 Customer/Order 为根的路径都走不到。补边属本体改动，不在本批范围内。
+    //  · D05 的 `LongTermAgreement`(3) / `BackupSupplierPool`(2)：同上，零链路。
+    //  · D06 的 `ProductionSchedule`：`sched_for_wo` 这条 linkType 有声明，
+    //    但 demo 世界里该类型**实测 0 个对象** ⇒ 走得到边、落不到点（"接了线没数据"，
+    //    与"没接线"是两回事，修法也不同：这条要补种子，上面那几个要补链路）。
+    //    路径**照留**——数据一旦补上，切片当场就有读数，不必再改这里。
+    //  · D06 的 `Cadence`(8)：同样零链路（节拍是规则上的声明 `PropagationRule.cadenceNodeId`，
+    //    不是图上的边）。
+    //
+    // ── ⚠ 根为什么用 `selector: {}`（全量）而不是 `byKey` ─────────────────────────────
+    // 域切片要回答的是「这个域里有什么」，不是「这一单怎么走」。而 `executeSlice` 里
+    // `byKey` 模板取不到 args 时会 resolve 成 `undefined` ⇒ 根集合被过滤成空 ⇒ 整张切片 0 节点。
+    // 域切片不该要求调用方先知道一个 id 才看得见自己的域，故取全量根 + 逐跳 `limitPerNode` 收扇出。
+    // 四条的 `truncated` 实测全为 `false`（这一点必须验，truncated 一旦为真，
+    // 后面的 path 一条都不会跑，边界跳会**静默消失**而屏上只是少几个点）。
+    // ══════════════════════════════════════════════════════════════════════════════════
+    {
+      /** D03 销售与客户（sales）：客户 → 收货地点 / 订单 → 订单行 · 交期承诺，边界一跳到 D04 型号。 */
+      sliceKey: "domain_d03_sales",
+      version: 1,
+      spec: {
+        root: { typeKey: "Customer", selector: {} },
+        paths: [
+          [{ linkKey: "customer_has_location", direction: "out", limitPerNode: 4, project: ["locId", "customerRef", "province", "city", "address", "isDeliveryDefault"] }],
+          [
+            { linkKey: "order_of_customer", direction: "in", limitPerNode: 4, project: ["so", "cust", "model", "qty", "due", "pri", "status", "unitPrice", "value", "leadDays"] },
+            { linkKey: "order_has_line", direction: "out", limitPerNode: 4, project: ["lineId", "orderRef", "lineNo", "model", "qty", "due", "lineStatus", "unitPrice"] },
+          ],
+          [
+            { linkKey: "order_of_customer", direction: "in", limitPerNode: 4 },
+            { linkKey: "order_has_promise", direction: "out", limitPerNode: 4, project: ["promiseId", "orderRef", "requestedQty", "committableQty", "promiseDate", "atpStatus", "shortfallQty", "bottleneck"] },
+          ],
+          // 边界 → D04 产品与工程（锚点类型 Model）
+          [
+            { linkKey: "order_of_customer", direction: "in", limitPerNode: 4 },
+            { linkKey: "order_for_model", direction: "out", project: ["modelId", "name", "unitPrice"] },
+          ],
+        ],
+        maxNodes: 600,
+        contractFixtures: [
+          {
+            name: "D03 域内完整 + 边界含 D04 锚点 Model",
+            args: {},
+            expect: {
+              rootType: "Customer",
+              minNodes: 20,
+              mustIncludeTypes: ["Customer", "CustomerLocation", "Order", "OrderLine", "OrderPromise", "Model"],
+              mustIncludeLinkKeys: ["customer_has_location", "order_of_customer", "order_has_line", "order_has_promise", "order_for_model"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      /**
+       * D04 产品与工程（product）：型号 → 版本 → BOM → 物料 → 供应商 / 谱系 / 工程变更 / 工艺路线，
+       * 边界一跳到 D05 采购（Material·Supplier）与 D03 销售（Order）。
+       *
+       * ⚠ **path 的顺序在这条切片上是语义的一部分**：`ProcessCapabilityWindow` 实测 345 个对象，
+       * 把工艺路线那条 path 排在前面会先吃满 `maxNodes` ⇒ `truncated` 置真 ⇒ 后面带 D05 边界的
+       * BOM 主干**一条都不跑**，交集当场变空。故 BOM 主干与两条边界跳排在最前，容量大户垫底。
+       */
+      sliceKey: "domain_d04_product",
+      version: 1,
+      spec: {
+        root: { typeKey: "Model", selector: {} },
+        paths: [
+          // ① 主干 BOM（带 D05 边界，必须排第一）
+          [
+            { linkKey: "version_belongs_to_model", direction: "in", limitPerNode: 6, project: ["versionId", "modelId", "versionCode", "versionName", "status", "effectiveDate"] },
+            { linkKey: "bom_belongs_to_version", direction: "in", limitPerNode: 4, project: ["bomId", "bomCode", "modelId", "bomName", "bomLevel", "status"] },
+            { linkKey: "detail_belongs_to_bom", direction: "in", limitPerNode: 10, project: ["bomDetailId", "bomId", "materialId", "sequence", "quantity", "lossRate", "unit", "isKeyComponent"] },
+            { linkKey: "detail_uses_material", direction: "out", project: ["matId", "name", "unitPrice", "leadTime", "onHand", "isKeyMaterial"] },
+            { linkKey: "material_supplied_by", direction: "out", project: ["supplierId", "name", "category", "onTimeRate", "region"] },
+          ],
+          // ② 边界 → D03 销售与客户（锚点类型 Order）
+          [{ linkKey: "model_demanded_by_order", direction: "out", limitPerNode: 4, project: ["so", "cust", "model", "qty", "due", "status", "unitPrice"] }],
+          // ③ 产品谱系（平台/系列）
+          [
+            { linkKey: "model_belongs_to_series", direction: "out", project: ["seriesId", "seriesCode", "platformId", "name", "category", "status"] },
+            { linkKey: "series_belongs_to_platform", direction: "out", project: ["platformId", "platformCode", "name", "category", "status"] },
+          ],
+          // ④ 工程变更（ECN）
+          [{ linkKey: "change_affects_model", direction: "in", limitPerNode: 4, project: ["changeId", "changeNumber", "changeType", "modelId", "changeReason", "status"] }],
+          // ⑤ 工艺路线 → 工序 → 能力窗口（容量大户，垫底 + 收紧扇出）
+          [
+            { linkKey: "routing_belongs_to_model", direction: "in", limitPerNode: 3, project: ["routingId", "routingCode", "modelId", "routingName", "operationCount", "totalYield", "status"] },
+            { linkKey: "operation_belongs_to_routing", direction: "in", limitPerNode: 4, project: ["operationId", "operationCode", "operationSeq", "operationName", "standardTime", "yield", "isCritical"] },
+            { linkKey: "capability_belongs_to_operation", direction: "in", limitPerNode: 2, project: ["capabilityId", "operationId", "parameterName", "unit", "minValue", "maxValue", "targetValue"] },
+          ],
+        ],
+        maxNodes: 700,
+        contractFixtures: [
+          {
+            name: "D04 域内完整 + 边界含 D05 锚点(Material/Supplier) 与 D03 锚点(Order)",
+            args: {},
+            expect: {
+              rootType: "Model",
+              minNodes: 40,
+              mustIncludeTypes: ["Model", "ProductVersion", "BOMHeader", "BOMDetail", "ProductSeries", "ProductPlatform", "EngineeringChange", "Routing", "Operation", "ProcessCapabilityWindow", "Material", "Supplier", "Order"],
+              mustIncludeLinkKeys: ["version_belongs_to_model", "bom_belongs_to_version", "detail_belongs_to_bom", "detail_uses_material", "material_supplied_by", "model_demanded_by_order", "model_belongs_to_series", "routing_belongs_to_model"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      /**
+       * D05 采购与供应（material）：物料 → 供应商 / 替代料 / 物料平衡 / 批次 / 采购单 → 清关·IQC，
+       * 边界一跳到 D04 产品（Model）与 D06 计划（Line）。
+       *
+       * ⚠ 根取 `Material` 而不是某个 D05 承载物：`Material` 是这个域的**枢纽**（八条出边全从它发），
+       * 而 D05 自己的承载物（Supplier/PurchaseOrder/MaterialBatch/…）互相之间几乎没有直边 ——
+       * 以任何一个承载物为根都只能看到域的一角。`Material` 本身不属于任何流程的承载物
+       * （65 条流程里没有一条的 `carrierTypeKey` 是它），这不矛盾：**根是取景点，不是归属声明**。
+       */
+      sliceKey: "domain_d05_material",
+      version: 1,
+      spec: {
+        root: { typeKey: "Material", selector: {} },
+        paths: [
+          [{ linkKey: "material_supplied_by", direction: "out", project: ["supplierId", "supplierCode", "name", "category", "materialType", "rating", "onTimeRate", "leadTime", "region", "status"] }],
+          [{ linkKey: "material_has_alternative", direction: "out", limitPerNode: 6, project: ["altId", "primaryMaterialId", "alternativeMaterialId", "priority", "approvalStatus", "changeReason"] }],
+          [{ linkKey: "material_has_balance", direction: "out", limitPerNode: 4, project: ["matBalId", "material", "unit", "netDemandTon", "ltaPct", "gapTon", "coverage", "etaDate"] }],
+          [{ linkKey: "material_has_batch", direction: "out", limitPerNode: 6, project: ["batchId", "matId", "qty", "ageDays", "idleDays"] }],
+          [
+            { linkKey: "material_supplied_by_po", direction: "out", limitPerNode: 8, project: ["poId", "matId", "qty", "etaDay", "delayed", "supplierId", "sourceMode", "orderDay", "arriveDay"] },
+            { linkKey: "po_customs_cleared_by", direction: "out", project: ["clearanceId", "poId", "portName", "brokerName", "declaredDay", "clearedDay", "holdDays", "status"] },
+          ],
+          [
+            { linkKey: "material_supplied_by_po", direction: "out", limitPerNode: 8 },
+            { linkKey: "po_inspected_by", direction: "out", project: ["inspectionId", "poId", "matId", "inspectorTeam", "arrivedDay", "releasedDay", "sampleQty", "defectQty", "result"] },
+          ],
+          // 边界 → D04 产品与工程（锚点类型 Model）
+          [{ linkKey: "material_used_by_model", direction: "out", limitPerNode: 6, project: ["modelId", "name", "unitPrice"] }],
+          // 边界 → D06 计划与排产（锚点类型 Line：物料 → 型号 → 该型号认证过的产线）
+          [
+            { linkKey: "material_used_by_model", direction: "out", limitPerNode: 6 },
+            { linkKey: "model_certified_on", direction: "out", limitPerNode: 6, project: ["lineId", "baseId", "name", "capacityDaily", "utilization", "status"] },
+          ],
+        ],
+        maxNodes: 600,
+        contractFixtures: [
+          {
+            name: "D05 域内完整 + 边界含 D04 锚点(Model) 与 D06 锚点(Line)",
+            args: {},
+            expect: {
+              rootType: "Material",
+              minNodes: 30,
+              mustIncludeTypes: ["Material", "Supplier", "MaterialAlternative", "MaterialBalance", "MaterialBatch", "PurchaseOrder", "CustomsClearance", "IncomingInspection", "Model", "Line"],
+              mustIncludeLinkKeys: ["material_supplied_by", "material_has_alternative", "material_has_balance", "material_has_batch", "material_supplied_by_po", "po_inspected_by", "material_used_by_model", "model_certified_on"],
+            },
+          },
+        ],
+      },
+    },
+    {
+      /**
+       * D06 计划与排产（capacity）：产线 → 基地 → 跨基地调拨 / 工单 → 排产单 / 工序，
+       * 边界一跳到 D04 产品（Model）与 D03 销售（Order）。
+       *
+       * ⚠ `sched_for_wo` 这一跳今天**必然落空**：`ProductionSchedule` 在 demo 世界实测 0 个对象
+       * （P37/P40 两条流程共用它当承载物，但合成种子没物化任何一条）。这属"接了线没数据"，
+       * 与"没接线"是两回事 —— 路径照留，种子一补就有读数，不必回头改这张切片。
+       * 同理 `Cadence`(8 个对象) 进不来是因为它**零链路**（节拍挂在规则的 `cadenceNodeId` 上，
+       * 不是图上的边），那是另一回事，不是这条跳的问题。
+       */
+      sliceKey: "domain_d06_capacity",
+      version: 1,
+      spec: {
+        root: { typeKey: "Line", selector: {} },
+        paths: [
+          [
+            { linkKey: "line_belongs_to_base", direction: "in", project: ["baseId", "name", "kind", "util", "bottleneck", "gwh", "formationCapDaily", "agingCapDaily"] },
+            { linkKey: "base_dispatches_transfer", direction: "out", limitPerNode: 4, project: ["transferId", "fromBase", "toBase", "model", "qty", "transitDays", "freightCost", "status", "etaDay"] },
+          ],
+          [
+            { linkKey: "line_runs_work_order", direction: "out", limitPerNode: 2, project: ["woId", "moNo", "modelId", "lineId", "baseId", "qtyPlanned", "qtyActual", "startDate", "endDate", "status"] },
+            { linkKey: "sched_for_wo", direction: "in", limitPerNode: 2 },
+          ],
+          [{ linkKey: "line_has_process", direction: "out", limitPerNode: 2, project: ["processId", "lineId", "name", "kind", "yield", "utilization", "requiredThroughput"] }],
+          // WO-CAPACITY-EDGE · 产能占用面：这条线的产能池 → 谁在吃它、各吃多少。
+          // 第二跳方向是 `in`（边是 WorkOrder→CapacityPool，从池要反着走回工单），
+          // 与同一份 spec 里 `model_certified_on` 的 `in` 同理。
+          [
+            // ⚠ 只投影池上**真有**的四格。`consumedCellsDaily` / `remainingCellsDaily` 不在其中：
+            // 它们是 `capacity_ledger` 的读数、不是池对象上的属性（WO-CAPACITY-EDGE-FIX）。
+            // 列在这里会让切片显得「给了余量」而实际恒缺席 —— 那是承诺了取不到的东西。
+            { linkKey: "has_capacity", direction: "out", project: ["poolId", "lineId", "baseId", "capacityCellsDaily", "status"] },
+            { linkKey: "consumes_capacity", direction: "in", limitPerNode: 2, project: ["woId", "qtyPlanned", "spanDays", "status"] },
+          ],
+          // 边界 → D04 产品与工程（锚点类型 Model：这条线认证过哪些型号）
+          [{ linkKey: "model_certified_on", direction: "in", limitPerNode: 3, project: ["modelId", "name", "unitPrice"] }],
+          // 边界 → D03 销售与客户（锚点类型 Order：认证型号在手的订单）
+          [
+            { linkKey: "model_certified_on", direction: "in", limitPerNode: 3 },
+            { linkKey: "model_demanded_by_order", direction: "out", limitPerNode: 3, project: ["so", "cust", "model", "qty", "due", "status"] },
+          ],
+        ],
+        maxNodes: 900,
+        contractFixtures: [
+          {
+            name: "D06 域内完整 + 边界含 D04 锚点(Model) 与 D03 锚点(Order)",
+            args: {},
+            expect: {
+              rootType: "Line",
+              minNodes: 40,
+              mustIncludeTypes: ["Line", "Base", "InterBaseTransfer", "WorkOrder", "Process", "Model", "Order", "CapacityPool"],
+              mustIncludeLinkKeys: ["line_belongs_to_base", "base_dispatches_transfer", "line_runs_work_order", "line_has_process", "model_certified_on", "model_demanded_by_order", "has_capacity", "consumes_capacity"],
             },
           },
         ],
@@ -734,31 +4457,31 @@ export const BATTERY_TEMPLATE: IndustryTemplate = {
       },
     },
   ],
-  rules: [
-    { key: "C03", name: "产能上限约束", expression: "Order.demandDelta > 0.5", severity: "BLOCK" },
-    { key: "C08", name: "外协比例红线", expression: "Order.outsourceRatio > 0.3", severity: "WARN" },
-    { key: "C13", name: "客户信用额度", expression: "Order.creditUsedRatio > 1", severity: "BLOCK" },
-    // A8.5 timeseries rules — evaluated against ts_agg_runs by RULE_SCAN (SUSTAIN).
-    { key: "C05", name: "产线利用率持续越线", expression: "SUSTAIN(Line.utilization > 95, 3)", severity: "WARN" },
-    { key: "C12", name: "预测偏差触发重校", expression: "SUSTAIN(Model.forecast_deviation > 0.08, 1)", severity: "WARN" },
-    // §7.14 年度情景规则校验（情景卡的 C18/C23 行走真实规则引擎）。
-    { key: "C18", name: "现金垫底线", expression: "AnnualScenario.cashCushion < 50", severity: "BLOCK" },
-    { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN" },
-  ],
-  scenarioSeed: { views: ["dash", "graph", "risk", "order", "plan-audit", "plan-generate", "project-sim", "sop-balance"], intents: [] },
+  // WO-RULES-CLASSIFY：每条规则授予业务类别 category（产能/物料/财务/合规/换型/认证/外协/质量/需求/排产/规划）——
+  // 规则库分类筛选与「约束条件」独立入口的真元数据单一来源（前端只读渲染，非写死清单；约束条件另按 severity=BLOCK 判别）。
+  // G-10 P4：规则数组已上提为 `BATTERY_RULES`（本文件顶部，定义在 BATTERY_SOLVER_PARAMS 之前），
+  // 因为推演系数要从它派生（`ruleParamOf`）——规则是阈值的单一上游真源，不是 solver_params 的副本。
+  rules: BATTERY_RULES,
+  // scenarioSeed.views 单一来源 = view-manifest.SEEDED_VIEW_KEYS（BUILTIN_VIEWS.filter(seed)·防第 4 处漂移·
+  // 现含 global-sim：此前手维护此处漏接 → 内存态重启后「全局推演」隐身·WO-MEMORY-VIEW-RESILIENCE §4.2）。
+  scenarioSeed: { views: [...SEEDED_VIEW_KEYS], intents: [] },
   features: [...ALL_FEATURE_KEYS],
   solverParams: BATTERY_SOLVER_PARAMS,
   // A8.6 §6.1 — measureField/weightField are battery-pack extensions consumed by the generator.
   tsGenerators: [
     { seriesKey: "oee:equip", entityType: "Equipment", grain: "day", base: { mean: 0.78, noise: 0.04 }, effects: ["maint_window_dip", "weekend_dip"], measureField: "oee", weightField: "output" },
     { seriesKey: "yield:process", entityType: "Process", grain: "day", base: { mean: 0.952, noise: 0.008 }, effects: ["maint_window_dip"], measureField: "yield" },
-    { seriesKey: "output:line", entityType: "Line", grain: "day", base: { mean: 30000, noise: 1800 }, drift: 8, effects: ["weekend_dip", "maint_window_dip", "ramp_curve"], measureField: "output" },
+    { seriesKey: "output:line", entityType: "Line", grain: "day", base: { mean: OUTPUT_LINE_BASE_MEAN, noise: 1800 }, drift: 8, effects: ["weekend_dip", "maint_window_dip", "ramp_curve"], measureField: "output" },
     { seriesKey: "attainment:line", entityType: "Line", grain: "day", base: { mean: 0.914, noise: 0.02 }, measureField: "attainment" },
     { seriesKey: "util:line", entityType: "Line", grain: "day", base: { mean: 92, noise: 1.2 }, effects: ["maint_window_dip"], measureField: "util" },
+    // CL.5（PRD-attainment-base-daily-timeseries）：基地级日达成率序列——"本月逐日为何未达成"时间维度归因
+    // 所需（现仅 attainment:line 产线级 + schedule_attainment 周聚合）。day grain、含检修/周末/爬坡剧本，
+    // 达成率口径 = 实际/目标（与 Metric achievement 同源）。末位追加，保前序列 R6 字节一致。
+    { seriesKey: "attainment:base", entityType: "Base", grain: "day", base: { mean: 0.918, noise: 0.018 }, effects: ["maint_window_dip", "weekend_dip", "ramp_curve"], measureField: "attainment" },
   ],
   scenarioScript: [
     { tick: 3, event: "iot_delay", params: { lagHours: 4.2 } },
-    { tick: 5, event: "shipment_delay", params: { baseId: "changzhou", days: 5 } },
+    { tick: 5, event: "shipment_delay", params: { baseId: baseIdOf("常州"), days: 5 } },
     { tick: 8, event: "yield_drop", params: { utilBoost: 8, yieldFactor: 0.95 } },
   ],
 };
@@ -772,7 +4495,10 @@ export const BATTERY_TS_AGG_SPECS: {
   weightField?: string;
   output: { objectType: string; property: string };
 }[] = [
-  { key: "oee_daily_7d", seriesKey: "oee:equip", window: { grain: "day", rolling: 7 }, agg: "weighted_avg", weightField: "output", output: { objectType: "Equipment", property: "oee_current" } },
+  // WO-OEE-UNIFY 裁决 C：原 `oee_daily_7d`（oee:equip 7 日加权 → Equipment.oee_current）规格已撤——
+  // 它是 oee_current 的第二个写入方（写的是与事实表不同定义的量，G-OEE-DUAL-TRUTH 病根）。
+  // oee_current 现由 EquipmentOEE 事实行在生成期同源派生；`oee:equip` 原始日序列保留（仅作时序查询素材，
+  // 不再物化进任何对象属性）。
   { key: "yield_daily", seriesKey: "yield:process", window: { grain: "day" }, agg: "avg", output: { objectType: "Process", property: "yield_baseline" } },
   { key: "line_output_daily", seriesKey: "output:line", window: { grain: "day" }, agg: "sum", output: { objectType: "Line", property: "actual_output_daily" } },
   { key: "schedule_attainment", seriesKey: "attainment:line", window: { grain: "week" }, agg: "avg", output: { objectType: "Line", property: "schedule_attainment" } },
@@ -780,15 +4506,78 @@ export const BATTERY_TS_AGG_SPECS: {
   { key: "forecast_dev_daily", seriesKey: "forecast_dev:model", window: { grain: "day" }, agg: "avg", output: { objectType: "Model", property: "forecast_deviation" } },
 ];
 
+// ---------------------------------------------------------------------------
+// WO-69 P3 · 对象接口（多态抽象）种子
+// ---------------------------------------------------------------------------
+
+/**
+ * 内置对象接口。**`Approvable`（可审批物）= WO §七 验收样例**：
+ * "凡是要走审批的东西，都得说得清**谁批的 / 什么时候批的 / 批的是多少钱**"。
+ *
+ * 这不是一份注释：`ARInvoice`（应收发票核销）与 `OverdueRecord`（逾期核销）声明实现它之后，
+ * 三个属性、一个行动、一个函数**同时**成为两者的发布期硬约束——接口加第 4 条要求，
+ * 两个实现者一起被拦下，不用逐个类型去改（这正是"多态抽象"相对"逐类型手抄"的价值）。
+ *
+ * `functions: credit_exposure` 接的是 WO-69 P2 的真求解器本体签名（`SOLVER_ONTOLOGY_SIGNATURES`）：
+ * 该签名声明 credit_exposure 会读 `ARInvoice.{amount,custName,invoiceId,overdueDays}`，
+ * 于是"实现者能不能跑得动这个行为"是**机器可判定**的，而不是接口在自说自话。
+ */
+export const BATTERY_OBJECT_INTERFACES = [
+  {
+    key: "Approvable",
+    name: "可审批物",
+    businessDefinition: {
+      statement:
+        "需要经人工审批才能生效的业务记录：必须能说清审批人（approver）、审批时间（approvedAt）与审批金额（amount）。",
+      excludes: [
+        "系统自动产生、无人工决策环节的派生记录",
+        "只读的统计/投影对象（无状态变更）",
+      ],
+    },
+    properties: [
+      { propKey: "approver", dataType: "string" as const, description: "审批人（用户标识）", required: true },
+      { propKey: "approvedAt", dataType: "date" as const, description: "审批时间", required: true },
+      { propKey: "amount", dataType: "number" as const, description: "本次审批涉及的金额", required: true },
+    ],
+    // 行为继承①：真值变更必须走 S2 审批（R4 唯一用户态对象写路径）。
+    actions: [{ actionTypeKey: "对象数据变更", required: true }],
+    // 行为继承②：金额敞口口径统一走同一求解器（接 P2 签名 → 可判定"实现者喂得饱它吗"）。
+    functions: [{ solverKey: "credit_exposure", required: true }],
+  },
+];
+
+/**
+ * 类型 → 接口/行动绑定（单一来源）。**A 路直 upsert 与 B 路建模链两条种法都从这里取**，
+ * 避免"数据半与引擎半各自写一份"的老坑；不在表内的类型一个字段都不动（零回归）。
+ */
+export const BATTERY_TYPE_INTERFACE_BINDINGS: Record<
+  string,
+  { implements: { interfaceKey: string; version: number | "latest" }[]; actions: { actionTypeKey: string }[] }
+> = {
+  // 跟 latest：接口一演进，下次本体发布即被要求补齐（升级路径显式，不静默失效）。
+  ARInvoice: { implements: [{ interfaceKey: "Approvable", version: "latest" }], actions: [{ actionTypeKey: "对象数据变更" }] },
+  OverdueRecord: { implements: [{ interfaceKey: "Approvable", version: "latest" }], actions: [{ actionTypeKey: "对象数据变更" }] },
+};
+
 /** S2: built-in ActionTypes for the battery pack. */
 export const BATTERY_ACTION_TYPES = [
   {
     key: "adopt_mitigation",
     name: "采纳处置方案",
+    // G-ACTIONTYPE-NO-TARGET：执行器唯一写 `AdoptedMitigation` 对象（app.ts adopt_mitigation 分支④）→ 可静态归因。
+    targetTypeKey: "AdoptedMitigation",
     paramsSchema: { type: "object", required: ["base", "factor", "planKey"], properties: { base: { type: "string" }, factor: { type: "string" }, planKey: { type: "string" } } },
     checkRules: [] as string[],
     approvalChain: [{ role: "planner" }, { role: "admin" }],
   },
+  // targetTypeKey 缺省 = **不可静态归因**（契约注释三种情形），本数组内逐型归属：
+  //  · plan_change —— 主目标多类型（global-sim 支写 WorkOrder/Order/InterBaseTransfer，见
+  //    BUILTIN_ACTION_EFFECTS 的 PARTIAL 声明；levers 支目标由 payload 运行期决定）；
+  //  · 对象数据变更 —— objectType 由 payload 运行期决定；流水线发布物化 —— typeKey 由工作流定义决定；
+  //  · 采纳产能保障方案 —— 逐 lever 自带 objectType（多类型、运行期决定）；
+  //  · AOP情景拍板 / 校准参数变更 / 定稿月度计划版本 / 计划版本变更 / 采纳经营方案 ——
+  //    写的不是本体对象（情景 / solver 参数 / S&OP 版本记录 / scheme_adoptions 台账）。
+  // 单值字段给它们钉任何一个 typeKey 都是在撒谎；不可归因必须作为不可归因可见。
   {
     key: "plan_change",
     name: "计划变更",
@@ -848,14 +4637,44 @@ export const BATTERY_ACTION_TYPES = [
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
   },
-  // 增量 §7.13：项目推演 what-if「采纳产能保障方案」（payload = 参数组合 + 推演快照）。
+  // 增量 §7.13：项目推演 what-if「采纳产能保障方案」（payload = 动态杠杆组合 + 推演快照）。
+  // WO-LEVER-ADOPT-DRIFT：前端已从「焊死 3 系数 whatIf」迁到「动态杠杆组合 levers[{objectType,objectId,prop,value}]」
+  // （见 DynamicLeverPanel.adoptCombo「替原 whatIf 三系数」）；schema 随之改 required whatIf→levers（否则采纳恒
+  // 报 `payload.whatIf is required` 假阴）。whatIf 保留为可选属性（向后兼容旧草稿·不再必填）。
   {
     key: "采纳产能保障方案",
     name: "采纳产能保障方案",
     paramsSchema: {
       type: "object",
-      required: ["modelId", "whatIf"],
-      properties: { modelId: { type: "string" }, whatIf: { type: "object" }, snapshot: { type: "object" } },
+      required: ["modelId", "levers"],
+      properties: { modelId: { type: "string" }, levers: { type: "array" }, whatIf: { type: "object" }, snapshot: { type: "object" } },
+    },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
+  // WO-SIM-ACTION-REAL：项目推演⑥「采纳结论」（payload = 参数组合 + 推演快照，契约见 contracts
+  // ForecastAdoptionPayloadSchema）。审批通过 → 落 ForecastAdoption 台账对象（+选中订单回 stamp）。
+  // 与「采纳产能保障方案」（what-if 杠杆组合 → 改写本体属性）是两个动作：那个改杠杆真值，
+  // 这个把**结论本身**（参数组合+快照）落成可溯源台账真值——屏上 DAG fc 节点承诺的正是后者。
+  {
+    key: "采纳产能预测结论",
+    name: "采纳产能预测结论",
+    // G-ACTIONTYPE-NO-TARGET：执行器落 `ForecastAdoption` 台账对象为主写（Order 回 stamp 是选中订单时的
+    // 条件性次写）→ 主目标可静态归因。
+    targetTypeKey: "ForecastAdoption",
+    paramsSchema: {
+      type: "object",
+      required: ["modelId", "mode", "demandWan", "snapshot"],
+      properties: {
+        source: { type: "string" },
+        modelId: { type: "string" },
+        mode: { type: "string" },
+        demandWan: { type: "number" },
+        weeks: { type: "number" },
+        batches: { type: "array" },
+        snapshot: { type: "object" },
+        orderId: { type: "string" },
+      },
     },
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
@@ -874,7 +4693,7 @@ export const BATTERY_ACTION_TYPES = [
     approvalChain: [{ role: "admin" }],
   },
   // OntoFlow（PRD v2 P3）流水线发布物化：审批通过后把样例/上传 rows 经数据处理折叠成对象落库
-  // （origin=PIPELINE），坏行入隔离区。真值写入门控。
+  // （origin=PIPELINE），坏行入隔离区。真值写入门控。嫁接自 main 平行线。
   {
     key: "流水线发布物化",
     name: "流水线发布物化",
@@ -897,21 +4716,142 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   C12: ["Model"],
   C18: ["AnnualScenario"],
   C23: ["AnnualScenario"],
+  // catalog §3 C26–C33 作用域（映射表/影响面按此关联）。
+  //
+  // ⚠️ WO-RULE-SCOPE-DROP 订正：这里**原注释写的是「与 expression 对象前缀一致」，那句话就是病根**。
+  // `expression` 的前缀是**求值期注入命名空间**（求解器 `base.Cert = {...}` 这类，见 solvers/service.ts），
+  // `scopeObjectTypes` 是**本体对象类型键**（消费方一律拿去 `listByType` / 挂图谱 / 算影响面）。
+  // 二者恰好同名时没事，不同名就悄悄错开 —— 结果是规则躺在库里永不参与评估，且零信号。
+  // **改这张表时唯一的判据是：这个字符串在 `ontology.listTypes()` 里存不存在。**
+  C26: ["Certification"], // 原 "Cert"（= cert_schedule 求解器的注入命名空间，非类型键）
+  C27: ["LongTermAgreement"], // 原 "Lta"
+  C28: ["MaterialBatch"], // 原 "Batch"；MaterialBatch.idleDays 满覆盖，改名后 C28 立刻真评估出判定
+  C29: ["Order"],
+  C30: ["Process"],
+  // ✅ C31 **承载类型已补建**（WO-RULE-SCOPE-TRIAD·闭 §8 G-RULE-SCOPE-NO-CARRIER-C31）：
+  // `Outsource` 外协批次类型（battery-extended.ts `extendedObjectTypes` + 每物料 1 批实例），
+  // yieldRate 真值源 = Material.outsourceYield（同一物理量单一来源），minYieldRate = 合同底线配置。
+  // 作用域键 `Outsource` 字面值不变，但它**现在是真类型键**了 —— C31 从「rule-scope.ts 判 NO_CARRIER、
+  // 每轮扫描发 rule.scope_unresolved」变成真评估：sep_film 批（0.91 < 0.92）真产出一条 BLOCK 判定。
+  // （此前 WO-RULE-SCOPE-DROP 刻意保持原样：本体 94 类零候选，硬塞近似类型 = 把缺口伪装成已修。）
+  C31: ["Outsource"],
+  C32: ["Customer"],
+  C33: ["Order"],
+  // 规则即引用：13 条补全规则的作用域（与 expression 对象前缀一致）。
+  C01: ["Line"],
+  C02: ["Process"],
+  C04: ["Line"],
+  C06: ["MaterialBalance"],
+  C09: ["DataSourceHealth"],
+  // ⚠ C10 **故意保持原样 —— 病因是「范畴错误」，不是「拼写错误」**（WO-RULE-SCOPE-DROP 裁决）。
+  // `Action.approver == NULL OR Action.audited == FALSE` 管的是**平台自身 Action 制品有没有审批留痕**，
+  // 而 `Action` / `Scenario` 属于本体七要素里的**行动 / 场景**——与「对象类型」**平级的另一类要素**，
+  // 压根不在 `scopeObjectTypes` 这个字段的值域里。所以：
+  //   · `Action`   → 零候选（NO_CARRIER）
+  //   · `Scenario` → 2 个候选（AnnualScenario / ScenarioTrigger）⇒ AMBIGUOUS，机器**拒绝替人挑**。
+  //     真挑了会是灾难：C10 会变成拿「年度情景」对象去查 `approver` 字段 —— 从「诚实报缺口」
+  //     退化成「安静地算错」。这与本单抓到的 `Batch→MaterialBatch` 完全不同型，**别读成「差个改名就好了」**。
+  // 修法只有两条：给行动/场景要素另立一个作用域维度，或退役该规则。改名一律是错的。
+  C10: ["Action", "Scenario"],
+  C11: ["MaintPlan"],
+  C15: ["Order", "DemandSegment"],
+  C16: ["MaterialBalance"],
+  C21: ["SopVersionRow"],
+  C22: ["Order"],
+  C24: ["Order", "DemandSegment"], // WO-RC1: 前向闭合修——scope 归真实类型 Order（marginPct/floorPct 与 Quote 命名空间同值·镜像 C15）·Quote 仅 eval 期注入命名空间非本体对象类型（沙盘 cert 前向闭合硬前置）
+  C25: ["ExternalSignal"],
+  // WO-A6-CONTENTION：争用发生在基地的产能面上，而「谁在争」来自订单（`Order` 是全本体**唯一**
+  // 同时承载业务线维与基地维的对象·`AUDIT-a6-rule-carriers.md` §4.2），「保谁」的经营参数来自
+  // `DemandSegment`（其 marginPct/floorPct 逐值来自 `SEG_REGISTRY`）。三类缺一条这条规则就判不动。
+  C34: ["Base", "Order", "DemandSegment"],
+  // ── WO-INTEG-BATCH-5 收编补：C35 的作用域**显式声明为空**，不是漏填 ──────────────────
+  // 病样（本批实测）：`service.ts:276` 是 `BATTERY_RULE_SCOPES[r.key] ?? ["Order"]` ——
+  // **没登记的规则会静默落进 `Order` 域**。WO-PROP-CLAMP 立 C35 时没登记，于是
+  // 「推演状态量衰减率」出现在 `GET /ontology/mapping` 的 Order 行里，被 `planviews` 的
+  // 金值当场咬住（9 → 10）。金丝雀：本表 30 条规则里 **29 条有显式声明，只有 C35 靠回落**
+  // ⇒ 这张表本来就是穷举的，C35 是漏的那一条，不是"回落即约定"。
+  // 判据照本段头那条（唯一判据 = 这个字符串在 `ontology.listTypes()` 里存不存在）：
+  // C35 的 expression 主语是 `SimStateVar.decayPerTick` —— `SimStateVar` **不是本体对象类型**，
+  // 它是引擎的状态量命名空间。故按 C10 那条同样的纪律**不硬塞一个近似类型**：
+  // 塞了会让 Order 域的规则清单对计划员说一句假话（"这条规则管订单"），
+  // 从"诚实报缺"退化成"安静地算错"。
+  // ⚠ 空作用域**不影响衰减生效**：`propagation-inputs.ts:111` 建 `ruleParams` 时按
+  // `status === "PUBLISHED"` 全量取、**不看 scopeObjectTypes**，C35 的 λ 照常解析得到
+  // （`prop-clamp-decay.seam` 仍绿即为凭证）。这里管的只是"它出现在哪个域的规则清单里"。
+  C35: [],
 };
 
 export interface GeneratedBattery {
   bases: Record<string, unknown>[];
   models: Record<string, unknown>[];
   orders: Record<string, unknown>[];
+  productPlatforms: Record<string, unknown>[];
+  productSeries: Record<string, unknown>[];
+  productVersions: Record<string, unknown>[];
+  bomHeaders: Record<string, unknown>[];
+  bomDetails: Record<string, unknown>[];
+  routings: Record<string, unknown>[];
+  operations: Record<string, unknown>[];
+  processCapabilities: Record<string, unknown>[];
+  qualityStandards: Record<string, unknown>[];
+  inspectionCharacteristics: Record<string, unknown>[];
+  productLineCapabilities: Record<string, unknown>[];
+  productEquipmentCapabilities: Record<string, unknown>[];
+  engineeringChanges: Record<string, unknown>[];
+  materialAlternatives: Record<string, unknown>[];
+  workshops: Record<string, unknown>[];
   lines: Record<string, unknown>[];
+  /** WO-CAPACITY-EDGE：产能池（一线一池·`Line.max_capacity_day` 的承载·件/日）。 */
+  capacityPools: Record<string, unknown>[];
   processes: Record<string, unknown>[];
   equipment: Record<string, unknown>[];
   maintPlans: Record<string, unknown>[];
   segments: Record<string, unknown>[];
   shipments: Record<string, unknown>[];
+  // WO-WAREHOUSE-CUSTLOC：仓库（每基地 N 仓·库存仓位落点）
+  warehouses: Record<string, unknown>[];
+  /** WO-INTERBASE-TRANSFER：跨基地调拨台账（一等对象·可查/可溯·R13）。 */
+  interBaseTransfers: Record<string, unknown>[];
   dataHealth: Record<string, unknown>[];
+  // cockpit P1 绿地
+  demandSegments: Record<string, unknown>[];
+  financePlans: Record<string, unknown>[];
+  materialBalances: Record<string, unknown>[];
+  // cockpit P2 + SPINE 绿地
+  metrics: Record<string, unknown>[];
+  ksfs: Record<string, unknown>[];
+  principals: Record<string, unknown>[];
+  rootCauseChains: Record<string, unknown>[];
+  // cockpit P5 / sop 绿地
+  sopVersionRows: Record<string, unknown>[];
   /** model ↔ line certification edges with props.status (量产 | 认证中). */
   certLinks: { modelId: string; lineId: string; baseId: string; status: "量产" | "认证中" }[];
+  // Phase 3 MES Domain
+  workOrders: Record<string, unknown>[];
+  productionSchedules: Record<string, unknown>[];
+  shiftPlans: Record<string, unknown>[];
+  wipLots: Record<string, unknown>[];
+  wipMoves: Record<string, unknown>[];
+  wipQualityCheckpoints: Record<string, unknown>[];
+  qualityLots: Record<string, unknown>[];
+  inspectionResults: Record<string, unknown>[];
+  defectRecords: Record<string, unknown>[];
+  equipmentOEEs: Record<string, unknown>[];
+  equipmentDowntimes: Record<string, unknown>[];
+  equipmentAlarms: Record<string, unknown>[];
+  // WO-EXCEPTION-EVENT：四源归一异常事件（本地 4 源投影；trigger 源在 service 层合并·见 projectExceptionEvents）。
+  exceptionEvents: Record<string, unknown>[];
+  maintenanceOrders: Record<string, unknown>[];
+  sparePartConsumptions: Record<string, unknown>[];
+  operatorAttendances: Record<string, unknown>[];
+  operatorSkillCerts: Record<string, unknown>[];
+  // WO-INVENTORY-3TIER：成品库存 + 库存流水（完工入库确定性派生）
+  finishedGoodsInv: Record<string, unknown>[];
+  inventoryTxns: Record<string, unknown>[];
+  // WO-ATP-PROMISE：订单承诺台账（对每 OPEN 订单确定性算 ATP 基线）
+  orderPromises: Record<string, unknown>[];
+  // WO-ORDERLINE：订单明细行（SO→型号行·一单多型号多行·勾稽 Σ行===头·additive 不动 24 单头级基线）
+  orderLines: Record<string, unknown>[];
 }
 
 const SERIAL_STEPS = [
@@ -920,8 +4860,540 @@ const SERIAL_STEPS = [
   { suffix: "assembly", name: "装配" },
 ];
 
+// SA-3：10 车间定义（制浆→PACK），Workshop 为 Base 与 Line 之间新增层
+const WORKSHOP_DEFS = WORKSHOP_REGISTRY.map((w) => ({ type: w.type, suffix: w.suffix })); // 单源见 contracts/base-registry.ts
+
 function isoDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** 完工工单状态（供完工入库派生判定；WorkOrder.status 枚举中的"已完工"口径）。 */
+const COMPLETED_WO_STATUSES = new Set(["已完成", "已关闭"]);
+
+/**
+ * WO-INVENTORY-3TIER · 完工入库派生（确定性·非事件后处理·R6）。
+ *
+ * 遍历已完工 WorkOrder（status∈{已完成,已关闭} 且 qtyActual>0）→ 每单产一条 InventoryTxn{RECEIPT,qty:+qtyActual}
+ * 并把该 model×warehouse 的 FinishedGoodsInventory.qtyOnHand += qtyActual。
+ * 勾稽铁律：FG.qtyOnHand = Σ该 model×warehouse RECEIPT.qty − Σ ISSUE.qty（本切片仅 RECEIPT，故 = Σ RECEIPT）。
+ * SEAM 铁律：改 WorkOrder.qtyActual → RECEIPT.qty 与 FG.qtyOnHand 同步变（KILL-MOCK-RED）。
+ *
+ * @param finishedWhByBase baseId → 成品仓 warehouseId（whType=FINISHED；WO-WAREHOUSE 每基地必有）
+ * 纯函数：无 random / 无时钟；FG 键按 fgId 稳定排序、Txn 按入参 workOrders 顺序 → 字节一致。
+ */
+export function deriveFinishedGoodsIntake(
+  workOrders: Record<string, unknown>[],
+  finishedWhByBase: Map<string, string>,
+  asOf: string,
+): { finishedGoodsInv: Record<string, unknown>[]; inventoryTxns: Record<string, unknown>[] } {
+  const fgMap = new Map<string, { fgId: string; model: string; warehouseId: string; qtyOnHand: number; qtyReserved: number; asOf: string }>();
+  const inventoryTxns: Record<string, unknown>[] = [];
+  for (const wo of workOrders) {
+    const status = String(wo.status ?? "");
+    const qtyActual = Number(wo.qtyActual ?? 0);
+    if (!COMPLETED_WO_STATUSES.has(status) || qtyActual <= 0) continue;
+    const modelId = String(wo.modelId ?? "");
+    const baseId = String(wo.baseId ?? "");
+    const warehouseId = finishedWhByBase.get(baseId);
+    if (!warehouseId) continue; // 无成品仓（理论不发生：每基地必有 FINISHED 仓）→ 诚实跳过不臆造
+    const fgId = `FG-${modelId}-${warehouseId}`;
+    let fg = fgMap.get(fgId);
+    if (!fg) {
+      fg = { fgId, model: modelId, warehouseId, qtyOnHand: 0, qtyReserved: 0, asOf };
+      fgMap.set(fgId, fg);
+    }
+    fg.qtyOnHand += qtyActual;
+    inventoryTxns.push({
+      txnId: `TXN-RCPT-${String(wo.woId)}`,
+      txnType: "RECEIPT",
+      fgRef: fgId,
+      woRef: String(wo.woId),
+      qty: qtyActual, // 带正负：入库为正
+      fromWarehouse: "",
+      toWarehouse: warehouseId,
+      refDoc: String(wo.moNo ?? wo.woId),
+      occurredAt: String(wo.endDate ?? asOf),
+    });
+  }
+  const finishedGoodsInv = [...fgMap.values()]
+    .sort((a, b) => (a.fgId < b.fgId ? -1 : a.fgId > b.fgId ? 1 : 0))
+    .map((f) => ({ fgId: f.fgId, model: f.model, warehouseId: f.warehouseId, qtyOnHand: f.qtyOnHand, qtyReserved: f.qtyReserved, asOf: f.asOf }));
+  return { finishedGoodsInv, inventoryTxns };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// WO-ATP-PROMISE · 订单承诺（ATP/CTP）净室核心算法（数据半 seed 与引擎半 atp_check 单一口径）。
+// ──────────────────────────────────────────────────────────────────────────
+
+/** 完工工单状态集合（完工单 qtyActual 已入库 FG，故在制未交源须排除完工单，避免双算）。 */
+const ATP_COMPLETED_WO_STATUSES = COMPLETED_WO_STATUSES;
+
+const DAY_MS_ATP = 86400000;
+const atpNum = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0);
+
+/** atp_check 三源供给输入（纯对象·仓储 props 与生成数组两侧同结构喂入·净读无副作用）。 */
+export interface AtpSupplyInputs {
+  finishedGoodsInv: Record<string, unknown>[]; // 读 model / qtyOnHand / qtyReserved
+  workOrders: Record<string, unknown>[]; // 读 modelId / qtyActual / status
+  lines: Record<string, unknown>[]; // 读 baseId / max_capacity_day
+}
+
+/** 单订单 ATP 计算结果（committableQty = Σbreakdown·shortfall = requested − committable·勾稽）。 */
+export interface OrderPromiseResult {
+  requestedQty: number;
+  committableQty: number;
+  promiseDate: string | null;
+  atpStatus: "CONFIRMED" | "PARTIAL" | "UNMET";
+  shortfallQty: number;
+  bottleneck: "产能" | "库存" | "物料" | "齐套" | null;
+  breakdown: { source: "现货" | "在制" | "排产"; qty: number }[];
+  // 诊断字段（承诺卡口透明化·供 solver summary 与测试断言）
+  onHand: number;
+  wip: number;
+  dailyCapacity: number;
+  dueDay: number;
+}
+
+/**
+ * 净室 ATP：对单订单读三源供给算「能不能接、何时交」（纯函数·无 random/时钟·R6）。
+ *  ① 现货 onHand   = Σ 可用成品库存（qtyOnHand − qtyReserved，≥0）·按 model 匹配
+ *  ② 在制 wip      = Σ 未完工工单 qtyActual（完工单已入 FG 故排除）·按 modelId 匹配
+ *  ③ 排产 capacity = Σ 可产产线 max_capacity_day × 交期前净生产窗口天（baseId ∈ 订单可产基地）
+ * committableQty = min(requestedQty, onHand + wip + 交期前可排产能)；
+ * promiseDate    = 满足全量最早日（现货即 asOf；需排产则按日产能累加到齐量日；不可产 → null）；
+ * atpStatus/bottleneck/shortfall 诚实透出卡在哪源。
+ * SEAM 铁律：改 Line.max_capacity_day（产能）或 FG.qtyOnHand（库存）→ committableQty/promiseDate 真变。
+ */
+export function computeOrderPromise(
+  order: { model: unknown; qty: unknown; due: unknown; bases: unknown },
+  supply: AtpSupplyInputs,
+  asOf: string,
+): OrderPromiseResult {
+  const model = String(order.model ?? "");
+  const requestedQty = Math.max(0, atpNum(order.qty));
+  const orderBases = Array.isArray(order.bases) ? (order.bases as unknown[]).map(String) : [];
+
+  // ① 现货（可用成品库存·按 model）
+  const onHand = supply.finishedGoodsInv
+    .filter((f) => String(f.model ?? "") === model)
+    .reduce((s, f) => s + Math.max(0, atpNum(f.qtyOnHand) - atpNum(f.qtyReserved)), 0);
+
+  // ② 在制未交（未完工工单 qtyActual·按 modelId·排除完工单避免双算）
+  const wip = supply.workOrders
+    .filter((w) => String(w.modelId ?? "") === model && !ATP_COMPLETED_WO_STATUSES.has(String(w.status ?? "")) && atpNum(w.qtyActual) > 0)
+    .reduce((s, w) => s + atpNum(w.qtyActual), 0);
+
+  // ③ 交期前可排产能（可产产线日产能 × 交期前净生产窗口天）
+  const dailyCapacity = supply.lines
+    .filter((l) => orderBases.length > 0 && orderBases.includes(String(l.baseId ?? "")))
+    .reduce((s, l) => s + Math.max(0, atpNum(l.max_capacity_day)), 0);
+  const asOfMs = Date.parse(`${asOf.slice(0, 10)}T00:00:00Z`);
+  const dueMs = Date.parse(`${String(order.due ?? "").slice(0, 10)}T00:00:00Z`);
+  const dueDay = Number.isFinite(dueMs) ? Math.max(0, Math.round((dueMs - asOfMs) / DAY_MS_ATP)) : 0;
+  const capBeforeDue = dailyCapacity * dueDay;
+
+  // 三源按 现货→在制→排产 顺序填满需求（committableQty = Σbreakdown·勾稽）
+  const onHandUsed = Math.min(onHand, requestedQty);
+  const wipUsed = Math.min(wip, Math.max(0, requestedQty - onHandUsed));
+  const capUsed = Math.min(capBeforeDue, Math.max(0, requestedQty - onHandUsed - wipUsed));
+  const committableQty = onHandUsed + wipUsed + capUsed;
+  const shortfallQty = Math.max(0, requestedQty - committableQty);
+
+  // 满足全量最早日：现货+在制够即 asOf；否则按日产能累加到齐量日（可超交期）；无可排产能 → null
+  const neededFromProduction = Math.max(0, requestedQty - onHand - wip);
+  let promiseDate: string | null;
+  if (neededFromProduction <= 0) {
+    promiseDate = asOf;
+  } else if (dailyCapacity > 0) {
+    const daysNeeded = Math.ceil(neededFromProduction / dailyCapacity);
+    promiseDate = isoDate(asOfMs + daysNeeded * DAY_MS_ATP);
+  } else {
+    promiseDate = null; // 无可产产线 → 全量承诺日不可期
+  }
+
+  // 状态：全量按期(CONFIRMED) / 部分(PARTIAL) / 交期前几无(UNMET)
+  const atpStatus: OrderPromiseResult["atpStatus"] =
+    shortfallQty <= 0 ? "CONFIRMED" : committableQty > 0 ? "PARTIAL" : "UNMET";
+  // 卡口：有缺口才透出——有可产产线→产能不足；无可产产线→无从排产（齐套/产线缺）
+  const bottleneck: OrderPromiseResult["bottleneck"] =
+    shortfallQty <= 0 ? null : dailyCapacity > 0 ? "产能" : "齐套";
+
+  const breakdown: OrderPromiseResult["breakdown"] = [
+    { source: "现货", qty: round(onHandUsed, 0) },
+    { source: "在制", qty: round(wipUsed, 0) },
+    { source: "排产", qty: round(capUsed, 0) },
+  ];
+
+  return {
+    requestedQty,
+    committableQty: round(committableQty, 0),
+    promiseDate,
+    atpStatus,
+    shortfallQty: round(shortfallQty, 0),
+    bottleneck,
+    breakdown,
+    onHand: round(onHand, 0),
+    wip: round(wip, 0),
+    dailyCapacity: round(dailyCapacity, 0),
+    dueDay,
+  };
+}
+
+/**
+ * WO-ATP-PROMISE · 订单承诺台账种子（对每张 OPEN 订单产一条基线 OrderPromise·与 atp_check 同口径）。
+ * 纯派生：无 rng（不插既有 rng 流中间→字节流不变 R6）、无时钟（asOf 取固定 T0）。
+ * promiseId 由订单号确定性派生（AP-<so>）。
+ */
+export function deriveOrderPromises(
+  orders: Record<string, unknown>[],
+  finishedGoodsInv: Record<string, unknown>[],
+  workOrders: Record<string, unknown>[],
+  lines: Record<string, unknown>[],
+  asOf: string,
+): Record<string, unknown>[] {
+  const supply: AtpSupplyInputs = {
+    finishedGoodsInv: finishedGoodsInv.map((f) => ({ model: f.model, qtyOnHand: f.qtyOnHand, qtyReserved: f.qtyReserved })),
+    workOrders: workOrders.map((w) => ({ modelId: w.modelId, qtyActual: w.qtyActual, status: w.status })),
+    lines: lines.map((l) => ({ baseId: l.baseId, max_capacity_day: l.max_capacity_day })),
+  };
+  const out: Record<string, unknown>[] = [];
+  for (const o of orders) {
+    if (String(o.status ?? "") !== "OPEN") continue; // 仅 OPEN 订单需承诺
+    const r = computeOrderPromise({ model: o.model, qty: o.qty, due: o.due, bases: o.bases }, supply, asOf);
+    out.push({
+      promiseId: `AP-${String(o.so)}`,
+      orderRef: String(o.so),
+      model: String(o.model ?? ""),
+      requestedQty: r.requestedQty,
+      committableQty: r.committableQty,
+      promiseDate: r.promiseDate,
+      atpStatus: r.atpStatus,
+      shortfallQty: r.shortfallQty,
+      bottleneck: r.bottleneck,
+      asOf,
+    });
+  }
+  return out;
+}
+
+/**
+ * WO-ORDERLINE · 订单拆行种子（SO→型号明细行·一单多型号多行·Phase3）。
+ * 确定性拆行（独立哈希子流 `hashString("oline_"+so)`·**不插既有 order rng 流中间**→24 单头级字节基线不移 R6）：
+ *  - so 哈希偶数 → 拆 2-3 行到**不同 model**（首行保原单 model·不破坏既有 order_for_model 与 24 单基线·additive）；奇数 → 1 行。
+ *  - **勾稽铁律** `Σ OrderLine.qty (BY orderRef) === Order.qty`（拆行不改总量·确定性比例分配·**尾行取余额保 Σ 精确**·仿 WO-Q7 末叶取余额）。
+ *  - `lineStatus` 种子基线态（`STATUSES[(h+i)%4]`·连续行 i 必不同态→一单多行天然多态·**行级独立态**）。
+ *  - `unitPrice` 按行 model 反范式化（`Model.unitPrice` 单一来源·守 R14·勿写死）。
+ * 纯派生：无 rng（不插 rng 流）、无时钟（due 继承订单头）。lineId=`<so>-L<lineNo>`。
+ */
+/**
+ * WO-ORDER-BOOK-500 · 行级履约态必须与**订单头级**生命周期态自洽。
+ *
+ * 头级三态（`Order.status`）与行级四态（`OrderLine.lineStatus`）是**两个正交维度**，
+ * 但不是任意组合都讲得通：一张「已完成」的订单挂着一行 `OPEN`（未处理）的明细，
+ * 等于说「整单已交付、但其中一行还没开始处理」—— 数据一被追问就穿帮。
+ *
+ *  - 头 `COMPLETED`     → 行恒 `SHIPPED`（整单交付完 = 每一行都发运了）
+ *  - 头 `IN_PRODUCTION` → 行在 `COMMITTED`/`PARTIAL` 间取（已承诺 / 部分满足，正在做）
+ *  - 头 `OPEN`          → **保持原四态轮转**（`STATUSES[(h+i)%4]`）
+ *
+ * 最后一支是刻意原样保留的：24 张锚点单**全部**是 `OPEN`，因此它们的 38 行
+ * `lineStatus` 逐字节不变（R6 基线不移），新增的自洽规则只作用在补足段。
+ */
+function lineStatusFor(orderStatus: string, h: number, i: number): "OPEN" | "COMMITTED" | "PARTIAL" | "SHIPPED" {
+  if (orderStatus === "COMPLETED") return "SHIPPED";
+  if (orderStatus === "IN_PRODUCTION") return ((h + i) % 2 === 0 ? "COMMITTED" : "PARTIAL");
+  const STATUSES = ["OPEN", "COMMITTED", "PARTIAL", "SHIPPED"] as const;
+  return STATUSES[(h + i) % 4] as "OPEN" | "COMMITTED" | "PARTIAL" | "SHIPPED";
+}
+
+/**
+ * WO-CAPACITY-EDGE · 产能池的 id（一线一池）。**单一实现**：种子物化、边的端点、求解器回指
+ * 三处共用这一个函数，不许各拼各的字符串（拼错一次就是一批悬空边，且不报错）。
+ */
+export function capacityPoolIdOfLine(lineId: string): string {
+  return `POOL-${lineId}`;
+}
+
+/**
+ * WO-CAPACITY-EDGE · **一张工单吃掉多少产能** —— `consumes_capacity` 边上那个量的**唯一算法**。
+ *
+ * ── 为什么这是本单的要害（铁律 1.5 第四态：接对了、跑通了、但算错了）────────────
+ * 产能是**速率**（件/日），工单量是**存量**（件）。这两个数直接相减/相比是量纲错，
+ * 但它**不报错、屏上照样有数** —— 与 `propagation.ts` 那次「公式里没有用量项，
+ * 碳酸锂与铝箔同幅涨价产生相同成本压力」结构完全相同：链路通、读数动、答案错。
+ * 现成的反例就在仓里：`shared_bottleneck` 求解器按 `demandField` 直接 `Σ d.props[demandField]`
+ * 去比 `capacityField`，若拿 `qtyPlanned`(件) 比 `max_capacity_day`(件/日)，
+ * **每条线都会被判成瓶颈**，而它跑得通、返回结构完整。
+ *
+ * ⇒ 本函数把存量换算成速率：`consumedCellsDaily = qtyPlanned ÷ spanDays`（件/日）。
+ * 除数 `spanDays` 恒 ≥7（生成式 `7 + hash%7`），故**不设兜底**：读不出量或工期就
+ * 返回 `undefined`（该工单不连这条边），**不按 0 或按某个默认天数替它编一个数**。
+ *
+ * 纯函数：零 rng、零时钟、零 IO ⇒ 同输入字节一致（R6）。
+ */
+export function capacityConsumptionOfWorkOrder(
+  wo: Record<string, unknown>,
+): { poolId: string; consumedCellsDaily: number; qtyPlanned: number; spanDays: number } | undefined {
+  const lineId = typeof wo.lineId === "string" ? wo.lineId : "";
+  const qtyPlanned = typeof wo.qtyPlanned === "number" ? wo.qtyPlanned : Number.NaN;
+  const spanDays = typeof wo.spanDays === "number" ? wo.spanDays : Number.NaN;
+  if (!lineId || !Number.isFinite(qtyPlanned) || !Number.isFinite(spanDays) || !(qtyPlanned > 0) || !(spanDays > 0)) {
+    return undefined;
+  }
+  return {
+    poolId: capacityPoolIdOfLine(lineId),
+    // round(…,6) 与 `chain-impediment.readBaseContention` 的日产率同精度口径（不另立一套）。
+    consumedCellsDaily: round(qtyPlanned / spanDays, 6),
+    qtyPlanned,
+    spanDays,
+  };
+}
+
+/**
+ * WO-FULFILLS-EDGE · 工单 → 销售订单的**兑现关系**（`fulfills` 边的唯一真值源）。
+ *
+ * ── 判据：一张工单兑现哪张订单 ────────────────────────────────────────────────
+ * 只在**数据自洽**处连边，两个条件同时成立才连：
+ *   ① `wo.modelId === order.model` —— 工单产的型号就是订单要的型号；
+ *   ② `order.bases` 含 `wo.baseId` —— 订单被分配到的基地里，有这张工单所在的那个基地。
+ * 候选多于一张时按 `hashString(woId) % n` 定选（**零 rng、零时钟** ⇒ 同 seed 字节一致 R6）。
+ *
+ * ── 为什么条件 ② 不能省（实测数据，不是设想）────────────────────────────────────
+ * 省掉 ② 就会把「型号对得上但基地产不了」的工单也连上去，得到
+ * 「常州线上的工单兑现一张只在合肥/金华生产的订单」这种边——这正是同文件
+ * `fg_of_model` / `order_of_customer` 两处已登记过的同一个取舍：
+ * **诚实不连悬空边，「张冠李戴的数比没有更危险」**。
+ *
+ * ⚠ **本段原记录的 43/111/106 三个数已被 `WO-WORKORDER-CATALOG-FIX` 消除**，勿再引用：
+ * 那 111 张「基地产不了」与 106 张「目录外型号」是**工单生成侧的两处自相矛盾**，不是本函数的口径问题。
+ * 修法见工单生成段的 `WO_MODELS_BY_BASE`（型号改从基地可产集里选）。修后 260 张工单**全部**
+ * (modelId, baseId) 自洽且落在 `MODELS` 目录内；仍连不上的，只是该 (型号@基地) 上恰好没有订单落点
+ * （`Order.bases` 只取该型号可产基地中的 1–2 个），**那是真·无订单，不是数据打架**。
+ *
+ * ⚠ 只显式接**订单↔工单**这一条，**不写通用推断器**：全仓 6 条边（如
+ * `transfer_from_base` / `transfer_to_base`）候选属性集完全相同，确定性推断器会给两条选同一个属性，
+ * 其中一条**拓扑静默接反且不报错**。
+ *
+ * @returns `{ woId, so }[]`，按 workOrders 原序（确定性）；无候选的工单**不出现**在结果里。
+ */
+export function deriveFulfills(
+  orders: Record<string, unknown>[],
+  workOrders: Record<string, unknown>[],
+): { woId: string; so: string }[] {
+  // 按 model 预分桶：避免 260×500 全表扫，且桶内保持 orders 原序（确定性）。
+  const byModel = new Map<string, Record<string, unknown>[]>();
+  for (const o of orders) {
+    const key = String(o.model ?? "");
+    if (!key) continue;
+    const bucket = byModel.get(key);
+    if (bucket) bucket.push(o); else byModel.set(key, [o]);
+  }
+  const out: { woId: string; so: string }[] = [];
+  for (const wo of workOrders) {
+    const woId = String(wo.woId ?? "");
+    const modelId = String(wo.modelId ?? "");
+    const baseId = String(wo.baseId ?? "");
+    if (!woId || !modelId || !baseId) continue;
+    const sameModel = byModel.get(modelId);
+    if (!sameModel) continue; // 目录外型号（储能-280Ah/314Ah）：订单簿里没人要 ⇒ 诚实不连
+    const cands = sameModel.filter((o) => Array.isArray(o.bases) && (o.bases as unknown[]).includes(baseId));
+    if (cands.length === 0) continue; // 型号对得上但基地对不上 ⇒ 诚实不连
+    const pick = cands[hashString(woId) % cands.length] as Record<string, unknown>;
+    out.push({ woId, so: String(pick.so) });
+  }
+  return out;
+}
+
+/**
+ * WO-UNITCOST-LAND · 每型号**按件履约成本**（元/电芯）—— `Model.unitCost` 的**唯一算法**。
+ *
+ * `unitCost(model) = Σ over 该型号当期 BOM 明细 [ quantity × (1 + lossRate) × Material.unitPrice ]`
+ *
+ * 三条口径，每条都有实测依据，不是拍的：
+ *  ① **量纲**：`quantity × unitPrice` 之所以无歧义，是因为本体自己断言了两者同 UOM ——
+ *     实测 105/105 条 `BOMDetail.unit === 其 Material.unit`（取证脚本 `unit-check.mjs`）。
+ *     故这里**不内联任何换算系数**；查不到价的物料按 0 计并由调用方的金丝雀点名，不静默补数。
+ *  ② **选哪版 BOM**：一个型号有 2–3 个版本 ⇒ 2–3 份 BOM。取 `bomId` **字典序最小**那份
+ *     （= V1.0 初始量产版），判据确定性且与 rng 无关。⛔ 不取"最新版"：`expireDate` 有空串、
+ *     `status` 有试产/量产两态，按它们排会引入一个没人拍过板的口径。
+ *  ③ **损耗**：`lossRate` 是投料损耗（本体上每行自带），成本要按**投料量**算不是按净用量，
+ *     故乘 `(1+lossRate)`。这与 `counterfactual.mjs` 只读对照实验里验过的公式**逐字相同**。
+ *
+ * 纯派生：**零 rng、零时钟**（R6）。物料价来自 `materials-seed.ts` 的同一份实现
+ * （不是另抄一遍公式 —— 抄了就会漂移且不报错，见该文件头注）。
+ */
+export function modelUnitCosts(
+  bomHeaders: Record<string, unknown>[],
+  bomDetails: Record<string, unknown>[],
+  materialPrice: Map<string, number>,
+): Map<string, number> {
+  const detailsOf = new Map<string, Record<string, unknown>[]>();
+  for (const d of bomDetails) {
+    const k = String(d.bomId);
+    const arr = detailsOf.get(k);
+    if (arr) arr.push(d);
+    else detailsOf.set(k, [d]);
+  }
+  // 每型号取 bomId 字典序最小的那份 BOM（口径 ②）。
+  const bomOf = new Map<string, string>();
+  for (const h of bomHeaders) {
+    const mid = String(h.modelId), bid = String(h.bomId);
+    const prev = bomOf.get(mid);
+    if (prev === undefined || bid < prev) bomOf.set(mid, bid);
+  }
+  const out = new Map<string, number>();
+  for (const [mid, bid] of bomOf) {
+    let sum = 0;
+    for (const d of detailsOf.get(bid) ?? []) {
+      sum += Number(d.quantity ?? 0) * (1 + Number(d.lossRate ?? 0)) * (materialPrice.get(String(d.materialId)) ?? 0);
+    }
+    out.set(mid, round(sum, 2));
+  }
+  return out;
+}
+
+export function deriveOrderLines(
+  orders: Record<string, unknown>[],
+  models: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const modelIds = models.map((m) => String(m.modelId));
+  const priceOf = new Map(models.map((m) => [String(m.modelId), Number(m.unitPrice ?? 0)]));
+  // WO-UNITCOST-LAND：成本与单价**同一取法** —— 都从 `models` 反范式化下来（R14 单一来源）。
+  const costOf = new Map(models.map((m) => [String(m.modelId), Number(m.unitCost ?? 0)]));
+  /**
+   * WO-PENALTY-CHANGEOVER-ONTOLOGY · 违约费率取自在册费率表（**禁在本函数内联三个数字**）。
+   * 取不到就抛 —— 与 `ruleParamOf` 同一条纪律：种子构建期炸，不静默回落一个看似正常的 0
+   * （回落 0 会让违约金轴对全体订单恒为 0，屏上是一根完全正常、却什么都不表达的平轴）。
+   */
+  const penaltyCfg = BATTERY_SOLVER_PARAMS.breachPenalty as { ratePerUnitYuan: Record<string, number>; defaultPri: string };
+  const penaltyRateOf = (pri: string): number => {
+    const r = penaltyCfg.ratePerUnitYuan[pri] ?? penaltyCfg.ratePerUnitYuan[penaltyCfg.defaultPri];
+    if (typeof r !== "number" || !Number.isFinite(r)) {
+      throw new Error(`solver_params.breachPenalty.ratePerUnitYuan 缺 '${pri}' 档且兜底档 '${penaltyCfg.defaultPri}' 也取不到（R14 单源）`);
+    }
+    return r;
+  };
+  const out: Record<string, unknown>[] = [];
+  for (const o of orders) {
+    const so = String(o.so);
+    const m0 = String(o.model ?? "");
+    const totalQty = Number(o.qty ?? 0);
+    // 违约费率按**所属订单**的优先级取（合同条款挂在订单头，行继承之）——
+    // 与 unitPrice/unitCost 按**行型号**取是两条不同的溯源线，不许混。
+    const penRate = penaltyRateOf(String(o.pri ?? ""));
+    const h = hashString(`oline_${so}`);
+    // 拆行数：偶数 → 2-3 行（不同型号）· 奇数 → 1 行（确定性）。
+    const nLines = h % 2 === 0 ? 2 + (Math.floor(h / 4) % 2) : 1;
+    // 型号池：首行保原单 model·其余从型号池按 so 哈希旋转取 distinct（一单多型号真表达）。
+    const lineModels: string[] = [m0];
+    if (nLines > 1 && modelIds.length > 0) {
+      const rot = h % modelIds.length;
+      for (let k = 0; k < modelIds.length && lineModels.length < nLines; k++) {
+        const mid = modelIds[(rot + k) % modelIds.length] as string;
+        if (!lineModels.includes(mid)) lineModels.push(mid);
+      }
+    }
+    const realN = lineModels.length; // 型号池不足时可能 < nLines（诚实）
+    // qty 确定性比例分配（权重 hash 派生）·尾行取余额保 Σ 精确。
+    const weights = lineModels.map((_, i) => 1 + (hashString(`${so}-L${i + 1}_w`) % 100));
+    const W = weights.reduce((a, b) => a + b, 0);
+    let allocated = 0;
+    for (let i = 0; i < realN; i++) {
+      const lineNo = i + 1;
+      const lm = lineModels[i] as string;
+      // 尾行取余额（Σ 精确）；非尾行按权重 floor 分配（≥1·totalQty 千级不会分光）。
+      const qty = i === realN - 1 ? totalQty - allocated : Math.max(1, Math.floor((totalQty * (weights[i] as number)) / W));
+      allocated += qty;
+      out.push({
+        lineId: `${so}-L${lineNo}`,
+        orderRef: so,
+        lineNo,
+        model: lm,
+        qty,
+        due: o.due,
+        lineStatus: lineStatusFor(String(o.status ?? "OPEN"), h, i),
+        unitPrice: priceOf.get(lm) ?? Number(o.unitPrice ?? 0),
+        unitCost: costOf.get(lm) ?? 0,
+        // 总量（元/整行）。纯乘法、零 rng、零时钟 ⇒ 不消耗任何随机流，下游合成值零位移（R6）。
+        breachPenalty: qty * penRate,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * WO-OEE-UNIFY（仓主裁决 C：`EquipmentOEE` 日事实表当权威）· 设备 OEE 的**单一出处**。
+ * 同一组加盐哈希既产 7 日事实行（`equipmentOEEs`），又产 `Equipment` 上的
+ * `oeeA/oeeP/oeeQ/oee_current`（= 该台 7 日事实行对应字段的算术均值）——
+ * 旧①「铭牌三原子」与 ③「日事实表」由此同源同数，不再是两个互不知情的真值源；
+ * 旧②「时序 `oee_daily_7d` 物化覆写 `oee_current`」已随该规格一并撤除（单一写入方）。
+ * 纯 hash 派生，不占 `rngTopo` 流（R6：下游合成值字节不动）。
+ */
+export function equipmentOeeAtomsDaily(equipId: string): { avail: number; perf: number; qual: number; oee: number }[] {
+  const rows: { avail: number; perf: number; qual: number; oee: number }[] = [];
+  for (let d = 0; d < 7; d++) {
+    const avail = round(0.85 + (hashString(`${equipId}_oee${d}`) % 15) / 100, 3);
+    const perf = round(0.88 + (hashString(`${equipId}_perf${d}`) % 10) / 100, 3);
+    const qual = round(0.95 + (hashString(`${equipId}_qual${d}`) % 5) / 100, 3);
+    rows.push({ avail, perf, qual, oee: round(avail * perf * qual, 3) });
+  }
+  return rows;
+}
+
+/** 7 日均值（3 位舍入）——`Equipment` 四个 OEE 属性统一的派生口径。 */
+function meanOfDaily(rows: { avail: number; perf: number; qual: number; oee: number }[], pick: "avail" | "perf" | "qual" | "oee"): number {
+  return round(rows.reduce((a, r) => a + r[pick], 0) / rows.length, 3);
+}
+
+/**
+ * WO-METRIC-IDENTITY · **成交侧营收的唯一口径**（`Metric.kpi-revenue.actual` 与
+ * `cockpit_kpi.revAttainPct` 的分子共用这一个函数，不各抄一遍派生式）。
+ *
+ * ── 为什么必须是同一个函数 ──────────────────────────────────────────────────
+ * 这个口径要在**两个时刻**求值：合成期（`generateBattery` 手里是原始记录）与查询期
+ * （求解器手里是 `Order` 对象实例）。两处各写一遍 `Σ qty×unitPrice`，改一处漏一处
+ * **不会红** —— 那正是本仓 `lnk_mum_`/`lnk_mubm_` 那一对立下的纪律：**共用同一个变量/函数，
+ * 不是抄一遍公式**。故本函数只吃「有 `dueMonth`（或 `due`）+ `qty` + `unitPrice`」的行，
+ * 两边都能喂。
+ *
+ * ── 时间窗：为什么是**计划年**而不是全簿 ────────────────────────────────────
+ * 实测（真后端 `SEED_DEMO=1`，500 单）：订单交期跨 **2025-12 → 2026-12 两个日历年**，
+ * 全簿 Σ`Order.value` = **454.64 亿 / 500 单**，其中落在计划年内的是 **415.58 亿 / 458 单**
+ * （2025-12 那 42 张 39.06 亿属上一年度的簿子）。
+ * 而它要去对的 `GOAL_REGISTRY.revenue.target` 是**年度**目标（700 亿），
+ * 拿 13 个月的成交去除以 12 个月的目标，等于白送一个月的分子 —— 那是另一种口径错。
+ * **故取计划年窗**；计划年 = `BATTERY_SOLVER_PARAMS.forecastStart` 所在日历年，
+ * **不内联 `"2026"`**（内联的年份是个定时炸弹：改 forecastStart 时它不会红，只会悄悄错一年）。
+ *
+ * ⚠ `value` 是派生属性（`qty * unitPrice`），合成期的原始记录上**还没有**这一列，
+ * 所以本函数一律走 `qty × unitPrice` 而不是读 `value` —— 两者逐位相等
+ * （`revenue-reconcile.seam.test.ts` §3 就钉着这条等式），但只有前者两个时刻都拿得到。
+ */
+export function planYearOf(): string {
+  return String(BATTERY_SOLVER_PARAMS.forecastStart ?? "").slice(0, 4);
+}
+
+export function orderBookYearRevenue(
+  rows: { dueMonth?: unknown; due?: unknown; qty?: unknown; unitPrice?: unknown }[],
+  planYear: string = planYearOf(),
+): { yuan: number; count: number } {
+  let yuan = 0;
+  let count = 0;
+  for (const r of rows) {
+    // `dueMonth` 是 `due` 的前 7 位（合成期回填），两者任一在即可判年 —— 查询期对象一定有 dueMonth，
+    // 合成期在 dueMonth 回填之前调用则回落 `due`。回落不是兜底摆设：本函数在两个时刻都被真调用。
+    const ym = String(r.dueMonth ?? r.due ?? "");
+    if (!ym.startsWith(planYear)) continue;
+    yuan += Number(r.qty ?? 0) * Number(r.unitPrice ?? 0);
+    count += 1;
+  }
+  return { yuan, count };
+}
+
+/** 元 → 亿，保留 1 位（`Metric.unit`/`FinancePlan` 全族的「亿」口径）。 */
+export function yuanToYi(yuan: number): number {
+  return round(yuan / 1e8, 1);
 }
 
 /**
@@ -931,21 +5403,99 @@ function isoDate(ms: number): string {
  */
 export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): GeneratedBattery {
   const rng = mulberry32(seed);
-  const orderCount = scale === "S" ? 20 : scale === "M" ? 60 : scale === "XL" ? 10000 : 200;
+  // HTML 24 单为语义基底 → 订单数下限 = 订单簿规模（小规模即 ORDER_BOOK_SIZE 单；L/XL 用 rng 补足到更大目标）。
+  // WO-ORDER-BOOK-500：下限从 24 抬到 500 —— 24 张手写单只够表达「有订单」，撑不起
+  // 「70% 已完成 / 20% 进行中 / 10% 已下待排产」这种**构成**结论（24 张切三态后最小桶只有 2 张，
+  // 任何分组统计都是个位数噪声）。24 张锚点单原样保留在簿首，其余由确定性生成器补足。
+  const orderCount = Math.max(ORDER_BOOK_SIZE, scale === "S" ? 20 : scale === "M" ? 300 : scale === "XL" ? 10000 : 825);
   const t0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
 
-  const bases = BASES.map((b) => ({
-    baseId: b.baseId,
-    name: b.name,
-    kind: b.kind,
-    util: round(0.62 + rng() * 0.35, 2),
-    bottleneck: pick(rng, BOTTLENECKS),
-    gwh: round(6 + rng() * 36, 1),
-    formationCapDaily: 0, // filled after process generation (shared-resource cap)
-    agingCapDaily: 0,
-  }));
+  const bases = BASES.map((b) => {
+    // Wave 1 (#59)：产能指标从 BASE_REGISTRY 单一来源派生，消灭随机值与边界册漂移（G-5/R14）。
+    // 保留原 rng() 调用以维持下游订单/拓扑字节流不变（R6）。
+    void rng();
+    void rng();
+    void rng();
+    return {
+      baseId: b.baseId,
+      name: b.name,
+      kind: b.kind,
+      position: b.kind, // GeoMap 按 position 着色（动力/储能）
+      lon: b.lon,
+      lat: b.lat,
+      util: b.util,
+      bottleneck: b.bottleneck,
+      gwh: b.gwh,
+      formationCapDaily: 0, // filled after process generation (shared-resource cap)
+      agingCapDaily: 0,
+      // SA-4：factory 台账字段（R12 全建模对齐，确定性映射守 R6）
+      factory_code: `${b.baseId.slice(0, 2).toUpperCase()}01`,
+      province: ({ changzhou: "江苏", xiamen: "福建", chengdu: "四川", meishan: "四川", wuhan: "湖北", jiangmen: "广东", hefei: "安徽", xinyang: "河南", zaozhuang: "山东", handan: "河北", zigong: "四川", jinhua: "浙江", yangzhou: "江苏" } as Record<string, string>)[b.baseId] ?? b.baseId,
+      city: b.name,
+      factory_type: b.kind === "动力+储能" ? "CELL+PACK" : b.kind === "动力" ? "CELL" : "PACK",
+      status: "运营中",
+      start_date: ({ changzhou: "2015-06-01", xiamen: "2019-03-01", chengdu: "2021-08-01", meishan: "2022-01-01", wuhan: "2020-05-01", jiangmen: "2021-03-01", hefei: "2023-01-01", xinyang: "2022-06-01", zaozhuang: "2023-06-01", handan: "2022-09-01", zigong: "2021-11-01", jinhua: "2023-09-01", yangzhou: "2022-04-01" } as Record<string, string>)[b.baseId] ?? "2020-01-01",
+      // WO-OPT-WHATIF-DATA · 选址决策成本：**纯派生·零 rng 消耗**（照 WO-CEO-DATA-2 Equipment.oee_current 路子）。
+      // 入参 gwh/lines 取自 BASE_REGISTRY（DF.1 单一来源）、距离走 baseDistanceKm（haversine 同一册）——
+      // 不抽新随机数 ⇒ rng 消耗序列一字不动 ⇒ 下游订单/拓扑合成值零位移（R6 字节一致）。
+      // 末位追加，故 props 键序（→ RawDataset.fields 序）前序不动。
+      openCost: baseOpenCostWan(b.gwh, b.lines),
+      serveCost: baseServeCostWan(b.baseId),
+    };
+  });
+
+  // WO-WAREHOUSE-CUSTLOC：每基地 N 仓（成品仓 FINISHED 必有·供 WO-INVENTORY FG 挂位；原料仓 RAW 必有；
+  // 中转仓 TRANSIT 由确定性哈希决定有无 → 2~3 仓/基地）。独立 hashString 子流·不消耗 rng（不插既有流中间→
+  // 守 R6 字节基线·下游合成值零位移）。省市从生成态 bases 派生（base.province/base.city 源 BASE_REGISTRY，
+  // 守 boundary-singlesource·不内联基地字面量）。
+  const WH_TYPE_LABEL: Record<string, string> = { RAW: "原料", FINISHED: "成品", TRANSIT: "中转" };
+  const warehouses = bases.flatMap((b) => {
+    const whTypes = ["RAW", "FINISHED"]; // 成品仓 FINISHED + 原料仓 RAW 每基地必有
+    if (hashString(`wh_transit_${b.baseId}`) % 2 === 0) whTypes.push("TRANSIT"); // 确定性第三仓
+    return whTypes.map((whType) => ({
+      warehouseId: `WH-${b.baseId}-${whType}`,
+      baseId: b.baseId,
+      name: `${b.city}${WH_TYPE_LABEL[whType]}仓`,
+      whType,
+      capacityUnits: 5000 + (hashString(`wh_cap_${b.baseId}_${whType}`) % 45000),
+      province: b.province,
+      city: b.city,
+    }));
+  });
+
+  // Phase 2 Wave 1：产品域基础（ProductPlatform / ProductSeries / ProductVersion）
+  const productPlatforms = [
+    { platformId: "PLAT-001", platformCode: "LFP-Platform", name: "LFP 平台", category: "LFP", description: "磷酸铁锂产品平台", status: "活跃" },
+    { platformId: "PLAT-002", platformCode: "NCM-Platform", name: "三元平台", category: "三元", description: "三元锂产品平台", status: "活跃" },
+    { platformId: "PLAT-003", platformCode: "Solid-State-Platform", name: "固态电池平台", category: "固态", description: "固态电池产品平台", status: "规划中" },
+  ];
+  const productSeries = [
+    { seriesId: "FAM-001", seriesCode: "280Ah-ESS", platformId: "PLAT-001", name: "280Ah 储能系列", category: "280Ah储能", voltageRange: "3.0-3.6V", capacityRange: "200-320Ah", targetMarket: "储能", status: "活跃" },
+    { seriesId: "FAM-002", seriesCode: "314Ah-ESS", platformId: "PLAT-001", name: "314Ah 储能系列", category: "314Ah储能", voltageRange: "3.0-3.6V", capacityRange: "300-350Ah", targetMarket: "储能", status: "活跃" },
+    { seriesId: "FAM-003", seriesCode: "4680-PAS", platformId: "PLAT-002", name: "4680 动力系列", category: "4680动力", voltageRange: "3.6-4.2V", capacityRange: "250-350Ah", targetMarket: "乘用车", status: "活跃" },
+    { seriesId: "FAM-004", seriesCode: "2170-PAS", platformId: "PLAT-002", name: "2170 动力系列", category: "2170动力", voltageRange: "3.6-4.2V", capacityRange: "40-60Ah", targetMarket: "乘用车", status: "活跃" },
+    { seriesId: "FAM-005", seriesCode: "Solid-ESS", platformId: "PLAT-003", name: "固态储能系列", category: "固态储能", voltageRange: "3.5-4.0V", capacityRange: "400-500Ah", targetMarket: "储能", status: "开发中" },
+    { seriesId: "FAM-006", seriesCode: "Solid-PAS", platformId: "PLAT-003", name: "固态动力系列", category: "固态动力", voltageRange: "3.5-4.0V", capacityRange: "400-500Ah", targetMarket: "乘用车", status: "开发中" },
+  ];
+  const MODEL_SERIES_MAP: Record<string, string> = {
+    "4680-NCM": "FAM-003",
+    "4680-LFP": "FAM-001",
+    "2170-NCM": "FAM-004",
+    "方形-LFP": "FAM-002",
+    "方形-NCM": "FAM-003",
+    "圆柱-LFP": "FAM-001",
+  };
+  const MODEL_SPEC_MAP: Record<string, Record<string, unknown>> = {
+    "4680-NCM": { productCode: "P-4680-NCM-300", capacity: 300, voltage: 3.7, energy: 1110, dimension: "80×80×120", weight: 350, applicationDomain: "乘用车", status: "量产" },
+    "4680-LFP": { productCode: "P-4680-LFP-250", capacity: 250, voltage: 3.2, energy: 800, dimension: "80×80×120", weight: 380, applicationDomain: "储能", status: "量产" },
+    "2170-NCM": { productCode: "P-2170-NCM-050", capacity: 50, voltage: 3.6, energy: 180, dimension: "21×70", weight: 70, applicationDomain: "乘用车", status: "量产" },
+    "方形-LFP": { productCode: "P-SQ-LFP-314", capacity: 314, voltage: 3.2, energy: 1005, dimension: "174×72×205", weight: 5200, applicationDomain: "储能", status: "量产" },
+    "方形-NCM": { productCode: "P-SQ-NCM-150", capacity: 150, voltage: 3.7, energy: 555, dimension: "148×26×91", weight: 2200, applicationDomain: "乘用车", status: "量产" },
+    "圆柱-LFP": { productCode: "P-CYL-LFP-100", capacity: 100, voltage: 3.2, energy: 320, dimension: "46×80", weight: 1800, applicationDomain: "储能", status: "量产" },
+  };
 
   const models = MODELS.map((m) => {
+    // rng 仍按原步长消耗（n + 洗牌），保持下游订单/拓扑字节流稳定；可产基地改取确定性 MODEL_BASE_MAP。
     const n = randInt(rng, 2, 5);
     const shuffled = [...BASES.map((b) => b.baseId)];
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -954,123 +5504,666 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
       shuffled[i] = shuffled[j] as string;
       shuffled[j] = tmp;
     }
+    const mappedBases = MODEL_BASE_MAP[m.modelId] ?? shuffled.slice(0, n);
+    const spec = MODEL_SPEC_MAP[m.modelId];
+    // WO-SCALE-COHERENCE 断裂点C：Model.unitPrice 从 SEG_REGISTRY 派生（元/套=priceWan×1e4，±确定性微差），
+    // 消灭"订单侧 ~600 元/套 vs 需求侧 ~18667 元/套 差 31×"。型号→细分统一按 pos 映射（动力→乘用车 pas / 储能→ess），
+    // Order.unitPrice=model.unitPrice 自动继承（Model 侧与 Order 侧同一口径，不打架 R14）。
+    void randInt(rng, 380, 980); // R6：保持 rng 流步长不变（下游订单/拓扑字节一致）
+    const sc = BATTERY_SOLVER_PARAMS.scaleCoherence as { modelPriceVarPpk: number };
+    // WO-COMPUTED-EDGE：归段口径抽成 `segKeyOfModelPos` 单一出处（图谱侧 `model_in_segment`
+    // 与本处定价从此**共用同一个函数**）。值不变 —— 本行原文就是该函数的函数体。
+    const seg = SEG_REGISTRY.find((s) => s.key === segKeyOfModelPos(m.pos))!;
+    const priceVar = ((hashString(`${m.modelId}:unitprice`) % (2 * sc.modelPriceVarPpk + 1)) - sc.modelPriceVarPpk) / 1000; // ±modelPriceVarPpk‰
+    const unitPrice = Math.round(seg.priceWan * 1e4 * (1 + priceVar));
     return {
       modelId: m.modelId,
       name: m.name,
-      bases: shuffled.slice(0, n).sort(),
-      unitPrice: randInt(rng, 380, 980),
+      chem: m.chem,
+      pos: m.pos,
+      bases: [...mappedBases].sort(),
+      unitPrice,
       // C33：NCM 体系碳足迹 >70 阈值（越线），LFP 达标。
       carbonFootprint: m.modelId.includes("NCM") ? 76 : 58,
+      seriesId: MODEL_SERIES_MAP[m.modelId],
+      ...spec,
     };
   });
 
-  const orders: Record<string, unknown>[] = [];
-  for (let i = 0; i < orderCount; i++) {
-    const model = models[Math.floor(rng() * models.length)] as (typeof models)[number];
-    const producible = model.bases;
-    const nBases = randInt(rng, 1, Math.min(2, producible.length));
-    const start = Math.floor(rng() * producible.length);
-    const orderBases = Array.from({ length: nBases }, (_, k) => producible[(start + k) % producible.length] as string).sort();
-    const dueDay = randInt(rng, 0, 180);
-    const due = new Date(Date.UTC(2026, 6, 1) + dueDay * 86400000).toISOString().slice(0, 10);
-    const so = `SO-${String(10001 + i).padStart(5, "0")}`;
-    // 约束扫描字段：从确定性量(i / hashString(so) / dueDay)派生，不动 rng 流（保持既有字节级一致）；
-    // 按固定步长植入越线行：C03 demandDelta>0.5、C08 outsourceRatio>0.2、C13 creditUsedRatio>1、C29 leadDays<3。
-    orders.push({
-      so,
-      cust: pick(rng, CUSTOMERS),
-      model: model.modelId,
-      qty: randInt(rng, 100, 2500),
-      due,
+  // ProductVersion：每 Model 2-3 个版本（确定性，不消耗 rng）
+  const productVersions: Record<string, unknown>[] = [];
+  const VERSION_DEFS = [
+    { versionCode: "V1.0", versionName: "初始量产版", ecnNumber: "ECN-2024-001", effectiveDate: "2024-01-01", expireDate: "2024-12-31", status: "量产", changeReason: "首批量产导入" },
+    { versionCode: "V1.1", versionName: "工艺优化版", ecnNumber: "ECN-2024-006", effectiveDate: "2024-06-01", expireDate: "2025-06-30", status: "量产", changeReason: "涂布速度优化+良率提升" },
+    { versionCode: "V2.0", versionName: "下一代试产版", ecnNumber: "ECN-2025-001", effectiveDate: "2025-01-01", expireDate: "", status: "试产", changeReason: "材料体系升级" },
+  ];
+  for (const m of models) {
+    const nVersions = 2 + (hashString(m.modelId as string) % 2);
+    for (let vi = 0; vi < nVersions; vi++) {
+      const vd = VERSION_DEFS[vi]!;
+      productVersions.push({
+        versionId: `VER-${m.modelId}-${vd.versionCode}`,
+        modelId: m.modelId,
+        ...vd,
+      });
+    }
+  }
+
+  // Phase 2 Wave 3：BOM + Routing + Operation + ProcessCapabilityWindow（确定性，不消耗 rng）
+  const bomHeaders: Record<string, unknown>[] = [];
+  const bomDetails: Record<string, unknown>[] = [];
+  const routings: Record<string, unknown>[] = [];
+  const operations: Record<string, unknown>[] = [];
+  const processCapabilities: Record<string, unknown>[] = [];
+
+  // 标准工序库（10 工序）
+  const STD_OPERATIONS = [
+    { operationCode: "OP-001", operationName: "混料", operationType: "制造", standardTime: 30, setupTime: 5, yield: 0.998, isCritical: true, workCenterType: "制浆线" },
+    { operationCode: "OP-002", operationName: "涂布", operationType: "制造", standardTime: 120, setupTime: 30, yield: 0.985, isCritical: true, workCenterType: "涂布线" },
+    { operationCode: "OP-003", operationName: "辊压", operationType: "制造", standardTime: 60, setupTime: 20, yield: 0.992, isCritical: true, workCenterType: "辊压机" },
+    { operationCode: "OP-004", operationName: "分切", operationType: "制造", standardTime: 45, setupTime: 15, yield: 0.995, isCritical: false, workCenterType: "分切机" },
+    { operationCode: "OP-005", operationName: "卷绕", operationType: "制造", standardTime: 90, setupTime: 25, yield: 0.990, isCritical: true, workCenterType: "卷绕机" },
+    { operationCode: "OP-006", operationName: "装配", operationType: "制造", standardTime: 75, setupTime: 20, yield: 0.993, isCritical: true, workCenterType: "装配线" },
+    { operationCode: "OP-007", operationName: "注液", operationType: "制造", standardTime: 40, setupTime: 30, yield: 0.995, isCritical: true, workCenterType: "注液机" },
+    { operationCode: "OP-008", operationName: "化成", operationType: "制造", standardTime: 720, setupTime: 60, yield: 0.997, isCritical: true, workCenterType: "化成柜" },
+    { operationCode: "OP-009", operationName: "分容", operationType: "制造", standardTime: 360, setupTime: 30, yield: 0.996, isCritical: false, workCenterType: "分容柜" },
+    { operationCode: "OP-010", operationName: "PACK", operationType: "制造", standardTime: 180, setupTime: 45, yield: 0.994, isCritical: true, workCenterType: "PACK线" },
+  ];
+
+  // 工艺参数模板（每工序 3-5 个参数）
+  const CAPABILITY_TEMPLATES: Record<string, Array<{ parameterName: string; paramCode: string; unit: string; minValue: number; maxValue: number; targetValue: number; tolerance: number; ucl: number; lcl: number }>> = {
+    "混料": [
+      { parameterName: "搅拌速度", paramCode: "SPEED", unit: "rpm", minValue: 800, maxValue: 1200, targetValue: 1000, tolerance: 100, ucl: 1300, lcl: 700 },
+      { parameterName: "浆料粘度", paramCode: "VISC", unit: "mPa·s", minValue: 3000, maxValue: 6000, targetValue: 4500, tolerance: 500, ucl: 6500, lcl: 2500 },
+    ],
+    "涂布": [
+      { parameterName: "温度", paramCode: "TEMP", unit: "℃", minValue: 75, maxValue: 85, targetValue: 80, tolerance: 5, ucl: 87, lcl: 73 },
+      { parameterName: "压力", paramCode: "PRESS", unit: "N", minValue: 100, maxValue: 120, targetValue: 110, tolerance: 10, ucl: 125, lcl: 95 },
+      { parameterName: "速度", paramCode: "SPEED", unit: "m/min", minValue: 10, maxValue: 15, targetValue: 12, tolerance: 2, ucl: 16, lcl: 9 },
+    ],
+    "辊压": [
+      { parameterName: "辊压压力", paramCode: "ROLL_PRESS", unit: "MPa", minValue: 15, maxValue: 25, targetValue: 20, tolerance: 3, ucl: 28, lcl: 12 },
+      { parameterName: "辊缝间隙", paramCode: "GAP", unit: "μm", minValue: 80, maxValue: 120, targetValue: 100, tolerance: 10, ucl: 130, lcl: 70 },
+    ],
+    "分切": [
+      { parameterName: "张力", paramCode: "TENSION", unit: "N", minValue: 50, maxValue: 80, targetValue: 65, tolerance: 10, ucl: 90, lcl: 40 },
+      { parameterName: "毛刺", paramCode: "BURR", unit: "μm", minValue: 0, maxValue: 7, targetValue: 3, tolerance: 2, ucl: 8, lcl: 0 },
+    ],
+    "卷绕": [
+      { parameterName: "卷绕张力", paramCode: "WIND_TENSION", unit: "N", minValue: 20, maxValue: 40, targetValue: 30, tolerance: 5, ucl: 45, lcl: 15 },
+      { parameterName: "对齐度", paramCode: "ALIGN", unit: "mm", minValue: 0, maxValue: 0.5, targetValue: 0.2, tolerance: 0.1, ucl: 0.6, lcl: 0 },
+      { parameterName: "速度", paramCode: "SPEED", unit: "m/s", minValue: 0.8, maxValue: 1.5, targetValue: 1.1, tolerance: 0.2, ucl: 1.7, lcl: 0.6 },
+    ],
+    "装配": [
+      { parameterName: "焊接电流", paramCode: "WELD_CURR", unit: "A", minValue: 800, maxValue: 1200, targetValue: 1000, tolerance: 100, ucl: 1300, lcl: 700 },
+      { parameterName: "焊接时间", paramCode: "WELD_TIME", unit: "ms", minValue: 2, maxValue: 5, targetValue: 3, tolerance: 0.5, ucl: 5.5, lcl: 1.5 },
+    ],
+    "注液": [
+      { parameterName: "注液量", paramCode: "FILL_VOL", unit: "mL", minValue: 4.5, maxValue: 5.5, targetValue: 5, tolerance: 0.3, ucl: 5.8, lcl: 4.2 },
+      { parameterName: "真空度", paramCode: "VACUUM", unit: "kPa", minValue: -98, maxValue: -85, targetValue: -92, tolerance: 5, ucl: -80, lcl: -100 },
+      { parameterName: "环境温度", paramCode: "ENV_TEMP", unit: "℃", minValue: 20, maxValue: 25, targetValue: 23, tolerance: 2, ucl: 27, lcl: 18 },
+    ],
+    "化成": [
+      { parameterName: "充电电流", paramCode: "CHG_CURR", unit: "A", minValue: 0.1, maxValue: 0.3, targetValue: 0.2, tolerance: 0.05, ucl: 0.35, lcl: 0.08 },
+      { parameterName: "化成温度", paramCode: "FORM_TEMP", unit: "℃", minValue: 40, maxValue: 50, targetValue: 45, tolerance: 3, ucl: 53, lcl: 37 },
+    ],
+    "分容": [
+      { parameterName: "放电倍率", paramCode: "DISCHG_RATE", unit: "C", minValue: 0.2, maxValue: 0.5, targetValue: 0.33, tolerance: 0.1, ucl: 0.6, lcl: 0.15 },
+      { parameterName: "容量偏差", paramCode: "CAP_DEV", unit: "%", minValue: 0, maxValue: 3, targetValue: 1, tolerance: 1, ucl: 4, lcl: 0 },
+    ],
+    "PACK": [
+      { parameterName: "焊接温度", paramCode: "PACK_WELD_TEMP", unit: "℃", minValue: 200, maxValue: 300, targetValue: 250, tolerance: 30, ucl: 330, lcl: 170 },
+      { parameterName: "绝缘阻抗", paramCode: "INSULATION", unit: "MΩ", minValue: 100, maxValue: 500, targetValue: 300, tolerance: 50, ucl: 550, lcl: 80 },
+    ],
+  };
+
+  // BOM 物料模板（简化版，引用 battery-extended.ts 中已有的物料 ID）
+  const BOM_ITEM_TEMPLATES: Array<{ materialId: string; quantity: number; unit: string; level: number; isKeyComponent: boolean }> = [
+    { materialId: "pos_ncm", quantity: 1.05, unit: "kg", level: 1, isKeyComponent: true },
+    { materialId: "pos_lfp", quantity: 1.0, unit: "kg", level: 1, isKeyComponent: true },
+    { materialId: "neg_graphite", quantity: 0.45, unit: "kg", level: 1, isKeyComponent: true },
+    { materialId: "sep_film", quantity: 12, unit: "㎡", level: 1, isKeyComponent: true },
+    { materialId: "elyte", quantity: 0.3, unit: "L", level: 1, isKeyComponent: true },
+    { materialId: "cu_foil", quantity: 0.2, unit: "kg", level: 1, isKeyComponent: false },
+    { materialId: "al_foil", quantity: 0.15, unit: "kg", level: 1, isKeyComponent: false },
+    { materialId: "cell_case", quantity: 1, unit: "个", level: 1, isKeyComponent: true },
+  ];
+
+  // 曾有 bomSeq / opSeq / capSeq 三个全局流水号在这里，**从未自增也从未被读**（旧 ID 方案的残留）。
+  // 现行 ID 全部由自然键组合而成、天然唯一：`BDTL-${bomId}-${bi}` · `${routingId}-${sop.operationCode}` ·
+  // `CAP-${operationId}-${ci}`。把流水号接回去等于换一套 ID ⇒ 破坏确定性种子的字节级一致，故删不接。
+  for (const v of productVersions) {
+    const modelId = v.modelId as string;
+    const versionId = v.versionId as string;
+    const versionCode = (v.versionCode as string) ?? "V1.0";
+
+    // BOMHeader
+    const bomId = `BOM-${modelId}-${versionCode}`;
+    bomHeaders.push({
+      bomId,
+      bomCode: `BOM-${modelId}-${versionCode}`,
+      versionId,
+      modelId,
+      bomName: `${modelId} ${versionCode} BOM`,
+      bomLevel: 3,
+      effectiveDate: v.effectiveDate,
+      expireDate: v.expireDate,
+      status: v.status,
+    });
+
+    // BOMDetail：每 BOM 8 行（与现有物料对齐）
+    for (const [bi, item] of BOM_ITEM_TEMPLATES.entries()) {
+      // LFP 型号跳过 NCM 正极，NCM 型号跳过 LFP 正极
+      if (modelId.includes("LFP") && item.materialId === "pos_ncm") continue;
+      if (modelId.includes("NCM") && item.materialId === "pos_lfp") continue;
+      bomDetails.push({
+        bomDetailId: `BDTL-${bomId}-${bi}`,
+        bomId,
+        materialId: item.materialId,
+        sequence: bi + 1,
+        quantity: item.quantity,
+        lossRate: 0.02,
+        unit: item.unit,
+        level: item.level,
+        parentItemId: null,
+        isKeyComponent: item.isKeyComponent,
+        effectiveDate: v.effectiveDate,
+        expireDate: v.expireDate,
+      });
+    }
+
+    // Routing
+    const routingId = `RT-${modelId}-${versionCode}`;
+    const totalStdTime = STD_OPERATIONS.reduce((s, o) => s + o.standardTime, 0);
+    const totalYield = STD_OPERATIONS.reduce((p, o) => p * o.yield, 1);
+    routings.push({
+      routingId,
+      routingCode: `RT-${modelId}-${versionCode}`,
+      modelId,
+      versionId,
+      routingName: `${modelId} ${versionCode} 工艺路线`,
+      operationCount: STD_OPERATIONS.length,
+      totalStandardTime: totalStdTime,
+      totalYield: round(totalYield, 6),
+      status: v.status,
+      effectiveDate: v.effectiveDate,
+    });
+
+    // Operation（每 Routing 10 工序）
+    for (const [oi, sop] of STD_OPERATIONS.entries()) {
+      const operationId = `${routingId}-${sop.operationCode}`;
+      operations.push({
+        operationId,
+        operationCode: sop.operationCode,
+        routingId,
+        operationSeq: oi + 1,
+        operationName: sop.operationName,
+        description: `${sop.operationName}工序`,
+        operationType: sop.operationType,
+        standardTime: sop.standardTime,
+        setupTime: sop.setupTime,
+        yield: sop.yield,
+        isCritical: sop.isCritical,
+        workCenterType: sop.workCenterType,
+        status: "生效",
+        // WO-LAST3-RELATIONS · `depends_on` 承载：同路线上一道工序（纯派生·零 rng·末位追加·守 R6）。
+        // 首工序（oi===0）无前驱 ⇒ 空串；物化时落 unresolved，绝不跨工艺路线乱接。
+        predecessorOperationId: oi === 0 ? "" : `${routingId}-${STD_OPERATIONS[oi - 1]?.operationCode ?? ""}`,
+      });
+
+      // ProcessCapabilityWindow（每工序 2-3 参数）
+      const caps = CAPABILITY_TEMPLATES[sop.operationName] ?? [];
+      for (const [ci, cap] of caps.entries()) {
+        processCapabilities.push({
+          capabilityId: `CAP-${operationId}-${ci}`,
+          operationId,
+          ...cap,
+          status: "生效",
+        });
+      }
+    }
+  }
+
+  // PRD-IND-order-aggregate：HTML 24 单逐字录入（so/cust/model/qty/due/pri，SO-3391…SO-3540），
+  // 替代随机生成 → 订单全链/台账/根因 1:1。可产基地取该 model 的 MODEL_BASE_MAP（确定性）。
+  const modelById = new Map(models.map((m) => [m.modelId, m]));
+  const t0ms = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
+  const orders: Record<string, unknown>[] = HTML_ORDERS.map((o, i) => {
+    const model = modelById.get(o.model);
+    const producible = model?.bases ?? [];
+    // 落单基地：取该型号可产基地前 1（确定性，按 so 选起点以分散）；多基地型号取相邻 1–2。
+    const startIdx = producible.length > 0 ? hashString(o.so) % producible.length : 0;
+    const nBases = producible.length >= 3 ? 2 : 1;
+    const orderBases = producible.length > 0
+      ? Array.from({ length: Math.min(nBases, producible.length) }, (_, k) => producible[(startIdx + k) % producible.length] as string).sort()
+      : [];
+    const dueDay = Math.max(0, Math.round((Date.parse(`${o.due}T00:00:00Z`) - t0ms) / 86400000));
+    // WO-W5·业务类型维度（additive·不改既有 qty/due 数值口径·R6）：客户名 → 业务类型；乘用车部分客户需提前交付
+    // → early:true + earlyDue（提前 earlyDeliveryLeadDays 天·确定性 hashString(so)%mod）；商用/储能 无提前交付标。
+    const businessType = businessTypeOfCustomer(o.cust);
+    const btReg = (BATTERY_SOLVER_PARAMS.businessTypeRegime as Record<string, { earlyDeliveryLeadDays?: number; earlyDeliveryMod?: number; volatilityFactors?: number[] }>)[businessType] ?? {};
+    const early = businessType === "passenger" && (hashString(o.so) % (btReg.earlyDeliveryMod ?? 3) === 0);
+    const earlyDue = early ? new Date(Date.parse(`${o.due}T00:00:00Z`) - (btReg.earlyDeliveryLeadDays ?? 14) * 86400000).toISOString().slice(0, 10) : undefined;
+    const qty = shapeBusinessTypeQty(businessType, o.qty, o.so);
+    return {
+      so: o.so,
+      cust: o.cust,
+      // WO-ORDER-BOOK-500（additive·不改既有列的值）：客户外键，令 Order→Customer 这条边对
+      // 「按主键走图」的通用求解器真的存在。锚点 8 家客户恒落 cust_0…cust_7（名册下标固定）。
+      customerId: custIdOfCustomer(o.cust) ?? "",
+      model: o.model,
+      qty,
+      due: o.due,
+      pri: o.pri,
       bases: orderBases,
       status: "OPEN",
-      unitPrice: model.unitPrice, // copied for the derived value formula
-      demandDelta: i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
-      outsourceRatio: i % 17 === 0 ? 0.35 : round((hashString(`${so}o`) % 18) / 100, 2),
-      creditUsedRatio: i % 13 === 0 ? 1.15 : round(0.4 + (hashString(`${so}c`) % 50) / 100, 2),
+      unitPrice: orderUnitPriceOf(businessType, o.so),
+      businessType,
+      early,
+      ...(earlyDue ? { earlyDue } : {}),
+      // 约束扫描字段：确定性派生（不依赖 rng），按固定步长植入越线行（C03/C08/C13/C29）。
+      demandDelta: i % 8 === 0 ? 0.6 : round((hashString(o.so) % 50) / 100, 2),
+      // DF.13：越线样本/合规桶与 C08 红线强耦合（红线放松到样本之上 → C08 立刻变哑弹）→ 从 OUTSOURCE_SAMPLE 派生，值不变。
+      outsourceRatio: i % 6 === 0 ? OUTSOURCE_SAMPLE.violationRatio : round((hashString(`${o.so}o`) % OUTSOURCE_SAMPLE.normalBucketMod) / 100, 2),
+      creditUsedRatio: i % 7 === 0 ? 1.15 : round(0.4 + (hashString(`${o.so}c`) % 50) / 100, 2),
+      leadDays: dueDay,
+    };
+  });
+
+  // WO-ORDER-BOOK-500 · 补足段三态目标（24 张锚点之外的订单）。
+  // 三态目标按**全簿** orderCount 算（70:20:10 出自契约 `orderStatusTargets` 单一来源），再扣掉锚点占的名额：
+  // 24 张锚点单**全部记为 OPEN（= 已下待排产）**，理由不是「懒得改」而是实测出来的 ——
+  //  ① 它们的交期实测全部落在 forecastStart(2026-06-10) 之后 14–48 天，即**全在未来**，不可能是「已完成」；
+  //  ② 今天的生产代码本来就把 status==="OPEN" 当「待排产决策集」用（portfolio 决策集 / 只给 OPEN 单算 ATP 承诺）；
+  //  ③ 于是这 24 行的 status 字面量一个字节都不用改，R6 字节基线在该字段上零位移。
+  const padSos: string[] = [];
+  for (let i = orders.length; i < orderCount; i++) padSos.push(`SO-9${String(i).padStart(5, "0")}`);
+  const bookTargets = orderStatusTargets(orderCount);
+  const anchorOpen = orders.length; // 锚点段全 OPEN，吃掉 OPEN 桶的前 anchorOpen 个名额
+  const padStatus = assignOrderStatuses(padSos, {
+    COMPLETED: bookTargets.COMPLETED,
+    IN_PRODUCTION: bookTargets.IN_PRODUCTION,
+    OPEN: Math.max(0, bookTargets.OPEN - anchorOpen),
+  }, seed);
+
+  // 规模补足：HTML 24 单为语义基底，超出部分用 rng 生成补足到 orderCount（性能基线 XL=10000）。
+  for (let i = orders.length; i < orderCount; i++) {
+    // WO-ORDER-BOOK-500：**先抽客户、再按客户业态抽型号**（此前是先均匀抽型号、再均匀抽客户，
+    // 两者互不相干 ⇒ 会开出「国家电网订 2170-NCM（三元动力电芯）」这种储能客户买动力电芯的单）。
+    // 判据取自锚点 24 张的实测：passenger/commercial 只出现 NCM 动力型号，storage 只出现 LFP 储能型号
+    // （见 MODELS 的 `pos` 列：动力 / 储能 / 动力+储能 —— 双用型号两边都合法，这正是该列的含义）。
+    const cust = pickCustomerWeighted(rng());
+    const businessType = businessTypeOfCustomer(cust);
+    const eligibleModels = modelsForBusinessType(models, businessType);
+    const model = eligibleModels[Math.floor(rng() * eligibleModels.length)] as (typeof models)[number];
+    const producible = model.bases;
+    const nBases = randInt(rng, 1, Math.min(2, Math.max(1, producible.length)));
+    const start = producible.length > 0 ? Math.floor(rng() * producible.length) : 0;
+    const orderBases = producible.length > 0
+      ? Array.from({ length: nBases }, (_, k) => producible[(start + k) % producible.length] as string).sort()
+      : [];
+    // ⚠ 这次 rng 抽样**保留在原位、步长不变**（R6：补足段 rng 流不位移），只是它的落点区间改由状态决定：
+    // 已完成→过去 / 在制→近端 / 待排产→未来（见 dueDayForStatus）。
+    const dueSpread = randInt(rng, 0, 180);
+    const so = `SO-9${String(i).padStart(5, "0")}`;
+    const status = padStatus.get(so) ?? "OPEN";
+    const dueDay = dueDayForStatus(status, dueSpread);
+    const due = new Date(t0ms + dueDay * 86400000).toISOString().slice(0, 10);
+    const btReg = (BATTERY_SOLVER_PARAMS.businessTypeRegime as Record<string, { earlyDeliveryLeadDays?: number; earlyDeliveryMod?: number }>)[businessType] ?? {};
+    // 「需提前交付」只对**未完成**的单成立：已交付关闭的单再谈提前交期是自相矛盾的数据。
+    const early = status !== "COMPLETED" && businessType === "passenger" && (hashString(so) % (btReg.earlyDeliveryMod ?? 3) === 0);
+    const earlyDue = early ? new Date(t0ms + (dueDay - (btReg.earlyDeliveryLeadDays ?? 14)) * 86400000).toISOString().slice(0, 10) : undefined;
+    // 约束越线注入（C03 产能上限 / C08 外协红线 / C13 信用额度）**只打在未完成的单上**：
+    // 这三条都是前瞻性约束，对已交付关闭的单报违规是纯噪声 —— 350 张已完成单若照打，
+    // 会把真正需要决策的在手订单淹掉（违规列表 7 成是「已经完成了的单产能超限」这种废话）。
+    const scannable = status !== "COMPLETED";
+    orders.push({
+      so, cust, customerId: custIdOfCustomer(cust) ?? "",
+      model: model.modelId, qty: shapeBusinessTypeQty(businessType, randInt(rng, 1420, 7668), so), due,
+      pri: ["高", "中", "低"][i % 3], bases: orderBases, status, unitPrice: orderUnitPriceOf(businessType, so),
+      businessType, early, ...(earlyDue ? { earlyDue } : {}),
+      demandDelta: scannable && i % 25 === 0 ? 0.6 : round((hashString(so) % 50) / 100, 2),
+      outsourceRatio: scannable && i % 17 === 0 ? OUTSOURCE_SAMPLE.violationRatio : round((hashString(`${so}o`) % OUTSOURCE_SAMPLE.normalBucketMod) / 100, 2), // DF.13 同上（规模补足段）
+
+      creditUsedRatio: scannable && i % 13 === 0 ? 1.15 : round(0.4 + (hashString(`${so}c`) % 50) / 100, 2),
+      // 交期相对 forecastStart 的天数；已完成单为负（= 交期已过去 N 天），不再 clamp 到 0 ——
+      // clamp 会让 350 张已完成单的这一列**恒等于 0**，那是个一眼假的退化列。
+      // （锚点段的 Math.max(0,…) 保留原样：实测其 leadDays 最小 14，clamp 从未触发，故两段口径实际一致。）
       leadDays: dueDay,
     });
   }
 
-  // ---- production topology (separate sub-streams keep base/model/order streams stable) --
+  /**
+   * WO-COMPUTED-EDGE · 回填 `Order.dueMonth`（`YYYY-MM`）。
+   *
+   * **一处回填而不是两处各写一遍**：订单来自两段（24 张锚点 + 规模补足段），两段各写一次
+   * 就是两份口径，改一处漏一处不会红 —— 这正是本仓 `lnk_mum_`/`lnk_mubm_` 那一对立下的纪律
+   * （「共用同一个变量，不是抄一遍派生式」）。
+   * 纯字符串截断、零 rng、零时钟 ⇒ R6 不受影响（`due` 本身就是确定性生成的）。
+   */
+  for (const o of orders) {
+    o["dueMonth"] = String(o["due"] ?? "").slice(0, 7);
+  }
+
+  /**
+   * WO-UNITCOST-LAND · 回填 `Model.unitCost`（元/电芯），**必须排在 `deriveOrderLines` 之前** ——
+   * 行上的 `unitCost` 是从 model 反范式化下来的，早一行都拿不到值。
+   *
+   * ⚠ **为什么放在这里而不是 `models` 的构造处**：BOM 依赖 ProductVersion、ProductVersion 依赖 Model，
+   * 顺序上 BOM 只能在 model 之后 ⇒ 这一格只能回填。诚实写成回填，好过为了"一次成型"
+   * 把 BOM 生成往前挪（那会真的动 rng 流与 ID 序）。
+   *
+   * ⚠ **R6：`materialUnitPrices` 自建一条 `seed+7919` 子流、用完即弃**，
+   * 不碰 `generateBattery` 自己的任何 rng 流 ⇒ 除本字段外全部合成值逐字节不动。
+   * 实测（`docs/evidence/wo-unitcost-land/determinism.mjs`）：90 个集合里只有
+   * `models` / `orderLines` 变，剔除 `unitCost` 后两者 hash 回到接线前基线值。
+   */
+  const unitCostOfModel = modelUnitCosts(bomHeaders, bomDetails, materialUnitPrices(seed));
+  for (const m of models) {
+    // 取不到 ⇒ 该型号没有 BOM。写 0 是**诚实的"没量到"**而不是"不要钱"：
+    // 下游 `assignCostBound` 与取证脚本的金丝雀都会把 0 值型号点名（今日实测 6/6 有 BOM，无 0 值）。
+    (m as Record<string, unknown>).unitCost = unitCostOfModel.get(String(m.modelId)) ?? 0;
+  }
+
+  // WO-ORDERLINE：订单拆行（SO→型号明细行·一单多型号多行）。独立哈希子流·**不插既有 order rng 流**→
+  // 24 单头级字节基线不移（R6）；additive 只加 OrderLine 行、Order 头级对象数不变。
+  const orderLines = deriveOrderLines(orders, models);
+
   const rngTopo = mulberry32(seed ^ hashString("topology"));
+  const workshops: Record<string, unknown>[] = [];
   const lines: Record<string, unknown>[] = [];
   const processes: Record<string, unknown>[] = [];
   const equipment: Record<string, unknown>[] = [];
+  const scaleCoh = BATTERY_SOLVER_PARAMS.scaleCoherence as {
+    lineHeadroom: number; channelOutputBase: number; channelOutputSpan: number; agingHeadroom: number;
+    serialCellsPerCtSec: number; ctSecMin: number; ctSecMax: number;
+  };
+  const nLinesPerBase = WORKSHOP_DEFS.length;
   for (const b of bases) {
-    const lineId = `LINE-${b.baseId}`;
-    lines.push({ lineId, baseId: b.baseId, name: `${b.name}一号线` });
-    for (const step of SERIAL_STEPS) {
-      const processId = `${lineId}-${step.suffix}`;
-      processes.push({
-        processId,
+    // WO-SCALE-COHERENCE 断裂点B：产能微观参数按 gwhᵢ 派生（令 computeRollup 的 min 绑定 gwh 夹点·不改求解器）。
+    // 物理→套：名牌套/年 = gwhᵢ×1e6/packEnergyKwhAnchor；有效套/年 = 名牌套×util（util 为百分数，÷100）。
+    const utilFrac = b.util / 100; // BASE_REGISTRY.util 为百分口径（88/85…），÷100 取分数
+    const annualEffectivePacks = (b.gwh * 1e6) / packEnergyKwhAnchor * utilFrac; // 有效套/年（名牌×利用率）
+    // 化成/老化 基地共享夹点（电芯/日）——周产能口径：weeklyWan=dailyCells×7/packCellCount/1e4 → ×52 年化=52×7=364 日历日。
+    const baseDailyCellsWeekly = Math.round((annualEffectivePacks * (BATTERY_SOLVER_PARAMS.packCellCount as number)) / (52 * 7));
+    // 每线套/日（供 supply_demand ×operatingDaysPerYear/1e4 年化）——13 基地×10 线 Σ×300/1e4 = Σ有效套/1e4 = 名牌×util 尺度。
+    const perLineDailyPacks = Math.max(1, Math.round(annualEffectivePacks / (operatingDaysPerYear * nLinesPerBase)));
+    // 线级夹点（电芯/日）：略高于基地夹点（headroom）→ lineMean 不低于基地夹点 → min() 绑 gwh 夹点（非玩具线级=SEAM 反例）。
+    const lineTargetCells = Math.round(baseDailyCellsWeekly * scaleCoh.lineHeadroom);
+    // 节拍反解：令串行工序在最坏因子下日产 ≥ lineTargetCells（serialCellsPerCtSec/ct ≥ target → ct ≤ 系数/target）。
+    const ctSecondsBase = Math.min(scaleCoh.ctSecMax, Math.max(scaleCoh.ctSecMin, round(scaleCoh.serialCellsPerCtSec / lineTargetCells, 2)));
+    for (const wsDef of WORKSHOP_DEFS) {
+      const workshopId = `WS-${b.baseId}-${wsDef.suffix}`;
+      workshops.push({
+        workshopId,
+        baseId: b.baseId,
+        name: `${b.name}${wsDef.type}车间`,
+        processType: wsDef.type,
+      });
+      const lineId = `LINE-${workshopId}`;
+      const lineHash = hashString(lineId);
+      lines.push({
         lineId,
         baseId: b.baseId,
-        name: step.name,
-        kind: "serial",
-        yield: round(0.95 + rngTopo() * 0.04, 3),
-        shiftHours: 11,
-        shifts: 2,
-        attendance: round(0.92 + rngTopo() * 0.06, 3),
-        utilization: round(0.88 + rngTopo() * 0.08, 3),
-        channels: 0,
-        channelOutputDaily: 0,
-        agingSlots: 0,
-        agingDays: 0,
+        // WO-COMPUTED-EDGE：车间归属落成一列（值取上面这个**现成变量**，不从 lineId 反解 —— 反解=第二份真相）。
+        workshopId,
+        name: `${b.name}${wsDef.type}线`,
+        // SA-5：产线台账字段（R12 全建模对齐）
+        line_code: lineId.replace("LINE-", "L-"),
+        // WO-SCALE-COHERENCE：件/日(电芯) = 套/日 × 单PACK电芯数（gwhᵢ 派生·确定性·无 rng）。
+        max_capacity_day: perLineDailyPacks * (BATTERY_SOLVER_PARAMS.packCellCount as number),
+        // 套/日 运营日产能：gwhᵢ 派生（Σ全线 ×operatingDaysPerYear/1e4 = 名牌×util 尺度，与需求万套同口径）
+        // → supply_demand 产能缺口叶出真数(非虚空)。
+        capacityDaily: perLineDailyPacks, // 套/日 · gwhᵢ 派生 · 确定性(R6·无 rng)
+        target_yield: round(0.95 + (lineHash % 100) / 100 * 0.04, 3),
+        status: lineHash % 10 < 9 ? "运行中" : "调试",
       });
-      for (let e = 1; e <= 2; e++) {
-        equipment.push({
-          equipId: `${processId}-E${e}`,
+      for (const step of SERIAL_STEPS) {
+        const processId = `${lineId}-${step.suffix}`;
+        processes.push({
           processId,
           lineId,
           baseId: b.baseId,
-          ctSeconds: round(1.1 + rngTopo() * 0.5, 2),
-          availFactor: round(0.86 + rngTopo() * 0.08, 3),
-          oeeA: round(0.9 + rngTopo() * 0.06, 3),
-          oeeP: round(0.88 + rngTopo() * 0.08, 3),
-          oeeQ: round(0.96 + rngTopo() * 0.03, 3),
+          name: step.name,
+          kind: "serial",
+          yield: round(0.95 + rngTopo() * 0.04, 3),
+          shiftHours: 11,
+          shifts: 2,
+          attendance: round(0.92 + rngTopo() * 0.06, 3),
+          utilization: round(0.88 + rngTopo() * 0.08, 3),
+          channels: 0,
+          channelOutputDaily: 0,
+          agingSlots: 0,
+          agingDays: 0,
+        });
+        for (let e = 1; e <= 2; e++) {
+          const equipId = `${processId}-E${e}`;
+          const equipHash = hashString(equipId);
+          const typeMap: Record<string, string> = EQUIPMENT_TYPE_BY_PROCESS; // 单源见 contracts/base-registry.ts
+          const processSuffix = processId.split("-").pop() ?? "";
+          const manufacturerPool = ["先导智能", "赢合科技", "利元亨", "科恒股份", "大族激光"];
+          void rngTopo(); // WO-SCALE-COHERENCE R6：占 ctSeconds 原 rng 位（保持后续 avail/oee 字节一致），ct 改 gwhᵢ 派生
+          const availFactor = round(0.86 + rngTopo() * 0.08, 3);
+          // WO-OEE-UNIFY 裁决 C：oeeA/oeeP/oeeQ/oee_current 由 EquipmentOEE 日事实行**同源派生**
+          // （7 日均值·equipmentOeeAtomsDaily），不再是独立的「铭牌」真值源。
+          // 三个 void 占原铭牌 A/P/Q 的 rng 位、且严格跟在 availFactor 之后（R6：抽取序一字不动）。
+          void rngTopo(); void rngTopo(); void rngTopo();
+          const oeeDaily = equipmentOeeAtomsDaily(equipId);
+          equipment.push({
+            equipId,
+            processId,
+            lineId,
+            baseId: b.baseId,
+            // 节拍(s/电芯)：gwhᵢ 派生 → 串行工序日产 ≥ 基地夹点（令 min 绑 gwh 夹点·非玩具线级）
+            ctSeconds: ctSecondsBase,
+            availFactor,
+            oeeA: meanOfDaily(oeeDaily, "avail"),
+            oeeP: meanOfDaily(oeeDaily, "perf"),
+            oeeQ: meanOfDaily(oeeDaily, "qual"),
+            oee_current: meanOfDaily(oeeDaily, "oee"),
+            // SA-6：设备台账字段（R12 全建模对齐）
+            equipment_code: equipId,
+            equipment_type: typeMap[processSuffix] ?? processSuffix,
+            manufacturer: manufacturerPool[hashString(b.baseId) % manufacturerPool.length]!,
+            install_date: isoDate(Date.parse(`${b.start_date}T00:00:00Z`) + 90 * 86400000),
+            status: equipHash % 20 < 19 ? "正常" : "维修中",
+            // WO-SA-2 可靠性字段：由 equipId 加盐哈希确定性派生（不占 rngTopo 流·避免下游合成值位移·R6 字节一致），
+            // 诚实合成非实测——对象 origin=SYNTHETIC，前端经 provenanceSynthetic 走诚实灰不冒充 LIVE（KILL-MOCK-RED）。
+            mtbf: 300 + (hashString(`${equipId}:mtbf`) % 501), // 平均无故障时间 300-800h
+            mttr: round(2 + (hashString(`${equipId}:mttr`) % 61) / 10, 1), // 平均修复时间 2.0-8.0h
+            health_score: 78 + (hashString(`${equipId}:health`) % 21), // 设备健康度 78-98
+          });
+        }
+      }
+      // WO-OEE-UNIFY 裁决 C：原「播种期回填 oee_current = round(A×P×Q,3)」已删——
+      // oeeA/oeeP/oeeQ/oee_current 在设备创建时由 EquipmentOEE 事实行同源派生（单一写入方），
+      // 此处不再存在「先填一个、等时序物化来覆写」的接缝。
+      // WO-SCALE-COHERENCE：化成通道数/单通道日产按 gwhᵢ 派生（令线级化成夹点 ≥ 基地夹点·headroom）。
+      void randInt(rngTopo, 600, 780); // R6：占原 channels rng 位
+      void randInt(rngTopo, 80, 95); // R6：占原 channelOutputDaily rng 位
+      const channelOutputDaily = scaleCoh.channelOutputBase + (hashString(`${lineId}:cod`) % scaleCoh.channelOutputSpan); // 85–95 套/通道·日
+      const channels = Math.ceil(lineTargetCells / (channelOutputDaily * 0.97)); // 通道数×日产×良率 ≥ 线级夹点
+      processes.push({
+        processId: `${lineId}-formation`,
+        lineId,
+        baseId: b.baseId,
+        name: "化成",
+        kind: "formation",
+        yield: round(0.97 + rngTopo() * 0.02, 3),
+        shiftHours: 24,
+        shifts: 1,
+        attendance: 1,
+        utilization: 1,
+        channels,
+        channelOutputDaily,
+        agingSlots: 0,
+        agingDays: 0,
+        // WO-SANDBOX-D3：把「有多少个化成柜位」升为**可被引擎通用发现的硬容量约束**。
+        // 单元数/速率不复制（仍读上面的 channels/channelOutputDaily），只加语义标签 + 比较基准。
+        capacityUnitKind: "化成柜位",
+        // requiredThroughput = 上游串行段要求该并行段承接的日吞吐。
+        // 取 `lineTargetCells`（本线串行段被反解节拍夹定到的目标日产·同一段代码 :3489 算出），
+        // 不是拍脑袋的常数：串行工序的 ctSeconds 正是按 "串行日产 ≥ lineTargetCells" 反解的，
+        // 故「上游能推给化成多少」= lineTargetCells。R6：纯 gwhᵢ 派生，无 rng。
+        requiredThroughput: lineTargetCells,
+      });
+      void randInt(rngTopo, 260000, 340000); // R6：占原 agingSlots rng 位
+      const agingDays = 5;
+      // 老化库位按 gwhᵢ 派生（agingSlots/agingDays = 线级老化夹点 ≥ 线级夹点·headroom）。
+      const agingSlots = Math.ceil(lineTargetCells * agingDays * scaleCoh.agingHeadroom);
+      processes.push({
+        processId: `${lineId}-aging`,
+        lineId,
+        baseId: b.baseId,
+        name: "老化",
+        kind: "aging",
+        yield: 1,
+        shiftHours: 24,
+        shifts: 1,
+        attendance: 1,
+        utilization: 1,
+        channels: 0,
+        channelOutputDaily: 0,
+        agingSlots,
+        agingDays,
+        // WO-SANDBOX-D3：老化库位是同族硬容量约束（数据早已存在，此前同样无人当约束读）。
+        capacityUnitKind: "老化库位",
+        requiredThroughput: lineTargetCells,
+      });
+      // Shared-resource caps：仅第一个 workshop 更新基地级共享容量（避免重复覆盖）
+      if (wsDef.suffix === WORKSHOP_DEFS[0]!.suffix) {
+        void randInt(rngTopo, 2000, 6000); // R6：占原 formationCapDaily 噪声 rng 位
+        void randInt(rngTopo, 2000, 6000); // R6：占原 agingCapDaily 噪声 rng 位
+        // WO-SCALE-COHERENCE 断裂点B 主修：基地共享化成/老化夹点 = gwhᵢ 派生日电芯数 → computeRollup 的 min 由 gwh 夹定。
+        b.formationCapDaily = baseDailyCellsWeekly;
+        b.agingCapDaily = baseDailyCellsWeekly;
+      }
+    }
+  }
+
+  // Phase 2 Wave 4：质量标准 + 检验特性 + 制造能力（确定性，不消耗 rng）
+  const qualityStandards: Record<string, unknown>[] = [];
+  const inspectionCharacteristics: Record<string, unknown>[] = [];
+  const productLineCapabilities: Record<string, unknown>[] = [];
+  const productEquipmentCapabilities: Record<string, unknown>[] = [];
+
+  // 质量项模板
+  const QUALITY_ITEMS = [
+    { itemName: "容量", itemCode: "CAP", targetValue: 300, toleranceUpper: 0.02, toleranceLower: -0.02, unit: "Ah", testMethod: "充放电测试", samplingRate: 100 },
+    { itemName: "内阻", itemCode: "IR", targetValue: 0.8, toleranceUpper: 0, toleranceLower: -0.8, unit: "mΩ", testMethod: "交流内阻测试", samplingRate: 100 },
+    { itemName: "外观", itemCode: "APP", targetValue: 0, toleranceUpper: 0, toleranceLower: 0, unit: "级", testMethod: "目视检测", samplingRate: 100 },
+    { itemName: "尺寸", itemCode: "DIM", targetValue: 80, toleranceUpper: 0.5, toleranceLower: -0.5, unit: "mm", testMethod: "卡尺测量", samplingRate: 50 },
+    { itemName: "循环寿命", itemCode: "CYC", targetValue: 3000, toleranceUpper: 0, toleranceLower: -500, unit: "次", testMethod: "循环测试", samplingRate: 5 },
+    { itemName: "安全", itemCode: "SAF", targetValue: 0, toleranceUpper: 0, toleranceLower: 0, unit: "级", testMethod: "针刺/过充", samplingRate: 10 },
+  ];
+
+  // 检验特性模板
+  const INSPECTION_TEMPLATES = [
+    { charName: "全检", charCode: "FI", inspectionType: "全检", inspectionMethod: "设备检测", samplingRate: 100, frequency: "每班", controlMethod: "SPC" },
+    { charName: "抽检", charCode: "SI", inspectionType: "抽检", inspectionMethod: "设备检测", samplingRate: 5, frequency: "每批次", controlMethod: "直方图" },
+  ];
+
+  for (const m of models) {
+    const modelId = m.modelId as string;
+    // QualityStandard：每 Model 6 项
+    for (const [, qItem] of QUALITY_ITEMS.entries()) {
+      const standardId = `QS-${modelId}-${qItem.itemCode}`;
+      qualityStandards.push({
+        standardId,
+        standardCode: `QS-${modelId}-${qItem.itemCode}`,
+        modelId,
+        versionId: null,
+        ...qItem,
+        status: "生效",
+      });
+      // InspectionCharacteristic：每标准 2 项
+      for (const [ci, insp] of INSPECTION_TEMPLATES.entries()) {
+        inspectionCharacteristics.push({
+          charId: `CHAR-${standardId}-${ci}`,
+          standardId,
+          ...insp,
+          status: "生效",
         });
       }
     }
-    const channels = randInt(rngTopo, 600, 780);
-    const channelOutputDaily = randInt(rngTopo, 80, 95);
-    processes.push({
-      processId: `${lineId}-formation`,
-      lineId,
-      baseId: b.baseId,
-      name: "化成",
-      kind: "formation",
-      yield: round(0.97 + rngTopo() * 0.02, 3),
-      shiftHours: 24,
-      shifts: 1,
-      attendance: 1,
-      utilization: 1,
-      channels,
-      channelOutputDaily,
-      agingSlots: 0,
-      agingDays: 0,
-    });
-    const agingSlots = randInt(rngTopo, 260000, 340000);
-    const agingDays = 5;
-    processes.push({
-      processId: `${lineId}-aging`,
-      lineId,
-      baseId: b.baseId,
-      name: "老化",
-      kind: "aging",
-      yield: 1,
-      shiftHours: 24,
-      shifts: 1,
-      attendance: 1,
-      utilization: 1,
-      channels: 0,
-      channelOutputDaily: 0,
-      agingSlots,
-      agingDays,
-    });
-    // Shared-resource caps slightly above single-line capability (C01 design ceiling).
-    b.formationCapDaily = channels * channelOutputDaily + randInt(rngTopo, 2000, 6000);
-    b.agingCapDaily = Math.floor(agingSlots / agingDays) + randInt(rngTopo, 2000, 6000);
+
+    // ProductLineCapability：该 model 可产基地中的 line（稀疏，仅可生产的）
+    const producibleBases = new Set(m.bases as string[]);
+    for (const l of lines) {
+      const lineBaseId = l.baseId as string;
+      if (!producibleBases.has(lineBaseId)) continue;
+      // 只取制浆车间线（每个可产基地 1 条）作为代表，避免数据爆炸
+      if (!(l.lineId as string).endsWith("-slurry")) continue;
+      const lineHash = hashString(`${modelId}_${l.lineId}`);
+      productLineCapabilities.push({
+        capId: `PLC-${modelId}-${l.lineId}`,
+        productId: modelId,
+        versionId: null,
+        lineId: l.lineId,
+        capability: "可生产",
+        maxCapacity: 1500 + (lineHash % 3000),
+        cycleTime: round(1.5 + (lineHash % 100) / 100, 2),
+        yield: round(0.94 + (lineHash % 50) / 1000, 3),
+        priority: 1 + (lineHash % 5),
+        changeoverTime: 30 + (lineHash % 120),
+        constraints: "",
+        status: "生效",
+      });
+    }
+
+    // ProductEquipmentCapability：该 model 可产基地中的 equipment（稀疏）
+    for (const eq of equipment) {
+      const eqBaseId = eq.baseId as string;
+      if (!producibleBases.has(eqBaseId)) continue;
+      // 只取部分设备（每基地前 4 台）
+      const equipHash = hashString(`${modelId}_${eq.equipId}`);
+      if (equipHash % 3 !== 0) continue; // 稀疏化：只取 1/3
+      productEquipmentCapabilities.push({
+        equipCapId: `PEC-${modelId}-${eq.equipId}`,
+        productId: modelId,
+        versionId: null,
+        equipmentId: eq.equipId,
+        capability: "支持",
+        maxSpeed: round(80 + (equipHash % 120), 1),
+        minSpeed: round(10 + (equipHash % 30), 1),
+        setupTime: 15 + (equipHash % 45),
+        qualifiedOperators: 2 + (equipHash % 8),
+        certificationRequired: equipHash % 5 === 0,
+        status: "生效",
+      });
+    }
+  }
+
+  // Phase 2 Wave 5：工程变更历史（确定性，不消耗 rng）
+  const engineeringChanges: Record<string, unknown>[] = [];
+  const CHANGE_TEMPLATES = [
+    { changeType: "材料变更", description: "正极材料供应商切换", status: "已实施", effectiveDate: "2025-03-15", approvedBy: "张三", approvedDate: "2025-03-01" },
+    { changeType: "工艺变更", description: "涂布速度优化提升", status: "已批准", effectiveDate: "2025-06-01", approvedBy: "李四", approvedDate: "2025-05-20" },
+    { changeType: "设计变更", description: "电芯结构优化", status: "已实施", effectiveDate: "2024-09-10", approvedBy: "王五", approvedDate: "2024-08-25" },
+    { changeType: "质量改进", description: "化成工序温控精度提升", status: "审批中", effectiveDate: "", approvedBy: "", approvedDate: "" },
+  ];
+  let changeSeq = 0;
+  for (const m of models) {
+    const modelId = m.modelId as string;
+    const nChanges = 1 + (hashString(modelId) % 2);
+    for (let ci = 0; ci < nChanges; ci++) {
+      const tpl = CHANGE_TEMPLATES[changeSeq % CHANGE_TEMPLATES.length]!;
+      changeSeq++;
+      engineeringChanges.push({
+        changeId: `ECN-${modelId}-${ci + 1}`,
+        changeNumber: `ECN-2025-${String(changeSeq).padStart(3, "0")}`,
+        changeType: tpl.changeType,
+        modelId,
+        versionId: null,
+        changeReason: tpl.description,
+        description: tpl.description,
+        affectedObjects: JSON.stringify([{ type: "BOM", id: `BOM-${modelId}-V1.0` }]),
+        effectiveDate: tpl.effectiveDate,
+        approvedBy: tpl.approvedBy,
+        approvedDate: tpl.approvedDate,
+        status: tpl.status,
+      });
+    }
   }
 
   // ---- maintenance plans: forecast week 3..10 + the aligned historic occurrence --
@@ -1092,7 +6185,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     mb.forEach((baseId, idx) => {
       const status: "量产" | "认证中" =
         idx === 0 ? "量产" : idx === mb.length - 1 ? "认证中" : rngCert() < 0.7 ? "量产" : "认证中";
-      certLinks.push({ modelId: m.modelId, lineId: `LINE-${baseId}`, baseId, status });
+      certLinks.push({ modelId: m.modelId, lineId: `LINE-WS-${baseId}-${WORKSHOP_DEFS[0]!.suffix}`, baseId, status });
     });
   }
 
@@ -1108,7 +6201,7 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     baseId: b.baseId,
     etaDay: randInt(rngShip, 2, 16),
     status: "IN_TRANSIT",
-    qtyTons: randInt(rngShip, 60, 240),
+    qtyTons: randInt(rngShip, 170, 682),
     coverageDays: b.baseId === "changzhou" ? 2 : 5, // C16：常州在途覆盖 <3 天（越线戏剧点）
   }));
 
@@ -1133,7 +6226,717 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
     }
   }
 
-  return { bases, models, orders, lines, processes, equipment, maintPlans, segments, shipments, dataHealth, certLinks };
+  // PRD-IND-sop §4.3 / PRD-IND-dash §4.1：三线对照精确种子（SOP_SEG + SEG_PRICE/MARGIN/FLOOR），
+  // P90 为保守下分位（< P50）；同 seed 字节一致（R6），前端三线/科目/台账同源（R-一致）。
+  // DF.3 单一来源：price/margin/floor 从 SEG_REGISTRY 派生（demand 三线 tgt/demandWanPerYearP50/demandWanPerYearP90/act 为 sop 专属，保留内联）。
+  // 需求结构：乘用车201.7 / 储能139.2 / 商用车34.1（合计375万套/年），
+  // 经 SEG_REGISTRY 单价推导 totalRev=700.0亿、gmRate≈17.0%（R14 从边界册派生）。
+  // WO-SCALE-COHERENCE 锚：此需求层(375万套/700亿)= scaleAnchorRevenue.S 锚（ΣdemandWanPerYearP50×priceWan===scaleAnchorRevenue.S），
+  // 是被金值锁死的事实锚（spine.test:58 硬钉 revenue.actual===700）——本单不动锚，把物理/产能/财务/订单四层往此对齐。
+  // 派生结果==既有锚值：V*=R*/P̄=700/1.8667=375万套（=ΣdemandWanPerYearP50），tgt/demandWanPerYearP50/demandWanPerYearP90/act 数值字节一致（下方内联即锚值本体）。
+  const SEGMENTS = SEG_DEMAND.map((d) => {
+    const s = SEG_REGISTRY.find((x) => x.seg === d.segment)!;
+    return { ...d, price: s.priceWan, margin: s.marginPct, floor: s.floorPct };
+  });
+  const demandSegments = SEGMENTS.map((s, i) => ({
+    segId: `dseg-${i + 1}`, segment: s.segment, tgt: s.tgt,
+    demandWanPerYearP50: s.demandWanPerYearP50, demandWanPerYearP90: s.demandWanPerYearP90,
+    // WO-UNCERTAINTY-INPUTS：乐观上界随 SEG_DEMAND 一起下发（P90 ≤ P50 ≤ P10）。
+    demandWanPerYearP10: s.demandWanPerYearP10, act: s.act,
+    priceWan: s.price, marginPct: s.margin, floorPct: s.floor,
+    // WO-W5·业务类型维度（additive·细分名 → 类型枚举·求解器按类聚合预测口径）。
+    businessType: businessTypeOfSegment(s.segment),
+  }));
+  // Wave 1 (#59)：物料净需求按 375万套 / 132万套 ≈ 2.84 放大，与需求规模对齐；
+  // MAT 扩至 9 项关键物料，覆盖正极/负极/隔膜/电解液/铜铝箔/结构件/包材。
+  const MAT = [
+    { material: "三元正极", unit: "吨", net: 23231, lta: 92, eta: "2026-06-28" },
+    { material: "磷酸铁锂正极", unit: "吨", net: 8208, lta: 94, eta: "2026-06-27" },
+    { material: "石墨负极", unit: "吨", net: 9975, lta: 93, eta: "2026-06-29" },
+    { material: "隔膜", unit: "万㎡", net: 6748, lta: 100, eta: "" },
+    { material: "电解液", unit: "吨", net: 15745, lta: 96, eta: "2026-06-25" },
+    { material: "铜箔", unit: "吨", net: 4425, lta: 91, eta: "2026-06-30" },
+    { material: "铝箔", unit: "吨", net: 3323, lta: 95, eta: "2026-06-26" },
+    { material: "电芯壳体", unit: "万个", net: 36000, lta: 99, eta: "2026-06-24" },
+    { material: "包材", unit: "万套", net: 750, lta: 100, eta: "" },
+  ];
+  const materialBalances = MAT.map((m, i) => ({
+    matBalId: `mbal-${i + 1}`, material: m.material, unit: m.unit, netDemandTon: m.net, ltaPct: m.lta,
+    gapTon: round(Math.max(0, m.net * (1 - m.lta / 100)), 0),
+    etaDate: m.eta,
+  }));
+  /**
+   * WO-METRIC-IDENTITY · **成交侧**营收（订单簿计划年窗）——口径与算法都在 `orderBookYearRevenue`，
+   * 本处只取一次值给下游 `Metric.kpi-revenue` 用（求解器侧走同一个函数，不抄公式）。
+   * ⚠ 必须排在 `dueMonth` 回填之后（回填在 `orders` 补足段之后）—— 早一行就只剩 `due` 回落路。
+   */
+  const planYear = planYearOf();
+  const orderBookRev = orderBookYearRevenue(orders, planYear);
+  const orderBookRevYi = yuanToYi(orderBookRev.yuan);
+  // 财务预算三线：收入=Σ收入细分、销售成本=收入-毛利、毛利=Σ毛利额（与 DemandSegment 交叉一致）。
+  const totalRev = demandSegments.reduce((s, d) => s + (d.demandWanPerYearP50 as number) * (d.priceWan as number), 0);
+  const totalMargin = demandSegments.reduce((s, d) => s + (d.demandWanPerYearP50 as number) * (d.priceWan as number) * (d.marginPct as number) / 100, 0);
+  /**
+   * WO-METRIC-IDENTITY 病② · **`budget` 与 `rolling` 不许同出一处**（拆恒等式）。
+   *
+   * ── 今天的行为是 X，应该是 Y ────────────────────────────────────────────────
+   * **X（修前实测，真后端 `SEED_DEMO=1`）**：三行的 `budget` 全是**同一行 `rolling` × 0.98**
+   *   （`budget: round(totalRev*0.98,1)` / `rolling: round(totalRev,1)`，成本行、毛利行同构）。
+   *   于是屏上「收入达成率」= `rolling ÷ budget ≡ 1/0.98 = 102.04%`，**与 `totalRev` 取何值无关**：
+   *   实测把订单簿砍到 1/5、把 `totalRev` 换成任何数，该卡恒读 **102**。
+   *   同一个病还悄悄杀掉了 `finance_pnl` 的毛利率差：`budgetPct = gm.budget/rev.budget`、
+   *   `rollPct = gm.rolling/rev.rolling`，×0.98 上下相消 ⇒ **`diffPp` 结构上恒为 0.0**
+   *   （修前实测 17.0% vs 17.0%，差 0.0pp —— 一个永远不会动的差异列）。
+   * **Y（本段）**：`budget` = **计划侧**年度预算，单一来源 `GOAL_REGISTRY`（人定的年度目标，
+   *   与需求预测无关，改需求它不动）；`rolling` = **需求侧**滚动预测（Σ需求P50×价，原口径不动）。
+   *   两列从此**两条链**，比值不再是常数，毛利率差也不再恒 0（实测 16.0% vs 17.0%，+1.0pp）。
+   *
+   * ⚠ **三行的损益恒等式（收入 = 销售成本 + 毛利）必须逐位成立**，两列都是 ——
+   * 只改收入行会让科目表当场对不上账（那是把一个病换成另一个病）。故成本行两列都由
+   * 「收入 − 毛利」**同一步派生**，不另抄一条公式；两个操作数都已是 1 位小数 ⇒ 减法精确。
+   * ⚠ 预算侧不再出现 `0.98` 这个内联业务常数（RL5：业务常数只许来自配置/登记册）。
+   */
+  const revBudgetYi = GOAL_REGISTRY.revenue!.target; // 亿·计划侧年度收入预算（登记册单一来源）
+  const gmBudgetYi = GOAL_REGISTRY.gross_profit!.target; // 亿·计划侧年度毛利预算（同一登记册）
+  const revRollingYi = round(totalRev, 1); // 亿·需求侧滚动预测（口径不动）
+  const gmRollingYi = round(totalMargin, 1);
+  const financePlans = [
+    { finId: "fin-rev", line: "收入", budget: revBudgetYi, rolling: revRollingYi },
+    { finId: "fin-cogs", line: "销售成本", budget: round(revBudgetYi - gmBudgetYi, 1), rolling: round(revRollingYi - gmRollingYi, 1) },
+    { finId: "fin-gm", line: "毛利", budget: gmBudgetYi, rolling: gmRollingYi },
+  ];
+
+  // SPINE：KSF 五要素（口径同 HTML KSF_DEF）+ 责任主体（org/role/person）。
+  const ksfs = [
+    { ksfId: "ksf-dem", key: "k_dem", name: "需求结构", sub: "细分占比与价格" },
+    { ksfId: "ksf-bal", key: "k_bal", name: "产销爬坡", sub: "产能与达成" },
+    { ksfId: "ksf-kit", key: "k_kit", name: "物料齐套", sub: "长协与现货缺口" },
+    { ksfId: "ksf-cash", key: "k_cash", name: "信用现金", sub: "应收与现金垫" },
+    { ksfId: "ksf-cost", key: "k_cost", name: "成本外协", sub: "制造成本与外协" },
+  ];
+  const principals = [
+    { principalId: "prin-coo", name: "运营负责人", kind: "role", parentRef: null },
+    { principalId: "prin-plan", name: "计划部", kind: "org", parentRef: "prin-coo" },
+    { principalId: "prin-supply", name: "供应链部", kind: "org", parentRef: "prin-coo" },
+    { principalId: "prin-fin", name: "财务部", kind: "org", parentRef: "prin-coo" },
+    // WO-CEO-1a item3：三应用细分业务线责任主体（细分 Metric 的 owner，责任闭环 owner/越线）。
+    { principalId: "prin-seg-pas", name: "乘用车业务线", kind: "org", parentRef: "prin-plan" },
+    { principalId: "prin-seg-ess", name: "储能业务线", kind: "org", parentRef: "prin-supply" },
+    { principalId: "prin-seg-com", name: "商用车业务线", kind: "org", parentRef: "prin-plan" },
+  ];
+  // SPINE：指标库 Metric（= cockpit PlanKpi 归一）。actual 全部经 P1 同源数据算出（与驾驶舱数字交叉一致，R14/R13/R-一致）；
+  // 归挂 KSF + 责任人 + 越线根因 chainKey。metric_rollup 求解器据此对齐 target 算 delta/miss。
+  const totalTgt = demandSegments.reduce((s, d) => s + (d.tgt as number), 0);
+  const totalAct = demandSegments.reduce((s, d) => s + (d.act as number), 0);
+  const totalNet = materialBalances.reduce((s, m) => s + (m.netDemandTon as number), 0);
+  const totalCovered = materialBalances.reduce((s, m) => s + (m.netDemandTon as number) * (m.ltaPct as number) / 100, 0);
+  // WO-CEO-1a：顶层目标升一等 Metric（营收/毛利/份额/现金）+ 运营指标 target/floorVal 收编 GOAL_REGISTRY（R-一致，杀 Gap④ 漂移）。
+  // `goalMetric`：target/floorVal/owner/ksf/name/unit/level/category 一律取自 GOAL_REGISTRY 单一来源；只 actual + 可选 chainKey 由本地传入。
+  // actual 诚实来源：营收=Σ需求×价（totalRev，真实聚合）· 毛利=Σ需求×价×毛利率（totalMargin）· 现金=baseline 情景现金垫（params 同源）·
+  //   份额=诚实合成种子（无外部市场规模真源 → provenanceSynthetic 轴标合成，绝不冒充实测 KILL-MOCK-RED）· 运营三指标沿用 P1 同源派生。
+  const goalMetric = (metricId: string, goalKey: string, actual: number, chainKey?: string, basis?: string) => {
+    const g = GOAL_REGISTRY[goalKey]!;
+    return { metricId, key: g.key, name: g.name, level: g.level, category: g.category, target: g.target, actual, floorVal: g.floorVal, unit: g.unit, weight: g.weight, ksfRef: g.ksfRef, ownerRef: g.ownerRef, ...(chainKey ? { chainKey } : {}), ...(basis ? { basis } : {}) };
+  };
+  const cashActual = (BATTERY_SOLVER_PARAMS.planview as { scenarios: { finance: { baseline: { cashCushion: number } } } }).scenarios.finance.baseline.cashCushion;
+  const marketShareActual = 21.5; // 诚实合成：无市场规模真数据源，种子常数（synthetic 标灰，不冒充实测）
+  const metrics: Record<string, unknown>[] = [
+    // 运营指标（op）——metricId 保持既有 kpi-margin/attain/material 不变（R6 obj id 集稳定）；target/floorVal 现取自 GOAL_REGISTRY。
+    /**
+     * WO-GAP-NORMALIZE 病③ · **口径这一行，屏上承诺了就得有数据**。
+     *
+     * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+     * **X（修前实测·真后端 `SEED_DEMO=1`）**：`Metric.basis` 全库只有 2 条有值
+     *   （`kpi-revenue` / `kpi-gross-profit`，且两条都是 `level:"year"`），
+     *   而经营指标条 widget 取的是 `metric_rollup {level:"op"}` ⇒ **屏上 6 条、带 basis 的 0 条**。
+     *   同一块卡的 caption 却写着「逐条随指标下发（**点开每条**看「口径」一行）：
+     *   营收＝成交侧订单簿、毛利＝需求预测侧、份额＝合成种子」——
+     *   它点名的三条**全是 year 级，那个 widget 一条都不取**。
+     *   ⇒ 屏上在承诺一件**永远不会发生**的事：既没有那三条指标，也没有任何一行口径。
+     * **Y（本段 + widget 取数改全级 + caption 改真话）**：**每条** Metric 都自带 `basis`，
+     *   指标条取全部级别 ⇒ caption 点名的三条真的在屏上、且真的各带一行口径。
+     *
+     * ⚠ 为什么不是「只给 op 侧补 basis」（另一条候选路）：那样补完，caption 点名的
+     *   营收/毛利/份额**仍然一条都不在屏上** —— 承诺与屏的差距一点没缩小，只是换了个地方对不上。
+     * ⚠ 且本单把缺省根因指标改成了**相对缺口最大者**（实测 = 营收），而指标条正是选下钻指标的那个控件；
+     *   若仍按 `op` 过滤，屏上会出现「右边默认在下钻营收，左边指标清单里根本没有营收这一行」——
+     *   **那是本单自己会造出来的新矛盾**，所以取全级不是附赠，是本单的必要收尾。
+     */
+    goalMetric("kpi-margin", "gm_rate", round(round(totalMargin, 1) / round(totalRev, 1) * 100, 1), "rc-profit-mix",
+      "需求预测侧 · Σ(细分需求 P50 × 单价 × 毛利率) ÷ Σ(细分需求 P50 × 单价)；分子分母同源同口径，故可相除"),
+    goalMetric("kpi-attain", "demand_attain", round(totalAct / totalTgt * 100, 1), "rc-scale-demand",
+      "需求侧 · Σ(细分实际需求) ÷ Σ(细分目标需求)，全细分合计；不含订单成交信息"),
+    goalMetric("kpi-material", "material_cov", round(totalCovered / totalNet * 100, 1), "rc-material-gap",
+      "物料侧 · Σ(净需求 × 长协覆盖率) ÷ Σ(净需求)，按吨加权；覆盖率取长协比例，非现货可得性"),
+    /**
+     * WO-METRIC-IDENTITY 病① · **「实际」这一栏必须真的是实际**。
+     *
+     * ── 今天的行为是 X，应该是 Y ──────────────────────────────────────────────
+     * **X（修前实测，真后端 `SEED_DEMO=1`）**：栏位写「实际」，值却是 `round(totalRev,1)`
+     *   = `Σ(DemandSegment.demandWanPerYearP50 × priceWan)` = **年度需求 P50 预测** 700.0 亿。
+     *   对照实验：`ORDER_BOOK_SIZE` 500→100，订单簿 Σ`Order.value` 从 **454.64 亿 → 107.81 亿**
+     *   （−76.28%），而本值**两轮逐字节相同**（700 / 700）——
+     *   **把订单砍掉四分之三，「营收·实际」一分不少**。它度量的不是已发生的生意。
+     *   更狠的是 `target` 取自 `GOAL_REGISTRY.revenue.target` = **700**，与 `actual` **恰好同值**
+     *   ⇒ `delta ≡ 0`、`miss ≡ false`、达成率**结构上恒 100.0%**。
+     *   **一个永远不会越线的指标不是指标** —— 它在屏上占着一格，却不可能报警。
+     * **Y（本行）**：`actual` 换成**成交侧**订单簿（计划年窗 Σ 数量×单价），`target` 仍是**计划侧**
+     *   登记册目标 —— **两条链彻底分开**，达成率从此是一个会动、会越线的真数
+     *   （实测 415.6 / 700 = 59.4%，低于底线 686 ⇒ `miss=true`，屏上转红）。
+     *
+     * ⚠ **59.4% 不是"变差了"，是第一次被量出来**：修前那个 100.0% 是恒等式的读数，
+     * 不是达成情况。真话是「计划年内已签约 415.6 亿，覆盖 700 亿年度目标的 59.4%」。
+     * ⚠ 需求 P50 那 700 亿**一个字节都没丢**：它还在 `demand-p50` / `gross-margin` /
+     * `FinancePlan.rolling` 三处，且仍是本指标的 `target`（同一个数），只是不再冒充「实际」。
+     */
+    goalMetric("kpi-revenue", "revenue", orderBookRevYi, "rc-scale-demand",
+      `成交侧 · 订单簿计划年窗（交期落 ${planYear} 年的 ${orderBookRev.count} 张已签订单，Σ 数量×单价）；`
+      + `目标 ${GOAL_REGISTRY.revenue!.target} 亿来自计划侧年度目标登记册 —— 实际与目标两条链分开取数，故本指标会随订单簿增减而变`),
+    goalMetric("kpi-gross-profit", "gross_profit", round(totalMargin, 1), "rc-profit-mix",
+      "需求预测口径 · Σ(细分需求 P50 × 单价 × 毛利率)，全年全需求；与同屏「营收」的成交侧口径不同源，两者不可相除"),
+    goalMetric("kpi-share", "market_share", marketShareActual, undefined,
+      "诚实合成种子 · 无外部市场规模真数据源，本值是确定性合成常数（非实测、非派生）；接入真市场规模前不可当实测读"),
+    goalMetric("kpi-cash", "cash", cashActual, undefined,
+      "计划侧 · baseline 年度情景现金安全垫（与推演参数同源）；非银行流水实测余额"),
+  ];
+  // WO-CEO-1a item3：三应用细分升带责任 Metric（owner + 越线）。达成率=act/tgt×100，floor=95（储能 72.2%<95 → 越线，owner=储能业务线）。
+  const SEG_METRIC_KEY: Record<string, string> = { 乘用车: "pas", 储能: "ess", 商用车: "com" };
+  for (const d of demandSegments) {
+    const k = SEG_METRIC_KEY[d.segment as string]!;
+    metrics.push({
+      metricId: `kpi-seg-${k}`, key: `seg_attain_${k}`, name: `${d.segment}达成率`, level: "op", category: "segment",
+      businessType: businessTypeOfSegment(d.segment as string), // WO-SEG-ATTR-SCOPE：细分升 Metric 一等字段（储能→storage·与 Order.businessType 同源同口径·R-一致），使 gap_attribution 按业态裁订单
+      target: 100, actual: round((d.act as number) / (d.tgt as number) * 100, 1), floorVal: 95, unit: "%", weight: 0.1,
+      ksfRef: "ksf-dem", ownerRef: `prin-seg-${k}`, chainKey: "rc-scale-demand",
+      // WO-GAP-NORMALIZE 病③：口径逐条下发（理由见上「病③」段）——细分达成率只看本细分需求两端，不掺订单成交。
+      basis: `需求侧 · ${d.segment as string}细分实际需求 ÷ 该细分目标需求；只看本细分，与全公司达成率不同口径`,
+    });
+  }
+  // cockpit P5 / sop：S&OP 版本演进 V1→V7（需求渐增、供给追赶、缺口收敛；V7 待定稿）。同源 totalRev/需求规模派生。
+  const demBase = round(totalTgt, 0);
+  const sopVersionRows = [1, 3, 5, 7].map((v, i) => {
+    const demand = round(demBase * (0.96 + i * 0.02), 0);
+    const supply = round(demand * (0.9 + i * 0.03), 0);
+    return {
+      verId: `sopv-V${v}`, ver: `V${v}`,
+      date: isoDate(Date.UTC(2026, 4, 1) + i * 14 * 86400000),
+      demand, supply,
+      note: ["初版需求", "供给评审上修", "财务整合", "高管会待定稿"][i],
+      isFinal: v === 7,
+    };
+  });
+  // 根因归因模板（配成对象，确定性常数；求解器沿 driverType 取活数据算贡献 → 「结构=算、模板=配成对象」）。
+  const rootCauseChains = [
+    { chainId: "rc-profit-mix", kpiCategory: "profit", factor: "低毛利细分占比偏高", driverType: "DemandSegment", evidenceField: "marginWan", selectField: "segment", baseWeight: 0.5 },
+    { chainId: "rc-profit-material", kpiCategory: "profit", factor: "物料成本上行", driverType: "MaterialBalance", evidenceField: "gapTon", selectField: "material", baseWeight: 0.5 },
+    { chainId: "rc-scale-demand", kpiCategory: "scale", factor: "细分需求未达预期", driverType: "DemandSegment", evidenceField: "act", selectField: "segment", baseWeight: 1 },
+    { chainId: "rc-material-gap", kpiCategory: "material", factor: "现货缺口扩大", driverType: "MaterialBalance", evidenceField: "gapTon", selectField: "material", baseWeight: 1 },
+  ];
+
+  // Phase 2 Wave 2：物料替代关系（基于现有 8 种物料的简化替代矩阵，固定值不消耗 rng）。
+  const materialAlternatives = [
+    { altId: "ALT-001", primaryMaterialId: "pos_ncm", alternativeMaterialId: "pos_lfp", priority: 3, approvalStatus: "限条件", effectiveDate: "2025-01-01", expireDate: undefined, changeReason: "跨化学体系应急替代", verifiedBy: "张三", verifiedDate: "2025-02-15" },
+    { altId: "ALT-002", primaryMaterialId: "pos_lfp", alternativeMaterialId: "pos_ncm", priority: 3, approvalStatus: "限条件", effectiveDate: "2025-01-01", expireDate: undefined, changeReason: "跨化学体系应急替代", verifiedBy: "张三", verifiedDate: "2025-02-15" },
+    { altId: "ALT-003", primaryMaterialId: "sep_film", alternativeMaterialId: "elyte", priority: 2, approvalStatus: "待审批", effectiveDate: undefined, expireDate: undefined, changeReason: "工艺验证中", verifiedBy: undefined, verifiedDate: undefined },
+    { altId: "ALT-004", primaryMaterialId: "cell_case", alternativeMaterialId: "al_foil", priority: 1, approvalStatus: "已批准", effectiveDate: "2024-06-01", expireDate: "2026-06-01", changeReason: "包材替代验证通过", verifiedBy: "李四", verifiedDate: "2024-05-20" },
+    { altId: "ALT-005", primaryMaterialId: "cu_foil", alternativeMaterialId: "al_foil", priority: 2, approvalStatus: "待审批", effectiveDate: undefined, expireDate: undefined, changeReason: "成本优化评估", verifiedBy: undefined, verifiedDate: undefined },
+  ];
+
+  // Phase 3 MES Domain: Production Planning
+  // ⚠ 这里曾有 `const rngMES = mulberry32(seed ^ hashString("mes"))`，**一次都没被调用**：
+  // 整个 MES 段的确定性早已改成按 `hashString(<自然键>)` 逐值派生（比取流不依赖求值顺序，更强）。
+  // 留着一个从不消费的 PRNG 会让人以为"这段是取流生成的"，把下面那句旧注释一并读错，故删。
+  const workOrders: Record<string, unknown>[] = [];
+  const productionSchedules: Record<string, unknown>[] = [];
+  const shiftPlans: Record<string, unknown>[] = [];
+  const wipLots: Record<string, unknown>[] = [];
+  const wipMoves: Record<string, unknown>[] = [];
+  const wipQualityCheckpoints: Record<string, unknown>[] = [];
+  const qualityLots: Record<string, unknown>[] = [];
+  const inspectionResults: Record<string, unknown>[] = [];
+  const defectRecords: Record<string, unknown>[] = [];
+  const equipmentOEEs: Record<string, unknown>[] = [];
+  const equipmentDowntimes: Record<string, unknown>[] = [];
+  const equipmentAlarms: Record<string, unknown>[] = [];
+  const maintenanceOrders: Record<string, unknown>[] = [];
+  const sparePartConsumptions: Record<string, unknown>[] = [];
+  const operatorAttendances: Record<string, unknown>[] = [];
+  const operatorSkillCerts: Record<string, unknown>[] = [];
+
+  // MES generation helpers
+  const MES_STATUSES = {
+    wo: ["已排产", "生产中", "已完成", "已关闭"],
+    sched: ["已确认", "已执行", "已取消"],
+    wip: ["在制", "待检", "合格", "报废"],
+    qlot: ["待检", "合格", "不合格", "特采"],
+    insp: ["合格", "不合格"],
+    defect: ["外观", "尺寸", "性能", "安全"],
+    severity: ["轻微", "一般", "严重"],
+    dtReason: ["故障", "换型", "待料", "计划停机", "其他"],
+    alarmLevel: ["提示", "警告", "紧急"],
+    alarmStatus: ["活跃", "已确认", "已清除"],
+    maintType: ["预防性", "预测性", " corrective"],
+    maintPriority: ["低", "中", "高", "紧急"],
+    maintStatus: ["待执行", "执行中", "已完成", "已取消"],
+    attStatus: ["正常", "迟到", "早退", "缺勤"],
+    skillLevel: ["初级", "中级", "高级", "技师"],
+    certStatus: ["有效", "过期", "吊销"],
+  };
+
+  // WO-WORKORDER-CATALOG-FIX：工单型号改从**该工单所在基地真能产的型号**里选（MODEL_BASE_MAP 反查），
+  // 替代旧的硬编码 5 元数组 ["4680-NCM","4680-LFP","方形-LFP","储能-280Ah","储能-314Ah"]——它有两处自相矛盾：
+  //   ① `储能-280Ah`/`储能-314Ah` 不在 `MODELS` 目录。**实测：订单簿 500 单里 0 单要这两个型号**
+  //      （订单型号恰是目录六型号）⇒ 把它们补进目录**也连不上任何订单**，只会多两个没人订的 Model
+  //      对象 + 需要现编 unitPrice/BOM。而目录里已有 `方形-LFP`（pos=储能·spec P-SQ-LFP-**314**）与
+  //      `圆柱-LFP`（pos=储能）承载储能业态，且 `BASE_REGISTRY.mainProduct` 把
+  //      眉山/江门/邯郸（= MODEL_BASE_MAP 里 `方形-LFP` 的基地）记作「储能-280Ah」、
+  //      信阳/扬州（= `圆柱-LFP` 的基地）记作「储能-314Ah」⇒ 这两个名字是**电芯规格别名**，
+  //      不是第 7/8 个型号。故选「证明它们不该存在」而非「补进目录」。
+  //   ② 旧式按 `lineId` 哈希选型号，**压根没看基地产能** ⇒ 260 张里 111 张落在该型号产不了的基地上。
+  // 反查表按 baseId 建一次、桶内按 modelId 排序 ⇒ 与 MODEL_BASE_MAP 声明次序无关（纯确定性·零 rng·R6）。
+  const WO_MODELS_BY_BASE = new Map<string, string[]>();
+  for (const [mId, bs] of Object.entries(MODEL_BASE_MAP)) {
+    for (const bid of bs) {
+      const bucket = WO_MODELS_BY_BASE.get(bid);
+      if (bucket) bucket.push(mId);
+      else WO_MODELS_BY_BASE.set(bid, [mId]);
+    }
+  }
+  for (const bucket of WO_MODELS_BY_BASE.values()) bucket.sort();
+
+  // WorkOrders: 2 per line（确定性来自 `hashString(<lineId+序号>)` 逐值派生，**不取 PRNG 流**）
+  for (const l of lines) {
+    const lineId = l.lineId as string;
+    const baseId = l.baseId as string;
+    // 该基地真能产的型号集。实测 13/13 个「有产线的基地」全在 MODEL_BASE_MAP 内 ⇒ 空集今天不会发生，
+    // 但仍**诚实跳过**而非回落到某个默认型号——回落等于又造一张「基地产不了」的工单。
+    const producibleHere = WO_MODELS_BY_BASE.get(baseId) ?? [];
+    if (producibleHere.length === 0) continue;
+    for (let w = 0; w < 2; w++) {
+      const modelId = producibleHere[hashString(`${lineId}_wo${w}`) % producibleHere.length]!;
+      const qtyPlanned = round((500 + (hashString(`${lineId}_wo${w}q`) % 1500)) * WAVE1_SCALE_FACTOR, 0);
+      const qtyActual = Math.floor(qtyPlanned * (0.85 + (hashString(`${lineId}_wo${w}a`) % 15) / 100));
+      const startOffset = hashString(`${lineId}_wo${w}s`) % 14;
+      const startDate = isoDate(t0 + startOffset * 86400000);
+      // WO-CAPACITY-EDGE：工期显式命名（原先只以 `endDate` 的加数形态存在，取不出来）。
+      // 恒 ≥7 ⇒ 下面 `qtyPlanned / spanDays` 不可能除零，**不需要也不许**加 `?? 1` 这类兜底。
+      const spanDays = 7 + (hashString(`${lineId}_wo${w}e`) % 7);
+      const endDate = isoDate(t0 + (startOffset + spanDays) * 86400000);
+      const woId = `WO-${lineId}-${w}`;
+      workOrders.push({
+        woId,
+        moNo: `MO-${woId}`,
+        modelId,
+        lineId,
+        baseId,
+        qtyPlanned,
+        qtyActual,
+        startDate,
+        endDate,
+        spanDays,
+        // WO-INVENTORY-3TIER：状态确定性铺满 4 态（此前 w%4 仅取到 已排产/生产中·从无完工单 →
+        // 完工入库派生无源）。改按 woId 哈希铺满 → 约半数 已完成/已关闭 可承接 FG 入库（R6 确定性）。
+        status: MES_STATUSES.wo[hashString(`${woId}_status`) % MES_STATUSES.wo.length]!,
+      });
+
+      // ProductionSchedule per WorkOrder: 2-3 schedules
+      const nSched = 2 + (hashString(woId) % 2);
+      for (let s = 0; s < nSched; s++) {
+        productionSchedules.push({
+          schedId: `SCH-${woId}-${s}`,
+          woId,
+          lineId,
+          shift: s % 2 === 0 ? "白班" : "夜班",
+          scheduledDate: isoDate(t0 + (startOffset + s) * 86400000),
+          qty: Math.floor(qtyPlanned / nSched),
+          priority: 1 + (hashString(`${woId}_sch${s}`) % 5),
+          status: MES_STATUSES.sched[s % MES_STATUSES.sched.length],
+        });
+      }
+
+      // WIPLot per WorkOrder
+      const wipQty = Math.floor(qtyPlanned * 0.9);
+      const wipStatus = MES_STATUSES.wip[hashString(`${woId}_wip`) % MES_STATUSES.wip.length];
+      wipLots.push({
+        lotId: `LOT-${woId}`,
+        woId,
+        modelId,
+        lineId,
+        currentProcess: "涂布",
+        qty: wipQty,
+        status: wipStatus,
+        startTime: startDate,
+        lastMoveTime: isoDate(t0 + (startOffset + 2) * 86400000),
+      });
+
+      // WIPMove per WIPLot: 2-4 moves
+      const processesMES = ["涂布", "辊压", "分切", "卷绕", "装配", "注液", "化成", "分容"];
+      const nMoves = 2 + (hashString(`${woId}_move`) % 3);
+      for (let m = 0; m < nMoves; m++) {
+        wipMoves.push({
+          moveId: `MV-${woId}-${m}`,
+          lotId: `LOT-${woId}`,
+          fromProcess: processesMES[m],
+          toProcess: processesMES[m + 1] ?? "PACK",
+          qty: Math.floor(wipQty * (0.9 + (hashString(`${woId}_mv${m}`) % 10) / 100)),
+          moveTime: isoDate(t0 + (startOffset + m) * 86400000),
+          operatorId: `OP-${hashString(`${woId}_op${m}`) % 100}`,
+        });
+      }
+
+      // WIPQualityCheckpoint per WIPLot: 1-2 checkpoints
+      const nChk = 1 + (hashString(`${woId}_chk`) % 2);
+      for (let c = 0; c < nChk; c++) {
+        wipQualityCheckpoints.push({
+          checkpointId: `CHK-${woId}-${c}`,
+          lotId: `LOT-${woId}`,
+          processName: processesMES[c + 2] ?? "化成",
+          checkType: ["首检", "巡检", "末检"][hashString(`${woId}_ct${c}`) % 3],
+          result: hashString(`${woId}_cr${c}`) % 10 < 9 ? "通过" : "不通过",
+          checkTime: isoDate(t0 + (startOffset + c + 1) * 86400000),
+          inspectorId: `INSP-${hashString(`${woId}_insp${c}`) % 20}`,
+        });
+      }
+
+      // QualityLot per WorkOrder
+      const batchSize = qtyPlanned;
+      const sampleSize = Math.max(5, Math.floor(batchSize * 0.02));
+      const passQty = Math.floor(sampleSize * (0.92 + (hashString(`${woId}_qp`) % 8) / 100));
+      const failQty = sampleSize - passQty;
+      qualityLots.push({
+        qlotId: `QLOT-${woId}`,
+        woId,
+        modelId,
+        lineId,
+        batchSize,
+        sampleSize,
+        passQty,
+        failQty,
+        status: failQty === 0 ? "合格" : failQty < 3 ? "特采" : "不合格",
+        inspectDate: endDate,
+      });
+
+      // InspectionResult per QualityLot (simplified: 2 results)
+      for (let r = 0; r < 2; r++) {
+        const measured = 0.95 + (hashString(`${woId}_ir${r}`) % 10) / 100;
+        inspectionResults.push({
+          resultId: `IR-${woId}-${r}`,
+          qlotId: `QLOT-${woId}`,
+          charId: `CHAR-QS-${modelId}-CAP-${r}`,
+          measuredValue: round(measured, 3),
+          targetValue: 0.98,
+          upperLimit: 1.0,
+          lowerLimit: 0.95,
+          result: measured >= 0.95 ? "合格" : "不合格",
+          inspectTime: endDate,
+        });
+      }
+
+      // DefectRecord (sparse: ~30% of WOs)
+      if (hashString(`${woId}_def`) % 3 === 0) {
+        defectRecords.push({
+          defectId: `DEF-${woId}`,
+          qlotId: `QLOT-${woId}`,
+          lotId: `LOT-${woId}`,
+          defectType: MES_STATUSES.defect[hashString(`${woId}_dt`) % MES_STATUSES.defect.length],
+          severity: MES_STATUSES.severity[hashString(`${woId}_sev`) % MES_STATUSES.severity.length],
+          qty: 1 + (hashString(`${woId}_dq`) % 5),
+          description: "过程异常",
+          foundAt: isoDate(t0 + (startOffset + 3) * 86400000),
+          processName: "涂布",
+        });
+      }
+    }
+  }
+
+  // EquipmentOEE / Downtime / Alarm per equipment (daily snapshot for past 7 days)
+  const today = t0;
+  for (const eq of equipment) {
+    const equipId = eq.equipId as string;
+    const lineId = eq.lineId as string;
+    const baseId = eq.baseId as string;
+    // OEE snapshot for past 7 days —— 与 Equipment.oeeA/oeeP/oeeQ/oee_current 同一出处
+    // （equipmentOeeAtomsDaily·WO-OEE-UNIFY 裁决 C：本表是权威，设备属性是它的 7 日均值派生）。
+    const oeeDailyRows = equipmentOeeAtomsDaily(equipId);
+    for (let d = 0; d < 7; d++) {
+      const { avail, perf, qual, oee } = oeeDailyRows[d]!;
+      equipmentOEEs.push({
+        oeeId: `OEE-${equipId}-${d}`,
+        equipId,
+        lineId,
+        baseId,
+        date: isoDate(today - d * 86400000),
+        availability: avail,
+        performance: perf,
+        quality: qual,
+        oee,
+        plannedProductionTime: 480,
+        actualProductionTime: round(480 * avail, 0),
+      });
+    }
+    // Downtime (sparse: ~20% of equipment)
+    if (hashString(`${equipId}_dt`) % 5 === 0) {
+      const dur = 15 + (hashString(`${equipId}_dur`) % 120);
+      equipmentDowntimes.push({
+        dtId: `DT-${equipId}`,
+        equipId,
+        lineId,
+        baseId,
+        startTime: isoDate(today - (hashString(`${equipId}_dts`) % 3) * 86400000) + "T08:00:00Z",
+        endTime: isoDate(today - (hashString(`${equipId}_dts`) % 3) * 86400000) + `T${String(8 + Math.floor(dur / 60)).padStart(2, "0")}:${String(dur % 60).padStart(2, "0")}:00Z`,
+        durationMin: dur,
+        reason: MES_STATUSES.dtReason[hashString(`${equipId}_dtr`) % MES_STATUSES.dtReason.length],
+        status: "已恢复",
+      });
+    }
+    // Alarm (sparse: ~15% of equipment)
+    if (hashString(`${equipId}_al`) % 7 === 0) {
+      equipmentAlarms.push({
+        alarmId: `ALM-${equipId}`,
+        equipId,
+        lineId,
+        alarmCode: `ALM-${hashString(`${equipId}_ac`) % 100}`,
+        alarmLevel: MES_STATUSES.alarmLevel[hashString(`${equipId}_alv`) % MES_STATUSES.alarmLevel.length],
+        message: "设备异常告警",
+        triggeredAt: isoDate(today - (hashString(`${equipId}_at`) % 2) * 86400000) + "T10:00:00Z",
+        clearedAt: isoDate(today - (hashString(`${equipId}_at`) % 2) * 86400000) + "T12:00:00Z",
+        status: "已清除",
+      });
+    }
+  }
+
+  // MaintenanceOrder per equipment (sparse: ~25%)
+  for (const eq of equipment) {
+    const equipId = eq.equipId as string;
+    if (hashString(`${equipId}_mo`) % 4 !== 0) continue;
+    const lineId = eq.lineId as string;
+    const baseId = eq.baseId as string;
+    const moId = `MO-${equipId}`;
+    const plannedStartOffset = hashString(`${equipId}_ps`) % 14;
+    const plannedEndOffset = plannedStartOffset + 1 + (hashString(`${equipId}_pe`) % 3);
+    maintenanceOrders.push({
+      moId,
+      equipId,
+      lineId,
+      baseId,
+      maintType: MES_STATUSES.maintType[hashString(`${equipId}_mt`) % MES_STATUSES.maintType.length],
+      priority: MES_STATUSES.maintPriority[hashString(`${equipId}_mp`) % MES_STATUSES.maintPriority.length],
+      plannedStart: isoDate(t0 + plannedStartOffset * 86400000),
+      plannedEnd: isoDate(t0 + plannedEndOffset * 86400000),
+      actualStart: isoDate(t0 + plannedStartOffset * 86400000),
+      actualEnd: isoDate(t0 + (plannedEndOffset - 1) * 86400000),
+      status: "已完成",
+    });
+    // SparePartConsumption per MaintenanceOrder
+    sparePartConsumptions.push({
+      consumptionId: `SPC-${moId}`,
+      moId,
+      partCode: `PART-${hashString(`${equipId}_part`) % 100}`,
+      partName: "备件",
+      qtyUsed: 1 + (hashString(`${equipId}_pq`) % 5),
+      unit: "个",
+      consumedAt: isoDate(t0 + plannedStartOffset * 86400000),
+    });
+  }
+
+  // ShiftPlan per line (2 shifts per day for 7 days)
+  for (const l of lines) {
+    const lineId = l.lineId as string;
+    const baseId = l.baseId as string;
+    for (let d = 0; d < 7; d++) {
+      for (const shiftName of ["白班", "夜班"]) {
+        const plannedHC = 8 + (hashString(`${lineId}_sh${d}_${shiftName}`) % 8);
+        const actualHC = Math.max(0, plannedHC - (hashString(`${lineId}_ah${d}_${shiftName}`) % 3));
+        shiftPlans.push({
+          shiftId: `SHIFT-${lineId}-${d}-${shiftName}`,
+          lineId,
+          baseId,
+          shiftName: `${l.name}${shiftName}`,
+          plannedHeadcount: plannedHC,
+          actualHeadcount: actualHC,
+          date: isoDate(t0 + d * 86400000),
+          hours: shiftName === "白班" ? 11 : 11,
+        });
+      }
+    }
+  }
+
+  // OperatorAttendance per line (2 operators per shift, 7 days)
+  const operatorPool = Array.from({ length: 50 }, (_, i) => ({ id: `OP-${String(i + 1).padStart(3, "0")}`, name: `操作工${i + 1}` }));
+  for (const l of lines) {
+    const lineId = l.lineId as string;
+    const baseId = l.baseId as string;
+    for (let d = 0; d < 7; d++) {
+      for (const shiftName of ["白班", "夜班"]) {
+        const op = operatorPool[hashString(`${lineId}_att${d}_${shiftName}`) % operatorPool.length]!;
+        const hours = 10 + (hashString(`${lineId}_hrs${d}_${shiftName}`) % 2);
+        operatorAttendances.push({
+          attId: `ATT-${lineId}-${d}-${shiftName}`,
+          operatorId: op.id,
+          operatorName: op.name,
+          lineId,
+          baseId,
+          date: isoDate(t0 + d * 86400000),
+          shift: shiftName,
+          checkIn: isoDate(t0 + d * 86400000) + "T08:00:00Z",
+          checkOut: isoDate(t0 + d * 86400000) + `T${String(8 + hours).padStart(2, "0")}:00:00Z`,
+          hoursWorked: hours,
+          status: MES_STATUSES.attStatus[hashString(`${lineId}_as${d}_${shiftName}`) % MES_STATUSES.attStatus.length],
+        });
+      }
+    }
+  }
+
+  // OperatorSkillCert (deterministic per operator)
+  const skillPool = ["涂布操作", "卷绕操作", "化成操作", "PACK操作", "质检操作"];
+  for (const op of operatorPool) {
+    const nSkills = 1 + (hashString(op.id) % 3);
+    for (let s = 0; s < nSkills; s++) {
+      const skill = skillPool[hashString(`${op.id}_sk${s}`) % skillPool.length]!;
+      operatorSkillCerts.push({
+        certId: `CERT-${op.id}-${s}`,
+        operatorId: op.id,
+        skillName: skill,
+        skillLevel: MES_STATUSES.skillLevel[hashString(`${op.id}_sl${s}`) % MES_STATUSES.skillLevel.length],
+        certifiedBy: "培训部",
+        certifiedDate: "2024-01-15",
+        expireDate: "2026-01-15",
+        status: MES_STATUSES.certStatus[hashString(`${op.id}_cs${s}`) % MES_STATUSES.certStatus.length],
+      });
+    }
+  }
+
+  // WO-EXCEPTION-EVENT：四源归一异常事件投影（本地 4 源：停机/告警/缺陷/缺料 → EQUIPMENT/QUALITY/MATERIAL_SHORTAGE）。
+  // 独立于 mulberry32 主流（纯从已生成源行派生·无随机/时钟），不移位下游字节（R6）。
+  // 第 5 源 TriggerRule（→CUSTOMER）在 service 层合并（triggerRules 出自 generateExtended，同一 projectExceptionEvents）。
+  const exceptionEvents = projectExceptionEvents(
+    { equipmentDowntimes, equipmentAlarms, defectRecords, materialBalances },
+    t0,
+  );
+
+  // WO-INVENTORY-3TIER · 完工入库派生（确定性·从 workOrders 真值派生 FG + RECEIPT 流水；无 rng/时钟·R6）。
+  // 成品仓落点：每基地成品仓（whType=FINISHED，WO-WAREHOUSE 每基地必有）。asOf=预测起点 t0。
+  const finishedWhByBase = new Map<string, string>();
+  for (const w of warehouses) {
+    if (w.whType === "FINISHED") finishedWhByBase.set(String(w.baseId), String(w.warehouseId));
+  }
+  const { finishedGoodsInv, inventoryTxns } = deriveFinishedGoodsIntake(workOrders, finishedWhByBase, isoDate(t0));
+
+  // WO-ATP-PROMISE · 订单承诺台账（对每 OPEN 订单净读三源算 ATP 基线·与 atp_check 同口径·无 rng/时钟·R6）。
+  // 放在 FG 派生后：需现货(FG)/在制(workOrders)/产能(lines) 三源已就绪；纯派生不消耗 rng（不插既有流中间）。
+  const orderPromises = deriveOrderPromises(orders, finishedGoodsInv, workOrders, lines, isoDate(t0));
+
+  // WO-INTERBASE-TRANSFER：跨基地调拨台账（一等对象·R13）。
+  // 配对规则：对每个多产地型号（MODEL_BASE_MAP ≥2 基地），在其可产基地相邻对间产一条调拨
+  //（bases[i]→bases[i+1]，如 4680-NCM: 常州→成都→合肥→金华 得 3 条），基地全取自 MODEL_BASE_MAP
+  //（其值域已是 BASE_REGISTRY baseId·不内联新基地字面量，守 R14/boundary-singlesource）。
+  // qty/transitDays/dispatchDay 由独立哈希子流 hashString("xfer_"+from+to+model) 派生（不插既有 rng 流·R6 字节基线不动）；
+  // etaDay 由 derivedProperties(dispatchDay+transitDays) 管线算；etaDate/dispatchDate 为 ISO 展示（无时钟）。
+  const xferT0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
+  const baseNameById = new Map(bases.map((b) => [b.baseId as string, b.name as string]));
+  const XFER_STATUS = ["PLANNED", "IN_TRANSIT", "DELIVERED"] as const;
+  // WO-GSIM-1-DATA · 物流费率常数（R14·BATTERY_SOLVER_PARAMS 单一来源·不内联魔数）。
+  const ibp = BATTERY_SOLVER_PARAMS.interbase as { dailyTruckKm: number; minTransitDays: number; tonKmRate: number; qtyToTon: number };
+  // 距离派生在途天数（灭 G-TRANSIT-NOT-GEO）：ceil(距/日卡车里程)，下限 minTransitDays（同区非 0）。
+  const transitDaysFor = (fromId: string, toId: string): number =>
+    Math.max(ibp.minTransitDays, Math.ceil(baseDistanceKm(fromId, toId) / ibp.dailyTruckKm));
+  // 运费（灭 G-NO-FREIGHT-COST）：距 × 吨公里费率 × (套×吨/套)；同基地 距=0 → 费=0。确定性（无 rng·R6）。
+  const freightCostFor = (fromId: string, toId: string, qty: number): number =>
+    Math.round(baseDistanceKm(fromId, toId) * ibp.tonKmRate * (qty * ibp.qtyToTon));
+  const interBaseTransfers: Record<string, unknown>[] = [];
+  for (const [modelId, producibleBases] of Object.entries(MODEL_BASE_MAP)) {
+    for (let i = 0; i + 1 < producibleBases.length; i++) {
+      const fromId = producibleBases[i]!;
+      const toId = producibleBases[i + 1]!;
+      const h = hashString(`xfer_${fromId}_${toId}_${modelId}`);
+      const qty = 500 + (h % 46) * 100; // 500..5000 套
+      const transitDays = transitDaysFor(fromId, toId); // 距离派生（非哈希·G-TRANSIT-NOT-GEO）
+      const dispatchDay = 1 + (Math.floor(h / 1000) % 20); // 1..20（相对 forecastStart）
+      const etaDay = dispatchDay + transitDays; // 与 derivedProperties 同式（materialize 早填，管线重算不变·R6）
+      const freightCost = freightCostFor(fromId, toId, qty); // 距离×费率派生（G-NO-FREIGHT-COST）
+      const status = XFER_STATUS[h % XFER_STATUS.length]!;
+      const fromName = baseNameById.get(fromId) ?? fromId;
+      const toName = baseNameById.get(toId) ?? toId;
+      interBaseTransfers.push({
+        transferId: `XFER-${fromId}-${toId}-${modelId}`,
+        fromBase: fromId,
+        toBase: toId,
+        model: modelId,
+        qty,
+        transitDays,
+        freightCost,
+        status,
+        dispatchDate: isoDate(xferT0 + dispatchDay * 86400000),
+        dispatchDay,
+        etaDay,
+        etaDate: isoDate(xferT0 + etaDay * 86400000),
+        reason: `${fromName}→${toName} ${modelId} 产能调剂`,
+      });
+    }
+  }
+  // WO-GSIM-1-DATA T5 · 电芯→电池包两段制跨基地供芯样本（G-CELL-PACK-2STAGE·SEAM 物料）。
+  // 每个纯 PACK 基地（factory_type==="PACK"）由 cellSourceMap 就近首选 CELL/CELL+PACK 基地供芯，
+  // 落成真 InterBaseTransfer（fromBase=就近芯厂→toBase=PACK 厂），令「供芯图（数据）× 调拨事实」接缝可查。
+  // model 取该 PACK 基地在 MODEL_BASE_MAP 的首个可产型号（reverse map·芯型即包型）。纯确定性（无 rng·R6）。
+  const modelByBase = new Map<string, string>();
+  for (const [mId, bs] of Object.entries(MODEL_BASE_MAP)) for (const bid of bs) if (!modelByBase.has(bid)) modelByBase.set(bid, mId);
+  const csMap = cellSourceMap(bases as { baseId: string; factory_type?: string }[]);
+  for (const [packBaseId, sources] of Object.entries(csMap)) {
+    const nearest = sources[0];
+    const modelId = modelByBase.get(packBaseId);
+    if (!nearest || !modelId) continue;
+    const h = hashString(`cellxfer_${nearest}_${packBaseId}_${modelId}`);
+    const qty = 800 + (h % 30) * 100; // 800..3700 套（电芯批量→包装配）
+    const transitDays = transitDaysFor(nearest, packBaseId);
+    const dispatchDay = 1 + (Math.floor(h / 1000) % 20);
+    const etaDay = dispatchDay + transitDays;
+    const freightCost = freightCostFor(nearest, packBaseId, qty);
+    const status = XFER_STATUS[h % XFER_STATUS.length]!;
+    const fromName = baseNameById.get(nearest) ?? nearest;
+    const toName = baseNameById.get(packBaseId) ?? packBaseId;
+    interBaseTransfers.push({
+      transferId: `XFER-CELL-${nearest}-${packBaseId}-${modelId}`,
+      fromBase: nearest,
+      toBase: packBaseId,
+      model: modelId,
+      qty,
+      transitDays,
+      freightCost,
+      status,
+      dispatchDate: isoDate(xferT0 + dispatchDay * 86400000),
+      dispatchDay,
+      etaDay,
+      etaDate: isoDate(xferT0 + etaDay * 86400000),
+      reason: `${fromName}→${toName} ${modelId} 电芯→电池包就近供芯`,
+    });
+  }
+
+  // WO-FULFILLS-EDGE：把「工单兑现哪张订单」回写成 `WorkOrder.orderRef` 外键。
+  // 放在 return 之前（orders 与 workOrders 都已生成完毕），**纯投影**：只读两个既有数组、
+  // 零 rng、零时钟 ⇒ 不位移任何 rng 流，同 (industry, scale, seed) 字节一致（R6）。
+  // 无候选的工单**不写这个字段**（条件缺席，先例 `Order.earlyDue`）——
+  // 写个空串会让「查过没有」与「压根没登记」在下游分不开。
+  {
+    const woById = new Map(workOrders.map((w) => [String(w.woId), w]));
+    for (const f of deriveFulfills(orders, workOrders)) {
+      const wo = woById.get(f.woId);
+      if (wo) wo.orderRef = f.so;
+    }
+  }
+
+  // WO-CAPACITY-EDGE · 产能池（**纯投影**：只读已生成的 `lines`，零 rng / 零时钟 ⇒ 不位移任何
+  // rng 流，同 (industry, scale, seed) 字节一致 R6）。一线一池，`poolId` 由 `lineId` 确定性拼出。
+  // ⚠ 取的是 `max_capacity_day`（**件/日**）不是 `capacityDaily`（套/日）—— 见 `capacityPoolProps`
+  // 头注：消耗侧 `WorkOrder.qtyPlanned` 的量纲是**件**，两侧必须同族，否则一次错两处。
+  const capacityPools: Record<string, unknown>[] = lines.map((l) => ({
+    poolId: capacityPoolIdOfLine(String(l.lineId)),
+    lineId: l.lineId,
+    baseId: l.baseId,
+    capacityCellsDaily: l.max_capacity_day,
+    status: l.status,
+  }));
+
+  return { bases, models, orders, productPlatforms, productSeries, productVersions, bomHeaders, bomDetails, routings, operations, processCapabilities, qualityStandards, inspectionCharacteristics, productLineCapabilities, productEquipmentCapabilities, engineeringChanges, materialAlternatives, workshops, lines, capacityPools, processes, equipment, maintPlans, segments, shipments, warehouses, interBaseTransfers, dataHealth, demandSegments, financePlans, materialBalances, metrics, ksfs, principals, rootCauseChains, sopVersionRows, certLinks, workOrders, productionSchedules, shiftPlans, wipLots, wipMoves, wipQualityCheckpoints, qualityLots, inspectionResults, defectRecords, equipmentOEEs, equipmentDowntimes, equipmentAlarms, exceptionEvents, maintenanceOrders, sparePartConsumptions, operatorAttendances, operatorSkillCerts, finishedGoodsInv, inventoryTxns, orderPromises, orderLines };
 }
 
 // ---------------------------------------------------------------------------
@@ -1161,12 +6964,13 @@ export function generatePlanDomain(weeklyTotalWan: number, avgUnitPrice: number)
   const annualBase = round(weeklyTotalWan * 52, 1);
   const fin = pv.scenarios.finance;
   const revenueOf = (demand: number) => round((demand * avgUnitPrice) / 10000, 1); // 万套×元/套 → 亿
-  const scenario = (key: string, name: string, demand: number, decision: string, lta: string, finalized: boolean) => ({
+  const scenario = (key: string, name: string, demand: number, note: string, decision: string, lta: string, finalized: boolean) => ({
     scnId: `AOP-${year}-${key}`,
     key,
     name,
     year,
     demand,
+    note,
     capacityDecision: decision,
     ltaLock: lta,
     revenue: revenueOf(demand),
@@ -1177,9 +6981,9 @@ export function generatePlanDomain(weeklyTotalWan: number, avgUnitPrice: number)
     ...(finalized ? { finalizedAt: `${year}-06-20T09:00:00.000Z` } : {}),
   });
   const scenarios = [
-    scenario("conservative", "保守", round(annualBase * pv.scenarios.conservativeFactor, 1), "维持现有产线，不新增产能投资", "锂盐长协锁量 60%，季度滚动议价", false),
-    scenario("baseline", "基准", annualBase, "合肥四期 8GWh 扩产，2027-Q2 投产", "锂盐长协锁量 70%，年度锁价", true),
-    scenario("aggressive", "激进", round(annualBase * pv.scenarios.aggressiveFactor, 1), "合肥四期 + 盐城二期合计 20GWh 扩产", "锂盐长协锁量 85%，并签三年框架", false),
+    scenario("conservative", "保守", round(annualBase * pv.scenarios.conservativeFactor, 1), "乘用车放缓、储能温和；不赌新增产能，守现金", "维持现有产线，不新增产能投资", "锂盐长协锁量 60%，季度滚动议价", false),
+    scenario("baseline", "基准", annualBase, "乘用车持平 +8%、储能放量；按年度承诺扩产", "合肥四期 8GWh 扩产，2027-Q2 投产", "锂盐长协锁量 70%，年度锁价", true),
+    scenario("aggressive", "激进", round(annualBase * pv.scenarios.aggressiveFactor, 1), "海外大单落地、储能高增；双基地并扩抢份额", "合肥四期 + 盐城二期合计 20GWh 扩产", "锂盐长协锁量 85%，并签三年框架", false),
   ];
 
   // 目标分解：月值 = 年需求 × 季节权重/12；末月吸收舍入差 → 年 = Σ季 = Σ月（同源勾稽）。

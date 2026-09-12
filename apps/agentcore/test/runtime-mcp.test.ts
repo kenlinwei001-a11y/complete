@@ -331,7 +331,9 @@ describe("R9 · stdio 安全（§4.3 红线）", () => {
     const t = await createTestApp({
       env: { MCP_STDIO_ENABLED: "1", MCP_STDIO_COMMAND_ALLOWLIST: "/usr/bin/node,/opt/mcp/server" },
     });
-    const post = (payload: unknown) =>
+    // payload 原来标成 unknown ⇒ 不能赋给 inject 的 InjectPayload，且会把 inject 的重载
+    // 解析歪掉（返回类型退化成 `void & Promise<Response> & Chain`，于是 .statusCode/.json 全报不存在）。
+    const post = (payload: Record<string, unknown>) =>
       t.app.inject({ method: "POST", url: "/b/v1/mcp-configs", headers: debugHeaders(PLATFORM_ADMIN), payload });
 
     const ok = await post(stdioPayload("/usr/bin/node", ["dist/server.js", "--port=8080"]));

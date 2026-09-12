@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { OpsSchedule } from "@platform/contracts";
 import { fetchOpsSchedule, saveOpsSchedule } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+import { SimClockConsole } from "./SimClockConsole";
+import { VirtualOpsTeamPanel } from "./VirtualOpsTeamPanel";
 
 const EMPTY: OpsSchedule = { forecasts: [] };
 
@@ -52,7 +54,7 @@ export default function OpsSchedulePage() {
       {/* A 全自动：定期产能预测 */}
       <section className="panel" style={{ marginBottom: 16 }}>
         <h3 style={{ fontSize: 13 }}>A · 定期产能预测（计算类，ServiceAccount 自动执行）</h3>
-        <p style={{ fontSize: 11, color: "var(--muted2)" }}>M11 校准配对样本的正式来源；产物标记 executedAs=SERVICE_ACCOUNT。</p>
+        <p style={{ fontSize: 12, color: "var(--muted2)" }}>M11 校准配对样本的正式来源；产物标记 executedAs=SERVICE_ACCOUNT。</p>
         <table className="cmp">
           <thead>
             <tr>
@@ -244,6 +246,18 @@ export default function OpsSchedulePage() {
       <button className="btn primary" data-testid="save-schedule" disabled={saveMut.isPending} onClick={() => saveMut.mutate(draft)}>
         保存配置
       </button>
+
+      {/* 统一规格页面归属决议：模拟时钟（A8 §6.3）从合成数据页移出，迁至运营自动化页（运营时序关切）。 */}
+      <section style={{ marginTop: 16 }}>
+        <h3 style={{ fontSize: 13 }}>C · 模拟时钟（A8 时序推进 · 自合成数据页迁入）</h3>
+        <SimClockConsole />
+      </section>
+
+      {/* WO-BEFE-B · D 段：虚拟操作团队与剧本（回放编排器 §1–§3，四条端点此前零调用方）。
+          与上面 A/B/C 同页是因为它们同属"运营自动化"这一个关切；隔离语义（仅 SYNTHETIC）在面板内说明。 */}
+      <div style={{ marginTop: 16 }}>
+        <VirtualOpsTeamPanel />
+      </div>
     </div>
   );
 }

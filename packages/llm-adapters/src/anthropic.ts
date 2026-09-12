@@ -16,7 +16,9 @@ import type {
   ToolLoopEvent,
   ToolLoopReq,
 } from "./types.js";
+import { requireUsage } from "./types.js";
 import { runToolLoop } from "./toolloop.js";
+import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
 
 /** beta flag for server-side compaction (Agent 运行时增量 §1.3 第 2 刀). */
 export const COMPACTION_BETA = "compact-2026-01-12";
@@ -126,10 +128,21 @@ export class AnthropicLlmClient implements FullLlmClient {
       messages: [{ role: "user", content: req.user }],
       output_config: { format: zodOutputFormat(ClassificationSchema) },
     });
+    requireUsage(resp, req.model);
     this.track(req.model, "input", resp.usage.input_tokens);
     this.track(req.model, "output", resp.usage.output_tokens);
     if (resp.parsed_output == null) throw new ClassifierParseError();
-    return resp.parsed_output;
+    // WO-SLOT-HARVEST · 槽位一律经**单源收割器**（与 openai/degrade 同一份合并规则，见 slot-harvest.ts）。
+    // 本条路由是服务端 schema 强约束（output_config.format），正常形态槽位就在顶层 extractedSlots，
+    // 收割结果与旧的"直接返回 parsed_output"等价；价值在于形态一旦漂（槽跑进 candidate / 字段改名），
+    // `unconsumed` 会**报出来**，而不是像 openai 那条路一样静默丢答案（那正是本单的病根）。
+    const harvest = harvestClassificationSlots(resp.parsed_output);
+    reportUnconsumedSlots("anthropic.classify", harvest);
+    return {
+      candidates: resp.parsed_output.candidates,
+      outOfCatalog: resp.parsed_output.outOfCatalog,
+      extractedSlots: harvest.slots,
+    };
   }
 
   async agent(req: LlmAgentRequest): Promise<LlmAgentResponse> {
@@ -146,15 +159,27 @@ export class AnthropicLlmClient implements FullLlmClient {
       messages: req.messages.map((m) => toAnthropicMessage(m)),
     } as Record<string, unknown>;
 
+    // WO-FIX-REASONING-CONTENT：收尾/兜底轮强制工具选择（缺省 auto·模型自决）。
+    // `{type:"tool", name}` → Anthropic tool_choice {type:"tool", name}；令模型必须产出结构化收尾。
+    if (req.toolChoice) {
+      params.tool_choice =
+        req.toolChoice.type === "tool" ? { type: "tool", name: req.toolChoice.name } : { type: "auto" };
+    }
+
     // Agent 运行时增量 §1.3 第 2 刀：服务端 compaction（beta compact-2026-01-12）。
     // 响应中的 compaction 块按官方语义原样回传（raw 透传，见 toAnthropicMessage 的 raw echo）。
     const compacting = this.enableCompaction && (req.contextEdits?.length ?? 0) > 0;
     if (compacting) params.context_management = { edits: req.contextEdits };
 
+    // G-9：per-call deadline 的 AbortSignal 透传给 SDK（挂住的调用可被上界终止 → AbortError）。
+    const reqOptions: Record<string, unknown> = {};
+    if (compacting) reqOptions.headers = { "anthropic-beta": COMPACTION_BETA };
+    if (req.signal) reqOptions.signal = req.signal;
     const response = await this.client.messages.create(
       params as unknown as Anthropic.MessageCreateParamsNonStreaming,
-      compacting ? { headers: { "anthropic-beta": COMPACTION_BETA } } : undefined,
+      Object.keys(reqOptions).length > 0 ? reqOptions : undefined,
     );
+    requireUsage(response, req.model);
     this.track(req.model, "input", response.usage.input_tokens);
     this.track(req.model, "output", response.usage.output_tokens);
     const content: LlmContentBlock[] = [];
@@ -191,6 +216,7 @@ export class AnthropicLlmClient implements FullLlmClient {
         },
       ],
     });
+    requireUsage(response, req.model);
     this.track(req.model, "input", response.usage.input_tokens);
     this.track(req.model, "output", response.usage.output_tokens);
     const text = response.content.find((b) => b.type === "text");
@@ -225,6 +251,7 @@ export class AnthropicLlmClient implements FullLlmClient {
       messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
       output_config: { format: zodOutputFormat(req.schema as never) },
     });
+    requireUsage(resp, req.model);
     this.track(req.model, "input", resp.usage.input_tokens);
     this.track(req.model, "output", resp.usage.output_tokens);
     return (resp.parsed_output as T | null | undefined) ?? null;

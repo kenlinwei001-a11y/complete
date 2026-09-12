@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { IsoTime } from "./common.js";
 import { PlanRefSchema, ResolvedRefSchema } from "./refs.js";
+import { GapReportSchema } from "./growth.js";
+import { PageContextSchema } from "./ceo-agent.js"; // WO-CEO-6 · PageContext 注入（闭 G-3）
+import { RefMatchKindSchema } from "./object-ref-resolve.js"; // #108 · 匹配层级词表单源（曾在此被抄了第二份）
 
 // ---------------------------------------------------------------------------
 // QOS-PRD §4.1 场景包与意图目录
@@ -22,12 +25,17 @@ export type ScenarioPackage = z.infer<typeof ScenarioPackageSchema>;
 
 export const SlotDefSchema = z.object({
   name: z.string(),
-  type: z.enum(["string", "number", "date", "timeWindow", "objectRef", "enum"]),
+  // WO-PHASE1-D+A：新增 json 槽类型，支持把结构化数组/对象（如 generic_inference 的 apply/levers/factors）
+  // 原样穿过模板注入求解器 args，而不被字符串化。
+  type: z.enum(["string", "number", "date", "timeWindow", "objectRef", "enum", "json"]),
   required: z.boolean(),
   enumValues: z.array(z.string()).optional(),
   defaultFrom: z.string().optional(),
   clarifyPrompt: z.string().optional(),
   description: z.string(),
+  // C10：objectRef 槽指向的已发布对象类型 key（如 "Order"）；仅 type==="objectRef" 时有意义。
+  // 前端 CatalogPage 槽位表 type=objectRef 时出"目标对象类型"下拉（数据源 fetchObjectTypes）。additive optional。
+  refType: z.string().optional(),
 });
 export type SlotDef = z.infer<typeof SlotDefSchema>;
 
@@ -54,6 +62,22 @@ export const IntentDefinitionSchema = z.object({
   updatedAt: IsoTime,
 });
 export type IntentDefinition = z.infer<typeof IntentDefinitionSchema>;
+
+// C10 试分类（catalog_admin 内联测试意图分类）：确定性词法打分（R6，无 LLM、非 SSE 异步），
+// 对该 package 已发布意图集（name/description/examples）打分返 top-N，让 CatalogPage「试分类」即时显命中/未命中。
+export const IntentClassifyPreviewRequestSchema = z.object({
+  packageId: z.string(),
+  query: z.string().min(1),
+  view: z.string().optional(),
+});
+export type IntentClassifyPreviewRequest = z.infer<typeof IntentClassifyPreviewRequestSchema>;
+
+export const IntentClassifyPreviewResultSchema = z.object({
+  matched: z.array(z.object({ intentKey: z.string(), name: z.string(), score: z.number() })),
+  top: z.string().nullable(),
+  outOfCatalog: z.boolean(),
+});
+export type IntentClassifyPreviewResult = z.infer<typeof IntentClassifyPreviewResultSchema>;
 
 // ---------------------------------------------------------------------------
 // QOS-PRD §4.2 执行计划 DSL（含平台 PRD §8.2 两种新增步骤）
@@ -147,6 +171,8 @@ export const PlanStepSchema = z.discriminatedUnion("type", [
       mcpConfigId: z.string(),
       toolName: z.string(),
       args: z.record(z.string(), TemplateValueSchema),
+      /** 约束执行层 stage3②：声明此 MCP 工具输出应符合的本体对象类型 → 执行器运行时强制校验,不符拒（R13 信任边界）。 */
+      expectsObjectType: z.string().optional(),
     }),
   }),
 ]);
@@ -178,7 +204,25 @@ export const SessionContextSchema = z.object({
   selectedObjects: z.array(ObjectRefSchema).max(10),
   filters: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
   timeWindow: z.object({ from: z.string(), to: z.string() }).optional(),
+  /**
+   * 场景启动器注入通道（PRD-scenario-launcher §3.1，additive）：按**意图槽位名**预置的槽位值。
+   * 场景卡 presetContext.slotPresets 经此搭车进 Query → fillSlots 据此填槽 → 必填槽位被满足即
+   * 不触发反问澄清（"打开即可推演"）。优先级：用户自由文本抽取 > presetSlots > defaultFrom。
+   */
+  presetSlots: z.record(z.string(), z.unknown()).optional(),
   conversationId: z.string().optional(),
+  /**
+   * PRD-scenario-ontogenesis §2.4 确定性绑定：来自场景卡（GOVERNED）的查询带卡声明的意图键 →
+   * 编排器跳过 LLM classify、直接绑定该意图→计划（候选命中且槽位可满足时）。让点卡**不受 classifier 死活/目录影响**。
+   */
+  scenarioIntentKey: z.string().optional(),
+  scenarioKey: z.string().optional(),
+  /**
+   * WO-CEO-6（闭 G-3·additive）：页面上下文——从页面真对象派生的 PageContext（focus/entities/drillPath/selection）。
+   * 注入 QOS 分类器 contextSummary + path-B agent 上下文 → agent 全知「用户在哪页、看什么、选中谁」，
+   * 答案受它 scope/enrich（对比不带则不同）。schema 见 `ceo-agent.ts PageContextSchema`（前端每视图声明=CEO-6-FE 另单）。
+   */
+  pageContext: PageContextSchema.optional(),
 });
 export type SessionContext = z.infer<typeof SessionContextSchema>;
 
@@ -193,6 +237,34 @@ export const ClassificationResultSchema = z.object({
   modelId: z.string().optional(),
 });
 export type ClassificationResult = z.infer<typeof ClassificationResultSchema>;
+
+/**
+ * WO-DETERMINISTIC-CROSS-DOMAIN / WO-MULTI-INTENT · 多路（多域/多意图）编排计划（additive·可选）。
+ * 两 PRD **共享后半**（并行 solver + 确定性块装配）；`routeSource` 区分前半 trigger——
+ *   `deterministic-multi-domain`＝确定性主路（domainResolveMulti 出多路·**零 LLM**·本 WO）；
+ *   `llm-multi-intent`＝LLM 兜底（分类器多候选·多意图 PRD·未接线时不产此值）；
+ *   `llm-l2-decompose`＝L2 真分解（LLM 产 solver 执行计划 → 确定性校验 → 接同一后半·补②关键词漏的意图·WO-L2-DECOMPOSE）。
+ * `synthesisMode="deterministic"`＝零 LLM 块装配地板（R6·同问句同解字节一致）；`compose`＝可选 LLM 润色（暗发）。
+ * `coupledPairs`＝检出的耦合子结论对（诚实标「独立测算·未链式传导·见 L3」·装配**不造跨域新数字**·R13）。
+ */
+export const MultiIntentPlanSchema = z.object({
+  routeSource: z.enum(["deterministic-multi-domain", "llm-multi-intent", "llm-l2-decompose"]),
+  synthesisMode: z.enum(["deterministic", "compose"]),
+  selectedIntents: z.array(
+    z.object({
+      intentKey: z.string(),
+      confidence: z.number(),
+      solverKey: z.string(),
+      slots: z.record(z.string(), z.unknown()),
+    }),
+  ),
+  parallelResults: z.record(
+    z.string(),
+    z.object({ ok: z.boolean(), durationMs: z.number(), summary: z.string() }),
+  ),
+  coupledPairs: z.array(z.tuple([z.string(), z.string()])),
+});
+export type MultiIntentPlan = z.infer<typeof MultiIntentPlanSchema>;
 
 export const QueryTaskStatusSchema = z.enum([
   "ROUTING",
@@ -237,6 +309,12 @@ export const AnswerBlockSchema = z.discriminatedUnion("type", [
     actionType: z.string(),
     summary: z.string(),
   }),
+  // CL.7（PRD-in-dialog-gap-fill-loop）：答案命中缺口时并入结构化缺口块——对话坞渲染可点缺口卡
+  // （缺口码 + 人话 + 按码触发产数据 + 续推），而非干叙述"让我检索…"。闭 G-3 对话侧。
+  z.object({
+    type: z.literal("gap"),
+    report: GapReportSchema,
+  }),
 ]);
 export type AnswerBlock = z.infer<typeof AnswerBlockSchema>;
 
@@ -266,16 +344,142 @@ export const ProvenanceRefSchema = z.object({
       score: z.number().optional(),
     })
     .optional(),
+  /** PRD-CAP-DEMANDDELTA：求解器 compute 步公式/口径标签，供前端 popover  richer provenance。 */
+  formula: z.string().optional(),
+  valueLabel: z.string().optional(),
 });
 export type ProvenanceRef = z.infer<typeof ProvenanceRefSchema>;
+
+// ---------------------------------------------------------------------------
+// 推演验证痕迹（ValidationTrace）—— 凡推演结果用到本体切片即附带，前端展示让用户信任。
+// 两层：① 一致性验证（本体内自动）② 交叉验证（用知识图谱已有事实反向核对结论）。
+// 确定性（R6）：同输入同切片同对象事实 → 同验证结论；tenant 隔离（R2）。
+// ---------------------------------------------------------------------------
+
+/** 一致性验证单项（Layer 1）：实体在本体定义 / 公理(规则)检查 / 取值范围 / 数字溯源 / 版本钉。 */
+export const ConsistencyCheckSchema = z.object({
+  kind: z.enum(["ENTITY_DEFINED", "AXIOM", "RANGE", "NUMERIC_PROVENANCE", "VERSION_PIN"]),
+  ref: z.string(),
+  status: z.enum(["PASS", "WARN", "FAIL"]),
+  detail: z.string().optional(),
+});
+export type ConsistencyCheck = z.infer<typeof ConsistencyCheckSchema>;
+
+/** 交叉验证单条断言核对（Layer 2）：结论里的对象属性/关系 vs 知识图谱已有事实。 */
+export const ClaimVerdictSchema = z.object({
+  claim: z.string(), // 人读："Supplier:S-A.certification == ISO9001"
+  kind: z.enum(["PROPERTY", "LINK"]),
+  subjectType: z.string(),
+  subjectId: z.string(),
+  /** kind=PROPERTY */
+  property: z.string().optional(),
+  assertedValue: z.unknown().optional(),
+  /** kind=LINK */
+  linkType: z.string().optional(),
+  objectType: z.string().optional(),
+  objectId: z.string().optional(),
+  status: z.enum(["CONSISTENT", "CONFLICT", "NO_EVIDENCE"]),
+  /** 知识图谱实际值（CONFLICT 时附） */
+  kgValue: z.unknown().optional(),
+  detail: z.string().optional(),
+  /** 溯源：核对所依据的对象快照版本 */
+  snapshotVersion: z.string().optional(),
+});
+export type ClaimVerdict = z.infer<typeof ClaimVerdictSchema>;
+
+/** 交叉验证请求（B→A）：把结论里的断言交给 DataCore 对照知识图谱核对。 */
+export const CrossValidateRequestSchema = z.object({
+  claims: z
+    .array(
+      z.object({
+        kind: z.enum(["PROPERTY", "LINK"]),
+        subjectType: z.string(),
+        subjectId: z.string(),
+        property: z.string().optional(),
+        assertedValue: z.unknown().optional(),
+        linkType: z.string().optional(),
+        objectType: z.string().optional(),
+        objectId: z.string().optional(),
+      }),
+    )
+    .max(200),
+});
+export type CrossValidateRequest = z.infer<typeof CrossValidateRequestSchema>;
+
+export const CrossValidateResponseSchema = z.object({
+  claims: z.array(ClaimVerdictSchema),
+  verdict: z.enum(["ALL_CONSISTENT", "PARTIAL", "CONFLICT", "NO_CLAIMS"]),
+  snapshotVersion: z.string(),
+});
+export type CrossValidateResponse = z.infer<typeof CrossValidateResponseSchema>;
+
+export const ValidationTraceSchema = z.object({
+  /** 触发钩子：用到的本体切片键（非空即代表“涉及本体切片”，前端据此强制展示）。 */
+  slicesUsed: z.array(z.string()),
+  consistency: z.object({
+    checks: z.array(ConsistencyCheckSchema),
+    verdict: z.enum(["ALL_PASS", "WARN", "FAIL"]),
+  }),
+  crossValidation: z.object({
+    claims: z.array(ClaimVerdictSchema),
+    verdict: z.enum(["ALL_CONSISTENT", "PARTIAL", "CONFLICT", "NO_CLAIMS"]),
+  }),
+  /** R13 · 槽位归一化痕迹：如天/月等原始输入被归一化为周后的值（诊断与 seam-gate 用）。 */
+  normalizedSlots: z.record(z.string(), z.unknown()).optional(),
+  generatedAt: IsoTime,
+});
+export type ValidationTrace = z.infer<typeof ValidationTraceSchema>;
 
 export const AnswerSchema = z.object({
   trustLevel: z.enum(["VERIFIED_WORKFLOW", "AGENT_EXPLORATORY"]),
   blocks: z.array(AnswerBlockSchema),
   provenance: z.array(ProvenanceRefSchema),
   unverifiedNumerics: z.boolean(),
+  /** 推演用到本体切片时附带的验证痕迹（一致性 + 交叉验证）；否则缺省。 */
+  validationTrace: ValidationTraceSchema.optional(),
 });
 export type Answer = z.infer<typeof AnswerSchema>;
+
+/**
+ * WO-SLOT-ENTITY-RESOLVE §6 · 待澄清内容（**落在 task 上**，与 SSE `clarification.required` 同源）。
+ * 轮询型客户端拿 `GET /api/v1/queries/:id` 就能知道"系统在问什么"，不必吃 SSE、不必干等超时。
+ */
+export const PendingClarificationSchema = z.object({
+  kind: z.enum(["INTENT_CHOICE", "SLOT_FILLING"]),
+  round: z.number().int().min(1),
+  askedAt: IsoTime,
+  /** SLOT_FILLING：缺哪些槽 + 问题文案 + （解析失败时）候选。 */
+  slots: z
+    .array(
+      z.object({
+        name: z.string(),
+        type: z.string(),
+        prompt: z.string(),
+        /** 解析失败/歧义时的候选（"您是不是指…"）。 */
+        candidates: z.array(z.object({ objectType: z.string(), objectId: z.string(), label: z.string() })).optional(),
+      }),
+    )
+    .optional(),
+  /** INTENT_CHOICE：候选意图。 */
+  intents: z.array(z.object({ intentKey: z.string(), name: z.string(), description: z.string() })).optional(),
+});
+export type PendingClarification = z.infer<typeof PendingClarificationSchema>;
+
+/** WO-SLOT-ENTITY-RESOLVE · objectRef 槽解析留痕（可诊断：ref 经哪个属性、以哪一层匹上哪个对象）。 */
+export const SlotResolutionSchema = z.object({
+  slotName: z.string(),
+  ref: z.string(),
+  objectType: z.string(),
+  objectId: z.string(),
+  label: z.string(),
+  // #108 单源：**必须**引用 `RefMatchKindSchema`，不许在这里再抄一份字面量。
+  // 原来这里写的是 `z.enum(["id","name","alias"])` —— 同一个包里的第二份词表。
+  // 后果不是抽象的：解析器加一档 `partial`（治「常州基地」解析不到）时，两份词表当场对不上，
+  // agentcore 编译红在一处完全不相干的 `tasks.patch()` 调用上，真因要追三层才看得见。
+  matchedBy: RefMatchKindSchema,
+  matchedProp: z.string(),
+});
+export type SlotResolution = z.infer<typeof SlotResolutionSchema>;
 
 export const QueryTaskSchema = z.object({
   id: z.string(), // task_
@@ -299,10 +503,152 @@ export const QueryTaskSchema = z.object({
     .optional(),
   /** 引用模式增量 §2.2（additive）：执行时解析到的实际版本留痕（「当时生效」） */
   resolvedRefs: z.array(ResolvedRefSchema).optional(),
+  /** WO-DETERMINISTIC-CROSS-DOMAIN（additive·可选）：确定性多域分路（domainResolveMulti→并行 solver→零 LLM 块装配）留痕。 */
+  multiIntentPlan: MultiIntentPlanSchema.optional(),
+  /**
+   * WO-SLOT-ENTITY-RESOLVE §6（additive·可选）：**task 上落"在问什么"**。
+   *
+   * 旧洞：`requestClarification` 只把 `missing` 发进 SSE `clarification.required` 事件，
+   * task 对象上只有 `status=AWAITING_CLARIFICATION` + `clarificationRounds` —— 轮询型客户端
+   * （CLI / 批量脚本 / 任何不吃 SSE 的调用方）**永远不知道要补什么，只能干等到超时**（实测卡死 150s）。
+   * 现在澄清载荷**构造一次**：写进本字段 + 原样发 SSE（同源，不许两套）；澄清被应答/任务终态即清空。
+   */
+  pendingClarification: PendingClarificationSchema.optional(),
+  /**
+   * WO-SLOT-ENTITY-RESOLVE（additive·可选）：objectRef 槽解析留痕（"常州"是怎么匹上 Base 的·R13）。
+   * matchedBy: id(主键/内部id) · name(名称类属性) · alias(本体声明 searchable 的属性)。
+   */
+  slotResolutions: z.array(SlotResolutionSchema).optional(),
   createdAt: IsoTime,
   completedAt: IsoTime.optional(),
 });
 export type QueryTask = z.infer<typeof QueryTaskSchema>;
+
+// ---------------------------------------------------------------------------
+// 编排推演 DAG（InferenceTrace）—— PRD-IND-story §4.3/§4.5.A。
+// 把一次真实 QueryTask 运行投影为 HTML 同构的 10 节点非线性编排 DAG（par/conv/aux/fb 边）。
+// 10 节点骨架 + 边拓扑 + IPO 模板 = 视图定义级常量（i18n/ViewDef，不违反 R14）；
+// 各节点 status/data/solvers/agents/gapCode 由真实轨迹 **确定性派生**（R6），不新增真值（R13）。
+// ---------------------------------------------------------------------------
+
+/** 节点状态：pending(本次未执行该步) / running / done / gap(GapReport 命中该步)。 */
+export const InferenceNodeStatusSchema = z.enum(["pending", "running", "done", "gap"]);
+export type InferenceNodeStatus = z.infer<typeof InferenceNodeStatusSchema>;
+
+/** 节点域色 kind（§2.2 色板语义，1:1 必须语义一致；色值可调）。 */
+export const InferenceNodeKindSchema = z.enum([
+  "factory", // ① 解析场景
+  "capacity", // ②③ 检索切片 / 装载因子
+  "solver", // ④⑤⑥ 聚合产能 / 识别瓶颈 / 情景推演
+  "agent", // ⑦⑧ 方案比对 / 校验解释
+  "forecast", // ⑨ 写回行动
+  "quality", // ⑩ 执行回采
+]);
+export type InferenceNodeKind = z.infer<typeof InferenceNodeKindSchema>;
+
+/** 边类型：par 并行分叉 / conv 汇聚 / seq 序列 / aux 历史校正旁路 / fb 跨周期反馈。 */
+export const InferenceEdgeTypeSchema = z.enum(["par", "conv", "seq", "aux", "fb"]);
+export type InferenceEdgeType = z.infer<typeof InferenceEdgeTypeSchema>;
+
+/** ⑦节点专属：候选方案比对行（仅 trace 含候选方案集时填充；否则空，不写死 HTML 5 行）。 */
+export const InferenceCmpRowSchema = z.object({
+  n: z.string(), // 方案
+  bn: z.string(), // 针对瓶颈
+  cap: z.string(), // 新增产能
+  gap: z.string(), // 6 周缺口
+  cost: z.string(), // 投入
+  due: z.string(), // 交期
+  risk: z.string(), // 风险
+});
+export type InferenceCmpRow = z.infer<typeof InferenceCmpRowSchema>;
+
+/** ⑦节点专属：人机对话问答（仅 Answer 含追问时填充）。 */
+export const InferenceQaSchema = z.object({ q: z.string(), a: z.string() });
+export type InferenceQa = z.infer<typeof InferenceQaSchema>;
+
+export const InferenceNodeSchema = z.object({
+  /** 1..10 同序节点 id（= ordinal）。 */
+  id: z.number().int(),
+  ordinal: z.number().int(),
+  /** 详情标题（steps[].t）。 */
+  label: z.string(),
+  /** DAG 短名（STORY_SHORT）。 */
+  shortLabel: z.string(),
+  kind: InferenceNodeKindSchema,
+  /** 自由布局坐标（rank/row → x/y，§2.2）。 */
+  rank: z.number().int(),
+  row: z.number().int(),
+  /** IPO 文案（骨架模板，可被真实 trace 覆盖/补充）。 */
+  in: z.string().optional(),
+  proc: z.string().optional(),
+  out: z.string().optional(),
+  /** 真实轨迹填充：引用数据 / 求解器 / Agent。 */
+  data: z.array(z.string()),
+  solvers: z.array(z.string()),
+  agents: z.array(z.string()),
+  status: InferenceNodeStatusSchema,
+  /** gap 态：GapReport.findings[].gapCode。 */
+  gapCode: z.string().optional(),
+  /** gap 态：断在哪一步（GapReport.findings[].atStep）。 */
+  atStep: z.string().optional(),
+  /** 命中该节点的真实步骤 id 集（多步并归一节点时列全部子步）。 */
+  stepIds: z.array(z.string()),
+  /** ⑦节点：候选方案比对表（仅 trace 含时）。 */
+  cmp: z.array(InferenceCmpRowSchema).optional(),
+  /** ⑦节点：人机对话（仅 Answer 含追问时）。 */
+  qa: z.array(InferenceQaSchema).optional(),
+});
+export type InferenceNode = z.infer<typeof InferenceNodeSchema>;
+
+export const InferenceEdgeSchema = z.object({
+  from: z.number().int(),
+  to: z.number().int(),
+  type: InferenceEdgeTypeSchema,
+  label: z.string().optional(),
+});
+export type InferenceEdge = z.infer<typeof InferenceEdgeSchema>;
+
+export const InferenceTraceSchema = z.object({
+  taskId: z.string(),
+  /** = task.query（真实问句，覆盖示例 scenario 文案）。 */
+  scenario: z.string(),
+  path: z.enum(["WORKFLOW", "AGENT", "NONE"]),
+  /** GapReport.verdict（若有缺口报告）。 */
+  verdict: z.enum(["ANSWERABLE", "BLOCKED", "BOUNDARY"]).optional(),
+  nodes: z.array(InferenceNodeSchema),
+  edges: z.array(InferenceEdgeSchema),
+});
+export type InferenceTrace = z.infer<typeof InferenceTraceSchema>;
+
+/**
+ * 实时验证审计层 · 统一决策痕迹（可导出）：把散落在 task/answer/toolCalls 的证据要素
+ * 聚合为单一可导出 JSON——监管"直接出示决策痕迹"一站到位。
+ * ontology_validation 总判定 + human_review_required 显式字段（差距评审 2026-06-16）。
+ */
+export const DecisionTraceSchema = z.object({
+  decisionId: z.string(), // = taskId
+  tenantId: z.string(),
+  question: z.string(),
+  status: z.string(),
+  path: z.string().optional(),
+  classification: ClassificationResultSchema.optional(),
+  matchedIntent: z.object({ intentId: z.string(), intentKey: z.string(), version: z.number().int() }).optional(),
+  /** 版本钉留痕（plan/solver/rule 当时生效版本）。 */
+  resolvedRefs: z.array(ResolvedRefSchema).default([]),
+  trustLevel: z.string().optional(),
+  unverifiedNumerics: z.boolean().default(false),
+  provenanceCount: z.number().int().default(0),
+  /** 本体校验总判定：ALL_PASS / PARTIAL / CONFLICT / NO_EVIDENCE / NONE（无切片即 NONE）。 */
+  ontologyValidation: z.enum(["ALL_PASS", "PARTIAL", "CONFLICT", "NO_EVIDENCE", "NONE"]),
+  /** 显式人工复核标志：AGENT_EXPLORATORY / 未验证数字 / 交叉验证冲突 → true。 */
+  humanReviewRequired: z.boolean(),
+  toolCalls: z.array(z.object({ tool: z.string(), outcome: z.string(), durationMs: z.number().optional(), at: z.string().optional() })).default([]),
+  /** WO-DETERMINISTIC-CROSS-DOMAIN（additive·可选）：确定性多域分路计划留痕（区分 routeSource·诚实 coupledPairs）。 */
+  multiIntentPlan: MultiIntentPlanSchema.optional(),
+  createdAt: IsoTime,
+  completedAt: IsoTime.optional(),
+});
+export type DecisionTrace = z.infer<typeof DecisionTraceSchema>;
 
 // ---------------------------------------------------------------------------
 // QOS-PRD §4.5 Agent 运行与孵化留痕
@@ -314,15 +660,24 @@ export const AgentBudgetSchema = z.object({
   maxSolverCalls: z.number().int(),
   maxDurationMs: z.number().int(),
   maxClarifications: z.number().int(),
+  // WO-Phase4 · ReAct Fallback 硬预算（additive·`.default()` 令旧 AgentRunRecord.budget 解析仍合法·字节兼容）：
+  // maxDiscoverCalls = 探索类工具（discover/search_experience/query_system_ontology）总次数上界；
+  // maxRoundTrips = 完成「LLM→工具执行→结果返回」的轮次上界（= SSE iteration 序号）。
+  // 默认值取宽松（= 既有 iteration 口径·不额外收紧 DEFAULT），真正的 residual 收紧在 orchestrator runPathB 侧按 env 配置注入。
+  maxDiscoverCalls: z.number().int().default(8),
+  maxRoundTrips: z.number().int().default(24),
 });
 export type AgentBudget = z.infer<typeof AgentBudgetSchema>;
 
 export const DEFAULT_AGENT_BUDGET: AgentBudget = {
-  maxIterations: 8,
-  maxToolCalls: 10,
-  maxSolverCalls: 2,
-  maxDurationMs: 90_000,
+  maxIterations: 24,
+  maxToolCalls: 40,
+  maxSolverCalls: 8,
+  maxDurationMs: 600_000,
   maxClarifications: 0,
+  // 宽松默认（不改既有直调 engine 的多轮上下文管理测试行为）；residual path-B 由 orchestrator 按 env 收紧到硬预算。
+  maxDiscoverCalls: 8,
+  maxRoundTrips: 24,
 };
 
 export const AgentIterationSchema = z.object({
@@ -353,6 +708,59 @@ export const ContextOpSchema = z.object({
 });
 export type ContextOp = z.infer<typeof ContextOpSchema>;
 
+/**
+ * WO-AGENTRUN-ATTRIBUTION · 一次运行的**归属形态**（闭 `G-AGENTRUN-NO-AGENT-ATTRIBUTION` 的可归属那一半）。
+ *
+ * 三态而不是布尔 —— 因为「无 agentId」有**两个成因完全不同**的来源，混成一个就会说假话：
+ * - `REGISTERED`  ：引擎真解析了一个 `AgentDefinition`（`engine.runRegisteredAgent` → `resolveAgent`），
+ *                   `agentId`/`agentKey`/`agentVersion` 必然同时有值。**这是「这个 Agent 的运行」的唯一凭据。**
+ * - `EXPLORATORY` ：通用探索路（`router/orchestrator.ts runPathB`）——工具集由 package 白名单 ∩ {READ,COMPUTE}
+ *                   现算，**全程不存在 AgentDefinition**。所以它不是"忘了填"，而是"真的没有归属对象"，
+ *                   引擎在此**正面声明**这一点，界面才能把它和下面那种分开说。
+ * - **字段整体缺失**：本字段上线**之前**写的旧记录。无从判定，只能标"未知"——
+ *                   绝不许把它当成 `EXPLORATORY` 混进去（那是拿"我没找到"冒充"它不存在"）。
+ */
+export const AgentRunAttributionSchema = z.enum(["REGISTERED", "EXPLORATORY"]);
+export type AgentRunAttribution = z.infer<typeof AgentRunAttributionSchema>;
+
+/**
+ * WO-AGENTRUN-FANOUT-PERSIST · 一次运行在**编排结构里的位置**（闭 `G-AGENTRUN-FANOUT-NOT-PERSISTED`）。
+ *
+ * 与 `attribution`（"归属到哪个 Agent"）是**两个正交的问题**，别合成一个：
+ * 一条 `FANOUT` 记录同样可以是 `REGISTERED`（多角色会诊的每个子 agent 都真解析了 AgentDefinition），
+ * 合成一个枚举就再也回答不了「这个 Agent 跑过几次、其中几次是被会诊叫去的」。
+ *
+ * - `ROOT`   ：编排层为**这个任务本身**跑的那次循环（`runPathB` / `runRolePathB` / `runSceneAgent`），
+ *              一个任务至多一条。这是 `getByTask` 返回的那条。
+ * - `FANOUT` ：任务内部由 `invoke_agent` 步扇出的**子 agent** 运行
+ *              （多角色会诊 `runCoordinator`、path-A 工作流里的 agent 步）。一个任务可以有 N 条。
+ * - **字段整体缺失**：本字段上线**之前**写的旧记录。此时缺失 ≡ `ROOT` 是**可证的**而非猜测 ——
+ *              旧表 `agent_runs.task_id` 带 UNIQUE 约束，一个任务物理上只存得下一条，
+ *              而那一条必然是编排层顶层写的。故读端把缺失当 ROOT 处理，不算"拿我没找到冒充它不存在"。
+ */
+export const AgentRunOriginSchema = z.enum(["ROOT", "FANOUT"]);
+export type AgentRunOrigin = z.infer<typeof AgentRunOriginSchema>;
+
+/**
+ * WO-DSH-P2-UX（N5）· 一次运行由**哪个内核**执行（additive · optional）。
+ *
+ * 与 `attribution`（"归属到哪个 Agent"）是**两个正交的问题**，别合成一个
+ * （同 :729 明文纪律）：attribution 回答「归谁跑」，kernel 回答「在哪个内核上跑」——
+ * 一条 REGISTERED 的运行既可能跑在内置内核也可能走外部运行时（engine.ts
+ * `DSH_HARNESS=1` 休眠分叉），合成一个枚举就再也回答不了
+ * 「这个 Agent 的运行里几次走了外部运行时」。
+ *
+ * - `NATIVE`   ：内置 ReAct 循环（`agent/loop.ts runAgentLoop`，永不在 dsh 分叉下执行）。
+ * - `EXTERNAL` ：外部运行时（dsh harness 子进程路径，engine.ts 休眠分叉）。
+ * - **字段整体缺失**：本字段上线**之前**写的旧记录。此时缺失 ≡ `NATIVE` 是**可证的**而非
+ *   猜测 —— 休眠门（`scripts/check-dsh-dormancy.mjs` 判据①）机器守「部署面不设
+ *   DSH_HARNESS 真值」且出货 compose 显式 0 ⇒ 字段上线前的全部 run 记录必然产于内置内核。
+ *   与 `origin`「缺失 ≡ ROOT」（旧 UNIQUE 约束可证）同款可证链；
+ *   与 attribution 缺失=未知**不同案**——归属缺失无从判定（不可证），内核缺失可证。
+ */
+export const AgentRunKernelSchema = z.enum(["NATIVE", "EXTERNAL"]);
+export type AgentRunKernel = z.infer<typeof AgentRunKernelSchema>;
+
 export const AgentRunRecordSchema = z.object({
   id: z.string(), // run_
   taskId: z.string(),
@@ -364,6 +772,47 @@ export const AgentRunRecordSchema = z.object({
   totalOutputTokens: z.number(),
   /** Agent 运行时增量 §1.3（additive）：上下文清理操作记录 */
   contextOps: z.array(ContextOpSchema).optional(),
+  // -------------------------------------------------------------------------
+  // WO-AGENTRUN-ATTRIBUTION（additive · 全部 optional · 可回退）
+  // 旧洞：run 记录只有 `taskId`，于是「这个 Agent 跑过几次」在全仓不可得 —— Agent 管理台只能显示
+  // 「本租户 AGENT 路径的全部运行」，把租户级数据当成单 Agent 数据是不许的，只能挂常驻诚实横幅。
+  // 现在归属在**引擎侧单点回填**（`agent/loop.ts finishRun`，而非各 insert 点各填各的），
+  // 保证「谁跑的」与「跑出了什么」同源同一次写入，不会漂。
+  // -------------------------------------------------------------------------
+  /** 租户隔离（tenant_id everywhere）：让 `listByAgent` 不必回表 join task 就能按租户过滤。 */
+  tenantId: z.string().optional(),
+  /** 归属到的 AgentDefinition 主键（**版本级**：`agt_` 一版一条）。仅 REGISTERED 有值。 */
+  agentId: z.string().optional(),
+  /** 归属到的 Agent 逻辑键（跨版本稳定）——「这个 Agent 的历次运行」按它聚合。仅 REGISTERED 有值。 */
+  agentKey: z.string().optional(),
+  /** 本次实际执行的 Agent 版本号（同 key 换版后仍能分辨是哪版跑的）。仅 REGISTERED 有值。 */
+  agentVersion: z.number().int().optional(),
+  /** 归属形态；缺失 = 本字段上线前的旧记录（未知，不等于 EXPLORATORY）。 */
+  attribution: AgentRunAttributionSchema.optional(),
+  /**
+   * WO-DSH-P2-UX（N5）· 执行内核（NATIVE / EXTERNAL，additive optional）。
+   * 与 attribution 正交（归谁跑 ≠ 哪个内核跑）；缺失 = 本字段上线前的旧记录，
+   * 由休眠门 + 出货 compose 可证 ≡ NATIVE（见 AgentRunKernelSchema JSDoc 可证链）。
+   */
+  kernel: AgentRunKernelSchema.optional(),
+  /** 运行落库时刻（列表按它倒序；此前 run 记录**没有任何时间字段**，只能靠 taskId 猜）。 */
+  createdAt: IsoTime.optional(),
+  // -------------------------------------------------------------------------
+  // WO-AGENTRUN-FANOUT-PERSIST（additive · optional · 可回退）
+  // 旧洞：`agent_runs.task_id` 带 UNIQUE 约束 ⇒ 一个任务只存得下一条 run，而多角色会诊
+  // （`runCoordinator` → `invoke_agent` 扇出）的每个子 agent 各自跑完一整轮循环 ——
+  // 那些运行的记录在 `engine.runWorkflowSteps` 的 `runAgentStep` 里被**整个丢掉**（只取 answer/structured），
+  // 于是用户在 Agent 管理台看「本 Agent 的运行」时，会诊里那几个角色一条都不在。
+  // 现在主键落到 run 级（`id`），一个任务可存 N 条，本字段区分「任务自己那条」与「扇出的子运行」。
+  // -------------------------------------------------------------------------
+  /** 本次运行在编排结构里的位置；缺失 = 本字段上线前的旧记录（由旧 UNIQUE 约束可证必为 ROOT）。 */
+  origin: AgentRunOriginSchema.optional(),
+  /**
+   * 扇出这条子运行的那个 `invoke_agent` 步 id（多角色会诊里就是 `dispatch_0/1/2`）。
+   * 仅 `FANOUT` 有值 —— 有了它，「同一次会诊的三条子运行」才能在读端被认回同一次扇出，
+   * 而不是三条互不相识的孤儿记录。
+   */
+  stepId: z.string().optional(),
 });
 export type AgentRunRecord = z.infer<typeof AgentRunRecordSchema>;
 

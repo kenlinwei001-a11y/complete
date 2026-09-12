@@ -114,9 +114,9 @@ describe("SSE replay & idempotency (§12 D1–D2)", () => {
     expect(t.llm.classifyRequests.length).toBe(1); // pipeline only ran once
   });
 
-  it("RATE_LIMITED: >3 executing tasks per user → 429", async () => {
-    // three tasks stuck awaiting clarification (active)
-    for (let i = 0; i < 3; i++) {
+  it("RATE_LIMITED: >10 executing tasks per user → 429", async () => {
+    // ten tasks stuck awaiting clarification (active) → the 11th trips the per-user cap
+    for (let i = 0; i < 10; i++) {
       t.llm.queueClassification({
         candidates: [{ intentKey: "affected_orders", confidence: 0.95 }],
         outOfCatalog: false,

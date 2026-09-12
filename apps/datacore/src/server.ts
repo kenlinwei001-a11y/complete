@@ -8,7 +8,9 @@ import { LocalFsBlobStore } from "./blob.js";
 import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
-import { seedDemo, seedDemoSynthetic, DEMO_TENANT } from "./seed.js";
+import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
+import { seedDemoDerivationSpecs } from "./seed-derivation-specs.js";
+import { seedDemoSimWorld } from "./sim/seed-world.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -24,6 +26,9 @@ async function main(): Promise<void> {
   const llm = createLlmClient(config);
 
   const bootstrapEnv = { email: config.BOOTSTRAP_ADMIN_EMAIL, password: config.BOOTSTRAP_ADMIN_PASSWORD };
+  // #5 首启预热闸（Codespaces 健康检查耗尽定位）：先 listen 再后台播种；播种期间 /readyz 503(reason:"seeding")。
+  // phase/startedAt：让 503 能回答「在动吗」而不只是「没好」（见 app.ts seedingPhase 注释）。
+  const readiness = { seeding: config.SEED_DEMO === "1", phase: "starting", startedAt: Date.now() };
   const { app, services } = await buildApp({
     config,
     repos,
@@ -32,18 +37,98 @@ async function main(): Promise<void> {
     logger,
     // 管理平台增量 §1：users 表为空且无 BOOTSTRAP 变量 → /readyz 503（原因见日志/响应）。
     bootstrapRequired: bootstrapReadiness(repos, bootstrapEnv),
+    seeding: () => readiness.seeding,
+    seedingPhase: () => ({
+      phase: readiness.phase,
+      elapsedSec: Math.round((Date.now() - readiness.startedAt) / 1000),
+    }),
   });
 
-  // 管理平台增量 §1 优先级（见 bootstrap.ts 注释 + DEPLOY.md）：
-  // ① bootstrap 检查先于 SEED_DEMO 播种决策（空表 + 环境变量 → 创建 default 租户 platform_admin，幂等）；
-  // ② SEED_DEMO=1 才播种 demo 租户与演示账号（两者可叠加）；
-  // ③ 空表 + 无变量 + 未播种 → /readyz 持续 503（BOOTSTRAP_REQUIRED）。
-  await bootstrapPlatformAdmin(repos, bootstrapEnv, logger);
-  if (config.SEED_DEMO === "1") {
-    const adminCtx = await seedDemo(repos);
-    logger.info("SEED_DEMO=1: generating battery-manufacturing synthetic dataset (seed 42)");
-    await seedDemoSynthetic(services.synthetic, adminCtx);
+  // #5 定位/修：原先「先播种（pg 演示数据 ~487s）再 listen」→ 端口全程 down，Codespaces 慢盘下超 start_period →
+  // healthcheck 连不上而耗尽重试 → agentcore depends_on service_healthy 永不触发（级联挂）。
+  // 改为「先 listen 让端口即刻可探活，播种移到后台」——播种期间 /readyz 报 503 reason:"seeding"，
+  // 编排方在预热窗内正确等待，不再"端口 down"耗尽。
+  await app.listen({ port: config.PORT, host: config.HOST });
+  logger.info({ port: config.PORT }, "datacore listening (预热中 · /readyz 待播种完成)");
+
+  // 预热阶段计时器。**存在的理由是一次真实的部署事故**：Codespaces 上 datacore 起不来，
+  // `docker compose logs datacore` 打出来的却只有几十行一模一样的 `/readyz 503`，
+  // 没有任何一行说"播到哪儿了"——于是运维、仓主、我三方都无法判断它是
+  // 「还在播」还是「已经卡死」，只能干等或干猜。
+  // 判据（本仓铁律 1 的同一条）：**判活看的是"还在不在动"，而"在动"必须有可观测的信号**。
+  // 一个 8 分钟不出声的预热过程，等于把这个判据从外部观察者手里拿走了。
+  const t0 = readiness.startedAt;
+  const el = (): string => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
+  const phase = (name: string): void => {
+    readiness.phase = name;
+    logger.info({ phase: name, elapsed: el() }, `预热 · ${name}`);
+  };
+
+  try {
+    // 管理平台增量 §1 优先级（见 bootstrap.ts 注释 + DEPLOY.md）：
+    // ① bootstrap 检查先于 SEED_DEMO 播种决策（空表 + 环境变量 → 创建 default 租户 platform_admin，幂等）；
+    // ② SEED_DEMO=1 才播种 demo 租户与演示账号（两者可叠加）；
+    // ③ 空表 + 无变量 + 未播种 → /readyz 持续 503（BOOTSTRAP_REQUIRED）。
+    phase("bootstrap");
+    await bootstrapPlatformAdmin(repos, bootstrapEnv, logger);
+    if (config.SEED_DEMO === "1") {
+      phase("seed:tenant");
+      const adminCtx = await seedDemo(repos);
+      phase("seed:synthetic");
+      logger.info("SEED_DEMO=1: generating battery-manufacturing synthetic dataset (seed 42)");
+      await seedDemoSynthetic(services.synthetic, adminCtx);
+      // 沙盘消"空世界"（审计 §3.5）：本体物化后播 sim 传导规则种子（确定性 R6，正交于电池合成）。
+      phase("seed:propagation-rules");
+      await seedDemoPropagationRules(repos);
+      logger.info("SEED_DEMO=1: seeded demo sim propagation rules (sandbox non-empty)");
+      // WO-Q0 业务流程层：13 域 + 65 流程（配置驱动数据，与冻结的 CHAIN_NODE_REGISTRY 分层）。
+      // 排在合成之后：种子里每条 P## 的 carrierTypeKey 指向本体类型，本体先物化读起来才是完整的。
+      phase("seed:process-layer");
+      await seedDemoProcessLayer(repos);
+      logger.info("SEED_DEMO=1: seeded business process layer (13 domains × 65 processes)");
+      // WO-ORG-WORLD 组织世界（七世界之②）：部门/角色/人 + 职权 + 审批额度 + 代理。
+      // 与流程层同层级的配置数据；`org.world` 仍是暗发（defaultOn:false），播了数据路由照样 404 直到产品开门。
+      phase("seed:org-world");
+      await seedDemoOrgWorld(repos);
+      logger.info("SEED_DEMO=1: seeded organization world (departments/roles/persons + authorities/limits/delegation)");
+      // WO-LIGHTUP：生产 demo 点亮 5 个 QOS 暗发功能（DRIL/反思/free-llm/coordinator/compose-path）——仅生产播种路径，不入基座 seedDemo。
+      phase("seed:entitlements");
+      await seedDemoEntitlements(repos);
+      logger.info("SEED_DEMO=1: lit up demo QOS dark-launch features (dril/critic/free-llm/coordinator/compose)");
+      // WO-SLICE-DERIV-EMPTY：编译 demo 派生溯源规格（G-DERIVSPEC-EMPTY · 不接 seed.ts，
+      // 挂在播撒序列尾部）。排在合成之后：规格公式引用本体类型/属性，本体先物化才编译得对。
+      phase("seed:derivation-specs");
+      const nSpecs = await seedDemoDerivationSpecs(repos, services.ontologyCore, services.governance, adminCtx);
+      logger.info(`SEED_DEMO=1: compiled ${nSpecs} demo derivation specs (evidence layer non-empty)`);
+      // WO-SIM-SEED-WORLD 推演种子世界（**必须排在最后**）：它铺的 tick0 世界态取自**别人播完的产物**
+      // ——合成本体的物化对象 + 传导规则 + 流程层对象。谁没播完，世界就是残的。
+      // 走 `services.sim` = 两条路由用的同一份实现（建会话 + 真 tick），不在这里另写一套。
+      phase("seed:sim-world");
+      const simWorld = await seedDemoSimWorld(repos, services.sim, adminCtx);
+      // 扰动播没播**要在 msg 里看得见**：没播的世界屏上是一整片"无事发生"，
+      // 而那件事若只躺在结构化字段里，读日志的人不会发现（诚实缺席要显式，不是可选）。
+      const simWorldTail =
+        (simWorld.choice
+          ? `；扰动落 ${simWorld.choice.targetObjectId}.${simWorld.choice.targetStateVar} delta+${simWorld.choice.magnitude}，下游 ${simWorld.choice.reachCells} 格)`
+          : `；**未播扰动** — ${simWorld.perturbationReason ?? "unknown"}）`);
+      const simWorldBody =
+        `(RUNNING @tick${simWorld.curTick}, ${simWorld.origin?.cells ?? 0} 格 / 实测 ${simWorld.origin?.measuredCells ?? 0} 格` + simWorldTail;
+      // WO-SIM-SESSIONS-PROJECTION 件二 · 半残态**必须报成半残，不许报成"幂等命中"**。
+      // 旧行为：`created:false` 一律打 `not created — 幂等命中…`，于是一个被打断的播种
+      // 在日志里长得和"一切正常"一模一样，运维没有任何信号去查。三态三句话：
+      const msg = simWorld.repaired
+        ? `SEED_DEMO=1: ⚠ demo sim world INCOMPLETE — 检测到播种不完整，已自动补齐 ${simWorldBody}`
+        : simWorld.created
+          ? `SEED_DEMO=1: seeded demo sim world ${simWorldBody}`
+          : `SEED_DEMO=1: demo sim world not created — ${simWorld.reason ?? "unknown"}`;
+      // 修复是异常事件（意味着上一次启动被打断过），按 warn 出；正常路径照旧 info。
+      logger[simWorld.repaired ? "warn" : "info"]({ ...simWorld, origin: simWorld.origin ?? undefined }, msg);
+    }
+  } finally {
+    readiness.seeding = false; // 预热完成（成/败均放行 → /readyz 落到 bootstrap 检查·失败则 main().catch 退出）
+    readiness.phase = "ready";
   }
+  logger.info({ elapsed: el() }, "datacore 预热完成 · /readyz ready");
 
   services.scheduler.start();
 
@@ -52,9 +137,6 @@ async function main(): Promise<void> {
     const ids = new Set<string>([DEMO_TENANT, ...tenants.map((t) => t.id)]);
     return [...ids];
   });
-
-  await app.listen({ port: config.PORT, host: config.HOST });
-  logger.info({ port: config.PORT }, "datacore listening");
 
   // Graceful shutdown on SIGTERM (drain in-flight work, ≤30s).
   let shuttingDown = false;

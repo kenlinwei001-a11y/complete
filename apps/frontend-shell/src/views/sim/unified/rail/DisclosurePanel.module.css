@@ -1,0 +1,129 @@
+/* ══ WO-SIM-DISCLOSURE · 推演过程披露层的样式（铁律 1.5 判据二）══════════════════
+   自成一个 module，不去改 `PerturbRail.module.css` —— 那份的头注写着
+   「本单不引入任何低于该门槛的新样式，也不新造调色板」，而三门像素门读的正是它。
+   加一个独立文件 = 那三份的输入一个字节没变。
+
+   ⚠ 字号 12px、`opacity` ≥ 0.8：沿用 `PerturbRail.module.css` 头注那条**实测**结论
+   （0.7 / 0.75 在三个主题里有不过对比度的），本文件不新造调色板，全部走既有变量。 */
+
+.wrap {
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel2);
+}
+
+.wrap > summary {
+  cursor: pointer;
+  padding: 5px 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 8px 8px;
+}
+
+/* 一节 = 一个标题 + 一行读数。**标题是标签不是句子**。 */
+.sec {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.secHead {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 600;
+  opacity: 0.95;
+}
+
+/* 读数行：`标签 值 · 标签 值`。不成句，故不设首行缩进也不设两端对齐。 */
+.kv {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+.k {
+  opacity: 0.8;
+}
+
+.v {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* 机器键（规则 key / 切片 key / 快照串 / 出处引用）——业务事实，必须给，等宽显示。 */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+/* 二层明细：逐类型 / 逐规则 / 逐量纲。**默认收起**，展开后自带滚动条 —— 46 条规则
+   直接铺开会把左栏挤没。 */
+.more {
+  border-top: 1px dashed var(--line);
+  padding-top: 3px;
+}
+
+.more > summary {
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
+.rows {
+  max-height: 220px;
+  overflow: auto;
+  margin: 3px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+/* 状态记号：命中 / 未命中 —— 用**词**不用颜色单独承载语义（色盲可读）。 */
+.tag {
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+/* 诚实缺席 / 需要点名的异常（引用失效 · 闸门跳过 · 权重算不出）。 */
+.warn {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.9;
+  font-weight: 600;
+}
+
+.absent {
+  margin: 0;
+  padding: 5px 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.85;
+}

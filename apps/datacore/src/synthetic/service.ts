@@ -1,21 +1,33 @@
-import { IndustryTemplateSchema, type GenSpec, type IndustryTemplate, type PermissionPolicy } from "@platform/contracts";
-import type { AuthCtx, ObjectInstance, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
-import type { Repos } from "../repo/repo.js";
+// WO-DASH-ONHAND：「在手」口径取契约单一出处（卡片/台账/接缝测试同读一处·禁在此抄字面量）。
+import { ON_HAND_ORDER_STATUSES, ON_HAND_ORDER_CAPTION, IndustryTemplateSchema, type GenSpec, type GraphViewDesc, type IndustryTemplate, type ModelingSuggestion, type PermissionPolicy, type PlantSpec } from "@platform/contracts";
+import { sampleValueDomain, applyPlantCrossings, derivePlantFromRule } from "./value-domains.js";
+import type { AuthCtx, Connection, ObjectInstance, RawDataset, SyntheticJob, SyntheticReport, User, ViewConfig } from "../domain.js";
+import { profileRows } from "../connectors/profiler.js";
+import { MOCK_EXTERNAL_DATA } from "../connectors/registry.js";
+import type { Repos, Store } from "../repo/repo.js";
 import type { LlmClient } from "../llm.js";
 import type { Metrics } from "../metrics.js";
 import type { OntologyService } from "../ontology.js";
+import type { ModelingService } from "../modeling.js";
+import type { ObjectInterfaceService } from "../ontology-governance.js"; // WO-69 P3 · 对象接口种子
 import type { RulesService } from "../rules.js";
 import type { TimeseriesService } from "../timeseries.js";
 import type { SchedulerService } from "../scheduler.js";
+import type { OutboxService } from "../outbox.js";
 import type { FeatureService } from "../features.js";
 import type { ActionService } from "../actions.js";
-import { VIEW_FEATURE_MAP } from "../features.js";
+import { VIEW_FEATURE_MAP, ALL_FEATURE_KEYS } from "../features.js";
+import { BUILTIN_VIEWS, assertViewManifestIntegrity } from "./view-manifest.js";
+import { SANDBOX_CONSOLE_VIEW_KEYS } from "./sandbox-console.js";
 import { AuthService } from "../auth.js";
 import { newId } from "../ids.js";
 import { mulberry32, hashString, round } from "../prng.js";
 import { evaluateExpression } from "../ruledsl.js";
+import { batteryCoverageSlices } from "./data-categories.js";
 import {
   BATTERY_ACTION_TYPES,
+  BATTERY_OBJECT_INTERFACES,
+  BATTERY_TYPE_INTERFACE_BINDINGS,
   BATTERY_RULE_SCOPES,
   BATTERY_SOLVER_PARAMS,
   BATTERY_TEMPLATE,
@@ -25,8 +37,22 @@ import {
   batteryObjectTypes,
   generateBattery,
   generatePlanDomain,
+  projectExceptionEvents,
+  BINDINGS,
+  outputLineScaleForBase,
+  customerNameOfOrderCust,
+  // WO-CAPACITY-EDGE：消耗量的**唯一算法** + 池 id 的**唯一拼法**（种子与消费方共用一份）。
+  capacityConsumptionOfWorkOrder,
+  capacityPoolIdOfLine,
+  // WO-LAST3-RELATIONS：`located_in` 锚点行的**唯一派生式**（省名并集 → 行政区行）。
+  buildRegions,
+  // WO-COMPUTED-EDGE：型号归段的**唯一**出处（图谱边与 Model.unitPrice 共用），替代已死的 S192/L148 串匹配。
+  segKeyOfModelPos,
+  // WO-COMPUTED-EDGE：异常源类型 → 溯源边 key 的**唯一**对照（声明侧与实例侧共用一份）。
+  excSourceLinkKeyOf,
 } from "./battery.js";
-import { extendedObjectTypes, generateExtended } from "./battery-extended.js";
+import { cadenceObjectRows, deriveChainCadences } from "./cadence.js";
+import { extendedObjectTypes, generateExtended, CAUSAL_EDGES } from "./battery-extended.js";
 import { computeRollup } from "../solvers/capacity.js";
 import type { SolverParamsShape } from "../solvers/types.js";
 import { genPoint, maintWindowsFor, windowFor, type TsGenSpec } from "./tsgen.js";
@@ -40,8 +66,12 @@ const DAY_MS = 86400000;
 const HISTORY_DAYS = 90;
 
 /** 增量视图键（§7.14–7.17 四视图 + §7.18 图谱八视角；不进 report.views 快照）。 */
+// 注：global-sim 已升为核心内置视图（seed:true·进 scenarioSeed.views/BUILTIN_VIEWS·WO-MEMORY-VIEW-RESILIENCE），
+// 故从增量视图桶移除（避免与核心 views 双桶重复种入）。
+// ⛔ `review`（运营复盘）于 2026-09-12 按仓主指令整屏删除，故从增量视图桶移除 ——
+//    后端不再下发它，前端也已无 renderer。两侧必须同一批删：只删一侧就会变成
+//    「后端派了单、前端渲染不出」或「前端有屏、没人派单」，两种都是幽灵条目。
 const PLANVIEW_EXTRA_KEYS = [
-  "review",
   "annual-scenario",
   "quarterly-rolling",
   "order-chain",
@@ -54,6 +84,33 @@ const PLANVIEW_EXTRA_KEYS = [
   "graph-mvp",
   "graph-agent",
   "graph-loop",
+];
+
+/**
+ * **暗发中的增量视图**（WO-R9-STUCKVIEW·2026-08-14）—— 与上面那桶分开，因为它们**不能过种子期过滤**。
+ *
+ * ── 为什么必须单列（这是收编时实测出来的，不是照抄格式）─────────────────────
+ * 上面 `PLANVIEW_EXTRA_KEYS` 会先过 `filterByFeatures()` 再落 ViewConfig。对**暗发**功能来说
+ * 那是个死结：种子期 `process.runtime` 关着 ⇒ 该键被滤掉 ⇒ **根本没写进 ViewConfig** ⇒
+ * 租户日后开通了功能，`/a/v1/me/workspace` 也无从下发（它只能从 ViewConfig 里挑，挑不出没写进去的）。
+ * 表现是「开关打开了，页面还是没有」，而两侧代码看起来都对。
+ *
+ * ⇒ 正确分层：**ViewConfig 是目录，`/me/workspace` 是闸**。
+ *    目录**无条件**收录（本常量），闸在**请求期**按 `VIEW_FEATURE_MAP` 逐次判（app.ts `viewAllowed()`）。
+ *    R3「功能关闭 = 不存在」一点没松：关着时 `viewAllowed("process-stuck")` 为假 ⇒
+ *    `views` 与 `navigation` 两处同时被滤掉，且 `withRouteFeatureAliases` 不下发
+ *    `view.process-stuck` ⇒ 前端页面侧守卫也 404。三道闸全在请求期，比种子期那一道**更严**
+ *    （种子期那道只在"种下去的那一刻"生效，之后功能怎么变它都不知道）。
+ */
+const DARK_LAUNCH_EXTRA_KEYS = [
+  // 流程卡点面板（「为什么**这一张单**现在卡住了」·需求 §4.5）。控制键 `process.runtime`
+  // （features.ts:272 VIEW_FEATURE_MAP + INCOMPLETE_DATA_DARK_LAUNCH_FEATURES 暗发）。
+  "process-stuck",
+  // WO-SIM-BE-VIEWKEY · 推演沙盘指控台四视图（sim-console / sim-conduction /
+  // sim-attribution / sim-optimize）。控制键 `sim.sandbox`，`features.ts` 里写着
+  // `defaultOn:false` ⇒ 与 process-stuck 同属"暗发"，**同一个死结**：过种子期过滤就永远
+  // 写不进 ViewConfig，租户日后开通也无从下发。故同桶（目录无条件收录·闸在请求期）。
+  ...SANDBOX_CONSOLE_VIEW_KEYS,
 ];
 
 /** §7.18 学习闭环视角 nodeFilter.ids —— 与图谱端点概念节点 id 一字不差。 */
@@ -82,8 +139,14 @@ export class SyntheticService {
   private scheduler: SchedulerService | null = null;
   private features: FeatureService | null = null;
   private actions: ActionService | null = null;
+  /** 轨L 增量2：demo 经真建模链建本体时注入（modeling 在 synthetic 之前构造，setter 注入避免依赖环）。 */
+  private modeling: ModelingService | null = null;
   /** 运营态出厂配置增量 §1：livedIn=true 时在标准合成后运行回放引擎（注入避免依赖环）。 */
   private livedInRunner: ((ctx: AuthCtx, input: { industry: string; scale: "S" | "M" | "L" | "XL"; seed: number; jobId: string }) => Promise<{ replay: { batches: number; days: number; points: number } }>) | null = null;
+  /** DF-4：合成数据再生完成 → dataset.regenerated（失效驾驶舱/风险/场景数据/本体图/规则库）。 */
+  private outbox: OutboxService | null = null;
+  /** WO-69 P3：对象接口种子（setter 注入，避免 governance ↔ synthetic 依赖环）。 */
+  private interfaces: ObjectInterfaceService | null = null;
 
   constructor(
     private repos: Repos,
@@ -101,12 +164,18 @@ export class SyntheticService {
     actions?: ActionService;
     ts?: TimeseriesService;
     livedInRunner?: SyntheticService["livedInRunner"];
+    modeling?: ModelingService;
+    outbox?: OutboxService;
+    interfaces?: ObjectInterfaceService;
   }): void {
     this.scheduler = deps.scheduler ?? this.scheduler;
     this.features = deps.features ?? this.features;
     this.actions = deps.actions ?? this.actions;
     this.ts = deps.ts ?? this.ts;
     this.livedInRunner = deps.livedInRunner ?? this.livedInRunner;
+    this.modeling = deps.modeling ?? this.modeling;
+    this.outbox = deps.outbox ?? this.outbox;
+    this.interfaces = deps.interfaces ?? this.interfaces;
   }
 
   private async resolveTemplate(ctx: AuthCtx, industry: string): Promise<IndustryTemplate> {
@@ -139,7 +208,17 @@ export class SyntheticService {
 
   async runJob(
     ctx: AuthCtx,
-    input: { industry: string; scale: "S" | "M" | "L" | "XL"; seed?: number; livedIn?: boolean },
+    // 轨L 增量2：viaModelingChain（仅 demo 种子内部传 true）→ battery 本体经真建模链产出。API 契约不暴露此内部参数。
+    input: {
+      industry: string;
+      scale: "S" | "M" | "L" | "XL";
+      seed?: number;
+      livedIn?: boolean;
+      viaModelingChain?: boolean;
+      // WO-SYNTH-VALIDATION-LITE：VALIDATION_LITE 跳 TS 历史/聚合（对象字节不变），historyDays 可显式覆盖。
+      profile?: "FULL" | "VALIDATION_LITE";
+      historyDays?: number;
+    },
   ): Promise<SyntheticJob> {
     const t0 = Date.now();
     const seed = input.seed ?? 42;
@@ -167,7 +246,7 @@ export class SyntheticService {
 
       // ②③ ontology from template + source-object generation (topo order).
       if (input.industry === "battery-manufacturing") {
-        await this.instantiateBattery(ctx, seed, input.scale, origin);
+        await this.instantiateBattery(ctx, seed, input.scale, origin, input.viaModelingChain === true);
       } else {
         await this.instantiateGeneric(ctx, template, seed, input.scale, origin);
       }
@@ -177,10 +256,22 @@ export class SyntheticService {
       // 365 天历史与聚合由回放引擎（月批次 × 真实管线）负责。
       if (input.industry === "battery-manufacturing" && this.ts) {
         await this.seedBatteryParamsAndSpecs(ctx, seed, input.scale);
-        if (!input.livedIn) {
-          await this.generateHistory(ctx, seed);
+        // WO-SYNTH-VALIDATION-LITE §3.1：LITE（或 historyDays<=0）跳 90 天 TS 历史与全量聚合。
+        // genPoint 是 (seed,entity,day) 纯函数、不消耗对象 RNG 游标；派生管线(④)读对象而非 TS 原始点，
+        // 故对象指纹 LITE===FULL（SEAM #1 守护）。livedIn 语义不变（其 365 天历史由回放引擎负责）。
+        const historyDays =
+          input.historyDays ?? (input.profile === "VALIDATION_LITE" ? 0 : HISTORY_DAYS);
+        if (!input.livedIn && historyDays > 0) {
+          await this.generateHistory(ctx, seed, historyDays);
           await this.ts.runAggregation(ctx.tenantId, { full: true });
         }
+      }
+
+      // ③c WO-69 P3：对象接口种子（Approvable + 实现者绑定）。**必须晚于 ActionType 注册**
+      // （③b seedBatteryParamsAndSpecs 内）——接口声明的行动要能落到真注册表，否则宁可当场报错，
+      // 不许种一个"声明了不存在的行动"的假接口。两条种法（A 路直 upsert / B 路建模链）在此汇合。
+      if (input.industry === "battery-manufacturing") {
+        await this.seedObjectInterfaces(ctx);
       }
 
       // ④ derive everything through the A4 pipeline (single source of truth).
@@ -198,14 +289,22 @@ export class SyntheticService {
             | "BLOCK"
             | "WARN"
             | "INFO",
+          params: r.params ?? {},
+          // WO-RULES-CLASSIFY：业务类别随种子规则透传（规则库分类筛选的真元数据源）。
+          category: r.category,
           origin: { type: "SYNTHETIC" },
           status: "PUBLISHED",
         });
       }
       const views = await this.filterByFeatures(ctx, template.scenarioSeed.views);
-      // 增量视图（§7.14–7.17 + 图谱八视角 + 运营回顾）：不进 report.views（保持验收快照稳定），但进 view_configs。
+      // 增量视图（§7.14–7.17 + 图谱八视角 + 运营复盘）：不进 report.views（保持验收快照稳定），但进 view_configs。
+      // ⚠ 两桶合流但**过滤方式不同**（见 DARK_LAUNCH_EXTRA_KEYS 的文件头说明）：
+      //   普通增量视图过种子期 feature 过滤；暗发视图**不过**，只由请求期 `/me/workspace` 那道闸判。
+      //   合成一句 `filterByFeatures([...A, ...B])` 就会把暗发那批永久滤掉 —— 那正是本条要防的病。
       const extraViews =
-        input.industry === "battery-manufacturing" ? await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS) : [];
+        input.industry === "battery-manufacturing"
+          ? [...(await this.filterByFeatures(ctx, PLANVIEW_EXTRA_KEYS)), ...DARK_LAUNCH_EXTRA_KEYS]
+          : [];
       await this.seedViewConfigs(ctx, views, extraViews, { livedIn: input.livedIn });
       // 管理平台增量 §3：场景包记录（admin/views 与场景包管理页的事实源；幂等 upsert）。
       const pkgId = "pkg_battery_manufacturing";
@@ -245,12 +344,57 @@ export class SyntheticService {
 
       await this.repos.syntheticJobs.put(job);
       this.metrics.set("dc_synthetic_job_duration_ms", { industry: input.industry }, Date.now() - t0);
+      // DF-4：合成/再生完成 → 下游消费页联动（驾驶舱/风险/场景数据/本体图/规则库失效）。
+      await this.outbox?.emit(
+        ctx.tenantId,
+        "dataset.regenerated",
+        { jobId: job.id, industry: input.industry, scale: input.scale, seed },
+        `synthetic:${ctx.tenantId}`,
+      );
       return job;
     } catch (err) {
       job.status = "FAILED";
       job.error = err instanceof Error ? err.message : String(err);
       await this.repos.syntheticJobs.put(job);
       throw err;
+    }
+  }
+
+  /**
+   * WO-SYNTH-VALIDATION-LITE §3.5：将 src 租户的确定性合成产物深拷贝到 dst 租户（改 tenantId）。
+   * 供 demo 重置 + CI baseline 复用（避免重复全种）。SEAM 铁律：
+   *   fingerprint(cloneTenant(fresh-seed-tenant)) === fingerprint(fresh-seed-tenant)。
+   * 覆盖：对象/链接/规则/权限策略/视图/场景包/合成作业/模拟时钟/本体类型/本体链接/域/求解器参数
+   *   + TS（tsSeries + tsPoints）。所有 Store<T> 均含 list(tenantId)/put(item)，泛型逐条改 tenantId 落盘。
+   */
+  async cloneTenant(src: string, dst: string): Promise<void> {
+    // 泛型 tenant-scoped 存储（item 均带 tenantId）——逐条改 tenantId 复制。
+    const genericStores: Store<{ id: string; tenantId: string }>[] = [
+      this.repos.objects as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.links as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.rules as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.policies as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.viewConfigs as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.scenarioPackages as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.syntheticJobs as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.simulationClocks as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.ontologyTypes as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.ontologyLinks as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.domains as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.solverParams as unknown as Store<{ id: string; tenantId: string }>,
+      this.repos.tsSeries as unknown as Store<{ id: string; tenantId: string }>,
+    ];
+    for (const store of genericStores) {
+      for (const it of await store.list(src)) {
+        await store.put({ ...(it as Record<string, unknown>), tenantId: dst } as { id: string; tenantId: string });
+      }
+    }
+    // TS 点：按已复制的 series 逐条搬运（幂等 upsert；keyed by seriesId/entityId/ts）。
+    for (const s of await this.repos.tsSeries.list(dst)) {
+      const pts = await this.repos.tsPoints.list(src, s.id);
+      if (pts.length > 0) {
+        await this.repos.tsPoints.upsert(dst, pts.map((p) => ({ ...p, tenantId: dst })));
+      }
     }
   }
 
@@ -352,7 +496,7 @@ export class SyntheticService {
         proposedValue: 0.75,
         basis: { windowFrom: "2026-06-10", windowTo: "2026-06-30", samples: 96 },
         trigger: "手动",
-        sliceKey: "capacity_forecast|all|S192-LFP",
+        sliceKey: "capacity_forecast|all|圆柱-LFP",
         paramRef: { scope: "SOLVER_PARAMS" as const, path: "maintMult" },
         method: "EMA" as const,
         evidence: { windowFrom: "2026-06-10", windowTo: "2026-06-30", nPairs: 96, mapeBefore: 9.8, simulatedMapeAfter: 8.1, bias: -0.034, flags: [] },
@@ -393,10 +537,16 @@ export class SyntheticService {
     });
   }
 
-  /** ③b: deterministic 90-day history per tsGenerators (maint dips share the MaintPlan objects). */
-  private async generateHistory(ctx: AuthCtx, seed: number): Promise<void> {
-    if (!this.ts) return;
+  /** ③b: deterministic history per tsGenerators (maint dips share the MaintPlan objects).
+   * WO-SYNTH-VALIDATION-LITE §3.1/§3.3：historyDays 参数化（默认 90；<=0 直接返回=LITE 跳 TS），
+   * 日期串循环外一次预生成（消 per-entity×N 重复 new Date），输出逐字节不变。 */
+  private async generateHistory(ctx: AuthCtx, seed: number, historyDays: number = HISTORY_DAYS): Promise<void> {
+    if (!this.ts || historyDays <= 0) return;
     const t0 = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
+    // §3.3：日期串预生成（entity 循环内取用；与旧 per-day new Date 结果逐字节一致）。
+    const dateIsoList = Array.from({ length: historyDays }, (_, d) =>
+      new Date(t0 - (historyDays - d) * DAY_MS).toISOString().slice(0, 10),
+    );
     const maintPlans = (await this.repos.objects.listByType(ctx.tenantId, "MaintPlan")).map((m) => ({
       baseId: String(m.props.baseId),
       week: Number(m.props.week),
@@ -404,6 +554,9 @@ export class SyntheticService {
     }));
     const windows = maintWindowsFor(maintPlans, BATTERY_SOLVER_PARAMS.forecastStart as string);
     const generators = (BATTERY_TEMPLATE.tsGenerators ?? []) as unknown as TsGenSpec[];
+    // WO-SCALE-COHERENCE：output:line 实现产出按基地夹定产能派生 per-base 尺度（realized 层入 round-trip）。
+    const baseCap = new Map<string, number>();
+    for (const b of await this.repos.objects.listByType(ctx.tenantId, "Base")) baseCap.set(String(b.props.baseId), Number(b.props.formationCapDaily) || 0);
     for (const gen of generators) {
       const series = await this.ts.ensureSeries(ctx.tenantId, {
         seriesKey: gen.seriesKey,
@@ -420,12 +573,13 @@ export class SyntheticService {
       for (const e of entities) {
         const entityId = String(e.props[entityRefFieldOf(gen.entityType)] ?? e.id);
         const baseId = String(e.props.baseId ?? "");
-        for (let d = 0; d < HISTORY_DAYS; d++) {
-          const dateIso = new Date(t0 - (HISTORY_DAYS - d) * DAY_MS).toISOString().slice(0, 10);
+        const scale = gen.seriesKey === "output:line" ? outputLineScaleForBase(baseCap.get(baseId) ?? 0) : undefined;
+        for (let d = 0; d < historyDays; d++) {
+          const dateIso = dateIsoList[d]!;
           points.push({
             entityId,
             ts: `${dateIso}T00:00:00.000Z`,
-            values: genPoint(gen, { entityId, baseId }, dateIso, d, seed, windowFor(windows, baseId, dateIso)),
+            values: genPoint(gen, { entityId, baseId, scale }, dateIso, d, seed, windowFor(windows, baseId, dateIso)),
             tick: 0,
           });
         }
@@ -452,6 +606,9 @@ export class SyntheticService {
       // 跨域切片增量：扩展对象类型已使用 supply/commercial 两域，补注册（治理域开关/分组/检索切面才生效）。
       { domainKey: "supply", displayName: "供给", color: "#0d9488", ownerUserId: "usr_demo_planner" },
       { domainKey: "commercial", displayName: "商务", color: "#be185d", ownerUserId: "usr_demo_admin" },
+      { domainKey: "external", displayName: "外部信号", color: "#475569", ownerUserId: "usr_demo_admin" },
+      // cockpit P2：决策应用域（驾驶舱 KPI / 规划决策推演 / 根因归因链的归域）。
+      { domainKey: "decision", displayName: "决策应用", color: "#7c3aed", ownerUserId: "usr_demo_admin" },
       { domainKey: "unassigned", displayName: "未归域", color: "#9ca3af", ownerUserId: null },
     ];
     for (const s of seeds) {
@@ -469,71 +626,289 @@ export class SyntheticService {
     }
   }
 
+  /**
+   * 活数据可溯（PRD-live-traceable-data §3.1）：一个"合成数据源"连接（确定性、按名幂等复用），
+   * 承载所有合成 RawDataset。使演示租户在数据源页能看到真实的连接与原始表，而非凭空对象。
+   */
+  private async ensureSyntheticConnection(ctx: AuthCtx): Promise<string> {
+    const SYNTH_NAME = "合成数据源（确定性生成）";
+    const existing = (await this.repos.connections.list(ctx.tenantId, (c) => c.name === SYNTH_NAME))[0];
+    if (existing) return existing.id;
+    const conn: Connection = {
+      id: newId("conn"),
+      tenantId: ctx.tenantId,
+      connectorTypeKey: "mock_erp",
+      name: SYNTH_NAME,
+      config: { synthetic: true },
+      status: "ACTIVE",
+      lastSyncAt: new Date().toISOString(),
+    };
+    await this.repos.connections.put(conn);
+    return conn.id;
+  }
+
+  /**
+   * SEED_DEMO 多源系统连接：补齐 mock 中 8 个 connections（ERP/CRM/IoT/PLM/MES/QMS/SRM），
+   * 使数据接入控制台按源系统分组展示，RawDataset 的 dataset 名与 BINDINGS 一致（plm_platforms 等）。
+   *
+   * WO-DATAMODE-UNIFY-PROVENANCE（KILL-MOCK-RED·诚实标注）：这些"源系统"连接是**合成 demo 夹具**——其数据全由
+   * generateBattery 确定性合成（无真 ERP/MES/IoT 后端），故 config.synthetic===true 诚实声明其合成 provenance
+   * （与"合成数据源（确定性生成）"连接同标识）。使 buildSynthProvenancePredicate 能把经 BINDINGS 落到这些连接的
+   * demo 物化对象（Base→conn-mes / Equipment→conn-iot / Order→conn-erp …）正确判为合成，不冒充 LIVE/实测。
+   * 真接入（真 ERP 上传/连接）走独立连接·无此标识 → measurement=LIVE 且 provenance 非合成 = 真实测（R14 通用标识非连接名）。
+   */
+  private async ensureSourceConnections(ctx: AuthCtx): Promise<Map<string, string>> {
+    const defs = [
+      { id: "conn-erp", connectorTypeKey: "mock_erp", name: "ERP 主数据" },
+      { id: "conn-crm", connectorTypeKey: "rest_api", name: "CRM 订单" },
+      { id: "conn-iot", connectorTypeKey: "rest_api", name: "IoT 时序通道" },
+      { id: "conn-plm", connectorTypeKey: "rest_api", name: "PLM 产品生命周期管理" },
+      { id: "conn-mes", connectorTypeKey: "rest_api", name: "MES 制造执行系统" },
+      { id: "conn-qms", connectorTypeKey: "rest_api", name: "QMS 质量管理系统" },
+      { id: "conn-srm", connectorTypeKey: "rest_api", name: "SRM 供应商关系管理" },
+    ];
+    const map = new Map<string, string>();
+    for (const d of defs) {
+      const existing = await this.repos.connections.get(ctx.tenantId, d.id);
+      if (existing) { map.set(d.id, existing.id); continue; }
+      const conn: Connection = {
+        id: d.id,
+        tenantId: ctx.tenantId,
+        connectorTypeKey: d.connectorTypeKey,
+        name: d.name,
+        config: { synthetic: true },
+        status: "ACTIVE",
+        lastSyncAt: new Date().toISOString(),
+      };
+      await this.repos.connections.put(conn);
+      map.set(d.id, conn.id);
+    }
+    return map;
+  }
+
   private async instantiateBattery(
     ctx: AuthCtx,
     seed: number,
     scale: "S" | "M" | "L" | "XL",
     origin: { type: "SYNTHETIC"; jobId: string },
+    // 轨L 增量2：chainMode=true（仅 demo）→ 本体类型不在此直 upsert，改由真建模链
+    // （derive→确定性策展PATCH→publish→materialize）产出；仍产 rawDataset+链路类型+链路实例。
+    chainMode = false,
   ): Promise<number> {
-    // 治理增量 §1：先注册域（object_types.domain FK 校验目标 + 检索/图谱按域分组）。
+    // 治理增量 §1：先注册域（object_types.domain FK 校验目标 + 检索/图谱按域分组）。域两模式都先注册（publish 归域校验需要）。
     await this.seedDomains(ctx);
-    for (const t of batteryObjectTypes()) {
-      const existing = await this.ontology.getType(ctx, t.key);
-      if (!existing) await this.ontology.upsertType(ctx, t);
+    if (!chainMode) {
+      // A 路：直接 upsert 策展类型 + 早发布版本。chainMode 下这两步移交建模链（末尾 seedDemoOntologyViaChain）。
+      for (const t of batteryObjectTypes()) {
+        const existing = await this.ontology.getType(ctx, t.key);
+        if (!existing) await this.ontology.upsertType(ctx, t);
+      }
     }
+    // 链路类型：两模式都种（§1.A 末行：A 路链路种法保留，沙盘传导依赖其 key；upsertLinkType 不校验目标类型存在）。
     for (const lt of batteryLinkTypes()) await this.ontology.upsertLinkType(ctx, lt);
-    if ((await this.ontology.currentVersion(ctx.tenantId)) === 0) {
+    if (!chainMode && (await this.ontology.currentVersion(ctx.tenantId)) === 0) {
       await this.ontology.publishVersion(ctx);
     }
     const g = generateBattery(seed, scale);
     let n = 0;
+    // chainMode：收集链产 rawDataset id 喂建模链（按 putAll 调用序）。
+    const rawDsIds: string[] = [];
+    // WO-MODELING-INTERACTIVE：记录每个类型实际物化来源（连接+数据集+字段映射），供 A 路末尾 provenance 回填。
+    const materializedBindings = new Map<string, { connId: string; dataset: string; fieldMappings: Record<string, string> }>();
+    // 活数据可溯（PRD-live-traceable-data §3.1）：合成对象不再凭空落库，而是经"合成数据源→
+    // RawDataset(原始行)→物化为对象"的真链路；每对象 origin 记 rawDatasetId/rawRowIdx，使数据源页
+    // 可见原始数据、推演结果可溯回源头。确定性：连接/原始表/对象/backref 均由 (industry,scale,seed) 决定。
+    const synthConnId = await this.ensureSyntheticConnection(ctx);
+    const sourceConnMap = await this.ensureSourceConnections(ctx);
     const putAll = async (type: string, rows: Record<string, unknown>[], pk: string) => {
+      // 按 BINDINGS 取源系统连接与数据集名（使数据接入控制台按 ERP/PLM/MES/QMS/SRM/IoT 分组展示）
+      const binding = BINDINGS[type]?.[0];
+      const sourceConnId = binding ? (sourceConnMap.get(binding.connId) ?? synthConnId) : synthConnId;
+      const dsName = binding ? binding.dataset : type;
+      // ① 原始表：按 连接+数据集名 幂等复用 id，原始行可经 /a/v1/raw-datasets 查看
+      const existingDs = (await this.repos.rawDatasets.list(ctx.tenantId, (d) => d.sourceConnId === sourceConnId && d.name === dsName))[0];
+      const ds: RawDataset = {
+        id: existingDs?.id ?? newId("rds"),
+        tenantId: ctx.tenantId,
+        sourceConnId,
+        name: dsName,
+        fields: profileRows(rows),
+        rowCount: rows.length,
+        syncedAt: new Date().toISOString(),
+      };
+      await this.repos.rawDatasets.put(ds);
+      await this.repos.rawRows.replace(ctx.tenantId, ds.id, rows);
+      // WO-MODELING-INTERACTIVE：该类型真实来源 = 刚落的 RawDataset。字段映射优先用 BINDINGS 的细映射，
+      // 否则用恒等映射（合成物化时 props 即原始行，propKey===sourceField），供末尾回填对象类型 provenance。
+      materializedBindings.set(type, {
+        connId: sourceConnId,
+        dataset: dsName,
+        fieldMappings: binding?.fieldMappings ?? Object.fromEntries(ds.fields.map((f) => [f.name, f.name])),
+      });
+      if (chainMode) {
+        // chainMode：只产 rawDataset+rawRows，对象由建模链 materialize 产（统一 id 字节同 A 路）。
+        rawDsIds.push(ds.id);
+        return;
+      }
+      // ② 物化为对象，origin 记源头 backref（rawDatasetId + 行序）
+      let idx = 0;
       for (const row of rows) {
         await this.repos.objects.put({
-          id: `obj_${type.toLowerCase()}_${String(row[pk])}`.replace(/[^\w-]/g, "_"),
+          id: `obj_${type.toLowerCase()}_${String(row[pk])}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
           tenantId: ctx.tenantId,
           type,
           props: row,
-          origin,
+          origin: { ...origin, sourceConnId, rawDatasetId: ds.id, rawRowIdx: idx },
         });
+        idx++;
         n++;
       }
     };
     await putAll("Base", g.bases, "baseId");
+    // WO-SANDBOX-D1×E1 接缝 · 节拍落库。**此前缺的就是这一行**：
+    // `synthetic/cadence.ts` 早已能从种子自身的发生序列推出全链节拍，但没有任何路径把它写出去，
+    // 运行态 `Cadence` 恒 0 条，于是 E1 归因 / E4 推演 / F1 线路图全都取不到 —— 模块绿、链路断。
+    // 值全部由种子推导（本文件不带任何节拍天数字面量）；推不出的行带 `emptyReason` 照样落库（诚实缺席可查询）。
+    await putAll("Cadence", cadenceObjectRows(deriveChainCadences(g)), "nodeId");
+    await putAll("ProductPlatform", g.productPlatforms, "platformId");
+    await putAll("ProductSeries", g.productSeries, "seriesId");
     await putAll("Model", g.models, "modelId");
+    await putAll("ProductVersion", g.productVersions, "versionId");
+    await putAll("BOMHeader", g.bomHeaders, "bomId");
+    await putAll("BOMDetail", g.bomDetails, "bomDetailId");
+    await putAll("Routing", g.routings, "routingId");
+    await putAll("Operation", g.operations, "operationId");
+    await putAll("ProcessCapabilityWindow", g.processCapabilities, "capabilityId");
+    await putAll("QualityStandard", g.qualityStandards, "standardId");
+    await putAll("InspectionCharacteristic", g.inspectionCharacteristics, "charId");
+    await putAll("ProductLineCapability", g.productLineCapabilities, "capId");
+    await putAll("ProductEquipmentCapability", g.productEquipmentCapabilities, "equipCapId");
+    await putAll("EngineeringChange", g.engineeringChanges, "changeId");
+    await putAll("MaterialAlternative", g.materialAlternatives, "altId");
+    await putAll("Workshop", g.workshops, "workshopId");
     await putAll("Order", g.orders, "so");
+    await putAll("OrderLine", g.orderLines, "lineId"); // WO-ORDERLINE：订单明细行（紧随 Order·SO→型号行·勾稽 Σ行===头）
     await putAll("Line", g.lines, "lineId");
     await putAll("Process", g.processes, "processId");
     await putAll("Equipment", g.equipment, "equipId");
     await putAll("MaintPlan", g.maintPlans, "planId");
     await putAll("Segment", g.segments, "segKey");
     await putAll("Shipment", g.shipments, "shipId");
+    await putAll("Warehouse", g.warehouses, "warehouseId"); // WO-WAREHOUSE-CUSTLOC：仓库（每基地 N 仓·库存仓位落点）
+    // WO-INVENTORY-3TIER 库存三层闭环：完工入库派生的成品库存 FinishedGoodsInventory + 库存流水 InventoryTxn
+    // （SEAM 端到端前提；派生源 WorkOrder 由下方 ①b 决策相关 MES 块统一物化，此处不再重复落库）。
+    await putAll("FinishedGoodsInventory", g.finishedGoodsInv, "fgId");
+    await putAll("InventoryTxn", g.inventoryTxns, "txnId");
+    await putAll("OrderPromise", g.orderPromises, "promiseId"); // WO-ATP-PROMISE：订单承诺台账（对每 OPEN 订单 ATP 基线）
+    await putAll("InterBaseTransfer", g.interBaseTransfers, "transferId"); // WO-INTERBASE-TRANSFER：跨基地调拨对象化（R13）
     await putAll("DataSourceHealth", g.dataHealth, "sourceId");
+    // cockpit P1 绿地
+    await putAll("DemandSegment", g.demandSegments, "segId");
+    await putAll("FinancePlan", g.financePlans, "finId");
+    await putAll("MaterialBalance", g.materialBalances, "matBalId");
+    // cockpit P2 + SPINE 绿地（规划决策推演 + 根因 DAG + 目标-指标-责任骨架）
+    await putAll("KSF", g.ksfs, "ksfId");
+    await putAll("Principal", g.principals, "principalId");
+    await putAll("Metric", g.metrics, "metricId");
+    await putAll("RootCauseChain", g.rootCauseChains, "chainId");
+    await putAll("SopVersionRow", g.sopVersionRows, "verId");
     // 20 场景目录 §7 扩展数据（E6b）：13 求解器所需对象类型 + 实例（确定性 + 戏剧点植入）。
-    for (const t of extendedObjectTypes()) {
-      if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
+    // chainMode：扩展类型同样移交建模链产出（末尾 seedDemoOntologyViaChain 覆盖 battery+extended 全 34 类）。
+    if (!chainMode) {
+      for (const t of extendedObjectTypes()) {
+        if (!(await this.ontology.getType(ctx, t.key))) await this.ontology.upsertType(ctx, t);
+      }
     }
-    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[] }, scale);
+    const ext = generateExtended(seed, { models: g.models as { modelId: string }[], bases: g.bases as { baseId: string; name: string }[], lines: g.lines as { lineId: string }[], equipment: g.equipment as { equipId: string; oeeA?: number; oeeP?: number; oeeQ?: number }[], materialBalances: g.materialBalances as { matBalId: string; gapTon?: number; netDemandTon?: number }[], demandSegments: g.demandSegments as { segId?: string; segment?: string; demandWanPerYearP50?: number; act?: number; priceWan?: number; marginPct?: number; floorPct?: number }[] }, scale);
     await putAll("Material", ext.materials, "matId");
+    await putAll("Supplier", ext.suppliers, "supplierId");
     await putAll("MaterialBatch", ext.materialBatches, "batchId");
     await putAll("Customer", ext.customers, "custId");
+    await putAll("CustomerLocation", ext.customerLocations, "locId"); // WO-WAREHOUSE-CUSTLOC：客户交付地点（交付地理落点）
+    // WO-LAST3-RELATIONS · `located_in` 的锚点类型：**行政区**。
+    // 行数与取值全部由三个载体既有的 `province` 取值**并集**派生（零新业务事实·零 rng·按省名排序确定性）——
+    // 放在这里而不是 `generateBattery` 里，是因为客户交付地点来自 `ext`，两个源都齐了才能取全并集
+    // （只取 `g` 那半会漏掉 重庆/上海/北京 三省 ⇒ 30 条客户地点里有一批**静默连不上**）。
+    const regionRows = buildRegions([
+      ...(g.bases as { province?: string }[]).map((b) => b.province ?? ""),
+      ...(g.warehouses as { province?: string }[]).map((w) => w.province ?? ""),
+      ...(ext.customerLocations as { province?: string }[]).map((l) => l.province ?? ""),
+    ]);
+    await putAll("Region", regionRows, "regionId");
     await putAll("ARInvoice", ext.arInvoices, "invoiceId");
     await putAll("Certification", ext.certifications, "certId");
     await putAll("EnergyMeter", ext.energyMeters, "meterId");
     await putAll("ChangeoverMatrix", ext.changeoverMatrix, "pairId");
     await putAll("CapexProject", ext.capexProjects, "projectId");
     await putAll("PurchaseOrder", ext.purchaseOrders, "poId");
+    // WO-SANDBOX-D2：采购段两段新承载（清关仅进口单有 → 条数 < PO 数；到货检验每单必检 → 条数 == PO 数）。
+    await putAll("CustomsClearance", ext.customsClearances, "clearanceId");
+    await putAll("IncomingInspection", ext.incomingInspections, "inspectionId");
+    // WO-RULE-SCOPE-TRIAD：外协批次（C31 承载·每物料 1 批 ⇒ 8 条）。
+    await putAll("Outsource", ext.outsources, "outsourceId");
     await putAll("CarbonFactor", ext.carbonFactors, "factorId");
     await putAll("FinanceAccount", ext.financeAccounts, "accId");
     await putAll("FinanceMetric", ext.financeMetrics, "metricId");
+    // WO-CEO-2 供应链/地缘/决策域（gap_attribution 因果链实体·§0 案例落成真对象）
+    await putAll("LongTermAgreement", ext.longTermAgreements, "ltaId");
+    await putAll("BackupSupplierPool", ext.backupSupplierPools, "poolId");
+    await putAll("CommodityPriceTrend", ext.commodityPriceTrends, "trendId");
+    await putAll("DecisionGap", ext.decisionGaps, "gapId");
+    await putAll("CausalFactor", ext.causalFactors, "factorId");
+    await putAll("TriggerRule", ext.triggerRules, "triggerId"); // WO-CEO-3 触发规则
+    // WO-CEO-DATA-2 每指标 drill 真对象（market_share / revenue / cash / demand_attain）。
+    await putAll("CompetitorShare", ext.competitorShares, "shareId");
+    await putAll("BidRecord", ext.bidRecords, "bidId");
+    await putAll("CompetitorPrice", ext.competitorPrices, "priceId");
+    await putAll("PipelineOpportunity", ext.pipelineOpportunities, "oppId");
+    await putAll("WinLossRecord", ext.winLossRecords, "recordId");
+    await putAll("PriceRealization", ext.priceRealizations, "priceId");
+    await putAll("ARAging", ext.arAgings, "agingId");
+    await putAll("DSO", ext.dsos, "dsoId");
+    await putAll("OverdueRecord", ext.overdueRecords, "overdueId");
+    // WO-TIER3 毛利桥（gross_profit 专属反向归因域 drill 真对象·impactYi 由 DemandSegment×MaterialBalance 确定性派生）。
+    await putAll("GrossMarginBridge", ext.grossMarginBridges, "bridgeId");
+    // WO-EXCEPTION-EVENT · 四源归一异常事件（G-EXCEPTION-SCATTER）。
+    //  ① 物化 3 源对象（DefectRecord/EquipmentDowntime/EquipmentAlarm）使 refId 可下钻回真源（R13）——
+    //     此前仅本体类型存在、无 demo 实例；MaterialBalance/TriggerRule 上文已物化。
+    await putAll("DefectRecord", g.defectRecords, "defectId");
+    await putAll("EquipmentDowntime", g.equipmentDowntimes, "dtId");
+    await putAll("EquipmentAlarm", g.equipmentAlarms, "alarmId");
+    //  ①b 决策相关执行层 5 类（disjoint 于上 exc 的 3 类·生成器已产、原物化清单漏）：库存/Bug2(WorkOrder/WIPLot)、
+    //     良率(QualityLot/InspectionResult)、设备(EquipmentOEE)——补齐使 yield_diagnosis/库存/设备问题有真源。
+    //     高量低值执行类(ShiftPlan/ProductionSchedule/WIPMove/操作工考勤等)保持模型态不物化（避单次 seed 逾万对象拖垮）。
+    await putAll("WorkOrder", g.workOrders, "woId");
+    // WO-CAPACITY-EDGE · 产能池落库（一线一池·纯投影，见 `battery.ts` 的 `capacityPools`）。
+    // 必须在这里而不是"高量低值执行类"那一档：产能池数量 = 产线数（130），且产能直接决定
+    // 能不能接单，属决策相关层，与同批的 `MaintenanceOrder`（193 行）同理。
+    await putAll("CapacityPool", g.capacityPools, "poolId");
+    await putAll("WIPLot", g.wipLots, "lotId");
+    await putAll("QualityLot", g.qualityLots, "qlotId");
+    await putAll("InspectionResult", g.inspectionResults, "resultId");
+    await putAll("EquipmentOEE", g.equipmentOEEs, "oeeId");
+    //  ①c WO-OPT-WHATIF-CLOSE · 设备维修工单（同一批「生成器已产、物化清单漏」的欠账，本轮补最后一类）。
+    //     `MaintenanceOrder` 在 demo 是**完整声明却零实例**的类型：propDef(battery.ts:1581) + 展示名 + 连接器映射
+    //     (conn-eam/eam_maint_orders) + 数据类目(data-categories.ts:53) + 链路类型 maint_for_equip/spare_for_maint
+    //     全都在，唯独 193 行确定性行（battery.ts hashString 派生·**零 rng**）从没落库 ⇒ 上述接线全是死的。
+    //     它**不属于**上一行注释里那批「高量低值执行类」——193 行比已物化的 WorkOrder(260) 还少，
+    //     且设备维修直接影响产能，是决策相关执行层。纯投影 putAll（无随机/时钟）⇒ R6 同 seed 字节一致。
+    await putAll("MaintenanceOrder", g.maintenanceOrders, "moId");
+    //  ② 统一异常流：generateBattery 已投 4 本地源（停机/告警/缺陷/缺料）；此处合并第 5 源 TriggerRule
+    //     （→CUSTOMER，出自 generateExtended，同一 projectExceptionEvents·纯投影 R6），四源归一落一等对象。
+    const t0Exc = Date.parse(`${BATTERY_SOLVER_PARAMS.forecastStart as string}T00:00:00Z`);
+    const triggerExc = projectExceptionEvents({ triggerRules: ext.triggerRules }, t0Exc);
+    const exceptionEvents = [...(g.exceptionEvents as Record<string, unknown>[]), ...triggerExc];
+    await putAll("ExceptionEvent", exceptionEvents, "excId");
+    // 外部域（EXT_SIG）：环境信号一等对象化（domain=external；来源/单位/新鲜度可溯 R13）。
+    await putAll("ExternalSignal", MOCK_EXTERNAL_DATA.external_signals!, "signalKey");
     // links: model_producible_at + order_for_model + model_certified_on (cert state on edge props).
     for (const m of g.models) {
       for (const baseId of m.bases as string[]) {
         await this.repos.links.put({
-          id: `lnk_mpa_${m.modelId}_${baseId}`.replace(/[^\w-]/g, "_"),
+          id: `lnk_mpa_${m.modelId}_${baseId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
           tenantId: ctx.tenantId,
           type: "model_producible_at",
-          fromId: `obj_model_${m.modelId}`.replace(/[^\w-]/g, "_"),
+          fromId: `obj_model_${m.modelId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
           toId: `obj_base_${baseId}`,
           origin,
         });
@@ -541,21 +916,21 @@ export class SyntheticService {
     }
     for (const o of g.orders) {
       await this.repos.links.put({
-        id: `lnk_ofm_${o.so}`.replace(/[^\w-]/g, "_"),
+        id: `lnk_ofm_${o.so}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         tenantId: ctx.tenantId,
         type: "order_for_model",
-        fromId: `obj_order_${o.so}`.replace(/[^\w-]/g, "_"),
-        toId: `obj_model_${o.model}`.replace(/[^\w-]/g, "_"),
+        fromId: `obj_order_${o.so}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        toId: `obj_model_${o.model}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         origin,
       });
     }
     for (const cl of g.certLinks) {
       await this.repos.links.put({
-        id: `lnk_cert_${cl.modelId}_${cl.lineId}`.replace(/[^\w-]/g, "_"),
+        id: `lnk_cert_${cl.modelId}_${cl.lineId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         tenantId: ctx.tenantId,
         type: "model_certified_on",
-        fromId: `obj_model_${cl.modelId}`.replace(/[^\w-]/g, "_"),
-        toId: `obj_line_${cl.lineId}`.replace(/[^\w-]/g, "_"),
+        fromId: `obj_model_${cl.modelId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        toId: `obj_line_${cl.lineId}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         props: { status: cl.status, modelId: cl.modelId, baseId: cl.baseId },
         origin,
       });
@@ -563,10 +938,10 @@ export class SyntheticService {
 
     // 跨域切片 order_fulfillment_360 的链路边（product→factory→process→equip→supply→commercial）。
     // 全部由对象 FK 确定性派生（无随机/时钟），同 seed 字节级一致。
-    const oid = (type: string, pk: unknown) => `obj_${type.toLowerCase()}_${String(pk)}`.replace(/[^\w-]/g, "_");
+    const oid = (type: string, pk: unknown) => `obj_${type.toLowerCase()}_${String(pk)}`.replace(/[^\p{L}\p{N}_-]/gu, "_");
     const putLink = async (idRaw: string, type: string, fromId: string, toId: string, props?: Record<string, unknown>) => {
       await this.repos.links.put({
-        id: idRaw.replace(/[^\w-]/g, "_"),
+        id: idRaw.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         tenantId: ctx.tenantId,
         type,
         fromId,
@@ -575,35 +950,234 @@ export class SyntheticService {
         origin,
       });
     };
-    // factory: Line → Base（Line.baseId）
+    // product: Series → Platform（series.platformId）
+    for (const s of g.productSeries) await putLink(`lnk_sbp_${s.seriesId}`, "series_belongs_to_platform", oid("ProductSeries", s.seriesId), oid("ProductPlatform", s.platformId));
+    // product: Model → Series（model.seriesId）
+    for (const m of g.models) {
+      const seriesId = m.seriesId as string | undefined;
+      if (seriesId) await putLink(`lnk_mbs_${m.modelId}`, "model_belongs_to_series", oid("Model", m.modelId), oid("ProductSeries", seriesId));
+    }
+    // product: Version → Model（version.modelId）
+    for (const v of g.productVersions) await putLink(`lnk_vbm_${v.versionId}`, "version_belongs_to_model", oid("ProductVersion", v.versionId), oid("Model", v.modelId));
+    // product: BOMHeader → ProductVersion（bom.versionId）
+    for (const bh of g.bomHeaders) await putLink(`lnk_bbv_${bh.bomId}`, "bom_belongs_to_version", oid("BOMHeader", bh.bomId), oid("ProductVersion", bh.versionId));
+    // product: BOMDetail → BOMHeader（detail.bomId）
+    for (const bd of g.bomDetails) await putLink(`lnk_dbb_${bd.bomDetailId}`, "detail_belongs_to_bom", oid("BOMDetail", bd.bomDetailId), oid("BOMHeader", bd.bomId));
+    // product: BOMDetail → Material（detail.materialId）
+    for (const bd of g.bomDetails) await putLink(`lnk_dum_${bd.bomDetailId}`, "detail_uses_material", oid("BOMDetail", bd.bomDetailId), oid("Material", bd.materialId));
+    // process: Routing → Model（routing.modelId）
+    for (const r of g.routings) await putLink(`lnk_rbm_${r.routingId}`, "routing_belongs_to_model", oid("Routing", r.routingId), oid("Model", r.modelId));
+    // process: Operation → Routing（operation.routingId）
+    for (const o of g.operations) await putLink(`lnk_obr_${o.operationId}`, "operation_belongs_to_routing", oid("Operation", o.operationId), oid("Routing", o.routingId));
+    // WO-LAST3-RELATIONS · `depends_on`：工序 → 同路线前驱工序（`Operation.predecessorOperationId`）。
+    // 首工序（seq=1）前驱为空串 ⇒ **不落边**，故边数 = 工序数 − 工艺路线数（每条路线少一条）。
+    for (const o of g.operations as { operationId: string; predecessorOperationId?: string }[]) {
+      if (o.predecessorOperationId) {
+        await putLink(`lnk_odep_${o.operationId}`, "operation_depends_on", oid("Operation", o.operationId), oid("Operation", o.predecessorOperationId));
+      }
+    }
+    // process: ProcessCapabilityWindow → Operation（capability.operationId）
+    for (const c of g.processCapabilities) await putLink(`lnk_cbo_${c.capabilityId}`, "capability_belongs_to_operation", oid("ProcessCapabilityWindow", c.capabilityId), oid("Operation", c.operationId));
+    // quality: QualityStandard → Model（standard.modelId）
+    for (const qs of g.qualityStandards) await putLink(`lnk_qsm_${qs.standardId}`, "standard_belongs_to_model", oid("QualityStandard", qs.standardId), oid("Model", qs.modelId));
+    // quality: InspectionCharacteristic → QualityStandard（char.standardId）
+    for (const ic of g.inspectionCharacteristics) await putLink(`lnk_cbs_${ic.charId}`, "char_belongs_to_standard", oid("InspectionCharacteristic", ic.charId), oid("QualityStandard", ic.standardId));
+    // factory: ProductLineCapability → Line（cap.lineId）
+    for (const plc of g.productLineCapabilities) await putLink(`lnk_plc_${plc.capId}`, "product_line_capability", oid("ProductLineCapability", plc.capId), oid("Line", plc.lineId));
+    // equip: ProductEquipmentCapability → Equipment（pec.equipmentId）
+    for (const pec of g.productEquipmentCapabilities) await putLink(`lnk_pec_${pec.equipCapId}`, "product_equip_capability", oid("ProductEquipmentCapability", pec.equipCapId), oid("Equipment", pec.equipmentId));
+    // lifecycle: EngineeringChange → Model（change.modelId）
+    for (const ec of g.engineeringChanges) await putLink(`lnk_cam_${ec.changeId}`, "change_affects_model", oid("EngineeringChange", ec.changeId), oid("Model", ec.modelId));
+    // supply: MaterialAlternative → Material（alt.primaryMaterialId）
+    for (const ma of g.materialAlternatives) {
+      await putLink(`lnk_afm_${ma.altId}`, "alt_for_material", oid("MaterialAlternative", ma.altId), oid("Material", ma.primaryMaterialId));
+      // WO-PROCESS-TICK-COVERAGE 逆边：与上一行**共用同一次遍历**（不是抄一遍派生式）⇒ 两向严格互逆。
+      await putLink(`lnk_mha_${ma.altId}`, "material_has_alternative", oid("Material", ma.primaryMaterialId), oid("MaterialAlternative", ma.altId));
+    }
+    // supply: Material → Supplier（material.supplierIds 全集·主供 rank=0）
+    //
+    // WO-VULNERABILITY-REI：此处**曾只写 `supplierId`（=`supplierIds[0]`）一行** ⇒ 全仓
+    // 「哪个料只有一家能供」这件事在本体图上不可见：单点料（`cu_foil`/`al_foil` 各 1 家）与
+    // 双供料在图上**形态完全相同**（都恰好一条出边）。备份供应商（SUP-002/003/005/007/008/009/013）
+    // **一条边都没有** —— 沿图走的任何消费方都读不到它们的存在。
+    // 现按全集逐条物化，并在**边上**记 `rank`/`isPrimary`（主供是谁这件事不丢，仍是 rank=0 那条）。
+    // 纯投影：遍历序跟着 `ext.materials` × `supplierIds` 声明序、无 rng ⇒ R6 字节确定性不动。
+    for (const m of ext.materials) {
+      const matId = (m as { matId: string }).matId;
+      const ids = (m as { supplierIds?: string[] }).supplierIds ?? [];
+      // 回落：老快照没有 supplierIds 时退回标量单行（**不静默产出 0 行**——那会让本体凭空少一批边）。
+      const list = ids.length > 0 ? ids : [(m as { supplierId?: string }).supplierId].filter(Boolean) as string[];
+      for (const [rank, supplierId] of list.entries()) {
+        // 边 id 带 supplierId 后缀 ⇒ 同一物料的多条边互不覆盖（沿用 `lnk_msb_` 前缀，rank=0 那条
+        // **保持原 id `lnk_msb_<matId>`**，既有引用与快照 diff 不被这次扩容打乱）。
+        const linkId = rank === 0 ? `lnk_msb_${matId}` : `lnk_msb_${matId}_${supplierId}`;
+        await putLink(linkId, "material_supplied_by", oid("Material", matId), oid("Supplier", supplierId), { rank, isPrimary: rank === 0 });
+      }
+    }
+
+    // WO-INTERBASE-TRANSFER：调拨三条链路（transfer_from_base/transfer_to_base→Base·transfer_of_model→Model·N:1）。
+    // fromId/toId 是 baseId（下钻 obj_base_<baseId> = BASE_REGISTRY 真基地），model 是 modelId（obj_model_<modelId>）。
+    for (const x of g.interBaseTransfers) {
+      const tid = x.transferId as string;
+      await putLink(`lnk_xff_${tid}`, "transfer_from_base", oid("InterBaseTransfer", tid), oid("Base", x.fromBase));
+      // WO-PROCESS-TICK-COVERAGE 逆边（**只逆调出端**）：调拨是由调出基地的负载压出来的决策，
+      // 调入端是结果不是原因；两端都逆会让同一条调拨被两个基地各推一次，等于把压力算两遍。
+      await putLink(`lnk_bdt_${tid}`, "base_dispatches_transfer", oid("Base", x.fromBase), oid("InterBaseTransfer", tid));
+      await putLink(`lnk_xft_${tid}`, "transfer_to_base", oid("InterBaseTransfer", tid), oid("Base", x.toBase));
+      await putLink(`lnk_xfm_${tid}`, "transfer_of_model", oid("InterBaseTransfer", tid), oid("Model", x.model));
+    }
+
+    // factory: Base → Workshop（Workshop.baseId；方向翻转：Base 1:N Workshop）
+    for (const w of g.workshops) {
+      await putLink(`lnk_wbb_${w.workshopId}`, "workshop_belongs_to_base", oid("Base", w.baseId), oid("Workshop", w.workshopId));
+    }
+    // WO-WAREHOUSE-CUSTLOC · factory: Base → Warehouse（Warehouse.baseId；方向翻转：Base 1:N Warehouse）
+    for (const w of g.warehouses) {
+      await putLink(`lnk_wob_${w.warehouseId}`, "warehouse_of_base", oid("Base", w.baseId), oid("Warehouse", w.warehouseId));
+    }
+    // WO-LAST3-RELATIONS · `located_in`：设施 → 行政区（载体侧 `props.province` === Region 主键，零转换）。
+    // 方向是**设施 → 区**（N:1），不是反过来：查「这个基地在哪个省」是一跳，
+    // 而「这个省有哪些基地」由检索侧的 direction:"in" 反着走（同 `fulfills` 段那把尺子，逆边落了是纯增重）。
+    for (const b of g.bases as { baseId: string; province?: string }[]) {
+      if (b.province) await putLink(`lnk_lin_b_${b.baseId}`, "base_located_in", oid("Base", b.baseId), oid("Region", b.province));
+    }
+    for (const w of g.warehouses as { warehouseId: string; province?: string }[]) {
+      if (w.province) await putLink(`lnk_lin_w_${w.warehouseId}`, "warehouse_located_in", oid("Warehouse", w.warehouseId), oid("Region", w.province));
+    }
+    // factory: Workshop → Line（方向翻转：Workshop 1:N Line）
+    // WO-COMPUTED-EDGE：端点改**读列** `Line.workshopId`，不再现算 `lineId.replace("LINE-","")`。
+    // 那一句串手术正是「用户自建这条边恒 0 实例」的根（`Line` 上没有对应列 ⇒ viaProperty 无从声明）。
+    // 现在种子与声明式物化（`viaProperty:"workshopId", viaSide:"to"`）读的是**同一列**，不可能分叉。
     for (const l of g.lines) {
-      await putLink(`lnk_lbb_${l.lineId}`, "line_belongs_to_base", oid("Line", l.lineId), oid("Base", l.baseId));
+      const workshopId = String((l as { workshopId?: string }).workshopId ?? "");
+      if (workshopId) await putLink(`lnk_lbw_${l.lineId}`, "line_belongs_to_workshop", oid("Workshop", workshopId), oid("Line", l.lineId));
+    }
+    // factory: Base → Line（Line.baseId，保留向后兼容；方向翻转：Base 1:N Line）
+    for (const l of g.lines) {
+      await putLink(`lnk_lbb_${l.lineId}`, "line_belongs_to_base", oid("Base", l.baseId), oid("Line", l.lineId));
     }
     // process: Line → Process（Process.lineId）
     for (const pr of g.processes) {
       await putLink(`lnk_lhp_${pr.processId}`, "line_has_process", oid("Line", pr.lineId), oid("Process", pr.processId));
+      // WO-SLICE-DOMAINS 逆边：工序排队要能**回到产线**。此前从 `Equipment`/`Process` 出发
+      // 一条出边都走不出 {Equipment, Process, MaintenanceOrder} 这三类（实测 103 条 linkType 的
+      // 正向闭包就是这三个）⇒ 设备故障对订单/毛利的贡献恒为 0。这条边的 FK 依据是
+      // `Process.lineId` 本身（与上一行 `line_has_process` 同一个字段，只是反着投影），
+      // **不是照名字猜的悬空边**。同 `process_uses_equipment` 的构造法。
+      await putLink(`lnk_pbl_${pr.processId}`, "process_belongs_to_line", oid("Process", pr.processId), oid("Line", pr.lineId));
     }
     // equip: Equipment → Process（Equipment.processId）
     for (const eq of g.equipment) {
       await putLink(`lnk_eui_${eq.equipId}`, "equip_used_in", oid("Equipment", eq.equipId), oid("Process", eq.processId));
+      // WO-PROCESS-TICK-COVERAGE 逆边：工序排队压力要能落到**具体设备**上（设备是产能瓶颈的真落点）。
+      await putLink(`lnk_pue_${eq.equipId}`, "process_uses_equipment", oid("Process", eq.processId), oid("Equipment", eq.equipId));
     }
-    // supply: Model → Material（确定性 BOM：每型号取 4 种物料，按型号序错位选取，覆盖全部 8 料）
-    const matIds = ext.materials.map((m) => String((m as { matId: string }).matId));
-    for (let mi = 0; mi < g.models.length; mi++) {
-      const m = g.models[mi] as { modelId: string };
-      const bom = Array.from({ length: 4 }, (_, k) => matIds[(mi * 2 + k) % matIds.length] as string);
-      for (const matId of new Set(bom)) {
-        await putLink(`lnk_mum_${m.modelId}_${matId}`, "model_uses_material", oid("Model", m.modelId), oid("Material", matId));
+    /*
+     * supply: Model → Material（**捷径边**：跨过 BOM 四跳链直连「这个型号用哪些料」）。
+     *
+     * ══ WO-COMPUTED-EDGE · 口径归一（今天的行为是 X，应该是 Y）══════════════════════════
+     * **X**：这两条边的物料集由一句**模运算**算出 —— `matIds[(mi*2+k) % 8]`，**每型号取 4 种**，
+     *   与 BOM 表毫无关系。而同一个业务问题「这个型号用哪些料」，图上还有**第二个答案**：
+     *   `Model ←version_belongs_to_model– ProductVersion ←bom_belongs_to_version– BOMHeader
+     *    ←detail_belongs_to_bom– BOMDetail –detail_uses_material→ Material`
+     *   四跳全通（本文件上方四条 `putLink` 即是），走 `BOM_ITEM_TEMPLATES` 8 行模板按化学体系
+     *   跳掉对侧正极 ⇒ **每型号 7 种**。**两个答案都在被消费**：捷径边被 8 条切片 +
+     *   `chain-loss` 求解器 + 两条传导规则（`viaLinkKey`）读，BOM 链被 `order_to_material_bom`
+     *   切片与 `Model.unitCost` 读。4 种 vs 7 种，谁都不会红。
+     * **Y**：**留 BOM 表这一份、废掉模运算这一份** —— 捷径边改为**从 BOM 链派生**：
+     *   `BOMHeader.modelId → BOMDetail.bomId → BOMDetail.materialId`，去重后连边。
+     *   捷径边的 key/方向/端点类型**一个字节没改**（8 条切片、求解器、两条传导规则全部原地生效），
+     *   变的只是它算的是哪一份物料集。
+     *
+     * ── 为什么不是另外三种改法（每一种都会把问题做大）─────────────────────────────
+     * · **给 `BOMDetail` 加 `modelId`**：不该。`BOMDetail` 的父是 `BOMHeader`，而 `BOMHeader`
+     *   已经有 `modelId` —— 给明细行再挂一个型号是**冗余外键**，两处一旦不同步就是第三个真相。
+     * · **造「多跳桥链」机制**：四跳链今天就全通、五种声明够用，缺的不是机制；
+     *   造一个新机制只会**再生出第三个答案**。
+     * · **直接退役捷径边、下钻一律走四跳**：那要改 8 条切片 + 2 条传导规则的 `viaLinkKey`，
+     *   属另一张单的范围；且捷径边本身是有价值的（一跳答「用哪些料」）。
+     *
+     * ⚠ 逆边 `material_used_by_model` 与正向边**共用同一个 `pairs` 集合**（不是抄一遍派生式）
+     *   ⇒ 两向严格互逆，改口径时不可能只改一半（抄一份就会漂，本仓已因「金丝雀各抄一份正则」吃过亏）。
+     * ⚠ 遍历序取自 `g.bomHeaders` / `g.bomDetails` 的落库序（两者都是确定性生成的），
+     *   且边 id 只由 `modelId`+`matId` 决定 ⇒ R6 同 seed 字节一致。
+     */
+    const bomIdsByModel = new Map<string, string[]>();
+    for (const bh of g.bomHeaders) {
+      const mid = String((bh as { modelId?: string }).modelId ?? "");
+      const bid = String((bh as { bomId?: string }).bomId ?? "");
+      if (!mid || !bid) continue;
+      const arr = bomIdsByModel.get(mid);
+      if (arr) arr.push(bid);
+      else bomIdsByModel.set(mid, [bid]);
+    }
+    const matsByBom = new Map<string, string[]>();
+    for (const bd of g.bomDetails) {
+      const bid = String((bd as { bomId?: string }).bomId ?? "");
+      const mat = String((bd as { materialId?: string }).materialId ?? "");
+      if (!bid || !mat) continue;
+      const arr = matsByBom.get(bid);
+      if (arr) arr.push(mat);
+      else matsByBom.set(bid, [mat]);
+    }
+    for (const m of g.models) {
+      const modelId = String((m as { modelId: string }).modelId);
+      // 一个型号可能有多版 BOM（多个 ProductVersion）⇒ 取并集：「这个型号用到过哪些料」
+      // 是所有在效版本的并，不是某一版的独占。去重按 matId（Set 保持插入序 ⇒ 确定性）。
+      const mats = new Set<string>();
+      for (const bid of bomIdsByModel.get(modelId) ?? []) {
+        for (const mat of matsByBom.get(bid) ?? []) mats.add(mat);
+      }
+      for (const matId of mats) {
+        await putLink(`lnk_mum_${modelId}_${matId}`, "model_uses_material", oid("Model", modelId), oid("Material", matId));
+        await putLink(`lnk_mubm_${matId}_${modelId}`, "material_used_by_model", oid("Material", matId), oid("Model", modelId));
       }
     }
-    // commercial: Order → Customer（按订单序轮转绑定，覆盖全部客户）
-    const custIds = ext.customers.map((c) => String((c as { custId: string }).custId));
-    if (custIds.length > 0) {
-      for (let oi = 0; oi < g.orders.length; oi++) {
-        const o = g.orders[oi] as { so: string };
-        const custId = custIds[oi % custIds.length] as string;
-        await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("Customer", custId), { custId });
+    // ── WO-P1 · 供应「影响方向」逆边（类型声明见 battery.ts `batteryLinkTypes()` 同名三条）────────
+    // 既有 `material_supplied_by`(Material→Supplier) / `model_uses_material`(Model→Material) /
+    // `order_for_model`(Order→Model) 表达的是**归属 FK**，方向「下游→上游」；
+    // 传导引擎只沿 fromId→toId 走（`sim/propagation.ts` navOut），拿归属边跑影响传导必然走反。
+    // 这里按**同一批 FK** 反投影出「上游→下游」的影响边（供应商断供→物料短缺→型号缺料→订单交不出）。
+    // 纯投影：遍历序跟着既有边、无 rng/无时钟 ⇒ 同 (industry, scale, seed) 重跑字节一致（R6）。
+    // WO-VULNERABILITY-REI：逆边同样按**全集**物化（与上面正边**共用同一份 `supplierIds`**，
+    // 不另抄一份派生式 ⇒ 两向严格互逆；抄一份迟早漂移，而漂移了不报错）。
+    // ⚠ 这条边是 `simpr_demo_supplier_procurement_to_material` 影响传导规则的 `viaLinkKey`
+    //   （`seed.ts` `demo_supplier_procurement_delay_to_material_shortage`）—— 只写主供那一行时，
+    //   「备份供应商出问题」这一整类扰动在推演里**恒无下游**，看着像"没风险"，实为传导路不存在。
+    for (const m of ext.materials) {
+      const matId = (m as { matId: string }).matId;
+      const ids = (m as { supplierIds?: string[] }).supplierIds ?? [];
+      const list = ids.length > 0 ? ids : [(m as { supplierId?: string }).supplierId].filter(Boolean) as string[];
+      for (const [rank, supplierId] of list.entries()) {
+        await putLink(`lnk_ssm_${supplierId}_${matId}`, "supplier_supplies_material", oid("Supplier", supplierId), oid("Material", matId), { rank, isPrimary: rank === 0 });
       }
+    }
+    for (const o of g.orders) {
+      await putLink(`lnk_mdbo_${o.so}`, "model_demanded_by_order", oid("Model", o.model), oid("Order", o.so));
+    }
+    // ── commercial: Order → Customer ────────────────────────────────────────
+    // WO-QUOTE-MARGIN-CUSTOMER（欠账 #118）：**按真实归属绑定**，不再按订单序轮转。
+    //
+    // 修前：`custIds[oi % custIds.length]` —— 与 `Order.cust` 上写的客户名毫无关系。实测（seed 42·S）
+    //   「商用车集团G」名下 3 张全是广汽集团（乘用车）的单，「电网公司F」名下挂着宇通客车（商用车）的单。
+    //   于是任何沿这条边做的客户维求解（S15 `quote_margin`）都在算别人的订单，却把提问者的客户名印在答案上。
+    // 修后：`Order.cust` → `ORDER_CUST_TO_CUSTOMER` 归属册 → `Customer.custName` → `custId`。
+    //   · 边上加带 `custName`/`orderCust`，让「这条边凭什么这么连」在边自身可自证（不必回查册）。
+    //   · 归属册里没有的订单客户名 → **不建边**（诚实缺席）。此前的轮转会给它随手落一个客户 ——
+    //     那正是「张冠李戴的数比没有更危险」（`solvers/decision-info.ts:304` 早已独立登记过同一事实）。
+    const custIdByName = new Map(ext.customers.map((c) => [String((c as { custName: string }).custName), String((c as { custId: string }).custId)]));
+    for (const ord of g.orders) {
+      const o = ord as { so: string; cust?: string };
+      const orderCust = String(o.cust ?? "");
+      const custName = orderCust ? customerNameOfOrderCust(orderCust) : undefined;
+      const custId = custName ? custIdByName.get(custName) : undefined;
+      if (!custId || !custName) continue; // 无归属登记 → 不建边（不轮转、不落首客户）
+      await putLink(`lnk_ooc_${o.so}`, "order_of_customer", oid("Order", o.so), oid("Customer", custId), { custId, custName, orderCust });
+      // WO-ADVERSARY-REACTION 影响向逆边（`customer_places_order`）：**与正向边共用同一个
+      // `custId`/`custName` 派生结果**，不是照属性再猜一遍 —— 两向严格互逆，
+      // 改归属派生式时不可能只改一半（`batch_replenishes_material` 那处已登记过同一取舍）。
+      // 归属册里查不到的订单同样**不建边**（`continue` 在上面，两向一起缺席，不会一半在一半不在）。
+      await putLink(`lnk_cpo_${o.so}`, "customer_places_order", oid("Customer", custId), oid("Order", o.so), { custId, custName, orderCust });
     }
 
     // ---- 8 域切片增量：13 条跨域边中的 11 条（由 ext/g 的对象 FK 确定性派生）----
@@ -616,10 +1190,40 @@ export class SyntheticService {
       const cid = custByName.get(String(P(inv).custName));
       if (cid) await putLink(`lnk_chi_${P(inv).invoiceId}`, "customer_has_invoice", oid("Customer", cid), oid("ARInvoice", P(inv).invoiceId));
     }
+    // WO-WAREHOUSE-CUSTLOC · commercial: CustomerLocation → Customer（loc.customerRef；参照 order_of_customer 方向）
+    for (const loc of ext.customerLocations) {
+      await putLink(`lnk_cloc_${P(loc).locId}`, "custloc_of_customer", oid("CustomerLocation", P(loc).locId), oid("Customer", P(loc).customerRef));
+      // WO-PROCESS-TICK-COVERAGE 逆边：客户侧压力（信用/应收）要能落到该客户的**收货地点**上。
+      await putLink(`lnk_chl_${P(loc).locId}`, "customer_has_location", oid("Customer", P(loc).customerRef), oid("CustomerLocation", P(loc).locId));
+      // WO-LAST3-RELATIONS · `located_in`：客户交付点 → 行政区（三个载体里唯一带**基地册以外**省份的那个
+      // —— 重庆/上海/北京 只从这里进 Region，故 `buildRegions` 的入参必须含本集合，少一个就静默连不上）。
+      const locProv = P(loc).province as string | undefined;
+      if (locProv) await putLink(`lnk_lin_c_${P(loc).locId}`, "custloc_located_in", oid("CustomerLocation", P(loc).locId), oid("Region", locProv));
+    }
     // supply（批次）: Material → MaterialBatch（batch.matId）
-    for (const bt of ext.materialBatches) await putLink(`lnk_mhb_${P(bt).batchId}`, "material_has_batch", oid("Material", P(bt).matId), oid("MaterialBatch", P(bt).batchId));
+    // WO-SIM-ROOT-PROCUREMENT 逆边（`batch_replenishes_material`）：**与正向边共用同一个 `bt`**
+    // （不是抄一遍派生式）⇒ 两向严格互逆，改归属派生式时不可能只改一半 ——
+    // 同 `lnk_mum_`/`lnk_mubm_` 那一对立下的纪律（抄一份就会漂）。
+    for (const bt of ext.materialBatches) {
+      await putLink(`lnk_mhb_${P(bt).batchId}`, "material_has_batch", oid("Material", P(bt).matId), oid("MaterialBatch", P(bt).batchId));
+      await putLink(`lnk_brm_${P(bt).batchId}`, "batch_replenishes_material", oid("MaterialBatch", P(bt).batchId), oid("Material", P(bt).matId));
+    }
     // supply（采购）: Material → PurchaseOrder（po.matId）
-    for (const po of ext.purchaseOrders) await putLink(`lnk_mpo_${P(po).poId}`, "material_supplied_by_po", oid("Material", P(po).matId), oid("PurchaseOrder", P(po).poId));
+    // WO-SIM-ROOT-PROCUREMENT 逆边（`po_replenishes_material`）：同上，与正向边共用同一个 `po`。
+    for (const po of ext.purchaseOrders) {
+      await putLink(`lnk_mpo_${P(po).poId}`, "material_supplied_by_po", oid("Material", P(po).matId), oid("PurchaseOrder", P(po).poId));
+      await putLink(`lnk_porm_${P(po).poId}`, "po_replenishes_material", oid("PurchaseOrder", P(po).poId), oid("Material", P(po).matId));
+    }
+    // WO-SANDBOX-D2 · supply（采购责任方）: PurchaseOrder → Supplier（po.supplierId）——
+    // 「这一单是谁供的」此前只能经 Material 主供间接猜，多供物料一猜就错。
+    for (const po of ext.purchaseOrders) await putLink(`lnk_pos_${P(po).poId}`, "po_from_supplier", oid("PurchaseOrder", P(po).poId), oid("Supplier", P(po).supplierId));
+    // WO-SANDBOX-D2 · supply（清关）: PurchaseOrder → CustomsClearance（仅进口单有）
+    for (const cc of ext.customsClearances) await putLink(`lnk_pocc_${P(cc).clearanceId}`, "po_customs_cleared_by", oid("PurchaseOrder", P(cc).poId), oid("CustomsClearance", P(cc).clearanceId));
+    // WO-SANDBOX-D2 · quality（到货检验）: PurchaseOrder → IncomingInspection（每单必检）
+    for (const ii of ext.incomingInspections) await putLink(`lnk_poii_${P(ii).inspectionId}`, "po_inspected_by", oid("PurchaseOrder", P(ii).poId), oid("IncomingInspection", P(ii).inspectionId));
+    // WO-RULE-SCOPE-TRIAD · supply（外协）: Material → Outsource（os.matId）——外协批次接入本体图，
+    // 无此边则 Outsource 成孤岛切片（slice-connectivity 门会拦）。
+    for (const os of ext.outsources) await putLink(`lnk_mos_${P(os).outsourceId}`, "material_has_outsource", oid("Material", P(os).matId), oid("Outsource", P(os).outsourceId));
     // supply（碳因子）: Material → CarbonFactor（kind=material 时 key=matId）
     for (const cf of ext.carbonFactors) if (P(cf).kind === "material") await putLink(`lnk_mcf_${P(cf).factorId}`, "material_carbon", oid("Material", P(cf).key), oid("CarbonFactor", P(cf).factorId));
     // factory（能耗）: Base → EnergyMeter（em.baseId）
@@ -630,13 +1234,44 @@ export class SyntheticService {
     for (const sh of g.shipments) await putLink(`lnk_bsh_${P(sh).shipId}`, "base_has_shipment", oid("Base", P(sh).baseId), oid("Shipment", P(sh).shipId));
     // equip（检修）: Base → MaintPlan（mp.baseId）
     for (const mp of g.maintPlans) await putLink(`lnk_bmp_${P(mp).planId}`, "base_maint_plan", oid("Base", P(mp).baseId), oid("MaintPlan", P(mp).planId));
-    // product（细分）: Model → Segment（确定性化学体系映射：S192→ess｜L148→com｜其余→pas）
-    const segOf = (modelId: string) => (modelId.includes("S192") ? "ess" : modelId.includes("L148") ? "com" : "pas");
-    for (const m of g.models) await putLink(`lnk_mis_${m.modelId}`, "model_in_segment", oid("Model", m.modelId), oid("Segment", segOf(String(m.modelId))));
+    // product（细分）: Model → Segment。
+    // WO-COMPUTED-EDGE · **修一条退化边**（铁律 0.5 的第二态「接了线没数据」）：
+    //   旧派生式 `modelId.includes("S192") ? "ess" : includes("L148") ? "com" : "pas"` 里，
+    //   两个分支的判据在 `MODELS` 全表 6 型上**一次都没匹中过** ⇒ 6 条边全落 `"pas"`，
+    //   三个细分坍缩成一个，而边有实例、检索走得通、四包全绿 —— 没有任何东西会红。
+    //   现改用 `segKeyOfModelPos`（型号归段的唯一出处，与 `Model.unitPrice` 的归段共用同一个函数）。
+    //   `com` 分支已随该函数删除：型号表里没有商用车型号，商用车细分在本仓由**买方业态**判定
+    //   （`customerSegKeyOf`/`segKeyOfBusinessType`），不由型号判定 —— 详见该函数头注。
+    // 声明式等价物：`viaKeyExpr: 'IF(this.pos == "储能", "ess", "pas")'`（零新 AST 节点）。
+    for (const m of g.models) {
+      const segKey = segKeyOfModelPos(String((m as { pos?: string }).pos ?? ""));
+      await putLink(`lnk_mis_${m.modelId}`, "model_in_segment", oid("Model", m.modelId), oid("Segment", segKey));
+    }
     // quality（数据源）: Base → DataSourceHealth（N:N，每基地挂全部数据源）
     for (const b of g.bases) for (const dh of g.dataHealth) await putLink(`lnk_bdh_${b.baseId}_${P(dh).sourceId}`, "base_data_health", oid("Base", b.baseId), oid("DataSourceHealth", P(dh).sourceId));
     // finance（Phase5A）: Base → FinanceAccount（fa.baseId）
     for (const fa of ext.financeAccounts) await putLink(`lnk_bfn_${P(fa).accId}`, "base_finance", oid("Base", P(fa).baseId), oid("FinanceAccount", P(fa).accId));
+    // WO-EXCEPTION-EVENT · 异常事件→源对象溯源边（R13 全监听下钻）。
+    // WO-COMPUTED-EDGE（裁决③·多态目标）：**边 key 随 refType 分流到五条定型边**，不再全塞进一条
+    // 声明为 `ExceptionEvent→EquipmentDowntime` 的多态边。修前实测：372 条实例写进 links、
+    // **检索只看得见 166 条**（`executeSlice` 按声明的单值 `toTypeKey` 裁剪可达类型），
+    // 另 206 条写进去了永远读不出来、且不报错。key 映射的**唯一出处**是 `EXC_SOURCE_LINKS`。
+    // 目标 obj 已物化（3 源上文 putAll + MaterialBalance/TriggerRule 已物化）。
+    for (const ev of exceptionEvents) {
+      const refType = String(ev.refType);
+      const refId = String(ev.refId);
+      // 认不出的 refType ⇒ **不建边**（诚实缺席）。兜底落到某一条上等于造一条端点类型错的脏边，
+      // 而它不会报错、只会让那一源的下钻结果凭空变多。
+      const excLinkKey = excSourceLinkKeyOf(refType);
+      if (excLinkKey) await putLink(`lnk_exc_${String(ev.excId)}`, excLinkKey, oid("ExceptionEvent", ev.excId), oid(refType, refId), { refType, refId });
+      // WO-PROCESS-TICK-COVERAGE 逆边（**只逆 DefectRecord 那一源**）：缺陷变多 → 异常处置积压。
+      // 为什么不把五源都逆：另四源（EquipmentAlarm/EquipmentDowntime/MaterialBalance/TriggerRule）
+      // 今天在传导图上都不是 target，逆了也没有源能驱动它们 —— 那就是「接了线没数据」的边，
+      // 只会让链路表变胖而屏上一动不动。等哪一源真被接进传导链了再逆哪一源。
+      if (refType === "DefectRecord") {
+        await putLink(`lnk_dre_${String(ev.excId)}`, "defect_raises_exception", oid("DefectRecord", refId), oid("ExceptionEvent", ev.excId));
+      }
+    }
 
     // §7.14 计划域种子：年度情景/触发条件/目标分解。分解值锚定 S1.1 rollup 的供给口径
     // （weeklyWan × 认证系数）—— 与 S&OP 平衡台/季度滚动同源，确定性（无时钟/随机）。
@@ -673,13 +1308,19 @@ export class SyntheticService {
         baseCert.set(baseId, Math.max(baseCert.get(baseId) ?? 0, params.certFactors[status] ?? 1));
       }
     }
+    // WO-SCALE-COHERENCE 断裂点D：weeklyTotal = Σ weeklyWan×certFactor（认证中 0.6 ramp）——与 planviews.ts 季度
+    // 滚动看板 sup 同口径（dem=PlanTarget=annualBase 与 sup 同 cert 基·三档缺口平衡·不desync）。AnnualScenario.revenue
+    // = 认证产能×52×P̄ ≈ 599 亿（= 需求 700 亿 − 认证爬坡供给缺口 ~14.5%，非玩具尺度）。修好断裂点B+C 后由玩具 15 亿
+    // 升到企业级 599 亿（脱离玩具 40×）；与需求锚 700 亿的差 = 真实供给/认证缺口（SEAM 营收容差覆盖此 ramp）。
     const weeklyTotal = round(
       rollup.bases.reduce((a, b) => a + b.weeklyWan * (baseCert.get(b.baseId) ?? 0), 0),
       4,
     );
-    const avgUnitPrice = Math.round(
-      g.models.reduce((a, m) => a + (typeof m.unitPrice === "number" ? m.unitPrice : 0), 0) / Math.max(1, g.models.length),
-    );
+    // WO-SCALE-COHERENCE 断裂点D：avgUnitPrice 改需求加权 P̄ = Σ(demandWanPerYearP50×priceWan)/ΣdemandWanPerYearP50（≈1.8667 万元/套=18667 元/套），
+    // 而非型号等权 mean → AOP.revenue = weeklyTotal×52×P̄ 收敛到 700 亿锚（收紧四方营收互核容差 ε≤12%）。
+    const dsP50 = g.demandSegments.reduce((a, d) => a + (typeof d.demandWanPerYearP50 === "number" ? d.demandWanPerYearP50 : 0), 0);
+    const dsRev = g.demandSegments.reduce((a, d) => a + (typeof d.demandWanPerYearP50 === "number" ? d.demandWanPerYearP50 : 0) * (typeof d.priceWan === "number" ? d.priceWan : 0), 0);
+    const avgUnitPrice = Math.round((dsP50 > 0 ? dsRev / dsP50 : 0) * 1e4); // 万元/套 → 元/套
     const pd = generatePlanDomain(weeklyTotal, avgUnitPrice);
     await putAll("AnnualScenario", pd.scenarios, "scnId");
     await putAll("ScenarioTrigger", pd.triggers, "trigId");
@@ -700,23 +1341,281 @@ export class SyntheticService {
       if (fm) await putLink(`lnk_s2f_${P(s).key}`, "scenario_to_finance", oid("AnnualScenario", P(s).scnId), oid("FinanceMetric", P(fm).metricId));
     }
     // plan（Phase7A）: Order → PlanTarget（按交期月匹配月度目标）→ Order 根直达 plan 域。
+    // WO-COMPUTED-EDGE：端点改**读列** `Order.dueMonth` 对到 `PlanTarget.period`，不再现算
+    // `PT-${due.slice(0,7)}`（前缀+截断）。声明式等价物是
+    // `viaProperty:"dueMonth", anchorProperty:"period", viaWhereTo:"PlanTarget.level == 'month'"`。
+    // ⚠ 那个 `level==="month"` 是 **anchor 侧**条件，`viaWhere` 够不着 —— 今天它侥幸不需要谓词，
+    //   只因 period 三档编码恰好不撞值（"2026" / "2026-Q1" / "2026-03"）。**那是数据形态的巧合，
+    //   不是机制保证**，所以声明侧照样把 `viaWhereTo` 写上，别指望下一个客户的编码也这么巧。
     const monthTargets = new Set(pd.planTargets.filter((t) => P(t).level === "month").map((t) => String(P(t).period)));
+    const targetIdByPeriod = new Map(pd.planTargets.filter((t) => P(t).level === "month").map((t) => [String(P(t).period), String(P(t).tgtId)]));
     for (const o of g.orders) {
-      const month = String((o as { due?: string }).due ?? "").slice(0, 7);
-      if (monthTargets.has(month)) await putLink(`lnk_otp_${o.so}`, "order_to_plantarget", oid("Order", o.so), oid("PlanTarget", `PT-${month}`));
+      const month = String((o as { dueMonth?: string }).dueMonth ?? "");
+      const tgtId = monthTargets.has(month) ? targetIdByPeriod.get(month) : undefined;
+      if (tgtId) await putLink(`lnk_otp_${o.so}`, "order_to_plantarget", oid("Order", o.so), oid("PlanTarget", tgtId));
     }
 
-    // 跨 6 域内置切片 order_fulfillment_360：合成即落库（resolve 不依赖外部配置脚本）。
-    for (const s of batteryBuiltinSlices()) {
+    // SPINE 骨架链：指标→KSF / 指标→责任人（由 Metric.ksfRef/ownerRef 确定性派生，骨架可视化 + R-一致）。
+    for (const m of g.metrics) {
+      const mid = oid("Metric", P(m).metricId);
+      if (P(m).ksfRef) await putLink(`lnk_mak_${P(m).metricId}`, "metric_affects_ksf", mid, oid("KSF", P(m).ksfRef));
+      if (P(m).ownerRef) await putLink(`lnk_mob_${P(m).metricId}`, "metric_ownedby", mid, oid("Principal", P(m).ownerRef));
+    }
+    // SPINE.2 责任闭环：目标树→责任人（年/季→运营负责人，月→计划部，确定性派生）。
+    for (const t of pd.planTargets) {
+      const owner = String(P(t).level) === "month" ? "prin-plan" : "prin-coo";
+      await putLink(`lnk_pto_${P(t).tgtId}`, "plantarget_ownedby", oid("PlanTarget", P(t).tgtId), oid("Principal", owner));
+    }
+    // WO-CEO-2 gap_attribution：因果边 caused_by（果→因·CausalFactor 一等因果链·引擎遍历 C2/C9）。
+    // 常数边·零 rng·同 seed 字节一致；边 id 由 from/to 确定性派生。
+    for (const e of CAUSAL_EDGES) {
+      await putLink(`lnk_cby_${e.from}_${e.to}`, "caused_by", oid("CausalFactor", e.from), oid("CausalFactor", e.to));
+    }
+    // WO-INVENTORY-3TIER 库存三层闭环链路（FG→Model/Warehouse·Txn→FG/WorkOrder；完工入库溯源）。
+    const realModelIds = new Set(g.models.map((m) => String((m as { modelId: unknown }).modelId)));
+    for (const fg of g.finishedGoodsInv) {
+      const fgId = String(P(fg).fgId);
+      // fg_of_model 仅在型号是真 Model 时连（部分完工工单 modelId 为储能等目录外型号 → 诚实不连悬空边）。
+      if (realModelIds.has(String(P(fg).model))) {
+        await putLink(`lnk_fgm_${fgId}`, "fg_of_model", oid("FinishedGoodsInventory", fgId), oid("Model", P(fg).model));
+        // WO-PROCESS-TICK-COVERAGE 逆边：型号需求负载 → 成品库存被提走的压力（同一个 realModelIds
+        // 守卫，不另抄一份 —— 抄一份就会漂，本仓已因「金丝雀各抄一份正则」吃过亏）。
+        await putLink(`lnk_msf_${fgId}`, "model_stocked_as_finished_goods", oid("Model", P(fg).model), oid("FinishedGoodsInventory", fgId));
+      }
+      await putLink(`lnk_fgw_${fgId}`, "fg_at_warehouse", oid("FinishedGoodsInventory", fgId), oid("Warehouse", P(fg).warehouseId));
+    }
+    for (const tx of g.inventoryTxns) {
+      const txnId = String(P(tx).txnId);
+      await putLink(`lnk_txf_${txnId}`, "txn_for_fg", oid("InventoryTxn", txnId), oid("FinishedGoodsInventory", P(tx).fgRef));
+      if (P(tx).woRef) await putLink(`lnk_txw_${txnId}`, "txn_from_wo", oid("InventoryTxn", txnId), oid("WorkOrder", P(tx).woRef));
+    }
+    // WO-FULFILLS-EDGE 订单兑现链路（工单 → 销售订单 N:1）——**制造侧回到商务侧的那一跳**。
+    // 少了它，「这张订单靠哪些工单产出来兑现」在本体里表达不了，产销端到端推演断在这里。
+    // FK 是 `WorkOrder.orderRef`（`battery.ts` 的 `deriveFulfills` 唯一确定），**条件缺席**：
+    // 只有 (modelId, baseId) 与订单簿真自洽的工单才有这个字段 ⇒ 这里照着有没有连，不补默认值。
+    for (const wo of g.workOrders) {
+      const so = P(wo).orderRef;
+      if (so) await putLink(`lnk_wfo_${P(wo).woId}`, "fulfills", oid("WorkOrder", P(wo).woId), oid("Order", so));
+    }
+    // WO-ATP-PROMISE 订单承诺链路（承诺 → 订单·一订单一承诺 N:1；承诺溯源到销售订单）。
+    for (const p of g.orderPromises) {
+      const promiseId = String(P(p).promiseId);
+      await putLink(`lnk_pfo_${promiseId}`, "promise_for_order", oid("OrderPromise", promiseId), oid("Order", P(p).orderRef));
+      // WO-PROCESS-TICK-COVERAGE 逆边：订单缺口 → 交期承诺风险（P19 的读数就该跟着订单缺口动）。
+      await putLink(`lnk_ohp_${promiseId}`, "order_has_promise", oid("Order", P(p).orderRef), oid("OrderPromise", promiseId));
+    }
+    // WO-ORDERLINE 订单拆行链路（明细行 → 订单头 N:1 + 明细行 → 型号 N:1；一单多型号真表达·行级溯源）。
+    for (const ln of g.orderLines) {
+      const lineId = String(P(ln).lineId);
+      await putLink(`lnk_loo_${lineId}`, "line_of_order", oid("OrderLine", lineId), oid("Order", P(ln).orderRef));
+      await putLink(`lnk_olm_${lineId}`, "orderline_for_model", oid("OrderLine", lineId), oid("Model", P(ln).model));
+      // WO-PROCESS-TICK-COVERAGE 逆边：订单需求压力 → 拆行/排产要素确认压力（P18）。
+      await putLink(`lnk_ohl_${lineId}`, "order_has_line", oid("Order", P(ln).orderRef), oid("OrderLine", lineId));
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // WO-PROCESS-TICK-COVERAGE 档 2 · 执行层「影响向逆边」实例（类型声明见 battery.ts 同名 15 条）
+    //
+    // 这一段与上面那些"顺手加一行"的逆边不同：这几条的**正向边本身从来没被物化过**
+    // （`wo_on_line` / `wip_for_wo` / `qlot_for_wo` / `defect_for_wiplot` / `maint_for_equip`
+    //  在 `batteryLinkTypes()` 里声明了很久，真链路表上一条实例都没有 —— 本单实测）。
+    // 所以这里不是"反投影一条已有的边"，是**第一次把这批 FK 落成边**，且只落影响向那一向：
+    // 归属向今天没有消费方，落了就是纯增重。哪天有消费方了再落哪一条。
+    //
+    // 纯投影（遍历既有对象数组、零 rng、零时钟）⇒ 同 (industry, scale, seed) 字节一致（R6）。
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════════════════════════
+    // WO-CAPACITY-EDGE · 产能两条边的实例
+    //
+    // ① `has_capacity`（Line → CapacityPool）：结构边，不带量 —— 产能数在池节点上。
+    // ② `consumes_capacity`（WorkOrder → CapacityPool）：**量写在边上**。
+    //    `materializeDeclaredLinks` 造的边没有 `props`，而本条边的全部价值就是边上那个量
+    //    ⇒ 声明驱动会得到「用了这条线」却答不出「吃掉多少」的边（见 `batteryLinkTypes()` 同段注）。
+    //
+    // 量的算法在 `capacityConsumptionOfWorkOrder`（`battery.ts`）里**只有一份**：
+    // `consumedCellsDaily = qtyPlanned(件) ÷ spanDays(天)`（件/日），与池的
+    // `capacityCellsDaily`（← `Line.max_capacity_day`，件/日）**同族同量纲**。
+    // 算不出量的工单**不连边**（诚实缺席，不补 0）。纯投影：零 rng / 零时钟 ⇒ R6。
+    // ══════════════════════════════════════════════════════════════════════════════════
+    for (const l of g.lines) {
+      await putLink(
+        `lnk_hc_${P(l).lineId}`,
+        "has_capacity",
+        oid("Line", P(l).lineId),
+        oid("CapacityPool", capacityPoolIdOfLine(String(P(l).lineId))),
+      );
+    }
+    for (const wo of g.workOrders) {
+      const cc = capacityConsumptionOfWorkOrder(wo);
+      if (!cc) continue;
+      await putLink(
+        `lnk_cc_${P(wo).woId}`,
+        "consumes_capacity",
+        oid("WorkOrder", P(wo).woId),
+        oid("CapacityPool", cc.poolId),
+        // 边上三格：`consumedCellsDaily` 是**量**（量纲随池那一格 `CapacityPool.capacityCellsDaily` ——
+        // ⚠ WO-CAPACITY-EDGE-FIX 起**不再是** `CapacityPool.consumedCellsDaily`：那一格已删，
+        // 它是求解时的读数不是对象属性；余量 = 申报 − Σ消耗 只在同族内才是合法减法，
+        // 故三个读数一律取「申报产能」那一格的单位），
+        // `qtyPlanned` / `spanDays` 是它的**两个输入**（量纲分别声明在 `WorkOrder.qtyPlanned`
+        // 与 `WorkOrder.spanDays`）—— 带上它们，推演过程才可披露（铁律 1.5 判据二），
+        // 而不是屏上只有一个说不清怎么来的数。
+        { consumedCellsDaily: cc.consumedCellsDaily, qtyPlanned: cc.qtyPlanned, spanDays: cc.spanDays },
+      );
+    }
+    // D07 ①：Line → WorkOrder（wo.lineId）—— 产线吃紧 ⇒ 工单下达受阻
+    for (const wo of g.workOrders) {
+      await putLink(`lnk_lrw_${P(wo).woId}`, "line_runs_work_order", oid("Line", P(wo).lineId), oid("WorkOrder", P(wo).woId));
+      // WO-SLICE-DOMAINS：WorkOrder → Model（wo.modelId）。`wo_for_model` 这个 linkType
+      // **早就声明在 `batteryLinkTypes()` 里，但从来没有物化过一条实例**（实测：以 WorkOrder 为根
+      // 跑一跳切片，边实例数 0；同批的 `line_runs_work_order` 金丝雀 260 条）——
+      // 属「声明了类型、零实例」，与「没声明」是两回事。它是**制造侧回到产品/订单侧的唯一一跳**：
+      // 少了它，工单受阻这件事永远走不到型号，也就走不到订单和客户。
+      await putLink(`lnk_wfm_${P(wo).woId}`, "wo_for_model", oid("WorkOrder", P(wo).woId), oid("Model", P(wo).modelId));
+    }
+    // D07 ②：WorkOrder → WIPLot（lot.woId）—— 工单积压 ⇒ 齐套发料/投料堆积
+    for (const lot of g.wipLots) {
+      await putLink(`lnk_wyw_${P(lot).lotId}`, "work_order_yields_wip_lot", oid("WorkOrder", P(lot).woId), oid("WIPLot", P(lot).lotId));
+    }
+    // D08 ①：WorkOrder → QualityLot（qlot.woId）—— 工单积压 ⇒ 过程质检攒批排队
+    for (const ql of g.qualityLots) {
+      await putLink(`lnk_wsq_${P(ql).qlotId}`, "work_order_sampled_by_quality_lot", oid("WorkOrder", P(ql).woId), oid("QualityLot", P(ql).qlotId));
+    }
+    // D08 ②：WIPLot → DefectRecord（def.lotId）—— 在制堆积 ⇒ 缺陷暴露变多
+    for (const df of g.defectRecords) {
+      await putLink(`lnk_wfd_${P(df).defectId}`, "wip_lot_found_defect", oid("WIPLot", P(df).lotId), oid("DefectRecord", P(df).defectId));
+    }
+    // D09：Equipment → MaintenanceOrder（mo.equipId）—— 设备负荷 ⇒ 维修派工积压
+    for (const mo of g.maintenanceOrders) {
+      await putLink(`lnk_ehm_${P(mo).moId}`, "equipment_has_maintenance_order", oid("Equipment", P(mo).equipId), oid("MaintenanceOrder", P(mo).moId));
+    }
+    // D05：Material → MaterialBalance（按**物料名**归属 —— MaterialBalance 只有 `material` 中文名，没有 matId）
+    // 诚实缺席：名字在 Material 目录里对不上的（S 规模下"包材"没有对应 Material）**不建边**，
+    // 不按序轮转硬凑 —— 「张冠李戴的数比没有更危险」（`order_of_customer` 那次已独立登记过同一事实）。
+    {
+      const matIdByName = new Map(ext.materials.map((m) => [String(P(m).name), String(P(m).matId)]));
+      for (const mb of g.materialBalances) {
+        const matId = matIdByName.get(String(P(mb).material));
+        if (!matId) continue;
+        await putLink(`lnk_mhbal_${P(mb).matBalId}`, "material_has_balance", oid("Material", matId), oid("MaterialBalance", P(mb).matBalId));
+      }
+    }
+    // D11：Customer → OverdueRecord（od.customerRef 是 custName ⇒ 经 custByName 换 custId）
+    // ⚠ 为什么不用 `od.invoiceRef` 直连 ARInvoice（那才是更自然的父）：实测
+    //    `overdueRecords[].invoiceRef` 形如 `INV-CG-001`，而真 ARInvoice 的 pk 是 `arinvoice_<i>_<j>`
+    //    —— **对不上任何一张真发票**。照名字猜着连就是造一条悬空边。改走客户这一层（真对得上）。
+    for (const od of ext.overdueRecords) {
+      const cid = custByName.get(String(P(od).customerRef));
+      if (!cid) continue;
+      await putLink(`lnk_cho_${P(od).overdueId}`, "customer_has_overdue_record", oid("Customer", cid), oid("OverdueRecord", P(od).overdueId));
+    }
+
+    // 跨域内置切片 + 每类型全字段覆盖切片（字段覆盖铁律）：合成即落库（resolve 不依赖外部配置脚本）。
+    for (const s of [...batteryBuiltinSlices(), ...batteryCoverageSlices()]) {
       await this.repos.sliceSpecs.put({
-        id: `slice_${s.sliceKey}`.replace(/[^\w-]/g, "_"),
+        id: `slice_${s.sliceKey}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
         tenantId: ctx.tenantId,
         sliceKey: s.sliceKey,
         version: s.version,
         spec: s.spec,
       });
     }
+    // WO-MODELING-INTERACTIVE（provenance 回填·KILL-MOCK）：A 路每个"由某合成数据集物化"的对象类型，
+    // 若 sourceBindings 为空（batteryObjectTypes 未被 BINDINGS 覆盖者 + 全部 extendedObjectTypes 出厂即空），
+    // 补上它真实物化来源的 RawDataset（putAll 落的 ds.name/连接）——使已发布本体不再"无来源"、左栏数据集
+    // 不再"未建模"（DataSourcePanel 覆盖度按 sourceBindings.dataset 匹配）。BINDINGS 已带更细字段映射者不覆盖；
+    // 纯派生/未物化类型不在 materializedBindings 内 → 诚实留空（不臆造数据集名）。chainMode 由建模链自设 provenance，跳过。
+    if (!chainMode) {
+      for (const [typeKey, b] of materializedBindings) {
+        const ty = await this.ontology.getType(ctx, typeKey);
+        if (ty && (ty.sourceBindings?.length ?? 0) === 0) {
+          await this.ontology.setSourceBindings(ctx, typeKey, [b]);
+        }
+      }
+    }
+    // 轨L 增量2：chainMode → 全 34 rawDataset 经真建模链产本体类型+对象（provenance 因果真实）。
+    // 放在末尾：此前无 repo 对象/类型读依赖（putLink 不读、computeRollup 用内存临时对象、sliceSpecs 不读），
+    // 链 materialize 后 runJob 后续步骤（seedViewConfigs 等）即见全 34 类型+对象，与 A 路无差。
+    if (chainMode) {
+      n = await this.seedDemoOntologyViaChain(ctx, rawDsIds);
+    }
     return n;
+  }
+
+  /**
+   * WO-69 P3 · 种下内置对象接口（`Approvable`）并把实现者类型的 `implements`/`actions` 贴上。
+   *
+   * 幂等（R6）：接口按 key 查重，已存在同版本内容则不新开版本；类型绑定为等值覆盖。
+   * 不在 `BATTERY_TYPE_INTERFACE_BINDINGS` 内的类型**一个字段都不动**（零回归）。
+   */
+  private async seedObjectInterfaces(ctx: AuthCtx): Promise<void> {
+    if (!this.interfaces) return;
+    for (const spec of BATTERY_OBJECT_INTERFACES) {
+      const existing = await this.interfaces.get(ctx, spec.key);
+      if (!existing) {
+        await this.interfaces.upsert(ctx, spec);
+        await this.interfaces.publish(ctx, spec.key);
+      } else if (existing.status === "DRAFT") {
+        await this.interfaces.publish(ctx, spec.key, existing.version);
+      }
+    }
+    for (const [typeKey, binding] of Object.entries(BATTERY_TYPE_INTERFACE_BINDINGS)) {
+      await this.ontology.setInterfaceBindings(ctx, typeKey, binding);
+    }
+  }
+
+  /**
+   * 轨L 增量2：demo 本体经真建模链产出（根因方案，非盖戳捷径）。
+   *  derive(全34 rawDataset → 带噪初稿+真 FK 候选) → 确定性策展 PATCH（以 batteryObjectTypes/
+   *  extendedObjectTypes 为半自动建模"人工修正真值"，覆写 suggestion 的 displayName/domain/属性/
+   *  派生属性；清 linkTypes 不污染 A 路策展链路）→ publishDraft（真 CREATE 类型 + publish 真算
+   *  sourceBindings/sourceDataset from 真 rawDataset → R13 provenance 因果真实）→ materialize（统一
+   *  id obj_${type}_${pk} + §1.2 CJK regex → 字节同基线）。R6：全程确定性 derive，无 LLM/时钟/随机。
+   *  幂等：fresh repo → 全 CREATE；rerun（类型已存在）→ MAP_TO_EXISTING（不崩；materialize 自清重物化）。
+   */
+  private async seedDemoOntologyViaChain(ctx: AuthCtx, rawDsIds: string[]): Promise<number> {
+    if (!this.modeling) throw new Error("modeling chain not wired (synthetic.wire({modeling}))");
+    const existingKeys = new Set((await this.ontology.listTypes(ctx)).map((t) => t.key));
+    const draft = await this.modeling.derive(ctx, rawDsIds);
+    // 确定性策展 PATCH：覆写 derive 的带噪初稿为策展真值（KEY/属性集 derive 已基本对，仅修 FK 过判/枚举/名/域/派生）。
+    draft.suggestion.objectTypes = this.buildCuratedSuggestionObjectTypes(existingKeys);
+    draft.suggestion.linkTypes = []; // 链路类型由 batteryLinkTypes（A 路）种，链不再产，避免 FK 自动命名链路污染。
+    await this.repos.ontologyDrafts.put(draft);
+    await this.modeling.publishDraft(ctx, draft.id);
+    const mat = await this.modeling.materialize(ctx, draft.id);
+    return mat.created;
+  }
+
+  /**
+   * 把策展类型定义（batteryObjectTypes+extendedObjectTypes，半自动建模"人工修正真值"）映射成
+   * ModelingSuggestion.objectTypes。sourceDataset=typeKey（rawDataset.name=typeKey）、sourceField=propKey
+   * （raw 列名=propKey）。已存在类型走 MAP_TO_EXISTING（rerun 幂等），否则 CREATE。
+   */
+  private buildCuratedSuggestionObjectTypes(existingKeys: Set<string>): ModelingSuggestion["objectTypes"] {
+    const defs = [...batteryObjectTypes(), ...extendedObjectTypes()];
+    return defs.map((def) => {
+      const exists = existingKeys.has(def.key);
+      return {
+        action: (exists ? "MAP_TO_EXISTING" : "CREATE") as "CREATE" | "MAP_TO_EXISTING",
+        existingTypeKey: exists ? def.key : null,
+        typeKey: def.key,
+        displayName: def.displayName,
+        domain: def.domain ?? "unassigned",
+        // 源系统路由（mock→real）后 RawDataset 名 = BINDINGS 源系统表名（mes_base_master/erp_sales_orders…），
+        // 非类型键；materialize 与 publishDraft 均按 rawDataset.name 匹配 sourceDataset，故取真实表名，
+        // 否则有 BINDINGS 的类型（Base/Order/Workshop/Line/Process/Equipment/Model…）在链路下匹配不到源表 → 零物化。
+        sourceDataset: BINDINGS[def.key]?.[0]?.dataset ?? def.key,
+        properties: def.properties.map((p) => ({
+          propKey: p.propKey,
+          sourceField: p.propKey,
+          dataType: p.dataType,
+          isPrimaryKey: p.isPrimaryKey ?? false,
+          refToTypeKey: p.refToTypeKey ?? null,
+        })),
+        derivedProperties: (def.derivedProperties ?? []).map((d) => ({ propKey: d.propKey, formula: d.formula })),
+        confidence: 1,
+      };
+    });
   }
 
   // -- generic instantiation from (LLM-generated) templates ----------------------
@@ -739,9 +1638,12 @@ export class SyntheticService {
             propKey: p.propKey,
             dataType: (p.dataType ?? "string") as "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json",
             isPrimaryKey: p.isPrimaryKey ?? false,
+            // WO-UNIT-KWH · 场景包 typeDef 上游无量纲元数据 ⇒ 显式「已知无量纲」，不静默省略。
+            unit: "dimensionless" as const,
+            scale: "absolute" as const,
             refToTypeKey: p.refToTypeKey ?? null,
           })),
-          derivedProperties: td.derivedProperties ?? [],
+          derivedProperties: (td.derivedProperties ?? []).map((d) => ({ ...d, unit: "dimensionless" as const, scale: "absolute" as const })),
           sourceBindings: [],
         });
       }
@@ -758,16 +1660,31 @@ export class SyntheticService {
       const pkProp = td?.properties?.find((p) => p.isPrimaryKey)?.propKey ?? "id";
       const count = gen.count[scale] ?? gen.count.L; // XL 缺省回落 L（通用模板未声明 XL 时）
       const pks: string[] = [];
+      // A6：先把整批行生成出来（rng 序列与旧版一致），再在固定索引植入越线/近边界（opt-in），最后物化。
+      const rows: Record<string, unknown>[] = [];
       for (let i = 0; i < count; i++) {
         const props: Record<string, unknown> = {};
         for (const [propKey, spec] of Object.entries(gen.propGenerators)) {
-          props[propKey] = this.genValue(spec as GenSpec, rng, i, generatedPks);
+          props[propKey] = this.genValue(spec as GenSpec, rng, i, generatedPks, propKey);
         }
         if (props[pkProp] == null) props[pkProp] = `${gen.typeKey.toLowerCase()}-${i + 1}`;
+        rows.push(props);
+      }
+      // A6 越线植入（opt-in，护 R6 向后兼容）：显式 plants ⊕ autoPlant 从 BLOCK 规则反推（无声明则不植）。
+      const plants: PlantSpec[] = [...(gen.plants ?? [])];
+      if (gen.autoPlant) {
+        for (const r of template.rules ?? []) {
+          if (String(r.severity).toUpperCase() !== "BLOCK") continue;
+          const p = derivePlantFromRule({ key: r.key, expression: r.expression }, gen.typeKey);
+          if (p) plants.push(p);
+        }
+      }
+      for (const plant of plants) if (plant.typeKey === gen.typeKey) applyPlantCrossings(rows, plant);
+      for (const props of rows) {
         const pkValue = String(props[pkProp]);
         pks.push(pkValue);
         await this.repos.objects.put({
-          id: `obj_${gen.typeKey.toLowerCase()}_${pkValue}`.replace(/[^\w-]/g, "_"),
+          id: `obj_${gen.typeKey.toLowerCase()}_${pkValue}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
           tenantId: ctx.tenantId,
           type: gen.typeKey,
           props,
@@ -780,12 +1697,14 @@ export class SyntheticService {
     return n;
   }
 
-  private genValue(spec: GenSpec, rng: () => number, seq: number, pks: Map<string, string[]>): unknown {
+  private genValue(spec: GenSpec, rng: () => number, seq: number, pks: Map<string, string[]>, propKey = ""): unknown {
     switch (spec.kind) {
       case "enum":
         return spec.values[Math.floor(rng() * spec.values.length)];
       case "number":
         return round(spec.min + rng() * (spec.max - spec.min), spec.precision ?? 2);
+      case "valueDomain":
+        return sampleValueDomain(spec, propKey, rng); // A6 拟真值域分布采样（确定性）
       case "pattern":
         return spec.pattern.replace(/\{seq(?::(\d+))?\}/g, (_, width?: string) =>
           String(seq + 1).padStart(width ? Number(width) : 1, "0"),
@@ -857,15 +1776,234 @@ export class SyntheticService {
           provenance: { toolName: "query_objects", outputPath: "$.avg(util)", label: "12 基地利用率算术平均" },
         },
         {
-          key: "attain", type: "kpi", title: "计划达成率", unit: "%",
+          // ⚠ ratio:true —— `Line.schedule_attainment` 实测取值 0.879~0.949（**小数比率**），
+          // 而同屏的 `Base.util` 是 70~88（**百分点**）。两者都声明 unit:"%"，量纲却相反 ⇒
+          // 前端必须由本声明得知该 ×100，不许按取值范围猜（见 DashboardView.formatKpiValue 头注）。
+          key: "attain", type: "kpi", title: "计划达成率", unit: "%", ratio: true,
           query: { kind: "objects-aggregate", objectType: "Line", agg: "avg", prop: "schedule_attainment" },
           provenance: { toolName: "query_timeseries_agg", outputPath: "$.avg(schedule_attainment)", label: "attainment:line 周聚合回写值" },
         },
         {
-          key: "orders", type: "kpi", title: "在手订单",
-          // livedIn：已交付订单也在 Order 表（生命周期完整），在手口径过滤 status=OPEN
-          query: { kind: "objects-aggregate", objectType: "Order", agg: "count", ...(opts?.livedIn ? { filter: { status: "OPEN" } } : {}) },
-          provenance: { toolName: "query_objects", outputPath: "$.count", label: "Order 行计数" },
+          /**
+           * WO-DASH-ONHAND ·「在手订单」口径修正（**屏上数错了**，与本仓修过的 100× 显示错同族）。
+           *
+           * ── 修前是什么行为（真后端 `SEED_DEMO=1` 实测，不是读注释推的）──────────────
+           * 本行原写 `...(opts?.livedIn ? { filter: { status: "OPEN" } } : {})` ——
+           * 而 `seed.ts` 的 `livedIn = process.env.SEED_LIVED_IN === "1"`，**标准 demo 种子不设该变量**
+           * ⇒ 生产走的恒是 `livedIn === false` 那条 ⇒ **filter 整个消失** ⇒ 卡片数的是**全簿 500**，
+           * 其中 **350 张是 `COMPLETED`（已交付关闭）**。COO 按 500 判在手量，实际 150，**虚报 3.3 倍**。
+           *
+           * ⚠ 这正是铁律 0.5 判据 6 那种「路径开关」假绿：**生产实参与测试实参交集为空** ——
+           * 带 filter 的那条分支只有 `livedIn:true` 才进得去，而生产从来传 `false`。
+           * 注释白纸黑字写着「在手口径过滤 status=OPEN」，读起来像已执行的纪律，
+           * **实测生产路一次都没走进那条分支**（铁律 1.5 判据四：信注释 = 信台账，同样要实测）。
+           *
+           * ── 为什么 filter 现在无条件挂上 ────────────────────────────────────────
+           * `opts?.livedIn` 这个条件当初的理由是「已交付订单也在 Order 表」，即**只有回放态才有
+           * 已交付单**。`WO-ORDER-BOOK-500` 之后这个前提已经不成立：标准种子就按契约
+           * `orderStatusTargets` 铺 70:20:10 三态（实测 COMPLETED 350 / IN_PRODUCTION 100 / OPEN 50）。
+           * ⇒ 条件已过期，两条路都必须过滤，故去掉分支。
+           *
+           * ── 为什么是 `ON_HAND_ORDER_STATUSES` 而不是 `"OPEN"` ──────────────────
+           * 旧的 `livedIn` 分支过滤 `status: "OPEN"` 只得 **50**，同样不对：在制单货没交、钱没结，
+           * 仍**在手**。口径取自契约单一出处（含「为什么不只数 OPEN」的完整论证），
+           * 卡片与台账读同一处，不许在这里抄第二份字面量。
+           *
+           * ⚠ 数组值 = **IN 语义**（`ontology.ts` `matchFilter`：`Array.isArray(v)` 分支），
+           * 不是「等于这个数组」。实测三档金丝雀：`"OPEN"`→50 · `"COMPLETED"`→350 ·
+           * `["OPEN","IN_PRODUCTION"]`→**150**，外加反证金丝雀（不存在的状态 → 0）。
+           */
+          key: "orders", type: "kpi", title: "在手订单", unit: "单",
+          query: { kind: "objects-aggregate", objectType: "Order", agg: "count", filter: { status: [...ON_HAND_ORDER_STATUSES] } },
+          caption: ON_HAND_ORDER_CAPTION,
+          provenance: { toolName: "query_objects", outputPath: "$.count", label: `Order 计数 · 未完成态（${ON_HAND_ORDER_STATUSES.join(" + ")}）·不含 COMPLETED` },
+        },
+        // cockpit P1 富 KPI（数字经合成 DemandSegment/FinancePlan/MaterialBalance + 派生/聚合算出，前端零写死 R14；R13 溯源）。
+        {
+          // WO-REVENUE-RECONCILE：本卡是①②两个营收的**共同分母**（① = 供给量×P̄、② = 本卡×P̄），
+          // 口径写在屏上，读者才追得到「为什么那两个营收差一截」= 供给缺口，不是记账错误。
+          key: "demand-p50", type: "kpi", title: "需求 P50 (万套/年)", unit: "万套/年", featureKey: "view.dash.widget.demand",
+          query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "demandWanPerYearP50" },
+          caption: "需求预测口径 · 三细分 P50 中位情景合计，非在手订单量（订单簿口径见「在手订单」卡）",
+          provenance: { toolName: "query_objects", outputPath: "$.sum(demandWanPerYearP50)", label: "三细分需求 P50 合计（万套/年）" },
+        },
+        {
+          /**
+           * WO-REVENUE-RECONCILE ·「毛利」这个词**屏上有两个数，口径完全不同**，故本卡必须自报家门：
+           *  · 本卡 **118.85 亿** = `Σ(需求 P50 × 单价 × 毛利率)` —— **需求预测口径**，全年、全需求、
+           *    含成本（隐含毛利率 ≈17%，与 `GOAL_REGISTRY.gm_rate` 同档）；
+           *  · 方案寻优页最优解 **250.60 亿** = `Σ获排 OrderLine 营收 − 指派成本` —— **订单行口径**，
+           *    只含被排上的 355/873 行，且成本侧只有占线费 + 料费（实测毛利率 **96.70%**，
+           *    因 `OrderLine.unitCost` 是**元/电芯**而 `qty` 计的是**套**，量纲不同阶）。
+           * 两个数都叫「毛利」而差 2.1 倍，屏上不写口径，读者只能读成有一个算错了。
+           */
+          key: "gross-margin", type: "kpi", title: "毛利总额 (亿)", unit: "亿", featureKey: "view.dash.widget.demand",
+          query: { kind: "objects-aggregate", objectType: "DemandSegment", agg: "sum", prop: "marginWan" },
+          caption: "需求预测口径 · Σ(细分需求 P50 × 单价 × 毛利率)，全年全需求含成本；与方案寻优页「毛利」（仅获排订单行）不同口径",
+          provenance: { toolName: "query_objects", outputPath: "$.sum(marginWan)", label: "Σ(需求×单价×毛利率) 派生回写（需求预测口径·非订单行寻优毛利）" },
+        },
+        {
+          key: "material-gap", type: "kpi", title: "物料现货缺口 (吨)", unit: "吨", featureKey: "view.dash.widget.material",
+          query: { kind: "objects-aggregate", objectType: "MaterialBalance", agg: "sum", prop: "gapTon" },
+          provenance: { toolName: "query_objects", outputPath: "$.sum(gapTon)", label: "净需求×(1−长协覆盖) 缺口合计" },
+        },
+        // DS.2 富 KPI 补全（PRD §2 缺口表 8 富 KPI）：cockpit_kpi 一 solver 出 5 标量，各 valuePath 取（R13 溯源对象）。
+        {
+          key: "supply-v7", type: "kpi", title: "可供给 (万·终版)", unit: "万",
+          query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "supplyV7" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.supplyV7", label: "最终版 SopVersionRow.supply（S&OP 定稿可供给）" },
+        },
+        {
+          /**
+           * WO-REVENUE-RECONCILE ② 发现 / **WO-METRIC-IDENTITY 已修复**：本卡曾是个**恒等式**。
+           *
+           * **修前（实测·真后端 `SEED_DEMO=1`，订单簿 500 单 / 100 单两次取数）**：本卡恒读 **102**。
+           * 不是巧合：`budget = round(totalRev × 0.98, 1)`、`rolling = round(totalRev, 1)` 两行同出一处
+           * ⇒ `rolling ÷ budget ≡ 1/0.98 = 102.04%`，**与 totalRev 取什么值无关**；
+           * 把订单簿砍到 1/5，本卡逐字节不动。读者会把它读成「今年收入超额完成 2 个点」，
+           * 而它只是**预算按 98% 编制**这条编制口径的复读 —— 数字是对的，**读法是错的**。
+           *
+           * **修后（本单，实测 500 单）**：分子换成**成交侧**（订单簿计划年窗 Σ 数量×单价 = 415.6 亿 /
+           * 458 单），分母留在**计划侧**（收入行年度预算 700 亿，已改为取自年度目标登记册）
+           * ⇒ 本卡 **59.4%**，且**会动**：订单簿砍到 1/5 时读 14.5%（两条链分开，再没有常数钉得住它）。
+           *
+           * ⚠ **59.4% 不是"变差了"**：修前那个 102% 从来不是达成率，它是编制口径的读数。
+           * 真话是「计划年内已签约 415.6 亿，覆盖 700 亿年度预算的 59.4%」——
+           * 这是第一次有人能从这张卡上读出一个**可能不达标**的事实。
+           */
+          key: "rev-attain", type: "kpi", title: "收入达成率", unit: "%",
+          query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "revAttainPct" },
+          caption: "成交 ÷ 预算：分子＝订单簿计划年已签成交额（Σ 数量×单价），分母＝年度收入预算（目标登记册）；两条链分开取数，故本卡随订单簿增减而变",
+          provenance: { toolName: "invoke_solver", outputPath: "$.revAttainPct", label: "订单簿计划年成交额 ÷ FinancePlan 收入行年度预算 ×100（成交侧 ÷ 计划侧·非同源比值）" },
+        },
+        {
+          key: "util-peak", type: "kpi", title: "利用率瓶颈 (峰)", unit: "%",
+          query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "utilPeak" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.utilPeak", label: "max(Base.util)：最高负荷基地（瓶颈风险）" },
+        },
+        {
+          /**
+           * WO-DASH-ONHAND ③ ·「**只标注，不对齐**」。
+           *
+           * 实测同屏两个营收差 146.86 亿（24.4%）：本卡 **601.50 亿**（`cockpit_kpi.aopBaseRev`）
+           * vs 全簿 Σ`Order.value` **454.64 亿**。⚠ **两个都对，它们本来就不是一个账**：
+           *  · 601.50 亿 = **年度计划口径**（baseline 年度情景 revenue = AOP 基准，盖全年 12 个月）
+           *  · 454.64 亿 = **订单簿口径**（已签订单加总，含已交付 + 在手，时间覆盖 2025-12 → 2026-12）
+           *
+           * ⚠ **WO-REVENUE-RECONCILE 订正（照铁律 0.6 第 5 条回写）**：本段原文写死 **507.26 亿**
+           * （`sum_value = 50,725,911,442`），**该数已过期**，且它是本仓派单前提被引用过的数。
+           * 今日实测 `sum_value = 45,464,327,004`（= **454.64 亿**），差 **−10.4%**。
+           * 逐层追因：单量**几乎没动**（`sum_qty` 2,421,222 → 2,436,095，+0.61%），
+           * 动的是**单价** —— 隐含均价 20,950.54 → **18,662.79 元/套**（−10.9%），
+           * 落到需求加权 P̄ **18,666.67 元/套**（= `Σ(P50×price)/ΣP50`）的 **0.02%** 以内。
+           * ⇒ 这不是回归，是订单单价被对齐到了需求侧 P̄（口径收敛）。**改的是账不是代码。**
+           * 复验：`POST /a/v1/objects/aggregate {"typeKey":"Order","groupBy":[],
+           * "metrics":[{"prop":"value","fn":"sum"},{"prop":"qty","fn":"sum"}]}`。
+           * 把任何一个改成另一个都是把一个真事实抹掉。要做的是让屏上**说清每个数是什么口径** ——
+           * 屏上不写，读者就只能读成「同一个词一屏两个值」（PRD-decision-mainline U1/U4 那条老账）。
+           */
+          key: "aop-base", type: "kpi", title: "AOP 基准营收 (亿)", unit: "亿",
+          query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "aopBaseRev" },
+          caption: "年度计划口径 · baseline 情景全年营收目标（≠ 订单簿已签金额加总）",
+          provenance: { toolName: "invoke_solver", outputPath: "$.aopBaseRev", label: "baseline 年度情景 revenue（AOP 基准 · 计划口径 · 非订单簿加总）" },
+        },
+        {
+          key: "cash-cushion", type: "kpi", title: "现金垫 C18 (亿)", unit: "亿",
+          query: { kind: "solver", solverKey: "cockpit_kpi", args: {}, valuePath: "cashCushion" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.cashCushion", label: "baseline 年度情景 cashCushion（C18 现金安全垫）" },
+        },
+        // SPINE.4 经营指标条（视图绑定迁移：驾驶舱 KPI 读 Metric 单一出处 R-一致）。metric_rollup 对齐目标树
+        // 算 target/actual/delta/miss，前端零写死（R14）；越线红标，与各视图同一 Metric（一处事实一处出处）。
+        {
+          /**
+           * WO-REVENUE-RECONCILE ② 发现 / **WO-METRIC-IDENTITY 已修复**：「实际」这一栏曾不是实际。
+           *
+           * **修前（实测·真后端，订单簿 500 单 → 100 单两轮）**：`Metric.kpi-revenue` 标题写「营收」、
+           * 栏位写「实际」，而它的 `actual` 是 `Σ(DemandSegment.demandWanPerYearP50 × priceWan)`
+           * = **年度需求 P50 预测** 700.0 亿。两轮 hash 逐字节相同，而同一改动下订单簿
+           * Σ`Order.value` 从 **454.64 亿 → 107.81 亿**（−76.3%）——
+           * **把订单砍掉四分之三，「营收·实际」一分不少**。且 `target` 也是 700（同值）⇒
+           * `delta ≡ 0`、达成率**结构上恒 100.0%**，永远不会越线。**一个永远不会报警的指标不是指标。**
+           *
+           * **修后（本单）**：`actual` 换成**成交侧**订单簿计划年窗（415.6 亿 / 458 单），
+           * `target` 仍是**计划侧**登记册目标 700 亿 ⇒ 达成 59.4%、`miss=true` 屏上转红，
+           * 且订单簿砍到 1/5 时 `actual` 跟着掉到 101.3 亿（**会动**）。
+           *
+           * ⚠ **每条指标的口径改由后端逐条下发**（`Metric.basis` 一等属性 → `metric_rollup` 透传 →
+           * 前端渲染，R14 零写死）。本卡上 11 条指标口径互不相同（营收=成交侧、毛利=需求预测侧、
+           * 份额=诚实合成种子），**一句 widget 级 caption 说不清 11 条**，那正是本 caption 修前
+           * 犯的错 —— 它只描述了其中一条，读者却会当成整条指标条的口径。
+           */
+          /**
+           * WO-GAP-NORMALIZE 病③ · 取数从 `{level:"op"}` 改为全级（`{}`）。
+           *
+           * **修前实测**：`args:{level:"op"}` ⇒ 屏上 6 条（毛利率/需求达成率/物料保障率 + 三条细分达成率），
+           * 而本 caption 点名的**营收 / 毛利 / 份额三条全是 `level:"year"`** ⇒ **一条都不在屏上**。
+           * caption 还写「点开每条看「口径」一行」，而当时 6 条里带 `Metric.basis` 的是 **0 条**。
+           * 两句承诺，屏上都兑现不了。
+           * **修后**：取全级 10 条（op 6 + year 4），且每条 Metric 都带 `basis` ⇒ 三条点名指标真的在屏上、
+           * 每条真的有一行口径。**承诺与屏对齐，靠的是把数据补齐，不是把话说小。**
+           *
+           * ⚠ 另一个必须取全级的理由：根因下钻的缺省根指标现按**相对缺口**选（实测 = 营收），
+           * 而本指标条正是选下钻指标的控件 —— 仍按 op 过滤会让「右边默认下钻营收、左边清单里没有营收」。
+           */
+          key: "metric-strip", type: "metric-strip", title: "经营指标（目标 vs 实际 · 单一出处）", span: 2, featureKey: "view.dash.widget.metric",
+          query: { kind: "solver", solverKey: "metric_rollup", args: {}, valuePath: "metrics" },
+          caption: "年度目标与运营指标同列，各指标口径互不相同，逐条随指标下发（每条下方「口径 · …」即是）：营收＝成交侧订单簿、毛利＝需求预测侧、份额＝合成种子",
+          provenance: { toolName: "invoke_solver", outputPath: "$.metrics", label: "metric_rollup：Metric 对齐目标树算 delta/miss（口径逐条经 Metric.basis 下发）" },
+        },
+        // cockpit P2 规划决策推演 · 根因 DAG（KPI 越线 → 因子 → 取证叶，结构与贡献均经 plan_rootcause 求解器
+        // 从 PlanKpi/RootCauseChain/活数据算出，前端零写死 R14；R13 求解器溯源）。
+        {
+          key: "rootcause", type: "dag", title: "规划决策推演 · 未达成指标根因下钻", span: 2, featureKey: "view.dash.widget.rootcause",
+          query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "dag" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.dag", label: "plan_rootcause：经营 KPI 越线沿归因模板逐层取证（贡献=活数据聚合）" },
+        },
+        // PRD-cockpit §2.1 订单经营台账（逐单根因 DAG + 状态筛选 + 综合毛利率聚合）：affected_orders rows/problems 同源。
+        {
+          /**
+           * WO-DASH-ONHAND ② · 台账「全部」与卡片「在手订单」**不是同一个全部**，屏上必须写明。
+           *
+           * 实测（真后端 `SEED_DEMO=1`，把台账 127 个 `so` 拿回全簿逐单对 status）：
+           *  · 台账 127 单的 status 分布 = `{OPEN: 50, IN_PRODUCTION: 77}` ⇒ **零张 COMPLETED**
+           *    （台账没在偷偷混已交付单，这一点被证伪了，不是 bug）；
+           *  · 在手 150 单里有 **23 单不在台账**，全部是 `IN_PRODUCTION` 且交期
+           *    **2026-05-27 → 2026-06-09，即早于 `forecastStart`（2026-06-10）** ——
+           *    也就是**交期已过的在制单**（契约 `OrderStatusSchema` 原文即允许「少量已逾期在制」）。
+           *
+           * 根因不在分页、不在权限行级过滤，在 `risk.ts affectedOrdersAggregate` 的**交期窗口**：
+           * 不传窗口参时 `winFrom=0 / winTo=180` ⇒ 台账列的是「交期落在 D+0…D+180」的单，
+           * `dueDay < 0` 的逾期在制单被窗口挡在外面。**这是合法的另一个口径，不是错**
+           * （该窗口同时服务产能推演页的 30/60/90 chip），故按工单裁决**标注而不强行对齐**。
+           *
+           * ⚠ 窗口天数不在此处写死 —— 由求解器随输出回带 `window`，前端照回带值渲染（R14 前端零写死）。
+           */
+          key: "order-ledger", type: "order-ledger", title: "订单经营台账 · 逐单根因下钻", span: 2,
+          query: { kind: "solver", solverKey: "affected_orders", args: {} },
+          // ⚠ 措辞**不许带方向指代**（「下方/上方窗口」）——真浏览器实测两处都会指空：
+          //  ① `caption` 由 `Widget` 渲染在**内容之下**（`marginTop:8`），说「下方」时它自己已经在最下面；
+          //  ② 天数那句写在**表格之上**的对账行里，而那行只在 `offWindow > 0` 时才渲染
+          //     ⇒ 差额为 0 时连「上方」也没有。故本句写成**自洽**的：不依赖同屏任何一块还在不在。
+          caption: "台账口径 ≠ 卡片「在手订单」口径：本表只列交期落在交期窗口内的未完成单；交期已过的在制单不在表内",
+          provenance: { toolName: "invoke_solver", outputPath: "$.rows", label: "affected_orders：交期窗口内未完成订单逐单 + problems 归并 + 综合毛利率（SEG 单价×毛利率派生）" },
+        },
+        // PRD-cockpit §2.1 规划决策推演（月/季/年 KPI 条 + 根因链 DAG + 一键去建议/体检）：metric_rollup 按 level + plan_rootcause 根因。
+        {
+          key: "plan-drill", type: "plan-drill", title: "规划决策推演 · 未达成指标根因下钻", span: 2,
+          query: { kind: "solver", solverKey: "plan_rootcause", args: {}, valuePath: "kpis" },
+          provenance: { toolName: "invoke_solver", outputPath: "$.kpis", label: "plan_rootcause 按 level（月/季/年）越线指标 + 根因 DAG；一键去建议/体检" },
+        },
+        // cockpit P5：S&OP 版本切换（V1/V3/V5/V7，SopVersionRow；选版本看供给/缺口/备注，R14 零写死）。
+        {
+          key: "version-toggle", type: "version-toggle", title: "S&OP 版本切换（V5/V7）", span: 1, featureKey: "view.dash.widget.version",
+          query: { kind: "objects", objectType: "SopVersionRow", limit: 20 },
+          provenance: { toolName: "query_objects", outputPath: "$.items", label: "SopVersionRow 版本演进（gap=demand−supply 派生）" },
+        },
+        // cockpit P5：反事实双轨推演（"如不解决 XX 未来 N 天"，counterfactual_timeline → baseline ‖ mitigated 双曲线 + 差值）。
+        {
+          key: "counterfactual", type: "counterfactual", title: "反事实双轨推演（如不解决会怎样）", span: 2, featureKey: "view.dash.widget.counterfactual",
+          query: { kind: "solver", solverKey: "counterfactual_timeline", args: { horizon: 30 } },
+          provenance: { toolName: "invoke_solver", outputPath: "$", label: "counterfactual_timeline：do-nothing vs 处置后双曲线 + 峰值削减/越线日推迟" },
         },
         {
           key: "oee-trend", type: "chart", title: "OEE 14 日趋势", span: 2, chartKind: "line",
@@ -873,9 +2011,30 @@ export class SyntheticService {
           provenance: { toolName: "query_timeseries_agg", outputPath: "$.points", label: "oee:equip 日粒度均值" },
         },
         {
-          key: "orders-table", type: "table", title: "在手订单（前 8）", span: 2,
-          query: { kind: "objects", objectType: "Order", columns: ["so", "cust", "model", "qty", "due", "status"], limit: 8, ...(opts?.livedIn ? { filter: { status: "OPEN" } } : {}) },
-          provenance: { toolName: "query_objects", outputPath: "$.items", label: "订单对象查询" },
+          /**
+           * WO-DASH-ONHAND · **同族第二处**（与上面 `orders` 卡片一模一样的过期 `livedIn` 开关）。
+           *
+           * ⚠ 诚实结论，别读成"又修了一个错数"：**这张表今天列出来的行是对的** ——
+           * 实测（真后端 `SEED_DEMO=1`）前 8 行 `SO-3391…SO-3452` **8/8 全是 `OPEN`**，
+           * COMPLETED 0 行。但它对得**不是因为过滤了**，而是因为 24 张锚点订单的单号恰好排在
+           * id 序最前面 —— **靠运气对的**。id 编号一变（或锚点退役），一张标题写着「在手订单」
+           * 的表就会开始列已交付单，而没有任何东西会报红。
+           *
+           * ── 为什么不给它套上和卡片一样的在手 filter ──────────────────────────
+           * 这个 widget 是 `kind:"objects"`，前端走 `queryObjectsPaged` → `GET /a/v1/objects?f_status=…`，
+           * 而该端点的 `f_*` 是**子串匹配**（`hay.includes(v)`），不是集合匹配：
+           * 传数组会被 `Array.isArray(v) ? v.join(",")` 拼成 `"OPEN,IN_PRODUCTION"`，
+           * 再拿去 `includes` ⇒ **一行都匹配不到**。（前端已按 CSV 序列化数组、后端却当字面量 ——
+           * 两半是照着对方造的却从没接上，属「接了线接错地方」。已另开单，不在本单动共享过滤语义。）
+           *
+           * ⇒ 本单只做**零风险的那一半：把假标题改掉**。行集一行不动（省得拿"修好了"
+           * 掩盖一个没修的机制），并把 status 列留在表里、口径写进 caption，
+           * 「在手」的权威数字指回上方那张卡。
+           */
+          key: "orders-table", type: "table", title: "订单明细（前 8 · 按订单号）", span: 2,
+          query: { kind: "objects", objectType: "Order", columns: ["so", "cust", "model", "qty", "due", "status"], limit: 8 },
+          caption: "全簿口径（含已交付关闭单）· 每行状态见 status 列；「在手」总数以上方「在手订单」卡片为准",
+          provenance: { toolName: "query_objects", outputPath: "$.items", label: "Order 对象查询 · 全簿按订单号取前 8（非在手口径）" },
         },
         // 运营态增量 §4.1：12 个月产出趋势（检修月下凹）/ 准交率 / 年度已执行工单 / 已交付台账。
         // 数据源 = GET /a/v1/history/bundle（kind=history 声明式 widget，仅 livedIn 时注入）。
@@ -917,59 +2076,167 @@ export class SyntheticService {
         { key: "status", label: "状态", filterable: true },
       ],
     };
-    const graphView = (title: string, graphOptions: Record<string, unknown>, layout: Record<string, unknown> = {}) => ({
+    // G-GRAPH-DESC-CONTRACT-SPLIT（已闭）：描述卡曾经写进第 3 形参 `layout`，字段名 `description`/`descriptionLink`，
+    // 而前端 OntologyGraphView 从 `options` 读 `desc`/`descLink` ⇒ 生产态八视角描述卡一张都不渲染（MSW mock 恰好
+    // 走对的形状，把生产的错位盖成全绿 —— 铁律 0.5 判据 #6）。裁定见 contracts `GraphViewDescSchema` 注释：
+    // 容器归 `options`（与同特性的 `graphOptions` 同源；`layout` 是 DF.6 拉取靶的机器消费位）。
+    // 第 3 形参**受契约类型约束**，再写错字段名即 tsc 报错，不再靠人眼发现。
+    const graphView = (title: string, graphOptions: Record<string, unknown>, desc: GraphViewDesc = {}) => ({
       title,
       renderer: "ontology-graph",
-      layout,
-      options: { graphOptions },
+      layout: {},
+      options: { graphOptions, ...desc },
     });
+    // 去电池锁死 8a（R14）：把推演视图的结构（字段组/目标字段/DAG 驱动因子/问题分类）真下发到 ViewConfig.layout，
+    // 使前端不再走写死兜底而是后端配置驱动（换租户/行业改这里即可，界面跟着变）。
+    const PLAN_AUDIT_FIELD_GROUPS = [
+      { title: "需求侧（万套）", fields: [
+        { key: "dem", label: "月度需求总量", unit: "万套", step: 0.1 },
+        { key: "seg_pas", label: "乘用车", unit: "万套", step: 0.1 },
+        { key: "seg_ess", label: "储能", unit: "万套", step: 0.1 },
+        { key: "seg_com", label: "商用车", unit: "万套", step: 0.1 },
+      ] },
+      { title: "供给侧", fields: [
+        { key: "sup", label: "月度可供给", unit: "万套", step: 0.1 },
+        { key: "ltaCov", label: "长协覆盖率", unit: "%", step: 1 },
+        { key: "kitGap", label: "正极物料缺口", unit: "吨", step: 10 },
+      ] },
+      { title: "财务侧", fields: [
+        { key: "gmTarget", label: "毛利率目标", unit: "%", step: 0.5 },
+        { key: "cashCushion", label: "现金安全垫(13周最低点)", unit: "亿", step: 0.5 },
+        { key: "capex", label: "CAPEX 本月", unit: "亿", step: 0.5 },
+      ] },
+    ];
+    const PLAN_GENERATE_GOAL_FIELDS = [
+      { key: "revGrowthPct", label: "收入增长", unit: "%", step: 1 },
+      { key: "gmFloorPct", label: "毛利底线", unit: "%", step: 0.1, hardKey: "hardGm" },
+      { key: "sharePts", label: "份额增", unit: "pct", step: 1 },
+      { key: "capexCap", label: "CAPEX 上限", unit: "亿", step: 1, hardKey: "hardCapex" },
+      { key: "cashFloor", label: "现金底线", unit: "亿", step: 1, hardKey: "hardCash" },
+      // PRD-IND-plan-generate §4.1/§8.4：库存周转目标（求解器 turnsFloor/meetTurns 已支持，补面板暴露）。
+      { key: "invTurns", label: "库存周转", unit: "次", step: 0.5 },
+    ];
+    const PROJECT_SIM_DRIVER_FACTORS = [
+      { id: "f1", label: "节拍 × OEE × 良率", sub: "IoT/MES/QMS 驱动因子" },
+      { id: "f2", label: "爬坡曲线 + 检修窗", sub: "前4周 0.88→1.0 · 各基地检修周" },
+      { id: "f3", label: "认证系数 + 数据健康度", sub: "PLM 认证 · P90 系数" },
+    ];
+    const ORDER_CHAIN_LABELS = { DELIVERY: "交期", MARGIN: "毛利", KIT: "齐套", CREDIT: "信用" };
+    const SEG_COLORS = { 乘用车: "#5E8FE8", 商用车: "#DD9551", 储能: "#36BFA5" };
+    // 核心内置视图 layout（DF.6 拉取靶：每 solver-backed 视图声明"要拉取的求解器输出字段"——喂 ModuleProvisioner/SHAPE
+    // 闭包：拉取靶 ⊄ 求解器输出形状 → 缺该输出字段 → TO_CREATE·G-8/R12 输出侧）。dash 依赖运行时 opts.livedIn，故各核心
+    // 视图 layout 留本地此 map；**成员集 + title + renderer 单一来源 = BUILTIN_VIEWS**（防 scenarioSeed/VIEW_DEFS 漂移·
+    // WO-MEMORY-VIEW-RESILIENCE §4.2）。
+    const CORE_VIEW_LAYOUTS: Record<string, Record<string, unknown>> = {
+      dash: DASH_LAYOUT,
+      graph: {},
+      risk: { solverKey: "risk_timeline", horizon: 14, outputFields: ["cards", "planRows", "horizon", "threshold"] },
+      order: LEDGER_LAYOUT,
+      "plan-audit": { solverKey: "plan_audit", fieldGroups: PLAN_AUDIT_FIELD_GROUPS, outputFields: ["H", "M", "S", "score", "verdict"] },
+      "plan-generate": { solverKey: "plan_generate", goalFields: PLAN_GENERATE_GOAL_FIELDS, outputFields: ["schemes", "recommend"] },
+      "project-sim": { solverKey: "capacity_forecast", driverFactors: PROJECT_SIM_DRIVER_FACTORS, outputFields: ["capWanP50", "capWanP90", "gap", "perBaseRows", "mainBn"] },
+      "global-sim": { solverKey: "portfolio" },
+      "sop-balance": { apiTag: "sop" },
+    };
     const VIEW_DEFS: Record<string, { title: string; renderer: string; layout?: Record<string, unknown>; options?: Record<string, unknown> }> = {
-      dash: { title: "经营驾驶舱", renderer: "dashboard", layout: DASH_LAYOUT },
-      graph: { title: "本体图谱", renderer: "ontology-graph", layout: {} },
-      risk: { title: "预判推演看板", renderer: "risk-board", layout: { solverKey: "risk_timeline", horizon: 14 } },
-      order: { title: "订单台账", renderer: "ledger", layout: LEDGER_LAYOUT },
-      "plan-audit": { title: "规划体检", renderer: "plan-audit", layout: { solverKey: "plan_audit" } },
-      "plan-generate": { title: "方案生成", renderer: "plan-generate", layout: { solverKey: "plan_generate" } },
-      "project-sim": { title: "项目沙盘推演", renderer: "project-sim", layout: { solverKey: "capacity_forecast" } },
-      "sop-balance": { title: "S&OP 月度平衡", renderer: "sop-balance", layout: { apiTag: "sop" } },
+      // 核心内置视图：成员集/title/renderer 从 BUILTIN_VIEWS 派生（单一来源·防漂移）；layout 取 CORE_VIEW_LAYOUTS。
+      ...Object.fromEntries(
+        BUILTIN_VIEWS.map(
+          (bv): [string, { title: string; renderer: string; layout: Record<string, unknown>; options?: Record<string, unknown> }] => [
+            bv.key,
+            { title: bv.title, renderer: bv.renderer, layout: CORE_VIEW_LAYOUTS[bv.key] ?? bv.layout ?? {}, ...(bv.options ? { options: bv.options } : {}) },
+          ],
+        ),
+      ),
       // 增量 §7.14–7.17
       "annual-scenario": {
-        title: "年度情景规划台",
+        title: "年度规划",
         renderer: "annual-scenario",
         layout: { endpoint: "/a/v1/plan/aop", year: 2026, actionTypeKey: "AOP情景拍板", finalizeFeature: "act.aop-finalize" },
       },
       "quarterly-rolling": {
-        title: "季度滚动看板",
+        title: "季度规划",
         renderer: "quarterly-rolling",
         layout: { endpoint: "/a/v1/plan/quarterly", n: 6, gapTiers: { red: 4, yellow: 0 }, ltaEscalatePct: 5 },
       },
       "order-chain": {
-        title: "订单全链聚合",
+        title: "订单进展与卡因",
         renderer: "order-chain",
-        layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"] },
+        layout: { solverKey: "affected_orders", window: { before: 7, after: 14 }, problemCategories: ["DELIVERY", "MARGIN", "KIT", "CREDIT"], categoryLabels: ORDER_CHAIN_LABELS, segColors: SEG_COLORS, outputFields: ["rows", "problems", "summary", "columns"] },
       },
       "geo-map": {
         title: "基地地理视图",
         renderer: "geo-map",
         layout: { objectType: "Base", sizeProp: "gwh", colorProp: "kind", utilThresholds: [92, 85, 78] },
       },
-      // 运营态增量 §4.2：运营回顾（只读历史证据链页面，消费 history/bundle）
-      review: { title: "运营回顾", renderer: "review", layout: { apiTag: "history" } },
-      // §7.18 图谱八视角（零新代码视角：renderer=ontology-graph + graphOptions 配置）
-      "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }),
-      "graph-backbone": graphView("图谱·主干分级", { colorBy: "domain", nodeFilter: { tiers: [0, 1] }, dimOthers: true, layoutSeed: 42 }),
-      "graph-flow": graphView("图谱·产能推演网络", { colorBy: "domain", linkKinds: ["flow", "agg"], layoutSeed: 42 }),
-      "graph-source": graphView("图谱·数据来源", { colorBy: "source", layoutSeed: 42 }),
-      "graph-solver": graphView("图谱·求解器", { colorBy: "domain", nodeFilter: { domains: ["solver"] }, linkKinds: ["calc"], dimOthers: true, layoutSeed: 42 }),
-      "graph-mvp": graphView("图谱·MVP", { colorBy: "domain", mvpOverlay: true, layoutSeed: 42 }),
-      "graph-agent": graphView("图谱·智能体网络", { colorBy: "domain", nodeFilter: { domains: ["agent", "solver"] }, linkKinds: ["orch"], dimOthers: true, layoutSeed: 42 }),
+      // ⛔ `review`（运营复盘）2026-09-12 整屏删除，视图定义一并删（见 PLANVIEW_EXTRA_KEYS 处长注）。
+      // ── WO-SIM-BE-VIEWKEY · 推演沙盘指控台四视图（暗发·见 DARK_LAUNCH_EXTRA_KEYS）──────
+      //
+      // 本段是 `check-nav-group-coverage.mjs` 判据⑦ 的**供给侧之二**（「或 service.ts VIEW_DEFS 项
+      // 的 renderer 字段等于该 key」）。那道门在本单开工前就红着，报的正是这四个 renderer 键
+      // 「注册了却零路径渲染得到」；本段合上的就是它。
+      //
+      // ⚠ **必须写成字面量，不许写成 `...Object.fromEntries(SANDBOX_CONSOLE_VIEWS.map(...))`**
+      //   —— 这一条是实测撞出来的，不是风格洁癖：判据⑦ 的供给侧抽取器是**正则捞字面量**
+      //   （深度 1 的 `renderer: "…"`），派生写法它一个字都看不见 ⇒ 供给侧集合变小 ⇒ 门照旧
+      //   报「这四个键零路径可达」。第一版就是这么写的，门当场原样再红一次。
+      //   与 `sandbox-console.ts` 的 `SANDBOX_CONSOLE_VIEWS` 声明表**不许各写各的**：两侧一致性由
+      //   `test/workspace-sim-console.seam.test.ts`（§0.2 逐字对前端 registry + A1 逐条对下发值）
+      //   机械对账 —— 改一处不改另一处，测试当场红。
+      //
+      // `layout: {}`：本族不经 solver，画布/图层/求解全在前端控制台内部按会话取数。
+      // **无 `options`** —— 不许硬编 `sessionId`（会话是运行期的，写进 workspace 配置就成死值；
+      // 前端 `useConsoleSession()` 自己查最近一条 RUNNING）。
+      // ⚠ WO-SIM-NAV-GROUP：`sim-console` 的 title 从「推演沙盘」→「推演指控台」——
+      //   改前它与 `ShellLayout.NAV_GROUPS`「推演」组那条 route（`key:"sim-sandbox"`,
+      //   `label:"推演沙盘"`）**逐字同名**，左栏出现两条「推演沙盘」指向两个不同页面。
+      //   改名理由与「为什么不动旧页」写在 `sandbox-console.ts` 的 `SANDBOX_CONSOLE_VIEWS` 头注（单一出处）。
+      "sim-console": { title: "推演指控台", renderer: "sim-console", layout: {} },
+      "sim-conduction": { title: "传导识别", renderer: "sim-conduction", layout: {} },
+      "sim-attribution": { title: "损失归因", renderer: "sim-attribution", layout: {} },
+      "sim-optimize": { title: "方案寻优", renderer: "sim-optimize", layout: {} },
+      // WO-PROCESS-INSTANCE · 流程卡点面板（暗发·见 DARK_LAUNCH_EXTRA_KEYS）。
+      // 走增量视图桶而**不进** BUILTIN_VIEWS，判据是**语义归属**（同 nav 门判据⑦ 的修法说明），逐条：
+      //  ① 它的控制键是 `process.runtime`（引擎级），不是 `view.<key>`。BUILTIN_VIEWS 的
+      //     `builtInViewFeatureDefs()` 会照 featureKey **再注册一份 defaultOn:true 的 FeatureDef** ——
+      //     那会把 features.ts:112 那条 `defaultOn:false` 顶掉，**暗发当场失效**（且静默）。
+      //  ② `seed:true` 会进 `SEEDED_VIEW_KEYS` → `scenarioSeed.views` → `report.views` 验收金值；
+      //     它是**暗发**页，出现在出厂验收快照里等于宣称"已交付"，与暗发语义直接矛盾。
+      //  ③ 它不是「净室通用页」（App.tsx 专用 route 那一类）：读的是租户自己的流程实例，
+      //     且必须有页面侧 R3 守卫 —— 专用 route 给不了（手敲 URL 绕过去）。
+      // layout 留空：本页不经 solver，数据直接来自 `GET /a/v1/process-instances/stuck`。
+      "process-stuck": { title: "流程卡点", renderer: "process-stuck", layout: {} },
+      // §7.18 图谱八视角（零新代码视角：renderer=ontology-graph + graphOptions 配置）。
+      // PRD-IND-map 缺口④：每视角叙事描述（逐字录自 HTML，ViewDef 配置下发，前端 descCard 渲染，非写死）。
+      "graph-all": graphView("图谱·全景", { colorBy: "domain", layoutSeed: 42 }, { desc: "全域对象与关系全景：14 业务域对象类型 + 求解器 + 智能体一张图，按域着色；可切数据来源着色、主干分级、各推演网络与学习闭环视角。" }),
+      "graph-backbone": graphView("图谱·主干分级", { colorBy: "domain", nodeFilter: { tiers: [0, 1] }, dimOthers: true, layoutSeed: 42 }, { desc: "按层级看节点：一级=推演主干（产能预测←工序产能→产线产能→工厂产能→基地）；二级=按业务推演链切片（产能/产销/采购/财务现金）；三级=明细（OEE历史/停机/操作员/不良/供应商/物流）。" }),
+      "graph-flow": graphView("图谱·产能推演网络", { colorBy: "domain", linkKinds: ["flow", "agg"], layoutSeed: 42 }, { desc: "产能金字塔自下而上派生：节拍×OEE→设备产能→×良率×人力→工序产能→min瓶颈→产线产能→Σ→工厂产能。工序有串行（按瓶颈 min）与并行（化成/老化多通道）之分；物流时长经物料齐套约束可投产能；最后与预测场景、需求、瓶颈汇入产能预测。" }),
+      "graph-source": graphView("图谱·数据来源", { colorBy: "source", layoutSeed: 42 }, { desc: "只聚焦真正来自源系统的原始数据节点，按源系统重新着色，回答『每个数据从哪来』：ERP/SAP 物料主数据、MES 工艺与制造执行、EAM/CMMS 设备资产、IoT/SCADA 节拍OEE、QMS/LIMS 质量、HR/排班 人员工时、PLM 产品BOM、WMS 物料齐套。产能域(派生)、求解器、智能体不是源数据，已淡出。" }),
+      "graph-solver": graphView("图谱·求解器", { colorBy: "domain", nodeFilter: { domains: ["solver"] }, linkKinds: ["calc"], dimOthers: true, layoutSeed: 42 }, { desc: "求解器以智能辅助决策中台形式注册，绑定到对应对象类型：聚合求解器（产能金字塔）、瓶颈求解器（工艺链最小割）、场景求解器（假设情景重算）、精度校准器（预测↔实际偏差学习）。读业务对象、写回派生对象，由管线/Agent 触发。" }),
+      "graph-mvp": graphView("图谱·MVP", { colorBy: "domain", mvpOverlay: true, layoutSeed: 42 }, { desc: "实色高亮的是 MVP 必备的核心闭环：工艺路线(节拍)+设备(OEE)+良率+产能聚合/瓶颈+需求→产能预测。⊕ 虚线节点是当前缺口，需从源系统补采——其中实际产出、OEE历史、生产工单MO 是离散组装制造与自学习闭环最关键的三项，缺它们系统就『算不准、学不会』。" }),
+      "graph-agent": graphView("图谱·智能体网络", { colorBy: "domain", nodeFilter: { domains: ["agent", "solver"] }, linkKinds: ["orch"], dimOthers: true, layoutSeed: 42 }, { desc: "产能预测不是『一个 Agent 跑一个模型』，而是编排Agent 指挥一支专职智能体团队：意图解析/检索/建模求解/瓶颈诊断/解释校验/学习/行动，外加经验记忆库（越用越聪明）与约束规则（安全边界）。每个 Agent 把求解器与业务建模当工具调用——AI 的价值在于可自主规划、可解释、可成长的协同。" }),
       "graph-loop": graphView(
         "图谱·学习闭环",
         { colorBy: "domain", nodeFilter: { ids: LOOP_NODE_IDS }, linkKinds: ["fb", "orch"], dimOthers: true, layoutSeed: 42 },
-        // 视角描述卡链接校准报告页（真数据 MAPE 趋势；原型假动画明确不复刻）
-        { descriptionLink: "/admin/calibration", description: "查看精度趋势与校准历史" },
+        // 视角描述卡链接校准报告页（真数据 MAPE 趋势；原型假动画明确不复刻）。
+        // 修 G-GRAPH-DESC-CONTRACT-SPLIT 时的第三处发现：本视角原先**没有叙事正文** —— 唯一那句
+        // "查看精度趋势与校准历史" 语义上是**链接文字**，却占着 `description` 位；而前端 `descLink`
+        // 需要 `{to,label}` 才渲染得出可点文字，裸字符串 `descriptionLink` 连 label 都没有。
+        // 故此处补齐两者：正文取仓内既有同视角文案（`frontend-shell/src/mocks/fixtures.ts` 学习闭环视角），
+        // label 保留原字符串，一字未改。
+        {
+          desc: "预测 ↔ 实际偏差 → 精度校准器 → 参数写回 → 越用越准（真实数据 MAPE 趋势见校准报告页，不做假动画）。",
+          descLink: { to: "/admin/calibration", label: "查看精度趋势与校准历史" },
+        },
       ),
     };
+    // fail-fast（WO-MEMORY-VIEW-RESILIENCE §4.3）：种子路径断言每个 seeded 内置视图接线完整——featureKey 已注册 +
+    // VIEW_FEATURE_MAP 有一致映射 + VIEW_DEFS 有定义。任一半漂移即此处抛错（不再靠人肉发现内存态"视图重启隐身"）。
+    assertViewManifestIntegrity({
+      viewFeatureMap: VIEW_FEATURE_MAP,
+      viewDefs: VIEW_DEFS,
+      registeredFeatureKeys: new Set(ALL_FEATURE_KEYS),
+    });
     const ADMIN_NAV: { key: string; label: string }[] = [
       { key: "connections", label: "数据接入" },
       { key: "rule-docs", label: "规则文档审核" },
@@ -979,6 +2246,8 @@ export class SyntheticService {
       { key: "synthetic", label: "合成数据" },
       { key: "actions", label: "Action 审批" },
       { key: "features", label: "功能开通" },
+      { key: "boundary", label: "边界册治理" },
+      { key: "prototype-intake", label: "原型 intake" },
       { key: "catalog", label: "意图目录" },
       { key: "agents", label: "Agent 注册表" },
       { key: "workflows", label: "Workflow" },
@@ -989,12 +2258,23 @@ export class SyntheticService {
       { key: "query-history", label: "推演历史" },
     ];
     // 不同账号不同前端：admin 全量（含 admin 导航组），planner 业务视图，base_manager 子集 + 不同主题强调色。
-    const baseManagerExtras = extraViews.filter((v) => v === "order-chain" || v === "review");
+    // WO-SIM-BE-VIEWKEY：沙盘指控台四视图**不按角色收窄** —— 判据是"沙盘家族今天怎么配的"，
+    // 不是我另定一条：① 沙盘主屏 `sim-sandbox` 是 `NAV_GROUPS` 里带 `feature:"sim.sandbox"` 的
+    // 专用 route，**只有功能闸、零角色条件**；② 五个沙盘子视图（chain-line-map / transit-flow /
+    // physical-topology / node-inspector / chain-impediments）走核心 `views`，而 base_manager 的
+    // 排除名单是 `["dash","graph","plan-audit","plan-generate","global-sim"]` —— 一个沙盘键都不在。
+    // ⇒ 既有口径 = 沙盘一家只按 `sim.sandbox` 判、不按角色判。四视图照抄这条。
+    // ⚠ `v === "review"` 这一项于 2026-09-12 随该屏删除一并摘掉（基地经理曾能看到运营复盘）。
+    const baseManagerExtras = extraViews.filter(
+      (v) => v === "order-chain" || SANDBOX_CONSOLE_VIEW_KEYS.includes(v),
+    );
     const roleViews: Record<string, string[]> = {
       admin: [...views, ...extraViews],
       planner: [...views, ...extraViews],
       base_manager: [
-        ...views.filter((v) => !["dash", "graph", "plan-audit", "plan-generate"].includes(v)),
+        // global-sim（全局项目推演）属规划/管理层视图·base_manager 沿用原样不纳入（此前经 extraViews 分桶天然不含·
+        // 升为核心 views 后须显式排除以保行为不变·WO-MEMORY-VIEW-RESILIENCE 只让"该出现的角色"稳定出现，不扩权）。
+        ...views.filter((v) => !["dash", "graph", "plan-audit", "plan-generate", "global-sim"].includes(v)),
         ...baseManagerExtras,
       ],
     };
@@ -1082,6 +2362,26 @@ export class SyntheticService {
         grants: [{ role: "base_manager", ops: ["READ"] }],
         rowFilter: "Object.baseId IN ${user.attributes.baseScope}",
       },
+      // ── A6 列级（属性级）安全 · demo 受限角色样例 ────────────────────────────────
+      // Material 此前无任何策略（= default allow）。列级演示必须显式建策略，故这里成对下种：
+      // ① 宽策略保住既有角色的现状（不因“新增策略”把 default-allow 翻成 deny）；
+      // ② 受限策略只授给**新角色** line_operator（产线操作员）——只有它拿列级约束。
+      // 两条并存下 line_operator 只匹配 ②（不匹配 ① 的任何 grant），故并集语义不会把限制“解除”。
+      {
+        resource: { kind: "OBJECT_TYPE", key: "Material" },
+        grants: [
+          { role: "admin", ops: ["READ", "WRITE", "EXECUTE"] },
+          { role: "planner", ops: ["READ", "WRITE", "EXECUTE"] },
+          { role: "base_manager", ops: ["READ", "WRITE", "EXECUTE"] },
+          { role: "catalog_admin", ops: ["READ", "WRITE", "EXECUTE"] },
+        ],
+      },
+      {
+        resource: { kind: "OBJECT_TYPE", key: "Material" },
+        grants: [{ role: "line_operator", ops: ["READ", "WRITE"] }],
+        // 产线操作员看得到料号/库存/交期，但看不到也改不了采购单价（成本属敏感列）。
+        propertyPolicy: { denyRead: ["unitPrice"], denyWrite: ["unitPrice"] },
+      },
     ];
     for (let i = 0; i < wanted.length; i++) {
       const w = wanted[i] as Omit<PermissionPolicy, "id" | "tenantId">;
@@ -1144,7 +2444,9 @@ export class SyntheticService {
       let violations = 0;
       for (const o of orders) {
         try {
-          if (evaluateExpression(r.expression, { payload: { Order: o.props, ...o.props } })) violations++;
+          // WO-RULE-EXPR-PARAMS：合成越线统计也用规则自己的命名阈值（否则 C08 这类
+          // 阈值已迁进 params 的规则会在这里恒 0 违规 = 哑弹，而报告看起来一切正常）。
+          if (evaluateExpression(r.expression, { payload: { Order: o.props, ...o.props }, params: r.params })) violations++;
         } catch {
           /* unevaluable against object props — counts as pass */
         }

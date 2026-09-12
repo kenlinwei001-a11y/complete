@@ -1,0 +1,76 @@
+{
+  "authCaptured": true,
+  "probes": {
+    "material": {
+      "url": "/a/v1/objects?type=Material&pageSize=50",
+      "status": 200,
+      "bytes": 6271,
+      "unitPriceHits": 16,
+      "unitPriceSample": [
+        "\"unitPrice\":32.48",
+        "\"unitPrice\":18.34",
+        "\"unitPrice\":63.3",
+        "\"unitPrice\":41.34",
+        "\"unitPrice\":62.1",
+        "\"unitPrice\":94.35",
+        "\"unitPrice\":176.35",
+        "\"unitPrice\":29.92",
+        "\"unitPrice\":32.48",
+        "\"unitPrice\":18.34"
+      ],
+      "yuan": 2,
+      "yuanCtx": [
+        "\":{\"matId\":\"pos_ncm\",\"name\":\"三元正极\",\"unitP",
+        "\":{\"matId\":\"pos_ncm\",\"name\":\"三元正极\",\"unitP"
+      ]
+    },
+    "order": {
+      "url": "/a/v1/objects?type=Order&pageSize=20",
+      "status": 200,
+      "bytes": 15452,
+      "unitPriceHits": 40,
+      "unitPriceSample": [
+        "\"unitPrice\":22198",
+        "\"unitPrice\":22418",
+        "\"unitPrice\":21846",
+        "\"unitPrice\":22660",
+        "\"unitPrice\":21340",
+        "\"unitPrice\":17622",
+        "\"unitPrice\":21736",
+        "\"unitPrice\":13706",
+        "\"unitPrice\":13860",
+        "\"unitPrice\":14196"
+      ],
+      "yuan": 0,
+      "yuanCtx": []
+    },
+    "demand": {
+      "url": "/a/v1/objects?type=DemandSegment&pageSize=20",
+      "status": 200,
+      "bytes": 1983,
+      "unitPriceHits": 0,
+      "unitPriceSample": [],
+      "yuan": 0,
+      "yuanCtx": []
+    }
+  },
+  "organic": [
+    {
+      "url": "/b/v1/scenarios",
+      "bytes": 8451,
+      "yuan": 1,
+      "ctx": [
+        "Objects\":[],\"slotPresets\":{\"material\":\"三元正极\",\"month"
+      ]
+    },
+    {
+      "url": "/a/v1/objects?type=Material&pageSize=50",
+      "bytes": 6271,
+      "yuan": 2,
+      "ctx": [
+        "al\",\"props\":{\"matId\":\"pos_ncm\",\"name\":\"三元正极\",\"unitP",
+        "al\",\"props\":{\"matId\":\"pos_ncm\",\"name\":\"三元正极\",\"unitP"
+      ]
+    }
+  ]
+}

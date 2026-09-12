@@ -1,0 +1,24 @@
+{
+  // typecheck 专用配置：把 `test/` 纳入类型检查面。
+  //
+  // 为什么要单独一份而不是直接改 tsconfig.json 的 include：
+  // `tsconfig.json` 同时被 `build` 用（emit，`rootDir: "src"` + `outDir: "dist"`）。
+  // 把 `test` 塞进它的 include 会让 build 报 TS6059（文件不在 rootDir 下）并把测试文件吐进 dist。
+  // 故沿用 frontend-shell 的既有做法：**窄的那份负责 emit，宽的那份负责 typecheck**。
+  //
+  // 病灶（本文件的来历）：改前 `pnpm --filter datacore typecheck` 的扫描面里没有 `test/`，
+  // 260 个测试文件的类型错误全仓不可见。金丝雀实测：往 test/ 塞一个 `const x: number = "str"`
+  // ⇒ RC=0（放行）；同一个文件放 src/ ⇒ RC=2 + TS2322（拦下）。
+  //
+  // `rootDir` 为什么放到仓库根：本包若干 seam 测试（arg-drop-seam / decision-wire-seam /
+  // xservice-smoke）直接 import `../../agentcore/src/**` 的源码来驱动 A×B 接缝。
+  // 保留 `rootDir: "src"` 会让这些跨包 import 全部报 TS6059（"不在 rootDir 下"）——
+  // 那是 **emit 布局约束**，与类型正确性无关，而本配置 `noEmit: true` 根本不 emit。
+  // 故放宽到仓库根，把 12 条 TS6059 噪声去掉，只留真正的类型错误。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../.."
+  },
+  "include": ["src", "test"]
+}

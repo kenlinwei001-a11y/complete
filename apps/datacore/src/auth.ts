@@ -1,5 +1,7 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import argon2 from "argon2";
-import { exportJWK, generateKeyPair, jwtVerify, SignJWT, type JWK, type KeyLike } from "jose";
+import { exportJWK, generateKeyPair, importJWK, jwtVerify, SignJWT, type JWK, type KeyLike } from "jose";
 import { newId } from "./ids.js";
 import { unauthorized, validationError } from "./errors.js";
 import type { AuthCtx, User } from "./domain.js";
@@ -28,10 +30,34 @@ export class AuthService {
   ) {}
 
   async init(): Promise<void> {
+    // JWT_KEY_FILE 设置 → 签名密钥跨重启持久化（否则每次重启换 key/kid，会使所有已发 token 失效 → 全员被踢回登录页）。
+    // 未设置 → 保持原临时密钥行为（测试/一次性场景），向后兼容。
+    const keyFile = process.env.JWT_KEY_FILE;
+    if (keyFile) {
+      try {
+        const saved = JSON.parse(await readFile(keyFile, "utf8")) as { kid: string; privateJwk: JWK; publicJwk: JWK };
+        this.kid = saved.kid;
+        this.privateKey = (await importJWK(saved.privateJwk, "RS256")) as KeyLike;
+        this.publicKey = (await importJWK(saved.publicJwk, "RS256")) as KeyLike;
+        this.jwk = { ...saved.publicJwk, kid: this.kid, alg: "RS256", use: "sig" };
+        return;
+      } catch {
+        /* 文件不存在/损坏 → 生成新 key 并写入 */
+      }
+    }
     const { privateKey, publicKey } = await generateKeyPair("RS256", { extractable: true });
     this.privateKey = privateKey;
     this.publicKey = publicKey;
     this.jwk = { ...(await exportJWK(publicKey)), kid: this.kid, alg: "RS256", use: "sig" };
+    if (keyFile) {
+      try {
+        const privateJwk = await exportJWK(privateKey);
+        await mkdir(dirname(keyFile), { recursive: true });
+        await writeFile(keyFile, JSON.stringify({ kid: this.kid, privateJwk, publicJwk: this.jwk }), "utf8");
+      } catch {
+        /* 持久化尽力而为，失败不阻断启动 */
+      }
+    }
   }
 
   jwks(): { keys: JWK[] } {

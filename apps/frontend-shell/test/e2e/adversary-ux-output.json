@@ -1,0 +1,308 @@
+{
+  "steps": [],
+  "perState": {
+    "OFF": {
+      "flagOn": false,
+      "landed": "http://127.0.0.1:5173/",
+      "navigated": true,
+      "reachedUrl": "http://127.0.0.1:5173/v/sim-unified",
+      "nav": [
+        {
+          "step": "目标链接初始可见",
+          "visible": true
+        }
+      ],
+      "screenshot": "adv-off.png",
+      "noMock": {
+        "ok": true,
+        "realHits": 5,
+        "portsProbed": "4011|4012",
+        "sample": [
+          "200 POST http://127.0.0.1:4011/a/v1/auth/login",
+          "200 GET http://127.0.0.1:4011/a/v1/me/workspace",
+          "200 GET http://127.0.0.1:4011/a/v1/history/watermark",
+          "200 GET http://127.0.0.1:4012/b/v1/scenarios",
+          "200 GET http://127.0.0.1:4011/a/v1/data-health"
+        ]
+      },
+      "canaryHomeReadable": true,
+      "backend": {
+        "probeOrder": null,
+        "orderChurn": null,
+        "adversary": {
+          "enabled": false,
+          "declared": 0,
+          "suppressed": 1,
+          "fired": 0,
+          "triggeredActors": 0,
+          "moves": [],
+          "selectors": []
+        },
+        "disclosure": {
+          "canaryPhysicalRuleFound": true,
+          "canaryPhysicalRuleKey": "demo_customer_receivable_to_invoice_overdue",
+          "reaction": null,
+          "汇总栏": {
+            "enabled": false,
+            "declared": 0,
+            "suppressed": 1,
+            "fired": 0,
+            "triggeredActors": 0,
+            "moves": [],
+            "selectors": []
+          },
+          "本次是否调用agent": {
+            "invoked": false,
+            "calls": 0,
+            "provider": null,
+            "model": null
+          }
+        },
+        "orderChurnSameCell": 0,
+        "probeOrderSameCell": "obj_order_SO-900025"
+      },
+      "onScreen": {
+        "canaryExistingEdgeVia": true,
+        "canaryEdgeCountLabel": true,
+        "edgeCountText": "47 条边 · 已关 0",
+        "reactionViaOnScreen": true,
+        "reactionTargetOnScreen": true,
+        "reactionHumanName": true,
+        "reactionCoefficientOnScreen": true,
+        "moveName": false,
+        "toleranceLabel": false,
+        "adversarySummary": false,
+        "triggeredActorsLabel": false,
+        "disclosurePanelPresent": false,
+        "reactionRuleKey": false,
+        "weightBasis": false,
+        "normalize": false,
+        "textLen": 3362
+      },
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ]
+    },
+    "ON": {
+      "flagOn": true,
+      "landed": "http://127.0.0.1:5173/",
+      "navigated": true,
+      "reachedUrl": "http://127.0.0.1:5173/v/sim-unified",
+      "nav": [
+        {
+          "step": "目标链接初始可见",
+          "visible": true
+        }
+      ],
+      "screenshot": "adv-on.png",
+      "noMock": {
+        "ok": true,
+        "realHits": 5,
+        "portsProbed": "4011|4012",
+        "sample": [
+          "200 POST http://127.0.0.1:4011/a/v1/auth/login",
+          "200 GET http://127.0.0.1:4011/a/v1/me/workspace",
+          "200 GET http://127.0.0.1:4011/a/v1/history/watermark",
+          "200 GET http://127.0.0.1:4011/a/v1/data-health",
+          "200 GET http://127.0.0.1:4012/b/v1/scenarios"
+        ]
+      },
+      "canaryHomeReadable": true,
+      "backend": {
+        "probeOrder": "obj_order_SO-900025",
+        "orderChurn": 40,
+        "adversary": {
+          "enabled": true,
+          "declared": 1,
+          "suppressed": 0,
+          "fired": 1,
+          "triggeredActors": 1,
+          "moves": [
+            "CUT_ORDER"
+          ],
+          "selectors": [
+            "RULE_TABLE"
+          ]
+        },
+        "disclosure": {
+          "canaryPhysicalRuleFound": true,
+          "canaryPhysicalRuleKey": "demo_customer_receivable_to_invoice_overdue",
+          "reaction": {
+            "规则key": "demo_customer_reaction_cut_order",
+            "系数": 0.35,
+            "触发条件_容忍线": 12,
+            "承载条数": 500,
+            "分摊口径": "actor_exposure_relative",
+            "归一方向": "SOURCE_POOL_MEAN",
+            "还手动作": "CUT_ORDER",
+            "动作人话名": "砍单",
+            "越线对手数": 1,
+            "谁选的": "RULE_TABLE",
+            "谁选的人话名": "规则表直选",
+            "选择方出处": null
+          },
+          "汇总栏": {
+            "enabled": true,
+            "declared": 1,
+            "suppressed": 0,
+            "fired": 1,
+            "triggeredActors": 1,
+            "moves": [
+              "CUT_ORDER"
+            ],
+            "selectors": [
+              "RULE_TABLE"
+            ]
+          },
+          "本次是否调用agent": {
+            "invoked": false,
+            "calls": 0,
+            "provider": null,
+            "model": null
+          }
+        }
+      },
+      "onScreen": {
+        "canaryExistingEdgeVia": true,
+        "canaryEdgeCountLabel": true,
+        "edgeCountText": "47 条边 · 已关 0",
+        "reactionViaOnScreen": true,
+        "reactionTargetOnScreen": true,
+        "reactionHumanName": true,
+        "reactionCoefficientOnScreen": true,
+        "moveName": false,
+        "toleranceLabel": false,
+        "adversarySummary": false,
+        "triggeredActorsLabel": false,
+        "disclosurePanelPresent": false,
+        "reactionRuleKey": false,
+        "weightBasis": false,
+        "normalize": false,
+        "textLen": 3362
+      },
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+      ]
+    }
+  },
+  "findings": {
+    "verdict": {
+      "两态开关": {
+        "OFF": false,
+        "ON": true
+      },
+      "同一读数前后两值": {
+        "格子": "obj_order_SO-900025",
+        "orderChurn_OFF": 0,
+        "orderChurn_ON": 40
+      },
+      "屏上还手边": {
+        "OFF": {
+          "canaryExistingEdgeVia": true,
+          "canaryEdgeCountLabel": true,
+          "edgeCountText": "47 条边 · 已关 0",
+          "reactionViaOnScreen": true,
+          "reactionTargetOnScreen": true,
+          "reactionHumanName": true,
+          "reactionCoefficientOnScreen": true,
+          "moveName": false,
+          "toleranceLabel": false,
+          "adversarySummary": false,
+          "triggeredActorsLabel": false,
+          "disclosurePanelPresent": false,
+          "reactionRuleKey": false,
+          "weightBasis": false,
+          "normalize": false,
+          "textLen": 3362
+        },
+        "ON": {
+          "canaryExistingEdgeVia": true,
+          "canaryEdgeCountLabel": true,
+          "edgeCountText": "47 条边 · 已关 0",
+          "reactionViaOnScreen": true,
+          "reactionTargetOnScreen": true,
+          "reactionHumanName": true,
+          "reactionCoefficientOnScreen": true,
+          "moveName": false,
+          "toleranceLabel": false,
+          "adversarySummary": false,
+          "triggeredActorsLabel": false,
+          "disclosurePanelPresent": false,
+          "reactionRuleKey": false,
+          "weightBasis": false,
+          "normalize": false,
+          "textLen": 3362
+        }
+      },
+      "两张截图": [
+        "adv-off.png",
+        "adv-on.png"
+      ],
+      "可披露_开启态": {
+        "canaryPhysicalRuleFound": true,
+        "canaryPhysicalRuleKey": "demo_customer_receivable_to_invoice_overdue",
+        "reaction": {
+          "规则key": "demo_customer_reaction_cut_order",
+          "系数": 0.35,
+          "触发条件_容忍线": 12,
+          "承载条数": 500,
+          "分摊口径": "actor_exposure_relative",
+          "归一方向": "SOURCE_POOL_MEAN",
+          "还手动作": "CUT_ORDER",
+          "动作人话名": "砍单",
+          "越线对手数": 1,
+          "谁选的": "RULE_TABLE",
+          "谁选的人话名": "规则表直选",
+          "选择方出处": null
+        },
+        "汇总栏": {
+          "enabled": true,
+          "declared": 1,
+          "suppressed": 0,
+          "fired": 1,
+          "triggeredActors": 1,
+          "moves": [
+            "CUT_ORDER"
+          ],
+          "selectors": [
+            "RULE_TABLE"
+          ]
+        },
+        "本次是否调用agent": {
+          "invoked": false,
+          "calls": 0,
+          "provider": null,
+          "model": null
+        }
+      },
+      "可披露_关闭态": {
+        "canaryPhysicalRuleFound": true,
+        "canaryPhysicalRuleKey": "demo_customer_receivable_to_invoice_overdue",
+        "reaction": null,
+        "汇总栏": {
+          "enabled": false,
+          "declared": 0,
+          "suppressed": 1,
+          "fired": 0,
+          "triggeredActors": 0,
+          "moves": [],
+          "selectors": []
+        },
+        "本次是否调用agent": {
+          "invoked": false,
+          "calls": 0,
+          "provider": null,
+          "model": null
+        }
+      },
+      "真后端": {
+        "OFF": true,
+        "ON": true
+      },
+      "进到推演页": {
+        "OFF": true,
+        "ON": true
+      }
+    }
+  }
+}

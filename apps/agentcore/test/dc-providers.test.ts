@@ -150,12 +150,12 @@ beforeAll(async () => {
 
 afterAll(() => stub.close());
 
-function makeRouting(): { llm: RoutingLlmClient; directory: DataCoreProviderDirectory; metrics: Metrics } {
+function makeRouting(): { llm: RoutingLlmClient; directory: DataCoreProviderDirectory; metrics: Metrics; registry: LlmProviderRegistry } {
   const directory = new DataCoreProviderDirectory({ baseUrl: base, serviceToken: "svc-secret" });
   const metrics = new Metrics();
   const config = loadConfig({ PORT: "0", LOG_LEVEL: "silent" } as NodeJS.ProcessEnv);
   const registry = new LlmProviderRegistry({ repos: createMemoryRepos(), config, metrics, directory });
-  return { llm: new RoutingLlmClient(registry), directory, metrics };
+  return { llm: new RoutingLlmClient(registry), directory, metrics, registry };
 }
 
 const RISK_CONTEXT = { view: "risk", selectedObjects: [{ objectType: "Base", objectId: "base_changzhou", label: "常州" }] };
@@ -227,11 +227,18 @@ describe("L4 · provider 故障 → fallback 接管；禁止链式", () => {
     bindings = [{ purpose: "classifier", providerId: "llmp_bad", modelId: "m1" }];
     state.fail.add("bad");
     state.fail.delete("p2");
-    const { llm, metrics } = makeRouting();
+    const { llm, metrics, registry } = makeRouting();
     const out = await llm.classify({ model: "dcp:llmp_bad:m1", system: "s", user: "u", tenantId: "demo" });
     expect(out.candidates[0]?.intentKey).toBe("risk_root_cause");
     expect(metrics.llmFallback.get({ from: "llmp_bad", to: "llmp2" })).toBe(1);
     expect(state.calls.p2 ?? 0).toBeGreaterThan(0);
+    // §5.4：逐次 provider 尝试审计——主 FALLBACK_TRIGGERED + fallback FALLBACK_OK，各带 ms，按租户可查。
+    const attempts = registry.recentAttempts("demo");
+    expect(attempts.some((a) => a.providerId === "llmp_bad" && a.outcome === "FALLBACK_TRIGGERED")).toBe(true);
+    expect(attempts.some((a) => a.providerId === "llmp2" && a.outcome === "FALLBACK_OK")).toBe(true);
+    expect(attempts.every((a) => typeof a.ms === "number" && a.tenantId === "demo")).toBe(true);
+    // R2：他租户查不到
+    expect(registry.recentAttempts("acme").length).toBe(0);
   });
 
   it("fallback 的 fallback 不生效：llmp2 也故障 → 直接失败，llmp3 零调用", async () => {

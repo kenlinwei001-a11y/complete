@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { radarPolygonPoints, type RadarScores } from "@/views/sim/RadarChart";
@@ -7,73 +7,67 @@ import { mockPlanGenerate } from "@/mocks/simSolvers";
 import { db } from "@/mocks/db";
 
 /**
- * F16（增量 §7.11 / 验收表）：plan-generate 把 CAPEX 上限调至 30 →
- * 进取方案 ⛔ 消失、综合分恢复、推荐徽章按新 total 重新归属；
- * 雷达多边形顶点与 scores 数值一致（自绘 SVG 坐标断言，维度顺序固定 盈利/规模/现金/增长/稳健）。
+ * F16 · plan-generate（PRD-IND 1:1）：5 路径 → 壹/贰/叁（稳健·守盈利 / 均衡 / 进取·冲规模，§4.4 动态选择）；
+ * ★推荐=三案可行 total 最高；雷达 SVG 坐标=mock 同构；外部信号敏感性 + 必须解决问题(why+4 节点传导链) 渲染。
+ * 期望值经 mockPlanGenerate 派生（取值对齐 HTML 后不再写死 S1/S2/S3 与固定路径）。
  */
-describe("F16 · 规划建议（plan-generate）目标面板与三方案卡", () => {
-  it("CAPEX 上限 20→30：进取 ⛔ 消失（路径 B→C）、综合分恢复、推荐按新 total 归属；雷达 SVG 坐标断言", async () => {
+const EXP = mockPlanGenerate({}) as {
+  schemes: { no: string; name: string; pathKey: string; hardViol: string[]; scores: RadarScores & { total: number }; extSensitivity?: unknown[] }[];
+  recommend: string;
+};
+
+describe("F16 · 规划建议（plan-generate）目标面板与三方案卡（1:1）", () => {
+  it("三方案 壹/贰/叁 + ★推荐(可行 total 最高) + 雷达坐标 + 外部敏感性/问题传播链", async () => {
     loginAs("planner");
     renderApp("/v/plan-generate");
 
-    // 默认目标（capexCap=20）下三方案纵向卡：稳健(A) / 均衡(E) / 进取（B 保规模型 → C15 硬约束冲突）
-    const s3 = await screen.findByTestId("scheme-S3");
-    expect(screen.getByTestId("scheme-S1")).toHaveTextContent("稳健");
-    expect(screen.getByTestId("scheme-S2")).toHaveTextContent("均衡");
-    expect(s3).toHaveTextContent("进取");
-    expect(screen.getByTestId("hardviol-badge-S3")).toHaveTextContent("C15");
-    expect(screen.getByTestId("scheme-score-S3")).toHaveTextContent("⛔");
-    expect(s3.className).toMatch(/violDim/); // 整卡降透明度（opacity 0.85）
-    // ★ 推荐徽章：无硬约束冲突中综合分最高 = 均衡(E)
-    expect(screen.getByTestId("recommend-badge-S2")).toHaveTextContent("推荐");
-    expect(screen.queryByTestId("recommend-badge-S1")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("recommend-badge-S3")).not.toBeInTheDocument();
-    // 硬约束 chips（毛利/现金/CAPEX）默认 on
+    // 三方案纵向卡：壹 稳健·守盈利 / 贰 均衡 / 叁 进取·冲规模
+    await screen.findByTestId("scheme-壹");
+    expect(screen.getByTestId("scheme-壹")).toHaveTextContent("稳健");
+    expect(screen.getByTestId("scheme-贰")).toHaveTextContent("均衡");
+    expect(screen.getByTestId("scheme-叁")).toHaveTextContent("进取");
+
+    // ★推荐 = mock 派生的 recommend 所在方案（可行且 total 最高）
+    const recScheme = EXP.schemes.find((s) => s.pathKey === EXP.recommend && s.hardViol.length === 0)!;
+    expect(screen.getByTestId(`recommend-badge-${recScheme.no}`)).toHaveTextContent("推荐");
+
+    // 硬约束 chips 默认 on
     expect(screen.getByTestId("hard-chip-gmFloorPct")).toHaveTextContent("硬约束");
-    expect(screen.getByTestId("hard-chip-capexCap")).toHaveTextContent("硬约束");
+    // 新增目标字段：库存周转
+    expect(screen.getByTestId("goal-invTurns")).toBeInTheDocument();
 
-    // 目标面板改 CAPEX 上限 → 30（改动即重算全部方案，debounce 300ms）
-    fireEvent.change(screen.getByTestId("goal-capexCap"), { target: { value: "30" } });
+    // 推荐方案默认展开（useEffect 异步）→ 雷达多边形顶点与 mock scores 同构
+    const polygon = await screen.findByTestId(`radar-${recScheme.no}-polygon`);
+    expect(polygon.getAttribute("points")).toBe(radarPolygonPoints(recScheme.scores, 180));
 
-    // 进取重新收敛为路径 C（扩产型，CAPEX 27 ≤ 30）：⛔ 消失、综合分恢复为 72
-    await waitFor(() => expect(screen.queryByTestId("hardviol-badge-S3")).not.toBeInTheDocument());
-    expect(screen.getByTestId("scheme-S3")).toHaveTextContent("基于路径 C");
-    expect(screen.getByTestId("scheme-score-S3")).toHaveTextContent("72");
-    expect(screen.getByTestId("scheme-S3").className).not.toMatch(/violDim/);
-    // 推荐按新 total 重新归属：E(73) > A(72) = C(72) → 仍为 S2
-    expect(screen.getByTestId("recommend-badge-S2")).toBeInTheDocument();
-    expect(screen.queryByTestId("recommend-badge-S3")).not.toBeInTheDocument();
+    // 目标达成六行齐全
+    expect(screen.getByTestId(`meet-${recScheme.no}-meetTurns`)).toBeInTheDocument();
 
-    // 雷达多边形顶点与 scores 数值一致（与 mock 求解器同构计算 → SVG points 逐字相等）
-    const expected = mockPlanGenerate({ targets: { capexCap: 30 } }) as {
-      schemes: { no: string; scores: RadarScores & { total: number } }[];
-    };
-    const s2Scores = expected.schemes.find((s) => s.no === "S2")!.scores;
-    const polygon = screen.getByTestId("radar-S2-polygon");
-    expect(polygon.getAttribute("points")).toBe(radarPolygonPoints(s2Scores, 180));
-    // 展开体三栏之一：目标达成清单六项 meet*（server-side meets 字段 → ✓/✗ 行）
-    expect(screen.getByTestId("meet-S2-meetGm")).toHaveTextContent("✓");
-    expect(screen.getByTestId("meet-S2-meetShare")).toHaveTextContent("✓"); // E 份额 +14 ≥ +12
-    expect(screen.getByTestId("meet-S2-meetTurns")).toBeInTheDocument(); // 六项齐全
+    // PRD-IND §2.3-6/7：外部信号敏感性 + 必须解决问题(传导链 4 节点)
+    const extsens = await screen.findByTestId(`extsens-${recScheme.no}`);
+    expect(within(extsens).getByTestId(`extsens-${recScheme.no}-0`)).toBeInTheDocument();
+    expect(screen.getByTestId(`focus-keys-${recScheme.no}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`prob-chain-${recScheme.no}-0`)).toBeInTheDocument();
   });
 
-  it("采纳按钮（actionType=采纳经营方案）：payload=方案快照+当前目标面板值 → 草稿待审批", async () => {
+  it("采纳按钮（actionType=采纳经营方案）：payload=方案快照(壹/贰/叁)+当前目标面板值 → 草稿待审批", async () => {
     const user = userEvent.setup();
     loginAs("planner");
     renderApp("/v/plan-generate");
 
-    await screen.findByTestId("scheme-S2");
-    // 推荐方案默认展开 → 采纳
-    await user.click(await screen.findByTestId("adopt-scheme-S2"));
+    const recScheme = EXP.schemes.find((s) => s.pathKey === EXP.recommend && s.hardViol.length === 0)!;
+    await screen.findByTestId(`scheme-${recScheme.no}`);
+    await user.click(await screen.findByTestId(`adopt-scheme-${recScheme.no}`));
     expect(await screen.findByText(/草稿已创建，待审批/)).toBeInTheDocument();
 
     const draft = db.actionDrafts[0]!;
     expect(draft.actionTypeKey).toBe("采纳经营方案");
     expect(draft.status).toBe("PENDING_APPROVAL");
-    const payload = draft.payload as { schemeNo: string; pathKey: string; targets: { capexCap: number; hard: { gm: boolean } } };
-    expect(payload.schemeNo).toBe("S2");
-    expect(payload.pathKey).toBe("E");
+    const payload = draft.payload as { schemeNo: string; pathKey: string; targets: { capexCap: number; turnsFloor: number; hard: { gm: boolean } } };
+    expect(payload.schemeNo).toBe(recScheme.no);
+    expect(payload.pathKey).toBe(recScheme.pathKey);
     expect(payload.targets.capexCap).toBe(20);
+    expect(payload.targets.turnsFloor).toBe(6.0); // 新增库存周转目标透传
     expect(payload.targets.hard.gm).toBe(true);
   });
 });

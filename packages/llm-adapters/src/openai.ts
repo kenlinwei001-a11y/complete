@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { ClassifierParseError } from "./anthropic.js";
 import type {
   CompletionReq,
@@ -17,6 +18,7 @@ import type {
   ToolLoopReq,
 } from "./types.js";
 import { runToolLoop } from "./toolloop.js";
+import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
 
 /**
  * OpenAI / OpenAI-compatible adapter（QOS-PRD §6 修订实现收编于 packages/llm-adapters，
@@ -50,6 +52,14 @@ export interface OpenAiChatMessage {
   content?: string | null;
   tool_calls?: OpenAiToolCall[];
   tool_call_id?: string;
+  /**
+   * WO-FIX-REASONING-CONTENT：推理型模型（DeepSeek-R1 / Moonshot kimi-k2.6 / OpenAI o1 等）
+   * 把「思考链」放在 reasoning_content（部分端点用 reasoning）而非 content。多数轮它只是思考，
+   * 但当 content 为空、也未发起 tool_calls 时，reasoning_content 里其实就是最终结论——
+   * 适配器抢救为文本，避免"空回答"（详见 agent()）。
+   */
+  reasoning_content?: string | null;
+  reasoning?: string | null;
 }
 
 export interface OpenAiChatCompletion {
@@ -58,7 +68,12 @@ export interface OpenAiChatCompletion {
 }
 
 export interface OpenAiChatPort {
-  chat: { completions: { create(params: Record<string, unknown>): Promise<OpenAiChatCompletion> } };
+  chat: {
+    completions: {
+      // G-9：第二实参为 SDK RequestOptions（透传 { signal } 供 per-call 有界超时）。
+      create(params: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<OpenAiChatCompletion>;
+    };
+  };
 }
 
 // --- classification structured output ---------------------------------------
@@ -96,11 +111,18 @@ const CLASSIFICATION_JSON_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
 };
 
+/**
+ * **只校验路由必需的骨架**（candidates + outOfCatalog）。
+ *
+ * WO-SLOT-HARVEST：这里**故意不再声明任何槽位字段** —— 槽位一律由 `harvestClassificationSlots(raw)`
+ * 在**原始报文**上收割。原因是这个 schema 曾经**自己销毁证据**：`z.object({intentKey,confidence})`
+ * 默认剔除未知键，Kimi 放进 `candidates[i].extractedSlots` 的槽位在校验那一行就被删掉，
+ * 之后 `?? {}` 再把「我没在我看的位置找到」报成「模型没给」（真实抓包 5 次踩中 3 次）。
+ * 顺带：槽位字段形态跑偏（如 `extractedSlotsJson` 给成对象）不再让整条响应校验失败→3 次重试→路径 B。
+ */
 const OpenAiClassificationSchema = z.object({
   candidates: z.array(z.object({ intentKey: z.string(), confidence: z.number() })).max(3),
   outOfCatalog: z.boolean(),
-  extractedSlotsJson: z.string().optional(),
-  extractedSlots: z.record(z.string(), z.unknown()).optional(),
 });
 
 export interface OpenAiLlmClientOptions {
@@ -123,6 +145,12 @@ export class OpenAiLlmClient implements FullLlmClient {
   constructor(opts: OpenAiLlmClientOptions = {}) {
     this.metrics = opts.metrics;
     this.providerLabel = opts.providerLabel;
+
+    // 配置代理
+    const proxyUrl = process.env.https_proxy || process.env.HTTPS_PROXY ||
+                     process.env.http_proxy || process.env.HTTP_PROXY;
+    const httpAgent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
+
     this.client =
       opts.client ??
       (new OpenAI({
@@ -131,6 +159,7 @@ export class OpenAiLlmClient implements FullLlmClient {
         apiKey: opts.apiKey ?? process.env.OPENAI_API_KEY ?? (opts.baseUrl ? "anonymous" : ""),
         ...(opts.baseUrl ? { baseURL: opts.baseUrl } : {}),
         ...(opts.defaultHeaders ? { defaultHeaders: opts.defaultHeaders } : {}),
+        ...(httpAgent ? { httpAgent } : {}),
       }) as unknown as OpenAiChatPort);
   }
 
@@ -147,6 +176,20 @@ export class OpenAiLlmClient implements FullLlmClient {
   }
 
   async classify(req: { model: string; system: string; user: string }): Promise<RawClassification> {
+    // 思维型/温度强制模型（如 kimi-k2.5）偶发返回空/不可解析的结构化输出 → 重试（实测 ~1/4 概率，重试即稳）。
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.classifyOnce(req);
+      } catch (err) {
+        if (!(err instanceof ClassifierParseError)) throw err;
+        lastErr = err;
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new ClassifierParseError();
+  }
+
+  private async classifyOnce(req: { model: string; system: string; user: string }): Promise<RawClassification> {
     const resp = await this.client.chat.completions.create({
       model: req.model,
       messages: [
@@ -154,8 +197,11 @@ export class OpenAiLlmClient implements FullLlmClient {
         { role: "user", content: req.user },
       ],
       response_format: {
+        // strict:false 兼容国产/兼容端点（实测 Moonshot/Kimi 在 strict:true 下返空/不可解析，且会加 reason 等额外字段）；
+        // 路由骨架由 OpenAiClassificationSchema 兜底校验，**槽位不走它** —— 见 harvestClassificationSlots(raw)：
+        // 模型爱把槽写哪就写哪（顶层/candidate、对象/JSON 串），读的一方全收，收不掉的进 unconsumed 报出来。
         type: "json_schema",
-        json_schema: { name: "intent_classification", strict: true, schema: CLASSIFICATION_JSON_SCHEMA },
+        json_schema: { name: "intent_classification", strict: false, schema: CLASSIFICATION_JSON_SCHEMA },
       },
     });
     this.trackUsage(req.model, resp.usage);
@@ -163,27 +209,24 @@ export class OpenAiLlmClient implements FullLlmClient {
     if (typeof content !== "string" || content.length === 0) throw new ClassifierParseError();
     let raw: unknown;
     try {
-      raw = JSON.parse(content);
+      raw = JSON.parse(extractJsonText(content)); // 兼容 Moonshot/Kimi 的 ```json``` 围栏
     } catch {
       throw new ClassifierParseError();
     }
     const parsed = OpenAiClassificationSchema.safeParse(raw);
     if (!parsed.success) throw new ClassifierParseError();
-    let extractedSlots: Record<string, unknown> = parsed.data.extractedSlots ?? {};
-    if (parsed.data.extractedSlotsJson !== undefined) {
-      try {
-        const slots = JSON.parse(parsed.data.extractedSlotsJson) as unknown;
-        if (slots !== null && typeof slots === "object" && !Array.isArray(slots)) {
-          extractedSlots = slots as Record<string, unknown>;
-        }
-      } catch {
-        /* slot extraction is best effort — malformed slot JSON degrades to {} */
-      }
-    }
+    // ★ WO-SLOT-HARVEST 命门：收割器跑在 **raw** 上（不是 parsed.data —— 窄 schema 会先把证据删掉）。
+    //   旧代码 `parsed.data.extractedSlots ?? {}` 只看一个位置，看不到就报"没有"；真 Kimi 5 次里 3 次
+    //   把槽写在 candidates[0].extractedSlots，于是"抽对了却进不了系统"。
+    const harvest = harvestClassificationSlots(raw);
+    // 诚实闸的真消费方：出现了槽位形状却没被收割 → 打日志（不许再"我没找到 = 它没有"）。
+    reportUnconsumedSlots("openai.classify", harvest);
+    // 不完整结果（既无候选意图、又未明确判域外）= 退化输出（温度强制模型偶发）→ 当作可解析失败触发重试。
+    if (parsed.data.candidates.length === 0 && !parsed.data.outOfCatalog) throw new ClassifierParseError();
     return {
       candidates: parsed.data.candidates,
       outOfCatalog: parsed.data.outOfCatalog,
-      extractedSlots,
+      extractedSlots: harvest.slots,
     };
   }
 
@@ -192,15 +235,21 @@ export class OpenAiLlmClient implements FullLlmClient {
       { role: "system", content: req.system },
       ...req.messages.flatMap((m) => toOpenAiMessages(m)),
     ];
-    const resp = await this.client.chat.completions.create({
-      model: req.model,
-      max_tokens: req.maxTokens ?? 16000,
-      tools: req.tools.map((t) => ({
-        type: "function",
-        function: { name: t.name, description: t.description, parameters: t.inputSchema },
-      })),
-      messages,
-    });
+    const resp = await this.client.chat.completions.create(
+      {
+        model: req.model,
+        max_tokens: req.maxTokens ?? 16000,
+        tools: req.tools.map((t) => ({
+          type: "function",
+          function: { name: t.name, description: t.description, parameters: t.inputSchema },
+        })),
+        // WO-FIX-REASONING-CONTENT：收尾/兜底轮强制 final_answer（否则默认 auto·模型自决）。
+        ...(req.toolChoice ? { tool_choice: toOpenAiToolChoice(req.toolChoice) } : {}),
+        messages,
+      },
+      // G-9：per-call deadline 的 AbortSignal 透传给 SDK（挂住的调用可被上界终止 → AbortError）。
+      req.signal ? { signal: req.signal } : undefined,
+    );
     this.trackUsage(req.model, resp.usage);
 
     const choice = resp.choices[0];
@@ -219,6 +268,16 @@ export class OpenAiLlmClient implements FullLlmClient {
       content.push({ type: "tool_use", id: tc.id, name: tc.function.name, input });
     }
     const hasToolUse = (msg?.tool_calls?.length ?? 0) > 0;
+
+    // WO-FIX-REASONING-CONTENT：推理型模型（kimi-k2.6 / o1 / DeepSeek-R1）在**终结轮**把结论写进
+    // reasoning_content 而 content 为空、且未发起 tool_calls——若不抢救，这一整轮回答会被丢成"空回答"
+    // （content=[] → 循环 lastText 空 → 降级占位「探索模式未能产出回答」）。仅在此终结死角抢救为文本：
+    //  · content 已有文本 或 已发 tool_calls → 不介入（探索轮逐字节不变）；
+    //  · raw 归一化为 {role:"assistant", content:<抢救文本>}，令后续强制收尾轮回看到干净的自述。
+    const reasoningText = firstNonEmpty(msg?.reasoning_content, msg?.reasoning);
+    const salvaged = !hasToolUse && content.length === 0 && reasoningText.length > 0;
+    if (salvaged) content.push({ type: "text", text: reasoningText });
+
     return {
       content,
       stopReason: hasToolUse || choice?.finish_reason === "tool_calls" ? "tool_use" : "end_turn",
@@ -226,8 +285,10 @@ export class OpenAiLlmClient implements FullLlmClient {
         inputTokens: resp.usage?.prompt_tokens ?? 0,
         outputTokens: resp.usage?.completion_tokens ?? 0,
       },
-      // assistant message echoed verbatim on the next turn (tool_calls round-trip)
-      raw: msg,
+      // assistant message echoed verbatim on the next turn (tool_calls round-trip)；
+      // 抢救轮把 raw 归一化为携带抢救文本的 assistant 消息（原始 msg 的 content 为空·回传易被端点拒）。
+      raw: salvaged ? { role: "assistant", content: reasoningText } : msg,
+      ...(salvaged ? { salvagedReasoning: true } : {}),
     };
   }
 
@@ -292,7 +353,7 @@ export class OpenAiLlmClient implements FullLlmClient {
     if (!content) return null;
     let raw: unknown;
     try {
-      raw = JSON.parse(content);
+      raw = JSON.parse(extractJsonText(content));
     } catch {
       return null;
     }
@@ -307,6 +368,36 @@ export class OpenAiLlmClient implements FullLlmClient {
 
 /** 增量 §1.2 命名别名（OpenAICompatAdapter —— vLLM/国产模型 OpenAI 风格端点）。 */
 export { OpenAiLlmClient as OpenAICompatAdapter };
+
+/**
+ * 从模型回复里提取 JSON 文本：兼容部分 OpenAI 兼容端点（如 Moonshot/Kimi）即便 json_schema 模式
+ * 仍把 JSON 包在 ```json ... ``` 代码围栏里。优先取围栏内容，否则取首个 { 到末个 } 的片段，
+ * 都不命中则原样返回（让 JSON.parse 自行判定）。纯函数、无副作用。
+ */
+export function extractJsonText(content: string): string {
+  const fence = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fence?.[1]) return fence[1].trim();
+  const first = content.indexOf("{");
+  const last = content.lastIndexOf("}");
+  if (first >= 0 && last > first) return content.slice(first, last + 1);
+  return content.trim();
+}
+
+/**
+ * WO-FIX-REASONING-CONTENT：内部 toolChoice → OpenAI tool_choice。
+ * `auto` → "auto"；`{type:"tool", name}` → {type:"function", function:{name}}（OpenAI 兼容端点强制某函数的标准形态）。
+ */
+export function toOpenAiToolChoice(tc: { type: "auto" } | { type: "tool"; name: string }): unknown {
+  return tc.type === "tool" ? { type: "function", function: { name: tc.name } } : "auto";
+}
+
+/** 取首个非空白字符串（reasoning_content / reasoning 兼容不同端点字段名）；都空返 ""。 */
+function firstNonEmpty(...vals: (string | null | undefined)[]): string {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim().length > 0) return v;
+  }
+  return "";
+}
 
 /** Convert an internal LlmAgentMessage to OpenAI chat messages (1:N for tool results). */
 function toOpenAiMessages(m: LlmAgentMessage): OpenAiChatMessage[] {

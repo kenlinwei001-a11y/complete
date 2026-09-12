@@ -6,7 +6,13 @@ import { z } from "zod";
 // 场景才显式 pin 数字版本。规则引用永远 latest（不可 pin —— 约束必须全局一致）。
 // ---------------------------------------------------------------------------
 
-export const RefKindSchema = z.enum(["rule", "skill", "workflow", "plan", "agent", "mcp", "intent"]);
+// WO-SLICE-DERIV-EMPTY："slice" 补进引用 kind 枚举 —— A 侧切片反查
+// （datacore ontology-governance.sliceReferences）只认 kind:"slice"，而本枚举此前没有它，
+// B 侧（agentcore refs/report.ts）在类型层面就产不出这种 ref ⇒ 反查恒空
+// （本体 §8 G-SLICE-REF-PRODUCER-EMPTY：消费方在、生产方产不出，形态 = 接了线没数据，
+// 缺的是产/消两侧的 kind 约定）。B 侧产出函数（resolve_slice 步的 sliceKey 抽取上报）
+// 随后续单补挂载点；本改动只是把「slice 可作为被引用资源」这一约定先立起来。
+export const RefKindSchema = z.enum(["rule", "skill", "workflow", "plan", "agent", "mcp", "intent", "slice"]);
 export type RefKind = z.infer<typeof RefKindSchema>;
 
 export const RefVersionSchema = z.union([z.number().int(), z.literal("latest")]);

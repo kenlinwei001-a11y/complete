@@ -1,4 +1,24 @@
-import type { ToolPayload } from "@platform/contracts";
+import type {
+  ClaimVerdict,
+  ImplementsRef,
+  InterfaceViolation,
+  ObjectRefAttempt,
+  ObjectRefHit,
+  ObjectRefResolution,
+  ObjectRefResolveRequest,
+  RefMatchKind,
+  ToolPayload,
+  TypeSemanticsResponse,
+} from "@platform/contracts";
+import { matchObjectRefInType, objectRefDeclaredType, pickObjectRefResolution } from "@platform/contracts";
+import { checkInterfaceConformance, formatInterfaceViolations } from "@platform/contracts";
+// WO-69 P3 · `functions` 的真实性靠 P2 的求解器本体签名注册表兑现（**只 import 纯声明模块**：
+// ontology-signature.ts 的运行时依赖为零 → 不引入 ontology ↔ solvers 循环）。
+import { SOLVER_ONTOLOGY_SIGNATURES } from "./solvers/ontology-signature.js";
+// WO-PREDICATE-EDGE · 谓词边（`viaWhere`）。求值器复用 A5 规则 DSL，本模块只收窄子集 + 写入期校验。
+import { compileLinkPredicate, linkPredicateHolds, type LinkPredicate } from "./ontology-link-predicate.js";
+import { compileLinkKeyExpr, evalLinkKey, type LinkKeyExpr } from "./ontology-link-keyexpr.js";
+import { DslError } from "./ruledsl.js";
 import type {
   AuthCtx,
   DerivationRun,
@@ -7,12 +27,14 @@ import type {
   ObjectInstance,
   ObjectTypeDef,
   OntologyVersion,
+  SourceBinding,
 } from "./domain.js";
+import { displayUnit } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { AuthzService } from "./authz.js";
 import type { SolverService } from "./solvers/service.js";
 import { newId } from "./ids.js";
-import { notFound, validationError } from "./errors.js";
+import { invalidState, notFound, validationError } from "./errors.js";
 import { round } from "./prng.js";
 import type { OutboxService } from "./outbox.js";
 
@@ -21,6 +43,70 @@ interface AggregateFormula {
   sourceType: string;
   sourceProp: string;
   byField: string;
+}
+
+/**
+ * WO-LINKTYPE-IMPL / WO-MATERIALIZE-3EXT · 「声明兑现成了几条实例边」的回执。
+ *
+ * `carrierObjects` 在桥形态下 = 扫过的**桥记录数**（属性形态下 = 载体对象数）——
+ * 两种形态下它答的都是同一个问题「我一共看了几行」。
+ * `ambiguousAnchors` 只在真有撞车时出现（按非主键列匹配才可能），缺省不出现 ⇒ 老调用方不受影响。
+ */
+export interface MaterializeResult {
+  created: number;
+  unresolved: number;
+  carrierObjects: number;
+  /** 锚点列上出现同值的键数（我替你挑了排序首个）。0 时不下发 —— 「没有歧义」不该长得像「有歧义但为 0」。 */
+  ambiguousAnchors?: number;
+  /**
+   * WO-COMPUTED-EDGE · `viaKeyExpr` 算出了**几个互不相同**的键。**算端点这一路必给。**
+   *
+   * 为什么它必须上回执：把算端点做成机制，等于把「算错了」搬进声明，而声明在数据库里、不在 diff 里。
+   * 本仓真事：`model_in_segment` 的旧派生式让 6 个型号**全落 `pas`** —— 边有实例、检索走得通、
+   * 四包全绿，只是三个细分坍缩成一个。`distinct=1` 就是这件事在物化那一刻的**唯一可见形态**。
+   */
+  keyExprDistinctKeys?: number;
+  /**
+   * WO-COMPUTED-EDGE · 键表达式求值为 `null` 的行数（属性缺失 / 串参与四则 / 除零）。
+   * **与 `unresolved` 分开计**：「公式算不出键」与「算出了键但查无锚点」修法完全不同，
+   * 混成一个数会让前者伪装成后者。0 时不下发。
+   */
+  keyExprNullRows?: number;
+  /** WO-COMPUTED-EDGE · 叉积两侧谓词筛完之后的行数（限界证据：候选 |from|×|to| → 边 M）。 */
+  crossFrom?: number;
+  crossTo?: number;
+}
+
+/**
+ * WO-COMPUTED-EDGE · 键表达式可引用的属性名全集 = **声明属性 ∪ 派生属性**。
+ *
+ * 为什么派生属性也算：`ontology-dsl` 是**派生属性自己的**求值器，`this.value`（`qty * unitPrice`）
+ * 这类派生列在 `props` 上是实打实存在的。只用 `properties` 校验会把它们判成「不存在的属性」
+ * 而 400 —— 那是把一个合法写法拦在门外，与本仓「白名单迟早被例外吃光」是同一个形态的错。
+ */
+function carrierPropKeysOf(t: { properties: { propKey: string }[]; derivedProperties?: { propKey: string }[] } | null | undefined): string[] {
+  if (!t) return [];
+  return [...t.properties.map((p) => p.propKey), ...(t.derivedProperties ?? []).map((d) => d.propKey)];
+}
+
+/** 交叉验证用：宽松等值比较（数字容差 1e-9；其余转字符串比较，避免类型/格式假阳）。 */
+export function looseEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a === "number" || typeof b === "number") {
+    const na = Number(a);
+    const nb = Number(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return Math.abs(na - nb) < 1e-9;
+  }
+  if (typeof a === "boolean" || typeof b === "boolean") {
+    return String(a).toLowerCase() === String(b).toLowerCase();
+  }
+  return String(a).trim() === String(b).trim();
+}
+
+function stringifyVal(v: unknown): string {
+  if (v === null || v === undefined) return "∅";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
 }
 
 /** Parse "SUM(Order.qty BY model)" style aggregate formulas. */
@@ -116,44 +202,327 @@ export class OntologyService {
     return types[0];
   }
 
+  /**
+   * WO-QOS-ONTOLOGY-CONTEXT / WO-ONTOLOGY-CONTEXT-A · 口径语义只读投影（单一真值 = A）。
+   *
+   * 对请求的对象类型返回 { 属性口径(description/unit/dataType) + 派生公式(formula) + 相关已发布规则(expression/severity) }。
+   * `keys` 省略/空 = 全部已发布 ACTIVE 类型；给定 `keys` 只投影这些（未知/未发布类型静默略过）。
+   * 全部字段来自本租户已发布本体（listTypes）+ 规则库（PUBLISHED · 按 scopeObjectTypes 命中）——不新增/改写任何口径真值
+   * （description/formula/expression 未填即诚实缺省）。R2 仅本租户（ctx 隔离）· R6 确定性字典序 · 纯读。
+   *
+   * **单一真值抽取**：GET /a/v1/ontology/type-semantics（喂 B 的 LLM prompt）与 A 侧内部消费者（如
+   * validate-output 口径注解/scope 规则命中）经此一个方法共享同一口径来源——不留第三份拷贝，杜绝语义漂移。
+   */
+  async getTypeSemantics(ctx: AuthCtx, keys?: string[]): Promise<TypeSemanticsResponse> {
+    const wanted = keys && keys.length > 0 ? new Set(keys) : undefined;
+    const allTypes = await this.listTypes(ctx);
+    const publishedRules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    const byKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    const picked = allTypes
+      .filter((t) => t.status === "ACTIVE" && (!wanted || wanted.has(t.key)))
+      .sort((a, b) => byKey(a.key, b.key));
+    const types = picked.map((t) => ({
+      typeKey: t.key,
+      displayName: t.displayName,
+      props: [...t.properties]
+        .sort((a, b) => byKey(a.propKey, b.propKey))
+        .map((p) => ({
+          propKey: p.propKey,
+          // WO-SCHEMA-ZH：中文业务名与 unit 同级透出（缺则整键不下发 = 诚实留白，B 侧不臆造）。
+          ...(p.displayName ? { displayName: p.displayName } : {}),
+          ...(p.description ? { description: p.description } : {}),
+          ...(displayUnit(p.unit) ? { unit: displayUnit(p.unit)! } : {}),
+          dataType: p.dataType,
+        })),
+      derived: [...(t.derivedProperties ?? [])]
+        .sort((a, b) => byKey(a.propKey, b.propKey))
+        .map((d) => ({ propKey: d.propKey, ...(d.formula ? { formula: d.formula } : {}) })),
+      rules: publishedRules
+        .filter((r) => r.scopeObjectTypes.includes(t.key))
+        .sort((a, b) => byKey(a.key, b.key))
+        // WO-RULE-EXPR-PARAMS：params 随 expression 一起带出（`params.<名>` 的解析源，拆开传即哑弹）。
+        .map((r) => ({ key: r.key, name: r.name, ...(r.expression ? { expression: r.expression } : {}), severity: r.severity, ...(r.params && Object.keys(r.params).length > 0 ? { params: r.params } : {}) })),
+    }));
+    return { types };
+  }
+
   async upsertType(
     ctx: AuthCtx,
     input: Omit<ObjectTypeDef, "id" | "tenantId" | "version" | "status"> & { status?: "ACTIVE" },
   ): Promise<ObjectTypeDef> {
     const existing = await this.getType(ctx, input.key);
+    // WO-D6：**先摊开 input，再覆写服务端自管字段** —— 不再逐字段列举。
+    // 老写法手抄白名单，`ObjectTypeDef` 后加的 7 个 OntoFlow 扩展字段
+    // （storageMode/stateVariables/functions/actions/security/entityCategory/description）
+    // 一个都没抄进去 ⇒ 调用方（如 OntoFlow 发布 `pipeline/subgraph.ts buildTypeDefs` 真的填了）
+    // 写进来就被静默丢弃，读出侧恒空 —— 这正是欠账 #69「本体七要素：Interface 恒零 /
+    // Security 列级恒零 / Action 无回写声明 / Function 无本体签名」的根因。
+    // 摊开写法让契约新增字段**默认过得去**，把"漏抄"这个病根去掉，而不是再补 7 行下次再漏第 8 行。
+    // 下面这几个必须显式覆写，它们是服务端真值、不许调用方指定：
+    //   id/tenantId/version/status —— 身份与版本机；
+    //   published/deprecation —— 治理增量 §2.1 API 名不可变的锚点，只能由 publishVersion/deprecate 迁移。
     const def: ObjectTypeDef = {
+      ...input,
       id: existing?.id ?? newId("otype"),
       tenantId: ctx.tenantId,
-      key: input.key,
-      displayName: input.displayName,
       domain: input.domain ?? existing?.domain,
-      properties: input.properties,
       derivedProperties: input.derivedProperties ?? [],
       sourceBindings: input.sourceBindings ?? [],
       version: (existing?.version ?? 0) + 1,
       status: "ACTIVE",
       published: existing?.published,
       deprecation: existing?.deprecation,
-      // OntoFlow（PRD v2）扩展字段透传（缺省回退既有值）。
-      storageMode: input.storageMode ?? existing?.storageMode,
-      stateVariables: input.stateVariables ?? existing?.stateVariables,
-      functions: input.functions ?? existing?.functions,
-      actions: input.actions ?? existing?.actions,
-      security: input.security ?? existing?.security,
-      entityCategory: input.entityCategory ?? existing?.entityCategory,
-      description: input.description ?? existing?.description,
+      // WO-69 P3：接口声明与行动绑定是**可选扩展**——入参给了用入参，没给则沿用既有（不因一次
+      // upsert 把已声明的 implements/actions 悄悄抹掉）。两者皆无 → 字段不出现 = 逐字节沿用现状。
+      ...(input.implements ?? existing?.implements
+        ? { implements: input.implements ?? existing?.implements }
+        : {}),
+      ...(input.actions ?? existing?.actions ? { actions: input.actions ?? existing?.actions } : {}),
     };
     await this.repos.ontologyTypes.put(def);
     return def;
   }
 
+  /**
+   * WO-69 P3 · 为已存在类型设置「实现的接口 / 绑定的行动」（种子与管理台用）。只改这两个字段，
+   * 其余（属性/派生/域/published/version）原样保留 —— 与 `setSourceBindings` 同型。类型不存在则略过。
+   */
+  async setInterfaceBindings(
+    ctx: AuthCtx,
+    key: string,
+    input: { implements?: ImplementsRef[]; actions?: { actionTypeKey: string }[] },
+  ): Promise<void> {
+    const existing = await this.getType(ctx, key);
+    if (!existing) return;
+    await this.repos.ontologyTypes.put({
+      ...existing,
+      ...(input.implements ? { implements: input.implements } : {}),
+      ...(input.actions ? { actions: input.actions } : {}),
+    });
+  }
+
+  /**
+   * WO-MODELING-INTERACTIVE：为已存在对象类型补真实来源绑定（provenance 回填），只改 sourceBindings、
+   * 其余字段（属性/派生/域/published/version）原样保留。用于合成 A 路把"由某数据集物化"的类型标上其源
+   * RawDataset（KILL-MOCK：真有源标真源）；类型不存在则静默略过。R2 tenant 隔离（getType 已按 ctx）。
+   */
+  async setSourceBindings(ctx: AuthCtx, key: string, sourceBindings: SourceBinding[]): Promise<void> {
+    const existing = await this.getType(ctx, key);
+    if (!existing) return;
+    await this.repos.ontologyTypes.put({ ...existing, sourceBindings });
+  }
+
   async upsertLinkType(
     ctx: AuthCtx,
     input: Omit<LinkTypeDef, "id" | "tenantId" | "version">,
-  ): Promise<LinkTypeDef> {
+  ): Promise<LinkTypeDef & { materialized: MaterializeResult }> {
     const existing = (
       await this.repos.ontologyLinks.list(ctx.tenantId, (l) => l.key === input.key)
     )[0];
+    // WO-LINKTYPE-IMPL：`viaProperty` 必须真是 fromType 上的一个属性。
+    // **不许静默** —— 打错一个字就静默造一条永远 0 实例的死边，正是本仓「状态变量自由文本」那个老坑
+    // （打错字 = 静默造一个死变量且删不掉）。这里当场 400 点名，并把可选属性列出来。
+    if (input.viaProperty !== undefined) {
+      // 外键长在哪一侧，就去哪一侧的属性表里校验（viaSide 缺省 from）。
+      const carrierKey = (input.viaSide ?? "from") === "from" ? input.fromTypeKey : input.toTypeKey;
+      const carrierType = await this.getType(ctx, carrierKey);
+      if (!carrierType) {
+        throw validationError(
+          `结构边 ${input.key} 声明了「由属性 ${input.viaProperty} 实现」，但${(input.viaSide ?? "from") === "from" ? "来源" : "去向"}类型 ${carrierKey} 不存在`,
+        );
+      }
+      if (!carrierType.properties.some((p) => p.propKey === input.viaProperty)) {
+        throw validationError(
+          `结构边 ${input.key} 的实现属性 '${input.viaProperty}' 不是 ${carrierKey} 的属性` +
+            `（可选：${carrierType.properties.map((p) => p.propKey).join("/") || "该类型没有任何属性"}）`,
+        );
+      }
+      // WO-MATERIALIZE-3EXT 桶② · `anchorProperty` 必须真是**被指向那一侧**的属性。
+      // 与上面同一条纪律：打错一个字就静默造一条永远 0 实例的死边，这里当场 400 并列出可选项。
+      if (input.anchorProperty !== undefined) {
+        const anchorKey = (input.viaSide ?? "from") === "from" ? input.toTypeKey : input.fromTypeKey;
+        const anchorType = await this.getType(ctx, anchorKey);
+        if (!anchorType) {
+          throw validationError(
+            `结构边 ${input.key} 声明了「对到 ${anchorKey}.${input.anchorProperty}」，但该类型不存在`,
+          );
+        }
+        if (!anchorType.properties.some((p) => p.propKey === input.anchorProperty)) {
+          throw validationError(
+            `结构边 ${input.key} 的锚点属性 '${input.anchorProperty}' 不是 ${anchorKey} 的属性` +
+              `（可选：${anchorType.properties.map((p) => p.propKey).join("/") || "该类型没有任何属性"}）`,
+          );
+        }
+      }
+    } else if (
+      // WO-COMPUTED-EDGE：`anchorProperty` 对**算端点**同样有效（算出来的键照样可以对到锚点的非主键列），
+      // 故它的前提从「必须有 viaProperty」放宽成「必须有 viaProperty **或** viaKeyExpr」。
+      // ⚠ `viaMultiValue` 不放宽：键表达式返回的是**单个 Scalar**，多值展开在它身上无意义 ——
+      //   收下它等于收下一个永远不生效的开关，那正是本仓「声明了却什么都没发生」那一类。
+      (input.anchorProperty !== undefined && input.viaKeyExpr === undefined) ||
+      input.viaMultiValue !== undefined
+    ) {
+      // 这两个都是「由哪个属性实现」的修饰词。单独出现 = 用户以为声明了实现方式，其实什么都没声明
+      //（会静默得到一条 0 实例的边）。不许静默收下。
+      throw validationError(
+        `结构边 ${input.key} 声明了 ${input.viaMultiValue !== undefined ? "viaMultiValue" : "anchorProperty"}，` +
+          (input.viaMultiValue !== undefined && input.viaKeyExpr !== undefined
+            ? `但实现方式是 viaKeyExpr —— 键表达式对每一行只算出**一个**键，多值展开在它身上不会生效`
+            : `但没有声明 viaProperty${input.anchorProperty !== undefined ? " 也没有声明 viaKeyExpr" : ""} —— ` +
+              `这些字段是「由哪个属性实现」的修饰词，单独出现不会连出任何边`),
+      );
+    }
+    // WO-MATERIALIZE-3EXT 桶① · 桥实体投影：桥类型 + 两列 + （可选）两端的锚点列，逐项校验。
+    if (input.viaBridge) {
+      const b = input.viaBridge;
+      if (input.viaProperty !== undefined) {
+        // 两套机制同时声明 ⇒ 物化时该听谁的？不许猜，当场拒绝。
+        throw validationError(
+          `结构边 ${input.key} 同时声明了 viaProperty 与 viaBridge —— 这是两种互斥的实现方式，只能选一种`,
+        );
+      }
+      const bridgeType = await this.getType(ctx, b.typeKey);
+      if (!bridgeType) {
+        throw validationError(`结构边 ${input.key} 声明了「经桥 ${b.typeKey} 实现」，但桥类型 ${b.typeKey} 不存在`);
+      }
+      const bridgeProps = bridgeType.properties.map((p) => p.propKey);
+      for (const [label, prop] of [["fromProperty", b.fromProperty], ["toProperty", b.toProperty]] as const) {
+        if (!bridgeProps.includes(prop)) {
+          throw validationError(
+            `结构边 ${input.key} 的桥列 ${label}='${prop}' 不是 ${b.typeKey} 的属性` +
+              `（可选：${bridgeProps.join("/") || "该类型没有任何属性"}）`,
+          );
+        }
+      }
+      // 两端类型必须存在（端点 FK 校验那条纪律对桥形态同样成立），锚点列若显式给了也要真存在。
+      for (const [end, typeKey, anchorProp] of [
+        ["来源", input.fromTypeKey, b.fromAnchorProperty],
+        ["去向", input.toTypeKey, b.toAnchorProperty],
+      ] as const) {
+        const t = await this.getType(ctx, typeKey);
+        if (!t) throw validationError(`结构边 ${input.key} 经桥 ${b.typeKey} 实现，但${end}类型 ${typeKey} 不存在`);
+        if (anchorProp !== undefined && !t.properties.some((p) => p.propKey === anchorProp)) {
+          throw validationError(
+            `结构边 ${input.key} 的${end}锚点属性 '${anchorProp}' 不是 ${typeKey} 的属性` +
+              `（可选：${t.properties.map((p) => p.propKey).join("/") || "该类型没有任何属性"}）`,
+          );
+        }
+      }
+    }
+    /*
+     * WO-COMPUTED-EDGE · **四种实现形态互斥**（属性 / 桥 / 算端点 / 叉积）。
+     * 同时声明两种 ⇒ 物化时该听谁的？不许猜，当场拒绝 —— 与上面 `viaProperty × viaBridge`
+     * 那一条同款判据，只是把二元互斥扩成四元。
+     */
+    {
+      const declared = [
+        ["viaProperty", input.viaProperty !== undefined],
+        ["viaBridge", input.viaBridge !== undefined],
+        ["viaKeyExpr", input.viaKeyExpr !== undefined],
+        ["viaCross", input.viaCross !== undefined],
+      ].filter(([, on]) => on).map(([n]) => n as string);
+      if (declared.length > 1) {
+        throw validationError(
+          `结构边 ${input.key} 同时声明了 ${declared.join(" 与 ")} —— 这些是互斥的实现方式，只能选一种`,
+        );
+      }
+    }
+    // WO-COMPUTED-EDGE 桶④·算端点：`viaKeyExpr` 与 `viaProperty` 同一条纪律 —— **不许静默**。
+    // 表达式取不到字段时求值为 null ⇒ 该行算不出键 ⇒ 全体落空的死边，且全程不报错。
+    if (input.viaKeyExpr !== undefined) {
+      const carrierKey = (input.viaSide ?? "from") === "from" ? input.fromTypeKey : input.toTypeKey;
+      const carrierType = await this.getType(ctx, carrierKey);
+      if (!carrierType) {
+        throw validationError(
+          `结构边 ${input.key} 声明了键表达式 viaKeyExpr，但${(input.viaSide ?? "from") === "from" ? "来源" : "去向"}类型 ${carrierKey} 不存在`,
+        );
+      }
+      // 编译期已把「引用不存在的属性 / 用聚合 / 常量公式」逐条 400 点名（见 ontology-link-keyexpr.ts）。
+      compileLinkKeyExpr(input.viaKeyExpr, carrierKey, carrierPropKeysOf(carrierType));
+      // `anchorProperty` 对算端点同样有效（算出来的键可以对到锚点的非主键列），照 viaProperty 那条校验。
+      if (input.anchorProperty !== undefined) {
+        const anchorKey = (input.viaSide ?? "from") === "from" ? input.toTypeKey : input.fromTypeKey;
+        const anchorType = await this.getType(ctx, anchorKey);
+        if (!anchorType) {
+          throw validationError(`结构边 ${input.key} 声明了「对到 ${anchorKey}.${input.anchorProperty}」，但该类型不存在`);
+        }
+        if (!anchorType.properties.some((p) => p.propKey === input.anchorProperty)) {
+          throw validationError(
+            `结构边 ${input.key} 的锚点属性 '${input.anchorProperty}' 不是 ${anchorKey} 的属性` +
+              `（可选：${anchorType.properties.map((p) => p.propKey).join("/") || "该类型没有任何属性"}）`,
+          );
+        }
+      }
+    }
+    // WO-PREDICATE-EDGE：`viaWhere` 同样**不许静默**。谓词取不到字段时求值器一律判假 ⇒
+    // 每一行都被筛掉 ⇒ 0 实例的死边，且全程不报错。所以打错字 / 用了被禁子集一律当场 400。
+    // WO-COMPUTED-EDGE：`viaWhereTo` 是它的 anchor 侧对称件，共用同一份编译器与同一套话术。
+    for (const [field, src, sideOfPred] of [
+      ["viaWhere", input.viaWhere, "carrier"],
+      ["viaWhereTo", input.viaWhereTo, "anchor"],
+    ] as const) {
+      if (src === undefined) continue;
+      if (input.viaProperty === undefined && input.viaKeyExpr === undefined) {
+        throw validationError(
+          `结构边 ${input.key} 声明了谓词 ${field} 却既没有 viaProperty 也没有 viaKeyExpr —— ` +
+            `谓词只能**收窄**一个已存在的连接，自己造不出连接（端点仍须由 viaProperty 或 viaKeyExpr 给出；` +
+            `叉积的两侧谓词写在 viaCross.fromWhere / viaCross.toWhere 里）`,
+        );
+      }
+      const fromIsCarrier = (input.viaSide ?? "from") === "from";
+      const typeKey =
+        sideOfPred === "carrier"
+          ? fromIsCarrier ? input.fromTypeKey : input.toTypeKey
+          : fromIsCarrier ? input.toTypeKey : input.fromTypeKey;
+      const t = await this.getType(ctx, typeKey);
+      if (!t) {
+        throw validationError(`结构边 ${input.key} 声明了谓词 ${field}，但被它筛的类型 ${typeKey} 不存在`);
+      }
+      try {
+        compileLinkPredicate(src, typeKey, t.properties.map((p) => p.propKey));
+      } catch (e) {
+        if (e instanceof DslError) {
+          throw validationError(
+            `结构边 ${input.key} 的谓词 ${field} 无效：${e.message}` +
+              (e.position != null ? `（字符位 ${e.position}）` : ""),
+          );
+        }
+        throw e;
+      }
+    }
+    /*
+     * WO-COMPUTED-EDGE 桶④·造叉积：两侧谓词各按自己那一侧的类型校验，`maxEdges` 必须是正整数。
+     * ⚠ **上限不给默认值**：叉积是全仓唯一一种边数不随数据量线性增长的声明，
+     * 一个默认值等于替声明方做了「这条边最多能有多大」这个判断，而那正是本字段要逼他自己想清楚的事。
+     */
+    if (input.viaCross) {
+      const cross = input.viaCross;
+      if (!Number.isInteger(cross.maxEdges) || cross.maxEdges <= 0) {
+        throw validationError(
+          `结构边 ${input.key} 的叉积上限 viaCross.maxEdges 必须是正整数（收到 ${String(cross.maxEdges)}）——` +
+            `叉积的边数是两侧行数之积，没有上限就没有任何东西拦住一次误声明写爆仓储`,
+        );
+      }
+      for (const [label, typeKey, src] of [
+        ["fromWhere", input.fromTypeKey, cross.fromWhere],
+        ["toWhere", input.toTypeKey, cross.toWhere],
+      ] as const) {
+        const t = await this.getType(ctx, typeKey);
+        if (!t) throw validationError(`结构边 ${input.key} 声明了叉积，但${label === "fromWhere" ? "来源" : "去向"}类型 ${typeKey} 不存在`);
+        if (src === undefined) continue;
+        try {
+          compileLinkPredicate(src, typeKey, t.properties.map((p) => p.propKey));
+        } catch (e) {
+          if (e instanceof DslError) {
+            throw validationError(
+              `结构边 ${input.key} 的叉积谓词 viaCross.${label} 无效：${e.message}` +
+                (e.position != null ? `（字符位 ${e.position}）` : ""),
+            );
+          }
+          throw e;
+        }
+      }
+    }
     const def: LinkTypeDef = {
       id: existing?.id ?? newId("ltype"),
       tenantId: ctx.tenantId,
@@ -161,13 +530,431 @@ export class OntologyService {
       ...input,
     };
     await this.repos.ontologyLinks.put(def);
-    return def;
+    // 声明 → 实例：把「这条边由哪个属性实现」兑现成真的 LinkInstance，否则多跳检索遍历不到。
+    // 计数随定义一起回给调用方（路由据此告诉用户"连出了几条"），**不要在外面再算一遍**。
+    const materialized = await this.materializeDeclaredLinks(ctx, def);
+    return { ...def, materialized };
   }
 
-  /** Snapshot current types+links as a new ontology version and notify webhooks. */
-  async publishVersion(ctx: AuthCtx): Promise<OntologyVersion> {
+  /**
+   * WO-LINKTYPE-IMPL · **把结构边的声明兑现成链路实例**（`LinkTypeDef` → `LinkInstance`）。
+   *
+   * 多跳检索 `executeSlice` 遍历 `repos.links`，而建边只写 `repos.ontologyLinks` ——
+   * 这个函数就是原先缺失的那座桥。没有它，建出来的边在检索里恒为 0 条。
+   *
+   * 口径：
+   * · **只在声明了 `viaProperty` 时动手**；没声明 ⇒ 原样返回 0，老行为逐字节不变（加性·零回归）。
+   * · 连接方式 = 来源对象 `props[viaProperty]` 的值 ↔ 目标对象**业务主键**（`objectKey ?? props[pk]`）。
+   * · **幂等 / R6 确定性**：link 实例 id 由 `key + 来源对象 id` 确定性拼出，重跑逐字节一致；
+   *   重算前先删掉**本机制自己造的**那批（`origin.type === "LINK_DERIVED"` 且同 key）——
+   *   出厂种子的边是 `SYNTHETIC`，**绝不会被误删**（这是单列一个 origin 变体的全部理由）。
+   * · 归并对象（`mergedInto`）不参与，与 `sim/view-config` 的口径一致。
+   * · 值为空（null/undefined/空串）⇒ 该对象没有这条边，不算错；值有但查无目标 ⇒ 计入 `unresolved`，
+   *   **如实回报**，不静默吞掉（「建了 0 条」与「有 12 条指向不存在的目标」是两个不同的答案）。
+   *
+   * 两侧对称（`viaSide`）：把带外键的那一侧叫 **carrier**、被指向的那一侧叫 **anchor**，
+   * 两种方向共用同一段扫描逻辑，只在最后拼 `fromId`/`toId` 时分叉 —— 一对多边（外键在去向侧，
+   * 实测占 19.8%）因此同样能物化，不必为它另写一套。
+   *
+   * ── WO-MATERIALIZE-3EXT：三类**显式声明**的扩展（缺省全不填 ⇒ 老行为逐字节不变）─────
+   * · 桶② `anchorProperty`  —— 外键对到 anchor 的**非主键列**（实测 5 条边卡在这里）
+   * · 桶⑤ `viaMultiValue`   —— carrier 的那一列是**数组**，逐元素各出一条边（实测 1 条）
+   * · 桶① `viaBridge`       —— 关系本身是个**桥对象**，桥的 props 随边带过去（实测 1 条可单跳表达）
+   *
+   * ⛔ **三类都要求显式填写，一律不做推断**。实测反证：`transfer_from_base` 与 `transfer_to_base`
+   * 的候选属性集完全相同（`[fromBase, toBase]` 各 17 条命中），任何「取第一个」的推断器都会
+   * **把其中一条的拓扑静默接反且不报错**；全仓有此歧义的边共 7 条。
+   */
+  async materializeDeclaredLinks(
+    ctx: AuthCtx,
+    def: LinkTypeDef,
+  ): Promise<MaterializeResult> {
+    // WO-COMPUTED-EDGE：四种实现形态（属性 / 桥 / 算端点 / 叉积）任一声明才动手；一个都没有 ⇒ 老行为。
+    if (!def.viaProperty && !def.viaBridge && !def.viaKeyExpr && !def.viaCross) {
+      return { created: 0, unresolved: 0, carrierObjects: 0 };
+    }
+    // 先清掉本机制上一轮造的同 key 边（声明改了、或目标数据变了，要能重算）。
+    // 四种形态共用同一个 origin 变体 ⇒ 从一种改成另一种时旧边同样会被收拾干净。
+    await this.repos.links.removeWhere(
+      ctx.tenantId,
+      (l) => l.type === def.key && l.origin.type === "LINK_DERIVED",
+    );
+    if (def.viaCross) return await this.materializeViaCross(ctx, def, def.viaCross);
+    return def.viaBridge
+      ? await this.materializeViaBridge(ctx, def, def.viaBridge)
+      : await this.materializeViaProperty(ctx, def);
+  }
+
+  /**
+   * WO-COMPUTED-EDGE · 编译一侧的谓词。carrier 侧读 `viaWhere`，anchor 侧读 `viaWhereTo`。
+   *
+   * 编译失败在物化期**抛出**而不是回落成「不筛」：静默不筛 = 把一条谓词边悄悄降级成全连接边，
+   * 比报错危险得多（多出来的边不会红，只会让下钻结果变多）。写入期已 400 过一次，能走到这里
+   * 说明是老快照里的存量声明，同样不许兜底。
+   */
+  private async compileSidePredicate(
+    ctx: AuthCtx,
+    src: string | undefined,
+    typeKey: string,
+  ): Promise<LinkPredicate | null> {
+    if (src === undefined) return null;
+    const t = await this.getType(ctx, typeKey);
+    return compileLinkPredicate(src, typeKey, t?.properties.map((p) => p.propKey) ?? []);
+  }
+
+  /**
+   * 按 anchor 的某一列建「业务值 → 对象 id」索引。
+   *
+   * `anchorProperty` 缺省 = 业务主键（`objectKey ?? props[pk]`，与 `executeSlice` 的 `objectKeyOf` 同口径）；
+   * 显式给了就按那一列（WO-MATERIALIZE-3EXT 桶②）。
+   *
+   * ⚠ **同值必须如实回报，不许静默取第一个**：按非主键列匹配天然可能一对多
+   * （两个客户同名 ⇒ 一张发票该连谁）。这里取**排序后第一个**保证 R6 确定性，
+   * 同时把撞车的键数记进 `ambiguous` 交给调用方 —— 「对得干干净净」与「有 3 处撞车我替你挑了」
+   * 是两个不同的答案，屏上不该长一样。
+   *
+   * WO-COMPUTED-EDGE：`anchorWhere`（来自 `viaWhereTo`）在**建索引这一步**就把不合格的锚点排除掉，
+   * 而不是建完索引再筛 —— 后者会让被排除的锚点仍然参与 `ambiguous` 计数，
+   * 于是「我筛掉了撞车的那一个」在回执上仍报有歧义。判据要落在**进索引的那批行**上。
+   */
+  private async buildAnchorIndex(
+    ctx: AuthCtx,
+    anchorTypeKey: string,
+    anchorProperty: string | undefined,
+    anchorWhere?: LinkPredicate | null,
+  ): Promise<{ index: Map<string, string>; ambiguous: number } | null> {
+    const anchorType = await this.getType(ctx, anchorTypeKey);
+    if (!anchorType) return null;
+    const keyProp =
+      anchorProperty ?? anchorType.properties.find((p) => p.isPrimaryKey)?.propKey ?? "id";
+    const buckets = new Map<string, string[]>();
+    for (const o of await this.repos.objects.listByType(ctx.tenantId, anchorTypeKey)) {
+      if (o.mergedInto) continue;
+      if (anchorWhere && !linkPredicateHolds(anchorWhere, anchorTypeKey, o.props)) continue;
+      // 缺省口径才认 objectKey（业务主键的既有语义）；显式指定某一列时只读那一列，不许回退到主键 ——
+      // 回退会让「按名字对不上」静默变成「按 id 对上了」，那是另一条边。
+      const bk = anchorProperty === undefined ? (o.objectKey ?? o.props[keyProp]) : o.props[keyProp];
+      if (bk === null || bk === undefined || bk === "") continue;
+      const k = String(bk);
+      const arr = buckets.get(k);
+      if (arr) arr.push(o.id);
+      else buckets.set(k, [o.id]);
+    }
+    const index = new Map<string, string>();
+    let ambiguous = 0;
+    for (const [k, ids] of buckets) {
+      if (ids.length > 1) ambiguous++;
+      index.set(k, [...ids].sort()[0] as string); // 排序取首 ⇒ 同输入同输出（R6）
+    }
+    return { index, ambiguous };
+  }
+
+  /**
+   * 属性形态（含桶② `anchorProperty` 与桶⑤ `viaMultiValue`）。
+   *
+   * WO-COMPUTED-EDGE：**算端点（`viaKeyExpr`）走的也是这一段** —— 唯一的差别是「锚点键从哪来」：
+   * `viaProperty` 从 `c.props[via]` **读**，`viaKeyExpr` 从表达式**算**。往下一律共用同一个
+   * `buildAnchorIndex` / 同一套 `unresolved` 口径 / 同一个方向分叉。
+   * 刻意不为算端点另写一条物化路：另写一套 = 「算出来的键」与「读出来的键」两套匹配语义，
+   * 迟早分叉（本仓「桥形态各写一套锚点索引」那次已经付过一遍学费）。
+   */
+  private async materializeViaProperty(ctx: AuthCtx, def: LinkTypeDef): Promise<MaterializeResult> {
+    const via = def.viaProperty;
+    const side = def.viaSide ?? "from";
+    const carrierTypeKey = side === "from" ? def.fromTypeKey : def.toTypeKey; // 外键长在这一侧
+    const anchorTypeKey = side === "from" ? def.toTypeKey : def.fromTypeKey; // 外键指向这一侧
+    // WO-PREDICATE-EDGE · 谓词筛行；WO-COMPUTED-EDGE · anchor 侧谓词。两侧共用同一份编译器。
+    // 编译失败在这里**抛出**而不是回落成「不筛」：静默不筛 = 把一条谓词边悄悄降级成全连接边，
+    // 比报错危险得多（多出来的边不会红，只会让下钻结果变多）。写入期已 400 过一次，能走到这里
+    // 说明是老快照里的存量声明，同样不许兜底。
+    const predicate = await this.compileSidePredicate(ctx, def.viaWhere, carrierTypeKey);
+    const anchorPredicate = await this.compileSidePredicate(ctx, def.viaWhereTo, anchorTypeKey);
+    const built = await this.buildAnchorIndex(ctx, anchorTypeKey, def.anchorProperty, anchorPredicate);
+    if (!built) return { created: 0, unresolved: 0, carrierObjects: 0 };
+    const { index: anchors, ambiguous } = built;
+    // WO-COMPUTED-EDGE · 键表达式编译一次、逐行求值（纯函数，只读 props ⇒ R6 与谓词同一把尺）。
+    let keyExpr: LinkKeyExpr | null = null;
+    if (def.viaKeyExpr !== undefined) {
+      const carrierType = await this.getType(ctx, carrierTypeKey);
+      keyExpr = compileLinkKeyExpr(
+        def.viaKeyExpr,
+        carrierTypeKey,
+        carrierPropKeysOf(carrierType),
+      );
+    }
+    const carriers = (await this.repos.objects.listByType(ctx.tenantId, carrierTypeKey)).filter(
+      (o) => !o.mergedInto && (!predicate || linkPredicateHolds(predicate, carrierTypeKey, o.props)),
+    );
+    let created = 0;
+    let unresolved = 0;
+    let keyExprNullRows = 0;
+    const distinctKeys = new Set<string>();
+    for (const c of carriers) {
+      let values: unknown[];
+      if (keyExpr) {
+        const k = evalLinkKey(keyExpr, c.props);
+        if (k === null) {
+          // 「公式算不出键」与「算出了键但查无锚点」分开计 —— 修法完全不同，混了会修错地方。
+          keyExprNullRows++;
+          continue;
+        }
+        distinctKeys.add(k);
+        values = [k];
+      } else {
+        const raw = c.props[via as string];
+        if (raw === null || raw === undefined || raw === "") continue; // 没填 = 没这条边，不是错
+        // 桶⑤：显式声明了多值才展开。**不做类型嗅探** —— 见 `LinkTypeDef.viaMultiValue` 头注。
+        // 声明了多值却拿到非数组 ⇒ 当单值处理（数据形态变了，边数会掉，有人会发现），不静默造零边。
+        values = def.viaMultiValue && Array.isArray(raw) ? raw : [raw];
+      }
+      for (const [i, v] of values.entries()) {
+        if (v === null || v === undefined || v === "") continue;
+        const anchorId = anchors.get(String(v));
+        if (!anchorId) {
+          unresolved++;
+          continue;
+        }
+        await this.repos.links.put({
+          // 多值时 id 必须带上元素序号，否则 3 个基地的边互相覆盖、只剩 1 条（本仓「幂等 id 撞车」老坑）。
+          // 算端点恒单值 ⇒ 走不到那个后缀，id 与属性形态同形（`lnk_via_<key>_<carrierId>`）。
+          id: `lnk_via_${def.key}_${c.id}${values.length > 1 ? `_${i}` : ""}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+          tenantId: ctx.tenantId,
+          type: def.key,
+          fromId: side === "from" ? c.id : anchorId,
+          toId: side === "from" ? anchorId : c.id,
+          origin: keyExpr
+            ? { type: "LINK_DERIVED", linkTypeKey: def.key, viaKeyExpr: keyExpr.src }
+            : { type: "LINK_DERIVED", linkTypeKey: def.key, viaProperty: via as string },
+        });
+        created++;
+      }
+    }
+    return {
+      created,
+      unresolved,
+      carrierObjects: carriers.length,
+      ...(ambiguous ? { ambiguousAnchors: ambiguous } : {}),
+      // 算端点必给键分布：`distinct===1` 就是「所有行塌到同一个锚点」这件事的唯一可见形态。
+      // 用 `keyExpr &&` 而不是 `distinctKeys.size &&` —— 算出 0 个键（全 null）同样要说出来，
+      // 否则「公式全废」与「这条边不是算端点」在回执上长一模一样。
+      ...(keyExpr ? { keyExprDistinctKeys: distinctKeys.size } : {}),
+      ...(keyExprNullRows ? { keyExprNullRows } : {}),
+    };
+  }
+
+  /**
+   * 桥形态（桶①·关系即实体）：扫桥的每一行，两端各查一次锚点，**把桥的 props 原样带上边**。
+   *
+   * 「一份记录两个投影」：桥对象继续以节点存在（`model_has_cert` 那类既有边不受影响），
+   * 同一条记录另外投影出一条直连边。**不复制、不做字段白名单** —— 白名单是第二份真相，
+   * 迟早与桥分叉；`bridgeObjectId` 回指让任何时候都能追回那一行。
+   *
+   * 幂等 id 以**桥对象 id** 为准（不是 carrier id）：一条桥记录 ⇔ 一条边，重跑覆盖不翻倍（R6）。
+   */
+  private async materializeViaBridge(
+    ctx: AuthCtx,
+    def: LinkTypeDef,
+    b: NonNullable<LinkTypeDef["viaBridge"]>,
+  ): Promise<MaterializeResult> {
+    const fromIdx = await this.buildAnchorIndex(ctx, def.fromTypeKey, b.fromAnchorProperty);
+    const toIdx = await this.buildAnchorIndex(ctx, def.toTypeKey, b.toAnchorProperty);
+    if (!fromIdx || !toIdx) return { created: 0, unresolved: 0, carrierObjects: 0 };
+    const bridges = (await this.repos.objects.listByType(ctx.tenantId, b.typeKey)).filter(
+      (o) => !o.mergedInto,
+    );
+    let created = 0;
+    let unresolved = 0;
+    for (const br of bridges) {
+      const rawFrom = br.props[b.fromProperty];
+      const rawTo = br.props[b.toProperty];
+      // 任一端没填 = 这条桥记录不表达这条关系，不是错（与属性形态同口径）。
+      if (rawFrom === null || rawFrom === undefined || rawFrom === "") continue;
+      if (rawTo === null || rawTo === undefined || rawTo === "") continue;
+      const fromId = fromIdx.index.get(String(rawFrom));
+      const toId = toIdx.index.get(String(rawTo));
+      if (!fromId || !toId) {
+        unresolved++; // 有值却查无对象 ⇒ 如实回报，不静默吞
+        continue;
+      }
+      await this.repos.links.put({
+        id: `lnk_bridge_${def.key}_${br.id}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+        tenantId: ctx.tenantId,
+        type: def.key,
+        fromId,
+        toId,
+        props: { ...br.props, bridgeObjectId: br.id },
+        origin: { type: "LINK_DERIVED", linkTypeKey: def.key, viaBridgeTypeKey: b.typeKey },
+      });
+      created++;
+    }
+    const ambiguous = fromIdx.ambiguous + toIdx.ambiguous;
+    return { created, unresolved, carrierObjects: bridges.length, ...(ambiguous ? { ambiguousAnchors: ambiguous } : {}) };
+  }
+
+  /**
+   * WO-COMPUTED-EDGE · 叉积形态（桶④后半）：**不经外键**，from 全集 × to 全集，两侧各挂一个谓词收窄。
+   *
+   * ── 先限界再写入，不是写完再统计 ────────────────────────────────────────────
+   * 两侧**先各自筛完、各取真实计数**，乘积超 `maxEdges` ⇒ **当场 400**，一条边都不写。
+   * 事后统计在这里等于没有：`Order`(500) × `OrderLine`(873) = 436,500 条，等发现时已经写进去了。
+   * 报文里把三个实算的数（|from| / |to| / 乘积）全给出来 —— 用户要能自己判断是谓词写松了
+   * 还是这条边本来就不该是叉积，而不是对着一句「太多了」猜。
+   *
+   * ── 边 id 不含任何序号（R6 的命门）────────────────────────────────────────
+   * `lnk_cross_${key}_${fromId}_${toId}` —— 只由两个对象 id 决定。若照抄属性形态那个
+   * `..._${i}` 后缀，`i` 就是 anchor 在 `listByType` 返回序里的位置：**仓储遍历顺序一变边 id 全变，
+   * 而边数不变、四包全绿** —— 那正是「排序塌成 id 序」那一族的静默病。
+   *
+   * `unresolved` 恒 0：叉积没有「有值却查无目标」这一态（两侧都是实打实的对象）。
+   * 如实回 0，不省略这个字段 —— 省略会让调用方以为这条边没有这个维度可看。
+   */
+  private async materializeViaCross(
+    ctx: AuthCtx,
+    def: LinkTypeDef,
+    cross: NonNullable<LinkTypeDef["viaCross"]>,
+  ): Promise<MaterializeResult> {
+    const fromPred = await this.compileSidePredicate(ctx, cross.fromWhere, def.fromTypeKey);
+    const toPred = await this.compileSidePredicate(ctx, cross.toWhere, def.toTypeKey);
+    const fromRows = (await this.repos.objects.listByType(ctx.tenantId, def.fromTypeKey)).filter(
+      (o) => !o.mergedInto && (!fromPred || linkPredicateHolds(fromPred, def.fromTypeKey, o.props)),
+    );
+    const toRows = (await this.repos.objects.listByType(ctx.tenantId, def.toTypeKey)).filter(
+      (o) => !o.mergedInto && (!toPred || linkPredicateHolds(toPred, def.toTypeKey, o.props)),
+    );
+    const product = fromRows.length * toRows.length;
+    if (product > cross.maxEdges) {
+      throw validationError(
+        `结构边 ${def.key} 的叉积会连出 ${product} 条边（${def.fromTypeKey} 筛后 ${fromRows.length} 行 ` +
+          `× ${def.toTypeKey} 筛后 ${toRows.length} 行），超过本次声明的上限 maxEdges=${cross.maxEdges}。` +
+          `一条边都没有写入。请用 viaCross.fromWhere / viaCross.toWhere 把两侧收窄，` +
+          `或确认这条关系真的该是「全连全」再调高上限 —— 叉积是全仓唯一一种边数不随数据量线性增长的声明。`,
+      );
+    }
+    let created = 0;
+    for (const f of fromRows) {
+      for (const t of toRows) {
+        await this.repos.links.put({
+          id: `lnk_cross_${def.key}_${f.id}_${t.id}`.replace(/[^\p{L}\p{N}_-]/gu, "_"),
+          tenantId: ctx.tenantId,
+          type: def.key,
+          fromId: f.id,
+          toId: t.id,
+          origin: { type: "LINK_DERIVED", linkTypeKey: def.key, viaCross: true },
+        });
+        created++;
+      }
+    }
+    // `carrierObjects` 在这里答的仍是同一个问题「我一共看了几行」= 两侧之和（叉积没有单一载体侧）。
+    return { created, unresolved: 0, carrierObjects: fromRows.length + toRows.length, crossFrom: fromRows.length, crossTo: toRows.length };
+  }
+
+  /**
+   * WO-69 P3 · **对象接口一致性门（发布门）**。
+   *
+   * 头号纪律：接口不是注释。声明了 `implements` 却没真长出要求的属性/行动/函数 → **拒绝发布**，
+   * 并把缺口**逐条点名**（哪个类型、哪个接口@哪个版本、缺哪个 propKey/actionTypeKey/solverKey）。
+   *
+   * **零回归**：一个 `implements` 都没声明的租户，`checkInterfaceConformance` 直接空转返回 []，
+   * 发布路径逐字节沿用现状（老快照、老租户不受任何影响）。
+   *
+   * **诚实边界**：本门在**发布时**兑现契约。已经落库的**历史 OntologyVersion 快照**不会被追溯改写——
+   * 接口加要求 ⇒ 从下一次发布起全部 `latest` 实现者被要求补齐，而不是把历史快照判为失效。
+   */
+  async assertInterfaceConformance(ctx: AuthCtx): Promise<void> {
+    const types = await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE");
+    if (!types.some((t) => (t.implements ?? []).length > 0)) return; // 零回归快路
+    const violations = await this.interfaceViolations(ctx, types);
+    if (violations.length > 0) {
+      throw validationError(
+        `对象接口一致性校验未通过（${violations.length} 项）：${formatInterfaceViolations(violations)}`,
+      );
+    }
+  }
+
+  /** 一致性校验的取数 + 纯函数调用（发布门与只读的 conformance 报告共用同一把尺子）。 */
+  async interfaceViolations(
+    ctx: AuthCtx,
+    types?: ObjectTypeDef[],
+  ): Promise<InterfaceViolation[]> {
+    const allTypes = types ?? (await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE"));
+    const interfaces = await this.repos.objectInterfaces.list(ctx.tenantId);
+    const actionTypes = await this.repos.actionTypes.list(ctx.tenantId);
+    return checkInterfaceConformance({
+      types: allTypes.map((t) => ({
+        key: t.key,
+        displayName: t.displayName,
+        properties: t.properties.map((p) => ({ propKey: p.propKey, dataType: p.dataType })),
+        derivedPropKeys: (t.derivedProperties ?? []).map((d) => d.propKey),
+        actions: t.actions,
+        implements: t.implements,
+      })),
+      interfaces,
+      actionTypeKeys: actionTypes.map((a) => a.key),
+      // WO-INTERFACE-ACTIONTYPE-DEEPVAL（残口②）：深校验视图 —— targetTypeKey 归因键 +
+      // paramsSchema.properties 键集投影，发布门据此判「绑定的行动在本类型上兑不兑现得了」。
+      // paramsSchema 形状不可读（无 properties 对象）→ paramKeys 省略 = 形状未知 → 跳过参数对表（诚实缺省）。
+      actionTypes: actionTypes.map((a) => {
+        const props = (a.paramsSchema as { properties?: unknown } | undefined)?.properties;
+        const paramKeys =
+          props && typeof props === "object" && !Array.isArray(props) ? Object.keys(props) : undefined;
+        return {
+          key: a.key,
+          ...(a.targetTypeKey ? { targetTypeKey: a.targetTypeKey } : {}),
+          ...(paramKeys ? { paramKeys } : {}),
+        };
+      }),
+      // WO-69 P2 兑现点：`functions` 校验用的是**真求解器签名注册表**，不是一份手抄清单。
+      solverSignatures: SOLVER_ONTOLOGY_SIGNATURES,
+    });
+  }
+
+  /**
+   * Snapshot current types+links as a new ontology version and notify webhooks.
+   *
+   * WO-PUBLISH-VERSION-PIN · `expectVersion` = **调用方钉死的那个版本号**。
+   *
+   * 此前本方法只算 `max(已有版本)+1` 就发，**不问调用方是为哪个版本号来的**。
+   * 于是会签链上出现了一处**出处串不诚实**：会签单建单时钉的是 v2（`ontologyVersion`），
+   * 全票通过后 `app.ts` 的自动发布路直接调本方法，发出去的却是当时的 `max+1` ——
+   * 2026-09-03 真后端实测（内存模式 + 种子）复现的完整序列：
+   * `建单前 max=v1` → `会签单钉=v2` → `破窗抢先发掉 v2（max=v2）` → `该单签满 → 实际发出 v3`，
+   * 全程 HTTP 200、一句异常都没有。**签字的人以为自己批的是 v2，系统发的是 v3** ——
+   * 审批留痕与实际发布脱钩，追责时说不清批的是哪一版。
+   * ⚠ 这不是「绕过」：会签一条没少签，签满了才发。坏的是**发出去的那个号与签的那个号不是同一个**。
+   *
+   * 判据：**发布必须发「调用方钉的那个版本」，对不上就拒绝，绝不静默改发一个不同的号。**
+   * 静默改号正是本缺陷本身；为了让流程走通而放宽校验，等于把缺陷重新做一遍。
+   *
+   * ⚠ 为什么做成**可选参数**而不是无条件校验：本方法另有**五条内部路**直接当服务方法调
+   * （`synthetic/service.ts` 种子 ×2 · `databuilder/service.ts` · `modeling.ts` · `pipeline/service.ts`），
+   * 它们没有会签单、也无从钉版本号 —— 不传即行为**一字不变**，故一条都不误伤。
+   * 这与「准入闸装路由层不装 service」那条判据不冲突：那条讲的是**强制闸**，
+   * 本参数是**调用方自带的期望值**，默认不生效。
+   *
+   * ⚠ 为什么校验放在**这里**而不是调用点：版本号就是在这一行算出来的。放调用点就得先
+   * `currentVersion()` 再 `publishVersion()`，两次读之间是一个 TOCTOU 窗口 ——
+   * 而「读到的号」与「真发的号」不是同一个，正是本缺陷的形态。放这里两者天然是同一个。
+   */
+  async publishVersion(ctx: AuthCtx, opts?: { expectVersion?: number }): Promise<OntologyVersion> {
+    // WO-69 P3：接口契约先于快照固化 —— 不合规不许进快照（"绿测试≠能用"靠这道门堵）。
+    await this.assertInterfaceConformance(ctx);
     const versions = await this.repos.ontologyVersions.list(ctx.tenantId);
     const version = versions.length > 0 ? Math.max(...versions.map((v) => v.version)) + 1 : 1;
+    const expect = opts?.expectVersion;
+    if (expect !== undefined && expect !== version) {
+      const latest = version - 1;
+      // 两种对不上分开说 —— 运营方下一步动作不同：一种是"你签的那版被人抢发了"，
+      // 一种是"你钉的号根本还轮不到"。只说"版本号不匹配"，人不知道该去干什么。
+      throw invalidState(
+        expect <= latest
+          ? `发布被拒：会签单钉的是 v${expect}，而 v${expect} 已经被发布过了（当前最新 v${latest}）。` +
+            `签的版本号与发出的版本号必须相同，故本次**不改发** v${version} —— ` +
+            `静默改发别的版本号会让审批留痕与实际发布对不上，追责时说不清批的是哪一版。` +
+            `请对 v${version} 重新发起发布会签。`
+          : `发布被拒：会签单钉的是 v${expect}，而下一个可发布的版本号是 v${version}。` +
+            `签的版本号与发出的版本号必须相同，故本次不发布。请对 v${version} 重新发起发布会签。`,
+      );
+    }
     // 治理增量 §2.1：发布即固化 API 名（published=true → 此后 key 不可重命名/复用）。
     const types = await this.repos.ontologyTypes.list(ctx.tenantId);
     for (const t of types) {
@@ -244,23 +1031,45 @@ export class OntologyService {
     limit = 100,
     asOfEpoch?: number,
   ): Promise<ToolPayload> {
-    const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+    // A6：行级过滤 + 列级（属性级）投影同出一份决策（authz 单一机制）。
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const rowFilters = dec.rowFilters;
     const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
     const visible = all
+      .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
       .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
+      // 行级过滤读**未投影**的 props（策略作者可用不可读字段做行筛选）；投影只作用于返回值。
       .filter((o) => this.matchFilter(o.props, filter))
-      .sort((a, b) => (a.id < b.id ? -1 : 1))
-      .slice(0, Math.min(limit, 1000));
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    /**
+     * WO-PAGING-SILENT-TRUNCATION-SCAN · 截断必须**说出来**。
+     * 下面这个 `slice` 是给 agent 的上下文预算（有存在的理由，不动它）；
+     * 有问题的是它此前**一声不响**：回包只有一个裸数组，`Order` 真值 500 而 agent 收到 100 行，
+     * 长得和「一共就 100 张单」完全一样。`total`/`truncated` 让调用方**有可能察觉**，
+     * 与 `GET /a/v1/objects` 的 `hasMore` 是同一条纪律。
+     */
+    const matchedTotal = visible.length;
+    const cap = Math.min(limit, 1000);
+    const page = visible.slice(0, cap);
+    const truncated = matchedTotal > cap;
     if (asOfEpoch === undefined) {
       return {
-        data: visible.map((o) => ({ id: o.id, type: o.type, props: o.props })),
+        data: page.map((o) => ({ id: o.id, type: o.type, props: this.authz.projectProps(dec, o.props) })),
         snapshotVersion: await this.snapshotVersion(ctx.tenantId),
+        total: matchedTotal,
+        truncated,
       };
     }
     const type = await this.getType(ctx, objectType);
     const temporal = new Set((type?.properties ?? []).filter((p) => p.temporal).map((p) => p.propKey));
-    const data = await Promise.all(visible.map((o) => this.objectAsOf(ctx.tenantId, o, temporal, asOfEpoch)));
-    return { data, snapshotVersion: `${await this.snapshotVersion(ctx.tenantId)}@${asOfEpoch}` };
+    const data = await Promise.all(page.map((o) => this.objectAsOf(ctx.tenantId, o, temporal, asOfEpoch)));
+    // 时间回溯读同样过列级投影（否则 asOfEpoch 成为绕过列级安全的后门）。
+    return {
+      data: data.map((d) => ({ ...d, props: this.authz.projectProps(dec, d.props) })),
+      snapshotVersion: `${await this.snapshotVersion(ctx.tenantId)}@${asOfEpoch}`,
+      total: matchedTotal,
+      truncated,
+    };
   }
 
   /** §13.1: reconstruct an object's value as of `asOfEpoch` (temporal rollback + approx flag). */
@@ -308,35 +1117,273 @@ export class OntologyService {
     filter: Record<string, unknown> = {},
   ): Promise<{ rows: { props: Record<string, unknown> }[]; total: number; truncated: boolean }> {
     const CAP = 200_000; // 安全上限：超此返回 truncated=true（防 OOM；真正下推属 E2 转换引擎）
-    const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+    // A6 列级：聚合同样只能看可读列 —— 否则 sum(unitPrice) 就是列级安全的算术后门。
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const rowFilters = dec.rowFilters;
     const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
     const visible = all
+      .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
       .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
       .filter((o) => this.matchFilter(o.props, filter));
     return {
-      rows: visible.slice(0, CAP).map((o) => ({ props: o.props })),
+      rows: visible.slice(0, CAP).map((o) => ({ props: this.authz.projectProps(dec, o.props) })),
       total: visible.length,
       truncated: visible.length > CAP,
     };
   }
 
-  /** GET /a/v1/objects/:type/:id */
-  async getObject(ctx: AuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
-    const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
-    const obj = await this.repos.objects.get(ctx.tenantId, objectId);
-    let found: ObjectInstance | undefined = obj && obj.type === objectType ? obj : undefined;
-    if (!found) {
-      // Allow lookup by primary-key value too (e.g. baseId "changzhou").
-      const type = await this.getType(ctx, objectType);
-      const pk = type ? primaryKeyProp(type) : "id";
-      const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
-      found = all.find((o) => o.props[pk] === objectId);
-    }
-    if (!found || !this.authz.rowAllowed(ctx, rowFilters, found.props)) throw notFound("object");
+  /**
+   * 台账 / objectRef 选择器分页专用的 A6 全量可见读（**不走 queryObjects 的 ≤1000 截断**）。
+   *
+   * 为什么必须另开一个方法而不是把 limit 调大：`queryObjects` 里的 `Math.min(limit, 1000)` 是
+   * 给 `POST /objects/query` 返原始行给 agent 用的**上下文预算**，有它存在的理由，不能动。
+   * 但 `GET /a/v1/objects` 借它做分页读时，那个预算就变成了一道**静默的天花板**：
+   *   · `total` 由截断后的数组长度算出 ⇒ 自报 1000（= 硬顶），而真值 5460（EquipmentOEE，seed 42）；
+   *   · 第 1000 行之后的数据**任何 page 都翻不到**（page=3&pageSize=500 恒回 0 行）。
+   * 最要命的是**调用方无从察觉** —— `total` 是唯一的检测手段，而它自己被同一个硬顶截断。
+   *
+   * 语义与 `queryObjects` 的非 asOfEpoch 路**逐条对齐**（OC1 mergedInto + A6 行级过滤 +
+   * 列级投影 + 按 id 排序），差别只有一个：不截断。仍留 CAP 防 OOM，超了标 `truncated`。
+   */
+  async listVisiblePage(
+    ctx: AuthCtx,
+    objectType: string,
+    filter: Record<string, unknown> = {},
+  ): Promise<{
+    data: { id: string; type: string; props: Record<string, unknown> }[];
+    total: number;
+    truncated: boolean;
+    snapshotVersion: string;
+  }> {
+    const CAP = 200_000; // 与 listVisibleForAggregate 同一安全上限（防 OOM；真正下推属 E2 转换引擎）
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const rowFilters = dec.rowFilters;
+    const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
+    const visible = all
+      .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
+      .filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props))
+      // 行级过滤读**未投影**的 props（与 queryObjects 一致）；投影只作用于返回值。
+      .filter((o) => this.matchFilter(o.props, filter))
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
     return {
-      data: { id: found.id, type: found.type, props: found.props },
+      data: visible
+        .slice(0, CAP)
+        .map((o) => ({ id: o.id, type: o.type, props: this.authz.projectProps(dec, o.props) })),
+      total: visible.length,
+      truncated: visible.length > CAP,
       snapshotVersion: await this.snapshotVersion(ctx.tenantId),
     };
+  }
+
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 单类型引用匹配（**A 侧唯一入口**·规则走 contracts 纯核心）。
+   * 只负责「取哪些行」（租户隔离 R2 + A6 行级过滤），匹配语义一律 `matchObjectRefInType`。
+   */
+  private async matchRefInType(
+    ctx: AuthCtx,
+    objectType: string,
+    ref: unknown,
+    /** undefined = 用 `matchObjectRefInType` 的单源默认（含 partial）；#108 不许在调用点抄第二份。 */
+    accept: RefMatchKind[] | undefined,
+    rowFilters: Awaited<ReturnType<AuthzService["require"]>>,
+  ): Promise<{ hits: ObjectRefHit[]; attempt: ObjectRefAttempt; byInternalId: Map<string, ObjectInstance> }> {
+    const typeDef = await this.getType(ctx, objectType);
+    if (!typeDef) {
+      return {
+        hits: [],
+        attempt: { objectType, keysTried: [], propsTried: [], rowsScanned: 0, reason: "TYPE_NOT_FOUND" },
+        byInternalId: new Map(),
+      };
+    }
+    const all = await this.repos.objects.listByType(ctx.tenantId, objectType);
+    const visible = all.filter((o) => this.authz.rowAllowed(ctx, rowFilters, o.props));
+    const byInternalId = new Map(visible.map((o) => [o.id, o]));
+    const { hits, attempt } = matchObjectRefInType({
+      ref,
+      objectType,
+      typeDef,
+      rows: visible.map((o) => ({ id: o.id, props: o.props })),
+      ...(accept ? { accept } : {}),
+    });
+    return { hits, attempt, byInternalId };
+  }
+
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · **「实体文本 → 对象引用」解析正门**（POST /a/v1/ontology/resolve-ref）。
+   *
+   * 病根：AgentCore 槽位填充逐类型调 `getObject(type, 常州)`——那是按 id/主键查，中文名必 404 ⇒ 反问。
+   * 本方法按 **id / 名称 / 别名** 三层解析，规则由 contracts `matchObjectRefInType` 单一出处提供
+   * （零业务常数 R14：可识别属性完全从 ObjectTypeDef 元数据派生，**不存在任何中文名→id 词表**）。
+   *
+   * 诚实纪律：无权读的类型记 `FORBIDDEN` 留痕（不静默跳过）；同层级多命中判 `ambiguous`
+   * （**不取第一个**）；解析不到就返回 `resolved:false` + 全部 attempts（试了哪些类型/什么键/为什么不匹）。
+   */
+  async resolveObjectRef(ctx: AuthCtx, req: ObjectRefResolveRequest): Promise<ObjectRefResolution> {
+    // #108 · 单源默认：**不许**在这里再抄一份层级清单。原来这行写死
+    // `["id","name","alias"]`，于是 `partial`（人话近指·治「常州基地/常州工厂」）
+    // 虽然进了 `matchObjectRefInType` 的默认 accept，却**永远到不了这条正门**——
+    // 铁律 0.5 第三形态「接了线接错地方」：线接在共享默认值上，调用点各自把它挡掉了。
+    // 传 undefined 让解析器用自己的单源默认；显式 `accept:["id"]`（老 getObject 语义）照旧生效。
+    const accept = req.accept as RefMatchKind[] | undefined;
+    const declared = objectRefDeclaredType(req.ref);
+    let typeKeys: string[];
+    if (req.types && req.types.length) typeKeys = [...new Set(req.types)];
+    else if (declared) typeKeys = [declared];
+    else typeKeys = (await this.listTypes(ctx)).map((t) => t.key);
+    typeKeys = [...typeKeys].sort(); // R6 确定性：类型遍历序固定
+
+    const hits: ObjectRefHit[] = [];
+    const attempts: ObjectRefAttempt[] = [];
+    for (const objectType of typeKeys) {
+      let rowFilters: Awaited<ReturnType<AuthzService["require"]>>;
+      try {
+        rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", objectType, "READ");
+      } catch {
+        attempts.push({ objectType, keysTried: [], propsTried: [], rowsScanned: 0, reason: "FORBIDDEN" });
+        continue;
+      }
+      const r = await this.matchRefInType(ctx, objectType, req.ref, accept, rowFilters);
+      hits.push(...r.hits);
+      attempts.push(r.attempt);
+    }
+    return pickObjectRefResolution(req.ref, hits, attempts, { maxCandidates: req.maxCandidates });
+  }
+
+  /**
+   * GET /a/v1/objects/:type/:id — 按**内部 id / 主键**取对象（语义不变）。
+   * WO-SLOT-ENTITY-RESOLVE：匹配走与 `resolveObjectRef` **同一个**核心（`accept:["id"]`），
+   * 不再自带一套 pk 回退查找——「按名解析」与「按 id 取数」是同一规则的两个接受层级，不是两套实现。
+   */
+  async getObject(ctx: AuthCtx, objectType: string, objectId: string): Promise<ToolPayload> {
+    // WO-69 P1 列级：取 AccessDecision（而非仅 rowFilters）——下面 projectProps 要靠它剔除不可读属性。
+    const dec = await this.authz.requireDecision(ctx, "OBJECT_TYPE", objectType, "READ");
+    const { hits, byInternalId } = await this.matchRefInType(ctx, objectType, objectId, ["id"], dec.rowFilters);
+    const found = hits.length ? byInternalId.get(hits[0]!.internalId) : undefined;
+    if (!found) throw notFound("object");
+    return {
+      data: { id: found.id, type: found.type, props: this.authz.projectProps(dec, found.props) },
+      snapshotVersion: await this.snapshotVersion(ctx.tenantId),
+    };
+  }
+
+  // -- cross-validation（推演验证痕迹 Layer 2：结论断言 vs 知识图谱已有事实）------------
+  /**
+   * POST /a/v1/ontology/cross-validate — 对推演结论里的断言（对象属性 / 关系）逐条
+   * 反向核对知识图谱（对象库 props + 链路）已有事实，标 CONSISTENT/CONFLICT/NO_EVIDENCE。
+   * 确定性（R6）、tenant 隔离（R2）、行级过滤（R6 authz）。无网络/无 LLM。
+   */
+  async crossValidate(
+    ctx: AuthCtx,
+    claims: {
+      kind: "PROPERTY" | "LINK";
+      subjectType: string;
+      subjectId: string;
+      property?: string;
+      assertedValue?: unknown;
+      linkType?: string;
+      objectType?: string;
+      objectId?: string;
+    }[],
+  ): Promise<{
+    claims: ClaimVerdict[];
+    verdict: "ALL_CONSISTENT" | "PARTIAL" | "CONFLICT" | "NO_CLAIMS";
+    snapshotVersion: string;
+  }> {
+    const snapshotVersion = await this.snapshotVersion(ctx.tenantId);
+    const verdicts: ClaimVerdict[] = [];
+    for (const c of claims.slice(0, 200)) {
+      verdicts.push(await this.checkClaim(ctx, c, snapshotVersion));
+    }
+    let verdict: "ALL_CONSISTENT" | "PARTIAL" | "CONFLICT" | "NO_CLAIMS";
+    if (verdicts.length === 0) verdict = "NO_CLAIMS";
+    else if (verdicts.some((v) => v.status === "CONFLICT")) verdict = "CONFLICT";
+    else if (verdicts.every((v) => v.status === "CONSISTENT")) verdict = "ALL_CONSISTENT";
+    else verdict = "PARTIAL";
+    return { claims: verdicts, verdict, snapshotVersion };
+  }
+
+  private async checkClaim(
+    ctx: AuthCtx,
+    c: {
+      kind: "PROPERTY" | "LINK";
+      subjectType: string;
+      subjectId: string;
+      property?: string;
+      assertedValue?: unknown;
+      linkType?: string;
+      objectType?: string;
+      objectId?: string;
+    },
+    snapshotVersion: string,
+  ): Promise<ClaimVerdict> {
+    const base = {
+      subjectType: c.subjectType,
+      subjectId: c.subjectId,
+      kind: c.kind,
+      snapshotVersion,
+    } as const;
+    // resolve subject object from KG (handles pk-value lookup + row filter)
+    let subject: { props: Record<string, unknown> } | undefined;
+    try {
+      const payload = await this.getObject(ctx, c.subjectType, c.subjectId);
+      subject = payload.data as { props: Record<string, unknown> };
+    } catch {
+      subject = undefined;
+    }
+
+    if (c.kind === "PROPERTY") {
+      const property = c.property ?? "";
+      const claim = `${c.subjectType}:${c.subjectId}.${property} == ${stringifyVal(c.assertedValue)}`;
+      if (!subject || !(property in subject.props)) {
+        return { ...base, claim, property, assertedValue: c.assertedValue, status: "NO_EVIDENCE", detail: subject ? "知识图谱无此属性记录" : "知识图谱无此对象" };
+      }
+      const kgValue = subject.props[property];
+      const consistent = looseEqual(kgValue, c.assertedValue);
+      return {
+        ...base,
+        claim,
+        property,
+        assertedValue: c.assertedValue,
+        status: consistent ? "CONSISTENT" : "CONFLICT",
+        ...(consistent ? {} : { kgValue, detail: `知识图谱记录为 ${stringifyVal(kgValue)}` }),
+      };
+    }
+
+    // LINK：核对 subject --linkType--> object 是否存在
+    const linkType = c.linkType ?? "";
+    const claim = `${c.subjectType}:${c.subjectId} -[${linkType}]-> ${c.objectType ?? "?"}:${c.objectId ?? "?"}`;
+    if (!subject) {
+      return { ...base, claim, linkType, objectType: c.objectType, objectId: c.objectId, status: "NO_EVIDENCE", detail: "知识图谱无此对象" };
+    }
+    const links = await this.repos.links.list(
+      ctx.tenantId,
+      (l) => l.type === linkType,
+    );
+    // subject/object 既可按 obj_ id 也可按业务主键匹配（getObject 已能两者解析）
+    const subjId = await this.resolveObjId(ctx, c.subjectType, c.subjectId);
+    const objId = c.objectId ? await this.resolveObjId(ctx, c.objectType ?? "", c.objectId) : undefined;
+    const exists = links.some(
+      (l) => (l.fromId === subjId || l.fromId === c.subjectId) && (objId === undefined || l.toId === objId || l.toId === c.objectId),
+    );
+    return {
+      ...base,
+      claim,
+      linkType,
+      objectType: c.objectType,
+      objectId: c.objectId,
+      status: exists ? "CONSISTENT" : "NO_EVIDENCE",
+      ...(exists ? {} : { detail: "知识图谱无对应关系记录" }),
+    };
+  }
+
+  /** 把业务主键值解析为 obj_ id（解析不到则原样返回，交由调用方双匹配）。 */
+  private async resolveObjId(ctx: AuthCtx, objectType: string, idOrKey: string): Promise<string> {
+    try {
+      const payload = await this.getObject(ctx, objectType, idOrKey);
+      return (payload.data as { id: string }).id;
+    } catch {
+      return idOrKey;
+    }
   }
 
   // -- slices (QOS-PRD §7.6) --------------------------------------------------

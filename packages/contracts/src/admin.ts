@@ -89,6 +89,8 @@ export const ADMIN_VIEW_RENDERERS = [
   "quarterly-rolling",
   "order-chain",
   "geo-map",
+  "decision-play",
+  "global-sim",
 ] as const;
 
 export const AdminViewConfigSchema = z.object({

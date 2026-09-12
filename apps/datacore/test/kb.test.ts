@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN, b64, type TestApp } from "./helpers.js";
 import { newId } from "../src/ids.js";
+import { outsourceRedlinePct, outsourceRedlineViolationExpr } from "@platform/contracts"; // DF.13 单源
 
 async function kbConn(t: TestApp, name: string): Promise<string> {
   const res = await t.app.inject({
@@ -80,17 +81,17 @@ describe("S4 knowledge base (V11) + rule near-duplicates (V12)", () => {
 
   it("V12: candidate semantically identical to a published rule is flagged 疑似重复 with the rule id", async () => {
     const t = await makeApp();
-    await seedBattery(t); // publishes C08 外协比例红线 Order.outsourceRatio > 0.3
+    await seedBattery(t); // publishes C08 外协比例红线（表达式由 contracts OUTSOURCE_REDLINE 派生·DF.13）
     t.llm.enqueue({
       candidates: [
         {
           name: "外协比例红线",
-          description: "外协比例不得超过 30%",
-          expression: "Order.outsourceRatio > 0.3",
+          description: `外协比例不得超过 ${outsourceRedlinePct()}%`,
+          expression: outsourceRedlineViolationExpr(),
           expressionConfidence: 0.95,
           scopeObjectTypes: ["Order"],
           severity: "WARN",
-          sourceQuote: "外协比例不得超过 30%",
+          sourceQuote: `外协比例不得超过 ${outsourceRedlinePct()}%`,
         },
         {
           name: "新供应商准入评分",
@@ -107,7 +108,7 @@ describe("S4 knowledge base (V11) + rule near-duplicates (V12)", () => {
       method: "POST",
       url: "/a/v1/rule-docs",
       headers: ADMIN,
-      payload: { filename: "outsourcing.md", contentBase64: b64("外协比例不得超过 30%，新供应商准入需评分达到 80 分") },
+      payload: { filename: "outsourcing.md", contentBase64: b64(`外协比例不得超过 ${outsourceRedlinePct()}%，新供应商准入需评分达到 80 分`) },
     });
     expect(up.statusCode).toBe(202);
     const docId = (up.json() as { docId: string }).docId;

@@ -59,6 +59,15 @@ describe("Phase5C skill 语义路由", () => {
     expect(ranked[0]!.skill.id).toBe("s20");
   });
 
+  it("SR7: capability 参与评分—— capability 命中可压倒 summary 不相关项", () => {
+    const skills = [
+      mk("s30", "碳足迹解读", "解读碳足迹核算，是否达标、怎么降"),
+      { ...mk("s31", "产能预测", "预测未来产能走势"), capability: "forecast" } as unknown as SkillDefinition,
+    ];
+    const ranked = rankSkills("forecast 走势", skills);
+    expect(ranked[0]!.skill.id).toBe("s31");
+  });
+
   it("SR5: buildSkillSection 带 query → 全文仅 top-k，其余列为 load_skill 可取", () => {
     const sec = buildSkillSection(SKILLS, { query: "碳足迹达标吗", topK: 2 });
     expect(sec).toContain("s20"); // 碳足迹全文

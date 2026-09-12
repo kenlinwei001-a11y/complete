@@ -12,6 +12,14 @@ const planLocked = () =>
   new AppError("PLAN_LOCKED", "S&OP 版本已定稿（C22 锁定），任何字段变更必须走计划变更 Action", 409);
 
 /**
+ * ② 需求评审三线对照的量纲**单一真值**（后端单源下发·前端只格式化不内联）。
+ * 分母是**月**：target 来自 `PlanTarget(level=month)` × `Segment.baselineShare`
+ * （实测 seed 42：年 322.2 万套 = Σ12 月，单月 24.7/25.24/26.58 万套）。
+ * 契约形状见 `SopDemandReviewRowSchema`（`@platform/contracts`）。
+ */
+const SOP_DEMAND_UNIT = "万套/月" as const;
+
+/**
  * S1.8 sop_balance — monthly plan version object + five deterministic steps +
  * state machine DRAFT → IN_REVIEW(①–④) → EXEC_MEETING(⑤) → FINAL (C22 lock).
  */
@@ -83,6 +91,9 @@ export class SopService {
 
   /** ① 产品评审: PLM cert edge diff → supply feasibility boundary (万套/月 per change). */
   private async step1(ctx: AuthCtx, v: SopVersion): Promise<SopVersion> {
+    // WO-COLUMN-SECURITY-TAIL · 残口②：本步把 SolverContext 算出的供给边界**落库**到计划版本上。
+    // 受列级约束的调用者在此拒绝（拒绝比"用缺列的图算一个错的边界并写进共享版本"轻得多）。
+    await this.solvers.assertContextColumnUnrestricted(ctx, "S&OP 步骤①产品评审");
     const c = await this.solvers.loadContext(ctx.tenantId);
     const rollup = computeRollup(c);
     const weekly = new Map(rollup.bases.map((b) => [b.baseId, b.weeklyWan]));
@@ -146,10 +157,22 @@ export class SopService {
       const target = num(s.target);
       const rolling = num(s.rolling);
       const dv = target === 0 ? 0 : round((rolling - target) / target, 4);
-      return { key: str(s.key), name: str(s.name, str(s.key)), target, rolling, lastActual: num(s.lastActual), dv, flagged: Math.abs(dv) > threshold };
+      // PRD-IND-sop §4.3：三线对照新增「滚动 P90」列（需求预测下分位，payload 透传或缺省派生）。
+      // WO-P50-REMAINING-3：字段名自带口径（万套/**月**·= target/rolling/lastActual 同分母）。
+      // 入参键同步改名、**不留 `p90` 兼容别名**：实测全仓没有任何调用方在传它
+      //（`grep -rn "segments:" apps/*/src apps/*/test` → 两处，都只传 target/rolling/lastActual），
+      // 即透传分支属「接了线没数据、从没触发」，改名零数据影响。
+      const rollingWanPerMonthP90 =
+        s.rollingWanPerMonthP90 != null ? num(s.rollingWanPerMonthP90) : round(rolling * 0.936, 2);
+      return {
+        key: str(s.key), name: str(s.name, str(s.key)), target, rolling,
+        rollingWanPerMonthP90, lastActual: num(s.lastActual), dv, flagged: Math.abs(dv) > threshold,
+        unit: SOP_DEMAND_UNIT,
+      };
     });
     const totalTarget = rows.reduce((a, r) => a + r.target, 0);
     const totalRolling = rows.reduce((a, r) => a + r.rolling, 0);
+    const totalP90 = round(rows.reduce((a, r) => a + r.rollingWanPerMonthP90, 0), 2);
     const totalDv = totalTarget === 0 ? 0 : round((totalRolling - totalTarget) / totalTarget, 4);
     for (const r of rows) {
       if (!r.flagged) continue;
@@ -161,7 +184,10 @@ export class SopService {
         });
       }
     }
-    v.steps.s2 = { rows, total: { target: totalTarget, rolling: totalRolling, dv: totalDv } };
+    v.steps.s2 = {
+      rows,
+      total: { target: totalTarget, rolling: totalRolling, rollingWanPerMonthP90: totalP90, dv: totalDv, unit: SOP_DEMAND_UNIT },
+    };
     v.updatedAt = new Date().toISOString();
     await this.repos.sopVersions.put(v);
     return v;
@@ -170,6 +196,8 @@ export class SopService {
   /** ③ 供应评审: sup = Σ基地(周产能×curveMult×certFactor) monthly + resolved increments; gap > 2 万套 → red flag. */
   private async step3(ctx: AuthCtx, v: SopVersion, payload: Record<string, unknown>): Promise<SopVersion> {
     if (!v.steps.s2) throw invalidState("run step 2 first");
+    // WO-COLUMN-SECURITY-TAIL · 残口②（同 step1）：供给侧 sup/gap 由整张对象图算出并落库。
+    await this.solvers.assertContextColumnUnrestricted(ctx, "S&OP 步骤③供应评审");
     const c = await this.solvers.loadContext(ctx.tenantId);
     const rollup = computeRollup(c);
     const weekly = new Map(rollup.bases.map((b) => [b.baseId, b.weeklyWan]));
@@ -399,7 +427,15 @@ export class SopService {
     return { targetRef: v.id };
   }
 
-  /** 「计划版本变更」Action EXECUTED → FINAL 版本的唯一合法字段变更路径（非 S&OP 版本 → null，回落 mock）。 */
+  /**
+   * 「计划版本变更」Action EXECUTED → FINAL 版本的唯一合法字段变更路径。
+   *
+   * ⚠️ 本注释原文是「非 S&OP 版本 → null，**回落 mock**」——**该语义 2026-08-20 已废**
+   * （WO-ACTION-EXECUTOR-CARRIERS）。`null` 现在**不再**意味着"交给兜底执行器处理"：
+   * 调用方 `app.ts domainExecutor` 的 `计划版本变更` 分支收到 null 后**当场诚实失败**，
+   * 并在错误里把定性说清（「引用的承载对象不存在」，≠「本型没接执行器」）。
+   * 改这里的返回语义前先读那一段注释：穿透回兜底线会让一个**已接线**的型冒充「没接线」。
+   */
   async applyChangeAction(tenantId: string, draft: ActionDraft): Promise<{ targetRef: string } | null> {
     const versionId = String(draft.payload.versionId ?? "");
     const v = await this.repos.sopVersions.get(tenantId, versionId);
@@ -465,6 +501,9 @@ export class SopService {
       const s = segs.find((x) => x.props.segKey === key);
       return round(dem * num(s?.props.baselineShare), 2);
     };
+    // WO-COLUMN-SECURITY-TAIL · 残口②：无 FINAL 版本时的兜底 sup 由整张对象图现算（上面 FINAL 分支
+    // 只读已落库的版本快照，不碰对象图 → 不受此闸约束，故闸放在这里而不是方法顶部，避免误伤）。
+    await this.solvers.assertContextColumnUnrestricted(ctx, "当前计划版本（基线派生）");
     const c = await this.solvers.loadContext(ctx.tenantId);
     const rollup = computeRollup(c);
     let sup = 0;

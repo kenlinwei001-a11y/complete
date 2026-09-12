@@ -1,0 +1,231 @@
+/* WO-R9-METRO-UX · 主画布第五档「业务流程」**线路图**样式。
+
+   ── 零硬编码颜色 ────────────────────────────────────────────────────────────
+   全部走 styles/tokens.css 的 CSS 变量 ⇒ dark / light / warm 三套自动跟随。
+   四种等待态色**不在本文件里** —— 它们由 views/process/processWait.ts 的
+   WAIT_KIND_STYLE 以变量名下发（--c-people / --c-forecast / --c-equip / --c-capacity），
+   组件用内联 `fill: var(<那个变量>)` 取。在这里再写一遍 = 第二份词表，改一处忘一处即两处飘。
+
+   ── 为什么另起一个 module，而不是继续堆进 SandboxConsole.module.css ─────────
+   上一版第五档是卡片墙，**复用**了那个文件的 .stageBoard/.lane/.nodeCard 系列（读法一致）。
+   本版是 SVG 线路图，图元完全不同（站圈 / 虚线轨 / 换乘双环 / 折返标记），
+   继续堆进去会让那个 1600 行的文件里出现一族谁也不敢删的孤儿类。
+   仍从 SandboxConsole.module.css 取的只有**外壳**（.processCanvas / .noteWarn /
+   .processKindBar / .stateLine / .errBox / .processMismatch）—— 那几个是控制台的通用外壳，
+   本档与其余四档必须长得一样，抄一份才是真的分家。
+
+   ── 视觉语言与第一档 ChainLineMapView 对齐 ──────────────────────────────────
+   .canvas / .stage / .interchangeOuter / .interchangeInner / .stationName / .foldMark
+   的**取值口径逐条照抄那边**（同一块画布上读法一致）。差别只有一处且是**语义差别**：
+   本档的轨是 **stroke-dasharray 虚线**，第一档是实线 —— 因为第一档有实测站序，本档没有。
+   ⚠ 这条虚线不是样式偏好，是诚实位；要改成实线，先去改后端下发实测站序。 */
+
+/* ── 画布（缩放/平移的视口）：口径照 ChainLineMapView.module.css .canvas ──── */
+.canvas {
+  position: relative;
+  overflow: hidden;
+  min-height: 380px;
+  height: clamp(380px, 52vh, 620px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: grab;
+  touch-action: none;
+}
+.canvas:active {
+  cursor: grabbing;
+}
+.canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.stage {
+  transform-origin: 0 0;
+  display: block;
+  overflow: visible;
+}
+
+/* ── 图例 ─────────────────────────────────────────────────────────────────── */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.legendChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+}
+.spacer {
+  flex: 1 1 auto;
+}
+.zoomVal {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 42px;
+  text-align: right;
+}
+/* 「缩到下限仍装不下」—— 诚实位，不是错误，故用提示色不用告警色。 */
+.fitClamped {
+  font-size: 12px;
+  color: var(--amber-txt);
+}
+
+/* ── 轨（连线）────────────────────────────────────────────────────────────
+   🔴 **虚线是诚实位**：端点没下发流程间先后（processCanvas.ts 文件头 §0），
+   实线在地铁隐喻里读作"这样流"，我们没有这个依据。
+   将来真拿到实测站序，把那几段换成实线 —— 语义差别一眼可辨，这正是留虚线的意义。 */
+.rail {
+  stroke: var(--line2);
+  stroke-width: 2.5;
+  stroke-dasharray: 5 5;
+  stroke-linecap: round;
+  fill: none;
+}
+
+/* ── 站 ───────────────────────────────────────────────────────────────────── */
+.station {
+  cursor: pointer;
+}
+/* 透明命中圈：把「点在圈边上一点点」也算点中。
+   ⚠ `fill` 由组件写成属性 `fill="transparent"`（**不是** `none`：none 不接收指针事件）。
+   这里只负责确保它确实参与命中测试，且不画任何可见描边。 */
+.hitArea {
+  stroke: none;
+  pointer-events: all;
+}
+.station:focus-visible {
+  outline: none;
+}
+.station:focus-visible .stationDot,
+.station:focus-visible .interchangeOuter {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+/* 普通站：实心圈，填色 = 等待态语义色（由组件内联下发，见文件头）。 */
+.stationDot {
+  fill: var(--accent);
+  stroke: var(--panel);
+  stroke-width: 2.5;
+}
+/* 换乘站 = **共用承载物**：地铁标准双环空心（图元与第一档同款，语义在图例里当面说清楚）。 */
+.interchangeOuter {
+  fill: var(--panel);
+  stroke: var(--txt);
+  stroke-width: 4;
+}
+.interchangeInner {
+  fill: var(--txt);
+  stroke: none;
+}
+/* 选中光环：与第一档 .sharedFamilyHalo 同款画法（描边环、不遮站圈）。 */
+.stationHalo {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  opacity: 0.75;
+}
+/* 换乘弧：把两条共用承载物的流程连起来。**点线**与轨的虚线区分开 ——
+   两者都是"非流向"，但它们不是同一种关系，画成同一种线就是把两件事说成一件。 */
+.interchangeArc {
+  fill: none;
+  stroke: var(--muted2);
+  stroke-width: 1.5;
+  stroke-dasharray: 1 4;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+
+/* ── 文字 ─────────────────────────────────────────────────────────────────── */
+.stationName {
+  fill: var(--txt);
+  font-size: 12px;
+}
+.stationSub {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+/* 线头三行：线号 / 域名 / 域 key + 统计。地铁图靠线头认线（本图刻意不给线上色，见组件头）。 */
+.lineHead {
+  fill: var(--accent-txt);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.lineName {
+  fill: var(--txt);
+  font-size: 12px;
+  font-weight: 600;
+}
+.lineKey {
+  fill: var(--muted2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+/* 域登记册里查不到 —— 告警色，不静默（诚实位 ③）。 */
+.lineUnreg {
+  fill: var(--danger-txt);
+  font-weight: 700;
+}
+/* 折返：一条线太长换到下一行，线没有断。 */
+.foldMark {
+  fill: var(--muted2);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   WO-PROCESS-CANVAS-LIVE · 节拍维
+   ⚠ 零硬编码颜色：全部走 tokens.css 的语义变量；**做文字的一律用 `-txt` 变体**
+     （`--ok`/`--muted2` 这类填充色当文字在浅色皮上只有 1.8–2.1:1，实测等于看不见）。
+   ⚠ 字号一律 12px：本文件此前只用一级字号（R-UI-2「一屏最多三级」的余量全留给别人），
+     新增三个类**不引入第四级**。
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* 站上的第三行 —— 随节拍变的那批：读数 + 增量。 */
+.stationLive {
+  fill: var(--ok-txt);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+/* 站上的第三行 —— 不随节拍变 / 无承载对象的那批。
+   ⚠ **不是"灰掉"**：用的是与正文同族的 `--muted` 而不是把整座站降透明度，
+   且它带着**文字**（不是留白）。灰掉读作"被禁用/坏了"，而事实是"它本来就不随节拍变"。 */
+.stationStatic {
+  fill: var(--muted);
+  font-size: 12px;
+}
+/* 不随节拍变的站：虚线外环（形状编码 —— 色觉差异者与黑白打印稿上也分得出）。 */
+.staticRing {
+  fill: none;
+  stroke: var(--muted2);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.85;
+}
+/* 这一拍真的动了：实线脉冲环。与上面那个**虚线** static 环形成对照 ——
+   两者的差别是"实 vs 虚"，不是"深 vs 浅"。 */
+.movedRing {
+  fill: none;
+  stroke: var(--ok-txt);
+  stroke-width: 2;
+  opacity: 0.95;
+}
+/* 说明段里那句总结。两态各一色：接上了 / 判据源缺席。 */
+.liveOk {
+  color: var(--ok-txt);
+}
+.liveGap {
+  color: var(--warn-txt);
+}

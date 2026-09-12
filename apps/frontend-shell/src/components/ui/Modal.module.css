@@ -1,7 +1,16 @@
+/* WO-HOVER-LAYER（欠账 #104 同族·本仓最大血溅面）：.dialog 此前是
+ *   background: linear-gradient(165deg, rgba(30,38,49,.97), rgba(16,21,28,.98));
+ * —— 一张**硬编码深色、完全不随主题**的表面，而全仓每一个弹窗都用 Modal。
+ * 实测（判据同 test/provenance-popover-legibility.test.tsx 的 contrast()）：
+ *   暗色 --txt 13.16:1 ✓ ／ **冷蓝 1.08:1 ✗ ／ 暖砂 1.06:1 ✗**
+ * 即：换到浅色两套皮，弹窗是近黑盒子上印近黑字 —— 整个弹窗的正文肉眼消失。
+ * 病灶形态与 RiskPopover 完全相同（同一串渐变被复制了 6 份，见交付报告清单）。
+ * 修法：表面吃 --popover-surface（三套主题各自定义的实色），投影吃 --popover-shadow。 */
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(5, 8, 12, 0.65);
+  /* 遮罩**该**半透（职责是压暗底下页面），逐主题定义，见 tokens.css --modal-scrim。 */
+  background: var(--modal-scrim);
   backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
@@ -10,13 +19,13 @@
 }
 
 .dialog {
-  background: linear-gradient(165deg, rgba(30, 38, 49, 0.97), rgba(16, 21, 28, 0.98));
+  background: var(--popover-surface);
   border: 1px solid var(--line2);
   border-radius: 13px;
   max-height: 86vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--popover-shadow);
   outline: none;
 }
 

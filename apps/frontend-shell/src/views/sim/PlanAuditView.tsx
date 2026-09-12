@@ -13,6 +13,10 @@ import type { ViewRendererProps } from "../registry";
 import { SnapshotBadge, useAdoptToDraft } from "./shared";
 import { useLiveSolver } from "./useLiveSolver";
 import { buildPropagation, PropagationTimeline } from "./PropagationTimeline";
+import { DailyDotAxis, type DotOrder } from "@/components/DailyDotAxis";
+import { KsfGraph } from "@/components/KsfGraph";
+import { InferenceProcessPanel } from "@/components/InferenceProcessPanel";
+import { Provenance } from "@/components/Provenance";
 import zh from "@/locales/zh";
 import styles from "./SimViews.module.css";
 
@@ -23,9 +27,9 @@ const FIELD_GROUPS: { title: string; fields: { key: keyof PlanAuditInput; label:
     title: "需求侧（万套）",
     fields: [
       { key: "dem", label: "月度需求总量", unit: "万套", step: 0.1 },
-      { key: "seg_pas", label: "乘用车", unit: "万套", step: 0.1 },
+      { key: "seg_pas", label: "乘用车", unit: "万套", step: 0.1 }, // debattery-allow：view.layout.fieldGroups 缺失兜底
       { key: "seg_ess", label: "储能", unit: "万套", step: 0.1 },
-      { key: "seg_com", label: "商用车", unit: "万套", step: 0.1 },
+      { key: "seg_com", label: "商用车", unit: "万套", step: 0.1 }, // debattery-allow：同上
     ],
   },
   {
@@ -46,10 +50,12 @@ const FIELD_GROUPS: { title: string; fields: { key: keyof PlanAuditInput; label:
   },
 ];
 
+// PRD-IND-audit §3.1：verdict 4 态色板（站不住红 / 重要风险黄 / 关注青 / 全通过绿）。
 const VERDICT_COLOR: Record<PlanAuditOutput["verdict"], string> = {
-  通过: "var(--ok)",
-  有条件通过: "var(--amber)",
-  不通过: "var(--danger)",
+  站不住: "var(--danger)",
+  可定稿但有重要风险: "var(--amber)",
+  "可定稿·关注风险": "var(--c-capacity)",
+  "全部通过·可直接定稿": "var(--ok)",
 };
 
 /**
@@ -57,7 +63,9 @@ const VERDICT_COLOR: Record<PlanAuditOutput["verdict"], string> = {
  * 基线来自当前定稿 S&OP 版本（GET /a/v1/plan-versions/current），改任意字段
  * debounce 300ms 即时重检（plan_audit），竞态最后发出者胜。
  */
-export default function PlanAuditView(_props: ViewRendererProps) {
+export default function PlanAuditView({ view }: ViewRendererProps) {
+  // 去电池锁死 8a（R14）：体检字段组结构由 ViewConfig.layout 声明（学 DashboardView），FIELD_GROUPS 仅兜底
+  const fieldGroups = (view.layout?.fieldGroups as typeof FIELD_GROUPS | undefined) ?? FIELD_GROUPS;
   const baseline = useQuery({ queryKey: ["a", "plan-version-current"], queryFn: fetchPlanVersionCurrent });
   const [form, setForm] = useState<PlanAuditInput | null>(null);
   const canApplyFix = useFeature("act.plan-audit.apply-fix");
@@ -120,7 +128,7 @@ export default function PlanAuditView(_props: ViewRendererProps) {
           <div className="section-title">{zh.sim.audit.inputTitle}</div>
           {!form && <div className="empty-state">{zh.common.loading}</div>}
           {form &&
-            FIELD_GROUPS.map((g) => (
+            fieldGroups.map((g) => (
               <div key={g.title}>
                 <div className={styles.grpHead}>{g.title}</div>
                 {g.fields.map((f) => (
@@ -164,6 +172,11 @@ export default function PlanAuditView(_props: ViewRendererProps) {
           )}
         </div>
       </div>
+
+      {/* audit.3：财务 KSF 图（问题→KSF→财务指标 3 层；问题节点点击联动其时序轴）。audit/generate 共用组件。 */}
+      <KsfGraph />
+      {/* inference-process 横切：本次规划体检推演的编排过程 DAG */}
+      <InferenceProcessPanel testId="inference-audit" solved />
     </div>
   );
 }
@@ -189,7 +202,7 @@ function AuditResult({
   const section = (title: string, cls: string, items: AuditItem[], withActions: boolean) =>
     items.length > 0 && (
       <>
-        <div className={styles.secHead} style={{ color: cls === "hard" ? "var(--danger)" : cls === "med" ? "var(--amber)" : "var(--ok)" }}>
+        <div className={styles.secHead} style={{ color: cls === "hard" ? "var(--danger-txt)" : cls === "med" ? "var(--amber-txt)" : "var(--ok-txt)" }}>
           {title}（{items.length}）
         </div>
         {items.map((item) => (
@@ -209,15 +222,27 @@ function AuditResult({
   return (
     <div className="panel" data-testid="audit-result">
       <div className={styles.verdict} style={{ borderColor: color, background: "transparent" }} data-testid="audit-verdict">
-        <b style={{ color }}>{zh.sim.audit.verdict(out.verdict, out.score)}</b>
+        <b style={{ color }}>{zh.sim.audit.verdict(out.verdict, out.score, out.M.length)}</b>
         <SnapshotBadge snapshotVersion={snapshotVersion} tool="plan_audit" />
-        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 5 }}>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 5 }}>
           <span data-testid="audit-counts" className="mono">
             {out.H.length} 硬矛盾 / {out.M.length} 软风险 / {out.S.length} 建议
           </span>
           {gmStruct != null && (
             <>
-               · {zh.sim.audit.gmStruct} <b className="mono">{gmStruct.toFixed(2)}%</b>（C15 口径）
+               · {zh.sim.audit.gmStruct}{" "}
+              {/* 体检关键结论（#4 backlog）：结构毛利率六要素溯源（C15 口径） */}
+              <Provenance
+                testId="audit-gmstruct"
+                src="plan_audit 求解器（财务域）"
+                formula="结构毛利率 = Σ(细分销量 × 细分毛利率) ÷ Σ销量"
+                inputs={["各应用细分需求结构", "各细分毛利率"]}
+                rule="C15"
+                note="按需求结构动态加权，区别于单一毛利率目标"
+              >
+                <b className="mono">{gmStruct.toFixed(2)}%</b>
+              </Provenance>
+              （C15 口径）
             </>
           )}
         </div>
@@ -263,7 +288,7 @@ function AuditCard({
         <span className="badge">{item.id}</span>
       </div>
       {ruleOpen && (
-        <div className={styles.noteInfo} style={{ fontSize: 10.5 }}>
+        <div className={styles.noteInfo} style={{ fontSize: 12 }}>
           规则 <b className="mono">{item.ruleRef}</b> · 表达式见规则库（/admin/rules），点击徽章收起。
         </div>
       )}
@@ -279,32 +304,56 @@ function AuditCard({
             {zh.sim.adoptToDraft}
           </button>
         )}
-        {item.fix && <span style={{ fontSize: 10, color: "var(--muted2)" }}>{zh.sim.audit.fixFootnote}</span>}
+        {item.fix && <span style={{ fontSize: 12, color: "var(--muted2)" }}>{zh.sim.audit.fixFootnote}</span>}
         {(cls === "hard" || cls === "med") && (
           <button className={styles.tlToggle} onClick={() => setTlOpen(!tlOpen)} data-testid={`tl-toggle-${cls}-${item.id}`}>
             {tlOpen ? "▼ 收起时序推演" : zh.sim.audit.timeline}
           </button>
         )}
       </div>
-      {tlOpen && <RiskPropagation itemId={item.id} />}
+      {tlOpen && <RiskPropagation itemId={item.id} kind={item.kind} />}
     </div>
   );
 }
 
-/** 时序推演展开（§7.10-4）：risk_timeline 同构传导数据 → PropagationTimeline（与 §7.11 问题卡共用全局唯一实现） */
-function RiskPropagation({ itemId }: { itemId: string }) {
-  const { data, isLoading } = useQuery({
+/** 时序推演展开：逐日圆点轴按审计项 kind 路由 audit_timeline 出各自曲线（PRD §2②，非共用一条）；
+ * 4 节点传导链 stepper 仍由 risk_timeline 渲染（PropagationTimeline，与 §7.11 问题卡共用 + 订单弹窗）。 */
+function RiskPropagation({ itemId, kind }: { itemId: string; kind?: string }) {
+  // ① 逐日圆点轴：按 kind 派生（每审计项独立曲线）。
+  const dot = useQuery({
+    queryKey: ["b", "solver", "audit_timeline", kind ?? "struct"],
+    queryFn: async () => {
+      const res = await runSolver("audit_timeline", { kind: kind ?? "struct" });
+      return res.data as { kind: string; series: number[]; threshold: number; crossDay: number | null; peak: number; events?: unknown[]; affectedOrders?: unknown[] };
+    },
+  });
+  // ② 4 节点传导链 stepper + 受影响订单弹窗：复用 risk_timeline（全局唯一 PropagationTimeline 实现）。
+  const { data: rt, isLoading } = useQuery({
     queryKey: ["b", "solver", "risk_timeline"],
     queryFn: async () => {
       const res = await runSolver("risk_timeline", {});
       return RiskTimelineOutputSchema.parse(res.data);
     },
   });
-  const vm = data ? buildPropagation(data) : null;
+  const vm = rt ? buildPropagation(rt) : null;
   return (
     <div className={styles.tlBox} data-testid={`audit-risk-timeline-${itemId}`}>
-      <div style={{ fontSize: 10.5, color: "var(--muted2)", marginBottom: 4 }}>{zh.sim.audit.timelineHint}</div>
-      {isLoading && <span style={{ fontSize: 11, color: "var(--muted)" }}>{zh.common.loading}</span>}
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 4 }}>
+        {zh.sim.audit.timelineHint}{kind ? ` · 口径：${kind}` : ""}
+      </div>
+      {isLoading && <span style={{ fontSize: 12, color: "var(--muted)" }}>{zh.common.loading}</span>}
+      {/* PRD §2②：逐日圆点轴消费按 kind 派生的 audit_timeline series（每项独立曲线） */}
+      {dot.data && (
+        <DailyDotAxis
+          series={dot.data.series}
+          threshold={dot.data.threshold}
+          crossDay={dot.data.crossDay}
+          peak={dot.data.peak}
+          events={(dot.data.events ?? []) as never}
+          affectedOrders={(dot.data.affectedOrders ?? []) as unknown as DotOrder[]}
+          testId={`dda-${itemId}`}
+        />
+      )}
       {vm && <PropagationTimeline vm={vm} testId={`ptl-${itemId}`} />}
     </div>
   );

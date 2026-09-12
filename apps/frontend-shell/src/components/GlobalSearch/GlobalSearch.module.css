@@ -6,6 +6,20 @@
 .search {
   width: 100%;
 }
+/* WO-HOVER-LAYER · 与 Modal/Toast 同根、**方向相反**的一例幽灵令牌病。
+ *
+ * 原文 `background: var(--surface, #fff)` —— `--surface` / `--border` / `--hover`
+ * 三个令牌**全仓从未定义**（复验：`grep -rn -- "--surface:" src/` 零命中）。
+ * 于是三处永远取 fallback，而那三个 fallback 都是**浅色**字面量。
+ *
+ * 关键：`check-css-token-defined.mjs` 按设计**不管带 fallback 的 var()**
+ * （"写了兜底就是有意为之，坏不了"）——那条推理在这里失效：兜底值本身是写死的浅色，
+ * 而本仓默认皮是**暗色**。global.css:32 `button { color: inherit }` +
+ * body `color: var(--txt)` ⇒ 搜索结果的字是 #e9eef5（近白），压在 #fff（纯白）上，
+ * 对比约 **1.1:1** —— 默认主题下全局搜索的下拉结果肉眼不可读。
+ * 与 Modal 那批（近黑字压近黑面）是同一个根因的**镜像**：表面写死、不随主题。
+ *
+ * 修法同 #104：表面吃 --popover-surface，边/悬停/投影吃既有主题令牌，零 fallback。 */
 .results {
   position: absolute;
   top: 100%;
@@ -15,10 +29,10 @@
   margin: 4px 0 0;
   padding: 4px;
   list-style: none;
-  background: var(--surface, #fff);
-  border: 1px solid var(--border, #ddd);
+  background: var(--popover-surface);
+  border: 1px solid var(--line2);
   border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--popover-shadow);
   max-height: 360px;
   overflow: auto;
 }
@@ -34,14 +48,16 @@
   text-align: left;
 }
 .results li button:hover {
-  background: var(--hover, #f2f4f7);
+  background: var(--hover-tint);
 }
+/* #999 是写死的中灰：暗色皮下对 --popover-surface 仅约 3.4:1、白面下 2.8:1，两头都不到 AA。
+   改吃 --muted2（逐主题定义，对浮层表面 6.06 / 5.88 / 1.86*，*warm 的 muted2 系全局既有欠账）。 */
 .meta {
-  color: #999;
+  color: var(--muted2);
   font-size: 12px;
   margin-left: 12px;
 }
 .empty {
   padding: 8px 10px;
-  color: #999;
+  color: var(--muted2);
 }

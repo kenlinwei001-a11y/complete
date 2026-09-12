@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SchemeAdoptionSchema } from "./scheme-adoption.js";
 
 // ---------------------------------------------------------------------------
 // 前端剩余视图增量 PRD §0/§7.14–7.22 契约（计划域 / 映射表 / 校准 / 健康度 / 图谱配置）
@@ -11,6 +12,7 @@ export const AnnualScenarioSchema = z.object({
   name: z.string(), // 保守/基准/激进
   year: z.number().int(),
   demand: z.number(), // 年需求（万套）
+  note: z.string().optional(), // 情景前提注解（乘用车放缓/储能放量/海外大单——电池域种子文案，非前端写死）
   capacityDecision: z.string(),
   ltaLock: z.string(), // 长协锁量描述
   finance: z.object({ revenue: z.number(), capex: z.number(), irr: z.number() }),
@@ -69,6 +71,14 @@ export const AopResponseSchema = z.object({
       targetRef: z.string().optional(),
     }),
   ),
+  /**
+   * WO-ADOPT-SCHEME-CARRIER · 本年度现役「方案采纳台账」（G-ADOPT-SCHEME-NO-CARRIER 的读端）。
+   * additive optional（与 capexScenario 同一先例）：该年度从未采纳过方案 ⇒ 整个字段缺省。
+   * 同 (tenant, year) 至多一条 ACTIVE 是**写时不变量**（执行器先置旧 SUPERSEDED），
+   * 故读端直接给一条、不给数组——没有"在多条里挑"就没有挑错的余地。
+   * tenantId 不下发（本响应全文无 tenantId 先例；调用方本来就只能读到自己的租户）。
+   */
+  schemeAdoption: SchemeAdoptionSchema.omit({ tenantId: true }).optional(),
 });
 export type AopResponse = z.infer<typeof AopResponseSchema>;
 
@@ -113,6 +123,99 @@ export const MappingRowSchema = z.object({
   }),
 });
 export type MappingRow = z.infer<typeof MappingRowSchema>;
+
+/**
+ * WO-MAPPING-WHITELIST · **结构边「物化声明」字段集 —— 读路与写路的单一来源。**
+ *
+ * ── 为什么必须是一份而不是两份（2026-09-07 实测的静默数据丢失）─────────────────
+ * 关系编辑器的「改」是一次**读—改—写往返**：
+ *   `GET /a/v1/ontology/mapping/registries`（读投影）→ 表单预填 → `POST /a/v1/ontology/link-types`（写）。
+ * 而写路是**整条覆盖**（`ontology.ts upsertLinkType`：`{ id, tenantId, version, ...input }` 后
+ * `ontologyLinks.put(def)`）—— **读投影漏掉的字段，客户端就回填不出来，一次保存即被抹掉**。
+ *
+ * 修前实测：读投影只透传 `viaProperty`/`viaSide` 两个，而写路已收 **9 个**。
+ * 差集 **7 个**（`anchorProperty` `viaMultiValue` `viaBridge` `viaWhere` `viaKeyExpr`
+ * `viaWhereTo` `viaCross`）⇒ 用户在编辑器里**一个字段都不改**、只点一次「保存」，
+ * 这 7 个里已声明的那些当场归零：边退回 0 实例、多跳检索遍历不到、屏上不报错。
+ * 这正是 WO-RELATION-EDIT-GAPS ① 头注里写的那种失效，**只是当时只堵了 `viaProperty` 一个**。
+ *
+ * ⚠ **这就是为什么本 schema 存在**：两份手抄的字段清单必然漂移 —— 写路每加一个声明字段
+ * （3EXT 加了 3 个、PREDICATE 加了 1 个、COMPUTED-EDGE 加了 3 个），读路都要有人记得跟着加，
+ * 而**没有任何东西在守这件事**：漏了不红、不报错，只是用户的声明会被下一次保存吃掉。
+ * 现在读路（`buildMappingRegistries`）与写路（`POST /a/v1/ontology/link-types`）**共用本 schema**，
+ * 加字段只需改这一处，两边同时生效。
+ *
+ * ⚠ **它是白名单，不是「全字段放行」**：`z.object` 默认剥掉未知键 ⇒ 前端注入任意字段仍进不来；
+ * 读投影也只按 `LINK_MATERIALIZATION_FIELDS` 逐个拷贝，不做 `...spread`。
+ * 语义与写入期校验（互斥/前置/上限）见 `apps/datacore/src/domain.ts` 的 `LinkTypeDef` 同名字段头注。
+ */
+export const LinkMaterializationDeclSchema = z.object({
+  /** 这条边由承载侧的哪个属性实现（外键列 propKey）。 */
+  viaProperty: z.string().min(1).optional(),
+  /** 外键长在哪一侧：`from`=来源类型上（缺省），`to`=去向类型上。 */
+  viaSide: z.enum(["from", "to"]).optional(),
+  /** 外键对到 anchor 的**非主键列**。 */
+  anchorProperty: z.string().min(1).optional(),
+  /** 一个属性里放**多个**目标 id（数组）⇒ 展开成 N 条边。 */
+  viaMultiValue: z.boolean().optional(),
+  /** 关系本身是个**桥对象**（两端谁都装不下）。 */
+  viaBridge: z
+    .object({
+      typeKey: z.string().min(1),
+      fromProperty: z.string().min(1),
+      toProperty: z.string().min(1),
+      fromAnchorProperty: z.string().min(1).optional(),
+      toAnchorProperty: z.string().min(1).optional(),
+    })
+    .optional(),
+  /** carrier 侧谓词（A5 规则 DSL 表达式原文）——只**收窄**已有连接，造不出连接。 */
+  viaWhere: z.string().min(1).optional(),
+  /** 锚点键由 carrier 行上的表达式**算**出（与 `viaProperty` 互斥二选一）。 */
+  viaKeyExpr: z.string().min(1).optional(),
+  /** anchor 侧谓词（语法同 `viaWhere`，但对 anchor 行求值）。 */
+  viaWhereTo: z.string().min(1).optional(),
+  /** 不经外键的叉积；`maxEdges` **必填**——没有它这个字段就是一把没有保险的枪。 */
+  viaCross: z
+    .object({
+      fromWhere: z.string().min(1).optional(),
+      toWhere: z.string().min(1).optional(),
+      maxEdges: z.number().int().positive(),
+    })
+    .optional(),
+});
+export type LinkMaterializationDecl = z.infer<typeof LinkMaterializationDeclSchema>;
+
+/**
+ * 物化声明字段名清单 —— **由 schema 现算，不是第二份手抄的数组**（抄了就会漂）。
+ * 读投影按它逐个拷贝；接缝门按它断言「写路收的 = 读路发的」。
+ */
+export const LINK_MATERIALIZATION_FIELDS = Object.keys(
+  LinkMaterializationDeclSchema.shape,
+) as (keyof LinkMaterializationDecl)[];
+
+// PRD-IND-map §4.4/§4.5-③：映射表四注册表段（关系类型 / 规则 / Action / 事件）。
+export const MappingRegistriesSchema = z.object({
+  // WO-RELATION-EDIT-GAPS ①：`viaProperty`/`viaSide` **加性可选**下发 —— 关系编辑器要能
+  // **预填**「由哪个属性实现」这一格。没有它，「改」表单只能把这格留空，而一次留空的提交
+  // 会把已声明的实现属性静默抹掉（边随即退回 0 实例、多跳检索遍历不到）。
+  // 「改一个字段却把另一个字段清零」正是本仓最不许发生的那种静默失效。
+  // WO-MAPPING-WHITELIST：同一条纪律推广到**全部 9 个**物化声明字段（见上 schema 头注）——
+  // 只堵 `viaProperty` 一个，另外 7 个照样会被一次保存抹掉。
+  linkTypes: z.array(
+    z
+      .object({
+        key: z.string(),
+        fromType: z.string(),
+        toType: z.string(),
+        cardinality: z.string(),
+      })
+      .extend(LinkMaterializationDeclSchema.shape),
+  ),
+  rules: z.array(z.object({ key: z.string(), expression: z.string(), scope: z.string(), severity: z.string() })),
+  actions: z.array(z.object({ name: z.string(), params: z.string(), check: z.string(), target: z.string(), perm: z.string() })),
+  events: z.array(z.object({ name: z.string(), window: z.string(), affects: z.string(), source: z.string() })),
+});
+export type MappingRegistries = z.infer<typeof MappingRegistriesSchema>;
 
 /** M11 校准增量（PRD-addendum-m11-calibration）：方法/证据/paramRef —— 全部 ADDITIVE。 */
 export const CalibrationMethodSchema = z.enum(["EMA", "REPLAY_ATTRIBUTION", "QUANTILE"]);
@@ -249,6 +352,37 @@ export const GraphOptionsSchema = z.object({
   layoutSeed: z.number().int().optional(),
 });
 export type GraphOptions = z.infer<typeof GraphOptionsSchema>;
+
+/**
+ * §7.18 图谱视角**描述卡**（`ViewConfig.options.desc` / `.descLink`）—— 容器与字段名的**单一来源**。
+ *
+ * 为什么是 `options` 而不是 `layout`（G-GRAPH-DESC-CONTRACT-SPLIT 的裁定依据，不是"哪边改得少"）：
+ *  ① 同一 §7.18 特性的另一半 `graphOptions` 的契约注释（见上）已把容器钉死为 `ViewConfig.options`——
+ *     描述卡与视角配置是**同一个特性的两个字段**，拆两个容器即制造第二个真相源。
+ *  ② `ViewConfig.layout` 有**后端机器消费方**：`datacore/src/databuilder/pull-target.ts` 的
+ *     `ViewLayoutLike`（"来自 ViewConfig.views[].layout"）按 `solverKey`/`outputFields` 派生 DF.6 拉取靶。
+ *     `layout` 是"给机器读的求解器契约位"，叙事文案放进去属语义错置。
+ *  ③ 前端 `api/types.ts` 的 `ViewConfigVM.options` 注释亦写明"renderer 专属配置……契约 ViewConfig.options"。
+ *
+ * **本 schema 存在的意义 = 防复发的机制**（铁律 0.6：下次错位时机器先说话）：
+ * 后端 `graphView()` 的第 3 形参与前端 `OntologyGraphView` 的读取侧**都以此为类型**，
+ * 任一侧再写成 `description`/`descriptionLink`（或把它塞回 `layout`）即 **tsc 当场报错**，
+ * 不再靠"mock 恰好走对形状"把生产的错位盖过去。
+ */
+export const GraphDescLinkSchema = z.object({
+  /** 站内路由（react-router `<Link to>`）。**不是**裸字符串 URL —— 需要 label 才能渲染出可点文字。 */
+  to: z.string(),
+  label: z.string(),
+});
+export type GraphDescLink = z.infer<typeof GraphDescLinkSchema>;
+
+export const GraphViewDescSchema = z.object({
+  /** 视角叙事描述（descCard 正文）。 */
+  desc: z.string().optional(),
+  /** 描述卡内的延伸链接（如学习闭环 → 校准报告页）。 */
+  descLink: GraphDescLinkSchema.optional(),
+});
+export type GraphViewDesc = z.infer<typeof GraphViewDescSchema>;
 
 /** §S1.5 修订：affected_orders 输出扩展（问题归并 + 根因链） */
 export const OrderProblemCategorySchema = z.enum(["DELIVERY", "MARGIN", "KIT", "CREDIT"]);

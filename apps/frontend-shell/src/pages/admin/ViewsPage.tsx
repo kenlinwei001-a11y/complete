@@ -77,7 +77,7 @@ export default function ViewsPage() {
                     <span className="badge blue" data-testid={`renderer-${v.viewKey}`}>{v.renderer}</span>
                   </td>
                   <td>
-                    <span className="mono" style={{ fontSize: 11 }}>{v.nav.group} #{v.nav.order}</span>{" "}
+                    <span className="mono" style={{ fontSize: 12 }}>{v.nav.group} #{v.nav.order}</span>{" "}
                     <button className="btn sm" aria-label={`${t.moveUp} ${v.viewKey}`} onClick={() => reorderMut.mutate({ v, dir: -1 })}>
                       ↑
                     </button>{" "}
@@ -94,7 +94,7 @@ export default function ViewsPage() {
                       "—"
                     )}
                   </td>
-                  <td className="zh" style={{ fontSize: 11.5 }}>{v.roles.join(", ")}</td>
+                  <td className="zh" style={{ fontSize: 12 }}>{v.roles.join(", ")}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <button className="btn sm" onClick={() => setEditing(v)} data-testid={`view-edit-${v.viewKey}`}>
                       {zh.common.edit}
@@ -283,7 +283,7 @@ function ViewEditor({ view, onClose, onSaved }: { view: AdminViewConfig | null; 
       {renderer !== "dashboard" && renderer !== "ontology-graph" && (
         <div data-testid="params-editor">
           <div className="section-title">{t.paramsForm}</div>
-          <textarea className="mono" style={{ width: "100%", minHeight: 100, fontSize: 11.5 }} value={paramsText} aria-label={t.paramsForm} onChange={(e) => setParamsText(e.target.value)} />
+          <textarea className="mono" style={{ width: "100%", minHeight: 100, fontSize: 12 }} value={paramsText} aria-label={t.paramsForm} onChange={(e) => setParamsText(e.target.value)} />
         </div>
       )}
 

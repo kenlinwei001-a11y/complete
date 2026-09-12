@@ -1,9 +1,16 @@
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+
+import styles from "./PmDag.module.css";
+
 /**
  * 项目推演常显 DAG 面板（增量 §7.13）：自绘 SVG 分层 DAG，六层固定
  * 需求 → 型号 → 可产基地(≤6+折叠) → 驱动因子×3 → 求解器×2 → 产能预测结论。
  * 布局=层内均分横排、贝塞尔连线带箭头；随步骤点亮：lit = 节点.st ≤ 当前步，
  * 未点亮透明度 0.28，当前步节点左上角「本步」角标；结论节点 可达绿/缺口红。
+ * 直接操纵（#3）：拖拽平移 + 滚轮/按钮缩放（viewBox 变换）；拖拽中不触发节点点穿。
  */
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
 export interface PmDagNode {
   id: string;
   label: string;
@@ -11,36 +18,155 @@ export interface PmDagNode {
   color: string;
   /** 所属步骤（①–⑥）：当前步 ≥ st 时点亮 */
   st: number;
+  /**
+   * 判据 U4b · 这个节点代表的是**被排除/被挤掉**的那一批（虚线 + 降级 + 文字标记 + 图下理由）。
+   *
+   * ⚠ 与 `lit`（步骤未点亮）**语义不同，不许互相顶替**：`lit=false` 是"这一步还没走到"，
+   * `excluded=true` 是"它被挤出了这张图讲的那个结论"。两者屏上都发淡，混了会把
+   * "还没算到"读成"被排除了"。故 `excluded` 另走虚线 + 文字，不只压透明度。
+   */
+  excluded?: boolean;
+  /** 判据 U4b · 为什么被排除（`excluded` 时必给，由 `assertPmExcludedHasReason` 咬死）。 */
+  excludedReason?: string;
 }
 
-const W = 1100;
-const NH = 44;
-const LH = 78;
-const TOP = 26;
+/**
+ * 判据 U4b 的生产期断言（与 `LayeredDag.assertExcludedHasReason` 同源）：
+ * 标了 excluded 却没理由 ⇒ 抛。失败模式在屏上看不出来，所以不能只写在测试里。
+ */
+export function assertPmExcludedHasReason(layers: readonly PmDagNode[][]): readonly PmDagNode[][] {
+  for (const arr of layers) {
+    for (const n of arr) {
+      if (n.excluded && !n.excludedReason?.trim()) {
+        throw new Error(`PmDag 节点 ${n.id} 标了 excluded 却没给 excludedReason —— 判据 U4b 要「谁」也要「为什么」`);
+      }
+    }
+  }
+  return layers;
+}
+
+// 借鉴 HTML 项目推演：给 DAG 足够画布（全宽、更高、节点更大可读）。
+const W = 1280;
+const NH = 56;
+const LH = 104;
+const TOP = 34;
+/** 节点框的最小可见宽（px·用户坐标）。见下方 `pos` 计算处的注释：低于它宽度会变负 ⇒ 框静默消失。 */
+const MIN_NODE_W = 8;
 
 export function PmDag({
   layers,
   edges,
   step,
   testId = "pm-dag",
+  onNodeClick,
 }: {
   layers: PmDagNode[][];
   edges: [string, string][];
   step: number;
   testId?: string;
+  /** 点 DAG 节点 → 抽屉看判定/推导/输入/规则（#3 可点穿）。 */
+  onNodeClick?: (id: string) => void;
 }) {
+  assertPmExcludedHasReason(layers);
+  const excludedNodes = layers.flat().filter((n) => n.excluded);
   const pos = new Map<string, { x: number; y: number; w: number }>();
   const meta = new Map<string, PmDagNode>();
   layers.forEach((arr, li) => {
     const g = W / (arr.length + 1);
+    // ⚠ WO-SANDBOX-CONSOLE 亲手真跑时抓到的**既有缺陷**（不是本单引入的）：
+    //   节点宽 `g - 14` 在 `arr.length ≥ 77` 时变**负数**（g = 1280/(n+1)，n=94 ⇒ g-14 = -0.526）。
+    //   demo 租户的本体正好有 94 个已发布对象类型，沙盘主屏把它们塞进**单层** PmDag ⇒
+    //   浏览器对每个 `<rect width="-0.526…">` 报一次 `A negative value is not valid` 并**整块不画**：
+    //   实测 94 条 console.error + 94 个节点框全部消失（只剩文字）。
+    //   旧主屏同样会中（同一份 nodeTypes、同一处调用），故这是暴露而非回归。
+    //   夹到最小可见宽：宽度不再撒谎，密集时会挤在一起 —— 挤在一起是可见的事实，
+    //   负宽是**静默消失**，后者严重得多。
+    const w = Math.max(MIN_NODE_W, Math.min(arr.length > 2 ? 210 : 320, g - 14));
     arr.forEach((n, i) => {
-      pos.set(n.id, { x: g * (i + 1), y: TOP + li * LH, w: Math.min(arr.length > 2 ? 168 : 250, g - 12) });
+      pos.set(n.id, { x: g * (i + 1), y: TOP + li * LH, w });
       meta.set(n.id, n);
     });
   });
   const H = TOP + layers.length * LH + 6;
+
+  // 直接操纵：viewBox 变换 {x,y,k}（k=缩放，viewBox 宽高=W/k,H/k）。
+  const [vb, setVb] = useState({ x: 0, y: 0, k: 1 });
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const movedRef = useRef(false); // 拖拽位移超阈值 → 抑制随后的节点 click（区分拖与点）
+  const vw = W / vb.k;
+  const vh = H / vb.k;
+
+  // 以中心为锚缩放（按钮用，无需光标坐标，jsdom 可测）。
+  const zoomCenter = (factor: number) =>
+    setVb((s) => {
+      const k2 = clamp(s.k * factor, 0.6, 4);
+      const cx = s.x + W / s.k / 2;
+      const cy = s.y + H / s.k / 2;
+      return { k: k2, x: cx - W / k2 / 2, y: cy - H / k2 / 2 };
+    });
+  const reset = () => setVb({ x: 0, y: 0, k: 1 });
+
+  // 滚轮以光标为锚缩放（非 passive 才能 preventDefault；jsdom rect 全 0 时跳过）。
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      e.preventDefault();
+      setVb((s) => {
+        const sw = W / s.k;
+        const sh = H / s.k;
+        const ux = s.x + ((e.clientX - rect.left) / rect.width) * sw;
+        const uy = s.y + ((e.clientY - rect.top) / rect.height) * sh;
+        const k2 = clamp(s.k * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.6, 4);
+        return { k: k2, x: ux - ((e.clientX - rect.left) / rect.width) * (W / k2), y: uy - ((e.clientY - rect.top) / rect.height) * (H / k2) };
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const onPointerDown = (e: ReactPointerEvent) => {
+    movedRef.current = false;
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: vb.x, oy: vb.y };
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e: ReactPointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return;
+    if (Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) > 4) movedRef.current = true;
+    const dx = ((e.clientX - d.sx) / rect.width) * vw;
+    const dy = ((e.clientY - d.sy) / rect.height) * vh;
+    setVb((s) => ({ ...s, x: d.ox - dx, y: d.oy - dy }));
+  };
+  const onPointerUp = () => {
+    dragRef.current = null;
+  };
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", maxHeight: 480 }} role="img" data-testid={testId}>
+    <div style={{ position: "relative" }} data-testid={`${testId}-pz`}>
+      {/* 缩放/复位控件（直接操纵 #3） */}
+      <div style={{ position: "absolute", top: 6, right: 6, zIndex: 2, display: "flex", gap: 4 }}>
+        <button className="btn sm" aria-label="放大" data-testid={`${testId}-zoom-in`} onClick={() => zoomCenter(1.25)}>＋</button>
+        <button className="btn sm" aria-label="缩小" data-testid={`${testId}-zoom-out`} onClick={() => zoomCenter(1 / 1.25)}>－</button>
+        <button className="btn sm" aria-label="复位" data-testid={`${testId}-zoom-reset`} onClick={reset}>⟲</button>
+      </div>
+      <svg
+        ref={svgRef}
+        viewBox={`${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}`}
+        style={{ width: "100%", height: "auto", maxHeight: 760, cursor: dragRef.current ? "grabbing" : "grab", touchAction: "none" }}
+        role="img"
+        data-testid={testId}
+        data-zoom={vb.k.toFixed(2)}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+      >
       <defs>
         <marker id="pm-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
           <path d="M0,0 L6,3 L0,6 Z" fill="#7C8896" />
@@ -70,7 +196,18 @@ export function PmDag({
         const p = pos.get(n.id)!;
         const lit = step >= n.st;
         return (
-          <g key={n.id} opacity={lit ? 1 : 0.28} data-testid={`${testId}-node-${n.id}`} data-lit={lit ? "1" : "0"} data-st={n.st}>
+          <g
+            key={n.id}
+            opacity={lit ? 1 : 0.28}
+            data-testid={`${testId}-node-${n.id}`}
+            data-lit={lit ? "1" : "0"}
+            data-st={n.st}
+            /* 判据 U4b 的机检落点：理由跟着节点走（页面别处另写一句 ⇒ 图上仍看不出为什么灰，且两处必漂）。 */
+            data-excluded={n.excluded ? "true" : undefined}
+            data-excluded-reason={n.excluded ? n.excludedReason : undefined}
+            style={{ cursor: onNodeClick ? "pointer" : "default" }}
+            onClick={() => { if (!movedRef.current) onNodeClick?.(n.id); }}
+          >
             <rect
               x={p.x - p.w / 2}
               y={p.y - NH / 2}
@@ -78,21 +215,37 @@ export function PmDag({
               height={NH}
               rx={9}
               fill={`${n.color}14`}
-              stroke={n.color}
+              stroke={n.excluded ? "var(--muted2)" : n.color}
               strokeWidth={lit ? 1.6 : 1}
+              /* 虚线走内联 style：判据落在计算样式上（同 RelationGraphCanvas 头注的实测结论）。 */
+              style={{ strokeDasharray: n.excluded ? "4 3" : "none" }}
             />
-            <text x={p.x} y={p.y - 5} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--txt)">
+            {/* 只靠颜色/虚线表达状态，在低对比主题下等于没表达 ⇒ 文字那一路是必须的。 */}
+            {n.excluded && (
+              <text
+                x={p.x + p.w / 2 - 6}
+                y={p.y - NH / 2 + 12}
+                textAnchor="end"
+                className={styles.nodeSub}
+                fill="var(--muted2)"
+                data-testid={`${testId}-excluded-${n.id}`}
+              >
+                ✕ 已排除
+              </text>
+            )}
+            {/* 三档字号一律在 PmDag.module.css 里，**不许改回 `fontSize={…}` 属性**
+                —— 静态门看不见 SVG 表现属性，理由见该 CSS 文件头。 */}
+            <text x={p.x} y={p.y - 7} textAnchor="middle" className={styles.nodeLabel} fill="var(--txt)">
               {n.label}
             </text>
-            <text x={p.x} y={p.y + 9} textAnchor="middle" fontSize={8} fill="var(--muted)">
+            <text x={p.x} y={p.y + 13} textAnchor="middle" className={styles.nodeSub} fill="var(--muted)">
               {n.sub}
             </text>
             {lit && n.st === step && (
               <text
-                x={p.x - p.w / 2 + 5}
-                y={p.y - NH / 2 + 10}
-                fontSize={7}
-                fontWeight={800}
+                x={p.x - p.w / 2 + 7}
+                y={p.y - NH / 2 + 14}
+                className={styles.stepBadge}
                 fill={n.color}
                 data-testid={`${testId}-current-${n.id}`}
               >
@@ -102,6 +255,20 @@ export function PmDag({
           </g>
         );
       })}
-    </svg>
+      </svg>
+      {/*
+        判据 U4b 的「**为什么**」那一半 —— 与图同一块，不是折叠区、不是点开才出。
+        节点框塞不下一句理由，而判据要的正是「看得见被排除的是谁、为什么」。
+        ⛔ 不许改成 `<details>`（本仓实测闭合态子节点仍返回非零旧矩形，屏上看不见、版面门数上不降）。
+      */}
+      {excludedNodes.length > 0 && (
+        <ul className={styles.excludedLegend} data-testid={`${testId}-excluded-legend`}>
+          {/* 整条压成一个文本节点 —— 理由同 `LayeredDag` 的同名图例（D1 棘轮咬「纯往第一层堆」）。 */}
+          {excludedNodes.map((n) => (
+            <li key={n.id} data-testid={`${testId}-excluded-why-${n.id}`}>{`✕ ${n.label} · ${n.excludedReason}`}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

@@ -7,7 +7,7 @@
  *      （沿 to_id 反向导航定受影响对象集）、求值语义（null 传播/COALESCE/除零/decimal）。
  *  §3 resolveSlice 声明式切片执行（批量 IN 展开、每跳后 A6 行级过滤剪枝、去重、截断）。
  */
-import type { AuthzService } from "./authz.js";
+import type { AccessDecision, AuthzService } from "./authz.js";
 import type {
   AuthCtx,
   DerivationSpecRecord,
@@ -53,6 +53,8 @@ export interface RecomputeResult {
   affectedObjectIds: string[];
   order: string[]; // (typeKey.prop) in topo order
   epoch: number;
+  /** generic-inference dryRun：受影响派生属性的 before/after（不持久化时返回）。 */
+  dryRunDeltas?: { objId: string; type: string; prop: string; before: unknown; after: unknown }[];
 }
 
 /** PropertyDef extended with the atomic-spec fields carried in props metadata. */
@@ -339,9 +341,13 @@ export class OntologyCoreService {
   async recompute(
     ctx: AuthCtx,
     changes: ChangeSet[],
-    opts?: { epoch?: number },
+    opts?: { epoch?: number; dryRun?: boolean; apply?: { objectId: string; prop: string; value: unknown }[] },
   ): Promise<RecomputeResult> {
-    const epoch = opts?.epoch ?? (await this.beginEpoch(ctx.tenantId));
+    // generic-inference 通用 what-if（PRD-generic-inference §3.1 / R4 不写真值）：
+    // dryRun 时在克隆图上前向重算，绝不持久化、绝不 mutate 原对象，返回派生 before/after。
+    const dryRun = opts?.dryRun ?? false;
+    const dryRunDeltas: { objId: string; type: string; prop: string; before: unknown; after: unknown }[] = [];
+    const epoch = dryRun ? 0 : (opts?.epoch ?? (await this.beginEpoch(ctx.tenantId)));
     const allSpecs = await this.repos.derivationSpecs.list(
       ctx.tenantId,
       (s) => s.status === "ACTIVE",
@@ -356,7 +362,14 @@ export class OntologyCoreService {
     // Index objects by id and links by (linkKey, fromId)/(linkKey, toId) for navigation.
     const objectIndex = new Map<string, ObjectInstance>();
     for (const t of types) {
-      for (const o of await this.repos.objects.listByType(ctx.tenantId, t.key)) objectIndex.set(o.id, o);
+      for (const o of await this.repos.objects.listByType(ctx.tenantId, t.key)) objectIndex.set(o.id, dryRun ? structuredClone(o) : o);
+    }
+    // generic-inference what-if：把假设的源属性值套到克隆对象上（仅 dryRun），再前向重算下游派生。
+    if (dryRun && opts?.apply) {
+      for (const a of opts.apply) {
+        const o = objectIndex.get(a.objectId);
+        if (o) o.props[a.prop] = a.value;
+      }
     }
     const navOut = new Map<string, LinkInstance[]>(); // `${linkKey}|${fromId}`
     const navIn = new Map<string, LinkInstance[]>(); // `${linkKey}|${toId}`
@@ -480,7 +493,11 @@ export class OntologyCoreService {
         const changed = prev !== value;
         obj.props[spec.targetProp] = value;
         obj.epoch = epoch;
-        await this.repos.objects.put(obj);
+        if (dryRun) {
+          if (changed) dryRunDeltas.push({ objId: obj.id, type: obj.type, prop: spec.targetProp, before: prev, after: value });
+        } else {
+          await this.repos.objects.put(obj);
+        }
         objectIndex.set(obj.id, obj);
         valueRuns.push({ spec, objId: obj.id, value, inputs, warnings });
         affected.add(obj.id);
@@ -499,7 +516,7 @@ export class OntologyCoreService {
     }
 
     const ranAt = new Date().toISOString();
-    for (const vr of valueRuns) {
+    for (const vr of dryRun ? [] : valueRuns) {
       await this.repos.derivationValueRuns.put({
         id: newId("dvrun"),
         tenantId: ctx.tenantId,
@@ -520,6 +537,7 @@ export class OntologyCoreService {
       affectedObjectIds: [...affected].sort(),
       order: topo.map((t) => `${t.typeKey}.${t.prop}`),
       epoch,
+      ...(dryRun ? { dryRunDeltas } : {}),
     };
   }
 
@@ -536,7 +554,11 @@ export class OntologyCoreService {
     spec: SliceSpecRecord["spec"],
     args: Record<string, unknown>,
   ): Promise<{
-    nodes: { id: string; typeKey: string; objectKey: string; props: Record<string, unknown> }[];
+    // WO-SLICE-16-LAYERS（R13 修复）：origin/epoch 为**加性**带出——此前 addNode 只写
+    // {id,typeKey,objectKey,props}，把每个对象都有的溯源信息（ObjectOrigin + 写入批次 epoch）
+    // 整个丢掉，于是「这条切片的数据是哪来的」在切片这条路上永远答不出来（十六层的⑯层）。
+    // 既有消费方读的是同名字段，多两个字段不影响（加性，不破契约）。
+    nodes: { id: string; typeKey: string; objectKey: string; props: Record<string, unknown>; origin: ObjectInstance["origin"]; epoch?: number }[];
     edges: { linkKey: string; from: string; to: string }[];
     truncated: boolean;
     snapshotVersion: string;
@@ -554,13 +576,23 @@ export class OntologyCoreService {
       let rowFilters: string[] = [];
       let denied = false;
       try {
-        rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", typeKey, "READ");
+        const d = await this.authz.requireDecision(ctx, "OBJECT_TYPE", typeKey, "READ");
+        rowFilters = d.rowFilters;
+        columnCache.set(typeKey, d); // A6 列级：图遍历节点 props 同样投影（见下 projectNode）
       } catch {
         denied = true;
       }
       const fn = denied ? () => false : (o: ObjectInstance) => this.authz.rowAllowed(ctx, rowFilters, o.props);
       visibleCache.set(typeKey, fn);
       return fn;
+    };
+    // A6 列级（属性级）：子图节点 props 走与 REST 同一份决策投影，不可读属性**剔除键**。
+    const columnCache = new Map<string, AccessDecision>();
+    // 缓存未命中即**按需求解**（绝不 fail-open 返回未投影 props）；被拒类型此处也拿不到节点。
+    const projectNode = async (typeKey: string, props: Record<string, unknown>): Promise<Record<string, unknown>> => {
+      if (!columnCache.has(typeKey)) await visibilityFor(typeKey);
+      const d = columnCache.get(typeKey);
+      return d ? this.authz.projectProps(d, props) : props;
     };
 
     const objCache = new Map<string, ObjectInstance[]>();
@@ -600,7 +632,7 @@ export class OntologyCoreService {
       roots = roots.filter((o) => matchFilter(o.props, spec.root.selector.filter));
     }
 
-    const nodes = new Map<string, { id: string; typeKey: string; objectKey: string; props: Record<string, unknown> }>();
+    const nodes = new Map<string, { id: string; typeKey: string; objectKey: string; props: Record<string, unknown>; origin: ObjectInstance["origin"]; epoch?: number }>();
     const edges = new Map<string, { linkKey: string; from: string; to: string }>();
     let truncated = false;
     const typeCache = new Map<string, ObjectTypeDef | undefined>();
@@ -617,10 +649,21 @@ export class OntologyCoreService {
         truncated = true;
         return false;
       }
+      // A6 列级：先按 A6 投影（剔除不可读键），再套 spec 的 project 列选 —— 顺序要紧，
+      // 否则 spec.project 显式点名一个不可读属性就能绕过列级安全。
+      const visible = await projectNode(o.type, o.props);
       const props = project
-        ? Object.fromEntries(project.filter((p) => p in o.props).map((p) => [p, o.props[p]]))
-        : o.props;
-      nodes.set(o.id, { id: o.id, typeKey: o.type, objectKey: await objectKeyOf(o), props });
+        ? Object.fromEntries(project.filter((p) => p in visible).map((p) => [p, visible[p]]))
+        : visible;
+      // origin/epoch 加性带出（R13）：溯源随对象走，不再在投影这一步被丢掉。
+      nodes.set(o.id, {
+        id: o.id,
+        typeKey: o.type,
+        objectKey: await objectKeyOf(o),
+        props,
+        origin: o.origin,
+        ...(o.epoch !== undefined ? { epoch: o.epoch } : {}),
+      });
       return true;
     };
 

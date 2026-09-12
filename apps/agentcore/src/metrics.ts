@@ -89,9 +89,52 @@ export class Metrics {
     "qos_agent_budget_exhausted_total",
     "Agent runs ended by budget exhaustion",
   );
+  /** G-9：path-B agent 单次 LLM/工具调用有界超时触发的优雅降级次数（挂住时诚实终止）。 */
+  readonly agentTimeout = new Counter(
+    "qos_agent_timeout_total",
+    "Agent runs degraded by per-call LLM/tool timeout",
+  );
+  /**
+   * #89：entitlement 拉不到而**放行全部功能**（fail-open → "ALL"）的次数，按 reason 分标签
+   *（`http_401` / `unreachable:*`）。此前这条路径完全静默——一个 entitlement 恒定失效的部署
+   * 与一个健康部署在可观测面上一模一样。非零即须查：正常部署下它应长期为 0。
+   */
+  readonly entitlementFailOpen = new Counter(
+    "qos_entitlement_fail_open_total",
+    "Entitlement lookups that failed open to ALL (feature gating not enforced)",
+  );
+  /** WO-LOOP-CONTROL-P1：Loop Detector 环检测（同工具名+入参签名反复调用·成功但空转）触发的优雅降级次数。 */
+  readonly agentLoopRepeat = new Counter(
+    "qos_agent_loop_repeat_total",
+    "Agent runs degraded by loop-hash repeat detection (same tool+input signature)",
+  );
+  /** WO-LOOP-CONTROL-P2 · Retry Manager：瞬时/传输层错触发的有界重试发生次数（每次实际重试 +1）。 */
+  readonly agentRetry = new Counter(
+    "qos_agent_retry_total",
+    "Agent transient tool errors retried (bounded) by the retry manager",
+  );
+  /** WO-LOOP-CONTROL-P2 · Escalation Ladder：停滞时先升级（换策略再试一轮·rung①）而非直接降级的发生次数。 */
+  readonly agentEscalation = new Counter(
+    "qos_agent_escalation_total",
+    "Agent stall escalations (change-strategy retry before honest degrade)",
+  );
   readonly unverifiedNumerics = new Counter(
     "qos_unverified_numerics_total",
     "Answers flagged with unverified numerics by path",
+  );
+  /**
+   * WO-NUMERIC-REDLINE-BLOCK · 数字红线的**处置**计数（与上面那个「标注」计数正交，别混用）。
+   * labels：`path` = AGENT_DSH | AGENT_NATIVE；`action` = blocked | would_block。
+   *  · `blocked`     —— dsh 路真的拒了这份产出（用户没看到那些数）。
+   *  · `would_block` —— 原生路**照常放行**，此计数只回答「若阻断会拦下多少」。
+   * 两个 action 共用**同一个判据** `scanBlocks` ⇒ 两路的数直接可比；
+   * 若各写一套判据，这个比值就不度量任何东西了（本仓「金丝雀与主逻辑必须共用同一份实现」同源）。
+   * 记在**交付出口**（每次运行至多 +1），不记在 `acceptFinalAnswer` —— 后者在 reflect 重规划时
+   * 会被调多次，按它计数会把「一次运行」记成两三次，数就不再是「拦下多少份产出」。
+   */
+  readonly numericRedline = new Counter(
+    "qos_numeric_redline_total",
+    "Numeric-redline dispositions by path and action (blocked / would_block)",
   );
   readonly toolCalls = new Counter("qos_tool_calls_total", "Tool calls by tool and outcome");
   readonly llmTokens = new Counter("qos_llm_tokens_total", "LLM tokens by model, direction and provider");
@@ -132,7 +175,13 @@ export class Metrics {
         this.classifierErrors,
         this.clarificationRounds,
         this.agentBudgetExhausted,
+        this.agentTimeout,
+        this.entitlementFailOpen,
+        this.agentLoopRepeat,
+        this.agentRetry,
+        this.agentEscalation,
         this.unverifiedNumerics,
+        this.numericRedline,
         this.toolCalls,
         this.llmTokens,
         this.llmFallback,
