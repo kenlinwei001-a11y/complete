@@ -6101,6 +6101,69 @@ export const handlers = [
       if ("__err" in ci) return err(400, "VALIDATION_ERROR", String(ci.__err));
       return HttpResponse.json({ data: ci, snapshotVersion: "ov-12" });
     }
+    /**
+     * WO-HV-B ① · 财务世界态投影 mock。
+     *
+     * ⚠ 这份桩的**数与口径全部抄自真后端实测回包**（SEED_DEMO=1 · 世界 `sims_demo_seed_world`
+     * · 2026-09-12 实测）：`销售成本 rolling 581.1 → projected 1138.73`、
+     * `costPressure 聚合 95.960556 / 承载 500 of 500`、`收入行 driver:"" 原样透传`、
+     * `divisor 100`。**不是随手编的好看数字** —— 桩一旦教出真后端永远不会出现的形状，
+     * 测试就会在保护一个不存在的行为（本仓治过这个形态）。
+     *
+     * `worldId` 必填：不给 ⇒ 照真后端 400（它明写「拒绝回落到本体真值口径」）。
+     */
+    if (key === "finance_world_projection") {
+      const worldId = typeof args.worldId === "string" ? args.worldId : "";
+      if (!worldId) return err(400, "VALIDATION_ERROR", "finance_world_projection 需要 args.worldId（哪个推演世界）");
+      const prov = (drillType: string, drillId: string, drillField: string, drillValue: number, kind = "实测") => ({
+        kind, drillType, drillId, drillField, drillValue,
+      });
+      const costAgg = 95.960556;
+      const rolling = { rev: 700, cogs: 581.1, gm: 118.9 };
+      const cogsProjected = 1138.73; // 581.1 ×（1 + 95.960556 ÷ 100）
+      const cogsDelta = Math.round((cogsProjected - rolling.cogs) * 100) / 100; // 557.63
+      return HttpResponse.json({
+        data: {
+          worldId,
+          curTick: 3,
+          worldStateSource: "TICK",
+          worldObjectCount: 4775,
+          available: true,
+          notes: [],
+          basis: {
+            kind: "PROJECTION",
+            pressureUnit: "pp",
+            divisor: 100,
+            source: "DEFAULT_DECLARED",
+            note: "金额 = 基线 ×（1 + 压力 ÷ 100）。压力指数按百分点(pp)读；这是**推演投影**不是实测值 —— 基线取本体真值，增量由世界态压力沿传导规则折算。",
+          },
+          pressures: [
+            { stateVar: "costPressure", objectType: "Order", value: costAgg, carriers: 500, universe: 500, weighting: "订单金额加权", weightingNote: "qty × unitPrice", provenance: prov("Order", "obj_order_SO-3391", "costPressure", 900, "派生") },
+            { stateVar: "receivablePressure", objectType: "Customer", value: 96.251638, carriers: 20, universe: 20, weighting: "发票金额加权", weightingNote: "经 customer_has_invoice 归集", provenance: prov("Customer", "cust_14", "receivablePressure", 96.25, "派生") },
+            { stateVar: "overduePressure", objectType: "ARInvoice", value: 61.222471, carriers: 60, universe: 60, weighting: "发票金额加权", weightingNote: "ARInvoice.amount", provenance: prov("ARInvoice", "arinv_001", "overduePressure", 61.22, "派生") },
+          ],
+          lines: [
+            { subject: "销售成本", role: "COST", budget: 588, rolling: rolling.cogs, projected: cogsProjected, delta: cogsDelta, deltaPct: 95.9611, driver: "Order.costPressure", formula: `${rolling.cogs} ×（1 + ${costAgg} ÷ 100）= ${cogsProjected}`, provenance: prov("FinancePlan", "fin-cogs", "rolling", rolling.cogs) },
+            { subject: "毛利", role: "MARGIN", budget: 112, rolling: rolling.gm, projected: -438.73, delta: -cogsDelta, deltaPct: -468.9907, driver: "Order.costPressure（经 收入Δ − 成本Δ 传导）", formula: `${rolling.gm} +（Δ收入 0）−（Δ成本 ${cogsDelta}）= -438.73`, provenance: prov("FinancePlan", "fin-gm", "rolling", rolling.gm) },
+            { subject: "收入", role: "REVENUE", budget: 700, rolling: rolling.rev, projected: rolling.rev, delta: 0, deltaPct: 0, driver: "", formula: "700（本链不驱动收入 —— 世界态需求侧变量与 FinancePlan 收入行之间今天没有传导规则）", provenance: prov("FinancePlan", "fin-rev", "rolling", rolling.rev) },
+          ],
+          cash: {
+            available: true, arBaseline: 160802, arProjected: 315576.56, arDelta: 154774.56,
+            overdueExposure: 98446.96, overdueSharePct: 61.2225,
+            invoiceUniverse: 60, invoiceCarriers: 60, customerLinked: 60,
+            formula: "应收投影 = Σ_发票 amount ×（1 + 该发票客户的 receivablePressure ÷ 100）",
+            provenance: prov("ARInvoice", "arinv_001", "amount", 160802),
+          },
+          chain: [
+            { ruleId: "simpr_demo_customer_ar_to_invoice", ruleKey: "demo_customer_receivable_to_invoice_overdue", from: "Customer.receivablePressure", to: "ARInvoice.overduePressure", viaLinkKey: "customer_has_invoice", coefficient: 0.4, delayTicks: 1, provenance: prov("PropagationRule", "simpr_demo_customer_ar_to_invoice", "coefficient", 0.4, "派生") },
+          ],
+          reconChecks: [{ label: "收入 − 销售成本 − 毛利", baselineResidual: 0, projectedResidual: 0, ok: true }],
+          reconciled: true,
+          summary: `世界 ${worldId} 第 3 拍：销售成本 ${rolling.cogs} → ${cogsProjected}（+${cogsDelta}），毛利 ${rolling.gm} → -438.73。`,
+        },
+        snapshotVersion: "ov-12",
+      });
+    }
     // WO-HV-B ② · 交期承诺（ATP/CTP）mock —— 与 order_fullchain 同一张单（`orderRef`/`so` 两个名都认，
     // 因为后端 `atpCheck` 读的就是 `args.orderRef ?? args.so`）。
     // 三源拆解必须满足**勾稽铁律** Σbreakdown == committableQty、shortfall == requested − committable，
