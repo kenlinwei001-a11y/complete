@@ -130,7 +130,10 @@ async function perturbDemand(t: TestApp, sid: string, cand: Candidate) {
   expect(row, "tick4 态行缺失 ⇒ 传导链根本没跑").not.toBeNull();
   const state = row!.state;
   // 数据半自证（缺一 ⇒ 后面的『求解器没变』读不出是机制坏了还是链没通）：
-  expect(state[cand.orderId]?.demandPressure, "扰动没落格").toBe(60);
+  // ⚠ 不许断言 `=== 60`：`demo_forecast_bias_to_order_demand` 把 demandPressure 变成
+  //    **规则写入量** ⇒ 取值域声明的衰减每拍合法地漏（实测 60 →4 拍→ 9.4518）。
+  //    衰减到 9.45 与「没扰动」是两个命题 —— 判据是「还大于 0」，不是「等于施加点」。
+  expect(state[cand.orderId]?.demandPressure, "扰动没落格（或 4 拍内已衰减归零 ⇒ 链白跑）").toBeGreaterThan(0);
   const vars = new Map<string, number>();
   for (const obj of Object.values(state)) for (const [v, val] of Object.entries(obj)) vars.set(v, (vars.get(v) ?? 0) + (val as number));
   expect(vars.get("demandLoad") ?? 0, "第①跳没到 Model.demandLoad ⇒ 传导链断在第①跳").toBeGreaterThan(0);
@@ -227,6 +230,9 @@ describe("WO-WORLDSTATE-SURFACE · 统一世界态读取面", () => {
       const args = wiredArgs(cand)[key]!;
       const a = dataOf(await invokeSolver(t, key, args));
       const b = dataOf(await invokeSolver(t, key, args));
+      // 跨提交 R6 对的锚点：本行在基线与本分支上各跑一次，两个 truth 哈希必须相等
+      // （「不传 worldId ⇒ 与上线前逐字节一致」只能靠这条跨提交对比真证，单提交内自比证不了）。
+      console.log(`[r6-truth] solver=${key} truth=${hashOf(a)}`);
       // ① 不传 worldId：没有 worldState 键（加性键不许悄悄出现），两跑逐字节相同。
       expect(a.worldState, `${key} 没传 worldId 却带 worldState ⇒ 闸②漏了`).toBeUndefined();
       expect(JSON.stringify(a)).toBe(JSON.stringify(b));
