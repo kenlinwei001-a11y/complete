@@ -3312,9 +3312,9 @@ atoms:
     docSource: "jsdoc"
     tags: ["api", "frontend-shell"]
     wo: "WO-BEFE-G"
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/frontend-shell/src/store/authSession.ts", line: 44 }], test: [] }
   - id: "sym:apps/frontend-shell/src/api/endpoints.ts#materializeDraft"
     name: "materializeDraft"
     kind: "function"
@@ -7901,7 +7901,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 1, selfUses: 2, selfLine: 371, testCount: 0, src: [{ file: "apps/frontend-shell/src/mocks/handlers.ts", line: 3280 }], test: [] }
+    inbound: { srcCount: 1, selfUses: 2, selfLine: 371, testCount: 2, src: [{ file: "apps/frontend-shell/src/mocks/handlers.ts", line: 3280 }], test: [{ file: "apps/frontend-shell/test/feature-name-single-source.seam.test.ts", line: 55 }, { file: "apps/frontend-shell/test/gsim-live-deploy-visibility.seam.test.tsx", line: 166 }] }
   - id: "sym:apps/frontend-shell/src/mocks/fixtures.ts#featuresForAccount"
     name: "featuresForAccount"
     kind: "function"
@@ -11250,7 +11250,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 3, selfUses: 0, selfLine: null, testCount: 23, src: [{ file: "apps/frontend-shell/src/App.tsx", line: 263 }, { file: "apps/frontend-shell/src/store/authSession.ts", line: 10 }, { file: "apps/frontend-shell/src/store/eventInvalidation.ts", line: 231 }], test: [{ file: "apps/frontend-shell/test/chain-impediment-mockwire.test.tsx", line: 51 }, { file: "apps/frontend-shell/test/chain-impediment.seam.test.tsx", line: 127 }, { file: "apps/frontend-shell/test/chatUx.test.tsx", line: 136 }, { file: "apps/frontend-shell/test/decision-play-consume.seam.test.tsx", line: 48 }, { file: "apps/frontend-shell/test/decision-play.test.tsx", line: 157 }, { file: "apps/frontend-shell/test/disruption-radius.test.tsx", line: 196 }, { file: "apps/frontend-shell/test/enterprise-state.seam.test.tsx", line: 56 }, { file: "apps/frontend-shell/test/f1.account-switch.test.tsx", line: 29 }, { file: "apps/frontend-shell/test/f17.sop-balance.test.tsx", line: 95 }, { file: "apps/frontend-shell/test/f19.project-sim-whatif.test.tsx", line: 120 }, { file: "apps/frontend-shell/test/f38.event-loop.test.ts", line: 13 }, { file: "apps/frontend-shell/test/f51.event-stream.test.tsx", line: 21 }, { file: "apps/frontend-shell/test/f6.sse-reconnect.test.tsx", line: 14 }, { file: "apps/frontend-shell/test/f6b.sse-liveness.test.tsx", line: 24 }, { file: "apps/frontend-shell/test/g-governance.test.tsx", line: 63 }, { file: "apps/frontend-shell/test/process-instance-detail.seam.test.tsx", line: 363 }, { file: "apps/frontend-shell/test/sandbox-perturbation-timeline.seam.test.tsx", line: 155 }, { file: "apps/frontend-shell/test/setup.ts", line: 112 }, { file: "apps/frontend-shell/test/sim-event-consumers.seam.test.tsx", line: 107 }, { file: "apps/frontend-shell/test/sim-event-invalidation.seam.test.ts", line: 37 }, { file: "apps/frontend-shell/test/ui-layering.seam.test.tsx", line: 117 }, { file: "apps/frontend-shell/test/what-if.test.tsx", line: 177 }, { file: "apps/frontend-shell/test/wo-fe-agent-trace.test.tsx", line: 227 }] }
+    inbound: { srcCount: 4, selfUses: 0, selfLine: null, testCount: 23, src: [{ file: "apps/frontend-shell/src/App.tsx", line: 263 }, { file: "apps/frontend-shell/src/pages/admin/SimClockConsole.tsx", line: 57 }, { file: "apps/frontend-shell/src/store/authSession.ts", line: 10 }, { file: "apps/frontend-shell/src/store/eventInvalidation.ts", line: 231 }], test: [{ file: "apps/frontend-shell/test/chain-impediment-mockwire.test.tsx", line: 51 }, { file: "apps/frontend-shell/test/chain-impediment.seam.test.tsx", line: 127 }, { file: "apps/frontend-shell/test/chatUx.test.tsx", line: 136 }, { file: "apps/frontend-shell/test/decision-play-consume.seam.test.tsx", line: 48 }, { file: "apps/frontend-shell/test/decision-play.test.tsx", line: 157 }, { file: "apps/frontend-shell/test/disruption-radius.test.tsx", line: 196 }, { file: "apps/frontend-shell/test/enterprise-state.seam.test.tsx", line: 56 }, { file: "apps/frontend-shell/test/f1.account-switch.test.tsx", line: 29 }, { file: "apps/frontend-shell/test/f17.sop-balance.test.tsx", line: 95 }, { file: "apps/frontend-shell/test/f19.project-sim-whatif.test.tsx", line: 120 }, { file: "apps/frontend-shell/test/f38.event-loop.test.ts", line: 13 }, { file: "apps/frontend-shell/test/f51.event-stream.test.tsx", line: 21 }, { file: "apps/frontend-shell/test/f6.sse-reconnect.test.tsx", line: 14 }, { file: "apps/frontend-shell/test/f6b.sse-liveness.test.tsx", line: 24 }, { file: "apps/frontend-shell/test/g-governance.test.tsx", line: 63 }, { file: "apps/frontend-shell/test/process-instance-detail.seam.test.tsx", line: 363 }, { file: "apps/frontend-shell/test/sandbox-perturbation-timeline.seam.test.tsx", line: 155 }, { file: "apps/frontend-shell/test/setup.ts", line: 112 }, { file: "apps/frontend-shell/test/sim-event-consumers.seam.test.tsx", line: 107 }, { file: "apps/frontend-shell/test/sim-event-invalidation.seam.test.ts", line: 37 }, { file: "apps/frontend-shell/test/ui-layering.seam.test.tsx", line: 117 }, { file: "apps/frontend-shell/test/what-if.test.tsx", line: 177 }, { file: "apps/frontend-shell/test/wo-fe-agent-trace.test.tsx", line: 227 }] }
   - id: "sym:apps/frontend-shell/src/store/sessionStore.ts#ActiveBlock"
     name: "ActiveBlock"
     kind: "type"
@@ -21935,7 +21935,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, selfUses: 3, selfLine: 364, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 1, selfUses: 3, selfLine: 364, testCount: 0, src: [{ file: "apps/frontend-shell/src/views/sim/unified/MetricWall.tsx", line: 74 }], test: [] }
   - id: "sym:apps/frontend-shell/src/views/sim/unified/metricWallModel.ts#MetricWallConfig"
     name: "MetricWallConfig"
     kind: "interface"

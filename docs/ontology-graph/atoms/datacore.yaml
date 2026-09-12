@@ -3248,9 +3248,9 @@ atoms:
     docSource: "jsdoc"
     tags: ["datacore", "decision"]
     wo: null
-    state: "test-only"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 1, src: [], test: [{ file: "apps/datacore/test/derive-fields.test.ts", line: 136 }] }
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 1, src: [{ file: "apps/datacore/src/app.ts", line: 7280 }], test: [{ file: "apps/datacore/test/derive-fields.test.ts", line: 136 }] }
   - id: "sym:apps/datacore/src/decision/kernel.ts#DecisionKernelService"
     name: "DecisionKernelService"
     kind: "class"
@@ -4827,7 +4827,7 @@ atoms:
     state: "wired"
     reexportOf: null
     registry: { parsedCount: null, evaluatedCount: 98, confidence: "evaluated-uncountable" }
-    inbound: { srcCount: 2, selfUses: 6, selfLine: 210, testCount: 2, src: [{ file: "apps/datacore/src/config-bundle.ts", line: 88 }, { file: "apps/datacore/src/datahealth.ts", line: 33 }], test: [{ file: "apps/datacore/test/dark-feature-default-off.test.ts", line: 24 }, { file: "apps/datacore/test/entitlement-action-level.seam.test.ts", line: 173 }] }
+    inbound: { srcCount: 2, selfUses: 6, selfLine: 210, testCount: 3, src: [{ file: "apps/datacore/src/config-bundle.ts", line: 88 }, { file: "apps/datacore/src/datahealth.ts", line: 33 }], test: [{ file: "apps/datacore/test/dark-feature-default-off.test.ts", line: 24 }, { file: "apps/datacore/test/entitlement-action-level.seam.test.ts", line: 173 }, { file: "apps/frontend-shell/test/feature-name-single-source.seam.test.ts", line: 54 }] }
   - id: "sym:apps/datacore/src/features.ts#featureNotFound"
     name: "featureNotFound"
     kind: "function"
@@ -6257,7 +6257,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 2, selfUses: 1, selfLine: 1554, testCount: 0, src: [{ file: "apps/datacore/src/ontology-governance.ts", line: 83 }, { file: "apps/datacore/src/timeseries.ts", line: 213 }], test: [] }
+    inbound: { srcCount: 2, selfUses: 1, selfLine: 1554, testCount: 0, src: [{ file: "apps/datacore/src/ontology-governance.ts", line: 50 }, { file: "apps/datacore/src/timeseries.ts", line: 213 }], test: [] }
   - id: "sym:apps/datacore/src/ontology/invariants.ts#assertFactsResolvable"
     name: "assertFactsResolvable"
     kind: "function"
@@ -10393,10 +10393,10 @@ atoms:
     docSource: "none"
     tags: ["datacore", "solvers"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
     slices: ["biz.factory.base", "biz.x.inventorytxn_to_workorder", "biz.x.line_to_capacitypool", "biz.x.line_to_process", "biz.x.line_to_workorder", "biz.x.model_to_line", "biz.x.operatorattendance_to_line", "biz.x.order_to_orderpromise", "biz.x.order_to_plantarget", "biz.x.orderpromise_to_order", "biz.x.process_to_line", "biz.x.qualitylot_to_workorder", "biz.x.shiftplan_to_line", "biz.x.wiplot_to_line", "biz.x.workorder_to_capacitypool", "biz.x.workorder_to_line", "biz.x.workorder_to_model", "biz.x.workorder_to_order", "biz.x.workorder_to_qualitylot"]
-    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/solvers/service.ts", line: 3596 }], test: [] }
   - id: "sym:apps/datacore/src/solvers/base-outlook.ts#baseFreeDaily"
     name: "baseFreeDaily"
     kind: "function"
@@ -11206,7 +11206,7 @@ atoms:
     state: "wired"
     reexportOf: null
     slices: ["biz.process.operation", "biz.x.equipment_to_process", "biz.x.line_to_process", "biz.x.process_to_equipment", "biz.x.process_to_line"]
-    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/solvers/chain-loss-matrix.ts", line: 264 }], test: [] }
+    inbound: { srcCount: 2, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/solvers/chain-loss-matrix.ts", line: 264 }, { file: "apps/datacore/src/solvers/service.ts", line: 4471 }], test: [] }
   - id: "sym:apps/datacore/src/solvers/chain-loss.ts#ChainLossEmpty"
     name: "ChainLossEmpty"
     kind: "interface"
@@ -12200,7 +12200,7 @@ atoms:
     state: "wired"
     reexportOf: null
     registry: { parsedCount: null, evaluatedCount: 13, confidence: "evaluated-uncountable" }
-    inbound: { srcCount: 2, selfUses: 1, selfLine: 113, testCount: 3, src: [{ file: "apps/datacore/src/app.ts", line: 6155 }, { file: "apps/datacore/src/solvers/impediment-options.ts", line: 690 }], test: [{ file: "apps/datacore/test/lever-binding-drift.test.ts", line: 67 }, { file: "apps/datacore/test/process-inspect.seam.test.ts", line: 185 }, { file: "apps/datacore/test/schema-display-name.seam.test.ts", line: 155 }] }
+    inbound: { srcCount: 3, selfUses: 1, selfLine: 113, testCount: 3, src: [{ file: "apps/datacore/src/app.ts", line: 6155 }, { file: "apps/datacore/src/solvers/impediment-options.ts", line: 690 }, { file: "apps/datacore/src/solvers/service.ts", line: 682 }], test: [{ file: "apps/datacore/test/lever-binding-drift.test.ts", line: 67 }, { file: "apps/datacore/test/process-inspect.seam.test.ts", line: 185 }, { file: "apps/datacore/test/schema-display-name.seam.test.ts", line: 155 }] }
   - id: "sym:apps/datacore/src/solvers/lever-meta.ts#LeverValueKind"
     name: "LeverValueKind"
     kind: "type"
@@ -12993,10 +12993,10 @@ atoms:
     docSource: "jsdoc"
     tags: ["datacore", "solvers"]
     wo: null
-    state: "test-only"
+    state: "wired"
     reexportOf: null
     slices: ["biz.factory.base", "biz.x.line_to_capacitypool", "biz.x.line_to_process", "biz.x.line_to_workorder", "biz.x.model_to_line", "biz.x.operatorattendance_to_line", "biz.x.order_to_orderpromise", "biz.x.order_to_plantarget", "biz.x.orderpromise_to_order", "biz.x.process_to_line", "biz.x.shiftplan_to_line", "biz.x.wiplot_to_line", "biz.x.workorder_to_line", "biz.x.workorder_to_order"]
-    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 8, src: [], test: [{ file: "apps/datacore/test/global-sim-business-type-seam.test.ts", line: 39 }, { file: "apps/datacore/test/global-sim-var-seam.test.ts", line: 50 }, { file: "apps/datacore/test/gsim-integrate.test.ts", line: 80 }, { file: "apps/datacore/test/gsim-solver.test.ts", line: 58 }, { file: "apps/datacore/test/portfolio-l3-linkage.test.ts", line: 43 }, { file: "apps/datacore/test/unitprice-scale.test.ts", line: 62 }, { file: "apps/frontend-shell/test/global-sim-business-type-seam.test.tsx", line: 23 }, { file: "apps/frontend-shell/test/global-sim-seam-realsolver.test.tsx", line: 105 }] }
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 8, src: [{ file: "apps/datacore/src/solvers/service.ts", line: 3561 }], test: [{ file: "apps/datacore/test/global-sim-business-type-seam.test.ts", line: 39 }, { file: "apps/datacore/test/global-sim-var-seam.test.ts", line: 50 }, { file: "apps/datacore/test/gsim-integrate.test.ts", line: 80 }, { file: "apps/datacore/test/gsim-solver.test.ts", line: 58 }, { file: "apps/datacore/test/portfolio-l3-linkage.test.ts", line: 43 }, { file: "apps/datacore/test/unitprice-scale.test.ts", line: 62 }, { file: "apps/frontend-shell/test/global-sim-business-type-seam.test.tsx", line: 23 }, { file: "apps/frontend-shell/test/global-sim-seam-realsolver.test.tsx", line: 105 }] }
   - id: "sym:apps/datacore/src/solvers/portfolio.ts#PortfolioInput"
     name: "PortfolioInput"
     kind: "interface"
@@ -13033,7 +13033,7 @@ atoms:
     state: "wired"
     reexportOf: null
     slices: ["biz.factory.base", "biz.x.line_to_capacitypool", "biz.x.line_to_process", "biz.x.line_to_workorder", "biz.x.model_to_line", "biz.x.operatorattendance_to_line", "biz.x.order_to_orderpromise", "biz.x.order_to_plantarget", "biz.x.orderpromise_to_order", "biz.x.process_to_line", "biz.x.shiftplan_to_line", "biz.x.wiplot_to_line", "biz.x.workorder_to_line", "biz.x.workorder_to_order"]
-    inbound: { srcCount: 0, selfUses: 3, selfLine: 914, testCount: 1, src: [], test: [{ file: "apps/datacore/test/gsim-solver.test.ts", line: 219 }] }
+    inbound: { srcCount: 1, selfUses: 3, selfLine: 914, testCount: 1, src: [{ file: "apps/datacore/src/solvers/service.ts", line: 3562 }], test: [{ file: "apps/datacore/test/gsim-solver.test.ts", line: 219 }] }
   - id: "sym:apps/datacore/src/solvers/portfolio.ts#PortfolioOutput"
     name: "PortfolioOutput"
     kind: "interface"
@@ -13817,10 +13817,10 @@ atoms:
     docSource: "none"
     tags: ["datacore", "solvers"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
     slices: ["biz.factory.base", "biz.x.line_to_capacitypool", "biz.x.line_to_process", "biz.x.line_to_workorder", "biz.x.model_to_line", "biz.x.operatorattendance_to_line", "biz.x.order_to_orderpromise", "biz.x.order_to_plantarget", "biz.x.orderpromise_to_order", "biz.x.process_to_line", "biz.x.shiftplan_to_line", "biz.x.wiplot_to_line", "biz.x.workorder_to_line", "biz.x.workorder_to_order"]
-    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/solvers/service.ts", line: 3420 }], test: [] }
   - id: "sym:apps/datacore/src/solvers/sop-reschedule.ts#SopRescheduleInput"
     name: "SopRescheduleInput"
     kind: "interface"
@@ -14073,7 +14073,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 3, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/solvers/capacity.ts", line: 276 }, { file: "apps/datacore/src/solvers/decision-info.ts", line: 65 }, { file: "apps/datacore/src/solvers/risk.ts", line: 35 }], test: [] }
+    inbound: { srcCount: 4, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/solvers/capacity.ts", line: 276 }, { file: "apps/datacore/src/solvers/decision-info.ts", line: 65 }, { file: "apps/datacore/src/solvers/extended.ts", line: 802 }, { file: "apps/datacore/src/solvers/risk.ts", line: 35 }], test: [] }
   - id: "sym:apps/datacore/src/solvers/types.ts#baseProvenanceSynthetic"
     name: "baseProvenanceSynthetic"
     kind: "function"
@@ -14655,7 +14655,7 @@ atoms:
     wo: "WO-GSIM-1-DATA"
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, selfUses: 1, selfLine: 6883, testCount: 3, src: [], test: [{ file: "apps/datacore/test/global-sim-data.test.ts", line: 70 }, { file: "apps/datacore/test/gsim-integrate.test.ts", line: 23 }, { file: "apps/frontend-shell/test/global-sim-seam-realsolver.test.tsx", line: 34 }] }
+    inbound: { srcCount: 1, selfUses: 1, selfLine: 6883, testCount: 3, src: [{ file: "apps/datacore/src/solvers/service.ts", line: 3485 }], test: [{ file: "apps/datacore/test/global-sim-data.test.ts", line: 70 }, { file: "apps/datacore/test/gsim-integrate.test.ts", line: 23 }, { file: "apps/frontend-shell/test/global-sim-seam-realsolver.test.tsx", line: 34 }] }
   - id: "sym:apps/datacore/src/synthetic/battery.ts#computeOrderPromise"
     name: "computeOrderPromise"
     kind: "function"
@@ -15582,7 +15582,7 @@ atoms:
     state: "wired"
     reexportOf: null
     registry: { parsedCount: null, evaluatedCount: 8, confidence: "evaluated-uncountable" }
-    inbound: { srcCount: 0, selfUses: 1, selfLine: 86, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 1, selfUses: 1, selfLine: 86, testCount: 0, src: [{ file: "apps/datacore/src/synthetic/battery-extended.ts", line: 383 }], test: [] }
   - id: "sym:apps/datacore/src/synthetic/materials-seed.ts#materialUnitPrices"
     name: "materialUnitPrices"
     kind: "function"

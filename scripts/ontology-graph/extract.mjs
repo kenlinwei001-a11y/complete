@@ -259,6 +259,21 @@ function pkgOfFile(relPath) {
 // 性能：先用「名字在导出名集合里」做廉价预筛，再 getSymbolAtLocation。
 function collectRefs(ctxs) {
   const exportNames = new Set([...atoms.values()].map((a) => a.name));
+  // ⚠ 预筛按「标识符文本在导出名集合里」，**别名 import 会整条漏掉**：
+  //   `import { globalSimOptimize as runGlobalSimOptimize } from "./portfolio.js"`
+  //   之后生产代码调的是 `runGlobalSimOptimize`，那个名字不在导出名集合里 ⇒ 预筛直接丢掉
+  //   ⇒ 求解器 globalSimOptimize 被判「零生产调用方 / test-only」，而 service.ts:3552 真在用。
+  //   ⇒ 把所有 `X as Y` 的**本地名 Y** 也并进预筛集合。实测全仓 17 处别名 import。
+  for (const { program, owned } of ctxs) {
+    for (const sf of program.getSourceFiles()) {
+      if (!owned.has(rel(sf.fileName))) continue;
+      const visit = (n) => {
+        if (ts.isImportSpecifier(n) && n.propertyName && ts.isIdentifier(n.name)) exportNames.add(n.name.text);
+        ts.forEachChild(n, visit);
+      };
+      visit(sf);
+    }
+  }
   const byDeclId = new Map();
   for (const a of atoms.values()) if (!a.reexportOf) byDeclId.set(a.id, a);
 
@@ -625,6 +640,12 @@ function runCanaries(g) {
   const dynN = dyn ? dyn.inboundSrc.size : -1;
   add("已知只经 `await import()` 解构拿到的符号（mapMcpConfig）src 入边", ">0", dynN, dynN > 0,
       "出处：apps/agentcore/src/engine.ts:634 解构 → :649 真调用；为 0 ⇒ 动态 import 桥断了");
+
+  // ④d 别名 import 可见（预筛按名字时最容易整条漏掉的一类）
+  const ali = A("sym:apps/datacore/src/solvers/portfolio.ts#globalSimOptimize");
+  const aliN = ali ? ali.inboundSrc.size : -1;
+  add("已知经别名 import 被调用的符号（globalSimOptimize）src 入边", ">0", aliN, aliN > 0,
+      "出处：apps/datacore/src/solvers/service.ts:42 `globalSimOptimize as runGlobalSimOptimize` → :3552 真调用");
 
   // ⑤ test 引用可见（坑 ①：include 只有 src 时这条恒 0 ⇒「只有 test 引用 = 0」）
   const withTest = [...atoms.values()].filter((a) => a.inboundTest.size > 0).length;

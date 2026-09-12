@@ -2439,7 +2439,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, selfUses: 4, selfLine: 164, testCount: 5, src: [], test: [{ file: "apps/agentcore/test/dark-feature-default-off.test.ts", line: 29 }, { file: "apps/agentcore/test/demo-lightup-2-prod-set.seam.test.ts", line: 66 }, { file: "apps/agentcore/test/demo-lightup-reflect-parity.seam.test.ts", line: 103 }, { file: "apps/agentcore/test/feature-name-rename-tail.test.ts", line: 29 }, { file: "apps/agentcore/test/l2-decompose-seam.test.ts", line: 42 }] }
+    inbound: { srcCount: 0, selfUses: 4, selfLine: 164, testCount: 6, src: [], test: [{ file: "apps/agentcore/test/dark-feature-default-off.test.ts", line: 29 }, { file: "apps/agentcore/test/demo-lightup-2-prod-set.seam.test.ts", line: 66 }, { file: "apps/agentcore/test/demo-lightup-reflect-parity.seam.test.ts", line: 103 }, { file: "apps/agentcore/test/feature-name-rename-tail.test.ts", line: 29 }, { file: "apps/agentcore/test/l2-decompose-seam.test.ts", line: 42 }, { file: "apps/frontend-shell/test/feature-name-single-source.seam.test.ts", line: 53 }] }
   - id: "sym:apps/agentcore/src/features/registry.ts#featureEnabled"
     name: "featureEnabled"
     kind: "function"

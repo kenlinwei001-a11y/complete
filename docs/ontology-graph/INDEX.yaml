@@ -2,8 +2,8 @@
 # 生成物 —— ⛔ 不要手改。生成命令：node scripts/ontology-graph/extract.mjs
 # 人读的散文本体在 docs/SYSTEM-ONTOLOGY.md，**保留不动**，本目录是它旁边的机器抽取面。
 version: 1
-generatedFrom: "cc6fd2ab"
-counts: { atoms: 6266, edges: 21032, slices: 47, byState: { wired: 5745, test-only: 72, no-ref: 449 }, byEdgeKind: { reexports: 91, reads: 266, declares: 5437, registers: 3257, seeds: 2284, asserts: 7963, inSlice: 1734 }, docSourceNone: 2968, docSourceNonePct: 47.37 }
+generatedFrom: "a3f5743c"
+counts: { atoms: 6266, edges: 21032, slices: 47, byState: { wired: 5750, test-only: 70, no-ref: 446 }, byEdgeKind: { reexports: 91, reads: 266, declares: 5437, registers: 3257, seeds: 2284, asserts: 7963, inSlice: 1734 }, docSourceNone: 2968, docSourceNonePct: 47.37 }
 canary:
   - probe: "buildSliceIndex 在节点表里"
     expect: "present"
@@ -32,7 +32,7 @@ canary:
     note: "为 0 ⇒ paths 映射坏了，不是 contracts 死了"
   - probe: "frontend-shell 内部跨文件引用数"
     expect: ">0"
-    actual: 1200
+    actual: 1202
     ok: true
     note: "为 0 ⇒ `@/*` 别名没解析（本包 paths 被覆盖），不是前端全是死代码"
   - probe: "已知经 `@/` 别名被测试引用的符号（NodeDetailProvenance）"
@@ -45,9 +45,14 @@ canary:
     actual: 1
     ok: true
     note: "出处：apps/agentcore/src/engine.ts:634 解构 → :649 真调用；为 0 ⇒ 动态 import 桥断了"
+  - probe: "已知经别名 import 被调用的符号（globalSimOptimize）src 入边"
+    expect: ">0"
+    actual: 1
+    ok: true
+    note: "出处：apps/datacore/src/solvers/service.ts:42 `globalSimOptimize as runGlobalSimOptimize` → :3552 真调用"
   - probe: "有 test 入边的原子数"
     expect: ">0"
-    actual: 1701
+    actual: 1702
     ok: true
     note: "为 0 ⇒ program 里没有 test 文件，不是没人写测试"
   - probe: "reexports 边总数"
@@ -157,7 +162,7 @@ slices:
     spannedTypes: ["Operation", "ProcessCapabilityWindow", "Routing"]
     spannedDomains: ["process"]
     atomCount: 12
-    consumerCount: 22
+    consumerCount: 23
     tokens: ["operation", "process", "processcapabilitywindow", "routing", "义", "义工", "义覆", "内", "内切", "切", "切片", "力", "力边", "型", "型工", "域", "域内", "域根", "定", "定义", "工", "工序", "工序定义", "工艺", "工艺能力边界", "工艺路线", "序", "序定", "根", "根工", "片", "片域", "界", "界工", "盖", "盖类", "类", "类型", "线", "能", "能力", "艺", "艺能", "艺路", "覆", "覆盖", "路", "路线", "边", "边界"]
     span: 6
   - key: "biz.product.bomdetail"

@@ -29,15 +29,15 @@ datacore `dist/` 是**软前置**：没有它 `registers` 边全退化成 `parse
 **三态** `wired` = 有生产引用（跨文件 src **或同文件内的生产使用**）· `test-only` = 只有 test 引用且同文件零生产使用（假绿第 9 形态）· `no-ref` = 任何地方都没引用。三个计数 `srcCount`/`selfUses`/`testCount` 全在产物里，谁都能自己重算。
 
 ## 金丝雀怎么验
-`--canary` 跑 15 条，结果同时写进 `INDEX.yaml` 的 `canary:` 段。**任一条不中 ⇒ 报「工具坏了」，⛔ 不许报「没有命中 / 零调用方 / 不存在」。** 每条钉死一个已知必中的出处（`buildSliceIndex` 必有 `app.ts` 的 src 入边、`mapMcpConfig` 必有经 `await import()` 的 src 入边），所以能分辨「真的没有」与「解析器坏了」。
-这三条 bug 都是逐条手工复核抓出来、**然后才补上金丝雀**的：① frontend-shell 的 `@/*` 别名被 `paths` 覆盖冲掉 ⇒ 624 文件读成零跨文件引用；② 同文件内的生产使用没算 ⇒ 真被调用的符号判成 `test-only`；③ `await import()` 解构绑定走不通标识符路。修前 `no-ref` **3031**、修后 **449** —— 修前那份图谱会让人得出「全仓一半是死代码」这个**恰好相反**的结论。
+`--canary` 跑 16 条，结果同时写进 `INDEX.yaml` 的 `canary:` 段。**任一条不中 ⇒ 报「工具坏了」，⛔ 不许报「没有命中 / 零调用方 / 不存在」。** 每条钉死一个已知必中的出处（`buildSliceIndex` 必有 `app.ts` 的 src 入边、`mapMcpConfig` 必有经 `await import()` 的 src 入边），所以能分辨「真的没有」与「解析器坏了」。
+这四条 bug 都是逐条手工复核抓出来、**然后才补上金丝雀**的：① frontend-shell 的 `@/*` 别名被 `paths` 覆盖冲掉 ⇒ 624 文件读成零跨文件引用；② 同文件内的生产使用没算 ⇒ 真被调用的符号判成 `test-only`；③ `await import()` 解构绑定走不通标识符路；④ 预筛按名字过滤，**别名 import**（`X as Y`）的使用点整条漏掉 ⇒ 求解器 `globalSimOptimize` 被判零生产调用方，而 `service.ts:3552` 真在用。修前 `no-ref` **3031**、修后 **446** —— 修前那份图谱会让人得出「全仓一半是死代码」这个**恰好相反**的结论。
 
 ## ⚠ 本抽取器看不见什么（比上面的功能清单重要）
 1. **结构化类型使用**：`interface`/`type` 不出现名字也能被结构匹配使用 ⇒ `no-ref` 的 type/interface（324 个）**不等于没被用**。
 2. **字符串键分发 / 事件订阅 / DI 容器**：运行时按名字派发的调用，静态一条都看不见。
 3. **高阶函数**：能看到"被传进去"，看不到"什么时候真触发" ⇒ 答不了「接了线没数据」，只有 `seeds` 边能侧面答。
 4. **传递性存活**：只被另一个死符号引用的符号仍读作 `wired`（如 `SimRunDisclosureSchema` 只被自己的 `z.infer` 用）。
-5. **只 import 不使用**：import/export 说明符**有意不发边**（那是管道不是使用），故「import 了从不用」读成 `no-ref`。
+5. **只 import 不使用**：import/export 说明符**有意不发边**（那是管道不是使用），故「import 了从不用」读成 `no-ref`。同理**命名空间成员访问**（`import * as ns` 后的 `ns.foo`）不发边 —— 本仓今天 `import * as` 实测 **0 处**，故不构成现实缺口，但换了写法会变成缺口。
 6. **非 TS 出口**：`packages/dsh-harness`（vendored `.mjs`，无 `src/`）、SQL migrations、nginx/docker-compose、YAML 配置全不在图里。
 7. **运行时条件**：feature flag / entitlement 关掉的分支，图上仍是 `wired`。
 8. **`docSource` 只认 `/** */`**：`//` 行注释一律记 `none`，⛔ 绝不编造、绝不让 LLM 补。本轮 **2968/6266 = 47.4%** 的原子没有自述。
