@@ -95,6 +95,7 @@ import {
   CHAIN_IMPEDIMENT_SOLVER_KEY,
   type ChainImpedimentModel,
 } from "../../chainImpediment";
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./Console0828.module.css";
 
 /** 左栏「已添加 N 件扰动事件」里的一条 —— **还没提交**，提交发生在「开始推演」。 */
@@ -162,6 +163,13 @@ function readDisclosure(raw: unknown): DisclosureBrief | null {
 }
 
 const pct = (x: number): string => `${(x * 100).toFixed(1)}%`;
+
+/**
+ * WO-SIM-DENSE ① · KPI 卡口径浮层的展开方向 —— **纯几何，无业务语义**。
+ * 一行六格，最右那两格的浮层若仍向右展开会顶出屏幕右缘（`InfoPopover` 宽 380px，
+ * 而一格才 ~250px）。⇒ 后三分之一向左开。
+ */
+const kpiAlign = (i: number, n: number): "left" | "right" => (i >= n - Math.max(1, Math.ceil(n / 3)) ? "right" : "left");
 
 /**
  * WO-AGENT-INTO-SIM · 出方案用哪个 agent。
@@ -705,6 +713,17 @@ export default function Console0828({
      * ⇒ 强调一律用 `<b>`；屏上也不再打 ⛔ 这类工单黑话记号（那是给派单看的，不是给用户看的）。
      */
     readonly cal: JSX.Element;
+    /**
+     * WO-SIM-DENSE ① · **第一层那一行**口径（10.5px 灰字，超长 ellipsis）。
+     *
+     * ⚠ 它是 `cal` 的**压缩**，不是 `cal` 的替代 —— `cal` 整段一字不少地搬进了
+     * `InfoPopover`，第一层留 `?` 记号（`docs/CONVENTION-ui-information-layering.md`
+     * §1「诚实位允许降层、绝不允许删除；降层后第一层必须留可见记号」）。
+     * **静默降层等于删除**，所以这两样必须同时在场：一行摘要 + 可见触发器。
+     *
+     * ⛔ 这一行里不许出现 `cal` 里没有的新断言 —— 压缩只许删字，不许加意思。
+     */
+    readonly calOne: string;
     readonly alert?: boolean;
   }
 
@@ -720,6 +739,7 @@ export default function Console0828({
           small: true,
           cmp: `${orders.length} 张单 · ${new Set(orders.map((o) => o.cust ?? "")).size} 家客户`,
           cal: (<>口径：对象层 Order.value 逐页取全后加总，为<b>已签成交额</b>；≠ 年度计划营收，也 ≠ 需求预测。</>),
+          calOne: "对象层 Order.value 加总 · 已签成交额",
         },
         {
           key: "staged",
@@ -727,6 +747,7 @@ export default function Console0828({
           value: String(staged.length),
           cmp: staged.length === 0 ? "尚未添加" : `推演时长 ${horizon} 拍`,
           cal: (<>口径：左栏本地草稿，<b>不落盘</b>；与顶栏「服务端历史扰动」不是同一份，两者不可相加。</>),
+          calOne: "左栏本地草稿 · 不落盘",
         },
         {
           key: "entity",
@@ -734,10 +755,16 @@ export default function Console0828({
           value: String(entityTotal),
           cmp: entityCounts.map((e) => `${e.label}${e.n}`).join(" · "),
           cal: (<>口径：12 类扰动事件可落到的<b>具名实体</b>；其余对象只作传播介质，不进选择器。</>),
+          calOne: "12 类事件可落到的具名实体",
         },
       ];
     }
-    // ── 推演后：五张，全部来自本次推演结果 ──
+    /* ── 推演后：**六张**，全部来自本次推演结果 ────────────────────────────────
+       WO-SIM-DENSE ② · 稿子是一行六格：敞口 / 订单 / 客户 / 受阻环节 / 可处置 / 可落点实体。
+       改前只有前五张 —— 第六张「可落点实体」**不是新造的量**，它推演前就在（`entity` 那张，
+       同一个 `entityTotal` / `entityCounts` 单源），只是推演后被整张撤掉了。
+       ⚠ 撤掉它其实是个信息损失：它答的是「这套推演**够得着多少东西**」，
+       推演完照样要回答（用户下一步就要去改落点）。这里把它接回来，**取数一字未改**。 */
     const share = money.bookTotal === 0 ? 0 : money.exposure / money.bookTotal;
     return [
       {
@@ -747,6 +774,7 @@ export default function Console0828({
         small: true,
         cmp: `占订单簿 ${pct(share)} · 基数 ${fmtMoney(money.bookTotal, "元")}`,
         cal: (<>口径：本次推演中读数发生变化的订单，按对象层成交额合计 —— 是「<b>受影响订单的金额规模</b>」，<b>不是利润损失</b>（毛利 / 成本 / 应收三项本次无法计算，见下方「金额勾稽」）。</>),
+        calOne: "受影响订单的金额规模 · 不是利润损失",
       },
       {
         key: "orders",
@@ -754,6 +782,7 @@ export default function Console0828({
         value: String(money.exposedOrders),
         cmp: `共 ${money.bookOrders} 张 · 读到 ${money.ordersSeen} 张`,
         cal: (<>口径：按<b>世界差分全集</b>判定，<b>不按</b>被扰动的源格判定 —— 源变量常被顶在域上界，源格只动千分之几而下游动千百倍。读到 0 张表示遍历失效，不是「无波及」。</>),
+        calOne: "按世界差分全集判定 · 不按源格",
       },
       {
         key: "cust",
@@ -761,6 +790,7 @@ export default function Console0828({
         value: custView === null ? "—" : String(custView.touchedCustomers),
         cmp: custView === null ? "客户视图本次未取到" : `共 ${custView.totalCustomers} 家`,
         cal: (<>口径：由受影响订单按 Order.cust 归并得到，<b>非独立的客户级读数</b>；客户对象自带的应收数因计量单位无登记册（元 / 万元差 10000 倍）<b>不上屏</b>。</>),
+        calOne: "由受影响订单按 Order.cust 归并",
       },
       {
         key: "imp",
@@ -771,6 +801,7 @@ export default function Console0828({
             ? "本次未取到"
             : impGroups.model.groups.map((g) => `${g.label}${g.items.length}`).join(" · "),
         cal: (<>口径：卡点 / 堵点 / 断点是引擎回包里 kind 的<b>三个不同取值</b>，处置相反，<b>不合并</b>成一个词。取不到时显「—」，那是<b>调用失败</b>，不是「无卡点」。</>),
+        calOne: "卡点 / 堵点 / 断点三取值 · 不合并",
       },
       {
         key: "fix",
@@ -784,6 +815,17 @@ export default function Console0828({
         // 故**不挂** `@stale-fact`。⛔ 别写成「一条都没有」那种否定断言形态：
         // 同一个意思，前者是定义（恒真），后者读起来像在报一个当下的事实（会过时）。
         cal: (<>口径：「可处置」= 引擎为该处<b>枚举出的对策条数 ≥ 1</b>；「仅可监控」= 该条数<b>为 0</b>。<b>系统不给推荐，决策由使用方作出。</b></>),
+        calOne: "引擎枚举出的对策条数 ≥ 1",
+      },
+      /* 第六张 —— 与推演前那张 `entity` **同一个取数**（`entityTotal` / `entityCounts`），
+         ⛔ 不是为了凑满六格新编的量。`key` 也沿用 `entity`，testid 因此前后一致。 */
+      {
+        key: "entity",
+        label: "可落点实体",
+        value: String(entityTotal),
+        cmp: entityCounts.map((e) => `${e.label}${e.n}`).join(" · "),
+        cal: (<>口径：12 类扰动事件可落到的<b>具名实体</b>；其余对象只作传播介质，不进选择器。</>),
+        calOne: "12 类事件可落到的具名实体",
       },
     ];
   }, [result, money, custView, impGroups, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts]);
@@ -875,6 +917,44 @@ export default function Console0828({
         </span>
       </div>
 
+        {/* ══ ③ KPI 条（纪律第 2 条）══════════════════════════════════════════
+            ⚠⚠ 每张卡第三行是**口径说明，默认可见，⛔ 不折叠**。 */}
+        {kpis.length === 0 ? null : (
+          <>
+            {/* `--kpi-n` = 本次真的有几张卡 —— 推演后 6、推演前 3。
+                ⛔ 不写死 6：推演前只有 3 个真量，留三个空格子等于用版面暗示还有三个量没算出来。 */}
+            <div
+              className={styles.kpis}
+              data-testid="c0828-kpis"
+              style={{ "--kpi-n": kpis.length } as React.CSSProperties}
+            >
+              {kpis.map((k, i) => (
+                <div
+                  key={k.key}
+                  className={k.alert === true ? `${styles.kpi} ${styles.kpiAlert}` : styles.kpi}
+                  data-testid={`c0828-kpi-${k.key}`}
+                >
+                  {/* 标签行 —— 标签 + `?` 记号。那个 `?` 就是「降层后第一层留下的可见记号」，
+                      ⛔ 不许去掉：去掉 = 静默降层 = 删除（规范 §1）。 */}
+                  <span className={styles.kpiKey}>
+                    {k.label}
+                    <InfoPopover topic={`${k.label} · 口径`} testId={`c0828-kpi-${k.key}`} align={kpiAlign(i, kpis.length)}>
+                      {k.cal}
+                    </InfoPopover>
+                  </span>
+                  <span className={`${styles.kpiBig} ${k.small === true ? styles.kpiBigSm : ""}`}>{k.value}</span>
+                  <span className={styles.kpiCmp}>{k.cmp}</span>
+                  {/* 第一层口径：**一行**，超长 ellipsis（`.kpiCal1`）。
+                      完整那段在上面的浮层里，一字未删 —— 两者由 `cal` / `calOne` 各管一头。
+                      ⚠ `data-testid` 沿用 `c0828-kpical-*`：既有测试靠它找口径，改名等于把门拆了。 */}
+                  <span className={styles.kpiCal1} data-testid={`c0828-kpical-${k.key}`}>
+                    {k.calOne}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       <div className={styles.wrap} data-testid="c0828-root">
       {/* ══ 区① 左栏 ══ */}
       <aside className={styles.rail} data-testid="c0828-rail">
@@ -1223,42 +1303,23 @@ export default function Console0828({
           </button>
         </div>
 
-        {/* ══ ③ KPI 条（纪律第 2 条）══════════════════════════════════════════
-            ⚠⚠ 每张卡第三行是**口径说明，默认可见，⛔ 不折叠**。 */}
-        {kpis.length === 0 ? null : (
-          <>
-            <div className={styles.kpis} data-testid="c0828-kpis">
-              {kpis.map((k) => (
-                <div
-                  key={k.key}
-                  className={k.alert === true ? `${styles.kpi} ${styles.kpiAlert}` : styles.kpi}
-                  data-testid={`c0828-kpi-${k.key}`}
-                >
-                  <span className={styles.kpiKey}>{k.label}</span>
-                  <span className={`${styles.kpiBig} ${k.small === true ? styles.kpiBigSm : ""}`}>{k.value}</span>
-                  <span className={styles.kpiCmp}>{k.cmp}</span>
-                  <p className={styles.kpiCal} data-testid={`c0828-kpical-${k.key}`}>
-                    {k.cal}
-                  </p>
-                </div>
-              ))}
-            </div>
-            {/* 诚实位：参考稿每张卡都有走势线，本屏**没有数据源**画它。
-                下面那句「只有两个观测点」是**真会过时**的一条（上游一给逐拍序列它就变假），
-                故挂了一条可执行赌注。⚠ 赌注**钉在上游契约**（`endpoints.ts` 的 `simTick` 回包型）
-                而不是本文件自己的字符串 —— 自指的赌注等于没赌。
-                今天那个型是 `{ curTick; state; trace?; disclosure? }`：**一个终态，没有逐拍序列**。
-                谁往回包里加了 `series`/`perTick`（或改了这四个字段），门当场红，
-                届时要么屏上这句话改对、要么真把走势线画上，二选一。 */}
-            <p className={styles.calibre} data-testid="c0828-kpi-nospark">
-              各卡<b>不带迷你走势线</b> —— 本次推演一次跳 {horizon} 拍后只读<b>一次</b>终态，
-              全屏只有「扰动前」「扰动后」两个观测点，中间每一拍的读数从未取回。{/* @stale-fact apps/frontend-shell/src/api/endpoints.ts /curTick: number; state: TickState; trace\?: unknown\[\]; disclosure\?: SimRunDisclosure/ ==1 */}{" "}
-              两点画不出走势，补一条即是编造历史。<b>这是缺数据源，不是缺实现</b>。
-              各卡第二行给的是<b>同次推演内的真实对比</b>（占订单簿 / 占总数），
-              <b>不是</b>「较上周」—— 本屏不留存历史推演，没有上一期可比。
-            </p>
-          </>
-        )}
+
+        {/* ══ WO-SIM-DENSE ④ · 传导影响图 —— **本次不画**（诚实位，不是漏做）═══════════
+            设计稿中栏是四列图：扰动落点 → 受阻环节 → 承载对象 → 敞口；红=本次被推动、灰=在册未触发。
+            实测回包里缺两样，画出来就得编：
+             ① 「本次被推动 vs 在册未触发」分不开 —— 受阻环节来自 `chain_impediments`，
+                它只收 `{ scope }`，不收会话 / 世界态 / 扰动 ⇒ 加不加扰动，那批环节一字不变。
+             ② 「某处环节压着哪些订单」没有承载物 —— 每条记录只有 locus / severity /
+                evidence{ metricValue, threshold, unit, ruleKey }，**没有订单数、没有金额**。
+            ⇒ 连线就是编一条不存在的归因。宁可留白并写明算不出，也不画一张看起来像真的图。 */}
+        {result !== null ? (
+          <p className={styles.calibre} data-testid="c0828-graph-absent">
+            <b>传导影响图本次不画</b> —— 引擎回包缺两样：受阻环节<b>不随本次扰动变化</b>
+            （全流程扫描只按范围裁，不按扰动裁），且每处环节<b>不带承载订单数与金额</b>。
+            缺这两样，「哪件事推动了哪处、压住多少钱」这几条线只能靠猜 ——
+            <b>画出来的线会像真的，但它是编的</b>。上游补齐后这里再画。
+          </p>
+        ) : null}
 
         {runM.isPending ? (
           <div className={styles.run} data-testid="c0828-running">
@@ -1306,95 +1367,6 @@ export default function Console0828({
                 ⚠ 两块都仍**挂在 DOM 里**（没有做成互斥页签）—— 既有接缝门要求
                 money / cust / impediment / board **同时在场**，且它们本来就要互相印证。 */}
             <div className={styles.grid2}>
-            {/* ══ 区③ 钱上差多少 ══ */}
-            <section className={styles.panel} data-testid="c0828-money">
-              <div className={styles.head}>
-                {zone("3", "财务影响")}
-                <h3 className={styles.headTitle}>
-                  {result.staged.length} 件扰动事件叠加 · 推演至 {tickLabel(cal, result.afterTick)}
-                </h3>
-                <span className={styles.headRight}>与下方卡点、对策同源于本次推演结果</span>
-              </div>
-              <div className={styles.money}>
-                <div className={styles.moneyRow}>
-                  <span className={styles.moneyLabel}>被推动的订单敞口</span>
-                  <span className={styles.moneyBig} data-testid="c0828-exposure">
-                    {fmtMoney(money.exposure, "元")}
-                  </span>
-                  <span className={styles.est}>估</span>
-                </div>
-                <div className={styles.calibre} data-testid="c0828-exposure-sub">
-                  {money.exposedOrders} 张单 · 占订单簿 {pct(money.bookTotal === 0 ? 0 : money.exposure / money.bookTotal)}
-                </div>
-              </div>
-
-              <div className={styles.brk}>
-                {money.breakdown.map((b) => (
-                  <div key={b.label} style={{ display: "contents" }}>
-                    <span className={styles.brkKey}>{b.label}</span>
-                    <span className={styles.brkVal}>
-                      {b.cell.kind === "value" ? (
-                        fmtMoney(b.cell.yuan, "元")
-                      ) : (
-                        <span className={styles.nocalc} data-testid={`c0828-nocalc-${b.label}`}>
-                          本次无法计算
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <p className={styles.why} data-testid="c0828-maincause">
-                {money.mainCause === null ? (
-                  <><b>多因叠加，无法归因到单一事件</b></>
-                ) : (
-                  <>主因：<b>{money.mainCause}</b></>
-                )}
-              </p>
-
-              <details className={styles.more} data-testid="c0828-recon">
-                <summary>金额勾稽</summary>
-                <div className={styles.moreBody}>
-                  <p>
-                    「被推动的订单敞口」= 本次推演中读数发生变化的订单，按对象层成交额合计。
-                    其口径是「受影响订单的金额规模」，不是「利润损失」—— 后者本次无法计算，见下。
-                  </p>
-                  <p>
-                    订单簿合计 {fmtMoney(money.bookTotal, "元")}，共 {money.bookOrders} 张单（逐页取全后累加，
-                    并与服务端返回的总数勾稽）。被推动 {money.exposedOrders} 张，合计 {fmtMoney(money.exposure, "元")}。
-                  </p>
-                  <p>毛利差额：{NOCALC_WHY.margin}</p>
-                  <p>新增成本：{NOCALC_WHY.cost}</p>
-                  <p>占压应收：{NOCALC_WHY.receivable}</p>
-                  <p>
-                    本次共 {result.deltas.length} 格读数发生变化；世界态自 {tickLabel(cal, result.beforeTick)} 推进至{" "}
-                    {tickLabel(cal, result.afterTick)}。金丝雀：读取到 {money.ordersSeen} 张单（为 0 表示遍历失效，不是「无波及」）。
-                  </p>
-                  <p>
-                    ⚠ 不应以被扰动格自身的读数判定扰动是否生效：源变量常被约束在域上界附近，
-                    即使施加 100 倍量级，源格变动可能仅千分之几，而下游变动显著。本屏波及面按全局差分计算。
-                  </p>
-                  {result.receipts.length === 0 ? null : (
-                    <p>
-                      落库回执：
-                      {result.receipts.map((r) => ` ${r.name}（起始 ${r.startTick === null ? "未给" : tickLabel(cal, r.startTick)}）`).join(" ·")}
-                    </p>
-                  )}
-                </div>
-              </details>
-              {/* 下钻出口（纪律第 3 条）—— 目的地是**同屏已有**的受阻环节面板，不新建目的地。 */}
-              <div className={styles.drill}>
-                <button
-                  type="button"
-                  className={styles.drillBtn}
-                  data-testid="c0828-drill-money"
-                  onClick={() => impedimentRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
-                >
-                  查看这笔敞口卡在哪些环节 →
-                </button>
-              </div>
-            </section>
 
             {/* ══ 区③b 落在谁头上 ══ */}
             {custView !== null ? (
@@ -1513,209 +1485,6 @@ export default function Console0828({
             ) : null}
             </div>
 
-            {/* ══ 区④ 哪儿会出事 ══ */}
-            <section className={styles.panel} data-testid="c0828-impediment" ref={impedimentRef}>
-              <div className={styles.head}>
-                {zone("4", "受阻环节")}
-                <h3 className={styles.headTitle}>全流程扫描结果</h3>
-                <span className={styles.headRight}>
-                  {impGroups === null ? "本次调用未完成" : `扫出 ${impGroups.all.length} 处`}
-                </span>
-              </div>
-
-              {result.impedimentError !== null ? (
-                <div className={styles.warnBox} data-testid="c0828-imp-error">
-                  卡点识别未完成：{result.impedimentError}
-                  <br />—— 这是<b>调用失败</b>，不是「无卡点」。二者处置相反，故分列。
-                </div>
-              ) : impGroups === null ? (
-                <p className={styles.empty}>本次未取到卡点数据。</p>
-              ) : (
-                <>
-                  {/* ⚠ 「卡点 / 堵点 / 断点」是引擎回包里 `kind` 的**三个不同取值**，
-                      不是一个量的三种叫法（实测 counts = 5 / 6 / 7，三类各有实例）。
-                      三者处置相反，故屏上逐类给条数 + 一句可判定含义，⛔ 不合并成一个词。 */}
-                  <div className={styles.kinds} data-testid="c0828-kinds">
-                    {impGroups.model.groups.map((g) => (
-                      <div key={g.kind} className={styles.kindRow} data-testid={`c0828-kind-${g.kind}`}>
-                        <span className={styles.kindName}>
-                          {g.label} <b className={styles.mono}>{g.items.length}</b> 处
-                        </span>
-                        <span className={styles.calibre}>{IMPEDIMENT_KIND_PLAIN[g.kind] ?? g.meaning}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className={styles.two}>
-                    <div>
-                      <h4 className={styles.subHead}>
-                        <span className={styles.dot} style={{ background: "var(--accent)" }} />
-                        可处置 {impGroups.actionable.length} 处
-                      </h4>
-                      {impGroups.actionable.length === 0 ? (
-                        <p className={styles.empty}>无 —— 本次扫出的卡点均无可用对策。</p>
-                      ) : (
-                        <ul className={styles.fixList}>
-                          {impGroups.actionable.slice(0, 6).map((i) => {
-                            const on = picked?.impedimentId === i.impedimentId;
-                            return (
-                              <li key={i.impedimentId} data-testid={`c0828-fix-${i.impedimentId}`} data-on={on ? "1" : "0"}>
-                                <span>
-                                  {i.locus.label}
-                                  <br />
-                                  <span className={styles.calibre}>{fixTag(i)}</span>
-                                </span>
-                                <button
-                                  type="button"
-                                  className={`${styles.btn} ${on ? styles.btnOn : ""}`}
-                                  aria-pressed={on}
-                                  data-testid={`c0828-fixbtn-${i.impedimentId}`}
-                                  onClick={() => { revealFix(i.impedimentId); }}
-                                >
-                                  {on ? "▾ " : ""}
-                                  {i.candidates.length} 种对策 ▸
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </div>
-                    <div>
-                      <h4 className={styles.subHead}>
-                        <span className={styles.dot} style={{ background: "var(--c-forecast)" }} />
-                        仅可监控 {impGroups.watchOnly.length} 处
-                      </h4>
-                      <div className={styles.watch} data-testid="c0828-watchonly">
-                        {impGroups.watchOnly.length === 0 ? (
-                          "本次每一处均有对策。"
-                        ) : (
-                          <>
-                            超线倍数最高的是 <b>{impGroups.watchOnly[0]?.locus.label ?? "—"}</b>
-                            {impGroups.watchOnly[0] !== undefined && Number.isFinite(impGroups.ratioOf(impGroups.watchOnly[0]))
-                              ? <>（{impGroups.ratioOf(impGroups.watchOnly[0]).toFixed(2)}×）</>
-                              : null}
-                            {impGroups.watchOnly.length > 1 ? (
-                              <> 与 <b>{impGroups.watchOnly[1]?.locus.label}</b>
-                                {impGroups.watchOnly[1] !== undefined && Number.isFinite(impGroups.ratioOf(impGroups.watchOnly[1]))
-                                  ? <>（{impGroups.ratioOf(impGroups.watchOnly[1]).toFixed(2)}×）</>
-                                  : null}
-                              </>
-                            ) : null}
-                            ，当前无对策。
-                            <div style={{ marginTop: 5 }}>
-                              这 {impGroups.watchOnly.length} 处当前无法给出任何对策 ——
-                              <b> 这是推演结论，非加载失败。</b>
-                            </div>
-                            {/* ══ WO-AGENT-INTO-SIM · 入口就开在这句结论旁边 ══
-                                上面那句是**引擎枚举器**的结论（它跑完了，本体上没有可拨的杠杆）。
-                                agent 走的是另一条路：读同一份杠杆菜单去凑组合。
-                                两条路的结论并列摆着，用户才知道「还有一条没走过的路」。 */}
-                            <div style={{ marginTop: 9, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                              <button
-                                type="button"
-                                className={styles.btn}
-                                data-testid="c0828-ask-agent"
-                                disabled={agentM.isPending}
-                                onClick={() => { agentM.mutate(impGroups.watchOnly[0]?.impedimentId ?? "watch-0"); }}
-                              >
-                                {agentM.isPending ? "agent 推演中…" : "交由 agent 生成对策 ▸"}
-                              </button>
-                              <span className={styles.calibre}>
-                                引擎枚举已穷尽；改由 agent 读取同一份杠杆菜单重新生成。
-                              </span>
-                            </div>
-                            {/* ⚠ 收敛这一步必须可审：一次只问**一处**，且要说清「凭什么是这一处」。
-                                不写出来的话，屏上看起来就像「agent 替你把所有卡点都想了一遍」，
-                                而那是做不到的，也不是这里发生的事。 */}
-                            <details className={styles.more} style={{ marginTop: 6 }}>
-                              <summary>排序口径说明</summary>
-                              <div className={styles.moreBody}>
-                                <p>
-                                  每次只提交<b>超线倍数最高的那一处</b>（
-                                  {impGroups.watchOnly[0]?.locus.label ?? "—"}），不把这
-                                  {impGroups.watchOnly.length} 处一并提交 —— 一并提交等同于由 agent 代为排序，
-                                  而排序应由使用方依口径判定，系统不给推荐。
-                                </p>
-                                <p>
-                                  排序口径为<b>超线倍数</b>（实测 ÷ 红线），不是严重度：本批有{" "}
-                                  <b>{impGroups.severityTied}</b> 处严重度封顶 100，
-                                  排名失去区分度 —— 此时「排名第一」只反映数组顺序，不反映轻重。
-                                </p>
-                                <p>
-                                  ⚠ 业务上更适用的排序口径是<b>敞口金额 × 频次</b>，当前<b>给不出</b>：
-                                  卡点记录无逐处金额（仅有实测 / 红线 / 单位 / 规则码）。
-                                  屏上订单簿总额为<b>全局量</b>，分摊到单处即构造一个不存在的归因，
-                                  故不采用，并在此列明该缺口。
-                                </p>
-                              </div>
-                            </details>
-                            {agentErr !== null ? (
-                              <div className={styles.calibre} style={{ marginTop: 6 }} data-testid="c0828-agent-err">
-                                调用失败：{agentErr}
-                                <br />—— 这是<b>调用失败</b>，不是「agent 未能给出对策」。二者处置相反，故分列。
-                              </div>
-                            ) : null}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 时间线：主口径给**日期**，拍作括注保留（引擎的量是拍，删干净就两层对不上账）。 */}
-                  <div className={styles.tl}>
-                    <div className={styles.statKey} style={{ marginBottom: 12, fontWeight: 600 }} data-testid="c0828-tl-head">
-                      本次推演 {horizon} 拍：{tickLabel(cal, result.beforeTick)} → {tickLabel(cal, result.afterTick)}
-                    </div>
-                    <div className={styles.tlWrap}>
-                      <div className={styles.track}>
-                        <div className={styles.trackLine} />
-                        {Array.from({ length: Math.min(horizon + 1, 8) }, (_, k) => {
-                          const t = result.beforeTick + k;
-                          const left = `${(k / Math.max(1, Math.min(horizon, 7))) * 92 + 4}%`;
-                          const iso = tickDateISO(cal, t);
-                          return (
-                            <div key={t} className={styles.pt} style={{ left }} data-testid={`c0828-tl-pt-${t}`}>
-                              <div className={`${styles.ptMark} ${k === 0 ? styles.ptFirst : ""}`} />
-                              <div className={styles.ptTick}>{iso ?? `第 ${t} 拍`}</div>
-                              <div className={styles.ptWord}>
-                                {iso === null ? (k === 0 ? "扰动施加" : "推进") : `第 ${t} 拍${k === 0 ? " · 施加" : ""}`}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <details className={styles.more}>
-                      <summary>时间轴口径</summary>
-                      <div className={styles.moreBody} data-testid="c0828-tl-calibre">
-                        {cal === null ? (
-                          <p>{calShortfall}</p>
-                        ) : (
-                          <>
-                            <p>
-                              日期由<b>本会话的起始日</b>与<b>一拍的天数</b>换算得来，两项都取自会话本身：
-                              起始日 <b>{tickDateISO(cal, 0)}</b>（第 0 拍 = 推演发起那一天）· 一拍 ={" "}
-                              <b>{cal.tickDays}</b> 天。
-                            </p>
-                            {cal.tickDays > 1 ? (
-                              <p>
-                                一拍跨 {cal.tickDays} 天，刻度上标的是<b>该拍的起始日</b> ——
-                                扰动按「起始拍」施加，引擎在那一拍的开头吃掉它。
-                                第 N 拍覆盖的区间是 [起始日, 起始日 + {cal.tickDays - 1} 天]。
-                              </p>
-                            ) : null}
-                            <p>
-                              括号里的「第 N 拍」<b>刻意保留</b>：引擎收发的量就是拍，
-                              两层对不上账时要靠它追。
-                            </p>
-                          </>
-                        )}
-                      </div>
-                    </details>
-                  </div>
-                </>
-              )}
-            </section>
 
             {/* ══ 区⑤ 对策看板 ══ */}
             {impGroups !== null && impGroups.all.length > 0 ? (
@@ -2387,6 +2156,322 @@ export default function Console0828({
         </div>
       </aside>
       </div>
+
+      {/* ══ WO-SIM-DENSE ③ · rowB —— 受阻环节表 | 金额勾稽表 ═══════════════════════
+          这两块改前在中栏里**一前一后纵向摞着**，中间还隔着对策看板与对策面板；
+          而它们是同一次推演的两本账（哪儿卡住 · 卡住多少钱），并排才对得上。
+          ⚠ 两块内部**一个字符没改**，只换了挂载点 —— 既有 testid 全部原样。 */}
+      {result !== null && money !== null ? (
+        <div className={styles.rowB} data-testid="c0828-rowb">
+              {/* ══ 区④ 哪儿会出事 ══ */}
+              <section className={styles.panel} data-testid="c0828-impediment" ref={impedimentRef}>
+                <div className={styles.head}>
+                  {zone("4", "受阻环节")}
+                  <h3 className={styles.headTitle}>全流程扫描结果</h3>
+                  <span className={styles.headRight}>
+                    {impGroups === null ? "本次调用未完成" : `扫出 ${impGroups.all.length} 处`}
+                  </span>
+                </div>
+
+                {result.impedimentError !== null ? (
+                  <div className={styles.warnBox} data-testid="c0828-imp-error">
+                    卡点识别未完成：{result.impedimentError}
+                    <br />—— 这是<b>调用失败</b>，不是「无卡点」。二者处置相反，故分列。
+                  </div>
+                ) : impGroups === null ? (
+                  <p className={styles.empty}>本次未取到卡点数据。</p>
+                ) : (
+                  <>
+                    {/* ⚠ 「卡点 / 堵点 / 断点」是引擎回包里 `kind` 的**三个不同取值**，
+                        不是一个量的三种叫法（实测 counts = 5 / 6 / 7，三类各有实例）。
+                        三者处置相反，故屏上逐类给条数 + 一句可判定含义，⛔ 不合并成一个词。 */}
+                    <div className={styles.kinds} data-testid="c0828-kinds">
+                      {impGroups.model.groups.map((g) => (
+                        <div key={g.kind} className={styles.kindRow} data-testid={`c0828-kind-${g.kind}`}>
+                          <span className={styles.kindName}>
+                            {g.label} <b className={styles.mono}>{g.items.length}</b> 处
+                          </span>
+                          <span className={styles.calibre}>{IMPEDIMENT_KIND_PLAIN[g.kind] ?? g.meaning}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className={styles.two}>
+                      <div>
+                        <h4 className={styles.subHead}>
+                          <span className={styles.dot} style={{ background: "var(--accent)" }} />
+                          可处置 {impGroups.actionable.length} 处
+                        </h4>
+                        {impGroups.actionable.length === 0 ? (
+                          <p className={styles.empty}>无 —— 本次扫出的卡点均无可用对策。</p>
+                        ) : (
+                          <ul className={styles.fixList}>
+                            {impGroups.actionable.slice(0, 6).map((i) => {
+                              const on = picked?.impedimentId === i.impedimentId;
+                              return (
+                                <li key={i.impedimentId} data-testid={`c0828-fix-${i.impedimentId}`} data-on={on ? "1" : "0"}>
+                                  <span>
+                                    {i.locus.label}
+                                    <br />
+                                    <span className={styles.calibre}>{fixTag(i)}</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className={`${styles.btn} ${on ? styles.btnOn : ""}`}
+                                    aria-pressed={on}
+                                    data-testid={`c0828-fixbtn-${i.impedimentId}`}
+                                    onClick={() => { revealFix(i.impedimentId); }}
+                                  >
+                                    {on ? "▾ " : ""}
+                                    {i.candidates.length} 种对策 ▸
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className={styles.subHead}>
+                          <span className={styles.dot} style={{ background: "var(--c-forecast)" }} />
+                          仅可监控 {impGroups.watchOnly.length} 处
+                        </h4>
+                        <div className={styles.watch} data-testid="c0828-watchonly">
+                          {impGroups.watchOnly.length === 0 ? (
+                            "本次每一处均有对策。"
+                          ) : (
+                            <>
+                              超线倍数最高的是 <b>{impGroups.watchOnly[0]?.locus.label ?? "—"}</b>
+                              {impGroups.watchOnly[0] !== undefined && Number.isFinite(impGroups.ratioOf(impGroups.watchOnly[0]))
+                                ? <>（{impGroups.ratioOf(impGroups.watchOnly[0]).toFixed(2)}×）</>
+                                : null}
+                              {impGroups.watchOnly.length > 1 ? (
+                                <> 与 <b>{impGroups.watchOnly[1]?.locus.label}</b>
+                                  {impGroups.watchOnly[1] !== undefined && Number.isFinite(impGroups.ratioOf(impGroups.watchOnly[1]))
+                                    ? <>（{impGroups.ratioOf(impGroups.watchOnly[1]).toFixed(2)}×）</>
+                                    : null}
+                                </>
+                              ) : null}
+                              ，当前无对策。
+                              <div style={{ marginTop: 5 }}>
+                                这 {impGroups.watchOnly.length} 处当前无法给出任何对策 ——
+                                <b> 这是推演结论，非加载失败。</b>
+                              </div>
+                              {/* ══ WO-AGENT-INTO-SIM · 入口就开在这句结论旁边 ══
+                                  上面那句是**引擎枚举器**的结论（它跑完了，本体上没有可拨的杠杆）。
+                                  agent 走的是另一条路：读同一份杠杆菜单去凑组合。
+                                  两条路的结论并列摆着，用户才知道「还有一条没走过的路」。 */}
+                              <div style={{ marginTop: 9, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  className={styles.btn}
+                                  data-testid="c0828-ask-agent"
+                                  disabled={agentM.isPending}
+                                  onClick={() => { agentM.mutate(impGroups.watchOnly[0]?.impedimentId ?? "watch-0"); }}
+                                >
+                                  {agentM.isPending ? "agent 推演中…" : "交由 agent 生成对策 ▸"}
+                                </button>
+                                <span className={styles.calibre}>
+                                  引擎枚举已穷尽；改由 agent 读取同一份杠杆菜单重新生成。
+                                </span>
+                              </div>
+                              {/* ⚠ 收敛这一步必须可审：一次只问**一处**，且要说清「凭什么是这一处」。
+                                  不写出来的话，屏上看起来就像「agent 替你把所有卡点都想了一遍」，
+                                  而那是做不到的，也不是这里发生的事。 */}
+                              <details className={styles.more} style={{ marginTop: 6 }}>
+                                <summary>排序口径说明</summary>
+                                <div className={styles.moreBody}>
+                                  <p>
+                                    每次只提交<b>超线倍数最高的那一处</b>（
+                                    {impGroups.watchOnly[0]?.locus.label ?? "—"}），不把这
+                                    {impGroups.watchOnly.length} 处一并提交 —— 一并提交等同于由 agent 代为排序，
+                                    而排序应由使用方依口径判定，系统不给推荐。
+                                  </p>
+                                  <p>
+                                    排序口径为<b>超线倍数</b>（实测 ÷ 红线），不是严重度：本批有{" "}
+                                    <b>{impGroups.severityTied}</b> 处严重度封顶 100，
+                                    排名失去区分度 —— 此时「排名第一」只反映数组顺序，不反映轻重。
+                                  </p>
+                                  <p>
+                                    ⚠ 业务上更适用的排序口径是<b>敞口金额 × 频次</b>，当前<b>给不出</b>：
+                                    卡点记录无逐处金额（仅有实测 / 红线 / 单位 / 规则码）。
+                                    屏上订单簿总额为<b>全局量</b>，分摊到单处即构造一个不存在的归因，
+                                    故不采用，并在此列明该缺口。
+                                  </p>
+                                </div>
+                              </details>
+                              {agentErr !== null ? (
+                                <div className={styles.calibre} style={{ marginTop: 6 }} data-testid="c0828-agent-err">
+                                  调用失败：{agentErr}
+                                  <br />—— 这是<b>调用失败</b>，不是「agent 未能给出对策」。二者处置相反，故分列。
+                                </div>
+                              ) : null}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 时间线：主口径给**日期**，拍作括注保留（引擎的量是拍，删干净就两层对不上账）。 */}
+                    <div className={styles.tl}>
+                      <div className={styles.statKey} style={{ marginBottom: 12, fontWeight: 600 }} data-testid="c0828-tl-head">
+                        本次推演 {horizon} 拍：{tickLabel(cal, result.beforeTick)} → {tickLabel(cal, result.afterTick)}
+                      </div>
+                      <div className={styles.tlWrap}>
+                        <div className={styles.track}>
+                          <div className={styles.trackLine} />
+                          {Array.from({ length: Math.min(horizon + 1, 8) }, (_, k) => {
+                            const t = result.beforeTick + k;
+                            const left = `${(k / Math.max(1, Math.min(horizon, 7))) * 92 + 4}%`;
+                            const iso = tickDateISO(cal, t);
+                            return (
+                              <div key={t} className={styles.pt} style={{ left }} data-testid={`c0828-tl-pt-${t}`}>
+                                <div className={`${styles.ptMark} ${k === 0 ? styles.ptFirst : ""}`} />
+                                <div className={styles.ptTick}>{iso ?? `第 ${t} 拍`}</div>
+                                <div className={styles.ptWord}>
+                                  {iso === null ? (k === 0 ? "扰动施加" : "推进") : `第 ${t} 拍${k === 0 ? " · 施加" : ""}`}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <details className={styles.more}>
+                        <summary>时间轴口径</summary>
+                        <div className={styles.moreBody} data-testid="c0828-tl-calibre">
+                          {cal === null ? (
+                            <p>{calShortfall}</p>
+                          ) : (
+                            <>
+                              <p>
+                                日期由<b>本会话的起始日</b>与<b>一拍的天数</b>换算得来，两项都取自会话本身：
+                                起始日 <b>{tickDateISO(cal, 0)}</b>（第 0 拍 = 推演发起那一天）· 一拍 ={" "}
+                                <b>{cal.tickDays}</b> 天。
+                              </p>
+                              {cal.tickDays > 1 ? (
+                                <p>
+                                  一拍跨 {cal.tickDays} 天，刻度上标的是<b>该拍的起始日</b> ——
+                                  扰动按「起始拍」施加，引擎在那一拍的开头吃掉它。
+                                  第 N 拍覆盖的区间是 [起始日, 起始日 + {cal.tickDays - 1} 天]。
+                                </p>
+                              ) : null}
+                              <p>
+                                括号里的「第 N 拍」<b>刻意保留</b>：引擎收发的量就是拍，
+                                两层对不上账时要靠它追。
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      </details>
+                    </div>
+                  </>
+                )}
+              </section>
+              {/* ══ 区③ 钱上差多少 ══ */}
+              <section className={styles.panel} data-testid="c0828-money">
+                <div className={styles.head}>
+                  {zone("3", "财务影响")}
+                  <h3 className={styles.headTitle}>
+                    {result.staged.length} 件扰动事件叠加 · 推演至 {tickLabel(cal, result.afterTick)}
+                  </h3>
+                  <span className={styles.headRight}>与下方卡点、对策同源于本次推演结果</span>
+                </div>
+                <div className={styles.money}>
+                  <div className={styles.moneyRow}>
+                    <span className={styles.moneyLabel}>被推动的订单敞口</span>
+                    <span className={styles.moneyBig} data-testid="c0828-exposure">
+                      {fmtMoney(money.exposure, "元")}
+                    </span>
+                    <span className={styles.est}>估</span>
+                  </div>
+                  <div className={styles.calibre} data-testid="c0828-exposure-sub">
+                    {money.exposedOrders} 张单 · 占订单簿 {pct(money.bookTotal === 0 ? 0 : money.exposure / money.bookTotal)}
+                  </div>
+                </div>
+
+                <div className={styles.brk}>
+                  {money.breakdown.map((b) => (
+                    <div key={b.label} style={{ display: "contents" }}>
+                      <span className={styles.brkKey}>{b.label}</span>
+                      <span className={styles.brkVal}>
+                        {b.cell.kind === "value" ? (
+                          fmtMoney(b.cell.yuan, "元")
+                        ) : (
+                          <span className={styles.nocalc} data-testid={`c0828-nocalc-${b.label}`}>
+                            本次无法计算
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <p className={styles.why} data-testid="c0828-maincause">
+                  {money.mainCause === null ? (
+                    <><b>多因叠加，无法归因到单一事件</b></>
+                  ) : (
+                    <>主因：<b>{money.mainCause}</b></>
+                  )}
+                </p>
+
+                <details className={styles.more} data-testid="c0828-recon">
+                  <summary>金额勾稽</summary>
+                  <div className={styles.moreBody}>
+                    <p>
+                      「被推动的订单敞口」= 本次推演中读数发生变化的订单，按对象层成交额合计。
+                      其口径是「受影响订单的金额规模」，不是「利润损失」—— 后者本次无法计算，见下。
+                    </p>
+                    <p>
+                      订单簿合计 {fmtMoney(money.bookTotal, "元")}，共 {money.bookOrders} 张单（逐页取全后累加，
+                      并与服务端返回的总数勾稽）。被推动 {money.exposedOrders} 张，合计 {fmtMoney(money.exposure, "元")}。
+                    </p>
+                    <p>毛利差额：{NOCALC_WHY.margin}</p>
+                    <p>新增成本：{NOCALC_WHY.cost}</p>
+                    <p>占压应收：{NOCALC_WHY.receivable}</p>
+                    <p>
+                      本次共 {result.deltas.length} 格读数发生变化；世界态自 {tickLabel(cal, result.beforeTick)} 推进至{" "}
+                      {tickLabel(cal, result.afterTick)}。金丝雀：读取到 {money.ordersSeen} 张单（为 0 表示遍历失效，不是「无波及」）。
+                    </p>
+                    <p>
+                      ⚠ 不应以被扰动格自身的读数判定扰动是否生效：源变量常被约束在域上界附近，
+                      即使施加 100 倍量级，源格变动可能仅千分之几，而下游变动显著。本屏波及面按全局差分计算。
+                    </p>
+                    {result.receipts.length === 0 ? null : (
+                      <p>
+                        落库回执：
+                        {result.receipts.map((r) => ` ${r.name}（起始 ${r.startTick === null ? "未给" : tickLabel(cal, r.startTick)}）`).join(" ·")}
+                      </p>
+                    )}
+                  </div>
+                </details>
+                {/* 下钻出口（纪律第 3 条）—— 目的地是**同屏已有**的受阻环节面板，不新建目的地。 */}
+                <div className={styles.drill}>
+                  <button
+                    type="button"
+                    className={styles.drillBtn}
+                    data-testid="c0828-drill-money"
+                    onClick={() => impedimentRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+                  >
+                    查看这笔敞口卡在哪些环节 →
+                  </button>
+                </div>
+              </section>
+        </div>
+      ) : null}
+
+      {/* 诚实位：参考稿每张卡都有走势线，本屏**没有数据源**画它。
+          下面那句「只有两个观测点」是**真会过时**的一条（上游一给逐拍序列它就变假），
+          故挂了一条可执行赌注。⚠ 赌注**钉在上游契约**（`endpoints.ts` 的 `simTick` 回包型）
+          而不是本文件自己的字符串 —— 自指的赌注等于没赌。
+          今天那个型是 `{ curTick; state; trace?; disclosure? }`：**一个终态，没有逐拍序列**。
+          谁往回包里加了 `series`/`perTick`（或改了这四个字段），门当场红，
+          届时要么屏上这句话改对、要么真把走势线画上，二选一。 */}
+      <p className={`${styles.calibre} ${styles.footNote}`} data-testid="c0828-kpi-nospark">
+        各卡<b>不带迷你走势线</b> —— 本次推演一次跳 {horizon} 拍后只读<b>一次</b>终态，
+        全屏只有「扰动前」「扰动后」两个观测点，中间每一拍的读数从未取回。{/* @stale-fact apps/frontend-shell/src/api/endpoints.ts /curTick: number; state: TickState; trace\?: unknown\[\]; disclosure\?: SimRunDisclosure/ ==1 */}{" "}
+        两点画不出走势，补一条即是编造历史。<b>这是缺数据源，不是缺实现</b>。
+        各卡第二行给的是<b>同次推演内的真实对比</b>（占订单簿 / 占总数），
+        <b>不是</b>「较上周」—— 本屏不留存历史推演，没有上一期可比。
+      </p>
     </div>
   );
 }
