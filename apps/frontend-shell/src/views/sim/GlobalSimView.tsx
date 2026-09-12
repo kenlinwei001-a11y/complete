@@ -271,6 +271,8 @@ const PORT_FORECAST_START = "2026-06-10"; // 原型 T0（HTML_ORDERS forecastSta
 const PORT_CONFIRM_ARG_KEYS = [
   "orderIds", "frozenOrderIds", "scenarios", "objective",
   "frozenCapacityMode", "method", "priority", "levers", "businessTypes", "splitOrderIds",
+  // WO-HV-A · 排产粒度开关是**离散**控件（复选框·非滑杆）⇒ 照本表既定判据入列（求解在途时改它会问一句）。
+  "lineGranularity",
 ] as const;
 /** 基地 id→名（BASE_REGISTRY 单一来源·R14·补 transfer.toBase 等未在分配中的基地名）。 */
 const BASE_NAME_BY_ID = new Map(BASE_REGISTRY.map((b) => [b.baseId, b.name]));
@@ -483,6 +485,29 @@ export default function GlobalSimView(_props: ViewRendererProps) {
     }
     return m;
   }, [linesQ.data]);
+  /**
+   * WO-HV-A · 需求 2.4 · 产线级排产开时的**单元键**解析。
+   *
+   * 求解器的产能单元 id（`portfolio.ts:277-296`）两形态：
+   *  · lineGranularity 关 → `unitId = baseId`（`unitLine` = null）
+   *  · lineGranularity 开 → `unitId = `${baseId}#${lineId}``
+   * 顶层 `allocation[].base` 落的就是这个 unitId（`portfolio.ts:602` `base: o.base` 未拆），
+   * 且 `baseName` 取 `baseNameById.get(unitId)` —— 开的时候这张图是按**纯 baseId** 建的 ⇒ 必然 miss，
+   * 回落成原始复合串。故前端必须自己拆：拆法与后端 `lineIdOfUnit`（`portfolio.ts:732`）同口径。
+   */
+  const splitUnit = useCallback((unitKey: string): { baseId: string; lineId: string | null } => {
+    const i = unitKey.indexOf("#");
+    return i < 0 ? { baseId: unitKey, lineId: null } : { baseId: unitKey.slice(0, i), lineId: unitKey.slice(i + 1) };
+  }, []);
+  /** 真 Line 对象 lineId → 名（产线级排产开时，台账要显示**求解器指派的那条线**，不是按基地查的 PACK 线）。 */
+  const lineNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of linesQ.data?.items ?? []) {
+      const lineId = String(l.props.lineId ?? l.id);
+      if (lineId) m.set(lineId, String(l.props.name ?? lineId));
+    }
+    return m;
+  }, [linesQ.data]);
   // baseKey 可能是拼音 id（changzhou·真 datacore/分配台账）或基地名（常州·mock 订单 bases）→ 两形态互解命中真 Line。
   const lineNameOf = useCallback((baseKey: string): string => {
     const direct = packLineByBase.get(baseKey);
@@ -524,7 +549,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
 
   const [scenarios, setScenarios] = useState<string[]>(["max_ontime", "min_cost"]);
   const [primary, setPrimary] = useState<string>("max_ontime");
-  const [levers, setLevers] = useState<LeverState>({ frozenCapacityMode: "reserve", method: "weighted" });
+  // WO-HV-A · 需求 2.4：lineGranularity 缺省 false = 旧口径（不携该 arg·portfolio.ts:278 `=== true` 取 false）⇒ 零回归。
+  const [levers, setLevers] = useState<LeverState>({ frozenCapacityMode: "reserve", method: "weighted", lineGranularity: false });
   // WO-GSLIVE-1-COCKPIT · 活②：自由杠杆（portfolio 契约 levers[]·key/target/delta·任一变动 → args.levers 变 → 联合重解）。
   const [freeLevers, setFreeLevers] = useState<FreeLever[]>([]);
   // WO-L3-TRANSFER · L3 耦合联动推演：转拨量滑杆（→ committedBatches 预占目标基地净产能·L3 mapCoupledChainToPortfolio 同 arg）。
@@ -564,6 +590,8 @@ export default function GlobalSimView(_props: ViewRendererProps) {
     () => (orderList.length ? {
       orderIds, frozenOrderIds, scenarios: scenSet, objective: primary,
       frozenCapacityMode: levers.frozenCapacityMode, ...methodArg,
+      // WO-HV-A · 需求 2.4：开关关 → **不携**该键（旧请求体字节不变·零回归）；开 → 真传 → 求解器按 baseId#lineId 拆产能单元。
+      ...(levers.lineGranularity ? { lineGranularity: true } : {}),
       ...(freeLevers.length ? { levers: freeLevers } : {}),
       ...(btArr.length ? { businessTypes: btArr } : {}),
       ...(splitArr.length ? { splitOrderIds: splitArr } : {}),
@@ -571,7 +599,7 @@ export default function GlobalSimView(_props: ViewRendererProps) {
       ...(transferWan > 0 && transferBase ? { committedBatches: [{ base: transferBase, qty: Math.round(transferWan * 10000) }] } : {}),
       twoStage: true, nonce,
     } : null),
-    [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, JSON.stringify(methodArg), leversKey, btArr.join(","), splitArr.join(","), finalDueKey, transferBase, transferWan, nonce],
+    [orderList.length, orderIds.join(","), frozenOrderIds.join(","), scenSet.join(","), primary, levers.frozenCapacityMode, levers.lineGranularity, JSON.stringify(methodArg), leversKey, btArr.join(","), splitArr.join(","), finalDueKey, transferBase, transferWan, nonce],
   );
   const res = useLiveSolver<PortResult>("portfolio", args, (raw) => raw as PortResult, { confirmKeys: PORT_CONFIRM_ARG_KEYS });
   const d = res.data;
@@ -1411,16 +1439,24 @@ export default function GlobalSimView(_props: ViewRendererProps) {
           <table className={styles.gtable} data-testid="global-sim-alloc">
             <thead><tr><th>需求项</th><th>来源</th><th>基地</th><th title="② 产线（该基地 PACK 成品线·真 Line 对象）">产线</th><th>窗口</th><th style={{ textAlign: "right" }}>量(套)</th><th style={{ textAlign: "right" }}>延误(天)</th><th /></tr></thead>
             <tbody>
-              {d.allocation.map((a) => (
+              {d.allocation.map((a) => {
+                /* WO-HV-A · 拆产能单元键：产线级排产**关**时 base=baseId（line 列回落按基地查的 PACK 线·旧口径不变）；
+                   **开**时 base=`baseId#lineId` ⇒ 基地列要拆回真基地名（否则显示原始复合串），
+                   产线列显示**求解器真实指派**的那条线（同基地不同单可不同·这才是 line 列的本意）。 */
+                const u = splitUnit(a.base);
+                const assignedLine = u.lineId ? (lineNameById.get(u.lineId) ?? u.lineId) : null;
+                const baseLabel = u.lineId ? (baseNameById.get(u.baseId) ?? u.baseId) : a.baseName;
+                return (
                 <tr key={`${a.item}-${a.base}-${a.window}`} data-testid={`global-sim-alloc-${a.item}`} title={provTitle(a.provenance)}>
                   <td className="mono">{a.item}</td>
                   <td>{a.committed ? "在产承诺" : a.kind === "forecast" ? "预测" : "订单"}</td>
-                  {/* ② 基地 + 产线（真数据·产线取该基地 PACK 成品线） */}
-                  <td>{a.baseName}</td><td className="mono" data-testid={`global-sim-alloc-line-${a.item}`}>{lineNameOf(a.base)}</td><td className="num">{a.window}</td><td className="num">{fmt(a.qty, 0)}</td>
+                  {/* ② 基地 + 产线（真数据·产线级排产开时取求解器指派线，关时取该基地 PACK 成品线） */}
+                  <td>{baseLabel}</td><td className="mono" data-testid={`global-sim-alloc-line-${a.item}`} data-assigned={assignedLine ? "1" : "0"}>{assignedLine ?? lineNameOf(a.base)}</td><td className="num">{a.window}</td><td className="num">{fmt(a.qty, 0)}</td>
                   <td className={`num ${a.onTime ? styles.ok : styles.bad}`}>{a.onTime ? "按期" : fmt(a.delayDays, 0)}</td>
                   <td><DrillAffordance kind={a.kind} id={a.item} label="看明细" testId={`global-sim-alloc-drill-${a.item}`} prov={a.provenance} onInspect={openDrillAlloc} /></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {/* 判据 U8 · 台账里点「看明细」也**就地**展开在台账下方，不跳走。 */}
