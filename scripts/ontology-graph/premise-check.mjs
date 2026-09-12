@@ -350,7 +350,7 @@ function loadGraph(dir) {
     ok: false, dir, index: null, atoms: [], slices: [],
     byName: new Map(), byFile: new Map(),
     warnings: [], fatal: [], shardHealth: new Map(),
-    blindSpots: [], blindSpotSource: "（缺失）",
+    blindSpots: [], blindSpotSource: "缺失：INDEX.blindSpots 与 README「看不见什么」段都没有",
   };
 
   if (!existsSync(dir) || !statSync(dir).isDirectory()) {
@@ -496,7 +496,25 @@ const NEG_REF_PRED = [
   "只有 test 引用", "只有测试引用", "只被测试引用",
 ];
 const EMPTY_PRED = ["是空的", "空文件", "是空文件", "没有内容", "没内容", "是空壳", "只有壳", "是占位", "占位文件", "什么都没有", "是空表", "空的"];
-const SHORT_PRED = ["一句话", "只有一句", "一两句", "一行", "只有一行", "很短", "简短", "两三个字", "一句"];
+/**
+ * 定性长度谓词，分两档 —— 这个区分是被**真派单**逼出来的（`docs/WO-66-RULES-FIRST-CLASS.md:114`）：
+ * 那一行写的是「改规则 `params` 的一个阈值 → 求解器输出真的跟着变（**不改一行代码**）」，
+ * 而「一行」被当成了「`params` 的长度只有一行」这条声明，**对一句完全正确的话报了不一致**。
+ *
+ * 形态：**「我用『句子里出现了「一行」这两个字』当作『它在说某个字段很短』的证据。」**
+ *
+ * ⇒ `needCopula` 那一档必须紧跟在系词后面（是 / 只是 / 就是 / 仅 / 只有 …）才算声明。
+ *   「不改一行代码」里的「一行」前面是「不改」，不是系词 ⇒ 不入账。
+ */
+const SHORT_PRED_COPULA = ["一句话", "只有一句", "一两句", "一行", "只有一行", "一句"];
+const SHORT_PRED_STANDALONE = ["很短", "简短", "两三个字", "短得可怜"];
+const SHORT_PRED = [...SHORT_PRED_COPULA, ...SHORT_PRED_STANDALONE];
+/** 系词：剥掉 `*`/空白/引号之后，谓词前缀须以其中之一收尾。 */
+const COPULAS = ["是", "只是", "就是", "仅是", "仅", "只有", "不过是", "就", "才", "顶多", "最多", "统共"];
+function copulaBefore(text, at) {
+  const prefix = text.slice(Math.max(0, at - 14), at).replace(/[*`「」“”"'：:\s]/g, "");
+  return COPULAS.some((c) => prefix.endsWith(c));
+}
 
 /**
  * 否定词守卫 —— 噪声直接来源，实测抓到过。
@@ -578,26 +596,20 @@ function extractClaims(md) {
     const before = lineStr.slice(Math.max(0, off - 24), off);
     const after = lineStr.slice(off + m[0].length, off + m[0].length + 24);
     const ln = lineOf(masked, at);
-    let hitNoun = null, side = null;
-    for (const alias of ALL_NOUN_ALIASES) {
-      if (before.toLowerCase().includes(alias.toLowerCase())) { hitNoun = alias; side = "before"; break; }
-    }
-    if (!hitNoun) {
-      for (const alias of ALL_NOUN_ALIASES) {
-        if (after.toLowerCase().includes(alias.toLowerCase())) { hitNoun = alias; side = "after"; break; }
-      }
-    }
+    const att = attachedNoun(before, after);
+    const hitNoun = att?.noun ?? null;
+    const side = att?.side ?? null;
     // 「N 处调用方 / N 处 src 引用」= 引用计数声明，不是注册表计数
     const REF_AFTER = /^\s*(src\s*|源码\s*)?(调用方|调用点|引用方|引用点|引用|消费方|使用方|调用)/;
     const REF_BEFORE = /(调用方|引用方|引用|消费方|使用方)\s*$/;
     if (REF_AFTER.test(after) || REF_BEFORE.test(before)) {
-      const sym = nearestSymbol(spans, ln);
-      if (sym) {
-        push({ kind: "REFCOUNT", line: ln, raw: lineText(md, ln), symbol: sym, expect: num, polarity: "positive" });
+      const r = nearestSymbol(spans, ln);
+      if (r.one) {
+        push({ kind: "REFCOUNT", line: ln, raw: lineText(md, ln), symbol: r.one, expect: num, polarity: "positive" });
         perLineCounted.add(ln);
         continue;
       }
-      unresolved.push({ line: ln, raw: lineText(md, ln), why: `「${num} 处引用/调用方」附近没有行内代码形式的符号名，无法定位对账对象` });
+      unresolved.push({ line: ln, raw: lineText(md, ln), why: `「${num} 处引用/调用方」：${ambiguityNote("符号名", r)}` });
       continue;
     }
     if (!hitNoun) {
@@ -624,13 +636,13 @@ function extractClaims(md) {
       from = at + pred.length;
       if (negatedBefore(masked, at)) continue; // 「不是死代码」= 否认，不是声明
       const ln = lineOf(masked, at);
-      const sym = nearestSymbol(spans, ln);
-      if (!sym) {
-        unresolved.push({ line: ln, raw: lineText(md, ln), why: `「${pred}」这句附近没有行内代码形式的符号名（请写成 \`someSymbol\`），无法定位对账对象` });
+      const r = nearestSymbol(spans, ln);
+      if (!r.one) {
+        unresolved.push({ line: ln, raw: lineText(md, ln), why: `「${pred}」：${ambiguityNote("符号名", r)}` });
         continue;
       }
-      if (claims.some((c) => c.kind === "NOREF" && c.line === ln && c.symbol === sym)) continue;
-      push({ kind: "NOREF", line: ln, raw: lineText(md, ln), symbol: sym, pred });
+      if (claims.some((c) => c.kind === "NOREF" && c.line === ln && c.symbol === r.one)) continue;
+      push({ kind: "NOREF", line: ln, raw: lineText(md, ln), symbol: r.one, pred });
     }
   }
 
@@ -643,13 +655,13 @@ function extractClaims(md) {
       from = at + pred.length;
       if (negatedBefore(masked, at)) continue; // 「不是空的」= 否认
       const ln = lineOf(masked, at);
-      const file = nearestFile(spans, ln);
-      if (!file) {
-        unresolved.push({ line: ln, raw: lineText(md, ln), why: `「${pred}」这句附近没有行内代码形式的文件路径，无法定位对账对象` });
+      const r = nearestFile(spans, ln);
+      if (!r.one) {
+        unresolved.push({ line: ln, raw: lineText(md, ln), why: `「${pred}」：${ambiguityNote("文件路径", r)}` });
         continue;
       }
-      if (claims.some((c) => c.kind === "EMPTYFILE" && c.line === ln && c.file === file)) continue;
-      push({ kind: "EMPTYFILE", line: ln, raw: lineText(md, ln), file, pred });
+      if (claims.some((c) => c.kind === "EMPTYFILE" && c.line === ln && c.file === r.one)) continue;
+      push({ kind: "EMPTYFILE", line: ln, raw: lineText(md, ln), file: r.one, pred });
     }
   }
 
@@ -672,9 +684,10 @@ function extractClaims(md) {
     // 字段名：该行第一个 stat 之前最近的标识符；退化到该行行内代码里的标识符
     const head = lineStr.slice(0, stats[0].index);
     const fieldM = [...head.matchAll(/([A-Za-z_][A-Za-z0-9_.]{2,})/g)].pop();
-    const field = fieldM ? fieldM[1] : nearestFieldName(spans, ln);
+    const fr = fieldM ? { one: fieldM[1], cand: [] } : nearestFieldName(spans, ln);
+    const field = fr.one;
     if (!field) {
-      unresolved.push({ line: ln, raw: lineText(md, ln), why: `本行有分位数长度（${stats.map((s) => s[1] + " " + s[2]).join("、")}）但没写清是哪个字段` });
+      unresolved.push({ line: ln, raw: lineText(md, ln), why: `本行有分位数长度（${stats.map((s) => s[1] + " " + s[2]).join("、")}）但没写清是哪个字段：${ambiguityNote("字段名", fr)}` });
       continue;
     }
     const scopeNoun = ALL_NOUN_ALIASES.find((a) => head.toLowerCase().includes(a.toLowerCase())) ?? null;
@@ -696,14 +709,20 @@ function extractClaims(md) {
       if (at < 0) break;
       from = at + pred.length;
       if (negatedBefore(masked, at)) continue; // 「不是一句话」= 否认
+      if (SHORT_PRED_COPULA.includes(pred) && !copulaBefore(masked, at)) continue; // 「不改一行代码」≠ 长度声明
+      // 「一句话**的**决策」= 定语，不是谓语 —— 它在修饰后面那个名词，不是在说某字段很短。
+      // 实测：`WO-SUITE-skill-migration.md:521`「它是**一句话的决策**，不是工作量」曾被报成
+      // 「`plan` 是一句话」——「是」这个系词在场，但整句根本不在说长度。
+      if (/^\s*的/.test(masked.slice(at + pred.length, at + pred.length + 4))) continue;
       const ln = lineOf(masked, at);
       if (lengthLines.has(ln) || claims.some((c) => c.kind === "LENGTH" && c.line === ln)) continue;
       const { line: lineStr, off } = lineWindow(masked, at);
       const before = lineStr.slice(Math.max(0, off - 40), off);
       const fieldM = before.match(/([A-Za-z_][A-Za-z0-9_.]{2,})\s*(?:字段|的)?\s*(?:是|只是|就|仅)?\s*$/);
-      const field = fieldM ? fieldM[1] : nearestFieldName(spans, ln);
+      const fr2 = fieldM ? { one: fieldM[1], cand: [] } : nearestFieldName(spans, ln);
+      const field = fr2.one;
       if (!field) {
-        unresolved.push({ line: ln, raw: lineText(md, ln), why: `「${pred}」这句没找到它在说哪个字段（请写成 \`description\` 或 “description 是一句话”）` });
+        unresolved.push({ line: ln, raw: lineText(md, ln), why: `「${pred}」没找到它在说哪个字段：${ambiguityNote("字段名", fr2)}` });
         continue;
       }
       const scopeNoun = ALL_NOUN_ALIASES.find((a) => before.toLowerCase().includes(a.toLowerCase())) ?? null;
@@ -716,24 +735,67 @@ function extractClaims(md) {
   return { claims, unresolved };
 }
 
-/** 同一行（或紧邻上一行）里最像「符号名」的行内代码。 */
-function nearestSymbol(spans, ln) {
-  const cand = spans
-    .filter((s) => s.line === ln || s.line === ln - 1)
-    .map((s) => s.text)
-    .filter((t) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(t) || /^[A-Z][A-Z0-9_]+$/.test(t));
-  return cand[0] ?? null;
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+/**
+ * 附着性判据 —— 名词必须**贴着**数量结构，不能只是「出现在同一行」。
+ *
+ * 实测逼出来的（`docs/WO-SUITE-skill-migration.md`，三条连着误报）：
+ *   · 「把迁移 PRD 拆成 **5 张可派发的 WO**，把依赖关系与**切片**顺序定死」→ 报成「切片 = 5 条」
+ *   · 「今天 7 份，与意图零引用**边**」→ 报成「边 = 7 个」
+ *   · 「使 32 份 Plan 降为…」（上句尾还留着「边」）→ 报成「边 = 32 个」
+ *
+ * 形态（第三次同构）：**「我用『名词与数字在同一行且距离近』当作『这个数在数这个名词』的证据。」**
+ *
+ * 规则（贴合中文数量结构的两种语序）：
+ *   · **量词后**：`<数><量词>` 之后**紧跟**名词，中间只许有「的」/空白/`*` —— 「63 个求解器」
+ *   · **数字前**：名词与数字之间 ≤8 字，且中间**不含断句标点、不含另一个数字** —— 「求解器一共 60 个」
+ * 两条都不满足 ⇒ **不硬猜**，进「已识别·无法对账」区。
+ */
+function attachedNoun(before, after) {
+  for (const alias of ALL_NOUN_ALIASES) {
+    if (new RegExp("^[\\s*]*(?:的)?[\\s*]*" + escapeRe(alias), "i").test(after)) return { noun: alias, side: "after" };
+  }
+  for (const alias of ALL_NOUN_ALIASES) {
+    const i = before.toLowerCase().lastIndexOf(alias.toLowerCase());
+    if (i < 0) continue;
+    const gap = before.slice(i + alias.length);
+    if (gap.length > 8) continue;              // 隔太远 ⇒ 多半是另一句话里的词
+    if (/[，。；、：:,.;！？（）()|「」【】]/.test(gap)) continue; // 中间断了句 ⇒ 不是同一个数量结构
+    if (/\d/.test(gap)) continue;              // 中间还有别的数 ⇒ 这个数不一定归它
+    return { noun: alias, side: "before" };
+  }
+  return null;
 }
-function nearestFile(spans, ln) {
-  const cand = spans
-    .filter((s) => s.line === ln || s.line === ln - 1)
-    .map((s) => s.text)
-    .filter((t) => /\.(ts|tsx|js|jsx|mjs|cjs|md|sql|json|ya?ml)$/.test(t));
-  return cand[0] ?? null;
+
+/**
+ * 同一行里最像「符号名」的行内代码。
+ * ⚠ **只认同一行**，不再往上一行找 —— 实测跨行找会把上一句的符号安到这一句的断言上
+ * （`WO-SUITE-skill-migration.md` 里「与意图零引用边」被安到了上一行的 `ExecutionPlan` 头上）。
+ * 同一行找不到时**照实报「无法定位对账对象」**，别猜。
+ */
+/**
+ * ⚠ 「这一行只有一个候选」才敢用它，**多个候选一律不挑第一个**。
+ * 实测：「立即向仓主要冲突 A 的裁决（`plan` vs `steps`）—— 它是**一句话的决策**」
+ * 里，「一句话」被安到了 `plan` 头上（只因它排在前面），对一句和字段长度毫无关系的话报了不一致。
+ * 形态：**「我用『它排在这一行的第一个』当作『这句话在说它』的证据。」**
+ * ⇒ 歧义时返回候选清单，调用方把它写进「已识别·无法对账」区。
+ */
+function soleOf(spans, ln, test) {
+  const cand = [...new Set(spans.filter((s) => s.line === ln).map((s) => s.text).filter(test))];
+  if (cand.length === 1) return { one: cand[0] };
+  return { one: null, cand };
 }
-function nearestFieldName(spans, ln) {
-  const cand = spans.filter((s) => s.line === ln).map((s) => s.text).filter((t) => /^[A-Za-z_][A-Za-z0-9_.]{2,}$/.test(t));
-  return cand[0] ?? null;
+const IS_SYMBOL = (t) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(t) || /^[A-Z][A-Z0-9_]+$/.test(t);
+const IS_FILE = (t) => /\.(ts|tsx|js|jsx|mjs|cjs|md|sql|json|ya?ml)$/.test(t);
+const IS_FIELD = (t) => /^[A-Za-z_][A-Za-z0-9_.]{2,}$/.test(t);
+function nearestSymbol(spans, ln) { return soleOf(spans, ln, IS_SYMBOL); }
+function nearestFile(spans, ln) { return soleOf(spans, ln, IS_FILE); }
+function nearestFieldName(spans, ln) { return soleOf(spans, ln, IS_FIELD); }
+function ambiguityNote(kind, r) {
+  return r.cand.length
+    ? `本行有 ${r.cand.length} 个候选${kind}（${r.cand.slice(0, 4).join(" / ")}${r.cand.length > 4 ? " …" : ""}）⇒ ⛔ 不挑第一个，请在派单里写明是哪一个`
+    : `本行没有行内代码形式的${kind}，无法定位对账对象`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -787,7 +849,7 @@ function canaryFor(graph, kind, hints = []) {
   const expect = String(hit.expect ?? "");
   const actual = hit.actual;
   let consistent = true;
-  let why = "";
+  let why;
   const mGt = expect.match(/^>\s*(-?\d+)$/);
   const mGe = expect.match(/^>=\s*(-?\d+)$/);
   const mEq = expect.match(/^=?\s*(-?\d+)$/);
@@ -912,7 +974,7 @@ function reconcile(graph, claim) {
     const tagged = atomsByTag(graph, entry.tag);
     const idxCount = entry.indexCount ? graph.index?.counts?.[entry.indexCount] : undefined;
     const degrade = [];
-    let actual = null, src = "";
+    let actual, src;
 
     if (reg && Number.isFinite(Number(reg.count))) {
       actual = Number(reg.count);
@@ -1106,7 +1168,7 @@ function reconcile(graph, claim) {
       return n === claim.field || n.endsWith("." + claim.field) || n.toLowerCase() === claim.field.toLowerCase();
     });
     const degrade = [];
-    let dist = null, src = "";
+    let dist, src;
 
     if (hit) {
       dist = { n: hit.n, min: hit.minChars, p50: hit.p50, p90: hit.p90, max: hit.maxChars, bytes: hit.totalBytes };
@@ -1456,6 +1518,7 @@ function main(argv) {
 
   const res = analyze(wo, graphDir);
   res.woPath = relative(ROOT, wo) || wo;
+  res.graphDir = relative(ROOT, res.graphDir) || res.graphDir;
   console.log(md ? renderMd(res) : renderText(res));
   return 0;
 }
