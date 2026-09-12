@@ -4560,7 +4560,11 @@ export class SolverService {
     // WO-SANDBOX-S3：一等关系行是候选枚举器 `LINK_HOP` join 的**唯一**可达面来源（改种子里的关系，
     // 可达面自动跟着变；代码里没有第二张"类型对照表"）。判定逻辑不读它，故对 E3 的判定结果零影响。
     const links = await this.repos.links.list(ctx.tenantId, () => true);
-    const scan = detectChainImpediments({ c, materialBalances, links, scope: parsed.data });
+    // WO-IMP-CARRIER · 承载对象遍历的终点是**订单行**（一张单 2–3 行、各自型号；实测 500 单 → 873 行）。
+    // 与上面 `materialBalances` 同形：`OrderLine` 不在 SolverContext 的核心/扩展字段里，故这里自行读取。
+    // 缺它 ⇒ 判定器诚实不带 `carriers` 字段、severity 退回单因子口径，**不会**回落成按基地 join。
+    const orderLines = await this.repos.objects.listByType(ctx.tenantId, "OrderLine");
+    const scan = detectChainImpediments({ c, materialBalances, orderLines, links, scope: parsed.data });
     // WO-VULNERABILITY-REI 第 3 件 · **未断但脆弱**搭既有回包出屏，不另开页。
     //
     // 为什么挂这里：这一页问的是「今天哪里出问题了」，而「明天最可能从哪里出问题」是同一个
