@@ -344,7 +344,10 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   //   **那句话是错的，我跑的不是这个文件**。摘入口而不删屏，比删掉更糟：屏还在，只是没人找得到。
   //
   // 本次是真删：组件 / renderer 注册 / 前后端视图下发 / mock 场景卡 / 两条测试，一批删净。
-  // 后端 `history/bundle` 端点保留 —— 追一层实测另有 3 个消费方（风险看板 · 驾驶舱 ×2）。
+  // 后端 `history/bundle` 端点保留 —— 2026-09-12 追一层实测另有 3 个消费方：
+  //   `views/RiskBoardView.tsx:2361` · `views/DashboardView.tsx:74` · `views/DashboardView.tsx:718`。
+  // 复验：`grep -rn "fetchHistoryBundle" apps/frontend-shell/src | grep -v api/endpoints.ts`
+  // 应得 3 处 useQuery/await 调用点（再加 1 处 import 行）；少于 3 处即本注释过期，端点可重新评估。
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate"].map((key) => ({ kind: "view" as const, key })) },
   // WO-NAV-SANDBOX-GROUP：沙盘一家五口此前**一个都没登记**——
   //   · `sim-sandbox` / `sim-init` 落「裸挂」（排在全部 13 个分组之后，屏幕最底）；
