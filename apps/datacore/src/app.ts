@@ -6201,7 +6201,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
     const lib = deriveSliceLibrary(types, links);
     const all = [...lib.intra, ...lib.cross];
-    for (const e of all) await ontologyCore.putSliceSpec(c, e.sliceKey, 1, libEntryToSpec(e) as never);
+    // WO-SLICE-CONSUMPTION-20260912（AC2）：重复登记幂等 = version+1、不报错、不复制。
+    // 此前恒写 v1（2026-09-12 实测：连跑 build/PUT 版本停在 1），与 PRD AC2「version+1」不符 ——
+    // 同 key 覆盖写（MemStore 按 tenantId+id 去重 ⇒ 天然不复制），版本随登记次数递增，
+    // 审计可辨「登记过几次」；biz.* 与手工 key 冲突时也不静默拍平别人登记的版本。
+    for (const e of all) {
+      const existing = await ontologyCore.getSliceSpec(c, e.sliceKey);
+      await ontologyCore.putSliceSpec(c, e.sliceKey, (existing?.version ?? 0) + 1, libEntryToSpec(e) as never);
+    }
     await outbox.emit(c.tenantId, "slice.planned", { sliceKey: "library", rootType: "*", reused: false });
     return reply.status(201).send({ registered: all.map((e) => ({ sliceKey: e.sliceKey, scope: e.scope })), intra: lib.intra.length, cross: lib.cross.length });
   });

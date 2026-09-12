@@ -7,6 +7,7 @@ import {
   deriveSliceFixture,
   fetchObjectTypes,
   fetchSliceLibrary,
+  fetchSliceSpec,
   fetchSlices,
   planSlice,
   resolveSlice,
@@ -305,16 +306,20 @@ function LibraryTab() {
   };
 
   const registerMut = useMutation({
-    mutationFn: (entry: SliceLibraryEntry) =>
-      saveSlice(entry.sliceKey, {
-        version: 1,
+    mutationFn: async (entry: SliceLibraryEntry) => {
+      // AC2「重复登记幂等（version+1）」：先读现版本再 +1。章翻面后按钮即隐藏，
+      // 正常路径永远是首登 v1；这里兜底的是竞态双击/直调——重复登记不报错不复制、版本递增。
+      const existing = await fetchSliceSpec(entry.sliceKey).catch(() => undefined);
+      return saveSlice(entry.sliceKey, {
+        version: (existing?.version ?? 0) + 1,
         spec: {
           root: { typeKey: entry.rootType, selector: {} },
           paths: entry.paths,
           maxNodes: 500,
           description: `切片库登记：${entry.sliceKey}（${entry.scope === "intra" ? "域内" : "跨域"} · ${entry.domain}）`,
         },
-      }),
+      });
+    },
     onSuccess: (_r, entry) => {
       toast(`「${entry.sliceKey}」已登记为切片（已登记页签可见/可编辑）`, "success");
       refresh();

@@ -56,10 +56,26 @@ describe("A3.2 · 两库端点（真服务）", () => {
     expect(crossOnly.cross).toBeDefined();
     expect(crossOnly.intra).toBeUndefined();
     // 登记两库 → 进 A3.4 索引
-    const built = (await t.app.inject({ method: "POST", url: "/a/v1/slices/library/build", headers: ADMIN })).json() as { registered: { sliceKey: string }[]; cross: number };
+    const built = (await t.app.inject({ method: "POST", url: "/a/v1/slices/library/build", headers: ADMIN })).json() as { registered: { sliceKey: string }[]; cross: number; intra: number };
     const idx = (await t.app.inject({ method: "GET", url: "/a/v1/slices/index", headers: ADMIN })).json() as { entries: { sliceKey: string }[] };
     if (built.registered.length > 0) {
       expect(idx.entries.some((e) => e.sliceKey === built.registered[0]!.sliceKey)).toBe(true); // 登记的库切片进了索引
     }
+
+    // WO-SLICE-CONSUMPTION-20260912（AC2/AC3）：重跑幂等 = version+1、不报错、不复制。
+    // （2026-09-12 实测旧实现恒写 v1，与 AC2 不符；本断言钉住「版本随登记次数递增」。）
+    const key0 = built.registered[0]!.sliceKey;
+    const specAfter1 = (await t.app.inject({ method: "GET", url: `/a/v1/ontology/slices/${encodeURIComponent(key0)}`, headers: ADMIN })).json() as { version: number };
+    expect(specAfter1.version).toBe(1); // 首登 v1
+    const listAfter1 = (await t.app.inject({ method: "GET", url: "/a/v1/ontology/slices", headers: ADMIN })).json() as { sliceKey: string }[];
+    const rebuilt = await t.app.inject({ method: "POST", url: "/a/v1/slices/library/build", headers: ADMIN });
+    expect(rebuilt.statusCode).toBe(201); // 不报错
+    const rebuiltBody = rebuilt.json() as { registered: { sliceKey: string }[]; intra: number; cross: number };
+    expect(rebuiltBody.registered.length).toBe(built.registered.length); // 计数口径不变
+    const specAfter2 = (await t.app.inject({ method: "GET", url: `/a/v1/ontology/slices/${encodeURIComponent(key0)}`, headers: ADMIN })).json() as { version: number };
+    expect(specAfter2.version).toBe(2); // version+1
+    const listAfter2 = (await t.app.inject({ method: "GET", url: "/a/v1/ontology/slices", headers: ADMIN })).json() as { sliceKey: string }[];
+    expect(listAfter2.length).toBe(listAfter1.length); // 不复制
+    expect(listAfter2.filter((s) => s.sliceKey === key0).length).toBe(1);
   });
 });
