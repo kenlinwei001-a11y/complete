@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { BusinessTypeSchema } from "./global-sim.js";
 import { PlanAuditInputSchema as CanonicalPlanAuditInputSchema } from "./solvers.js";
+import {
+  OntologyQueryFilterSchema,
+  OntologyQueryHopSchema,
+  OntologyQuerySelectSchema,
+  OntologyQueryOrderBySchema,
+  OntologyQueryOverrideSchema,
+} from "./ontology-query.js";
 
 /**
  * WO-SOLVER-INPUTSCHEMA · 求解器**入参模式**（JSON Schema）单一来源 —— 给模型看的那份「说明书」。
@@ -435,13 +442,919 @@ export const ChangeoverSequenceInputSchema = z
   .describe("换型顺序：贪心最小化总换型时长，并与「按交期排」的方案对比换型代价");
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ⑬ capacity_rollup —— 产能上卷
+//    实现：service.ts:6075 compute() case "capacity_rollup" → computeRollup(c)（**不读 args**）
+// ─────────────────────────────────────────────────────────────────────────────
+export const CapacityRollupInputSchema = z
+  .object({})
+  .describe("产能上卷：把工序/产线产能沿本体金字塔上卷到基地/型号维度。无入参——全部从对象库派生");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// capacity_ledger —— 产能台账（池产能 − Σ 入边消耗）
+//    实现：service.ts:6093 → solvers/capacity.ts:783 CapacityLedgerArgs（接口即真相）
+// ─────────────────────────────────────────────────────────────────────────────
+export const CapacityLedgerInputSchema = z
+  .object({
+    baseId: z.string().optional().describe("只看这个基地的产能池"), // capacity.ts:783
+    lineId: z.string().optional().describe("只看这条产线的产能池"), // :783
+    loadWorkOrders: z
+      .array(z.string())
+      .optional()
+      .describe("只把这些工单加载到池上（排产取舍/对照实验用）。省略=不加载"), // :784
+    demandMultiplier: z.number().optional().describe("需求倍数：这批单的量翻 N 倍还接不接得住。缺省 1"), // :785
+  })
+  .describe("产能台账：沿 has_capacity/consumes_capacity 两条边算产能池余量与超载（余量 = 池申报产能 − Σ 边上消耗量）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// bottleneck_matrix —— 瓶颈矩阵（基地×因子 张力）
+//    实现：service.ts:6098 → solvers/risk.ts:216 bottleneckMatrix
+// ─────────────────────────────────────────────────────────────────────────────
+export const BottleneckMatrixInputSchema = z
+  .object({
+    dataMode: z
+      .enum(["LIVE", "MOCK"])
+      .optional()
+      .describe("取数口径：LIVE=尽量读真源 OEE/利用率（读不到真源的格子自回 MOCK 兜底，不谎称实测）| 省略=确定性估算"), // risk.ts:225 args.dataMode === "LIVE"
+    baseIds: z
+      .array(z.string())
+      .optional()
+      .describe("只算这些基地（认 baseId / 中文名 / obj_base_<id>，未知名不报错、自回 MOCK 兜底）。省略=全部基地"), // :236
+  })
+  .describe("瓶颈矩阵：按基地×风险因子输出张力矩阵与首要因子，定位约束所在");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// affected_orders —— 受影响订单（baseId → 单基地明细；无 baseId → 跨基地聚合）
+//    实现：service.ts:6105 模式开关 → solvers/risk.ts:1381 AffectedOrdersArgs / :1524 affectedOrdersAggregate
+// ─────────────────────────────────────────────────────────────────────────────
+export const AffectedOrdersInputSchema = z
+  .object({
+    baseId: z
+      .string()
+      .optional()
+      .describe("给了=单基地明细模式（认 baseId/中文名/obj_base_<id>，未知基地报错）；省略=跨基地聚合模式"), // service.ts:6109 + risk.ts:1427
+    base: z.string().optional().describe("聚合模式的基地过滤（单基地视图参，与 baseIds 作用域取交集）"), // risk.ts:1559
+    horizon: z.number().optional().describe("窗口天数（聚合模式）：显式 fromDay/toDay 优先，其次 horizon，缺省 180"), // :1546/1558
+    fromDay: z.number().optional().describe("交期窗口起点（相对预测起点的天数），缺省 0"), // :1437/1557
+    toDay: z.number().optional().describe("交期窗口终点。优先级：显式 toDay > horizon > 缺省 180"), // :1438/1558
+    day: z.number().optional().describe("事件日（单基地模式）：给了则窗口 = [day−7, day+14]"), // :1436-1438
+    peak: z.number().optional().describe("事件日峰值张力（延期估算用），缺省 90"), // :1439
+    condition: z
+      .object({
+        prop: z.string(),
+        op: z.enum(["<", ">", "<=", ">=", "=="]),
+        value: z.number(),
+      })
+      .optional()
+      .describe("条件过滤（如 qty>1000）；命中为空时回退为窗口内交期最近若干单"), // :1387/1447
+    ...ScopeDims, // risk.ts:1393-1395 + :1430/1564 normalizeChainScope
+  })
+  .describe("受影响订单：给定基地/窗口/条件列出受影响订单明细（给了 baseId）或跨基地聚合台账（不给 baseId）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// plan_generate —— 年度经营计划三方案生成
+//    实现：service.ts:6120 → solvers/plan.ts:240 PlanGenerateArgs / :271 planGenerate
+//    （全部经 {...cfg.X, ...(args.X ?? {})} 合并 ⇒ 全可选）
+// ─────────────────────────────────────────────────────────────────────────────
+export const PlanGenerateInputSchema = z
+  .object({
+    targets: z
+      .object({
+        gmFloor: z.number().optional().describe("毛利率底线（C15 硬约束判据）"),
+        cashFloor: z.number().optional().describe("现金垫底线·亿（C18 硬约束判据）"),
+        capexCap: z.number().optional().describe("CAPEX 上限·亿（CAPEX 硬约束判据）"),
+        revGrowthPct: z.number().optional().describe("营收增长目标 %，缺省 18"),
+        sharePts: z.number().optional().describe("份额提升目标·百分点，缺省 12"),
+        turnsFloor: z.number().optional().describe("周转底线，缺省取 base.turns"),
+      })
+      .optional()
+      .describe("目标面板（缺省取行业模板配置，逐字段覆盖）"), // plan.ts:274
+    base: z
+      .object({
+        rev: z.number().optional().describe("基期营收·亿"),
+        gm: z.number().optional().describe("基期毛利率 0~1"),
+        share: z.number().optional().describe("基期份额 0~1"),
+        turns: z.number().optional().describe("基期周转次数"),
+        cash: z.number().optional().describe("基期现金垫·亿"),
+      })
+      .optional()
+      .describe("基期盘面（缺省取行业模板配置，逐字段覆盖）"), // plan.ts:273
+    hard: z
+      .object({
+        gm: z.boolean().optional().describe("C15 毛利底线是否当硬约束，缺省 true"),
+        cash: z.boolean().optional().describe("C18 现金底线是否当硬约束，缺省 true"),
+        capex: z.boolean().optional().describe("CAPEX 上限是否当硬约束，缺省 true"),
+      })
+      .optional()
+      .describe("硬约束开关（false=该约束只报不罚分）"), // plan.ts:275
+  })
+  .describe("年度经营计划生成：5 路径骨架按取向收敛出 稳健/均衡/进取 三方案，带硬约束违规与逐维度评分");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// capex_scenario —— 产能投资项目测算（IRR / 24 月利用率 / 缺口窗口）
+//    实现：service.ts:6122 → solvers/capex.ts:40 CapexScenarioArgs / :230 capexScenario
+// ─────────────────────────────────────────────────────────────────────────────
+export const CapexScenarioInputSchema = z
+  .object({
+    scenarioKey: z
+      .string()
+      .optional()
+      .describe("已登记情景名：给了且未直传 projects 时从情景库取项目集（无匹配报错·不静默按无项目算）；直传 projects 时仅作回显标签"), // capex.ts:192-214
+    demand: z
+      .array(z.number())
+      .min(1)
+      .describe("情景需求曲线 D[q]（按季·万套，索引 0 = 窗口第一季）。**必填且不能为空**（空数组当场报错）"), // :44 + :231-233 显式 throw
+    projects: z
+      .array(
+        z.object({
+          id: z.string().optional().describe("项目 id，缺省 P1/P2…"),
+          name: z.string().optional().describe("项目名，缺省取 id"),
+          q0: z.number().describe("投产季（0 起）"),
+          cap: z.number().describe("达产产能（万套/季）"),
+          ramp: z.array(z.number()).optional().describe("爬坡系数（投产后逐季），缺省 [0.5,0.75,0.9,1.0] 后达产 1.0"),
+          capex: z.array(z.number()).describe("按季支出计划（亿/季）"),
+          m: z.number().describe("单位边际毛利（元/套）"),
+          salvageRate: z.number().optional().describe("残值率，缺省 0"),
+          lifeQuarters: z.number().optional().describe("运营生命周期（季），缺省 40"),
+        }),
+      )
+      .optional()
+      .describe("产能项目集。省略=取 scenarioKey 对应的情景库项目（scenarioKey 也未给 → 空项目集，只算缺口不评项目）"), // :46 + :236
+    s0: z.array(z.number()).optional().describe("现有供给 S0[q]（万套/季）。缺省按 0 处理（由 SolverContext 上卷派生的路在 planviews，不经此入口）"), // :48
+    gapMinQuarters: z.number().optional().describe("缺口窗口最小连续季数，缺省 2"), // :50
+    surplusPct: z.number().optional().describe("过剩窗口阈值（G < −surplusPct·S），缺省 0.05"), // :52
+  })
+  .describe("产能投资测算：逐季供需缺口/过剩窗口 + 逐项目 IRR、24 月利用率与现金流");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mitigation_select —— 处置方案选型
+//    实现：solvers/extended.ts:79 mitigationSelect + deriveExtendedArgs case（:1289 起）
+//    别名：arg-aliases.ts baseName←base|baseId
+// ─────────────────────────────────────────────────────────────────────────────
+export const MitigationSelectInputSchema = z
+  .object({
+    factor: z
+      .string()
+      .optional()
+      .describe("风险因子名（方案库 key）。⚠ 缺省时按 unknown factor 收场——选了型才有方案可比"), // extended.ts:80 str(args.factor)
+    baseName: z
+      .string()
+      .optional()
+      .describe("基地作用域，认 baseId / 中文名 / obj_base_<id>（无匹配→400，不静默退回全网）。别名：base / baseId。省略=用占位紧张度 85（输出不带 dataMode 键）"), // derive :1314-1319
+    tightness: z
+      .number()
+      .optional()
+      .describe("紧张度 0~100。省略=给了基地时取该基地×因子的真张力（输出标 dataMode:LIVE/MOCK），未给基地时取占位 85"), // derive :1337-1349
+  })
+  .describe("处置方案选型：按风险因子（可带基地紧张度）从方案库比选处置方案，输出草稿载荷");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// cert_schedule —— 认证排程
+//    实现：solvers/extended.ts:111 certSchedule + deriveExtendedArgs case（:762 起）
+// ─────────────────────────────────────────────────────────────────────────────
+export const CertScheduleInputSchema = z
+  .object({
+    items: z
+      .array(
+        z.object({
+          model: z.string().describe("型号"),
+          line: z.string().describe("产线"),
+          status: z.string().describe("认证状态（只有「认证中」「待认证」会进排程）"),
+          certHours: z.number().describe("剩余认证工时"),
+          gapContribution: z.number().describe("认证通过解锁的缺口贡献（排优先级用）"),
+        }),
+      )
+      .optional()
+      .describe("待排认证项集。省略=从对象库 Certification 派生（certHours 缺省 80）"), // extended.ts:112 + derive :764
+    engineerGroups: z.number().optional().describe("并行工程师组数（每周并行上限），缺省 3"), // :113
+  })
+  .describe("认证排程：按 缺口贡献/认证工时 排优先级，每周并行 ≤ 工程师组数装箱出认证先后");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// kit_readiness —— 齐套分析
+//    实现：solvers/extended.ts:178 kitReadiness + deriveExtendedArgs case（:765 起）
+//    别名：arg-aliases.ts base←baseId|baseName。⚠ kitScope 是引擎派生的诚实位（输出回显），不是入参。
+// ─────────────────────────────────────────────────────────────────────────────
+export const KitReadinessInputSchema = z
+  .object({
+    orders: z
+      .array(
+        z.object({
+          orderId: z.string(),
+          qty: z.number(),
+          startDay: z.number().describe("开工日（相对天数）"),
+          materials: z.array(
+            z.object({
+              material: z.string(),
+              onHand: z.number(),
+              inTransit: z.array(z.object({ qty: z.number(), etaDay: z.number() })),
+              bomUnit: z.number().describe("单套用量"),
+              procurement: z
+                .unknown()
+                .optional()
+                .describe("采购段四段凭证（供应商生产/在途/清关/到货检验）。通常由引擎从对象库装配；缺席时缺料行不出采购计划"),
+            }),
+          ),
+        }),
+      )
+      .optional()
+      .describe("待分析订单集。省略=从对象库派生（基地过滤后取前 8 张·输出如实标注采样）"), // extended.ts:179-185 + derive :819
+    fromDay: z.number().optional().describe("分析窗起点（起采日），缺省 1"), // :187
+    base: z
+      .string()
+      .optional()
+      .describe("基地过滤，认 baseId / 中文名 / obj_base_<id>（无匹配→400，不静默退回全网订单池）。别名：baseId / baseName。省略=全网口径"), // derive :787-818
+  })
+  .describe("齐套分析：按订单逐物料算齐套率与缺料，缺料行给按责任方分解的采购段与最早齐套日");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// inventory_optimize —— 库存优化
+//    实现：solvers/extended.ts:278 inventoryOptimize + deriveExtendedArgs case（:869 起）
+// ─────────────────────────────────────────────────────────────────────────────
+export const InventoryOptimizeInputSchema = z
+  .object({
+    materials: z
+      .array(
+        z.object({
+          matId: z.string(),
+          dailyUse: z.number().describe("日耗"),
+          leadTime: z.number().describe("采购提前期（天）"),
+          onHand: z.number().describe("现有库存"),
+          unitPrice: z.number().describe("单价（元/计量单位）"),
+          idleDays: z.number().describe("呆滞天数"),
+          unit: z.string().optional().describe("计量单位（onHand/unitPrice 两格的单位占位符由它解析）"),
+        }),
+      )
+      .optional()
+      .describe("物料集。省略=从对象库 Material 派生（呆滞天数取 MaterialBatch 最大值）"), // extended.ts:279 + derive :883
+    safetyDays: z.number().optional().describe("安全库存天数，缺省 5"), // :280
+    horizonDays: z.number().optional().describe("推演天数，缺省 30"), // :281
+    inbound: z.array(z.unknown()).optional().describe("在途到货（真 PurchaseOrder 时间轴）。省略=引擎从对象库装配"), // derive :873
+    locations: z.array(z.unknown()).optional().describe("地点维（今日恒空·EMPTY 自愈）。省略=引擎装配"), // derive :874
+  })
+  .describe("库存优化：按日耗×提前期算补货点与安全库存，标呆滞与断料风险");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// yield_diagnosis —— 良率突变诊断
+//    实现：solvers/extended.ts:370 yieldDiagnosis（只读 series/events/provenanceSynthetic）
+//    ⚠ processKey/baseName 今天**不被实现读**（deriveExtendedArgs 归一后无人消费）——不声明，不骗模型。
+// ─────────────────────────────────────────────────────────────────────────────
+export const YieldDiagnosisInputSchema = z
+  .object({
+    series: z
+      .array(z.object({ day: z.number(), yield: z.number() }))
+      .optional()
+      .describe("逐日良率序列。省略=引擎无真时序源 → 返 EMPTY + 披露（不伪造序列冒充找到突变点）"), // extended.ts:371 + derive :1244-1248
+    events: z
+      .array(z.object({ day: z.number(), kind: z.string(), source: z.string() }))
+      .optional()
+      .describe("事件序列（换型/检修/换批等），用于在突变点候选里对号入座"), // :372
+  })
+  .describe("良率突变诊断：在逐日良率序列里找突变点并关联事件候选");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// maintenance_stagger —— 检修错峰
+//    实现：solvers/extended.ts:406 maintenanceStagger + deriveExtendedArgs case（:1235 起）
+// ─────────────────────────────────────────────────────────────────────────────
+export const MaintenanceStaggerInputSchema = z
+  .object({
+    bases: z
+      .array(
+        z.object({
+          base: z.string(),
+          group: z.string().optional().describe("错峰分组，缺省 g1"),
+          maintWeek: z.number().describe("检修周"),
+          lastMaintWeek: z.number().optional().describe("上次检修周"),
+          loadByWeek: z.record(z.string(), z.number()).describe("逐周负荷"),
+        }),
+      )
+      .optional()
+      .describe("基地检修集。省略=从对象库派生（真基地+真检修周；逐周负荷无真源 → 空 + 标合成）"), // extended.ts:407 + derive :1239-1242
+    peakWeeks: z.array(z.number()).optional().describe("交付高峰周集（冲突判定用）"), // :408
+  })
+  .describe("检修错峰：检测多基地检修周撞车与撞交付高峰，给错峰建议");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// outsourcing_split —— 外协切分
+//    实现：solvers/extended.ts:440 outsourcingSplit + deriveExtendedArgs case（:940 起）
+// ─────────────────────────────────────────────────────────────────────────────
+export const OutsourcingSplitInputSchema = z
+  .object({
+    gap: z.number().optional().describe("产能缺口（万套）。省略=按全网订单总量×15% 派生"), // extended.ts:441 + derive :942
+    totalDemand: z.number().optional().describe("总需求（万套），缺省=gap"), // :442
+  })
+  .describe("外协切分：把产能缺口按自产/外协切分并给比例建议");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// quote_margin —— 接单毛利
+//    实现：solvers/extended.ts:471 quoteMargin + deriveExtendedArgs case（:944 起·客户→订单→型号→真BOM/真价）
+// ─────────────────────────────────────────────────────────────────────────────
+export const QuoteMarginInputSchema = z
+  .object({
+    price: z.number().optional().describe("报价（元/套）。省略=该客户该型号在手单 qty 加权均价（无在手单回落 Model.unitPrice）"), // extended.ts:472 + derive :1017-1021
+    bom: z
+      .array(
+        z.object({
+          material: z.string().optional(),
+          unit: z.number().describe("单台用量"),
+          spotPrice: z.number().describe("现价（元/计量单位）"),
+          processRate: z.number().optional().describe("损耗率/加工费率"),
+          qtyUnit: z.string().optional().describe("用量的计量单位"),
+          priceUnit: z.string().optional().describe("现价的计量单位"),
+        }),
+      )
+      .optional()
+      .describe("BOM 明细。直传=按 EXPLICIT 口径算（不查库）；省略=取该型号真 BOM（BOMHeader/BOMDetail）"), // :473 + derive :954
+    mfgRate: z.number().optional().describe("制造费用率"), // :500
+    logistics: z.number().optional().describe("物流费"), // :501
+    segmentFloor: z.number().optional().describe("细分毛利率底线，缺省 0.1"), // :502
+    custName: z.string().optional().describe("客户名（精确→下单品牌名→双向子串；无匹配→400 不静默落首个客户）"), // derive :958-974
+    modelId: z.string().optional().describe("型号（缺省取该客户 qty 最大型号；指定却无 BOM→400 不拿全局前 4 种物料冒充）"), // derive :989-991
+  })
+  .describe("接单毛利：按客户与型号取真 BOM 与真单价，四项分解毛利率并对比细分底线");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// credit_exposure —— 信用敞口
+//    实现：solvers/extended.ts:522 creditExposure + deriveExtendedArgs case（:1117 起·客户维推导）
+//    ⚠ custId：旧契约表（solver-args.ts）声明的键，实现今天**不读它**——如实保留（两表对账要求），
+//       客户定位走 custName。
+// ─────────────────────────────────────────────────────────────────────────────
+export const CreditExposureInputSchema = z
+  .object({
+    custName: z.string().optional().describe("客户名（精确→双向子串；无匹配→400 不静默落首个客户）。省略=全部客户合计（输出标 scope:ALL）"), // derive :1125-1146
+    custId: z.string().optional().describe("⚠ 旧契约表声明键·实现未读（客户定位走 custName）"),
+    creditLimit: z.number().optional().describe("信用额度。直传=EXPLICIT 口径（不做客户维推导）；省略=从客户库取/全域合计"), // extended.ts:523 + derive :1119
+    receivables: z.number().optional().describe("应收账款"), // :524
+    wipUnbilled: z.number().optional().describe("在产未开票"), // :525
+    overdue: z
+      .array(z.object({ invoiceId: z.string(), overdueDays: z.number(), amount: z.number() }))
+      .optional()
+      .describe("逾期发票集"), // :526
+    newOrderAmount: z.number().optional().describe("拟接新单金额（判定接后是否超额），缺省 0"), // :527
+  })
+  .describe("信用敞口：敞口 = 应收 + 在产未开票，给可用额与逾期判定（接新单后是否超额）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// quarterly_gap —— 季度缺口补齐选项
+//    实现：solvers/extended.ts:543 quarterlyGap + deriveExtendedArgs case（:1250 起）
+//    ⚠ quarterScope 是引擎派生的诚实位（输出回显），不是入参。
+// ─────────────────────────────────────────────────────────────────────────────
+export const QuarterlyGapInputSchema = z
+  .object({
+    quarter: z.string().optional().describe("季度标签，如 2026Q2"), // extended.ts:544
+    gap: z
+      .number()
+      .optional()
+      .describe("缺口（万套）。⚠ 省略=占位缺省 50（与任何季度都无关），输出会显式标 quarterScope.dataMode:EMPTY 说明它不是该季度真缺口"), // :545 + derive :1266-1283
+    options: z
+      .array(
+        z.object({
+          key: z.string(),
+          name: z.string(),
+          release: z.number().describe("可释放量"),
+          costRank: z.number().describe("代价排序（小=便宜）"),
+          scene: z.string().optional(),
+        }),
+      )
+      .optional()
+      .describe("补齐选项集。省略=内置默认选项"), // :546
+  })
+  .describe("季度缺口：按代价排序给出缺口补齐选项组合");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// carbon_footprint —— 碳足迹核算
+//    实现：solvers/extended.ts:604 carbonFootprint + deriveExtendedArgs case（:1148 起·基地电表+型号BOM）
+//    别名：arg-aliases.ts baseName←base|baseId
+// ─────────────────────────────────────────────────────────────────────────────
+export const CarbonFootprintInputSchema = z
+  .object({
+    modelId: z.string().optional().describe("型号（给了→取该型号真 BOM；无 BOM→400 不拿全局前 4 种物料冒充）。省略=全局前 4 种物料"), // extended.ts:605 + derive :1211-1232
+    baseName: z
+      .string()
+      .optional()
+      .describe("基地作用域，认 baseId / 中文名 / obj_base_<id>（无匹配/无电表→400 不拿别基地的电网因子冒充）。别名：base / baseId。省略=取首块电表"), // derive :1166-1193
+    materials: z
+      .array(z.object({ material: z.string(), unit: z.number(), factor: z.number() }))
+      .optional()
+      .describe("物料段（物料/单台用量/碳因子）。直传=EXPLICIT 口径；省略=按 modelId 派生"), // :606
+    processes: z
+      .array(z.object({ process: z.string(), energy: z.number(), gridFactor: z.number() }))
+      .optional()
+      .describe("能耗段（工序/单位能耗/电网因子）。省略=取该基地 EnergyMeter"), // :607
+    euThreshold: z.number().optional().describe("欧盟阈值（对标线），缺省 70"), // :608
+  })
+  .describe("碳足迹核算：物料+能耗两段碳排，对比欧盟阈值给改善杠杆");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// countermeasure_combo —— 对策组合（meta-solver 编排）
+//    实现：solvers/extended.ts:578 countermeasureCombo + deriveExtendedArgs case（:1285 起）
+// ─────────────────────────────────────────────────────────────────────────────
+export const CountermeasureComboInputSchema = z
+  .object({
+    gap: z.number().optional().describe("要补的缺口。省略=按全网订单总量×15% 派生，再缺省 10"), // extended.ts:579 + derive :1287
+    levers: z
+      .array(
+        z.object({
+          key: z.string(),
+          solver: z.string().describe("该杠杆调哪个求解器测算"),
+          scene: z.string().optional(),
+          release: z.number().describe("可释放量"),
+          unitCost: z.number(),
+          costRank: z.number(),
+        }),
+      )
+      .optional()
+      .describe("候选杠杆集。省略=内置默认杠杆"), // :577/580
+  })
+  .describe("对策组合：按代价把多根杠杆组合出补缺方案");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// plan_rootcause —— 经营 KPI 根因归因 DAG
+//    实现：service.ts:1680 planRootcause
+// ─────────────────────────────────────────────────────────────────────────────
+export const PlanRootcauseInputSchema = z
+  .object({
+    kpiCategory: z.string().optional().describe("只看这个 KPI 分类的越线项"), // service.ts:1685
+    level: z.string().optional().describe("归因口径层级，缺省 \"op\""), // :1690
+  })
+  .describe("根因归因 DAG：经营 KPI 越线沿 RootCauseChain 归因模板逐层取证");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// metric_rollup —— 经营指标聚合
+//    实现：service.ts:4385 metricRollup（只读 level）
+//    ⚠ metricKey：旧契约表声明的键，实现今天**不读它**——如实保留（两表对账要求），不假装它有过滤作用。
+// ─────────────────────────────────────────────────────────────────────────────
+export const MetricRollupInputSchema = z
+  .object({
+    level: z.string().optional().describe("聚合层级"), // service.ts:4385（实测唯一被读的键）
+    metricKey: z.string().optional().describe("⚠ 旧契约表声明键·实现未读"),
+  })
+  .describe("经营指标聚合：从对象库聚合 actual + 对齐 PlanTarget target → 算 delta/miss（各视图 KPI 单一出处）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// cockpit_kpi —— 经营驾驶舱富 KPI
+//    实现：service.ts:1660 cockpitKpi（**不读 args**）
+// ─────────────────────────────────────────────────────────────────────────────
+export const CockpitKpiInputSchema = z
+  .object({})
+  .describe("经营驾驶舱富 KPI（可供给/收入达成/利用率瓶颈/AOP基准/现金垫）：无入参——全量从对象库确定性派生");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// counterfactual_timeline —— 反事实双轨推演
+//    实现：service.ts:6102 → solvers/risk.ts:1332 counterfactualTimeline
+// ─────────────────────────────────────────────────────────────────────────────
+export const CounterfactualTimelineInputSchema = z
+  .object({
+    base: z.string().optional().describe("基地。缺省（连同 factor）=取风险卡里峰值最高者"), // risk.ts:1334-1341
+    factor: z.string().optional().describe("风险因子。缺省（连同 base）=取峰值最高者"), // :1335
+    horizon: z.number().optional().describe("推演天数，缺省 30"), // :1333
+    mitigationKey: z.string().optional().describe("处置方案 key，缺省取该因子的首个对症方案"), // :1344
+  })
+  .describe("反事实双轨推演：「如不解决 XX，未来 N 天会怎样」——do-nothing 曲线 vs 处置后曲线，给峰值削减/越线推迟/少越线日");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// order_fullchain —— 订单全链推演
+//    实现：service.ts:4684 orderFullchain（so + normalizeChainScope 三维）
+// ─────────────────────────────────────────────────────────────────────────────
+export const OrderFullchainInputSchema = z
+  .object({
+    so: z.string().optional().describe("销售订单号。省略=按作用域取首单"), // service.ts:4685
+    ...ScopeDims, // :4686 normalizeChainScope(args)
+  })
+  .describe("订单全链推演：逐单三关联判（交期/齐套/财务三闸）+ 统一结论（可接/提价接/不建议接）+ 业务建模链 DAG");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mrp_netting —— MRP 净需求
+//    实现：service.ts:4516 mrpNetting（**不读 args**）
+// ─────────────────────────────────────────────────────────────────────────────
+export const MrpNettingInputSchema = z
+  .object({})
+  .describe("MRP 净需求：读 MaterialBalance → 净需求/长协覆盖/缺口/最早齐套表。无入参——全量从对象库派生");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// finance_pnl —— 量·价·本·利科目表
+//    实现：service.ts:4591 financePnl（**不读 args**）
+// ─────────────────────────────────────────────────────────────────────────────
+export const FinancePnlInputSchema = z
+  .object({})
+  .describe("量·价·本·利科目表：收入/成本/毛利 预算vs滚动vs差异 + 毛利率归因。无入参——全量从对象库派生");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// audit_timeline —— 每审计项独立时序
+//    实现：service.ts:6104 → solvers/risk.ts:1231 auditTimeline
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+export const AuditTimelineInputSchema = z
+  .object({
+    kind: z
+      .string()
+      .optional()
+      .describe("审计口径名，缺省 \"struct\"。⚠ 有真源映射的 kind 出 LIVE 逐日序列（换 kind 名 series 不变）；无真源的 kind 是按名字确定性派生的形状投影（输出标 dataMode:MOCK·估算非实测）"), // risk.ts:1232 + :1239
+    horizon: z.number().optional().describe("窗口天数，缺省 90（最小 30）"), // :1233
+  })
+  .describe("审计时序：每审计项出逐日 series + 4 阶段（事件窗/约束越线/波及订单/财务击穿）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ksf_graph —— 财务 KSF 图
+//    实现：service.ts:4336 ksfGraph（**不读 args**）
+// ─────────────────────────────────────────────────────────────────────────────
+export const KsfGraphInputSchema = z
+  .object({})
+  .describe("财务 KSF 图：3 层有向图（越线 Metric → 关键成功要素 → 财务指标）。无入参——全量从对象库投影");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// generic_inference —— 通用 what-if 假设推演
+//    实现：service.ts:1021 genericInference / :1068 discoverLevers / :1209 discoverCapacityLevers
+//    ⚠ apply 在旧契约表是**必填**（两表对账必须保持）；但实现里 mode:"levers" 与 rootType/select/nl
+//       遍历回退两条路都不需要它（:1026/:1035）——必填是旧契约的口径，如实保持并在说明里写清例外。
+// ─────────────────────────────────────────────────────────────────────────────
+export const GenericInferenceInputSchema = z
+  .object({
+    apply: z
+      .array(z.object({ objectType: z.string(), objectId: z.string(), prop: z.string(), value: z.unknown() }))
+      .describe(
+        "假设集 [{objectType,objectId,prop,value}]。**契约必填**（与旧表对齐）；例外：mode:\"levers\" 或 rootType/select/nl 路径可不传（实现这两条岔路不读它）",
+      ), // service.ts:1029 + solver-args.ts GenericInferenceArgs
+    mode: z.string().optional().describe("子模式：\"levers\"=杠杆发现（从派生 DAG 反推候选杠杆+敏感度排序），省略=apply 前向重算"), // :1026
+    grain: z
+      .string()
+      .optional()
+      .describe("产能粒度（base|process|process-model）：给了→走真产能链反推/重算（而非通用 ontology-core recompute）"), // :1034/:1072/:1210
+    modelId: z.string().optional().describe("产能链路径的型号"), // :1211/:1338
+    processKey: z.string().optional().describe("产能链路径的工序过滤"), // :1212
+    targetType: z.string().optional().describe("杠杆发现的目标对象类型（敏感度 ∂目标/∂杠杆 的目标）"), // :1073
+    targetProp: z.string().optional().describe("杠杆发现的目标属性"), // :1074
+    epsilon: z.number().optional().describe("敏感度探针步长 ±ε，缺省 0.05（产能链 0.02）"), // :1075/:1213
+    topK: z.number().optional().describe("杠杆按 |敏感度| 取前 K，缺省 6"), // :1076
+    scopeObjectIds: z.array(z.string()).optional().describe("杠杆候选的对象 id 作用域（空/含 \"null\" 串=全域诚实发现）"), // :1078
+    factors: z.array(z.string()).optional().describe("瓶颈因子过滤（只留撬得动这些因子的杠杆；全部未识别=不过滤）"), // :1080
+    rootType: z.string().optional().describe("遍历回退：起点对象类型（apply 为空时与 select 一起触发 ontology_query 路径）"), // :1035
+    select: z.array(z.unknown()).optional().describe("遍历回退：投影/聚合（见 ontology_query 的 select 契约）"), // :1035
+    nl: z.string().optional().describe("遍历回退：自然语言查询（确定性映射，失败诚实报 NO_QUERY_PLAN 不编造）"), // :1035
+    overrides: z.array(z.unknown()).optional().describe("遍历回退：假设注入（recompute 出 before/after）"), // :1544
+  })
+  .describe("通用 what-if：对任意已发布本体套假设值前向重算下游派生链（before/after deltas），或 mode:\"levers\" 做杠杆发现");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// shared_bottleneck —— 共享瓶颈（净室通用）
+//    实现：service.ts:1390 sharedBottleneck（三键缺一即抛 :1397）
+// ─────────────────────────────────────────────────────────────────────────────
+export const SharedBottleneckInputSchema = z
+  .object({
+    resourceType: z.string().min(1).describe("共享资源的对象类型名。**必填**"), // service.ts:1391
+    sharedByType: z.string().min(1).describe("共享方的对象类型名。**必填**"), // :1392
+    viaField: z.string().min(1).describe("共享方指向资源的属性名。**必填**"), // :1393
+    capacityField: z.string().optional().describe("资源上产能的属性名，缺省 \"capacity\""), // :1394
+    demandField: z.string().optional().describe("共享方上需求量的属性名，缺省 \"qty\""), // :1395
+    priorityField: z.string().optional().describe("共享方上优先级的属性名（判哪张单降级）"), // :1396
+  })
+  .describe("共享瓶颈：按 viaField 把上游对象分组到共享资源，需求和>产能 = 瓶颈，按优先级判降级");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// concentration_risk —— 隐性集中度（多跳反向聚合找暗线单点）
+//    实现：service.ts:1455 concentrationRisk（startType 或 path 空即抛 :1459）
+// ─────────────────────────────────────────────────────────────────────────────
+export const ConcentrationRiskInputSchema = z
+  .object({
+    startType: z.string().min(1).describe("起点对象类型名（从它反向聚合）。**必填**"), // service.ts:1456
+    path: z
+      .array(z.object({ viaField: z.string(), toType: z.string() }))
+      .min(1)
+      .describe("反向多跳路径 [{viaField,toType}]。**必填且不能为空**"), // :1457-1459
+    minDependents: z.number().optional().describe("单点判定阈值（依赖数 ≥ 此值才算集中点），缺省 2"), // :1458
+  })
+  .describe("隐性集中度：多跳反向聚合找暗线单点（哪个上游对象被过多下游依赖）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// margin_attribution —— 毛利倒挂根因归因（净室通用）
+//    实现：service.ts:1584 marginAttribution（targetType 或 costFields 空即抛 :1589）
+// ─────────────────────────────────────────────────────────────────────────────
+export const MarginAttributionInputSchema = z
+  .object({
+    targetType: z.string().min(1).describe("目标对象类型名。**必填**"), // service.ts:1585
+    costFields: z
+      .array(z.object({ field: z.string(), label: z.string().optional() }))
+      .min(1)
+      .describe("成本项字段集 [{field,label?}]。**必填且不能为空**"), // :1587-1589
+    revenueField: z.string().optional().describe("收入字段名，缺省 \"revenue\""), // :1586
+    marginThreshold: z.number().optional().describe("倒挂阈值（毛利率 < 此值即标倒挂），缺省 0"), // :1588
+  })
+  .describe("毛利倒挂归因：把每个目标对象的成本拆成多个成本项，标倒挂并聚合主驱动");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// supplier_disruption_radius —— 单一供应商断供影响半径（净室通用）
+//    实现：service.ts:4851 supplierDisruptionRadius（三件套缺一即抛 :4855）
+// ─────────────────────────────────────────────────────────────────────────────
+export const SupplierDisruptionRadiusInputSchema = z
+  .object({
+    rootType: z.string().min(1).describe("断供根的对象类型名。**必填**"), // service.ts:4852
+    rootId: z.string().min(1).describe("断供根的对象 id。**必填**"), // :4853
+    layers: z
+      .array(z.object({ type: z.string(), viaField: z.string() }))
+      .min(1)
+      .describe("逐层扇出路径 [{type,viaField}]。**必填且不能为空**"), // :4854-4855
+  })
+  .describe("断供影响半径：从断供根反向多跳逐层扇出，算扩散半径与叶层敞口");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// supply_vulnerability —— 供应脆弱度（未断但脆弱·冗余度）
+//    实现：service.ts:4902 supplyVulnerability（`_args` 显式不读）
+// ─────────────────────────────────────────────────────────────────────────────
+export const SupplyVulnerabilityInputSchema = z
+  .object({})
+  .describe("供应脆弱度：按结构量（单点与否/恢复时间）找「我该担心哪个供应商」。无入参——全量从对象图派生");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// selection_optimize —— 组合最优化（0/1 选择·CP-SAT）
+//    实现：service.ts:4960 selectionOptimize（itemType/budget 缺即抛 :4964）
+//    ⚠ 目录 argHints 声明的 items 实现**不读**（真键是 itemType）——负差额漂移的标本。
+// ─────────────────────────────────────────────────────────────────────────────
+export const SelectionOptimizeInputSchema = z
+  .object({
+    itemType: z.string().min(1).describe("候选项的对象类型名。**必填**"), // service.ts:4961
+    budget: z.number().describe("预算上限。**必填**"), // :4964 args.budget === undefined 即抛
+    valueField: z.string().optional().describe("候选项上价值的属性名，缺省 \"value\""), // :4962
+    weightField: z.string().optional().describe("候选项上重量（占预算）的属性名，缺省 \"weight\""), // :4963
+    maxCount: z.number().optional().describe("最多选几项"), // :4979
+    minValue: z.number().optional().describe("单项价值下限"), // :4980
+    seed: seedField, // :4976
+  })
+  .describe("组合最优化：预算约束下选价值最大子集（CP-SAT 可证最优，贪心给不出最优时用）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// assignment_optimize —— 指派最优化（CP-SAT）
+//    实现：service.ts:5002 assignmentOptimize（itemType/binType 缺即抛 :5008）
+// ─────────────────────────────────────────────────────────────────────────────
+export const AssignmentOptimizeInputSchema = z
+  .object({
+    itemType: z.string().min(1).describe("待指派项的对象类型名。**必填**"), // service.ts:5003
+    binType: z.string().min(1).describe("容器（基地/产线）的对象类型名。**必填**"), // :5004
+    weightField: z.string().optional().describe("待指派项上占用量的属性名，缺省 \"weight\""), // :5005
+    capacityField: z.string().optional().describe("容器上容量的属性名，缺省 \"capacity\""), // :5006
+    costField: z.string().optional().describe("指派成本的属性名，缺省 \"cost\""), // :5007
+    seed: seedField, // :5021
+  })
+  .describe("指派最优化：把待办项指派到容器/基地，最小化总成本且满足容量约束（CP-SAT 可证最优）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sequencing_optimize —— 排序最优化（换型·CP-SAT）
+//    实现：service.ts:5040 sequencingOptimize（jobType 缺即抛 :5043）
+// ─────────────────────────────────────────────────────────────────────────────
+export const SequencingOptimizeInputSchema = z
+  .object({
+    jobType: z.string().min(1).describe("作业的对象类型名。**必填**"), // service.ts:5041
+    groupField: z.string().optional().describe("作业上换型分组的属性名，缺省 \"group\""), // :5042
+    seed: seedField, // :5054
+  })
+  .describe("排序最优化：按换型分组排出总换型代价最小的作业顺序（CP-SAT 可证最优）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// packing_optimize —— 装箱最优化（产能填充·CP-SAT）
+//    实现：service.ts:5066 packingOptimize（itemType/binCapacity 缺即抛 :5069）
+// ─────────────────────────────────────────────────────────────────────────────
+export const PackingOptimizeInputSchema = z
+  .object({
+    itemType: z.string().min(1).describe("待装项的对象类型名。**必填**"), // service.ts:5067
+    binCapacity: z.number().describe("箱容量。**必填**"), // :5069 args.binCapacity === undefined 即抛
+    sizeField: z.string().optional().describe("待装项上尺寸的属性名，缺省 \"size\""), // :5068
+    seed: seedField,
+  })
+  .describe("装箱最优化：把待装项按尺寸装进容量有限的箱，最大化装入价值/数量（CP-SAT 可证最优）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// facility_location —— 设施选址（CP-SAT 独立核心）
+//    实现：service.ts:5434 facilityLocation（asArr 缺即抛 + facilities/clients 空即抛 :5439）
+// ─────────────────────────────────────────────────────────────────────────────
+export const FacilityLocationInputSchema = z
+  .object({
+    facilities: z
+      .array(z.object({ id: z.string(), openCost: z.number(), capacity: z.number().optional() }))
+      .min(1)
+      .describe("候选设施集。**必填且不能为空**"), // service.ts:5436 + :5439
+    clients: z
+      .array(z.object({ id: z.string(), demand: z.number().optional() }))
+      .min(1)
+      .describe("客户集。**必填且不能为空**"), // :5437 + :5439
+    assignCosts: z
+      .array(z.object({ client: z.string(), facility: z.string(), cost: z.number() }))
+      .describe("客户-设施指派成本。**必填**"), // :5438
+    facilityType: z.string().optional().describe("设施来源类型标签（回显·溯源用）"), // :5449
+    clientType: z.string().optional().describe("客户来源类型标签（回显·溯源用）"), // :5449
+    seed: seedField, // :5443
+  })
+  .describe("设施选址：开哪些设施、每个客户分给谁，最小化 开设成本+指派成本（CP-SAT 可证最优）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// min_cost_flow —— 最小费用流（CP-SAT 独立核心）
+//    实现：service.ts:5456 minCostFlow（asArr 缺即抛 + nodes/arcs 空即抛 :5461）
+// ─────────────────────────────────────────────────────────────────────────────
+export const MinCostFlowInputSchema = z
+  .object({
+    nodes: z
+      .array(z.object({ id: z.string(), supply: z.number().describe("供给（正）/需求（负）" ) }))
+      .min(1)
+      .describe("节点集。**必填且不能为空**"), // service.ts:5458 + :5461
+    arcs: z
+      .array(z.object({ from: z.string(), to: z.string(), cost: z.number(), cap: z.number().optional() }))
+      .min(1)
+      .describe("弧集。**必填且不能为空**"), // :5459 + :5461
+    nodeType: z.string().optional().describe("节点来源类型标签（回显·溯源用）"), // :5469
+    seed: seedField, // :5464
+  })
+  .describe("最小费用流：满足供需平衡的最小总费用运输方案（CP-SAT 可证最优）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// set_cover —— 集合覆盖（CP-SAT 独立核心）
+//    实现：service.ts:5475 setCover（asArr 缺即抛 + sets 空即抛 :5480）
+// ─────────────────────────────────────────────────────────────────────────────
+export const SetCoverInputSchema = z
+  .object({
+    sets: z
+      .array(z.object({ id: z.string(), cost: z.number().optional(), covers: z.array(z.string()) }))
+      .min(1)
+      .describe("集合集（每个集覆盖一批元素）。**必填且不能为空**"), // service.ts:5478 + :5480
+    universe: z.array(z.string()).optional().describe("全集元素。省略=各集合 covers 的并集"), // :5481
+    setType: z.string().optional().describe("集合来源类型标签（回显·溯源用）"), // :5491
+    seed: seedField, // :5485
+  })
+  .describe("集合覆盖：选最小代价的集合子集覆盖全部元素（CP-SAT 可证最优）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// independent_set —— 独立集（CP-SAT 独立核心）
+//    实现：service.ts:5495 independentSet（asArr 缺即抛 + nodes 空即抛 :5500）
+// ─────────────────────────────────────────────────────────────────────────────
+export const IndependentSetInputSchema = z
+  .object({
+    nodes: z
+      .array(z.object({ id: z.string(), weight: z.number().optional() }))
+      .min(1)
+      .describe("节点集。**必填且不能为空**"), // service.ts:5497 + :5500
+    edges: z.array(z.object({ a: z.string(), b: z.string() })).optional().describe("冲突边集（有边=不能同选）。省略=无边"), // :5498
+    nodeType: z.string().optional().describe("节点来源类型标签（回显·溯源用）"), // :5508
+    seed: seedField, // :5503
+  })
+  .describe("独立集：选互不冲突的最大权重节点子集（CP-SAT 可证最优）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// combinatorial_auction —— 组合拍卖（CP-SAT 独立核心）
+//    实现：service.ts:5514 combinatorialAuction（asArr 缺即抛 + bids 空即抛 :5519）
+// ─────────────────────────────────────────────────────────────────────────────
+export const CombinatorialAuctionInputSchema = z
+  .object({
+    bids: z
+      .array(z.object({ id: z.string(), value: z.number(), items: z.array(z.string()) }))
+      .min(1)
+      .describe("投标集（每标为一组物品出价）。**必填且不能为空**"), // service.ts:5517 + :5519
+    bidType: z.string().optional().describe("投标来源类型标签（回显·溯源用）"), // :5528
+    seed: seedField, // :5522
+  })
+  .describe("组合拍卖：每件物品至多分给一标，选总价值最大的中标集（CP-SAT 可证最优）");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// gap_attribution —— 深度反向归因
+//    实现：service.ts:1827 gapAttribution（只读 metricKey 与 scope{baseId,factorId}——awk 逐行核过）
+//    ⚠ 顶层 factorId/factors：旧契约表声明的键，实现只读 scope.factorId——如实保留（两表对账要求）。
+// ─────────────────────────────────────────────────────────────────────────────
+export const GapAttributionInputSchema = z
+  .object({
+    metricKey: z.string().optional().describe("目标指标 key（缺省=取主目标）"), // service.ts:1827
+    scope: z
+      .object({
+        baseId: z.string().optional().describe("基地下钻"),
+        factorId: z.string().optional().describe("因子下钻（实现真读的因子定位键）"),
+      })
+      .optional()
+      .describe("下钻作用域"), // service.ts:1827（scope.baseId / scope.factorId）
+    factorId: z.string().optional().describe("⚠ 旧契约表声明键·实现只读 scope.factorId（顶层键不读）"),
+    factors: z.array(z.string()).optional().describe("⚠ 旧契约表声明键·实现未读"),
+  })
+  .describe("深度反向归因：总目标缺口 → 结构反向多跳分摊 + 因果遍历到叶子原子因素");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// decision_play —— 决策推演（根因→多方案→触发行动）
+//    实现：service.ts:3994 decisionPlay + :4228 decisionPlayLocus（locusType/locusId 都给才出落点锚定块）
+// ─────────────────────────────────────────────────────────────────────────────
+export const DecisionPlayInputSchema = z
+  .object({
+    metricKey: z.string().optional().describe("目标指标 key"), // service.ts:3996
+    factorId: z.string().optional().describe("指定根因因子（模糊匹配 id 尾缀/因子名；缺省=取贡献最大者）"), // :3999
+    locusType: z.string().optional().describe("落点类型（与 locusId 一起给 → 输出多一个落点锚定块；单独给无效）"), // :4228
+    locusId: z.string().optional().describe("落点对象 id（与 locusType 一起给才生效）"), // :4229
+  })
+  .describe("决策推演：根因 → 多方案 → 比对矩阵 → 触发行动（信号阈值）→ 组合收窄");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// supply_demand_gap_attribution —— 供需失衡双向归因
+//    实现：service.ts:3257 supplyDemandGapAttribution（显式 ignoredArgs 机制·**不读 args**）
+// ─────────────────────────────────────────────────────────────────────────────
+export const SupplyDemandGapAttributionInputSchema = z
+  .object({})
+  .describe("供需失衡双向归因：产销缺口 → 需求端⊥供给端双向分摊 → 各端下钻叶。无入参——全量从对象图派生");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// atp_check —— 订单承诺（ATP/CTP）
+//    实现：service.ts:4803 atpCheck（orderRef ?? so + normalizeChainScope 三维）
+// ─────────────────────────────────────────────────────────────────────────────
+export const AtpCheckInputSchema = z
+  .object({
+    orderRef: z.string().optional().describe("订单引用（与 so 二选一，orderRef 优先）"), // service.ts:4804
+    so: z.string().optional().describe("销售订单号（orderRef 缺省时用）。⚠ orderRef/so 至少给一个，否则无从定位订单"), // :4804
+    ...ScopeDims, // normalizeChainScope（与 order_fullchain 同机制）
+  })
+  .describe("订单承诺：净读三源供给（成品现货+在制未交+交期前可排产能）→ 可承接量 + 承诺日 + 缺口/瓶颈");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sop_reschedule —— 产销重排推演
+//    实现：service.ts:3408 sopReschedule（targetOrderId 空即抛 :3409）
+// ─────────────────────────────────────────────────────────────────────────────
+export const SopRescheduleInputSchema = z
+  .object({
+    targetOrderId: z.string().min(1).describe("目标订单号。**必填**（无兜底·缺它无法定位目标单）"), // service.ts:3409
+    newDueDate: z.string().optional().describe("新交期 ISO（与 advanceDays/advancePct 三选一）"), // :3422
+    advanceDays: z.number().optional().describe("提前天数（⚠ 此前目录 argHints 只在散文里提到它，模型无从当键传）"), // :3423
+    advancePct: z.number().optional().describe("提前比例 0~1"), // :3424
+    objective: z
+      .enum(["min_delay", "min_changeover", "min_cost"])
+      .optional()
+      .describe("重排目标：min_delay 最小延期 | min_changeover 最小换型 | min_cost 最小代价"), // :3425
+  })
+  .describe("产销重排：目标订单+新交期 → 跨基地拆产/挤占同型号在手单/被挤单延期/换型加班延误代价");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// base_capacity_outlook —— 每基地前瞻产能
+//    实现：service.ts:3572 baseCapacityOutlook
+// ─────────────────────────────────────────────────────────────────────────────
+export const BaseCapacityOutlookInputSchema = z
+  .object({
+    baseId: z.string().optional().describe("基地（认 baseId/中文名/obj_base_<id>）。省略=逐基地全量"), // service.ts:3576 normalizeBaseRef
+    horizon: z.number().optional().describe("前瞻天数。省略=按 30/60/90 三档全出"), // :3591
+  })
+  .describe("每基地前瞻产能：可用产能 ⊥ 在产占用 ⊥ 未来订单落窗 ⊥ 销售预测 四线 + 缺口/富余标记 + 行动计划");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ontology_query —— 本体遍历查询（净室通用·join≠compute）
+//    实现：service.ts:1528 ontologyQuery → contracts OntologyQueryInputSchema 严校验（:1547）
+//    两条路：①结构化 rootType+select（缺一→参数非法报错）②nl 自然语言（rootType/select 都没给时启用）。
+// ─────────────────────────────────────────────────────────────────────────────
+export const OntologyQueryInputSchemaForSolver = z
+  .object({
+    nl: z
+      .string()
+      .optional()
+      .describe("自然语言查询（rootType/select 都未给时启用；确定性映射失败→NO_QUERY_PLAN 报错不编造）。与结构化路径二选一"), // service.ts:1539-1543
+    rootType: z.string().optional().describe("起点对象类型。结构化路径**必填**（与 select 一起）"), // :1547 OntologyQueryInputSchema
+    rootFilter: z
+      .array(OntologyQueryFilterSchema)
+      .optional()
+      .describe("起点行过滤 [{prop,op,value}]，op 值域 eq|ne|in|gt|gte|lt|lte|contains"),
+    hops: z
+      .array(OntologyQueryHopSchema)
+      .optional()
+      .describe("遍历跳 [{link,direction?}]，direction 值域 forward|backward，缺省 []"),
+    select: z
+      .array(OntologyQuerySelectSchema)
+      .optional()
+      .describe("投影/聚合 [{type,fields,aggregate?,groupBy?}]，aggregate 值域 sum|count|avg|max。结构化路径**必填且至少一项**"),
+    orderBy: OntologyQueryOrderBySchema.optional().describe("排序 {field,direction:asc|desc}"),
+    limit: z.number().int().positive().max(10000).optional().describe("行数上限（≤10000）"),
+    overrides: z
+      .array(OntologyQueryOverrideSchema)
+      .optional()
+      .describe("假设注入 [{objectType,objectId,prop,value}]：给了→引擎跑 recompute 出 before/after"),
+  })
+  .describe("本体遍历查询：一次调用完成 遍历+投影+聚合（顶多次 query_objects 往返），R13 逐行可溯");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// chain_loss_attribution —— 环节级损失归因
+//    实现：service.ts:4441 chainLossAttribution（so / sessionId，均 404-unknown 兜底）
+// ─────────────────────────────────────────────────────────────────────────────
+export const ChainLossAttributionInputSchema = z
+  .object({
+    so: z.string().optional().describe("销售订单号（未知单→404，不静默换单）"), // service.ts:4456
+    sessionId: z.string().optional().describe("推演会话 id（未知会话→404）"), // :4463
+  })
+  .describe("环节级损失归因：把「全链 N 天」拆成逐环节损失占比（分母排除增值段·守恒），每个数字带三元组下钻");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// process_flow_time —— 业务流程实例层流转时长
+//    实现：service.ts:4493 processFlowTime（四键全部「有值才生效」⇒ 全可选）
+// ─────────────────────────────────────────────────────────────────────────────
+export const ProcessFlowTimeInputSchema = z
+  .object({
+    asOf: z.string().optional().describe("观测时点（ISO 日期）"), // service.ts:4501
+    processKey: z.string().optional().describe("只看这条流程"), // :4505
+    flowKey: z.string().optional().describe("只看这个流"), // :4506
+    limit: z.number().optional().describe("行数上限（>0 才生效）"), // :4507
+  })
+  .describe("流转时长：哪一张单卡着、卡在谁那里、卡了多久（全部由带时间戳单据反推·不读标准工期）");
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 注册表 + JSON Schema 投影
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 求解器入参模式注册表（key → **完整** zod schema，从实现反推）。
- * 未登记 = 本单尚未覆盖（48 个待办见 `docs/AUDIT-solver-inputschema-20260912.md`），
- * 调用方按「入参模式未知」处理 —— ⛔ 不许当成「该求解器无入参」。
+ * 63/63 全覆盖（WO-SOLVER-INPUTSCHEMA 前 12 + WO-INPUTSCHEMA-B 后 51）。
+ * 无入参的求解器登记空对象 schema（`{}`）——那是「**实测无入参**」的诚实声明
+ * （出处注释到「实现不读 args」的函数行），与「未登记=入参模式未知」是两个不同的命题。
  */
 export const SOLVER_INPUT_SCHEMAS: Readonly<Record<string, z.ZodTypeAny>> = Object.freeze({
   portfolio: PortfolioInputSchema,
@@ -456,6 +1369,58 @@ export const SOLVER_INPUT_SCHEMAS: Readonly<Record<string, z.ZodTypeAny>> = Obje
   multi_objective: MultiObjectiveInputSchema,
   optimize_whatif: OptimizeWhatifInputSchema,
   changeover_sequence: ChangeoverSequenceInputSchema,
+  // ── WO-INPUTSCHEMA-B · 剩余 51 个（SOLVER_KEYS 顺序）────────────────────────
+  capacity_rollup: CapacityRollupInputSchema,
+  capacity_ledger: CapacityLedgerInputSchema,
+  bottleneck_matrix: BottleneckMatrixInputSchema,
+  affected_orders: AffectedOrdersInputSchema,
+  plan_generate: PlanGenerateInputSchema,
+  capex_scenario: CapexScenarioInputSchema,
+  mitigation_select: MitigationSelectInputSchema,
+  cert_schedule: CertScheduleInputSchema,
+  kit_readiness: KitReadinessInputSchema,
+  inventory_optimize: InventoryOptimizeInputSchema,
+  yield_diagnosis: YieldDiagnosisInputSchema,
+  maintenance_stagger: MaintenanceStaggerInputSchema,
+  outsourcing_split: OutsourcingSplitInputSchema,
+  quote_margin: QuoteMarginInputSchema,
+  credit_exposure: CreditExposureInputSchema,
+  quarterly_gap: QuarterlyGapInputSchema,
+  carbon_footprint: CarbonFootprintInputSchema,
+  countermeasure_combo: CountermeasureComboInputSchema,
+  plan_rootcause: PlanRootcauseInputSchema,
+  metric_rollup: MetricRollupInputSchema,
+  cockpit_kpi: CockpitKpiInputSchema,
+  counterfactual_timeline: CounterfactualTimelineInputSchema,
+  order_fullchain: OrderFullchainInputSchema,
+  mrp_netting: MrpNettingInputSchema,
+  finance_pnl: FinancePnlInputSchema,
+  audit_timeline: AuditTimelineInputSchema,
+  ksf_graph: KsfGraphInputSchema,
+  generic_inference: GenericInferenceInputSchema,
+  shared_bottleneck: SharedBottleneckInputSchema,
+  concentration_risk: ConcentrationRiskInputSchema,
+  margin_attribution: MarginAttributionInputSchema,
+  supplier_disruption_radius: SupplierDisruptionRadiusInputSchema,
+  supply_vulnerability: SupplyVulnerabilityInputSchema,
+  selection_optimize: SelectionOptimizeInputSchema,
+  assignment_optimize: AssignmentOptimizeInputSchema,
+  sequencing_optimize: SequencingOptimizeInputSchema,
+  packing_optimize: PackingOptimizeInputSchema,
+  facility_location: FacilityLocationInputSchema,
+  min_cost_flow: MinCostFlowInputSchema,
+  set_cover: SetCoverInputSchema,
+  independent_set: IndependentSetInputSchema,
+  combinatorial_auction: CombinatorialAuctionInputSchema,
+  gap_attribution: GapAttributionInputSchema,
+  decision_play: DecisionPlayInputSchema,
+  supply_demand_gap_attribution: SupplyDemandGapAttributionInputSchema,
+  atp_check: AtpCheckInputSchema,
+  sop_reschedule: SopRescheduleInputSchema,
+  base_capacity_outlook: BaseCapacityOutlookInputSchema,
+  ontology_query: OntologyQueryInputSchemaForSolver,
+  chain_loss_attribution: ChainLossAttributionInputSchema,
+  process_flow_time: ProcessFlowTimeInputSchema,
 });
 
 /** MCP 工具的 `inputSchema` 形状（JSON Schema draft 2020-12 object）。 */
