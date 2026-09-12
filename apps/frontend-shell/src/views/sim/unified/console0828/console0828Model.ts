@@ -41,7 +41,7 @@
  *   700.00 亿 = 需求 P50 预测 · 250.60 亿 = 方案寻优毛利。只有订单簿总额随订单簿变。
  */
 
-import { daysForTicks } from "@platform/contracts";
+import { daysForTicks, isOnHandOrderStatus, ON_HAND_ORDER_STATUSES, ORDER_STATUSES } from "@platform/contracts";
 import type {
   CandidateEffectKind,
   CandidateJoinKind,
@@ -60,6 +60,105 @@ export interface OrderRow {
   readonly due: string | null;
   readonly status: string | null;
   readonly model: string | null;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * WO-ORDER-SCOPE · 「哪些单**可能被这次扰动影响**」——影响面计算的唯一基数
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 今天的行为是 X（仓主 2026-09-12 在真屏上抓到）────────────────────────────
+ * 本屏一切影响面读数（受影响订单张数 / 受影响客户 / 被推动的订单敞口）都以
+ * `fetchAllObjects("Order")` 的**全簿 500 张**为基数，**零状态过滤**。
+ * 仓主原话：「我输入一个扰动因素，结果反馈**影响 500 张订单**。这个是错的，
+ * **不应该影响已经完成的订单**，**进行中订单也需要分析是否计算在里面**。」
+ *
+ * ── 应该是 Y ────────────────────────────────────────────────────────────────
+ * 基数 = **在手单**（`ON_HAND_ORDER_STATUSES` = `OPEN` + `IN_PRODUCTION` = 150 张）。
+ * 仓主问的那半（「进行中算不算」）**契约里早有答案，不由本文件发明**：
+ * `packages/contracts/src/order-status.ts` 的注释原文 ——
+ *   · `IN_PRODUCTION` =「已排产、在制」⇒ **货还没交出去，钱还没结清，在手** ⇒ **算**；
+ *   · `COMPLETED`     =「已交付关闭，不再占用产能、不再需要承诺」⇒ 已经不在手 ⇒ **不算**。
+ *
+ * ⛔ **不许在本文件抄一份 `["OPEN","IN_PRODUCTION"]` 字面量** —— 契约那段注释明令
+ *   「口径取自契约单一出处…不许在这里抄第二份字面量」。抄了就是下一次两处漂移。
+ *   故本文件只 `import` `isOnHandOrderStatus` / `ON_HAND_ORDER_STATUSES`，一个字面量都不写。
+ *
+ * ── 实测三档（真后端 `SEED_DEMO=1`，2026-09-12，`POST /a/v1/objects/aggregate`）──
+ *   | 状态            | 张数 | Σ value   |
+ *   | `COMPLETED`     | 350 | 298.01 亿 |  ← 排除
+ *   | `IN_PRODUCTION` | 100 |  88.83 亿 |  ← 算
+ *   | `OPEN`          |  50 |  67.80 亿 |  ← 算
+ *   | **全簿**        | 500 | 454.64 亿 |
+ *   | **在手**        | 150 | 156.63 亿 |
+ *
+ * ══ ⚠ 这个划分为什么必须是**三**档而不是两档 ════════════════════════════════
+ *
+ * `isOnHandOrderStatus` 对**任何不认识的值**（含 `null`）返回 `false`。若只切两档
+ * （在手 / 其余），一旦后端把状态改名或某条单缺 `status`，那批单会被**静默并进
+ * 「不算」那一侧** ⇒ 屏上读作「**没有受影响的订单**」，而真相是「**我判不了**」。
+ * 本仓已经为这个陷阱记过一笔账：`apps/datacore/src/solvers/chain-loss-matrix.ts`
+ * 的注释原文 ——「`isOnHandOrderStatus(undefined)` 恒假 ⇒ **每一列敞口都会变成 0**」。
+ *
+ * 这正是本文件开篇那条纪律的同一形态：**「算不出来」与「是 0」必须分得开**。
+ * 故 `unknown` 单独成档，>0 时屏上必须点名，⛔ 不许并进任何一边。
+ */
+export interface OrderScope {
+  /**
+   * 全簿。**只作背景** —— 状态分布那一格、以及「已完成 N 张为什么不算」那句话。
+   * ⛔ 不许拿它当任何影响面计算的基数，那正是本单要修的病。
+   */
+  readonly all: readonly OrderRow[];
+  /** 可被扰动影响的单（在手）。**一切影响面计算的唯一基数。** */
+  readonly onHand: readonly OrderRow[];
+  /** 在手的两个构成档 —— 屏上第二行「进行中 N · 待开工 M」的唯一出处。 */
+  readonly inProduction: number;
+  readonly open: number;
+  /** 已交付关闭，本次排除。屏上必须点名张数，⛔ 不许默默过滤掉。 */
+  readonly completed: number;
+  /** 状态不在契约三态里的单。>0 ⇒ 屏上必须报「判不了」，⛔ 不许读作「不受影响」。 */
+  readonly unknown: number;
+}
+
+/**
+ * 契约三态里**不在手**的那一档 —— **现算，⛔ 不写 `"COMPLETED"` 字面量**。
+ *
+ * 今天它恰好只有 `COMPLETED` 一个成员（`ORDER_STATUSES` 三态 − 在手两态）。
+ * 之所以不直接写那个串：本文件已经因为「抄第二份状态字面量」被契约注释点名警告过一次，
+ * 而**现算的集合会跟着契约走，抄下来的串不会**。
+ *
+ * ⚠ 若契约将来长出第 4 个非在手状态，它会自动落进这一档 —— 语义仍成立
+ *   （「契约认识它、但它不在手」⇒ 照样该排除），只是屏上那句「已完成」需要改措辞。
+ *   这件事由接缝门的三态金丝雀盯着（`ORDER_STATUSES.length === 3`），不靠人记得。
+ */
+const OFF_HAND_STATUSES: readonly string[] = ORDER_STATUSES.filter((s) => !isOnHandOrderStatus(s));
+
+/**
+ * 把全簿切成「在手 / 已交付关闭 / 判不了」三档。
+ *
+ * 判据全部来自契约，本函数一个状态字面量都不写：
+ *  · 在手 ⇒ `isOnHandOrderStatus`；
+ *  · 已交付关闭 ⇒ `OFF_HAND_STATUSES`（契约三态减去在手两态，现算）；
+ *  · 其余（含 `null`、含后端改名后的新串）⇒ `unknown`，**单独成档**。
+ */
+export function splitOrderScope(all: readonly OrderRow[]): OrderScope {
+  const onHand: OrderRow[] = [];
+  let inProduction = 0;
+  let open = 0;
+  let completed = 0;
+  let unknown = 0;
+  for (const o of all) {
+    if (isOnHandOrderStatus(o.status)) {
+      onHand.push(o);
+      // 两个档名同样取自契约常量（`["OPEN","IN_PRODUCTION"]` 的第 2 个），不写字面量。
+      if (o.status === ON_HAND_ORDER_STATUSES[1]) inProduction += 1;
+      else open += 1;
+    } else if (o.status !== null && OFF_HAND_STATUSES.includes(o.status)) {
+      completed += 1;
+    } else {
+      unknown += 1;
+    }
+  }
+  return { all, onHand, inProduction, open, completed, unknown };
 }
 
 /** 一格的变化。`before`/`after` 都是推演层读数（0–100 压力数，**不是钱**）。 */
@@ -146,7 +245,14 @@ export const MONEY_BREAKDOWN_LABELS = ["毛利差额", "新增成本", "占压�
  * 区③。
  *
  * @param deltas   世界差分（`diffWorld` 的结果）
- * @param orders   对象层全部订单（**必须是全量**，翻页翻到底的那份；拿首页 50 条会把 500 张读成 50）
+ * @param orders   **在手单**（`OrderScope.onHand`）—— 影响面与敞口的基数。
+ *
+ *   ⚠ 这个参数的口径在 WO-ORDER-SCOPE 变过一次，两条纪律都要守，缺一条就错：
+ *    ① **必须是翻页翻到底的那份**再过滤（拿首页 50 条会把 500 张读成 50）；
+ *    ② **必须已经过滤掉非在手单** —— 传全簿进来，`bookOrders` 就会报 500、
+ *       `exposedOrders` 会把已交付关闭的单也数进去，那正是仓主抓到的那个 bug。
+ *   ⇒ 调用方一律传 `splitOrderScope(...).onHand`，⛔ 不要在这里另写一遍过滤：
+ *     过滤写两处 = 两处口径迟早各说各话。
  * @param causeOf  `objectId → 是哪件事推的`；用于「主要是 X」。取不到就返回 `null`，不硬凑。
  */
 export function buildMoneyView(
@@ -212,9 +318,16 @@ export interface CustomerRow {
 /** 区③b「落在谁头上」。 */
 export interface CustomerView {
   readonly rows: readonly CustomerRow[];
-  /** 500 张单的三段分布（现算，**不写死** 350/100/50）。 */
+  /**
+   * 三段分布（现算，**不写死** 350/100/50）。
+   *
+   * ⚠ **这一格的基数是全簿，不是在手** —— 它是本屏唯一回答「那 350 张去哪了」的地方。
+   *   WO-ORDER-SCOPE 把影响面基数收窄到在手 150 之后，若这一格也跟着收窄，
+   *   屏上就再也看不到被排除的那批 ⇒ **过滤变成了静默删除**，正是规范禁止的那一种。
+   */
   readonly statusDist: readonly { readonly status: string; readonly label: string; readonly n: number }[];
   readonly touchedCustomers: number;
+  /** 在手单涉及的客户家数 —— **分母同样是在手口径**，与 `rows` 同源。 */
   readonly totalCustomers: number;
 }
 
@@ -225,21 +338,34 @@ export const ORDER_STATUS_TEXT: Readonly<Record<string, string>> = {
   OPEN: "已下待排产",
 };
 
+/**
+ * 区③b。
+ *
+ * ⚠ **两个基数，故意用一个 `OrderScope` 一起传进来，不给「两个数组」的重载**
+ *   （WO-ORDER-SCOPE）：
+ *    · 客户聚合 / 占比 / 家数 ⇒ 走 `scope.onHand`（**影响面口径**）；
+ *    · 状态分布            ⇒ 走 `scope.all`（**背景口径**，那 350 张要看得见）。
+ *   拆成两个同型参数就一定会有人传反，而传反了屏上照样有数、照样全绿 ——
+ *   本仓治过多次的那种病。合成一个具名结构后，**传反在类型层就过不去**。
+ */
 export function buildCustomerView(
-  orders: readonly OrderRow[],
+  scope: OrderScope,
   touchedIds: ReadonlySet<string>,
   topN = 6,
 ): CustomerView {
   const agg = new Map<string, { orders: number; value: number; tOrders: number; tValue: number }>();
   const status = new Map<string, number>();
   let book = 0;
-  for (const o of orders) {
+  for (const o of scope.onHand) {
     const c = o.cust ?? "（无客户名）";
     const e = agg.get(c) ?? { orders: 0, value: 0, tOrders: 0, tValue: 0 };
     const v = typeof o.value === "number" && Number.isFinite(o.value) ? o.value : 0;
     e.orders += 1; e.value += v; book += v;
     if (touchedIds.has(o.id)) { e.tOrders += 1; e.tValue += v; }
     agg.set(c, e);
+  }
+  // 状态分布**单独一轮，走全簿** —— 与上面那一轮基数不同，合并循环就等于把两个口径压成一个。
+  for (const o of scope.all) {
     const s = o.status ?? "（无状态）";
     status.set(s, (status.get(s) ?? 0) + 1);
   }
