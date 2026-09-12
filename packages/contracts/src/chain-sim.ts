@@ -1215,6 +1215,63 @@ export const NoCandidateKindSchema = z.enum(NO_CANDIDATE_KINDS);
 export type NoCandidateKind = z.infer<typeof NoCandidateKindSchema>;
 
 /**
+ * **WO-IMP-CARRIER** · 一处阻滞点的**承载对象**：它到底卡住了哪些订单 / 哪些客户。
+ *
+ * ── 为什么必须有这个字段（今天的行为 X / 应该的行为 Y）─────────────────────────
+ * **X**：`ChainImpediment` 身上**一个承载对象都没有** —— 只有 `locus`（卡在哪）、
+ *   `evidence`（越了哪条线）、`severity`（超阈幅度 ÷ 规模基准）。于是「卡住 150 张单
+ *   163.54 亿」与「卡住 1 张单 1.39 亿」**在回包里长得一模一样**，消费方分不出轻重。
+ * **Y**：沿本体真实遍历走到订单，把**条数与金额**一起给出来，并让 `severity` 真正吃进这一项。
+ *
+ * ⚠ **这个字段唯一的危险是"看起来对"的假归因**，故把判据钉死在这里：
+ * **承载对象必须是「真正被这一处阻断的」—— 沿 `locus` 对象 → 下游链路 → 订单一跳一跳走出来的，
+ * 不是「同基地的全体订单」。** 按基地 join 又快又好看，但实测 `scope={baseIds:["changzhou"]}`
+ * 一个基地就有 14 处阻滞点 ⇒ 每处都挂上该基地全部订单，**加起来远超订单总数** = 重复计数造数。
+ * 同源戒律（决策台文件头原文）：「`impactMoney` 是**全局量**，把它摊到某一处卡点头上
+ * 就是**编一个不存在的归因**」。
+ *
+ * `path` 就是为了让这条戒律**可被复核**：它逐跳记下走过的边，读的人不看代码也能判断
+ * 这是真遍历还是 join（铁律 1.5 判据二「推演过程必须可披露」）。
+ */
+export const ChainImpedimentCarriersSchema = z.strictObject({
+  /** 被这一处阻滞点卡住的**订单条数**（去重后）。 */
+  orderCount: z.number().int().min(0),
+  /** 这些订单里**真正依赖该落点**的那部分金额（见 `amountBasis`），单位 `amountUnit`。 */
+  orderAmount: z.number().min(0),
+  /** `orderAmount` / `bookAmount` 的量纲（元）。**不许省** —— 量纲缺席被当成无量纲是本仓记过账的老坑。 */
+  amountUnit: z.string().min(1),
+  /**
+   * 金额口径 —— **必须显式声明，不许让读者猜**：
+   *  · `ORDER_LINE` 只计**真正需要该物料/该型号的订单行**（多型号订单不整单算进来）；
+   *  · `ORDER`      整单计入（判据本身就是按整单聚合的，如跨业务线争用的日产率）。
+   */
+  amountBasis: z.enum(["ORDER_LINE", "ORDER"]),
+  /**
+   * 归一化分母 = 本次扫描的**可阻塞订单簿金额**（同 `amountUnit`）。
+   * 给出来才能让 `exposureFactor` 被**复算**；不给就等于要读者相信一个看不见的分母。
+   * ⚠ 它**不是**订单簿总额：已交付（COMPLETED）的单不可能被将来的缺料卡住，故不计入。
+   */
+  bookAmount: z.number().min(0),
+  /** severity 因子①：归一化后的**超阈幅度**（0–1，`min(1, 超阈/规模基准)`）。 */
+  breachFactor: z.number().min(0).max(1),
+  /** severity 因子②：归一化后的**下游受影响订单金额**（0–1，= `orderAmount / bookAmount`）。 */
+  exposureFactor: z.number().min(0).max(1),
+  /**
+   * **逐跳记下走过的边**（如 `["material_has_balance", "material_used_by_model", "orderline_for_model"]`）。
+   * 这是「真遍历 vs 同基地 join」的**可核对证据**，不是装饰：一条只写 `["baseId"]` 的路径
+   * 当场就暴露它是 join。
+   */
+  path: z.array(z.string().min(1)).min(1),
+  /** 样例订单号（稳定排序后取前若干条，供人抽查；**不是全集**，全集看 `orderCount`）。 */
+  sampleOrderIds: z.array(z.string().min(1)),
+  /** 涉及的客户数（去重）。 */
+  customerCount: z.number().int().min(0),
+  /** 样例客户名（稳定排序后取前若干条）。 */
+  sampleCustomers: z.array(z.string().min(1)),
+});
+export type ChainImpedimentCarriers = z.infer<typeof ChainImpedimentCarriersSchema>;
+
+/**
  * **ChainImpediment**：全链扫描产出的阻滞点。
  *
  * **它是派生对象**（求解器算出来的，不落人工录入）→ 因此**不进 R4 Action 审批面**。
@@ -1246,8 +1303,23 @@ export const ChainImpedimentSchema = z
     stepId: z.string().min(1).optional(),
     locus: ChainLocusSchema,
     /**
-     * 严重度 0–100。**必须是算出来的**（建议 = 归一化(超阈幅度) × 归一化(下游受影响订单金额)，
+     * 严重度 0–100。**必须是算出来的**（= 归一化(超阈幅度) × 归一化(下游受影响订单金额)，
      * 两个因子都来自求解器输出）。**禁止固定权重表拍脑袋** —— 那是 `G-MULTIOBJ-TOY-ORDERBOOK` 的老路。
+     *
+     * ⚠ **WO-IMP-CARRIER 之前，这里只落了第一个因子**（`(超阈/规模基准)×100`），
+     * 第二个因子整条缺席 ⇒ **只要超阈幅度相同，卡住 150 张单的与卡住 1 张单的排在一起**。
+     * 实测过的那一对：`mbal-8`(电芯壳体·150 单/163.54 亿) 与 `LINE-WS-jinhua-slitting`(1 单/1.39 亿)
+     * **severity 同为 1**。这与 `Material.priceShock` 那条边「公式里没有用量项」是同一个形态
+     * （铁律 1.5：接对了、跑通了、**但算错了**）。
+     *
+     * 今天的口径，两条路**都写在这里**，不许只写一条让人以为是全部：
+     *  · 承载对象**解析得出**（带 `carriers`）⇒ 两因子都吃：
+     *    `severity = round(100 × sqrt(breachFactor × exposureFactor))`。
+     *    根号只是**保序缩放**（严格单调 ⇒ 排序 ≡ 纯乘积），用来把分辨率留住：
+     *    纯乘积会把 18 条里 12 条压到 ≤9、两条压成 0，而「0」在屏上读起来是「没问题」。
+     *    两个因子**原样回带**在 `carriers` 里 ⇒ 谁都能自己复算那个乘积，不必信这里的措辞。
+     *  · 承载对象**解析不出**（不带 `carriers`，如数据源健康度这类下游走不到订单的落点）
+     *    ⇒ **退回单因子口径**，与本字段上线前**逐字节一致**（R6）。
      */
     severity: z.number().min(0).max(100),
     evidence: ChainImpedimentEvidenceSchema,
@@ -1276,6 +1348,13 @@ export const ChainImpedimentSchema = z
      * 既有阻滞点一律不带此字段 ⇒ 逐字节不变（R6）。
      */
     contention: ChainContentionSchema.optional(),
+    /**
+     * WO-IMP-CARRIER · **这一处阻滞点卡住了哪些订单/客户**（见 `ChainImpedimentCarriersSchema`）。
+     * **optional，且只有下游真能沿本体走到订单的 locus 才会有** —— 字段缺省 ⇒ 这条阻滞点的
+     * 承载对象**判不出来**（不是"它不卡任何订单"，两者是不同的命题）。
+     * 既有阻滞点一律不带此字段 ⇒ 逐字节不变（R6），且 `severity` 退回单因子口径。
+     */
+    carriers: ChainImpedimentCarriersSchema.optional(),
   })
   .superRefine((im, ctx) => {
     const isBreak = im.kind === "BREAK";
