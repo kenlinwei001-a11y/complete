@@ -1,0 +1,54 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.plan.annualscenario"
+scope: "intra"
+rootType: "AnnualScenario"
+domain: "plan"
+spannedTypes: ["AnnualScenario", "PlanTarget"]
+spannedDomains: ["plan"]
+paths: [[{ linkKey: "scenario_to_target", direction: "out" }]]
+brief: "域内切片·域 plan·根 年度情景(AnnualScenario)·覆盖 2 类型：年度情景、计划目标"
+indexEntities: ["AnnualScenario", "PlanTarget", "年度情景", "计划目标"]
+tokens: ["annualscenario", "plan", "plantarget", "内", "内切", "切", "切片", "划", "划目", "型", "型年", "域", "域内", "域根", "年", "年度", "年度情景", "度", "度情", "情", "情景", "景", "景覆", "景计", "标", "根", "根年", "片", "片域", "盖", "盖类", "目", "目标", "类", "类型", "覆", "覆盖", "计", "计划", "计划目标"]
+counts: { atoms: 20, consumers: 25 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/datacore/src/graphmeta.ts#BUSINESS_DOMAINS"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/datacore/src/graphmeta.ts#SOLVER_GRAPH"
+    via: ["AnnualScenario"]
+  - atom: "sym:apps/datacore/src/ontology/slice-layers.ts#projectSliceLayers"
+    via: ["AnnualScenario"]
+  - atom: "sym:apps/datacore/src/planviews.ts#PlanService"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/datacore/src/solvers/extended.ts#deriveExtendedArgs"
+    via: ["PlanTarget"]
+  - atom: "sym:apps/datacore/src/solvers/ontology-signature.ts#SOLVER_ONTOLOGY_SIGNATURES"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/datacore/src/sop.ts#SopService"
+    via: ["PlanTarget"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_RULE_SCOPES"
+    via: ["AnnualScenario"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryBuiltinSlices"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["AnnualScenario", "PlanTarget"]
+  - atom: "sym:apps/frontend-shell/src/mocks/processWaitFixtures.ts#PROCESS_INSTANCES_P01"
+    via: ["PlanTarget"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/mapping.ts", "apps/datacore/src/ontology-governance.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/ontology/refbase.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/handlers.ts"]

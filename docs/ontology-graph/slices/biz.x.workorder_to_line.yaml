@@ -1,0 +1,120 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.x.workorder_to_line"
+scope: "cross"
+rootType: "WorkOrder"
+domain: "process"
+spannedTypes: ["Line", "WorkOrder"]
+spannedDomains: ["factory", "process"]
+paths: [[{ linkKey: "wo_on_line", direction: "out" }]]
+brief: "跨域接缝切片·factory↔process·产线(Line) → 生产工单(WorkOrder)"
+indexEntities: ["Line", "WorkOrder", "产线", "生产工单"]
+tokens: ["factory", "line", "process", "workorder", "产", "产工", "产线", "切", "切片", "单", "域", "域接", "工", "工单", "接", "接缝", "片", "片产", "生", "生产", "生产工单", "线", "线生", "缝", "缝切", "跨", "跨域"]
+counts: { atoms: 53, consumers: 45 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#ROLE_PROFILES"
+    via: ["Line"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#seedIntentsAndPlans"
+    via: ["Line"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#seedRegistry"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/actions.ts#BUILTIN_ACTION_EFFECTS"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/actions.ts#GlobalSimPlanExecutor"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/calibration/pairing.ts#runPairing"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/calibration/replay.ts#patchContext"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/calibration/replay.ts#sliceObjectsFor"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/graphmeta.ts#BUSINESS_DOMAINS"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/graphmeta.ts#SOLVER_GRAPH"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/process/flow-rules.ts#BATTERY_PROCESS_FLOW_RULES"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/sim/drill.ts#chainNodeDetail"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/simclock.ts#SimClockService"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/solvers/base-outlook.ts#baseCapacityOutlook"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/solvers/base-outlook.ts#OutlookProv"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/solvers/capacity.ts#patchCapacityContext"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/solvers/chain-impediment.ts#IMPEDIMENT_RULE_BINDINGS"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/solvers/decision-info.ts#buildDoNothing"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/solvers/extended.ts#deriveExtendedArgs"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/solvers/ontology-signature.ts#SOLVER_ONTOLOGY_SIGNATURES"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/solvers/portfolio.ts#globalSimOptimize"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/solvers/portfolio.ts#portfolioOptimize"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#CoreSolverObjectType"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SOLVER_REQUIRED_TYPES"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/solvers/sop-reschedule.ts#sopReschedule"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_RULE_SCOPES"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_TEMPLATE"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_TS_AGG_SPECS"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryBuiltinSlices"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#entityRefFieldOf"
+    via: ["Line"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/vle-oracle.ts#referenceCapacityForecast"
+    via: ["Line"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#RULES"
+    via: ["Line"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#SYNTHETIC_REPORT"
+    via: ["Line"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/frontend-shell/src/mocks/planFixtures.ts#MAPPING_ROWS"
+    via: ["Line"]
+  - atom: "sym:apps/frontend-shell/src/mocks/simSolvers.ts#mockBaseOutlook"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:apps/frontend-shell/src/mocks/simSolvers.ts#mockChainImpediments"
+    via: ["Line"]
+  - atom: "sym:apps/frontend-shell/src/mocks/simSolvers.ts#mockPortfolio"
+    via: ["Line"]
+  - atom: "sym:apps/frontend-shell/src/mocks/simSolvers.ts#mockSopReschedule"
+    via: ["Line"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/unified/console0828/eventCatalog.ts#BUSINESS_EVENTS"
+    via: ["Line"]
+  - atom: "sym:packages/contracts/src/capacity-factors.ts#CAPACITY_FACTOR_BINDINGS"
+    via: ["Line"]
+  - atom: "sym:packages/contracts/src/disposition.ts#deriveDisposition"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:packages/contracts/src/disposition.ts#DispositionProvenanceSchema"
+    via: ["Line", "WorkOrder"]
+  - atom: "sym:packages/contracts/src/sim-drill.ts#DRILL_EVENT_SPECS"
+    via: ["Line"]
+consumers: ["apps/agentcore/src/main.ts", "apps/agentcore/src/mocks/clients.ts", "apps/agentcore/src/scripts/smoke-llm.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/methods.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/livedin/bundle.ts", "apps/datacore/src/livedin/engine.ts", "apps/datacore/src/mapping.ts", "apps/datacore/src/ontology-governance.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/ontology/refbase.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/process/ontology.ts", "apps/datacore/src/process/reconstruct.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/base-outlook.ts", "apps/datacore/src/solvers/capacity.ts", "apps/datacore/src/solvers/impediment-options.ts", "apps/datacore/src/solvers/ontology-signature.ts", "apps/datacore/src/solvers/risk.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/builtin-templates.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/db.ts", "apps/frontend-shell/src/mocks/handlers.ts", "apps/frontend-shell/src/mocks/simSolvers.ts", "apps/frontend-shell/src/views/sim/DrillPanel.tsx", "apps/frontend-shell/src/views/sim/console/PerturbTree.tsx", "apps/frontend-shell/src/views/sim/inspectorModel.ts", "apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx", "apps/frontend-shell/src/views/sim/unified/rail/perturbRailModel.ts"]

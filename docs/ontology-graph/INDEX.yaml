@@ -1,0 +1,3548 @@
+# 本体图谱 · 索引目录（唯一入口 —— 只靠这一份就能回答「哪条切片覆盖 rootType=X 且跨到 Y」）
+# 生成物 —— ⛔ 不要手改。生成命令：node scripts/ontology-graph/extract.mjs
+# 人读的散文本体在 docs/SYSTEM-ONTOLOGY.md，**保留不动**，本目录是它旁边的机器抽取面。
+version: 1
+generatedFrom: "7049378b"
+counts: { atoms: 6266, edges: 21032, slices: 47, byEdgeKind: { reexports: 91, reads: 266, declares: 5437, registers: 3257, seeds: 2284, asserts: 7963, inSlice: 1734 }, docSourceNone: 2968, docSourceNonePct: 47.37 }
+# ⚠ 三态有**两套口径**，差 2396 个原子（差在「只在自己文件里被用」那批）。
+# ⛔ 引用时必须说清用的是哪一套 —— 只报一个数等于拿一个数盖住两个不同事实。
+byState:
+  includingSelfFileUse:
+    question: "这个符号有没有生产代码在用？（跨文件 src 或同文件内的生产使用都算）"
+    useFor: "找真死代码、找假绿第 9 形态（实现有·测试有·绿的·零生产调用方）。假阳性代价高的场合用这套。"
+    counts: { wired: 5750, test-only: 70, no-ref: 446 }
+  strictCrossFile:
+    question: "这个符号有没有**别的文件**在用？（忽略同文件内的使用）"
+    useFor: "找「导出了但没人跨文件用」的过度导出面 —— 这批可以降成文件内私有。"
+    counts: { wired: 3354, test-only: 558, no-ref: 2354 }
+canary:
+  - probe: "buildSliceIndex 在节点表里"
+    expect: "present"
+    actual: "present"
+    ok: true
+  - probe: "buildSliceIndex src 入边数"
+    expect: ">0"
+    actual: 1
+    ok: true
+  - probe: "buildSliceIndex 入边含 apps/datacore/src/app.ts"
+    expect: "true"
+    actual: "true"
+    ok: true
+  - probe: "inSlice 边总数"
+    expect: ">0"
+    actual: 1734
+    ok: true
+  - probe: "切片 biz.equip.equipment 的 inSlice 入边"
+    expect: ">0"
+    actual: 34
+    ok: true
+  - probe: "contracts 原子被外包引用数"
+    expect: ">0"
+    actual: 982
+    ok: true
+    note: "为 0 ⇒ paths 映射坏了，不是 contracts 死了"
+  - probe: "frontend-shell 内部跨文件引用数"
+    expect: ">0"
+    actual: 1202
+    ok: true
+    note: "为 0 ⇒ `@/*` 别名没解析（本包 paths 被覆盖），不是前端全是死代码"
+  - probe: "已知经 `@/` 别名被测试引用的符号（NodeDetailProvenance）"
+    expect: ">0"
+    actual: 5
+    ok: true
+    note: "出处：apps/frontend-shell/test/sim-honest-fallback-b.test.tsx:168/179/206 三处类型位使用"
+  - probe: "已知只经 `await import()` 解构拿到的符号（mapMcpConfig）src 入边"
+    expect: ">0"
+    actual: 1
+    ok: true
+    note: "出处：apps/agentcore/src/engine.ts:634 解构 → :649 真调用；为 0 ⇒ 动态 import 桥断了"
+  - probe: "已知经别名 import 被调用的符号（globalSimOptimize）src 入边"
+    expect: ">0"
+    actual: 1
+    ok: true
+    note: "出处：apps/datacore/src/solvers/service.ts:42 `globalSimOptimize as runGlobalSimOptimize` → :3552 真调用"
+  - probe: "有 test 入边的原子数"
+    expect: ">0"
+    actual: 1702
+    ok: true
+    note: "为 0 ⇒ program 里没有 test 文件，不是没人写测试"
+  - probe: "reexports 边总数"
+    expect: ">0"
+    actual: 91
+    ok: true
+  - probe: "已知 re-export（service.ts 转 LEVER_PROP_META）命中"
+    expect: "true"
+    actual: "true"
+    ok: true
+    note: "出处：apps/datacore/src/solvers/service.ts 的 `export { LEVER_PROP_META, ... } from \"./lever-meta.js\"`"
+  - probe: "evaluated 置信度的 registers 边"
+    expect: ">0"
+    actual: 1803
+    ok: true
+    note: "为 0 ⇒ dist 没建，全部退化成 parsed（正则/AST 数，会把注释里的串数进去）"
+  - probe: "AST 数不出、靠求值拿到的 registers 边"
+    expect: ">0"
+    actual: 1161
+    ok: true
+    note: "为 0 ⇒ 求值这一步没有鉴别力，「AST 与求值一致」就不构成证据"
+  - probe: "registers 边数 == 真数组 .length 的注册表"
+    expect: "98/98"
+    actual: "98/98"
+    ok: true
+  - probe: "blindSpots 的 dims 全在枚举内且非空"
+    expect: "0 条越界"
+    actual: "0 条越界"
+    ok: true
+  - probe: "五类对账维度都至少有一条盲区"
+    expect: "5/5"
+    actual: "5/5"
+    ok: true
+    note: "少一类 ⇒ 消费方在那一维上拿不到任何自认盲区，会误以为该维无风险"
+# 盲区（机器可读）：消费方按 dims 判「这条结论可不可信」，⛔ 不许去撞 text 的关键词。
+# dims 枚举：COUNT 计数 · NOREF 零调用方 · EMPTYFILE 空文件 · COORD 坐标 · LENGTH 长度分布
+blindSpotDims: ["COUNT", "NOREF", "EMPTYFILE", "COORD", "LENGTH"]
+blindSpots:
+  - id: "structural-type-use"
+    dims: ["NOREF", "COUNT"]
+    text: "interface/type 可被结构匹配使用而名字从不出现 ⇒ no-ref 的 type/interface 不等于没被用。"
+  - id: "string-key-dispatch"
+    dims: ["NOREF"]
+    text: "字符串键分发 / 事件订阅 / DI 容器：运行时按名字派发的调用，静态一条都看不见。"
+  - id: "higher-order-trigger"
+    dims: ["NOREF", "COUNT"]
+    text: "高阶函数只见「被传进去」不见「何时真触发」⇒ 答不了「接了线没数据」这一态，只有 seeds 边能侧面答。"
+  - id: "transitive-liveness"
+    dims: ["NOREF"]
+    text: "不做传递性存活：只被另一个死符号引用的符号仍读作 wired（如 SimRunDisclosureSchema 只被自己的 z.infer 用）。"
+  - id: "import-plumbing-not-edge"
+    dims: ["NOREF"]
+    text: "import/export 说明符与 re-export 转手**有意不发 calls 边**（那是管道不是使用）；命名空间成员访问（import * as ns 后的 ns.foo）同样不发边（本仓今天 import * as 实测 0 处）。"
+  - id: "non-ts-surfaces"
+    dims: ["COUNT", "COORD", "EMPTYFILE"]
+    text: "非 TS 出口整体不在图里：packages/dsh-harness（vendored .mjs，无 src/）、SQL migrations、nginx/docker-compose、YAML 配置。对这些位置的任何结论本图谱都无发言权。"
+  - id: "runtime-gating"
+    dims: ["NOREF"]
+    text: "feature flag / entitlement 关掉的分支，图上仍是 wired。"
+  - id: "docsource-jsdoc-only"
+    dims: ["COUNT"]
+    text: "docSource 只认 /** */；`//` 行注释一律记 none ⇒ 「没有自述」的计数偏高，不等于没有注释。"
+  - id: "brief-truncated-300"
+    dims: ["LENGTH"]
+    text: "brief 截断到 300 字符 ⇒ 不可用于任何「描述有多长」的长度结论。"
+  - id: "inbound-samples-capped-25"
+    dims: ["COORD"]
+    text: "inbound.src/test 的**样例**封顶 25 条；srcCount/selfUses/testCount 是**全量、从不截断** ⇒ 计数可信，坐标清单可能不全。"
+  - id: "inslice-string-literal-only"
+    dims: ["COUNT", "NOREF"]
+    text: "inSlice 判据是原子声明里以字符串字面量出现某 spannedType ⇒ 用变量拼出来的类型键看不见，切片成员数偏低。"
+  - id: "sideeffect-modules-not-evaluated"
+    dims: ["COUNT"]
+    text: "顶层有裸调用语句的模块（如 server.ts 末尾 main()）拒绝 import 求值 ⇒ 其中的注册表只有 parsed 计数，不可信。"
+  - id: "fieldstats-literals-only"
+    dims: ["LENGTH", "COUNT"]
+    text: "fieldStats 只统计字面量赋值（x:\"abc\" 记 3、x:[1,2,3] 记 3）；变量/函数调用赋的值不计 ⇒ n 偏低，不能当「该字段出现次数」用。"
+  - id: "fieldstats-distinctive-only"
+    dims: ["LENGTH", "COUNT"]
+    text: "fieldStats / seeds / asserts 只覆盖**有鉴别力的字段**（被 ≤3 个 schema 声明）；id/name/key 这类被 400+ schema 声明的字段整批不在清单里，缺席不等于没有数据。"
+# 注册表真值：confidence=parsed 的一律不可信（那个包没 build，只有 AST 数）。
+registries:
+  - name: "OBJECT_KEY_PROPS"
+    file: "apps/agentcore/src/agent/navigation-slice.ts"
+    line: 293
+    parsedCount: 26
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 26
+  - name: "FILL"
+    file: "apps/agentcore/src/growth/probe.ts"
+    line: 9
+    parsedCount: 10
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 10
+  - name: "ACTION_WIRING"
+    file: "apps/datacore/src/actions.ts"
+    line: 35
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "ALL_SOLVER_CATALOG"
+    file: "apps/datacore/src/catalog.ts"
+    line: 279
+    parsedCount: null
+    evaluatedCount: 63
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 63
+  - name: "COCKPIT_SOLVER_CATALOG"
+    file: "apps/datacore/src/catalog.ts"
+    line: 127
+    parsedCount: null
+    evaluatedCount: 18
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 18
+  - name: "GENERIC_SOLVER_CATALOG"
+    file: "apps/datacore/src/catalog.ts"
+    line: 184
+    parsedCount: null
+    evaluatedCount: 22
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 22
+  - name: "SOLVER_CATALOG"
+    file: "apps/datacore/src/catalog.ts"
+    line: 83
+    parsedCount: null
+    evaluatedCount: 23
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 23
+  - name: "CONNECTOR_TYPES"
+    file: "apps/datacore/src/connectors/registry.ts"
+    line: 23
+    parsedCount: null
+    evaluatedCount: 11
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 11
+  - name: "SOLVER_ALIASES"
+    file: "apps/datacore/src/databuilder/comprehend.ts"
+    line: 157
+    parsedCount: 23
+    evaluatedCount: 23
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 23
+  - name: "SOLVER_HINTS"
+    file: "apps/datacore/src/databuilder/comprehend.ts"
+    line: 126
+    parsedCount: 22
+    evaluatedCount: 22
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 22
+  - name: "FDE_NODES"
+    file: "apps/datacore/src/databuilder/fde-graph.ts"
+    line: 19
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "MODULE_PROVISIONERS"
+    file: "apps/datacore/src/databuilder/provisioners.ts"
+    line: 47
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "NEED_ARRAY_TO_KIND"
+    file: "apps/datacore/src/databuilder/provisioners.ts"
+    line: 97
+    parsedCount: 13
+    evaluatedCount: 13
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 13
+  - name: "RECORD_MATERIALIZE_TEMPLATES"
+    file: "apps/datacore/src/decision/record-materialize.ts"
+    line: 47
+    parsedCount: 17
+    evaluatedCount: 17
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 17
+  - name: "PROPERTY_UNITS"
+    file: "apps/datacore/src/domain.ts"
+    line: 245
+    parsedCount: 62
+    evaluatedCount: 62
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 62
+  - name: "ALL_FEATURE_KEYS"
+    file: "apps/datacore/src/features.ts"
+    line: 210
+    parsedCount: null
+    evaluatedCount: 98
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 98
+  - name: "FEATURE_REGISTRY"
+    file: "apps/datacore/src/features.ts"
+    line: 22
+    parsedCount: null
+    evaluatedCount: 98
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 98
+  - name: "VIEW_FEATURE_MAP"
+    file: "apps/datacore/src/features.ts"
+    line: 321
+    parsedCount: null
+    evaluatedCount: 35
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 35
+  - name: "BUSINESS_DOMAIN_KEYS"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 50
+    parsedCount: null
+    evaluatedCount: 14
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 14
+  - name: "BUSINESS_DOMAINS"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 34
+    parsedCount: null
+    evaluatedCount: 14
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 14
+  - name: "DOMAIN_ORDER"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 18
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "GRAPH_DOMAIN"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 8
+    parsedCount: 18
+    evaluatedCount: 18
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 18
+  - name: "GRAPH_EXTRA_EDGES"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 114
+    parsedCount: null
+    evaluatedCount: 16
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 16
+  - name: "GRAPH_EXTRA_NODES"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 92
+    parsedCount: null
+    evaluatedCount: 12
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 12
+  - name: "SOLVER_GRAPH"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 52
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "UNIT_DICTIONARY"
+    file: "apps/datacore/src/ontology-governance.ts"
+    line: 78
+    parsedCount: null
+    evaluatedCount: 62
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 62
+  - name: "DOMAIN_NORMALIZATION"
+    file: "apps/datacore/src/ontology/refbase-coverage.ts"
+    line: 10
+    parsedCount: 16
+    evaluatedCount: 16
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 16
+  - name: "ORG_PRINCIPAL_VM_KEYS"
+    file: "apps/datacore/src/org/routes.ts"
+    line: 27
+    parsedCount: 10
+    evaluatedCount: 10
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 10
+  - name: "EXTENDED_SOLVERS"
+    file: "apps/datacore/src/solvers/extended.ts"
+    line: 630
+    parsedCount: 14
+    evaluatedCount: 14
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 14
+  - name: "ROLE_LEXICON"
+    file: "apps/datacore/src/solvers/field-role-lexicon.ts"
+    line: 5
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "LEVER_PROP_META"
+    file: "apps/datacore/src/solvers/lever-meta.ts"
+    line: 111
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "SIGNED_SOLVER_KEYS"
+    file: "apps/datacore/src/solvers/ontology-signature.ts"
+    line: 452
+    parsedCount: null
+    evaluatedCount: 21
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 21
+  - name: "SOLVER_ONTOLOGY_SIGNATURES"
+    file: "apps/datacore/src/solvers/ontology-signature.ts"
+    line: 84
+    parsedCount: 21
+    evaluatedCount: 21
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 21
+  - name: "SOLVER_KEYS"
+    file: "apps/datacore/src/solvers/service.ts"
+    line: 264
+    parsedCount: 63
+    evaluatedCount: 63
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 63
+  - name: "SOLVER_OUTPUT_SHAPES"
+    file: "apps/datacore/src/solvers/service.ts"
+    line: 518
+    parsedCount: 63
+    evaluatedCount: 63
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 63
+  - name: "SOLVER_REQUIRED_TYPES"
+    file: "apps/datacore/src/solvers/service.ts"
+    line: 478
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "SOLVER_CATEGORY_MAP"
+    file: "apps/datacore/src/solvers/taxonomy.ts"
+    line: 30
+    parsedCount: 63
+    evaluatedCount: 63
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 63
+  - name: "CAUSAL_EDGES"
+    file: "apps/datacore/src/synthetic/battery-extended.ts"
+    line: 754
+    parsedCount: null
+    evaluatedCount: 23
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 23
+  - name: "CAUSAL_FACTORS"
+    file: "apps/datacore/src/synthetic/battery-extended.ts"
+    line: 679
+    parsedCount: null
+    evaluatedCount: 37
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 37
+  - name: "BASES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 24
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "BATTERY_ACTION_TYPES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 4563
+    parsedCount: null
+    evaluatedCount: 11
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 11
+  - name: "BATTERY_RULE_SCOPES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 4711
+    parsedCount: 30
+    evaluatedCount: 30
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 30
+  - name: "BATTERY_RULES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 737
+    parsedCount: null
+    evaluatedCount: 30
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 30
+  - name: "BATTERY_SOLVER_PARAMS"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 853
+    parsedCount: 27
+    evaluatedCount: 27
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 27
+  - name: "BATTERY_TEMPLATE"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 4427
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "BATTERY_TYPE_DOMAIN"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 2714
+    parsedCount: 66
+    evaluatedCount: 66
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 66
+  - name: "BINDINGS"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 2675
+    parsedCount: 32
+    evaluatedCount: 32
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 32
+  - name: "CUSTOMER_BUSINESS_TYPE"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 399
+    parsedCount: null
+    evaluatedCount: 20
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 20
+  - name: "CUSTOMER_IDS"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 241
+    parsedCount: null
+    evaluatedCount: 20
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 20
+  - name: "CUSTOMER_REGISTRY"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 195
+    parsedCount: null
+    evaluatedCount: 20
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 20
+  - name: "HTML_ORDERS"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 570
+    parsedCount: null
+    evaluatedCount: 24
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 24
+  - name: "ORDER_CUST_TO_CUSTOMER"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 439
+    parsedCount: null
+    evaluatedCount: 20
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 20
+  - name: "PROP_DISPLAY_NAMES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 2782
+    parsedCount: 819
+    evaluatedCount: 819
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 819
+  - name: "STATE_VAR_DISPLAY_NAMES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 3275
+    parsedCount: 41
+    evaluatedCount: 41
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 41
+  - name: "STATE_VAR_DOMAINS"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 3372
+    parsedCount: null
+    evaluatedCount: 32
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 32
+  - name: "CADENCE_NODES"
+    file: "apps/datacore/src/synthetic/cadence.ts"
+    line: 205
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "MATERIALS"
+    file: "apps/datacore/src/synthetic/materials-seed.ts"
+    line: 37
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "VALUE_DOMAINS"
+    file: "apps/datacore/src/synthetic/value-domains.ts"
+    line: 17
+    parsedCount: 19
+    evaluatedCount: 19
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 19
+  - name: "BUILTIN_VIEWS"
+    file: "apps/datacore/src/synthetic/view-manifest.ts"
+    line: 133
+    parsedCount: null
+    evaluatedCount: 16
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 16
+  - name: "SEEDED_VIEW_KEYS"
+    file: "apps/datacore/src/synthetic/view-manifest.ts"
+    line: 257
+    parsedCount: null
+    evaluatedCount: 16
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 16
+  - name: "UNIT_DIMENSIONS"
+    file: "apps/datacore/src/units.ts"
+    line: 115
+    parsedCount: null
+    evaluatedCount: 62
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 62
+  - name: "zh"
+    file: "apps/frontend-shell/src/locales/zh.ts"
+    line: 5
+    parsedCount: 34
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 34
+  - name: "RISK_DISPOSITION_SEED"
+    file: "apps/frontend-shell/src/mocks/fixtures.ts"
+    line: 1125
+    parsedCount: 11
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 11
+  - name: "LIVED_WATERMARK"
+    file: "apps/frontend-shell/src/mocks/livedInFixtures.ts"
+    line: 187
+    parsedCount: 8
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 8
+  - name: "PROCESS_INSTANCES_P01"
+    file: "apps/frontend-shell/src/mocks/processWaitFixtures.ts"
+    line: 210
+    parsedCount: 11
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 11
+  - name: "PROCESS_INSTANCES_P34"
+    file: "apps/frontend-shell/src/mocks/processWaitFixtures.ts"
+    line: 152
+    parsedCount: 11
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 11
+  - name: "CONSOLIDATED_INTO_SANDBOX"
+    file: "apps/frontend-shell/src/pages/ShellLayout.tsx"
+    line: 137
+    parsedCount: 16
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 16
+  - name: "EVENT_INVALIDATES"
+    file: "apps/frontend-shell/src/store/eventInvalidation.ts"
+    line: 139
+    parsedCount: 28
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 28
+  - name: "BN_FACTOR_TO_MARK"
+    file: "apps/frontend-shell/src/views/capacity/factorOntology.ts"
+    line: 92
+    parsedCount: 13
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 13
+  - name: "METRO_LAYOUT"
+    file: "apps/frontend-shell/src/views/sim/chainLineMap.ts"
+    line: 477
+    parsedCount: 21
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 21
+  - name: "RING_LAYOUT"
+    file: "apps/frontend-shell/src/views/sim/chainLineMap.ts"
+    line: 668
+    parsedCount: 10
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 10
+  - name: "CHAIN_NODE_SEMANTICS"
+    file: "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts"
+    line: 81
+    parsedCount: 12
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 12
+  - name: "PLACEHOLDER_CONE"
+    file: "apps/frontend-shell/src/views/sim/console/ImpactCone.tsx"
+    line: 160
+    parsedCount: 8
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 8
+  - name: "PARETO_GEOM"
+    file: "apps/frontend-shell/src/views/sim/console/useParetoFrontier.ts"
+    line: 148
+    parsedCount: 8
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 8
+  - name: "PLACEHOLDER_OPT_MODEL"
+    file: "apps/frontend-shell/src/views/sim/console/useParetoFrontier.ts"
+    line: 610
+    parsedCount: 16
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 16
+  - name: "PROC_LAYOUT"
+    file: "apps/frontend-shell/src/views/sim/processCanvas.ts"
+    line: 564
+    parsedCount: 14
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 14
+  - name: "IMP_PARAM"
+    file: "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts"
+    line: 873
+    parsedCount: 10
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 10
+  - name: "BLOCK_REASON_TEXT"
+    file: "apps/frontend-shell/src/views/sim/unified/rail/perturbRailModel.ts"
+    line: 555
+    parsedCount: 10
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 10
+  - name: "UNIFIED_MODE_SPEC"
+    file: "apps/frontend-shell/src/views/sim/unified/unifiedModes.ts"
+    line: 112
+    parsedCount: 8
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 8
+  - name: "UNIFIED_MODES"
+    file: "apps/frontend-shell/src/views/sim/unified/unifiedModes.ts"
+    line: 37
+    parsedCount: 8
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 8
+  - name: "ADMIN_VIEW_RENDERERS"
+    file: "packages/contracts/src/admin.ts"
+    line: 79
+    parsedCount: 14
+    evaluatedCount: 14
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 14
+  - name: "SKILL_REFERENCE_KINDS"
+    file: "packages/contracts/src/agentcore.ts"
+    line: 254
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "BASE_REGISTRY"
+    file: "packages/contracts/src/base-registry.ts"
+    line: 101
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "EQUIPMENT_TYPE_BY_PROCESS"
+    file: "packages/contracts/src/base-registry.ts"
+    line: 564
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "OUTSOURCE_REDLINE"
+    file: "packages/contracts/src/base-registry.ts"
+    line: 169
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "WORKSHOP_REGISTRY"
+    file: "packages/contracts/src/base-registry.ts"
+    line: 543
+    parsedCount: null
+    evaluatedCount: 10
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 10
+  - name: "CAPACITY_FACTOR_BINDINGS"
+    file: "packages/contracts/src/capacity-factors.ts"
+    line: 49
+    parsedCount: null
+    evaluatedCount: 20
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 20
+  - name: "CAUSAL_SOURCE_KINDS"
+    file: "packages/contracts/src/causal-graph.ts"
+    line: 81
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "CANONICAL_BASE_IDS"
+    file: "packages/contracts/src/chain-sim.ts"
+    line: 259
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "CHAIN_DETAIL_ABSENCE_CODES"
+    file: "packages/contracts/src/chain-sim.ts"
+    line: 1967
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "CHAIN_NODE_IDS"
+    file: "packages/contracts/src/chain-sim.ts"
+    line: 220
+    parsedCount: null
+    evaluatedCount: 24
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 24
+  - name: "CHAIN_NODE_REGISTRY"
+    file: "packages/contracts/src/chain-sim.ts"
+    line: 186
+    parsedCount: null
+    evaluatedCount: 24
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 24
+  - name: "ErrorCodes"
+    file: "packages/contracts/src/common.ts"
+    line: 57
+    parsedCount: 14
+    evaluatedCount: 14
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 14
+  - name: "MODULE_KIND_REGISTRY"
+    file: "packages/contracts/src/databuilder.ts"
+    line: 298
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "MODULE_KINDS"
+    file: "packages/contracts/src/databuilder.ts"
+    line: 279
+    parsedCount: 13
+    evaluatedCount: 13
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 13
+  - name: "RULE_PARAM_BINDINGS"
+    file: "packages/contracts/src/datacore.ts"
+    line: 330
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "SOLVER_RULE_REFS"
+    file: "packages/contracts/src/datacore.ts"
+    line: 240
+    parsedCount: 19
+    evaluatedCount: 19
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 19
+  - name: "SHARED_FEATURE_NAMES"
+    file: "packages/contracts/src/feature-names.ts"
+    line: 40
+    parsedCount: 61
+    evaluatedCount: 61
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 61
+  - name: "RESOURCE_KINDS_EXTENDED"
+    file: "packages/contracts/src/intelligence-resource.ts"
+    line: 24
+    parsedCount: null
+    evaluatedCount: 10
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 10
+  - name: "LLM_VENDOR_CATALOG"
+    file: "packages/contracts/src/llm.ts"
+    line: 127
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "OPERATION_CATALOG"
+    file: "packages/contracts/src/operation-intent.ts"
+    line: 53
+    parsedCount: null
+    evaluatedCount: 39
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 39
+  - name: "OPERATION_KINDS"
+    file: "packages/contracts/src/operation-intent.ts"
+    line: 13
+    parsedCount: 39
+    evaluatedCount: 39
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 39
+  - name: "LINK_MATERIALIZATION_FIELDS"
+    file: "packages/contracts/src/planviews.ts"
+    line: 192
+    parsedCount: null
+    evaluatedCount: 9
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 9
+  - name: "PROCESS_TASK_STATUSES"
+    file: "packages/contracts/src/process-instance.ts"
+    line: 136
+    parsedCount: null
+    evaluatedCount: 9
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 9
+  - name: "PROCESS_OWNER_FUNCTION_KEYS"
+    file: "packages/contracts/src/process.ts"
+    line: 133
+    parsedCount: null
+    evaluatedCount: 15
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 15
+  - name: "PROCESS_OWNER_FUNCTIONS"
+    file: "packages/contracts/src/process.ts"
+    line: 116
+    parsedCount: null
+    evaluatedCount: 15
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 15
+  - name: "DRILL_EVENT_SPECS"
+    file: "packages/contracts/src/sim-drill.ts"
+    line: 331
+    parsedCount: null
+    evaluatedCount: 11
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 11
+  - name: "SKILL_REASONING_NODE_TYPES"
+    file: "packages/contracts/src/skill-compile.ts"
+    line: 311
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "SKILL_REF_KIND_BINDING"
+    file: "packages/contracts/src/skill-compile.ts"
+    line: 405
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "NODE_KIND_TO_PLAN_STEP_TYPE"
+    file: "packages/contracts/src/skill-graph.ts"
+    line: 71
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "PLAN_STEP_TYPE_TO_NODE_KIND"
+    file: "packages/contracts/src/skill-graph.ts"
+    line: 522
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "SKILL_GRAPH_NODE_KINDS"
+    file: "packages/contracts/src/skill-graph.ts"
+    line: 43
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "SLICE_LAYER_IDS"
+    file: "packages/contracts/src/slice-layers.ts"
+    line: 33
+    parsedCount: 16
+    evaluatedCount: 16
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 16
+  - name: "SOLVER_ARGS_SCHEMAS"
+    file: "packages/contracts/src/solver-args.ts"
+    line: 111
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "SOLVER_CATEGORIES"
+    file: "packages/contracts/src/solver-taxonomy.ts"
+    line: 20
+    parsedCount: 10
+    evaluatedCount: 10
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 10
+  - name: "SOLVER_CATEGORY_META"
+    file: "packages/contracts/src/solver-taxonomy.ts"
+    line: 49
+    parsedCount: 10
+    evaluatedCount: 10
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 10
+  - name: "AUDIT_KINDS"
+    file: "packages/contracts/src/solvers.ts"
+    line: 527
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "FDE_NODE_KEYS"
+    file: "packages/contracts/src/storybuildrun.ts"
+    line: 223
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "MODULE_REGISTRY"
+    file: "packages/contracts/src/storybuildrun.ts"
+    line: 149
+    parsedCount: null
+    evaluatedCount: 11
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 11
+# 字段长度分布：只统计**字面量**赋值（x:"abc"→3 / x:[1,2,3]→3），变量与函数调用赋值不计。
+# 覆盖面 = 有鉴别力的字段（被 ≤3 个 schema 声明）。缺席 ≠ 没有数据，见 blindSpots。
+fieldStats:
+  - field: "a"
+    strLen: { n: 3, p50: 2, p90: 2, max: 2 }
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "absent"
+    strLen: { n: 2, p50: 40, p90: 40, max: 40 }
+  - field: "absentReason"
+    strLen: { n: 2, p50: 122, p90: 122, max: 122 }
+  - field: "accept"
+    arrLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "acceptance"
+    strLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "act"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "actionDetail"
+    strLen: { n: 3, p50: 27, p90: 29, max: 29 }
+  - field: "actionDraftIds"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "actionId"
+    strLen: { n: 5, p50: 15, p90: 15, max: 15 }
+  - field: "actionType"
+    strLen: { n: 6, p50: 16, p90: 17, max: 17 }
+  - field: "activeFrom"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "activeTo"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "activity"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "actorTypeKey"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "actualDeliveredTon"
+    strLen: { n: 1, p50: 18, p90: 18, max: 18 }
+  - field: "address"
+    strLen: { n: 3, p50: 2, p90: 2, max: 2 }
+  - field: "adoptedAt"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "advice"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "affectedOrders"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 7, p50: 1, p90: 4, max: 4 }
+  - field: "affectedSolvers"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "affects"
+    strLen: { n: 10, p50: 15, p90: 17, max: 17 }
+  - field: "agent"
+    strLen: { n: 8, p50: 5, p90: 16, max: 16 }
+  - field: "agentNeeds"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "agg"
+    strLen: { n: 20, p50: 3, p90: 5, max: 5 }
+  - field: "aggregate"
+    strLen: { n: 18, p50: 5, p90: 5, max: 7 }
+  - field: "aggRunId"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "agingId"
+    strLen: { n: 3, p50: 8, p90: 9, max: 9 }
+  - field: "allFactors"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "anchor"
+    strLen: { n: 14, p50: 3, p90: 9, max: 10 }
+  - field: "ANSWER"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "answerPreview"
+    strLen: { n: 1, p50: 38, p90: 38, max: 38 }
+  - field: "answersQuestions"
+    arrLen: { n: 126, p50: 3, p90: 5, max: 6 }
+  - field: "apiKeyEnv"
+    strLen: { n: 1, p50: 14, p90: 14, max: 14 }
+  - field: "apiTags"
+    arrLen: { n: 20, p50: 1, p90: 1, max: 1 }
+  - field: "appliedAt"
+    strLen: { n: 6, p50: 24, p90: 24, max: 24 }
+  - field: "appliedStateEffects"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "apply"
+    strLen: { n: 3, p50: 39, p90: 39, max: 39 }
+    arrLen: { n: 6, p50: 1, p90: 2, max: 2 }
+  - field: "approval"
+    strLen: { n: 2, p50: 24, p90: 24, max: 24 }
+  - field: "approvalChain"
+    arrLen: { n: 11, p50: 1, p90: 1, max: 2 }
+  - field: "approvalGate"
+    strLen: { n: 11, p50: 4, p90: 5, max: 5 }
+  - field: "approvalSteps"
+    arrLen: { n: 6, p50: 1, p90: 2, max: 2 }
+  - field: "approve"
+    strLen: { n: 4, p50: 2, p90: 5, max: 5 }
+  - field: "approverId"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "arg"
+    strLen: { n: 8, p50: 7, p90: 13, max: 13 }
+  - field: "argCandidates"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "arguments"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "assertions"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "assignee"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "atBuild"
+    strLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "atomicLeaves"
+    arrLen: { n: 4, p50: 0, p90: 2, max: 2 }
+  - field: "atPrecheck"
+    strLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "atStep"
+    strLen: { n: 4, p50: 8, p90: 10, max: 10 }
+  - field: "attribution"
+    strLen: { n: 5, p50: 10, p90: 13, max: 13 }
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "audit"
+    strLen: { n: 3, p50: 10, p90: 15, max: 15 }
+  - field: "authorityKey"
+    strLen: { n: 12, p50: 18, p90: 20, max: 20 }
+  - field: "authorityRef"
+    strLen: { n: 12, p50: 18, p90: 20, max: 20 }
+  - field: "auto"
+    strLen: { n: 1, p50: 15, p90: 15, max: 15 }
+  - field: "autoMapped"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "availableActions"
+    arrLen: { n: 5, p50: 2, p90: 2, max: 2 }
+  - field: "avg"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "b"
+    strLen: { n: 3, p50: 2, p90: 2, max: 2 }
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "band"
+    arrLen: { n: 19, p50: 2, p90: 2, max: 2 }
+  - field: "baseIds"
+    strLen: { n: 1, p50: 17, p90: 17, max: 17 }
+    arrLen: { n: 12, p50: 0, p90: 1, max: 1 }
+  - field: "baseline"
+    strLen: { n: 10, p50: 6, p90: 12, max: 12 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "bases"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+    arrLen: { n: 19, p50: 2, p90: 3, max: 3 }
+  - field: "baseScopeField"
+    strLen: { n: 7, p50: 6, p90: 6, max: 6 }
+  - field: "batch"
+    strLen: { n: 19, p50: 5, p90: 6, max: 6 }
+  - field: "batches"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "behavior"
+    strLen: { n: 7, p50: 6, p90: 6, max: 6 }
+  - field: "bidId"
+    strLen: { n: 3, p50: 9, p90: 9, max: 9 }
+  - field: "binding"
+    strLen: { n: 13, p50: 10, p90: 20, max: 27 }
+  - field: "bindingId"
+    strLen: { n: 15, p50: 36, p90: 44, max: 44 }
+  - field: "bindings"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "blobKey"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "block"
+    strLen: { n: 8, p50: 5, p90: 6, max: 6 }
+  - field: "blocked"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "blocks"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+    arrLen: { n: 53, p50: 1, p90: 2, max: 6 }
+  - field: "body"
+    strLen: { n: 26, p50: 21, p90: 484, max: 522 }
+  - field: "BOTTLENECK"
+    strLen: { n: 3, p50: 18, p90: 39, max: 39 }
+  - field: "breachPenaltyWan"
+    strLen: { n: 1, p50: 16, p90: 16, max: 16 }
+  - field: "BREAK"
+    strLen: { n: 3, p50: 17, p90: 37, max: 37 }
+  - field: "breakdown"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "breakSubtype"
+    strLen: { n: 7, p50: 8, p90: 8, max: 8 }
+  - field: "bridgeId"
+    strLen: { n: 4, p50: 9, p90: 10, max: 10 }
+  - field: "bucket"
+    strLen: { n: 11, p50: 6, p90: 8, max: 9 }
+  - field: "budget"
+    strLen: { n: 4, p50: 4, p90: 6, max: 6 }
+  - field: "builtIn"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "businessType"
+    strLen: { n: 20, p50: 9, p90: 9, max: 10 }
+  - field: "businessTypes"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "byCase"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "byKey"
+    strLen: { n: 5, p50: 11, p90: 14, max: 14 }
+  - field: "cadence"
+    strLen: { n: 4, p50: 3, p90: 3, max: 3 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "cadenceSkipped"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "calendarKey"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "cancel"
+    strLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "cancelled"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "canvas"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "capabilities"
+    strLen: { n: 1, p50: 40, p90: 40, max: 40 }
+  - field: "capacityDecision"
+    strLen: { n: 4, p50: 30, p90: 54, max: 54 }
+  - field: "capexCap"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "cards"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "carrier"
+    strLen: { n: 47, p50: 40, p90: 62, max: 85 }
+  - field: "carrierTypeKey"
+    strLen: { n: 78, p50: 13, p90: 18, max: 23 }
+  - field: "caseId"
+    strLen: { n: 2, p50: 14, p90: 14, max: 14 }
+  - field: "caseNo"
+    strLen: { n: 3, p50: 8, p90: 8, max: 8 }
+  - field: "cashFloor"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "causalEdges"
+    arrLen: { n: 5, p50: 0, p90: 7, max: 7 }
+  - field: "causalPath"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "caveats"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "cells"
+    arrLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "cfgRuleKey"
+    strLen: { n: 3, p50: 18, p90: 18, max: 18 }
+  - field: "chain"
+    strLen: { n: 5, p50: 77, p90: 110, max: 110 }
+    arrLen: { n: 15, p50: 4, p90: 4, max: 4 }
+  - field: "chainKey"
+    strLen: { n: 1, p50: 15, p90: 15, max: 15 }
+  - field: "changedAt"
+    strLen: { n: 6, p50: 10, p90: 10, max: 10 }
+  - field: "changedFields"
+    arrLen: { n: 3, p50: 1, p90: 2, max: 2 }
+  - field: "changedParams"
+    arrLen: { n: 5, p50: 1, p90: 2, max: 2 }
+  - field: "changedProps"
+    arrLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "changeover"
+    strLen: { n: 3, p50: 6, p90: 6, max: 6 }
+  - field: "changeoverHours"
+    strLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "changes"
+    arrLen: { n: 3, p50: 1, p90: 3, max: 3 }
+  - field: "check"
+    strLen: { n: 12, p50: 25, p90: 33, max: 55 }
+  - field: "checked"
+    arrLen: { n: 8, p50: 4, p90: 4, max: 4 }
+  - field: "checks"
+    arrLen: { n: 3, p50: 0, p90: 4, max: 4 }
+  - field: "city"
+    strLen: { n: 9, p50: 2, p90: 4, max: 4 }
+  - field: "claim"
+    strLen: { n: 4, p50: 55, p90: 59, max: 59 }
+  - field: "claims"
+    arrLen: { n: 3, p50: 0, p90: 1, max: 1 }
+  - field: "clarifyPrompt"
+    strLen: { n: 6, p50: 5, p90: 37, max: 37 }
+  - field: "classification"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "cliCommand"
+    strLen: { n: 39, p50: 6, p90: 12, max: 15 }
+  - field: "clockSource"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "closure"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "coefficient"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "coefficients"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "coeffSource"
+    strLen: { n: 3, p50: 8, p90: 8, max: 8 }
+  - field: "color"
+    strLen: { n: 994, p50: 13, p90: 17, max: 30 }
+  - field: "colorBy"
+    strLen: { n: 20, p50: 6, p90: 6, max: 6 }
+  - field: "column"
+    strLen: { n: 3, p50: 4, p90: 4, max: 4 }
+  - field: "combine"
+    strLen: { n: 51, p50: 3, p90: 3, max: 3 }
+  - field: "command"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "commentPool"
+    strLen: { n: 2, p50: 17, p90: 17, max: 17 }
+  - field: "committedBatches"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "commodity"
+    strLen: { n: 10, p50: 3, p90: 9, max: 9 }
+  - field: "competitor"
+    strLen: { n: 7, p50: 4, p90: 10, max: 10 }
+  - field: "competitorRef"
+    strLen: { n: 3, p50: 3, p90: 13, max: 13 }
+  - field: "compiledPlanId"
+    strLen: { n: 1, p50: 16, p90: 16, max: 16 }
+  - field: "completedAt"
+    strLen: { n: 9, p50: 20, p90: 20, max: 20 }
+  - field: "computeSource"
+    strLen: { n: 2, p50: 258, p90: 258, max: 258 }
+  - field: "condition"
+    strLen: { n: 6, p50: 19, p90: 20, max: 20 }
+  - field: "conds"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "confirm"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "conflictConstraints"
+    arrLen: { n: 4, p50: 0, p90: 0, max: 0 }
+  - field: "conflicts"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "CONGESTION"
+    strLen: { n: 3, p50: 28, p90: 40, max: 40 }
+  - field: "connection"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "connectorTypeKey"
+    strLen: { n: 21, p50: 8, p90: 14, max: 14 }
+  - field: "connectorTypeKeys"
+    arrLen: { n: 30, p50: 3, p90: 4, max: 4 }
+  - field: "connName"
+    strLen: { n: 6, p50: 8, p90: 8, max: 8 }
+  - field: "connType"
+    strLen: { n: 9, p50: 8, p90: 12, max: 12 }
+  - field: "constraintRefs"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "constraints"
+    strLen: { n: 3, p50: 4, p90: 4, max: 4 }
+  - field: "consumedBy"
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "content"
+    strLen: { n: 12, p50: 2, p90: 43, max: 51 }
+    arrLen: { n: 8, p50: 1, p90: 1, max: 1 }
+  - field: "contextOps"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+    arrLen: { n: 5, p50: 0, p90: 1, max: 1 }
+  - field: "contractedQtyTon"
+    strLen: { n: 1, p50: 16, p90: 16, max: 16 }
+  - field: "contractFixtures"
+    arrLen: { n: 11, p50: 1, p90: 1, max: 1 }
+  - field: "convention"
+    strLen: { n: 2, p50: 58, p90: 58, max: 58 }
+  - field: "conversationId"
+    strLen: { n: 9, p50: 7, p90: 7, max: 7 }
+  - field: "costClass"
+    strLen: { n: 28, p50: 5, p90: 9, max: 9 }
+  - field: "costFields"
+    strLen: { n: 1, p50: 150, p90: 150, max: 150 }
+  - field: "countBasis"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+  - field: "counterfactual"
+    strLen: { n: 1, p50: 13, p90: 13, max: 13 }
+  - field: "created"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "createdBy"
+    strLen: { n: 7, p50: 14, p90: 16, max: 16 }
+  - field: "credentialKind"
+    strLen: { n: 2, p50: 13, p90: 13, max: 13 }
+  - field: "credentialRef"
+    strLen: { n: 4, p50: 9, p90: 11, max: 11 }
+  - field: "creditLimit"
+    strLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "crossedAt"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "currency"
+    strLen: { n: 10, p50: 3, p90: 8, max: 8 }
+  - field: "custId"
+    strLen: { n: 10, p50: 7, p90: 7, max: 7 }
+  - field: "custName"
+    strLen: { n: 8, p50: 4, p90: 18, max: 18 }
+  - field: "customer"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "customerRef"
+    strLen: { n: 6, p50: 4, p90: 11, max: 11 }
+  - field: "customers"
+    arrLen: { n: 3, p50: 0, p90: 4, max: 4 }
+  - field: "d"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "daily"
+    arrLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "datasetKey"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "datasetName"
+    strLen: { n: 4, p50: 10, p90: 10, max: 10 }
+  - field: "datasets"
+    arrLen: { n: 3, p50: 2, p90: 2, max: 2 }
+  - field: "dataSources"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+    arrLen: { n: 4, p50: 1, p90: 2, max: 2 }
+  - field: "decayUnresolved"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "decidedBy"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "decomposition"
+    arrLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "deepLink"
+    strLen: { n: 24, p50: 14, p90: 16, max: 18 }
+  - field: "default"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "defaultAgentId"
+    strLen: { n: 3, p50: 11, p90: 16, max: 16 }
+  - field: "defaultBaseUrl"
+    strLen: { n: 8, p50: 27, p90: 55, max: 55 }
+  - field: "defaultFrom"
+    strLen: { n: 8, p50: 20, p90: 20, max: 20 }
+  - field: "defaultMode"
+    strLen: { n: 17, p50: 18, p90: 18, max: 18 }
+  - field: "deferred"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "degradeImpact"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "delay"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "delayTicks"
+    strLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "delegationKey"
+    strLen: { n: 2, p50: 23, p90: 23, max: 23 }
+  - field: "deltas"
+    arrLen: { n: 6, p50: 0, p90: 1, max: 1 }
+  - field: "demandDelta"
+    strLen: { n: 5, p50: 21, p90: 21, max: 21 }
+  - field: "denyRead"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "denyWrite"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "dependsOn"
+    arrLen: { n: 5, p50: 1, p90: 2, max: 2 }
+  - field: "derivationEdge"
+    strLen: { n: 8, p50: 63, p90: 87, max: 87 }
+  - field: "derivations"
+    arrLen: { n: 98, p50: 0, p90: 1, max: 2 }
+  - field: "derived"
+    strLen: { n: 3, p50: 2, p90: 7, max: 7 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "derivedProperties"
+    arrLen: { n: 12, p50: 0, p90: 0, max: 1 }
+  - field: "desc"
+    strLen: { n: 19, p50: 58, p90: 150, max: 162 }
+  - field: "descriptionForLLM"
+    strLen: { n: 29, p50: 88, p90: 171, max: 244 }
+  - field: "det"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+  - field: "diagnosis"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "diff"
+    strLen: { n: 10, p50: 4, p90: 50, max: 50 }
+  - field: "diffs"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "dim"
+    strLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "dims"
+    arrLen: { n: 5, p50: 2, p90: 3, max: 3 }
+  - field: "disabledRuleKeys"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "display"
+    strLen: { n: 635, p50: 4, p90: 5, max: 12 }
+  - field: "disposition"
+    strLen: { n: 6, p50: 8, p90: 11, max: 11 }
+  - field: "docId"
+    strLen: { n: 8, p50: 10, p90: 19, max: 19 }
+  - field: "docUrl"
+    strLen: { n: 8, p50: 32, p90: 44, max: 44 }
+  - field: "domainName"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "domains"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+    arrLen: { n: 5, p50: 2, p90: 14, max: 14 }
+  - field: "domainTrustLevel"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "done"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "downstream"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+    arrLen: { n: 3, p50: 3, p90: 4, max: 4 }
+  - field: "draftId"
+    strLen: { n: 5, p50: 7, p90: 27, max: 27 }
+  - field: "drilldownRef"
+    strLen: { n: 8, p50: 13, p90: 19, max: 19 }
+  - field: "drillFilterField"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "drillFilterValue"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "drillNorm"
+    strLen: { n: 7, p50: 6, p90: 12, max: 12 }
+  - field: "drillPath"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "drillPick"
+    strLen: { n: 9, p50: 3, p90: 3, max: 3 }
+  - field: "drillUnit"
+    strLen: { n: 7, p50: 11, p90: 14, max: 14 }
+  - field: "driver"
+    strLen: { n: 4, p50: 16, p90: 17, max: 17 }
+  - field: "dsl"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "dsoId"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+  - field: "dueDate"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "earliestKitDayReason"
+    strLen: { n: 1, p50: 53, p90: 53, max: 53 }
+  - field: "earliestKitDayStatus"
+    strLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "eff"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+  - field: "effectiveDate"
+    strLen: { n: 16, p50: 10, p90: 10, max: 13 }
+  - field: "effectiveFrom"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "effects"
+    arrLen: { n: 5, p50: 2, p90: 3, max: 3 }
+  - field: "email"
+    strLen: { n: 4, p50: 18, p90: 18, max: 18 }
+  - field: "empty"
+    strLen: { n: 16, p50: 31, p90: 49, max: 49 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "emptyKind"
+    strLen: { n: 2, p50: 11, p90: 11, max: 11 }
+  - field: "emptyReason"
+    strLen: { n: 1, p50: 52, p90: 52, max: 52 }
+  - field: "enabledViews"
+    strLen: { n: 12, p50: 1, p90: 1, max: 1 }
+    arrLen: { n: 4, p50: 1, p90: 2, max: 2 }
+  - field: "end"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "endpoint"
+    strLen: { n: 42, p50: 17, p90: 22, max: 33 }
+  - field: "engine"
+    strLen: { n: 3, p50: 23, p90: 23, max: 23 }
+  - field: "entering"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "entities"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "entityId"
+    strLen: { n: 4, p50: 11, p90: 14, max: 14 }
+  - field: "entityIds"
+    arrLen: { n: 5, p50: 0, p90: 1, max: 1 }
+  - field: "entityRefField"
+    strLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "entityType"
+    strLen: { n: 7, p50: 4, p90: 9, max: 9 }
+  - field: "entries"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "entry"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "enum"
+    arrLen: { n: 14, p50: 3, p90: 5, max: 6 }
+  - field: "enumCandidates"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "enumValues"
+    arrLen: { n: 3, p50: 3, p90: 3, max: 3 }
+  - field: "epsilon"
+    strLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "equals"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "errors"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+    arrLen: { n: 15, p50: 1, p90: 1, max: 1 }
+  - field: "escalateToRole"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "eta"
+    strLen: { n: 10, p50: 10, p90: 10, max: 10 }
+  - field: "etaDate"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "etaDay"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "evaluatedRules"
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "examples"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 25, p50: 3, p90: 3, max: 3 }
+  - field: "exceptions"
+    arrLen: { n: 4, p50: 2, p90: 3, max: 3 }
+  - field: "excludes"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "excType"
+    strLen: { n: 5, p50: 9, p90: 17, max: 17 }
+  - field: "executed"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "existingTypeKey"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "exits"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "expected"
+    strLen: { n: 7, p50: 3, p90: 20, max: 20 }
+  - field: "expiryDate"
+    strLen: { n: 4, p50: 10, p90: 10, max: 10 }
+  - field: "exportedAt"
+    strLen: { n: 1, p50: 20, p90: 20, max: 20 }
+  - field: "extractJobId"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "factorName"
+    strLen: { n: 22, p50: 4, p90: 7, max: 8 }
+  - field: "factors"
+    strLen: { n: 1, p50: 17, p90: 17, max: 17 }
+    arrLen: { n: 8, p50: 1, p90: 2, max: 2 }
+  - field: "factory"
+    strLen: { n: 4, p50: 7, p90: 16, max: 16 }
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "failed"
+    strLen: { n: 3, p50: 4, p90: 13, max: 13 }
+  - field: "failures"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "fallback"
+    strLen: { n: 4, p50: 5, p90: 6, max: 6 }
+    arrLen: { n: 5, p50: 2, p90: 2, max: 2 }
+  - field: "fallbackProviderId"
+    strLen: { n: 1, p50: 14, p90: 14, max: 14 }
+  - field: "family"
+    strLen: { n: 1, p50: 15, p90: 15, max: 15 }
+  - field: "feasibilityNote"
+    strLen: { n: 1, p50: 55, p90: 55, max: 55 }
+  - field: "featureKey"
+    strLen: { n: 30, p50: 19, p90: 26, max: 31 }
+  - field: "fgInv"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "fieldPath"
+    strLen: { n: 1, p50: 26, p90: 26, max: 26 }
+  - field: "filename"
+    strLen: { n: 1, p50: 15, p90: 15, max: 15 }
+  - field: "fillMode"
+    strLen: { n: 3, p50: 4, p90: 4, max: 4 }
+  - field: "filters"
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "fin"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "finalizedAt"
+    strLen: { n: 1, p50: 20, p90: 20, max: 20 }
+  - field: "finance"
+    strLen: { n: 5, p50: 7, p90: 8, max: 8 }
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "findings"
+    arrLen: { n: 15, p50: 0, p90: 1, max: 1 }
+  - field: "fired"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "flags"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+    arrLen: { n: 32, p50: 1, p90: 2, max: 3 }
+  - field: "floorPct"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "focusHint"
+    strLen: { n: 3, p50: 4, p90: 4, max: 4 }
+  - field: "focusKeys"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "focusMetrics"
+    arrLen: { n: 5, p50: 2, p90: 4, max: 4 }
+  - field: "forecasts"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "forecastStart"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "format"
+    strLen: { n: 8, p50: 10, p90: 10, max: 10 }
+  - field: "freight"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "fromBase"
+    strLen: { n: 3, p50: 7, p90: 9, max: 9 }
+  - field: "fromDay"
+    strLen: { n: 3, p50: 17, p90: 20, max: 20 }
+  - field: "fromField"
+    strLen: { n: 5, p50: 8, p90: 11, max: 11 }
+  - field: "fromObjectId"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "fromPrincipalRef"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+  - field: "fromQ"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+  - field: "fromQuestion"
+    strLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "fromStep"
+    strLen: { n: 14, p50: 2, p90: 2, max: 2 }
+  - field: "fromTemplate"
+    strLen: { n: 1, p50: 21, p90: 21, max: 21 }
+  - field: "fromType"
+    strLen: { n: 6, p50: 5, p90: 5, max: 5 }
+  - field: "fromWarehouse"
+    strLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "frozenCapacityMode"
+    strLen: { n: 3, p50: 23, p90: 23, max: 23 }
+  - field: "frozenOrderIds"
+    strLen: { n: 2, p50: 11, p90: 11, max: 11 }
+  - field: "full"
+    strLen: { n: 4, p50: 19, p90: 23, max: 23 }
+  - field: "functions"
+    strLen: { n: 1, p50: 0, p90: 0, max: 0 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "gain"
+    strLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "gapId"
+    strLen: { n: 3, p50: 11, p90: 13, max: 13 }
+  - field: "gapRed"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "gaps"
+    arrLen: { n: 18, p50: 1, p90: 2, max: 2 }
+  - field: "gapTon"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "generation"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "give"
+    strLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "gmFloor"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "goldenId"
+    strLen: { n: 2, p50: 5, p90: 5, max: 5 }
+  - field: "grainType"
+    strLen: { n: 6, p50: 14, p90: 18, max: 18 }
+  - field: "grants"
+    arrLen: { n: 12, p50: 2, p90: 3, max: 4 }
+  - field: "growth"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "guardText"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "hard"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "hardViol"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "hash"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+  - field: "high"
+    strLen: { n: 1, p50: 13, p90: 13, max: 13 }
+  - field: "hint"
+    strLen: { n: 57, p50: 21, p90: 57, max: 87 }
+  - field: "horizon"
+    strLen: { n: 7, p50: 8, p90: 23, max: 23 }
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "ids"
+    arrLen: { n: 14, p50: 3, p90: 9, max: 10 }
+  - field: "impact"
+    strLen: { n: 20, p50: 2, p90: 4, max: 6 }
+  - field: "impedimentId"
+    strLen: { n: 6, p50: 38, p90: 58, max: 58 }
+  - field: "implements"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "in"
+    strLen: { n: 21, p50: 13, p90: 29, max: 49 }
+  - field: "inbound"
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "incubatedAt"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+  - field: "industryKey"
+    strLen: { n: 4, p50: 21, p90: 21, max: 21 }
+  - field: "inferredType"
+    strLen: { n: 16, p50: 6, p90: 6, max: 6 }
+  - field: "inputFields"
+    arrLen: { n: 5, p50: 2, p90: 2, max: 2 }
+  - field: "instruction"
+    strLen: { n: 2, p50: 11, p90: 11, max: 11 }
+  - field: "intake"
+    strLen: { n: 3, p50: 11, p90: 11, max: 11 }
+  - field: "INTENT"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "intentNeeds"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "interfaceKey"
+    strLen: { n: 4, p50: 10, p90: 10, max: 10 }
+  - field: "inUse"
+    arrLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "invoiceRef"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "issues"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "iterations"
+    arrLen: { n: 6, p50: 1, p90: 3, max: 3 }
+  - field: "jobId"
+    strLen: { n: 5, p50: 15, p90: 36, max: 36 }
+  - field: "kbDocs"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+    arrLen: { n: 3, p50: 0, p90: 1, max: 1 }
+  - field: "kernel"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "keyProp"
+    strLen: { n: 11, p50: 5, p90: 7, max: 7 }
+  - field: "keyProps"
+    arrLen: { n: 13, p50: 1, p90: 3, max: 3 }
+  - field: "keysTried"
+    arrLen: { n: 3, p50: 0, p90: 0, max: 0 }
+  - field: "keywords"
+    arrLen: { n: 91, p50: 5, p90: 8, max: 10 }
+  - field: "kinds"
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "kpis"
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "kpiTypeKeys"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "ksfId"
+    strLen: { n: 10, p50: 7, p90: 8, max: 8 }
+  - field: "ksfRef"
+    strLen: { n: 10, p50: 7, p90: 8, max: 8 }
+  - field: "l1_domain"
+    arrLen: { n: 2, p50: 12, p90: 12, max: 12 }
+  - field: "l2_decisionType"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "l3_scenario"
+    arrLen: { n: 1, p50: 14, p90: 14, max: 14 }
+  - field: "l5_algorithm"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "lastDataAt"
+    strLen: { n: 3, p50: 20, p90: 20, max: 20 }
+  - field: "lastError"
+    strLen: { n: 2, p50: 22, p90: 22, max: 22 }
+  - field: "lastLoginAt"
+    strLen: { n: 2, p50: 20, p90: 20, max: 20 }
+  - field: "lastRunAt"
+    strLen: { n: 2, p50: 20, p90: 20, max: 20 }
+  - field: "lastSyncAt"
+    strLen: { n: 9, p50: 20, p90: 20, max: 20 }
+  - field: "layers"
+    strLen: { n: 2, p50: 192, p90: 192, max: 192 }
+    arrLen: { n: 4, p50: 4, p90: 4, max: 4 }
+  - field: "leadTime"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "leg"
+    strLen: { n: 24, p50: 19, p90: 19, max: 19 }
+  - field: "levels"
+    arrLen: { n: 6, p50: 3, p90: 3, max: 3 }
+  - field: "lever"
+    strLen: { n: 5, p50: 5, p90: 6, max: 6 }
+  - field: "leverDeltas"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "levers"
+    strLen: { n: 3, p50: 7, p90: 10, max: 10 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "lifecycle"
+    strLen: { n: 7, p50: 7, p90: 9, max: 9 }
+  - field: "limit"
+    strLen: { n: 2, p50: 34, p90: 34, max: 34 }
+  - field: "limitKey"
+    strLen: { n: 12, p50: 17, p90: 19, max: 19 }
+  - field: "line"
+    strLen: { n: 8, p50: 4, p90: 4, max: 4 }
+  - field: "lineId"
+    strLen: { n: 20, p50: 7, p90: 12, max: 12 }
+  - field: "lines"
+    strLen: { n: 2, p50: 6, p90: 6, max: 6 }
+    arrLen: { n: 5, p50: 3, p90: 4, max: 4 }
+  - field: "linkKeys"
+    arrLen: { n: 15, p50: 1, p90: 1, max: 1 }
+  - field: "linkKinds"
+    arrLen: { n: 8, p50: 2, p90: 2, max: 2 }
+  - field: "links"
+    arrLen: { n: 5, p50: 0, p90: 1, max: 1 }
+  - field: "listPrice"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "liveMonths"
+    arrLen: { n: 3, p50: 0, p90: 0, max: 0 }
+  - field: "llmMode"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "lossReason"
+    strLen: { n: 3, p50: 4, p90: 10, max: 10 }
+  - field: "low"
+    strLen: { n: 1, p50: 17, p90: 17, max: 17 }
+  - field: "ltaDeviation"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "ltaId"
+    strLen: { n: 4, p50: 12, p90: 12, max: 12 }
+  - field: "ltaLock"
+    strLen: { n: 4, p50: 15, p90: 24, max: 24 }
+  - field: "magnitudeBasis"
+    strLen: { n: 11, p50: 42, p90: 57, max: 74 }
+  - field: "magnitudeFrom"
+    strLen: { n: 11, p50: 9, p90: 11, max: 11 }
+  - field: "maint"
+    strLen: { n: 1, p50: 13, p90: 13, max: 13 }
+  - field: "margin"
+    strLen: { n: 107, p50: 7, p90: 10, max: 58 }
+  - field: "marginPct"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "mark"
+    strLen: { n: 66, p50: 1, p90: 1, max: 1 }
+  - field: "markdown"
+    strLen: { n: 35, p50: 26, p90: 83, max: 105 }
+  - field: "matched"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "matchedBy"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "materialized"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "materialType"
+    strLen: { n: 22, p50: 2, p90: 3, max: 12 }
+  - field: "matId"
+    strLen: { n: 10, p50: 7, p90: 12, max: 12 }
+  - field: "matrix"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "maxAttempts"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "maxCustomerImportance"
+    strLen: { n: 4, p50: 9, p90: 9, max: 9 }
+  - field: "maxHops"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "mcpConfigId"
+    strLen: { n: 6, p50: 14, p90: 15, max: 15 }
+  - field: "mcpNeeds"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+    arrLen: { n: 4, p50: 0, p90: 1, max: 1 }
+  - field: "mcpServers"
+    arrLen: { n: 17, p50: 0, p90: 1, max: 1 }
+  - field: "measure"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "measureKind"
+    strLen: { n: 2, p50: 5, p90: 5, max: 5 }
+  - field: "meetCapex"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "meetCash"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "meetGm"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "meetRevenue"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "meets"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "meetShare"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "meetTurns"
+    strLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "mergedAt"
+    strLen: { n: 2, p50: 20, p90: 20, max: 20 }
+  - field: "mergedBy"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "mergedIds"
+    arrLen: { n: 3, p50: 1, p90: 1, max: 1 }
+  - field: "metric"
+    strLen: { n: 3, p50: 4, p90: 13, max: 13 }
+  - field: "metricId"
+    strLen: { n: 4, p50: 12, p90: 12, max: 12 }
+  - field: "missingArgs"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "missingFields"
+    arrLen: { n: 6, p50: 1, p90: 3, max: 3 }
+  - field: "missingInputs"
+    arrLen: { n: 4, p50: 3, p90: 3, max: 3 }
+  - field: "missingRefs"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "mockNote"
+    strLen: { n: 2, p50: 51, p90: 51, max: 51 }
+  - field: "mockNotes"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "modelIds"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "modeling"
+    strLen: { n: 3, p50: 8, p90: 48, max: 48 }
+  - field: "modelName"
+    strLen: { n: 1, p50: 19, p90: 19, max: 19 }
+  - field: "modelPool"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "modes"
+    arrLen: { n: 30, p50: 1, p90: 2, max: 2 }
+  - field: "monthly"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "move"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "mustIncludeLinkKeys"
+    arrLen: { n: 11, p50: 8, p90: 9, max: 11 }
+  - field: "mustIncludeTypes"
+    arrLen: { n: 12, p50: 10, p90: 15, max: 18 }
+  - field: "n"
+    strLen: { n: 21, p50: 7, p90: 11, max: 11 }
+  - field: "nameSuggestion"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "navigation"
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "need"
+    strLen: { n: 12, p50: 38, p90: 65, max: 65 }
+  - field: "needs"
+    strLen: { n: 10, p50: 74, p90: 101, max: 101 }
+  - field: "newDueDate"
+    strLen: { n: 2, p50: 32, p90: 32, max: 32 }
+  - field: "nextRunAt"
+    strLen: { n: 3, p50: 20, p90: 20, max: 20 }
+  - field: "no"
+    strLen: { n: 16, p50: 2, p90: 4, max: 4 }
+  - field: "noCandidateKind"
+    strLen: { n: 6, p50: 4, p90: 11, max: 11 }
+  - field: "nodeTypes"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "none"
+    strLen: { n: 6, p50: 12, p90: 34, max: 34 }
+  - field: "normalizedRef"
+    strLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "notifiedTo"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "notSummable"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "nullRate"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "obj"
+    strLen: { n: 3, p50: 7, p90: 8, max: 8 }
+  - field: "object"
+    strLen: { n: 5, p50: 5, p90: 8, max: 8 }
+  - field: "objectIds"
+    arrLen: { n: 16, p50: 1, p90: 4, max: 4 }
+  - field: "objective"
+    strLen: { n: 6, p50: 10, p90: 37, max: 37 }
+  - field: "objectives"
+    strLen: { n: 2, p50: 17, p90: 17, max: 17 }
+  - field: "objectKey"
+    strLen: { n: 14, p50: 7, p90: 15, max: 17 }
+  - field: "objectRef"
+    strLen: { n: 8, p50: 24, p90: 24, max: 24 }
+  - field: "objects"
+    arrLen: { n: 5, p50: 0, p90: 2, max: 2 }
+  - field: "onEvent"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "onFailure"
+    strLen: { n: 3, p50: 5, p90: 5, max: 5 }
+  - field: "onOrphan"
+    strLen: { n: 4, p50: 13, p90: 13, max: 13 }
+  - field: "ontime"
+    strLen: { n: 3, p50: 2, p90: 3, max: 3 }
+  - field: "onTimeRate"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "ontologyValidation"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "openCron"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "openTickets"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "oppId"
+    strLen: { n: 6, p50: 10, p90: 11, max: 11 }
+  - field: "ops"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+    arrLen: { n: 26, p50: 1, p90: 3, max: 3 }
+  - field: "optionIds"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "optionRef"
+    strLen: { n: 2, p50: 15, p90: 15, max: 15 }
+  - field: "oracle"
+    strLen: { n: 21, p50: 9, p90: 11, max: 11 }
+  - field: "order"
+    strLen: { n: 2, p50: 49, p90: 49, max: 49 }
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "orderIds"
+    strLen: { n: 2, p50: 13, p90: 13, max: 13 }
+  - field: "orders"
+    strLen: { n: 7, p50: 7, p90: 18, max: 18 }
+    arrLen: { n: 4, p50: 0, p90: 1, max: 1 }
+  - field: "orgKey"
+    strLen: { n: 26, p50: 12, p90: 18, max: 20 }
+  - field: "OTHER"
+    strLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "out"
+    strLen: { n: 21, p50: 15, p90: 28, max: 35 }
+  - field: "outOfCatalog"
+    strLen: { n: 1, p50: 14, p90: 14, max: 14 }
+  - field: "output"
+    strLen: { n: 7, p50: 19, p90: 19, max: 19 }
+  - field: "outputPath"
+    strLen: { n: 68, p50: 10, p90: 16, max: 26 }
+  - field: "outputShape"
+    arrLen: { n: 101, p50: 6, p90: 10, max: 22 }
+  - field: "over"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "overall"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "overdueDays"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "overdueId"
+    strLen: { n: 3, p50: 5, p90: 9, max: 9 }
+  - field: "overridden"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "ownerFunctionKey"
+    strLen: { n: 95, p50: 15, p90: 19, max: 19 }
+  - field: "ownerRef"
+    strLen: { n: 21, p50: 7, p90: 11, max: 12 }
+  - field: "ownerUserId"
+    strLen: { n: 15, p50: 14, p90: 16, max: 16 }
+  - field: "page"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "pageSize"
+    strLen: { n: 5, p50: 2, p90: 2, max: 2 }
+  - field: "param"
+    strLen: { n: 25, p50: 18, p90: 23, max: 24 }
+  - field: "parameter"
+    strLen: { n: 23, p50: 10, p90: 14, max: 14 }
+  - field: "paramKeys"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "paramPath"
+    strLen: { n: 10, p50: 13, p90: 13, max: 13 }
+  - field: "parentRef"
+    strLen: { n: 23, p50: 9, p90: 10, max: 11 }
+  - field: "participants"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "paths"
+    arrLen: { n: 20, p50: 5, p90: 10, max: 11 }
+  - field: "pattern"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "payloadKeys"
+    arrLen: { n: 11, p50: 1, p90: 2, max: 2 }
+  - field: "payloadPath"
+    strLen: { n: 6, p50: 16, p90: 16, max: 16 }
+  - field: "pctChange"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "pending"
+    strLen: { n: 3, p50: 45, p90: 49, max: 49 }
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "pendingCertList"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "perBaseRows"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "perm"
+    strLen: { n: 9, p50: 17, p90: 21, max: 21 }
+  - field: "persona"
+    strLen: { n: 18, p50: 15, p90: 21, max: 21 }
+  - field: "perturbationKind"
+    strLen: { n: 11, p50: 12, p90: 17, max: 17 }
+  - field: "perturbations"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "phases"
+    arrLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "placeholder"
+    strLen: { n: 23, p50: 24, p90: 41, max: 49 }
+  - field: "planName"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "planNeeds"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "planRows"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "plans"
+    arrLen: { n: 3, p50: 2, p90: 3, max: 3 }
+  - field: "platformRoles"
+    arrLen: { n: 20, p50: 1, p90: 1, max: 1 }
+  - field: "platformSchemaVersion"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "poId"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "point"
+    strLen: { n: 19, p50: 21, p90: 44, max: 48 }
+  - field: "points"
+    arrLen: { n: 1, p50: 12, p90: 12, max: 12 }
+  - field: "points30d"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "poolId"
+    strLen: { n: 3, p50: 10, p90: 12, max: 12 }
+  - field: "position"
+    strLen: { n: 40, p50: 8, p90: 8, max: 8 }
+  - field: "present"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "pressureUnit"
+    strLen: { n: 2, p50: 25, p90: 25, max: 25 }
+  - field: "preview"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "pri"
+    strLen: { n: 33, p50: 1, p90: 1, max: 1 }
+  - field: "priceFormula"
+    strLen: { n: 4, p50: 15, p90: 24, max: 24 }
+  - field: "priceId"
+    strLen: { n: 6, p50: 8, p90: 14, max: 14 }
+  - field: "priceLinked"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "pricePerKwh"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "pricePerTon"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "primaryKey"
+    strLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "primaryKeyColumn"
+    strLen: { n: 17, p50: 7, p90: 9, max: 10 }
+  - field: "principalId"
+    strLen: { n: 33, p50: 13, p90: 18, max: 19 }
+  - field: "principalRef"
+    strLen: { n: 12, p50: 12, p90: 19, max: 19 }
+  - field: "priority"
+    strLen: { n: 3, p50: 8, p90: 8, max: 8 }
+  - field: "probe"
+    strLen: { n: 24, p50: 126, p90: 227, max: 369 }
+  - field: "problems"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 4, p50: 2, p90: 2, max: 2 }
+  - field: "proc"
+    strLen: { n: 21, p50: 28, p90: 67, max: 77 }
+  - field: "process"
+    strLen: { n: 7, p50: 4, p90: 40, max: 40 }
+    arrLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "processId"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+  - field: "processKey"
+    strLen: { n: 24, p50: 3, p90: 20, max: 22 }
+  - field: "processName"
+    strLen: { n: 3, p50: 9, p90: 9, max: 9 }
+  - field: "procurement"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "producedArtifacts"
+    arrLen: { n: 3, p50: 0, p90: 1, max: 1 }
+  - field: "producedConnections"
+    arrLen: { n: 7, p50: 1, p90: 1, max: 1 }
+  - field: "producedDatasets"
+    arrLen: { n: 7, p50: 1, p90: 1, max: 1 }
+  - field: "product"
+    strLen: { n: 3, p50: 7, p90: 16, max: 16 }
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "profileId"
+    strLen: { n: 5, p50: 15, p90: 17, max: 17 }
+  - field: "project"
+    strLen: { n: 3, p50: 11, p90: 16, max: 16 }
+    arrLen: { n: 98, p50: 5, p90: 8, max: 10 }
+  - field: "projects"
+    strLen: { n: 2, p50: 33, p90: 33, max: 33 }
+    arrLen: { n: 6, p50: 1, p90: 2, max: 2 }
+  - field: "promotedBy"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "promotedSolvers"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "prompt"
+    strLen: { n: 3, p50: 22, p90: 69, max: 69 }
+  - field: "propKeys"
+    arrLen: { n: 49, p50: 3, p90: 8, max: 13 }
+  - field: "proposalId"
+    strLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "proposals"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "props"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "propsTried"
+    arrLen: { n: 3, p50: 0, p90: 0, max: 0 }
+  - field: "prototypeColumn"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "provenancePolicy"
+    strLen: { n: 11, p50: 11, p90: 11, max: 11 }
+  - field: "providerId"
+    strLen: { n: 3, p50: 14, p90: 14, max: 14 }
+  - field: "province"
+    strLen: { n: 9, p50: 2, p90: 8, max: 8 }
+  - field: "publish"
+    strLen: { n: 4, p50: 6, p90: 13, max: 13 }
+  - field: "purpose"
+    strLen: { n: 5, p50: 10, p90: 12, max: 12 }
+  - field: "q"
+    strLen: { n: 6, p50: 7, p90: 7, max: 7 }
+  - field: "qa"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "quarters"
+    arrLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "queryPool"
+    strLen: { n: 5, p50: 13, p90: 18, max: 18 }
+  - field: "radarDims"
+    arrLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "rateKind"
+    strLen: { n: 2, p50: 15, p90: 15, max: 15 }
+  - field: "rateProp"
+    strLen: { n: 2, p50: 18, p90: 18, max: 18 }
+  - field: "raw"
+    strLen: { n: 1, p50: 74, p90: 74, max: 74 }
+  - field: "rawIn"
+    arrLen: { n: 3, p50: 5, p90: 5, max: 5 }
+  - field: "reads"
+    arrLen: { n: 42, p50: 4, p90: 7, max: 13 }
+  - field: "realizedPrice"
+    strLen: { n: 1, p50: 13, p90: 13, max: 13 }
+  - field: "reasoning"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "reasons"
+    arrLen: { n: 5, p50: 1, p90: 2, max: 2 }
+  - field: "recommend"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "reconChecks"
+    arrLen: { n: 8, p50: 0, p90: 2, max: 2 }
+  - field: "recordId"
+    strLen: { n: 3, p50: 8, p90: 8, max: 8 }
+  - field: "references"
+    arrLen: { n: 12, p50: 1, p90: 2, max: 2 }
+  - field: "refField"
+    strLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "refId"
+    strLen: { n: 10, p50: 15, p90: 20, max: 20 }
+  - field: "refKind"
+    strLen: { n: 4, p50: 10, p90: 16, max: 16 }
+  - field: "refToTypeKey"
+    strLen: { n: 101, p50: 5, p90: 14, max: 24 }
+  - field: "refType"
+    strLen: { n: 22, p50: 6, p90: 15, max: 17 }
+  - field: "refTypeKey"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "reject"
+    strLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "rel"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "relations"
+    strLen: { n: 3, p50: 2, p90: 4, max: 4 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "relType"
+    strLen: { n: 6, p50: 7, p90: 8, max: 8 }
+  - field: "renderBindings"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "renderer"
+    strLen: { n: 66, p50: 12, p90: 16, max: 17 }
+  - field: "replayFrom"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "replayTo"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "requestedBy"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "requestId"
+    strLen: { n: 6, p50: 8, p90: 24, max: 24 }
+  - field: "requiredArgs"
+    arrLen: { n: 28, p50: 0, p90: 0, max: 1 }
+  - field: "requiredSlots"
+    arrLen: { n: 40, p50: 0, p90: 1, max: 1 }
+  - field: "requires"
+    arrLen: { n: 73, p50: 1, p90: 1, max: 1 }
+  - field: "residualPct"
+    strLen: { n: 2, p50: 11, p90: 11, max: 11 }
+  - field: "resolutions"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "resolvedAt"
+    strLen: { n: 6, p50: 10, p90: 24, max: 24 }
+  - field: "resolvedRefs"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "resource"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "resources"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+    arrLen: { n: 15, p50: 0, p90: 0, max: 1 }
+  - field: "resourceType"
+    strLen: { n: 2, p50: 28, p90: 28, max: 28 }
+  - field: "result"
+    strLen: { n: 3, p50: 6, p90: 6, max: 6 }
+  - field: "results"
+    arrLen: { n: 3, p50: 0, p90: 0, max: 0 }
+  - field: "reused"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "reusedTypeKeys"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "revenue"
+    strLen: { n: 4, p50: 2, p90: 2, max: 2 }
+  - field: "revenueField"
+    strLen: { n: 2, p50: 33, p90: 33, max: 33 }
+  - field: "revGrowthPct"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "reviewDate"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "risk"
+    strLen: { n: 29, p50: 1, p90: 15, max: 122 }
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "riskLevel"
+    strLen: { n: 16, p50: 7, p90: 12, max: 12 }
+  - field: "roleBindings"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "rollback"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "rootCauseSummary"
+    strLen: { n: 4, p50: 26, p90: 33, max: 33 }
+  - field: "rootChains"
+    arrLen: { n: 5, p50: 1, p90: 2, max: 2 }
+  - field: "rootFilter"
+    strLen: { n: 2, p50: 22, p90: 22, max: 22 }
+  - field: "rounds"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "route"
+    strLen: { n: 20, p50: 14, p90: 29, max: 29 }
+  - field: "routes"
+    arrLen: { n: 11, p50: 1, p90: 2, max: 2 }
+  - field: "routeSource"
+    strLen: { n: 2, p50: 26, p90: 26, max: 26 }
+  - field: "rowFilter"
+    strLen: { n: 6, p50: 44, p90: 45, max: 45 }
+  - field: "rule"
+    strLen: { n: 119, p50: 43, p90: 70, max: 124 }
+  - field: "ruleBindings"
+    arrLen: { n: 3, p50: 0, p90: 0, max: 0 }
+  - field: "ruleChecks"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 3, p50: 2, p90: 2, max: 2 }
+  - field: "ruleClamps"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "ruleGate"
+    strLen: { n: 4, p50: 3, p90: 3, max: 3 }
+  - field: "ruleId"
+    strLen: { n: 3, p50: 3, p90: 3, max: 3 }
+  - field: "ruleIds"
+    strLen: { n: 2, p50: 14, p90: 14, max: 14 }
+    arrLen: { n: 5, p50: 1, p90: 2, max: 2 }
+  - field: "ruleKeys"
+    strLen: { n: 13, p50: 14, p90: 14, max: 14 }
+    arrLen: { n: 5, p50: 0, p90: 1, max: 1 }
+  - field: "ruleName"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "ruleRef"
+    strLen: { n: 22, p50: 3, p90: 7, max: 7 }
+  - field: "ruleSetVersion"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "runtime"
+    strLen: { n: 1, p50: 15, p90: 15, max: 15 }
+  - field: "S"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "sampleRows"
+    arrLen: { n: 3, p50: 1, p90: 2, max: 2 }
+  - field: "samples"
+    arrLen: { n: 7, p50: 1, p90: 2, max: 2 }
+  - field: "scenarioPackages"
+    arrLen: { n: 3, p50: 1, p90: 1, max: 1 }
+  - field: "scenarios"
+    strLen: { n: 3, p50: 42, p90: 42, max: 42 }
+    arrLen: { n: 8, p50: 1, p90: 3, max: 3 }
+  - field: "scenarioScript"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "sceneNeeds"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "scheduledAt"
+    strLen: { n: 4, p50: 20, p90: 20, max: 20 }
+  - field: "scheme"
+    strLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "scopeNote"
+    strLen: { n: 3, p50: 19, p90: 22, max: 22 }
+  - field: "screens"
+    arrLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "scriptHash"
+    strLen: { n: 3, p50: 0, p90: 8, max: 8 }
+  - field: "seg"
+    strLen: { n: 11, p50: 3, p90: 3, max: 3 }
+  - field: "segments"
+    arrLen: { n: 22, p50: 2, p90: 5, max: 5 }
+  - field: "select"
+    strLen: { n: 2, p50: 40, p90: 40, max: 40 }
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "selectedBy"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "selectedIntents"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "selectedObjects"
+    arrLen: { n: 22, p50: 0, p90: 1, max: 1 }
+  - field: "selection"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "serverName"
+    strLen: { n: 4, p50: 11, p90: 11, max: 11 }
+  - field: "shape"
+    strLen: { n: 22, p50: 6, p90: 7, max: 9 }
+  - field: "sharedByType"
+    strLen: { n: 2, p50: 26, p90: 26, max: 26 }
+  - field: "shareId"
+    strLen: { n: 4, p50: 12, p90: 14, max: 14 }
+  - field: "sharePct"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "sharePts"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "shortItems"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "shortLabel"
+    strLen: { n: 10, p50: 4, p90: 4, max: 4 }
+  - field: "side"
+    strLen: { n: 23, p50: 9, p90: 12, max: 12 }
+  - field: "sideEffect"
+    strLen: { n: 39, p50: 4, p90: 7, max: 12 }
+  - field: "sideEffects"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "signalRef"
+    strLen: { n: 8, p50: 14, p90: 18, max: 18 }
+  - field: "signals"
+    arrLen: { n: 7, p50: 1, p90: 3, max: 3 }
+  - field: "skill"
+    strLen: { n: 4, p50: 4, p90: 5, max: 5 }
+  - field: "skillId"
+    strLen: { n: 7, p50: 17, p90: 21, max: 21 }
+  - field: "skillKey"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "skillNeeds"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "skills"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+    arrLen: { n: 21, p50: 0, p90: 1, max: 1 }
+  - field: "skipped"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "slice"
+    strLen: { n: 4, p50: 4, p90: 13, max: 13 }
+  - field: "sliceNeeds"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "slices"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 6, p50: 0, p90: 2, max: 2 }
+  - field: "slicesUsed"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "solver"
+    strLen: { n: 104, p50: 17, p90: 33, max: 52 }
+  - field: "solverKeys"
+    arrLen: { n: 28, p50: 1, p90: 2, max: 3 }
+  - field: "solverNeeds"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+    arrLen: { n: 3, p50: 1, p90: 1, max: 1 }
+  - field: "solvers"
+    strLen: { n: 2, p50: 43, p90: 43, max: 43 }
+    arrLen: { n: 21, p50: 0, p90: 1, max: 1 }
+  - field: "sop"
+    strLen: { n: 4, p50: 11, p90: 16, max: 16 }
+  - field: "sourceBindings"
+    arrLen: { n: 117, p50: 1, p90: 1, max: 2 }
+  - field: "sourceConnId"
+    strLen: { n: 21, p50: 8, p90: 8, max: 10 }
+  - field: "sourceDataset"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "sourceKind"
+    strLen: { n: 3, p50: 5, p90: 6, max: 6 }
+  - field: "sourceQuote"
+    strLen: { n: 4, p50: 17, p90: 27, max: 27 }
+  - field: "sources"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "sourceStateVar"
+    strLen: { n: 52, p50: 12, p90: 16, max: 18 }
+  - field: "sourceSystem"
+    strLen: { n: 96, p50: 3, p90: 3, max: 9 }
+  - field: "sourceTenantId"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "sourceTypeKey"
+    strLen: { n: 51, p50: 7, p90: 12, max: 13 }
+  - field: "spannedDomains"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+    arrLen: { n: 3, p50: 1, p90: 1, max: 1 }
+  - field: "specKey"
+    strLen: { n: 5, p50: 12, p90: 17, max: 17 }
+  - field: "src"
+    strLen: { n: 37, p50: 24, p90: 44, max: 51 }
+  - field: "stages"
+    arrLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "start"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "statement"
+    strLen: { n: 3, p50: 66, p90: 66, max: 66 }
+  - field: "stateVarBounds"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "stateVarKeys"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "stdDurationCaption"
+    strLen: { n: 2, p50: 22, p90: 22, max: 22 }
+  - field: "stepDeadlines"
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "stepIds"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "stepKey"
+    strLen: { n: 8, p50: 10, p90: 14, max: 14 }
+  - field: "stepType"
+    strLen: { n: 3, p50: 11, p90: 11, max: 11 }
+  - field: "storyCoverage"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "structure"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "sub"
+    strLen: { n: 76, p50: 11, p90: 21, max: 117 }
+  - field: "subject"
+    strLen: { n: 22, p50: 11, p90: 15, max: 20 }
+  - field: "subjectId"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "subjectType"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "suggestedAction"
+    strLen: { n: 4, p50: 3, p90: 5, max: 5 }
+  - field: "suggestedFill"
+    strLen: { n: 6, p50: 21, p90: 48, max: 48 }
+  - field: "suggestedQuestions"
+    arrLen: { n: 17, p50: 2, p90: 3, max: 3 }
+  - field: "suite"
+    strLen: { n: 6, p50: 10, p90: 13, max: 13 }
+  - field: "sum"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "supplierId"
+    strLen: { n: 25, p50: 7, p90: 7, max: 10 }
+  - field: "supply"
+    strLen: { n: 6, p50: 8, p90: 11, max: 11 }
+    arrLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "suppressed"
+    arrLen: { n: 3, p50: 0, p90: 2, max: 2 }
+  - field: "synthesisMode"
+    strLen: { n: 3, p50: 13, p90: 13, max: 13 }
+  - field: "synthetic"
+    strLen: { n: 2, p50: 100, p90: 100, max: 100 }
+  - field: "system"
+    strLen: { n: 11, p50: 1, p90: 7, max: 9 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "systemKey"
+    strLen: { n: 5, p50: 10, p90: 12, max: 12 }
+  - field: "systemPrompt"
+    strLen: { n: 5, p50: 30, p90: 132, max: 132 }
+  - field: "tag"
+    strLen: { n: 46, p50: 4, p90: 10, max: 12 }
+  - field: "tags"
+    arrLen: { n: 131, p50: 3, p90: 5, max: 11 }
+  - field: "targetField"
+    strLen: { n: 4, p50: 4, p90: 4, max: 4 }
+  - field: "targetFrom"
+    strLen: { n: 11, p50: 11, p90: 11, max: 11 }
+  - field: "targetKey"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "targetOrderId"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "targetProp"
+    strLen: { n: 5, p50: 11, p90: 12, max: 12 }
+  - field: "targetView"
+    strLen: { n: 8, p50: 4, p90: 7, max: 7 }
+  - field: "templateKey"
+    strLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "tenant"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "terminalState"
+    strLen: { n: 4, p50: 9, p90: 9, max: 9 }
+  - field: "text"
+    strLen: { n: 49, p50: 4, p90: 83, max: 102 }
+  - field: "thresholds"
+    arrLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "thresholdSource"
+    strLen: { n: 5, p50: 15, p90: 15, max: 15 }
+  - field: "tiers"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "timeField"
+    strLen: { n: 4, p50: 2, p90: 2, max: 2 }
+  - field: "timeline"
+    strLen: { n: 1, p50: 14, p90: 14, max: 14 }
+    arrLen: { n: 4, p50: 4, p90: 4, max: 4 }
+  - field: "timeWindow"
+    strLen: { n: 1, p50: 23, p90: 23, max: 23 }
+  - field: "timezone"
+    strLen: { n: 3, p50: 13, p90: 13, max: 13 }
+  - field: "timings"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "toBase"
+    strLen: { n: 3, p50: 7, p90: 8, max: 8 }
+  - field: "toDay"
+    strLen: { n: 3, p50: 15, p90: 20, max: 20 }
+  - field: "toField"
+    strLen: { n: 5, p50: 10, p90: 11, max: 11 }
+  - field: "toId"
+    strLen: { n: 1, p50: 18, p90: 18, max: 18 }
+  - field: "tokens"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "toKey"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "toKind"
+    strLen: { n: 5, p50: 5, p90: 6, max: 6 }
+  - field: "tool"
+    strLen: { n: 7, p50: 13, p90: 14, max: 14 }
+  - field: "toolCallId"
+    strLen: { n: 18, p50: 7, p90: 8, max: 8 }
+  - field: "toolCalls"
+    arrLen: { n: 14, p50: 1, p90: 1, max: 2 }
+  - field: "toolFilter"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "toolNames"
+    arrLen: { n: 17, p50: 2, p90: 4, max: 10 }
+  - field: "TOOLSEQ"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "toolSequence"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "toolWhitelist"
+    arrLen: { n: 8, p50: 2, p90: 8, max: 8 }
+  - field: "top"
+    strLen: { n: 3, p50: 4, p90: 4, max: 4 }
+  - field: "toPrincipalRef"
+    strLen: { n: 2, p50: 14, p90: 14, max: 14 }
+  - field: "toQ"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+  - field: "toType"
+    strLen: { n: 6, p50: 4, p90: 5, max: 5 }
+  - field: "trace"
+    strLen: { n: 1, p50: 59, p90: 59, max: 59 }
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "trajectory"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "transferId"
+    strLen: { n: 4, p50: 29, p90: 30, max: 30 }
+  - field: "transform"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+    arrLen: { n: 3, p50: 3, p90: 3, max: 3 }
+  - field: "transitInv"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "transport"
+    strLen: { n: 2, p50: 15, p90: 15, max: 15 }
+  - field: "trend"
+    strLen: { n: 14, p50: 4, p90: 4, max: 5 }
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "trendId"
+    strLen: { n: 10, p50: 9, p90: 9, max: 9 }
+  - field: "triggeredAt"
+    strLen: { n: 3, p50: 20, p90: 24, max: 24 }
+  - field: "triggerId"
+    strLen: { n: 8, p50: 16, p90: 16, max: 16 }
+  - field: "triggerMarks"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "triggers"
+    arrLen: { n: 7, p50: 1, p90: 3, max: 3 }
+  - field: "tsGenerators"
+    arrLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "txnType"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "typeKeys"
+    arrLen: { n: 25, p50: 6, p90: 9, max: 10 }
+  - field: "types"
+    arrLen: { n: 16, p50: 1, p90: 4, max: 5 }
+  - field: "uiDeepLink"
+    strLen: { n: 4, p50: 14, p90: 18, max: 18 }
+  - field: "unanswerable"
+    arrLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "unavailableReason"
+    strLen: { n: 1, p50: 54, p90: 54, max: 54 }
+  - field: "undeclared"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "undeclaredStateVars"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "uniqueRate"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "unitKind"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "unitPrice"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "unitRefProp"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "unitsProp"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "universe"
+    strLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "unknown"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "unknownOwners"
+    arrLen: { n: 3, p50: 0, p90: 2, max: 2 }
+  - field: "unmergeUntil"
+    strLen: { n: 2, p50: 20, p90: 20, max: 20 }
+  - field: "unparsed"
+    strLen: { n: 1, p50: 14, p90: 14, max: 14 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "unresolved"
+    strLen: { n: 1, p50: 40, p90: 40, max: 40 }
+    arrLen: { n: 3, p50: 0, p90: 2, max: 2 }
+  - field: "unresolvedWeights"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "updatedBy"
+    strLen: { n: 2, p50: 19, p90: 19, max: 19 }
+  - field: "upload"
+    strLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "url"
+    strLen: { n: 3, p50: 23, p90: 33, max: 33 }
+  - field: "user"
+    strLen: { n: 7, p50: 1, p90: 19, max: 19 }
+  - field: "valueKind"
+    strLen: { n: 8, p50: 5, p90: 7, max: 7 }
+  - field: "valueLabel"
+    strLen: { n: 21, p50: 11, p90: 14, max: 16 }
+  - field: "values"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "valueUnit"
+    strLen: { n: 6, p50: 2, p90: 2, max: 2 }
+  - field: "vc"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "verify"
+    strLen: { n: 4, p50: 18, p90: 21, max: 21 }
+  - field: "versionId"
+    strLen: { n: 4, p50: 10, p90: 16, max: 16 }
+  - field: "versionLabel"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "via"
+    strLen: { n: 53, p50: 14, p90: 23, max: 31 }
+  - field: "viaField"
+    strLen: { n: 2, p50: 41, p90: 41, max: 41 }
+  - field: "violations"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "waitKind"
+    strLen: { n: 94, p50: 12, p90: 23, max: 23 }
+  - field: "warnings"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "week"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "weekendMode"
+    strLen: { n: 3, p50: 11, p90: 11, max: 11 }
+  - field: "weekly"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "weekOf"
+    strLen: { n: 10, p50: 10, p90: 10, max: 10 }
+  - field: "weeks"
+    strLen: { n: 9, p50: 2, p90: 15, max: 15 }
+  - field: "weight"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "weightField"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "weighting"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "weightingNote"
+    strLen: { n: 1, p50: 38, p90: 38, max: 38 }
+  - field: "weights"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "where"
+    strLen: { n: 34, p50: 20, p90: 68, max: 104 }
+  - field: "why"
+    strLen: { n: 45, p50: 42, p90: 94, max: 106 }
+  - field: "win"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "windows"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "winProb"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "workflowId"
+    strLen: { n: 6, p50: 16, p90: 19, max: 19 }
+  - field: "workflowKey"
+    strLen: { n: 1, p50: 13, p90: 13, max: 13 }
+  - field: "workflowNeeds"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "workflows"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "wouldBlock"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "writes"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "year"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+atomShards:
+  - package: "datacore"
+    file: "atoms/datacore.yaml"
+    count: 1357
+    edges: 5944
+  - package: "agentcore"
+    file: "atoms/agentcore.yaml"
+    count: 669
+    edges: 2860
+  - package: "frontend-shell"
+    file: "atoms/frontend-shell.yaml"
+    count: 1922
+    edges: 4787
+  - package: "contracts"
+    file: "atoms/contracts.yaml"
+    count: 2271
+    edges: 5700
+  - package: "llm-adapters"
+    file: "atoms/llm-adapters.yaml"
+    count: 47
+    edges: 7
+slices:
+  - key: "biz.equip.equipment"
+    file: "slices/biz.equip.equipment.yaml"
+    rootType: "Equipment"
+    scope: "intra"
+    domain: "equip"
+    brief: "域内切片·域 equip·根 设备(Equipment)·覆盖 6 类型：设备、设备告警、设备停机、设备OEE、维修工单、产品设备能力"
+    tags: ["Equipment", "EquipmentAlarm", "EquipmentDowntime", "EquipmentOEE", "MaintenanceOrder", "ProductEquipmentCapability", "产品设备能力", "维修工单", "设备", "设备OEE", "设备停机", "设备告警"]
+    spannedTypes: ["Equipment", "EquipmentAlarm", "EquipmentDowntime", "EquipmentOEE", "MaintenanceOrder", "ProductEquipmentCapability"]
+    spannedDomains: ["equip"]
+    atomCount: 34
+    consumerCount: 41
+    tokens: ["equip", "equipment", "equipmentalarm", "equipmentdowntime", "equipmentoee", "maintenanceorder", "oee", "productequipmentcapability", "产", "产品", "产品设备能力", "修", "修工", "停", "停机", "内", "内切", "切", "切片", "力", "单", "单产", "告", "告警", "品", "品设", "型", "型设", "域", "域内", "域根", "备", "备停", "备告", "备维", "备能", "备覆", "备设", "工", "工单", "机", "机设", "根", "根设", "片", "片域", "盖", "盖类", "类", "类型", "维", "维修", "维修工单", "能", "能力", "覆", "覆盖", "警", "警设", "设", "设备", "设备oee", "设备停机", "设备告警"]
+    span: 12
+  - key: "biz.factory.base"
+    file: "slices/biz.factory.base.yaml"
+    rootType: "Base"
+    scope: "intra"
+    domain: "factory"
+    brief: "域内切片·域 factory·根 生产基地(Base)·覆盖 5 类型：生产基地、产线、行政区、仓库、车间"
+    tags: ["Base", "Line", "Region", "Warehouse", "Workshop", "产线", "仓库", "生产基地", "行政区", "车间"]
+    spannedTypes: ["Base", "Line", "Region", "Warehouse", "Workshop"]
+    spannedDomains: ["factory"]
+    atomCount: 68
+    consumerCount: 51
+    tokens: ["base", "factory", "line", "region", "warehouse", "workshop", "产", "产基", "产线", "仓", "仓库", "内", "内切", "切", "切片", "区", "区仓", "地", "地产", "地覆", "型", "型生", "域", "域内", "域根", "基", "基地", "库", "库车", "政", "政区", "根", "根生", "片", "片域", "生", "生产", "生产基地", "盖", "盖类", "类", "类型", "线", "线行", "行", "行政", "行政区", "覆", "覆盖", "车", "车间", "间"]
+    span: 10
+  - key: "biz.people.operatorattendance"
+    file: "slices/biz.people.operatorattendance.yaml"
+    rootType: "OperatorAttendance"
+    scope: "intra"
+    domain: "people"
+    brief: "域内切片·域 people·根 操作工考勤(OperatorAttendance)·覆盖 2 类型：操作工考勤、操作工技能认证"
+    tags: ["OperatorAttendance", "OperatorSkillCert", "操作工技能认证", "操作工考勤"]
+    spannedTypes: ["OperatorAttendance", "OperatorSkillCert"]
+    spannedDomains: ["people"]
+    atomCount: 6
+    consumerCount: 4
+    tokens: ["operatorattendance", "operatorskillcert", "people", "作", "作工", "内", "内切", "切", "切片", "勤", "勤操", "勤覆", "型", "型操", "域", "域内", "域根", "工", "工技", "工考", "技", "技能", "操", "操作", "操作工技能认证", "操作工考勤", "根", "根操", "片", "片域", "盖", "盖类", "类", "类型", "考", "考勤", "能", "能认", "覆", "覆盖", "认", "认证", "证"]
+    span: 4
+  - key: "biz.plan.annualscenario"
+    file: "slices/biz.plan.annualscenario.yaml"
+    rootType: "AnnualScenario"
+    scope: "intra"
+    domain: "plan"
+    brief: "域内切片·域 plan·根 年度情景(AnnualScenario)·覆盖 2 类型：年度情景、计划目标"
+    tags: ["AnnualScenario", "PlanTarget", "年度情景", "计划目标"]
+    spannedTypes: ["AnnualScenario", "PlanTarget"]
+    spannedDomains: ["plan"]
+    atomCount: 20
+    consumerCount: 25
+    tokens: ["annualscenario", "plan", "plantarget", "内", "内切", "切", "切片", "划", "划目", "型", "型年", "域", "域内", "域根", "年", "年度", "年度情景", "度", "度情", "情", "情景", "景", "景覆", "景计", "标", "根", "根年", "片", "片域", "盖", "盖类", "目", "目标", "类", "类型", "覆", "覆盖", "计", "计划", "计划目标"]
+    span: 4
+  - key: "biz.process.operation"
+    file: "slices/biz.process.operation.yaml"
+    rootType: "Operation"
+    scope: "intra"
+    domain: "process"
+    brief: "域内切片·域 process·根 工序定义(Operation)·覆盖 3 类型：工序定义、工艺能力边界、工艺路线"
+    tags: ["Operation", "ProcessCapabilityWindow", "Routing", "工序定义", "工艺能力边界", "工艺路线"]
+    spannedTypes: ["Operation", "ProcessCapabilityWindow", "Routing"]
+    spannedDomains: ["process"]
+    atomCount: 12
+    consumerCount: 23
+    tokens: ["operation", "process", "processcapabilitywindow", "routing", "义", "义工", "义覆", "内", "内切", "切", "切片", "力", "力边", "型", "型工", "域", "域内", "域根", "定", "定义", "工", "工序", "工序定义", "工艺", "工艺能力边界", "工艺路线", "序", "序定", "根", "根工", "片", "片域", "界", "界工", "盖", "盖类", "类", "类型", "线", "能", "能力", "艺", "艺能", "艺路", "覆", "覆盖", "路", "路线", "边", "边界"]
+    span: 6
+  - key: "biz.product.bomdetail"
+    file: "slices/biz.product.bomdetail.yaml"
+    rootType: "BOMDetail"
+    scope: "intra"
+    domain: "product"
+    brief: "域内切片·域 product·根 BOM明细(BOMDetail)·覆盖 2 类型：BOM明细、BOM主表"
+    tags: ["BOMDetail", "BOMHeader", "BOM主表", "BOM明细"]
+    spannedTypes: ["BOMDetail", "BOMHeader"]
+    spannedDomains: ["product"]
+    atomCount: 12
+    consumerCount: 22
+    tokens: ["bom", "bomdetail", "bomheader", "bom主表", "bom明细", "product", "主", "主表", "内", "内切", "切", "切片", "型", "型明", "域", "域内", "域根", "明", "明细", "根", "根明", "片", "片域", "盖", "盖类", "类", "类型", "细", "细主", "细覆", "表", "覆", "覆盖"]
+    span: 4
+  - key: "biz.supply.finishedgoodsinventory"
+    file: "slices/biz.supply.finishedgoodsinventory.yaml"
+    rootType: "FinishedGoodsInventory"
+    scope: "intra"
+    domain: "supply"
+    brief: "域内切片·域 supply·根 成品库存(FinishedGoodsInventory)·覆盖 2 类型：成品库存、库存流水"
+    tags: ["FinishedGoodsInventory", "InventoryTxn", "库存流水", "成品库存"]
+    spannedTypes: ["FinishedGoodsInventory", "InventoryTxn"]
+    spannedDomains: ["supply"]
+    atomCount: 8
+    consumerCount: 17
+    tokens: ["finishedgoodsinventory", "inventorytxn", "supply", "内", "内切", "切", "切片", "品", "品库", "型", "型成", "域", "域内", "域根", "存", "存库", "存流", "存覆", "库", "库存", "库存流水", "成", "成品", "成品库存", "根", "根成", "水", "流", "流水", "片", "片域", "盖", "盖类", "类", "类型", "覆", "覆盖"]
+    span: 4
+  - key: "biz.x.base_to_datasourcehealth"
+    file: "slices/biz.x.base_to_datasourcehealth.yaml"
+    rootType: "Base"
+    scope: "cross"
+    domain: "factory"
+    brief: "跨域接缝切片·factory↔quality·生产基地(Base) → 数据源健康度(DataSourceHealth)"
+    tags: ["Base", "DataSourceHealth", "数据源健康度", "生产基地"]
+    spannedTypes: ["Base", "DataSourceHealth"]
+    spannedDomains: ["factory", "quality"]
+    atomCount: 49
+    consumerCount: 44
+    tokens: ["base", "datasourcehealth", "factory", "quality", "产", "产基", "健", "健康", "切", "切片", "地", "地数", "域", "域接", "基", "基地", "度", "康", "康度", "据", "据源", "接", "接缝", "数", "数据", "数据源健康度", "源", "源健", "片", "片生", "生", "生产", "生产基地", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.base_to_interbasetransfer"
+    file: "slices/biz.x.base_to_interbasetransfer.yaml"
+    rootType: "Base"
+    scope: "cross"
+    domain: "factory"
+    brief: "跨域接缝切片·capacity↔factory·生产基地(Base) → 跨基地调拨(InterBaseTransfer)"
+    tags: ["Base", "InterBaseTransfer", "生产基地", "跨基地调拨"]
+    spannedTypes: ["Base", "InterBaseTransfer"]
+    spannedDomains: ["capacity", "factory"]
+    atomCount: 55
+    consumerCount: 50
+    tokens: ["base", "capacity", "factory", "interbasetransfer", "产", "产基", "切", "切片", "地", "地调", "地跨", "域", "域接", "基", "基地", "拨", "接", "接缝", "片", "片生", "生", "生产", "生产基地", "缝", "缝切", "调", "调拨", "跨", "跨域", "跨基", "跨基地调拨"]
+    span: 4
+  - key: "biz.x.base_to_maintplan"
+    file: "slices/biz.x.base_to_maintplan.yaml"
+    rootType: "Base"
+    scope: "cross"
+    domain: "factory"
+    brief: "跨域接缝切片·equip↔factory·生产基地(Base) → 检修计划(MaintPlan)"
+    tags: ["Base", "MaintPlan", "检修计划", "生产基地"]
+    spannedTypes: ["Base", "MaintPlan"]
+    spannedDomains: ["equip", "factory"]
+    atomCount: 48
+    consumerCount: 49
+    tokens: ["base", "equip", "factory", "maintplan", "产", "产基", "修", "修计", "切", "切片", "划", "地", "地检", "域", "域接", "基", "基地", "接", "接缝", "检", "检修", "检修计划", "片", "片生", "生", "生产", "生产基地", "缝", "缝切", "计", "计划", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.base_to_shipment"
+    file: "slices/biz.x.base_to_shipment.yaml"
+    rootType: "Base"
+    scope: "cross"
+    domain: "factory"
+    brief: "跨域接缝切片·capacity↔factory·生产基地(Base) → 在途批次(Shipment)"
+    tags: ["Base", "Shipment", "在途批次", "生产基地"]
+    spannedTypes: ["Base", "Shipment"]
+    spannedDomains: ["capacity", "factory"]
+    atomCount: 48
+    consumerCount: 46
+    tokens: ["base", "capacity", "factory", "shipment", "产", "产基", "切", "切片", "在", "在途", "在途批次", "地", "地在", "域", "域接", "基", "基地", "批", "批次", "接", "接缝", "次", "片", "片生", "生", "生产", "生产基地", "缝", "缝切", "跨", "跨域", "途", "途批"]
+    span: 4
+  - key: "biz.x.defectrecord_to_wiplot"
+    file: "slices/biz.x.defectrecord_to_wiplot.yaml"
+    rootType: "DefectRecord"
+    scope: "cross"
+    domain: "quality"
+    brief: "跨域接缝切片·process↔quality·缺陷记录(DefectRecord) → 在制批次(WIPLot)"
+    tags: ["DefectRecord", "WIPLot", "在制批次", "缺陷记录"]
+    spannedTypes: ["DefectRecord", "WIPLot"]
+    spannedDomains: ["process", "quality"]
+    atomCount: 17
+    consumerCount: 16
+    tokens: ["defectrecord", "process", "quality", "wiplot", "切", "切片", "制", "制批", "在", "在制", "在制批次", "域", "域接", "录", "录在", "批", "批次", "接", "接缝", "次", "片", "片缺", "缝", "缝切", "缺", "缺陷", "缺陷记录", "记", "记录", "跨", "跨域", "陷", "陷记"]
+    span: 4
+  - key: "biz.x.equipment_to_process"
+    file: "slices/biz.x.equipment_to_process.yaml"
+    rootType: "Equipment"
+    scope: "cross"
+    domain: "equip"
+    brief: "跨域接缝切片·equip↔process·设备(Equipment) → 工序(Process)"
+    tags: ["Equipment", "Process", "工序", "设备"]
+    spannedTypes: ["Equipment", "Process"]
+    spannedDomains: ["equip", "process"]
+    atomCount: 34
+    consumerCount: 39
+    tokens: ["equip", "equipment", "process", "切", "切片", "域", "域接", "备", "备工", "工", "工序", "序", "接", "接缝", "片", "片设", "缝", "缝切", "设", "设备", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.exceptionevent_to_equipmentalarm"
+    file: "slices/biz.x.exceptionevent_to_equipmentalarm.yaml"
+    rootType: "ExceptionEvent"
+    scope: "cross"
+    domain: "quality"
+    brief: "跨域接缝切片·equip↔quality·设备告警(EquipmentAlarm) → 异常事件(ExceptionEvent)"
+    tags: ["EquipmentAlarm", "ExceptionEvent", "异常事件", "设备告警"]
+    spannedTypes: ["EquipmentAlarm", "ExceptionEvent"]
+    spannedDomains: ["equip", "quality"]
+    atomCount: 11
+    consumerCount: 9
+    tokens: ["equip", "equipmentalarm", "exceptionevent", "quality", "事", "事件", "件", "切", "切片", "告", "告警", "域", "域接", "备", "备告", "常", "常事", "异", "异常", "异常事件", "接", "接缝", "片", "片设", "缝", "缝切", "警", "警异", "设", "设备", "设备告警", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.exceptionevent_to_equipmentdowntime"
+    file: "slices/biz.x.exceptionevent_to_equipmentdowntime.yaml"
+    rootType: "ExceptionEvent"
+    scope: "cross"
+    domain: "quality"
+    brief: "跨域接缝切片·equip↔quality·设备停机(EquipmentDowntime) → 异常事件(ExceptionEvent)"
+    tags: ["EquipmentDowntime", "ExceptionEvent", "异常事件", "设备停机"]
+    spannedTypes: ["EquipmentDowntime", "ExceptionEvent"]
+    spannedDomains: ["equip", "quality"]
+    atomCount: 11
+    consumerCount: 9
+    tokens: ["equip", "equipmentdowntime", "exceptionevent", "quality", "事", "事件", "件", "停", "停机", "切", "切片", "域", "域接", "备", "备停", "常", "常事", "异", "异常", "异常事件", "接", "接缝", "机", "机异", "片", "片设", "缝", "缝切", "设", "设备", "设备停机", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.exceptionevent_to_materialbalance"
+    file: "slices/biz.x.exceptionevent_to_materialbalance.yaml"
+    rootType: "ExceptionEvent"
+    scope: "cross"
+    domain: "quality"
+    brief: "跨域接缝切片·material↔quality·异常事件(ExceptionEvent) → 物料平衡(MaterialBalance)"
+    tags: ["ExceptionEvent", "MaterialBalance", "异常事件", "物料平衡"]
+    spannedTypes: ["ExceptionEvent", "MaterialBalance"]
+    spannedDomains: ["material", "quality"]
+    atomCount: 20
+    consumerCount: 24
+    tokens: ["exceptionevent", "material", "materialbalance", "quality", "事", "事件", "件", "件物", "切", "切片", "域", "域接", "常", "常事", "平", "平衡", "异", "异常", "异常事件", "接", "接缝", "料", "料平", "片", "片异", "物", "物料", "物料平衡", "缝", "缝切", "衡", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.finishedgoodsinventory_to_model"
+    file: "slices/biz.x.finishedgoodsinventory_to_model.yaml"
+    rootType: "FinishedGoodsInventory"
+    scope: "cross"
+    domain: "supply"
+    brief: "跨域接缝切片·product↔supply·成品库存(FinishedGoodsInventory) → 电池型号(Model)"
+    tags: ["FinishedGoodsInventory", "Model", "成品库存", "电池型号"]
+    spannedTypes: ["FinishedGoodsInventory", "Model"]
+    spannedDomains: ["product", "supply"]
+    atomCount: 41
+    consumerCount: 41
+    tokens: ["finishedgoodsinventory", "model", "product", "supply", "切", "切片", "号", "品", "品库", "型", "型号", "域", "域接", "存", "存电", "库", "库存", "成", "成品", "成品库存", "接", "接缝", "池", "池型", "片", "片成", "电", "电池", "电池型号", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.finishedgoodsinventory_to_warehouse"
+    file: "slices/biz.x.finishedgoodsinventory_to_warehouse.yaml"
+    rootType: "FinishedGoodsInventory"
+    scope: "cross"
+    domain: "supply"
+    brief: "跨域接缝切片·factory↔supply·成品库存(FinishedGoodsInventory) → 仓库(Warehouse)"
+    tags: ["FinishedGoodsInventory", "Warehouse", "仓库", "成品库存"]
+    spannedTypes: ["FinishedGoodsInventory", "Warehouse"]
+    spannedDomains: ["factory", "supply"]
+    atomCount: 8
+    consumerCount: 17
+    tokens: ["factory", "finishedgoodsinventory", "supply", "warehouse", "仓", "仓库", "切", "切片", "品", "品库", "域", "域接", "存", "存仓", "库", "库存", "成", "成品", "成品库存", "接", "接缝", "片", "片成", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.interbasetransfer_to_base"
+    file: "slices/biz.x.interbasetransfer_to_base.yaml"
+    rootType: "InterBaseTransfer"
+    scope: "cross"
+    domain: "capacity"
+    brief: "跨域接缝切片·capacity↔factory·生产基地(Base) → 跨基地调拨(InterBaseTransfer)"
+    tags: ["Base", "InterBaseTransfer", "生产基地", "跨基地调拨"]
+    spannedTypes: ["Base", "InterBaseTransfer"]
+    spannedDomains: ["capacity", "factory"]
+    atomCount: 55
+    consumerCount: 50
+    tokens: ["base", "capacity", "factory", "interbasetransfer", "产", "产基", "切", "切片", "地", "地调", "地跨", "域", "域接", "基", "基地", "拨", "接", "接缝", "片", "片生", "生", "生产", "生产基地", "缝", "缝切", "调", "调拨", "跨", "跨域", "跨基", "跨基地调拨"]
+    span: 4
+  - key: "biz.x.interbasetransfer_to_model"
+    file: "slices/biz.x.interbasetransfer_to_model.yaml"
+    rootType: "InterBaseTransfer"
+    scope: "cross"
+    domain: "capacity"
+    brief: "跨域接缝切片·capacity↔product·跨基地调拨(InterBaseTransfer) → 电池型号(Model)"
+    tags: ["InterBaseTransfer", "Model", "电池型号", "跨基地调拨"]
+    spannedTypes: ["InterBaseTransfer", "Model"]
+    spannedDomains: ["capacity", "product"]
+    atomCount: 50
+    consumerCount: 48
+    tokens: ["capacity", "interbasetransfer", "model", "product", "切", "切片", "号", "地", "地调", "型", "型号", "域", "域接", "基", "基地", "拨", "拨电", "接", "接缝", "池", "池型", "片", "片跨", "电", "电池", "电池型号", "缝", "缝切", "调", "调拨", "跨", "跨域", "跨基", "跨基地调拨"]
+    span: 4
+  - key: "biz.x.inventorytxn_to_workorder"
+    file: "slices/biz.x.inventorytxn_to_workorder.yaml"
+    rootType: "InventoryTxn"
+    scope: "cross"
+    domain: "supply"
+    brief: "跨域接缝切片·process↔supply·库存流水(InventoryTxn) → 生产工单(WorkOrder)"
+    tags: ["InventoryTxn", "WorkOrder", "库存流水", "生产工单"]
+    spannedTypes: ["InventoryTxn", "WorkOrder"]
+    spannedDomains: ["process", "supply"]
+    atomCount: 21
+    consumerCount: 27
+    tokens: ["inventorytxn", "process", "supply", "workorder", "产", "产工", "切", "切片", "单", "域", "域接", "存", "存流", "工", "工单", "库", "库存", "库存流水", "接", "接缝", "水", "水生", "流", "流水", "片", "片库", "生", "生产", "生产工单", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.line_to_capacitypool"
+    file: "slices/biz.x.line_to_capacitypool.yaml"
+    rootType: "Line"
+    scope: "cross"
+    domain: "factory"
+    brief: "跨域接缝切片·capacity↔factory·产能池(CapacityPool) → 产线(Line)"
+    tags: ["CapacityPool", "Line", "产线", "产能池"]
+    spannedTypes: ["CapacityPool", "Line"]
+    spannedDomains: ["capacity", "factory"]
+    atomCount: 49
+    consumerCount: 42
+    tokens: ["capacity", "capacitypool", "factory", "line", "产", "产线", "产能", "产能池", "切", "切片", "域", "域接", "接", "接缝", "池", "池产", "片", "片产", "线", "缝", "缝切", "能", "能池", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.line_to_process"
+    file: "slices/biz.x.line_to_process.yaml"
+    rootType: "Line"
+    scope: "cross"
+    domain: "factory"
+    brief: "跨域接缝切片·factory↔process·产线(Line) → 工序(Process)"
+    tags: ["Line", "Process", "产线", "工序"]
+    spannedTypes: ["Line", "Process"]
+    spannedDomains: ["factory", "process"]
+    atomCount: 53
+    consumerCount: 43
+    tokens: ["factory", "line", "process", "产", "产线", "切", "切片", "域", "域接", "工", "工序", "序", "接", "接缝", "片", "片产", "线", "线工", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.line_to_workorder"
+    file: "slices/biz.x.line_to_workorder.yaml"
+    rootType: "Line"
+    scope: "cross"
+    domain: "factory"
+    brief: "跨域接缝切片·factory↔process·产线(Line) → 生产工单(WorkOrder)"
+    tags: ["Line", "WorkOrder", "产线", "生产工单"]
+    spannedTypes: ["Line", "WorkOrder"]
+    spannedDomains: ["factory", "process"]
+    atomCount: 53
+    consumerCount: 45
+    tokens: ["factory", "line", "process", "workorder", "产", "产工", "产线", "切", "切片", "单", "域", "域接", "工", "工单", "接", "接缝", "片", "片产", "生", "生产", "生产工单", "线", "线生", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.metric_to_principal"
+    file: "slices/biz.x.metric_to_principal.yaml"
+    rootType: "Metric"
+    scope: "cross"
+    domain: "decision"
+    brief: "跨域接缝切片·decision↔people·经营指标(Metric) → 责任主体(Principal)"
+    tags: ["Metric", "Principal", "经营指标", "责任主体"]
+    spannedTypes: ["Metric", "Principal"]
+    spannedDomains: ["decision", "people"]
+    atomCount: 13
+    consumerCount: 24
+    tokens: ["decision", "metric", "people", "principal", "主", "主体", "任", "任主", "体", "切", "切片", "域", "域接", "指", "指标", "接", "接缝", "标", "标责", "片", "片经", "经", "经营", "经营指标", "缝", "缝切", "营", "营指", "责", "责任", "责任主体", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.model_to_base"
+    file: "slices/biz.x.model_to_base.yaml"
+    rootType: "Model"
+    scope: "cross"
+    domain: "product"
+    brief: "跨域接缝切片·factory↔product·生产基地(Base) → 电池型号(Model)"
+    tags: ["Base", "Model", "生产基地", "电池型号"]
+    spannedTypes: ["Base", "Model"]
+    spannedDomains: ["factory", "product"]
+    atomCount: 49
+    consumerCount: 46
+    tokens: ["base", "factory", "model", "product", "产", "产基", "切", "切片", "号", "地", "地电", "型", "型号", "域", "域接", "基", "基地", "接", "接缝", "池", "池型", "片", "片生", "生", "生产", "生产基地", "电", "电池", "电池型号", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.model_to_finishedgoodsinventory"
+    file: "slices/biz.x.model_to_finishedgoodsinventory.yaml"
+    rootType: "Model"
+    scope: "cross"
+    domain: "product"
+    brief: "跨域接缝切片·product↔supply·成品库存(FinishedGoodsInventory) → 电池型号(Model)"
+    tags: ["FinishedGoodsInventory", "Model", "成品库存", "电池型号"]
+    spannedTypes: ["FinishedGoodsInventory", "Model"]
+    spannedDomains: ["product", "supply"]
+    atomCount: 41
+    consumerCount: 41
+    tokens: ["finishedgoodsinventory", "model", "product", "supply", "切", "切片", "号", "品", "品库", "型", "型号", "域", "域接", "存", "存电", "库", "库存", "成", "成品", "成品库存", "接", "接缝", "池", "池型", "片", "片成", "电", "电池", "电池型号", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.model_to_line"
+    file: "slices/biz.x.model_to_line.yaml"
+    rootType: "Model"
+    scope: "cross"
+    domain: "product"
+    brief: "跨域接缝切片·factory↔product·产线(Line) → 电池型号(Model)"
+    tags: ["Line", "Model", "产线", "电池型号"]
+    spannedTypes: ["Line", "Model"]
+    spannedDomains: ["factory", "product"]
+    atomCount: 60
+    consumerCount: 50
+    tokens: ["factory", "line", "model", "product", "产", "产线", "切", "切片", "号", "型", "型号", "域", "域接", "接", "接缝", "池", "池型", "片", "片产", "电", "电池", "电池型号", "线", "线电", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.operatorattendance_to_line"
+    file: "slices/biz.x.operatorattendance_to_line.yaml"
+    rootType: "OperatorAttendance"
+    scope: "cross"
+    domain: "people"
+    brief: "跨域接缝切片·factory↔people·产线(Line) → 操作工考勤(OperatorAttendance)"
+    tags: ["Line", "OperatorAttendance", "产线", "操作工考勤"]
+    spannedTypes: ["Line", "OperatorAttendance"]
+    spannedDomains: ["factory", "people"]
+    atomCount: 49
+    consumerCount: 42
+    tokens: ["factory", "line", "operatorattendance", "people", "产", "产线", "作", "作工", "切", "切片", "勤", "域", "域接", "工", "工考", "接", "接缝", "操", "操作", "操作工考勤", "片", "片产", "线", "线操", "缝", "缝切", "考", "考勤", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.order_to_orderpromise"
+    file: "slices/biz.x.order_to_orderpromise.yaml"
+    rootType: "Order"
+    scope: "cross"
+    domain: "product"
+    brief: "跨域接缝切片·commercial↔product·销售订单(Order) → 订单承诺(OrderPromise)"
+    tags: ["Order", "OrderPromise", "订单承诺", "销售订单"]
+    spannedTypes: ["Order", "OrderPromise"]
+    spannedDomains: ["commercial", "product"]
+    atomCount: 61
+    consumerCount: 47
+    tokens: ["commercial", "order", "orderpromise", "product", "切", "切片", "单", "单承", "单订", "售", "售订", "域", "域接", "承", "承诺", "接", "接缝", "片", "片销", "缝", "缝切", "订", "订单", "订单承诺", "诺", "跨", "跨域", "销", "销售", "销售订单"]
+    span: 4
+  - key: "biz.x.order_to_plantarget"
+    file: "slices/biz.x.order_to_plantarget.yaml"
+    rootType: "Order"
+    scope: "cross"
+    domain: "product"
+    brief: "跨域接缝切片·plan↔product·销售订单(Order) → 计划目标(PlanTarget)"
+    tags: ["Order", "PlanTarget", "计划目标", "销售订单"]
+    spannedTypes: ["Order", "PlanTarget"]
+    spannedDomains: ["plan", "product"]
+    atomCount: 64
+    consumerCount: 47
+    tokens: ["order", "plan", "plantarget", "product", "切", "切片", "划", "划目", "单", "单计", "售", "售订", "域", "域接", "接", "接缝", "标", "片", "片销", "目", "目标", "缝", "缝切", "计", "计划", "计划目标", "订", "订单", "跨", "跨域", "销", "销售", "销售订单"]
+    span: 4
+  - key: "biz.x.orderpromise_to_order"
+    file: "slices/biz.x.orderpromise_to_order.yaml"
+    rootType: "OrderPromise"
+    scope: "cross"
+    domain: "commercial"
+    brief: "跨域接缝切片·commercial↔product·销售订单(Order) → 订单承诺(OrderPromise)"
+    tags: ["Order", "OrderPromise", "订单承诺", "销售订单"]
+    spannedTypes: ["Order", "OrderPromise"]
+    spannedDomains: ["commercial", "product"]
+    atomCount: 61
+    consumerCount: 47
+    tokens: ["commercial", "order", "orderpromise", "product", "切", "切片", "单", "单承", "单订", "售", "售订", "域", "域接", "承", "承诺", "接", "接缝", "片", "片销", "缝", "缝切", "订", "订单", "订单承诺", "诺", "跨", "跨域", "销", "销售", "销售订单"]
+    span: 4
+  - key: "biz.x.plantarget_to_principal"
+    file: "slices/biz.x.plantarget_to_principal.yaml"
+    rootType: "PlanTarget"
+    scope: "cross"
+    domain: "plan"
+    brief: "跨域接缝切片·people↔plan·计划目标(PlanTarget) → 责任主体(Principal)"
+    tags: ["PlanTarget", "Principal", "计划目标", "责任主体"]
+    spannedTypes: ["PlanTarget", "Principal"]
+    spannedDomains: ["people", "plan"]
+    atomCount: 17
+    consumerCount: 24
+    tokens: ["people", "plan", "plantarget", "principal", "主", "主体", "任", "任主", "体", "切", "切片", "划", "划目", "域", "域接", "接", "接缝", "标", "标责", "片", "片计", "目", "目标", "缝", "缝切", "计", "计划", "计划目标", "责", "责任", "责任主体", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.process_to_equipment"
+    file: "slices/biz.x.process_to_equipment.yaml"
+    rootType: "Process"
+    scope: "cross"
+    domain: "process"
+    brief: "跨域接缝切片·equip↔process·设备(Equipment) → 工序(Process)"
+    tags: ["Equipment", "Process", "工序", "设备"]
+    spannedTypes: ["Equipment", "Process"]
+    spannedDomains: ["equip", "process"]
+    atomCount: 34
+    consumerCount: 39
+    tokens: ["equip", "equipment", "process", "切", "切片", "域", "域接", "备", "备工", "工", "工序", "序", "接", "接缝", "片", "片设", "缝", "缝切", "设", "设备", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.process_to_line"
+    file: "slices/biz.x.process_to_line.yaml"
+    rootType: "Process"
+    scope: "cross"
+    domain: "process"
+    brief: "跨域接缝切片·factory↔process·产线(Line) → 工序(Process)"
+    tags: ["Line", "Process", "产线", "工序"]
+    spannedTypes: ["Line", "Process"]
+    spannedDomains: ["factory", "process"]
+    atomCount: 53
+    consumerCount: 43
+    tokens: ["factory", "line", "process", "产", "产线", "切", "切片", "域", "域接", "工", "工序", "序", "接", "接缝", "片", "片产", "线", "线工", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.qualitylot_to_workorder"
+    file: "slices/biz.x.qualitylot_to_workorder.yaml"
+    rootType: "QualityLot"
+    scope: "cross"
+    domain: "quality"
+    brief: "跨域接缝切片·process↔quality·质检批次(QualityLot) → 生产工单(WorkOrder)"
+    tags: ["QualityLot", "WorkOrder", "生产工单", "质检批次"]
+    spannedTypes: ["QualityLot", "WorkOrder"]
+    spannedDomains: ["process", "quality"]
+    atomCount: 24
+    consumerCount: 30
+    tokens: ["process", "quality", "qualitylot", "workorder", "产", "产工", "切", "切片", "单", "域", "域接", "工", "工单", "批", "批次", "接", "接缝", "检", "检批", "次", "次生", "片", "片质", "生", "生产", "生产工单", "缝", "缝切", "质", "质检", "质检批次", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.qualitystandard_to_model"
+    file: "slices/biz.x.qualitystandard_to_model.yaml"
+    rootType: "QualityStandard"
+    scope: "cross"
+    domain: "quality"
+    brief: "跨域接缝切片·product↔quality·电池型号(Model) → 质量标准(QualityStandard)"
+    tags: ["Model", "QualityStandard", "电池型号", "质量标准"]
+    spannedTypes: ["Model", "QualityStandard"]
+    spannedDomains: ["product", "quality"]
+    atomCount: 40
+    consumerCount: 41
+    tokens: ["model", "product", "quality", "qualitystandard", "准", "切", "切片", "号", "号质", "型", "型号", "域", "域接", "接", "接缝", "标", "标准", "池", "池型", "片", "片电", "电", "电池", "电池型号", "缝", "缝切", "质", "质量", "质量标准", "跨", "跨域", "量", "量标"]
+    span: 4
+  - key: "biz.x.routing_to_model"
+    file: "slices/biz.x.routing_to_model.yaml"
+    rootType: "Routing"
+    scope: "cross"
+    domain: "process"
+    brief: "跨域接缝切片·process↔product·电池型号(Model) → 工艺路线(Routing)"
+    tags: ["Model", "Routing", "工艺路线", "电池型号"]
+    spannedTypes: ["Model", "Routing"]
+    spannedDomains: ["process", "product"]
+    atomCount: 40
+    consumerCount: 41
+    tokens: ["model", "process", "product", "routing", "切", "切片", "号", "号工", "型", "型号", "域", "域接", "工", "工艺", "工艺路线", "接", "接缝", "池", "池型", "片", "片电", "电", "电池", "电池型号", "线", "缝", "缝切", "艺", "艺路", "跨", "跨域", "路", "路线"]
+    span: 4
+  - key: "biz.x.shiftplan_to_line"
+    file: "slices/biz.x.shiftplan_to_line.yaml"
+    rootType: "ShiftPlan"
+    scope: "cross"
+    domain: "people"
+    brief: "跨域接缝切片·factory↔people·产线(Line) → 班次计划(ShiftPlan)"
+    tags: ["Line", "ShiftPlan", "产线", "班次计划"]
+    spannedTypes: ["Line", "ShiftPlan"]
+    spannedDomains: ["factory", "people"]
+    atomCount: 49
+    consumerCount: 42
+    tokens: ["factory", "line", "people", "shiftplan", "产", "产线", "切", "切片", "划", "域", "域接", "接", "接缝", "次", "次计", "片", "片产", "班", "班次", "班次计划", "线", "线班", "缝", "缝切", "计", "计划", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.wiplot_to_defectrecord"
+    file: "slices/biz.x.wiplot_to_defectrecord.yaml"
+    rootType: "WIPLot"
+    scope: "cross"
+    domain: "process"
+    brief: "跨域接缝切片·process↔quality·缺陷记录(DefectRecord) → 在制批次(WIPLot)"
+    tags: ["DefectRecord", "WIPLot", "在制批次", "缺陷记录"]
+    spannedTypes: ["DefectRecord", "WIPLot"]
+    spannedDomains: ["process", "quality"]
+    atomCount: 17
+    consumerCount: 16
+    tokens: ["defectrecord", "process", "quality", "wiplot", "切", "切片", "制", "制批", "在", "在制", "在制批次", "域", "域接", "录", "录在", "批", "批次", "接", "接缝", "次", "片", "片缺", "缝", "缝切", "缺", "缺陷", "缺陷记录", "记", "记录", "跨", "跨域", "陷", "陷记"]
+    span: 4
+  - key: "biz.x.wiplot_to_line"
+    file: "slices/biz.x.wiplot_to_line.yaml"
+    rootType: "WIPLot"
+    scope: "cross"
+    domain: "process"
+    brief: "跨域接缝切片·factory↔process·产线(Line) → 在制批次(WIPLot)"
+    tags: ["Line", "WIPLot", "产线", "在制批次"]
+    spannedTypes: ["Line", "WIPLot"]
+    spannedDomains: ["factory", "process"]
+    atomCount: 55
+    consumerCount: 48
+    tokens: ["factory", "line", "process", "wiplot", "产", "产线", "切", "切片", "制", "制批", "在", "在制", "在制批次", "域", "域接", "批", "批次", "接", "接缝", "次", "片", "片产", "线", "线在", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.wipqualitycheckpoint_to_wiplot"
+    file: "slices/biz.x.wipqualitycheckpoint_to_wiplot.yaml"
+    rootType: "WIPQualityCheckpoint"
+    scope: "cross"
+    domain: "quality"
+    brief: "跨域接缝切片·process↔quality·在制批次(WIPLot) → 在制质检点(WIPQualityCheckpoint)"
+    tags: ["WIPLot", "WIPQualityCheckpoint", "在制批次", "在制质检点"]
+    spannedTypes: ["WIPLot", "WIPQualityCheckpoint"]
+    spannedDomains: ["process", "quality"]
+    atomCount: 14
+    consumerCount: 15
+    tokens: ["process", "quality", "wiplot", "wipqualitycheckpoint", "切", "切片", "制", "制批", "制质", "在", "在制", "在制批次", "在制质检点", "域", "域接", "批", "批次", "接", "接缝", "检", "检点", "次", "次在", "点", "片", "片在", "缝", "缝切", "质", "质检", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.workorder_to_capacitypool"
+    file: "slices/biz.x.workorder_to_capacitypool.yaml"
+    rootType: "WorkOrder"
+    scope: "cross"
+    domain: "process"
+    brief: "跨域接缝切片·capacity↔process·产能池(CapacityPool) → 生产工单(WorkOrder)"
+    tags: ["CapacityPool", "WorkOrder", "产能池", "生产工单"]
+    spannedTypes: ["CapacityPool", "WorkOrder"]
+    spannedDomains: ["capacity", "process"]
+    atomCount: 21
+    consumerCount: 27
+    tokens: ["capacity", "capacitypool", "process", "workorder", "产", "产工", "产能", "产能池", "切", "切片", "单", "域", "域接", "工", "工单", "接", "接缝", "池", "池生", "片", "片产", "生", "生产", "生产工单", "缝", "缝切", "能", "能池", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.workorder_to_line"
+    file: "slices/biz.x.workorder_to_line.yaml"
+    rootType: "WorkOrder"
+    scope: "cross"
+    domain: "process"
+    brief: "跨域接缝切片·factory↔process·产线(Line) → 生产工单(WorkOrder)"
+    tags: ["Line", "WorkOrder", "产线", "生产工单"]
+    spannedTypes: ["Line", "WorkOrder"]
+    spannedDomains: ["factory", "process"]
+    atomCount: 53
+    consumerCount: 45
+    tokens: ["factory", "line", "process", "workorder", "产", "产工", "产线", "切", "切片", "单", "域", "域接", "工", "工单", "接", "接缝", "片", "片产", "生", "生产", "生产工单", "线", "线生", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.workorder_to_model"
+    file: "slices/biz.x.workorder_to_model.yaml"
+    rootType: "WorkOrder"
+    scope: "cross"
+    domain: "process"
+    brief: "跨域接缝切片·process↔product·电池型号(Model) → 生产工单(WorkOrder)"
+    tags: ["Model", "WorkOrder", "生产工单", "电池型号"]
+    spannedTypes: ["Model", "WorkOrder"]
+    spannedDomains: ["process", "product"]
+    atomCount: 49
+    consumerCount: 46
+    tokens: ["model", "process", "product", "workorder", "产", "产工", "切", "切片", "单", "号", "号生", "型", "型号", "域", "域接", "工", "工单", "接", "接缝", "池", "池型", "片", "片电", "生", "生产", "生产工单", "电", "电池", "电池型号", "缝", "缝切", "跨", "跨域"]
+    span: 4
+  - key: "biz.x.workorder_to_order"
+    file: "slices/biz.x.workorder_to_order.yaml"
+    rootType: "WorkOrder"
+    scope: "cross"
+    domain: "process"
+    brief: "跨域接缝切片·process↔product·销售订单(Order) → 生产工单(WorkOrder)"
+    tags: ["Order", "WorkOrder", "生产工单", "销售订单"]
+    spannedTypes: ["Order", "WorkOrder"]
+    spannedDomains: ["process", "product"]
+    atomCount: 63
+    consumerCount: 50
+    tokens: ["order", "process", "product", "workorder", "产", "产工", "切", "切片", "单", "单生", "售", "售订", "域", "域接", "工", "工单", "接", "接缝", "片", "片销", "生", "生产", "生产工单", "缝", "缝切", "订", "订单", "跨", "跨域", "销", "销售", "销售订单"]
+    span: 4
+  - key: "biz.x.workorder_to_qualitylot"
+    file: "slices/biz.x.workorder_to_qualitylot.yaml"
+    rootType: "WorkOrder"
+    scope: "cross"
+    domain: "process"
+    brief: "跨域接缝切片·process↔quality·质检批次(QualityLot) → 生产工单(WorkOrder)"
+    tags: ["QualityLot", "WorkOrder", "生产工单", "质检批次"]
+    spannedTypes: ["QualityLot", "WorkOrder"]
+    spannedDomains: ["process", "quality"]
+    atomCount: 24
+    consumerCount: 30
+    tokens: ["process", "quality", "qualitylot", "workorder", "产", "产工", "切", "切片", "单", "域", "域接", "工", "工单", "批", "批次", "接", "接缝", "检", "检批", "次", "次生", "片", "片质", "生", "生产", "生产工单", "缝", "缝切", "质", "质检", "质检批次", "跨", "跨域"]
+    span: 4

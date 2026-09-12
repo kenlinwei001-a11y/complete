@@ -1,0 +1,26 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.people.operatorattendance"
+scope: "intra"
+rootType: "OperatorAttendance"
+domain: "people"
+spannedTypes: ["OperatorAttendance", "OperatorSkillCert"]
+spannedDomains: ["people"]
+paths: [[{ linkKey: "cert_for_operator", direction: "in" }]]
+brief: "域内切片·域 people·根 操作工考勤(OperatorAttendance)·覆盖 2 类型：操作工考勤、操作工技能认证"
+indexEntities: ["OperatorAttendance", "OperatorSkillCert", "操作工技能认证", "操作工考勤"]
+tokens: ["operatorattendance", "operatorskillcert", "people", "作", "作工", "内", "内切", "切", "切片", "勤", "勤操", "勤覆", "型", "型操", "域", "域内", "域根", "工", "工技", "工考", "技", "技能", "操", "操作", "操作工技能认证", "操作工考勤", "根", "根操", "片", "片域", "盖", "盖类", "类", "类型", "考", "考勤", "能", "能认", "覆", "覆盖", "认", "认证", "证"]
+counts: { atoms: 6, consumers: 4 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["OperatorAttendance", "OperatorSkillCert"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["OperatorAttendance", "OperatorSkillCert"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["OperatorAttendance", "OperatorSkillCert"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["OperatorAttendance", "OperatorSkillCert"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["OperatorAttendance", "OperatorSkillCert"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["OperatorAttendance", "OperatorSkillCert"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/synthetic/service.ts", "apps/frontend-shell/src/mocks/handlers.ts"]

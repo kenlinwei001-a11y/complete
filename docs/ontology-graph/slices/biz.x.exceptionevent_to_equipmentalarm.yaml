@@ -1,0 +1,36 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.x.exceptionevent_to_equipmentalarm"
+scope: "cross"
+rootType: "ExceptionEvent"
+domain: "quality"
+spannedTypes: ["EquipmentAlarm", "ExceptionEvent"]
+spannedDomains: ["equip", "quality"]
+paths: [[{ linkKey: "exc_sourced_from_alarm", direction: "out" }]]
+brief: "跨域接缝切片·equip↔quality·设备告警(EquipmentAlarm) → 异常事件(ExceptionEvent)"
+indexEntities: ["EquipmentAlarm", "ExceptionEvent", "异常事件", "设备告警"]
+tokens: ["equip", "equipmentalarm", "exceptionevent", "quality", "事", "事件", "件", "切", "切片", "告", "告警", "域", "域接", "备", "备告", "常", "常事", "异", "异常", "异常事件", "接", "接缝", "片", "片设", "缝", "缝切", "警", "警异", "设", "设备", "设备告警", "跨", "跨域"]
+counts: { atoms: 11, consumers: 9 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["EquipmentAlarm", "ExceptionEvent"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["EquipmentAlarm", "ExceptionEvent"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["ExceptionEvent"]
+  - atom: "sym:apps/datacore/src/ontology/slice-layers.ts#projectSliceLayers"
+    via: ["ExceptionEvent"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["EquipmentAlarm", "ExceptionEvent"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["EquipmentAlarm", "ExceptionEvent"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#EXC_SOURCE_LINKS"
+    via: ["EquipmentAlarm"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#projectExceptionEvents"
+    via: ["EquipmentAlarm"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["EquipmentAlarm", "ExceptionEvent"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["EquipmentAlarm", "ExceptionEvent"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["EquipmentAlarm"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/handlers.ts"]

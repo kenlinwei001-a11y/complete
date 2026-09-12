@@ -1,0 +1,40 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.x.metric_to_principal"
+scope: "cross"
+rootType: "Metric"
+domain: "decision"
+spannedTypes: ["Metric", "Principal"]
+spannedDomains: ["decision", "people"]
+paths: [[{ linkKey: "metric_ownedby", direction: "out" }]]
+brief: "跨域接缝切片·decision↔people·经营指标(Metric) → 责任主体(Principal)"
+indexEntities: ["Metric", "Principal", "经营指标", "责任主体"]
+tokens: ["decision", "metric", "people", "principal", "主", "主体", "任", "任主", "体", "切", "切片", "域", "域接", "指", "指标", "接", "接缝", "标", "标责", "片", "片经", "经", "经营", "经营指标", "缝", "缝切", "营", "营指", "责", "责任", "责任主体", "跨", "跨域"]
+counts: { atoms: 13, consumers: 24 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["Metric", "Principal"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["Metric", "Principal"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["Metric", "Principal"]
+  - atom: "sym:apps/datacore/src/solvers/ontology-signature.ts#SOLVER_ONTOLOGY_SIGNATURES"
+    via: ["Metric"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["Metric"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["Metric", "Principal"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["Metric", "Principal"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["Metric", "Principal"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["Metric", "Principal"]
+  - atom: "sym:apps/datacore/src/twin/enterprise-state.ts#EnterpriseStateService"
+    via: ["Metric"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["Metric", "Principal"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["Metric"]
+  - atom: "sym:packages/contracts/src/enterprise-state.ts#captureEnterpriseState"
+    via: ["Metric"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/ontology-governance.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/twin/enterprise-state.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/handlers.ts"]

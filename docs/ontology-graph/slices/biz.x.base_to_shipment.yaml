@@ -1,0 +1,110 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.x.base_to_shipment"
+scope: "cross"
+rootType: "Base"
+domain: "factory"
+spannedTypes: ["Base", "Shipment"]
+spannedDomains: ["capacity", "factory"]
+paths: [[{ linkKey: "base_has_shipment", direction: "out" }]]
+brief: "跨域接缝切片·capacity↔factory·生产基地(Base) → 在途批次(Shipment)"
+indexEntities: ["Base", "Shipment", "在途批次", "生产基地"]
+tokens: ["base", "capacity", "factory", "shipment", "产", "产基", "切", "切片", "在", "在途", "在途批次", "地", "地在", "域", "域接", "基", "基地", "批", "批次", "接", "接缝", "次", "片", "片生", "生", "生产", "生产基地", "缝", "缝切", "跨", "跨域", "途", "途批"]
+counts: { atoms: 48, consumers: 46 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/clients.ts#MockOntologyClient"
+    via: ["Base"]
+  - atom: "sym:apps/agentcore/src/mocks/clients.ts#MockRuleEngineClient"
+    via: ["Base"]
+  - atom: "sym:apps/agentcore/src/mocks/clients.ts#MockSolverClient"
+    via: ["Base"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#ROLE_PROFILES"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#seedIntentsAndPlans"
+    via: ["Base"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#seedRegistry"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/calibration/service.ts#CalibrationService"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/databuilder/comprehend.ts#comprehendScript"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/graphmeta.ts#BUSINESS_DOMAINS"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/graphmeta.ts#SOLVER_GRAPH"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/livedin/bundle.ts#HistoryService"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/livedin/engine.ts#LivedInEngine"
+    via: ["Shipment"]
+  - atom: "sym:apps/datacore/src/ontology.ts#OntologyService"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/simclock.ts#SimClockService"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/solvers/chain-impediment.ts#CONTENTION_LOCUS_TYPE"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/solvers/ontology-signature.ts#SOLVER_ONTOLOGY_SIGNATURES"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#CoreSolverObjectType"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SOLVER_REQUIRED_TYPES"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/solvers/types.ts#resolveBaseRef"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_RULE_SCOPES"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_TEMPLATE"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryBuiltinSlices"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#entityRefFieldOf"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/datacore/src/vle-oracle.ts#referenceCapacityForecast"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/vle.ts#VleService"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#AGENTS"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["Base", "Shipment"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#MODELING_DRAFT"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#POLICIES"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#SCENARIOS"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#WORKFLOWS"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#__resetSliceGovMock"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/planFixtures.ts#MAPPING_ROWS"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/sseScripts.ts#scriptForQuery"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx#DynamicLeverPanel"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/transitFlow.ts#TRANSIT_SOURCE_SPECS"
+    via: ["Shipment"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx#TransitFlowLayer"
+    via: ["Shipment"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/unified/console0828/eventCatalog.ts#BUSINESS_EVENTS"
+    via: ["Base"]
+  - atom: "sym:packages/contracts/src/sim-drill.ts#DRILL_EVENT_SPECS"
+    via: ["Base"]
+consumers: ["apps/agentcore/src/main.ts", "apps/agentcore/src/mocks/clients.ts", "apps/agentcore/src/scripts/smoke-llm.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/entity-catalog.ts", "apps/datacore/src/databuilder/intake-pipeline.ts", "apps/datacore/src/databuilder/provisioners.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/decision/kernel.ts", "apps/datacore/src/livedin/bundle.ts", "apps/datacore/src/livedin/engine.ts", "apps/datacore/src/mapping.ts", "apps/datacore/src/modeling.ts", "apps/datacore/src/ontology-governance.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/ontology/refbase.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/pipeline/service.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/extended.ts", "apps/datacore/src/solvers/impediment-options.ts", "apps/datacore/src/solvers/risk.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/builtin-templates.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/db.ts", "apps/frontend-shell/src/mocks/handlers.ts", "apps/frontend-shell/src/views/RiskBoardView.tsx", "apps/frontend-shell/src/views/sim/DrillPanel.tsx", "apps/frontend-shell/src/views/sim/ProjectSimView.tsx", "apps/frontend-shell/src/views/sim/SandboxConsole.tsx", "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx", "apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx"]

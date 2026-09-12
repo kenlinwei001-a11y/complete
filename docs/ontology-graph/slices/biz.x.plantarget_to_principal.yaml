@@ -1,0 +1,48 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.x.plantarget_to_principal"
+scope: "cross"
+rootType: "PlanTarget"
+domain: "plan"
+spannedTypes: ["PlanTarget", "Principal"]
+spannedDomains: ["people", "plan"]
+paths: [[{ linkKey: "plantarget_ownedby", direction: "out" }]]
+brief: "跨域接缝切片·people↔plan·计划目标(PlanTarget) → 责任主体(Principal)"
+indexEntities: ["PlanTarget", "Principal", "计划目标", "责任主体"]
+tokens: ["people", "plan", "plantarget", "principal", "主", "主体", "任", "任主", "体", "切", "切片", "划", "划目", "域", "域接", "接", "接缝", "标", "标责", "片", "片计", "目", "目标", "缝", "缝切", "计", "计划", "计划目标", "责", "责任", "责任主体", "跨", "跨域"]
+counts: { atoms: 17, consumers: 24 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["PlanTarget", "Principal"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["PlanTarget", "Principal"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["PlanTarget", "Principal"]
+  - atom: "sym:apps/datacore/src/graphmeta.ts#BUSINESS_DOMAINS"
+    via: ["PlanTarget"]
+  - atom: "sym:apps/datacore/src/planviews.ts#PlanService"
+    via: ["PlanTarget"]
+  - atom: "sym:apps/datacore/src/solvers/extended.ts#deriveExtendedArgs"
+    via: ["PlanTarget"]
+  - atom: "sym:apps/datacore/src/solvers/ontology-signature.ts#SOLVER_ONTOLOGY_SIGNATURES"
+    via: ["PlanTarget"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["PlanTarget"]
+  - atom: "sym:apps/datacore/src/sop.ts#SopService"
+    via: ["PlanTarget"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryBuiltinSlices"
+    via: ["PlanTarget"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["PlanTarget", "Principal"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["PlanTarget", "Principal"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["PlanTarget", "Principal"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["PlanTarget", "Principal"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["PlanTarget", "Principal"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["PlanTarget"]
+  - atom: "sym:apps/frontend-shell/src/mocks/processWaitFixtures.ts#PROCESS_INSTANCES_P01"
+    via: ["PlanTarget"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/ontology-governance.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/ontology/refbase.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/handlers.ts"]

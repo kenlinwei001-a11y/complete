@@ -1,0 +1,30 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.supply.finishedgoodsinventory"
+scope: "intra"
+rootType: "FinishedGoodsInventory"
+domain: "supply"
+spannedTypes: ["FinishedGoodsInventory", "InventoryTxn"]
+spannedDomains: ["supply"]
+paths: [[{ linkKey: "txn_for_fg", direction: "in" }]]
+brief: "域内切片·域 supply·根 成品库存(FinishedGoodsInventory)·覆盖 2 类型：成品库存、库存流水"
+indexEntities: ["FinishedGoodsInventory", "InventoryTxn", "库存流水", "成品库存"]
+tokens: ["finishedgoodsinventory", "inventorytxn", "supply", "内", "内切", "切", "切片", "品", "品库", "型", "型成", "域", "域内", "域根", "存", "存库", "存流", "存覆", "库", "库存", "库存流水", "成", "成品", "成品库存", "根", "根成", "水", "流", "流水", "片", "片域", "盖", "盖类", "类", "类型", "覆", "覆盖"]
+counts: { atoms: 8, consumers: 17 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["FinishedGoodsInventory", "InventoryTxn"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["FinishedGoodsInventory", "InventoryTxn"]
+  - atom: "sym:apps/datacore/src/seed-derivation-specs.ts#DEMO_DERIVATION_SPECS"
+    via: ["FinishedGoodsInventory"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["FinishedGoodsInventory"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["FinishedGoodsInventory", "InventoryTxn"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["FinishedGoodsInventory", "InventoryTxn"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["FinishedGoodsInventory", "InventoryTxn"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["FinishedGoodsInventory", "InventoryTxn"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts"]
