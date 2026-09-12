@@ -70,6 +70,9 @@ export * from "./ontology-semantics.js"; // WO-QOS-ONTOLOGY-CONTEXT · type-sema
 export * from "./pipeline.js"; // OntoFlow（PRD v2）· 本体建模工作流契约（数据先行⊕图谱先行·嫁接自 main 平行线）
 export * from "./ontology-query.js"; // WO-Phase3-B · 本体查询引擎 ontology_query 契约（planSlice+executeSlice+简单聚合·join≠compute·R6/R13）
 export * from "./solver-args.js"; // WO-Phase2-C 地基 · 求解器 args zod schema 注册表（组合器输入模式派生源·A/B 共享）
+// WO-SOLVER-INPUTSCHEMA · 求解器**入参模式**（JSON Schema）单一来源 —— 给模型看的说明书，从实现反推非照抄 argHints。
+// ⚠ 与上一行的 solver-args 分工不同、故意两张表：那张管「组合器能不能串」（加 key = 行为变更），本张管「模型能传什么」（纯声明）。
+export * from "./solver-input-schema.js";
 export * from "./solver-taxonomy.js"; // WO-L7A · 求解器决策问题分类维（10 类枚举 + 类目定义·按"解决什么决策问题"分·非算法分·R13 派生投影不改 key）
 export * from "./execution-plan.js"; // WO-Phase2-C · 组合执行计划契约 ExecutionPlan（compileSolverPlan → executePlan → 一次综合）
 export * from "./global-sim.js"; // WO-GSIM-2-SOLVER · 全域联合仿真契约（物料/线级换型小时/电芯-Pack两段/分批/杠杆/硬锁/递进·§3 冻结契约·R6/R13/R14）
