@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchOptTemplates, invokeSolver, retrieveOptTemplates, solveOptTemplate } from "@/api/endpoints";
+// WO-HV-A · fetchObjectTypes：对象图最优化一档的类型/字段下拉真清单来源（R14·不内联业务类型名）。
+import { fetchObjectTypes, fetchOptTemplates, invokeSolver, retrieveOptTemplates, solveOptTemplate } from "@/api/endpoints";
 import type { ViewConfigVM } from "@/api/types";
 import { toastError } from "@/store/toastStore";
 import zh from "@/locales/zh";
@@ -120,6 +121,83 @@ const fieldLabel = (k: string) => FIELD_LABEL[k] ?? k;
 
 /** 可扰动数值字段白名单（决定哪些格子可编辑 + 哪些可当推演 target）。 */
 const NUMERIC_FIELDS = ["openCost", "capacity", "demand", "cost", "supply", "cap", "weight", "value"];
+
+/**
+ * ══ WO-HV-A · 需求 1.1-d · 5 个只走问答路的可证最优求解器配屏上入口 ══
+ *
+ * **今天的行为是 X，应该是 Y**
+ *  · 今天（X）：`selection_optimize` / `assignment_optimize` / `sequencing_optimize` /
+ *    `packing_optimize` / `job_shop_schedule` 五个 CP-SAT 可证最优求解器在 `catalog.ts:191-195`
+ *    注册、经 `POST /a/v1/solvers/{key}/invoke` 可调，但**前端零 UI 调用方**
+ *    （实测：后四个全仓 0 命中，`selection_optimize` 的 2 处命中都在 MSW 桩里；
+ *    金丝雀 `facility_location` 同法命中 19 处 ⇒ 量法是好的）。用户只能经 QOS 活目录
+ *    被**字符串键分发**偶然命中，**在屏上无路可达**。
+ *  · 应该（Y）：在本页既有屏上加一档，5 个各自可达、可跑、能看见结果。
+ *
+ * **为什么是加档、不是加 5 张屏（WO 要求先证明）**
+ *  本页上半屏的 family 卡走 `optimize_whatif`，而后端 `app.ts:6392` 把 family 校验写成
+ *  `z.enum(OPT_FAMILIES)`，`OPT_FAMILIES`（`app.ts:6385`）**硬写死 5 个**且不含这 5 个
+ *  ⇒ 把它们塞进 family 列表会被后端**校验打回**。故这 5 个**不能**当 family 加档，
+ *  但它们本来就是**独立 solver key**，`invokeSolver(key,args)` 直接可调 ——
+ *  于是在**同一张屏**上另起一档直调，既不新建屏、也不动后端。
+ *
+ * **与上半屏的本质差别（别混成一种东西）**：上半屏喂的是**内联抽象 JSON**（facilities/clients…），
+ * 这 5 个读的是**真对象图**（`itemType`/`binType`/`jobType` + 字段名）——所以这里给的是
+ * **对象类型 + 字段选择器**，选项来自 `GET /a/v1/ontology/object-types` 真清单（R14·零内联业务常数）。
+ */
+interface GraphSolverArg { arg: string; label: string; kind: "type" | "field" | "num"; def?: string | number; ofType?: string }
+interface GraphSolverSpec { key: string; label: string; question: string; args: GraphSolverArg[]; outputs: { field: string; label: string }[] }
+
+const GRAPH_SOLVERS: GraphSolverSpec[] = [
+  {
+    key: "selection_optimize", label: "组合最优化", question: "预算内怎么选价值最大的一组？",
+    args: [
+      { arg: "itemType", label: "候选项对象", kind: "type" },
+      { arg: "valueField", label: "价值字段", kind: "field", def: "value", ofType: "itemType" },
+      { arg: "weightField", label: "占用字段", kind: "field", def: "weight", ofType: "itemType" },
+      { arg: "budget", label: "预算上限", kind: "num", def: 1000 },
+    ],
+    outputs: [{ field: "selected", label: "选中项" }, { field: "totalValue", label: "总价值" }, { field: "totalWeight", label: "总占用" }, { field: "candidateCount", label: "候选数" }],
+  },
+  {
+    key: "assignment_optimize", label: "指派最优化", question: "把待办指派到容器，总成本怎么最低？",
+    args: [
+      { arg: "itemType", label: "待指派对象", kind: "type" },
+      { arg: "binType", label: "容器对象", kind: "type" },
+      { arg: "weightField", label: "占用字段", kind: "field", def: "weight", ofType: "itemType" },
+      { arg: "capacityField", label: "容量字段", kind: "field", def: "capacity", ofType: "binType" },
+      { arg: "costField", label: "成本字段", kind: "field", def: "cost", ofType: "itemType" },
+    ],
+    outputs: [{ field: "objective", label: "总成本" }, { field: "itemCount", label: "待办数" }, { field: "binCount", label: "容器数" }],
+  },
+  {
+    key: "sequencing_optimize", label: "排序最优化", question: "作业按什么顺序做，换型成本最小？",
+    args: [
+      { arg: "jobType", label: "作业对象", kind: "type" },
+      { arg: "groupField", label: "换型分组字段", kind: "field", def: "group", ofType: "jobType" },
+    ],
+    outputs: [{ field: "objective", label: "换型总成本" }, { field: "jobCount", label: "作业数" }],
+  },
+  {
+    key: "packing_optimize", label: "装箱最优化", question: "用最少的容器装完，怎么装？",
+    args: [
+      { arg: "itemType", label: "待装项对象", kind: "type" },
+      { arg: "sizeField", label: "尺寸字段", kind: "field", def: "size", ofType: "itemType" },
+      { arg: "binCapacity", label: "单箱容量", kind: "num", def: 100 },
+    ],
+    outputs: [{ field: "binCount", label: "用箱数" }, { field: "objective", label: "目标值" }, { field: "itemCount", label: "待装数" }],
+  },
+  {
+    key: "job_shop_schedule", label: "工序排程最优化", question: "工序排到小时级，完工跨度怎么最短？",
+    args: [
+      { arg: "opType", label: "工序对象", kind: "type", def: "Operation" },
+      { arg: "jobType", label: "工单对象", kind: "type", def: "WorkOrder" },
+      { arg: "machineField", label: "机器字段", kind: "field", def: "machine", ofType: "opType" },
+      { arg: "durationField", label: "时长字段", kind: "field", def: "duration", ofType: "opType" },
+    ],
+    outputs: [{ field: "makespan", label: "完工跨度" }, { field: "objective", label: "目标值" }, { field: "jobCount", label: "工单数" }],
+  },
+];
 
 interface FLSolution {
   openFacilities?: string[];
@@ -485,6 +563,9 @@ export default function OptimizeWhatifView({ view }: { view?: ViewConfigVM }) {
           )}
         </div>
       </div>
+
+      {/* WO-HV-A · 需求 1.1-d · 对象图最优化一档（5 个此前屏上无入口的可证最优求解器） */}
+      <ObjectGraphOptimizePanel />
 
       {/* WO-BEFE-E · 按需求找模板（GET /a/v1/opt/retrieve · advisory 不入确定性求解路径 FUS2） */}
       <div className="panel" data-testid="ow-retrieve">
@@ -922,3 +1003,167 @@ function GenericBody({ solution, objective }: { solution?: FLSolution; objective
 
 const selStyle: React.CSSProperties = { fontSize: 12, padding: "5px 8px", borderRadius: 7, border: "1px solid var(--line2)", background: "var(--bg2)", color: "var(--txt)" };
 const numStyle: React.CSSProperties = { width: 80, fontFamily: "var(--font-mono)", fontSize: 12.5, padding: "5px 8px", borderRadius: 7, border: "1px solid var(--accent)", background: "var(--bg2)", color: "var(--txt)", fontWeight: 700 };
+
+/**
+ * WO-HV-A · 需求 1.1-d · 「对象图最优化」一档：5 个可证最优求解器的屏上入口。
+ *
+ * 每张卡 = 一个真 solver key，直调 `POST /a/v1/solvers/{key}/invoke`（`invokeSolver`）。
+ * 对象类型/字段下拉**全部来自** `GET /a/v1/ontology/object-types` 的真清单（R14 零内联业务常数）；
+ * 求解器未接引擎时后端回的是显式「未接入最优化引擎」——**原样上屏，不兜底、不假装有解**（诚实红线）。
+ */
+function ObjectGraphOptimizePanel() {
+  const typesQuery = useQuery({ queryKey: ["a", "object-types", "graph-opt"], queryFn: fetchObjectTypes, retry: false });
+  const types = typesQuery.data ?? [];
+  const typeKeys = useMemo(() => types.map((t) => t.key).sort(), [types]);
+  const nameOf = (k: string) => types.find((t) => t.key === k)?.displayName ?? k;
+  /** 某类型的属性名清单（字段下拉的选项 —— 让用户选得到、不必猜字段名）。 */
+  const propsOf = (k: string) => (types.find((t) => t.key === k)?.properties ?? []).map((p) => p.propKey);
+
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [argState, setArgState] = useState<Record<string, Record<string, string | number>>>({});
+  const [result, setResult] = useState<Record<string, { ok: boolean; data?: Record<string, unknown>; err?: string }>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  /** 该 solver 当前实参：用户改过的优先，其次 spec 默认值，类型类默认取真清单第一个。 */
+  const argsOf = (spec: GraphSolverSpec): Record<string, string | number> => {
+    const cur = argState[spec.key] ?? {};
+    const out: Record<string, string | number> = {};
+    for (const a of spec.args) {
+      const v = cur[a.arg];
+      if (v !== undefined && v !== "") { out[a.arg] = v; continue; }
+      if (a.def !== undefined && (a.kind !== "type" || typeKeys.includes(String(a.def)))) { out[a.arg] = a.def; continue; }
+      if (a.kind === "type") out[a.arg] = typeKeys[0] ?? "";
+      else if (a.kind === "field") out[a.arg] = "";
+      else out[a.arg] = 0;
+    }
+    return out;
+  };
+  const setArg = (key: string, arg: string, v: string | number) =>
+    setArgState((s) => ({ ...s, [key]: { ...(s[key] ?? {}), [arg]: v } }));
+
+  const run = async (spec: GraphSolverSpec) => {
+    setBusy(spec.key);
+    try {
+      const raw = argsOf(spec);
+      // 空字符串的可选字段不下发 —— 让后端用它自己的默认值，而不是被一个空串覆盖掉。
+      const args: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(raw)) if (v !== "") args[k] = v;
+      const res = await invokeSolver(spec.key, args);
+      setResult((r) => ({ ...r, [spec.key]: { ok: true, data: (res.data ?? {}) as Record<string, unknown> } }));
+    } catch (e) {
+      setResult((r) => ({ ...r, [spec.key]: { ok: false, err: (e as { message?: string })?.message ?? String(e) } }));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="panel" data-testid="ow-graph-solvers">
+      <div className="section-title">
+        对象图最优化 · 可证最优
+        <span style={{ fontSize: 12, color: "var(--muted2)", fontWeight: 400, marginLeft: 8 }}>
+          读真对象图求解（上面那档喂的是抽象模板，这档读你库里的对象）
+        </span>
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.6 }}>
+        这 5 个求解器此前只能经问答命中，屏上没有入口。选对象类型 → 求解，结果与问答路同源。
+      </div>
+      {typesQuery.isError && (
+        <div style={{ fontSize: 12, color: "var(--amber-txt)", marginTop: 8 }} data-testid="ow-graph-types-error">
+          ⚠ 对象类型清单取不到（不是「没有对象类型」）——下拉将为空，可直接改上面的类型名后求解。
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }} data-testid="ow-graph-solver-list">
+        {GRAPH_SOLVERS.map((s) => (
+          <button
+            key={s.key}
+            data-testid={`ow-graph-solver-${s.key}`}
+            className={`btn sm${openKey === s.key ? " primary" : ""}`}
+            title={s.question}
+            onClick={() => setOpenKey(openKey === s.key ? null : s.key)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {GRAPH_SOLVERS.filter((s) => s.key === openKey).map((spec) => {
+        const cur = argsOf(spec);
+        const r = result[spec.key];
+        return (
+          <div key={spec.key} style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed var(--line)" }} data-testid={`ow-graph-panel-${spec.key}`}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>{spec.question}</div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              {spec.args.map((a) => (
+                <label key={a.arg} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+                  <span style={{ color: "var(--muted2)" }}>{a.label}</span>
+                  {a.kind === "num" ? (
+                    <input
+                      type="number"
+                      data-testid={`ow-graph-arg-${spec.key}-${a.arg}`}
+                      style={numStyle}
+                      value={String(cur[a.arg] ?? "")}
+                      onChange={(e) => setArg(spec.key, a.arg, Number(e.target.value))}
+                    />
+                  ) : (
+                    <select
+                      data-testid={`ow-graph-arg-${spec.key}-${a.arg}`}
+                      style={selStyle}
+                      value={String(cur[a.arg] ?? "")}
+                      onChange={(e) => setArg(spec.key, a.arg, e.target.value)}
+                    >
+                      {a.kind === "field" && <option value="">（用默认 {String(a.def ?? "")}）</option>}
+                      {(a.kind === "type" ? typeKeys : propsOf(String(cur[a.ofType ?? ""] ?? ""))).map((o) => (
+                        <option key={o} value={o}>{a.kind === "type" ? `${nameOf(o)}（${o}）` : o}</option>
+                      ))}
+                    </select>
+                  )}
+                </label>
+              ))}
+              <button
+                className="btn sm primary"
+                data-testid={`ow-graph-run-${spec.key}`}
+                disabled={busy === spec.key}
+                onClick={() => void run(spec)}
+              >
+                {busy === spec.key ? "求解中…" : "求解"}
+              </button>
+            </div>
+
+            {r && !r.ok && (
+              /* 诚实红线：后端说「未接入最优化引擎」就照说，不拿空结果冒充「无解」。 */
+              <div style={{ fontSize: 12, color: "var(--amber-txt)", marginTop: 10 }} data-testid={`ow-graph-error-${spec.key}`}>
+                ⚠ 没算出来（这不是「无解」）：{r.err}
+              </div>
+            )}
+            {r?.ok && (
+              <div style={{ marginTop: 10 }} data-testid={`ow-graph-result-${spec.key}`}>
+                <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+                  {spec.outputs.map((o) => {
+                    const v = r.data?.[o.field];
+                    return (
+                      <div key={o.field}>
+                        <div style={{ fontSize: 12, color: "var(--muted2)" }}>{o.label}</div>
+                        <div className="mono" style={{ fontSize: 16, fontWeight: 700 }} data-testid={`ow-graph-out-${spec.key}-${o.field}`}>
+                          {Array.isArray(v) ? `${v.length} 项` : v === undefined || v === null ? "—" : String(v)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {typeof r.data?.summary === "string" && (
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8, lineHeight: 1.6 }} data-testid={`ow-graph-summary-${spec.key}`}>
+                    {r.data.summary as string}
+                  </div>
+                )}
+                <div style={{ fontSize: 11.5, color: "var(--muted2)", marginTop: 6 }}>
+                  求解器 {spec.key} · 状态 {String(r.data?.status ?? "—")} · 可证最优 {r.data?.optimal === true ? "是" : "否"}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
