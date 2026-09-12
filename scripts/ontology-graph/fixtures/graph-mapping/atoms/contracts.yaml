@@ -1,0 +1,42 @@
+# 夹具 · 真产物顶层形态（映射）。内容同 ../../graph/atoms/contracts.yaml。
+package: "contracts"
+counts: { atoms: 3, edges: 0 }
+atoms:
+  - id: sym:packages/contracts/src/global-sim.ts#lineGranularity
+    name: lineGranularity
+    kind: property
+    file: packages/contracts/src/global-sim.ts
+    line: 128
+    brief: "GlobalSimArgs 的线级粒度开关（zod 契约侧）：产线粒度 + 换型按小时"
+    docSource: jsdoc
+    tags: [contracts, solver-args, lever]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/datacore/src/solvers/service.ts", line: 3512 }], test: [] }
+
+  - id: sym:packages/contracts/src/solver-args.ts#SOLVER_ARGS_SCHEMAS
+    name: SOLVER_ARGS_SCHEMAS
+    kind: const
+    file: packages/contracts/src/solver-args.ts
+    line: 111
+    brief: "求解器 args zod schema 注册表（组合器输入模式的机器可读单一来源）：11 条"
+    docSource: jsdoc
+    tags: [contracts, registry, solver-args]
+    wo: null
+    state: wired
+    reexportOf: null
+    inbound: { srcCount: 3, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "packages/contracts/src/solver-args.ts", line: 130 }, { file: "packages/contracts/src/solver-args.ts", line: 138 }, { file: "apps/datacore/src/solvers/args-schemas.ts", line: 18 }], test: [] }
+
+  - id: sym:packages/contracts/src/solver-args.ts#argsSatisfiable
+    name: argsSatisfiable
+    kind: function
+    file: packages/contracts/src/solver-args.ts
+    line: 136
+    brief: "判断给定 args 是否满足该求解器的必填集"
+    docSource: jsdoc
+    tags: [contracts, solver-args]
+    wo: null
+    state: no-ref
+    reexportOf: null
+    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 0, src: [], test: [] }

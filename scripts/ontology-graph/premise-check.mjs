@@ -349,7 +349,9 @@ function loadGraph(dir) {
   const g = {
     ok: false, dir, index: null, atoms: [], slices: [],
     byName: new Map(), byFile: new Map(),
-    warnings: [], fatal: [], shardHealth: new Map(),
+    warnings: [], fatal: [], shardHealth: new Map(), shardShape: new Map(),
+    /** 加载器自证失败的实据；非 null ⇒ 一切「图谱里没有 X」的否定结论都不许下（见 loaderCanary）。 */
+    loaderBroken: null,
     blindSpots: [], blindSpotSource: "缺失：INDEX.blindSpots 与 README「看不见什么」段都没有",
   };
 
@@ -380,7 +382,30 @@ function loadGraph(dir) {
     g.fatal.push("INDEX.yaml 缺 counts 段 —— 图谱结构性损坏，一切计数结论均不可信（⛔ 不许当 0）");
   }
 
-  const readShards = (sub, into) => {
+  /**
+   * 分片加载 —— **必须同时认两种顶层形态**。
+   *
+   * ⚠ 这一段是本工具第一次接真产物时炸掉的地方（接缝红，两半各自绿）：
+   *   · 夹具 `fixtures/graph/atoms/contracts.yaml` 顶层是**序列**（直接 `- id:` 开头）
+   *   · 真产物 `docs/ontology-graph/atoms/datacore.yaml` 顶层是**映射**：
+   *         package: "datacore"
+   *         counts: { atoms: 1357, edges: 5944 }
+   *         atoms:
+   *           - id: "sym:…"
+   * 旧代码 `else if (v && typeof v === "object") into.push({...v})` 把**整个分片文件**
+   * 塞成了 1 个「原子」⇒ 6266 个原子读成 **5** 个，而每条对账都报「图谱无此原子」。
+   *
+   * 形态（照 CLAUDE.md 铁律 0.6 句式）：
+   *   **「我用『我的夹具是这个形状』当作『产物是这个形状』的证据，而前者并不度量后者。」**
+   * 根因是两张派单各自只描述了**条目**、没描述**文件顶层**，两个 dev 各补各的
+   * —— 正是「拆两半用不同机制不对接」那条老坑。
+   *
+   * @param sub      子目录名
+   * @param into     收集数组
+   * @param itemsKey 映射形态下装条目的键（atoms 分片是 `atoms`）
+   * @param isSingle 映射形态下判断「整份文件就是一个条目」的谓词（切片文件即如此）
+   */
+  const readShards = (sub, into, itemsKey, isSingle) => {
     const d = join(dir, sub);
     if (!existsSync(d)) { g.warnings.push(`缺 ${sub}/ 子目录`); return; }
     for (const f of readdirSync(d).filter((x) => /\.ya?ml$/.test(x)).sort()) {
@@ -390,17 +415,67 @@ function loadGraph(dir) {
         g.shardHealth.set(label, r.warnings);
         g.warnings.push(...r.warnings);
         const v = r.value;
-        if (Array.isArray(v)) into.push(...v.map((x) => ({ ...x, __shard: label })));
-        else if (v && typeof v === "object") into.push({ ...v, __shard: label });
-        else g.warnings.push(`${label} 顶层既不是序列也不是映射，已跳过`);
+        let items = null;
+        let shape = "";
+        if (Array.isArray(v)) { items = v; shape = "序列顶层"; }
+        else if (v && typeof v === "object") {
+          if (Array.isArray(v[itemsKey])) { items = v[itemsKey]; shape = `映射顶层·取 ${itemsKey}[]`; }
+          else if (isSingle && isSingle(v)) { items = [v]; shape = "映射顶层·整份即一条"; }
+        }
+        if (!items) {
+          // ⛔ 认不出的形态一律**明说**，不许静默塞一个进去充数 —— 那正是今天这个 bug 的样子
+          g.warnings.push(`${label} 顶层形态认不出（既不是序列，也没有 ${itemsKey}[]，也不像单条）⇒ 已跳过，未计入`);
+          g.shardHealth.get(label).push("顶层形态认不出，本分片零条目");
+          continue;
+        }
+        g.shardShape.set(label, { shape, loaded: items.length, declared: v && !Array.isArray(v) ? v?.counts?.[itemsKey] ?? null : null });
+        into.push(...items.map((x) => ({ ...x, __shard: label })));
       } catch (e) {
         g.shardHealth.set(label, [`解析失败：${e.message}`]);
         g.warnings.push(`${label} 解析失败：${e.message}`);
       }
     }
   };
-  readShards("atoms", g.atoms);
-  readShards("slices", g.slices);
+  readShards("atoms", g.atoms, "atoms", null);
+  // 切片文件是「一份文件一条切片」（顶层带 sliceKey / key）；也兼容 slices[] 与序列顶层
+  readShards("slices", g.slices, "slices", (v) => v.sliceKey != null || v.key != null);
+
+  // ══ 加载器金丝雀 ══════════════════════════════════════════════════════════
+  // 「加载进来的条数」必须等于「INDEX 自述的条数」。不等 ⇒ **分片加载坏了**，
+  // ⛔ 此后不许输出任何「图谱里没有 X」这类否定结论 —— 它和「我没读进来」在屏上一模一样。
+  //
+  // 这条比上面那个两形态兼容重要：兼容修的是**今天这个** bug，金丝雀防的是**下次格式再变**。
+  // 加载器悄悄少读一位数时，人眼看到的是一屏「无法对账」，读起来像「图谱不全」——
+  // 于是所有人去查一个根本没病的图谱。2026-09-12 接缝复验就是这么红的（6266 读成 5）。
+  {
+    const mism = [];
+    const want = (k) => {
+      const v = g.index?.counts?.[k];
+      return Number.isFinite(Number(v)) ? Number(v) : null;
+    };
+    const wa = want("atoms");
+    const ws = want("slices");
+    if (wa !== null && g.atoms.length !== wa) mism.push({ what: "atoms", want: wa, got: g.atoms.length });
+    if (ws !== null && g.slices.length !== ws) mism.push({ what: "slices", want: ws, got: g.slices.length });
+    // 逐分片再核一遍 —— 总数对不上时，它直接指出是哪一片没读进来
+    const perShard = [];
+    for (const s of Array.isArray(g.index?.atomShards) ? g.index.atomShards : []) {
+      const label = `atoms/${String(s?.file ?? "").split("/").pop()}`;
+      const got = g.shardShape.get(label)?.loaded ?? 0;
+      const decl = Number(s?.count);
+      if (Number.isFinite(decl) && got !== decl) perShard.push(`${label} 自述 ${decl} · 实读 ${got}`);
+    }
+    if (mism.length || perShard.length) {
+      g.loaderBroken = {
+        mism, perShard,
+        summary: [
+          ...mism.map((m) => `${m.what}：INDEX 自述 ${m.want}，本工具只读到 ${m.got}`),
+          ...perShard,
+        ],
+      };
+      g.warnings.push(`⛔ 分片加载坏了：${g.loaderBroken.summary.join("；")}`);
+    }
+  }
 
   for (const a of g.atoms) {
     if (a?.name) {
@@ -424,9 +499,9 @@ function loadGraph(dir) {
     for (const b of arr) {
       if (b && typeof b === "object") {
         const dims = (Array.isArray(b.dims) ? b.dims : []).map((d) => String(d).toUpperCase());
-        g.blindSpots.push({ text: String(b.text ?? ""), dims, exact: dims.length > 0 });
+        g.blindSpots.push({ id: b.id ? String(b.id) : null, text: String(b.text ?? ""), dims, exact: dims.length > 0 });
       } else {
-        g.blindSpots.push({ text: String(b), dims: [], exact: false });
+        g.blindSpots.push({ id: null, text: String(b), dims: [], exact: false });
       }
     }
     g.blindSpotSource = source;
@@ -461,8 +536,8 @@ function loadGraph(dir) {
 // ══════════════════════════════════════════════════════════════════════════
 
 const LEXICON = [
-  { key: "求解器", nouns: ["求解器", "solver", "solvers", "求解器注册表"], tag: "solver", indexCount: null },
-  { key: "规则", nouns: ["规则", "规则库", "业务规则", "约束规则", "rule", "rules"], tag: "rule", indexCount: null },
+  { key: "求解器", nouns: ["求解器", "solver", "solvers", "求解器注册表", "ALL_SOLVER_CATALOG"], tag: "solver", indexCount: null },
+  { key: "规则", nouns: ["规则", "规则库", "业务规则", "约束规则", "rule", "rules", "BATTERY_RULES"], tag: "rule", indexCount: null },
   { key: "求解器参数模式", nouns: ["参数模式", "args schema", "args-schema", "SOLVER_ARGS_SCHEMAS", "求解器参数"], tag: "solver-args", indexCount: null },
   { key: "切片", nouns: ["切片", "本体切片", "slice", "slices"], tag: "slice", indexCount: "slices" },
   { key: "原子", nouns: ["原子", "符号", "atom", "atoms"], tag: null, indexCount: "atoms" },
@@ -876,6 +951,17 @@ function trustCell(graph, kind, shards, degrade = [], hints = []) {
   const parts = [];
   let level = "可信";
 
+  // ══ 第三种归因，**优先于**另外两种 ════════════════════════════════════════
+  // 对账表原本只区分两种：「你写错了」和「图谱抽漏了」。**还缺第三种：本工具自己没读进来。**
+  // 三者处置完全不同 —— 第三种会把人支去查一个根本没病的图谱。
+  // 故：加载器一旦自证失败，⛔ 不许再说「图谱盲区 / 图谱抽漏」，先认自己的账。
+  if (graph.loaderBroken) {
+    parts.push(`✗ **本工具自己没把图谱读全** —— ${graph.loaderBroken.summary.slice(0, 3).join("；")}`);
+    parts.push("⛔ 在这种状态下，本行任何「图谱里没有 X」的说法都**不成立** —— 那是「我没读进来」，不是「图谱抽漏了」，更不是「你写错了」。处置：修加载器/重跑抽取器，别去查图谱。");
+    for (const d of degrade) parts.push(`（以下降级说明仅供参考，加载未修复前不作数）${d}`);
+    return { level: "工具没读进来", note: parts };
+  }
+
   const can = canaryFor(graph, kind, hints);
   parts.push(can.note);
   if (can.status === "fail" || can.status === "contradict") level = "不可信";
@@ -897,8 +983,18 @@ function trustCell(graph, kind, shards, degrade = [], hints = []) {
   const exact = graph.blindSpots.filter((b) => b.exact && b.dims.includes(kind));
   const fuzzy = graph.blindSpots.filter((b) => !b.exact && blindHits(b.text, kind));
   if (exact.length) {
-    parts.push(`⛔ 图谱自己的盲区清单**点名**了这一维度：「${exact[0].text}」`);
-    level = "图谱自认盲区";
+    // ⚠ 命中多条时**只列 id 不逐条引原文** —— 真产物里 COUNT 维度挂着 6 条盲区，
+    //   随便引其中一条（如 `structural-type-use`「interface 可被结构匹配使用」）去解释
+    //   「规则 30 条对不上」，读起来像答非所问。列 id 让人自己去 INDEX 里对照。
+    const ids = exact.map((b) => b.id || b.text.slice(0, 14)).join(" / ");
+    parts.push(exact.length === 1
+      ? `图谱盲区清单按 dims 命中 1 条：「${exact[0].text}」`
+      : `图谱盲区清单按 dims 命中 ${exact.length} 条（${ids}）—— 详见 INDEX.blindSpots，⛔ 本工具不替你挑哪条是主因`);
+    // **不完整性对「有 N 个」只是降精度，对「一个都没有」却是致命的** ——
+    // 前者仍可用（存疑），后者根本不可得（自认盲区）。故只有否定型声明才升到 ⛔。
+    const isNegativeClaim = kind === "NOREF";
+    level = isNegativeClaim ? "图谱自认盲区" : (level === "可信" ? "存疑" : level);
+    if (isNegativeClaim) parts.push("⛔ 「零调用方」是**否定**结论：图谱自认看不全引用 ⇒ 这类结论它永远给不实，不是这一次不准。");
   } else if (fuzzy.length) {
     // ⚠ 散文盲区只能关键词撞，撞到不等于说的就是这件事 ⇒ 只降到「存疑」，不许升格成断言
     parts.push(`◑ 疑似落在盲区（散文条目关键词命中，**未必说的是同一件事**）：「${fuzzy[0].text}」`);
@@ -949,11 +1045,65 @@ function atomsByTag(graph, tag) {
   return graph.atoms.filter((a) => Array.isArray(a?.tags) && a.tags.map(String).includes(tag));
 }
 
+/**
+ * ⚠ **计数用 `srcCount`/`testCount`，坐标用 `src`/`test`，两者不是一回事。**
+ * 真产物的 `inbound` 是 `{ srcCount, selfUses, selfLine, testCount, src: […], test: […] }`，
+ * 而 `src`/`test` 这两个**样例清单封顶 25 条**（图谱盲区 `inbound-samples-capped-25` 写着：
+ * 「srcCount/selfUses/testCount 是全量、从不截断 ⇒ 计数可信，坐标清单可能不全」）。
+ * 拿样例条数当引用数 ⇒ 任何 >25 处引用的符号都会被少报，且**越热门的符号错得越狠**。
+ * 形态：「我用『样例清单的长度』当作『引用总数』的证据。」
+ * 夹具那种没有 srcCount 的旧形态，退化到数样例并标记 `counted:"samples"`。
+ */
 function inboundOf(atom) {
   const ib = atom?.inbound ?? {};
-  const src = Array.isArray(ib.src) ? ib.src : [];
-  const test = Array.isArray(ib.test) ? ib.test : [];
-  return { src, test };
+  const srcSamples = Array.isArray(ib.src) ? ib.src : [];
+  const testSamples = Array.isArray(ib.test) ? ib.test : [];
+  const hasCounts = Number.isFinite(Number(ib.srcCount)) || Number.isFinite(Number(ib.testCount));
+  return {
+    srcSamples, testSamples,
+    src: srcSamples, test: testSamples, // 兼容旧调用点（坐标用）
+    srcCount: hasCounts ? Number(ib.srcCount ?? 0) : srcSamples.length,
+    testCount: hasCounts ? Number(ib.testCount ?? 0) : testSamples.length,
+    selfUses: Number.isFinite(Number(ib.selfUses)) ? Number(ib.selfUses) : null,
+    counted: hasCounts ? "full" : "samples",
+    capped: hasCounts && (srcSamples.length < Number(ib.srcCount ?? 0) || testSamples.length < Number(ib.testCount ?? 0)),
+  };
+}
+
+/**
+ * 注册表条目的**两种形态**都要认（又一处接缝）：
+ *   · 夹具形态：`{ name, aliases, count, source, breakdown }`
+ *   · 真产物形态：`{ name, file, line, parsedCount, evaluatedCount, confidence, trustworthy, entries }`
+ * 真产物那份更值钱 —— 它自带 `confidence`/`trustworthy`，直接喂第四列。
+ */
+function registryCount(r) {
+  for (const k of ["count", "entries", "evaluatedCount", "parsedCount"]) {
+    if (Number.isFinite(Number(r?.[k]))) return { n: Number(r[k]), from: k };
+  }
+  return { n: null, from: null };
+}
+function registrySource(r) {
+  if (r?.source) return String(r.source);
+  if (r?.file) return `${r.file}${r.line != null ? `:${r.line}` : ""} ${r.name ?? ""}`.trim();
+  return "（未标来源）";
+}
+
+/**
+ * `fieldStats` 条目的两种形态：
+ *   · 夹具：`{ field, n, minChars, p50, p90, maxChars, totalBytes }`
+ *   · 真产物：`{ field, strLen: { n, p50, p90, max }, arrLen: { … } }`
+ * 长度声明说的是**字符串长度** ⇒ 取 `strLen`；只有 `arrLen` 的字段不能拿来答长度。
+ */
+function fieldDist(hit) {
+  if (!hit) return null;
+  if (hit.strLen && typeof hit.strLen === "object") {
+    const s = hit.strLen;
+    return { n: s.n ?? null, min: s.min ?? null, p50: s.p50 ?? null, p90: s.p90 ?? null, max: s.max ?? null, bytes: null, shape: "strLen" };
+  }
+  if (Number.isFinite(Number(hit.n)) || Number.isFinite(Number(hit.p90))) {
+    return { n: hit.n ?? null, min: hit.minChars ?? null, p50: hit.p50 ?? null, p90: hit.p90 ?? null, max: hit.maxChars ?? null, bytes: hit.totalBytes ?? null, shape: "flat" };
+  }
+  return null; // 只有 arrLen 之类 ⇒ 答不了长度
 }
 function fmtRefs(refs, n = 5) {
   const head = refs.slice(0, n).map((r) => `${r?.file ?? "?"}:${r?.line ?? "?"}`);
@@ -976,10 +1126,18 @@ function reconcile(graph, claim) {
     const degrade = [];
     let actual, src;
 
-    if (reg && Number.isFinite(Number(reg.count))) {
-      actual = Number(reg.count);
-      src = `INDEX.yaml registries[${reg.name}] ← ${reg.source ?? "（未标来源）"}`;
+    const rc = reg ? registryCount(reg) : { n: null, from: null };
+    if (reg && rc.n !== null) {
+      actual = rc.n;
+      src = `INDEX.yaml registries[${reg.name}] ← ${registrySource(reg)}（取 ${rc.from}）`;
       if (reg.breakdown) src += `\n= ${typeof reg.breakdown === "string" ? reg.breakdown : JSON.stringify(reg.breakdown)}`;
+      // 真产物自带的可信度标记 —— 比任何外部推断都准，直接进第四列
+      if (reg.confidence != null || reg.trustworthy != null) {
+        const line = `注册表自述 confidence=${reg.confidence ?? "?"} · trustworthy=${reg.trustworthy ?? "?"}`;
+        if (reg.trustworthy === false || reg.confidence === "parsed") {
+          degrade.push(`${line} ⇒ **图谱自己说这个数不可信**（多半是该包没 build，只有 AST 解析数）。差异先归到图谱，别急着改派单。`);
+        } else src += `\n${line}`;
+      }
     } else if (Number.isFinite(Number(idxCount))) {
       actual = Number(idxCount);
       src = `INDEX.yaml counts.${entry.indexCount}`;
@@ -1001,8 +1159,8 @@ function reconcile(graph, claim) {
     if (reg) {
       if (!entry.tag) row.evidence.push(`交叉核对：词表未给「${entry.key}」定义标签选择器 ⇒ 本行只有注册表声明这一个来源`);
       else if (!tagged || !tagged.length) row.evidence.push(`交叉核对：图谱里没有 tag=${entry.tag} 的原子 ⇒ **无法**与注册表声明互证，本行只有一个来源`);
-      else if (Number(reg.count) !== tagged.length) {
-        degrade.push(`注册表声明 ${reg.count}，而图谱内 tag=${entry.tag} 原子仅 ${tagged.length} 条 ⇒ 分片可能不全；本行取注册表声明，其可信度由金丝雀背书`);
+      else if (rc.n !== tagged.length) {
+        row.evidence.push(`交叉核对：注册表自述 ${rc.n}，图谱内 tag=${entry.tag} 原子 ${tagged.length} 条 —— 两者本就不是同一个量（tag 是包/域标签，不是注册表成员），仅供参照`);
       } else row.evidence.push(`交叉核对：图谱内 tag=${entry.tag} 原子 ${tagged.length} 条，与注册表声明一致 ✔`);
     }
 
@@ -1032,37 +1190,45 @@ function reconcile(graph, claim) {
     //   zod 契约字段 —— 取第一个会得到「1 处」或「5 处」两个都不对的数，且取哪个取决于
     //   分片的载入顺序（字母序）。**让答案取决于文件名排序，就是又一次「拿 X 当 Y 的证据」。**
     const shards = [...new Set(atoms.map((x) => x.__shard))];
-    const perAtom = atoms.map((a) => ({ a, ...inboundOf(a) }));
+    const perAtom = atoms.map((a) => ({ a, ib: inboundOf(a) }));
     const uniq = (refs) => [...new Map(refs.map((r) => [`${r?.file}:${r?.line}`, r])).values()];
-    const src = uniq(perAtom.flatMap((x) => x.src));
-    const test = uniq(perAtom.flatMap((x) => x.test));
+    const srcSamples = uniq(perAtom.flatMap((x) => x.ib.srcSamples));
+    const testSamples = uniq(perAtom.flatMap((x) => x.ib.testSamples));
+    // ⚠ 计数走 srcCount/testCount（全量），坐标走 src/test（封顶 25 条的样例）
+    const srcN = perAtom.reduce((a, x) => a + x.ib.srcCount, 0);
+    const testN = perAtom.reduce((a, x) => a + x.ib.testCount, 0);
+    const selfN = perAtom.reduce((a, x) => a + (x.ib.selfUses ?? 0), 0);
+    const anyCapped = perAtom.some((x) => x.ib.capped);
+    const countedFrom = perAtom.every((x) => x.ib.counted === "full") ? "full" : "samples";
     const states = [...new Set(atoms.map((a) => String(a.state ?? "?")))];
 
-    row.says = `state=${states.join("/")} · src 入边 ${src.length} · test 入边 ${test.length}` +
-      (atoms.length > 1 ? `（${atoms.length} 个同名原子合并去重后）` : "");
+    row.says = `state=${states.join("/")} · src 引用 ${srcN} · test 引用 ${testN}` +
+      (selfN ? ` · 同文件内使用 ${selfN}` : "") +
+      (atoms.length > 1 ? `（${atoms.length} 个同名原子合计）` : "");
     for (const x of perAtom) {
-      row.evidence.push(`原子 ${x.a.id ?? sym} @ ${x.a.file ?? "?"}:${x.a.line ?? "?"} · state=${x.a.state ?? "?"} · src ${x.src.length} / test ${x.test.length}`);
+      row.evidence.push(`原子 ${x.a.id ?? sym} @ ${x.a.file ?? "?"}:${x.a.line ?? "?"} · state=${x.a.state ?? "?"} · src ${x.ib.srcCount} / test ${x.ib.testCount}${x.ib.selfUses ? ` / 同文件 ${x.ib.selfUses}` : ""}`);
     }
-    if (src.length) row.evidence.push(`src 调用方：${fmtRefs(src, 8)}`);
-    if (test.length) row.evidence.push(`test 调用方：${fmtRefs(test, 8)}`);
+    if (srcSamples.length) row.evidence.push(`src 调用方${anyCapped ? `（样例，封顶 25／共 ${srcN}）` : ""}：${fmtRefs(srcSamples, 8)}`);
+    if (testSamples.length) row.evidence.push(`test 调用方${anyCapped ? "（样例）" : ""}：${fmtRefs(testSamples, 8)}`);
+    if (countedFrom === "samples") row.evidence.push(`⚠ 该原子没有 srcCount/testCount 字段，本行的引用数是**数样例条数**得来的 —— 样例若被截断则偏小`);
 
     if (claim.kind === "NOREF") {
       const onlyTestClaim = /test|测试/.test(claim.pred);
       if (onlyTestClaim) {
-        row.verdict = src.length === 0 ? "一致" : `不一致（除 test 外还有 ${src.length} 处 src 调用方）`;
+        row.verdict = srcN === 0 ? "一致" : `不一致（除 test 外还有 ${srcN} 处 src 调用方）`;
       } else {
-        row.verdict = src.length === 0 && test.length === 0
+        row.verdict = srcN === 0 && testN === 0 && selfN === 0
           ? "一致"
-          : `不一致（图谱记到 ${src.length} 处 src + ${test.length} 处 test 入边）`;
+          : `不一致（图谱记到 ${srcN} 处 src + ${testN} 处 test${selfN ? ` + ${selfN} 处同文件内使用` : ""}）`;
       }
-    } else if (src.length === claim.expect) {
+    } else if (srcN === claim.expect) {
       row.verdict = "一致";
-    } else if (atoms.length > 1 && perAtom.some((x) => x.src.length === claim.expect)) {
+    } else if (atoms.length > 1 && perAtom.some((x) => x.ib.srcCount === claim.expect)) {
       // 图谱把入边拆到了多个同名条目上 ⇒ 这是**图谱的歧义**，不是作者写错，不许报「不一致」
-      const m = perAtom.find((x) => x.src.length === claim.expect);
-      row.verdict = `歧义（你写的 ${claim.expect} 与 ${m.a.file}:${m.a.line} 这一个条目相符；图谱里同名原子共 ${atoms.length} 个、合并后 ${src.length} 处 —— 请在派单里写明是哪一个）`;
+      const m = perAtom.find((x) => x.ib.srcCount === claim.expect);
+      row.verdict = `歧义（你写的 ${claim.expect} 与 ${m.a.file}:${m.a.line} 这一个条目相符；图谱里同名原子共 ${atoms.length} 个、合计 ${srcN} 处 —— 请在派单里写明是哪一个）`;
     } else {
-      row.verdict = `不一致（图谱记到 ${src.length} 处 src 入边）`;
+      row.verdict = `不一致（图谱记到 ${srcN} 处 src 引用）`;
     }
 
     const degrade = [];
@@ -1170,9 +1336,16 @@ function reconcile(graph, claim) {
     const degrade = [];
     let dist, src;
 
-    if (hit) {
-      dist = { n: hit.n, min: hit.minChars, p50: hit.p50, p90: hit.p90, max: hit.maxChars, bytes: hit.totalBytes };
-      src = `INDEX.yaml fieldStats[${hit.field}] ← ${hit.source ?? "（未标来源）"}`;
+    const hd = fieldDist(hit);
+    if (hd) {
+      dist = hd;
+      src = `INDEX.yaml fieldStats[${hit.field}]${hd.shape === "strLen" ? "（strLen 字符串长度分布）" : ""} ← ${hit.source ?? registrySource(hit)}`;
+    } else if (hit) {
+      row.says = `fieldStats 有 \`${hit.field}\` 但没有字符串长度分布（只有 arrLen 之类）`;
+      row.verdict = "无法对账";
+      row.evidence.push("长度声明说的是字符串长度；该字段图谱只统计了数组长度 ⇒ 答非所问，不硬答");
+      row.trust = trustCell(graph, "LENGTH", ["INDEX.yaml"], [], [claim.field]);
+      return row;
     } else {
       const entry = claim.scopeNoun ? lookupNoun(claim.scopeNoun) : null;
       const pool = entry ? (atomsByTag(graph, entry.tag) ?? []) : graph.atoms;
@@ -1190,7 +1363,15 @@ function reconcile(graph, claim) {
       degrade.push(`图谱无 fieldStats[\`${claim.field}\`]，改用**图谱侧 \`brief\` 的长度**代答 —— \`brief\` 是抽取器写的摘要，**不等于产品字段 \`${claim.field}\` 的真实长度**。这一格只能当量级参考，不能当证据。`);
     }
 
-    row.says = `n=${dist.n} · min ${dist.min} 字 · p50 ${dist.p50} 字 · p90 ${dist.p90} 字 · max ${dist.max} 字${dist.bytes ? ` · 全量 ${dist.bytes} 字节` : ""}`;
+    // 缺哪一格就不打哪一格 —— ⛔ 不许把 null 打成 0（那正是「没读到」冒充「就是 0」）
+    row.says = [
+      `n=${dist.n ?? "?"}`,
+      dist.min != null ? `min ${dist.min} 字` : null,
+      dist.p50 != null ? `p50 ${dist.p50} 字` : null,
+      dist.p90 != null ? `p90 ${dist.p90} 字` : null,
+      dist.max != null ? `max ${dist.max} 字` : null,
+      dist.bytes != null ? `全量 ${dist.bytes} 字节` : null,
+    ].filter(Boolean).join(" · ");
     row.evidence.push(src);
     if (stat) {
       const got = dist[stat] ?? null;
@@ -1252,7 +1433,7 @@ const KIND_LABEL = {
   COUNT: "① 计数声明", REFCOUNT: "② 引用计数声明", NOREF: "② 零调用方声明",
   EMPTYFILE: "③ 空文件声明", COORD: "④ file:line 坐标", LENGTH: "⑤ 长度声明",
 };
-const TRUST_MARK = { 可信: "✔ 可信", 存疑: "◑ 存疑", 不可信: "✗ 不可信", 图谱自认盲区: "⛔ 图谱自认盲区" };
+const TRUST_MARK = { 可信: "✔ 可信", 存疑: "◑ 存疑", 不可信: "✗ 图谱不可信", 图谱自认盲区: "⛔ 图谱自认盲区", 工具没读进来: "✗ 本工具没读进来" };
 
 function renderText(res) {
   const L = [];
@@ -1265,6 +1446,13 @@ function renderText(res) {
 
   L.push(`金丝雀 · 抽取器  ${res.canary.ok ? "✔ 命中" : "✗ 未命中"}  维度 ${res.canary.got.join("/") || "（空）"}${res.canary.missing.length ? ` · 缺 ${res.canary.missing.join("/")}` : ""}`);
   L.push(`金丝雀 · 图谱    ${res.graph.ok ? "✔ INDEX.yaml 结构完整" : "✗ " + res.graph.fatal.join("；")}`);
+  const lb = res.graph.loaderBroken;
+  L.push(`金丝雀 · 加载器  ${lb ? "✗ 分片加载坏了" : `✔ 加载条数 = INDEX 自述（原子 ${res.graph.atoms.length} / 切片 ${res.graph.slices.length}）`}`);
+  if (lb) {
+    for (const s of lb.summary.slice(0, 6)) L.push(`                 · ${s}`);
+    L.push(`                 ⛔ 在此状态下本工具**拒绝**下任何「图谱里没有 X」的否定结论 ——`);
+    L.push(`                    那是「我没读进来」，不是「图谱抽漏了」。先修加载器/重跑抽取器。`);
+  }
   L.push(`覆盖面          原子 ${res.graph.atoms.length} · 切片 ${res.graph.slices.length} · 文件 ${res.graph.byFile.size} · 盲区清单 ${res.graph.blindSpots.length} 条（${res.graph.blindSpotSource}）`);
   if (res.graph.warnings.length) {
     L.push(`解析告警 ${res.graph.warnings.length} 条：`);
@@ -1385,7 +1573,7 @@ function selftest() {
   let fail = 0;
   const P = (s) => out.push(s);
   P("═".repeat(76));
-  P("premise-check.mjs · 自测（回归用例 ×5 双向 + 金丝雀 ×2）");
+  P("premise-check.mjs · 自测（回归用例 ×5 双向 + 金丝雀 ×5）");
   P("═".repeat(76));
 
   const graphDir = join(FIX, "graph");
@@ -1454,7 +1642,40 @@ function selftest() {
   }
 
   P("");
-  P("── 金丝雀 3（工具自证）：抽取器内置样例 ──────────────────────────────────");
+  P("── 金丝雀 3：分片顶层**两种形态**必须给出同一份结论（接缝回归）────────────────");
+  P("   序列顶层（`- id:` 开头）vs 真产物的映射顶层（package/counts/atoms:）。");
+  P("   2026-09-12 接缝复验就红在这里：真产物 6266 个原子被读成 5 个，每条都报「图谱无此原子」。");
+  {
+    const mapped = analyze(join(FIX, "wo-wrong.md"), join(FIX, "graph-mapping"));
+    const key = (r) => `${r.kind}|${r.line}|${r.wrote}|${r.says}|${r.verdict}`;
+    const a = wrong.rows.map(key);
+    const b = mapped.rows.map(key);
+    const same = a.length === b.length && a.every((x, i) => x === b[i]);
+    const ok = same && !mapped.graph.loaderBroken && mapped.graph.atoms.length === wrong.graph.atoms.length;
+    if (!ok) fail++;
+    P(`  ${ok ? "✔" : "✗"} 序列形态 ${wrong.graph.atoms.length} 原子 / ${wrong.rows.length} 行 ↔ 映射形态 ${mapped.graph.atoms.length} 原子 / ${mapped.rows.length} 行 · 逐行结论${same ? "完全一致" : "**不一致**"}`);
+    if (!same) for (let i = 0; i < Math.max(a.length, b.length); i++) if (a[i] !== b[i]) P(`        ✗ 第 ${i + 1} 行：${a[i] ?? "（缺）"}  ≠  ${b[i] ?? "（缺）"}`);
+  }
+
+  P("");
+  P("── 金丝雀 4：加载器少读了 ⇒ 必须报「分片加载坏了」并落到**第三种归因** ──────────");
+  P("   三种归因缺一不可：① 你写错了 ② 图谱抽漏了 ③ **本工具自己没读进来**。");
+  P("   混了 ③ 和 ② 会让人去查一个根本没病的图谱 —— 这正是本次接缝复验的代价。");
+  {
+    const lb = analyze(join(FIX, "wo-wrong.md"), join(FIX, "graph-loader-broken"));
+    const txt = renderText(lb);
+    const rows = lb.rows;
+    const thirdAll = rows.length > 0 && rows.every((r) => r.trust.level === "工具没读进来");
+    const noGraphBlame = !rows.some((r) => r.trust.note.some((n) => /图谱自认盲区|『图谱抽漏了』$/.test(n)));
+    const ok = Boolean(lb.graph.loaderBroken) && thirdAll && noGraphBlame
+      && txt.includes("分片加载坏了") && txt.includes("拒绝") && /自述 11 · 实读 2/.test(txt);
+    if (!ok) fail++;
+    P(`  ${ok ? "✔" : "✗"} loaderBroken=${Boolean(lb.graph.loaderBroken)} · ${rows.length} 行全部归因到「✗ 本工具没读进来」=${thirdAll} · 无一行甩锅给图谱=${noGraphBlame}`);
+    P(`      逐分片点名：${lb.graph.loaderBroken ? lb.graph.loaderBroken.summary.join("；") : "（无）"}`);
+  }
+
+  P("");
+  P("── 金丝雀 5（工具自证）：抽取器内置样例 ──────────────────────────────────");
   {
     const c = runExtractorCanary();
     if (!c.ok) fail++;
@@ -1464,7 +1685,7 @@ function selftest() {
 
   P("");
   P("═".repeat(76));
-  P(fail === 0 ? `自测全部通过（${CASES.length} 条 × 双向 + 3 条金丝雀）` : `⛔ 自测失败 ${fail} 项`);
+  P(fail === 0 ? `自测全部通过（${CASES.length} 条 × 双向 + 5 条金丝雀）` : `⛔ 自测失败 ${fail} 项`);
   P("═".repeat(76));
   console.log(out.join("\n"));
   return fail === 0 ? 0 : 4;
@@ -1518,7 +1739,8 @@ function main(argv) {
 
   const res = analyze(wo, graphDir);
   res.woPath = relative(ROOT, wo) || wo;
-  res.graphDir = relative(ROOT, res.graphDir) || res.graphDir;
+  const rg = relative(ROOT, res.graphDir);
+  res.graphDir = rg && !rg.startsWith("..") ? rg : res.graphDir; // 仓外目录显示绝对路径，别打一串 ../../
   console.log(md ? renderMd(res) : renderText(res));
   return 0;
 }
