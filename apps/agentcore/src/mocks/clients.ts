@@ -1029,16 +1029,19 @@ export class MockRuleEngineClient implements RuleEngineClient {
   }
   // WO-DRIL-P1 · 规则元数据投影供给侧（mock）：已知规则给真描述，其余按 key 合成（description 非空门达标）。
   async listPublishedRules(ctx: ToolAuthCtx): Promise<import("../tools/clients.js").RuleSummary[]> {
-    const known: Record<string, { name: string; description: string; scope: string[]; severity: string; expression: string }> = {
-      C03: { name: "产能上限约束", description: "需求增量超过产能上限（demandDelta>0.5）触发 BLOCK。", scope: ["Order", "Model"], severity: "BLOCK", expression: "Order.demandDelta > 0.5" },
-      C08: { name: "外协比例红线", description: "外协比例超过阈值触发 WARN（保交付但提示风险）。", scope: ["Base"], severity: "WARN", expression: "outsourceRatio > threshold" },
-      C13: { name: "客户信用额度", description: "客户信用额度已超限触发 BLOCK（禁止继续接单）。", scope: ["Customer", "Order"], severity: "BLOCK", expression: "creditExceeded == true" },
+    const known: Record<string, { name: string; description: string; scope: string[]; severity: string; expression: string; tags?: string[]; answersQuestions?: string[] }> = {
+      C03: { name: "产能上限约束", description: "需求增量超过产能上限（demandDelta>0.5）触发 BLOCK。", scope: ["Order", "Model"], severity: "BLOCK", expression: "Order.demandDelta > 0.5",
+        tags: ["产能", "承接评审", "需求增量"], answersQuestions: ["4680-NCM 加 20% 六周能不能接？", "订单加量多少就接不了了？"] },
+      C08: { name: "外协比例红线", description: "外协比例超过阈值触发 WARN（保交付但提示风险）。", scope: ["Base"], severity: "WARN", expression: "outsourceRatio > threshold",
+        tags: ["外协", "红线", "缺口补缺"], answersQuestions: ["缺口 8 万套自产加班还是外协？", "Q2 缺口用什么组合补？"] },
+      C13: { name: "客户信用额度", description: "客户信用额度已超限触发 BLOCK（禁止继续接单）。", scope: ["Customer", "Order"], severity: "BLOCK", expression: "creditExceeded == true",
+        tags: ["财务", "信用额度", "接单评审"], answersQuestions: ["宇通客车还能接新单吗？"] },
     };
     const keys = await this.listPublishedRuleKeys(ctx);
     return keys.map((key) => {
       const k = known[key];
       return k
-        ? { key, name: k.name, description: k.description, scopeObjectTypes: k.scope, severity: k.severity, expression: k.expression }
+        ? { key, name: k.name, description: k.description, scopeObjectTypes: k.scope, severity: k.severity, expression: k.expression, tags: k.tags, answersQuestions: k.answersQuestions }
         : { key, name: key, description: undefined, scopeObjectTypes: [], severity: "WARN" };
     });
   }

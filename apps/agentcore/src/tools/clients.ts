@@ -109,6 +109,9 @@ export interface RuleSummary {
   scopeObjectTypes?: string[];
   severity?: string;
   expression?: string;
+  /** WO-RULE-DISCOVERY：发现面元数据（缺省则 projectRules 回落 name·字典式可检索）。 */
+  tags?: string[];
+  answersQuestions?: string[];
 }
 
 /**

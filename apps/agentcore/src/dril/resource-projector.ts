@@ -166,7 +166,9 @@ export function projectSlices(items: CatalogItem[]): SliceResource[] {
   }));
 }
 
-/** rule ← DataCore /a/v1/rules（已发布）。severity 直投；description 缺省从 name/key 合成。 */
+/** rule ← DataCore /a/v1/rules（已发布）。severity 直投；description 缺省从 name/key 合成。
+ *  WO-RULE-DISCOVERY：answersQuestions/tags 与切片同法投影（此前**缺这两行**——即便种子填了也投不出去，
+ *  症状是「填了没反应」而四包全绿；对照 `:158-159` 切片那一路）。 */
 export function projectRules(rules: RuleSummary[]): RuleResource[] {
   const sev = (s?: string): RuleResource["severity"] =>
     s === "BLOCK" || s === "WARN" || s === "ADVISORY" || s === "INFO" ? s : undefined;
@@ -176,6 +178,8 @@ export function projectRules(rules: RuleSummary[]): RuleResource[] {
     label: nonEmpty(r.name, r.key) ?? r.key,
     description:
       nonEmpty(r.description, r.name && r.name !== r.key ? r.name : undefined, `合规规则 ${r.key}`) ?? `合规规则 ${r.key}`,
+    ...(r.answersQuestions && r.answersQuestions.length > 0 ? { answersQuestions: r.answersQuestions } : {}),
+    ...(r.tags && r.tags.length > 0 ? { tags: r.tags } : {}),
     domain: "compliance",
     scopeObjectTypes: r.scopeObjectTypes ?? [],
     severity: sev(r.severity),
