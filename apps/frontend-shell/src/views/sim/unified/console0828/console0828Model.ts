@@ -120,15 +120,23 @@ export interface OrderScope {
 }
 
 /**
- * 契约三态里**不在手**的那一档 —— **现算，⛔ 不写 `"COMPLETED"` 字面量**。
+ * 契约三态里**不在手**的那一档 —— 由契约**现算**得出，⛔ 不写 `"COMPLETED"` 字面量。
  *
- * 今天它恰好只有 `COMPLETED` 一个成员（`ORDER_STATUSES` 三态 − 在手两态）。
  * 之所以不直接写那个串：本文件已经因为「抄第二份状态字面量」被契约注释点名警告过一次，
  * 而**现算的集合会跟着契约走，抄下来的串不会**。
  *
+ * ── 实测（2026-09-12）──────────────────────────────────────────────────────
+ * 该集合当天解出**恰好 1 个成员** `COMPLETED`（`ORDER_STATUSES` 三态 − 在手两态）。
+ * **复验命令**（不依赖后端，纯契约）：
+ *   `node -e "const c=require('@platform/contracts');
+ *     console.log(c.ORDER_STATUSES.filter(s=>!c.isOnHandOrderStatus(s)))"`
+ * **锚点**：`packages/contracts/src/order-status.ts` 的 `ORDER_STATUSES` /
+ *   `ON_HAND_ORDER_STATUSES` / `isOnHandOrderStatus`（三者同文件，改任一条本档即变）。
+ *
  * ⚠ 若契约将来长出第 4 个非在手状态，它会自动落进这一档 —— 语义仍成立
  *   （「契约认识它、但它不在手」⇒ 照样该排除），只是屏上那句「已完成」需要改措辞。
- *   这件事由接缝门的三态金丝雀盯着（`ORDER_STATUSES.length === 3`），不靠人记得。
+ *   这件事由接缝门的三态金丝雀盯着（`console0828-decision.seam.test.tsx` ④c 的
+ *   `expect(ORDER_STATUSES.length).toBe(3)`），不靠人记得。
  */
 const OFF_HAND_STATUSES: readonly string[] = ORDER_STATUSES.filter((s) => !isOnHandOrderStatus(s));
 
