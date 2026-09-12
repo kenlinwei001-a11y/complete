@@ -56,4 +56,55 @@ describe("WO-OPTIMIZE-WHATIF-FE · 优化推演页（决策比对）", () => {
     // 诚实：绝不渲染假决策比对结果。
     expect(screen.queryByTestId("ow-result")).not.toBeInTheDocument();
   });
+
+  /**
+   * WO-HV-A · 需求 1.1-d · 5 个可证最优求解器的屏上入口（SEAM：屏上控件 → 真 solver key 调用）。
+   *
+   * 咬的是**可达性这条接缝**：这 5 个此前全仓零 UI 调用方（后四个 0 命中，`selection_optimize`
+   * 的 2 处都在 MSW 桩里；金丝雀 `facility_location` 同法 19 处命中 ⇒ 量法是好的），
+   * 用户只能经 QOS 活目录被**字符串键分发**偶然命中。这里断言：
+   *  ① 5 个入口都在屏上；② 点了真的去调**它自己那个 solver key**（不是借道 optimize_whatif
+   *    —— 后端 `app.ts:6392` 的 `z.enum(OPT_FAMILIES)` 根本不收这 5 个，借道必被打回）。
+   *
+   * ⚠ 真后端实测（datacore :4417·SEED_DEMO=1·内存模式）：这 5 个都回
+   *    「未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）」——
+   *    compose 态才自动接 sidecar（DEPLOY.md §214）。故入口必须**照实说不可用**，不许假渲结果。
+   */
+  it("WO-HV-A ② 5 个可证最优求解器屏上可达：入口都在 + 点击真调各自 solver key + 未接引擎照实说", async () => {
+    const called: string[] = [];
+    const KEYS = ["selection_optimize", "assignment_optimize", "sequencing_optimize", "packing_optimize", "job_shop_schedule"];
+    server.use(
+      http.post("*/a/v1/solvers/:key/invoke", ({ params }) => {
+        const key = String(params.key);
+        // ⚠ 只拦这 5 个：其余（尤其 optimize_whatif）必须**放行**给既有 handler ——
+        //   拦了会把本页上半屏的决策比对喂成空解，页面崩掉，连带把本条要断言的入口一起冲掉。
+        if (!KEYS.includes(key)) return undefined;
+        called.push(key);
+        // 镜像真后端内存模式的回包（实测原文）：显式「未接入」，不是空解。
+        return HttpResponse.json(
+          { error: { code: "VALIDATION_ERROR", message: `${key} 未接入最优化引擎（设 OPTIMIZER_BASE_URL 起 CP-SAT sidecar）`, requestId: "req_g" } },
+          { status: 400 },
+        );
+      }),
+    );
+    loginAs("planner");
+    renderApp("/v/optimize-whatif");
+
+    // ① 5 个入口都在屏上（此前一个都没有 —— 摘掉任一即红）。
+    await screen.findByTestId("ow-graph-solvers", {}, { timeout: 8000 });
+    for (const k of KEYS) expect(await screen.findByTestId(`ow-graph-solver-${k}`), `缺入口：${k}`).toBeInTheDocument();
+
+    // ② 逐个点开并求解 → 每个都调**它自己那个 key**（不是 optimize_whatif）。
+    for (const k of KEYS) {
+      fireEvent.click(screen.getByTestId(`ow-graph-solver-${k}`));
+      fireEvent.click(await screen.findByTestId(`ow-graph-run-${k}`));
+      await waitFor(() => expect(called, `未调用 ${k}`).toContain(k), { timeout: 8000 });
+      // 未接引擎 → 照实说「没算出来（不是无解）」，绝不假渲一个结果区。
+      const err = await screen.findByTestId(`ow-graph-error-${k}`, {}, { timeout: 8000 });
+      expect(err).toHaveTextContent("未接入最优化引擎");
+      expect(screen.queryByTestId(`ow-graph-result-${k}`)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId(`ow-graph-solver-${k}`)); // 收起，避免下一个断言串台
+    }
+    expect(new Set(called).size, "5 个 key 各自被调到").toBe(5);
+  });
 });
