@@ -233,13 +233,17 @@ describe("WO-WORLDSTATE-SURFACE · 统一世界态读取面", () => {
     const cand = await pickDemandOrder(t);
     const sid = await createWorld(t, { [cand.orderId]: { demandPressure: 0 } }); // 零压力世界
 
+    // 跨提交 R6 对的锚点：**三个求解器的真值哈希先全部落盘再断言**
+    // （基线上第一轮的「零压力世界有 worldState」断言就红 —— 混在一轮会吞掉后两个真值哈希）。
+    const truth: Record<string, SolverData> = {};
+    for (const key of WIRED_KEYS) {
+      truth[key] = dataOf(await invokeSolver(t, key, wiredArgs(cand)[key]!));
+      console.log(`[r6-truth] solver=${key} truth=${hashOf(truth[key])}`);
+    }
     for (const key of WIRED_KEYS) {
       const args = wiredArgs(cand)[key]!;
-      const a = dataOf(await invokeSolver(t, key, args));
+      const a = truth[key]!;
       const b = dataOf(await invokeSolver(t, key, args));
-      // 跨提交 R6 对的锚点：本行在基线与本分支上各跑一次，两个 truth 哈希必须相等
-      // （「不传 worldId ⇒ 与上线前逐字节一致」只能靠这条跨提交对比真证，单提交内自比证不了）。
-      console.log(`[r6-truth] solver=${key} truth=${hashOf(a)}`);
       // ① 不传 worldId：没有 worldState 键（加性键不许悄悄出现），两跑逐字节相同。
       expect(a.worldState, `${key} 没传 worldId 却带 worldState ⇒ 闸②漏了`).toBeUndefined();
       expect(JSON.stringify(a)).toBe(JSON.stringify(b));
