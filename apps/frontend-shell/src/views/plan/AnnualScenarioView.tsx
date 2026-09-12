@@ -161,15 +161,25 @@ function WorldProjectionBand() {
         </InfoPopover>
       </div>
 
+      {/* ⚠ 以下四个诚实分支一律「短记号留第一层 · 成段说明进 `?` 浮层」（R-UI-2/R-UI-3）。
+          ⛔ 不是把话删掉 —— 静默降层等于删除，所以每条都常驻一个可见的 `?`。
+          第一版把整段理由摆在第一层，被 `check-ui-first-layer` 的 D2b 棘轮当场咬红
+          （本文件长说明串 1 → 4）。**是门先说话，不是我想起来的。** */}
       {sessions.isError && (
         <div style={{ fontSize: 12, color: "var(--muted)" }} data-testid="aop-world-list-error">
-          取不到推演世界清单 —— 本块据实留空，不拿真值冒充投影。
+          世界清单取不到 · 据实留空
+          <InfoPopover topic="这里为什么没有数" testId="aop-world-list-error-why">
+            取不到推演世界清单，所以本块留空。⛔ 不拿情景卡那三个真值口径的数冒充投影 —— 它们答的不是同一个问题。
+          </InfoPopover>
         </div>
       )}
       {!sessions.isError && worlds.length === 0 && !sessions.isLoading && (
         <div style={{ fontSize: 12, color: "var(--muted)" }} data-testid="aop-world-none">
-          还没有任何推演世界。去沙盘起一次推演之后，这一页就能读出「那个决定让这些钱变成多少」。
-          <b> 现在不显示数字，是因为真的没有——不是 0。</b>
+          暂无推演世界 · <b>不是 0</b>
+          <InfoPopover topic="这里为什么没有数" testId="aop-world-none-why">
+            还没有任何推演世界。去沙盘起一次推演之后，这一页就能读出「那个决定让这些钱变成多少」。
+            现在不显示数字，是因为<b>真的没有</b>，不是算出来等于 0。
+          </InfoPopover>
         </div>
       )}
       {proj.isLoading && effectiveWorldId !== "" && (
@@ -179,14 +189,20 @@ function WorldProjectionBand() {
       )}
       {proj.isError && (
         <div style={{ fontSize: 12, color: "var(--muted)" }} data-testid="aop-world-error">
-          这个世界的金额投影算不出来：{projErrText(proj.error)}
+          这个世界算不出投影
+          <InfoPopover topic="后端说了什么" testId="aop-world-error-why">
+            {projErrText(proj.error)}
+          </InfoPopover>
         </div>
       )}
       {out !== undefined && !usable && (
         <div style={{ fontSize: 12, color: "var(--muted)" }} data-testid="aop-world-unavailable">
-          {worldEmpty
-            ? "这个世界里还没有任何对象带态（baseSnapshot / tick 态均为空）—— 投影会恒等于基线，那不是「扰动不影响钱」，是「这个世界里还没发生任何事」。故本块据实留空。"
-            : (out.unavailableReason ?? "后端报此次投影不可用，且未给出理由。")}
+          {worldEmpty ? "这个世界还是空的 · 据实留空" : "后端报此次投影不可用"}
+          <InfoPopover topic="为什么这个世界给不出数" testId="aop-world-unavailable-why">
+            {worldEmpty
+              ? "这个世界里还没有任何对象带态（baseSnapshot / tick 态均为空）—— 投影会恒等于基线，那不是「扰动不影响钱」，是「这个世界里还没发生任何事」。故本块据实留空。"
+              : (out.unavailableReason ?? "后端报此次投影不可用，且未给出理由。")}
+          </InfoPopover>
         </div>
       )}
 
@@ -236,7 +252,11 @@ function WorldProjectionBand() {
             ))}
           </div>
           <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 4 }} data-testid="aop-world-basis">
-            换算：{out.basis.note}
+            换算除数 <span className="mono">{out.basis.divisor}</span>（{out.basis.pressureUnit}）
+            {/* 换算口径是**口径**，按 R-UI-3 进浮层；第一层留除数本身（那是个数值，合规且有用）。 */}
+            <InfoPopover topic="这个除数是什么意思" testId="aop-world-basis-why">
+              {out.basis.note}
+            </InfoPopover>
           </div>
           {out.notes.length > 0 && (
             <ul style={{ fontSize: 12, color: "var(--muted2)", margin: "4px 0 0 16px" }} data-testid="aop-world-notes">

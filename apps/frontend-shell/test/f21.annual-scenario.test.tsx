@@ -142,9 +142,12 @@ describe("F21 · 年度规划（annual-scenario）", () => {
     // ① 诚实缺口记号在，且明说「不是 0」
     // ⚠ 必须 `find*` 等清单查询落地：`aop-world-projection` 这个壳在 loading 态就已经渲染，
     //   拿它当"查询已完成"的证据会在 loading 那一帧断言失败 —— 壳在不度量数据到了。
+    // 第一层是**短记号**（成段理由按 R-UI-3 进 `?` 浮层 —— check-ui-first-layer D2b 棘轮咬这条）。
     const none = await within(band).findByTestId("aop-world-none");
-    expect(none).toHaveTextContent("还没有任何推演世界");
+    expect(none).toHaveTextContent("暂无推演世界");
     expect(none).toHaveTextContent("不是 0");
+    // ⛔ 静默降层等于删除：浮层必须**常驻可见**，不是 hover 才存在
+    expect(within(none).getByTestId("info-aop-world-none-why")).toBeInTheDocument();
     // 反向判据：没有世界时**不许**出现任何金额行（只咬一向会漏掉「两个都渲染了」）
     expect(within(band).queryByTestId("aop-world-lines")).toBeNull();
     // ③ 口径行常驻第一层（不 hover、不点开就在）

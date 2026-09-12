@@ -1062,11 +1062,16 @@ function AtpPromiseStrip({ so }: { so: string }) {
         data-testid="atp-unavailable"
         style={{ padding: 8, margin: "6px 0", borderLeft: "3px solid var(--muted2)" }}
       >
-        <div style={{ fontSize: 12, color: "var(--muted)" }}>交期承诺（ATP/CTP）</div>
-        <b style={{ fontSize: 13 }}>算不出来</b>
-        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 3 }} data-testid="atp-unavailable-reason">
-          {solverErrText(q.error)}
+        <div style={{ fontSize: 12, color: "var(--muted)" }}>
+          交期承诺（ATP/CTP）
+          {/* 后端原话属「口径/说明」⇒ 降浮层（R-UI-3）；第一层只留「算不出来」这个可见记号。
+              ⛔ 静默降层等于删除，所以浮层必须常驻可见的 `?`，不是 hover 才知道有。
+              第一版给 `<b>` 加了 fontSize:13 ⇒ 本页字号层级 2→3，被 D3 棘轮当场咬红。 */}
+          <InfoPopover topic="为什么算不出来" testId="atp-unavailable-reason">
+            {solverErrText(q.error)}
+          </InfoPopover>
         </div>
+        <b>算不出来</b>
       </div>
     );
   }
