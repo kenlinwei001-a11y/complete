@@ -32,6 +32,16 @@ export interface SolverCatalogEntry {
   /** WO-CAPMAP-LIVE · 活目录检索相关性名次（0 = 最相关）。存在即按它排序（确定性·检索引擎 R6）；
    *  缺省（降级镜像）→ 退回字典序，与本单之前逐字节一致。 */
   rank?: number;
+  /**
+   * WO-TOOLS-LIST · **两段式分层**（标准 MCP 的 tools/list ⊥ 详情二选一）：
+   *  · `"detail"` —— 本题相关性命中，进**详情段**（能力全文 + 输出形状 + 规则提示）；
+   *  · `"roster"` —— 未进相关性窗口，只进**全量目录段**（key + 一句话 brief），
+   *                  详情由模型自己按需取（`discover(kind:"solvers", query:<key>)`）。
+   *
+   * **缺省（undefined）= 按 `detail` 处理** —— 降级镜像（`FALLBACK_SOLVER_CATALOG`）不带此字段，
+   * 故降级路径逐字节等同本单之前。
+   */
+  tier?: "detail" | "roster";
 }
 
 /** 求解器目录（key → 条目）。生产态由**活资源目录**现取（见 live-capability-map.ts），非手写。 */
@@ -421,6 +431,16 @@ export interface SliceSolver {
   capability: string;
   outputShape: string[];
 }
+
+/**
+ * WO-TOOLS-LIST · 全量目录条目（阶段①·轻）：只有 `key` + 一句话 `brief`。
+ * 详情（完整参数说明 / 输出形状 / 样例问句）由模型**按需**再取一次（阶段②），
+ * 见 `renderNavigationSlice` 里写给模型的取法。
+ */
+export interface SliceRosterEntry {
+  key: string;
+  brief: string;
+}
 export interface SliceObjectType {
   type: string;
   keyProps: string[];
@@ -433,8 +453,16 @@ export interface NavigationSlice {
   primarySolver?: string;
   /** 相关对象类型 + 关键属性（scope.objectTypes 收窄后）。 */
   objectTypes: SliceObjectType[];
-  /** 对口求解器（key + 一句话能力 + 输出形状）。 */
+  /** 对口求解器（key + 一句话能力 + 输出形状）——**详情段**，按相关性截断到 {@link MAX_SOLVERS}。 */
   solvers: SliceSolver[];
+  /**
+   * WO-TOOLS-LIST · **全量目录段**（阶段①）：本轮 scope 内**全部**可调用的求解器（含详情段那几条），
+   * 按 key 字典序（R6·与问句无关 ⇒ 同一租户任何问句都渲染同一份，可被 prompt 缓存复用）。
+   *
+   * ⚠️ 空数组有**两种**含义，别混：① 降级镜像路径（活目录取不到 ⇒ 手上那 19 条不是全集，
+   * 宣称"全部"就是撒谎，故不渲染目录段）；② 本轮不允许调 solver。两种都不该出目录段。
+   */
+  roster: SliceRosterEntry[];
   /** 链路：对象 → 求解器 → 答案。 */
   chain: string;
   /** 相关规则/不变量提示。 */
@@ -455,8 +483,44 @@ function canInvokeSolvers(toolNames: string[] | undefined): boolean {
   return toolNames.some((n) => n === "invoke_solver" || /^mcp__[a-z0-9_]+__/.test(n));
 }
 
+/**
+ * **详情段**上限（阶段②：能力全文 + 输出形状 + 规则提示）。
+ *
+ * ⚠️ WO-TOOLS-LIST · **这个 6 不是本单要改的那个数**，别把它当成"发现面的上限"。
+ * 改造前它同时是两件事的上限：「模型能看见几个求解器」**和**「几个求解器被完整展开」——
+ * 两件事被一个常数绑死，于是 63 个注册求解器里 57 个模型**从未被告知存在**，
+ * 而「检索按问句相关性排序」又让冷门求解器天然排不进前 6 ⇒ 没有使用记录 ⇒ 更排不进：**自锁**。
+ * 现在这两件事拆开了：
+ *   · **发现面** = {@link NavigationSlice.roster}（全量·无上限常数·见下）；
+ *   · **详情面** = 本常数（按相关性选，展开成本高，必须有上限）。
+ * 所以把它调大**不解决**本单的病（80 个求解器时又回到原点），调小也不再让求解器消失。
+ */
 const MAX_SOLVERS = 6;
 const MAX_OBJECT_TYPES = 8;
+
+/**
+ * WO-TOOLS-LIST · 目录段每条 brief 的字符上限。
+ *
+ * 实测依据（`ALL_SOLVER_CATALOG` 真数组 63 条，非抽样外推）：description 长度
+ * min 15 / p50 49 / p90 328 / max 712 字 —— **注册描述根本不是"一句话"**，
+ * 不截断的全量目录 = 8,647 字 / 17,529 UTF-8 字节，超出「目录要轻」的前提。
+ * 截到 40 字：3,4xx 字 / 6,6xx 字节（实测见本单报告），量级与改造前的详情段同阶。
+ */
+const BRIEF_MAX_CHARS = 40;
+
+/**
+ * 一句话 brief（确定性截断·R6）：先压平空白；超长时优先切在窗口内**最后一个句末标点**，
+ * 切不出（标点太靠前或没有）→ 硬截 + 省略号。
+ * 纯函数、不看时钟/不看使用频次 —— 同一条描述任何时候都得到同一个 brief。
+ */
+function briefOf(text: string, max: number = BRIEF_MAX_CHARS): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= max) return flat;
+  const cut = Math.max(flat.lastIndexOf("。", max), flat.lastIndexOf("；", max));
+  // 切点太靠前（不足半窗）⇒ 切出来的信息量还不如硬截，走硬截。
+  if (cut >= Math.floor(max / 2)) return flat.slice(0, cut + 1);
+  return `${flat.slice(0, max - 1)}…`;
+}
 
 /**
  * 投影本题导航图（R6 纯函数）：问句(+PageContext) + agent scope + **目录** → NavigationSlice。
@@ -468,6 +532,12 @@ const MAX_OBJECT_TYPES = 8;
  * 复用 `domainResolve`（单一 domain 来源）取对口 solver / domain；越界（不读 scope 内任一对象类型）的
  * solver 不进图（尊重隔离语义）——但**目录未声明对象域（reads 为空）时不据此排除**：活目录 59 条里
  * 实测 23 条无派生对象域，把"没证据"当成"越界"会把它们一律剔掉，等于换个方式重演本单要修的病。
+ *
+ * WO-TOOLS-LIST · 产出**两段**（标准 MCP 的 tools/list ⊥ 按需详情）：
+ *   · `solvers` = 详情段（≤ {@link MAX_SOLVERS}·按相关性·展开能力全文与输出形状）；
+ *   · `roster`  = 全量目录段（scope 内**全部**可调用的求解器·key + 一句话·按 key 字典序）。
+ * 两段的成员资格走**同一套** scope / `solversAllowed` 过滤 —— 目录里列出的，权限上就真的调得动
+ * （`tools/executor.ts` 的 `invoke_solver` 本就不按候选集限制，隔离由 scope 与 A6 行级过滤兜）。
  */
 export function projectNavigationSlice(
   query: string,
@@ -494,7 +564,10 @@ export function projectNavigationSlice(
   const candidateKeys = new Set<string>();
   if (res.solverKey && cat[res.solverKey]) candidateKeys.add(res.solverKey);
   if (isLive) {
-    for (const key of Object.keys(cat)) candidateKeys.add(key);
+    // WO-TOOLS-LIST · 详情段候选**只收 tier!=="roster"** 的那批（= 相关性命中 + 对口 primary）。
+    // 若把目录层那 50+ 条也放进来，它们没有 `rank` ⇒ 下面的排序回落字典序 ⇒ 会挤掉真正相关的那几条，
+    // 等于用"全展开"换"全乱序"，正是本单不该做的那种改法。
+    for (const [key, entry] of Object.entries(cat)) if (entry.tier !== "roster") candidateKeys.add(key);
   } else {
     for (const [key, entry] of Object.entries(cat)) {
       if ((entry.families ?? []).some((fam) => hitFamilies.has(fam))) candidateKeys.add(key);
@@ -533,6 +606,25 @@ export function projectNavigationSlice(
     outputShape: cat[key]!.outputShape,
   }));
 
+  // ── WO-TOOLS-LIST · 阶段① 全量目录 ────────────────────────────────────────
+  // 判据：**能调的就该被告知**。所以目录的成员资格与「能不能调」严格同源 —— 与详情段走
+  // **同一个** scope 过滤 + 同一个 `solversAllowed` 闸，只是不过相关性窗口、不截断。
+  // ⚠️ 只在活目录态渲染：降级镜像手上是 19 条残本，把它宣称成"全部可调用的求解器"是撒谎，
+  //    而模型会据此**不再** discover（"目录都给我了还查什么"）—— 比不给目录更坏。
+  const roster: SliceRosterEntry[] = !isLive || !solversAllowed
+    ? []
+    : Object.entries(cat)
+        .filter(([, entry]) => {
+          if (!scopeTypes) return true;
+          if (entry.reads.length === 0) return true; // reads 空 = 无证据判越界 → 保留（同详情段）
+          return entry.reads.some((t) => scopeTypes.has(t));
+        })
+        // R6 确定性：按 **key 字典序**。⛔ 刻意不按 rank / 使用频次 / 命中次数排 ——
+        // 「按热度排」正是本单要拆的那个自锁循环的来源（冷门排后面 → 更少被选 → 更冷）。
+        // 字典序还有一个额外好处：与问句无关 ⇒ 同租户所有问句的目录段逐字节相同，可被 prompt 缓存命中。
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([key, entry]) => ({ key, brief: briefOf(entry.capability) }));
+
   // 对象类型：选中 solver 读取的对象类型（scope 收窄）∪（scope 声明但未被 solver 覆盖的对象类型）。
   const objSet = new Set<string>();
   for (const key of solverKeys) for (const t of cat[key]!.reads) if (!scopeTypes || scopeTypes.has(t)) objSet.add(t);
@@ -556,7 +648,7 @@ export function projectNavigationSlice(
     : `对象[${objLabel}] → 多跳取证/综合 → 答案（每业务数字标 ⟦ref:N⟧ 溯源）`;
 
   const nonEmpty = solvers.length > 0 || objectTypes.length > 0;
-  return { domain: res.domain, primarySolver, objectTypes, solvers, chain, rules, nonEmpty };
+  return { domain: res.domain, primarySolver, objectTypes, solvers, roster, chain, rules, nonEmpty };
 }
 
 /**
@@ -571,17 +663,26 @@ export function renderNavigationSlice(slice: NavigationSlice): string {
   if (!slice.nonEmpty) return "";
   const lines: string[] = [];
   lines.push(
-    "【本题导航图（据你的能力范围 + 本题相关性从**资源目录检索**出的候选——是候选，不是全集）】\n" +
-      "用法：① 候选里有对口求解器 → 直接调它一步到位，别拆成「查对象→猜 solver→再查」的多跳重编排；" +
-      "② 候选里没有真正对口的，或你判断本题需要目录里没列出的能力 → **就去 discover / retrieve_knowledge 再捞一次**，" +
-      "这是正当且被鼓励的动作（本图按相关性截断，未列出 ≠ 不存在）。",
+    "【本题导航图（据你的能力范围投影·分两段：先给**全部**能调的求解器目录，再给本题最相关那几条的详情）】\n" +
+      "用法：① 详情段有对口求解器 → 直接调它一步到位，别拆成「查对象→猜 solver→再查」的多跳重编排；" +
+      "② **详情段是按本题相关性选出的候选，不是全集** —— 目录段里任何一条你都能直接 invoke_solver 调用，" +
+      "看着对口就调，需要参数说明先用 `discover(kind:\"solvers\", query:\"<key 或关键词>\")` 取该条详情；" +
+      "③ 连目录段都没有真正对口的 → **去 discover / retrieve_knowledge 再捞一次**（还有切片/规则/工作流等别的资源）。",
   );
   if (slice.solvers.length > 0) {
-    lines.push("· 候选求解器（invoke_solver·输出形状告诉你结果长什么样/取哪个字段溯源）：");
+    lines.push("· 本题最相关的求解器·详情（invoke_solver·输出形状告诉你结果长什么样/取哪个字段溯源）：");
     for (const s of slice.solvers) {
       const star = s.key === slice.primarySolver ? "★" : "-";
       lines.push(`  ${star} ${s.key}：${s.capability}｜输出 { ${s.outputShape.join(", ")} }`);
     }
+  }
+  // 阶段① 全量目录：轻（key + 一句话），**不截断条数**。详情按需二次取（阶段②）。
+  if (slice.roster.length > 0) {
+    lines.push(
+      `· 全部可调用的求解器目录（共 ${slice.roster.length} 个·按名排序·含上面详情那几条）——` +
+        "一句话不够判断时用 `discover(kind:\"solvers\", query:\"<key>\")` 取完整参数与说明：",
+    );
+    for (const r of slice.roster) lines.push(`  · ${r.key}：${r.brief}`);
   }
   if (slice.objectTypes.length > 0) {
     lines.push("· 相关对象类型（query_objects 可查·关键属性）：");
