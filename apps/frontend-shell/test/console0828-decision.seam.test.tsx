@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PropagationRule, SandboxViewConfig } from "@platform/contracts";
+// WO-ORDER-SCOPE · 在手口径的判据取自契约单一出处，⛔ 测试里不另抄一份状态字面量清单。
+import { isOnHandOrderStatus, ORDER_STATUSES } from "@platform/contracts";
 
 /**
  * ══ WO-C0828-SEAM · 「统一推演控制台」`console0828` 的**接缝门**（SEAM-GATE：咬链路不咬函数）══
@@ -147,10 +149,27 @@ function cfg(): SandboxViewConfig {
  * 而不是另抄一个字面量：抄一份就等于「期望值和被测数据各自漂」，改了 fixture 测试照样绿。
  */
 const ORDERS: { id: string; props: Record<string, unknown> }[] = [
-  { id: "ord_1", props: { cust: "宁德时代", qty: 1200, value: 30_000_000, due: "2026-10-01", status: "CONFIRMED", model: "M1" } },
-  { id: "ord_2", props: { cust: "宁德时代", qty: 800, value: 20_000_000, due: "2026-11-01", status: "PLANNED", model: "M2" } },
-  { id: "ord_3", props: { cust: "比亚迪", qty: 500, value: 12_000_000, due: "2026-12-01", status: "CONFIRMED", model: "M1" } },
+  { id: "ord_1", props: { cust: "宁德时代", qty: 1200, value: 30_000_000, due: "2026-10-01", status: "IN_PRODUCTION", model: "M1" } },
+  { id: "ord_2", props: { cust: "宁德时代", qty: 800, value: 20_000_000, due: "2026-11-01", status: "OPEN", model: "M2" } },
+  { id: "ord_3", props: { cust: "比亚迪", qty: 500, value: 12_000_000, due: "2026-12-01", status: "OPEN", model: "M1" } },
+  /**
+   * WO-ORDER-SCOPE · **这一张单是本单全部断言的判别器，⛔ 不许删、不许改状态。**
+   *
+   * 它同时满足两件事：**已交付关闭** ＋ **在世界差分里真的动了**（见 `WORLD_AFTER.ord_4`）。
+   * 只有同时满足这两件，「有没有按在手口径过滤」才在读数上分得开：
+   *   · 过滤了 ⇒ 受影响 **2** 张 / 敞口 **5000 万** / 基数 **6200 万**
+   *   · 没过滤 ⇒ 受影响 **3** 张 / 敞口 **6200 万** / 基数 **7400 万**
+   * ⚠ 若把它写成「已完成且没动」，两种实现给出的读数**完全相同** ——
+   *   测试照样全绿，而 bug 原封不动。本仓把这种测试叫「咬不到东西的门」。
+   */
+  { id: "ord_4", props: { cust: "比亚迪", qty: 400, value: 12_000_000, due: "2026-05-01", status: "COMPLETED", model: "M1" } },
 ];
+
+/**
+ * 在手口径下**可被影响**的那几张（= 契约 `ON_HAND_ORDER_STATUSES`）。
+ * 期望值一律从这里现算，⛔ 不写字面量 —— 改了 fixture 而期望值不动，就是「期望值与被测数据各自漂」。
+ */
+const ON_HAND_ORDERS = ORDERS.filter((o) => isOnHandOrderStatus(o.props.status));
 
 /** 对象层。名字只从这里来（组件取 `props.name` / `props.cust` 等，取不到就回落 id，不编）。 */
 const OBJECTS: Record<string, { id: string; props: Record<string, unknown> }[]> = {
@@ -173,18 +192,25 @@ const OBJECTS: Record<string, { id: string; props: Record<string, unknown> }[]> 
 /**
  * 世界前后两态。差分**必须落在订单 id 上**，否则「被推动的订单敞口」恒 0 ——
  * 那会让 ④ 那条臂在一个「链路通了但读数没动」的假象上变绿。
- * `ord_1` / `ord_2` 动，`ord_3` 不动 ⇒ 敞口 = 30M + 20M = 5000 万，占订单簿 6200 万的 80.6%。
+ * `ord_1` / `ord_2` 动，`ord_3` 不动 ⇒ 敞口 = 30M + 20M = 5000 万，占**在手**订单簿 6200 万的 80.6%。
+ *
+ * ⚠ WO-ORDER-SCOPE 加了 `ord_4`：**已交付关闭，但读数照样动**。
+ *   这不是凑数 —— 推演引擎不认识「在手」这个业务口径，它本来就会去推已完成单的格子，
+ *   所以这里必须如实模拟那个行为，否则测的是一个后端不会产生的世界。
+ *   过滤对不对，全靠这一格分辨：它**动了**但**不该被算进受影响订单**。
  */
 const WORLD_BEFORE = {
   ord_1: { costPressure: 10 },
   ord_2: { costPressure: 20 },
   ord_3: { costPressure: 30 },
+  ord_4: { costPressure: 40 },
   mat_licarb: { priceShock: 0 },
 };
 const WORLD_AFTER = {
   ord_1: { costPressure: 16.5 },
   ord_2: { costPressure: 24.25 },
   ord_3: { costPressure: 30 },
+  ord_4: { costPressure: 51.75 },
   mat_licarb: { priceShock: 20 },
 };
 
@@ -318,7 +344,9 @@ vi.mock("@/api/apiClient", () => ({
 
 import UnifiedSimShell from "@/views/sim/unified/UnifiedSimShell";
 import { BUSINESS_EVENTS } from "@/views/sim/unified/console0828/eventCatalog";
-import { MONEY_BREAKDOWN_LABELS } from "@/views/sim/unified/console0828/console0828Model";
+// `fmtMoney` 一并取来：期望串由**屏上同一个格式化函数**现算，⛔ 不手敲「6200 万」——
+// 手敲的那种串只要格式化改一次小数位就假红，而它并不度量口径对不对（WO-ORDER-SCOPE 实测踩过）。
+import { MONEY_BREAKDOWN_LABELS, fmtMoney } from "@/views/sim/unified/console0828/console0828Model";
 
 function mount() {
   return render(
@@ -541,13 +569,15 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       mode: "delta",
     });
 
-    // 敞口来自**差分 ∩ 订单**（ord_1 + ord_2 动了，ord_3 没动）——
+    // 敞口来自**差分 ∩ 在手订单**（ord_1 + ord_2 动了；ord_3 没动；
+    // **ord_4 动了但已交付关闭 ⇒ 不算**，WO-ORDER-SCOPE）——
     // 写死期望会让「差分算错」这件事测不出来，故期望值由 fixture 现算。
     const moved = ["ord_1", "ord_2"];
     const expected = ORDERS.filter((o) => moved.includes(o.id)).reduce(
       (s, o) => s + (o.props.value as number),
       0,
     );
+    // ⚠ 这一行就是本单的**变异反证锚点**：把在手过滤去掉，ord_4 会被数进来 ⇒ 屏上变「3 张单」⇒ 本行必红。
     expect(screen.getByTestId("c0828-exposure-sub").textContent ?? "").toContain(`${String(moved.length)} 张单`);
     expect(expected).toBe(50_000_000);
     // 屏上是「5000 万元」这类人话格式，故咬「不是 0、不是空」+ 张数，金额精确值由上面那一行守。
@@ -567,6 +597,72 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     const honesty = screen.getByTestId("c0828-honesty").textContent ?? "";
     expect(honesty).toContain("sim.propagation");
     expect(honesty).toContain("本次未调用 agent");
+  });
+
+  it("④c WO-ORDER-SCOPE · 影响面只算在手单：已交付关闭的单**动了也不算**，且口径必须上屏", async () => {
+    /* ── 今天的行为是 X（仓主 2026-09-12 在真屏上抓到）──
+     *   「我输入一个扰动因素，结果反馈**影响 500 张订单**。这个是错的，
+     *    **不应该影响已经完成的订单**，**进行中订单也需要分析是否计算在里面**。」
+     *   真后端实测：全簿 500 = COMPLETED 350 + IN_PRODUCTION 100 + OPEN 50。
+     * ── 应该是 Y ──
+     *   基数 = 契约 `ON_HAND_ORDER_STATUSES`（OPEN + IN_PRODUCTION）= 150 张；
+     *   COMPLETED 不算（货已交钱已结），IN_PRODUCTION 算（货没交钱没结，仍在手）。
+     *   且**口径要看得见** —— 静默过滤掉 350 张与当初把它们算进来，同样是不诚实。 */
+
+    // ── 🐤 金丝雀先行：夹具里三档都得在，否则这条用例什么也分辨不了 ──
+    // 不中 ⇒ 报「夹具坏了」，⛔ 不许把绿读作「过滤是对的」。
+    expect(ORDER_STATUSES.length).toBe(3); // 契约仍是三态；长出第 4 态 ⇒ `splitOrderScope` 的档名要重新审
+    expect(ON_HAND_ORDERS).toHaveLength(3); // ord_1 IN_PRODUCTION + ord_2/ord_3 OPEN
+    expect(ORDERS).toHaveLength(4); // 多出来的那张就是 ord_4（COMPLETED）
+    const completed = ORDERS.filter((o) => !isOnHandOrderStatus(o.props.status));
+    expect(completed.map((o) => o.id)).toEqual(["ord_4"]);
+    // 判别器成立的前提：ord_4 **在差分里真的动了**。它若不动，本用例两种实现都会绿。
+    expect(WORLD_AFTER.ord_4.costPressure).not.toBe(WORLD_BEFORE.ord_4.costPressure);
+
+    mount();
+    await railReady();
+    await addEvent("material-price-up", "mat_licarb", 15);
+    fireEvent.click(screen.getByTestId("c0828-go"));
+    await screen.findByTestId("c0828-money");
+
+    // ① 主数：被推动的 3 张里只认在手的 2 张 —— ord_4 动了，但不进这个数。
+    const sub = screen.getByTestId("c0828-exposure-sub").textContent ?? "";
+    expect(sub).toContain("2 张单");
+    expect(sub).not.toContain("3 张单");
+
+    // ② 金额跟着同一个口径走：敞口 = 30M + 20M，**不含** ord_4 的 12M；
+    //    基数 = 在手三张 62M，**不是**全簿 74M。金额那条路没跟着改的话，这里会红。
+    const onHandBook = ON_HAND_ORDERS.reduce((s, o) => s + (o.props.value as number), 0);
+    const fullBook = ORDERS.reduce((s, o) => s + (o.props.value as number), 0);
+    const expectedExposure = ORDERS.filter((o) => ["ord_1", "ord_2"].includes(o.id)).reduce(
+      (s, o) => s + (o.props.value as number),
+      0,
+    );
+    expect(onHandBook).toBe(62_000_000);
+    expect(fullBook).toBe(74_000_000);
+    expect(expectedExposure).toBe(50_000_000);
+    const recon = screen.getByTestId("c0828-recon").textContent ?? "";
+    expect(recon).toContain(fmtMoney(onHandBook, "元")); // 在手基数上屏
+    expect(recon).not.toContain(fmtMoney(fullBook, "元")); // 全簿基数⛔ 不许当基数
+    expect(recon).toContain(fmtMoney(expectedExposure, "元")); // 敞口仍是在手那两张
+    // 基数那句话必须明写是「在手」，否则读者会把 6200 万当成全簿。
+    expect(recon).toContain("在手订单簿合计");
+
+    // ③ 受影响客户同源：ord_4 是比亚迪的单，它动了但不算 ⇒ 比亚迪不算被波及。
+    //    分母也走在手口径（比亚迪仍有在手单 ord_3，故仍是 2 家）。
+    const custPanel = screen.getByTestId("c0828-cust").textContent ?? "";
+    expect(custPanel).toContain("1 / 2 家");
+
+    // ④ 口径必须**看得见**（仓主要的是「分析是否计算在里面」，不是默默过滤）：
+    //    被排除的张数点名上屏，且说清在手的构成。
+    const note = screen.getByTestId("c0828-scope-note").textContent ?? "";
+    expect(note).toContain("已交付关闭 1 张不计入");
+    expect(note).toContain("在手单 3 张");
+
+    // ⑤ 状态分布那一格的基数仍是**全簿** —— 那 1 张已完成单必须还看得见。
+    //    过滤若把它从屏上抹掉，就从「算错」变成了「删除」，比原 bug 更坏。
+    expect(screen.getByTestId("c0828-status-COMPLETED").textContent ?? "").toContain("1");
+    expect(screen.getByTestId("c0828-cust").textContent ?? "").toContain(`全簿 ${String(ORDERS.length)} 张单的状态分布`);
   });
 
   it("④b 多件时主因这句话必须换成「说不清」——不许挑一个顶上（差分层看不出某一格是谁推的）", async () => {
