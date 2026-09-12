@@ -224,3 +224,69 @@ grep `portfolioOptimize` 一层看不见**）。
    `lineGranularity:"yes"`」这个能力，但**真正的运行时拦截需要改 `executor.ts` / `service.ts`**，
    两者都在本单范围之外（不碰求解器实现）。⇒ 按铁律 0.5 判据 2 如实标注：
    **这是「已排练」，不是「已实现」**。⛔ 不许把 §5 的两个回包读成「生产已经开始拒绝错类型入参了」。
+
+---
+
+## 10. WO-INPUTSCHEMA-B · 剩余 51 个补满（63/63 全覆盖）
+
+**分支** `claude/handoff-inputschema-b` · **基线** `claude/handoff-wo-solver-inputschema` @ `2916311e`（⛔ 不从 canonical 切——canonical 没有前 12 个）。
+
+### 10.1 口径（与前 12 相同，三条纪律原样继承）
+
+① 每个 schema **从实现反推**（接口即真相 / 函数体逐键 grep / deriveExtendedArgs 逐 case 读），⛔ 不照 argHints 抄；
+② 不改任何求解器实现；③ R6 静态声明、新增字段一律 optional、既有回包逐字节不变。
+
+### 10.2 四条实测下来的判定口径（51 个统一适用）
+
+- **「不读 args」= 空 object schema `{}`**：`capacity_rollup` / `cockpit_kpi` / `mrp_netting` / `finance_pnl` / `ksf_graph` / `supply_vulnerability` / `supply_demand_gap_attribution` 共 7 个，逐一经函数签名（如 `mrpNetting(ctx)`、`supplyVulnerability(…, _args)`）证实不读 args。空 schema 是「**实测无入参**」的诚实声明，与基线时代「未登记=模式未知」是两个命题（§4 全覆盖断言的注释写明了这一区分）。
+- **引擎派生的诚实位不是入参**：`kitScope` / `lineScope` / `quarterScope` / `scope` / `tightnessDataMode` / `dataMode` / `provenanceSynthetic` 由 `deriveExtendedArgs` 写回 args 供**输出回显**，模型传了也没人当入参读 ⇒ 一律不声明（前 12 的 `changeover_sequence.lineScope` 判例原样延伸）。
+- **旧表声明而实现不读的键，如实保留并标注**：`credit_exposure.custId`、`metric_rollup.metricKey`、`gap_attribution` 顶层 `factorId`/`factors` —— 双表对账（§3）要求旧表字段 ⊆ 新表字段，删了会对不齐；保留但 describe 里明写「⚠ 实现未读」，不假装它有效。
+- **别名以规范化后的键声明**：`arg-aliases.ts` 在 `compute()` 入口统一归一一次（`base←baseId|baseName` 等），schema 声明归一后的键 + describe 里注明别名（与 `capacity_forecast`/`risk_timeline` 判例一致）。
+
+### 10.3 两个被当场咬出来的目录漂移（负差额形态）
+
+- `selection_optimize`：目录 argHints 声明 `items`，实现读的是 **`itemType`**（`service.ts:4961`）——模型照说明书传 `items` 会被静默丢掉。schema 按实现声明 `itemType`/`budget` 必填。
+- `quote_margin` 的 `destination`、`yield_diagnosis` 的 `processKey`/`baseName`、`kit_readiness` 的 `toDay`（derive 写、无人读）、`margin_attribution` 的 `sign`（注释提及、无消费方）—— **均不声明**。声明一个没人读的键 = 骗模型。
+
+### 10.4 对照实验（本单两案 · 四个数）
+
+| 求解器 | 前（argHints 条数） | 后（inputSchema properties） | 新增可见 |
+|---|---|---|---|
+| `sop_reschedule` | **3** `[newDueDate,objective,targetOrderId]` | **5** | `advanceDays` `advancePct`（`service.ts:3423-3424` 三种重排口径之二，此前只在散文里） |
+| `credit_exposure` | **2** `[creditLimit,custName]` | **7** | `custId` `newOrderAmount` `overdue` `receivables` `wipUnbilled`（敞口=应收+在产未开票，两个加数此前完全不可见） |
+
+能力性判据（`plan_generate.hard.gm` 嵌套布尔，`"yes"` 必须被拒）：
+
+```
+【校验·拒】{"ok":false,"errors":["hard.gm: Invalid input: expected boolean, received string"]}
+【校验·收】{"ok":true}
+```
+
+前态（本单补登记之前）：`plan_generate` 未登记 → `{"ok":true,"unchecked":true}` 静默放行（机制证据：§2「未登记求解器诚实报 unchecked」一测至今仍在，`zzz_未登记` 走的就是同一条代码路）。
+
+### 10.5 测试与爆炸半径（逐个 RC · datacore vitest 全程串行）
+
+| 项 | RC |
+|---|---|
+| 接缝测试（45 断言：§1 五案对照 + §2 校验 + §3 双表对账 11 key + §4 全覆盖 63/63 + §5 保真） | **0** |
+| 变异反证·变异后（`sop_reschedule.targetOrderId` 去掉必填） | **1**（恰好咬 §3 该 key：「expected [] to deeply equal ['targetOrderId']」，1 failed / 44 passed） |
+| 变异反证·还原后（cp 还原 + porcelain 空 + 重建 dist） | **0**（45 passed） |
+| 爆炸半径 · datacore（solver-args-schemas / catalog / solver-arghints-contract.seam / xservice-smoke） | **0 / 0 / 0 / 0** |
+| 爆炸半径 · agentcore（a1-solvers-mcp / compose-plan / compose-plan-seam） | **0 / 0 / 0** |
+| BUILD `@platform/contracts` | **0**（每次 schema 改动后都重建，含变异/还原两轮） |
+
+### 10.6 §4 断言的改写（覆盖补满后的必然）
+
+原断言「未登记者不带 inputSchema 键」自带逃生注释「全登记了 ⇒ 本断言恒真，需换别的样例」。63/63 后它按注释指示改写为**全覆盖断言**（目录每个求解器都带 inputSchema + 反向金丝雀：注册表 key 不许飘出目录）。「不发空壳」纪律由 §10.2 第一条接手：空 schema 只发给**实测无入参**的 7 个，出处注到函数行。
+
+### 10.7 屏幕上多了什么 / 少了什么
+
+- **多了**：`GET /b/v1/mcp/servers/solvers` 的 63 个工具条目**全部**带 `inputSchema`（前 12 → 63）。
+- **少了**：什么都没少。argHints 逐字节保留（§4 断言守着）；7 个无入参求解器带的是 `properties:{}` 的空 object schema（诚实声明，非空壳）。
+- **用户屏上**：本单未动任何前端文件，终端用户界面零变化。
+
+### 10.8 我可能错在哪（≤3 条）
+
+1. **`generic_inference.apply` 的必填是契约口径不是实现全集**：实现里 `mode:"levers"` 与 rootType/select/nl 两条岔路都不读 apply，但旧表把它钉为必填，§3 对账要求两表必填集一致 ⇒ 新表保持必填并在 describe 里写明两条例外。风险：模型走岔路时被模式要求多传一个用不上的 `apply`。**这是旧契约的原样延伸，不是本单新引入的约束。**
+2. **51 个里我只对 9 个双表重叠 key 有机器对账**，其余 42 个的「必填」判定靠逐行读实现（asArr 缺即抛 / 显式 throw / `=== undefined` 判空三类证据）。若某处「缺省后静默兜底」被我读成「必填」（或反之），模型的可见性与实现行为会差一档——但方向只会是「声明比实现严」，不会比实现松（宁缺毋滥的那侧）。
+3. **`capacity_ledger.loadWorkOrders` / `inventory_optimize.inbound`/`locations` 等少数内部形状**，实现以 TS 断言/透传消费，元素形状我按断言点所见的字段声明；若上游装配处还写入了断言之外的字段，schema 不会拒（未声明 additionalProperties:false），只是模型看不见它们。
