@@ -1,4 +1,4 @@
-import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMcpToolName, QueryTimeseriesAggInputSchema, type SkillDefinition } from "@platform/contracts";
+import { AggregateRequestSchema, ErrorCodes, parseMcpToolFullName, parseSolverMcpToolName, QueryTimeseriesAggInputSchema, validateSolverInput, type SkillDefinition } from "@platform/contracts";
 import { newId } from "../ids.js";
 import { SKILL_RESOURCE_TEXT_LIMIT } from "../agent/context.js";
 import type { Metrics } from "../metrics.js";
@@ -184,6 +184,54 @@ export class GuardedToolExecutor {
       }
     } catch (err) {
       return this.finish(toolName, input, wrapError(err), "ERROR", started, false, classifyRetryable(err, binding));
+    }
+
+    // 1.5) WO-INPUTSCHEMA-WIRE · 求解器入参**真拦截**（上一张单只到「有测试调用方」= 已排练，非已实现）。
+    //
+    // ── 今天的行为是 X，应该是 Y ──
+    //   X：`lineGranularity:"yes"` 一路畅通到 DataCore，`service.ts:3461` 的 `asBool` 把任何非 `true`/`"true"`
+    //      的值读成 `false` ⇒ 调用方以为开了线级排产、实际拿到基地级结果，**页面不报错**（静默错答）。
+    //   Y：在 agentcore 这一侧按已发布模式当场拒掉，把「静默错答」换成一条能改的报错。
+    //
+    // ── 为什么拦在这个位置（拦早挡合法、拦晚等于没拦）──
+    //   · 在 **MCP 归一之后**（上面 :165 `parseSolverMcpToolName` 把 `mcp__solvers__{key}` 归一成
+    //     `invoke_solver`）⇒ **两种入口都收口在这一处**，不必在两个地方各写一份。
+    //   · 在 **IAM 之后**：无权调用者先拿 PERMISSION_DENIED，不因一条错参数反而被告知模式细节。
+    //   · 在 **预算之前**：一条格式错的调用不烧 agent 的 tool 预算（它本来就到不了 DataCore）。
+    //   · 在 **DataCore 往返之前**：省一次网络，且错误消息能精确到字段（`字段: 说明`），模型可直接改。
+    //   · ⛔ 不拦在 loop 层：那一层对所有工具通用，不认识求解器，属错层。
+    //
+    // ── 为什么拦不住合法的宽松调用（这条是本拦截安全性的全部依据·实测非推理）──
+    //   ① **未登记的 51 个求解器** → `validateSolverInput` 返回 `{ok:true,unchecked:true}` ⇒ 逐字节不变。
+    //   ② **别名调用不受影响**：zod object 默认 **strip** 未知键（不报错）——实测
+    //      `capacity_forecast{modelId,baseId}` / `risk_timeline{days}` 均 `{ok:true}`。且
+    //      `SOLVER_ARG_ALIASES`（datacore `solvers/arg-aliases.ts`）里**没有任何一个别名挂在必填字段上**
+    //      （`capacity_forecast.base` / `risk_timeline.base|horizon` 全是可选；`carbon_footprint` /
+    //      `mitigation_select` / `kit_readiness` 根本未登记）⇒ 早拦不会拒掉靠别名定位的合法调用。
+    //   ③ **只校验、不改写**：`input` 原样往下走。⛔ 绝不能拿 zod 的 parse 产物替换 args ——
+    //      那会把别名键 strip 掉，正好把 `arg-aliases.ts` 要治的「静默丢参」病换个地方再犯一次。
+    //
+    // outcome=ERROR + retryable=false：确定性校验错，按 :655 `classifyRetryable` 的既定口径不重试。
+    if (toolName === "invoke_solver") {
+      const solverInput = (input ?? {}) as Record<string, unknown>;
+      const solverKey = typeof solverInput.solverKey === "string" ? solverInput.solverKey : "";
+      const verdict = validateSolverInput(solverKey, solverInput.args ?? {});
+      if (!verdict.ok) {
+        return this.finish(
+          toolName,
+          input,
+          {
+            error: "SOLVER_INPUT_INVALID",
+            solverKey,
+            errors: verdict.errors,
+            hint: `求解器 ${solverKey} 的入参不符合已发布模式：${verdict.errors.join("；")}。请按本工具 schema 中该 solverKey 的条件分支改正后重试。`,
+          },
+          "ERROR",
+          started,
+          false,
+          false,
+        );
+      }
     }
 
     // 2.0) WO-Phase4：探索类工具专用配额（discover/search_experience/query_system_ontology）——与通用 tool 预算正交，
