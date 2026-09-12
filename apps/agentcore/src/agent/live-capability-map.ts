@@ -161,6 +161,76 @@ function capabilityOf(res: IntelligenceResource): string {
   return cands.map((c) => c?.trim()).find((c) => c && c.length > 0) ?? res.key;
 }
 
+/** 资源的语义候选文本（与 `dril/search-engine.ts` 的 `semanticCandidates` 同一组字段·保持一致）。 */
+function lexCandidates(r: IntelligenceResource): string[] {
+  const out: string[] = [r.description, r.label];
+  if (r.capability) out.push(r.capability);
+  for (const q of r.answersQuestions ?? []) out.push(q);
+  for (const q of r.suitableQuestions ?? []) out.push(q);
+  if (r.tags && r.tags.length > 0) out.push(r.tags.join(" "));
+  return out.filter(Boolean);
+}
+
+/** "认得这句话里的词"的求解器数：与问句至少共享一个词法 token 的资源条数（R6 纯函数）。 */
+function familiarSolverCount(query: string, items: readonly ResourceSearchResultItem[]): number {
+  const qt = lexTokens(query ?? "");
+  if (qt.size === 0) return 0;
+  let n = 0;
+  for (const item of items) {
+    if (item.resource.kind !== "solver") continue;
+    let hit = false;
+    for (const c of lexCandidates(item.resource)) {
+      const ct = lexTokens(c);
+      for (const t of qt) {
+        if (ct.has(t)) { hit = true; break; }
+      }
+      if (hit) break;
+    }
+    if (hit) n++;
+  }
+  return n;
+}
+
+/**
+ * **目录段**准入：这条问句问的是不是"经营上的事"。
+ *
+ * 为什么目录段该有自己的判据，而不是跟着详情段的 {@link LIVE_CAPABILITY_MIN_SCORE} 走 ——
+ * **两段的代价差一个数量级，而且贵的那部分实测与目录段无关**：
+ *   · **详情段**贵：能力全文 + 它的 `reads` 会进 `NavigationSlice.objectTypes`
+ *     → `selectSemanticTypeKeys` → `buildOntologySemanticContext` **真取数**（200ms→2s 那条路）。
+ *   · **目录段**便宜：key + 一句话。`projectNavigationSlice` 算 `objectTypes` 时
+ *     **只遍历 `solverKeys`（详情段·≤MAX_SOLVERS）**，`roster` 一条都不进 —— 故目录段
+ *     **零额外取数、零额外往返**（它吃的就是详情段那一次 `search` 的同一份结果）。
+ *     且它按 key 字典序渲染 ⇒ 同租户逐字节相同 ⇒ 可被 prompt 缓存命中。
+ *
+ * 判据由**三路既有信号**取并集，阈值除下面那一个熟悉度下限外**全是"非零"**（不是调出来的分位点）：
+ *   ① `extractTieredTags(query)` 非空 —— 与检索引擎**同一个**抽取器，问句自带业务标签；
+ *   ② 有求解器在 `domain` / `ontology` 两个**真·查询相关**子分上非零
+ *      （`semantic` 刻意不算：它就是那个 0.34~0.40 的哈希噪声源；`history`/`cost` 更不算：恒定 0.11）；
+ *   ③ 词法熟悉度 ≥ {@link LEX_FAMILIAR_MIN_SOLVERS}。
+ * （确定性路由 `domainResolve` 命中的情况不在此判 —— 那条已在上游无条件进详情段，`rank>0` 直接放行。）
+ *
+ * **实测（50 条问句·真起 datacore+agentcore·SEED_DEMO=1·分布表见
+ * `docs/AUDIT-relevance-distribution-20260912.md`）**：
+ *   · 真业务问句 **35/36 放行**（今天的门槛只放行 28/36）
+ *   · 寒暄/元问题 **0/14 放行**（"你好"/"你能做什么"/"帮我写首诗"… 一条都没漏）
+ * 三路**各自**在 14 条寒暄上都是零误放，并集仍是零 —— 这就是敢并的依据。
+ *
+ * R6：三路全是纯函数（正则/关键词/集合交），无 `Date.now`、无随机、无 LLM。
+ */
+export function hasBusinessIntent(query: string, items: readonly ResourceSearchResultItem[]): boolean {
+  // ① 问句自带业务标签（L1 域 / L2 决策类型 / L3 场景 / L5 算法）。
+  const tags = extractTieredTags(query ?? "", {});
+  for (const layer of Object.values(tags)) if ((layer ?? []).length > 0) return true;
+  // ② 有求解器拿到非零的业务域 / 本体子分（这两项才是随问句动的判别项）。
+  for (const item of items) {
+    const b = item.scoreBreakdown;
+    if ((b?.domain ?? 0) > 0 || (b?.ontology ?? 0) > 0) return true;
+  }
+  // ③ 词法熟悉度（最贵的一路，故放最后 —— 前两路命中时根本不会算到这里）。
+  return familiarSolverCount(query ?? "", items) >= LEX_FAMILIAR_MIN_SOLVERS;
+}
+
 /**
  * 从活资源目录检索本题候选求解器 → 投影成导航图可直接消费的 `SolverCatalog`。
  *
@@ -223,10 +293,36 @@ export async function fetchLiveSolverCatalog(
       };
       catalog[r.key] = entry;
     }
-    // 一条都不达标 → 返 undefined 退降级镜像（而非给一张空图）：空图会让"无族信号"的问句
-    // 连镜像那点兜底候选都拿不到，比改造前更差。⚠️ 目录段也一并不给 —— 无关问句（"你好"）
-    // 本就不该被灌 60 行目录，这条门槛同时守住了两段的 token 预算。
-    if (rank === 0) return undefined;
+    // ── 详情段一条都不达标 ──────────────────────────────────────────────────
+    // ⚠️ **WO-RELEVANCE-FLOOR 改判**：旧代码这里直接 `return undefined`，于是**目录段陪葬**。
+    // 旧注释说"无关问句本就不该被灌 60 行目录"——这半句对；错的是它把
+    // 「没有求解器跨过**详情段**门槛」当成了「这题不是经营问题」的证据。实测这两件事差得很远：
+    // 50 条问句里 **8 条真业务问句**（「常州这批成品要发出去，怎么装柜最省运费」0.2496 /
+    // 「手上这些单子按什么顺序做最划算」0.2542 / 「哪条线最闲，能不能匀点活过去」0.2516 …）
+    // 全员低于 0.30 ⇒ **模型拿到 0 个求解器**；而同一把尺子下「**你能做什么**」拿 0.2795，
+    // **比这 8 条都高**。门槛分不开它们，是因为它量的根本不是相关性（见 LIVE_CAPABILITY_MIN_SCORE 文档）。
+    //
+    // 故此处分两步，**不动 0.30，也不放宽它**：
+    if (rank === 0) {
+      // (a) 先问"这题是不是经营上的事"——三路既有信号，14 条寒暄零误放（见 hasBusinessIntent）。
+      //     不是 ⇒ 维持原样 `undefined`（"你好"仍然**零注入**，两段都不给）。
+      if (!hasBusinessIntent(query ?? "", res.results)) return undefined;
+      // (b) 是经营问句、却全员低于详情门槛 ⇒ 把**检索第 1 名**提进详情段。
+      //     为什么恰好 1 条：① "第 1 名"是名次不是阈值，不引入第二个魔数；
+      //     ② 代价有界 —— 只有这 1 条的 `reads` 会进 objectTypes → buildOntologySemanticContext，
+      //        与一次普通查询同量级，远低于 topN=12 全展开；
+      //     ③ 检索的**排序**比它的**绝对分**可信得多：实测「…怎么装柜最省运费」的对口
+      //        `packing_optimize` 正是第 1 名（63 选 1），只是绝对分 0.2496 够不着 0.30。
+      const top = res.results.find((i) => i.resource.kind === "solver");
+      if (!top) return undefined; // 检索空 → 仍退降级镜像（fail-open 不变）
+      catalog[top.resource.key] = {
+        capability: capabilityOf(top.resource),
+        outputShape: outputShapeOf(top.resource),
+        reads: readsOf(top.resource),
+        rank: rank++,
+        tier: "detail",
+      };
+    }
 
     // ── WO-TOOLS-LIST · 阶段①「全量目录」：剩下的**全部**求解器进目录层（tier="roster"） ──
     // 病根（本单实测）：改造前这里一返回就只剩 ≤12 条，下游再截到 6 —— 63 个注册求解器中
