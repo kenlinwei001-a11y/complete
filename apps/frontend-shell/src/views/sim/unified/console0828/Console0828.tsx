@@ -95,6 +95,7 @@ import {
   CHAIN_IMPEDIMENT_SOLVER_KEY,
   type ChainImpedimentModel,
 } from "../../chainImpediment";
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./Console0828.module.css";
 
 /** 左栏「已添加 N 件扰动事件」里的一条 —— **还没提交**，提交发生在「开始推演」。 */
@@ -162,6 +163,13 @@ function readDisclosure(raw: unknown): DisclosureBrief | null {
 }
 
 const pct = (x: number): string => `${(x * 100).toFixed(1)}%`;
+
+/**
+ * WO-SIM-DENSE ① · KPI 卡口径浮层的展开方向 —— **纯几何，无业务语义**。
+ * 一行六格，最右那两格的浮层若仍向右展开会顶出屏幕右缘（`InfoPopover` 宽 380px，
+ * 而一格才 ~250px）。⇒ 后三分之一向左开。
+ */
+const kpiAlign = (i: number, n: number): "left" | "right" => (i >= n - Math.max(1, Math.ceil(n / 3)) ? "right" : "left");
 
 /**
  * WO-AGENT-INTO-SIM · 出方案用哪个 agent。
@@ -1261,19 +1269,35 @@ export default function Console0828({
             ⚠⚠ 每张卡第三行是**口径说明，默认可见，⛔ 不折叠**。 */}
         {kpis.length === 0 ? null : (
           <>
-            <div className={styles.kpis} data-testid="c0828-kpis">
-              {kpis.map((k) => (
+            {/* `--kpi-n` = 本次真的有几张卡 —— 推演后 6、推演前 3。
+                ⛔ 不写死 6：推演前只有 3 个真量，留三个空格子等于用版面暗示还有三个量没算出来。 */}
+            <div
+              className={styles.kpis}
+              data-testid="c0828-kpis"
+              style={{ "--kpi-n": kpis.length } as React.CSSProperties}
+            >
+              {kpis.map((k, i) => (
                 <div
                   key={k.key}
                   className={k.alert === true ? `${styles.kpi} ${styles.kpiAlert}` : styles.kpi}
                   data-testid={`c0828-kpi-${k.key}`}
                 >
-                  <span className={styles.kpiKey}>{k.label}</span>
+                  {/* 标签行 —— 标签 + `?` 记号。那个 `?` 就是「降层后第一层留下的可见记号」，
+                      ⛔ 不许去掉：去掉 = 静默降层 = 删除（规范 §1）。 */}
+                  <span className={styles.kpiKey}>
+                    {k.label}
+                    <InfoPopover topic={`${k.label} · 口径`} testId={`c0828-kpi-${k.key}`} align={kpiAlign(i, kpis.length)}>
+                      {k.cal}
+                    </InfoPopover>
+                  </span>
                   <span className={`${styles.kpiBig} ${k.small === true ? styles.kpiBigSm : ""}`}>{k.value}</span>
                   <span className={styles.kpiCmp}>{k.cmp}</span>
-                  <p className={styles.kpiCal} data-testid={`c0828-kpical-${k.key}`}>
-                    {k.cal}
-                  </p>
+                  {/* 第一层口径：**一行**，超长 ellipsis（`.kpiCal1`）。
+                      完整那段在上面的浮层里，一字未删 —— 两者由 `cal` / `calOne` 各管一头。
+                      ⚠ `data-testid` 沿用 `c0828-kpical-*`：既有测试靠它找口径，改名等于把门拆了。 */}
+                  <span className={styles.kpiCal1} data-testid={`c0828-kpical-${k.key}`}>
+                    {k.calOne}
+                  </span>
                 </div>
               ))}
             </div>

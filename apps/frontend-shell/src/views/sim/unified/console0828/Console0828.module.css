@@ -220,20 +220,40 @@
 .lensTab:hover { color: var(--txt); }
 .lensTabOn { color: var(--accent-txt); border-bottom-color: var(--accent); font-weight: 600; }
 
-/* ③ KPI 条 —— 3–5 张并排。
-   ⚠⚠ **每张卡的口径说明 `.kpiCal` 是默认可见的那一层，⛔ 不许折叠、不许缩成图标。**
-   本仓最值钱的就是这一位：它防的正是「屏上摆一个看起来像真的假数」。
-   版面先给口径文字留位置（`.kpiCal` 不设 max-height、不 ellipsis），再排别的。 */
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
-.kpi {
-  border: 1px solid var(--line2); border-radius: 10px; padding: 11px 13px;
-  background: var(--panel-glass); display: flex; flex-direction: column; gap: 3px; min-width: 0;
+/* ③ KPI 条 —— **一行六格**（WO-SIM-DENSE ②）。
+   格数由 `--kpi-n`（= 本次渲染的卡数）给：推演后 6、推演前 3。
+   ⛔ 不写死 `repeat(6,1fr)` —— 推演前只有 3 张真量，写死 6 会把它们挤进左半屏，
+   而右半那三格是空的：那等于用版面暗示「还有三个量，只是没算出来」。
+
+   ⚠⚠ **口径去哪了**：改前 `.kpiCal` 把整段口径铺在第一层（原注：「不设 max-height、不 ellipsis」），
+   最长那条 78 字，在 ~250px 卡宽下占 4–6 行，六张卡的口径就吃掉大半屏。
+   现在整段搬进 `InfoPopover`，第一层留 `.kpiCal1` 一行 + 标签右边那个 `?` 记号。
+   **一个字都没删**（逐卡字符数守恒，见 `cal` / `calOne` 的头注）——
+   降层允许，删除不允许，而**静默降层等于删除**，所以 `?` 必须可见。 */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(var(--kpi-n, 6), minmax(0, 1fr));
+  gap: 10px;
 }
-.kpiKey { font-size: 12px; color: var(--muted); font-weight: 500; }
-.kpiBig { font-size: 30px; font-weight: 700; line-height: 1.1; font-family: var(--font-mono); color: var(--txt); }
-/* 数值偏中等长度时（金额串）30px 会撑破卡 —— 用容器查询降到正文级，**不新增字号档**。 */
+/* 窄屏收拢：六格塞不下时回到自适应，⛔ 不让卡片被压到读不出数。 */
+@media (max-width: 1180px) { .kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); } }
+.kpi {
+  border: 1px solid var(--line2); border-radius: 10px; padding: 9px 12px;
+  background: var(--panel-glass); display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.kpiKey {
+  font-size: 11px; color: var(--muted); font-weight: 500;
+  display: flex; align-items: center; gap: 4px; min-width: 0;
+}
+.kpiBig { font-size: 23px; font-weight: 700; line-height: 1.15; font-family: var(--font-mono); color: var(--txt); }
+/* 数值偏中等长度时（金额串）大号会撑破卡 —— 降到正文级，**不新增字号档**。 */
 .kpiBigSm { font-size: 13px; }
-.kpiCmp { font-size: 12px; color: var(--muted2); }
+.kpiCmp { font-size: 11px; color: var(--muted2); }
+/* 第一层口径：**恰好一行**。超长用 ellipsis 截断 —— 截掉的部分在浮层里一字不少。 */
+.kpiCal1 {
+  font-size: 10.5px; color: var(--muted2); line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
 .kpiCal { font-size: 12px; color: var(--muted2); line-height: 1.65; margin: 2px 0 0; }
 /* 告警态：只有**越线**才染色（纪律第 4 条：红/黄/橙专用于告警）。 */
 .kpiAlert .kpiBig { color: var(--danger-txt); }
