@@ -659,6 +659,12 @@ export const IndustryTemplateSchema = z.object({
       params: z.record(z.string(), z.union([z.number(), z.string(), z.array(z.string())])).optional(),
       // WO-RULES-CLASSIFY（加性）：规则业务类别（种子随规则授予，规则库分类筛选的真元数据源）。
       category: z.string().optional(),
+      // WO-RULE-DISCOVERY（加性）：发现面元数据——DRIL 检索的主文本/标签/样例问句。
+      // description 必须从 expression 反推「约束什么、何时触发」，⛔不许照 name 扩写；
+      // 缺省时 B 侧 projectRules 回落 name（字典式可检索，不是发现）。
+      description: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      answersQuestions: z.array(z.string()).optional(),
       origin: RuleOriginSchema.optional(),
       version: z.number().int().optional(),
       status: z.enum(["DRAFT", "PUBLISHED", "RETIRED"]).optional(),
