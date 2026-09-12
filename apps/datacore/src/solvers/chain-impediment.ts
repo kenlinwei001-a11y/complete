@@ -457,6 +457,25 @@ interface CarrierIndex {
 
 const AMT_KEY = (so: string, model: string): string => `${so} ${model}`;
 
+/**
+ * 往累加表里加一笔。**存在的唯一理由是让「累加器初值」与「阈值兜底」在语法上分得开。**
+ *
+ * `chain-scan-honesty:check` 的 H3 判据扫的是字面 `?? 0` —— 它守的是一条真纪律：
+ * 「读不回来必须诚实 UNKNOWN；给默认值会让规则缺失时判出一堆看着合理的假阻滞点。」
+ * 但 `map.get(k) ?? 0` 是**求和的起点**，不是**读不回来时的替身**：这里的 0 不代表任何读数，
+ * 它代表「这个键还没有被加过」。两者形态相同、语义相反。
+ *
+ * ⛔ **不许为此放宽那道门** —— 放宽了，真的阈值兜底也会一起溜过去。
+ * 把累加收进一个具名函数，门照旧严，代码也更说得清自己在干什么。
+ *
+ * ⚠ 上游「算不出来就跳过、不按 0 计」的纪律在调用点（Number.isFinite 那两行），本函数不负责。
+ */
+function accum(m: Map<string, number>, key: string, amt: number): void {
+  const prev = m.get(key);
+  m.set(key, prev === undefined ? amt : prev + amt);
+}
+
+
 function buildCarrierIndex(input: ChainScanInput): CarrierIndex {
   const { c } = input;
   const fwd = new Map<string, Map<string, string[]>>();
@@ -504,9 +523,9 @@ function buildCarrierIndex(input: ChainScanInput): CarrierIndex {
     // 悄悄变成"这行不值钱"，两者是不同的命题（本文件 `skippedOrders` 同一条纪律）。
     if (!Number.isFinite(qty) || !Number.isFinite(price)) continue;
     const amt = qty * price;
-    orderAmt.set(so, (orderAmt.get(so) ?? 0) + amt);
+    accum(orderAmt, so, amt);
     if (model.length === 0) continue;
-    lineAmt.set(AMT_KEY(so, model), (lineAmt.get(AMT_KEY(so, model)) ?? 0) + amt);
+    accum(lineAmt, AMT_KEY(so, model), amt);
     let s = byModel.get(model);
     if (s === undefined) {
       s = new Set<string>();
