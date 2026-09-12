@@ -197,18 +197,25 @@ describe("WO-WORLDSTATE-SURFACE · 统一世界态读取面", () => {
     // ── 真扰动 → 真 tick×4（不直写 baseSnapshot —— 那样测不到写端接缝）─────────────
     await perturbDemand(t, sid, cand);
 
-    // ── 扰动后：四个数先落盘（console.log），再断言 —— 基线上断言红但日志在 ────────
+    // ── 扰动后：四个数**先全部落盘**（console.log），断言另起一轮 ─────────────────
+    //    （基线上第一个求解器的 ≠ 断言就红 —— 若断言与调用混在一轮，
+    //    后两个求解器的「修前相等」证据就永远打不出来。）
+    const afterAll: Record<string, SolverData> = {};
     for (const key of WIRED_KEYS) {
       const res = await invokeSolver(t, key, { ...wiredArgs(cand)[key], worldId: sid });
       expect(res.statusCode, `${key} 扰动后调用失败：${res.body}`).toBe(200);
-      const after = dataOf(res);
+      afterAll[key] = dataOf(res);
       const hBefore = hashOf(before[key]);
-      const hAfter = hashOf(after);
+      const hAfter = hashOf(afterAll[key]);
       console.log(`[contrast] solver=${key} before=${hBefore} after=${hAfter} equal=${hBefore === hAfter}`);
+    }
+    for (const key of WIRED_KEYS) {
+      const hBefore = hashOf(before[key]);
+      const hAfter = hashOf(afterAll[key]);
       // 🔴 头号判据：**必须不同**（修前这两个哈希逐字节相同 —— 那就是本单要治的病）。
       expect(hAfter, `${key} 扰动前后逐字节相同 ⇒ 世界态没进求解器（病未愈）`).not.toBe(hBefore);
       // 量法自证：披露块说得出**改了几格、改在哪**，不是空转（cellsApplied>0 且明细非空）。
-      const ws = after.worldState;
+      const ws = afterAll[key].worldState;
       expect(ws, `${key} 回包缺 worldState 披露键`).toBeDefined();
       expect(ws!.cellsApplied, `${key} 一格都没改写却声称读了世界 ⇒ 量法没有鉴别力`).toBeGreaterThan(0);
       expect(ws!.applied.length).toBeGreaterThan(0); // R6 断言不许咬空集：明细真的遍历过
