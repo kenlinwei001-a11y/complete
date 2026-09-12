@@ -215,7 +215,7 @@ describe("WO-WORLDSTATE-SURFACE · 统一世界态读取面", () => {
       // 🔴 头号判据：**必须不同**（修前这两个哈希逐字节相同 —— 那就是本单要治的病）。
       expect(hAfter, `${key} 扰动前后逐字节相同 ⇒ 世界态没进求解器（病未愈）`).not.toBe(hBefore);
       // 量法自证：披露块说得出**改了几格、改在哪**，不是空转（cellsApplied>0 且明细非空）。
-      const ws = afterAll[key].worldState;
+      const ws = afterAll[key]!.worldState;
       expect(ws, `${key} 回包缺 worldState 披露键`).toBeDefined();
       expect(ws!.cellsApplied, `${key} 一格都没改写却声称读了世界 ⇒ 量法没有鉴别力`).toBeGreaterThan(0);
       expect(ws!.applied.length).toBeGreaterThan(0); // R6 断言不许咬空集：明细真的遍历过
