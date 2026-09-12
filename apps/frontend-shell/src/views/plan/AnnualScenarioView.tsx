@@ -1,7 +1,8 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { AnnualScenario, AopResponse } from "@platform/contracts";
-import { createActionDraft, fetchAop } from "@/api/endpoints";
+import type { AnnualScenario, AopResponse, FinanceWorldLine } from "@platform/contracts";
+import { createActionDraft, fetchAop, fetchSimSessions, fetchFinanceWorldProjection } from "@/api/endpoints";
+import { InfoPopover } from "@/components/InfoPopover";
 import { useFeature } from "@/workspace/featureGate";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { toast, toastError } from "@/store/toastStore";
@@ -56,10 +57,204 @@ export default function AnnualScenarioView(_props: ViewRendererProps) {
       </div>
 
       {baseline?.capexScenario && <CapexWindowCurve scenario={baseline} />}
+      <WorldProjectionBand />
       <TriggerBoard triggers={data.triggers} />
       <DecompositionFlow decomposition={data.decomposition} baselineDemand={baseline?.demand} />
     </div>
   );
+}
+
+/**
+ * ══ WO-HV-B ① · 「今天做这个决定 → 未来某期结果」——把年度情景接到推演世界 ═══════════
+ *
+ * **今天的行为是 X（开工实测，非派单转述）**：本页只打一个 `fetchAop(2026)`。
+ *   后端 `planviews.ts` 那一行是
+ *   `finance: { revenue: num(s.props.revenue), capex: num(s.props.capex), irr }` ——
+ *   `revenue`/`capex` **直读 `AnnualScenario` 对象的 props**，而那些 props 是种子里的常数
+ *   （`synthetic/battery.ts` 的 `conservative {cashCushion:72, capex:3, irr:9.5}` /
+ *   `baseline {58, 8, 14.2}` / `aggressive {42, 27, 18.6}`）。
+ *   ⇒ **无论在哪个推演世界里施加什么扰动，这一行钱逐字节不动**。
+ *   本页因此答不出「今天做这个决定，未来某期会变成什么样」——它只会背出三个写死的情景。
+ *
+ * **应该是 Y**：同一页上，除了「真值口径」的那三个数，还要能读到
+ *   「**在某个推演世界里、施加了那条扰动之后**，成本/毛利/应收各变成多少钱」。
+ *   这一问已经有求解器答得出：`finance_world_projection`
+ *   （吃 `args.worldId`，以 `FinancePlan.{budget,rolling}` 与 `ARInvoice.amount` 真值为基线，
+ *   用世界态里 costPressure/receivablePressure/overduePressure 三个压力做投影）。
+ *   缺的从来不是记号，是**把这条线接到这一页**。
+ *
+ * ⛔ **三条不许越的线，全部写在屏上而不是只写在注释里**：
+ *  ① **`capex` / `irr` / `cashCushion` 本身没有被"投影"**。该求解器的输出面是
+ *     收入/销售成本/毛利 + 应收/逾期五行，**它不产 capex 也不产 irr**。
+ *     把投影出来的成本改个标签叫 capex，就是编数 —— 本页明写这三个数仍是真值口径、且**按设计不随世界态动**
+ *     （与 `finance_pnl` 同理：那是它的正确行为，不是 bug）。
+ *  ② **收入行 `projected ≡ rolling`** 是后端有意为之（「本链不驱动收入」，理由随回包的 note 下发），
+ *     屏上照实转述，不替它圆场成「收入没受影响」。
+ *  ③ **没有世界 / 世界态为空 / 回包不合契约 ⇒ 退回诚实缺口记号**，绝不显示 0、绝不编一个数。
+ *     空世界里每条压力都是 0 ⇒ `projected ≡ rolling`，那会是一组「和没扰动时一模一样的钱」
+ *     且没有任何记号说它是空的 —— 静默错答比不答更坏。
+ *
+ * 默认折叠（`<details>`）：本页在第一层棘轮基线里，结论留第一层、口径进第二层。
+ */
+function WorldProjectionBand() {
+  const [worldId, setWorldId] = useState<string>("");
+
+  // 世界清单：`worldId` 必须是**已存在的推演会话 id**（`SimSession.id`），不是自由字符串。
+  const sessions = useQuery({
+    queryKey: ["a", "sim-sessions", "aop-projection"],
+    queryFn: () => fetchSimSessions(),
+    retry: false,
+  });
+  const worlds = sessions.data?.items ?? [];
+  // 选择器留空 ⇒ 取清单第一条（**不造一个 id**）；清单为空 ⇒ 下面走"没有世界"的诚实分支。
+  const effectiveWorldId = worldId || worlds[0]?.id || "";
+
+  const proj = useQuery({
+    // worldId 进 key：不进的话换世界后命中旧缓存 ⇒ 屏上金额停在上一个世界（静默错答）。
+    queryKey: ["b", "finance-world-projection", "aop", effectiveWorldId],
+    enabled: effectiveWorldId !== "",
+    retry: false,
+    queryFn: ({ signal }) => fetchFinanceWorldProjection(effectiveWorldId, signal),
+  });
+
+  const out = proj.data;
+  /**
+   * 🔴 判据取契约，不取回包的一面之词（同 `SandboxImpactBand` 的既有判据，**共用同一条**）：
+   * 契约对 `worldObjectCount` 的原文是「0 = 空世界 → available:false」——
+   * 「空世界」与「不可用」在契约里是同一件事。只信 `available` 的那一版会把基线原样当投影摆上屏。
+   */
+  const worldEmpty = out !== undefined && out.worldObjectCount === 0;
+  const usable = out !== undefined && out.available && !worldEmpty;
+
+  return (
+    <div className="panel" style={{ marginBottom: 14 }} data-testid="aop-world-projection">
+      <div className="section-title" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        这个决定在推演世界里变成多少钱
+        <select
+          data-testid="aop-world-select"
+          value={effectiveWorldId}
+          onChange={(e) => setWorldId(e.target.value)}
+          style={{ fontSize: 12 }}
+          disabled={worlds.length === 0}
+        >
+          {worlds.length === 0 && <option value="">（没有推演世界）</option>}
+          {worlds.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.id}（第 {w.curTick} 拍 · {w.status}）
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* 常驻口径行 —— 一个推演数被读成实测数，比不给这个数更坏，所以这句不许只待在浮层里。 */}
+      <div style={{ fontSize: 12, color: "var(--muted2)", marginBottom: 6 }} data-testid="aop-world-caliber">
+        推演投影 · 非实测。
+        <InfoPopover topic="它和上面三张情景卡的钱是什么关系" testId="aop-world-caliber-info">
+          上面情景卡里的 <b>收入 / CAPEX / IRR</b> 是<b>本体真值口径</b>：直读 <span className="mono">AnnualScenario</span> 的属性，
+          <b>按设计不随推演世界变</b>（同 <span className="mono">finance_pnl</span>——那是它的正确行为，不是缺陷）。
+          <br />
+          这一块是<b>世界态投影口径</b>：基线取 <span className="mono">FinancePlan.rolling</span> 真值，
+          增量由这个世界里的成本/应收/逾期三个压力沿传导规则折算。换算除数与传导链系数随回包下发，前端零写死系数。
+          <br />
+          ⚠ 该求解器<b>不产 CAPEX / IRR / 现金垫</b>，所以这三个数这里<b>没有</b>投影版本 ——
+          把成本投影改个标签叫 CAPEX 就是编数。
+        </InfoPopover>
+      </div>
+
+      {sessions.isError && (
+        <div style={{ fontSize: 12, color: "var(--muted)" }} data-testid="aop-world-list-error">
+          取不到推演世界清单 —— 本块据实留空，不拿真值冒充投影。
+        </div>
+      )}
+      {!sessions.isError && worlds.length === 0 && !sessions.isLoading && (
+        <div style={{ fontSize: 12, color: "var(--muted)" }} data-testid="aop-world-none">
+          还没有任何推演世界。去沙盘起一次推演之后，这一页就能读出「那个决定让这些钱变成多少」。
+          <b> 现在不显示数字，是因为真的没有——不是 0。</b>
+        </div>
+      )}
+      {proj.isLoading && effectiveWorldId !== "" && (
+        <div style={{ fontSize: 12, color: "var(--muted2)" }} data-testid="aop-world-loading">
+          {zh.common.loading}
+        </div>
+      )}
+      {proj.isError && (
+        <div style={{ fontSize: 12, color: "var(--muted)" }} data-testid="aop-world-error">
+          这个世界的金额投影算不出来：{projErrText(proj.error)}
+        </div>
+      )}
+      {out !== undefined && !usable && (
+        <div style={{ fontSize: 12, color: "var(--muted)" }} data-testid="aop-world-unavailable">
+          {worldEmpty
+            ? "这个世界里还没有任何对象带态（baseSnapshot / tick 态均为空）—— 投影会恒等于基线，那不是「扰动不影响钱」，是「这个世界里还没发生任何事」。故本块据实留空。"
+            : (out.unavailableReason ?? "后端报此次投影不可用，且未给出理由。")}
+        </div>
+      )}
+
+      {usable && out && (
+        <>
+          <table className="cmp" data-testid="aop-world-lines">
+            <thead>
+              <tr>
+                <th>科目</th>
+                <th>基线（真值滚动预测）</th>
+                <th>世界态投影</th>
+                <th>Δ</th>
+                <th>Δ%</th>
+                <th>凭什么是这个数</th>
+              </tr>
+            </thead>
+            <tbody>
+              {out.lines.map((l: FinanceWorldLine) => (
+                <tr key={l.subject} data-testid={`aop-world-line-${l.role}`}>
+                  <td className="zh">{l.subject}</td>
+                  <td className="mono">{l.rolling.toLocaleString("zh-CN")}</td>
+                  <td className="mono" data-testid={`aop-world-projected-${l.role}`}>
+                    {l.projected.toLocaleString("zh-CN")}
+                  </td>
+                  <td className="mono" data-testid={`aop-world-delta-${l.role}`}>
+                    {l.delta.toLocaleString("zh-CN")}
+                  </td>
+                  <td className="mono">{l.deltaPct}%</td>
+                  {/* 铁律「推演过程必须可披露」：算式与驱动压力由回包逐字下发，前端只转述不改写。
+                      `driver === ""` 是**诚实缺席**（本链不驱动这一行），不是「不受影响」—— 照实写。 */}
+                  <td style={{ fontSize: 12, color: "var(--muted)" }} data-testid={`aop-world-formula-${l.role}`}>
+                    {l.formula}
+                    {l.driver === "" && <span>（本链不驱动此行 · 原样透传）</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {/* 压力来源：这三个数就是「那个决定」在这个世界里留下的痕迹，摆出来才看得出投影凭什么。 */}
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }} data-testid="aop-world-pressures">
+            世界态压力：
+            {out.pressures.map((p, i) => (
+              <span key={p.stateVar}>
+                {i > 0 ? " · " : ""}
+                {p.stateVar} <span className="mono">{p.value}</span>（{p.objectType} {p.carriers}/{p.universe} 承载）
+              </span>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 4 }} data-testid="aop-world-basis">
+            换算：{out.basis.note}
+          </div>
+          {out.notes.length > 0 && (
+            <ul style={{ fontSize: 12, color: "var(--muted2)", margin: "4px 0 0 16px" }} data-testid="aop-world-notes">
+              {out.notes.map((n, i) => (
+                <li key={i}>{n}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** 错误信封 → 一句人话（与本仓其余页同判据：有 error.message 就用后端原话，不自己编）。 */
+function projErrText(e: unknown): string {
+  const m = (e as { error?: { message?: string } })?.error?.message;
+  return m ?? (e instanceof Error ? e.message : "未知错误");
 }
 
 /** 缺口/过剩窗口曲线（消费 capex_scenario 已产 demand/supply/gap/windows）：季度需求 vs 供给双线 + 缺口柱 + 窗口标段。 */
