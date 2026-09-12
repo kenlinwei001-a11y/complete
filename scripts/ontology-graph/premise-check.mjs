@@ -965,7 +965,10 @@ function trustCell(graph, kind, shards, degrade = [], hints = []) {
   const can = canaryFor(graph, kind, hints);
   parts.push(can.note);
   if (can.status === "fail" || can.status === "contradict") level = "不可信";
-  else if (can.status === "none" || can.status === "generic") level = "存疑";
+  else if (can.status === "none") level = "存疑";
+  // ⚠ `generic`（这一维度有金丝雀，但不是为本行这个符号/注册表准备的）**只记一笔，不降级**。
+  //   同 dims 盲区的理由：18 条探针 vs 成百上千个对账对象，"专属"几乎永远不成立 ——
+  //   据此降级会让整屏齐刷刷「存疑」，而**一个恒等于总行数的评级等于没评**。实测就出现过这一屏。
 
   const badShards = [];
   for (const s of shards) {
@@ -990,11 +993,17 @@ function trustCell(graph, kind, shards, degrade = [], hints = []) {
     parts.push(exact.length === 1
       ? `图谱盲区清单按 dims 命中 1 条：「${exact[0].text}」`
       : `图谱盲区清单按 dims 命中 ${exact.length} 条（${ids}）—— 详见 INDEX.blindSpots，⛔ 本工具不替你挑哪条是主因`);
-    // **不完整性对「有 N 个」只是降精度，对「一个都没有」却是致命的** ——
-    // 前者仍可用（存疑），后者根本不可得（自认盲区）。故只有否定型声明才升到 ⛔。
-    const isNegativeClaim = kind === "NOREF";
-    level = isNegativeClaim ? "图谱自认盲区" : (level === "可信" ? "存疑" : level);
-    if (isNegativeClaim) parts.push("⛔ 「零调用方」是**否定**结论：图谱自认看不全引用 ⇒ 这类结论它永远给不实，不是这一次不准。");
+    // ⚠ dims 命中是**上下文，不是判决**：真产物 14 条盲区把五个维度全覆盖了，
+    //   若据此逐行降级，屏上 83 行会齐刷刷全是「存疑」—— 一个恒等于总行数的评级等于没评。
+    //   实测就出现过这一屏。故：**列出来供人自查，但不动等级**；
+    //   等级交给真正有鉴别力的信号（专属金丝雀 / 分片告警 / 注册表自述 trustworthy / 本工具降级）。
+    //
+    //   唯一的例外是**否定型声明**：不完整性对「有 N 个」只是降精度，
+    //   对「一个都没有」却是致命的 —— 前者仍可用，后者根本不可得。
+    if (kind === "NOREF") {
+      level = "图谱自认盲区";
+      parts.push("⛔ 「零调用方」是**否定**结论：图谱自认看不全引用 ⇒ 这类结论它永远给不实，不是这一次不准。");
+    }
   } else if (fuzzy.length) {
     // ⚠ 散文盲区只能关键词撞，撞到不等于说的就是这件事 ⇒ 只降到「存疑」，不许升格成断言
     parts.push(`◑ 疑似落在盲区（散文条目关键词命中，**未必说的是同一件事**）：「${fuzzy[0].text}」`);
@@ -1318,9 +1327,9 @@ function reconcile(graph, claim) {
       row.evidence.push(`±${tol} 行内共 ${near.length} 个落点：${near.slice(0, 3).map((n) => `${n.line}(${n.what})`).join(" · ")}`);
     }
     const shards = [...new Set(keys.flatMap((k) => graph.byFile.get(k).map((a) => a.__shard)))];
-    row.trust = trustCell(graph, "COORD", ["INDEX.yaml", ...shards], [
-      `行号会漂。图谱的 generatedFrom = ${graph.index?.generatedFrom ?? "（未标）"}；派单若基于更新的树，本行「对上了」只说明 ±${tol} 行内有东西，不证明是同一处`,
-    ], [`${claim.file}:${claim.at}`, basename(claim.file)]);
+    // 「行号会漂」对每条坐标都成立 ⇒ 它是**证据列的常驻脚注**，不是本行独有的降级理由。
+    row.evidence.push(`⚠ 行号会漂：图谱的 generatedFrom = ${graph.index?.generatedFrom ?? "（未标）"}；派单若基于更新的树，「±${tol} 行内有东西」不证明是同一处`);
+    row.trust = trustCell(graph, "COORD", ["INDEX.yaml", ...shards], [], [`${claim.file}:${claim.at}`, basename(claim.file)]);
     return row;
   }
 
@@ -1502,8 +1511,17 @@ function renderText(res) {
   const susp = res.rows.filter((r) => r.verdict.startsWith("存疑"));
   L.push("");
   L.push(`小结  可核声明 ${res.rows.length} 条 → 相符 ${res.rows.length - diff.length - uncheck.length - susp.length} · 不一致 ${diff.length} · 存疑 ${susp.length} · 无法对账 ${uncheck.length} · 未识别 ${res.unresolved.length}`);
-  const lowTrust = res.rows.filter((r) => r.trust.level !== "可信").length;
-  L.push(`      其中 ${lowTrust} 条的**图谱侧**本身就不完全可信 —— 那些行的「不一致」可能是图谱抽漏，不是你写错。`);
+  // ⚠ 分级列出，别只报一个「N 条不完全可信」—— 真图谱 14 条盲区覆盖全部五维，
+  //   那个数恒等于总行数，读起来像「全都别信」，等于没说。
+  const byLevel = new Map();
+  for (const r of res.rows) byLevel.set(r.trust.level, (byLevel.get(r.trust.level) ?? 0) + 1);
+  L.push(`      图谱侧可信度  ${[...byLevel].map(([k, v]) => `${TRUST_MARK[k] ?? k} ${v}`).join(" · ")}`);
+  const three = [
+    `① 你写错了 ⇒ 改派单`,
+    `② 图谱抽漏了 ⇒ 查/重跑抽取器`,
+    `③ 本工具没读进来 ⇒ 修加载器`,
+  ];
+  L.push(`      三种归因  ${res.graph.loaderBroken ? "⛔ 本次落在 ③ —— 加载未修复前，①② 都谈不上" : three.join(" · ")}`);
   L.push("");
   return L.join("\n");
 }
