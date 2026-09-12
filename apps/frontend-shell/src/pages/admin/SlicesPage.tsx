@@ -192,7 +192,7 @@ function RegisteredTab({ onCreate }: { onCreate: () => void }) {
                   data-testid="slices-biz-group-toggle"
                   onClick={() => setBizOpen((v) => !v)}
                 >
-                  {bizOpen ? "▾" : "▸"} 切片库登记切片（biz.* · {bizSlices.length} 条 · 默认折叠，不与手工切片混排）
+                  {bizOpen ? "▾" : "▸"} 切片库登记切片（biz.* · {bizSlices.length} 条）
                 </button>
               </td>
             </tr>
@@ -338,7 +338,7 @@ function LibraryTab() {
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
         <div className="muted" style={{ fontSize: 12 }}>
-          {lt.sub} {canEdit ? "点切片键就地展开内联子图并可编辑规格（不跳转图谱模块）。" : "点切片键就地查看内联子图（只读·不跳转）。"}
+          {lt.sub} {canEdit ? "点切片键就地展开子图并可编辑。" : "点切片键就地查看子图（只读）。"}
         </div>
         {isAdmin && pendingCount > 0 && (
           <button

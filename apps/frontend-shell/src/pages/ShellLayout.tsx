@@ -345,6 +345,8 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   //
   // 本次是真删：组件 / renderer 注册 / 前后端视图下发 / mock 场景卡 / 两条测试，一批删净。
   // 后端 `history/bundle` 端点保留 —— 追一层实测另有 3 个消费方（风险看板 · 驾驶舱 ×2）。
+  //   复验（2026-09-12）：`grep -rn "history/bundle" apps/frontend-shell/src` →
+  //   取数器 endpoints.ts · 驾驶舱 DashboardView（纵轴口径句）· 风险看板 inspectorModel。
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate"].map((key) => ({ kind: "view" as const, key })) },
   // WO-NAV-SANDBOX-GROUP：沙盘一家五口此前**一个都没登记**——
   //   · `sim-sandbox` / `sim-init` 落「裸挂」（排在全部 13 个分组之后，屏幕最底）；

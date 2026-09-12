@@ -134,7 +134,7 @@ describe("内联子图折叠 UI（真路由 · mock 宽扇出图）", () => {
     expect((await screen.findByTestId("slice-graph-shown-wide_fanout_demo")).textContent).toBe("1");
     expect(screen.getByTestId("slice-graph-folded-wide_fanout_demo").textContent).toBe("20");
     const chip = screen.getByTestId("slice-graph-group-wide_fanout_demo-1-Base");
-    expect(chip.textContent).toContain("Base ×20");
+    expect(chip.textContent).toContain("Base 20 个");
 
     // 点开组 → 21 节点全显；收起 → 回 1
     await user.click(chip);

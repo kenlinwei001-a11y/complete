@@ -30,9 +30,11 @@ const TYPE_PALETTE = ["#4C90F0", "#36BFA5", "#E8A13A", "#B57BE0", "#E06C8B", "#5
  * WO-SLICE-CONSUMPTION-20260912（G4 · AC4）：内联子图按跳折叠，取代旧的盲 cap 48（一刀切前 N 节点）。
  * 规则（两个常数，纯结构驱动，无业务常数）：
  *  · 默认展开前 2 跳（layer 0–2 的节点可个显）；
- *  · 同跳同类型桶 >16 个 ⇒ 折成一个「Type ×N」组（宽层也淹屏：demo 实测 domain_d06_capacity
- *    第 1 跳 Line×130 / 第 2 跳 WorkOrder×260+Process×260，前 2 跳合计 704 节点——
- *    只折深层挡不住宽层，故折叠判据是「深 ∨ 宽」）；
+ *  · 同跳同类型桶 >16 个 ⇒ 折成一个「Type N 个」组（宽层也淹屏：demo 实测 domain_d06_capacity
+ *    第 1 跳 Line 130 / 第 2 跳 WorkOrder 260 + Process 260，前 2 跳合计 704 节点——
+ *    只折深层挡不住宽层，故折叠判据是「深 ∨ 宽」。
+ *    实测日 2026-09-12 · 复验：分层分布钉死在 test/slice-graph-fold.test.tsx 的 synth 输入，
+ *    原始测量记录见 docs/PRD-slice-consumption-governance-20260912.md AC4 表）；
  *  · 组在 DAG 下方 chips 行，点击展开/收起（state 在本组件，不落盘）。
  * AC4 对照（demo · 2026-09-12 实测分层）：domain_d06_capacity 改前 48（盲 cap）→ 改后 19；
  * order_to_material_bom 改前 48 → 改后 49 —— 同一条规则，大小切片 outcome 由各自结构决定（非砍到硬阈值）。
@@ -258,7 +260,7 @@ function InlineGraph({
             <span className="mono">{q.data!.snapshotVersion}</span>
           </div>
           <div className="muted" style={{ fontSize: 12, marginBottom: 4 }} data-testid={`slice-graph-fold-${sliceKey}`}>
-            默认展开前 {SLICE_GRAPH_EXPAND_HOPS} 跳 · 首屏{" "}
+            口径：默认展开前 {SLICE_GRAPH_EXPAND_HOPS} 跳 · 首屏{" "}
             <b data-testid={`slice-graph-shown-${sliceKey}`}>{dag.shown}</b> 个节点
             {dag.groups.length > 0 && (
               <>
@@ -281,7 +283,7 @@ function InlineGraph({
                   title={g.deep ? `第 ${g.layer} 跳（深层按类型成组）` : `第 ${g.layer} 跳（同跳同类型过宽成组）`}
                   onClick={() => toggleGroup(g.key)}
                 >
-                  ▸ {g.typeKey} ×{g.count}（第 {g.layer} 跳）
+                  ▸ {g.typeKey} {g.count} 个（第 {g.layer} 跳）
                 </button>
               ))}
             </div>
