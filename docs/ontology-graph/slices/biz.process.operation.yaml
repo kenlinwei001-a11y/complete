@@ -1,0 +1,38 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.process.operation"
+scope: "intra"
+rootType: "Operation"
+domain: "process"
+spannedTypes: ["Operation", "ProcessCapabilityWindow", "Routing"]
+spannedDomains: ["process"]
+paths: [[{ linkKey: "operation_depends_on", direction: "out" }], [{ linkKey: "capability_belongs_to_operation", direction: "in" }], [{ linkKey: "operation_belongs_to_routing", direction: "out" }]]
+brief: "域内切片·域 process·根 工序定义(Operation)·覆盖 3 类型：工序定义、工艺能力边界、工艺路线"
+indexEntities: ["Operation", "ProcessCapabilityWindow", "Routing", "工序定义", "工艺能力边界", "工艺路线"]
+tokens: ["operation", "process", "processcapabilitywindow", "routing", "义", "义工", "义覆", "内", "内切", "切", "切片", "力", "力边", "型", "型工", "域", "域内", "域根", "定", "定义", "工", "工序", "工序定义", "工艺", "工艺能力边界", "工艺路线", "序", "序定", "根", "根工", "片", "片域", "界", "界工", "盖", "盖类", "类", "类型", "线", "能", "能力", "艺", "艺能", "艺路", "覆", "覆盖", "路", "路线", "边", "边界"]
+counts: { atoms: 12, consumers: 22 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["Operation", "ProcessCapabilityWindow", "Routing"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["Operation", "ProcessCapabilityWindow", "Routing"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["Operation", "Routing"]
+  - atom: "sym:apps/datacore/src/solvers/chain-loss.ts#chainLossAttribution"
+    via: ["Operation"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["Operation", "Routing"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryBuiltinSlices"
+    via: ["Operation", "ProcessCapabilityWindow", "Routing"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["Operation", "ProcessCapabilityWindow", "Routing"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["Operation", "ProcessCapabilityWindow", "Routing"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["Operation", "ProcessCapabilityWindow", "Routing"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["Operation", "ProcessCapabilityWindow", "Routing"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["Operation", "ProcessCapabilityWindow", "Routing"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["Operation", "ProcessCapabilityWindow", "Routing"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/chain-loss-matrix.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/handlers.ts"]

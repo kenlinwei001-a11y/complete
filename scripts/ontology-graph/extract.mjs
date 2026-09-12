@@ -359,6 +359,15 @@ function stateReadsOf(decl) {
   return hits.size ? [...hits].sort() : null;
 }
 
+// ⚠ seeds / asserts 只对**有鉴别力的字段**发边（机器判，⛔ 不开人工停用词表 —— 停用词表要人维护）。
+// 判据：该字段名被**几个 schema 声明**。`id`/`name`/`key`/`status` 这类被 400+ 个 schema 声明，
+// 它出现在某个测试里**不构成**「这个契约字段以字符串形态被钉住」的证据；被 1–3 个 schema
+// 声明的字段才构成。不加这条过滤时 asserts = 18,847 条，其中绝大多数是 `id:`/`name:` 的噪声。
+const DISTINCTIVE_MAX_SCHEMAS = 3;
+function distinctiveFields(declaredBy) {
+  return new Set([...declaredBy.entries()].filter(([, n]) => n <= DISTINCTIVE_MAX_SCHEMAS).map(([f]) => f));
+}
+
 /** asserts 边：测试里被断言的**字符串字面量数据键**（typecheck 一个都看不见的那批）。 */
 const MATCHER_RE = /^(toContain|toMatch|toBe|toEqual|toStrictEqual|toHaveProperty|toContainEqual)$/;
 function collectAsserts(ctxs, declaredFields) {
@@ -554,14 +563,18 @@ async function build() {
   collectRefs(ctxs);
 
   // declares（先做，seeds/asserts 要用它的字段集）
-  const declaredFields = new Set();
-  for (const a of atoms.values()) {
+  const declaredBy = new Map();   // field -> 声明它的 schema 原子数
+  for (const a of [...atoms.values()].sort((x, y) => x.id.localeCompare(y.id))) {
     const fs_ = zodFieldsOf(a.decl);
-    if (fs_) { for (const f of fs_) { declaredFields.add(f); pushEdge({ kind: "declares", from: a.id, to: `field:${f}`, pkg: a.pkg }); } }
+    if (fs_) for (const f of fs_) {
+      declaredBy.set(f, (declaredBy.get(f) ?? 0) + 1);
+      pushEdge({ kind: "declares", from: a.id, to: `field:${f}`, pkg: a.pkg });
+    }
     const rd = stateReadsOf(a.decl);
     if (rd) for (const f of rd) pushEdge({ kind: "reads", from: a.id, to: `state:${f}`, pkg: a.pkg });
   }
-  log(`  declares 字段 ${declaredFields.size}`);
+  const declaredFields = distinctiveFields(declaredBy);
+  log(`  declares 字段 ${declaredBy.size}（其中有鉴别力的 ${declaredFields.size} —— seeds/asserts 只对这批发边）`);
 
   log("── registers（优先 dist 真求值） ──────────────────");
   let evaluated = 0, parsedOnly = 0;
@@ -631,6 +644,9 @@ function commitHash() {
   catch { return "unknown"; }
 }
 
+const INBOUND_CAP = 25;
+const cap = (arr) => (arr.length <= INBOUND_CAP ? arr : arr.slice(0, INBOUND_CAP));
+
 function emit(g) {
   fs.rmSync(OUT_DIR, { recursive: true, force: true });
   fs.mkdirSync(path.join(OUT_DIR, "atoms"), { recursive: true });
@@ -658,8 +674,11 @@ function emit(g) {
         ...(a.registry ? { registry: a.registry } : {}),
         ...(sliceOfAtom.has(a.id) ? { slices: sliceOfAtom.get(a.id).slice().sort() } : {}),
         inbound: {
-          src: [...a.inboundSrc.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([file, line]) => ({ file, line })),
-          test: [...a.inboundTest.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([file, line]) => ({ file, line })),
+          // 计数是**全量**（state 就是从它判的）；样例封顶 INBOUND_CAP 条，只为体积。
+          // ⚠ 封顶只截样例、⛔ 绝不截计数 —— 截了计数就等于把「有多少人在用」改成「我列了几条」。
+          srcCount: a.inboundSrc.size, testCount: a.inboundTest.size,
+          src: cap([...a.inboundSrc.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([file, line]) => ({ file, line }))),
+          test: cap([...a.inboundTest.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([file, line]) => ({ file, line }))),
         },
       };
     });

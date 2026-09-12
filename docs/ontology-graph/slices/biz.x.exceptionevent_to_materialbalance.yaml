@@ -1,0 +1,54 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.x.exceptionevent_to_materialbalance"
+scope: "cross"
+rootType: "ExceptionEvent"
+domain: "quality"
+spannedTypes: ["ExceptionEvent", "MaterialBalance"]
+spannedDomains: ["material", "quality"]
+paths: [[{ linkKey: "exc_sourced_from_balance", direction: "out" }]]
+brief: "跨域接缝切片·material↔quality·异常事件(ExceptionEvent) → 物料平衡(MaterialBalance)"
+indexEntities: ["ExceptionEvent", "MaterialBalance", "异常事件", "物料平衡"]
+tokens: ["exceptionevent", "material", "materialbalance", "quality", "事", "事件", "件", "件物", "切", "切片", "域", "域接", "常", "常事", "平", "平衡", "异", "异常", "异常事件", "接", "接缝", "料", "料平", "片", "片异", "物", "物料", "物料平衡", "缝", "缝切", "衡", "跨", "跨域"]
+counts: { atoms: 20, consumers: 24 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["ExceptionEvent", "MaterialBalance"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["ExceptionEvent", "MaterialBalance"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["ExceptionEvent"]
+  - atom: "sym:apps/datacore/src/decision/record-materialize.ts#RECORD_MATERIALIZE_TEMPLATES"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/datacore/src/ontology/slice-layers.ts#projectSliceLayers"
+    via: ["ExceptionEvent"]
+  - atom: "sym:apps/datacore/src/solvers/chain-impediment.ts#IMPEDIMENT_RULE_BINDINGS"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/datacore/src/solvers/ontology-signature.ts#SOLVER_ONTOLOGY_SIGNATURES"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_RULE_SCOPES"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryBuiltinSlices"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["ExceptionEvent", "MaterialBalance"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["ExceptionEvent", "MaterialBalance"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#EXC_SOURCE_LINKS"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#generateBattery"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#projectExceptionEvents"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["ExceptionEvent", "MaterialBalance"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["ExceptionEvent", "MaterialBalance"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["MaterialBalance"]
+  - atom: "sym:apps/frontend-shell/src/mocks/simSolvers.ts#mockChainImpediments"
+    via: ["MaterialBalance"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/livedin/engine.ts", "apps/datacore/src/ontology-governance.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/handlers.ts"]

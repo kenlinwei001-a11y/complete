@@ -1,0 +1,56 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.x.workorder_to_capacitypool"
+scope: "cross"
+rootType: "WorkOrder"
+domain: "process"
+spannedTypes: ["CapacityPool", "WorkOrder"]
+spannedDomains: ["capacity", "process"]
+paths: [[{ linkKey: "consumes_capacity", direction: "out" }]]
+brief: "跨域接缝切片·capacity↔process·产能池(CapacityPool) → 生产工单(WorkOrder)"
+indexEntities: ["CapacityPool", "WorkOrder", "产能池", "生产工单"]
+tokens: ["capacity", "capacitypool", "process", "workorder", "产", "产工", "产能", "产能池", "切", "切片", "单", "域", "域接", "工", "工单", "接", "接缝", "池", "池生", "片", "片产", "生", "生产", "生产工单", "缝", "缝切", "能", "能池", "跨", "跨域"]
+counts: { atoms: 21, consumers: 26 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["CapacityPool", "WorkOrder"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["CapacityPool", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/actions.ts#BUILTIN_ACTION_EFFECTS"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/actions.ts#GlobalSimPlanExecutor"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/process/flow-rules.ts#BATTERY_PROCESS_FLOW_RULES"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/sim/drill.ts#chainNodeDetail"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/solvers/base-outlook.ts#baseCapacityOutlook"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/solvers/base-outlook.ts#OutlookProv"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/solvers/extended.ts#deriveExtendedArgs"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["CapacityPool", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryBuiltinSlices"
+    via: ["CapacityPool", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["CapacityPool", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["CapacityPool", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["CapacityPool", "WorkOrder"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["CapacityPool", "WorkOrder"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["WorkOrder"]
+  - atom: "sym:apps/frontend-shell/src/mocks/simSolvers.ts#mockBaseOutlook"
+    via: ["WorkOrder"]
+  - atom: "sym:packages/contracts/src/disposition.ts#deriveDisposition"
+    via: ["WorkOrder"]
+  - atom: "sym:packages/contracts/src/disposition.ts#DispositionProvenanceSchema"
+    via: ["WorkOrder"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/process/ontology.ts", "apps/datacore/src/process/reconstruct.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/base-outlook.ts", "apps/datacore/src/solvers/risk.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/handlers.ts"]

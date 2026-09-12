@@ -1,0 +1,591 @@
+# 生成物 —— ⛔ 不要手改。改了下次抽取会被覆盖。
+# 生成命令：node scripts/ontology-graph/extract.mjs
+package: "llm-adapters"
+counts: { atoms: 47, edges: 7 }
+atoms:
+  - id: "sym:packages/llm-adapters/src/anthropic.ts#AnthropicAdapterOptions"
+    name: "AnthropicAdapterOptions"
+    kind: "interface"
+    file: "packages/llm-adapters/src/anthropic.ts"
+    line: 47
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/anthropic.ts#AnthropicLlmClient"
+    name: "AnthropicLlmClient"
+    kind: "class"
+    file: "packages/llm-adapters/src/anthropic.ts"
+    line: 66
+    brief: "Real Anthropic implementation（QOS-PRD §6 实现收编于 packages/llm-adapters，行为不变）。 - classifier: messages.parse + output_config.format + zodOutputFormat - agent loop turns: messages.create with thinking adaptive, system cache_control ephemeral - NEVER sends temperature/top_p/top_k/budget_tokens. - Typed er"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 4, testCount: 1, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 67 }, { file: "apps/agentcore/src/scripts/smoke-llm.ts", line: 47 }, { file: "apps/datacore/src/llm.ts", line: 190 }, { file: "apps/datacore/src/llmproviders.ts", line: 345 }], test: [{ file: "apps/agentcore/test/runtime-context.test.ts", line: 332 }] }
+  - id: "sym:packages/llm-adapters/src/anthropic.ts#ClassificationSchema"
+    name: "ClassificationSchema"
+    kind: "const"
+    file: "packages/llm-adapters/src/anthropic.ts"
+    line: 27
+    brief: "Classification structured-output schema (QOS-PRD §6.2 — exact shape)."
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/anthropic.ts#ClassifierParseError"
+    name: "ClassifierParseError"
+    kind: "class"
+    file: "packages/llm-adapters/src/anthropic.ts"
+    line: 40
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 2, testCount: 1, src: [{ file: "packages/llm-adapters/src/degrade.ts", line: 116 }, { file: "packages/llm-adapters/src/openai.ts", line: 185 }], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 86 }] }
+  - id: "sym:packages/llm-adapters/src/anthropic.ts#COMPACTION_BETA"
+    name: "COMPACTION_BETA"
+    kind: "const"
+    file: "packages/llm-adapters/src/anthropic.ts"
+    line: 24
+    brief: "beta flag for server-side compaction (Agent 运行时增量 §1.3 第 2 刀)."
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 1, testCount: 1, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 934 }], test: [{ file: "apps/agentcore/test/runtime-context.test.ts", line: 340 }] }
+  - id: "sym:packages/llm-adapters/src/custom-http.ts#CustomHttpAdapter"
+    name: "CustomHttpAdapter"
+    kind: "class"
+    file: "packages/llm-adapters/src/custom-http.ts"
+    line: 25
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 2, testCount: 0, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 100 }, { file: "apps/datacore/src/llmproviders.ts", line: 348 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/custom-http.ts#CustomHttpNotImplementedError"
+    name: "CustomHttpNotImplementedError"
+    kind: "class"
+    file: "packages/llm-adapters/src/custom-http.ts"
+    line: 17
+    brief: "增量 §1.2：custom_http 留接口 —— 任意自定义 HTTP 协议端点的适配器位。 本期仅保留接口形态（配置可建、不可投入调用）；实现方按 LlmClient 三原语补齐。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/degrade.ts#classifyWithJsonModeDegradation"
+    name: "classifyWithJsonModeDegradation"
+    kind: "function"
+    file: "packages/llm-adapters/src/degrade.ts"
+    line: 105
+    brief: "分类调用点的 JSON-mode 降级（L3）：失败语义 = ClassifierParseError → 既有路径 B。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 1, testCount: 0, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 327 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/degrade.ts#extractJsonObject"
+    name: "extractJsonObject"
+    kind: "function"
+    file: "packages/llm-adapters/src/degrade.ts"
+    line: 22
+    brief: "提取模型输出中的 JSON 对象（容忍 ```json 代码栅栏 / 前后说明文字）。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/degrade.ts#JSON_MODE_MAX_RETRIES"
+    name: "JSON_MODE_MAX_RETRIES"
+    kind: "const"
+    file: "packages/llm-adapters/src/degrade.ts"
+    line: 15
+    brief: "增量 §1.2 能力降级规则（按 provider.capabilities 声明自动选择）： 无原生结构化输出 → JSON-mode 提示 + zod 校验失败重试 ≤2 次；仍失败返回 null / 抛出该调用点的既有失败语义（分类 → ClassifierParseError → 路径 B）。 无原生 tools 不在此处理：该 provider 不可绑定 Agent 用途（绑定时校验拒绝）， 工具循环不做提示词模拟（质量不可控）。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/degrade.ts#parseWithJsonModeDegradation"
+    name: "parseWithJsonModeDegradation"
+    kind: "function"
+    file: "packages/llm-adapters/src/degrade.ts"
+    line: 55
+    brief: "JSON-mode 结构化输出降级：首次请求 + zod 校验失败重试 ≤2（重试时附上校验错误）。 全部失败 → null（调用方按既有失败语义处理）。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 1, testCount: 0, src: [{ file: "apps/datacore/src/llm.ts", line: 53 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/index.ts#AnthropicAdapter"
+    name: "AnthropicAdapter"
+    kind: "class"
+    file: "packages/llm-adapters/src/index.ts"
+    line: 266
+    brief: "Real Anthropic implementation（QOS-PRD §6 实现收编于 packages/llm-adapters，行为不变）。 - classifier: messages.parse + output_config.format + zodOutputFormat - agent loop turns: messages.create with thinking adaptive, system cache_control ephemeral - NEVER sends temperature/top_p/top_k/budget_tokens. - Typed er"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: "packages/llm-adapters/src/anthropic.ts"
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/index.ts#OpenAICompatAdapter"
+    name: "OpenAICompatAdapter"
+    kind: "class"
+    file: "packages/llm-adapters/src/index.ts"
+    line: 370
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: "packages/llm-adapters/src/openai.ts"
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/openai.ts#extractJsonText"
+    name: "extractJsonText"
+    kind: "function"
+    file: "packages/llm-adapters/src/openai.ts"
+    line: 377
+    brief: "从模型回复里提取 JSON 文本：兼容部分 OpenAI 兼容端点（如 Moonshot/Kimi）即便 json_schema 模式 仍把 JSON 包在 ```json ... ``` 代码围栏里。优先取围栏内容，否则取首个 { 到末个 } 的片段， 都不命中则原样返回（让 JSON.parse 自行判定）。纯函数、无副作用。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 1, testCount: 0, src: [{ file: "packages/llm-adapters/src/openai.test.ts", line: 166 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiChatCompletion"
+    name: "OpenAiChatCompletion"
+    kind: "interface"
+    file: "packages/llm-adapters/src/openai.ts"
+    line: 65
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "test-only"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 1, src: [], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 25 }] }
+  - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiChatMessage"
+    name: "OpenAiChatMessage"
+    kind: "interface"
+    file: "packages/llm-adapters/src/openai.ts"
+    line: 50
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "test-only"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 1, src: [], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 38 }] }
+  - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiChatPort"
+    name: "OpenAiChatPort"
+    kind: "interface"
+    file: "packages/llm-adapters/src/openai.ts"
+    line: 70
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "test-only"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 1, src: [], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 23 }] }
+  - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiLlmClient"
+    name: "OpenAiLlmClient"
+    kind: "class"
+    file: "packages/llm-adapters/src/openai.ts"
+    line: 140
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 6, testCount: 3, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 69 }, { file: "apps/agentcore/src/scripts/smoke-llm.ts", line: 60 }, { file: "apps/datacore/src/llm.ts", line: 177 }, { file: "apps/datacore/src/llmproviders.ts", line: 347 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 29 }, { file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 53 }], test: [{ file: "apps/agentcore/test/a14-real-kimi.integration.test.ts", line: 33 }, { file: "apps/agentcore/test/llm-providers.test.ts", line: 57 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 53 }] }
+  - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiLlmClientOptions"
+    name: "OpenAiLlmClientOptions"
+    kind: "interface"
+    file: "packages/llm-adapters/src/openai.ts"
+    line: 128
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiToolCall"
+    name: "OpenAiToolCall"
+    kind: "interface"
+    file: "packages/llm-adapters/src/openai.ts"
+    line: 44
+    brief: "OpenAI / OpenAI-compatible adapter（QOS-PRD §6 修订实现收编于 packages/llm-adapters， 行为不变；增量 §1.2 的 OpenAICompatAdapter —— 覆盖 vLLM/主流国产模型的 OpenAI 风格端点）。 Covers BOTH capabilities behind the same internal client interface: (a) structured classification — chat.completions.create with `response_format: { type: "
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/openai.ts#toOpenAiToolChoice"
+    name: "toOpenAiToolChoice"
+    kind: "function"
+    file: "packages/llm-adapters/src/openai.ts"
+    line: 390
+    brief: "WO-FIX-REASONING-CONTENT：内部 toolChoice → OpenAI tool_choice。 `auto` → \"auto\"；`{type:\"tool\", name}` → {type:\"function\", function:{name}}（OpenAI 兼容端点强制某函数的标准形态）。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: "WO-FIX-REASONING-CONTENT"
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 1, testCount: 0, src: [{ file: "packages/llm-adapters/src/openai.test.ts", line: 158 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/slot-harvest.ts#harvestClassificationSlots"
+    name: "harvestClassificationSlots"
+    kind: "function"
+    file: "packages/llm-adapters/src/slot-harvest.ts"
+    line: 143
+    brief: "从**原始**分类响应体里收割槽位（四种合法形态全收）： - 顶层 `extractedSlotsJson`(string) / 顶层 `extractedSlots`(object) - `candidates[i].extractedSlotsJson`(string) / `candidates[i].extractedSlots`(object) **合并优先级（确定性·写死在这里，不许\"看运气\"）**： ① 顶层 > candidate（顶层是模型对整条响应的表态）； ② 顶层内部：`extractedSlotsJson` > `extractedSlots`（与旧 openai 适"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 5, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 139 }, { file: "packages/llm-adapters/src/degrade.ts", line: 118 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 269 }, { file: "packages/llm-adapters/src/openai.ts", line: 221 }, { file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 43 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/slot-harvest.ts#HarvestedClassificationSlots"
+    name: "HarvestedClassificationSlots"
+    kind: "interface"
+    file: "packages/llm-adapters/src/slot-harvest.ts"
+    line: 32
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/slot-harvest.ts#normalizeSlotValue"
+    name: "normalizeSlotValue"
+    kind: "function"
+    file: "packages/llm-adapters/src/slot-harvest.ts"
+    line: 116
+    brief: "槽值归一（**只拆单层**·导出以便直接测）：形如 `{type:string, value:X}` → `X`；其余形态原样返回。 「只拆一层」是硬约束，不是省事：`{type:\"objectRef\", value:{type:\"x\", value:\"y\"}}` 拆一层后 里层原样透出交给下游判 —— 递归拆会让「拆到哪一层才算数」变成猜，而猜正是本单要消灭的东西。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 1, testCount: 0, src: [{ file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 73 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/slot-harvest.ts#reportUnconsumedSlots"
+    name: "reportUnconsumedSlots"
+    kind: "function"
+    file: "packages/llm-adapters/src/slot-harvest.ts"
+    line: 256
+    brief: "`unconsumed` / `unwrapped` 的**真消费方**（三条适配器路都调它）： · `unconsumed` —— 出现了槽位形状却没被收割 → 打日志（模型又变形了）； · `unwrapped` —— 拆掉了 `{type,value}` 信封 → 打日志（**改写过用户数据就必须说**·工单 §B 要求 2）。 「只定义不调用」= 假绿第 9 形态（测试咬的是函数不是链路），本函数存在的意义就是让那条路真的有人走。 `unwrapped` 声明成可选：老调用点（只构造 `{unconsumed}` 的）不必同步改，仍旧编译通过。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 5, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 140 }, { file: "packages/llm-adapters/src/degrade.ts", line: 119 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 326 }, { file: "packages/llm-adapters/src/openai.ts", line: 223 }, { file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 62 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/slot-harvest.ts#SlotSource"
+    name: "SlotSource"
+    kind: "type"
+    file: "packages/llm-adapters/src/slot-harvest.ts"
+    line: 30
+    brief: "槽位来自哪个位置（审计/可观测：别让下次再变形时又无声）。level=顶层/候选 × 编码=对象/JSON 字符串。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: "WO-SLOT-HARVEST"
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/slot-harvest.ts#UnconsumedSink"
+    name: "UnconsumedSink"
+    kind: "interface"
+    file: "packages/llm-adapters/src/slot-harvest.ts"
+    line: 239
+    brief: "可注入的告警出口（默认 globalThis.console.warn；本包不依赖"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/toolloop.ts#runToolLoop"
+    name: "runToolLoop"
+    kind: "function"
+    file: "packages/llm-adapters/src/toolloop.ts"
+    line: 14
+    brief: "增量 §1.2 toolLoop 原语的通用实现：基于 adapter 的 agent() 逐轮驱动， tool_use → executeTool → tool_result 回填，直至 end_turn / 迭代上限。 注意：AgentCore 的 QOS 工具循环（预算/权限闸/final_answer/上下文三刀）仍由 runAgentLoop 持有 —— 该语义层面在循环侧而非 provider 侧（QOS-PRD §6.3）。 此原语供轻量调用方（如 DataCore 内部小循环 / custom 集成）使用。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 2, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 261 }, { file: "packages/llm-adapters/src/openai.ts", line: 365 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#AgentLlmClient"
+    name: "AgentLlmClient"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 101
+    brief: "既有 AgentCore 操作面（行为不变；测试 scripted mock 实现的就是这一层）。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 12, testCount: 6, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 279 }, { file: "apps/agentcore/src/agent/loop.ts", line: 140 }, { file: "apps/agentcore/src/agent/production-cognition.ts", line: 14 }, { file: "apps/agentcore/src/deps.ts", line: 24 }, { file: "apps/agentcore/src/engine.ts", line: 208 }, { file: "apps/agentcore/src/llm/mock.ts", line: 39 }, { file: "apps/agentcore/src/llm/providers.ts", line: 55 }, { file: "apps/agentcore/src/router/execute-plan.ts", line: 44 }, { file: "apps/agentcore/src/scripts/smoke-llm.ts", line: 41 }, { file: "apps/agentcore/src/skill-summary-review.ts", line: 45 }, { file: "apps/agentcore/src/workflow/executor.ts", line: 46 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 14 }], test: [{ file: "apps/agentcore/test/context-compression-seam.test.ts", line: 55 }, { file: "apps/agentcore/test/empty-response-guard.test.ts", line: 27 }, { file: "apps/agentcore/test/graph-exec-consolidate.seam.test.ts", line: 320 }, { file: "apps/agentcore/test/helpers.ts", line: 42 }, { file: "apps/agentcore/test/role-model-fallback.test.ts", line: 123 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 51 }] }
+  - id: "sym:packages/llm-adapters/src/types.ts#CompletionReq"
+    name: "CompletionReq"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 115
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 4, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 228 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 28 }, { file: "packages/llm-adapters/src/degrade.ts", line: 18 }, { file: "packages/llm-adapters/src/openai.ts", line: 317 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#CompletionResp"
+    name: "CompletionResp"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 122
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 4, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 228 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 28 }, { file: "packages/llm-adapters/src/degrade.ts", line: 18 }, { file: "packages/llm-adapters/src/openai.ts", line: 317 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#FullLlmClient"
+    name: "FullLlmClient"
+    kind: "type"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 158
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 6, testCount: 0, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 86 }, { file: "apps/datacore/src/llm.ts", line: 47 }, { file: "apps/datacore/src/llmproviders.ts", line: 326 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 66 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 25 }, { file: "packages/llm-adapters/src/openai.ts", line: 140 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#isContextWindowExceededError"
+    name: "isContextWindowExceededError"
+    kind: "function"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 166
+    brief: "增量 §1.3 第 3 刀：模型上下文超窗的统一识别（adapter 抛出/包装的错误信息匹配）。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 1, testCount: 0, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 976 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#LlmAgentMessage"
+    name: "LlmAgentMessage"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 30
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 5, testCount: 0, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 28 }, { file: "apps/agentcore/src/agent/loop.ts", line: 473 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 268 }, { file: "packages/llm-adapters/src/openai.ts", line: 403 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 15 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#LlmAgentRequest"
+    name: "LlmAgentRequest"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 48
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 7, testCount: 2, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 36 }, { file: "apps/agentcore/src/llm/mock.ts", line: 27 }, { file: "apps/agentcore/src/llm/providers.ts", line: 333 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 100 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 41 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 97 }, { file: "packages/llm-adapters/src/openai.ts", line: 233 }], test: [{ file: "apps/agentcore/test/real-llm-free-query-seam.test.ts", line: 40 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 60 }] }
+  - id: "sym:packages/llm-adapters/src/types.ts#LlmAgentResponse"
+    name: "LlmAgentResponse"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 76
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 5, testCount: 1, src: [{ file: "apps/agentcore/src/llm/mock.ts", line: 80 }, { file: "apps/agentcore/src/llm/providers.ts", line: 333 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 148 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 41 }, { file: "packages/llm-adapters/src/openai.ts", line: 233 }], test: [{ file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 60 }] }
+  - id: "sym:packages/llm-adapters/src/types.ts#LlmAgentToolSpec"
+    name: "LlmAgentToolSpec"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 42
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#LlmCapabilities"
+    name: "LlmCapabilities"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 91
+    brief: "Agent 运行时增量 §1.1：provider 能力声明（token 预算器/服务端 compaction）。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 5, testCount: 1, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 313 }, { file: "apps/agentcore/src/llm/mock.ts", line: 50 }, { file: "apps/agentcore/src/llm/providers.ts", line: 341 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 95 }, { file: "packages/llm-adapters/src/openai.ts", line: 167 }], test: [{ file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 66 }] }
+  - id: "sym:packages/llm-adapters/src/types.ts#LlmClient"
+    name: "LlmClient"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 152
+    brief: "增量 §1.2 规范接口（适配器统一形态）。parse 返回 null = 模型输出不可解析。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "no-ref"
+    reexportOf: null
+    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#LlmContentBlock"
+    name: "LlmContentBlock"
+    kind: "type"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 23
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 4, testCount: 0, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 380 }, { file: "apps/agentcore/src/llm/mock.ts", line: 12 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 185 }, { file: "packages/llm-adapters/src/openai.ts", line: 257 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#LlmEmptyResponseError"
+    name: "LlmEmptyResponseError"
+    kind: "class"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 176
+    brief: "LLM 空响应护栏（PRD 空响应护栏）：当适配器/客户端**返回 undefined 或缺 usage** 的非法响应时抛此错误， 由编排层错误中间件收敛为 R7 信封 `code=LLM_EMPTY_RESPONSE`（指明 model/用途），把\"裸 TypeError·reading usage\" 变成可诊断错误（多因 `agent` 用途未绑定/key 失效/兼容网关返回缺 usage）。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 2, testCount: 2, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 997 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 25 }], test: [{ file: "apps/agentcore/test/empty-response-guard.test.ts", line: 33 }, { file: "apps/agentcore/test/real-llm-free-query-seam.test.ts", line: 159 }] }
+  - id: "sym:packages/llm-adapters/src/types.ts#ParseReq"
+    name: "ParseReq"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 127
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 4, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 246 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 31 }, { file: "packages/llm-adapters/src/degrade.ts", line: 55 }, { file: "packages/llm-adapters/src/openai.ts", line: 337 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#RawClassification"
+    name: "RawClassification"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 17
+    brief: "packages/llm-adapters — 两系统共享的 LLM 适配器层（LLM Provider 增量 §1.2）。 收编自 AgentCore src/llm/*（QOS-PRD §6 实现，行为不变，含 Agent 运行时增量的 capabilities/countTokens/服务端 compaction 支持）与 DataCore src/llm.ts 的 结构化输出实现。AgentCore 工具循环与 DataCore A2/A3/A7 调用方共同消费。 接口分两层： - `LlmClient`（增量 §1.2 规范形态）：complete / parse / toolLoo"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 6, testCount: 2, src: [{ file: "apps/agentcore/src/llm/mock.ts", line: 40 }, { file: "apps/agentcore/src/llm/providers.ts", line: 322 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 123 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 38 }, { file: "packages/llm-adapters/src/degrade.ts", line: 108 }, { file: "packages/llm-adapters/src/openai.ts", line: 178 }], test: [{ file: "apps/agentcore/test/prompt-defaults-wiring.test.ts", line: 27 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 57 }] }
+  - id: "sym:packages/llm-adapters/src/types.ts#requireUsage"
+    name: "requireUsage"
+    kind: "function"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 188
+    brief: "校验 LLM 响应含合法 usage；缺响应/缺 usage → 抛 LlmEmptyResponseError（含 model）。 适配器 create/parse 后调用，使\"空响应\"早失败为结构化错误而非下游裸 deref（R7）。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 1, testCount: 1, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 131 }], test: [{ file: "apps/agentcore/test/empty-response-guard.test.ts", line: 33 }] }
+  - id: "sym:packages/llm-adapters/src/types.ts#TokenMetricsPort"
+    name: "TokenMetricsPort"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 161
+    brief: "Token 指标端口（qos_llm_tokens_total — 增量 §1.3 加 provider 标签）。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 2, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 72 }, { file: "packages/llm-adapters/src/openai.ts", line: 135 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#ToolLoopEvent"
+    name: "ToolLoopEvent"
+    kind: "type"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 146
+    brief: ""
+    docSource: "none"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 4, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 260 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 35 }, { file: "packages/llm-adapters/src/openai.ts", line: 364 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 14 }], test: [] }
+  - id: "sym:packages/llm-adapters/src/types.ts#ToolLoopReq"
+    name: "ToolLoopReq"
+    kind: "interface"
+    file: "packages/llm-adapters/src/types.ts"
+    line: 136
+    brief: "toolLoop 原语请求：每个 tool_use 经 executeTool 回填，直至 end_turn / maxIterations。"
+    docSource: "jsdoc"
+    tags: ["llm-adapters"]
+    wo: null
+    state: "wired"
+    reexportOf: null
+    inbound: { srcCount: 4, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 260 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 35 }, { file: "packages/llm-adapters/src/openai.ts", line: 364 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 14 }], test: [] }
+edges:
+  - kind: "declares"
+    from: "sym:packages/llm-adapters/src/anthropic.ts#ClassificationSchema"
+    to: "field:candidates"
+  - kind: "declares"
+    from: "sym:packages/llm-adapters/src/anthropic.ts#ClassificationSchema"
+    to: "field:confidence"
+  - kind: "declares"
+    from: "sym:packages/llm-adapters/src/anthropic.ts#ClassificationSchema"
+    to: "field:extractedSlots"
+  - kind: "declares"
+    from: "sym:packages/llm-adapters/src/anthropic.ts#ClassificationSchema"
+    to: "field:intentKey"
+  - kind: "declares"
+    from: "sym:packages/llm-adapters/src/anthropic.ts#ClassificationSchema"
+    to: "field:outOfCatalog"
+  - kind: "reexports"
+    from: "sym:packages/llm-adapters/src/index.ts#AnthropicAdapter"
+    to: "sym:packages/llm-adapters/src/anthropic.ts#AnthropicLlmClient"
+  - kind: "reexports"
+    from: "sym:packages/llm-adapters/src/index.ts#OpenAICompatAdapter"
+    to: "sym:packages/llm-adapters/src/openai.ts#OpenAiLlmClient"

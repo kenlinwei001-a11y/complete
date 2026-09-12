@@ -1,0 +1,112 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.x.base_to_datasourcehealth"
+scope: "cross"
+rootType: "Base"
+domain: "factory"
+spannedTypes: ["Base", "DataSourceHealth"]
+spannedDomains: ["factory", "quality"]
+paths: [[{ linkKey: "base_data_health", direction: "out" }]]
+brief: "跨域接缝切片·factory↔quality·生产基地(Base) → 数据源健康度(DataSourceHealth)"
+indexEntities: ["Base", "DataSourceHealth", "数据源健康度", "生产基地"]
+tokens: ["base", "datasourcehealth", "factory", "quality", "产", "产基", "健", "健康", "切", "切片", "地", "地数", "域", "域接", "基", "基地", "度", "康", "康度", "据", "据源", "接", "接缝", "数", "数据", "数据源健康度", "源", "源健", "片", "片生", "生", "生产", "生产基地", "缝", "缝切", "跨", "跨域"]
+counts: { atoms: 49, consumers: 44 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/clients.ts#MockOntologyClient"
+    via: ["Base"]
+  - atom: "sym:apps/agentcore/src/mocks/clients.ts#MockRuleEngineClient"
+    via: ["Base"]
+  - atom: "sym:apps/agentcore/src/mocks/clients.ts#MockSolverClient"
+    via: ["Base"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#ROLE_PROFILES"
+    via: ["Base"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#seedIntentsAndPlans"
+    via: ["Base"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#seedRegistry"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/calibration/pairing.ts#runPairing"
+    via: ["DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/calibration/service.ts#CalibrationService"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/databuilder/comprehend.ts#comprehendScript"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/datahealth.ts#buildDataHealth"
+    via: ["DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/graphmeta.ts#BUSINESS_DOMAINS"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/graphmeta.ts#SOLVER_GRAPH"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/livedin/bundle.ts#HistoryService"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/ontology.ts#OntologyService"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/simclock.ts#SimClockService"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/solvers/chain-impediment.ts#CONTENTION_LOCUS_TYPE"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/solvers/chain-impediment.ts#IMPEDIMENT_RULE_BINDINGS"
+    via: ["DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/solvers/ontology-signature.ts#SOLVER_ONTOLOGY_SIGNATURES"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#CoreSolverObjectType"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SOLVER_REQUIRED_TYPES"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/solvers/types.ts#resolveBaseRef"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_RULE_SCOPES"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_TEMPLATE"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryBuiltinSlices"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#entityRefFieldOf"
+    via: ["Base"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/vle-oracle.ts#referenceCapacityForecast"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/datacore/src/vle.ts#VleService"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#AGENTS"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["Base", "DataSourceHealth"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#MODELING_DRAFT"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#POLICIES"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#RULES"
+    via: ["DataSourceHealth"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#SCENARIOS"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#WORKFLOWS"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#__resetSliceGovMock"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/planFixtures.ts#MAPPING_ROWS"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/mocks/sseScripts.ts#scriptForQuery"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/DynamicLeverPanel.tsx#DynamicLeverPanel"
+    via: ["Base"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/unified/console0828/eventCatalog.ts#BUSINESS_EVENTS"
+    via: ["Base"]
+  - atom: "sym:packages/contracts/src/sim-drill.ts#DRILL_EVENT_SPECS"
+    via: ["Base"]
+consumers: ["apps/agentcore/src/main.ts", "apps/agentcore/src/mocks/clients.ts", "apps/agentcore/src/scripts/smoke-llm.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/entity-catalog.ts", "apps/datacore/src/databuilder/intake-pipeline.ts", "apps/datacore/src/databuilder/provisioners.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/decision/kernel.ts", "apps/datacore/src/livedin/bundle.ts", "apps/datacore/src/livedin/engine.ts", "apps/datacore/src/mapping.ts", "apps/datacore/src/modeling.ts", "apps/datacore/src/ontology-governance.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/ontology/refbase.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/pipeline/service.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/extended.ts", "apps/datacore/src/solvers/impediment-options.ts", "apps/datacore/src/solvers/risk.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/builtin-templates.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/db.ts", "apps/frontend-shell/src/mocks/handlers.ts", "apps/frontend-shell/src/views/RiskBoardView.tsx", "apps/frontend-shell/src/views/sim/DrillPanel.tsx", "apps/frontend-shell/src/views/sim/ProjectSimView.tsx", "apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx"]
