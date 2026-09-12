@@ -292,6 +292,10 @@ export class SyntheticService {
           params: r.params ?? {},
           // WO-RULES-CLASSIFY：业务类别随种子规则透传（规则库分类筛选的真元数据源）。
           category: r.category,
+          // WO-RULE-DISCOVERY：发现面元数据随种子透传（DRIL 检索的主文本/标签/样例问句）。
+          description: r.description,
+          tags: r.tags,
+          answersQuestions: r.answersQuestions,
           origin: { type: "SYNTHETIC" },
           status: "PUBLISHED",
         });

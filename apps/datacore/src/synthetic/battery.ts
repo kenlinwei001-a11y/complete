@@ -737,7 +737,10 @@ export const PRESSURE_DECAY_PER_TICK = 0.37;
 export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // DF.14：C03/C05/C13/C09 前端 mock 规则库也物化同一条 —— expression 从 `PARITY_RULE_SEEDS` 派生，
   // 两端只此一处，不再各写一份字面量（此前那份手抄副本正是欠账 #78 的机制面：值对齐过一次，机制没变）。
-  { key: "C03", name: "产能上限约束", expression: parityRuleExpression("C03"), severity: "BLOCK", category: "产能" },
+  { key: "C03", name: "产能上限约束", expression: parityRuleExpression("C03"), severity: "BLOCK", category: "产能",
+    description: "订单需求增量 demandDelta 超过 50% 即阻断——需求增幅超出产能可吸收范围的承接评审线。",
+    tags: ["产能", "承接评审", "需求增量"],
+    answersQuestions: ["4680-NCM 加 20% 六周能不能接？", "订单加量多少就接不了了？"] },
     // DF.13 C08 外协红线：**表达式与命名阈值同源生成**，禁内联。此前 expression 写死一个比现行更宽的常数，
     // 而三个求解器、界面文案、livedin 发布态都按现行红线走 —— 规则库与推演各说各话，且四包测试全绿。
     // WO-RULE-EXPR-PARAMS（闭掉 G-C08-EXPR-PARAM-SPLIT）：expression 现在**引用** `params.outsourceRatioMax`
@@ -746,31 +749,73 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
     // ⚠ key/name/severity/category 刻意保持**字面量**：规则码是标识符、不是会漂的业务数，
     //   且 `rule-closure:check` 靠正则 `key: "Cxx", name:` 扫本表建"已定义规则集"——把 key 也派生会让它瞎掉
     //   （亲测：改成 OUTSOURCE_REDLINE.ruleKey 后该门立刻报「C08 被引用但未定义」）。**只有阈值该单源**。
-    { key: "C08", name: "外协比例红线", expression: outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { param: OUTSOURCE_REDLINE.paramKey }), severity: "WARN", params: { [OUTSOURCE_REDLINE.paramKey]: OUTSOURCE_REDLINE.maxRatio }, category: "外协" },
-  { key: "C13", name: "客户信用额度", expression: parityRuleExpression("C13"), severity: "BLOCK", category: "财务" },
+    { key: "C08", name: "外协比例红线", expression: outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { param: OUTSOURCE_REDLINE.paramKey }), severity: "WARN", params: { [OUTSOURCE_REDLINE.paramKey]: OUTSOURCE_REDLINE.maxRatio }, category: "外协",
+      description: "订单外协比例超过命名阈值 params.outsourceRatioMax 即预警——外协可补缺口保交付，越线提示风险敞口；阈值单源在 params，改它即改判定与推演。",
+      tags: ["外协", "红线", "缺口补缺", "比例"],
+      answersQuestions: ["推荐哪个经营方案？", "缺口 8 万套自产加班还是外协？", "Q2 缺口用什么组合补？", "采纳常州的三班制方案"] },
+  { key: "C13", name: "客户信用额度", expression: parityRuleExpression("C13"), severity: "BLOCK", category: "财务",
+    description: "订单使客户信用已用比例 creditUsedRatio 超过 100% 即阻断——超信用额度的新单拒接。",
+    tags: ["财务", "信用额度", "接单评审", "客户"],
+    answersQuestions: ["宇通客车还能接新单吗？", "这个客户信用额度还够接单吗？"] },
   // A8.5 timeseries rules — evaluated against ts_agg_runs by RULE_SCAN (SUSTAIN).
-  { key: "C05", name: "产线利用率持续越线", expression: parityRuleExpression("C05"), severity: "WARN", category: "产能" },
-  { key: "C12", name: "预测偏差触发重校", expression: parityRuleExpression("C12"), severity: "WARN", category: "需求" },
+  { key: "C05", name: "产线利用率持续越线", expression: parityRuleExpression("C05"), severity: "WARN", category: "产能",
+    description: "产线利用率连续 3 期超过 95% 即预警——持续满负荷意味着零缓冲，任何扰动都会传导成交期风险。",
+    tags: ["产能", "利用率", "持续越线", "交期风险"],
+    answersQuestions: ["常州基地影响哪些订单？", "产线利用率长期拉满有什么风险？"] },
+  { key: "C12", name: "预测偏差触发重校", expression: parityRuleExpression("C12"), severity: "WARN", category: "需求",
+    description: "型号预测偏差 forecast_deviation 超过 8% 即触发预警（SUSTAIN 1 期）——预测与实际差到这条线就该重新校准需求预测。",
+    tags: ["需求", "预测偏差", "重校", "预测"],
+    answersQuestions: ["需求预测偏差多大要重新校准？", "预测和实际差多少要重校？"] },
   // §7.14 年度情景规则校验（情景卡的 C18/C23 行走真实规则引擎）。
   // C18 params.cashFloor：现金垫底线 —— 出厂值从**目标登记册** `PLAN_GOAL_TARGETS.cashFloor` 派生
   // （不再写第三份同值 50：此前 sop.cashFloor / planGenerate.targets.cashFloor / C18 expression 各一份）。
   // 出厂后它是**可编辑的当期口径**：发布新版 C18 即投影进 solver_params 的两处现金底线（见 RULE_PARAM_BINDINGS）。
   // WO-RULE-EXPR-PARAMS：expression 引用 `params.cashFloor`，不再复写一遍 50 —— 此前改 params 只改了
   // 求解器算数（sop.cashFloor / planGenerate.targets.cashFloor），C18 自己的判定仍按 expression 里的 50 走。
-  { key: "C18", name: "现金垫底线", expression: `AnnualScenario.cashCushion < ${ruleParamRef("cashFloor")}`, severity: "BLOCK", params: { cashFloor: PLAN_GOAL_TARGETS.cashFloor }, category: "财务" },
-  { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN", category: "财务" },
+  { key: "C18", name: "现金垫底线", expression: `AnnualScenario.cashCushion < ${ruleParamRef("cashFloor")}`, severity: "BLOCK", params: { cashFloor: PLAN_GOAL_TARGETS.cashFloor }, category: "财务",
+    description: "年度情景现金垫 cashCushion 低于命名阈值 params.cashFloor（出厂 50 亿）即阻断——方案/投资体检的现金安全底线条。",
+    tags: ["财务", "现金", "底线", "情景体检"],
+    answersQuestions: ["现金垫 45 亿过得了体检吗？", "推荐哪个经营方案？", "枣庄储能线值得投吗？"] },
+  { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN", category: "财务",
+    description: "年度情景 CAPEX 达到 10 亿门槛即预警——达到这条线的资本开支情景必须走测算评审。",
+    tags: ["财务", "CAPEX", "门槛", "情景测算"],
+    answersQuestions: ["枣庄储能线值得投吗？", "多大口径的 CAPEX 要走情景测算？"] },
   // catalog-battery §3 C26–C33（DSL 表达式 = 违规谓词,expression 真→passed=false；复杂算术取
   // 去归一化/派生字段：yieldFloor=基线-0.02 / minYieldRate=自产-0.02 / daysToStart=开工日-today
   // / deviationPct=ABS(实际-计划)/计划。此前硬编码在求解器,规则引擎不可见;现注册为一等规则。
-  { key: "C26", name: "认证资源上限", expression: "Cert.parallelTasks > Cert.engineerGroups", severity: "BLOCK", category: "认证" },
-  { key: "C27", name: "长协执行偏差", expression: "Lta.deviationPct > 0.05", severity: "WARN", category: "物料" },
-  { key: "C28", name: "呆滞预警", expression: "Batch.idleDays > 90", severity: "WARN", category: "物料" },
-  { key: "C29", name: "排产冻结期", expression: "Order.daysToStart < 3", severity: "BLOCK", category: "排产" },
-  { key: "C30", name: "良率连降停线评审", expression: "SUSTAIN(Process.dailyYield < Process.yieldFloor, 3)", severity: "BLOCK", category: "质量" },
-  { key: "C31", name: "外协质量门", expression: "Outsource.yieldRate < Outsource.minYieldRate", severity: "BLOCK", category: "外协" },
-  { key: "C32", name: "逾期冻结", expression: "Customer.maxOverdueDays > 30", severity: "BLOCK", category: "财务" },
+  { key: "C26", name: "认证资源上限", expression: "Cert.parallelTasks > Cert.engineerGroups", severity: "BLOCK", category: "认证",
+    description: "并行认证任务数超过认证工程师组数即阻断——认证排期不得超过真实人力组数，排了也执行不了。",
+    tags: ["认证", "资源上限", "排期"],
+    answersQuestions: ["待认证的型号怎么排认证顺序？", "认证资源最多能并行几个型号？"] },
+  { key: "C27", name: "长协执行偏差", expression: "Lta.deviationPct > 0.05", severity: "WARN", category: "物料",
+    description: "长协执行偏差（|实际−计划|/计划）超过 5% 即预警——长协提货节奏偏离合同计划要复核覆盖缺口。",
+    tags: ["物料", "长协", "执行偏差"],
+    answersQuestions: ["7 月正极长协覆盖够吗？缺口怎么补？", "长协执行偏离计划多少要预警？"] },
+  { key: "C28", name: "呆滞预警", expression: "Batch.idleDays > 90", severity: "WARN", category: "物料",
+    description: "批次呆滞天数超过 90 天即预警——呆滞库存占用资金，是库存水位优化释放资金的候选。",
+    tags: ["物料", "呆滞", "库存", "资金占用"],
+    answersQuestions: ["哪些物料超储/欠储？能释放多少资金？", "哪些批次呆滞超期了？"] },
+  { key: "C29", name: "排产冻结期", expression: "Order.daysToStart < 3", severity: "BLOCK", category: "排产",
+    description: "距开工不足 3 天的订单进入排产冻结期即阻断改排——临开工换排的成本高于任何重排收益。",
+    tags: ["排产", "冻结期", "开工"],
+    answersQuestions: ["下周订单怎么排能少换型？", "Q2 缺口用什么组合补？", "离开工还有几天就不能改排了？"] },
+  { key: "C30", name: "良率连降停线评审", expression: "SUSTAIN(Process.dailyYield < Process.yieldFloor, 3)", severity: "BLOCK", category: "质量",
+    description: "工序日良率连续 3 天低于良率地板 yieldFloor（基线−0.02）即阻断并触发停线评审——连降不是波动，是工艺失控信号。",
+    tags: ["质量", "良率", "停线评审", "工序"],
+    answersQuestions: ["涂布良率为什么掉了？", "良率连续下降几天要停线评审？"] },
+  { key: "C31", name: "外协质量门", expression: "Outsource.yieldRate < Outsource.minYieldRate", severity: "BLOCK", category: "外协",
+    description: "外协厂良率低于最低可接受良率 minYieldRate（自产−0.02）即阻断——外协补缺口不得突破质量门。",
+    tags: ["外协", "良率", "质量门"],
+    answersQuestions: ["缺口 8 万套自产加班还是外协？", "外协厂良率什么水平就不能用了？"] },
+  { key: "C32", name: "逾期冻结", expression: "Customer.maxOverdueDays > 30", severity: "BLOCK", category: "财务",
+    description: "客户最长逾期天数超过 30 天即冻结——有严重逾期记录的客户暂停接新单。",
+    tags: ["财务", "逾期", "冻结", "客户"],
+    answersQuestions: ["宇通客车还能接新单吗？", "客户逾期多久要冻结接单？"] },
   // C33 碳护照前置：约束 = 目的地EU IMPLIES 碳足迹<=阈值；违规 = NOT(约束)（用 IMPLIES，C33 的招牌用例）。
-  { key: "C33", name: "碳护照前置", expression: "NOT (Order.destination == 'EU' IMPLIES Order.carbonFootprint <= Order.euCarbonThreshold)", severity: "BLOCK", category: "合规" },
+  { key: "C33", name: "碳护照前置", expression: "NOT (Order.destination == 'EU' IMPLIES Order.carbonFootprint <= Order.euCarbonThreshold)", severity: "BLOCK", category: "合规",
+    description: "目的地为欧盟的订单碳足迹超过其欧盟碳阈值即阻断（IMPLIES 取反）——出口欧盟须先过碳护照，不达标不得承诺出口单。",
+    tags: ["合规", "碳足迹", "欧盟", "碳护照", "出口"],
+    answersQuestions: ["4680-NCM 出口欧盟的碳足迹达标吗？", "出口欧盟的单碳足迹超限怎么办？"] },
   // 规则即引用（PRD-rules-as-references 附录A）：补全 13 条「被引用但未定义」规则为一等规则——
   // 消灭前端"（当前库中未找到定义）"、规则闸不再空过。expression 用既有 DSL（无算术/无 param 插值），
   // 命名阈值落 params（求解器 P2 改读 rule.params 去硬编码；改 param 即改推演）。C15/C24 毛利底线
@@ -780,29 +825,68 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   //   ② 其余阈值若已写在 expression 里并由规则引擎真求值，就**不再复制一份进 params**
   //      （C11 minBufferDays / C22 maxChangeoverMin / C25 assumeTolerancePct 曾各存一份同值副本、
   //       全代码库无人读 = 诱饵，已删；阈值单源 = expression）。
-  { key: "C01", name: "产线设计产能上限", expression: parityRuleExpression("C01"), severity: "BLOCK", params: {}, category: "产能" },
-  { key: "C02", name: "化成/老化串并产能口径", expression: parityRuleExpression("C02"), severity: "WARN", params: {}, category: "产能" },
+  { key: "C01", name: "产线设计产能上限", expression: parityRuleExpression("C01"), severity: "BLOCK", params: {}, category: "产能",
+    description: "产线周产能 weeklyCapacityWan 超过设计上限 designCeilingWan 即阻断——排产/承接不得突破产线设计能力。",
+    tags: ["产能", "设计上限", "产线", "承接评审"],
+    answersQuestions: ["4680-NCM 加 20% 六周能不能接？", "产线最大能排到多少产能？"] },
+  { key: "C02", name: "化成/老化串并产能口径", expression: parityRuleExpression("C02"), severity: "WARN", params: {}, category: "产能",
+    description: "化成/老化工序串并线实际吞吐低于需求吞吐即预警——瓶颈工序口径，决定整线有效产能而非名义产能。",
+    tags: ["产能", "化成老化", "吞吐", "瓶颈工序"],
+    answersQuestions: ["4680-NCM 加 20% 六周能不能接？", "化成老化是不是产能瓶颈？"] },
   // C04 **刻意不引用 params**（别"顺手统一"）：它的 expression 是**分类谓词**（认证状态≠量产），
   // 里面没有可参数化的数值阈值；而它的两个 params 是**产能折算系数**（算数维，经 RULE_PARAM_BINDINGS
   // 投影进 `certFactors.*` 供求解器乘）。二者不是同一个数的两份拷贝，故无分叉可言 —— 这条规则
   // 本来就没有 G-C08-EXPR-PARAM-SPLIT 那个病。硬塞一个 `params.x` 进去只会造出一个新的假阈值。
-  { key: "C04", name: "仅认证产线计入产能", expression: "Line.certStatus != '量产'", severity: "WARN", params: { productionFactor: 1, pendingCertFactor: 0.6 }, category: "认证" },
-  { key: "C06", name: "物料齐套缺口口径(MRP)", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料" },
+  { key: "C04", name: "仅认证产线计入产能", expression: "Line.certStatus != '量产'", severity: "WARN", params: { productionFactor: 1, pendingCertFactor: 0.6 }, category: "认证",
+    description: "认证状态非「量产」的产线只按折算系数计入产能（params：量产 1.0 / 认证中 0.6）——把未量产线当满格产能会高估供给。",
+    tags: ["认证", "产能折算", "产线", "供给口径"],
+    answersQuestions: ["待认证的型号怎么排认证顺序？", "认证中的产线产能怎么算？"] },
+  { key: "C06", name: "物料齐套缺口口径(MRP)", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料",
+    description: "MRP 口径下物料平衡出现正缺口 gapTon（吨）即预警——这是「缺料开不了工」的判定口径本身。",
+    tags: ["物料", "齐套", "MRP", "缺口"],
+    answersQuestions: ["常州物料齐套为什么这天越线？", "下周哪些订单缺料开不了工？"] },
   // C09 params：staleHours（何时降级）+ degradedFactor（降到多少）= 规则拥有的两个真阈值，投影进
   // solver_params `health.*`。**normalFactor 已删**：未降级时的 P90 基线系数 `health.normal` 归 M11 校准
   // 参数 `p90_health`（QUANTILE 方法按覆盖率反解）所有——规则再声明一份同值就是第二个写者 + 诱饵。
   // WO-RULE-EXPR-PARAMS：`> params.staleHours` 取代写死的 `> 2` —— 阈值只存 params 一处。
   // DF.14：表达式与两个 params 都从 `PARITY_RULE_SEEDS` 派生（前端 mock 物化同一条，见 fixtures.ts）。
-  { key: "C09", name: "数据时延临时降级", expression: parityRuleExpression("C09"), severity: "WARN", params: parityRuleParams("C09"), category: "质量" },
-  { key: "C10", name: "场景必填+行动审批留痕", expression: "Action.approver == NULL OR Action.audited == FALSE", severity: "BLOCK", params: {}, category: "合规" },
-  { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", severity: "WARN", params: {}, category: "排产" },
-  { key: "C15", name: "经营毛利底线", expression: "Order.marginPct < Order.floorPct", severity: "BLOCK", params: {}, category: "财务" },
-  { key: "C16", name: "齐套缺口预警", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料" },
+  { key: "C09", name: "数据时延临时降级", expression: parityRuleExpression("C09"), severity: "WARN", params: parityRuleParams("C09"), category: "质量",
+    description: "关键数据源（critical）且时延超过 params.staleHours 小时即预警——相关读数按 degradedFactor 临时降级使用，不把陈旧数据当最新值。",
+    tags: ["质量", "数据健康", "时延", "降级"],
+    answersQuestions: ["4680-NCM 加 20% 六周能不能接？", "数据时延多大要降级使用？"] },
+  { key: "C10", name: "场景必填+行动审批留痕", expression: "Action.approver == NULL OR Action.audited == FALSE", severity: "BLOCK", params: {}, category: "合规",
+    description: "行动缺审批人（approver 为空）或未留痕审计（audited 为假）即阻断——处置方案必须先审批留痕才能落地。",
+    tags: ["合规", "审批", "留痕", "行动"],
+    answersQuestions: ["采纳常州的三班制方案", "处置方案没有审批人能采纳吗？"] },
+  { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", severity: "WARN", params: {}, category: "排产",
+    description: "检修计划与交付高峰之间缓冲不足 3 天即预警——检修撞上交付高峰时要错峰调整。",
+    tags: ["排产", "检修", "错峰", "缓冲"],
+    answersQuestions: ["检修计划和交付高峰撞了怎么调？", "常州物料齐套为什么这天越线？"] },
+  { key: "C15", name: "经营毛利底线", expression: "Order.marginPct < Order.floorPct", severity: "BLOCK", params: {}, category: "财务",
+    description: "订单毛利率低于该单地板线 floorPct 即阻断——亏损单不接；地板线求值期按分段对象字段解析，不复制第二份。",
+    tags: ["财务", "毛利", "地板线", "接单评审"],
+    answersQuestions: ["小鹏汽车这单毛利过线吗？", "现金垫 45 亿过得了体检吗？", "推荐哪个经营方案？"] },
+  { key: "C16", name: "齐套缺口预警", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料",
+    description: "与 C06 同一条违规谓词（MaterialBalance.gapTon > 0）的预警维登记——物料平衡出正缺口即提示，覆盖长协/库存/规划体检等提醒场景。",
+    tags: ["物料", "齐套", "预警", "缺口"],
+    answersQuestions: ["下周哪些订单缺料开不了工？", "7 月正极长协覆盖够吗？缺口怎么补？", "哪些物料超储/欠储？能释放多少资金？", "现金垫 45 亿过得了体检吗？"] },
   // WO-RULE-EXPR-PARAMS：`> params.balanceDeviationPct` 取代写死的 `> 0.10`（曾是同值第二份）。
-  { key: "C21", name: "产销平衡偏差", expression: `SopVersionRow.balanceDeviationPct > ${ruleParamRef("balanceDeviationPct")}`, severity: "WARN", params: { balanceDeviationPct: 0.1 }, category: "规划" },
-  { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: {}, category: "换型" },
-  { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {}, category: "财务" },
-  { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: {}, category: "需求" },
+  { key: "C21", name: "产销平衡偏差", expression: `SopVersionRow.balanceDeviationPct > ${ruleParamRef("balanceDeviationPct")}`, severity: "WARN", params: { balanceDeviationPct: 0.1 }, category: "规划",
+    description: "S&OP 版本行产销平衡偏差超过 params.balanceDeviationPct（出厂 10%）即预警——产与销摆不平到这条线要回调计划。",
+    tags: ["规划", "产销平衡", "S&OP", "偏差"],
+    answersQuestions: ["本月产销平衡到哪一步了？", "现金垫 45 亿过得了体检吗？"] },
+  { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: {}, category: "换型",
+    description: "订单换型时长超过 120 分钟即预警——排产排序必须把换型损失计入，高换型单是排序优化的首选对象。",
+    tags: ["换型", "排产", "损失", "排序"],
+    answersQuestions: ["下周订单怎么排能少换型？", "本月产销平衡到哪一步了？"] },
+  { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {}, category: "财务",
+    description: "报价毛利率低于地板线 floorPct 即阻断——毛利不过线的报价不建议接单。",
+    tags: ["财务", "毛利", "报价", "接单评审"],
+    answersQuestions: ["小鹏汽车这单毛利过线吗？", "这单报价毛利够不够地板线？"] },
+  { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: {}, category: "需求",
+    description: "外部终端需求信号与内部需求假设偏离超过 5% 即预警——外部市场风向变了，内部需求假设要复核。",
+    tags: ["需求", "外部信号", "假设偏离"],
+    answersQuestions: ["外部终端需求假设偏离了怎么办？", "终端市场信号和我们的需求假设差多少要预警？"] },
   // ── WO-A6-CONTENTION · 规则库里的**第一条多主体谓词**（`docs/PRD-sandbox-redesign.md` §9 A6 的前半段）──
   // 病根（`docs/AUDIT-a6-rule-carriers.md` §4.4 实测）：此前 28 条 expression 的形状只有 5 种，
   // **无一条是多主体谓词** —— 全是「某一个对象的某个量越某条线」。而「同一基地被 ≥2 条业务线争」
@@ -817,7 +901,10 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   //     只要基地上有两条业务线就报争用，而两条线各占一半、产能绰绰有余时无须任何取舍。
   // 阈值（产能面）是**另一个字段**而不是数字 ⇒ `readRuleThreshold` 判 source="field"：改数据即改判定，
   // 引擎里一个业务阈值都不用存（`chain-impediment.ts` 文件头铁律），也不抬 A2 的 literal 棘轮。
-  { key: "C34", name: "跨业务线产能争用", expression: "COUNT(Base.segClaims.dailyRate) > 1 AND Base.claimedDailyRate > Base.capacityDailyPacks", severity: "BLOCK", params: {}, category: "产能" },
+  { key: "C34", name: "跨业务线产能争用", expression: "COUNT(Base.segClaims.dailyRate) > 1 AND Base.claimedDailyRate > Base.capacityDailyPacks", severity: "BLOCK", params: {}, category: "产能",
+    description: "同一基地被 2 条以上业务线申报日产率、且申报合计超过基地日产能即阻断——规则库唯一的多主体谓词，专判跨业务线抢产能。",
+    tags: ["产能", "争用", "业务线", "基地"],
+    answersQuestions: ["常州和金华这两条业务线抢同一个基地的产能吗？", "多条业务线争同一个基地产能怎么裁？"] },
   // WO-PROP-CLAMP · 推演状态量衰减率。**这条规则存在的唯一理由就是让 λ 可编辑**：
   // 本仓 **47** 条传导边的 `coefficientRef` 实测 **0 条在用**、全部回落内联。
   // ⚠ **订正（WO-COEF-FROM-BOM·2026-09-08 实测）**：原文写「引用机制**形同虚设**」——**这个定性是错的，
@@ -833,7 +920,9 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // 衰减率是「一次冲击几天散掉」这条**经营口径**，必须落在规则库里改一处即改推演，
   // 而不是再往引擎里内联一个常数（`STATE_VAR_DOMAINS` 只存**引用**，不存值）。
   // 出厂值的推导见 `PRESSURE_DECAY_PER_TICK` 注释（从 risk.pulseWindow/pulseDecayDen 派生，非拍脑袋）。
-  { key: "C35", name: "推演状态量衰减率", expression: `SimStateVar.decayPerTick == ${ruleParamRef(STATE_DECAY_PARAM_KEY)}`, severity: "WARN", params: { [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK }, category: "推演" },
+  { key: "C35", name: "推演状态量衰减率", expression: `SimStateVar.decayPerTick == ${ruleParamRef(STATE_DECAY_PARAM_KEY)}`, severity: "WARN", params: { [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK }, category: "推演",
+    description: "参数载体而非判定规则：推演状态量每 tick 衰减率 λ 的唯一可编辑来源（引擎读 params.pressureDecayPerTick），存在的理由是让「一次冲击几天散掉」这条经营口径改一处即改推演。",
+    tags: ["推演", "参数载体", "衰减率"] },
 ];
 
 /**

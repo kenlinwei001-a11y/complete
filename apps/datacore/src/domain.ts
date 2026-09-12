@@ -201,6 +201,10 @@ export interface Rule {
   params?: Record<string, number | string | string[]>;
   /** WO-RULES-CLASSIFY（加性）：业务类别（产能/物料/财务/合规/换型…），规则库分类筛选的真元数据。可空（手工/旧规则）。 */
   category?: string;
+  /** WO-RULE-DISCOVERY（加性）：发现面元数据——DRIL 检索的标签/样例问句（description 是主文本，早已在）。
+   *  可空：手工/旧规则没有时 B 侧 projectRules 回落 name（字典式可检索，不是发现）。 */
+  tags?: string[];
+  answersQuestions?: string[];
   origin: RuleOrigin;
   version: number;
   status: "DRAFT" | "PUBLISHED" | "RETIRED";
