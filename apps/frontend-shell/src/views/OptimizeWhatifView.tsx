@@ -1011,6 +1011,33 @@ const numStyle: React.CSSProperties = { width: 80, fontFamily: "var(--font-mono)
  * 对象类型/字段下拉**全部来自** `GET /a/v1/ontology/object-types` 的真清单（R14 零内联业务常数）；
  * 求解器未接引擎时后端回的是显式「未接入最优化引擎」——**原样上屏，不兜底、不假装有解**（诚实红线）。
  */
+/**
+ * WO-HV-A · 需求 1.1-d 收口：**这一档不许放一个会挂住的按钮**。
+ *
+ * 实测（真 datacore + 真 CP-SAT sidecar·订单簿 500 单）：`sequencing_optimize` 与 `packing_optimize`
+ * **60 秒未返回**（curl HTTP=000），而 selection / assignment / job_shop 都在同一预算内回了 200。
+ * 一个点下去转圈一分钟、最后无声失败的按钮，比没有这个按钮更坏。
+ *
+ * **选 B（超时兜底 + 诚实文案），不选 A（规模闸）——理由**：
+ * A 需要一个「超过 N 个实例就不发」的阈值，而我只有一个数据点（500 单 > 60s），
+ * **不知道拐点在哪**；拍一个阈值出来就是本仓反复警告的「拍脑袋的数」，
+ * 而且阈值拍小了会把本来能算的实例也挡掉。B 不需要发明任何阈值：
+ * 它只把「等多久」这件事变成有界且可见的，并把**超时**与**无解**两件事分开说。
+ *
+ * ⚠ 前端超时只停止**等待**，不代表后端停止计算（本档不走取消协议·不谎称已取消）。
+ */
+const SOLVE_TIMEOUT_MS = 30_000;
+const SOLVE_TIMEOUT_MARK = "__SOLVE_TIMEOUT__";
+function withSolveTimeout<T>(p: Promise<T>, ms: number = SOLVE_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(SOLVE_TIMEOUT_MARK)), ms);
+    p.then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e as Error); },
+    );
+  });
+}
+
 function ObjectGraphOptimizePanel() {
   const typesQuery = useQuery({ queryKey: ["a", "object-types", "graph-opt"], queryFn: fetchObjectTypes, retry: false });
   const types = typesQuery.data ?? [];
@@ -1021,7 +1048,7 @@ function ObjectGraphOptimizePanel() {
 
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [argState, setArgState] = useState<Record<string, Record<string, string | number>>>({});
-  const [result, setResult] = useState<Record<string, { ok: boolean; data?: Record<string, unknown>; err?: string }>>({});
+  const [result, setResult] = useState<Record<string, { ok: boolean; data?: Record<string, unknown>; err?: string; timedOut?: boolean }>>({});
   const [busy, setBusy] = useState<string | null>(null);
 
   /** 该 solver 当前实参：用户改过的优先，其次 spec 默认值，类型类默认取真清单第一个。 */
@@ -1048,10 +1075,11 @@ function ObjectGraphOptimizePanel() {
       // 空字符串的可选字段不下发 —— 让后端用它自己的默认值，而不是被一个空串覆盖掉。
       const args: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(raw)) if (v !== "") args[k] = v;
-      const res = await invokeSolver(spec.key, args);
+      const res = await withSolveTimeout(invokeSolver(spec.key, args));
       setResult((r) => ({ ...r, [spec.key]: { ok: true, data: (res.data ?? {}) as Record<string, unknown> } }));
     } catch (e) {
-      setResult((r) => ({ ...r, [spec.key]: { ok: false, err: (e as { message?: string })?.message ?? String(e) } }));
+      const msg = (e as { message?: string })?.message ?? String(e);
+      setResult((r) => ({ ...r, [spec.key]: { ok: false, err: msg, timedOut: msg === SOLVE_TIMEOUT_MARK } }));
     } finally {
       setBusy(null);
     }
@@ -1131,9 +1159,23 @@ function ObjectGraphOptimizePanel() {
             </div>
 
             {r && !r.ok && (
-              /* 诚实红线：后端说「未接入最优化引擎」就照说，不拿空结果冒充「无解」。 */
-              <div style={{ fontSize: 12, color: "var(--amber-txt)", marginTop: 10 }} data-testid={`ow-graph-error-${spec.key}`}>
-                ⚠ 没算出来（这不是「无解」）：{r.err}
+              /* 诚实红线：后端说「未接入最优化引擎」就照说，不拿空结果冒充「无解」；
+                 **超时**与**无解**必须分开说 —— 两者处置完全不同（缩小规模 vs 改约束）。 */
+              <div
+                style={{ fontSize: 12, color: "var(--amber-txt)", marginTop: 10 }}
+                data-testid={`ow-graph-error-${spec.key}`}
+                data-reason={r.timedOut ? "timeout" : "error"}
+              >
+                {r.timedOut ? (
+                  <>
+                    ⏱ 等了 {SOLVE_TIMEOUT_MS / 1000} 秒没等到结果，已停止等待 —— 这是<b>超时，不是「无解」</b>。
+                    本页只是不再等，<b>后端可能仍在算</b>（本档不发取消）。
+                    该求解器在大规模实例上会显著变慢：实测订单簿 500 单规模下，排序 / 装箱两档 60 秒未返回。
+                    换一个规模更小的对象类型再试。
+                  </>
+                ) : (
+                  <>⚠ 没算出来（这不是「无解」）：{r.err}</>
+                )}
               </div>
             )}
             {r?.ok && (

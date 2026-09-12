@@ -3,6 +3,8 @@ import { useState } from "react";
 import { kpiDimUnit } from "@platform/contracts";
 import zh from "@/locales/zh";
 import { fmt } from "./shared";
+// WO-HV-A · 排产粒度的**代价**要可披露：第一层留一行结论，完整口径（含在哪个模式测的）降浮层。
+import { InfoPopover } from "@/components/InfoPopover";
 import styles from "./GlobalSimView.module.css";
 
 /**
@@ -182,6 +184,23 @@ export function GlobalSimLevers({
           />
           <span>排到产线（线级换型）</span>
         </label>
+        {/* ⚠ 代价必须留第一层（规范 §4.2 判据：不看它，用户会把「更细」直接读成「更好」，结论当场反过来）。
+            一行说清代价 + 可证伪的两个数；完整口径（在哪个模式测的、为什么）降 `?` 浮层。 */}
+        <div className={styles.leverHint} data-testid="global-sim-lever-line-granularity-cost" style={{ color: "var(--amber-txt)" }}>
+          ⚠ 切细有代价：产能格 130 → 1088，实测同一组订单可排量 <b>27.7 万 → 0.47 万套</b>、被挤单 9 → 50
+          <InfoPopover topic="为什么切细反而排得更少" testId="global-sim-lever-line-granularity-why">
+            <span data-testid="global-sim-lever-line-granularity-why-body">
+              同一组订单、同一个范围，只翻这个开关实测：总净产能两侧<b>完全一样</b>（143.18 万套，产能没有凭空消失），
+              但可排量从 27.69 万套掉到 0.47 万套，被挤单从 9 涨到 50。
+              原因是产能被切碎：产能格从 130 个变成 1088 个，单格中位容量从 12,460 套降到 1,246 套；
+              而本次已排订单的中位单量是 5,646 套 —— <b>44 单里有 39 单的单量超过了切细后最大的那个格（2,464 套）</b>，
+              在「一单落一格」的口径下它们放不进任何一条产线，于是只能落到被挤。
+              ⚠ 这组数是在<b>内存模式的确定性贪心兜底</b>上测的（未接最优化引擎）；接了引擎的部署未必是同样的数，
+              但上面那段「格被切碎、单量超过单格容量」的算术与用哪个求解器无关。
+              想更细排产又不想掉可排量，需要允许一单拆批分摊到多条线——那是另一个开关，不在本开关范围内。
+            </span>
+          </InfoPopover>
+        </div>
         <div className={styles.leverHint}>
           关=每基地一个产能单元，只回答「排到哪个基地」；开=按产线拆产能单元，同基地不同单可落不同线，
           换型按该线在跑的型号判定 · 台账「产线」列随之显示求解器真实指派的线。
