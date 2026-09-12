@@ -13,7 +13,13 @@ import {
  * 本测试用 534 节点合成图同口径压）+ 透传规则（遗留定制形/小图形不动）。
  */
 
-/** 合成 534 节点图：1 Order(根) → 4 Base → 40 Line → 200 Process → 289 Equipment（对齐实测分布）。 */
+/**
+ * 合成 534 节点图：1 Order(根) → 4 Base → 40 Line → 200 Process → 289 Equipment（对齐实测分布）。
+ * ⚠ 边朝向对齐**线上真实回包**：Equipment→Process 是**反向边**（2026-09-12 AC5 实测：
+ * /a/v1/slices/order_fulfillment_360/resolve 零入度 241 = 真根 Order×1 + 上游叶子 Equipment×240）。
+ * 若按顺向合成，「零入度=根」会把 240 个伪根全量 props 塞进回执（实测 79,336B 破 12KB 判据）——
+ * 这正是旧实现线上红而单测绿的原因：合成图朝向与真实回包不一致。
+ */
 function bigGraph() {
   const nodes: { id: string; typeKey: string; objectKey: string; props: Record<string, unknown> }[] = [];
   const edges: { from: string; to: string; linkKey: string }[] = [];
@@ -36,7 +42,7 @@ function bigGraph() {
         for (let e = 0; e < seats && eqLeft > 0; e++, eqLeft--) {
           const eq = `obj_equipment_${proc}_E${e}`;
           nodes.push({ id: eq, typeKey: "Equipment", objectKey: `E${e}`, props: { equipId: `E${e}`, oeeA: 0.87, oeeP: 0.91, oeeQ: 0.99 } });
-          edges.push({ from: proc, to: eq, linkKey: "process_uses_equipment" });
+          edges.push({ from: eq, to: proc, linkKey: "process_uses_equipment" }); // 反向边（对齐线上回包朝向）
         }
       }
     }
@@ -97,7 +103,8 @@ describe("shapeSliceReceipt · 大图形收敛（C1）", () => {
     // omitted = byType − 根 − 样本（Equipment 289 全深层：289−8=281）
     expect(shaped.drilldown.omittedByType.Equipment).toBe(289 - SLICE_SAMPLE_PER_TYPE);
     expect(shaped.drilldown.omittedByType.Process).toBe(200 - SLICE_SAMPLE_PER_TYPE);
-    expect(shaped.drilldown.tool).toBe("query_objects");
+    expect(shaped.drilldown.tools).toEqual(["get_object", "query_objects"]);
+    expect(shaped.drilldown.hint).toContain("get_object");
     expect(shaped.drilldown.hint).toContain("query_objects");
   });
 
@@ -105,6 +112,18 @@ describe("shapeSliceReceipt · 大图形收敛（C1）", () => {
     const bytes = Buffer.byteLength(JSON.stringify(shaped), "utf8");
     expect(bytes).toBeLessThan(12 * 1024);
     expect(bytes).toBeLessThan(296_657 / 10);
+  });
+
+  it("反向边（线上朝向）：伪根不进 rootNodes、Equipment 进样本且带逐字可用 filter", () => {
+    // 真根只有 Order；240+ 个零入度 Equipment 是上游叶子，不许带全量 props 进 rootNodes
+    expect(shaped.rootNodes).toHaveLength(1);
+    expect(shaped.rootNodes[0]!.typeKey).toBe("Order");
+    const eqSamples = shaped.sampleNodes.filter((n) => n.typeKey === "Equipment");
+    expect(eqSamples.length).toBe(SLICE_SAMPLE_PER_TYPE);
+    // 下钻 filter = props 里值 === objectKey 的那个字段（equipId），query_objects 逐字可用
+    expect(eqSamples[0]!.filter).toEqual({ equipId: eqSamples[0]!.objectKey });
+    // 无向跳数：反向边叶子同样是深层（Order0→Base1→Line2→Process3→Equipment4）
+    expect(eqSamples.every((n) => n.depth === 4)).toBe(true);
   });
 
   it("环图（全部节点被指向）→ 根退化为首节点，rootNodes 非空", () => {

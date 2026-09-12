@@ -46,9 +46,16 @@ export interface ShapedSliceReceipt {
   /** 根节点（不被任何边指向；无指向关系时退化为首节点）——全量 props 保留。 */
   rootNodes: { id: string; typeKey: string; objectKey?: string; props?: Record<string, unknown> }[];
   /** 深层锚点样本：每类型 ≤ SLICE_SAMPLE_PER_TYPE 个，总量 ≤ SLICE_SAMPLE_TOTAL_CAP，无 props。 */
-  sampleNodes: { id: string; typeKey: string; objectKey?: string; depth: number | "?" }[];
+  sampleNodes: {
+    id: string;
+    typeKey: string;
+    objectKey?: string;
+    depth: number | "?";
+    /** 逐字可用的下钻过滤器：query_objects(typeKey, filter) 必命中本节点（天然键字段纯结构识别）。 */
+    filter?: Record<string, unknown>;
+  }[];
   drilldown: {
-    tool: "query_objects";
+    tools: ["get_object", "query_objects"];
     /** 各类型未被样本列出的深层节点数（= byType − 根 − 样本）。 */
     omittedByType: Record<string, number>;
     hint: string;
@@ -70,18 +77,56 @@ export function shapeSliceReceipt(sliceKey: string, payload: unknown): unknown {
   const snapshotVersion = (payload as { snapshotVersion?: string } | null)?.snapshotVersion;
   const truncated = Boolean((body as { truncated?: unknown } | null)?.truncated);
 
-  // 根 = 不被任何边指向的节点；全被指向（环）时退化为首节点，保证 rootNodes 非空。
+  /**
+   * 真根判定（纯结构，无业务常数）。
+   * ⚠ 2026-09-12 AC5 实测红后修：线上回包存在**反向边**（Equipment→Process 指向上游），
+   * 「不被任何边指向」会捞出 241 个伪根（真根 Order×1 + 上游叶子 Equipment×240），
+   * 每个带全量 props ⇒ 收敛后 79,336B，破 <12KB 判据（实测单：/tmp/ac5-inspect.mjs 分层）。
+   * 判据：零入度候选按「沿边方向可达节点数」取最大者（真根可达整图主体，上游叶子只能
+   * 达自己那一小段链）；并列按回包原序；带 props 的根 ≤ SLICE_SAMPLE_PER_TYPE，
+   * 溢出候选**降级为普通节点**（可进样本/omitted），无零入度节点（环图）退化为首节点。
+   */
   const pointed = new Set(es.map((e) => e.to));
-  let roots = ns.filter((n) => !pointed.has(n.id));
-  if (roots.length === 0) roots = [ns[0]!];
-  const rootIds = new Set(roots.map((r) => r.id));
-
-  // BFS 跳数（从全部根出发；不可达 → "?"）
-  const depth = new Map<string, number>();
+  let candidates = ns.filter((n) => !pointed.has(n.id));
+  if (candidates.length === 0) candidates = [ns[0]!];
   const adj = new Map<string, string[]>();
   for (const e of es) {
     if (!adj.has(e.from)) adj.set(e.from, []);
     adj.get(e.from)!.push(e.to);
+  }
+  const reachOf = (start: string): number => {
+    const seen = new Set([start]);
+    const q = [start];
+    while (q.length > 0) {
+      for (const nxt of adj.get(q.shift()!) ?? []) {
+        if (!seen.has(nxt)) {
+          seen.add(nxt);
+          q.push(nxt);
+        }
+      }
+    }
+    return seen.size;
+  };
+  const ranked = candidates
+    .map((n, i) => ({ n, i, reach: reachOf(n.id) }))
+    .sort((a, b) => b.reach - a.reach || a.i - b.i);
+  // 只取**最大可达层**（并列 = 互不相通的等大分量）；层内并列超帽才截前 N 个，其余降级普通节点。
+  const maxReach = ranked[0]!.reach;
+  const topTier = ranked.filter((r) => r.reach === maxReach);
+  const roots = topTier.slice(0, SLICE_SAMPLE_PER_TYPE).map((r) => r.n);
+  const rootIds = new Set(roots.map((r) => r.id));
+
+  /**
+   * BFS 跳数：从真根出发、**沿链路无向**计跳（切片语义 = root 沿链路逐跳展开，
+   * 与边方向无关——反向边挂在上游的叶子同样是「第 N 跳」，不是第 0 跳）；不可达 → "?"。
+   */
+  const depth = new Map<string, number>();
+  const uadj = new Map<string, string[]>();
+  for (const e of es) {
+    if (!uadj.has(e.from)) uadj.set(e.from, []);
+    uadj.get(e.from)!.push(e.to);
+    if (!uadj.has(e.to)) uadj.set(e.to, []);
+    uadj.get(e.to)!.push(e.from);
   }
   const queue: string[] = [];
   for (const r of roots) {
@@ -91,7 +136,7 @@ export function shapeSliceReceipt(sliceKey: string, payload: unknown): unknown {
   while (queue.length > 0) {
     const cur = queue.shift()!;
     const d = depth.get(cur)!;
-    for (const nxt of adj.get(cur) ?? []) {
+    for (const nxt of uadj.get(cur) ?? []) {
       if (!depth.has(nxt)) {
         depth.set(nxt, d + 1);
         queue.push(nxt);
@@ -109,6 +154,20 @@ export function shapeSliceReceipt(sliceKey: string, payload: unknown): unknown {
     byTypeDepth[t]![dk] = (byTypeDepth[t]![dk] ?? 0) + 1;
   }
 
+  /**
+   * 下钻键（纯结构）：样本节点的 objectKey 必等于其 props 里某个字段的值（天然键），
+   * 找到即随样本下发 `filter` —— query_objects(typeKey, filter) 可**逐字**下钻，
+   * 不用 LLM 猜各类型的键字段名（baseId/lineId/equipId 各不相同，2026-09-12 实测
+   * filter={objectKey} 命中 0，filter={baseId} 命中 1）。
+   */
+  const drillFilterOf = (n: GraphNode): Record<string, unknown> | undefined => {
+    if (n.objectKey === undefined || !n.props) return undefined;
+    for (const [k, v] of Object.entries(n.props)) {
+      if (v === n.objectKey) return { [k]: v };
+    }
+    return undefined;
+  };
+
   // 每类型锚点样本（稳定序 = 回包原序；超总帽即停）
   const sampledByType = new Map<string, number>();
   const sampleNodes: ShapedSliceReceipt["sampleNodes"] = [];
@@ -119,7 +178,14 @@ export function shapeSliceReceipt(sliceKey: string, payload: unknown): unknown {
     if (got >= SLICE_SAMPLE_PER_TYPE) continue;
     if (sampleNodes.length >= SLICE_SAMPLE_TOTAL_CAP) break;
     sampledByType.set(t, got + 1);
-    sampleNodes.push({ id: n.id, typeKey: t, ...(n.objectKey !== undefined ? { objectKey: n.objectKey } : {}), depth: depth.get(n.id) ?? "?" });
+    const filter = drillFilterOf(n);
+    sampleNodes.push({
+      id: n.id,
+      typeKey: t,
+      ...(n.objectKey !== undefined ? { objectKey: n.objectKey } : {}),
+      depth: depth.get(n.id) ?? "?",
+      ...(filter !== undefined ? { filter } : {}),
+    });
   }
 
   const rootCountByType = new Map<string, number>();
@@ -144,11 +210,11 @@ export function shapeSliceReceipt(sliceKey: string, payload: unknown): unknown {
     })),
     sampleNodes,
     drilldown: {
-      tool: "query_objects",
+      tools: ["get_object", "query_objects"],
       omittedByType,
       hint:
-        `切片 ${sliceKey} 共 ${ns.length} 节点/${es.length} 边，已收敛：summary 为全量计数，rootNodes 全量，sampleNodes 为每类型锚点（无 props）。` +
-        `要节点详情用 query_objects(objectType, filter, limit) 按键下钻；要某类型全量清单按类型分页查。`,
+        `切片 ${sliceKey} 共 ${ns.length} 节点/${es.length} 边，已收敛：summary 为全量计数，rootNodes 全量 props，sampleNodes 为每类型锚点（无 props，带下钻 filter）。` +
+        `单节点详情用 get_object(objectType, sample.id)；按键下钻用 query_objects(objectType, sample.filter)；要某类型全量清单用 query_objects(objectType, {}) 按类型分页查。`,
     },
   };
   return receipt;
