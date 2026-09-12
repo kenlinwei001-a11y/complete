@@ -78,6 +78,19 @@ describe("§1 对照实验 · 补 schema 前后「模型能看到的可传参数
       alreadyVisible: ["modelId"],
       why: "capacity.ts:396/398 —— 三根产能杠杆（夜班/通道/外协）此前完全不在 argHints 里",
     },
+    // ── WO-INPUTSCHEMA-B 追加两案（判据同前：argHints 本单一字未改，前=argHints 条数）──
+    {
+      key: "sop_reschedule",
+      newlyVisible: ["advanceDays", "advancePct"],
+      alreadyVisible: ["targetOrderId", "newDueDate", "objective"],
+      why: "service.ts:3423-3424 —— 提前天数/比例是三种重排口径之二，此前只在 argHints 散文里提过，模型无从当键传",
+    },
+    {
+      key: "credit_exposure",
+      newlyVisible: ["custId", "newOrderAmount", "overdue", "receivables", "wipUnbilled"],
+      alreadyVisible: ["custName", "creditLimit"],
+      why: "extended.ts:522-527 —— 敞口=应收+在产未开票，两个加数与逾期集/新单金额此前完全不在 argHints 里",
+    },
   ];
 
   for (const { key, newlyVisible, alreadyVisible, why } of cases) {
@@ -131,6 +144,19 @@ describe("§2 能力性判据 · 错类型必须被**拒**，不许静默转 fal
     expect(validateSolverInput("finance_world_projection", { worldId: "w1", pressureUnit: "ratio" }).ok).toBe(true);
   });
 
+  it("★ plan_generate hard.gm:\"yes\" 被拒（嵌套布尔开关错类型），true 通过", () => {
+    // 同 lineGranularity 一族的病：硬约束开关是 boolean，模型散文式地传 "yes" 会被静默错读。
+    const bad = validateSolverInput("plan_generate", { hard: { gm: "yes" } });
+    const good = validateSolverInput("plan_generate", { hard: { gm: true } });
+    // eslint-disable-next-line no-console
+    console.log(`【校验·拒】${JSON.stringify(bad)}`);
+    // eslint-disable-next-line no-console
+    console.log(`【校验·收】${JSON.stringify(good)}`);
+    expect(bad.ok, "嵌套布尔错类型没被拒 ⇒ 和 asBool 静默转 false 一样坏").toBe(false);
+    expect("errors" in bad && bad.errors.join(" ")).toContain("hard.gm");
+    expect(good.ok).toBe(true);
+  });
+
   it("必填缺席被拒：finance_world_projection 缺 worldId（实现 :176-179 同样 throw）", () => {
     expect(validateSolverInput("finance_world_projection", {}).ok).toBe(false);
     expect(validateSolverInput("finance_world_projection", { worldId: "w1" }).ok).toBe(true);
@@ -167,10 +193,18 @@ describe("§3 双表对账 · 两张注册表重叠的 key 不许状态相反（
 });
 
 describe("§4 加性与确定性（R6）", () => {
-  it("未登记求解器**不带** inputSchema 键（不发空壳·既有消费方逐字节不变）", () => {
-    const unreg = TOOLS.filter((t) => !(t.solverKey in SOLVER_INPUT_SCHEMAS));
-    expect(unreg.length, "全登记了 ⇒ 本断言恒真，需换别的样例").toBeGreaterThan(0);
-    for (const t of unreg) expect("inputSchema" in t, `${t.solverKey} 未登记却带了 inputSchema`).toBe(false);
+  it("★ 全覆盖：目录里每个求解器都带 inputSchema（63/63）——WO-INPUTSCHEMA-B 补满后，「入参模式未知」这一态在目录内已消除", () => {
+    // 前身断言是「未登记者不带 inputSchema 键」（抽样保真）；63/63 补满后它恒真地失去意义，
+    // 按它自己注释的指示（"全登记了 ⇒ 本断言恒真，需换别的样例"）改写为全覆盖断言。
+    // ⚠ 无入参的求解器带的是 properties:{} 的空 object schema —— 那是「实测无入参」的诚实声明
+    //    （出处注到「实现不读 args」的函数行），与基线分支时代「未登记=模式未知」是两个命题。
+    const missing = TOOLS.filter((t) => !("inputSchema" in t) || t.inputSchema === undefined).map((t) => t.solverKey);
+    // eslint-disable-next-line no-console
+    console.log(`【全覆盖】目录 ${TOOLS.length} 个求解器 · 缺 inputSchema 的 = [${missing.join(",")}]`);
+    expect(missing, "还有求解器没带上 schema ⇒ 63/63 没补满（或注册表 key 与目录 key 漂移）").toEqual([]);
+    // 反向金丝雀：注册表里的 key 必须都在目录里（否则「全覆盖」是拿一张漂了的表盖出来的）。
+    const orphan = Object.keys(SOLVER_INPUT_SCHEMAS).filter((k) => !TOOLS.some((t) => t.solverKey === k));
+    expect(orphan, `注册表有 key 不在目录里 ${orphan.join(",")} ⇒ 两表漂移，不许据此报全覆盖`).toEqual([]);
   });
 
   it("已登记求解器**带** inputSchema，且 argHints 原样保留（旧消费方不受影响）", () => {
