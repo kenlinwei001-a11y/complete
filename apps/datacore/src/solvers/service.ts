@@ -36,6 +36,7 @@ import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "./ontology-signat
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { assembleParetoModel } from "./opt-assemble.js"; // WO-SIM-PARETO-MODEL-EXIT · 模型装配的**出口**（此前装配能力有、无人能调）
 import { buildWorldReadView } from "../sim/world-read.js"; // WO-WORLDSTATE-CONTRACT · 世界态读取契约（产出侧读这次推演的态，不是本体真值）
+import { applyWorldStateToContext } from "./world-surface.js"; // WO-WORLDSTATE-SURFACE · 统一世界态读取面（白名单+开关+不静默回落三道闸）
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING · 复用 A13 角色推断机制（field-roles/resolveFieldRoles 同源词库·配置化 R14·非业务常数）+ 结构信号 fanOut（R6·零 LLM）
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
@@ -6211,7 +6212,12 @@ export class SolverService {
     });
     const params =
       opts?.params ?? (opts?.paramsVersion !== undefined ? await this.paramsAt(tenantId, opts.paramsVersion) : c.params);
-    return this.compute({ ...c, params }, solverKey, args);
+    // WO-WORLDSTATE-SURFACE：与 invoke 同一个注入点（compute 同步 ⇒ 世界态只能 async 预注入；
+    // runWithParams 是校准重放/规则 payload 的入口，同一份 args 必须走同一道闸，否则两条路两个口径）。
+    await applyWorldStateToContext(this.repos, tenantId, solverKey, args, c);
+    const out = this.compute({ ...c, params }, solverKey, args);
+    if (c.world) out.worldState = c.world.disclosure; // 加性键（不传 worldId ⇒ c.world undefined ⇒ 逐字节同旧）
+    return out;
   }
 
   /**
@@ -6395,7 +6401,11 @@ export class SolverService {
     // WO-D1 检查点②（loadContext 之后 / compute 之前）：全表扫刚完就被取消 → 不再进同步 compute。
     // ⚠ 诚实：compute 是**同步**的，一旦进去就无法从外部打断（Node 单线程）——取消只能卡在这个边界上。
     throwIfCancelled(`solver ${solverKey} compute 前`);
+    // WO-WORLDSTATE-SURFACE：白名单求解器 + args.worldId ⇒ 把该世界当前拍的态叠进 ctx（三道闸见 world-surface.ts 头注）。
+    // 不传 worldId / 非白名单 ⇒ 一行不执行 ⇒ 与本单上线前逐字节一致（R6）。
+    await applyWorldStateToContext(this.repos, ctx.tenantId, solverKey, args, c);
     const out = this.compute(c, solverKey, args);
+    if (c.world) out.worldState = c.world.disclosure; // 加性键：读了哪几格/经哪条链路/按哪条公式随包下发（铁律 1.5 判据二）
     if (solverKey === "capacity_forecast") {
       // T9 deviation line: remember the prediction for tick-time comparison.
       const modelId = str(args.modelId);
