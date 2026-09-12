@@ -158,7 +158,13 @@ describe("F23 · 订单全链聚合（order-chain）", () => {
     const bd = within(strip).getByTestId("atp-breakdown").textContent ?? "";
     const nums = [...bd.matchAll(/\d+/g)].map((m) => Number(m[0]));
     // 文本形如：需求 800 · 可承接 680 ＝ 现货 120 ＋ 在制 260 ＋ 排产 300
-    const [requested, committable, ...sources] = nums;
+    // ⚠ 先断言**长度**再取下标：解构出来的元素在 TS 眼里是 `number | undefined`
+    //   （`noUncheckedIndexedAccess`）—— 直接做减法会 TS18048。
+    //   这条是 typecheck 咬出来的：用例在运行期是绿的，`pnpm typecheck` 才报红，
+    //   正是「测试绿不度量类型对」的那一面。
+    expect(nums.length).toBe(5); // 需求 · 可承接 · 三源
+    const [requested, committable] = nums as [number, number, number, number, number];
+    const sources = nums.slice(2);
     expect(sources.reduce((s, n) => s + n, 0)).toBe(committable);
     expect(requested - committable).toBe(120);
   });
