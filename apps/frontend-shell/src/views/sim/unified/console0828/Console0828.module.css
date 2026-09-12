@@ -1,7 +1,7 @@
 /**
  * WO-SIM-CONSOLE-0828 · 版面。令牌全部取自 `styles/tokens.css` 在册令牌（青蓝磨砂）。
  *
- * ⚠ **字号只有三级**（12 / 13 / 30）——规范 R-UI-2「一屏之内最多三级字号」，
+ * ⚠ **字号只有三级**（12 / 13 / 23）——规范 R-UI-2「一屏之内最多三级字号」，
  *   门 `ui-first-layer:check` 对未登记基线的新文件按硬上限 3 判。
  *   层级差别一律用**字重与颜色**做，不靠再加一级字号。
  * ⚠ **最小 12px** —— 门 `check-text-legibility` 判据：10px 中文在本调色板内无解。
@@ -265,16 +265,21 @@
   background: var(--panel-glass); display: flex; flex-direction: column; gap: 2px; min-width: 0;
 }
 .kpiKey {
-  font-size: 11px; color: var(--muted); font-weight: 500;
+  font-size: 12px; color: var(--muted); font-weight: 500;
   display: flex; align-items: center; gap: 4px; min-width: 0;
 }
 .kpiBig { font-size: 23px; font-weight: 700; line-height: 1.15; font-family: var(--font-mono); color: var(--txt); }
 /* 数值偏中等长度时（金额串）大号会撑破卡 —— 降到正文级，**不新增字号档**。 */
 .kpiBigSm { font-size: 13px; }
-.kpiCmp { font-size: 11px; color: var(--muted2); }
-/* 第一层口径：**恰好一行**。超长用 ellipsis 截断 —— 截掉的部分在浮层里一字不少。 */
+.kpiCmp { font-size: 12px; color: var(--muted2); }
+/* 第一层口径：**恰好一行**。超长用 ellipsis 截断 —— 截掉的部分在浮层里一字不少。
+   ⚠ 字号 12px 不是随便挑的，两条门各卡一头：
+     · `check-ui-first-layer` R-UI-2 —— 一屏最多 3 级字号（本文件现为 12/13/23）；
+     · `check-text-legibility` —— 阈值是**对比度 × 字号**的曲线，字越小要求越高
+       （12px 要 6.0，10.5px 外推要 ~7.0）。`--muted2` 在 10.5px 上够不着。
+   本单第一版写的 10.5px 是照设计稿抄的，**两条门都踩** —— 稿子在这一位上是错的。 */
 .kpiCal1 {
-  font-size: 10.5px; color: var(--muted2); line-height: 1.5;
+  font-size: 12px; color: var(--muted2); line-height: 1.5;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }
 .kpiCal { font-size: 12px; color: var(--muted2); line-height: 1.65; margin: 2px 0 0; }
@@ -357,8 +362,14 @@
    ⇒ 改 `--accent-txt`（在册·逐主题·压 `--panel-glass` 实测 7.41，远高于 30px 所需）。
    ⚠ 旁边那枚〔估〕徽章 `.est` **保持琥珀不动** —— 它标的是「这个数是推演出来的不是实测」，
    那是**口径警示**，本来就该用警示色，且它正是本仓最值钱的诚实位。 */
+/* ⚠ 30px → 23px 是**被 R-UI-2 逼的，不是顺手改的**：字号级数是「有几个不同的值」，
+   留着 30px 就是 12/13/23/30 **四级**，无论怎么合并小号那头都下不到 3。
+   合并到 23px 还顺带对上了 KPI 大数 —— 一屏只剩**一个**「大数」号，
+   而不是两个差 7px、谁也说不清区别的大号。
+   ⚠ 上面那句「远高于 30px 所需」说的是**对比度**（`--accent-txt` 压 `--panel-glass` 实测 7.41），
+   字号降到 23px 后阈值只会更松，那条结论**不受本次改动影响**。 */
 .moneyBig {
-  font-size: 30px; font-weight: 700; color: var(--accent-txt);
+  font-size: 23px; font-weight: 700; color: var(--accent-txt);
   line-height: 1.15; font-family: var(--font-mono);
 }
 .brk {
@@ -509,7 +520,7 @@
   box-shadow: inset 0 0 0 1px rgba(76, 144, 240, 0.2);
 }
 .agentTag {
-  display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
   color: var(--accent-txt); border: 1px solid var(--accent); border-radius: 999px;
   padding: 1px 8px; font-family: var(--font-sans); white-space: nowrap;
 }
