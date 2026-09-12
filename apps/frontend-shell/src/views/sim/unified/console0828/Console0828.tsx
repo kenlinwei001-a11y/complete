@@ -705,6 +705,17 @@ export default function Console0828({
      * ⇒ 强调一律用 `<b>`；屏上也不再打 ⛔ 这类工单黑话记号（那是给派单看的，不是给用户看的）。
      */
     readonly cal: JSX.Element;
+    /**
+     * WO-SIM-DENSE ① · **第一层那一行**口径（10.5px 灰字，超长 ellipsis）。
+     *
+     * ⚠ 它是 `cal` 的**压缩**，不是 `cal` 的替代 —— `cal` 整段一字不少地搬进了
+     * `InfoPopover`，第一层留 `?` 记号（`docs/CONVENTION-ui-information-layering.md`
+     * §1「诚实位允许降层、绝不允许删除；降层后第一层必须留可见记号」）。
+     * **静默降层等于删除**，所以这两样必须同时在场：一行摘要 + 可见触发器。
+     *
+     * ⛔ 这一行里不许出现 `cal` 里没有的新断言 —— 压缩只许删字，不许加意思。
+     */
+    readonly calOne: string;
     readonly alert?: boolean;
   }
 
@@ -720,6 +731,7 @@ export default function Console0828({
           small: true,
           cmp: `${orders.length} 张单 · ${new Set(orders.map((o) => o.cust ?? "")).size} 家客户`,
           cal: (<>口径：对象层 Order.value 逐页取全后加总，为<b>已签成交额</b>；≠ 年度计划营收，也 ≠ 需求预测。</>),
+          calOne: "对象层 Order.value 加总 · 已签成交额",
         },
         {
           key: "staged",
@@ -727,6 +739,7 @@ export default function Console0828({
           value: String(staged.length),
           cmp: staged.length === 0 ? "尚未添加" : `推演时长 ${horizon} 拍`,
           cal: (<>口径：左栏本地草稿，<b>不落盘</b>；与顶栏「服务端历史扰动」不是同一份，两者不可相加。</>),
+          calOne: "左栏本地草稿 · 不落盘",
         },
         {
           key: "entity",
@@ -734,10 +747,16 @@ export default function Console0828({
           value: String(entityTotal),
           cmp: entityCounts.map((e) => `${e.label}${e.n}`).join(" · "),
           cal: (<>口径：12 类扰动事件可落到的<b>具名实体</b>；其余对象只作传播介质，不进选择器。</>),
+          calOne: "12 类事件可落到的具名实体",
         },
       ];
     }
-    // ── 推演后：五张，全部来自本次推演结果 ──
+    /* ── 推演后：**六张**，全部来自本次推演结果 ────────────────────────────────
+       WO-SIM-DENSE ② · 稿子是一行六格：敞口 / 订单 / 客户 / 受阻环节 / 可处置 / 可落点实体。
+       改前只有前五张 —— 第六张「可落点实体」**不是新造的量**，它推演前就在（`entity` 那张，
+       同一个 `entityTotal` / `entityCounts` 单源），只是推演后被整张撤掉了。
+       ⚠ 撤掉它其实是个信息损失：它答的是「这套推演**够得着多少东西**」，
+       推演完照样要回答（用户下一步就要去改落点）。这里把它接回来，**取数一字未改**。 */
     const share = money.bookTotal === 0 ? 0 : money.exposure / money.bookTotal;
     return [
       {
@@ -747,6 +766,7 @@ export default function Console0828({
         small: true,
         cmp: `占订单簿 ${pct(share)} · 基数 ${fmtMoney(money.bookTotal, "元")}`,
         cal: (<>口径：本次推演中读数发生变化的订单，按对象层成交额合计 —— 是「<b>受影响订单的金额规模</b>」，<b>不是利润损失</b>（毛利 / 成本 / 应收三项本次无法计算，见下方「金额勾稽」）。</>),
+        calOne: "受影响订单的金额规模 · 不是利润损失",
       },
       {
         key: "orders",
@@ -754,6 +774,7 @@ export default function Console0828({
         value: String(money.exposedOrders),
         cmp: `共 ${money.bookOrders} 张 · 读到 ${money.ordersSeen} 张`,
         cal: (<>口径：按<b>世界差分全集</b>判定，<b>不按</b>被扰动的源格判定 —— 源变量常被顶在域上界，源格只动千分之几而下游动千百倍。读到 0 张表示遍历失效，不是「无波及」。</>),
+        calOne: "按世界差分全集判定 · 不按源格",
       },
       {
         key: "cust",
@@ -761,6 +782,7 @@ export default function Console0828({
         value: custView === null ? "—" : String(custView.touchedCustomers),
         cmp: custView === null ? "客户视图本次未取到" : `共 ${custView.totalCustomers} 家`,
         cal: (<>口径：由受影响订单按 Order.cust 归并得到，<b>非独立的客户级读数</b>；客户对象自带的应收数因计量单位无登记册（元 / 万元差 10000 倍）<b>不上屏</b>。</>),
+        calOne: "由受影响订单按 Order.cust 归并",
       },
       {
         key: "imp",
@@ -771,6 +793,7 @@ export default function Console0828({
             ? "本次未取到"
             : impGroups.model.groups.map((g) => `${g.label}${g.items.length}`).join(" · "),
         cal: (<>口径：卡点 / 堵点 / 断点是引擎回包里 kind 的<b>三个不同取值</b>，处置相反，<b>不合并</b>成一个词。取不到时显「—」，那是<b>调用失败</b>，不是「无卡点」。</>),
+        calOne: "卡点 / 堵点 / 断点三取值 · 不合并",
       },
       {
         key: "fix",
@@ -784,6 +807,17 @@ export default function Console0828({
         // 故**不挂** `@stale-fact`。⛔ 别写成「一条都没有」那种否定断言形态：
         // 同一个意思，前者是定义（恒真），后者读起来像在报一个当下的事实（会过时）。
         cal: (<>口径：「可处置」= 引擎为该处<b>枚举出的对策条数 ≥ 1</b>；「仅可监控」= 该条数<b>为 0</b>。<b>系统不给推荐，决策由使用方作出。</b></>),
+        calOne: "引擎枚举出的对策条数 ≥ 1",
+      },
+      /* 第六张 —— 与推演前那张 `entity` **同一个取数**（`entityTotal` / `entityCounts`），
+         ⛔ 不是为了凑满六格新编的量。`key` 也沿用 `entity`，testid 因此前后一致。 */
+      {
+        key: "entity",
+        label: "可落点实体",
+        value: String(entityTotal),
+        cmp: entityCounts.map((e) => `${e.label}${e.n}`).join(" · "),
+        cal: (<>口径：12 类扰动事件可落到的<b>具名实体</b>；其余对象只作传播介质，不进选择器。</>),
+        calOne: "12 类事件可落到的具名实体",
       },
     ];
   }, [result, money, custView, impGroups, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts]);
