@@ -1,35 +1,88 @@
 import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import {
   deriveAllSliceFixtures,
   deriveSliceFixture,
   fetchObjectTypes,
+  fetchSliceLibrary,
   fetchSlices,
   planSlice,
   resolveSlice,
   saveSlice,
   type SliceResolveResult,
 } from "@/api/endpoints";
-import type { PlanSliceResponse } from "@platform/contracts";
+import type { PlanSliceResponse, SliceLibraryEntry } from "@platform/contracts";
 import { toast, toastError } from "@/store/toastStore";
 import { useWorkspace } from "@/workspace/useWorkspace";
 import { baseRoles } from "@/pages/adminRegistry";
+import zh from "@/locales/zh";
 import ReferencesPanel from "@/components/ReferencesPanel";
 import SliceInspector from "./SliceInspector";
 
+const lt = zh.admin.sliceLibrary;
+
 /**
- * 本体切片清单 + 编辑器（C7 · addendum §6.3 / AC8 步1）。
- * 切片 = 可追溯子图 root→hops（A6 逐跳剪枝）。本页：
- *  - 列出已注册切片（rootType / 跳数 / 链路 / 契约 fixtures）。
- *  - ＋新建切片：root + targets → 规划器自动求最短路径（planSlice，A3.3 确定性图算法）→ 入库（PUT）。
- *  - WO-SLICE-GOVERNANCE-FULL：点切片行 → 就地内联子图 + admin 可编辑规格；无契约行可「推进为契约」
- *    （单）+ 顶部「全部推进」（批）。非 admin 只读。
+ * 本体切片（三页签 · WO-SLICE-CONSUMPTION-20260912 前置 A1）：
+ *  - 已登记：已注册切片清单（rootType / 跳数 / 链路 / 契约 fixtures）+ 推进为契约 + 就地内联子图/编辑。
+ *  - 切片库：A3.2 从已发布本体确定性派生的域内/跨域两库（原独立页 /admin/slice-library 并入，
+ *    旧路径 301 到 /admin/slices?tab=library，见 App.tsx redirect）。
+ *  - 路径规划：root + targets → 规划器求最短路径（planSlice，A3.3 确定性图算法）→ 入库（PUT）→ 试切预览
+ *    （合并原 SlicesPage SliceBuilder 与原切片库页 PlanTab：maxHops/近似问句/逐跳路径表都来自后者）。
+ * 页签状态走 ?tab=registered|library|plan（AC1 深链可直链）。
  */
+type SliceTab = "registered" | "library" | "plan";
+
 export default function SlicesPage() {
+  const [params, setParams] = useSearchParams();
+  const raw = params.get("tab");
+  const tab: SliceTab = raw === "library" || raw === "plan" ? raw : "registered";
+  const setTab = (t: SliceTab) => setParams(t === "registered" ? {} : { tab: t }, { replace: true });
+
+  return (
+    <div data-testid="slices-page">
+      <h2 style={{ fontSize: 16, marginBottom: 4 }}>本体切片</h2>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+        切片是可追溯子图（root 对象 → 逐跳沿链路展开），求解器/推演按切片取数，A6 行级过滤逐跳生效。
+        已登记 = 已入库可被工作流/agent 引用；切片库 = 从已发布本体派生的候选；路径规划 = 自助建新切片。
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+        <button
+          className={`btn sm ${tab === "registered" ? "primary" : ""}`}
+          data-testid="slices-tab-registered"
+          onClick={() => setTab("registered")}
+        >
+          已登记
+        </button>
+        <button
+          className={`btn sm ${tab === "library" ? "primary" : ""}`}
+          data-testid="slices-tab-library"
+          onClick={() => setTab("library")}
+        >
+          切片库
+        </button>
+        <button
+          className={`btn sm ${tab === "plan" ? "primary" : ""}`}
+          data-testid="slices-tab-plan"
+          onClick={() => setTab("plan")}
+        >
+          路径规划
+        </button>
+      </div>
+
+      {tab === "registered" && <RegisteredTab onCreate={() => setTab("plan")} />}
+      {tab === "library" && <LibraryTab />}
+      {tab === "plan" && <PlanTab />}
+    </div>
+  );
+}
+
+/** 已登记页签：注册切片清单 + 推进为契约 + 就地检视（原 SlicesPage 主体，零行为改动）。 */
+function RegisteredTab({ onCreate }: { onCreate: () => void }) {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["a", "ontology-slices"], queryFn: fetchSlices });
   const allSlices = useMemo(() => data ?? [], [data]);
-  const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   // WO-SLICE-16-LAYERS：真租户实测（**2026-08-10** · demo · seed 42）98 条切片，
   // 其中 94 条是每类型一条的 `coverage_*` 覆盖切片（字段覆盖率门用），
@@ -73,9 +126,8 @@ export default function SlicesPage() {
   });
 
   return (
-    <div data-testid="slices-page">
+    <>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <h2 style={{ fontSize: 16 }}>本体切片</h2>
         {canEdit && hasUncontracted && (
           <button
             className="btn sm"
@@ -91,9 +143,9 @@ export default function SlicesPage() {
           className="btn primary sm"
           data-testid="slice-create"
           style={{ marginLeft: canEdit && hasUncontracted ? 0 : "auto" }}
-          onClick={() => setEditing((v) => !v)}
+          onClick={onCreate}
         >
-          {editing ? "收起" : "＋新建切片"}
+          ＋新建切片
         </button>
       </div>
       {/* 第一层只放结论：这一页要回答的那个数 = 有多少条可用切片、其中多跳几条。 */}
@@ -117,17 +169,8 @@ export default function SlicesPage() {
         )}
       </div>
       <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
-        切片是可追溯子图（root 对象 → 逐跳沿链路展开），求解器/推演按切片取数，A6 行级过滤逐跳生效。
         {canEdit ? "点切片键就地展开十六层结构 + 内联子图并可编辑规格。" : "点切片键就地查看十六层结构与内联子图（只读）。"}
       </div>
-
-      {editing && (
-        <SliceBuilder
-          onSaved={() => {
-            void qc.invalidateQueries({ queryKey: ["a", "ontology-slices"] });
-          }}
-        />
-      )}
 
       <table className="cmp" data-testid="slices-table" style={{ width: "100%" }}>
         <thead>
@@ -198,13 +241,100 @@ export default function SlicesPage() {
           ))}
         </tbody>
       </table>
-      {slices.length === 0 && <div className="empty-state">暂无注册切片，点击右上＋新建切片</div>}
-    </div>
+      {slices.length === 0 && <div className="empty-state">暂无注册切片，点右上＋新建切片（路径规划页签）</div>}
+    </>
   );
 }
 
-/** root + targets 可视化构建器 → 规划器求路径 → 入库 → 试切预览（C7 核心）。 */
-function SliceBuilder({ onSaved }: { onSaved: () => void }) {
+/**
+ * 切片库页签（原 SliceLibraryPage LibraryTab 原位迁入，WO-SLICE-CONSUMPTION-20260912 A1）：
+ * GET /a/v1/slices/library → 域内/跨域两库列表（sliceKey/root/域/类型数），点键就地展开内联子图。
+ */
+function LibraryTab() {
+  const qc = useQueryClient();
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["a", "slices-library"],
+    queryFn: fetchSliceLibrary,
+  });
+  const all = useMemo<SliceLibraryEntry[]>(() => {
+    if (!data) return [];
+    return [...data.intra, ...data.cross].sort((a, b) => a.sliceKey.localeCompare(b.sliceKey));
+  }, [data]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const { data: workspace } = useWorkspace();
+  const canEdit = baseRoles(workspace?.user?.roles ?? []).some((r) => r === "admin" || r === "catalog_admin");
+
+  if (isLoading) return <div className="empty-state">{zh.common.loading}</div>;
+  if (error) return <div className="badge red">{zh.errors.pageError}</div>;
+
+  return (
+    <>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+        {lt.sub} {canEdit ? "点切片键就地展开内联子图并可编辑规格（不跳转图谱模块）。" : "点切片键就地查看内联子图（只读·不跳转）。"}
+      </div>
+      <table className="cmp" data-testid="slice-library-table" style={{ width: "100%" }}>
+        <thead>
+          <tr>
+            <th>{lt.colSliceKey}</th>
+            <th>{lt.colScope}</th>
+            <th>{lt.colRoot}</th>
+            <th>{lt.colDomains}</th>
+            <th>{lt.colTypeCount}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {all.map((entry) => (
+            <Fragment key={entry.sliceKey}>
+              <tr data-testid={`slice-library-${entry.sliceKey}`}>
+                <td>
+                  <button
+                    data-testid={`slice-library-row-${entry.sliceKey}`}
+                    onClick={() => setExpanded((k) => (k === entry.sliceKey ? null : entry.sliceKey))}
+                    style={{ font: "inherit", fontFamily: "var(--font-mono)", background: "none", border: 0, color: "var(--accent-txt)", cursor: "pointer", padding: 0 }}
+                    title="就地展开内联子图（不跳转图谱模块）"
+                  >
+                    {expanded === entry.sliceKey ? "▾ " : "▸ "}{entry.sliceKey}
+                  </button>
+                </td>
+                <td>
+                  <span className={`badge ${entry.scope === "intra" ? "blue" : "amber"}`}>
+                    {entry.scope === "intra" ? lt.scopeIntra : lt.scopeCross}
+                  </span>
+                </td>
+                <td className="mono">{entry.rootType}</td>
+                <td>{entry.spannedDomains.join(" / ") || "—"}</td>
+                <td className="mono">{entry.spannedTypes.length}</td>
+              </tr>
+              {expanded === entry.sliceKey && (
+                <tr data-testid={`slice-library-expanded-${entry.sliceKey}`}>
+                  <td colSpan={5} style={{ background: "var(--panel2)" }}>
+                    <SliceInspector
+                      sliceKey={entry.sliceKey}
+                      canEdit={canEdit}
+                      onChanged={() => {
+                        void qc.invalidateQueries({ queryKey: ["a", "slices-library"] });
+                        void qc.invalidateQueries({ queryKey: ["a", "slice-spec", entry.sliceKey] });
+                      }}
+                    />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+      {all.length === 0 && <div className="empty-state" data-testid="slice-library-empty">{lt.emptyLibrary}</div>}
+    </>
+  );
+}
+
+/**
+ * 路径规划页签（合并原 SliceBuilder + 原切片库页 PlanTab，WO-SLICE-CONSUMPTION-20260912 A1）：
+ * root + targets 可视化选择 → 规划器求最短路径（带 maxHops/近似问句，复用匹配来自后者）
+ * → 逐跳路径表 → 入库（PUT）→ 试切预览。testid 沿用原 SliceBuilder（admin-closure-slices 在咬）。
+ */
+function PlanTab() {
+  const qc = useQueryClient();
   const { data: types } = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes });
   const typeOptions = useMemo(() => (types ?? []).map((t) => ({ value: t.key, label: `${t.displayName}（${t.key}）` })), [types]);
 
@@ -212,15 +342,17 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
   const [rootType, setRootType] = useState("");
   const [targets, setTargets] = useState<string[]>([]);
   const [maxNodes, setMaxNodes] = useState(200);
+  const [maxHops, setMaxHops] = useState(6);
+  const [question, setQuestion] = useState("");
   const [plan, setPlan] = useState<PlanSliceResponse | null>(null);
   const [preview, setPreview] = useState<SliceResolveResult | null>(null);
   const [previewArgs, setPreviewArgs] = useState("{}");
 
   const planMut = useMutation({
-    mutationFn: () => planSlice(rootType, targets),
+    mutationFn: () => planSlice(rootType, targets, { maxHops, question: question.trim() || undefined }),
     onSuccess: (r) => {
       setPlan(r);
-      if (r.ok && r.plan && sliceKey === "") setSliceKey(`custom_${rootType.toLowerCase()}_${targets.map((x) => x.toLowerCase()).join("_")}`);
+      if (r.ok && r.plan && sliceKey === "") setSliceKey(r.plan.reused ? r.plan.sliceKey : `custom_${rootType.toLowerCase()}_${targets.map((x) => x.toLowerCase()).join("_")}`);
       if (!r.ok) toast(`无可达路径：${r.reason?.unreachable.join("、")}`, "error");
     },
     onError: toastError,
@@ -243,7 +375,7 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
     },
     onSuccess: () => {
       toast("切片已入库（可被工作流 resolve_slice / agent 引用）", "success");
-      onSaved();
+      void qc.invalidateQueries({ queryKey: ["a", "ontology-slices"] });
     },
     onError: toastError,
   });
@@ -261,7 +393,8 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
   const toggleTarget = (k: string) => setTargets((ts) => (ts.includes(k) ? ts.filter((x) => x !== k) : [...ts, k]));
 
   return (
-    <div className="panel" data-testid="slice-builder" style={{ marginBottom: 14, display: "grid", gap: 10 }}>
+    <div className="panel" data-testid="slice-builder" style={{ display: "grid", gap: 10 }}>
+      <div className="muted" style={{ fontSize: 12 }}>{lt.planSub}</div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <label style={{ fontSize: 12 }}>
           根对象类型（root）
@@ -273,6 +406,14 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
         <label style={{ fontSize: 12 }}>
           maxNodes
           <input type="number" data-testid="slice-maxnodes" value={maxNodes} onChange={(e) => setMaxNodes(Number(e.target.value) || 200)} style={{ width: 80, marginLeft: 6 }} />
+        </label>
+        <label style={{ fontSize: 12 }}>
+          {lt.maxHops}
+          <input type="number" data-testid="slice-maxhops" min={1} max={12} value={maxHops} onChange={(e) => setMaxHops(Number(e.target.value) || 6)} style={{ width: 80, marginLeft: 6 }} />
+        </label>
+        <label style={{ fontSize: 12 }}>
+          {lt.question}
+          <input data-testid="slice-question" value={question} onChange={(e) => setQuestion(e.target.value)} style={{ marginLeft: 6, width: 260 }} />
         </label>
       </div>
 
@@ -319,8 +460,34 @@ function SliceBuilder({ onSaved }: { onSaved: () => void }) {
 
       {plan && plan.ok && plan.plan && (
         <div className="panel" data-testid="slice-plan-result" style={{ padding: 8 }}>
-          <div className="section-title">规划结果（root→hops · 跨域 {plan.plan.spannedDomains.join("/") || "—"}）</div>
-          <ul style={{ fontSize: 12, paddingLeft: 18 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+            <span className="section-title">规划结果（root→hops · 跨域 {plan.plan.spannedDomains.join("/") || "—"}）</span>
+            {plan.plan.reused && <span className="badge green">{lt.reused}</span>}
+            <span className="badge blue">{plan.plan.sliceKey}</span>
+          </div>
+          {/* 逐跳路径表（原切片库页 PlanTab 形态：target × linkKey/direction/toType）。 */}
+          <table className="cmp" style={{ width: "100%", marginBottom: 6 }}>
+            <thead>
+              <tr><th>{lt.pathTarget}</th><th>{lt.pathHops}</th></tr>
+            </thead>
+            <tbody>
+              {plan.plan.paths.map((p) => (
+                <tr key={p.target} data-testid={`slice-plan-path-${p.target}`}>
+                  <td className="mono">{p.target}</td>
+                  <td style={{ fontSize: 12 }}>
+                    {p.hops.length === 0
+                      ? "—"
+                      : p.hops.map((h, i) => (
+                        <span key={i} className="mono" style={{ marginRight: 8 }}>
+                          {h.linkKey} / {h.direction} / {h.toType}
+                        </span>
+                      ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <ul style={{ fontSize: 12, paddingLeft: 18, margin: "0 0 6px" }}>
             {plan.plan.pathEvidence.map((e, i) => <li key={i} className="mono">{e}</li>)}
           </ul>
           <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>

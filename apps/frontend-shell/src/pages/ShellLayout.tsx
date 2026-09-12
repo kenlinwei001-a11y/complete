@@ -541,7 +541,9 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // ⚠ WO-BEFE-A：`ontology-relations`（本体关系编辑器）必须同时登记在**这里**与
       //   `adminRegistry.ADMIN_NAV_GROUPS` —— 只改后者的话，左导航渲染读的是本表，
       //   该页会掉进「其它」兜底桶（plan-builder / boundary / prototype-intake 都是这么漏的）。
-      ...["modeling", "object-types", "domains", "interfaces", "ontology-relations", "slices", "slice-library", "merge", "boundary", "prototype-intake"].map((key) => ({ kind: "admin" as const, key })),
+      // WO-SLICE-CONSUMPTION-20260912（前置 A1）：slice-library 已并入 slices 页签，
+      // 本表与 adminRegistry.ADMIN_NAV_GROUPS 同步撤位（两处分组源同改，防「其它」兜底桶）。
+      ...["modeling", "object-types", "domains", "interfaces", "ontology-relations", "slices", "merge", "boundary", "prototype-intake"].map((key) => ({ kind: "admin" as const, key })),
     ],
   },
   // 图谱八视角子视图：折叠子组，保留既有 collapsed 行为（图谱页内亦可 tab）。

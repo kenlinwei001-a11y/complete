@@ -2,6 +2,7 @@ import { lazy, Suspense, type ReactNode } from "react";
 import {
   createBrowserRouter,
   createMemoryRouter,
+  Navigate,
   RouterProvider,
   type RouteObject,
 } from "react-router-dom";
@@ -58,7 +59,6 @@ const InterfacesPage = lazy(() => import("@/pages/admin/InterfacesPage"));
 const OntologyRelationsPage = lazy(() => import("@/pages/admin/OntologyRelationsPage"));
 const EvalsPage = lazy(() => import("@/pages/admin/EvalsPage"));
 const SlicesPage = lazy(() => import("@/pages/admin/SlicesPage"));
-const SliceLibraryPage = lazy(() => import("@/pages/admin/SliceLibraryPage"));
 const MergePage = lazy(() => import("@/pages/admin/MergePage"));
 const GrowthCockpitPage = lazy(() => import("@/pages/admin/GrowthCockpitPage"));
 const SolverReviewPage = lazy(() => import("@/pages/admin/SolverReviewPage"));
@@ -210,7 +210,17 @@ export const routes: RouteObject[] = [
       admin("ontology-relations", <OntologyRelationsPage />),
       admin("evals", <EvalsPage />),
       admin("slices", <SlicesPage />),
-      admin("slice-library", <SliceLibraryPage />),
+      // WO-SLICE-CONSUMPTION-20260912（前置 A1）：切片库页已并入 /admin/slices 的「切片库」页签，
+      // 旧路径 301（replace）到 ?tab=library —— 旧书签/旧链接不断。守卫沿用 slices（两页角色本就相同：
+      // admin/data_admin，零访问面变化）。
+      {
+        path: "admin/slice-library",
+        element: (
+          <AdminGuard path="slices">
+            <Navigate to="/admin/slices?tab=library" replace />
+          </AdminGuard>
+        ),
+      },
       admin("merge", <MergePage />),
       admin("growth", <GrowthCockpitPage />),
       admin("solver-review", <SolverReviewPage />),

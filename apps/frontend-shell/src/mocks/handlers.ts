@@ -3891,6 +3891,18 @@ export const handlers = [
   }),
   http.post("*/a/v1/ontology/slices/:sliceKey/resolve", ({ params }) => HttpResponse.json(mockSliceGraph(String(params.sliceKey)))),
   // C7 切片编辑器：规划器求路径 + 入库 + 试切预览。真后端 planSlice/PUT slices/resolveSlice；mock 给确定性结果。
+  // WO-SLICE-CONSUMPTION-20260912（前置 A1）：切片库（已并入 /admin/slices?tab=library 页签）。
+  // 确定性两库各一条，形状与契约 SliceLibraryResponse 一字不差。
+  http.get("*/a/v1/slices/library", () =>
+    HttpResponse.json({
+      intra: [
+        { sliceKey: "biz.factory.model_capacity", scope: "intra", rootType: "Model", domain: "factory", spannedTypes: ["Model", "Base"], spannedDomains: ["factory"], paths: [[{ linkKey: "model_producible_at", direction: "out" }]] },
+      ],
+      cross: [
+        { sliceKey: "biz.x.order_to_base", scope: "cross", rootType: "Order", domain: "sales", spannedTypes: ["Order", "Base"], spannedDomains: ["sales", "factory"], paths: [[{ linkKey: "order_producible_at", direction: "out" }]] },
+      ],
+    }),
+  ),
   http.post("*/a/v1/slices/plan", async ({ request }) => {
     const body = (await request.json().catch(() => ({}))) as { rootType?: string; targets?: string[] };
     const rootType = body.rootType ?? "Order";
