@@ -180,6 +180,7 @@ function collectAtoms(ctxs) {
       const r = rel(sf.fileName);
       if (!owned.has(r)) continue;          // 只收本包 walk 出来的文件（别把 lib.d.ts 收进来）
       if (r.includes("/test/")) continue;    // 原子 = src 导出符号；test 只当引用来源
+      noteSideEffects(sf);
       const modSym = checker.getSymbolAtLocation(sf);
       if (!modSym) continue;                 // 非模块（无 import/export）
       for (const sym of checker.getExportsOfModule(modSym)) {
@@ -217,6 +218,23 @@ function collectAtoms(ctxs) {
           wo: woOf(tDecl, tDecl.getSourceFile()), reexportOf: null,
           pkg: pkgOfFile(tFile), symbol: target, decl: tDecl,
         });
+      }
+    }
+  }
+}
+
+// 哪些模块**不能 import 求值** —— 顶层有裸调用语句的（`main()` / `app.listen()`）会产生副作用。
+// 机器判据，⛔ 不开人工黑名单：黑名单迟早漏掉新入口，语法规则对新文件照样生效。
+// 实测必须有这条：apps/datacore/src/server.ts 末尾就是 `main().catch(...)`，import 它会真起服务。
+const sideEffectFiles = new Set();
+function noteSideEffects(sf) {
+  for (const st of sf.statements) {
+    if (ts.isExpressionStatement(st)) {
+      let e = st.expression;
+      if (ts.isAwaitExpression(e)) e = e.expression;
+      if (ts.isCallExpression(e) || (ts.isPropertyAccessExpression(e) && ts.isCallExpression(e.expression))) {
+        sideEffectFiles.add(rel(sf.fileName));
+        return;
       }
     }
   }
@@ -294,7 +312,19 @@ async function evalFromDist(relSrcFile, exportName) {
   try {
     const mod = await import(pathToFileURL(abs).href);
     const v = mod[exportName];
-    if (Array.isArray(v)) return { count: v.length, keys: v.every((x) => typeof x === "string") ? v.slice() : null };
+    if (Array.isArray(v)) {
+      // 数组元素的「条目名」：字符串元素取自身；对象元素取**第一个字符串值属性**（插入序 ⇒ 确定性）。
+      // ⛔ 不用人工列 key/id/solverKey 白名单 —— 白名单迟早漏掉新形状；取不到就退化成 #i，
+      //    这样 count 仍然对得上（宁可条目名难看，也不许边数悄悄变成 0）。
+      const label = (x, i) => {
+        if (typeof x === "string") return x;
+        if (x && typeof x === "object") {
+          for (const k of Object.keys(x)) if (typeof x[k] === "string" && x[k]) return `${k}=${x[k]}`;
+        }
+        return `#${i}`;
+      };
+      return { count: v.length, keys: v.map(label) };
+    }
     if (v && typeof v === "object") { const k = Object.keys(v); return { count: k.length, keys: k }; }
     return null;
   } catch { return null; }
@@ -545,6 +575,20 @@ function runCanaries(g) {
   const ev = edges.filter((e) => e.kind === "registers" && e.confidence === "evaluated");
   add("evaluated 置信度的 registers 边", ">0", ev.length, ev.length > 0,
       "为 0 ⇒ dist 没建，全部退化成 parsed（正则/AST 数，会把注释里的串数进去）");
+  // ⑧ 求值确实比 AST 强 —— 拿一个 AST 数不出来、求值数得出的注册表当证据。
+  //    没有这一条，「求值和 AST 总是一致」就无法与「求值根本没起作用」区分开。
+  const uncE = edges.filter((e) => e.kind === "registers" && e.confidence === "evaluated-uncountable");
+  add("AST 数不出、靠求值拿到的 registers 边", ">0", uncE.length, uncE.length > 0,
+      "为 0 ⇒ 求值这一步没有鉴别力，「AST 与求值一致」就不构成证据");
+  // ⑨ 验收 ① 本身机器化：每个可求值注册表的 registers 边数必须 == 真数组 .length。
+  //    （上一版这里悄悄漏了：对象数组求值出 63，边却发了 0 条 —— count 对、边空，屏上看不出来。）
+  const regAll = [...atoms.values()].filter((a) => a.registry?.evaluatedCount !== null && a.registry);
+  const byFrom = new Map();
+  for (const e of edges) if (e.kind === "registers") byFrom.set(e.from, (byFrom.get(e.from) ?? 0) + 1);
+  const offenders = regAll.filter((a) => (byFrom.get(a.id) ?? 0) !== a.registry.evaluatedCount);
+  add("registers 边数 == 真数组 .length 的注册表", `${regAll.length}/${regAll.length}`,
+      `${regAll.length - offenders.length}/${regAll.length}`, offenders.length === 0,
+      offenders.length ? `不符：${offenders.slice(0, 5).map((a) => `${a.name}(边${byFrom.get(a.id) ?? 0}≠值${a.registry.evaluatedCount})`).join(", ")}` : undefined);
 
   return C;
 }
@@ -577,19 +621,36 @@ async function build() {
   log(`  declares 字段 ${declaredBy.size}（其中有鉴别力的 ${declaredFields.size} —— seeds/asserts 只对这批发边）`);
 
   log("── registers（优先 dist 真求值） ──────────────────");
-  let evaluated = 0, parsedOnly = 0;
+  // ⚠ 这条边**必须来自真数组的求值**（派单硬要求）。三种结局，三种 confidence，不许混：
+  //   evaluated               AST 数得出 && dist 求值一致
+  //   evaluated-mismatch      两者不一致 ⇒ **以求值为准**，并把两个数都留在产物里
+  //   evaluated-uncountable   AST **数不出来**（展开 / 计算键 / Object.keys(...)），但求值得出
+  //                           ← 这一档就是「求解器 60/62/63」那个病的真身：
+  //                             ALL_SOLVER_CATALOG = [...A,...B,...C] 按 AST 数是 0，求值是 63。
+  //   parsed                  只有 AST（该包没 build）⇒ **不可信**，产物里明写
+  let evaluated = 0, parsedOnly = 0, uncountable = 0, mismatch = 0;
+  const SCREAMING = /^[A-Z][A-Z0-9_]{2,}$/;
   for (const a of [...atoms.values()].sort((x, y) => x.id.localeCompare(y.id))) {
     const entries = registryEntriesOf(a.decl);
-    if (!entries) continue;
-    const real = await evalFromDist(a.file, a.name);
-    const confidence = real && real.count === entries.length ? "evaluated"
-      : real ? "evaluated-mismatch" : "parsed";
-    const list = real?.keys ?? entries;
-    if (confidence === "parsed") parsedOnly++; else evaluated++;
-    a.registry = { parsedCount: entries.length, evaluatedCount: real?.count ?? null, confidence };
+    const evalable = a.kind === "const" && !a.reexportOf && !sideEffectFiles.has(a.file);
+    let real = null;
+    if (entries) real = evalable ? await evalFromDist(a.file, a.name) : null;
+    else if (evalable && SCREAMING.test(a.name)) {
+      // AST 数不出来的注册表：只对 SCREAMING_SNAKE 命名的常量试求值（注册表命名约定，机器判）
+      const r = await evalFromDist(a.file, a.name);
+      if (r && r.count >= REGISTRY_MIN) real = r;
+    }
+    if (!entries && !real) continue;
+    let confidence, list;
+    if (!entries) { confidence = "evaluated-uncountable"; list = real.keys ?? []; uncountable++; }
+    else if (!real) { confidence = "parsed"; list = entries; parsedOnly++; }
+    else if (real.count === entries.length) { confidence = "evaluated"; list = real.keys ?? entries; evaluated++; }
+    else { confidence = "evaluated-mismatch"; list = real.keys ?? entries; mismatch++; }
+    a.registry = { parsedCount: entries ? entries.length : null, evaluatedCount: real?.count ?? null, confidence };
     for (const e of list) pushEdge({ kind: "registers", from: a.id, to: `entry:${e}`, confidence, pkg: a.pkg });
   }
-  log(`  注册表 evaluated ${evaluated} · parsed-only ${parsedOnly}`);
+  log(`  注册表 evaluated ${evaluated} · evaluated-uncountable ${uncountable} · mismatch ${mismatch} · parsed-only ${parsedOnly}`);
+  log(`  （顶层有副作用、拒绝 import 求值的模块：${sideEffectFiles.size} 个）`);
 
   log("── seeds / asserts ────────────────────────────────");
   collectSeeds(ctxs, declaredFields);
@@ -787,13 +848,35 @@ async function verify(g, summary) {
 
   say("═══ 验收 ① 注册表计数对照（registers 边数 vs 真数组 .length） ═══");
   const regs = [...atoms.values()].filter((a) => a.registry).sort((a, b) => a.id.localeCompare(b.id));
-  const mism = regs.filter((a) => a.registry.evaluatedCount !== null && a.registry.evaluatedCount !== a.registry.parsedCount);
+  const mism = regs.filter((a) => a.registry.evaluatedCount !== null && a.registry.parsedCount !== null && a.registry.evaluatedCount !== a.registry.parsedCount);
+  const unc = regs.filter((a) => a.registry.confidence === "evaluated-uncountable");
   say(`  注册表候选 ${regs.length} 个；其中 dist 可求值 ${regs.filter((a) => a.registry.evaluatedCount !== null).length} 个`);
+  say(`  ⚠ AST **数不出来**、只能靠求值的：${unc.length} 个 —— 这一档若没有求值，registers 边会是 0 条（而不是报错）：`);
+  for (const a of unc) {
+    const edgeN = edges.filter((e) => e.kind === "registers" && e.from === a.id).length;
+    say(`     ${a.name.padEnd(30)} AST解析= 数不出   真求值=${String(a.registry.evaluatedCount).padStart(4)}  registers边=${String(edgeN).padStart(4)}   ${a.file}:${a.line}`);
+  }
+  say(`  ── 逐条对照（前 40） ──`);
   for (const a of regs.slice(0, 40)) {
     const edgeN = edges.filter((e) => e.kind === "registers" && e.from === a.id).length;
     say(`  ${a.name.padEnd(28)} AST解析=${String(a.registry.parsedCount).padStart(4)}  真求值=${String(a.registry.evaluatedCount ?? "n/a").padStart(4)}  registers边=${String(edgeN).padStart(4)}  ${a.registry.confidence}${a.registry.evaluatedCount !== null && a.registry.evaluatedCount !== a.registry.parsedCount ? "   ⚠ 不一致" : ""}`);
   }
   say(`  ⇒ AST 与真求值不一致的注册表：${mism.length} 个${mism.length ? "（" + mism.map((a) => a.name).join(", ") + "）" : ""}`);
+  // 对照：天真 grep 数法 vs 真求值 —— 这就是「求解器 60 / 62 / 63」那次的三个数。
+  const solverKeys = atoms.get("sym:apps/datacore/src/solvers/service.ts#SOLVER_KEYS");
+  if (solverKeys) {
+    const src = fs.readFileSync(path.join(REPO, solverKeys.file), "utf8").split("\n");
+    const declLine = solverKeys.line - 1;
+    let end = declLine; while (end < src.length && !/^\] as const;/.test(src[end])) end++;
+    const block = src.slice(declLine, end + 1);
+    const naive = block.filter((l) => /^\s*"[a-z0-9_]+",\s*$/.test(l)).length;
+    const withComments = block.filter((l) => /"[a-z0-9_]+"/.test(l)).length;
+    say(`  ── 对照实验：SOLVER_KEYS 到底几条 ──`);
+    say(`     天真 grep（任何含 "xxx" 的行）        = ${withComments}   ← 把注释里的串也数进去`);
+    say(`     稍好的正则（只认整行 "xxx",）          = ${naive}`);
+    say(`     本抽取器 AST 解析                      = ${solverKeys.registry.parsedCount}`);
+    say(`     import dist 真求值 .length             = ${solverKeys.registry.evaluatedCount}   ← 唯一可信的那个`);
+  }
 
   say("");
   say("═══ 验收 ③ 切片目录索引可独立检索（只读 INDEX.yaml vs 真实现 lookupReusableByQuestion） ═══");
@@ -822,24 +905,36 @@ async function verify(g, summary) {
       return scored[0] ? { sliceKey: scored[0].sliceKey, score: scored[0].score } : null;
     };
     say(`  只从 INDEX.yaml 读回切片目录行：${rows.length} 条（金丝雀：应等于 counts.slices=${summary.sliceRows.length}）`);
+    // ⚠ 问句集必须有**鉴别力**：若全部返回 null，一个「恒返回 null」的坏实现也会 100% 一致。
+    // 故：① 每条切片用它自己的 brief 当问句（必然命中，且 47 条切片各命中各的）
+    //     ② 三条对抗问句（必然不命中）③ 几条真人口吻的问句。
     const questions = [
-      ["Base", "这个生产基地的产线和工序瓶颈在哪"],
-      ["Model", "这个电池型号能在哪些基地生产，认证状态如何"],
-      ["Order", "销售订单交付受影响了吗"],
-      ["Base", "天气怎么样适合钓鱼吗"],
-      ["Metric", "经营指标的归因"],
+      ...descriptors.map((d) => [d.rootType, d.description, "自描述"]),
+      ["Model", "这个电池型号能在哪些基地生产，认证状态如何", "真人口吻"],
+      ["Base", "生产基地 车间 产线", "真人口吻"],
+      ["Order", "销售订单 电池型号", "真人口吻"],
+      ["Base", "天气怎么样适合钓鱼吗", "对抗"],
+      ["Base", "aaaaa bbbbb ccccc", "对抗"],
+      ["NoSuchType", "生产基地 车间 产线", "对抗·不存在的 rootType"],
     ];
-    let agree = 0;
-    for (const [root, qq] of questions) {
+    let agree = 0, hits = 0, distinct = new Set(), shown = 0;
+    for (const [root, qq, tag] of questions) {
       const a = indexOnlyLookup(root, qq);
       const b = idx.lookupReusableByQuestion(descriptors, root, qq);
       const same = JSON.stringify(a) === JSON.stringify(b);
       if (same) agree++;
-      say(`  [${same ? "一致" : "差异"}] root=${root} q=${q(qq)}`);
-      say(`          只读INDEX → ${a ? `${a.sliceKey} (${a.score.toFixed(4)})` : "null"}`);
-      say(`          真实现     → ${b ? `${b.sliceKey} (${b.score.toFixed(4)})` : "null"}`);
+      if (b) { hits++; distinct.add(b.sliceKey); }
+      // 全打 53 行太长：自描述那批只打不一致的，其余全打。
+      if (!same || tag !== "自描述" || shown < 2) {
+        shown++;
+        say(`  [${same ? "一致" : "❌差异"}] (${tag}) root=${root} q=${q(qq.length > 46 ? qq.slice(0, 46) + "…" : qq)}`);
+        say(`          只读INDEX → ${a ? `${a.sliceKey} (${a.score.toFixed(4)})` : "null"}`);
+        say(`          真实现     → ${b ? `${b.sliceKey} (${b.score.toFixed(4)})` : "null"}`);
+      }
     }
     say(`  ⇒ ${agree}/${questions.length} 一致`);
+    say(`  ⇒ 鉴别力金丝雀：非 null 命中 ${hits}/${questions.length} 次，落在 ${distinct.size} 条不同切片上`);
+    say(`     （若命中数为 0，则「全部一致」不构成证据 —— 恒 null 的坏实现也会全一致）`);
   }
 
   say("");

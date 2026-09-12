@@ -2,8 +2,8 @@
 # 生成物 —— ⛔ 不要手改。生成命令：node scripts/ontology-graph/extract.mjs
 # 人读的散文本体在 docs/SYSTEM-ONTOLOGY.md，**保留不动**，本目录是它旁边的机器抽取面。
 version: 1
-generatedFrom: "f5a05a9d"
-counts: { atoms: 6265, edges: 19870, slices: 47, byState: { wired: 2835, test-only: 399, no-ref: 3031 }, byEdgeKind: { reexports: 90, reads: 266, declares: 5437, registers: 2096, seeds: 2284, asserts: 7963, inSlice: 1734 }, docSourceNone: 2968, docSourceNonePct: 47.37 }
+generatedFrom: "b7cab1c7"
+counts: { atoms: 6265, edges: 21031, slices: 47, byState: { wired: 2835, test-only: 399, no-ref: 3031 }, byEdgeKind: { reexports: 90, reads: 266, declares: 5437, registers: 3257, seeds: 2284, asserts: 7963, inSlice: 1734 }, docSourceNone: 2968, docSourceNonePct: 47.37 }
 canary:
   - probe: "buildSliceIndex 在节点表里"
     expect: "present"
@@ -49,11 +49,20 @@ canary:
     actual: 1803
     ok: true
     note: "为 0 ⇒ dist 没建，全部退化成 parsed（正则/AST 数，会把注释里的串数进去）"
+  - probe: "AST 数不出、靠求值拿到的 registers 边"
+    expect: ">0"
+    actual: 1161
+    ok: true
+    note: "为 0 ⇒ 求值这一步没有鉴别力，「AST 与求值一致」就不构成证据"
+  - probe: "registers 边数 == 真数组 .length 的注册表"
+    expect: "98/98"
+    actual: "98/98"
+    ok: true
 atomShards:
   - package: "datacore"
     file: "atoms/datacore.yaml"
     count: 1357
-    edges: 5043
+    edges: 5944
   - package: "agentcore"
     file: "atoms/agentcore.yaml"
     count: 669
@@ -65,7 +74,7 @@ atomShards:
   - package: "contracts"
     file: "atoms/contracts.yaml"
     count: 2271
-    edges: 5440
+    edges: 5700
   - package: "llm-adapters"
     file: "atoms/llm-adapters.yaml"
     count: 47
