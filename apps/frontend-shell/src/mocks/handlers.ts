@@ -6101,6 +6101,39 @@ export const handlers = [
       if ("__err" in ci) return err(400, "VALIDATION_ERROR", String(ci.__err));
       return HttpResponse.json({ data: ci, snapshotVersion: "ov-12" });
     }
+    // WO-HV-B ② · 交期承诺（ATP/CTP）mock —— 与 order_fullchain 同一张单（`orderRef`/`so` 两个名都认，
+    // 因为后端 `atpCheck` 读的就是 `args.orderRef ?? args.so`）。
+    // 三源拆解必须满足**勾稽铁律** Σbreakdown == committableQty、shortfall == requested − committable，
+    // 否则 mock 会教出一组真后端永远不会出现的数（本仓治过「mock 与真后端各说各话」）。
+    if (key === "atp_check") {
+      const ref = typeof args.orderRef === "string" && args.orderRef
+        ? args.orderRef
+        : typeof args.so === "string" && args.so
+          ? args.so
+          : "SO-10001";
+      const requestedQty = 800;
+      const breakdown = [
+        { source: "现货" as const, qty: 120 },
+        { source: "在制" as const, qty: 260 },
+        { source: "排产" as const, qty: 300 },
+      ];
+      const committableQty = breakdown.reduce((s, b) => s + b.qty, 0); // 680
+      const shortfallQty = requestedQty - committableQty; // 120
+      return HttpResponse.json({
+        data: {
+          orderRef: ref,
+          requestedQty,
+          committableQty,
+          promiseDate: null, // 缺口未清 ⇒ 全量最早日排不出来 → 屏上「不可期」（不许编一个日期）
+          atpStatus: "PARTIAL",
+          shortfallQty,
+          bottleneck: "产能",
+          breakdown,
+          summary: `订单 ${ref}：部分可承接，可承接 ${committableQty}/${requestedQty}，缺口 ${shortfallQty}·卡口=产能。`,
+        },
+        snapshotVersion: "ov-12",
+      });
+    }
     if (key === "order_fullchain") {
       // ORD 订单全链推演（mock：储能单越线财务提价）
       const so = typeof args.so === "string" && args.so ? args.so : "SO-10001";

@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { OrderProblemGroup, OrderFullchainOutput } from "@platform/contracts";
 import { SEG_REGISTRY, formatTightness } from "@platform/contracts";
-import { runSolver, fetchAllObjects, queryObjectsPaged } from "@/api/endpoints";
+import { runSolver, fetchAllObjects, queryObjectsPaged, fetchAtpCheck } from "@/api/endpoints";
 import { useSessionStore } from "@/store/sessionStore";
 import { RiskHoverTrigger } from "@/components/Risk/RiskPopover";
 import { LayeredDag, type DagEdgeDef, type DagNodeDef } from "@/components/Dag/LayeredDag";
@@ -1015,6 +1015,125 @@ const OFC_LAYER_TITLES = ["订单", "建模链", "三关联判", "结论"];
  * 不是前端编的 —— 与下面「三判明细表」的规则列**同一个出处**，两处永远一致。
  * 故本页 `ruleKind` 是 `ruleKey`（规则库里查得到），与净室页的 `projection` 不同档。
  */
+/**
+ * ══ WO-HV-B ② · 订单承诺（ATP/CTP）上屏 ═══════════════════════════════════════════
+ *
+ * **今天的行为是 X**：`atp_check` 算得出**承诺日 / 缺口 / 瓶颈**三样（`solvers/service.ts` 的
+ *   `atpCheck`·净读成品现货 + 在制未交 + 交期前可排产能三源），而**零前端视图引用** ——
+ *   实测 `grep -rn "atp_check" apps/frontend-shell/src` 唯一命中是一句**注释**
+ *   （🐤 金丝雀：同一把 grep 量 `capacity_forecast` = 71 命中 ⇒ 量法是好的）。
+ *   于是屏上能看到「这单能不能接」（三判 verdict），却**看不到「何时能交」**。
+ * **应该是 Y**：同一张单，三判结论旁边直接给出承诺日 / 缺口 / 瓶颈。
+ *
+ * ⛔ **没有新建屏**：挂在既有 `OrderFullchainPanel` 里，**共用它那一个 `so` 选择器** ——
+ *   另起一个选择器会让三判与承诺指向两张不同的单，而界面上分辨不出（本仓治过的形态）。
+ *
+ * 诚实边界（三条，都不编数）：
+ *   · `promiseDate === null` ⇒ 屏上写「不可期」+ 原因，**不显示今天的日期**；
+ *   · `bottleneck === null` 且 `shortfallQty === 0` ⇒ 写「无卡口」，不留空让人以为没算；
+ *   · 取数失败 / 回包不合契约 ⇒ 退回**诚实缺口记号**并打后端原话，
+ *     ⛔ 绝不把这一条的失败变成整页白屏（`fetchAtpCheck` 已校形，这里只管显示）。
+ */
+const ATP_STATUS_META: Record<string, { label: string; cls: string }> = {
+  CONFIRMED: { label: "全量可承接", cls: "green" },
+  PARTIAL: { label: "部分可承接", cls: "amber" },
+  UNMET: { label: "交期前几无可承接", cls: "" },
+};
+
+function AtpPromiseStrip({ so }: { so: string }) {
+  const q = useQuery({
+    // so 进 key：不进的话换单后 react-query 命中旧缓存 ⇒ 屏上承诺停在上一张单（静默错答）。
+    queryKey: ["b", "atp_check", so],
+    retry: false,
+    queryFn: ({ signal }) => fetchAtpCheck(so, signal),
+  });
+
+  if (q.isLoading) {
+    return (
+      <div style={{ fontSize: 12, color: "var(--muted2)", margin: "6px 0" }} data-testid="atp-loading">
+        {zh.common.loading}
+      </div>
+    );
+  }
+  if (q.isError || !q.data) {
+    return (
+      <div
+        className="panel"
+        data-testid="atp-unavailable"
+        style={{ padding: 8, margin: "6px 0", borderLeft: "3px solid var(--muted2)" }}
+      >
+        <div style={{ fontSize: 12, color: "var(--muted)" }}>交期承诺（ATP/CTP）</div>
+        <b style={{ fontSize: 13 }}>算不出来</b>
+        <div style={{ fontSize: 12, color: "var(--muted2)", marginTop: 3 }} data-testid="atp-unavailable-reason">
+          {solverErrText(q.error)}
+        </div>
+      </div>
+    );
+  }
+
+  const a = q.data;
+  const meta = ATP_STATUS_META[a.atpStatus] ?? { label: a.atpStatus, cls: "" };
+  const promiseText = a.promiseDate ?? "不可期";
+  const bottleneckText = a.bottleneck ?? (a.shortfallQty === 0 ? "无卡口" : "未判定");
+
+  return (
+    <div data-testid="atp-strip" style={{ margin: "6px 0" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "stretch" }}>
+        {/* 三个产出各占一格：承诺日 / 缺口 / 瓶颈 —— 这就是引擎一直算得出、屏上一直没有的三样。 */}
+        <div className="panel" style={{ padding: 8, minWidth: 128 }} data-testid="atp-promise-date">
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>承诺日（何时能交）</div>
+          <b className="mono">{promiseText}</b>
+        </div>
+        <div className="panel" style={{ padding: 8, minWidth: 110 }} data-testid="atp-shortfall">
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>缺口（套）</div>
+          <b className="mono">{a.shortfallQty}</b>
+        </div>
+        <div className="panel" style={{ padding: 8, minWidth: 96 }} data-testid="atp-bottleneck">
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>卡在哪一源</div>
+          <b>{bottleneckText}</b>
+        </div>
+        <div
+          className="panel"
+          style={{ padding: 8, minWidth: 130 }}
+          data-testid="atp-status"
+          data-atp-status={a.atpStatus}
+        >
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>
+            承诺结论
+            <InfoPopover topic="这三个数是怎么算出来的" testId="atp-basis">
+              净读<b>三源供给</b>再取小：成品现货（FinishedGoodsInventory.qtyOnHand）、
+              在制未交（WorkOrder.qtyActual·完工已入库故不双算）、
+              交期前可排产能（Σ 可产 Line.max_capacity_day × 交期前净生产窗口天）。
+              <br />
+              可承接量 = min(需求, 三源和)；缺口 = 需求 − 可承接；承诺日 = 满足全量最早日（排不出 ⇒ 不可期）。
+              <br />
+              基准日取固定 T0（无时钟随机·同输入同输出）。改产能颗粒或库存颗粒，这三个数会真变。
+              <br />
+              ⚠ 承诺基准日本身<b>不在回包里</b>（`atp_check` 的契约输出没有 <span className="mono">asOf</span> 字段），
+              所以这里只说口径不给日期 —— 前端不替后端编一个常数。
+            </InfoPopover>
+          </div>
+          <b className={`badge ${meta.cls}`}>{meta.label}</b>
+        </div>
+      </div>
+      {/* 三源拆解：Σ = 可承接量（勾稽铁律）。摆出来才看得出「卡口」这个判定凭什么。 */}
+      {a.breakdown.length > 0 && (
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }} data-testid="atp-breakdown">
+          需求 <span className="mono">{a.requestedQty}</span> · 可承接{" "}
+          <span className="mono">{a.committableQty}</span>
+          {" ＝ "}
+          {a.breakdown.map((b, i) => (
+            <span key={b.source}>
+              {i > 0 ? " ＋ " : ""}
+              {b.source} <span className="mono">{b.qty}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ofcNodeFacts(id: string, kind: string, label: string, data: OFC): DagNodeFacts {
   const j = data.judges;
   const capUnit = j.cap.unit ?? "套/周";
@@ -1187,6 +1306,12 @@ function OrderFullchainPanel() {
               {data.conds.map((c, i) => <li key={i}>{c}</li>)}
             </ul>
           )}
+          {/* ── WO-HV-B ② · 交期承诺（ATP/CTP）────────────────────────────────────────
+              三判答的是「**能不能**接」，这一条答的是「**何时**能交、差多少、卡在哪一源」。
+              锚点用 `data.so`（**引擎解析后的那一张**）而不是选择器里的 `so`：
+              选「首单」时选择器 value 是空串，拿它去驱动会让承诺跑去问引擎自己的缺省单 ——
+              两处各自挑一张，屏上就会出现「三判说 A、承诺说 B」而界面上分辨不出。 */}
+          <AtpPromiseStrip so={data.so} />
           {/* 11 节点业务建模链 DAG。
               判据 U3 ·「有图但点了没反应」→ 真接到面板：`onNodeClick` 是 LayeredDag 的**可选** prop，
               此前没传 ⇒ `onClick={() => onNodeClick?.(n)}` 静默什么都不做，而屏上分辨不出
