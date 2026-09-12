@@ -1510,8 +1510,13 @@ describe('WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 cla
      * ⚠️ 93 里仍含 **13 条旧尺子从来没数到的真违规**（`SandboxAttr` 8 条 ·
      * `UnifiedSimShell` / `MetricWall` 等），仓主已另行安排，**不在本单修复范围**。
      * 它们留在基线里 = 记账，不是豁免：棘轮只许降，谁清理谁把这个数调低。
+     *
+     * ⚠ 2026-09-12 由 93 降到 92：仓主指令**整屏删除「运营复盘」**（`ReviewView.tsx` 及其
+     * renderer 注册 / 前后端视图下发 / 场景卡一并删净），该屏上那一处 `title=` 随之消失。
+     * 门自己要求的：「存量已降到 92 —— 请把 BASELINE 改成 92 锁住战果，**别让基线虚高变成永久豁免**」。
+     * ⛔ 这不是放水：棘轮方向没变（只许降），降的是**真被删掉的那一条**，不是把没修的洗成已修。
      */
-    const BASELINE = 93;
+    const BASELINE = 92;
     expect(
       hits.length,
       hits.length > BASELINE

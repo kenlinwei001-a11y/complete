@@ -445,7 +445,7 @@ interface CarrierIndex {
   custBySo: Map<string, string>;
   /** Model objId → `Model.modelId`（订单行上记的是 modelId 不是 objId）。 */
   modelKeyById: Map<string, string>;
-  /** `${so} ${model}` → 该单该型号的行金额合计。 */
+  /** `${so}\u0000${model}` → 该单该型号的行金额合计。 */
   lineAmt: Map<string, number>;
   /** `Order.so` → 该单**全部行**金额合计。 */
   orderAmt: Map<string, number>;
@@ -455,7 +455,7 @@ interface CarrierIndex {
   bookAmount: number;
 }
 
-const AMT_KEY = (so: string, model: string): string => `${so} ${model}`;
+const AMT_KEY = (so: string, model: string): string => `${so}\u0000${model}`;
 
 /**
  * 往累加表里加一笔。**存在的唯一理由是让「累加器初值」与「阈值兜底」在语法上分得开。**

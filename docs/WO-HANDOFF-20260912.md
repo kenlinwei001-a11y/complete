@@ -1,5 +1,8 @@
 # 派单包 · 2026-09-12（可直接转发 DEV）
 
+<!-- wo-anchors: allow-missing: docs/AUDIT-worldstate-rollout.md, docs/AUDIT-test-assertion-shape.md, docs/AUDIT-solver-inputschema-20260912.md -->
+<!-- 上面三份是**本包各单要新建的产出**，不是引用已有文件；门要求显式声明，声明了才不会把「按计划新建」误判成「路径写错」。 -->
+
 > **用法**：每个 `## WO-xxx` 段落**整段复制**给一个 dev，一单一人。段内已包含全部背景，不需要额外上下文。
 > **前置**：四张单**互不重叠**，可并行；唯一约束是同时**最多 1 个**跑 `datacore` 的测试套件（4 核机，实测 6 个并发跑会把负载顶到 35，自伤）。
 
