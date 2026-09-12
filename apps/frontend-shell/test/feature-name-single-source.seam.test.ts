@@ -103,8 +103,13 @@ describe("SEAM · 功能名单一真相源（三份注册表 × 同一个键 = �
   it("② 跨服务键必须在册里（`SHARED_FEATURE_NAMES`），且名字取自册", () => {
     const byKey = collect();
     const crossService = [...byKey].filter(([, rows]) => rows.length > 1).map(([k]) => k);
-    // 实测 61 条（2026-08-14）。这个数只是"看得见"的锚，判据是下面两条断言而非数字本身。
-    expect(crossService.length).toBeGreaterThanOrEqual(61);
+    // 实测 60 条（2026-09-12）。原为 61（2026-08-14），降 1 的出处已追到具体提交：
+    //   `32377e6b feat(ui)!: 整屏删除「运营复盘」(review)` 把 review 键从 mocks/fixtures.ts 摘掉，
+    //   于是它不再是「≥2 份注册表声明」的跨服务键。⇒ 这是**删功能的正确后果，不是回归**。
+    // 复验（不必信这段注释）：`git log --oneline -1 -- apps/frontend-shell/src/mocks/fixtures.ts`
+    //   应指向该提交；若 review 又回来了、或本数再降而追不到同类出处，那才是真回归，别跟着改数。
+    // ⚠ 这个数只是"看得见"的锚，判据是下面两条断言而非数字本身。
+    expect(crossService.length).toBeGreaterThanOrEqual(60);
 
     const unregistered = crossService.filter((k) => !(k in SHARED_FEATURE_NAMES));
     expect(
