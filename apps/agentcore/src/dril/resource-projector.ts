@@ -136,9 +136,20 @@ export function projectSolvers(items: CatalogItem[]): SolverResource[] {
   }));
 }
 
+/**
+ * WO-SLICE-CONSUMPTION-20260912（G7）：`coverage_*` 是字段覆盖率门的机器饲料
+ * （单类型全实例清单、零跳无图，demo 实测 13~1000 节点且 coverage_equipmentoee 已触 maxNodes 截断）——
+ * 进 agent 切片目录 = 一次 resolve_slice 把整类型实例灌进 LLM 上下文。
+ * datacore 目录侧当前靠「自定义切片无 description 不入目录」**意外**挡住它们
+ * （`datacore/catalog.ts` discover 的 description 规则）；此处把排除钉成**显式意图**，与 description 规则解耦。
+ */
+export const isMachineOnlySlice = (key: string): boolean => key.startsWith("coverage_");
+
 /** slice ← DataCore catalog.discover("slices")。P1 仅有目录级元数据；rootType/includedTypes 留 P3 从本体图补齐。 */
 export function projectSlices(items: CatalogItem[]): SliceResource[] {
-  return items.map((s) => ({
+  return items
+    .filter((s) => !isMachineOnlySlice(s.key))
+    .map((s) => ({
     kind: "slice" as const,
     key: s.key,
     label: nonEmpty(s.name, s.key) ?? s.key,
