@@ -115,6 +115,13 @@ import type {
   InterfaceViolation,
 } from "@platform/contracts";
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
+// WO-HV-B · 两条「引擎算得出、屏上零消费方」的接线所需校形 schema（运行期校形，不是编译期 `as`）。
+import {
+  AtpCheckOutputSchema,
+  FinanceWorldProjectionOutputSchema,
+  type AtpCheckOutput,
+  type FinanceWorldProjectionOutput,
+} from "@platform/contracts";
 import { api } from "./apiClient";
 import { SYNONYMS_BY_SNO } from "@/config/eventGuidance"; // WO-HOME-ENTRY-FLOW · ⌘K 事件同义词（数据侧补词，面板组件不动）
 // WO-SANDBOX-MEMORY：`GET /a/v1/sim/sessions` 的流式投影（解析前剥掉 285MB 的 baseSnapshot）
@@ -530,6 +537,76 @@ export const runSolver = (solverKey: string, args: Record<string, unknown>, sign
     body: { args },
     signal,
   });
+
+/**
+ * ══ WO-HV-B ① · 订单承诺（ATP/CTP）上屏用的**校形**调用 ═══════════════════════════
+ *
+ * **今天的行为是 X（开工实测，非派单转述）**：`atp_check` 在 A 侧注册（`catalog.ts:171`）、
+ * 在 `solvers/service.ts:6333` 派发、算得出**承诺日 / 缺口 / 瓶颈**三样，而
+ * **前端一个视图都不消费它**。实测三条探针：
+ *   · `grep -rn "atp_check" apps/frontend-shell/src` = **1 命中，且那一处是注释**
+ *     （`lib/solverScopeHonesty.ts` 里举例提到这个 key，不是调用）；
+ *   · `AtpCheckOutput|OrderPromise|AtpStatus` = 3 命中，追进去**全是类型名字符串**
+ *     （`sim/unified/**` 的两份事件/业务面目录 + 一份 mock fixture 的 `carrierTypeKey`），
+ *     没有一处 render 过 `promiseDate` / `shortfallQty` / `bottleneck`；
+ *   · 🐤 金丝雀：同一把 grep 量 `capacity_forecast` = **71 命中** ⇒ 量法是好的，
+ *     「零消费方」是事实不是工具坏了。
+ * **应该是 Y**：订单链路屏上，选中的那一张单要能直接看到「**何时能交 / 差多少 / 卡在哪一源**」——
+ * 这正是 `order_fullchain` 三判答不出的那一问（它答「能不能接」，不答「何时交」）。
+ *
+ * ⛔ **按契约校形，不许 `as` 硬转**（本仓实测栽过：`SandboxImpactBand` 第一版 `as` 硬转，
+ *   回包缺字段 → 整棵 React 树被卸掉、沙盘白屏，连坐 4 个用例）。一块面板绝不能有权力让整页消失：
+ *   校形失败按「拿不到数」处理，退回诚实缺口记号。
+ *
+ * `so` 空串 ⇒ **不传 orderRef**，走引擎自己的缺省口径（首张 OPEN 订单·同 `order_fullchain`），
+ * 不在前端另挑一张（两处各挑一张 = 屏上三判与承诺说的不是同一张单）。
+ */
+export const fetchAtpCheck = async (so: string, signal?: AbortSignal): Promise<AtpCheckOutput> => {
+  const res = await runSolver("atp_check", so ? { orderRef: so } : {}, signal);
+  const parsed = AtpCheckOutputSchema.safeParse(res.data);
+  if (!parsed.success) {
+    throw {
+      error: {
+        code: "ATP_SHAPE_MISMATCH",
+        message: `订单承诺回包不符合契约形状（${parsed.error.issues
+          .slice(0, 3)
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("；")}）—— 本页不猜它想说什么。`,
+      },
+    };
+  }
+  return parsed.data;
+};
+
+/**
+ * ══ WO-HV-B ② · 财务世界态投影（年度情景页用）═══════════════════════════════════
+ *
+ * 与 `SandboxImpactBand` 的那一处**共用同一个求解器、同一份契约 schema**，
+ * 只是调用点从沙盘挪到年度情景页 —— ⛔ 不另写一套校形判据（两套判据必然漂移）。
+ *
+ * `worldId` 必须是**已存在的推演会话 id**（`SimSession.id`）：后端
+ * `solvers/finance-world.ts` 明写「拒绝回落到本体真值口径」——
+ * 不给就 400，给错就 404，**绝不静默换一个世界**。
+ */
+export const fetchFinanceWorldProjection = async (
+  worldId: string,
+  signal?: AbortSignal,
+): Promise<FinanceWorldProjectionOutput> => {
+  const res = await runSolver("finance_world_projection", { worldId }, signal);
+  const parsed = FinanceWorldProjectionOutputSchema.safeParse(res.data);
+  if (!parsed.success) {
+    throw {
+      error: {
+        code: "FINANCE_PROJECTION_SHAPE_MISMATCH",
+        message: `财务投影回包不符合契约形状（${parsed.error.issues
+          .slice(0, 3)
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("；")}）—— 本页不猜它想说什么。`,
+      },
+    };
+  }
+  return parsed.data;
+};
 
 /** 增量 §7.10：当前定稿 S&OP 版本 → plan_audit 输入字段集（规划体检基线） */
 export const fetchPlanVersionCurrent = async (): Promise<PlanVersionCurrent> =>
