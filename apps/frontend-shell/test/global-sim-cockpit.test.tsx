@@ -182,4 +182,74 @@ describe("global-sim cockpit · 五区决策驾驶舱 SEAM-GATE", () => {
     await screen.findByTestId("global-sim-bt-active");
     expect(screen.getByTestId("global-sim-bt-active").textContent).toContain("储能");
   });
+
+  /**
+   * WO-HV-A · 需求 2.4 · 单→线指派接上屏（SEAM：UI 开关 → 求解器 arg → 台账产线列）。
+   *
+   * 咬的是**两条接缝**，不是组件内部：
+   *  ① 入参侧：勾「排到产线」→ 请求体真出现 `lineGranularity:true`（不勾时**不携该键**·旧请求字节不变）。
+   *     —— 这条断言直接钉死 `GlobalSimView` 的 args 构造；把复选框拆掉即红。
+   *  ② 出参侧：求解器把产能单元落成 `baseId#lineId`（`portfolio.ts:283-296` 的真口径）时，
+   *     台账「产线」列必须显示**求解器指派的那条线**、基地列必须拆回真基地名——
+   *     而不是按基地查 PACK 线的静态值（今天的行为）。
+   *
+   * ⚠ 真后端实测（datacore :4417·SEED_DEMO=1·in-proc 贪心）：关 → 决策行 44 / distinct 产线 0；
+   *    开 → 决策行 3 / distinct 产线 3，且 changzhou 一个基地真落到 filling 与 pack 两条不同线。
+   */
+  it("WO-HV-A ① 单→线指派：勾『排到产线』→ 请求真携 lineGranularity + 台账产线列显示求解器指派线（非按基地静态查表）", async () => {
+    const user = userEvent.setup();
+    // 逐次请求体（证「开关 → arg」这条接缝真通）。
+    const seenLG: unknown[] = [];
+    // 求解器按线拆单元时的真形态：base = `baseId#lineId`（两单同基地、不同线 → 产线列必须显出差异）。
+    const lineShaped = {
+      status: "OPTIMAL", optimal: true, feasible: true, reconciled: true,
+      allocation: [
+        { item: "SO-10001", kind: "order", committed: false, base: "changzhou#cz-l1", baseName: "changzhou#cz-l1", window: 0, windowStartDay: 0, qty: 900, model: "4680-NCM", delayDays: 0, onTime: true, provenance: PROV("Line", "changzhou#cz-l1", "capacityDaily", 900) },
+        { item: "SO-10002", kind: "order", committed: false, base: "changzhou#cz-l2", baseName: "changzhou#cz-l2", window: 0, windowStartDay: 0, qty: 800, model: "4680-LFP", delayDays: 0, onTime: true, provenance: PROV("Line", "changzhou#cz-l2", "capacityDaily", 800) },
+      ],
+      displaced: [],
+      scenarios: [{ key: "max_ontime", objectiveValues: { ontime: 1, delay: 0, changeover: 0, fgInventory: 0, cost: 20 }, servedCount: 2, displacedCount: 0, servedQty: 1700 }],
+      objectiveValues: { ontime: 1, delay: 0, changeover: 0, fgInventory: 0, cost: 20 },
+      capacityLedger: [{ baseId: "changzhou#cz-l1", window: 0, cap: 5000, allocated: 900 }],
+      reconChecks: [{ ok: true }], cost: { delay: 0, changeover: 0, unserved: 0, total: 20 },
+      frozen: [], summary: "产线级排产 SEAM。",
+    };
+    server.use(http.post("*/b/v1/solvers/portfolio/run", async ({ request }) => {
+      const body = (await request.json()) as { args?: Record<string, unknown> };
+      const lg = body.args?.lineGranularity;
+      seenLG.push(lg ?? null);
+      if (lg === true) return HttpResponse.json({ data: lineShaped, snapshotVersion: "ov-lg-on" });
+      const { mockGlobalSim } = await import("@/mocks/simSolvers");
+      return HttpResponse.json({ data: mockGlobalSim(body.args ?? {}), snapshotVersion: "ov-lg-off" });
+    }));
+
+    loginAs("planner");
+    renderApp("/v/global-sim");
+    await screen.findByTestId("global-sim");
+    await screen.findByTestId("global-sim-alloc");
+
+    // ① 开关在屏上可达（今天全仓零 UI 调用方 —— 摘掉它这一行即红）。
+    const knob = await screen.findByTestId("global-sim-lever-line-granularity");
+    // 缺省关 ⇒ 首次请求**不携** lineGranularity（旧请求体字节不变·零回归）。
+    await waitFor(() => expect(seenLG.length).toBeGreaterThan(0));
+    expect(seenLG.every((v) => v === null), "缺省态不得携 lineGranularity").toBe(true);
+
+    // 勾上 → 请求真带 lineGranularity:true（这是「接上屏」的实质：UI 能把该 arg 传下去）。
+    const before = seenLG.length;
+    await user.click(knob);
+    await waitFor(() => expect(seenLG.length).toBeGreaterThan(before));
+    await waitFor(() => expect(seenLG.at(-1)).toBe(true));
+
+    // ② 出参侧：同一基地两单落**两条不同线** → 产线列真显出差异（按基地静态查表做不到这件事）。
+    const l1 = await screen.findByTestId("global-sim-alloc-line-SO-10001");
+    const l2 = await screen.findByTestId("global-sim-alloc-line-SO-10002");
+    expect(l1).toHaveAttribute("data-assigned", "1");
+    expect(l2).toHaveAttribute("data-assigned", "1");
+    expect(l1.textContent).toContain("cz-l1");
+    expect(l2.textContent).toContain("cz-l2");
+    expect(l1.textContent, "同基地两单的产线列必须不同（否则就还是按基地查的静态值）").not.toEqual(l2.textContent);
+    // 基地列拆回真基地名，不得把复合单元键 `changzhou#cz-l1` 原样打到屏上。
+    const row1 = screen.getByTestId("global-sim-alloc-SO-10001");
+    expect(row1.textContent).not.toContain("changzhou#cz-l1");
+  });
 });
