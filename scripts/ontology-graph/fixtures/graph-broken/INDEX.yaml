@@ -1,0 +1,14 @@
+# 金丝雀 2 用 · **故意损坏**的图谱：`counts:` 段被整段删掉。
+# ---------------------------------------------------------------------------
+# 这一份存在的理由只有一个：证明 premise-check 遇到结构性损坏时会**大声报「图谱不可信」**，
+# ⛔ 而不是把读不到的 counts 静默当成 0 —— 那会让「求解器 60 个」被对成
+#   「图谱说 0 个，你多写了 60」，**一条把人支到完全错误方向的结论**。
+# 「我没读到」和「它是 0」是两个不同的命题（CLAUDE.md 铁律 0.6）。
+version: 1
+generatedFrom: 103e684c
+# counts: ← 被删（这就是损伤点）
+canary:
+  - { probe: "buildSliceIndex 入边（引用图必中样例）", expect: ">0", actual: 3, ok: true }
+atomShards:
+  - { package: datacore, file: atoms/datacore.yaml, count: 1 }
+slices: []
