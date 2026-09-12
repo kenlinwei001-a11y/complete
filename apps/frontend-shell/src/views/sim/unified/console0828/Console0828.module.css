@@ -57,12 +57,28 @@
      · ≤980px ：三栏全部堆成单列 */
 .wrap {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 340px;
+  /* WO-SIM-DENSE ③ · rowA = [扰动装配 328][中栏 1fr][推演助手 316]（稿子的三个宽度）。 */
+  grid-template-columns: 328px minmax(0, 1fr) 316px;
   gap: 0;
-  min-height: 60vh;
+  /* ⚠ 改前是 `min-height: 60vh` —— 三栏各自撑到 60vh 起步，而 rowB 挂在它们下面，
+     于是不管内容多少，rowB 都被顶到第一屏之外。横向一屏要的恰恰是「别预留高度」。 */
   font-size: 13px;
   color: var(--txt);
 }
+
+/* ── rowB · 受阻环节表 | 金额勾稽表（WO-SIM-DENSE ③）────────────────────────
+   稿子 rowB 是等宽两格、横跨整幅。⛔ 不用 `auto-fit minmax()`：那在窄屏会悄悄
+   变成一列而**不告诉任何人**；这里要的是「要么两格，要么明写换行」。 */
+.rowB {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 14px 20px 10px;
+  align-items: start;
+  border-top: 1px solid var(--line);
+}
+@container c0828 (max-width: 1180px) { .rowB { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .rowB { padding: 12px; } }
 @container c0828 (max-width: 1280px) {
   .wrap { grid-template-columns: 320px minmax(0, 1fr); }
   .ai { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--line); }
@@ -234,7 +250,14 @@
   display: grid;
   grid-template-columns: repeat(var(--kpi-n, 6), minmax(0, 1fr));
   gap: 10px;
+  /* KPI 条已搬出 `.main`（改前借的是它的 18/20 内边距），到外壳层要自己带边距。 */
+  padding: 12px 20px;
 }
+@media (max-width: 640px) { .kpis { padding: 10px 12px; } }
+
+/* 底部整幅诚实句（原在 KPI 条下面，随 KPI 一起搬到外壳层 —— 稿子它在最底一行）。 */
+.footNote { padding: 0 20px 14px; margin: 0; }
+@media (max-width: 640px) { .footNote { padding: 0 12px 12px; } }
 /* 窄屏收拢：六格塞不下时回到自适应，⛔ 不让卡片被压到读不出数。 */
 @media (max-width: 1180px) { .kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); } }
 .kpi {
