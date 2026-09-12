@@ -254,12 +254,18 @@ export async function buildSolverWorldOverlay(
     const stat = typeStats.get(typeKey) ?? { objects: 0, cellsApplied: 0 };
     stat.objects = rows.length;
 
-    // R6：对象按 id 升序处理 ⇒ `applied[]` 的截断取的永远是同一批格子。
-    const out = [...rows]
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((o) => {
-        const props = { ...o.props };
-        let touched = false;
+    /**
+     * R6 双重序：**处理序**按 id 升序（`applied[]` 截断永远取同一批格子），
+     * **返回序保持输入序** —— 叠加只缩格，**不重排**。
+     * 求解器路径的入参是 `loadContext` 载好的 ctx 数组，其顺序是加载层的口径；
+     * 零压力时本函数必须返回「同序同引用」的行，否则「世界态零压力」与「没传 worldId」
+     * 会因**行序**不同而给出不同回包 —— 那就不是世界态在起作用，是排序在起作用。
+     * （装配器路径要 id 升序由 `buildWorldReadView` 自己 sort —— 那是它开工前就有的契约。）
+     */
+    const patched = new Map<string, ObjectInstance>();
+    for (const o of [...rows].sort((a, b) => a.id.localeCompare(b.id))) {
+      const props = { ...o.props };
+      let touched = false;
 
         // ── ① 同名直取（DIRECT）──────────────────────────────────────────────
         // 变量按名升序 ⇒ 遍历序确定（R6）。
@@ -308,12 +314,13 @@ export async function buildSolverWorldOverlay(
           }
         }
 
-        // R4：只改**返回给调用方的副本**，仓储里那一行一个字节不动。
-        return touched ? { ...o, props } : o;
-      });
+      // R4：只改**返回给调用方的副本**，仓储里那一行一个字节不动。
+      if (touched) patched.set(o.id, { ...o, props });
+    }
 
     typeStats.set(typeKey, stat);
-    return out;
+    // 返回序 == 输入序；没被改写的行返回**同一引用**（零压力 ⇒ 整个数组与输入逐格等价）。
+    return rows.map((o) => patched.get(o.id) ?? o);
   };
 
   const disclosure = (): SimWorldReadDisclosure => {
@@ -389,7 +396,12 @@ export async function buildWorldReadView(
 ): Promise<WorldReadView> {
   const overlay = await buildSolverWorldOverlay(repos, ctx.tenantId, sessionId, opts);
   return {
-    listByType: async (tenantId, typeKey) => overlay.overlayRows(typeKey, await repos.objects.listByType(tenantId, typeKey)),
+    // 装配器路径的契约从本契约落地第一天起就是 **id 升序**（叠加核改成「返回序保持输入序」之前
+    // 就在这里排）——sort 留在这层，与开工前逐字节一致；求解器路径不受这层约束。
+    listByType: async (tenantId, typeKey) =>
+      overlay
+        .overlayRows(typeKey, await repos.objects.listByType(tenantId, typeKey))
+        .sort((a, b) => a.id.localeCompare(b.id)),
     disclosure: overlay.disclosure,
   };
 }
