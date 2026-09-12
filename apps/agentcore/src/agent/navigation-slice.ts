@@ -461,8 +461,12 @@ export interface NavigationSlice {
    *
    * ⚠️ 空数组有**两种**含义，别混：① 降级镜像路径（活目录取不到 ⇒ 手上那 19 条不是全集，
    * 宣称"全部"就是撒谎，故不渲染目录段）；② 本轮不允许调 solver。两种都不该出目录段。
+   *
+   * **可选**（`undefined` 同空）：`sim-planner.ts` 那三张**手搓**导航图（推演/产能/可行性专属）
+   * 本就不走活目录、也不进 prompt（只喂 `compileSolverPlan`），它们没有"全集"可宣称 ——
+   * 让它们必须写一个 `roster: []` 只是噪声。`projectNavigationSlice` 一律显式赋值。
    */
-  roster: SliceRosterEntry[];
+  roster?: SliceRosterEntry[];
   /** 链路：对象 → 求解器 → 答案。 */
   chain: string;
   /** 相关规则/不变量提示。 */
@@ -677,12 +681,13 @@ export function renderNavigationSlice(slice: NavigationSlice): string {
     }
   }
   // 阶段① 全量目录：轻（key + 一句话），**不截断条数**。详情按需二次取（阶段②）。
-  if (slice.roster.length > 0) {
+  const roster = slice.roster ?? [];
+  if (roster.length > 0) {
     lines.push(
-      `· 全部可调用的求解器目录（共 ${slice.roster.length} 个·按名排序·含上面详情那几条）——` +
+      `· 全部可调用的求解器目录（共 ${roster.length} 个·按名排序·含上面详情那几条）——` +
         "一句话不够判断时用 `discover(kind:\"solvers\", query:\"<key>\")` 取完整参数与说明：",
     );
-    for (const r of slice.roster) lines.push(`  · ${r.key}：${r.brief}`);
+    for (const r of roster) lines.push(`  · ${r.key}：${r.brief}`);
   }
   if (slice.objectTypes.length > 0) {
     lines.push("· 相关对象类型（query_objects 可查·关键属性）：");
