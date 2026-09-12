@@ -2,6 +2,7 @@ import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import {
+  buildSliceLibrary,
   deriveAllSliceFixtures,
   deriveSliceFixture,
   fetchObjectTypes,
@@ -249,6 +250,10 @@ function RegisteredTab({ onCreate }: { onCreate: () => void }) {
 /**
  * 切片库页签（原 SliceLibraryPage LibraryTab 原位迁入，WO-SLICE-CONSUMPTION-20260912 A1）：
  * GET /a/v1/slices/library → 域内/跨域两库列表（sliceKey/root/域/类型数），点键就地展开内联子图。
+ * WO-1② 登记链：行内「登记为切片」（B1：前端按库条目组装 SliceSpecBody——与后端 libEntryToSpec
+ * 同形 {root:{typeKey,selector:{}},paths,maxNodes:500}——走现有 PUT saveSlice，零新端点）+
+ * 顶部「全部登记」（POST /a/v1/slices/library/build，后端 requireAdmin ⇒ 仅 admin 角色可见按钮）+
+ * 「已登记」章（与已登记清单比对，重复登记是幂等 upsert）。
  */
 function LibraryTab() {
   const qc = useQueryClient();
@@ -256,21 +261,73 @@ function LibraryTab() {
     queryKey: ["a", "slices-library"],
     queryFn: fetchSliceLibrary,
   });
+  const { data: registered } = useQuery({ queryKey: ["a", "ontology-slices"], queryFn: fetchSlices });
+  const registeredKeys = useMemo(() => new Set((registered ?? []).map((s) => s.sliceKey)), [registered]);
   const all = useMemo<SliceLibraryEntry[]>(() => {
     if (!data) return [];
     return [...data.intra, ...data.cross].sort((a, b) => a.sliceKey.localeCompare(b.sliceKey));
   }, [data]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const { data: workspace } = useWorkspace();
-  const canEdit = baseRoles(workspace?.user?.roles ?? []).some((r) => r === "admin" || r === "catalog_admin");
+  const roles = baseRoles(workspace?.user?.roles ?? []);
+  const canEdit = roles.some((r) => r === "admin" || r === "catalog_admin");
+  // 「全部登记」后端 requireAdmin（app.ts library/build）——按钮只对 admin 显，
+  // 不对 data_admin/catalog_admin 摆一个必然 403 的按钮。
+  const isAdmin = roles.includes("admin");
+  const pendingCount = all.filter((e) => !registeredKeys.has(e.sliceKey)).length;
+
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["a", "slices-library"] });
+    void qc.invalidateQueries({ queryKey: ["a", "ontology-slices"] });
+  };
+
+  const registerMut = useMutation({
+    mutationFn: (entry: SliceLibraryEntry) =>
+      saveSlice(entry.sliceKey, {
+        version: 1,
+        spec: {
+          root: { typeKey: entry.rootType, selector: {} },
+          paths: entry.paths,
+          maxNodes: 500,
+          description: `切片库登记：${entry.sliceKey}（${entry.scope === "intra" ? "域内" : "跨域"} · ${entry.domain}）`,
+        },
+      }),
+    onSuccess: (_r, entry) => {
+      toast(`「${entry.sliceKey}」已登记为切片（已登记页签可见/可编辑）`, "success");
+      refresh();
+    },
+    onError: toastError,
+  });
+
+  const registerAllMut = useMutation({
+    mutationFn: () => buildSliceLibrary(),
+    onSuccess: (r) => {
+      toast(`全部登记完成：域内 ${r.intra} 条 · 跨域 ${r.cross} 条（幂等，重复执行不翻倍）`, "success");
+      refresh();
+    },
+    onError: toastError,
+  });
 
   if (isLoading) return <div className="empty-state">{zh.common.loading}</div>;
   if (error) return <div className="badge red">{zh.errors.pageError}</div>;
 
   return (
     <>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-        {lt.sub} {canEdit ? "点切片键就地展开内联子图并可编辑规格（不跳转图谱模块）。" : "点切片键就地查看内联子图（只读·不跳转）。"}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <div className="muted" style={{ fontSize: 12 }}>
+          {lt.sub} {canEdit ? "点切片键就地展开内联子图并可编辑规格（不跳转图谱模块）。" : "点切片键就地查看内联子图（只读·不跳转）。"}
+        </div>
+        {isAdmin && pendingCount > 0 && (
+          <button
+            className="btn primary sm"
+            data-testid="slice-library-register-all"
+            disabled={registerAllMut.isPending}
+            style={{ marginLeft: "auto", flexShrink: 0 }}
+            onClick={() => registerAllMut.mutate()}
+          >
+            {registerAllMut.isPending ? "登记中…" : `全部登记（待登记 ${pendingCount} 条）`}
+          </button>
+        )}
       </div>
       <table className="cmp" data-testid="slice-library-table" style={{ width: "100%" }}>
         <thead>
@@ -280,6 +337,7 @@ function LibraryTab() {
             <th>{lt.colRoot}</th>
             <th>{lt.colDomains}</th>
             <th>{lt.colTypeCount}</th>
+            <th>登记</th>
           </tr>
         </thead>
         <tbody>
@@ -304,10 +362,26 @@ function LibraryTab() {
                 <td className="mono">{entry.rootType}</td>
                 <td>{entry.spannedDomains.join(" / ") || "—"}</td>
                 <td className="mono">{entry.spannedTypes.length}</td>
+                <td>
+                  {registeredKeys.has(entry.sliceKey) ? (
+                    <span className="badge green" data-testid={`slice-library-registered-${entry.sliceKey}`}>已登记</span>
+                  ) : canEdit ? (
+                    <button
+                      className="btn sm"
+                      data-testid={`slice-library-register-${entry.sliceKey}`}
+                      disabled={registerMut.isPending}
+                      onClick={() => registerMut.mutate(entry)}
+                    >
+                      登记为切片
+                    </button>
+                  ) : (
+                    <span className="muted" style={{ fontSize: 12 }} data-testid={`slice-library-unregistered-${entry.sliceKey}`}>未登记</span>
+                  )}
+                </td>
               </tr>
               {expanded === entry.sliceKey && (
                 <tr data-testid={`slice-library-expanded-${entry.sliceKey}`}>
-                  <td colSpan={5} style={{ background: "var(--panel2)" }}>
+                  <td colSpan={6} style={{ background: "var(--panel2)" }}>
                     <SliceInspector
                       sliceKey={entry.sliceKey}
                       canEdit={canEdit}

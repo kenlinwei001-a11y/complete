@@ -2146,6 +2146,10 @@ export const planSlice = (rootType: string, targets: string[], opts?: { maxHops?
 /** G-VIS-1 admin「切片库」：域内/跨域两库列表（A3.2 派生投影）。 */
 export const fetchSliceLibrary = () => api.a<SliceLibraryResponse>("/a/v1/slices/library");
 
+/** WO-SLICE-CONSUMPTION-20260912（B1）：切片库一键登记（POST /a/v1/slices/library/build，requireAdmin，幂等 upsert）。 */
+export const buildSliceLibrary = () =>
+  api.a<{ registered: { sliceKey: string; scope: "intra" | "cross" }[]; intra: number; cross: number }>("/a/v1/slices/library/build", { method: "POST", body: {} });
+
 /** C7：注册切片（PUT /a/v1/ontology/slices/:key），spec=root+paths(逐跳)+maxNodes+contractFixtures。 */
 export interface SliceSpecBody {
   version?: number;

@@ -66,6 +66,8 @@ export const ACCOUNTS: MockAccount[] = [
   { username: "base_manager", password: "demo1234", roles: ["base_manager:常州"], baseScope: ["常州"] },
   // 管理平台增量 §1/§2：平台超管（仅 /admin/tenants；不读业务数据）
   { username: "padmin", password: "demo1234", roles: ["platform_admin"], baseScope: null },
+  // WO-SLICE-CONSUMPTION-20260912：data_admin（切片页可见，但「全部登记」后端 requireAdmin ⇒ 屏上不显）
+  { username: "data_admin", password: "demo1234", roles: ["data_admin"], baseScope: null },
 ];
 
 // ---------------------------------------------------------------------------

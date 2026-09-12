@@ -3903,6 +3903,20 @@ export const handlers = [
       ],
     }),
   ),
+  // WO-SLICE-CONSUMPTION-20260912（B1）：一键登记（真后端 requireAdmin + 幂等 upsert）——
+  // mock 同步把两条库条目写进登记表，回包形状与 app.ts library/build 一致。
+  http.post("*/a/v1/slices/library/build", () => {
+    mockSliceGov["biz.factory.model_capacity"] ??= { rootType: "Model", fixtures: 0 };
+    mockSliceGov["biz.x.order_to_base"] ??= { rootType: "Order", fixtures: 0 };
+    return HttpResponse.json({
+      registered: [
+        { sliceKey: "biz.factory.model_capacity", scope: "intra" },
+        { sliceKey: "biz.x.order_to_base", scope: "cross" },
+      ],
+      intra: 1,
+      cross: 1,
+    }, { status: 201 });
+  }),
   http.post("*/a/v1/slices/plan", async ({ request }) => {
     const body = (await request.json().catch(() => ({}))) as { rootType?: string; targets?: string[] };
     const rootType = body.rootType ?? "Order";
@@ -3919,9 +3933,13 @@ export const handlers = [
       },
     });
   }),
-  http.put("*/a/v1/ontology/slices/:sliceKey", ({ params }) =>
-    HttpResponse.json({ sliceKey: String(params.sliceKey), version: 1 }, { status: 201 }),
-  ),
+  http.put("*/a/v1/ontology/slices/:sliceKey", async ({ params, request }) => {
+    // WO-SLICE-CONSUMPTION-20260912（B1）：登记动作真改 mock 登记表——PUT 后重拉清单能看到「已登记」章翻面。
+    const body = (await request.json().catch(() => null)) as { spec?: { root?: { typeKey?: string } } } | null;
+    const key = String(params.sliceKey);
+    mockSliceGov[key] ??= { rootType: body?.spec?.root?.typeKey ?? "Model", fixtures: 0 };
+    return HttpResponse.json({ sliceKey: key, version: 1 }, { status: 201 });
+  }),
   http.post("*/a/v1/slices/:sliceKey/resolve", () =>
     HttpResponse.json({
       data: { nodes: [{ id: "o1", type: "Order" }, { id: "b1", type: "Base" }], edges: [{ from: "o1", to: "b1", linkKey: "order_to_base" }], truncated: false },
