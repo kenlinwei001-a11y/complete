@@ -750,12 +750,40 @@ const CANARY_KEYWORDS = {
   LENGTH: ["长度", "brief", "描述", "description", "字节", "字数"],
 };
 
-function canaryFor(graph, kind) {
+/**
+ * @param {string[]} hints 优先匹配的具体符号/文件名（如 `ALL_SOLVER_CATALOG`）。
+ *   没有 hint 时只能按维度关键词挑一条泛化探针 —— 那种「隔壁维度的金丝雀」
+ *   背书力有限，note 里会照实说明它不是为这一格准备的。
+ */
+function canaryFor(graph, kind, hints = []) {
   const list = Array.isArray(graph.index?.canary) ? graph.index.canary : [];
   if (!list.length) return { status: "none", note: "INDEX.yaml 无 canary 段 ⇒ 图谱没有自证过任何维度" };
   const kws = CANARY_KEYWORDS[kind] ?? [];
-  const hit = list.find((c) => kws.some((k) => String(c?.probe ?? "").toLowerCase().includes(k.toLowerCase())));
+  let hit = null;
+  let specific = false;
+  // hint 可以是整串（`buildSliceIndex`），也可以是一句带路径的来源
+  // （`apps/datacore/src/catalog.ts:279 ALL_SOLVER_CATALOG`）。后者整串去撞探针必然不中，
+  // 故同时拿它里面的**显著词元**（≥4 字符、含字母）去撞 —— 否则「有专属金丝雀」会被误报成「没有」。
+  // ⚠ 词元**按长度从长到短**试。实测踩过：来源串 `apps/datacore/src/catalog.ts:279 ALL_SOLVER_CATALOG`
+  //   的短词元 `catalog.ts` 先撞上了「catalog.ts description 字段长度分布」那条长度维度的探针，
+  //   于是一条计数结论被一条长度金丝雀"背书"了 —— 又一次「我用『两串文字有公共子串』当作
+  //   『它们说的是同一件事』的证据」。长词元更具体，必须先试。
+  const tokensOf = (h) => [h, ...String(h).split(/[\s:/,、·（）()]+/)]
+    .filter((t) => t && t.length >= 4 && /[A-Za-z_]/.test(t))
+    .sort((a, b) => b.length - a.length);
+  for (const h of hints.filter(Boolean)) {
+    for (const t of tokensOf(h)) {
+      hit = list.find((c) => String(c?.probe ?? "").includes(t));
+      if (hit) break;
+    }
+    if (hit) { specific = true; break; }
+  }
+  if (!hit) hit = list.find((c) => kws.some((k) => String(c?.probe ?? "").toLowerCase().includes(k.toLowerCase())));
   if (!hit) return { status: "none", note: `canary 段有 ${list.length} 条，但没有一条探针覆盖「${kind}」这一维度` };
+  if (!specific && hints.filter(Boolean).length) {
+    // 背书的是维度，不是这一格 —— 说出来，别让读者以为这条结论被单独验过
+    hit = { ...hit, __generic: `（⚠ 这条探针验的是「${hit.probe}」，不是本行的 ${hints.filter(Boolean)[0]}；它只背书「这个维度的抽法能跑」）` };
+  }
   const expect = String(hit.expect ?? "");
   const actual = hit.actual;
   let consistent = true;
@@ -767,11 +795,12 @@ function canaryFor(graph, kind) {
   else if (mGe) { consistent = Number(actual) >= Number(mGe[1]); why = `expect ${expect} / actual ${actual}`; }
   else if (mEq) { consistent = Number(actual) === Number(mEq[1]); why = `expect ${expect} / actual ${actual}`; }
   else why = `expect ${JSON.stringify(hit.expect)} / actual ${JSON.stringify(actual)}`;
-  if (hit.ok === false) return { status: "fail", note: `金丝雀「${hit.probe}」自报未过（${why}）⇒ 该维度不可信`, probe: hit.probe };
+  const tail = hit.__generic ?? "";
+  if (hit.ok === false) return { status: "fail", note: `金丝雀「${hit.probe}」自报未过（${why}）⇒ 该维度不可信${tail}`, probe: hit.probe };
   if (!consistent) {
-    return { status: "contradict", note: `金丝雀「${hit.probe}」标了 ok 但 ${why} 自相矛盾 ⇒ 图谱在这一格骗人`, probe: hit.probe };
+    return { status: "contradict", note: `金丝雀「${hit.probe}」标了 ok 但 ${why} 自相矛盾 ⇒ 图谱在这一格骗人${tail}`, probe: hit.probe };
   }
-  return { status: "pass", note: `金丝雀「${hit.probe}」${why} ✔`, probe: hit.probe };
+  return { status: hit.__generic ? "generic" : "pass", note: `金丝雀「${hit.probe}」${why} ✔${tail}`, probe: hit.probe };
 }
 
 /**
@@ -781,14 +810,14 @@ function canaryFor(graph, kind) {
  * @param {string[]} shards  承载本结论的分片（用来查解析告警）
  * @param {string[]} degrade 本工具自己的降级说明（如「用 brief 代答 description」）
  */
-function trustCell(graph, kind, shards, degrade = []) {
+function trustCell(graph, kind, shards, degrade = [], hints = []) {
   const parts = [];
   let level = "可信";
 
-  const can = canaryFor(graph, kind);
+  const can = canaryFor(graph, kind, hints);
   parts.push(can.note);
   if (can.status === "fail" || can.status === "contradict") level = "不可信";
-  else if (can.status === "none") level = "存疑";
+  else if (can.status === "none" || can.status === "generic") level = "存疑";
 
   const badShards = [];
   for (const s of shards) {
@@ -918,7 +947,7 @@ function reconcile(graph, claim) {
     row.says = `${entry.key} = ${actual}`;
     row.evidence.push(src);
     row.verdict = actual === claim.expect ? "一致" : `不一致（你写的比真值${claim.expect > actual ? "多" : "少"} ${Math.abs(claim.expect - actual)}）`;
-    row.trust = trustCell(graph, "COUNT", ["INDEX.yaml", ...new Set((tagged ?? []).map((a) => a.__shard))], degrade);
+    row.trust = trustCell(graph, "COUNT", ["INDEX.yaml", ...new Set((tagged ?? []).map((a) => a.__shard))], degrade, [reg?.source, reg?.name, entry.key]);
     return row;
   }
 
@@ -979,7 +1008,7 @@ function reconcile(graph, claim) {
       degrade.push(`符号 \`${sym}\` 在图谱里有 ${atoms.length} 个同名原子（${atoms.map((x) => `${x.file}:${x.line}`).join(" / ")}）—— 本行取的是**合并去重后的并集**；若抽取器把同一个概念拆成了两条，这个并集偏大，若它漏了一条则偏小`);
     }
     degrade.push("引用图只看得见**静态可解析**的调用；re-export / 高阶函数 / 依赖注入 / 字符串键分发 / 事件订阅这五类它一条都看不见（CLAUDE.md 铁律 0.5 第 3 条）");
-    row.trust = trustCell(graph, claim.kind, ["INDEX.yaml", ...shards], degrade);
+    row.trust = trustCell(graph, claim.kind, ["INDEX.yaml", ...shards], degrade, [sym]);
     return row;
   }
 
@@ -1018,7 +1047,7 @@ function reconcile(graph, claim) {
     else if (reexports.length === atoms.length) {
       row.verdict = `不一致（不是空的，是**薄 re-export**：${atoms.length} 个符号全部转出自 ${[...new Set(reexports.map((r) => String(r.reexportOf).split("#")[0]))].join(" / ")}）`;
     } else row.verdict = `不一致（有 ${atoms.length} 个原子）`;
-    row.trust = trustCell(graph, "EMPTYFILE", ["INDEX.yaml", ...shards], []);
+    row.trust = trustCell(graph, "EMPTYFILE", ["INDEX.yaml", ...shards], [], [basename(key), key]);
     return row;
   }
 
@@ -1063,7 +1092,7 @@ function reconcile(graph, claim) {
     const shards = [...new Set(keys.flatMap((k) => graph.byFile.get(k).map((a) => a.__shard)))];
     row.trust = trustCell(graph, "COORD", ["INDEX.yaml", ...shards], [
       `行号会漂。图谱的 generatedFrom = ${graph.index?.generatedFrom ?? "（未标）"}；派单若基于更新的树，本行「对上了」只说明 ±${tol} 行内有东西，不证明是同一处`,
-    ]);
+    ], [`${claim.file}:${claim.at}`, basename(claim.file)]);
     return row;
   }
 
@@ -1114,7 +1143,7 @@ function reconcile(graph, claim) {
         : `不一致（p90 ${dist.p90} 字 / max ${dist.max} 字，远超一句话阈值 ${ONE_SENTENCE_CHARS}）`;
       row.evidence.push(`「一句话」的量化界 = 40 字（中文单句常见上界，理由见 docs/ontology-graph/PREMISE-CHECK.md）`);
     }
-    row.trust = trustCell(graph, "LENGTH", ["INDEX.yaml"], degrade);
+    row.trust = trustCell(graph, "LENGTH", ["INDEX.yaml"], degrade, [claim.field, hit ? String(hit.field) : ""]);
     return row;
   }
 
@@ -1205,7 +1234,7 @@ function renderText(res) {
     L.push(`  原文      「${r.raw}」`);
     L.push(`  你写的是  ${r.wrote}`);
     L.push(`  图谱说是  ${r.says}`);
-    L.push(`  证据      ${r.evidence.join("\n            ")}`);
+    L.push(`  证据      ${r.evidence.map((e) => String(e).replace(/\n/g, "\n              ")).join("\n            ")}`);
     L.push(`  图谱可信  ${TRUST_MARK[r.trust.level] ?? r.trust.level}`);
     for (const n of r.trust.note) L.push(`            · ${n}`);
     L.push(`  结论      ${r.verdict.startsWith("一致") ? "✔ " : r.verdict.startsWith("无法对账") ? "— " : "⚠ "}${r.verdict}`);
