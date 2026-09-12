@@ -292,6 +292,15 @@ export interface BaseContentionReading {
   capacityDailyPacks: number;
   /** 读不出日产率（缺 `qty`/`leadDays`）而被排除的订单数 —— 诚实计数，不静默吞。 */
   skippedOrders: number;
+  /**
+   * WO-IMP-CARRIER · **真正累加进 `claimedDailyRate` 的那批订单**（`Order.so`，升序）。
+   *
+   * 为什么挂在这里而不是承载对象那边**另滤一遍**：争用这条判据的承载对象，定义上就是
+   * **metric 的被加数集合**本身 —— 另写一份过滤条件，迟早与这里漂开（同一个基地两处各判一套），
+   * 那正是本文件头注反复记账的「同一维两处各滤一遍」老病。
+   * ⚠ 它**不是**「该基地的全部订单」：跳过的（非 OPEN / 读不出 qty·leadDays）一条都不在里面。
+   */
+  orderRefs: string[];
 }
 
 export type BaseContentionRead =
@@ -343,6 +352,7 @@ export function readBaseContention(
   }
 
   const byType = new Map<BusinessType, number>();
+  const orderRefs: string[] = [];
   let skippedOrders = 0;
   for (const o of orders) {
     if (str(o.props.status) !== OPEN_ORDER_STATUS) continue;
@@ -361,6 +371,8 @@ export function readBaseContention(
     // 而它是对的 —— 门不该为"这次是累加器不是阈值"开例外口子（开了口子就得维护白名单，白名单会腐坏）。
     const prev = byType.get(bt);
     byType.set(bt, prev === undefined ? qty / lead : prev + qty / lead);
+    // 与上面那次累加**同一个分支里**记名：承载对象 = 被加数集合，两者不许分叉（见 orderRefs 注释）。
+    orderRefs.push(str(o.props.so, o.id));
   }
   const segClaims: SegmentClaim[] = [...byType.entries()]
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
@@ -369,7 +381,258 @@ export function readBaseContention(
     segClaims.reduce((s, x) => s + x.dailyRate, 0),
     6,
   );
-  return { status: "OK", segClaims, claimedDailyRate, capacityDailyPacks: round(capacityDailyPacks, 6), skippedOrders };
+  return {
+    status: "OK",
+    segClaims,
+    claimedDailyRate,
+    capacityDailyPacks: round(capacityDailyPacks, 6),
+    skippedOrders,
+    // 排序固定 ⇒ 同输入同输出（R6）。上游 `orders` 的遍历序已是确定的，这里再排一次是为了
+    // 「换个仓储实现（memory↔pg）导致遍历序变化」时结果仍逐字节一致。
+    orderRefs: [...orderRefs].sort(),
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 1.6 · 承载对象遍历（WO-IMP-CARRIER）—— 「这一处到底卡住了哪些订单」
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 已交付的单**不可能**被将来的缺料/争用卡住 —— 它们不进承载面，也不进归一化分母。
+ * 不设这道闸会立刻把结论变成谎：实测 500 张单里 **350 张是 COMPLETED**，
+ * 把它们算进去等于宣称「一批呆滞的电解液卡住了三个月前就交掉的货」。
+ */
+const DELIVERED_ORDER_STATUS = "COMPLETED";
+
+/** 样例条数上界 —— 回包是给人抽查的，不是全集（全集看 `orderCount`）。 */
+const CARRIER_SAMPLE_LIMIT = 5;
+
+/**
+ * 承载金额的量纲。金额 = `OrderLine.qty × OrderLine.unitPrice`，故量纲跟随 `unitPrice`，
+ * 本体上三处 `unitPrice` 的 `PropertyDef.unit` 一律声明为**元**（`Model` / `Order` / `OrderLine`）。
+ * ⚠ 这是本文件里**唯一**一个镜像自本体而非现取的量纲：`PropertyDef` 在求解器这一层拿不到
+ * （`SolverContext` 只给对象实例，不给类型定义）。改本体上 `unitPrice` 的单位**必须同步改这里** ——
+ * 量纲缺席被当成"无量纲"是本仓记过账的老坑，故宁可留一个带出处的常量，也不留空串。
+ */
+const CARRIER_AMOUNT_UNIT = "元";
+
+/** 一次遍历的结果（`null` = 这条 locus 今天走不到订单，诚实缺席）。 */
+interface CarrierResolution {
+  orderIds: string[];
+  amount: number;
+  basis: "ORDER_LINE" | "ORDER";
+  path: string[];
+  customers: string[];
+}
+
+/**
+ * 全扫描共用的遍历索引（**建一次**，逐条阻滞点复用）。
+ *
+ * ⚠ 这里存的全是**本体自己的边与对象**，没有任何一张「阻滞点 → 订单」的人工映射表。
+ * 一张手写映射表会让这个字段永远"看着对"，而它的错没有任何机制能发现 ——
+ * 同族先例见 `SolutionCandidateSchema` 头注那句「编一张看着合理的映射比诚实报缺更坏」。
+ */
+interface CarrierIndex {
+  /** linkType → fromId → toId[]（正向）。 */
+  fwd: Map<string, Map<string, string[]>>;
+  /** linkType → toId → fromId[]（反向）。 */
+  rev: Map<string, Map<string, string[]>>;
+  /** 可阻塞订单：objId → `Order.so`。 */
+  blockableSo: Map<string, string>;
+  /** `Order.so` → objId（订单行只记 `orderRef`=so，需要这张表才能回到图上）。 */
+  objIdBySo: Map<string, string>;
+  /** `Order.so` → 客户名。 */
+  custBySo: Map<string, string>;
+  /** Model objId → `Model.modelId`（订单行上记的是 modelId 不是 objId）。 */
+  modelKeyById: Map<string, string>;
+  /** `${so} ${model}` → 该单该型号的行金额合计。 */
+  lineAmt: Map<string, number>;
+  /** `Order.so` → 该单**全部行**金额合计。 */
+  orderAmt: Map<string, number>;
+  /** modelId → 有该型号订单行的可阻塞订单 so[]（升序）。 */
+  soByModel: Map<string, string[]>;
+  /** 归一化分母：可阻塞订单簿金额（Σ 可阻塞订单的全部行金额）。 */
+  bookAmount: number;
+}
+
+const AMT_KEY = (so: string, model: string): string => `${so} ${model}`;
+
+function buildCarrierIndex(input: ChainScanInput): CarrierIndex {
+  const { c } = input;
+  const fwd = new Map<string, Map<string, string[]>>();
+  const rev = new Map<string, Map<string, string[]>>();
+  const push = (m: Map<string, Map<string, string[]>>, k: string, a: string, b: string): void => {
+    let inner = m.get(k);
+    if (inner === undefined) {
+      inner = new Map<string, string[]>();
+      m.set(k, inner);
+    }
+    const arr = inner.get(a);
+    if (arr === undefined) inner.set(a, [b]);
+    else arr.push(b);
+  };
+  for (const l of input.links ?? []) {
+    push(fwd, l.type, l.fromId, l.toId);
+    push(rev, l.type, l.toId, l.fromId);
+  }
+
+  const blockableSo = new Map<string, string>();
+  const objIdBySo = new Map<string, string>();
+  const custBySo = new Map<string, string>();
+  for (const o of c.orders) {
+    const so = str(o.props.so, o.id);
+    objIdBySo.set(so, o.id);
+    const cust = str(o.props.cust, "");
+    if (cust.length > 0) custBySo.set(so, cust);
+    if (str(o.props.status) !== DELIVERED_ORDER_STATUS) blockableSo.set(o.id, so);
+  }
+
+  const modelKeyById = new Map<string, string>();
+  for (const m of c.models) modelKeyById.set(m.id, str(m.props.modelId, m.id));
+
+  const lineAmt = new Map<string, number>();
+  const orderAmt = new Map<string, number>();
+  const byModel = new Map<string, Set<string>>();
+  const blockableSoSet = new Set(blockableSo.values());
+  for (const ol of input.orderLines ?? []) {
+    const so = str(ol.props.orderRef, "");
+    if (so.length === 0 || !blockableSoSet.has(so)) continue;
+    const model = str(ol.props.model, "");
+    const qty = num(ol.props.qty, Number.NaN);
+    const price = num(ol.props.unitPrice, Number.NaN);
+    // 读不出量或单价 ⇒ 这一行算不出金额。**跳过，不按 0 计**：按 0 计会把"算不出来"
+    // 悄悄变成"这行不值钱"，两者是不同的命题（本文件 `skippedOrders` 同一条纪律）。
+    if (!Number.isFinite(qty) || !Number.isFinite(price)) continue;
+    const amt = qty * price;
+    orderAmt.set(so, (orderAmt.get(so) ?? 0) + amt);
+    if (model.length === 0) continue;
+    lineAmt.set(AMT_KEY(so, model), (lineAmt.get(AMT_KEY(so, model)) ?? 0) + amt);
+    let s = byModel.get(model);
+    if (s === undefined) {
+      s = new Set<string>();
+      byModel.set(model, s);
+    }
+    s.add(so);
+  }
+  const soByModel = new Map<string, string[]>();
+  for (const [k, v] of byModel) soByModel.set(k, [...v].sort());
+
+  let bookAmount = 0;
+  for (const v of orderAmt.values()) bookAmount += v;
+
+  return { fwd, rev, blockableSo, objIdBySo, custBySo, modelKeyById, lineAmt, orderAmt, soByModel, bookAmount };
+}
+
+const hop = (m: Map<string, Map<string, string[]>>, k: string, id: string): string[] => m.get(k)?.get(id) ?? [];
+
+/**
+ * 把「订单 → 该单被卡住的金额」收成一条结果。
+ *
+ * `pairs` 的元素是 `[so, model|null]`：
+ *  · `model` 非空 ⇒ 只计该单**该型号那几行**（缺料只卡真用到它的行，不整单算）；
+ *  · `model` 为空 ⇒ 整单计入（判据本身按整单聚合，如争用的日产率）。
+ * 同一个 `(so, model)` 出现多次只计一次 —— 一条产线跑两张工单服务同一张订单同一型号时，
+ * 那笔钱**只有一份**，加两次就是本单明令要防的重复计数。
+ */
+function collectCarriers(
+  pairs: readonly (readonly [string, string | null])[],
+  idx: CarrierIndex,
+  path: string[],
+): CarrierResolution | null {
+  const seen = new Set<string>();
+  const orders = new Set<string>();
+  let amount = 0;
+  for (const [so, model] of pairs) {
+    if (!idx.orderAmt.has(so) && !idx.objIdBySo.has(so)) continue;
+    const key = model === null ? AMT_KEY(so, "ALL") : AMT_KEY(so, model);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const add = model === null ? idx.orderAmt.get(so) : idx.lineAmt.get(AMT_KEY(so, model));
+    if (add === undefined) continue;
+    orders.add(so);
+    amount += add;
+  }
+  if (orders.size === 0) return null;
+  const orderIds = [...orders].sort();
+  const customers = [...new Set(orderIds.map((s) => idx.custBySo.get(s)).filter((x): x is string => x !== undefined))].sort();
+  const basis = pairs.every(([, m]) => m === null) ? "ORDER" : "ORDER_LINE";
+  return { orderIds, amount: round(amount, 6), basis, path, customers };
+}
+
+/** 物料 objId → 该物料被哪些型号用（`material_used_by_model`）→ 那些型号的可阻塞订单行。 */
+function carriersFromMaterial(materialObjIds: readonly string[], idx: CarrierIndex, head: string): CarrierResolution | null {
+  const pairs: [string, string | null][] = [];
+  for (const matId of materialObjIds) {
+    for (const modelObjId of hop(idx.fwd, "material_used_by_model", matId)) {
+      const modelKey = idx.modelKeyById.get(modelObjId);
+      if (modelKey === undefined) continue;
+      for (const so of idx.soByModel.get(modelKey) ?? []) pairs.push([so, modelKey]);
+    }
+  }
+  return collectCarriers(pairs, idx, [head, "material_used_by_model", "orderline_for_model"]);
+}
+
+/** 产线 objId → 它在跑的工单（`line_runs_work_order`）→ 工单履行的订单（`fulfills`）。 */
+function carriersFromLine(lineObjId: string, idx: CarrierIndex, head: readonly string[]): CarrierResolution | null {
+  const pairs: [string, string | null][] = [];
+  for (const woId of hop(idx.fwd, "line_runs_work_order", lineObjId)) {
+    // 工单产的是哪个型号 —— 有就用它把金额收到行级；取不到就整单计（并如实退成 ORDER 口径）。
+    const modelKeys = hop(idx.fwd, "wo_for_model", woId)
+      .map((m) => idx.modelKeyById.get(m))
+      .filter((x): x is string => x !== undefined);
+    for (const orderObjId of hop(idx.fwd, "fulfills", woId)) {
+      const so = idx.blockableSo.get(orderObjId);
+      if (so === undefined) continue; // 已交付的单不算被卡
+      if (modelKeys.length === 0) pairs.push([so, null]);
+      else for (const mk of modelKeys) pairs.push([so, mk]);
+    }
+  }
+  return collectCarriers(pairs, idx, [...head, "fulfills"]);
+}
+
+/**
+ * 一条阻滞点的承载对象 —— **沿本体真实遍历走出来**。
+ *
+ * ⛔ 这里**没有**、以后也不许有「同基地全体订单」那条捷径：
+ * 一个基地就有 14 处阻滞点，每处都挂上该基地全部订单 ⇒ 加起来远超订单总数（重复计数）。
+ * 返回 `null` = 今天沿本体走不到订单（如数据源健康度）⇒ 回包不带 `carriers`，
+ * **而不是**编一个数填上。「我没算出来」与「它不卡任何订单」是两个不同的命题。
+ */
+function resolveCarriers(b: ImpedimentRuleBinding, l: LocusRow, idx: CarrierIndex): CarrierResolution | null {
+  switch (b.locusObjectType) {
+    case "MaterialBalance":
+      return carriersFromMaterial(hop(idx.rev, "material_has_balance", l.obj.id), idx, "material_has_balance");
+    case "MaterialBatch":
+      return carriersFromMaterial(hop(idx.rev, "material_has_batch", l.obj.id), idx, "material_has_batch");
+    case "Line":
+      return carriersFromLine(l.obj.id, idx, ["line_runs_work_order"]);
+    case "Process": {
+      // 工序自己不跑订单，它所属的那条线才跑 —— 上溯一跳再走产线那条路。
+      const lineIds = hop(idx.fwd, "process_belongs_to_line", l.obj.id);
+      for (const lineId of lineIds) {
+        const r = carriersFromLine(lineId, idx, ["process_belongs_to_line", "line_runs_work_order"]);
+        if (r !== null) return r;
+      }
+      return null;
+    }
+    case "Order": {
+      // locus 就是订单自己 —— 零跳，但仍要过"可阻塞"这道闸。
+      const so = idx.blockableSo.get(l.obj.id);
+      return so === undefined ? null : collectCarriers([[so, null]], idx, ["locus:Order"]);
+    }
+    case CONTENTION_LOCUS_TYPE: {
+      // 争用：承载对象 = **真正累加进 claimedDailyRate 的那批单**（§1.5 单一实现回带，不在这里另滤）。
+      const refs = l.extra.orderRefs as string[] | undefined;
+      if (refs === undefined) return null;
+      return collectCarriers(
+        refs.map((so) => [so, null] as const),
+        idx,
+        ["Base.segClaims←Order(OPEN·本基地)"],
+      );
+    }
+    default:
+      return null;
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -713,6 +976,16 @@ export interface ChainScanInput {
   c: SolverContext;
   /** `MaterialBalance` 不在 SolverContext 的核心/扩展类里（`mrp_netting` 亦是自行读取），由调用方注入。 */
   materialBalances?: ObjectInstance[];
+  /**
+   * WO-IMP-CARRIER · **客户订单行**（`OrderLine`）—— 承载对象遍历的**终点**，由调用方注入
+   * （与上面 `materialBalances` 同形：它同样不在 `SolverContext` 的核心/扩展字段里）。
+   *
+   * 为什么是订单**行**而不是订单头：一张单可以有 2–3 行、每行不同型号（实测 500 单 → 873 行）。
+   * 缺料只卡**真正用到该物料的那几行**，拿订单头的 `model` 去判会漏掉其余行，
+   * 而整单计入又会把不相干的行也算成"被卡住的钱"。
+   * 缺省 `[]` ⇒ 承载对象诚实判不出来（不带 `carriers` 字段），**不回落成按基地 join**。
+   */
+  orderLines?: ObjectInstance[];
   scope: ChainScope;
   bindings?: readonly ImpedimentRuleBinding[];
   /**
@@ -904,6 +1177,8 @@ function judgeOne(
   input: ChainScanInput,
   b: ImpedimentRuleBinding,
   scanId: string,
+  /** WO-IMP-CARRIER · 承载对象遍历索引（全扫描建一次）。缺省 ⇒ 不算第二因子，severity 退回单因子口径。 */
+  carrierIdx?: CarrierIndex,
 ): {
   candidates: ImpedimentCandidate[];
   unresolved?: ChainScanUnresolved;
@@ -1031,7 +1306,26 @@ function judgeOne(
         `severity 算不出来，拒绝拍一个数（${l.objectId}）`;
       continue;
     }
-    const severity = Math.max(0, Math.min(100, Math.round((breach / denom) * 100)));
+    // ── WO-IMP-CARRIER · 第二因子：**下游受影响订单金额** ─────────────────────────
+    // 契约（`ChainImpedimentSchema.severity` 的 doc）从一开始就写的是
+    // 「归一化(超阈幅度) × 归一化(下游受影响订单金额)，两个因子都来自求解器输出」，
+    // 而实现长期只落了第一个 ⇒ 只要超阈幅度相同，**卡住 150 张单的与卡住 1 张单的排在一起**。
+    // 这与 `propagation.ts` 那条「公式里没有用量项」是同一个形态（铁律 1.5 第四态：算错了）。
+    const breachFactor = Math.max(0, Math.min(1, breach / denom));
+    const carried = carrierIdx === undefined ? null : resolveCarriers(b, l, carrierIdx);
+    const exposureFactor =
+      carried === null || carrierIdx === undefined || !(carrierIdx.bookAmount > 0)
+        ? null
+        : Math.max(0, Math.min(1, carried.amount / carrierIdx.bookAmount));
+    const severity =
+      exposureFactor === null
+        ? // 承载对象判不出来 ⇒ **退回单因子口径**，与本字段上线前逐字节一致（R6）。
+          Math.max(0, Math.min(100, Math.round(breachFactor * 100)))
+        : // 两因子都在 ⇒ 乘积，再取根号做**保序缩放**（严格单调 ⇒ 排序 ≡ 纯乘积）。
+          // 根号不是调味：纯乘积会把实测 18 条里 12 条压到 ≤9、两条压成 0，
+          // 而屏上的「0」读起来是「没问题」—— 把真问题降成 0 比排错序更坏。
+          // 两个因子原样回带在 `carriers` 里 ⇒ 谁都能自己复算乘积，不必信这段注释。
+          Math.max(0, Math.min(100, Math.round(Math.sqrt(breachFactor * exposureFactor) * 100)));
 
     const isSynthetic = c.isSynthProvenance?.(l.obj) === true;
     // 限了业务线、而这条 locus 又判不出业务线归属 ⇒ 结论在本 scope 下**只是部分成立**，
@@ -1076,6 +1370,24 @@ function judgeOne(
       },
       dataMode,
       ...(contention === null ? {} : { contention }),
+      // 走不到订单 ⇒ **整个字段缺席**（既有回包逐字节不变·R6），不塞一个 0 冒充"没卡住谁"。
+      ...(carried === null || exposureFactor === null || carrierIdx === undefined
+        ? {}
+        : {
+            carriers: {
+              orderCount: carried.orderIds.length,
+              orderAmount: carried.amount,
+              amountUnit: CARRIER_AMOUNT_UNIT,
+              amountBasis: carried.basis,
+              bookAmount: round(carrierIdx.bookAmount, 6),
+              breachFactor: round(breachFactor, 6),
+              exposureFactor: round(exposureFactor, 6),
+              path: carried.path,
+              sampleOrderIds: carried.orderIds.slice(0, CARRIER_SAMPLE_LIMIT),
+              customerCount: carried.customers.length,
+              sampleCustomers: carried.customers.slice(0, CARRIER_SAMPLE_LIMIT),
+            },
+          }),
     });
     const util = num(props.utilization, Number.NaN);
     candidates.push({
@@ -1173,8 +1485,10 @@ export function detectChainImpediments(input: ChainScanInput): ChainScanResult {
   const thresholds: ChainScanThresholdRow[] = [];
   const attributionRows: ChainScanSegmentAttributionRow[] = [];
   const unresolvedByBinding = new Map<string, string>();
+  // WO-IMP-CARRIER · 遍历索引**建一次**（18 条阻滞点复用同一份），逐条重建会把 O(n) 变成 O(n²)。
+  const carrierIdx = buildCarrierIndex(input);
   for (const b of bindings) {
-    const r = judgeOne(input, b, scanId);
+    const r = judgeOne(input, b, scanId, carrierIdx);
     candidates.push(...r.candidates);
     if (r.unresolved) {
       unresolved.push(r.unresolved);
