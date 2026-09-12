@@ -237,3 +237,65 @@ describe("WO-RULE-DISCOVERY · 混池回归：规则丰富后求解器仍排得�
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
+
+import {
+  projectNavigationSlice,
+  renderNavigationSlice,
+  type RuleCatalog,
+} from "../src/agent/navigation-slice.js";
+
+describe("WO-RULE-DISCOVERY · 接缝③：导航图规则目录段（文件10·mock ruleCatalog 证投影/渲染/R6）", () => {
+  // 镜像 ruleCatalog（生产将由 live-capability-map.fetchLiveRuleCatalog 供——文件11 落线前本段先用 mock 驱动）。
+  // 刻意乱序插入（C33 在 C01 前）+ 一条 reads 空（C35 参数载体）+ 一条长描述（C33·55 字 > 40 截断窗）。
+  const RULE_CATALOG: RuleCatalog = {
+    C33: { capability: RICH_RULES.find((r) => r.key === "C33")!.description!, reads: ["Order"] },
+    C01: { capability: RICH_RULES.find((r) => r.key === "C01")!.description!, reads: ["Line"] },
+    C08: { capability: RICH_RULES.find((r) => r.key === "C08")!.description!, reads: ["Order"] },
+    C35: { capability: "推演参数载体：电池衰减率等推演专用参数，不挂场景问句，evaluate_rules 按 key 直取。", reads: [] },
+  };
+  const Q = "4680-NCM 加 20% 六周能不能接？";
+
+  it("① 渲染：传入 ruleCatalog 即出规则目录段·按码字典序·brief ≤ 截断窗+1·长描述被截断", () => {
+    const slice = projectNavigationSlice(Q, undefined, undefined, undefined, RULE_CATALOG);
+    const out = renderNavigationSlice(slice);
+    expect(out).toContain("业务规则目录（共 4 条");
+    // 字典序（与插入序无关·C01<C08<C33<C35 零填充天然字典序）；
+    const i01 = out.indexOf("· C01：");
+    const i08 = out.indexOf("· C08：");
+    const i33 = out.indexOf("· C33：");
+    const i35 = out.indexOf("· C35：");
+    expect(i01).toBeGreaterThanOrEqual(0);
+    expect(i01).toBeLessThan(i08);
+    expect(i08).toBeLessThan(i33);
+    expect(i33).toBeLessThan(i35);
+    // brief 截断：C33 原文 55 字 > 40 字窗 ⇒ 渲染出的必是截断版（≤ 窗+1=41·句末切点的边界形态）。
+    const c33line = out.split("\n").find((l) => l.includes("· C33："))!;
+    const brief = c33line.split("· C33：")[1];
+    expect(brief.length).toBeLessThanOrEqual(41);
+    expect(brief.length).toBeLessThan(RULE_CATALOG.C33.capability.length);
+    // 指引文案只许指 retrieve_knowledge（discover 枚举缺 "rules" 是未修硬伤，指那条路 = 引导模型打会被拒的调用）。
+    expect(out).toContain('retrieve_knowledge(kinds:["rule"]');
+    expect(out).not.toContain('discover(kind:"rules"');
+  });
+
+  it("② 降级路径：不传 ruleCatalog ⇒ ruleRoster 空·渲染无规则目录段（残本不宣称全集）", () => {
+    const slice = projectNavigationSlice(Q);
+    expect(slice.ruleRoster).toEqual([]);
+    const out = renderNavigationSlice(slice);
+    expect(out).not.toContain("业务规则目录");
+  });
+
+  it("③ scope 过滤：相交保留·越界剔除·reads 空=无证据判越界=保留", () => {
+    const slice = projectNavigationSlice(Q, undefined, { objectTypes: ["Order"] }, undefined, RULE_CATALOG);
+    const keys = (slice.ruleRoster ?? []).map((r) => r.key);
+    expect(keys).toContain("C33"); // Order ∩ Order
+    expect(keys).toContain("C35"); // reads 空 → 保留（同 solver 段先例：没证据不当越界）
+    expect(keys).not.toContain("C01"); // Line ∩ Order = ∅ → 剔除
+  });
+
+  it("④ R6：同输入投影+渲染两次，输出逐字节一致（可吃 prompt 缓存）", () => {
+    const a = renderNavigationSlice(projectNavigationSlice(Q, undefined, undefined, undefined, RULE_CATALOG));
+    const b = renderNavigationSlice(projectNavigationSlice(Q, undefined, undefined, undefined, RULE_CATALOG));
+    expect(a).toBe(b);
+  });
+});
