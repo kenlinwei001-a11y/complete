@@ -49,4 +49,22 @@ describe("切片库登记链（AC2）", () => {
     // 全部登记完 → 顶部按钮（带待登记计数）消失
     expect(screen.queryByTestId("slice-library-register-all")).toBeNull();
   });
+
+  it("WO-1③（G4）：已登记页签 biz.* 默认归组折叠，不与手工切片混排", async () => {
+    const user = userEvent.setup();
+    loginAs("planner");
+    // 沿用上一用例的 mock 态（两条 biz.* 已登记）
+    renderApp("/admin/slices");
+    await screen.findByTestId("slices-table");
+    // 手工切片照常在表内；biz.* 行默认不可见，只见归组条
+    expect(await screen.findByTestId("slice-model_capacity_network")).toBeTruthy();
+    expect(screen.queryByTestId("slice-biz.factory.model_capacity")).toBeNull();
+    expect(screen.queryByTestId("slice-biz.x.order_to_base")).toBeNull();
+    const toggle = await screen.findByTestId("slices-biz-group-toggle");
+    expect(toggle.textContent).toContain("2 条");
+    // 点开归组 → 两条 biz.* 行出现
+    await user.click(toggle);
+    expect(await screen.findByTestId("slice-biz.factory.model_capacity")).toBeTruthy();
+    expect(await screen.findByTestId("slice-biz.x.order_to_base")).toBeTruthy();
+  });
 });

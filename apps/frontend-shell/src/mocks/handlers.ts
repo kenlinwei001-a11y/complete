@@ -2651,6 +2651,19 @@ function mockSliceFixture(rootType: string) {
 }
 function mockSliceGraph(sliceKey: string) {
   const rootType = mockSliceGov[sliceKey]?.rootType ?? "Model";
+  // WO-SLICE-CONSUMPTION-20260912（G4/AC4）：wide_* 键给宽扇出图（1 根 + 20 同类型子节点 > 折叠阈值 16），
+  // 供按跳折叠 UI 测试真点分组 chip；其余键维持原 3 节点小图（老断言不动）。
+  if (sliceKey.startsWith("wide_")) {
+    const nodes: { id: string; typeKey: string; objectKey: string; props: Record<string, never> }[] = [
+      { id: `${sliceKey}:r1`, typeKey: rootType, objectKey: "R1", props: {} },
+    ];
+    const edges: { linkKey: string; from: string; to: string }[] = [];
+    for (let i = 1; i <= 20; i++) {
+      nodes.push({ id: `${sliceKey}:b${i}`, typeKey: "Base", objectKey: `B${i}`, props: {} });
+      edges.push({ linkKey: "model_producible_at", from: `${sliceKey}:r1`, to: `${sliceKey}:b${i}` });
+    }
+    return { nodes, edges, truncated: false, snapshotVersion: "ov-12" };
+  }
   return {
     nodes: [
       { id: `${sliceKey}:r1`, typeKey: rootType, objectKey: "R1", props: {} },

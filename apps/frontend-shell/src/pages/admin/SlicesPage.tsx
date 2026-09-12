@@ -93,7 +93,12 @@ function RegisteredTab({ onCreate }: { onCreate: () => void }) {
   // 种子来源 `apps/datacore/src/synthetic/` 的切片登记（每对象类型派生一条覆盖切片）。
   const [scope, setScope] = useState<"multihop" | "all">("multihop");
   const multiHop = useMemo(() => allSlices.filter((s) => s.hops > 0), [allSlices]);
-  const slices = scope === "multihop" && multiHop.length > 0 ? multiHop : allSlices;
+  const scoped = scope === "multihop" && multiHop.length > 0 ? multiHop : allSlices;
+  // WO-SLICE-CONSUMPTION-20260912（G4）：biz.* 是切片库登记切片（A3.2 派生 + WO-1② 登记链），
+  // 与手工切片混排会重演 coverage_* 的淹屏 —— 默认归组折叠，点开才平铺；coverage_* 行为不变（仍由上面的 scope 开关管）。
+  const slices = useMemo(() => scoped.filter((s) => !s.sliceKey.startsWith("biz.")), [scoped]);
+  const bizSlices = useMemo(() => scoped.filter((s) => s.sliceKey.startsWith("biz.")), [scoped]);
+  const [bizOpen, setBizOpen] = useState(false);
 
   const { data: workspace } = useWorkspace();
   const canEdit = baseRoles(workspace?.user?.roles ?? []).some((r) => r === "admin" || r === "catalog_admin");
@@ -178,7 +183,29 @@ function RegisteredTab({ onCreate }: { onCreate: () => void }) {
           <tr><th>切片键</th><th>版本</th><th>根类型</th><th>跳数</th><th>链路</th><th>maxNodes</th><th>契约 fixtures</th><th>操作</th></tr>
         </thead>
         <tbody>
-          {slices.map((s) => (
+          {slices.map(renderRow)}
+          {bizSlices.length > 0 && (
+            <tr data-testid="slices-biz-group">
+              <td colSpan={8} style={{ background: "var(--panel2)" }}>
+                <button
+                  className="btn sm"
+                  data-testid="slices-biz-group-toggle"
+                  onClick={() => setBizOpen((v) => !v)}
+                >
+                  {bizOpen ? "▾" : "▸"} 切片库登记切片（biz.* · {bizSlices.length} 条 · 默认折叠，不与手工切片混排）
+                </button>
+              </td>
+            </tr>
+          )}
+          {bizOpen && bizSlices.map(renderRow)}
+        </tbody>
+      </table>
+      {slices.length === 0 && bizSlices.length === 0 && <div className="empty-state">暂无注册切片，点右上＋新建切片（路径规划页签）</div>}
+    </>
+  );
+
+  function renderRow(s: (typeof slices)[number]) {
+    return (
             <Fragment key={s.sliceKey}>
               <tr data-testid={`slice-${s.sliceKey}`}>
                 <td>
@@ -239,12 +266,8 @@ function RegisteredTab({ onCreate }: { onCreate: () => void }) {
                 </tr>
               )}
             </Fragment>
-          ))}
-        </tbody>
-      </table>
-      {slices.length === 0 && <div className="empty-state">暂无注册切片，点右上＋新建切片（路径规划页签）</div>}
-    </>
-  );
+    );
+  }
 }
 
 /**

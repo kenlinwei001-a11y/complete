@@ -26,8 +26,43 @@ const zhSliceLayers = zh.admin.sliceLayers;
 
 const TYPE_PALETTE = ["#4C90F0", "#36BFA5", "#E8A13A", "#B57BE0", "#E06C8B", "#5AB7D9", "#8FB44A"];
 
-/** 由真子图确定性算分层（root 无入边→layer0，逐跳递增）+ 类型着色；节点过多时封顶显示。 */
-function buildDag(graph: SliceGraph, cap = 48): { nodes: DagNodeDef[]; edges: DagEdgeDef[]; shown: number; total: number } {
+/**
+ * WO-SLICE-CONSUMPTION-20260912（G4 · AC4）：内联子图按跳折叠，取代旧的盲 cap 48（一刀切前 N 节点）。
+ * 规则（两个常数，纯结构驱动，无业务常数）：
+ *  · 默认展开前 2 跳（layer 0–2 的节点可个显）；
+ *  · 同跳同类型桶 >16 个 ⇒ 折成一个「Type ×N」组（宽层也淹屏：demo 实测 domain_d06_capacity
+ *    第 1 跳 Line×130 / 第 2 跳 WorkOrder×260+Process×260，前 2 跳合计 704 节点——
+ *    只折深层挡不住宽层，故折叠判据是「深 ∨ 宽」）；
+ *  · 组在 DAG 下方 chips 行，点击展开/收起（state 在本组件，不落盘）。
+ * AC4 对照（demo · 2026-09-12 实测分层）：domain_d06_capacity 改前 48（盲 cap）→ 改后 19；
+ * order_to_material_bom 改前 48 → 改后 49 —— 同一条规则，大小切片 outcome 由各自结构决定（非砍到硬阈值）。
+ */
+export const SLICE_GRAPH_EXPAND_HOPS = 2;
+export const SLICE_GRAPH_BUCKET_MIN = 16;
+
+/** 当前处于折叠态的同跳同类型组（chips 行渲染 + 点击展开）。 */
+export interface SliceDagGroup {
+  key: string; // `${layer}|${typeKey}`
+  layer: number;
+  typeKey: string;
+  count: number;
+  /** true = 深层组（layer > EXPAND_HOPS）；false = 宽层组（浅层但同类型桶超阈值）。 */
+  deep: boolean;
+}
+
+export interface SliceDag {
+  nodes: DagNodeDef[];
+  edges: DagEdgeDef[];
+  groups: SliceDagGroup[];
+  /** 个显节点数（首屏节点数口径；组 chip 在 DAG 下方，不计入）。 */
+  shown: number;
+  /** 折叠进组里的节点总数。 */
+  folded: number;
+  total: number;
+}
+
+/** 由真子图确定性算分层（root 无入边→layer0，逐跳递增）+ 类型着色 + 按跳/按桶折叠。 */
+export function buildDag(graph: SliceGraph, expandedGroups: ReadonlySet<string> = new Set()): SliceDag {
   const total = graph.nodes.length;
   const indeg = new Map<string, number>();
   const outAdj = new Map<string, string[]>();
@@ -57,22 +92,47 @@ function buildDag(graph: SliceGraph, cap = 48): { nodes: DagNodeDef[]; edges: Da
     if (!colorOf.has(tk)) colorOf.set(tk, TYPE_PALETTE[colorOf.size % TYPE_PALETTE.length]!);
     return colorOf.get(tk)!;
   };
+  // 同跳同类型分桶（确定性序：先按 layer 再按 id）。
   const sorted = [...graph.nodes].sort(
     (a, b) => (layer.get(a.id) ?? 0) - (layer.get(b.id) ?? 0) || (a.id < b.id ? -1 : 1),
   );
-  const shownNodes = sorted.slice(0, cap);
-  const shownIds = new Set(shownNodes.map((n) => n.id));
-  const nodes: DagNodeDef[] = shownNodes.map((n) => ({
-    id: n.id,
-    layer: layer.get(n.id) ?? 0,
-    label: n.typeKey,
-    sub: n.objectKey || n.id,
-    color: typeColor(n.typeKey),
-  }));
+  const buckets = new Map<string, { layer: number; typeKey: string; ids: string[] }>();
+  for (const n of sorted) {
+    const l = layer.get(n.id) ?? 0;
+    const key = `${l}|${n.typeKey}`;
+    const b = buckets.get(key) ?? { layer: l, typeKey: n.typeKey, ids: [] };
+    b.ids.push(n.id);
+    buckets.set(key, b);
+  }
+  const collapsible = (b: { layer: number; ids: string[] }) =>
+    b.layer > SLICE_GRAPH_EXPAND_HOPS || b.ids.length > SLICE_GRAPH_BUCKET_MIN;
+
+  const groups: SliceDagGroup[] = [];
+  const shownIds = new Set<string>();
+  let folded = 0;
+  for (const [key, b] of buckets) {
+    if (collapsible(b) && !expandedGroups.has(key)) {
+      groups.push({ key, layer: b.layer, typeKey: b.typeKey, count: b.ids.length, deep: b.layer > SLICE_GRAPH_EXPAND_HOPS });
+      folded += b.ids.length;
+    } else {
+      for (const id of b.ids) shownIds.add(id);
+    }
+  }
+  groups.sort((a, b) => a.layer - b.layer || (a.typeKey < b.typeKey ? -1 : 1));
+
+  const nodes: DagNodeDef[] = sorted
+    .filter((n) => shownIds.has(n.id))
+    .map((n) => ({
+      id: n.id,
+      layer: layer.get(n.id) ?? 0,
+      label: n.typeKey,
+      sub: n.objectKey || n.id,
+      color: typeColor(n.typeKey),
+    }));
   const edges: DagEdgeDef[] = graph.edges
     .filter((e) => shownIds.has(e.from) && shownIds.has(e.to))
     .map((e) => ({ from: e.from, to: e.to }));
-  return { nodes, edges, shown: shownNodes.length, total };
+  return { nodes, edges, groups, shown: shownIds.size, folded, total };
 }
 
 export default function SliceInspector({
@@ -139,7 +199,16 @@ function InlineGraph({
   /** 十六层面板判定「还缺这些 root 实参」——缺参数算不出来 ≠ 算了确实为空（本仓诚实位纪律）。 */
   missingArgs: string[];
 }) {
-  const dag = useMemo(() => (q.data ? buildDag(q.data) : null), [q.data]);
+  // 按跳折叠的展开态（组 key = `${layer}|${typeKey}`，见 buildDag）：组件内 state，不落盘。
+  const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(new Set());
+  const dag = useMemo(() => (q.data ? buildDag(q.data, expandedGroups) : null), [q.data, expandedGroups]);
+  const toggleGroup = (key: string) =>
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   return (
     <div>
       <div className="section-title">内联子图（就地展开 · 不跳转图谱模块）</div>
@@ -180,21 +249,61 @@ function InlineGraph({
         </div>
       ) : (
         <>
-          {/* WO-UNIT-MEANING：「节点 12 · 边 18」此前裸数——12 是节点数还是层数？契约 SliceGraph 只有数组无 unit 字段，
-              故就近点明计数单位（个/条），与下方「仅示前 N/M 节点」同口径。 */}
+          {/* 第一层口径句（R-UI-3）：这一屏看到的是什么 = 节点/边总数 + 默认展开前 2 跳、深层与宽层成组。 */}
           <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
             节点 <b data-testid={`slice-graph-nodes-${sliceKey}`}>{q.data!.nodes.length}</b> 个 · 边{" "}
             <b>{q.data!.edges.length}</b> 条
             {q.data!.truncated && <span className="badge amber" style={{ marginLeft: 6 }}>已截断</span>}
-            {dag.shown < dag.total && (
-              <span className="badge" style={{ marginLeft: 6 }}>仅示前 {dag.shown}/{dag.total} 节点</span>
-            )}
             {" · snapshot "}
             <span className="mono">{q.data!.snapshotVersion}</span>
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }} data-testid={`slice-graph-fold-${sliceKey}`}>
+            默认展开前 {SLICE_GRAPH_EXPAND_HOPS} 跳 · 首屏{" "}
+            <b data-testid={`slice-graph-shown-${sliceKey}`}>{dag.shown}</b> 个节点
+            {dag.groups.length > 0 && (
+              <>
+                {" · 折叠 "}
+                <b data-testid={`slice-graph-folded-${sliceKey}`}>{dag.folded}</b> 个节点进 {dag.groups.length} 组（点下方分组展开）
+              </>
+            )}
           </div>
           <div style={{ overflowX: "auto" }}>
             <LayeredDag nodes={dag.nodes} edges={dag.edges} testId={`slice-graph-${sliceKey}`} />
           </div>
+          {dag.groups.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }} data-testid={`slice-graph-groups-${sliceKey}`}>
+              {dag.groups.map((g) => (
+                <button
+                  key={g.key}
+                  className="badge"
+                  data-testid={`slice-graph-group-${sliceKey}-${g.layer}-${g.typeKey}`}
+                  style={{ cursor: "pointer", border: "1px solid var(--line2)" }}
+                  title={g.deep ? `第 ${g.layer} 跳（深层按类型成组）` : `第 ${g.layer} 跳（同跳同类型过宽成组）`}
+                  onClick={() => toggleGroup(g.key)}
+                >
+                  ▸ {g.typeKey} ×{g.count}（第 {g.layer} 跳）
+                </button>
+              ))}
+            </div>
+          )}
+          {expandedGroups.size > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }} data-testid={`slice-graph-expanded-${sliceKey}`}>
+              {[...expandedGroups].map((key) => {
+                const [l, tk] = key.split("|");
+                return (
+                  <button
+                    key={key}
+                    className="badge blue"
+                    data-testid={`slice-graph-ungroup-${sliceKey}-${l}-${tk}`}
+                    style={{ cursor: "pointer", border: "1px solid var(--accent)" }}
+                    onClick={() => toggleGroup(key)}
+                  >
+                    ▾ {tk}（第 {l} 跳 · 点击收起）
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
     </div>
