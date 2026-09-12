@@ -60,7 +60,7 @@ import {
   simWorld,
   type SimProposalResponse,
 } from "@/api/endpoints";
-import { BASE_REGISTRY } from "@platform/contracts";
+import { BASE_REGISTRY, ON_HAND_ORDER_CAPTION, ON_HAND_ORDER_STATUSES } from "@platform/contracts";
 import { formatScope } from "../../chainImpediment";
 import {
   BUSINESS_EVENTS,
@@ -82,6 +82,7 @@ import {
   fmtMoney,
   NOCALC_WHY,
   ORDER_STATUS_TEXT,
+  splitOrderScope,
   tickDateISO,
   tickLabel,
   type CellDelta,
@@ -497,13 +498,31 @@ export default function Console0828({
     [ordersQ.data],
   );
 
-  /** 波及订单 id 集合。**按差分算，不按源格算**（教训 ①）。 */
+  /**
+   * WO-ORDER-SCOPE · 全簿 → 「在手 / 已交付关闭 / 判不了」三档。
+   *
+   * ── 今天的行为是 X（仓主 2026-09-12 在真屏上抓到）──
+   * 本屏一切影响面读数以**全簿 500 张**为基数 ⇒ 一个扰动报「影响 500 张订单」，
+   * 其中 **350 张是已交付关闭的单**，它们货已交、钱已结，不可能再被这次扰动影响。
+   * ── 应该是 Y ──
+   * 基数 = 在手单（契约 `ON_HAND_ORDER_STATUSES` = `OPEN` + `IN_PRODUCTION`）= **150 张**。
+   * 判据不由本屏发明，见 `splitOrderScope` 的头注与契约 `order-status.ts`。
+   */
+  const scope = useMemo(() => splitOrderScope(orders), [orders]);
+
+  /**
+   * 波及订单 id 集合。**按差分算，不按源格算**（教训 ①）。
+   *
+   * ⚠ 交集的左边是 `scope.onHand` 而**不是** `orders` —— 差分里完全可能落着已交付关闭的单
+   *   （推演引擎不认识「在手」这个业务口径，它照样会推那些格子）。用全簿求交集，
+   *   那些单就会被数进「受影响订单」，这正是本单要修的那个 bug 的落点之一。
+   */
   const touchedOrderIds = useMemo(() => {
-    const ids = new Set(orders.map((o) => o.id));
+    const ids = new Set(scope.onHand.map((o) => o.id));
     const out = new Set<string>();
     for (const d of result?.deltas ?? []) if (ids.has(d.objectId)) out.add(d.objectId);
     return out;
-  }, [result, orders]);
+  }, [result, scope]);
 
   /**
    * 「这张单是被哪件事推的」。
@@ -517,13 +536,18 @@ export default function Console0828({
     [result],
   );
 
+  /* ⚠ 三处全部吃 `scope`，**同一份过滤**（WO-ORDER-SCOPE）——
+     屏上那句「与中栏同源同一份计算，不是本栏另算的第二份」靠的就是这里只有一个 `scope`。
+     谁要是在下面再写一次 `.filter(...)`，那句话当场变成谎话。 */
   const money = useMemo(
-    () => (result === null ? null : buildMoneyView(result.deltas, orders, causeOf)),
-    [result, orders, causeOf],
+    () => (result === null ? null : buildMoneyView(result.deltas, scope.onHand, causeOf)),
+    [result, scope, causeOf],
   );
   const custView = useMemo(
-    () => (orders.length === 0 ? null : buildCustomerView(orders, touchedOrderIds)),
-    [orders, touchedOrderIds],
+    // 判空看**全簿**：在手为 0 而全簿非空是一个**有意义的态**（全簿都交付完了），
+    // 屏上该照实说「在手 0 张」，⛔ 不该退回「客户视图本次未取到」那句——那是取数失败才说的话。
+    () => (orders.length === 0 ? null : buildCustomerView(scope, touchedOrderIds)),
+    [orders.length, scope, touchedOrderIds],
   );
 
   /** 区④/⑤：能动的 N 处 / 只能盯着的 M 处 —— 全部取自引擎，前端零判定。 */
@@ -694,7 +718,31 @@ export default function Console0828({
    *   每张卡的第二行给的是**同次推演内的真实对比**（占订单簿 / 占总数），
    *   口径写在第三行 `.kpiCal` 里，**默认可见**。
    */
-  const bookTotalRaw = useMemo(() => orders.reduce((s, o) => s + (o.value ?? 0), 0), [orders]);
+  /** 在手订单簿合计（元）。⚠ 基数是 `scope.onHand` —— 这张卡的标签就写着「在手」。 */
+  const bookTotalRaw = useMemo(() => scope.onHand.reduce((s, o) => s + (o.value ?? 0), 0), [scope]);
+
+  /* ══ WO-ORDER-SCOPE · 口径措辞的三个单一出处（拼串只拼这一次，屏上各处同读）══════
+   *
+   * ⚠ 措辞也要有单一出处：本仓治过「口径改了、屏上那句话没跟着改」的病 ——
+   *   契约 `ON_HAND_ORDER_CAPTION` 的注释原话是「修了口径却忘了改屏上那句话，
+   *   等于换了个花样继续骗人」。故人话档名一律走 `ORDER_STATUS_TEXT`（与下方状态分布同一份），
+   *   ⛔ 不在 JSX 里手写「进行中」「已完成」这类串。 */
+  /** 在手的构成，例「在产 100 · 已下待排产 50」。 */
+  const onHandMix = useMemo(() => {
+    const [openKey, inProdKey] = ON_HAND_ORDER_STATUSES;
+    const nm = (k: string | undefined): string => (k === undefined ? "" : ORDER_STATUS_TEXT[k] ?? k);
+    return `${nm(inProdKey)} ${String(scope.inProduction)} · ${nm(openKey)} ${String(scope.open)}`;
+  }, [scope]);
+
+  /**
+   * 被排除的那批，一句话。**必须上屏** —— 仓主要的是「分析是否计算在里面」，
+   * 即口径要**看得见**；静默过滤掉 350 张与当初把它们算进来，同样是不诚实。
+   * `unknown > 0` 时额外点名：那批是「判不了」，⛔ 不许读作「不受影响」。
+   */
+  const excludedNote = useMemo(() => {
+    const done = `已交付关闭 ${String(scope.completed)} 张不计入`;
+    return scope.unknown === 0 ? done : `${done} · 另有 ${String(scope.unknown)} 张状态未登记，判不了`;
+  }, [scope]);
 
   interface KpiCard {
     readonly key: string;
@@ -737,9 +785,19 @@ export default function Console0828({
           label: "在手订单簿合计",
           value: fmtMoney(bookTotalRaw, "元"),
           small: true,
-          cmp: `${orders.length} 张单 · ${new Set(orders.map((o) => o.cust ?? "")).size} 家客户`,
-          cal: (<>口径：对象层 Order.value 逐页取全后加总，为<b>已签成交额</b>；≠ 年度计划营收，也 ≠ 需求预测。</>),
-          calOne: "对象层 Order.value 加总 · 已签成交额",
+          // 改前这里是 `orders.length` = 全簿 500，而标签写着「在手」——
+          // 同一张卡上标签与数字互相矛盾，契约注释点名过这一条（「虚报 3.3 倍」）。
+          cmp: `${String(scope.onHand.length)} 张在手 · ${onHandMix} · ${String(new Set(scope.onHand.map((o) => o.cust ?? "")).size)} 家客户`,
+          cal: (
+            <>
+              口径：{ON_HAND_ORDER_CAPTION}；金额为对象层 Order.value 逐页取全后按此口径加总，
+              为<b>已签成交额</b>；≠ 年度计划营收，也 ≠ 需求预测。
+              <br />
+              全簿共 {scope.all.length} 张，其中{excludedNote}——
+              <b>已交付关闭的单货已交、钱已结，不再占用产能</b>，故不进在手口径。
+            </>
+          ),
+          calOne: `在手口径 · 全簿 ${String(scope.all.length)} 张中${excludedNote}`,
         },
         {
           key: "staged",
@@ -772,25 +830,56 @@ export default function Console0828({
         label: "被推动的订单敞口",
         value: fmtMoney(money.exposure, "元"),
         small: true,
-        cmp: `占订单簿 ${pct(share)} · 基数 ${fmtMoney(money.bookTotal, "元")}`,
-        cal: (<>口径：本次推演中读数发生变化的订单，按对象层成交额合计 —— 是「<b>受影响订单的金额规模</b>」，<b>不是利润损失</b>（毛利 / 成本 / 应收三项本次无法计算，见下方「金额勾稽」）。</>),
-        calOne: "受影响订单的金额规模 · 不是利润损失",
+        // `money.bookTotal` 现在是**在手**订单簿（`buildMoneyView` 吃的是 `scope.onHand`）
+        // ⇒ 这个占比的分母跟着一起换了，与「受影响订单」那张卡同一个基数。
+        cmp: `占在手订单簿 ${pct(share)} · 基数 ${fmtMoney(money.bookTotal, "元")}`,
+        cal: (
+          <>
+            口径：本次推演中读数发生变化的<b>在手订单</b>，按对象层成交额合计 ——
+            是「<b>受影响订单的金额规模</b>」，<b>不是利润损失</b>
+            （毛利 / 成本 / 应收三项本次无法计算，见下方「金额勾稽」）。
+            <br />
+            基数为{ON_HAND_ORDER_CAPTION}：全簿 {scope.all.length} 张中{excludedNote}。
+            <b>这与中栏「客户与订单敞口」是同一份计算</b>，不是本栏另算的第二份。
+          </>
+        ),
+        calOne: "受影响在手订单的金额规模 · 不是利润损失",
       },
       {
         key: "orders",
         label: "受影响订单",
+        // ⛔ 改前这里数的是**全簿 500 张**里的波及数 —— 把 350 张已交付关闭的单也算了进去。
+        //    仓主原话：「我输入一个扰动因素，结果反馈影响 500 张订单。这个是错的。」
         value: String(money.exposedOrders),
-        cmp: `共 ${money.bookOrders} 张 · 读到 ${money.ordersSeen} 张`,
-        cal: (<>口径：按<b>世界差分全集</b>判定，<b>不按</b>被扰动的源格判定 —— 源变量常被顶在域上界，源格只动千分之几而下游动千百倍。读到 0 张表示遍历失效，不是「无波及」。</>),
-        calOne: "按世界差分全集判定 · 不按源格",
+        // 第二行把**可被影响的那 150 张**拆开说，而不是报一个全簿总数。
+        cmp: `可被影响 ${String(money.bookOrders)} 张（${onHandMix}）`,
+        cal: (
+          <>
+            口径：只数<b>在手订单</b>（{ON_HAND_ORDER_CAPTION}）——
+            <b>已交付关闭的单货已交、钱已结，不可能再被这次扰动影响</b>，故不计入；
+            <b>在制单货还没交、钱还没结，仍在手，计入</b>。
+            全簿 {scope.all.length} 张中{excludedNote}。
+            <br />
+            波及判定按<b>世界差分全集</b>，<b>不按</b>被扰动的源格 —— 源变量常被顶在域上界，
+            源格只动千分之几而下游动千百倍。读到 0 张表示遍历失效，不是「无波及」
+            （本次在手基数读到 {money.ordersSeen} 张）。
+          </>
+        ),
+        calOne: `只数在手单 · 全簿 ${String(scope.all.length)} 张中${excludedNote}`,
       },
       {
         key: "cust",
         label: "受影响客户",
         value: custView === null ? "—" : String(custView.touchedCustomers),
-        cmp: custView === null ? "客户视图本次未取到" : `共 ${custView.totalCustomers} 家`,
-        cal: (<>口径：由受影响订单按 Order.cust 归并得到，<b>非独立的客户级读数</b>；客户对象自带的应收数因计量单位无登记册（元 / 万元差 10000 倍）<b>不上屏</b>。</>),
-        calOne: "由受影响订单按 Order.cust 归并",
+        cmp: custView === null ? "客户视图本次未取到" : `在手单涉及 ${String(custView.totalCustomers)} 家`,
+        cal: (
+          <>
+            口径：由<b>受影响的在手订单</b>按 Order.cust 归并得到，<b>非独立的客户级读数</b>；
+            分母同为在手口径（只有已交付关闭单的客户不计入本次敞口）。
+            客户对象自带的应收数因计量单位无登记册（元 / 万元差 10000 倍）<b>不上屏</b>。
+          </>
+        ),
+        calOne: "由受影响的在手订单按 Order.cust 归并",
       },
       {
         key: "imp",
@@ -828,7 +917,7 @@ export default function Console0828({
         calOne: "12 类事件可落到的具名实体",
       },
     ];
-  }, [result, money, custView, impGroups, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts]);
+  }, [result, money, custView, impGroups, ordersQ.data, scope, onHandMix, excludedNote, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts]);
 
   /* ── 渲染 ─────────────────────────────────────────────────────────────── */
   const zone = (n: string, t: string): JSX.Element => (
@@ -1358,9 +1447,15 @@ export default function Console0828({
               {ordersQ.data === undefined ? null : (
                 <>
                   {" "}
-                  当前订单簿合计{" "}
-                  <b className={styles.mono}>{fmtMoney(orders.reduce((s, o) => s + (o.value ?? 0), 0), "元")}</b>，共{" "}
-                  <b className={styles.mono}>{orders.length}</b> 张单。
+                  当前<b>在手</b>订单簿合计{" "}
+                  <b className={styles.mono}>{fmtMoney(bookTotalRaw, "元")}</b>，共{" "}
+                  <b className={styles.mono}>{scope.onHand.length}</b> 张在手单（{onHandMix}）。
+                  {/* 推演还没跑，这里就把口径先说清 —— 用户点「开始推演」之前就该知道
+                      待会儿那个「受影响 N 张」的分母是什么。 */}
+                  <span className={styles.na}>
+                    {" "}
+                    全簿 {scope.all.length} 张，{excludedNote}。
+                  </span>
                 </>
               )}
             </p>
@@ -1383,7 +1478,7 @@ export default function Console0828({
                   {zone("3", "客户与订单敞口")}
                   <h3 className={styles.headTitle}>受影响客户与订单</h3>
                   <span className={styles.headRight}>
-                    订单簿 {fmtMoney(money.bookTotal, "元")} · {custView.totalCustomers} 家 · {money.bookOrders} 张
+                    在手订单簿 {fmtMoney(money.bookTotal, "元")} · {custView.totalCustomers} 家 · {money.bookOrders} 张
                   </span>
                 </div>
                 <div className={styles.two}>
@@ -1433,9 +1528,13 @@ export default function Console0828({
                   </div>
 
                   <div>
+                    {/* ⚠ 这一格的基数是**全簿**，与上面那张客户表（在手口径）**不是同一个分母** ——
+                        它正是本屏唯一说得清「那 350 张去哪了」的地方。
+                        ⛔ 别把 `money.bookOrders`（在手 150）填回这里：那会让「150 张单的状态分布」
+                        底下摆着 350+100+50，数字自己打自己的脸。 */}
                     <h4 className={styles.subHead}>
                       <span className={styles.dot} style={{ background: "var(--c-capacity)" }} />
-                      {money.bookOrders} 张单的状态分布
+                      全簿 {scope.all.length} 张单的状态分布
                     </h4>
                     <div className={styles.stat}>
                       {custView.statusDist.map((s) => (
@@ -1443,11 +1542,16 @@ export default function Console0828({
                           <span className={`${styles.statVal} ${styles.mono}`}>{s.n}</span>
                           <span className={styles.statKey}>{s.label}</span>
                           <span className={`${styles.statKey} ${styles.mono}`}>
-                            {pct(money.bookOrders === 0 ? 0 : s.n / money.bookOrders)}
+                            {pct(scope.all.length === 0 ? 0 : s.n / scope.all.length)}
                           </span>
                         </div>
                       ))}
                     </div>
+                    {/* 口径行 —— 第一层可见，说清这一格与上面那张表分母不同，且为什么。 */}
+                    <p className={styles.na} data-testid="c0828-scope-note">
+                      本次推演的影响面只算<b>在手单 {money.bookOrders} 张</b>（{onHandMix}）：
+                      {excludedNote}。上表客户敞口与左侧三张卡同用这个口径。
+                    </p>
                     <div className={styles.risk}>
                       <div className={styles.statKey} style={{ marginBottom: 7 }}>
                         本次扰动波及
@@ -2002,22 +2106,22 @@ export default function Console0828({
                 <span className={styles.aiTick}>✓</span>
                 <span>
                   被推动的订单敞口 <span className={styles.aiQty}>{fmtMoney(money.exposure, "元")}</span>
-                  （占订单簿 {pct(money.bookTotal === 0 ? 0 : money.exposure / money.bookTotal)}）
+                  （占在手订单簿 {pct(money.bookTotal === 0 ? 0 : money.exposure / money.bookTotal)}）
                   —— 是受影响订单的<b>金额规模</b>，不是利润损失。
                 </span>
               </li>
               <li>
                 <span className={styles.aiTick}>✓</span>
                 <span>
-                  受影响订单 <span className={styles.aiQty}>{money.exposedOrders}</span> 张 / 共{" "}
-                  {money.bookOrders} 张
+                  受影响订单 <span className={styles.aiQty}>{money.exposedOrders}</span> 张 / 可被影响{" "}
+                  {money.bookOrders} 张（{onHandMix}）
                   {custView === null ? null : (
                     <>
                       ，落在 <span className={styles.aiQty}>{custView.touchedCustomers}</span> 家客户上
                       （共 {custView.totalCustomers} 家）
                     </>
                   )}
-                  。
+                  。全簿 {scope.all.length} 张中{excludedNote}。
                 </span>
               </li>
               <li>
@@ -2392,7 +2496,7 @@ export default function Console0828({
                     <span className={styles.est}>估</span>
                   </div>
                   <div className={styles.calibre} data-testid="c0828-exposure-sub">
-                    {money.exposedOrders} 张单 · 占订单簿 {pct(money.bookTotal === 0 ? 0 : money.exposure / money.bookTotal)}
+                    {money.exposedOrders} 张单 · 占在手订单簿 {pct(money.bookTotal === 0 ? 0 : money.exposure / money.bookTotal)}
                   </div>
                 </div>
 
@@ -2425,12 +2529,18 @@ export default function Console0828({
                   <summary>金额勾稽</summary>
                   <div className={styles.moreBody}>
                     <p>
-                      「被推动的订单敞口」= 本次推演中读数发生变化的订单，按对象层成交额合计。
+                      「被推动的订单敞口」= 本次推演中读数发生变化的<b>在手订单</b>，按对象层成交额合计。
                       其口径是「受影响订单的金额规模」，不是「利润损失」—— 后者本次无法计算，见下。
                     </p>
                     <p>
-                      订单簿合计 {fmtMoney(money.bookTotal, "元")}，共 {money.bookOrders} 张单（逐页取全后累加，
-                      并与服务端返回的总数勾稽）。被推动 {money.exposedOrders} 张，合计 {fmtMoney(money.exposure, "元")}。
+                      <b>在手</b>订单簿合计 {fmtMoney(money.bookTotal, "元")}，共 {money.bookOrders} 张单
+                      （{onHandMix}；逐页取全后按在手口径累加，并与服务端返回的总数勾稽）。
+                      被推动 {money.exposedOrders} 张，合计 {fmtMoney(money.exposure, "元")}。
+                    </p>
+                    <p>
+                      在手口径 = {ON_HAND_ORDER_CAPTION}。全簿 {scope.all.length} 张中{excludedNote}——
+                      已交付关闭的单货已交、钱已结，不再占用产能、不再需要承诺，
+                      <b>不可能再被本次扰动影响</b>，故一律不进上面任何一个分子或分母。
                     </p>
                     <p>毛利差额：{NOCALC_WHY.margin}</p>
                     <p>新增成本：{NOCALC_WHY.cost}</p>
