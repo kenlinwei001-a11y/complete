@@ -40,7 +40,12 @@ PIN=origin/claude/inspiring-gates-aqczjg
 git fetch origin
 git rev-parse --short HEAD
 wc -l apps/datacore/src/synthetic/battery.ts   # 新树 ≈7053 行；≈1249 行 = 旧树，必须重开
-git merge-base --is-ancestor HEAD $PIN && echo "落后⇒必须重开" || echo "不落后"
+# ⚠ 必须同时判「是祖先」且「不等于」—— 祖先关系含自反，HEAD 就是 PIN 时 --is-ancestor 也返回真
+if git merge-base --is-ancestor HEAD "$PIN" && [ "$(git rev-parse HEAD)" != "$(git rev-parse "$PIN")" ]; then
+  echo "落后 ⇒ 必须重开"
+else
+  echo "不落后"
+fi
 ```
 
 **报告头必须回显这三个数。**
