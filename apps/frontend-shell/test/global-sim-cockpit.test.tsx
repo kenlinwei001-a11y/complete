@@ -230,6 +230,14 @@ describe("global-sim cockpit · 五区决策驾驶舱 SEAM-GATE", () => {
 
     // ① 开关在屏上可达（今天全仓零 UI 调用方 —— 摘掉它这一行即红）。
     const knob = await screen.findByTestId("global-sim-lever-line-granularity");
+
+    // ①-b 代价必须**在第一层看得见**：勾了之后可排量塌 98%，屏上一个字不说 = 用户会把「更细」读成「更好」。
+    //     实测（同一组订单、只翻这一个开关）：可排量 276,914 → 4,717 套、被挤 9 → 50、产能格 130 → 1088。
+    const cost = screen.getByTestId("global-sim-lever-line-granularity-cost");
+    expect(cost.textContent, "代价行必须点出产能格被切碎").toMatch(/130\s*→\s*1088/);
+    expect(cost.textContent, "代价行必须点出可排量下降").toMatch(/27\.7\s*万\s*→\s*0\.47\s*万/);
+    // 完整口径（含「这组数是在哪个模式测的」）必须可达 —— `?` 记号必须在屏上，不许静默降层。
+    expect(screen.getByTestId("info-global-sim-lever-line-granularity-why")).toBeInTheDocument();
     // 缺省关 ⇒ 首次请求**不携** lineGranularity（旧请求体字节不变·零回归）。
     await waitFor(() => expect(seenLG.length).toBeGreaterThan(0));
     expect(seenLG.every((v) => v === null), "缺省态不得携 lineGranularity").toBe(true);

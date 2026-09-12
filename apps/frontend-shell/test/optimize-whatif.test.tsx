@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { loginAs, renderApp } from "./utils";
@@ -106,5 +106,38 @@ describe("WO-OPTIMIZE-WHATIF-FE · 优化推演页（决策比对）", () => {
       fireEvent.click(screen.getByTestId(`ow-graph-solver-${k}`)); // 收起，避免下一个断言串台
     }
     expect(new Set(called).size, "5 个 key 各自被调到").toBe(5);
+  });
+
+  /**
+   * WO-HV-A 收口 · 不许放一个会挂住的按钮上屏。
+   *
+   * 实测（真 datacore + 真 CP-SAT sidecar·订单簿 500 单）：`sequencing_optimize` / `packing_optimize`
+   * **60 秒未返回**（curl HTTP=000）。改前点下去 = 转圈一分钟后无声失败。
+   * 本条咬：请求挂住 → 到点停止等待 → 屏上把**超时**与**无解**分开说（`data-reason="timeout"`）。
+   */
+  it("WO-HV-A 收口 · 求解挂住 → 到点停等 + 屏上说清是「超时不是无解」（非无声失败）", async () => {
+    // 永不 resolve 的请求 = 复现「排序/装箱在 500 单规模挂住」那一态。
+    server.use(http.post("*/a/v1/solvers/sequencing_optimize/invoke", () => new Promise(() => {})));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      loginAs("planner");
+      renderApp("/v/optimize-whatif");
+      await screen.findByTestId("ow-graph-solvers", {}, { timeout: 8000 });
+      fireEvent.click(screen.getByTestId("ow-graph-solver-sequencing_optimize"));
+      fireEvent.click(await screen.findByTestId("ow-graph-run-sequencing_optimize", {}, { timeout: 8000 }));
+
+      // 改前：这里会一直转圈，什么都不出。改后：到 30s 停等并说明白。
+      await vi.advanceTimersByTimeAsync(31_000);
+      const err = await screen.findByTestId("ow-graph-error-sequencing_optimize", {}, { timeout: 8000 });
+      expect(err).toHaveAttribute("data-reason", "timeout");
+      expect(err.textContent).toMatch(/超时/);
+      expect(err.textContent, "必须显式否认「无解」这个读法").toMatch(/不是「?无解/);
+      // 诚实：不谎称已取消后端计算。
+      expect(err.textContent).toMatch(/后端可能仍在算/);
+      // 绝不假渲一个结果区。
+      expect(screen.queryByTestId("ow-graph-result-sequencing_optimize")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
