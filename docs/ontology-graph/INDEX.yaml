@@ -2,8 +2,19 @@
 # 生成物 —— ⛔ 不要手改。生成命令：node scripts/ontology-graph/extract.mjs
 # 人读的散文本体在 docs/SYSTEM-ONTOLOGY.md，**保留不动**，本目录是它旁边的机器抽取面。
 version: 1
-generatedFrom: "03a88ab8"
-counts: { atoms: 6266, edges: 21032, slices: 47, byState: { wired: 5750, test-only: 70, no-ref: 446 }, byEdgeKind: { reexports: 91, reads: 266, declares: 5437, registers: 3257, seeds: 2284, asserts: 7963, inSlice: 1734 }, docSourceNone: 2968, docSourceNonePct: 47.37 }
+generatedFrom: "7049378b"
+counts: { atoms: 6266, edges: 21032, slices: 47, byEdgeKind: { reexports: 91, reads: 266, declares: 5437, registers: 3257, seeds: 2284, asserts: 7963, inSlice: 1734 }, docSourceNone: 2968, docSourceNonePct: 47.37 }
+# ⚠ 三态有**两套口径**，差 2396 个原子（差在「只在自己文件里被用」那批）。
+# ⛔ 引用时必须说清用的是哪一套 —— 只报一个数等于拿一个数盖住两个不同事实。
+byState:
+  includingSelfFileUse:
+    question: "这个符号有没有生产代码在用？（跨文件 src 或同文件内的生产使用都算）"
+    useFor: "找真死代码、找假绿第 9 形态（实现有·测试有·绿的·零生产调用方）。假阳性代价高的场合用这套。"
+    counts: { wired: 5750, test-only: 70, no-ref: 446 }
+  strictCrossFile:
+    question: "这个符号有没有**别的文件**在用？（忽略同文件内的使用）"
+    useFor: "找「导出了但没人跨文件用」的过度导出面 —— 这批可以降成文件内私有。"
+    counts: { wired: 3354, test-only: 558, no-ref: 2354 }
 canary:
   - probe: "buildSliceIndex 在节点表里"
     expect: "present"
@@ -78,6 +89,2830 @@ canary:
     expect: "98/98"
     actual: "98/98"
     ok: true
+  - probe: "blindSpots 的 dims 全在枚举内且非空"
+    expect: "0 条越界"
+    actual: "0 条越界"
+    ok: true
+  - probe: "五类对账维度都至少有一条盲区"
+    expect: "5/5"
+    actual: "5/5"
+    ok: true
+    note: "少一类 ⇒ 消费方在那一维上拿不到任何自认盲区，会误以为该维无风险"
+# 盲区（机器可读）：消费方按 dims 判「这条结论可不可信」，⛔ 不许去撞 text 的关键词。
+# dims 枚举：COUNT 计数 · NOREF 零调用方 · EMPTYFILE 空文件 · COORD 坐标 · LENGTH 长度分布
+blindSpotDims: ["COUNT", "NOREF", "EMPTYFILE", "COORD", "LENGTH"]
+blindSpots:
+  - id: "structural-type-use"
+    dims: ["NOREF", "COUNT"]
+    text: "interface/type 可被结构匹配使用而名字从不出现 ⇒ no-ref 的 type/interface 不等于没被用。"
+  - id: "string-key-dispatch"
+    dims: ["NOREF"]
+    text: "字符串键分发 / 事件订阅 / DI 容器：运行时按名字派发的调用，静态一条都看不见。"
+  - id: "higher-order-trigger"
+    dims: ["NOREF", "COUNT"]
+    text: "高阶函数只见「被传进去」不见「何时真触发」⇒ 答不了「接了线没数据」这一态，只有 seeds 边能侧面答。"
+  - id: "transitive-liveness"
+    dims: ["NOREF"]
+    text: "不做传递性存活：只被另一个死符号引用的符号仍读作 wired（如 SimRunDisclosureSchema 只被自己的 z.infer 用）。"
+  - id: "import-plumbing-not-edge"
+    dims: ["NOREF"]
+    text: "import/export 说明符与 re-export 转手**有意不发 calls 边**（那是管道不是使用）；命名空间成员访问（import * as ns 后的 ns.foo）同样不发边（本仓今天 import * as 实测 0 处）。"
+  - id: "non-ts-surfaces"
+    dims: ["COUNT", "COORD", "EMPTYFILE"]
+    text: "非 TS 出口整体不在图里：packages/dsh-harness（vendored .mjs，无 src/）、SQL migrations、nginx/docker-compose、YAML 配置。对这些位置的任何结论本图谱都无发言权。"
+  - id: "runtime-gating"
+    dims: ["NOREF"]
+    text: "feature flag / entitlement 关掉的分支，图上仍是 wired。"
+  - id: "docsource-jsdoc-only"
+    dims: ["COUNT"]
+    text: "docSource 只认 /** */；`//` 行注释一律记 none ⇒ 「没有自述」的计数偏高，不等于没有注释。"
+  - id: "brief-truncated-300"
+    dims: ["LENGTH"]
+    text: "brief 截断到 300 字符 ⇒ 不可用于任何「描述有多长」的长度结论。"
+  - id: "inbound-samples-capped-25"
+    dims: ["COORD"]
+    text: "inbound.src/test 的**样例**封顶 25 条；srcCount/selfUses/testCount 是**全量、从不截断** ⇒ 计数可信，坐标清单可能不全。"
+  - id: "inslice-string-literal-only"
+    dims: ["COUNT", "NOREF"]
+    text: "inSlice 判据是原子声明里以字符串字面量出现某 spannedType ⇒ 用变量拼出来的类型键看不见，切片成员数偏低。"
+  - id: "sideeffect-modules-not-evaluated"
+    dims: ["COUNT"]
+    text: "顶层有裸调用语句的模块（如 server.ts 末尾 main()）拒绝 import 求值 ⇒ 其中的注册表只有 parsed 计数，不可信。"
+  - id: "fieldstats-literals-only"
+    dims: ["LENGTH", "COUNT"]
+    text: "fieldStats 只统计字面量赋值（x:\"abc\" 记 3、x:[1,2,3] 记 3）；变量/函数调用赋的值不计 ⇒ n 偏低，不能当「该字段出现次数」用。"
+  - id: "fieldstats-distinctive-only"
+    dims: ["LENGTH", "COUNT"]
+    text: "fieldStats / seeds / asserts 只覆盖**有鉴别力的字段**（被 ≤3 个 schema 声明）；id/name/key 这类被 400+ schema 声明的字段整批不在清单里，缺席不等于没有数据。"
+# 注册表真值：confidence=parsed 的一律不可信（那个包没 build，只有 AST 数）。
+registries:
+  - name: "OBJECT_KEY_PROPS"
+    file: "apps/agentcore/src/agent/navigation-slice.ts"
+    line: 293
+    parsedCount: 26
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 26
+  - name: "FILL"
+    file: "apps/agentcore/src/growth/probe.ts"
+    line: 9
+    parsedCount: 10
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 10
+  - name: "ACTION_WIRING"
+    file: "apps/datacore/src/actions.ts"
+    line: 35
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "ALL_SOLVER_CATALOG"
+    file: "apps/datacore/src/catalog.ts"
+    line: 279
+    parsedCount: null
+    evaluatedCount: 63
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 63
+  - name: "COCKPIT_SOLVER_CATALOG"
+    file: "apps/datacore/src/catalog.ts"
+    line: 127
+    parsedCount: null
+    evaluatedCount: 18
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 18
+  - name: "GENERIC_SOLVER_CATALOG"
+    file: "apps/datacore/src/catalog.ts"
+    line: 184
+    parsedCount: null
+    evaluatedCount: 22
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 22
+  - name: "SOLVER_CATALOG"
+    file: "apps/datacore/src/catalog.ts"
+    line: 83
+    parsedCount: null
+    evaluatedCount: 23
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 23
+  - name: "CONNECTOR_TYPES"
+    file: "apps/datacore/src/connectors/registry.ts"
+    line: 23
+    parsedCount: null
+    evaluatedCount: 11
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 11
+  - name: "SOLVER_ALIASES"
+    file: "apps/datacore/src/databuilder/comprehend.ts"
+    line: 157
+    parsedCount: 23
+    evaluatedCount: 23
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 23
+  - name: "SOLVER_HINTS"
+    file: "apps/datacore/src/databuilder/comprehend.ts"
+    line: 126
+    parsedCount: 22
+    evaluatedCount: 22
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 22
+  - name: "FDE_NODES"
+    file: "apps/datacore/src/databuilder/fde-graph.ts"
+    line: 19
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "MODULE_PROVISIONERS"
+    file: "apps/datacore/src/databuilder/provisioners.ts"
+    line: 47
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "NEED_ARRAY_TO_KIND"
+    file: "apps/datacore/src/databuilder/provisioners.ts"
+    line: 97
+    parsedCount: 13
+    evaluatedCount: 13
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 13
+  - name: "RECORD_MATERIALIZE_TEMPLATES"
+    file: "apps/datacore/src/decision/record-materialize.ts"
+    line: 47
+    parsedCount: 17
+    evaluatedCount: 17
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 17
+  - name: "PROPERTY_UNITS"
+    file: "apps/datacore/src/domain.ts"
+    line: 245
+    parsedCount: 62
+    evaluatedCount: 62
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 62
+  - name: "ALL_FEATURE_KEYS"
+    file: "apps/datacore/src/features.ts"
+    line: 210
+    parsedCount: null
+    evaluatedCount: 98
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 98
+  - name: "FEATURE_REGISTRY"
+    file: "apps/datacore/src/features.ts"
+    line: 22
+    parsedCount: null
+    evaluatedCount: 98
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 98
+  - name: "VIEW_FEATURE_MAP"
+    file: "apps/datacore/src/features.ts"
+    line: 321
+    parsedCount: null
+    evaluatedCount: 35
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 35
+  - name: "BUSINESS_DOMAIN_KEYS"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 50
+    parsedCount: null
+    evaluatedCount: 14
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 14
+  - name: "BUSINESS_DOMAINS"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 34
+    parsedCount: null
+    evaluatedCount: 14
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 14
+  - name: "DOMAIN_ORDER"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 18
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "GRAPH_DOMAIN"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 8
+    parsedCount: 18
+    evaluatedCount: 18
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 18
+  - name: "GRAPH_EXTRA_EDGES"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 114
+    parsedCount: null
+    evaluatedCount: 16
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 16
+  - name: "GRAPH_EXTRA_NODES"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 92
+    parsedCount: null
+    evaluatedCount: 12
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 12
+  - name: "SOLVER_GRAPH"
+    file: "apps/datacore/src/graphmeta.ts"
+    line: 52
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "UNIT_DICTIONARY"
+    file: "apps/datacore/src/ontology-governance.ts"
+    line: 78
+    parsedCount: null
+    evaluatedCount: 62
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 62
+  - name: "DOMAIN_NORMALIZATION"
+    file: "apps/datacore/src/ontology/refbase-coverage.ts"
+    line: 10
+    parsedCount: 16
+    evaluatedCount: 16
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 16
+  - name: "ORG_PRINCIPAL_VM_KEYS"
+    file: "apps/datacore/src/org/routes.ts"
+    line: 27
+    parsedCount: 10
+    evaluatedCount: 10
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 10
+  - name: "EXTENDED_SOLVERS"
+    file: "apps/datacore/src/solvers/extended.ts"
+    line: 630
+    parsedCount: 14
+    evaluatedCount: 14
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 14
+  - name: "ROLE_LEXICON"
+    file: "apps/datacore/src/solvers/field-role-lexicon.ts"
+    line: 5
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "LEVER_PROP_META"
+    file: "apps/datacore/src/solvers/lever-meta.ts"
+    line: 111
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "SIGNED_SOLVER_KEYS"
+    file: "apps/datacore/src/solvers/ontology-signature.ts"
+    line: 452
+    parsedCount: null
+    evaluatedCount: 21
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 21
+  - name: "SOLVER_ONTOLOGY_SIGNATURES"
+    file: "apps/datacore/src/solvers/ontology-signature.ts"
+    line: 84
+    parsedCount: 21
+    evaluatedCount: 21
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 21
+  - name: "SOLVER_KEYS"
+    file: "apps/datacore/src/solvers/service.ts"
+    line: 264
+    parsedCount: 63
+    evaluatedCount: 63
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 63
+  - name: "SOLVER_OUTPUT_SHAPES"
+    file: "apps/datacore/src/solvers/service.ts"
+    line: 518
+    parsedCount: 63
+    evaluatedCount: 63
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 63
+  - name: "SOLVER_REQUIRED_TYPES"
+    file: "apps/datacore/src/solvers/service.ts"
+    line: 478
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "SOLVER_CATEGORY_MAP"
+    file: "apps/datacore/src/solvers/taxonomy.ts"
+    line: 30
+    parsedCount: 63
+    evaluatedCount: 63
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 63
+  - name: "CAUSAL_EDGES"
+    file: "apps/datacore/src/synthetic/battery-extended.ts"
+    line: 754
+    parsedCount: null
+    evaluatedCount: 23
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 23
+  - name: "CAUSAL_FACTORS"
+    file: "apps/datacore/src/synthetic/battery-extended.ts"
+    line: 679
+    parsedCount: null
+    evaluatedCount: 37
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 37
+  - name: "BASES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 24
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "BATTERY_ACTION_TYPES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 4563
+    parsedCount: null
+    evaluatedCount: 11
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 11
+  - name: "BATTERY_RULE_SCOPES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 4711
+    parsedCount: 30
+    evaluatedCount: 30
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 30
+  - name: "BATTERY_RULES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 737
+    parsedCount: null
+    evaluatedCount: 30
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 30
+  - name: "BATTERY_SOLVER_PARAMS"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 853
+    parsedCount: 27
+    evaluatedCount: 27
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 27
+  - name: "BATTERY_TEMPLATE"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 4427
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "BATTERY_TYPE_DOMAIN"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 2714
+    parsedCount: 66
+    evaluatedCount: 66
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 66
+  - name: "BINDINGS"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 2675
+    parsedCount: 32
+    evaluatedCount: 32
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 32
+  - name: "CUSTOMER_BUSINESS_TYPE"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 399
+    parsedCount: null
+    evaluatedCount: 20
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 20
+  - name: "CUSTOMER_IDS"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 241
+    parsedCount: null
+    evaluatedCount: 20
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 20
+  - name: "CUSTOMER_REGISTRY"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 195
+    parsedCount: null
+    evaluatedCount: 20
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 20
+  - name: "HTML_ORDERS"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 570
+    parsedCount: null
+    evaluatedCount: 24
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 24
+  - name: "ORDER_CUST_TO_CUSTOMER"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 439
+    parsedCount: null
+    evaluatedCount: 20
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 20
+  - name: "PROP_DISPLAY_NAMES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 2782
+    parsedCount: 819
+    evaluatedCount: 819
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 819
+  - name: "STATE_VAR_DISPLAY_NAMES"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 3275
+    parsedCount: 41
+    evaluatedCount: 41
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 41
+  - name: "STATE_VAR_DOMAINS"
+    file: "apps/datacore/src/synthetic/battery.ts"
+    line: 3372
+    parsedCount: null
+    evaluatedCount: 32
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 32
+  - name: "CADENCE_NODES"
+    file: "apps/datacore/src/synthetic/cadence.ts"
+    line: 205
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "MATERIALS"
+    file: "apps/datacore/src/synthetic/materials-seed.ts"
+    line: 37
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "VALUE_DOMAINS"
+    file: "apps/datacore/src/synthetic/value-domains.ts"
+    line: 17
+    parsedCount: 19
+    evaluatedCount: 19
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 19
+  - name: "BUILTIN_VIEWS"
+    file: "apps/datacore/src/synthetic/view-manifest.ts"
+    line: 133
+    parsedCount: null
+    evaluatedCount: 16
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 16
+  - name: "SEEDED_VIEW_KEYS"
+    file: "apps/datacore/src/synthetic/view-manifest.ts"
+    line: 257
+    parsedCount: null
+    evaluatedCount: 16
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 16
+  - name: "UNIT_DIMENSIONS"
+    file: "apps/datacore/src/units.ts"
+    line: 115
+    parsedCount: null
+    evaluatedCount: 62
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 62
+  - name: "zh"
+    file: "apps/frontend-shell/src/locales/zh.ts"
+    line: 5
+    parsedCount: 34
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 34
+  - name: "RISK_DISPOSITION_SEED"
+    file: "apps/frontend-shell/src/mocks/fixtures.ts"
+    line: 1125
+    parsedCount: 11
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 11
+  - name: "LIVED_WATERMARK"
+    file: "apps/frontend-shell/src/mocks/livedInFixtures.ts"
+    line: 187
+    parsedCount: 8
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 8
+  - name: "PROCESS_INSTANCES_P01"
+    file: "apps/frontend-shell/src/mocks/processWaitFixtures.ts"
+    line: 210
+    parsedCount: 11
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 11
+  - name: "PROCESS_INSTANCES_P34"
+    file: "apps/frontend-shell/src/mocks/processWaitFixtures.ts"
+    line: 152
+    parsedCount: 11
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 11
+  - name: "CONSOLIDATED_INTO_SANDBOX"
+    file: "apps/frontend-shell/src/pages/ShellLayout.tsx"
+    line: 137
+    parsedCount: 16
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 16
+  - name: "EVENT_INVALIDATES"
+    file: "apps/frontend-shell/src/store/eventInvalidation.ts"
+    line: 139
+    parsedCount: 28
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 28
+  - name: "BN_FACTOR_TO_MARK"
+    file: "apps/frontend-shell/src/views/capacity/factorOntology.ts"
+    line: 92
+    parsedCount: 13
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 13
+  - name: "METRO_LAYOUT"
+    file: "apps/frontend-shell/src/views/sim/chainLineMap.ts"
+    line: 477
+    parsedCount: 21
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 21
+  - name: "RING_LAYOUT"
+    file: "apps/frontend-shell/src/views/sim/chainLineMap.ts"
+    line: 668
+    parsedCount: 10
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 10
+  - name: "CHAIN_NODE_SEMANTICS"
+    file: "apps/frontend-shell/src/views/sim/chainNodeSemantics.ts"
+    line: 81
+    parsedCount: 12
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 12
+  - name: "PLACEHOLDER_CONE"
+    file: "apps/frontend-shell/src/views/sim/console/ImpactCone.tsx"
+    line: 160
+    parsedCount: 8
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 8
+  - name: "PARETO_GEOM"
+    file: "apps/frontend-shell/src/views/sim/console/useParetoFrontier.ts"
+    line: 148
+    parsedCount: 8
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 8
+  - name: "PLACEHOLDER_OPT_MODEL"
+    file: "apps/frontend-shell/src/views/sim/console/useParetoFrontier.ts"
+    line: 610
+    parsedCount: 16
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 16
+  - name: "PROC_LAYOUT"
+    file: "apps/frontend-shell/src/views/sim/processCanvas.ts"
+    line: 564
+    parsedCount: 14
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 14
+  - name: "IMP_PARAM"
+    file: "apps/frontend-shell/src/views/sim/sandboxConsoleModel.ts"
+    line: 873
+    parsedCount: 10
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 10
+  - name: "BLOCK_REASON_TEXT"
+    file: "apps/frontend-shell/src/views/sim/unified/rail/perturbRailModel.ts"
+    line: 555
+    parsedCount: 10
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 10
+  - name: "UNIFIED_MODE_SPEC"
+    file: "apps/frontend-shell/src/views/sim/unified/unifiedModes.ts"
+    line: 112
+    parsedCount: 8
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 8
+  - name: "UNIFIED_MODES"
+    file: "apps/frontend-shell/src/views/sim/unified/unifiedModes.ts"
+    line: 37
+    parsedCount: 8
+    evaluatedCount: null
+    confidence: "parsed"
+    trustworthy: false
+    entries: 8
+  - name: "ADMIN_VIEW_RENDERERS"
+    file: "packages/contracts/src/admin.ts"
+    line: 79
+    parsedCount: 14
+    evaluatedCount: 14
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 14
+  - name: "SKILL_REFERENCE_KINDS"
+    file: "packages/contracts/src/agentcore.ts"
+    line: 254
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "BASE_REGISTRY"
+    file: "packages/contracts/src/base-registry.ts"
+    line: 101
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "EQUIPMENT_TYPE_BY_PROCESS"
+    file: "packages/contracts/src/base-registry.ts"
+    line: 564
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "OUTSOURCE_REDLINE"
+    file: "packages/contracts/src/base-registry.ts"
+    line: 169
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "WORKSHOP_REGISTRY"
+    file: "packages/contracts/src/base-registry.ts"
+    line: 543
+    parsedCount: null
+    evaluatedCount: 10
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 10
+  - name: "CAPACITY_FACTOR_BINDINGS"
+    file: "packages/contracts/src/capacity-factors.ts"
+    line: 49
+    parsedCount: null
+    evaluatedCount: 20
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 20
+  - name: "CAUSAL_SOURCE_KINDS"
+    file: "packages/contracts/src/causal-graph.ts"
+    line: 81
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "CANONICAL_BASE_IDS"
+    file: "packages/contracts/src/chain-sim.ts"
+    line: 259
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "CHAIN_DETAIL_ABSENCE_CODES"
+    file: "packages/contracts/src/chain-sim.ts"
+    line: 1967
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "CHAIN_NODE_IDS"
+    file: "packages/contracts/src/chain-sim.ts"
+    line: 220
+    parsedCount: null
+    evaluatedCount: 24
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 24
+  - name: "CHAIN_NODE_REGISTRY"
+    file: "packages/contracts/src/chain-sim.ts"
+    line: 186
+    parsedCount: null
+    evaluatedCount: 24
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 24
+  - name: "ErrorCodes"
+    file: "packages/contracts/src/common.ts"
+    line: 57
+    parsedCount: 14
+    evaluatedCount: 14
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 14
+  - name: "MODULE_KIND_REGISTRY"
+    file: "packages/contracts/src/databuilder.ts"
+    line: 298
+    parsedCount: null
+    evaluatedCount: 13
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 13
+  - name: "MODULE_KINDS"
+    file: "packages/contracts/src/databuilder.ts"
+    line: 279
+    parsedCount: 13
+    evaluatedCount: 13
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 13
+  - name: "RULE_PARAM_BINDINGS"
+    file: "packages/contracts/src/datacore.ts"
+    line: 330
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "SOLVER_RULE_REFS"
+    file: "packages/contracts/src/datacore.ts"
+    line: 240
+    parsedCount: 19
+    evaluatedCount: 19
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 19
+  - name: "SHARED_FEATURE_NAMES"
+    file: "packages/contracts/src/feature-names.ts"
+    line: 40
+    parsedCount: 61
+    evaluatedCount: 61
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 61
+  - name: "RESOURCE_KINDS_EXTENDED"
+    file: "packages/contracts/src/intelligence-resource.ts"
+    line: 24
+    parsedCount: null
+    evaluatedCount: 10
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 10
+  - name: "LLM_VENDOR_CATALOG"
+    file: "packages/contracts/src/llm.ts"
+    line: 127
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "OPERATION_CATALOG"
+    file: "packages/contracts/src/operation-intent.ts"
+    line: 53
+    parsedCount: null
+    evaluatedCount: 39
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 39
+  - name: "OPERATION_KINDS"
+    file: "packages/contracts/src/operation-intent.ts"
+    line: 13
+    parsedCount: 39
+    evaluatedCount: 39
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 39
+  - name: "LINK_MATERIALIZATION_FIELDS"
+    file: "packages/contracts/src/planviews.ts"
+    line: 192
+    parsedCount: null
+    evaluatedCount: 9
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 9
+  - name: "PROCESS_TASK_STATUSES"
+    file: "packages/contracts/src/process-instance.ts"
+    line: 136
+    parsedCount: null
+    evaluatedCount: 9
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 9
+  - name: "PROCESS_OWNER_FUNCTION_KEYS"
+    file: "packages/contracts/src/process.ts"
+    line: 133
+    parsedCount: null
+    evaluatedCount: 15
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 15
+  - name: "PROCESS_OWNER_FUNCTIONS"
+    file: "packages/contracts/src/process.ts"
+    line: 116
+    parsedCount: null
+    evaluatedCount: 15
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 15
+  - name: "DRILL_EVENT_SPECS"
+    file: "packages/contracts/src/sim-drill.ts"
+    line: 331
+    parsedCount: null
+    evaluatedCount: 11
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 11
+  - name: "SKILL_REASONING_NODE_TYPES"
+    file: "packages/contracts/src/skill-compile.ts"
+    line: 311
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "SKILL_REF_KIND_BINDING"
+    file: "packages/contracts/src/skill-compile.ts"
+    line: 405
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "NODE_KIND_TO_PLAN_STEP_TYPE"
+    file: "packages/contracts/src/skill-graph.ts"
+    line: 71
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "PLAN_STEP_TYPE_TO_NODE_KIND"
+    file: "packages/contracts/src/skill-graph.ts"
+    line: 522
+    parsedCount: null
+    evaluatedCount: 8
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 8
+  - name: "SKILL_GRAPH_NODE_KINDS"
+    file: "packages/contracts/src/skill-graph.ts"
+    line: 43
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "SLICE_LAYER_IDS"
+    file: "packages/contracts/src/slice-layers.ts"
+    line: 33
+    parsedCount: 16
+    evaluatedCount: 16
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 16
+  - name: "SOLVER_ARGS_SCHEMAS"
+    file: "packages/contracts/src/solver-args.ts"
+    line: 111
+    parsedCount: 11
+    evaluatedCount: 11
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 11
+  - name: "SOLVER_CATEGORIES"
+    file: "packages/contracts/src/solver-taxonomy.ts"
+    line: 20
+    parsedCount: 10
+    evaluatedCount: 10
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 10
+  - name: "SOLVER_CATEGORY_META"
+    file: "packages/contracts/src/solver-taxonomy.ts"
+    line: 49
+    parsedCount: 10
+    evaluatedCount: 10
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 10
+  - name: "AUDIT_KINDS"
+    file: "packages/contracts/src/solvers.ts"
+    line: 527
+    parsedCount: 9
+    evaluatedCount: 9
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 9
+  - name: "FDE_NODE_KEYS"
+    file: "packages/contracts/src/storybuildrun.ts"
+    line: 223
+    parsedCount: 8
+    evaluatedCount: 8
+    confidence: "evaluated"
+    trustworthy: true
+    entries: 8
+  - name: "MODULE_REGISTRY"
+    file: "packages/contracts/src/storybuildrun.ts"
+    line: 149
+    parsedCount: null
+    evaluatedCount: 11
+    confidence: "evaluated-uncountable"
+    trustworthy: true
+    entries: 11
+# 字段长度分布：只统计**字面量**赋值（x:"abc"→3 / x:[1,2,3]→3），变量与函数调用赋值不计。
+# 覆盖面 = 有鉴别力的字段（被 ≤3 个 schema 声明）。缺席 ≠ 没有数据，见 blindSpots。
+fieldStats:
+  - field: "a"
+    strLen: { n: 3, p50: 2, p90: 2, max: 2 }
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "absent"
+    strLen: { n: 2, p50: 40, p90: 40, max: 40 }
+  - field: "absentReason"
+    strLen: { n: 2, p50: 122, p90: 122, max: 122 }
+  - field: "accept"
+    arrLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "acceptance"
+    strLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "act"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "actionDetail"
+    strLen: { n: 3, p50: 27, p90: 29, max: 29 }
+  - field: "actionDraftIds"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "actionId"
+    strLen: { n: 5, p50: 15, p90: 15, max: 15 }
+  - field: "actionType"
+    strLen: { n: 6, p50: 16, p90: 17, max: 17 }
+  - field: "activeFrom"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "activeTo"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "activity"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "actorTypeKey"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "actualDeliveredTon"
+    strLen: { n: 1, p50: 18, p90: 18, max: 18 }
+  - field: "address"
+    strLen: { n: 3, p50: 2, p90: 2, max: 2 }
+  - field: "adoptedAt"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "advice"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "affectedOrders"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 7, p50: 1, p90: 4, max: 4 }
+  - field: "affectedSolvers"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "affects"
+    strLen: { n: 10, p50: 15, p90: 17, max: 17 }
+  - field: "agent"
+    strLen: { n: 8, p50: 5, p90: 16, max: 16 }
+  - field: "agentNeeds"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "agg"
+    strLen: { n: 20, p50: 3, p90: 5, max: 5 }
+  - field: "aggregate"
+    strLen: { n: 18, p50: 5, p90: 5, max: 7 }
+  - field: "aggRunId"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "agingId"
+    strLen: { n: 3, p50: 8, p90: 9, max: 9 }
+  - field: "allFactors"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "anchor"
+    strLen: { n: 14, p50: 3, p90: 9, max: 10 }
+  - field: "ANSWER"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "answerPreview"
+    strLen: { n: 1, p50: 38, p90: 38, max: 38 }
+  - field: "answersQuestions"
+    arrLen: { n: 126, p50: 3, p90: 5, max: 6 }
+  - field: "apiKeyEnv"
+    strLen: { n: 1, p50: 14, p90: 14, max: 14 }
+  - field: "apiTags"
+    arrLen: { n: 20, p50: 1, p90: 1, max: 1 }
+  - field: "appliedAt"
+    strLen: { n: 6, p50: 24, p90: 24, max: 24 }
+  - field: "appliedStateEffects"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "apply"
+    strLen: { n: 3, p50: 39, p90: 39, max: 39 }
+    arrLen: { n: 6, p50: 1, p90: 2, max: 2 }
+  - field: "approval"
+    strLen: { n: 2, p50: 24, p90: 24, max: 24 }
+  - field: "approvalChain"
+    arrLen: { n: 11, p50: 1, p90: 1, max: 2 }
+  - field: "approvalGate"
+    strLen: { n: 11, p50: 4, p90: 5, max: 5 }
+  - field: "approvalSteps"
+    arrLen: { n: 6, p50: 1, p90: 2, max: 2 }
+  - field: "approve"
+    strLen: { n: 4, p50: 2, p90: 5, max: 5 }
+  - field: "approverId"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "arg"
+    strLen: { n: 8, p50: 7, p90: 13, max: 13 }
+  - field: "argCandidates"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "arguments"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "assertions"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "assignee"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "atBuild"
+    strLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "atomicLeaves"
+    arrLen: { n: 4, p50: 0, p90: 2, max: 2 }
+  - field: "atPrecheck"
+    strLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "atStep"
+    strLen: { n: 4, p50: 8, p90: 10, max: 10 }
+  - field: "attribution"
+    strLen: { n: 5, p50: 10, p90: 13, max: 13 }
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "audit"
+    strLen: { n: 3, p50: 10, p90: 15, max: 15 }
+  - field: "authorityKey"
+    strLen: { n: 12, p50: 18, p90: 20, max: 20 }
+  - field: "authorityRef"
+    strLen: { n: 12, p50: 18, p90: 20, max: 20 }
+  - field: "auto"
+    strLen: { n: 1, p50: 15, p90: 15, max: 15 }
+  - field: "autoMapped"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "availableActions"
+    arrLen: { n: 5, p50: 2, p90: 2, max: 2 }
+  - field: "avg"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "b"
+    strLen: { n: 3, p50: 2, p90: 2, max: 2 }
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "band"
+    arrLen: { n: 19, p50: 2, p90: 2, max: 2 }
+  - field: "baseIds"
+    strLen: { n: 1, p50: 17, p90: 17, max: 17 }
+    arrLen: { n: 12, p50: 0, p90: 1, max: 1 }
+  - field: "baseline"
+    strLen: { n: 10, p50: 6, p90: 12, max: 12 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "bases"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+    arrLen: { n: 19, p50: 2, p90: 3, max: 3 }
+  - field: "baseScopeField"
+    strLen: { n: 7, p50: 6, p90: 6, max: 6 }
+  - field: "batch"
+    strLen: { n: 19, p50: 5, p90: 6, max: 6 }
+  - field: "batches"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "behavior"
+    strLen: { n: 7, p50: 6, p90: 6, max: 6 }
+  - field: "bidId"
+    strLen: { n: 3, p50: 9, p90: 9, max: 9 }
+  - field: "binding"
+    strLen: { n: 13, p50: 10, p90: 20, max: 27 }
+  - field: "bindingId"
+    strLen: { n: 15, p50: 36, p90: 44, max: 44 }
+  - field: "bindings"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "blobKey"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "block"
+    strLen: { n: 8, p50: 5, p90: 6, max: 6 }
+  - field: "blocked"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "blocks"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+    arrLen: { n: 53, p50: 1, p90: 2, max: 6 }
+  - field: "body"
+    strLen: { n: 26, p50: 21, p90: 484, max: 522 }
+  - field: "BOTTLENECK"
+    strLen: { n: 3, p50: 18, p90: 39, max: 39 }
+  - field: "breachPenaltyWan"
+    strLen: { n: 1, p50: 16, p90: 16, max: 16 }
+  - field: "BREAK"
+    strLen: { n: 3, p50: 17, p90: 37, max: 37 }
+  - field: "breakdown"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "breakSubtype"
+    strLen: { n: 7, p50: 8, p90: 8, max: 8 }
+  - field: "bridgeId"
+    strLen: { n: 4, p50: 9, p90: 10, max: 10 }
+  - field: "bucket"
+    strLen: { n: 11, p50: 6, p90: 8, max: 9 }
+  - field: "budget"
+    strLen: { n: 4, p50: 4, p90: 6, max: 6 }
+  - field: "builtIn"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "businessType"
+    strLen: { n: 20, p50: 9, p90: 9, max: 10 }
+  - field: "businessTypes"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "byCase"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "byKey"
+    strLen: { n: 5, p50: 11, p90: 14, max: 14 }
+  - field: "cadence"
+    strLen: { n: 4, p50: 3, p90: 3, max: 3 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "cadenceSkipped"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "calendarKey"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "cancel"
+    strLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "cancelled"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "canvas"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "capabilities"
+    strLen: { n: 1, p50: 40, p90: 40, max: 40 }
+  - field: "capacityDecision"
+    strLen: { n: 4, p50: 30, p90: 54, max: 54 }
+  - field: "capexCap"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "cards"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "carrier"
+    strLen: { n: 47, p50: 40, p90: 62, max: 85 }
+  - field: "carrierTypeKey"
+    strLen: { n: 78, p50: 13, p90: 18, max: 23 }
+  - field: "caseId"
+    strLen: { n: 2, p50: 14, p90: 14, max: 14 }
+  - field: "caseNo"
+    strLen: { n: 3, p50: 8, p90: 8, max: 8 }
+  - field: "cashFloor"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "causalEdges"
+    arrLen: { n: 5, p50: 0, p90: 7, max: 7 }
+  - field: "causalPath"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "caveats"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "cells"
+    arrLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "cfgRuleKey"
+    strLen: { n: 3, p50: 18, p90: 18, max: 18 }
+  - field: "chain"
+    strLen: { n: 5, p50: 77, p90: 110, max: 110 }
+    arrLen: { n: 15, p50: 4, p90: 4, max: 4 }
+  - field: "chainKey"
+    strLen: { n: 1, p50: 15, p90: 15, max: 15 }
+  - field: "changedAt"
+    strLen: { n: 6, p50: 10, p90: 10, max: 10 }
+  - field: "changedFields"
+    arrLen: { n: 3, p50: 1, p90: 2, max: 2 }
+  - field: "changedParams"
+    arrLen: { n: 5, p50: 1, p90: 2, max: 2 }
+  - field: "changedProps"
+    arrLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "changeover"
+    strLen: { n: 3, p50: 6, p90: 6, max: 6 }
+  - field: "changeoverHours"
+    strLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "changes"
+    arrLen: { n: 3, p50: 1, p90: 3, max: 3 }
+  - field: "check"
+    strLen: { n: 12, p50: 25, p90: 33, max: 55 }
+  - field: "checked"
+    arrLen: { n: 8, p50: 4, p90: 4, max: 4 }
+  - field: "checks"
+    arrLen: { n: 3, p50: 0, p90: 4, max: 4 }
+  - field: "city"
+    strLen: { n: 9, p50: 2, p90: 4, max: 4 }
+  - field: "claim"
+    strLen: { n: 4, p50: 55, p90: 59, max: 59 }
+  - field: "claims"
+    arrLen: { n: 3, p50: 0, p90: 1, max: 1 }
+  - field: "clarifyPrompt"
+    strLen: { n: 6, p50: 5, p90: 37, max: 37 }
+  - field: "classification"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "cliCommand"
+    strLen: { n: 39, p50: 6, p90: 12, max: 15 }
+  - field: "clockSource"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "closure"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "coefficient"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "coefficients"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "coeffSource"
+    strLen: { n: 3, p50: 8, p90: 8, max: 8 }
+  - field: "color"
+    strLen: { n: 994, p50: 13, p90: 17, max: 30 }
+  - field: "colorBy"
+    strLen: { n: 20, p50: 6, p90: 6, max: 6 }
+  - field: "column"
+    strLen: { n: 3, p50: 4, p90: 4, max: 4 }
+  - field: "combine"
+    strLen: { n: 51, p50: 3, p90: 3, max: 3 }
+  - field: "command"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "commentPool"
+    strLen: { n: 2, p50: 17, p90: 17, max: 17 }
+  - field: "committedBatches"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "commodity"
+    strLen: { n: 10, p50: 3, p90: 9, max: 9 }
+  - field: "competitor"
+    strLen: { n: 7, p50: 4, p90: 10, max: 10 }
+  - field: "competitorRef"
+    strLen: { n: 3, p50: 3, p90: 13, max: 13 }
+  - field: "compiledPlanId"
+    strLen: { n: 1, p50: 16, p90: 16, max: 16 }
+  - field: "completedAt"
+    strLen: { n: 9, p50: 20, p90: 20, max: 20 }
+  - field: "computeSource"
+    strLen: { n: 2, p50: 258, p90: 258, max: 258 }
+  - field: "condition"
+    strLen: { n: 6, p50: 19, p90: 20, max: 20 }
+  - field: "conds"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "confirm"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "conflictConstraints"
+    arrLen: { n: 4, p50: 0, p90: 0, max: 0 }
+  - field: "conflicts"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "CONGESTION"
+    strLen: { n: 3, p50: 28, p90: 40, max: 40 }
+  - field: "connection"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "connectorTypeKey"
+    strLen: { n: 21, p50: 8, p90: 14, max: 14 }
+  - field: "connectorTypeKeys"
+    arrLen: { n: 30, p50: 3, p90: 4, max: 4 }
+  - field: "connName"
+    strLen: { n: 6, p50: 8, p90: 8, max: 8 }
+  - field: "connType"
+    strLen: { n: 9, p50: 8, p90: 12, max: 12 }
+  - field: "constraintRefs"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "constraints"
+    strLen: { n: 3, p50: 4, p90: 4, max: 4 }
+  - field: "consumedBy"
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "content"
+    strLen: { n: 12, p50: 2, p90: 43, max: 51 }
+    arrLen: { n: 8, p50: 1, p90: 1, max: 1 }
+  - field: "contextOps"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+    arrLen: { n: 5, p50: 0, p90: 1, max: 1 }
+  - field: "contractedQtyTon"
+    strLen: { n: 1, p50: 16, p90: 16, max: 16 }
+  - field: "contractFixtures"
+    arrLen: { n: 11, p50: 1, p90: 1, max: 1 }
+  - field: "convention"
+    strLen: { n: 2, p50: 58, p90: 58, max: 58 }
+  - field: "conversationId"
+    strLen: { n: 9, p50: 7, p90: 7, max: 7 }
+  - field: "costClass"
+    strLen: { n: 28, p50: 5, p90: 9, max: 9 }
+  - field: "costFields"
+    strLen: { n: 1, p50: 150, p90: 150, max: 150 }
+  - field: "countBasis"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+  - field: "counterfactual"
+    strLen: { n: 1, p50: 13, p90: 13, max: 13 }
+  - field: "created"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "createdBy"
+    strLen: { n: 7, p50: 14, p90: 16, max: 16 }
+  - field: "credentialKind"
+    strLen: { n: 2, p50: 13, p90: 13, max: 13 }
+  - field: "credentialRef"
+    strLen: { n: 4, p50: 9, p90: 11, max: 11 }
+  - field: "creditLimit"
+    strLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "crossedAt"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "currency"
+    strLen: { n: 10, p50: 3, p90: 8, max: 8 }
+  - field: "custId"
+    strLen: { n: 10, p50: 7, p90: 7, max: 7 }
+  - field: "custName"
+    strLen: { n: 8, p50: 4, p90: 18, max: 18 }
+  - field: "customer"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "customerRef"
+    strLen: { n: 6, p50: 4, p90: 11, max: 11 }
+  - field: "customers"
+    arrLen: { n: 3, p50: 0, p90: 4, max: 4 }
+  - field: "d"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "daily"
+    arrLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "datasetKey"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "datasetName"
+    strLen: { n: 4, p50: 10, p90: 10, max: 10 }
+  - field: "datasets"
+    arrLen: { n: 3, p50: 2, p90: 2, max: 2 }
+  - field: "dataSources"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+    arrLen: { n: 4, p50: 1, p90: 2, max: 2 }
+  - field: "decayUnresolved"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "decidedBy"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "decomposition"
+    arrLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "deepLink"
+    strLen: { n: 24, p50: 14, p90: 16, max: 18 }
+  - field: "default"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "defaultAgentId"
+    strLen: { n: 3, p50: 11, p90: 16, max: 16 }
+  - field: "defaultBaseUrl"
+    strLen: { n: 8, p50: 27, p90: 55, max: 55 }
+  - field: "defaultFrom"
+    strLen: { n: 8, p50: 20, p90: 20, max: 20 }
+  - field: "defaultMode"
+    strLen: { n: 17, p50: 18, p90: 18, max: 18 }
+  - field: "deferred"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "degradeImpact"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "delay"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "delayTicks"
+    strLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "delegationKey"
+    strLen: { n: 2, p50: 23, p90: 23, max: 23 }
+  - field: "deltas"
+    arrLen: { n: 6, p50: 0, p90: 1, max: 1 }
+  - field: "demandDelta"
+    strLen: { n: 5, p50: 21, p90: 21, max: 21 }
+  - field: "denyRead"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "denyWrite"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "dependsOn"
+    arrLen: { n: 5, p50: 1, p90: 2, max: 2 }
+  - field: "derivationEdge"
+    strLen: { n: 8, p50: 63, p90: 87, max: 87 }
+  - field: "derivations"
+    arrLen: { n: 98, p50: 0, p90: 1, max: 2 }
+  - field: "derived"
+    strLen: { n: 3, p50: 2, p90: 7, max: 7 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "derivedProperties"
+    arrLen: { n: 12, p50: 0, p90: 0, max: 1 }
+  - field: "desc"
+    strLen: { n: 19, p50: 58, p90: 150, max: 162 }
+  - field: "descriptionForLLM"
+    strLen: { n: 29, p50: 88, p90: 171, max: 244 }
+  - field: "det"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+  - field: "diagnosis"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "diff"
+    strLen: { n: 10, p50: 4, p90: 50, max: 50 }
+  - field: "diffs"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "dim"
+    strLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "dims"
+    arrLen: { n: 5, p50: 2, p90: 3, max: 3 }
+  - field: "disabledRuleKeys"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "display"
+    strLen: { n: 635, p50: 4, p90: 5, max: 12 }
+  - field: "disposition"
+    strLen: { n: 6, p50: 8, p90: 11, max: 11 }
+  - field: "docId"
+    strLen: { n: 8, p50: 10, p90: 19, max: 19 }
+  - field: "docUrl"
+    strLen: { n: 8, p50: 32, p90: 44, max: 44 }
+  - field: "domainName"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "domains"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+    arrLen: { n: 5, p50: 2, p90: 14, max: 14 }
+  - field: "domainTrustLevel"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "done"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "downstream"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+    arrLen: { n: 3, p50: 3, p90: 4, max: 4 }
+  - field: "draftId"
+    strLen: { n: 5, p50: 7, p90: 27, max: 27 }
+  - field: "drilldownRef"
+    strLen: { n: 8, p50: 13, p90: 19, max: 19 }
+  - field: "drillFilterField"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "drillFilterValue"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "drillNorm"
+    strLen: { n: 7, p50: 6, p90: 12, max: 12 }
+  - field: "drillPath"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "drillPick"
+    strLen: { n: 9, p50: 3, p90: 3, max: 3 }
+  - field: "drillUnit"
+    strLen: { n: 7, p50: 11, p90: 14, max: 14 }
+  - field: "driver"
+    strLen: { n: 4, p50: 16, p90: 17, max: 17 }
+  - field: "dsl"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "dsoId"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+  - field: "dueDate"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "earliestKitDayReason"
+    strLen: { n: 1, p50: 53, p90: 53, max: 53 }
+  - field: "earliestKitDayStatus"
+    strLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "eff"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+  - field: "effectiveDate"
+    strLen: { n: 16, p50: 10, p90: 10, max: 13 }
+  - field: "effectiveFrom"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "effects"
+    arrLen: { n: 5, p50: 2, p90: 3, max: 3 }
+  - field: "email"
+    strLen: { n: 4, p50: 18, p90: 18, max: 18 }
+  - field: "empty"
+    strLen: { n: 16, p50: 31, p90: 49, max: 49 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "emptyKind"
+    strLen: { n: 2, p50: 11, p90: 11, max: 11 }
+  - field: "emptyReason"
+    strLen: { n: 1, p50: 52, p90: 52, max: 52 }
+  - field: "enabledViews"
+    strLen: { n: 12, p50: 1, p90: 1, max: 1 }
+    arrLen: { n: 4, p50: 1, p90: 2, max: 2 }
+  - field: "end"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "endpoint"
+    strLen: { n: 42, p50: 17, p90: 22, max: 33 }
+  - field: "engine"
+    strLen: { n: 3, p50: 23, p90: 23, max: 23 }
+  - field: "entering"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "entities"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "entityId"
+    strLen: { n: 4, p50: 11, p90: 14, max: 14 }
+  - field: "entityIds"
+    arrLen: { n: 5, p50: 0, p90: 1, max: 1 }
+  - field: "entityRefField"
+    strLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "entityType"
+    strLen: { n: 7, p50: 4, p90: 9, max: 9 }
+  - field: "entries"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "entry"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "enum"
+    arrLen: { n: 14, p50: 3, p90: 5, max: 6 }
+  - field: "enumCandidates"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "enumValues"
+    arrLen: { n: 3, p50: 3, p90: 3, max: 3 }
+  - field: "epsilon"
+    strLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "equals"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "errors"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+    arrLen: { n: 15, p50: 1, p90: 1, max: 1 }
+  - field: "escalateToRole"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "eta"
+    strLen: { n: 10, p50: 10, p90: 10, max: 10 }
+  - field: "etaDate"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "etaDay"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "evaluatedRules"
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "examples"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 25, p50: 3, p90: 3, max: 3 }
+  - field: "exceptions"
+    arrLen: { n: 4, p50: 2, p90: 3, max: 3 }
+  - field: "excludes"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "excType"
+    strLen: { n: 5, p50: 9, p90: 17, max: 17 }
+  - field: "executed"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "existingTypeKey"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "exits"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "expected"
+    strLen: { n: 7, p50: 3, p90: 20, max: 20 }
+  - field: "expiryDate"
+    strLen: { n: 4, p50: 10, p90: 10, max: 10 }
+  - field: "exportedAt"
+    strLen: { n: 1, p50: 20, p90: 20, max: 20 }
+  - field: "extractJobId"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "factorName"
+    strLen: { n: 22, p50: 4, p90: 7, max: 8 }
+  - field: "factors"
+    strLen: { n: 1, p50: 17, p90: 17, max: 17 }
+    arrLen: { n: 8, p50: 1, p90: 2, max: 2 }
+  - field: "factory"
+    strLen: { n: 4, p50: 7, p90: 16, max: 16 }
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "failed"
+    strLen: { n: 3, p50: 4, p90: 13, max: 13 }
+  - field: "failures"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "fallback"
+    strLen: { n: 4, p50: 5, p90: 6, max: 6 }
+    arrLen: { n: 5, p50: 2, p90: 2, max: 2 }
+  - field: "fallbackProviderId"
+    strLen: { n: 1, p50: 14, p90: 14, max: 14 }
+  - field: "family"
+    strLen: { n: 1, p50: 15, p90: 15, max: 15 }
+  - field: "feasibilityNote"
+    strLen: { n: 1, p50: 55, p90: 55, max: 55 }
+  - field: "featureKey"
+    strLen: { n: 30, p50: 19, p90: 26, max: 31 }
+  - field: "fgInv"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "fieldPath"
+    strLen: { n: 1, p50: 26, p90: 26, max: 26 }
+  - field: "filename"
+    strLen: { n: 1, p50: 15, p90: 15, max: 15 }
+  - field: "fillMode"
+    strLen: { n: 3, p50: 4, p90: 4, max: 4 }
+  - field: "filters"
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "fin"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "finalizedAt"
+    strLen: { n: 1, p50: 20, p90: 20, max: 20 }
+  - field: "finance"
+    strLen: { n: 5, p50: 7, p90: 8, max: 8 }
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "findings"
+    arrLen: { n: 15, p50: 0, p90: 1, max: 1 }
+  - field: "fired"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "flags"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+    arrLen: { n: 32, p50: 1, p90: 2, max: 3 }
+  - field: "floorPct"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "focusHint"
+    strLen: { n: 3, p50: 4, p90: 4, max: 4 }
+  - field: "focusKeys"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "focusMetrics"
+    arrLen: { n: 5, p50: 2, p90: 4, max: 4 }
+  - field: "forecasts"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "forecastStart"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "format"
+    strLen: { n: 8, p50: 10, p90: 10, max: 10 }
+  - field: "freight"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "fromBase"
+    strLen: { n: 3, p50: 7, p90: 9, max: 9 }
+  - field: "fromDay"
+    strLen: { n: 3, p50: 17, p90: 20, max: 20 }
+  - field: "fromField"
+    strLen: { n: 5, p50: 8, p90: 11, max: 11 }
+  - field: "fromObjectId"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "fromPrincipalRef"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+  - field: "fromQ"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+  - field: "fromQuestion"
+    strLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "fromStep"
+    strLen: { n: 14, p50: 2, p90: 2, max: 2 }
+  - field: "fromTemplate"
+    strLen: { n: 1, p50: 21, p90: 21, max: 21 }
+  - field: "fromType"
+    strLen: { n: 6, p50: 5, p90: 5, max: 5 }
+  - field: "fromWarehouse"
+    strLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "frozenCapacityMode"
+    strLen: { n: 3, p50: 23, p90: 23, max: 23 }
+  - field: "frozenOrderIds"
+    strLen: { n: 2, p50: 11, p90: 11, max: 11 }
+  - field: "full"
+    strLen: { n: 4, p50: 19, p90: 23, max: 23 }
+  - field: "functions"
+    strLen: { n: 1, p50: 0, p90: 0, max: 0 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "gain"
+    strLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "gapId"
+    strLen: { n: 3, p50: 11, p90: 13, max: 13 }
+  - field: "gapRed"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "gaps"
+    arrLen: { n: 18, p50: 1, p90: 2, max: 2 }
+  - field: "gapTon"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "generation"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "give"
+    strLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "gmFloor"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "goldenId"
+    strLen: { n: 2, p50: 5, p90: 5, max: 5 }
+  - field: "grainType"
+    strLen: { n: 6, p50: 14, p90: 18, max: 18 }
+  - field: "grants"
+    arrLen: { n: 12, p50: 2, p90: 3, max: 4 }
+  - field: "growth"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "guardText"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "hard"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "hardViol"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "hash"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+  - field: "high"
+    strLen: { n: 1, p50: 13, p90: 13, max: 13 }
+  - field: "hint"
+    strLen: { n: 57, p50: 21, p90: 57, max: 87 }
+  - field: "horizon"
+    strLen: { n: 7, p50: 8, p90: 23, max: 23 }
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "ids"
+    arrLen: { n: 14, p50: 3, p90: 9, max: 10 }
+  - field: "impact"
+    strLen: { n: 20, p50: 2, p90: 4, max: 6 }
+  - field: "impedimentId"
+    strLen: { n: 6, p50: 38, p90: 58, max: 58 }
+  - field: "implements"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "in"
+    strLen: { n: 21, p50: 13, p90: 29, max: 49 }
+  - field: "inbound"
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "incubatedAt"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+  - field: "industryKey"
+    strLen: { n: 4, p50: 21, p90: 21, max: 21 }
+  - field: "inferredType"
+    strLen: { n: 16, p50: 6, p90: 6, max: 6 }
+  - field: "inputFields"
+    arrLen: { n: 5, p50: 2, p90: 2, max: 2 }
+  - field: "instruction"
+    strLen: { n: 2, p50: 11, p90: 11, max: 11 }
+  - field: "intake"
+    strLen: { n: 3, p50: 11, p90: 11, max: 11 }
+  - field: "INTENT"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "intentNeeds"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "interfaceKey"
+    strLen: { n: 4, p50: 10, p90: 10, max: 10 }
+  - field: "inUse"
+    arrLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "invoiceRef"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "issues"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "iterations"
+    arrLen: { n: 6, p50: 1, p90: 3, max: 3 }
+  - field: "jobId"
+    strLen: { n: 5, p50: 15, p90: 36, max: 36 }
+  - field: "kbDocs"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+    arrLen: { n: 3, p50: 0, p90: 1, max: 1 }
+  - field: "kernel"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "keyProp"
+    strLen: { n: 11, p50: 5, p90: 7, max: 7 }
+  - field: "keyProps"
+    arrLen: { n: 13, p50: 1, p90: 3, max: 3 }
+  - field: "keysTried"
+    arrLen: { n: 3, p50: 0, p90: 0, max: 0 }
+  - field: "keywords"
+    arrLen: { n: 91, p50: 5, p90: 8, max: 10 }
+  - field: "kinds"
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "kpis"
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "kpiTypeKeys"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "ksfId"
+    strLen: { n: 10, p50: 7, p90: 8, max: 8 }
+  - field: "ksfRef"
+    strLen: { n: 10, p50: 7, p90: 8, max: 8 }
+  - field: "l1_domain"
+    arrLen: { n: 2, p50: 12, p90: 12, max: 12 }
+  - field: "l2_decisionType"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "l3_scenario"
+    arrLen: { n: 1, p50: 14, p90: 14, max: 14 }
+  - field: "l5_algorithm"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "lastDataAt"
+    strLen: { n: 3, p50: 20, p90: 20, max: 20 }
+  - field: "lastError"
+    strLen: { n: 2, p50: 22, p90: 22, max: 22 }
+  - field: "lastLoginAt"
+    strLen: { n: 2, p50: 20, p90: 20, max: 20 }
+  - field: "lastRunAt"
+    strLen: { n: 2, p50: 20, p90: 20, max: 20 }
+  - field: "lastSyncAt"
+    strLen: { n: 9, p50: 20, p90: 20, max: 20 }
+  - field: "layers"
+    strLen: { n: 2, p50: 192, p90: 192, max: 192 }
+    arrLen: { n: 4, p50: 4, p90: 4, max: 4 }
+  - field: "leadTime"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "leg"
+    strLen: { n: 24, p50: 19, p90: 19, max: 19 }
+  - field: "levels"
+    arrLen: { n: 6, p50: 3, p90: 3, max: 3 }
+  - field: "lever"
+    strLen: { n: 5, p50: 5, p90: 6, max: 6 }
+  - field: "leverDeltas"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "levers"
+    strLen: { n: 3, p50: 7, p90: 10, max: 10 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "lifecycle"
+    strLen: { n: 7, p50: 7, p90: 9, max: 9 }
+  - field: "limit"
+    strLen: { n: 2, p50: 34, p90: 34, max: 34 }
+  - field: "limitKey"
+    strLen: { n: 12, p50: 17, p90: 19, max: 19 }
+  - field: "line"
+    strLen: { n: 8, p50: 4, p90: 4, max: 4 }
+  - field: "lineId"
+    strLen: { n: 20, p50: 7, p90: 12, max: 12 }
+  - field: "lines"
+    strLen: { n: 2, p50: 6, p90: 6, max: 6 }
+    arrLen: { n: 5, p50: 3, p90: 4, max: 4 }
+  - field: "linkKeys"
+    arrLen: { n: 15, p50: 1, p90: 1, max: 1 }
+  - field: "linkKinds"
+    arrLen: { n: 8, p50: 2, p90: 2, max: 2 }
+  - field: "links"
+    arrLen: { n: 5, p50: 0, p90: 1, max: 1 }
+  - field: "listPrice"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "liveMonths"
+    arrLen: { n: 3, p50: 0, p90: 0, max: 0 }
+  - field: "llmMode"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "lossReason"
+    strLen: { n: 3, p50: 4, p90: 10, max: 10 }
+  - field: "low"
+    strLen: { n: 1, p50: 17, p90: 17, max: 17 }
+  - field: "ltaDeviation"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "ltaId"
+    strLen: { n: 4, p50: 12, p90: 12, max: 12 }
+  - field: "ltaLock"
+    strLen: { n: 4, p50: 15, p90: 24, max: 24 }
+  - field: "magnitudeBasis"
+    strLen: { n: 11, p50: 42, p90: 57, max: 74 }
+  - field: "magnitudeFrom"
+    strLen: { n: 11, p50: 9, p90: 11, max: 11 }
+  - field: "maint"
+    strLen: { n: 1, p50: 13, p90: 13, max: 13 }
+  - field: "margin"
+    strLen: { n: 107, p50: 7, p90: 10, max: 58 }
+  - field: "marginPct"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "mark"
+    strLen: { n: 66, p50: 1, p90: 1, max: 1 }
+  - field: "markdown"
+    strLen: { n: 35, p50: 26, p90: 83, max: 105 }
+  - field: "matched"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "matchedBy"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "materialized"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "materialType"
+    strLen: { n: 22, p50: 2, p90: 3, max: 12 }
+  - field: "matId"
+    strLen: { n: 10, p50: 7, p90: 12, max: 12 }
+  - field: "matrix"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "maxAttempts"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "maxCustomerImportance"
+    strLen: { n: 4, p50: 9, p90: 9, max: 9 }
+  - field: "maxHops"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "mcpConfigId"
+    strLen: { n: 6, p50: 14, p90: 15, max: 15 }
+  - field: "mcpNeeds"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+    arrLen: { n: 4, p50: 0, p90: 1, max: 1 }
+  - field: "mcpServers"
+    arrLen: { n: 17, p50: 0, p90: 1, max: 1 }
+  - field: "measure"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "measureKind"
+    strLen: { n: 2, p50: 5, p90: 5, max: 5 }
+  - field: "meetCapex"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "meetCash"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "meetGm"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "meetRevenue"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "meets"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "meetShare"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "meetTurns"
+    strLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "mergedAt"
+    strLen: { n: 2, p50: 20, p90: 20, max: 20 }
+  - field: "mergedBy"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "mergedIds"
+    arrLen: { n: 3, p50: 1, p90: 1, max: 1 }
+  - field: "metric"
+    strLen: { n: 3, p50: 4, p90: 13, max: 13 }
+  - field: "metricId"
+    strLen: { n: 4, p50: 12, p90: 12, max: 12 }
+  - field: "missingArgs"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "missingFields"
+    arrLen: { n: 6, p50: 1, p90: 3, max: 3 }
+  - field: "missingInputs"
+    arrLen: { n: 4, p50: 3, p90: 3, max: 3 }
+  - field: "missingRefs"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "mockNote"
+    strLen: { n: 2, p50: 51, p90: 51, max: 51 }
+  - field: "mockNotes"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "modelIds"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "modeling"
+    strLen: { n: 3, p50: 8, p90: 48, max: 48 }
+  - field: "modelName"
+    strLen: { n: 1, p50: 19, p90: 19, max: 19 }
+  - field: "modelPool"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "modes"
+    arrLen: { n: 30, p50: 1, p90: 2, max: 2 }
+  - field: "monthly"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "move"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "mustIncludeLinkKeys"
+    arrLen: { n: 11, p50: 8, p90: 9, max: 11 }
+  - field: "mustIncludeTypes"
+    arrLen: { n: 12, p50: 10, p90: 15, max: 18 }
+  - field: "n"
+    strLen: { n: 21, p50: 7, p90: 11, max: 11 }
+  - field: "nameSuggestion"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "navigation"
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "need"
+    strLen: { n: 12, p50: 38, p90: 65, max: 65 }
+  - field: "needs"
+    strLen: { n: 10, p50: 74, p90: 101, max: 101 }
+  - field: "newDueDate"
+    strLen: { n: 2, p50: 32, p90: 32, max: 32 }
+  - field: "nextRunAt"
+    strLen: { n: 3, p50: 20, p90: 20, max: 20 }
+  - field: "no"
+    strLen: { n: 16, p50: 2, p90: 4, max: 4 }
+  - field: "noCandidateKind"
+    strLen: { n: 6, p50: 4, p90: 11, max: 11 }
+  - field: "nodeTypes"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "none"
+    strLen: { n: 6, p50: 12, p90: 34, max: 34 }
+  - field: "normalizedRef"
+    strLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "notifiedTo"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "notSummable"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "nullRate"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "obj"
+    strLen: { n: 3, p50: 7, p90: 8, max: 8 }
+  - field: "object"
+    strLen: { n: 5, p50: 5, p90: 8, max: 8 }
+  - field: "objectIds"
+    arrLen: { n: 16, p50: 1, p90: 4, max: 4 }
+  - field: "objective"
+    strLen: { n: 6, p50: 10, p90: 37, max: 37 }
+  - field: "objectives"
+    strLen: { n: 2, p50: 17, p90: 17, max: 17 }
+  - field: "objectKey"
+    strLen: { n: 14, p50: 7, p90: 15, max: 17 }
+  - field: "objectRef"
+    strLen: { n: 8, p50: 24, p90: 24, max: 24 }
+  - field: "objects"
+    arrLen: { n: 5, p50: 0, p90: 2, max: 2 }
+  - field: "onEvent"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "onFailure"
+    strLen: { n: 3, p50: 5, p90: 5, max: 5 }
+  - field: "onOrphan"
+    strLen: { n: 4, p50: 13, p90: 13, max: 13 }
+  - field: "ontime"
+    strLen: { n: 3, p50: 2, p90: 3, max: 3 }
+  - field: "onTimeRate"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "ontologyValidation"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "openCron"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "openTickets"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "oppId"
+    strLen: { n: 6, p50: 10, p90: 11, max: 11 }
+  - field: "ops"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+    arrLen: { n: 26, p50: 1, p90: 3, max: 3 }
+  - field: "optionIds"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "optionRef"
+    strLen: { n: 2, p50: 15, p90: 15, max: 15 }
+  - field: "oracle"
+    strLen: { n: 21, p50: 9, p90: 11, max: 11 }
+  - field: "order"
+    strLen: { n: 2, p50: 49, p90: 49, max: 49 }
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "orderIds"
+    strLen: { n: 2, p50: 13, p90: 13, max: 13 }
+  - field: "orders"
+    strLen: { n: 7, p50: 7, p90: 18, max: 18 }
+    arrLen: { n: 4, p50: 0, p90: 1, max: 1 }
+  - field: "orgKey"
+    strLen: { n: 26, p50: 12, p90: 18, max: 20 }
+  - field: "OTHER"
+    strLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "out"
+    strLen: { n: 21, p50: 15, p90: 28, max: 35 }
+  - field: "outOfCatalog"
+    strLen: { n: 1, p50: 14, p90: 14, max: 14 }
+  - field: "output"
+    strLen: { n: 7, p50: 19, p90: 19, max: 19 }
+  - field: "outputPath"
+    strLen: { n: 68, p50: 10, p90: 16, max: 26 }
+  - field: "outputShape"
+    arrLen: { n: 101, p50: 6, p90: 10, max: 22 }
+  - field: "over"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "overall"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "overdueDays"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "overdueId"
+    strLen: { n: 3, p50: 5, p90: 9, max: 9 }
+  - field: "overridden"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "ownerFunctionKey"
+    strLen: { n: 95, p50: 15, p90: 19, max: 19 }
+  - field: "ownerRef"
+    strLen: { n: 21, p50: 7, p90: 11, max: 12 }
+  - field: "ownerUserId"
+    strLen: { n: 15, p50: 14, p90: 16, max: 16 }
+  - field: "page"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "pageSize"
+    strLen: { n: 5, p50: 2, p90: 2, max: 2 }
+  - field: "param"
+    strLen: { n: 25, p50: 18, p90: 23, max: 24 }
+  - field: "parameter"
+    strLen: { n: 23, p50: 10, p90: 14, max: 14 }
+  - field: "paramKeys"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "paramPath"
+    strLen: { n: 10, p50: 13, p90: 13, max: 13 }
+  - field: "parentRef"
+    strLen: { n: 23, p50: 9, p90: 10, max: 11 }
+  - field: "participants"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "paths"
+    arrLen: { n: 20, p50: 5, p90: 10, max: 11 }
+  - field: "pattern"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "payloadKeys"
+    arrLen: { n: 11, p50: 1, p90: 2, max: 2 }
+  - field: "payloadPath"
+    strLen: { n: 6, p50: 16, p90: 16, max: 16 }
+  - field: "pctChange"
+    strLen: { n: 1, p50: 9, p90: 9, max: 9 }
+  - field: "pending"
+    strLen: { n: 3, p50: 45, p90: 49, max: 49 }
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "pendingCertList"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "perBaseRows"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "perm"
+    strLen: { n: 9, p50: 17, p90: 21, max: 21 }
+  - field: "persona"
+    strLen: { n: 18, p50: 15, p90: 21, max: 21 }
+  - field: "perturbationKind"
+    strLen: { n: 11, p50: 12, p90: 17, max: 17 }
+  - field: "perturbations"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "phases"
+    arrLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "placeholder"
+    strLen: { n: 23, p50: 24, p90: 41, max: 49 }
+  - field: "planName"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "planNeeds"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "planRows"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "plans"
+    arrLen: { n: 3, p50: 2, p90: 3, max: 3 }
+  - field: "platformRoles"
+    arrLen: { n: 20, p50: 1, p90: 1, max: 1 }
+  - field: "platformSchemaVersion"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "poId"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+  - field: "point"
+    strLen: { n: 19, p50: 21, p90: 44, max: 48 }
+  - field: "points"
+    arrLen: { n: 1, p50: 12, p90: 12, max: 12 }
+  - field: "points30d"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "poolId"
+    strLen: { n: 3, p50: 10, p90: 12, max: 12 }
+  - field: "position"
+    strLen: { n: 40, p50: 8, p90: 8, max: 8 }
+  - field: "present"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "pressureUnit"
+    strLen: { n: 2, p50: 25, p90: 25, max: 25 }
+  - field: "preview"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "pri"
+    strLen: { n: 33, p50: 1, p90: 1, max: 1 }
+  - field: "priceFormula"
+    strLen: { n: 4, p50: 15, p90: 24, max: 24 }
+  - field: "priceId"
+    strLen: { n: 6, p50: 8, p90: 14, max: 14 }
+  - field: "priceLinked"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "pricePerKwh"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "pricePerTon"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "primaryKey"
+    strLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "primaryKeyColumn"
+    strLen: { n: 17, p50: 7, p90: 9, max: 10 }
+  - field: "principalId"
+    strLen: { n: 33, p50: 13, p90: 18, max: 19 }
+  - field: "principalRef"
+    strLen: { n: 12, p50: 12, p90: 19, max: 19 }
+  - field: "priority"
+    strLen: { n: 3, p50: 8, p90: 8, max: 8 }
+  - field: "probe"
+    strLen: { n: 24, p50: 126, p90: 227, max: 369 }
+  - field: "problems"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 4, p50: 2, p90: 2, max: 2 }
+  - field: "proc"
+    strLen: { n: 21, p50: 28, p90: 67, max: 77 }
+  - field: "process"
+    strLen: { n: 7, p50: 4, p90: 40, max: 40 }
+    arrLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "processId"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+  - field: "processKey"
+    strLen: { n: 24, p50: 3, p90: 20, max: 22 }
+  - field: "processName"
+    strLen: { n: 3, p50: 9, p90: 9, max: 9 }
+  - field: "procurement"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "producedArtifacts"
+    arrLen: { n: 3, p50: 0, p90: 1, max: 1 }
+  - field: "producedConnections"
+    arrLen: { n: 7, p50: 1, p90: 1, max: 1 }
+  - field: "producedDatasets"
+    arrLen: { n: 7, p50: 1, p90: 1, max: 1 }
+  - field: "product"
+    strLen: { n: 3, p50: 7, p90: 16, max: 16 }
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "profileId"
+    strLen: { n: 5, p50: 15, p90: 17, max: 17 }
+  - field: "project"
+    strLen: { n: 3, p50: 11, p90: 16, max: 16 }
+    arrLen: { n: 98, p50: 5, p90: 8, max: 10 }
+  - field: "projects"
+    strLen: { n: 2, p50: 33, p90: 33, max: 33 }
+    arrLen: { n: 6, p50: 1, p90: 2, max: 2 }
+  - field: "promotedBy"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "promotedSolvers"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "prompt"
+    strLen: { n: 3, p50: 22, p90: 69, max: 69 }
+  - field: "propKeys"
+    arrLen: { n: 49, p50: 3, p90: 8, max: 13 }
+  - field: "proposalId"
+    strLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "proposals"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "props"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "propsTried"
+    arrLen: { n: 3, p50: 0, p90: 0, max: 0 }
+  - field: "prototypeColumn"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "provenancePolicy"
+    strLen: { n: 11, p50: 11, p90: 11, max: 11 }
+  - field: "providerId"
+    strLen: { n: 3, p50: 14, p90: 14, max: 14 }
+  - field: "province"
+    strLen: { n: 9, p50: 2, p90: 8, max: 8 }
+  - field: "publish"
+    strLen: { n: 4, p50: 6, p90: 13, max: 13 }
+  - field: "purpose"
+    strLen: { n: 5, p50: 10, p90: 12, max: 12 }
+  - field: "q"
+    strLen: { n: 6, p50: 7, p90: 7, max: 7 }
+  - field: "qa"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "quarters"
+    arrLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "queryPool"
+    strLen: { n: 5, p50: 13, p90: 18, max: 18 }
+  - field: "radarDims"
+    arrLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "rateKind"
+    strLen: { n: 2, p50: 15, p90: 15, max: 15 }
+  - field: "rateProp"
+    strLen: { n: 2, p50: 18, p90: 18, max: 18 }
+  - field: "raw"
+    strLen: { n: 1, p50: 74, p90: 74, max: 74 }
+  - field: "rawIn"
+    arrLen: { n: 3, p50: 5, p90: 5, max: 5 }
+  - field: "reads"
+    arrLen: { n: 42, p50: 4, p90: 7, max: 13 }
+  - field: "realizedPrice"
+    strLen: { n: 1, p50: 13, p90: 13, max: 13 }
+  - field: "reasoning"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "reasons"
+    arrLen: { n: 5, p50: 1, p90: 2, max: 2 }
+  - field: "recommend"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "reconChecks"
+    arrLen: { n: 8, p50: 0, p90: 2, max: 2 }
+  - field: "recordId"
+    strLen: { n: 3, p50: 8, p90: 8, max: 8 }
+  - field: "references"
+    arrLen: { n: 12, p50: 1, p90: 2, max: 2 }
+  - field: "refField"
+    strLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "refId"
+    strLen: { n: 10, p50: 15, p90: 20, max: 20 }
+  - field: "refKind"
+    strLen: { n: 4, p50: 10, p90: 16, max: 16 }
+  - field: "refToTypeKey"
+    strLen: { n: 101, p50: 5, p90: 14, max: 24 }
+  - field: "refType"
+    strLen: { n: 22, p50: 6, p90: 15, max: 17 }
+  - field: "refTypeKey"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "reject"
+    strLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "rel"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "relations"
+    strLen: { n: 3, p50: 2, p90: 4, max: 4 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "relType"
+    strLen: { n: 6, p50: 7, p90: 8, max: 8 }
+  - field: "renderBindings"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "renderer"
+    strLen: { n: 66, p50: 12, p90: 16, max: 17 }
+  - field: "replayFrom"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "replayTo"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "requestedBy"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "requestId"
+    strLen: { n: 6, p50: 8, p90: 24, max: 24 }
+  - field: "requiredArgs"
+    arrLen: { n: 28, p50: 0, p90: 0, max: 1 }
+  - field: "requiredSlots"
+    arrLen: { n: 40, p50: 0, p90: 1, max: 1 }
+  - field: "requires"
+    arrLen: { n: 73, p50: 1, p90: 1, max: 1 }
+  - field: "residualPct"
+    strLen: { n: 2, p50: 11, p90: 11, max: 11 }
+  - field: "resolutions"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "resolvedAt"
+    strLen: { n: 6, p50: 10, p90: 24, max: 24 }
+  - field: "resolvedRefs"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "resource"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "resources"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+    arrLen: { n: 15, p50: 0, p90: 0, max: 1 }
+  - field: "resourceType"
+    strLen: { n: 2, p50: 28, p90: 28, max: 28 }
+  - field: "result"
+    strLen: { n: 3, p50: 6, p90: 6, max: 6 }
+  - field: "results"
+    arrLen: { n: 3, p50: 0, p90: 0, max: 0 }
+  - field: "reused"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "reusedTypeKeys"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "revenue"
+    strLen: { n: 4, p50: 2, p90: 2, max: 2 }
+  - field: "revenueField"
+    strLen: { n: 2, p50: 33, p90: 33, max: 33 }
+  - field: "revGrowthPct"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "reviewDate"
+    strLen: { n: 3, p50: 10, p90: 10, max: 10 }
+  - field: "risk"
+    strLen: { n: 29, p50: 1, p90: 15, max: 122 }
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "riskLevel"
+    strLen: { n: 16, p50: 7, p90: 12, max: 12 }
+  - field: "roleBindings"
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "rollback"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "rootCauseSummary"
+    strLen: { n: 4, p50: 26, p90: 33, max: 33 }
+  - field: "rootChains"
+    arrLen: { n: 5, p50: 1, p90: 2, max: 2 }
+  - field: "rootFilter"
+    strLen: { n: 2, p50: 22, p90: 22, max: 22 }
+  - field: "rounds"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "route"
+    strLen: { n: 20, p50: 14, p90: 29, max: 29 }
+  - field: "routes"
+    arrLen: { n: 11, p50: 1, p90: 2, max: 2 }
+  - field: "routeSource"
+    strLen: { n: 2, p50: 26, p90: 26, max: 26 }
+  - field: "rowFilter"
+    strLen: { n: 6, p50: 44, p90: 45, max: 45 }
+  - field: "rule"
+    strLen: { n: 119, p50: 43, p90: 70, max: 124 }
+  - field: "ruleBindings"
+    arrLen: { n: 3, p50: 0, p90: 0, max: 0 }
+  - field: "ruleChecks"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 3, p50: 2, p90: 2, max: 2 }
+  - field: "ruleClamps"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "ruleGate"
+    strLen: { n: 4, p50: 3, p90: 3, max: 3 }
+  - field: "ruleId"
+    strLen: { n: 3, p50: 3, p90: 3, max: 3 }
+  - field: "ruleIds"
+    strLen: { n: 2, p50: 14, p90: 14, max: 14 }
+    arrLen: { n: 5, p50: 1, p90: 2, max: 2 }
+  - field: "ruleKeys"
+    strLen: { n: 13, p50: 14, p90: 14, max: 14 }
+    arrLen: { n: 5, p50: 0, p90: 1, max: 1 }
+  - field: "ruleName"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "ruleRef"
+    strLen: { n: 22, p50: 3, p90: 7, max: 7 }
+  - field: "ruleSetVersion"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "runtime"
+    strLen: { n: 1, p50: 15, p90: 15, max: 15 }
+  - field: "S"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "sampleRows"
+    arrLen: { n: 3, p50: 1, p90: 2, max: 2 }
+  - field: "samples"
+    arrLen: { n: 7, p50: 1, p90: 2, max: 2 }
+  - field: "scenarioPackages"
+    arrLen: { n: 3, p50: 1, p90: 1, max: 1 }
+  - field: "scenarios"
+    strLen: { n: 3, p50: 42, p90: 42, max: 42 }
+    arrLen: { n: 8, p50: 1, p90: 3, max: 3 }
+  - field: "scenarioScript"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "sceneNeeds"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "scheduledAt"
+    strLen: { n: 4, p50: 20, p90: 20, max: 20 }
+  - field: "scheme"
+    strLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "scopeNote"
+    strLen: { n: 3, p50: 19, p90: 22, max: 22 }
+  - field: "screens"
+    arrLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "scriptHash"
+    strLen: { n: 3, p50: 0, p90: 8, max: 8 }
+  - field: "seg"
+    strLen: { n: 11, p50: 3, p90: 3, max: 3 }
+  - field: "segments"
+    arrLen: { n: 22, p50: 2, p90: 5, max: 5 }
+  - field: "select"
+    strLen: { n: 2, p50: 40, p90: 40, max: 40 }
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "selectedBy"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "selectedIntents"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "selectedObjects"
+    arrLen: { n: 22, p50: 0, p90: 1, max: 1 }
+  - field: "selection"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "serverName"
+    strLen: { n: 4, p50: 11, p90: 11, max: 11 }
+  - field: "shape"
+    strLen: { n: 22, p50: 6, p90: 7, max: 9 }
+  - field: "sharedByType"
+    strLen: { n: 2, p50: 26, p90: 26, max: 26 }
+  - field: "shareId"
+    strLen: { n: 4, p50: 12, p90: 14, max: 14 }
+  - field: "sharePct"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+  - field: "sharePts"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "shortItems"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "shortLabel"
+    strLen: { n: 10, p50: 4, p90: 4, max: 4 }
+  - field: "side"
+    strLen: { n: 23, p50: 9, p90: 12, max: 12 }
+  - field: "sideEffect"
+    strLen: { n: 39, p50: 4, p90: 7, max: 12 }
+  - field: "sideEffects"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "signalRef"
+    strLen: { n: 8, p50: 14, p90: 18, max: 18 }
+  - field: "signals"
+    arrLen: { n: 7, p50: 1, p90: 3, max: 3 }
+  - field: "skill"
+    strLen: { n: 4, p50: 4, p90: 5, max: 5 }
+  - field: "skillId"
+    strLen: { n: 7, p50: 17, p90: 21, max: 21 }
+  - field: "skillKey"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "skillNeeds"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "skills"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+    arrLen: { n: 21, p50: 0, p90: 1, max: 1 }
+  - field: "skipped"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "slice"
+    strLen: { n: 4, p50: 4, p90: 13, max: 13 }
+  - field: "sliceNeeds"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "slices"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+    arrLen: { n: 6, p50: 0, p90: 2, max: 2 }
+  - field: "slicesUsed"
+    arrLen: { n: 4, p50: 1, p90: 1, max: 1 }
+  - field: "solver"
+    strLen: { n: 104, p50: 17, p90: 33, max: 52 }
+  - field: "solverKeys"
+    arrLen: { n: 28, p50: 1, p90: 2, max: 3 }
+  - field: "solverNeeds"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+    arrLen: { n: 3, p50: 1, p90: 1, max: 1 }
+  - field: "solvers"
+    strLen: { n: 2, p50: 43, p90: 43, max: 43 }
+    arrLen: { n: 21, p50: 0, p90: 1, max: 1 }
+  - field: "sop"
+    strLen: { n: 4, p50: 11, p90: 16, max: 16 }
+  - field: "sourceBindings"
+    arrLen: { n: 117, p50: 1, p90: 1, max: 2 }
+  - field: "sourceConnId"
+    strLen: { n: 21, p50: 8, p90: 8, max: 10 }
+  - field: "sourceDataset"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "sourceKind"
+    strLen: { n: 3, p50: 5, p90: 6, max: 6 }
+  - field: "sourceQuote"
+    strLen: { n: 4, p50: 17, p90: 27, max: 27 }
+  - field: "sources"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "sourceStateVar"
+    strLen: { n: 52, p50: 12, p90: 16, max: 18 }
+  - field: "sourceSystem"
+    strLen: { n: 96, p50: 3, p90: 3, max: 9 }
+  - field: "sourceTenantId"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "sourceTypeKey"
+    strLen: { n: 51, p50: 7, p90: 12, max: 13 }
+  - field: "spannedDomains"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+    arrLen: { n: 3, p50: 1, p90: 1, max: 1 }
+  - field: "specKey"
+    strLen: { n: 5, p50: 12, p90: 17, max: 17 }
+  - field: "src"
+    strLen: { n: 37, p50: 24, p90: 44, max: 51 }
+  - field: "stages"
+    arrLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "start"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "statement"
+    strLen: { n: 3, p50: 66, p90: 66, max: 66 }
+  - field: "stateVarBounds"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "stateVarKeys"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "stdDurationCaption"
+    strLen: { n: 2, p50: 22, p90: 22, max: 22 }
+  - field: "stepDeadlines"
+    arrLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "stepIds"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "stepKey"
+    strLen: { n: 8, p50: 10, p90: 14, max: 14 }
+  - field: "stepType"
+    strLen: { n: 3, p50: 11, p90: 11, max: 11 }
+  - field: "storyCoverage"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "structure"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "sub"
+    strLen: { n: 76, p50: 11, p90: 21, max: 117 }
+  - field: "subject"
+    strLen: { n: 22, p50: 11, p90: 15, max: 20 }
+  - field: "subjectId"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "subjectType"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "suggestedAction"
+    strLen: { n: 4, p50: 3, p90: 5, max: 5 }
+  - field: "suggestedFill"
+    strLen: { n: 6, p50: 21, p90: 48, max: 48 }
+  - field: "suggestedQuestions"
+    arrLen: { n: 17, p50: 2, p90: 3, max: 3 }
+  - field: "suite"
+    strLen: { n: 6, p50: 10, p90: 13, max: 13 }
+  - field: "sum"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "supplierId"
+    strLen: { n: 25, p50: 7, p90: 7, max: 10 }
+  - field: "supply"
+    strLen: { n: 6, p50: 8, p90: 11, max: 11 }
+    arrLen: { n: 2, p50: 8, p90: 8, max: 8 }
+  - field: "suppressed"
+    arrLen: { n: 3, p50: 0, p90: 2, max: 2 }
+  - field: "synthesisMode"
+    strLen: { n: 3, p50: 13, p90: 13, max: 13 }
+  - field: "synthetic"
+    strLen: { n: 2, p50: 100, p90: 100, max: 100 }
+  - field: "system"
+    strLen: { n: 11, p50: 1, p90: 7, max: 9 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "systemKey"
+    strLen: { n: 5, p50: 10, p90: 12, max: 12 }
+  - field: "systemPrompt"
+    strLen: { n: 5, p50: 30, p90: 132, max: 132 }
+  - field: "tag"
+    strLen: { n: 46, p50: 4, p90: 10, max: 12 }
+  - field: "tags"
+    arrLen: { n: 131, p50: 3, p90: 5, max: 11 }
+  - field: "targetField"
+    strLen: { n: 4, p50: 4, p90: 4, max: 4 }
+  - field: "targetFrom"
+    strLen: { n: 11, p50: 11, p90: 11, max: 11 }
+  - field: "targetKey"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "targetOrderId"
+    strLen: { n: 2, p50: 7, p90: 7, max: 7 }
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "targetProp"
+    strLen: { n: 5, p50: 11, p90: 12, max: 12 }
+  - field: "targetView"
+    strLen: { n: 8, p50: 4, p90: 7, max: 7 }
+  - field: "templateKey"
+    strLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "tenant"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "terminalState"
+    strLen: { n: 4, p50: 9, p90: 9, max: 9 }
+  - field: "text"
+    strLen: { n: 49, p50: 4, p90: 83, max: 102 }
+  - field: "thresholds"
+    arrLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "thresholdSource"
+    strLen: { n: 5, p50: 15, p90: 15, max: 15 }
+  - field: "tiers"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "timeField"
+    strLen: { n: 4, p50: 2, p90: 2, max: 2 }
+  - field: "timeline"
+    strLen: { n: 1, p50: 14, p90: 14, max: 14 }
+    arrLen: { n: 4, p50: 4, p90: 4, max: 4 }
+  - field: "timeWindow"
+    strLen: { n: 1, p50: 23, p90: 23, max: 23 }
+  - field: "timezone"
+    strLen: { n: 3, p50: 13, p90: 13, max: 13 }
+  - field: "timings"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "toBase"
+    strLen: { n: 3, p50: 7, p90: 8, max: 8 }
+  - field: "toDay"
+    strLen: { n: 3, p50: 15, p90: 20, max: 20 }
+  - field: "toField"
+    strLen: { n: 5, p50: 10, p90: 11, max: 11 }
+  - field: "toId"
+    strLen: { n: 1, p50: 18, p90: 18, max: 18 }
+  - field: "tokens"
+    strLen: { n: 1, p50: 11, p90: 11, max: 11 }
+  - field: "toKey"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "toKind"
+    strLen: { n: 5, p50: 5, p90: 6, max: 6 }
+  - field: "tool"
+    strLen: { n: 7, p50: 13, p90: 14, max: 14 }
+  - field: "toolCallId"
+    strLen: { n: 18, p50: 7, p90: 8, max: 8 }
+  - field: "toolCalls"
+    arrLen: { n: 14, p50: 1, p90: 1, max: 2 }
+  - field: "toolFilter"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "toolNames"
+    arrLen: { n: 17, p50: 2, p90: 4, max: 10 }
+  - field: "TOOLSEQ"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "toolSequence"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "toolWhitelist"
+    arrLen: { n: 8, p50: 2, p90: 8, max: 8 }
+  - field: "top"
+    strLen: { n: 3, p50: 4, p90: 4, max: 4 }
+  - field: "toPrincipalRef"
+    strLen: { n: 2, p50: 14, p90: 14, max: 14 }
+  - field: "toQ"
+    strLen: { n: 3, p50: 7, p90: 7, max: 7 }
+  - field: "toType"
+    strLen: { n: 6, p50: 4, p90: 5, max: 5 }
+  - field: "trace"
+    strLen: { n: 1, p50: 59, p90: 59, max: 59 }
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "trajectory"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "transferId"
+    strLen: { n: 4, p50: 29, p90: 30, max: 30 }
+  - field: "transform"
+    strLen: { n: 2, p50: 16, p90: 16, max: 16 }
+    arrLen: { n: 3, p50: 3, p90: 3, max: 3 }
+  - field: "transitInv"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "transport"
+    strLen: { n: 2, p50: 15, p90: 15, max: 15 }
+  - field: "trend"
+    strLen: { n: 14, p50: 4, p90: 4, max: 5 }
+    arrLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "trendId"
+    strLen: { n: 10, p50: 9, p90: 9, max: 9 }
+  - field: "triggeredAt"
+    strLen: { n: 3, p50: 20, p90: 24, max: 24 }
+  - field: "triggerId"
+    strLen: { n: 8, p50: 16, p90: 16, max: 16 }
+  - field: "triggerMarks"
+    arrLen: { n: 1, p50: 1, p90: 1, max: 1 }
+  - field: "triggers"
+    arrLen: { n: 7, p50: 1, p90: 3, max: 3 }
+  - field: "tsGenerators"
+    arrLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "txnType"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "typeKeys"
+    arrLen: { n: 25, p50: 6, p90: 9, max: 10 }
+  - field: "types"
+    arrLen: { n: 16, p50: 1, p90: 4, max: 5 }
+  - field: "uiDeepLink"
+    strLen: { n: 4, p50: 14, p90: 18, max: 18 }
+  - field: "unanswerable"
+    arrLen: { n: 2, p50: 3, p90: 3, max: 3 }
+  - field: "unavailableReason"
+    strLen: { n: 1, p50: 54, p90: 54, max: 54 }
+  - field: "undeclared"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "undeclaredStateVars"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "uniqueRate"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "unitKind"
+    strLen: { n: 2, p50: 4, p90: 4, max: 4 }
+  - field: "unitPrice"
+    strLen: { n: 1, p50: 10, p90: 10, max: 10 }
+  - field: "unitRefProp"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "unitsProp"
+    strLen: { n: 2, p50: 10, p90: 10, max: 10 }
+  - field: "universe"
+    strLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "unknown"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "unknownOwners"
+    arrLen: { n: 3, p50: 0, p90: 2, max: 2 }
+  - field: "unmergeUntil"
+    strLen: { n: 2, p50: 20, p90: 20, max: 20 }
+  - field: "unparsed"
+    strLen: { n: 1, p50: 14, p90: 14, max: 14 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "unresolved"
+    strLen: { n: 1, p50: 40, p90: 40, max: 40 }
+    arrLen: { n: 3, p50: 0, p90: 2, max: 2 }
+  - field: "unresolvedWeights"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "updatedBy"
+    strLen: { n: 2, p50: 19, p90: 19, max: 19 }
+  - field: "upload"
+    strLen: { n: 2, p50: 6, p90: 6, max: 6 }
+  - field: "url"
+    strLen: { n: 3, p50: 23, p90: 33, max: 33 }
+  - field: "user"
+    strLen: { n: 7, p50: 1, p90: 19, max: 19 }
+  - field: "valueKind"
+    strLen: { n: 8, p50: 5, p90: 7, max: 7 }
+  - field: "valueLabel"
+    strLen: { n: 21, p50: 11, p90: 14, max: 16 }
+  - field: "values"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "valueUnit"
+    strLen: { n: 6, p50: 2, p90: 2, max: 2 }
+  - field: "vc"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "verify"
+    strLen: { n: 4, p50: 18, p90: 21, max: 21 }
+  - field: "versionId"
+    strLen: { n: 4, p50: 10, p90: 16, max: 16 }
+  - field: "versionLabel"
+    strLen: { n: 1, p50: 4, p90: 4, max: 4 }
+  - field: "via"
+    strLen: { n: 53, p50: 14, p90: 23, max: 31 }
+  - field: "viaField"
+    strLen: { n: 2, p50: 41, p90: 41, max: 41 }
+  - field: "violations"
+    arrLen: { n: 2, p50: 0, p90: 0, max: 0 }
+  - field: "waitKind"
+    strLen: { n: 94, p50: 12, p90: 23, max: 23 }
+  - field: "warnings"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "week"
+    strLen: { n: 2, p50: 9, p90: 9, max: 9 }
+  - field: "weekendMode"
+    strLen: { n: 3, p50: 11, p90: 11, max: 11 }
+  - field: "weekly"
+    arrLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "weekOf"
+    strLen: { n: 10, p50: 10, p90: 10, max: 10 }
+  - field: "weeks"
+    strLen: { n: 9, p50: 2, p90: 15, max: 15 }
+  - field: "weight"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
+  - field: "weightField"
+    strLen: { n: 1, p50: 6, p90: 6, max: 6 }
+  - field: "weighting"
+    strLen: { n: 1, p50: 5, p90: 5, max: 5 }
+  - field: "weightingNote"
+    strLen: { n: 1, p50: 38, p90: 38, max: 38 }
+  - field: "weights"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "where"
+    strLen: { n: 34, p50: 20, p90: 68, max: 104 }
+  - field: "why"
+    strLen: { n: 45, p50: 42, p90: 94, max: 106 }
+  - field: "win"
+    strLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "windows"
+    arrLen: { n: 2, p50: 2, p90: 2, max: 2 }
+  - field: "winProb"
+    strLen: { n: 1, p50: 7, p90: 7, max: 7 }
+  - field: "workflowId"
+    strLen: { n: 6, p50: 16, p90: 19, max: 19 }
+  - field: "workflowKey"
+    strLen: { n: 1, p50: 13, p90: 13, max: 13 }
+  - field: "workflowNeeds"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+    arrLen: { n: 2, p50: 1, p90: 1, max: 1 }
+  - field: "workflows"
+    strLen: { n: 1, p50: 8, p90: 8, max: 8 }
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "wouldBlock"
+    arrLen: { n: 1, p50: 0, p90: 0, max: 0 }
+  - field: "writes"
+    arrLen: { n: 1, p50: 3, p90: 3, max: 3 }
+  - field: "year"
+    strLen: { n: 1, p50: 2, p90: 2, max: 2 }
 atomShards:
   - package: "datacore"
     file: "atoms/datacore.yaml"

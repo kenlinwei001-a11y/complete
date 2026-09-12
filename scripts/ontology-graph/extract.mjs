@@ -528,6 +528,51 @@ function collectSeeds(ctxs, declaredFields) {
   }
 }
 
+/**
+ * fieldStats：每个字段在 **src（非 test）** 对象字面量里被赋的值有多长。
+ * ⚠ 精确定义（别当成别的东西）：只统计**字面量**赋值，`x: "abc"` 记字符串长度 3，
+ * `x: [1,2,3]` 记数组元素数 3。变量/函数调用赋的值一律**不计**（静态看不见它的长度）。
+ * 两类分开报（`strLen` / `arrLen`）—— 把字符串长度和数组长度混进一个分布是拿一个数盖两个事实。
+ */
+function collectFieldStats(ctxs, fields) {
+  const acc = new Map();   // field -> {str:[], arr:[]}
+  const bump = (f, k, v) => {
+    if (!acc.has(f)) acc.set(f, { str: [], arr: [] });
+    acc.get(f)[k].push(v);
+  };
+  for (const { program, owned } of ctxs) {
+    for (const sf of program.getSourceFiles()) {
+      const f = rel(sf.fileName);
+      if (!owned.has(f) || f.includes("/test/")) continue;
+      const visit = (n) => {
+        if (ts.isObjectLiteralExpression(n)) {
+          for (const p of n.properties) {
+            if (!ts.isPropertyAssignment(p) || !p.name) continue;
+            if (!(ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) continue;
+            const key = p.name.text;
+            if (!fields.has(key)) continue;
+            const v = p.initializer;
+            if (ts.isStringLiteral(v) || ts.isNoSubstitutionTemplateLiteral(v)) bump(key, "str", v.text.length);
+            else if (ts.isArrayLiteralExpression(v)) bump(key, "arr", v.elements.length);
+          }
+        }
+        ts.forEachChild(n, visit);
+      };
+      visit(sf);
+    }
+  }
+  const pct = (a, q) => (a.length === 0 ? null : a[Math.min(a.length - 1, Math.floor(a.length * q))]);
+  const rows = [];
+  for (const [field, v] of [...acc.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    v.str.sort((a, b) => a - b); v.arr.sort((a, b) => a - b);
+    const row = { field };
+    if (v.str.length) row.strLen = { n: v.str.length, p50: pct(v.str, 0.5), p90: pct(v.str, 0.9), max: v.str[v.str.length - 1] };
+    if (v.arr.length) row.arrLen = { n: v.arr.length, p50: pct(v.arr, 0.5), p90: pct(v.arr, 0.9), max: v.arr[v.arr.length - 1] };
+    if (row.strLen || row.arrLen) rows.push(row);
+  }
+  return rows;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // 4 · 切片层 —— ⛔ 复用本仓真实现，不重造
 // ════════════════════════════════════════════════════════════════════════════
@@ -678,6 +723,15 @@ function runCanaries(g) {
       `${regAll.length - offenders.length}/${regAll.length}`, offenders.length === 0,
       offenders.length ? `不符：${offenders.slice(0, 5).map((a) => `${a.name}(边${byFrom.get(a.id) ?? 0}≠值${a.registry.evaluatedCount})`).join(", ")}` : undefined);
 
+  // ⑩ 盲区 dims 必须全在枚举里（消费方按 dims 匹配；写错一个词它就静默匹配不上）
+  const DIMS = new Set(["COUNT", "NOREF", "EMPTYFILE", "COORD", "LENGTH"]);
+  const badDims = BLIND_SPOTS.filter((b) => !b.dims.length || b.dims.some((d) => !DIMS.has(d)));
+  add("blindSpots 的 dims 全在枚举内且非空", "0 条越界", `${badDims.length} 条越界`, badDims.length === 0,
+      badDims.length ? `越界：${badDims.map((b) => b.id).join(", ")}` : undefined);
+  const covered = new Set(BLIND_SPOTS.flatMap((b) => b.dims));
+  add("五类对账维度都至少有一条盲区", "5/5", `${covered.size}/5`, covered.size === DIMS.size,
+      "少一类 ⇒ 消费方在那一维上拿不到任何自认盲区，会误以为该维无风险");
+
   return C;
 }
 
@@ -740,9 +794,23 @@ async function build() {
   log(`  注册表 evaluated ${evaluated} · evaluated-uncountable ${uncountable} · mismatch ${mismatch} · parsed-only ${parsedOnly}`);
   log(`  （顶层有副作用、拒绝 import 求值的模块：${sideEffectFiles.size} 个）`);
 
-  log("── seeds / asserts ────────────────────────────────");
+  log("── seeds / asserts / fieldStats ───────────────────");
   collectSeeds(ctxs, declaredFields);
   collectAsserts(ctxs, declaredFields);
+  const fieldStats = collectFieldStats(ctxs, declaredFields);
+  log(`  fieldStats ${fieldStats.length} 个字段有字面量赋值观测`);
+
+  // 注册表清单（给消费方当真值表用；parsed 一律标不可信）
+  const registries = [...atoms.values()].filter((a) => a.registry)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((a) => ({
+      name: a.name, file: a.file, line: a.line,
+      parsedCount: a.registry.parsedCount, evaluatedCount: a.registry.evaluatedCount,
+      confidence: a.registry.confidence,
+      trustworthy: a.registry.confidence !== "parsed",
+      entries: edges.filter((e) => e.kind === "registers" && e.from === a.id).length,
+    }));
+  log(`  registries ${registries.length}（可信 ${registries.filter((r) => r.trustworthy).length}）`);
 
   log("── 切片层（复用真实现） ───────────────────────────");
   const sliceInfo = await loadSliceLayer();
@@ -782,7 +850,7 @@ async function build() {
     log(`  切片 ${sliceInfo.entries.length}（域内 ${sliceInfo.entries.filter((e) => e.scope === "intra").length} · 跨域 ${sliceInfo.entries.filter((e) => e.scope === "cross").length}） · inSlice 边 ${inSliceCount}`);
   }
 
-  const g = { ctxs, sliceInfo, inSliceBySlice, inSliceCount, declaredFields };
+  const g = { ctxs, sliceInfo, inSliceBySlice, inSliceCount, declaredFields, fieldStats, registries };
   g.canaries = runCanaries(g);
   log(`── 总耗时 ${((Date.now() - t0) / 1000).toFixed(1)}s · 峰值 RSS ${(process.memoryUsage().rss / 1e6).toFixed(0)}MB ──`);
   return g;
@@ -792,6 +860,49 @@ function commitHash() {
   try { return execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: REPO }).toString().trim(); }
   catch { return "unknown"; }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// 盲区清单（机器可读）· 消费方靠 dims 判「这条结论可不可信」，⛔ 不许去撞 text 的关键词
+//   —— WO-ONTOGRAPH-CONSUME 实测：散文「引用图看不见 re-export」本意是 NOREF，
+//      被关键词撞到 EMPTYFILE 上，给一条本来可信的结论错扣了「自认盲区」。
+//      **散文只配说「疑似」；判定必须落在 dims 这个枚举上。**
+// 维度枚举（五类对账维度，消费方按这个匹配）：
+//   COUNT     计数类结论（有几个 X）
+//   NOREF     零调用方 / 死代码 / 没接线类结论
+//   EMPTYFILE 空文件 / 该处无内容类结论
+//   COORD     坐标类结论（file:line 指到哪）
+//   LENGTH    长度 / 分布类结论
+// ════════════════════════════════════════════════════════════════════════════
+const BLIND_SPOTS = [
+  { id: "structural-type-use", dims: ["NOREF", "COUNT"],
+    text: "interface/type 可被结构匹配使用而名字从不出现 ⇒ no-ref 的 type/interface 不等于没被用。" },
+  { id: "string-key-dispatch", dims: ["NOREF"],
+    text: "字符串键分发 / 事件订阅 / DI 容器：运行时按名字派发的调用，静态一条都看不见。" },
+  { id: "higher-order-trigger", dims: ["NOREF", "COUNT"],
+    text: "高阶函数只见「被传进去」不见「何时真触发」⇒ 答不了「接了线没数据」这一态，只有 seeds 边能侧面答。" },
+  { id: "transitive-liveness", dims: ["NOREF"],
+    text: "不做传递性存活：只被另一个死符号引用的符号仍读作 wired（如 SimRunDisclosureSchema 只被自己的 z.infer 用）。" },
+  { id: "import-plumbing-not-edge", dims: ["NOREF"],
+    text: "import/export 说明符与 re-export 转手**有意不发 calls 边**（那是管道不是使用）；命名空间成员访问（import * as ns 后的 ns.foo）同样不发边（本仓今天 import * as 实测 0 处）。" },
+  { id: "non-ts-surfaces", dims: ["COUNT", "COORD", "EMPTYFILE"],
+    text: "非 TS 出口整体不在图里：packages/dsh-harness（vendored .mjs，无 src/）、SQL migrations、nginx/docker-compose、YAML 配置。对这些位置的任何结论本图谱都无发言权。" },
+  { id: "runtime-gating", dims: ["NOREF"],
+    text: "feature flag / entitlement 关掉的分支，图上仍是 wired。" },
+  { id: "docsource-jsdoc-only", dims: ["COUNT"],
+    text: "docSource 只认 /** */；`//` 行注释一律记 none ⇒ 「没有自述」的计数偏高，不等于没有注释。" },
+  { id: "brief-truncated-300", dims: ["LENGTH"],
+    text: "brief 截断到 300 字符 ⇒ 不可用于任何「描述有多长」的长度结论。" },
+  { id: "inbound-samples-capped-25", dims: ["COORD"],
+    text: "inbound.src/test 的**样例**封顶 25 条；srcCount/selfUses/testCount 是**全量、从不截断** ⇒ 计数可信，坐标清单可能不全。" },
+  { id: "inslice-string-literal-only", dims: ["COUNT", "NOREF"],
+    text: "inSlice 判据是原子声明里以字符串字面量出现某 spannedType ⇒ 用变量拼出来的类型键看不见，切片成员数偏低。" },
+  { id: "sideeffect-modules-not-evaluated", dims: ["COUNT"],
+    text: "顶层有裸调用语句的模块（如 server.ts 末尾 main()）拒绝 import 求值 ⇒ 其中的注册表只有 parsed 计数，不可信。" },
+  { id: "fieldstats-literals-only", dims: ["LENGTH", "COUNT"],
+    text: "fieldStats 只统计字面量赋值（x:\"abc\" 记 3、x:[1,2,3] 记 3）；变量/函数调用赋的值不计 ⇒ n 偏低，不能当「该字段出现次数」用。" },
+  { id: "fieldstats-distinctive-only", dims: ["LENGTH", "COUNT"],
+    text: "fieldStats / seeds / asserts 只覆盖**有鉴别力的字段**（被 ≤3 个 schema 声明）；id/name/key 这类被 400+ schema 声明的字段整批不在清单里，缺席不等于没有数据。" },
+];
 
 const INBOUND_CAP = 25;
 const cap = (arr) => (arr.length <= INBOUND_CAP ? arr : arr.slice(0, INBOUND_CAP));
@@ -806,6 +917,10 @@ function emit(g) {
 
   const all = [...atoms.values()].sort((a, b) => a.id.localeCompare(b.id));
   const byState = { wired: 0, "test-only": 0, "no-ref": 0 };
+  // ⚠ 两套口径并列，**不许只给一个数** —— 只给一个等于拿一个数盖住两个不同事实
+  //   （铁律 0.5 第 ① 条自己犯过的病：把 dependsOn 与 references 合成一句）。
+  //   两者差 2396 个原子，差在「只在自己文件里被用」的那批。
+  const byStateStrict = { wired: 0, "test-only": 0, "no-ref": 0 };
   const sliceOfAtom = new Map();
   for (const [k, ms] of g.inSliceBySlice) for (const m of ms) {
     if (!sliceOfAtom.has(m.atom)) sliceOfAtom.set(m.atom, []);
@@ -819,6 +934,8 @@ function emit(g) {
     if (mine.length === 0) continue;
     const rows = mine.map((a) => {
       const st = stateOf(a); byState[st]++;
+      // 严格跨文件口径：**忽略 selfUses**，只看跨文件引用
+      byStateStrict[a.inboundSrc.size > 0 ? "wired" : a.inboundTest.size > 0 ? "test-only" : "no-ref"]++;
       return {
         id: a.id, name: a.name, kind: a.kind, file: a.file, line: a.line,
         brief: a.brief || "", docSource: a.brief ? "jsdoc" : "none",
@@ -914,12 +1031,35 @@ function emit(g) {
     `generatedFrom: ${q(commitHash())}`,   // ⛔ 不打时间戳 —— 会破坏字节级确定性（R6）
     `counts: ${yv({
       atoms: all.length, edges: edges.length, slices: sliceRows.length,
-      byState, byEdgeKind: kindCounts,
+      byEdgeKind: kindCounts,
       docSourceNone: docNone,
       docSourceNonePct: all.length ? Number(((docNone / all.length) * 100).toFixed(2)) : 0,
     })}`,
+    `# ⚠ 三态有**两套口径**，差 ${Math.abs(byState.wired - byStateStrict.wired)} 个原子（差在「只在自己文件里被用」那批）。`,
+    `# ⛔ 引用时必须说清用的是哪一套 —— 只报一个数等于拿一个数盖住两个不同事实。`,
+    `byState:`,
+    `  includingSelfFileUse:`,
+    `    question: ${q("这个符号有没有生产代码在用？（跨文件 src 或同文件内的生产使用都算）")}`,
+    `    useFor: ${q("找真死代码、找假绿第 9 形态（实现有·测试有·绿的·零生产调用方）。假阳性代价高的场合用这套。")}`,
+    `    counts: ${yv(byState)}`,
+    `  strictCrossFile:`,
+    `    question: ${q("这个符号有没有**别的文件**在用？（忽略同文件内的使用）")}`,
+    `    useFor: ${q("找「导出了但没人跨文件用」的过度导出面 —— 这批可以降成文件内私有。")}`,
+    `    counts: ${yv(byStateStrict)}`,
     `canary:`,
     yBlockList(g.canaries),
+    `# 盲区（机器可读）：消费方按 dims 判「这条结论可不可信」，⛔ 不许去撞 text 的关键词。`,
+    `# dims 枚举：COUNT 计数 · NOREF 零调用方 · EMPTYFILE 空文件 · COORD 坐标 · LENGTH 长度分布`,
+    `blindSpotDims: ["COUNT", "NOREF", "EMPTYFILE", "COORD", "LENGTH"]`,
+    `blindSpots:`,
+    yBlockList(BLIND_SPOTS),
+    `# 注册表真值：confidence=parsed 的一律不可信（那个包没 build，只有 AST 数）。`,
+    `registries:`,
+    g.registries.length ? yBlockList(g.registries) : "  []",
+    `# 字段长度分布：只统计**字面量**赋值（x:"abc"→3 / x:[1,2,3]→3），变量与函数调用赋值不计。`,
+    `# 覆盖面 = 有鉴别力的字段（被 ≤3 个 schema 声明）。缺席 ≠ 没有数据，见 blindSpots。`,
+    `fieldStats:`,
+    g.fieldStats.length ? yBlockList(g.fieldStats) : "  []",
     `atomShards:`,
     yBlockList(shards),
     `slices:`,
