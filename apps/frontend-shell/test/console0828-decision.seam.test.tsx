@@ -346,7 +346,11 @@ import UnifiedSimShell from "@/views/sim/unified/UnifiedSimShell";
 import { BUSINESS_EVENTS } from "@/views/sim/unified/console0828/eventCatalog";
 // `fmtMoney` 一并取来：期望串由**屏上同一个格式化函数**现算，⛔ 不手敲「6200 万」——
 // 手敲的那种串只要格式化改一次小数位就假红，而它并不度量口径对不对（WO-ORDER-SCOPE 实测踩过）。
-import { MONEY_BREAKDOWN_LABELS, fmtMoney } from "@/views/sim/unified/console0828/console0828Model";
+import {
+  MONEY_BREAKDOWN_LABELS,
+  fmtMoney,
+  splitOrderScope,
+} from "@/views/sim/unified/console0828/console0828Model";
 
 function mount() {
   return render(
@@ -663,6 +667,40 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     //    过滤若把它从屏上抹掉，就从「算错」变成了「删除」，比原 bug 更坏。
     expect(screen.getByTestId("c0828-status-COMPLETED").textContent ?? "").toContain("1");
     expect(screen.getByTestId("c0828-cust").textContent ?? "").toContain(`全簿 ${String(ORDERS.length)} 张单的状态分布`);
+  });
+
+  it("④d WO-ORDER-SCOPE · 状态不认识的单落「判不了」，⛔ 不许被静默并进「不受影响」", () => {
+    /* ── 为什么必须单独咬这一条 ──
+     * 真后端今天三态齐全、`unknown` 恒为 0，上面那条用例也构造不出它 ⇒
+     * 这个分支属于本仓说的「**接了线没数据**」态：写了、但从没被触发过，
+     * 于是「它对不对」这件事一次都没被验过。这里用纯函数把它**当场触发**。
+     *
+     * ── 它为什么危险（不是洁癖）──
+     * `isOnHandOrderStatus` 对任何不认识的值（含 null）返回 false。若只切两档，
+     * 后端哪天把状态改个名，那批单会被**静默并进「不算」那一侧** ⇒
+     * 屏上读作「没有受影响的订单」，而真相是「我判不了」。
+     * 本仓已为同一个陷阱记过账：`chain-loss-matrix.ts` 注释原文
+     * 「`isOnHandOrderStatus(undefined)` 恒假 ⇒ 每一列敞口都会变成 0」。 */
+    const row = (id: string, status: string | null) =>
+      ({ id, cust: "某客户", qty: 1, value: 1_000_000, due: null, status, model: null });
+
+    // 🐤 金丝雀：先证明这把尺子对**认识**的状态是准的，再拿它去判「不认识」。
+    const known = splitOrderScope([row("a", "OPEN"), row("b", "IN_PRODUCTION"), row("c", "COMPLETED")]);
+    expect([known.open, known.inProduction, known.completed, known.unknown]).toEqual([1, 1, 1, 0]);
+    expect(known.onHand).toHaveLength(2);
+
+    // 正题：改名后的串、以及 null，都必须落 `unknown`——
+    // ⛔ 既不许算进在手（那会虚报敞口），也不许算进已完成（那会假装「已经判过了」）。
+    const weird = splitOrderScope([row("d", "CONFIRMED"), row("e", "PLANNED"), row("f", null)]);
+    expect(weird.unknown).toBe(3);
+    expect(weird.onHand).toHaveLength(0);
+    expect(weird.completed).toBe(0); // ← 这一条就是「静默并进另一边」的反证
+    expect(weird.open + weird.inProduction).toBe(0);
+
+    // 三档必须恒等于全簿，一张都不许在分档中蒸发。
+    for (const s of [known, weird]) {
+      expect(s.onHand.length + s.completed + s.unknown).toBe(s.all.length);
+    }
   });
 
   it("④b 多件时主因这句话必须换成「说不清」——不许挑一个顶上（差分层看不出某一格是谁推的）", async () => {
