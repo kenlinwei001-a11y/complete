@@ -481,4 +481,65 @@ describe("WO-CAPMAP-LIVE · SEAM ③ R6 确定性 + fail-open 降级", () => {
     expect(cat, "无关问句仍取回候选 ⇒ 门槛失效，模型每题都会被灌 6 条不相干求解器").toBeUndefined();
     await t.app.close();
   });
+
+  /**
+   * ── WO-RELEVANCE-FLOOR · 详情段门槛不再连坐目录段 ────────────────────────────
+   *
+   * 病根（50 条问句·真起 datacore+agentcore 实测·分布表见 docs/AUDIT-relevance-distribution-20260912.md）：
+   * `score` 里 **0.11 与问句完全无关**（history+cost 恒定），大头是 `pseudoEmbed`（源码自述
+   * "NOT a production embedding"）的字符哈希基线 ⇒ **「你能做什么」0.2795 压过 8 条真业务问句**。
+   * 于是 `rank===0 ⇒ return undefined` 把**便宜的目录段**也一并杀掉：
+   * 「常州这批成品要发出去，怎么装柜最省运费」实测 **0 个求解器可见**，而它的对口
+   * `packing_optimize` 正是检索第 1 名（63 选 1），只是绝对分 0.2496 够不着 0.30。
+   *
+   * 判据**不靠写死某条问句的分数**（分数会随注册表漂）：用既有的 `minScore` 形参把门槛顶到
+   * 任何分都够不着，**确定性地**造出"详情段全空"这一态，再验两侧行为。
+   */
+  it("详情段全空时：经营问句仍拿得到目录段 + 检索第1名进详情；寒暄仍然零注入", async () => {
+    const { fetchLiveSolverCatalog } = await import("../src/agent/live-capability-map.js");
+    const t = await createTestApp();
+    installLiveSolverCatalog(t);
+    const src = t.deps.engine.capabilityMapSource();
+    const ctx = { tenantId: TENANT, userId: "u", roles: [] } as never;
+    // 门槛顶到 1.01：任何分都够不着 ⇒ 详情段必空 ⇒ 本单那条分支必被走到（与注册表分数无关）。
+    const UNREACHABLE = 1.01;
+
+    // 金丝雀：同一把顶死的门槛下，**寒暄**必须仍是 undefined —— 否则下面"经营问句拿得到"
+    // 退化成"谁都拿得到"，这条断言就没有判别力了（而那正是本单最怕的回退方向）。
+    const greet = await fetchLiveSolverCatalog(src, ctx, "你好", undefined, { minScore: UNREACHABLE });
+    expect(greet, "寒暄也拿到了目录 ⇒ 把『零注入』换成了『全量注入兜底』，病换了个方向").toBeUndefined();
+    const meta = await fetchLiveSolverCatalog(src, ctx, "你能做什么", undefined, { minScore: UNREACHABLE });
+    expect(meta, "元问题也拿到了目录 ⇒ 同上（它实测 0.2795 比 8 条真业务问句还高，最容易漏）").toBeUndefined();
+
+    // 经营问句：domainResolve 不命中（故不是靠 primary 破例过的），但问句自带业务标签。
+    const BIZ = "全局联合排产怎么做";
+    const { domainResolve } = await import("../src/router/domain-resolver.js");
+    expect(
+      domainResolve(BIZ, undefined).solverKey,
+      "前提失效：该问句被确定性路由接住了 ⇒ 走的是 primary 破例，验不到本单这条分支",
+    ).toBeUndefined();
+
+    const cat = await fetchLiveSolverCatalog(src, ctx, BIZ, undefined, { minScore: UNREACHABLE });
+    expect(cat, "经营问句被详情段门槛连坐 ⇒ 模型一个求解器都看不见（本单要治的就是这个）").toBeDefined();
+    const entries = Object.entries(cat!);
+    const detail = entries.filter(([, e]) => e.tier !== "roster");
+    const roster = entries.filter(([, e]) => e.tier === "roster");
+    // 详情段恰好 1 条 = 检索第 1 名（"第 1 名"是名次不是阈值 ⇒ 不引入第二个魔数）。
+    expect(detail.length, "详情段不是恰好 1 条 ⇒ 代价失控（顶死门槛下本该只提 1 条）").toBe(1);
+    expect(roster.length, "目录段空 ⇒ 发现面没恢复，改了等于没改").toBeGreaterThan(0);
+    // 全集 = 详情 ∪ 目录，且**算出来**不抄 key（抄 key 就是再造一份镜像）。
+    const allKeys = new Set(LIVE_SOLVER_CATALOG_FIXTURE.map((s) => s.key));
+    expect(new Set(entries.map(([k]) => k)), "目录段没把全集下发").toEqual(allKeys);
+
+    // 成本判据：目录段**不进** objectTypes —— 那个数才是 buildOntologySemanticContext 真取数的驱动量。
+    const { projectNavigationSlice } = await import("../src/agent/navigation-slice.js");
+    const slice = projectNavigationSlice(BIZ, undefined, { toolNames: ["invoke_solver"] }, cat);
+    const detailReads = new Set(detail.flatMap(([, e]) => e.reads));
+    const leaked = slice.objectTypes.map((o) => o.type).filter((ty) => !detailReads.has(ty));
+    expect(
+      leaked,
+      `目录段的对象类型漏进了 objectTypes ⇒ 把 200ms→2s 那条真取数路按 63 条放大了：${leaked.join(",")}`,
+    ).toEqual([]);
+    await t.app.close();
+  });
 });
