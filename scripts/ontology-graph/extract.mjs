@@ -84,8 +84,18 @@ function compilerOptionsFor(pkg) {
   options.jsx = options.jsx ?? ts.JsxEmit.ReactJSX;
   options.types = options.types ?? [];
   // ← 坑 ②：把 workspace 包映射回**源码**，否则跨包引用解析到 dist/*.d.ts 全丢
+  // ← 坑 ②b（实测踩到）：**不许直接覆盖 options.paths** —— frontend-shell 自己有
+  //    `"@/*": ["./src/*"]`，覆盖掉之后它 624 个文件里所有 `@/...` 的 import 全部解析不了，
+  //    于是整包读成「没有跨文件引用」。⇒ 先把本包自己的 paths 按 REPO 重新定基，再并上我的。
+  //    金丝雀见 runCanaries 的「frontend-shell 内部跨文件引用数」。
+  const ownBase = path.resolve(REPO, pkg.root, own.baseUrl ?? ".");
+  const rebased = {};
+  for (const [k, arr] of Object.entries(own.paths ?? {})) {
+    rebased[k] = (arr ?? []).map((t) => path.relative(REPO, path.resolve(ownBase, t)).split(path.sep).join("/"));
+  }
   options.baseUrl = REPO;
   options.paths = {
+    ...rebased,
     "@platform/contracts": ["packages/contracts/src/index.ts"],
     "@platform/contracts/*": ["packages/contracts/src/*"],
     "@platform/llm-adapters": ["packages/llm-adapters/src/index.ts"],
@@ -257,7 +267,34 @@ function collectRefs(ctxs) {
       const fromFile = rel(sf.fileName);
       if (!owned.has(fromFile)) continue;
       const isTest = fromFile.includes("/test/");
+      const record = (atom, line) => {
+        if (!atom) return;
+        const bucket = isTest ? atom.inboundTest : atom.inboundSrc;
+        if (!bucket.has(fromFile)) bucket.set(fromFile, line);
+      };
       const visit = (node) => {
+        // ── 动态 import 解构绑定：`const { mapMcpConfig } = await import("./x.js")` ──
+        // 这一形态**标识符走不通**：`mapMcpConfig` 在这里是个 BindingElement 局部符号，
+        // getSymbolAtLocation 给的是局部变量，不是被导出的那个原子 ⇒ 恒判「零生产调用方」。
+        // 实测代价：apps/agentcore/src/engine.ts:634 这样拿到 mapMcpConfig 并在 :649 真调用，
+        // 而图谱把它标成 test-only（假绿检测器的假阳性）。⇒ 经模块类型的属性桥回去。
+        if (ts.isVariableDeclaration(node) && node.name && ts.isObjectBindingPattern(node.name) && node.initializer) {
+          let init = node.initializer;
+          if (ts.isAwaitExpression(init)) init = init.expression;
+          if (ts.isCallExpression(init) && init.expression.kind === ts.SyntaxKind.ImportKeyword) {
+            try {
+              const modType = checker.getTypeAtLocation(node.initializer);
+              for (const el of node.name.elements) {
+                const propName = (el.propertyName ?? el.name);
+                if (!propName || !ts.isIdentifier(propName)) continue;
+                let ps = checker.getPropertyOfType(modType, propName.text);
+                if (ps && ps.flags & ts.SymbolFlags.Alias) { try { ps = checker.getAliasedSymbol(ps); } catch { /* keep */ } }
+                const pd = (ps?.getDeclarations() ?? []).find((x) => kindOfDecl(x));
+                if (pd) record(byDeclId.get(atomId(rel(pd.getSourceFile().fileName), ps.getName())), lineOf(propName, sf));
+              }
+            } catch { /* 解析不了就算了，⛔ 不猜 */ }
+          }
+        }
         if (ts.isIdentifier(node) && exportNames.has(node.text)) {
           const p = node.parent;
           // 跳过 import/export 语句里的说明符 —— 那是管道，不是使用。
@@ -275,10 +312,21 @@ function collectRefs(ctxs) {
               const tFile = rel(d.getSourceFile().fileName);
               const id = atomId(tFile, sym.getName());
               const atom = byDeclId.get(id);
-              // ⛔ 同文件引用不算「跨文件引用」；声明点本身也不算。
-              if (atom && tFile !== fromFile) {
-                const bucket = isTest ? atom.inboundTest : atom.inboundSrc;
-                if (!bucket.has(fromFile)) bucket.set(fromFile, lineOf(node, sf));
+              if (atom) {
+                // 声明点自己那个名字不算引用（`export function foo` 里的 foo）。
+                const isOwnName = p && p.name === node && kindOfDecl(p);
+                if (!isOwnName) {
+                  if (tFile !== fromFile) {
+                    record(atom, lineOf(node, sf));
+                  } else if (!isTest) {
+                    // ⚠ **同文件内的生产使用也是生产使用**。实测：取样的 3 个 test-only 全是这一形态
+                    // （defaultAdapterFactory providers.ts:231 · seedWorldCompleteness seed-world.ts:584
+                    //  · RefKindSchema refs.ts:22/30/50），三个都在生产代码里真被调用，
+                    // 却因为「只看跨文件」被判成「零生产调用方」—— 这是假绿检测器最不该犯的**假阳性**。
+                    atom.selfUses = (atom.selfUses ?? 0) + 1;
+                    if (atom.selfLine === undefined) atom.selfLine = lineOf(node, sf);
+                  }
+                }
               }
             }
           }
@@ -291,11 +339,13 @@ function collectRefs(ctxs) {
 }
 
 // ── 2c · 三态判定 ────────────────────────────────────────────────────────────
-// no-ref  = 无任何跨文件引用
-// test-only = 有引用，但**全部**来自 test  ← 假绿第 9 形态：实现有、测试有、绿的、零生产调用方
-// wired   = 有 src 引用
+// wired     = 有生产引用（跨文件 src **或同文件内的生产使用**）
+// test-only = 只有 test 引用，且同文件内零生产使用 ← 假绿第 9 形态：
+//             实现有、测试有、绿的、零生产调用方
+// no-ref    = 任何地方都没有引用（含同文件）
+// ⚠ 三个计数 srcCount / selfUses / testCount 全部落进产物，谁都能自己重算这个判定。
 function stateOf(a) {
-  if (a.inboundSrc.size > 0) return "wired";
+  if (a.inboundSrc.size > 0 || (a.selfUses ?? 0) > 0) return "wired";
   if (a.inboundTest.size > 0) return "test-only";
   return "no-ref";
 }
@@ -559,6 +609,23 @@ function runCanaries(g) {
     [...a.inboundSrc.keys()].some((f) => !f.startsWith("packages/contracts/"))).length;
   add("contracts 原子被外包引用数", ">0", crossPkg, crossPkg > 0, "为 0 ⇒ paths 映射坏了，不是 contracts 死了");
 
+  // ④b 包内 `@/*` 别名可解析（坑 ②b：覆盖掉本包 paths 时 frontend-shell 内部引用恒 0
+  //     ⇒「前端 624 个文件全是死代码」。实测就踩过一次，是逐条手工复核才发现的）
+  const feInternal = [...atoms.values()].filter((a) => a.pkg === "frontend-shell" &&
+    [...a.inboundSrc.keys()].some((f) => f.startsWith("apps/frontend-shell/"))).length;
+  add("frontend-shell 内部跨文件引用数", ">0", feInternal, feInternal > 0,
+      "为 0 ⇒ `@/*` 别名没解析（本包 paths 被覆盖），不是前端全是死代码");
+  const knownAlias = A("sym:apps/frontend-shell/src/views/sim/console/SandboxDetail.tsx#NodeDetailProvenance");
+  const ka = knownAlias ? knownAlias.inboundTest.size + knownAlias.inboundSrc.size + (knownAlias.selfUses ?? 0) : -1;
+  add("已知经 `@/` 别名被测试引用的符号（NodeDetailProvenance）", ">0", ka, ka > 0,
+      "出处：apps/frontend-shell/test/sim-honest-fallback-b.test.tsx:168/179/206 三处类型位使用");
+
+  // ④c 动态 import 解构绑定可见（标识符路走不通的那一形态）
+  const dyn = A("sym:apps/agentcore/src/dsh-runtime/setup-spec.ts#mapMcpConfig");
+  const dynN = dyn ? dyn.inboundSrc.size : -1;
+  add("已知只经 `await import()` 解构拿到的符号（mapMcpConfig）src 入边", ">0", dynN, dynN > 0,
+      "出处：apps/agentcore/src/engine.ts:634 解构 → :649 真调用；为 0 ⇒ 动态 import 桥断了");
+
   // ⑤ test 引用可见（坑 ①：include 只有 src 时这条恒 0 ⇒「只有 test 引用 = 0」）
   const withTest = [...atoms.values()].filter((a) => a.inboundTest.size > 0).length;
   add("有 test 入边的原子数", ">0", withTest, withTest > 0, "为 0 ⇒ program 里没有 test 文件，不是没人写测试");
@@ -737,7 +804,8 @@ function emit(g) {
         inbound: {
           // 计数是**全量**（state 就是从它判的）；样例封顶 INBOUND_CAP 条，只为体积。
           // ⚠ 封顶只截样例、⛔ 绝不截计数 —— 截了计数就等于把「有多少人在用」改成「我列了几条」。
-          srcCount: a.inboundSrc.size, testCount: a.inboundTest.size,
+          srcCount: a.inboundSrc.size, selfUses: a.selfUses ?? 0, selfLine: a.selfLine ?? null,
+          testCount: a.inboundTest.size,
           src: cap([...a.inboundSrc.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([file, line]) => ({ file, line }))),
           test: cap([...a.inboundTest.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([file, line]) => ({ file, line }))),
         },

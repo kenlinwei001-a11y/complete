@@ -12,9 +12,9 @@ atoms:
     docSource: "none"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 1, selfLine: 73, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/anthropic.ts#AnthropicLlmClient"
     name: "AnthropicLlmClient"
     kind: "class"
@@ -26,7 +26,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 4, testCount: 1, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 67 }, { file: "apps/agentcore/src/scripts/smoke-llm.ts", line: 47 }, { file: "apps/datacore/src/llm.ts", line: 190 }, { file: "apps/datacore/src/llmproviders.ts", line: 345 }], test: [{ file: "apps/agentcore/test/runtime-context.test.ts", line: 332 }] }
+    inbound: { srcCount: 4, selfUses: 0, selfLine: null, testCount: 1, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 67 }, { file: "apps/agentcore/src/scripts/smoke-llm.ts", line: 47 }, { file: "apps/datacore/src/llm.ts", line: 190 }, { file: "apps/datacore/src/llmproviders.ts", line: 345 }], test: [{ file: "apps/agentcore/test/runtime-context.test.ts", line: 332 }] }
   - id: "sym:packages/llm-adapters/src/anthropic.ts#ClassificationSchema"
     name: "ClassificationSchema"
     kind: "const"
@@ -36,9 +36,9 @@ atoms:
     docSource: "jsdoc"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 1, selfLine: 129, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/anthropic.ts#ClassifierParseError"
     name: "ClassifierParseError"
     kind: "class"
@@ -50,7 +50,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 2, testCount: 1, src: [{ file: "packages/llm-adapters/src/degrade.ts", line: 116 }, { file: "packages/llm-adapters/src/openai.ts", line: 185 }], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 86 }] }
+    inbound: { srcCount: 2, selfUses: 1, selfLine: 134, testCount: 1, src: [{ file: "packages/llm-adapters/src/degrade.ts", line: 116 }, { file: "packages/llm-adapters/src/openai.ts", line: 185 }], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 86 }] }
   - id: "sym:packages/llm-adapters/src/anthropic.ts#COMPACTION_BETA"
     name: "COMPACTION_BETA"
     kind: "const"
@@ -62,7 +62,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 1, testCount: 1, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 934 }], test: [{ file: "apps/agentcore/test/runtime-context.test.ts", line: 340 }] }
+    inbound: { srcCount: 1, selfUses: 1, selfLine: 176, testCount: 1, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 934 }], test: [{ file: "apps/agentcore/test/runtime-context.test.ts", line: 340 }] }
   - id: "sym:packages/llm-adapters/src/custom-http.ts#CustomHttpAdapter"
     name: "CustomHttpAdapter"
     kind: "class"
@@ -74,7 +74,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 2, testCount: 0, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 100 }, { file: "apps/datacore/src/llmproviders.ts", line: 348 }], test: [] }
+    inbound: { srcCount: 2, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 100 }, { file: "apps/datacore/src/llmproviders.ts", line: 348 }], test: [] }
   - id: "sym:packages/llm-adapters/src/custom-http.ts#CustomHttpNotImplementedError"
     name: "CustomHttpNotImplementedError"
     kind: "class"
@@ -84,9 +84,9 @@ atoms:
     docSource: "jsdoc"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 6, selfLine: 29, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/degrade.ts#classifyWithJsonModeDegradation"
     name: "classifyWithJsonModeDegradation"
     kind: "function"
@@ -98,7 +98,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 1, testCount: 0, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 327 }], test: [] }
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 327 }], test: [] }
   - id: "sym:packages/llm-adapters/src/degrade.ts#extractJsonObject"
     name: "extractJsonObject"
     kind: "function"
@@ -108,9 +108,9 @@ atoms:
     docSource: "jsdoc"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 1, selfLine: 67, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/degrade.ts#JSON_MODE_MAX_RETRIES"
     name: "JSON_MODE_MAX_RETRIES"
     kind: "const"
@@ -120,9 +120,9 @@ atoms:
     docSource: "jsdoc"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 1, selfLine: 59, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/degrade.ts#parseWithJsonModeDegradation"
     name: "parseWithJsonModeDegradation"
     kind: "function"
@@ -134,7 +134,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 1, testCount: 0, src: [{ file: "apps/datacore/src/llm.ts", line: 53 }], test: [] }
+    inbound: { srcCount: 1, selfUses: 1, selfLine: 109, testCount: 0, src: [{ file: "apps/datacore/src/llm.ts", line: 53 }], test: [] }
   - id: "sym:packages/llm-adapters/src/index.ts#AnthropicAdapter"
     name: "AnthropicAdapter"
     kind: "class"
@@ -146,7 +146,7 @@ atoms:
     wo: null
     state: "no-ref"
     reexportOf: "packages/llm-adapters/src/anthropic.ts"
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/index.ts#OpenAICompatAdapter"
     name: "OpenAICompatAdapter"
     kind: "class"
@@ -158,7 +158,7 @@ atoms:
     wo: null
     state: "no-ref"
     reexportOf: "packages/llm-adapters/src/openai.ts"
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 0, selfLine: null, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/openai.ts#extractJsonText"
     name: "extractJsonText"
     kind: "function"
@@ -170,7 +170,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 1, testCount: 0, src: [{ file: "packages/llm-adapters/src/openai.test.ts", line: 166 }], test: [] }
+    inbound: { srcCount: 1, selfUses: 2, selfLine: 212, testCount: 0, src: [{ file: "packages/llm-adapters/src/openai.test.ts", line: 166 }], test: [] }
   - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiChatCompletion"
     name: "OpenAiChatCompletion"
     kind: "interface"
@@ -180,9 +180,9 @@ atoms:
     docSource: "none"
     tags: ["llm-adapters"]
     wo: null
-    state: "test-only"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 1, src: [], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 25 }] }
+    inbound: { srcCount: 0, selfUses: 2, selfLine: 74, testCount: 1, src: [], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 25 }] }
   - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiChatMessage"
     name: "OpenAiChatMessage"
     kind: "interface"
@@ -192,9 +192,9 @@ atoms:
     docSource: "none"
     tags: ["llm-adapters"]
     wo: null
-    state: "test-only"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 1, src: [], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 38 }] }
+    inbound: { srcCount: 0, selfUses: 5, selfLine: 66, testCount: 1, src: [], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 38 }] }
   - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiChatPort"
     name: "OpenAiChatPort"
     kind: "interface"
@@ -204,9 +204,9 @@ atoms:
     docSource: "none"
     tags: ["llm-adapters"]
     wo: null
-    state: "test-only"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 1, src: [], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 23 }] }
+    inbound: { srcCount: 0, selfUses: 3, selfLine: 130, testCount: 1, src: [], test: [{ file: "apps/agentcore/test/llm-providers.test.ts", line: 23 }] }
   - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiLlmClient"
     name: "OpenAiLlmClient"
     kind: "class"
@@ -218,7 +218,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 6, testCount: 3, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 69 }, { file: "apps/agentcore/src/scripts/smoke-llm.ts", line: 60 }, { file: "apps/datacore/src/llm.ts", line: 177 }, { file: "apps/datacore/src/llmproviders.ts", line: 347 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 29 }, { file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 53 }], test: [{ file: "apps/agentcore/test/a14-real-kimi.integration.test.ts", line: 33 }, { file: "apps/agentcore/test/llm-providers.test.ts", line: 57 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 53 }] }
+    inbound: { srcCount: 6, selfUses: 0, selfLine: null, testCount: 3, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 69 }, { file: "apps/agentcore/src/scripts/smoke-llm.ts", line: 60 }, { file: "apps/datacore/src/llm.ts", line: 177 }, { file: "apps/datacore/src/llmproviders.ts", line: 347 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 29 }, { file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 53 }], test: [{ file: "apps/agentcore/test/a14-real-kimi.integration.test.ts", line: 33 }, { file: "apps/agentcore/test/llm-providers.test.ts", line: 57 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 53 }] }
   - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiLlmClientOptions"
     name: "OpenAiLlmClientOptions"
     kind: "interface"
@@ -228,9 +228,9 @@ atoms:
     docSource: "none"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 1, selfLine: 145, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/openai.ts#OpenAiToolCall"
     name: "OpenAiToolCall"
     kind: "interface"
@@ -240,9 +240,9 @@ atoms:
     docSource: "jsdoc"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 2, selfLine: 53, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/openai.ts#toOpenAiToolChoice"
     name: "toOpenAiToolChoice"
     kind: "function"
@@ -254,7 +254,7 @@ atoms:
     wo: "WO-FIX-REASONING-CONTENT"
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 1, testCount: 0, src: [{ file: "packages/llm-adapters/src/openai.test.ts", line: 158 }], test: [] }
+    inbound: { srcCount: 1, selfUses: 1, selfLine: 247, testCount: 0, src: [{ file: "packages/llm-adapters/src/openai.test.ts", line: 158 }], test: [] }
   - id: "sym:packages/llm-adapters/src/slot-harvest.ts#harvestClassificationSlots"
     name: "harvestClassificationSlots"
     kind: "function"
@@ -266,7 +266,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 5, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 139 }, { file: "packages/llm-adapters/src/degrade.ts", line: 118 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 269 }, { file: "packages/llm-adapters/src/openai.ts", line: 221 }, { file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 43 }], test: [] }
+    inbound: { srcCount: 5, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 139 }, { file: "packages/llm-adapters/src/degrade.ts", line: 118 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 269 }, { file: "packages/llm-adapters/src/openai.ts", line: 221 }, { file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 43 }], test: [] }
   - id: "sym:packages/llm-adapters/src/slot-harvest.ts#HarvestedClassificationSlots"
     name: "HarvestedClassificationSlots"
     kind: "interface"
@@ -276,9 +276,9 @@ atoms:
     docSource: "none"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 3, selfLine: 143, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/slot-harvest.ts#normalizeSlotValue"
     name: "normalizeSlotValue"
     kind: "function"
@@ -290,7 +290,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 1, testCount: 0, src: [{ file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 73 }], test: [] }
+    inbound: { srcCount: 1, selfUses: 1, selfLine: 191, testCount: 0, src: [{ file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 73 }], test: [] }
   - id: "sym:packages/llm-adapters/src/slot-harvest.ts#reportUnconsumedSlots"
     name: "reportUnconsumedSlots"
     kind: "function"
@@ -302,7 +302,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 5, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 140 }, { file: "packages/llm-adapters/src/degrade.ts", line: 119 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 326 }, { file: "packages/llm-adapters/src/openai.ts", line: 223 }, { file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 62 }], test: [] }
+    inbound: { srcCount: 5, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 140 }, { file: "packages/llm-adapters/src/degrade.ts", line: 119 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 326 }, { file: "packages/llm-adapters/src/openai.ts", line: 223 }, { file: "packages/llm-adapters/src/slot-value-shape.test.ts", line: 62 }], test: [] }
   - id: "sym:packages/llm-adapters/src/slot-harvest.ts#SlotSource"
     name: "SlotSource"
     kind: "type"
@@ -312,9 +312,9 @@ atoms:
     docSource: "jsdoc"
     tags: ["llm-adapters"]
     wo: "WO-SLOT-HARVEST"
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 3, selfLine: 35, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/slot-harvest.ts#UnconsumedSink"
     name: "UnconsumedSink"
     kind: "interface"
@@ -324,9 +324,9 @@ atoms:
     docSource: "jsdoc"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 2, selfLine: 243, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/toolloop.ts#runToolLoop"
     name: "runToolLoop"
     kind: "function"
@@ -338,7 +338,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 2, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 261 }, { file: "packages/llm-adapters/src/openai.ts", line: 365 }], test: [] }
+    inbound: { srcCount: 2, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 261 }, { file: "packages/llm-adapters/src/openai.ts", line: 365 }], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#AgentLlmClient"
     name: "AgentLlmClient"
     kind: "interface"
@@ -350,7 +350,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 12, testCount: 6, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 279 }, { file: "apps/agentcore/src/agent/loop.ts", line: 140 }, { file: "apps/agentcore/src/agent/production-cognition.ts", line: 14 }, { file: "apps/agentcore/src/deps.ts", line: 24 }, { file: "apps/agentcore/src/engine.ts", line: 208 }, { file: "apps/agentcore/src/llm/mock.ts", line: 39 }, { file: "apps/agentcore/src/llm/providers.ts", line: 55 }, { file: "apps/agentcore/src/router/execute-plan.ts", line: 44 }, { file: "apps/agentcore/src/scripts/smoke-llm.ts", line: 41 }, { file: "apps/agentcore/src/skill-summary-review.ts", line: 45 }, { file: "apps/agentcore/src/workflow/executor.ts", line: 46 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 14 }], test: [{ file: "apps/agentcore/test/context-compression-seam.test.ts", line: 55 }, { file: "apps/agentcore/test/empty-response-guard.test.ts", line: 27 }, { file: "apps/agentcore/test/graph-exec-consolidate.seam.test.ts", line: 320 }, { file: "apps/agentcore/test/helpers.ts", line: 42 }, { file: "apps/agentcore/test/role-model-fallback.test.ts", line: 123 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 51 }] }
+    inbound: { srcCount: 12, selfUses: 1, selfLine: 158, testCount: 6, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 279 }, { file: "apps/agentcore/src/agent/loop.ts", line: 140 }, { file: "apps/agentcore/src/agent/production-cognition.ts", line: 14 }, { file: "apps/agentcore/src/deps.ts", line: 24 }, { file: "apps/agentcore/src/engine.ts", line: 208 }, { file: "apps/agentcore/src/llm/mock.ts", line: 39 }, { file: "apps/agentcore/src/llm/providers.ts", line: 55 }, { file: "apps/agentcore/src/router/execute-plan.ts", line: 44 }, { file: "apps/agentcore/src/scripts/smoke-llm.ts", line: 41 }, { file: "apps/agentcore/src/skill-summary-review.ts", line: 45 }, { file: "apps/agentcore/src/workflow/executor.ts", line: 46 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 14 }], test: [{ file: "apps/agentcore/test/context-compression-seam.test.ts", line: 55 }, { file: "apps/agentcore/test/empty-response-guard.test.ts", line: 27 }, { file: "apps/agentcore/test/graph-exec-consolidate.seam.test.ts", line: 320 }, { file: "apps/agentcore/test/helpers.ts", line: 42 }, { file: "apps/agentcore/test/role-model-fallback.test.ts", line: 123 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 51 }] }
   - id: "sym:packages/llm-adapters/src/types.ts#CompletionReq"
     name: "CompletionReq"
     kind: "interface"
@@ -362,7 +362,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 4, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 228 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 28 }, { file: "packages/llm-adapters/src/degrade.ts", line: 18 }, { file: "packages/llm-adapters/src/openai.ts", line: 317 }], test: [] }
+    inbound: { srcCount: 4, selfUses: 1, selfLine: 153, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 228 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 28 }, { file: "packages/llm-adapters/src/degrade.ts", line: 18 }, { file: "packages/llm-adapters/src/openai.ts", line: 317 }], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#CompletionResp"
     name: "CompletionResp"
     kind: "interface"
@@ -374,7 +374,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 4, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 228 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 28 }, { file: "packages/llm-adapters/src/degrade.ts", line: 18 }, { file: "packages/llm-adapters/src/openai.ts", line: 317 }], test: [] }
+    inbound: { srcCount: 4, selfUses: 1, selfLine: 153, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 228 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 28 }, { file: "packages/llm-adapters/src/degrade.ts", line: 18 }, { file: "packages/llm-adapters/src/openai.ts", line: 317 }], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#FullLlmClient"
     name: "FullLlmClient"
     kind: "type"
@@ -386,7 +386,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 6, testCount: 0, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 86 }, { file: "apps/datacore/src/llm.ts", line: 47 }, { file: "apps/datacore/src/llmproviders.ts", line: 326 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 66 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 25 }, { file: "packages/llm-adapters/src/openai.ts", line: 140 }], test: [] }
+    inbound: { srcCount: 6, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/agentcore/src/llm/providers.ts", line: 86 }, { file: "apps/datacore/src/llm.ts", line: 47 }, { file: "apps/datacore/src/llmproviders.ts", line: 326 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 66 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 25 }, { file: "packages/llm-adapters/src/openai.ts", line: 140 }], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#isContextWindowExceededError"
     name: "isContextWindowExceededError"
     kind: "function"
@@ -398,7 +398,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 1, testCount: 0, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 976 }], test: [] }
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 976 }], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#LlmAgentMessage"
     name: "LlmAgentMessage"
     kind: "interface"
@@ -410,7 +410,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 5, testCount: 0, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 28 }, { file: "apps/agentcore/src/agent/loop.ts", line: 473 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 268 }, { file: "packages/llm-adapters/src/openai.ts", line: 403 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 15 }], test: [] }
+    inbound: { srcCount: 5, selfUses: 2, selfLine: 52, testCount: 0, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 28 }, { file: "apps/agentcore/src/agent/loop.ts", line: 473 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 268 }, { file: "packages/llm-adapters/src/openai.ts", line: 403 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 15 }], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#LlmAgentRequest"
     name: "LlmAgentRequest"
     kind: "interface"
@@ -422,7 +422,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 7, testCount: 2, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 36 }, { file: "apps/agentcore/src/llm/mock.ts", line: 27 }, { file: "apps/agentcore/src/llm/providers.ts", line: 333 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 100 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 41 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 97 }, { file: "packages/llm-adapters/src/openai.ts", line: 233 }], test: [{ file: "apps/agentcore/test/real-llm-free-query-seam.test.ts", line: 40 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 60 }] }
+    inbound: { srcCount: 7, selfUses: 2, selfLine: 103, testCount: 2, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 36 }, { file: "apps/agentcore/src/llm/mock.ts", line: 27 }, { file: "apps/agentcore/src/llm/providers.ts", line: 333 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 100 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 41 }, { file: "packages/llm-adapters/src/openai.test.ts", line: 97 }, { file: "packages/llm-adapters/src/openai.ts", line: 233 }], test: [{ file: "apps/agentcore/test/real-llm-free-query-seam.test.ts", line: 40 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 60 }] }
   - id: "sym:packages/llm-adapters/src/types.ts#LlmAgentResponse"
     name: "LlmAgentResponse"
     kind: "interface"
@@ -434,7 +434,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 5, testCount: 1, src: [{ file: "apps/agentcore/src/llm/mock.ts", line: 80 }, { file: "apps/agentcore/src/llm/providers.ts", line: 333 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 148 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 41 }, { file: "packages/llm-adapters/src/openai.ts", line: 233 }], test: [{ file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 60 }] }
+    inbound: { srcCount: 5, selfUses: 3, selfLine: 103, testCount: 1, src: [{ file: "apps/agentcore/src/llm/mock.ts", line: 80 }, { file: "apps/agentcore/src/llm/providers.ts", line: 333 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 148 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 41 }, { file: "packages/llm-adapters/src/openai.ts", line: 233 }], test: [{ file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 60 }] }
   - id: "sym:packages/llm-adapters/src/types.ts#LlmAgentToolSpec"
     name: "LlmAgentToolSpec"
     kind: "interface"
@@ -444,9 +444,9 @@ atoms:
     docSource: "none"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 2, selfLine: 51, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#LlmCapabilities"
     name: "LlmCapabilities"
     kind: "interface"
@@ -458,7 +458,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 5, testCount: 1, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 313 }, { file: "apps/agentcore/src/llm/mock.ts", line: 50 }, { file: "apps/agentcore/src/llm/providers.ts", line: 341 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 95 }, { file: "packages/llm-adapters/src/openai.ts", line: 167 }], test: [{ file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 66 }] }
+    inbound: { srcCount: 5, selfUses: 1, selfLine: 106, testCount: 1, src: [{ file: "apps/agentcore/src/agent/context.ts", line: 313 }, { file: "apps/agentcore/src/llm/mock.ts", line: 50 }, { file: "apps/agentcore/src/llm/providers.ts", line: 341 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 95 }, { file: "packages/llm-adapters/src/openai.ts", line: 167 }], test: [{ file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 66 }] }
   - id: "sym:packages/llm-adapters/src/types.ts#LlmClient"
     name: "LlmClient"
     kind: "interface"
@@ -468,9 +468,9 @@ atoms:
     docSource: "jsdoc"
     tags: ["llm-adapters"]
     wo: null
-    state: "no-ref"
+    state: "wired"
     reexportOf: null
-    inbound: { srcCount: 0, testCount: 0, src: [], test: [] }
+    inbound: { srcCount: 0, selfUses: 1, selfLine: 158, testCount: 0, src: [], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#LlmContentBlock"
     name: "LlmContentBlock"
     kind: "type"
@@ -482,7 +482,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 4, testCount: 0, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 380 }, { file: "apps/agentcore/src/llm/mock.ts", line: 12 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 185 }, { file: "packages/llm-adapters/src/openai.ts", line: 257 }], test: [] }
+    inbound: { srcCount: 4, selfUses: 2, selfLine: 35, testCount: 0, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 380 }, { file: "apps/agentcore/src/llm/mock.ts", line: 12 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 185 }, { file: "packages/llm-adapters/src/openai.ts", line: 257 }], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#LlmEmptyResponseError"
     name: "LlmEmptyResponseError"
     kind: "class"
@@ -494,7 +494,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 2, testCount: 2, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 997 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 25 }], test: [{ file: "apps/agentcore/test/empty-response-guard.test.ts", line: 33 }, { file: "apps/agentcore/test/real-llm-free-query-seam.test.ts", line: 159 }] }
+    inbound: { srcCount: 2, selfUses: 1, selfLine: 193, testCount: 2, src: [{ file: "apps/agentcore/src/agent/loop.ts", line: 997 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 25 }], test: [{ file: "apps/agentcore/test/empty-response-guard.test.ts", line: 33 }, { file: "apps/agentcore/test/real-llm-free-query-seam.test.ts", line: 159 }] }
   - id: "sym:packages/llm-adapters/src/types.ts#ParseReq"
     name: "ParseReq"
     kind: "interface"
@@ -506,7 +506,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 4, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 246 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 31 }, { file: "packages/llm-adapters/src/degrade.ts", line: 55 }, { file: "packages/llm-adapters/src/openai.ts", line: 337 }], test: [] }
+    inbound: { srcCount: 4, selfUses: 1, selfLine: 154, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 246 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 31 }, { file: "packages/llm-adapters/src/degrade.ts", line: 55 }, { file: "packages/llm-adapters/src/openai.ts", line: 337 }], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#RawClassification"
     name: "RawClassification"
     kind: "interface"
@@ -518,7 +518,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 6, testCount: 2, src: [{ file: "apps/agentcore/src/llm/mock.ts", line: 40 }, { file: "apps/agentcore/src/llm/providers.ts", line: 322 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 123 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 38 }, { file: "packages/llm-adapters/src/degrade.ts", line: 108 }, { file: "packages/llm-adapters/src/openai.ts", line: 178 }], test: [{ file: "apps/agentcore/test/prompt-defaults-wiring.test.ts", line: 27 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 57 }] }
+    inbound: { srcCount: 6, selfUses: 1, selfLine: 102, testCount: 2, src: [{ file: "apps/agentcore/src/llm/mock.ts", line: 40 }, { file: "apps/agentcore/src/llm/providers.ts", line: 322 }, { file: "packages/llm-adapters/src/anthropic.ts", line: 123 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 38 }, { file: "packages/llm-adapters/src/degrade.ts", line: 108 }, { file: "packages/llm-adapters/src/openai.ts", line: 178 }], test: [{ file: "apps/agentcore/test/prompt-defaults-wiring.test.ts", line: 27 }, { file: "apps/agentcore/test/slot-harvest-floor.seam.test.ts", line: 57 }] }
   - id: "sym:packages/llm-adapters/src/types.ts#requireUsage"
     name: "requireUsage"
     kind: "function"
@@ -530,7 +530,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 1, testCount: 1, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 131 }], test: [{ file: "apps/agentcore/test/empty-response-guard.test.ts", line: 33 }] }
+    inbound: { srcCount: 1, selfUses: 0, selfLine: null, testCount: 1, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 131 }], test: [{ file: "apps/agentcore/test/empty-response-guard.test.ts", line: 33 }] }
   - id: "sym:packages/llm-adapters/src/types.ts#TokenMetricsPort"
     name: "TokenMetricsPort"
     kind: "interface"
@@ -542,7 +542,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 2, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 72 }, { file: "packages/llm-adapters/src/openai.ts", line: 135 }], test: [] }
+    inbound: { srcCount: 2, selfUses: 0, selfLine: null, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 72 }, { file: "packages/llm-adapters/src/openai.ts", line: 135 }], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#ToolLoopEvent"
     name: "ToolLoopEvent"
     kind: "type"
@@ -554,7 +554,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 4, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 260 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 35 }, { file: "packages/llm-adapters/src/openai.ts", line: 364 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 14 }], test: [] }
+    inbound: { srcCount: 4, selfUses: 1, selfLine: 155, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 260 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 35 }, { file: "packages/llm-adapters/src/openai.ts", line: 364 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 14 }], test: [] }
   - id: "sym:packages/llm-adapters/src/types.ts#ToolLoopReq"
     name: "ToolLoopReq"
     kind: "interface"
@@ -566,7 +566,7 @@ atoms:
     wo: null
     state: "wired"
     reexportOf: null
-    inbound: { srcCount: 4, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 260 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 35 }, { file: "packages/llm-adapters/src/openai.ts", line: 364 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 14 }], test: [] }
+    inbound: { srcCount: 4, selfUses: 1, selfLine: 155, testCount: 0, src: [{ file: "packages/llm-adapters/src/anthropic.ts", line: 260 }, { file: "packages/llm-adapters/src/custom-http.ts", line: 35 }, { file: "packages/llm-adapters/src/openai.ts", line: 364 }, { file: "packages/llm-adapters/src/toolloop.ts", line: 14 }], test: [] }
 edges:
   - kind: "declares"
     from: "sym:packages/llm-adapters/src/anthropic.ts#ClassificationSchema"

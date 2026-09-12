@@ -9,7 +9,7 @@ paths: [[{ linkKey: "defect_for_wiplot", direction: "out" }]]
 brief: "跨域接缝切片·process↔quality·缺陷记录(DefectRecord) → 在制批次(WIPLot)"
 indexEntities: ["DefectRecord", "WIPLot", "在制批次", "缺陷记录"]
 tokens: ["defectrecord", "process", "quality", "wiplot", "切", "切片", "制", "制批", "在", "在制", "在制批次", "域", "域接", "录", "录在", "批", "批次", "接", "接缝", "次", "片", "片缺", "缝", "缝切", "缺", "缺陷", "缺陷记录", "记", "记录", "跨", "跨域", "陷", "陷记"]
-counts: { atoms: 17, consumers: 15 }
+counts: { atoms: 17, consumers: 16 }
 atoms:
   - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
     via: ["DefectRecord", "WIPLot"]
@@ -45,4 +45,4 @@ atoms:
     via: ["WIPLot"]
   - atom: "sym:apps/frontend-shell/src/views/sim/unified/console0828/eventCatalog.ts#BUSINESS_EVENTS"
     via: ["DefectRecord"]
-consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/process/ontology.ts", "apps/datacore/src/process/reconstruct.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/handlers.ts", "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx", "apps/frontend-shell/src/views/sim/SandboxConsole.tsx", "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx", "apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/process/ontology.ts", "apps/datacore/src/process/reconstruct.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/solvers/ontology-signature.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/handlers.ts", "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx", "apps/frontend-shell/src/views/sim/SandboxConsole.tsx", "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx", "apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx"]

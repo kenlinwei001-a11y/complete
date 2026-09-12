@@ -9,7 +9,7 @@ paths: [[{ linkKey: "txn_from_wo", direction: "out" }]]
 brief: "跨域接缝切片·process↔supply·库存流水(InventoryTxn) → 生产工单(WorkOrder)"
 indexEntities: ["InventoryTxn", "WorkOrder", "库存流水", "生产工单"]
 tokens: ["inventorytxn", "process", "supply", "workorder", "产", "产工", "切", "切片", "单", "域", "域接", "存", "存流", "工", "工单", "库", "库存", "库存流水", "接", "接缝", "水", "水生", "流", "流水", "片", "片库", "生", "生产", "生产工单", "缝", "缝切", "跨", "跨域"]
-counts: { atoms: 21, consumers: 26 }
+counts: { atoms: 21, consumers: 27 }
 atoms:
   - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
     via: ["InventoryTxn", "WorkOrder"]
@@ -53,4 +53,4 @@ atoms:
     via: ["WorkOrder"]
   - atom: "sym:packages/contracts/src/disposition.ts#DispositionProvenanceSchema"
     via: ["WorkOrder"]
-consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/process/ontology.ts", "apps/datacore/src/process/reconstruct.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/base-outlook.ts", "apps/datacore/src/solvers/risk.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/handlers.ts"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/process/ontology.ts", "apps/datacore/src/process/reconstruct.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/base-outlook.ts", "apps/datacore/src/solvers/ontology-signature.ts", "apps/datacore/src/solvers/risk.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/handlers.ts"]

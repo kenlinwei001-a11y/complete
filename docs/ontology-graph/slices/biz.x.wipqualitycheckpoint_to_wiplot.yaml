@@ -9,7 +9,7 @@ paths: [[{ linkKey: "checkpoint_for_lot", direction: "out" }]]
 brief: "跨域接缝切片·process↔quality·在制批次(WIPLot) → 在制质检点(WIPQualityCheckpoint)"
 indexEntities: ["WIPLot", "WIPQualityCheckpoint", "在制批次", "在制质检点"]
 tokens: ["process", "quality", "wiplot", "wipqualitycheckpoint", "切", "切片", "制", "制批", "制质", "在", "在制", "在制批次", "在制质检点", "域", "域接", "批", "批次", "接", "接缝", "检", "检点", "次", "次在", "点", "片", "片在", "缝", "缝切", "质", "质检", "跨", "跨域"]
-counts: { atoms: 14, consumers: 14 }
+counts: { atoms: 14, consumers: 15 }
 atoms:
   - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
     via: ["WIPLot", "WIPQualityCheckpoint"]
@@ -39,4 +39,4 @@ atoms:
     via: ["WIPLot"]
   - atom: "sym:apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx#TransitFlowLayer"
     via: ["WIPLot"]
-consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/process/ontology.ts", "apps/datacore/src/process/reconstruct.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/handlers.ts", "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx", "apps/frontend-shell/src/views/sim/SandboxConsole.tsx", "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/process/ontology.ts", "apps/datacore/src/process/reconstruct.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/solvers/ontology-signature.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/handlers.ts", "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx", "apps/frontend-shell/src/views/sim/SandboxConsole.tsx", "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx"]

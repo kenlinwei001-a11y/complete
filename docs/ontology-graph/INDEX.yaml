@@ -2,8 +2,8 @@
 # 生成物 —— ⛔ 不要手改。生成命令：node scripts/ontology-graph/extract.mjs
 # 人读的散文本体在 docs/SYSTEM-ONTOLOGY.md，**保留不动**，本目录是它旁边的机器抽取面。
 version: 1
-generatedFrom: "b7cab1c7"
-counts: { atoms: 6265, edges: 21031, slices: 47, byState: { wired: 2835, test-only: 399, no-ref: 3031 }, byEdgeKind: { reexports: 90, reads: 266, declares: 5437, registers: 3257, seeds: 2284, asserts: 7963, inSlice: 1734 }, docSourceNone: 2968, docSourceNonePct: 47.37 }
+generatedFrom: "89635dd0"
+counts: { atoms: 6266, edges: 21032, slices: 47, byState: { wired: 5745, test-only: 72, no-ref: 449 }, byEdgeKind: { reexports: 91, reads: 266, declares: 5437, registers: 3257, seeds: 2284, asserts: 7963, inSlice: 1734 }, docSourceNone: 2968, docSourceNonePct: 47.37 }
 canary:
   - probe: "buildSliceIndex 在节点表里"
     expect: "present"
@@ -30,14 +30,29 @@ canary:
     actual: 982
     ok: true
     note: "为 0 ⇒ paths 映射坏了，不是 contracts 死了"
+  - probe: "frontend-shell 内部跨文件引用数"
+    expect: ">0"
+    actual: 1200
+    ok: true
+    note: "为 0 ⇒ `@/*` 别名没解析（本包 paths 被覆盖），不是前端全是死代码"
+  - probe: "已知经 `@/` 别名被测试引用的符号（NodeDetailProvenance）"
+    expect: ">0"
+    actual: 5
+    ok: true
+    note: "出处：apps/frontend-shell/test/sim-honest-fallback-b.test.tsx:168/179/206 三处类型位使用"
+  - probe: "已知只经 `await import()` 解构拿到的符号（mapMcpConfig）src 入边"
+    expect: ">0"
+    actual: 1
+    ok: true
+    note: "出处：apps/agentcore/src/engine.ts:634 解构 → :649 真调用；为 0 ⇒ 动态 import 桥断了"
   - probe: "有 test 入边的原子数"
     expect: ">0"
-    actual: 1240
+    actual: 1701
     ok: true
     note: "为 0 ⇒ program 里没有 test 文件，不是没人写测试"
   - probe: "reexports 边总数"
     expect: ">0"
-    actual: 90
+    actual: 91
     ok: true
   - probe: "已知 re-export（service.ts 转 LEVER_PROP_META）命中"
     expect: "true"
@@ -69,8 +84,8 @@ atomShards:
     edges: 2860
   - package: "frontend-shell"
     file: "atoms/frontend-shell.yaml"
-    count: 1921
-    edges: 4786
+    count: 1922
+    edges: 4787
   - package: "contracts"
     file: "atoms/contracts.yaml"
     count: 2271
@@ -90,7 +105,7 @@ slices:
     spannedTypes: ["Equipment", "EquipmentAlarm", "EquipmentDowntime", "EquipmentOEE", "MaintenanceOrder", "ProductEquipmentCapability"]
     spannedDomains: ["equip"]
     atomCount: 34
-    consumerCount: 40
+    consumerCount: 41
     tokens: ["equip", "equipment", "equipmentalarm", "equipmentdowntime", "equipmentoee", "maintenanceorder", "oee", "productequipmentcapability", "产", "产品", "产品设备能力", "修", "修工", "停", "停机", "内", "内切", "切", "切片", "力", "单", "单产", "告", "告警", "品", "品设", "型", "型设", "域", "域内", "域根", "备", "备停", "备告", "备维", "备能", "备覆", "备设", "工", "工单", "机", "机设", "根", "根设", "片", "片域", "盖", "盖类", "类", "类型", "维", "维修", "维修工单", "能", "能力", "覆", "覆盖", "警", "警设", "设", "设备", "设备oee", "设备停机", "设备告警"]
     span: 12
   - key: "biz.factory.base"
@@ -194,7 +209,7 @@ slices:
     spannedTypes: ["Base", "InterBaseTransfer"]
     spannedDomains: ["capacity", "factory"]
     atomCount: 55
-    consumerCount: 49
+    consumerCount: 50
     tokens: ["base", "capacity", "factory", "interbasetransfer", "产", "产基", "切", "切片", "地", "地调", "地跨", "域", "域接", "基", "基地", "拨", "接", "接缝", "片", "片生", "生", "生产", "生产基地", "缝", "缝切", "调", "调拨", "跨", "跨域", "跨基", "跨基地调拨"]
     span: 4
   - key: "biz.x.base_to_maintplan"
@@ -233,7 +248,7 @@ slices:
     spannedTypes: ["DefectRecord", "WIPLot"]
     spannedDomains: ["process", "quality"]
     atomCount: 17
-    consumerCount: 15
+    consumerCount: 16
     tokens: ["defectrecord", "process", "quality", "wiplot", "切", "切片", "制", "制批", "在", "在制", "在制批次", "域", "域接", "录", "录在", "批", "批次", "接", "接缝", "次", "片", "片缺", "缝", "缝切", "缺", "缺陷", "缺陷记录", "记", "记录", "跨", "跨域", "陷", "陷记"]
     span: 4
   - key: "biz.x.equipment_to_process"
@@ -324,7 +339,7 @@ slices:
     spannedTypes: ["Base", "InterBaseTransfer"]
     spannedDomains: ["capacity", "factory"]
     atomCount: 55
-    consumerCount: 49
+    consumerCount: 50
     tokens: ["base", "capacity", "factory", "interbasetransfer", "产", "产基", "切", "切片", "地", "地调", "地跨", "域", "域接", "基", "基地", "拨", "接", "接缝", "片", "片生", "生", "生产", "生产基地", "缝", "缝切", "调", "调拨", "跨", "跨域", "跨基", "跨基地调拨"]
     span: 4
   - key: "biz.x.interbasetransfer_to_model"
@@ -337,7 +352,7 @@ slices:
     spannedTypes: ["InterBaseTransfer", "Model"]
     spannedDomains: ["capacity", "product"]
     atomCount: 50
-    consumerCount: 47
+    consumerCount: 48
     tokens: ["capacity", "interbasetransfer", "model", "product", "切", "切片", "号", "地", "地调", "型", "型号", "域", "域接", "基", "基地", "拨", "拨电", "接", "接缝", "池", "池型", "片", "片跨", "电", "电池", "电池型号", "缝", "缝切", "调", "调拨", "跨", "跨域", "跨基", "跨基地调拨"]
     span: 4
   - key: "biz.x.inventorytxn_to_workorder"
@@ -350,7 +365,7 @@ slices:
     spannedTypes: ["InventoryTxn", "WorkOrder"]
     spannedDomains: ["process", "supply"]
     atomCount: 21
-    consumerCount: 26
+    consumerCount: 27
     tokens: ["inventorytxn", "process", "supply", "workorder", "产", "产工", "切", "切片", "单", "域", "域接", "存", "存流", "工", "工单", "库", "库存", "库存流水", "接", "接缝", "水", "水生", "流", "流水", "片", "片库", "生", "生产", "生产工单", "缝", "缝切", "跨", "跨域"]
     span: 4
   - key: "biz.x.line_to_capacitypool"
@@ -389,7 +404,7 @@ slices:
     spannedTypes: ["Line", "WorkOrder"]
     spannedDomains: ["factory", "process"]
     atomCount: 53
-    consumerCount: 44
+    consumerCount: 45
     tokens: ["factory", "line", "process", "workorder", "产", "产工", "产线", "切", "切片", "单", "域", "域接", "工", "工单", "接", "接缝", "片", "片产", "生", "生产", "生产工单", "线", "线生", "缝", "缝切", "跨", "跨域"]
     span: 4
   - key: "biz.x.metric_to_principal"
@@ -545,7 +560,7 @@ slices:
     spannedTypes: ["QualityLot", "WorkOrder"]
     spannedDomains: ["process", "quality"]
     atomCount: 24
-    consumerCount: 29
+    consumerCount: 30
     tokens: ["process", "quality", "qualitylot", "workorder", "产", "产工", "切", "切片", "单", "域", "域接", "工", "工单", "批", "批次", "接", "接缝", "检", "检批", "次", "次生", "片", "片质", "生", "生产", "生产工单", "缝", "缝切", "质", "质检", "质检批次", "跨", "跨域"]
     span: 4
   - key: "biz.x.qualitystandard_to_model"
@@ -597,7 +612,7 @@ slices:
     spannedTypes: ["DefectRecord", "WIPLot"]
     spannedDomains: ["process", "quality"]
     atomCount: 17
-    consumerCount: 15
+    consumerCount: 16
     tokens: ["defectrecord", "process", "quality", "wiplot", "切", "切片", "制", "制批", "在", "在制", "在制批次", "域", "域接", "录", "录在", "批", "批次", "接", "接缝", "次", "片", "片缺", "缝", "缝切", "缺", "缺陷", "缺陷记录", "记", "记录", "跨", "跨域", "陷", "陷记"]
     span: 4
   - key: "biz.x.wiplot_to_line"
@@ -610,7 +625,7 @@ slices:
     spannedTypes: ["Line", "WIPLot"]
     spannedDomains: ["factory", "process"]
     atomCount: 55
-    consumerCount: 47
+    consumerCount: 48
     tokens: ["factory", "line", "process", "wiplot", "产", "产线", "切", "切片", "制", "制批", "在", "在制", "在制批次", "域", "域接", "批", "批次", "接", "接缝", "次", "片", "片产", "线", "线在", "缝", "缝切", "跨", "跨域"]
     span: 4
   - key: "biz.x.wipqualitycheckpoint_to_wiplot"
@@ -623,7 +638,7 @@ slices:
     spannedTypes: ["WIPLot", "WIPQualityCheckpoint"]
     spannedDomains: ["process", "quality"]
     atomCount: 14
-    consumerCount: 14
+    consumerCount: 15
     tokens: ["process", "quality", "wiplot", "wipqualitycheckpoint", "切", "切片", "制", "制批", "制质", "在", "在制", "在制批次", "在制质检点", "域", "域接", "批", "批次", "接", "接缝", "检", "检点", "次", "次在", "点", "片", "片在", "缝", "缝切", "质", "质检", "跨", "跨域"]
     span: 4
   - key: "biz.x.workorder_to_capacitypool"
@@ -636,7 +651,7 @@ slices:
     spannedTypes: ["CapacityPool", "WorkOrder"]
     spannedDomains: ["capacity", "process"]
     atomCount: 21
-    consumerCount: 26
+    consumerCount: 27
     tokens: ["capacity", "capacitypool", "process", "workorder", "产", "产工", "产能", "产能池", "切", "切片", "单", "域", "域接", "工", "工单", "接", "接缝", "池", "池生", "片", "片产", "生", "生产", "生产工单", "缝", "缝切", "能", "能池", "跨", "跨域"]
     span: 4
   - key: "biz.x.workorder_to_line"
@@ -649,7 +664,7 @@ slices:
     spannedTypes: ["Line", "WorkOrder"]
     spannedDomains: ["factory", "process"]
     atomCount: 53
-    consumerCount: 44
+    consumerCount: 45
     tokens: ["factory", "line", "process", "workorder", "产", "产工", "产线", "切", "切片", "单", "域", "域接", "工", "工单", "接", "接缝", "片", "片产", "生", "生产", "生产工单", "线", "线生", "缝", "缝切", "跨", "跨域"]
     span: 4
   - key: "biz.x.workorder_to_model"
@@ -662,7 +677,7 @@ slices:
     spannedTypes: ["Model", "WorkOrder"]
     spannedDomains: ["process", "product"]
     atomCount: 49
-    consumerCount: 45
+    consumerCount: 46
     tokens: ["model", "process", "product", "workorder", "产", "产工", "切", "切片", "单", "号", "号生", "型", "型号", "域", "域接", "工", "工单", "接", "接缝", "池", "池型", "片", "片电", "生", "生产", "生产工单", "电", "电池", "电池型号", "缝", "缝切", "跨", "跨域"]
     span: 4
   - key: "biz.x.workorder_to_order"
@@ -675,7 +690,7 @@ slices:
     spannedTypes: ["Order", "WorkOrder"]
     spannedDomains: ["process", "product"]
     atomCount: 63
-    consumerCount: 49
+    consumerCount: 50
     tokens: ["order", "process", "product", "workorder", "产", "产工", "切", "切片", "单", "单生", "售", "售订", "域", "域接", "工", "工单", "接", "接缝", "片", "片销", "生", "生产", "生产工单", "缝", "缝切", "订", "订单", "跨", "跨域", "销", "销售", "销售订单"]
     span: 4
   - key: "biz.x.workorder_to_qualitylot"
@@ -688,6 +703,6 @@ slices:
     spannedTypes: ["QualityLot", "WorkOrder"]
     spannedDomains: ["process", "quality"]
     atomCount: 24
-    consumerCount: 29
+    consumerCount: 30
     tokens: ["process", "quality", "qualitylot", "workorder", "产", "产工", "切", "切片", "单", "域", "域接", "工", "工单", "批", "批次", "接", "接缝", "检", "检批", "次", "次生", "片", "片质", "生", "生产", "生产工单", "缝", "缝切", "质", "质检", "质检批次", "跨", "跨域"]
     span: 4
