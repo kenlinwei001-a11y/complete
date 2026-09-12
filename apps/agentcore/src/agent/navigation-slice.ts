@@ -47,6 +47,21 @@ export interface SolverCatalogEntry {
 /** 求解器目录（key → 条目）。生产态由**活资源目录**现取（见 live-capability-map.ts），非手写。 */
 export type SolverCatalog = Record<string, SolverCatalogEntry>;
 
+/**
+ * WO-RULE-DISCOVERY · 规则目录条目（比 solver 条目轻：规则只进**目录段**，不设详情层——
+ * 规则的"详情"= 完整约束式/严重级，模型按需 `retrieve_knowledge(kinds:["rule"])` 自取，
+ * 每轮把 30 条全 expression 展开进 prompt 正是两段式当初杀掉的那个成本）。
+ */
+export interface RuleCatalogEntry {
+  /** 一句话规则描述（渲染前过 `briefOf` 40 字截断——规则描述 p90=328 字，不截目录不轻）。 */
+  capability: string;
+  /** 规则约束的对象类型域（scopeObjectTypes）——scope 隔离过滤用。**空 = 无证据**，不据此排除（同 solver 段先例）。 */
+  reads: string[];
+}
+
+/** 规则目录（规则码 → 条目）。生产态由活资源目录现取（live-capability-map.ts · fetchLiveRuleCatalog），非手写。 */
+export type RuleCatalog = Record<string, RuleCatalogEntry>;
+
 type DomainFamilyKey =
   | "gap"
   | "decision"
@@ -467,6 +482,13 @@ export interface NavigationSlice {
    * 让它们必须写一个 `roster: []` 只是噪声。`projectNavigationSlice` 一律显式赋值。
    */
   roster?: SliceRosterEntry[];
+  /**
+   * WO-RULE-DISCOVERY · **规则目录段**：本轮 scope 内全部已发布业务规则（key + 一句话 brief·按码字典序）。
+   * 与 solver 目录段同一条诚实规则：只在拿到**活规则目录**（`ruleCatalog` 实参）时渲染——
+   * 缺省/降级路径手上没有全集，宣称"全部规则"就是撒谎（渲染方据此整段不输出）。
+   * 规则只进目录层、不设详情段：完整约束式/严重级由模型按需 `retrieve_knowledge(kinds:["rule"])` 自取。
+   */
+  ruleRoster?: SliceRosterEntry[];
   /** 链路：对象 → 求解器 → 答案。 */
   chain: string;
   /** 相关规则/不变量提示。 */
@@ -548,6 +570,7 @@ export function projectNavigationSlice(
   pageContext?: PageContext,
   scope?: AgentScope,
   catalog?: SolverCatalog,
+  ruleCatalog?: RuleCatalog,
 ): NavigationSlice {
   const q = query ?? "";
   const res = domainResolve(q, pageContext);
@@ -629,6 +652,25 @@ export function projectNavigationSlice(
         .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
         .map(([key, entry]) => ({ key, brief: briefOf(entry.capability) }));
 
+  // ── WO-RULE-DISCOVERY · 规则目录段 ─────────────────────────────────────────
+  // 与 solver 目录同构但**更轻**：规则没有详情层，30 条全量 key + 一句话 brief。
+  // 成员资格走**同一个** scope 过滤（scopeObjectTypes ∩ scope.objectTypes；reads 空 = 无证据判越界 → 保留）。
+  // ⚠️ 只认活目录实参：降级路径（ruleCatalog 缺省）手上没有全集 ⇒ 不渲染（同 solver roster 的诚实规则）。
+  // ⚠️ 不跟 solversAllowed 闸：规则不是 invoke_solver 调的（评估走 evaluate_rules / 检索走 retrieve_knowledge），
+  //    调不了 solver 的角色 agent 照样需要知道有哪些约束 —— 闸门在调用方（生产只在 solver 目录判过
+  //    hasBusinessIntent 后才取规则目录，寒暄照样零注入）。
+  const ruleRoster: SliceRosterEntry[] = !ruleCatalog
+    ? []
+    : Object.entries(ruleCatalog)
+        .filter(([, entry]) => {
+          if (!scopeTypes) return true;
+          if (entry.reads.length === 0) return true;
+          return entry.reads.some((t) => scopeTypes.has(t));
+        })
+        // R6：按规则码字典序（C01…C35 零填充天然字典序）——与问句无关 ⇒ 同租户逐字节相同，可吃 prompt 缓存。
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([key, entry]) => ({ key, brief: briefOf(entry.capability) }));
+
   // 对象类型：选中 solver 读取的对象类型（scope 收窄）∪（scope 声明但未被 solver 覆盖的对象类型）。
   const objSet = new Set<string>();
   for (const key of solverKeys) for (const t of cat[key]!.reads) if (!scopeTypes || scopeTypes.has(t)) objSet.add(t);
@@ -652,7 +694,7 @@ export function projectNavigationSlice(
     : `对象[${objLabel}] → 多跳取证/综合 → 答案（每业务数字标 ⟦ref:N⟧ 溯源）`;
 
   const nonEmpty = solvers.length > 0 || objectTypes.length > 0;
-  return { domain: res.domain, primarySolver, objectTypes, solvers, roster, chain, rules, nonEmpty };
+  return { domain: res.domain, primarySolver, objectTypes, solvers, roster, ruleRoster, chain, rules, nonEmpty };
 }
 
 /**
@@ -688,6 +730,18 @@ export function renderNavigationSlice(slice: NavigationSlice): string {
         "一句话不够判断时用 `discover(kind:\"solvers\", query:\"<key>\")` 取完整参数与说明：",
     );
     for (const r of roster) lines.push(`  · ${r.key}：${r.brief}`);
+  }
+  // WO-RULE-DISCOVERY · 规则目录段：全量规则码 + 一句话，**不截断条数**。
+  // ⚠️ 文案只许指 `retrieve_knowledge(kinds:["rule"])`（契约 RESOURCE_KINDS_EXTENDED 今天即接受 "rule"）——
+  //    不许写 discover(kind:"rules")：discover 的 kind 枚举缺 "rules" 是已定位未修的硬伤（归属 WO-INPUTSCHEMA-WIRE），
+  //    指那条路等于把模型引向一个会被 schema 拒掉的调用。
+  const ruleRoster = slice.ruleRoster ?? [];
+  if (ruleRoster.length > 0) {
+    lines.push(
+      `· 业务规则目录（共 ${ruleRoster.length} 条·按码排序）——` +
+        "一句话不够判断时用 `retrieve_knowledge(kinds:[\"rule\"], query:\"<规则码或关键词>\")` 取完整约束式/严重级/适用对象：",
+    );
+    for (const r of ruleRoster) lines.push(`  · ${r.key}：${r.brief}`);
   }
   if (slice.objectTypes.length > 0) {
     lines.push("· 相关对象类型（query_objects 可查·关键属性）：");
