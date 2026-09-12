@@ -5,9 +5,11 @@ import {
   IMPEDIMENT_RULE_BINDINGS,
   arbitrateByLocus,
   breachAmount,
+  detectChainImpediments,
   readRuleThreshold,
   type ImpedimentCandidate,
 } from "../src/solvers/chain-impediment.js";
+import type { SolverContext } from "../src/solvers/types.js";
 
 /**
  * WO-SANDBOX-E3 · 阻滞点判定器 **SEAM**（规则半 × 引擎半）——**效果层**验收，不是运输层。
@@ -510,13 +512,35 @@ describe("WO-IMP-CARRIER · 阻滞点承载对象 SEAM（它到底卡住了哪�
     const withCarriers = s.impediments.filter((i) => i.carriers !== undefined);
     expect(withCarriers.length).toBeGreaterThan(0);
 
-    // 不带 carriers 的那些，severity 必须恰好等于**单因子**口径（= 本字段上线前的算法）。
-    for (const i of s.impediments.filter((x) => x.carriers === undefined)) {
+    /**
+     * ⚠ 本租户今天 **18/18 条都解析得出承载对象**，所以「遍历 impediments 里 carriers===undefined 的那些」
+     * 是一个**空循环** —— 那种断言恒绿，证明不了任何事（本仓记过账的"路径开关类假绿"：
+     * 生产走的那个分支根本没被测试覆盖）。故这里**直接把回落路径驱动起来**：
+     * 用 `detectChainImpediments` 在**不注入订单行**的条件下跑一遍 —— 那正是
+     * `orderLines` 缺省（老租户/未播种）时生产会走的那条路。
+     */
+    const svc = t.services.solvers as unknown as {
+      loadContext: (tid: string, vo?: unknown, o?: Record<string, unknown>) => Promise<SolverContext>;
+    };
+    const c = await svc.loadContext("demo", undefined, { withExtended: true });
+    const materialBalances = await t.repos.objects.listByType("demo", "MaterialBalance");
+    const links = await t.repos.links.list("demo", () => true);
+    // 刻意**不传** `orderLines` —— 这就是生产上老租户/未播种订单行时走的那条路。
+    const fallback = detectChainImpediments({ c, materialBalances, links, scope: {} });
+    expect(fallback.impediments.length, "金丝雀：回落路径一条阻滞点都没产出 ⇒ 是这次构造坏了，不是回落对了").toBeGreaterThan(0);
+    for (const i of fallback.impediments) {
+      expect(i.carriers, `${i.impedimentId} 在无订单行时仍带 carriers —— 承载对象是凭空造的`).toBeUndefined();
       const denom = Math.abs(i.evidence.threshold);
       if (!(denom > 0)) continue; // 阈值为 0 的走规模基准，不在本断言的可复算面内
       const breach = breachAmount(i.evidence.metricValue, i.evidence.threshold, ">", true);
-      expect(i.severity).toBe(Math.max(0, Math.min(100, Math.round(Math.min(1, breach / denom) * 100))));
+      expect(i.severity, `${i.impedimentId} 回落口径的 severity 与单因子算法不一致`).toBe(
+        Math.max(0, Math.min(100, Math.round(Math.min(1, breach / denom) * 100))),
+      );
     }
+    // 回落态的这批 severity 必须与**本字段上线前**的口径一致 —— 即「带不带承载对象」是唯一变量。
+    const byId = new Map(s.impediments.map((i) => [i.impedimentId, i]));
+    const moved = fallback.impediments.filter((f) => byId.get(f.impedimentId)?.severity !== f.severity);
+    expect(moved.length, "金丝雀：双因子与单因子给出了完全相同的排序 ⇒ 第二因子没起作用").toBeGreaterThan(0);
 
     // 同输入连跑两次，承载对象逐字节一致（遍历里任何一处用了 Set/Map 的偶然序都会在这里翻车）。
     const again = await scan(t);

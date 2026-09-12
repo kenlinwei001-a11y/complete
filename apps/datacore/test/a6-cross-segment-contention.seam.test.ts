@@ -129,9 +129,24 @@ describe("WO-A6-CONTENTION · 跨业务线争用 SEAM（PRD §9 A6）", () => {
       expect(im.evidence.ruleKey).toBe(CONTENTION_RULE);
       // 实测值真的越过阈值（不是拍上去的一条"看着合理"的记录）。
       expect(im.evidence.metricValue).toBeGreaterThan(im.evidence.threshold);
-      // severity 必须能由 metric/threshold **重算出来**（禁固定权重表）。
-      const expected = Math.max(0, Math.min(100, Math.round(((im.evidence.metricValue - im.evidence.threshold) / Math.abs(im.evidence.threshold)) * 100)));
+      // severity 必须能**重算出来**（禁固定权重表）。
+      // WO-IMP-CARRIER：口径从单因子变双因子 —— 争用这条判据的承载对象是「真正累加进
+      // `claimedDailyRate` 的那批订单」，故 `exposureFactor` 一并进重算，且它自己也要对拍出处。
+      // 意图没变（禁拍脑袋），监督面变大了：第二因子也被咬住。
+      const breachFactor = Math.min(1, (im.evidence.metricValue - im.evidence.threshold) / Math.abs(im.evidence.threshold));
+      const c = im.carriers;
+      const expected =
+        c === undefined
+          ? Math.max(0, Math.min(100, Math.round(breachFactor * 100)))
+          : Math.max(0, Math.min(100, Math.round(Math.sqrt(breachFactor * c.exposureFactor) * 100)));
       expect(im.severity).toBe(expected);
+      if (c !== undefined) {
+        expect(c.breachFactor).toBeCloseTo(breachFactor, 6);
+        expect(c.exposureFactor).toBeCloseTo(c.orderAmount / c.bookAmount, 6);
+        // 争用的承载面 = 本基地被累加进日产率的那批单 ⇒ 整单口径，且必须真有单。
+        expect(c.amountBasis).toBe("ORDER");
+        expect(c.orderCount).toBeGreaterThan(0);
+      }
 
       // ── ③「保谁」的判据逐值回 `SEG_REGISTRY` 对拍 —— 引擎不许自带一份经营参数 ──
       const ct = im.contention!;

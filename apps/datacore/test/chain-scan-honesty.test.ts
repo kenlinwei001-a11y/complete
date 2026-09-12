@@ -249,12 +249,35 @@ describe("WO-SANDBOX-A2 · 全链扫描零写死（运行态溯源 · PRD-sandbo
       const { metricValue, threshold } = i.evidence;
       // 违规方向由规则比较符决定；引擎两个方向都可能，故取「哪边为正」的那个作为超阈幅度。
       const breach = Math.max(Math.max(0, metricValue - threshold), Math.max(0, threshold - metricValue));
-      const expected = Math.max(0, Math.min(100, Math.round((breach / Math.abs(threshold)) * 100)));
+      const breachFactor = Math.min(1, breach / Math.abs(threshold));
+      /**
+       * WO-IMP-CARRIER：severity 从**单因子**变成**双因子**（契约 `severity` 的 doc 一直写的就是
+       * 两个因子，实现此前只落了第一个）。本用例的**意图不变**——「这个数必须是算出来的，
+       * 不是拍上去的」——变的只是重算公式，且**变严了**：第二因子的出处（承载金额 ÷ 可阻塞订单簿）
+       * 现在也要一起对拍。
+       * ⚠ 不许把这里改成「有 carriers 就跳过」：那等于把新增的那一半 severity 移出监督面，
+       * 正是本仓反复记账的「门被例外吃光」的开头。
+       */
+      const c = i.carriers;
+      const expected =
+        c === undefined
+          ? Math.max(0, Math.min(100, Math.round(breachFactor * 100)))
+          : Math.max(0, Math.min(100, Math.round(Math.sqrt(breachFactor * c.exposureFactor) * 100)));
       expect(
         i.severity,
-        `${i.impedimentId} 的 severity=${i.severity} 无法由 metricValue=${metricValue} / threshold=${threshold} 重算` +
+        `${i.impedimentId} 的 severity=${i.severity} 无法由 metricValue=${metricValue} / threshold=${threshold}` +
+          `${c === undefined ? "" : ` / exposureFactor=${c.exposureFactor}`} 重算` +
           `（重算得 ${expected}）—— 这个数不是算出来的，是拍上去的`,
       ).toBe(expected);
+      if (c !== undefined) {
+        // 两个因子各自的出处也要可核：因子① 来自 metric/threshold，因子② 来自承载金额 ÷ 可阻塞订单簿。
+        expect(c.breachFactor, `${i.impedimentId} 的 breachFactor 与 metric/threshold 对不上`).toBeCloseTo(breachFactor, 6);
+        expect(c.bookAmount, "归一化分母必须为正，否则第二因子无意义").toBeGreaterThan(0);
+        expect(c.exposureFactor, `${i.impedimentId} 的 exposureFactor 不等于 承载金额÷可阻塞订单簿`).toBeCloseTo(
+          c.orderAmount / c.bookAmount,
+          6,
+        );
+      }
       // 溯源终点必须落在真对象上（R13），不是一个漂着的标签。
       expect(i.locus.objectId.length).toBeGreaterThan(0);
       expect(i.locus.objectType.length).toBeGreaterThan(0);
