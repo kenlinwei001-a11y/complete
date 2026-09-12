@@ -3,6 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { loginAs, renderApp } from "./utils";
 import { db } from "@/mocks/db";
+import { createSimSession } from "@/api/endpoints";
 
 describe("F21 · 年度规划（annual-scenario）", () => {
   it("三情景卡渲染 + 已拍板态 + 规则徽章可点开 expression", async () => {
@@ -116,5 +117,73 @@ describe("F21 · 年度规划（annual-scenario）", () => {
       expect(draft!.payload).toMatchObject({ scenarioKey: "aggressive" });
       expect(draft!.status).toBe("PENDING_APPROVAL");
     });
+  });
+
+  /**
+   * ══ WO-HV-B ① ·「今天做这个决定 → 未来某期结果」：年度情景页接上推演世界 ══════════
+   *
+   * **改前的病**：本页只有一行查表的钱（`finance: {revenue, capex, irr}` 直读
+   * `AnnualScenario` 的种子常数）⇒ **在哪个推演世界里、施加了什么扰动，它都是同一组数**。
+   * 真后端实测（SEED_DEMO=1·世界 sims_demo_seed_world·2026-09-12）：
+   * 把 SO-3391 的 costPressure set 到 900 之后，`capex` 前后都是 **8**（逐字节不动），
+   * 而世界态投影的销售成本从 **1122.12 → 1138.73**（聚合压力 93.102246 → 95.960556）。
+   *
+   * 这道门咬三条：
+   *  ① **没有世界时不许编数** —— 屏上是「还没有任何推演世界」，**不是 0**；
+   *  ② **有世界时真接线** —— 投影行、压力行、可披露算式都来自回包；
+   *  ③ **口径不许混** —— 「推演投影 · 非实测」常驻第一层，且**不许**把 capex/IRR
+   *     说成被投影过（该求解器压根不产这两样，改个标签就是编数）。
+   */
+  it("WO-HV-B ① · 没有推演世界时据实留空（不显示 0、不编数）", async () => {
+    loginAs("planner");
+    renderApp("/v/annual-scenario");
+
+    const band = await screen.findByTestId("aop-world-projection");
+    // ① 诚实缺口记号在，且明说「不是 0」
+    // ⚠ 必须 `find*` 等清单查询落地：`aop-world-projection` 这个壳在 loading 态就已经渲染，
+    //   拿它当"查询已完成"的证据会在 loading 那一帧断言失败 —— 壳在不度量数据到了。
+    const none = await within(band).findByTestId("aop-world-none");
+    expect(none).toHaveTextContent("还没有任何推演世界");
+    expect(none).toHaveTextContent("不是 0");
+    // 反向判据：没有世界时**不许**出现任何金额行（只咬一向会漏掉「两个都渲染了」）
+    expect(within(band).queryByTestId("aop-world-lines")).toBeNull();
+    // ③ 口径行常驻第一层（不 hover、不点开就在）
+    expect(within(band).getByTestId("aop-world-caliber")).toHaveTextContent("推演投影 · 非实测");
+  });
+
+  it("WO-HV-B ① · 有推演世界 ⇒ 逐行读出基线/投影/Δ + 可披露算式；收入行诚实标『本链不驱动』", async () => {
+    loginAs("planner");
+    // 先造一个世界（走 mock 的真 POST /a/v1/sim/sessions，不在测试里手塞 store）
+    await createSimSession({ baseSnapshot: { obj_order_SO_3391: { costPressure: 900 } }, scope: {} });
+
+    renderApp("/v/annual-scenario");
+    const band = await screen.findByTestId("aop-world-projection");
+
+    // ② 真接线：三行都渲染，数字来自回包（不写死在断言里 —— 从 DOM 现取再互相校验）
+    const lines = await within(band).findByTestId("aop-world-lines");
+    const cost = within(lines).getByTestId("aop-world-line-COST");
+    expect(cost).toHaveTextContent("销售成本");
+    expect(within(cost).getByTestId("aop-world-projected-COST")).toHaveTextContent("1,138.73");
+    expect(within(cost).getByTestId("aop-world-delta-COST")).toHaveTextContent("557.63");
+    // 可披露：算式逐字来自回包（一个看不到代码的人能自己判断这是推演不是查表）
+    expect(within(cost).getByTestId("aop-world-formula-COST")).toHaveTextContent("581.1 ×（1 + 95.960556 ÷ 100）");
+
+    // 毛利与成本反向、且 Δ 互为相反数（增量法：毛利' = 毛利 + Δ收入 − Δ成本）
+    const margin = within(lines).getByTestId("aop-world-line-MARGIN");
+    expect(within(margin).getByTestId("aop-world-delta-MARGIN")).toHaveTextContent("-557.63");
+
+    // 收入行：driver 为空 ⇒ 屏上必须写「本链不驱动」——诚实缺席，不是「不受影响」
+    const rev = within(lines).getByTestId("aop-world-line-REVENUE");
+    expect(within(rev).getByTestId("aop-world-formula-REVENUE")).toHaveTextContent("本链不驱动");
+
+    // 压力来源（这就是「那个决定」在世界里留下的痕迹）
+    expect(within(band).getByTestId("aop-world-pressures")).toHaveTextContent("costPressure");
+    expect(within(band).getByTestId("aop-world-pressures")).toHaveTextContent("500/500");
+
+    // ③ 反向判据：有数时**不许**再出现「没有推演世界」的缺口记号
+    expect(within(band).queryByTestId("aop-world-none")).toBeNull();
+
+    // 情景卡那三个查表数**照旧**（它们按设计不随世界态动 —— 这不是 bug，是真值口径）
+    expect(screen.getByTestId("scen-card-baseline")).toHaveTextContent("收入 3,400 亿 · CAPEX 14 亿 · IRR 19%");
   });
 });

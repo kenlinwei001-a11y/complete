@@ -121,4 +121,45 @@ describe("F23 · 订单全链聚合（order-chain）", () => {
     expect(within(dag).getByTestId("problem-dag-node-0-rootCause")).toBeInTheDocument();
     expect(within(dag).getByTestId("problem-dag-node-0-remedy")).toBeInTheDocument();
   });
+
+  /**
+   * ══ WO-HV-B ② · 交期承诺（ATP/CTP）上屏（SEAM：接线 + 锚点 + 诚实位三条一起咬）═════
+   *
+   * **改前屏上没有的三样**：承诺日 / 缺口 / 瓶颈。`atp_check` 一直算得出
+   * （净读成品现货 + 在制未交 + 交期前可排产能三源），而前端零消费方 —— 屏上只有
+   * 「能不能接」的 verdict，**答不出「何时能交」**。
+   *
+   * 这道门咬三条，少一条就会漏掉最难看的形态：
+   *  ① **接线**：三个产出真的渲染出来了（不是加了个空壳面板）；
+   *  ② **锚点同单**：承诺锚的是 `order_fullchain` **解析后**的那一张单，不是选择器里的空串
+   *     —— 挂错单 = 屏上「三判说 A、承诺说 B」，而界面上分辨不出；
+   *  ③ **勾稽**：Σ三源 == 可承接量、缺口 == 需求 − 可承接（引擎的铁律，屏上也不许自相矛盾）。
+   */
+  it("WO-HV-B ② · ATP 承诺日/缺口/瓶颈三样上屏，且与三判锚同一张单", async () => {
+    loginAs("planner");
+    renderApp("/v/order-chain");
+
+    // ① 接线：三个产出各自真的在屏上
+    const strip = await screen.findByTestId("atp-strip");
+    expect(within(strip).getByTestId("atp-promise-date")).toBeInTheDocument();
+    expect(within(strip).getByTestId("atp-shortfall")).toHaveTextContent("120");
+    expect(within(strip).getByTestId("atp-bottleneck")).toHaveTextContent("产能");
+    expect(within(strip).getByTestId("atp-status")).toHaveAttribute("data-atp-status", "PARTIAL");
+
+    // 诚实位：promiseDate 为 null 时写「不可期」——⛔ 不许显示一个日期（编数比不给更坏）
+    expect(within(strip).getByTestId("atp-promise-date")).toHaveTextContent("不可期");
+
+    // ② 锚点同单：承诺那一张 = 三判解析出的那一张（ofc 面板的锚点）
+    const ofc = await screen.findByTestId("ofc-panel");
+    const anchoredSo = within(ofc).getByTestId("oc-metro-so").textContent?.trim();
+    expect(anchoredSo).toBeTruthy();
+
+    // ③ 勾稽：Σ三源 == 可承接量，且 缺口 == 需求 − 可承接
+    const bd = within(strip).getByTestId("atp-breakdown").textContent ?? "";
+    const nums = [...bd.matchAll(/\d+/g)].map((m) => Number(m[0]));
+    // 文本形如：需求 800 · 可承接 680 ＝ 现货 120 ＋ 在制 260 ＋ 排产 300
+    const [requested, committable, ...sources] = nums;
+    expect(sources.reduce((s, n) => s + n, 0)).toBe(committable);
+    expect(requested - committable).toBe(120);
+  });
 });

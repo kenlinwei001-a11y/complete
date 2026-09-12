@@ -6138,9 +6138,12 @@ export const handlers = [
             note: "金额 = 基线 ×（1 + 压力 ÷ 100）。压力指数按百分点(pp)读；这是**推演投影**不是实测值 —— 基线取本体真值，增量由世界态压力沿传导规则折算。",
           },
           pressures: [
-            { stateVar: "costPressure", objectType: "Order", value: costAgg, carriers: 500, universe: 500, weighting: "订单金额加权", weightingNote: "qty × unitPrice", provenance: prov("Order", "obj_order_SO-3391", "costPressure", 900, "派生") },
-            { stateVar: "receivablePressure", objectType: "Customer", value: 96.251638, carriers: 20, universe: 20, weighting: "发票金额加权", weightingNote: "经 customer_has_invoice 归集", provenance: prov("Customer", "cust_14", "receivablePressure", 96.25, "派生") },
-            { stateVar: "overduePressure", objectType: "ARInvoice", value: 61.222471, carriers: 60, universe: 60, weighting: "发票金额加权", weightingNote: "ARInvoice.amount", provenance: prov("ARInvoice", "arinv_001", "overduePressure", 61.22, "派生") },
+            // ⚠ `weighting` 是**枚举** `"VALUE"|"EQUAL"`，不是人话标签 —— 第一版这里写了中文，
+            //    被 `fetchFinanceWorldProjection` 的契约校形当场挡下（面板退回诚实缺口记号，没白屏）。
+            //    这正是那条校形存在的理由：**桩编的形状与真后端不一致时，是校形说话，不是屏上出现一组假数**。
+            { stateVar: "costPressure", objectType: "Order", value: costAgg, carriers: 500, universe: 500, weighting: "VALUE", weightingNote: "按承载对象真金额加权（Σ权重=45464327004，量纲在加权平均里相消）", provenance: prov("Order", "obj_order_SO-3391", "costPressure", 900, "派生") },
+            { stateVar: "receivablePressure", objectType: "Customer", value: 96.251638, carriers: 20, universe: 20, weighting: "VALUE", weightingNote: "经 customer_has_invoice 归集到客户的发票金额加权", provenance: prov("Customer", "cust_14", "receivablePressure", 96.25, "派生") },
+            { stateVar: "overduePressure", objectType: "ARInvoice", value: 61.222471, carriers: 60, universe: 60, weighting: "VALUE", weightingNote: "按 ARInvoice.amount 加权", provenance: prov("ARInvoice", "arinv_001", "overduePressure", 61.22, "派生") },
           ],
           lines: [
             { subject: "销售成本", role: "COST", budget: 588, rolling: rolling.cogs, projected: cogsProjected, delta: cogsDelta, deltaPct: 95.9611, driver: "Order.costPressure", formula: `${rolling.cogs} ×（1 + ${costAgg} ÷ 100）= ${cogsProjected}`, provenance: prov("FinancePlan", "fin-cogs", "rolling", rolling.cogs) },
