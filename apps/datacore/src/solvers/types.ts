@@ -3,6 +3,7 @@ import {
   pickObjectRefResolution,
   type ObjectRefResolution,
   type RefTypeDefLike,
+  type SimWorldReadDisclosure,
 } from "@platform/contracts";
 import type { ObjectInstance } from "../domain.js";
 // WO-CAPACITY-EDGE：**只取类型**（`import type` 编译期即擦除），故不产生运行时循环 ——
@@ -354,6 +355,43 @@ export interface SolverContext {
     string,
     { measure: string; origin?: "SYNTHETIC" | "CONNECTOR"; points: { entityId: string; date: string; value: number }[] }
   >;
+  /**
+   * WO-WORLDSTATE-SURFACE · **世界态读取面**（统一入参·求解器的「真值口径 / 推演口径」开关）。
+   *
+   * ── 为什么是这个形状（地基上原来没有这一格）────────────────────────────────────
+   * `compute()` 是**同步**函数，而 `repos.sim.getTickState` 是 async ⇒ 世界态结构上够不着；
+   * 本接口 39 个字段里也没有那一格 ⇒ 走 compute 路的求解器不是「忘了读」，是「没有口可以读」。
+   * 修法照全文件唯一既有的 async 预注入器（`injectYieldDiagnosisSeries`）那条先例：
+   * **在 async 派发口（invoke / runWithParams）把世界叠进 ctx**，同步 compute 只管读。
+   *
+   * ── 三道闸（缺一即回退到本单要修的那个病）─────────────────────────────────────
+   *  ① **白名单**：仅 `WORLD_AWARE_SOLVERS`（solvers/world-surface.ts）登记的求解器注入 ——
+   *     台账/体检类（答「今天的事实是什么」的）随推演变反而是错的，机制够不着它们。
+   *  ② **开关**：`args.worldId` 不给 ⇒ 本字段 `undefined` ⇒ 真值口径，与本单上线前**逐字节一致**（R6）。
+   *  ③ **不静默回落**：`worldId` 给了但会话不存在/属于别租户 ⇒ **404**（照 `finance_world_projection`
+   *     样板做成硬错误）；世界态为空 ⇒ 照样算但 `disclosure.note` 如实说「未发生世界隔离」。
+   *
+   * 注入时 ctx 里**已加载**的对象数组已被叠加核（`sim/world-read.ts buildSolverWorldOverlay`）
+   * 改写为世界态下的值 —— 求解器无需感知，读 `c.orders`/`c.lines` 拿到的就是这次推演的口径；
+   * 改了哪几格、经哪条链路、按哪条公式全在 `disclosure` 里（随回包 `worldState` 键下发）。
+   */
+  world?: SolverWorldStateOverlay;
+}
+
+/**
+ * WO-WORLDSTATE-SURFACE · 世界态注入结果（`SolverContext.world` 的形状）。
+ * 全部字段只在「白名单求解器 + 传了 args.worldId」时存在；否则整键缺席（不是给个空壳）。
+ */
+export interface SolverWorldStateOverlay {
+  worldId: string;
+  tick: number;
+  source: "TICK" | "BASE_SNAPSHOT";
+  /** 世界态里有态的对象数（0 ⇒ disclosure.note 如实说「实质跑在本体当前值上」）。 */
+  objectsWithState: number;
+  /** 本次叠加真改写的格子数（0 ⇒ 「这次推演还没影响到这个模型」，不是「没读世界态」）。 */
+  cellsApplied: number;
+  /** 逐格披露（读了哪几类/哪几格 · 经哪条链路 · 按哪条公式 · 改前改后 · 未消费变量点名）。 */
+  disclosure: SimWorldReadDisclosure;
 }
 
 export function num(v: unknown, fallback = 0): number {
