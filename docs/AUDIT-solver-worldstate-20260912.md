@@ -69,8 +69,18 @@
    **同步函数拿不到异步仓储结果**，除非有人预先把态塞进 `c`。而——
 
 3. **`SolverContext`（`solvers/types.ts:230`）没有任何世界态字段。**
-   40 个字段全是 `ObjectInstance[]`（本体真值）+ `params` / `rules` / `ruleSetVersion` /
+   **39 个字段**全是 `ObjectInstance[]`（本体真值）+ `params` / `rules` / `ruleSetVersion` /
    `certByModel` / `isSynthProvenance`。**没有 `world` / `tick` / `state` / `sessionId` 这一格。**
+
+4. **`compute()` 的两个调用方都是世界态盲的**（追了这一层才敢下结论，铁律 0.5）：
+   - `invoke()` `service.ts:6398` —— 上游是 `loadContext`（证据 1）
+   - `runWithParams()` `service.ts:6214` `return this.compute({ ...c, params }, …)`
+     —— 同样走 `loadContext`（`:6199`），**只替换 `params` 一个字段**，不注入任何态
+
+5. **全文件唯一的 async 预注入器与世界态无关。**
+   `service.ts` 里能在 compute 之前改写 `args` 的只有 `injectYieldDiagnosisSeries`
+   （`:6196` / `:6378`），注入的是 **A8 时序真日序列**。
+   金丝雀：同扫描找到 `args.series =`（`:6184`）确属该方法 ⇒ 扫法有效，**不存在第二个注入器**。
 
 > ⇒ 这 25 个求解器**不是「忘了读」，是「没有口可以读」**。
 > 这正是铁律 0.5 三分法里的第**一**种：**没接线** —— 而且断在**共用地基**上，不在各求解器内部。
@@ -95,6 +105,18 @@
 | 方案寻优 | `sessionId`：前端 → `opt-assemble` | `opt-pareto` | `opt-assemble.ts:843` 把它**抄进回包**（注释原文「本层不解释它」），`opt-pareto.ts` 里零命中。**已由 WO-WORLDSTATE-CONTRACT 修好**（`service.ts:5202`） |
 | **演习编排器** | `worldId`：`DrillInput.worldId` | 求解器 | `drill-orchestrator.ts:57` 声明 → `:579` 解构 → **`:710` 原样抄进报告**。全文件 `worldId` 只有这 3 次出现，**一次都没用来读态**。而它 `:593` 正在按路由表把事件派给 9 个求解器 |
 | **求解器地基** | 世界态 | `compute()` | `SolverContext` 里压根没有这一格（§2.1） |
+
+#### ⭐ 一个数把这件事钉死：**演习路由表指向的 9 个求解器，B 类占 9/9**
+
+`packages/contracts/src/sim-drill.ts` 剥注释后共 **16 条路由条目 → 9 个不同求解器**
+（金丝雀：`risk_timeline` HIT ⇒ 抽取器没坏）：
+
+`risk_timeline` · `sop_reschedule` · `affected_orders` · `portfolio` · `capacity_forecast` ·
+`order_fullchain` · `supply_demand_gap_attribution` · `quote_margin` · `bottleneck_matrix`
+
+**这 9 个在 §4 表里全部是 B —— 一个 A 都没有。**
+也就是说：**「演习」这套机制今天派出去的每一个求解器，算的都是本体真值。**
+演习跑完会得到一份卡点清单，清单上每一条都**与这次推演的世界无关**。
 
 **编排器自己的文件头把这件事写下来了**（`drill-orchestrator.ts:5-12`，开工前实测原文）：
 
@@ -320,7 +342,8 @@ C 类 15/15 跑通且**全部逐字节不变**（符合预期——C 类本来�
 
 1. **跑不了对照实验** —— 本机无 CP-SAT sidecar（`OPTIMIZER_BASE_URL` 未设），13 个全 400/500。
 2. **本仓有两个装配层，行为相反，而求解器层面看不出被哪个喂**：
-   - `bindToSolverArgs`（`opt-binding.ts`）：`worldId`/`sessionId` **零命中** ⇒ 只从本体真值装配
+   - `bindToSolverArgs`（`opt-binding.ts`）：`worldId`/`sessionId` **零命中**
+     （金丝雀：同文件 `role` 命中 **35** ⇒ 工具没坏）⇒ 只从本体真值装配
    - `assembleParetoModel`（`service.ts:5195-5212`）：**读世界态**（`buildWorldReadView`）
    ⇒ 同一个 `facility_location`，经前者喂 = B 的行为，经后者喂 = A 的行为。
    **单看求解器判不了，必须先确定生产走哪条装配层。**
