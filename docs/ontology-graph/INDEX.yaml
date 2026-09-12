@@ -2,7 +2,7 @@
 # 生成物 —— ⛔ 不要手改。生成命令：node scripts/ontology-graph/extract.mjs
 # 人读的散文本体在 docs/SYSTEM-ONTOLOGY.md，**保留不动**，本目录是它旁边的机器抽取面。
 version: 1
-generatedFrom: "a3f5743c"
+generatedFrom: "03a88ab8"
 counts: { atoms: 6266, edges: 21032, slices: 47, byState: { wired: 5750, test-only: 70, no-ref: 446 }, byEdgeKind: { reexports: 91, reads: 266, declares: 5437, registers: 3257, seeds: 2284, asserts: 7963, inSlice: 1734 }, docSourceNone: 2968, docSourceNonePct: 47.37 }
 canary:
   - probe: "buildSliceIndex 在节点表里"
