@@ -776,7 +776,10 @@ const INBOUND_CAP = 25;
 const cap = (arr) => (arr.length <= INBOUND_CAP ? arr : arr.slice(0, INBOUND_CAP));
 
 function emit(g) {
-  fs.rmSync(OUT_DIR, { recursive: true, force: true });
+  // ⛔ 只清生成物，**不许整目录 rm** —— README.md 是手写的，整目录删会把它一起干掉。
+  // （第一版就是 rmSync(OUT_DIR)，写完 README 跑第二次才会发现它没了。）
+  for (const sub of ["atoms", "slices"]) fs.rmSync(path.join(OUT_DIR, sub), { recursive: true, force: true });
+  fs.rmSync(path.join(OUT_DIR, "INDEX.yaml"), { force: true });
   fs.mkdirSync(path.join(OUT_DIR, "atoms"), { recursive: true });
   fs.mkdirSync(path.join(OUT_DIR, "slices"), { recursive: true });
 
@@ -1009,7 +1012,8 @@ async function verify(g, summary) {
   say("═══ 验收 ④ 确定性（R6）：本次产物的逐文件 sha256 ═══");
   const { createHash } = await import("node:crypto");
   const files = [];
-  const walkOut = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) { const p = path.join(d, e.name); e.isDirectory() ? walkOut(p) : files.push(p); } };
+  // 只 hash **生成物**；README.md 是手写的，不该进确定性判据。
+  const walkOut = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) { const p = path.join(d, e.name); if (e.isDirectory()) walkOut(p); else if (e.name !== "README.md") files.push(p); } };
   walkOut(OUT_DIR);
   const h = createHash("sha256");
   for (const f of files) h.update(rel(f)).update(fs.readFileSync(f));
