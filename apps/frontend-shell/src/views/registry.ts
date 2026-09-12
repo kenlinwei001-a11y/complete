@@ -114,8 +114,12 @@ registerRenderer("annual-scenario", () => import("./plan/AnnualScenarioView"));
 registerRenderer("quarterly-rolling", () => import("./plan/QuarterlyRollingView"));
 registerRenderer("order-chain", () => import("./plan/OrderChainView"));
 registerRenderer("geo-map", () => import("./plan/GeoMapView"));
-// 运营态出厂配置增量 §4.2：运营复盘（只读历史证据链页面，renderer 复用 dashboard 类网格风格）
-registerRenderer("review", () => import("./ReviewView"));
+// ⛔ `review`（运营复盘）于 2026-09-12 按仓主指令**整屏删除**，原话：「删除它，以后需要再建新的」。
+//    不是摘导航位 —— 组件、renderer 注册、前后端视图下发、mock 场景卡、两条测试**一并删**。
+//    删的理由是实测的：标准 demo 种子不设 `SEED_LIVED_IN`，`GET /a/v1/history/bundle` 实测 **404**
+//    （`history bundle (run a synthetic job with livedIn:true first) not found`）⇒ 它是一张**空屏**。
+//    ⚠ 后端 `history/bundle` 端点与 `HistoryBundle` 契约**保留**：追一层调用链实测另有 3 个消费方
+//      （`RiskBoardView.tsx:2361` · `DashboardView.tsx:74,718`），删端点会连带打死风险看板与驾驶舱。
 // 净室归因投影页（三通用净室求解器 shared_bottleneck/concentration_risk/margin_attribution 首次前端接地·
 // 参数从真对象类型倒推·既作 renderer 供 ViewPage 分发，也有专用 route 见 App.tsx）。
 registerRenderer("cleanroom-attr", () => import("./cleanroom/CleanroomAttrView"));

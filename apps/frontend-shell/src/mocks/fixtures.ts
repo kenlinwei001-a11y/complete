@@ -250,8 +250,8 @@ export const FEATURE_REGISTRY: FeatureDef[] = assertSharedFeatureNames([
   { key: "view.quarterly-rolling", name: "季度规划", level: "VIEW", defaultOn: true },
   { key: "view.order-chain", name: "订单进展与卡因", level: "VIEW", defaultOn: true, bindings: { solverKeys: ["affected_orders"] } },
   { key: "view.geo-map", name: "基地地理视图", level: "VIEW", defaultOn: true },
-  // 运营态出厂配置增量 §2/§4：运营复盘（只读历史证据链页面，消费 GET /a/v1/history/bundle）
-  { key: "view.review", name: "运营复盘", level: "VIEW", defaultOn: true, bindings: { apiTags: ["history"] } },
+  // ⛔ `view.review`（运营复盘）于 2026-09-12 按仓主指令整屏删除，feature 条目一并删。
+  //    留着会让 mock 下发一个前端已无 renderer 的视图键 = 幽灵条目（本仓 `decision-play` 栽过这个账）。
   { key: "view.task-dag", name: "任务详情·编排 DAG", level: "BLOCK", defaultOn: true },
   // ── 推演沙盘四子视图（WO-NAV-GATE · mock 对齐后端真实下发）─────────────────────
   //
@@ -731,8 +731,8 @@ export function workspaceForAccount(account: MockAccount, tenantOverrides: Recor
       },
     },
     { key: "geo-map", title: "基地地理视图", renderer: "geo-map", layout: {} },
-    // 运营态出厂配置增量 §4.2：运营复盘（只读历史证据链页面）
-    { key: "review", title: "运营复盘", renderer: "review", layout: {} },
+    // ⛔ `review`（运营复盘）2026-09-12 整屏删除 —— mock 必须与后端下发集同步删，
+    //    否则 `f61` 的归组守卫会拿 mock 里这条不存在的视图去咬「落兜底桶」。
     // ── 推演沙盘四子视图（WO-NAV-GATE · mock 对齐后端真实下发）───────────────────
     // key/title/renderer 逐字对齐后端单一来源 `apps/datacore/src/synthetic/view-manifest.ts`
     // 的 `BUILTIN_VIEWS`（seed:true 那批）。⚠ 这不是"手抄一份清单"——
@@ -1587,8 +1587,8 @@ export const SCENES: SceneEntryConfig[] = [
   { id: "scn-plan-generate", tenantId: TENANT_ID, viewKey: "plan-generate", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问方案取舍，如：推荐哪个方案？为什么？", suggestedQuestions: ["推荐哪个方案？为什么？", "三个方案最大的差异是什么？"] }, ...sceneHistory("plan-generate") },
   { id: "scn-project-sim", tenantId: TENANT_ID, viewKey: "project-sim", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "针对选中订单/型号提问，如：能按期交付吗？", suggestedQuestions: ["能按期交付吗？", "主瓶颈在哪？"] }, ...sceneHistory("project-sim") },
   { id: "scn-sop-balance", tenantId: TENANT_ID, viewKey: "sop-balance", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "问月度平衡，如：本月产销缺口多大？", suggestedQuestions: ["本月产销缺口多大？"] } },
-  // 运营态增量 §2：运营复盘入口（只读历史）
-  { id: "scn-review", tenantId: TENANT_ID, viewKey: "review", mode: "WORKFLOW_FIRST", uiHints: { placeholder: "回顾一年运营，如：到货危机当时是怎么闭环的？", suggestedQuestions: ["到货危机当时是怎么闭环的？", "S&OP 达成率趋势如何？"] }, ...sceneHistory("review") },
+  // ⛔ `scn-review`（运营复盘场景卡）2026-09-12 随该屏一并删除。
+  //    场景卡是 ⌘K 命令面板的索引源 —— 卡留着而视图没了，等于给用户一个点不开的入口。
 ];
 
 // 场景启动器 P2/P3：Scenario 一等对象（场景为主键；每个用 workflow/agent 的场景完整可配）。

@@ -5,59 +5,13 @@ import { loginAs, renderApp } from "./utils";
 
 /**
  * F37 · 运营态出厂配置（lived-in，PRD-addendum-lived-in-state §4 前端落点 + Y8）：
- * 运营复盘证据链页面 / 驾驶舱 12 个月趋势与准交率 / 风险视图历史处置案例（点击回放）
+ * 驾驶舱 12 个月趋势与准交率 / 风险视图历史处置案例（点击回放）
  * / 对话坞按场景预载历史问答（半透明 + 日期 + 信任级徽章 + 分隔线）/ 全局合成水印。
  */
 describe("F37 · 运营态出厂配置（lived-in）", () => {
-  it("运营复盘：MAPE 回弹标注 + 校准被拒原因 + S&OP V1–V12 爬坡 + 规则演进 + 孵化记录", async () => {
-    loginAs("planner");
-    renderApp("/v/review");
-
-    await screen.findByTestId("review-view");
-    // MAPE 收敛曲线 + 危机回弹点标注（W21 +1.8pct）
-    expect(screen.getByTestId("mape-curve")).toBeInTheDocument();
-    expect(screen.getByTestId("mape-event-w21")).toHaveTextContent("到货危机");
-    expect(screen.getByTestId("mape-event-w21")).toHaveTextContent("+1.8pct");
-    // 校准史：8 次提案、2 次被拒带方法学原因（漂移闸门 / 回测门槛）
-    const calTable = screen.getByTestId("calibration-history-table");
-    expect(within(calTable).getAllByText("REJECTED")).toHaveLength(2);
-    expect(screen.getByTestId("cal-rejected-cal_lh_demo_4")).toHaveTextContent("结构性漂移闸门");
-    expect(screen.getByTestId("cal-rejected-cal_lh_demo_6")).toHaveTextContent("回测门槛");
-    expect(screen.getByTestId("cal-rejected-cal_lh_demo_6")).toHaveTextContent("不足 1pct");
-    // S&OP 版本史：V1 88% → V12 94%
-    expect(screen.getByTestId("sop-V1")).toHaveTextContent("88%");
-    expect(screen.getByTestId("sop-V12")).toHaveTextContent("94%");
-    // 规则演进：C16 覆盖天数 3→5 挂「到货危机复盘」
-    expect(screen.getByTestId("rule-C16-v2.0")).toHaveTextContent("到货危机复盘");
-    expect(screen.getByTestId("rule-C08-v1.3")).toHaveTextContent("Order.outsourceRatio > 0.2");
-    // 意图孵化 ×3：「由兜底问题《…》×N 次孵化于某月」
-    expect(screen.getByTestId("incubated-incubated_formation_cap")).toHaveTextContent("由兜底问题《为什么常州的化成产能上不去》×17 次孵化于 2025-10");
-    expect(within(screen.getByTestId("incubation-list")).getAllByText(/孵化于/)).toHaveLength(3);
-  });
-
-  it("运营复盘：Action 审计史分页（60 条 / 每页 20 → 3 页，翻页换数据）", async () => {
-    const user = userEvent.setup();
-    cleanup();
-    loginAs("planner");
-    renderApp("/v/review");
-
-    await screen.findByTestId("action-audit-table");
-    expect(screen.getByTestId("action-page-indicator")).toHaveTextContent("1/3");
-    // 统计行（82%-ish 分布：50 EXECUTED / 6 REJECTED / 2 CANCELLED / 2 FAILED）
-    expect(screen.getByText(/已执行 50/)).toBeInTheDocument();
-    expect(screen.getByText(/驳回 6/)).toBeInTheDocument();
-    // 被拒记录带像样的审批意见
-    expect((await screen.findAllByText("外协贴近 C08 红线，改用夜班方案")).length).toBeGreaterThanOrEqual(1);
-    const firstRow = within(screen.getByTestId("action-audit-table")).getAllByRole("row")[1]!;
-    const firstId = firstRow.textContent;
-    await user.click(screen.getByTestId("action-page-next"));
-    await waitFor(() => expect(screen.getByTestId("action-page-indicator")).toHaveTextContent("2/3"));
-    await waitFor(() => {
-      const newFirst = within(screen.getByTestId("action-audit-table")).getAllByRole("row")[1]!;
-      expect(newFirst.textContent).not.toBe(firstId);
-    });
-  });
-
+  // ⛔ 两条「运营复盘」用例于 2026-09-12 随该屏整屏删除一并删除（仓主指令）。
+  //    删屏不删测试 = 测试去 render 一个已无 renderer 的路由，红得莫名其妙；
+  //    本仓纪律是**同一批删净**，不留残件。该屏的历史证据链能力若日后重建，测试重写。
   it("驾驶舱：12 个月产出趋势 widget + 准交率 KPI + 年度已执行工单 + 已交付台账", async () => {
     cleanup();
     loginAs("planner");

@@ -68,8 +68,10 @@ const HISTORY_DAYS = 90;
 /** 增量视图键（§7.14–7.17 四视图 + §7.18 图谱八视角；不进 report.views 快照）。 */
 // 注：global-sim 已升为核心内置视图（seed:true·进 scenarioSeed.views/BUILTIN_VIEWS·WO-MEMORY-VIEW-RESILIENCE），
 // 故从增量视图桶移除（避免与核心 views 双桶重复种入）。
+// ⛔ `review`（运营复盘）于 2026-09-12 按仓主指令整屏删除，故从增量视图桶移除 ——
+//    后端不再下发它，前端也已无 renderer。两侧必须同一批删：只删一侧就会变成
+//    「后端派了单、前端渲染不出」或「前端有屏、没人派单」，两种都是幽灵条目。
 const PLANVIEW_EXTRA_KEYS = [
-  "review",
   "annual-scenario",
   "quarterly-rolling",
   "order-chain",
@@ -2167,8 +2169,7 @@ export class SyntheticService {
         renderer: "geo-map",
         layout: { objectType: "Base", sizeProp: "gwh", colorProp: "kind", utilThresholds: [92, 85, 78] },
       },
-      // 运营态增量 §4.2：运营复盘（只读历史证据链页面，消费 history/bundle）
-      review: { title: "运营复盘", renderer: "review", layout: { apiTag: "history" } },
+      // ⛔ `review`（运营复盘）2026-09-12 整屏删除，视图定义一并删（见 PLANVIEW_EXTRA_KEYS 处长注）。
       // ── WO-SIM-BE-VIEWKEY · 推演沙盘指控台四视图（暗发·见 DARK_LAUNCH_EXTRA_KEYS）──────
       //
       // 本段是 `check-nav-group-coverage.mjs` 判据⑦ 的**供给侧之二**（「或 service.ts VIEW_DEFS 项
@@ -2263,8 +2264,9 @@ export class SyntheticService {
     // physical-topology / node-inspector / chain-impediments）走核心 `views`，而 base_manager 的
     // 排除名单是 `["dash","graph","plan-audit","plan-generate","global-sim"]` —— 一个沙盘键都不在。
     // ⇒ 既有口径 = 沙盘一家只按 `sim.sandbox` 判、不按角色判。四视图照抄这条。
+    // ⚠ `v === "review"` 这一项于 2026-09-12 随该屏删除一并摘掉（基地经理曾能看到运营复盘）。
     const baseManagerExtras = extraViews.filter(
-      (v) => v === "order-chain" || v === "review" || SANDBOX_CONSOLE_VIEW_KEYS.includes(v),
+      (v) => v === "order-chain" || SANDBOX_CONSOLE_VIEW_KEYS.includes(v),
     );
     const roleViews: Record<string, string[]> = {
       admin: [...views, ...extraViews],
