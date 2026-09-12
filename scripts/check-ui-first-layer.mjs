@@ -254,17 +254,31 @@ const DISCLOSURE_RE =
   /(^|[^a-zA-Z])(open|opened|show|shown|expand|expanded|collapse|collapsed|visible|active|selected|current|tab|panel|drawer|modal|dialog|detail|details|drill|editing|reveal|revealed|picked|hover|hovered|focus|focused|mode|view|step|stage|toggle)([^a-zA-Z]|$)/i;
 
 /**
- * R-UI-3 口径/公式形态 —— **逐条对着规范 §2 R-UI-3 原文抄的**，不是我自拟的词表：
- *   > 凡形如 `A × B ÷ C`、`min(...)`、`∩ ...`、「口径差」「联动口径」
- *   > 「按 X 显示不按 Y 措辞」的文字，一律进 `?` 浮层。
+ * R-UI-3 **推导式**形态 —— **逐条对着规范 §2 R-UI-3 原文抄的**，不是我自拟的词表。
+ *
+ * ⚠ **2026-09-12 摘掉两个词：`口径` 与 `统计口径`。** 仓主裁决「**口径必须默认可见**」，
+ * 与本条原文「口径一律进 `?` 浮层」方向相反 —— 过期的是规范，不是那句指令，
+ * 规范已按同一裁决改写（`docs/CONVENTION-ui-information-layering.md` §2 R-UI-3）。
+ * 分法落在「**这个数是什么**」（口径 ⇒ 第一层）与「**凭什么这么算**」（推导式 ⇒ 浮层）上。
+ *
+ * ⚠ **这不是把本判据关掉**：下面五类照咬。变异反证（2026-09-12 实测）——
+ * 把一行第一层文案改成含 `×` 的推导式 ⇒ 本判据**当场再报**；还原 ⇒ 不报。
+ * 两个 RC 记在 `docs/evidence/` 对应交付报告里。
+ *
+ * ⛔ 不许再把 `口径` 加回来：加回来就是让屏上那句「这个数是什么」重新变成点一下才看得见，
+ * 而本仓真因此把三个都叫「营收」的量（订单簿 454.64 亿 / AOP 601.50 亿 / 需求 P50 700.00 亿）
+ * 当成过同一个量。
  */
 const FORMULA_PATTERNS = [
-  { re: /[×÷]/, why: "规范 R-UI-3 原文点名的 `A × B ÷ C` 形态" },
-  { re: /[∩∪]/, why: "规范 R-UI-3 原文点名的 `∩ ...` 形态" },
-  { re: /\b(min|max)\s*\(/i, why: "规范 R-UI-3 原文点名的 `min(...)` 形态" },
-  { re: /口径/, why: "规范 R-UI-3 原文点名的「口径差」「联动口径」" },
+  // `op:true` = **裸操作符形态**。这三条**连口径句也照咬** —— 口径句里写 `A × B ÷ C`，
+  // 那是推导式穿了口径的马甲，仍属浮层（规范 §2 R-UI-3 那张表的第二行）。
+  { re: /[×÷]/, op: true, why: "规范 R-UI-3 原文点名的 `A × B ÷ C` 形态" },
+  { re: /[∩∪]/, op: true, why: "规范 R-UI-3 原文点名的 `∩ ...` 形态" },
+  { re: /\b(min|max)\s*\(/i, op: true, why: "规范 R-UI-3 原文点名的 `min(...)` 形态" },
+  // 下面两条是**词形**判据。口径句里出现这些词多半是在**描述**而非在算
+  //（实测：「口径：由公式算出的属性，不是源字段直接映射来的」），故对口径句不生效。
   { re: /按.{1,14}(显示|不按|而非)/, why: "规范 R-UI-3 原文点名的「按 X 显示不按 Y 措辞」" },
-  { re: /(公式|折算|归一化|加权平均|计算方式|取数逻辑|统计口径)/, why: "同族：解释「凭什么这么算」，属浮层" },
+  { re: /(公式|折算|归一化|加权平均|计算方式|取数逻辑)/, why: "同族：解释「凭什么这么算」，属浮层" },
 ];
 
 /**
@@ -455,16 +469,35 @@ export function analyze(text, opts = {}) {
 
   const lineOf = (node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
 
-  /** 第一层文案 —— 用来判 D2 / prose */
+  /**
+   * 第一层文案 —— 用来判 D2 / prose。
+   *
+   * ⚠ **口径句整体豁免（2026-09-12 仓主裁决落地）**：以「口径」起头的串是
+   * **「这个数是什么」**，仓主明令**必须默认可见** ⇒ 它既不该被 R-UI-3 咬（推导式判据），
+   * 也不该被 §1 的「长说明串」咬（口径天生超过 24 字，不豁免等于把裁决架空）。
+   *
+   * **为什么判据落在「以口径起头」而不是「含口径二字」**：
+   *   · 含二字 ⇒ 「本页口径与上游不一致」这种**议论句**也会被放行，那是解释不是口径；
+   *   · 以口径起头 ⇒ 是作者**显式声明**「下面这句是口径」，声明即担责，和 `@stale-fact`
+   *     挂赌注同一个形态 —— 门认的是**声明**，不是碰巧出现的词。
+   * 实测必要性：`ModelingPage` 那句「口径：由公式算出的属性…」含「公式」二字，
+   * 不豁免就会被 `(公式|折算|…)` 那条**当成推导式**咬住 —— 它明明是口径。
+   */
+  const CALIBRE_LEAD = /^\s*口径\s*[:：·]/;
+
   const noteText = (s, deferred, line) => {
     if (deferred || !s) return;
+    const isCalibre = CALIBRE_LEAD.test(s);
     for (const p of FORMULA_PATTERNS) {
+      // 口径句只受**裸操作符**那三条约束；词形两条对它不生效。
+      if (isCalibre && p.op !== true) continue;
       if (p.re.test(s)) {
         res.formula++;
         if (res.formulaItems.length < 60) res.formulaItems.push({ text: s.slice(0, 90), why: p.why, line });
         break;
       }
     }
+    if (isCalibre) return; // 口径句**不计入**§1 长说明串：它天生超 24 字，计入等于把「默认可见」架空
     if (s.length >= PROSE_MIN_CHARS) {
       res.prose++;
       if (res.proseItems.length < 60) res.proseItems.push({ text: s.slice(0, 90), line });
