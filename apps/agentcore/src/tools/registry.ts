@@ -1,4 +1,56 @@
-import type { ToolDefinition } from "@platform/contracts";
+import { SOLVER_INPUT_SCHEMAS, solverInputSchema, type ToolDefinition } from "@platform/contracts";
+
+/**
+ * WO-INPUTSCHEMA-WIRE · `invoke_solver` 的**入参模式**——把 `SOLVER_INPUT_SCHEMAS` 接进**模型真正看到的那份工具表**。
+ *
+ * ## 今天的行为是 X，应该是 Y
+ *
+ * **X（本单之前）**：`invoke_solver.inputSchema.properties.args` 字面是
+ * `{ type:"object", description:"…" }` —— **没有 `properties`、没有 `required`、没有枚举**。
+ * 上一张单（WO-SOLVER-INPUTSCHEMA）给 12 个求解器写了完整 JSON Schema，但只接到
+ * `mcp/solvers-catalog.ts` → `server.ts:986` 这**一条 MCP 清单端点**上；而 agent 的工具集来自
+ * `BUILTIN_TOOLS`（`router/orchestrator.ts:1866` path-B ReAct / `engine.ts:386` expandAgentTools），
+ * 两条装配路**都不读那张表** ⇒ 模型看得见的 `portfolio` 可传参数个数 = **0**，`capacity_forecast` = **0**。
+ * `lineGranularity`（线级排产总开关）代码接了线、数据也在，**只是没有任何地方告诉模型它存在**。
+ *
+ * **Y（本单之后）**：`solverKey` 取到已登记的 12 个之一时，`args` 的模式**按 key 条件展开**为该求解器的
+ * 完整入参模式 ⇒ `portfolio` **30** 个、`capacity_forecast` **9** 个，带类型/必填/枚举/中文说明。
+ *
+ * ## 为什么是「条件注入」而不是另外三种接法
+ *
+ * | 方案 | 代价 |
+ * |---|---|
+ * | **A 按 solverKey 条件注入（本实现）** | 工具表每轮多下发 ~15.5 KB（12 份模式）；`if/then` 是 draft 2020-12 标准语法 |
+ * | B 拆 per-solver 工具（`mcp__solvers__{key}`） | **今天就会被挡掉**：`orchestrator.ts:1868` 的 `pkg.toolWhitelist.includes(t.name)` 与 executor 的 `scopeToolNames` 门里都只有 `invoke_solver`；放行须改全部 package 白名单 = 行为变更。且同一能力**两扇门**（12 新 / 51 旧），模型选择被稀释 |
+ * | C 在 `descriptionForLLM` 里带目录 | 回到 `argHints` 那个病——**散文无类型、无必填、无枚举**，模型仍要猜；描述还会无界增长 |
+ * | D 按 query 相关性只注入 top-N | `BUILTIN_TOOLS` 是**静态常量**、`engine.expandAgentTools` 手里根本没有 query ⇒ 要改装配签名，属开新战线 |
+ *
+ * 选 A 的判据：**保持一扇门**（`invoke_solver`）⇒ 51 个未登记求解器的调用路径逐字节不变（加性·可回退）。
+ *
+ * ## ⛔ 空壳禁令（承上一张单的规矩）
+ * 只有已在 `SOLVER_INPUT_SCHEMAS` 登记的 key 才生成分支；未登记者**不生成任何分支**，
+ * `args` 落回基础的 `{type:"object"}` —— ⛔ 绝不发 `{properties:{}}`，那等于对模型宣称
+ * 「此求解器无入参」，比不给更坏（诚实缺席 > 静默错答）。
+ *
+ * ## R6 确定性
+ * `SOLVER_INPUT_SCHEMAS` 是静态冻结注册表，`solverInputSchema()` 纯函数 + 记忆化 + 冻结（无 IO/时钟/随机）。
+ * 分支**按 key 字典序**装配（不依赖对象字面量的书写顺序）⇒ 同输入同输出、逐字节可复现。
+ */
+const SOLVER_KEYS_WITH_SCHEMA: readonly string[] = Object.freeze(Object.keys(SOLVER_INPUT_SCHEMAS).sort());
+
+/**
+ * `solverKey === k` ⇒ `args` 用该求解器的完整模式。用 JSON Schema `allOf`+`if/then`（draft 2020-12）：
+ * 两个适配器都**原样透传** `inputSchema`（`anthropic.ts:107` `input_schema` / `openai.ts:244` `parameters`，
+ * 且工具侧**不开 `strict:true`**）⇒ 条件分支不会被供应商校验器拒掉。
+ */
+const INVOKE_SOLVER_ARGS_CONDITIONALS: readonly Record<string, unknown>[] = Object.freeze(
+  SOLVER_KEYS_WITH_SCHEMA.map((key) =>
+    Object.freeze({
+      if: { properties: { solverKey: { const: key } }, required: ["solverKey"] },
+      then: { properties: { args: solverInputSchema(key) } },
+    }),
+  ),
+);
 
 /** Built-in tool registry (QOS-PRD §7.1). Shared by path A steps and path B agent loop. */
 export const BUILTIN_TOOLS: ToolDefinition[] = [
@@ -174,20 +226,27 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
     name: "invoke_solver",
     descriptionForLLM:
       "调用确定性求解器进行计算。计算成本高，仅在确有必要时调用。**入参口径（缺必填即报错，勿空调）**：" +
-      "capacity_forecast（型号需求增量产能可行性/能不能接）必填 args={modelId(型号如 4680-NCM),demandDelta(需求增量比例，如上浮10%→0.1),weeks(周数)}——" +
-      "modelId 从当前选中对象/问句里的型号显式取，把「上浮X%」换算成 demandDelta=X/100、「N周」换算成 weeks=N；" +
+      "capacity_forecast（型号需求增量产能可行性/能不能接）必填 args.modelId（型号如 4680-NCM，从当前选中对象/问句里显式取）；" +
+      "回答「某型号加X%、N周能不能接」还要带 demandDelta（把「上浮X%」换算成 X/100）与 weeks（「N周」换算成 N）；" +
       "affected_orders（某基地受影响订单）args={baseId}；gap_attribution（指标缺口反向归因）args={metricKey?,factorId?,scope?}。" +
-      "「某型号加X%、N周能不能接」这类可承接性问题一律直接调 capacity_forecast，不要先反复 query_objects 盲扫。",
+      "「某型号加X%、N周能不能接」这类可承接性问题一律直接调 capacity_forecast，不要先反复 query_objects 盲扫。" +
+      // WO-INPUTSCHEMA-WIRE：指给模型看「args 的完整模式在 schema 里」——否则它仍只照上面这几句散文猜。
+      `已发布完整入参模式的求解器（args 的字段/类型/必填见本工具 schema 的 solverKey 条件分支）：${SOLVER_KEYS_WITH_SCHEMA.join("、")}。` +
+      "未列出的求解器入参模式尚未发布，按 discover(kind=solvers) 的 argHints 口径传。",
     inputSchema: {
       type: "object",
       properties: {
         solverKey: { type: "string", description: "求解器 key，如 capacity_forecast / affected_orders / gap_attribution" },
         args: {
           type: "object",
-          description: "求解器入参。capacity_forecast 必填 {modelId, demandDelta, weeks}；缺必填求解器会返回明确参数错误，不要空调。",
+          description:
+            "求解器入参。已发布模式的求解器（见下方 allOf 条件分支）按其 properties/required 传；" +
+            "未发布模式者参照 discover(kind=solvers) 的 argHints。缺必填求解器会返回明确参数错误，不要空调。",
         },
       },
       required: ["solverKey", "args"],
+      // WO-INPUTSCHEMA-WIRE · solverKey → args 完整模式（12 个已登记；未登记者不生成分支 ⇒ args 落回裸 object）。
+      allOf: INVOKE_SOLVER_ARGS_CONDITIONALS,
     },
     sideEffect: "COMPUTE",
     costClass: "EXPENSIVE",
