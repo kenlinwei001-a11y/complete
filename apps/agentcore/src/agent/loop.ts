@@ -840,10 +840,14 @@ export async function runAgentLoop(opts: AgentLoopOpts): Promise<AgentLoopResult
     // WO-LOOP-CONTROL-P2 · Retry Manager（PRD §3.2·机制 #4）：瞬时/传输层错（executor 回执 retryable=true·DataCore 不可达/
     // MCP 传输抖动）有界重试至多 retryMaxAttempts 次（退避复用同一 per-call deadline callTimeoutMs·**不新起定时器体系**）——
     // 重试成功（OK）→ 下游 roundHadSuccess 复位停滞计数（= 瞬时错**不入停滞**）；确定性错（retryable=false）不重试立即入停滞（现行为）。
-    let r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs });
+    // WO-INPUTSCHEMA-WIRE · `fromModel: true` —— `block.input` 是**模型写的**入参（LLM 的 tool_use），
+    // 而模型手里正拿着带 `inputSchema` 的那份工具表 ⇒ 执行器可按该模式校验它（`tools/executor.ts` 的 1.5 段）。
+    // 代码写死实参的调用方（workflow/executor.ts · router/l3-coupled.ts · router/execute-plan.ts）不传此位 ⇒ 不校验、逐字节不变。
+    const fromModel = true;
+    let r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs, fromModel });
     for (let attempt = 0; r.retryable && attempt < retryMaxAttempts; attempt++) {
       opts.metrics.agentRetry.inc();
-      r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs });
+      r = await opts.executor.run(block.name, block.input, { binding, budgetDecision, timeoutMs: callTimeoutMs, fromModel });
     }
     await opts.emit("step.started", { stepId: r.toolCallId, type: block.name });
     await opts.emit("step.completed", {

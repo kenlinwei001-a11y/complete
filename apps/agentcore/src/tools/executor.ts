@@ -128,6 +128,23 @@ export class GuardedToolExecutor {
       budgetDecision?: { ok: true } | { ok: false; reason: string };
       /** 约束执行层 stage3②：声明此工具输出应符合的本体对象类型 → 运行时强制校验,不符拒（信任边界）。 */
       expectsObjectType?: string;
+      /**
+       * WO-INPUTSCHEMA-WIRE · **这次调用的入参是模型写的吗**。只有 `runAgentLoop` 分发 LLM 的 tool_use 时传 `true`
+       * （`agent/loop.ts` 的两处 `executor.run(block.name, block.input, …)`）。
+       *
+       * 为什么求解器入参校验必须挂在这个位上，而不是对所有调用方一视同仁 —— **实测逼出来的**：
+       * `SOLVER_INPUT_SCHEMAS` 是「**发给模型的那份说明书**」，它比求解器真实接受的契约**窄**。
+       * 一视同仁地拿它当运行时门，会把**代码写的**合法调用打死。实测两例（`base-slot-unify.seam` 等 5 个用例）：
+       *   · `capacity_forecast{base:null}` —— 求解器 `capacity.ts:425` 明确把 null 当「没给」；
+       *   · `capacity_forecast{base:{objectType:"Base",objectId:"base_changzhou",…}}` —— 求解器
+       *     `capacity.ts:418-424` **专门**支持对象 ref（`normalizeBaseRef`，还是为治「静默丢 base」而加的）。
+       * 而说明书里 `base` 写的是 `z.string().optional()` ⇒ 两者都会被判非法。
+       *
+       * 判据（一句话）：**谁读了那份说明书，就按那份说明书校验谁。**
+       * 模型读了（工具表里带着 schema）⇒ 校验；`workflow/executor.ts` / `router/l3-coupled.ts` /
+       * `router/execute-plan.ts` 这些**代码写死的实参**是照着求解器实现写的、从没见过这份说明书 ⇒ 不校验，逐字节不变。
+       */
+      fromModel?: boolean;
     },
   ): Promise<ToolRunResult> {
     const started = Date.now();
@@ -200,6 +217,8 @@ export class GuardedToolExecutor {
     //   · 在 **预算之前**：一条格式错的调用不烧 agent 的 tool 预算（它本来就到不了 DataCore）。
     //   · 在 **DataCore 往返之前**：省一次网络，且错误消息能精确到字段（`字段: 说明`），模型可直接改。
     //   · ⛔ 不拦在 loop 层：那一层对所有工具通用，不认识求解器，属错层。
+    //   · **只拦 `fromModel` 的调用**（见 run() 的 `fromModel` 形参注释）——说明书是发给模型的，
+    //     就只按它校验模型；代码写死实参的 path-A / 组合器照旧，逐字节不变。
     //
     // ── 为什么拦不住合法的宽松调用（这条是本拦截安全性的全部依据·实测非推理）──
     //   ① **未登记的 51 个求解器** → `validateSolverInput` 返回 `{ok:true,unchecked:true}` ⇒ 逐字节不变。
@@ -212,7 +231,7 @@ export class GuardedToolExecutor {
     //      那会把别名键 strip 掉，正好把 `arg-aliases.ts` 要治的「静默丢参」病换个地方再犯一次。
     //
     // outcome=ERROR + retryable=false：确定性校验错，按 :655 `classifyRetryable` 的既定口径不重试。
-    if (toolName === "invoke_solver") {
+    if (toolName === "invoke_solver" && options?.fromModel) {
       const solverInput = (input ?? {}) as Record<string, unknown>;
       const solverKey = typeof solverInput.solverKey === "string" ? solverInput.solverKey : "";
       const verdict = validateSolverInput(solverKey, solverInput.args ?? {});
