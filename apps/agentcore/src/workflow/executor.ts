@@ -91,11 +91,14 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
   // 推演验证痕迹收集（凡用到本体切片即附带）
   const slicesUsed: string[] = [];
   const sliceObjects: { objectType: string; objectId: string; props: Record<string, unknown> }[] = [];
+  // C1 收敛回执的全类型清单（summary.byType 键）——深层节点无 props 不进 sliceObjects，
+  // 但类型级 ENTITY_DEFINED 检查不能因收敛而丢类型。
+  const sliceTypes = new Set<string>();
   const allVerdicts: RuleVerdict[] = [];
   const resolvedRefsSeen: ResolvedRef[] = [];
 
   const completed = async (answer: Answer): Promise<WorkflowResult> => {
-    const trace = await buildValidationTrace(deps, { slicesUsed, sliceObjects, verdicts: allVerdicts, resolvedRefs: resolvedRefsSeen, answer });
+    const trace = await buildValidationTrace(deps, { slicesUsed, sliceObjects, sliceTypes, verdicts: allVerdicts, resolvedRefs: resolvedRefsSeen, answer });
     return { status: "COMPLETED", answer: trace ? { ...answer, validationTrace: trace } : answer, stepOutputs };
   };
   const failed = (code: string, message: string, stepId?: string): WorkflowResult => ({
@@ -186,6 +189,8 @@ export async function runWorkflow(deps: WorkflowRunDeps, input: WorkflowRunInput
           const sliceKey = (resolvedParams.sliceKey as string | undefined) ?? "";
           if (sliceKey) slicesUsed.push(sliceKey);
           collectSliceObjects(r.payload, sliceObjects);
+          const byType = (r.payload as { summary?: { byType?: Record<string, number> } } | null)?.summary?.byType;
+          if (byType) for (const t of Object.keys(byType)) sliceTypes.add(t);
         } else if (step.type === "plan_slice") {
           const p = r.payload as { sliceKey?: string; plan?: { sliceKey?: string } } | undefined;
           const sliceKey = p?.sliceKey ?? p?.plan?.sliceKey;
@@ -572,7 +577,9 @@ function collectSliceObjects(
     const obj = node as Record<string, unknown>;
     if (obj.props && typeof obj.props === "object") {
       const props = obj.props as Record<string, unknown>;
-      const type = (obj.type as string | undefined) ?? typeHint ?? "Object";
+      // WO-SLICE-CONSUMPTION-20260912：C1 收敛回执的 rootNodes 用 typeKey（与 datacore 图形节点同形），
+      // 旧定制形用 type —— 两键都认，PK 探测逻辑不变。
+      const type = (obj.type as string | undefined) ?? (obj.typeKey as string | undefined) ?? typeHint ?? "Object";
       const pk = PK.find((k) => props[k] !== undefined);
       if (pk && acc.length < 50) acc.push({ objectType: type, objectId: String(props[pk]), props });
     }
@@ -593,6 +600,7 @@ async function buildValidationTrace(
    in_: {
     slicesUsed: string[];
     sliceObjects: { objectType: string; objectId: string; props: Record<string, unknown> }[];
+    sliceTypes?: Set<string>;
     verdicts: RuleVerdict[];
     resolvedRefs: ResolvedRef[];
     answer: Answer;
@@ -604,7 +612,7 @@ async function buildValidationTrace(
 
   // ---- Layer 1 一致性验证 ----
   const checks: ConsistencyCheck[] = [];
-  const types = [...new Set(in_.sliceObjects.map((o) => o.objectType))];
+  const types = [...new Set([...in_.sliceObjects.map((o) => o.objectType), ...(in_.sliceTypes ?? [])])];
   for (const t of types) checks.push({ kind: "ENTITY_DEFINED", ref: t, status: "PASS", detail: "切片对象类型在本体中定义" });
   for (const v of in_.verdicts) {
     checks.push({

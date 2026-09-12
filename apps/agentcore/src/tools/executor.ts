@@ -8,6 +8,7 @@ import { cosine, pseudoEmbed } from "../util/embedding.js";
 import { BudgetTracker } from "./budget.js";
 import { builtinTool } from "./registry.js";
 import { DataCoreUnavailableError, type DataCoreClient, type ToolAuthCtx } from "./clients.js";
+import { shapeSliceReceipt } from "./slice-receipt.js";
 import type { McpClientPort } from "../mcp/types.js";
 import type { SkillResourceReader } from "./skill-resources.js";
 
@@ -325,12 +326,16 @@ export class GuardedToolExecutor {
           explanation: res.explanation,
         };
       }
-      case "resolve_slice":
-        return this.deps.dataCore.ontology.resolveSlice(
+      case "resolve_slice": {
+        const res = await this.deps.dataCore.ontology.resolveSlice(
           ctx,
           String(args.sliceKey),
           (args.args ?? {}) as Record<string, unknown>,
         );
+        // WO-SLICE-CONSUMPTION-20260912（前置 C1）：大图形切片收敛回执——全类型×跳数计数 +
+        // 根全量 + 每类型锚点样本；小图形/遗留定制形透传。求解器内部路径不经此处，零影响（AC10 兜）。
+        return shapeSliceReceipt(String(args.sliceKey), res);
+      }
       case "plan_slice": {
         const req: {
           rootType: string;
