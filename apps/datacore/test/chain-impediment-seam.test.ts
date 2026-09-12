@@ -393,6 +393,139 @@ describe("WO-SANDBOX-E3 · 阻滞点判定 SEAM（规则半 × 引擎半 · 改�
   }, 180000);
 });
 
+/**
+ * WO-IMP-CARRIER · 承载对象 **SEAM**（本体数据半 × 遍历/计分引擎半）。
+ *
+ * 接缝的两半，任一半漏即红：
+ *  · **数据半** = 种子里的一等关系行（`material_has_balance` / `material_has_batch` /
+ *    `material_used_by_model` / `line_runs_work_order` / `fulfills`）+ `OrderLine` 对象。
+ *  · **引擎半** = `buildCarrierIndex` / `resolveCarriers` 的逐跳遍历 + severity 第二因子。
+ *
+ * ⚠ 本组**刻意不写死任何一个绝对数**（订单条数/金额随种子规模走）。
+ * 咬的是**关系**：去重后 ≤ 可阻塞订单簿 · 承载多的那条 severity 必须更高 · 遍历路径不是按基地 join。
+ * 写死数字的断言在这个仓里被换过种子规模之后必红，而红的理由与被测行为无关。
+ */
+describe("WO-IMP-CARRIER · 阻滞点承载对象 SEAM（它到底卡住了哪些订单）", () => {
+  it("① 重复计数自证 · 逐条承载订单**去重后**不得超过可阻塞订单簿（按基地 join 会当场爆掉这条）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+    const withCarriers = s.impediments.filter((i) => i.carriers !== undefined);
+
+    // 金丝雀先行：遍历若整个坏掉（一条都解析不出），下面的「没有超额」会**恒真**地绿。
+    // 报否定结论前先证明量法有鉴别力 —— 这正是本仓记过账的那条纪律。
+    expect(withCarriers.length, "金丝雀：一条承载对象都解析不出 ⇒ 是遍历坏了，不是「没有承载对象」").toBeGreaterThan(0);
+
+    const book = withCarriers[0]!.carriers!.bookAmount;
+    expect(book, "归一化分母必须为正，否则 exposureFactor 无意义").toBeGreaterThan(0);
+
+    // Σ 逐条（会重复计数，因为一张单可以同时被多处卡住）vs 去重后（必须收敛）。
+    const sigma = withCarriers.reduce((a, i) => a + i.carriers!.orderCount, 0);
+    const maxOne = Math.max(...withCarriers.map((i) => i.carriers!.orderCount));
+    expect(sigma, "Σ 逐条应当大于单条最大值，否则说明各条承载集合其实是同一个（遍历没按 locus 分开）").toBeGreaterThan(maxOne);
+
+    // 单条上界：任何一条阻滞点的承载订单数/金额都不得超过可阻塞订单簿本身。
+    // 「同基地 join」会让某一条挂上该基地全部订单，虽然仍 ≤ 全书，但会把 exposureFactor 顶到 1，
+    // 故这里再加一条更硬的：**不是所有条目都能顶到 1**（否则就是在按大面积广播）。
+    for (const i of withCarriers) {
+      expect(i.carriers!.orderAmount, `${i.impedimentId} 承载金额超过了可阻塞订单簿`).toBeLessThanOrEqual(book + 1e-6);
+      expect(i.carriers!.exposureFactor).toBeLessThanOrEqual(1);
+    }
+    const distinctExposure = new Set(withCarriers.map((i) => i.carriers!.exposureFactor));
+    expect(distinctExposure.size, "所有阻滞点的敞口都一样 ⇒ 承载集合没有按 locus 真正分开（广播嫌疑）").toBeGreaterThan(1);
+  }, 180000);
+
+  it("② 遍历是**沿本体的边**走的，不是按基地 join（path 逐跳可核对）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+
+    const matBal = s.impediments.find((i) => i.locus.objectType === "MaterialBalance" && i.carriers);
+    expect(matBal, "金丝雀：物料平衡这一类今天必有阻滞点且必可解析承载对象").toBeDefined();
+    // 物料缺口 → 物料 → 用它的型号 → 那些型号的订单行。三跳，缺一跳就不是这条路。
+    expect(matBal!.carriers!.path).toEqual(["material_has_balance", "material_used_by_model", "orderline_for_model"]);
+    expect(matBal!.carriers!.amountBasis, "缺料只卡真用到它的订单行，不整单算").toBe("ORDER_LINE");
+
+    const line = s.impediments.find((i) => i.locus.objectType === "Line" && i.carriers);
+    expect(line, "金丝雀：产线这一类今天必有阻滞点").toBeDefined();
+    // 产线 → 它在跑的工单 → 工单履行的订单。**不是**「该基地的全体订单」。
+    expect(line!.carriers!.path).toContain("line_runs_work_order");
+    expect(line!.carriers!.path).toContain("fulfills");
+
+    // 决定性判据：产线那条的承载订单数必须**远小于**同基地订单总数 —— 按基地 join 会让两者相等。
+    const baseOfLine = s.impediments.find((i) => i.locus.objectType === "Base" && i.carriers);
+    expect(line!.carriers!.orderCount).toBeLessThan(baseOfLine!.carriers!.orderCount);
+
+    // 物料类不同物料的承载面必须**真的不同**（正极只喂一半型号，铝箔喂全部）——
+    // 全都一样就说明遍历没走到 `material_used_by_model` 这一跳。
+    const matCounts = new Set(
+      s.impediments.filter((i) => i.locus.objectType === "MaterialBatch" && i.carriers).map((i) => i.carriers!.orderCount),
+    );
+    expect(matCounts.size, "所有物料批次承载面一样 ⇒ `material_used_by_model` 这一跳没走").toBeGreaterThan(1);
+  }, 180000);
+
+  it("③ 对照实验 · 超阈幅度相近但承载量差一个量级 ⇒ severity 必须拉开（第二因子真的进了公式）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+    const withCarriers = s.impediments.filter((i) => i.carriers !== undefined);
+
+    // 在**实测数据里找**这一对，不写死 id：找 breachFactor 相近（≤25% 相对差）而承载金额差 ≥10× 的两条。
+    let pair: [ChainImpediment, ChainImpediment] | undefined;
+    for (const a of withCarriers) {
+      for (const b of withCarriers) {
+        const fa = a.carriers!, fb = b.carriers!;
+        const rel = Math.abs(fa.breachFactor - fb.breachFactor) / Math.max(fa.breachFactor, fb.breachFactor);
+        if (rel <= 0.25 && fa.orderAmount >= fb.orderAmount * 10) {
+          pair = [a, b];
+          break;
+        }
+      }
+      if (pair) break;
+    }
+    expect(pair, "金丝雀：实测种子上必须存在「超阈幅度相近、承载量差一个量级」的一对（找不到则本判据无法验收）").toBeDefined();
+    const [big, small] = pair!;
+
+    // 这就是本单要消灭的病：两者超阈幅度几乎一样 ——
+    // 单因子口径下它们的 severity 会**相同**（实测修前双双为 1）。
+    // 第二因子进公式后，承载 150 单的那条必须明显高于承载 1 单的那条。
+    expect(big.severity, `${big.impedimentId}(${big.carriers!.orderCount}单) 必须严于 ${small.impedimentId}(${small.carriers!.orderCount}单)`).toBeGreaterThan(
+      small.severity,
+    );
+    // 且不是仅差 1 的噪声级差别 —— 承载差一个量级，分数要真的拉开。
+    expect(big.severity - small.severity).toBeGreaterThanOrEqual(5);
+
+    // severity 必须**可复算**：两个因子原样回带，谁都能自己验，不必信实现。
+    for (const i of withCarriers) {
+      const f = i.carriers!;
+      expect(f.exposureFactor).toBeCloseTo(f.orderAmount / f.bookAmount, 5);
+      expect(i.severity).toBe(Math.max(0, Math.min(100, Math.round(Math.sqrt(f.breachFactor * f.exposureFactor) * 100))));
+    }
+  }, 180000);
+
+  it("④ R6 · 承载对象判不出来时 severity 退回单因子口径，且不带该字段（既有回包逐字节不变）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+    const withCarriers = s.impediments.filter((i) => i.carriers !== undefined);
+    expect(withCarriers.length).toBeGreaterThan(0);
+
+    // 不带 carriers 的那些，severity 必须恰好等于**单因子**口径（= 本字段上线前的算法）。
+    for (const i of s.impediments.filter((x) => x.carriers === undefined)) {
+      const denom = Math.abs(i.evidence.threshold);
+      if (!(denom > 0)) continue; // 阈值为 0 的走规模基准，不在本断言的可复算面内
+      const breach = breachAmount(i.evidence.metricValue, i.evidence.threshold, ">", true);
+      expect(i.severity).toBe(Math.max(0, Math.min(100, Math.round(Math.min(1, breach / denom) * 100))));
+    }
+
+    // 同输入连跑两次，承载对象逐字节一致（遍历里任何一处用了 Set/Map 的偶然序都会在这里翻车）。
+    const again = await scan(t);
+    expect(JSON.stringify(again.impediments.map((i) => i.carriers))).toBe(
+      JSON.stringify(s.impediments.map((i) => i.carriers)),
+    );
+  }, 180000);
+});
+
 describe("WO-SANDBOX-E3 · 判定内核（纯函数 · 判据不靠 if 顺序的巧合）", () => {
   const mk = (kind: "BOTTLENECK" | "CONGESTION", objectId: string, severity: number): ChainImpediment =>
     ChainImpedimentSchema.parse({
