@@ -21,7 +21,18 @@ import styles from "./GlobalSimView.module.css";
  * 七维 KPI + provenance（drillType=Lever·R13 每值溯源）。preset 区照旧保留。**血脉 = portfolio levers[]·非 generic_inference。**
  */
 
-export interface LeverState { frozenCapacityMode: "reserve" | "release"; method: "weighted" | "lexicographic" | "epsilon" }
+/**
+ * WO-HV-A · 需求 2.4：新增 `lineGranularity`——**产线级排产**开关（真 arg·非展示开关）。
+ *
+ * 今天的行为 → 应该的行为：
+ *  · 今天：`lineGranularity` 全仓**零 UI 调用方**（`GlobalSimView` 的 `args` 是显式字面量、无泛化 spread，
+ *    故不存在"经 spread 间接传入"的暗路），求解器恒走 base 粒度（`portfolio.ts:278` `=== true` 取不到 true）
+ *    ⇒ 产能单元 = 每基地一个、`unitLine` 恒 `null`，线级换型 `coHoursTo(from,to,lineId)` 与
+ *    `lineModelCompat` 兼容过滤**从未触发**；台账"产线"列只是按基地查 PACK 线的静态查表。
+ *  · 应该：用户能在杠杆盘打开它 → 求解器按 `baseId#lineId` 拆产能单元 → 同一基地的不同订单可落**不同产线**，
+ *    换型按线判定（该线在跑的型号），台账"产线"列显示**求解器真实指派**的那条线。
+ */
+export interface LeverState { frozenCapacityMode: "reserve" | "release"; method: "weighted" | "lexicographic" | "epsilon"; lineGranularity: boolean }
 
 /** 自由杠杆（portfolio 契约 GlobalSimLever·联合重解入参 levers[]）。 */
 export interface FreeLever { key: string; target: string; delta: number }
@@ -154,6 +165,27 @@ export function GlobalSimLevers({
           ))}
         </div>
         <div className={styles.leverHint}>冻结 {frozenCount} 单 · 锁定=其产能不可被他单占用；释放=看产能极限可行性。</div>
+      </div>
+
+      {/* WO-HV-A · 供给：排产粒度（真 arg lineGranularity·关=每基地一个产能单元·开=按 baseId#lineId 拆到线） */}
+      <div className={styles.leverGroup} data-testid="global-sim-lever-granularity">
+        <div className={styles.leverLabel}>供给 · 排产粒度</div>
+        <label
+          data-testid="global-sim-lever-line-granularity-label"
+          style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}
+        >
+          <input
+            type="checkbox"
+            data-testid="global-sim-lever-line-granularity"
+            checked={value.lineGranularity}
+            onChange={(e) => onChange({ ...value, lineGranularity: e.target.checked })}
+          />
+          <span>排到产线（线级换型）</span>
+        </label>
+        <div className={styles.leverHint}>
+          关=每基地一个产能单元，只回答「排到哪个基地」；开=按产线拆产能单元，同基地不同单可落不同线，
+          换型按该线在跑的型号判定 · 台账「产线」列随之显示求解器真实指派的线。
+        </div>
       </div>
 
       {/* 优先级：求解方法（真 arg method） */}
