@@ -3,10 +3,15 @@
  * WO-ONTOGRAPH-CONSUME · 派单前提自检器（本体图谱的第一个消费方）
  * ============================================================================
  *
- * 读一份派单 markdown，把里面的**事实声明**拿去和 `docs/ontology-graph/` 的图谱对账。
+ * 读一份派单 markdown，把里面的**事实声明**拿去和本体图谱对账。
  *
- *   node scripts/ontology-graph/premise-check.mjs docs/WO-XXX.md
- *   node scripts/ontology-graph/premise-check.mjs docs/WO-XXX.md --graph docs/ontology-graph
+ * 图谱有**两个家**（WO-ONTOGRAPH-DB 起）：抽取产物目录（默认 `.ontology-graph/`，不进 git）
+ * 与后台数据库（`ontograph_*` 四张表）。两条读路在 `finishGraph()` 汇合，下游完全同一份实现。
+ *
+ *   node scripts/ontology-graph/premise-check.mjs docs/WO-XXX.md                    # 读目录（默认 .ontology-graph）
+ *   node scripts/ontology-graph/premise-check.mjs docs/WO-XXX.md --graph <目录>
+ *   DATABASE_URL=… node scripts/ontology-graph/premise-check.mjs docs/WO-XXX.md --from-db
+ *   DATABASE_URL=… node … docs/WO-XXX.md --graph <目录> --from-db --equiv            # 两条路逐行 diff
  *   node scripts/ontology-graph/premise-check.mjs --selftest       # 回归用例 + 金丝雀
  *
  * ── 为什么有这个工具 ────────────────────────────────────────────────────────
