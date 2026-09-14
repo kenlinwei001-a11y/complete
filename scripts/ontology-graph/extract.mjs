@@ -6,9 +6,15 @@
 // 它只产出一份「可检索的事实快照」，100% 从源码抽取，零人工维护字段。
 //
 // 用法：
-//   node scripts/ontology-graph/extract.mjs            # 抽取 → docs/ontology-graph/
-//   node scripts/ontology-graph/extract.mjs --canary   # 只跑金丝雀（自证工具没坏）
-//   node scripts/ontology-graph/extract.mjs --verify   # 跑四条对照实验（验收）
+//   node scripts/ontology-graph/extract.mjs                    # 抽取 → .ontology-graph/（**不进 git**）
+//   node scripts/ontology-graph/extract.mjs --out <dir>        # 换输出目录
+//   node scripts/ontology-graph/extract.mjs --to-db            # 同时落后台数据库（DATABASE_URL 有值走 pg）
+//   node scripts/ontology-graph/extract.mjs --canary           # 只跑金丝雀（自证工具没坏）
+//   node scripts/ontology-graph/extract.mjs --verify           # 跑四条对照实验（验收）
+//
+// ⚠ **输出目录默认不在 git 里**（WO-ONTOGRAPH-DB）。产物实测 154,518 行 / 6.5MB 且
+//   100% 从源码抽取 —— 它是快照不是源码，进 git 只会让每次抽取淹掉真实改动的 diff。
+//   产生它的**逻辑与关系**写在 `docs/ontology-graph/DATA-MODEL.md`（那份才进 git）。
 //
 // ── 已知会骗人的工具（本仓实测，全部写死在这里防复发） ──────────────────────
 // ① `parseJsonConfigFileContent(...).fileNames` —— apps/*/tsconfig.json 的 include
@@ -32,7 +38,22 @@ const REPO = path.resolve(HERE, "..", "..");
 const require = createRequire(path.join(REPO, "package.json"));
 const ts = require("typescript");
 
-const OUT_DIR = path.join(REPO, "docs", "ontology-graph");
+// ── CLI（argv 必须在 OUT_DIR 之前解析 —— `--out` 决定它）─────────────────────
+const argv = process.argv.slice(2);
+const argOf = (name, dflt) => {
+  const i = argv.indexOf(name);
+  return i >= 0 && argv[i + 1] ? argv[i + 1] : dflt;
+};
+
+/**
+ * 产物目录 —— **默认 `.ontology-graph/`，不在 git 里**（`.gitignore` 有这一行）。
+ *
+ * 为什么不是 `docs/ontology-graph/`（那是它原来的家）：那个目录今天只留**手写**的三份
+ * （README.md / PREMISE-CHECK.md / DATA-MODEL.md）。生成物与手写文档同住一个目录时，
+ * `emit()` 头上那条「只清生成物、不许整目录 rm」的纪律就是唯一的防线，而它是**注释**。
+ * 换个目录之后，那条纪律变成**目录边界**——机制而不是自觉。
+ */
+const OUT_DIR = path.resolve(REPO, argOf("--out", process.env.ONTOGRAPH_OUT || ".ontology-graph"));
 
 // ── 包清单（有 src/ 的 TS 包；packages/dsh-harness 是 vendored .mjs，无 src/，不在内） ──
 const PACKAGES = [
@@ -928,6 +949,10 @@ function emit(g) {
   }
 
   // ── atoms/<package>.yaml ──
+  // ⚠ `normAtoms` / `normSlices` / `normIndex` 是**同一批数据的对象形态**，给 --to-db 用。
+  //    刻意与 YAML 写出器并行收集、⛔ 不重构成「先建对象再序列化」：那会动到 YAML 的字节，
+  //    而 README 白纸黑字承诺「同一 commit 跑两次逐字节一致」，改字节等于把那条承诺作废。
+  const normAtoms = [];
   const shards = [];
   for (const pkg of PACKAGES) {
     const mine = all.filter((a) => a.pkg === pkg.name);
@@ -968,10 +993,12 @@ function emit(g) {
     const f = `atoms/${pkg.name}.yaml`;
     fs.writeFileSync(path.join(OUT_DIR, f), lines.join("\n"));
     shards.push({ package: pkg.name, file: f, count: rows.length, edges: myEdges.length });
+    for (const r of rows) normAtoms.push({ pkg: pkg.name, ...r });
   }
 
   // ── slices/<sliceKey>.yaml + INDEX 的 slices: 段 ──
   const sliceRows = [];
+  const normSlices = [];
   if (g.sliceInfo) {
     const { entries, descriptors, idx } = g.sliceInfo;
     const descByKey = new Map(descriptors.map((d) => [d.sliceKey, d]));
@@ -1008,6 +1035,16 @@ function emit(g) {
       ].join("\n");
       const fname = `slices/${e.sliceKey}.yaml`;
       fs.writeFileSync(path.join(OUT_DIR, fname), body);
+      // 对象形态（--to-db 用）：键序与上面 `body` 的行序**逐行对应**，
+      // 少一个键就是「落库丢了字段」，而 YAML 那半照样对 —— 故两者必须并排读。
+      normSlices.push({
+        sliceKey: e.sliceKey, scope: e.scope, rootType: e.rootType, domain: e.domain,
+        spannedTypes: e.spannedTypes, spannedDomains: e.spannedDomains, paths: e.paths,
+        brief: d.description, indexEntities: d.indexEntities, tokens,
+        counts: { atoms: members.length, consumers: consumerList.length },
+        atoms: members.map((m) => ({ atom: m.atom, via: m.via })),
+        consumers: consumerList,
+      });
       sliceRows.push({
         key: e.sliceKey, file: fname, rootType: e.rootType, scope: e.scope,
         domain: e.domain, brief: d.description, tags: d.indexEntities,
@@ -1017,24 +1054,26 @@ function emit(g) {
       });
     }
     sliceRows.sort((a, b) => a.key.localeCompare(b.key));
+    normSlices.sort((a, b) => a.sliceKey.localeCompare(b.sliceKey));
   }
 
   // ── INDEX.yaml ──
   const kindCounts = {};
   for (const e of edges) kindCounts[e.kind] = (kindCounts[e.kind] ?? 0) + 1;
   const docNone = all.filter((a) => !a.brief).length;
+  const idxCounts = {
+    atoms: all.length, edges: edges.length, slices: sliceRows.length,
+    byEdgeKind: kindCounts,
+    docSourceNone: docNone,
+    docSourceNonePct: all.length ? Number(((docNone / all.length) * 100).toFixed(2)) : 0,
+  };
   const idxLines = [
     `# 本体图谱 · 索引目录（唯一入口 —— 只靠这一份就能回答「哪条切片覆盖 rootType=X 且跨到 Y」）`,
     `# 生成物 —— ⛔ 不要手改。生成命令：node scripts/ontology-graph/extract.mjs`,
     `# 人读的散文本体在 docs/SYSTEM-ONTOLOGY.md，**保留不动**，本目录是它旁边的机器抽取面。`,
     `version: 1`,
     `generatedFrom: ${q(commitHash())}`,   // ⛔ 不打时间戳 —— 会破坏字节级确定性（R6）
-    `counts: ${yv({
-      atoms: all.length, edges: edges.length, slices: sliceRows.length,
-      byEdgeKind: kindCounts,
-      docSourceNone: docNone,
-      docSourceNonePct: all.length ? Number(((docNone / all.length) * 100).toFixed(2)) : 0,
-    })}`,
+    `counts: ${yv(idxCounts)}`,
     `# ⚠ 三态有**两套口径**，差 ${Math.abs(byState.wired - byStateStrict.wired)} 个原子（差在「只在自己文件里被用」那批）。`,
     `# ⛔ 引用时必须说清用的是哪一套 —— 只报一个数等于拿一个数盖住两个不同事实。`,
     `byState:`,
@@ -1068,7 +1107,44 @@ function emit(g) {
   ];
   fs.writeFileSync(path.join(OUT_DIR, "INDEX.yaml"), idxLines.join("\n"));
 
-  return { all, byState, shards, sliceRows, kindCounts, docNone };
+  /**
+   * INDEX 的对象形态（--to-db 用）。键序与上面 `idxLines` 的行序**逐行对应**。
+   * ⚠ 这里**一个键都不许裁** —— 尤其 `canary`：裁掉它，库里「图谱说没有 X」与
+   *   「抽取器当时就坏了」就长得一模一样，而那是本仓最贵的一类误判
+   *   （README 记着修前 no-ref 3031 / 修后 446，差的全是工具的毛病）。
+   */
+  const normIndex = {
+    version: 1,
+    generatedFrom: commitHash(),
+    counts: idxCounts,
+    byState: {
+      includingSelfFileUse: {
+        question: "这个符号有没有生产代码在用？（跨文件 src 或同文件内的生产使用都算）",
+        useFor: "找真死代码、找假绿第 9 形态（实现有·测试有·绿的·零生产调用方）。假阳性代价高的场合用这套。",
+        counts: byState,
+      },
+      strictCrossFile: {
+        question: "这个符号有没有**别的文件**在用？（忽略同文件内的使用）",
+        useFor: "找「导出了但没人跨文件用」的过度导出面 —— 这批可以降成文件内私有。",
+        counts: byStateStrict,
+      },
+    },
+    canary: g.canaries,
+    blindSpotDims: ["COUNT", "NOREF", "EMPTYFILE", "COORD", "LENGTH"],
+    blindSpots: BLIND_SPOTS,
+    registries: g.registries,
+    fieldStats: g.fieldStats,
+    atomShards: shards,
+    slices: sliceRows,
+  };
+
+  return {
+    all, byState, shards, sliceRows, kindCounts, docNone,
+    // 归一图 —— graph-db.mjs 的输入形态。`edges` 给**全部** 21k 条（含 inSlice），
+    // 而 YAML 那侧 inSlice 边只以切片成员表的形式隐含存在 ⇒ 落库这一份**更全**，
+    // 也正因此 `counts.edges` 这个数在库里第一次可以被真正核对。
+    normalized: { generatedFrom: commitHash(), index: normIndex, atoms: normAtoms, edges, slices: normSlices },
+  };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1184,7 +1260,54 @@ async function verify(g, summary) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-const argv = process.argv.slice(2);
+// --to-db · 落后台数据库（WO-ONTOGRAPH-DB）
+//
+// ⛔ 这不是门：它不判红绿，只打数字。但它**每次都做一遍读回对账** ——
+//    「写进去了」与「读得回来」是两个命题，而只写不读的落库工具在出错时
+//    会一路安静到有人真去查数据的那天。
+// ════════════════════════════════════════════════════════════════════════════
+async function toDb(summary) {
+  const db = await import(pathToFileURL(path.join(HERE, "graph-db.mjs")).href);
+  const tenant = argOf("--tenant", db.DEFAULT_TENANT);
+  const opened = await db.openRepos();
+  const say = (s) => process.stdout.write(s + "\n");
+  try {
+    say("");
+    say("═══ 落库（--to-db）═══════════════════════════════════");
+    say(`  后端 ${opened.backend}${opened.persistent ? `（${String(opened.databaseUrl).replace(/\/\/[^@]*@/, "//***@")}）` : "  ⚠ **内存仓储 —— 本次不落盘**，验的是映射与幂等，不是持久化"}`);
+    say(`  租户 ${tenant} · 快照 ${db.snapshotId(tenant, summary.normalized.generatedFrom)}`);
+
+    const w = await db.writeGraph(opened.repos, summary.normalized, tenant);
+    const r = await db.readGraph(opened.repos, tenant, w.snapId);
+    if (!r.ok) { say(`  ❌ 读回失败：${r.reason}`); return 1; }
+
+    // 三向对账：INDEX 自述 ↔ 写进去的 ↔ 库里数出来的。
+    // ⚠ 第三个数必须来自**存储侧 count**，不是 `readBack.length` —— 后者与「我读回了几条」
+    //   是同一个数，读法错了两边会一起错，屏上全绿。
+    const decl = summary.normalized.index.counts;
+    const rows = [
+      ["原子", decl.atoms, w.wrote.atoms, r.counts.atoms],
+      ["边", decl.edges, w.wrote.edges, r.counts.edges],
+      ["切片", decl.slices, w.wrote.slices, r.counts.slices],
+    ];
+    say("  ── 对账：INDEX 自述 / 写入 / 库中现数 ──");
+    let bad = 0;
+    for (const [what, a, b, c] of rows) {
+      const ok = a === b && b === c;
+      if (!ok) bad++;
+      say(`    ${ok ? "✅" : "❌ 落库丢了数据"} ${what}：自述 ${a} · 写入 ${b} · 库中 ${c}`);
+    }
+    say(`  ⇒ ${bad === 0 ? "三项一致" : `${bad} 项对不上`}`);
+    if (!opened.persistent) {
+      say("  ⛔ 提醒：memory 后端，进程一退这份数据就没了。要真落盘请设 DATABASE_URL。");
+    }
+    return bad === 0 ? 0 : 1;
+  } finally {
+    await opened.repos.close();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 const g = await build();
 const summary = emit(g);
 
@@ -1200,4 +1323,5 @@ const bad = g.canaries.filter((c) => !c.ok);
 if (bad.length) log(`\n⚠⚠ ${bad.length} 条金丝雀不中 ⇒ 以上任何「零/没有/不存在」结论都**不成立**，先修工具。`);
 
 if (argv.includes("--verify")) await verify(g, summary);
+if (argv.includes("--to-db")) process.exit(await toDb(summary));
 if (argv.includes("--canary")) process.exit(0);
