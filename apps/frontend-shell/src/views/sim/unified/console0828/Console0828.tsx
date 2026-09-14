@@ -88,6 +88,7 @@ import {
   type OrderRow,
   type TickCalendar,
   type WorldCells,
+  isSettledOrder,
 } from "./console0828Model";
 import {
   buildChainImpedimentModel,
@@ -501,7 +502,11 @@ export default function Console0828({
   const touchedOrderIds = useMemo(() => {
     const ids = new Set(orders.map((o) => o.id));
     const out = new Set<string>();
-    for (const d of result?.deltas ?? []) if (ids.has(d.objectId)) out.add(d.objectId);
+    // WO-EXPOSURE-STATUS：与 buildMoneyView 共用 isSettledOrder —— 已完成单不进客户面，
+    // 否则屏上会出现「被推动 150 张，却涉及全部 20 家客户」这种自相矛盾。
+    const byId = new Map(orders.map((o) => [o.id, o]));
+    for (const d of result?.deltas ?? [])
+      if (ids.has(d.objectId) && !isSettledOrder(byId.get(d.objectId))) out.add(d.objectId);
     return out;
   }, [result, orders]);
 
@@ -1457,6 +1462,14 @@ export default function Console0828({
                           <span>被推动的单</span>
                           <span className={styles.late}>{money.exposedOrders} 张</span>
                         </li>
+                        {/* WO-EXPOSURE-STATUS：排除掉的那批必须上屏。只报 150 不报「另有 350 已完成
+                            不计入」，读者无法判断少掉的单去哪了 —— 那和原来报 500 一样不可核。 */}
+                        {money.settledExcluded > 0 ? (
+                          <li>
+                            <span>已完成·不计入</span>
+                            <span className={styles.mono}>{money.settledExcluded} 张</span>
+                          </li>
+                        ) : null}
                         <li>
                           <span>涉及客户</span>
                           <span className={styles.mono}>

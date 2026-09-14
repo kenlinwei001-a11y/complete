@@ -110,8 +110,14 @@ export type MoneyCell =
 export interface MoneyView {
   /** 波及订单的敞口合计（元）—— 对象层 `Order.value` 求和，真金额。 */
   readonly exposure: number;
-  /** 波及的订单张数。 */
+  /** 波及的订单张数 —— **已排除已完成单**（见 buildMoneyView 的 WO-EXPOSURE-STATUS 段）。 */
   readonly exposedOrders: number;
+  /**
+   * 引擎给它算了 delta、但因**已完成**而被本视图排除的张数。
+   * ⚠ 这个数必须上屏：不上屏就等于「500 悄悄变成 150」，读者无从判断少掉的 350 去哪了。
+   * 🐤 它同时是本过滤的金丝雀 —— 报 0 而状态分布里 COMPLETED 非 0 ⇒ 过滤没生效。
+   */
+  readonly settledExcluded: number;
   /** 订单簿总额（元）与张数 —— 现算，**不写死**。 */
   readonly bookTotal: number;
   readonly bookOrders: number;
@@ -155,8 +161,50 @@ export function buildMoneyView(
   causeOf: (objectId: string) => string | null,
 ): MoneyView {
   const byId = new Map(orders.map((o) => [o.id, o]));
+
+  /* ══ WO-EXPOSURE-STATUS · 扰动影响面必须按订单状态收窄 ═══════════════════════
+   *
+   * 仓主实拍报的 bug：「我输入一个扰动因素，结果反馈影响 500 张订单。这个是错的，
+   * **不应该影响已经完成的订单**，**进行中订单也需要分析是否计算在里面**。」
+   *
+   * ── 病因（**2026-09-14 真后端实测**，不是读码推断）──────────────────────────
+   *   复验：起 datacore 内存模式（`SEED_DEMO=1`），
+   *     `GET /a/v1/objects?type=Order&pageSize=500` -H 'X-Debug-User: demo:admin:admin'
+   *     → 按 `props.status` 分桶。今日实测 COMPLETED 350 / IN_PRODUCTION 100 / OPEN 50。
+   *     🐤 金丝雀：总数须 = 500 且 `hasMore=false`；拿首页 50 条当全集会把 350 读成 35。
+   * 引擎的 `deltas` 对**全部** 500 张单都产生读数变化，本函数原先照单全收 ⇒
+   * 屏上「被推动的单 500 张 / 涉及客户 20 家 / 合计敞口 454.6 亿元」，
+   * **与同一屏上方「350 已完成 70.0%」自相矛盾**：已交付已结款的单不可能再被扰动推动。
+   * 形态（铁律 0.6 句式）：
+   *   **「我用『引擎给它算出了读数变化』当作『它会被这次扰动影响』的证据，
+   *     而前者并不度量后者 —— 引擎算的是压力传导，没有交付状态这一维。」**
+   *
+   * ── 逐状态裁决（仓主要求「进行中订单也需要分析」，这就是那份分析）──────────
+   *   · COMPLETED      已完成    ⇒ **排除**。货已交、款已结，后续扰动改不了它的结果。
+   *   · IN_PRODUCTION  在产      ⇒ **计入**。未交付，涨价/停机会实打实改它的成本与交期。
+   *   · OPEN           已下待排产 ⇒ **计入**。尚未开工，受扰动影响最大。
+   * 真后端实测分布（demo 租户 SEED_DEMO=1，`/a/v1/objects?type=Order&pageSize=500`）：
+   *   COMPLETED 350 · IN_PRODUCTION 100 · OPEN 50 = 500 ⇒ 可影响面 **150 张**。
+   *
+   * ── 为什么用「排除已完成」而不是「只收白名单」──────────────────────────────
+   * 白名单漏掉一个新状态 ⇒ 那批单**静默消失**在影响面里，屏上看不出区别（假绿）。
+   * 黑名单漏掉一个新的终态 ⇒ 它被多算，屏上数字偏大、与状态分布对不上，**人能看见**。
+   * ⇒ 两种错里选**看得见**的那种。
+   *
+   * ⚠ 这是**视图层口径**：引擎仍会对已完成单产生 delta（那是引擎没有状态维的问题，
+   *   另立单）。本函数只负责「屏上报的影响面不许包含不可能被影响的单」。
+   * 复验（不必信这段注释）：
+   *   屏上「被推动的单」+「已完成(不计入)」两数之和，必须等于状态分布合计（今日 500）。
+   *   🐤 金丝雀：若「已完成(不计入)」报 0 而状态分布里 COMPLETED 非 0，那是本过滤没生效。
+   */
   const touched = new Set<string>();
-  for (const d of deltas) if (byId.has(d.objectId)) touched.add(d.objectId);
+  // ⚠ 用 Set 而不是计数器：一张单会有多条 delta（每个 stateVar 一条），计数器会重复计。
+  const settled = new Set<string>();
+  for (const d of deltas) {
+    const o = byId.get(d.objectId);
+    if (o === undefined) continue;
+    (isSettledOrder(o) ? settled : touched).add(d.objectId);
+  }
 
   let exposure = 0;
   for (const id of touched) {
@@ -185,6 +233,7 @@ export function buildMoneyView(
   return {
     exposure,
     exposedOrders: touched.size,
+    settledExcluded: settled.size,
     bookTotal,
     bookOrders: orders.length,
     breakdown: [
@@ -216,6 +265,23 @@ export interface CustomerView {
   readonly statusDist: readonly { readonly status: string; readonly label: string; readonly n: number }[];
   readonly touchedCustomers: number;
   readonly totalCustomers: number;
+}
+
+/**
+ * WO-EXPOSURE-STATUS · 「这张单已经结清了吗」的**唯一**判据。
+ *
+ * ⛔ 两处消费方（`buildMoneyView` 的敞口、`Console0828` 的 `touchedOrderIds` → 客户面）
+ *   必须共用这一份。各抄一份的话，改其中一处而另一处照旧 ⇒ 屏上会出现
+ *   「被推动 150 张，却涉及全部 20 家客户」这种自相矛盾，而且没有任何东西会红。
+ *   （本仓纪律原文：「门脚本里的金丝雀必须与主逻辑共用同一份实现，不许各抄一份正则 ——
+ *     抄了就是装饰品」。同一个道理。）
+ *
+ * 判据用**黑名单**（列出终态）而非白名单（列出活跃态）：
+ *   白名单漏一个新状态 ⇒ 那批单静默消失在影响面里，屏上看不出区别（假绿）；
+ *   黑名单漏一个新终态 ⇒ 它被多算，屏上与状态分布对不上，**人能看见**。
+ */
+export function isSettledOrder(o: { readonly status: string | null } | undefined): boolean {
+  return o?.status === "COMPLETED";
 }
 
 /** 订单状态枚举 → 人话。⛔ 屏上不许直接印 `IN_PRODUCTION` 这种接口枚举。 */
