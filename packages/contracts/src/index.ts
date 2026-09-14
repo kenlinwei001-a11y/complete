@@ -97,3 +97,4 @@ export * from "./finance-world.js"; // WO-FINANCE-WORLDSTATE · 财务**金额**
 export * from "./ontology-invariant.js"; // WO-ONTOLOGY-EDGE-TRICLASS · 本体第三类边「不变式守卫」（前两类结构边/因果边不动）：表达式极性与 A5 规则一致（为真=不成立）；容差与停用是**试算开关**不落库、与治理「停用/下线」两套语义并存不合并；违反必带参与元素（是边不是孤立数字）；阻断与否收敛成单一 enforcement.mode，产品裁决前恒 ANNOTATE_ONLY
 export * from "./scheme-adoption.js"; // WO-ADOPT-SCHEME-CARRIER · 方案采纳台账（G-ADOPT-SCHEME-NO-CARRIER 收口）：「采纳经营方案」payload 逐字段 @unit（rev=归一指数/gm=0-1小数/share=百分数，三者不同轴）+ SchemeAdoption 台账记录（专用 doc-jsonb 表 037，非本体对象——公司级审批留痕与 Decision 台账同族）；同年份至多一条 ACTIVE 是写时不变量；targets 只是拍板快照，无写回 PLAN_GOAL_TARGETS 的路径
 export * from "./sim-proposal.js"; // WO-AGENT-IN-LOOP · 「agent 出方案 / 求解器出数」的契约层：菜单（确定性侧，所有真实数值都在这里）+ agent 产出（**只有下标与文字，没有一个数值格** —— 红线是结构性的不是提示词纪律）+ 定版记录（proposalId/version/inputFingerprint，重跑读定版不重调模型）；`resolveProposalToLevers` 是唯一的数值兑现处，下标越界 fail-closed 抛错（静默夹逼等于给幻觉发合法通行证）
+export * from "./responds-to-input.js"; // 对照实验断言（铁律 1.5 判据一的机器化）

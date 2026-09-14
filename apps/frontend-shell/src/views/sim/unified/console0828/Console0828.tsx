@@ -1220,6 +1220,16 @@ export default function Console0828({
               一次操作依次执行：施加扰动 · 推进世界 · 财务影响 · 卡点识别 · 对策生成，共五次服务调用。
               主线只列 <b>12 类业务扰动事件</b>；落点限定在具名实体范围内。
               其余对象只在结果中出现，属传播介质，不进入选择器。
+              {/* 铁律 1.5 判据二：「今天推演路零 LLM ⇒ 必须明写『本次未调用 agent』，
+                  不许留白让人以为调了」。2026-09-14 真后端实测（datacore:15001 + agentcore:15002
+                  分开起、分别看访问日志）：agentcore 全程只被调 /b/v1/scenarios（页面初始化拉场景卡）
+                  与 /b/v1/outbox（事件轮询），日志里 agent|orchestrat|workflow|qos|EXECUTING 零命中；
+                  推演动作全在 datacore 的 /a/v1/sim/... 上。⇒ 屏上这行不是免责声明，是实测结论。 */}
+              <div style={{ marginTop: 6 }}>
+                <b>本次未调用 agent</b> —— 上述五步均为确定性计算：读已发布的传导规则表做传导推演，
+                再由求解器算卡点。<b>同一组扰动重复推演，结果逐字节相同</b>（不变量 R6）。
+                屏上的数字背后没有语言模型参与推理。
+              </div>
             </div>
           </details>
           <div data-testid="c0828-entity-counts">
@@ -1470,6 +1480,23 @@ export default function Console0828({
                             <span className={styles.mono}>{money.settledExcluded} 张</span>
                           </li>
                         ) : null}
+                        {/* WO-EXPOSURE-MAGNITUDE：「被推动的单」恒等于全部未完成单（判据是「动没动」
+                            不是「动多少」），换扰动不变。真正随扰动变的是**幅度分布**，必须上屏，
+                            否则屏上那个 150 读起来像「这次影响了 150 张」，而它其实是「全集」。 */}
+                        {money.magnitude.max !== null ? (
+                          <li>
+                            <span>变化幅度 p90 / 最大</span>
+                            <span className={styles.mono}>
+                              {money.magnitude.p90?.toFixed(2) ?? "—"} / {money.magnitude.max.toFixed(2)}
+                            </span>
+                          </li>
+                        ) : null}
+                        {money.magnitude.buckets.filter((b) => b.n > 0).map((b) => (
+                          <li key={b.label}>
+                            <span>· {b.label}</span>
+                            <span className={styles.mono}>{b.n} 张</span>
+                          </li>
+                        ))}
                         <li>
                           <span>涉及客户</span>
                           <span className={styles.mono}>

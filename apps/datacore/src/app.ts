@@ -97,6 +97,7 @@ import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact
 import { buildMetricSeries } from "./sim/metric-series.js";
 // WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
 import type { SimWorldOps } from "./sim/seed-world.js";
+import { entersSimWorld } from "./sim/seed-world.js";
 // WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细（算法全在 sim/drill.ts 纯函数层，本文件只做 IO 与 A6 装配）
 import { ChainLossDrillRequestSchema } from "@platform/contracts";
 import { chainLossDrill, chainNodeDetail, type DrillObject, type DrillWorld } from "./sim/drill.js";
@@ -4082,7 +4083,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const nodeObjectIds: Record<string, string[]> = {};
     for (const t of types) {
       nodeObjectIds[t.key] = (await repos.objects.listByType(c.tenantId, t.key))
-        .filter((o) => !o.mergedInto)
+        .filter((o) => entersSimWorld(t.key, o))
         .map((o) => o.id)
         .sort((a, b) => a.localeCompare(b));
     }

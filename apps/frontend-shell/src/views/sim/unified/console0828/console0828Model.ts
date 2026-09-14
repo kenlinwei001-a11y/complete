@@ -118,6 +118,26 @@ export interface MoneyView {
    * 🐤 它同时是本过滤的金丝雀 —— 报 0 而状态分布里 COMPLETED 非 0 ⇒ 过滤没生效。
    */
   readonly settledExcluded: number;
+  /**
+   * WO-EXPOSURE-MAGNITUDE · 被推动单的**变化幅度分档**（每单取它所有格的最大 |delta|）。
+   *
+   * ⚠ 为什么必须有这一格：`exposedOrders` 的判据是 `diffWorld(eps=1e-9)`——只问「这格动没动」，
+   *   不问「动了多少」。而传导必然推到全网 ⇒ 它**恒等于全部未完成单**，两个完全不同的扰动
+   *   给出逐字节相同的数（2026-09-14 真浏览器对照实验：原材料涨价 vs 设备故障，
+   *   150/350/17家/156.6亿 全同）。
+   *   形态：「我用『这张单的读数动了』当作『这次扰动影响了它』的证据，而前者并不度量后者。」
+   * ⇒ 幅度分档是**随扰动变的那个量**：落点不同 ⇒ 传导路径不同 ⇒ 各单受力大小不同。
+   * ⛔ 刻意**不**引入「显著」阈值来二次筛选 —— 那个门槛无业务出处，编一个就是造口径。
+   *   这里只如实给出分布，由使用方判断。
+   */
+  /** 读数动了、但幅度在噪声级（≤0.01/100）而未计入「被推动」的张数。必须上屏。 */
+  readonly faintOnly: number;
+  readonly magnitude: {
+    readonly buckets: readonly { readonly label: string; readonly n: number }[];
+    readonly p50: number | null;
+    readonly p90: number | null;
+    readonly max: number | null;
+  };
   /** 订单簿总额（元）与张数 —— 现算，**不写死**。 */
   readonly bookTotal: number;
   readonly bookOrders: number;
@@ -200,12 +220,60 @@ export function buildMoneyView(
   const touched = new Set<string>();
   // ⚠ 用 Set 而不是计数器：一张单会有多条 delta（每个 stateVar 一条），计数器会重复计。
   const settled = new Set<string>();
+  // 每单取它所有格的最大 |delta| —— 这是「这张单被推得多狠」的可比标量。
+  const maxAbs = new Map<string, number>();
   for (const d of deltas) {
     const o = byId.get(d.objectId);
     if (o === undefined) continue;
-    (isSettledOrder(o) ? settled : touched).add(d.objectId);
+    if (isSettledOrder(o)) { settled.add(d.objectId); continue; }
+    touched.add(d.objectId);
+    const m = Math.abs(d.delta);
+    const prev = maxAbs.get(d.objectId);
+    if (prev === undefined || m > prev) maxAbs.set(d.objectId, m);
   }
+  /* ══ WO-EXPOSURE-MAGNITUDE · 「被推动的单」必须只算**受到实质扰动**的单 ═══════════
+   *
+   * 仓主实拍：「我输入不同的扰动因素，该截屏数据没有变化…前端展示的都是假的？」——**成立**。
+   * 2026-09-14 真浏览器对照实验（原材料涨价 vs 设备故障）：150 / 350 / 17家 / 156.6亿 **逐字节相同**。
+   *
+   * 病因：判据来自 `diffWorld(eps=1e-9)`——只问「这格动没动」，不问「动了多少」。
+   * 传导必然推到全网 ⇒ 它恒等于**全部未完成单**，与扰动内容无关。
+   * 形态：「我用『这张单的读数动了』当作『这次扰动影响了它』的证据，而前者并不度量后者。」
+   *
+   * ⚠ 我第一版的修法是错的：只在旁边加了幅度分档，**把恒定不变的 150 留在主位**。
+   *   屏上第一眼看的还是它，它仍然声称「这次影响了 150 张」。加注解不等于改对。
+   *   当时我用「阈值无业务出处、编一个就是造口径」挡住了自己 —— 那是**纪律的误用**：
+   *   摆一个确定性的谎言，比摆一个有量纲依据、真实响应的数更糟。
+   *
+   * ── 阈值 0.01 的依据（不是拍的）──────────────────────────────────────────────
+   * 推演读数是 **0–100 的压力标度**（`costPressure`/`demandPressure`/`utilPressure`…），
+   * 0.01 即满量程的 **0.01%** —— 在这个标度上属数值噪声级，不构成业务影响。
+   * 实测支撑（同日，同一组落点，两个不同扰动）：
+   *   原材料涨价 → 微弱 0 · 轻 81 · 中 51 · 重 18  ⇒ 实质受扰 **150**
+   *   设备故障   → 微弱 94 · 轻 36 · 中 20 · 重 0  ⇒ 实质受扰 **56**
+   * ⇒ 主数字自此**真的随扰动变**。被滤掉的那批**照样上屏**（「仅微弱扰动 N 张」），
+   *   不许让 150 悄悄变成 56 而读者不知道少掉的是什么。
+   */
+  const NOISE_FLOOR = 0.01;
+  for (const [oid, m] of maxAbs) if (m <= NOISE_FLOOR) touched.delete(oid);
+  const faintOnly = [...maxAbs.values()].filter((m) => m <= NOISE_FLOOR).length;
+  const mags = [...maxAbs.values()].sort((a, b) => a - b);
+  const quant = (f: number): number | null =>
+    mags.length === 0 ? null : (mags[Math.min(mags.length - 1, Math.floor(mags.length * f))] ?? null);
+  const inRange = (lo: number, hi: number): number => mags.filter((m) => m > lo && m <= hi).length;
+  const magnitude = {
+    buckets: [
+      { label: "微弱 ≤0.01", n: inRange(0, 0.01) },
+      { label: "轻 0.01–1", n: inRange(0.01, 1) },
+      { label: "中 1–10", n: inRange(1, 10) },
+      { label: "重 >10", n: inRange(10, Number.POSITIVE_INFINITY) },
+    ],
+    p50: quant(0.5),
+    p90: quant(0.9),
+    max: mags.length === 0 ? null : (mags[mags.length - 1] ?? null),
+  };
 
+  // ⚠ 敞口金额必须与「被推动的单」同口径 —— 否则会出现「56 张单却还是 156.6 亿」的自相矛盾。
   let exposure = 0;
   for (const id of touched) {
     const v = byId.get(id)?.value;
@@ -234,6 +302,8 @@ export function buildMoneyView(
     exposure,
     exposedOrders: touched.size,
     settledExcluded: settled.size,
+    faintOnly,
+    magnitude,
     bookTotal,
     bookOrders: orders.length,
     breakdown: [

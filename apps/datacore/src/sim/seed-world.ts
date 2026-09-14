@@ -170,6 +170,37 @@ export const DEMO_SIM_WORLD_COMPLETE_KEY = "seedWorldCompletedTicks";
  *   每一拍的世界态 jsonb 全搬回进程，只为了数几行 —— 用一个刚为省流量修过的病去做体检，说不过去。
  */
 export type SeedWorldCompleteness = "COMPLETE" | "LEGACY" | "INCOMPLETE";
+
+/**
+ * ══ WO-SIM-SETTLED-ORDERS · 这个对象该不该进**推演世界** ═══════════════════════
+ *
+ * 仓主实拍三次报同一件事：「输入的扰动因素还是影响已经完成的订单」。
+ * 前两版只在**视图层**滤掉（前端不显示），**引擎照旧给它们算传导** ⇒
+ *  · 白算 350 张单的读数；
+ *  · 任何不走前端的消费方（求解器 / `/a/v1/sim/**` / 导出）拿到的仍是错的。
+ * ⇒ 口径必须落在**建世界**这一层：已完成的单从一开始就不进推演世界。
+ *
+ * 判据：货已交、款已结 ⇒ 后续任何扰动都改不了它的结果，给它算读数是无意义的计算。
+ *
+ * ⛔ 本谓词是**唯一出处**，`seed-world` 与 `GET /a/v1/sim/view-config` 的 `nodeObjectIds`
+ *   必须共用它（那行注释自己就写着「同源同过滤」）。各抄一份则两边口径分家 ⇒
+ *   推演图上出现**有节点、无读数**的幽灵，而且没有任何东西会红。
+ *
+ * 实测（2026-09-14，demo 租户 SEED_DEMO=1）：
+ *   Order 共 500 张 = COMPLETED 350 · IN_PRODUCTION 100 · OPEN 50
+ *   ⇒ 推演世界对象数 4775 → 约 4425（-7.3%），剔除的全是不可能被扰动的单。
+ * 🐤 金丝雀：若剔除数为 0 而对象层 COMPLETED 非 0 ⇒ 本谓词没生效（多半是状态字段改名），
+ *   此时**不许**报「没有已完成订单」。
+ */
+export function entersSimWorld(
+  typeKey: string,
+  o: { readonly mergedInto?: string | null; readonly props: Record<string, unknown> },
+): boolean {
+  if (o.mergedInto) return false;
+  if (typeKey === "Order" && o.props["status"] === "COMPLETED") return false;
+  return true;
+}
+
 export function seedWorldCompleteness(s: SimSession): SeedWorldCompleteness {
   if ((s.scope as Record<string, unknown>)[DEMO_SIM_WORLD_COMPLETE_KEY] === DEMO_SIM_WORLD_TICKS) return "COMPLETE";
   if (s.status === "RUNNING" && s.curTick >= DEMO_SIM_WORLD_TICKS) return "LEGACY";
@@ -306,7 +337,7 @@ export async function deriveSeedBaseSnapshot(
   for (const typeKey of [...byType.keys()].sort((a, b) => a.localeCompare(b))) {
     const vars = [...(byType.get(typeKey) ?? new Set<string>())].sort((a, b) => a.localeCompare(b));
     const rows = (await repos.objects.listByType(tenantId, typeKey))
-      .filter((o) => !o.mergedInto) // 与 `GET /a/v1/sim/view-config` 的 nodeObjectIds 同源同过滤
+      .filter((o) => entersSimWorld(typeKey, o)) // 与 `GET /a/v1/sim/view-config` 的 nodeObjectIds 同源同过滤
       .sort((a, b) => a.id.localeCompare(b.id));
     for (const o of rows) {
       const row: Record<string, number> = {};
