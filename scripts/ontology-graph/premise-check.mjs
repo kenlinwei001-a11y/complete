@@ -54,11 +54,17 @@
 
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, dirname, resolve, relative, basename } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..", "..");
-const DEFAULT_GRAPH = join(ROOT, "docs", "ontology-graph");
+/**
+ * 默认图谱目录 —— WO-ONTOGRAPH-DB 起改到 `.ontology-graph/`（**不进 git**，见 .gitignore）。
+ * `docs/ontology-graph/` 今天只剩三份手写 .md（README / PREMISE-CHECK / DATA-MODEL）。
+ * ⚠ 与 `extract.mjs` 的 `--out` 默认值**必须同值**：两处默认不同 = 抽完读不到 =
+ *   屏上显示「图谱目录不存在」，而人会去查图谱而不是查这两个常量。
+ */
+const DEFAULT_GRAPH = join(ROOT, process.env.ONTOGRAPH_OUT || ".ontology-graph");
 
 /** 行号容差：图谱里记的是**声明行/引用行**，派单里抄的坐标会随上游改动漂移。
  *  ±12 行 ≈ 一个函数头 + JSDoc 的高度；比这更宽就会把隔壁符号也认成「对上了」。
@@ -440,6 +446,23 @@ function loadGraph(dir) {
   // 切片文件是「一份文件一条切片」（顶层带 sliceKey / key）；也兼容 slices[] 与序列顶层
   readShards("slices", g.slices, "slices", (v) => v.sliceKey != null || v.key != null);
 
+  // 目录侧的 README 兜底盲区清单；DB 侧没有 README，故 finishGraph 收一个可为 null 的目录。
+  return finishGraph(g, dir);
+}
+
+/**
+ * 加载的**后半程**：加载器金丝雀 → byName/byFile 索引 → 盲区清单。
+ *
+ * ⚠ 这一段被**抽出来**是 WO-ONTOGRAPH-DB 的关键一步，不是顺手重构：
+ *   `--graph <目录>` 与 `--from-db` 两条读路从此**共用同一份下游实现**，
+ *   于是「两条路对同一份数据跑出同一张对账表」是**结构上成立**的，
+ *   而不是靠两份各自演进的代码碰巧一致 —— 后者正是本仓「拆两半用不同机制不对接」那条老坑。
+ *   本单验收 ④ 要的那句「逐行一致」，判据落在这里。
+ *
+ * @param g        已填好 index / atoms / slices / shardShape / shardHealth / warnings 的半成品
+ * @param readmeDir 盲区清单的兜底来源目录；DB 侧传 null（INDEX.blindSpots 一定在，兜底用不上）
+ */
+function finishGraph(g, readmeDir) {
   // ══ 加载器金丝雀 ══════════════════════════════════════════════════════════
   // 「加载进来的条数」必须等于「INDEX 自述的条数」。不等 ⇒ **分片加载坏了**，
   // ⛔ 此后不许输出任何「图谱里没有 X」这类否定结论 —— 它和「我没读进来」在屏上一模一样。
@@ -508,8 +531,8 @@ function loadGraph(dir) {
   };
   if (Array.isArray(g.index.blindSpots) && g.index.blindSpots.length) {
     takeList(g.index.blindSpots, "INDEX.yaml blindSpots");
-  } else {
-    const readme = join(dir, "README.md");
+  } else if (readmeDir) {
+    const readme = join(readmeDir, "README.md");
     if (existsSync(readme)) {
       const md = readFileSync(readme, "utf8").split("\n");
       const picked = [];
@@ -527,6 +550,130 @@ function loadGraph(dir) {
 
   g.ok = g.fatal.length === 0;
   return g;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 1b · 数据库读路（WO-ONTOGRAPH-DB）
+//
+// ⛔ `--graph <目录>` 这条路**一个字都没删**：夹具回归（5 条用例 × 双向 + 4 条金丝雀）
+//    全靠它，砍了自检器就再也证明不了自己没坏。两条路在 `finishGraph` 汇合。
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 目录 → **归一图**（`{generatedFrom, index, atoms, edges, slices}`），给落库用。
+ *
+ * ⚠ 边要从**两处**拼：
+ *   ① `atoms/<pkg>.yaml` 的 `edges:` 段 —— 七种非 inSlice 边（本轮 19,298 条）
+ *   ② 切片文件的 `atoms:` 成员表 —— `inSlice` 边在 YAML 里**只以成员表的形式隐含存在**
+ *      （本轮 1,734 条），不重建它就会比 INDEX 自述少 1,734 条。
+ *   两者相加必须 == `INDEX.counts.edges`，对不上就是**重建法错了**，不是图谱坏了 ——
+ *   故本函数把这个差额直接报出来，⛔ 不许静默按少的那个数往下走。
+ */
+export function loadGraphDirAsNormalized(dir) {
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) return { ok: false, reason: `图谱目录不存在：${dir}` };
+  const idxPath = join(dir, "INDEX.yaml");
+  if (!existsSync(idxPath)) return { ok: false, reason: `缺 INDEX.yaml：${idxPath}` };
+  const index = parseYamlSubset(readFileSync(idxPath, "utf8"), "INDEX.yaml").value;
+  if (!index || typeof index !== "object") return { ok: false, reason: "INDEX.yaml 顶层不是映射" };
+
+  const atoms = [];
+  const edges = [];
+  const slices = [];
+  const atomsDir = join(dir, "atoms");
+  if (existsSync(atomsDir)) {
+    for (const f of readdirSync(atomsDir).filter((x) => /\.ya?ml$/.test(x)).sort()) {
+      const v = parseYamlSubset(readFileSync(join(atomsDir, f), "utf8"), `atoms/${f}`).value;
+      const pkg = v?.package ?? f.replace(/\.ya?ml$/, "");
+      for (const a of Array.isArray(v?.atoms) ? v.atoms : []) atoms.push({ pkg, ...a });
+      // 分片里的边不带 pkg（写出时被剥掉了），这里补回来 —— 抽取器内存里那份是带的，
+      // 不补就会让「目录重建的边」与「抽取器直接落库的边」在 pkg 上差一格。
+      for (const e of Array.isArray(v?.edges) ? v.edges : []) edges.push({ ...e, pkg });
+    }
+  }
+  const slicesDir = join(dir, "slices");
+  if (existsSync(slicesDir)) {
+    for (const f of readdirSync(slicesDir).filter((x) => /\.ya?ml$/.test(x)).sort()) {
+      const v = parseYamlSubset(readFileSync(join(slicesDir, f), "utf8"), `slices/${f}`).value;
+      if (!v || typeof v !== "object") continue;
+      slices.push(v);
+      for (const m of Array.isArray(v.atoms) ? v.atoms : []) {
+        edges.push({ kind: "inSlice", from: m.atom, to: `slice:${v.sliceKey}`, via: m.via });
+      }
+    }
+  }
+  slices.sort((a, b) => String(a.sliceKey).localeCompare(String(b.sliceKey)));
+
+  const declared = Number(index?.counts?.edges);
+  const mismatch = Number.isFinite(declared) && declared !== edges.length
+    ? `⛔ 边重建法可能坏了：INDEX 自述 ${declared} 条，从目录重建出 ${edges.length} 条（差 ${declared - edges.length}）`
+    : null;
+  return {
+    ok: true, mismatch,
+    graph: { generatedFrom: String(index.generatedFrom ?? ""), index, atoms, edges, slices },
+  };
+}
+
+/**
+ * 归一图 → `finishGraph` 要的半成品。DB 侧与目录侧唯一的差别就在这个函数里，
+ * 之后完全同一条代码路径（验收 ④ 的结构性保证）。
+ */
+function graphFromNormalized(norm, sourceLabel) {
+  const g = {
+    ok: false, dir: sourceLabel, index: norm.index, atoms: [], slices: [],
+    byName: new Map(), byFile: new Map(),
+    warnings: [], fatal: [], shardHealth: new Map(), shardShape: new Map(),
+    loaderBroken: null,
+    blindSpots: [], blindSpotSource: "缺失：INDEX.blindSpots 与 README「看不见什么」段都没有",
+  };
+  if (!g.index || typeof g.index !== "object") { g.fatal.push("快照 doc 顶层不是映射"); return g; }
+  if (!g.index.counts || typeof g.index.counts !== "object") {
+    g.fatal.push("快照缺 counts 段 —— 图谱结构性损坏，一切计数结论均不可信（⛔ 不许当 0）");
+  }
+  // 逐包补回 `__shard` 与 shardShape —— 加载器金丝雀是**按分片**核对的
+  // （`INDEX.atomShards[].count` vs 实读），DB 侧不填它，那条金丝雀就成了装饰品。
+  const perPkg = new Map();
+  for (const a of norm.atoms) {
+    const label = `atoms/${a.pkg}.yaml`;
+    const { pkg: _p, ...rest } = a;
+    g.atoms.push({ ...rest, __shard: label });
+    perPkg.set(label, (perPkg.get(label) ?? 0) + 1);
+  }
+  for (const [label, n] of perPkg) {
+    g.shardShape.set(label, { shape: "数据库·按 pkg 成组", loaded: n, declared: null });
+    g.shardHealth.set(label, []);
+  }
+  for (const s of norm.slices) g.slices.push({ ...s, __shard: `slices/${s.sliceKey}.yaml` });
+  return finishGraph(g, null);
+}
+
+/**
+ * 从后台数据库读图谱。返回 `{ ok, g|reason, meta }`。
+ *
+ * ⚠ 读不到时**绝不**返回一个空图：空图会让下游把「我没连上 / 这个租户没落过」
+ *   输出成「图谱里没有 X」。这两句是两个不同的命题（CLAUDE.md 铁律 0.6），
+ *   而在屏上它们长得一模一样 —— 那正是本工具存在的理由。
+ */
+async function loadGraphFromDb({ tenant, snapshot } = {}) {
+  const db = await import(pathToFileURL(join(HERE, "graph-db.mjs")).href);
+  const opened = await db.openRepos();
+  const meta = { backend: opened.backend, persistent: opened.persistent, tenant: tenant || db.DEFAULT_TENANT };
+  try {
+    if (!opened.persistent) {
+      // memory 后端跨进程读不到任何东西 —— 它**必然**是空的。
+      // 让它往下走，屏上会出现一屏「图谱无此原子」，而那全是假的。
+      return { ok: false, meta, reason:
+        "⛔ 没有 DATABASE_URL ⇒ 仓储回落到**进程内内存**，跨进程一条都读不到。\n" +
+        "   这是「我没读到」不是「库里没有」—— 拒绝在此基础上输出任何对账结论。\n" +
+        "   要么设 DATABASE_URL，要么用 --graph <目录> 读目录。" };
+    }
+    const r = await db.readGraph(opened.repos, meta.tenant, snapshot ?? null);
+    if (!r.ok) return { ok: false, meta, reason: r.reason };
+    meta.snapshotId = r.snapId;
+    meta.counts = r.counts;
+    return { ok: true, meta, g: graphFromNormalized(r.graph, `db:${r.snapId}`) };
+  } finally {
+    await opened.repos.close();
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1559,9 +1706,14 @@ function renderMd(res) {
 
 const FIX = join(HERE, "fixtures");
 
-function analyze(woPath, graphDir) {
+/**
+ * @param graphSource 已加载好的图谱（`loadGraph(dir)` 或 `loadGraphFromDb()` 的产物）。
+ *   两条路都在这里汇合 —— ⛔ 本函数**不许**自己判断该读目录还是读库，
+ *   那样会长出第二处「怎么选数据源」的逻辑，而两处迟早不一致。
+ */
+function analyze(woPath, graphDir, graphSource) {
   const md = readFileSync(woPath, "utf8");
-  const graph = loadGraph(graphDir);
+  const graph = graphSource ?? loadGraph(graphDir);
   const canary = runExtractorCanary();
   const { claims, unresolved } = extractClaims(md);
   const rows = graph.ok ? claims.map((c) => reconcile(graph, c)) : [];
@@ -1715,17 +1867,23 @@ function selftest() {
 
 const CFG = { lineTolerance: DEFAULT_LINE_TOLERANCE };
 
-function main(argv) {
+async function main(argv) {
   const args = argv.slice(2);
   if (args.includes("--help") || args.includes("-h")) {
     console.log(`用法：
   node scripts/ontology-graph/premise-check.mjs <派单.md> [--graph <目录>] [--md] [--line-tolerance N]
+  node scripts/ontology-graph/premise-check.mjs <派单.md> --from-db [--tenant <id>] [--snapshot <id>]
+  node scripts/ontology-graph/premise-check.mjs <派单.md> --graph <目录> --from-db --equiv
   node scripts/ontology-graph/premise-check.mjs --selftest
 
-  --graph           图谱目录（默认 docs/ontology-graph）
+  --graph           图谱目录（默认 ${relative(ROOT, DEFAULT_GRAPH)}/ —— **不进 git**，见 .gitignore）
+  --from-db         改从后台数据库读（需 DATABASE_URL；没有则明确拒绝，⛔ 不静默当空图）
+  --tenant          落库租户，默认 platform
+  --snapshot        指定快照 id，默认取该租户最新的一个
+  --equiv           两条读路各跑一遍并**逐行 diff**（WO-ONTOGRAPH-DB 验收 ④）
   --md              以 markdown 表格输出（贴进报告用）
   --line-tolerance  file:line 坐标容差，默认 ${DEFAULT_LINE_TOLERANCE} 行
-  --selftest        跑回归用例与金丝雀（不需要真图谱）
+  --selftest        跑回归用例与金丝雀（不需要真图谱，也不需要数据库）
 
 ⛔ 这不是门：对账结论一律 rc=0。rc=3 用法错 / 读不到文件；rc=4 工具自证失败。`);
     return 0;
@@ -1735,9 +1893,17 @@ function main(argv) {
   let graphDir = DEFAULT_GRAPH;
   let md = false;
   let wo = null;
+  let fromDb = false;
+  let equiv = false;
+  let tenant = null;
+  let snapshot = null;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--graph") { graphDir = resolve(process.cwd(), args[++i] ?? ""); continue; }
+    if (a === "--from-db") { fromDb = true; continue; }
+    if (a === "--equiv") { equiv = true; continue; }
+    if (a === "--tenant") { tenant = args[++i] ?? null; continue; }
+    if (a === "--snapshot") { snapshot = args[++i] ?? null; continue; }
     if (a === "--md") { md = true; continue; }
     if (a === "--line-tolerance") { CFG.lineTolerance = Number(args[++i]); continue; }
     if (a.startsWith("--")) { console.error(`未知参数 ${a}`); return 3; }
@@ -1745,6 +1911,7 @@ function main(argv) {
   }
   if (!wo) { console.error("缺少派单 markdown 路径。--help 看用法。"); return 3; }
   if (!existsSync(wo)) { console.error(`读不到派单文件：${wo}`); return 3; }
+  if (equiv && !fromDb) { console.error("--equiv 要两条路都在：请同时给 --graph <目录> 与 --from-db。"); return 3; }
 
   // 铁律 0.6：扫描类结论之前先自证工具
   const canary = runExtractorCanary();
@@ -1755,12 +1922,51 @@ function main(argv) {
     return 4;
   }
 
-  const res = analyze(wo, graphDir);
-  res.woPath = relative(ROOT, wo) || wo;
-  const rg = relative(ROOT, res.graphDir);
-  res.graphDir = rg && !rg.startsWith("..") ? rg : res.graphDir; // 仓外目录显示绝对路径，别打一串 ../../
-  console.log(md ? renderMd(res) : renderText(res));
+  // ── 取图谱（目录 / 数据库；--equiv 时两个都取）────────────────────────────
+  let dbLoad = null;
+  if (fromDb) {
+    dbLoad = await loadGraphFromDb({ tenant, snapshot });
+    if (!dbLoad.ok) {
+      console.error(`⛔ 数据库读路不可用（后端 ${dbLoad.meta.backend}）：\n${dbLoad.reason}`);
+      return 3;
+    }
+  }
+
+  const render = (source, label) => {
+    const r = analyze(wo, graphDir, source);
+    r.woPath = relative(ROOT, wo) || wo;
+    r.graphDir = label;
+    return md ? renderMd(r) : renderText(r);
+  };
+
+  if (equiv) {
+    // WO-ONTOGRAPH-DB 验收 ④：同一份数据，两条读路的对账表必须**逐行一致**。
+    // ⚠ 这里刻意把两份输出的**来源标签**统一掉再 diff —— 不统一的话第一行必然不同，
+    //   于是「永远报不一致」，这条判据就永远无法证伪，等于没有。
+    const a = render(loadGraph(graphDir), "«source»");
+    const b = render(dbLoad.g, "«source»");
+    const la = a.split("\n");
+    const lb = b.split("\n");
+    const diffs = [];
+    for (let i = 0; i < Math.max(la.length, lb.length); i++) {
+      if (la[i] !== lb[i]) diffs.push(`  行 ${i + 1}\n    --graph : ${la[i] ?? "«无此行»"}\n    --from-db: ${lb[i] ?? "«无此行»"}`);
+    }
+    console.log(`两条读路等价性（WO-ONTOGRAPH-DB 验收 ④）`);
+    console.log(`  目录   ：${relative(ROOT, graphDir) || graphDir}（${la.length} 行）`);
+    console.log(`  数据库 ：${dbLoad.meta.backend} · 租户 ${dbLoad.meta.tenant} · 快照 ${dbLoad.meta.snapshotId}（${lb.length} 行）`);
+    // 金丝雀：两边都得有内容。两份都是空串时「逐行一致」是**真的但无意义**——
+    // 恒空的坏实现也会全等（同一条理由写在 extract.mjs --verify 的鉴别力金丝雀里）。
+    console.log(`  金丝雀 ：非空行 ${la.filter((x) => x.trim()).length} / ${lb.filter((x) => x.trim()).length}（任一为 0 ⇒ 「一致」不构成证据）`);
+    console.log(diffs.length === 0 ? "  ⇒ ✅ 逐行一致" : `  ⇒ ❌ ${diffs.length} 行不同\n${diffs.slice(0, 20).join("\n")}`);
+    return 0;
+  }
+
+  const source = fromDb ? dbLoad.g : loadGraph(graphDir);
+  const label = fromDb
+    ? `db:${dbLoad.meta.backend}/${dbLoad.meta.tenant}/${dbLoad.meta.snapshotId}`
+    : ((relative(ROOT, graphDir) && !relative(ROOT, graphDir).startsWith("..")) ? relative(ROOT, graphDir) : graphDir);
+  console.log(render(source, label));
   return 0;
 }
 
-process.exit(main(process.argv));
+process.exit(await main(process.argv));
