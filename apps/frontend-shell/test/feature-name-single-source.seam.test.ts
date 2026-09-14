@@ -103,8 +103,20 @@ describe("SEAM · 功能名单一真相源（三份注册表 × 同一个键 = �
   it("② 跨服务键必须在册里（`SHARED_FEATURE_NAMES`），且名字取自册", () => {
     const byKey = collect();
     const crossService = [...byKey].filter(([, rows]) => rows.length > 1).map(([k]) => k);
-    // 实测 61 条（2026-08-14）。这个数只是"看得见"的锚，判据是下面两条断言而非数字本身。
-    expect(crossService.length).toBeGreaterThanOrEqual(61);
+    // 实测 60 条（2026-09-12）。原为 61（2026-08-14），降 1 的出处已追到具体提交：
+    //   `32377e6b feat(ui)!: 整屏删除「运营复盘」(review)` 把 review 键从 mocks/fixtures.ts 摘掉，
+    //   于是它不再是「≥2 份注册表声明」的跨服务键。⇒ 这是**删功能的正确后果，不是回归**。
+    // 复验（不必信这段注释，两条都自己跑 —— 判据落在「review 还在不在册」，不是落在提交历史上）：
+    //   grep -c '"review"' apps/frontend-shell/src/mocks/fixtures.ts   → 须 0（review 已摘，所以不再跨服务）
+    //   grep -c '"dash"'   apps/frontend-shell/src/mocks/fixtures.ts   → 须 >0
+    //     🐤 金丝雀：dash 若也报 0，那是**查法坏了**，不是 review 真没了 —— 此时不许下任何结论。
+    // ⛔ 别用 `git log -1 -- <该文件>` 当判据。2026-09-14 实测它指向 f1d4e432（切片库登记链），
+    //    而不是摘掉 review 的 32377e6b —— 那个文件在删屏之后又被改过。
+    //    形态：「我用『文件最后一次改动』当作『某次特定改动』的证据，而前者并不度量后者。」
+    //    （这条订正是本注释上一版自己踩的坑，留在这里免得下一个人照它得出「注释过期了」的反向结论。）
+    // 什么才算真回归：review 又回到册里（上面第一条 grep 变成非 0），或本数再降而查不到同类出处。
+    // ⚠ 这个数只是"看得见"的锚，判据是下面两条断言而非数字本身。
+    expect(crossService.length).toBeGreaterThanOrEqual(60);
 
     const unregistered = crossService.filter((k) => !(k in SHARED_FEATURE_NAMES));
     expect(
