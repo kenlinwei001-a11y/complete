@@ -563,6 +563,15 @@ export interface OptionEnumResult {
 
 /**
  * 枚举所有阻滞点的候选方案。**纯函数**：同 (ctx, links, impediments) 重跑字节一致（R6）。
+ *
+ * @syncWith packages/contracts/src/capacity-factors.ts#CAPACITY_FACTOR_BINDINGS
+ * @verifyBy 同一对象类型、同一判据规则的两条阻滞点，若一条拿到候选而另一条拿不到，则
+ *   noCandidateReason ⛔ 不许用「对象类型 X 没有任何可拨动落点」这种**类型级**措辞 ——
+ *   实测 2026-09-14：18 处受阻环节里 4 处有对策 / 14 处零对策，而**同为 MaterialBatch + 规则 C28**
+ *   的「磷酸铁锂正极」有 4 个有效候选、「电解液」0 个 ⇒ 差别在**实例**（走 Material 那 3 条按物料名匹配），
+ *   不在类型。屏上那句解释会把人支到错误的方向去查。
+ * @verifyBy 把因子册里某个 Line 落点删掉 ⇒ 屏上「有对策」的处数必须下降；不降 ⇒ 这条链没接上
+ * @prd docs/PRD-sandbox-multiplan.md §3.2（有效候选 < 2 ⇒ 诚实报 candidates:[] + noCandidateReason，不凑数）
  */
 export function enumerateImpedimentOptions(
   impediments: readonly ChainImpediment[],

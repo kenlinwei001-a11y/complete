@@ -164,13 +164,69 @@ function tagsOf(pkgName, relPath) {
   return [...new Set([pkgName, ...dirs])].sort();
 }
 
+/**
+ * 取「该声明的前置注释文本」。
+ *
+ * ⚠ **必须先爬到语句节点**：`export const X = …` 的声明节点是 `VariableDeclaration`，
+ *   它的前置 trivia 从 `const ` 之后算起，**JSDoc 整段落在它外面** ——
+ *   于是所有 `const` 原子的前置注释恒为空串。`function`/`class` 没这个问题（声明节点自己就是语句），
+ *   所以只看函数会以为一切正常。
+ *
+ * 实测代价（2026-09-14，当场踩到）：同一批 SOP 标记，写在 `function` 上抽到了、
+ * 写在 `export const CAPACITY_FACTOR_BINDINGS` 上**一条都没抽到**，`sopCoverage` 报 1 而不是 2。
+ * 形态：**「我用『金丝雀对 VariableStatement 抽到了』当作『生产路径抽得到』的证据，
+ * 而生产路径传进来的是 VariableDeclaration。」**（铁律 0.5 判据 6 那条「生产实参与测试实参交集为空」）
+ */
+function leadTextOf(node, sf) {
+  let n = node;
+  while (n.parent && (ts.isVariableDeclarationList(n.parent) || ts.isVariableStatement(n.parent))) n = n.parent;
+  return sf.getFullText().slice(n.getFullStart(), n.getStart(sf));
+}
+
 /** 注释里的 WO-XXX 锚点（机器抽，没有就是 null）。 */
 const WO_RE = /\bWO-[A-Z0-9][A-Z0-9-]{2,}\b/;
 function woOf(node, sf) {
-  const full = sf.getFullText();
-  const lead = full.slice(node.getFullStart(), node.getStart(sf));
-  const m = WO_RE.exec(lead);
+  const m = WO_RE.exec(leadTextOf(node, sf));
   return m ? m[0] : null;
+}
+
+/**
+ * ══ 节点自带的 SOP（仓主 2026-09-14：「把测试、PRD 的 SOP 都写在图谱里面」）═══════
+ *
+ * **为什么挂在节点上而不是另写一章**：
+ * 一章「测试 SOP」= 第 446 份会过期的 md，它要求人**记得去读**；
+ * 挂在节点上的判据是**改到这个节点时随查询一起到手**，从「要记住的规矩」变成「前置条件」。
+ * 本仓原话：「写在注释里的纪律不是机制，写在文档里的也不是。」——
+ * 所以这里抽的不是散文，是**四个有判据的标记**，且**人只写一次、机器每次重抽**：
+ *
+ *   `@syncWith <file#sym | sym>`  改它必须同步改的兄弟。⚠ 这一条有真事故：
+ *       `entersSimWorld` 要求 `sim/seed-world.ts` 与 `app.ts` 的 nodeObjectIds 同源同过滤，
+ *       今天**只靠一句人写的注释**说这件事，注释一漂，推演图上就长幽灵节点。
+ *   `@verifyBy <一句对照实验判据>`  「把 X 换成 X′，Y 必须如何变」（铁律 1.5 判据一）。
+ *       ⛔ 不是「有没有测试」，是「那个测试咬不咬得住第四态：接对了、跑通了、但算错了」。
+ *   `@verifiedBy <测试文件路径>`  兑现上一条的那个测试在哪。两条都有才算闭环：
+ *       只有 `@verifyBy` = 写了判据没人跑；只有 `@verifiedBy` = 有测试但不知道它咬什么。
+ *   `@prd <文档路径或 §号>`  它兑现的是哪条需求。追不到 ⇒ 这个节点该不该存在本身要问。
+ *
+ * ⚠ 抽取只认 `@tag` 出现在**声明的前置注释**里（与 `woOf` 同一段文本），一行一条，可重复。
+ * ⚠ 抽不到就是空 —— ⛔ 绝不编造、绝不让 LLM 补（与 `briefOf` 同一条纪律）。
+ */
+const SOP_TAGS = ["syncWith", "verifyBy", "verifiedBy", "prd"];
+function sopOf(node, sf) {
+  const lead = leadTextOf(node, sf); // ⚠ 必须走它 —— 见 leadTextOf 的头注，直接切 trivia 会漏掉所有 const
+  const out = {};
+  for (const tag of SOP_TAGS) {
+    // 行首（允许 ` * ` 前缀）出现 `@tag `，取到行尾；一行一条，可多行。
+    const re = new RegExp(`^[ \\t]*\\*?[ \\t]*@${tag}[ \\t]+(.+)$`, "gm");
+    const vals = [];
+    let m;
+    while ((m = re.exec(lead)) !== null) {
+      const v = m[1].trim().replace(/\s*\*\/\s*$/, "").trim();
+      if (v) vals.push(v.slice(0, 300));
+    }
+    if (vals.length > 0) out[tag] = vals;
+  }
+  return out;
 }
 
 const lineOf = (node, sf) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
@@ -235,6 +291,7 @@ function collectAtoms(ctxs) {
             line: localDecl ? lineOf(localDecl, localDecl.getSourceFile()) : 1,
             brief: briefOf(target, checker), tags: tagsOf(pkg.name, r),
             wo: localDecl ? woOf(localDecl, localDecl.getSourceFile()) : null,
+            sop: localDecl ? sopOf(localDecl, localDecl.getSourceFile()) : {},
             reexportOf: tFile, pkg: pkg.name, symbol: target,
           });
           pushEdge({ kind: "reexports", from: id, to: atomId(tFile, target.getName()), pkg: pkg.name });
@@ -246,7 +303,7 @@ function collectAtoms(ctxs) {
         ensureAtom(id, {
           name: target.getName(), kind: k, file: tFile, line: lineOf(tDecl, tDecl.getSourceFile()),
           brief: briefOf(target, checker), tags: tagsOf(pkgOfFile(tFile), tFile),
-          wo: woOf(tDecl, tDecl.getSourceFile()), reexportOf: null,
+          wo: woOf(tDecl, tDecl.getSourceFile()), sop: sopOf(tDecl, tDecl.getSourceFile()), reexportOf: null,
           pkg: pkgOfFile(tFile), symbol: target, decl: tDecl,
         });
       }
@@ -713,6 +770,45 @@ function runCanaries(g) {
   add("已知经别名 import 被调用的符号（globalSimOptimize）src 入边", ">0", aliN, aliN > 0,
       "出处：apps/datacore/src/solvers/service.ts:42 `globalSimOptimize as runGlobalSimOptimize` → :3552 真调用");
 
+  // ④e SOP 标记抽取器**自证**（双向金丝雀）——「全仓 0 条 SOP」这个否定结论，
+  //     必须先证明抽取器本身有鉴别力，否则「没人写」和「正则坏了」在屏上一模一样。
+  //     ⚠ 这是本仓踩过多次的形态：报 0 命中前先拿一个「已知必中」的样例跑一遍。
+  {
+    const sf = ts.createSourceFile(
+      "canary.ts",
+      [
+        "/**",
+        " * 金丝雀样例。",
+        " * @syncWith apps/datacore/src/app.ts#nodeObjectIds",
+        " * @verifyBy 把 status 换成 COMPLETED，该对象必须不进推演世界",
+        " * @verifiedBy apps/datacore/test/sim-order-scope.test.ts",
+        " * @prd docs/PRD-platform-foundry-aip.md §S1",
+        " */",
+        "export const canarySymbol = 1;",
+      ].join("\n"),
+      ts.ScriptTarget.ES2022,
+      true,
+    );
+    // ⚠ **必须喂生产路径真正传进来的那个节点**：`checker.getExportsOfModule` 给的是
+    //   `VariableDeclaration`，不是 `VariableStatement`。第一版金丝雀喂了 statement，
+    //   于是它绿着、而生产路径把所有 `const` 的标记漏了个干净（实测 sopCoverage 报 1 应为 2）。
+    //   形态：「我用『喂 A 抽到了』当作『喂 B 也抽得到』的证据。」⇒ 两种节点都验。
+    const stmt = sf.statements[0];
+    const varDecl = ts.isVariableStatement(stmt) ? stmt.declarationList.declarations[0] : stmt;
+    const hitStmt = SOP_TAGS.filter((t) => sopOf(stmt, sf)[t]?.length).length;
+    const hitDecl = SOP_TAGS.filter((t) => sopOf(varDecl, sf)[t]?.length).length;
+    add("SOP 抽取器 · 喂语句节点", `命中 ${SOP_TAGS.length} 个标记`, hitStmt, hitStmt === SOP_TAGS.length,
+        "不足 4 ⇒ **抽取器坏了**，⛔ 此时不许报「全仓没人写 SOP」");
+    add("SOP 抽取器 · 喂 VariableDeclaration（生产路径真正传的那个）", `命中 ${SOP_TAGS.length} 个标记`,
+        hitDecl, hitDecl === SOP_TAGS.length,
+        "不足 4 ⇒ const 上的标记全漏（JSDoc 落在声明节点的 trivia 之外），而函数上的照样抽得到 ⇒ 屏上看不出来");
+    // 反向：没有标记的注释必须抽出 0 —— 只验「有标记能抽到」不够，会把任何注释都数成 SOP。
+    const sf2 = ts.createSourceFile("canary2.ts", "/** 普通注释，没有任何标记。 */\nexport const x = 1;",
+      ts.ScriptTarget.ES2022, true);
+    const none = Object.keys(sopOf(sf2.statements[0], sf2)).length;
+    add("SOP 抽取器对无标记注释", "0", none, none === 0, "非 0 ⇒ 它把普通注释也算成 SOP，计数虚高");
+  }
+
   // ⑤ test 引用可见（坑 ①：include 只有 src 时这条恒 0 ⇒「只有 test 引用 = 0」）
   const withTest = [...atoms.values()].filter((a) => a.inboundTest.size > 0).length;
   add("有 test 入边的原子数", ">0", withTest, withTest > 0, "为 0 ⇒ program 里没有 test 文件，不是没人写测试");
@@ -965,6 +1061,8 @@ function emit(g) {
         id: a.id, name: a.name, kind: a.kind, file: a.file, line: a.line,
         brief: a.brief || "", docSource: a.brief ? "jsdoc" : "none",
         tags: a.tags, wo: a.wo, state: st, reexportOf: a.reexportOf,
+        // 节点自带的 SOP —— 空对象时整个字段省掉，别让 6,266 行都背一个 `sop: {}`。
+        ...(a.sop && Object.keys(a.sop).length > 0 ? { sop: a.sop } : {}),
         ...(a.registry ? { registry: a.registry } : {}),
         ...(sliceOfAtom.has(a.id) ? { slices: sliceOfAtom.get(a.id).slice().sort() } : {}),
         inbound: {
@@ -1061,11 +1159,28 @@ function emit(g) {
   const kindCounts = {};
   for (const e of edges) kindCounts[e.kind] = (kindCounts[e.kind] ?? 0) + 1;
   const docNone = all.filter((a) => !a.brief).length;
+  // ── 节点自带 SOP 的覆盖面 ──────────────────────────────────────────────────
+  // ⚠ 这几个数**只度量「写了没有」，不度量「写得对不对」**：`verifyBy: 100` 不等于这 100 条
+  //   判据咬得住第四态（接对了、跑通了、屏上有数、但算错了）。⛔ 报它时必须带这句，
+  //   否则这个覆盖率自己就会变成新的假绿 —— 本仓已经因为「拿覆盖率当质量证据」栽过。
+  // 放进 idxCounts（而不是只写 YAML）⇒ 它同时进 INDEX.yaml **和**落库快照，两边一个口径。
+  const sopCoverage = {
+    withAnySop: all.filter((a) => a.sop && Object.keys(a.sop).length > 0).length,
+    syncWith: all.filter((a) => a.sop?.syncWith).length,
+    verifyBy: all.filter((a) => a.sop?.verifyBy).length,
+    verifiedBy: all.filter((a) => a.sop?.verifiedBy).length,
+    prd: all.filter((a) => a.sop?.prd).length,
+    // 半闭环必须**分开报**：写了判据没指测试 = 没人跑；指了测试没写判据 = 不知道它咬什么。
+    // 合成一个数就等于拿一个数盖住两个不同事实（本仓反复记过的那个形态）。
+    verifyByWithoutTest: all.filter((a) => a.sop?.verifyBy && !a.sop?.verifiedBy).length,
+    testWithoutVerifyBy: all.filter((a) => a.sop?.verifiedBy && !a.sop?.verifyBy).length,
+  };
   const idxCounts = {
     atoms: all.length, edges: edges.length, slices: sliceRows.length,
     byEdgeKind: kindCounts,
     docSourceNone: docNone,
     docSourceNonePct: all.length ? Number(((docNone / all.length) * 100).toFixed(2)) : 0,
+    sopCoverage,
   };
   const idxLines = [
     `# 本体图谱 · 索引目录（唯一入口 —— 只靠这一份就能回答「哪条切片覆盖 rootType=X 且跨到 Y」）`,
@@ -1074,6 +1189,9 @@ function emit(g) {
     `version: 1`,
     `generatedFrom: ${q(commitHash())}`,   // ⛔ 不打时间戳 —— 会破坏字节级确定性（R6）
     `counts: ${yv(idxCounts)}`,
+    `# 节点自带 SOP（仓主 2026-09-14「把测试、PRD 的 SOP 写在图谱里」）：`,
+    `#   syncWith=改它必须同步改谁 · verifyBy=对照实验判据 · verifiedBy=兑现它的测试 · prd=它兑现哪条需求`,
+    `#   ⚠ counts.sopCoverage 只度量「写了没有」，**不度量写得对不对**。`,
     `# ⚠ 三态有**两套口径**，差 ${Math.abs(byState.wired - byStateStrict.wired)} 个原子（差在「只在自己文件里被用」那批）。`,
     `# ⛔ 引用时必须说清用的是哪一套 —— 只报一个数等于拿一个数盖住两个不同事实。`,
     `byState:`,
