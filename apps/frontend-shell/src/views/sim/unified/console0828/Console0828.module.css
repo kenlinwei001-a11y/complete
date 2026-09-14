@@ -1,7 +1,7 @@
 /**
  * WO-SIM-CONSOLE-0828 · 版面。令牌全部取自 `styles/tokens.css` 在册令牌（青蓝磨砂）。
  *
- * ⚠ **字号只有三级**（12 / 13 / 30）——规范 R-UI-2「一屏之内最多三级字号」，
+ * ⚠ **字号只有三级**（12 / 13 / 23）——规范 R-UI-2「一屏之内最多三级字号」，
  *   门 `ui-first-layer:check` 对未登记基线的新文件按硬上限 3 判。
  *   层级差别一律用**字重与颜色**做，不靠再加一级字号。
  * ⚠ **最小 12px** —— 门 `check-text-legibility` 判据：10px 中文在本调色板内无解。
@@ -57,12 +57,28 @@
      · ≤980px ：三栏全部堆成单列 */
 .wrap {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr) 340px;
+  /* WO-SIM-DENSE ③ · rowA = [扰动装配 328][中栏 1fr][推演助手 316]（稿子的三个宽度）。 */
+  grid-template-columns: 328px minmax(0, 1fr) 316px;
   gap: 0;
-  min-height: 60vh;
+  /* ⚠ 改前是 `min-height: 60vh` —— 三栏各自撑到 60vh 起步，而 rowB 挂在它们下面，
+     于是不管内容多少，rowB 都被顶到第一屏之外。横向一屏要的恰恰是「别预留高度」。 */
   font-size: 13px;
   color: var(--txt);
 }
+
+/* ── rowB · 受阻环节表 | 金额勾稽表（WO-SIM-DENSE ③）────────────────────────
+   稿子 rowB 是等宽两格、横跨整幅。⛔ 不用 `auto-fit minmax()`：那在窄屏会悄悄
+   变成一列而**不告诉任何人**；这里要的是「要么两格，要么明写换行」。 */
+.rowB {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 14px 20px 10px;
+  align-items: start;
+  border-top: 1px solid var(--line);
+}
+@container c0828 (max-width: 1180px) { .rowB { grid-template-columns: 1fr; } }
+@media (max-width: 640px) { .rowB { padding: 12px; } }
 @container c0828 (max-width: 1280px) {
   .wrap { grid-template-columns: 320px minmax(0, 1fr); }
   .ai { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--line); }
@@ -220,20 +236,52 @@
 .lensTab:hover { color: var(--txt); }
 .lensTabOn { color: var(--accent-txt); border-bottom-color: var(--accent); font-weight: 600; }
 
-/* ③ KPI 条 —— 3–5 张并排。
-   ⚠⚠ **每张卡的口径说明 `.kpiCal` 是默认可见的那一层，⛔ 不许折叠、不许缩成图标。**
-   本仓最值钱的就是这一位：它防的正是「屏上摆一个看起来像真的假数」。
-   版面先给口径文字留位置（`.kpiCal` 不设 max-height、不 ellipsis），再排别的。 */
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
-.kpi {
-  border: 1px solid var(--line2); border-radius: 10px; padding: 11px 13px;
-  background: var(--panel-glass); display: flex; flex-direction: column; gap: 3px; min-width: 0;
+/* ③ KPI 条 —— **一行六格**（WO-SIM-DENSE ②）。
+   格数由 `--kpi-n`（= 本次渲染的卡数）给：推演后 6、推演前 3。
+   ⛔ 不写死 `repeat(6,1fr)` —— 推演前只有 3 张真量，写死 6 会把它们挤进左半屏，
+   而右半那三格是空的：那等于用版面暗示「还有三个量，只是没算出来」。
+
+   ⚠⚠ **口径去哪了**：改前 `.kpiCal` 把整段口径铺在第一层（原注：「不设 max-height、不 ellipsis」），
+   最长那条 78 字，在 ~250px 卡宽下占 4–6 行，六张卡的口径就吃掉大半屏。
+   现在整段搬进 `InfoPopover`，第一层留 `.kpiCal1` 一行 + 标签右边那个 `?` 记号。
+   **一个字都没删**（逐卡字符数守恒，见 `cal` / `calOne` 的头注）——
+   降层允许，删除不允许，而**静默降层等于删除**，所以 `?` 必须可见。 */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(var(--kpi-n, 6), minmax(0, 1fr));
+  gap: 10px;
+  /* KPI 条已搬出 `.main`（改前借的是它的 18/20 内边距），到外壳层要自己带边距。 */
+  padding: 12px 20px;
 }
-.kpiKey { font-size: 12px; color: var(--muted); font-weight: 500; }
-.kpiBig { font-size: 30px; font-weight: 700; line-height: 1.1; font-family: var(--font-mono); color: var(--txt); }
-/* 数值偏中等长度时（金额串）30px 会撑破卡 —— 用容器查询降到正文级，**不新增字号档**。 */
+@media (max-width: 640px) { .kpis { padding: 10px 12px; } }
+
+/* 底部整幅诚实句（原在 KPI 条下面，随 KPI 一起搬到外壳层 —— 稿子它在最底一行）。 */
+.footNote { padding: 0 20px 14px; margin: 0; }
+@media (max-width: 640px) { .footNote { padding: 0 12px 12px; } }
+/* 窄屏收拢：六格塞不下时回到自适应，⛔ 不让卡片被压到读不出数。 */
+@media (max-width: 1180px) { .kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); } }
+.kpi {
+  border: 1px solid var(--line2); border-radius: 10px; padding: 9px 12px;
+  background: var(--panel-glass); display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.kpiKey {
+  font-size: 12px; color: var(--muted); font-weight: 500;
+  display: flex; align-items: center; gap: 4px; min-width: 0;
+}
+.kpiBig { font-size: 23px; font-weight: 700; line-height: 1.15; font-family: var(--font-mono); color: var(--txt); }
+/* 数值偏中等长度时（金额串）大号会撑破卡 —— 降到正文级，**不新增字号档**。 */
 .kpiBigSm { font-size: 13px; }
 .kpiCmp { font-size: 12px; color: var(--muted2); }
+/* 第一层口径：**恰好一行**。超长用 ellipsis 截断 —— 截掉的部分在浮层里一字不少。
+   ⚠ 字号 12px 不是随便挑的，两条门各卡一头：
+     · `check-ui-first-layer` R-UI-2 —— 一屏最多 3 级字号（本文件现为 12/13/23）；
+     · `check-text-legibility` —— 阈值是**对比度 × 字号**的曲线，字越小要求越高
+       （12px 要 6.0，10.5px 外推要 ~7.0）。`--muted2` 在 10.5px 上够不着。
+   本单第一版写的 10.5px 是照设计稿抄的，**两条门都踩** —— 稿子在这一位上是错的。 */
+.kpiCal1 {
+  font-size: 12px; color: var(--muted2); line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
 .kpiCal { font-size: 12px; color: var(--muted2); line-height: 1.65; margin: 2px 0 0; }
 /* 告警态：只有**越线**才染色（纪律第 4 条：红/黄/橙专用于告警）。 */
 .kpiAlert .kpiBig { color: var(--danger-txt); }
@@ -314,8 +362,14 @@
    ⇒ 改 `--accent-txt`（在册·逐主题·压 `--panel-glass` 实测 7.41，远高于 30px 所需）。
    ⚠ 旁边那枚〔估〕徽章 `.est` **保持琥珀不动** —— 它标的是「这个数是推演出来的不是实测」，
    那是**口径警示**，本来就该用警示色，且它正是本仓最值钱的诚实位。 */
+/* ⚠ 30px → 23px 是**被 R-UI-2 逼的，不是顺手改的**：字号级数是「有几个不同的值」，
+   留着 30px 就是 12/13/23/30 **四级**，无论怎么合并小号那头都下不到 3。
+   合并到 23px 还顺带对上了 KPI 大数 —— 一屏只剩**一个**「大数」号，
+   而不是两个差 7px、谁也说不清区别的大号。
+   ⚠ 上面那句「远高于 30px 所需」说的是**对比度**（`--accent-txt` 压 `--panel-glass` 实测 7.41），
+   字号降到 23px 后阈值只会更松，那条结论**不受本次改动影响**。 */
 .moneyBig {
-  font-size: 30px; font-weight: 700; color: var(--accent-txt);
+  font-size: 23px; font-weight: 700; color: var(--accent-txt);
   line-height: 1.15; font-family: var(--font-mono);
 }
 .brk {
@@ -466,7 +520,7 @@
   box-shadow: inset 0 0 0 1px rgba(76, 144, 240, 0.2);
 }
 .agentTag {
-  display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
   color: var(--accent-txt); border: 1px solid var(--accent); border-radius: 999px;
   padding: 1px 8px; font-family: var(--font-sans); white-space: nowrap;
 }

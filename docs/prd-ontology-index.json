@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10",
+  "generatedAt": "2026-09-12",
   "ontology": {
     "invariants": [
       "R1",
@@ -2264,6 +2264,22 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-sim-console-tabbed-20260911.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17",
+        "R18",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/finance-world.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-sim-drill-parallel-world.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2584,6 +2600,19 @@
         "apps/frontend-shell/src/components/Dag/taskDag.ts",
         "packages/contracts/src/agentcore.ts",
         "packages/contracts/src/qos.ts"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-slice-consumption-governance-20260912.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R17",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/synthetic/battery.ts"
       ],
       "brokenArtifacts": []
     },
@@ -3242,6 +3271,7 @@
       "PRD-sandbox-metro-semantics.md",
       "PRD-segment-scoped-gap-attribution.md",
       "PRD-skill-migration.md",
+      "PRD-slice-consumption-governance-20260912.md",
       "PRD-topo-realdata.md",
       "PRD-v2-slice.md"
     ],
@@ -4121,6 +4151,9 @@
     ],
     "scripts/check-chain-node-singlesource.mjs": [
       "PRD-semantics-singlesource.md"
+    ],
+    "apps/datacore/src/solvers/finance-world.ts": [
+      "PRD-sim-console-tabbed-20260911.md"
     ],
     "apps/datacore/src/twin/enterprise-state.ts": [
       "PRD-sim-drill-parallel-world.md"

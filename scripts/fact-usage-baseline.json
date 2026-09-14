@@ -3,11 +3,12 @@
     "事实使用注册表的**规模棘轮**基线（WO-FACT-USAGE-REGISTRY · 门 scripts/check-fact-usage.mjs）。",
     "这里存的是**下限**不是快照：注册表现算自前端 AST，条数只许涨不许跌。",
     "跌 = 某个事实不再被任何页认领 ⇒ B-3 拿这份清单去比时，掉出去的那条永远绿。",
-    "有意收缩（页删了 / 读取位真撤了）走 `--tighten` 显式改账，不许静默。"
+    "有意收缩（页删了 / 读取位真撤了）走 `--tighten` 显式改账，不许静默。",
+    "⚠ 2026-09-12 下调 facts 462→445 · multiScreenFacts 72→71：仓主指令整屏删除「运营复盘」（ReviewView.tsx 及其 renderer/视图下发/场景卡一并删净），其读取位随之真实撤出受检面。这不是放水 —— 掉出去的那 17 条事实的承载页已不存在，留着基线等于替一个不存在的页占额度。⛔ 手改而非 --tighten 的原因：--tighten 只许上调（原文「只许收紧，不许放水」），而页删除必然下调 ⇒ 门自己那句「有意收缩走 --tighten」的指引在这条路上是走不通的，已在门脚本里订正。"
   ],
   "min": {
-    "facts": 462,
-    "multiScreenFacts": 72,
+    "facts": 445,
+    "multiScreenFacts": 71,
     "pairs": 824,
     "caliberDivergent": 6
   },

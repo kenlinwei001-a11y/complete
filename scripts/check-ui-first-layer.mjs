@@ -269,6 +269,28 @@ const DISCLOSURE_RE =
  * 而本仓真因此把三个都叫「营收」的量（订单簿 454.64 亿 / AOP 601.50 亿 / 需求 P50 700.00 亿）
  * 当成过同一个量。
  */
+/**
+ * 逐条列举时的**统一截断器**（2026-09-12 新增）。
+ *
+ * ⚠ **为什么必须有这一句「另有 N 处未列出」**：原来三处各写一份 `.slice(0, 3)`，
+ * 省略时**一个字都不说** ⇒ 屏上「列出 3 处」与「只有 3 处」**长得一模一样**。
+ * 本仓刚被它咬过一次真的：`Console0828.tsx` 报「4 处」只列 3 处，
+ * 而被藏起来的第 4 处（`L2250`）与列出的第 3 处（`L2245`）**是同一个构件的两个实例**
+ * —— 长得一样，扫一眼就会以为「列全了」。
+ *
+ * 这正是本仓最贵的那条纪律的又一个形态：
+ * > **「我没找到」和「它不存在」是两个不同的命题。**
+ *
+ * ⚠ **三处共用本函数，不许各抄一份** —— 抄了就是装饰品：改了这里，抄走的那份照旧沉默。
+ */
+const LIST_CAP = 3;
+function listSome(items, fmt) {
+  const all = items || [];
+  const head = all.slice(0, LIST_CAP).map(fmt).join(" · ");
+  const rest = all.length - LIST_CAP;
+  return rest > 0 ? `${head}　…另有 ${rest} 处未列出（本条用 --explain <file> 看全）` : head;
+}
+
 const FORMULA_PATTERNS = [
   // `op:true` = **裸操作符形态**。这三条**连口径句也照咬** —— 口径句里写 `A × B ÷ C`，
   // 那是推导式穿了口径的马甲，仍属浮层（规范 §2 R-UI-3 那张表的第二行）。
@@ -485,8 +507,26 @@ export function analyze(text, opts = {}) {
    */
   const CALIBRE_LEAD = /^\s*口径\s*[:：·]/;
 
+  /**
+   * **倍数单位后缀**，不是乘号（2026-09-12 新增，起因是三处实测误咬）。
+   *
+   * 屏上 `{ratio.toFixed(2)}×` 渲染成 `4.82×` —— `×` 是**单位**（「超线 4.82 倍」），
+   * 而 JSX 把数字放在表达式容器里，**抽取器看到的字面量只剩一个光杆 `×`**。
+   * 原判据 `/[×÷]/` 见字符就咬 ⇒ 把单位当成了 `A × B ÷ C` 公式。
+   *
+   * **判据落在语法位置上，不开文件白名单**（白名单迟早被例外吃光；上下文规则对新文件照样生效）：
+   *   **`×` 出现在字面量的开头、且其后只剩收尾标点 ⇒ 是后缀单位。**
+   *   · `"×"` / `"×）"`      ⇒ 豁免（前面那个数在表达式里，不在本字面量）
+   *   · `" × "`              ⇒ **照咬**（两侧留白 = 中缀运算符，`{a} × {b}` 这种拼装公式不放过）
+   *   · `"节拍 × OEE × 通道"` ⇒ **照咬**（同一字面量里带着运算元）
+   *
+   * ⛔ 不许放宽成「含 × 就豁免」—— 那会把真公式一起放走。
+   */
+  const UNIT_SUFFIX_OP = /^×[)）\]】、，。；;\s]*$/;
+
   const noteText = (s, deferred, line) => {
     if (deferred || !s) return;
+    if (UNIT_SUFFIX_OP.test(s)) return;
     const isCalibre = CALIBRE_LEAD.test(s);
     for (const p of FORMULA_PATTERNS) {
       // 口径句只受**裸操作符**那三条约束；词形两条对它不生效。
@@ -920,7 +960,7 @@ export function judge(r, b, opts = {}) {
     if (r.formula > 0)
       fails.push(
         `【${tag}·R-UI-3】${r.file} 第一层有 ${r.formula} 处口径/公式，应进 \`?\` 浮层：` +
-          (r.formulaItems || []).map((x) => `L${x.line} "${x.text}"`).slice(0, 3).join(" · ")
+          listSome(r.formulaItems, (x) => `L${x.line} "${x.text}"`)
       );
   }
   if (!b) return fails;
@@ -945,13 +985,13 @@ export function judge(r, b, opts = {}) {
   if (r.formula > b.formula)
     fails.push(
       `【D2 棘轮·R-UI-3】${r.file} 第一层口径/公式 ${b.formula} → ${r.formula}：` +
-        (r.formulaItems || []).map((x) => `L${x.line} "${x.text}"`).slice(0, 3).join(" · ")
+        listSome(r.formulaItems, (x) => `L${x.line} "${x.text}"`)
     );
 
   if (r.prose > (b.prose ?? 0))
     fails.push(
       `【D2b 棘轮·§1】${r.file} 第一层长说明串（≥${PROSE_MIN_CHARS} 字）${b.prose ?? 0} → ${r.prose}：` +
-        (r.proseItems || []).map((x) => `L${x.line} "${x.text.slice(0, 40)}…"`).slice(0, 3).join(" · ") +
+        listSome(r.proseItems, (x) => `L${x.line} "${x.text.slice(0, 40)}…"`) +
         `　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层`
     );
 

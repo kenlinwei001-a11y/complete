@@ -344,9 +344,15 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
   //   **那句话是错的，我跑的不是这个文件**。摘入口而不删屏，比删掉更糟：屏还在，只是没人找得到。
   //
   // 本次是真删：组件 / renderer 注册 / 前后端视图下发 / mock 场景卡 / 两条测试，一批删净。
-  // 后端 `history/bundle` 端点保留 —— 追一层实测另有 3 个消费方（风险看板 · 驾驶舱 ×2）。
-  //   复验（2026-09-12）：`grep -rn "history/bundle" apps/frontend-shell/src` →
-  //   取数器 endpoints.ts · 驾驶舱 DashboardView（纵轴口径句）· 风险看板 inspectorModel。
+  // 后端 `history/bundle` 端点保留 —— 2026-09-12 追一层实测另有 3 个消费方：
+  //   `views/RiskBoardView.tsx:2361` · `views/DashboardView.tsx:74` · `views/DashboardView.tsx:718`。
+  // 复验：`grep -rn "fetchHistoryBundle" apps/frontend-shell/src | grep -v api/endpoints.ts`
+  //   2026-09-14 实测应得 **5 行** = 3 处真调用点（RiskBoardView:2361 · DashboardView:74 · :718）
+  //   ＋ **2 处 import 行**（RiskBoardView:7 · DashboardView:4）。
+  //   ⚠ 本注释上一版写「3 处 ＋ 1 处 import」——import 行数少算了一个，合并时实测订正。
+  //   🐤 金丝雀：不排除 endpoints.ts 时总行数须 >5（今日实测 7）；若它也掉到 ≤3，
+  //      那是**查法坏了**（改名/换导入方式），不是消费方真没了 —— 此时不许下「端点可删」的结论。
+  //   判据：真调用点少于 3 处即本注释过期，端点可重新评估。
   { title: "规划与平衡", items: ["annual-scenario", "quarterly-rolling", "sop-balance", "plan-audit", "plan-generate"].map((key) => ({ kind: "view" as const, key })) },
   // WO-NAV-SANDBOX-GROUP：沙盘一家五口此前**一个都没登记**——
   //   · `sim-sandbox` / `sim-init` 落「裸挂」（排在全部 13 个分组之后，屏幕最底）；
@@ -543,9 +549,7 @@ export const NAV_GROUPS: { title: string | null; collapsed?: boolean; items: Nav
       // ⚠ WO-BEFE-A：`ontology-relations`（本体关系编辑器）必须同时登记在**这里**与
       //   `adminRegistry.ADMIN_NAV_GROUPS` —— 只改后者的话，左导航渲染读的是本表，
       //   该页会掉进「其它」兜底桶（plan-builder / boundary / prototype-intake 都是这么漏的）。
-      // WO-SLICE-CONSUMPTION-20260912（前置 A1）：slice-library 已并入 slices 页签，
-      // 本表与 adminRegistry.ADMIN_NAV_GROUPS 同步撤位（两处分组源同改，防「其它」兜底桶）。
-      ...["modeling", "object-types", "domains", "interfaces", "ontology-relations", "slices", "merge", "boundary", "prototype-intake"].map((key) => ({ kind: "admin" as const, key })),
+      ...["modeling", "object-types", "domains", "interfaces", "ontology-relations", "slices", "slice-library", "merge", "boundary", "prototype-intake"].map((key) => ({ kind: "admin" as const, key })),
     ],
   },
   // 图谱八视角子视图：折叠子组，保留既有 collapsed 行为（图谱页内亦可 tab）。
