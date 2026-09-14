@@ -86,6 +86,35 @@ function injectedSolverKeys(prompt: string): string[] {
   return LIVE_SOLVER_CATALOG_FIXTURE.map((s) => s.key).filter((k) => prompt.includes(`${k}：`));
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// WO-TOOLS-LIST · 两段式（阶段① 全量目录 ⊥ 阶段② 按需详情）的判据工具
+//
+// ⚠ 两段必须**分开数**：改造前"可见"与"被展开"是同一个数（都被 MAX_SOLVERS=6 绑死），
+//   于是断言随便咬哪个都一样；改造后它们是两个数，混着数就验不出本单到底做了什么。
+//   行首前缀是唯一可靠的区分：详情段 `  ★ `/`  - `，目录段 `  · `。
+// ───────────────────────────────────────────────────────────────────────────
+
+/** prompt 是 JSON.stringify 过的 —— 换行是字面 `\n`，先还原再按行认。 */
+function sliceLines(prompt: string): string[] {
+  return prompt.replace(/\\n/g, "\n").split("\n");
+}
+/** 阶段②「详情段」里被完整展开的 key。 */
+function detailKeys(prompt: string): string[] {
+  return sliceLines(prompt)
+    .map((l) => /^ {2}[★-] ([a-z0-9_]+)：/.exec(l)?.[1])
+    .filter((k): k is string => Boolean(k));
+}
+/** 阶段①「全量目录段」里被列出的 key。 */
+function rosterKeys(prompt: string): string[] {
+  return sliceLines(prompt)
+    .map((l) => /^ {2}· ([a-z0-9_]+)：/.exec(l)?.[1])
+    .filter((k): k is string => Boolean(k));
+}
+/** 模型**能看见**的求解器 = 两段并集（这才是"发现面"，不是"展开面"）。 */
+function visibleKeys(prompt: string): string[] {
+  return [...new Set([...detailKeys(prompt), ...rosterKeys(prompt)])];
+}
+
 describe("WO-CAPMAP-LIVE · SEAM ① 注入源 = 活资源目录（镜像里没有的求解器进得了候选集）", () => {
   it("金丝雀：判据本身有判别力（差集非空 · 镜像非空 · 两者有交集）", () => {
     expect(FALLBACK_SOLVER_CATALOG_KEYS.length, "镜像 key 集为空 ⇒ 差集恒非空 ⇒ 断言失去判别力").toBe(19);
@@ -191,6 +220,205 @@ describe("WO-CAPMAP-LIVE · SEAM ①b 注册 agent 路径（engine.runRegistered
   });
 });
 
+/**
+ * WO-TOOLS-LIST · SEAM ①c **发现面 = 全量目录，不是相关性前 6**（本单头号判据）。
+ *
+ * 病根（本单实测，真数组非 grep）：`ALL_SOLVER_CATALOG` = **63 条**，而模型每题只被喂
+ * 相关性 top-6 ⇒ **57 条从未被告知存在**；权限上它们全都调得动（`tools/executor.ts` 的
+ * `invoke_solver` 不按候选集限制）⇒ **卡点是发现面，不是鉴权**。
+ * 且检索按问句相关性排序 ⇒ 冷门求解器天然排不进前 6 ⇒ 没有使用记录 ⇒ 更排不进：**自锁**。
+ *
+ * ⚠ 本组断言**刻意不咬 `MAX_SOLVERS` 那个常数**。把 6 调成 63 能让"可见数"这一条变绿，
+ *   但 80 个求解器时原样复发 —— 那不是本单要的东西。真正被咬死的是**结构**：
+ *   「目录段列全 ∧ 详情段仍然收窄 ∧ 目录行比详情行短」三条同时成立，
+ *   单纯调大常数会让第 2、3 条**当场变红**。
+ */
+describe("WO-TOOLS-LIST · SEAM ①c 两段式：目录段列全 · 详情段仍收窄", () => {
+  it("金丝雀：两段的量法各自有判别力（详情段数得出来 · 目录段数得出来 · 两段不是同一批）", async () => {
+    const t = await createTestApp();
+    installLiveSolverCatalog(t);
+    const prompt = await firstAgentPrompt(t, OPEN_DEEP_Q);
+    const detail = detailKeys(prompt);
+    const roster = rosterKeys(prompt);
+    expect(detail.length, "详情段一条都数不出来 ⇒ **量法坏了**（行前缀正则不匹配），不是『没注入』").toBeGreaterThan(0);
+    expect(roster.length, "目录段一条都数不出来 ⇒ **量法坏了**，不是『目录为空』").toBeGreaterThan(0);
+    expect(
+      roster.length - detail.length,
+      "目录段与详情段条数相同 ⇒ 两段退化成一段，后面所有『目录列全』的断言都失去判别力",
+    ).toBeGreaterThan(0);
+    await t.app.close();
+  });
+
+  it("★ 活目录里**每一条**求解器都进了发给模型的目录段（不是前 6·差集算出来·不抄 key）", async () => {
+    const t = await createTestApp();
+    installLiveSolverCatalog(t);
+    const prompt = await firstAgentPrompt(t, OPEN_DEEP_Q);
+
+    const all = LIVE_SOLVER_CATALOG_FIXTURE.map((s) => s.key);
+    const missing = all.filter((k) => !visibleKeys(prompt).includes(k));
+    expect(
+      missing,
+      `活目录有 ${all.length} 条，模型只看见 ${visibleKeys(prompt).length} 条 —— 看不见的这些它永远选不到：${missing.join(",")}`,
+    ).toEqual([]);
+    await t.app.close();
+  });
+
+  it("★ 排在相关性窗口外的『冷门』求解器：**可见但不展开**（两段式的命门·差集算出来）", async () => {
+    const t = await createTestApp();
+    installLiveSolverCatalog(t);
+    const prompt = await firstAgentPrompt(t, OPEN_DEEP_Q);
+
+    const detail = detailKeys(prompt);
+    // "冷门" = 本题相关性没进详情段的那批，**算出来的**，不是我判断哪条冷门。
+    const cold = LIVE_SOLVER_CATALOG_FIXTURE.map((s) => s.key).filter((k) => !detail.includes(k));
+    expect(cold.length, "所有求解器都进了详情段 ⇒ 本条退化成同义反复（替身太小或截断失效）").toBeGreaterThan(0);
+
+    const coldInvisible = cold.filter((k) => !rosterKeys(prompt).includes(k));
+    expect(
+      coldInvisible,
+      `这些求解器既没进详情段、也没进目录段 ⇒ 模型无从知道它们存在（本单要治的正是这个）：${coldInvisible.join(",")}`,
+    ).toEqual([]);
+    await t.app.close();
+  });
+
+  it("★ 目录**轻**、详情**重**：同一条求解器的目录行显著短于它的详情行（证明不是把全文抄了两遍）", async () => {
+    const t = await createTestApp();
+    installLiveSolverCatalog(t);
+    const prompt = await firstAgentPrompt(t, OPEN_DEEP_Q);
+    const lines = sliceLines(prompt);
+    const detailLineOf = (k: string): string | undefined => lines.find((l) => new RegExp(`^ {2}[★-] ${k}：`).test(l));
+    const rosterLineOf = (k: string): string | undefined => lines.find((l) => new RegExp(`^ {2}· ${k}：`).test(l));
+
+    const both = detailKeys(prompt).filter((k) => rosterLineOf(k) !== undefined);
+    expect(both.length, "没有任何一条求解器同时出现在两段 ⇒ 本条没东西可比（目录段应含详情那几条）").toBeGreaterThan(0);
+    for (const k of both) {
+      const d = detailLineOf(k)!.length;
+      const r = rosterLineOf(k)!.length;
+      expect(r, `目录行(${r}) 不短于详情行(${d}) —— ${k} 的目录段没做"一句话"压缩，全量目录就喂不起`).toBeLessThan(d);
+    }
+    await t.app.close();
+  });
+
+  it("目录段**与问句无关**（R6·按 key 字典序不按热度）—— 两道完全不同的题渲染出同一份目录", async () => {
+    const rosterSectionOf = (p: string): string =>
+      sliceLines(p).filter((l) => /^ {2}· [a-z0-9_]+：/.test(l)).join("\n");
+
+    const t1 = await createTestApp();
+    installLiveSolverCatalog(t1);
+    const a = rosterSectionOf(await firstAgentPrompt(t1, OPEN_DEEP_Q));
+    await t1.app.close();
+
+    const t2 = await createTestApp();
+    installLiveSolverCatalog(t2);
+    const b = rosterSectionOf(
+      await firstAgentPrompt(t2, "这个季度毛利为什么倒挂？顺便把全链损失和各环节 KPI 都综合看一遍"),
+    );
+    await t2.app.close();
+
+    expect(a.length, "目录段没截到 ⇒ 本断言退化为空串相等（假绿）").toBeGreaterThan(100);
+    expect(
+      b,
+      "两道不同的题得到不同的目录段 ⇒ 目录在按相关性/热度排 —— 那正是『冷门排后面→更少被选→更冷』这个自锁循环的来源",
+    ).toBe(a);
+  });
+
+  it("目录段提示模型**怎么取详情**（阶段②）—— 否则『看见名字』仍然等于选不动", async () => {
+    const t = await createTestApp();
+    installLiveSolverCatalog(t);
+    const prompt = await firstAgentPrompt(t, OPEN_DEEP_Q);
+    expect(prompt, "目录段没告诉模型怎么取参数说明 ⇒ 它只能照名字盲猜 args").toMatch(/discover.*solvers/);
+    expect(prompt).toContain("全部可调用的求解器目录");
+    await t.app.close();
+  });
+
+  it("全集条数必须留在取回上限之内 —— 越线目录会**静默**退化成『前 100 名』（机器先说话）", async () => {
+    const { SEARCH_FETCH_LIMIT } = await import("../src/agent/live-capability-map.js");
+    const t = await createTestApp();
+    installLiveSolverCatalog(t);
+    const prompt = await firstAgentPrompt(t, OPEN_DEEP_Q);
+    expect(
+      rosterKeys(prompt).length,
+      `目录段条数已顶到取回上限 ${SEARCH_FETCH_LIMIT} —— "全部可调用"这句话已经不成立，` +
+        "而它不会报错、只会少列几条：正是本单要治的病换个数字复发。",
+    ).toBeLessThan(SEARCH_FETCH_LIMIT);
+    await t.app.close();
+  });
+});
+
+/**
+ * WO-TOOLS-LIST · SEAM ①d **发现面变宽，隔离语义一格不松**。
+ * 「让模型看见全部」最容易顺手做坏的就是这一条：把 scope 过滤跳过去，目录就成了越权清单。
+ */
+describe("WO-TOOLS-LIST · SEAM ①d 目录段仍走同一套 scope 隔离", () => {
+  it("窄 scope 的注册 agent：越界求解器**既不进详情段、也不进目录段**", async () => {
+    const t = await createTestApp();
+    installLiveSolverCatalog(t);
+    // 只声明 Material 域 —— fixture 里 kit_readiness 读 Material，gap_attribution 读 Metric 族。
+    await t.repos.agents.insert({
+      tenantId: TENANT,
+      id: "agt_scoped",
+      key: "scoped_agent",
+      version: 1,
+      name: "scoped_agent",
+      description: "窄 scope 隔离验证 agent",
+      model: "claude-opus-4-8",
+      systemPrompt: "你是测试 agent。",
+      tools: [{ kind: "BUILTIN", name: "invoke_solver" }],
+      ruleBindings: { ruleKeys: [], mode: "PRE_CHECK" },
+      skills: [],
+      mcpServers: [],
+      scopeDeclaration: { objectTypes: ["Material"], toolNames: ["invoke_solver"] },
+      status: "PUBLISHED",
+    } as never);
+
+    t.llm.queueAgentTurn(() => ({
+      content: [toolUse("final_answer", { blocks: [{ type: "text", markdown: "ok" }], provenance: [] })],
+    }));
+    await t.deps.engine.runRegisteredAgent({
+      taskId: "task_scoped",
+      agentId: "agt_scoped",
+      version: "latest",
+      prompt: OPEN_DEEP_Q,
+      ctx: { tenantId: TENANT, userId: "user-planner", roles: ["planner"] },
+      nesting: { callChain: [], budget: new BudgetTracker() },
+      emit: async () => undefined,
+    });
+    const prompt = JSON.stringify(t.llm.agentRequests[0]!.messages);
+    const visible = visibleKeys(prompt);
+
+    // 金丝雀：窄 scope 下**确实还看得见东西**（全空 ⇒ 下面的"越界不可见"退化成同义反复）。
+    expect(visible.length, "窄 scope 把图筛空了 ⇒ 本条没有判别力（不是隔离对了，是量法没内容可量）").toBeGreaterThan(0);
+    // 全可见集必须是「读 Material 的 ∪ 无对象域声明的」子集 —— 判据**算出来**，不抄 key。
+    const inScope = new Set(
+      LIVE_SOLVER_CATALOG_FIXTURE.filter((s) => {
+        const reads = ((s as { scopeObjectTypes?: string[] }).scopeObjectTypes ?? []) as string[];
+        return reads.length === 0 || reads.includes("Material");
+      }).map((s) => s.key),
+    );
+    const leaked = visible.filter((k) => !inScope.has(k));
+    expect(leaked, `目录段把越界求解器列给了窄 scope agent（隔离语义被"让它看见全部"顺手做坏了）：${leaked.join(",")}`).toEqual([]);
+    await t.app.close();
+  });
+
+  it("调不了 solver 的 agent：目录段也不出现（不吊模型胃口·同详情段语义）", async () => {
+    const { projectNavigationSlice, renderNavigationSlice } = await import("../src/agent/navigation-slice.js");
+    const { fetchLiveSolverCatalog } = await import("../src/agent/live-capability-map.js");
+    const t = await createTestApp();
+    installLiveSolverCatalog(t);
+    const cat = await fetchLiveSolverCatalog(
+      t.deps.engine.capabilityMapSource(),
+      { tenantId: TENANT, userId: "u", roles: [] } as never,
+      OPEN_DEEP_Q,
+    );
+    expect(cat, "前提：活目录取得到（取不到则本条验的是降级路，不是工具白名单）").toBeDefined();
+    const slice = projectNavigationSlice(OPEN_DEEP_Q, undefined, { toolNames: ["query_objects"] }, cat);
+    expect(slice.solvers, "无 invoke_solver 能力却列出了详情段").toEqual([]);
+    expect(slice.roster ?? [], "无 invoke_solver 能力却列出了全量目录 —— 列一堆它调不动的东西是纯噪声").toEqual([]);
+    expect(renderNavigationSlice(slice)).not.toContain("全部可调用的求解器目录");
+    await t.app.close();
+  });
+});
+
 describe("WO-CAPMAP-LIVE · SEAM ② 提示词不再封死 discover", () => {
   it("注入段明说『候选不是全集』并鼓励再检索（旧文案『选型已替你做完』已废）", async () => {
     const t = await createTestApp();
@@ -234,6 +462,12 @@ describe("WO-CAPMAP-LIVE · SEAM ③ R6 确定性 + fail-open 降级", () => {
     expect(prompt, "活目录挂了就连图都不注入了 ⇒ 降级路没兜住").toContain("本题导航图");
     const injectedFallback = FALLBACK_SOLVER_CATALOG_KEYS.filter((k) => prompt.includes(`${k}：`));
     expect(injectedFallback.length, "活目录挂了且降级镜像也没兜住 ⇒ 模型手里一张图都没有").toBeGreaterThan(0);
+    // WO-TOOLS-LIST：降级态手上只有 19 条残本，**不许**渲染"全部可调用的求解器目录" ——
+    // 那句话会让模型判定"目录都给我了，不用再 discover"，比不给目录更坏（诚实优先于完整）。
+    expect(
+      prompt,
+      "降级镜像把 19 条残本宣称成了全集 —— 模型会据此**停止** discover，比没有目录段更坏",
+    ).not.toContain("全部可调用的求解器目录");
     await t.app.close();
   });
 

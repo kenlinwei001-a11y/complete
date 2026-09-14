@@ -19,8 +19,23 @@ import type { SolverCatalog, SolverCatalogEntry } from "./navigation-slice.js";
  * 也是 `retrieve_knowledge` 工具背后那套）早就存在、且实测好用（金标问句 Top-1 就是期望的 `gap_attribution`）。
  * 本模块只做一件事：**把它接到导航图的注入口上**，替掉那份手抄表。
  *
- * **裁剪策略（token 预算）**：59 条全量注入不现实（单条 capability 就上百字，59 条 ≈ 数千 token，
- * 且大部分与本题无关 —— 噪声本身会拉低选型质量）。故按**本题相关性检索 top-N**，N = {@link LIVE_CAPABILITY_TOP_N}：
+ * ⚠️ **WO-TOOLS-LIST 改判（2026-09-12）：下面这段「裁剪策略」的结论只对了一半，照它读会读出反结论。**
+ * 它把「**全文**全量注入不现实」正确地推出，却接着当成了「**目录**也不能全量」——
+ * 而这两件事的成本差一个数量级：实测 63 条求解器，capability 全文 = 8,647 字 / 17,529 字节，
+ * 截到 40 字的一句话目录 = 3,4xx 字 / 6,6xx 字节。前者确实喂不起，**后者完全喂得起**。
+ * 代价是实的：按这个结论，63 个注册求解器里 **57 个模型从未被告知存在**，而它们在权限上全都调得动
+ * （`tools/executor.ts` 的 `invoke_solver` 不按候选集限制）—— 卡点从来不是鉴权，是**发现面**。
+ * 形态（照 CLAUDE.md 铁律 0.6 句式）：
+ *   **「我用『全文注入放不下』当作『目录也放不下』的证据，而前者并不度量后者。」**
+ * 现在分两段（标准 MCP 的 tools/list ⊥ 按需详情）：
+ *   · 阶段① **全量目录** —— 全部求解器 key + 一句话（tier `"roster"`），无条数上限；
+ *   · 阶段② **按需详情** —— 相关性 top-N 展开全文（tier `"detail"`），模型另可
+ *     `discover(kind:"solvers", query:<key>)` 自取任意一条的完整参数说明。
+ * 下面这段仍然成立 —— 但它现在**只管阶段②**，不再是"模型能看见几个"的上限：
+ *
+ * **裁剪策略（token 预算·仅限阶段② 详情段）**：全文全量注入不现实（单条 capability 就上百字，
+ * 63 条 ≈ 数千 token，且大部分与本题无关 —— 噪声本身会拉低选型质量）。
+ * 故按**本题相关性检索 top-N**，N = {@link LIVE_CAPABILITY_TOP_N}：
  * - 为什么是"按相关性"而不是"按域"/"分层"：域/层都是**又一张要手工维护的映射表**，等于把手抄从
  *   solver 名单挪到域名单，同一个病换个位置；相关性排序的输入是各 solver **自己声明**的
  *   description/answersQuestions/tags（真值在 A 侧注册表），新增 solver 自动可见，零维护。
@@ -60,9 +75,17 @@ export const LIVE_CAPABILITY_TOP_N = 12;
  */
 export const LIVE_CAPABILITY_MIN_SCORE = 0.3;
 
-/** 检索取回上限（= 契约 `maxResults` 上限 100·当前求解器全集 59 全覆盖）。
- *  截断由本模块按 `LIVE_CAPABILITY_TOP_N` + 门槛做，故这里要全量：见 fetch 内注释（primary 破例）。 */
-const SEARCH_FETCH_LIMIT = 100;
+/**
+ * 检索取回上限（= 契约 `maxResults` 上限 100）。
+ * 截断由本模块按 `LIVE_CAPABILITY_TOP_N` + 门槛做，故这里要全量：见 fetch 内注释（primary 破例）。
+ *
+ * WO-TOOLS-LIST：阶段① 全量目录也吃这一份结果 ⇒ **本常数现在是"模型能看见几个求解器"的真上限**。
+ * 实测 `ALL_SOLVER_CATALOG` = **63 条**（PIN 树·真数组 length，不是 grep 数的 60、也不是正则数的 62），
+ * 100 > 63 有余量；逼近 100 时目录会**静默**变成"前 100 名"而不再是全集 —— 那正是本单要治的病换个数字复发。
+ * 故 `capability-map-live-seam.test.ts` 有一条断言盯着 `全集条数 < SEARCH_FETCH_LIMIT`，
+ * 越线是机器先说话，不靠人想起来。
+ */
+export const SEARCH_FETCH_LIMIT = 100;
 
 /** 检索面（`ResourceRegistryService` 的结构子集——只依赖 search，便于测试替身与解耦）。 */
 export interface CapabilityMapSource {
@@ -135,7 +158,8 @@ export async function fetchLiveSolverCatalog(
     const res = await source.search(ctx, req);
     const catalog: SolverCatalog = {};
     let rank = 0;
-    // 先收对口 solver（无条件·置 rank 0），再按相关性收 topN —— 保证"这题该调谁"永远在图里。
+    // ── 阶段②「详情」：先收对口 solver（无条件·置 rank 0），再按相关性收 topN ──
+    // 展开成本高（能力全文 + 输出形状 + 下游还会为它的对象类型做真实取数），故必须有窗口。
     const primaryHit = primaryKey ? res.results.find((i) => i.resource.key === primaryKey) : undefined;
     if (primaryHit) {
       catalog[primaryHit.resource.key] = {
@@ -143,6 +167,7 @@ export async function fetchLiveSolverCatalog(
         outputShape: outputShapeOf(primaryHit.resource),
         reads: readsOf(primaryHit.resource),
         rank: rank++,
+        tier: "detail",
       };
     }
     for (const item of res.results) {
@@ -150,19 +175,41 @@ export async function fetchLiveSolverCatalog(
       if (r.kind !== "solver") continue; // kinds 过滤已在引擎侧做，此处兜底（防未来放宽 kinds）
       if (catalog[r.key]) continue; // 同 key 只取最相关的一条（引擎已按分降序·含上面的 primary）
       if (rank >= topN) break; // 相关性 topN 截断（token 预算）
-      // 相关性门槛：不达标即不进图——避免无关问句被灌一堆噪声求解器。
+      // 相关性门槛：不达标即不进**详情段**——避免无关问句被灌一堆噪声求解器全文。
       if (item.score < floor) continue;
       const entry: SolverCatalogEntry = {
         capability: capabilityOf(r),
         outputShape: outputShapeOf(r),
         reads: readsOf(r),
         rank: rank++,
+        tier: "detail",
       };
       catalog[r.key] = entry;
     }
     // 一条都不达标 → 返 undefined 退降级镜像（而非给一张空图）：空图会让"无族信号"的问句
-    // 连镜像那点兜底候选都拿不到，比改造前更差。
-    return rank > 0 ? catalog : undefined;
+    // 连镜像那点兜底候选都拿不到，比改造前更差。⚠️ 目录段也一并不给 —— 无关问句（"你好"）
+    // 本就不该被灌 60 行目录，这条门槛同时守住了两段的 token 预算。
+    if (rank === 0) return undefined;
+
+    // ── WO-TOOLS-LIST · 阶段①「全量目录」：剩下的**全部**求解器进目录层（tier="roster"） ──
+    // 病根（本单实测）：改造前这里一返回就只剩 ≤12 条，下游再截到 6 —— 63 个注册求解器中
+    // **57 个模型从未被告知存在**。而检索按问句相关性排序 ⇒ 冷门求解器天然排不进窗口
+    // ⇒ 没有使用记录 ⇒ 更排不进：**自锁**。把上限从 6 调到 63 只是把锁推后（80 个时复发），
+    // 两段式才是拆锁：目录轻（key + 一句话）· 详情按需（模型自己 discover 二次取）。
+    // ⚠️ 不重新打一次检索、不放宽 minScore —— 这里用的就是上面那一次 `search` 的**同一份结果**
+    //    （`maxResults` 已取 SEARCH_FETCH_LIMIT 全量），零额外往返、零额外延迟。
+    for (const item of res.results) {
+      const r = item.resource;
+      if (r.kind !== "solver") continue;
+      if (catalog[r.key]) continue; // 已在详情段
+      catalog[r.key] = {
+        capability: capabilityOf(r),
+        outputShape: outputShapeOf(r),
+        reads: readsOf(r),
+        tier: "roster", // 无 rank：目录段按 key 字典序渲染（R6·不按热度，见 navigation-slice）
+      };
+    }
+    return catalog;
   } catch {
     return undefined; // fail-open：A 不可达 / 未开通 / 检索异常 → 降级镜像，绝不阻断查询
   }
