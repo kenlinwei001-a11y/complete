@@ -9,13 +9,23 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { pino, type Logger } from "pino";
 import { z } from "zod";
-import { AggregateRequestSchema, ClockTickBodySchema, QueryTimeseriesAggInputSchema, SyntheticJobBodySchema } from "@platform/contracts";
+import { AggregateRequestSchema, ObjectRefResolveRequestSchema, BuildRunBodySchema, BuildWorkflowStartBodySchema, ClockTickBodySchema, PlanSliceRequestSchema, CrossValidateRequestSchema, DataBuilderConfigSchema, ImportBundleBodySchema, MetaAccessPolicyBodySchema, PROMPT_KEYS, PLATFORM_PROMPT_DEFAULTS, PutPromptTemplateBodySchema, PutLlmBudgetBodySchema, RecordUsageBodySchema, PutCalendarBodySchema, ReconcileBodySchema, QueryTimeseriesAggInputSchema, StoryInputsBodySchema, StoryRunRequestSchema, StressBodySchema, SyntheticJobBodySchema, ValidateOutputBodySchema, ValidationPolicySchema, IngestModeSchema } from "@platform/contracts";
+import { OntologyInvariantEvaluateRequestSchema } from "@platform/contracts";
+// WO-MAPPING-WHITELIST：结构边物化声明字段集 —— 写路（本文件建边路由）与读路
+// （`mapping.ts buildMappingRegistries`）共用这一份，杜绝两份手抄清单漂移导致的静默字段丢失。
+import { LinkMaterializationDeclSchema } from "@platform/contracts";
+import { validateOutputAgainstOntology } from "./ontology-validate.js";
+import {
+  assertOntologyInvariantsAllowPublish,
+  evaluateOntologyInvariants,
+  type OntologyGraphInput,
+} from "./ontology/invariants.js";
 import type { Config } from "./config.js";
 import type { Repos } from "./repo/repo.js";
 import type { BlobStore } from "./blob.js";
 import type { LlmClient } from "./llm.js";
-import { Metrics } from "./metrics.js";
-import { AppError, forbidden, notFound, unauthorized, validationError } from "./errors.js";
+import { Metrics, actionMetricsView } from "./metrics.js";
+import { AppError, forbidden, invalidState, notFound, unauthorized, validationError } from "./errors.js";
 import { newId } from "./ids.js";
 import { CredentialCipher } from "./crypto.js";
 import { AuthService } from "./auth.js";
@@ -23,45 +33,192 @@ import { AuthzService } from "./authz.js";
 import { OutboxService } from "./outbox.js";
 import { ExecutionLockService } from "./execlock.js";
 import { QuarantineService } from "./quarantine.js";
+import { MetaOntologyService } from "./meta/service.js";
 import { NotificationService } from "./notifications.js";
+import { EntityResolutionService } from "./entity-resolution.js";
 import { CatalogService } from "./catalog.js";
 import { VleService } from "./vle.js";
 import { RulesService, assertValidExpression } from "./rules.js";
 import { LlmProviderService, TenantRoutedLlmClient, registerLlmProviderRoutes } from "./llmproviders.js";
 import { registerAdminPlatformRoutes } from "./adminplatform.js";
+import { OrgWorldService } from "./org/service.js";
+import { registerOrgWorldRoutes } from "./org/routes.js";
 import { OntologyService } from "./ontology.js";
 import { OntologyCoreService } from "./ontology-core.js";
-import { OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
+import { WorkflowService } from "./pipeline/service.js"; // OntoFlow（PRD v2）· 本体建模工作流·嫁接自 main
+import { runProcessing } from "./pipeline/processing.js"; // OntoFlow（P3）· 数据处理折叠·嫁接自 main
+import { ObjectInterfaceService, OntologyGovernanceService, UNIT_DICTIONARY } from "./ontology-governance.js";
+// WO-69 P3 · 对象接口契约（多态抽象）
+import { ImplementsRefSchema, ObjectConstraintRefSchema, ObjectInterfaceInputSchema } from "@platform/contracts";
 import { ConnectorService } from "./connectors/service.js";
-import { CONNECTOR_TYPES } from "./connectors/registry.js";
+import { CONNECTOR_TYPES, connectorCategories } from "./connectors/registry.js";
+import { planSlice } from "./ontology/slice-planner.js";
+import { resolveFieldRoles } from "./solvers/field-roles.js";
+// WO-DATABUILDER-PIPELINE：接入/导入改由 pipeline 驱动（解析/对账的纯函数由 intake-pipeline 内部调用）。
+import { runIntakePipeline, runIntakeImportPipeline } from "./databuilder/intake-pipeline.js";
+import { projectPipelineOrder } from "./databuilder/pipeline-service.js";
+import { IntakeRequestSchema, IntakeImportRequestSchema, IntakeObjectifyRequestSchema, ReconcileResolveBodySchema, BuildPipelineUpsertSchema, PromoteBodySchema } from "@platform/contracts";
+import { BootstrapRequestSchema, type BootstrapStep, type BootstrapReport } from "@platform/contracts";
+// WO-WAITING-STATES-FE · 业务流程层等待态下发（GET /a/v1/process-definitions）：
+// 词表与职能登记册随响应下发，前端不得再写第二份字面量数组（process.ts §1 单源纪律）。
+import { PROCESS_WAIT_KINDS, PROCESS_OWNER_FUNCTIONS, PROCESS_INSTANCE_ORIGINS } from "@platform/contracts";
+import { reconstructAndPersist } from "./process/reconstruct.js"; // WO-FLOWTIME · 流程实例反推（从既有带时间戳单据，非合成）
+// DF.13 外协红线单一来源（C08）：live-scenarios 触红线判定读契约，禁内联裸阈值。
+import { OUTSOURCE_REDLINE } from "@platform/contracts";
+import { OntologyBindingSchema, OptPerturbationSchema } from "@platform/contracts"; // 轨B·增量2/3 绑定层 + what-if
+import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow（PRD v2）· 本体建模工作流 upsert·嫁接自 main
+import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
+import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
+import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
+import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
+import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
+import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
+import type { PairWeightReport } from "./sim/pair-weights.js";
+// 传导相入参（图/范围/规则参数/节拍闸门）的**唯一装配处**——本文件不许再装配第二遍。
+// `buildCadenceGates` / `scopePropagationGraph` 刻意**不在本文件 import**：它们只该出现在装配处里。
+import { buildPropagationInputs } from "./sim/propagation-inputs.js";
+// 推演过程披露层（WO-SIM-DISCLOSURE · 铁律 1.5 判据二）。**只读既有中间量，不参与计算**。
+import { buildSimRunDisclosure, DISCLOSURE_PHASE_ORDER, PhaseTimer } from "./sim/disclosure.js";
+import { ImpactAnalysisRequestSchema } from "@platform/contracts"; // WO-IMPACT-PROPAGATION · 影响传播统一入口（栈B传播 × 栈A世界隔离）
+import { analyzeImpact } from "./sim/impact-analysis.js";
+import { ChangeImpactPreviewRequestSchema } from "@platform/contracts"; // WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（分桶+跳数+诚实位）
+import { ParetoRequestSchema } from "@platform/contracts"; // WO-SIM-BE-PARETO · 帕累托解集（多目标前沿）
+// WO-AGENT-IN-LOOP · 兑现（下标→数值·唯一处）· 方案→解 id · 目标读数（与前端同源那一份）。
+import { deriveParetoMetrics, mapOptionsToSolutions, resolveProposalToLevers } from "@platform/contracts";
+import { ParetoAssembleRequestSchema } from "@platform/contracts"; // WO-SIM-PARETO-MODEL-EXIT · 模型装配出口
+import { SimMetricSeriesQuerySchema } from "@platform/contracts"; // WO-SIM-SERIES-SCALE · 指标时序 query 单源（limit/order/白名单）
+import { runOptimizePareto, paretoSolutionId } from "./solvers/opt-pareto.js";
+// WO-AGENT-IN-LOOP · 方案生成（agent 只出方案与比对，不产数）。
+import { buildProposalMenu, generateAndFreeze, httpProposerClient, type ProposerClient } from "./sim/agent-proposal.js";
+import type { SolveArgsFn } from "./solvers/opt-whatif.js";
+import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact.js";
+// WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段）的**模型层**。回放/归属/分段一律在那边，
+// 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
+import { buildMetricSeries } from "./sim/metric-series.js";
+// WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
+import type { SimWorldOps } from "./sim/seed-world.js";
+// WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细（算法全在 sim/drill.ts 纯函数层，本文件只做 IO 与 A6 装配）
+import { ChainLossDrillRequestSchema } from "@platform/contracts";
+import { chainLossDrill, chainNodeDetail, type DrillObject, type DrillWorld } from "./sim/drill.js";
+import { nodeLossShare, type ChainLossResult } from "./solvers/chain-loss.js";
+// WO-SANDBOX-E4：`cadenceFromProps`（Cadence 落库行 → Cadence 的**唯一**读回口）刻意**不在本文件 import** ——
+// 它只该出现在装配处 `sim/propagation-inputs.ts` 里，与上面 `buildCadenceGates` / `scopePropagationGraph` 同一条纪律。
+// WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
+import { stateVarDisplayNames, stateVarDisplayName } from "./synthetic/battery.js";
+// WO-SIM-DRILL-P12 · 推演演习（事件型扰动 → 数据驱动路由 → 真调求解器 → 归一成卡点清单）。
+// 算法全在 sim/drill-scan.ts（纯函数扫描器）与 sim/drill-orchestrator.ts（编排+归一），本文件只做 IO 装配。
+// ⚠ 与上面的 `sim/drill.ts`（WO-SIM-BE-DRILL·根因二级下钻）**是两件不同的事**，别混：
+//   那个是「某个环节的损失拆到执行单元」，这个是「一件事发生了会卡在哪」。
+import {
+  DrillRunRequestSchema,
+  DrillCatalogSchema,
+  DRILL_EVENT_SPECS,
+  DRILL_UNIVERSAL_ROUTES,
+  assertDrillRoutingTableComplete,
+  // WO-MATERIAL-REPRICE：事件 → 世界态落点的**唯一解释器**（落点写在契约规格表里，不是这里的 if）。
+  drillStateEffectFor,
+  drillStateEffectAbsolute,
+  ticksForDays,
+  type DrillEvent,
+  type DrillFinding,
+} from "@platform/contracts";
+import { scanDrillFindings, layerOfStateVars } from "./sim/drill-scan.js";
+import { orchestrateDrill } from "./sim/drill-orchestrator.js";
+import { deriveCertification, DEFAULT_CERT_CONFIG, type CertScope, type TrialTickInput } from "./sim/certification.js";
+import { buildCausalGraphFromSim, buildCausalGraphFromDecision } from "./decision/causal-graph.js"; // WO-DECISION-CAUSAL-GRAPH · 因果图构图器（纯投影·零发明）
+import { validateClosure } from "./databuilder/closure.js";
+import { selfCheckGaps } from "./databuilder/selfcheck.js";
+import type { BuildPlan, ClosurePolicy, SliceLayersResponse } from "@platform/contracts";
+import { buildSliceIndex, lookupReusable, lookupReusableByQuestion } from "./ontology/slice-index.js";
+import { deriveSliceLibrary, libEntryToSpec } from "./ontology/slice-library.js";
+import { projectSliceLayers, requiredSliceArgs, diagnoseEmptyGraph } from "./ontology/slice-layers.js"; // WO-SLICE-16-LAYERS · 切片十六层只读投影（+WO-SLICE-DERIV-EMPTY 导出的空图诊断/参数扫描，与投影共用同一份实现）
+// WO-V4-INSPECT · 业务流程节点检视只读投影（纯函数·零 IO·十六层复用上面那份 projectSliceLayers）
+import { adhocCarrierSliceKey, adhocCarrierSliceSpec, projectProcessInspect } from "./process/inspect.js";
+import { generateRefbaseOntology, refbaseNodeCount, refbaseDigest } from "./ontology/refbase.js";
+import { buildBatteryDomainCoverage } from "./ontology/refbase-coverage.js";
 import { RuleDocService } from "./ruledocs.js";
 import { ModelingService } from "./modeling.js";
 import { SyntheticService } from "./synthetic/service.js";
+import { buildDataTemplate, buildDataTemplates } from "./synthetic/data-template.js";
+import { dataCategoriesForIndustry } from "./synthetic/data-categories.js";
+import { computeFieldCoverage, computeCategoryCoverage } from "./databuilder/slice-coverage.js";
+import { BUILTIN_INDUSTRY_TEMPLATES } from "./synthetic/builtin-templates.js";
+import { buildFieldCatalog, resolveEntity, searchCatalog } from "./databuilder/entity-catalog.js";
+import { deriveViewPullTargets, checkPullTargetCoverage, unmetPullTargets } from "./databuilder/pull-target.js";
+import { diffNeeds, type CapabilityInventory } from "./databuilder/capability-inventory.js";
+
+const CapabilityNeedsSchema = z.object({
+  objectTypes: z.array(z.string()).optional(),
+  rules: z.array(z.string()).optional(),
+  solvers: z.array(z.string()).optional(),
+  slices: z.array(z.string()).optional(),
+});
 import { LivedInEngine } from "./livedin/engine.js";
-import { SolverService, SOLVER_KEYS } from "./solvers/service.js";
+import { SolverService, SOLVER_KEYS, SOLVER_OUTPUT_SHAPES } from "./solvers/service.js";
+// WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵（逐基地各跑一次既有一维归因，口径全走 S0 契约）
+import { chainLossMatrix, CHAIN_LOSS_MATRIX_SOLVER_KEY } from "./solvers/chain-loss-matrix.js";
+import { ChainLossMatrixResultSchema } from "@platform/contracts";
+import type { ChainLossObject, ChainLossSimOverlay } from "./solvers/chain-loss.js";
+// WO-V4-INSPECT · 杠杆标签/单位/值类的**单一真值**（PRD §4.1 的杠杆→域映射拿它当输入·前端零内联）
+import { LEVER_PROP_META } from "./solvers/lever-meta.js";
+import { solversByCategory, uncategorizedSolverKeys } from "./solvers/taxonomy.js"; // WO-L7A · 求解器决策问题分类维
+import { SOLVER_CATEGORIES, SOLVER_CATEGORY_META, isSolverCategory } from "@platform/contracts";
+// WO-ADOPT-MITIGATION · adopt_mitigation 执行器复用 base 解析**唯一严格出处**（勿在此另起一套规范化）。
+import { resolveBaseId } from "./solvers/risk.js";
+import type { SolverContext } from "./solvers/types.js";
+import { HttpOptimizerClient } from "./solvers/optimizer-client.js";
+import { InProcOptimizerClient } from "./solvers/inproc-optimizer.js";
+import { runWithCancellation } from "./solvers/cancellation.js"; // WO-D1 · 请求作用域求解取消令牌
 import { TimeseriesService } from "./timeseries.js";
 import { SchedulerService, RuleScanService } from "./scheduler.js";
-import { ActionService, MockActionExecutor, type ActionExecutor } from "./actions.js";
+import {
+  ActionService,
+  // ⚠️ `MockActionExecutor` **刻意不再 import**（WO-ACTION-EXECUTOR-CARRIERS）：它是
+  //    `MO-2026-${hash}` 假工单号的产地，本文件已无任何合法用途；留着 import 等于把雷放在手边。
+  //    该类本身仍导出，供测试作反面基准（`test/action-noop-exec.seam.test.ts`）。
+  UnwiredActionExecutor,
+  GlobalSimPlanExecutor,
+  planChangeIsWired,
+  parseLevers,
+  notImplementedResult,
+  type ActionExecutor,
+  type LeverParse,
+} from "./actions.js";
 import { SopService } from "./sop.js";
 import { PlanService } from "./planviews.js";
 import { CalibrationService } from "./calibration/index.js";
 import { buildDataHealth } from "./datahealth.js";
-import { buildMappingRows } from "./mapping.js";
-import { GRAPH_DOMAIN, GRAPH_EXTRA_EDGES, GRAPH_EXTRA_NODES, SOLVER_GRAPH } from "./graphmeta.js";
+import { buildMappingRows, buildMappingRegistries } from "./mapping.js";
+import { GRAPH_DOMAIN, GRAPH_EXTRA_EDGES, GRAPH_EXTRA_NODES, SOLVER_GRAPH, BUSINESS_DOMAINS } from "./graphmeta.js";
 import { parseAggregate } from "./ontology.js";
 import { KbService } from "./kb.js";
+import { DataBuilderService } from "./databuilder/service.js";
 import { SimClockService } from "./simclock.js";
+import { EnterpriseStateService } from "./twin/enterprise-state.js"; // WO-ENTERPRISE-STATE · 企业状态快照（读写端点见 /a/v1/twin/enterprise-states）
 import { HistoryService } from "./livedin/bundle.js";
-import { FeatureService, VIEW_FEATURE_MAP } from "./features.js";
+import { FeatureService, VIEW_FEATURE_MAP, featureNotFound } from "./features.js";
+import { SANDBOX_CONSOLE_FEATURE_KEY, SANDBOX_CONSOLE_VIEW_KEYS } from "./synthetic/sandbox-console.js";
+import { ConfigBundleService } from "./config-bundle.js";
 import { createEmbeddingProvider, type EmbeddingProvider } from "./embeddings.js";
 import { OpsTeamService } from "./opsteam/team.js";
 import { OpsScheduleService } from "./opsteam/schedule.js";
 import { OpsReplayService } from "./opsteam/replay.js";
 import { poolSnapshot } from "./opsteam/pools.js";
-import { OpsScheduleSchema, OntologyWorkflowUpsertSchema } from "@platform/contracts";
-import { WorkflowService } from "./pipeline/service.js";
-import { runProcessing } from "./pipeline/processing.js";
-import type { AuthCtx } from "./domain.js";
+import { OpsScheduleSchema } from "@platform/contracts";
+import { BOUNDARY_IMPACT, boundaryVersion } from "@platform/contracts";
+import type { AuthCtx, ObjectInstance, SliceSpecRecord, PropertyUnit, PropertyScale } from "./domain.js";
+// WO-RATE-DIMENSION · 量纲维度门（速率/复合量纲）。见 `units.ts` 头注。
+import { UNIT_REF_PLACEHOLDER, inferFormulaDimensionIssues, isParametricUnit } from "./units.js";
+import { mulberry32, hashString, randInt } from "./prng.js";
+import { DeriveDecisionFieldsRequestSchema, RecordMaterializeRequestSchema, CeoDatasetGenerateRequestSchema } from "@platform/contracts"; // WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段→决策字段可配置派生 · WO-CEO-DATA-supply · 真源记录颗粒级物化 · WO-CEO-DATA-2
+import { AdvanceProcessInstanceRequestSchema, CreateProcessInstanceRequestSchema } from "@platform/contracts"; // WO-PROCESS-INSTANCE · 流程运行时（建实例/推进；body 只收**外部事实**，不收 status —— 状态机不交给调用方）
+import { ProcessRuntimeService } from "./process/runtime.js"; // WO-PROCESS-INSTANCE · 五个等待态的唯一产地（evaluateGate 单一调用点）
+import { readStepTemplate } from "./process/step-templates.js"; // WO-STEP-TEMPLATE-LAYER · 建实例时 tasks 的唯一合法数据源（有则下发步骤，无则下发可复跑的缺席取证）
+import { deriveDecisionFields, weakestDataMode as weakestDerivedDataMode, validateDerivedFields, type DeriveSourceObject } from "./decision/derive-fields.js";
+import { materializeRecords, RECORD_MATERIALIZE_TEMPLATES } from "./decision/record-materialize.js";
+import { generateCeoAtomicDataset } from "./synthetic/ceo-dataset.js";
+import { DecisionKernelService } from "./decision/kernel.js"; // WO-C1 · L2 统一决策内核
+import { CreateDecisionInputSchema, RecordOutcomeInputSchema } from "@platform/contracts"; // WO-C1 · WO-LEARNING-LOOP-FEEDBACK
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -79,6 +236,30 @@ export interface AppDeps {
   fetchImpl?: typeof fetch;
   /** 管理平台增量 §1：返回非 null 原因 → /readyz 503（users 空表 + 无 BOOTSTRAP 变量）。 */
   bootstrapRequired?: () => Promise<string | null>;
+  /**
+   * 首启预热闸（Codespaces 健康检查耗尽定位·#5）：返回 true → /readyz 503（reason:"seeding"）。
+   * server 先 listen 再后台播种，播种期间端口已起、healthz/readyz 可应答（不再"端口全程 down"耗尽重试）。
+   */
+  seeding?: () => boolean;
+  /**
+   * 预热子阶段（bootstrap / seed:tenant / seed:synthetic / …）+ 已耗秒数，仅在 seeding 为真时有意义。
+   *
+   * 为什么 503 的 body 里必须带这个：一次真实部署事故里，运维手上只有
+   * `docker compose logs datacore --tail=60` 打出的几十行**完全一样**的 503 ——
+   * 「还在播种」和「卡死在某一步」在那个输出里长得一模一样。
+   * 探活端点若只回一个恒定字符串，它就只能回答"没好"，回答不了"在动吗"。
+   */
+  seedingPhase?: () => { phase: string; elapsedSec: number };
+  /**
+   * WO-PROCESS-INSTANCE · 流程运行时的「现在几点」。
+   *
+   * 为什么要能注入：本层的输出里有「这一步已经等了多久」，而欠账 #141 的原话是
+   * **「挂在墙钟上的断言并发时必假红」** —— 用真实时钟测「等了 3 天」，
+   * 要么得让测试睡 3 天，要么得容忍误差，两条都不可接受。注入之后
+   * 「等了多久」变成纯函数，可以断言到毫秒（R6 确定性）。
+   * 生产不传 ⇒ 落回 `() => new Date()`，与 `SchedulerService` 同形态。
+   */
+  processClock?: () => Date;
 }
 
 export interface BuiltApp {
@@ -106,10 +287,14 @@ export interface BuiltApp {
     scheduler: SchedulerService;
     ruleScan: RuleScanService;
     actions: ActionService;
+    decisionKernel: DecisionKernelService; // WO-C1 · L2 决策内核
+    databuilder: DataBuilderService;
     sop: SopService;
     kb: KbService;
     simclock: SimClockService;
+    enterpriseState: EnterpriseStateService; // WO-ENTERPRISE-STATE · 企业状态快照
     features: FeatureService;
+    configBundle: ConfigBundleService;
     embeddings: EmbeddingProvider;
     plan: PlanService;
     calibration: CalibrationService;
@@ -119,6 +304,12 @@ export interface BuiltApp {
     opsTeam: OpsTeamService;
     opsSchedule: OpsScheduleService;
     opsReplay: OpsReplayService;
+    /**
+     * 推演世界的两条生产写路径（WO-SIM-SEED-WORLD）——`POST /a/v1/sim/sessions` 与
+     * `POST …/tick` 用的**同一份闭包**，经这里交给 `SEED_DEMO=1` 播种路径复用。
+     * 暴露它不是为了给别人当第二个入口：任何新的建世界/推拍需求都该走这两个函数，别再写第三处。
+     */
+    sim: SimWorldOps;
   };
 }
 
@@ -127,6 +318,9 @@ const LoginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
 });
+
+/** WO-DATABUILDER-PIPELINE：节点 SOP「人要不要介入」的放行入参。 */
+const WorkflowApproveBodySchema = z.object({ stepKey: z.string().min(1) });
 
 const ObjectsQuerySchema = z.object({
   objectType: z.string().min(1),
@@ -148,6 +342,11 @@ const RuleCreateSchema = z.object({
   expression: z.string(),
   scopeObjectTypes: z.array(z.string()).default([]),
   severity: z.enum(["BLOCK", "WARN", "INFO"]),
+  // 规则即引用（PRD-rules-as-references §2.2/§4）：命名阈值随 create/update 透传到 RulesService（服务层早已支持 params，
+  // 此前路由 schema 漏列 → zod 默认 strip → 编辑器改 params 静默丢失；P3-a 编辑闭环必需，断点在路由接缝）。
+  params: z.record(z.string(), z.number()).optional(),
+  // WO-RULES-CLASSIFY（加性）：规则业务类别（编辑器可选填；种子随规则授予）。
+  category: z.string().optional(),
   status: z.enum(["DRAFT", "PUBLISHED"]).default("DRAFT"),
 });
 
@@ -156,6 +355,8 @@ const ConnectionCreateSchema = z.object({
   name: z.string().min(1),
   config: z.record(z.string(), z.unknown()).default({}),
   schedule: z.object({ cron: z.string() }).optional(),
+  /** A11 per-connection 归类：缺省取连接器类型 category，可覆盖、可自定义值（R14 不锁死枚举）。 */
+  category: z.string().optional(),
 });
 
 const ReviewSchema = z.object({
@@ -213,6 +414,24 @@ function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   return r.data;
 }
 
+/** OC9 净生产天数：from..to（含端点）逐日，扣周末（weekendMode）+ 节假日/检修（exceptions），加班日补回。 */
+function netProductionDays(from: string, to: string, cal: { weekendMode: string; exceptions: { date: string; kind: string }[] } | undefined): number {
+  const wm = cal?.weekendMode ?? "SAT_SUN_OFF";
+  const holidays = new Set((cal?.exceptions ?? []).filter((e) => e.kind === "HOLIDAY" || e.kind === "MAINTENANCE").map((e) => e.date));
+  const extra = new Set((cal?.exceptions ?? []).filter((e) => e.kind === "EXTRA_WORKDAY").map((e) => e.date));
+  let n = 0;
+  const end = new Date(`${to}T00:00:00Z`);
+  for (let d = new Date(`${from}T00:00:00Z`); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
+    const dow = d.getUTCDay();
+    let off = wm === "SAT_SUN_OFF" ? dow === 0 || dow === 6 : wm === "SUN_OFF" ? dow === 0 : false;
+    if (extra.has(iso)) off = false;
+    if (holidays.has(iso)) off = true;
+    if (!off) n++;
+  }
+  return n;
+}
+
 export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const { config, repos, blob, llm } = deps;
   const metrics = deps.metrics ?? new Metrics();
@@ -223,19 +442,103 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const auth = new AuthService(repos, config.ACCESS_TOKEN_TTL_SEC, config.REFRESH_TOKEN_TTL_SEC);
   await auth.init();
   const authz = new AuthzService(repos);
-  const outbox = new OutboxService(repos, logger, deps.fetchImpl, metrics);
+  // 受信内部对端（B 栈）：webhook 投递到该 origin 时才附带 SERVICE_TOKEN
+  // —— B 侧 `/b/v1/internal/invalidate` 已收口为服务间鉴权，不带则缓存失效链静默断掉。
+  // 两个 env 缺任一即为 undefined ⇒ 一律不附带凭证（宁可失效链退回 TTL 60s 兜底，也不外泄密钥）。
+  const outbox = new OutboxService(
+    repos,
+    logger,
+    deps.fetchImpl,
+    metrics,
+    config.AGENTCORE_BASE_URL && config.SERVICE_TOKEN
+      ? { baseUrl: config.AGENTCORE_BASE_URL, serviceToken: config.SERVICE_TOKEN }
+      : undefined,
+  );
   const execLocks = new ExecutionLockService(repos, metrics);
   const quarantine = new QuarantineService(repos);
+  const metaOntology = new MetaOntologyService(repos, outbox);
   const notifications = new NotificationService(repos);
-  const rules = new RulesService(repos, outbox);
-  const solvers = new SolverService(repos);
+  const entityResolution = new EntityResolutionService(repos, outbox);
+  const rules = new RulesService(repos, outbox, authz);
+  const solvers = new SolverService(repos, authz);
+
+  /** 一个对象的一批待写属性过 `authz` 同一份决策（列级写判定的**唯一**实现·不许再抄第二份）。 */
+  async function assertOneObjectWritable(
+    c: AuthCtx,
+    objectId: string,
+    props: Record<string, unknown>,
+  ): Promise<void> {
+    const obj = await repos.objects.get(c.tenantId, objectId);
+    if (!obj) return; // 对象不存在交由执行期如实报错，不在此伪装成权限问题
+    const d = await authz.decide(c, "OBJECT_TYPE", obj.type, "WRITE");
+    authz.assertPropsWritable(d, props, `对象 ${obj.type}:${objectId}`);
+  }
+
+  /**
+   * A6 列级（属性级）写校验 —— Action payload 里**一切会落成对象属性真值**的形态，逐属性过同一份决策。
+   * 命中不可写属性 → 403 `PROPERTY_FORBIDDEN`（拒绝而非静默丢弃，值绝不落库）。
+   * 无 propertyPolicy 的策略在此**恒为空操作**（S4 向后兼容：不新增任何对象级写门禁）。
+   *
+   * ⚠️ **WO-COLUMN-SECURITY-TAIL · 残口④ 收口**：此前本函数只认 `payload.patch` 一种形态，
+   * 于是本仓**第二条**用户态真值写入路径整条漏在闸外 —— `payload.levers[{objectType,objectId,prop,value}]`
+   * （`采纳产能保障方案` 与带杠杆的 `plan_change`「采纳风险处置方案」，执行体 `applyLeverWrites`
+   * 直接 `props[l.prop] = l.value`）。形态是「接了线接错地方」：闸在、判定在、写路径也在，
+   * 唯独**闸只挂在其中一种 payload 形状上**。本体 §8 原把④记成「系统内部写路径按系统身份写」
+   * ——那只说了一半，漏掉的这一半是**用户态**的（见本体行订正）。
+   * 判据落在 payload 的**形状**上而不是 actionTypeKey 串上（与 `parseLevers` 的既有裁决同源：
+   * 类型名会漂、会新增，而"有没有 {objectId,prop,value}"是"这条 Action 能不能写真值"的充要条件）。
+   */
+  async function assertObjectPatchWritable(c: AuthCtx, payload: Record<string, unknown>): Promise<void> {
+    // ① `patch` 形态（对象数据变更）。
+    const objectId = String(payload.objectId ?? "");
+    const patch = payload.patch;
+    if (objectId && patch && typeof patch === "object" && !Array.isArray(patch)) {
+      await assertOneObjectWritable(c, objectId, patch as Record<string, unknown>);
+    }
+    // ② `levers` 形态（采纳产能保障方案 / 带杠杆的 plan_change）—— 同样是真值写入，同一份判定。
+    const levers = parseLevers(payload);
+    if (levers.kind === "OK") {
+      for (const l of levers.levers) await assertOneObjectWritable(c, l.objectId, { [l.prop]: l.value });
+    }
+  }
+
+  /** 执行期复校：用发起人存档角色重建 AuthCtx，堵「先建草稿、后收紧策略」的时间窗。 */
+  async function assertDraftPatchWritableAtExecute(draft: {
+    tenantId: string;
+    origin: { userId?: string };
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    const originId = draft.origin?.userId;
+    if (!originId) return; // 系统发起（无用户主体）→ 不套用户列级策略
+    const users = await repos.users.list(draft.tenantId);
+    const u = users.find((x) => x.id === originId || x.username === originId);
+    if (!u) return;
+    await assertObjectPatchWritable(
+      { tenantId: draft.tenantId, userId: originId, roles: u.roles, attributes: {} },
+      draft.payload,
+    );
+  }
   const ontology = new OntologyService(repos, authz, outbox, solvers, metrics);
   const ontologyCore = new OntologyCoreService(repos, authz);
-  const workflows = new WorkflowService(repos, ontology, ontologyCore);
+  const workflows = new WorkflowService(repos, ontology, ontologyCore); // OntoFlow（PRD v2）· 本体建模工作流 CRUD/校验/预览/发布·嫁接自 main
+  solvers.setOntologyCore(ontologyCore); // generic_inference 求解器走本体 recompute（G-5 通用 what-if）
+  solvers.setLlm(llm); // A18.2 LLM 临时求解器生成
+  solvers.setOutbox(outbox); // A18.2 solver.provisional_generated 事件
+  // WO-MEMSIM-OPTIMIZER：配了 OPTIMIZER_BASE_URL → 自托管 CP-SAT sidecar（OR-Tools·可证最优·数据不出边界）；
+  // 未配（内存模式）→ InProcOptimizerClient 确定性贪心兜底（portfolio 出可行解·FEASIBLE/optimal:false·诚实不作假；
+  // 其余未兜底模型仍显式"未接入"）。两态差异靠 optimal 徽标透明告知。
+  solvers.setOptimizer(
+    process.env.OPTIMIZER_BASE_URL
+      ? new HttpOptimizerClient(process.env.OPTIMIZER_BASE_URL)
+      : new InProcOptimizerClient(),
+  );
   const timeseries = new TimeseriesService(repos, authz, outbox);
   const features = new FeatureService(repos);
+  const configBundle = new ConfigBundleService(repos, features);
   const catalog = new CatalogService(repos, features);
   const governance = new OntologyGovernanceService(repos, authz, ontology, ontologyCore, features, metrics, outbox);
+  // WO-69 P3 · 对象接口（多态抽象）：CRUD + 版本演进 + "谁实现了 X"/影响面查询。发布门在 ontology.publishVersion。
+  const objectInterfaces = new ObjectInterfaceService(repos, ontology);
   const cipher = new CredentialCipher(config.CREDENTIAL_KEY);
   const connectors = new ConnectorService(repos, blob, cipher, metrics, deps.fetchImpl ?? fetch);
   // LLM Provider 增量 §1：provider 配置落位 A；A2/A3/A7 调用方经租户用途路由消费
@@ -255,13 +558,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const ruleDocs = new RuleDocService(repos, blob, routedLlm, rules, metrics, config.DC_LLM_MODEL, embeddings);
   const modeling = new ModelingService(repos, routedLlm, ontology, metrics, config.DC_LLM_MODEL, quarantine);
   const synthetic = new SyntheticService(repos, routedLlm, ontology, rules, metrics, config.DC_LLM_MODEL, timeseries);
-  const vle = new VleService(repos, synthetic, ontology);
-  const actions = new ActionService(repos, rules, outbox, notifications);
+  // V5 双算注入：把被测 solvers.invoke 以回调注入 VLE（vle.ts 不 import solvers/service，V9 静态门守）。
+  const vle = new VleService(repos, synthetic, ontology, (c, key, args) => solvers.invoke(c, key, args));
+  // S2 Action 三段埋点必须并入 **app 级** 注册表：不传 metrics 时 ActionService 会退化为自有注册表，
+  // 计数照记但只有 `services.actions.metrics` 读得到，`/metrics`（下方渲染的是这里的 metrics）看不见 ——
+  // 埋点等于对外不存在。传参即接上 dc_action_{submit,approval,execute,execute_attempts}_total。
+  const actions = new ActionService(repos, rules, outbox, notifications, metrics);
+  // WO-C1 · L2 决策内核：gap_attribution(根因)+decision_play(方案)→一等 Decision→commit 派 ActionDraft（走 S2）。
+  const decisionKernel = new DecisionKernelService(repos, ontology, actions, outbox);
   const ruleScan = new RuleScanService(repos, timeseries, outbox);
   const scheduler = new SchedulerService(repos, logger.child({ component: "scheduler" }) as Logger);
+  // WO-PROCESS-INSTANCE · 流程运行时（五个等待态的唯一产地在其 evaluateGate 调用点）。时钟可注入见 AppDeps.processClock。
+  const processRuntime = new ProcessRuntimeService(repos, deps.processClock ? { clock: deps.processClock } : undefined);
   const sop = new SopService(repos, solvers, outbox);
-  const kb = new KbService(repos, authz, blob, embeddings);
+  const kb = new KbService(repos, authz, blob, embeddings, outbox);
+  const databuilder = new DataBuilderService(repos, ontology, rules, connectors, kb, solvers, outbox, routedLlm, config.DC_LLM_MODEL);
   const simclock = new SimClockService(repos, timeseries, ontology, ruleScan, solvers, outbox);
+  // WO-ENTERPRISE-STATE · 企业状态快照（PRD-enterprise-decision-twin §3 五张 MVP 表之一）。
+  // 逻辑时刻取自上一行的 A8 模拟时钟 —— 服务里一次 `new Date()` 都没有（见 twin/enterprise-state.ts 文件头）。
+  const enterpriseState = new EnterpriseStateService(repos, outbox);
   const plan = new PlanService(repos, solvers, rules, outbox);
   const calibration = new CalibrationService(repos, outbox, solvers);
   // 运营态出厂配置增量 §1：回放引擎（生成+回放，复用真实 A8 管线 + M11 配对）
@@ -275,21 +590,125 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     features,
     actions,
     ts: timeseries,
+    outbox,
+    // 轨L 增量2：注入建模链（modeling 在 synthetic 之前构造），供 demo 本体经真链产出。
+    modeling,
+    // WO-69 P3：对象接口种子（Approvable + 实现者绑定）。
+    interfaces: objectInterfaces,
     livedInRunner: async (c, input) => {
       const state = await livedInEngine.run(c, input);
       return { replay: state.replay };
     },
   });
-  connectors.wire({ ts: timeseries, scheduler });
+  connectors.wire({ ts: timeseries, scheduler, outbox });
   simclock.setResetRunner(async (c, spec) => synthetic.runJob(c, spec));
   // §7.21: C12 → calibration.required → 提案生成（与降级/告警共用同一扫描路径）
   ruleScan.setCalibrationHook(async (tenantId, entityId) => calibration.onCalibrationRequired(tenantId, entityId));
   // M11 §1: tick 聚合后配对 + 元闭环（在 RULE_SCAN 之前 —— C12 命中即有新配对可消费）
   simclock.setCalibrationTicker(async (tenantId) => calibration.onTick(tenantId));
-  // S2 写回适配器：领域 Action（AOP情景拍板 / 校准参数变更）真实落库，其余走 Mock。
-  const mockExecutor = new MockActionExecutor();
+  // S2 写回适配器：领域 Action 真实落库；**任何**落不到真分支的一律走诚实执行器。
+  // G-ACTION-NOOP-EXEC：未接线动作走**诚实执行器**（未实现即 ok:false），不再返回 MO 形态的假单号。
+  //
+  // ⚠️ 这里此前还有一行 `const mockExecutor = new MockActionExecutor();`，被当作
+  // `GlobalSimPlanExecutor` 的 fallback 传下去（WO-ACTION-EXECUTOR-CARRIERS 实测拆除）。
+  // 它当时**不可达** —— `domainExecutor` 只在 `planChangeIsWired(payload)` 为真时才把 draft 交给
+  // `globalSimExecutor`，而后者内部的 fallback 条件恰好是同一个谓词的反面。据实定性：
+  // **那是埋雷，不是活 bug**。但「两个谓词恰好同义」不是不变量，谁动一边雷就响；
+  // 而响的形态是最难发现的那种（审批链全绿 + targetRef 形态与真 MO 一模一样，真值零动）。
+  // 既有门 `action-wiring:check` 断言③ 只扫 `domainExecutor` **函数体内**的 `return mockExecutor.execute(`，
+  // 扫不到「构造实参」这个位置 —— 「门 RC=0」不度量「被守的东西干净」。守卫见
+  // `test/action-executor-carriers.seam.test.ts` §E。
+  const unwiredExecutor = new UnwiredActionExecutor();
+  // WO-GSIM-5-ACTION · 全局项目推演「采纳→回灌」真实执行器（G-DECISION 行动半 / G-LOOP-FEEDBACK）。
+  const globalSimExecutor = new GlobalSimPlanExecutor(
+    {
+      repos,
+      forecastStart: async (tid) => String((await solvers.getParams(tid)).forecastStart ?? "2026-06-10"),
+      runDerivations: async (tid) => {
+        await ontology.runDerivations({ tenantId: tid, userId: "system:action", roles: ["admin"], attributes: {} });
+      },
+    },
+    // fallback：**诚实执行器**，不是假单号产地（见上方注释）。
+    unwiredExecutor,
+  );
+  /**
+   * WO-ACTION-NOOP-EXEC · **本体属性杠杆写入器（唯一实现）**——`采纳产能保障方案` 与
+   * 带杠杆的非 global-sim `plan_change` 共用这一份。
+   *
+   * 为什么必须共用而不是各写一份：两条生产者发的是**同一个形状**
+   * （`discoverLevers` 的 `{objectType,objectId,prop}` + 前端拨定的 `value`
+   *  ≡ `LiveScenario.apply` 的 `{objectType,objectId,prop,value}`）。
+   * 各抄一份的下场本仓已有先例：改主逻辑时另一份拿旧规则照跑、照绿（金丝雀装饰品那一类）。
+   *
+   * 语义：「采纳」= 把拨定的杠杆**落成本体属性真值**，而非开一张新单据。
+   * 新单据是一条新记录，不改变任何现有真值——拨完杠杆再推演仍是老数，与用户"采纳后要看到变化"的预期相反。
+   * 落成属性后再 `runDerivations`，下游 KPI/派生属性立刻反映本次采纳。
+   */
+  const applyLeverWrites = async (
+    draft: import("./domain.js").ActionDraft,
+    parse: LeverParse,
+    label: string,
+    refPrefix: string,
+  ): Promise<{ ok: boolean; targetRef?: string; error?: string }> => {
+    if (parse.kind === "ABSENT" || parse.kind === "EMPTY") {
+      return { ok: false, error: `${label}：payload.levers 为空——无可写入的杠杆，拒绝空转（不假装已采纳）` };
+    }
+    if (parse.kind === "INVALID") {
+      // 缺任一要素即**诚实失败**，绝不猜一个值写下去（写错真值比不写危险）。
+      return { ok: false, error: `${label}：杠杆行缺 objectId/prop/value（收到 ${parse.detail}）——拒绝臆造写入` };
+    }
+    // A6 列级复校（WO-COLUMN-SECURITY-TAIL 残口④·与「对象数据变更」执行期同一道闸）：
+    // 用发起人存档角色重建 AuthCtx 再判一次，堵「先建草稿、后收紧策略」的时间窗。
+    // 抛 403 PROPERTY_FORBIDDEN —— 在**任何一行落库之前**，故值绝不落库（不是写一半再回滚）。
+    await assertDraftPatchWritableAtExecute(draft);
+    const written: string[] = [];
+    for (const l of parse.levers) {
+      const obj = await repos.objects.get(draft.tenantId, l.objectId);
+      if (!obj) return { ok: false, error: `${label}：对象不存在 ${l.objectId}` };
+      await repos.objects.put({ ...obj, props: { ...obj.props, [l.prop]: l.value }, origin: { type: "MANUAL" } });
+      written.push(`${l.objectId}.${l.prop}`);
+    }
+    // 派生重算：让下游 KPI/派生属性立刻反映本次采纳（与「对象数据变更」同一套）。
+    await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
+    // targetRef 自证写了什么、写了几处——**刻意不使用 MO- 前缀**（那正是假单号的形态）。
+    return { ok: true, targetRef: `${refPrefix}:${written.length}:${written[0]}` };
+  };
+
   const domainExecutor: ActionExecutor = {
     async execute(draft) {
+      // 全局项目推演采纳（plan_change · source:"global-sim"）→ 真实回灌基线（其余 plan_change 不受影响）。
+      if (draft.actionTypeKey === "plan_change") {
+        // ① 仅 global-sim 来源有真回灌。
+        if (planChangeIsWired(draft.payload)) return globalSimExecutor.execute(draft);
+        // ② 非 global-sim **但带真本体属性杠杆**（风险看板「采纳风险处置方案」发 `LiveScenario.apply`）
+        //    → 与「采纳产能保障方案」是同一种真值写入，走同一套写入器（WO-ACTION-NOOP-EXEC 接线）。
+        //    判据落在 payload 的**形状**上，不落在 source 串上：source 是生产者自报家门（会漏、会改名），
+        //    而「有没有 {objectId,prop,value}」是这条 Action 到底能不能写真值的**充要条件**。
+        const levers = parseLevers(draft.payload);
+        if (levers.kind !== "ABSENT") {
+          return applyLeverWrites(draft, levers, "采纳风险处置方案(plan_change)", "PLAN-CHANGE-LEVER");
+        }
+        // ③ 其余形态（global-sim-scenario KPI 快照 / sim_sandbox 结论 / order-chain「可接无条件」等
+        //    无杠杆形态）payload 里没有任何可写的杠杆 → **不得**借 plan_change 的 WIRED 之名假装写了 → 诚实失败并说清为什么。
+        //    ⚠️ 2026-08-18 就地回写（WO-PLAN-CHANGE-LEVER-MAP）：order-chain 结论与协调加产两条生产者
+        //    已带上真域映射 levers（交期紧张→Order.outsourceRatio / 提价→Order.unitPrice / 被挤占比→外协），
+        //    它们走上面 ② 的 applyLeverWrites 真落库，不再落到本分支。
+        const p = draft.payload as Record<string, unknown>;
+        const patch = (p.patch ?? {}) as Record<string, unknown>;
+        const simulated = patch.simulated === true;
+        return notImplementedResult(
+          "plan_change",
+          simulated
+            ? `本草稿的 payload.patch 自带 \`simulated: true\`（源 ${String(patch.source ?? "?")}）——` +
+                `它是**模拟态**结论。把模拟世界的结论直接写成真实世界的真值，正是 ` +
+                `PRD-enterprise-decision-twin §4.1 明令禁止的「仿真回流真实」。此处诚实失败是**正确行为**：` +
+                `要让它可执行，需要的是一条「模拟结论 → 具体本体杠杆」的翻译（今天不存在），不是放宽这道判据。`
+            : `本草稿的 payload 里没有 \`levers[{objectType,objectId,prop,value}]\`（收到的键：` +
+                `${Object.keys(p).join("/") || "（空）"}）——它只带结论/KPI 快照，没有任何“写哪个对象的哪个属性”` +
+                `的落点，无法在不臆造的前提下写入真值。带杠杆的 plan_change（风险看板「采纳风险处置方案」）` +
+                `已可真写；本形态属域映射缺失，见本体 §8 G-PLAN-CHANGE-NO-LEVER。`,
+        );
+      }
       if (draft.actionTypeKey === "AOP情景拍板") {
         const r = await plan.applyFinalize(draft.tenantId, draft);
         return { ok: true, targetRef: r.targetRef };
@@ -303,9 +722,40 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const r = await sop.applyFinalizeAction(draft.tenantId, draft);
         return { ok: true, targetRef: r.targetRef };
       }
-      if (draft.actionTypeKey === "计划版本变更" && typeof draft.payload.versionId === "string") {
+      // ── 计划版本变更（WO-ACTION-EXECUTOR-CARRIERS · 堵「已接线的型冒充没接线」）──
+      // 病灶（本单实测复现）：本分支此前带两道守卫、且**任一不满足就穿透**到末尾的 unwiredExecutor，
+      // 于是审批人收到的是「动作类型「计划版本变更」**尚未接入真实执行器**」——
+      // **这句话是假的**：执行器就在下面一行（`sop.applyChangeAction` 真改 S&OP 版本 inputs，
+      // 且 `ACTION_WIRING` 里本型标的就是 WIRED）。更糟的是它把处置指向了相反方向：
+      // 审批人会去排一张「写执行器」的单，而真缺口是「生产者发的 versionId 指不到任何版本」。
+      // 穿透是**当年有意设计的**（`sop.ts applyChangeAction` 头注原文：「非 S&OP 版本 → null，回落 mock」），
+      // 只是那时的兜底叫 mock（回假单号）；后来兜底换成诚实执行器，这条穿透没跟着改，
+      // 于是「回个假单号」变成了「说一句假话」——形态变了，误导没变。
+      //
+      // 纪律（WO §5.3）：三种「不工作」必须在错误信息里**可分辨**，因为修法方向相反 ——
+      //   ① 生产者少发/发错字段 ⇒ 改前端；② 引用的承载对象不存在 ⇒ 查数据；③ 本型没有落点 ⇒ 改本体。
+      // 故本分支**必定返回**，绝不再穿透到兜底线。
+      if (draft.actionTypeKey === "计划版本变更") {
+        const versionId = draft.payload.versionId;
+        if (typeof versionId !== "string" || versionId.trim() === "") {
+          return {
+            ok: false,
+            error:
+              `计划版本变更：payload 缺 \`versionId\`（收到的键：` +
+              `${Object.keys(draft.payload ?? {}).join("/") || "（空）"}）——**这是生产者少发了字段**，` +
+              `不是本型没有执行器（执行器是 sop.applyChangeAction，已接线且本型标 WIRED）。` +
+              `修法在发起方：补上要变更的 S&OP 版本 id。`,
+          };
+        }
         const r = await sop.applyChangeAction(draft.tenantId, draft);
         if (r) return { ok: true, targetRef: r.targetRef };
+        return {
+          ok: false,
+          error:
+            `计划版本变更：S&OP 版本「${versionId}」在本租户仓储里**解不出**——**这是引用的承载对象不存在**，` +
+            `不是本型没有执行器。拒绝把变更落到一个猜的版本上（写错真值比不写危险）。` +
+            `修法在数据：确认该版本 id 属于本租户且未被删除。`,
+        };
       }
       // Phase9B 对象级数据变更：审批通过后把 patch 合并进对象 props（origin→MANUAL 标记人工改），
       // 再重跑派生 → 之后 resolve_slice/invoke_solver 即「二次推演」。Action 审计=完整溯源。
@@ -314,12 +764,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         const patch = (draft.payload.patch ?? {}) as Record<string, unknown>;
         const obj = await repos.objects.get(draft.tenantId, objectId);
         if (!obj) return { ok: false, error: `object not found: ${objectId}` };
+        // A6 列级复校（防「建草稿后策略收紧」）：不可写属性在此仍 403，值不落库。
+        await assertDraftPatchWritableAtExecute(draft);
         await repos.objects.put({ ...obj, props: { ...obj.props, ...patch }, origin: { type: "MANUAL" } });
         const sysCtx: AuthCtx = { tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} };
         await ontology.runDerivations(sysCtx);
         return { ok: true, targetRef: `OBJ-${objectId}` };
       }
-      // OntoFlow（P3）流水线发布物化：rows 经数据处理折叠成对象落库(origin PIPELINE)，坏行入隔离区。
+      // OntoFlow（P3）流水线发布物化：rows 经数据处理折叠成对象落库(origin PIPELINE)，坏行入隔离区。嫁接自 main 平行线。
       if (draft.actionTypeKey === "流水线发布物化") {
         const workflowId = String(draft.payload.workflowId ?? "");
         const nodeId = String(draft.payload.nodeId ?? "");
@@ -351,7 +803,253 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
         return { ok: true, targetRef: `WF-${workflowId}:${n}` };
       }
-      return mockExecutor.execute(draft);
+      // ── 采纳产能保障方案（G-ACTION-NOOP-EXEC 收口 · 本类型此前审批通过后一字节不写）──
+      // 语义裁决：「采纳」= 把用户拨定的杠杆**落成本体属性真值**，而非开一张生产工单。
+      // 依据：杠杆本来就是本体属性（LEVER_PROP_META：Equipment.oee_current / Process.shifts /
+      // Line.utilization / Process.yield_baseline …），`discoverLevers` 回的每行都带 {objectType,objectId,prop}，
+      // 前端拨杆后发的是 {…, value}。落成属性写入后**下一次推演自动反映**——这才是"产能保障"的实质。
+      // （`mapping.ts` 旧注册表写的 target 是「生产工单MO（写回）」：那是一条新记录，不改变现有真值，
+      //   拨完杠杆再推演仍是老数——与用户"采纳后要看到变化"的预期不符。已按属性写入实现。）
+      if (draft.actionTypeKey === "采纳产能保障方案") {
+        // 写入实现见上方 `applyLeverWrites`（与带杠杆的 plan_change 共用同一份·不许再抄第二份）。
+        return applyLeverWrites(draft, parseLevers(draft.payload), "采纳产能保障方案", "CAP-ADOPT");
+      }
+
+      // ── 采纳处置方案 adopt_mitigation（G-ACTION-NOOP-EXEC 收口 · 本类型此前审批通过后一字节不写）──
+      // 病灶：用户在风险看板点「采纳」→ 审批链走完 → **风险曲线纹丝不动**。引擎半其实早就齐了：
+      //   · risk.ts tensionSeries 接 `{eff,tn}`，第 tn 天起扣 eff；
+      //   · params.risk.mitigations[factor] 里每个方案自带量化 {eff,tn}；
+      //   · risk.ts 还一直在算 `mitSeries`——但那是「**如果**采纳会怎样」的对照曲线，真曲线用的仍是无 mitigation 那条。
+      // 缺的只有一样：**没有地方记录"哪个方案被真采纳了"**。本分支就补这一样：写 `AdoptedMitigation` 对象
+      //（repos.objects 通用对象仓储·无需建表/迁移），riskTimeline 逐 (baseId,factor) 取 ACTIVE 采纳喂进真曲线。
+      // 语义裁决：「采纳」≠ 开一张生产工单（那是新记录，不改变任何推演真值，用户照样"什么都没变"）。
+      if (draft.actionTypeKey === "adopt_mitigation") {
+        const factor = String(draft.payload.factor ?? "");
+        const planKey = String(draft.payload.planKey ?? "");
+        const params = await solvers.getParams(draft.tenantId);
+        const library = params.risk?.mitigations ?? {};
+        // ① base 解析：复用 risk.ts `resolveBaseId`（**唯一严格解析出处**·认 baseId/中文名/obj_base_ 前缀）。
+        //    解不出（如决策内核在无头部基地时传的 "全域"）→ 诚实失败，绝不挑一个基地写下去。
+        const bases = await repos.objects.listByType(draft.tenantId, "Base");
+        let baseId: string;
+        try {
+          baseId = resolveBaseId({ bases } as unknown as SolverContext, draft.payload.base);
+        } catch {
+          return {
+            ok: false,
+            error:
+              `adopt_mitigation：base「${String(draft.payload.base ?? "")}」解析不出具体基地——` +
+              `拒绝把方案落到一个猜的基地（写错真值比不写危险）。请传 baseId 或基地中文名。`,
+          };
+        }
+        // ② factor / planKey → 方案库真解出 {eff,tn}。任一解不出即失败，**绝不写一个猜的 eff/tn**。
+        const plans = library[factor];
+        if (!Array.isArray(plans) || plans.length === 0) {
+          return {
+            ok: false,
+            error:
+              `adopt_mitigation：因素「${factor}」不在处置方案库（params.risk.mitigations）里——` +
+              `无量化效果可依，拒绝臆造 eff/tn。可选因素：${Object.keys(library).join("、") || "（空）"}`,
+          };
+        }
+        const plan = plans.find((pl) => pl.key === planKey || pl.name === planKey);
+        if (!plan) {
+          return {
+            ok: false,
+            error:
+              `adopt_mitigation：因素「${factor}」下解不出方案「${planKey}」——拒绝臆造 eff/tn。` +
+              `该因素可选方案：${plans.map((pl) => `${pl.key}(${pl.name})`).join("、")}`,
+          };
+        }
+        // ③ 单源不并存（② 单源 > 并存）：同一 (baseId,factor) 旧的 ACTIVE 采纳先置 REVOKED，
+        //    使"至多一条 ACTIVE"成为**写时不变量**——读侧（riskTimeline）无需在多条里挑，也就没有挑错的余地。
+        const adoptionId = `${baseId}-${factor}-${plan.key}`;
+        const objectId = `obj_adoptedmitigation_${adoptionId}`.replace(/[^\p{L}\p{N}_-]/gu, "_");
+        for (const o of await repos.objects.listByType(draft.tenantId, "AdoptedMitigation")) {
+          if (o.id === objectId) continue; // 同方案重复采纳 → 下面整体覆盖（幂等）
+          if (String(o.props.baseId ?? "") !== baseId || String(o.props.factor ?? "") !== factor) continue;
+          if (String(o.props.status ?? "") !== "ACTIVE") continue;
+          await repos.objects.put({ ...o, props: { ...o.props, status: "REVOKED" } });
+        }
+        // ④ 落库。adoptedAt 取**确定性时间锚** forecastStart（同 GlobalSimPlanExecutor 的 `禁 Date.now`(R6) 纪律）。
+        await repos.objects.put({
+          id: objectId,
+          tenantId: draft.tenantId,
+          type: "AdoptedMitigation",
+          props: {
+            adoptionId,
+            baseId,
+            factor,
+            planKey: plan.key,
+            planName: plan.name,
+            eff: plan.eff,
+            tn: plan.tn,
+            adoptedAt: String(params.forecastStart ?? "").slice(0, 10),
+            actionDraftId: draft.id,
+            status: "ACTIVE",
+          },
+          origin: { type: "ACTION", actionId: draft.id, source: "adopt_mitigation" },
+        });
+        // targetRef 自证采纳了什么——**刻意不使用 MO- 前缀**（那正是本仓刚清掉的假工单号形态）。
+        return { ok: true, targetRef: `MIT-ADOPT:${adoptionId}` };
+      }
+
+      // ── 采纳产能预测结论（WO-SIM-ACTION-REAL · 屏上 DAG fc 节点承诺「结论可采纳为 Action」此前零接线）──
+      // 语义裁决：「采纳结论」= 把用户拍板那一刻的**参数组合 + 推演快照**落成一等公民台账对象
+      // `ForecastAdoption`（repos.objects 通用仓储·同 AdoptedMitigation 先例·无需建表），
+      // 选中销售订单时再把可行性结论回 stamp 到该 Order（真值变化可回读）。
+      // 它**不是**开生产工单（结论 ≠ 排产指令，臆造工单 = 假 MO 号换件衣服），
+      // 也**不是**改杠杆真值（那是「采纳产能保障方案」干的事，两动作分工不重叠）。
+      if (draft.actionTypeKey === "采纳产能预测结论") {
+        // ① payload 必须过契约（contracts ForecastAdoptionPayloadSchema·量纲逐字段标注）——
+        //    不合即诚实失败，绝不猜一个值写下去（写错真值比不写危险）。
+        const parsed = ForecastAdoptionPayloadSchema.safeParse(draft.payload);
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          return {
+            ok: false,
+            error:
+              `采纳产能预测结论：payload 不合契约（${issue ? `${issue.path.join(".")}: ${issue.message}` : "unknown"}）——` +
+              `拒绝臆造写入。契约见 packages/contracts/src/actions.ts ForecastAdoptionPayloadSchema。`,
+          };
+        }
+        const p = parsed.data;
+        // ② 确定性 id（R6·无 Date.now/random）：由参数组合+快照派生 → 同一份结论重复采纳覆盖同 id（幂等不产重复）。
+        const adoptionId = `fc_${hashString(
+          [p.modelId, p.mode, p.demandWan, p.weeks ?? "", p.snapshot.capWanP50, p.snapshot.capWanP90, p.snapshot.gapWan, p.orderId ?? ""].join("|"),
+        ).toString(16)}`;
+        const objectId = `obj_forecastadoption_${adoptionId}`;
+        // ③ adoptedAt 取确定性时间锚 forecastStart（同 GlobalSimPlanExecutor / adopt_mitigation 的禁 Date.now 纪律）。
+        const fcParams = await solvers.getParams(draft.tenantId);
+        const adoptedAt = String(fcParams.forecastStart ?? "").slice(0, 10);
+        // ④ 落台账对象：参数组合 + 推演快照**全字段原样**（payload 已过契约，量纲即契约标注的量纲）。
+        await repos.objects.put({
+          id: objectId,
+          tenantId: draft.tenantId,
+          type: "ForecastAdoption",
+          props: {
+            adoptionId,
+            modelId: p.modelId,
+            mode: p.mode,
+            demandWan: p.demandWan,
+            ...(p.weeks !== undefined ? { weeks: p.weeks } : {}),
+            ...(p.batches ? { batches: p.batches } : {}),
+            capWanP50: p.snapshot.capWanP50,
+            capWanP90: p.snapshot.capWanP90,
+            gapWan: p.snapshot.gapWan,
+            healthFactor: p.snapshot.healthFactor,
+            ok: p.snapshot.ok,
+            mainBn: p.snapshot.mainBn,
+            ...(p.snapshot.ruleSetVersion ? { ruleSetVersion: p.snapshot.ruleSetVersion } : {}),
+            ...(p.orderId ? { orderId: p.orderId } : {}),
+            adoptedAt,
+            actionDraftId: draft.id,
+            status: "ACTIVE",
+          },
+          origin: { type: "ACTION", actionId: draft.id, source: "project-sim" },
+        });
+        // ⑤ 选中订单 → 回 stamp 可行性结论（该 Order 的真值就此变化，下轮读它的人看得到）。
+        //    订单解不出 → 诚实失败（不挂到猜的对象上）；注意此刻台账已落——失败语义是"回 stamp 没成"，
+        //    targetRef/错误里说清哪一步断了，不假装全成也不回滚撒谎。
+        if (p.orderId) {
+          const orderObjs = await repos.objects.listByType(draft.tenantId, "Order");
+          const ord = orderObjs.find((o) => String(o.props.so ?? "") === p.orderId || o.id === p.orderId);
+          if (!ord) {
+            return {
+              ok: false,
+              error:
+                `采纳产能预测结论：订单「${p.orderId}」在仓储里解不出（台账 ForecastAdoption ${adoptionId} 已落）——` +
+                `拒绝把结论回写到猜的对象上。请传订单 so 或对象 id。`,
+            };
+          }
+          await repos.objects.put({
+            ...ord,
+            props: {
+              ...ord.props,
+              adoptedForecastOk: p.snapshot.ok,
+              adoptedCapWanP90: p.snapshot.capWanP90,
+              adoptedGapWan: p.snapshot.gapWan,
+              adoptedByAction: draft.id,
+            },
+          });
+        }
+        // ⑥ 派生重算：让下游切片/推演立刻读到新对象（与「对象数据变更」「采纳产能保障方案」同一套）。
+        await ontology.runDerivations({ tenantId: draft.tenantId, userId: "system:action", roles: ["admin"], attributes: {} });
+        // targetRef 自证落了哪份台账——**刻意不使用 MO- 前缀**（那正是假单号形态）。
+        return { ok: true, targetRef: `FC-ADOPT:${adoptionId}` };
+      }
+
+      // ── 采纳经营方案（WO-ADOPT-SCHEME-CARRIER · G-ADOPT-SCHEME-NO-CARRIER 收口）──
+      // 断点原文：「点采纳→草稿→审批→EXECUTED 全链绿，但没有一个对象承载『方案被采纳』这件事」。
+      // 语义裁决：「采纳经营方案」= 公司级年度拍板的**审批留痕台账**（与 Decision 台账同族），
+      // 落专用 doc-jsonb 表 scheme_adoptions（037 迁移·R9 四处同改），**不走 repos.objects**——
+      // plan_generate 不读任何本体对象，塞进 objects 只会冒充「可被推演关联的实体」（断点论据①）。
+      // 它**不是**改杠杆真值（「采纳产能保障方案」的事），也**不是**开单据（臆造单据 = 假 MO 号），
+      // 更**不得**覆盖 PLAN_GOAL_TARGETS 基线（业务裁定·targets 只作拍板快照留痕对账）。
+      if (draft.actionTypeKey === "采纳经营方案") {
+        // ① payload 必须过契约（contracts SchemeAdoptionPayloadSchema·量纲逐字段 @unit）——
+        //    不合即诚实失败，绝不猜一个值写下去（写错真值比不写危险）。
+        const parsed = SchemeAdoptionPayloadSchema.safeParse(draft.payload);
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          return {
+            ok: false,
+            error:
+              `采纳经营方案：payload 不合契约（${issue ? `${issue.path.join(".")}: ${issue.message}` : "unknown"}）——` +
+              `拒绝臆造写入。契约见 packages/contracts/src/scheme-adoption.ts SchemeAdoptionPayloadSchema。`,
+          };
+        }
+        const p = parsed.data;
+        // ② 确定性锚（R6·禁 Date.now/random）：year 缺省取 forecastStart 的年份，adoptedAt 取其日期。
+        const fcParams = await solvers.getParams(draft.tenantId);
+        const forecastStart = String(fcParams.forecastStart ?? "");
+        const year = p.year ?? Number(forecastStart.slice(0, 4));
+        if (!Number.isInteger(year) || year <= 0) {
+          return {
+            ok: false,
+            error:
+              `采纳经营方案：规划年度解不出（payload 未传 year，且 forecastStart「${forecastStart}」取不出有效年份）——` +
+              `拒绝把台账挂到一个猜的年度上。请传 year 或修正求解器参数 forecastStart。`,
+          };
+        }
+        // ③ 确定性 adoptionId：year|schemeNo|pathKey|outcome 全字段哈希派生 → 同方案重复采纳覆盖同 id（幂等不产重复）。
+        const adoptionId = `sa_${hashString(
+          [year, p.schemeNo, p.pathKey, p.scheme.outcome.rev, p.scheme.outcome.gm, p.scheme.outcome.share,
+            p.scheme.outcome.turns, p.scheme.outcome.cash, p.scheme.outcome.capex].join("|"),
+        ).toString(16)}`;
+        // ④ 单源不并存：同 (tenantId, year) 旧的 ACTIVE 采纳先置 SUPERSEDED，
+        //    使"至多一条 ACTIVE"成为**写时不变量**——读侧（AOP 细化读端）无需在多条里挑。
+        //    同方案重复采纳（同 adoptionId）跳过，由下面 put 整体覆盖（幂等）。
+        const existing = await repos.schemeAdoptions.list(draft.tenantId);
+        for (const rec of existing) {
+          if (rec.adoptionId === adoptionId) continue;
+          if (rec.year !== year || rec.status !== "ACTIVE") continue;
+          await repos.schemeAdoptions.put({ ...rec, status: "SUPERSEDED" });
+        }
+        // ⑤ 落台账：方案快照 + 目标快照**全字段原样**（payload 已过契约，量纲即契约标注的量纲）。
+        await repos.schemeAdoptions.put({
+          id: adoptionId,
+          tenantId: draft.tenantId,
+          adoptionId,
+          year,
+          schemeNo: p.schemeNo,
+          pathKey: p.pathKey,
+          schemeName: p.scheme.name,
+          outcome: p.scheme.outcome,
+          scores: p.scheme.scores,
+          hardViol: p.scheme.hardViol,
+          targets: p.targets,
+          adoptedAt: forecastStart.slice(0, 10),
+          actionDraftId: draft.id,
+          status: "ACTIVE",
+        });
+        // targetRef 自证落了哪份台账——**刻意不使用 MO- 前缀**（那正是假单号形态）。
+        return { ok: true, targetRef: `SCHEME-ADOPT:${adoptionId}` };
+      }
+
+      // ⛔ 最后兜底：**不再返回假 MO 号**。未在 ACTION_WIRING 里标 WIRED 的动作一律诚实失败/诚实标注，
+      // 让"审批通过但什么都没写"在界面与审计里可分辨（G-ACTION-NOOP-EXEC·R4 真值经 Action）。
+      return unwiredExecutor.execute(draft);
     },
   };
   actions.setExecutor(domainExecutor);
@@ -367,8 +1065,47 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   // §3-① ask 经 AgentCore QOS（HTTP）；未配置 AGENTCORE_BASE_URL 则 ask 跳过。
   const fetchImpl = deps.fetchImpl ?? fetch;
+  // g8-P3 跨系统 scaffold（A→B）：closure 后把 B 栈需求下发 AgentCore；未配 AGENTCORE_BASE_URL/SERVICE_TOKEN 则跳过。
+  if (config.AGENTCORE_BASE_URL && config.SERVICE_TOKEN) {
+    const agentBase = config.AGENTCORE_BASE_URL;
+    const svcToken = config.SERVICE_TOKEN;
+    databuilder.setScaffoldClient(async (manifest) => {
+      try {
+        const res = await fetchImpl(`${agentBase}/b/v1/internal/scaffold`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-service-token": svcToken },
+          body: JSON.stringify(manifest),
+        });
+        if (!res.ok) return undefined;
+        return (await res.json()) as import("@platform/contracts").ScaffoldReceipt;
+      } catch {
+        return undefined; // 网络抖动/连接失败 → 跳过（A 栈构建不受影响）
+      }
+    });
+  }
   const debugHeaderFor = (a: AuthCtx): string =>
     encodeURIComponent(a.tenantId) + ":" + encodeURIComponent(a.userId) + ":" + a.roles.map(encodeURIComponent).join("|");
+  // g8 §9 归一：建域后推演回填经 AgentCore QOS orchestrator 实跑（growth/probe submit→等终态→分类），
+  // 而非直调求解器——"建出来的域真能在 QOS 跑通"的活证据（绿测试≠能用）。未配 AGENTCORE_BASE_URL 则
+  // runInference 兜底直调求解器并标 BUILD_STATIC。
+  if (config.AGENTCORE_BASE_URL) {
+    const agentBase = config.AGENTCORE_BASE_URL;
+    databuilder.setInferenceProbe(async (c, question) => {
+      try {
+        const res = await fetchImpl(`${agentBase}/api/v1/growth/probe`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-debug-user": debugHeaderFor(c) },
+          body: JSON.stringify({ packageId: "pkg_battery_manufacturing", query: question, context: { view: "dash", selectedObjects: [], filters: {} } }),
+        });
+        if (!res.ok) return undefined;
+        const gap = (await res.json()) as { verdict: string; findings?: { gapCode: string }[] };
+        const answerable = gap.verdict === "ANSWERABLE";
+        return { answer: answerable ? "问句可答（全链跑通）" : `断在 ${gap.findings?.[0]?.gapCode ?? gap.verdict}`, answerable };
+      } catch {
+        return undefined; // 网络抖动/连接失败 → 降级兜底（不阻断建域）
+      }
+    });
+  }
   const opsReplay = new OpsReplayService({
     actions,
     sop,
@@ -523,7 +1260,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } });
   await app.register(cookie);
   // 经网关同源访问时无需 CORS；开放宽松 CORS 仅为直连端口的开发调试（credentials 模式）。
-  await app.register(cors, { origin: true, credentials: true });
+  // 显式列全方法：默认仅 GET/HEAD/POST → PATCH/PUT/DELETE 预检被拒（归域/行内编辑等直连端口失效）。
+  await app.register(cors, {
+    origin: true,
+    credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  });
 
   // Unified error envelope { error: { code, message, requestId } }.
   app.setErrorHandler((err: unknown, req, reply) => {
@@ -549,7 +1291,6 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const PUBLIC_PATHS = new Set([
     "/healthz",
     "/readyz",
-    "/metrics",
     "/a/v1/auth/login",
     "/a/v1/auth/refresh",
     "/a/v1/auth/logout",
@@ -558,11 +1299,46 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     "/a/v1/.well-known/jwks.json",
   ]);
 
+  /**
+   * 服务间专用路径：**跨租户全局**数据，只认 `X-Service-Token`，不接受用户 JWT / X-Debug-User。
+   *
+   * `/metrics` 归此类而非 PUBLIC_PATHS —— 它下发的 `dc_llm_calls_total{provider,model}`
+   * （租户 LLM provider 记录 ID + 模型名）、`dc_action_*{action_type}`（租户业务动作中文语义）、
+   * `dc_deprecated_ref_calls_total{key}`（租户本体类型 key）都是**租户私有配置**的投影；
+   * 而它又是**全租户合计**，给任一租户的用户看反而扩大跨租户可见面 ⇒ 只能给服务间抓取方。
+   */
+  const SERVICE_ONLY_PATHS = new Set(["/metrics"]);
+
+  /**
+   * 服务间凭证校验（**单一实现**，供 onRequest 钩子与端点自守两处共用）。
+   * 刻意不各写一份：抄一份 = 改了主逻辑而另一份拿旧规则照放行（本仓「金丝雀必须与主逻辑共用同一份实现」同源纪律）。
+   *
+   * **fail-closed**：未配置 `SERVICE_TOKEN` ⇒ 恒不通过（与 `/a/v1/llm-providers/{id}/credential`
+   * 「SERVICE_TOKEN 未配置时服务头不被接受」及 B 侧 `/b/v1/internal/scaffold` 同口径）。
+   */
+  const serviceTokenOk = (req: FastifyRequest): boolean => {
+    const tok = req.headers["x-service-token"];
+    return Boolean(config.SERVICE_TOKEN) && typeof tok === "string" && tok === config.SERVICE_TOKEN;
+  };
+
   app.addHook("onRequest", async (req: FastifyRequest, _reply: FastifyReply) => {
     if (req.method === "OPTIONS") return; // CORS preflight
     const path = req.url.split("?")[0] as string;
     if (PUBLIC_PATHS.has(path)) return;
-    if (!path.startsWith("/a/")) return;
+    // ⚠ 必须排在下面那条兜底之前：SERVICE_ONLY_PATHS 里的路径都不以 `/a/` 开头，
+    // 若放在其后则永远走不到这里（这正是 `/metrics` 旧日「双重旁路」的第二个出口）。
+    if (SERVICE_ONLY_PATHS.has(path)) {
+      // ⚠ 这句 message 与端点自守那句**刻意不同**（"hook" vs "endpoint"）：两层都拦得住同一个请求，
+      // 若消息一样，测试就分不清是哪层拦的 —— 于是任一层被改回去，另一层顶上，测试照样绿，
+      // **两层互相掩护 = 谁都没被钉住**。靠 message 区分，才能让「出口 1 被重新打开」这件事
+      // 单独变红（钉的是行为，不是「代码里有这一行」）。改动时两句必须保持可区分。
+      if (!serviceTokenOk(req)) throw unauthorized("service credential required (hook)");
+      return;
+    }
+    // ⚠ 此处原为 `if (!path.startsWith("/a/")) return;` —— **任何**非 `/a/` 路径一律免鉴权。
+    // 于是把 `/metrics` 从 PUBLIC_PATHS 删掉是无效修复：它不以 `/a/` 开头，照样从这条兜底溜走
+    // （双重旁路：两个出口必须一起堵，只堵一个 = 白改）。现改为「未显式登记则走正常鉴权链」，
+    // 下一个非 `/a/` 路由上线时默认是**关**的而不是开的（把静默陷阱改成默认安全）。
     // LLM Provider 增量 §1.1 服务间凭证：X-Service-Token === env SERVICE_TOKEN →
     // roles=["service"]（仅服务间路由消费该角色；未配置 SERVICE_TOKEN 则恒不命中）。
     const svcToken = req.headers["x-service-token"];
@@ -573,7 +1349,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       return;
     }
     const debugHeader = req.headers["x-debug-user"];
-    if (config.NODE_ENV !== "production" && typeof debugHeader === "string") {
+    // X-Debug-User 绕过 JWT：非 production 恒认；production 下**必须显式** ALLOW_DEBUG_USER=1 才认（安全后门 opt-in·
+    // 默认关→生产安全）。demo/测试部署可在 compose 设 1 省去每次 login·真实生产切勿开。
+    const debugAuthAllowed = config.NODE_ENV !== "production" || config.ALLOW_DEBUG_USER === "1";
+    if (debugAuthAllowed && typeof debugHeader === "string") {
       req.authCtx = await auth.debugCtx(debugHeader);
       return;
     }
@@ -602,8 +1381,19 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const readyz = async (_req: FastifyRequest, reply: FastifyReply) => {
     try {
       await repos.ping();
-    } catch {
-      return reply.status(503).send({ status: "not ready" });
+    } catch (err) {
+      // ⚠ 这里必须带 reason **且必须打日志**：三个 503 出口原先只有 bootstrap 那个会留痕，
+      // 于是「pg 连不上」与「还在播种」在 `docker compose logs` 里是同一副面孔（都只有一行 503 访问日志）。
+      // 一次真实部署事故就卡在这个二选一上——两种情况的处置完全相反（查数据库 vs 再等一会儿）。
+      logger.error({ err }, "readyz blocked: repos.ping() failed");
+      return reply.status(503).send({ status: "not ready", reason: "db_unreachable" });
+    }
+    // #5 首启预热闸：先 listen 再后台播种，播种期间 /readyz 503（reason:"seeding"）→ 端口已起、
+    // 编排方（depends_on service_healthy）在预热窗内正确等待，不再因"端口全程 down"耗尽 healthcheck 重试。
+    if (deps.seeding?.()) {
+      // phase + elapsedSec 让探活方能区分「在动」与「卡死」：连续两次采样 phase/elapsed 不变 = 卡住。
+      const p = deps.seedingPhase?.();
+      return reply.status(503).send({ status: "not ready", reason: "seeding", ...(p ?? {}) });
     }
     // 管理平台增量 §1：空库且未配置 BOOTSTRAP 变量 → 503 + 明示原因（日志同步报错）。
     const reason = deps.bootstrapRequired ? await deps.bootstrapRequired() : null;
@@ -614,7 +1404,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return { status: "ready" };
   };
   app.get("/readyz", readyz);
-  app.get("/metrics", async (_req, reply) => reply.type("text/plain").send(metrics.render()));
+  // 端点自守（纵深防御）：钩子已挡一层，这里再挡一层 —— 两层共用 `serviceTokenOk` 同一份实现。
+  // 理由是这条路径**曾经**有过双重旁路：任何一层被改回去，另一层仍须独立成立。
+  app.get("/metrics", async (req, reply) => {
+    // message 里的 "endpoint" 是与钩子那层的区分标记，见 auth hook 处注释（勿合并成同一句）。
+    if (!serviceTokenOk(req)) throw unauthorized("service credential required (endpoint)");
+    return reply.type("text/plain").send(metrics.render());
+  });
   // 网关前缀别名（gateway 只反代 /a/v1/* → 经代理探活用）
   app.get("/a/v1/healthz", async () => ({ status: "ok" }));
   app.get("/a/v1/readyz", readyz);
@@ -659,6 +1455,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (out.has("view.ontology-graph")) out.add("view.graph");
     if (out.has("view.risk-board")) out.add("view.risk");
     if (out.has("view.ledger")) out.add("view.order");
+    // §7.18 图谱视角视图：功能键 view.graph.persp.{p}，前端路由查 view.graph-{p}，需补别名。
+    for (const p of ["all", "backbone", "flow", "source", "solver", "mvp", "agent", "loop"]) {
+      if (out.has(`view.graph.persp.${p}`)) out.add(`view.graph-${p}`);
+    }
+    // WO-PROCESS-INSTANCE · 流程卡点面板：功能键是 `process.runtime`（**非** view.* 命名，
+    // 见 VIEW_FEATURE_MAP 里那条「与运行时引擎同生共死」的注记），而前端 `ViewPage` 的路由守卫
+    // 写死查 `view.${viewKey}`（frontend-shell/src/pages/ViewPage.tsx:33）。
+    // ⇒ 不补这条别名，会出现**最难查的那一种**断线：workspace.views 里有它、导航里点得到，
+    //   点进去 ViewPage 第一道闸就 404 —— 后端全绿、前端全绿，只有真点一下才看得见。
+    //   （这正是本仓「绿测试 ≠ 能用·断在接缝」的教科书形态，故补在与图谱视角同一个地方、同一种机制。）
+    // 别名是**单向**的：关掉 `process.runtime` ⇒ 这里不 add ⇒ 前端两道闸一起关（R3 不被绕过）。
+    if (out.has("process.runtime")) out.add("view.process-stuck");
+    // WO-SIM-BE-VIEWKEY · 推演沙盘指控台四视图：受控键是 `sim.sandbox`（**非** view.* 命名 ——
+    // 它们是同一个控制台的四种模式，共用沙盘那把闸，见 synthetic/sandbox-console.ts 文件头），
+    // 而 `ViewPage` 的路由守卫写死查 `view.${viewKey}`（frontend-shell/src/pages/ViewPage.tsx:33）。
+    // ⇒ 与上面 process-stuck **同一种断线、同一个修法**：不补别名就会出现最难查的那一种 ——
+    //   workspace.views 里有它、导航里点得到，点进去 ViewPage 第一道闸就 404；后端绿、前端绿，
+    //   只有真点一下才看得见（本仓「绿测试 ≠ 能用·断在接缝」的教科书形态）。
+    // 别名是**单向**的：关掉 `sim.sandbox` ⇒ 这里不 add ⇒ 前端两道闸一起关（R3 不被绕过）。
+    if (out.has(SANDBOX_CONSOLE_FEATURE_KEY)) for (const k of SANDBOX_CONSOLE_VIEW_KEYS) out.add(`view.${k}`);
     return [...out].sort();
   };
   app.get("/a/v1/me/workspace", async (req) => {
@@ -751,6 +1567,125 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     };
   });
 
+  // OC3 环境间配置迁移 + 跨系统 Saga（execution-semantics §3 / OC3）。admin only。
+  app.get("/a/v1/config-bundles/export", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    return configBundle.export(c);
+  });
+  app.post("/a/v1/config-bundles/import", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    const body = parseBody(ImportBundleBodySchema, req.body ?? {});
+    return configBundle.import(c, body.bundle, body.dryRun, body.conflictPolicy);
+  });
+
+  // OC6 平台内置提示词配置化：平台默认 + 租户 override（按租户可改）。admin only。
+  const resolvePrompt = async (tenantId: string, key: (typeof PROMPT_KEYS)[number]) => {
+    const ov = await repos.promptTemplates.get(tenantId, `pt_${tenantId}_${key}`);
+    return ov
+      ? { key, template: ov.template, source: "TENANT_OVERRIDE" as const, version: ov.version }
+      : { key, template: PLATFORM_PROMPT_DEFAULTS[key], source: "PLATFORM_DEFAULT" as const, version: 0 };
+  };
+  app.get("/a/v1/prompt-templates", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    return { items: await Promise.all(PROMPT_KEYS.map((k) => resolvePrompt(c.tenantId, k))) };
+  });
+  app.get("/a/v1/prompt-templates/:key/resolve", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    const key = (req.params as { key: string }).key as (typeof PROMPT_KEYS)[number];
+    if (!PROMPT_KEYS.includes(key)) throw notFound("prompt key");
+    return resolvePrompt(c.tenantId, key);
+  });
+  app.put("/a/v1/prompt-templates/:key", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
+    const key = (req.params as { key: string }).key as (typeof PROMPT_KEYS)[number];
+    if (!PROMPT_KEYS.includes(key)) throw notFound("prompt key");
+    const body = parseBody(PutPromptTemplateBodySchema, req.body ?? {});
+    const id = `pt_${c.tenantId}_${key}`;
+    const prev = await repos.promptTemplates.get(c.tenantId, id);
+    const rec = { id, tenantId: c.tenantId, key, template: body.template, version: (prev?.version ?? 0) + 1, updatedAt: new Date().toISOString(), updatedBy: c.userId };
+    await repos.promptTemplates.put(rec);
+    return rec;
+  });
+
+  const mustAdmin = (c: AuthCtx) => { if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only"); };
+  /**
+   * OC7（#92）：LLM 配额账本的**读 + 记账**允许服务间调用（AgentCore 经 X-Service-Token + X-Tenant-Id）。
+   * 此前三条路由全是 admin-only —— 而账本的天然写入方是 AgentCore（它才知道每次跑烧了多少 token），
+   * 用用户 JWT 又拿不到 admin → 结果状态机完整却**零消费方**（本体 §8 G-LLM-BUDGET-NO-CONSUMER）。
+   * 配置面（PUT 设限额）仍 admin-only：设预算是人的决定，不该被服务改。
+   */
+  const mustAdminOrService = (c: AuthCtx) => {
+    if (c.roles.includes("service")) return;
+    mustAdmin(c);
+  };
+
+  // OC7 LLM 成本配额与降级（租户级 token 配额 + 软/硬线）。admin only。
+  const budgetStatus = (b: { hardLimitTokens: number; softLimitPct: number; usedTokens: number } | undefined) => {
+    const hard = b?.hardLimitTokens ?? 0;
+    const soft = Math.floor(hard * (b?.softLimitPct ?? 0.8));
+    const used = b?.usedTokens ?? 0;
+    const state = hard > 0 && used >= hard ? "HARD_EXCEEDED" : hard > 0 && used >= soft ? "SOFT_EXCEEDED" : "OK";
+    return { usedTokens: used, hardLimitTokens: hard, softLimitTokens: soft, state, degrade: state !== "OK" } as const;
+  };
+  app.get("/a/v1/llm-budgets", async (req) => { const c = ctx(req); mustAdminOrService(c); return budgetStatus(await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`)); });
+  app.put("/a/v1/llm-budgets", async (req) => {
+    const c = ctx(req); mustAdmin(c);
+    const body = parseBody(PutLlmBudgetBodySchema, req.body ?? {});
+    const prev = await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`);
+    const rec = { id: `lbg_${c.tenantId}`, tenantId: c.tenantId, hardLimitTokens: body.hardLimitTokens, softLimitPct: body.softLimitPct ?? prev?.softLimitPct ?? 0.8, periodStart: prev?.periodStart ?? new Date().toISOString(), usedTokens: prev?.usedTokens ?? 0, updatedAt: new Date().toISOString() };
+    await repos.llmBudgets.put(rec); return budgetStatus(rec);
+  });
+  app.post("/a/v1/llm-budgets/record", async (req) => {
+    const c = ctx(req); mustAdminOrService(c);
+    const body = parseBody(RecordUsageBodySchema, req.body ?? {});
+    const prev = await repos.llmBudgets.get(c.tenantId, `lbg_${c.tenantId}`);
+    const rec = { id: `lbg_${c.tenantId}`, tenantId: c.tenantId, hardLimitTokens: prev?.hardLimitTokens ?? 0, softLimitPct: prev?.softLimitPct ?? 0.8, periodStart: prev?.periodStart ?? new Date().toISOString(), usedTokens: (prev?.usedTokens ?? 0) + body.tokens, updatedAt: new Date().toISOString() };
+    await repos.llmBudgets.put(rec); return budgetStatus(rec);
+  });
+
+  // OC9 工厂日历 + 净生产窗口扣减（节假日/检修扣除）。admin only。
+  app.get("/a/v1/calendars/:key", async (req) => {
+    const c = ctx(req); mustAdmin(c); const key = (req.params as { key: string }).key;
+    return (await repos.factoryCalendars.get(c.tenantId, `cal_${c.tenantId}_${key}`)) ?? { id: `cal_${c.tenantId}_${key}`, tenantId: c.tenantId, calendarKey: key, weekendMode: "SAT_SUN_OFF", exceptions: [], updatedAt: "" };
+  });
+  app.put("/a/v1/calendars/:key", async (req) => {
+    const c = ctx(req); mustAdmin(c); const key = (req.params as { key: string }).key;
+    const body = parseBody(PutCalendarBodySchema, req.body ?? {});
+    const prev = await repos.factoryCalendars.get(c.tenantId, `cal_${c.tenantId}_${key}`);
+    const rec = { id: `cal_${c.tenantId}_${key}`, tenantId: c.tenantId, calendarKey: key, weekendMode: body.weekendMode ?? prev?.weekendMode ?? "SAT_SUN_OFF", exceptions: body.exceptions ?? prev?.exceptions ?? [], updatedAt: new Date().toISOString() };
+    await repos.factoryCalendars.put(rec); return rec;
+  });
+  app.get("/a/v1/calendars/:key/net-window", async (req) => {
+    const c = ctx(req); mustAdmin(c); const key = (req.params as { key: string }).key;
+    const { from, to } = req.query as { from?: string; to?: string };
+    if (!from || !to) throw validationError("from/to required (YYYY-MM-DD)");
+    const cal = await repos.factoryCalendars.get(c.tenantId, `cal_${c.tenantId}_${key}`);
+    return { calendarKey: key, from, to, netProductionDays: netProductionDays(from, to, cal) };
+  });
+
+  // OC5 写回回声抑制 + 不一致告警。admin only。
+  app.post("/a/v1/writeback-echoes", async (req) => {
+    const c = ctx(req); mustAdmin(c);
+    const b = req.body as { ref: string; writtenValue: unknown; actionId: string };
+    const rec = { id: newId("wbe"), tenantId: c.tenantId, ref: b.ref, writtenValue: b.writtenValue, writtenAt: new Date().toISOString(), actionId: b.actionId };
+    await repos.writebackEchoes.put(rec); return rec;
+  });
+  app.post("/a/v1/writeback-echoes/reconcile", async (req) => {
+    const c = ctx(req); mustAdmin(c);
+    const body = parseBody(ReconcileBodySchema, req.body ?? {});
+    const pending = (await repos.writebackEchoes.list(c.tenantId, (e) => e.ref === body.ref)).sort((a, b) => (a.writtenAt < b.writtenAt ? 1 : -1))[0];
+    if (!pending) return { verdict: "NO_PENDING_WRITEBACK", ref: body.ref, incomingValue: body.incomingValue };
+    const echo = JSON.stringify(pending.writtenValue) === JSON.stringify(body.incomingValue);
+    if (echo) { await repos.writebackEchoes.remove(c.tenantId, pending.id); return { verdict: "ECHO_SUPPRESSED", ref: body.ref, writtenValue: pending.writtenValue, incomingValue: body.incomingValue }; }
+    await outbox.emit(c.tenantId, "writeback.divergence", { ref: body.ref, written: pending.writtenValue, incoming: body.incomingValue });
+    return { verdict: "DIVERGENCE", ref: body.ref, writtenValue: pending.writtenValue, incomingValue: body.incomingValue };
+  });
+
   // 执行语义增量 §2：Outbox 死信列表 + 手动重投（中台可见）
   app.get("/a/v1/outbox/dead", async (req) => {
     const c = ctx(req);
@@ -820,6 +1755,62 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return quarantine.discard(c, body.ids, body.comment);
   });
 
+  // 运营完备性 §1：实体解析与黄金记录（OC1）。合并=真值变更，留痕 mergedBy/mergedAt（R4 可审计）。
+  const requireDataAdmin = (c: AuthCtx) => {
+    if (!c.roles.some((r) => ["admin", "data_admin"].includes(r.split(":")[0] as string))) throw forbidden("admin / data_admin only");
+  };
+  app.post("/a/v1/objects/merge-scan", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const body = parseBody(z.object({ typeKey: z.string().min(1) }), req.body);
+    return { candidates: await entityResolution.scan(c, body.typeKey) };
+  });
+  app.get("/a/v1/objects/merge-candidates", async (req) => entityResolution.listCandidates(ctx(req)));
+  app.post("/a/v1/objects/merge-candidates/:id/merge", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const { id } = req.params as { id: string };
+    const body = parseBody(z.object({ goldenId: z.string().optional(), survivorship: z.record(z.string(), z.string()).optional() }), req.body ?? {});
+    return entityResolution.merge(c, id, body.goldenId, body.survivorship);
+  });
+  app.post("/a/v1/objects/merge-candidates/:id/reject", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const { id } = req.params as { id: string };
+    await entityResolution.reject(c, id);
+    return { ok: true };
+  });
+  app.get("/a/v1/objects/merges", async (req) => ({ items: await entityResolution.listMerges(ctx(req)) }));
+  app.post("/a/v1/objects/merges/:id/unmerge", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const { id } = req.params as { id: string };
+    await entityResolution.unmerge(c, id);
+    return { ok: true };
+  });
+
+  // 自成长发动机 P2：缺数据"真人正门"自动补——确定性生成 CSV → 经公开上传门(connectors.upload)
+  // 导入 → RawDataset 落地可见（与真人手动上传逐跳一致、无后门；R6 同 seed 字节级一致）。
+  app.post("/a/v1/growth/fill-data", async (req) => {
+    const c = ctx(req);
+    requireDataAdmin(c);
+    const body = parseBody(z.object({ typeKey: z.string().min(1), fields: z.array(z.string().min(1)).min(1), rows: z.number().int().min(1).max(500).default(6), seed: z.number().int().default(42) }), req.body);
+    const rng = mulberry32((body.seed >>> 0) ^ hashString(body.typeKey));
+    const cell = (f: string, i: number): string => {
+      const lf = f.toLowerCase();
+      if (/(id$|key$|code|编号)/.test(lf)) return `${body.typeKey.toLowerCase()}_${i + 1}`;
+      if (/(name|名称|title|名)/.test(lf)) return `${body.typeKey}-${i + 1}`;
+      if (/(qty|count|num|amount|util|rate|价|量|率|数)/.test(lf)) return String(randInt(rng, 1, 1000));
+      return `${f}_${i + 1}`;
+    };
+    const lines = [body.fields.join(",")];
+    for (let i = 0; i < body.rows; i++) lines.push(body.fields.map((f) => cell(f, i)).join(","));
+    const csv = lines.join("\n") + "\n";
+    const filename = `growth_${body.typeKey}_${body.seed}.csv`;
+    const result = await connectors.upload(c, filename, Buffer.from(csv, "utf8"));
+    return { connId: result.connection.id, datasetName: result.schema.datasets[0]?.name ?? result.connection.name, rowCount: body.rows, filename, viaFrontDoor: true };
+  });
+
   // 运营完备性 §9：通知中心（铃铛未读 + 列表 + 标记已读）
   app.get("/a/v1/notifications", async (req) => {
     const c = ctx(req);
@@ -875,6 +1866,25 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           z.object({ role: z.string(), ops: z.array(z.enum(["READ", "WRITE", "EXECUTE"])) }),
         ),
         rowFilter: z.string().optional(),
+        // A6 列级（属性级）策略：不透传就等于本特性只能靠代码种子配置（API 配不出来）。
+        // 白/黑名单互斥校验与契约同源（PermissionPolicySchema.propertyPolicy）。
+        propertyPolicy: z
+          .object({
+            readable: z.array(z.string()).optional(),
+            denyRead: z.array(z.string()).optional(),
+            writable: z.array(z.string()).optional(),
+            denyWrite: z.array(z.string()).optional(),
+          })
+          .optional()
+          .superRefine((pp, cx) => {
+            if (!pp) return;
+            if (pp.readable && pp.denyRead) {
+              cx.addIssue({ code: "custom", message: "propertyPolicy.readable 与 denyRead 互斥，不可同时配置" });
+            }
+            if (pp.writable && pp.denyWrite) {
+              cx.addIssue({ code: "custom", message: "propertyPolicy.writable 与 denyWrite 互斥，不可同时配置" });
+            }
+          }),
       }),
       req.body,
     );
@@ -883,8 +1893,3002 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return reply.status(201).send(policy);
   });
 
+  // ---- 推演沙盘（G-11 · 增量 1：会话状态机 · SPEC §2/§5 · 行业无关 jsonb，零业务常数 R14）----
+  // 全部经 entitlement 暗发（R3 先于 authz：关 = 404 FEATURE_NOT_FOUND）。tick 在增量 1 为恒等桩
+  // （状态原样推进 + 逐 tick 快照，确定性 R6）；增量 3 换真 propagateTick（系数×延迟）。act=模拟态不写真值（R4）。
+  const requireSim = async (c: AuthCtx, feature: string) => {
+    if (!(await features.enabled(c.tenantId, feature))) throw featureNotFound();
+  };
+  const simState = (deltaTarget: TickState): TickState => JSON.parse(JSON.stringify(deltaTarget)) as TickState;
+  const simCurrent = async (c: AuthCtx, s: SimSession): Promise<TickState> =>
+    (await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.state ?? simState(s.baseSnapshot);
+
+  /**
+   * **信噪比回执**（WO-PROP-CLAMP 第三件）—— 回答「屏上这个 Δ 里，有多少是我扰出来的」。
+   *
+   * 三个量都相对同一个基准 `start`（推进前那一格）算，逐格取绝对值后求和：
+   *  · `worldDrift`       = |drift − start|  世界**自己**会走的那部分（影子线：同拍同图、扰动清空）
+   *  · `userContribution` = |actual − drift|  两条线之差 = **只由扰动造成**的那部分
+   *  · `ratio`            = userContribution / worldDrift，越大越说明"这次推演在回答我的问题"
+   *
+   * ⚠ 为什么不是 `|actual − start|` 当用户贡献：那个数把世界自身漂移一并算进去了，
+   *   正是本单要治的病（修前它让 +30 的扰动看起来"产生了 5,352,228 的影响"）。
+   * ⚠ `ratio` 在 `worldDrift === 0` 时为 `null` 而**不是 Infinity/0**：零漂移下这个比值无定义，
+   *   给个数就是编。前端据此显示"本拍世界无自发漂移"，不是显示一个 0。
+   */
+  const summarizeSignalNoise = (actual: TickState, drift: TickState, start: TickState) => {
+    let worldDrift = 0;
+    let userContribution = 0;
+    let changedCells = 0;
+    let totalCells = 0;
+    // 只在**用户真的动过的那些格**上再算一次同样两个量（见下 `ratioOnTouchedCells` 的理由）。
+    let worldDriftOnTouched = 0;
+    for (const objId of Object.keys(actual)) {
+      const a = actual[objId] ?? {};
+      const d = drift[objId] ?? {};
+      const s0 = start[objId] ?? {};
+      for (const v of Object.keys(a)) {
+        const av = a[v]; const dv = d[v] ?? 0; const sv = s0[v] ?? 0;
+        if (typeof av !== "number") continue;
+        totalCells += 1;
+        const wd = Math.abs(dv - sv);
+        worldDrift += wd;
+        const uc = Math.abs(av - dv);
+        userContribution += uc;
+        if (uc !== 0) { changedCells += 1; worldDriftOnTouched += wd; }
+      }
+    }
+    const r12 = (x: number) => Math.round(x * 1e12) / 1e12;
+    return {
+      worldDrift: r12(worldDrift),
+      userContribution: r12(userContribution),
+      ratio: worldDrift === 0 ? null : r12(userContribution / worldDrift),
+      /**
+       * **同一个比值，但只在用户真动过的那些格上算** —— 这才是决策相关的那个数。
+       *
+       * 为什么必须单列：全域比值把「用户动了 115 格」和「世界动了 7204 格」摆在一起比，
+       * 分母里绝大部分格子与这次扰动**毫无关系**，比出来的低信噪比是**口径造成的**，
+       * 不是这次推演真的没信号。两个数都给，用户才分得清
+       * 「我的输入没效果」与「我的输入只影响了世界的一小块」——这是两个完全不同的结论。
+       */
+      ratioOnTouchedCells: worldDriftOnTouched === 0 ? null : r12(userContribution / worldDriftOnTouched),
+      worldDriftOnTouchedCells: r12(worldDriftOnTouched),
+      changedCells,
+      totalCells,
+      basis:
+        "worldDrift=|影子线−起点|（影子线 = 从 baseSnapshot 零扰动重放到同一拍）· " +
+        "userContribution=|真实线−影子线| ⇒ 只由扰动造成的那部分。两者同基准逐格绝对值求和；" +
+        "ratioOnTouchedCells 把分母收窄到 changedCells 这些格。",
+    };
+  };
+
+  /** 本租户已发布的传导规则（tick 路与 Trial Tick 的**同一个**入口，不许各查各的）。 */
+  const listPublishedPropRules = (c: AuthCtx): Promise<PropagationRule[]> =>
+    repos.sim.listPropagationRules(c.tenantId, true);
+
+  // ── 会话级反事实：这次推演假装哪几条边不存在（WO-ACTIVE-EDGE-UX）────────────────────
+  //
+  // ⛔ **过滤刻意不下沉进 `listPublishedPropRules`**，而是留在拿得到 `SimSession` 的调用点上。
+  //    理由是那 8 处 `listPropagationRules` 调用**语义各不相同**，一刀切必错（逐处判定见下）：
+  //      · `POST …/tick`（本文件 tick 路）                   → **过滤**：这就是"这次推演"本身
+  //      · `POST …/counterfactual`（本单新增）               → **两版都跑**：过滤的那一版是反事实版
+  //      · `trialPropagate`（就绪认证 Trial Tick）           → **不过滤**：认证问的是"这个世界的配置
+  //        能不能驱动传导"（能力），不是"这次假设跑出什么"（假设）。过滤会让用户拨一下开关就把
+  //        就绪度拉低，屏上看着像世界坏了 —— 而世界一个字节没变。
+  //      · `GET /sim/propagation-rules` / `GET /sim/view-config` → **不过滤**：这是边的**目录**。
+  //        §3.3 明写「关掉的边要可见地降级，不是从图上消失」；过滤掉 = 用户不知道自己关了什么。
+  //      · `assembleCertification` 的 `publishedOnly=false` 全量  → **不过滤**：完整度数的是"配了几条"。
+  //      · `causal-graphs/sim/:sessionId`                    → **不过滤**：因果图解释的是**已记录的历史**
+  //        （trace 里真跑过的那些），而屏蔽集是**当下**的；过滤会让历史边失去它的规则元数据。
+  //      · `slices/:key/layers` 两处 + `solvers/finance-world.ts` → **不过滤**：租户级本体投影，无会话。
+  //
+  // 写这个集合**不需要 Action 审批**，依据是 R4-sim（SYSTEM-ONTOLOGY §5）原文：
+  //   「仿真世界（`isSimulated===true`，`worldId` = 推演会话 id）的写入**不经 Action 审批**
+  //     —— 因为它根本不是真值。豁免仅限『写进仿真世界自己那一行』。」
+  // 这里写的正是 `sim_session` 自己那一行的世界态：本体里的 `PropagationRule.status` 一个字节不动，
+  // 别租户、别会话、下一次新建的会话全都看不到这次屏蔽。若哪天要把"这条边其实该退役"落成真值，
+  // 那是改 `status`，必须走 R4 正门 —— 两件事分属两个字段，不许合并（契约 `SimSession.disabledRuleKeys` 注释）。
+  /**
+   * 本会话真正参与推演的规则（= 已发布 − 本会话屏蔽 − 对抗方关闭时的还手边），
+   * 并把屏蔽掉的那几条一并带回（供"降级显示"）。
+   *
+   * ── 对抗方闸（WO-ADVERSARY-REACTION）为什么落在这里 ────────────────────────────
+   * 与 `disabledRuleKeys` **同一个落点、同一条纪律**：过滤只作用于「这次推演」，
+   * 不下沉进 `listPublishedPropRules`（那 8 处调用语义各不相同，一刀切必错 —— 见上表），
+   * 也不改 `PropagationRule.status`（那是本体真值，要走 R4 正门）。
+   * ⇒ 目录路（`GET /sim/propagation-rules`）照旧看得见还手边，屏上是**可见地降级**，
+   *   不是从图上消失；引擎路吃不到它。
+   *
+   * 🔴 关闭态**必须与本单引入前逐字节相同**：`partitionAdversaryRules` 在开关开着时
+   *   原样返回同一引用，关着时**只**滤掉 `reaction != null` 的那几条（今天恰好 1 条）。
+   *   46 条既有边一条都不受影响。
+   */
+  const sessionPropRules = async (c: AuthCtx, s: SimSession, override?: readonly string[]) => {
+    const published = await listPublishedPropRules(c);
+    const disabled = [...new Set(override ?? s.disabledRuleKeys ?? [])].sort();
+    const adversaryEnabled = await features.enabled(c.tenantId, ADVERSARY_FEATURE_KEY);
+    const gated = partitionAdversaryRules(published, adversaryEnabled);
+    const { active, suppressed } = partitionPropagationRules([...gated.active], disabled);
+    return {
+      published,
+      active,
+      // 「本会话屏蔽的」与「对抗方关着而没参与的」合并进同一份降级清单：
+      // 屏上都是"这条边这次没参与"，但成因不同，故对抗方那几条另有 `adversary` 栏点名。
+      suppressed: [...suppressed, ...gated.suppressed],
+      disabled,
+      adversaryEnabled,
+      adversarySuppressed: gated.suppressed,
+    };
+  };
+
+  // ⚠ `buildPropagationInputs` 曾**在这里**以闭包形式存在，现已提取到 `./sim/propagation-inputs.ts`
+  //   （WO-CERT-CONTRACT-RECONCILE：两个 dev 并行各造了一份同名物，收成一份）。
+  //   语义原样保留（含「不含 propRules」那条性能判据）；提出去的唯一理由是让结构门
+  //   能无条件断言「`app.ts` 里出现任何一处传导相装配 = 红」——留在本文件里就只能数「恰好一次」。
+  //   别再往本文件里写第二处装配：门 `sim-cert-contract-reconcile.seam.test.ts` ④结构判据会红。
+
+  /**
+   * 建一个推演世界的**唯一实现**（WO-SIM-SEED-WORLD）。
+   *
+   * 从 `POST /a/v1/sim/sessions` 原样提出来的，一行语义未改；提出去的唯一理由是
+   * **`SEED_DEMO=1` 播种路径要走同一条路**（`sim/seed-world.ts`）——
+   * 播种侧另手写一个 `status:"RUNNING"` 塞进仓储，会得到 `curTick`/tick 态/trace 全假的空壳，
+   * 四页取数回来照样是空（"把占位换成另一种占位"）。别在别处再写第二处建会话。
+   *
+   * `id`/`createdAt` 是**播种专用**的可选覆盖（要 R6 确定性 + 固定幂等键）。
+   * 路由**刻意只透传 `baseSnapshot`/`scope` 两个字段**，不整包转发 `req.body` ——
+   * 整包转发等于把 `id` 开放给客户端指定（可撞已有会话 id），那是本次提取最容易顺手引入的洞。
+   */
+  const createSimSessionWorld = async (
+    c: AuthCtx,
+    input: { baseSnapshot?: TickState; scope?: Record<string, unknown>; id?: string; createdAt?: string; tickDays?: number },
+  ): Promise<SimSession> => {
+    const base = input.baseSnapshot ?? {};
+    const s: SimSession = {
+      id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base, scope: input.scope ?? {},
+      status: Object.keys(base).length > 0 ? "READY" : "DRAFT", curTick: 0, parentCheckpointId: null,
+      disabledRuleKeys: [], // WO-ACTIVE-EDGE-UX：新会话不屏蔽任何边 ⇒ 与本字段引入前逐字节相同（RL9）
+      // WO-SIM-DRILL-P12 · G-DRILL-1：一 tick = 几天。缺省 1（与 A8 模拟时钟「一 tick = 一模拟日」同口径）
+      // ⇒ 本字段引入前建的世界读出来恒 1，行为逐字节不变。
+      tickDays: Math.max(1, Math.floor(input.tickDays ?? 1)),
+      createdAt: input.createdAt ?? new Date().toISOString(),
+    };
+    await repos.sim.createSession(s);
+    await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: 0, state: simState(base), pending: [], trace: null });
+    await outbox.emit(c.tenantId, "sim.session_created", { sessionId: s.id, status: s.status });
+    return s;
+  };
+  app.post("/a/v1/sim/sessions", async (req, reply) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    const b = (req.body ?? {}) as { baseSnapshot?: TickState; scope?: Record<string, unknown>; tickDays?: number };
+    return reply.status(201).send(
+      await createSimSessionWorld(c, {
+        baseSnapshot: b.baseSnapshot,
+        scope: b.scope,
+        ...(b.tickDays === undefined ? {} : { tickDays: b.tickDays }),
+      }),
+    );
+  });
+  const getSimOr404 = async (c: AuthCtx, id: string): Promise<SimSession> => {
+    const s = await repos.sim.getSession(c.tenantId, id);
+    if (!s) throw notFound("sim session not found");
+    return s;
+  };
+  /**
+   * WO-SIM-SESSIONS-PROJECTION · **列表回列表该有的东西，不回世界内容**。
+   *
+   * ── 🔴 病灶（2026-08-22 真 PostgreSQL 实测原文）────────────────────────────────
+   * **今天的行为 X**：本端点把每条会话的完整 `baseSnapshot` 全量回给调用方，零投影。
+   * 库里 35 条生产量级会话（每条 11,348 对象 × 36 状态变量 = 408,528 格 ≈ 8.4MB）时实测：
+   *   `curl -w 'size=%{size_download} time=%{time_total}'` → **size=298,834,924 / time=8.99**
+   *   = 285 MB / 9 秒。规模是 **O(N × 世界规模)**：会话越多越大，没有上界。
+   * 后果不是"慢"，是**崩**：前端 `useConsoleSession` / `SandboxView` / `EdgeActivePanel`
+   * 共用缓存键 `["a","sim-sessions"]` 打这一跳，285MB JSON 解析成 JS 对象后再翻几倍 ⇒
+   * 渲染进程 OOM（`Target crashed`）。用户开几次推演沙盘就崩一次标签页。
+   * **应该的 Y**：列表回 id / status / curTick / scope / 规模摘要；要世界内容的**按 id 单取**。
+   *
+   * ── 三条判据落在哪 ──────────────────────────────────────────────────────────
+   * ① **不静默改契约**：回包类型换成 `SimSessionListItem`（= `SimSession` omit `baseSnapshot`），
+   *    「这个响应有没有世界内容」落在**类型**上而不是注释里。`SimSession` 一个字段没动 ——
+   *    建会话的 201 回包、`GET …/:id`、引擎侧读 `baseSnapshot` 的那几处全部照旧。
+   * ② **诚实位**：`baseSnapshotScale{objects,cells}` 随每一项下发。
+   *    「我没给你」和「它就是空的」是两个不同的命题，不给规模摘要就是把两者混成一句。
+   * ③ **闸落在仓储层**（`listSessionSummaries`），不是在这里 `map` 掉字段：
+   *    在路由里删字段只裁小了回包，**库→进程那一段照旧搬 285MB**，
+   *    而那一段才是 9 秒里的大头 —— 那种修法会得到一个"回包变小了、还是 9 秒"的假绿。
+   */
+  app.get("/a/v1/sim/sessions", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    // WO-LIVE-ENDPOINTS：活方案快照复用 SimSession 承载（scope.snapshotKind 标记），非沙盘会话——从沙盘列表滤除（不污染沙盘 UI）。
+    return { items: (await repos.sim.listSessionSummaries(c.tenantId)).filter((s) => !(s.scope as { snapshotKind?: string })?.snapshotKind) };
+  });
+  /**
+   * 单条会话的**完整**读（含 `baseSnapshot`）—— 上面那条列表投影的落点。
+   *
+   * 存在的理由是一个**真实的消费方**，不是"补全 REST 好看"：
+   * `apps/frontend-shell/src/views/sim/SandboxView.tsx:709-713` 的切世界 effect 要拿
+   * **那个世界自己的基线**（下区差分的左端），今天它是从列表里 `find` 出来再读 `baseSnapshot` 的。
+   * 列表不再带世界内容之后，它该改打这一跳 —— **一个世界 8.4MB，不是 35 个世界 285MB**。
+   *
+   * ⚠ 为什么**不能**用 `GET …/:id/world` 顶替（这是本单最容易做错的地方）：
+   * 那条回的是 `simCurrent(c, s)` = **当前 tick** 的世界态，不是基线。
+   * 拿当前态当基线，屏上每一格差分恒为 0 —— 一个看着完全正常的错答。
+   * 两者的区别 `app.ts` 自己在 `metric-series` 头注里就写过：`/act` 直写过的世界里
+   * tick0 行与 `baseSnapshot` 已经不同，"当前"与"基线"从来不是同一个东西。
+   *
+   * 路由顺序无关：Fastify 的 radix 树把 `/sessions/:id` 与 `/sessions/:id/world` 分在不同深度。
+   */
+  app.get("/a/v1/sim/sessions/:id", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    return await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404
+  });
+
+  // ── 会话生命周期迁移：PAUSED / ENDED（WO-SIMSESSION-BIZ-REUSE）──────────────────────────
+  // 契约枚举 `SimSessionStatus` 早已含 PAUSED/ENDED（contracts/sim.ts），但此前**没有任何置位路径**
+  // —— 本段补上。业务页（产能/GlobalSim/ProjectSim）的方案生命周期一律复用 `setSimSessionStatus`
+  // 这**同一个**实现，不许在各自 scope 里另造 paused/closed 字段（各写各的 ⇒ 两套语义必漂移）。
+  /** 合法迁移表（唯一真相源）：ENDED 终态；PAUSED 只从 READY/RUNNING 进、只向 RUNNING/ENDED 出。 */
+  const SIM_STATUS_TRANSITIONS: Record<SimSessionStatus, readonly SimSessionStatus[]> = {
+    DRAFT: ["ENDED"],
+    READY: ["PAUSED", "ENDED"],
+    RUNNING: ["PAUSED", "ENDED"],
+    PAUSED: ["RUNNING", "ENDED"],
+    ENDED: [],
+  };
+  /**
+   * 会话状态迁移的**唯一**实现（通用 `/sessions/:id/status` 与业务页路由共用——「走接缝，不各写各的」就是这一行）。
+   * 非法迁移一律 409 明说，绝不静默忽略（静默 = 用户以为暂停了而世界还在走——正是「绿测试≠能用」的温床）。
+   */
+  const setSimSessionStatus = async (c: AuthCtx, s: SimSession, target: SimSessionStatus): Promise<SimSession> => {
+    const allowed = SIM_STATUS_TRANSITIONS[s.status] ?? [];
+    if (!allowed.includes(target)) {
+      throw new AppError(
+        "INVALID_SIM_STATUS_TRANSITION",
+        `会话 ${s.id} 不能从 ${s.status} 迁到 ${target}` +
+          `（${s.status} 允许的去向：${allowed.length > 0 ? allowed.join("/") : "无——ENDED 是终态"}）。`,
+        409,
+      );
+    }
+    const from = s.status;
+    s.status = target;
+    await repos.sim.putSession(s);
+    await outbox.emit(c.tenantId, "sim.session_status_changed", { sessionId: s.id, from, status: target });
+    return s;
+  };
+  /**
+   * 世界可写判据（**唯一**实现·WO-SIMSESSION-BIZ-REUSE 退修①）：PAUSED/ENDED = 世界冻结。
+   * 「暂停不是标签，是世界真的不走**也不许改**」——凡改世界线/会话世界配置的入口一律过本闸，
+   * 上闸全集（两路枚举交叉核对：putTickState/deleteTicksAfter/putSession 调用点 + 会话级路由清单）：
+   *   tick（推进）· /act 与 POST/DELETE /perturbations（世界态写入/扰动记录增删）·
+   *   rollback（deleteTicksAfter 回卷世界线）· disabled-rules（改写 sim_session 自己那一行的世界配置）。
+   * 刻意**不上闸**（各附理由，防下一个人"顺手补闸"把信息藏起来）：
+   *   · counterfactual —— `persist:false`，`putTickState`/`putSession`/`emit` 一次都不调，零写入；
+   *   · checkpoint —— 对**冻结态**拍只读快照，世界线一个字节不动（冻结时存档完全相干）；
+   *   · branch —— 从冻结/终态世界派生**新**会话，父世界不动；这正是 ENDED 的逃逸口，闸死=终态成死锁；
+   *   · 全部 GET —— 只读。
+   */
+  const assertSimSessionWritable = (s: SimSession, op: string): void => {
+    if (s.status === "PAUSED" || s.status === "ENDED") {
+      throw new AppError(
+        "INVALID_SIM_STATUS_TRANSITION",
+        `会话 ${s.id} 处于 ${s.status}，世界冻结，拒绝 ${op}。` +
+          (s.status === "PAUSED" ? "先经 PATCH …/status 迁回 RUNNING 恢复。" : "ENDED 是终态，只可 branch 出新会话。"),
+        409,
+      );
+    }
+  };
+  app.patch("/a/v1/sim/sessions/:id/status", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404
+    const body = parseBody(z.object({ status: z.enum(["PAUSED", "ENDED", "RUNNING"]) }), req.body);
+    await setSimSessionStatus(c, s, body.status);
+    return { id: s.id, status: s.status, curTick: s.curTick };
+  });
+  app.get("/a/v1/sim/sessions/:id/world", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    return { tick: s.curTick, state: await simCurrent(c, s) };
+  });
+  /**
+   * WO-SIM-BE-SERIES · **指标时序**：基线线 + 扰动后线 + 环节分段。
+   *
+   * 🔴 病灶（实测原文）：上面那条 `…/world` 只回**当前一格** `{ tick, state }`，
+   * 于是「这个数是怎么走到今天的」「不施加这条扰动本该是什么样」两句话在后端**一句都答不出来**。
+   * 前端只好自己攒：`views/sim/ProcessCanvasView.tsx` 头注原文「『上一拍』必须由本档自己留存，
+   * **不能问后端要**：`GET …/:id/world` 只回当前态」—— 攒的是屏幕残留，刷新即失、跨档不共享，
+   * 而且它**永远攒不出基线**（基线是一条从没在屏上跑过的线）。
+   *
+   * ⛔ 基线**不是**另起一个会话重算（这是本单最容易做错的地方，也是唯一一处必须点名的禁忌）：
+   * 下面 `seed` 取的是**本会话自己的 tick0 行**，两条线连同规则集/图/参数/闸门全部共用，
+   * 只有扰动集不同。改成 `simState(s.baseSnapshot)`（= 新会话开局拿到的东西）或另建会话，
+   * 分叉点会**提前到 tick 0** —— 屏上就是一个从头就存在的假分叉，而它与扰动毫无关系。
+   * 回包的 `baselineOrigin.sessionId` 把这件事摊开，`metric-series.seam.test.ts` ①⑤ 咬死它。
+   *
+   * entitlement 取 `sim.propagation` 而非 `sim.sandbox`：本路由**真的驱动 `propagateTick`**
+   * （与 `POST …/tick`、`POST …/counterfactual` 同一档），不是纯快照读。
+   * ⚠ 只读：`putTickState` / `putSession` / `outbox.emit` 一次都不调（同 counterfactual 的 `persist:false`）。
+   *
+   * ── 🔴 规模闸（WO-SIM-SERIES-SCALE·2026-08-22）───────────────────────────────
+   * **今天的行为 X（实测原文）**：query 只有 `from`/`to`，**零筛选入参** ⇒ 生产量级世界
+   * （前端 `deriveBaseSnapshot(view-config)`：11,348 对象 × 36 状态变量）下本路由回
+   * **408,528 条 / 116,859,540 字节 / 21.8 秒**，而屏上那张甘特**只画 12 行**。
+   * 请求 20 秒回不来 ⇒ 首页甘特 `data-source` 恒 `placeholder`，**屏上还不报错**（静默错答）。
+   * **应该的 Y**：服务端按需筛选且**有硬上限**，被裁掉多少如实回报。
+   *
+   * 闸落在**模型层**（`buildMetricSeries`）而不是这里，理由是：闸必须对**所有**调用方生效，
+   * 包括不经这条路由直接调模型函数的测试。路由这一层只做「把 query 翻译成模型入参」。
+   * ⚠ **不传任何参数也不会再回全量** —— 模型层落 `SIM_METRIC_SERIES_DEFAULT_LIMIT`。
+   */
+  app.get("/a/v1/sim/sessions/:id/metric-series", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation"); // R3 entitlement 先于 authz
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户 404
+    // query 契约取**契约包单源** `SimMetricSeriesQuerySchema`（本文件不再手抄一份 zod 对象）：
+    // 前端要按同一口径发 `limit`/`order`，两边各写一份迟早漂。
+    const q = parseBody(SimMetricSeriesQuerySchema, req.query ?? {});
+    const published = await listPublishedPropRules(c);
+    const active = (await sessionPropRules(c, s)).active; // 引擎吃过滤后的；目录吃全量（判据见模型层注释）
+    const perturbations = await repos.sim.listPerturbations(c.tenantId, s.id);
+    // 与 tick 路同一条性能判据（`propagation-inputs.ts` 头注）：没规则也没扰动 ⇒ 整段装配都省掉，
+    // 保住"无传导规则的租户零本体读"这条既有特征。此时两条线恒等（世界不动），回包照常成立。
+    const engine = published.length > 0 || perturbations.length > 0
+      ? await buildPropagationInputs(repos, c, resolveSimScope(s.scope), active)
+      : { graph: { objects: [], links: [] }, ruleParams: {}, cadenceGates: {}, pairWeights: {}, stateVarDomains: {} };
+    return buildMetricSeries({
+      sessionId: s.id,
+      // 🔴 基线种子 = **本会话自己的 tick0 行**（`/act` 直写过的世界里它与 baseSnapshot 不同，
+      //    那个差额属于这个世界、两条线都该带着它）。缺行才退回 baseSnapshot。
+      seed: (await repos.sim.getTickState(c.tenantId, s.id, 0))?.state ?? simState(s.baseSnapshot),
+      // 逐实例权重、取值域与图/参数/闸门**同一处装配**（WO-COEF-FROM-BOM × WO-PROP-CLAMP）：
+      // 曲线与真 tick 少喂一样输入就会各画各的 —— 那正是「唯一装配处」这条纪律要防的事。
+      // ⚠ `stateVarDomains` 是收编两单时漏掉的那一样，接缝测试当场抓出（详见 MetricSeriesEngine 字段注释）。
+      engine: {
+        graph: engine.graph, ruleParams: engine.ruleParams, cadenceGates: engine.cadenceGates,
+        pairWeights: engine.pairWeights, stateVarDomains: engine.stateVarDomains,
+      },
+      publishedRules: published,
+      activeRules: active,
+      perturbations,
+      curTick: s.curTick,
+      // 天口径随轴下发（WO-SIM-DRILL-P12）：下游甘特手上只有这一个响应。
+      tickDays: s.tickDays ?? 1,
+      ...(q.from === undefined ? {} : { from: q.from }),
+      ...(q.to === undefined ? {} : { to: q.to }),
+      // 规模闸：**一个都不给也照样有闸**（模型层落默认 `limit`，不回全量）。
+      ...(q.limit === undefined ? {} : { limit: q.limit }),
+      ...(q.order === undefined ? {} : { order: q.order }),
+      ...(q.objectIds === undefined ? {} : { objectIds: q.objectIds }),
+      ...(q.stateVars === undefined ? {} : { stateVars: q.stateVars }),
+    });
+  });
+  /**
+   * 从会话**当前态**推进 n 格（`propagateTick` 的唯一驱动处）。
+   *
+   * `persist` 是本函数与"对照跑"的**唯一**区别（WO-ACTIVE-EDGE-UX §3.1.4）：
+   *  · `true`  → `POST …/tick` 真跑：逐格 `putTickState`，会话 `curTick` 真进位；
+   *  · `false` → `POST …/counterfactual` 对照跑：**一次 `putTickState` 都不调、`putSession` 不调、
+   *    事件不发**，会话逐字节不动 —— 否则用户点一下"关掉这条边看看"就把真会话推进了一格。
+   *
+   * ⚠ 为什么必须是**同一个函数**而不是"对照那边照着抄一遍"：对照要成立，两版就必须是
+   * **同一套算法在两组规则上跑**。抄一份出来，两边任何一处漂移（扰动顺序、pending 结算、闸门）
+   * 都会被算进"关掉这条边的影响"里，而那部分差异根本不是边造成的 —— 那就是把噪声当结论。
+   * 这与本仓 `applyPerturbationToState` 被提到契约里是同一条纪律。
+   */
+  const simAdvanceTicks = async (
+    c: AuthCtx,
+    s: SimSession,
+    opts: { rules: PropagationRule[]; n: number; persist: boolean; ephemeralPerturbations?: readonly Perturbation[] },
+  ) => {
+    const { rules: propRules, n, persist } = opts;
+    // 逐环节计时（WO-SIM-DISCLOSURE ⑥）：**只测不改**——计时器一行算法都不碰，
+    // 停表也不参与任何判断。它的读数只出现在 `?disclose=1` 的披露层里。
+    const timer = new PhaseTimer();
+    const stopTotal = timer.start("total");
+    const fromTick = s.curTick;
+    let state = await simCurrent(c, s);
+    let curTick = s.curTick;
+    // 增量 3 传导核接入（opt-in）：有规则才传导，否则退回恒等 tick（无规则不触发，可回退）。
+    // propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
+    const propagate = propRules.length > 0;
+    // ── 扰动接入传导（WO-P2 · PRD-UPGRADE-decision-sandbox-v2 §3.1.3）───────────────────
+    // 顺序 = `listPerturbations` 的 `startTick↑ → 建单先后`（repo.ts:362）。**这里绝不重排**：
+    // `delta`/`scale` 不可交换（`(10+2)×1.5=18 ≠ 10×1.5+2=17`），顺序即语义。
+    //
+    // ── WO-MATERIAL-REPRICE · `ephemeralPerturbations`（**只走演习这一条路**）────────────
+    // 演习事件（`DrillEvent`）声明了 `stateEffect` 时会解释出一条**临时扰动**：它**不入库**，
+    // 只活在这一次 `persist:false` 的推进里。**排在会话已有扰动之后**，理由同上一段 ——
+    // 顺序即语义：会话扰动是这个世界既有的假设，演习问的是「在这些假设之上再发生一件事」。
+    // ⚠ `persist:true` 的路径（真 tick）**一条都不许传** —— 临时扰动落盘就成了没人记得建过的
+    // 世界线污染，而它在 `listPerturbations` 里查不到，用户看到数变了却查不出为什么。
+    if (persist && (opts.ephemeralPerturbations?.length ?? 0) > 0) {
+      throw new Error("simAdvanceTicks: ephemeralPerturbations 只允许在 persist:false 的推进里使用（落盘会造成查不出来源的世界线污染）");
+    }
+    const sessionPerturbations = [
+      ...(await repos.sim.listPerturbations(c.tenantId, s.id)),
+      ...(opts.ephemeralPerturbations ?? []),
+    ];
+    /**
+     * 「落地前值」= 该扰动 `startTick` 的**前一 tick** 快照上的目标值（`startTick===0` 取 baseSnapshot）。
+     * 只有 `set` 与 `scale(magnitude===0)` 到期时用得上 —— 这两种模式不可解析求逆；
+     * `delta`/`scale(≠0)` 的逆是减/除，不需要记忆（也因此不会把中间几 tick 的演化一并抹掉）。
+     *
+     * ⚠ 为什么不照 PRD 原文「记 preValue 于生效当 tick 的 trace」：`POST /perturbations`
+     * 对**建单时已生效**的扰动是在路由里直接施加的（本文件 `simApplyAtCurrentTick`），
+     * 那条路原样保留旧 trace、**不写新 trace** ⇒ trace 里永远不会有它的 preValue，
+     * 而 `startTick` 缺省 = 当前 tick，正是最常走的一条路。改从世界线快照取：
+     * 两条施加路径都成立，且与引擎自己施加时读到的**是同一个数**
+     * （引擎的 enter 发生在 `producedTick === startTick`，其输入态正是 `state@(startTick-1)`）。
+     */
+    const preValueOf = async (p: Perturbation): Promise<number | undefined> => {
+      const snap = p.startTick === 0
+        ? s.baseSnapshot
+        : (await repos.sim.getTickState(c.tenantId, s.id, p.startTick - 1))?.state;
+      const v = snap?.[p.targetObjectId]?.[p.targetStateVar];
+      return typeof v === "number" ? v : undefined;
+    };
+    /** 本 tick（= 产出的那一格 `producedTick`）**相关**的扰动：生效期内的 + 刚到期的（回退要用它）。 */
+    const perturbationsForTick = async (producedTick: number): Promise<PerturbationInTick[]> => {
+      const out: PerturbationInTick[] = [];
+      for (const p of sessionPerturbations) {
+        const now = isPerturbationActiveAt(p, producedTick);
+        const prev = isPerturbationActiveAt(p, producedTick - 1);
+        if (!now && !prev) continue; // 与本 tick 无关
+        // 刚到期且不可解析求逆 ⇒ 现查落地前值（只在真要用时查，不给每条扰动都加一次读）
+        if (!now && (p.mode === "set" || (p.mode === "scale" && p.magnitude === 0))) {
+          out.push({ ...p, preValue: await preValueOf(p) });
+          continue;
+        }
+        out.push(p);
+      }
+      return out;
+    };
+    // 有扰动但没有 PUBLISHED 传导规则的世界也要走引擎：否则「限时停机」到期不回退，
+    // 悄悄变成永久生效（恒等桩那条路只会原样搬运世界态）。
+    const engineTick = propagate || sessionPerturbations.length > 0;
+    let graph: PropagationGraph = { objects: [], links: [] };
+    const ruleParams: RuleParamLookup = {};
+    // WO-SANDBOX-E4 节拍闸门：从**对象库**读 D1 落的 `Cadence` 行（`synthetic/service.ts` putAll("Cadence", …)），
+    // 经 D1 声明的唯一读回口 `cadenceFromProps` 还原成契约 `Cadence`，再由引擎换算成整 tick 闸门。
+    // 这里不做任何补默认：EMPTY 行读回 `undefined`、周期不可整 tick 的进 skipped —— 两者都不会变成闸门，
+    // 声明了它们的规则会在 `unresolvedGates` 里显式报缺（而不是悄悄按"随到随办"跑）。
+    let cadenceGates: CadenceGateLookup = {};
+    let gateSkipped: { nodeId: string; reason: string }[] = [];
+    let unresolvedGates: UnresolvedCadenceGate[] = [];
+    // 逐实例分摊权重（WO-COEF-FROM-BOM）。无规则声明 `weightRef` ⇒ 恒 `{}`，逐字节同旧（RL9）。
+    let pairWeights: PairWeightLookup = {};
+    let unresolvedWeights: UnresolvedPairWeight[] = [];
+    let pairWeightReport: PairWeightReport = { pairs: [], unresolved: [], explain: [] };
+    /** 状态量取值域（WO-PROP-CLAMP）：夹值 + 衰减的唯一数据源，与 Trial Tick 同一装配处。 */
+    let stateVarDomains: StateVarDomainLookup = {};
+    /** 最后一拍的状态量披露（声明/未声明/衰减解析不到/本拍饱和了哪些格）。 */
+    let stateVarsDisclosure: StateVarDisclosure | null = null;
+    /** 最后一拍越过容忍线的还手方（WO-ADVERSARY-REACTION·结构化，不是拼串）。 */
+    let reactionActors: { ruleKey: string; actorObjectId: string }[] | null = null;
+    /** 本次 tick 的范围回执（诚实回带：这一格是在什么范围下算出来的·R-ARG-FIDELITY）。 */
+    let scopeReport: ScopeReport | null = null;
+    let pending: DelayedContribution[] = propagate ? ((await repos.sim.getTickState(c.tenantId, s.id, curTick))?.pending ?? []) : [];
+    if (propagate) {
+      // ── 会话范围读端（WO-SIM-SCOPE-TRIAL · 闭 #129/#130 `G-SIM-SCOPE-UNREAD`）────────────
+      // 此前这里是就地物化 + 无条件全本体，`s.scope` **从头到尾没人读**：
+      // 用户在屏上切到「局部推演」，引擎照样按 GLOBAL 全量算，答案是错的而页面不报错。
+      // 现在范围在**图物化那一步**生效（裁剪在 `buildPropagationInputs` 里，与 Trial Tick 同一处）：
+      // LOCAL ⇒ 只留根类型对象 + `hops` 跳邻域 + 两端都在范围内的边；
+      // GLOBAL ⇒ 原样返回同一引用（`===`），旧行为逐字节不变（RL9）。
+      //
+      // 图 / 范围 / 规则参数 / 节拍闸门全部走**唯一装配处**（WO-SIM-ACT-CLOSE · #152，
+      // 与 Trial Tick 同源，见 `buildPropagationInputs`）—— 另抄一份就会出现
+      // 「认证说能跑、真 tick 不是这个数」。
+      const stopGraph = timer.start("graph");
+      const inp = await buildPropagationInputs(repos, c, resolveSimScope(s.scope), propRules);
+      stopGraph();
+      graph = inp.graph;
+      scopeReport = inp.scopeReport;
+      Object.assign(ruleParams, inp.ruleParams);
+      cadenceGates = inp.cadenceGates; gateSkipped = inp.gateSkipped;
+      pairWeights = inp.pairWeights; pairWeightReport = inp.pairWeightReport;
+      stateVarDomains = inp.stateVarDomains;
+    }
+    let trace: PropagationTrace[] | null = null;
+    let appliedPerturbations: string[] = [];
+    // ── 信噪分离（WO-PROP-CLAMP 第三件）──────────────────────────────────────────
+    //
+    // 病灶：屏上那个 Δ 回答不了「**这里面有多少是我扰出来的**」。实测（修前）同一拍里
+    // 用户扰动贡献 2,712，而世界自己漂了 5,352,228 —— 信噪比 1:2000，推演结论被自身噪声淹没。
+    //
+    // 做法（就是本单指定的最小做法）：**同一拍跑两次** —— 一条真实线（带扰动），
+    // 一条**影子线**（同图同规则同 pending，扰动清空）。两线之差即用户贡献。
+    //
+    // ⚠ 只在**本会话真有扰动**时才跑影子线：无扰动 ⇒ 两线恒等，跑了纯属白烧 CPU，
+    //   且响应形状与本单引入前逐字节相同（additive·可回退 RL9）。
+    // ⚠ 影子线**一个字节都不落盘**（不进 `putTickState`）—— 它是度量装置，不是第二条世界线。
+    //
+    // 🔴 **影子线必须从 `baseSnapshot` 重放，不能拿当前态当起点**（这一条是实测踩出来的，别"简化"回去）：
+    //    `POST …/perturbations` 对**建单时已生效**的扰动是在路由里**当场施加并落盘**的
+    //    （`simApplyAtCurrentTick`，见上文 `preValueOf` 段的同一条注释）⇒ 当前 tick 态里**已经**含着
+    //    用户那一笔。拿它当影子线起点，再传 `perturbations: []`，两条线跑出来逐字节相同 ——
+    //    实测 `userContribution: 0 / changedCells: 0`，而同一格的读数明明从 99.9868 变成了 99.9938。
+    //    形态正是本仓那句：**「我用『这一跑没传扰动』当作『这一跑不含扰动』的证据，而前者并不度量后者。」**
+    //    从 `baseSnapshot` 零扰动重放 `curTick` 拍，得到的才是"完全没有我这笔输入的那个世界"。
+    const wantDrift = sessionPerturbations.length > 0 && engineTick;
+    let driftState: TickState | null = null;
+    let driftPending: DelayedContribution[] = [];
+    if (wantDrift) {
+      const stopShadow = timer.start("shadow");
+      driftState = simState(s.baseSnapshot);
+      for (let t = 0; t < s.curTick; t++) {
+        // ⚠ 影子线必须与真实线**同一份** pairWeights/stateVarDomains —— 两条线只许差「有没有扰动」
+        // 这一个变量，任何别的差异都会直接污染信噪比那个读数。
+        const d = propagateTick(graph, driftState, propRules, driftPending, t, ruleParams, cadenceGates, [], pairWeights, stateVarDomains);
+        driftState = d.next; driftPending = d.pending;
+      }
+      stopShadow();
+    }
+    /** 影子线在**本次推进之前**那一格 —— `worldDrift` 的基准（不能拿真实线的起点，它含扰动）。 */
+    const driftStartState = driftState;
+    /** 本次推进中真正产出过贡献的规则 key（对照跑用它区分"关了没影响"与"这条边本来就没动"）。 */
+    const firedKeys = new Set<string>();
+    /**
+     * 本次推进中**真的被写进世界态**的扰动 id（判据取引擎自己打的 `perturbation:` trace 行）。
+     *
+     * ⚠ 与 `appliedPerturbations` **不是同一件事，别混**：那个是「本 tick 处于生效期」，
+     * 一条相位错开、`entersAt` 恒 false、**一格都没写**的扰动**照样会出现在里面**。
+     * 本单实测吃过这一跤：回执报 `applied:true`，而三个量级的读数逐字节相同。
+     * 「在生效期」不度量「打上了」—— 要证明打上了，只能看引擎写没写。
+     */
+    const perturbationWrites = new Set<string>();
+    for (let i = 0; i < n; i++) {
+      const beforeTick = curTick; // 当前 tick t（结算 pending arriveTick===t）
+      if (engineTick) {
+        const stopEngine = timer.start("engine");
+        const out = propagateTick(
+          graph, state, propRules, pending, beforeTick, ruleParams, cadenceGates,
+          await perturbationsForTick(beforeTick + 1), // 引擎产出的是 tick+1 那一格
+          pairWeights,      // 第 9 位
+          stateVarDomains,  // 第 10 位（次序见 propagateTick 签名处的收编注释）
+        );
+        state = out.next; pending = out.pending; unresolvedGates = out.unresolvedGates;
+        unresolvedWeights = out.unresolvedWeights;
+        appliedPerturbations = out.appliedPerturbations;
+        stateVarsDisclosure = out.stateVarReport;
+        // 还手触发清单取**最后一拍**（与 stateVarReport 同一口径）：披露层讲的是
+        // 「这一次推进结束时的世界」，不是把 n 拍的触发累加起来（那会把同一个客户数 n 遍）。
+        reactionActors = out.reactionActors;
+        // 影子线：同一拍、同一份图/规则/闸门/权重/取值域，**扰动清空** ⇒ 世界自身漂移。
+        if (driftState !== null) {
+          const d = propagateTick(
+            graph, driftState, propRules, driftPending, beforeTick, ruleParams, cadenceGates,
+            [], pairWeights, stateVarDomains,
+          );
+          driftState = d.next; driftPending = d.pending;
+        }
+        for (const k of firedPropagationRuleKeys(out.trace, out.pending)) firedKeys.add(k);
+        for (const t of out.trace) {
+          if (t.ruleKey.startsWith(PERTURBATION_TRACE_PREFIX)) perturbationWrites.add(t.ruleKey.slice(PERTURBATION_TRACE_PREFIX.length));
+        }
+        // 无传导规则的世界：本 tick 若没有任何扰动动作，trace 保持 `null`（与本单引入前逐字节相同·可回退）。
+        trace = propagate || out.trace.length > 0 ? out.trace : null;
+        curTick += 1;
+        stopEngine();
+      } else {
+        // 无 PUBLISHED 传导规则：恒等桩进位（状态原样，确定性 R6；可回退）。
+        state = simState(state); pending = []; trace = null; curTick += 1;
+      }
+      // ⛔ 对照跑（persist=false）在此**一个字节都不写** —— 这条约束由
+      //    `test/edge-active-counterfactual.test.ts` 逐字节咬死（不是靠这行注释保证）。
+      if (persist) {
+        const stopPersist = timer.start("persist");
+        await repos.sim.putTickState({ sessionId: s.id, tenantId: c.tenantId, tick: curTick, state, pending, trace });
+        stopPersist();
+      }
+    }
+    stopTotal();
+    return {
+      curTick, state, trace, pending, propagate, scopeReport,
+      // ── 披露层的原料（WO-SIM-DISCLOSURE）──────────────────────────────────
+      // 全部是本次推进**已经用过**的中间量，原样带出去给 `buildSimRunDisclosure` 换个形状讲。
+      // 带出去不等于下发：路由只在 `?disclose=1` 时才装配，默认回包形状逐字节同旧（RL9）。
+      fromTick, graph, ruleParams, stateVarDomains, timer,
+      cadence: { gates: cadenceGates, skipped: gateSkipped, unresolved: unresolvedGates },
+      // 逐实例分摊的诚实回执（WO-COEF-FROM-BOM）：声明了口径却算不出权重的规则**本 tick 没传导**，
+      // 必须让调用方看见 —— 安静地少一条边，正是本仓「静默错答」要根治的形态。
+      pairWeighting: { report: pairWeightReport, unresolved: unresolvedWeights },
+      appliedPerturbations, sessionPerturbationCount: sessionPerturbations.length,
+      perturbationWrites: [...perturbationWrites].sort(),
+      firedRuleKeys: [...firedKeys].sort(),
+      stateVarReport: stateVarsDisclosure,
+      reactionActors,
+      // 信噪比回执（WO-PROP-CLAMP）：`null` = 本会话无扰动 ⇒ 没有"用户贡献"这个量可谈。
+      signalToNoise:
+        driftState === null || driftStartState === null
+          ? null
+          : summarizeSignalNoise(state, driftState, driftStartState),
+    };
+  };
+
+  /**
+   * 真推 n 拍并落盘的**唯一实现**（WO-SIM-SEED-WORLD 从 `POST …/tick` 原样提出，语义未改）。
+   *
+   * 提出去的理由同 `createSimSessionWorld`：`SEED_DEMO=1` 播种要推的是**真的拍**
+   * （同一份传导核、同一套 active 规则、同一条落盘序），不是把 `status` 改成 `RUNNING`。
+   *
+   * 世界冻结闸从路由**挪进来**（不是删掉）：两条路径都必须过闸，且对路由而言判据与顺序不变
+   * —— 原先它排在 `n` 解析之前，而 `n` 解析不抛（`Math.max(1, Math.floor(NaN))` 只是让循环不执行）。
+   */
+  const tickSimSessionWorld = async (c: AuthCtx, s: SimSession, n: number) => {
+    // PAUSED/ENDED 不许推进（WO-SIMSESSION-BIZ-REUSE）：暂停不是标签，是世界真的不走；ENDED 终态不可复活。
+    assertSimSessionWritable(s, "tick");
+    // PUBLISHED only，**再减去本会话屏蔽的边**（WO-ACTIVE-EDGE-UX 的引擎接缝就是这一行）。
+    // `disabledRuleKeys` 为空 ⇒ `partitionPropagationRules` 原样返回 ⇒ 与本单引入前逐字节相同（RL9）。
+    const sess = await sessionPropRules(c, s);
+    const rules = sess.active;
+    const r = await simAdvanceTicks(c, s, { rules, n, persist: true });
+    s.curTick = r.curTick;
+    s.status = "RUNNING"; await repos.sim.putSession(s);
+    await outbox.emit(c.tenantId, "sim.tick_completed", { sessionId: s.id, curTick: s.curTick });
+    // `rules` 一并回带：披露层要逐条讲「本次喂进引擎的是哪几条、各自系数与口径」，
+    // 而这份"已发布 − 本会话屏蔽"的集合只有这里算得出来（路由再算一遍就是第二套真相源）。
+    // 对抗方开关与被闸掉的还手边同理 —— 只有这里既拿得到租户又拿得到规则集。
+    return { ...r, rulesFed: rules, adversaryEnabled: sess.adversaryEnabled, adversarySuppressed: sess.adversarySuppressed };
+  };
+  app.post("/a/v1/sim/sessions/:id/tick", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const n = Math.max(1, Math.floor(Number((req.body as { n?: number })?.n ?? 1)));
+    // 逐对权重出处要不要下发（见下方 `pairWeighting` 段的实测理由）。query 与 body 都认：
+    // 前端按 query 发最省事，而脚本/审计侧常常只在 body 里带参数。
+    const wantExplain =
+      String((req.query as Record<string, unknown> | undefined)?.explain ?? "") === "1" ||
+      (req.body as { explain?: unknown } | undefined)?.explain === true;
+    /**
+     * 推演过程披露层要不要下发（WO-SIM-DISCLOSURE · 铁律 1.5 判据二）。**默认不发**，理由同 `explain`：
+     * 快照指纹要遍历本次参与传导的全部对象与边（demo 租户实测 12,745 + 12,192），
+     * 做成默认 = 每一拍都付这笔账。要 ⇒ `?disclose=1`（或 body `disclose:true`）一次拿全，不截断。
+     * 不要 ⇒ 回包形状与本单引入前**逐字节相同**（additive · 可回退 RL9）。
+     */
+    const wantDisclosure =
+      String((req.query as Record<string, unknown> | undefined)?.disclose ?? "") === "1" ||
+      (req.body as { disclose?: unknown } | undefined)?.disclose === true;
+    const r = await tickSimSessionWorld(c, s, n);
+    /**
+     * 「阈值来自哪条规则表达式」那一问的原料（④）：A5 规则表达式原文。
+     * **只在真要披露时读**——不然就是给每一拍都加一次全表扫，为了一段大多数人不看的文字。
+     * 取不到的键在披露层里回 `null`，**不编**一句像模像样的表达式。
+     */
+    const ruleExpressions: Record<string, string> = {};
+    if (wantDisclosure) {
+      for (const rule of await repos.rules.list(c.tenantId, (x) => x.status === "PUBLISHED")) {
+        ruleExpressions[rule.key] = rule.expression;
+      }
+    }
+    const disclosure = wantDisclosure
+      ? buildSimRunDisclosure({
+          fromTick: r.fromTick,
+          toTick: r.curTick,
+          graph: r.graph,
+          // 无传导规则的世界 `scopeReport` 恒 `null`（整段装配都省掉了）。此时诚实回一张空切片回执
+          // ——**不许**假装跑了个 GLOBAL 全域：那会让"这个租户压根没规则"读成"跑了但什么都没动"。
+          scopeReport: r.scopeReport ?? {
+            kind: "GLOBAL" as const, target: null, hops: 0,
+            objects: 0, links: 0, droppedObjects: 0, droppedLinks: 0,
+            unresolved: "本会话没有 PUBLISHED 传导规则 ⇒ 未装配传导图（不是「跑了个空图」）",
+          },
+          rules: r.rulesFed,
+          firedRuleKeys: r.firedRuleKeys,
+          trace: r.trace,
+          ruleParams: r.ruleParams,
+          ruleExpressions,
+          pairWeightReport: r.pairWeighting.report,
+          unresolvedWeights: r.pairWeighting.unresolved,
+          cadenceGates: r.cadence.gates,
+          cadenceSkipped: r.cadence.skipped,
+          unresolvedGates: r.cadence.unresolved,
+          stateVarDomains: r.stateVarDomains,
+          stateVarReport: r.stateVarReport,
+          timings: r.timer.timings(DISCLOSURE_PHASE_ORDER),
+          // 对抗方（WO-ADVERSARY-REACTION）：开关 + 被闸掉的还手边 + 本拍越线的对手实例。
+          // 关闭态照样下发 —— 让读者当场看出「这是一次单方推演」，而不是留白让他以为对手没反应。
+          adversaryEnabled: r.adversaryEnabled,
+          adversarySuppressedRuleKeys: r.adversarySuppressed.map((x) => x.key),
+          reactionActors: r.reactionActors,
+        })
+      : null;
+    // `cadence` 段是**诚实缺席的出口**（E4）：哪些节点有闸门、哪些节点查得到但用不了、
+    // 哪些规则声明了闸门却拿不到 —— 全部亮出来，前端才可能显示"这条流因节拍未知未参与推演"，
+    // 而不是看到一条安静的零。
+    return {
+      curTick: s.curTick,
+      state: r.state,
+      ...(r.propagate
+        ? {
+            trace: r.trace,
+            cadence: r.cadence,
+            // 范围回执（WO-SIM-SCOPE-TRIAL）：算了几个对象、几条边、丢了多少、范围是不是根本拿不到。
+            // 与 `cadence` 同一条纪律 —— 让"筛选没生效"看得见，而不是从一个安静的数字里去猜。
+            scope: r.scopeReport,
+            // 状态量口径回执（WO-PROP-CLAMP）：哪些量纲有声明取值域、哪些没有（因而仍是纯积分器）、
+            // 哪些配了衰减却拿不到、本拍谁饱和了、实际按多少在衰减。
+            // **不许静默夹住** —— 夹了不说，屏上看着正常、信息其实已经丢了。
+            stateVarReport: r.stateVarReport,
+          }
+        : {}),
+      // 逐实例分摊回执（WO-COEF-FROM-BOM）——与 `cadence` 逐条同款纪律。
+      // **只在真有规则声明 `weightRef` 时下发**：没人声明的租户响应形状逐字节同旧（additive·可回退 RL9）。
+      //
+      // ⚠ **逐对出处 `explain` 默认不下发，要用 `?explain=1` 显式要** —— 这不是把可披露打折，
+      // 是实测逼出来的：demo 租户三条已分摊的边共 **1024 对**，`explain` 一段就 **504,837 字节**，
+      // 占整个 tick 回包的 **99.75%**（`state` 才 2 字节）。把它设成默认 = 每拍多传半兆，
+      // 那会让"可披露"这件事本身变成一个性能事故，然后被人一刀关掉——反而更不可披露。
+      // 默认下发的 `report.pairs`（逐规则：铺了多少对/多少对权重 0/强度与来源/本跳耗时）
+      // 与 `unresolved`（算不出权重的规则）都很小，**足够回答"这个数是算的还是拍的"**；
+      // 要追到某一对的分子分母/用哪张 BOM/哪几个字段，`?explain=1` 一次拿全，不做截断
+      // （截断会让审计以为自己看到了全量 —— 那比不给更糟）。
+      ...(r.pairWeighting.report.pairs.length > 0 || r.pairWeighting.report.unresolved.length > 0 || r.pairWeighting.unresolved.length > 0
+        ? {
+            pairWeighting: wantExplain
+              ? r.pairWeighting
+              : {
+                  ...r.pairWeighting,
+                  report: {
+                    ...r.pairWeighting.report,
+                    explain: [],
+                    // 诚实位：省略了多少条，以及怎么拿全 —— 空数组不冒充"没有出处"。
+                    explainOmitted: r.pairWeighting.report.explain.length,
+                    explainHint: "逐对出处默认不下发（会占回包 99% 以上）。加 ?explain=1 取全量，不截断。",
+                  },
+                },
+          }
+        : {}),
+      // 信噪比（WO-PROP-CLAMP）：这一拍的 Δ 里有多少是扰动造成的、多少是世界自己在走。
+      // 只在本会话真有扰动时下发（无扰动 ⇒ 没有"用户贡献"这个量，响应形状逐字节同旧）。
+      ...(r.signalToNoise ? { signalToNoise: r.signalToNoise } : {}),
+      // 溯源（WO-P2）：这一格世界态是哪几次扰动仍在起作用的结果。只在这个世界真有扰动时下发，
+      // 无扰动的租户响应形状逐字节同旧（可回退）。
+      ...(r.sessionPerturbationCount > 0 ? { appliedPerturbations: r.appliedPerturbations } : {}),
+      // 推演过程披露层（WO-SIM-DISCLOSURE）：六项一次给全 —— 引用的数据 / 走过的切片 /
+      // 命中的规则 / 约束 / agent 是否参与 / 各环节耗时。`?disclose=1` 才下发。
+      ...(disclosure ? { disclosure } : {}),
+    };
+  });
+
+  // ── 会话级反事实：开关 + 对照（WO-ACTIVE-EDGE-UX）─────────────────────────────────
+  //
+  // 仓主原话：「所有推演的功能，包括『推演沙盘』就需要借鉴这个设计UX」——
+  // 指的是「关系边上有 active 开关，关掉这条边，就能看到推演结果怎么变」。
+  // 两条路由分别是那句话的两半：`disabled-rules` 是"关"，`counterfactual` 是"看到怎么变"。
+
+  /**
+   * 改本会话屏蔽的传导边（**世界态写入，不是本体真值写入 ⇒ 不需要 Action 审批**）。
+   *
+   * R4 原文是「**真值写入**经 Action 审批：对象物化/本体变更经 `domainExecutor`，EXECUTED 才落」。
+   * 本路由写的是 `sim_session.disabled_rule_keys` —— 这一行属于**仿真世界**，
+   * R4-sim 明写「仿真世界的写入不经 Action 审批，因为它根本不是真值；豁免仅限写进仿真世界自己那一行」。
+   * 本路由三条边界全部满足：① 不回写真实世界（`PropagationRule.status` 一个字节不动）；
+   * ② 要让"这条边其实该退役"生效，仍须改 `status` 走 R4 正门；③ 屏蔽只对本会话可见。
+   * ⚠ 下一个人若把这里读成"漏了审批"而去加 Action 链，就会把一次性的假设推演变成审批工单 —— 那是返工。
+   *
+   * **未知 ruleKey 一律 400，不许静默忽略**：静默忽略 = 用户以为关掉了、其实没关，
+   * 屏上差值恒 0 而他会以为"这条边没影响"——正是「绿测试≠能用」的温床（WO §3.1.2）。
+   */
+  app.patch("/a/v1/sim/sessions/:id/disabled-rules", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation"); // R3 entitlement 先于 authz
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2：别租户的会话 404
+    assertSimSessionWritable(s, "改屏蔽边"); // 世界冻结 ⇒ 其推演配置也冻结（退修①枚举上闸）
+    const body = parseBody(z.object({ disabledRuleKeys: z.array(z.string()) }), req.body);
+    const published = await listPublishedPropRules(c);
+    const unknown = unknownPropagationRuleKeys(body.disabledRuleKeys, published);
+    if (unknown.length > 0) {
+      throw new AppError(
+        "UNKNOWN_PROPAGATION_RULE_KEY",
+        `未知传导规则 key：${unknown.join(", ")}。本租户已发布的 key = [${published.map((r) => r.key).join(", ")}]。` +
+          `拒绝静默忽略——静默忽略会让你以为这条边已经关掉，而它其实一直在跑。`,
+        400,
+      );
+    }
+    s.disabledRuleKeys = [...new Set(body.disabledRuleKeys)].sort(); // 去重 + 全序 ⇒ 同输入同落盘（R6）
+    await repos.sim.putSession(s);
+    return { id: s.id, disabledRuleKeys: s.disabledRuleKeys };
+  });
+
+  /**
+   * 对照跑：**同一 tick、开/关两种规则集各跑一遍、返回差异**（本单的核心产出，不是附加项）。
+   *
+   * · **确定性**（R6）：两版共用 `simAdvanceTicks` 同一支，输入相同即输出相同；回包不含任何
+   *   wall-clock 字段（`computedAt` 之类一律不加 —— 加了它同输入就不再字节一致）。
+   * · **不写世界态**：两版都 `persist: false`；`putTickState`/`putSession`/`outbox.emit` 一次都不调。
+   *   会话的 `curTick` 与全部 tick 行在本路由前后**逐字节相同**（测试咬死，见 §4）。
+   * · `disabledRuleKeys` 可由 body 覆盖 ⇒ 前端拨一下开关就能立刻要到差值，
+   *   不必先 PATCH 再跑（§3.3「关掉一条边 ⇒ 立刻看到结果差异，不是再点一次运行」）。
+   */
+  app.post("/a/v1/sim/sessions/:id/counterfactual", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation"); // R3
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // R2
+    const body = parseBody(
+      z.object({ n: z.number().int().min(1).max(64).optional(), disabledRuleKeys: z.array(z.string()).optional() }),
+      req.body ?? {},
+    );
+    const n = body.n ?? 1;
+    const published = await listPublishedPropRules(c);
+    if (body.disabledRuleKeys) {
+      const unknown = unknownPropagationRuleKeys(body.disabledRuleKeys, published);
+      if (unknown.length > 0) {
+        throw new AppError(
+          "UNKNOWN_PROPAGATION_RULE_KEY",
+          `未知传导规则 key：${unknown.join(", ")}。对照跑同样拒绝静默忽略——` +
+            `否则差值恒 0，而你会以为"关掉这条边没有影响"。`,
+          400,
+        );
+      }
+    }
+    const { active, suppressed, disabled } = await sessionPropRules(c, s, body.disabledRuleKeys);
+    // 基线 = 全部已发布规则（"边开着"）；反事实 = 减去屏蔽集（"边关掉"）。两版同一起点、同一算法。
+    const baseline = await simAdvanceTicks(c, s, { rules: published, n, persist: false });
+    const counterfactual = await simAdvanceTicks(c, s, { rules: active, n, persist: false });
+    const result: SimCounterfactualResult = {
+      fromTick: s.curTick,
+      ticks: n,
+      disabledRuleKeys: disabled,
+      suppressedRules: suppressed,
+      baselineState: baseline.state,
+      counterfactualState: counterfactual.state,
+      diffs: diffTickStates(baseline.state, counterfactual.state),
+      // 诚实位：屏蔽的这几条在基线那版真的动了吗。没动 ⇒ 差值为空是"它本来就没在跑"，
+      // 不是"关掉它没影响"。两者在屏上长得一样，必须显式分开。
+      suppressedRulesFiredInBaseline: suppressed.map((r) => r.key).filter((k) => baseline.firedRuleKeys.includes(k)).sort(),
+    };
+    return result;
+  });
+  /**
+   * 把一条扰动施加到**当前 tick**，并把结果落回 `sim_tick_state`（`/act` 与 `POST /perturbations` 共用）。
+   *
+   * 🔴 **欠账 #151 的修复点**：此前这里无条件写 `pending: [], trace: null`
+   * （原 `app.ts:1485`），而 tick 路由正是从同一行读回在途延迟贡献（`app.ts:1433`
+   * `getTickState(...).pending`）。`seed.ts` 的 `demo_line_util_to_base_load` 带 `delayTicks: 1`
+   * ⇒ demo 租户跑一次 tick 后 `pending` 必然非空 ⇒ `tick → act → tick` **静默丢掉全部在途传导**。
+   * 立账时（WO-P0）不炸只因 `/act` 零调用方（欠账 #150）。**WO-SIM-ACT-CLOSE 已把前端入口接上**
+   * （沙盘「施加扰动」→ `POST /perturbations` → 本函数），所以这个坑现在真的在生产路径上 ——
+   * 「两条账必须同单修」（PRD §2.2③）说的正是这件事。两条施加路各有一条回归门，缺一不可：
+   * `test/sim-perturbation.test.ts` 断言②（`/act` 路）· `test/sim-act-close.seam.test.ts` ③（`/perturbations` 路）。
+   * 改法：**读回并保留当前 tick 已有的 `pending`/`trace`，只改 `state`**。
+   * 扰动是模拟态、不写真值（R4；采纳才出 ActionDraft），也不该动传导队列。
+   */
+  const simApplyAtCurrentTick = async (
+    c: AuthCtx, s: SimSession,
+    p: Pick<Perturbation, "targetObjectId" | "targetStateVar" | "magnitude" | "mode">,
+  ): Promise<TickState> => {
+    const cur = await repos.sim.getTickState(c.tenantId, s.id, s.curTick);
+    const state = applyPerturbationToState(cur?.state ?? simState(s.baseSnapshot), p);
+    await repos.sim.putTickState({
+      sessionId: s.id, tenantId: c.tenantId, tick: s.curTick, state,
+      pending: cur?.pending ?? [], // ← #151：保留在途延迟贡献，不再硬写空
+      trace: cur?.trace ?? null, // ← 同理：本 tick 的传导轨迹不是扰动造成的，不该被抹掉
+    });
+    return state;
+  };
+
+  app.post("/a/v1/sim/sessions/:id/act", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    assertSimSessionWritable(s, "施加扰动"); // 退修①：/act 经 simApplyAtCurrentTick→putTickState 真落库，冻结世界必须拒
+    const b = req.body as { objectId: string; stateVar: string; value: number };
+    // `/act` = 一条 `mode:"set"` / `durationTicks:null` 的扰动（PRD §3.1.2 判据 1：null = 永久 = 今天 /act 的行为）。
+    // 走与 `POST /perturbations` **同一个施加实现**，故「逐字节同结果」是结构上成立的，不靠两处代码碰巧一样。
+    const state = await simApplyAtCurrentTick(c, s, {
+      targetObjectId: String(b.objectId), targetStateVar: String(b.stateVar), magnitude: Number(b.value), mode: "set",
+    });
+    return { curTick: s.curTick, state };
+  });
+
+  // ---- 扰动一等公民（WO-P0 · PRD-UPGRADE-decision-sandbox-v2 §3.1 · 关闭 #150/#151/REQ060）----
+  // 此前沙盘唯一的扰动入口是 `/act` 的裸标量写入：无 id、无持久化、无 kind、无时序 ⇒
+  // 「这个世界受过哪些扰动」问不出来，「第 5 天开始停机 72h」排不了（PRD §2.2②）。
+  // 本组路由把扰动升为实体：可建、可列、可删。全部过 sim.sandbox entitlement（R3 先于 authz）。
+  // ⚠ 本单**不做** propagateTick 接扰动（WO-P2）：建扰动只在「本 tick 已生效」时立即施加
+  // （= 与 `/act` 等价的那条路），未来 tick 的扰动只入库、等 WO-P2 在传导里按 startTick/duration 施加与回退。
+  /**
+   * 建一条扰动的**唯一实现**（WO-SIM-SEED-PERTURB 从 `POST …/perturbations` 原样提出，一行语义未改）。
+   *
+   * 提出去的理由与 `createSimSessionWorld` / `tickSimSessionWorld` 同源：`SEED_DEMO=1` 播种要播的是
+   * **真扰动**（同一份 zod 校验、同一条入库、同一份 `isPerturbationActiveAt` 生效判据、同一个事件），
+   * 不是往 `sim_perturbation` 里塞一条记录 —— 那样传导核不会跑，`metric-series` 的 `actual`
+   * 还是不动，等于把「一片无事发生」换成「有一条扰动记录的无事发生」（静默错答的老形态）。
+   *
+   * `override` 是**播种专用**的可选覆盖（要 R6 确定性 + 固定幂等键）。它**排在 `body` 展开之后**，
+   * 而路由**不传 `override`** ⇒ 客户端 body 里的 `id`/`createdAt` 恒被丢弃。
+   * 这不是靠调用方自觉：结构上就取不到（同 `createSimSessionWorld` 只透传两个字段的那条纪律 ——
+   * 整包转发等于把 `id` 开放给客户端指定，可撞已有扰动 id）。
+   */
+  const createPerturbationWorld = async (
+    c: AuthCtx,
+    s: SimSession,
+    body: Record<string, unknown>,
+    override?: { id?: string; createdAt?: string },
+  ): Promise<{ perturbation: Perturbation; state: TickState }> => {
+    assertSimSessionWritable(s, "建扰动"); // 退修①：createPerturbation + 已生效者立即 putTickState，冻结世界必须拒
+    // `safeParse` 而非裸 `parse`：ZodError 身上没有 `statusCode`，会被兜底错误处理器（app.ts:833）
+    // 判成 **500 INTERNAL_ERROR** —— 把「用户填错了」报成「服务器坏了」，且进 error 日志。
+    // 统一错误信封要求这里是 400 VALIDATION_ERROR。
+    const parsed = PerturbationSchema.safeParse({
+      ...body,
+      id: override?.id ?? newId("simpert"), tenantId: c.tenantId, sessionId: s.id,
+      // 不填 startTick = 「现在就发生」（当前 tick）——与 `/act` 的隐含语义一致。
+      startTick: body.startTick ?? s.curTick,
+      createdAt: override?.createdAt ?? new Date().toISOString(),
+    });
+    if (!parsed.success) throw validationError(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    const p = parsed.data;
+    await repos.sim.createPerturbation(p);
+    // 已在当前 tick 生效的扰动立刻落到世界态（active 判据由契约单源 isPerturbationActiveAt 给，
+    // 引擎与路由共用同一份，不许各写一份）。未生效的只入库。
+    const state = isPerturbationActiveAt(p, s.curTick) ? await simApplyAtCurrentTick(c, s, p) : await simCurrent(c, s);
+    await outbox.emit(c.tenantId, "sim.perturbation_created", { sessionId: s.id, perturbationId: p.id, kind: p.kind, startTick: p.startTick });
+    return { perturbation: p, state };
+  };
+  app.post("/a/v1/sim/sessions/:id/perturbations", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const { perturbation, state } = await createPerturbationWorld(c, s, (req.body ?? {}) as Record<string, unknown>);
+    return reply.status(201).send({ perturbation, curTick: s.curTick, state });
+  });
+  app.get("/a/v1/sim/sessions/:id/perturbations", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    return { items: await repos.sim.listPerturbations(c.tenantId, s.id) };
+  });
+  app.delete("/a/v1/sim/sessions/:id/perturbations/:pid", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    assertSimSessionWritable(s, "删扰动"); // 退修①：扰动记录属会话世界配置，冻结世界必须拒
+    // 删的是**扰动记录**，不回滚世界态（回滚走 checkpoint/rollback —— 那是既有的、有语义的回退口，
+    // 在这里再造一个"撤销"就是第二套真相源）。
+    const ok = await repos.sim.deletePerturbation(c.tenantId, s.id, (req.params as { pid: string }).pid);
+    if (!ok) throw notFound("perturbation not found");
+    return { deleted: true };
+  });
+  app.post("/a/v1/sim/sessions/:id/checkpoint", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.checkpoint");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const cp: SimCheckpoint = { id: newId("simcp"), sessionId: s.id, tenantId: c.tenantId, tick: s.curTick,
+      label: String((req.body as { label?: string })?.label ?? `tick${s.curTick}`), createdAt: new Date().toISOString() };
+    await repos.sim.createCheckpoint(cp);
+    await outbox.emit(c.tenantId, "sim.checkpoint_saved", { sessionId: s.id, checkpointId: cp.id, tick: cp.tick });
+    return reply.status(201).send(cp);
+  });
+  // WO-ENGINE-2 件二·半边A：检查点**列表读端**。仓储三处（repo.ts 接口 / memory.ts / pg.ts）早就写好了
+  // `listCheckpoints`，但 24 条 `/a/v1/sim/*` 路由里从没有人开这个口 —— 病根在 route 层，不在前端。
+  // 接线状态（2026-08-20 · WO-EVENT-SUB-CLOSURE）：本路由 + 前端 checkpointsQuery（WO-BEFE-E）齐备，
+  // `sim.checkpoint_saved` 已真接线（EVENT_INVALIDATES → ["a","sim-checkpoints"] 前缀失效），
+  // `sim.*` 六事件自此全部有真消费方。
+  // ⚠️ R9 双实现一致性：排序**必须**落在本层，不能指望两个仓储各自 ORDER BY —— 它们今天就不一致：
+  // `repo/pg.ts:103` 是 `ORDER BY tick`（且 tick 相同时次序由 DB 任意决定，非全序），
+  // 而 `repo/memory.ts:70` **一个 sort 都没有**（Map 插入序）。沙盘的常规动作正好会踩中这个分叉：
+  // 存档 → 回滚 → 在更早的 tick 再存一次 ⇒ 插入序与 tick 序相反。
+  // 实测（2026-08-13 收编本单时在 canonical 上真跑，非转述）：去掉下面这行 `.sort(...)`，
+  // memory 按插入序吐 `[2, 8, 2]`，`sim-checkpoint-list.seam.test.ts` ② 当场红：
+  //   `AssertionError: expected [ 2, 8, 2 ] to deeply equal [ 2, 2, 8 ]`
+  // 顺序在这里是**语义**而非美观：用户按它挑回滚点/分支点，顺序错 = 挑错档。
+  // 全序键取 `(tick, createdAt, id)`，与 `listPerturbations` 同款纪律 —— **不以随机 id 作首键**，
+  // id 只做最后的去歧义键，于是 memory 与 pg 返回逐字节一致（R6 确定性 ∧ R9 双实现同构）。
+  //
+  // ⚠️ **诚实边界：次键 `createdAt`/`id` 今天没有测试在驱动它（存活变异，2026-08-13 实测）。**
+  // 变异 M1「把 `.sort` 砍成只剩 `a.tick - b.tick`」⇒ `sim-checkpoint-list.seam.test.ts`
+  // **8/8 依旧全绿（RC=0）**，包括那条自称在验次键的 `expect(...).toEqual(["锚@2","回@2"])`。
+  // 病因不是断言写错，是 **`Array.prototype.sort` 自 ES2019 起是稳定排序**，而 memory 仓储
+  // 返回的正是插入序 ⇒ 同 tick 的并列项靠"稳定性"就已经落在 createdAt 序上，次键从未被真正调用。
+  // ⇒ 次键真正的守备对象是 **pg**（`ORDER BY tick` 对并列项不定序），而 pg 路径**本测试完全没覆盖**
+  //   （全仓 datacore 测试跑 memory 仓储）。**保留次键**（它对 pg 是必需的、且零成本），
+  //   但**不许**据本测试全绿宣称"双实现顺序已一致"—— 那是 R9 上一个仍然张着的口子，
+  //   要闭得靠一条真连 pg 的测试，属另开工单。这一条按"接了线没数据/没覆盖"记账，非"已验通过"。
+  app.get("/a/v1/sim/sessions/:id/checkpoints", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.checkpoint");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const items = (await repos.sim.listCheckpoints(c.tenantId, s.id))
+      .sort((a, b) => a.tick - b.tick || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    return { items };
+  });
+  app.post("/a/v1/sim/sessions/:id/rollback", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.checkpoint");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    assertSimSessionWritable(s, "rollback"); // 退修①：deleteTicksAfter 回卷世界线，是真写不是读
+    const cp = await repos.sim.getCheckpoint(c.tenantId, String((req.body as { checkpointId?: string })?.checkpointId));
+    if (!cp || cp.sessionId !== s.id) throw notFound("checkpoint not found");
+    await repos.sim.deleteTicksAfter(c.tenantId, s.id, cp.tick);
+    s.curTick = cp.tick; await repos.sim.putSession(s);
+    return { curTick: s.curTick, state: await simCurrent(c, s) };
+  });
+  app.post("/a/v1/sim/sessions/:id/branch", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.branch");
+    const parent = await getSimOr404(c, (req.params as { id: string }).id);
+    const cp = await repos.sim.getCheckpoint(c.tenantId, String((req.body as { checkpointId?: string })?.checkpointId));
+    if (!cp || cp.sessionId !== parent.id) throw notFound("checkpoint not found");
+    const baseState = (await repos.sim.getTickState(c.tenantId, parent.id, cp.tick))?.state ?? {};
+    const child: SimSession = { id: newId("sims"), tenantId: c.tenantId, baseSnapshot: simState(baseState), scope: parent.scope,
+      status: "READY", curTick: 0, parentCheckpointId: cp.id,
+      // 分支**继承**父会话屏蔽的边：分支的语义是"从这个存档点接着往下试"，屏蔽集属于那个世界的假设。
+      // 不继承 ⇒ 分支出来的世界会悄悄把边又打开，用户看到的数与父会话对不上却查不出原因。
+      disabledRuleKeys: [...(parent.disabledRuleKeys ?? [])],
+      createdAt: new Date().toISOString() };
+    await repos.sim.createSession(child);
+    await repos.sim.putTickState({ sessionId: child.id, tenantId: c.tenantId, tick: 0, state: simState(baseState), pending: [], trace: null });
+    await outbox.emit(c.tenantId, "sim.branched", { parentSessionId: parent.id, childSessionId: child.id, checkpointId: cp.id });
+    return reply.status(201).send(child);
+  });
+  app.get("/a/v1/sim/compare", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.branch");
+    const q = req.query as { a?: string; b?: string };
+    const seriesOf = async (id?: string) => (id ? (await repos.sim.listTickStates(c.tenantId, id)).map((t) => ({ tick: t.tick, state: t.state })) : []);
+    return { a: await seriesOf(q.a), b: await seriesOf(q.b) };
+  });
+  app.get("/a/v1/sim/propagation-rules", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const published = (req.query as { published?: string })?.published !== "false";
+    const items = await repos.sim.listPropagationRules(c.tenantId, published);
+    /**
+     * WO-DISRUPTION-CARDS · 把**对象类型的人话名**投影上去（`Base` → 「生产基地」）。
+     *
+     * 屏上那两级标签（人话名在上、系统键在下）要的就是这个名字。三条口径：
+     *  · **读时 join，不入库**：名字的真值源是本租户此刻的本体 `ObjectType.displayName`。
+     *    存进 `sim_propagation_rule.doc` 会在类型改名后留下一个查无对证的旧名字。
+     *  · **随边下发，不让前端另取一次本体**：这个面板挂在 8 个推演页上，多一个 endpoint 依赖
+     *    会把全仓 29 个做部分 mock 的前端测试一起打红（实测过）。结构上少一条依赖边。
+     *  · **查不到就 `null`**：前端据此显裸键（`Base`），不渲染空白、不编一个名字（R13/R14）。
+     *    本体未物化的租户 ⇒ 全 `null` ⇒ 屏上全是裸键，仍可用，只是没那么好读。
+     */
+    const nameOf = new Map((await repos.ontologyTypes.list(c.tenantId)).map((t) => [t.key, t.displayName] as const));
+    return {
+      items: items.map((r) => ({
+        ...r,
+        sourceTypeName: nameOf.get(r.sourceTypeKey) ?? null,
+        targetTypeName: nameOf.get(r.targetTypeKey) ?? null,
+      })),
+      /**
+       * WO-STATEVAR-DISPLAYNAME · **状态变量的人话名**随边一起下发（`loadIndex` → 「负载指数」）。
+       * 口径与 `GET /sim/view-config` 的同名字段**逐字节相同**：同一张单源表、同一个投影函数
+       * （`stateVarDisplayNames`），不在两个路由里各写一遍映射。
+       * 只收登记过的键 ⇒ 前端查不到就显裸键（诚实回落，不编名字）。
+       */
+      stateVarNames: stateVarDisplayNames(items.flatMap((r) => [r.sourceStateVar, r.targetStateVar])),
+    };
+  });
+  /**
+   * 因果边写入前的**引用体检**（WO-CAUSAL-EDGE-CRUD 交付判据 2）。
+   *
+   * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════
+   * **X（改前，2026-09-03 真后端实测）**：`PropagationRuleSchema` 把三个端点声明成裸
+   *   `z.string()` ⇒ 只要非空就过。实测 `POST` 一条源类型 `NoSuchType_ZZZ`、链路
+   *   `no_such_link_ZZZ`、目标 `AlsoMissing_ZZZ` 三者全不存在的边，**201 且 status=PUBLISHED**
+   *   —— 它当场进推演集合（`listPropagationRules(tenantId, true)`），而 `navOut` 里
+   *   查无此链路 ⇒ 永远贡献 0。屏上「生效因果边」数字 +1，推演结果一动不动。
+   * **Y（改后）**：端点 / 链路 / 系数来源三样都当场核对，非法 400 并点名是哪一个值。
+   *
+   * ⚠ **这不是假想的洁癖，是本仓真出过的事故**：`POST /a/v1/ontology/link-types` 当时
+   *   只校验字符串非空，**133 条建出来的结构边里 81 条端点类型根本不存在，全部 201 通过**。
+   *   因果边不许重犯同一个错。
+   *
+   * ══ 为什么连**方向**都要卡（这条最容易被当成过度设计）══════════════════════
+   * 引擎只沿 `fromId→toId` 单向走（`sim/propagation.ts` 的 `navOut`：
+   * `navKey(l.linkKey, l.fromId) -> [toId…]`，头注亦写明「`propagateTick` 的 `navOut`
+   * 只沿 `fromId→toId`」）。故一条 `viaLinkKey` 方向反了的边**语法全对、语义恒空** ——
+   * 它会安静地待在「已发布」里一辈子不产生任何贡献。这正是本仓三分法里
+   * 「**接了线接错地方**」那一态，且是最难查的一种：没有报错、没有红、只是数不动。
+   * 实测 42 条种子边**全部正向**（正向 42 · 反向 0 · 对不上 0），故这条闸门
+   * 对存量零误伤 —— 先量后卡，不是先卡后量。
+   *
+   * ══ 为什么 `coefficientRef` 也要卡 ═════════════════════════════════════════
+   * `effectiveCoefficient`（`sim/propagation.ts`）在 ref 解析不到时**静默回落**到内联
+   * `coefficient`。于是一个拼错的 `paramKey` 不会报错，只会让用户以为"系数来自规则配置、
+   * 改规则就能改推演"，实际改规则**毫无效果**（实测：42 条边走 ref 的是 0 条，全部内联回落）。
+   * 静默回落 = 用户以为改了、其实没改 ⇒ 写入时就必须解析得到，解析不到当场 400。
+   *
+   * ⛔ **闸门放在路由，不放仓储** —— 与 `deletePropagationRule` 的接口注释同一条理由：
+   *   放仓储会把 `seedDemoPropagationRules` 这类内部写路也挡住（种子经 `putPropagationRule`
+   *   直落，不走本路由）。
+   */
+  const assertPropagationRefs = async (c: AuthCtx, draft: PropagationRule): Promise<void> => {
+    const [types, linkTypes] = await Promise.all([ontology.listTypes(c), repos.ontologyLinks.list(c.tenantId)]);
+    const typeKeys = new Set(types.map((t) => t.key));
+    // 逐条收集再一次抛出：一次告诉调用方**全部**毛病，而不是修一个报一个（改 13 个字段的表单，
+    // 挤牙膏式报错等于让用户往返 3 次）。
+    const bad: string[] = [];
+    if (!typeKeys.has(draft.sourceTypeKey)) bad.push(`源对象类型 ${draft.sourceTypeKey} 不存在于本租户本体`);
+    if (!typeKeys.has(draft.targetTypeKey)) bad.push(`目标对象类型 ${draft.targetTypeKey} 不存在于本租户本体`);
+    const link = linkTypes.find((l) => l.key === draft.viaLinkKey);
+    if (!link) {
+      bad.push(`链路类型 ${draft.viaLinkKey} 不存在于本租户本体`);
+    } else if (link.fromTypeKey !== draft.sourceTypeKey || link.toTypeKey !== draft.targetTypeKey) {
+      // 方向/端点对不上 ⇒ 这条边**永远走不到任何对象**（引擎只沿 fromId→toId 单向走）。
+      // 报文必须同时给出「链路实际连的是什么」与「反过来写才对吗」这两个信息 ——
+      // 只说「对不上」的话，调用方唯一能做的就是猜。
+      const reversed = link.fromTypeKey === draft.targetTypeKey && link.toTypeKey === draft.sourceTypeKey;
+      bad.push(
+        `链路 ${link.key} 连的是 ${link.fromTypeKey}→${link.toTypeKey}，与本边的 ${draft.sourceTypeKey}→${draft.targetTypeKey} 对不上` +
+          (reversed
+            ? `（方向正好反了：引擎只沿链路的 from→to 单向传导，这样写的边会永远贡献 0。请把源/目标对调，或改用一条 ${draft.sourceTypeKey}→${draft.targetTypeKey} 的链路）`
+            : `（引擎只沿链路的 from→to 单向传导，这样写的边会永远贡献 0）`),
+      );
+    }
+    if (draft.coefficientRef) {
+      const ref = draft.coefficientRef;
+      const rule = (await repos.rules.list(c.tenantId, (x) => x.status === "PUBLISHED")).find((x) => x.key === ref.ruleKey);
+      if (!rule) {
+        bad.push(`系数来源规则 ${ref.ruleKey} 不存在或未发布（PUBLISHED）—— 解析不到会静默回落内联系数，等于改规则不生效`);
+      } else {
+        const v = (rule.params ?? {})[ref.paramKey];
+        const n = typeof v === "number" ? v : Number(v);
+        if (!Number.isFinite(n)) {
+          bad.push(
+            `规则 ${ref.ruleKey} 里没有数值参数 ${ref.paramKey}（现有参数：${Object.keys(rule.params ?? {}).join(", ") || "无"}）` +
+              ` —— 解析不到会静默回落内联系数，等于改规则不生效`,
+          );
+        }
+      }
+    }
+    if (bad.length > 0) throw validationError(`因果边 ${draft.key} 引用校验失败：${bad.join("；")}`);
+  };
+  /**
+   * 建/改一条因果边 —— **同 `key` 即 upsert**（WO-CAUSAL-EDGE-CRUD）。
+   *
+   * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════
+   * **X（改前，2026-09-03 真后端实测复现）**：本处把 `id: newId("simpr")` 写在 `req.body` 展开
+   *   **之后** ⇒ 客户端给什么 id 都被盖掉，而仓储 `putPropagationRule` 按 **id** 落键
+   *   ⇒ 同一个 `key` 写两次得**两行**（实测 `REPRO_EDGE`：`simpr_n88y…` 系数 0.5 与
+   *   `simpr_3e35…` 系数 0.9 并存，两行 `status` 都是 `PUBLISHED`）。
+   *   而 `propagateTick` 是**逐规则**调 `applyContribution(…, rule.combine, …)`
+   *   （`sim/propagation.ts:614`）⇒ `combine:"sum"` 下**两条都算**：用户以为自己把系数
+   *   从 0.5 改成了 0.9，真实效果是 `0.5 + 0.9 = 1.4`。**推演结论静默偏离**，
+   *   且当时 `PUT`/`PATCH`/`DELETE` 一个都没注册（源码金丝雀：`app.put(` 全文 16 命中、
+   *   本路径 0 命中）⇒ 多出来的那条**删不掉**。
+   * **Y（改后）**：`key` 是身份 —— 同 `key` 复用既有 `id`、`version` 递增、整条覆盖，
+   *   **恒 1 行**。
+   *
+   * ══ 为什么是 upsert 而不是 409 ═════════════════════════════════════════════
+   * 派单允许二选一。选 upsert 的理由不是省事，是**本仓已经有这套语义了**：结构边
+   * `POST /a/v1/ontology/link-types` → `ontology.ts upsertLinkType` 就是「按 key 找既有 →
+   * 复用 id → version+1」（实测金丝雀：同 key 连写两次得 `ltype_n87a…` v1→v2，**1 行**）。
+   * 因果边照抄这一套 ⇒ 两种边在屏上、在 API 上是**同一个心智模型**。
+   * 选 409 等于给本仓添**第四种**写语义（已有：结构边 upsert · 对象类型整体替换 · 因果边追加），
+   * 而本单的目的正是把第三种消掉。
+   *
+   * ⚠ **整条覆盖，不是字段合并** —— 与 `PATCH` 的分工要说死：
+   *   POST 认 `key`、改**整条**（省略的可选字段回落 schema 默认，与结构边一致）；
+   *   PATCH 认 `id`、只改**递上来的那几格**。要改一格就用 PATCH，别用 POST 重述全部字段。
+   *
+   * 回码：新建 **201**、改既有 **200**（`version > 1` 即改）。调用方据此分辨"我是不是覆盖了别人的边"。
+   */
+  app.post("/a/v1/sim/propagation-rules", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    // 与上方 `POST …/perturbations` 的 `safeParse` 记账同一个坑（那处已修、这处漏了）：
+    // 裸 `parse` 抛的 ZodError 没有 `statusCode` ⇒ 兜底处理器判 500 INTERNAL_ERROR 并回显 zod 内部结构。
+    const draft = parseBody(PropagationRuleSchema, { ...(req.body as object), id: newId("simpr"), tenantId: c.tenantId });
+    // 引用体检（交付判据 2）：端点 / 链路 / 方向 / 系数来源。**在 upsert 之前**——
+    // 放在后面的话，一条非法边会先把既有那条合法边覆盖掉再报错，比不校验更糟。
+    await assertPropagationRefs(c, draft);
+    // 按 `key` 找既有（`false` = 连 DRAFT/RETIRED 一起看）。
+    // ⚠ 必须看**全部状态**：只看 PUBLISHED 的话，一条被停用的同 key 边会被当成"不存在"，
+    //   于是又新建一条 —— 那正是本单要消掉的重复行，只是换了个触发条件。
+    const existing = (await repos.sim.listPropagationRules(c.tenantId, false)).find((x) => x.key === draft.key);
+    const r: PropagationRule = { ...draft, id: existing?.id ?? draft.id, version: (existing?.version ?? 0) + 1 };
+    await repos.sim.putPropagationRule(r);
+    return reply.status(existing ? 200 : 201).send(r);
+  });
+  /**
+   * 改一条既有因果边的**数值与闸门**（系数 / 延迟 / 合并 / 衰减 / 钳制 / 节拍 / 启停）。
+   *
+   * 身份格（`key` 与源/链/目标六元组）**不可改** —— 理由写在契约
+   * `PropagationRulePatchSchema` 头注：允许改身份 = 允许把一条边原地掉包，
+   * 而历史推演 trace 里按 `ruleKey` 的引用会指向一条语义已变的边。
+   *
+   * ⚠ **启停是可逆的**（`PUBLISHED ⇄ DRAFT` 同一条路径，没有单向闸）。这是刻意**不复制**
+   *   结构边那个已知坑：`deprecate`/`retire` 是两个只进不出的动作，屏上没有任何按钮
+   *   能把结构边从「已停用」拨回「启用」。派单点名要求「停用要能再启用」，落点就在这里。
+   *
+   * 每次 PATCH `version` 递增 ⇒ 「这条边被改过几次」在 upsert 与 PATCH 两条写路上是**同一个计数器**，
+   * 不是各记各的。
+   */
+  app.patch("/a/v1/sim/propagation-rules/:id", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const id = (req.params as { id: string }).id;
+    const cur = await repos.sim.getPropagationRule(c.tenantId, id);
+    if (!cur) throw notFound("propagation rule"); // 跨租户同样走这一支（R2：查无此条，不泄露存在性）
+    const patch = parseBody(PropagationRulePatchSchema, req.body ?? {});
+    const next: PropagationRule = { ...cur, ...patch, version: (cur.version ?? 1) + 1 };
+    // 身份格（端点/链路）PATCH 改不了，故这里体检的**唯一有效目标是 `coefficientRef`** ——
+    // 但仍走同一个函数、对合并后的 `next` 整体校验，不另抄一份"只查 ref"的删减版：
+    // 抄一份就会在下次给 PATCH 放开某个字段时**悄悄漏掉**对应的那条闸门。
+    await assertPropagationRefs(c, next);
+    await repos.sim.putPropagationRule(next);
+    return next;
+  });
+  /**
+   * 删一条因果边 —— **两步走，第一步可逆**（WO-CAUSAL-EDGE-CRUD）。
+   *
+   * ══ 派单的硬要求：「⛔ 不许静默删掉后让推演结果悄悄变化」════════════════════
+   * 一条 `PUBLISHED` 的边**按定义**就在推演集合里（`GET /sim/view-config` 与
+   * `POST …/tick` 读的都是 `listPropagationRules(tenantId, true)`，那个 `true` 的判据
+   * 就是 `status === "PUBLISHED"`）。直接删 ⇒ 每个在跑的会话下一拍读数都变，而没有任何
+   * 痕迹说明为什么变。故本路由对 `PUBLISHED` 的边**拒绝删除（409）**，并指路：
+   * 先 `PATCH {status:"DRAFT"}` 停用 —— 那一步**可逆**、读数变化**当场可见可回退**，
+   * 确认无碍之后再删。**把不可逆动作挡在可逆动作后面**，而不是加一句警告了事。
+   *
+   * ══ 第二道闸：被某个会话**按 key 点名**引用的边也不许删 ═══════════════════
+   * `SimSession.disabledRuleKeys` 存的是**规则 key 字符串**（「这一局我们假装这条边不存在」）。
+   * 删掉边而留下那个 key ⇒ 悬空引用：会话的假设集里点名了一条查无对证的边，
+   * `unknownPropagationRuleKeys` 会把它报成未知键。故 409 并**逐条点名是哪几个会话**
+   * （不是只说"还被引用着"—— 说不清被谁引用的拒绝，用户没法据此行动）。
+   *
+   * 两道闸都过 ⇒ 硬删。此时这条边既不在推演集合里、也没有会话点名它，
+   * 删掉**不改变任何读数** —— 这正是「不静默改变推演结果」这句话的可验证形式。
+   */
+  app.delete("/a/v1/sim/propagation-rules/:id", async (req, reply) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const id = (req.params as { id: string }).id;
+    const cur = await repos.sim.getPropagationRule(c.tenantId, id);
+    if (!cur) throw notFound("propagation rule");
+    if (cur.status === "PUBLISHED") {
+      throw invalidState(
+        `因果边 ${cur.key} 仍处于启用态（PUBLISHED），正参与推演 —— 直接删除会让所有在跑会话的读数静默改变。` +
+          `请先 PATCH {"status":"DRAFT"} 停用（可逆、读数变化当场可见），确认无碍后再删。`,
+      );
+    }
+    const referring = (await repos.sim.listSessionSummaries(c.tenantId))
+      .filter((s) => (s.disabledRuleKeys ?? []).includes(cur.key))
+      .map((s) => s.id)
+      .sort(); // 全序 ⇒ 同输入同输出（R6），报文可被逐字节比对
+    if (referring.length > 0) {
+      throw invalidState(
+        `因果边 ${cur.key} 被 ${referring.length} 个推演会话按 key 点名引用（disabledRuleKeys）：${referring.join(", ")}。` +
+          `删掉会在这些会话的假设集里留下悬空引用；请先在这些会话里取消对该边的屏蔽。`,
+      );
+    }
+    await repos.sim.deletePropagationRule(c.tenantId, id);
+    return reply.status(204).send();
+  });
+  /**
+   * ══ WO-ONTOLOGY-EDGE-EDIT · 改一条传导边（**保留传入的 id**）══════════════════════
+   *
+   * **今天的行为是 X**（开工实测）：这条路径上只有 GET + POST 两个动词，而 POST 把
+   *   `id: newId("simpr")` 写在 `...req.body` 展开**之后**（上一条路由那行）⇒ 客户端传的 id
+   *   恒被盖掉 ⇒ 「改一条」在屏上的实际后果是「多一条同 key 的边」，把生效条数数成两条。
+   *   `apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx` 因此挂了一条诚实位
+   *   「⚠ 因果边今天只能新建」，并写明「真·启停需后端补 PUT/PATCH …/:id（后端单）」——**本条就是那张单**。
+   * **应该是 Y**：`PUT /:id` 走同一个 `putPropagationRule`（repo 层**本来就是 upsert**，缺的只是路由），
+   *   id 取自**路径参数**而不是 body，于是改一条就是改那一条。
+   *
+   * ⛔ **租户闸必须落在写之前的那次读上，不能落在写上**：`putPropagationRule` 按 id 幂等覆盖、
+   *   **不看 tenantId**（`repo/memory.ts` 一句 `this.rules.set(r.id, …)`；pg 侧 `ON CONFLICT (id) DO UPDATE`）。
+   *   若直接把 body 写下去，A 租户拿着 B 租户的 id 就能覆盖 B 的边 —— 而 id 是客户端给的。
+   *   故先 `getPropagationRule(c.tenantId, id)`，读不到即 404，连写都不发生（R2）。
+   * ⛔ `tenantId` 一律用**服务端上下文**的，body 里带什么都不采信（否则等于把 R2 交给客户端自觉）。
+   * ⚠ 走 `parseBody`（= `safeParse`）而非裸 `parse`：裸 `parse` 抛的 ZodError 身上没有 `statusCode`
+   *   ⇒ 兜底处理器判 500 并回显 zod 内部结构（上一条路由的头注记的就是这个坑）。
+   */
+  app.put("/a/v1/sim/propagation-rules/:id", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const id = (req.params as { id: string }).id;
+    const cur = await repos.sim.getPropagationRule(c.tenantId, id);
+    if (!cur) throw notFound("propagation rule"); // 跨租户 ⇒ 与"不存在"同一回包（不泄露存在性）
+    // `id`/`tenantId` 写在展开**之后** —— 与 POST 那行同一个手法，但这里盖的是**路径参数**，
+    // 不是新 mint 的 id：改的就是被点名的那一条。
+    const r = parseBody(PropagationRuleSchema, { ...(req.body as object), id, tenantId: c.tenantId });
+    await repos.sim.putPropagationRule(r);
+    return r;
+  });
+  /**
+  /*
+   * ⛔ 收编批次4 · 这里**曾经有第二条** `app.delete("/a/v1/sim/propagation-rules/:id")`
+   *   （WO-ONTOLOGY-EDGE-EDIT 的硬删版，回 `{deleted:true}`）。
+   *   它与上面 WO-CAUSAL-EDGE-CRUD 那条**方法+路径完全相同** —— 两条同时注册，
+   *   Fastify 启动即抛 `FST_ERR_DUPLICATED_ROUTE`，**整个服务起不来**。
+   *   ⚠ 这是 merge 自动合并出来的：两侧各自新增、文本不相邻 ⇒ **不产生冲突标记**，
+   *     `tsc` 也看不见（重复注册是运行时的事）。四包 typecheck 全绿而服务起不来。
+   *   保留的是**带两道闸那条**（还启用着 ⇒ 409；被会话点名引用 ⇒ 409），因为它严格更安全，
+   *   且它自己先 `getPropagationRule` ⇒ 不存在/跨租户仍是 404，本版的 404 语义一并保住。
+   *   唯一差异：成功回 **204 无体**（原为 `{deleted:true}`），前端 `deletePropagationRule`
+   *   已同批改成 `api.a<void>`；调用点只用 onSuccess、不读回包，故无行为损失。
+   */
+  /**
+   * WO-ONTOLOGY-EDGE-EDIT · **只改启停位**（屏上那个勾选框）。
+   *
+   * ── 为什么不让勾选框直接打 `PUT`（那条已经能改 status 了）─────────────────────
+   * `PUT` 是**整条覆盖**：勾选框得先把手上那份完整的边回传一遍。而列表是缓存来的，
+   * 用户勾选的这一刻，手上那份可能已经比库里旧（别人刚改过系数）——
+   * 于是「点一下勾选框」会**顺手把系数回退到旧值**，且屏上没有任何迹象。
+   * 本条只读 `status` 一个字段、在服务端与**当前**那条边合并，故并发下丢的最多是这一位。
+   *
+   * 启停语义落在**既有的** `status`（`DRAFT|PUBLISHED|RETIRED`，契约 `sim.ts` 该字段处），
+   * **不新造 `active`** —— `listPropagationRules(tenantId, true)` 的过滤判据本来就是
+   * `status === "PUBLISHED"`（两套仓储同口径），新造一个字段就是第二套真相源。
+   * 这里只收 `DRAFT|PUBLISHED` 两态：`RETIRED`（下线）是治理动作、不是一个勾选框该干的事。
+   */
+  app.patch("/a/v1/sim/propagation-rules/:id/status", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const id = (req.params as { id: string }).id;
+    const cur = await repos.sim.getPropagationRule(c.tenantId, id); // 租户闸同 PUT：读不到即 404
+    if (!cur) throw notFound("propagation rule");
+    const body = parseBody(z.object({ status: z.enum(["DRAFT", "PUBLISHED"]) }), req.body);
+    const r = { ...cur, status: body.status };
+    await repos.sim.putPropagationRule(r);
+    return r;
+  });
+  /**
+   * WO-CHANGE-IMPACT-PREVIEW · 变更传播预览（纯只读）。
+   * 改扰动/关传导边/改派生公式**按下去之前**看到波及面：四桶（recompute 传导 /
+   * rederive 派生 / rejudge 规则重判 / rewire 结构改写）+ 逐跳计数 + unresolved 诚实位
+   * （⛔ 空集不冒充「没有波及」）。语义依据与跳数保险丝论据见 sim/change-impact.ts 头注。
+   * 与 POST /a/v1/simulation/impact-analysis 划界：那条走 DerivationSpec recompute dryRun
+   * （栈B），本条覆盖 sim 传导 + 两套派生 + 规则判定四族、按关系分桶带跳数——不重复。
+   */
+  app.post("/a/v1/sim/change-impact-preview", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.propagation");
+    const body = parseBody(ChangeImpactPreviewRequestSchema, req.body ?? {});
+    // 对抗方闸与引擎路（`sessionPropRules`）取同一个开关：预览要预的是**这台引擎待会儿真会跑的那些边**，
+    // 不是规则目录。目录路（`GET /sim/propagation-rules`）照旧不过滤 —— 那是"可见地降级"，两回事。
+    const world = await buildChangeImpactWorld(repos, c.tenantId, await features.enabled(c.tenantId, ADVERSARY_FEATURE_KEY));
+    return previewChangeImpact(world, body.focus);
+  });
+  /**
+   * WO-SIM-BE-PARETO · 帕累托解集（多目标权衡的**解集**，不是 `buildPareto` 那个 80/20 排行）。
+   *
+   * 为什么是新的一条口而不是 `optimize_whatif` 加个参数：what-if 一次只回**两个**解
+   * （`baselineSolution` / `perturbedSolution`，见 `solvers/opt-whatif.ts:191-192`）——
+   * 同一条扰动路径上的前后快照。「少花钱和快交付之间有哪些不吃亏的折中」两个点答不了。
+   *
+   * 求解走与 5 核心**同一个 invoke 通道**（sidecar / InProc），故解集里每个解的数值
+   * 与用户单独跑一次 what-if 得到的逐字节相同 —— 不存在"解集有自己一套算法"这种漂移源。
+   */
+  app.post("/a/v1/sim/optimize-pareto", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    // WO-SIM-PARAM-WIRE ③ · `parseBody`（= `safeParse`）而非裸 `parse`。
+    //
+    // 🔴 病灶（实测原文，改前）：`POST /a/v1/sim/optimize-pareto` body `{}` →
+    //   `http=500 {"error":{"code":"INTERNAL_ERROR","message":"[\n  {\n    \"expected\": \"string\",
+    //    … \"path\": [\"family\"] …"}}` —— 裸 `parse` 抛的 ZodError 身上没有 `statusCode`，
+    //   被兜底错误处理器判成 **500 INTERNAL_ERROR**：把「调用方少填了 family」报成「服务器坏了」，
+    //   而且把 zod 的内部结构（`expected` / `code:"invalid_type"` / `path`）原样回显给调用方。
+    //   同一个坑本文件上方 `POST …/perturbations` 早已记过账并修过 —— **只修了那一处**。
+    //
+    // ✅ 现在与本文件另外 97 处 `parseBody(...)` 逐字一致：400 `VALIDATION_ERROR`
+    //   + 统一错误信封 `{ error: { code, message, requestId } }`，message 是
+    //   `"<path>: <message>"` 的人读串，不含任何 zod 内部字段。
+    const body = parseBody(ParetoRequestSchema, req.body ?? {});
+    /**
+     * WO-WORLDSTATE-CONTRACT · **本口刻意不校验 `sessionId` 的存在性**（这是判断，不是遗漏）。
+     *
+     * 开工时我在这里加过一句 `getSimOr404(c, body.sessionId)`，理由是「R2 不许静默退化」。
+     * **实测把它否掉了**：`opt-pareto-assemble.seam.test.ts` 与 `opt-pareto.seam.test.ts`
+     * 共 3 个既有用例当场从 200 变 404（它们传的是 `sess-1` / `sess-pareto-http` 这类
+     * **合成标签**，本来就没打算指向一条真会话）。追一层看契约原文，它们没写错 ——
+     * `ParetoRequestSchema.sessionId` 的定义是「**R6 确定性键的一部分**」，
+     * 即一个**标签**，不是外键。把标签升级成外键是另一个契约变更，不在本单射程内。
+     *
+     * **R2 落在真正读世界态的那一口**：`POST …/optimize-pareto/assemble` ——
+     * 会话不存在/属于别的租户即 404（`SolverService.assembleParetoModel` 第一行）。
+     * 本口**一格世界态都不读**：世界态在装配侧就已经烤进 `args` 了，
+     * 它这里只是把上一跳回的那份请求原样求解。
+     * ⇒ 「静默退化成本体真值」这个风险在本口**结构上不存在**：args 是调用方自己给的。
+     */
+    const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
+    return runOptimizePareto(solve, body);
+  });
+  /**
+   * WO-SIM-PARETO-MODEL-EXIT · **模型装配出口**（上一条口的"请求从哪来"）。
+   *
+   * ══ 今天的行为是 X，应该是 Y ══════════════════════════════════════════════
+   * **X**：上面那条 `optimize-pareto` 要一份完整 `ParetoRequest`（族 + args + ≥2 目标 + ≥1 杠杆），
+   *   而全仓**没有任何出口**能产出它 —— 装配能力在 `opt-binding.ts` / `service.ts`
+   *   `assembleBaselineFromSelection`（`private`，且只回 Δ目标不回 args）里，谁都调不到。
+   *   于是页4 前沿图的 `data-source` 恒为 `placeholder`（实测：`sandbox-opt=placeholder`
+   *   而同页 `sandbox-opt-grid=endpoint` —— 两半的诚实位一真一假，正说明缺的是模型这一半）。
+   * **Y**：调用方只说「要优化什么范围」，这条口从**本租户已发布本体**装出模型并回一份
+   *   **可直接 POST 给上面那条口**的 `ParetoRequest`；装不出就诚实说缺哪格，调用方据此**不发**求解请求。
+   *
+   * ══ 为什么单开一条只读口，而不是给 `optimize-pareto` 加 autoBind 分支 ═══════
+   *  ① **「装配不出 ⇒ 零求解请求」这句话要能被测试咬住**。装配若长在求解口里，
+   *     那一次请求**就是**求解请求，"零请求"字面上不可能成立。
+   *  ② **可追溯**：装配结果是一份能复制、能重放的请求体，屏上那条前沿对应的就是它本身。
+   *  ③ `ParetoRequestSchema` 是 `strictObject` 且三件套必填；加 autoBind 等于把必填改成
+   *     条件必填，契约的拒绝力当场降一档。
+   *
+   * 门禁与上面那条**同一格**（`sim.sandbox`）：它俩是同一块屏的两步，
+   * 拆成两个 entitlement 会造出"能装配但不能求解"这种半开状态。关 ⇒ 404 FEATURE_NOT_FOUND（R3）。
+   * `applicable:false` 走 **200**（本体撑不起这个模型是**结论**不是故障，理由见契约注释）。
+   */
+  app.post("/a/v1/sim/optimize-pareto/assemble", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const body = parseBody(ParetoAssembleRequestSchema, req.body ?? {});
+    return solvers.assembleParetoModel(c, body);
+  });
+  /**
+   * WO-AGENT-IN-LOOP · **方案生成**：让 agent 参与「挑哪几条对策」，且**一个数都不许它产**。
+   *
+   * ══ 今天的行为是 X，应该是 Y（实测原文）════════════════════════════════════
+   * **X**：推演路**零 LLM / 零 agent**（金丝雀：同一把扫法在 `apps/agentcore/src` 命中 10 个文件，
+   *   在 `solvers/`+`synthetic/` 命中 **0**；`solvers/capacity.ts` 白纸黑字 `agentInvolved: false`）。
+   *   上一条 `/assemble` 按**结构信号**（词库命中 / 主键 / ref 指向 / 实例行数）挑杠杆 ——
+   *   它**不读本次事件**，故施加任何扰动，那张网格逐字节不变：
+   *   **那是一张固定的产线产能扫描表，不是本次事件的对策。**
+   * **Y**：本条口把**同一份菜单**（数值仍全部来自 `/assemble` 读的本体真值）连同**本次世界态**
+   *   一起交给 agent，由它挑出针对本次事件的若干候选对策，**定版落盘**后交给确定性引擎算。
+   *
+   * ══ 分工（仓主 2026-09-08 架构原则）══════════════════════════════════════════
+   * > 「所有计算原则上使用**求解器**而不是 agent(LLM) 来计算，agent 只负责调动工具、本体、
+   * >   规则等等输出结果，然后基于结果推演，形成**多个方案和方案比对**。」
+   * ⇒ agent 的产出里**没有任何数值格**（契约 `AgentProposalDraftSchema`：只有下标与文字）。
+   *   每个方案的营收/成本/毛利/获排率一律由下面那条 `/by-proposal` 的求解器算。
+   *
+   * ⚠ 门禁单独一格（`sim.agent-proposals`，defaultOn:false）：它与 `/assemble` 不是同一块屏的两步，
+   *   而是**同一步的两种做法**（确定性挑 vs agent 挑）。合成一格会让「关掉 agent」这件事做不到。
+   */
+  /**
+   * WO-AGENT-IN-LOOP · 本对口的请求体。
+   * `agentId` 必填且**由调用方点名**：走内置 `runAgentLoop` 还是 dsh 外部运行时，
+   * 由**那个 agent 记录自己的 `kernel`** 决定（`WO-AGENT-KERNEL-SELECT`）——
+   * 本口不认识内核这件事，也**不翻 `DSH_HARNESS`**（翻 flag 的三条前置见 DECISION-dsh-fusion §3）。
+   */
+  const ProposeRequestBodySchema = z.strictObject({
+    sessionId: z.string().min(1),
+    agentId: z.string().min(1),
+    /** 透传给装配器的「要优化什么范围」；不给 = 全范围（与 `/assemble` 同义）。 */
+    assemble: ParetoAssembleRequestSchema.optional(),
+  });
+  const SolveByProposalBodySchema = z.strictObject({
+    proposalId: z.string().min(1),
+    /** 只影响名次不影响解集（同 `ParetoRequestSchema.weights` 的红线）。 */
+    weights: z.record(z.string(), z.number()).optional(),
+  });
+  /**
+   * A→B 出站（既有服务间通路 `AGENTCORE_BASE_URL` + `SERVICE_TOKEN`，同 scaffoldClient 形态）。
+   * 未配置 ⇒ `null` ⇒ 走确定性兜底提案，且回包明写「本次未调用 agent」+ 原因。
+   */
+  const proposerClient: ProposerClient | null =
+    config.AGENTCORE_BASE_URL && config.SERVICE_TOKEN ? httpProposerClient(config.AGENTCORE_BASE_URL, config.SERVICE_TOKEN) : null;
+  app.post("/a/v1/sim/optimize-pareto/propose", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    await requireSim(c, "sim.agent-proposals"); // 关 ⇒ 404 FEATURE_NOT_FOUND（R3 先于 authz）
+    const body = parseBody(ProposeRequestBodySchema, req.body ?? {});
+    const s = await getSimOr404(c, body.sessionId); // R2：别租户 404
+
+    // ① 菜单：数值全部取自装配器（读本体真值）。**本步零 LLM**。
+    const assembled = await solvers.assembleParetoModel(c, body.assemble ?? {});
+    if (!assembled.applicable) {
+      // 装配不出 ⇒ 连菜单都没有，**不请 agent**（请了它也只能凭空编杠杆）。200 + 诚实缺格。
+      return { applicable: false as const, missingRoles: assembled.missingRoles, note: assembled.note };
+    }
+
+    // ② 世界态：扰动 + 求解器基线读数 + 本体条数。**三样都不是 agent 产的**。
+    const perturbations = await repos.sim.listPerturbations(c.tenantId, s.id);
+    const events = perturbations.map((p) => ({
+      kind: p.kind,
+      target: `${p.targetObjectId}.${p.targetStateVar}`,
+      magnitude: p.magnitude,
+    }));
+    const baseOut = await solvers.invoke(c, assembled.request.family, assembled.request.args ?? {});
+    const declared = new Set(assembled.request.objectives.map((o) => o.key));
+    const baselineMetrics = deriveParetoMetrics(baseOut as Parameters<typeof deriveParetoMetrics>[0], declared);
+    // 条数：逐个**真读**本体（铁律 1.5 判据二要的「对象类型 + 条数」）。
+    // ⚠ 不从装配结果里猜 —— `ParetoAssembleRole` 上根本没有条数这一格，
+    //   编一个出来就是本仓最忌的那种「看着像业务事实的实现细节」。
+    const counts: Record<string, number> = {};
+    for (const r of assembled.roles.filter((x) => x.kind === "objectType")) {
+      if (counts[r.ref] === undefined) counts[r.ref] = (await repos.objects.listByType(c.tenantId, r.ref)).length;
+    }
+
+    const menu = buildProposalMenu({ assembled, events, baselineMetrics, counts });
+    if (!menu) return { applicable: false as const, missingRoles: ["menu"], note: "菜单装不出" };
+
+    // ③ 请 agent 出方案 → 定版落盘。指纹命中已有版 ⇒ 直接复用，**不再调模型**。
+    const { proposal, reused } = await generateAndFreeze(
+      {
+        countProposals: (t, sid) => repos.sim.countProposals(t, sid),
+        findProposalByFingerprint: (t, sid, fp) => repos.sim.findProposalByFingerprint(t, sid, fp),
+        putProposal: (pr) => repos.sim.putProposal(pr),
+        newId,
+        now: () => new Date().toISOString(),
+      },
+      proposerClient,
+      // R2 + 归属：租户/用户/角色随请求带到 B 侧（服务间调用那边推不出身份）。
+      { tenantId: c.tenantId, sessionId: s.id, menu, agentId: body.agentId, userId: c.userId, roles: c.roles ?? [] },
+    );
+    return {
+      applicable: true as const,
+      proposal,
+      reused,
+      // 兑现出来的杠杆网格原样回显 —— 「屏上这条前沿对应的就是它本身」（同 `/assemble` 的可追溯理由）。
+      request: { ...assembled.request, levers: resolveProposalToLevers(menu, proposal.draft) },
+      options: mapOptionsToSolutions(menu, proposal.draft, paretoSolutionId),
+    };
+  });
+  /**
+   * WO-AGENT-IN-LOOP · **按定版提案求解**（本单确定性的要害）。
+   *
+   * 这条口**只读定版**：`proposalId` → 落盘的那一份 → `resolveProposalToLevers`（纯函数）
+   * → 与上面那条 `/optimize-pareto` **同一个** `runOptimizePareto`。
+   * **求解路径上一次模型调用都没有** ⇒ 同一提案版本重跑两次逐字节相同。
+   *
+   * ⚠ 为什么不给 `/optimize-pareto` 加一个 `proposalId` 分支：那会把 `ParetoRequestSchema`
+   *   的必填三件套改成**条件必填**，契约的拒绝力当场降一档 —— 与本文件上方 `/assemble`
+   *   拒绝加 `autoBind` 分支是同一条理由，不重复第二遍。
+   */
+  app.post("/a/v1/sim/optimize-pareto/by-proposal", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    await requireSim(c, "sim.agent-proposals");
+    const body = parseBody(SolveByProposalBodySchema, req.body ?? {});
+    const proposal = await repos.sim.getProposal(c.tenantId, body.proposalId); // R2：别租户 null
+    if (!proposal) throw notFound("提案不存在或不属于本租户");
+    const levers = resolveProposalToLevers(proposal.menu, proposal.draft);
+    const request = ParetoRequestSchema.parse({
+      family: proposal.menu.family,
+      ...(proposal.menu.args ? { args: proposal.menu.args } : {}),
+      objectives: proposal.menu.objectives,
+      levers,
+      ...(proposal.menu.constraints ? { constraints: proposal.menu.constraints } : {}),
+      ...(proposal.menu.unavailableObjectives ? { unavailableObjectives: proposal.menu.unavailableObjectives } : {}),
+      ...(body.weights ? { weights: body.weights } : {}),
+    });
+    const solve: SolveArgsFn = (fam, a) => solvers.invoke(c, fam, a);
+    const result = await runOptimizePareto(solve, request);
+    return {
+      ...result,
+      // ── 可披露（铁律 1.5 判据二 + 仓主 2026-09-08 追加的「走的哪条路」）────────────
+      // ⚠ `agentInvolved:false` 时**明写**，不留白 —— 留白会让人以为调了。
+      proposalDisclosure: {
+        proposalId: proposal.proposalId,
+        version: proposal.version,
+        inputFingerprint: proposal.inputFingerprint,
+        agent: proposal.provenance,
+        // 方案 → 解 id：屏上「方案 A 是哪个点、在不在前沿上」有确定答案。
+        options: mapOptionsToSolutions(proposal.menu, proposal.draft, paretoSolutionId).map((o) => ({
+          ...o,
+          onFrontier: result.frontier.some((f) => f.id === o.solutionId),
+        })),
+        comparisonNote: proposal.draft.comparisonNote,
+      },
+    };
+  });
+  /**
+   * WO-SIM-BE-MATRIX · 环节 × 基地 损失矩阵 `chain_loss_matrix`（纯只读）。
+   *
+   * 与 `chain_loss_attribution` 的分层：那条答「**这一条**链上每个环节吃掉损失的百分之多少」，
+   * 本条把「基地」升成显式一维 —— 对租户内每个 `Base` 各跑一次**同一份**归因拼成二维。
+   * 口径、诚实缺席与「空列不许返 0」的全部理由写在 `solvers/chain-loss-matrix.ts` 文件头，
+   * 本处不复述（避免两份注释漂移）。
+   *
+   * 本方法只做 IO 与入参归一（与 `SolverService.chainLossAttribution` 兄弟写法一致）：
+   * 逐类型 `listByType` + 一次 `links.list` → 委派**纯函数** `chainLossMatrix`（无时钟无随机·R6）。
+   * 全程带 `c.tenantId`：仓储读全部按租户过滤，别的租户既读不到本租户的 Order 也读不到 Base。
+   */
+  /**
+   * WO-DRILL-VERDICT-BACKEND · 把根因链**接进会话上下文**的唯一实现（两条路由共用）。
+   *
+   * ── 修前的病（真后端实测，不是推测）────────────────────────────────────────
+   * `chain-loss-matrix` / `chain-loss-drill` 修前只收 `so`，只读 `repos.objects`（真实对象），
+   * 而扰动落在 `sim_tick_state`（按 `sessionId|tick` 存）。两个库互不相干 ⇒ 实测：
+   * 给 `obj_supplier_SUP-001.deliveryDelay` 施 +30 天扰动、再 tick×3（curTick 6→9），
+   * 世界态里该值确实 9→39，而 `chain-loss-matrix` 回包 **md5 逐字节相同**
+   * （`00005c6ac8853747042bc1100b35d6b0` / 30440B）。
+   * 于是「演习结论」答的永远是真实世界那条链，问不出「**这一次推演**里根因链变成什么样了」。
+   * 金丝雀（证读数取法有鉴别力）：同一支端点只改 `so`，md5 当场变（19331B / 19487B 两个不同值）。
+   *
+   * ── 为什么 `sessionId` 是**可选**的 ─────────────────────────────────────────
+   * 这两条端点也服务「看真实世界这条链」这个正当用法（沙盘之外的根因页）。
+   * 不传 ⇒ 一格都不叠 ⇒ **与本参数引入前逐字节相同**（反向对照实验锁住这一条）。
+   * 传了但那一拍没有天数族读数 ⇒ `simContext` 块仍在、`appliedDays: 0`
+   * —— 「没有会话」与「有会话但零影响」是两个结论，不许在屏上长成一样。
+   *
+   * R2：别租户的会话 404（走 `getSimOr404`，与其余会话级路由同一个闸门，不另写一条判据）。
+   */
+  const loadChainSimOverlay = async (c: AuthCtx, sessionId?: string): Promise<ChainLossSimOverlay | undefined> => {
+    if (sessionId === undefined) return undefined;
+    const s = await getSimOr404(c, sessionId); // R2：别租户 404，且会话不存在即 404
+    // 读**当前拍**的世界态；该拍还没落格就回落基线快照（与 `simCurrent` 同一条判据，不另写）。
+    const state = (await repos.sim.getTickState(c.tenantId, s.id, s.curTick))?.state ?? s.baseSnapshot;
+    return { sessionId: s.id, tick: s.curTick, state };
+  };
+
+  app.post("/a/v1/sim/chain-loss-matrix", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const body = parseBody(z.object({ so: z.string().min(1).optional(), sessionId: z.string().min(1).optional() }), req.body ?? {});
+    const sim = await loadChainSimOverlay(c, body.sessionId);
+    const load = async (typeKey: string): Promise<ChainLossObject[]> =>
+      (await repos.objects.listByType(c.tenantId, typeKey)).map((o) => ({ id: o.id, props: o.props }));
+    const [baseObjects, orders, customers, models, routings, operations, materials, suppliers, processes, cadences, purchaseOrders, customsClearances, incomingInspections] =
+      await Promise.all([
+        load("Base"), load("Order"), load("Customer"), load("Model"), load("Routing"), load("Operation"), load("Material"),
+        load("Supplier"), load("Process"), load("Cadence"), load("PurchaseOrder"), load("CustomsClearance"), load("IncomingInspection"),
+      ]);
+    // 诚实拒绝而非静默空答：没 Order 就没有任何一条链可锚，返回一张全 null 的矩阵会被读成
+    // 「全部基地都没损失」——那是与事实相反的结论（`chain_loss_attribution` 同一处也是显式 400）。
+    if (orders.length === 0) throw validationError(`${CHAIN_LOSS_MATRIX_SOLVER_KEY} 需先合成 Order（全链锚点）`);
+    if (body.so && !orders.some((o) => typeof o.props.so === "string" && o.props.so === body.so)) throw notFound(`Order ${body.so}`);
+    const links = (await repos.links.list(c.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
+    return ChainLossMatrixResultSchema.parse(
+      chainLossMatrix({
+        baseObjects,
+        ...(body.so ? { so: body.so } : {}),
+        // 会话上下文（可选）。不传 ⇒ `chain.sim` 缺席 ⇒ 与本参数引入前逐字节相同。
+        chain: { orders, customers, models, routings, operations, materials, suppliers, processes, cadences, purchaseOrders, customsClearances, incomingInspections, links, ...(sim ? { sim } : {}) },
+      }),
+    );
+  });
+
+  // ── WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细 ──────────────────────────
+  //
+  // 两条路由共用**同一份**世界态装配（下面这个闭包），理由与 `simAdvanceTicks` 同：
+  // 「下钻算出来的份额」与「明细列出来的批号」必须是同一个世界的两个视角，
+  // 各读各的迟早漂移（本仓 D1×E1「两半各自绿、链路断」的形态）。
+  //
+  // ⚠ A6 的**唯一闸门在 Line 上**（实测：`authz.decide(base_manager, OBJECT_TYPE, X, READ)` ——
+  //   `Line` 回 `rowFilters:["Object.baseId IN ${user.attributes.baseScope}"]`，
+  //   而 `WIPLot`/`WorkOrder`/`Process`/`Equipment` 四类全回 `no policy attached; default allow`）。
+  //   批号/工单/设备都挂在产线上，所以「他能看哪些批号」= 「他能看哪些产线」。
+  //   这里刻意**不**自己写一条 baseId 比较：那是绕开 A6 另造判据，策略一改就静默漂移。
+  //   闸门一律来自 `authz.rowAllowed`，与 `ontology.queryObjects` 走的是同一个机制。
+  //
+  // ⚠ WO-SIM-NODEDETAIL-FIELDS：世界态里多了一个 **A8 模拟时钟**（`lots[].conduction.dwellDays`
+  //   的减数）。它从 `repos.simulationClocks` 现读，读不回来就传 `null` —— `sim/drill.ts` 会
+  //   诚实报 `CLOCK_UNINITIALIZED` 而**不是**退回 `new Date()`。这条纪律与
+  //   `twin/enterprise-state.ts` 的 `currentClock()` 同源：wall-clock 兜底 = 给读数一个不在
+  //   任何时间轴上的坐标。区别只在处置——那边抛 409（快照必须有确定时刻），这边诚实缺席
+  //   （节点详情的其余九成内容与时钟无关，为一个可选戳把整条读数打成错误是把缺口放大成故障）。
+  //   `session` 可为 `null`：`POST /a/v1/sim/chain-loss-drill` **不在会话上下文里**（它没有 :id），
+  //   那条路也不消费时钟。传 null 比编一个 `curTick:0` 诚实 —— 后者会让「没有会话」冒充「会话在第 0 拍」。
+  const buildDrillWorld = async (c: AuthCtx, baseId: string | null, routingId: string | null, session: SimSession | null) => {
+    const load = async (typeKey: string): Promise<DrillObject[]> =>
+      (await repos.objects.listByType(c.tenantId, typeKey))
+        .filter((o) => !o.mergedInto) // OC1：被并入对象不出现，只见 golden
+        .map((o) => ({ id: o.id, props: o.props }));
+    const [operations, processes, equipment, workOrders, lineObjs, wipLots] = await Promise.all([
+      load("Operation"), load("Process"), load("Equipment"), load("WorkOrder"), load("Line"), load("WIPLot"),
+    ]);
+    const rowFilters = await authz.require(c, "OBJECT_TYPE", "Line", "READ");
+    const allLineIds = new Set(lineObjs.map((l) => String(l.props.lineId ?? "")).filter((s) => s !== ""));
+    const visibleLineIds = new Set(
+      lineObjs
+        .filter((l) => authz.rowAllowed(c, rowFilters, l.props))
+        .map((l) => String(l.props.lineId ?? ""))
+        .filter((s) => s !== ""),
+    );
+    const links = (await repos.links.list(c.tenantId)).map((l) => ({ type: l.type, fromId: l.fromId, toId: l.toId }));
+    // A8 模拟时钟：id == tenantId（`synthetic/service.ts` 落的那一行）。没有 ⇒ null，不兜底。
+    const clockRec = await repos.simulationClocks.get(c.tenantId, c.tenantId);
+    const world: DrillWorld = {
+      operations, processes, equipment, workOrders, lines: lineObjs, wipLots, links,
+      visibleLineIds, allLineIds, rowFilters,
+      clock: clockRec ? { t0: clockRec.t0, currentTick: clockRec.currentTick } : null,
+      session: session ? { curTick: session.curTick, tickDays: session.tickDays } : null,
+    };
+    return { world, opts: { baseId, routingId } };
+  };
+
+  /**
+   * 取锚点链的环节份额（`chain_loss_attribution` 的**唯一**调用口，两条路由共用）。
+   * 折叠「step 占比 → 节点占比」这一步走 `nodeLossShare`（住在 chain-loss.ts），本文件不复写。
+   */
+  const chainShareFor = async (c: AuthCtx, nodeId: string, so?: string, sessionId?: string) => {
+    // `sessionId` 透传给求解器（它自己去读那一拍的世界态，见 `SolverService.chainLossAttribution`）。
+    // 不传 ⇒ 求解器不叠加 ⇒ 与本参数引入前逐字节相同（WO-DRILL-VERDICT-BACKEND）。
+    const raw = (await solvers.invoke(c, "chain_loss_attribution", {
+      ...(so ? { so } : {}), ...(sessionId ? { sessionId } : {}),
+    })) as unknown as ChainLossResult;
+    return { result: raw, share: nodeLossShare(raw, nodeId) };
+  };
+
+  /**
+   * 根因二级下钻：把某个环节的损失占比拆到**真实执行单元**（设备 / 工单）上。
+   * 口径、红线（子因名不许写死当词表）与守恒的全部说明在 `sim/drill.ts` 文件头，本处不复述。
+   */
+  app.post("/a/v1/sim/chain-loss-drill", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const body = parseBody(ChainLossDrillRequestSchema, req.body ?? {});
+    const { result, share } = await chainShareFor(c, body.nodeId, body.so, body.sessionId);
+    // 缺省基地 = 锚点订单的基地（不限定就会把别基地的设备也摊进来，那是另一条链上的事）。
+    const baseId = body.baseId ?? result.anchor.baseId ?? null;
+    // WO-DRILL-VERDICT-BACKEND：本路由**现在可以**在会话上下文里（`sessionId` 可选入参）。
+    // 传了就把那个会话喂给 `buildDrillWorld` —— 于是 `lots[].conduction.dwellDays` 的减数
+    // 用的是**这一次推演**的拍数，而不再是「没有会话」那一档的 null。
+    // 不传仍显式 null（诚实报「不在会话上下文里」，不编一个 `curTick:0` 冒充第 0 拍）。
+    const drillSession = body.sessionId === undefined ? null : await getSimOr404(c, body.sessionId);
+    const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null, drillSession);
+    return chainLossDrill(share, world, opts);
+  });
+
+  /**
+   * 批号级传导明细：某个环节所在站位上、**本角色可见**的在制批号，逐条带 wip / takt / yieldPct 真读数。
+   * 三个数一律读回物化真值，读不到就是 null + `missing[]`（一个常数兜底都没有，见 `sim/drill.ts`）。
+   */
+  app.get("/a/v1/sim/sessions/:id/node-detail", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    // R2：别租户 404（会话存在性先于一切）。会话本体也要留着 —— `clock.sessionTick/sessionTickDays`
+    // 是从它身上读的（那是「我推了几拍」，与租户 A8 时钟的「世界是哪天」是两个量）。
+    const session = await getSimOr404(c, (req.params as { id: string }).id);
+    const q = req.query as { nodeId?: string; so?: string; baseId?: string };
+    if (typeof q.nodeId !== "string" || q.nodeId.length === 0) throw validationError("nodeId query param required");
+    const { result, share } = await chainShareFor(c, q.nodeId, typeof q.so === "string" && q.so.length > 0 ? q.so : undefined);
+    // 明细的基地范围**不缺省到锚点基地**：这条路由是「让我看这个站上的批号」，
+    // 缺省限死锚点基地会让基地经理看不到自己基地的批号（锚点订单可能落在别的基地）。
+    const baseId = typeof q.baseId === "string" && q.baseId.length > 0 ? q.baseId : null;
+    const { world, opts } = await buildDrillWorld(c, baseId, result.anchor.routingId ?? null, session);
+    return chainNodeDetail(share, world, opts);
+  });
+  // ══════════════════════════════════════════════════════════════════════════
+  // WO-SIM-DRILL-P12 · 推演**演习**（PRD-sim-drill-parallel-world）
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * 事件目录 —— 前端建表单的**唯一真相源**。
+   *
+   * 事件的人话名、必填字段、校验规则、以及每个事件会调哪几个求解器，全部从契约
+   * `DRILL_EVENT_SPECS` 现读下发。前端**不许**自己写一份 —— 写了就是第二套真相源，
+   * 加事件时前端表单与后端路由会各说各话（同 `stateVarNames` 立下的那条规矩）。
+   */
+  app.get("/a/v1/sim/drill/catalog", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    // 枚举加了而路由表没加 ⇒ 在这里当场抛，而不是等用户点了那个事件、屏上安静回一句「无卡点」。
+    assertDrillRoutingTableComplete();
+    return DrillCatalogSchema.parse({ specs: DRILL_EVENT_SPECS, universalRoutes: DRILL_UNIVERSAL_ROUTES });
+  });
+
+  /**
+   * 跑一次演习：事件 → 世界 fork → 双引擎 → 卡点扫描 → 结论（PRD §4.1 的 ①–⑤）。
+   *
+   * ── R4-sim 三条边界，逐条落在代码上（不是注释保证）─────────────────────────
+   * ① **不回写真实世界**：本路由对 `EnterpriseState` 只调 `fork`（产生**新行**），
+   *    `worldId=REAL` 那一行一个字节不动；对世界态只读 `simCurrent`，**不 `putTickState`**。
+   * ② **结论要生效必须走 R4 正门**：本路由**不建 Action** —— 采纳是另一颗按钮
+   *    （前端 `useActionDraft` → `POST /a/v1/actions`），演习本身只产出结论。
+   * ③ **快照标 `FORKED`**：`forkEnterpriseState` 自己写 `source.kind`，本路由不覆盖它。
+   *
+   * ⚠ entitlement 取 `sim.propagation` 而非 `sim.sandbox`：本路由**真的驱动 `propagateTick`**
+   * （推 `ceil(horizonDays/tickDays)` 拍算世界态）+ 真调求解器，不是纯快照读。
+   *
+   * ⚠ **只读**：`persist:false` ⇒ 演习不改这个世界的世界线，跑一百次结果都一样（R6）。
+   *    这也是它能安全地在用户每次改天数时重跑的原因。
+   */
+  app.post("/a/v1/sim/sessions/:id/drill", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.propagation");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const body = parseBody(DrillRunRequestSchema, req.body ?? {});
+    assertDrillRoutingTableComplete();
+
+    // ── ① 世界 fork（复用已有原语，不造轮子 · PRD §1）────────────────────────
+    // 没有可 fork 的真实快照是**常态**（这个租户还没捕获过企业状态），不是错误：
+    // 诚实回 `forkedFromStateId: null`，**不现场偷偷捕获一份**（那会让一次只读的演习产生写副作用）。
+    let forkedFromStateId: string | null = null;
+    try {
+      const latest = await enterpriseState.latest(c, ENTERPRISE_STATE_REAL_WORLD_ID);
+      if (latest) {
+        const forked = await enterpriseState.fork(c, latest.id, s.id);
+        forkedFromStateId = forked.forkedFromStateId;
+      }
+    } catch {
+      // fork 失败不该让整场演习塌掉；它只影响「这份世界从哪来」这一条溯源信息。
+      forkedFromStateId = null;
+    }
+
+    // 本次要推几拍 —— ①b 判「生效日在不在窗口内」要用它，故提到冲击解释之前算。
+    const ticks = ticksForDays(body.horizonDays, s.tickDays ?? 1);
+    // ── ①b 事件 → 世界态冲击（WO-MATERIAL-REPRICE · G-DRILL-3 的另一半）────────
+    /**
+     * **今天的行为是 X，应该是 Y**（起真 datacore 4091 · seed 42 · demo 租户实测，原文照录）：
+     * · **X**：事件只被路由到求解器，**一格世界态都不动** —— 于是「碳酸锂涨 15%」
+     *   进得来、打不到任何一格上，屏上的卡点与没输入这件事时逐字节相同。
+     * · **Y**：一类事件若在传导图上有**唯一正确的落点**，由规格表 `stateEffect` 声明，
+     *   这里**解释**成一条临时扰动喂进传导核（`drillStateEffectFor` 是全平台唯一实现）。
+     *
+     * ⛔ **不入库**：这批扰动只活在下面这一次 `persist:false` 的推进里。演习是只读的
+     *    （R4-sim ①），落盘就是「跑一次演习把世界推歪了」，而且在 `listPerturbations`
+     *    里查不到来源。
+     * ⛔ **落点类型不符 ⇒ 不施加，记一条「未能评估」**：`Material.priceShock` 的传导边是
+     *    `viaLinkKey: material_used_by_model`，打到别的类型上首跳恒不触发 ——
+     *    表现与「链断了」一模一样。**静默照打是最坏的处置**（用户看到 0 影响，以为料价不影响毛利）。
+     */
+    const ephemeralPerturbations: Perturbation[] = [];
+    /**
+     * 施加前的世界态 —— 幅度要按「该变量在**这个**世界的实测全距」换算，故必须先读一份。
+     * ⚠ 只读，不 `putTickState`（R4-sim ①：演习不改世界线）。
+     */
+    const baseState = await simCurrent(c, s);
+    /** 扰动 id → 它是哪个事件带来的（回执要按事件报，别从 id 里反解字符串）。 */
+    const effectEventKind = new Map<string, DrillEvent["kind"]>();
+    /** 扰动 id → 回执要的那几格（原始数 / 换算依据 / 落点中文名）。 */
+    const effectReceipt = new Map<
+      string,
+      { rawMagnitude: number; magnitudeBasis: string; targetLabel: string; rangePct: number; observedRange: number }
+    >();
+    /** 扰动 id → 落点的**对象类型**（算出边时必须连类型一起比，见下方 `downstream` 注释）。 */
+    const landingType = new Map<string, string>();
+    const stateEffectMisses: { kind: string; targetObjectId: string; reason: string }[] = [];
+    /**
+     * **落点解析：对象 id 与业务键两种都认**（WO-EVENTS-WRITE-STATE）。
+     *
+     * ── 今天的行为是 X，应该是 Y（起真 datacore 4821 · seed 42 · demo 实测）────────
+     * · **X**：`targetObjectId` 这一个字段被两种消费方按**两种口径**读 ——
+     *   求解器入参要业务键（`sop_reschedule.targetOrderId = SO-3391`，
+     *   传 `obj_order_SO-3391` 实测回 `Order obj_order_SO-3391 not found`），
+     *   而世界态落点这一路只按对象 id 查（`repos.objects.get`）。
+     *   ⇒ 一个事件只要**同时**有求解器路由和世界态落点，两边就必然打架：
+     *   前端只能二选一，另一边必红。这正是「10 类事件全部加落点」的拦路石。
+     * · **Y**：落点这一路两种都认 —— 先按对象 id 查，查不到再按规格表声明的
+     *   `keyProp`（`Order⇒so` / `Material⇒matId` / `Base⇒baseId` / `Model⇒modelId` /
+     *   `Line⇒lineId`）在该类型里找。求解器那一路口径不变（仍然只认业务键）。
+     *
+     * ⚠ 兜底**限定在声明的那个类型内**，不做全库模糊匹配：跨类型撞名会把冲击
+     * 打到一个 `viaLinkKey` 匹配不上的对象上，表现与「链断了」一模一样。
+     */
+    const resolveLanding = async (
+      rawId: string,
+      declaredType: string,
+      keyProp: string,
+    ): Promise<{ id: string; label: string } | null> => {
+      const direct = await repos.objects.get(c.tenantId, rawId);
+      if (direct && direct.type === declaredType) {
+        const p = direct.props as Record<string, unknown>;
+        const nm = p.name ?? p[keyProp];
+        return { id: direct.id, label: typeof nm === "string" && nm.length > 0 ? nm : direct.id };
+      }
+      // 按业务键在**声明的那个类型内**找（不跨类型）
+      for (const o of await repos.objects.listByType(c.tenantId, declaredType)) {
+        if (o.mergedInto) continue;
+        const p = o.props as Record<string, unknown>;
+        if (p[keyProp] !== rawId) continue;
+        const nm = p.name ?? p[keyProp];
+        return { id: o.id, label: typeof nm === "string" && nm.length > 0 ? nm : o.id };
+      }
+      return null;
+    };
+
+    for (const [i, ev] of body.events.entries()) {
+      const outcome = drillStateEffectFor(ev);
+      // 本事件压根没声明落点 ⇒ 不是缺口，不记账（今天 11/11 都声明了，这一支留着是为了加新事件时不塌）
+      if (outcome.status === "NO_LANDING") continue;
+      /**
+       * ⚠ 声明了落点却解释不出来（幅度没填 / 落点键没填）⇒ **一等的「未能评估」**。
+       * 旧版这里与上一支共用一个 `null`，两件事在回包里长得一模一样 ——
+       * 「这类事件本来就不动世界态」与「本该动却没动」混成一句就是静默错答。
+       */
+      if (outcome.status === "UNRESOLVED") {
+        stateEffectMisses.push({ kind: ev.kind, targetObjectId: ev.targetObjectId, reason: outcome.reason });
+        continue;
+      }
+      const eff = outcome.effect;
+      /**
+       * **幅度按「该变量在本世界的实测全距」换算 —— 现算，不写死任何一个数。**
+       *
+       * ── 今天的行为是 X，应该是 Y（起真 datacore 4821 · seed 42 实测，本单最硬的一跤）──
+       * · **X**：幅度当绝对增量施加。而这个世界跑到 `curTick=3` 时读数早已不在 0–100 上
+       *   （实测 `Order.shortageRisk` = **4,334,834**、
+       *   `MaintenanceOrder.repairBacklog` = **350,416,350**；
+       *   42 条边全部「没有上界、不衰减」，压力逐拍累加 —— 屏上那句诚实位早就写着）。
+       *   ⇒ 一次 `+100` 打在 3.5 亿的底数上是 0.00003%，传下去每一格还在原来的分位里，
+       *   **屏上一个数都不会动**。这正是 COO 那个 `+15 → +100` 对照实验看到的东西。
+       * · **Y**：幅度相对**该变量的实测全距**。「100 = 抬高一个全距」与种子扰动自己那句
+       *   「把「短缺风险」抬高一个全距（+100）」是同一个口径。
+       *
+       * ⚠ **反证**（这条不是推理出来的，是跑出来的）：`lossPct` 拉到 1,000,000 时
+       * 读数变了 **46 格**，拉到 50 时变了 **0 格** ⇒ 不是「链断了」，是量纲差四五个数量级。
+       * 判据落在「变了几格」上，不在「链在不在」上 —— 两者是不同的命题。
+       *
+       * ── 全距取 `max(|v|)` 而不是 `max − min`（第二次实测订正）────────────────
+       * 先写的是 `max − min`，**实测仍有 3 类事件一格都不动**。追下去发现：
+       * `Order.costPressure` 这一族变量在本世界里**挤在一个很高的地板上**
+       * （实测 `Order.shortageRisk` 值域约 4,334,834 ± 807 ⇒ `max − min` 只有 **807**），
+       * 而事件打到的那个对象上**这一格往往还不存在**（`cur = 0`）。
+       * 于是「加一个 max−min」= 从 0 加到 807，离那 434 万的地板还差三个数量级 ⇒ 排名纹丝不动。
+       * ⇒ 全距的正确读法是**「本世界这个变量最高能到多少」**：把一格从 0 抬到全场最高，
+       * 才是「抬高一个全距」这句话的意思（与种子扰动 `varMax:100 / varMin:0 / +100` 同一读法）。
+       * `min` 仍随回执回，供人核账。
+       */
+      const svRange = ((): number => {
+        let hi = 0;
+        for (const objectId of Object.keys(baseState)) {
+          const v = baseState[objectId]?.[eff.targetStateVar];
+          if (typeof v !== "number" || !Number.isFinite(v)) continue;
+          if (Math.abs(v) > hi) hi = Math.abs(v);
+        }
+        return hi;
+      })();
+      const absMagnitude = drillStateEffectAbsolute(eff.rangePct, svRange);
+      /**
+       * 全距为 0（这个变量全世界只有一个取值，或压根没有读数）⇒ **记「未能评估」不硬打**。
+       * 硬拿 1 当全距 = 施加一个与这个世界无关的数：屏上会显示「打上了」而实际什么都没说。
+       */
+      if (absMagnitude === null) {
+        stateEffectMisses.push({
+          kind: ev.kind,
+          targetObjectId: eff.targetObjectId,
+          reason:
+            `本世界里「${eff.declaredObjectType}.${eff.targetStateVar}」这个变量的实测全距是 0` +
+            `（所有对象上取值相同，或压根没有读数）⇒ 换算不出可施加的幅度。` +
+            `硬按一个假全距施加会让屏上显示「打上了」而其实与这个世界无关，故据实报缺。`,
+        });
+        continue;
+      }
+      const landed = await resolveLanding(eff.targetObjectId, eff.declaredObjectType, eff.keyProp);
+      if (landed === null) {
+        const probed = (await repos.objects.get(c.tenantId, eff.targetObjectId)) ?? null;
+        stateEffectMisses.push({
+          kind: ev.kind,
+          targetObjectId: eff.targetObjectId,
+          reason:
+            probed === null
+              ? `在本租户找不到 ${eff.targetObjectId} 这个 ${eff.declaredObjectType}（按对象 id 与按业务键 ${eff.keyProp} 都找过了）` +
+                ` —— ${ev.kind} 的世界态落点必须是一个真实存在的 ${eff.declaredObjectType} 对象`
+              : `对象 ${eff.targetObjectId} 是 ${probed.type}，而 ${ev.kind} 的落点声明为 ${eff.declaredObjectType}；` +
+                `打错类型 ⇒ 传导边匹配不上 ⇒ 首跳恒不触发（表现与「链断了」一模一样）`,
+        });
+        continue;
+      }
+      /**
+       * 🔴 **`startTick` 必须是 `curTick + 1 + 偏移`，不是 `curTick + 偏移`** —— 差一位就一次都不施加。
+       *
+       * 实测（4091 · seed 42）：先写成 `curTick + 偏移` ⇒ `pctChange` 取
+       * **0.0001 / 15 / 100000 三个量级，748 条传导结论的严重度指纹逐字节相同**
+       * （hash 2819148055 ×3）—— 也就是「接了线、一格都没打上」，而屏上完全看不出来。
+       *
+       * 机制在 `propagation.ts` 的 `entersAt(p, producedTick)`：扰动**只在 enter 那一拍施加一次**
+       * （`propagateTick` 头注：「一次性施加 + 到期反向施加」，每 tick 重施会让 delta 复利）。
+       * 而 `propagateTick` 产出的是 `producedTick = tick + 1`，本循环第一拍的 `producedTick`
+       * 就是 `curTick + 1`。`startTick = curTick` ⇒ `active(curTick)` 与 `active(curTick+1)` 同为真
+       * ⇒ `entersAt` 恒 false ⇒ **永不落地**。
+       *
+       * ⚠ 为什么 `POST /perturbations` 那条路写 `startTick = curTick` 是对的：那条路由**自己**
+       * 先调 `simApplyAtCurrentTick` 施加过一次了，引擎再施加就是加两遍 —— 所以它必须被 `entersAt` 跳过。
+       * 演习这条路**没有**路由侧施加（不落盘、不写世界线），故必须让引擎自己 enter 一次。
+       * 两条路来路不同、相位不同，**照抄另一条的写法就会错**。
+       */
+      const startTick = s.curTick + 1 + Math.max(0, Math.floor(ev.effectiveDay / (s.tickDays ?? 1)));
+      /** 落在本次推进窗口之外 ⇒ 这一拍永远走不到，等于没施加。**据实报缺，不静默**。 */
+      if (startTick > s.curTick + ticks) {
+        stateEffectMisses.push({
+          kind: ev.kind,
+          targetObjectId: ev.targetObjectId,
+          reason:
+            `事件的生效日（第 ${ev.effectiveDay} 天）落在本次推演窗口之外` +
+            `（窗口 ${body.horizonDays} 天 = ${ticks} 拍，tickDays=${s.tickDays ?? 1}）⇒ 这一拍推不到，冲击不会发生`,
+        });
+        continue;
+      }
+      ephemeralPerturbations.push({
+        id: `simpert_drill_${s.id}_${i}`, // 确定性 id（R6：同输入同 id，无随机、无时钟）
+        tenantId: c.tenantId,
+        sessionId: s.id,
+        kind: eff.kind,
+        // ⚠ 用**解析后**的对象 id，不是用户传的那个串 —— 用户可能传的是业务键（SO-3391）
+        targetObjectId: landed.id,
+        targetStateVar: eff.targetStateVar,
+        startTick,
+        durationTicks: null,
+        magnitude: absMagnitude,
+        mode: eff.mode,
+        label: `演习临时扰动 · ${ev.kind} ${eff.rangePct > 0 ? "+" : ""}${eff.rangePct}% 全距 = ${absMagnitude > 0 ? "+" : ""}${absMagnitude}（不入库）`,
+        createdAt: s.createdAt, // 借会话的建单时刻：本对象不落盘，且 R6 禁止在此读时钟
+      });
+      effectEventKind.set(`simpert_drill_${s.id}_${i}`, ev.kind);
+      effectReceipt.set(`simpert_drill_${s.id}_${i}`, {
+        rawMagnitude: eff.rawMagnitude,
+        magnitudeBasis: eff.basis,
+        targetLabel: landed.label,
+        rangePct: eff.rangePct,
+        observedRange: svRange,
+      });
+      landingType.set(`simpert_drill_${s.id}_${i}`, eff.declaredObjectType);
+    }
+
+    // ── ② 传导引擎：推 ceil(horizonDays / tickDays) 拍（**不落盘**）──────────
+    const activeRules = (await sessionPropRules(c, s)).active;
+    const advanced = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false, ephemeralPerturbations });
+
+    /**
+     * **「你加的这几件事，到底改动了世界上多少格」—— 实测，不是声明**（WO-EVENTS-WRITE-STATE）。
+     *
+     * ── 为什么必须有这一格 ────────────────────────────────────────────────────
+     * `appliedStateEffects[].applied` 只说「这条冲击写进去了」，**不说它传下去有没有用**。
+     * 本单实测到三类事件（订单改价 / 设备故障 / 产能损失）：冲击确实打上了、出边也真的存在，
+     * 但改动的格子**全部落在 P90 以下** ⇒ 屏上那份卡点清单一条都不动。
+     * 反证：把幅度拉到 1,000,000 时它们分别改动 4 / 8 / 46 格 ⇒ **链是通的，是效应太小**。
+     * 「链断了」与「链通但没越线」是两个完全不同的命题，**混成一句就是静默错答** ——
+     * 而旧版屏上把两者显示成同一个样子（什么都没变）。
+     *
+     * ⇒ 跑一次**不带这批冲击**的同参数推进当对照，逐格比 ⇒ 得到一个**可披露的实测数**。
+     * ⚠ 这是**整批**的数，不做逐事件归因：逐事件归因要 N+1 次推进（本世界一次约 1.7 秒），
+     * 代价与收益不成比例。屏上必须照实说「这是这一批事件合起来的数」，不许暗示是某一件的。
+     */
+    let worldCellsMoved = 0;
+    let worldCellsTotal = 0;
+    /** 对照世界（**不带**这批冲击）的终态 —— 下面第 ③ 步还要拿它算「结论变了几条」。 */
+    let controlState: TickState | null = null;
+    if (ephemeralPerturbations.length > 0) {
+      const control = await simAdvanceTicks(c, s, { rules: activeRules, n: ticks, persist: false, ephemeralPerturbations: [] });
+      controlState = control.state;
+      const ids = new Set([...Object.keys(advanced.state), ...Object.keys(control.state)]);
+      for (const oid of ids) {
+        const a = advanced.state[oid] ?? {};
+        const b = control.state[oid] ?? {};
+        for (const sv of new Set([...Object.keys(a), ...Object.keys(b)])) {
+          worldCellsTotal++;
+          if (a[sv] !== b[sv]) worldCellsMoved++;
+        }
+      }
+    } else {
+      for (const oid of Object.keys(advanced.state)) worldCellsTotal += Object.keys(advanced.state[oid] ?? {}).length;
+    }
+
+    // ── ③ 卡点扫描（G-DRILL-2）──────────────────────────────────────────────
+    const typeOf = new Map<string, string>();
+    for (const t of await repos.ontologyTypes.list(c.tenantId)) {
+      for (const o of await repos.objects.listByType(c.tenantId, t.key)) {
+        if (!o.mergedInto) typeOf.set(o.id, t.key);
+      }
+    }
+    const scanFindings = scanDrillFindings({
+      state: advanced.state,
+      rules: activeRules,
+      typeOf,
+      stateVarLabel: (sv) => stateVarDisplayName(sv) ?? sv,
+    });
+    /**
+     * 🔴 **「你改的那个数，到底改没改变结论」—— 屏上唯一直接回答这句话的数**
+     * （WO-EVENTS-WRITE-STATE · COO 那个 `+15 → +100` 对照实验要的就是它）。
+     *
+     * ── 为什么 `worldCellsMoved` 答不了这一问 ────────────────────────────────────
+     * 它比的是「加了这批事件 vs 不加」，度量的是**波及面**（有多少格与对照不同），
+     * **不随幅度变**：本单真后端实测 11 类事件逐条跑「小参数 / 大参数」两遍 ——
+     * `CAPACITY_LOSS` 的 `lossPct` 从 10 拉到 100（施加幅度 3,486 → 34,865），
+     * `worldCellsMoved` **两次都是 210**，一格不差。拿它当「改数有没有用」的判据，
+     * 就是本仓那条老病：**「我用 X 当作 Y 的证据，而 X 并不度量 Y」**。
+     *
+     * ⇒ 这里直接比**结论本身**：拿对照世界的终态再扫一遍卡点，与真世界的那份逐条比。
+     * `findingsChanged` = 两份清单的对称差（新增 + 消失 + 严重度变了的）条数。
+     * **0 = 你加的这几件事没有改变任何一条结论** —— 这是结论，不是故障，屏上必须直说；
+     * 不给这个数，用户就只能像 COO 那样逐字 diff 整屏才能发现，而那正是本单的病灶。
+     *
+     * ⚠ 只比传导引擎扫出来的那些（`solverKey === "propagation"`）：求解器那一路读的是
+     * 本体真值、不读世界态，把它算进来会让这个数**恒不为 0**，等于把判据做废。
+     */
+    let findingsChanged = 0;
+    let findingsBaseline = 0;
+    if (controlState !== null) {
+      const controlFindings = scanDrillFindings({
+        state: controlState,
+        rules: activeRules,
+        typeOf,
+        stateVarLabel: (sv) => stateVarDisplayName(sv) ?? sv,
+      });
+      findingsBaseline = controlFindings.length;
+      // 严重度一起进指纹：同一格从「脆弱点 91 分」变成「卡点 97 分」也是结论变了
+      const sig = (f: DrillFinding): string => `${f.key}|${f.severity}`;
+      const before = new Set(controlFindings.map(sig));
+      const after = new Set(scanFindings.map(sig));
+      for (const k of after) if (!before.has(k)) findingsChanged++;
+      for (const k of before) if (!after.has(k)) findingsChanged++;
+    }
+    /**
+     * 落点没打上的那些 ⇒ **一等的「未能评估」**，不是从清单里消失（PRD §4.6）。
+     * 「这次冲击没施加上」与「施加了但没影响」是两个不同的屏上状态：
+     * 后者说明料价不重要，前者说明这次演习**什么都没验**。混成一句就是静默错答。
+     */
+    const stateEffectFindings: DrillFinding[] = stateEffectMisses.map((m) => ({
+      key: `state-effect::unapplied::${m.kind}::${m.targetObjectId}`,
+      kind: "未能评估" as const,
+      severity: 0, // 「未能评估」恒 0：它不是一个严重度，是一个空洞
+      where: { objectType: "DrillEvent", objectId: m.targetObjectId, label: `${m.kind}·${m.targetObjectId}` },
+      when: null,
+      why: `本次「${m.kind}」的世界态冲击**未能施加**：${m.reason}。故下面的结论里不含这件事的影响。`,
+      source: { solverKey: "drill-state-effect", dataMode: "EMPTY" as const, provenance: { ...m } },
+      reconciled: null,
+      evidence: m,
+    }));
+
+    // ── ④ 求解器编排（G-DRILL-4）—— 真调，不是前端自己算 ────────────────────
+    const report = await orchestrateDrill({
+      events: body.events,
+      horizonDays: body.horizonDays,
+      tickDays: s.tickDays ?? 1,
+      worldId: s.id,
+      forkedFromStateId,
+      scanFindings: [...scanFindings, ...stateEffectFindings],
+      /**
+       * 冲击回执 —— `applied` 取自**传导引擎回报的** `advanced.appliedPerturbations`，
+       * 不是「路由这边构造了这条对象所以算打上了」。这两者的区别就是本单栽的那一跤：
+       * 相位差一位时路由照样构造得出对象，而引擎一格都没打，屏上完全看不出来。
+       */
+      appliedStateEffects: ephemeralPerturbations.map((p) => ({
+        eventKind: effectEventKind.get(p.id)!,
+        targetObjectId: p.targetObjectId,
+        targetStateVar: p.targetStateVar,
+        mode: p.mode,
+        magnitude: p.magnitude,
+        startTick: p.startTick,
+        applied: advanced.perturbationWrites.includes(p.id),
+        rawMagnitude: effectReceipt.get(p.id)?.rawMagnitude ?? 0,
+        magnitudeBasis: effectReceipt.get(p.id)?.magnitudeBasis ?? "",
+        targetLabel: effectReceipt.get(p.id)?.targetLabel ?? p.targetObjectId,
+        rangePct: effectReceipt.get(p.id)?.rangePct ?? 0,
+        observedRange: effectReceipt.get(p.id)?.observedRange ?? 0,
+        /**
+         * **「这一格有出边」的回执** —— 现读本次生效的规则表，不是抄一份静态清单。
+         * 派单原话：「落点选错比不落更糟 —— 落在一个没有出边的状态量上，
+         * 等于"看起来改了实际还是不动"」。所以每条冲击都要能自证第一跳去哪；
+         * 数组为空 = 这一格是叶子，屏上必须看得见（而不是安静地什么都不显示）。
+         */
+        /**
+         * ⚠ 必须**同时**比对源类型与源状态变量。只比状态变量名会串台：
+         * `costPressure` 在 `Model` 和 `Order` 上各有一格，只比名字会把
+         * `Model.costPressure → Order.costPressure` 这条边算成 `Order.costPressure` 的出边
+         * —— 于是一个真正的叶子会显示成「有 2 条出边」。本单开发中实测踩到过一次，
+         * 差点据此判「ORDER_REPRICE 的落点通得下去」。
+         */
+        downstream: activeRules
+          .filter((r) => r.sourceStateVar === p.targetStateVar && r.sourceTypeKey === landingType.get(p.id))
+          .map((r) => `${r.targetTypeKey}.${r.targetStateVar} ×${r.coefficient}`)
+          .sort(),
+      })),
+      worldCellsMoved,
+      worldCellsTotal,
+      findingsChanged,
+      findingsBaseline,
+      // 规模闸：**不传也有闸**（编排器落契约默认，绝不回全量）。
+      // 实测依据：1,567 对象 × 36 变量的世界一次演习产出 5,593 条 / 4.66MB，
+      // 与本仓 metric-series 栽过的那个 O(N×世界规模) 是同一个形状。
+      limitPerKind: body.limitPerKind,
+      // `scanOnly` ⇒ 一个求解器都不调（一期行为）。诚实：不调就是不调，
+      // 不许偷偷调了再把结果丢掉（那会让「求解器真被调用」这条判据失去意义）。
+      invokeSolver: async (solverKey, args) => {
+        if (body.scanOnly) throw new Error(`scanOnly=true：本次演习只跑卡点扫描，未调用 ${solverKey}`);
+        return ontology.invokeSolver(c, solverKey, args);
+      },
+    });
+
+    // ⑤ `sim.drill_completed`（PRD §0 登记的待增事件）。
+    await outbox.emit(c.tenantId, "sim.drill_completed", {
+      sessionId: s.id,
+      horizonDays: body.horizonDays,
+      ticks,
+      eventCount: body.events.length,
+      findingCount: report.findings.length,
+      allFailed: report.summary.allFailed,
+      dataMode: report.summary.dataMode,
+    });
+    return report;
+  });
+
+  /** 状态变量三层（根源/枢纽/末端）—— 层级由传导图入度出度**现算**，不手工登记。 */
+  app.get("/a/v1/sim/drill/state-var-layers", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    const rules = await repos.sim.listPropagationRules(c.tenantId, true);
+    const layers = layerOfStateVars(rules);
+    return {
+      // `null` 层级的变量**不下发**（「不在传导图里」与「是末端」是两个命题，不合并）
+      layers: [...layers.entries()]
+        .map(([stateVar, layer]) => ({ stateVar, layer, label: stateVarDisplayName(stateVar) ?? stateVar }))
+        .sort((a, b) => (a.stateVar < b.stateVar ? -1 : a.stateVar > b.stateVar ? 1 : 0)),
+      ruleCount: rules.length,
+    };
+  });
+
+  // 增量 4：沙盘视图配置——由租户**本体 + 传导规则派生**（零业务常数 R14：节点/边/状态变量全来自
+  // 租户自己的本体，换行业=换本体内容不改代码）。前端 5 屏从此渲染。
+  app.get("/a/v1/sim/view-config", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const types = await repos.ontologyTypes.list(c.tenantId);
+    const links = await repos.ontologyLinks.list(c.tenantId);
+    const rules = await repos.sim.listPropagationRules(c.tenantId, true);
+    const stateVars = [...new Set(rules.flatMap((r) => [r.sourceStateVar, r.targetStateVar]))].sort();
+    // P0 修：每 nodeType → 真物化对象 id（= tick 引擎 idsByType 同源：repos.objects.listByType 非 mergedInto，稳定排序）。
+    const nodeObjectIds: Record<string, string[]> = {};
+    for (const t of types) {
+      nodeObjectIds[t.key] = (await repos.objects.listByType(c.tenantId, t.key))
+        .filter((o) => !o.mergedInto)
+        .map((o) => o.id)
+        .sort((a, b) => a.localeCompare(b));
+    }
+    const cfg = {
+      tenantId: c.tenantId,
+      nodeTypes: types.map((t) => t.key).sort(),
+      nodeObjectIds,
+      linkTypes: links.map((l) => l.key).sort(),
+      stateVars,
+      // WO-STATEVAR-DISPLAYNAME · 状态变量中文名（读时投影自后端单源表；未登记的键不进字典 ⇒ 前端回落裸键）。
+      stateVarNames: stateVarDisplayNames(stateVars),
+      radarDims: [
+        { key: "structure", label: "结构" },
+        { key: "knowledge", label: "知识" },
+        { key: "behavior", label: "行为" },
+      ],
+      screens: ["pipeline", "entity", "readiness", "init", "sandbox"] as const,
+      propagationCount: rules.length,
+    };
+    return SandboxViewConfigSchema.parse(cfg);
+  });
+
+  // ---- WO-IMPACT-PROPAGATION · 影响传播统一入口（Decision Twin §14 / PRD E5）--------------
+  // PRD-enterprise-decision-twin.md:357：「想要的 impact-analysis = 栈 B 的传播算法 × 栈 A 的世界隔离」。
+  // 本端点**不造引擎**：栈 B = ontology-core.recompute（本体增量重算·全平台唯一真算法），
+  // 栈 A = SimSession（真独立世界）。存量盘点见 docs/WO-IMPACT-PROPAGATION-inventory.md。
+  //
+  // 与既有两个出口平行（不改它们）：POST /a/v1/inference/whatif（app.ts 上方）· generic_inference 求解器。
+  // 唯一新增的是**四维分项 + 诚实标记**——那两个出口只有一个裸 `affectedObjects:number`。
+  // 走 sim.sandbox entitlement（R3 暗发：关 = 404 FEATURE_NOT_FOUND，先于 authz）。
+  app.post("/a/v1/simulation/impact-analysis", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.sandbox");
+    const body = parseBody(ImpactAnalysisRequestSchema, req.body);
+    return analyzeImpact({ repos, ontologyCore }, c, body);
+  });
+
+  // ---- 推演沙盘 · 增量 2：就绪认证（SimCertification = 投影既有 closure，零新校验 RL3）----
+  // SPEC docs/SPEC-sandbox-readiness-certification.md。端点只装配既有 closure/gaps/Trial Tick 输入，
+  // 真正的判级/三维/L4/世界完整度由纯函数 deriveCertification 投影（门 check-sim-readiness.mjs 守纯度）。
+  const CLOSURE_POLICY: ClosurePolicy = {
+    object: { mode: "HARD", fallback: ["BIND_EXISTING_SLICE", "CREATE_SLICE"] },
+    data: { mode: "SOFT", onOrphan: "PASS_AND_MARK" },
+    forward: { mode: "HARD" },
+  };
+
+  /**
+   * Trial Tick 的**传导相**（欠账 #152 的修复点 —— 两条工单在这里合流）。
+   *
+   * 🔴 病灶：此前 Trial Tick 只跑 `ontologyCore.recompute`（**派生相**），`rulesFired` 恒等于派生 topo 长度，
+   * 注释写着「传导 `propagateTick` 待增量3」。而增量 3 早已落地 —— `POST …/tick` 里传导核
+   * 是真跑的（本文件 tick 路）。于是就绪认证一直在拿**派生相**的成绩单
+   * 冒充「这个世界能不能推演」：传导规则一条没跑过，`propagationRules` 那一栏却照样计入完整度。
+   * 这是「接了线接错地方」——引擎接了 tick 路、没接认证路（不是没实现，也不是没数据）。
+   *
+   * 修法：认证时在**克隆态**上真跑一 tick 传导，数「真的产生了效果的规则条数」。
+   *
+   * 四条刻意的取舍（都写在这里，免得下一个人以为是漏了）：
+   *  · `pending` 传 `[]`、`perturbations` 传 `[]` —— Trial Tick 是**探针**不是续跑：同一份世界态
+   *    必须每次得到同一个结论（R6），不许被在途队列/扰动历史带偏。它回答的是「这个世界的
+   *    配置能不能驱动传导」，不是「下一格会变成什么」（那是 `POST …/tick` 的职责）。
+   *  · 输入图/范围/参数/闸门走 `buildPropagationInputs` —— **与真 tick 同一处装配**
+   *    （WO-SIM-ACT-CLOSE；另抄一份就会出现「认证说能跑、真 tick 不是这个数」）。
+   *  · 跑在**本次认证问的那个范围**上（`scopeKind`/`target`，WO-SIM-SCOPE-TRIAL），与上面 closure 的
+   *    `types` 裁剪同一个口径 —— 认证回答的是"这个范围能不能进推演"，试算就必须在同一个范围里跑。
+   *    范围解释走契约唯一实现 `resolveSimScope`（与 tick 路由同一支，不另写一套 if）。
+   *  · **不写任何东西**：传导核是纯函数，产出丢弃；认证路一如既往零副作用。
+   *
+   * 「fired」的判据 = 该规则本 tick 真的产生了效果：即时贡献进 `trace`，延迟贡献进 `pending`，
+   * 两处都算（判据在 `firedPropagationRuleKeys` 这一支单源，扰动落地/回退行与上一轮延迟到达行
+   * 都不算传导触发）。源态为 0 / 被闸门挡住 / 被范围裁掉 / 贡献恰为 0 ⇒ **不算 fired**，这是诚实的：
+   * 世界态是空的时候，`propagationRules: 3` 但 `propagationRulesFired: 0` 正是要让人看见的事实。
+   */
+  const trialPropagate = async (
+    c: AuthCtx,
+    s: SimSession,
+    scope: ResolvedSimScope,
+  ): Promise<{ fired: number; declared: number }> => {
+    const propRules = await listPublishedPropRules(c);
+    if (propRules.length === 0) return { fired: 0, declared: 0 };
+    const inp = await buildPropagationInputs(repos, c, scope, propRules);
+    const out = propagateTick(
+      inp.graph, simState(await simCurrent(c, s)), propRules,
+      [], // pending：探针不续跑在途队列（见上）
+      s.curTick, inp.ruleParams, inp.cadenceGates,
+      [], // perturbations：探针不重放扰动（见上）
+      inp.pairWeights, // 与真 tick 同一份权重表（同装配处）——少喂它，认证就会说"这条边不通"而真 tick 通
+    );
+    // 只数**本租户已发布规则**产出的那些（`firedPropagationRuleKeys` 已剔掉扰动行与延迟到达行；
+    // 这一层交集是第二道保险，也让"fired ≤ declared"在类型之外有实据）。
+    const declared = new Set(propRules.map((r) => r.key));
+    const fired = firedPropagationRuleKeys(out.trace, out.pending).filter((k) => declared.has(k));
+    return { fired: fired.length, declared: propRules.length };
+  };
+
+  /**
+   * 从 live 本体装配认证三件输入（closure/gaps/trial）+ scope 计数 —— 全部复用既有产物，零新校验。
+   * scope=LOCAL 时按 target（typeKey）裁出子图；GLOBAL 时全本体。computedAt 由调用方传入（R6）。
+   *
+   * `session` 入参（WO-SIM-SCOPE-TRIAL ∧ WO-SIM-ACT-CLOSE 同一诉求）：Trial Tick 的传导相要在
+   * **这个世界当前的态**上真跑一遍 —— 认证问的是"这个世界"能不能推演，不是"某个凭空造的态"能不能推演。
+   * 此前两个端点都已经 `getSimOr404` 拿到了会话却随手丢掉，只用来做 404 隔离；顺手传进来即可。
+   */
+  const assembleCertification = async (
+    c: AuthCtx,
+    scopeKind: "GLOBAL" | "LOCAL",
+    target: string | null,
+    computedAt: string,
+    session: SimSession,
+  ) => {
+    const allTypes = await ontology.listTypes(c);
+    const types = scopeKind === "LOCAL" && target ? allTypes.filter((t) => t.key === target) : allTypes;
+    const typeKeys = new Set(types.map((t) => t.key));
+    const allActions = await actions.listTypes(c);
+    const allRules = await repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED");
+    const allDerivs = await repos.derivationSpecs.list(c.tenantId, (s) => s.status === "ACTIVE");
+    const allSlices = await repos.sliceSpecs.list(c.tenantId);
+    const allProps = await repos.sim.listPropagationRules(c.tenantId, false);
+
+    const derivs = allDerivs.filter((d) => typeKeys.has(d.targetType));
+    const propRules = allProps.filter((p) => typeKeys.has(p.sourceTypeKey) || typeKeys.has(p.targetTypeKey));
+    const slices = allSlices.filter((s) => typeKeys.has(s.spec.root.typeKey));
+    // observability：被 ≥1 切片 root 覆盖的对象集合。
+    const coveredTypeKeys = new Set(allSlices.map((s) => s.spec.root.typeKey));
+    // writeback ActionType：按 `targetTypeKey` 归因（G-ACTIONTYPE-NO-TARGET 已补该字段）。
+    // 改前注释自述「ActionType 无 targetTypeKey 字段，按全本体计数」——那是算不出来的退而求其次：
+    // LOCAL 认证问的是「这个类型能不能进推演」，拿全本体动作数充数等于永远答"能"。
+    // 现在：LOCAL 只数可归因到 scope 内类型的动作；`targetTypeKey` 缺省（不可静态归因，
+    // 契约注释三种情形）的不计入、也不许冒充计入——它们在 `unattributedActions` 里**作为不可归因可见**。
+    const scopeActions =
+      scopeKind === "LOCAL" && target
+        ? allActions.filter((a) => a.targetTypeKey !== undefined && typeKeys.has(a.targetTypeKey))
+        : allActions;
+    const unattributedActions = allActions.filter((a) => a.targetTypeKey === undefined).length;
+
+    // ── 投影 closure（复用 validateClosure，唯一允许的 closure 校验器）────────────
+    const plan: BuildPlan = {
+      id: `simcert_${c.tenantId}`, tenantId: c.tenantId, builderKey: "sim-cert", scriptHash: "", seed: 0,
+      script: "", createdAt: computedAt,
+      dataSources: [],
+      objectTypes: types.map((t) => ({
+        typeKey: t.key, displayName: t.displayName, domain: t.domain ?? "unassigned",
+        sourceDataset: undefined,
+        // PlanObjectProperty 不含 "json" 型 → 折成 "string"（仅供 closure OBJECT/FORWARD 维投影，不影响判级）。
+        properties: t.properties.map((p) => ({ propKey: p.propKey, dataType: p.dataType === "json" ? ("string" as const) : p.dataType, isPrimaryKey: p.isPrimaryKey, refToTypeKey: p.refToTypeKey ?? null })),
+      })),
+      rules: allRules.filter((r) => r.scopeObjectTypes.some((k) => typeKeys.has(k))).map((r) => ({
+        key: r.key, name: r.name, expression: r.expression, scopeObjectTypes: r.scopeObjectTypes, severity: r.severity,
+      })),
+      solverNeeds: [], kbDocs: [],
+      sliceNeeds: [], intentNeeds: [], planNeeds: [], workflowNeeds: [], skillNeeds: [], agentNeeds: [], mcpNeeds: [], sceneNeeds: [],
+    };
+    const closure = validateClosure(plan, CLOSURE_POLICY, "STRICT");
+    const gaps = selfCheckGaps("", `simcert_${c.tenantId}`, closure, undefined, 0);
+
+    // ── Trial Tick（§3）：**两相**都真跑一遍（WO-SIM-SCOPE-TRIAL ∧ WO-SIM-ACT-CLOSE · 关闭欠账 #152）──
+    //
+    // 🔴 这里原先只跑 `ontologyCore.recompute`（**派生相**），注释还写着「传导待增量3 → 记 0」——
+    //    而传导相早已实装并有生产调用方（本文件 tick 路由）。
+    //    于是认证屏上那句「规则触发 N 条」度量的是另一相，**传导相恒记 0**：
+    //    「信号是真的，只是它不指向我要断言的那个对象」。
+    //
+    // 修法判据是**效果层**：不是"把传导核调一下"，而是**要求它真的产出贡献** ——
+    //    `firedPropagationRuleKeys` 只数「落下了即时贡献 或 排进了延迟队列」的规则 key。
+    //    一条规则被遍历到但源态为 0 / 无匹配边 / 闸门拿不到 / 被范围裁掉 ⇒ 不算触发。
+    // ── Trial Tick（§3）：**两相都真跑**，且**每个数各叫各的名**────────────────────────
+    //    （WO-CERT-CONTRACT-RECONCILE = WO-SIM-SCOPE-TRIAL 的实现 ⊕ WO-CERT-HONESTY 的口径）
+    //
+    // 【派生相】`ontologyCore.recompute(c, [], { dryRun: true })`：装载并索引全部对象，
+    //   再对全部 ACTIVE DerivationSpec 做拓扑排序（`ontology-core.ts topoSort`，有环抛
+    //   `CyclicDerivationError`）。**`changes = []` ⇒ dirty 集为空 ⇒ 逐节点 `continue` 全部命中
+    //   ⇒ 一条派生公式都没被求值**（`updatedObjects` 恒 0）。
+    //   ⇒ 所以 `rc.order.length` 是**图的规模**，不是"触发了几条"。字段名照此取 `derivationNodes`。
+    //   实测复验（别信自述，这是亲手跑的）：同一份本体调两次重算，一次空变更集、一次喂真变更集，
+    //   `order.length` **两次同为 2**，而 `updatedObjects` 分别 0 与 1
+    //   —— 见 `test/sim-cert-contract-reconcile.seam.test.ts` ③。
+    //
+    // 【传导相】**真跑一 tick**并只数"真产出了贡献"的规则：`firedPropagationRuleKeys` 只数
+    //   「落下了即时贡献 或 排进了延迟队列」的规则 key；一条规则被遍历到但源态为 0 / 无匹配边 /
+    //   闸门拿不到 ⇒ **不算触发**（那正是今天最常见的病样）。⇒ 它是**真·触发计数**。
+    //   连**分母** `propagationRulesDeclared` 一起报：只报 fired 的话，「本来就没规则」与
+    //   「声明了一堆但全哑火」在屏上都是 0，分辨不了（`declared>0 && fired===0` 必须看得见）。
+    //
+    // ⚠ 两个数**性质不同、不可相加**：旧字段 `rulesFired = 规模 + 触发` 量纲不成立，已弃用
+    //   （仍下发同值以可回退，由 `certification.ts` 从诚实字段算出，无法漂移）。
+    //
+    // 跑在什么态上：**这个会话当前 tick 的世界态**（克隆，`dryRun` 语义 —— 不落任何 tick 快照、
+    //    不推进 `curTick`、不 emit 事件）。用别的态就不是这个世界的试算了。
+    // 跑在什么范围上：**本次认证问的那个范围**（`scopeKind`/`target`），与上面 closure 的 `types`
+    //    裁剪同一个口径 —— 认证回答的是"这个范围能不能进推演"，试算就必须在同一个范围里跑。
+    //    范围解释走契约唯一实现 `resolveSimScope`（与 tick 路由同一支，不另写一套 if）。
+    // 用哪一份图/参数/闸门：`trialPropagate` → `buildPropagationInputs`，**与真 tick 同一处装配**。
+    let trial: TrialTickInput;
+    try {
+      const rc = await ontologyCore.recompute(c, [], { dryRun: true });
+      const trialScope: ResolvedSimScope = resolveSimScope(
+        scopeKind === "LOCAL" ? { kind: "LOCAL", target, hops: SIM_SCOPE_DEFAULT_HOPS } : { kind: "GLOBAL" },
+      );
+      const prop = await trialPropagate(c, session, trialScope);
+      trial = {
+        passed: true,
+        derivationNodes: rc.order.length, // **规模**（非触发数，见上取证）
+        propagationRulesFired: prop.fired, // 真·触发数
+        propagationRulesDeclared: prop.declared, // 分母
+        // 这条路**确实**覆盖传导相。⚠ `trialPropagate` 在"本租户零已发布传导规则"时会早退
+        // （不调传导核，保住零本体读那条性能特征）——那仍算 covered：覆盖面说的是**这条路跑不跑传导相**，
+        // 而不是"这次有没有东西可跑"。declared=0 时 fired=0 本就可解读，不该再报"不可解读"。
+        propagationCovered: true,
+        at: computedAt, error: null,
+      };
+    } catch (e) {
+      // 派生图有环（CYCLIC_DERIVATION）/ 传导相抛错 等 → 诚实标 FAIL，不假装通过。
+      // 注：`fanoutSafe` 复用 `trial.error === null` 当环检测（certification.ts），
+      //     故这里**不许**把非致命情况也写进 error（写了会把"无环"误判成"有环"）。
+      // `propagationCovered: false` —— 抛错时传导相**确实没跑完**，据实说，别报 true。
+      trial = {
+        passed: false, derivationNodes: 0, propagationRulesFired: 0, propagationRulesDeclared: 0,
+        propagationCovered: false, at: computedAt, error: e instanceof Error ? e.message : String(e),
+      };
+    }
+
+    // ── scope 计数（投影，给纯函数）────────────────────────────────────────────
+    const consumed = (t: (typeof types)[number]): number =>
+      t.properties.filter((p) => allRules.some((r) => r.expression.includes(`${t.key}.${p.propKey}`)) || t.derivedProperties.length > 0).length;
+    const scope: CertScope & { computedAt: string } = {
+      kind: scopeKind, targetRef: scopeKind === "LOCAL" ? target : null, computedAt,
+      objectTypes: types.map((t) => ({
+        typeKey: t.key,
+        bound: !!t.domain && t.domain !== "unassigned",
+        fieldCount: t.properties.length,
+        consumedFieldCount: consumed(t),
+        sliceCovered: coveredTypeKeys.has(t.key),
+        behaviorReady: t.derivedProperties.length > 0 && scopeActions.length > 0,
+      })),
+      derivations: derivs.map((d) => ({
+        typeKey: d.targetType, propKey: d.targetProp,
+        sourceVars: d.deps.map((dep) => `${dep.typeKey}.${dep.prop}`), present: true,
+      })),
+      actions: scopeActions.map((a) => ({ key: a.key, targetTypeKey: a.targetTypeKey ?? null })),
+      unattributedActions,
+      slices: slices.map((s) => ({ key: s.sliceKey })),
+      propagationRules: propRules.map((p) => ({
+        key: p.key, sourceTypeKey: p.sourceTypeKey, sourceStateVar: p.sourceStateVar,
+        targetTypeKey: p.targetTypeKey, targetStateVar: p.targetStateVar, present: true,
+      })),
+      needed: {
+        // ⚠ WO-CERT-HONESTY ①：这里曾多一行 `stateVars:`，其表达式与下一行 `derivationRules`
+        //    **逐字节相同** ⇒ 屏上两行数同一个数，且派生在完整度 pct 的分子分母里各数两遍。已删。
+        // needed 的承载物 = 本体类型上**声明**的派生属性数；present 的承载物 = 已物化的 ACTIVE DerivationSpec。
+        // 两者确是两个不同的东西，故 derivationRules 这一对比值成立。
+        derivationRules: types.reduce((a, t) => a + t.derivedProperties.length, 0),
+        actions: Math.max(scopeActions.length, types.length > 0 ? 1 : 0),
+        propagationRules: propRules.length, // 增量3 才声明传导 needed；当前 present=needed（不虚减完整度）
+      },
+    };
+    return deriveCertification(closure, gaps, trial, scope, DEFAULT_CERT_CONFIG);
+  };
+
+  app.get("/a/v1/sim/sessions/:id/certification", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.certification");
+    // WO-SIM-SCOPE-TRIAL：会话不再只用于 404 隔离 —— Trial Tick 要在它的当前世界态上真跑传导。
+    const s = await getSimOr404(c, (req.params as { id: string }).id); // 404 隔离（R2 租户）
+    const q = req.query as { scope?: string; target?: string };
+    const scopeKind = q.scope === "LOCAL" ? "LOCAL" : "GLOBAL";
+    return assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString(), s);
+  });
+
+  app.get("/a/v1/sim/sessions/:id/scope-precheck", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const q = req.query as { scope?: string; target?: string };
+    const scopeKind = q.scope === "LOCAL" ? "LOCAL" : "GLOBAL";
+    const cert = await assembleCertification(c, scopeKind, q.target ?? null, new Date().toISOString(), s);
+    // init step③ 世界完整度预检视图：只回完整度 + 将进入沙盘清单 + 缺件（轻量子集）。
+    return { scope: cert.scope, targetRef: cert.targetRef, worldCompleteness: cert.worldCompleteness, canEnterSimulation: cert.canEnterSimulation, gaps: cert.gaps };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // WO-ENTERPRISE-STATE · `EnterpriseState` 企业状态快照读写端点
+  //   （PRD-enterprise-decision-twin §3 五张 MVP 表之一 · §4.1 真实/仿真两世界物理隔离）。
+  //
+  //  语义：「企业**现在**是什么状态」——某个世界在某个**逻辑时刻**上的 KPI/产能/库存/订单快照。
+  //  · `capturedAt` 是 A8 模拟时钟派生的逻辑时钟，**不是 wall-clock**；时钟没初始化就 409 明说，不兜底
+  //    （wall-clock 兜底 = 给快照按一个不在任何时间轴上的坐标，之后所有对比/回放/确定性判据全建在假坐标上）。
+  //  · 幂等：id 由 (tenant, world, tick) 确定 ⇒ 同一逻辑时刻重复 POST 覆盖同一行、内容逐字节相同（R6）。
+  //  · 不挂 entitlement：与同为数据面的 `/a/v1/metrics`、`/a/v1/decisions` 同档（沙盘 `sim.*` 那组门守的是
+  //    推演功能，不是"企业现在什么状态"这类基础事实读取）。R2 租户隔离照旧由 ctx + 仓储层强制。
+  // ─────────────────────────────────────────────────────────────────────────────
+  app.post("/a/v1/twin/enterprise-states", async (req, reply) => {
+    const c = ctx(req);
+    const b = (req.body ?? {}) as { worldId?: string };
+    const state = await enterpriseState.capture(c, { worldId: b.worldId });
+    return reply.status(201).send(state);
+  });
+  app.get("/a/v1/twin/enterprise-states", async (req) => {
+    const c = ctx(req);
+    const { worldId } = req.query as { worldId?: string };
+    return { items: await enterpriseState.list(c, { worldId }) };
+  });
+  // ⚠ 必须排在 `/:id` 之前：Fastify 静态段优先于参数段，但把 `latest` 写在后面容易在后续重构里
+  //   被挪成参数段的兄弟路由从而歧义 —— 顺序即意图，别调换。
+  app.get("/a/v1/twin/enterprise-states/latest", async (req) => {
+    const c = ctx(req);
+    const { worldId } = req.query as { worldId?: string };
+    const world = worldId?.trim() || ENTERPRISE_STATE_REAL_WORLD_ID;
+    const state = await enterpriseState.latest(c, world);
+    // 诚实空：没有就是没有，返回 `state: null` + 原因，**不现场偷偷捕获一份**冒充"最新"
+    // （那会让一次只读请求产生写副作用，且前端分不清"本来就有"和"我一问它才有"）。
+    return state
+      ? { worldId: world, state }
+      : { worldId: world, state: null, reason: `世界 ${world} 尚无任何快照（POST /a/v1/twin/enterprise-states 捕获一份）` };
+  });
+  app.get("/a/v1/twin/enterprise-states/:id", async (req) => {
+    const c = ctx(req);
+    return enterpriseState.get(c, (req.params as { id: string }).id);
+  });
+  // fork 进仿真世界（§4.1）：产生**新行**，真实世界那一行一个字节都不动。
+  app.post("/a/v1/twin/enterprise-states/:id/fork", async (req, reply) => {
+    const c = ctx(req);
+    const b = (req.body ?? {}) as { worldId?: string };
+    if (!b.worldId) throw validationError("worldId required (target simulation world = an existing sim session id)");
+    const forked = await enterpriseState.fork(c, (req.params as { id: string }).id, b.worldId);
+    return reply.status(201).send(forked);
+  });
+  // 两份快照的指标差（口径与将来的 `StateDelta` 同一份纯函数 `diffEnterpriseStates`，不许各算一套）。
+  app.get("/a/v1/twin/enterprise-states/:id/diff", async (req) => {
+    const c = ctx(req);
+    const { against } = req.query as { against?: string };
+    if (!against) throw validationError("against=<stateId> required");
+    const after = await enterpriseState.get(c, (req.params as { id: string }).id);
+    const before = await enterpriseState.get(c, against);
+    return { before: before.id, after: after.id, changes: diffEnterpriseStates(before, after) };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // WO-LIVE-ENDPOINTS · 活③④ 方案存/分支/横比（前端「方案存比」直连真后端·替 MSW 桩）。
+  //   复用 SimSession 状态机（R9 双实现·R2 tenant 隔离）承载方案快照——scope 载快照 JSON（snapshotKind
+  //   判别·baseSnapshot 留空·不污染沙盘 session 列表）。语义镜像上方 sim checkpoint/branch/compare。
+  //   门禁 view.global-sim.live（前端暗发同门·R3 先于 authz·关=404 FEATURE_NOT_FOUND）。
+  // ─────────────────────────────────────────────────────────────────────────────
+  const requireLive = async (c: AuthCtx) => {
+    if (!(await features.enabled(c.tenantId, "view.global-sim.live"))) throw featureNotFound();
+  };
+  type GsliveKpi7 = { ontime: number; cost: number; changeoverHours: number; freight: number; fgInv: number; transitInv: number; margin: number };
+  const asKpi7 = (v: unknown): GsliveKpi7 => {
+    const k = (v ?? {}) as Partial<GsliveKpi7>;
+    return {
+      ontime: Number(k.ontime ?? 0), cost: Number(k.cost ?? 0), changeoverHours: Number(k.changeoverHours ?? 0),
+      freight: Number(k.freight ?? 0), fgInv: Number(k.fgInv ?? 0), transitInv: Number(k.transitInv ?? 0), margin: Number(k.margin ?? 0),
+    };
+  };
+  interface GsliveScope { snapshotKind: "gslive"; label: string; page: string; primary: string; parentId: string | null; kpi: GsliveKpi7; servedCount: number; displacedCount: number; ontimeRate: number }
+  /**
+   * ⚠ 三个 helper 的入参刻意收窄成**它们真正读的那几个字段**（WO-SIM-SESSIONS-PROJECTION）。
+   *
+   * 理由不是洁癖：写成 `SimSession` 时，下面两条列表路由就只能喂 `listSessions()` ——
+   * 而那个方法会把**本租户全部会话的 `baseSnapshot`** 从库里搬回进程（35 条生产量级会话实测 285MB），
+   * 只为了 `filter(snapKind === "gslive")` 之后扔掉。这两条路由的回包一直是小的，
+   * 所以这笔开销**在回包上完全看不见** —— 正是「回包小」不度量「读得少」的那个形态。
+   * 收窄之后 `listSessionSummaries()` 直接可喂，且哪天有人想把 `baseSnapshot` 读回来，
+   * **编译当场红**（机器先说话）。
+   */
+  type SnapshotSessionView = Pick<SimSession, "id" | "scope" | "createdAt" | "status">;
+  const snapKind = (s: SnapshotSessionView): string | undefined => (s.scope as { snapshotKind?: string })?.snapshotKind;
+  const gsliveSnap = (s: SnapshotSessionView) => {
+    const sc = s.scope as unknown as GsliveScope;
+    return { id: s.id, label: sc.label, parentId: sc.parentId ?? null, page: sc.page, primary: sc.primary, createdAt: s.createdAt, kpi: sc.kpi, servedCount: sc.servedCount, displacedCount: sc.displacedCount, ontimeRate: sc.ontimeRate };
+  };
+  const putSnapshotSession = async (c: AuthCtx, idPrefix: string, scope: Record<string, unknown>): Promise<SimSession> => {
+    const s: SimSession = { id: newId(idPrefix), tenantId: c.tenantId, baseSnapshot: {}, scope, status: "READY", curTick: 0, parentCheckpointId: null, disabledRuleKeys: [], createdAt: new Date().toISOString() };
+    await repos.sim.createSession(s);
+    return s;
+  };
+
+  // 活③ 全局推演方案（decision_play 范式·七维 KPI 快照）。
+  app.post("/a/v1/sim/scenarios", async (req, reply) => {
+    const c = ctx(req); await requireLive(c);
+    const b = (req.body ?? {}) as { page?: string; label?: string; primary?: string; kpi?: unknown; servedCount?: number; displacedCount?: number; ontimeRate?: number; parentId?: string | null };
+    const scope: GsliveScope = {
+      snapshotKind: "gslive", label: String(b.label ?? "方案"), page: String(b.page ?? "global-sim"), primary: String(b.primary ?? ""),
+      parentId: b.parentId ?? null, kpi: asKpi7(b.kpi), servedCount: Number(b.servedCount ?? 0), displacedCount: Number(b.displacedCount ?? 0), ontimeRate: Number(b.ontimeRate ?? 0),
+    };
+    const s = await putSnapshotSession(c, "scen", scope as unknown as Record<string, unknown>);
+    await outbox.emit(c.tenantId, "sim.scenario_saved", { scenarioId: s.id, page: scope.page });
+    return reply.status(201).send(gsliveSnap(s));
+  });
+  app.get("/a/v1/sim/scenarios", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const page = (req.query as { page?: string })?.page;
+    const all = (await repos.sim.listSessionSummaries(c.tenantId)).filter((s) => snapKind(s) === "gslive");
+    const scoped = page ? all.filter((s) => (s.scope as unknown as GsliveScope).page === page) : all;
+    return { scenarios: scoped.map(gsliveSnap) };
+  });
+  app.get("/a/v1/sim/scenarios/compare", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const ids = String((req.query as { ids?: string })?.ids ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    const scenarios: unknown[] = [];
+    for (const id of ids) {
+      const s = await repos.sim.getSession(c.tenantId, id);
+      if (!s || snapKind(s) !== "gslive") continue;
+      const sc = s.scope as unknown as GsliveScope;
+      scenarios.push({ id: s.id, label: sc.label, kpi: sc.kpi, servedCount: sc.servedCount, displacedCount: sc.displacedCount, ontimeRate: sc.ontimeRate });
+    }
+    return { scenarios };
+  });
+  app.post("/a/v1/sim/scenarios/:id/branch", async (req, reply) => {
+    const c = ctx(req); await requireLive(c);
+    const parent = await repos.sim.getSession(c.tenantId, (req.params as { id: string }).id);
+    if (!parent || snapKind(parent) !== "gslive") throw notFound("scenario not found");
+    const psc = parent.scope as unknown as GsliveScope;
+    const b = (req.body ?? {}) as { label?: string; kpi?: unknown };
+    const scope: GsliveScope = {
+      snapshotKind: "gslive", label: String(b.label ?? `${psc.label}·分支`), page: psc.page, primary: psc.primary, parentId: parent.id,
+      kpi: b.kpi !== undefined ? asKpi7(b.kpi) : psc.kpi, servedCount: psc.servedCount, displacedCount: psc.displacedCount, ontimeRate: psc.ontimeRate,
+    };
+    const s = await putSnapshotSession(c, "scen", scope as unknown as Record<string, unknown>);
+    return reply.status(201).send(gsliveSnap(s));
+  });
+
+  // 活④ 产能页方案（apply/kpis·横比矩阵各格经 generic_inference 同款前向重算公式真算·改 apply→矩阵变·KILL-MOCK）。
+  interface LiveApply { objectType: string; objectId: string; prop: string; value: number }
+  interface LiveScope { snapshotKind: "live"; baseId: string; name: string; parentId: string | null; apply: LiveApply[]; kpis: { capGain: number; affected: number } }
+  const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+  // 下游派生 after = 0.8*0.5 + value*0.5（generic_inference 前向重算同款公式·R6 确定）；capGain = Σ max(0, after − 0.8)。
+  const scenarioCapGain = (apply: { value: number }[]): number =>
+    round6(apply.reduce((acc, a) => { const v = Number.isFinite(Number(a.value)) ? Number(a.value) : 1; return acc + Math.max(0, (0.8 * 0.5 + v * 0.5) - 0.8); }, 0));
+  const liveSnap = (s: SnapshotSessionView) => {
+    const sc = s.scope as unknown as LiveScope;
+    // status 为 WO-SIMSESSION-BIZ-REUSE 增补（additive·RL9）：方案生命周期对前端可见，不再是安静的字节。
+    return { id: s.id, baseId: sc.baseId, name: sc.name, parentId: sc.parentId ?? undefined, apply: sc.apply, kpis: sc.kpis, status: s.status, createdAt: s.createdAt };
+  };
+  app.post("/a/v1/sim/live-scenarios", async (req, reply) => {
+    const c = ctx(req); await requireLive(c);
+    const b = (req.body ?? {}) as { baseId?: string; name?: string; parentId?: string; apply?: LiveApply[] };
+    const apply = Array.isArray(b.apply) ? b.apply : [];
+    const scope: LiveScope = {
+      snapshotKind: "live", baseId: String(b.baseId ?? ""), name: String(b.name ?? "方案"), parentId: b.parentId ?? null, apply,
+      kpis: { capGain: scenarioCapGain(apply), affected: new Set(apply.map((a) => a.objectId)).size },
+    };
+    const s = await putSnapshotSession(c, "lsc", scope as unknown as Record<string, unknown>);
+    await outbox.emit(c.tenantId, "sim.scenario_saved", { scenarioId: s.id, baseId: scope.baseId });
+    return reply.status(201).send(liveSnap(s));
+  });
+  app.get("/a/v1/sim/live-scenarios", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const baseId = (req.query as { baseId?: string })?.baseId;
+    const all = (await repos.sim.listSessionSummaries(c.tenantId)).filter((s) => snapKind(s) === "live");
+    const scoped = baseId ? all.filter((s) => (s.scope as unknown as LiveScope).baseId === baseId) : all;
+    return { scenarios: scoped.map(liveSnap) };
+  });
+  app.post("/a/v1/sim/live-scenarios/compare", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const ids = Array.isArray((req.body as { ids?: unknown })?.ids) ? (req.body as { ids: unknown[] }).ids.map(String) : [];
+    const rows: { scenarioId: string; name: string; cells: Record<string, number>; ruleFlag: boolean }[] = [];
+    for (const id of ids) {
+      const s = await repos.sim.getSession(c.tenantId, id);
+      if (!s || snapKind(s) !== "live") continue;
+      const sc = s.scope as unknown as LiveScope;
+      const capGain = scenarioCapGain(sc.apply);
+      const cost = Math.round(sc.apply.reduce((a, x) => a + (/outsource/i.test(String(x.prop)) ? Number(x.value) * 50 : 0), 0) * 100) / 100;
+      // DF.13：触红线判定读契约单一来源（此前内联裸阈值）。`>=` = "已达红线"提示，比规则引擎的违规谓词 `>` 早一格，有意为之。
+      const ruleFlag = sc.apply.some((x) => /outsource/i.test(String(x.prop)) && Number(x.value) >= OUTSOURCE_REDLINE.maxRatio);
+      rows.push({ scenarioId: s.id, name: sc.name, cells: { capGain, cost }, ruleFlag });
+    }
+    return { dims: [{ key: "capGain", label: "产能增益" }, { key: "cost", label: "外协代价" }], rows };
+  });
+
+  // ── 产能页方案生命周期（WO-SIMSESSION-BIZ-REUSE · 三业务页选定 capacity 接线）──────────────
+  // pause/end **复用 SimSession 状态机接缝**（`setSimSessionStatus` 唯一实现 ⇒ putSession + 事件 +
+  // 迁移校验全部只有一份），不在 `LiveScope` 里另造 paused/closed 字段 —— 「各写各的」两套语义必漂移。
+  // 选型理由（为什么是产能页而非 GlobalSim/ProjectSim）见 docs/HANDOFF-wo-simsession-biz-reuse.md。
+  const getLiveSnapOr404 = async (c: AuthCtx, id: string): Promise<SimSession> => {
+    const s = await repos.sim.getSession(c.tenantId, id);
+    if (!s || snapKind(s) !== "live") throw notFound("live scenario not found"); // R2 + 防拿沙盘会话/gslive 快照当产能方案操作
+    return s;
+  };
+  app.post("/a/v1/sim/live-scenarios/:id/pause", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const s = await setSimSessionStatus(c, await getLiveSnapOr404(c, (req.params as { id: string }).id), "PAUSED");
+    return liveSnap(s);
+  });
+  app.post("/a/v1/sim/live-scenarios/:id/end", async (req) => {
+    const c = ctx(req); await requireLive(c);
+    const s = await setSimSessionStatus(c, await getLiveSnapOr404(c, (req.params as { id: string }).id), "ENDED");
+    return liveSnap(s);
+  });
+
   // ---- A4 ontology + objects --------------------------------------------------------
+  // Dogfooding（#12/#13）：系统本体自反落库 + 活查询面。鉴权 = MetaAccessPolicy 角色白名单（默认 admin,可配置）。
+  const requireMetaAccess = async (c: AuthCtx) => {
+    // Entitlement 先于 authz（铁律）：功能关闭 = 不存在 → 404 FEATURE_NOT_FOUND，先于角色门。
+    if (!(await features.enabled(c.tenantId, "admin.meta-ontology"))) throw featureNotFound();
+    if (!(await metaOntology.hasAccess(c))) throw forbidden("无 /meta 访问权（默认仅 admin；可在 meta access-policy 配置角色白名单）");
+  };
+  app.post("/a/v1/meta/sync", async (req) => {
+    const c = ctx(req);
+    await requireMetaAccess(c);
+    return metaOntology.sync(c);
+  });
+  app.get("/a/v1/meta/ontology", async (req) => {
+    const c = ctx(req);
+    await requireMetaAccess(c);
+    const objs = await metaOntology.listAll(c);
+    const byKind: Record<string, number> = {};
+    for (const o of objs) byKind[o.type] = (byKind[o.type] ?? 0) + 1;
+    return { total: objs.length, byKind };
+  });
+  // A3.1 · 14 域参考本体基线（元租户 95 节点；R2 隔离 / R6 确定性）。
+  app.get("/a/v1/meta/refbase", async (req) => {
+    const c = ctx(req);
+    await requireMetaAccess(c);
+    const ref = generateRefbaseOntology();
+    const count = refbaseNodeCount(ref);
+    const coverage = buildBatteryDomainCoverage();
+    return {
+      tenantId: ref.tenantId,
+      seed: ref.seed,
+      digest: refbaseDigest(ref),
+      ...count,
+      domains: BUSINESS_DOMAINS.map((d) => d.key),
+      batteryCoverage: {
+        totalTypes: coverage.totalTypes,
+        fullyCovered: coverage.fullyCovered,
+        unassigned: coverage.unassigned,
+        byDomain: coverage.coverage,
+      },
+    };
+  });
+  app.get("/a/v1/meta/breakpoints/:id", async (req) => {
+    const c = ctx(req);
+    await requireMetaAccess(c);
+    const bp = await metaOntology.getBreakpoint(c, (req.params as { id: string }).id);
+    if (!bp) throw notFound("system breakpoint");
+    return bp;
+  });
+  // 通用元对象读取：invariants/events/domains/slices/object-types
+  for (const [seg, kind] of [["invariants", "SystemInvariant"], ["events", "SystemEvent"], ["domains", "SystemDomain"], ["slices", "SystemSlice"], ["object-types", "SystemObjectType"]] as const) {
+    app.get(`/a/v1/meta/${seg}/:id`, async (req) => {
+      const c = ctx(req);
+      await requireMetaAccess(c);
+      const node = await metaOntology.getNode(c, kind, decodeURIComponent((req.params as { id: string }).id));
+      if (!node) throw notFound(`system ${seg}`);
+      return node;
+    });
+  }
+  app.get("/a/v1/meta/impact", async (req) => {
+    const c = ctx(req);
+    await requireMetaAccess(c);
+    const node = String((req.query as { node?: string }).node ?? "");
+    if (!node) throw validationError("node required");
+    return metaOntology.impact(c, node);
+  });
+  // P4 #14 自动派生（保守、只读）：code 求解器注册表 vs 本体 markdown diff;只产 diff 不写。
+  app.get("/a/v1/meta/derive", async (req) => {
+    const c = ctx(req);
+    await requireMetaAccess(c);
+    return metaOntology.deriveDiff(c, [...SOLVER_KEYS]);
+  });
+  // 鉴权策略读写（admin only —— 谁能配"哪些角色可访问 /meta"）
+  app.get("/a/v1/meta/access-policy", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return metaOntology.getAccessPolicy(c);
+  });
+  app.put("/a/v1/meta/access-policy", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(MetaAccessPolicyBodySchema, req.body);
+    return metaOntology.setAccessPolicy(c, body.roles);
+  });
+
   app.get("/a/v1/ontology/object-types", async (req) => ontology.listTypes(ctx(req)));
+  // A4 对象/类型浏览器：每已发布类型 {域(归 14 域注册表)/属性数/派生数/PK/物化对象数}，一次算（避免 N 次聚合）。
+  app.get("/a/v1/ontology/object-types/stats", async (req) => {
+    const c = ctx(req);
+    const types = await ontology.listTypes(c);
+    const stats = [];
+    for (const t of types) {
+      const objs = await repos.objects.listByType(c.tenantId, t.key);
+      stats.push({
+        key: t.key,
+        displayName: t.displayName,
+        domain: t.domain ?? GRAPH_DOMAIN[t.key] ?? "unassigned",
+        propCount: t.properties.length,
+        derivedCount: t.derivedProperties?.length ?? 0,
+        pk: t.properties.find((p) => p.isPrimaryKey)?.propKey ?? null,
+        count: objs.filter((o) => !o.mergedInto).length,
+      });
+    }
+    return { stats };
+  });
+
+  // WO-QOS-ONTOLOGY-CONTEXT · 口径语义只读投影（缺口③·文档三层投喂第二层）：
+  // 对请求的对象类型返回 { 属性口径(description/unit/dataType) + 派生公式(formula) + 相关已发布规则表达式(expression/severity) }。
+  // 单一真值：全部来自本租户已发布本体（ontology.listTypes）+ 规则库（PUBLISHED·按 scopeObjectTypes 命中）——
+  // 不新增/改写任何口径真值（description/formula/expression 未填即诚实缺省）。R2 仅本租户（ctx 隔离）·R6 确定性字典序·additive 纯读。
+  // WO-ONTOLOGY-CONTEXT-A：组装逻辑已抽为 OntologyService.getTypeSemantics（A 侧内部消费者复用同一单一真值），本路由为薄壳。
+  app.get("/a/v1/ontology/type-semantics", async (req) => {
+    const c = ctx(req);
+    const q = req.query as { types?: string };
+    const requested = String(q.types ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return ontology.getTypeSemantics(c, requested);
+  });
+
+  // PRD-fde §3.2 实体与字段目录索引（P1 读模型）：
+  // 字段目录（类型→字段,标时序）+ 消歧（模糊实体→系统里具体候选,绝不带占位符进数据生成）。
+  app.get("/a/v1/entity-catalog", async (req) => {
+    const c = ctx(req);
+    return { items: buildFieldCatalog(await ontology.listTypes(c)) };
+  });
+  app.get("/a/v1/entity-catalog/resolve", async (req) => {
+    const c = ctx(req);
+    const q = req.query as { q?: string; type?: string; topK?: string };
+    if (!q.q) throw validationError("缺少查询参数 q");
+    const candidates = await resolveEntity(c, String(q.q), ontology, { type: q.type, topK: q.topK ? Number(q.topK) : 5 });
+    // 命中=具体候选;空=域外（调用方走 InputManifest 补录,不猜）
+    return { query: q.q, resolved: candidates.length > 0, candidates };
+  });
+
+  // DF.5 语义目录检索：自然语言 → 具体 {typeKey.propKey}（按字段名/业务描述/单位语义匹配），
+  // 喂生成接地与字段发现（"我要算毛利率"落到真实列），R2 仅本租户已发布本体、确定性排序（R6）。
+  app.get("/a/v1/catalog/search", async (req) => {
+    const c = ctx(req);
+    const q = req.query as { q?: string; type?: string; topK?: string };
+    if (!q.q) throw validationError("缺少查询参数 q");
+    const hits = searchCatalog(await ontology.listTypes(c), String(q.q), {
+      ...(q.type ? { type: q.type } : {}),
+      ...(q.topK ? { topK: Number(q.topK) } : {}),
+    });
+    return { query: q.q, found: hits.length > 0, hits };
+  });
+
+  // DF.6 拉取靶登记表 + 覆盖校验：视图声明要拉的求解器输出字段（layout.outputFields）↔ SOLVER_OUTPUT_SHAPES，
+  // 未满足（视图要、求解器算不出）→ UNMET（= 缺该输出字段 → TO_CREATE 生长信号，G-8/R12 输出侧）。
+  app.get("/a/v1/views/pull-targets", async (req) => {
+    const c = ctx(req);
+    const role = (req.query as { role?: string }).role;
+    const configs = await repos.viewConfigs.list(c.tenantId, (v) => !role || v.role === role);
+    const seen = new Map<string, { key: string; layout?: Record<string, unknown> }>();
+    for (const v of configs.flatMap((vc) => vc.views)) if (!seen.has(v.key)) seen.set(v.key, { key: v.key, layout: v.layout });
+    const targets = deriveViewPullTargets([...seen.values()]);
+    const findings = checkPullTargetCoverage(targets, SOLVER_OUTPUT_SHAPES);
+    const unmet = unmetPullTargets(findings);
+    return { targets, findings, unmet, covered: unmet.length === 0 };
+  });
+
+  // DF.7 边界影响图：改某条单一来源边界册（BASE/SEG）会波及谁——回答铁律0「改 X 影响什么」。
+  // ?registry=BASE_REGISTRY|SEG_REGISTRY 可只看一条；members 派生自册长（改册自动同步）。
+  app.get("/a/v1/boundary/impact", async (req) => {
+    const reg = (req.query as { registry?: string }).registry;
+    const impact = reg ? BOUNDARY_IMPACT.filter((b) => b.registry === reg) : BOUNDARY_IMPACT;
+    return { impact, registries: BOUNDARY_IMPACT.map((b) => b.registry) };
+  });
+
+  // DF.10 边界册版本：semver + 各册内容指纹（改值留痕/跨服务缓存失效锚）。确定性（R6）。
+  app.get("/a/v1/boundary/version", async () => boundaryVersion());
+
+  // PRD-fde §3.5 能力清单(schema 级) + 比对差异：知现状→算缺口（建之前就知缺什么）。
+  const buildInventory = async (c: AuthCtx): Promise<CapabilityInventory> => ({
+    objectTypes: (await ontology.listTypes(c)).filter((t) => t.status === "ACTIVE").map((t) => t.key),
+    rules: (await rules.list(c, "PUBLISHED")).map((r) => r.key),
+    solvers: [...SOLVER_KEYS],
+    slices: (await repos.sliceSpecs.list(c.tenantId)).map((s) => s.sliceKey),
+  });
+  app.get("/a/v1/capability-inventory", async (req) => buildInventory(ctx(req)));
+  app.post("/a/v1/capability-inventory/diff", async (req) => {
+    const c = ctx(req);
+    const needs = parseBody(CapabilityNeedsSchema, req.body);
+    return diffNeeds(needs, await buildInventory(c));
+  });
+
+  // A2 在线数据模版（G-6 收口）：从本租户已发布对象类型派生"该上传哪些列"的 CSV 模版；
+  // ?withSamples=N&seed= 时多表 FK 一致生成样例（ref 值必指向父表实际 PK，可直接试灌）。
+  app.get("/a/v1/data-templates", async (req) => {
+    const c = ctx(req);
+    const q = req.query as { withSamples?: string; seed?: string };
+    const types = await ontology.listTypes(c);
+    return { items: buildDataTemplates(types, { withSamples: q.withSamples ? Number(q.withSamples) : 0, seed: q.seed ? Number(q.seed) : 42 }) };
+  });
+  // 单类型模版直接下载（text/csv）。
+  app.get("/a/v1/data-templates/:typeKey", async (req, reply) => {
+    const c = ctx(req);
+    const { typeKey } = req.params as { typeKey: string };
+    const q = req.query as { withSamples?: string; seed?: string };
+    const types = await ontology.listTypes(c);
+    const tpl = buildDataTemplate(types, typeKey, { withSamples: q.withSamples ? Number(q.withSamples) : 0, seed: q.seed ? Number(q.seed) : 42 });
+    if (!tpl) throw validationError(`未知对象类型 '${typeKey}'（本租户）`);
+    return reply.header("content-type", "text/csv; charset=utf-8").header("content-disposition", `attachment; filename="${typeKey}.template.csv"`).send(tpl.csv);
+  });
+  // 数据接入分类（数据接入控制台）：按业务域把"目前的数据"归类（销售订单/物料/设备台账…）；
+  // 每类可设 系统对接/文件上传，文件上传走该类对象类型派生的字段模版（可看可下载）。
+  app.get("/a/v1/data-categories", async (req) => {
+    const c = ctx(req);
+    const cats = dataCategoriesForIndustry();
+    const types = await ontology.listTypes(c);
+    const tplByType = new Map(buildDataTemplates(types).map((t) => [t.typeKey, t]));
+    const overrides = await repos.dataCategorySettings.list(c.tenantId);
+    const ovOf = (key: string) => overrides.find((o) => o.categoryKey === key);
+    return {
+      items: cats.map((cat) => {
+        const ov = ovOf(cat.key);
+        return {
+          ...cat,
+          mode: ov?.mode ?? cat.defaultMode,
+          // 用户上传 CSV 替换的自定义模版列（设置后前端显示"自定义"；未设=本体派生列）。
+          customColumns: ov?.customColumns ?? null,
+          // 该类对象类型 + 各自上传列数（前端可见"分类里有哪些数据/字段"）。
+          types: cat.typeKeys.map((tk) => ({ typeKey: tk, displayName: tplByType.get(tk)?.displayName ?? tk, columns: tplByType.get(tk)?.columns ?? [], present: tplByType.has(tk) })),
+        };
+      }),
+    };
+  });
+  // 分类上传模版（可看 JSON / ?format=csv 下载该类全部类型的合并 CSV）。
+  app.get("/a/v1/data-categories/:key/template", async (req, reply) => {
+    const c = ctx(req);
+    const { key } = req.params as { key: string };
+    const q = req.query as { withSamples?: string; seed?: string; format?: string };
+    const cat = dataCategoriesForIndustry().find((x) => x.key === key);
+    if (!cat) throw validationError(`未知数据分类 '${key}'`);
+    const ov = (await repos.dataCategorySettings.list(c.tenantId)).find((o) => o.categoryKey === key);
+    // 自定义模版（用户上传 CSV 替换）优先于本体派生列。
+    if (ov?.customColumns && ov.customColumns.length > 0) {
+      if (q.format === "csv") {
+        return reply.header("content-type", "text/csv; charset=utf-8").header("content-disposition", `attachment; filename="${key}.template.csv"`).send(ov.customColumns.join(","));
+      }
+      return { category: { key: cat.key, displayName: cat.displayName, description: cat.description, mode: ov.mode ?? cat.defaultMode, modes: cat.modes, connectorTypeKeys: cat.connectorTypeKeys }, custom: true, templates: [{ typeKey: "__custom__", displayName: "自定义模版", columns: ov.customColumns, primaryKey: null, refColumns: [], csv: ov.customColumns.join(",") }] };
+    }
+    const types = await ontology.listTypes(c);
+    const opts = { withSamples: q.withSamples ? Number(q.withSamples) : 0, seed: q.seed ? Number(q.seed) : 42 };
+    const templates = cat.typeKeys.map((tk) => buildDataTemplate(types, tk, opts)).filter((t): t is NonNullable<typeof t> => !!t);
+    if (q.format === "csv") {
+      const csv = templates.map((t) => `# ${t.displayName} (${t.typeKey})\n${t.csv}`).join("\n\n");
+      return reply.header("content-type", "text/csv; charset=utf-8").header("content-disposition", `attachment; filename="${key}.template.csv"`).send(csv);
+    }
+    return { category: { key: cat.key, displayName: cat.displayName, description: cat.description, mode: cat.defaultMode, modes: cat.modes, connectorTypeKeys: cat.connectorTypeKeys }, custom: false, templates };
+  });
+  // 分类设置写入唯一通道：读-改-写同一记录（保留另一字段）。
+  const upsertCategorySetting = async (tenantId: string, key: string, patch: { mode?: import("@platform/contracts").IngestMode; customColumns?: string[] | null }) => {
+    const id = `dcs_${tenantId}_${key}`;
+    const prev = await repos.dataCategorySettings.get(tenantId, id);
+    const rec = {
+      id, tenantId, categoryKey: key,
+      mode: patch.mode ?? prev?.mode,
+      customColumns: patch.customColumns === null ? undefined : (patch.customColumns ?? prev?.customColumns),
+      updatedAt: new Date().toISOString(),
+    };
+    await repos.dataCategorySettings.put(rec);
+    return rec;
+  };
+  // 设置分类接入方式（系统对接/文件上传，按租户持久化覆盖；admin）。
+  app.put("/a/v1/data-categories/:key/mode", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { key } = req.params as { key: string };
+    const cat = dataCategoriesForIndustry().find((x) => x.key === key);
+    if (!cat) throw validationError(`未知数据分类 '${key}'`);
+    const mode = parseBody(IngestModeSchema, (req.body as { mode?: unknown })?.mode);
+    if (!cat.modes.includes(mode)) throw validationError(`分类 '${key}' 不支持接入方式 '${mode}'`);
+    return upsertCategorySetting(c.tenantId, key, { mode });
+  });
+  // 替换分类模版（用户上传 CSV 的列头作为自定义模版；columns=[] 复位为本体派生模版；admin）。
+  app.put("/a/v1/data-categories/:key/template", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { key } = req.params as { key: string };
+    const cat = dataCategoriesForIndustry().find((x) => x.key === key);
+    if (!cat) throw validationError(`未知数据分类 '${key}'`);
+    const cols = parseBody(z.array(z.string().min(1)), (req.body as { columns?: unknown })?.columns);
+    return upsertCategorySetting(c.tenantId, key, { customColumns: cols.length > 0 ? cols : null });
+  });
+  // 本体切片字段覆盖检查（铁律："所有字段实体都需被至少一个本体切片覆盖"）+ 分类归并完整性。
+  app.get("/a/v1/field-coverage", async (req) => {
+    const c = ctx(req);
+    const types = await ontology.listTypes(c);
+    const links = await repos.ontologyLinks.list(c.tenantId);
+    const slices = await repos.sliceSpecs.list(c.tenantId);
+    const fieldCoverage = computeFieldCoverage(types, links, slices.map((s) => ({ sliceKey: s.sliceKey, spec: s.spec })));
+    const categoryCoverage = computeCategoryCoverage(types, dataCategoriesForIndustry());
+    return { fieldCoverage, categoryCoverage };
+  });
+
+  // 约束执行层：工具/外部/MCP 输出按本体对象类型 schema + 属性值域强制校验（可配置,按租户）。
+  // policy 缺省用全局默认（安全侧 REJECT）;调用方（连接器导入/MCP 工具执行器）按源覆盖。
+  app.post("/a/v1/ontology/validate-output", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(ValidateOutputBodySchema, req.body);
+    const typeDef = (await ontology.listTypes(c)).find((t) => t.key === body.objectType);
+    if (!typeDef) throw validationError(`未知对象类型 '${body.objectType}'（本租户）`);
+    // 有效策略 = 连接器持久化基线（适配该源）← 被显式 body.policy 覆盖 ← 全局默认兜底
+    const base = body.connId ? (await connectors.getConnection(c, body.connId)).validationPolicy : undefined;
+    const policy = ValidationPolicySchema.parse({ ...(base ?? {}), ...(body.policy ?? {}) });
+    // WO-ONTOLOGY-CONTEXT-A · A 侧消费者复用同一 type-semantics 单一真值（口径注解 + scope 规则命中标记）——
+    // 让 unit/formula/规则表达式不再仅喂 B 的 prompt，A 自身输出校验也据本体口径真值产出注解与判定。
+    const semantics = (await ontology.getTypeSemantics(c, [body.objectType])).types.find((t) => t.typeKey === body.objectType);
+    return validateOutputAgainstOntology(body.rows, typeDef, policy, semantics);
+  });
+  // stage2 持久化：连接器（数据源）级校验策略 + 字段映射（按租户;前端字段画像页编辑）
+  app.put("/a/v1/connections/:id/validation-policy", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const policy = parseBody(ValidationPolicySchema, (req.body as { policy?: unknown })?.policy ?? req.body ?? {});
+    return connectors.setValidationPolicy(c, (req.params as { id: string }).id, policy);
+  });
   app.post("/a/v1/ontology/object-types", async (req, reply) => {
     const c = ctx(req);
     const body = parseBody(
@@ -903,10 +4907,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             temporal: z.boolean().optional(),
             searchable: z.boolean().optional(),
             unit: z.string().optional(),
+            // WO-UNIT-KWH · 量纲刻度（绝对量/比例量）。此前**只有 `unit` 没有 `scale`** ⇒
+            // 客户端说得出「单位是 %」，说不出「这个数是 0–1 还是 0–100」——
+            // 而本仓的 100× 显示错正出在这一格。补上声明位，缺省仍按 absolute 兜底（向后兼容）。
+            scale: z.enum(["absolute", "ratio"]).optional(),
             displayFormat: z.string().optional(),
+            // WO-D6：属性级中文业务名/语义描述 —— 契约里早有（PropertyDef），
+            // 此处漏声明 ⇒ zod strip 掉 ⇒ getTypeSemantics 下发给 B 的口径恒缺 displayName/description。
+            displayName: z.string().optional(),
+            description: z.string().optional(),
+            // WO-RATE-DIMENSION · 参数化量纲的取值格（见 `domain.ts PropertyDef.unitRefProp`）。
+            // 与 `unit` 的双向一致性在下方校验：单向成立 ⇒ 400，不许静默收下。
+            unitRefProp: z.string().optional(),
           }),
         ),
-        derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string() })).default([]),
+        // WO-UNIT-KWH · 派生属性同样可声明量纲（缺省在下方边界补成显式 dimensionless）。
+        derivedProperties: z.array(z.object({ propKey: z.string(), formula: z.string(), unit: z.string().optional(), scale: z.enum(["absolute", "ratio"]).optional() })).default([]),
         sourceBindings: z
           .array(
             z.object({
@@ -916,6 +4932,37 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
             }),
           )
           .default([]),
+        // WO-D6 第二个吞点（与 upsertType 那个各自独立，只修一个另一个照吞）：
+        // zod 默认 **strip** 未声明键 —— 这七个 OntoFlow 扩展字段此前在**进 service 之前**就没了，
+        // 于是 REST 是"填了也存不进去"，而 grep 只能看到 upsertType 那一处，容易误判已修完。
+        storageMode: z.enum(["STATIC", "ONTOLOGY"]).optional(),
+        stateVariables: z
+          .array(z.object({ propKey: z.string(), fromField: z.string(), fn: z.string(), dataType: z.string() }))
+          .optional(),
+        functions: z
+          .array(z.object({ name: z.string(), returns: z.string(), builtin: z.string().optional(), expr: z.string().optional() }))
+          .optional(),
+        actions: z.array(z.object({ actionTypeKey: z.string() })).optional(),
+        security: z
+          .array(
+            z.object({
+              prop: z.string(),
+              strategy: z.enum(["HASH", "REDACT", "PARTIAL"]),
+              scopeRoles: z.array(z.string()).optional(),
+            }),
+          )
+          .optional(),
+        entityCategory: z.string().optional(),
+        description: z.string().optional(),
+        // WO-69 P3：对象接口声明（**可选扩展**，不给则沿用既有 → 零回归）。
+        // 契约在发布门兑现：声明了却没长出要求的属性/行动/函数 → POST /a/v1/ontology/publish 400 点名。
+        // （`actions` 已在上方 WO-D6 块里声明，此处不重复 —— 重复键后者覆盖前者，是静默改语义的入口。）
+        implements: z.array(ImplementsRefSchema).optional(),
+        // WO-CONSTRAINT-REFS · 第三个吞点（与上面 WO-D6 那两个同病）：`constraintRefs` 此前
+        // **整个键在 schema 里不存在** ⇒ zod 默认 strip ⇒ POST 带它照样 **201**，而回读整键消失、
+        // 全库 98 个类型 0 个有此键。屏上说配好了、实际什么都没发生、还不报错 —— 本仓最危险的形态。
+        // 声明它只是把"存得住"补上；"不许静默丢"由下面两条 FK 校验兑现（不存在的规则 → 400）。
+        constraintRefs: z.array(ObjectConstraintRefSchema).optional(),
       }),
       req.body,
     );
@@ -929,12 +4976,146 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         throw validationError(`未知域 '${body.domain}'（需先在 /a/v1/ontology/domains 注册）`);
       }
     }
-    // §4 单位字典约束
+    // §4 单位字典约束（字典现由 domain.ts 的 PROPERTY_UNITS 派生 —— 与类型同一份出处）
     const dict = new Set(UNIT_DICTIONARY);
     for (const p of body.properties) {
       if (p.unit && !dict.has(p.unit)) throw validationError(`未知单位 '${p.unit}'（单位字典：${UNIT_DICTIONARY.join("/")}）`);
     }
-    return reply.status(201).send(await ontology.upsertType(c, body));
+    // WO-RATE-DIMENSION §a · **派生属性的单位此前完全不过这道门** —— 上面那个循环只走
+    // `body.properties`，于是 `derivedProperties[].unit` 想写什么写什么，回读原样带出。
+    // 派生值恰恰是最容易出量纲事故的那一类（单位由公式决定），漏在门外是实打实的缺口。
+    for (const d of body.derivedProperties) {
+      if (d.unit && !dict.has(d.unit)) {
+        throw validationError(`未知单位 '${d.unit}'（派生属性 '${d.propKey}'；单位字典：${UNIT_DICTIONARY.join("/")}）`);
+      }
+    }
+    // WO-RATE-DIMENSION §b · 参数化量纲的**双向**一致性。
+    // 单向成立会造出「看起来配好了、实际永远解析不出来」的属性 —— 静默失效，屏上却显示成功。
+    for (const p of body.properties) {
+      const parametric = p.unit !== undefined && isParametricUnit(p.unit);
+      if (parametric && !p.unitRefProp) {
+        throw validationError(
+          `属性 '${p.propKey}' 声明了参数化单位 '${p.unit}'，必须同时给出 unitRefProp（指出真实单位由哪一格提供）`,
+        );
+      }
+      if (!parametric && p.unitRefProp) {
+        throw validationError(
+          `属性 '${p.propKey}' 给了 unitRefProp='${p.unitRefProp}'，但单位 '${p.unit ?? "dimensionless"}' 不含占位符 '${UNIT_REF_PLACEHOLDER}'，该字段将永远不被读取`,
+        );
+      }
+      if (p.unitRefProp && !body.properties.some((q) => q.propKey === p.unitRefProp)) {
+        throw validationError(
+          `属性 '${p.propKey}' 的 unitRefProp='${p.unitRefProp}' 不是类型 '${body.key}' 上已声明的属性`,
+        );
+      }
+    }
+    // WO-RATE-DIMENSION §c · **量纲维度门**：派生公式里的加减法两端必须同族同倍数。
+    //
+    // 为什么这道门只管加减、不管乘除也不管「声明值 vs 推断值」：见 `units.ts
+    // inferFormulaDimensionIssues()` 头注 —— 加减两端同量纲是无争议的算术事实，
+    // 实测本仓 6 条加减式全部同族同倍数（**误伤 0**）；乘除会产生本模型表达不了的复合量纲，
+    // 强行校验只会制造假红。**宁可少拦，不许假红**。
+    //
+    // 它拦的是这一类：`件`(存量) 与 `件/日`(速率) 相减、`件/日` 与 `套/日` 相减 ——
+    // 改前两者都**静默出数**，链路完整、四包全绿，而结果一次错两处（族错 + 阶错）。
+    {
+      const unitOfProp = new Map<string, string>();
+      for (const p of body.properties) unitOfProp.set(p.propKey, p.unit ?? "dimensionless");
+      for (const d of body.derivedProperties) unitOfProp.set(d.propKey, d.unit ?? "dimensionless");
+      for (const d of body.derivedProperties) {
+        const issues = inferFormulaDimensionIssues(d.formula, (id) => {
+          const u = unitOfProp.get(id);
+          return u !== undefined && dict.has(u) ? (u as PropertyUnit) : undefined;
+        });
+        const first = issues[0];
+        if (first) {
+          throw validationError(
+            `派生属性 '${d.propKey}' 的公式 '${d.formula}' 量纲不成立：'${first.left}' ${first.op} '${first.right}' —— ${first.reason}`,
+          );
+        }
+      }
+    }
+    // WO-CONSTRAINT-REFS · 约束引用的两条 FK 校验。**引用不存在的规则必须报错，不许静默收下** ——
+    // 静默收下会让对象上挂着一条永远不会被评估的"约束"，屏上却显示配置成功（= 修之前那个病换个位置复发）。
+    // ⚠ 收编批次4：本段与下面 WO-UNIT-KWH 的量纲归一**互不相干、缺一不可** —— 先校验（快失败，
+    //   不合法的引用不该走到归一那一步），再归一。归一只动 `unit`/`scale`，不动 `propKey`，
+    //   故校验用 `body.properties` 取到的 propKey 集合与归一后完全一致。
+    if (body.constraintRefs && body.constraintRefs.length > 0) {
+      // 规则侧真值：只认**已发布**规则（DRAFT 规则求解器读不到，挂上去等于挂了个空 → 当场拒绝）。
+      const published = await rules.list(c, "PUBLISHED");
+      const ruleKeys = new Set(published.map((r) => r.key));
+      const propKeys = new Set(body.properties.map((p) => p.propKey));
+      for (const cr of body.constraintRefs) {
+        if (!ruleKeys.has(cr.ruleKey)) {
+          throw validationError(
+            `未知规则 '${cr.ruleKey}'（对象约束只能引用**已发布**规则；当前已发布 ${ruleKeys.size} 条）`,
+          );
+        }
+        if (!propKeys.has(cr.propKey)) {
+          throw validationError(
+            `未知属性 '${cr.propKey}'（类型 '${body.key}' 已声明属性：${[...propKeys].join("/") || "（无）"}）`,
+          );
+        }
+      }
+    }
+    // WO-UNIT-KWH · REST 建的是**用户自定义类型**，请求体里可以不带量纲（契约保持向后兼容，
+    // 不为此改 API 形状）。缺省时在边界上补成**显式** `dimensionless`，而不是让它带着
+    // undefined 进内部模型 —— 内部一律「有声明」，「没声明」这一态不再存在。
+    const properties = body.properties.map((p) => ({
+      ...p,
+      unit: (p.unit ?? "dimensionless") as PropertyUnit,
+      scale: (p.scale ?? "absolute") as PropertyScale,
+    }));
+    const derivedProperties = body.derivedProperties.map((d) => ({
+      ...d,
+      unit: (d.unit ?? "dimensionless") as PropertyUnit,
+      scale: (d.scale ?? "absolute") as PropertyScale,
+    }));
+    // 展开 `...body` 把 `constraintRefs` 一并带下去（归一只覆盖 properties/derivedProperties 两项）。
+    return reply.status(201).send(await ontology.upsertType(c, { ...body, properties, derivedProperties }));
+  });
+
+  // ---- WO-69 P3 · 对象接口（多态抽象）--------------------------------------
+  // 一致性由**发布门**兑现（POST /a/v1/ontology/publish → 不合规 400 逐条点名）；此处是定义与查询面。
+  app.get("/a/v1/ontology/interfaces", async (req) => {
+    const q = req.query as Record<string, string | undefined>;
+    return objectInterfaces.list(ctx(req), { allVersions: q["allVersions"] === "1" });
+  });
+  app.post("/a/v1/ontology/interfaces", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(ObjectInterfaceInputSchema, req.body ?? {});
+    return reply.status(201).send(await objectInterfaces.upsert(c, body));
+  });
+  // 只读一致性报告（= 发布门会说的话，但不改任何东西 → 可先看迁移清单再决定升级路径）。
+  app.get("/a/v1/ontology/interfaces/conformance", async (req) => objectInterfaces.conformance(ctx(req)));
+  app.get("/a/v1/ontology/interfaces/:key", async (req) => {
+    const { key } = req.params as { key: string };
+    const q = req.query as Record<string, string | undefined>;
+    const version = q["version"] ? Number(q["version"]) : undefined;
+    const rec = await objectInterfaces.get(ctx(req), key, version);
+    if (!rec) throw notFound(`对象接口 '${key}' 不存在`);
+    return rec;
+  });
+  app.post("/a/v1/ontology/interfaces/:key/publish", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { key } = req.params as { key: string };
+    const body = parseBody(z.object({ version: z.number().int().positive().optional() }).partial(), req.body ?? {});
+    return objectInterfaces.publish(c, key, body.version);
+  });
+  app.post("/a/v1/ontology/interfaces/:key/retire", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { key } = req.params as { key: string };
+    const body = parseBody(z.object({ version: z.number().int().positive().optional() }).partial(), req.body ?? {});
+    return objectInterfaces.retire(c, key, body.version);
+  });
+  /** S9：谁实现了这个接口 + 改它会波及什么（类型/行动/函数+P2 签名/视图/迁移清单）。 */
+  app.get("/a/v1/ontology/interfaces/:key/implementers", async (req) => {
+    const { key } = req.params as { key: string };
+    const q = req.query as Record<string, string | undefined>;
+    return objectInterfaces.implementers(ctx(req), key, q["version"] ? Number(q["version"]) : undefined);
   });
 
   // ---- 治理增量 §1 域治理 ----------------------------------------------------
@@ -972,6 +5153,21 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { key } = req.params as { key: string };
     return governance.retire(ctx(req), "link", key);
   });
+  /*
+   * WO-RELATION-EDIT-GAPS ④ · **停用之后拨得回来**（DEPRECATED → ACTIVE）。
+   * 2026-09-04 真后端实测：`/reactivate` 与 `/activate` 都是 404 route not found ——
+   * `deprecate`/`retire` 两个只进不出的动作把结构边送进死胡同。
+   * 因果边那条路（`PATCH /sim/propagation-rules/:id {status}`）本来就 PUBLISHED⇄DRAFT 可逆；
+   * 两条路不一致的原因见 `ontology-governance.ts reactivate()` 头注（漏了一步，不是取舍）。
+   */
+  app.post("/a/v1/ontology/types/:key/reactivate", async (req) => {
+    const { key } = req.params as { key: string };
+    return governance.reactivate(ctx(req), "type", key);
+  });
+  app.post("/a/v1/ontology/links/:key/reactivate", async (req) => {
+    const { key } = req.params as { key: string };
+    return governance.reactivate(ctx(req), "link", key);
+  });
 
   // ---- 治理增量 §7.4 引用反查 ------------------------------------------------
   app.get("/a/v1/ontology/references", async (req) => {
@@ -981,6 +5177,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!elementKind || !key) throw validationError("elementKind 与 key 必填");
     return governance.references(ctx(req), { elementKind, key, prop: q["prop"] });
   });
+
+  // ---- OntoFlow（PRD v2）本体建模工作流：CRUD/校验(P1) + 数据处理预览(P2) + 提升/发布(P3)。嫁接自 main 平行线。 ----
+  app.get("/a/v1/ontology-workflows", async (req) => ({ items: await workflows.list(ctx(req)) }));
+  app.post("/a/v1/ontology-workflows", async (req, reply) => {
+    const body = parseBody(OntologyWorkflowUpsertSchema, req.body);
+    const wf = await workflows.create(ctx(req), body);
+    return reply.status(201).send(wf);
+  });
+  app.get("/a/v1/ontology-workflows/:id", async (req) => workflows.get(ctx(req), (req.params as { id: string }).id));
+  app.put("/a/v1/ontology-workflows/:id", async (req) => {
+    const body = parseBody(OntologyWorkflowUpsertSchema, req.body);
+    return workflows.update(ctx(req), (req.params as { id: string }).id, body);
+  });
+  app.post("/a/v1/ontology-workflows/:id/validate", async (req) => workflows.validate(ctx(req), (req.params as { id: string }).id));
+  app.post("/a/v1/ontology-workflows/:id/preview", async (req) => {
+    const body = parseBody(z.object({ nodeId: z.string().min(1), rows: z.array(z.record(z.string(), z.unknown())).default([]) }), req.body);
+    return workflows.preview(ctx(req), (req.params as { id: string }).id, body);
+  });
+  app.post("/a/v1/ontology-workflows/:id/nodes/:nodeId/promote", async (req) => {
+    const { id, nodeId } = req.params as { id: string; nodeId: string };
+    return workflows.promote(ctx(req), id, nodeId);
+  });
+  app.post("/a/v1/ontology-workflows/:id/publish", async (req) => workflows.publish(ctx(req), (req.params as { id: string }).id));
   app.get("/a/v1/slices/:key/references", async (req) => {
     const { key } = req.params as { key: string };
     return governance.sliceReferences(ctx(req), key);
@@ -990,10 +5209,58 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return governance.sliceReferences(ctx(req), key);
   });
 
+  // ---- 推演验证痕迹 Layer 2：结论断言 vs 知识图谱已有事实交叉验证 -----------------
+  app.post("/a/v1/ontology/cross-validate", async (req) => {
+    const body = parseBody(CrossValidateRequestSchema, req.body ?? {});
+    return ontology.crossValidate(ctx(req), body.claims);
+  });
+
   // ---- 治理增量 §7.2 切片契约（发布门禁 + CI 手动触发）-----------------------
   app.post("/a/v1/ontology/slice-contracts/run", async (req) => {
     const results = await governance.runSliceContracts(ctx(req).tenantId);
     return { results, allPassed: results.every((r) => r.ok), failed: results.filter((r) => !r.ok) };
+  });
+
+  // ---- WO-ONTOLOGY-EDGE-TRICLASS · 本体第三类边：不变式守卫（体检）-------------
+  //
+  // 本体关系此前只管两类边（结构边=有没有关系 / 因果边=变了多少），两类都只描述「有什么」。
+  // 这一组端点补上描述「必须成立什么」的那一类：守卫条件、实测量、容差、成立与否、违反者是谁。
+  //
+  // 两个端点同一个求值核，差别只在**试算覆盖**：
+  //   · GET  = 按目录原值体检（无覆盖）——这是"现在到底怎么样"的真值读数；
+  //   · POST = 带覆盖体检（改容差 / 停用某条）——**一个字节都不落库**，刷新即还原。
+  // 刻意不给写端点：改容差是**推演开关**，不是治理动作。治理动作（停用/下线）有宽限期、
+  // 有"仍被 N 处引用就拒绝"的 409 闸，两套语义并存不合并——合并会把"我想试试关掉它看看"
+  // 变成"我把它下线了"。
+  const ontologyGraphFor = async (tenantId: string): Promise<OntologyGraphInput> => {
+    const [types, links, rules] = await Promise.all([
+      repos.ontologyTypes.list(tenantId),
+      repos.ontologyLinks.list(tenantId),
+      repos.sim.listPropagationRules(tenantId, true),
+    ]);
+    return {
+      objectTypes: types.map((t) => ({ key: t.key, domain: t.domain })),
+      structuralEdges: links.map((l) => ({ key: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey })),
+      causalEdges: rules.map((r) => ({
+        key: r.key,
+        sourceTypeKey: r.sourceTypeKey,
+        sourceStateVar: r.sourceStateVar,
+        viaLinkKey: r.viaLinkKey,
+        targetTypeKey: r.targetTypeKey,
+        targetStateVar: r.targetStateVar,
+        coefficient: r.coefficient,
+        delayTicks: r.delayTicks,
+      })),
+    };
+  };
+  app.get("/a/v1/ontology/invariants", async (req) => {
+    const c = ctx(req);
+    return evaluateOntologyInvariants(await ontologyGraphFor(c.tenantId));
+  });
+  app.post("/a/v1/ontology/invariants/evaluate", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(OntologyInvariantEvaluateRequestSchema, req.body ?? {});
+    return evaluateOntologyInvariants(await ontologyGraphFor(c.tenantId), body.overrides);
   });
 
   // ---- 治理增量 §7.1 域 owner 会签发布请求 -----------------------------------
@@ -1009,6 +5276,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const touchedDomains = [...new Set(types.map((t) => t.domain).filter((d): d is string => !!d))];
     const links = await repos.ontologyLinks.list(c.tenantId);
     const impact = await governance.publishImpact(c, { types, links });
+    // 第三类边的闸：**今天恒放行**（产品尚未裁决"违反不变式该阻断什么"）。
+    // 接在这里而不是留一个待办，是为了让裁决落地时只需改求值核里那**一个**模式常量
+    // ——「留了接线位」与「留了一句 TODO」的区别就在于此处这一行真的在跑。
+    assertOntologyInvariantsAllowPublish(evaluateOntologyInvariants(await ontologyGraphFor(c.tenantId)));
     const rec = await governance.createPublishRequest(c, { ontologyVersion: ov, touchedDomains, impact, force: body.force });
     return reply.status(201).send(rec);
   });
@@ -1026,8 +5297,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     );
     const onBehalf = q["onBehalf"] === "true";
     const rec = await governance.signoff(c, id, body, onBehalf);
-    // 全域 APPROVE → 自动执行发布
-    if (rec.status === "APPROVED") await ontology.publishVersion(c);
+    /*
+     * WO-PUBLISH-VERSION-PIN · 全域 APPROVE → 自动执行发布，**发的必须是这张单钉的那个版本**。
+     *
+     * 此前这一行是 `await ontology.publishVersion(c)` —— 不带期望值，于是发的是当时的
+     * `max+1`，**与本单 `rec.ontologyVersion` 钉的那个号没有任何关系**。实测复现：
+     * 钉 v2 的单，在破窗抢先发掉 v2 之后签满，**发出去的是 v3**，HTTP 200 一声不吭。
+     * 会签一条没少签（不是绕过），坏的是**出处串**：签字留痕说批的是 v2，真值库里落的是 v3。
+     *
+     * ⚠ 这条路是**会签面板上唯一的发布出口** —— 本页刻意不给「直接发布」按钮
+     * （`OntologyRelationsPage.tsx` 头注：那条 `POST /a/v1/ontology/publish` 会绕开会签）。
+     * ⇒ 这个缺陷不是边角料，它就长在运营方唯一会走的那条路上。
+     *
+     * 会签**已经落库**（上一行 `governance.signoff` 已 put），这里抛错只否掉「自动发布」这一个动作 ——
+     * 签字该留的痕一个不少，不诚实的那半（发一个没人签过的号）被拒掉。
+     */
+    if (rec.status === "APPROVED") await ontology.publishVersion(c, { expectVersion: rec.ontologyVersion });
     return rec;
   });
 
@@ -1055,20 +5340,179 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(AggregateRequestSchema, req.body);
     return governance.aggregate(ctx(req), body);
   });
+  /**
+   * 建结构边。这条路由上叠着**两张单各修一半**，两半合起来才让「建出来的边真能被检索到」成立：
+   *
+   * ① **端点 FK 校验**（WO-ONTO-CRASH）—— 边的两端类型必须真实存在。此前只校验字符串非空，
+   *    实测经本路由建的 133 条边里 **81 条端点类型根本不存在，全部 201 收下**。
+   * ② **`viaProperty` / `viaSide`（这条边由哪个属性实现）**（WO-LINKTYPE-IMPL）—— 端点都对、
+   *    边也建成了，**仍然**检索不到，因为声明不会自己长出实例。语义见 `LinkTypeDef.viaProperty`。
+   *
+   * ⚠ **两者是两个不同的病，别合并成一个**：①「边指向一个不存在的类型」修法是拒绝写入；
+   * ②「边合法但没有实例」修法是物化。实测把①排除干净后（两端都用真实存在的类型）②依然复现：
+   * 同向同外键，出厂边检索返回 6 条、新建边返回 0 条 —— 这是②独立存在的证据。
+   */
   app.post("/a/v1/ontology/link-types", async (req, reply) => {
     const c = ctx(req);
     const body = parseBody(
-      z.object({
-        key: z.string().min(1),
-        fromTypeKey: z.string(),
-        toTypeKey: z.string(),
-        cardinality: z.enum(["1:1", "1:N", "N:N"]),
-      }),
+      z
+        .object({
+          key: z.string().min(1),
+          fromTypeKey: z.string().min(1),
+          toTypeKey: z.string().min(1),
+          cardinality: z.enum(["1:1", "1:N", "N:1", "N:N"]),
+        })
+        /*
+         * WO-MAPPING-WHITELIST · **九个物化声明字段与读投影共用同一份 schema**
+         * （`LinkMaterializationDeclSchema`，定义与逐字段语义见 `packages/contracts/src/planviews.ts`）。
+         *
+         * 修前这里手抄一份、`buildMappingRegistries` 手抄另一份，而两份**差 7 个字段** ——
+         * 读投影只发 `viaProperty`/`viaSide`。本路由是**整条覆盖**的 upsert
+         * （`upsertLinkType`: `{ id, tenantId, version, ...input }` → `ontologyLinks.put`），
+         * 于是关系编辑器「读—改—写」往返一次，就把用户没机会回填的那 7 个声明**静默抹掉**。
+         * 共用一份之后：写路收什么，读路就发什么，加字段改一处，**不再靠人记得同步**。
+         *
+         * ⚠ 仍然是白名单：`z.object` 默认剥掉未知键 ⇒ 前端注入任意字段进不来（反向对照见接缝门）。
+         * ⚠ 这里只做**形状**校验（非空串 / 正整数）；「引用的属性真不真存在、聚合有没有被用、
+         *   四种形态是不是同时声明了两种」全部在 `ontology.upsertLinkType` 里 400 点名 ——
+         *   那些判断要读对象类型的属性表，zod 在这一层看不到它。
+         * ⚠ `viaCross.maxEdges` 必填且为正整数：叉积没有上限 = 一次误声明就能把仓储写爆
+         *   （Order×OrderLine 实测 436,500 条）。
+         */
+        .extend(LinkMaterializationDeclSchema.shape),
       req.body,
     );
+    /*
+     * WO-ONTO-CRASH · 端点 FK 校验（写入端不许再产生脏数据）。
+     *
+     * 此前本路由**只校验字符串非空**，不问这两个类型在不在 ⇒ 可以建出
+     * `E2EType1 → Base` 这种**指向不存在类型**的边，而本路由正是
+     * `/admin/ontology-relations`「建结构边」的落点，也是全平台唯一能建边的入口。
+     * 2026-08-30 实测：经本路由建 133 条边，**81 条端点不存在，全部 201 收下**。
+     * 这些边随后会被 `GET /a/v1/ontology/mapping/registries` 原样下发到建边页去渲染，
+     * 是「页面被脏数据打崩」那一类故障的**上游**。
+     *
+     * 判据与上面 object-types 的归域 FK 校验同款（同一种 400、同一种话术）：
+     * 校验放**路由层**不放 service —— service 还被种子/databuilder/pipeline/modeling
+     * 四处内部调用，它们自带建序保证（先建类型再建边）；把闸放这里只拦外部 REST 写入，
+     * 不动那四条内部路。金丝雀：本仓种子自带 114 条边，实测悬空 **0** 条 ⇒ 本闸不误伤种子。
+     */
+    /*
+     * ══ WO-RELATION-EDIT-GAPS ③ · **key 字符集**（存量零误伤，先量后卡）════════════
+     *
+     * **今天的行为是 X**（2026-09-04 真后端实测，本机 4411 口）：`key` 声明成 `z.string().min(1)`
+     *   ⇒ `"a b"`（含空格）· `"中文键"` · `"x!!"` 三条**全部 201 收下**。
+     *   这类 key 随后要被塞进 URL 路径（`/a/v1/ontology/links/:key/deprecate`）、
+     *   塞进 `SliceSpec` 的 `linkKey` 串、塞进前端 `data-testid` ——
+     *   一个空格就让「停用」这个动作在某些客户端上找不到那条边。
+     * **应该是 Y**：字母开头、只收 `[A-Za-z0-9_]`、长度 ≤64，越界当场 400 说人话。
+     *
+     * ⚠ **先量后卡（本仓纪律，不是客套）**：把闸门定死之前先量存量 116 条边的 key——
+     *   · `^[A-Za-z][A-Za-z0-9_]*$` 违规 **0 条** ⇒ 本闸零误伤，可以收；
+     *   · `^[a-z][a-z0-9_]*$`（只收小写）违规 **9 条**（`process_instance_carries_CustomsClearance`
+     *     那一族大驼峰后缀）⇒ **不收这一版**，收了就让 9 条存量边再也回写不了。
+     *   长度上限取 64：存量最长 43。
+     */
+    const LINK_KEY_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
+    if (!LINK_KEY_RE.test(body.key) || body.key.length > 64) {
+      throw validationError(
+        `关系标识 '${body.key}' 不合法：只能用英文字母、数字与下划线，必须字母开头，长度不超过 64 个字符` +
+          `（不能含空格、中文或标点）。`,
+      );
+    }
+    const missing: string[] = [];
+    if (!(await ontology.getType(c, body.fromTypeKey))) missing.push(body.fromTypeKey);
+    if (body.toTypeKey !== body.fromTypeKey && !(await ontology.getType(c, body.toTypeKey)))
+      missing.push(body.toTypeKey);
+    if (missing.length > 0) {
+      throw validationError(
+        `未知对象类型 ${missing.map((k) => `'${k}'`).join(" / ")}（需先在 /a/v1/ontology/object-types 建好再建关系）`,
+      );
+    }
+    /*
+     * ══ WO-RELATION-EDIT-GAPS ② · **同 key 不许静默掉包端点/方向**════════════════
+     *
+     * ⚠ **派单给的线索是「同 key 的反向双向边可并存且都启用 ⇒ 传导重复计数」——实测推翻**：
+     *   本路由是按 `key` 的 upsert（`ontology.ts upsertLinkType`：按 key 找既有 → 复用 id → version+1），
+     *   建 `zz_rev_probe: Order→Model` 得 v1，再建 `zz_rev_probe: Model→Order` 得 **v2、同一个 id**，
+     *   `GET /ontology/mapping/registries` 里**恒 1 行**。**不会并存，也不会重复计数。**
+     *
+     * **真实缺陷是另一个，比并存更隐蔽**：第二次 201 把既有边的端点**整条覆盖**成反方向，
+     *   而屏上与回包里没有任何一处说「你刚把一条已发布的边掉了个头」。
+     *   代价是实的：因果边靠 `viaLinkKey` 挂在结构边上，方向校验（`assertPropagationRefs`）
+     *   **只在因果边写入的那一刻跑一次**；结构边事后掉头之后，那些因果边语法全对、
+     *   `navOut` 却再也走不到任何对象 ⇒ **永远贡献 0，没有报错、没有红，只是数不动**
+     *   —— 本仓三分法里「接了线接错地方」那一态。
+     *
+     * **今天的行为是 X**：同 key POST 可改端点，静默覆盖，两次都 201。
+     * **应该是 Y**：端点（`fromTypeKey`/`toTypeKey`）是**身份格**，同 key 改端点当场 400 并
+     *   点名既有端点；要改语义请新建 key 并对旧 key 走停用流程。
+     *
+     * 判据与本仓已有两处**同款**，不是新发明：
+     *   · `PropagationRulePatchSchema` 头注：「身份格（key 与源/链/目标六元组）不可改 ——
+     *     允许改身份 = 允许把一条边原地掉包」；
+     *   · `governance.assertRenameAllowed`：「type_key 一经 PUBLISHED 永不重命名」。
+     *
+     * ⛔ **不是一刀切禁反向边**：只卡「**同 key** 反向」。存量实测端点级反向对 **36 条**
+     *   （`Supplier→Material` 与 `Material→Supplier`、`Order→Model` 与 `Model→Order` …），
+     *   它们各自有独立的 key，业务上真需要双向 —— 换不同 key 建反向边**仍然 201**，
+     *   这就是本闸的金丝雀。同 key 反向的存量实测 **0 条** ⇒ 本闸零误伤。
+     *
+     * 基数 / `viaProperty` / `viaSide` **照旧可改** —— 那正是「改一条关系」该改的东西，
+     * 也是本单 ① 给前端补的那个「改」入口的落点。
+     */
+    const priorLink = (await repos.ontologyLinks.list(c.tenantId, (l) => l.key === body.key))[0];
+    if (priorLink && (priorLink.fromTypeKey !== body.fromTypeKey || priorLink.toTypeKey !== body.toTypeKey)) {
+      const reversed = priorLink.fromTypeKey === body.toTypeKey && priorLink.toTypeKey === body.fromTypeKey;
+      throw validationError(
+        `关系 ${body.key} 已存在，连的是 ${priorLink.fromTypeKey} → ${priorLink.toTypeKey}，` +
+          `本次提交的是 ${body.fromTypeKey} → ${body.toTypeKey}。两端类型是这条关系的身份，不能就地改` +
+          (reversed
+            ? `（这次正好是把它掉了个头：已发布的传导规则按原方向挂在这条关系上，掉头后它们会永远算不出结果，且不会报错）。` +
+              `若确实需要一条反方向的关系，请换一个新的关系标识另建一条 —— 双向关系在本系统里是两条各自独立的关系。`
+            : `。`) +
+          `要改语义请新建一个关系标识，并对旧的走停用流程。`,
+      );
+    }
+    // 回包里的 `materialized` 把「长出几条实例边」如实告诉用户：0 条也要说清是为什么
+    // （没选实现属性 / 没数据 / 值查无目标），不让用户对着一条建成功却检索不到的边猜。
     return reply.status(201).send(await ontology.upsertLinkType(c, body));
   });
-  app.post("/a/v1/ontology/publish", async (req) => ontology.publishVersion(ctx(req)));
+  /*
+   * WO-SIGNOFF-CHAIN · 发布准入闸（R4：本体真值变更必须经会签）。
+   *
+   * 此前本路由是 `async (req) => ontology.publishVersion(ctx(req))` —— **一句会签都不问**。
+   * 于是治理增量 §7.1 那整套会签（域 owner 鉴权 403 / REJECT 必填 comment / 72h 代签 /
+   * 7 天过期）**在同一个服务里被旁边这一行架空**：2026-08-30 真后端实测，会签单 v2
+   * 挂着 PENDING_SIGNOFF、15/15 未决，本路由回 200 并把**同一个 v2** 发了出去。
+   * 「会签面板认真签」与「一条 curl 直接发」并存 ⇒ 评审形同虚设。
+   *
+   * 闸装在**路由层**，与本文件上方建边 FK 校验同款判据：`publishVersion()` 另有**五条内部路**
+   * 直接当服务方法调（种子 ×2 / databuilder / modeling / pipeline），外加会签全票后的自动发布 ——
+   * 它们都不经 HTTP，装这里一条都不误伤；装进 service 会把种子打死（种子建租户时还没有会签单）。
+   *
+   * 破窗（`?breakGlass=true&reason=…`）需 catalog_admin 且必须写理由，发 `ontology.publish_break_glass`
+   * 审计事件。留这条路而不是留个后门：**绕过要留痕**，与 REJECT 必填 comment 同一个判据。
+   */
+  app.post("/a/v1/ontology/publish", async (req) => {
+    const c = ctx(req);
+    const q = req.query as Record<string, string | undefined>;
+    // 下一个版本号与 `publishVersion()` 的算法同源（max+1），会签单建单时钉的也是这个数。
+    const nextVersion = (await ontology.currentVersion(c.tenantId)) + 1;
+    if (q["breakGlass"] === "true") {
+      await governance.breakGlassPublish(c, nextVersion, q["reason"] ?? "");
+    } else {
+      await governance.assertPublishApproved(c, nextVersion);
+    }
+    /*
+     * WO-PUBLISH-VERSION-PIN：把上面那个 `nextVersion` 钉进去。
+     * 上面两道闸（破窗留痕 / 会签背书）都是**对着 `nextVersion` 这个号**做的判断，
+     * 而 `publishVersion()` 自己会再算一次 `max+1` —— 两次读之间是个 TOCTOU 窗口。
+     * 不钉的话，"被背书的号"与"真发出去的号"就可能不是同一个，
+     * 与会签路那处缺陷同一个形态。钉上之后：对不上就 409，不静默改发。
+     */
+    return ontology.publishVersion(c, { expectVersion: nextVersion });
+  });
   app.get("/a/v1/ontology/versions", async (req) => repos.ontologyVersions.list(ctx(req).tenantId));
 
   // 并发一致性 §13.1：任务启动时捕获 taskEpoch（工具层注入到后续读取的 asOfEpoch）。
@@ -1080,17 +5524,100 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(ObjectsQuerySchema, req.body);
     return ontology.queryObjects(ctx(req), body.objectType, body.filter, body.limit, body.asOfEpoch);
   });
+  /**
+   * WO-SLOT-ENTITY-RESOLVE · 「实体文本 → 对象引用」解析正门（A 侧单一出处，B 侧槽位填充经此调用）。
+   * 用户说「常州」/「整车厂A」/「容百科技」是**名称**，`GET /objects/:type/:id` 只认 id/主键必 404；
+   * 本端点按 id / name / alias 三层解析并回 `matchedBy`（可诊断），解析不到回 attempts（试了哪些类型/键/为何不匹）。
+   */
+  app.post("/a/v1/ontology/resolve-ref", async (req) => {
+    const body = parseBody(ObjectRefResolveRequestSchema, req.body);
+    return ontology.resolveObjectRef(ctx(req), body);
+  });
   // 前端 PRD §6.4 / §7.3：对象查询（objectRef 槽位选择器 + 台账分页 + 列筛选 f_*）。
   // 响应 { items, total }（台账/选择器消费）；同时保留 { data, snapshotVersion } 兼容旧调用。
+  //
+  // ⚠ `total` 的语义是「**符合条件的总行数**」，不是「本次能取回多少」——
+  //   它必须独立于 page / pageSize / 任何内部读上限。曾经这里读的是
+  //   `queryObjects(ctx, type, {}, 1000)`，于是 `total = rows.length` 被那个 ≤1000 硬顶夹住：
+  //   `type=EquipmentOEE` 自报 `total=1000` 而真值 5460（seed 42），且第 1000 行之后
+  //   **任何 page 都翻不到**。调用方无从察觉，因为 `total` 正是唯一的检测手段，而它自己被截断。
+  //   改走 `listVisiblePage`（全量可见读，语义与 queryObjects 非 asOfEpoch 路一致）后两者都解决。
+  //   仍留 200k 安全上限；真撞上时 `total` 是已知下界，靠 `totalIsLowerBound:true` **显式说出来**。
+  //
+  // 本端点认得的查询参数（其余一律回 `warnings`，不再静默吞掉）：
+  const KNOWN_OBJECT_QUERY_PARAMS = new Set(["type", "q", "page", "pageSize", "base"]);
+  const MAX_PAGE_SIZE = 500;
+  /**
+   * **分页形态**的参数别名 —— 本端点一个都不实现。收到即 **400**，不降级成 warning。
+   *
+   * 为什么单把这一族拎出来硬拒（与下面对普通未知参数的宽容处置刻意不同）：
+   * 拼错一个 `sort` 只是噪声 —— 调用方少一个排序，屏上看得出来；
+   * 而一个被忽略的 `limit=500` **不产生任何错误**，只让调用方拿到**少的那一部分并当成全部**。
+   * 本仓已为这一个形态付过三次代价，最近一次是**生产前端**
+   * `chainFamilyLines.fetchOrdersForFamilies` 发 `limit=500`，实收 50 行（真值 500 · 10× 欠读），
+   * 而它此前只回 warning ⇒ 没有任何调用方去读，等于没说。
+   * 原先「不 400」的理由是「三个接缝测试与文档 curl 都在传」—— 那恰恰证明**大家都以为它生效**，
+   * 是加硬拒的理由，不是不加的理由。
+   * 实测全仓传分页别名的调用方共 4 处，已随本单一并改到 `pageSize`：
+   * `chainFamilyLines.ts`（生产前端）· `chain-scan-honesty.test.ts` · `WO-SIM-PERTURB-DATA-GAP.md`×2；
+   * `objects-total-truthful.seam.test.ts` 改为断言 400。AgentCore 走 `POST /objects/query`，不受影响。
+   */
+  const PAGINATION_ALIASES = new Set([
+    "limit", "offset", "cursor", "perpage", "per_page", "page_size", "pagesize",
+    "size", "skip", "start", "top", "maxresults", "max_results",
+    "pagenum", "page_num", "pageindex", "page_index",
+  ]);
   app.get("/a/v1/objects", async (req) => {
     const q = req.query as Record<string, string | undefined>;
     const type = q["type"] ?? "";
     if (!type) throw validationError("type query parameter is required");
     const needle = (q["q"] ?? "").toLowerCase();
-    const page = Math.max(1, Number(q["page"] ?? "1") || 1);
-    const pageSize = Math.min(500, Math.max(1, Number(q["pageSize"] ?? "50") || 50));
-    const result = await ontology.queryObjects(ctx(req), type, {}, 1000);
-    let rows = result.data as { id: string; type: string; props: Record<string, unknown> }[];
+
+    const unknownKeys = Object.keys(q).filter((k) => !KNOWN_OBJECT_QUERY_PARAMS.has(k) && !k.startsWith("f_"));
+
+    // ① 分页形态的未知参数 ⇒ 400 点名。静默忽略是本仓三次欠读事故的共同放大器。
+    const badPaging = unknownKeys.filter((k) => PAGINATION_ALIASES.has(k.toLowerCase()));
+    if (badPaging.length) {
+      throw validationError(
+        `分页参数 ${badPaging.map((k) => `"${k}"`).join(" / ")} 在本端点不存在，不会生效。` +
+          `本端点分页只认 page + pageSize（pageSize ≤ ${MAX_PAGE_SIZE}）；` +
+          `要取全部请按响应里的 hasMore / total 逐页翻。`,
+      );
+    }
+
+    // ② 分页参数的**值**同样不许静默改写。
+    //    `page=abc` 悄悄变 1、`pageSize=abc` 悄悄变 50 —— 与忽略参数是同一个病，只是发生在值这一层：
+    //    调用方拿到的是「别人替他选的那一页」，而响应里没有一个字提过这件事。
+    const intParam = (name: string, dflt: number): number => {
+      const raw = q[name];
+      if (raw === undefined || raw === "") return dflt;
+      if (!/^\d+$/.test(raw) || Number(raw) < 1) {
+        throw validationError(`查询参数 "${name}" 必须是 ≥1 的整数，收到 "${raw}"。`);
+      }
+      return Number(raw);
+    };
+    const page = intParam("page", 1);
+    const askedPageSize = intParam("pageSize", 50);
+    const pageSize = Math.min(MAX_PAGE_SIZE, askedPageSize);
+
+    const warnings: string[] = [];
+    // 夹到上限**也要说出来**：否则调用方按自己请求的页长算「还有没有下一页」会算错
+    // （请求 1000、实收 500，他会以为一页就取完了）。响应里的 pageSize 回显的是**生效值**。
+    if (askedPageSize > pageSize) {
+      warnings.push(
+        `pageSize=${askedPageSize} 超过本端点上限 ${MAX_PAGE_SIZE}，本次实际用 ${pageSize}；请按 hasMore 继续翻页。`,
+      );
+    }
+    // ③ 其余无法识别的参数 → warnings（非分页形态：拼错只是噪声，且本端点 URL 常由 agent 现拼，
+    //    硬拒会把一个拼写问题升级成一次故障）。
+    for (const k of unknownKeys) {
+      warnings.push(
+        `查询参数 "${k}" 无法识别，已被忽略。本端点认得：type / q / page / pageSize / base / f_<属性名>。`,
+      );
+    }
+
+    const result = await ontology.listVisiblePage(ctx(req), type, {});
+    let rows = result.data;
     if (needle) {
       rows = rows.filter((o) => JSON.stringify({ id: o.id, ...o.props }).toLowerCase().includes(needle));
     }
@@ -1109,13 +5636,167 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         return (Array.isArray(pv) ? pv.join(",") : String(pv ?? "")).includes(q["base"] as string);
       });
     }
+    // 撞到 200k 安全上限时 `total` 只是已知下界 —— 说出来，别让调用方以为它是真值。
+    if (result.truncated) {
+      warnings.push(
+        `匹配行数超过服务端安全上限（${result.data.length} 行），total 为**已知下界**而非真值；请用 f_<属性名> 收窄或走 POST /a/v1/objects/aggregate 取精确计数。`,
+      );
+    }
     const total = rows.length;
-    const items = rows.slice((page - 1) * pageSize, page * pageSize).map((r) => ({ id: r.id, type, props: r.props }));
-    return { items, total, data: items, snapshotVersion: result.snapshotVersion };
+    const offset = (page - 1) * pageSize;
+    const items = rows.slice(offset, offset + pageSize).map((r) => ({ id: r.id, type, props: r.props }));
+    return {
+      items,
+      total,
+      ...(result.truncated ? { totalIsLowerBound: true } : {}),
+      // 截断信号（三件套，缺一件都还能让调用方算错）：
+      //   · `total`    —— 真实匹配行数，与 page/pageSize/任何内部读上限无关（首要真相源）；
+      //   · `page`/`pageSize` —— **生效值**回显。请求值可能被夹（>上限）或被默认填充，
+      //                          调用方拿自己请求的那个数去算下一页会算错，所以由服务端说了算；
+      //   · `hasMore`  —— 直接回答「还有没有下一页」，省掉 `page*pageSize < total` 这道
+      //                    每个调用方都要自己写一遍、且一旦 pageSize 被夹就必错的算术。
+      // `totalIsLowerBound` 为真时 total 只是下界 ⇒ 此时 hasMore 以「本页是否被取满」兜底，
+      // 宁可多让调用方翻一页空页，也不谎称"没有了"。
+      page,
+      pageSize,
+      hasMore: result.truncated ? items.length === pageSize : offset + items.length < total,
+      ...(warnings.length ? { warnings } : {}),
+      data: items,
+      snapshotVersion: result.snapshotVersion,
+    };
+  });
+  // 外部域（EXT_SIG）：环境信号清单（一等对象 ExternalSignal；行级过滤 + tenantId 由 queryObjects 保证）。
+  app.get("/a/v1/external-signals", async (req) => {
+    const result = await ontology.queryObjects(ctx(req), "ExternalSignal", {}, 500);
+    const rows = result.data as { id: string; props: Record<string, unknown> }[];
+    const signals = rows
+      .map((r) => r.props)
+      .sort((a, b) => String(a.category ?? "").localeCompare(String(b.category ?? "")) || String(a.signalKey).localeCompare(String(b.signalKey)));
+    return { signals, total: signals.length, snapshotVersion: result.snapshotVersion };
+  });
+  // 外部域（EXT_SIG · 信号时序）：信号近 12 月历史（确定性，从当前值按 trend 反推；R6）。
+  // 注：A8 ts_points 管道服务高频传感器序列（OEE/良率/产出）；稀疏市场信号走此轻量时序。
+  app.get("/a/v1/external-signals/:key/series", async (req) => {
+    const { key } = req.params as { key: string };
+    const rows = (await ontology.queryObjects(ctx(req), "ExternalSignal", {}, 500)).data as { props: Record<string, unknown> }[];
+    const sig = rows.find((r) => String(r.props.signalKey) === key)?.props;
+    if (!sig) throw notFound(`external signal ${key}`);
+    const value = Number(sig.value ?? 0);
+    const trend = String(sig.trend ?? "flat");
+    const slope = trend === "up" ? 0.018 : trend === "down" ? -0.018 : 0; // 月环比斜率
+    const asOf = String(sig.asOf ?? new Date().toISOString().slice(0, 10));
+    const base = new Date(`${asOf}T00:00:00Z`);
+    const points: { month: string; value: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(base.getTime());
+      d.setUTCMonth(d.getUTCMonth() - i);
+      // 反推：当前值 = value；i 个月前 ≈ value / (1+slope)^i，叠加确定性小波动（由 key 长度+月序定相位）。
+      const drift = value / Math.pow(1 + slope, i);
+      const wobble = 1 + 0.006 * Math.sin((i + key.length) * 1.3);
+      points.push({ month: d.toISOString().slice(0, 7), value: Math.round(drift * wobble * 1000) / 1000 });
+    }
+    return { signalKey: key, unit: sig.unit ?? "", trend, points };
+  });
+  // WO-EXT-SIGNAL-DETAIL CI-b（外部信号 → 溯源闭环·R13）：反查引用本信号的因果因子（CausalFactor.drillId==signalKey）
+  // + caused_by 因果链（信息全貌）+ 顶层 Metric 归因（boundMetricKeys 前向兼容·metric-aware-gap 未合前诚实 pending·不编）。纯只读·R6 确定性。
+  app.get("/a/v1/external-signals/:key/references", async (req) => {
+    const { key } = req.params as { key: string };
+    const c = ctx(req);
+    const sig = ((await ontology.queryObjects(c, "ExternalSignal", {}, 500)).data as { props: Record<string, unknown> }[]).find((r) => String(r.props.signalKey) === key)?.props;
+    if (!sig) throw notFound(`external signal ${key}`);
+    const cfRows = ((await ontology.queryObjects(c, "CausalFactor", {}, 500)).data as { props: Record<string, unknown> }[]).map((r) => r.props);
+    // 反查：本信号被哪些因果因子引用为下钻源（drillId==signalKey）。R6 确定性排序。
+    const refFactors = cfRows.filter((p) => String(p.drillId) === key).sort((a, b) => String(a.factorId).localeCompare(String(b.factorId)));
+    const refIds = new Set(refFactors.map((p) => String(p.factorId)));
+    // caused_by 因果边（果→因）：与引用因子相接的边 = 本信号在因果链中的上下游全貌。
+    const causalEdges = (await repos.links.list(c.tenantId))
+      .filter((l) => l.type === "caused_by")
+      .map((l) => ({ from: String(l.fromId).replace(/^obj_causalfactor_/, ""), to: String(l.toId).replace(/^obj_causalfactor_/, "") }))
+      .filter((e) => refIds.has(e.from) || refIds.has(e.to))
+      .sort((a, b) => (a.from + "→" + a.to).localeCompare(b.from + "→" + b.to));
+    const factors = refFactors.map((p) => ({
+      factorId: String(p.factorId),
+      label: String(p.label),
+      drillField: String(p.drillField),
+      drillValue: Number(sig[String(p.drillField)] ?? 0), // 本信号在该因子下钻字段的当前真值（改信号值→此变·C2）
+      isRoot: Boolean(p.isRoot),
+      provenanceSynthetic: Boolean(p.provenanceSynthetic), // 无真外部源诚实标灰（G-DM-1）
+      boundMetricKeys: Array.isArray(p.boundMetricKeys) ? (p.boundMetricKeys as string[]) : [], // 前向兼容 metric-aware-gap·未种=空
+    }));
+    const metricsAffected = [...new Set(factors.flatMap((f) => f.boundMetricKeys))].sort();
+    return {
+      signalKey: key,
+      name: String(sig.name ?? key),
+      category: String(sig.category ?? ""),
+      factors,
+      causalEdges,
+      metricsAffected,
+      hasReferences: factors.length > 0,
+      // 诚实：Metric 归因需 CausalFactor.boundMetricKeys（metric-aware-gap 合 + data agent 种后填），未种则 pending 不编。
+      metricLinkage: metricsAffected.length > 0 ? "bound" : "pending",
+      ...(factors.length === 0 ? { note: "本信号暂无因果因子引用（未进任何根因树·诚实空）" } : {}),
+    };
+  });
+  // 外部域（EXT_SIG P2）：信号冲击 → 规划指标敏感性（确定性弹性：Δ指标pp = Δ信号% × elasticity，按 impact 聚合）。
+  // body: { shocks: [{ signalKey, deltaPct }] }。无副作用（纯计算）；R6 确定性。
+  app.post("/a/v1/external-signals/sensitivity", async (req) => {
+    const body = (req.body ?? {}) as { shocks?: { signalKey?: string; deltaPct?: number }[] };
+    const shocks = Array.isArray(body.shocks) ? body.shocks : [];
+    const rows = (await ontology.queryObjects(ctx(req), "ExternalSignal", {}, 500)).data as { props: Record<string, unknown> }[];
+    const byKey = new Map(rows.map((r) => [String(r.props.signalKey), r.props]));
+    const byMetric = new Map<string, { metric: string; deltaPct: number; drivers: { signalKey: string; deltaPct: number; contributionPp: number }[] }>();
+    const unknown: string[] = [];
+    for (const s of shocks) {
+      const sig = s.signalKey ? byKey.get(s.signalKey) : undefined;
+      if (!sig) { if (s.signalKey) unknown.push(s.signalKey); continue; }
+      const metric = String(sig.impact ?? "未分类");
+      const elasticity = Number(sig.elasticity ?? 0);
+      const dPct = Number(s.deltaPct ?? 0);
+      const contributionPp = Math.round(dPct * elasticity * 100) / 100;
+      const m = byMetric.get(metric) ?? { metric, deltaPct: 0, drivers: [] };
+      m.deltaPct = Math.round((m.deltaPct + contributionPp) * 100) / 100;
+      m.drivers.push({ signalKey: String(sig.signalKey), deltaPct: dPct, contributionPp });
+      byMetric.set(metric, m);
+    }
+    return { impacts: [...byMetric.values()].sort((a, b) => Math.abs(b.deltaPct) - Math.abs(a.deltaPct)), unknownSignals: unknown };
   });
   app.get("/a/v1/objects/:type/:id", async (req) => {
     const { type, id } = req.params as { type: string; id: string };
     return ontology.getObject(ctx(req), type, id);
+  });
+
+  // 活数据可溯（PRD-live-traceable-data §3.2）：对象 → 原始行 → RawDataset → 连接器 + 派生链。
+  // 回答"这个数从哪来"——把推演结果里的一个对象/数字溯回它的源头原始数据与计算口径。
+  // 复用 ontology.getObject 做 READ 鉴权 + 行级过滤 + 主键解析；再取完整对象拿 origin backref。
+  app.get("/a/v1/lineage/object/:type/:id", async (req) => {
+    const c = ctx(req);
+    const { type, id } = req.params as { type: string; id: string };
+    const payload = await ontology.getObject(c, type, id); // 404/403 if not allowed (R3/A6)
+    const obj = await repos.objects.get(c.tenantId, (payload.data as { id: string }).id);
+    if (!obj) throw notFound("object");
+    const org = obj.origin as { type: string; jobId?: string; sourceConnId?: string; rawDatasetId?: string; rawRowIdx?: number };
+    let source: unknown = null;
+    if (org.rawDatasetId) {
+      const ds = await repos.rawDatasets.get(c.tenantId, org.rawDatasetId);
+      const conn = ds ? await repos.connections.get(c.tenantId, ds.sourceConnId) : undefined;
+      const rows = ds ? await repos.rawRows.list(c.tenantId, ds.id) : [];
+      const rawRow = typeof org.rawRowIdx === "number" ? (rows[org.rawRowIdx] ?? null) : null;
+      source = {
+        // 含 lastSyncAt → 前端据此算"数据新鲜度"（R13：源延迟→派生数字标降级）
+        connection: conn ? { id: conn.id, name: conn.name, connectorTypeKey: conn.connectorTypeKey, lastSyncAt: conn.lastSyncAt ?? null } : null,
+        rawDataset: ds ? { id: ds.id, name: ds.name, rowCount: ds.rowCount, fields: ds.fields.map((f) => f.name) } : null,
+        rawRowIdx: org.rawRowIdx ?? null,
+        rawRow,
+      };
+    }
+    const typeDef = await ontology.getType(c, type);
+    const derivations = (typeDef?.derivedProperties ?? []).map((d) => ({ prop: d.propKey, formula: d.formula }));
+    return {
+      object: { id: obj.id, type: obj.type, origin: obj.origin },
+      source, // null = 非数据对象（如纯派生/手工）或无源头 backref
+      derivations, // 该类型的派生属性（= 计算字段，非原始；展示口径）
+      snapshotVersion: payload.snapshotVersion,
+    };
   });
   // 前端 PRD §7.2 + 增量 §7.18：类型级本体图谱。节点 = ObjectType + 求解器 + 概念节点
   // （学习闭环/智能体网络），边带 kind 字段（flow/agg/fb/orch/calc）供视角 linkKinds 过滤。
@@ -1196,11 +5877,347 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const c = ctx(req);
     return buildMappingRows(repos, c.tenantId);
   });
+  // PRD-IND-map §4.5-③：映射表四注册表段（关系类型 / 规则 / Action / 事件）。
+  app.get("/a/v1/ontology/mapping/registries", async (req) => {
+    const c = ctx(req);
+    return buildMappingRegistries(repos, c.tenantId);
+  });
   // 能力发现与路由 §1：资源目录（discover 供给侧；权限/功能开通过滤）
   app.get("/a/v1/catalog", async (req) => {
-    const { kind, query } = req.query as { kind?: string; query?: string };
+    const { kind, query, category } = req.query as { kind?: string; query?: string; category?: string };
     if (kind !== "slices" && kind !== "solvers") throw validationError("kind must be slices|solvers");
-    return catalog.discover(ctx(req), kind, query);
+    // WO-L7A 求解器决策问题类目筛选：非法类目**显式 400**，不静默忽略参数返全量（静默 = 调用方以为筛过了）
+    if (category !== undefined && !isSolverCategory(category)) {
+      throw validationError(`category must be one of ${SOLVER_CATEGORIES.join("|")}`);
+    }
+    return catalog.discover(ctx(req), kind, query, category);
+  });
+  // WO-L7A 求解器决策问题类目登记表（10 类 + 每类的决策问句 + 成员 key·治理页分组/Agent 选型收窄的供给侧）
+  app.get("/a/v1/solvers/categories", async (req) => {
+    ctx(req); // 鉴权上下文（分类维为平台元数据，按租户读）
+    return {
+      categories: solversByCategory().map((g) => ({
+        category: g.category,
+        label: SOLVER_CATEGORY_META[g.category].label,
+        decisionQuestion: SOLVER_CATEGORY_META[g.category].decisionQuestion,
+        solverKeys: g.solverKeys,
+        count: g.solverKeys.length,
+      })),
+      total: SOLVER_KEYS.length,
+      uncategorized: uncategorizedSolverKeys(), // 空数组 = 无漏网（诚实亮出，不藏）
+    };
+  });
+  // A3.1 · 14 业务域参考注册表（配置驱动 R14）：给 A4 浏览器分组、切片规划器 tie-break、跨域接缝识别共用。
+  app.get("/a/v1/business-domains", async (req) => {
+    ctx(req); // 鉴权上下文（域注册表为平台参考基线，按租户读）
+    return { domains: BUSINESS_DOMAINS };
+  });
+  /**
+   * WO-WAITING-STATES-FE · 业务流程层下发（13 域 + 65 流程 · 含 `waitKind` 四态）。
+   *
+   * ── 为什么本路由是新增的：读端此前是 0 ────────────────────────────────────
+   * `processDefinitions` / `processDomains` 两个 store 自建成起**只有写端与 test 读端**
+   * （`seed.ts:697-698` 写 · `test/process-layer.test.ts` 读），src 里零读取方 ——
+   * 即假绿第 9 形态 `G-SKILL-REFGRAPH-DEAD-EXTRACTOR`：实现有、测试 65 条全绿、
+   * 却没有任何生产链路能把它取出来。前端「五个等待态 0 命中」的病根在这里，
+   * 不在前端（取证见 `docs/WO-WAITING-STATES-FE-evidence.md` §1.4 / §3）。
+   *
+   * ── 口径 ─────────────────────────────────────────────────────────────────
+   * · 只读投影，无副作用；按 `key` 升序（R6 确定性：不依赖 Store 迭代序）。
+   * · R2：按 `ctx(req).tenantId` 读，跨租户自然为空（Store.list 已按租户分区）。
+   * · `waitKinds` 随响应下发**词表本身**，让前端渲染「四态图例」时不必再写一份字面量数组
+   *   —— 契约注释原文：「任何一侧再写一份字面量数组就是回退到『两个 dev 各发明一套词表、
+   *   交集为 0』出事前的状态」。四值不含 `WAITING_APPROVAL`（仓主已裁「流程审批不体现」，
+   *   `process.ts:59-67` 诚实缺席，不是漏写）。
+   * · **不下发「此刻已卡多久」**：那需要 `ProcessTask.enteredAt` 运行态，而
+   *   `ProcessTask`/`ProcessInstance` 全仓不存在（PRD §5 的 E2 未实现）。
+   *   本路由只给 `stdDurationDays`（标准工期）并由前端如实标注口径，
+   *   **不拿标准工期冒充实测卡顿**。
+   */
+  app.get("/a/v1/process-definitions", async (req) => {
+    const c = ctx(req);
+    const byKey = <T extends { key: string }>(a: T, b: T) => a.key.localeCompare(b.key);
+    const [domains, definitions] = await Promise.all([
+      repos.processDomains.list(c.tenantId),
+      repos.processDefinitions.list(c.tenantId),
+    ]);
+    return {
+      domains: [...domains].sort(byKey),
+      definitions: [...definitions].sort(byKey),
+      waitKinds: PROCESS_WAIT_KINDS,
+      ownerFunctions: PROCESS_OWNER_FUNCTIONS,
+    };
+  });
+  /**
+   * WO-FLOWTIME · 单条流程的**实例**与站间流转时长投影。
+   *
+   * ── 这条路由补的是上一条路由自己写着的那个洞 ──────────────────────────────
+   * 上面 `/a/v1/process-definitions` 的注释原文：
+   *   「**不下发「此刻已卡多久」**：那需要 `ProcessTask.enteredAt` 运行态，而
+   *     `ProcessTask`/`ProcessInstance` 全仓不存在 … 本路由只给 `stdDurationDays`（标准工期）
+   *     并由前端如实标注口径，**不拿标准工期冒充实测卡顿**。」
+   * 承载物现在有了（`migrations/033`），故本路由下发**实测反推**的进出站时刻与站间时长。
+   * ⛔ 那条「不拿标准工期冒充实测」的规矩**没有放宽**：本路由的任何天数都来自单据时间戳，
+   *    `stdDurationDays` 只作为**对照列**原样透出（`definition.stdDurationDays`），
+   *    与 `flowTime` 分属两个字段、两个含义，前端不可能拿错。
+   *
+   * ── 口径 ─────────────────────────────────────────────────────────────────
+   * · **只读投影**（R4）：反推 + 落派生表，不写本体真值，不碰 Action 审批路径。
+   * · R2：按 `ctx(req).tenantId` 读写；跨租户自然为空（Store 已按租户分区）。
+   * · R6：无 `Date.now()`；分析截止时刻 `asOf` 由 `?asOf=` 显式指定，缺省取**数据里最晚的
+   *   观测时刻**（`asOfSource` 一并回传，让读的人知道这个「现在」是怎么定的）。
+   * · **解析不到标 absent，不许 500**：流程 key 不存在 → 404（那是调用错，该报错）；
+   *   流程存在但反推不出实例 → **200 + `available:false` + 缺席理由 + 复验探针**
+   *   （「我不知道」是一个合法答案；把它变成 500 会让调用方以为是服务故障）。
+   */
+  app.get("/a/v1/process-definitions/:key/instances", async (req) => {
+    const c = ctx(req);
+    const key = (req.params as { key: string }).key;
+    const def = (await repos.processDefinitions.list(c.tenantId, (d) => d.key === key))[0];
+    if (!def) throw notFound(`ProcessDefinition ${key}`);
+    const q = req.query as { asOf?: string; limit?: string };
+    const outcome = await reconstructAndPersist(repos, c.tenantId, {
+      ...(q.asOf ? { asOf: q.asOf } : {}),
+      outbox,
+    });
+    const limit = Number.isFinite(Number(q.limit)) && Number(q.limit) > 0 ? Math.floor(Number(q.limit)) : 200;
+    const mine = outcome.instances.filter((i) => i.processKey === key);
+    const absence = outcome.absences.find((a) => a.processKey === key) ?? null;
+    // 站间流转投影：只保留经过本流程的链，并标出本站在链上的停留与到下一站的间隔。
+    const flowTime = outcome.timelines
+      .filter((t) => t.stations.some((s) => s.processKey === key))
+      .map((t) => ({
+        flowKey: t.flowKey,
+        totalDays: t.totalDays,
+        bottleneckProcessKey: t.bottleneckProcessKey,
+        bottleneckDwellDays: t.bottleneckDwellDays,
+        stuckProcessKey: t.stuckProcessKey,
+        stuckDays: t.stuckDays,
+        thisStation: t.stations.find((s) => s.processKey === key) ?? null,
+        stations: t.stations,
+      }))
+      .slice(0, limit);
+    return {
+      definition: def, // 含 stdDurationDays —— **对照列**，与下面的实测天数分属两个字段
+      asOf: outcome.asOf,
+      asOfSource: outcome.asOfSource,
+      /** 反推得出 ⇒ true；反推不出 ⇒ false + reason/probe（**不是空数组冒充"没有卡顿"**）。 */
+      available: mine.length > 0,
+      absence, // available=false 时非空：缺哪种单据 / 哪个字段 / 怎么复验
+      instanceCount: mine.length, // 全量基数（不受 limit 影响）
+      instances: mine.slice(0, limit),
+      instancesShown: Math.min(mine.length, limit),
+      flowTime,
+      /** 词表随响应下发（同上一条路由的既有做法：前端不必再写一份字面量数组）。 */
+      waitKinds: PROCESS_WAIT_KINDS,
+      origins: PROCESS_INSTANCE_ORIGINS,
+    };
+  });
+  /**
+   * WO-V4-INSPECT · **业务流程节点检视**（PRD-sandbox-v4-backward-derivation §4.1 + §4.2）。
+   *
+   * 「点开一条流程，看它的完整本体关系」——一次纯 join，**零新真值源、零新表、零新事件**：
+   *   `process_definitions` × `process_domains` × `object_types` × `ontology_links` × `objects`
+   *
+   * ── 四条硬约束（逐条对应 PRD，别当装饰）──────────────────────────────────
+   * ① **`carrierTypeKey` 解析不到是必须处理的态**：种子期不校验它存在
+   *    （判据在 `test/process-layer.test.ts`），故 join 不上是**可能发生的**。
+   *    此时 `carrier.status="absent"` + 说明缺在哪一环，HTTP **仍是 200** ——
+   *    流程本身存在，缺的是它的承载物。不许崩，也不许假设一定 join 得上。
+   * ② **不下发运行态**：`ProcessTask`/`ProcessInstance` 全仓不存在 ⇒「此刻卡了多久 / 有几单堵着」
+   *    答不出来。只给 `stdDurationDays` 并在 `runtime` 里如实标口径 ——
+   *    ⛔ 绝不拿标准工期冒充实测卡顿（上面那个路由的口径注释已立此规矩，此处沿用同一条）。
+   * ③ **零新真值源**：全部现算派生。
+   * ④ **R2 租户**：按 `ctx(req).tenantId` 读，跨租户自然为空（Store.list 已按租户分区）。
+   *
+   * 十六层**复用** `ontology/slice-layers.ts` 的既有投影（不另造一套），依据一条
+   * **即席一跳切片**（root = 承载类型，paths = 该类型每条一跳链路）真跑 `executeSlice` ——
+   * 层计数必须对得回真子图的 nodes/edges，拿手工拼的假 graph 喂进去屏上的数就是编的。
+   * 承载类型 absent ⇒ `carrierLayers: null` + 说明，**不返回 16 个空壳假装算过**。
+   */
+  /**
+   * WO-STEP-TEMPLATE-LAYER · 一条流程的**标准步骤模板**。
+   *
+   * ── 这条路由补的是 `POST /a/v1/process-instances` 此前**无源可填**那个洞 ──────
+   * 建实例的请求体要求 `tasks.min(1)`（步骤逐条给全），而 `ProcessDefinition` 九个字段里
+   * 没有一个是步骤 ⇒ 前端要接"启动流程"按钮就得**凭空发明步骤**，正是
+   * `process/runtime.ts create()` 那条「不许凭空建」红线所反对的。本路由就是那个源。
+   *
+   * ⛔ **`tasks.min(1)` 一个字没放宽**（放宽 = 把「实例必须有步骤」这条不变量拆了）。
+   *    变的只是步骤从哪来 —— 模板来的，不是想象来的。前端把本响应的 `steps` 经契约的
+   *    `tasksFromStepTemplate()`（**唯一一处转换实现**，前后端共用）折成 `tasks` 再 POST。
+   *
+   * ── 口径 ─────────────────────────────────────────────────────────────────
+   * · **只读投影**（R4）：一次 Store.list，零副作用、零新真值源、不碰 Action 审批路径。
+   * · R2：按 `ctx(req).tenantId` 读，跨租户自然为空。
+   * · **流程 key 不存在 → 404**（那是调用错）；**流程存在但没有步骤模板 → 200 +
+   *   `available:false` + `absence{reason,probe}`**。「这条流程还没有步骤模板」是一个合法答案，
+   *   变成 404/500 会让调用方以为流程本身不存在或服务坏了。
+   * · **不做 entitlement 门**：本端点属**模板层**（与同前缀的 `/a/v1/process-definitions*`
+   *   三条一致，全部无门），而 `process.runtime` 那道暗发门管的是**运行时层**
+   *   （`/a/v1/process-instances*`）。给模板层也加门会让"看得见流程台账、却看不见它分几步"，
+   *   两层的可见性边界就糊了。
+   */
+  app.get("/a/v1/process-definitions/:key/step-template", async (req) => {
+    const c = ctx(req);
+    const { key } = req.params as { key: string };
+    const def = (await repos.processDefinitions.list(c.tenantId, (d) => d.key === key))[0];
+    if (!def) throw notFound(`ProcessDefinition ${key}`);
+    return readStepTemplate(repos, c.tenantId, def);
+  });
+  app.get("/a/v1/process-definitions/:key/inspect", async (req) => {
+    const c = ctx(req);
+    const { key } = req.params as { key: string };
+    const [domains, definitions] = await Promise.all([
+      repos.processDomains.list(c.tenantId),
+      repos.processDefinitions.list(c.tenantId),
+    ]);
+    const definition = definitions.find((d) => d.key === key);
+    if (!definition) throw notFound(`process definition ${key}`); // 流程本身不存在才 404
+    const [types, linkTypes] = await Promise.all([ontology.listTypes(c), repos.ontologyLinks.list(c.tenantId)]);
+    const typeByKey = new Map(types.map((t) => [t.key, t]));
+    const carrierType = typeByKey.get(definition.carrierTypeKey);
+
+    // 对象计数只读**用得到的那几个类型**（承载类型 + 一跳邻居），不全表扫。
+    const countKeys = new Set<string>();
+    if (carrierType) countKeys.add(carrierType.key);
+    for (const l of linkTypes) {
+      if (l.fromTypeKey === definition.carrierTypeKey) countKeys.add(l.toTypeKey);
+      if (l.toTypeKey === definition.carrierTypeKey) countKeys.add(l.fromTypeKey);
+    }
+    const objectCounts = new Map<string, number>();
+    for (const k of [...countKeys].sort()) {
+      if (!typeByKey.has(k)) continue; // 类型不存在 ⇒ 不填（null ≠ 0，两者含义不同）
+      objectCounts.set(k, (await repos.objects.listByType(c.tenantId, k)).length);
+    }
+
+    // 十六层：承载类型在 ⇒ 真跑即席一跳切片；不在 ⇒ null（诚实说没算，不造空壳）。
+    let carrierLayers: SliceLayersResponse | null = null;
+    async function buildCarrierLayers(): Promise<SliceLayersResponse> {
+      const spec = adhocCarrierSliceSpec(definition!.carrierTypeKey, linkTypes);
+      const graph = await ontologyCore.executeSlice(c, spec, {});
+      const [ruleList, propagationRules, tsSeries, excObjs, actionTypeList, derivSpecs] = await Promise.all([
+        repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED"),
+        repos.sim.listPropagationRules(c.tenantId, true),
+        repos.tsSeries.list(c.tenantId),
+        repos.objects.listByType(c.tenantId, "ExceptionEvent"),
+        actions.listTypes(c),
+        repos.derivationSpecs.list(c.tenantId, (s) => s.status === "ACTIVE"),
+      ]);
+      const exceptionRefTypes: Record<string, number> = {};
+      for (const o of excObjs) {
+        const rt = typeof o.props.refType === "string" ? o.props.refType : "UNKNOWN";
+        exceptionRefTypes[rt] = (exceptionRefTypes[rt] ?? 0) + 1;
+      }
+      return projectSliceLayers({
+        sliceKey: adhocCarrierSliceKey(definition!.key),
+        version: 0, // 即席切片没有版本：它不是 slice_specs 里的记录，0 就是"无版本"这个事实
+        spec,
+        graph,
+        types,
+        linkTypes,
+        rules: ruleList,
+        propagationRules: propagationRules.map((p) => ({
+          key: p.key,
+          sourceTypeKey: p.sourceTypeKey,
+          sourceStateVar: p.sourceStateVar,
+          targetTypeKey: p.targetTypeKey,
+          targetStateVar: p.targetStateVar,
+          viaLinkKey: p.viaLinkKey,
+          coefficient: p.coefficient,
+        })),
+        tsSeries,
+        exceptionEventTotal: excObjs.length,
+        exceptionRefTypes,
+        // 即席切片不是发布物，没有任何 plan/intent/agent 会引用它 ⇒ ①②层恒空是**真结论**，
+        // 不是"没查"。层投影自己的 absentReason 会说明缺的是上报方。
+        references: [],
+        // WO-CLOSE-SIM-ONTO-2：带上归因键 `targetTypeKey`（§⑮ 靠它 join 动作→对象类型）。
+        // 只投影 key 等于在入口处把 join 键扔掉，然后让 §⑮ 回头声称"没有 join 键"。
+        actionTypes: actionTypeList
+          .map((a) => ({ key: a.key, ...(a.targetTypeKey !== undefined ? { targetTypeKey: a.targetTypeKey } : {}) }))
+          .sort((x, y) => x.key.localeCompare(y.key)),
+        derivationSpecKeys: derivSpecs.map((d) => ({ specKey: d.specKey, targetType: d.targetType, targetProp: d.targetProp, formula: d.formula })),
+        args: {},
+        rootObjectTotal: objectCounts.get(definition!.carrierTypeKey) ?? 0,
+        rootObjectSamples: [],
+      });
+    }
+    if (carrierType) carrierLayers = await buildCarrierLayers();
+
+    return projectProcessInspect({
+      definition,
+      allDefinitions: definitions,
+      domains,
+      types,
+      linkTypes,
+      objectCounts,
+      leverMeta: LEVER_PROP_META,
+      carrierLayers,
+    });
+  });
+  // A3.3 多跳切片规划器 + A3.4 索引复用：先查索引（命中既有切片即复用 reused:true），未命中才新规划。
+  app.post("/a/v1/slices/plan", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(PlanSliceRequestSchema, req.body);
+    const types = (await ontology.listTypes(c)).map((t) => ({ key: t.key, domain: t.domain }));
+    const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
+    const specs = (await repos.sliceSpecs.list(c.tenantId)).map((s) => ({ sliceKey: s.sliceKey, root: s.spec.root.typeKey, paths: s.spec.paths }));
+    const index = buildSliceIndex(specs, links);
+    let reuse = lookupReusable(index, body.rootType, body.targets);
+    // E6 · 切片按近似问句复用（P2，additive）：精确覆盖未命中时，用问句（原文）与既有切片 description/
+    // indexEntities 的词重叠检索命中既有切片复用，不重规划。description 派生自切片覆盖类型（R13 投影，无新存储）。
+    const question = typeof (req.body as { question?: unknown })?.question === "string" ? (req.body as { question: string }).question : undefined;
+    let reusedByQuestion: { sliceKey: string; score: number } | null = null;
+    if (!reuse && question) {
+      const descriptors = index.map((e) => ({ sliceKey: e.sliceKey, rootType: e.rootType, description: `${e.sliceKey} ${e.spannedTypes.join(" ")}`, indexEntities: e.spannedTypes }));
+      reusedByQuestion = lookupReusableByQuestion(descriptors, body.rootType, question);
+      if (reusedByQuestion) reuse = index.find((e) => e.sliceKey === reusedByQuestion!.sliceKey) ?? null;
+    }
+    const res = planSlice(types, links, body);
+    if (res.ok && reuse) {
+      res.plan.sliceKey = reuse.sliceKey; // A3.4：复用既有已发布切片（精确覆盖 或 E6 近似问句命中）
+      res.plan.reused = true;
+    }
+    if (res.ok) await outbox.emit(c.tenantId, "slice.planned", { sliceKey: res.plan.sliceKey, rootType: body.rootType, reused: res.plan.reused, ...(reusedByQuestion ? { reuseMatch: "QUESTION", score: reusedByQuestion.score } : {}) });
+    return res;
+  });
+  // A3.2 域内/跨域两库（派生）：biz.<域>.<root> 单域子图 + biz.x.<from>_to_<to> 跨域接缝。scope=intra|cross|all。
+  app.get("/a/v1/slices/library", async (req) => {
+    const c = ctx(req);
+    const scope = (req.query as { scope?: string }).scope ?? "all";
+    const types = (await ontology.listTypes(c)).map((t) => ({ key: t.key, domain: t.domain }));
+    const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
+    const lib = deriveSliceLibrary(types, links);
+    if (scope === "intra") return { intra: lib.intra };
+    if (scope === "cross") return { cross: lib.cross };
+    return lib;
+  });
+  // A3.2 登记两库为一等 SliceSpec（幂等 putSliceSpec → 进 A3.4 索引 + QOS 可调）；发 slice.planned。
+  app.post("/a/v1/slices/library/build", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const types = (await ontology.listTypes(c)).map((t) => ({ key: t.key, domain: t.domain }));
+    const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
+    const lib = deriveSliceLibrary(types, links);
+    const all = [...lib.intra, ...lib.cross];
+    // WO-SLICE-CONSUMPTION-20260912（AC2）：重复登记幂等 = version+1、不报错、不复制。
+    // 此前恒写 v1（2026-09-12 实测：连跑 build/PUT 版本停在 1），与 PRD AC2「version+1」不符 ——
+    // 同 key 覆盖写（MemStore 按 tenantId+id 去重 ⇒ 天然不复制），版本随登记次数递增，
+    // 审计可辨「登记过几次」；biz.* 与手工 key 冲突时也不静默拍平别人登记的版本。
+    for (const e of all) {
+      const existing = await ontologyCore.getSliceSpec(c, e.sliceKey);
+      await ontologyCore.putSliceSpec(c, e.sliceKey, (existing?.version ?? 0) + 1, libEntryToSpec(e) as never);
+    }
+    await outbox.emit(c.tenantId, "slice.planned", { sliceKey: "library", rootType: "*", reused: false });
+    return reply.status(201).send({ registered: all.map((e) => ({ sliceKey: e.sliceKey, scope: e.scope })), intra: lib.intra.length, cross: lib.cross.length });
+  });
+  // A3.4 切片索引（派生投影 R13）：按 rootType + 覆盖类型集 索引已发布切片，供规划器复用 + A4 浏览。
+  app.get("/a/v1/slices/index", async (req) => {
+    const c = ctx(req);
+    const links = (await repos.ontologyLinks.list(c.tenantId)).map((l) => ({ linkKey: l.key, fromTypeKey: l.fromTypeKey, toTypeKey: l.toTypeKey }));
+    const specs = (await repos.sliceSpecs.list(c.tenantId)).map((s) => ({ sliceKey: s.sliceKey, root: s.spec.root.typeKey, paths: s.spec.paths }));
+    return { entries: buildSliceIndex(specs, links) };
   });
   app.post("/a/v1/slices/:sliceKey/resolve", async (req) => {
     const { sliceKey } = req.params as { sliceKey: string };
@@ -1219,16 +6236,217 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       return { data: { nodes: out.nodes, edges: out.edges, truncated: out.truncated }, snapshotVersion: out.snapshotVersion };
     }
   });
-  app.post("/a/v1/solvers/:solverKey/invoke", async (req) => {
+  // A1 求解器注册表（业务场景 22 + 通用 9 = 31，feature 过滤）：供 AgentCore 构建 `solvers`
+  // MCP server 的全部工具（含 A8 新模型 + 净室通用族）；附输出形状供治理页/渲染绑定校验参考。
+  app.get("/a/v1/solvers/registry", async (req) => {
+    const c = ctx(req);
+    const { query, category } = req.query as { query?: string; category?: string };
+    // WO-L7A：非法类目显式 400（同 /a/v1/catalog，不静默返全量）
+    if (category !== undefined && !isSolverCategory(category)) {
+      throw validationError(`category must be one of ${SOLVER_CATEGORIES.join("|")}`);
+    }
+    const { items } = await catalog.solverRegistry(c, query, category);
+    return { solvers: items.map((it) => ({ ...it, outputShape: SOLVER_OUTPUT_SHAPES[it.key] ?? [] })) };
+  });
+  // SPINE 经营目标-指标-责任骨架：指标库 / KSF / 责任人（各视图 KPI 单一出处 R-一致；Metric 经 metric_rollup 派生投影）。
+  const objProps = (rows: { data: unknown }) => (rows.data as { props: Record<string, unknown> }[]).map((o) => o.props);
+  app.get("/a/v1/metrics", async (req) => {
+    const c = ctx(req);
+    const { level, ksf } = req.query as { level?: string; ksf?: string };
+    const rows = await ontology.queryObjects(c, "Metric", {});
+    const items = objProps(rows).filter((p) => (!level || String(p.level) === level) && (!ksf || String(p.ksfRef) === ksf));
+    return { items, snapshotVersion: rows.snapshotVersion };
+  });
+  app.get("/a/v1/metrics/:key", async (req) => {
+    const c = ctx(req);
+    const key = (req.params as { key: string }).key;
+    const all = await repos.objects.listByType(c.tenantId, "Metric");
+    const obj = all.find((o) => String(o.props.metricId) === key || String(o.props.key) === key);
+    if (!obj) throw notFound("metric");
+    // R13 血缘：actual 经合成→物化，origin 记 sourceConnId/rawDatasetId/rowIdx（数据源→原始表可溯）。
+    const o = obj.origin as { sourceConnId?: string; rawDatasetId?: string; rawRowIdx?: number };
+    const conn = o.sourceConnId ? await repos.connections.get(c.tenantId, o.sourceConnId) : undefined;
+    const ds = o.rawDatasetId ? await repos.rawDatasets.get(c.tenantId, o.rawDatasetId) : undefined;
+    return {
+      metric: obj.props,
+      lineage: { sourceConnId: o.sourceConnId ?? null, connectionName: conn?.name ?? null, rawDatasetId: o.rawDatasetId ?? null, rawDatasetName: ds?.name ?? null, rowIdx: o.rawRowIdx ?? null },
+    };
+  });
+  app.get("/a/v1/ksf", async (req) => {
+    const rows = await ontology.queryObjects(ctx(req), "KSF", {});
+    return { items: objProps(rows), snapshotVersion: rows.snapshotVersion };
+  });
+  app.get("/a/v1/principals", async (req) => {
+    const rows = await ontology.queryObjects(ctx(req), "Principal", {});
+    return { items: objProps(rows), snapshotVersion: rows.snapshotVersion };
+  });
+  // SPINE.2 指标快照回采（执行回采更新口径 → 发 metric.snapshot_recorded；越线项发 metric.breached 触发推演）。
+  // actual 仍为派生投影（metric_rollup 实算，非凭空写真值 R13）；事件驱动驾驶舱/风险页失效 + 越线接 plan_rootcause。
+  app.post("/a/v1/metrics/snapshot", async (req) => {
+    const c = ctx(req);
+    const out = (await ontology.invokeSolver(c, "metric_rollup", {})).data as {
+      metrics: { metricId: string; key: string; actual: number; target: number; miss: boolean; chainKey?: string; ownerRef?: string | null }[];
+    };
+    const asOf = new Date().toISOString();
+    for (const m of out.metrics) {
+      await outbox.emit(c.tenantId, "metric.snapshot_recorded", { metricId: m.metricId, key: m.key, actual: m.actual, asOf });
+      if (m.miss) await outbox.emit(c.tenantId, "metric.breached", { metricId: m.metricId, key: m.key, actual: m.actual, target: m.target, chainKey: m.chainKey ?? null, ownerRef: m.ownerRef ?? null });
+    }
+    return { recorded: out.metrics.length, breached: out.metrics.filter((m) => m.miss).length, asOf, metrics: out.metrics };
+  });
+  // A18.2 LLM 临时求解器生成：缺求解器 → LLM 生成纯函数 → 冻结 + 锁死沙箱跑通自检 → 注册 PROVISIONAL（未审核·UNVERIFIED）。
+  app.post("/a/v1/solvers/generate", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const b = req.body as { key?: string; intent?: string };
+    if (!b?.key || !b?.intent) throw validationError("key + intent required");
+    return solvers.generateProvisionalSolver(c, { key: b.key, intent: b.intent, objectTypes: [] });
+  });
+  // A18.4 审核台队列：列临时求解器制品（每 key 最新版本 + 状态；status 过滤）。供人工审核台。
+  app.get("/a/v1/solvers/artifacts", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { status } = req.query as { status?: string };
+    return { artifacts: await solvers.listArtifacts(c.tenantId, status) };
+  });
+  // A18.2 看临时求解器代码 + rationale + 状态（人工审核台用；GOVERNED 才能写真值）。
+  app.get("/a/v1/solvers/:solverKey/artifact", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const art = await solvers.getArtifact(c.tenantId, (req.params as { solverKey: string }).solverKey);
+    if (!art) throw notFound("solver artifact");
+    return art;
+  });
+  // A18.4 晋升：人工审批把临时求解器 PROVISIONAL → GOVERNED（解锁写真值，R4）。
+  app.post("/a/v1/solvers/:solverKey/promote", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return solvers.promoteSolver(c, (req.params as { solverKey: string }).solverKey);
+  });
+  // A18.3 写真值门控查询：某临时求解器对当前 actor 是否可写真值（创建人作用域 + 标签）。
+  app.get("/a/v1/solvers/:solverKey/write-truth-check", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return solvers.checkWriteTruth(c, (req.params as { solverKey: string }).solverKey);
+  });
+  // A13 地板语义确定化：通用图求解器的字段角色确定性解析（结构信号 + 配置词库，去 LLM）+ 候选/置信度。
+  app.get("/a/v1/solvers/:solverKey/field-roles", async (req) => {
+    const c = ctx(req);
+    const { solverKey } = req.params as { solverKey: string };
+    const types = (await ontology.listTypes(c)).map((t) => ({
+      typeKey: t.key,
+      properties: t.properties.map((p) => ({ propKey: p.propKey, dataType: p.dataType, isPrimaryKey: p.isPrimaryKey, refToTypeKey: p.refToTypeKey ?? null })),
+    }));
+    return resolveFieldRoles(types, solverKey);
+  });
+  app.post("/a/v1/solvers/:solverKey/invoke", async (req, reply) => {
     const { solverKey } = req.params as { solverKey: string };
     // entitlement first (404 FEATURE_NOT_FOUND), then authz/execution
     await requireFeatureTag(req, "solverKeys", solverKey);
     const body = parseBody(z.object({ args: z.record(z.string(), z.unknown()).default({}) }), req.body);
-    return ontology.invokeSolver(ctx(req), solverKey, body.args);
+    let args = body.args;
+    // CL.6（PRD-attribution-routing-plan-audit）：plan_audit 入参三级兜底——缺数值入参时自动取
+    // currentPlanVersion（其本身再 ?? PlanTarget/场景包基线确定性派生，sop.ts:419），使"未达成原因/
+    // 达成率归因"问句直达 plan_audit 出 X01–X05，agent 不因"无 plan_version_id"而放弃（R6 确定）。
+    if (solverKey === "plan_audit") {
+      const required = ["dem", "seg_pas", "seg_ess", "seg_com", "sup", "ltaCov", "kitGap", "gmTarget", "cashCushion", "capex"];
+      if (!required.every((k) => typeof args[k] === "number")) {
+        const cur = await sop.currentPlanVersion(ctx(req));
+        args = { ...cur.input, ...args }; // 基线兜底 + 显式 args 覆盖
+      }
+    }
+    // WO-D1 · 求解取消接入点：客户端提前断链（AgentCore 15s 超时后 abort 了 OBO fetch，或前端 AbortController
+    // 断开）→ reply.raw "close" 且响应未写完 → abort 请求作用域取消令牌 → 求解执行链上的可取消层
+    // （优化器 sidecar fetch / A18 沙箱子进程 / 内存态贪心循环 / await 检查点）就近真停，而不是"没人等了还在烧"。
+    // 正常完成路径：handler 先返回 → finally 摘监听 → 之后才写响应，故绝不会误取消（且未包裹时行为逐字节不变）。
+    const cancel = new AbortController();
+    const onClientGone = () => {
+      if (!reply.raw.writableEnded) cancel.abort(new Error("client disconnected"));
+    };
+    reply.raw.on("close", onClientGone);
+    try {
+      return await runWithCancellation(cancel.signal, () => ontology.invokeSolver(ctx(req), solverKey, args));
+    } finally {
+      reply.raw.removeListener("close", onClientGone);
+    }
   });
   app.post("/a/v1/derivations/run", async (req, reply) => {
-    const run = await ontology.runDerivations(ctx(req));
+    const c = ctx(req);
+    const run = await ontology.runDerivations(c);
+    // DF-2：派生管线完成 → derivation.completed（失效 dashboard/risk/scenario-data/object-queries）。
+    // 语义锚点 = 派生真值重算（invalidates=驾驶舱数字），非建模草稿产出。
+    await outbox.emit(c.tenantId, "derivation.completed", { runId: run.id, updatedObjects: run.updatedObjects, count: run.updatedObjects, order: run.order });
     return reply.status(202).send(run);
+  });
+
+  // ---- 轨B·增量1 优化融合域 /a/v1/opt/*（G-12 · 抽象模板池 · entitlement apiTag "opt"→opt.solver-pool）----
+  // R3 暗发：opt.* defaultOn:false，关 = 404 FEATURE_NOT_FOUND（先于 authz）。CLI/curl 先于 UI（R15）。
+  // 5 CP-SAT 核心走 optimizer-client sidecar（OPTIMIZER_BASE_URL）；未配 → 求解器报"未接入"不兜底。
+  const OPT_FAMILIES = ["facility_location", "min_cost_flow", "set_cover", "independent_set", "combinatorial_auction"] as const;
+  // 求解：{ family, args } 直接给抽象结构化数组（增量1）；或 { family, binding } 由 OntologyBinding
+  // 从本租户本体类型化字段填（增量2 · R14 同模板绑不同本体零代码改）。二者择一。
+  app.post("/a/v1/opt/solve", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt");
+    const body = parseBody(
+      z.object({
+        family: z.enum(OPT_FAMILIES),
+        args: z.record(z.string(), z.unknown()).optional(),
+        binding: OntologyBindingSchema.optional(),
+        seed: z.number().optional(),
+      }),
+      req.body,
+    );
+    if (body.binding) {
+      // 增量2：绑定层 invoke 前预处理（DF.8 接地 + role→本体字段），再走确定性 CP-SAT。
+      return solvers.solveWithBinding(ctx(req), body.family, body.binding, { seed: body.seed });
+    }
+    return ontology.invokeSolver(ctx(req), body.family, body.args ?? {});
+  });
+  // 列模板族（池 comprehend 兜底；增量4 embedding 检索叠其上）。
+  app.get("/a/v1/opt/templates", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt");
+    return { families: OPT_FAMILIES };
+  });
+  // 轨B·增量4 embedding 复用检索（advisory · FUS2 不入确定性求解路径）。
+  // 门：gated 在 opt.solver-pool（apiTag "opt"）；opt.embedding-retrieval 关 → 退回 comprehend 关键词列表
+  // （确定性兜底，不静默 · DoD §3）。开 → 本地确定性词袋检索最近模板 + 覆盖缺口信号。
+  app.get("/a/v1/opt/retrieve", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt");
+    const c = ctx(req);
+    const need = String((req.query as { need?: string }).need ?? "").trim();
+    if (!need) throw validationError("opt retrieve 需 ?need=<需求文本>");
+    const resolved = await features.resolve(c.tenantId);
+    const embeddingOn = resolved.features.includes("opt.embedding-retrieval");
+    if (!embeddingOn) {
+      // 退回 comprehend：关键词匹配模板族（确定性，显式标注 mode=comprehend 不静默）。
+      const q = need.toLowerCase();
+      const matched = OPT_FAMILIES.filter((f) => q.includes(f) || q.includes(f.replace(/_/g, " ")));
+      return { mode: "comprehend", embeddingEnabled: false, candidates: (matched.length ? matched : OPT_FAMILIES).map((key) => ({ key })), note: "opt.embedding-retrieval 未开 → 退回 comprehend 关键词列表（不静默）" };
+    }
+    const idx = new LocalTemplateIndex();
+    const candidates = idx.nearestTemplates(need, 3);
+    return { mode: "embedding", embeddingEnabled: true, candidates, coverageGap: idx.coverageGap(need), note: "advisory：embedding 仅排序/听懂，不入确定性求解路径（FUS2）" };
+  });
+  // 轨B·增量3 optimize_whatif：{ family, perturbations[], (args|binding) } → Δ目标/可行性/冲突约束。
+  // entitlement opt.whatif（apiTag "opt-whatif"，requires opt.solver-pool）；关 = 404 R3。R4 模拟态不落真值。
+  app.post("/a/v1/opt/whatif", async (req) => {
+    await requireFeatureTag(req, "apiTags", "opt-whatif");
+    const body = parseBody(
+      z.object({
+        family: z.enum(OPT_FAMILIES),
+        perturbations: z.array(OptPerturbationSchema).min(1),
+        args: z.record(z.string(), z.unknown()).optional(),
+        binding: OntologyBindingSchema.optional(),
+        seed: z.number().optional(),
+      }),
+      req.body,
+    );
+    return ontology.invokeSolver(ctx(req), "optimize_whatif", {
+      family: body.family,
+      perturbations: body.perturbations,
+      ...(body.binding ? { binding: body.binding } : { args: body.args ?? {} }),
+      ...(body.seed !== undefined ? { seed: body.seed } : {}),
+    });
   });
 
   // ---- 本体原子规格 §2/§3 atomic-spec engine（additive 端点）-------------------
@@ -1268,6 +6486,86 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     );
     return ontologyCore.recompute(c, body.changes);
   });
+
+  // WO-SLICE-DERIV-EMPTY · §2.4 派生值留痕读取（溯源弹窗数据源，G-DERIVSPEC-EMPTY 的另一半）：
+  // derivation_value_runs 此前**只写不读**（ontology-core.ts recompute 是唯一写点，零读取路由）——
+  // 「派生 inputs 快照来源」必须取得到才算接上。空结果诚实分态：「规格在、还没重算过」
+  // 与「规格不存在/已退役」是两件事，不许都读成一个空数组（会说谎的诚实位）。
+  app.get("/a/v1/ontology/derivation-specs/:specKey/value-runs", async (req) => {
+    const c = ctx(req);
+    const { specKey } = req.params as { specKey: string };
+    const q = req.query as { objectId?: string; limit?: string };
+    const limit = Math.min(Math.max(1, Number(q.limit ?? 50) || 50), 200);
+    const runs = await repos.derivationValueRuns.list(
+      c.tenantId,
+      (r) => r.specKey === specKey && (q.objectId === undefined || r.objectId === q.objectId),
+    );
+    // 确定性序（R6）：ranAt 倒序（最新在前），同刻按 id 字典序。
+    const sorted = [...runs].sort((a, b) => (a.ranAt < b.ranAt ? 1 : a.ranAt > b.ranAt ? -1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const items = sorted.slice(0, limit).map((r) => ({
+      id: r.id,
+      specKey: r.specKey,
+      objectId: r.objectId,
+      targetProp: r.targetProp,
+      value: r.value,
+      inputs: r.inputs,
+      epoch: r.epoch,
+      ranAt: r.ranAt,
+      ...(r.warnings?.length ? { warnings: r.warnings } : {}),
+    }));
+    const activeSpec = (await repos.derivationSpecs.list(c.tenantId, (s) => s.specKey === specKey && s.status === "ACTIVE"))[0];
+    return {
+      specKey,
+      specStatus: activeSpec ? ("ACTIVE" as const) : ("NOT_FOUND" as const),
+      total: runs.length,
+      items,
+      ...(items.length === 0
+        ? {
+            emptyReason: activeSpec
+              ? "该派生规格尚未触发过重算 —— inputs 快照只在 recompute 实际写值时产生（没有重算就没有快照，这不是故障）。"
+              : "该派生规格不存在或已 RETIRED —— 取不到是因为没有这规格，不是「算出来是空」。",
+          }
+        : {}),
+    };
+  });
+
+  // generic-inference 通用 what-if（PRD-generic-inference / G-5 8e）：行业无关——给定"假设某对象属性=新值"，
+  // 用本体派生规格(A4)前向重算受影响派生属性，返回 before/after，**不落真值**(R4，dryRun 无副作用)。
+  app.post("/a/v1/inference/whatif", async (req) => {
+    const c = ctx(req);
+    const body = parseBody(
+      z.object({
+        apply: z
+          .array(z.object({ objectType: z.string(), objectId: z.string(), prop: z.string(), value: z.unknown() }))
+          .min(1)
+          .max(50),
+      }),
+      req.body,
+    );
+    const changes = body.apply.map((a) => ({ typeKey: a.objectType, prop: a.prop, objectIds: [a.objectId] }));
+    const apply = body.apply.map((a) => ({ objectId: a.objectId, prop: a.prop, value: a.value }));
+    const result = await ontologyCore.recompute(c, changes, { dryRun: true, apply });
+    return { deltas: result.dryRunDeltas ?? [], affectedObjects: result.updatedObjects };
+  });
+  // 切片清单（管理面：本体切片编辑器列表源）。tenant 隔离由 sliceSpecs.list 保证。
+  app.get("/a/v1/ontology/slices", async (req) => {
+    const specs = await repos.sliceSpecs.list(ctx(req).tenantId);
+    return specs
+      .map((s) => ({
+        sliceKey: s.sliceKey,
+        version: s.version,
+        rootType: s.spec.root.typeKey,
+        hops: s.spec.paths.reduce((n, p) => n + p.length, 0),
+        linkKeys: [...new Set(s.spec.paths.flat().map((p) => p.linkKey))],
+        maxNodes: s.spec.maxNodes,
+        fixtures: s.spec.contractFixtures?.length ?? 0,
+        // WO-SLICE-DERIV-EMPTY（G-SLICE-ROOT-ARGS-UNDISCOVERABLE）：「这条切片要参数」
+        // 在列表页就要看得出来 —— 加性下发 root selector 声明的 {{args.X}}（无参切片 = []）。
+        // 与空图诊断共用同一份占位符扫描（slice-layers.ts requiredSliceArgs，口径单源）。
+        requiredArgs: requiredSliceArgs(s.spec),
+      }))
+      .sort((a, b) => (a.sliceKey < b.sliceKey ? -1 : 1));
+  });
   // §3 声明式切片：注册 + 执行（A6 逐跳剪枝、参数化、截断）。
   app.put("/a/v1/ontology/slices/:sliceKey", async (req, reply) => {
     const c = ctx(req);
@@ -1303,9 +6601,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
                 expect: z.object({
                   rootType: z.string(),
                   minNodes: z.number().int(),
-                  mustIncludeTypes: z.array(z.string()),
+                  mustIncludeTypes: z.array(z.string()).optional(),
                   mustIncludeLinkKeys: z.array(z.string()).optional(),
                   maxNodes: z.number().int().optional(),
+                  // A3-SUITE-1：约束可来自一等 RuleEntry.params。
+                  ruleRef: z
+                    .object({
+                      ruleKey: z.string(),
+                      typesParam: z.string(),
+                      linksParam: z.string(),
+                    })
+                    .optional(),
                 }),
               }),
             )
@@ -1324,37 +6630,44 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     await governance.indexSliceRefs(c, rec);
     return reply.status(201).send({ sliceKey: rec.sliceKey, version: rec.version });
   });
+  /**
+   * WO-SLICE-DERIV-EMPTY：空子图诊断的装配（POST …/resolve 用；GET …/layers 路由内有同形态
+   * 的既有装配，两者最终都汇入 slice-layers.ts 的同一份 diagnoseEmptyGraph —— 口径单源在
+   * 诊断函数与占位符扫描上，装配层不改 layers 既有路径以降低共享仓改动面）。
+   * 只在子图为空时调用（非空路径零额外开销）。样本上限防大租户全表拉取。
+   * 显示键与 executeSlice 的 byKey 匹配口径同源（objectKey ?? props[pk] ?? id）：
+   * 候选值必须是**填进去真能解出子图的那个值**，优先业务主键（SO-3391）而非内部 id。
+   */
+  const emptyGraphDiagnosis = async (
+    c: AuthCtx,
+    spec: SliceSpecRecord["spec"],
+    args: Record<string, unknown>,
+  ) => {
+    const ROOT_SAMPLE_CAP = 200;
+    const rootObjects = await repos.objects.listByType(c.tenantId, spec.root.typeKey);
+    const types = await ontology.listTypes(c);
+    const rootPkProp = types.find((t) => t.key === spec.root.typeKey)?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const rootObjectSamples = rootObjects.slice(0, ROOT_SAMPLE_CAP).map((o) => ({
+      objectKey: String(o.objectKey ?? (rootPkProp !== undefined ? o.props[rootPkProp] : undefined) ?? o.id),
+      props: o.props,
+    }));
+    return diagnoseEmptyGraph(spec, args, rootObjects.length, rootObjectSamples);
+  };
+
   app.post("/a/v1/ontology/slices/:sliceKey/resolve", async (req) => {
     const c = ctx(req);
     const { sliceKey } = req.params as { sliceKey: string };
     const body = parseBody(z.object({ args: z.record(z.string(), z.unknown()).default({}) }), req.body);
     const spec = await ontologyCore.getSliceSpec(c, sliceKey);
     if (!spec) throw notFound(`slice ${sliceKey}`);
-    return ontologyCore.executeSlice(c, spec.spec, body.args);
+    const out = await ontologyCore.executeSlice(c, spec.spec, body.args);
+    // WO-SLICE-DERIV-EMPTY（G-SLICE-EMPTYGRAPH-MISREAD 残留面）：空子图在**本接口**上也要
+    // 机器可分辨 —— 「算出来是空（缺参/零对象/无匹配）」与「没解出来」不许都读成 nodes:[]。
+    // 加性下发 empty 诊断块，与 /layers 端点共用同一份 diagnoseEmptyGraph（口径单源）。
+    if (out.nodes.length > 0) return out;
+    const empty = await emptyGraphDiagnosis(c, spec.spec, body.args);
+    return { ...out, empty };
   });
-
-  // ---- OntoFlow（PRD v2 · P1）本体建模工作流 CRUD + 校验 ----------------------
-  app.get("/a/v1/ontology-workflows", async (req) => ({ items: await workflows.list(ctx(req)) }));
-  app.post("/a/v1/ontology-workflows", async (req, reply) => {
-    const body = parseBody(OntologyWorkflowUpsertSchema, req.body);
-    const wf = await workflows.create(ctx(req), body);
-    return reply.status(201).send(wf);
-  });
-  app.get("/a/v1/ontology-workflows/:id", async (req) => workflows.get(ctx(req), (req.params as { id: string }).id));
-  app.put("/a/v1/ontology-workflows/:id", async (req) => {
-    const body = parseBody(OntologyWorkflowUpsertSchema, req.body);
-    return workflows.update(ctx(req), (req.params as { id: string }).id, body);
-  });
-  app.post("/a/v1/ontology-workflows/:id/validate", async (req) => workflows.validate(ctx(req), (req.params as { id: string }).id));
-  app.post("/a/v1/ontology-workflows/:id/preview", async (req) => {
-    const body = parseBody(z.object({ nodeId: z.string().min(1), rows: z.array(z.record(z.string(), z.unknown())).default([]) }), req.body);
-    return workflows.preview(ctx(req), (req.params as { id: string }).id, body);
-  });
-  app.post("/a/v1/ontology-workflows/:id/nodes/:nodeId/promote", async (req) => {
-    const { id, nodeId } = req.params as { id: string; nodeId: string };
-    return workflows.promote(ctx(req), id, nodeId);
-  });
-  app.post("/a/v1/ontology-workflows/:id/publish", async (req) => workflows.publish(ctx(req), (req.params as { id: string }).id));
 
   // ---- S2 action approval ----------------------------------------------------
   app.post("/a/v1/action-drafts", async (req, reply) => {
@@ -1362,7 +6675,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const body = parseBody(ActionDraftSchema, req.body);
     const key = body.actionTypeKey ?? body.actionType;
     if (!key) throw validationError("actionTypeKey required");
+    // WO-ENTITLEMENT-SERVER-SIDE（闭 G-ENTITLEMENT-ACTION-LEVEL-CLIENT-ONLY）：
+    // ACTION 级 entitlement **先于 authz** —— 功能关闭 = 不存在 → 404 FEATURE_NOT_FOUND。
+    // 顺序不许与下一行对调：先跑 authz 则无权限用户拿到 403，等于告诉他「这功能存在，只是你没权限」，
+    // 而铁律要的是「它不存在」。闸按 actionTypeKey 查（features.ts ACTION_TYPE_FEATURE_MAP），
+    // 租户维取自请求上下文 c.tenantId（非全局常量）；未登记的动作类型不受控、逐字节现行为。
+    await features.requireActionType(c.tenantId, key);
     await authz.require(c, "ACTION_TYPE", key, "EXECUTE");
+    // A6 列级（属性级）安全：对象数据变更是**唯一**的用户态对象写路径（R4 真值经 Action）。
+    // patch 命中不可写属性 → 此处即 403 PROPERTY_FORBIDDEN，草稿根本不创建（值绝不落库），
+    // 绝不静默丢字段后返回成功。执行期（app.ts「对象数据变更」分支）另有一道同机制复校。
+    await assertObjectPatchWritable(c, body.payload);
     // 增量 §7.12：定稿走 Action —— 先校验版本可定稿（FINAL → 409 PLAN_LOCKED），创建后标记待审批。
     const finalizeVersionId =
       key === "定稿月度计划版本" && typeof body.payload.versionId === "string" ? body.payload.versionId : null;
@@ -1379,6 +6702,84 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/action-drafts/:id/submit", async (req) => {
     const { id } = req.params as { id: string };
     return actions.submit(ctx(req), id);
+  });
+
+  // ---- WO-C1 · L2 统一决策内核（Decision·根因→方案→选定→落 Action 一条龙·闭 C1 双闸）--------------
+  // 建（PROPOSED·选方案）：真推演 gap_attribution+decision_play → 校验选定 ⊆ 真方案 → 存 Decision。
+  app.post("/a/v1/decisions", async (req, reply) => {
+    const c = ctx(req);
+    const body = parseBody(CreateDecisionInputSchema, req.body);
+    const decision = await decisionKernel.create(c, body, new Date().toISOString());
+    return reply.status(201).send(decision);
+  });
+  // 一等可查（R2 跨租户 404）。
+  app.get("/a/v1/decisions/:id", async (req) => {
+    const { id } = req.params as { id: string };
+    return decisionKernel.get(ctx(req), id);
+  });
+  // 定（COMMITTED·派 ActionDraft·走 S2 审批链·门不绕）。已 COMMITTED → 409。
+  app.post("/a/v1/decisions/:id/commit", async (req) => {
+    const { id } = req.params as { id: string };
+    return decisionKernel.commit(ctx(req), id, new Date().toISOString());
+  });
+  // WO-LEARNING-LOOP-FEEDBACK：成效反馈闭环（COMMITTED→REALIZED·注入外部实测 realizedGapClose → 效果% vs 预言）。
+  // additive·非 COMMITTED→409·R2 跨租户 404（经 kernel.get→notFound）。realizedAt 由端点注入（R6·内部不取时钟）。
+  app.post("/a/v1/decisions/:id/outcome", async (req) => {
+    const { id } = req.params as { id: string };
+    const body = parseBody(RecordOutcomeInputSchema, req.body);
+    return decisionKernel.recordOutcome(ctx(req), id, body, new Date().toISOString());
+  });
+  // 决策成效权重归集（本租户全部 REALIZED → 确定性聚合·后续 decision_play 排序可读·亲手真跑可观测）。
+  app.get("/a/v1/decision-outcome-stats", async (req) => {
+    return decisionKernel.outcomeStats(ctx(req));
+  });
+
+  // ---- WO-DECISION-CAUSAL-GRAPH · 决策因果图（只读投影·回答「为什么这个决策被触发」）-------------
+  //
+  // 两个数据源分两条路由，**不合成一条**：沙盘按 tick 记时、台账按 ISO 时刻记时，
+  // 且今天二者之间没有任何字段互指（详见 decision/causal-graph.ts 顶注的实测取证）。
+  // 合成一条路由就得在响应里编一个统一的"时间"，那是现编。
+  //
+  // 全部只读（GET）。entitlement `decision.causal-graph` **暗发** —— 关 = 404 FEATURE_NOT_FOUND（R3 先于 authz）。
+  const requireCausalGraph = async (c: AuthCtx) => {
+    if (!(await features.enabled(c.tenantId, "decision.causal-graph"))) throw featureNotFound();
+  };
+  // 沙盘源：给定一次推演 → Cause(扰动) / Impact(传导轨迹 + 世界态) 真值抽取；其余三段诚实报缺。
+  app.get("/a/v1/causal-graphs/sim/:sessionId", async (req) => {
+    const c = ctx(req);
+    await requireCausalGraph(c);
+    const { sessionId } = req.params as { sessionId: string };
+    const s = await repos.sim.getSession(c.tenantId, sessionId); // R2：别租户的 session 读不到 → 404
+    if (!s) throw notFound("sim session not found");
+    // tick 0..curTick 全量读回（`trace` 只存在于 sim_tick_state 行上，是"谁把多少传给谁"的唯一真值）。
+    const ticks: { tick: number; state: TickState; trace: PropagationTrace[] | null }[] = [];
+    for (let i = 0; i <= s.curTick; i++) {
+      const row = await repos.sim.getTickState(c.tenantId, s.id, i);
+      // tick 0 行由 POST /sessions 建；缺行只可能是历史数据，跳过而不是补一个空世界（补了就是编）。
+      if (row) ticks.push({ tick: row.tick, state: row.state, trace: row.trace });
+    }
+    return buildCausalGraphFromSim({
+      tenantId: c.tenantId,
+      sessionId: s.id,
+      perturbations: await repos.sim.listPerturbations(c.tenantId, s.id),
+      ticks,
+      // PUBLISHED only：与 tick 路由（本文件 `listPropagationRules(c.tenantId, true)`）**同一个口径**，
+      // 免得因果图按一套规则解、推演按另一套跑。
+      rules: await repos.sim.listPropagationRules(c.tenantId, true),
+    });
+  });
+  // 台账源：给定一条决策 → 五段全覆盖（RESULT 段在 outcome 未回填时诚实报 NOT_YET_REALIZED）。
+  app.get("/a/v1/causal-graphs/decision/:decisionId", async (req) => {
+    const c = ctx(req);
+    await requireCausalGraph(c);
+    const { decisionId } = req.params as { decisionId: string };
+    const decision = await decisionKernel.get(c, decisionId); // R2 跨租户 404（kernel 内 notFound）
+    const drafts: NonNullable<Awaited<ReturnType<typeof repos.actionDrafts.get>>>[] = [];
+    for (const id of decision.actionDraftIds) {
+      const a = await repos.actionDrafts.get(c.tenantId, id);
+      if (a) drafts.push(a); // 查不到的由构图器落 caveat，不编一个假单
+    }
+    return buildCausalGraphFromDecision({ tenantId: c.tenantId, decision, actionDrafts: drafts });
   });
   app.get("/a/v1/action-drafts", async (req) => {
     const { status, role } = req.query as { status?: string; role?: string };
@@ -1417,7 +6818,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { id } = req.params as { id: string };
     return actions.audit(ctx(req), id);
   });
-  app.get("/a/v1/action-types", async (req) => actions.listTypes(ctx(req)));
+  app.get("/a/v1/action-types", async (req) => {
+    // G-ACTIONTYPE-NO-TARGET 读端：按主目标对象类型反查动作（「这个类型上能做哪些动作」的 answer 路径）。
+    // 不过滤时语义一字不动（全量列表）；过滤即归因查询，不走 create 响应自证。
+    const q = (req.query ?? {}) as { targetTypeKey?: string };
+    const all = await actions.listTypes(ctx(req));
+    return q.targetTypeKey ? all.filter((t) => t.targetTypeKey === q.targetTypeKey) : all;
+  });
   app.post("/a/v1/action-types", async (req, reply) => {
     const c = ctx(req);
     if (!c.roles.some((r) => r.split(":")[0] === "admin")) throw forbidden("admin only");
@@ -1425,6 +6832,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       z.object({
         key: z.string().min(1),
         name: z.string().min(1),
+        // G-ACTIONTYPE-NO-TARGET：zod 默认 object 会**静默剥掉**未声明键——这里不声明，
+        // 租户写的 targetTypeKey 会被无声丢掉（又一个"静默"）。缺省语义见契约注释（不可静态归因）。
+        targetTypeKey: z.string().min(1).optional(),
         paramsSchema: z.record(z.string(), z.unknown()).default({}),
         checkRules: z.array(z.string()).default([]),
         approvalChain: z.array(z.object({ role: z.string() })).min(1).max(3),
@@ -1434,6 +6844,22 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return reply.status(201).send(await actions.registerType(c, body));
   });
 
+  /**
+   * S2 Action 三段埋点 · **单租户视图**（R2：只返回调用者自己租户的桶）。
+   *
+   * 与 `/metrics` 的分工（**不是两套口径，是同一份数的两个投影**）：
+   *  - `/metrics` = 全租户合计 · Prometheus 文本 · 服务间抓取（SERVICE_ONLY_PATHS）；
+   *  - 本端点 = 单租户明细 + 该租户的执行稳定率 · JSON · 用户鉴权。
+   * 二者由 `Metrics.incWithTenant` **同一行代码**写出，不变量「Σ租户 == 全局」由
+   * `test/action-metrics-tenant.test.ts` 咬死 —— 不存在第二个写入点可供漂移。
+   *
+   * 病灶（本端点存在的理由）：验收判据「跑 100 次同 Action，失败率 < 1%」在多租户部署下
+   * **算不出租户级的数** —— 合计序列里一个租户跑挂 100 次会拉低所有租户共享的比率，
+   * 大租户的成功量又会掩盖小租户的持续失败；失败率越线时也无法从指标定位是哪个租户。
+   * 形态与 `router/perception-metrics.ts` + `GET /api/v1/perception/metrics` 同款。
+   */
+  app.get("/a/v1/actions/metrics", async (req) => actionMetricsView(metrics, ctx(req).tenantId));
+
   // ---- A5 rules -----------------------------------------------------------------------
   app.get("/a/v1/rules", async (req) => {
     const { status } = req.query as { status?: string };
@@ -1442,7 +6868,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.post("/a/v1/rules", async (req, reply) => {
     const body = parseBody(RuleCreateSchema, req.body);
     // 管理平台增量 §5：手工创建（origin=MANUAL）的 expression 经 DSL 解析校验，错误定位字符位。
-    assertValidExpression(body.expression);
+    // WO-RULE-EXPR-PARAMS：连同 params 一起校验闭包 —— 引用 `params.x` 却没声明 x 的规则当场拒。
+    // 传 key 后**反向**也校验：被绑定的阈值型 param 必须真被 expression 引用（防阈值退回两份）。
+    assertValidExpression(body.expression, body.params ?? {}, body.key);
     return reply.status(201).send(await rules.create(ctx(req), body));
   });
   // 管理平台增量 §5：PUT 仅 DRAFT 可改（PUBLISHED → 409 IMMUTABLE_VERSION）。
@@ -1471,11 +6899,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   // 管理平台增量 §5：编辑器「测试」—— 即时求值 / 语法错误定位字符位。
   app.post("/a/v1/rules/dry-run", async (req) => {
     ctx(req);
+    // params（加性·可选）：编辑器里正在编的命名阈值，令 `params.<名>` 在「测试」按钮里也真能解析。
     const body = parseBody(
-      z.object({ expression: z.string(), samplePayload: z.record(z.string(), z.unknown()).default({}) }),
+      z.object({
+        expression: z.string(),
+        samplePayload: z.record(z.string(), z.unknown()).default({}),
+        params: z.record(z.string(), z.unknown()).optional(),
+      }),
       req.body,
     );
-    return rules.dryRun(body.expression, body.samplePayload);
+    return rules.dryRun(body.expression, body.samplePayload, body.params);
   });
   app.post("/a/v1/rules/evaluate", async (req) => {
     const body = parseBody(EvaluateSchema, req.body);
@@ -1484,9 +6917,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
 
   // ---- A1 connectors --------------------------------------------------------------------
   app.get("/a/v1/connector-types", async () => CONNECTOR_TYPES);
-  // 前端 PRD §7.4 新建向导「测试连接」：按 configSchema 必填项校验（mock/file 类直接通过）。
+  // 前端 PRD §7.4 新建向导「测试连接」：**真去连**，连不上给可行动的失败分类（见 connectors/probe.ts）。
+  // ⚠ 原实现只查 configSchema 必填项、齐了就 `return { ok: true }` —— 对 `host=nonexistent.invalid`
+  // 照样返「连接成功」（实测 6ms，连 DNS 都没查）。客户 IT 验收会上第一个点的就是这个按钮。
   app.post("/a/v1/connections/test", async (req) => {
-    ctx(req);
+    const c = ctx(req);
     const body = parseBody(
       z.object({
         connectorTypeKey: z.string().min(1),
@@ -1494,22 +6929,23 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       }),
       req.body,
     );
-    const ct = CONNECTOR_TYPES.find((t) => t.key === body.connectorTypeKey);
-    if (!ct) return { ok: false, message: `未知连接器类型：${body.connectorTypeKey}` };
-    const schema = (ct.configSchema ?? {}) as { required?: string[] };
-    const required = Array.isArray(schema.required) ? schema.required : [];
-    const missing = required.filter((k) => {
-      const v = body.config[k];
-      return v == null || v === "";
-    });
-    if (missing.length > 0) return { ok: false, message: `缺少必填配置：${missing.join("、")}` };
-    return { ok: true };
+    return connectors.testConnection(c, body);
   });
   app.post("/a/v1/connections", async (req, reply) => {
+    const c = ctx(req);
     const body = parseBody(ConnectionCreateSchema, req.body);
-    return reply.status(201).send(await connectors.createConnection(ctx(req), body));
+    const conn = await connectors.createConnection(c, body);
+    // A11 D-29：连接创建（带 category）→ 失效连接器列表/数据分类视图。
+    await outbox.emit(c.tenantId, "connection.created", { connId: conn.id, category: conn.category ?? null });
+    return reply.status(201).send(conn);
   });
   app.get("/a/v1/connections", async (req) => connectors.listConnections(ctx(req)));
+  // A11：连接 category 枚举并集（注册表内置 + 本租户已用自定义值）→ 前端 chip/筛选（R14 非内联）。
+  app.get("/a/v1/connector-categories", async (req) => {
+    const c = ctx(req);
+    const used = (await connectors.listConnections(c)).map((x) => x.category).filter((v): v is string => !!v);
+    return { categories: [...new Set([...connectorCategories(), ...used])].sort() };
+  });
   app.post("/a/v1/connections/:id/sync", async (req, reply) => {
     const { id } = req.params as { id: string };
     const job = await connectors.sync(ctx(req), id);
@@ -1554,6 +6990,23 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const ds = await repos.rawDatasets.get(c.tenantId, id);
     if (!ds) throw notFound("raw dataset");
     return { dataset: ds, rows: await repos.rawRows.list(c.tenantId, id) };
+  });
+  // 数据源节点在线编辑（A7 增量）：行内修改上传数据并留痕（_editedAt）。
+  app.patch("/a/v1/raw-datasets/:id/rows/:idx", async (req) => {
+    const c = ctx(req);
+    if (!c.roles.some((r) => ["admin", "data_admin"].includes(r.split(":")[0] as string))) {
+      throw forbidden("admin / data_admin only");
+    }
+    const { id, idx } = req.params as { id: string; idx: string };
+    const ds = await repos.rawDatasets.get(c.tenantId, id);
+    if (!ds) throw notFound("raw dataset");
+    const patch = (req.body ?? {}) as Record<string, unknown>;
+    const rows = await repos.rawRows.list(c.tenantId, id);
+    const i = Number(idx);
+    if (!Number.isInteger(i) || i < 0 || i >= rows.length) throw notFound("row");
+    rows[i] = { ...rows[i], ...patch, _editedAt: new Date().toISOString() };
+    await repos.rawRows.replace(c.tenantId, id, rows);
+    return { ok: true, idx: i, row: rows[i] };
   });
 
   // ---- A2 rule docs ----------------------------------------------------------------------
@@ -1622,6 +7075,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const draft = await modeling.suggest(ctx(req), body.rawDatasetIds);
     return reply.status(202).send({ draftId: draft.id, status: draft.status });
   });
+  // 确定性建模管线（无 LLM；构造上字段全建模 100% 覆盖）——参考 nano-ontoprompt，融进 A3。
+  app.post("/a/v1/modeling/derive", async (req, reply) => {
+    const body = parseBody(SuggestSchema, req.body);
+    const draft = await modeling.derive(ctx(req), body.rawDatasetIds);
+    return reply.status(201).send({ draftId: draft.id, status: draft.status });
+  });
+  // 字段全建模覆盖报告（R12）：覆盖率 + 未建模字段清单。
+  app.get("/a/v1/modeling/drafts/:id/coverage", async (req) => {
+    const { id } = req.params as { id: string };
+    return modeling.coverage(ctx(req), id);
+  });
   // VM 映射：附带 datasets 字段画像（前端建模工作台左栏，PRD §7.6）。
   const modelingDraftVM = async (c: AuthCtx, d: Awaited<ReturnType<typeof modeling.getDraft>>) => ({
     ...d,
@@ -1655,8 +7119,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   });
   app.post("/a/v1/modeling/drafts/:id/publish", async (req) => {
     const { id } = req.params as { id: string };
+    // requireFullCoverage（R12 字段全建模门）：未建模字段阻断发布（默认关，保持向后兼容）。
+    const requireFullCoverage = (req.body as { requireFullCoverage?: boolean } | undefined)?.requireFullCoverage === true;
     try {
-      const result = await modeling.publishDraft(ctx(req), id);
+      const result = await modeling.publishDraft(ctx(req), id, { requireFullCoverage });
       return { ok: true, ...result };
     } catch (err) {
       // 前端 PRD §7.6：发布校验错误内联展示在对应卡片 → {ok:false, errors:[{typeKey,message}]}
@@ -1676,8 +7142,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
   });
   app.post("/a/v1/modeling/drafts/:id/materialize", async (req, reply) => {
+    const c = ctx(req);
     const { id } = req.params as { id: string };
-    const result = await modeling.materialize(ctx(req), id);
+    const result = await modeling.materialize(c, id);
+    // DF-3：对象化/物化作业完成 → materialize.completed（失效 dashboard/object-queries/scenario-data）。
+    await outbox.emit(c.tenantId, "materialize.completed", { draftId: id, jobId: result.jobId, objectCount: result.created, quarantined: result.quarantined });
     return reply.status(202).send(result);
   });
 
@@ -1721,7 +7190,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (!job) throw notFound("synthetic job");
     return syntheticJobVM(job);
   });
-  app.get("/a/v1/industry-templates", async (req) => repos.industryTemplates.list(ctx(req).tenantId));
+  // 行业模版下拉：内置模版（代码常数，如 battery-manufacturing —— 项目沙盘/演示数据正是它确定性生成的）
+  // ∪ 本租户已存模版（LLM 生成/克隆）。内置模版此前不入 industry_templates 表 → 下拉空；这里并入surf 出来。
+  app.get("/a/v1/industry-templates", async (req) => {
+    const stored = await repos.industryTemplates.list(ctx(req).tenantId);
+    const builtinKeys = new Set(BUILTIN_INDUSTRY_TEMPLATES.map((t) => t.industryKey));
+    const builtins = BUILTIN_INDUSTRY_TEMPLATES.map((t) => ({ industryKey: t.industryKey, source: "BUILTIN" as const }));
+    const rest = stored.filter((s) => !builtinKeys.has(s.industryKey)).map((s) => ({ industryKey: s.industryKey, source: s.source }));
+    return [...builtins, ...rest];
+  });
 
   // ---- Feature entitlement -----------------------------------------------------------------
   const requireAdmin = (c: AuthCtx) => {
@@ -1729,6 +7206,516 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       throw forbidden("admin / catalog_admin only");
     }
   };
+
+  // ---- WO-DB-DERIVE-DECISION-FIELDS (G4) · 导入记录字段 → 决策字段 派生引擎（可配置 mapping·R14·R6·R13）----
+  // 记录型导入数据（factory/production_line/equipment…）物化后没有求解器读的决策字段（Base.util/oeeIndex）——
+  // 本端点按 body 给的**可配置 mapping**（导入方提供·零平台业务常数）把真源记录聚合成决策字段，写回目标对象
+  // → 求解器读的是真派生值（非 hash·KILL-MOCK-RED）。⛔ 平台不内联任何行业/电池映射。
+  // canonical 适配（July 线的 world-source/classifySourceOrigin/tenant.worldSource 命门本线不存在）：真源判定 =
+  // origin.type==="MATERIALIZED"（真 RawDataset 物化 vs SYNTHETIC 合成生成）；worldSource 由本次派生输入是否含
+  // 真源对象推导（imported/synthetic），非 tenant 级标签。
+  app.post("/a/v1/derive/decision-fields", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(DeriveDecisionFieldsRequestSchema, req.body);
+
+    // 只取 mapping 触及的类型（目标+源）·按 tenantId 隔离（R2）·跳过已并入对象（OC1）。
+    const types = new Set<string>();
+    for (const r of body.mapping.rules) {
+      types.add(r.target.objectType);
+      types.add(r.source.objectType);
+    }
+    // WO-DATAMODE-UNIFY-PROVENANCE：真源判定不再只看 origin.type==="MATERIALIZED"——demo viaModelingChain 的对象
+    // 全是 MATERIALIZED-from-synthetic（合成种子经建模链物化），只看 type 会把合成误判为真导入 → worldSource=imported
+    // → 漏掉"不冒充 LIVE"告警（合成冒充实测·违铁律 0.4）。改用唯一真相谓词：真源 = MATERIALIZED 且**非**合成 provenance。
+    const isSynthProvenance = await solvers.buildSynthProvenancePredicate(c.tenantId);
+    const byType = new Map<string, DeriveSourceObject[]>();
+    const objIndex = new Map<string, ObjectInstance>();
+    for (const tk of types) {
+      const objs = await repos.objects.listByType(c.tenantId, tk);
+      byType.set(
+        tk,
+        objs
+          .filter((o) => !o.mergedInto)
+          .map((o) => {
+            objIndex.set(o.id, o);
+            return { id: o.id, props: o.props, real: o.origin?.type === "MATERIALIZED" && !isSynthProvenance(o) };
+          }),
+      );
+    }
+
+    const results = deriveDecisionFields(body.mapping, byType);
+    // 门牙自证（R6·R13·KILL-MOCK）：写回前逐值重算比对·发现伪造即拒（不静默落假值）。
+    const violations = validateDerivedFields(body.mapping, byType, results);
+    if (violations.length > 0) throw validationError(`派生结果自校验失败（KILL-MOCK-RED）：${violations.slice(0, 3).join("；")}`);
+
+    const anyReal = [...byType.values()].some((objs) => objs.some((o) => o.real));
+    const worldSource: "synthetic" | "imported" = anyReal ? "imported" : "synthetic";
+    const warnings: string[] = [];
+    if (worldSource !== "imported") {
+      warnings.push("无真导入(MATERIALIZED)源对象：已算出派生值但源为合成物化 → 不冒充 LIVE，先经 uploads/materialize 导入真记录再派生上决策。");
+    }
+    if (results.every((r) => r.value === null)) {
+      warnings.push("无真数值源贡献（0 有效派生）→ 诚实空态：核对 mapping 的 source/groupByField 是否对上真字段名，或先导入真记录。");
+    }
+
+    let written = 0;
+    if (!body.dryRun) {
+      // 只写有真值的结果·保留 origin·记 R13 派生溯源（__deriveProvenance 旁挂·不污染业务字段读路径）。
+      const epoch = await repos.epochs.next(c.tenantId);
+      const dirty = new Map<string, ObjectInstance>();
+      for (const r of results) {
+        if (r.value === null) continue;
+        const cur = dirty.get(r.targetId) ?? objIndex.get(r.targetId);
+        if (!cur) continue;
+        const prov = (cur.props.__deriveProvenance && typeof cur.props.__deriveProvenance === "object"
+          ? { ...(cur.props.__deriveProvenance as Record<string, unknown>) }
+          : {}) as Record<string, unknown>;
+        prov[r.field] = { op: r.op, sourceType: r.sourceType, sourceField: r.sourceField, sourceObjectIds: r.sourceObjectIds, dataMode: r.dataMode };
+        dirty.set(r.targetId, { ...cur, props: { ...cur.props, [r.field]: r.value, __deriveProvenance: prov }, epoch });
+      }
+      for (const obj of dirty.values()) {
+        await repos.objects.put(obj);
+        written++;
+      }
+    }
+
+    return {
+      worldSource,
+      results,
+      written,
+      dataMode: weakestDerivedDataMode(results),
+      warnings,
+    };
+  });
+
+  // ---- WO-CEO-DATA-supply · 真源记录**颗粒级**物化（灌真颗粒·走现有 RawDataset/连接器）------------------
+  // CEO 驾驶舱数字当前全来自合成种子（battery.ts generateBattery）。本端点把已入库的真 RawDataset（真连接器/
+  // 上传门产生的 财务/MES/矿价… 原始行）**逐行 1:1** 物化成一等真对象（origin=MATERIALIZED·非合成），求解器/
+  // 驾驶舱据此读**真值**。⛔ 颗粒不聚合：只落原始颗粒·聚合留给下游 derive/decision-fields/求解器（可逐值下钻·R13）。
+  // ⛔ R14：列→属性映射由导入方以数据提供·平台零业务常数。KILL-MOCK-RED：合成源（config.synthetic）硬拒·不冒充真值。
+  app.get("/a/v1/records/materialize/templates", async (req) => {
+    const c = ctx(req);
+    if (!(await features.enabled(c.tenantId, "data-import.record-materialize"))) throw featureNotFound();
+    const targetType = (req.query as Record<string, string>).targetType;
+    if (targetType) {
+      const tpl = RECORD_MATERIALIZE_TEMPLATES[targetType];
+      if (!tpl) throw notFound(`类型 ${targetType} 无 record-materialize 默认映射模板`);
+      return { templates: [tpl] };
+    }
+    return { templates: Object.values(RECORD_MATERIALIZE_TEMPLATES) };
+  });
+
+  app.post("/a/v1/records/materialize", async (req) => {
+    const c = ctx(req);
+    // Entitlement 先于 authz（R3 暗发：关 = 404 FEATURE_NOT_FOUND）。
+    if (!(await features.enabled(c.tenantId, "data-import.record-materialize"))) throw featureNotFound();
+    requireAdmin(c);
+    const body = parseBody(RecordMaterializeRequestSchema, req.body);
+
+    // ① 真 RawDataset（租户隔离·R2）。
+    const ds = await repos.rawDatasets.get(c.tenantId, body.rawDatasetId);
+    if (!ds) throw notFound(`RawDataset ${body.rawDatasetId} 不存在`);
+
+    // ② 源 provenance 判定（KILL-MOCK-RED·两正交维之 provenance 维）：合成源（config.synthetic===true）硬拒——
+    //    合成种子不得经此路径冒充成真物化对象（否则驾驶舱把合成当真值·违铁律 0.4）。真源判定与
+    //    buildSynthProvenancePredicate 同源（MATERIALIZED 且 datasetId ∉ 合成源数据集集）。
+    const conn = await repos.connections.get(c.tenantId, ds.sourceConnId);
+    const sourceSynthetic = (conn?.config as Record<string, unknown> | undefined)?.synthetic === true;
+    if (sourceSynthetic) {
+      throw validationError(
+        `数据集 ${ds.id} 源连接为合成源（config.synthetic）→ 拒绝物化为真对象（KILL-MOCK-RED：合成不得冒充真值）。请经真连接器/上传门 POST /a/v1/uploads 导入真数据后再物化。`,
+      );
+    }
+
+    // ③ 目标类型须已发布 ACTIVE（真值物化进求解器/驾驶舱读的既有类型）。
+    const types = await ontology.listTypes(c);
+    const targetDef = types.find((t) => t.key === body.targetType && t.status === "ACTIVE");
+    if (!targetDef) throw validationError(`目标类型 ${body.targetType} 未发布或非 ACTIVE（先建模发布该类型再物化真记录）`);
+
+    // ④ 读真源原始行（rawRows·原始颗粒），⑤ 逐行 1:1 物化（纯函数·颗粒不聚合·R6）。
+    // WO-CEO-DATA-2：支持内置物化模板（templateKey），模板可与显式 columnMapping 叠加（显式优先）。
+    const template = body.templateKey ? RECORD_MATERIALIZE_TEMPLATES[body.templateKey] : undefined;
+    const columnMapping = { ...template?.columnMapping, ...body.columnMapping };
+    const primaryKeyColumn = body.primaryKeyColumn ?? template?.primaryKeyColumn;
+    const rows = await repos.rawRows.list(c.tenantId, ds.id);
+    const { objects, warnings, primaryKey } = materializeRecords({
+      targetType: body.targetType,
+      props: targetDef.properties,
+      rows,
+      columnMapping,
+      primaryKeyColumn,
+      datasetId: ds.id,
+      sourceConnId: ds.sourceConnId,
+    });
+    if (rows.length === 0) warnings.push(`数据集 ${ds.id} 无原始行（rawRows 空）→ 0 物化·诚实空态（先经上传门灌真数据）`);
+
+    // ⑥ 落库（dryRun 只试算不写）。replaceExisting：先清本类型同租户既有对象（含合成种子）→ 真值换合成。
+    let replacedCount = 0;
+    let materializedCount = 0;
+    if (body.dryRun) {
+      materializedCount = objects.length; // 将物化条数（R6 与真跑一致）。
+    } else if (objects.length > 0) {
+      const epoch = await repos.epochs.next(c.tenantId);
+      if (body.replaceExisting) {
+        replacedCount = await repos.objects.removeWhere(c.tenantId, (o) => o.type === body.targetType);
+      }
+      for (const o of objects) {
+        await repos.objects.put({ id: o.id, tenantId: c.tenantId, type: o.type, props: o.props, origin: o.origin, epoch });
+        materializedCount++;
+      }
+    }
+
+    // provenance 维：真源（非合成）且有物化对象 → 世界态 imported·驾驶舱据此诚实标真、不冒充。
+    const provenanceReal = !sourceSynthetic && objects.length > 0;
+    return {
+      targetType: body.targetType,
+      rawDatasetId: ds.id,
+      sourceConnId: ds.sourceConnId,
+      materializedCount,
+      replacedCount,
+      worldSource: provenanceReal ? "imported" : "synthetic",
+      provenanceReal,
+      primaryKey,
+      warnings,
+      sampleObjectIds: objects.slice(0, 5).map((o) => o.id),
+      dryRun: body.dryRun === true,
+    };
+  });
+
+  // ---- WO-CEO-DATA-2 · CEO 驾驶舱原子颗粒数据集生成（只产原子颗粒·无预聚合·back-derivation）----
+  app.post("/a/v1/ceo/dataset/generate", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(CeoDatasetGenerateRequestSchema, req.body);
+    // R2 隔离：请求体 tenantId 必须与当前用户租户一致（先验，防跨租户探测）。
+    if (body.tenantId !== c.tenantId) throw forbidden("tenant mismatch");
+    // R3 entitlement：未开通则 404 FEATURE_NOT_FOUND。
+    if (!(await features.enabled(c.tenantId, "ceo.dataset.generate"))) throw featureNotFound();
+    const dataset = generateCeoAtomicDataset({
+      tenantId: c.tenantId,
+      seed: body.seed,
+      scenario: body.scenario,
+      period: body.period,
+      scale: body.scale,
+    });
+    return dataset;
+  });
+
+  // ---- WO-PROCESS-INSTANCE · 流程运行时（「为什么这个流程现在卡住了」）------------------------
+  // R3 暗发：`process.runtime` defaultOn:false ⇒ 关 = 404 FEATURE_NOT_FOUND，**先于 authz**
+  //（先于角色门：功能关闭时连「你没权限」都不该说，那等于承认它存在）。
+  const requireProcessRuntime = async (c: AuthCtx) => {
+    if (!(await features.enabled(c.tenantId, "process.runtime"))) throw featureNotFound();
+  };
+
+  /** 全租户此刻卡住的流程 + 各等待态计数。前端卡点面板的唯一数据源。 */
+  app.get("/a/v1/process-instances/stuck", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    return processRuntime.stuck(c.tenantId);
+  });
+
+  app.get("/a/v1/process-instances/:id", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    const { id } = req.params as { id: string };
+    // R2：detail() 经 store.get(tenantId, id) 取，跨租户必 undefined ⇒ 404（不是 403，不泄漏存在性）。
+    return processRuntime.detail(c.tenantId, id);
+  });
+
+  app.post("/a/v1/process-instances", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    const body = parseBody(CreateProcessInstanceRequestSchema, req.body);
+    return processRuntime.create(c.tenantId, body);
+  });
+
+  /** 推进：body 里给的是**外部事实**（数据到齐/外部回执/审批结论/人工已办），引擎据此重判 gate。 */
+  app.post("/a/v1/process-instances/:id/advance", async (req) => {
+    const c = ctx(req);
+    await requireProcessRuntime(c);
+    const { id } = req.params as { id: string };
+    const body = parseBody(AdvanceProcessInstanceRequestSchema, req.body ?? {});
+    return processRuntime.advance(c.tenantId, id, body);
+  });
+
+  // ---- A7 Foundry-Grade Data Builder（agent 驱动 data pipeline 发动机）------------------------
+  app.get("/a/v1/data-builders", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.list(c);
+  });
+  app.get("/a/v1/data-builders/:id", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.get(c, (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/data-builders", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = req.body as { key: string; name: string; description?: string; config?: unknown };
+    if (!body?.key || !body?.name) throw validationError("key and name required");
+    return reply.status(201).send(await databuilder.create(c, body));
+  });
+  app.put("/a/v1/data-builders/:id", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.update(c, (req.params as { id: string }).id, req.body as { name?: string; description?: string; config?: unknown });
+  });
+  app.post("/a/v1/data-builders/:id/publish", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.publish(c, (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/data-builders/:id/new-version", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return reply.status(201).send(await databuilder.newVersion(c, (req.params as { id: string }).id));
+  });
+  app.post("/a/v1/data-builders/:id/retire", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.retire(c, (req.params as { id: string }).id);
+  });
+  // 校验配置（二次配置时前端可预检）
+  app.post("/a/v1/data-builders/validate-config", async (req) => {
+    requireAdmin(ctx(req));
+    return { ok: true, config: parseBody(DataBuilderConfigSchema, req.body ?? {}) };
+  });
+  // 运行 build（七阶段引擎；dryRun=预览不落库）
+  app.post("/a/v1/data-builders/run", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(BuildRunBodySchema, req.body);
+    const job = await databuilder.run(c, body);
+    return reply.status(job.status === "FAILED" ? 200 : 202).send({ ...job, jobId: job.id });
+  });
+  app.get("/a/v1/data-builders/jobs/list", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.listJobs(c);
+  });
+  app.get("/a/v1/data-builders/plans/:id", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.getPlan(c, (req.params as { id: string }).id);
+  });
+
+  // g8 故事驱动全栈倒推 · P1：StoryBuildRun = 构建期历史推演记录（提交故事脚本 → 建域 → 记录可回放）
+  // P2：stage="manifest" → 先倒推补录表单（PENDING_INPUT，不建域），由 PATCH inputs 续跑。
+  app.post("/a/v1/databuilder/runs", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(StoryRunRequestSchema, req.body);
+    if (body.stage === "manifest") {
+      const run = await databuilder.previewStory(c, { script: body.script, seed: body.seed });
+      return reply.status(201).send(run);
+    }
+    const run = await databuilder.runStory(c, { script: body.script, seed: body.seed, builderKey: body.builderKey, buildMode: body.buildMode, fromDatasetIds: body.fromDatasetIds }, body.inference ?? false);
+    return reply.status(run.status === "FAILED" ? 200 : 201).send(run);
+  });
+  app.patch("/a/v1/databuilder/runs/:id/inputs", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(StoryInputsBodySchema, req.body);
+    const run = await databuilder.submitStoryInputs(c, (req.params as { id: string }).id, body.inputs);
+    return reply.status(run.status === "FAILED" ? 200 : 201).send(run);
+  });
+  app.get("/a/v1/databuilder/runs", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.listStoryRuns(c);
+  });
+  app.get("/a/v1/databuilder/runs/:id", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.getStoryRun(c, (req.params as { id: string }).id);
+  });
+  // 工业级工作流运行时：持久化步骤状态机（检查点/可重入/可重试/可观测）。
+  // POST 启动一次故事建域工作流；GET 看运行 + 逐步状态/尝试/计时（可观测）；resume 从崩溃/失败处续跑。
+  app.post("/a/v1/databuilder/workflow-runs", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(BuildWorkflowStartBodySchema, req.body);
+    const rb = BuildRunBodySchema.parse({ script: body.script, seed: body.seed, builderKey: body.builderKey, buildMode: body.buildMode });
+    const wf = await databuilder.runStoryWorkflow(c, rb, body.inference ?? false, { async: body.async ?? false });
+    // 异步：202 Accepted + 初始 RUNNING 快照（后台驱动，GET 轮询观察）；同步：201/200 终态。
+    const code = body.async ? 202 : wf.status === "FAILED" ? 200 : 201;
+    return reply.status(code).send(wf);
+  });
+  // 启动恢复：进程死亡时停在 RUNNING 的工作流逐个 resume 续跑（部署侧 boot 后可调）。
+  app.post("/a/v1/databuilder/workflow-runs/recover", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.recoverInterrupted(c);
+  });
+  // A7：单条建域的 B 栈 scaffold 持久清单（单机可见，不依赖 AGENTCORE_BASE_URL）。
+  app.get("/a/v1/databuilder/runs/:id/scaffold-manifest", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.getScaffoldManifest(c, (req.params as { id: string }).id);
+  });
+  // A7.2：B 上线后幂等对账（把单机态 PENDING_BSTACK 清单逐个下发 → 升 SCAFFOLDED/REUSED）。
+  app.post("/a/v1/databuilder/reconcile-scaffold", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.reconcileScaffold(c);
+  });
+  // A10：终态闭环末步——手动重跑主问句验证"现在真能答了"（亲手跑通；自动路由由 publish 后 onComplete 触发）。
+  app.post("/a/v1/databuilder/runs/:id/verify", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.verifyBuild(c, (req.params as { id: string }).id);
+  });
+  // WO-DBUI-FLOW · 入库前冲突复验（第 ⑥ 步「人工确定入库」的**输入**）：拿当前真租户状态**现算**，
+  // 三类冲突分开报 + T1/T2 世界漂移。**只读**（`promote-precheck.test.ts` 用全表指纹咬死）。
+  // ⚠ R4：**预检不是审批的替代，是审批的输入** —— 晋升仍是人工审批动作（requireAdmin 不变）。
+  app.post("/a/v1/databuilder/runs/:id/promote-precheck", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.promotePrecheck(c, (req.params as { id: string }).id);
+  });
+  // A18.4 整域晋升编排：人工审核通过 PROVISIONAL 未审核域 → 隔离数据迁入真租户 + 逐制品晋升临时求解器
+  // GOVERNED + 翻转域信任级（R4：晋升=人工审批动作）。发 domain.promoted。
+  // WO-DBUI-FLOW：body 可带人的裁决（decisions）；会改写既有本体定义的冲突**无裁决即报错**，不静默覆盖。
+  app.post("/a/v1/databuilder/runs/:id/promote", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = req.body ? parseBody(PromoteBodySchema, req.body) : undefined;
+    return databuilder.promoteDomain(c, (req.params as { id: string }).id, body);
+  });
+  // prototype-intake 正门：上传原型 HTML → 确定性抽数据表 + 关系（R6）→ 对既有本体字段对账预览
+  // （能映射自动接、映射不上生成候选给人确认，类比 MergeCandidate；不调 LLM）。发 prototype.intake_recorded。
+  // WO-DATABUILDER-PIPELINE：**按 pipeline 处理数据**（改造前此处写死 parse→reconcile→persist→emit 四连）。
+  // 步骤序列 + 每节点 SOP 来自持久化的 BuildPipeline(kind=intake)；未配置则用出厂默认（行为逐字节不变）。
+  app.post("/a/v1/databuilder/intake", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(IntakeRequestSchema, req.body);
+    const pipeline = await databuilder.pipelines.resolve(c, "intake");
+    return runIntakePipeline({ repos, ontology, connectors, outbox }, pipeline, c, { html: body.html });
+  });
+  // prototype-intake P3 导入正门：HTML 物化进库 = 经连接器（prototype_html）落 RawDataset，
+  // 数据连接器可见此"导入文件"+ 在线查看每张表（值与原型一致；不写死前端代码 R8 数据流）。
+  // WO-DATABUILDER-PIPELINE：导入同样**按 pipeline 处理数据**（kind=intake_import）。
+  app.post("/a/v1/databuilder/intake/import", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(IntakeImportRequestSchema, req.body);
+    const pipeline = await databuilder.pipelines.resolve(c, "intake_import");
+    return runIntakeImportPipeline({ repos, ontology, connectors, outbox }, pipeline, c, { filename: body.filename, html: body.html });
+  });
+  // prototype-intake P3 闭环末步：把已导入的 RawDataset 按确定性 schema 对账物化进既有对象库
+  // （"对账后的列" → 既有 type.field，不新建/不发布类型）→ ObjectInstance 可查（/admin/object-types 计数）。
+  app.post("/a/v1/databuilder/intake/objectify", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(IntakeObjectifyRequestSchema, req.body);
+    const datasets = await connectors.listRawDatasets(c, body.connId);
+    if (datasets.length === 0) throw notFound("connection raw datasets");
+    const result = await modeling.materializeFromReconcile(c, datasets.map((d) => d.id));
+    await outbox.emit(c.tenantId, "prototype.objectified", { connId: body.connId, materialized: result.materialized.length, objects: result.materialized.reduce((a, m) => a + m.count, 0) });
+    return result;
+  });
+  // prototype-intake P2：对账候选队列（HITL）。
+  app.get("/a/v1/databuilder/reconcile-candidates", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const items = (await repos.reconcileCandidates.list(c.tenantId)).filter((x) => (req.query as { status?: string }).status ? x.status === (req.query as { status?: string }).status : true);
+    return { items };
+  });
+  // prototype-intake P2：人确认某候选（USE/RENAME/NEW/MERGE/DISCARD + 目标字段）→ RESOLVED + 事件。
+  app.post("/a/v1/databuilder/reconcile-candidates/:id/resolve", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const cand = await repos.reconcileCandidates.get(c.tenantId, (req.params as { id: string }).id);
+    if (!cand) throw notFound("reconcile candidate");
+    const body = parseBody(ReconcileResolveBodySchema, req.body);
+    const resolved = { ...cand, status: "RESOLVED" as const, resolvedAction: body.action, ...(body.target ? { resolvedTarget: body.target } : {}), resolvedAt: new Date().toISOString() };
+    await repos.reconcileCandidates.put(resolved);
+    await outbox.emit(c.tenantId, "schema_reconcile.resolved", { id: resolved.id, column: resolved.prototypeColumn, action: body.action });
+    return resolved;
+  });
+  // ── WO-DATABUILDER-PIPELINE：数据构建 Pipeline（低代码可配置执行流）的配置面 ──
+  // 「先配置一个 data builder 的低代码 pipeline，配置每个节点的 SOP，只要数据接入或导入，
+  //   就按照这个 pipeline 处理数据」——这组路由是"配置"，上面的 intake/import/建域是"按它跑"。
+  app.get("/a/v1/databuilder/pipelines", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const items = await databuilder.pipelines.list(c);
+    return { items: items.map((p) => ({ ...p, order: projectPipelineOrder(p) })) };
+  });
+  app.get("/a/v1/databuilder/pipelines/:kind", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const p = await databuilder.pipelines.get(c, (req.params as { kind: string }).kind);
+    return { ...p, order: projectPipelineOrder(p) };
+  });
+  // 覆盖某 kind 的 pipeline（幂等）：改完立刻生效 —— intake/import/建域下次执行即按新定义跑。
+  app.put("/a/v1/databuilder/pipelines/:kind", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(BuildPipelineUpsertSchema, req.body);
+    const p = await databuilder.pipelines.upsert(c, (req.params as { kind: string }).kind, body);
+    return { ...p, order: projectPipelineOrder(p) };
+  });
+  // 撤销覆盖 → 回出厂默认（行为回到写死时代）。
+  app.delete("/a/v1/databuilder/pipelines/:kind", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const p = await databuilder.pipelines.reset(c, (req.params as { kind: string }).kind);
+    return { ...p, order: projectPipelineOrder(p) };
+  });
+  // 节点 SOP「人要不要介入」的放行：PAUSED 的 run 经此放行该步并 resume 续跑。
+  app.post("/a/v1/databuilder/workflow-runs/:id/approve", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(WorkflowApproveBodySchema, req.body);
+    return databuilder.approveWorkflowStep(c, (req.params as { id: string }).id, body.stepKey);
+  });
+  app.get("/a/v1/databuilder/workflow-runs", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.listWorkflowRuns(c);
+  });
+  app.get("/a/v1/databuilder/workflow-runs/:id", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.getWorkflowRun(c, (req.params as { id: string }).id);
+  });
+  // A5：FDE 编排工作流节点状态图（8 节点实时投影；前端 <FdeGraph> 轮询 + fde.node_advanced 点亮）。
+  app.get("/a/v1/databuilder/workflow-runs/:id/fde-graph", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.fdeGraph(c, (req.params as { id: string }).id);
+  });
+  app.post("/a/v1/databuilder/workflow-runs/:id/resume", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const wf = await databuilder.resumeStoryWorkflow(c, (req.params as { id: string }).id);
+    return reply.status(wf.status === "FAILED" ? 200 : 201).send(wf);
+  });
+  // g8-P6 存量回填：逆向导出既有推演能力为故事脚本 → 逐条建域补血缘 = 首次全量压测
+  app.post("/a/v1/databuilder/backfill", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.backfill(c);
+  });
+  // g8-P4 压测：跑一组故事脚本，统计覆盖率/失败率（自动生成管线压测）
+  app.post("/a/v1/databuilder/stress", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const body = parseBody(StressBodySchema, req.body);
+    return databuilder.stress(c, body.scripts, body.seed);
+  });
+  // g8-P5 故事脚本自动生成器：从平台能力目录派生候选脚本（供持续自动输入/压测）
+  app.get("/a/v1/databuilder/generate-scripts", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    return databuilder.generateScripts();
+  });
+
   app.get("/a/v1/features/registry", async (req) => {
     const c = ctx(req);
     // 管理平台增量 §3：静态注册表 + 本租户动态注册项（view.{viewKey}）。
@@ -1859,6 +7846,102 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/plan-versions/current", async (req) => {
     await requireFeatureTag(req, "apiTags", "plan-audit");
     return sop.currentPlanVersion(ctx(req));
+  });
+
+  // CL.4 空租户冷启动引导（PRD-empty-tenant-bootstrap）：把"从空到可用计划域"理成幂等、确定、
+  // 可一键跑的 7 步清单（合成 seed → 核对物化 → 建 SopVersion → 五步法 → 定稿 FINAL 走 R4 →
+  // 核对 currentPlanVersion → plan_audit 有料）。任一步核对未达 → 停并报结构化缺口（诚实，不空转）。
+  app.post("/a/v1/bootstrap", async (req) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const reqBody = parseBody(BootstrapRequestSchema, req.body ?? {});
+    const steps: BootstrapStep[] = [];
+    const report = (ok: boolean, finalVersionId?: string, gap?: BootstrapReport["gap"]): BootstrapReport => ({ ok, steps, finalVersionId, ...(gap ? { gap } : {}) });
+    const countType = async (t: string) => (await repos.objects.listByType(c.tenantId, t)).filter((o) => !o.mergedInto).length;
+
+    // ① 合成 seed 计划域（幂等：已有 PlanTarget 则跳过重合成，同 seed 字节一致 R6）
+    let ptCount = await countType("PlanTarget");
+    if (ptCount > 0) {
+      steps.push({ step: 1, name: "合成 seed 计划域", status: "SKIPPED", verify: `已有 PlanTarget×${ptCount}（幂等跳过）` });
+    } else {
+      const job = await synthetic.runJob(c, { industry: reqBody.industry, scale: reqBody.scale, seed: reqBody.seed, livedIn: true });
+      ptCount = await countType("PlanTarget");
+      steps.push({ step: 1, name: "合成 seed 计划域", status: "DONE", produced: { jobId: job.id, seed: reqBody.seed }, verify: `job ${job.status}` });
+    }
+    // ② 核对计划目标物化
+    if (ptCount === 0) {
+      steps.push({ step: 2, name: "核对计划目标物化", status: "FAILED", gapCode: "EMPTY_PLAN_TARGET", verify: "PlanTarget 仍为 0" });
+      return report(false, undefined, { step: 2, code: "EMPTY_PLAN_TARGET", hint: "合成未产出 PlanTarget；检查行业模板/seed" });
+    }
+    steps.push({ step: 2, name: "核对计划目标物化", status: "DONE", produced: { planTargets: ptCount }, verify: `PlanTarget×${ptCount}` });
+    // ③ 核对年度情景
+    const scenCount = await countType("AnnualScenario");
+    if (scenCount === 0) {
+      steps.push({ step: 3, name: "核对年度情景", status: "FAILED", gapCode: "EMPTY_SCENARIO", verify: "AnnualScenario 为 0" });
+      return report(false, undefined, { step: 3, code: "EMPTY_SCENARIO", hint: "合成未产出 AnnualScenario" });
+    }
+    steps.push({ step: 3, name: "核对年度情景", status: "DONE", produced: { scenarios: scenCount } });
+    // ④ 建/复用月度计划版本
+    const existing = (await sop.list(c)).filter((v) => v.month === reqBody.month).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+    let version = existing[existing.length - 1] ?? (await sop.create(c, { month: reqBody.month }));
+    steps.push({ step: 4, name: "建月度计划版本", status: existing.length > 0 ? "SKIPPED" : "DONE", produced: { versionId: version.id, month: reqBody.month } });
+    // ⑤ 五步法推进（幂等：已 EXEC_MEETING/FINAL 则跳过）。步①②③缺省 payload 从合成数据确定性派生；
+    // 步④财务需显式输入（否则现金垫=0 触 C18 阻断）——取参数版本基线（cashCushion/gmTarget）作冷启动种子，
+    // 使 gmRoll=gmBudget、现金垫≥C18 底线，确定性达标进⑤（R6；基线值=种子配置非前端写死 R14）。
+    if (version.status === "DRAFT" || version.status === "IN_REVIEW") {
+      const params = await solvers.getParams(c.tenantId);
+      const baseline = (params.planBaseline as { gmTarget?: number; cashCushion?: number } | undefined) ?? { gmTarget: 16, cashCushion: 58 };
+      const cashFloor = Number((params.sop as { cashFloor?: number } | undefined)?.cashFloor ?? 50);
+      const gmBudget = Number(baseline.gmTarget ?? 16);
+      for (let s = 1; s <= 5; s++) {
+        let payload: Record<string, unknown> = {};
+        if (s === 4) {
+          const dem = Number((version.steps.s3 as { dem?: number } | undefined)?.dem) || 100;
+          payload = { revSum: dem, gmSum: Math.round((dem * gmBudget) / 100 * 1e4) / 1e4, gmBudget, cashCushion: Math.max(Number(baseline.cashCushion ?? 58), cashFloor) };
+        }
+        version = await sop.advance(c, version.id, s, payload);
+      }
+      steps.push({ step: 5, name: "五步法推进", status: "DONE", verify: `status=${version.status}` });
+    } else {
+      steps.push({ step: 5, name: "五步法推进", status: "SKIPPED", verify: `已 ${version.status}` });
+    }
+    // ⑥ 定稿 → FINAL（走 R4 Action；单 admin 经 SA 自审）
+    if (version.status !== "FINAL") {
+      try {
+        await sop.assertFinalizeRequestable(c.tenantId, version.id);
+        const draft = await actions.create(c, {
+          actionTypeKey: "定稿月度计划版本",
+          payload: { versionId: version.id, month: version.month, snapshot: { steps: version.steps, supFinal: version.supFinal }, resolutions: version.resolutions },
+          submit: true,
+        });
+        await sop.markFinalizePending(c.tenantId, version.id, draft.id);
+        await actions.approve(c, draft.id);
+        version = await sop.get(c, version.id);
+      } catch (err) {
+        const code = err instanceof AppError ? err.code : "FINALIZE_FAILED";
+        steps.push({ step: 6, name: "定稿→FINAL（R4）", status: "FAILED", gapCode: code, verify: String((err as Error).message) });
+        return report(false, version.id, { step: 6, code, hint: "定稿失败：单 admin 需 SA 自审（demo 默认 ALLOW_ADMIN，生产配 SELF_APPROVE_POLICY/类型 selfApproveAllowed）" });
+      }
+      steps.push({ step: 6, name: "定稿→FINAL（R4）", status: version.status === "FINAL" ? "DONE" : "FAILED", produced: { finalVersionId: version.id }, verify: `status=${version.status}` });
+    } else {
+      steps.push({ step: 6, name: "定稿→FINAL（R4）", status: "SKIPPED", verify: "已 FINAL" });
+    }
+    // ⑦ 核对 currentPlanVersion + 跑 plan_audit（入参取当前版本/PlanTarget 基线确定性派生）
+    const cur = await sop.currentPlanVersion(c);
+    if (!cur.versionId) {
+      steps.push({ step: 7, name: "核对 currentPlanVersion + plan_audit", status: "FAILED", gapCode: "NO_CURRENT_VERSION", verify: "currentPlanVersion 为空" });
+      return report(false, version.id, { step: 7, code: "NO_CURRENT_VERSION", hint: "无 FINAL 版本，计划域仍不可用于体检" });
+    }
+    let auditDiagnostics = 0;
+    try {
+      const audit = await ontology.invokeSolver(c, "plan_audit", cur.input as Record<string, unknown>);
+      const data = audit.data as { diagnostics?: unknown[] } | undefined;
+      auditDiagnostics = Array.isArray(data?.diagnostics) ? data!.diagnostics!.length : 0;
+    } catch {
+      /* plan_audit 入参不全时不阻断 bootstrap：currentPlanVersion=FINAL 即"从空到可用"达成 */
+    }
+    steps.push({ step: 7, name: "核对 currentPlanVersion + plan_audit", status: "DONE", produced: { currentVersion: cur.versionLabel, planAuditDiagnostics: auditDiagnostics }, verify: `currentPlanVersion=${cur.status}` });
+    return report(true, cur.versionId);
   });
 
   // ---- 计划域查询面（增量 §7.14/§7.15；entitlement: plan-aop / plan-quarterly tag）-----------------
@@ -2032,13 +8115,29 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return reply.status(201).send(hook);
   });
   app.get("/a/v1/webhooks", async (req) => repos.webhooks.list(ctx(req).tenantId));
-  app.get("/a/v1/outbox", async (req) => repos.outboxEvents.list(ctx(req).tenantId));
+  app.get("/a/v1/outbox", async (req) => {
+    // 领域事件馈源（D-29 实时环 F1）：前端按 ?since=<ISO> 游标轮询，把上游变更反映到被动页面。
+    // 缺省返回全量（向后兼容）；带 since 则只回 createdAt>=since（含边界,前端按 eventId 去重），按时间升序、上限 200。
+    const since = (req.query as { since?: string } | undefined)?.since;
+    const all = await repos.outboxEvents.list(ctx(req).tenantId);
+    const sorted = all.slice().sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+    const filtered = since ? sorted.filter((e) => e.createdAt >= since) : sorted;
+    return filtered.slice(-200).map((e) => ({ eventId: e.eventId, event: e.event, createdAt: e.createdAt }));
+  });
 
   // ---- LLM Provider 配置体系增量 §1 + 引用上报（§2.3） -------------------------------------------
   registerLlmProviderRoutes(app, { repos, service: llmProviders, outbox, ctx, fetchImpl: deps.fetchImpl ?? fetch });
 
   // ---- 管理平台增量：§2 租户/用户 + §3 场景包/视图配置 ------------------------------------------
   registerAdminPlatformRoutes(app, { repos, outbox, features, ctx });
+
+  // ---- WO-ORG-WORLD · 组织世界（七世界之②·人/角色/部门/职权/审批额度/代理）------------------
+  // Entitlement 先于 authz：`org.world` 暗发（defaultOn:false）→ 关闭时全部路由 404 FEATURE_NOT_FOUND。
+  registerOrgWorldRoutes(app, {
+    service: new OrgWorldService(repos),
+    ctx,
+    requireFeature: (req) => requireFeatureTag(req, "apiTags", "org-world"),
+  });
 
   // PATCH connection (schedule changes re-register/unregister CONNECTOR_SYNC jobs)
   app.patch("/a/v1/connections/:id", async (req) => {
@@ -2099,6 +8198,128 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     throw forbidden("虚拟提问仅经模拟时钟回放在 SYNTHETIC 租户产生，无直调入口");
   });
 
+  // ============================================================================
+  // WO-SLICE-GOVERNANCE-FULL · 切片治理（无契约→推进为契约 · 单/批 · 取完整 spec 供编辑器预填）
+  // 独立段置于文件末尾，避免与其它改动抢行；契约 additive，既有切片端点行为不变。
+  // ============================================================================
+  // 批：为所有"无契约"切片确定性派生 baseline fixture（空 resolve 诚实 skip·requireAdmin）。
+  app.post("/a/v1/ontology/slices/derive-fixtures", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const out = await governance.deriveMissingSliceFixtures(c.tenantId);
+    return reply.status(201).send(out);
+  });
+  // 单：为一个无契约切片派生 baseline fixture 并写回 spec.contractFixtures（requireAdmin）。
+  app.post("/a/v1/ontology/slices/:sliceKey/derive-fixture", async (req, reply) => {
+    const c = ctx(req);
+    requireAdmin(c);
+    const { sliceKey } = req.params as { sliceKey: string };
+    const out = await governance.deriveSliceFixture(c.tenantId, sliceKey);
+    return reply.status(out.promoted ? 201 : 200).send(out);
+  });
+  // 取单个切片完整 spec（供前端编辑器预填 root/paths/maxNodes/contractFixtures）。tenant 隔离。
+  app.get("/a/v1/ontology/slices/:sliceKey", async (req) => {
+    const c = ctx(req);
+    const { sliceKey } = req.params as { sliceKey: string };
+    const spec = await ontologyCore.getSliceSpec(c, sliceKey);
+    if (!spec) throw notFound(`slice ${sliceKey}`);
+    return { sliceKey: spec.sliceKey, version: spec.version, spec: spec.spec };
+  });
+
+  /**
+   * WO-SLICE-16-LAYERS：切片的「十六层结构」只读投影（取证见 docs/AUDIT-slice-16-layers.md）。
+   *
+   * 病根：`executeSlice` 只回 {nodes, edges} ⇒ 十六层里只有 ③对象 ④属性 ⑤关系带得出来；
+   * 其余 11 层**承载物在、数据也在**（规则 28 条 / 传导 13 条 / 数据绑定 93 类 / 事件 372 条…），
+   * 只是从来没人沿切片的类型集把它们 join 出来 —— 三形态里的「接了线接错地方」。
+   * 本路由就是那条缺失的 join：纯读、零新真值源、R6 确定性。
+   *
+   * 取不到的层不画占位内容：三态 present / not_in_slice（平台有、这条切片没纳入）/
+   * absent（本租户无数据，并说明**缺在哪一环**）。
+   */
+  app.get("/a/v1/ontology/slices/:sliceKey/layers", async (req) => {
+    const c = ctx(req);
+    const { sliceKey } = req.params as { sliceKey: string };
+    const q = req.query as { args?: string };
+    const spec = await ontologyCore.getSliceSpec(c, sliceKey);
+    if (!spec) throw notFound(`slice ${sliceKey}`);
+    // 试切参数：与 POST …/resolve 同口径（root selector 的 {{args.x}}）。非法 JSON → 空参（诚实降级，不 500）。
+    let args: Record<string, unknown> = {};
+    if (q.args) {
+      try {
+        const parsed: unknown = JSON.parse(q.args);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed as Record<string, unknown>;
+      } catch {
+        args = {};
+      }
+    }
+    const graph = await ontologyCore.executeSlice(c, spec.spec, args);
+    // 各层承载物一次读齐（全部既有表，无新表）。A6 行级过滤已在 executeSlice 逐跳生效。
+    const [types, linkTypes, ruleList, propagationRules, tsSeries, excObjs, actionTypeList, derivSpecs] =
+      await Promise.all([
+        ontology.listTypes(c),
+        repos.ontologyLinks.list(c.tenantId),
+        repos.rules.list(c.tenantId, (r) => r.status === "PUBLISHED"),
+        repos.sim.listPropagationRules(c.tenantId, true),
+        repos.tsSeries.list(c.tenantId),
+        repos.objects.listByType(c.tenantId, "ExceptionEvent"),
+        actions.listTypes(c),
+        repos.derivationSpecs.list(c.tenantId, (s) => s.status === "ACTIVE"),
+      ]);
+    // 空子图诊断的输入：root 类型在本租户有多少对象 —— 用来区分「零对象」与「有对象但 selector 没匹配」，
+    // 并从**真对象**上取「这个参数可以填什么」的候选值（绝不编示例值）。
+    // 只在子图为空时才读（非空路径零额外开销）。样本上限防大租户全表拉取。
+    const ROOT_SAMPLE_CAP = 200;
+    const rootObjects = graph.nodes.length === 0
+      ? await repos.objects.listByType(c.tenantId, spec.spec.root.typeKey)
+      : [];
+    const rootObjectTotal = rootObjects.length;
+    // 显示键与 executeSlice 的 byKey 匹配口径同源（ontology-core.ts:620 `objectKey ?? props[pk] ?? id`）：
+    // 候选值必须是**填进去真能解出子图的那个值**，否则候选就是摆设。优先业务主键（SO-3391）
+    // 而非内部 id（obj_order_SO-3391）——两者都能匹配，但只有前者是人认得的那个。
+    const rootPkProp = types.find((t) => t.key === spec.spec.root.typeKey)?.properties.find((p) => p.isPrimaryKey)?.propKey;
+    const rootObjectSamples = rootObjects.slice(0, ROOT_SAMPLE_CAP).map((o) => ({
+      objectKey: String(o.objectKey ?? (rootPkProp !== undefined ? o.props[rootPkProp] : undefined) ?? o.id),
+      props: o.props,
+    }));
+    const exceptionRefTypes: Record<string, number> = {};
+    for (const o of excObjs) {
+      const rt = typeof o.props.refType === "string" ? o.props.refType : "UNKNOWN";
+      exceptionRefTypes[rt] = (exceptionRefTypes[rt] ?? 0) + 1;
+    }
+    const references = (await governance.sliceReferences(c, sliceKey)).refs;
+    return projectSliceLayers({
+      sliceKey: spec.sliceKey,
+      version: spec.version,
+      spec: spec.spec,
+      graph,
+      types,
+      linkTypes,
+      rules: ruleList,
+      propagationRules: propagationRules.map((p) => ({
+        key: p.key,
+        sourceTypeKey: p.sourceTypeKey,
+        sourceStateVar: p.sourceStateVar,
+        targetTypeKey: p.targetTypeKey,
+        targetStateVar: p.targetStateVar,
+        viaLinkKey: p.viaLinkKey,
+        coefficient: p.coefficient,
+      })),
+      tsSeries,
+      exceptionEventTotal: excObjs.length,
+      exceptionRefTypes,
+      references: references.map((r) => ({ refKind: r.refKind, key: r.key, where: r.where })),
+      // WO-CLOSE-SIM-ONTO-2：同上 —— §⑮ 的 join 键必须一路带到投影层。
+      actionTypes: actionTypeList
+        .map((a) => ({ key: a.key, ...(a.targetTypeKey !== undefined ? { targetTypeKey: a.targetTypeKey } : {}) }))
+        .sort((x, y) => x.key.localeCompare(y.key)),
+      derivationSpecKeys: derivSpecs.map((d) => ({ specKey: d.specKey, targetType: d.targetType, targetProp: d.targetProp, formula: d.formula })),
+      args,
+      rootObjectTotal,
+      rootObjectSamples,
+    });
+  });
+
   return {
     app,
     services: {
@@ -2124,10 +8345,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       scheduler,
       ruleScan,
       actions,
+      decisionKernel,
+      databuilder,
       sop,
       kb,
       simclock,
+      enterpriseState,
       features,
+      configBundle,
       embeddings,
       plan,
       calibration,
@@ -2137,6 +8362,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       opsTeam,
       opsSchedule,
       opsReplay,
+      // WO-SIM-SEED-WORLD：播种路径与两条路由共用**同一个函数对象**（不是照抄一份）。
+      // WO-SIM-SEED-PERTURB 添 `createPerturbation`：种子世界的那条扰动走的也是路由那份实现。
+      sim: { createSession: createSimSessionWorld, tick: tickSimSessionWorld, createPerturbation: createPerturbationWorld },
     },
   };
 }

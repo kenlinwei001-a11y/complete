@@ -37,12 +37,20 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "rules.updated", producer: "规则发布", tier: "IN_SESSION", invalidates: ["rule-library", "agent-editor.rule-bindings", "workflow-editor.rule-bindings"], dl: "DL3" },
   // L4 配置发布环
   { event: "workflow.published", producer: "工作流发布", tier: "IN_SESSION", invalidates: ["intent-editor.workflow-bindings", "agent-editor.tool-bindings", "workflow-list"] },
+  { event: "agent.published", producer: "Agent 发布", tier: "IN_SESSION", invalidates: ["agent-editor.tool-bindings"] },
+  { event: "skill.published", producer: "技能发布（DF-5·补 B 栈资源发布信号）", tier: "IN_SESSION", invalidates: ["agent-editor.skill-bindings", "agent-editor.tool-bindings", "skill-list"] },
   { event: "intent.published", producer: "意图发布", tier: "IN_SESSION", invalidates: ["scene-entry.intent-filter", "scenarios", "intent-catalog"] },
   { event: "scene_entry.updated", producer: "场景入口编辑", tier: "IN_SESSION", invalidates: ["scenarios", "scene-entries"] },
+  { event: "scenario.published", producer: "场景发布（升一等对象）", tier: "IN_SESSION", invalidates: ["scenarios", "scene-entries", "intent-catalog"] },
+  { event: "scenario.retired", producer: "场景退役", tier: "IN_SESSION", invalidates: ["scenarios", "scene-entries", "intent-catalog"] },
+  { event: "scenario.growth_triggered", producer: "场景发育闭环·缺件 grow 触发 runGrowthLoop（O9）", tier: "IN_SESSION", invalidates: ["scenarios", "growth-ledger", "growth-tickets"] },
   // L5 行动环 / DL4
   { event: "action.pending_approval", producer: "Action 草稿提交", tier: "NOTIFY", invalidates: ["notifications", "approval-inbox"] },
   { event: "action.executed", producer: "Action 写回执行", tier: "IN_SESSION", invalidates: ["dashboard", "object-queries"], dl: "DL4" },
   { event: "writeback.divergence", producer: "回声对账", tier: "NOTIFY", invalidates: ["notifications", "dashboard"], dl: "DL4" },
+  // WO-C1 · L2 决策内核（根因→方案→选定→落 Action 一条龙）
+  { event: "decision.created", producer: "WO-C1 决策内核·建 Decision(PROPOSED·bundling gap_attribution+decision_play)", tier: "IN_SESSION", invalidates: ["decisions", "decision-page"] },
+  { event: "decision.committed", producer: "WO-C1 决策内核·commit Decision(COMMITTED·派 ActionDraft 走 S2)", tier: "IN_SESSION", invalidates: ["decisions", "decision-page", "approval-inbox"] },
   // L6 学习环 / DL5
   { event: "calibration.applied", producer: "校准提案批准", tier: "IN_SESSION", invalidates: ["calibration-report", "solver-params"], dl: "DL5" },
   // L7 孵化环 / DL6
@@ -51,16 +59,108 @@ export const EVENT_SUBSCRIPTIONS: EventSubscription[] = [
   { event: "synthetic.tick_completed", producer: "模拟时钟 tick", tier: "IN_SESSION", invalidates: ["dashboard", "risk", "scenario-data", "calibration-report"], dl: "DL7" },
   { event: "dataset.regenerated", producer: "合成数据生成", tier: "IN_SESSION", invalidates: ["dashboard", "risk", "scenario-data", "ontology-graph", "rule-library"] },
   { event: "connection.sync_completed", producer: "连接器同步", tier: "IN_SESSION", invalidates: ["dashboard", "scenario-data", "object-queries"], dl: "DL9" },
+  { event: "connector.sync_failed", producer: "连接器同步失败", tier: "IN_SESSION", invalidates: ["connectors", "quarantine"], dl: "DL9" },
+  { event: "connection.created", producer: "连接器创建（A11 带 category）", tier: "IN_SESSION", invalidates: ["connectors", "data-categories"] },
+  { event: "slice.planned", producer: "切片规划器（A3.4 规划/复用）", tier: "IN_SESSION", invalidates: ["slice-library", "slice-index"] },
   // L9 知识环 / DL10
   { event: "kb.indexed", producer: "知识库上传索引", tier: "IN_SESSION", invalidates: ["kb-search", "search-test"], dl: "DL10" },
   // L10 实体解析环 / DL8
   { event: "objects.merged", producer: "实体合并", tier: "IN_SESSION", invalidates: ["object-queries", "dashboard", "search"], dl: "DL8" },
   { event: "merge_candidate.created", producer: "实体解析增量跑", tier: "NOTIFY", invalidates: ["notifications", "merge-queue"] },
+  { event: "growth.gap_detected", producer: "自成长发动机·探针检出缺口", tier: "IN_SESSION", invalidates: ["growth-ledger"] },
+  { event: "growth.fill_proposed", producer: "自成长发动机·补法分派（缺数据正门/缺求解器 B 兜底）", tier: "IN_SESSION", invalidates: ["growth-ledger"] },
+  { event: "growth.ticket_opened", producer: "自成长发动机·缺功能落工单", tier: "NOTIFY", invalidates: ["growth-tickets", "notifications"] },
+  { event: "growth.converged", producer: "自成长发动机·LOOP 收敛（问句现可答）", tier: "IN_SESSION", invalidates: ["growth-ledger", "growth-tickets"] },
   { event: "quarantine.row_added", producer: "隔离区入库", tier: "NOTIFY", invalidates: ["notifications", "quarantine"] },
+  // L16 感知层环：用户实体在本租户任何已发布类型都解析不到 → 域外信号（最近邻候选 + 误触发率埋点）
+  { event: "entity.out_of_domain", producer: "感知层·槽位解析（裸串实体域外）", tier: "NOTIFY", invalidates: ["perception-metrics"] },
   // L11 权限环 — 换账号即全链过滤（登录态切换，非事件）
   { event: "policy.updated", producer: "权限策略变更", tier: "IN_SESSION", invalidates: ["dashboard", "search", "scenario-data", "history"], dl: "DL11" },
   // L12 功能开通环
   { event: "features.updated", producer: "功能开通配置", tier: "IN_SESSION", invalidates: ["workspace", "navigation", "scenarios", "intent-catalog"], dl: "DL12" },
+  // L15 数据构建发动机环：故事建域记录完成 → 失效历史推演记录/模块同步矩阵（经 F1 全局通道反映）
+  { event: "storybuild.run_recorded", producer: "数据构建发动机·故事建域记录完成", tier: "IN_SESSION", invalidates: ["story-runs"] },
+  // L15 A5 FDE 编排工作流：节点状态变更（comprehend/查能力/比差/生成/闭包/publish/进启动器）→ 实时点亮节点图
+  { event: "fde.node_advanced", producer: "FDE 编排工作流·节点状态推进（A5 可观测节点图）", tier: "IN_SESSION", invalidates: ["fde-graph", "story-runs", "workflow-runs"] },
+  // L15 A7 B 栈 scaffold 单机可见：清单落 DataCore（不依赖 B 在线）+ B 上线幂等对账
+  { event: "scaffold.manifest_recorded", producer: "数据构建发动机·B 栈 scaffold 清单落库（A7 单机可见）", tier: "IN_SESSION", invalidates: ["scaffold-manifest", "story-runs", "workflow-runs"] },
+  { event: "scaffold.reconciled", producer: "数据构建发动机·B 栈 scaffold 上线对账（A7）", tier: "IN_SESSION", invalidates: ["scaffold-manifest", "story-runs"] },
+  // L15 A10 终态闭环：建域→publish→自动/手动重跑主问句验证"真能答了" → 回灌 FDE 节点图末节点 + 成长账本（runId 归一）
+  { event: "build.verified", producer: "数据构建发动机·终态闭环验证（A10 publish 后重跑主问句）", tier: "IN_SESSION", invalidates: ["story-runs", "fde-graph", "growth-ledger"] },
+  // L15 prototype-intake 正门：上传原型 → 确定性抽数据/关系 → 对账预览（映射不上生成候选给人确认）
+  { event: "prototype.intake_recorded", producer: "原型 intake 正门·解析数据表+关系完成（schema 对账预览）", tier: "IN_SESSION", invalidates: ["intake-preview", "reconcile-queue"] },
+  // L15 prototype-intake P2：schema 对账候选人确认（USE/RENAME/NEW/MERGE/DISCARD）→ 失效对账队列
+  { event: "schema_reconcile.resolved", producer: "原型 intake·schema 对账候选人确认（P2 HITL）", tier: "IN_SESSION", invalidates: ["reconcile-queue"] },
+  // L15 A18 未审核态：PROVISIONAL 建域完成（域强标 UNVERIFIED，闭包 ADVISORY 不阻断）→ 失效历史/审核台
+  { event: "domain.provisional_built", producer: "数据构建发动机·PROVISIONAL 未审核态建域完成（A18 双模闭包）", tier: "IN_SESSION", invalidates: ["story-runs", "provisional-review"] },
+  // L15 A18.2 LLM 临时求解器：生成 + 锁死沙箱跑通 → 注册 PROVISIONAL（未审核·UNVERIFIED）→ 失效求解器目录/审核台
+  { event: "solver.provisional_generated", producer: "求解器·LLM 临时生成沙箱跑通注册 PROVISIONAL（A18.2）", tier: "IN_SESSION", invalidates: ["solver-registry", "provisional-review"] },
+  // L15 A18.4 晋升：临时求解器人工审批 PROVISIONAL→GOVERNED（解锁写真值）→ 失效求解器目录/审核台
+  { event: "solver.status_changed", producer: "求解器·临时件状态推进/晋升 GOVERNED（A18.4）", tier: "IN_SESSION", invalidates: ["solver-registry", "provisional-review"] },
+  // L15 A18.4 整域晋升编排：PROVISIONAL 域人工审批 → 隔离数据迁入真租户 + 逐制品晋升求解器 → 失效历史/审核台/对象库
+  { event: "domain.promoted", producer: "数据构建发动机·PROVISIONAL 整域晋升 GOVERNED（A18.4 编排：迁移隔离域+逐制品晋升）", tier: "IN_SESSION", invalidates: ["story-runs", "provisional-review", "object-queries", "solver-registry"] },
+  // L17 SPINE 经营目标-指标-责任骨架：指标快照回采（actual 更新）/ 指标越线（触发推演）→ 失效驾驶舱/各视图 KPI/风险页
+  { event: "metric.snapshot_recorded", producer: "SPINE·指标快照回采（metric_rollup 实算 actual → 执行回采更新口径，SPINE.2）", tier: "IN_SESSION", invalidates: ["metrics", "dashboard", "scenario-data"] },
+  { event: "metric.breached", producer: "SPINE·指标越线（actual<floor → 触发 plan_rootcause/risk_timeline 推演，SPINE.2）", tier: "NOTIFY", invalidates: ["metrics", "dashboard", "risk", "notifications"] },
+  // L18 推演沙盘环（A10 · 断点 G-SIM-EVENT-NOSUB）：datacore 六处 outbox.emit("sim.*")。
+  { event: "sim.scenario_saved", producer: "推演沙盘·方案快照存盘/存分支（POST /a/v1/sim/scenarios · /a/v1/sim/live-scenarios）", tier: "IN_SESSION", invalidates: ["sim-scenarios"] },
+  // ── WO-L4B（欠账 #145）：补订阅方 —— 上面那条注释原先写「另四个故意不登记，因为沙盘态全在 useState」。
+  // 复核后那个理由只对了一半：后端 GET /a/v1/sim/sessions（app.ts:1405）与 …/:id/world（app.ts:1410）
+  // 一直都在，缺的是**前端那一跳**（endpoints.ts 当时只有 POST createSimSession；simWorld 有定义，但 src 下没有任何调用点，只有测试桩）。
+  // 现已接成 SandboxView 的 sessionsQuery / worldQuery 两条真 useQuery，故三条转正式登记。
+  { event: "sim.session_created", producer: "推演沙盘·建会话（POST /a/v1/sim/sessions · app.ts:1397）", tier: "IN_SESSION", invalidates: ["sim-sessions"] },
+  { event: "sim.branched", producer: "推演沙盘·从检查点分支出子世界（POST /a/v1/sim/sessions/:id/branch · app.ts:1516）", tier: "IN_SESSION", invalidates: ["sim-sessions"] },
+  // tick 同一处理器在 emit 前写了 status=RUNNING + curTick（app.ts:1465），世界列表显示的正是这两个字段 → 两个标签都失效。
+  { event: "sim.tick_completed", producer: "推演沙盘·推进 tick（POST /a/v1/sim/sessions/:id/tick · app.ts:1467）", tier: "IN_SESSION", invalidates: ["sim-world", "sim-sessions"] },
+  // ── WO-SIM-PERTURB-TIMELINE（2026-08-10）：扰动事件补订阅方 ──────────────────────────
+  // 此前不登记的理由（前任 WO-SIM-ACT-CLOSE 写在 frontend SIM_EVENT_GAPS 里）是**读端零调用方**：
+  // `fetchSimPerturbations` 全仓没有任何 useQuery 用它 ⇒ 前端没有缓存承载本事件 ⇒ 硬接 = 假接线。
+  // 本单先把读端接出来（`frontend-shell/src/views/sim/PerturbationTimeline.tsx` 的
+  // `["a","sim-perturbations", sessionId]`），本条登记才有对象，故顺序是**先读端后事件**。
+  // `sim-world` 一并失效：同一处理器在 emit 前对**已在当前 tick 生效**的扰动走
+  // `simApplyAtCurrentTick` → `putTickState`（app.ts:1624），世界态真的变了。
+  { event: "sim.perturbation_created", producer: "推演沙盘·施加/排期一条扰动（POST /a/v1/sim/sessions/:id/perturbations · app.ts:1626）", tier: "IN_SESSION", invalidates: ["sim-perturbations", "sim-world"] },
+  // sim.checkpoint_saved（WO-EVENT-SUB-CLOSURE · 2026-08-20 补登记）：此前不登记的理由已全消 ——
+  // datacore 读端 GET /a/v1/sim/sessions/:id/checkpoints 已开（WO-ENGINE-2 件二），
+  // 前端真缓存 = SandboxView 的 checkpointsQuery `["a","sim-checkpoints",sessionId]`（WO-BEFE-E），
+  // 存档/回滚都经它出。本条登记后 `sim.*` 六事件全部闭环（frontend SIM_EVENT_GAPS 台账今日为空）。
+  { event: "sim.checkpoint_saved", producer: "推演沙盘·存档检查点（POST /a/v1/sim/sessions/:id/checkpoint）", tier: "IN_SESSION", invalidates: ["sim-checkpoints"] },
+  // ── WO-GATE-ONTOLOGY-DRIFT（2026-08-23）：会话生命周期迁移补订阅方 ────────────────────
+  // 生产者 = `setSimSessionStatus`（datacore `app.ts:1989`）的**唯一** emit（`app.ts:2002`），
+  // 两个调用点共用它：`PATCH /a/v1/sim/sessions/:id/status`（app.ts:2031）与产能页
+  // `POST /a/v1/sim/live-scenarios/:id/pause|end`（app.ts:3255 / 3260）。emit 排在
+  // `repos.sim.putSession(s)` **之后**，所以发出来时库里那一行 `status` 已经真的变了。
+  //
+  // 为什么只挂 `sim-sessions` 一个标签（不是凑数，也不是漏挂）：
+  //  · `sim-sessions` —— 会话列表（`GET /a/v1/sim/sessions` 的 `listSessionSummaries` 投影）
+  //    **逐项带 `status`**，前端 `["a","sim-sessions"]` 这一份缓存有五个消费方，其中两个真会显示陈旧：
+  //      ① `SandboxView.tsx:1373` 世界列表 rail 直接渲染 `{s.status} · tick {s.curTick}`；
+  //      ② `console/useConsoleSession.ts:111` 用 `pickLatestRunningSession`（只认 `status==="RUNNING"`）
+  //         替四个控制台页挑"当前世界"，而那条 useQuery 是 **`staleTime: Infinity`** —— 不失效就
+  //         **永远不会自己重取**。于是别处把会话迁成 PAUSED/ENDED 之后，这四页仍把一个**冻结的世界**
+  //         当成"当前"，用户接着点 tick/act/扰动只会撞上 `assertSimSessionWritable` 的 409，
+  //         而屏上没有任何东西解释为什么。这正是"用户会看到坏东西"那一类，不是记账问题。
+  //  · **刻意不挂 `sim-world`**：`setSimSessionStatus` 只改 `s.status` 后 `putSession`，
+  //    一个 tick 态字节都没动 ⇒ `["a","sim-world",…]` 的内容不变，挂上去就是纯空跑
+  //    （与 `sim.perturbation_created` 那条不同——那条在 emit 前真的 `putTickState` 了）。
+  //  · **刻意不挂 `sim-scenarios`**：产能页 pause/end 走的也是本事件，但前端 `LiveScenario`
+  //    （`api/endpoints.ts:2044`）**类型里根本没有 `status` 字段**，`RiskBoardView` 一处都不读它
+  //    ⇒ 今天没有承载它的屏，硬挂 = 假接线（#90/#92 同族）。哪天方案列表真把生命周期上屏了，
+  //    再把 `sim-scenarios` 加进本行——**先读端后事件**，与前两次同一条纪律。
+  { event: "sim.session_status_changed", producer: "推演沙盘·会话生命周期迁移 PAUSED/RUNNING/ENDED（PATCH /a/v1/sim/sessions/:id/status · POST /a/v1/sim/live-scenarios/:id/pause|end 共用 setSimSessionStatus · app.ts:2002·负载带 from/status）", tier: "IN_SESSION", invalidates: ["sim-sessions"] },
+  // ── L19 业务流程实例环（WO-FLOWTIME）───────────────────────────────────────────
+  // 生产者：`apps/datacore/src/process/reconstruct.ts reconstructAndPersist()`，由求解器
+  // `process_flow_time` 与端点 `GET /a/v1/process-definitions/:key/instances` 两处调用。
+  // 消费者（**先读端后事件**，与 sim.perturbation_created 那次同一条纪律）：
+  //   `frontend-shell/src/views/process/ProcessWaitView.tsx` 的 `InstancePanel`
+  //   `useQuery(["a","process-instances", processKey])`，映射见
+  //   `eventInvalidation.ts LABEL_TO_KEYS["process-instances"]`。
+  //   —— 那个面板本可以用 useEffect+fetch（页面顶层就是），**刻意改成 useQuery 正是为了给这两条
+  //      订阅一个真实的落地点**：没有 queryKey 就没有可失效的缓存，登记出来就是假接线。
+  { event: "process.instance_entered", producer: "流程实例反推·从既有带时间戳单据反推出实例与站间时长（process/reconstruct.ts reconstructAndPersist）", tier: "IN_SESSION", invalidates: ["process-instances"] },
+  // stuck 走 NOTIFY：一条业务流程实例卡住是要人去处理的（卡在谁那里事件负载里带着），
+  // 不只是"刷新一下页面"。同时失效实例面板，让人点进去就能看到最新的卡顿清单。
+  { event: "process.instance_stuck", producer: "流程实例反推·检出到分析截止时刻仍未出站的实例（同上，负载带 worstProcessKey/worstStuckDays）", tier: "NOTIFY", invalidates: ["process-instances", "notifications"] },
 ];
 
 /** 按消费视图反查订阅（前端某页声明它依赖哪些事件）。 */

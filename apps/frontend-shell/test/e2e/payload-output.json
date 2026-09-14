@@ -1,0 +1,183 @@
+{
+  "sim": {
+    "ranPerturbation": true,
+    "shotAfterRun": "10-after-run.png",
+    "shot_传导识别": "11-tab-传导识别.png",
+    "err_损失归因": "locator.click: Timeout 6000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button').filter({ hasText: '损失归因' }).first()\u001b[22m\n",
+    "err_方案寻优": "locator.click: Timeout 6000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button').filter({ hasText: '方案寻优' }).first()\u001b[22m\n",
+    "responses": [
+      {
+        "url": "/a/v1/sim/view-config",
+        "status": 200,
+        "bytes": 683902,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 3
+      },
+      {
+        "url": "/a/v1/sim/drill/state-var-layers",
+        "status": 200,
+        "bytes": 2453,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 1
+      },
+      {
+        "url": "/a/v1/sim/sessions",
+        "status": 200,
+        "bytes": 871,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 0
+      },
+      {
+        "url": "/a/v1/sim/propagation-rules?published=true",
+        "status": 200,
+        "bytes": 27220,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 2
+      },
+      {
+        "url": "/a/v1/sim/propagation-rules?published=true",
+        "status": 200,
+        "bytes": 27220,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 2
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+        "status": 200,
+        "bytes": 376,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/metric-series?limit=500&stateVars=blockedPressure%2CchangeoverPressure%2Cclearan",
+        "status": 200,
+        "bytes": 210749,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/world",
+        "status": 200,
+        "bytes": 418325,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+        "status": 201,
+        "bytes": 418667,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/tick",
+        "status": 200,
+        "bytes": 2882690,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+        "status": 200,
+        "bytes": 700,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+        "status": 200,
+        "bytes": 700,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 0
+      },
+      {
+        "url": "/a/v1/sim/sessions",
+        "status": 200,
+        "bytes": 871,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 0
+      },
+      {
+        "url": "/a/v1/sim/view-config",
+        "status": 200,
+        "bytes": 683902,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 3
+      },
+      {
+        "url": "/a/v1/sim/drill/state-var-layers",
+        "status": 200,
+        "bytes": 2453,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 1
+      },
+      {
+        "url": "/a/v1/sim/propagation-rules?published=true",
+        "status": 200,
+        "bytes": 27220,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 2
+      },
+      {
+        "url": "/a/v1/sim/sessions/sims_demo_seed_world/metric-series?limit=500&stateVars=blockedPressure%2CchangeoverPressure%2Cclearan",
+        "status": 200,
+        "bytes": 234021,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 0
+      },
+      {
+        "url": "/a/v1/sim/propagation-rules?published=true",
+        "status": 200,
+        "bytes": 27220,
+        "yuan": 0,
+        "yi": 0,
+        "wan": 0,
+        "money": 2
+      }
+    ],
+    "totalBytes": 5649560,
+    "totalYuan": 0,
+    "totalMoneyKeys": 16
+  },
+  "canary": {},
+  "authProbe": {
+    "captured": true,
+    "prefix": "Bearer eyJhbGciOiJSUzI…"
+  },
+  "FATAL": "page.evaluate: TypeError: Failed to fetch\n    at probe (eval at evaluate (:290:30), <anonymous>:3:23)\n    at eval (eval at evaluate (:290:30), <anonymous>:16:23)\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)\n    at /home/user/complete/.claude/worktrees/agent-ad3e4344d3fc9fa31/apps/frontend-shell/test/e2e/verify-payload.mjs:78:25",
+  "shotFatal": "ERR-payload.png"
+}

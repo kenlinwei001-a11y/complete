@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createTestApp, debugHeaders, PLANNER, submitQuery, waitForTask, type TestApp } from "./helpers.js";
 
+/** 测试用假凭证（非任何真实部署值）。`/metrics` 已收口为服务间鉴权，抓取方须带此头。 */
+const SVC = "test-only-fake-service-token";
+
 let t: TestApp;
 beforeEach(async () => {
-  t = await createTestApp();
+  t = await createTestApp({ env: { SERVICE_TOKEN: SVC } });
 });
 
 describe("ops endpoints & error envelope", () => {
@@ -25,7 +28,7 @@ describe("ops endpoints & error envelope", () => {
     });
     await waitForTask(t, taskId, (x) => x.status === "COMPLETED");
 
-    const metrics = await t.app.inject({ method: "GET", url: "/metrics" });
+    const metrics = await t.app.inject({ method: "GET", url: "/metrics", headers: { "x-service-token": SVC } });
     expect(metrics.statusCode).toBe(200);
     const text = metrics.body;
     expect(text).toContain('qos_tasks_total{path="WORKFLOW",status="COMPLETED"} 1');

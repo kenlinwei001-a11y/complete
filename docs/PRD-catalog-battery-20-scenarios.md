@@ -6,6 +6,14 @@
 | 复用声明 | 8 个求解器已有公式级规格（capacity_forecast/affected_orders/risk_timeline/plan_audit/plan_generate/bottleneck_matrix/capex_scenario/sop_balance），本文新增 **13 个**；规则在 C01–C25 基础上新增 **C26–C33** |
 | 自动填充 | 全部数据由 §7 的 GenSpec 扩展生成；意图/场景/评测用例按 §8 规则从 §1 总表自动派生 |
 
+## 0. 本体引用与影响（补录）
+
+> 遗留 PRD 追溯补录（治理 #2，prd:check 入图）；仅引用平台真实不变量(§5 R1–R14)/断点(§8 G-1..G-8)。
+
+- **触及不变量**（§5）：R11 · R3
+- **触及断点**（§8）：G-1
+- **范畴**：锂电 20 场景目录（Skills×Agents×Workflows×Solvers×约束）；场景全链上架
+
 ## 0. 初级开发实施流水（每场景固定五步，禁止跳步）
 
 ① 按 §2 实现/复用求解器（参照实现双算进 VLE）→ ② 按 §3 注册规则 → ③ 按 §6 创建 workflow（DRAFT→发布校验）→ ④ 按 §4+公共模板写 skill（lint+评测双门禁）→ ⑤ 按 §5 创建 agent 并在 §1 指定视图挂载意图与场景入口。完成判据 = §8 自动生成的 3 条评测用例 + 1 条端到端用例全绿。

@@ -29,7 +29,7 @@ import type { CalibratableParamDef, SolverContext, SolverParamsShape } from "../
 import { round } from "../src/prng.js";
 
 const MODEL = "4680-NCM";
-const T0 = "2026-07-01";
+const T0 = "2026-06-10";
 const CFG = calibrationConfig(BATTERY_SOLVER_PARAMS as unknown as SolverParamsShape);
 
 const tick = (t: TestApp, advance: "1d" | "7d") =>
@@ -92,7 +92,7 @@ function syntheticPairs(
       staleParams: false,
       sliceKey: `capacity_forecast|${baseId ?? "all"}|${MODEL}`,
       weekOfWindow: week,
-      pairedAt: "2026-07-01T00:00:00.000Z",
+      pairedAt: "2026-06-10T00:00:00.000Z",
     });
   };
   for (let d = 0; d < opts.days; d++) {
@@ -138,13 +138,29 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
     // error/ape 手算一致（实际值 = A8 ts_agg_runs 同窗口 line_output_daily）
     const pair = (await t.repos.calibrationPairs.list("demo", (p) => !p.baseId && p.windowTo === T0))[0]!;
     const c = await t.services.solvers.loadContext("demo");
-    const baseIds = [...c.certByModel.get(MODEL)!.keys()];
+    // SA-3 Workshop 层：一个认证基地的 10 条"产线"实为 10 道串行工序车间；实际值 = Σ认证基地
+    // （当日各车间产出的均值 = 该基地代表工序吞吐），与 pairing 按基地取均值口径一致（不重复计入在制品）。
+    const certBases = [...c.certByModel.get(MODEL)!.keys()];
+    const linesByBase = new Map<string, Set<string>>();
+    for (const l of c.lines) {
+      const b = String(l.props.baseId);
+      const set = linesByBase.get(b) ?? new Set<string>();
+      set.add(String(l.props.lineId));
+      linesByBase.set(b, set);
+    }
+    const certLineIds = new Set(c.lines.filter((l) => certBases.includes(String(l.props.baseId))).map((l) => String(l.props.lineId)));
     const runs = await t.repos.tsAggRuns.list(
       "demo",
-      (x) => x.specKey === "line_output_daily" && x.windowEnd === T0 && baseIds.some((b) => x.entityId === `LINE-${b}`),
+      (x) => x.specKey === "line_output_daily" && x.windowEnd === T0 && certLineIds.has(String(x.entityId)),
     );
-    expect(runs).toHaveLength(baseIds.length);
-    const actual = round(runs.reduce((a, x) => a + x.value, 0) / c.params.packCellCount / 10000, 6);
+    expect(runs).toHaveLength(certLineIds.size);
+    let cells = 0;
+    for (const b of certBases) {
+      const baseLineIds = linesByBase.get(String(b))!;
+      const baseRuns = runs.filter((x) => baseLineIds.has(String(x.entityId)));
+      cells += baseRuns.reduce((a, x) => a + x.value, 0) / baseRuns.length; // 各车间产出均值 = 代表工序吞吐
+    }
+    const actual = round(cells / c.params.packCellCount / 10000, 6);
     expect(pair.actual).toBe(actual);
     expect(pair.error).toBe(round(pair.predicted - actual, 6));
     expect(pair.ape).toBe(round(Math.abs(pair.error) / Math.max(actual, 1e-6), 6));
@@ -254,7 +270,7 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
       evidence: { windowFrom: "2026-06-01", windowTo: "2026-06-30", nPairs: 30, mapeBefore: 12, simulatedMapeAfter: 9.5, bias: 0.2, flags: [] },
     };
     await t.repos.calibrationProposals.put(proposal);
-    const before = (await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 })).json() as { data: { p50: number } };
+    const before = (await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 })).json() as { data: { capWanP50: number } };
 
     // 批准走 Action（§S2）：EXECUTED 后 version+1 + 新值生效
     const approve = await t.app.inject({ method: "POST", url: `/a/v1/calibration/proposals/${proposal.id}/approve`, headers: PLANNER, payload: {} });
@@ -266,14 +282,14 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
     expect((await t.services.solvers.getParams("demo")).ramp.base).toBe(0.8);
     const v1 = await t.services.solvers.paramsVersion("demo");
     expect(v1).toBe(v0 + 1);
-    const after = (await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 })).json() as { data: { p50: number } };
-    expect(after.data.p50).toBeLessThan(before.data.p50); // 后续求解用新值（week1 爬坡 0.8）
+    const after = (await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 })).json() as { data: { capWanP50: number } };
+    expect(after.data.capWanP50).toBeLessThan(before.data.capWanP50); // 后续求解用新值（week1 爬坡 0.8）
 
     // S1 修订：runWithParams(旧版本) 复现旧输出（同输入同参数版本同输出）
     const replayOld = await t.services.solvers.runWithParams("demo", "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 }, { paramsVersion: v0 });
-    expect(replayOld.p50).toBe(before.data.p50);
+    expect(replayOld.capWanP50).toBe(before.data.capWanP50);
     const replayNew = await t.services.solvers.runWithParams("demo", "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 1 }, { paramsVersion: v1 });
-    expect(replayNew.p50).toBe(after.data.p50);
+    expect(replayNew.capWanP50).toBe(after.data.capWanP50);
 
     // 一键回滚（亦走 Action）→ 恢复上一参数版本值
     const rb = await t.app.inject({ method: "POST", url: `/a/v1/calibration/proposals/${proposal.id}/rollback`, headers: PLANNER, payload: {} });
@@ -393,8 +409,8 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
       basis: { windowFrom: "2026-06-01", windowTo: "2026-06-30", samples: 20 },
       trigger: "C12",
       status: "APPLIED",
-      createdAt: "2026-07-01T00:00:00.000Z",
-      appliedAt: "2026-07-01T08:00:00.000Z",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      appliedAt: "2026-06-10T08:00:00.000Z",
       appliedTick: 0,
       sliceKey: `capacity_forecast|all|${MODEL}`,
       paramRef: { scope: "ONTOLOGY_PROPERTY", path: "Process.yield" },
@@ -405,7 +421,7 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
     await t.repos.calibrationHistory.put({
       id: "calh_demo_c8",
       tenantId: "demo",
-      at: "2026-07-01T08:00:00.000Z",
+      at: "2026-06-10T08:00:00.000Z",
       trigger: "C12",
       changedParams: [proposal.parameter],
       mapeBefore: 12,
@@ -432,9 +448,9 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
       staleParams: false,
       sliceKey: `capacity_forecast|all|${MODEL}`,
       weekOfWindow: 1,
-      pairedAt: "2026-07-15T00:00:00.000Z",
+      pairedAt: "2026-06-24T00:00:00.000Z",
     });
-    await seedPairs(t, [mk("2026-07-05", 0.09), mk("2026-07-10", 0.11)]);
+    await seedPairs(t, [mk("2026-06-14", 0.09), mk("2026-06-19", 0.11)]);
 
     // 未满 14 模拟日 → 不回写
     expect(await t.services.calibration.runMetaLoop("demo")).toBe(0);

@@ -1,0 +1,5 @@
+{
+  "note": "lever-landing-exists 棘轮基线：存量「落点指向不存在属性」的具名豁免，只许降不许升。每条必须写 why。",
+  "generatedBy": "node scripts/check-lever-landing-exists.mjs --update",
+  "exempt": {}
+}

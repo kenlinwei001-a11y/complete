@@ -5,8 +5,10 @@
   "type": "module",
   "main": "./dist/server.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/solvers/sandbox-runner.mjs','dist/solvers/sandbox-runner.mjs')\"",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
+    "typecheck:test": "tsc -p tsconfig.typecheck.json --noEmit",
+    "typecheck:src": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test",
     "test": "vitest run",
     "start": "node dist/server.js",
@@ -19,17 +21,18 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^9.0.0",
     "@platform/contracts": "workspace:*",
+    "@platform/llm-adapters": "workspace:*",
     "argon2": "^0.41.1",
     "cron-parser": "^5.5.0",
     "fastify": "^5.2.0",
     "jose": "^5.9.0",
     "mammoth": "^1.8.0",
+    "node-xlsx": "^0.24.0",
     "openai": "^6.42.0",
     "pdf-parse": "^1.1.1",
     "pg": "^8.13.0",
     "pino": "^9.5.0",
-    "zod": "^4.0.0",
-    "@platform/llm-adapters": "workspace:*"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

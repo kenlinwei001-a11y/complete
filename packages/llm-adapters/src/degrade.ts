@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { ClassificationSchema, ClassifierParseError } from "./anthropic.js";
+import { ClassifierParseError } from "./anthropic.js";
+import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
 import type { CompletionResp, CompletionReq, ParseReq, RawClassification } from "./types.js";
 
 /**
@@ -88,6 +89,18 @@ export async function parseWithJsonModeDegradation<T>(client: Completer, req: Pa
   return null;
 }
 
+/**
+ * WO-SLOT-HARVEST · JSON-mode 降级路的**分类信封 schema**：只校验路由骨架（candidates + outOfCatalog），
+ * 且**逐层 loose（不剔除未知键）** —— 这条路服务的正是"没有原生结构化输出"的兼容端点（Kimi/DeepSeek/vLLM 一类），
+ * 也正是最爱把槽位塞进 `candidates[i].extractedSlots` 的那批。用旧的 `ClassificationSchema`（candidates 严格剔未知键
+ * ＋ `extractedSlots` 必填）会**先删证据、再因缺字段判校验失败**：重试 2 次仍失败 → ClassifierParseError → 路径 B。
+ * 槽位不由本 schema 负责，一律交 `harvestClassificationSlots`（单源）。
+ */
+const ClassificationEnvelopeSchema = z.looseObject({
+  candidates: z.array(z.looseObject({ intentKey: z.string(), confidence: z.number() })).max(3),
+  outOfCatalog: z.boolean(),
+});
+
 /** 分类调用点的 JSON-mode 降级（L3）：失败语义 = ClassifierParseError → 既有路径 B。 */
 export async function classifyWithJsonModeDegradation(
   client: Completer,
@@ -97,9 +110,16 @@ export async function classifyWithJsonModeDegradation(
     model: req.model,
     system: req.system,
     messages: [{ role: "user", content: req.user }],
-    schema: ClassificationSchema,
+    schema: ClassificationEnvelopeSchema,
     maxTokens: 1024,
   });
   if (out == null) throw new ClassifierParseError();
-  return out;
+  // 槽位走单源收割器（顶层/candidate × 对象/JSON 串四形态全收），收不掉的进 unconsumed 并落日志。
+  const harvest = harvestClassificationSlots(out);
+  reportUnconsumedSlots("degrade.classify", harvest);
+  return {
+    candidates: out.candidates.map((c) => ({ intentKey: c.intentKey, confidence: c.confidence })),
+    outOfCatalog: out.outOfCatalog,
+    extractedSlots: harvest.slots,
+  };
 }

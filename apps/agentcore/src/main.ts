@@ -6,10 +6,12 @@ import { sdkMcpConnectorFactory } from "./mcp/client.js";
 import { McpRuntime } from "./mcp/runtime.js";
 import { Metrics } from "./metrics.js";
 import { createMockDataCore } from "./mocks/clients.js";
-import { distillExperienceCases, seedIntentsAndPlans, seedRegistry, seedSceneEntries, seedScenarioPackage } from "./mocks/seed.js";
+import { distillExperienceCases, ensureScenarioPackageSeed, SEED_TENANT, seedMcpConfigs, seedRegistry, seedSceneEntries } from "./mocks/seed.js";
+import { seedScenarios } from "./scenarios-catalog.js";
 import { sweepInterruptedTasks, startInterruptedSweep } from "./ops/sweep.js";
 import { createRepos } from "./persistence/index.js";
 import { buildServer } from "./server.js";
+import { auditSeededSkills } from "./skill-publish-gate.js";
 import { createHttpDataCore } from "./tools/datacore-http.js";
 import { LocalFsSkillResourceReader } from "./tools/skill-resources.js";
 
@@ -18,21 +20,25 @@ async function main(): Promise<void> {
   const repos = await createRepos(config);
   const metrics = new Metrics();
 
-  // Seed the battery-manufacturing package when missing (QOS-PRD §7.6).
-  const seedPkg = seedScenarioPackage();
-  if (!(await repos.packages.get(seedPkg.id))) {
-    await repos.packages.insert(seedPkg);
-    const { intents, plans } = seedIntentsAndPlans();
-    for (const p of plans) await repos.plans.insert(p);
-    for (const i of intents) await repos.intents.insert(i);
-  }
+  // 场景包 + 意图 + 计划：按各自 id 幂等播种（与 workflows/skills/agents 一致），不再挂「包存在」守卫
+  // —— 修复 PG 真部署「包已存在则意图永不再种 → classify 候选空 → OUT_OF_CATALOG → 探索兜底」。
+  // boot 时种 demo；任意其它租户由 server.ts ensureScenarios 懒触发同一函数补齐（多租户）。
+  await ensureScenarioPackageSeed(repos, SEED_TENANT);
   // 真连部署批次：B5 场景入口 + B1/B2/B4 演示注册表（缺失才播种，幂等）。
   const { agents, workflows, skills } = seedRegistry();
   for (const wf of workflows) if (!(await repos.workflows.get(wf.id))) await repos.workflows.insert(wf);
   for (const sk of skills) if (!(await repos.skills.get(sk.id))) await repos.skills.insert(sk);
   for (const ag of agents) if (!(await repos.agents.get(ag.id))) await repos.agents.insert(ag);
+  // MCP 服务器演示配置（使 MCP 库页不为空）
+  for (const mcp of seedMcpConfigs()) {
+    if (!(await repos.mcpConfigs.get(mcp.id))) await repos.mcpConfigs.insert(mcp);
+  }
   for (const scn of seedSceneEntries()) {
     if (!(await repos.sceneEntries.byView(scn.tenantId, scn.viewKey))) await repos.sceneEntries.upsert(scn);
+  }
+  // 场景启动器 P2：出厂 20 场景 upsert 为一等 PUBLISHED Scenario（幂等；SCENARIO_CATALOG 单一来源）。
+  for (const sc of seedScenarios()) {
+    if (!(await repos.scenarios.byKey(sc.tenantId, sc.scenarioKey))) await repos.scenarios.upsert(sc);
   }
   // 运营态出厂配置增量 §3：经验记忆库 50 案例（缺失才播种，幂等；search_experience 检索）
   if ((await repos.experience.listByTenant("demo")).length === 0) {
@@ -61,6 +67,16 @@ async function main(): Promise<void> {
   const skillResources = config.BLOB_DIR ? new LocalFsSkillResourceReader(config.BLOB_DIR) : undefined;
   const deps = wireDeps({ config, repos, llm, dataCore, mcp, metrics, skillResources, providerDirectory });
   const app = await buildServer(deps);
+
+  // WO-REFGATE-ENT · F14：出厂技能一次也没过发布门 —— 上面那几行 `repos.skills.insert(sk)` 就是旁门，
+  // 种子以 `status:"PUBLISHED"` 直插仓储，`POST /b/v1/skills/:id/publish` 一次都没被调用。
+  // 「门装上了」于是被读成「库里的东西都过了门」，而这是两个不同的命题。
+  //
+  // 补法不是让启动期去打 HTTP（启动期没有 HTTP），而是让种子与发布路**共用同一份判据**
+  // （`skill-publish-gate.ts`），启动时对已落库的 PUBLISHED 种子补问一遍。
+  // 不阻断启动：出厂数据有问题是运维要看见的事实，不是让服务起不来的理由——
+  // 事实经 **日志** + **`GET /b/v1/ops/skill-seed-gate` 诚实位** 两处外透，谁都能查。
+  await auditSeededSkills({ repos, dataCore, tenantId: SEED_TENANT, logger: app.log });
 
   // 增量 §2-2 崩溃语义：启动扫描 EXECUTING_* 滞留 >10min 的任务 → INTERRUPTED_BY_RESTART，
   // 之后周期检查兜底（事件落库 → SSE 回放可见）。

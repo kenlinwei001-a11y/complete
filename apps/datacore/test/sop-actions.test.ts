@@ -230,6 +230,39 @@ describe("增量 §7.10/§7.12 — plan-versions/current + 定稿走 Action", ()
       expect(keys).toContain(k);
     }
   });
+
+  // WO-LEVER-ADOPT-DRIFT · SEAM（数据半 schema × 引擎半前端 payload）：前端 DynamicLeverPanel.adoptCombo 迁到
+  // 动态杠杆组合后发 {modelId, levers, snapshot}（不再发 whatIf）→ 后端 ActionType schema 必接 levers，否则采纳恒
+  // 报 `payload.whatIf is required` 假阴。红咬：① 前端真实 payload 形状被接受；② 缺 levers（旧 whatIf-only 形状）诚实 400。
+  it("采纳产能保障方案 · 接受前端动态杠杆 payload（levers）·缺 levers 诚实 400（治 whatIf→levers 漂移）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // ① 前端 adoptCombo 的真实 payload 形状（modelId + 杠杆组合 + 推演快照）→ 被接受（草稿建成）。
+    const ok = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/action-drafts",
+      headers: ADMIN,
+      payload: {
+        actionTypeKey: "采纳产能保障方案",
+        payload: {
+          modelId: "4680-NCM",
+          levers: [{ objectType: "Process", objectId: "obj_Process_P1", prop: "yield_baseline", value: 0.95 }],
+          snapshot: { mode: "batch", p50: 100, mainBn: "良率波动" },
+        },
+      },
+    });
+    expect([200, 201]).toContain(ok.statusCode);
+    expect((ok.json() as { draftId?: string; id?: string }).draftId ?? (ok.json() as { id?: string }).id).toBeTruthy();
+    // ② 缺 levers（旧 whatIf-only 形状）→ 诚实 VALIDATION_ERROR「payload.levers is required」（证 required 已从 whatIf 改到 levers）。
+    const bad = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/action-drafts",
+      headers: ADMIN,
+      payload: { actionTypeKey: "采纳产能保障方案", payload: { modelId: "4680-NCM", whatIf: {} } },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect((bad.json() as { error: { code: string; message: string } }).error.message).toContain("levers");
+  });
 });
 
 describe("S2 action approval (V9)", () => {
@@ -290,11 +323,27 @@ describe("S2 action approval (V9)", () => {
     expect(step1.status).toBe("PENDING_APPROVAL");
     expect(step1.approvalSteps[0]).toMatchObject({ decision: "APPROVE", approverId: "planner2" });
 
-    // step 2: admin approves → APPROVED → outbox → mock executor → EXECUTED with MO-2026-xxxx
+    // step 2: admin approves → APPROVED → outbox → 执行器。
+    // ⚠️ 断言史（勿再往回改）：原本是 EXECUTED —— 但那时靠的是 MockActionExecutor 返回的
+    // `MO-2026-xxxx` **假工单号**，审批链走完、审计留痕齐全、targetRef 看着像真的而真值一个字节没动
+    // （G-ACTION-NOOP-EXEC）。收口时改成 EXECUTION_FAILED 让欠账在测试里可见，并留话
+    // 「接上真执行器后请把本段断言改回 EXECUTED」。
+    // WO-ADOPT-MITIGATION 已接上真执行器（写 AdoptedMitigation 台账 → risk_timeline 真曲线自第 tn 天起扣 eff），
+    // 故此处按那句留话改回 EXECUTED —— 且**加咬 targetRef 必须是 MIT-ADOPT 形态**：
+    // 「EXECUTED」这次是因为真写了东西，不是因为又有人给了个好看的假号。
+    // 「真的让曲线降了」由 test/action-adopt-mitigation.seam.test.ts 的效果层断言把守（本用例只管审批链）。
     const done = (await t.app.inject({ method: "POST", url: `/a/v1/action-drafts/${draftId}/approve`, headers: ADMIN, payload: {} })).json() as ActionDraft;
-    expect(done.status).toBe("EXECUTED");
+    expect(done.status, `执行失败：${done.executionResult?.error ?? ""}`).toBe("EXECUTED");
     expect(done.executionResult!.ok).toBe(true);
-    expect(done.executionResult!.targetRef).toMatch(/^MO-2026-\d{4}$/);
+    expect(String(done.executionResult!.targetRef ?? "")).toContain("MIT-ADOPT:");
+    // 头号红咬：绝不允许再出现 MO 形态的假单号（真假不可分辨正是本断点的病灶）。
+    expect(String(done.executionResult!.targetRef ?? "")).not.toMatch(/^MO-\d{4}/);
+    // 真值层旁证：审批通过后仓储里确实多了那条采纳台账（不是只改了个状态字段）。
+    const adopted = await t.repos.objects.listByType("demo", "AdoptedMitigation");
+    expect(adopted.map((o) => [o.props.baseId, o.props.factor, o.props.planKey, o.props.status])).toEqual([
+      ["changzhou", "物料齐套", "early_stock", "ACTIVE"],
+    ]);
+    expect(adopted[0]!.props.eff, "eff 必须来自方案库（早备料 eff=12），不是猜的").toBe(12);
 
     // events through the C-2 outbox
     const events = (await t.repos.outboxEvents.list("demo")).filter((e) => e.payload.draftId === draftId).map((e) => e.event);
@@ -310,7 +359,9 @@ describe("S2 action approval (V9)", () => {
       events: { event: string }[];
     };
     expect(audit.steps).toHaveLength(2);
-    expect(audit.executionResult.targetRef).toMatch(/^MO-2026-/);
+    // 审计里的 targetRef 自证采纳了什么，且绝不是 MO 形态假单号。
+    expect(String(audit.executionResult.targetRef ?? "")).toContain("MIT-ADOPT:");
+    expect(String(audit.executionResult.targetRef ?? "")).not.toMatch(/^MO-\d{4}/);
     expect(audit.events.length).toBeGreaterThanOrEqual(3);
 
     // reject path: comment is mandatory; second step reject → REJECTED

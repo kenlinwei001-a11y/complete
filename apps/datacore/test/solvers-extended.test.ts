@@ -112,11 +112,32 @@ describe("E6a · 端点真实出结果 + 注册完整", () => {
     expect(r.feasible).toBe(true); // 默认杠杆可覆盖
   });
 
-  it("catalog discover 列出全部 22 求解器（8 复用 + 13 + 1 编排器）", async () => {
+  it("catalog discover 列出全部 41 求解器（22 业务场景 + WO-TIER2 语义发现扩面 + portfolio·WO-PORTFOLIO-OPTIMAL + base_capacity_outlook·WO-B·双占 reconcile + chain_loss_attribution·WO-SANDBOX-E1 + finance_world_projection·WO-FINANCE-WORLDSTATE + capacity_ledger·WO-CAPACITY-EDGE）", async () => {
     const t = await makeApp();
     const res = await t.app.inject({ method: "GET", url: "/a/v1/catalog?kind=solvers", headers: ADMIN });
     const items = (res.json() as { items: { key: string }[] }).items;
-    expect(items.length).toBe(22);
+    /**
+     * 39 → **40**：WO-FINANCE-WORLDSTATE 的 `finance_world_projection` 进 `COCKPIT_SOLVER_CATALOG`
+     * ⇒ 同时进 discover 场景池（它答的是「这次扰动让成本涨了多少钱」，是一句真问句，该被发现）。
+     *
+     * ⚠ 这个 +1 是**全量 datacore 跑当场报红逼出来的**（`expected 40 to be 39`），不是我改完代码顺手想起来的 ——
+     * 与 `ontology-core.test.ts` 那条 `SOLVER_KEYS.length` 同族：**注册一个求解器要改的金值不止一处**。
+     * 本单实际动到 **7 处**：`SOLVER_KEYS` · `SOLVER_OUTPUT_SHAPES` · `catalog.ts` · `taxonomy.ts`（tsc 强制）·
+     * `ontology-signature.ts` · `solver-taxonomy.test.ts`(60→61) · `ontology-core.test.ts`(60→61) · 本条(39→40)。
+     * 前六处我按工单清单做了，**这一条只有全量跑才抓得到** —— 只跑相关文件会一路绿到并线才炸。
+     *
+     * 40 → **41**（WO-CAPACITY-EDGE-FIX · 2026-09-06）：`capacity_ledger` 进 `catalog.ts`
+     * ⇒ 同时进 discover 场景池（「这条线还剩多少产能」是一句真问句，该被发现）。
+     * ⚠ **上面那段警告第二次应验了，一字不差**：`capacity_ledger` 那单同样按清单改了 `SOLVER_KEYS`
+     * (61→62) / `solver-taxonomy` / `ontology-core` 等处，**唯独漏了本条**，收编时试折跑全量当场
+     * `expected 41 to be 40` —— 只跑相关文件仍然一路绿。所以这条金值不是装饰：**它是那张清单里
+     * 唯一一条「只有全量能抓」的**，谁再加求解器谁还会漏，别把它删了改成 `>= 40`。
+     */
+    expect(items.length).toBe(41);
+    expect(items.map((i) => i.key)).toContain("base_capacity_outlook");
     expect(items.map((i) => i.key)).toContain("countermeasure_combo");
+    expect(items.map((i) => i.key)).toContain("portfolio");
+    expect(items.map((i) => i.key)).toContain("finance_world_projection");
+    expect(items.map((i) => i.key)).toContain("capacity_ledger");
   });
 });
