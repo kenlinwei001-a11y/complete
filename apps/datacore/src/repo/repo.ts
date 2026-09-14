@@ -440,7 +440,24 @@ export interface OntoGraphRepo {
   replaceEdges(tenantId: string, snapshotId: string, rows: OntoGraphEdgeRecord[]): Promise<void>;
   /** 整批替换某快照的切片。语义同 replaceAtoms。 */
   replaceSlices(tenantId: string, snapshotId: string, rows: OntoGraphSliceRecord[]): Promise<void>;
-  /** 取某快照的原子（可按包过滤）。**排序确定**：`id` 升序（≡ 抽取器那侧的 atomId 升序）。 */
+  /**
+   * 取某快照的原子（可按包过滤）。排序 `(pkg, atomId)` 升序 —— **按各自存储的排序规则**。
+   *
+   * ⚠⚠ **这个顺序在两个实现之间不保证逐字相同，调用方不许依赖它**（本单实测踩出来的）：
+   *   pg 的 `ORDER BY` 走**数据库的 collation**，memory 走 JS `localeCompare`。
+   *   本机 pg 集群是 `locale=C`（字节序，大写全在小写前），于是
+   *   `AtpCheckArgs < argsSatisfiable`；而 JS `localeCompare` 给的是
+   *   `argsSatisfiable < AtpCheckArgs`。**集合完全相同、顺序不同**。
+   *   同一份数据于是在「读目录」与「读库」两条路上产出了两张只差 3 行的对账表，
+   *   而两边都不报错、都 rc=0 —— `--equiv` 才把它抓出来。
+   *
+   *   形态（照 CLAUDE.md 铁律 0.6 句式）：
+   *   **「我用『两侧都写了 ORDER BY / .sort()』当作『两侧顺序相同』的证据，
+   *   而前者并不度量后者 —— 排序规则来自部署环境，不来自我的代码。」**
+   *
+   * ⇒ 谁需要**跨存储一致**的顺序，就在应用层自己再排一次
+   *   （`premise-check.mjs graphFromNormalized` 就是这么做的）。⛔ 别指望 SQL。
+   */
   listAtoms(tenantId: string, snapshotId: string, pkg?: string): Promise<OntoGraphAtomRecord[]>;
   /** 取某快照的边（可按种类过滤）。**排序确定**：`id` 升序（= 落库时那次显式排序的序号序）。 */
   listEdges(tenantId: string, snapshotId: string, kind?: string): Promise<OntoGraphEdgeRecord[]>;

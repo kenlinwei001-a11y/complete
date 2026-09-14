@@ -953,7 +953,7 @@ class PgOntoGraphRepo implements OntoGraphRepo {
   async listAtoms(tenantId: string, snapshotId: string, pkg?: string): Promise<OntoGraphAtomRecord[]> {
     const r = await this.pool.query(
       `SELECT id, tenant_id, snapshot_id, atom_id, pkg, doc FROM ontograph_atom
-       WHERE tenant_id = $1 AND snapshot_id = $2 ${pkg ? "AND pkg = $3" : ""} ORDER BY id`,
+       WHERE tenant_id = $1 AND snapshot_id = $2 ${pkg ? "AND pkg = $3" : ""} ORDER BY pkg, atom_id`,
       pkg ? [tenantId, snapshotId, pkg] : [tenantId, snapshotId],
     );
     return r.rows.map((row) => ({

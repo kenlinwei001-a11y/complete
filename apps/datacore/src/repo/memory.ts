@@ -240,8 +240,10 @@ class MemOntoGraphRepo implements OntoGraphRepo {
       .map(clone);
   }
   async listAtoms(tenantId: string, snapshotId: string, pkg?: string) {
+    // R9：与 pg 侧 `ORDER BY pkg, atom_id` 逐字对应。⛔ 别改成按 id 排 ——
+    // 集合一样、顺序不同，而顺序正是 YAML 那侧分片布局的语义（见 repo.ts 该方法注释）。
     return this.pick(this.atoms, tenantId, snapshotId, pkg ? (r) => r.pkg === pkg : undefined)
-      .sort((a, b) => a.id.localeCompare(b.id));
+      .sort((a, b) => a.pkg.localeCompare(b.pkg) || a.atomId.localeCompare(b.atomId));
   }
   async listEdges(tenantId: string, snapshotId: string, kind?: string) {
     return this.pick(this.edges, tenantId, snapshotId, kind ? (r) => r.kind === kind : undefined)

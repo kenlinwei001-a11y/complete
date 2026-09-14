@@ -629,10 +629,38 @@ function graphFromNormalized(norm, sourceLabel) {
   if (!g.index.counts || typeof g.index.counts !== "object") {
     g.fatal.push("快照缺 counts 段 —— 图谱结构性损坏，一切计数结论均不可信（⛔ 不许当 0）");
   }
+  /**
+   * 分片健康度必须**逐个登记**，哪怕是空告警。
+   *
+   * ⚠ 这一句是 `--equiv` 当场抓出来的，不是预见的：下游 `credibility()` 里
+   *   `shardHealth.get(s) === undefined` 读作「**未载入**」并把可信度降成「存疑」。
+   *   DB 侧不登记 ⇒ 同一份数据、同一张派单，两条路给出「✔ 可信 4」与「◑ 存疑 5」
+   *   两个不同的结论，**而两边都不报错**。
+   *   登记空数组是**语义正确**不是糊弄：jsonb 直接反序列化，根本没有"解析告警"这一步。
+   */
+  const health = (label) => { g.shardHealth.set(label, []); };
+  health("INDEX.yaml");
+
+  /**
+   * ⚠ **在这里（JS 侧）重排一次，⛔ 不许依赖 SQL 的 ORDER BY**。
+   *
+   * 同样是 `--equiv` 当场抓出来的：pg 的排序走**数据库 collation**，
+   * 本机集群是 `locale=C`（字节序）⇒ `AtpCheckArgs < argsSatisfiable`；
+   * 而抽取器写 YAML 时用的是 JS `localeCompare` ⇒ `argsSatisfiable < AtpCheckArgs`。
+   * 集合一模一样、顺序不同，于是两条读路的对账表差 3 行，两边都不报错。
+   * 换一个 `en_US.UTF-8` 的集群，差异又会变成另一组行 —— 那种"随部署环境漂移的绿"
+   * 比直接的红危险得多。
+   *
+   * 判据：**canonical 顺序由抽取器定义（JS localeCompare），不由存储定义。**
+   * 这里用与 `extract.mjs emit()` 逐字相同的比较器复现它。
+   */
+  const ordered = norm.atoms.slice().sort(
+    (a, b) => String(a.pkg).localeCompare(String(b.pkg)) || String(a.id).localeCompare(String(b.id)),
+  );
   // 逐包补回 `__shard` 与 shardShape —— 加载器金丝雀是**按分片**核对的
   // （`INDEX.atomShards[].count` vs 实读），DB 侧不填它，那条金丝雀就成了装饰品。
   const perPkg = new Map();
-  for (const a of norm.atoms) {
+  for (const a of ordered) {
     const label = `atoms/${a.pkg}.yaml`;
     const { pkg: _p, ...rest } = a;
     g.atoms.push({ ...rest, __shard: label });
@@ -640,9 +668,15 @@ function graphFromNormalized(norm, sourceLabel) {
   }
   for (const [label, n] of perPkg) {
     g.shardShape.set(label, { shape: "数据库·按 pkg 成组", loaded: n, declared: null });
-    g.shardHealth.set(label, []);
+    health(label);
   }
-  for (const s of norm.slices) g.slices.push({ ...s, __shard: `slices/${s.sliceKey}.yaml` });
+  // 切片同理：canonical 顺序是抽取器写文件时那次 JS 排序，不是 SQL 的 ORDER BY。
+  for (const s of norm.slices.slice().sort((a, b) => String(a.sliceKey).localeCompare(String(b.sliceKey)))) {
+    const label = `slices/${s.sliceKey}.yaml`;
+    g.slices.push({ ...s, __shard: label });
+    g.shardShape.set(label, { shape: "数据库·一行一条切片", loaded: 1, declared: null });
+    health(label);
+  }
   return finishGraph(g, null);
 }
 
@@ -1969,4 +2003,20 @@ async function main(argv) {
   return 0;
 }
 
-process.exit(await main(process.argv));
+/**
+ * ⚠ **只有被当成命令行入口时才跑 main**。
+ *
+ * 这个守卫是 WO-ONTOGRAPH-DB 当场踩出来的，不是抄来的样板：本文件加了 `export` 之后，
+ * `graph-db.mjs --selftest` 去 `import()` 它拿 `loadGraphDirAsNormalized`，
+ * 结果**导入这一步**就把 `main(process.argv)` 跑了一遍 —— 它看见 argv 里的 `--selftest`，
+ * 跑完自己的回归套件然后 `process.exit(0)`，于是 graph-db 的落库对账**一行都没执行**
+ * 而屏上打的是「自测全部通过」+ rc=0。
+ *
+ * 形态（照 CLAUDE.md 铁律 0.6 句式）：
+ *   **「我用『命令跑完了、rc=0、屏上一片 ✔』当作『我要验的那件事通过了』的证据，
+ *   而前者并不度量后者 —— 通过的是**另一个**程序。」**
+ * 这是本仓「假绿：信号本身是真的，只是它不指向我要断言的那个对象」的又一形态。
+ */
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  process.exit(await main(process.argv));
+}
