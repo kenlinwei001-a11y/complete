@@ -75,13 +75,17 @@ describe("运营态出厂配置（livedIn 回放）", () => {
     expect(bundle.sopVersions[0]!.attainment).toBe(88);
     expect(bundle.sopVersions[11]!.attainment).toBe(94);
     expect(bundle.sopVersions[11]!.label).toBe("V12");
-    // 运营复盘视图进 workspace（零配置导航）
+    // ⛔ 原断言「运营复盘视图进 workspace」已于 2026-09-12 随该屏**整屏删除**而反转
+    //    （仓主原话：「删除它，以后需要再建新的」）。
+    //    改成**反向断言**而不是删掉整段：删掉 = 没人再守「后端不许再下发这个键」，
+    //    哪天有人把 `review` 加回 PLANVIEW_EXTRA_KEYS，前端已无 renderer ⇒ 幽灵条目，没有任何东西会红。
+    //    ⚠ 金丝雀（证明这段真在读 workspace，不是恒真的空断言）：同一回包里 `dash` 必须在。
     const ws = t.app.inject({ method: "GET", url: "/a/v1/me/workspace", headers: ADMIN });
     return ws.then((res) => {
       const body = res.json() as { views: { viewKey: string; renderer: string }[]; navigation: { key: string }[] };
-      const review = body.views.find((v) => v.viewKey === "review");
-      expect(review?.renderer).toBe("review");
-      expect(body.navigation.some((n) => n.key === "review")).toBe(true);
+      expect(body.views.some((v) => v.viewKey === "dash")).toBe(true); // 🐤 金丝雀
+      expect(body.views.some((v) => v.viewKey === "review")).toBe(false);
+      expect(body.navigation.some((n) => n.key === "review")).toBe(false);
     });
   });
 
