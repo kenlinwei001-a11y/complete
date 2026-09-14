@@ -2,17 +2,32 @@
 `docs/SYSTEM-ONTOLOGY.md`（人读的散文本体）**保留不动**；本目录是它旁边一份 **100% 从源码抽取、零人工维护字段**的事实快照。
 ⛔ 不是门、不是棘轮、不是基线：无红绿判定，不进 `gate.sh`，不进 `package.json` 的 `gates`。
 
+> ## 📦 数据已出仓（WO-ONTOGRAPH-DB）
+> **YAML 产物不再进 git。** 本目录今天只剩三份**手写** markdown；
+> 抽取产物默认落 **`.ontology-graph/`**（`.gitignore` 拦着），并可 `--to-db` 落**后台数据库**
+> （`migrations/041_ontology_graph.sql`，四张表）。
+>
+> **📖 产生这 15 万行的逻辑与关系 → [`DATA-MODEL.md`](./DATA-MODEL.md)**
+> —— 八种边的语义与抽法、三态两套口径、18 条金丝雀、14 条盲区、落库表结构与幂等语义。
+> 本 README 是**速记版**，两者冲突时以 `DATA-MODEL.md` 为准（它的每个数都带复现命令）。
+
 ## 怎么跑
 ```bash
 pnpm --filter @platform/contracts build && pnpm --filter @platform/llm-adapters build && pnpm --filter datacore build
-node scripts/ontology-graph/extract.mjs            # 抽取（只重建 INDEX.yaml/atoms/slices，本 README 不动）
-node scripts/ontology-graph/extract.mjs --canary   # 只自证工具没坏
+node scripts/ontology-graph/extract.mjs            # 抽取 → .ontology-graph/（**不进 git**）
+node scripts/ontology-graph/extract.mjs --out <d>  # 换输出目录
+node scripts/ontology-graph/extract.mjs --canary   # 只自证工具没坏（18 条）
 node scripts/ontology-graph/extract.mjs --verify   # 四条对照实验（只打数字，rc 恒 0）
+
+# 落库（DATABASE_URL 有值走 pg；没值回落内存并**明说本次不落盘**）
+DATABASE_URL=postgres://... node scripts/ontology-graph/extract.mjs --to-db
+DATABASE_URL=postgres://... node scripts/ontology-graph/graph-db.mjs --list
 ```
 datacore `dist/` 是**软前置**：没有它 `registers` 边全退化成 `parsed`（不可信）、切片层整个跳过。
-实测 5 个 program · 1626 文件 · **26s** · 峰值 RSS **2.2GB**（故逐包建 program，不建全仓巨型 program）。
+实测 5 个 program · 1626 文件 · **17–25s** · 峰值 RSS **2.2GB**（故逐包建 program，不建全仓巨型 program）。
 
 ## 读哪一份
+（以下路径都在**产物目录**下，默认 `.ontology-graph/`；落了库的话对应 `ontograph_snapshot/atom/edge/slice` 四张表。）
 - **`INDEX.yaml`（135KB，唯一入口，小到能被 agent 全量读）**：总数 · **两套口径的三态** · 金丝雀证据 · **机器可读盲区 `blindSpots[]`** · **注册表真值 `registries[]`** · **字段长度分布 `fieldStats[]`** · 分片表 · **切片目录索引**。判据：只靠它自己就能回答「哪条切片覆盖 rootType=X 且跨到 Y」，不必加载任何分片。
 - `slices/<sliceKey>.yaml`：切片本体。切片**不是本目录造的** —— 复用 `ontology/slice-library.ts` + `slice-index.ts` 的真实现，喂 `batteryObjectTypes()`/`batteryLinkTypes()` 的真求值；`tokens` 用真实现的 `tokenizeQuestion`。
 - `atoms/<package>.yaml`：原子 + 该包发出的非 `inSlice` 边。
@@ -27,6 +42,9 @@ datacore `dist/` 是**软前置**：没有它 `registers` 边全退化成 `parse
 - `seeds`/`asserts` 只对**有鉴别力的字段**发边（被 ≤3 个 schema 声明）。`id`/`name`/`key` 被 400+ schema 声明，出现在某测试里不构成「契约字段被钉住」的证据；不加这条 `asserts` 从 7,963 涨到 18,847，全是噪声。
 
 ## 三态有**两套口径**，`INDEX.byState` 两套并列（⛔ 引用时必须说清用哪一套）
+> ⚠ 本节（以及全文）写死的数是**某一次抽取的快照值，会随代码库漂**。要当前值请读
+> `INDEX.byState`，或按 `DATA-MODEL.md` §8.3 重跑一次。⛔ 别把这些数当常量引用。
+> （举例：本仓给 `domain.ts`/`repo.ts` 加了 7 个导出之后，原子就从 6266 → 6273、`wired` 同步 +7。）
 - `includingSelfFileUse`（**5750 / 70 / 446**）答「有没有生产代码在用」，同文件内的生产使用也算 —— 找**真死代码**与**假绿第 9 形态**用这套（假阳性代价高）。
 - `strictCrossFile`（**3354 / 558 / 2354**）答「有没有**别的文件**在用」，忽略同文件使用 —— 找**导出了但没人跨文件用**的过度导出面用这套。
 两套差 **2396** 个原子，差的就是「只在自己文件里被用」那批。⛔ 只报一个数 = 拿一个数盖住两个不同事实。
