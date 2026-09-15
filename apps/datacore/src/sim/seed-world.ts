@@ -201,6 +201,64 @@ export function entersSimWorld(
   return true;
 }
 
+/** `listSimWorldObjects` 回的一行：原对象 + 它所属的类型键（`typeKey` 与 `o.type` 可能不同名）。 */
+export interface SimWorldRow {
+  readonly typeKey: string;
+  readonly obj: {
+    readonly id: string;
+    readonly type: string;
+    readonly mergedInto?: string | null;
+    readonly props: Record<string, unknown>;
+  };
+}
+
+/**
+ * ══ 推演世界成员集合的**唯一物化入口** ══════════════════════════════════════════
+ *
+ * ── 为什么必须有这个函数（2026-09-15，代价是三轮返工）───────────────────────────
+ * 「谁算推演世界的成员」这条不变量，此前被**手抄了 5 份**：
+ *   ① `deriveSeedBaseSnapshot`（本文件）          ② `app.ts` 的 `nodeObjectIds`
+ *   ③ `propagation-inputs.ts` 的 `graph.objects`  ④ `change-impact.ts::buildChangeImpactWorld`
+ *   ⑤ 测试 helper `adversary-reaction.seam.test.ts::ordersByCustomer`
+ * 每份都长成 `for (类型) for (对象) if (条件) push(...)`，而条件各写各的。
+ * 给 ①② 加上「已完成订单不进世界」之后，③④⑤ 没跟上，于是一轮修完下一轮才浮出来：
+ *   · ③ 漏 ⇒ `sim-root-triad` 报「350/500 个落点没进 world.state」、
+ *          `sim-seed-world` 报「1755 格 vs 2097 格」（缺的 342 格全是 `orderChurn`）
+ *   · ④ 漏 ⇒ `change-impact-preview` 报「预览 1641 格 vs 真跑 1206 格」——
+ *          **而 ④ 自己的注释就写着「镜像 buildPropagationInputs」**，镜像却没人守
+ *   · ⑤ 漏 ⇒ `adversary-reaction §3` 挑中「条数相同但多数已完成」的客户 ⇒ 还手力度恒 0
+ *
+ * 形态（照铁律 0.6 句式）：
+ *   **「我用『我改了这条规则』当作『这条规则在全系统一致』的证据，而前者并不度量后者
+ *   —— 规则被抄成了 5 份，改一份不会让另外 4 份变红。」**
+ *
+ * ── 这个函数要解决的不是「把 5 份改对」，是「让第 6 份抄不出来」──────────────────
+ * 把**遍历 + 过滤**这一步收成一个函数，调用方只负责 `map` 成自己要的形状。
+ * 于是差异只可能出现在 `map` 上（形状不同本来就正常），不可能再出现在**成员判据**上。
+ * ⛔ 新增任何「推演世界有哪些对象」的物化点，一律走本函数；
+ *   要写 `for (t of types) for (o of listByType) if (...)` 之前，先问一句：
+ *   我要的成员集合是不是推演世界？是 ⇒ 用本函数，别再抄第 6 份。
+ *
+ * 排序：类型按 `ontologyTypes.list` 的返回序，同类型内按对象 id 升序 —— 确定性 R6
+ * （调用方若自己再排一次也无妨，但**不许依赖未排序的遍历序**）。
+ */
+export async function listSimWorldObjects(
+  repos: {
+    ontologyTypes: { list(tenantId: string): Promise<readonly { key: string }[]> };
+    objects: { listByType(tenantId: string, typeKey: string): Promise<readonly SimWorldRow["obj"][]> };
+  },
+  tenantId: string,
+): Promise<SimWorldRow[]> {
+  const out: SimWorldRow[] = [];
+  for (const t of await repos.ontologyTypes.list(tenantId)) {
+    const rows = [...(await repos.objects.listByType(tenantId, t.key))].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
+    for (const obj of rows) if (entersSimWorld(t.key, obj)) out.push({ typeKey: t.key, obj });
+  }
+  return out;
+}
+
 export function seedWorldCompleteness(s: SimSession): SeedWorldCompleteness {
   if ((s.scope as Record<string, unknown>)[DEMO_SIM_WORLD_COMPLETE_KEY] === DEMO_SIM_WORLD_TICKS) return "COMPLETE";
   if (s.status === "RUNNING" && s.curTick >= DEMO_SIM_WORLD_TICKS) return "LEGACY";

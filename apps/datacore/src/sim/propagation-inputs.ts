@@ -4,7 +4,7 @@ import type { Repos } from "../repo/repo.js";
 import { stateVarDomains } from "../synthetic/battery.js";
 import { cadenceFromProps } from "../synthetic/cadence.js";
 import { buildPairWeights, type PairWeightReport } from "./pair-weights.js";
-import { entersSimWorld } from "./seed-world.js";
+import { listSimWorldObjects } from "./seed-world.js";
 import {
   buildCadenceGates,
   scopePropagationGraph,
@@ -99,21 +99,12 @@ export async function buildPropagationInputs(
 ): Promise<PropagationInputs> {
   // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
   //
-  // ⚠ 成员判据走 `entersSimWorld`**单一出处**（2026-09-15，来历是一次真事故）：
-  //   推演世界的成员集合此前有**三个各自为政的来源** —— 种子世界态（`deriveSeedBaseSnapshot`）、
-  //   落点清单（`app.ts` 的 `nodeObjectIds`）、以及**这里的传导图**（引擎 `idsByType` 的上游）。
-  //   把「已完成订单不进推演世界」只落在前两处，第三处仍收全 500 张 ⇒ 引擎照样往已完成单上写
-  //   `orderChurn`，两条接缝当场红：
-  //     · `sim-root-triad.seam.test.ts` §2：350/500 个落点没进 world.state
-  //     · `sim-seed-world.seam.test.ts` ⑤：分批合并 1755 格 vs 普查 2097 格，缺的 342 格**全是 orderChurn**
-  //   ⛔ 别在这里手写一份 `!o.mergedInto && props.status !== "COMPLETED"` —— 抄一份就是装饰品，
-  //     改主谓词时这份拿旧的照样绿（本仓 `quantile-field-naming` 记过这笔账）。
-  const objects: PropagationGraph["objects"] = [];
-  for (const t of await repos.ontologyTypes.list(c.tenantId)) {
-    for (const o of await repos.objects.listByType(c.tenantId, t.key)) {
-      if (entersSimWorld(t.key, o)) objects.push({ id: o.id, typeKey: o.type });
-    }
-  }
+  // ⚠ 成员集合走 `listSimWorldObjects`**唯一物化入口**（2026-09-15，来历见该函数头注）：
+  //   「谁算推演世界的成员」此前被手抄了 5 份，这里是其中之一。⛔ 别在这里写
+  //   `for (types) for (listByType) if (...)` —— 那就是第 6 份抄件。
+  const objects: PropagationGraph["objects"] = (await listSimWorldObjects(repos, c.tenantId)).map(
+    ({ obj }) => ({ id: obj.id, typeKey: obj.type }),
+  );
   const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
   // ── 会话/认证范围读端：裁剪就发生在这里，两条路（tick / Trial Tick）因此天然同口径 ──
   const scoped = scopePropagationGraph({ objects, links }, scope);

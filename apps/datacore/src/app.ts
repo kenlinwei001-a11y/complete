@@ -97,7 +97,7 @@ import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact
 import { buildMetricSeries } from "./sim/metric-series.js";
 // WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
 import type { SimWorldOps } from "./sim/seed-world.js";
-import { entersSimWorld } from "./sim/seed-world.js";
+import { listSimWorldObjects } from "./sim/seed-world.js";
 // WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细（算法全在 sim/drill.ts 纯函数层，本文件只做 IO 与 A6 装配）
 import { ChainLossDrillRequestSchema } from "@platform/contracts";
 import { chainLossDrill, chainNodeDetail, type DrillObject, type DrillWorld } from "./sim/drill.js";
@@ -4079,14 +4079,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const links = await repos.ontologyLinks.list(c.tenantId);
     const rules = await repos.sim.listPropagationRules(c.tenantId, true);
     const stateVars = [...new Set(rules.flatMap((r) => [r.sourceStateVar, r.targetStateVar]))].sort();
-    // P0 修：每 nodeType → 真物化对象 id（= tick 引擎 idsByType 同源：repos.objects.listByType 非 mergedInto，稳定排序）。
+    // P0 修：每 nodeType → 真物化对象 id（= tick 引擎 idsByType 同源，稳定排序）。
+    // ⚠ 成员集合走 `listSimWorldObjects` **唯一物化入口**：这份是「用户能选到的落点」，
+    //   与传导图必须逐条相同 —— 否则用户选中一个不在世界里的落点 ⇒ 屏上「施加成功」
+    //   而下游一动不动（静默错答）。`sim-root-triad.seam.test.ts` §2 用**真端点**咬死这条等式。
     const nodeObjectIds: Record<string, string[]> = {};
-    for (const t of types) {
-      nodeObjectIds[t.key] = (await repos.objects.listByType(c.tenantId, t.key))
-        .filter((o) => entersSimWorld(t.key, o))
-        .map((o) => o.id)
-        .sort((a, b) => a.localeCompare(b));
+    for (const t of types) nodeObjectIds[t.key] = [];
+    for (const { typeKey, obj } of await listSimWorldObjects(repos, c.tenantId)) {
+      nodeObjectIds[typeKey]?.push(obj.id);
     }
+    for (const ids of Object.values(nodeObjectIds)) ids.sort((a, b) => a.localeCompare(b));
     const cfg = {
       tenantId: c.tenantId,
       nodeTypes: types.map((t) => t.key).sort(),
