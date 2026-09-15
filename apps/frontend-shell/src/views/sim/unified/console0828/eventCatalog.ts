@@ -48,10 +48,12 @@ export type EventMode = "delta" | "scale" | "set";
  * ══════════════════════════════════════════════════════════════════════════════
  *
  * ── 今天的行为是 X ──
- * 本表 12 条**一个时间形态字段都没有**（实测于本单开工日，查的是 `git show HEAD:` 的那一版：
- * `grep -c timeShape` = **0**；金丝雀：同文件必中的 `defaultMagnitude` 同法命中 **14**
- * ⇒ 是真没有，不是查法坏了。同一查法顺带实测 `mode: "delta"` **12** 条、`mode: "set"` **0** 条），
- * 于是 12 条共用**同一套**「起始 + 持续」表单。
+ * 本表 12 条**一个时间形态字段都没有**。**实测于 2026-09-15**，查的是改动前那一版；
+ * 复验命令（三条同法，`<F>` = 本文件路径）：
+ *   `git show <本单基线 commit>:<F> | grep -c "timeShape"`      → **0**
+ *   `git show <本单基线 commit>:<F> | grep -c "defaultMagnitude"` → **14**（金丝雀：必中，证明查法没坏）
+ *   `git show <本单基线 commit>:<F> | grep -c 'mode: "delta"'`    → **12**；同法 `'mode: "set"'` → **0**
+ * ⇒ 「零命中」是真没有，不是工具坏了。于是 12 条共用**同一套**「起始 + 持续」表单。
  * 而引擎侧 `durationTicks` 的语义是**到期把这笔 delta 撤掉**
  * （`apps/datacore/src/sim/propagation.ts` 的 `exitsAt` / `revertValue`：
  *  `mode:"delta"` 的回退值 = `current − magnitude`）。
