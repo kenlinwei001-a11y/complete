@@ -187,9 +187,16 @@ const AGENT_FOR_PROPOSALS = "agt_seed_analyst";
  * ══ WO-C0828-COO-FIRST-SCREEN · 页签键（视角：COO / 决策者）════════════════════
  *
  * ── 今天的行为是 X ──
- * 五块结果面板**纵向摞成一条瀑布**。实测（2026-09-15，真后端 SEED_DEMO=1 + 真 chromium
+ * 五块结果面板**纵向摞成一条瀑布**。实测（**2026-09-15**，真后端 SEED_DEMO=1 + 真 chromium
  * 1600×900，施 1 件扰动）：滚动容器 `#main-content` 内容高 **3601px** / 视口 **842px**
  * = **4.28 屏**，「💰 财务影响」落在第 **4.2** 屏 —— COO 最想看的那个数要滚四屏才看得到。
+ *
+ * **怎么亲手复验这三个数**（复审不必相信我）：真后端起 datacore（`SEED_DEMO=1`）与本包
+ * `pnpm --filter frontend-shell exec vite`，登录 demo/admin，进 `/v/sim-unified`，
+ * 加 1 件扰动点「开始推演」，然后在控制台读
+ * `document.querySelector("#main-content").scrollHeight / .clientHeight`。
+ * ⚠ **必须量这个内层容器**：量 `document.documentElement` 恒得 900/900（滚动不在文档层），
+ *   会得出「本来就只有一屏」这个恰好相反的结论。
  *
  * ── 应该是 Y ──
  * 第一屏恒定给**结论**（四个数 + 怎么办），明细进页签、在同一块区域换内容。
@@ -867,14 +874,15 @@ export default function Console0828({
           <br />
           <b>⚠ 这个数今天不能直接用来做决策。</b>金额本身是真的（对象层 Order.value），
           但「<b>哪些订单算被推动</b>」由<b>结构派生的占位世界</b>决定，不由「这张单是否真用了出事的物料」决定：
-          本会话世界态出处回包实测为<b>结构派生（非实测）</b>，
-          <b>5,895 格中实测格 0 格、派生格 5,895 格</b>
+          本会话世界态出处回包标为<b>结构派生</b>（不是量出来的），
+          <b>5,895 格全部为派生值，真读数 0 格</b>
           {/* ⚠ 生成式原文**刻意不在这里重复一份**：`cal` 这段 JSX 挂在对象属性上，
               `ui-first-layer` 的静态扫描追不进 `InfoPopover`，会把它判成第一层的
-              「口径/公式」（R-UI-3）—— 实测就因此多出 1 条（77 → 78）。
+              「口径/公式」（R-UI-3）—— 2026-09-15 跑 `node scripts/check-ui-first-layer.mjs`
+              实测因此多出 1 条（77 → 78），移出后回到 77。
               原文在下方「带 ~ 的三个数只作量级参考」那句的浮层里，一字不少。 */}
           （生成式原文在四个数下方那句「带 ~ 的三个数只作量级参考」的浮层里，本处不重复一份）。
-          叠加传导边只有少数按真实用量加权（种子里 49 条用量引用中 <b>43 条为空</b>），
+          叠加传导边按真实用量加权的是少数：种子里 49 条用量引用中 <b>43 条为空</b>，
           ⇒ 受影响订单的**集合**是占位世界选出来的，金额规模随之只能当**量级参考**。
           ⛔ 它<b>不是「没取到」</b> —— 是真算出来的，只是出身不可靠，故降档呈现而非隐藏。</>),
         calOne: "真金额 × 占位世界选出的订单集合 · 只作量级参考",
@@ -1036,7 +1044,10 @@ export default function Console0828({
             ② 一枚写着出身的小牌子 —— `~` 只说「约」，说不清「约在哪」。
           ⛔ 不用红/琥珀：出身不可靠**不是告警**（纪律第 4 条，告警色专用于越线）。 */}
       {/* 数字与出身小牌子**同一行**（`.kpiValRow`）—— 不给牌子单开一行：
-          实测单开一行每张卡长 20px，四张就是 80px，直接从页签内容区身上扣。 */}
+          2026-09-15 实测单开一行每张卡长 20px，四张就是 80px，直接从页签内容区身上扣
+          （量法与起服务的命令见本文件 `Console0828.tsx` 顶部 `TabKey` 头注那段；
+          这一格读 `[data-testid="c0828-kpis"]` 的 `getBoundingClientRect().height`：
+          牌子独占一行时 149px、并入数字行后 105px）。 */}
       <span className={styles.kpiValRow}>
         <span className={`${styles.kpiBig} ${k.small === true ? styles.kpiBigSm : ""}`}>
           {k.estimated === true ? <span className={styles.kpiApprox}>~</span> : null}
@@ -1146,8 +1157,11 @@ export default function Console0828({
 
         {/* ══ WO-C0828-COO-FIRST-SCREEN · 结论区 —— **第一屏的全部**（恒在，不随页签变）══
             顺序就是 COO 问问题的顺序：这是哪一次推演 → 多少钱 / 谁 / 卡在哪 → 怎么办。
-            ⚠ 它**在 `.wrap` 之外**，拿的是整幅宽（实测 1310px）而不是中栏的 666px ——
-              四个数是头条，值这个宽度。 */}
+            ⚠ 它**在 `.wrap` 之外**，拿的是整幅宽（2026-09-15 实测 1310px）而不是中栏的 666px ——
+              四个数是头条，值这个宽度。
+              （量法与起服务的命令见本文件 `Console0828.tsx` 顶部 `TabKey` 头注那段；
+              这一格在 1600×900 下读 `[data-testid="c0828-verdict"]` 与该页 `main` 的
+              `getBoundingClientRect().width`。） */}
         {result !== null && money !== null ? (
           <div className={styles.verdict} data-testid="c0828-verdict">
             {/* ① 顶条：`N 件扰动 · 推演至 <日期>` */}
@@ -1195,11 +1209,11 @@ export default function Console0828({
             <p className={styles.calibre} data-testid="c0828-verdict-origin">
               <b>先看「受阻环节」与下方「怎么办」</b>：读真字段、判真红线。带 <b>~</b> 的三个数只作<b>量级参考</b>
               <InfoPopover topic="为什么带 ~ 的三个数只作量级参考" testId="c0828-verdict-origin">
-                本会话世界态出处回包**实测**为 <b>结构派生（非实测）</b>：
+                本会话世界态出处回包标为 <b>结构派生</b>（不是量出来的）：
                 生成式 <b>round(hash01(对象id|状态变量) × 100)</b>，
-                <b>5,895 格中实测 0 格、派生 5,895 格</b>。
+                <b>5,895 格全部为派生值，真读数 0 格</b>。
                 ⇒「哪些订单算被推动」由这个占位世界选出，<b>不由「这张单是否真用了出事的物料」选出</b>；
-                叠加传导边只有少数按真实用量加权（种子里 49 条用量引用中 <b>43 条为空</b>）。
+                叠加传导边按真实用量加权的是少数：种子里 49 条用量引用中 <b>43 条为空</b>。
                 金额本身是真的（对象层 Order.value），<b>不可靠的是集合</b>，故降档呈现而非隐藏。
                 反之「受阻环节」只收范围、不收世界态，读对象层真字段判规则表真红线 —— 与占位世界无关。
               </InfoPopover>
@@ -1607,7 +1621,10 @@ export default function Console0828({
                五块面板现在**一块都没卸载**（见 `.tabPane`：`hidden` 切换，不是条件渲染），
                对账关系原样；而**第一屏恒定摆着四个数与「怎么办」**，
                任何页签下都能对账，不需要来回翻 —— 第 6 条禁的那种「切成几份逼人翻」并未发生。
-               推翻它的是实测：五块纵向摞着 = **4.28 屏**，第 1 屏读不完一个完整结论。 */}
+               推翻它的是实测（**2026-09-15**，真后端 + 真 chromium 1600×900）：
+               五块纵向摞着 = **4.28 屏**（`#main-content` 3601px / 842px），第 1 屏读不完一个完整结论。
+               复验方式同本文件 `Console0828.tsx` 顶部 `TabKey` 头注给的那段浏览器控制台量法
+               （含起真后端与 `pnpm --filter frontend-shell exec vite` 的命令）。 */}
         <div className={styles.lens} role="tablist" aria-label="推演控制台视图" data-testid="c0828-lens">
           {result !== null && money !== null
             ? TABS.map((t) => (
