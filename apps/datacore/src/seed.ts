@@ -1634,6 +1634,116 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
       selectorRef: null, // 规则表直选没有"谁挑的"，留空串会读起来像编排层参与过
     },
   },
+
+  // ══ WO-SIM-ORDER-REAL-FIELDS · 订单的**真实业务字段**进推演世界（首批三个）══════════
+  //
+  // ── 今天的行为是 X，应该是 Y（开工实测原文，本机 vitest 内存态 demo 租户·seed 42）──
+  // **X**：推演世界里 Order 的每一格都是**哈希占位**。实测 `deriveSeedBaseSnapshot`
+  //   回的 `origin` 是 `cells:5895 / measuredCells:0 / derivedCells:5895`。
+  //   病因不是"没接线"——`seed-world.ts` 那一档（`const real = o.props[v]`，是有限数就用真值
+  //   并 `measuredCells += 1`）**一直都在**。病因是**没有任何一个状态变量的名字，
+  //   等于 Order 身上某个数值属性的名字**：
+  //     · Order 的状态变量（取自已发布规则）= `costPressure, demandPressure, orderChurn, shortageRisk`
+  //     · Order 的数值属性              = `creditUsedRatio, demandDelta, leadDays, outsourceRatio, qty, unitPrice, value`
+  //     · **两个集合的交集实测为空** ⇒ `o.props[v]` 恒 `undefined` ⇒ 每格都落哈希兜底。
+  //   即三分法里的「**接了线没数据**」，修法是喂数据，不是接线。
+  // **Y（本段）**：让 Order 上**本来就有真值**的三个业务字段直接**作为状态变量的名字**出现在
+  //   规则里。于是 `deriveSeedBaseSnapshot` 的同名探测当场命中，`measuredCells` 由
+  //   `0` 变成 `150 × 3 = 450`（150 = 进推演世界的订单数，见 `entersSimWorld`：
+  //   500 张 − 350 张 COMPLETED）。**播种代码一行不用改** —— 机制早就在等数据。
+  //
+  // ── 为什么三条都用 `combine:"max"`（这一条是读引擎实现定的，不是口味）───────────────
+  // `applyContribution`（`sim/propagation.ts:557`）两个分支语义**根本不同**：
+  //   · `sum` ⇒ `bucket[v] = cur + amount`，而 `cur` 是**上一拍**的值 ⇒ **纯积分器，每拍累加**。
+  //   · `max` ⇒ `first ? amount : Math.max(cur, amount)`，`first` 是"本拍第一次写它"
+  //     ⇒ **每拍重算、不吃上一拍的值**。
+  // 在手订单的台数/单价/交期是**存量读数**，不是会累积的压力。用 `sum` 的话
+  // `Model.backlogQtyTop` 会一拍比一拍大，到 tick3 就是个没有业务含义的数（而且不会红，
+  // 因为它不在 `STATE_VAR_DOMAINS` 里、不夹不衰减）。`max` 才是这三个量的正确语义。
+  //
+  // ── 为什么系数恒为 1.0 ────────────────────────────────────────────────────────
+  // 三条都是**同量纲直取**（套→套 / 元→元 / 天→天），系数 1.0 是"原样透传"而**不是**
+  // 一个业务判断。⛔ 这里刻意不引入任何业务常数：一旦写 0.8，屏上那句"该型号在手订单
+  // 最大一张是多少套"就成了假话。
+  //
+  // ── 为什么落点是 `Model` 而不是别处 ───────────────────────────────────────────
+  // `order_for_model`（Order→Model）是本仓**已物化且被方向可达门当金丝雀用**的那条边
+  // （见上方 `demo_order_churn_to_model_demand_load` 行内注释原文）。⛔ 不新造链路。
+  //
+  // ── 这三个量**刻意不进 `STATE_VAR_DOMAINS`** ─────────────────────────────────
+  // 与天数族/件数族同一条纪律：域表只收"写得出出处"的 0–100 压力量纲，而这三个是
+  // 带真实单位的业务量（套 / 元 / 天），给它们拍一个 0–100 的上界会把 21777 套夹成 100。
+  // 未登记者引擎**不夹不衰减**，并在 tick 回执 `undeclaredStateVars` 里被逐个点名 ——
+  // 缺口留在屏上，不留在注释里。
+  // ⚠ 且三者皆**入度 0（只当源、不当 target）**，引擎对这一类的既有处置正是
+  // 「外生输入：不衰减，也不进 decayUnresolved（它压根不该衰减）」（`propagation.ts:715` 原文）——
+  // 本段没有给引擎新加任何特例，只是用上了它已经有的那一类。
+  {
+    id: "simpr_demo_order_qty_to_model_top_qty",
+    key: "demo_order_qty_to_model_top_qty",
+    sourceTypeKey: "Order",
+    sourceStateVar: "qty", // = `Order.qty` 本尊（单位「套」，实测 150/150 张在手单皆有限数，708–21777）
+    viaLinkKey: "order_for_model",
+    targetTypeKey: "Model",
+    targetStateVar: "backlogQtyTop",
+    coefficient: 1.0,
+    delayTicks: 0,
+    description: "该型号在手订单里最大的一张是多少套（订单数量原样取最大值，不打折不加权）",
+    combine: "max",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    // ⛔ 不加权：`max` 取的是**某一张真单**的台数，乘一个分摊倍率之后它就不再是任何一张单的
+    // 真实台数了 —— 那正是本单要消灭的"屏上有数但对不上任何一张单"的形态。
+    weightRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_order_price_to_model_top_price",
+    key: "demo_order_price_to_model_top_price",
+    sourceTypeKey: "Order",
+    sourceStateVar: "unitPrice", // = `Order.unitPrice` 本尊（单位「元」，实测 150/150 有限数，13594–22660）
+    viaLinkKey: "order_for_model",
+    targetTypeKey: "Model",
+    targetStateVar: "backlogPriceTop",
+    coefficient: 1.0,
+    delayTicks: 0,
+    description: "该型号在手订单里最高的成交单价是多少元（订单单价原样取最大值）",
+    combine: "max",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    weightRef: null, // 同上：加权之后就不再是任何一张真单的成交价
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_order_leaddays_to_model_horizon",
+    key: "demo_order_leaddays_to_model_horizon",
+    sourceTypeKey: "Order",
+    sourceStateVar: "leadDays", // = `Order.leadDays` 本尊（单位「天」，实测 150/150 有限数，−14–178）
+    viaLinkKey: "order_for_model",
+    targetTypeKey: "Model",
+    targetStateVar: "backlogHorizonDays",
+    coefficient: 1.0,
+    delayTicks: 0,
+    // ⚠ 「交付时间」是日期，日期不是数 ⇒ 折成**距计划起点的天数**才进得了世界态。
+    // 折算式**不是本单新发明的**：`Order.leadDays` 在合成期就是这么算出来的
+    // （`synthetic/battery.ts` 的 `dueDay = round((Date.parse(due) − t0)/86400000)`，
+    // t0 = `BATTERY_SOLVER_PARAMS.forecastStart`）。本单只是**用**它，没有另起第二套折算。
+    // 负值有真实业务含义且**刻意保留**：在制单的 leadDays 可低至 −14 = 合同交期已过去 14 天
+    // 还没交（`dueDayForStatus` 的 IN_PRODUCTION 支 `(s%60)−14`）。夹到 0 会让"已逾期"
+    // 与"今天到期"在屏上变成同一个数。
+    description: "该型号在手订单里最远的一张交期还有几天（负数 = 合同交期已过去这么多天仍未交付）",
+    combine: "max",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    weightRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
 ];
 
 /**
