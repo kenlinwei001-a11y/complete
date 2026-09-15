@@ -1542,6 +1542,32 @@ export default function Console0828({
                   <h3 className={styles.headTitle}>对策看板 · {impGroups.all.length} 处受阻环节</h3>
                   <span className={styles.headRight}>按严重度排序 · 系统不给推荐</span>
                 </div>
+                {/* ══ 诚实标：这一块**不随本次扰动变** ═══════════════════════════════
+                  *
+                  * 2026-09-15 真浏览器对照实验（同一会话，两个不同扰动）实测：
+                  *   原材料涨价 → 被推动的单 150 张 · 敞口 156.6 亿 · 幅度 p90/max 11.27/18.49
+                  *   设备故障   → 被推动的单  56 张 · 敞口  62.2 亿 · 幅度 p90/max  1.07/ 4.54
+                  * 主数**随扰动变**；而本块 **18 处受阻环节、严重度、实测/红线、对策数逐字节相同**
+                  * （头两行连 `电解液 59 · 121.00/90.00 · C28` 都一样）。
+                  *
+                  * 病因（实测非推断）：`chainImpediments`（`solvers/service.ts:4549`）读的是
+                  * **对象层基线快照** —— `loadContext` + `listByType(MaterialBalance/OrderLine)` +
+                  * `links.list`，**零 sessionId、零 getTickState、零世界态**；判定器本身是纯函数
+                  * （`chain-impediment.ts` 里 `repos.` 命中 0）。
+                  *
+                  * ⚠ 这**不是**「传个 sessionId 就好」：推演世界是 0–100 的压力读数，本块判的是业务字段
+                  * （`121.00 / 90.00 天`、`3974.32 / 1760.00 套/日`）—— 两边不在同一个量纲空间，
+                  * 中间缺的是「压力数 → 天数/张数/金额」那座桥（本体已立账）。修它是另一件事。
+                  *
+                  * ⇒ 在桥接通之前，**必须在屏上说出来**。它和随扰动变的主数并排摆着，
+                  *   读者只能理解成「这次推演算出来的」——**摆错位置比没有更糟**，
+                  *   那正是仓主最初撞到的那个形态：「输入不同的扰动因素，该截屏数据没有变化」。
+                  */}
+                <p className={styles.calibre} data-testid="c0828-board-baseline-note">
+                  ⚠ 本块为<b>基线扫描</b>：读的是对象层当前快照，<b>不随本次扰动变</b> ——
+                  换一个扰动重跑，这 {impGroups.all.length} 处与各自的严重度、实测/红线都不会改变。
+                  它回答的是「<b>现在哪里卡着</b>」，不是「<b>这次扰动会卡在哪</b>」。
+                </p>
                 <div className={styles.tblWrap}>
                   <table className={styles.board}>
                     <thead>
