@@ -10,13 +10,37 @@
 /* ══ 外壳 ═══════════════════════════════════════════════════════════════════
    顶栏要横跨左栏与正文，故 `.wrap`（两栏网格）之上再包一层。
    `container-type: inline-size` 是**④ 那处排版被挤的真正修法**，理由见下面 `.opts`。 */
+/* ══ WO-C0828-COO-FIRST-SCREEN · 从「4.3 屏瀑布」改成「一屏结论页 + 页签」═══════
+   **实测于 2026-09-15**（真后端 SEED_DEMO=1 + 真 chromium 1600×900，施 1 件扰动）：
+   滚动容器 `#main-content` 内容高 **3601px** / 视口 **842px** = **4.28 屏**，
+   而 COO 最想看的「财务影响」落在第 4.2 屏。
+
+   ── 一屏靠什么成立（不是把字改小，是换了高度的来源）────────────────────────
+   改前每一栏都按**内容**撑高，于是「内容多 ⇒ 页面长」，一屏无从谈起。
+   改后高度**自上而下给定**：外层 `UnifiedSimShell .shell` 早已是
+   `height:100%; min-height:0`（实测解析成 **744px** = 842 − 18 − 80 两头内边距），
+   本文件只要接上这条链 —— `.shell` 同样 `height:100%` + flex 列，
+   `.wrap` 拿 `flex:1; min-height:0`，三栏各自 `overflow-y:auto` —— 页面就再也长不出第 2 屏。
+
+   ⚠ `min-height: 0` 不是凑数：flex 子项默认 `min-height:auto`，
+     它会**拒绝缩到内容高度以下**，于是 `overflow` 永远不触发、外层照样被撑长。
+     少写这一条，上面整套高度链会静默失效（屏上表现与没改一模一样）。
+
+   ⚠ 量的是**内层** `#main-content`，⛔ 不是 `document.documentElement` ——
+     实测文档层 `scrollHeight === clientHeight === 900` 恒成立（滚动发生在内层），
+     拿它当判据会得出「本来就只有一屏」这个恰好相反的结论。 */
 .shell {
   container-type: inline-size;
   container-name: c0828;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 /* ── 页内顶栏 ─────────────────────────────────────────────── */
 .topbar {
+  flex: none;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 9px 14px; border-bottom: 1px solid var(--line);
   background: var(--panel2); font-size: 12px; color: var(--muted);
@@ -64,6 +88,10 @@
      于是不管内容多少，rowB 都被顶到第一屏之外。横向一屏要的恰恰是「别预留高度」。 */
   font-size: 13px;
   color: var(--txt);
+  /* WO-C0828-COO-FIRST-SCREEN：三栏这一行吃掉结论区之外的**全部剩余高度**，
+     且允许被压到内容高度以下（`min-height:0`）—— 三栏各自内部滚，页面不滚。 */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* ── rowB · 受阻环节表 | 金额勾稽表（WO-SIM-DENSE ③）────────────────────────
@@ -95,7 +123,12 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  align-self: start;
+  /* WO-C0828-COO-FIRST-SCREEN：改前 `align-self: start` ⇒ 按内容撑高（实测 12 件事约 900px），
+     它一个人就把整屏顶成 1.27 屏（**推演前**实测 1068/842）。改为拉满行高 + 自己滚。
+     ⛔ 不是把事件列表删短 —— 12 件事一件没少，只是滚动从**页面**挪到了**这一栏**。 */
+  align-self: stretch;
+  min-height: 0;
+  overflow-y: auto;
 }
 @media (max-width: 980px) {
   .rail { border-right: none; border-bottom: 1px solid var(--line); }
@@ -201,8 +234,30 @@
 }
 
 /* ── 主区 ─────────────────────────────────────────────────── */
-.main { padding: 18px 20px 48px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-@media (max-width: 640px) { .main { padding: 14px 12px 32px; } }
+/* 中栏：**自己不滚**，只把高度分给 `.tabBody`（页签内容区）——
+   页签行必须钉在可视区里，否则「点页签换内容」这件事本身又要先滚一段才做得到。 */
+.main { padding: 14px 20px 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: hidden; }
+@media (max-width: 640px) { .main { padding: 12px 12px 0; } }
+
+/* ══ WO-C0828-COO-FIRST-SCREEN · 页签内容区 ═════════════════════════════════
+   四块面板**全部挂在 DOM 里**，只有当前那一块可见 —— ⛔ 不做条件渲染（`&&` 卸载）。
+   两条理由，缺一条都会出事：
+    ① **既有接缝门要求 money / cust / impediment / board 同时在场**
+       （`console0828-decision.seam.test.tsx` ④ 那条臂逐个 `toBeInTheDocument()`），
+       且 ⑦ 那条臂要「在受阻环节里点一下，再去读对策面板的标题」——
+       两块若分属两个条件渲染分支，点完那一下另一块根本不存在。
+    ② 卸载会把每块自己的展开态（`<details>`、`InfoPopover`）一并丢掉，
+       切回来变成「我刚才展开的东西没了」。
+   ⇒ 用 `hidden` 属性切换：`getByTestId` / `textContent` **照样取得到**（它们不看可见性），
+     而 `display:none` 的子树**不进 `scrollHeight`** —— 一屏与门绿两件事同时成立。
+   ⚠ **`display:flex` 会盖掉 `[hidden]` 的 UA 样式**（UA 的 `[hidden]{display:none}` 是
+     作者样式的手下败将）⇒ 必须自己把 `[hidden]` 那条写回来。
+     它靠的是**选择器特异性**（`.tabPane[hidden]` = 0,2,0 > `.tabPane` = 0,1,0），
+     **不是书写顺序** —— 所以下面两条谁先谁后都对，别为了"看起来顺"去调换它们。
+     少了这一条的病样很阴：四块面板同时可见，屏上只是"有点长"，一条报错都没有。 */
+.tabBody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 18px; }
+.tabPane { display: flex; flex-direction: column; gap: 14px; }
+.tabPane[hidden] { display: none; }
 
 /* ══ WO-UX-UNIFY · 中栏节奏（本轮版面纪律第 2 条）════════════════════════════
    标题行 → 页签行 → KPI 条 → 面板网格（先 2 列大块，再 3 列小块）→ 底部元信息行。
@@ -227,14 +282,26 @@
    两者是同一个会话、同一份查询缓存上的**两套 UX**，正是参考图那句「每个页签是不同的 UX」。
    ⛔ 没有把「财务影响 / 客户 / 卡点 / 对策」拆成页签 —— 它们是**同一次推演结果的四个切面**，
    拆开就成了"数据子集"，恰是第 6 条点名禁止的那种页签；且它们必须同时在场才能互相对账。 */
-.lens { display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line2); }
+/* ⚠⚠ WO-C0828-COO-FIRST-SCREEN 改写了上面那段注释的结论 —— 原文写的是
+   「⛔ 没有把『财务影响 / 客户 / 卡点 / 对策』拆成页签 …… 它们必须同时在场才能互相对账」。
+   **前半句已作废，后半句仍然成立，而且正是本次实现的方式**：
+   五块面板确实进了页签，但它们**一块都没有被卸载**（见 `.tabPane`）——
+   「同时在场」讲的是 DOM 与对账关系，不是「同时可见」。
+   改的理由是实测：五块纵向摞着 = **4.28 屏**，而第 1 屏一个结论都读不完整。
+   ⇒ 纪律第 6 条禁的是「把同一份数据切成几份塞进页签，逼人来回翻」；
+     本页第一屏**恒定摆着四个数与怎么办**（谁都不用翻就能对账），页签只换**明细**。 */
+.lens { flex: none; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line2); flex-wrap: wrap; }
 .lensTab {
   background: none; border: none; border-bottom: 2px solid transparent;
-  padding: 7px 13px; margin-bottom: -1px; cursor: pointer;
-  font-family: inherit; font-size: 13px; color: var(--muted2);
+  padding: 7px 11px; margin-bottom: -1px; cursor: pointer;
+  font-family: inherit; font-size: 13px; color: var(--muted2); white-space: nowrap;
 }
 .lensTab:hover { color: var(--txt); }
 .lensTabOn { color: var(--accent-txt); border-bottom-color: var(--accent); font-weight: 600; }
+/* 页签上的条数（`[受阻环节 18]` 那个 18）—— 取自引擎回包，⛔ 不是写死的装饰。 */
+.lensN { font-family: var(--font-mono); font-weight: 600; margin-left: 4px; }
+/* 「专家工作台」是**另一套 UX**不是本页的一个切面 ⇒ 推到最右并与页签拉开距离。 */
+.lensRight { margin-left: auto; }
 
 /* ③ KPI 条 —— **一行六格**（WO-SIM-DENSE ②）。
    格数由 `--kpi-n`（= 本次渲染的卡数）给：推演后 6、推演前 3。
@@ -247,16 +314,53 @@
    **一个字都没删**（逐卡字符数守恒，见 `cal` / `calOne` 的头注）——
    降层允许，删除不允许，而**静默降层等于删除**，所以 `?` 必须可见。 */
 .kpis {
+  flex: none;
   display: grid;
   grid-template-columns: repeat(var(--kpi-n, 6), minmax(0, 1fr));
   gap: 10px;
   /* KPI 条已搬出 `.main`（改前借的是它的 18/20 内边距），到外壳层要自己带边距。 */
   padding: 12px 20px;
 }
+
+/* ══ WO-C0828-COO-FIRST-SCREEN · 结论区「怎么办」════════════════════════════
+   视角是 COO：第一屏要答的是「多少钱 · 谁受影响 · 卡在哪 · 怎么办」，
+   前三问是上面那排数，第四问就是这一块。
+
+   ⛔⛔ **这一块里一个编出来的量都没有。** 实测复核过契约
+   （`packages/contracts/src/chain-sim.ts` 的 `SolutionCandidateSchema` 是 `strictObject`）：
+   字段只有 `label` / `lever` / `fromValue`·`toValue` / `dims` / `rungKind`·`rungSource` /
+   `effectKind` / `join` / `provenance` / `dataMode` ——
+   **没有 cost、没有 leadTime、没有见效时间、没有风险等级**。
+   故每行只摆三样真有的：**动什么**（label）· **从多少拨到多少**（fromText→toText）·
+   **改善最大的那一维**（`dims` 里 `improvement` 最大的那条，改善量与单位都是引擎给的）。
+   ⛔ 拿 `breach` 当「代价」、拿 dims 改善量当「见效天数」都是编造，本块一个都没做，
+     且屏上**明写**这两样今天算不出来以及为什么（字段不存在 ≠ 没取到）。 */
+.howto { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.howRow {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
+  align-items: baseline; gap: 10px;
+  border: 1px solid var(--line2); border-radius: 9px;
+  padding: 6px 11px; background: var(--panel-glass); font-size: 12px;
+}
+.howName { color: var(--txt); font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.howMove { font-family: var(--font-mono); color: var(--muted); white-space: nowrap; }
+.howGain { color: var(--muted2); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.howGainNum { color: var(--ok-txt); font-weight: 600; font-family: var(--font-mono); }
+/* 「不处置」那一行 —— 设计核心，⛔ 不许省：没有它，上面几行的代价都读作净支出。 */
+.howRowNone { border-style: dashed; background: none; }
 @media (max-width: 640px) { .kpis { padding: 10px 12px; } }
 
+/* ══ WO-C0828-COO-FIRST-SCREEN · 结论区外壳（顶条 + 四个数 + 怎么办）══════════
+   整幅宽、钉在三栏之上：四个数是 COO 的头条，给它整幅 1310px 而不是中栏的 666px。 */
+.verdict { flex: none; display: flex; flex-direction: column; gap: 9px; padding: 10px 20px 12px; }
+@media (max-width: 640px) { .verdict { padding: 9px 12px 10px; } }
+/* 顶条：`N 件扰动 · 推演至 <日期>` —— 一行说清「这屏上的数是哪一次推演的」。 */
+.vBar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.vBarTitle { font-size: 13px; font-weight: 700; color: var(--txt); }
+.vSecHead { font-size: 12px; font-weight: 600; color: var(--muted); }
+
 /* 底部整幅诚实句（原在 KPI 条下面，随 KPI 一起搬到外壳层 —— 稿子它在最底一行）。 */
-.footNote { padding: 0 20px 14px; margin: 0; }
+.footNote { flex: none; padding: 0 20px 14px; margin: 0; }
 @media (max-width: 640px) { .footNote { padding: 0 12px 12px; } }
 /* 窄屏收拢：六格塞不下时回到自适应，⛔ 不让卡片被压到读不出数。 */
 @media (max-width: 1180px) { .kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); } }
@@ -306,6 +410,8 @@
   background: var(--panel2); border-left: 1px solid var(--line);
   padding: 14px 13px 22px; display: flex; flex-direction: column; gap: 12px;
   align-self: stretch; min-width: 0;
+  /* WO-C0828-COO-FIRST-SCREEN：与左栏同一条纪律 —— 自己滚，不撑页面。 */
+  min-height: 0; overflow-y: auto;
 }
 .aiHead { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
 .aiTitle { margin: 0; font-size: 13px; font-weight: 700; color: var(--txt); }
