@@ -82,8 +82,10 @@ import {
   fmtMoney,
   NOCALC_WHY,
   ORDER_STATUS_TEXT,
+  spanLabel,
   tickDateISO,
   tickLabel,
+  tickUnitWord,
   type CellDelta,
   type OrderRow,
   type TickCalendar,
@@ -290,9 +292,13 @@ export default function Console0828({
    * 三次 `scopeUnscoped` 依次为 true / false / false，且 `scope` 原样回带。
    * ⇒ 这不是「选了不生效」的装饰控件，选择**真的改变结论集**。
    *
-   * ⚠ **「往后 30 天」那半截刻意不做**：推演世界的时间单位是「拍」，而「一拍等于几天」
-   *   全平台没有登记册；把拍读成天就是造口径（与区④ 时间线同一条纪律，屏上已有原话）。
-   *   横轴长度由左栏「推几拍」控制，那是**真的**有出处的那个量。
+   * ⚠ **「往后 30 天」那半截刻意不做** —— 但理由**不是**原来写的那句
+   *   ~~「『一拍等于几天』全平台没有登记册」~~。**那句话是错的，2026-09-11 已被推翻**：
+   *   登记册就是 `SimSession.tickDays`（见下方 `cal` 那段头注与 `console0828Model.tickDateISO`），
+   *   这块屏今天自己就在拿它做换算。留着旧理由比没有理由更危险 —— 它写在最容易被信的地方，
+   *   而本仓真的因为它派错过一次活（WO-SIM-PLAIN-WORDS 的派单书就引了这两句互相打架的话）。
+   *   真实理由只有一条：**顶栏这个控件选的是「范围」不是「时长」**，时长由左栏那一格管，
+   *   两处各摆一个时间输入会造出「以哪个为准」这个问的不出口的歧义。
    *
    * ⚠ 基地清单取自 `BASE_REGISTRY` 单源（13 个），**前端不另抄一份**；
    *   `null` = 未限定，**不等于**「全选 13 个」—— 后者会把「归属 UNKNOWN」的落点漏掉。
@@ -429,7 +435,14 @@ export default function Console0828({
         magnitude,
         unit: openEv.unit,
         startTick: startTick.trim() === "" ? null : Number(startTick),
-        durationTicks: duration.trim() === "" ? null : Number(duration),
+        /**
+         * `once` 的事件**恒 `null`**（契约里 `null` = 永久 ⇒ 引擎永不回退），
+         * ⛔ 不读 `duration` state —— 它那一格根本没渲染，但 state 仍在（上一件事留下的残值
+         * 会被 `openForm` 清掉，可这是**两层保险**：渲染没了而 state 漏进载荷，
+         * 正是那种「屏上看不见、载荷里却有」的静默错，typecheck 一个字都看不见）。
+         */
+        durationTicks:
+          openEv.timeShape === "once" ? null : duration.trim() === "" ? null : Number(duration),
       },
     ]);
     setOpenEvent(null);
@@ -750,7 +763,8 @@ export default function Console0828({
           key: "staged",
           label: "待施加扰动",
           value: String(staged.length),
-          cmp: staged.length === 0 ? "尚未添加" : `推演时长 ${horizon} 拍`,
+          // 长度口径与左栏那个输入框同源（`spanLabel`）：天为主、拍作括注，取不到刻度才只剩拍。
+          cmp: staged.length === 0 ? "尚未添加" : `推演时长 ${spanLabel(cal, horizon)}`,
           cal: (<>口径：左栏本地草稿，<b>不落盘</b>；与顶栏「服务端历史扰动」不是同一份，两者不可相加。</>),
           calOne: "左栏本地草稿 · 不落盘",
         },
@@ -833,7 +847,8 @@ export default function Console0828({
         calOne: "12 类事件可落到的具名实体",
       },
     ];
-  }, [result, money, custView, impGroups, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts]);
+    // `cal` 进依赖：「推演时长」那格的长度口径现在读它（天/拍），会话口径一到手这张卡要重算。
+  }, [result, money, custView, impGroups, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts, cal]);
 
   /* ── 渲染 ─────────────────────────────────────────────────────────────── */
   const zone = (n: string, t: string): JSX.Element => (
@@ -908,7 +923,7 @@ export default function Console0828({
                 <ul className={styles.restoreList}>
                   {restored.map((p) => (
                     <li key={p.id} data-testid={`c0828-restored-${p.id}`}>
-                      <b>{p.startTick === null || p.startTick === undefined ? "起始拍未给" : `${tickLabel(cal, p.startTick)} 起`}</b> · {p.label ?? p.kind}
+                      <b>{p.startTick === null || p.startTick === undefined ? "开始时间未给" : `${tickLabel(cal, p.startTick)} 起`}</b> · {p.label ?? p.kind}
                     </li>
                   ))}
                 </ul>
@@ -1034,7 +1049,21 @@ export default function Console0828({
 
                 {/* 就地展开下一级 —— 不跳页、不弹窗（稿子原话） */}
                 {isOpen && ok && L !== undefined && L.kind === "ok" ? (
+                  /* ══ 三段式（WO-SIM-PLAIN-WORDS · 仓主原话「不就是：什么事情 - 发生时间 - 调整了什么」）══
+                   *
+                   * ── 今天的行为是 X ──
+                   * 展开后是四格平铺（落点对象 · 幅度 · details 里的起始 + 持续），格与格之间
+                   * 没有任何结构，用户要自己在脑子里把它们归成「问的是什么」。
+                   * ── 应该是 Y ──
+                   * 收成仓主说的那三段，**顺序就是他说的那个顺序**。
+                   *
+                   * ⚠ 三段只是**分组与排序**，一个格子都没删（判据 4：字符集合只增不减）。
+                   *   「幅度」排到第三段是三段式的直接后果 —— 它答的是「调整了什么」，
+                   *   而且它有预填默认值（`defaultMagnitude`），唯一必填的是第一段那个下拉。 */
                   <div className={styles.expand} data-testid={`c0828-form-${ev.id}`}>
+                    <p className={styles.calibre} data-testid={`c0828-seg1-${ev.id}`}>
+                      ① 什么事：{ev.name}
+                    </p>
                     <div className={styles.field}>
                       <span className={styles.fieldLabel}>落点对象</span>
                       <select
@@ -1053,6 +1082,96 @@ export default function Console0828({
                         ))}
                       </select>
                     </div>
+                    {/* ⚠ 「一次性变更，之后一直生效」这句必须在**第一层**（展开表单即见），
+                        不能只写在下面 `<details>` 里 —— 它回答的是「这件事为什么没有持续时长」，
+                        而那一格的**缺席**恰恰是用户第一眼会问的事。成段解释仍在第二层。 */}
+                    <p className={styles.calibre} data-testid={`c0828-seg2-${ev.id}`}>
+                      ② 发生时间{ev.timeShape === "once" ? " · 一次性变更，之后一直生效" : ""}
+                    </p>
+                    {/* 稿子要求：「什么时候开始 · 持续多久」收在 details 里 */}
+                    <details className={styles.more}>
+                      <summary>{ev.timeShape === "once" ? "开始时间" : "开始时间与持续时长"}</summary>
+                      <div className={styles.moreBody}>
+                        <div className={styles.field}>
+                          <span className={styles.fieldLabel}>开始时间</span>
+                          <span className={styles.numRow}>
+                            <input
+                              type="number"
+                              value={startTick}
+                              placeholder={cal === null ? "留空=当前拍" : "留空=从现在起"}
+                              aria-label="开始时间"
+                              onChange={(e) => setStartTick(e.target.value)}
+                            />
+                            {/* 单位词：取得到刻度就不写「拍」，让下面那行的**日期**当主口径；
+                                取不到才退回「拍」，并由 `calShortfall` 说明为什么没有日期。 */}
+                            {cal === null ? <span className={styles.unit}>拍</span> : null}
+                          </span>
+                        </div>
+                        {/* ⚠ 输入的那个数**仍是拍序**（后端收的就是 `startTick`），
+                            但屏上读到的主口径是**日期**，「第 N 拍」退到括号里。
+                            ⛔ 没有把它换成日期选择器：`tickDays > 1` 时「某一天」落在哪一拍
+                            要先定向上取整还是向下取整 —— 那是一条口径决定（引擎侧
+                            `ticksForDays` 用的是 `ceil`），本单不顺手替它拍板。 */}
+                        <p className={styles.calibre} data-testid="c0828-start-echo">
+                          {cal === null
+                            ? calShortfall
+                            : startTick.trim() === ""
+                              ? `留空 = 从现在起（${curTick === null ? "当前时点未知" : tickLabel(cal, curTick)}）`
+                              : Number.isFinite(Number(startTick))
+                                ? `= ${tickLabel(cal, Number(startTick))}`
+                                : "这一格不是数字，无法换算日期"}
+                        </p>
+                        {/* ── 一次性 / 持续 两种时间形态，表单不一样（`eventCatalog.EventTimeShape`）──
+                            `once` ⇒ **不渲染**「持续」这一格：填了它引擎会在到期那一拍
+                            把这笔 delta 撤掉（`sim/propagation.ts` 的 `exitsAt`/`revertValue`），
+                            而「改交付地点 · 持续 5 拍」= 第 6 天收货地自己改回去，业务上不存在。 */}
+                        {ev.timeShape === "sustained" ? (
+                          <>
+                            <div className={styles.field}>
+                              <span className={styles.fieldLabel}>持续时长</span>
+                              <span className={styles.numRow}>
+                                <input
+                                  type="number"
+                                  value={duration}
+                                  placeholder="留空=一直持续"
+                                  aria-label="持续时长"
+                                  data-testid={`c0828-dur-${ev.id}`}
+                                  onChange={(e) => setDuration(e.target.value)}
+                                />
+                                <span className={styles.unit}>{tickUnitWord(cal)}</span>
+                              </span>
+                            </div>
+                            <p className={styles.calibre} data-testid={`c0828-dur-echo-${ev.id}`}>
+                              {duration.trim() === "" || !Number.isFinite(Number(duration))
+                                ? "留空 = 一直持续，不自动恢复。"
+                                : cal === null
+                                  ? `= ${spanLabel(cal, Number(duration))} —— ${calShortfall ?? ""}`
+                                  : `= ${spanLabel(cal, Number(duration))}，期满后该项自动恢复。`}
+                            </p>
+                            <p>
+                              两格留空 = 自当前时点起一直生效。若同时填写开始时间与持续时长，
+                              且该窗口已<b>整段落在过去</b>，后端仍会受理（201）而世界态不变 ——
+                              该情形后端不返回任何提示，故在此说明。
+                            </p>
+                          </>
+                        ) : (
+                          <p data-testid={`c0828-once-${ev.id}`}>
+                            <b>一次性变更，之后一直生效。</b>
+                            这件事发生完就结束，不设持续时长 —— 变更本身不会到期自己撤回
+                            （会随时间消退的是它的<b>后果</b>，那由传导与衰减负责）。
+                            开始时间留空 = 自当前时点起生效；若填的时点已<b>落在过去</b>，
+                            后端仍会受理（201）而世界态不变，该情形后端不返回任何提示，故在此说明。
+                          </p>
+                        )}
+                        <p>
+                          本事件落到 {L.typeKey} 的 {L.stateVar} 上；{ev.detail}
+                        </p>
+                      </div>
+                    </details>
+
+                    <p className={styles.calibre} data-testid={`c0828-seg3-${ev.id}`}>
+                      ③ 调整了什么
+                    </p>
                     <div className={styles.field}>
                       <span className={styles.fieldLabel}>幅度</span>
                       <span className={styles.numRow}>
@@ -1066,66 +1185,6 @@ export default function Console0828({
                         <span className={styles.unit}>{ev.unit}</span>
                       </span>
                     </div>
-
-                    {/* 稿子要求：「什么时候开始 · 持续多久」收在 details 里 */}
-                    <details className={styles.more}>
-                      <summary>起始时点与持续时长</summary>
-                      <div className={styles.moreBody}>
-                        <div className={styles.field}>
-                          <span className={styles.fieldLabel}>起始拍</span>
-                          <span className={styles.numRow}>
-                            <input
-                              type="number"
-                              value={startTick}
-                              placeholder="留空=当前拍"
-                              aria-label="起始拍"
-                              onChange={(e) => setStartTick(e.target.value)}
-                            />
-                            <span className={styles.unit}>拍</span>
-                          </span>
-                        </div>
-                        {/* ⚠ 主输入**仍是拍**，旁边实时回显它等于哪一天。
-                            ⛔ 没有把它换成日期选择器：后端收的是 `startTick`，而
-                            `tickDays > 1` 时「某一天」落在哪一拍要先定 向上取整还是向下取整 ——
-                            那是一条口径决定（引擎侧 `ticksForDays` 用的是 `ceil`），
-                            本单不顺手替它拍板。回显解决的是「模糊」这个真问题，且零歧义。 */}
-                        <p className={styles.calibre} data-testid="c0828-start-echo">
-                          {cal === null
-                            ? calShortfall
-                            : startTick.trim() === ""
-                              ? `留空 = 当前拍（第 ${curTick ?? "?"} 拍${
-                                  curTick === null ? "" : ` · ${tickDateISO(cal, curTick) ?? ""}`
-                                }）`
-                              : Number.isFinite(Number(startTick))
-                                ? `= ${tickDateISO(cal, Number(startTick)) ?? "—"}`
-                                : "这一格不是数字，无法换算日期"}
-                        </p>
-                        <div className={styles.field}>
-                          <span className={styles.fieldLabel}>持续</span>
-                          <span className={styles.numRow}>
-                            <input
-                              type="number"
-                              value={duration}
-                              placeholder="留空=持续生效"
-                              aria-label="持续拍数"
-                              onChange={(e) => setDuration(e.target.value)}
-                            />
-                            <span className={styles.unit}>拍</span>
-                          </span>
-                        </div>
-                        {cal !== null && duration.trim() !== "" && Number.isFinite(Number(duration)) ? (
-                          <p className={styles.calibre}>= {Number(duration) * cal.tickDays} 天</p>
-                        ) : null}
-                        <p>
-                          两格留空 = 自当前拍起持续生效。若同时填写起始拍与持续拍数，
-                          且该窗口已<b>整段落在过去</b>，后端仍会受理（201）而世界态不变 ——
-                          该情形后端不返回任何提示，故在此说明。
-                        </p>
-                        <p>
-                          本事件落到 {L.typeKey} 的 {L.stateVar} 上；{ev.detail}
-                        </p>
-                      </div>
-                    </details>
 
                     <div className={styles.acts}>
                       <button
@@ -1176,19 +1235,19 @@ export default function Console0828({
               type="number"
               value={horizon}
               min={1}
-              aria-label="推演拍数"
+              aria-label="推演时长"
               data-testid="c0828-horizon"
               onChange={(e) => setHorizon(Math.max(1, Number(e.target.value)))}
             />
-            <span className={styles.unit}>拍</span>
+            <span className={styles.unit}>{tickUnitWord(cal)}</span>
           </span>
         </div>
         <p className={styles.calibre} data-testid="c0828-horizon-echo">
           {cal === null
-            ? calShortfall
+            ? `${spanLabel(cal, horizon)} —— ${calShortfall ?? ""}`
             : curTick === null
-              ? `= ${horizon * cal.tickDays} 天`
-              : `= ${horizon * cal.tickDays} 天，推演至 ${tickDateISO(cal, curTick + horizon) ?? "—"}`}
+              ? `= ${spanLabel(cal, horizon)}`
+              : `= ${spanLabel(cal, horizon)}，推演至 ${tickLabel(cal, curTick + horizon)}`}
         </p>
         <button
           type="button"
