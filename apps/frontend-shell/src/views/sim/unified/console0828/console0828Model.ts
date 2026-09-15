@@ -528,6 +528,64 @@ export function tickLabel(cal: TickCalendar | null, tick: number, opts?: { reado
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
+ * 时间**长度**的屏上口径（WO-SIM-PLAIN-WORDS）—— 主单位给天，「拍」作括注
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 今天的行为是 X ──
+ * 上面 `tickLabel` 管的是**时点**（第 N 拍 → 哪一天），那一头 WO-C0828-VOICE 已经反过来了：
+ * 日期主、拍括注。但**长度**这一头还是反的 —— 左栏加扰动表单里
+ * `fieldLabel` 写「起始拍」/「持续」、`aria-label` 写「起始拍」/「持续拍数」、
+ * `placeholder` 写「留空=当前拍」、`unit` 那个 `<span>` 写「拍」，
+ * 天数只在下面一行小字里作回显。**同一块屏两套主次相反。**
+ * 更难看的是那句理由（`Console0828.tsx` 顶栏范围选择器那段注释）：
+ *   > 「『一拍等于几天』今天全平台没有登记册。」
+ * 登记册就是 `TickCalendar.tickDays`，这个文件自己就在用它做乘法。
+ *
+ * ── 应该是 Y ──
+ * 长度也按「天（N 拍）」读。`cal === null`（刻度真取不到）时**退回「N 拍」并由调用方
+ * 另给一句原因**（组件的 `calShortfall`）—— ⛔ 不许默认 `tickDays = 1` 假装知道
+ * （`apps/datacore/src/sim/drill.ts` 对同一件事的原话：「补了就把『这条会话没声明刻度』
+ * 说成了『一拍等于一天』」）。
+ */
+
+/** 一段 `ticks` 拍等于几天。`cal === null` ⇒ `null`（**算不出来**，不是 0 也不是 ticks）。 */
+export function spanDays(cal: TickCalendar | null, ticks: number): number | null {
+  if (cal === null || !Number.isFinite(ticks)) return null;
+  // 乘法一律转调契约的唯一实现，本文件不自己写 `t * td`（同 `tickDateISO`）。
+  return daysForTicks(ticks, cal.tickDays);
+}
+
+/**
+ * 屏上主口径（长度）：`15 天（3 拍）`；取不到刻度就只剩 `3 拍`。
+ *
+ * ⛔ 「拍」不许删干净 —— 后端回执、`startTick`、引擎日志里的量都是拍，
+ * 两层对不上账时没有别的东西可追（与 `tickLabel` 同一条纪律）。
+ */
+export function spanLabel(cal: TickCalendar | null, ticks: number): string {
+  const d = spanDays(cal, ticks);
+  if (d === null) return `${ticks} 拍`;
+  return `${d} 天（${ticks} 拍）`;
+}
+
+/**
+ * 数字输入框旁边那个**单位词**。
+ *
+ * ⚠ 这里刻意**不是**无条件给「天」—— 输入框里那个数是**拍数**（后端 `durationTicks` 收的就是它）。
+ *   · `tickDays === 1` ⇒ 一拍**就是**一天，写「天」是逐字相等，不是换算，也不会骗人；
+ *   · `tickDays > 1`  ⇒ 写「天」就是把 3 说成 3 天而它其实是 15 天 —— **那是造口径**，
+ *     本仓禁止（铁律 0.5 那条「不许默认 tickDays=1」同源）。此档仍写「拍」，
+ *     而**天数由旁边的 `spanLabel` 回显给足**，两层对得上账。
+ *   · `cal === null`  ⇒ 写「拍」，并由调用方另给一句「为什么没有天」。
+ *
+ * ⚠ 另一条路（把输入框本身改成收天数、提交时用契约 `ticksForDays` 向上取整）**本单没走**：
+ *   它会让「填 5 天、落成 6 天」这种取整跳变出现在一个本来精确的格子里，
+ *   而本单的问题是**措辞**不是**输入口径**。留给需要日期选择器的那张单。
+ */
+export function tickUnitWord(cal: TickCalendar | null): string {
+  return cal !== null && cal.tickDays === 1 ? "天" : "拍";
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
  * 对策三栏的**业务语域译名**（WO-C0828-VOICE 第 4 批）
  * ══════════════════════════════════════════════════════════════════════════════
  *
