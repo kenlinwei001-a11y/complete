@@ -1,0 +1,188 @@
+# PRD · 推演指挥官：意图分类 → Skill → Plan 定版 → ReAct 调度
+
+> 仓主 2026-09-15：「需要一个意图分析+分类的 agent，需要配套一个对应的 skill，然后做 Plan，然后开始 react 模式调度资源完成复杂推演」
+>
+> **状态：提案。⛔ 未开工。** 触及 `apps/frontend-shell/src/views/sim/` 的部分属禁令 2 范围，需仓主逐案批准。
+
+---
+
+## 0 · 读本体的诚实边界（⚠ 先说清，否则本节自己就是假绿）
+
+`docs/SYSTEM-ONTOLOGY.md` 今天 **3,844 行 / 1,845,720 字节**（≈ CLAUDE.md 的 24.7 倍）。
+本 PRD **没有**逐行读完它 —— 读的是：不变量表（R3/R4/R6/R11/R13/R14/R16/R19 原文）、
+`### E. 求解/推演域`（:135）、`### I. 推演沙盘域`（:229）、以及四条推演相关的会话上下文链路
+（:1109 / :1169 / :2112）。**凡本 PRD 未引用到的章节，本 PRD 不为其正确性背书。**
+
+理由写在这儿是因为它本身是本轮的结论之一：一条「必须完整阅读 1.85MB」的铁律**不可能被执行**，
+于是它被跳过，而它的存在造成「读过了」的假象。诚实的做法是**说清读了哪几段**。
+
+---
+
+## 1 · 实测现状：四块**全都已经存在**，「指挥台」甚至已接线
+
+⚠ 本节每一条都是 2026-09-15 在 `070f21da` 树上实测，**不是从台账抄的**（铁律 0.6 第 5 条）。
+
+| 仓主要的 | 今天真实状态 | 证据 |
+|---|---|---|
+| ① 意图分析+分类 agent | QOS classifier **在**；但意图目录里**零条推演意图** | `grep 'intentKey:.*"(sim\|推演)'` → 0 命中 |
+| ② 配套 skill | Skill 全生命周期**在**（compiler / lint / publish-gate / probe / orchestrator / summary-review 六个模块）；`load_skill`、`read_skill_resource` 是 agent 工具 | 种子里只有 2 个 skill：`capacity_analysis`、`sop_meeting`，**无推演方法论** |
+| ③ Plan | `compileSolverPlan` **在**（`router/compile-plan.ts:61`） | 但它是**确定性模板编译**（候选取自 navSlice ∩ 已登记 args schema），**不是 agent 产的**，**不定版落盘** |
+| ④ ReAct 调度资源 | `runAgentLoop` **在**（`agent/loop.ts:472`，path-B）；**30 个工具**，含 `sim_init` / `sim_tick` / `sim_world` / `sim_certify` | 常量名就叫 `SIM_COMMANDER_TOOLS`（`tools/registry.ts:457`） |
+
+**而且它已经接了线**：`router/orchestrator.ts:647`
+```
+if (isSimCommanderNl(task) && simCommanderEnabled(enabledFeatures)) {
+  await this.runPathB(taskId, auth, { …, model: "agent:sim-commander-nl" });
+  return;
+}
+```
+工具可见性由 entitlement **权威裁决**（`orchestrator.ts:1865-1875`：关则不存在，R3 暗发）。
+
+**闸门**：`sim.commander` · `level: BLOCK` · **`defaultOn: false`** · `stage: tiered`
+（`apps/datacore/src/features.ts:104`、`scripts/feature-rollout.json:33`）。
+
+> ⚠ 我在实测过程中**差点报出相反结论**：第一次用 `grep … | sort -u | head -25` 数工具，
+> 按字母序把最后 5 个截掉了，正要报「agent 没有任何推演工具」。金丝雀（专查 `sim|tick|perturb|world`）
+> 当场纠正。**照那个错误结论派单，会把「补四个缺口」错报成「从零造一个指挥台」。**
+
+---
+
+## 2 · 四个缺口（有名有姓，不是「大体上还差些东西」）
+
+### G-SIM-INTENT-FAKE · 分类是假的
+`isSimCommanderNl`（`orchestrator.ts:351`）全文三行：
+```ts
+function isSimCommanderNl(task: QueryTask): boolean {
+  const sid = task.context.filters?.simSessionId;
+  return typeof sid === "string" && sid.length > 0;
+}
+```
+**它不做意图分析、不分类、不看用户说了什么。** 只要沙盘屏的 NL 框带了 sessionId，
+问「今天天气怎么样」也会被判为「推演指挥」并送进 path-B。
+
+形态：**「我用『这句话是从沙盘屏发出来的』当作『这是一条推演指令』的证据，而前者并不度量后者。」**
+
+### G-SIM-ENTRY-NARROW · 入口要求会话已存在
+同上那三行 ⇒ **用户必须先自己把沙盘开好**。说不出「帮我推演一下原材料涨价 15% 的影响」
+从零开始的这一句 —— 那正是仓主要的那个入口。
+
+### G-SIM-NO-SKILL · 没有推演方法论 skill
+agent 有 `load_skill`，但没有任何一份「怎么做一次复杂推演」的方法论可加载。
+它今天全靠 system prompt 里那两行（`agent/prompts.ts:184-188`）。
+
+### G-SIM-PLAN-UNFROZEN · Plan 不定版 ⇒ 违反 R6
+ReAct 是自由多跳。**同一个问题跑两次可能走不同路径、给不同答案**，
+而 R6（确定性）要求同输入同输出、可复算、可审计。
+这是「agent 指挥」与「确定性」的直接冲突 —— 今天的解法是**不让 agent 指挥**。
+
+---
+
+## 3 · 设计：四段，其中三段是接线，一段是新建
+
+### A. 意图分析 + 分类（接线，不新建分类器）
+
+走**既有** QOS classifier（`classify` + `harvestClassificationSlots`，单源收割器），
+只补**意图目录**与**槽位**：
+
+| intentKey | 一句话 | 必填槽 |
+|---|---|---|
+| `sim.what_if` | 「X 变了会怎样」 | 落点类型 · 落点对象 · 因子 · 幅度 |
+| `sim.root_cause` | 「为什么这个数是这样」 | 目标读数 · 观察窗 |
+| `sim.compare_plans` | 「A 方案和 B 方案哪个好」 | ≥2 组扰动 · 对比维度 |
+| `sim.stress_test` | 「最坏能坏到什么程度」 | 因子集合 · 上界来源 |
+
+`isSimCommanderNl` 改判据：**分类命中 `sim.*` ∨ 已有 sessionId**（后者保留，向后兼容逐字节不变）。
+⛔ 槽填不满**不许猜** —— 走既有 `AWAITING_CLARIFICATION`（已有超时与取消，见 R19 先例）。
+
+### B. 推演方法论 Skill（新建一份内容，复用既有 skill 机制）
+
+新增 `sim_methodology` skill，经既有 `skill-publish-gate` 发布、agent 经 `load_skill` 加载。
+**内容不是套话，是本仓真金白银的教训**（每条都带可复验的出处）：
+
+1. **对照实验是必答题**（铁律 1.5）：任何结论都要能回答「把 X 换成 X′，Y 会怎么变」。
+   写不出这一句 ⇒ 这次推演不算完成。封装已在：`@platform/contracts` 的 `respondsToInput`。
+2. **区分「全集」与「这次的影响」**：`diffWorld(eps=1e-9)` 只问「动没动」不问「动了多少」，
+   传导必然推到全网 ⇒ 那个数恒等于全集。必须按幅度分档（噪声门槛 = 满量程 0.01%）。
+3. **已完成的单不进推演世界**：扰动改不了已交付已结款的结果（`entersSimWorld`）。
+4. **推几拍要有依据**：最深真链 3 跳；推到「不再变」为止，而不是固定 3。
+5. **诚实缺席优于凑数**：有效候选 < 2 ⇒ 报 `noCandidateReason`，不编。
+
+### C. Plan 定版（新建对象 + 端点；**模式直接抄已验证的那条路**）
+
+本仓**已经解决过**这个冲突 —— `POST /a/v1/sim/optimize-pareto/propose`：
+> **agent 决定做什么 → 决定定版落盘 → 之后只读定版、求解路径零模型调用**
+> （`app.ts:3380` 注释原文：「指纹命中已有版 ⇒ 直接复用，**不再调模型**」）
+
+同一模式搬到指挥层：
+
+```
+POST /a/v1/sim/plans            agent 产 SimPlan → 指纹去重 → 定版落盘
+POST /a/v1/sim/plans/:id/run    只读定版执行；同 planId 重跑逐字节相同
+```
+
+`SimPlan` 字段（草案）：`intentKey` · `scope` · `perturbations[]` · `horizonTicks` ·
+`compareArms[]`（对照实验的另一臂）· `readouts[]`（推完看哪几个量）· `rationale` ·
+`fingerprint` · `version` · `frozenAt`。
+
+⇒ **R6 成立**：agent 参与「决定做什么」，执行路径仍然确定性。
+
+### D. ReAct 调度（接线 + 补两条纪律）
+
+`runAgentLoop` 已在，工具已在，entitlement 已在。补两样：
+
+1. **终态责任人（R19 硬要求）**：复杂推演会长跑。进 `EXECUTING_AGENT` 的唯一入口
+   `orchestrator.ts:1375 enterExecuting` 已挂看门狗 ⇒ **走它即自动有责任人**，
+   ⛔ 不许手写 `patch({status:"EXECUTING_*"})`。
+2. **披露层（R13 + 铁律 1.5 判据二）**：回包必须能逐项列出
+   引用的数据（对象类型 + 条数 + 快照版本）· 走过的切片 · 命中的规则 key 与系数 ·
+   **调了哪些工具、各几次** · 各环节耗时 · **agent 是否参与**（未调必须明写，不许留白）。
+
+---
+
+## 4 · 本体引用与影响（铁律 0 强制节）
+
+**对象类型（§2）**：新增 `SimPlan`（定版计划）。复用 `SimSession` / `Perturbation` / `PropagationRule`。
+
+**链路（§3）**：新增一条
+`NL 问句 → QOS classify(sim.*) → 槽位收割 → load_skill(sim_methodology) → SimPlan 定版
+→ sim_init → sim_tick×N → sim_world → 披露回包`
+断点候选：classify 与槽位之间（槽填不满）、SimPlan 与执行之间（定版漂移）。
+
+**事件（§4）**：新增 `sim.plan.frozen` · `sim.plan.executed`。
+下游消费页（统一推演控制台）须订阅，否则违 D-29。
+
+**不变量（§5）**
+- **R3**：`sim.commander` 暗发默认关，关 ⇒ 工具**不存在**（不是 403）。已成立，不动。
+- **R4**：sim 工具全程模拟态，**绝不写真值**；落地必须经 `create_action_draft` 走审批。已成立。
+- **R6**：**本 PRD 的要害。** 定版落盘是它成立的唯一机制；无定版即无 R6。
+- **R11**：全链闭包 —— Intent + Plan + Solver + render 四段必须全接通才可上架。
+- **R13**：披露层是硬要求，不是加分项。
+- **R14**：意图目录 / 槽位 / 方法论全部走配置与本体，⛔ 不得内联业务常数。
+- **R19**：非终态状态必须有终态责任人（走 `enterExecuting`）。
+
+**断点（§8）**：本 PRD 立四条 —— `G-SIM-INTENT-FAKE` · `G-SIM-ENTRY-NARROW` ·
+`G-SIM-NO-SKILL` · `G-SIM-PLAN-UNFROZEN`（定义见 §2）。
+
+**回写承诺**：若本 PRD 落地，必须回写 `docs/SYSTEM-ONTOLOGY.md` 的 §2（`SimPlan`）、
+§3（新链路）、§4（两个事件）、§8（四条断点的闭合）。**不回写即过期失效。**
+
+---
+
+## 5 · 验收判据（⛔ 没有这些就不算交付，铁律 1.5）
+
+1. **对照实验**：同一句 NL 问句跑两次 ⇒ 同一个 `planId`、逐字节相同的结果（R6）。
+   换一个因子 ⇒ `SimPlan.perturbations` 不同、读数不同。**两条都要，缺一条不算。**
+2. **分类有鉴别力**（双向金丝雀）：
+   - 正向：「原材料涨价 15% 会影响多少订单」⇒ 命中 `sim.what_if`
+   - 反向：「今天天气怎么样」**从沙盘屏发出** ⇒ **不得**命中 `sim.*`
+     （这一条专治 G-SIM-INTENT-FAKE；今天它必红）
+3. **槽填不满不许猜**：缺落点 ⇒ 进 `AWAITING_CLARIFICATION`，不得默认成全域。
+4. **披露可读**：一个看不到代码的人，读完披露层应能自己判断「这是真推演还是查表」。
+5. **零 LLM 回退**：provider 不可用 ⇒ 落既有确定性路径并**诚实标降级**，不得空答案。
+
+## 6 · 不做什么（边界，防止范围蔓延）
+
+- ⛔ 不动 `sim.commander` 的 `defaultOn`（产品决策，仓主定）
+- ⛔ 不新增门 / 棘轮 / 基线 JSON（禁令 3）
+- ⛔ 不动沙盘 UX / 信息架构（禁令 2；如需入口改动，逐案报批）
+- ⛔ 不碰那 11 道存量红（另行立账，与本 PRD 无依赖）
