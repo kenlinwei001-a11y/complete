@@ -203,7 +203,11 @@ describe("WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM�
      * 于是"读数没变"就变成了 max 语义的体现，而不是真值有没有进传导式的证据。
      */
     const bump = (o: ObjectInstance): Perturbation[] => [{
-      id: `pt_${o.id}`, tenantId: "demo", sessionId: "s", kind: "OTHER",
+      // `demand_shift` = 契约原文「需求突变（追加订单 / 砍单）」—— 给订单台数加量正是这一类。
+      // ⚠ 这里原写 `"OTHER"`，**不在 `PerturbationKindSchema` 的 5 个值里**，而它照样跑绿：
+      // `replayWorldLine` 不校验 `kind`，且 `pnpm -r build` 只编 src 不编 test
+      // ⇒ 只有 `typecheck:test` 才看得见。又一次「build 绿不度量 test 编得过」。
+      id: `pt_${o.id}`, tenantId: "demo", sessionId: "s", kind: "demand_shift",
       targetObjectId: o.id, targetStateVar: "qty",
       startTick: 1, durationTicks: null, magnitude: 100000, mode: "delta",
       label: "同一个扰动（只换落点）", createdAt: "2026-01-01T00:00:00.000Z",
