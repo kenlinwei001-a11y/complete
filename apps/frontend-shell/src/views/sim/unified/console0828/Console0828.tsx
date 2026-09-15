@@ -1487,7 +1487,7 @@ export default function Console0828({
                           <li>
                             <span>变化幅度 p90 / 最大</span>
                             <span className={styles.mono}>
-                              {money.magnitude.p90?.toFixed(2) ?? "—"} / {money.magnitude.max.toFixed(2)}
+                              {money.magnitude.deltaMagnitudeP90?.toFixed(2) ?? "—"} / {money.magnitude.max.toFixed(2)}
                             </span>
                           </li>
                         ) : null}

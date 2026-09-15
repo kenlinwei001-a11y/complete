@@ -134,8 +134,10 @@ export interface MoneyView {
   readonly faintOnly: number;
   readonly magnitude: {
     readonly buckets: readonly { readonly label: string; readonly n: number }[];
-    readonly p50: number | null;
-    readonly p90: number | null;
+    /** 本次扰动下，各单 |Δ| 的中位数（0–100 压力标度，非需求/产能分位 —— R18：名字自带口径）。 */
+    readonly deltaMagnitudeP50: number | null;
+    /** 同上，P90。 */
+    readonly deltaMagnitudeP90: number | null;
     readonly max: number | null;
   };
   /** 订单簿总额（元）与张数 —— 现算，**不写死**。 */
@@ -289,8 +291,8 @@ export function buildMoneyView(
       { label: `中 ${eLight}–${eMid}`, n: inRange(eLight, eMid) },
       { label: `重 >${eMid}`, n: inRange(eMid, Number.POSITIVE_INFINITY) },
     ],
-    p50: quant(0.5),
-    p90: quant(0.9),
+    deltaMagnitudeP50: quant(0.5),
+    deltaMagnitudeP90: quant(0.9),
     max: mags.length === 0 ? null : (mags[mags.length - 1] ?? null),
   };
 
