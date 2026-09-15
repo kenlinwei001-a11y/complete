@@ -1667,7 +1667,10 @@ const orderProps: PropertyDef[] = [
   { propKey: "demandDelta", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
   { propKey: "outsourceRatio", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
   { propKey: "creditUsedRatio", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
-  { propKey: "leadDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" },
+  // WO-SIM-ORDER-REAL-FIELDS：本属性现在**同时**是推演世界的一个状态变量（同名直取，
+  // 见 `sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`）⇒ 它的折算式会被用户在推演台上读到，
+  // 必须写在这里（属性自己的定义处），⛔ 不许写进引擎侧 —— 那是把本行业的口径焊进平台（R14）。
+  { propKey: "leadDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute", description: "合同交期距计划起点的天数 = round((due − forecastStart) ÷ 1 天)，forecastStart 取自求解器参数。「交付时间」是日期，日期进不了世界态，折成天数才有量纲可算。负数有真实含义且刻意保留：在制单可低至 −14，即合同交期已过去 14 天仍未交付；夹到 0 会让「已逾期」与「今天到期」在屏上变成同一个数。" },
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 按型号反范式化的单价（value 派生依赖）
   // WO-W5·业务类型维度（乘/商/储·全局推演勾选筛选 + 分口径聚合）。early/earlyDue = 乘用车部分客户提前交付（三重张力之一）。
   { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // passenger | commercial | storage
@@ -3408,6 +3411,28 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   //   下拉里只写「销售预测偏差」，用户填 +10 时无从知道那是"多估了"还是"少估了"，
   //   而这条边的系数是**负**的（高估 ⇒ 需求压力下修），方向搞反读数就整条反了。
   forecastBias: "销售预测偏差（正=高估）", orderChurn: "订单变更压力", equipmentFailure: "设备故障率",
+  // ── WO-SIM-ORDER-REAL-FIELDS · 订单**真实业务字段**作为状态变量（本表第一批非压力量纲）──
+  //
+  // ⚠ 这六行与上面 36 行**性质不同**，不要照压力族的直觉读：
+  //   上面每一个都是**推演世界自己造出来的抽象强度**（0–100，对象上没有对应属性）；
+  //   下面前三个**就是 Order 身上那个属性本尊**（`qty`/`unitPrice`/`leadDays`），
+  //   带真实单位（套 / 元 / 天），播种时由 `deriveSeedBaseSnapshot` 的同名探测直接读真值
+  //   （`measuredCells` 由 0 变 450 = 150 张在手单 × 3 个字段）。
+  //
+  // ⚠ **中文名里必须带单位**，理由不是好看：`qty` 这个属性名在本体里**横跨 11 个类型、
+  //   三种单位**（实测：`Order`/`OrderLine`/`InterBaseTransfer` 是「套」，
+  //   `InventoryTxn`/`ProductionSchedule`/`WIPLot`/`WIPMove`/`DefectRecord`/`Outsource` 是「件」，
+  //   `MaterialBatch`/`PurchaseOrder` 是「吨」）。而本表是**按裸变量名**建的
+  //   （见本表头注「名字属于变量本身，不属于 (类型,变量) 对」）⇒ 一个名字只能有一个中文名。
+  //   把单位写进名字，屏上就不可能出现"21777"却不知道是套还是吨这种读法。
+  //   同族的 R18 硬约束由 `statevar-display-name.seam.test.ts` ⑥ 机器守着：
+  //   **同一个名字被两个类型当状态变量用、而两边单位不同 ⇒ 当场红**。
+  //   （`unitPrice` 同理横跨 4 个类型，`Material.unitPrice` 是「元/计量单位」不是「元」；
+  //    `leadDays` 实测只在 `Order` 上有，单位「天」，本身就是全局唯一的。）
+  qty: "订单数量（套）", unitPrice: "订单单价（元）", leadDays: "交付前置天数（天）",
+  // 三个落点，量纲与各自的源逐一相同（套→套 / 元→元 / 天→天，系数 1.0 原样透传）。
+  backlogQtyTop: "在手订单最大单台数（套）", backlogPriceTop: "在手订单最高单价（元）",
+  backlogHorizonDays: "在手订单最远交期天数（天）",
 };
 
 /**
@@ -3438,8 +3463,17 @@ export function stateVarDisplayName(stateVar: string): string | undefined {
 //     「状态变量的量纲各不相同（**压力 0–100**、天数、件数…）」
 //     ⇒ 压力/风险/指数族 = 0–100；**天数族与件数族它明确划成另一类，故本表不登记**。
 //  ② tick0 生成式 —— `sim/seed-world.ts` `deriveSeedBaseSnapshot`：
-//     `round(hash01(objectId|stateVar) × 100)`，且实测 `measuredCells: 0 / derivedCells: 7204`
-//     ⇒ 出厂世界**每一格**都由这个生成式产出，值域恰为 [0,100]。
+//     `round(hash01(objectId|stateVar) × 100)` ⇒ 凡走这条派生支的格子，值域恰为 [0,100]。
+//     ⚠ **2026-09-15 订正（WO-SIM-ORDER-REAL-FIELDS）**：原文写「出厂世界**每一格**都由这个
+//     生成式产出」并引「实测 `measuredCells: 0 / derivedCells: 7204`」——**这两句都已过期**，
+//     照它推会把带单位的业务量也当成 0–100 压力去夹。`deriveSeedBaseSnapshot` 一直是**两档**
+//     （同名属性是有限数 ⇒ 用真值并 `measuredCells += 1`，否则才哈希）；此前 `measuredCells`
+//     恒 0 只是因为没有任何状态变量名等于对象属性名，不是因为那一档不存在。
+//     本单让 `Order.qty`/`unitPrice`/`leadDays` 三个**真实业务字段**直接当状态变量之后，
+//     实测 `measuredCells: 450 / derivedCells: 5913 / cells: 6363`。
+//     ⇒ 本表的出处②**只对压力族仍然成立**（那 31 个名字在本体里没有同名属性，
+//     实测仍然 100% 走派生支），而 `qty`/`unitPrice`/`leadDays` 及其三个落点
+//     **刻意不进本表** —— 它们带真实单位（套/元/天），拍一个 0–100 的上界会把 21777 套夹成 100。
 //
 // ── 静息点为什么不一律取 0 ────────────────────────────────────────────────────
 // `forecastBias` 是本平台唯一**带方向**的量纲（正=高估 / 负=低估，见上表该行注释，
@@ -3447,7 +3481,9 @@ export function stateVarDisplayName(stateVar: string): string | undefined {
 // 故它单独声明 [-100,100] / rest 0；压力族静息点 = 下界 0（无入流即无压力）。
 const PRESSURE_DOMAIN_SOURCE =
   "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；" +
-  "② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）";
+  "② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——" +
+  "本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；" +
+  "带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域";
 
 /**
  * 状态量 → 声明取值域（**全平台唯一入口**，与 `STATE_VAR_DISPLAY_NAMES` 同一张登记册的两列）。
