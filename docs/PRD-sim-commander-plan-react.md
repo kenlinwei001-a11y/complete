@@ -116,6 +116,44 @@ agent 有 `load_skill`，但没有任何一份「怎么做一次复杂推演」�
 | PROVISIONAL 域终态**恒 `PROVISIONAL_ANSWER`、绝不 VERIFIED** | `databuilder/provisional-honesty.ts` 有专门的门守它 |
 | 双模闭包 `STRICT` / `PROVISIONAL` | 缺口降 ADVISORY、不阻断、**不谎报已闭合** |
 
+### ⭐ 融合模式：规则 + 求解器 + ReAct 的**四级阶梯**（仓主 2026-09-15 定）
+
+> 「**规则 + 求解器 + react 融合模式**」
+> 「**当求解器不足的时候，agent 可以自行 coding，生成新的求解器**」
+
+**四级全部是现成的**（2026-09-15 逐条实测，非台账转述）：
+
+| 级 | 干什么 | 确定性 | 信任相位 | 今天在哪 |
+|---|---|---|---|---|
+| **L0 规则** | 已发布传导规则按图推 | ✅ 完全 | GOVERNED 真值 | `partitionPropagationRules` · `propagateTick` |
+| **L1 求解器** | 已注册求解器算 | ✅ 完全 | GOVERNED 真值 | 63 条目录 · `invoke_solver` |
+| **L2 ReAct 编排** | agent **调工具，不算数** | ❌ agent 侧 | 结论须标「规则外」 | dsh `kernel=EXTERNAL`；工具走反向通道 `/b/v1/dsh/tool-execute`，**与原生路同一个 `executor`** |
+| **L3 生成求解器** | agent 自行 coding 出新求解器 | ✅ **产物是纯函数** | **PROVISIONAL**，人审才升 GOVERNED | `llm-gen.ts::generateSolverDraft`（已接线，`service.ts:891`） |
+
+**L3 的完整流水（`service.ts:838` 注释原文「LLM 生成临时求解器 → 冻结(hash+版本) → 锁死沙箱跑通自检 → 注册 PROVISIONAL（或 UNREGISTERED）」）**：
+
+```
+agent 出 computeSource
+  → DF.8 接地校验（**在沙箱之前**，service.ts:913）
+        引用了边界外业务实体（编造的基地/型号名）⇒ 直接 UNREGISTERED，不进沙箱
+  → 冻结：verbatim + hash + 版本（不可变，改 = 新版本 ⇒ R6）
+  → 锁死沙箱：**真子进程** spawn（`solvers/sandbox.ts`，杀掉即停，不是"不再等它"）
+  → 跑通自检 ⇒ SolverArtifact.status = PROVISIONAL
+  → 人审 POST /a/v1/solvers/:solverKey/promote ⇒ GOVERNED
+```
+
+相位枚举在契约里写死：`SOLVER_STATUSES = [GENERATED, UNREGISTERED, PROVISIONAL, ADVISORY_PASSED, GOVERNED, RETIRED]`，
+注释原文：**「只有 GOVERNED 能写真值」**（`packages/contracts/src/solvers.ts:648/654`）。
+
+⇒ **agent 可以现写一个求解器并当场用它推演，但那个结论恒为 `PROVISIONAL_ANSWER`，绝不 VERIFIED，
+除非有人审过。** 这就是「让 agent 自由」与「不许它编数」同时成立的机制 —— 不靠约束 agent 的嘴，
+靠**把它的产出关进相位**。
+
+**⚠ 掉级必须有确定性判据，且掉级必须上屏。** 每往下一级，可信度降一档，屏上必须看得出来。
+判据见下一节；相位文案复用 `provisional-honesty.ts` 那一套，⛔ 不另起词汇。
+
+---
+
 ### ⭐ 要害：**分流判据本身必须是确定性的**
 
 若「这算不算规则外」是让 LLM 判的，整套当场塌 —— 连「**为什么这次走了 agent**」都复算不出来，
@@ -129,8 +167,12 @@ agent 有 `load_skill`，但没有任何一份「怎么做一次复杂推演」�
 | 2 | 槽位填得满吗 | `harvestClassificationSlots`（单源收割器，已在） |
 | 3 | 落点类型 ∩ 因子册 ≠ ∅ 吗 | `enumerateImpedimentOptions` **已经在算**，结论今天只进 `noCandidateReason` |
 | 4 | 有没有规则覆盖这条边 | `partitionPropagationRules` + `ruleGate`，已在 |
+| 5 | **目录里有没有能算这件事的求解器** | 63 条目录 + `solverArgsSchema` 已登记者；无 ⇒ **掉到 L3，agent 自行 coding** |
 
-**四问全过 ⇒ 确定性路，零 LLM（既有行为逐字节不变）。任一不过 ⇒ 请 agent。**
+**判据全过 ⇒ L0/L1 确定性路，零 LLM（既有行为逐字节不变）。
+第 1–4 问任一不过 ⇒ L2 ReAct。第 5 问不过 ⇒ L3 生成求解器。**
+
+⚠ 五问全是**纯函数、可复算、结论可上屏** —— 掉到哪一级、为什么掉，事后都能原样再现。
 
 ### ⭐ 屏上必须分得开（`PROVISIONAL_ANSWER` 同构）
 
@@ -208,6 +250,49 @@ POST /a/v1/sim/plans/:id/run    只读定版执行；同 planId 重跑逐字节�
 2. **披露层（R13 + 铁律 1.5 判据二）**：回包必须能逐项列出
    引用的数据（对象类型 + 条数 + 快照版本）· 走过的切片 · 命中的规则 key 与系数 ·
    **调了哪些工具、各几次** · 各环节耗时 · **agent 是否参与**（未调必须明写，不许留白）。
+
+---
+
+## 3.5 · dsh 路实测（2026-09-15，真 Kimi key + 真 Moonshot 端点）
+
+仓主 2026-09-15：「**都用 DSH 的 agent，不要系统原生的 agent**」。
+⇒ §3 的 L2 落在 dsh（`kernel=EXTERNAL`），不是 `runAgentLoop`。
+
+`DECISION-dsh-fusion.md` §13.4 登记的 **R1「真实外部供应商一跳从未跑过」** 本轮已跑：
+
+| 臂 | 结果 |
+|---|---|
+| **L2.A4 组合臂**（真 LLM × 真规则 × 真 MCP，同一会话） | ✅ **14.8s** · ANSWERED ∧ whoami:t1 ∧ 真 token 账 ∧ 裁决计数≥1 ∧ **零 key 泄漏** |
+| L2.A2 真规则 allow / deny 两臂 | ✅ deny 臂**工具体不执行** ∧ reason 是真 verdict（无 mock 前缀） |
+| L2.A3 真 MCP（stdio 真子进程） | ✅ pidFile=1 ∧ 审计名 `mcp__erp__whoami` 在帧流 |
+| L2.A5a 治理端点关闭 | ✅ **fail-closed deny** ∧ 工具体不执行 |
+| L2.A5b 缺凭据 | ✅ `MISSING_CREDENTIAL` ∧ **stub 零请求（fail 在出网前）** |
+| L2.A1 两问判别力金丝雀 | ❌ `FAILED`（**见下，是护栏工作，不是缺陷**） |
+
+### ⚠ 一条实测推翻了 §13.4 R3 的描述（照铁律 0.6 记账）
+
+§13.4 写「数字红线是**标注**不是**阻断**，没有任何机制无条件阻止模型把编出来的数字写进答案」。
+**实测推翻**：A1 的 `FAILED` 正是被它拦下的，回包原文：
+
+> 「未采纳本次回答：答案里的数字没有标注数据来源，无法核实真伪，**已按数字红线拦下**。
+> 业务数字必须来自求解器计算或对象数据，并标注出处，不能由模型自行估算。」
+
+⇒ 在 dsh 路 + `provenancePolicy=required` 档上，它**真的阻断**（拒收尾 ⇒ outcome=FAILED），
+并给出用户可读的拦截文案。**「只标注」这个描述至少在这一档上不成立。**
+
+形态：**「我用『文档里写着只标注』当作『它不阻断』的证据，而前者并不度量后者。」**
+—— 我上一轮就是这么转述给仓主的，转述时没实测。
+
+⚠ **但别过度解读**：这只证明了 `required` 档会拒。「缺省档也拦不拦」「非数字的编造拦不拦」
+本轮**未测**，不在此背书。
+
+### 本轮新发现的观测面缺口（登记，不夸大）
+
+同一份结果里：`iterations: []` · `totalInputTokens: 0` · `totalOutputTokens: 0`，
+而 A4 断言「真 token 账」是过的 ⇒ **dsh 路的「拒收尾」分支上，运行明细与 token 账没回填**。
+这是**记账缺口**，不是护栏问题；但它会让「这次烧了多少、走了几轮」在被拦下的那些 run 上查不到。
+与 `DECISION-dsh-fusion.md` §13.4 R2（`sliceSolverKeys` 在 dsh 路恒空）同族：
+**翻 flag 后有两处指标会静默变空**，⛔ 不许当成「指标下降」读，也⛔ 不许当成没有。
 
 ---
 
