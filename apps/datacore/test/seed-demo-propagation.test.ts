@@ -50,14 +50,19 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // 之所以另起量纲而不复用 `utilPressure`：既有 `demo_line_util_to_process_queue` 已写
     // `Line.utilPressure → Process.queuePressure`，反着写回去就闭成自我放大的二环。
     expect(cfg.stateVars).toEqual([
+      // WO-SIM-ORDER-REAL-FIELDS +6：前三个是**订单身上那三个属性本尊**（`Order.qty`/`unitPrice`/
+      // `leadDays`，同名直取 ⇒ tick0 读的是真值，`measuredCells` 由 0 变 450），后三个是它们
+      // 沿 `order_for_model` 的落点。⚠ 这 6 个**不是压力量纲**，带真实单位（套/元/天），
+      // 故刻意不进 `STATE_VAR_DOMAINS`（不夹不衰减，tick 回执 `undeclaredStateVars` 里点名）。
+      "backlogHorizonDays", "backlogPriceTop", "backlogQtyTop",
       "blockedPressure", "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure",
       "defectPressure", "deliveryDelay", "deliveryHoldRisk", "demandLoad", "demandPressure",
       "drawdownPressure", "equipmentFailure", "expeditePressure", "feedPressure", "forecastBias",
-      "gapPressure", "handlingBacklog", "inboundExpeditePressure", "inspectBacklog", "loadIndex",
+      "gapPressure", "handlingBacklog", "inboundExpeditePressure", "inspectBacklog", "leadDays", "loadIndex",
       "loadPressure", "orderChurn", "overduePressure", "priceShock", "procurementDelay",
-      "promiseRisk", "qualificationQueue", "queueDays", "queuePressure", "receivablePressure",
+      "promiseRisk", "qty", "qualificationQueue", "queueDays", "queuePressure", "receivablePressure",
       "releasePressure", "repairBacklog", "reviewPressure", "shortageRisk", "splitPressure",
-      "supplyRisk", "switchPressure", "transferPressure", "turnoverPressure", "utilPressure",
+      "supplyRisk", "switchPressure", "transferPressure", "turnoverPressure", "unitPrice", "utilPressure",
       "windowSqueeze",
     ]);
     // 节点类型派生自本体（含 demo 真类型）。
@@ -94,7 +99,11 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       "line_belongs_to_base", "line_has_process", "line_runs_work_order", "line_runs_work_order", "material_has_alternative",
       "material_has_balance", "material_has_batch", "material_supplied_by_po", "material_used_by_model", "material_used_by_model",
       "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
-      "model_producible_at", "model_stocked_as_finished_goods", "order_for_model", "order_for_model", "order_has_line",
+      // WO-SIM-ORDER-REAL-FIELDS 三条订单真实字段边**全部挂 `order_for_model`**
+      // （已物化的既有链路·零新 linkType·零新物化）⇒ 这一项由 2 条变 5 条。
+      "model_producible_at", "model_stocked_as_finished_goods",
+      "order_for_model", "order_for_model", "order_for_model", "order_for_model", "order_for_model",
+      "order_has_line",
       "order_has_line", "order_has_promise", "order_of_customer", "po_customs_cleared_by", "po_from_supplier",
       "po_inspected_by", "po_replenishes_material", "process_belongs_to_line", "process_uses_equipment", "supplier_supplies_material",
       "supplier_supplies_material", "wip_lot_found_defect", "wo_for_model", "wo_for_model", "work_order_sampled_by_quality_lot",
@@ -285,7 +294,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
   });
 
   // 每条边真触发（REQ143 的验收面 + 档 1 扩面）：一次扰动若干源头，逐组核 trace。
-  it("🔴 逐条真触发：46 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4）", async () => {
+  it("🔴 逐条真触发：49 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
@@ -316,7 +325,12 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const sid = (await (await t.app.inject({
       method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
       payload: { baseSnapshot: {
-        [orderId]: { demandPressure: 10, costPressure: 8, orderChurn: 10 },
+        // WO-SIM-ORDER-REAL-FIELDS 三个真实业务字段与 `orderChurn` 一样是**入度 0 的根**
+        // （没有任何规则写它们）⇒ 必须自带源，指望被别的源带动是自相矛盾的。
+        // 值取真实量级（本租户在手单实测 qty 708–21777 套 / unitPrice 13594–22660 元 /
+        // leadDays −14–178 天），⛔ 不能填 0：引擎对 `sourceVal === 0` 直接跳过，
+        // 填 0 会让这三条"没触发"，而原因是数据不是接线 —— 那正是本仓最难查的那类假红。
+        [orderId]: { demandPressure: 10, costPressure: 8, orderChurn: 10, qty: 5000, unitPrice: 18000, leadDays: 30 },
         [baseId]: { loadIndex: 20 },
         [supplierId]: { deliveryDelay: 10, procurementDelay: 7 },
         [procurePoId]: { procurementDelay: 7 },
@@ -396,10 +410,20 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_process_queue_to_line_blocked", "demo_line_blocked_to_wo_release",
         "demo_wo_release_to_model_supply_risk", "demo_wo_release_to_model_cost",
       ],
+      // WO-SIM-ORDER-REAL-FIELDS：订单**真实业务字段**的三条出边。
+      // 与「根源」那一档同性质（入度 0、必须自带源，见上面 baseSnapshot 里那三格），
+      // 不同点是它们的 tick0 值在**真种子世界**里不是外部打进来的，而是
+      // `deriveSeedBaseSnapshot` 从对象属性上**直接读到的真值**（实测 measuredCells 450）。
+      // 本用例用显式 baseSnapshot 建会话，所以这里仍要自带源。
+      订单真实字段: [
+        "demo_order_qty_to_model_top_qty",
+        "demo_order_price_to_model_top_price",
+        "demo_order_leaddays_to_model_horizon",
+      ],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // ── 完整性：十一组 46 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    // ── 完整性：十二组 49 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
     //
     // 🔴 口径修正（WO-ADVERSARY-REACTION）：目录里从此有两类边，**必须分开数**——
     //  · **物理边**（`reaction == null`）：默认世界照跑，逐条都要在上面的 trace 里出现；
