@@ -390,6 +390,27 @@
 /* 告警态：只有**越线**才染色（纪律第 4 条：红/黄/橙专用于告警）。 */
 .kpiAlert .kpiBig { color: var(--danger-txt); }
 
+/* ══ WO-C0828-COO-FIRST-SCREEN 红线 4 · 「这个数出身不可靠」的第一层记号 ══════
+   实测（2026-09-15 真后端，`GET /a/v1/sim/sessions` → `scope.baseSnapshotOrigin`）：
+   本会话 `kind=DERIVED`、生成式 `round(hash01(对象id|状态变量)×100)`、
+   **cells 5,895 / measuredCells 0 / derivedCells 5,895** ——
+   世界态每一格都是结构派生的占位值，没有一格是实测。
+   ⇒ 凡「哪些对象被推动」经过世界态的数，其**集合**由占位世界选出，屏上必须分得出来。
+
+   ⛔ **不许只靠 `InfoPopover`**：浮层要点开才看得到，而「这个数能不能用来做决策」
+     必须在不点任何东西时就读得到（`docs/CONVENTION-ui-information-layering.md` §1
+     「静默降层等于删除」）。故记号是**两半**：贴着数字的 `~` + 一枚写明出身的小牌子。
+   ⛔ **不用红/琥珀**：出身不可靠不是越线告警（纪律第 4 条，告警色专用）。
+   ⚠ 字号仍是在册三级中的 12px（R-UI-2 一屏最多三级），配 `--muted` ——
+     与本文件既有的 12px/`--muted` 正文同档，`check-text-legibility` 的对比度曲线已覆盖。 */
+.kpiApprox { color: var(--muted2); margin-right: 1px; font-weight: 600; }
+.kpiEst {
+  align-self: flex-start;
+  font-size: 12px; line-height: 1.4; color: var(--muted);
+  border: 1px dashed var(--line2); border-radius: 6px; padding: 0 6px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* ④ 面板网格 —— 先 2 列大块，再 3 列小块 */
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; align-items: start; }
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; align-items: start; }

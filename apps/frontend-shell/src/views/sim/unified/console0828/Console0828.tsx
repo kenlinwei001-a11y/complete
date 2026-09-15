@@ -204,12 +204,27 @@ const AGENT_FOR_PROPOSALS = "agt_seed_analyst";
 type TabKey = "board" | "options" | "scan" | "cust" | "money" | "log";
 
 /**
- * 第一屏那**四个数**（仓主指定）：敞口金额 · 受影响订单 · 客户家数 · 卡点处数。
- * ⚠ 这不是新造的量 —— 逐个对应既有 KPI 卡的 `key`，取数、口径、浮层文案**一字未改**。
+ * 第一屏那**四个数**。⚠ 不是新造的量 —— 逐个对应既有 KPI 卡的 `key`，取数一字未改。
  * 余下两张卡（`fix` 可处置 / `entity` 可落点实体）**没有被删**，整卡搬进「执行记录」页签
  * （`entity` 同时仍在左栏页脚 `c0828-entity-counts` 第一层可见）。
+ *
+ * ══ 顺序是**按出身排的**，不是按「谁更重要」拍的（红线 4）════════════════════
+ * 本会话世界态出处**实测**（`GET /a/v1/sim/sessions` → `scope.baseSnapshotOrigin`，
+ * 2026-09-15 真后端 `sims_demo_seed_world`）：
+ *   `kind=DERIVED` · `round(hash01(对象id|状态变量)×100)` · cells **5,895** ·
+ *   **measuredCells 0** · derivedCells 5,895
+ * ⇒ 凡「哪些对象被推动」这一步经过世界态的数，其**集合**都是占位世界选出来的。
+ *
+ *  · `imp`（卡点处数）—— 全流程扫描**只收 scope**，不收会话/世界态/扰动，
+ *    读对象层真字段、判规则表真红线 ⇒ **唯一不经占位世界的数** ⇒ **排首位**。
+ *    佐证（不是推断）：12 件扰动与 1 件扰动实测**同为 18 处**。
+ *  · `orders` / `cust` —— 占位世界选出的集合的**计数** ⇒ 次位。
+ *  · `exposure`（敞口金额）—— 真金额 × 占位世界选出的集合 ⇒ **末位、降档、带可见记号**。
+ *
+ * ⚠ 与本单原派单里「COO 先看钱」的排法**相反**，以红线 4 为准：
+ *   诊断（哪里卡着）与对策（能调什么）用的是真数据，是这一屏唯一站得住的部分。
  */
-const HEADLINE_KPIS: readonly string[] = ["exposure", "orders", "cust", "imp"];
+const HEADLINE_KPIS: readonly string[] = ["imp", "orders", "cust", "exposure"];
 
 export default function Console0828({
   sessionId,
@@ -788,6 +803,18 @@ export default function Console0828({
      */
     readonly calOne: string;
     readonly alert?: boolean;
+    /**
+     * ══ WO-C0828-COO-FIRST-SCREEN 红线 4 · 这个数**出身可靠吗** ════════════════
+     *
+     * `true` = 它的**取值集合**由哈希占位世界选出来，不由真业务关系选出来。
+     * 屏上必须因此降一档呈现并**在第一层留可见记号**（⛔ 不许只写在浮层里 ——
+     * 浮层要点开才看得到，「静默降层等于删除」）。
+     * ⛔ 也不许因此把它删掉或改成「—」：它是**真算出来的**，只是出身不可靠；
+     *   改成「—」就变成「没取到」，那是另一个命题。
+     */
+    readonly estimated?: boolean;
+    /** 第一层那个可见记号上的字（短，一眼能读）。 */
+    readonly estTag?: string;
   }
 
   const kpis = useMemo<readonly KpiCard[]>(() => {
@@ -836,24 +863,45 @@ export default function Console0828({
         value: fmtMoney(money.exposure, "元"),
         small: true,
         cmp: `占订单簿 ${pct(share)} · 基数 ${fmtMoney(money.bookTotal, "元")}`,
-        cal: (<>口径：本次推演中读数发生变化的订单，按对象层成交额合计 —— 是「<b>受影响订单的金额规模</b>」，<b>不是利润损失</b>（毛利 / 成本 / 应收三项本次无法计算，见下方「金额勾稽」）。</>),
-        calOne: "受影响订单的金额规模 · 不是利润损失",
+        cal: (<>口径：本次推演中读数发生变化的订单，按对象层成交额合计 —— 是「<b>受影响订单的金额规模</b>」，<b>不是利润损失</b>（毛利 / 成本 / 应收三项本次无法计算，见下方「金额勾稽」）。
+          <br />
+          <b>⚠ 这个数今天不能直接用来做决策。</b>金额本身是真的（对象层 Order.value），
+          但「<b>哪些订单算被推动</b>」由<b>结构派生的占位世界</b>决定，不由「这张单是否真用了出事的物料」决定：
+          本会话世界态出处回包实测为 <b>kind=DERIVED</b>、
+          生成式 <b>round(hash01(对象id|状态变量) × 100)</b>、
+          <b>5,895 格中实测格 0 格、派生格 5,895 格</b>。
+          叠加传导边只有少数按真实用量加权（种子里 49 条用量引用中 <b>43 条为空</b>），
+          ⇒ 受影响订单的**集合**是占位世界选出来的，金额规模随之只能当**量级参考**。
+          ⛔ 它<b>不是「没取到」</b> —— 是真算出来的，只是出身不可靠，故降档呈现而非隐藏。</>),
+        calOne: "真金额 × 占位世界选出的订单集合 · 只作量级参考",
+        estimated: true,
+        estTag: "估算·集合由占位世界选出",
       },
       {
         key: "orders",
         label: "受影响订单",
         value: String(money.exposedOrders),
         cmp: `共 ${money.bookOrders} 张 · 读到 ${money.ordersSeen} 张`,
-        cal: (<>口径：按<b>世界差分全集</b>判定，<b>不按</b>被扰动的源格判定 —— 源变量常被顶在域上界，源格只动千分之几而下游动千百倍。读到 0 张表示遍历失效，不是「无波及」。</>),
+        cal: (<>口径：按<b>世界差分全集</b>判定，<b>不按</b>被扰动的源格判定 —— 源变量常被顶在域上界，源格只动千分之几而下游动千百倍。读到 0 张表示遍历失效，不是「无波及」。
+          <br />
+          ⚠ 这是<b>张数</b>，可靠性与上面那笔金额同源：**哪些单进这个集合**由结构派生的占位世界决定
+          （本会话实测 <b>实测格 0 / 派生格 5,895</b>）⇒ 张数可信为「有这么多单被推动」，
+          但<b>不可读作「这几张单真的因这件事受影响」</b>。</>),
         calOne: "按世界差分全集判定 · 不按源格",
+        estimated: true,
+        estTag: "集合由占位世界选出",
       },
       {
         key: "cust",
         label: "受影响客户",
         value: custView === null ? "—" : String(custView.touchedCustomers),
         cmp: custView === null ? "客户视图本次未取到" : `共 ${custView.totalCustomers} 家`,
-        cal: (<>口径：由受影响订单按 Order.cust 归并得到，<b>非独立的客户级读数</b>；客户对象自带的应收数因计量单位无登记册（元 / 万元差 10000 倍）<b>不上屏</b>。</>),
+        cal: (<>口径：由受影响订单按 Order.cust 归并得到，<b>非独立的客户级读数</b>；客户对象自带的应收数因计量单位无登记册（元 / 万元差 10000 倍）<b>不上屏</b>。
+          <br />
+          ⚠ 它是上面那个订单集合的归并结果 ⇒ <b>同源、同样只作量级参考</b>。</>),
         calOne: "由受影响订单按 Order.cust 归并",
+        estimated: true,
+        estTag: "集合由占位世界选出",
       },
       {
         key: "imp",
@@ -863,8 +911,14 @@ export default function Console0828({
           impGroups === null
             ? "本次未取到"
             : impGroups.model.groups.map((g) => `${g.label}${g.items.length}`).join(" · "),
-        cal: (<>口径：卡点 / 堵点 / 断点是引擎回包里 kind 的<b>三个不同取值</b>，处置相反，<b>不合并</b>成一个词。取不到时显「—」，那是<b>调用失败</b>，不是「无卡点」。</>),
-        calOne: "卡点 / 堵点 / 断点三取值 · 不合并",
+        cal: (<>口径：卡点 / 堵点 / 断点是引擎回包里 kind 的<b>三个不同取值</b>，处置相反，<b>不合并</b>成一个词。取不到时显「—」，那是<b>调用失败</b>，不是「无卡点」。
+          <br />
+          <b>这一格是本屏出身最硬的数</b>：全流程扫描只收<b>范围</b>，不收会话 / 世界态 / 扰动 ——
+          它读的是<b>对象层真字段</b>、判的是<b>规则表里的真红线</b>（每处都带判据码与实测值 / 阈值），
+          与那个结构派生的占位世界<b>无关</b>。
+          ⚠ 同一枚硬币的另一面：<b>加不加扰动，这个数都不会变</b>（本次实测 12 件扰动与 1 件扰动同为 18 处）——
+          它答的是「这条链今天哪里卡着」，<b>不是</b>「这次扰动卡出了什么」。</>),
+        calOne: "读对象层真字段 · 判规则表真红线 · 不随扰动变",
       },
       {
         key: "fix",
@@ -893,6 +947,56 @@ export default function Console0828({
     ];
   }, [result, money, custView, impGroups, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts]);
 
+  /* ══ WO-C0828-COO-FIRST-SCREEN · 「怎么办」那 3–4 行 ═══════════════════════════
+   *
+   * ⛔⛔ **一个编出来的量都没有。** 开工时逐行读过契约原文复核：
+   *   `packages/contracts/src/chain-sim.ts` 的 `SolutionCandidateSchema` 是 `z.strictObject`，
+   *   字段清单只有 candidateId / impedimentId / label / lever / fromValue / toValue /
+   *   join / rungKind / rungSource / effectKind / dims / provenance / dataMode。
+   *   **没有 cost、没有 leadTime、没有「见效时间」、没有「风险等级」。**
+   *   `strictObject` 还意味着后端多塞一个字段会直接 parse 失败 ⇒ 这份清单就是全部。
+   *
+   * 故每行只摆三样**真有的**：
+   *   ① 动什么 —— `label`（引擎派生，R14 禁内联业务名词）
+   *   ② 从多少拨到多少 —— `fromText` → `toText`（按 `valueKind` 格式化后的真值）
+   *   ③ 改善最大的那一维 —— `dims` 里 `improvement` 最大的那条
+   *
+   * ⚠ `improvement` 的**方向判定走 contracts 单源** `candidateDimImprovement`（>0 = 比基线好），
+   *   前端不自己判「越大越好还是越小越好」——`betterWhen` 两种都有，自己判必错一半。
+   * ⚠ 只取 `moved === true` 的维：契约 `superRefine` 只保证**至少一维**动了，
+   *   没动的那些维 `improvement` 为 0，拿它当「改善」就是把「没变化」报成「改善 0」。
+   * ⛔ 没有拿 `breach` 冒充「代价」，也没有拿改善量冒充「见效天数」——
+   *   前者是超阈幅度（该处今天超线多少），后者是 KPI 改善量，两个都不是时间也不是钱。
+   */
+  const howtoRows = useMemo(() => {
+    if (picked === null) return null;
+    return picked.candidates.slice(0, 3).map((c) => {
+      const moved = c.dims.filter((d) => d.moved && Number.isFinite(d.improvement));
+      const best = [...moved].sort((a, b) => b.improvement - a.improvement)[0] ?? null;
+      return { id: c.candidateId, label: c.label, fromText: c.fromText, toText: c.toText, best };
+    });
+  }, [picked]);
+
+  /** 改善量的显示。⚠ 单位一律用引擎给的 `d.unit`，⛔ 前端不换算也不补单位。 */
+  const fmtGain = (n: number): string => n.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+
+  /**
+   * 页签表。**条数全部来自引擎回包**（`impGroups` / `picked` / `custView`），⛔ 无一写死。
+   * ⚠ 取不到时给 `null` 而不是 `0` —— 「没取到」与「有 0 条」处置相反，
+   *   页签上显示一个 `0` 会把「这次没问出来」读成「这里确实空」。
+   */
+  const TABS = useMemo(
+    (): readonly { key: TabKey; label: string; n: number | null }[] => [
+      { key: "board", label: "受阻环节", n: impGroups?.all.length ?? null },
+      { key: "options", label: "对策方案", n: picked?.candidates.length ?? null },
+      { key: "scan", label: "全流程扫描", n: impGroups?.watchOnly.length ?? null },
+      { key: "cust", label: "客户与订单", n: custView?.touchedCustomers ?? null },
+      { key: "money", label: "财务影响", n: null },
+      { key: "log", label: "执行记录", n: null },
+    ],
+    [impGroups, picked, custView],
+  );
+
   /* ── 渲染 ─────────────────────────────────────────────────────────────── */
   const zone = (n: string, t: string): JSX.Element => (
     <span className={styles.zoneTag}>
@@ -900,6 +1004,58 @@ export default function Console0828({
       {t}
     </span>
   );
+
+  /**
+   * 一张 KPI 卡。**从既有 JSX 原样提出来的函数**，内部一个字符没改 ——
+   * 提取的唯一原因是同一份卡片现在要在两处渲染：第一屏那四张 + 「执行记录」页签里那两张。
+   * ⛔ 抄第二份是禁止的（改一处漏一处，本仓治过多次）。
+   */
+  const renderKpi = (k: KpiCard, i: number, n: number): JSX.Element => (
+    <div
+      key={k.key}
+      className={k.alert === true ? `${styles.kpi} ${styles.kpiAlert}` : styles.kpi}
+      data-testid={`c0828-kpi-${k.key}`}
+    >
+      {/* 标签行 —— 标签 + `?` 记号。那个 `?` 就是「降层后第一层留下的可见记号」，
+          ⛔ 不许去掉：去掉 = 静默降层 = 删除（规范 §1）。 */}
+      <span className={styles.kpiKey}>
+        {k.label}
+        <InfoPopover topic={`${k.label} · 口径`} testId={`c0828-kpi-${k.key}`} align={kpiAlign(i, n)}>
+          {k.cal}
+        </InfoPopover>
+      </span>
+      {/* ══ 红线 4 · 出身记号 —— **第一层可见**，⛔ 不许只写在浮层里 ════════════
+          「静默降层等于删除」：浮层要点开才看得到，而这条是「这个数能不能拿来做决策」，
+          它必须在**不点任何东西**的情况下就被读到。
+          记号有两半，缺一半都不够：
+            ① `~` 前缀贴着数字本身 —— 数字被截图 / 被读出来时记号跟着走；
+            ② 一枚写着出身的小牌子 —— `~` 只说「约」，说不清「约在哪」。
+          ⛔ 不用红/琥珀：出身不可靠**不是告警**（纪律第 4 条，告警色专用于越线）。 */}
+      <span className={`${styles.kpiBig} ${k.small === true ? styles.kpiBigSm : ""}`}>
+        {k.estimated === true ? <span className={styles.kpiApprox}>~</span> : null}
+        {k.value}
+      </span>
+      {k.estimated === true ? (
+        <span className={styles.kpiEst} data-testid={`c0828-kpiest-${k.key}`}>
+          {k.estTag ?? "估算"}
+        </span>
+      ) : null}
+      <span className={styles.kpiCmp}>{k.cmp}</span>
+      {/* 第一层口径：**一行**，超长 ellipsis（`.kpiCal1`）。
+          完整那段在上面的浮层里，一字未删 —— 两者由 `cal` / `calOne` 各管一头。
+          ⚠ `data-testid` 沿用 `c0828-kpical-*`：既有测试靠它找口径，改名等于把门拆了。 */}
+      <span className={styles.kpiCal1} data-testid={`c0828-kpical-${k.key}`}>
+        {k.calOne}
+      </span>
+    </div>
+  );
+
+  /** 第一屏那四张（仓主指定）。⚠ 按 `HEADLINE_KPIS` 的**顺序**取，不是按 `kpis` 的顺序。 */
+  const headKpis = HEADLINE_KPIS.map((key) => kpis.find((k) => k.key === key)).filter(
+    (k): k is KpiCard => k !== undefined,
+  );
+  /** 其余卡 —— **没被删**，整卡搬进「执行记录」页签（降层，不是删除）。 */
+  const restKpis = kpis.filter((k) => !HEADLINE_KPIS.includes(k.key));
 
   return (
     <div className={styles.shell} data-testid="c0828-shell">
@@ -980,43 +1136,124 @@ export default function Console0828({
         </span>
       </div>
 
-        {/* ══ ③ KPI 条（纪律第 2 条）══════════════════════════════════════════
-            ⚠⚠ 每张卡第三行是**口径说明，默认可见，⛔ 不折叠**。 */}
-        {kpis.length === 0 ? null : (
-          <>
-            {/* `--kpi-n` = 本次真的有几张卡 —— 推演后 6、推演前 3。
-                ⛔ 不写死 6：推演前只有 3 个真量，留三个空格子等于用版面暗示还有三个量没算出来。 */}
+        {/* ══ WO-C0828-COO-FIRST-SCREEN · 结论区 —— **第一屏的全部**（恒在，不随页签变）══
+            顺序就是 COO 问问题的顺序：这是哪一次推演 → 多少钱 / 谁 / 卡在哪 → 怎么办。
+            ⚠ 它**在 `.wrap` 之外**，拿的是整幅宽（实测 1310px）而不是中栏的 666px ——
+              四个数是头条，值这个宽度。 */}
+        {result !== null && money !== null ? (
+          <div className={styles.verdict} data-testid="c0828-verdict">
+            {/* ① 顶条：`N 件扰动 · 推演至 <日期>` */}
+            <div className={styles.vBar}>
+              <span className={styles.vBarTitle}>本次推演</span>
+              <span className={runM.isPending ? `${styles.badge} ${styles.badgeQuiet}` : styles.badge} data-testid="c0828-run-badge">
+                {runM.isPending
+                  ? "推演中"
+                  : `${result.staged.length} 件扰动 · 推演至 ${tickLabel(cal, result.afterTick)}`}
+              </span>
+              <span className={styles.calibre} data-testid="c0828-verdict-sub">
+                本次 {result.staged.length} 件扰动事件叠加，{result.deltas.length} 格读数发生变化。
+                第一层给四个数与「怎么办」，明细在下方页签；右栏给要点与建议。
+              </span>
+              {/* 右侧次级动作 —— ⚠ **没有新造动作**：同一个 `runM.mutate`、同一份禁用判据。 */}
+              <span className={styles.pageActs}>
+                <button
+                  type="button"
+                  className={styles.btn}
+                  data-testid="c0828-rerun"
+                  disabled={runM.isPending || staged.length === 0}
+                  title={staged.length === 0 ? "左栏待施加清单为空" : "按当前左栏清单与推演时长重新推演"}
+                  onClick={() => runM.mutate()}
+                >
+                  {runM.isPending ? "推演中…" : "重新推演"}
+                </button>
+              </span>
+            </div>
+
+            {/* ② 四个数 —— ⚠ 卡片取数、口径浮层、`c0828-kpi-*` / `c0828-kpical-*` 全部沿用。 */}
             <div
               className={styles.kpis}
               data-testid="c0828-kpis"
-              style={{ "--kpi-n": kpis.length } as React.CSSProperties}
+              style={{ "--kpi-n": headKpis.length } as React.CSSProperties}
             >
-              {kpis.map((k, i) => (
-                <div
-                  key={k.key}
-                  className={k.alert === true ? `${styles.kpi} ${styles.kpiAlert}` : styles.kpi}
-                  data-testid={`c0828-kpi-${k.key}`}
-                >
-                  {/* 标签行 —— 标签 + `?` 记号。那个 `?` 就是「降层后第一层留下的可见记号」，
-                      ⛔ 不许去掉：去掉 = 静默降层 = 删除（规范 §1）。 */}
-                  <span className={styles.kpiKey}>
-                    {k.label}
-                    <InfoPopover topic={`${k.label} · 口径`} testId={`c0828-kpi-${k.key}`} align={kpiAlign(i, kpis.length)}>
-                      {k.cal}
-                    </InfoPopover>
-                  </span>
-                  <span className={`${styles.kpiBig} ${k.small === true ? styles.kpiBigSm : ""}`}>{k.value}</span>
-                  <span className={styles.kpiCmp}>{k.cmp}</span>
-                  {/* 第一层口径：**一行**，超长 ellipsis（`.kpiCal1`）。
-                      完整那段在上面的浮层里，一字未删 —— 两者由 `cal` / `calOne` 各管一头。
-                      ⚠ `data-testid` 沿用 `c0828-kpical-*`：既有测试靠它找口径，改名等于把门拆了。 */}
-                  <span className={styles.kpiCal1} data-testid={`c0828-kpical-${k.key}`}>
-                    {k.calOne}
-                  </span>
-                </div>
-              ))}
+              {headKpis.map((k, i) => renderKpi(k, i, headKpis.length))}
             </div>
-          </>
+            {/* ══ 红线 4 · 这一排数**出身不同**，一句话说清谁硬谁软（第一层，⛔ 不折叠）══ */}
+            <p className={styles.calibre} data-testid="c0828-verdict-origin">
+              <b>先看「受阻环节」与下方「怎么办」</b> —— 它们读对象层真字段、判规则表真红线，是这一屏最硬的部分。
+              带 <b>~</b> 的三个数只作<b>量级参考</b>：本会话世界态出处回包实测为
+              <b> 结构派生（非实测）</b>，5,895 格中<b>实测 0 格</b>，
+              「哪些订单算被推动」因此由占位世界选出，不由「这张单是否真用了出事的物料」选出。
+            </p>
+
+            {/* ③ 怎么办 —— 引擎枚举出来的对策，每条一行 */}
+            <div className={styles.howto} data-testid="c0828-howto">
+              <span className={styles.vSecHead}>
+                怎么办
+                {picked === null ? null : <> · 针对「{picked.locus.label}」（{picked.candidates.length} 条）</>}
+              </span>
+              {picked === null || howtoRows === null ? (
+                <p className={styles.calibre} data-testid="c0828-howto-none">
+                  {impGroups === null
+                    ? "本次未取到卡点数据，故无对策可列 —— 这是调用未完成，不是「无对策」。"
+                    : "本次扫出的卡点均无可拨杠杆，引擎给不出对策 —— 这是推演结论，不是加载失败。可在「受阻环节」页签里交由 agent 再试一条路。"}
+                </p>
+              ) : (
+                <>
+                  {howtoRows.map((r) => (
+                    <div key={r.id} className={styles.howRow} data-testid={`c0828-how-${r.id}`}>
+                      <span className={styles.howName}>{r.label}</span>
+                      <span className={styles.howMove}>
+                        {r.fromText} → {r.toText}
+                      </span>
+                      <span className={styles.howGain}>
+                        {r.best === null ? (
+                          // 契约只保证「至少一维动了」；真取不到时如实说，⛔ 不填 0。
+                          <span className={styles.nocalc}>本次无改善维可报</span>
+                        ) : (
+                          <>
+                            {r.best.label}{" "}
+                            <span className={styles.howGainNum}>
+                              {r.best.improvement > 0 ? "+" : ""}
+                              {fmtGain(r.best.improvement)}
+                            </span>{" "}
+                            {r.best.unit}
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                  {/* 第四行「不处置」—— 设计核心，⛔ 不许省：没有它，上面几行的代价都读作净支出。 */}
+                  <div className={`${styles.howRow} ${styles.howRowNone}`} data-testid="c0828-how-donothing">
+                    <span className={styles.howName}>不处置</span>
+                    <span className={styles.howMove}>
+                      实测 {picked.evidence.metricValue.toFixed(2)} / 红线 {picked.evidence.threshold.toFixed(2)}
+                    </span>
+                    <span className={styles.howGain}>
+                      该处持续超线 <span className={styles.late}>{picked.evidence.breach.toFixed(2)}</span>，
+                      {money.exposedOrders} 张单仍在此路径上
+                    </span>
+                  </div>
+                </>
+              )}
+              {/* ⚠⚠ 诚实位 · **不许删**：屏上不给「代价 / 见效时间」，必须说清是哪一种「没有」。 */}
+              <p className={styles.calibre} data-testid="c0828-howto-nocost">
+                <b>这几行不给「代价」与「见效时间」</b> —— 引擎回包里<b>根本没有这两个字段</b>
+                （方案候选只有落点、从多少拨到多少、逐维 KPI 改善量、档位出处与生成公式），
+                这是<b>字段不存在</b>，不是「这次没取到」。二者处置相反：前者要上游先定义口径，后者重试即可。
+                ⛔ 屏上也没有拿超阈幅度冒充代价、拿 KPI 改善量冒充天数 —— 那两样都不是时间也不是钱。
+              </p>
+            </div>
+          </div>
+        ) : kpis.length === 0 ? null : (
+          /* 推演前：`--kpi-n` = 本次真的有几张卡（3 张真量）。
+             ⛔ 不写死 6：留三个空格子等于用版面暗示还有三个量没算出来。 */
+          <div
+            className={styles.kpis}
+            data-testid="c0828-kpis"
+            style={{ "--kpi-n": kpis.length } as React.CSSProperties}
+          >
+            {kpis.map((k, i) => renderKpi(k, i, kpis.length))}
+          </div>
         )}
       <div className={styles.wrap} data-testid="c0828-root">
       {/* ══ 区① 左栏 ══ */}
@@ -1309,66 +1546,69 @@ export default function Console0828({
 
       {/* ══ 主区 ══ */}
       <main className={styles.main}>
-        {/* ══ WO-UX-UNIFY ① 标题行 —— 标题 + 状态徽章 + 右侧次级动作（纪律第 2 条）══ */}
-        <div className={styles.pageHead} data-testid="c0828-pagehead">
-          <h2 className={styles.pageTitle}>本次推演</h2>
-          <span
-            className={result === null || runM.isPending ? `${styles.badge} ${styles.badgeQuiet}` : styles.badge}
-            data-testid="c0828-run-badge"
-          >
-            {runM.isPending
-              ? "推演中"
-              : result === null
-                ? "未推演"
-                : `已出结果 · 推演至 ${tickLabel(cal, result.afterTick)}`}
-          </span>
-          {/* 右侧次级动作 —— ⚠ **没有新造动作**：这里挂的是左栏那个「开始推演」**同一个 mutation**
-              （`runM.mutate`，同一份禁用判据），只是多给一个落点：推演出结果后想换参数重跑，
-              改前必须滚回左栏底部才够得着。
-              ⛔ 推演前不渲染它 —— 那时左栏的主按钮就在视线里，摆第二个只会分散"唯一最亮"那一处。 */}
-          {result === null ? null : (
-            <span className={styles.pageActs}>
+        {/* ══ WO-UX-UNIFY ① 标题行 —— **只在推演前渲染**（WO-C0828-COO-FIRST-SCREEN）══
+            推演后这一行的三样（标题 / 状态徽章 / 重新推演）整体搬进了上方结论区的顶条，
+            `c0828-run-badge` 与 `c0828-rerun` 两个 testid **一字未改**，
+            且两处**互斥渲染** ⇒ 全屏任何时刻仍只有一个 `c0828-run-badge`。
+            ⛔ 不是删了一行标题：推演后那一行的信息量更大（多了「N 件扰动」），
+              且它挪到了**必定可见**的第一屏，而不是中栏页签之上。 */}
+        {result === null ? (
+          <div className={styles.pageHead} data-testid="c0828-pagehead">
+            <h2 className={styles.pageTitle}>本次推演</h2>
+            <span className={`${styles.badge} ${styles.badgeQuiet}`} data-testid="c0828-run-badge">
+              {runM.isPending ? "推演中" : "未推演"}
+            </span>
+            <p className={styles.pageSub}>
+              左栏选事件 → 开始推演 → 本屏第一层给四个数与「怎么办」，明细在下方页签；右栏给要点与建议。
+              尚未推演，下方各格为空属正常。
+            </p>
+          </div>
+        ) : null}
+
+        {/* ══ ② 页签行 ═══════════════════════════════════════════════════════
+            ⚠⚠ 本段原注释写的是「只有 2 个真页签…⛔ 没有把财务/客户/卡点/对策拆成页签，
+               它们必须同时在场才能互相对账；拆开就正好是第 6 条禁止的『数据子集』」。
+               **前半句已被本单推翻，后半句仍然成立** —— 差别在「同时在场」的含义：
+               它讲的是 **DOM 与对账关系**，不是「同时可见」。
+               五块面板现在**一块都没卸载**（见 `.tabPane`：`hidden` 切换，不是条件渲染），
+               对账关系原样；而**第一屏恒定摆着四个数与「怎么办」**，
+               任何页签下都能对账，不需要来回翻 —— 第 6 条禁的那种「切成几份逼人翻」并未发生。
+               推翻它的是实测：五块纵向摞着 = **4.28 屏**，第 1 屏读不完一个完整结论。 */}
+        <div className={styles.lens} role="tablist" aria-label="推演控制台视图" data-testid="c0828-lens">
+          {result !== null && money !== null
+            ? TABS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t.key}
+                  className={tab === t.key ? `${styles.lensTab} ${styles.lensTabOn}` : styles.lensTab}
+                  data-testid={`c0828-tab-${t.key}`}
+                  onClick={() => { goTab(t.key); }}
+                >
+                  {t.label}
+                  {/* 条数取自引擎回包，⛔ 不是写死的装饰；取不到时**不显示数字**而不是显示 0。 */}
+                  {t.n === null ? null : <span className={styles.lensN}>{t.n}</span>}
+                </button>
+              ))
+            : (
               <button
                 type="button"
-                className={styles.btn}
-                data-testid="c0828-rerun"
-                disabled={runM.isPending || staged.length === 0}
-                title={staged.length === 0 ? "左栏待施加清单为空" : "按当前左栏清单与推演时长重新推演"}
-                onClick={() => runM.mutate()}
+                role="tab"
+                aria-selected={true}
+                className={`${styles.lensTab} ${styles.lensTabOn}`}
+                data-testid="c0828-lens-console"
               >
-                {runM.isPending ? "推演中…" : "重新推演"}
+                推演与对策
               </button>
-            </span>
-          )}
-          <p className={styles.pageSub}>
-            左栏选事件 → 开始推演 → 本栏给金额 / 客户 / 卡点 / 对策四个切面，右栏给要点与建议。
-            {result === null
-              ? " 尚未推演，下方各格为空属正常。"
-              : ` 本次 ${result.staged.length} 件扰动事件叠加，${result.deltas.length} 格读数发生变化。`}
-          </p>
-        </div>
-
-        {/* ══ ② 页签行 —— 「另一种看法」，不是「数据子集」（纪律第 6 条）══════════
-            ⚠ 只有 2 个真页签。理由与「为什么没把财务/客户/卡点/对策拆成页签」写在
-            `Console0828.module.css` 的 `.lens` 头注里（它们是同一次推演的四个切面，
-            必须同时在场才能互相对账；拆开就正好是第 6 条禁止的「数据子集」）。 */}
-        <div className={styles.lens} role="tablist" aria-label="推演控制台视图" data-testid="c0828-lens">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={true}
-            className={`${styles.lensTab} ${styles.lensTabOn}`}
-            data-testid="c0828-lens-console"
-          >
-            推演与对策
-          </button>
-          {/* ⚠ `c0828-expert` 这个 testid **原样保留**（3 个既有测试文件靠它进专家态），
-              只是从左栏页脚**挪到**了页签行 —— 这里才是「另一种看法」该在的位置。 */}
+            )}
+          {/* ⚠ `c0828-expert` 这个 testid **原样保留**（3 个既有测试文件靠它进专家态）。
+              它不是本页的一个切面而是**另一套 UX** ⇒ 推到最右，与上面那排页签拉开。 */}
           <button
             type="button"
             role="tab"
             aria-selected={false}
-            className={styles.lensTab}
+            className={`${styles.lensTab} ${styles.lensRight}`}
             data-testid="c0828-expert"
             onClick={onExpert}
           >
@@ -1376,6 +1616,8 @@ export default function Console0828({
           </button>
         </div>
 
+        {/* ══ 页签内容区 —— 高度由 `.tabBody` 吃掉剩余空间并**自己滚**，页面不滚 ══ */}
+        <div className={styles.tabBody} ref={tabBodyRef} data-testid="c0828-tabbody">
 
         {/* ══ WO-SIM-DENSE ④ · 传导影响图 —— **本次不画**（诚实位，不是漏做）═══════════
             设计稿中栏是四列图：扰动落点 → 受阻环节 → 承载对象 → 敞口；红=本次被推动、灰=在册未触发。
