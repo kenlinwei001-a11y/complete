@@ -1626,6 +1626,8 @@ export default function Console0828({
                复验方式同本文件 `Console0828.tsx` 顶部 `TabKey` 头注给的那段浏览器控制台量法
                （含起真后端与 `pnpm --filter frontend-shell exec vite` 的命令）。 */}
         <div className={styles.lens} role="tablist" aria-label="推演控制台视图" data-testid="c0828-lens">
+          {/* 会滚的那一段 —— 页签多到放不下时它自己横滚，⛔ 不折行（折行要多占一整行 37px）。 */}
+          <div className={styles.lensScroll}>
           {result !== null && money !== null
             ? TABS.map((t) => (
                 <button
@@ -1653,8 +1655,10 @@ export default function Console0828({
                 推演与对策
               </button>
             )}
+          </div>
           {/* ⚠ `c0828-expert` 这个 testid **原样保留**（3 个既有测试文件靠它进专家态）。
-              它不是本页的一个切面而是**另一套 UX** ⇒ 推到最右，与上面那排页签拉开。 */}
+              它不是本页的一个切面而是**另一套 UX** ⇒ 钉在最右，**在滚动区之外** ——
+              实测它排在滚动区末尾时会被切掉（标签后半截「· 8 档页签」看不见）。 */}
           <button
             type="button"
             role="tab"
