@@ -287,12 +287,43 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
     const cells = Object.values(state).reduce((n, row) => n + Object.keys(row).length, 0);
     expect(cells, "工具坏了：派生出来的世界态是空的").toBeGreaterThan(100);
 
+    /**
+     * 落点集合**从生产真正 offer 给用户的那一份取**（`view-config.nodeObjectIds`），
+     * ⛔ 不在测试里再抄一份过滤谓词 —— 抄一份就是装饰品：改生产那份时这份拿旧的去测、照样绿。
+     *
+     * ⚠ 为什么不再用 `repos.objects.listByType`（2026-09-15 改，来历是一次真事故）：
+     * 引擎侧把**已完成订单**排除出推演世界（`entersSimWorld`：扰动不该推动已成交的单）之后，
+     * `listByType` 仍回 500 张而 `world.state` 只剩 150 ⇒ 本断言报「350/500 个落点没进 state」。
+     * 当时两种改法都能变绿，只有一种是对的：
+     *   ✗ 把断言放宽成「允许缺失」—— 那等于把「静默错答」这个真风险的守卫拆掉
+     *   ✓ 把「落点」的口径对齐到**用户真能选到的那一份** —— 本条采用
+     * 判据没有变弱：它现在咬的是**真实接缝**（view-config ↔ world.state），
+     * 谁把 `nodeObjectIds` 的过滤改漂了，这里当场红。
+     */
+    const vcRes = await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN });
+    expect(vcRes.statusCode, "取不到 view-config ⇒ 本条无从判定").toBe(200);
+    const nodeObjectIds = (vcRes.json() as { nodeObjectIds?: Record<string, string[]> }).nodeObjectIds ?? {};
+    // 🐤 金丝雀：这份清单真的非空，否则下面「每个落点都在 state 里」恒真（空集恒满足）
+    const offeredTotal = Object.values(nodeObjectIds).reduce((n, a) => n + a.length, 0);
+    expect(offeredTotal, "工具坏了：view-config 一个落点都不下发 ⇒ 下面的全称断言恒绿").toBeGreaterThan(100);
+
     for (const { gate, stateVar, ruleKey } of TRIAD) {
       const rule = rules.find((r) => r.key === ruleKey);
       expect(rule, `${gate} · 规则 ${ruleKey} 没播进来`).toBeDefined();
       const landingType = rule!.sourceTypeKey;
-      const ids = await idsOfType(t, landingType);
+      const ids = [...(nodeObjectIds[landingType] ?? [])];
       expect(ids.length, `${gate} · 落点类型 ${landingType} 在 demo 里零对象 ⇒ 这个根源扰不动`).toBeGreaterThan(0);
+
+      // ── 反向咬一口：只断言「offer ⊆ state」是不够的，把 offer 砍成 1 条也满足它。
+      //    所以再钉死：offer 的那份必须**恰好**是全目录里真正进了世界的那批，一个不多一个不少。
+      //    多出来的会静默错答（屏上「施加成功」下游不动）；少掉的是用户本该能扰却选不到。
+      const inWorld = (await idsOfType(t, landingType)).filter(
+        (id) => typeof state[id]?.[stateVar] === "number",
+      );
+      expect(
+        ids.slice().sort(),
+        `${gate} · ${landingType} 的落点清单与「进了世界的那批」不是同一集合`,
+      ).toEqual(inWorld.slice().sort());
 
       // ── 真带上：**每一个**落点对象都要有这一格（不是"某几个有"）──────────────
       const missing = ids.filter((id) => typeof state[id]?.[stateVar] !== "number");

@@ -248,9 +248,18 @@ export function buildMoneyView(
    * ── 阈值 0.01 的依据（不是拍的）──────────────────────────────────────────────
    * 推演读数是 **0–100 的压力标度**（`costPressure`/`demandPressure`/`utilPressure`…），
    * 0.01 即满量程的 **0.01%** —— 在这个标度上属数值噪声级，不构成业务影响。
-   * 实测支撑（同日，同一组落点，两个不同扰动）：
-   *   原材料涨价 → 微弱 0 · 轻 81 · 中 51 · 重 18  ⇒ 实质受扰 **150**
-   *   设备故障   → 微弱 94 · 轻 36 · 中 20 · 重 0  ⇒ 实质受扰 **56**
+   * 实测支撑 **2026-09-14**（同一组落点，两个不同扰动，真后端 + 真浏览器）：
+   *   原材料涨价 → 微弱 0 · 轻 81 · 中 51 · 重 18  ⇒ 实质受扰 **150**（p90/max 11.27 / 18.49）
+   *   设备故障   → 微弱 94 · 轻 36 · 中 20 · 重 0  ⇒ 实质受扰 **56**（p90/max 1.07 / 4.54）
+   *
+   * 复验方式（任选其一，都不需要读本文件）：
+   *   ① 真链路：`SEED_DEMO=1` 起 datacore(4001) + agentcore(4002) + 前端，登录 demo/admin/demo1234，
+   *      进「统一推演控制台」→ 分别选事件「原材料涨价」与「设备故障」→ 加入 → 开始推演，
+   *      读「本次扰动波及」块的四个分档数与 p90/最大。两次必须不同。
+   *   ② 断言：`apps/frontend-shell/test/exposure-responds-to-perturbation.seam.test.ts`
+   *      用 `respondsToInput()`（`@platform/contracts`）咬死「两个不同扰动 ⇒ exposedOrders 必须不同」，
+   *      并配反向金丝雀 `stableForSameInput()`（同输入必须同输出，R6）。
+   *   ③ 阈值本身：见上方「标度依据」—— 0–100 压力标度，0.01 = 满量程 0.01%。
    * ⇒ 主数字自此**真的随扰动变**。被滤掉的那批**照样上屏**（「仅微弱扰动 N 张」），
    *   不许让 150 悄悄变成 56 而读者不知道少掉的是什么。
    */
@@ -261,12 +270,24 @@ export function buildMoneyView(
   const quant = (f: number): number | null =>
     mags.length === 0 ? null : (mags[Math.min(mags.length - 1, Math.floor(mags.length * f))] ?? null);
   const inRange = (lo: number, hi: number): number => mags.filter((m) => m > lo && m <= hi).length;
+  /**
+   * 分档边界**从 `NOISE_FLOOR` 派生**，标签由边界现生成 —— ⛔ 不许判据写一遍、标签再写一遍。
+   * 原写法把 `0.01 / 1 / 10` 各写了两份（`inRange(0.01, 1)` 与 `"轻 0.01–1"`），
+   * 改一处漏一处时**屏上的区间说明与实际分档判据会背离**，而 typecheck 一个都看不见
+   * ——「旧名/旧值以字符串形态存在」的那一类，本仓记过账。
+   *
+   * 标度依据（不是拍的）：推演读数是 **0–100 的压力标度**。
+   * `NOISE_FLOOR` = 0.01 = 满量程 **0.01%**，噪声级；往上按十倍递进取两档：
+   * ×100 ⇒ 1（满量程 1%）· ×1000 ⇒ 10（满量程 10%）。
+   */
+  const MAG_EDGES = [NOISE_FLOOR, NOISE_FLOOR * 100, NOISE_FLOOR * 1000] as const;
+  const [eFaint, eLight, eMid] = MAG_EDGES;
   const magnitude = {
     buckets: [
-      { label: "微弱 ≤0.01", n: inRange(0, 0.01) },
-      { label: "轻 0.01–1", n: inRange(0.01, 1) },
-      { label: "中 1–10", n: inRange(1, 10) },
-      { label: "重 >10", n: inRange(10, Number.POSITIVE_INFINITY) },
+      { label: `微弱 ≤${eFaint}`, n: inRange(0, eFaint) },
+      { label: `轻 ${eFaint}–${eLight}`, n: inRange(eFaint, eLight) },
+      { label: `中 ${eLight}–${eMid}`, n: inRange(eLight, eMid) },
+      { label: `重 >${eMid}`, n: inRange(eMid, Number.POSITIVE_INFINITY) },
     ],
     p50: quant(0.5),
     p90: quant(0.9),

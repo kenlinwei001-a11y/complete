@@ -395,6 +395,17 @@ describe("WO-SIM-SEED-WORLD · 种子世界接缝", () => {
     const censusCellsOfWhitelist = [...census.readings.values()].filter((r) =>
       movedObjectIds.includes(r.objectId),
     ).length;
+    if (allMetrics.length !== censusCellsOfWhitelist) {
+      const apiKeys = new Set(allMetrics.map((m) => `${m.objectId}::${m.stateVar}`));
+      const missing = [...census.readings.values()].filter(
+        (r) => movedObjectIds.includes(r.objectId) && !apiKeys.has(`${r.objectId}::${r.stateVar}`),
+      );
+      const byVar: Record<string, number> = {};
+      for (const m of missing) byVar[m.stateVar] = (byVar[m.stateVar] ?? 0) + 1;
+      // eslint-disable-next-line no-console
+      console.log("[DIAG] 缺 %d 格 · 按 stateVar %o · 样例对象 %o", missing.length, byVar,
+        missing.slice(0, 4).map((m) => m.objectId));
+    }
     expect(allMetrics.length, "分批合并后格数对不上普查全目录 ⇒ 某一批少回了几格").toBe(censusCellsOfWhitelist);
     // eslint-disable-next-line no-console
     console.log(
