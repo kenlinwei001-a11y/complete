@@ -1406,7 +1406,9 @@ export default function Console0828({
         {runM.isPending ? (
           <div className={styles.run} data-testid="c0828-running">
             <span className={styles.zoneNum}>2</span>
-            正在推演往后 {horizon} 拍…
+            {/* 与紧挨着它的「推演时长」那一格同源（`spanLabel`）——
+                两行相邻却一行写「3 天」一行写「3 拍」，正是本单要治的那种不一致。 */}
+            正在推演往后 {spanLabel(cal, horizon)}…
             <span className={styles.bar}>
               <i className={styles.barFill} style={{ width: "62%" }} />
             </span>
