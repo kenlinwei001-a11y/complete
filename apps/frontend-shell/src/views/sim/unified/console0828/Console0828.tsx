@@ -1031,15 +1031,19 @@ export default function Console0828({
             ① `~` 前缀贴着数字本身 —— 数字被截图 / 被读出来时记号跟着走；
             ② 一枚写着出身的小牌子 —— `~` 只说「约」，说不清「约在哪」。
           ⛔ 不用红/琥珀：出身不可靠**不是告警**（纪律第 4 条，告警色专用于越线）。 */}
-      <span className={`${styles.kpiBig} ${k.small === true ? styles.kpiBigSm : ""}`}>
-        {k.estimated === true ? <span className={styles.kpiApprox}>~</span> : null}
-        {k.value}
-      </span>
-      {k.estimated === true ? (
-        <span className={styles.kpiEst} data-testid={`c0828-kpiest-${k.key}`}>
-          {k.estTag ?? "估算"}
+      {/* 数字与出身小牌子**同一行**（`.kpiValRow`）—— 不给牌子单开一行：
+          实测单开一行每张卡长 20px，四张就是 80px，直接从页签内容区身上扣。 */}
+      <span className={styles.kpiValRow}>
+        <span className={`${styles.kpiBig} ${k.small === true ? styles.kpiBigSm : ""}`}>
+          {k.estimated === true ? <span className={styles.kpiApprox}>~</span> : null}
+          {k.value}
         </span>
-      ) : null}
+        {k.estimated === true ? (
+          <span className={styles.kpiEst} data-testid={`c0828-kpiest-${k.key}`}>
+            {k.estTag ?? "估算"}
+          </span>
+        ) : null}
+      </span>
       <span className={styles.kpiCmp}>{k.cmp}</span>
       {/* 第一层口径：**一行**，超长 ellipsis（`.kpiCal1`）。
           完整那段在上面的浮层里，一字未删 —— 两者由 `cal` / `calOne` 各管一头。
@@ -1151,8 +1155,11 @@ export default function Console0828({
                   : `${result.staged.length} 件扰动 · 推演至 ${tickLabel(cal, result.afterTick)}`}
               </span>
               <span className={styles.calibre} data-testid="c0828-verdict-sub">
-                本次 {result.staged.length} 件扰动事件叠加，{result.deltas.length} 格读数发生变化。
-                第一层给四个数与「怎么办」，明细在下方页签；右栏给要点与建议。
+                {result.deltas.length} 格读数发生变化 · 明细在下方页签
+                <InfoPopover topic="这一屏怎么读" testId="c0828-verdict-sub">
+                  左栏选事件 → 开始推演 → 第一层给四个数与「怎么办」，明细在下方页签；右栏给要点与建议。
+                  本次 {result.staged.length} 件扰动事件叠加，{result.deltas.length} 格读数发生变化。
+                </InfoPopover>
               </span>
               {/* 右侧次级动作 —— ⚠ **没有新造动作**：同一个 `runM.mutate`、同一份禁用判据。 */}
               <span className={styles.pageActs}>
@@ -1177,19 +1184,35 @@ export default function Console0828({
             >
               {headKpis.map((k, i) => renderKpi(k, i, headKpis.length))}
             </div>
-            {/* ══ 红线 4 · 这一排数**出身不同**，一句话说清谁硬谁软（第一层，⛔ 不折叠）══ */}
+            {/* ══ 红线 4 · 这一排数**出身不同**，一句话说清谁硬谁软 ════════════════════
+                ⚠ 这一句必须**第一层可见**（不折叠）：它答的是「这些数能不能拿来做决策」。
+                  展开的那一层只放「凭什么这么说」的取证细节（R-UI-3），
+                  而**结论本身与每张卡上的 `~` / 小牌子都在第一层** ⇒ 不是静默降层。 */}
             <p className={styles.calibre} data-testid="c0828-verdict-origin">
-              <b>先看「受阻环节」与下方「怎么办」</b> —— 它们读对象层真字段、判规则表真红线，是这一屏最硬的部分。
-              带 <b>~</b> 的三个数只作<b>量级参考</b>：本会话世界态出处回包实测为
-              <b> 结构派生（非实测）</b>，5,895 格中<b>实测 0 格</b>，
-              「哪些订单算被推动」因此由占位世界选出，不由「这张单是否真用了出事的物料」选出。
+              <b>先看「受阻环节」与下方「怎么办」</b>：读真字段、判真红线。带 <b>~</b> 的三个数只作<b>量级参考</b>
+              <InfoPopover topic="为什么带 ~ 的三个数只作量级参考" testId="c0828-verdict-origin">
+                本会话世界态出处回包**实测**为 <b>结构派生（非实测）</b>：
+                生成式 <b>round(hash01(对象id|状态变量) × 100)</b>，
+                <b>5,895 格中实测 0 格、派生 5,895 格</b>。
+                ⇒「哪些订单算被推动」由这个占位世界选出，<b>不由「这张单是否真用了出事的物料」选出</b>；
+                叠加传导边只有少数按真实用量加权（种子里 49 条用量引用中 <b>43 条为空</b>）。
+                金额本身是真的（对象层 Order.value），<b>不可靠的是集合</b>，故降档呈现而非隐藏。
+                反之「受阻环节」只收范围、不收世界态，读对象层真字段判规则表真红线 —— 与占位世界无关。
+              </InfoPopover>
             </p>
 
             {/* ③ 怎么办 —— 引擎枚举出来的对策，每条一行 */}
             <div className={styles.howto} data-testid="c0828-howto">
+              {/* 小节标题与「这一行对策是谁的」合成一行 —— 单开一行要多 18px，
+                  而这 18px 是直接从页签内容区身上扣的。 */}
               <span className={styles.vSecHead}>
                 怎么办
-                {picked === null ? null : <> · 针对「{picked.locus.label}」（{picked.candidates.length} 条）</>}
+                {picked === null ? null : (
+                  <>
+                    {" "}· 针对「{picked.locus.label}」（{picked.candidates.length} 条）
+                    <span className={styles.howWho}>{fixTag(picked)} · 系统不给推荐，决策由使用方作出</span>
+                  </>
+                )}
               </span>
               {picked === null || howtoRows === null ? (
                 <p className={styles.calibre} data-testid="c0828-howto-none">
@@ -1235,12 +1258,19 @@ export default function Console0828({
                   </div>
                 </>
               )}
-              {/* ⚠⚠ 诚实位 · **不许删**：屏上不给「代价 / 见效时间」，必须说清是哪一种「没有」。 */}
+              {/* ⚠⚠ 诚实位 · **不许删**：屏上不给「代价 / 见效时间」，必须说清是哪一种「没有」。
+                  第一层留**可判定的那一句**（是字段不存在，不是这次没取到）——
+                  这正是规范 §1 要求降层后必须保留的那半；取证细节进浮层。 */}
               <p className={styles.calibre} data-testid="c0828-howto-nocost">
-                <b>这几行不给「代价」与「见效时间」</b> —— 引擎回包里<b>根本没有这两个字段</b>
-                （方案候选只有落点、从多少拨到多少、逐维 KPI 改善量、档位出处与生成公式），
-                这是<b>字段不存在</b>，不是「这次没取到」。二者处置相反：前者要上游先定义口径，后者重试即可。
-                ⛔ 屏上也没有拿超阈幅度冒充代价、拿 KPI 改善量冒充天数 —— 那两样都不是时间也不是钱。
+                这几行<b>不给「代价」与「见效时间」</b>：引擎回包里<b>没有这两个字段</b> —— 是<b>字段不存在</b>，不是这次没取到
+                <InfoPopover topic="为什么没有代价与见效时间" testId="c0828-howto-nocost">
+                  方案候选（`SolutionCandidate`）今天只有：落点、从多少拨到多少、逐维 KPI 改善量、
+                  档位出处、join 路径与生成公式 —— <b>没有 cost、没有 leadTime、没有风险等级</b>。
+                  它是**严格对象**（多一个字段就会解析失败），所以这份清单就是全部。
+                  「字段不存在」与「这次没取到」<b>处置相反</b>：前者要上游先定义口径，后者重试即可。
+                  ⛔ 屏上也没有拿<b>超阈幅度</b>冒充代价、拿 <b>KPI 改善量</b>冒充天数 ——
+                  那两样都不是时间，也不是钱。
+                </InfoPopover>
               </p>
             </div>
           </div>
@@ -2605,6 +2635,25 @@ export default function Console0828({
                   .join(" ·")}
               </p>
             )}
+            {/* 诚实位：参考稿每张卡都有走势线，本屏**没有数据源**画它。
+                下面那句「只有两个观测点」是**真会过时**的一条（上游一给逐拍序列它就变假），
+                故挂了一条可执行赌注。⚠ 赌注**钉在上游契约**（`endpoints.ts` 的 `simTick` 回包型）
+                而不是本文件自己的字符串 —— 自指的赌注等于没赌。
+                今天那个型是 `{ curTick; state; trace?; disclosure? }`：**一个终态，没有逐拍序列**。
+                谁往回包里加了 `series`/`perTick`（或改了这四个字段），门当场红，
+                届时要么屏上这句话改对、要么真把走势线画上，二选一。 */}
+            {/* WO-UI-LAYER-DEMOTE：第一层只留两个**事实**（无走势线 · 第二行是同次对比），
+              * 「为什么」整段降进 `<details>`。降层依据见本文件上方同名注释段。 */}
+            <p className={`${styles.calibre} ${styles.footNote}`} data-testid="c0828-kpi-nospark">
+              各卡<b>不带迷你走势线</b>；第二行是<b>同次推演内的对比</b>（占订单簿 / 占总数），<b>不是</b>「较上周」。
+            </p>
+            <details className={`${styles.calibre} ${styles.footNote}`}>
+              <summary>为什么没有走势线 · 第二行为什么不是环比</summary>
+              本次推演一次跳 {horizon} 拍后只读<b>一次</b>终态，
+              全屏只有「扰动前」「扰动后」两个观测点，中间每一拍的读数从未取回{/* @stale-fact apps/frontend-shell/src/api/endpoints.ts /curTick: number; state: TickState; trace\?: unknown\[\]; disclosure\?: SimRunDisclosure/ ==1 */}
+              —— 两点画不出走势，补一条就是编造历史。这是缺数据源，不是缺实现。
+              本屏也不留存历史推演，没有上一期可比，故第二行给的是同次推演内的真实对比。
+            </details>
             {/* ══ 诚实位 · 贯穿全屏 ══ */}
             <p className={styles.pgFoot} data-testid="c0828-honesty">
               〔估〕= 推演算出来的数，不是实测值。<span className={styles.nocalc}>删除线</span> = 本次无法计算，
@@ -2902,25 +2951,6 @@ export default function Console0828({
       </div>
 
 
-      {/* 诚实位：参考稿每张卡都有走势线，本屏**没有数据源**画它。
-          下面那句「只有两个观测点」是**真会过时**的一条（上游一给逐拍序列它就变假），
-          故挂了一条可执行赌注。⚠ 赌注**钉在上游契约**（`endpoints.ts` 的 `simTick` 回包型）
-          而不是本文件自己的字符串 —— 自指的赌注等于没赌。
-          今天那个型是 `{ curTick; state; trace?; disclosure? }`：**一个终态，没有逐拍序列**。
-          谁往回包里加了 `series`/`perTick`（或改了这四个字段），门当场红，
-          届时要么屏上这句话改对、要么真把走势线画上，二选一。 */}
-      {/* WO-UI-LAYER-DEMOTE：第一层只留两个**事实**（无走势线 · 第二行是同次对比），
-        * 「为什么」整段降进 `<details>`。降层依据见本文件上方同名注释段。 */}
-      <p className={`${styles.calibre} ${styles.footNote}`} data-testid="c0828-kpi-nospark">
-        各卡<b>不带迷你走势线</b>；第二行是<b>同次推演内的对比</b>（占订单簿 / 占总数），<b>不是</b>「较上周」。
-      </p>
-      <details className={`${styles.calibre} ${styles.footNote}`}>
-        <summary>为什么没有走势线 · 第二行为什么不是环比</summary>
-        本次推演一次跳 {horizon} 拍后只读<b>一次</b>终态，
-        全屏只有「扰动前」「扰动后」两个观测点，中间每一拍的读数从未取回{/* @stale-fact apps/frontend-shell/src/api/endpoints.ts /curTick: number; state: TickState; trace\?: unknown\[\]; disclosure\?: SimRunDisclosure/ ==1 */}
-        —— 两点画不出走势，补一条就是编造历史。这是缺数据源，不是缺实现。
-        本屏也不留存历史推演，没有上一期可比，故第二行给的是同次推演内的真实对比。
-      </details>
     </div>
   );
 }

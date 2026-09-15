@@ -290,10 +290,18 @@
    改的理由是实测：五块纵向摞着 = **4.28 屏**，而第 1 屏一个结论都读不完整。
    ⇒ 纪律第 6 条禁的是「把同一份数据切成几份塞进页签，逼人来回翻」；
      本页第一屏**恒定摆着四个数与怎么办**（谁都不用翻就能对账），页签只换**明细**。 */
-.lens { flex: none; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line2); flex-wrap: wrap; }
+/* ⚠ **不换行**（`nowrap` + 横向滚）—— 实测 6 个页签 + 专家入口在 666px 中栏里会折成
+   **两行、69px**，等于从页签内容区身上白扣一行。折行还会让「页签在第几行」随窗宽跳动。
+   ⛔ 不用 `flex-wrap: wrap`：那正是上面那个 69px 的来源。 */
+.lens {
+  flex: none; display: flex; align-items: flex-end; gap: 2px;
+  border-bottom: 1px solid var(--line2);
+  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+}
+.lens::-webkit-scrollbar { display: none; }
 .lensTab {
   background: none; border: none; border-bottom: 2px solid transparent;
-  padding: 7px 11px; margin-bottom: -1px; cursor: pointer;
+  padding: 6px 9px; margin-bottom: -1px; cursor: pointer; flex: none;
   font-family: inherit; font-size: 13px; color: var(--muted2); white-space: nowrap;
 }
 .lensTab:hover { color: var(--txt); }
@@ -335,13 +343,17 @@
    **改善最大的那一维**（`dims` 里 `improvement` 最大的那条，改善量与单位都是引擎给的）。
    ⛔ 拿 `breach` 当「代价」、拿 dims 改善量当「见效天数」都是编造，本块一个都没做，
      且屏上**明写**这两样今天算不出来以及为什么（字段不存在 ≠ 没取到）。 */
-.howto { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.howto { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .howRow {
   display: grid; grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
   align-items: baseline; gap: 10px;
   border: 1px solid var(--line2); border-radius: 9px;
-  padding: 6px 11px; background: var(--panel-glass); font-size: 12px;
+  /* 紧凑：4 行 × 每行省 6px = 24px，直接还给页签内容区。 */
+  padding: 4px 11px; background: var(--panel-glass); font-size: 12px; line-height: 1.5;
+  white-space: nowrap;
 }
+/* 三格各自省略，⛔ 不让任何一格折行 —— 一行折两行，四行就多 28px。 */
+.howRow > span { overflow: hidden; text-overflow: ellipsis; }
 .howName { color: var(--txt); font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .howMove { font-family: var(--font-mono); color: var(--muted); white-space: nowrap; }
 .howGain { color: var(--muted2); text-align: right; min-width: 0; overflow-wrap: anywhere; }
@@ -352,12 +364,16 @@
 
 /* ══ WO-C0828-COO-FIRST-SCREEN · 结论区外壳（顶条 + 四个数 + 怎么办）══════════
    整幅宽、钉在三栏之上：四个数是 COO 的头条，给它整幅 1310px 而不是中栏的 666px。 */
-.verdict { flex: none; display: flex; flex-direction: column; gap: 9px; padding: 10px 20px 12px; }
-@media (max-width: 640px) { .verdict { padding: 9px 12px 10px; } }
+.verdict { flex: none; display: flex; flex-direction: column; gap: 7px; padding: 8px 20px 8px; }
+@media (max-width: 640px) { .verdict { padding: 8px 12px; } }
+/* 结论区里的 KPI 条自带外边距会与 `.verdict` 的重叠 ⇒ 这里去掉它自己的内边距。 */
+.verdict .kpis { padding: 0; }
 /* 顶条：`N 件扰动 · 推演至 <日期>` —— 一行说清「这屏上的数是哪一次推演的」。 */
 .vBar { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .vBarTitle { font-size: 13px; font-weight: 700; color: var(--txt); }
 .vSecHead { font-size: 12px; font-weight: 600; color: var(--muted); }
+/* 「判据码 · 落点」辨识串跟在小节标题右边（重名的两处靠它分开），弱化且不抢行。 */
+.howWho { font-weight: 400; color: var(--muted2); margin-left: 8px; }
 
 /* 底部整幅诚实句（原在 KPI 条下面，随 KPI 一起搬到外壳层 —— 稿子它在最底一行）。 */
 .footNote { flex: none; padding: 0 20px 14px; margin: 0; }
@@ -404,11 +420,12 @@
    ⚠ 字号仍是在册三级中的 12px（R-UI-2 一屏最多三级），配 `--muted` ——
      与本文件既有的 12px/`--muted` 正文同档，`check-text-legibility` 的对比度曲线已覆盖。 */
 .kpiApprox { color: var(--muted2); margin-right: 1px; font-weight: 600; }
+/* 数字与牌子同一行，牌子贴着数字底线（`baseline`）—— 牌子单开一行每卡多 20px，四卡 80px。 */
+.kpiValRow { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .kpiEst {
-  align-self: flex-start;
   font-size: 12px; line-height: 1.4; color: var(--muted);
   border: 1px dashed var(--line2); border-radius: 6px; padding: 0 6px;
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 /* ④ 面板网格 —— 先 2 列大块，再 3 列小块 */
