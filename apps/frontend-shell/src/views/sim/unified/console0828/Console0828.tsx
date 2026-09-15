@@ -1786,10 +1786,14 @@ export default function Console0828({
                     </div>
                   </div>
                 </div>
+                {/* WO-UI-LAYER-DEMOTE：第一层留事实（无按钮·不处置无需操作），理由降第二层。 */}
                 <p className={styles.calibre} data-testid="c0828-donothing-note">
                   第四栏无按钮 —— 不处置无需操作，属默认发生。
-                  它存在的理由：没有它，前三栏的代价都读作净支出；有了它，前三栏才有参照基线。
                 </p>
+                <details className={styles.calibre}>
+                  <summary>为什么要摆这一栏</summary>
+                  没有它，前三栏的代价都读作净支出；有了它，前三栏才有参照基线。
+                </details>
               </section>
             ) : null}
 
@@ -2137,10 +2141,12 @@ export default function Console0828({
               </li>
             </ul>
           )}
-          <p className={styles.kpiCal}>
-            口径：以上各数与中栏「财务影响 / 客户与订单敞口 / 受阻环节」<b>同源同一份计算</b>，
+          {/* WO-UI-LAYER-DEMOTE：口径解释降第二层（规范 §1：口径降浮层/明细降第二层）。 */}
+          <details className={styles.kpiCal}>
+            <summary>这些数和中栏是同一份吗</summary>
+            以上各数与中栏「财务影响 / 客户与订单敞口 / 受阻环节」<b>同源同一份计算</b>，
             不是本栏另算的第二份；两边若出现不一致，即为缺陷，不是口径差异。
-          </p>
+          </details>
         </div>
 
         {/* ── ③ 建议行动 ─────────────────────────────────────────────── */}
@@ -2220,13 +2226,26 @@ export default function Console0828({
           {/* ⛔⛔ 这里**刻意没有输入框**。参考稿第四段是「输入框 + 发送 + 快捷 chip」，
               而本控制台今天**没有自己的问答端点** —— 摆一个输入框上去，敲进去没有任何后端会收，
               那正是本仓最恨的假旋钮。⇒ 如实写明缺什么，并指向屏上**真的存在**的那个提问入口。 */}
+          {/* ══ WO-UI-LAYER-DEMOTE（2026-09-15）· 自辩降层 ═══════════════════════════
+            * 仓主：「页面上有哪些无效的描述型信息，都删除或放到第二层展示。」
+            * 实测依据（同日，12 个扰动 vs 1 个扰动的**全页文本差分**）：
+            *   两组**一模一样**的文本 773 处 / 16,236 字，其中 ≥40 字的长说明 95 处 / 8,773 字
+            *   = **54.0%** —— 第一层过半的静态文字是说明，不是「数值 / 状态 / 名字」。
+            *   与 `CONVENTION-ui-information-layering.md` §1 直接冲突，
+            *   也是 `check-ui-first-layer.mjs` 今天判负 77 条里的一支。
+            *
+            * 本段原文含「摆一个敲进去没人收的输入框即是假旋钮」——**那是写给审核方的自辩**。
+            * 第一层只留用户要用的那一句（去哪儿提问），理由降进 `<details>`（本文件既有范式，已用 14 处）。
+            * ⛔ 降的是自辩，不是诚实位：「没有独立输入框」这个**事实**仍在第一层。 */}
           <p className={styles.calibre} data-testid="c0828-ai-noinput">
-            本栏<b>没有独立的对话输入框</b> —— 这块控制台今天没有自己的问答端点，
-            摆一个敲进去没人收的输入框即是假旋钮。
-            <br />
-            自由提问请用<b>屏幕底部那条全局提问条</b>（它已接通查询编排，是真入口）；
-            本栏只负责把本次推演的结论与可选行动摆在正文旁边，不另起一套对话。
+            本栏<b>没有独立的对话输入框</b>；自由提问请用<b>屏幕底部那条全局提问条</b>。
           </p>
+          <details className={styles.calibre}>
+            <summary>为什么这里不放输入框</summary>
+            这块控制台今天没有自己的问答端点 —— 摆一个输入框上去，敲进去没有后端会收。
+            底部那条全局提问条已接通查询编排，是真入口；本栏只负责把本次推演的结论与可选行动
+            摆在正文旁边，不另起一套对话。
+          </details>
         </div>
       </aside>
       </div>
@@ -2505,10 +2524,12 @@ export default function Console0828({
                       本次共 {result.deltas.length} 格读数发生变化；世界态自 {tickLabel(cal, result.beforeTick)} 推进至{" "}
                       {tickLabel(cal, result.afterTick)}。金丝雀：读取到 {money.ordersSeen} 张单（为 0 表示遍历失效，不是「无波及」）。
                     </p>
-                    <p>
-                      ⚠ 不应以被扰动格自身的读数判定扰动是否生效：源变量常被约束在域上界附近，
-                      即使施加 100 倍量级，源格变动可能仅千分之几，而下游变动显著。本屏波及面按全局差分计算。
-                    </p>
+                    {/* WO-UI-LAYER-DEMOTE：方法论解释降第二层；第一层只留「按全局差分计算」这个事实。 */}
+                    <details>
+                      <summary>波及面为什么按全局差分算，而不看被扰动的那一格</summary>
+                      源变量常被约束在域上界附近，即使施加 100 倍量级，源格变动可能仅千分之几，
+                      而下游变动显著 —— 拿源格判定「扰动生没生效」会误判。本屏波及面按全局差分计算。
+                    </details>
                     {result.receipts.length === 0 ? null : (
                       <p>
                         落库回执：
@@ -2539,13 +2560,18 @@ export default function Console0828({
           今天那个型是 `{ curTick; state; trace?; disclosure? }`：**一个终态，没有逐拍序列**。
           谁往回包里加了 `series`/`perTick`（或改了这四个字段），门当场红，
           届时要么屏上这句话改对、要么真把走势线画上，二选一。 */}
+      {/* WO-UI-LAYER-DEMOTE：第一层只留两个**事实**（无走势线 · 第二行是同次对比），
+        * 「为什么」整段降进 `<details>`。降层依据见本文件上方同名注释段。 */}
       <p className={`${styles.calibre} ${styles.footNote}`} data-testid="c0828-kpi-nospark">
-        各卡<b>不带迷你走势线</b> —— 本次推演一次跳 {horizon} 拍后只读<b>一次</b>终态，
-        全屏只有「扰动前」「扰动后」两个观测点，中间每一拍的读数从未取回。{/* @stale-fact apps/frontend-shell/src/api/endpoints.ts /curTick: number; state: TickState; trace\?: unknown\[\]; disclosure\?: SimRunDisclosure/ ==1 */}{" "}
-        两点画不出走势，补一条即是编造历史。<b>这是缺数据源，不是缺实现</b>。
-        各卡第二行给的是<b>同次推演内的真实对比</b>（占订单簿 / 占总数），
-        <b>不是</b>「较上周」—— 本屏不留存历史推演，没有上一期可比。
+        各卡<b>不带迷你走势线</b>；第二行是<b>同次推演内的对比</b>（占订单簿 / 占总数），<b>不是</b>「较上周」。
       </p>
+      <details className={`${styles.calibre} ${styles.footNote}`}>
+        <summary>为什么没有走势线 · 第二行为什么不是环比</summary>
+        本次推演一次跳 {horizon} 拍后只读<b>一次</b>终态，
+        全屏只有「扰动前」「扰动后」两个观测点，中间每一拍的读数从未取回{/* @stale-fact apps/frontend-shell/src/api/endpoints.ts /curTick: number; state: TickState; trace\?: unknown\[\]; disclosure\?: SimRunDisclosure/ ==1 */}
+        —— 两点画不出走势，补一条就是编造历史。这是缺数据源，不是缺实现。
+        本屏也不留存历史推演，没有上一期可比，故第二行给的是同次推演内的真实对比。
+      </details>
     </div>
   );
 }
