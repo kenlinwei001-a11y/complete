@@ -183,6 +183,34 @@ const kpiAlign = (i: number, n: number): "left" | "right" => (i >= n - Math.max(
  */
 const AGENT_FOR_PROPOSALS = "agt_seed_analyst";
 
+/**
+ * ══ WO-C0828-COO-FIRST-SCREEN · 页签键（视角：COO / 决策者）════════════════════
+ *
+ * ── 今天的行为是 X ──
+ * 五块结果面板**纵向摞成一条瀑布**。实测（2026-09-15，真后端 SEED_DEMO=1 + 真 chromium
+ * 1600×900，施 1 件扰动）：滚动容器 `#main-content` 内容高 **3601px** / 视口 **842px**
+ * = **4.28 屏**，「💰 财务影响」落在第 **4.2** 屏 —— COO 最想看的那个数要滚四屏才看得到。
+ *
+ * ── 应该是 Y ──
+ * 第一屏恒定给**结论**（四个数 + 怎么办），明细进页签、在同一块区域换内容。
+ *
+ * ⚠ **页签只有 6 个，不是仓主原话里的 4 个** —— 差异在这里点名，不藏着：
+ *   原话是 `[受阻环节][对策方案][全流程扫描][执行记录]`，
+ *   而 `c0828-cust`（客户与订单）与 `c0828-money`（财务勾稽）这两块**在那 4 个里没有落点**。
+ *   它们不能就地删：① 既有接缝门逐块断言它们在场；② 规范 §1「诚实位可降层、不可删」。
+ *   ⇒ 各给一个页签（`cust` / `money`），**降层而非删除**。
+ *   两块的**头条数**（敞口金额 / 客户家数）已经上了第一屏，页签里放的是明细与勾稽。
+ */
+type TabKey = "board" | "options" | "scan" | "cust" | "money" | "log";
+
+/**
+ * 第一屏那**四个数**（仓主指定）：敞口金额 · 受影响订单 · 客户家数 · 卡点处数。
+ * ⚠ 这不是新造的量 —— 逐个对应既有 KPI 卡的 `key`，取数、口径、浮层文案**一字未改**。
+ * 余下两张卡（`fix` 可处置 / `entity` 可落点实体）**没有被删**，整卡搬进「执行记录」页签
+ * （`entity` 同时仍在左栏页脚 `c0828-entity-counts` 第一层可见）。
+ */
+const HEADLINE_KPIS: readonly string[] = ["exposure", "orders", "cust", "imp"];
+
 export default function Console0828({
   sessionId,
   onExpert,
@@ -272,6 +300,8 @@ export default function Console0828({
   const [horizon, setHorizon] = useState(3);
   const [result, setResult] = useState<RunResult | null>(null);
   const [pickedFix, setPickedFix] = useState<string | null>(null);
+  /** 当前页签。默认「受阻环节」—— 它是「怎么办」那几行的宿主，点进去接着往下走。 */
+  const [tab, setTab] = useState<TabKey>("board");
 
   /**
    * ══ 顶栏 · 范围选择器（设计稿「常州 · 全网」那半截）════════════════════════════
@@ -596,18 +626,46 @@ export default function Console0828({
    *   屏上会出现「面板画着 A，而 A 没被标选中」这种自相矛盾。
    * · ② 因此自动闭合：点第一项 ⇒ 仍然滚动 + 选中态成立，反馈与点别的项一模一样。
    */
-  const optionsRef = useRef<HTMLElement | null>(null);
-  /* WO-UX-UNIFY：下钻出口的落点。与 `optionsRef` 同一套做法（含 `?.` ——
-     jsdom 不实现 `scrollIntoView`，少了它接缝门会红在一个与本单无关的地方）。 */
-  const impedimentRef = useRef<HTMLElement | null>(null);
-  const boardRef = useRef<HTMLElement | null>(null);
+  /* ⚠ WO-C0828-COO-FIRST-SCREEN 删掉了 `optionsRef` / `impedimentRef` / `boardRef` 三个 ref。
+     它们原本只有一个用途：给四个「下钻出口」按钮做 `scrollIntoView` 的落点。
+     四个目的地现在都是**同一块区域的页签**，跳转变成 `goTab(...)` ⇒ 三个 ref 成了死代码。
+     ⛔ 四个按钮本身**一个都没删**（`c0828-drill-cust` / `-board` / `-money` /
+     `c0828-ai-goto-options` testid 一字未改），只是落点从「滚过去」换成「切页签」。
+     顺带：`?.scrollIntoView?.()` 那圈 jsdom 兼容写法也随之不再需要。 */
+  /** 页签内容区 —— 换页签时把它自己滚回顶部（⛔ 不是滚页面，页面已经不滚了）。 */
+  const tabBodyRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * ══ WO-C0828-COO-FIRST-SCREEN · `revealFix` 改版 ═══════════════════════════
+   *
+   * ── 改前的行为 ──
+   * `setPickedFix` + `optionsRef.scrollIntoView()`。上面那段 WO-C0828-VOICE 的注释
+   * 记着当初的取舍：病因① 是「面板在一屏之外（按钮 y≈803–968，面板 y≈1800，相距约 997px）」，
+   * 当时选的修法是**点完滚过去**。
+   * 代价也记着：18 条列表里点第 3 条，视线被甩到 ~1000px 外，回来找不到刚才那条。
+   *
+   * ── 改后 ──
+   * 对策面板与受阻环节列表现在是**同一块区域的两个页签**，「一屏之外」这个前提没有了 ⇒
+   * 病因① **自然消失**，不再需要滚动这个补丁。
+   * ⚠ 但病因②③ **仍然成立且仍然要治**（它们与版面无关）：
+   *   ② 点默认那一项时 `picked` 前后完全相同 ⇒ 没有任何可见变化；
+   *   ③ 选中态。
+   * 两者都由 `setPickedFix` + `aria-pressed`（从 `picked` 派生）继续守着，一个都没撤。
+   * 现在多一件可见的事：**页签跟着跳到「对策方案」**，于是点默认那一项也有确定的反馈。
+   *
+   * ⛔ `scrollIntoView` 已移除，**不是忘了**：页面不再滚动，
+   *    它唯一还能做的就是把内层 `.tabBody` 滚一下，而此刻内容刚换、目标就在顶部。
+   *    改滚 `.tabBody` 到 0，语义明确且与 jsdom 无关（`scrollTop` 是普通属性，不是未实现的方法）。
+   */
   const revealFix = (impedimentId: string): void => {
     setPickedFix(impedimentId);
-    // 面板要等这一次 state 落地后才在正确的位置上 —— 故推到下一帧再滚。
-    // ⚠ `?.` 不是客套：jsdom 不实现 `scrollIntoView`，少了它接缝门会红在一个与本单无关的地方。
-    requestAnimationFrame(() => {
-      optionsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-    });
+    setTab("options");
+    if (tabBodyRef.current !== null) tabBodyRef.current.scrollTop = 0;
+  };
+  /** 换页签 = 换内容 + 内容区回顶。⛔ 不动页面滚动位置（页面已无滚动）。 */
+  const goTab = (t: TabKey): void => {
+    setTab(t);
+    if (tabBodyRef.current !== null) tabBodyRef.current.scrollTop = 0;
   };
 
   /**
@@ -1524,7 +1582,7 @@ export default function Console0828({
                     type="button"
                     className={styles.drillBtn}
                     data-testid="c0828-drill-cust"
-                    onClick={() => boardRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+                    onClick={() => { goTab("board"); }}
                   >
                     查看逐处受阻环节与对策数 →
                   </button>
@@ -1536,7 +1594,7 @@ export default function Console0828({
 
             {/* ══ 区⑤ 对策看板 ══ */}
             {impGroups !== null && impGroups.all.length > 0 ? (
-              <section className={styles.panel} data-testid="c0828-board" ref={boardRef}>
+              <section className={styles.panel} data-testid="c0828-board">
                 <div className={styles.head}>
                   {zone("5", "对策清单")}
                   <h3 className={styles.headTitle}>对策看板 · {impGroups.all.length} 处受阻环节</h3>
@@ -1693,7 +1751,7 @@ export default function Console0828({
                     data-testid="c0828-drill-board"
                     disabled={picked === null}
                     title={picked === null ? "本次无可处置卡点，故无对策面板可去" : undefined}
-                    onClick={() => optionsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+                    onClick={() => { goTab("options"); }}
                   >
                     查看选中那一处的四栏对策 →
                   </button>
@@ -1703,7 +1761,7 @@ export default function Console0828({
 
             {/* ══ 区⑤b 四栏方案 ══ */}
             {picked !== null ? (
-              <section className={styles.panel} data-testid="c0828-options" ref={optionsRef}>
+              <section className={styles.panel} data-testid="c0828-options">
                 <div className={styles.head}>
                   {zone("5", "对策方案")}
                   <h3 className={styles.headTitle} data-testid="c0828-options-title">
@@ -2198,7 +2256,7 @@ export default function Console0828({
               className={styles.aiChip}
               data-testid="c0828-ai-goto-options"
               disabled={picked === null}
-              onClick={() => optionsRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+              onClick={() => { goTab("options"); }}
             >
               查看四栏对策 →
             </button>
@@ -2257,7 +2315,7 @@ export default function Console0828({
       {result !== null && money !== null ? (
         <div className={styles.rowB} data-testid="c0828-rowb">
               {/* ══ 区④ 哪儿会出事 ══ */}
-              <section className={styles.panel} data-testid="c0828-impediment" ref={impedimentRef}>
+              <section className={styles.panel} data-testid="c0828-impediment">
                 <div className={styles.head}>
                   {zone("4", "受阻环节")}
                   <h3 className={styles.headTitle}>全流程扫描结果</h3>
@@ -2544,7 +2602,7 @@ export default function Console0828({
                     type="button"
                     className={styles.drillBtn}
                     data-testid="c0828-drill-money"
-                    onClick={() => impedimentRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" })}
+                    onClick={() => { goTab("scan"); }}
                   >
                     查看这笔敞口卡在哪些环节 →
                   </button>
