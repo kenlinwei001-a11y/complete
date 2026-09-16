@@ -194,6 +194,11 @@ export function RealityMeterRow({
        */
       const full = await api.a<SimSession>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}`);
       const real = full.baseSnapshot;
+      // 🐤 拿不到基线就**当场说出来**：⛔ 不许退回一个空世界跑两臂 ——
+      //    那会得到「两臂都 0 格变化、差 0」这个看着完全正常的错答。
+      if (real === undefined || Object.keys(real).length === 0) {
+        throw new Error("这条会话没回基线世界态（tick0）⇒ 建不出对照世界。这是取不到，不是「没有差别」。");
+      }
       const twin = buildPlaceholderTwin(real, hash01);
       // 左臂 scope 原样带上**本会话自己的**出处记号 —— 它用的就是这份快照，不是另编一个说法。
       const a = await runArm(
