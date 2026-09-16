@@ -28,7 +28,8 @@ import type { ObjectInstance } from "../src/domain.js";
  * 该 WO 本身就是仓主派的，且这条测的是本单交付物自己的链路，非审核方自我维护的度量装置）。
  */
 
-/** 本单 §2 落地的 19 条 A 档规格（从 DEMO_DERIVATION_SPECS 现算，⛔ 不写死字面量 —— 写死不度量今天真的登记了谁）。 */
+/** 本单 §2 落地的 20 条 A 档规格（从 DEMO_DERIVATION_SPECS 现算，⛔ 不写死字面量 —— 写死不度量今天真的登记了谁）。
+ *  20 = Customer 1 + A 档 18 + Model.supplyRisk 链核实后升级 1（3 条旧规格 order_value/fgi/ibt 不在内）。 */
 const A_TIER = DEMO_DERIVATION_SPECS.filter((s) => s.specKey !== "order_value" && s.specKey !== "fgi_qty_available" && s.specKey !== "ibt_eta_day");
 
 /** 从对象层**独立**取一个数值属性（臂 1 手算的输入，⛔ 不许走式子中间结果）。 */
@@ -64,15 +65,15 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
   }, 180_000);
 
   // ── ⓒ 接缝驱动（验收判据 7）：编译→recompute→播种→读数 整条通 ─────────────────
-  it("ⓒ 接缝驱动：19 条 A 档规格编译入库 + 物化后 measuredCells 从 470 涨到 3691", () => {
+  it("ⓒ 接缝驱动：20 条 A 档规格编译入库 + 物化后 measuredCells 从 470 涨到 3691", () => {
     // 前态锚点：§1 只带 3 条旧规格时 measuredCells=470（WO 实测基线，含 Customer 那条 20 格）。
-    // 本单 19 条 A 档物化 +3,221 ⇒ 3691。差 205 到主判据 3,896 = 台账已记 A 档缺口，待 A⚠ 裁决。
+    // 本单 20 条 A 档物化 +3,221 ⇒ 3691。差 205 到主判据 3,896 = 台账已记 A 档缺口，待 A⚠ 裁决。
     expect(totalCells).toBe(6363);
     expect(measuredCells).toBe(3691);
   });
 
   // ── ⓑ 指认粒度（验收判据 ⓑ）：逐条点名物化数，红了能指出是哪一条 ─────────────────
-  it("ⓑ 指认粒度：19 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言）", async () => {
+  it("ⓑ 指认粒度：20 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言）", async () => {
     // 每条规格的物化数 = 其 targetType 上进世界的对象数（独立数，不从 measuredCells 反推）。
     const expected: Record<string, number> = {};
     for (const s of A_TIER) {
@@ -146,7 +147,7 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
   });
 
   // ── ⓐ 引擎归属（验收判据 ⓐ 方式 2 釜底抽薪）：清掉规格 ⇒ 本单值全消失 ─────────────────
-  it("ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 19 个 targetProp 全部消失（证明是引擎②算的）", async () => {
+  it("ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 20 个 targetProp 全部消失（证明是引擎②算的）", async () => {
     // 独立小世界：不碰共享 t。规格库空 ⇒ §3 校验收窄跳过 ⇒ 这 19 格走哈希（仍 measured），
     // 但**对象 props 上没有 targetProp**（没 recompute 物化）⇒ 釜底抽薪的证明是「属性本身消失」。
     const t2 = await makeApp();

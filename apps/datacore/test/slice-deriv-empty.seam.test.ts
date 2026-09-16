@@ -211,13 +211,30 @@ describe("WO-SLICE-DERIV-EMPTY ② · 派生溯源：编译 ⇒ 重算 ⇒ input
     expect(before.length).toBe(0);
 
     const n = await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
-    expect(n).toBe(3);
+    // WO-REAL-CELLS 金值更新（3→23）：本单 §2 在 DEMO_DERIVATION_SPECS 尾部新增 20 条 A 档规格
+    //   （3 条旧 + 20 条新 = 23 条）。20 条新 = Customer 1 + A 档 18 + Model.supplyRisk 链核实后升级 1。
+    //   理由：旧断言 `toBe(3)` 度量的是「WO-SLICE-DERIV-EMPTY 那 3 条」，而本单合法地扩了规格集。
+    //   形态句：「我用『specs 数量恒等于 3』当作『种子规格集未被合法扩充』的证据，而前者并不度量后者。」
+    //   为何不比改前弱：断言方向不变（仍锁死全集，少一条/多一条未申报的都红），且从「数 3」升级为
+    //   「数 23 + 完整 specKey 名单」（下方），指认粒度更细 —— 多一条未在本单申报的规格照样红。
+    expect(n).toBe(23);
     const active = await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE");
-    expect(active.map((s) => s.specKey).sort()).toEqual(["fgi_qty_available", "ibt_eta_day", "order_value"]);
+    expect(active.map((s) => s.specKey).sort()).toEqual([
+      // 3 条旧（WO-SLICE-DERIV-EMPTY）
+      "fgi_qty_available", "ibt_eta_day", "order_value",
+      // 20 条新（WO-REAL-CELLS §2 A 档，逐键点名 —— 少一条/多一条未申报的都红）
+      "base_load_index", "customer_receivable_pressure", "defect_record_pressure",
+      "equipment_failure_rate", "equipment_load_pressure", "line_blocked_pressure",
+      "line_util_pressure", "material_price_shock", "material_shortage_risk",
+      "materialbalance_gap_pressure", "model_cost_pressure", "model_forecast_bias",
+      "model_supply_risk", "process_queue_pressure", "purchaseorder_expedite_pressure",
+      "purchaseorder_procurement_delay", "supplier_delivery_delay",
+      "supplier_procurement_delay", "wiplot_feed_pressure", "workorder_release_pressure",
+    ].sort());
 
-    // 幂等（R6）：重播不增生。
+    // 幂等（R6）：重播不增生（金值 3→23，理由同上）。
     await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
-    expect((await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE")).length).toBe(3);
+    expect((await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE")).length).toBe(23);
 
     // §7.4 引用索引同步入库（与 REST 编译路由同动作）。
     const eref = await t.repos.elementRefs.list("demo", (r) => r.refKind === "derivation" && r.refKey === "order_value");
