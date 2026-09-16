@@ -349,7 +349,9 @@ export function RealityMeterRow({
             {result.verdict}
           </p>
           {/* 取证条：两个世界的身份与「两臂受到的待遇是否逐字段相同」——复审据此复算，不必相信本屏。 */}
-          <p className={styles.calibre} data-testid="c0828-compare-provenance">
+          {/* ⚠ 用 `div` 不是 `p`：`InfoPopover` 内部有 `details`/`div`，塞进 `<p>` 会触发
+              React 的 `validateDOMNesting` 告警（本文件同屏已有几处历史遗留，⛔ 不再新增）。 */}
+          <div className={styles.calibre} data-testid="c0828-compare-provenance">
             两个世界：<code>{result.a.sessionId}</code>（实测格{" "}
             {result.a.measuredCells === null ? "—" : int(result.a.measuredCells)}）·{" "}
             <code>{result.b.sessionId}</code>（实测格{" "}
@@ -373,7 +375,7 @@ export function RealityMeterRow({
                 : `（落在 ${result.divergence.byVar.map((x) => `${stateVarNames?.[x.stateVar] ?? x.stateVar} ${String(x.n)} 格`).join("、")}）`}
               。
             </InfoPopover>
-          </p>
+          </div>
         </div>
       )}
     </div>

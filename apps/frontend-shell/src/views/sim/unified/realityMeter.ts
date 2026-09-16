@@ -175,7 +175,10 @@ export function buildRealityMeter(origin: SnapshotOrigin | null, absence: string
     absence: origin === null ? absence : m === null || c === null ? "出处记号里没有格数这两项 ⇒ 算不出占比" : null,
     coveredObjects: null,
     coveredObjectsWhy:
-      "覆盖到几个对象这一项**后端没有下发**（出处记号只给类型数 / 对象数 / 总格数 / 实测格数 / 派生格数五个数）。" +
+      // ⛔ 本串**直接上屏**，不许留 markdown 记号 —— 前端不跑 markdown，`**x**` 会连星号一起印出来。
+      //    （本仓已记过两次这笔账：`seed-world.ts` 的 `note`、`opt-assemble.ts` 的 `reason`。
+      //     本单第一版又犯了一次，真浏览器截图上看见四个星号才发现 ⇒ 强调一律用「」。）
+      "覆盖到几个对象这一项「后端没有下发」（出处记号只给类型数 / 对象数 / 总格数 / 实测格数 / 派生格数五个数）。" +
       "⛔ 不拿「实测格数 ÷ 属性个数」反算 —— 那要假设每个对象恰好命中全部属性，本体一变就错，而且不会报错。",
   };
 }
@@ -355,6 +358,7 @@ export function diffEndStates(a: TickState, b: TickState, eps = 1e-9): Divergenc
  * ⚠ 仓主要这个功能，要的就是**能自己看见这件事** —— 差 0 是交付物，不是 bug。
  *   ⛔ 不许因为差 0 就去调参数、换口径、或把这块屏藏起来。
  * ⚠ 反过来，差非 0 时也必须如实给数（它与「真值撑不动聚合量」这个既有认知相反）。
+ * ⛔ 返回串**直接上屏**：不许 markdown 记号（见上方 `coveredObjectsWhy` 那笔账）。
  */
 export function verdictOf(rows: readonly CompareRow[], div: Divergence): string {
   const comparable = rows.filter((r) => r.diff !== null);
@@ -364,7 +368,7 @@ export function verdictOf(rows: readonly CompareRow[], div: Divergence): string 
   const moved = comparable.filter((r) => r.diff !== 0);
   if (moved.length === 0) {
     return (
-      `上面每一项的差值都是 0：那些真读数格**没有改变这几个聚合读数**。` +
+      `上面每一项的差值都是 0：那些真读数格「没有改变这几个聚合读数」。` +
       `两臂终态真正不同的只有 ${String(div.cells)} 格` +
       (div.byVar.length === 0 ? "" : `（落在 ${div.byVar.map((x) => x.stateVar).join("、")} 上）`) +
       `，它们没有再往下推动任何别的量。`

@@ -472,7 +472,14 @@ export default function Console0828({
     }
     return m as ReadonlyMap<string, string>;
   }, [rulesQ.data]);
-  const stateVarNames = (rulesQ.data as PropagationRulesResponse | undefined)?.stateVarNames;
+  /**
+   * 状态变量裸键 → 中文业务名。
+   * ⚠ 两条端点**同形状**（契约明文：「两个端点用同一种形状前端才能共用一条消费路径」）——
+   *   view-config 那份优先、propagation-rules 那份兜底，与 `UnifiedSimShell` 逐字同一条回落规则。
+   *   ⛔ 前端不自建中文映射表（那是第二套真相源）。
+   */
+  const stateVarNames =
+    cfg?.stateVarNames ?? (rulesQ.data as PropagationRulesResponse | undefined)?.stateVarNames;
 
   const cal: TickCalendar | null = useMemo(
     () => buildTickCalendar(sessionRow?.createdAt, sessionRow?.tickDays),

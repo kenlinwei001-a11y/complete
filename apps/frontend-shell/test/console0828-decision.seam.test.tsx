@@ -79,6 +79,27 @@ interface Edge {
   targetStateVar: string;
 }
 
+/**
+ * `typeKey → 中文名`。**真后端按每条规则下发** `sourceTypeName` / `targetTypeName`
+ * （实测 2026-09-16：`Order → 销售订单` 等 32 条）。本 fixture 从前把这两格写成 `null`，
+ * 于是屏上的中文类型名一条也测不到 —— ⑬ 咬的正是「类型中文名来自数据，不是前端硬编」，
+ * 缺了它那条臂等于没跑。⛔ 前端不许自建一张中文映射表，所以名字只能从这里来。
+ */
+const TYPE_NAME: Readonly<Record<string, string>> = {
+  Material: "原材料",
+  Base: "生产基地",
+  Order: "销售订单",
+  Customer: "客户",
+  Line: "产线",
+  Model: "产品型号",
+};
+/** 状态变量中文名（信封上的字典，两个端点同形状 —— 契约明文）。 */
+const STATE_VAR_NAME: Readonly<Record<string, string>> = {
+  priceShock: "价格冲击",
+  costPressure: "成本压力",
+  loadIndex: "负载指数",
+};
+
 function baseEdges(): Edge[] {
   return [
     { sourceTypeKey: "Material", sourceStateVar: "priceShock", targetTypeKey: "Model", targetStateVar: "costPressure" },
@@ -107,8 +128,8 @@ function rulesFromEdges(edges: readonly Edge[]): PropagationRule[] {
     status: "PUBLISHED",
     domainKey: null,
     domainName: null,
-    sourceTypeName: null,
-    targetTypeName: null,
+    sourceTypeName: TYPE_NAME[e.sourceTypeKey] ?? null,
+    targetTypeName: TYPE_NAME[e.targetTypeKey] ?? null,
   })) as unknown as PropagationRule[];
 }
 
@@ -258,10 +279,40 @@ let sessionCreatedAtRaw: string | null = "2026-09-10T00:00:00.000Z";
 /** 卡点载荷要不要带对策（基线 8 处全是 0 对策 ⇒ 四栏面板根本不渲染，⑦ 就没东西可咬）。 */
 let withCandidates = false;
 
+/**
+ * ══ WO-SIM-REALITY-METER · 会话 `scope`（⑫–⑭ 用它拨「有多少格是真业务数」）═══════
+ *
+ * ⚠ **必须能拨**：只固定成 450 那一头，`buildRealityMeter` 里写死一个 450 也会绿 ——
+ *   ⑫b 那条**反向臂**（拨成 0 ⇒ 屏上跟着变成 0 / 0.0%）才是「现算」的证据。
+ */
+let sessionScope: Record<string, unknown> = {};
+/** 出处记号的口径：`cells` 与 `measuredCells` 一起给，别只给一个（占比要两端才算得出来）。 */
+function originScope(measuredCells: number, cells = 6363): Record<string, unknown> {
+  return {
+    baseSnapshotOrigin: {
+      kind: "DERIVED",
+      formula:
+        measuredCells === 0
+          ? "round(hash01(`${objectId}|${stateVar}`) × 100)（FNV-1a · 与前端 deriveBaseSnapshot 同式）"
+          : "两档取值。① 真读数：……本次命中 Order.costPressure。② 派生占位：其余格子 round(hash01(`${objectId}|${stateVar}`) × 100)。",
+      note: "（桩）",
+      types: 32,
+      objects: 4425,
+      cells,
+      measuredCells,
+      derivedCells: cells - measuredCells,
+    },
+  };
+}
+/** ⑭ 对照实验：每一臂建的会话 id 与它收到的扰动载荷（两臂必须是两个世界、同一套载荷）。 */
+let createdSessions: { id: string; scope: Record<string, unknown> }[] = [];
+let armPerturbs: Record<string, Record<string, unknown>[]> = {};
+let armTicks: Record<string, number> = {};
+
 vi.mock("@/api/endpoints", () => ({
   // ── console0828 这一屏用到的六个 ──
   fetchSimViewConfig: vi.fn(async () => cfg()),
-  fetchPropagationRules: vi.fn(async () => ({ items: rulesFromEdges(edges), stateVarNames: {} })),
+  fetchPropagationRules: vi.fn(async () => ({ items: rulesFromEdges(edges), stateVarNames: STATE_VAR_NAME })),
   fetchAllObjects: vi.fn(async (type: string) => {
     const items = OBJECTS[type] ?? [];
     return { items, total: items.length, hasMore: false, page: 1, pageSize: 500 };
@@ -270,13 +321,26 @@ vi.mock("@/api/endpoints", () => ({
     tick: perturbCalls.length === 0 ? 0 : 3,
     state: perturbCalls.length === 0 ? WORLD_BEFORE : WORLD_AFTER,
   })),
-  createSimPerturbation: vi.fn(async (_sid: string, body: Record<string, unknown>) => {
+  createSimPerturbation: vi.fn(async (sid: string, body: Record<string, unknown>) => {
     perturbCalls.push(body);
+    (armPerturbs[sid] ??= []).push(body);
     return { perturbation: { id: `simpert_${String(perturbCalls.length)}`, startTick: 0, ...body } };
   }),
-  simTick: vi.fn(async (_sid: string, n: number) => {
+  simTick: vi.fn(async (sid: string, n: number) => {
     if (tickFails) throw new Error("推进这一跳没走通（桩：本用例刻意不回）");
+    armTicks[sid] = n;
     return { curTick: n, state: WORLD_AFTER, disclosure: DISCLOSURE };
+  }),
+  /**
+   * WO-SIM-REALITY-METER · 对照臂建世界。
+   * ⚠ 回包**原样带回传进来的 `scope`** —— 组件正是从它读右臂的 `measuredCells`，
+   *   桩要是自己造一个 scope，⑭ 咬的就不是「前端真的把 0 写进去了」而是桩的自说自话。
+   */
+  createSimSession: vi.fn(async (body: { baseSnapshot: unknown; scope?: Record<string, unknown> }) => {
+    const id = `sims_arm_${String(createdSessions.length + 1)}`;
+    const scope = body.scope ?? {};
+    createdSessions.push({ id, scope });
+    return { id, tenantId: "demo", status: "READY", curTick: 0, scope, baseSnapshot: body.baseSnapshot };
   }),
   runSolver: vi.fn(async () => {
     if (solverFails) throw new Error("求解器这一跳没走通（桩：本用例刻意不回）");
@@ -295,7 +359,7 @@ vi.mock("@/api/endpoints", () => ({
         parentCheckpointId: null,
         ...(sessionCreatedAtRaw === null ? {} : { createdAt: sessionCreatedAtRaw }),
         ...(sessionTickDays === null ? {} : { tickDays: sessionTickDays }),
-        scope: {},
+        scope: sessionScope,
       },
     ],
   })),
@@ -308,6 +372,11 @@ vi.mock("@/api/endpoints", () => ({
 vi.mock("@/api/apiClient", () => ({
   api: {
     a: vi.fn(async (path: string) => {
+      // WO-SIM-REALITY-METER：对照臂要拿**本会话的 tick0 基线**（`GET …/sessions/:id`）。
+      // ⚠ 其余路径仍然抛 —— 「未桩的路径悄悄回 undefined」正是这层桩要防的事。
+      if (/^\/a\/v1\/sim\/sessions\/[^/]+$/.test(path)) {
+        return { id: "sims_c0828", tenantId: "demo", status: "RUNNING", curTick: 0, scope: sessionScope, baseSnapshot: WORLD_BEFORE };
+      }
       throw new Error(`未桩的路径：${path}`);
     }),
     b: vi.fn(),
@@ -317,6 +386,9 @@ vi.mock("@/api/apiClient", () => ({
 }));
 
 import UnifiedSimShell from "@/views/sim/unified/UnifiedSimShell";
+// WO-SIM-REALITY-METER ⑭b：从**被测模块**取那个 mock，⛔ 不在测试里另存一个 spy ——
+// 另存一份就会出现「组件调的是 A、断言看的是 B」这种永远绿的假咬合。
+import { patchSimSessionStatus } from "@/api/endpoints";
 import { BUSINESS_EVENTS } from "@/views/sim/unified/console0828/eventCatalog";
 import { MONEY_BREAKDOWN_LABELS } from "@/views/sim/unified/console0828/console0828Model";
 
@@ -373,6 +445,13 @@ beforeEach(() => {
   sessionTickDays = null;
   sessionCreatedAtRaw = "2026-09-10T00:00:00.000Z";
   withCandidates = false;
+  sessionScope = originScope(450);
+  createdSessions = [];
+  armPerturbs = {};
+  armTicks = {};
+  // ⚠ `vi.fn()` 的调用记录**跨用例累积**：不清，⑭b 会拿上一条用例的两次封存当自己的证据
+  //   （第一版就是这样红的 —— 它期望 2 条，实收 4 条）。清掉才是「只咬本次」。
+  vi.mocked(patchSimSessionStatus).mockClear();
 });
 afterEach(cleanup);
 
@@ -973,6 +1052,132 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       const detailsText = (form.querySelector("details")?.textContent ?? "");
       expect(detailsText).toContain("Base");
       expect(detailsText).toContain("loadIndex");
+    });
+  });
+
+  /**
+   * ══ WO-SIM-REALITY-METER · 真实度读数 + 纯占位对照（⑫–⑭）═══════════════════════
+   *
+   * 这三条咬的是**链路**不是函数：会话回包的 `scope.baseSnapshotOrigin`
+   * → `readSnapshotOrigin` → `buildRealityMeter` → 第一层那条读数，
+   * 以及「按钮 → 建两个世界 → 同一套扰动 → 同样拍数 → 并排给差值」这一整跳。
+   *
+   * ⚠ **反向臂（⑫b）不是凑数**：只测 450 那一头，组件里把 450 写死也会全绿。
+   *   形态（铁律 0.6 句式）：「我用『屏上显示了 450』当作『它是现算的』的证据。」
+   */
+  describe("WO-SIM-REALITY-METER · 真实度读数与纯占位对照", () => {
+    it("⑫ 正臂 · 读数现算：出处记号说 450/6363 ⇒ 屏上就是 450 / 6,363 格 · 7.1% · 条形图有实心格", async () => {
+      sessionScope = originScope(450);
+      mount();
+      await railReady();
+      expect((await screen.findByTestId("c0828-meter-cells")).textContent).toContain("450 / 6,363 格");
+      expect(screen.getByTestId("c0828-meter-pct").textContent).toBe("7.1%");
+      // 条形图是 `share` 的复读：7.1% ⇒ 十格里 1 格实心。⛔ 不许恒空（那样它就不度量任何东西）。
+      expect(screen.getByTestId("c0828-meter-bar").textContent).toBe("▰▱▱▱▱▱▱▱▱▱");
+      // 覆盖对象数**写「—」**：后端没有这个字段。⛔ 不许反算（450/3=150 那种）。
+      const objs = screen.getByTestId("c0828-meter-objects").textContent ?? "";
+      expect(objs).toContain("覆盖 — / 4,425 个对象");
+      expect(objs, "覆盖对象数被反算出来了 —— 那要假设每个对象恰好命中全部属性").not.toContain("150");
+    });
+
+    it("⑫b 反向臂 · 拨成 0 ⇒ 屏上跟着变 0 / 0.0% / 全空条（缺了这一臂，写死 450 也会绿）", async () => {
+      sessionScope = originScope(0);
+      mount();
+      await railReady();
+      expect((await screen.findByTestId("c0828-meter-cells")).textContent).toContain("0 / 6,363 格");
+      expect(screen.getByTestId("c0828-meter-pct").textContent).toBe("0.0%");
+      expect(screen.getByTestId("c0828-meter-bar").textContent).toBe("▱▱▱▱▱▱▱▱▱▱");
+      // 0 格实测是**结论**（不是取不到）⇒ 说人话，⛔ 不许报「读不出来」。
+      expect(screen.getByTestId("c0828-meter-where").textContent).toContain("一格实测都没有");
+    });
+
+    it("⑫c 记号缺席 ⇒ 说「取不到」并说明是哪一种，⛔ 不许摆一个 0 出来", async () => {
+      sessionScope = {}; // 会话在，但它没带出处记号
+      mount();
+      await railReady();
+      const absent = await screen.findByTestId("c0828-meter-absent");
+      expect(absent.textContent).toContain("出处不明");
+      // 「取不到」与「等于 0」是两个命题 ⇒ 读数那一格根本不该渲染。
+      expect(screen.queryByTestId("c0828-meter-cells")).toBeNull();
+      expect(screen.queryByTestId("c0828-meter-pct")).toBeNull();
+    });
+
+    it("⑬ 实测格落点从**数据**推：命中 Order.costPressure ⇒ 屏上给中文类型名与中文量名，⛔ 不硬编「订单」", async () => {
+      sessionScope = originScope(450);
+      mount();
+      await railReady();
+      const where = (await screen.findByTestId("c0828-meter-where")).textContent ?? "";
+      // 类型中文名取自传导规则回包的 `sourceTypeName` / `targetTypeName`（见 fixture `rulesFromEdges`）。
+      expect(where).toContain("销售订单");
+      // 量的中文名取自信封字典 `stateVarNames`（`costPressure` → 「成本压力」）。
+      expect(where).toContain("成本压力");
+    });
+
+    it("⑭ 对照实验 · 两个世界、同一套扰动、同样拍数：右臂 measuredCells 必须是 0，差值逐行给出", async () => {
+      sessionScope = originScope(450);
+      mount();
+      await railReady();
+
+      // 推演前按钮不可点 —— 没跑过就没有可复刻的那一套扰动。
+      expect(screen.getByTestId("c0828-compare-run")).toBeDisabled();
+
+      await addEvent("material-price-up", "mat_licarb", 20);
+      fireEvent.click(screen.getByTestId("c0828-go"));
+      await screen.findByTestId("c0828-money");
+
+      fireEvent.click(screen.getByTestId("c0828-compare-run"));
+      await screen.findByTestId("c0828-compare");
+
+      // ── 判据②：两个**不同**的 sessionId，且右臂自称 0 格实测 ───────────────────
+      expect(createdSessions).toHaveLength(2);
+      const [armA, armB] = createdSessions as [{ id: string; scope: Record<string, unknown> }, { id: string; scope: Record<string, unknown> }];
+      expect(armA.id, "两臂用了同一个 sessionId ⇒ 没真建第二个世界，量法坏了").not.toBe(armB.id);
+      const originB = armB.scope.baseSnapshotOrigin as { measuredCells: number; cells: number };
+      expect(originB.measuredCells).toBe(0);
+      // 🐤 右臂的**格数**必须与左臂一样 —— 形状不同的两个世界不构成对照实验。
+      expect(originB.cells).toBe(Object.values(WORLD_BEFORE).reduce((s, r) => s + Object.keys(r).length, 0));
+
+      // ── 判据③：两臂扰动逐字段相同 + 拍数相同 ─────────────────────────────────
+      const pa = armPerturbs[armA.id] ?? [];
+      const pb = armPerturbs[armB.id] ?? [];
+      expect(pa.length, "左臂一件扰动都没施 ⇒ 后面的「差 0」不度量任何东西").toBeGreaterThan(0);
+      expect(pb).toEqual(pa);
+      expect(armTicks[armB.id]).toBe(armTicks[armA.id]);
+      expect(screen.getByTestId("c0828-compare-identical").textContent).toContain("逐字段相同");
+
+      // ── 并排两列真的在屏上（五行读数，每行三个数）────────────────────────────
+      for (const k of ["cells", "orders", "exposure", "p50", "max"]) {
+        expect(screen.getByTestId(`c0828-cmp-${k}`), `对照表少了「${k}」这一行`).toBeInTheDocument();
+      }
+      // 🐤 孪生世界与真值世界必须真的不同（`WORLD_BEFORE` 的值不是哈希值）——
+      //    报 0 就该报「量法坏了」而不是「差 0」。
+      expect(screen.queryByTestId("c0828-compare-canary-broken")).toBeNull();
+
+      // ⛔ 屏上不许把两档说成「真实 vs 模拟」：含真值那一档也有大半是占位。
+      const panel = screen.getByTestId("c0828-compare").textContent ?? "";
+      expect(panel).toContain("纯占位（0%）");
+      expect(panel).not.toContain("真实 vs 模拟");
+    });
+
+    it("⑭b 两个实验世界必须被**封存**（迁到 ENDED）——不封存，宿主下次会自动选中占位臂", async () => {
+      sessionScope = originScope(450);
+      mount();
+      await railReady();
+      await addEvent("material-price-up", "mat_licarb", 20);
+      fireEvent.click(screen.getByTestId("c0828-go"));
+      await screen.findByTestId("c0828-money");
+      fireEvent.click(screen.getByTestId("c0828-compare-run"));
+      await screen.findByTestId("c0828-compare");
+
+      /**
+       * 真浏览器实测（2026-09-16）抓到的真 bug：`POST …/tick` 会把新建会话从 READY 翻成 RUNNING，
+       * 而 `useConsoleSession` 选的是「最近一条 RUNNING」⇒ 刷新后第一层读数变成占位臂的 0 / 6,363。
+       * ⇒ 两臂都必须迁到 ENDED。少迁一个这条就红。
+       */
+      const patched = vi.mocked(patchSimSessionStatus).mock.calls.map((c) => [c[0], c[1]]);
+      expect(patched).toEqual(createdSessions.map((s) => [s.id, "ENDED"]));
+      // 没封成时屏上必须出警告（诚实位：它的后果是静默换世界）。
+      expect(screen.queryByTestId("c0828-compare-unsealed")).toBeNull();
     });
   });
 });
