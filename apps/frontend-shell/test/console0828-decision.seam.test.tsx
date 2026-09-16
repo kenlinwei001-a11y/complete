@@ -1146,7 +1146,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       expect(screen.getByTestId("c0828-compare-identical").textContent).toContain("逐字段相同");
 
       // ── 并排两列真的在屏上（五行读数，每行三个数）────────────────────────────
-      for (const k of ["cells", "orders", "exposure", "p50", "max"]) {
+      for (const k of ["cells", "orders", "exposure", "deltaMagnitudeP50", "deltaMagnitudeMax"]) {
         expect(screen.getByTestId(`c0828-cmp-${k}`), `对照表少了「${k}」这一行`).toBeInTheDocument();
       }
       // 🐤 孪生世界与真值世界必须真的不同（`WORLD_BEFORE` 的值不是哈希值）——

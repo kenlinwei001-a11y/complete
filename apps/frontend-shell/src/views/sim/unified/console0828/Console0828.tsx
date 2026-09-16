@@ -1313,7 +1313,10 @@ export default function Console0828({
               <InfoPopover topic="为什么带 ~ 的三个数只作量级参考" testId="c0828-verdict-origin">
                 {/* ⚠ **2026-09-16 订正（WO-SIM-REALITY-METER）**：这里原先写死
                     「5,895 格全部为派生值，真读数 0 格」。`WO-SIM-ORDER-REAL-FIELDS` 落地当天
-                    那句话就变成了**假话**（真读数不再是 0，实测 450 格），而它是直接印在用户屏上的。
+                    那句话就变成了**假话**，而它是直接印在用户屏上的。
+                    **2026-09-16 实测**（真后端 `SEED_DEMO=1`，`GET /a/v1/sim/sessions` →
+                    `scope.baseSnapshotOrigin`）：`cells 6363 · measuredCells 450 · derivedCells 5913`
+                    —— 三个数没有一个对得上那句写死的话。
                     形态是本仓反复记账的那一条：**写死的数字不度量「今天是多少」**，
                     改了也不会红。⇒ 改成从本会话回包**现算**；取不到就照实说取不到。 */}
                 本会话世界态出处回包标为 <b>结构派生</b>（不是量出来的）：

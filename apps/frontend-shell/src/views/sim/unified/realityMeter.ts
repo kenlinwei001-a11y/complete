@@ -11,6 +11,10 @@
  * 而此前屏上只把它揉进一句话里（「实测格 450/6363」）——**没有比例、没有覆盖面、
  * 也没有任何办法自己看一眼「那 450 格到底改变了什么」**。
  *
+ * **2026-09-16 实测**（真后端 `SEED_DEMO=1`）：
+ * `curl -H 'X-Debug-User: demo:admin:admin|planner|catalog_admin' <datacore>/a/v1/sim/sessions`
+ * → `scope.baseSnapshotOrigin` = `types 32 · objects 4425 · cells 6363 · measuredCells 450 · derivedCells 5913`。
+ *
  * 本层给两样：
  *  ① **读数**：真业务数占比（现算，⛔ 不写死）——每收编一个类型它自己往上走；
  *  ② **对照实验的算料**：同一份世界态的「纯占位孪生」，以及两臂读数的并排与差值。
@@ -191,9 +195,11 @@ export function buildRealityMeter(origin: SnapshotOrigin | null, absence: string
  * 把一份世界态**逐格换成哈希占位**，键集合一个字节不动。
  *
  * ── 为什么不是直接用 `deriveBaseSnapshot(cfg)` 的整份产物 ────────────────────
- * `deriveBaseSnapshot` 铺的是 `nodeTypes × 全部 stateVars`（实测 100 类型 × 47 量 ×
- * 12,499 对象 = **587,453 格**），而种子世界只铺**规则真触及**的那一份
- * （实测 32 类型 × 4,425 对象 = **6,363 格**）。两份形状不同 ⇒ 拿它当右臂，
+ * `deriveBaseSnapshot` 铺的是 `nodeTypes × 全部 stateVars`（**2026-09-16 实测** 100 类型 × 47 量 ×
+ * 12,499 对象 = **587,453 格**；复验：`GET /a/v1/sim/view-config` 数 `nodeTypes` / `stateVars` /
+ * `nodeObjectIds` 三项），而种子世界只铺**规则真触及**的那一份
+ * （同日实测 32 类型 × 4,425 对象 = **6,363 格**，见 `GET /a/v1/sim/sessions` 的
+ * `scope.baseSnapshotOrigin.cells`）。两份形状不同 ⇒ 拿它当右臂，
  * 两臂的差别里就混进了「世界形状不一样」这一项，而那**不是**本实验要问的东西。
  * ⇒ 本函数用**同一个** `hash01`（`views/sim/edgeActiveModel.ts` 导出的那一个，
  *   `deriveBaseSnapshot` 自己也是用它算每一格），只把它铺在左臂的键集合上：
@@ -210,9 +216,10 @@ export interface PlaceholderTwin {
    *
    * 🐤 这是本实验的金丝雀，两头都要看：
    *  · 报 **0** ⇒ 孪生世界与真值世界逐字节相同 ⇒ 要么前端哈希式与后端漂了、
-   *    要么这份世界压根没有实测格 ⇒ **报「量法坏了」，⛔ 不许报「差 0」**；
-   *  · 它**不等于** `measuredCells` 是正常的：真值恰好等于哈希值的格会被算成「相同」
-   *    （实测 450 格实测值里有 **2** 格撞上了哈希值 ⇒ 本项 448）。
+   *    要么这份世界压根一格真读数都没有 ⇒ **报「量法坏了」，⛔ 不许报「差 0」**；
+   *  · 它**不等于** `measuredCells` 是正常的：真值恰好等于哈希值的格会被算成「相同」。
+   *    **2026-09-16 实测**（真后端 `SEED_DEMO=1`，`GET /a/v1/sim/sessions/:id` 取 `baseSnapshot`
+   *    后逐格比对）：450 格真读数里有 **2** 格撞上了哈希值（都在 `Order.leadDays` 上）⇒ 本项 448。
    *    ⛔ 所以屏上的占比一律用 `measuredCells`（权威计数），本项只当金丝雀。
    */
   readonly differingCells: number;
@@ -265,8 +272,9 @@ export function twinOriginScope(twin: PlaceholderTwin, label: string): Record<st
     baseSnapshotOrigin: {
       kind: "DERIVED",
       formula: "round(hash01(`${objectId}|${stateVar}`) × 100)（FNV-1a · 与 deriveBaseSnapshot 同式）",
+      // ⛔ 纯文本上屏：不许 markdown、不许接口字段名（与后端 `seed-world.ts` 那句 `note` 同一条纪律）。
       note:
-        "对照臂：这份世界态的每一格都是结构派生的确定性占位，实测格 0 格 —— " +
+        "对照臂：这份世界态的每一格都是结构派生的确定性占位，一格真读数都没有 —— " +
         "它与左臂的唯一差别就是左臂那些真读数格。",
       types: 0,
       objects: twin.objects,
@@ -290,8 +298,15 @@ export interface ArmReadings {
   readonly deltaCells: number;
   readonly movedOrders: number;
   readonly exposure: number;
-  readonly deltaP50: number | null;
-  readonly deltaMax: number | null;
+  /**
+   * 各单 |Δ| 的中位数 / 最大值。
+   * ⚠ 名字**自带口径**（R18）：⛔ 不许叫裸 `p50`/`max` —— 本仓已因「裸分位名」红过三次，
+   *   `quantile-field-naming:check` 第 §2b 条把裸名当数据键用即报红。
+   *   这两个名字与 `console0828Model.MoneyView.magnitude.deltaMagnitudeP50` **逐字相同**，
+   *   因为它们就是那一份数，不是另算一遍。
+   */
+  readonly deltaMagnitudeP50: number | null;
+  readonly deltaMagnitudeMax: number | null;
 }
 
 export type CompareFormat = "int" | "money" | "num2";
@@ -319,8 +334,8 @@ export function buildComparisonRows(a: ArmReadings, b: ArmReadings): readonly Co
     row("cells", "读数发生变化的格数", a.deltaCells, b.deltaCells, "int"),
     row("orders", "被推动的订单张数", a.movedOrders, b.movedOrders, "int"),
     row("exposure", "被推动订单的敞口金额（元）", a.exposure, b.exposure, "money"),
-    row("p50", "各单变化幅度中位数（0–100 压力标度）", a.deltaP50, b.deltaP50, "num2"),
-    row("max", "各单变化幅度最大值（0–100 压力标度）", a.deltaMax, b.deltaMax, "num2"),
+    row("deltaMagnitudeP50", "各单变化幅度中位数（0–100 压力标度）", a.deltaMagnitudeP50, b.deltaMagnitudeP50, "num2"),
+    row("deltaMagnitudeMax", "各单变化幅度最大值（0–100 压力标度）", a.deltaMagnitudeMax, b.deltaMagnitudeMax, "num2"),
   ];
 }
 

@@ -173,8 +173,8 @@ export function RealityMeterRow({
       deltaCells: deltas.length,
       movedOrders: money.exposedOrders,
       exposure: money.exposure,
-      deltaP50: money.magnitude.deltaMagnitudeP50,
-      deltaMax: money.magnitude.max,
+      deltaMagnitudeP50: money.magnitude.deltaMagnitudeP50,
+      deltaMagnitudeMax: money.magnitude.max,
       world: after.state,
       sent,
       ticks: spec.ticks,
@@ -269,21 +269,30 @@ export function RealityMeterRow({
               <br />
             </>
           ) : null}
+          <b>右边那个按钮会做什么</b>：用<b>同一套扰动、同样的推演拍数</b>，在一个<b>纯哈希占位世界</b>上再跑一遍，
+          并排给两组数与差值。两臂都是新建的世界、都从本会话第 0 拍起跑，
+          <b>唯一的差别就是上面那些真业务数格</b>。
+          <br />
           <b>⛔ 这两档不是「真实 vs 模拟」</b>：含真值那一档今天也有{" "}
           {meter.share === null ? "绝大部分" : pct1(1 - meter.share)} 是占位。差别是{" "}
           {meter.share === null ? "—" : pct1(meter.share)} 与 0%，不是真与假。
         </InfoPopover>
         <span className={styles.meterActs}>
+          {/* ⚠ 按钮点不动时，理由摆在**第一层可见文字**里，⛔ 不塞进原生 `title=`：
+              本仓已记过这笔账（「三重不可见」）—— disabled 元素上多数浏览器根本不渲染 title，
+              于是「为什么点不动」写好了，用户一条路都看不到。
+              且 R-UI-3 明令口径不进原生 title（棘轮 `provenance-popover-legibility` 只减不增）。
+              「它会做什么」那一段在左边那个 `?` 浮层里，不在这里重复一份。 */}
+          {canRun ? null : (
+            <span className={styles.meterDim} data-testid="c0828-compare-why-disabled">
+              先推演一次（左栏加一件扰动 → 开始推演），才有可复刻的那一套扰动
+            </span>
+          )}
           <button
             type="button"
             className={styles.btn}
             data-testid="c0828-compare-run"
             disabled={!canRun || compareM.isPending}
-            title={
-              canRun
-                ? "用同一套扰动、同样的推演拍数，在一个纯哈希占位世界上再跑一遍，并排给两组数与差值"
-                : "先推演一次（左栏加一件扰动 → 开始推演），才有可复刻的那一套扰动"
-            }
             onClick={() => compareM.mutate()}
           >
             {compareM.isPending ? "对照中…" : "跟纯占位世界对照 ▸"}
