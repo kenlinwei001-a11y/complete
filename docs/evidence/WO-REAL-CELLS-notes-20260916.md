@@ -206,3 +206,41 @@ seed 的 `totalDemand` 就是从这些订单汇总出来的 ⇒ `(totalDemand �
 - [ ] 五道臂测试 + 接缝组合测试 + 变异反证（任务 #13）
 - [ ] 真服务验收：主判据 + 反向臂 + 活服务金丝雀（任务 #14）
 - [ ] slice-deriv-empty.seam.test.ts:214/216/220 三处金值 3→3+N（每条写理由，⛔不删断言）
+
+---
+
+## ③ 交付段（2026-09-16 · 仓主全批 A⚠ 6 条 ⇒ 落 5 停 1 · 主判据过线）
+
+**仓主裁决原文**：「第一项，我全批」。执行结果 = **落 5 条、停 1 条**，主判据 3,691 → **4,171 ≥ 3,896**（+275）。
+
+### 落 5 条（规格 + valueRef 各 5，N/N 全满，`/tmp/a6-materialize.mjs` 实测）
+
+| specKey | formula | 物化 | 实测分布 | 口径性质 |
+|---|---|---:|---|---|
+| order_cost_pressure | `COALESCE(this.creditUsedRatio*100,0)` | 150/150 | 40–115 | 授信占用=资金/成本压力；>100=超授信（仓规：超 100% 即阻断），如实不夹（同 expeditePressure 212 / loadIndex 552 先例） |
+| order_demand_pressure | `COALESCE(this.demandDelta*100,0)` | 150/150 | 0–60 | 需求增量=需求压力（仓规：超 50% 触发承接评审线） |
+| order_shortage_risk | `COALESCE(this.outsourceRatio*100,0)` | 150/150 | 0–35 | 外协依赖=供应敞口 |
+| materialbatch_procurement_delay | `this.ageDays` | 24/24 | 1–154 | 库龄=到货等待代理（天数族，不夹） |
+| model_demand_load | `COALESCE(this.orderCount*100/this.capacity,0)` | 6/6 | 23.6–138 | 订单/产能=负载；>100=超负荷如实 |
+
+字段名与分布全部经 `/tmp/a6-probe.mjs` 进世界对象实测（禁止按名推断）：
+Order(150) 数值 ratio 族 = demandDelta/outsourceRatio/creditUsedRatio **有且只有 3 个**；
+MaterialBatch(24) ageDays 1–154；Model(6) orderCount 68–116 / capacity 50–314。
+
+### 停 1 条：orderChurn（订单变更压力）—— 无诚实源，按红线 3 停笔
+
+- 仓主批的 6 条里它是唯一没有对应真字段的：3 个 ratio 字段已各归其主，
+  复用 demandDelta ⇒ 与 demandPressure **逐格字节级复制** = 硬凑 C/D 档（红线 3 明令禁止）。
+- `early`/`pri` 实测**非数值**（n=0，DSL 只算数值）；leadDays/qty/unitPrice 是 WO 红线真值字段
+  且语义是交付前置/数量/单价，与「变更」无关。
+- **不 CLAMP 域界**：本档沿用既有陷阱 6 判例（有域的引擎夹、式子不内联边界常数 R14），
+  costPressure 115 / demandLoad 138 与已交付的 212/552 同例，不是新开口子。
+- 影响：主判据不靠它过线；传导链 orderChurn → Model.demandLoad 走哈希基线值，行为不变。
+
+### 门与烟囱（全 RC=0）
+
+seam 19/19（臂1+3：shortageRisk×100 逐字节 / procurementDelay 恒等 / demandLoad 先乘后除；
+臂2+2：Order.demandPressure/shortageRisk ∈[0,100]；ⓐ 25 属性消失；ⓒ 4,171）·
+slice 4/4（金值 23→28+完整名单）· 守门员 6/6 · build RC=0 ·
+真服务烟囱 47119：**measuredCells=4,171 / cells=6,363**，DERIVED formula 文本点名 5 条新绑定。
+提交：bb3091da8（规格）· 3aab3ae31（valueRef）· c95fc214c（测试金值）。

@@ -1,7 +1,8 @@
 # WO-SIM-REAL-DATA · 交付报告（2026-09-16）
 
 > 分支 `claude/handoff-real-cells` · 复验 dev 复验本代码。基线 `0207b9c6`。
-> 主判据 **未达**（3691 < 3896，差 205）—— 差的不是实现，是 A⚠ 6 条的**口径裁决**（悬置项 ③）。
+> 主判据 **已达**（**4,171 ≥ 3,896**，余 +275）—— 仓主 2026-09-16 ③全批 A⚠ 6 条，落 5 条（+480 格）；
+> 第 6 条 orderChurn 实测无诚实源字段，按「不硬凑」红线停笔（证据见 §2 末段）。
 
 ---
 
@@ -13,14 +14,15 @@
 |---|---:|---|
 | 改前（WO 基线） | **450** | WO §7 实测 |
 | §1+§3（Customer 活样本） | 470 | 台账 §3 段 |
-| **§2 全量（20 条 A 档物化）** | **3,691** | 真服务烟囱 47114/47115 + seam ⓒ |
+| §2 全量（20 条 A 档物化） | 3,691 | 真服务烟囱 47114/47115 + seam ⓒ |
+| **③ A⚠ 5 条（仓主全批落 5）** | **4,171** | **真服务烟囱 47119（本机实测）+ seam ⓒ** |
 | **反向臂（去掉 §1 recompute）** | **退回 450 整** | `/tmp/reverse-arm.mjs` |
 
-- **正向**：450 → 3,691（+3,241 = 20 条 A 档 3,221 格 + Customer 20 格基线差）。
+- **正向**：450 → 4,171（+3,721 = 25 条规格 3,701 格 + Customer 20 格基线差）。
 - **反向臂 ✓**：去掉 §1 recompute ⇒ **退回 450 整**（只名字撞真值 Order.qty/unitPrice/leadDays，
-  一个不多一个不少）。证明 3,241 格全靠 recompute 物化，**不是写死的**（WO：只测正向不算）。
-- ⚠ **主判据 ≥3,896 未达，差 205 格**。唯一合法补足路径 = 扶正 A⚠ 6 条口径（悬置项 ③，+630 格）。
-  纯 A 档到此为止，按红线 3 不硬凑 C/D 档。
+  一个不多一个不少）。证明 3,721 格全靠 recompute 物化，**不是写死的**（WO：只测正向不算）。
+- ✅ **主判据 ≥3,896 达成（4,171，余 275）**。A⚠ 第 6 条 orderChurn 停笔不减格 —— 它从未物化，
+  传导链 orderChurn → Model.demandLoad 走哈希基线值不受影响。
 
 ## 2 · 逐条判据（验收判据 2 + §6.6 九列张表）
 
@@ -48,6 +50,22 @@
 | model_cost_pressure | Model.costPressure | `COALESCE(this.unitCost*100/this.unitPrice,0)` | 6/6 |
 | model_forecast_bias | Model.forecastBias | `COALESCE((this.totalDemand-SUM(in(order_for_model).qty))*100/this.totalDemand,0)` | 6/6 |
 | model_supply_risk | Model.supplyRisk | `COALESCE(AVG(out(model_uses_material).shortageRisk),0)` | 6/6 |
+
+**A⚠ 档 5 条（仓主 2026-09-16 ③全批落 5，口径=对现有真业务字段的代理，建模判断）：**
+
+| specKey | targetType.prop | formula | 物化 N/N |
+|---|---|---|---|
+| order_cost_pressure | Order.costPressure | `COALESCE(this.creditUsedRatio*100,0)`（实测 40–115，>100=超授信如实） | 150/150 |
+| order_demand_pressure | Order.demandPressure | `COALESCE(this.demandDelta*100,0)`（实测 0–60） | 150/150 |
+| order_shortage_risk | Order.shortageRisk | `COALESCE(this.outsourceRatio*100,0)`（实测 0–35） | 150/150 |
+| materialbatch_procurement_delay | MaterialBatch.procurementDelay | `this.ageDays`（实测 1–154 天，天数族不夹） | 24/24 |
+| model_demand_load | Model.demandLoad | `COALESCE(this.orderCount*100/this.capacity,0)`（实测 23.6–138，>100=超负荷如实） | 6/6 |
+
+**③批第 6 条 orderChurn 停笔（顶回来，不扣分）**：Order 数值字段经 `/tmp/a6-probe.mjs` 实测
+（n=150，进世界过滤）——ratio 族只有 3 个（demandDelta/outsourceRatio/creditUsedRatio），
+已按仓主批的映射各归其主；给它复用 demandDelta ⇒ 与 demandPressure **字节级复制 = 硬凑**（WO 红线 3）。
+`early`/`pri` 非数值（n=0，DSL 只算数值）；leadDays/qty/unitPrice 是 WO 红线真值字段且语义非「变更」。
+仓里无第 4 个诚实源 ⇒ 不写。主判据 4,171 ≥ 3,896 不靠它过线。
 
 **臂1–臂5 逐条过**（seam 16 臂 + 台账 §2 段全表）。抽验代表（自属性/单跳聚合/链方向易错/AVG 归一/反向线性各覆盖）：
 
@@ -97,7 +115,11 @@ Model.costPressure∈[0,100] · Model.forecastBias∈[−100,100]。无一差一
 | empty-tenant-bootstrap CL.4 | 180s 超时（跑到 247s） | 75.9s **绿**（基树同绿） | 负载抖落 |
 | object-constraint-refs ⑤b | 断言错值（jinhua≠zigong） | **同错复现** | **基树 0207b9c6 逐字节同错 = 前置红**（悬置项 ⑥）|
 
-**本单交付件在全量里的成绩**：`sim-real-cells` **16/16** · 守门员 `sim-order-real-fields` **6/6** · `slice-deriv-empty` **4/4**，全绿。
+**本单交付件在全量里的成绩**（③ 前 16 臂）：`sim-real-cells` 16/16 · 守门员 `sim-order-real-fields` 6/6 ·
+`slice-deriv-empty` 4/4，全绿。**③ 增量（仓主全批）的变更面重验**：seam **19/19** · slice **4/4**（金值 28）·
+守门员 **6/6**，三文件串行 `--maxWorkers=1` 全 **RC=0**（`/tmp/a6-tests.txt+.rc` / `/tmp/a6-guard.txt+.rc`），
+`pnpm --filter datacore build` **RC=0**，真服务烟囱 47119 **measuredCells=4,171 / cells=6,363**。
+四包全量（L2 集成门）按分层方案留给并 canonical 的安静时间窗（§6 末段）。
 
 **typecheck 4 红 base 对照 ✓**：base 的 `rule-discovery-seam.test.ts:274-275` / `capability-map-live-seam.test.ts:398` 与当前报错行号一字不差。
 ⇒ 4 红前置、与本单无关，按 WO 判据 6「在 base 上确认同样 4 条，别去修它」执行，**未修**。
@@ -108,9 +130,11 @@ Model.costPressure∈[0,100] · Model.forecastBias∈[−100,100]。无一差一
 
 ## 7 · 接缝驱动（验收判据 7）
 
-`sim-real-cells.seam.test.ts`（**16/16 绿**）驱动整条链：编译规格 → recompute → 播种世界 →
-`deriveSeedBaseSnapshot` measuredCells。非只测 `parseFormula` 函数。**16 臂全过**：
-ⓒ 接缝 + ⓑ 逐条物化 + 臂1×5 + 臂2 + ⓐ 引擎归属（清规格⇒20属性全消失）+ 臂3×2 + 臂4 + 臂5 + R6 + §3 + 金丝雀。
+`sim-real-cells.seam.test.ts`（**19/19 绿**，③ 后）驱动整条链：编译规格 → recompute → 播种世界 →
+`deriveSeedBaseSnapshot` measuredCells。非只测 `parseFormula` 函数。**19 臂全过**：
+ⓒ 接缝（4,171）+ ⓑ 逐条物化（25 条）+ 臂1×8（含 A⚠ 3 条：shortageRisk×100 / procurementDelay 恒等 /
+demandLoad 先乘后除）+ 臂2（+Order.demandPressure/shortageRisk 入域）+ ⓐ 引擎归属（清规格⇒25属性全消失）+
+臂3×2 + 臂4 + 臂5 + R6 + §3 + 金丝雀。守门员 `sim-order-real-fields` **6/6** · `slice-deriv-empty` **4/4**（金值 28+名单）。
 
 ---
 
@@ -118,9 +142,9 @@ Model.costPressure∈[0,100] · Model.forecastBias∈[−100,100]。无一差一
 
 | # | 事项 | 影响 |
 |---|---|---|
+| ~~②~~ | **已闭**：主判据差 205 格 ⇒ ③ 落 5 条后 **4,171 ≥ 3,896 过线** | — |
+| ~~③~~ | **已闭**：仓主 2026-09-16 **全批** A⚠ 6 条 ⇒ 落 5 条（+480）；orderChurn 无诚实源停笔（§2 末段） | — |
 | ① | 红门台账更正（WO 称 6/3 红是 desat3 本地态，本树 6/6 绿） | 无，仅台账 |
-| ② | **主判据差 205 格**：纯 A 档 3691，要 ≥3896 须扶正 A⚠ | **唯一阻塞主判据** |
-| ③ | **A⚠ 6 条口径裁决**（Order 4 代理 + MaterialBatch.procurementDelay + Model.demandLoad，+630 格） | 补 ② |
 | ④ | forecastBias 本树恒 0（真值：seed 的 totalDemand≡Σqty 恒等，WO 的 49–77 在 desat3 树） | 保留死口径 or 换式 |
 | ⑤ | desat3 门 ⑤e 裁决（budgetTicks 2→95）→ 验收基线或需重算 | 不属本单，等裁决 |
 | ⑥ | **⑤b 基树前置红**（object-constraint-refs §⑤b）：基树 0207b9c6 与本树**逐字节同错**（期望 zigong-pack 实得 jinhua-calendering）；本单代码解析上不在其链路（该测试不播种规格 ⇒ §3 校验跳过、不调 recompute、比较器与 Line 播种零改动）。不属本单修，**需要 WO-CONSTRAINT-REFS 的主人裁决** | 集成线上一条确定性语义红 |
@@ -133,6 +157,7 @@ Model.costPressure∈[0,100] · Model.forecastBias∈[−100,100]。无一差一
 
 ## 停在哪 / 还差什么
 
-- **停在哪**：分支 tip（见下方 push 记录）。§1/§2/§3/五道臂/接缝测试/反向臂/四包门（含 4+24 红逐条归属）全部交付。
-- **还差什么**：①仓主裁 A⚠ 6 条口径 ⇒ 补上后主判据 3691→4300+ 达标 ②（若裁）forecastBias 处置
-  ③ 悬置项 ⑥ 的 ⑤b 前置红归谁修。其余判据已全绿。
+- **停在哪**：分支 tip（见下方 push 记录）。§1/§2/§3/五道臂/接缝测试/反向臂/四包门（含 4+24 红逐条归属）
+  全部交付；**③（仓主全批）已落：主判据 4,171 过线**，变更面三门 + build + 真服务烟囱全 RC=0。
+- **还差什么**：① forecastBias 处置（悬置项④，建议保留死口径）② 悬置项⑥ 的 ⑤b 前置红派修
+  （仓主已授权我按铁律决断 ⇒ 派单）③ L2 集成门（并 canonical 时安静时间窗全量）。其余判据已全绿。
