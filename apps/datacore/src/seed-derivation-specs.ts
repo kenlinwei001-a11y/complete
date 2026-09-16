@@ -116,6 +116,28 @@ export const DEMO_DERIVATION_SPECS: readonly {
   //   （`SUM(x.prop + 100)` 会抛 `expected ")" got "+"`）⇒ 用 AVG 而非「SUM/(SUM+100)」那种归一 ——
   //   均值同样是「综合缺料风险」的合法口径，且 DSL 原生支持。COALESCE 兜除零（物料全缺属性时）。
   { specKey: "model_supply_risk", targetType: "Model", targetProp: "supplyRisk", formula: "COALESCE(AVG(out(model_uses_material).shortageRisk), 0)" },
+  // ── A⚠ 档 5 条（仓主 2026-09-16 ③全批 6 条中落 5 条；orderChurn 停笔，理由见本段尾）─────────
+  // 口径性质（仓主逐条批过的**建模判断**，原料全是真业务数）：对现有真业务字段的口径代理。
+  // 字段名与分布经 `/tmp/a6-probe.mjs` 进世界对象实测（Order n=150 / MaterialBatch n=24 / Model n=6），非按名推断。
+  // Order.costPressure：成本压力 = 授信占用率 × 100。出处：creditUsedRatio（仓规：超 100% 即阻断——超信用额度的新单拒接）。
+  //   实测 40–115（i%7 单 1.15×100=115：超授信即超压，如实；越域由引擎按域夹，同 expeditePressure 212 / loadIndex 552 先例）。
+  { specKey: "order_cost_pressure", targetType: "Order", targetProp: "costPressure", formula: "COALESCE(this.creditUsedRatio * 100, 0)" },
+  // Order.demandPressure：需求压力 = 需求增量比例 × 100。出处：demandDelta（仓规：超 50% 触发承接评审线）。实测 0–60。
+  { specKey: "order_demand_pressure", targetType: "Order", targetProp: "demandPressure", formula: "COALESCE(this.demandDelta * 100, 0)" },
+  // Order.shortageRisk：短缺风险 = 外协比例 × 100（外协依赖度 = 供应敞口）。出处：outsourceRatio。实测 0–35。
+  { specKey: "order_shortage_risk", targetType: "Order", targetProp: "shortageRisk", formula: "COALESCE(this.outsourceRatio * 100, 0)" },
+  // MaterialBatch.procurementDelay：采购到货延迟 = 批次在库天数（库龄即等待天数的代理口径，仓主批）。
+  //   出处：ageDays。实测 1–154。天数族不在域表 ⇒ 不 CLAMP（同 purchaseorder/supplier 两条 delay 裸式先例）。
+  { specKey: "materialbatch_procurement_delay", targetType: "MaterialBatch", targetProp: "procurementDelay", formula: "this.ageDays" },
+  // Model.demandLoad：需求负载 = 在手订单数 / 产能 × 100（>100 = 订单超产能 = 超负荷）。
+  //   出处：orderCount/capacity。实测 21.7–232（>100 如实，同 base_load_index 74–552 先例）。COALESCE 兜除零。
+  { specKey: "model_demand_load", targetType: "Model", targetProp: "demandLoad", formula: "COALESCE(this.orderCount * 100 / this.capacity, 0)" },
+  // ⛔ orderChurn 停笔（仓主批 6 条中的第 6 条）：Order 数值字段里 ratio 族只有 3 个
+  //   （demandDelta/outsourceRatio/creditUsedRatio），已按仓主批的映射各归其主；再给它复用
+  //   demandDelta ⇒ 与 demandPressure 字节级复制 = 硬凑（WO 红线 3）。early/pri 非数值
+  //   （探针 n=0，DSL 只算数值），leadDays/qty/unitPrice 是 WO 红线真值字段且语义非变更。
+  //   仓里无第 4 个诚实源 ⇒ 不写。主判据 4,171 ≥ 3,896 不靠它过线；
+  //   传导链 orderChurn → Model.demandLoad 走哈希基线值，与本档无关、不受影响。
 ];
 
 /**
