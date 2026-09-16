@@ -3601,6 +3601,13 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   "Model|costPressure": { specKey: "model_cost_pressure" },
   "Model|forecastBias": { specKey: "model_forecast_bias" },
   "Model|supplyRisk": { specKey: "model_supply_risk" },
+  // ── A⚠ 档 5 条（仓主 2026-09-16 ③全批落 5；orderChurn 无诚实源停笔，理由见
+  //    seed-derivation-specs.ts 该段尾注）。specKey 与规格表逐一对齐。
+  "Order|costPressure": { specKey: "order_cost_pressure" },
+  "Order|demandPressure": { specKey: "order_demand_pressure" },
+  "Order|shortageRisk": { specKey: "order_shortage_risk" },
+  "MaterialBatch|procurementDelay": { specKey: "materialbatch_procurement_delay" },
+  "Model|demandLoad": { specKey: "model_demand_load" },
 };
 
 /** `(类型,变量)` → 显式值绑定（裸对精确命中；未登记 → `undefined` = 走名字撞）。全平台唯一入口。 */
