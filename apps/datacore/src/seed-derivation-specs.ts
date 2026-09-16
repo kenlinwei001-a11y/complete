@@ -24,7 +24,6 @@ import type { AuthCtx } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import type { OntologyCoreService } from "./ontology-core.js";
 import type { OntologyGovernanceService } from "./ontology-governance.js";
-
 /** demo 派生规格集：与电池模板 derivedProperties 同语义、§2 DSL 方言（自属性公式，1:1 镜像）。 */
 export const DEMO_DERIVATION_SPECS: readonly {
   specKey: string;
@@ -66,4 +65,51 @@ export async function seedDemoDerivationSpecs(
   // §7.4：派生规格 deps 引用同步入库 element_refs（与 app.ts 编译路由同一动作，两条产径不漂）。
   for (const s of out.specs) await governance.indexDerivationRefs(ctx, s.specKey, s.targetType, s.deps);
   return out.specs.length;
+}
+
+/**
+ * WO-SIM-REAL-DATA §1 · 播种期**全量初算**（在 `seedDemoDerivationSpecs` 之后、
+ * `seedDemoSimWorld` 之前调一次）。
+ *
+ * 病灶（WO 陷阱 2）：播种序列只 `compileSpecs` 入库，**全仓零个播种期 `recompute`** ——
+ * 规格是编译了，但一格都不物化。活服务上「compiled 3 demo derivation specs」与
+ * 「measuredCells 450」同时成立就是现场证据。而 `seedDemoSimWorld` 铺的世界快照是
+ * 一次性取值（`o.props[v]`），晚了不回填 ⇒ 必须抢在世界播种**之前**把派生值灌进对象。
+ *
+ * 语义 = 全量初算，**不是** dryRun（dryRun 不落库，白跑）。`recompute` 是增量引擎：
+ * 变更集空 ⇒ dirty 集空 ⇒ 一格不算（`ontology-core.ts` :400-470）。所以这里按
+ * 「全量初算」惯用法（`ontology-core.test.ts` 的 full initial compute 模式）构造变更集：
+ * **每条 ACTIVE 规格的每个 dep，一条 `{typeKey, prop, objectIds: 该类型全部对象}`**。
+ * 引擎内部做反向闭包 + 拓扑序 + 级联，我们只负责把「所有源都变了」这一事实告诉它。
+ *
+ * 幂等 + R6：重播时对象 props 已是派生终值，`prev !== value` 不成立 ⇒ 只重写
+ * derivation_value_runs（定值 epoch 语义由 `beginEpoch` 保证单调），对象值字节级一致。
+ * 返回物化了派生值的对象数（`updatedObjects`）。
+ */
+export async function recomputeDemoDerivationsAtSeed(
+  repos: Repos,
+  ontologyCore: OntologyCoreService,
+  ctx: AuthCtx,
+): Promise<number> {
+  const specs = await repos.derivationSpecs.list(ctx.tenantId, (s) => s.status === "ACTIVE");
+  if (specs.length === 0) return 0; // 诚实零态：没规格就是没变更是，不是"算了 0 个对象"
+  // dep 去重（同一 (typeKey,prop) 被多条规格引用时只取一次对象清单）。
+  const depKeys = new Map<string, { typeKey: string; prop: string }>();
+  for (const s of specs) {
+    for (const d of s.deps) depKeys.set(`${d.typeKey}.${d.prop}`, { typeKey: d.typeKey, prop: d.prop });
+  }
+  // 每个 dep 类型取一次全对象 id（同类型多 prop 复用同一份清单，少扫几遍 repo）。
+  const idsByType = new Map<string, string[]>();
+  const objectIdsOf = async (typeKey: string): Promise<string[]> => {
+    if (!idsByType.has(typeKey)) {
+      idsByType.set(typeKey, (await repos.objects.listByType(ctx.tenantId, typeKey)).map((o) => o.id));
+    }
+    return idsByType.get(typeKey)!;
+  };
+  const changes = [];
+  for (const d of depKeys.values()) {
+    changes.push({ typeKey: d.typeKey, prop: d.prop, objectIds: await objectIdsOf(d.typeKey) });
+  }
+  const res = await ontologyCore.recompute(ctx, changes);
+  return res.updatedObjects;
 }
