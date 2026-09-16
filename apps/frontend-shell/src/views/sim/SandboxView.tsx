@@ -11,6 +11,8 @@ import {
   fetchSimSessions,
   // WO-SANDBOX-MEMORY：单条基线（列表不再下发 baseSnapshot ⇒ 要用才捞，一次一条）
   fetchSimSessionBaseSnapshot,
+  // WO-SIM-FRONTEND-SEED：走裸 `:id` 路由的那一支（上面那支今天恒 null，理由见 endpoints.ts 头注）
+  fetchSimSessionWorldBase,
   fetchSimViewConfig,
   simBranch,
   simCheckpoint,
@@ -636,7 +638,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     () => ({
       listSessions: () =>
         qc.ensureQueryData({ queryKey: ["a", "sim-sessions"], queryFn: () => fetchSimSessions(), staleTime: Infinity }),
-      readBaseSnapshot: (id) => fetchSimSessionBaseSnapshot(id),
+      readBaseSnapshot: (id) => fetchSimSessionWorldBase(id),
     }),
     [qc],
   );

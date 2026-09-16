@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SimCounterfactualResult } from "@platform/contracts";
-import { createSimSession, fetchPropagationRules, fetchSimSessionBaseSnapshot, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
+import { createSimSession, fetchPropagationRules, fetchSimSessionWorldBase, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import { HintDot } from "./shared";
 import {
@@ -205,7 +205,7 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
     () => ({
       listSessions: () =>
         qc.ensureQueryData({ queryKey: ["a", "sim-sessions"], queryFn: () => fetchSimSessions(), staleTime: 60_000 }),
-      readBaseSnapshot: (id) => fetchSimSessionBaseSnapshot(id),
+      readBaseSnapshot: (id) => fetchSimSessionWorldBase(id),
     }),
     [qc],
   );

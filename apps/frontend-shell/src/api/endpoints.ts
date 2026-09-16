@@ -892,6 +892,33 @@ export const fetchSimSessionBaseSnapshot = async (sessionId: string): Promise<Ti
   return (kept as TickState | null) ?? null;
 };
 /**
+ * ══ WO-SIM-FRONTEND-SEED · 单条会话的 `baseSnapshot`，走**裸 `:id` 路由** ═══════════
+ *
+ * ── 为什么非得再加一个，而不是直接用上面那支（2026-09-16 实测，不是推测）──────────
+ * 上面那支的头注自己写了一句预言：「⚠ 这**不替代**后端投影（那是另一张单）：
+ * **后端一旦不再下发该字段，扫描器扫不到，本跳退化成纯拷贝**」。
+ * **那一天已经到了**：`GET /a/v1/sim/sessions` 的投影现在落在**仓储层**
+ * （`listSessionSummaries`），回包里 `baseSnapshot` **一个都没有** ⇒
+ * `readSessionsProjected(res, keepFor)` 永远扫不到要留的那一段 ⇒ 上面那支**恒返回 `null`**。
+ *
+ * 实测（真后端 `SEED_DEMO=1`，`H='X-Debug-User: demo:admin:admin|planner|catalog_admin'`）：
+ *   `curl -sH "$H" .../a/v1/sim/sessions                      | grep -c '"baseSnapshot"'` → **0**
+ *   `curl -sH "$H" .../a/v1/sim/sessions/sims_demo_seed_world | grep -c '"baseSnapshot"'` → **1**（🐤 金丝雀）
+ * 金丝雀命中 ⇒ 这条 `grep` 是好的，那个 0 是真的 0。
+ *
+ * ⚠ **本单不动上面那支**：它还有另一个消费方（`SandboxView` 下区差分基线），
+ * 改它的路由要连 `readSessionsProjected` 的 `keepFor` 分支一起退役 —— 那是行为改动、另一张单。
+ * 但**它今天恒 `null` 这件事要有人知道**：形态是「接了线，上游停止下发数据」，
+ * 而它的失败是**静默的**（返回 `null` = 屏上"没有基线"，看起来像数据本来就没有）。
+ *
+ * 取不到 ⇒ `null`（同上：**不造一个空世界出来**）。
+ */
+export const fetchSimSessionWorldBase = async (sessionId: string): Promise<TickState | null> => {
+  const s = await api.a<SimSession>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}`);
+  const base = s?.baseSnapshot ?? null;
+  return base !== null && Object.keys(base).length > 0 ? base : null;
+};
+/**
  * ══ WO-SIM-SESSION-WIRE · 会话生命周期迁移（暂停 / 恢复 / 结束）══════════════════
  *
  * **今天的行为是 X（开工实测，非派单转述）**：后端 `PATCH /a/v1/sim/sessions/:id/status`
