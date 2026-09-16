@@ -424,7 +424,7 @@ export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
 /**
  * ══ 病灶：今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
  *
- * **X（开工实测，真后端 `SEED_DEMO=1`，非转述）**：`SandboxView` 与 `EdgeActivePanel`
+ * **X（2026-09-16 开工实测，真后端 `SEED_DEMO=1` 内存模式，非转述）**：`SandboxView` 与 `EdgeActivePanel`
  * 两个入口各自 `createSimSession({ baseSnapshot: deriveBaseSnapshot(cfg) })` ——
  * **前端现算一份 100% 哈希世界 POST 上去**。后端 `POST /a/v1/sim/sessions` 是纯透传
  * （`baseSnapshot ?? {}` 原样落库），**它不播种**；于是这两个入口建出来的会话：
@@ -435,6 +435,14 @@ export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
  * ⇒ 走统一推演台看得到那 450 格真业务数，从这两个入口进去**一格都看不到**。
  *
  * **Y（应该）**：tick0 世界态先问**后端播种的那一份**要；要不到才退 `deriveBaseSnapshot`。
+ *
+ * **怎么亲手再验一遍（两条，都不用读代码）**，`H='X-Debug-User: demo:admin:admin|planner|catalog_admin'`：
+ *   ① 播种世界确实有实测格（金丝雀，必中；不中 ⇒ 是这条查法坏了，不是数据没有）：
+ *      `curl -sH "$H" .../a/v1/sim/sessions/sims_demo_seed_world` → `scope.baseSnapshotOrigin.measuredCells`
+ *   ② 反向臂（把本函数换回 `deriveBaseSnapshot` 即复现）：照前端旧路 POST 一份自算世界
+ *      `curl -sH "$H" -X POST .../a/v1/sim/sessions -d '{"baseSnapshot":{…},"scope":{"kind":"GLOBAL"}}'`
+ *      → 回读该会话，`scope.baseSnapshotOrigin` **整个字段不存在**。
+ * 单测那一份：`apps/frontend-shell/test/sim-frontend-seed.seam.test.tsx`。
  *
  * ══ ⛔ 为什么不是「在前端也读一遍真值」 ═══════════════════════════════════════════
  * 那会得到**第二套真相源**：后端播种的两档判据（状态变量名恰好是该对象的一个数值属性 ⇒ 取真值）

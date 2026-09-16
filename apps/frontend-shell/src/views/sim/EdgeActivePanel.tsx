@@ -189,16 +189,23 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
    * ⚠ WO-SIM-FRONTEND-SEED 后，「就地开的」**不再等同于**「tick0 全是占位」——
    * 探针世界现在优先拿后端播种的那一份当 tick0。故本旗标只回答「这个世界是不是本页现开的」，
    * 「它的数是不是占位」由 `probeOrigin` 单独回答。两个问题两个变量，⛔ 别再合成一个布尔：
-   * 合并回去就会出现「明明有 450 格真业务数，屏上却写着『占位·未实测』」这种**反向的谎**。
+   * 合并回去就会出现「明明有真业务数在里面，屏上却写着『占位·未实测』」这种**反向的谎**。
+   * （2026-09-16 实测的那份样本与复验命令见 `edgeActiveModel.ts` 的 `resolveTick0World` 头注。）
    */
   const probeIsSynthetic = !sessionId && !probeSession && probeCreated !== null;
 
-  /** `resolveTick0World` 的两跳；列表走本页本来就有的那份缓存（`["a","sim-sessions"]`），不多打一跳。 */
+  /**
+   * `resolveTick0World` 的两跳；列表走本页本来就有的那份缓存（`["a","sim-sessions"]`），不多打一跳。
+   * ⚠ 两个 endpoint 都**包一层箭头函数**再传 —— 裸引用会在渲染期读属性，而本仓 29 份测试做的是
+   * `vi.mock("@/api/endpoints")` 部分 mock，未列出的导出**一读就抛**，抛在渲染里 try/catch 够不着。
+   * 同一条坑的完整来历写在 `SandboxView` 的 `tick0Deps` 头注里（2026-09-16 实测 14 文件 / 101 条红；
+   * 复验 `pnpm --filter frontend-shell exec vitest run test/sandbox-view.test.tsx`）。
+   */
   const tick0Deps = useMemo<Tick0WorldDeps>(
     () => ({
       listSessions: () =>
-        qc.ensureQueryData({ queryKey: ["a", "sim-sessions"], queryFn: fetchSimSessions, staleTime: 60_000 }),
-      readBaseSnapshot: fetchSimSessionBaseSnapshot,
+        qc.ensureQueryData({ queryKey: ["a", "sim-sessions"], queryFn: () => fetchSimSessions(), staleTime: 60_000 }),
+      readBaseSnapshot: (id) => fetchSimSessionBaseSnapshot(id),
     }),
     [qc],
   );
@@ -213,8 +220,9 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
    * ⚠ 为什么必须**标出处**：tick0 可能是 `hash01` 占位值 —— 拿它算出来的差值只反映**边的结构影响**，
    *   不是实测量级。不标 = 拿占位值冒充实测（顶 R13）。记号见下方 `probe-origin` 那一段。
    *
-   * ── WO-SIM-FRONTEND-SEED：这条路今天什么时候真的会走到（实测，别按直觉猜）───────────
-   * `pickProbeSession` 只在**会话列表为空或还没回来**时返回 `null`，所以本分支不是常态路径。
+   * ── WO-SIM-FRONTEND-SEED：这条路今天什么时候真的会走到（2026-09-16 逐行复核，别按直觉猜）──
+   * `pickProbeSession`（`edgeActiveModel.ts`，判据 `usable.length === 0 → null`）
+   * 只在**会话列表为空或还没回来**时返回 `null`，所以本分支不是常态路径。
    * 但它**确实会走到**：用户在列表这一跳落地**之前**就拨了开关 —— 那一刻租户明明有播种世界，
    * 而本页会凭空造一个 100% 哈希世界去算差值。`resolveTick0World` 里那一跳走的是
    * React Query 缓存，在飞的同一个请求会被合流，于是这个竞态窗口里也拿得到播种世界。

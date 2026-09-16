@@ -621,12 +621,22 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    * `resolveTick0World` 的两跳。列表走 **React Query 缓存**（与 `sessionsQuery` 同一个 key
    * `["a","sim-sessions"]` + `staleTime: Infinity`）⇒ 建会话这一步**不多打一跳**，
    * 用的就是本页本来就要取的那份列表。
+   *
+   * ⚠ **两个 endpoint 都必须包在箭头函数里传，不许写成裸的函数引用**（`readBaseSnapshot:
+   * fetchSimSessionBaseSnapshot` 那种）。理由不是风格：本仓 29 份前端测试用
+   * `vi.mock("@/api/endpoints")` 做**部分 mock**，vitest 对**没列进 mock 的导出**是在
+   * **属性读取那一刻就抛**（`No "x" export is defined on the … mock`）。裸引用 = 在
+   * `useMemo` 里、也就是**渲染期**读它 ⇒ 抛在 React 渲染里，`resolveTick0World` 的 try/catch
+   * 根本够不着，整棵组件当场炸。**2026-09-16 实测**代价：**14 个测试文件、101 条**一起红，
+   * 而它们没有一个与本单的行为改动有关。包一层之后读取推迟到**调用期**（在那条 try 里面），
+   * 未 mock 的导出退化成一次兜底，与"租户没有播种世界"同一条路。
+   * 复验：`pnpm --filter frontend-shell exec vitest run test/sandbox-view.test.tsx`（改前 3/3 红）。
    */
   const tick0Deps = useMemo<Tick0WorldDeps>(
     () => ({
       listSessions: () =>
-        qc.ensureQueryData({ queryKey: ["a", "sim-sessions"], queryFn: fetchSimSessions, staleTime: Infinity }),
-      readBaseSnapshot: fetchSimSessionBaseSnapshot,
+        qc.ensureQueryData({ queryKey: ["a", "sim-sessions"], queryFn: () => fetchSimSessions(), staleTime: Infinity }),
+      readBaseSnapshot: (id) => fetchSimSessionBaseSnapshot(id),
     }),
     [qc],
   );
@@ -931,8 +941,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    * 建会话：tick0 世界态**先问后端播种的那一份要**，要不到才本地派生（`resolveTick0World`）。
    *
    * ══ WO-SIM-FRONTEND-SEED · 这里原来是什么样、为什么改 ═══════════════════════════
-   * **改前**：`deriveBaseSnapshot(c)` 现算一份 100% 哈希世界 POST 上去。实测（真后端
-   * `SEED_DEMO=1`）这样建出来的会话 `scope.baseSnapshotOrigin` **整个字段不存在** ——
+   * **改前**：`deriveBaseSnapshot(c)` 现算一份 100% 哈希世界 POST 上去。**2026-09-16 实测**（真后端
+   * `SEED_DEMO=1` 内存模式）这样建出来的会话 `scope.baseSnapshotOrigin` **整个字段不存在** ——
    * 后端 `POST /a/v1/sim/sessions` 是纯透传、**它不播种**，前端给什么它存什么。
    * 于是同一租户里后端启动时播下的那 450 格真业务数（`Order.qty`/`unitPrice`/`leadDays`），
    * 从本页进去**一格也看不到**；统一推演台走播种世界，看得到。同一个租户两套读数。
@@ -942,6 +952,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    *
    * ⛔ **不是「在前端再读一遍真值」**：本页一个业务字段都没读，读的是后端已经播好的那份数据。
    * ⛔ `deriveBaseSnapshot` **没删**：没有播种世界的租户仍靠它开出一个可跑的世界。
+   *
+   * 复验（正反两臂 + 金丝雀，命令与数字全在 `edgeActiveModel.ts` 的 `resolveTick0World` 头注里）；
+   * 单测：`apps/frontend-shell/test/sim-frontend-seed.seam.test.tsx`。
    */
   const init = useCallback(async (c: SandboxViewConfig, kind: "GLOBAL" | "LOCAL", target: string | null) => {
     try {
@@ -970,10 +983,13 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
        * WO-V4-HONEST-ORIGIN：tick0 这一份盖 `DERIVED` 章 —— 顶栏据此标「合成·占位」。
        *
        * ⚠ WO-SIM-FRONTEND-SEED **刻意不把它改成 `MEASURED`**，哪怕这份世界现在来自后端：
-       * 播种世界自己的记号写的就是 `kind:"DERIVED"`（6,363 格里 450 格实测、5,913 格结构派生）。
-       * 整份盖「实测」是把 93% 的占位说成真数 —— 比现在这条保守的记号坏得多。
-       * 那 450 格实测**不是不说**，而是由 `baseOrigin` 在旁边如实写出「实测格 450/6363」：
+       * 播种世界自己的记号写的就是 `kind:"DERIVED"`（2026-09-16 实测：6,363 格里 450 格实测、
+       * 5,913 格结构派生；复验 `GET /a/v1/sim/sessions/sims_demo_seed_world` 的
+       * `scope.baseSnapshotOrigin`）。整份盖「实测」是把 93% 的占位说成真数 —— 比这条保守记号坏得多。
+       * 那 450 格**不是不说**，而是由 `baseOrigin` 在旁边如实写出分项：
        * **一个粗记号 + 一个分项**，而不是把两件事挤进一个布尔里说错。
+       * ⚠ 这三个数会随本体/种子变（它们是**现算**下发的，不是写死的）——屏上那一行读的是回包，
+       * 本注释里的数字只是当天的样本，别拿它当判据。
        */
       setWorldOrigin("DERIVED");
       // 权威副本就地写入（避免刚建完又去 GET 一次同样的东西）；此后只有事件失效才触发真重取。
@@ -2122,7 +2138,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 </InfoPopover>
               </span>
               {/**
-               * WO-SIM-FRONTEND-SEED · tick0 世界态的**实测/派生分项**（后端播种记号的原样转述）。
+               * WO-SIM-FRONTEND-SEED（2026-09-16）· tick0 世界态的**实测/派生分项**（后端播种记号的原样转述）。
                *
                * ── 为什么它必须与上面那个徽标**分开两个元素** ─────────────────────────
                * 上面那个是**整份世界态**的粗记号（两态：本地基线 / 后端重演回来的）。
@@ -2138,6 +2154,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                * 记号**缺席时整行不渲染**（没有播种世界可取 ⇒ 走了本地派生兜底）：
                * ⛔ 不许退成「实测格 0/N」—— 「我没有这个记号」与「这份世界零格实测」是两个命题，
                * 后者是个具体断言，而兜底路根本没人算过这个数，写出来就是编的。
+               *
+               * 屏上这两个数**现算下发、不写死**（来源 `scope.baseSnapshotOrigin`，后端
+               * `sim/seed-world.ts` 逐格探出来的）；复验见本文件 `init` 头注给的那两条 curl。
                */}
               {baseOrigin !== null && baseOrigin.measuredCells !== null && baseOrigin.cells !== null && (
                 <span
