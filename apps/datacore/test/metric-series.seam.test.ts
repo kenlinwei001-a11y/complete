@@ -343,9 +343,20 @@ describe("WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节�
     expect(util.baseline[0]).toBeNull();
     expect(util.baseline[1]).toBeNull();
     // 金丝雀：这条指标**后面确实有值** —— 否则"前两格是 null"在一条全 null 的死指标上也全绿。
-    expect(util.actual[2]).toBe(ACT_LOAD * 0.5); // 4 × 0.5 = 2
+    //
+    // ⚠ **金值随 WO-SIM-DESAT-3 ② 改**：`2` → `0.74`。
+    //   原式写的是 `ACT_LOAD × 0.5`，其中 `0.5` 是 `demo_base_load_to_line_util` 的
+    //   `coefficient` 字面量。本单把该字段的口径从「稳态增益」改成「每拍入流」
+    //   ⇒ `coefficient = 稳态增益 × λ`，该边的稳态增益仍是 **0.5（一点没动，预算内未缩）**，
+    //   字段值变成 `0.5 × 0.37 = 0.185` ⇒ 这一格 `4 × 0.185 = 0.74`。
+    //   **不是断言被放宽，是同一个式子里那个乘数换了口径**：这里照样写死一个精确值、照样 `toBe`。
+    //   λ 从 C35 规则参数取（不内联 0.37），与种子侧 `inflowCoefficient` 同一个记号 ——
+    //   改 C35 即同时改这里与推演，两边不会各衰减各的。
+    const LINE_UTIL_GAIN = 0.5; // 该边 description 承诺的稳态增益（本单未缩）
+    const expectedUtil = Math.round(ACT_LOAD * LINE_UTIL_GAIN * PRESSURE_DECAY_PER_TICK * 1e12) / 1e12;
+    expect(util.actual[2]).toBe(expectedUtil); // 4 × (0.5 × 0.37) = 0.74
     // 且 `null` 不是把整条线读空：两条线在这一格都是同一个真实数。
-    expect(util.baseline[2]).toBe(ACT_LOAD * 0.5);
+    expect(util.baseline[2]).toBe(expectedUtil);
 
     // 两条线与 `ticks` **等长**（缺格是 `null` 占位，不是把格子删掉 —— 删掉就对不齐 x 轴了）。
     for (const m of out.metrics) {

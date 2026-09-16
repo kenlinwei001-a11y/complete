@@ -286,7 +286,10 @@ describe("§3 描述里的系数 = 真系数", () => {
   // 两者之间隔着一次 `× λ`。这一步若被绕过（有人直接写裸字面量），屏上那句话就又变成谎话，
   // 而 §3 只比"描述 vs 实参"，**看不见这一步** —— 故这里单独咬。
   it("全部 50 条边都经 inflowCoefficient，且 λ 取自 C35 规则参数（禁内联 0.37）", () => {
-    const blocks = [...SRC.matchAll(/coefficient:\s*([^\n]*)/g)].map((m) => m[1]!);
+    // ⚠ 必须**行首锚定**：不锚定会把注释里提到的 `coefficient: z.number()` 也算成一条边
+    // （实测当场报「有边绕过 inflowCoefficient」，而那根本不是字段，是一句中文注释里的引用）。
+    // 形态：「我用『源码里出现了 coefficient:』当作『这里有一条边的系数字段』的证据。」
+    const blocks = [...SRC.matchAll(/^[ \t]*coefficient:[ \t]*([^\n]*)/gm)].map((m) => m[1]!);
     // 金丝雀：抽到的 coefficient 行数必须是真数量级（抽 0 行时下面两句毫无意义）
     expect(blocks.length, "seed.ts 里 coefficient 行数（抽 0 行 = 抽取器坏了）").toBeGreaterThanOrEqual(50);
     const bare = blocks.filter((b) => !b.trimStart().startsWith("inflowCoefficient("));
