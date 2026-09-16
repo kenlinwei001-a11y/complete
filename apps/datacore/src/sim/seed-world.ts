@@ -414,19 +414,28 @@ export async function deriveSeedBaseSnapshot(
    * 被本世界铺到的 (类型,变量)，其 specKey 必须解到一条 ACTIVE 规格。在**铺格之前**全量核一遍，
    * 一次把坏引用全部报出来，而不是铺到一半才红在某一张对象上。
    * ⛔ 不许静默回落哈希：坏引用退回哈希 = 本单要消灭的病换了个入口回来。
+   *
+   * ⚠ 作用域 = 「本世界走了显式绑定这条路」（规格库非空）才强制。
+   *   生产播种路径（SEED_DEMO=1）先 `seedDemoDerivationSpecs` ⇒ 规格库非空 ⇒ 全强制，断引用必红。
+   *   而**不播种规格**的调用方（如只验「名字撞」那条路的单元接缝测试 `sim-order-real-fields`）
+   *   规格库整体空 ⇒ 它压根没走显式绑定这条路 ⇒ 跳过校验，不许把生产不变量错套到它头上。
+   *   判据一句话：**你播种了规格，就得绑得上；你没播种规格，这条路对你不存在。**
+   *   （变异反证仍有效：规格库非空 + 指一个查无的 specKey ⇒ `specByKey.get` 落空 ⇒ 红。）
    */
   const brokenRefs: string[] = [];
-  for (const typeKey of byType.keys()) {
-    for (const v of byType.get(typeKey) ?? new Set<string>()) {
-      const ref = stateVarValueRef(typeKey, v);
-      if (ref === undefined) continue;
-      const spec = specByKey.get(ref.specKey);
-      if (spec === undefined) {
-        brokenRefs.push(`${typeKey}.${v} → specKey "${ref.specKey}"（查无 ACTIVE 规格）`);
-      } else if (spec.targetType !== typeKey || spec.targetProp !== v) {
-        brokenRefs.push(
-          `${typeKey}.${v} → specKey "${ref.specKey}"（规格落点是 ${spec.targetType}.${spec.targetProp}，不指回本格）`,
-        );
+  if (specByKey.size > 0) {
+    for (const typeKey of byType.keys()) {
+      for (const v of byType.get(typeKey) ?? new Set<string>()) {
+        const ref = stateVarValueRef(typeKey, v);
+        if (ref === undefined) continue;
+        const spec = specByKey.get(ref.specKey);
+        if (spec === undefined) {
+          brokenRefs.push(`${typeKey}.${v} → specKey "${ref.specKey}"（查无 ACTIVE 规格）`);
+        } else if (spec.targetType !== typeKey || spec.targetProp !== v) {
+          brokenRefs.push(
+            `${typeKey}.${v} → specKey "${ref.specKey}"（规格落点是 ${spec.targetType}.${spec.targetProp}，不指回本格）`,
+          );
+        }
       }
     }
   }
