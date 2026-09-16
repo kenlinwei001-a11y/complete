@@ -99,6 +99,8 @@ import {
   type ChainImpedimentModel,
 } from "../../chainImpediment";
 import { InfoPopover } from "@/components/InfoPopover";
+import { readSnapshotOrigin } from "../metricWallModel";
+import { RealityMeterRow, type ReplaySpec } from "../RealityMeter";
 import styles from "./Console0828.module.css";
 
 /** 左栏「已添加 N 件扰动事件」里的一条 —— **还没提交**，提交发生在「开始推演」。 */
@@ -115,6 +117,28 @@ interface StagedEvent {
   readonly unit: string;
   readonly startTick: number | null;
   readonly durationTicks: number | null;
+}
+
+/**
+ * 一条暂存事件 → `POST …/perturbations` 的**提交载荷**。**唯一构造处**。
+ *
+ * ── 为什么提成函数（WO-SIM-REALITY-METER）─────────────────────────────────────
+ * 「开始推演」与「跟纯占位世界对照」要发**逐字段相同**的那一套扰动。
+ * 两处各拼一份字面量 = 第二套真相源：改一处漏一处，而两臂用了不同扰动这件事
+ * **屏上看不出来、类型系统也看不见** —— 对照实验会静默地变成两个不同的实验。
+ * ⇒ 一份实现，两处调用；「两臂相同」由**结构**保证，不靠人比对。
+ */
+function perturbBodyOf(s: StagedEvent): Parameters<typeof createSimPerturbation>[1] {
+  return {
+    kind: s.kind,
+    targetObjectId: s.targetObjectId,
+    targetStateVar: s.targetStateVar,
+    magnitude: s.magnitude,
+    label: `${s.name} · ${s.targetObjectName}`,
+    mode: s.mode,
+    ...(s.startTick === null ? {} : { startTick: s.startTick }),
+    durationTicks: s.durationTicks,
+  };
 }
 
 /** 一次「开始推演」的产物。 */
@@ -416,6 +440,40 @@ export default function Console0828({
     () => (sessionsQ.data?.items ?? []).find((s) => s.id === sessionId),
     [sessionsQ.data, sessionId],
   );
+  /**
+   * ══ WO-SIM-REALITY-METER · 世界态出处记号（`scope.baseSnapshotOrigin`）══════════
+   *
+   * ⚠ 读法走 `metricWallModel.readSnapshotOrigin` —— **本屏不另写一套**：
+   *   契约里 `scope` 是 `z.record(z.string(), z.unknown())` 的松口袋，逐字段防御性读这件事
+   *   已经有唯一实现，抄第二份就会出现「两处各读各的、缺字段时结论还不一样」。
+   * ⚠ `sessionRow === undefined` 与「有这一条但它没带记号」是**两件事**，
+   *   下面 `originAbsence` 把它们分开说，⛔ 不塌成一句「取不到」。
+   */
+  const origin = useMemo(
+    () => (sessionRow === undefined ? null : readSnapshotOrigin(sessionRow.scope)),
+    [sessionRow],
+  );
+  const originAbsence: string | null =
+    origin !== null
+      ? null
+      : sessionsQ.isPending
+        ? "会话清单还在路上 —— 真业务数占比待会才知道"
+        : sessionsQ.isError
+          ? "会话清单这一跳失败 —— 不知道有多少是真业务数（不是「一格都没有」）"
+          : sessionRow === undefined
+            ? "会话清单里没有这一条 ⇒ 说不出它的世界态出处"
+            : "这条会话没有带世界态出处记号 ⇒ 出处不明，屏上一律按「非实测」读";
+  /** `typeKey → 中文名`。**取自传导规则回包自己带的那两格**，⛔ 前端不另建一张中文映射表。 */
+  const typeNames = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of (rulesQ.data as PropagationRulesResponse | undefined)?.items ?? []) {
+      if (typeof r.sourceTypeName === "string" && r.sourceTypeName !== "") m.set(r.sourceTypeKey, r.sourceTypeName);
+      if (typeof r.targetTypeName === "string" && r.targetTypeName !== "") m.set(r.targetTypeKey, r.targetTypeName);
+    }
+    return m as ReadonlyMap<string, string>;
+  }, [rulesQ.data]);
+  const stateVarNames = (rulesQ.data as PropagationRulesResponse | undefined)?.stateVarNames;
+
   const cal: TickCalendar | null = useMemo(
     () => buildTickCalendar(sessionRow?.createdAt, sessionRow?.tickDays),
     [sessionRow],
@@ -507,16 +565,7 @@ export default function Console0828({
       const before = await simWorld(sid);
       const receipts: { name: string; startTick: number | null }[] = [];
       for (const s of staged) {
-        const r = await createSimPerturbation(sid, {
-          kind: s.kind,
-          targetObjectId: s.targetObjectId,
-          targetStateVar: s.targetStateVar,
-          magnitude: s.magnitude,
-          label: `${s.name} · ${s.targetObjectName}`,
-          mode: s.mode,
-          ...(s.startTick === null ? {} : { startTick: s.startTick }),
-          durationTicks: s.durationTicks,
-        });
+        const r = await createSimPerturbation(sid, perturbBodyOf(s));
         receipts.push({ name: s.name, startTick: r.perturbation.startTick ?? null });
       }
       const ticked = await simTick(sid, horizon, true);
@@ -594,6 +643,22 @@ export default function Console0828({
   const custView = useMemo(
     () => (orders.length === 0 ? null : buildCustomerView(orders, touchedOrderIds)),
     [orders, touchedOrderIds],
+  );
+
+  /**
+   * WO-SIM-REALITY-METER · 「跟纯占位世界对照」要复刻的那一次推演。
+   *
+   * ⚠ 取的是 `result`（**真跑过的那一次**）而不是左栏当前的 `staged` / `horizon`：
+   *   用户跑完之后还可以继续往清单里加事件、改推演时长，那时 `staged` 已经不是屏上
+   *   这批数字的来源了。拿它去对照 = 拿另一次实验的条件来解释这一次的读数。
+   * ⚠ 拍数取 `afterTick − beforeTick` —— **后端回执**，不是前端的 `horizon` 输入框。
+   */
+  const replay: ReplaySpec | null = useMemo(
+    () =>
+      result === null
+        ? null
+        : { payloads: result.staged.map(perturbBodyOf), ticks: Math.max(0, result.afterTick - result.beforeTick) },
+    [result],
   );
 
   /** 区④/⑤：能动的 N 处 / 只能盯着的 M 处 —— 全部取自引擎，前端零判定。 */
@@ -1170,6 +1235,21 @@ export default function Console0828({
         </span>
       </div>
 
+      {/* ══ WO-SIM-REALITY-METER · 真实度读数 + 一键跟纯占位世界对照 ══════════════
+          **第一层常显**（⛔ 不藏进浮层，⛔ 不随页签变，⛔ 推演前也在）——
+          它答的是「这一屏的数能不能拿来做决策」，必须在不点任何东西的情况下就读得到。
+          高度从三栏身上扣（本块 `flex:none` · `.wrap` `flex:1 min-height:0`），页面不长。 */}
+      <RealityMeterRow
+        origin={origin}
+        absence={originAbsence}
+        varsByType={varsByType}
+        typeNames={typeNames}
+        stateVarNames={stateVarNames}
+        sessionId={sessionId}
+        replay={replay}
+        orders={orders}
+      />
+
         {/* ══ WO-C0828-COO-FIRST-SCREEN · 结论区 —— **第一屏的全部**（恒在，不随页签变）══
             顺序就是 COO 问问题的顺序：这是哪一次推演 → 多少钱 / 谁 / 卡在哪 → 怎么办。
             ⚠ 它**在 `.wrap` 之外**，拿的是整幅宽（2026-09-15 实测 1310px）而不是中栏的 666px ——
@@ -1224,10 +1304,22 @@ export default function Console0828({
             <p className={styles.calibre} data-testid="c0828-verdict-origin">
               <b>先看「受阻环节」与下方「怎么办」</b>：读真字段、判真红线。带 <b>~</b> 的三个数只作<b>量级参考</b>
               <InfoPopover topic="为什么带 ~ 的三个数只作量级参考" testId="c0828-verdict-origin">
+                {/* ⚠ **2026-09-16 订正（WO-SIM-REALITY-METER）**：这里原先写死
+                    「5,895 格全部为派生值，真读数 0 格」。`WO-SIM-ORDER-REAL-FIELDS` 落地当天
+                    那句话就变成了**假话**（真读数不再是 0，实测 450 格），而它是直接印在用户屏上的。
+                    形态是本仓反复记账的那一条：**写死的数字不度量「今天是多少」**，
+                    改了也不会红。⇒ 改成从本会话回包**现算**；取不到就照实说取不到。 */}
                 本会话世界态出处回包标为 <b>结构派生</b>（不是量出来的）：
                 生成式 <b>round(hash01(对象id|状态变量) × 100)</b>，
-                <b>5,895 格全部为派生值，真读数 0 格</b>。
-                ⇒「哪些订单算被推动」由这个占位世界选出，<b>不由「这张单是否真用了出事的物料」选出</b>；
+                {origin === null || origin.cells === null || origin.measuredCells === null ? (
+                  <b>本次取不到格数分项（{originAbsence ?? "出处记号缺席"}）</b>
+                ) : (
+                  <b>
+                    {origin.cells.toLocaleString("zh-CN")} 格里 {origin.derivedCells === null ? "—" : origin.derivedCells.toLocaleString("zh-CN")} 格为派生值，
+                    真读数 {origin.measuredCells.toLocaleString("zh-CN")} 格
+                  </b>
+                )}
+                。 ⇒「哪些订单算被推动」由这个占位世界选出，<b>不由「这张单是否真用了出事的物料」选出</b>；
                 叠加传导边按真实用量加权的是少数：种子里 49 条用量引用中 <b>43 条为空</b>。
                 金额本身是真的（对象层 Order.value），<b>不可靠的是集合</b>，故降档呈现而非隐藏。
                 反之「受阻环节」只收范围、不收世界态，读对象层真字段判规则表真红线 —— 与占位世界无关。

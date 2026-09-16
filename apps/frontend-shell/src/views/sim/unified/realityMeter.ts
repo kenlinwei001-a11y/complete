@@ -73,10 +73,15 @@ export function extractTypeVarPairs(text: string): readonly MeasuredPair[] {
   const out: MeasuredPair[] = [];
   const seen = new Set<string>();
   for (const m of text.matchAll(PAIR_RE)) {
-    const key = `${m[1]}.${m[2]}`;
+    const typeKey = m[1];
+    const stateVar = m[2];
+    // 两个捕获组都是必填的（正则里没有可选段），但 `noUncheckedIndexedAccess` 看不出这一点 ——
+    // 与其 `!` 断言，不如把「抽不出来」当一种真实可能：抽不全的那一条直接不要。
+    if (typeKey === undefined || stateVar === undefined) continue;
+    const key = `${typeKey}.${stateVar}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ typeKey: m[1], stateVar: m[2] });
+    out.push({ typeKey, stateVar });
   }
   return out;
 }

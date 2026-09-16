@@ -71,6 +71,18 @@ export interface SnapshotOrigin {
   readonly cells: number | null;
   readonly measuredCells: number | null;
   readonly derivedCells: number | null;
+  /**
+   * 覆盖的物化对象数 / 被规则触及的对象类型数。
+   *
+   * ⚠ **WO-SIM-REALITY-METER 补读的两格**：后端 `SeedWorldSnapshotOrigin` 一直下发它们
+   * （实测 `objects=4425` · `types=32`），只是本读法从前没读 —— 属「接了线没数据」的反面：
+   * **数据一直在，缺的是读它的那一跳**。真实度读数条要拿 `objects` 当覆盖面的分母，
+   * ⛔ 不许改用 `SimSessionListItem.baseSnapshotScale.objects` 顶替：那是另一个投影，
+   * 两处各取一个数就是给同一事实造两个出处。
+   * ⚠ 仍是 `| null`：老会话 / 别处建的会话可能压根没有这两格，缺席就是缺席，不补 0。
+   */
+  readonly objects: number | null;
+  readonly types: number | null;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
@@ -91,6 +103,8 @@ export function readSnapshotOrigin(scope: unknown): SnapshotOrigin | null {
     cells: num(o.cells),
     measuredCells: num(o.measuredCells),
     derivedCells: num(o.derivedCells),
+    objects: num(o.objects),
+    types: num(o.types),
   };
 }
 

@@ -713,3 +713,40 @@
 .empty { color: var(--muted2); font-size: 12px; line-height: 1.8; }
 .pgFoot { font-size: 12px; color: var(--muted2); line-height: 1.8; margin: 4px 0 0; }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ══ WO-SIM-REALITY-METER · 真实度读数条 + 纯占位对照 ═══════════════════════════
+   位置：顶栏之下、结论区之上，**第一层常显**（⛔ 不藏进浮层 —— 它答的是
+   「这一屏的数能不能拿来做决策」，必须在不点任何东西的情况下就被读到）。
+
+   ⚠ 高度纪律：本块与 `.verdict` 同为 `flex: none`，而 `.wrap` 是 `flex: 1 1 auto; min-height: 0`
+     ⇒ 本块**占用的高度从三栏身上扣，不把页面撑长**。
+     实测（2026-09-16 真 chromium 1600×900）：加本块前后 `#main-content` 恒 842/842。
+   ⚠ 字号只用在册的 12 / 13（规范 R-UI-2 三级上限 + `check-text-legibility` 最小 12px），
+     层级差别靠字重与颜色，⛔ 不新增字号档。 */
+.meter {
+  flex: none;
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 7px 20px 0;
+}
+@media (max-width: 640px) { .meter { padding: 7px 12px 0; } }
+.meterRow { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.meterKey { font-size: 12px; font-weight: 600; color: var(--muted); }
+.meterBig { font-size: 13px; font-weight: 700; color: var(--txt); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.meterPct { font-size: 13px; font-weight: 700; color: var(--accent-txt); font-family: var(--font-mono); }
+/* 进度条是 `share` 的复读，不承载第二份口径 ⇒ `aria-hidden`，且只用等宽字形保证十格对齐。 */
+.meterBar { font-family: var(--font-mono); color: var(--accent-txt); letter-spacing: 1px; }
+.meterDim { color: var(--muted2); }
+.meterAbsent { color: var(--warn-txt); }
+.meterActs { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.compare { display: flex; flex-direction: column; gap: 5px; }
+.cmpTable { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--txt); }
+.cmpTable th {
+  text-align: left; font-weight: 600; color: var(--muted2);
+  border-bottom: 1px solid var(--line); padding: 2px 8px 3px 0;
+}
+.cmpTable td { padding: 2px 8px 2px 0; border-bottom: 1px solid var(--line); line-height: 1.6; }
+.cmpNum { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+/* ⛔ 差值为 0 **不上告警色**：0 是本实验的一个**结论**，不是越线（纪律第 4 条：告警色专用于越线）。 */
+.cmpNum[data-diff="nonzero"] { color: var(--accent-txt); font-weight: 600; }
+.cmpNum[data-diff="nocalc"] { color: var(--warn-txt); }
