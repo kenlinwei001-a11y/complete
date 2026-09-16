@@ -3547,6 +3547,59 @@ export function stateVarDisplayNames(stateVars: readonly string[]): Record<strin
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// 状态变量 → 派生规格的**显式值绑定**（WO-SIM-REAL-DATA §3 · `valueRef`）
+// ---------------------------------------------------------------------------
+//
+// ── 病灶：绑定靠**名字撞上**，失败**静默回落哈希** ───────────────────────────────
+// `deriveSeedBaseSnapshot` 给状态变量取基线值只有一条判据：`o.props[stateVar]` 恰好是
+// 有限数 ⇒ 算实测格；否则 `round(hash01(...)×100)` 哈希兜底。改个名、动个类型，
+// 那一格悄悄退回哈希 —— 不报错、不变红、屏上照样有数。
+//
+// ── 本表把「这个状态变量的基线值来自哪条 DerivationSpec」做成**显式引用** ────────
+// 与 `PropagationRule.coefficientRef` / `weightRef` / `StateVarDomain.decayRef` 同一个
+// `xxxRef` 惯用法：登记 = 名字可以随便改而绑定不断，且绑定失败**必须红**（不许静默回落）。
+//
+// ── 两个消费点（同一真值源，单源 > 并存）──────────────────────────────────────
+//   ① `deriveSeedBaseSnapshot`（种子世界播种）：登记的 (类型,变量) 先按 `valueRef.specKey`
+//      解到 ACTIVE 规格；解不到 ⇒ **抛错变红**（⛔ 不许静默回落哈希）。规格解到了，
+//      值经 §1 的播种期 recompute 物化进 `o.props[targetProp]`，仍由真读数支取走 ——
+//      本表改的是**绑定方式**（显式引用 > 名字撞），不是取值引擎。
+//   ② `GET /a/v1/sim/view-config` 的 `stateVarValueRefs`：读时投影，屏上能说出
+//      「这一格的值来自哪条公式」。
+//
+// ── 判据与 `STATE_VAR_DISPLAY_NAMES` / `STATE_VAR_DOMAINS` 同一条 ────────────────
+// 只登记**有规格可指**的 (类型,变量)；没登记 = 明确的「没有显式绑定，走名字撞」，
+// 不是「没绑上」。Order.qty/unitPrice/leadDays 那三个（WO 红线 4 不碰）不登记 ——
+// 它们没有 DerivationSpec，绑定就是名字本尊，无需引用。
+//
+// ⚠ 键是 `(类型,变量) 对` 不是裸变量名：同一个变量名可以挂在多个类型上、各指各的规格
+//   （`shortageRisk` 挂 Material 也挂 Order，口径不同）。用 `|` 拼键与仓里既有
+//   （`seed-world.ts` 的 measuredVarKeys、本表上方注释）同式。
+export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
+  // ── §2 落地一条登记一条；本单先行交付的是**机制**（引用 + 变红 + 屏上出处），
+  //    32 条式子的登记随 §2 的规格一起进。下面这条是 A 档第一条，也是机制的活样本。
+  "Customer|receivablePressure": { specKey: "customer_receivable_pressure" },
+};
+
+/** `(类型,变量)` → 显式值绑定（裸对精确命中；未登记 → `undefined` = 走名字撞）。全平台唯一入口。 */
+export function stateVarValueRef(typeKey: string, stateVar: string): { specKey: string } | undefined {
+  return STATE_VAR_VALUE_REFS[`${typeKey}|${stateVar}`];
+}
+
+/**
+ * 把一批 `类型.变量` 键投影成 `裸键 → specKey` 字典（**只收登记过的**；与 `stateVarDisplayNames` 同式）。
+ * 入参形态 = `view-config` 里现成的 `sourceStateVar ∪ targetStateVar` 展开成 `类型.变量` 的键集。
+ */
+export function stateVarValueRefs(typeVarKeys: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of [...typeVarKeys].sort()) {
+    const ref = STATE_VAR_VALUE_REFS[k];
+    if (ref !== undefined) out[k] = ref.specKey;
+  }
+  return out;
+}
+
 /** 给一组 PropertyDef 贴上中文业务名（已自带 displayName 的不覆盖；未登记的保持缺省）。 */
 export function withPropDisplayNames(typeKey: string, props: PropertyDef[]): PropertyDef[] {
   return props.map((p) => {

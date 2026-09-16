@@ -105,7 +105,7 @@ import { nodeLossShare, type ChainLossResult } from "./solvers/chain-loss.js";
 // WO-SANDBOX-E4：`cadenceFromProps`（Cadence 落库行 → Cadence 的**唯一**读回口）刻意**不在本文件 import** ——
 // 它只该出现在装配处 `sim/propagation-inputs.ts` 里，与上面 `buildCadenceGates` / `scopePropagationGraph` 同一条纪律。
 // WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
-import { stateVarDisplayNames, stateVarDisplayName } from "./synthetic/battery.js";
+import { stateVarDisplayNames, stateVarDisplayName, stateVarValueRefs } from "./synthetic/battery.js";
 // WO-SIM-DRILL-P12 · 推演演习（事件型扰动 → 数据驱动路由 → 真调求解器 → 归一成卡点清单）。
 // 算法全在 sim/drill-scan.ts（纯函数扫描器）与 sim/drill-orchestrator.ts（编排+归一），本文件只做 IO 装配。
 // ⚠ 与上面的 `sim/drill.ts`（WO-SIM-BE-DRILL·根因二级下钻）**是两件不同的事**，别混：
@@ -4097,6 +4097,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       stateVars,
       // WO-STATEVAR-DISPLAYNAME · 状态变量中文名（读时投影自后端单源表；未登记的键不进字典 ⇒ 前端回落裸键）。
       stateVarNames: stateVarDisplayNames(stateVars),
+      // WO-SIM-REAL-DATA §3 · 状态变量显式值绑定（`类型.变量` → 派生规格 specKey；读时投影自
+      // 同一后端单源表 `STATE_VAR_VALUE_REFS`；未登记的对不进字典 = 明确的「走名字撞」）。
+      // 屏上据此能说出「这一格的值来自哪条公式」；规格缺失在播种侧已变红，不会走到这里。
+      stateVarValueRefs: stateVarValueRefs(
+        rules.flatMap((r) => [
+          `${r.sourceTypeKey}|${r.sourceStateVar}`,
+          `${r.targetTypeKey}|${r.targetStateVar}`,
+        ]),
+      ),
       radarDims: [
         { key: "structure", label: "结构" },
         { key: "knowledge", label: "知识" },

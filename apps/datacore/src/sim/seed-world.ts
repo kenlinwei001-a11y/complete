@@ -35,7 +35,7 @@ import {
 } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
-import { stateVarDisplayName } from "../synthetic/battery.js";
+import { stateVarDisplayName, stateVarValueRef } from "../synthetic/battery.js";
 import { buildPropagationInputs } from "./propagation-inputs.js";
 import type { PropagationGraph } from "./propagation.js";
 
@@ -387,6 +387,13 @@ export async function deriveSeedBaseSnapshot(
 ): Promise<{ state: TickState; origin: SeedWorldSnapshotOrigin }> {
   const rules = await repos.sim.listPropagationRules(tenantId, true);
   const byType = varsByType(rules);
+  // WO-SIM-REAL-DATA §3：登记的 (类型,变量) 走**显式 valueRef**（`STATE_VAR_VALUE_REFS`），
+  // 不再只靠「名字撞上属性」这一条。先把引用解到 ACTIVE 规格 —— 解不到**当场抛错变红**，
+  // ⛔ 不许静默回落哈希（那就是本单要消灭的病）。规格解到了，值经 §1 播种期 recompute
+  // 物化进 `o.props[targetProp]`，下面仍由真读数支取走；`measuredRefVarKeys` 把「这几格
+  // 是显式绑定来的」与「这几格是名字撞上的」分开记，出处里说清。
+  const activeSpecs = await repos.derivationSpecs.list(tenantId, (s) => s.status === "ACTIVE");
+  const specByKey = new Map(activeSpecs.map((s) => [s.specKey, s]));
   const state: TickState = {};
   let objects = 0;
   let cells = 0;
@@ -400,6 +407,34 @@ export async function deriveSeedBaseSnapshot(
    * 落地当天就过期了。）
    */
   const measuredVarKeys = new Set<string>();
+  /** 其中走**显式 valueRef 绑定**（而非名字撞）命中的 `类型.变量`（出处里单独点名）。 */
+  const measuredRefVarKeys = new Set<string>();
+  /**
+   * 显式绑定校验（WO §3「绑定失败会红」）：凡 `STATE_VAR_VALUE_REFS` 登记、且该变量真的
+   * 被本世界铺到的 (类型,变量)，其 specKey 必须解到一条 ACTIVE 规格。在**铺格之前**全量核一遍，
+   * 一次把坏引用全部报出来，而不是铺到一半才红在某一张对象上。
+   * ⛔ 不许静默回落哈希：坏引用退回哈希 = 本单要消灭的病换了个入口回来。
+   */
+  const brokenRefs: string[] = [];
+  for (const typeKey of byType.keys()) {
+    for (const v of byType.get(typeKey) ?? new Set<string>()) {
+      const ref = stateVarValueRef(typeKey, v);
+      if (ref === undefined) continue;
+      const spec = specByKey.get(ref.specKey);
+      if (spec === undefined) {
+        brokenRefs.push(`${typeKey}.${v} → specKey "${ref.specKey}"（查无 ACTIVE 规格）`);
+      } else if (spec.targetType !== typeKey || spec.targetProp !== v) {
+        brokenRefs.push(
+          `${typeKey}.${v} → specKey "${ref.specKey}"（规格落点是 ${spec.targetType}.${spec.targetProp}，不指回本格）`,
+        );
+      }
+    }
+  }
+  if (brokenRefs.length > 0) {
+    throw new Error(
+      `WO-SIM-REAL-DATA §3 valueRef 绑定断裂（⛔ 不许静默回落哈希）：\n  · ${brokenRefs.join("\n  · ")}`,
+    );
+  }
   // 类型有序 + 对象按 id 有序 ⇒ 同一租户同一本体重跑，落库字节一致（R6）。
   for (const typeKey of [...byType.keys()].sort((a, b) => a.localeCompare(b))) {
     const vars = [...(byType.get(typeKey) ?? new Set<string>())].sort((a, b) => a.localeCompare(b));
@@ -414,6 +449,9 @@ export async function deriveSeedBaseSnapshot(
           row[v] = real;
           measuredCells += 1;
           measuredVarKeys.add(`${typeKey}.${v}`);
+          // §3：这一格是显式绑定来的（登记了 valueRef 且规格落点回指本格）⇒ 单独记一笔，
+          // 出处里能说「这几格的值来自哪条公式」，而不只「名字撞上了」。
+          if (stateVarValueRef(typeKey, v) !== undefined) measuredRefVarKeys.add(`${typeKey}.${v}`);
         } else {
           row[v] = Math.round(seedHash01(`${o.id}|${v}`) * 100);
         }
@@ -491,7 +529,12 @@ export async function deriveSeedBaseSnapshot(
           : `种子世界的 tick0 读数分两种：${measuredCells} 格是实测（状态变量名就是对象上的属性名，` +
             `直接读了那个对象的真实业务数）；其余 ${cells - measuredCells} 格是本体结构派生的确定性占位` +
             "（这些状态变量在本平台不是对象属性，对象上取不到值）。" +
-            "拿占位格当起点算出的差值，量级不可当实测读；实测格没有这个问题。",
+            "拿占位格当起点算出的差值，量级不可当实测读；实测格没有这个问题。" +
+            // §3：显式绑定来的格子，出处里点名它们各自来自哪条公式（纯文本，不上 markdown）。
+            (measuredRefVarKeys.size > 0
+              ? `其中 ${[...measuredRefVarKeys].sort((a, b) => a.localeCompare(b)).join("、")} ` +
+                "由显式规格绑定取值（每条公式的口径见派生规格表，规格缺失会在播种时直接报错，不会退回占位）。"
+              : ""),
       types: byType.size,
       objects,
       cells,

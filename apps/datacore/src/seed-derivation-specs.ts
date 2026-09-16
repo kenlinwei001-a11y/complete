@@ -47,6 +47,19 @@ export const DEMO_DERIVATION_SPECS: readonly {
     targetProp: "etaDay",
     formula: "this.dispatchDay + this.transitDays",
   },
+  // ── WO-SIM-REAL-DATA §2 · A 档第 1 条（§3 valueRef 的活样本）────────────────────
+  // 业务口径：应收压力 = 应收账款占授信额度的百分比（receivables / creditLimit × 100）。
+  //   出处 = WO 工单 §5 已验证范本（实测 22.67）。`COALESCE(..., 0)` 兜除零/缺属性（陷阱 9）。
+  // 对照真值：demo 某客户 receivables/creditLimit 实测算得 22.67（WO 实测值）。
+  // 先乘后除（陷阱 3 定点 4 位）：`this.receivables * 100 / this.creditLimit`。
+  // ⛔ 不 CLAMP：receivablePressure 在 STATE_VAR_DOMAINS 里（0–100 压力族），
+  //   但超界由引擎按域夹（回执点名），式子只算原始百分比，不内联边界常数（R14/陷阱 6）。
+  {
+    specKey: "customer_receivable_pressure",
+    targetType: "Customer",
+    targetProp: "receivablePressure",
+    formula: "COALESCE(this.receivables * 100 / this.creditLimit, 0)",
+  },
 ];
 
 /**
