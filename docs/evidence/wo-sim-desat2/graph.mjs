@@ -7,6 +7,29 @@
  *
  * 为什么必须先做这一步：稳态 `= Σ_e c_e·W_e/λ` 这条式子**只在无环时成立**。
  * 若有正增益环，零输入世界也不会回到静息点 —— 那时"改系数"治的是另一个病。
+ *
+ * ══ 2026-09-16 实测 ═══════════════════════════════════════════════════════════
+ *
+ * ① **10 个外生根 / 51 个节点**。其中 4 个根（`deliveryDelay` · `procurementDelay`×2 ·
+ *    `leadDays`/`qty`/`unitPrice`）**不在域表 ⇒ 不衰减 ⇒ 恒定常源**，永远撑着下游；
+ *    其余（`priceShock` · `equipmentFailure` · `forecastBias`）在域表，会衰减。
+ *
+ * ② **规则表里有一个 10 节点的环**：
+ *    `Model.demandLoad ↔ Order.orderChurn ↔ Customer.receivablePressure ↔ Order.costPressure
+ *     ↔ Model.costPressure ↔ WorkOrder.releasePressure ↔ Line.blockedPressure
+ *     ↔ Process.queuePressure ↔ Line.utilPressure ↔ Base.loadIndex`
+ *    闭环的那条边是 `demo_customer_reaction_cut_order`（对抗方还手），
+ *    **默认 feature flag 关着 ⇒ 实测 0 个目标、0 条边**（见下表末行）⇒ **运行期是 DAG**，稳态式成立。
+ *    ⚠ 但这意味着：**一旦 `sim.propagation.adversary` 打开，这个环就闭合**，
+ *      而链上每一跳的 `c·N/λ` 都 > 1（见下表），环增益是它们的连乘 ⇒ 会指数发散。
+ *      `seed.ts:1447` 段头那条「换落点避环」的论证只覆盖了对抗方关着的情形。
+ *
+ * ③ 逐规则 `c·N_e/λ`（= 源顶到 100 时该边单独贡献的稳态 ÷ 100）：**49 条里 46 条 > 1**。
+ *    最大 5 条：`order_leaddays/price/qty_to_model_*`(67.57，目标不在域表，不算病) ·
+ *    `wo_release_to_model_cost`(58.56) · `wo_release_to_model_supply_risk`(58.56) ·
+ *    `order_demand_pressure`(43.24) · `order_churn_to_model_demand_load`(33.56)。
+ *    最小的非零一条 `wip_feed_to_defect_pressure` 也有 **0.81**，而 `base_load_to_inbound_expedite` 0.95、
+ *    `model_demand_to_changeover_pressure` 1.08 —— **单源单边就已经顶在量纲上界附近**。
  */
 import { spawn, execFileSync } from "node:child_process";
 import net from "node:net";

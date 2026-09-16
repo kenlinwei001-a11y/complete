@@ -10,6 +10,29 @@
  *
  * 判据落在 tick 回执的 `trace[]` 上（`{ruleKey, fromObjectId, toObjectId, amount}`
  * 是"谁把多少传给谁"的唯一真值），不靠读源码猜。
+ *
+ * ══ 2026-09-16 实测（第 24 拍）· `Model.costPressure` 的两条入边 ══════════════════
+ *
+ *   规则                                    c     目标数  边数   Σ额     平均每目标
+ *   demo_wo_release_to_model_cost          0.5      6     260  12974.5   **2162.415**
+ *   demo_material_price_to_model_cost     0.65      6      42    254.7        42.442
+ *
+ *   两条边系数几乎一样（0.5 vs 0.65），**入流差 51 倍** —— 差在哪：
+ *   · `material_price` 有 `weightRef: {basis:"bom_cost_share"}`（`IN_EDGES`，**Σw=1**）
+ *     ⇒ 42 条边合起来只算"一份加权平均"，每目标 0.65 × 平均 priceShock ≈ 42.4；
+ *   · `wo_release` 是 `weightRef: null` ⇒ **43.3 个工单各加一份满额**，每目标 0.5 × 99.9 × 43.3 ≈ 2162。
+ *
+ *   而 `packages/contracts/src/sim.ts` 的 `PAIR_WEIGHT_BASIS_REGISTRY` 自己那张判据表写着：
+ *   > 「**强度**（率/指数：`costPressure` 是成本压力百分点）… 该用 `IN_EDGES`（Σ=1 · 加权**平均**）；
+ *   >   用 MEAN 会让"物料种类越多、压力越大"，而涨价幅度根本没变」
+ *   ⇒ `wo_release_to_model_cost` 正踩着这条：**工单越多，型号成本压力越大，而每个工单的受阻程度根本没变。**
+ *
+ *   同族还有 10 条（`graph.mjs` 第 ③ 表，`weightRef:null` 且 N>1）：
+ *   `wo_release_to_model_supply_risk`(43.3) · `material_shortage_to_model_supply_risk`(7.0) ·
+ *   `process_queue_to_line_blocked`(5.0) · `po_procurement_delay_to_material_shortage`(3.8) ·
+ *   `batch_procurement_delay_to_material_shortage`(3.0) · `po_expedite_to_supplier_review`(3.0) ·
+ *   `equipment_failure_to_process_queue`(2.0) · `supplier_delay_to_material_shortage`(1.9) ·
+ *   `supplier_procurement_delay_to_material_shortage`(1.9) · `model_demand_to_base_load`(1.4)
  */
 import { spawn, execFileSync } from "node:child_process";
 import net from "node:net";

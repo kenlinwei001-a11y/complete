@@ -15,6 +15,28 @@
  * ⚠ 本脚本**不假设** `W_e`，而是从 tick 回执的 `trace[]` 里**按目标实测**：
  * `W_e(target) = Σ_i amount / (c_e · s_ei)`。这样 `weightRef` 有没有、归一成什么样，
  * 都由真实回执说话，不由我读源码猜。
+ *
+ * ══ 2026-09-16 实测（`SEED_DEMO=1` · 第 24 拍 · 23 个「目标类型.状态量」组）════════════
+ *
+ *   **23 组里 22 组 G > 0.75，最小的非零 G = 1.08**（第 23 组 G=0 是 `forecastBias` 的负系数边）。
+ *   ⇒ 不是"某几条边标歪了"，是**整张表的量纲标定就没有把 λ 算进去**：
+ *     单源边的 `G = c/λ`，而 `c ∈ [0.3, 0.9]`、`λ = 0.37` ⇒ **每一条边都 G > 1**，
+ *     最弱的一条（c=0.4）也给 `0.4/0.37 = 1.08`。**源顶到量纲上界，目标必然冲出量纲上界。**
+ *
+ *   规则自己的 description 原文就是稳态口径（"价格冲击 × 0.65 = 型号成本压力"、
+ *   "型号成本 × 0.9 = 订单成本压力"）—— 那是 `target = source × c`，
+ *   而引擎每拍做的是 `target += source × c` ⇒ 真实稳态是 `source × c/λ`，**比描述承诺的大 2.7 倍**。
+ *
+ *   前 6 名（G = 源顶到 100 时稳态 ÷ 100）：
+ *     Customer.receivablePressure  68.14   ← `source_value_relative`（Σw ∝ 金额敞口 ≈ 50×），**口径本身与 0–100 不相容**
+ *     Model.demandLoad             50.00   ← `source_qty_relative`（Σw = N = 37 张单），同上
+ *     Material.shortageRisk        15.95   ← 未归一扇入（4 条入边 · N 合计 ~10.6）
+ *     Model.supplyRisk             13.24   ← 未归一扇入（7 个物料）＋ 43.3 个工单（延迟边，见 `inflow.mjs`）
+ *     Process.queuePressure         5.14
+ *     Base.loadIndex                4.86
+ *
+ *   实测越界：**2697 / 4807 格（56.11%）反算 raw 越上界，平均超 4.7×**；
+ *   `Model.costPressure(方形-LFP)` 读数 99.823958604877 ⇒ 反算 raw **3600.301**。
  */
 import { spawn, execFileSync } from "node:child_process";
 import net from "node:net";

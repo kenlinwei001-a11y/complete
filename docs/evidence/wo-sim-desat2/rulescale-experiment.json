@@ -1,0 +1,13 @@
+{
+ "demo_batch_procurement_delay_to_material_shortage": 0.3333333333333333,
+ "demo_equipment_failure_to_process_queue": 0.5012853470437018,
+ "demo_material_shortage_to_model_supply_risk": 0.14285714285714285,
+ "demo_model_demand_to_base_load": 0.7222222222222222,
+ "demo_po_expedite_to_supplier_review": 0.3333333333333333,
+ "demo_po_procurement_delay_to_material_shortage": 0.26666666666666666,
+ "demo_process_queue_to_line_blocked": 0.2,
+ "demo_supplier_delay_to_material_shortage": 0.5333333333333333,
+ "demo_supplier_procurement_delay_to_material_shortage": 0.5333333333333333,
+ "demo_wo_release_to_model_cost": 0.023076923076923075,
+ "demo_wo_release_to_model_supply_risk": 0.023076923076923075
+}
