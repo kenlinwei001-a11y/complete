@@ -12,8 +12,9 @@
  *   记**稳态增益** `g_e ≡ c_e/λ`（= 规则 description 承诺的那个口径：`target = source × g`），
  *   判据就成了 **Σ_e g_e·W_e ≤ 0.75**，而落到字段上是 **`coefficient = g_e × λ`**。
  *
- * ⚠ `W_e` **不假设、只实测**：从 tick 回执 `trace[]` 反算 `W_e(cell) = Σ_i amount/(c_e·s_ei)`。
- *   `weightRef` 有没有、归一成什么样，由真实回执说话。③ 之后那 11 条的 `W_e` 置 1（Σ=1 口径）。
+ * ⚠ `W_e` 由**结构（逐目标扇入条数）+ 口径归一语义**给，回执反算值只用来**对账**。
+ *   第一版「只用回执反算」当场漏掉一条边（源此刻全 null ⇒ 除不出来 ⇒ 不进预算表），
+ *   病因与判据写在下面 `fanIn`/`measured` 那一段。③ 之后那 11 条的 `W_e` 置 1（Σ=1 口径）。
  *
  * 输出：每条规则的 `f_e`（预算因子，≤1）与 `g_e = c_old_e × f_e`，
  *       以及验算后的逐格 `Σ g·W`（必须全部 ≤ 0.75）。
@@ -22,6 +23,10 @@ import { spawn, execFileSync } from "node:child_process";
 import net from "node:net";
 import fs from "node:fs";
 import { STATE_VAR_DOMAINS, PRESSURE_DECAY_PER_TICK } from "../../../apps/datacore/dist/synthetic/battery.js";
+import { PAIR_WEIGHT_BASIS_REGISTRY } from "../../../packages/contracts/dist/sim.js";
+
+/** 口径 → 归一方向。**共用契约那一份登记册**，不在这里另抄一张表（抄了就是第二套真相源）。 */
+const PAIR_NORM = new Map(PAIR_WEIGHT_BASIS_REGISTRY.map((b) => [b.key, b.normalize]));
 
 const ROOT = new URL("../../../", import.meta.url).pathname.replace(/\/$/, "");
 const H = { "X-Debug-User": "demo:admin:admin", "Content-Type": "application/json" };
@@ -64,34 +69,103 @@ try {
   if (trace.length === 0) throw new Error("trace 为空 ⇒ 取数坏了（不是「没有入流」）");
   console.log(`# 🐤 金丝雀：第 ${K} 拍 trace ${trace.length} 行（非空 ⇒ 量法有鉴别力）`);
 
-  // ── 逐格逐边实测 W_e ───────────────────────────────────────────────────────
-  const cellIn = new Map(); // `${toId}|${sv}` -> Map<ruleKey, W>
+  // ── 逐格逐边的 W_e ─────────────────────────────────────────────────────────
+  //
+  // ⚠ **W 必须结构地算，不能只靠回执反算**（本单实测踩到，差点把一条边整个漏出预算）：
+  //   反算式 `W = amount/(c·src)` 在 `src` 为 0/缺时**除不出来**，那条边于是**根本不进预算表**，
+  //   而它在「源顶到量纲上界」的定标情景里是**满额参与**的。
+  //   实测：`demo_supplier_procurement_delay_to_material_shortage` 的源 `Supplier.procurementDelay`
+  //   在第 24 拍 **15 行全为 null** ⇒ 它被静默漏掉，拿到 f=1.0，而它的兄弟边
+  //   `demo_supplier_delay_to_material_shortage`（同 8 个目标）被缩到 0.441。
+  //   形态：**「我用『它在当前这一拍的回执里没算出权重』当作『它不占预算』的证据，
+  //   而前者并不度量后者 —— 它只是此刻源为 0，定标情景里它是满的。」**
+  //
+  // 故 W 一律由**结构 + 口径语义**给，回执反算只用来**对账**（金丝雀）：
+  //   `weightRef: null` ⇒ W = N（每源各加一份满额）  · `IN_EDGES`(Σ=1) ⇒ W = 1
+  //   `IN_EDGES_MEAN`(均值=1) ⇒ W = N               · 全域/源池均值口径 ⇒ 只能实测（∝ 绝对量）
+  const fanIn = new Map();  // `${toId}|${sv}` -> Map<ruleKey, N>
+  const measured = new Map(); // 同上，回执反算值（可能缺）
   for (const t of trace) {
     const r = ruleOf.get(t.ruleKey); if (!r) continue;
+    const k = `${t.toObjectId}|${r.targetStateVar}`;
+    const f = fanIn.get(k) ?? new Map(); fanIn.set(k, f);
+    f.set(r.key, (f.get(r.key) ?? 0) + 1);
     const c = r.coefficient; if (!(Math.abs(c) > 0)) continue;
     const src = prev[t.fromObjectId]?.[r.sourceStateVar];
     if (typeof src !== "number" || src === 0) continue;
-    const k = `${t.toObjectId}|${r.targetStateVar}`;
-    const m = cellIn.get(k) ?? new Map(); cellIn.set(k, m);
+    const m = measured.get(k) ?? new Map(); measured.set(k, m);
     m.set(r.key, (m.get(r.key) ?? 0) + t.amount / (c * src));
   }
-  // ③ 之后：等份口径的边 W_e ≡ 1（Σ over 同目标入边 = 1）
-  for (const m of cellIn.values()) for (const rk of m.keys()) if (EQUAL_SHARE.has(rk)) m.set(rk, 1);
-
-  // ── 预算分配：逐格按现系数比例分 α，规则取它参与的全部格里**最紧**的那个因子 ──
-  const factor = new Map(rules.map((r) => [r.key, 1]));
-  for (let iter = 0; iter < 8; iter++) {
-    let moved = false;
-    for (const [k, m] of cellIn) {
-      const sv = k.split("|")[1];
-      if (STATE_VAR_DOMAINS[sv] === undefined) continue;   // 天数/件数/真值族不在本单
-      let S = 0;
-      for (const [rk, W] of m) S += Math.abs(ruleOf.get(rk).coefficient) * (factor.get(rk) ?? 1) * W;
-      if (S <= ALPHA + 1e-12) continue;
-      const shrink = ALPHA / S;
-      for (const rk of m.keys()) { factor.set(rk, (factor.get(rk) ?? 1) * shrink); moved = true; }
+  /** 只有「分母是绝对基数」的两种归一才必须用实测值（它们刻意 ∝ 绝对量，结构算不出）。 */
+  const ABSOLUTE = new Set(["IN_EDGES_GLOBAL_MEAN", "SOURCE_POOL_MEAN"]);
+  const cellIn = new Map();
+  const fellBack = new Set(), mismatch = [];
+  let conservative = 0;
+  for (const [k, f] of fanIn) {
+    const m = new Map();
+    for (const [rk, N] of f) {
+      const r = ruleOf.get(rk);
+      const norm = r.weightRef == null ? null : (PAIR_NORM.get(r.weightRef.basis) ?? null);
+      const meas = measured.get(k)?.get(rk);
+      let W;
+      if (EQUAL_SHARE.has(rk)) W = 1;                       // ③ 之后
+      else if (norm === null) W = N;                        // weightRef:null ⇒ 每源满额
+      else if (norm === "IN_EDGES") W = 1;                  // Σ=1
+      else if (norm === "IN_EDGES_MEAN") W = N;             // 均值=1 ⇒ Σ=N
+      else if (ABSOLUTE.has(norm)) {
+        if (typeof meas === "number") W = meas;
+        else { W = N; fellBack.add(rk); }                   // 实测拿不到 ⇒ 退结构值并点名
+      } else W = N;
+      // 🐤 对账：结构值与实测值都在、且该口径本应相等时，差超 1% 即报「量法坏了」。
+      // ⛔ `EQUAL_SHARE` 的边**不参与对账**：它们的 W 正是本单要从 N 改成 1 的那个量，
+      //    拿**修后**的结构值去比**修前**的回执，必然不等 —— 那是改动生效的证据，不是量法坏了。
+      //    （第一版没排除，当场报 543 处"不一致"，全部是这一类。）
+      // ⚠ 判据是**有方向的**：结构值必须 ≥ 实测值。
+      //   结构 > 实测 是**保守**（如 `IN_EDGES_MEAN` 下有源 qty=0 ⇒ 该条权重 0 ⇒ Σw < N），
+      //   拿大的去算预算只会更紧，不会漏；**结构 < 实测才是真错**（预算被低估 ⇒ 定标不够）。
+      if (!EQUAL_SHARE.has(rk) && typeof meas === "number" && !ABSOLUTE.has(norm ?? "")) {
+        if (meas > W * 1.01 + 1e-9) mismatch.push(`${k} ${rk}: 结构 ${W} < 实测 ${meas.toFixed(4)}（预算被低估）`);
+        else if (Math.abs(meas - W) > 0.01 * Math.max(1, W)) conservative += 1;
+      }
+      m.set(rk, W);
     }
-    if (!moved) break;
+    cellIn.set(k, m);
+  }
+  if (fellBack.size) console.log(`# ⚠ 绝对基数口径实测缺失、已退结构值的规则：${[...fellBack].join(" · ")}`);
+  console.log(mismatch.length === 0
+    ? `# 🐤 对账：无一格的结构 W 低于实测 W（${conservative} 格结构值偏保守，方向安全）✓`
+    : `# ❌ 结构 W 低于实测 W ${mismatch.length} 处 ⇒ 预算被低估（前 5）：\n#   ${mismatch.slice(0, 5).join("\n#   ")}`);
+
+  // ── 预算分配（闭式·一趟·与遍历序无关）────────────────────────────────────────
+  //
+  //   `f_e = min over 它参与的每个格 g of min(1, α / S_g)`，其中 `S_g = Σ_{e∈g} |c_e|·W_e`
+  //   **用的是原系数**（不迭代、不就地改）。
+  //
+  // 可行性是可证的，不靠跑一遍看看：对任意格 g，
+  //   `Σ_e |c_e|·f_e·W_e ≤ Σ_e |c_e|·(α/S_g)·W_e = (α/S_g)·S_g = α` ✓
+  // ⚠ **刻意不用「逐格就地缩、迭代到收敛」那一版**：那版的结果依赖 Map 遍历序 ——
+  //   同一条链上的两条兄弟边会因为「谁先被缩」而拿到不同的因子（实测
+  //   `supplier_delay` 0.4412 vs `supplier_procurement_delay` 1.0000，而两条喂的是同一批格）。
+  //   形态：「我用『验算通过』当作『这个分配是良定义的』的证据，而前者并不度量后者
+  //   —— 一个依赖遍历序的解照样能通过验算。」
+  const cap = new Map(rules.map((r) => [r.key, 1]));
+  for (const k of [...cellIn.keys()].sort((a, b) => a.localeCompare(b))) {
+    const m = cellIn.get(k);
+    const sv = k.split("|")[1];
+    if (STATE_VAR_DOMAINS[sv] === undefined) continue;   // 天数/件数/真值族不在本单
+    let S = 0;
+    for (const [rk, W] of m) S += Math.abs(ruleOf.get(rk).coefficient) * W;
+    if (!(S > ALPHA)) continue;
+    const shrink = ALPHA / S;
+    for (const rk of m.keys()) if (shrink < (cap.get(rk) ?? 1)) cap.set(rk, shrink);
+  }
+  // 稳态增益落到**可读网格**上：向下取整到 3 位小数。
+  // 判据是**不等式**（≤ α）⇒ 只许向下取整；向上会把刚好压线的格顶出预算。
+  const factor = new Map();
+  for (const r of rules) {
+    const raw = Math.abs(r.coefficient) * (cap.get(r.key) ?? 1);
+    const g = Math.floor(raw * 1000) / 1000;
+    factor.set(r.key, Math.abs(r.coefficient) > 0 ? g / Math.abs(r.coefficient) : 1);
   }
 
   console.log(`\n══ 逐规则预算因子 f 与稳态增益 g = |c_old|·f（字段值 = g×λ；符号沿用 c_old） ══`);

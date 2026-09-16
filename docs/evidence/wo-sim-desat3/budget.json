@@ -1,0 +1,252 @@
+{
+ "demo_base_load_to_inbound_expedite": {
+  "cOld": 0.35,
+  "f": 1,
+  "g": 0.35
+ },
+ "demo_base_load_to_line_util": {
+  "cOld": 0.5,
+  "f": 1,
+  "g": 0.5
+ },
+ "demo_base_load_to_maint_window_squeeze": {
+  "cOld": 0.4,
+  "f": 1,
+  "g": 0.4
+ },
+ "demo_base_load_to_transfer_pressure": {
+  "cOld": 0.3,
+  "f": 1,
+  "g": 0.3
+ },
+ "demo_batch_procurement_delay_to_material_shortage": {
+  "cOld": 0.6,
+  "f": 0.26666666666666666,
+  "g": 0.16
+ },
+ "demo_customer_reaction_cut_order": {
+  "cOld": 0.35,
+  "f": 1,
+  "g": 0.35
+ },
+ "demo_customer_receivable_to_collection": {
+  "cOld": 0.6,
+  "f": 1,
+  "g": 0.6
+ },
+ "demo_customer_receivable_to_invoice_overdue": {
+  "cOld": 0.4,
+  "f": 1,
+  "g": 0.4
+ },
+ "demo_customer_receivable_to_location_hold": {
+  "cOld": 0.5,
+  "f": 1,
+  "g": 0.5
+ },
+ "demo_defect_to_exception_backlog": {
+  "cOld": 0.8,
+  "f": 1,
+  "g": 0.8
+ },
+ "demo_equipment_failure_to_process_queue": {
+  "cOld": 0.6,
+  "f": 0.5766666666666667,
+  "g": 0.346
+ },
+ "demo_equipment_load_to_repair_backlog": {
+  "cOld": 0.6,
+  "f": 1,
+  "g": 0.6
+ },
+ "demo_forecast_bias_to_order_demand": {
+  "cOld": -0.6,
+  "f": 1,
+  "g": -0.6
+ },
+ "demo_line_blocked_to_wo_release": {
+  "cOld": 0.6,
+  "f": 0.625,
+  "g": 0.375
+ },
+ "demo_line_util_to_process_queue": {
+  "cOld": 0.7,
+  "f": 0.5757142857142857,
+  "g": 0.40299999999999997
+ },
+ "demo_line_util_to_wo_release": {
+  "cOld": 0.6,
+  "f": 0.625,
+  "g": 0.375
+ },
+ "demo_material_price_to_model_cost": {
+  "cOld": 0.65,
+  "f": 0.6507692307692308,
+  "g": 0.423
+ },
+ "demo_material_shortage_to_alt_switch": {
+  "cOld": 0.6,
+  "f": 1,
+  "g": 0.6
+ },
+ "demo_material_shortage_to_balance_gap": {
+  "cOld": 0.7,
+  "f": 1,
+  "g": 0.7
+ },
+ "demo_material_shortage_to_batch_turnover": {
+  "cOld": 0.5,
+  "f": 1,
+  "g": 0.5
+ },
+ "demo_material_shortage_to_model_supply_risk": {
+  "cOld": 0.7,
+  "f": 0.6242857142857143,
+  "g": 0.437
+ },
+ "demo_material_shortage_to_po_expedite": {
+  "cOld": 0.5,
+  "f": 1,
+  "g": 0.5
+ },
+ "demo_model_cost_to_order_cost": {
+  "cOld": 0.9,
+  "f": 0.8333333333333333,
+  "g": 0.75
+ },
+ "demo_model_demand_to_base_load": {
+  "cOld": 0.6,
+  "f": 1,
+  "g": 0.6
+ },
+ "demo_model_demand_to_cert_queue": {
+  "cOld": 0.3,
+  "f": 1,
+  "g": 0.3
+ },
+ "demo_model_demand_to_changeover_pressure": {
+  "cOld": 0.4,
+  "f": 1,
+  "g": 0.4
+ },
+ "demo_model_demand_to_fg_drawdown": {
+  "cOld": 0.6,
+  "f": 1,
+  "g": 0.6
+ },
+ "demo_model_supply_risk_to_order_shortage": {
+  "cOld": 0.8,
+  "f": 0.9375,
+  "g": 0.75
+ },
+ "demo_order_churn_to_line_split": {
+  "cOld": 0.7,
+  "f": 1,
+  "g": 0.7
+ },
+ "demo_order_churn_to_model_demand_load": {
+  "cOld": 0.5,
+  "f": 0.04,
+  "g": 0.02
+ },
+ "demo_order_cost_to_customer_receivable": {
+  "cOld": 0.5,
+  "f": 0.028,
+  "g": 0.014
+ },
+ "demo_order_demand_pressure": {
+  "cOld": 0.8,
+  "f": 1,
+  "g": 0.8
+ },
+ "demo_order_demand_to_line_split": {
+  "cOld": 0.9,
+  "f": 1,
+  "g": 0.9
+ },
+ "demo_order_leaddays_to_model_horizon": {
+  "cOld": 1,
+  "f": 1,
+  "g": 1
+ },
+ "demo_order_price_to_model_top_price": {
+  "cOld": 1,
+  "f": 1,
+  "g": 1
+ },
+ "demo_order_qty_to_model_top_qty": {
+  "cOld": 1,
+  "f": 1,
+  "g": 1
+ },
+ "demo_order_shortage_to_promise_risk": {
+  "cOld": 0.8,
+  "f": 0.9375,
+  "g": 0.75
+ },
+ "demo_po_expedite_to_customs_queue": {
+  "cOld": 0.4,
+  "f": 1,
+  "g": 0.4
+ },
+ "demo_po_expedite_to_inspection_queue": {
+  "cOld": 0.6,
+  "f": 1,
+  "g": 0.6
+ },
+ "demo_po_expedite_to_supplier_review": {
+  "cOld": 0.4,
+  "f": 1,
+  "g": 0.4
+ },
+ "demo_po_procurement_delay_to_material_shortage": {
+  "cOld": 0.8,
+  "f": 0.26749999999999996,
+  "g": 0.21399999999999997
+ },
+ "demo_process_queue_to_equipment_load": {
+  "cOld": 0.5,
+  "f": 1,
+  "g": 0.5
+ },
+ "demo_process_queue_to_line_blocked": {
+  "cOld": 0.55,
+  "f": 1,
+  "g": 0.55
+ },
+ "demo_supplier_delay_to_material_shortage": {
+  "cOld": 0.9,
+  "f": 0.2677777777777778,
+  "g": 0.24100000000000002
+ },
+ "demo_supplier_procurement_delay_to_material_shortage": {
+  "cOld": 0.5,
+  "f": 0.266,
+  "g": 0.133
+ },
+ "demo_wip_feed_to_defect_pressure": {
+  "cOld": 0.3,
+  "f": 1,
+  "g": 0.3
+ },
+ "demo_wo_release_to_model_cost": {
+  "cOld": 0.5,
+  "f": 0.652,
+  "g": 0.326
+ },
+ "demo_wo_release_to_model_supply_risk": {
+  "cOld": 0.5,
+  "f": 0.624,
+  "g": 0.312
+ },
+ "demo_wo_release_to_quality_backlog": {
+  "cOld": 0.5,
+  "f": 1,
+  "g": 0.5
+ },
+ "demo_wo_release_to_wip_feed": {
+  "cOld": 0.7,
+  "f": 1,
+  "g": 0.7
+ }
+}

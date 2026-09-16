@@ -7,6 +7,7 @@ import type { SyntheticService } from "./synthetic/service.js";
 import { seedOrgWorld } from "./org/seed.js";
 import { seedProcessLayerOntology } from "./process/ontology.js"; // WO-FLOWTIME · 流程层本体（ProcessDefinition/ProcessInstance + instance_of/carries 链路）随流程层种子一起来
 import { seedProcessStepTemplates } from "./process/step-templates.js"; // WO-STEP-TEMPLATE-LAYER · 步骤模板（65 条里只 7 条有，其余如实标缺席）
+import { PRESSURE_DECAY_PER_TICK, STATE_DECAY_RULE_KEY, STATE_DECAY_PARAM_KEY } from "./synthetic/battery.js"; // WO-SIM-DESAT-3 · 系数定标要用 λ（C35 规则参数），见 `inflowCoefficient`
 
 export const DEMO_TENANT = "demo";
 
@@ -253,6 +254,57 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  * 两者都动到写路与前端，超出本单 🚦范围边界，故此处只记账不动手。
  * 本单的机器判据落在 `apps/datacore/test/edge-money-weight.seam.test.ts` §3（扫种子，变异反证过）。
  */
+/**
+ * **每拍入流系数 = 稳态增益 × λ**（WO-SIM-DESAT-3 ② · 本表 50 条边全部经它）
+ *
+ * ── 今天的行为 X / 应该的 Y（实测，不是推断）──────────────────────────────────
+ * **X**：`coefficient` 按「**稳态增益**」的口径写，而引擎按「**每拍入流**」的口径用。
+ *   规则自己的 `description` 原文就是稳态口径 ——「价格冲击 **× 0.65** = 型号成本压力」、
+ *   「型号成本 **× 0.9** = 订单成本压力」，读作 `target = source × c`。
+ *   而 `propagation.ts` 每拍做的是 `target += source × c`，配合衰减 `v ← v(1−λ)`，
+ *   源恒定时真实稳态是 **`source × c/λ`** —— λ=0.37 ⇒ **比描述承诺的大 2.7 倍**。
+ * **Y**：字段存的就该是引擎真要的那个每拍入流量 ⇒ **`coefficient = 稳态增益 × λ`**，
+ *   于是稳态回到 `source × 稳态增益`，**与 description 承诺的那个数逐字一致**。
+ *
+ * 代价（修前实测·真后端 `SEED_DEMO=1`·第 24 拍）：23 个「目标类型.状态量」组里
+ * **22 组 DC 增益 G > 0.75**，最小的非零 G = **1.08**（c=0.4 的那条：0.4/0.37）。
+ * ⇒ **源顶到量纲上界，目标必然冲出量纲上界**，全世界 **2697/4807 格（56.11%）** 反算 raw 越界。
+ * 不是某几条边标歪了，是**整张表的量纲标定就没把 λ 算进去**。
+ *
+ * ── ⛔ λ 走 C35 规则参数，不内联 0.37（R14/RL5 禁内联业务常数）───────────────────
+ * `PRESSURE_DECAY_PER_TICK` **就是** `BATTERY_RULES` 里 C35「推演状态量衰减率」的
+ * `params[STATE_DECAY_PARAM_KEY]` 那个值（两处共用同一个记号，不是两份同值字面量）——
+ * 改那条规则即同时改这里，引擎与种子不会各衰减各的。
+ * 下面 `void` 那两行不是装饰：它们让「本函数依赖 C35」这件事**被类型系统咬住** ——
+ * 谁把 C35 的 ruleKey/paramKey 改名，这里当场编译红，而不是悄悄继续用一个对不上的 λ。
+ *
+ * ── 为什么定精度到 12 位 ────────────────────────────────────────────────────
+ * `0.6 × 0.37` 在 IEEE754 下是 `0.22199999999999998`。引擎侧 `propagation.ts` 的 `round12`
+ * 已按 12 位定精度，种子侧不定精度就会把一串浮点尾巴带进**逐字节快照断言**（R6）。
+ * 两侧同一个精度口径 ⇒ 同 `(industry, scale, seed)` 重跑字节级一致。
+ */
+const inflowCoefficient = (steadyGain: number): number => {
+  void STATE_DECAY_RULE_KEY; void STATE_DECAY_PARAM_KEY; // λ 的出处坐标（见上方注释），改名即编译红
+  return Math.round(steadyGain * PRESSURE_DECAY_PER_TICK * 1e12) / 1e12;
+};
+
+/**
+ * ── 每格的**增益预算** `Σ_e 稳态增益_e × W_e ≤ 0.75`（WO-SIM-DESAT-3 ②③ 的联立解）────
+ *
+ * `W_e` = 该规则落到这一格的**权重之和**：`weightRef: null` ⇒ `W_e = N_e`（扇入条数，
+ * 因为 `combine:"sum"` 对每个源实例各加一份满额）；Σ=1 口径 ⇒ `W_e = 1`。
+ * 0.75 是饱和曲线的**拐点**（`propagation.ts` 的 `unsaturate` 带宽 25% ⇒ `kneeHi = 0.75·max`）：
+ * 落在它以下，全部源顶到量纲上界时目标仍不进饱和段。
+ *
+ * ⚠ **②③ 必须一次标定，拆开做要重标两遍**：`W_e` 是预算分配里的乘数，
+ * 而 ③ 正是把那 11 条边的 `W_e` 从 N 压到 1 —— 先标②再做③，②的分配当场作废。
+ *
+ * 分配法（闭式·一趟·与遍历序无关，见 `docs/evidence/wo-sim-desat3/plan.mjs`）：
+ * `f_e = min over 它参与的每个格 g of min(1, 0.75 / S_g)`，`S_g = Σ_{e∈g} |c_e|·W_e`（用原系数），
+ * 再把 `稳态增益 = |c_e|·f_e` **向下**取整到 3 位小数（判据是不等式 ⇒ 只许向下）。
+ * 可行性可证：任意格 `Σ_e |c_e|·f_e·W_e ≤ (0.75/S_g)·S_g = 0.75`。
+ * **50 条里 33 条增益原样保留**（只多了 `× λ`），17 条按上式缩 —— 逐条在该规则的 `coefficient` 行注明。
+ */
 const DEMO_PROPAGATION_RULES: ReadonlyArray<
   Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName" | "reaction"> & {
     /**
@@ -293,7 +345,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
-    coefficient: 0.8,
+    coefficient: inflowCoefficient(0.8), // 稳态增益 0.8（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.8 = 型号需求负载）",
     combine: "sum",
@@ -319,14 +371,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_producible_at",
     targetTypeKey: "Base",
     targetStateVar: "loadIndex",
-    coefficient: 0.6,
+    coefficient: inflowCoefficient(0.6), // 稳态增益 0.6（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "型号要生产的量涨 ⇒ 能造它的基地跟着变忙（型号需求负载 × 0.6 = 基地负载指数）",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈1.38 ⇒ 入流被放大 1.38 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null, // 同上：未绑定 = 这条流不过节拍闸门（缺省即旧行为，逐字节不变）
     status: "PUBLISHED",
   },
@@ -364,7 +420,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "line_belongs_to_base",
     targetTypeKey: "Line",
     targetStateVar: "utilPressure",
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.5), // 稳态增益 0.5（= 原系数，预算内未缩）× λ
     delayTicks: 1,
     description: "基地变忙 ⇒ 负载摊到辖下每条产线（基地负载 × 0.5，隔 1 个时序才到）",
     combine: "sum",
@@ -398,14 +454,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "supplier_supplies_material", // 实测 Supplier→Material，8 条
     targetTypeKey: "Material",
     targetStateVar: "shortageRisk",
-    coefficient: 0.9,
+    coefficient: inflowCoefficient(0.241), // 稳态增益 0.9 → 0.241（扇入 N≈1.88 已归一 Σ=1，该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
-    description: "供应商交期拖长 ⇒ 它供的物料开始缺（交付延迟 × 0.9 = 物料短缺风险）",
+    description: "供应商交期拖长 ⇒ 它供的物料开始缺（交付延迟 × 0.241 = 物料短缺风险）",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈1.88 ⇒ 入流被放大 1.88 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -420,14 +480,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_used_by_model", // 实测 Material→Model，42 条（SEED_DEMO=1 真后端现读）
     targetTypeKey: "Model",
     targetStateVar: "supplyRisk",
-    coefficient: 0.7,
+    coefficient: inflowCoefficient(0.437), // 稳态增益 0.7 → 0.437（扇入 N≈7.00 已归一 Σ=1，该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
-    description: "物料缺 ⇒ 用到它的型号供应告急（物料短缺 × 0.7 = 型号缺料风险）",
+    description: "物料缺 ⇒ 用到它的型号供应告急（物料短缺 × 0.437 = 型号缺料风险）",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈7.00 ⇒ 入流被放大 7.00 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -439,9 +503,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_demanded_by_order", // 实测 Model→Order，24 条
     targetTypeKey: "Order",
     targetStateVar: "shortageRisk",
-    coefficient: 0.8,
+    coefficient: inflowCoefficient(0.75), // 稳态增益 0.8 → 0.75（该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
-    description: "型号缺料 ⇒ 订这个型号的单子交不齐（型号缺料 × 0.8 = 订单缺口风险）",
+    description: "型号缺料 ⇒ 订这个型号的单子交不齐（型号缺料 × 0.75 = 订单缺口风险）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -461,9 +525,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "line_has_process", // 实测 Line→Process，650 条
     targetTypeKey: "Process",
     targetStateVar: "queuePressure",
-    coefficient: 0.7,
+    coefficient: inflowCoefficient(0.403), // 稳态增益 0.7 → 0.403（该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
-    description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.7 = 工序排队压力）",
+    description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.403 = 工序排队压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -486,7 +550,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_supplied_by_po", // 实测 Material→PurchaseOrder，30 条
     targetTypeKey: "PurchaseOrder",
     targetStateVar: "expeditePressure",
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.5), // 稳态增益 0.5（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "物料缺 ⇒ 对应采购单被催（物料短缺 × 0.5 = 采购加急压力）",
     combine: "sum",
@@ -505,7 +569,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "po_inspected_by", // 实测 PurchaseOrder→IncomingInspection，30 条
     targetTypeKey: "IncomingInspection",
     targetStateVar: "queueDays",
-    coefficient: 0.6,
+    coefficient: inflowCoefficient(0.6), // 稳态增益 0.6（= 原系数，预算内未缩）× λ
     delayTicks: 1, // 检验排队是"下一批才排得上"，故留一个 tick 行程
     description: "采购单催得急 ⇒ 到货集中，来料检验排队天数变长（加急压力 × 0.6）",
     combine: "sum",
@@ -533,9 +597,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_used_by_model",
     targetTypeKey: "Model",
     targetStateVar: "costPressure",
-    coefficient: 0.65,
+    coefficient: inflowCoefficient(0.423), // 稳态增益 0.65 → 0.423（该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
-    description: "物料涨价 ⇒ 用它的型号成本上抬（价格冲击 × 0.65 = 型号成本压力）",
+    description: "物料涨价 ⇒ 用它的型号成本上抬（价格冲击 × 0.423 = 型号成本压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -556,9 +620,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_demanded_by_order",
     targetTypeKey: "Order",
     targetStateVar: "costPressure",
-    coefficient: 0.9,
+    coefficient: inflowCoefficient(0.75), // 稳态增益 0.9 → 0.75（该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
-    description: "型号成本上抬 ⇒ 订这个型号的单子毛利被吃掉（型号成本 × 0.9 = 订单成本压力）",
+    description: "型号成本上抬 ⇒ 订这个型号的单子毛利被吃掉（型号成本 × 0.75 = 订单成本压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -597,12 +661,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_of_customer", // 实测 Order→Customer，358 条已物化边
     targetTypeKey: "Customer",
     targetStateVar: "receivablePressure",
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.014), // 稳态增益 0.5 → 0.014（该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
     // ⚠ 描述里的系数原写 ×0.6，与真值 0.5 差 1.2 倍（`GET /a/v1/sim/propagation-rules` 原样下发
     // 这段中文给用户看 ⇒ 屏上正在说与实际不符的话）。改**描述**一侧对齐真值，
     // 理由见 `DEMO_PROPAGATION_RULES` 上方「描述系数对账」段（9/13 不符，已全部改齐）。
-    description: "订单成本上去 ⇒ 该客户的应收账款压力变大（订单成本 × 0.5，并按该单金额占全域平均单的倍率分摊）",
+    description: "订单成本上去 ⇒ 该客户的应收账款压力变大（订单成本 × 0.014，并按该单金额占全域平均单的倍率分摊）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -621,7 +685,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "customer_has_invoice", // 实测 Customer→ARInvoice，24 条
     targetTypeKey: "ARInvoice",
     targetStateVar: "overduePressure",
-    coefficient: 0.4,
+    coefficient: inflowCoefficient(0.4), // 稳态增益 0.4（= 原系数，预算内未缩）× λ
     delayTicks: 1, // 逾期是"账期到了才显形"，留一个 tick
     description: "客户应收压力大 ⇒ 名下发票逾期风险上升（应收压力 × 0.4 = 发票逾期压力）",
     combine: "sum",
@@ -663,7 +727,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_changeover", // 实测 Model→ChangeoverMatrix，30 条
     targetTypeKey: "ChangeoverMatrix",
     targetStateVar: "changeoverPressure",
-    coefficient: 0.4,
+    coefficient: inflowCoefficient(0.4), // 稳态增益 0.4（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "多品种需求同时上来 ⇒ 同一条线换型次数变多、换型损失变大",
     combine: "sum",
@@ -685,7 +749,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_has_batch", // 实测 Material→MaterialBatch，24 条
     targetTypeKey: "MaterialBatch",
     targetStateVar: "turnoverPressure",
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.5), // 稳态增益 0.5（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "缺料时先动批次：提前拉料、拆批、翻呆滞库存 ⇒ 批次周转压力上升",
     combine: "sum",
@@ -709,7 +773,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "po_customs_cleared_by", // 实测 PurchaseOrder→CustomsClearance，1 条
     targetTypeKey: "CustomsClearance",
     targetStateVar: "clearanceQueueDays",
-    coefficient: 0.4,
+    coefficient: inflowCoefficient(0.4), // 稳态增益 0.4（= 原系数，预算内未缩）× λ
     delayTicks: 1, // 清关是"下一批才排得上"，与 po_inspected_by 同一口径
     description: "加急的进口采购单先堆在海关那一段 ⇒ 清关排队天数变长",
     combine: "sum",
@@ -731,7 +795,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "base_maint_plan", // 实测 Base→MaintPlan，13 条
     targetTypeKey: "MaintPlan",
     targetStateVar: "windowSqueeze",
-    coefficient: 0.4,
+    coefficient: inflowCoefficient(0.4), // 稳态增益 0.4（= 原系数，预算内未缩）× λ
     delayTicks: 1, // 检修窗是按周排的，负载变化要下一格才反映到排程上
     description: "基地负载越满 ⇒ 能停机检修的窗口越难排（产能与维护的真实对立）",
     combine: "sum",
@@ -753,7 +817,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_has_cert", // 实测 Model→Certification，18 条
     targetTypeKey: "Certification",
     targetStateVar: "qualificationQueue",
-    coefficient: 0.3,
+    coefficient: inflowCoefficient(0.3), // 稳态增益 0.3（= 原系数，预算内未缩）× λ
     delayTicks: 1,
     description: "型号需求上来 ⇒ 该型号的认证/资质排队跟着堵",
     combine: "sum",
@@ -782,7 +846,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "base_has_shipment", // 实测 Base→Shipment，13 条
     targetTypeKey: "Shipment",
     targetStateVar: "inboundExpeditePressure",
-    coefficient: 0.35,
+    coefficient: inflowCoefficient(0.35), // 稳态增益 0.35（= 原系数，预算内未缩）× λ
     delayTicks: 1,
     description: "基地变忙 ⇒ 来料在途被催（基地负载 = 入厂运输加急压力）",
     combine: "sum",
@@ -821,7 +885,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "line_runs_work_order", // 实测 Line→WorkOrder，260 条
     targetTypeKey: "WorkOrder",
     targetStateVar: "releasePressure",
-    coefficient: 0.6,
+    coefficient: inflowCoefficient(0.375), // 稳态增益 0.6 → 0.375（该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
     description: "产线吃紧 ⇒ 工单下达被压着排（产线利用压力 = 工单下达压力）",
     combine: "sum",
@@ -840,7 +904,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "work_order_yields_wip_lot", // 实测 WorkOrder→WIPLot，260 条
     targetTypeKey: "WIPLot",
     targetStateVar: "feedPressure",
-    coefficient: 0.7,
+    coefficient: inflowCoefficient(0.7), // 稳态增益 0.7（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "工单下达多 ⇒ 在制批次投料跟着紧（工单下达压力 = 在制投料压力）",
     combine: "sum",
@@ -859,7 +923,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "work_order_sampled_by_quality_lot", // 实测 WorkOrder→QualityLot，260 条
     targetTypeKey: "QualityLot",
     targetStateVar: "inspectBacklog",
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.5), // 稳态增益 0.5（= 原系数，预算内未缩）× λ
     delayTicks: 1, // 攒批判定是"这一批做完才检"，留一个 tick
     description: "工单下达多 ⇒ 待检批次积压（工单下达压力 = 质检积压）",
     combine: "sum",
@@ -878,7 +942,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "wip_lot_found_defect", // 实测 WIPLot→DefectRecord，85 条
     targetTypeKey: "DefectRecord",
     targetStateVar: "defectPressure",
-    coefficient: 0.3,
+    coefficient: inflowCoefficient(0.3), // 稳态增益 0.3（= 原系数，预算内未缩）× λ
     delayTicks: 1,
     description: "投料赶得急 ⇒ 缺陷记录跟着涨（在制投料压力 = 缺陷压力）",
     combine: "sum",
@@ -897,7 +961,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "defect_raises_exception", // 实测 DefectRecord→ExceptionEvent，85 条
     targetTypeKey: "ExceptionEvent",
     targetStateVar: "handlingBacklog",
-    coefficient: 0.8,
+    coefficient: inflowCoefficient(0.8), // 稳态增益 0.8（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "缺陷变多 ⇒ 异常事件处理积压（缺陷压力 = 异常处理积压）",
     combine: "sum",
@@ -918,7 +982,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_has_line", // 实测 Order→OrderLine，38 条
     targetTypeKey: "OrderLine",
     targetStateVar: "splitPressure",
-    coefficient: 0.9,
+    coefficient: inflowCoefficient(0.9), // 稳态增益 0.9（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "订单需求压力大 ⇒ 行项被拆分/改期（需求压力 = 订单行拆分压力）",
     combine: "sum",
@@ -937,7 +1001,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_has_promise", // 实测 Order→OrderPromise，24 条
     targetTypeKey: "OrderPromise",
     targetStateVar: "promiseRisk",
-    coefficient: 0.8,
+    coefficient: inflowCoefficient(0.75), // 稳态增益 0.8 → 0.75（该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
     description: "订单有缺口 ⇒ 已给客户的交付承诺开始有风险",
     combine: "sum",
@@ -956,7 +1020,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "customer_has_location", // 实测 Customer→CustomerLocation，12 条
     targetTypeKey: "CustomerLocation",
     targetStateVar: "deliveryHoldRisk",
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.5), // 稳态增益 0.5（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "客户欠款压力大 ⇒ 其收货点被暂停发货的风险上升",
     combine: "sum",
@@ -975,7 +1039,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "customer_has_overdue_record", // 实测 Customer→OverdueRecord，2 条
     targetTypeKey: "OverdueRecord",
     targetStateVar: "collectionPressure",
-    coefficient: 0.6,
+    coefficient: inflowCoefficient(0.6), // 稳态增益 0.6（= 原系数，预算内未缩）× λ
     delayTicks: 1, // 催收是"逾期成立之后"的动作
     description: "客户欠款压力大 ⇒ 逾期记录上的催收压力变大",
     combine: "sum",
@@ -996,7 +1060,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_has_alternative", // 实测 Material→MaterialAlternative，5 条
     targetTypeKey: "MaterialAlternative",
     targetStateVar: "switchPressure",
-    coefficient: 0.6,
+    coefficient: inflowCoefficient(0.6), // 稳态增益 0.6（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "物料缺 ⇒ 切换到替代料的压力变大",
     combine: "sum",
@@ -1015,7 +1079,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_has_balance", // 实测 Material→MaterialBalance，8 条（"包材"无对应 Material ⇒ 诚实不连）
     targetTypeKey: "MaterialBalance",
     targetStateVar: "gapPressure",
-    coefficient: 0.7,
+    coefficient: inflowCoefficient(0.7), // 稳态增益 0.7（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "物料缺 ⇒ 供需平衡表上的缺口变大",
     combine: "sum",
@@ -1036,7 +1100,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "base_dispatches_transfer", // 实测 Base→InterBaseTransfer，17 条（只逆调出端）
     targetTypeKey: "InterBaseTransfer",
     targetStateVar: "transferPressure",
-    coefficient: 0.3,
+    coefficient: inflowCoefficient(0.3), // 稳态增益 0.3（= 原系数，预算内未缩）× λ
     delayTicks: 1,
     description: "某基地过载 ⇒ 跨基地调拨压力上升",
     combine: "sum",
@@ -1059,7 +1123,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "process_uses_equipment", // 实测 Process→Equipment，780 条
     targetTypeKey: "Equipment",
     targetStateVar: "loadPressure",
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.5), // 稳态增益 0.5（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "工序排队 ⇒ 该工序上的设备负载跟着高",
     combine: "sum",
@@ -1078,7 +1142,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "equipment_has_maintenance_order", // 实测 Equipment→MaintenanceOrder，193 条
     targetTypeKey: "MaintenanceOrder",
     targetStateVar: "repairBacklog",
-    coefficient: 0.6,
+    coefficient: inflowCoefficient(0.6), // 稳态增益 0.6（= 原系数，预算内未缩）× λ
     delayTicks: 1,
     description: "设备负载高 ⇒ 维修工单积压",
     combine: "sum",
@@ -1099,7 +1163,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_stocked_as_finished_goods", // 实测 Model→FinishedGoodsInventory，34 条
     targetTypeKey: "FinishedGoodsInventory",
     targetStateVar: "drawdownPressure",
-    coefficient: 0.6,
+    coefficient: inflowCoefficient(0.6), // 稳态增益 0.6（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "型号需求上来 ⇒ 成品库存被消耗（需求负载 = 成品去化压力）",
     combine: "sum",
@@ -1150,14 +1214,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "po_from_supplier", // 实测 PurchaseOrder→Supplier，30 条
     targetTypeKey: "Supplier",
     targetStateVar: "reviewPressure",
-    coefficient: 0.4,
+    coefficient: inflowCoefficient(0.4), // 稳态增益 0.4（= 原系数，预算内未缩）× λ
     delayTicks: 1, // 绩效复评是"这一轮加急发生之后"才启动的动作，不与加急同拍
     description: "采购单频繁加急 ⇒ 该供应商被纳入评审的压力上升",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈3.00 ⇒ 入流被放大 3.00 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1213,14 +1281,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "shortageRisk",
     // 0.8：在途单是**最直接**的补给。系数低于既有 `supplier_delay→material_shortage`(0.9) ——
     // 那条是"这家供应商整体都在拖"，波及面比单张单大。
-    coefficient: 0.8,
+    coefficient: inflowCoefficient(0.214), // 稳态增益 0.8 → 0.214（扇入 N≈3.75 已归一 Σ=1，该格增益预算 Σ≤0.75）× λ
     delayTicks: 0, // 在途单晚到 ⇒ 缺口**当天**就是缺口，没有缓冲垫在中间
     description: "采购流程本身拖慢 ⇒ 物料开始缺（采购延迟 = 物料短缺风险）",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈3.75 ⇒ 入流被放大 3.75 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1233,14 +1305,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Material",
     targetStateVar: "shortageRisk",
     // 0.6：批次晚入库时，**手上还有上一批**顶着，故弱于在途单那条。
-    coefficient: 0.6,
+    coefficient: inflowCoefficient(0.16), // 稳态增益 0.6 → 0.16（扇入 N≈3.00 已归一 Σ=1，该格增益预算 Σ≤0.75）× λ
     delayTicks: 1, // 先吃现有批次的库存，缺口**次拍**才显现
     description: "批次采购拖慢 ⇒ 物料开始缺",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈3.00 ⇒ 入流被放大 3.00 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1253,14 +1329,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Material",
     targetStateVar: "shortageRisk",
     // 0.5：供应商级是**跨单聚合**口径，摊到单个物料上最弱（一家供应商供多个料）。
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.133), // 稳态增益 0.5 → 0.133（扇入 N≈1.88 已归一 Σ=1，该格增益预算 Σ≤0.75）× λ
     delayTicks: 1, // 跨单聚合要等当期在手单都对完账才看得出来，不与单据同拍
     description: "供应商侧采购流程拖慢 ⇒ 物料开始缺",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈1.88 ⇒ 入流被放大 1.88 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1310,7 +1390,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_demanded_by_order", // 实测 Model→Order，service.ts `lnk_mdbo_*`
     targetTypeKey: "Order",
     targetStateVar: "demandPressure",
-    coefficient: -0.6, // 负号即方向：高估(+) ⇒ 需求压力被下修；低估(−) ⇒ 需求压力上冲
+    coefficient: inflowCoefficient(-0.6), // 稳态增益 -0.6（= 原系数，预算内未缩）× λ ｜ 负号即方向：高估(+) ⇒ 需求压力被下修；低估(−) ⇒ 需求压力上冲
     delayTicks: 0, // 预测口径一改，当期订单侧的需求读数同拍就该跟着走
     description: "预测偏差大 ⇒ 订单侧需求压力被放大（预测失真传到执行层）",
     combine: "sum",
@@ -1333,7 +1413,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_has_line", // 实测 Order→OrderLine，service.ts `lnk_ohl_*`
     targetTypeKey: "OrderLine",
     targetStateVar: "splitPressure",
-    coefficient: 0.7,
+    coefficient: inflowCoefficient(0.7), // 稳态增益 0.7（= 原系数，预算内未缩）× λ
     delayTicks: 0, // 插单/取消当天就要改行，不隔拍
     description: "订单频繁变更 ⇒ 订单行拆分/改期压力上升",
     combine: "sum",
@@ -1369,7 +1449,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model", // 实测 Order→Model，service.ts `lnk_ofm_*`（金丝雀边，方向可达门就拿它自证）
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.02), // 稳态增益 0.5 → 0.02（该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
     description: "订单频繁变更 ⇒ 型号需求负载跟着抖动",
     combine: "sum",
@@ -1414,14 +1494,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "equip_used_in", // 实测 Equipment→Process，service.ts `lnk_eui_*`
     targetTypeKey: "Process",
     targetStateVar: "queuePressure",
-    coefficient: 0.6,
+    coefficient: inflowCoefficient(0.346), // 稳态增益 0.6 → 0.346（扇入 N≈1.99 已归一 Σ=1，该格增益预算 Σ≤0.75）× λ
     delayTicks: 0, // 设备一停，它那道工序当拍就开始堆
     description: "设备故障 ⇒ 该工序排队压力骤升",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈1.99 ⇒ 入流被放大 1.99 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" }, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1471,14 +1555,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "process_belongs_to_line", // 本单新物化：Process→Line，650 条（`lnk_pbl_*`）
     targetTypeKey: "Line",
     targetStateVar: "blockedPressure",
-    coefficient: 0.55, // 与相邻边同量级（周围 0.5–0.65）：一道工序堵住，产线并非等比例停摆
+    coefficient: inflowCoefficient(0.55), // 稳态增益 0.55（= 原系数，预算内未缩）× λ ｜ 与相邻边同量级（周围 0.5–0.65）：一道工序堵住，产线并非等比例停摆
     delayTicks: 0,
     description: "工序排队 ⇒ 该产线受阻。落在 blockedPressure 这个新量纲上，是为了不回喂 utilPressure 成正反馈环",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈5.00 ⇒ 入流被放大 5.00 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" }, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1493,7 +1581,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "line_runs_work_order", // 既有已物化：Line→WorkOrder，260 条（`lnk_lrw_*`）
     targetTypeKey: "WorkOrder",
     targetStateVar: "releasePressure",
-    coefficient: 0.6,
+    coefficient: inflowCoefficient(0.375), // 稳态增益 0.6 → 0.375（该格增益预算 Σ≤0.75）× λ
     delayTicks: 0,
     description: "产线受阻 ⇒ 工单下达受阻。与「产线本来就满」是两个成因、同一个后果，故与既有那条 sum 累加",
     combine: "sum",
@@ -1517,14 +1605,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "wo_for_model", // 本单新物化：WorkOrder→Model，260 条（`lnk_wfm_*`·此前声明了零实例）
     targetTypeKey: "Model",
     targetStateVar: "supplyRisk",
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.312), // 稳态增益 0.5 → 0.312（扇入 N≈43.33 已归一 Σ=1，该格增益预算 Σ≤0.75）× λ
     delayTicks: 1, // 工单排不下去要过一拍才反映成型号级的供给缺口
     description: "工单下达受阻 ⇒ 该型号供给风险上升。接上这一跳，设备故障就自动继承既有的「型号→订单→交付承诺」两跳",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈43.33 ⇒ 入流被放大 43.33 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" }, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1541,14 +1633,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "wo_for_model", // 同 ③ 的边，不同 target 量纲
     targetTypeKey: "Model",
     targetStateVar: "costPressure",
-    coefficient: 0.5,
+    coefficient: inflowCoefficient(0.326), // 稳态增益 0.5 → 0.326（扇入 N≈43.33 已归一 Σ=1，该格增益预算 Σ≤0.75）× λ
     delayTicks: 1,
     description: "工单下达受阻 ⇒ 该型号成本压力上升。赶工/加班/返工推高单位成本，再由既有那条边带动客户应收",
     combine: "sum",
     decay: null,
     clamp: null,
     coefficientRef: null,
-    weightRef: null,
+    // WO-SIM-DESAT-3 ③：此前 `null` ——⚠ `null` 不是「不分摊」，是**每源各加一份满额**
+    // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈43.33 ⇒ 入流被放大 43.33 倍。
+    // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
+    // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1598,7 +1694,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Order",
     targetStateVar: "orderChurn",
     // 强度：越过容忍线的每 1 个百分点应收压力，换算成 0.35 单位订单变更压力。
-    coefficient: 0.35,
+    coefficient: inflowCoefficient(0.35), // 稳态增益 0.35（= 原系数，预算内未缩）× λ
     // 客户不是当天就砍单：要开会、要走内部审批。留一拍 —— 这一拍的延迟本身就是
     // 「对抗方反应有时滞」这条业务事实，不是性能取舍。
     delayTicks: 1,
@@ -1686,7 +1782,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogQtyTop",
-    coefficient: 1.0,
+    coefficient: inflowCoefficient(1), // 稳态增益 1（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "该型号在手订单里最大的一张是多少套（订单数量原样取最大值，不打折不加权）",
     combine: "max",
@@ -1707,7 +1803,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogPriceTop",
-    coefficient: 1.0,
+    coefficient: inflowCoefficient(1), // 稳态增益 1（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     description: "该型号在手订单里最高的成交单价是多少元（订单单价原样取最大值）",
     combine: "max",
@@ -1726,7 +1822,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogHorizonDays",
-    coefficient: 1.0,
+    coefficient: inflowCoefficient(1), // 稳态增益 1（= 原系数，预算内未缩）× λ
     delayTicks: 0,
     // ⚠ 「交付时间」是日期，日期不是数 ⇒ 折成**距计划起点的天数**才进得了世界态。
     // 折算式**不是本单新发明的**：`Order.leadDays` 在合成期就是这么算出来的

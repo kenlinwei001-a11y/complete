@@ -72,5 +72,7 @@ try {
   const skipped = rows.filter((r) => r.weightRef === null && r.N > 1.0000001 && !r.declared).map((r) => `${r.k}(→${r.tv})`);
   console.log(`\n（同样 null 且 N>1 但目标量纲**未声明**、故不在本单的：${skipped.length ? skipped.join(" · ") : "无"}）`);
   fs.writeFileSync(new URL("./equal-share-edges.json", import.meta.url), `${JSON.stringify(need, null, 1)}\n`);
+  const nByRule = Object.fromEntries(rows.map((r) => [r.k, r.N]));
+  fs.writeFileSync(new URL("./fanin-N.json", import.meta.url), `${JSON.stringify(nByRule, null, 1)}\n`);
   console.log(`\n（已写 equal-share-edges.json）`);
 } finally { try { process.kill(child.pid, "SIGKILL"); } catch { /* gone */ } }
