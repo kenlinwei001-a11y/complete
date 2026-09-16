@@ -83,12 +83,28 @@ Model.costPressure∈[0,100] · Model.forecastBias∈[−100,100]。无一差一
 | 门 | RC | 说明 |
 |---|---|---|
 | `pnpm -r build` | **0** | 四包全绿 |
-| `pnpm -r --workspace-concurrency=1 test` | 见后台（跑完补数） | datacore 串行，无并发多 vitest |
+| datacore 全量（362 文件 / 2557 条） | 1 | **4 红全有归属**：3 条负载抖落（隔离全绿）+ 1 条**基树前置红**（下表） |
+| frontend 全量（321 文件 / 2292 条） | 1 | **24 红全负载抖落**：隔离重跑 19/20 文件绿（121/122 条）；余 1 = stale-claims 门脚本直跑 **8.8s RC=0 绿**，20s 测试帽在负载下不够 |
+| agentcore（四包门那次） | 1 | 唯一红 = solver-cancel 时序抖落（隔离 3/3 绿）；本单 `git diff --stat 0207b9c6 HEAD -- apps/agentcore/` **空** |
 | `pnpm -r typecheck` | 2 | **恰 4 条前置红**，全在 `apps/agentcore/test/`（capability-map-live-seam ×1 · rule-discovery-seam ×3）|
 
-**typecheck 4 红 base 对照 ✓**：`git diff --stat 0207b9c6 HEAD -- apps/agentcore/` **空**（我零改动 agentcore），
-base 的 `rule-discovery-seam.test.ts:274-275` / `capability-map-live-seam.test.ts:398` 与当前报错行号一字不差。
+**datacore 4 红逐条归属**（全量墙钟 3.1h，load avg 200–330，负载来自门外 DingMeeting/WindowServer 等；同文件实测负载 187s vs 平静 79s = **2.4×**）：
+
+| 红 | 全量中形态 | 平静机隔离复跑 | 定性 |
+|---|---|---|---|
+| vle-acceptance VL2 | 120s 超时 | 93s **绿** | 负载抖落 |
+| vle-acceptance VL5 | 120s 超时 | 98s **绿** | 负载抖落 |
+| empty-tenant-bootstrap CL.4 | 180s 超时（跑到 247s） | 75.9s **绿**（基树同绿） | 负载抖落 |
+| object-constraint-refs ⑤b | 断言错值（jinhua≠zigong） | **同错复现** | **基树 0207b9c6 逐字节同错 = 前置红**（悬置项 ⑥）|
+
+**本单交付件在全量里的成绩**：`sim-real-cells` **16/16** · 守门员 `sim-order-real-fields` **6/6** · `slice-deriv-empty` **4/4**，全绿。
+
+**typecheck 4 红 base 对照 ✓**：base 的 `rule-discovery-seam.test.ts:274-275` / `capability-map-live-seam.test.ts:398` 与当前报错行号一字不差。
 ⇒ 4 红前置、与本单无关，按 WO 判据 6「在 base 上确认同样 4 条，别去修它」执行，**未修**。
+
+**⚠ 耗时教训（仓主定性「模式太传统」后的分层方案，记入台账待裁）**：全量门回答的是「4 个文件的 diff 弄坏了什么」这个局部问题，却重证了 2537 条已绿测试 3.1h。
+后续按 **L1 变更面（`vitest related` ∪ 金丝雀清单 ∪ 本单 seam，分钟级）/ L2 集成门（并 canonical 时全量 + 安静时间窗 + maxWorkers=2）/ L3 漂移巡检（全量定时扫，今天的 ⑤b 就是它抓的）** 分层；
+结构性大杠杆 = **确定性快照还原**（R6 字节一致 ⇒ 播种一次、各文件从快照还原代替重合成，套件级 ÷5–10），待派 WO。
 
 ## 7 · 接缝驱动（验收判据 7）
 
@@ -107,6 +123,7 @@ base 的 `rule-discovery-seam.test.ts:274-275` / `capability-map-live-seam.test.
 | ③ | **A⚠ 6 条口径裁决**（Order 4 代理 + MaterialBatch.procurementDelay + Model.demandLoad，+630 格） | 补 ② |
 | ④ | forecastBias 本树恒 0（真值：seed 的 totalDemand≡Σqty 恒等，WO 的 49–77 在 desat3 树） | 保留死口径 or 换式 |
 | ⑤ | desat3 门 ⑤e 裁决（budgetTicks 2→95）→ 验收基线或需重算 | 不属本单，等裁决 |
+| ⑥ | **⑤b 基树前置红**（object-constraint-refs §⑤b）：基树 0207b9c6 与本树**逐字节同错**（期望 zigong-pack 实得 jinhua-calendering）；本单代码解析上不在其链路（该测试不播种规格 ⇒ §3 校验跳过、不调 recompute、比较器与 Line 播种零改动）。不属本单修，**需要 WO-CONSTRAINT-REFS 的主人裁决** | 集成线上一条确定性语义红 |
 
 ## 落地时抓到的 WO 陷阱表之外的坑（第 11、12 个）
 
@@ -116,6 +133,6 @@ base 的 `rule-discovery-seam.test.ts:274-275` / `capability-map-live-seam.test.
 
 ## 停在哪 / 还差什么
 
-- **停在哪**：分支 tip（见下方 push 记录）。§1/§2/§3/五道臂/接缝测试/反向臂/typecheck 对照全部交付。
-- **还差什么**：①四包 test 跑完补 RC（跑着）②仓主裁 A⚠ 6 条口径 ⇒ 补上后主判据 3691→4300+ 达标
-  ③（若裁）forecastBias 处置。其余判据已全绿。
+- **停在哪**：分支 tip（见下方 push 记录）。§1/§2/§3/五道臂/接缝测试/反向臂/四包门（含 4+24 红逐条归属）全部交付。
+- **还差什么**：①仓主裁 A⚠ 6 条口径 ⇒ 补上后主判据 3691→4300+ 达标 ②（若裁）forecastBias 处置
+  ③ 悬置项 ⑥ 的 ⑤b 前置红归谁修。其余判据已全绿。
