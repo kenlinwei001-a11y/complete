@@ -102,17 +102,54 @@ CustomsClearance.clearanceQueueDays(1)
 **大概率越出本单边界**（`05cca413f` 台账：11 条边需 ① 先落地）。处置 = 该条标注
 「阻塞在 ①，式子照写、验收等 ①」，不硬凑格数。
 
-## 本树枚举重跑（任务 #9 金丝雀，已并入 ② 一次跑完）
+## §2 候选式量纲实测（任务 #9 收尾 · 2026-09-16）
 
-51 对 / 6363 格 / 450 真值三数与 WO 逐位吻合 ⇒ 本树 = WO 的母树，旧树（45/7295/0）数据作废。
-活服务金丝雀（真服务 SEED_DEMO=1 的 measuredCells === 450）留到 §1 交付时随反向臂一起取。
+工具 `/tmp/candidate-truths.mjs` + `/tmp/recheck-candidates.mjs`（独立手算分布，臂1锚定原料）。
+**三个致命量纲病提前抓住**（没写式子就先排掉）：
+
+1. **`Line.blockedPressure` 的链方向 WO 写反了**。WO 草案 `SUM(in(line_runs_work_order))` 实测全 0；
+   真实方向是 `Line --out(line_runs_work_order)--> WorkOrder`（260 实例，`from=Line`）。
+   ⇒ 须用 `SUM(out(line_runs_work_order).qtyPlanned)`。
+   且 WO 的 22.9285 = 3874×100/16896，分母是 `max_capacity_day`(16896) 不是 `capacityDaily`(176)。
+   实测样张 slurry 线 out-sum=6126（≠WO 的 3874，因取的可能不是同一张单），6126×100/16896=36.2571。
+   **WO 那条 22.9285 不可复算** ⇒ 台账照实记，以本树实测为准。
+2. **`Model.forecastBias` 分母必须换**。WO 草案 `/SUM(in(order_for_model).qty)` 实测 97–338，
+   越出 [-100,100] 域；换 `/this.totalDemand` 实测 **49.4–77.2**，在域内。
+3. **`Model.costPressure = (1-unitCost/unitPrice)*100` 虚高 96–97**（毛利率接近 100%，seed 里
+   unitCost≈unitPrice×0.97 是巧合）。换 `unitCost*100/unitPrice` 实测 **2.5–3.9**（成本占售价比，口径正）。
+
+**终选 25 对活池定档**（扣 Order 3 真值 + Customer 已交付 20）：
+
+| 档 | 条数 | 格数 | 成员 |
+|---|---:|---:|---|
+| A（原料齐+DSL够+量纲过） | 18 | 3,215 | Equipment.equipmentFailure/loadPressure(780×2) · Process.queuePressure(650) · WIPLot.feedPressure(260) · WorkOrder.releasePressure(260) · Line.blockedPressure/utilPressure(130×2) · DefectRecord.defectPressure(85) · PurchaseOrder.expeditePressure/procurementDelay(30×2) · Supplier.deliveryDelay/procurementDelay(15×2) · Base.loadIndex(13) · MaterialBalance.gapPressure(9) · Material.priceShock/shortageRisk(8×2) · Model.costPressure/forecastBias(6×2) |
+| A⚠（写得出但语义存疑） | 6 | 630 | Order.costPressure/demandPressure/orderChurn/shortageRisk(150×4，全是对现有 ratio 字段的口径代理) · MaterialBatch.procurementDelay(24, ageDays 冒充且无链) · Model.demandLoad(6, orderCount/capacity 量纲勉强) |
+| C（链未核实/原料待补） | 1 | 6 | Model.supplyRisk（`model_uses_material` 链存在性未验，先查再定） |
+
+**主判据对账**：基线 470 + A 档 3,215 = **3,685 < 3,896，差 211 格**。
+A+A⚠ = 3,845，470+3,845 = 4,315 ≥ 3,896 ✓。
+⇒ **WO 的「A 档 32 条/3,446 格全做即达 3,896」在本树的实算口径下，纯 A 档只差 211 格**；
+要过 3,896 必须至少补 211 格 A⚠（语义存疑档），或把 A⚠ 口径扶正。
+**这是要顶回仓主的第二本账**（继红门之后）：WO 把 A 档算成 32 条/3,446，本树实算是 18 条/3,215，
+差的 211 格 WO 算进了哪些对，需复核它的 32 条清单里有没有我判成 asSource=0 死胡同或 C 档的条目。
+
+### A⚠ 档的诚实处置（不硬凑，红线 3）
+
+Order 那 4 个（costPressure/demandPressure/orderChurn/shortageRisk）是 450 格真值订单的**同一张单**上的
+语义代理量 —— 原料（creditUsedRatio/demandDelta/outsourceRatio）是真业务数，但「成本压力←授信占用率」
+这类口径是**建模判断不是业务事实**。照 WO「A⚠ 需业务确认口径」与红线「不许硬凑」，
+这 4 条 + MaterialBatch.procurementDelay + Model.demandLoad **单列出来给仓主裁决**，
+不擅自写进 §2。若仓主认可口径，+630 格，主线 4,315 远超 3,896。
 
 ## 未了
 
 - [x] ② asSource 全表（上文；任务 #15 闭）
-- [ ] 51 对分档台账落 9 列（任务 #9 收尾：每对 类型·变量·格数·原料·式子·asSource·asTarget·档·处置）
-- [ ] §1 播种 recompute（server.ts + seed-cli.ts 双生子同步）
-- [ ] §3 valueRef
-- [ ] §2 32 条式子（可写，验收等裁决）
-- [ ] §1 交付时活服务金丝雀（measuredCells 逐位一致）+ 反向臂
-- [x] 远端 `claude/handoff-real-cells` 已 `--force` 对齐新基线（62d8424e6）
+- [x] 51 对分档 + 候选式量纲实测（上文 §2 段；任务 #9 闭）
+- [x] §1 播种 recompute（4b2271f8c；烟囱 535 对象物化，valueRuns=535 指纹确认引擎②）
+- [x] §3 valueRef（0934d8622；活样本 Customer.receivablePressure 450→470，红态正确抛错）
+- [ ] **顶回仓主**：①红门台账（本树 6/6 绿）②A 档 3215+211 缺口 vs WO 3446 ③A⚠ 6 条口径裁决
+- [ ] §2 A 档 18 条式子落 seed-derivation-specs.ts（验收等裁决；量纲已实测过）
+- [ ] §2 每条登记的 valueRef 补进 STATE_VAR_VALUE_REFS
+- [ ] 五道臂测试 + 接缝组合测试 + 变异反证（任务 #13）
+- [ ] 真服务验收：主判据 + 反向臂 + 活服务金丝雀（任务 #14）
+- [ ] slice-deriv-empty.seam.test.ts:214/216/220 三处金值 3→3+N（每条写理由，⛔不删断言）
