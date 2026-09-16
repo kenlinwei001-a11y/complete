@@ -276,7 +276,9 @@ export function twinOriginScope(twin: PlaceholderTwin, label: string): Record<st
       note:
         "对照臂：这份世界态的每一格都是结构派生的确定性占位，一格真读数都没有 —— " +
         "它与左臂的唯一差别就是左臂那些真读数格。",
-      types: 0,
+      // ⛔ **没有 `types` 这一格**：孪生快照只按 `objectId` 建键，对象属于哪个类型这件事
+      //    在这一层根本读不到。写 `types: 0` 会被读成「零个类型」—— 那是拿兜底值冒充事实，
+      //    而「缺席」与「等于 0」在本屏其余各处都是两个命题。缺席就让它缺席。
       objects: twin.objects,
       cells: twin.cells,
       measuredCells: 0,
