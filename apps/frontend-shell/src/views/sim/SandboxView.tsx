@@ -954,7 +954,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    * ⛔ `deriveBaseSnapshot` **没删**：没有播种世界的租户仍靠它开出一个可跑的世界。
    *
    * 复验（正反两臂 + 金丝雀，命令与数字全在 `edgeActiveModel.ts` 的 `resolveTick0World` 头注里）；
-   * 单测：`apps/frontend-shell/test/sim-frontend-seed.seam.test.tsx`。
+   * 单测：`apps/frontend-shell/test/sandbox-world-origin.seam.test.tsx` 的 ⑥⑦⑧ 三条
+ * （⛔ 刻意不另起新文件 —— 仓主 2026-08-20 冻结令：不许新增门）。
    */
   const init = useCallback(async (c: SandboxViewConfig, kind: "GLOBAL" | "LOCAL", target: string | null) => {
     try {

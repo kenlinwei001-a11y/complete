@@ -38,6 +38,8 @@ import SandboxView, { deriveBaseSnapshot } from "@/views/sim/SandboxView";
 
 // ── 证物 ───────────────────────────────────────────────────────────────────────
 const worldGets: string[] = [];
+/** 每次 `POST /a/v1/sim/sessions` 的请求体（⑥⑦ 用它断言"前端到底把哪份世界送上去了"）。 */
+const createdBodies: { baseSnapshot?: TickState; scope?: Record<string, unknown> }[] = [];
 
 const CFG: SandboxViewConfig = {
   tenantId: "tenant-origin",
@@ -57,18 +59,56 @@ const SERVER_WORLD: TickState = {
   obj_b1: { load: 5, risk: 90 },
 };
 
-function installHandlers() {
+/**
+ * ══ WO-SIM-FRONTEND-SEED · 租户里**已经播好的那个世界**（后端 `sim/seed-world.ts` 播的那种）══
+ *
+ * 两处**刻意与 `deriveBaseSnapshot(CFG)` 不同**，缺一处这门就证明不了东西：
+ *  · 值不同（`qty` 带真实量纲的大数）⇒ 屏上那批读数换没换得成，一眼可判；
+ *  · 变量名不同（`qty` 不在 `CFG.stateVars` 里）⇒ 前端**不可能**自己派生出它，
+ *    它只可能是从这份播种世界搬过来的。
+ * `measuredCells` 刻意 **> 0**：本单验收判据①的那个数就是它。
+ */
+const SEEDED_WORLD: TickState = {
+  obj_a1: { load: 41, risk: 7, qty: 1200 },
+  obj_a2: { load: 39, risk: 9, qty: 860 },
+  obj_b1: { load: 12, risk: 77, qty: 5 },
+};
+const SEEDED_ORIGIN = {
+  kind: "DERIVED",
+  formula: "两档取值：状态变量名恰好是该对象的一个数值属性 ⇒ 直接取真值；否则 round(hash01(…)×100)",
+  note: "本门的样本世界：3 格是实测（状态变量名就是对象上的属性名），其余 6 格是结构派生的确定性占位。",
+  types: 2,
+  objects: 3,
+  cells: 9,
+  measuredCells: 3,
+  derivedCells: 6,
+};
+const SEEDED_SESSION = {
+  id: "sims_seeded",
+  tenantId: "demo",
+  baseSnapshot: SEEDED_WORLD,
+  scope: { kind: "GLOBAL", target: null, baseSnapshotOrigin: SEEDED_ORIGIN },
+  status: "RUNNING",
+  curTick: 3,
+  parentCheckpointId: null,
+  disabledRuleKeys: [],
+  tickDays: 1,
+  createdAt: "2026-01-01T00:00:00.000Z",
+};
+
+function installHandlers(sessionItems: unknown[] = []) {
   let world: TickState = {};
   server.use(
     http.post("*/a/v1/sim/sessions", async ({ request }) => {
       const body = (await request.json()) as { baseSnapshot?: TickState; scope?: Record<string, unknown> };
+      createdBodies.push(body);
       world = JSON.parse(JSON.stringify(body.baseSnapshot ?? {})) as TickState;
       return HttpResponse.json(
         { id: "sims_origin", tenantId: "demo", baseSnapshot: world, scope: body.scope ?? {}, status: "READY", curTick: 0, parentCheckpointId: null, createdAt: "2026-08-13T00:00:00.000Z" },
         { status: 201 },
       );
     }),
-    http.get("*/a/v1/sim/sessions", () => HttpResponse.json({ items: [] })),
+    http.get("*/a/v1/sim/sessions", () => HttpResponse.json({ items: sessionItems })),
     http.get("*/a/v1/sim/sessions/:id/world", ({ request }) => {
       worldGets.push(request.url);
       return HttpResponse.json({ tick: 3, state: SERVER_WORLD });
@@ -94,6 +134,7 @@ const badge = () => screen.getByTestId("sandbox-kpi-origin");
 
 beforeEach(() => {
   worldGets.length = 0;
+  createdBodies.length = 0;
   installHandlers();
 });
 afterEach(() => cleanup());
@@ -187,5 +228,90 @@ describe("WO-V4-HONEST-ORIGIN · 顶栏占位值诚实位（两向）", () => {
     await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("MEASURED"));
     expect(badge().textContent).toContain("实测");
     expect(worldGets.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * ══ WO-SIM-FRONTEND-SEED · tick0 世界态**先问后端播种的那一份要** ════════════════
+ *
+ * ── 病灶（2026-09-16 真后端 `SEED_DEMO=1` 实测，非转述）────────────────────────
+ * **今天的行为 X**：本页 `init()` 用 `deriveBaseSnapshot(cfg)` 现算一份 100% 哈希世界
+ * POST 上去。后端 `POST /a/v1/sim/sessions` 是**纯透传、它不播种**（`app.ts`
+ * `createSimSessionWorld`：`input.baseSnapshot ?? {}`，原样落库）⇒ 这样建出来的会话
+ * `scope.baseSnapshotOrigin` **整个字段不存在**（不是 `measuredCells: 0` —— 是压根没记号）。
+ * 同一租户里后端启动时播下的那个世界实测 `cells 6363 / measuredCells 450`（命中
+ * `Order.qty`/`unitPrice`/`leadDays`）⇒ **统一推演台看得到那 450 格真业务数，本页一格都看不到。**
+ * **应该的 Y**：先取播种世界那一份当 tick0，连同后端写的出处记号一起复制进新会话的 scope。
+ *
+ * ── 三条判据为什么缺一不可 ──────────────────────────────────────────────────
+ *  ⑥ **正向臂**：租户有播种世界 ⇒ 送上去的就是那一份（含前端派生不出来的变量名），且记号被带走。
+ *  ⑦ **反向臂**：租户没有播种世界 ⇒ 回落 `deriveBaseSnapshot`，且**不伪造**一个「实测格 0/N」。
+ *     ⚠ 只有 ⑥ 会被"它其实一直都这样"骗过去；只有 ⑦ 会被"它其实从来不走播种路"骗过去。
+ *  ⑧ **空世界不许炸**：`stateVars: []` 且列表这一跳直接 500 —— 两条兜底路一起走，页面仍可跑。
+ *
+ * ⛔ 刻意**不另起一个测试文件**（仓主 2026-08-20 冻结令：不许新增门）——
+ *    本文件本来就是"tick0 世界态出处"这件事的门，判据加在它身上才是同一件事的同一道门。
+ */
+describe("WO-SIM-FRONTEND-SEED · tick0 取后端播种世界（正/反两臂 + 空世界兜底）", () => {
+  it("⑥ 正向臂：租户有播种世界 ⇒ 送上去的 baseSnapshot **就是那一份**，出处记号一起带走，屏上写出实测格", async () => {
+    cleanup();
+    installHandlers([SEEDED_SESSION]);
+    mount();
+    await screen.findByTestId("sandbox-view");
+
+    await waitFor(() => expect(createdBodies.length).toBeGreaterThan(0));
+    const sent = createdBodies[0]!;
+
+    // 🐤 金丝雀先行：这份样本世界确实和前端派生的那一份不同（同 ⇒ 下面的断言什么都证明不了）。
+    const derived = deriveBaseSnapshot(CFG);
+    expect(JSON.stringify(SEEDED_WORLD)).not.toBe(JSON.stringify(derived));
+
+    // ① 送上去的是播种世界，逐字节。
+    expect(JSON.stringify(sent.baseSnapshot)).toBe(JSON.stringify(SEEDED_WORLD));
+    // ② 带着一个**前端派生不出来**的变量名 ⇒ 它只可能来自后端那一份（这一条比①更难作弊）。
+    expect(CFG.stateVars).not.toContain("qty");
+    expect(Object.keys(sent.baseSnapshot?.obj_a1 ?? {})).toContain("qty");
+    // ③ 出处记号原样进了新会话的 scope —— 本单验收判据①的那个数。
+    const origin = (sent.scope as { baseSnapshotOrigin?: { measuredCells?: number } } | undefined)?.baseSnapshotOrigin;
+    expect(origin, "scope.baseSnapshotOrigin 缺席 = 又回到了「建出来的会话没有任何出处记号」那个病").toBeDefined();
+    expect(origin!.measuredCells).toBe(SEEDED_ORIGIN.measuredCells);
+    expect(origin!.measuredCells!).toBeGreaterThan(0);
+    // ④ 用户屏上**看得见**那一档（记号只写进数据、不上屏 = 用户仍然分不出来）。
+    const mark = await screen.findByTestId("sandbox-kpi-base-origin");
+    expect(mark.getAttribute("data-measured-cells")).toBe(String(SEEDED_ORIGIN.measuredCells));
+    expect(mark.textContent).toContain(`实测格 ${SEEDED_ORIGIN.measuredCells}/${SEEDED_ORIGIN.cells}`);
+    // ⑤ 粗记号**不许**因此翻成「实测」：这份世界 9 格里只有 3 格实测，整份盖实测是另一种谎。
+    expect(badge().getAttribute("data-origin")).toBe("DERIVED");
+  });
+
+  it("⑦ 反向臂：租户一个播种世界都没有 ⇒ 回落哈希派生，且**不伪造**「实测格 0/N」这句话", async () => {
+    mount(); // beforeEach 装的是空列表
+    await screen.findByTestId("sandbox-view");
+    await waitFor(() => expect(createdBodies.length).toBeGreaterThan(0));
+
+    expect(JSON.stringify(createdBodies[0]!.baseSnapshot)).toBe(JSON.stringify(deriveBaseSnapshot(CFG)));
+    expect((createdBodies[0]!.scope as Record<string, unknown>).baseSnapshotOrigin).toBeUndefined();
+    // 「我没有这个记号」与「这份世界零格实测」是两个命题 —— 兜底路谁也没算过后者，写出来就是编的。
+    expect(screen.queryByTestId("sandbox-kpi-base-origin")).toBeNull();
+    // 而占位那一个记号**必须还在**（诚实位可降层不可删）。
+    expect(badge().getAttribute("data-origin")).toBe("DERIVED");
+    expect(badge().textContent).toContain("合成·占位");
+  });
+
+  it("⑧ 空世界不许炸：`stateVars: []` ＋ 会话列表这一跳 500 —— 两条兜底路同时走，页面照样挂得起来", async () => {
+    cleanup();
+    installHandlers();
+    // 列表这一跳直接失败：`resolveTick0World` 必须吞掉它并退兜底，⛔ 不许让沙盘打不开。
+    server.use(http.get("*/a/v1/sim/sessions", () => HttpResponse.json({ error: { code: "BOOM", message: "x", requestId: "r" } }, { status: 500 })));
+    const EMPTY: SandboxViewConfig = { ...CFG, stateVars: [], nodeObjectIds: {}, propagationCount: 0 };
+    mount(EMPTY);
+
+    await screen.findByTestId("sandbox-view");
+    await waitFor(() => expect(createdBodies.length).toBeGreaterThan(0));
+    // `deriveBaseSnapshot` 的空世界约定：每个类型退 `${type}#0` 占位键 + 单占位变量 `v`。
+    expect(JSON.stringify(createdBodies[0]!.baseSnapshot)).toBe(JSON.stringify(deriveBaseSnapshot(EMPTY)));
+    expect(Object.keys(createdBodies[0]!.baseSnapshot ?? {})).toEqual(["TypeA#0", "TypeB#0"]);
+    expect(screen.queryByTestId("sandbox-kpi-base-origin")).toBeNull();
+    expect(badge().getAttribute("data-origin")).toBe("DERIVED");
   });
 });

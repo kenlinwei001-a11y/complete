@@ -442,7 +442,8 @@ export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
  *   ② 反向臂（把本函数换回 `deriveBaseSnapshot` 即复现）：照前端旧路 POST 一份自算世界
  *      `curl -sH "$H" -X POST .../a/v1/sim/sessions -d '{"baseSnapshot":{…},"scope":{"kind":"GLOBAL"}}'`
  *      → 回读该会话，`scope.baseSnapshotOrigin` **整个字段不存在**。
- * 单测那一份：`apps/frontend-shell/test/sim-frontend-seed.seam.test.tsx`。
+ * 单测那一份：`apps/frontend-shell/test/sandbox-world-origin.seam.test.tsx` 的 ⑥⑦⑧ 三条
+ * （⛔ 刻意不另起新文件 —— 仓主 2026-08-20 冻结令：不许新增门）。
  *
  * ══ ⛔ 为什么不是「在前端也读一遍真值」 ═══════════════════════════════════════════
  * 那会得到**第二套真相源**：后端播种的两档判据（状态变量名恰好是该对象的一个数值属性 ⇒ 取真值）
