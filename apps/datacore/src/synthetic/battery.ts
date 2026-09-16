@@ -3580,6 +3580,27 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   // ── §2 落地一条登记一条；本单先行交付的是**机制**（引用 + 变红 + 屏上出处），
   //    32 条式子的登记随 §2 的规格一起进。下面这条是 A 档第一条，也是机制的活样本。
   "Customer|receivablePressure": { specKey: "customer_receivable_pressure" },
+  // ── §2 A 档第 2–19 条（specKey 与 seed-derivation-specs.ts 逐一对齐；量纲实测见
+  //    docs/evidence/WO-REAL-CELL-notes-20260916.md §2 段）。登记即绑定：specKey 断 ⇒ 播种抛错变红。
+  "Equipment|equipmentFailure": { specKey: "equipment_failure_rate" },
+  "Equipment|loadPressure": { specKey: "equipment_load_pressure" },
+  "Process|queuePressure": { specKey: "process_queue_pressure" },
+  "WIPLot|feedPressure": { specKey: "wiplot_feed_pressure" },
+  "WorkOrder|releasePressure": { specKey: "workorder_release_pressure" },
+  "Line|blockedPressure": { specKey: "line_blocked_pressure" },
+  "Line|utilPressure": { specKey: "line_util_pressure" },
+  "DefectRecord|defectPressure": { specKey: "defect_record_pressure" },
+  "PurchaseOrder|expeditePressure": { specKey: "purchaseorder_expedite_pressure" },
+  "PurchaseOrder|procurementDelay": { specKey: "purchaseorder_procurement_delay" },
+  "Supplier|deliveryDelay": { specKey: "supplier_delivery_delay" },
+  "Supplier|procurementDelay": { specKey: "supplier_procurement_delay" },
+  "Base|loadIndex": { specKey: "base_load_index" },
+  "MaterialBalance|gapPressure": { specKey: "materialbalance_gap_pressure" },
+  "Material|priceShock": { specKey: "material_price_shock" },
+  "Material|shortageRisk": { specKey: "material_shortage_risk" },
+  "Model|costPressure": { specKey: "model_cost_pressure" },
+  "Model|forecastBias": { specKey: "model_forecast_bias" },
+  "Model|supplyRisk": { specKey: "model_supply_risk" },
 };
 
 /** `(类型,变量)` → 显式值绑定（裸对精确命中；未登记 → `undefined` = 走名字撞）。全平台唯一入口。 */

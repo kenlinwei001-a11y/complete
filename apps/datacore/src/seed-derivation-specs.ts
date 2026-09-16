@@ -60,6 +60,62 @@ export const DEMO_DERIVATION_SPECS: readonly {
     targetProp: "receivablePressure",
     formula: "COALESCE(this.receivables * 100 / this.creditLimit, 0)",
   },
+  // ── A 档第 2–19 条（量纲全部经 `/tmp/candidate-truths.mjs` 独立分布实测，非拍脑袋）─────────
+  // 每条：业务口径出处 + 对照真值 + 实测分布（min–max）。先乘后除（陷阱 3）；
+  // CLAMP 边界一律不内联（陷阱 6：有域的引擎夹、14 个天数/件数族不许夹）。
+  // Equipment.equipmentFailure：故障率 = 100 − 健康度。出处：health_score 0–100 同量纲反向。实测 2–22。
+  { specKey: "equipment_failure_rate", targetType: "Equipment", targetProp: "equipmentFailure", formula: "100 - this.health_score" },
+  // Equipment.loadPressure：负荷 = (1 − OEE) × 100。出处：oee_current 0–1，负荷是其空闲补。实测 12.5–22.4。
+  { specKey: "equipment_load_pressure", targetType: "Equipment", targetProp: "loadPressure", formula: "(1 - this.oee_current) * 100" },
+  // Process.queuePressure：排队压力 = 工序利用率 × 100。出处：utilization 0–1 同量纲。实测 88–100。
+  { specKey: "process_queue_pressure", targetType: "Process", targetProp: "queuePressure", formula: "this.utilization * 100" },
+  // WIPLot.feedPressure：投料压力 = 计划投料(上游工单 qtyPlanned 合计) / 本批在制数 × 100。
+  //   出处：链 work_order_yields_wip_lot（260 实例，先查实陷阱 5）。COALESCE 兜除零。
+  { specKey: "wiplot_feed_pressure", targetType: "WIPLot", targetProp: "feedPressure", formula: "COALESCE(SUM(in(work_order_yields_wip_lot).qtyPlanned) * 100 / this.qty, 0)" },
+  // WorkOrder.releasePressure：下达压力 = (计划 − 完工) / 计划 × 100。出处：qtyPlanned/qtyActual。实测 1–15。
+  { specKey: "workorder_release_pressure", targetType: "WorkOrder", targetProp: "releasePressure", formula: "COALESCE((this.qtyPlanned - this.qtyActual) * 100 / this.qtyPlanned, 0)" },
+  // Line.blockedPressure：受阻 = 线上工单计划量合计 / 线最大日产能 × 100。出处：WO 已验证范本（22.9285）。
+  //   ⚠ 链方向本树实测是 Line --out(line_runs_work_order)--> WorkOrder（WO 草案写的 in 是反的，260 实例 from=Line）；
+  //   分母取 max_capacity_day（WO 的 16896），不是 capacityDaily(176)（陷阱 4 量纲错配的教训）。
+  { specKey: "line_blocked_pressure", targetType: "Line", targetProp: "blockedPressure", formula: "COALESCE(SUM(out(line_runs_work_order).qtyPlanned) * 100 / this.max_capacity_day, 0)" },
+  // Line.utilPressure：利用率压力 = utilization 直取（已 0–100，同量纲，避开 460% 那个坑）。对照 91.5472。
+  { specKey: "line_util_pressure", targetType: "Line", targetProp: "utilPressure", formula: "this.utilization" },
+  // DefectRecord.defectPressure：缺陷压力 = 缺陷数 / 所在在制批数 × 100（缺陷率）。
+  //   出处：链 wip_lot_found_defect（85 实例）。实测 0.02–0.36（缺陷率本来就是小数值，量纲如实）。
+  { specKey: "defect_record_pressure", targetType: "DefectRecord", targetProp: "defectPressure", formula: "COALESCE(this.qty * 100 / SUM(in(wip_lot_found_defect).qty), 0)" },
+  // PurchaseOrder.expeditePressure：加急 = 已用在途天数 / 计划窗口天数 × 100。
+  //   出处：shipDay/(etaDay−orderDay)。实测 −32~212（负=未到船期、>100=已超窗，如实）。COALESCE 兜除零。
+  { specKey: "purchaseorder_expedite_pressure", targetType: "PurchaseOrder", targetProp: "expeditePressure", formula: "COALESCE(this.shipDay * 100 / (this.etaDay - this.orderDay), 0)" },
+  // PurchaseOrder.procurementDelay：采购到货延迟 = 实际到货日 − 计划到货日（天数，负=提前）。
+  //   出处：arriveDay−etaDay。实测 −7~−1（这批单全提前）。天数族不在域表 ⇒ 不 CLAMP（陷阱 6）。
+  { specKey: "purchaseorder_procurement_delay", targetType: "PurchaseOrder", targetProp: "procurementDelay", formula: "this.arriveDay - this.etaDay" },
+  // Supplier.deliveryDelay：交付延迟 = (1 − 准时率) × 100。出处：onTimeRate 0–1。实测 1–10。
+  { specKey: "supplier_delivery_delay", targetType: "Supplier", targetProp: "deliveryDelay", formula: "(1 - this.onTimeRate) * 100" },
+  // Supplier.procurementDelay：采购处理天数 = 提前期 − 在途天数（下单到发货的处理时长）。
+  //   出处：leadTime−transitDays。实测 −6~5。天数族不 CLAMP。
+  { specKey: "supplier_procurement_delay", targetType: "Supplier", targetProp: "procurementDelay", formula: "this.leadTime - this.transitDays" },
+  // Base.loadIndex：基地负载 = 已承诺量 / (化成日产能 + 老化日产能) × 100。出处：committedQty/(两产能)。
+  //   实测 74–552（>100=超载，如实）。COALESCE 兜除零。
+  { specKey: "base_load_index", targetType: "Base", targetProp: "loadIndex", formula: "COALESCE(this.committedQty * 100 / (this.formationCapDaily + this.agingCapDaily), 0)" },
+  // MaterialBalance.gapPressure：缺口压力 = 缺口吨数 / 净需求吨数 × 100。出处：gapTon/netDemandTon。实测 0–9。
+  { specKey: "materialbalance_gap_pressure", targetType: "MaterialBalance", targetProp: "gapPressure", formula: "COALESCE(this.gapTon * 100 / this.netDemandTon, 0)" },
+  // Material.priceShock：价格冲击 = 价格偏离率 × 100。出处：devPct（小数）。实测 2–8。
+  { specKey: "material_price_shock", targetType: "Material", targetProp: "priceShock", formula: "this.devPct * 100" },
+  // Material.shortageRisk：缺料风险 = (日耗×提前期 − 在手 − 在途) / (日耗×提前期) × 100（缺货率，负=超储）。
+  //   出处：dailyUse/leadTime/onHand/inTransit。实测 −161~51。COALESCE 兜除零。
+  { specKey: "material_shortage_risk", targetType: "Material", targetProp: "shortageRisk", formula: "COALESCE((this.dailyUse * this.leadTime - this.onHand - this.inTransit) * 100 / (this.dailyUse * this.leadTime), 0)" },
+  // Model.costPressure：成本压力 = 单位成本 / 单位售价 × 100（成本占售价比，越高越压毛利）。
+  //   ⚠ 不用 (1−cost/price)：那是毛利率，seed 实测虚高 96–97（巧合贴 100）。本式实测 2.5–3.9。
+  { specKey: "model_cost_pressure", targetType: "Model", targetProp: "costPressure", formula: "COALESCE(this.unitCost * 100 / this.unitPrice, 0)" },
+  // Model.forecastBias：预测偏差 = (预测总需求 − 在手订单实需合计) / 预测总需求 × 100（正=高估）。
+  //   ⚠ 分母取 totalDemand 不取订单实需：后者实测 97–338 越出 [−100,100] 域。本式实测 49–77（在域内）。
+  //   链 order_for_model（500 实例）。COALESCE 兜除零。
+  { specKey: "model_forecast_bias", targetType: "Model", targetProp: "forecastBias", formula: "COALESCE((this.totalDemand - SUM(in(order_for_model).qty)) * 100 / this.totalDemand, 0)" },
+  // Model.supplyRisk：供应风险 = 各物料缺料风险的均值（0–100 压力族，天然入域）。
+  //   出处：链 model_uses_material（42 实例，from=Model ⇒ 用 `out()`）。⚠ DSL 聚合内不许算术
+  //   （`SUM(x.prop + 100)` 会抛 `expected ")" got "+"`）⇒ 用 AVG 而非「SUM/(SUM+100)」那种归一 ——
+  //   均值同样是「综合缺料风险」的合法口径，且 DSL 原生支持。COALESCE 兜除零（物料全缺属性时）。
+  { specKey: "model_supply_risk", targetType: "Model", targetProp: "supplyRisk", formula: "COALESCE(AVG(out(model_uses_material).shortageRisk), 0)" },
 ];
 
 /**
