@@ -28,8 +28,9 @@ import type { ObjectInstance } from "../src/domain.js";
  * 该 WO 本身就是仓主派的，且这条测的是本单交付物自己的链路，非审核方自我维护的度量装置）。
  */
 
-/** 本单 §2 落地的 20 条 A 档规格（从 DEMO_DERIVATION_SPECS 现算，⛔ 不写死字面量 —— 写死不度量今天真的登记了谁）。
- *  20 = Customer 1 + A 档 18 + Model.supplyRisk 链核实后升级 1（3 条旧规格 order_value/fgi/ibt 不在内）。 */
+/** 本单 §2 落地的 25 条规格（从 DEMO_DERIVATION_SPECS 现算，⛔ 不写死字面量 —— 写死不度量今天真的登记了谁）。
+ *  25 = Customer 1 + A 档 18 + Model.supplyRisk 链核实后升级 1 + A⚠ 档 5（仓主 2026-09-16 ③全批落 5；
+ *  orderChurn 无诚实源停笔，理由见规格表段尾）（3 条旧规格 order_value/fgi/ibt 不在内）。 */
 const A_TIER = DEMO_DERIVATION_SPECS.filter((s) => s.specKey !== "order_value" && s.specKey !== "fgi_qty_available" && s.specKey !== "ibt_eta_day");
 
 /** 从对象层**独立**取一个数值属性（臂 1 手算的输入，⛔ 不许走式子中间结果）。 */
@@ -65,15 +66,16 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
   }, 180_000);
 
   // ── ⓒ 接缝驱动（验收判据 7）：编译→recompute→播种→读数 整条通 ─────────────────
-  it("ⓒ 接缝驱动：20 条 A 档规格编译入库 + 物化后 measuredCells 从 470 涨到 3691", () => {
+  it("ⓒ 接缝驱动：25 条规格编译入库 + 物化后 measuredCells 从 470 涨到 4171（主判据 3,896 过线）", () => {
     // 前态锚点：§1 只带 3 条旧规格时 measuredCells=470（WO 实测基线，含 Customer 那条 20 格）。
-    // 本单 20 条 A 档物化 +3,221 ⇒ 3691。差 205 到主判据 3,896 = 台账已记 A 档缺口，待 A⚠ 裁决。
+    // 20 条 A 档物化 +3,221 ⇒ 3691；A⚠ 5 条（仓主 2026-09-16 ③批）再 +480（Order 150×3 +
+    // MaterialBatch 24 + Model 6）⇒ 4171 ≥ 主判据 3,896（+275）。orderChurn 停笔不减格（它从未物化）。
     expect(totalCells).toBe(6363);
-    expect(measuredCells).toBe(3691);
+    expect(measuredCells).toBe(4171);
   });
 
   // ── ⓑ 指认粒度（验收判据 ⓑ）：逐条点名物化数，红了能指出是哪一条 ─────────────────
-  it("ⓑ 指认粒度：20 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言）", async () => {
+  it("ⓑ 指认粒度：25 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言）", async () => {
     // 每条规格的物化数 = 其 targetType 上进世界的对象数（独立数，不从 measuredCells 反推）。
     const expected: Record<string, number> = {};
     for (const s of A_TIER) {
@@ -124,6 +126,26 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     expect(propOf(sups, sample.id, "deliveryDelay")).toBeCloseTo((1 - propOf(sups, sample.id, "onTimeRate")) * 100, 4);
   });
 
+  // ── 臂 1 锚定 · A⚠ 档（仓主 ③批 5 条抽 3：ratio 代理 / 恒等直取 / 双字段比率各覆盖）────────
+  it("臂1 锚定：Order.shortageRisk = outsourceRatio × 100（A⚠ 仓主批口径代理）", async () => {
+    const orders = await objectsOf("Order");
+    const sample = orders[0]!;
+    expect(propOf(orders, sample.id, "shortageRisk")).toBeCloseTo(propOf(orders, sample.id, "outsourceRatio") * 100, 4);
+  });
+
+  it("臂1 锚定：MaterialBatch.procurementDelay = ageDays 逐字节（恒等直取）", async () => {
+    const batches = await objectsOf("MaterialBatch");
+    const sample = batches[0]!;
+    expect(propOf(batches, sample.id, "procurementDelay")).toBe(propOf(batches, sample.id, "ageDays"));
+  });
+
+  it("臂1 锚定：Model.demandLoad = orderCount × 100 ÷ capacity（先乘后除 4 位定点）", async () => {
+    const models = await objectsOf("Model");
+    const sample = models[0]!;
+    const hand = (propOf(models, sample.id, "orderCount") * 100) / propOf(models, sample.id, "capacity");
+    expect(propOf(models, sample.id, "demandLoad")).toBeCloseTo(hand, 4);
+  });
+
   // ── 臂 2 量纲（验收判据 3：任选 5 条，与已知真值同量级，差一个数量级 = 退回）────────────────
   it("臂2 量纲：5 条抽样全部落在各自业务域内（不越域 = 量纲未错配）", async () => {
     // 量纲判据的硬锚：压力族 ∈ [0,100]，forecastBias ∈ [−100,100]，天数/比率族不越出实测分布。
@@ -135,6 +157,10 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
       ["Process", "queuePressure", 0, 100],
       ["Model", "costPressure", 0, 100],
       ["Model", "forecastBias", -100, 100],
+      // A⚠ 档 5 条中实测分布入域的 2 条（③批）；costPressure 40–115 / demandLoad 23.6–138
+      // 越上界是仓主批的「如实」口径（同 expeditePressure 212 / loadIndex 552 先例），不入本表不是错配。
+      ["Order", "demandPressure", 0, 100],
+      ["Order", "shortageRisk", 0, 100],
     ];
     for (const [type, prop, lo, hi] of checks) {
       const objs = await objectsOf(type);
@@ -147,8 +173,8 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
   });
 
   // ── ⓐ 引擎归属（验收判据 ⓐ 方式 2 釜底抽薪）：清掉规格 ⇒ 本单值全消失 ─────────────────
-  it("ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 20 个 targetProp 全部消失（证明是引擎②算的）", async () => {
-    // 独立小世界：不碰共享 t。规格库空 ⇒ §3 校验收窄跳过 ⇒ 这 19 格走哈希（仍 measured），
+  it("ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）", async () => {
+    // 独立小世界：不碰共享 t。规格库空 ⇒ §3 校验收窄跳过 ⇒ 这 24 格走哈希（仍 measured），
     // 但**对象 props 上没有 targetProp**（没 recompute 物化）⇒ 釜底抽薪的证明是「属性本身消失」。
     const t2 = await makeApp();
     await seedBattery(t2);
@@ -258,7 +284,7 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     }
     // 复原后必须能正常播种（证明变异真的被复原，不留残毒）。
     const ok = await deriveSeedBaseSnapshot(t.repos, "demo");
-    expect(ok.origin.measuredCells).toBe(3691);
+    expect(ok.origin.measuredCells).toBe(4171);
   });
 
   // ── seedHash01 金丝雀（校验哈希兜底路径仍在，占位格仍可复现）────────────────────────
