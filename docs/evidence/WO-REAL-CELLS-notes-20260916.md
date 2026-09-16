@@ -153,3 +153,56 @@ Order 那 4 个（costPressure/demandPressure/orderChurn/shortageRisk）是 450 
 - [ ] 五道臂测试 + 接缝组合测试 + 变异反证（任务 #13）
 - [ ] 真服务验收：主判据 + 反向臂 + 活服务金丝雀（任务 #14）
 - [ ] slice-deriv-empty.seam.test.ts:214/216/220 三处金值 3→3+N（每条写理由，⛔不删断言）
+
+---
+
+## §2 落地（2026-09-16 · 任务 #11 闭 · 提交 4bb63fbc1 + 9ae540859）
+
+**A 档 19 条规格落 `seed-derivation-specs.ts`，20 键 valueRef 登记 `battery.ts`。**
+真服务烟囱（自证实例 47114/47115，端口回显 + readyz）：**measuredCells 470 → 3691（+3,221 格）**。
+
+| 式子 | 实测值抽验 | 手算对照 | 判 |
+|---|---|---|---|
+| Equipment.equipmentFailure | 17 / 3 | 100−83=17, 100−97=3 | ✓ |
+| Line.blockedPressure | 53.13 / 27.72 | 在实测 27–182 区间 | ✓ |
+| Line.utilPressure | 92.5496 | = utilization 逐字节 | ✓ |
+| Model.costPressure | 2.91 / 2.47 | 在 2.5–3.9 口径 | ✓ |
+| Model.supplyRisk | −29.44 / −28.86 | 物料平均超储，域内 | ✓ |
+
+### 落地时抓到的两个 DSL 能力面坑（WO 陷阱表之外的第 11、12 个）
+
+1. **聚合内不许算术**：`SUM(in(L).prop + 100)` 抛 `expected ")" got "+"`（`parseAgg` 在 `.prop` 后
+   直接期待 `)`）。⇒ Model.supplyRisk 原草案「SUM/(SUM+100) 归一」改成 `AVG(in(...).shortageRisk)`，
+   均值同样是「综合缺料风险」合法口径，且 DSL 原生支持。
+2. **链方向必须逐条实测，不能按 WO 草案抄**：5 条链方向全表（probe-dir2.mjs）——
+   `order_for_model` Order→Model（从 Model 看 in）、`model_uses_material` **Model→Material（从 Model 看 out）**、
+   `work_order_yields_wip_lot` WorkOrder→WIPLot（in）、`wip_lot_found_defect` WIPLot→DefectRecord（in）、
+   `line_runs_work_order` Line→WorkOrder（out）。初版 supplyRisk 抄 in() ⇒ 全 undefined，改 out() 即物化。
+
+### forecastBias 本树恒 0 = 真值，非式子错
+
+手算三个 Model：`sumQty === totalDemand` **逐字节相等**（490412/558109/315606 三处全中）。
+seed 的 `totalDemand` 就是从这些订单汇总出来的 ⇒ `(totalDemand − Σqty) = 0` 恒成立 ⇒ forecastBias 恒 0。
+**WO 台账的「实测 49.4–77.2」在这棵树上不成立** —— 那是 desat3 改了订单生成的那棵树。
+本树 forecastBias 口径正确（一旦 totalDemand≠Σqty 即算真偏差）、量纲在域内，但**本树恒 0 无信息量**。
+如实保留 + 标注，不硬凑一个非零值（红线 3）。
+
+### §3 校验作用域收窄（守门员接缝冲突，9ae540859）
+
+§3 原校验对「`byType` 里每个注册键」强制要 ACTIVE 规格 ⇒ 守门员 `sim-order-real-fields`
+（`seedBattery` + `seedDemoPropagationRules`，**不播种规格**）20 键全判「查无规格」红 6/6。
+**收窄：规格库非空才强制** —— 你播种了规格（生产 SEED_DEMO=1）就得绑得上，断引用必红；
+没播种规格（只验名字撞的单元接缝测试）这条路对你不存在，不强制。
+**双向变异反证**：规格库非空 + 断引用 ⇒ 红 ✓（mutate-ref.mjs，MUTATION KILLED）；守门员回绿 6/6 ✓。
+
+## 未了（更新）
+
+- [x] §2 A 档 19 条式子落 seed-derivation-specs.ts（4bb63fbc1）
+- [x] §2 每条登记的 valueRef 补进 STATE_VAR_VALUE_REFS（20 键，4bb63fbc1）
+- [x] §3 校验作用域收窄（守门员回绿，9ae540859）
+- [ ] **顶回仓主**：①红门台账（本树 6/6 绿）②A 档 3691 格 vs 主判据 3896 **差 205**（supplyRisk 多 6 格补到 205）
+      ③A⚠ 6 条口径裁决（Order 4 代理 + MaterialBatch.procurementDelay + Model.demandLoad，+630 格）
+      ④forecastBias 本树恒 0 的处置（保留死口径 or 换式）
+- [ ] 五道臂测试 + 接缝组合测试 + 变异反证（任务 #13）
+- [ ] 真服务验收：主判据 + 反向臂 + 活服务金丝雀（任务 #14）
+- [ ] slice-deriv-empty.seam.test.ts:214/216/220 三处金值 3→3+N（每条写理由，⛔不删断言）
