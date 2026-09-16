@@ -109,6 +109,20 @@ function installHandlers(sessionItems: unknown[] = []) {
       );
     }),
     http.get("*/a/v1/sim/sessions", () => HttpResponse.json({ items: sessionItems })),
+    /**
+     * 单条会话（**裸 `:id` 路由**）—— `fetchSimSessionWorldBase` 打的就是这一条。
+     *
+     * ⚠ 为什么不能省：真后端的**列表**路由今天已经不下发 `baseSnapshot` 了
+     * （投影落在仓储层 `listSessionSummaries`），只有这条裸 `:id` 还给。这个桩要是不摆，
+     * 用例会**静默地**退到 `deriveBaseSnapshot` 兜底 ⇒ 看起来像"功能没做"，实际是"桩没摆"。
+     * 本单实测吃过这一口：单文件跑绿、全套跑红（桩的覆盖面在两种跑法下不同）。
+     */
+    http.get("*/a/v1/sim/sessions/:id", ({ params }) => {
+      const hit = (sessionItems as { id: string }[]).find((s) => s.id === params.id);
+      return hit
+        ? HttpResponse.json(hit)
+        : HttpResponse.json({ error: { code: "NOT_FOUND", message: "no", requestId: "r" } }, { status: 404 });
+    }),
     http.get("*/a/v1/sim/sessions/:id/world", ({ request }) => {
       worldGets.push(request.url);
       return HttpResponse.json({ tick: 3, state: SERVER_WORLD });
