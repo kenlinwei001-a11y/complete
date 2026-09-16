@@ -32,7 +32,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { SimSession, TickState } from "@platform/contracts";
 import { api, ApiClientError } from "@/api/apiClient";
-import { createSimPerturbation, createSimSession, simTick, simWorld } from "@/api/endpoints";
+import { createSimPerturbation, createSimSession, patchSimSessionStatus, simTick, simWorld } from "@/api/endpoints";
 import { InfoPopover } from "@/components/InfoPopover";
 import { hash01 } from "../edgeActiveModel";
 import type { SnapshotOrigin } from "./metricWallModel";
@@ -88,6 +88,8 @@ interface ArmRun extends ArmReadings {
   readonly world: TickState;
   readonly sent: readonly PerturbBody[];
   readonly ticks: number;
+  /** 这个实验世界有没有被迁到 `ENDED`（见 `runArm` 里那段「封存」）。`false` ⇒ 必须上屏警告。 */
+  readonly sealed: boolean;
 }
 
 interface CompareResult {
@@ -136,6 +138,28 @@ export function RealityMeterRow({
     // ⚠ 0 拍不发 tick：后端对 n<1 会 400，而「这次推演没推拍」与「这一跳失败」是两件事。
     if (spec.ticks > 0) await simTick(s.id, spec.ticks, false);
     const after = await simWorld(s.id);
+    /**
+     * ── ⚠ **封存**：不封存会把这块屏切到对照世界上去（本单实测抓到的真 bug）──────────
+     *
+     * `POST …/sessions` 建出来的会话是 `READY`，**但 `POST …/tick` 会把它翻成 `RUNNING`**
+     * （真浏览器实测 2026-09-16：跑完对照后 `GET /a/v1/sim/sessions` 三条**全是 RUNNING**）。
+     * 而 `views/sim/console/useConsoleSession.ts` 的选法是「**最近一条 RUNNING**」
+     * ⇒ 下一次会话清单刷新时，宿主会自动选中**刚建的纯占位臂**，
+     * 于是第一层那条真实度读数当场翻成 `0 / 6,363 · 0.0%` —— 屏上一切正常，答案却换了个世界。
+     * 形态（铁律 0.6 句式）：**「我用『这两个世界只是拿来算一次的』当作『它们不会被别人选中』的证据。」**
+     *
+     * ⇒ 读完世界就迁到 `ENDED`：`useConsoleSession` 明文把 PAUSED/ENDED 当**历史世界**排除，
+     *   而 `ENDED` 又是终态（推进/施扰/回滚一律 409）⇒ 这两个实验世界既不会被选中，也不会被误写。
+     * ⛔ **不改用 `scope.snapshotKind` 让它从清单里消失**：那样复审就没法用
+     *   `GET /a/v1/sim/sessions` 去核右臂的 `measuredCells === 0`（验收判据②要的正是这条证据）。
+     * ⚠ 封存失败**不吞**：记下来上屏（下面 `sealed`），因为它的后果正是上面那个静默换世界。
+     */
+    let sealed = true;
+    try {
+      await patchSimSessionStatus(s.id, "ENDED");
+    } catch {
+      sealed = false;
+    }
     const deltas = diffWorld(before.state as WorldCells, after.state as WorldCells);
     // 钱与张数走**既有模型层**（`buildMoneyView`），⛔ 本文件不新写一套口径。
     // `causeOf` 只喂 `mainCause`（本块屏不显示它），故恒 `null` —— 不编一个主因。
@@ -154,6 +178,7 @@ export function RealityMeterRow({
       world: after.state,
       sent,
       ticks: spec.ticks,
+      sealed,
     };
   };
 
@@ -285,6 +310,13 @@ export function RealityMeterRow({
               量法坏了：占位孪生世界与含真值世界<b>逐格相同</b>（0 格不同）⇒ 下面的差值不可读作「没有差别」。
             </p>
           ) : null}
+          {result.a.sealed && result.b.sealed ? null : (
+            <p className={`${styles.calibre} ${styles.warnBox}`} data-testid="c0828-compare-unsealed">
+              这两个实验世界<b>没能封存</b>（迁到「已结束」那一步没走通）⇒ 它们仍是「推演中」，
+              而本屏会自动选中<b>最近一条推演中的世界</b> —— 刷新之后上面那条真实度读数可能读的是对照世界，不是你的世界。
+              刷新前先在专家模式里把它们结束掉。
+            </p>
+          )}
           <table className={styles.cmpTable}>
             <thead>
               <tr>
