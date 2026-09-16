@@ -59,23 +59,60 @@ desat3 @ f072c8dc 仍未并入本树（`git merge-base --is-ancestor` = false，
 | recompute 增量语义 | ✅ 确认：changes 空 ⇒ dirty 空 ⇒ 零计算；全量初算 = 每个 dep 的 (typeKey, prop, 全对象 id) | `ontology-core.ts` :341/:400-470 + `ontology-core.test.ts` 模式 |
 | DEMO_SIM_WORLD_TICKS | 本树 = 3（desat3 改 96 未并） | `sim/seed-world.ts` :106 |
 
-## 补充 ② · asSource 死胡同判据（待做，排在写式子之前）
+## 补充 ② · asSource 死胡同判据（已现算，51/51 全表）
 
-- 现算 51 个 (类型,变量) 对的 asSource/asTarget 计数（已发布规则两端）。
-- asSource=0 ⇒ 死胡同 ⇒ **先接边再写式子**；接边本身大概率越出本单边界（11 条边需 ① 先落地，
-  见 `05cca413f`），这类对如实标注「阻塞在 ①」，不硬凑。
-- 输出：每对的 9 列台账（类型·变量·格数·原料·式子·asSource·asTarget·档·处置）。
+工具 `/tmp/as-source-table.mjs`（进程内真播种，与 `seed-world.ts varsByType` 同算法 + `entersSimWorld`
+同过滤），输出 `/tmp/as-source-table.json`。**三金丝雀全中：pairs=51 · cells=6363 · measuredCells=450**
+（第一版漏 `entersSimWorld` 过滤报 8813 —— 工具修好后才对上账，8813 ≠ 6363 时按「量法坏了」处置，没报树坏）。
 
-## 枚举重跑（任务 #9，待做）
+**口径**：asSource = 已发布规则里以该 (类型,变量) 为 **source** 的边数；asTarget = 以它为 **target** 的边数。
+asSource=0 ⇒ 真值进世界后**走一步就停**，不影响任何下游读数。
 
-`/tmp/enumerate-real-cells.mjs` 是旧树数据（45 对/7295 格/0 真值）。须在本树重跑：
-预期 **51 对 / 6363 格 / 450 真值**；金丝雀 = 与活服务（新码）`measuredCells` 逐位一致。
+**总账**：
+
+| 池 | 对数 | 格数 |
+|---|---:|---:|
+| asSource>0（写了有下游） | 28 | 4,312 |
+| 其中已真值（Order.qty/unitPrice/leadDays） | 3 | 450 |
+| **可写池（asSource>0 且非真值）** | **25** | **3,862** |
+| asSource=0（死胡同，先接边） | 23 | 2,051 |
+
+对账：WO A 档 32 条 / 3,446 格 ≤ 可写池 3,862 格 ⇒ **主判据 3,896 在 asSource 判据下依然可达**
+（3,896 = 450 + 3,446；A 档是 WO 按「原料齐+DSL 够」选的子集，asSource 是追加的第一判据，
+A 档内若有 asSource=0 的条目须逐条标注「写了也看不见」）。
+
+**asSource=0 死胡同全名单（23 对，按格数排序）**：
+OrderLine.splitPressure(873) · ExceptionEvent.handlingBacklog(372) · QualityLot.inspectBacklog(260) ·
+MaintenanceOrder.repairBacklog(193) · ARInvoice.overduePressure(60) · OrderPromise.promiseRisk(50) ·
+ChangeoverMatrix.changeoverPressure(30) · CustomerLocation.deliveryHoldRisk(30) ·
+IncomingInspection.queueDays(30) · MaterialBatch.turnoverPressure(24) · Certification.qualificationQueue(18) ·
+FinishedGoodsInventory.drawdownPressure(18) · InterBaseTransfer.transferPressure(17) ·
+Supplier.reviewPressure(15) · MaintPlan.windowSqueeze(13) · Shipment.inboundExpeditePressure(13) ·
+MaterialBalance.gapPressure(9) · Model.backlogHorizonDays(6) · Model.backlogPriceTop(6) ·
+Model.backlogQtyTop(6) · MaterialAlternative.switchPressure(5) · OverdueRecord.collectionPressure(2) ·
+CustomsClearance.clearanceQueueDays(1)
+
+**WO 已验证范本的两条都在活池**：Line.blockedPressure(asSrc=1) · Customer.receivablePressure(asSrc=4) ✓
+
+⚠ **A⚠ 档 5 条里的 C 类嫌疑**（WO 已标语义存疑，②再补一刀）：
+`ExceptionEvent.handlingBacklog` 与 `MaintenanceOrder.repairBacklog` 是 WO 的 D 档（零数值属性），
+它们 asSource 也 = 0 —— 双重死路，本单不碰，与 WO 一致。
+
+⚠ **先接边再写式子的边界**：23 条死胡同里，若 A 档 32 条含其中任何一条，接边动作
+**大概率越出本单边界**（`05cca413f` 台账：11 条边需 ① 先落地）。处置 = 该条标注
+「阻塞在 ①，式子照写、验收等 ①」，不硬凑格数。
+
+## 本树枚举重跑（任务 #9 金丝雀，已并入 ② 一次跑完）
+
+51 对 / 6363 格 / 450 真值三数与 WO 逐位吻合 ⇒ 本树 = WO 的母树，旧树（45/7295/0）数据作废。
+活服务金丝雀（真服务 SEED_DEMO=1 的 measuredCells === 450）留到 §1 交付时随反向臂一起取。
 
 ## 未了
 
-- [ ] ② asSource 全表 + 51 对分档台账（任务 #9 的扩展输出）
-- [ ] 本树枚举重跑 + 活服务金丝雀
+- [x] ② asSource 全表（上文；任务 #15 闭）
+- [ ] 51 对分档台账落 9 列（任务 #9 收尾：每对 类型·变量·格数·原料·式子·asSource·asTarget·档·处置）
 - [ ] §1 播种 recompute（server.ts + seed-cli.ts 双生子同步）
 - [ ] §3 valueRef
 - [ ] §2 32 条式子（可写，验收等裁决）
-- [ ] 远端 `claude/handoff-real-cells` 是旧基线孤儿史 ⇒ 下次 push 须 `--force`
+- [ ] §1 交付时活服务金丝雀（measuredCells 逐位一致）+ 反向臂
+- [x] 远端 `claude/handoff-real-cells` 已 `--force` 对齐新基线（62d8424e6）
