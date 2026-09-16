@@ -1505,7 +1505,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈1.99 ⇒ 入流被放大 1.99 倍。
     // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
     // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
-    weightRef: { basis: "equal_share" }, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1566,7 +1566,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈5.00 ⇒ 入流被放大 5.00 倍。
     // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
     // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
-    weightRef: { basis: "equal_share" }, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1616,7 +1616,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     // （`combine:"sum"` 逐源累加）⇒ Σ权重 = N。实测本条扇入 N≈43.33 ⇒ 入流被放大 43.33 倍。
     // 目标是**强度**型量纲（0–100 压力指数）⇒ 按契约判据表该收**加权平均**（Σ=1）。
     // 用等份而不是编一个计量值：本体里这 N 个源之间没有可审计的轻重差。
-    weightRef: { basis: "equal_share" }, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
