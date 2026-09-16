@@ -1,0 +1,108 @@
+{
+  "arm": "zero",
+  "n": 0,
+  "port": 46367,
+  "ownPid": "30300",
+  "listenPid": "30300",
+  "beforeTick": 96,
+  "afterTick": 99,
+  "seedChoice": {
+    "targetObjectId": "obj_model_4680-LFP",
+    "targetStateVar": "forecastBias",
+    "magnitude": 87,
+    "varMax": 88,
+    "varMin": 1,
+    "outRules": 1,
+    "reachCells": 3861,
+    "reachObjects": 3381,
+    "candidates": 3448
+  },
+  "seedPerturbationLabel": [
+    {
+      "mag": 87,
+      "dur": null,
+      "startTick": 1,
+      "target": "obj_model_4680-LFP",
+      "sv": "forecastBias"
+    }
+  ],
+  "ordersTotal": 500,
+  "ordersHasMore": false,
+  "usableEvents": 12,
+  "stagedMisses": [],
+  "receipts": [],
+  "four": {
+    "exposure": 0,
+    "exposedOrders": 0,
+    "touchedCustomers": 17,
+    "settledExcluded": 0,
+    "faintOnly": 150,
+    "magMax": 0.007731958762988711,
+    "magP90": 0.007589020558000925,
+    "impediments": 18
+  },
+  "cells": 6363,
+  "means_before": {
+    "supplyRisk": {
+      "n": 6,
+      "mean": 17.843996640497
+    },
+    "costPressure": {
+      "n": 156,
+      "mean": 22.266519257056874
+    },
+    "expeditePressure": {
+      "n": 30,
+      "mean": 18.097147222223832
+    },
+    "queueDays": {
+      "n": 30,
+      "mean": 467.20059162744184
+    }
+  },
+  "t0cells": 6363,
+  "seedMotionCells": 4831,
+  "orderStatusDist": {
+    "OPEN": 50,
+    "COMPLETED": 350,
+    "IN_PRODUCTION": 100
+  },
+  "deltaCount": 3751,
+  "topDeltas": [
+    {
+      "objectId": "obj_incominginspection_iqc_po_11",
+      "stateVar": "queueDays",
+      "before": 628.869125500033,
+      "after": 645.251282500036,
+      "delta": 16.382157000003076
+    },
+    {
+      "objectId": "obj_incominginspection_iqc_po_19",
+      "stateVar": "queueDays",
+      "before": 607.069125500028,
+      "after": 623.451282500031,
+      "delta": 16.382157000002962
+    },
+    {
+      "objectId": "obj_incominginspection_iqc_po_27",
+      "stateVar": "queueDays",
+      "before": 527.669125500033,
+      "after": 544.051282500036,
+      "delta": 16.382157000002962
+    },
+    {
+      "objectId": "obj_incominginspection_iqc_po_3",
+      "stateVar": "queueDays",
+      "before": 569.869125500029,
+      "after": 586.251282500032,
+      "delta": 16.382157000002962
+    },
+    {
+      "objectId": "obj_incominginspection_iqc_po_14",
+      "stateVar": "queueDays",
+      "before": 619.070955000027,
+      "after": 634.57965300003,
+      "delta": 15.50869800000305
+    }
+  ]
+}
