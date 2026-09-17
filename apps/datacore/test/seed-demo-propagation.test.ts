@@ -310,7 +310,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const t2 = st(b2);
     // ⚠ 源读数取**上一拍实测值**而不是再写一个字面量：本跳验的是「这一跳的算术」，
     //   上一跳对不对已由上面那句负责 —— 两件事分开咬，红了才知道红在哪一跳。
-    const exp2 = r12(t1[materialId]!.shortageRisk * cOf("demo_material_shortage_to_model_supply_risk") * wOf(b2, "demo_material_shortage_to_model_supply_risk", materialId, modelId));
+    const exp2 = r12(t1[materialId]!.shortageRisk! * cOf("demo_material_shortage_to_model_supply_risk") * wOf(b2, "demo_material_shortage_to_model_supply_risk", materialId, modelId));
     expect(exp2, "第 2 跳期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
     expect(t2[modelId]!.supplyRisk).toBe(exp2);
     expect(t2[orderId]?.shortageRisk ?? 0).toBe(0);
@@ -318,7 +318,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // 🔴 这一行就是本单的效果层判据：供应侧的一次扰动，真的落到了订单缺口上。
     const b3 = await tickOnce();
     const t3 = st(b3);
-    const exp3 = r12(t2[modelId]!.supplyRisk * cOf("demo_model_supply_risk_to_order_shortage") * wOf(b3, "demo_model_supply_risk_to_order_shortage", modelId, orderId));
+    const exp3 = r12(t2[modelId]!.supplyRisk! * cOf("demo_model_supply_risk_to_order_shortage") * wOf(b3, "demo_model_supply_risk_to_order_shortage", modelId, orderId));
     expect(exp3, "第 3 跳期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
     expect(t3[orderId]!.shortageRisk).toBe(exp3);
     // 🔴 并且**必须真的传到了**（不是三跳都算出 0 然后逐句自洽成绿）——
@@ -693,7 +693,7 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
     }
 
     // ── 判据 ③：修前那个数**不许**再出现。9.75 = 0.65 × 15，是"没有用量项"的指纹。
-    const preFix = Math.round(COEFF * SHOCK * 1e12) / 1e12;
+    const preFix = Math.round(COEFF! * SHOCK * 1e12) / 1e12;
     for (const r of runs) {
       expect(r.read, `读数回到 ${preFix} ⇒ 该对的权重被当成 1 了（"查不到用量"绝不等于"用量为 1"）`).not.toBe(preFix);
     }
