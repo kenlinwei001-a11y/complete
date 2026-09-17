@@ -123,6 +123,15 @@ function deriv(raw, d) {
   const k = d.max - bHi; if (raw <= k) return 1;
   const u = (raw - k) / bHi; return 1 / ((1 + u) * (1 + u));
 }
+// ⚠⚠ **仿真与预算都必须用 W_e，不是裸扇入 N_e** —— 这是本脚本第二版踩的坑，留作判据：
+//    `demo_material_price_to_model_cost` 走 `bom_cost_share`（Σw=1）⇒ 它对目标格的实际乘数是 **1**，
+//    不是链路扇入 7。第二版在 `run()` 里对所有边一律乘 e.N，把这条边的入流放大了 7 倍。
+//    形态：「我用『这条链路的扇入是 7』当作『这条边给目标加 7 份』的证据，而前者并不度量后者
+//    —— 加几份由**归一方向**决定，不由链路条数决定。」
+//    N_e 只在 `weightRef: null`（每源各加一份满额）时才等于 W_e。
+const SIGMA1 = new Set(["bom_cost_share", "equal_share"]); // 这两条口径 Σw=1 ⇒ W=1
+const Weff = (e) => (SIGMA1.has(e.basis) ? 1 : e.N);
+
 function run({ edges, ticks, inject = null, extra = new Set() }) {
   const isD = (n) => declared.has(nodeVar[n]) || extra.has(nodeVar[n]);
   const x = {}; for (const n of nodes) x[n] = SEED;
@@ -132,7 +141,7 @@ function run({ edges, ticks, inject = null, extra = new Set() }) {
   for (let t = 0; t < ticks; t++) {
     const nx = { ...x };
     for (const n of nodes) if (writtenVar.has(nodeVar[n]) && isD(n)) { const d = dom(nodeVar[n]); nx[n] = d.rest + (1 - LAM) * (x[n] - d.rest); }
-    for (const e of edges) nx[e.dst] += e.c * e.N * Math.max(0, x[e.src] - e.tol);
+    for (const e of edges) nx[e.dst] += e.c * Weff(e) * Math.max(0, x[e.src] - e.tol);
     if (inject && !hasIn.has(inject.n)) nx[inject.n] = SEED + inject.d; // 持续扰动 = 按住在新值
     raws = { ...nx };
     for (const n of nodes) if (isD(n)) nx[n] = sat(nx[n], dom(nodeVar[n]));
@@ -146,9 +155,14 @@ function atten(opts) {
   const d = Math.abs(b.x[OUT] - a.x[OUT]);
   return { atten: d === 0 ? Infinity : 10 / d, delta: d, base: a };
 }
-const Wof = (e) => (e.basis === "bom_cost_share" ? 1 : e.N);
-function cellGain(edges) { const S = {}; for (const e of edges) S[e.dst] = (S[e.dst] ?? 0) + Math.abs(e.c) * Wof(e) / LAM; return S; }
+function cellGain(edges) { const S = {}; for (const e of edges) S[e.dst] = (S[e.dst] ?? 0) + Math.abs(e.c) * Weff(e) / LAM; return S; }
 function budget(edges, cap = 0.75) { const S = cellGain(edges); return edges.map((e) => ({ ...e, c: e.c * Math.min(1, cap / (S[e.dst] || 1)) })); }
+/** 移植 `equal_share`：把这 11 条边的 basis 改成 equal_share ⇒ W 由 N 降到 1（desat-3 ③）。 */
+const EQUAL_SHARE_EDGES = new Set(["demo_batch_procurement_delay_to_material_shortage", "demo_equipment_failure_to_process_queue",
+  "demo_material_shortage_to_model_supply_risk", "demo_model_demand_to_base_load", "demo_po_expedite_to_supplier_review",
+  "demo_po_procurement_delay_to_material_shortage", "demo_process_queue_to_line_blocked", "demo_supplier_delay_to_material_shortage",
+  "demo_supplier_procurement_delay_to_material_shortage", "demo_wo_release_to_model_cost", "demo_wo_release_to_model_supply_risk"]);
+const withEqualShare = (edges) => edges.map((e) => (EQUAL_SHARE_EDGES.has(e.key) ? { ...e, basis: "equal_share" } : e));
 
 // 金丝雀 ③
 const probe = run({ edges, ticks: 4000, extra: new Set(["blockedPressure"]) });
@@ -209,7 +223,43 @@ for (const L of [0.9, 0.99]) {
 }
 const C = budget(edges);
 show("方案B 每格增益预算 ≤0.75（只改 seed.ts 系数）", C);
-show("方案B+补域（blockedPressure 声明取值域）★本单主张★", C, new Set(["blockedPressure"]));
+show("方案B+补域（blockedPressure 声明取值域）", C, new Set(["blockedPressure"]));
+
+// ── 仓主 2026-09-17 裁决：扩范围移植 equal_share。下面证明它**单独**够不够 ──────────
+const ES = withEqualShare(edges);
+show("①只移植 equal_share（不再缩系数）", ES);
+show("①+补域", ES, new Set(["blockedPressure"]));
+const ESB = budget(withEqualShare(edges));
+show("②移植 equal_share + 每格预算 ★裁决方案★", ESB);
+show("②+补域 ★裁决方案·完整★", ESB, new Set(["blockedPressure"]));
+
+console.log("\n── 仓主指定的验证点：Model.demandLoad 的 G ──");
+for (const [nm, es] of [["修前", edges], ["①只移植 equal_share", ES], ["②移植+预算", ESB]]) {
+  const S = cellGain(es);
+  const ins = es.filter((e) => e.dst === "Model.demandLoad");
+  console.log(`  ${nm.padEnd(22)} G(Model.demandLoad) = ${S["Model.demandLoad"].toFixed(3)}` +
+    `   入边: ${ins.map((e) => `${e.key}(basis=${e.basis ?? "null"},W=${Weff(e).toFixed(2)},c=${e.c.toFixed(4)})`).join(" + ")}`);
+}
+// ── 多注入点：equal_share 的「稀释」是打在所有链上，还是只打在带 equal_share 边的那条链上？──
+console.log("\n── 多注入点总衰减（+10 持续扰动 → Order.costPressure）──");
+console.log("  注入点                         修前        B+补域      ②+补域     该链上 equal_share 边数");
+const BD = new Set(["blockedPressure"]);
+for (const root of ["Equipment.equipmentFailure", "Material.priceShock", "Supplier.deliveryDelay", "Model.forecastBias"]) {
+  const f = (es, extra) => { const a = run({ edges: es, ticks: 24, extra }), b = run({ edges: es, ticks: 24, inject: { n: root, d: 10 }, extra });
+    const d = Math.abs(b.x[OUT] - a.x[OUT]); return d === 0 ? Infinity : 10 / d; };
+  // 该链上有几条 equal_share 边：从 root 出发做一次可达 BFS，数命中
+  const seen = new Set([root]); const q = [root];
+  while (q.length) { const n = q.shift(); for (const e of edges) if (e.src === n && !seen.has(e.dst)) { seen.add(e.dst); q.push(e.dst); } }
+  const nES = edges.filter((e) => EQUAL_SHARE_EDGES.has(e.key) && seen.has(e.src)).length;
+  console.log("  " + root.padEnd(30) + f(edges, new Set()).toExponential(2).padEnd(12) +
+    f(C, BD).toExponential(2).padEnd(12) + f(ESB, BD).toExponential(2).padEnd(11) + nES);
+}
+
+console.log("\n── BOM 那条边被缩多少（仓主否掉 83.7× 的那个数）──");
+for (const [nm, es] of [["方案B(只缩系数)", C], ["②移植+预算", ESB]]) {
+  const e = es.find((x) => x.key === "demo_material_price_to_model_cost");
+  console.log(`  ${nm.padEnd(18)} 0.65 → ${e.c.toFixed(6)}  (缩 ${(0.65 / e.c).toFixed(2)}×)`);
+}
 
 // ══ 结论三 · 耐久性 ═══════════════════════════════════════════════════════════
 console.log("\n\n══ 结论三 · 耐久性：B 单用 vs B+补域 ══");
@@ -225,10 +275,6 @@ console.log("\n\n══ 结论四 · desat3 的系数为什么不能照搬 ═�
 console.log("  它那 11 条 `equal_share` 边靠一个**新归一口径**把 W 从 N 压到 1，");
 console.log("  而该口径的实现在 `contracts/src/sim.ts` + `sim/pair-weights.ts` —— 两者都在本单 🚦范围边界之外。");
 console.log("  只搬系数不搬口径时，这些边的真实增益（预算 0.75）：");
-const ES = new Set(["demo_batch_procurement_delay_to_material_shortage", "demo_equipment_failure_to_process_queue",
-  "demo_material_shortage_to_model_supply_risk", "demo_model_demand_to_base_load", "demo_po_expedite_to_supplier_review",
-  "demo_po_procurement_delay_to_material_shortage", "demo_process_queue_to_line_blocked", "demo_supplier_delay_to_material_shortage",
-  "demo_supplier_procurement_delay_to_material_shortage", "demo_wo_release_to_model_cost", "demo_wo_release_to_model_supply_risk"]);
-for (const e of edges.filter((e) => ES.has(e.key)).sort((a, b) => b.N - a.N)) {
+for (const e of edges.filter((e) => EQUAL_SHARE_EDGES.has(e.key)).sort((a, b) => b.N - a.N)) {
   console.log(`    ${e.key.padEnd(52)} N=${e.N.toFixed(2).padStart(6)}  ⇒ 若 W=N 则该边独占 ${(e.c * e.N / LAM).toFixed(2)} 的增益`);
 }
