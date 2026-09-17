@@ -1642,11 +1642,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   // **X**：47 条边里 **46 条正系数、1 条负**（`demo_forecast_bias_to_order_demand` −0.6，
   //   且它的源 `forecastBias` 是入度 0 的外生根 ⇒ **只有用户手动拨它，世界里才会有一个减量**）。
   //   世界自己**没有任何一条边会让压力下降**：45 个量纲节点里 **20 个是纯 sink**（出度 0）——
-  //   它们只接收压力，接收完什么也不做。其中三个的业务含义**恰恰就是"做点什么把压力卸掉"**：
+  //   它们只接收压力，接收完什么也不做。其中两个的业务含义**恰恰就是"做点什么把压力卸掉"**：
   //     · `FinishedGoodsInventory.drawdownPressure`（成品库存被提走）—— 提走了却不冲抵需求
   //     · `InterBaseTransfer.transferPressure`（跨基地调拨）—— 调出去了却不减调出方负载
-  //     · `OrderPromise.promiseRisk`（交付承诺风险）—— 承诺兑现不了，客户却从不改期/砍单
-  //   ⇒ 三个对象**存在的理由**（缓冲 / 分流 / 改期）在传导图上一次都没兑现。
+  //   ⇒ 两个对象**存在的理由**（缓冲 / 分流）在传导图上一次都没兑现。
+  //   （第三类「需求回落」实测后**撤回不落边** —— 落点上已有一条负边且它是哑的，见下方 ③ 段。）
   //   金丝雀（证明上面那个"46/1"是真的，不是我数错）：同一把尺子数 `coefficient > 0` 得 **46**、
   //   `< 0` 得 **1**、合计 **47** = `DEMO_PROPAGATION_RULES.length`；
   //   且已知必中的 `demo_material_price_to_model_cost` 量出 **0.65**（与字面量一致）。
@@ -1665,19 +1665,19 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   // ── 稳定性（为什么这三条不会把世界打到负数或震荡起来）────────────────────────────
   //  · **不会为负**：压力族 `restPoint === min === 0` ⇒ `saturateToDomain` 下侧是**硬地板**
   //    （`sim/propagation.ts` 那行 `else if (raw < min) return min`），阻尼最多把一格压到 0。
-  //  · **不会发散**：三条回路的环增益分别是 0.6×0.6=0.36 · 0.3×0.3=0.09 · 0.8×0.8=0.64，
+  //  · **不会发散**：两条回路的环增益分别是 0.6×0.6=0.36 与 0.3×0.3=0.09，
   //    全部 < 1，且每跳还要再乘一次 (1−λ) 的存量衰减（λ=0.37，`PRESSURE_DECAY_PER_TICK`）。
-  //  · **延迟是业务事实不是调参**：三条都留 1 拍 —— 拣货发运要一拍、调拨执行完才卸载、
-  //    客户改期要开会。与还手边 `delayTicks: 1` 同一条理由。
+  //  · **延迟是业务事实不是调参**：两条都留 1 拍 —— 拣货发运要一拍、调拨执行完才卸得掉负载。
+  //    与还手边 `delayTicks: 1` 同一条理由。
   //
   // ⛔ **本段一行都没碰 `sim/propagation.ts`**：阻尼是**数据**（三行 `sim_propagation_rule`），
   //    不是引擎特性。引擎早就支持负系数（`demo_forecast_bias_to_order_demand` 用了一年），
   //    缺的一直是"没人往图里放过反向的边"。
   //
-  // ⚠ **诚实登记：三条都 `weightRef: null`，逐实例分摊是待定**。
-  //    想按"谁的库存多/谁调得多/谁的单大"分摊，需要的基数分别是
-  //    `FinishedGoodsInventory.qtyAvailable` / `InterBaseTransfer.qty` / `OrderPromise.requestedQty`，
-  //    **三个都不叫 `qty`** ⇒ 在册口径 `source_qty_relative`（读的是 `props.qty`，
+  // ⚠ **诚实登记：两条都 `weightRef: null`，逐实例分摊是待定**。
+  //    想按"谁的库存多/谁调得多"分摊，需要的基数分别是
+  //    `FinishedGoodsInventory.qtyAvailable` / `InterBaseTransfer.qty`，
+  //    **两个都不叫 `qty`** ⇒ 在册口径 `source_qty_relative`（读的是 `props.qty`，
   //    见 `sim/pair-weights.ts`）在这三个类型上会**逐条量出 0**，落成一张全零权重表。
   //    实测：`FinishedGoodsInventory` 18 个实例里 `props.qty` 为正的 **0 个**（金丝雀：同一把尺子
   //    量 `Order` 得 500/500、量 `MaterialBatch` 得 24/24 ⇒ 量法是好的，是这三个类型真的没这个字段）。
@@ -1738,36 +1738,27 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     status: "PUBLISHED",
   },
 
-  // ── ③ 需求回落：承诺兑现不了 ⇒ 客户改期/砍单 ⇒ 需求压力下来 ─────────────────────
-  // 镜像 `demo_order_shortage_to_promise_risk`（`Order.shortageRisk --order_has_promise
-  // ×0.8--> OrderPromise.promiseRisk`）。那条只写了"交不齐所以承诺有风险"，
-  // **没写"承诺塌了之后需求本身会缩"** ⇒ 这正是另一位 dev 点名的那条：
-  // 「全模型 50 条里只有 1 条负系数，压根没有『需求下降』这条路」。
+  // ── ③ 需求回落 —— **本单不落边，列为待定（这是实测结论，不是没做完）** ────────────
   //
-  // ⚠ 与还手边 `demo_customer_reaction_cut_order` **不是同一件事，别合并**：
-  //  · 还手边是**对手方博弈**（客户因为被转嫁成本而报复性砍单），带 `reaction`/容忍线，
-  //    默认**关闭**（`sim.propagation.adversary`）；
-  //  · 本条是**履约现实**（我方交不出货，订单自然就交付不掉/被改期），是普通物理传导，默认开。
-  //  两者落点也不同（那条落 `orderChurn` 变更频度，本条落 `demandPressure` 需求压力本身）。
-  {
-    id: "simpr_demo_promise_risk_relieves_order_demand",
-    key: "demo_promise_risk_relieves_order_demand",
-    sourceTypeKey: "OrderPromise",
-    sourceStateVar: "promiseRisk",
-    viaLinkKey: "promise_for_order", // 实测 OrderPromise→Order，50 条（本单之前**零条规则**用它）
-    targetTypeKey: "Order",
-    targetStateVar: "demandPressure",
-    coefficient: -0.8, // 镜像判据：与 `demo_order_shortage_to_promise_risk` 同值反号
-    delayTicks: 1, // 客户改期/砍单要走内部审批，不当拍发生（与还手边同一条理由）
-    description: "交付承诺兑现不了 ⇒ 客户改期或缩量，该单的需求压力回落（承诺风险 × 0.8 反向冲抵）",
-    combine: "sum",
-    decay: null,
-    clamp: null,
-    coefficientRef: null,
-    weightRef: null, // 待定：应按 `requestedQty` 分摊，`OrderPromise` 无 `props.qty`（见段头）
-    cadenceNodeId: null,
-    status: "PUBLISHED",
-  },
+  // 原计划落 `OrderPromise.promiseRisk --promise_for_order--> Order.demandPressure` (-0.8)。
+  // **实测推翻了这个计划的前提**，故撤回。三步证据，每步都能自证：
+  //
+  //  ① **落点上已经有一条负边了**：`Order.demandPressure` 的入边只有 1 条 ——
+  //     `demo_forecast_bias_to_order_demand`，`coefficient: -0.6`。
+  //     （金丝雀：同一把尺子数 `Order.costPressure` 入边得 1、`Model.demandLoad` 得 2 ⇒ 数法有效。）
+  //  ② **那条边的「需求上冲」分支从上线起一次都没执行过**：它的源 `Model.forecastBias`
+  //     入度 0 = 外生根，只由种子生成器写；而生成器是
+  //     `round(seedHash01(...) × 100)`，`seedHash01` 返回 `((h>>>0) % 1000)/1000` ∈ [0, 0.999]
+  //     ⇒ **恒非负**（`sim/seed-world.ts`）。于是唯一入流 `-0.6 × forecastBias` **恒 ≤ 0**，
+  //     而 `demandPressure` 是压力族（`min = restPoint = 0`，下侧硬地板）
+  //     ⇒ 该量纲**只会被压在 0**。那条边注释写的「低估(-) ⇒ 需求压力上冲」那一支，**进不去**。
+  //  ③ ⇒ 再往这个落点加一条**负**边，只是给一个**永远抬不起来的量纲**再添一条往下压的路，
+  //     一行读数都不会变。**病不在缺边，在入口是堵的。**
+  //
+  // **所以「需求回落」这一类的真实缺口是「那条已有的负边是哑的」，不是「少一条边」** ——
+  // 修入口要动种子生成器（`sim/seed-world.ts`），**超出本单范围边界**，另单处理。
+  // ⛔ 在入口修好之前，这里**不许**补边：补了会造出「两条通往同一个哑落点的路」，
+  //    让「已经有一条负边且它是哑的」这个真相更难被发现。
 ];
 
 /**
