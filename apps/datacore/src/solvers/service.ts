@@ -6533,7 +6533,9 @@ export class SolverService {
       //   日期属性上时**每个实例都得 0**，排序整个塌给 `id` 字典序 —— 结果是确定性的（R6 不破），
       //   但选出来的是「id 最小的那个」而不是「日期最晚的那个」，**语义上等于随便挑一个**。
       //   这正是本单要修的那类病换个位置复发：跑得起来、不报错、算的不是那回事。
-      //   故按值的**实际类型**比：数字走数值序，字符串走字典序（ISO-8601 日期的字典序 = 时间序），
+      //   故按值的**实际类型**比：数字走数值序，字符串走 `localeCompare` 值序（与测试/展示同一口径；
+      //   同格式 ISO-8601 日期的值序 = 时间序）。**不许用 `<` 的 UTF-16 码元序**：中文按码元排
+      //   与按值排会分叉（实测：码元序最大=金华 U+91D1，值序最大=自贡 ⇒ 取证对象选错实例），
       //   类型不一致时数字排在字符串前（固定次序，不留"看情况"的空档）。
       const cmp = (l: unknown, r: unknown): number => {
         if (typeof l === "number" && typeof r === "number") return l - r;
@@ -6541,7 +6543,7 @@ export class SolverService {
         if (typeof r === "number") return 1;
         const ls = String(l);
         const rs = String(r);
-        return ls < rs ? -1 : ls > rs ? 1 : 0;
+        return ls.localeCompare(rs);
       };
       const worst = rows.slice().sort((x, y) => {
         const d = cmp(x.props[b.propKey], y.props[b.propKey]);
