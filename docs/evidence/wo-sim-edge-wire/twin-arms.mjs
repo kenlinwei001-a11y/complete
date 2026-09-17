@@ -178,7 +178,7 @@ async function main() {
       magMedian: (armReal.five.magMedian ?? 0) - (armPh.five.magMedian ?? 0),
       magMax: (armReal.five.magMax ?? 0) - (armPh.five.magMax ?? 0),
     };
-    const out = { port, origin, canary: { swapped, canary1, canary2, canary3 }, arms: { real: { ...armReal, after: undefined }, placeholder: { ...armPh, after: undefined } }, fiveArmDiff: armDiff, terminalDiff: { total: terminal.length, ...byClass, propagatedByVar }, topTerminal: terminal.slice().sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 10) };
+    const out = { port, origin, canary: { swapped, canary1, landFixed, canary3 }, arms: { real: { ...armReal, after: undefined }, placeholder: { ...armPh, after: undefined } }, fiveArmDiff: armDiff, terminalDiff: { total: terminal.length, ...byClass, propagatedByVar }, topTerminal: terminal.slice().sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 10) };
     console.log("\n══ 五读数臂间差（含真值 − 纯占位；450 时代全 0）══");
     console.log(JSON.stringify(armDiff, null, 1));
     console.log("══ 终态逐格差（450 时代 = 466 = 448 自己 + 18 backlog）══");
