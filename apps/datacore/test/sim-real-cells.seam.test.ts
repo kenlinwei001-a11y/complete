@@ -29,9 +29,10 @@ import type { ObjectInstance } from "../src/domain.js";
  * 该 WO 本身就是仓主派的，且这条测的是本单交付物自己的链路，非审核方自我维护的度量装置）。
  */
 
-/** 本单 §2 落地的 25 条规格（从 DEMO_DERIVATION_SPECS 现算，⛔ 不写死字面量 —— 写死不度量今天真的登记了谁）。
- *  25 = Customer 1 + A 档 18 + Model.supplyRisk 链核实后升级 1 + A⚠ 档 5（仓主 2026-09-16 ③全批落 5；
- *  orderChurn 无诚实源停笔，理由见规格表段尾）（3 条旧规格 order_value/fgi/ibt 不在内）。 */
+/** A 档规格全集（从 DEMO_DERIVATION_SPECS 现算，⛔ 不写死字面量 —— 写死不度量今天真的登记了谁）。
+ *  今日 26 条 = Customer 1 + A 档 18 + Model.supplyRisk 链核实后升级 1 + A⚠ 档 5（仓主 2026-09-16 ③全批落 5；
+ *  orderChurn 无诚实源停笔，理由见规格表段尾）+ 库存环 1（WO-PROP-REVIEW-V2 ② fgi_cover_days，2026-09-17）。
+ *  （3 条旧规格 order_value/fgi_qty_available/ibt_eta_day 属 WO-SLICE-DERIV-EMPTY，不在本集。） */
 const A_TIER = DEMO_DERIVATION_SPECS.filter((s) => s.specKey !== "order_value" && s.specKey !== "fgi_qty_available" && s.specKey !== "ibt_eta_day");
 
 /** 从对象层**独立**取一个数值属性（臂 1 手算的输入，⛔ 不许走式子中间结果）。 */
@@ -67,16 +68,20 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
   }, 180_000);
 
   // ── ⓒ 接缝驱动（验收判据 7）：编译→recompute→播种→读数 整条通 ─────────────────
-  it("ⓒ 接缝驱动：25 条规格编译入库 + 物化后 measuredCells 从 470 涨到 4171（主判据 3,896 过线）", () => {
+  it("ⓒ 接缝驱动：26 条规格编译入库 + 物化后 measuredCells 从 470 涨到 4189（主判据 3,896 过线）", () => {
     // 前态锚点：§1 只带 3 条旧规格时 measuredCells=470（WO 实测基线，含 Customer 那条 20 格）。
     // 20 条 A 档物化 +3,221 ⇒ 3691；A⚠ 5 条（仓主 2026-09-16 ③批）再 +480（Order 150×3 +
     // MaterialBatch 24 + Model 6）⇒ 4171 ≥ 主判据 3,896（+275）。orderChurn 停笔不减格（它从未物化）。
-    expect(totalCells).toBe(6363);
-    expect(measuredCells).toBe(4171);
+    // WO-PROP-REVIEW-V2 库存环再 +18：新边 `demo_fg_cover_days_to_model_demand` 把
+    // (FinishedGoodsInventory, coverDays) 纳入规则触及集 ⇒ 世界新铺 18 格（FGI 18 行 × 1 新量纲），
+    // 且 `fgi_cover_days` 规格把这 18 格全部物化成真值 ⇒ totalCells 6363→6381、measuredCells 4171→4189
+    // （/tmp/t3-probe.txt ③ 实测两数，与预测逐字节一致）。
+    expect(totalCells).toBe(6381);
+    expect(measuredCells).toBe(4189);
   });
 
   // ── ⓑ 指认粒度（验收判据 ⓑ）：逐条点名物化数，红了能指出是哪一条 ─────────────────
-  it("ⓑ 指认粒度：25 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言）", async () => {
+  it("ⓑ 指认粒度：26 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言）", async () => {
     // 每条规格的物化数 = 其 targetType 上进世界的对象数（独立数，不从 measuredCells 反推）。
     const expected: Record<string, number> = {};
     for (const s of A_TIER) {
@@ -340,7 +345,7 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     }
     // 复原后必须能正常播种（证明变异真的被复原，不留残毒）。
     const ok = await deriveSeedBaseSnapshot(t.repos, "demo");
-    expect(ok.origin.measuredCells).toBe(4171);
+    expect(ok.origin.measuredCells).toBe(4189); // WO-PROP-REVIEW-V2：4171→4189（+18 库存环 coverDays 格，理由见 ⓒ 段注释）
   });
 
   // ── seedHash01 金丝雀（校验哈希兜底路径仍在，占位格仍可复现）────────────────────────

@@ -158,8 +158,11 @@ async function idsOfType(t: TestApp, typeKey: string): Promise<string[]> {
  * 7707→5.8，而 `Order.orderChurn` 准静态 ≈7700，㊶ 翻负后 churn 项恒定 −643/型号/拍
  * 压过 dp 项 ⇒ 全场撞 0 下轨；翻负前同样饱和，只是钉在 100 上轨）。
  * 信号一旦撞轨，**该方向上的余量归零，端点差分恒 = 0** —— 端点量的是「轨的泄漏」不是「传导」。
- * 而信号**到达那一拍**是活的：G-ROOT-1 远端 tick2 = −65.35、G-ROOT-4 远端 tick2 = +5.82、
- * G-ROOT-2 远端 tick5–8 = −0.0001x（四跳残迹）。故远端断言取**窗口内有向极值**
+ * 而信号**到达那一拍**是活的：G-ROOT-1 远端 tick2 = −86.97（WO-PROP-REVIEW-V2 库存环两条边进场后
+ * 的重测值，/tmp/t3-triad-probe.txt；翻负后初测 −65.35 见 /tmp/t2-diag3.txt —— 库存环的恒定下压力
+ * 让被扰世界提前一拍撞 0 轨，到达拍的差分从「−65」变成「把整场 86.97 全压掉」，判据不变）、
+ * G-ROOT-4 远端 tick2 = +5.82、G-ROOT-2 远端 tick5–8 = −0.0001x∼−0.0002（四跳残迹）。
+ * 故远端断言取**窗口内有向极值**
  * （方向对 ⇒ 极值必然同号非零；没到 ⇒ 恒 0），这既咬可达性又咬方向，且不拿死端点冒充证据。
  */
 async function runWorldTrajectory(t: TestApp, baseSnapshot: TickState, n: number): Promise<TickState[]> {
@@ -438,7 +441,8 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
     expect(p1.oneHopDelta, "方向错了：高估预测应当把需求压力**压低**").toBeLessThan(0);
     // ⚠ 远端取**窗口极值**不取端点：实测 demandLoad 全场自 tick3 起钉死 0 下轨
     //    （churn 准静态 × ㊶ −0.5 压过快衰减的 dp 项），端点差分恒 = 0 —— 死端点不度量传导。
-    //    信号在到达拍是活的（tick2 = −65.35，/tmp/t2-diag3.txt），窗口 min 咬的就是它。
+    //    信号在到达拍是活的（tick2 = −86.97，/tmp/t3-triad-probe.txt —— WO-PROP-REVIEW-V2
+    //    库存环进场后重测；初测 −65.35 见 /tmp/t2-diag3.txt），窗口 min 咬的就是它。
     expect(
       p1.farMin,
       `G-ROOT-1 远端：需求压力下修应当把型号需求负载一起带下去（窗口有向极值；逐拍 Δ = ${fmtTraj(p1.farTraj)}）`,
