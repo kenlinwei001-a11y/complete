@@ -229,7 +229,7 @@ export function dumpReposToTables(repos: Repos): Record<string, TableDump> {
 
 // ── 双跑自证的归一化（随机 id 引用图）────────────────────────────────────────
 //
-// 探针实证（双跑全量 diff，两轮，证据落账本 §5.3）：合成世界有 6 组 id 是 newId 随机值且**跨表传播**：
+// 探针实证（双跑全量 diff，三轮，证据落账本 §5.3）：合成世界有 8 组 id 是 newId 随机值且**跨表传播**：
 //   connections      「合成数据源（确定性生成）」1 条 id = newId("conn")（service.ts:626；
 //                    另 7 条 conn-erp 等 id 确定），被 rawDatasets.sourceConnId、tsSeries.connId、
 //                    objects.origin.sourceConnId（实测 ×411）、ontologyTypes.sourceBindings.*.connId 引用；
@@ -237,11 +237,12 @@ export function dumpReposToTables(repos: Repos): Record<string, TableDump> {
 //                    被 objects.origin.rawDatasetId（实测 ×1556）与 rawRows 的行键尾部引用；
 //   ontologyTypes    id = newId("otype")（ontology.ts upsertType，按 key 幂等复用）——
 //                    随机 id 作 memKey 排序键 ⇒ 两次运行排序不同 ⇒ 位置比对全表错位
-//                    （第一轮探针 properties.displayName ×193 等洪峰全是错位伪差，非内容差）；
+//                    （第二轮探针 properties.displayName ×193 等洪峰全是错位伪差，非内容差）；
 //   ontologyLinks    id = newId("ltype")（ontology.ts upsertLinkType，同病）；
+//   rules            id = newId("rule")（rules.ts:107，第三轮探针 ×29 错位洪峰）；
+//   ontologyVersions id = newId("over")（ontology.ts:369，发布快照还整份内嵌类型定义的随机 id）；
 //   derivationRuns   id = newId("drun")（ontology.ts:923/935）；
 //   objectInterfaces id = newId("oif")（ontology-governance.ts:1007）。
-// 另：ontologyVersions（发布快照）整份内嵌类型定义 ⇒ 内嵌上述全部随机 id。
 // （objects/links/rules 的 origin.jobId **不是**随机值 —— service.ts:225 刻意用确定性串
 //   `synthetic-${industry}-${scale}-${seed}`，这正是 R6 字节一致的前提；探针证实零 diff。
 //   tsSeries/tsAggSpecs/tsAggRuns 的 id 均为确定性派生串（tser_/tspec_/tsrun_ 前缀），不在此列。）
@@ -365,16 +366,39 @@ export function canonicalizeForDiff(tables: Record<string, TableDump>): Record<s
       canonPut(oifMap, seen, r.id, `oif#${String(r.key)}#${String(r.version)}`, "objectInterfaces");
     }
   }
+  // rules：id = newId("rule")（rules.ts:107），key+version 表内唯一（同 key 多版本共存，旧版 RETIRED 保留）
+  const ruleMap = new Map<string, string>();
+  const rules = memOf("rules");
+  if (rules) {
+    const seen = new Set<string>();
+    for (const [, v] of rules.entries) {
+      const r = v as { id: string; key: unknown; version: unknown };
+      canonPut(ruleMap, seen, r.id, `rule#${String(r.key)}#${String(r.version)}`, "rules");
+    }
+  }
+  // ontologyVersions：id = newId("over")（ontology.ts:369），version 号表内唯一（全量内嵌类型快照
+  // 里的 otype/ltype 随机 id 由并集深度换名顺带归一，无需特判）
+  const overMap = new Map<string, string>();
+  const overs = memOf("ontologyVersions");
+  if (overs) {
+    const seen = new Set<string>();
+    for (const [, v] of overs.entries) {
+      const r = v as { id: string; version: unknown };
+      canonPut(overMap, seen, r.id, `over#${String(r.version)}`, "ontologyVersions");
+    }
+  }
   // 并集（derivationRuns 不在内 —— 它的规范名按改写后内容派生，见 ④）
-  const union = new Map<string, string>([...connMap, ...rdsMap, ...otypeMap, ...ltypeMap, ...oifMap]);
+  const union = new Map<string, string>([...connMap, ...rdsMap, ...otypeMap, ...ltypeMap, ...oifMap, ...ruleMap, ...overMap]);
 
-  // ② 5 张属性派生源头表：深拷 + 值深度换名（含自身 id —— 并集里有自己的旧 id ⇒ 自动归一）+ 行键换名重排
+  // ② 7 张属性派生源头表：深拷 + 值深度换名（含自身 id —— 并集里有自己的旧 id ⇒ 自动归一）+ 行键换名重排
   const ownKeyMaps: Record<string, Map<string, string>> = {
     connections: connMap,
     rawDatasets: rdsMap,
     ontologyTypes: otypeMap,
     ontologyLinks: ltypeMap,
     objectInterfaces: oifMap,
+    rules: ruleMap,
+    ontologyVersions: overMap,
   };
   for (const [name, ownMap] of Object.entries(ownKeyMaps)) {
     const src = memOf(name);
@@ -466,6 +490,8 @@ const DIFF_POLICY: Record<string, "countOnly" | { ignorePaths: RegExp[] }> = {
   derivationRuns: { ignorePaths: [/\.startedAt$/, /\.finishedAt$/] },
   // ontology-governance.ts:1018-1019 · createdAt/updatedAt = 墙钟（id 由归一化折掉）
   objectInterfaces: { ignorePaths: [/\.createdAt$/, /\.updatedAt$/] },
+  // ontology.ts:372 · createdAt = 墙钟（id 由归一化折掉；snapshot 内嵌类型定义的随机 id 亦由归一化折掉）
+  ontologyVersions: { ignorePaths: [/\.createdAt$/] },
   // timeseries.ts:283/340 · runAt = 墙钟（实测 153,920 行每行一次；id/rowsIn/value 全确定）
   tsAggRuns: { ignorePaths: [/\.runAt$/] },
   // timeseries.ts:380 · lastRunAt 零数据点时回落墙钟 runAt（有数据点时是确定的最大点 ts）
