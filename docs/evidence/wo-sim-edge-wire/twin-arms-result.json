@@ -1,0 +1,193 @@
+{
+ "port": 61033,
+ "origin": {
+  "kind": "DERIVED",
+  "formula": "两档取值。① 真读数：状态变量名恰好是该对象的一个数值属性时，直接取该属性的值，不做任何二次折算（该属性自己的口径见对象类型里它的说明）；本次命中 Base.loadIndex、Customer.receivablePressure、DefectRecord.defectPressure、Equipment.equipmentFailure、Equipment.loadPressure、Line.blockedPressure、Line.utilPressure、Material.priceShock、Material.shortageRisk、MaterialBalance.gapPressure、MaterialBatch.procurementDelay、Model.costPressure、Model.demandLoad、Model.forecastBias、Model.supplyRisk、Order.costPressure、Order.demandPressure、Order.leadDays、Order.qty、Order.shortageRisk、Order.unitPrice、Process.queuePressure、PurchaseOrder.expeditePressure、PurchaseOrder.procurementDelay、Supplier.deliveryDelay、Supplier.procurementDelay、WIPLot.feedPressure、WorkOrder.releasePressure。② 派生占位：其余格子 round(hash01(`${objectId}|${stateVar}`) × 100)（FNV-1a · 与前端 deriveBaseSnapshot 同式）。",
+  "note": "种子世界的 tick0 读数分两种：4171 格是实测（状态变量名就是对象上的属性名，直接读了那个对象的真实业务数）；其余 2192 格是本体结构派生的确定性占位（这些状态变量在本平台不是对象属性，对象上取不到值）。拿占位格当起点算出的差值，量级不可当实测读；实测格没有这个问题。其中 Base.loadIndex、Customer.receivablePressure、DefectRecord.defectPressure、Equipment.equipmentFailure、Equipment.loadPressure、Line.blockedPressure、Line.utilPressure、Material.priceShock、Material.shortageRisk、MaterialBalance.gapPressure、MaterialBatch.procurementDelay、Model.costPressure、Model.demandLoad、Model.forecastBias、Model.supplyRisk、Order.costPressure、Order.demandPressure、Order.shortageRisk、Process.queuePressure、PurchaseOrder.expeditePressure、PurchaseOrder.procurementDelay、Supplier.deliveryDelay、Supplier.procurementDelay、WIPLot.feedPressure、WorkOrder.releasePressure 由显式规格绑定取值（每条公式的口径见派生规格表，规格缺失会在播种时直接报错，不会退回占位）。",
+  "types": 32,
+  "objects": 4425,
+  "cells": 6363,
+  "measuredCells": 4171,
+  "derivedCells": 2192
+ },
+ "canary": {
+  "swapped": 4154,
+  "canary1": true,
+  "landFixed": true,
+  "canary3": true
+ },
+ "arms": {
+  "real": {
+   "id": "sims_4cbv5a4v3fx5fjtd",
+   "five": {
+    "changedCells": 4630,
+    "exposedOrders": 150,
+    "exposure": 15663001584,
+    "magMedian": 48.197617665392,
+    "magMax": 84.978834601446
+   },
+   "bp0": {
+    "n": 130,
+    "min": 27.7166,
+    "max": 182.7257,
+    "mean": 90.59934461538464,
+    "atClamp100": 49
+   },
+   "bp3": {
+    "n": 130,
+    "min": 35.681462494201,
+    "max": 57.898393946075,
+    "mean": 49.2267050350109,
+    "atClamp100": 0
+   },
+   "blockedEdge": {
+    "traceRows": 260,
+    "amountMax": 10.209374116785,
+    "amountP90": 9.967842338612
+   },
+   "curTick": 3
+  },
+  "placeholder": {
+   "id": "sims_5p2taydthhhtq70b",
+   "five": {
+    "changedCells": 4832,
+    "exposedOrders": 150,
+    "exposure": 15663001584,
+    "magMedian": 51.467599502441004,
+    "magMax": 97
+   },
+   "bp0": {
+    "n": 130,
+    "min": 0,
+    "max": 98,
+    "mean": 49.05384615384615,
+    "atClamp100": 0
+   },
+   "bp3": {
+    "n": 130,
+    "min": 10.70365504596,
+    "max": 44.25729707921,
+    "mean": 29.34002415178104,
+    "atClamp100": 0
+   },
+   "blockedEdge": {
+    "traceRows": 260,
+    "amountMax": 7.856816872474,
+    "amountP90": 7.180764978319
+   },
+   "curTick": 3
+  }
+ },
+ "fiveArmDiff": {
+  "changedCells": -202,
+  "exposedOrders": 0,
+  "exposure": 0,
+  "magMedian": -3.269981837049002,
+  "magMax": -12.021165398554004
+ },
+ "terminalDiff": {
+  "total": 5287,
+  "measuredSelf": 4151,
+  "propagated": 1136,
+  "propagatedByVar": {
+   "overduePressure": 60,
+   "qualificationQueue": 18,
+   "changeoverPressure": 30,
+   "deliveryHoldRisk": 30,
+   "clearanceQueueDays": 1,
+   "handlingBacklog": 85,
+   "drawdownPressure": 18,
+   "queueDays": 30,
+   "transferPressure": 17,
+   "repairBacklog": 193,
+   "windowSqueeze": 13,
+   "switchPressure": 5,
+   "turnoverPressure": 24,
+   "backlogHorizonDays": 6,
+   "backlogPriceTop": 6,
+   "backlogQtyTop": 6,
+   "shortageRisk": 1,
+   "costPressure": 2,
+   "demandPressure": 1,
+   "splitPressure": 254,
+   "promiseRisk": 50,
+   "collectionPressure": 2,
+   "queuePressure": 1,
+   "inspectBacklog": 260,
+   "inboundExpeditePressure": 13,
+   "reviewPressure": 10
+  }
+ },
+ "topTerminal": [
+  {
+   "objectId": "obj_order_SO-900269",
+   "stateVar": "unitPrice",
+   "before": 29,
+   "after": 22660,
+   "delta": 22631
+  },
+  {
+   "objectId": "obj_order_SO-900367",
+   "stateVar": "unitPrice",
+   "before": 52,
+   "after": 22660,
+   "delta": 22608
+  },
+  {
+   "objectId": "obj_order_SO-900276",
+   "stateVar": "unitPrice",
+   "before": 37,
+   "after": 22638,
+   "delta": 22601
+  },
+  {
+   "objectId": "obj_order_SO-900379",
+   "stateVar": "unitPrice",
+   "before": 39,
+   "after": 22638,
+   "delta": 22599
+  },
+  {
+   "objectId": "obj_order_SO-3420",
+   "stateVar": "unitPrice",
+   "before": 85,
+   "after": 22660,
+   "delta": 22575
+  },
+  {
+   "objectId": "obj_order_SO-900072",
+   "stateVar": "unitPrice",
+   "before": 87,
+   "after": 22660,
+   "delta": 22573
+  },
+  {
+   "objectId": "obj_order_SO-900152",
+   "stateVar": "unitPrice",
+   "before": 30,
+   "after": 22594,
+   "delta": 22564
+  },
+  {
+   "objectId": "obj_order_SO-900187",
+   "stateVar": "unitPrice",
+   "before": 47,
+   "after": 22594,
+   "delta": 22547
+  },
+  {
+   "objectId": "obj_order_SO-900191",
+   "stateVar": "unitPrice",
+   "before": 70,
+   "after": 22616,
+   "delta": 22546
+  },
+  {
+   "objectId": "obj_order_SO-3534",
+   "stateVar": "unitPrice",
+   "before": 20,
+   "after": 22528,
+   "delta": 22508
+  }
+ ]
+}
