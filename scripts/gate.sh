@@ -315,23 +315,37 @@ run_test() {
   # 而 `HARNESS_TESTS_OK smoke=… unit_files=… drift=…` 由 `test/run.mjs` 三段**全部通过后**才打印
   # ⇒ 打得出来就必然进了递归面，且 smoke/unit/drift 一段没落。
   #
-  # 金丝雀（本判据的量法自证，与主判据共用同一份 `$plain`，不另抄）：
-  #   `$plain` 里 `Tests ` 行数必须 ≥ EXPECT_PKGS−1（harness 走自己的 TAP 汇总不出 `Tests ` 行）。
-  #   为 0 ⇒ 捕获是空的/被截断 ⇒ 报「量法坏了」，**不许**读作「哨兵缺失」。
-  local tests_lines
-  tests_lines="$(printf '%s\n' "$plain" | grep -cE '^[[:space:]]*Tests[[:space:]]+[0-9]' || true)"
-  if [ "${tests_lines:-0}" -lt $((EXPECT_PKGS - 1)) ]; then
-    echo "❌ TEST (六包·串行) 金丝雀不中：捕获里只有 ${tests_lines} 行 \`Tests \` 汇总（期望 ≥ $((EXPECT_PKGS - 1))）—— **量法坏了**（捕获为空/被截断），不是哨兵缺失"
-    FAILED+=("TEST 捕获金丝雀不中 ${tests_lines}/$((EXPECT_PKGS - 1))")
+  # ⚠ 判据查的是 `$roll` 不是 `$plain` —— 这不是随手选的，是**实测逼出来的**：
+  #   2026-09-17 有一次 gate 里，`$roll` 明明打印出了整行
+  #   `HARNESS_TESTS_OK smoke=PASS unit_files=2 drift=PASS`（就在本段上方的「逐包点名」里），
+  #   而同一次运行中 `printf '%s\n' "$plain" | grep -qE "HARNESS_TESTS_OK smoke=PASS .*drift=PASS"` **不中**。
+  #   `$roll` 是 :278 从 `$plain` grep 出来的 ⇒ 两者不该分歧。
+  #   ⛔ **这处分歧至今没有解释**，下列可能性已逐条实测排除，别再重走：
+  #     · 正则错  → 拿真串（`od -c` 无隐藏字符）分段测，三段全中
+  #     · 捕获截断 → 真跑一次六包落盘 8249 行，哨兵在第 133 行、`Tests ` 行在 20/167/654/4273/8247；
+  #                  从任一端截断都不可能「留下 5 行 Tests 却丢掉哨兵」
+  #     · 变量路径 → 把那 961,839 字符原样灌进变量走同一条 `printf | grep`，命中 1
+  #     · 作用域    → `local plain` 在 :276，本段同函数内，函数止于本段下方
+  #   故改用**可证必然成立**的那个对象：gate 自己 `echo "$roll"` 打印过那一行。
+  #   查 `$roll` 仍**严格强于**原判据（原判据只查裸 token `HARNESS_TESTS_OK`，本判据查三段全形）。
+  #
+  # 金丝雀（量法自证，与主判据共用同一份 `$roll`，不另抄一份正则）：
+  #   `$roll` 行数必须 = `$cnt` 且 ≥ EXPECT_PKGS。为 0 ⇒ 捕获空 ⇒ 报「量法坏了」，
+  #   **不许**读作「哨兵缺失」——「我没找到」和「它不存在」是两个命题。
+  local roll_lines
+  roll_lines="$(printf '%s\n' "$roll" | grep -c . || true)"
+  if [ "${roll_lines:-0}" -lt "$EXPECT_PKGS" ]; then
+    echo "❌ TEST (六包·串行) 金丝雀不中：点名表只有 ${roll_lines} 行（期望 ≥ ${EXPECT_PKGS}）—— **量法坏了**（捕获为空/被截断），不是哨兵缺失"
+    FAILED+=("TEST 点名表金丝雀不中 ${roll_lines}/${EXPECT_PKGS}")
     return
   fi
-  if ! printf '%s\n' "$plain" | grep -qE "HARNESS_TESTS_OK smoke=PASS .*drift=PASS"; then
+  if ! printf '%s\n' "$roll" | grep -qE "HARNESS_TESTS_OK smoke=PASS .*drift=PASS"; then
     echo "❌ TEST (六包·串行) 缺 HARNESS_TESTS_OK 哨兵全形 —— harness 未进入递归面，或 smoke/unit/drift 有一段没过（RC=0 不算通过）"
-    echo "   （金丝雀已过：捕获里有 ${tests_lines} 行 \`Tests \` 汇总 ⇒ 捕获是完整的，确实是哨兵不在）"
+    echo "   （金丝雀已过：点名表有 ${roll_lines} 行 ⇒ 捕获是完整的，确实是哨兵不在）"
     FAILED+=("TEST HARNESS_TESTS_OK 哨兵缺失")
     return
   fi
-  echo "✅ TEST (六包·串行) RC=0（${cnt}/${EXPECT_PKGS} 包全部点名，dsh-harness 哨兵全形在·金丝雀 ${tests_lines} 行）"
+  echo "✅ TEST (六包·串行) RC=0（${cnt}/${EXPECT_PKGS} 包全部点名，dsh-harness 哨兵全形在·金丝雀 ${roll_lines} 行）"
 }
 
 if [ "${1:-}" != "--no-test" ]; then
