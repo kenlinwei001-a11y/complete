@@ -1,6 +1,6 @@
 # WO-SIM-EDGE-WIRE · 施工+复验裁决执行报告（2026-09-17）
 
-分支 `claude/handoff-edge-wire` @ 4f10274d2（base = real-cells@4bde203f + desat3@f072c8dc 合并树，
+分支 `claude/handoff-edge-wire`（base = real-cells@4bde203f + desat3@f072c8dc 合并树，
 merge 树与 merge-tree 干跑逐字节一致）。本报告覆盖：复验方 RECHECK 裁决的 D1–D6 逐项 +
 播种模式核查 + 基线自证。全部数字出自本目录五个可复跑脚本（金丝雀内嵌，否定结论均附命中证据）。
 
@@ -14,7 +14,7 @@ merge 树与 merge-tree 干跑逐字节一致）。本报告覆盖：复验方 R
 
 环境基线：`pnpm install` RC=0 · `pnpm -r build` RC=0 · `pnpm -r typecheck` RC=2（恰 4 条**前置**红：
 agentcore/test `capability-map-live-seam.test.ts:398` ×1 + `rule-discovery-seam.test.ts:274-275` ×3，零新增）·
-datacore vitest 全量：避让排队中，结果到即补本节。
+datacore vitest 全量：**仓主叫停于 124/362，18 条 × 判 NOT-ADJUDICATED**（详见末节「vitest 基线叫停记录」）。
 
 ---
 
@@ -144,8 +144,33 @@ D5 落点格（`obj_model_方形-LFP`）轨迹：3.8819 → 2.398979（120）→
 2. census 首跑：金丝雀①把「值差法 4,154」与「绑定法 4,171」断言相等，死在已标定撞值 17 格上；
    拆成「容差 0–50」+「28 变量按名全覆盖」两半后全绿。
 
+## vitest 基线 · 全量叫停记录（判 NOT-ADJUDICATED）
+
+- 时间线：15:12–15:20 三次探针确认窗口干净（vitest 树根 2→1→0，量法过双向金丝雀）→
+  15:21:28 起跑 datacore 全量（362 文件）→ 仓主叫停。**无 RC、终态汇总未打印 ⇒
+  18 条 × 的断言原文不可恢复**（vitest 只在收尾汇总打印失败详情）。
+- 收成：124 文件全 ✓；10 文件 ❯ 共 18 用例 ×：
+  `seed-demo-propagation`(2) · `sim-seed-world.seam`(4/4) · `sim-order-real-fields.seam`(3) ·
+  `sim-sessions-projection.seam`(3) · `dynamic-drill-resolve.seam`(1) · `engine-scope-fidelity.seam`(1) ·
+  `factor-scope-singlesource.seam`(1) · `object-constraint-refs.seam`(1) · `m11-calibration`(1) ·
+  `column-security`(1)。
+- **为什么这 18 条 × 不可归因到合并树**（防泥潭纪律：污染窗口产物，不降 PASS 也不记 FAIL）：
+  ① 单用例耗时 17s–**58min**、单文件最高 **75min**（`sim-seed-world.seam` 4 用例烧 4,527,806ms）——
+  清洁环境应为秒–分钟级，这是 CPU 饥荒指纹，不是断言指纹；
+  ② 17:41 起另一 agent（worktree `complete/.claude/worktrees/agent-a64bc25e38e6d3478`）并发
+  datacore vitest，且**同跑 `seed-demo-propagation.test.ts`**（与 × 名单重叠）；
+  ③ 起跑时窗口探针为 0 ⇒ 污染是中途侵入，不是起步误判。
+- 与本单的关系：× 名单里的 `seed-demo-propagation`（铁律 1.5「9.75 不许再出现」守门文件）与
+  `sim-seed-world.seam`（播种模式守门）正是 D5/播种核查的接缝 —— 但 D5 四数、普查、稳态全部是
+  本目录脚本在**独立会话的当场实测**（RC=0、金丝雀在案），其结论不靠该污染窗口追认，也不被它推翻。
+- 叫停后处置（19:09）：该 agent 两个孤儿 worker（ppid=1，父进程已死，合计 ~56% CPU 白烧）
+  已按确切 pid 清掉；随后同一 worktree 起了新的单文件跑（`enterprise-state.seam.test.ts`，
+  `--maxWorkers=1`）⇒ **datacore vitest 窗口此刻仍被占**，本机 ≤1 并发纪律下本单不抢。
+- 下一步（**等仓主点头，不擅自再起 vitest**）：清洁窗口逐文件重跑上述 10 个文件
+  （单文件串行、各自 .txt/.rc、断言原文当场落盘），才能把 18 条 × 归因到「环境」或「合并树」。
+
 ## 剩余
 
-- datacore vitest 全量基线：避让中（当前 2 棵 vitest 树在跑），一到窗口即跑并补报。
+- datacore vitest 基线：见上节 —— 全量已被叫停，剩 10 个 ❯ 文件的归因重跑，等点头。
 - N=1 防腐断言的实现：判据与落法已给（D6②），**等派单方点头**再写测试代码。
 - MaterialBalance.gapPressure 若要接出边 = 新造链路，另立 WO（D6① 已点名）。
