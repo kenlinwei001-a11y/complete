@@ -402,10 +402,18 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_process_queue_to_line_blocked", "demo_line_blocked_to_wo_release",
         "demo_wo_release_to_model_supply_risk", "demo_wo_release_to_model_cost",
       ],
+      // WO-SIM-DAMPING：两条**阻尼边**（全表仅有的负系数物理边）。本组同样不额外造源 ——
+      // 它们的源恰好就是上面「扩面档 2」里两条正边的**目标**：
+      //   `demo_model_demand_to_fg_drawdown`  → FinishedGoodsInventory.drawdownPressure →（本组①）
+      //   `demo_base_load_to_transfer_pressure` → InterBaseTransfer.transferPressure   →（本组②）
+      // ⇒ 由同一批源头（订单需求 / 基地负载）带动。两条各留 1 拍，故最早在第 3–4 拍进 trace。
+      // 🔴 它们**必须出现在这里**：一条阻尼边若恒不触发，屏上看不出任何区别 ——
+      //    「图里有一条负边」不度量「压力真的会回来」，正是本仓反复栽的那个形态。
+      阻尼: ["demo_fg_drawdown_relieves_model_demand", "demo_transfer_relieves_base_load"],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // ── 完整性：十一组 46 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    // ── 完整性：十二组 48 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
     //
     // 🔴 口径修正（WO-ADVERSARY-REACTION）：目录里从此有两类边，**必须分开数**——
     //  · **物理边**（`reaction == null`）：默认世界照跑，逐条都要在上面的 trace 里出现；
