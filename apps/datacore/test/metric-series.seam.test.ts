@@ -343,9 +343,19 @@ describe("WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节�
     expect(util.baseline[0]).toBeNull();
     expect(util.baseline[1]).toBeNull();
     // 金丝雀：这条指标**后面确实有值** —— 否则"前两格是 null"在一条全 null 的死指标上也全绿。
-    expect(util.actual[2]).toBe(ACT_LOAD * 0.5); // 4 × 0.5 = 2
+    // WO-SIM-CALIBRATION：原文 `ACT_LOAD × 0.5`，`0.5` 是标定前的系数；
+    // 现在每拍入流系数是 `稳态增益 × λ`，故从规则表现取。本行的职责是**金丝雀**
+    // （「后面确实有值」），不是钉死某一次标定的数。
+    const cBaseToLine = ((await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json() as {
+      items: { key: string; coefficient: number }[];
+    }).items.find((r) => r.key === "demo_base_load_to_line_util")?.coefficient;
+    expect(cBaseToLine, "取不到 demo_base_load_to_line_util 的系数").toBeDefined();
+    expect(cBaseToLine, "该边系数为 0 ⇒ 这条金丝雀会在一条恒 0 的线上全绿").toBeGreaterThan(0);
+    const expectedUtil = Math.round(ACT_LOAD * cBaseToLine! * 1e12) / 1e12;
+    expect(expectedUtil, "金丝雀期望值算成 0 ⇒ 下面两句自洽成绿").toBeGreaterThan(0);
+    expect(util.actual[2]).toBe(expectedUtil);
     // 且 `null` 不是把整条线读空：两条线在这一格都是同一个真实数。
-    expect(util.baseline[2]).toBe(ACT_LOAD * 0.5);
+    expect(util.baseline[2]).toBe(expectedUtil);
 
     // 两条线与 `ticks` **等长**（缺格是 `null` 占位，不是把格子删掉 —— 删掉就对不齐 x 轴了）。
     for (const m of out.metrics) {
