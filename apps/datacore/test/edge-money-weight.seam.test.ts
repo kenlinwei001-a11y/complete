@@ -33,6 +33,11 @@ import {
   type PropagationRule,
   type TickState,
 } from "@platform/contracts";
+// §3b 的分支判据从**真值**读，不从文本猜：
+// `demoPropagationRulesWithDomain()` 是播种与测试共用的同一支（seed.ts 该函数注释原文）；
+// `STATE_VAR_DOMAINS` 是「这个量纲会不会被引擎衰减」的全平台唯一出处。
+import { demoPropagationRulesWithDomain } from "../src/seed.js";
+import { STATE_VAR_DOMAINS } from "../src/synthetic/battery.js";
 
 const SEED_TS = join(dirname(fileURLToPath(import.meta.url)), "../src/seed.ts");
 
@@ -238,24 +243,35 @@ describe("§3 描述里的系数 = 真系数", () => {
    *     即「引擎真收到的那个数」与「屏上承诺的那个数」之间那一步换算也被咬住。
    *     旧断言里这一步根本不存在（那时没有这一步）。
    */
-  function scan(src: string): { key: string; gain: number; stated: number[]; ok: boolean }[] {
+  /**
+   * 把 `seed.ts` 切成「一条规则一块」。**§3 与 §3b 共用这一支** ——
+   * ⛔ 不许各抄一份切块正则：抄了就是装饰品，改主正则时另一份拿旧的去切、照样绿
+   * （CLAUDE.md 铁律 0.6「门脚本里的金丝雀必须与主逻辑共用同一份实现」同一条）。
+   */
+  function ruleBlocks(src: string): { key: string; body: string }[] {
     const idxs: { key: string; at: number }[] = [];
     const re = /key:\s*"([a-z0-9_]+)"/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(src)) !== null) idxs.push({ key: m[1]!, at: m.index });
+    return idxs.map((x, i) => ({
+      key: x.key,
+      body: src.slice(x.at, i + 1 < idxs.length ? idxs[i + 1]!.at : src.length),
+    }));
+  }
+
+  function scan(src: string): { key: string; gain: number; stated: number[]; ok: boolean }[] {
     const out: { key: string; gain: number; stated: number[]; ok: boolean }[] = [];
-    for (let i = 0; i < idxs.length; i++) {
-      const body = src.slice(idxs[i]!.at, i + 1 < idxs.length ? idxs[i + 1]!.at : src.length);
+    for (const blk of ruleBlocks(src)) {
       // 稳态增益 = `inflowCoefficient(...)` 的实参。⛔ 不许回落去抽裸字面量：
       // 抽到裸数就意味着有人绕过了 `inflowCoefficient`，那正是本单要堵的口。
-      const cm = /coefficient:\s*inflowCoefficient\((-?[\d.]+)\)/.exec(body);
-      if (!cm) continue; // 不是传导规则块
-      const dm = /description:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
+      const cm = /coefficient:\s*inflowCoefficient\((-?[\d.]+)\)/.exec(blk.body);
+      if (!cm) continue; // 不是传导规则块（或它走的是「不预乘 λ」那一支，见 §3b 支②）
+      const dm = /description:\s*"((?:[^"\\]|\\.)*)"/.exec(blk.body);
       if (!dm) continue;
       const stated = [...dm[1]!.matchAll(/[×x]\s*(-?[\d.]+)/g)].map((x) => Number(x[1]));
       if (stated.length === 0) continue; // 描述里没写数 ⇒ 不判定（合法）
       const gain = Number(cm[1]);
-      out.push({ key: idxs[i]!.key, gain, stated, ok: stated.some((s) => Math.abs(s - gain) < 1e-9) });
+      out.push({ key: blk.key, gain, stated, ok: stated.some((s) => Math.abs(s - gain) < 1e-9) });
     }
     return out;
   }
@@ -285,15 +301,87 @@ describe("§3 描述里的系数 = 真系数", () => {
   // 描述承诺的是**稳态**（`target = source × 增益`），而引擎每拍做的是 `target += source × coefficient`。
   // 两者之间隔着一次 `× λ`。这一步若被绕过（有人直接写裸字面量），屏上那句话就又变成谎话，
   // 而 §3 只比"描述 vs 实参"，**看不见这一步** —— 故这里单独咬。
-  it("全部 50 条边都经 inflowCoefficient，且 λ 取自 C35 规则参数（禁内联 0.37）", () => {
-    // ⚠ 必须**行首锚定**：不锚定会把注释里提到的 `coefficient: z.number()` 也算成一条边
+  /**
+   * ── 口径订正（WO-SALES-RING 复验收编）：旧断言「**全部** 50 条边都经 `inflowCoefficient`」已过期 ──
+   *
+   * **旧断言的隐含前提**：每条边的目标都会衰减，所以入流一律要预乘 λ。
+   * **它不成立**：`inflowCoefficient(g) = g × λ` 服务的是**会衰减**的压力族 ——
+   * 目标每拍衰减 λ ⇒ 稳态 = 入流/λ ⇒ 入流预乘 λ 才落到稳态增益 g。
+   * 而引擎只衰减**已声明取值域**的量纲（`propagation.ts` 那句「只动声明过取值域的格子」，
+   * 且 `decayRateOf` 只遍历 `Object.keys(domains)`）。
+   * 目标**不在** `STATE_VAR_DOMAINS` 里 ⇒ 引擎不衰减 ⇒ **没有 λ 可约** ⇒
+   * 预乘的那个 λ 不会被下游约掉，而是**直接留在读数里**。
+   *
+   * 实测代价（真后端 SEED_DEMO=1）：三条订单真实字段边曾写 `inflowCoefficient(1)`，
+   * 屏上「在手订单最大单台数（套）」因此**长期只报真值的 37%** ——
+   * 4680-NCM `16131 → 5968.47`、方形-LFP `21777 → 8057.49`，比值逐位 `0.370000`。
+   *
+   * **形态（铁律 0.6 句式）**：
+   * > 「我用『这条边经过了 `inflowCoefficient`』当作『它的标定是对的』的证据，而前者并不度量后者
+   * >   —— 对不衰减的目标，预乘 λ 恰恰是错的。」
+   *
+   * ⛔ **修法不是删门、更不是加白名单**（白名单迟早被例外吃光），而是**把口径收窄成两支**：
+   *   支① 目标 ∈ `STATE_VAR_DOMAINS`（会衰减）⇒ **必须**预乘 λ；
+   *   支② 目标 ∉ `STATE_VAR_DOMAINS`（不衰减）⇒ **必须不**预乘。
+   * 收窄后**比旧门更强**：旧门只有支①这一半，支② 那个方向（本单真正踩到的坑）**一次都没被守过**。
+   *
+   * **分支判据从真值读、不从文本猜**：`demoPropagationRulesWithDomain()` 是播种与测试**共用的同一支**
+   * （`seed.ts` 该函数注释原文「测试与播种共用这一支，不许各算一遍」），
+   * 与 `seed-demo-propagation.test.ts` §② 增益预算门的 `STATE_VAR_DOMAINS[r.targetStateVar] !== undefined`
+   * **是同一条判据线**，不再各立一份。文本侧只回答「这一行是**怎么写的**」——
+   * 这一问**值判不了**：`0.222` 既可能是 `inflowCoefficient(0.6)` 也可能是有人手写的裸 `0.222`，
+   * 两者数值逐字节相同。故文本与真值**必须 join**，缺任一半这道门都瞎一只眼。
+   */
+  it("系数标定分两支：会衰减的目标必须预乘 λ，不衰减的目标必须不预乘（λ 仍取自 C35）", () => {
+    // ── 真值侧：规则表（与播种同一支）────────────────────────────────────────────
+    const rules = demoPropagationRulesWithDomain();
+    // 金丝雀①：规则表必须是真数量级（读成空时下面每一句都会在空集上恒真）
+    expect(rules.length, "规则表读成空/读少了 ⇒ 取数坏了，不是「边变少了」").toBeGreaterThanOrEqual(50);
+
+    // ── 文本侧：每条规则的 coefficient **是怎么写的**（包了 inflowCoefficient 还是裸数）──
+    // ⚠ 必须**行首锚定**：不锚定会把注释里提到的 `coefficient: z.number()` 也算进来
     // （实测当场报「有边绕过 inflowCoefficient」，而那根本不是字段，是一句中文注释里的引用）。
     // 形态：「我用『源码里出现了 coefficient:』当作『这里有一条边的系数字段』的证据。」
-    const blocks = [...SRC.matchAll(/^[ \t]*coefficient:[ \t]*([^\n]*)/gm)].map((m) => m[1]!);
-    // 金丝雀：抽到的 coefficient 行数必须是真数量级（抽 0 行时下面两句毫无意义）
-    expect(blocks.length, "seed.ts 里 coefficient 行数（抽 0 行 = 抽取器坏了）").toBeGreaterThanOrEqual(50);
-    const bare = blocks.filter((b) => !b.trimStart().startsWith("inflowCoefficient("));
-    expect(bare, "有边绕过 inflowCoefficient 直接写裸系数 ⇒ 它的稳态会比描述承诺的大 1/λ 倍").toEqual([]);
+    const wrapped = new Map<string, boolean>();
+    for (const blk of ruleBlocks(SRC)) {
+      const cm = /^[ \t]*coefficient:[ \t]*([^\n]*)/m.exec(blk.body);
+      if (cm) wrapped.set(blk.key, cm[1]!.trimStart().startsWith("inflowCoefficient("));
+    }
+    // 金丝雀②：文本侧抽到的条数必须与真值表同量级（抽 0 行 = 抽取器坏了）
+    expect(wrapped.size, "seed.ts 里抽到的 coefficient 行数（抽 0 行 = 抽取器坏了）").toBeGreaterThanOrEqual(50);
+    // 金丝雀③ · join 完整性：真值表里的每条规则都必须在文本里找得到对应行。
+    // 少一条就意味着它**两支都进不去**，会被静默漏掉 —— 这正是「扫描器自洽成绿」的经典形态。
+    const unjoined = rules.filter((r) => !wrapped.has(r.key)).map((r) => r.key);
+    expect(unjoined, "真值表里的规则在 seed.ts 文本里找不到 coefficient 行 ⇒ join 坏了，它会被两支同时漏掉").toEqual([]);
+
+    // ── 分两支（判据来自真值：目标在不在取值域表）────────────────────────────────
+    const decaying = rules.filter((r) => STATE_VAR_DOMAINS[r.targetStateVar] !== undefined);
+    const exogenous = rules.filter((r) => STATE_VAR_DOMAINS[r.targetStateVar] === undefined);
+
+    // ⛔ 反空绿守卫：任一支扫成空集，那一支的 `toEqual([])` 就在空集上恒真 = 门瞎了一只眼。
+    // （域表读成空 ⇒ 支①空；域表把所有量纲都收进去 ⇒ 支②空。两种都必须当场报「量法坏了」。）
+    expect(decaying.length, "「会衰减」这一支是空集 ⇒ 量法坏了（STATE_VAR_DOMAINS 读成空？），支① 恒真").toBeGreaterThan(0);
+    expect(exogenous.length, "「不衰减」这一支是空集 ⇒ 量法坏了，本门退化成旧的单边门，支② 恒真").toBeGreaterThan(0);
+
+    // 支①：会衰减 ⇒ 必须预乘 λ（漏乘 ⇒ 稳态比描述承诺的大 1/λ ≈ 2.70 倍）
+    const missingLambda = decaying
+      .filter((r) => wrapped.get(r.key) === false)
+      .map((r) => `${r.key}(目标 ${r.targetStateVar} 已声明取值域)`);
+    expect(
+      missingLambda,
+      "目标已声明取值域（引擎每拍按 λ 衰减）却直接写裸系数 ⇒ 稳态会比描述承诺的大 1/λ 倍",
+    ).toEqual([]);
+
+    // 支②：不衰减 ⇒ 必须不预乘（多乘 ⇒ 读数恒为真值的 λ 倍，实测 0.37×）
+    const spuriousLambda = exogenous
+      .filter((r) => wrapped.get(r.key) === true)
+      .map((r) => `${r.key}(目标 ${r.targetStateVar} 不在取值域表)`);
+    expect(
+      spuriousLambda,
+      "目标不在取值域表（引擎不衰减、无 λ 可约）却预乘了 λ ⇒ 读数恒为真值的 λ 倍" +
+        "（实测：backlogQtyTop 曾长期只报 max(Order.qty) 的 37%，16131 报成 5968.47）",
+    ).toEqual([]);
+
     // λ 必须是 C35 那一个，不是这里内联的一个同值字面量（R14/RL5）。
     const helper = /const inflowCoefficient[\s\S]*?\n};/.exec(SRC)?.[0] ?? "";
     expect(helper, "找不到 inflowCoefficient 定义 ⇒ 抽取器坏了").toContain("PRESSURE_DECAY_PER_TICK");
