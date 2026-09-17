@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-12",
+  "generatedAt": "2026-09-17",
   "ontology": {
     "invariants": [
       "R1",
@@ -2611,9 +2611,7 @@
         "R6"
       ],
       "breakpoints": [],
-      "artifacts": [
-        "apps/datacore/src/synthetic/battery.ts"
-      ],
+      "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-sop-balance-1to1.md": {
@@ -3271,7 +3269,6 @@
       "PRD-sandbox-metro-semantics.md",
       "PRD-segment-scoped-gap-attribution.md",
       "PRD-skill-migration.md",
-      "PRD-slice-consumption-governance-20260912.md",
       "PRD-topo-realdata.md",
       "PRD-v2-slice.md"
     ],
