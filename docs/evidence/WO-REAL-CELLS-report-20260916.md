@@ -187,7 +187,7 @@ Base.loadIndex 74–552 · Material.shortageRisk −161~51 · Model.demandLoad 2
 | ① | 红门台账更正（WO 称 6/3 红是 desat3 本地态，本树 6/6 绿） | 无，仅台账 |
 | ④ | forecastBias 本树恒 0（真值：seed 的 totalDemand≡Σqty 恒等，WO 的 49–77 在 desat3 树） | 保留死口径 or 换式 |
 | ⑤ | desat3 门 ⑤e 裁决（budgetTicks 2→95）→ 验收基线或需重算 | 不属本单，等裁决 |
-| ⑥ | **⑤b 基树前置红**（object-constraint-refs §⑤b）：基树 0207b9c6 与本树**逐字节同错**（期望 zigong-pack 实得 jinhua-calendering）；本单代码解析上不在其链路（该测试不播种规格 ⇒ §3 校验跳过、不调 recompute、比较器与 Line 播种零改动）。不属本单修，**需要 WO-CONSTRAINT-REFS 的主人裁决** | 集成线上一条确定性语义红 |
+| ~~⑥~~ | **已闭（2026-09-17 收编）**：根因 = 比较器字符串支路走 UTF-16 码元序（码元序最大=金华），与测试钉的值序（zh 序最大=自贡）在种子加自贡后分叉 ⇒ 确定性红。修 = `solvers/service.ts` cmp 字符串支路改 `localeCompare`（WO-CONSTRAINT-REFS-5B-FIX，基 0207b9c6；红复现 RC=1 → 修后 8/8 → 变异反红 → 复原 8/8）。**已 cherry-pick 进本分支**（`496523a33`），收编方本树复验 **8/8 RC=0**（⑤b 绿 23s）、build RC=0。遗留裁项：localeCompare 依赖运行时默认 locale（本机 zh-CN），测试与实现同口径故任意 locale 自洽；若 canonical 要求跨机逐字节一致，另开单钉显式 locale | — |
 
 ## 落地时抓到的 WO 陷阱表之外的坑（第 11、12 个）
 
@@ -199,5 +199,7 @@ Base.loadIndex 74–552 · Material.shortageRisk −161~51 · Model.demandLoad 2
 
 - **停在哪**：分支 tip（见下方 push 记录）。§1/§2/§3/五道臂/接缝测试/反向臂/四包门（含 4+24 红逐条归属）
   全部交付；**③（仓主全批）已落：主判据 4,171 过线**，变更面三门 + build + 真服务烟囱全 RC=0。
-- **还差什么**：① forecastBias 处置（悬置项④，建议保留死口径）② 悬置项⑥ 的 ⑤b 前置红派修
-  （仓主已授权我按铁律决断 ⇒ 派单）③ L2 集成门（并 canonical 时安静时间窗全量）。其余判据已全绿。
+- **还差什么**：① forecastBias 处置（悬置项④，建议保留死口径）② ~~悬置项⑥ 的 ⑤b 前置红派修~~（**2026-09-17 已收编闭合**，见悬置项表）
+  ③ L2 集成门（并 canonical 时安静时间窗全量）。其余判据已全绿。
+- **打回复修（2026-09-17）已全部落盘**：退①注释换诚实出处（式子不动，探针逐字节证口径自洽）·
+  退②臂2 换全扫上下文规则（新catch 两条已归档，归仓主裁）· 机器句已补 §6/SOP §4。三门 RC=0（seam 19/19 · 守门员+slice 10/10 · build）。
