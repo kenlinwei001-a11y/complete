@@ -19,11 +19,14 @@ import { diffTickStates, isReactionRule, partitionPropagationRules, type SimCoun
  * 所以本文件一律走**真路由 inject**（真 seed → 真规则 → 真会话 → 真 tick），不直调引擎函数。
  *
  * ── 用哪条边（为什么是这条）───────────────────────────────────────────────────────
- * `demo_base_load_to_line_util`：`Base.loadIndex --line_belongs_to_base(0.5, delay 1)--> Line.utilPressure`
+ * `demo_base_load_to_line_util`：`Base.loadIndex --line_belongs_to_base(delay 1)--> Line.utilPressure`
  * （`src/seed.ts` 出厂种子，方向已由 WO-SANDBOX-PROP-DIRECTION 钉死）。选它的理由是它**确实有下游影响
- * 且影响量可解析**：源置 20 ⇒ 每条产线 +10（20×0.5），延迟 1 tick 到达。
- * 于是"变了"这件事可以断言成**具体的数**（10 → 0），而不是"不等于"就算过 ——
+ * 且影响量可解析**：源置 20 ⇒ 每条产线 +`20 × 该边系数`，延迟 1 tick 到达。
+ * 于是"变了"这件事可以断言成**具体的数**（基线 → 0），而不是"不等于"就算过 ——
  * 「不等于」那种断言，规则被换成任意别的、系数读错、贡献落到别的对象上，它都照样绿。
+ * ⚠ 本段原文把系数写成 `0.5`、把期望写成 `+10`。WO-SIM-DESAT-3 ② 改了该字段的口径
+ *   （每拍入流 = 稳态增益 × λ）⇒ 实测值现为 `20 × 0.185 = 3.7`。**注释里不再写系数**：
+ *   它是会漂的量，写进注释就是第二份真相源；用例一律从规则表现算。
  */
 
 const enableSim = async (t: TestApp) =>
@@ -101,16 +104,28 @@ const lineIdsOf = async (t: TestApp): Promise<string[]> =>
 
 describe("WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → 结果真的变）", () => {
   // ── ① 引擎接缝：关掉边 ⇒ 下游状态变量真的变，且变的方向与量级可解释 ────────────────
-  it("🔴 SEAM：屏蔽 demo_base_load_to_line_util ⇒ Line.utilPressure 由 10 变 0（方向↓·量级 20×0.5）", async () => {
+  it("🔴 SEAM：屏蔽 demo_base_load_to_line_util ⇒ Line.utilPressure 由「系数×20」变 0（方向↓）", async () => {
     const t = await seededApp();
     const lineIds = await lineIdsOf(t);
     expect(lineIds.length).toBe(10); // 金丝雀：链路真的种了，本用例不是空转
 
-    // (a) 基线：边开着，延迟 1 tick 后每条产线各得 20×0.5 = 10。
+    // ── ⚠ 金值改（WO-SIM-DESAT-3 ②）：10 → 3.7，改成从规则表现算 ────────────────────
+    // 本单把 `coefficient` 的口径从「稳态增益」改成「每拍入流」= 稳态增益 × λ。
+    // 这条边的稳态增益仍是 **0.5（预算内未缩）**，字段值变成 `0.5 × 0.37 = 0.185`
+    // ⇒ 每条产线拿到 `20 × 0.185 = 3.7`（实测 expected 3.7 to be 10，比值恰为 1/λ = 2.7027）。
+    // **不贴新字面量**：贴了就是在断言里养第二份系数副本，下次重标又漂；
+    // 从规则表取则本用例的判据回到它本来要说的那句 —— 「关掉这条边，下游由『系数×源』变 0」。
+    // 覆盖面没缩：下面仍然逐条产线精确 `toBe`，且新增了「基线必须 > 0」防 0-vs-0 自洽成绿。
+    const utilRule = (await t.repos.sim.listPropagationRules("demo", true)).find((r) => r.key === RULE_KEY);
+    expect(utilRule, `规则表里找不到 ${RULE_KEY} ⇒ 取数坏了`).toBeTruthy();
+    const EXPECT_UTIL = Math.round(20 * utilRule!.coefficient * 1e12) / 1e12;
+    expect(EXPECT_UTIL, "基线期望值算成 0 ⇒ 下面「由它变 0」会自洽成绿").toBeGreaterThan(0);
+
+    // (a) 基线：边开着，延迟 1 tick 后每条产线各得 `20 × 系数`。
     const base = await sessionWithBaseLoad(t, 20);
     await tick(t, base); // tick1：只排 pending
     const b2 = await tick(t, base);
-    for (const id of lineIds) expect(b2.state[id]!.utilPressure).toBe(10);
+    for (const id of lineIds) expect(b2.state[id]!.utilPressure).toBe(EXPECT_UTIL);
     // 基线上源端**这一格**是多少，下面判据 c 要拿它当对照 —— 见那一段的理由。
     const baseLoadAtT2 = b2.state[BASE_ID]!.loadIndex;
 
@@ -148,10 +163,15 @@ describe("WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → �
   });
 
   // ── ② 对照端点：一次调用拿到"开/关两版 + 差异"，方向与量级都在回包里 ────────────────
-  it("🔴 SEAM：POST …/counterfactual 同时给出基线与反事实，diff 方向 down、量级 10", async () => {
+  it("🔴 SEAM：POST …/counterfactual 同时给出基线与反事实，diff 方向 down、量级 =「系数×20」", async () => {
     const t = await seededApp();
     const lineIds = await lineIdsOf(t);
     const sid = await sessionWithBaseLoad(t, 20);
+    // 金值同上一条（WO-SIM-DESAT-3 ②）：10 → 3.7，改从规则表现算，理由见上一条用例的注释。
+    const utilRule = (await t.repos.sim.listPropagationRules("demo", true)).find((r) => r.key === RULE_KEY);
+    expect(utilRule, `规则表里找不到 ${RULE_KEY} ⇒ 取数坏了`).toBeTruthy();
+    const EXPECT_UTIL = Math.round(20 * utilRule!.coefficient * 1e12) / 1e12;
+    expect(EXPECT_UTIL, "基线期望值算成 0 ⇒ 下面「由它变 0」会自洽成绿").toBeGreaterThan(0);
 
     // n=2：这条边 `delayTicks=1`，跑一格只进 pending、世界态看不出差别。
     // 用 n=1 断言"没差异"是**测错了对象**（那测的是延迟，不是屏蔽）。
@@ -182,19 +202,19 @@ describe("WO-ACTIVE-EDGE-UX · 会话级反事实（关掉一条传导边 → �
     expect(out.suppressedRulesFiredInBaseline).toEqual([RULE_KEY]);
 
     for (const id of lineIds) {
-      expect(out.baselineState[id]!.utilPressure).toBe(10);
+      expect(out.baselineState[id]!.utilPressure).toBe(EXPECT_UTIL);
       expect(out.counterfactualState[id]?.utilPressure ?? 0).toBe(0);
     }
     const cell = out.diffs.find((d) => d.objectId === lineIds[0] && d.stateVar === "utilPressure");
     expect(cell).toBeDefined();
-    expect(cell!.baseline).toBe(10);
+    expect(cell!.baseline).toBe(EXPECT_UTIL);
     // 🔴 关掉这条边后，这一格在反事实世界里**整个不存在**（没有任何规则往它写）——
     //    `counterfactual` 如实报 `null`（「这个世界里没有这一格」≠「这一格是 0」），
-    //    而 `delta` 照**引擎自己的读数约定**（`propagation.ts:367 readVar` 缺格读 0）算出 −10。
+    //    而 `delta` 照**引擎自己的读数约定**（`propagation.ts:367 readVar` 缺格读 0）算出 −基线。
     //    这一条是实跑逼出来的：初版把 `delta` 也写成 null ⇒ 屏上显示"算不出"，
     //    而真相是"它降到了 0"，正是最该被看见的那个结论被藏起来了。
     expect(cell!.counterfactual).toBeNull();
-    expect(cell!.delta).toBe(-10);
+    expect(cell!.delta).toBe(-EXPECT_UTIL);
     expect(cell!.direction).toBe("down");
 
     // R6 确定性：同输入同参数版本同输出（回包里不许有任何 wall-clock 字段）。

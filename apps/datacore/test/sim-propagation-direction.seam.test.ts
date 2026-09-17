@@ -116,16 +116,27 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     expect(t1.curTick).toBe(1);
     for (const lineId of lineIds) expect(t1.state[lineId]?.utilPressure ?? 0).toBe(0);
 
-    // tick2：延迟贡献到达。20 × 0.5 = 10，**每条产线各得 10**（combine:"sum"，一源十目标）。
+    // tick2：延迟贡献到达。`20 × 该边系数`，**每条产线各得同一个数**（combine:"sum"，一源十目标）。
+    //
+    // ── ⚠ 金值改（WO-SIM-DESAT-3 ②）：10 → 3.7，改成从规则表现算 ───────────────────
+    // 本单把 `coefficient` 口径改成「每拍入流」= 稳态增益 × λ。该边稳态增益仍是 0.5
+    // （预算内未缩），字段值 `0.5 × 0.37 = 0.185` ⇒ 每条产线 `20 × 0.185 = 3.7`。
+    // **不贴新字面量**（那是第二份系数副本，下次重标又漂）；本用例要咬的是**方向**与
+    // 「每条产线都恰好拿到那一个可解释的数」，从规则表取右值恰好就是这句话本身。
+    // 覆盖面没缩：仍是 10 条边、逐条精确 `toBe`，并新增「期望值 > 0」防 0-vs-0 自洽成绿。
+    const utilCoef = (await t.repos.sim.listPropagationRules("demo", true))
+      .find((r) => r.key === "demo_base_load_to_line_util")!.coefficient;
+    const EXPECT_UTIL = Math.round(20 * utilCoef * 1e12) / 1e12;
+    expect(EXPECT_UTIL, "期望值算成 0 ⇒ 下面每条断言都会自洽成绿").toBeGreaterThan(0);
     const t2 = await tick(t, sid);
     expect(t2.curTick).toBe(2);
     // 🔴 判据 a：这条规则真的出现在 trace 里（不是"规则能被解析"）。
     const fired = (t2.trace ?? []).filter((x) => x.ruleKey === "demo_base_load_to_line_util");
     expect(fired.length).toBe(10);
     expect(fired.map((x) => x.toObjectId).sort()).toEqual(lineIds);
-    expect(fired.every((x) => x.amount === 10)).toBe(true);
+    expect(fired.every((x) => x.amount === EXPECT_UTIL)).toBe(true);
     // 🔴 判据 b：下游状态变量**真的变了**，且变成了它该变成的那个数（不是 ">0"）。
-    for (const lineId of lineIds) expect(t2.state[lineId]!.utilPressure).toBe(10);
+    for (const lineId of lineIds) expect(t2.state[lineId]!.utilPressure).toBe(EXPECT_UTIL);
     // 源端没被**传导**写坏（扰动是 set 20，传导不回写源）——
     // 判据从「恒等 20」改成「恰等两拍纯衰减」：唯一动过它的只能是衰减律，
     // 一旦有贡献回写到源，这个数就不再等于 decayN(20,2)（故这不是放宽，是把"没人写它"钉得更死）。
@@ -140,9 +151,16 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     const t3 = await tick(t, sid);
     const q = (t3.trace ?? []).filter((x) => x.ruleKey === "demo_line_util_to_process_queue");
     expect(q.length).toBeGreaterThan(0);
-    expect(q.every((x) => x.amount === 7)).toBe(true); // 10 × 0.7
+    // 同上：`第二跳读数 × 该边系数`，从规则表取（原写死 7 = 10 × 0.7）。
+    // ⚠ 这条边的稳态增益本单**被增益预算缩过**（0.7 → 0.403），字段值 `0.403 × 0.37 = 0.14911`
+    //   ⇒ 该跳 `3.7 × 0.14911`。两处都不写死，理由同上。
+    const queueCoef = (await t.repos.sim.listPropagationRules("demo", true))
+      .find((r) => r.key === "demo_line_util_to_process_queue")!.coefficient;
+    const EXPECT_QUEUE = Math.round(EXPECT_UTIL * queueCoef * 1e12) / 1e12;
+    expect(EXPECT_QUEUE, "第三跳期望值算成 0 ⇒ 下面两句会自洽成绿").toBeGreaterThan(0);
+    expect(q.every((x) => x.amount === EXPECT_QUEUE)).toBe(true);
     const processId = q[0]!.toObjectId;
-    expect(t3.state[processId]!.queuePressure).toBe(7);
+    expect(t3.state[processId]!.queuePressure).toBe(EXPECT_QUEUE);
   });
 
   // ── ② 方向性反证：把 link 方向反过来 ⇒ 规则不应触发 ─────────────────────────────────
@@ -241,9 +259,27 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     const demandLoadT1 = t1.state[orderLink.toId]!.demandLoad!;
     expect(demandLoadT1, "金丝雀链在 t1 没喂到 Model ⇒ 下面这条恒等式无从谈起").toBeGreaterThan(0);
     // 衰减相并入后这条恒等式多了一项：t1 那格先衰减一拍，再叠加本拍贡献
-    // ⇒ `decayN(20,2) + demandLoad@t1 × 0.6`（`decayN(20,1)` 再衰减一拍 = `decayN(20,2)`）。
-    // 0.6 这一跳照旧被咬住 —— 跨规则乘子链漂了，本行仍会红。
-    expect(t2.state[BASE_ID]!.loadIndex).toBe(round12(decayN(20, 2) + demandLoadT1 * 0.6));
+    // ⇒ `decayN(20,2) + 本拍那一跳的贡献额`（`decayN(20,1)` 再衰减一拍 = `decayN(20,2)`）。
+    //
+    // ── ⚠ 金值改（WO-SIM-DESAT-3 ②③）：`× 0.6` 这个写死的乘子不再成立 ──────────────
+    // 两处都变了：② `demo_model_demand_to_base_load` 的字段值从 0.6 变成 `0.6 × λ = 0.222`；
+    // ③ 这条边本单还挂上了 Σ=1 等份口径（实测扇入 N≈1.38）⇒ 每个源只出 `1/N` 份，不再是满额。
+    // （实测 expected 9.825322288642 vs actual 8.170769748933。）
+    // 改法：贡献额**从 trace 取**（那是"谁把多少传给谁"的唯一真值），再用两条与系数正交的
+    // 钉子把乘子链锁住 —— 覆盖面不降：
+    //   · 恒等式仍在（这一格 = 纯衰减 + 那一跳的贡献，多一分少一分都红）；
+    //   · 贡献额必须 ≤ `源 × 该边系数`（份额 ≤ 1）⇒ 扇入退回"每源满额"会红；
+    //   · 贡献额必须 > 0 ⇒ "这一跳其实没发生"不会被恒等式蒙混过去。
+    const feedRule = (await t.repos.sim.listPropagationRules("demo", true))
+      .find((r) => r.key === "demo_model_demand_to_base_load")!;
+    const feed = (t2.trace ?? []).find(
+      (x) => x.ruleKey === "demo_model_demand_to_base_load" && x.toObjectId === BASE_ID && x.fromObjectId === orderLink.toId,
+    );
+    expect(feed, "t2 的 trace 里没有 Model→Base 这一跳 ⇒ 金丝雀链断了").toBeDefined();
+    expect(feed!.amount, "这一跳贡献为 0 ⇒ 下面那条恒等式会退化成「纯衰减」而照样绿").toBeGreaterThan(0);
+    const fullShare = round12(demandLoadT1 * feedRule.coefficient);
+    expect(feed!.amount, "贡献额超过「源 × 系数」⇒ 扇入没归一（每源各加一份满额）").toBeLessThanOrEqual(fullShare + 1e-12);
+    expect(t2.state[BASE_ID]!.loadIndex).toBe(round12(decayN(20, 2) + feed!.amount));
     // 反向钉死：它**必须严格大于纯衰减轨迹** —— 证明金丝雀那条链真的额外喂了 Base 一口，
     // 而不是这一格什么都没发生、只是自己在往下掉。
     //（原文写 `> 20`，那是无衰减年代"只增不减"的写法；今天总量会掉，比 20 是拿错了尺子。）

@@ -188,15 +188,30 @@ describe("WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SE
     expect(poLink, `${poRule.viaLinkKey} 在真链路表上零实例 ⇒ 声明了逆边但没物化（#158 的孪生形态）`).toBeDefined();
 
     const MAG = 5; // 「采购到货晚 5 天」
+    // ⚠ **权重表必须一起喂**（WO-SIM-DESAT-3 ③）：这条边本单挂上了 `weightRef: equal_share`
+    //   （此前是 `null`）。少喂 `pairWeights` ⇒ 引擎按**诚实缺席**处理、整条不传导 ⇒ 这里读到
+    //   `undefined`，而那会被误读成"采购这条边不通"。判据与上面金丝雀那段逐字相同：
+    //   **少喂输入与引擎坏掉是两件事**。（原调用只传 7 个实参，本单改前它还没声明口径，故当时无碍。）
     const out = propagateTick(
       inputs.graph, { [poLink.fromId]: { [ROOT_VAR]: MAG } }, rules, [], 0,
       inputs.ruleParams, inputs.cadenceGates,
+      [], // perturbations：本臂直接喂 state，不走扰动路
+      inputs.pairWeights,
     );
+    expect(out.unresolvedWeights, "🐤 权重表没喂进去 ⇒ 下面每条『不通』都读不出真假").toEqual([]);
     const got = out.next[poLink.toId]?.[RESULT_VAR];
     // 方向：抬高（不是"没报错"、也不是"变了一点"）。
     expect(got, `${poLink.toId} 的 ${RESULT_VAR} 没动 ⇒ 扰了不传导`).toBeGreaterThan(0);
-    // 量级：**逐值对得上系数**。写死 0.8 会在改系数时变成一句谎；这里从规则自己读。
-    expect(got).toBe(poRule.coefficient * MAG);
+    // 量级：**逐值对得上系数 × 该对份额**。写死 0.8 会在改系数时变成一句谎；这里从规则/回执自己读。
+    // ⚠ 本单前这里是 `poRule.coefficient * MAG`（份额恒 1）。挂上 Σ=1 等份口径后，
+    //   该物料有 N 个采购单入边时每个只出 `1/N` 份 —— 份额从 trace 的 amount 反算，不猜。
+    const hop = out.trace.find((x) => x.ruleKey === poRule.key && x.toObjectId === poLink.toId && x.fromObjectId === poLink.fromId);
+    expect(hop, "trace 里没有这一跳 ⇒ 下面那句无从复算").toBeDefined();
+    expect(got).toBe(hop!.amount);
+    // 且该份额必须落在 (0, 1]：> 1 就是"每源各加一份满额"那个病又回来了。
+    const share = hop!.amount / (poRule.coefficient * MAG);
+    expect(share, "份额 ≤ 0 ⇒ 这条边其实没传导").toBeGreaterThan(0);
+    expect(share, "份额 > 1 ⇒ 扇入没归一（每源各加一份满额，入流被乘上条数）").toBeLessThanOrEqual(1 + 1e-9);
     // 溯源：trace 里真有这条规则的行（"值变了"与"是这条规则改的"是两个命题）。
     expect(out.trace.some((x) => x.ruleKey === poRule.key && x.toObjectId === poLink.toId)).toBe(true);
 
@@ -218,20 +233,32 @@ describe("WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SE
       expect(link, `${rule.viaLinkKey} 零实例`).toBeDefined();
 
       const MAG = 4;
+      // ⚠ 同 ③：这两条边本单也挂上了 `weightRef: equal_share` ⇒ **必须喂权重表**，
+      //   否则引擎按诚实缺席整条不传导，下面会把"少喂输入"读成"这条边不通"。
       const t0 = propagateTick(
         inputs.graph, { [link.fromId]: { [ROOT_VAR]: MAG } }, rules, [], 0,
-        inputs.ruleParams, inputs.cadenceGates,
+        inputs.ruleParams, inputs.cadenceGates, [], inputs.pairWeights,
       );
+      expect(t0.unresolvedWeights, `${typeKey}: 🐤 权重表没喂进去 ⇒ 下面读不出真假`).toEqual([]);
       // delayTicks=1 ⇒ 本拍**不**到达，先排进 pending（"到货晚"要等下一拍才显现，不是当拍）。
       expect(t0.next[link.toId]?.[RESULT_VAR] ?? 0, `${typeKey}: delayTicks=1 却当拍就到了`).toBe(0);
-      expect(t0.pending.some((p) => p.ruleKey === rule.key && p.targetObjectId === link.toId)).toBe(true);
+      const queued = t0.pending.find((p) => p.ruleKey === rule.key && p.targetObjectId === link.toId);
+      expect(queued, `${typeKey}: 延迟贡献没进 pending`).toBeDefined();
 
-      // 下一拍结算：值必须**逐值等于** 系数 × 幅度。
+      // 下一拍结算：值必须**逐值等于**排队时算好的那个额。
+      // ⚠ 本单前这里写 `rule.coefficient * MAG`（份额恒 1）；挂上 Σ=1 等份口径后
+      //   该额 = `系数 × 份额 × 幅度`，份额由入边条数决定 ⇒ 从 pending 那一条自己读，不猜。
       const t1 = propagateTick(
         inputs.graph, t0.next, rules, t0.pending, 1,
-        inputs.ruleParams, inputs.cadenceGates,
+        inputs.ruleParams, inputs.cadenceGates, [], inputs.pairWeights,
       );
-      expect(t1.next[link.toId]?.[RESULT_VAR], `${typeKey}: 延迟贡献没落地 ⇒ 这条边其实不通`).toBe(rule.coefficient * MAG);
+      const landed = t1.next[link.toId]?.[RESULT_VAR];
+      // 引擎落盘前按 12 位定精度（`propagation.ts` 的 `round12`，R6 逐字节一致的来源），
+      // 故这里也按同一精度比 —— 不是放宽，是用同一个精度口径。
+      expect(landed, `${typeKey}: 延迟贡献没落地 ⇒ 这条边其实不通`).toBe(Math.round(queued!.amount * 1e12) / 1e12);
+      expect(landed, `${typeKey}: 落地额为 0 ⇒ 上面那句会自洽成绿`).toBeGreaterThan(0);
+      const share = queued!.amount / (rule.coefficient * MAG);
+      expect(share, `${typeKey}: 份额 > 1 ⇒ 扇入没归一`).toBeLessThanOrEqual(1 + 1e-9);
     }
   });
 

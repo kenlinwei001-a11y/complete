@@ -1,0 +1,193 @@
+{
+  "arm": "twelve",
+  "n": 12,
+  "port": 45209,
+  "ownPid": "31292",
+  "listenPid": "31292",
+  "beforeTick": 96,
+  "afterTick": 99,
+  "seedChoice": {
+    "targetObjectId": "obj_model_4680-LFP",
+    "targetStateVar": "forecastBias",
+    "magnitude": 87,
+    "varMax": 88,
+    "varMin": 1,
+    "outRules": 1,
+    "reachCells": 3861,
+    "reachObjects": 3381,
+    "candidates": 3448
+  },
+  "seedPerturbationLabel": [
+    {
+      "mag": 87,
+      "dur": null,
+      "startTick": 1,
+      "target": "obj_model_4680-LFP",
+      "sv": "forecastBias"
+    }
+  ],
+  "ordersTotal": 500,
+  "ordersHasMore": false,
+  "usableEvents": 12,
+  "stagedMisses": [],
+  "receipts": [
+    {
+      "ev": "material-price-up",
+      "target": "obj_material_al_foil",
+      "stateVar": "priceShock",
+      "mag": 20,
+      "startTick": 96
+    },
+    {
+      "ev": "batch-defect",
+      "target": "obj_qualitylot_QLOT-WO-LINE-WS-changzhou-assembly-0",
+      "stateVar": "inspectBacklog",
+      "mag": 15,
+      "startTick": 96
+    },
+    {
+      "ev": "rush-order",
+      "target": "obj_order_SO-3391",
+      "stateVar": "demandPressure",
+      "mag": 30,
+      "startTick": 96
+    },
+    {
+      "ev": "due-change",
+      "target": "obj_orderpromise_AP-SO-3391",
+      "stateVar": "promiseRisk",
+      "mag": 20,
+      "startTick": 96
+    },
+    {
+      "ev": "order-cancel",
+      "target": "obj_order_SO-3391",
+      "stateVar": "orderChurn",
+      "mag": 25,
+      "startTick": 96
+    },
+    {
+      "ev": "inbound-delay",
+      "target": "obj_supplier_SUP-001",
+      "stateVar": "deliveryDelay",
+      "mag": 7,
+      "startTick": 96
+    },
+    {
+      "ev": "material-short",
+      "target": "obj_material_al_foil",
+      "stateVar": "shortageRisk",
+      "mag": 30,
+      "startTick": 96
+    },
+    {
+      "ev": "equipment-down",
+      "target": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E1",
+      "stateVar": "equipmentFailure",
+      "mag": 2,
+      "startTick": 96
+    },
+    {
+      "ev": "capacity-loss",
+      "target": "obj_base_changzhou",
+      "stateVar": "loadIndex",
+      "mag": 20,
+      "startTick": 96
+    },
+    {
+      "ev": "ship-to-change",
+      "target": "obj_customerlocation_LOC-cust_0-0",
+      "stateVar": "deliveryHoldRisk",
+      "mag": 20,
+      "startTick": 96
+    },
+    {
+      "ev": "order-reprice",
+      "target": "obj_order_SO-3391",
+      "stateVar": "costPressure",
+      "mag": 15,
+      "startTick": 96
+    },
+    {
+      "ev": "forecast-bias",
+      "target": "obj_model_2170-NCM",
+      "stateVar": "forecastBias",
+      "mag": 20,
+      "startTick": 96
+    }
+  ],
+  "four": {
+    "exposure": 15663001584,
+    "exposedOrders": 150,
+    "touchedCustomers": 17,
+    "settledExcluded": 0,
+    "faintOnly": 0,
+    "magMax": 25,
+    "magP90": 0.3653870247790003,
+    "impediments": 18
+  },
+  "cells": 6363,
+  "means_before": {
+    "supplyRisk": {
+      "n": 6,
+      "mean": 17.843996640497
+    },
+    "costPressure": {
+      "n": 156,
+      "mean": 22.266519257056874
+    },
+    "expeditePressure": {
+      "n": 30,
+      "mean": 18.097147222223832
+    },
+    "queueDays": {
+      "n": 30,
+      "mean": 467.20059162744184
+    }
+  },
+  "t0cells": 6363,
+  "seedMotionCells": 4831,
+  "orderStatusDist": {
+    "OPEN": 50,
+    "COMPLETED": 350,
+    "IN_PRODUCTION": 100
+  },
+  "deltaCount": 3788,
+  "topDeltas": [
+    {
+      "objectId": "obj_order_SO-3391",
+      "stateVar": "orderChurn",
+      "before": 14,
+      "after": 39,
+      "delta": 25
+    },
+    {
+      "objectId": "obj_model_2170-NCM",
+      "stateVar": "forecastBias",
+      "before": 1,
+      "after": 21,
+      "delta": 20
+    },
+    {
+      "objectId": "obj_orderline_SO-3391-L1",
+      "stateVar": "splitPressure",
+      "before": 9.800000000001,
+      "after": 28.525570500001,
+      "delta": 18.725570499999996
+    },
+    {
+      "objectId": "obj_orderline_SO-3391-L2",
+      "stateVar": "splitPressure",
+      "before": 9.800000000001,
+      "after": 28.525570500001,
+      "delta": 18.725570499999996
+    },
+    {
+      "objectId": "obj_orderline_SO-3391-L3",
+      "stateVar": "splitPressure",
+      "before": 9.800000000001,
+      "after": 28.525570500001,
+      "delta": 18.725570499999996
+    }
+  ]
+}

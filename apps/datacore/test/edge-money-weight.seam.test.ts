@@ -215,23 +215,47 @@ describe("§2 口径登记册", () => {
 // **就地变异**成不符，扫描器必须当场抓到。抓不到 ⇒ 报「工具坏了」，不许报「代码干净」。
 // ══════════════════════════════════════════════════════════════════════════════
 describe("§3 描述里的系数 = 真系数", () => {
-  /** 从 seed.ts 抽 (key, coefficient, description) 三元组。**主逻辑与金丝雀共用这一支**。 */
-  function scan(src: string): { key: string; coef: number; stated: number[]; ok: boolean }[] {
+  /**
+   * 从 seed.ts 抽 (key, 稳态增益, description) 三元组。**主逻辑与金丝雀共用这一支**。
+   *
+   * ── ⚠ 2026-09-16 改断言（WO-SIM-DESAT-3 ②）：比的那个数从 `coefficient` 换成**稳态增益** ──
+   *
+   * **为什么必须改**：本单把字段口径改成 `coefficient = 稳态增益 × λ`
+   * （`seed.ts` 的 `inflowCoefficient`）。旧抽取器的 `coefficient:\s*(-?[\d.]+)` 对
+   * `coefficient: inflowCoefficient(0.423)` **一条都抽不到** ⇒ `rows.length` 掉到 0，
+   * 而 §3 那条金丝雀（`>= 13`）会当场报红。**是机器先说话，不是人想起来的。**
+   *
+   * **形态（照铁律 0.6 句式，说的是旧断言的毛病）**：
+   * > 「我用『描述里那个数 == `coefficient` 字段值』当作『屏上那句话是真的』的证据，
+   * >   而前者并不度量后者 —— 描述说的是**稳态**（`target = source × c`），
+   * >   字段存的是**每拍入流**，两个不同量纲的数被拿来判相等。」
+   *
+   * **为什么改后不比改前弱（反而更强）**：
+   *  ① 旧断言把两个**不同口径**的数判相等，等式成立只是因为当时两者恰好共用一个字面量；
+   *     改后两侧都是**稳态口径**，比的是同一个量 —— 这才真的度量「屏上那句话是不是真的」。
+   *  ② 覆盖面没缩：仍扫全部规则块、仍要求 ≥13 条写了系数的边、仍是"0 条不符"。
+   *  ③ **另加了一条旧断言没有的**：下面 §3b 断言字段值 ≡ `稳态增益 × λ` ——
+   *     即「引擎真收到的那个数」与「屏上承诺的那个数」之间那一步换算也被咬住。
+   *     旧断言里这一步根本不存在（那时没有这一步）。
+   */
+  function scan(src: string): { key: string; gain: number; stated: number[]; ok: boolean }[] {
     const idxs: { key: string; at: number }[] = [];
     const re = /key:\s*"([a-z0-9_]+)"/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(src)) !== null) idxs.push({ key: m[1]!, at: m.index });
-    const out: { key: string; coef: number; stated: number[]; ok: boolean }[] = [];
+    const out: { key: string; gain: number; stated: number[]; ok: boolean }[] = [];
     for (let i = 0; i < idxs.length; i++) {
       const body = src.slice(idxs[i]!.at, i + 1 < idxs.length ? idxs[i + 1]!.at : src.length);
-      const cm = /coefficient:\s*(-?[\d.]+)/.exec(body);
+      // 稳态增益 = `inflowCoefficient(...)` 的实参。⛔ 不许回落去抽裸字面量：
+      // 抽到裸数就意味着有人绕过了 `inflowCoefficient`，那正是本单要堵的口。
+      const cm = /coefficient:\s*inflowCoefficient\((-?[\d.]+)\)/.exec(body);
       if (!cm) continue; // 不是传导规则块
       const dm = /description:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
       if (!dm) continue;
       const stated = [...dm[1]!.matchAll(/[×x]\s*(-?[\d.]+)/g)].map((x) => Number(x[1]));
       if (stated.length === 0) continue; // 描述里没写数 ⇒ 不判定（合法）
-      const coef = Number(cm[1]);
-      out.push({ key: idxs[i]!.key, coef, stated, ok: stated.some((s) => Math.abs(s - coef) < 1e-9) });
+      const gain = Number(cm[1]);
+      out.push({ key: idxs[i]!.key, gain, stated, ok: stated.some((s) => Math.abs(s - gain) < 1e-9) });
     }
     return out;
   }
@@ -245,15 +269,35 @@ describe("§3 描述里的系数 = 真系数", () => {
     expect(bad.map((r) => r.key)).toContain("demo_customer_receivable_to_invoice_overdue");
   });
 
-  it("种子里 0 条描述与真系数不符", () => {
+  it("种子里 0 条描述与真稳态增益不符", () => {
     const rows = scan(SRC);
     // 金丝雀②：扫到的规则块数必须是真数量级，抽 0 条时上面那句"0 条不符"毫无意义。
     expect(rows.length, "描述里写了系数的边条数（抽 0 条 = 抽取器坏了）").toBeGreaterThanOrEqual(13);
     const bad = rows.filter((r) => !r.ok);
     expect(
-      bad.map((r) => `${r.key}: 描述 ×${r.stated.join("/")} vs 真值 ${r.coef}`),
+      bad.map((r) => `${r.key}: 描述 ×${r.stated.join("/")} vs 真稳态增益 ${r.gain}`),
       "屏上正在说与实际不符的话（GET /a/v1/sim/propagation-rules 原样下发 description）",
     ).toEqual([]);
+  });
+
+  // ── §3b 换算这一步也要被咬住（WO-SIM-DESAT-3 新增的那条，旧断言里不存在）──────────
+  //
+  // 描述承诺的是**稳态**（`target = source × 增益`），而引擎每拍做的是 `target += source × coefficient`。
+  // 两者之间隔着一次 `× λ`。这一步若被绕过（有人直接写裸字面量），屏上那句话就又变成谎话，
+  // 而 §3 只比"描述 vs 实参"，**看不见这一步** —— 故这里单独咬。
+  it("全部 50 条边都经 inflowCoefficient，且 λ 取自 C35 规则参数（禁内联 0.37）", () => {
+    // ⚠ 必须**行首锚定**：不锚定会把注释里提到的 `coefficient: z.number()` 也算成一条边
+    // （实测当场报「有边绕过 inflowCoefficient」，而那根本不是字段，是一句中文注释里的引用）。
+    // 形态：「我用『源码里出现了 coefficient:』当作『这里有一条边的系数字段』的证据。」
+    const blocks = [...SRC.matchAll(/^[ \t]*coefficient:[ \t]*([^\n]*)/gm)].map((m) => m[1]!);
+    // 金丝雀：抽到的 coefficient 行数必须是真数量级（抽 0 行时下面两句毫无意义）
+    expect(blocks.length, "seed.ts 里 coefficient 行数（抽 0 行 = 抽取器坏了）").toBeGreaterThanOrEqual(50);
+    const bare = blocks.filter((b) => !b.trimStart().startsWith("inflowCoefficient("));
+    expect(bare, "有边绕过 inflowCoefficient 直接写裸系数 ⇒ 它的稳态会比描述承诺的大 1/λ 倍").toEqual([]);
+    // λ 必须是 C35 那一个，不是这里内联的一个同值字面量（R14/RL5）。
+    const helper = /const inflowCoefficient[\s\S]*?\n};/.exec(SRC)?.[0] ?? "";
+    expect(helper, "找不到 inflowCoefficient 定义 ⇒ 抽取器坏了").toContain("PRESSURE_DECAY_PER_TICK");
+    expect(helper, "λ 被内联成字面量 0.37 ⇒ 改 C35 规则不再改推演").not.toMatch(/0\.37/);
   });
 });
 

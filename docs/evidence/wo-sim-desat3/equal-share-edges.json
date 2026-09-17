@@ -1,0 +1,13 @@
+[
+ "demo_batch_procurement_delay_to_material_shortage",
+ "demo_equipment_failure_to_process_queue",
+ "demo_material_shortage_to_model_supply_risk",
+ "demo_model_demand_to_base_load",
+ "demo_po_expedite_to_supplier_review",
+ "demo_po_procurement_delay_to_material_shortage",
+ "demo_process_queue_to_line_blocked",
+ "demo_supplier_delay_to_material_shortage",
+ "demo_supplier_procurement_delay_to_material_shortage",
+ "demo_wo_release_to_model_cost",
+ "demo_wo_release_to_model_supply_risk"
+]

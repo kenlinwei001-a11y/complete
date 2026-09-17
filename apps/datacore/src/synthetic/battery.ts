@@ -3393,9 +3393,22 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   // 名字取「产线受阻压力」而不是「产线阻塞」：该边的 description 原文是
   // 「工序排队 ⇒ 该产线受阻。落在 blockedPressure 这个新量纲上，是为了不回喂 utilPressure 成正反馈环」
   // ⇒ 它度量的是**产线被上游工序堵住的程度**，与既有 `utilPressure`（产线本来就满）分属两个成因。
-  // ⚠ 本键**刻意不进 `STATE_VAR_DOMAINS`**：域表只收「写得出出处」的量纲，而本单没有为它
-  //   声明取值域；未登记者引擎不夹不衰减，且在 tick 回执 `undeclaredStateVars` 里被逐个点名 ——
-  //   缺口留在屏上，不留在注释里（与 `queueDays` 等天数族同一条纪律）。
+  // ⚠ **2026-09-16 订正（WO-SIM-DESAT-3）：本键已登记进 `STATE_VAR_DOMAINS`。**
+  //   原注释写「刻意不进域表……本单没有为它声明取值域」——**那个理由是「那一单没做」，不是「没有出处」**，
+  //   而这两件事在本表的收录判据里是完全不同的命题（判据是「写不写得出出处」）。
+  //   实测它**逐字满足压力族那两条既有出处**（`PRESSURE_DOMAIN_SOURCE`，一条都不用新发明）：
+  //     ① 下钻扫描器段头「状态变量的量纲各不相同（**压力 0–100**、天数、件数…）」——
+  //        本键的中文名就是「产线受阻压力」，`*Pressure` 族全表 31 个**其余全部在册**；
+  //     ② tick0 走 `round(hash01(objectId|stateVar)×100)` 派生支 —— `Line` 上**没有**同名属性
+  //        （故不走 `deriveSeedBaseSnapshot` 的真值支），值域恰为 [0,100]。
+  //   ⇒ 它**不是**天数族/件数族/真值族：那三族不登记是因为 `drill-scan.ts` 只说了它们"是另一类量纲"、
+  //     **没说上界是多少**，全仓找不到第二处出处；给它们拍 100 天/100 件的上界才是"拍脑袋定"。
+  //     本键的上界不用拍——出处①② 直接给。
+  //   代价（不登记时实测·`docs/evidence/wo-sim-desat2/drivers.mjs`）：不夹不衰减 = 纯积分器，
+  //   第 120 拍 `Line.blockedPressure` = **30,831 且每拍 +258，无上界**；下游
+  //   `demo_line_blocked_to_wo_release`(c=0.6) 因此每拍灌 18,499 进 `WorkOrder.releasePressure`
+  //   ⇒ 那一格**永久钉死 99.9**，再往下 43.3 个工单求和进 `Model.costPressure`。
+  //   **系数调多小都救不了一个无界积分器** —— 这正是 ② ③ 必须与本条一次标定的原因。
   blockedPressure: "产线受阻压力",
   // ── D10 基地与仓储交付：认证排队 / 成品提货 / 来料催交 ──
   qualificationQueue: "认证排队", drawdownPressure: "成品提货压力",
@@ -3482,7 +3495,7 @@ export function stateVarDisplayName(stateVar: string): string | undefined {
 const PRESSURE_DOMAIN_SOURCE =
   "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；" +
   "② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——" +
-  "本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；" +
+  "本族 32 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；" +
   "带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域";
 
 /**
@@ -3504,6 +3517,10 @@ export const STATE_VAR_DOMAINS: Record<string, StateVarDomain> = Object.fromEntr
     "reviewPressure", "loadPressure", "windowSqueeze", "drawdownPressure",
     "inboundExpeditePressure", "transferPressure", "splitPressure", "promiseRisk",
     "deliveryHoldRisk", "collectionPressure", "orderChurn", "equipmentFailure",
+    // WO-SIM-DESAT-3 补登（第 32 个）：理由见 `STATE_VAR_DISPLAY_NAMES` 的 `blockedPressure` 行注释 ——
+    // 它是压力族，出处①② 逐字成立；此前不在册的理由是「那一单没做」而非「没有出处」，
+    // 而本表的收录判据是后者。⛔ 天数族/件数族/真值族**仍然不登记**（它们确实写不出上界的出处）。
+    "blockedPressure",
   ].map((v): [string, StateVarDomain] => [
     v,
     {

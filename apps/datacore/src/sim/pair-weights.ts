@@ -451,6 +451,42 @@ export async function buildPairWeights(
       continue;
     }
 
+    if (basis === "equal_share") {
+      // ── 等份 Σ=1（WO-SIM-DESAT-3）─────────────────────────────────────────────
+      //
+      // 计量值恒 1、分母 = 该目标的入边条数 ⇒ 每条 1/N、Σ=1 ⇒ **加权平均**，配强度型目标。
+      //
+      // ⚠ 它治的**不是**「分摊得不够细」，是 `weightRef: null` 的真实语义：
+      //   `null` ≠「不分摊」，`null` = **每条入边各加一份满额**（`combine:"sum"` 逐源累加）
+      //   ⇒ Σ权重 = N，入流随源的**条数**线性膨胀。实测（修前·第 24 拍 tick 回执）：
+      //   `demo_wo_release_to_model_cost` 43.3 个工单各加满额 ⇒ 每目标 **2162.42**；
+      //   同一格的 `demo_material_price_to_model_cost`（`bom_cost_share`·Σw=1）只有 **42.44**。
+      //   两条系数几乎一样（0.5 / 0.65），**入流差 51 倍**，差的全是这个 N。
+      //
+      // 🔴 **不去编一个计量值**：工单之间没有可审计的轻重差（没有可比的"大小"字段）。
+      //   拿 `source_qty_relative` 之类硬凑，等于挂着"已按 X 分摊"的名义跑一个编出来的 X
+      //   —— 判据见契约 `PAIR_WEIGHT_BASIS_REGISTRY` 上方 WO-SIM-DESAT-3 那一段。
+      //   「答不出谁更重要」的诚实表达就是"都一样"。
+      //
+      // 分母用 `rows.length` 而不是某个全域基数：本口径的**全部内容**就是「这一组内部等份」，
+      // 它不承诺跨目标可比（要跨目标可比得有绝对量，那正是 `*_relative` 三条口径在做的事）。
+      const measures = new Map<string, Measure[]>();
+      for (const e of edges) {
+        (measures.get(e.toId) ?? measures.set(e.toId, []).get(e.toId)!).push({
+          sourceId: e.fromId,
+          measure: 1,
+          formula: `等份（本体里无可审计的差异化计量值 ⇒ 不编造轻重）：计量值 1`,
+          fields: [],
+          bomId: null,
+        });
+      }
+      const r = normalizeInEdges(rule.key, basis, normalize, measures, (_t, rows) => rows.length);
+      weights[rule.key] = r.table;
+      report.explain.push(...r.explain);
+      done(edges.length, r.zeroPairs);
+      continue;
+    }
+
     // 在册但本模块没实现 ⇒ 诚实报缺（而不是悄悄按某个"差不多"的口径算）。
     // 这一支是**登记册与实现之间的接缝守卫**：往契约里加一个口径却忘了在这里实现，
     // 引擎会当场报缺，而不是给出一批看着合理的错数。

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+import { PRESSURE_DECAY_PER_TICK, STATE_VAR_DOMAINS } from "../src/synthetic/battery.js";
+import { saturateToDomain } from "../src/sim/propagation.js";
+import { DEMO_SIM_WORLD_SESSION_ID, DEMO_SIM_WORLD_TICKS, seedDemoSimWorld } from "../src/sim/seed-world.js";
 
 /**
  * 沙盘消"空世界"（审计 §3.5）：SEED_DEMO 给 demo 租户播 sim PropagationRule 种子。
@@ -204,20 +207,42 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(tick.statusCode).toBe(200);
     const body = tick.json() as {
       state: Record<string, Record<string, number>>;
-      pairWeighting?: { report: { explain: { ruleKey: string; sourceObjectId: string; targetObjectId: string; weight: number; numerator: number; denominator: number }[] } };
+      pairWeighting?: {
+        report: {
+          pairs: { ruleKey: string; coefficient: number }[];
+          explain: { ruleKey: string; sourceObjectId: string; targetObjectId: string; weight: number; numerator: number; denominator: number }[];
+        };
+      };
     };
     // ── 金值改动说明（WO-COEF-FROM-BOM）──────────────────────────────────────
     // 修前：`Order.demandPressure 10 × coeff 0.8 = 8`，**与这张单多大无关** —— 那正是病。
     // 修后：再乘该单的**订单量相对倍率**（`Order.qty ÷ 该型号在手单 qty 均值`，均值=1·保总量）。
     // 这里**不写死新数字**（那就是"跑一遍把期望值贴上去"），而是**从回包自带的出处**里
-    // 取出这一对的分子/分母，当场把 `0.8 × qty/均值 × 10` 算出来比对 ——
+    // 取出这一对的分子/分母，当场把 `coeff × qty/均值 × 10` 算出来比对 ——
     // 断言与实现各自独立地算一遍同一个式子，两边对上才算数。
+    //
+    // ── ⚠ 金值再改（WO-SIM-DESAT-3 ②）：那个 `0.8` 从**字面量**换成**回包里的 coefficient** ──
+    // 本单把 `coefficient` 的口径从「稳态增益」改成「每拍入流」= `稳态增益 × λ`
+    // ⇒ 该边字段值 `0.8 → 0.8 × 0.37 = 0.296`，本行原写死的 `0.8` 当场对不上
+    //   （实测 expected 8.50145175064 vs actual 3.145537147737，比值 **2.7027 = 1/λ**）。
+    // **改法不是把 0.8 换成 0.296**（那还是第二份字面量，下次重标又漂），
+    // 而是从**同一个回包自带的披露**里取该规则真用的 `coefficient` —— 与本用例
+    // 「分子/分母也从回包取」那条既有纪律逐字相同：断言与实现各自独立算同一个式子。
+    // 并且**下一行仍然把 0.8 这个稳态增益钉死**（`coefficient === 0.8 × λ`）——
+    // 所以覆盖面没缩：谁改了这条边的强度，这里照样红。
+    const pair = body.pairWeighting?.report.pairs.find((p) => p.ruleKey === "demo_order_demand_pressure");
+    expect(pair, "回包里没有这条规则的分摊报告 ⇒ 可披露这条没落地").toBeDefined();
+    const DEMAND_GAIN = 0.8; // 该边 description 承诺的稳态增益（本单预算内未缩）
+    expect(
+      pair!.coefficient,
+      "该边的每拍入流系数 ≠ 稳态增益 × λ ⇒ 要么有人绕过了 inflowCoefficient，要么 λ 不再取自 C35",
+    ).toBe(Math.round(DEMAND_GAIN * PRESSURE_DECAY_PER_TICK * 1e12) / 1e12);
     const explain = body.pairWeighting?.report.explain.find(
       (e) => e.ruleKey === "demo_order_demand_pressure" && e.sourceObjectId === orderId && e.targetObjectId === modelId,
     );
     expect(explain, "回包里没有这一对的权重出处 ⇒ 可披露这条没落地（仓主硬要求①）").toBeDefined();
     expect(explain!.denominator, "分母（该型号在手单 qty 均值）为 0 ⇒ 出处算错了").toBeGreaterThan(0);
-    const expected = Math.round(0.8 * (explain!.numerator / explain!.denominator) * 10 * 1e12) / 1e12;
+    const expected = Math.round(pair!.coefficient * (explain!.numerator / explain!.denominator) * 10 * 1e12) / 1e12;
     expect(body.state[modelId]!.demandLoad).toBe(expected);
     // 且**必须真的与 8 不同**（除非这张单恰好是均值单）—— 否则这条用例又退回去度量"没分摊"。
     expect(explain!.weight).toBeGreaterThan(0);
@@ -257,9 +282,46 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(created.statusCode).toBe(201);
 
     const st = (r: unknown) => (r as { state: Record<string, Record<string, number>> }).state;
-    // tick1：Supplier(10) ×0.9 → Material.shortageRisk = 9。Order 还没轮到（一 tick 一跳）。
-    const t1 = st((await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } })).json());
-    expect(t1[materialId]!.shortageRisk).toBe(9);
+
+    // ── ⚠ 金值全改（WO-SIM-DESAT-3 ②③）：9 / 6.3 / 5.04 → 由两个乘数现算 ──────────────
+    //
+    // 原三个数是 `10×0.9`、`9×0.7`、`6.3×0.8` —— 直接把三条边的 `coefficient` 字面量抄进了断言。
+    // 本单动了**两个**乘数，两个都会让这三个数变：
+    //  ② `coefficient` 口径 = 稳态增益 × λ ⇒ `0.9 → 0.241×0.37 = 0.08917`（该边预算内被缩）；
+    //  ③ `demo_supplier_delay_to_material_shortage` 挂上 Σ=1 等份口径 ⇒ 该物料有 N 个供应商时
+    //     每个只出 `1/N` 份，而不是**各出一整份**。实测本链上那个物料 N=2 ⇒ 权重 0.5，
+    //     于是 tick1 = `10 × 0.08917 × 0.5 = 0.44585`（实测值逐位吻合，比值恰为 0.9/0.08917/2）。
+    //
+    // **改法不是把三个新数贴上去**：那样下次重标又得贴一遍，且贴上去的数没人能验。
+    // 改成从**同一个回包/规则表**取那两个乘数，断言与实现各自独立算同一个式子 ——
+    // 与本文件 live-fire 用例、§5 对照实验立下的是同一条纪律。
+    //
+    // **为什么改后不比改前弱**：
+    //  · 三跳的**结构**判据一个没动（Order 在 t1/t2 必须仍是 0、t3 才非 0 ⇒ 真跨了 3 跳）；
+    //  · 每一跳仍是精确 `toBe`，不是 `toBeGreaterThan` 之类的放宽；
+    //  · **另加了**「每跳必须 > 0」——原断言里没有：若某跳权重被算成 0，
+    //    原式 `toBe(9)` 会红，而新式若不加这条会 `toBe(0)` 自洽成绿。这一条是新补的防线。
+    const rules = await t.repos.sim.listPropagationRules("demo", true);
+    const coefOf = (key: string): number => {
+      const r = rules.find((x) => x.key === key);
+      expect(r, `规则表里找不到 ${key} ⇒ 取数坏了，不是"这条边不存在"`).toBeDefined();
+      return r!.coefficient;
+    };
+    /** 该规则落到某个目标上的权重之和（Σ=1 口径 ⇒ 1；`weightRef:null` ⇒ 入边条数）。 */
+    const weightSumOf = (body: unknown, ruleKey: string, targetId: string): number => {
+      const ex = (body as { pairWeighting?: { report: { explain: { ruleKey: string; targetObjectId: string; weight: number }[] } } })
+        .pairWeighting?.report.explain ?? [];
+      const rows = ex.filter((e) => e.ruleKey === ruleKey && e.targetObjectId === targetId);
+      // 该规则没声明口径 ⇒ 回包里没有它的逐对出处 ⇒ 每个源各出一整份，权重和 = 入边条数。
+      return rows.length === 0 ? 1 : rows.reduce((s, e) => s + e.weight, 0);
+    };
+    const tick1 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
+    const t1 = st(tick1);
+    // tick1：Supplier(10) × 该边每拍入流系数 × 该对权重 → Material.shortageRisk。Order 还没轮到（一 tick 一跳）。
+    const w1 = weightSumOf(tick1, "demo_supplier_delay_to_material_shortage", materialId);
+    const exp1 = Math.round(10 * coefOf("demo_supplier_delay_to_material_shortage") * w1 * 1e12) / 1e12;
+    expect(exp1, "第 1 跳的期望值算成 0 ⇒ 系数或权重取数坏了（0 会让下面三句自洽成绿）").toBeGreaterThan(0);
+    expect(t1[materialId]!.shortageRisk).toBe(exp1);
     expect(t1[orderId]?.shortageRisk ?? 0).toBe(0);
     // tick2：Model.supplyRisk = 9 × 0.7 = 6.3。
     //
@@ -280,13 +342,23 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     //   `linktype-computed-edge.seam.test.ts` §7 直接断言两向严格互逆来守 —— 那是更强的判据：
     //   它咬的是两个集合相等，不是某一个读数恰好翻倍。
     // Order 仍为 0 —— 证明它确实**跨了多跳**，不是某条一跳捷径顺手写到的。
-    const t2 = st((await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } })).json());
-    expect(t2[modelId]!.supplyRisk).toBe(6.3);
+    // tick2：Material(上一跳读数) × 该边每拍入流系数 × 该对权重 → Model.supplyRisk。
+    // ⚠ `demo_material_shortage_to_model_supply_risk` 本单也挂了 Σ=1 等份口径（N=7）⇒ 权重不再是 7 份满额。
+    const tick2 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
+    const t2 = st(tick2);
+    const w2 = weightSumOf(tick2, "demo_material_shortage_to_model_supply_risk", modelId);
+    const exp2 = Math.round(t1[materialId]!.shortageRisk * coefOf("demo_material_shortage_to_model_supply_risk") * w2 * 1e12) / 1e12;
+    expect(exp2, "第 2 跳的期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
+    expect(t2[modelId]!.supplyRisk).toBe(exp2);
     expect(t2[orderId]?.shortageRisk ?? 0).toBe(0);
-    // tick3：Model(6.3) ×0.8 → Order.shortageRisk = 5.04。
+    // tick3：Model(上一跳读数) × 该边每拍入流系数 × 该对权重 → Order.shortageRisk。
     // 🔴 这一行就是本单的效果层判据：供应侧的一次扰动，真的落到了订单缺口上。
-    const t3 = st((await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } })).json());
-    expect(t3[orderId]!.shortageRisk).toBe(5.04);
+    const tick3 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
+    const t3 = st(tick3);
+    const w3 = weightSumOf(tick3, "demo_model_supply_risk_to_order_shortage", orderId);
+    const exp3 = Math.round(t2[modelId]!.supplyRisk * coefOf("demo_model_supply_risk_to_order_shortage") * w3 * 1e12) / 1e12;
+    expect(exp3, "第 3 跳的期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
+    expect(t3[orderId]!.shortageRisk).toBe(exp3);
 
     // 并且 trace 里能读到这三跳的原文（North Star「断点」维要的溯源承载物）。
     const trace = (await t.repos.sim.getTickState("demo", sid, 3))!.trace!;
@@ -606,7 +678,21 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
     await enableSim(t);
 
     const SHOCK = 15; // 涨价 15 个百分点
-    const COEFF = 0.65; // 该边的整条边强度（种子值；下面只用它复算，不改它）
+    // ── ⚠ 金值改（WO-SIM-DESAT-3 ②）：`COEFF` 从写死的 0.65 换成**规则表里那个真值** ──────
+    // 本单把 `coefficient` 的口径改成「每拍入流」= 稳态增益 × λ，且这条边的稳态增益
+    // 被增益预算从 0.65 缩到 0.423 ⇒ 字段值 `0.423 × 0.37 = 0.15651`。
+    // 原写死的 0.65 当场对不上（实测 expected 0.076563460781 vs actual 0.018435303457，
+    // 比值 **4.1531 = 0.65 / 0.15651**）。
+    // **改成从规则表读，而不是贴一个新字面量**：贴字面量等于在断言里养第二份系数真相源，
+    // 下次重标又漂；读规则表则「断言与实现各自独立算同一个式子」这条纪律仍然成立
+    // （本用例判据②的原注释就是这么要求的：占比从回包出处独立复算，不写死金值）。
+    // 覆盖面没缩：判据①（两读数必须不同）、判据③（权重被当成 1 的指纹不许出现）都原样保留，
+    // 而判据③ 的指纹值现在跟着真系数走 ⇒ 它咬的仍是"权重被当成 1"这件事本身。
+    const seededRules = await t.repos.sim.listPropagationRules("demo", true);
+    const priceEdge = seededRules.find((r) => r.key === "demo_material_price_to_model_cost");
+    expect(priceEdge, "规则表里找不到 demo_material_price_to_model_cost ⇒ 取数坏了").toBeDefined();
+    const COEFF = priceEdge!.coefficient; // 该边的整条边强度（每拍入流口径；下面只用它复算，不改它）
+    expect(COEFF, "该边系数为 0 ⇒ 下面每一句都会自洽成绿").toBeGreaterThan(0);
 
     /** 对某个物料施加 priceShock=SHOCK，跑一拍，回读该型号的 costPressure + 这一对的权重出处。 */
     const drive = async (materialId: string, modelId: string) => {
@@ -662,10 +748,155 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
       expect(r.ex!.denominator).toBeGreaterThan(0);
     }
 
-    // ── 判据 ③：修前那个数**不许**再出现。9.75 = 0.65 × 15，是"没有用量项"的指纹。
+    // ── 判据 ③：「权重被当成 1」那个数**不许**再出现。
+    // 它 = 该边系数 × 涨幅，历史上是 `0.65 × 15 = 9.75`（CLAUDE.md 铁律 1.5 的来历那个数）；
+    // 系数换口径后它跟着变成 `0.15651 × 15 = 2.34765`。**变的是那个数，不是这条判据**：
+    // 它咬的始终是「该对的权重被当成 1 了（"查不到用量"绝不等于"用量为 1"）」这件事。
     const preFix = Math.round(COEFF * SHOCK * 1e12) / 1e12;
     for (const r of runs) {
       expect(r.read, `读数回到 ${preFix} ⇒ 该对的权重被当成 1 了（"查不到用量"绝不等于"用量为 1"）`).not.toBe(preFix);
     }
   });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// §6 WO-SIM-DESAT-3 · 去饱和三件的**联立**接缝（种子播种 → 推演结果）
+//
+// ── 为什么必须是一条**联立**的用例，而不是三条各测一半 ──────────────────────────
+// 本单同时改了三处，而三处**互为乘数**，拆开测每一处都能各自绿：
+//   ① `Line.blockedPressure` 登记进 `STATE_VAR_DOMAINS`（`synthetic/battery.ts`）
+//      —— 不登记 ⇒ 引擎不夹不衰减 = 纯积分器。实测（修前）第 120 拍 **30,831 且每拍 +258，无上界**；
+//         它下游那条 c=0.6 的边因此每拍往 `WorkOrder.releasePressure` 灌 18,499，
+//         那一格**永久钉死 99.9**。⇒ **系数调多小都救不了一个无界积分器**，只做 ②③ 等于白做。
+//   ② `coefficient` 口径 = 稳态增益 × λ（`seed.ts` 的 `inflowCoefficient`）
+//      —— 引擎每拍做 `+=`，源恒定时稳态是 `source × c/λ`；不改 ⇒ 每格稳态是 description
+//         承诺的 **1/λ ≈ 2.7 倍**。修前 23 个目标组里 **22 组 DC 增益 > 0.75**。
+//   ③ 11 条 `weightRef:null` 且扇入 N>1 的边挂 Σ=1 等份口径（契约 + `sim/pair-weights.ts`）
+//      —— `null` 不是「不分摊」，是**每源各加一份满额**。实测 43.3 个工单各出一整份
+//         ⇒ 同一格上两条系数几乎相同的边（0.5 / 0.65）**入流差 51 倍**。
+//      ⚠ 而 `W_e` 正是 ② 的预算分配里那个乘数 ⇒ **先标 ② 再做 ③，② 的分配当场作废**。
+//
+// ⇒ 判据落在**三者共同的产物**上：播完种的那个世界（= 用户屏上真看到的那个）里，
+//    已声明量纲的格**一个都不许**反算出界。任一件缺席，这个数就会从 0 跳回几百上千。
+//
+// 🐤 **金丝雀内建**（同一支普查函数 · 同一个世界的两个快照，不另抄一份实现）：
+//    同一把尺子量 `tick0` 的出厂哈希占位基线，必须量出**数百格**越界（实测 591）——
+//    量不出来就是普查器坏了，那时末拍的"0 格"是句空话，不是"世界干净"。
+//    ⚠ `tick0` 那批**不在本单范围**：它是 `round(hash01×100)` 占位基线（域表出处②），
+//      前一张单已登记为「饱和在 tick0 就已存在，与扰动无关」。本单治的是**入流过量**，
+//      入流推不动那些**一开始就在上面**的格 —— 它们靠衰减往下走。
+// ══════════════════════════════════════════════════════════════════════════════
+describe("§6 WO-SIM-DESAT-3 · 去饱和三件的联立接缝（种子 → 推演结果）", () => {
+  /** `saturateToDomain` 的**逆**。下面用往返自证它真的是逆，不靠"看着像"。 */
+  const BAND = 0.25;
+  const unsaturate = (v: number, min: number, max: number, rest: number): number => {
+    const bh = (max - rest) * BAND, kh = max - bh;
+    if (bh > 0 && v > kh && v < max) return kh + bh * (bh / (max - v) - 1);
+    const bl = (rest - min) * BAND, kl = min + bl;
+    if (bl > 0 && v < kl && v > min) return kl - bl * (bl / (v - min) - 1);
+    return v;
+  };
+
+  /** 一份世界态里「反算 raw 越上界」的格数 + 一个样例（主逻辑与金丝雀**共用这一支**）。 */
+  const overDomain = (state: Record<string, Record<string, number>>): { declared: number; over: number; sample: string | null } => {
+    let declared = 0, over = 0;
+    let sample: string | null = null;
+    for (const [oid, row] of Object.entries(state)) {
+      for (const [sv, v] of Object.entries(row)) {
+        const d = STATE_VAR_DOMAINS[sv];
+        if (d === undefined || typeof v !== "number") continue;
+        declared += 1;
+        const raw = unsaturate(v, d.min, d.max, d.restPoint);
+        if (raw > d.max) { over += 1; sample ??= `${oid}.${sv}=${v}(raw ${raw.toFixed(1)})`; }
+      }
+    }
+    return { declared, over, sample };
+  };
+
+  it("🔴 联立接缝：播完种的世界 0 格反算越界；同一把尺子在 tick0 必须量出数百格（金丝雀）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+    await seedDemoSimWorld(t.repos, t.services.sim, t.adminCtx);
+
+    const session = await t.repos.sim.getSession("demo", DEMO_SIM_WORLD_SESSION_ID);
+    expect(session, "种子世界会话不存在 ⇒ 播种没跑，下面全是空话").toBeTruthy();
+    expect(session!.curTick, "播种拍数不是 DEMO_SIM_WORLD_TICKS ⇒ ④ 没落地").toBe(DEMO_SIM_WORLD_TICKS);
+    const last = await t.repos.sim.getTickState("demo", DEMO_SIM_WORLD_SESSION_ID, DEMO_SIM_WORLD_TICKS);
+    expect(last, `tick${DEMO_SIM_WORLD_TICKS} 行不在库里 ⇒ 取数坏了`).not.toBeNull();
+
+    // 🐤 金丝雀①：往返自证 `unsaturate` 真的是 `saturateToDomain` 的逆 ——
+    //   逆写错了，下面那个"0 格"就毫无意义（它会把越界的格算成没越界）。
+    for (const raw of [10, 74.9, 80, 150, 400, 3600.301]) {
+      const back = unsaturate(saturateToDomain(raw, 0, 100, 0), 0, 100, 0);
+      expect(Math.abs(back - raw), `unsaturate 不是 saturateToDomain 的逆（raw=${raw}）⇒ 普查器坏了`).toBeLessThan(1e-6);
+    }
+
+    // 🐤 金丝雀②：同一支普查函数量 tick0，必须量出**数百格**越界（出厂哈希占位基线）。
+    const atT0 = overDomain(session!.baseSnapshot as unknown as Record<string, Record<string, number>>);
+    expect(atT0.declared, "tick0 一个已声明量纲的格都没数到 ⇒ 普查器坏了").toBeGreaterThan(1000);
+    expect(
+      atT0.over,
+      "同一把尺子在 tick0 量出 0 格越界 ⇒ **普查器坏了**（出厂哈希占位基线本就有数百格越界），" +
+        "此时下面那句『末拍 0 格』证明不了任何事",
+    ).toBeGreaterThan(100);
+
+    // ── 主判据：播完种的世界，已声明量纲的格 0 格反算越界 ────────────────────────
+    const atEnd = overDomain(last as unknown as Record<string, Record<string, number>>);
+    expect(atEnd.declared, "末拍一个已声明量纲的格都没数到 ⇒ 取数坏了").toBe(atT0.declared);
+    expect(
+      atEnd.over,
+      `播完种的世界仍有 ${atEnd.over}/${atEnd.declared} 格反算越界（样例 ${atEnd.sample}）⇒ ` +
+        "①②③ 至少缺一件：① 没登记 ⇒ blockedPressure 无界积分；② 没 ×λ ⇒ 每格稳态大 2.7 倍；" +
+        "③ 没归一 ⇒ 扇入按条数把入流乘上去",
+    ).toBe(0);
+
+    // ── ① 单独点名：`blockedPressure` 在域表里，且世界里它真的被夹住了 ──────────────
+    expect(
+      STATE_VAR_DOMAINS.blockedPressure,
+      "blockedPressure 不在 STATE_VAR_DOMAINS ⇒ 它又成了不夹不衰减的纯积分器（修前实测第 120 拍 30,831 且无上界）",
+    ).toBeTruthy();
+    const blocked = Object.values(last as unknown as Record<string, Record<string, number>>)
+      .map((row) => row.blockedPressure)
+      .filter((v): v is number => typeof v === "number");
+    expect(blocked.length, "世界里一格 blockedPressure 都没有 ⇒ 设备侧那条链没播上，下面那句是空话").toBeGreaterThan(0);
+    expect(Math.max(...blocked), "blockedPressure 冲出量纲上界 ⇒ ① 没生效").toBeLessThanOrEqual(STATE_VAR_DOMAINS.blockedPressure!.max);
+
+    // ── ③ 单独点名：那 11 条边的逐目标权重和必须是 1（Σ=1），不是扇入条数 ────────────
+    const tick = await t.app.inject({
+      method: "POST", url: `/a/v1/sim/sessions/${DEMO_SIM_WORLD_SESSION_ID}/tick?explain=1`, headers: ADMIN, payload: { n: 1 },
+    });
+    expect(tick.statusCode).toBe(200);
+    const explain = (tick.json() as {
+      pairWeighting?: { report: { explain: { ruleKey: string; targetObjectId: string; weight: number }[] } };
+    }).pairWeighting?.report.explain ?? [];
+    const EQUAL_SHARE_EDGE = "demo_wo_release_to_model_cost"; // 扇入最大的那条（实测 N≈43.33）
+    const rows = explain.filter((e) => e.ruleKey === EQUAL_SHARE_EDGE);
+    // 🐤 金丝雀③：这条边必须真有逐对出处 —— 一条都没有时「权重和=1」在空集上恒真。
+    expect(rows.length, `${EQUAL_SHARE_EDGE} 一条逐对出处都没有 ⇒ ③ 没接上（weightRef 仍是 null），或可披露没落地`).toBeGreaterThan(10);
+    const byTarget = new Map<string, number>();
+    for (const e of rows) byTarget.set(e.targetObjectId, (byTarget.get(e.targetObjectId) ?? 0) + e.weight);
+    for (const [targetId, sum] of byTarget) {
+      expect(
+        Math.abs(sum - 1),
+        `${EQUAL_SHARE_EDGE} 落到 ${targetId} 的权重和是 ${sum}，不是 1 ⇒ 扇入没归一（每源各加一份满额，入流被乘上条数）`,
+      ).toBeLessThan(1e-9);
+    }
+
+    // ── ② 单独点名：每条边的每拍入流系数都 = 稳态增益 × λ ────────────────────────
+    // 判据不是"等于某个字面量"（那会把预算表抄进断言，成为第二份真相源），
+    // 而是**口径自洽**：`coefficient / λ` 还原回稳态增益后必须 ≤ 1 ——
+    // 超过 1 就意味着"源顶到量纲上界时，单这一条边就把目标顶出上界"，② 的口径即未落地。
+    const publishedRules = await t.repos.sim.listPropagationRules("demo", true);
+    expect(publishedRules.length, "规则表读成空 ⇒ 取数坏了").toBeGreaterThan(40);
+    const hot = publishedRules
+      .filter((r) => STATE_VAR_DOMAINS[r.targetStateVar] !== undefined)
+      .map((r) => ({ key: r.key, gain: Math.abs(r.coefficient) / PRESSURE_DECAY_PER_TICK }))
+      .filter((x) => x.gain > 1 + 1e-9);
+    expect(
+      hot.map((x) => `${x.key}(稳态增益 ${x.gain.toFixed(3)})`),
+      "有边的**稳态增益 > 1** ⇒ 源顶到量纲上界时单这一条就把目标顶出去（② 的口径没落地）",
+    ).toEqual([]);
+  }, 180_000);
 });

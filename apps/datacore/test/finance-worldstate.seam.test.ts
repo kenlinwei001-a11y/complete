@@ -11,8 +11,13 @@ import { FinanceWorldProjectionOutputSchema, type FinanceWorldProjectionOutput }
  *
  * ── 这道门跨的是哪三半（SEAM-GATE：不是各半 unit 各绿就算）────────────────────────
  *  ① **数据半**：`seed.ts` 的成本/现金两条传导规则
- *     （`Material.priceShock →×0.65→ Model.costPressure →×0.9→ Order.costPressure`
- *      `Order.costPressure →×0.5→ Customer.receivablePressure →×0.4→ ARInvoice.overduePressure`）
+ *     （`Material.priceShock → Model.costPressure → Order.costPressure`
+ *      `Order.costPressure → Customer.receivablePressure → ARInvoice.overduePressure`）
+ *     ⚠ 本段原来把各跳系数（×0.65 / ×0.9 / ×0.5 / ×0.4）写进了注释。
+ *       WO-SIM-DESAT-3 ② 改了该字段的**口径**（每拍入流 = 稳态增益 × λ）并按增益预算重标，
+ *       那四个数已全部过期 ⇒ **索性不在注释里写系数**：它们是会漂的量，
+ *       写进注释就是第二份真相源（本仓已因"描述里的系数与真系数打架"立过账，见
+ *       `edge-money-weight.seam.test.ts` §3）。要看真值去规则表，本文件断言也一律从那里取。
  *  ② **引擎半**：`finance_world_projection` 把世界态压力折成金额
  *  ③ **口径半**：`basis` / `available` / `notes` 这些诚实位真的下发到回包（前端第一层靠它）
  *
@@ -305,12 +310,25 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     // ② 传导链：真规则 id + 真系数（改种子系数 → 这里跟着变）。
     expect(out.chain.length).toBeGreaterThan(3);
     const hop = out.chain.find((h) => h.ruleKey === "demo_material_price_to_model_cost")!;
-    expect(hop.coefficient).toBe(0.65); // = seed.ts 里那条规则的真系数
+    // ── ⚠ 金值改（WO-SIM-DESAT-3 ②）：0.65 → 0.15651 ───────────────────────────────
+    // 本条断言要的是「**下发的系数 = 规则表里那条边的真系数**」（本用例标题：口径常驻·可复核）。
+    // 原来它把真系数的**字面量副本**写在这里；本单把该字段的口径改成
+    // 「每拍入流 = 稳态增益 × λ」，且该边的稳态增益被增益预算从 0.65 缩到 0.423
+    // ⇒ 真系数变成 `0.423 × 0.37 = 0.15651`，这行当场红（实测 expected 0.15651 to be 0.65）。
+    // **改成从规则表读**而不是贴新字面量：本行的职责是"下发的 = 真的"，
+    // 拿规则表当右值恰好就是那个职责本身；贴字面量只是在断言里再养一份会漂的副本。
+    // 覆盖面没缩，反而更严：原式只在系数恰好等于 0.65 时成立，改后**任何**
+    // 「下发值 ≠ 规则表值」都红（包括有人把下发改成写死 0.65 这种）。
+    const priceRule = (await t.repos.sim.listPropagationRules("demo", true))
+      .find((x) => x.key === "demo_material_price_to_model_cost");
+    expect(priceRule, "规则表里找不到 demo_material_price_to_model_cost ⇒ 取数坏了").toBeTruthy();
+    expect(priceRule!.coefficient, "该边系数为 0 ⇒ 下面两句会自洽成绿").toBeGreaterThan(0);
+    expect(hop.coefficient).toBe(priceRule!.coefficient); // = seed.ts 里那条规则的真系数
     expect(hop.from).toBe("Material.priceShock");
     expect(hop.to).toBe("Model.costPressure");
     expect(hop.provenance.drillType).toBe("PropagationRule");
     expect(hop.provenance.drillId).toBe("simpr_demo_material_price_to_model_cost"); // 单对象 → 真主键
-    expect(hop.provenance.drillValue).toBe(0.65);
+    expect(hop.provenance.drillValue).toBe(priceRule!.coefficient);
 
     // ③ 每个金额带 provenance，且**单对象填真主键**（不是 "*"）。
     expect(out.lines.length).toBeGreaterThan(2);
@@ -569,7 +587,15 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     //    只咬 ② 会被任何一个随手编的权重蒙混过去；③ 才把权重钉死在 BOM 真数据上。
     expect(hiPressure / loPressure).toBeCloseTo(hiCost / loCost, 6);
     // ④ 反向判据：份额是**份额**不是放大器 —— 单料压力必须小于"整条边强度 × 涨幅 × 拍数"
-    //    （0.65 × 15 × 3 = 29.25，即修前那个"人人都拿满额"的数）。
-    expect(hiPressure).toBeLessThan(29.25);
+    //    （即"人人都拿满额"时的那个上界）。
+    //    ⚠ WO-SIM-DESAT-3 ②：这个上界原写死 29.25（= 0.65 × 15 × 3）。系数换成
+    //    「每拍入流 = 稳态增益 × λ」之后真上界变成 `0.15651 × 15 × 3 ≈ 7.04`，
+    //    **继续用 29.25 就是把判据放松了 4 倍**（一个满额的错值也能过）。
+    //    故改成从规则表现算 —— 判据强度保持原样（"必须严格小于满额上界"），不随系数漂。
+    const edgeCoef = (await t.repos.sim.listPropagationRules("demo", true))
+      .find((x) => x.key === "demo_material_price_to_model_cost")!.coefficient;
+    const fullShareBound = edgeCoef * 15 * 3;
+    expect(fullShareBound, "满额上界算成 0 ⇒ 下面那句会自洽成绿").toBeGreaterThan(0);
+    expect(hiPressure).toBeLessThan(fullShareBound);
   });
 });
