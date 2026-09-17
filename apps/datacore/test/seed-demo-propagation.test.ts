@@ -31,7 +31,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(47); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47）= 47
+    expect(cfg.propagationCount).toBe(50); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +3 条阻尼边**（库存缓冲 / 产能释放 / 需求回落 —— 全表第一次有了「压力会回来」的通路，见 seed.ts 段头）= 50
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
@@ -73,7 +73,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(47); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47）= 47
+    expect(items.length).toBe(50); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +3 条阻尼边**（库存缓冲 / 产能释放 / 需求回落 —— 全表第一次有了「压力会回来」的通路，见 seed.ts 段头）= 50
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
     // WO-SIM-ROOT-TRIAD 新增 4 条根源边全部挂**已物化**的既有链路（零新 linkType、零新物化）：
@@ -91,13 +91,20 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       //   故这份清单里有它 —— 这份清单数的是**目录**，不是"默认世界会跑的边"。
       "customer_has_location", "customer_has_overdue_record", "customer_places_order",
       "defect_raises_exception", "equip_used_in", "equipment_has_maintenance_order",
+      // WO-SIM-DAMPING ①：`fg_of_model` = `model_stocked_as_finished_goods` 的严格互逆边（实测 18/18 双向重合）
+      "fg_of_model",
       "line_belongs_to_base", "line_has_process", "line_runs_work_order", "line_runs_work_order", "material_has_alternative",
       "material_has_balance", "material_has_batch", "material_supplied_by_po", "material_used_by_model", "material_used_by_model",
       "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
       "model_producible_at", "model_stocked_as_finished_goods", "order_for_model", "order_for_model", "order_has_line",
       "order_has_line", "order_has_promise", "order_of_customer", "po_customs_cleared_by", "po_from_supplier",
-      "po_inspected_by", "po_replenishes_material", "process_belongs_to_line", "process_uses_equipment", "supplier_supplies_material",
-      "supplier_supplies_material", "wip_lot_found_defect", "wo_for_model", "wo_for_model", "work_order_sampled_by_quality_lot",
+      "po_inspected_by", "po_replenishes_material", "process_belongs_to_line", "process_uses_equipment",
+      // WO-SIM-DAMPING ③：`promise_for_order` = `order_has_promise` 的严格互逆边（实测 50/50）
+      "promise_for_order", "supplier_supplies_material",
+      "supplier_supplies_material",
+      // WO-SIM-DAMPING ②：`transfer_from_base` = `base_dispatches_transfer` 的严格互逆边（实测 17/17，落**调出端**）
+      "transfer_from_base",
+      "wip_lot_found_defect", "wo_for_model", "wo_for_model", "work_order_sampled_by_quality_lot",
       "work_order_yields_wip_lot",
     ]);
   });
@@ -128,7 +135,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(47); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47）= 47
+    expect(rules.length).toBe(50); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +3 条阻尼边**（库存缓冲 / 产能释放 / 需求回落 —— 全表第一次有了「压力会回来」的通路，见 seed.ts 段头）= 50
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -173,7 +180,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(47); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47）= 47
+    expect(items.length).toBe(50); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +3 条阻尼边**（库存缓冲 / 产能释放 / 需求回落 —— 全表第一次有了「压力会回来」的通路，见 seed.ts 段头）= 50
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {

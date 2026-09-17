@@ -1634,6 +1634,140 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
       selectorRef: null, // 规则表直选没有"谁挑的"，留空串会读起来像编排层参与过
     },
   },
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-SIM-DAMPING · **阻尼边：这张图第一次有了「压力自己会回来」的通路**
+  //
+  // ── 今天的行为 X（实测·金丝雀见下）/ 应该的 Y ────────────────────────────────────
+  // **X**：47 条边里 **46 条正系数、1 条负**（`demo_forecast_bias_to_order_demand` −0.6，
+  //   且它的源 `forecastBias` 是入度 0 的外生根 ⇒ **只有用户手动拨它，世界里才会有一个减量**）。
+  //   世界自己**没有任何一条边会让压力下降**：45 个量纲节点里 **20 个是纯 sink**（出度 0）——
+  //   它们只接收压力，接收完什么也不做。其中三个的业务含义**恰恰就是"做点什么把压力卸掉"**：
+  //     · `FinishedGoodsInventory.drawdownPressure`（成品库存被提走）—— 提走了却不冲抵需求
+  //     · `InterBaseTransfer.transferPressure`（跨基地调拨）—— 调出去了却不减调出方负载
+  //     · `OrderPromise.promiseRisk`（交付承诺风险）—— 承诺兑现不了，客户却从不改期/砍单
+  //   ⇒ 三个对象**存在的理由**（缓冲 / 分流 / 改期）在传导图上一次都没兑现。
+  //   金丝雀（证明上面那个"46/1"是真的，不是我数错）：同一把尺子数 `coefficient > 0` 得 **46**、
+  //   `< 0` 得 **1**、合计 **47** = `DEMO_PROPAGATION_RULES.length`；
+  //   且已知必中的 `demo_material_price_to_model_cost` 量出 **0.65**（与字面量一致）。
+  // **Y**：以上三个动作各自把它吸收掉的那部分**回记成来源的减量**，于是压力有了「去处」——
+  //   扰动过后世界能自己收敛回来，而不是只能一路往上加。
+  //
+  // ── 系数从哪来：**镜像判据**（三条共用一条规则，不是各拍一个数）──────────────────
+  // 每条阻尼边都是某条**既有正边的反向动作**，两向描述的是**同一条业务关系**
+  // （型号↔成品库存 · 基地↔调拨单 · 订单↔交付承诺）。故：
+  //   **阻尼边取它所镜像的那条正边的同一个系数，只改符号。**
+  // 理由是"没有出处的差额不许存在"：若两向取不同比例，就等于凭空断言
+  // 「回来的比去的多（或少）」，而那个差额在本仓找不到任何一份实测或规则表支撑它。
+  // 取同值则这条断言退化成「同一笔量，来回记两次账，两次一样大」——它不需要额外出处。
+  // ⚠ 这是**约定**不是守恒定律，故写在这里而不是藏在某个数里；要改它得先给出那份差额的出处。
+  //
+  // ── 稳定性（为什么这三条不会把世界打到负数或震荡起来）────────────────────────────
+  //  · **不会为负**：压力族 `restPoint === min === 0` ⇒ `saturateToDomain` 下侧是**硬地板**
+  //    （`sim/propagation.ts` 那行 `else if (raw < min) return min`），阻尼最多把一格压到 0。
+  //  · **不会发散**：三条回路的环增益分别是 0.6×0.6=0.36 · 0.3×0.3=0.09 · 0.8×0.8=0.64，
+  //    全部 < 1，且每跳还要再乘一次 (1−λ) 的存量衰减（λ=0.37，`PRESSURE_DECAY_PER_TICK`）。
+  //  · **延迟是业务事实不是调参**：三条都留 1 拍 —— 拣货发运要一拍、调拨执行完才卸载、
+  //    客户改期要开会。与还手边 `delayTicks: 1` 同一条理由。
+  //
+  // ⛔ **本段一行都没碰 `sim/propagation.ts`**：阻尼是**数据**（三行 `sim_propagation_rule`），
+  //    不是引擎特性。引擎早就支持负系数（`demo_forecast_bias_to_order_demand` 用了一年），
+  //    缺的一直是"没人往图里放过反向的边"。
+  //
+  // ⚠ **诚实登记：三条都 `weightRef: null`，逐实例分摊是待定**。
+  //    想按"谁的库存多/谁调得多/谁的单大"分摊，需要的基数分别是
+  //    `FinishedGoodsInventory.qtyAvailable` / `InterBaseTransfer.qty` / `OrderPromise.requestedQty`，
+  //    **三个都不叫 `qty`** ⇒ 在册口径 `source_qty_relative`（读的是 `props.qty`，
+  //    见 `sim/pair-weights.ts`）在这三个类型上会**逐条量出 0**，落成一张全零权重表。
+  //    实测：`FinishedGoodsInventory` 18 个实例里 `props.qty` 为正的 **0 个**（金丝雀：同一把尺子
+  //    量 `Order` 得 500/500、量 `MaterialBatch` 得 24/24 ⇒ 量法是好的，是这三个类型真的没这个字段）。
+  //    补口径要改 `PAIR_WEIGHT_BASIS_REGISTRY` + `pair-weights.ts`，**超出本单 🚦范围边界**，
+  //    故此处只记账不动手 —— 留 null 是诚实，拍一个数填掉是假绿。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── ① 库存缓冲：成品库存被提走的那部分需求，已经交付了 ⇒ 从型号待产负荷里扣掉 ──────
+  // 镜像 `demo_model_demand_to_fg_drawdown`（`Model.demandLoad --model_stocked_as_finished_goods
+  // ×0.6--> FinishedGoodsInventory.drawdownPressure`）。那条只写了"库存被消耗"，
+  // **没写"消耗掉的那部分需求已经被满足"** ⇒ 库存在这张图里只承压、不吸收，
+  // 而**吸收波动正是库存存在的全部理由**。
+  // 闭环：`Model.demandLoad ↑ → 成品去化 ↑ →（本条）→ Model.demandLoad ↓` = 需求尖峰被库存削平。
+  {
+    id: "simpr_demo_fg_drawdown_relieves_model_demand",
+    key: "demo_fg_drawdown_relieves_model_demand",
+    sourceTypeKey: "FinishedGoodsInventory",
+    sourceStateVar: "drawdownPressure",
+    viaLinkKey: "fg_of_model", // 实测 FinishedGoodsInventory→Model，18 条（本单之前**零条规则**用它）
+    targetTypeKey: "Model",
+    targetStateVar: "demandLoad",
+    coefficient: -0.6, // 镜像判据：与 `demo_model_demand_to_fg_drawdown` 同值反号
+    delayTicks: 1, // 拣货发运要一拍：库存不是当拍就变成客户手里的货
+    description: "成品库存被提走 ⇒ 这部分需求已由库存交付，从型号待产负荷里扣掉（去化压力 × 0.6 反向冲抵）",
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    weightRef: null, // 待定：应按 `qtyAvailable` 分摊，在册口径读不到该字段（见段头）
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── ② 产能释放：调出去的量，从调出方的负载里卸掉 ────────────────────────────────
+  // 镜像 `demo_base_load_to_transfer_pressure`（`Base.loadIndex --base_dispatches_transfer
+  // ×0.3--> InterBaseTransfer.transferPressure`）。那条只写了"忙不过来所以发起调拨"，
+  // **没写"调拨真的把活分走了"** ⇒ 今天调了等于没调，`InterBaseTransfer` 是纯 sink。
+  // ⚠ 落点必须是**调出端**：`transfer_from_base` 与 `base_dispatches_transfer` 是同一对
+  // （调出方）基地的两向 —— 反过来挂 `transfer_to_base`（调入端）是**加载不是卸载**，
+  // 那条边为正才对，且不构成回路。两向严格互逆由本单接缝测试 §2 当场核对。
+  {
+    id: "simpr_demo_transfer_relieves_base_load",
+    key: "demo_transfer_relieves_base_load",
+    sourceTypeKey: "InterBaseTransfer",
+    sourceStateVar: "transferPressure",
+    viaLinkKey: "transfer_from_base", // 实测 InterBaseTransfer→Base，17 条（本单之前**零条规则**用它）
+    targetTypeKey: "Base",
+    targetStateVar: "loadIndex",
+    coefficient: -0.3, // 镜像判据：与 `demo_base_load_to_transfer_pressure` 同值反号
+    delayTicks: 1, // 调拨要执行完才卸得掉负载，与它镜像的那条同为 1 拍
+    description: "跨基地调拨执行 ⇒ 调出方的负载被分走一部分（调拨压力 × 0.3 反向冲抵基地负载）",
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    weightRef: null, // 待定：应按调拨量分摊，`InterBaseTransfer` 无 `props.qty`（见段头）
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── ③ 需求回落：承诺兑现不了 ⇒ 客户改期/砍单 ⇒ 需求压力下来 ─────────────────────
+  // 镜像 `demo_order_shortage_to_promise_risk`（`Order.shortageRisk --order_has_promise
+  // ×0.8--> OrderPromise.promiseRisk`）。那条只写了"交不齐所以承诺有风险"，
+  // **没写"承诺塌了之后需求本身会缩"** ⇒ 这正是另一位 dev 点名的那条：
+  // 「全模型 50 条里只有 1 条负系数，压根没有『需求下降』这条路」。
+  //
+  // ⚠ 与还手边 `demo_customer_reaction_cut_order` **不是同一件事，别合并**：
+  //  · 还手边是**对手方博弈**（客户因为被转嫁成本而报复性砍单），带 `reaction`/容忍线，
+  //    默认**关闭**（`sim.propagation.adversary`）；
+  //  · 本条是**履约现实**（我方交不出货，订单自然就交付不掉/被改期），是普通物理传导，默认开。
+  //  两者落点也不同（那条落 `orderChurn` 变更频度，本条落 `demandPressure` 需求压力本身）。
+  {
+    id: "simpr_demo_promise_risk_relieves_order_demand",
+    key: "demo_promise_risk_relieves_order_demand",
+    sourceTypeKey: "OrderPromise",
+    sourceStateVar: "promiseRisk",
+    viaLinkKey: "promise_for_order", // 实测 OrderPromise→Order，50 条（本单之前**零条规则**用它）
+    targetTypeKey: "Order",
+    targetStateVar: "demandPressure",
+    coefficient: -0.8, // 镜像判据：与 `demo_order_shortage_to_promise_risk` 同值反号
+    delayTicks: 1, // 客户改期/砍单要走内部审批，不当拍发生（与还手边同一条理由）
+    description: "交付承诺兑现不了 ⇒ 客户改期或缩量，该单的需求压力回落（承诺风险 × 0.8 反向冲抵）",
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    weightRef: null, // 待定：应按 `requestedQty` 分摊，`OrderPromise` 无 `props.qty`（见段头）
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
 ];
 
 /**
