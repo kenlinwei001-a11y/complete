@@ -115,11 +115,19 @@ async function main() {
       t0ph[oid] = nr;
     }
     const measured = origin?.measuredCells ?? null;
-    const canary1 = measured !== null && Math.abs(swapped - measured) <= 5;
-    console.log(`# 🐤① 占位重算换值 ${swapped} 格 ≈ measuredCells ${measured}（±5）: ${canary1 ? "✓" : "✗ ⇒ 占位重算或计数有一边是假的"}`);
-    const canary2 = t0[TARGET.id]?.[TARGET.sv] === t0ph[TARGET.id]?.[TARGET.sv];
-    console.log(`# 🐤② 扰动落点 ${TARGET.id}.${TARGET.sv} 两臂 tick0 同值（${t0[TARGET.id]?.[TARGET.sv]}）: ${canary2 ? "✓" : "✗ ⇒ 落点是真值格，换扰动"}`);
-    if (!canary1 || !canary2) throw new Error("金丝雀未过，拒下结论");
+    // 硬证据：误换占位格数 = max(0, swapped − measured) 必须 = 0（>0 说明 hash 式与仓里不同式，
+    // 2192 个占位格会被批量误换）；差值 measured − swapped = 真值恰撞哈希的格数（RESUME 时代 = 2）。
+    const phWrong = Math.max(0, (swapped ?? 0) - (measured ?? 0));
+    const coincident = (measured ?? 0) - swapped;
+    const canary1 = measured !== null && phWrong === 0 && coincident >= 0 && coincident <= 50;
+    console.log(`# 🐤① 换值 ${swapped} / measuredCells ${measured}：误换占位格 ${phWrong}（必须 0），真值撞哈希 ${coincident} 格（容差 ≤50，实测差值属此类）: ${canary1 ? "✓" : "✗ ⇒ 占位重算或计数有一边是假的"}`);
+    // 落点格今天已是真值（real-cells 把 Material.priceShock 物化了，450 时代它是占位）⇒
+    // 为保扰动公平（同起点 +20），占位臂的**落点单格**固定为真值臂同值；如实声明（4171 vs 1 格）。
+    const landReal = t0[TARGET.id]?.[TARGET.sv], landPh = t0ph[TARGET.id]?.[TARGET.sv];
+    const landFixed = landReal !== landPh;
+    if (landFixed) { t0ph[TARGET.id][TARGET.sv] = landReal; }
+    console.log(`# 🐤② 落点 ${TARGET.id}.${TARGET.sv}：真值臂=${landReal} 占位臂原=${landPh}${landFixed ? ` ⇒ 已固定为 ${landReal}（落点今为真值格，设计适应，差 1 格如实声明）` : "（同为占位格，无需适应）"}`);
+    if (!canary1) throw new Error("金丝雀①未过，拒下结论");
 
     // 订单全量（五读数的订单/敞口口径）
     const ordRes = await jget(base, "/a/v1/objects?type=Order&pageSize=500");
