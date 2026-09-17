@@ -229,25 +229,36 @@ export function dumpReposToTables(repos: Repos): Record<string, TableDump> {
 
 // ── 双跑自证的归一化（随机 id 引用图）────────────────────────────────────────
 //
-// 探针实证（双跑全量 diff，证据落账本 §5.3）：合成世界有 4 组 id 是 newId 随机值且**跨表传播**：
+// 探针实证（双跑全量 diff，两轮，证据落账本 §5.3）：合成世界有 6 组 id 是 newId 随机值且**跨表传播**：
 //   connections      「合成数据源（确定性生成）」1 条 id = newId("conn")（service.ts:626；
-//                    另 7 条 conn-erp 等 id 确定），被 rawDatasets.sourceConnId 与
-//                    objects.origin.sourceConnId（实测 ×411）引用；
+//                    另 7 条 conn-erp 等 id 确定），被 rawDatasets.sourceConnId、tsSeries.connId、
+//                    objects.origin.sourceConnId（实测 ×411）、ontologyTypes.sourceBindings.*.connId 引用；
 //   rawDatasets      id = newId("rds")（service.ts:719，按 (sourceConnId,name) 幂等复用），
 //                    被 objects.origin.rawDatasetId（实测 ×1556）与 rawRows 的行键尾部引用；
+//   ontologyTypes    id = newId("otype")（ontology.ts upsertType，按 key 幂等复用）——
+//                    随机 id 作 memKey 排序键 ⇒ 两次运行排序不同 ⇒ 位置比对全表错位
+//                    （第一轮探针 properties.displayName ×193 等洪峰全是错位伪差，非内容差）；
+//   ontologyLinks    id = newId("ltype")（ontology.ts upsertLinkType，同病）；
 //   derivationRuns   id = newId("drun")（ontology.ts:923/935）；
 //   objectInterfaces id = newId("oif")（ontology-governance.ts:1007）。
+// 另：ontologyVersions（发布快照）整份内嵌类型定义 ⇒ 内嵌上述全部随机 id。
 // （objects/links/rules 的 origin.jobId **不是**随机值 —— service.ts:225 刻意用确定性串
-//   `synthetic-${industry}-${scale}-${seed}`，这正是 R6 字节一致的前提；探针证实零 diff。）
+//   `synthetic-${industry}-${scale}-${seed}`，这正是 R6 字节一致的前提；探针证实零 diff。
+//   tsSeries/tsAggSpecs/tsAggRuns 的 id 均为确定性派生串（tser_/tspec_/tsrun_ 前缀），不在此列。）
 //
-// 处理 = **归一化而非忽略**：随机 id 换成由确定性属性派生的规范名（连接按 name、原始表按
-// 连接+数据集名、derivationRun 按内容序、interface 按 key@version），之后这些表全部回到
-// strict 逐字节比对 —— 引用完整性（对象 backref ⇄ 原始表行 ⇄ rawRows 键）仍被全量验证，
-// 只有「newId 随出了什么字节」这一个真随机维度被折掉。
+// 处理 = **归一化而非忽略**，两层机制：
+//   ① 规范名换随机 id：由确定性属性派生（连接按 name、原始表按 连接+数据集名、类型/链路按 key、
+//      interface 按 key@version、derivationRun 按内容序），并集映射**深度改写所有 mem/sim 表的值**
+//      —— 外键引用（对象 backref、sourceBindings、ontologyVersions 内嵌快照）ExactMatch 替换，
+//      newId 字符串唯一性 ⇒ 误伤不可能（数据串等于 conn_<hex> 它本身就是引用）。
+//   ② 行键同步换名重排（memKey 尾部的 id 段 + rawRows 的「tenant datasetId」键）。
+// 归一化后这些表全部回到 strict 逐字节比对 —— 引用完整性仍被全量验证，只有「newId 随出了
+// 什么字节」这一个真随机维度被折掉。查不到映射的引用**原样保留**（悬空引用两次运行各随各的，
+// diff 当场红，fail-loud 方向）。
 // ⛔ 归一化只作用于**比对**（双跑自证 / 验收① 的还原vs新鲜）；快照字节本身保持原样 ——
 //    还原必须把快照那套自洽的原 id 原样写回，否则就是引入新的与 live 的差异类。
 
-const NUL = "";
+const NUL = "\u0000";
 /** 规范键冲突时 fail-loud（撞名说明「确定性属性」并不确定，不许静默放行）。 */
 function canonPut(map: Map<string, string>, seen: Set<string>, oldId: string, canon: string, what: string): void {
   if (seen.has(canon)) throw new Error(`world-snapshot 归一化：${what} 规范键撞名 "${canon}" —— 派生属性不唯一`);
@@ -266,10 +277,37 @@ function rewriteKeyId(key: string, idMap: Map<string, string>): string {
 const resort = (arr: [string, unknown][]): [string, unknown][] =>
   arr.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 
+/** 深度 ExactMatch 换名：任何字符串**值**整体等于某个随机 id ⇒ 换成其规范名（对象的键不换，键是数据）。 */
+function deepRewriteIds(v: unknown, idMap: Map<string, string>): void {
+  if (Array.isArray(v)) {
+    for (let i = 0; i < v.length; i++) {
+      const e = v[i];
+      if (typeof e === "string") {
+        const canon = idMap.get(e);
+        if (canon !== undefined) v[i] = canon;
+      } else {
+        deepRewriteIds(e, idMap);
+      }
+    }
+    return;
+  }
+  if (typeof v === "object" && v !== null) {
+    for (const [k, e] of Object.entries(v)) {
+      if (typeof e === "string") {
+        const canon = idMap.get(e);
+        if (canon !== undefined) (v as Record<string, unknown>)[k] = canon;
+      } else {
+        deepRewriteIds(e, idMap);
+      }
+    }
+  }
+}
+
 /**
- * 返回一份**比对专用**的归一化副本：外层对象浅拷（未受影响的表 —— 含 tsPoints/tsAggRuns
- * 两个大头 —— 零成本共享引用），仅 6 张受随机 id 污染的表深拷改写。
- * 查不到映射的引用**原样保留** —— 悬空引用两次运行各随各的，diff 当场红（fail-loud 方向）。
+ * 返回一份**比对专用**的归一化视图：外层对象浅拷，仅 6 张随机 id 源头表深拷；
+ * 其余 mem/sim 表的值被**原地**深度换名（浅共享 ⇒ 入参 tables 的那些表也会被改）——
+ * ⚠️ 因此入参用完必须丢弃，⛔ 不许再落快照（快照要保留原 id 自洽）。
+ * 调用纪律：buildWorldTwice 里 diff 用归一化视图、a 本体（未过本函数的干净副本）落盘。
  */
 export function canonicalizeForDiff(tables: Record<string, TableDump>): Record<string, TableDump> {
   const out: Record<string, TableDump> = { ...tables };
@@ -280,7 +318,7 @@ export function canonicalizeForDiff(tables: Record<string, TableDump>): Record<s
     return d;
   };
 
-  // ① connections：id → conn#<name>（name 唯一：7 条源系统 + 1 条「合成数据源（确定性生成）」互异）
+  // ① 按确定性属性建映射（顺序有依赖：rds 的规范名内嵌 conn 的规范名）
   const connMap = new Map<string, string>();
   const conns = memOf("connections");
   if (conns) {
@@ -289,16 +327,7 @@ export function canonicalizeForDiff(tables: Record<string, TableDump>): Record<s
       const c = v as { id: string; name: unknown };
       canonPut(connMap, seen, c.id, `conn#${String(c.name)}`, "connections");
     }
-    const clone = structuredClone(conns);
-    for (const [, v] of clone.entries) {
-      const c = v as { id: string };
-      c.id = connMap.get(c.id) ?? c.id;
-    }
-    clone.entries = resort(clone.entries.map(([k, v]) => [rewriteKeyId(k, connMap), v] as [string, unknown]));
-    out.connections = clone;
   }
-
-  // ② rawDatasets：id → rds#<规范连接>#<数据集名>（service.ts:717 的幂等键即此对）；sourceConnId 同步换名
   const rdsMap = new Map<string, string>();
   const rawDatasets = memOf("rawDatasets");
   if (rawDatasets) {
@@ -308,48 +337,74 @@ export function canonicalizeForDiff(tables: Record<string, TableDump>): Record<s
       const canonConn = connMap.get(String(d.sourceConnId)) ?? String(d.sourceConnId);
       canonPut(rdsMap, seen, d.id, `rds#${canonConn}#${String(d.name)}`, "rawDatasets");
     }
-    const clone = structuredClone(rawDatasets);
-    for (const [, v] of clone.entries) {
-      const d = v as { id: string; sourceConnId?: string };
-      if (d.sourceConnId !== undefined) d.sourceConnId = connMap.get(d.sourceConnId) ?? d.sourceConnId;
-      d.id = rdsMap.get(d.id) ?? d.id;
+  }
+  const otypeMap = new Map<string, string>();
+  const otypes = memOf("ontologyTypes");
+  if (otypes) {
+    const seen = new Set<string>();
+    for (const [, v] of otypes.entries) {
+      const r = v as { id: string; key: unknown };
+      canonPut(otypeMap, seen, r.id, `otype#${String(r.key)}`, "ontologyTypes");
     }
-    clone.entries = resort(clone.entries.map(([k, v]) => [rewriteKeyId(k, rdsMap), v] as [string, unknown]));
-    out.rawDatasets = clone;
   }
-
-  // ③ objects 的源头 backref（探针实测 ×1556/×411 —— 换名后 origin 其余字段仍 strict）
-  const objects = memOf("objects");
-  if (objects) {
-    const clone = structuredClone(objects);
-    for (const [, v] of clone.entries) {
-      const o = v as { origin?: { sourceConnId?: string; rawDatasetId?: string } };
-      if (o.origin?.sourceConnId !== undefined) o.origin.sourceConnId = connMap.get(o.origin.sourceConnId) ?? o.origin.sourceConnId;
-      if (o.origin?.rawDatasetId !== undefined) o.origin.rawDatasetId = rdsMap.get(o.origin.rawDatasetId) ?? o.origin.rawDatasetId;
+  const ltypeMap = new Map<string, string>();
+  const ltypes = memOf("ontologyLinks");
+  if (ltypes) {
+    const seen = new Set<string>();
+    for (const [, v] of ltypes.entries) {
+      const r = v as { id: string; key: unknown };
+      canonPut(ltypeMap, seen, r.id, `ltype#${String(r.key)}`, "ontologyLinks");
     }
-    out.objects = clone;
+  }
+  const oifMap = new Map<string, string>();
+  const oifs = memOf("objectInterfaces");
+  if (oifs) {
+    const seen = new Set<string>();
+    for (const [, v] of oifs.entries) {
+      const r = v as { id: string; key: unknown; version: unknown };
+      canonPut(oifMap, seen, r.id, `oif#${String(r.key)}#${String(r.version)}`, "objectInterfaces");
+    }
+  }
+  // 并集（derivationRuns 不在内 —— 它的规范名按改写后内容派生，见 ④）
+  const union = new Map<string, string>([...connMap, ...rdsMap, ...otypeMap, ...ltypeMap, ...oifMap]);
+
+  // ② 5 张属性派生源头表：深拷 + 值深度换名（含自身 id —— 并集里有自己的旧 id ⇒ 自动归一）+ 行键换名重排
+  const ownKeyMaps: Record<string, Map<string, string>> = {
+    connections: connMap,
+    rawDatasets: rdsMap,
+    ontologyTypes: otypeMap,
+    ontologyLinks: ltypeMap,
+    objectInterfaces: oifMap,
+  };
+  for (const [name, ownMap] of Object.entries(ownKeyMaps)) {
+    const src = memOf(name);
+    if (!src) continue;
+    const clone = structuredClone(src);
+    for (const [, v] of clone.entries) deepRewriteIds(v, union);
+    clone.entries = resort(clone.entries.map(([k, v]) => [rewriteKeyId(k, ownMap), v] as [string, unknown]));
+    out[name] = clone;
   }
 
-  // ④ rawRows 行键 = `${tenant} ${datasetId}`（restore 侧同一切分；service.ts:727 的落库键）
-  const rawRows = memOf("rawRows");
-  if (rawRows) {
-    const clone = structuredClone(rawRows);
-    clone.entries = resort(
-      clone.entries.map(([k, v]) => {
-        const sep = k.indexOf(" ");
-        if (sep < 0) return [k, v] as [string, unknown];
-        const canon = rdsMap.get(k.slice(sep + 1));
-        return [canon === undefined ? k : `${k.slice(0, sep)} ${canon}`, v] as [string, unknown];
-      }),
-    );
-    out.rawRows = clone;
+  // ③ 其余 mem 表 + sim 表：值原地深度换名（浅共享 ⇒ 改的是入参那份，调用方必须弃之，见头注）。
+  //    tspoints 跳过：点值只含 seriesId/entityId/数值，皆确定性派生，不可能含此 6 组随机 id。
+  for (const [name, d] of Object.entries(out)) {
+    if (name in ownKeyMaps || name === "derivationRuns") continue;
+    if (d.shape === "mem") {
+      for (const [, v] of d.entries) deepRewriteIds(v, union);
+    } else if (d.shape === "sim") {
+      for (const sub of [d.sessions, d.ticks, d.checkpoints, d.rules] as const) {
+        for (const [, v] of sub) deepRewriteIds(v, union);
+      }
+      for (const [, e] of d.perturbations) deepRewriteIds(e.p, union);
+    }
   }
 
-  // ⑤ derivationRuns：id 无确定属性可派生 ⇒ 按确定内容（updatedObjects/order/status/error）
-  //    排序后编序号 drun#<i>。内容不同 ⇒ strict 红；行数不同 ⇒ 数组长度红。
+  // ④ derivationRuns：id 无确定属性可派生 ⇒ 深拷换名后按确定内容（updatedObjects/order/status/error）
+  //    排序编序号 drun#<i>。内容不同 ⇒ strict 红；行数不同 ⇒ 数组长度红。
   const druns = memOf("derivationRuns");
   if (druns) {
     const clone = structuredClone(druns);
+    for (const [, v] of clone.entries) deepRewriteIds(v, union);
     const ordered = clone.entries
       .map(([k, v], i) => {
         const d = v as Record<string, unknown>;
@@ -369,22 +424,18 @@ export function canonicalizeForDiff(tables: Record<string, TableDump>): Record<s
     out.derivationRuns = clone;
   }
 
-  // ⑥ objectInterfaces：id → oif#<key>#<version>（key+version 表内唯一，governance 的幂等键）
-  const oifs = memOf("objectInterfaces");
-  if (oifs) {
-    const seen = new Set<string>();
-    const oiMap = new Map<string, string>();
-    for (const [, v] of oifs.entries) {
-      const r = v as { id: string; key: unknown; version: unknown };
-      canonPut(oiMap, seen, r.id, `oif#${String(r.key)}#${String(r.version)}`, "objectInterfaces");
-    }
-    const clone = structuredClone(oifs);
-    for (const [, v] of clone.entries) {
-      const r = v as { id: string };
-      r.id = oiMap.get(r.id) ?? r.id;
-    }
-    clone.entries = resort(clone.entries.map(([k, v]) => [rewriteKeyId(k, oiMap), v] as [string, unknown]));
-    out.objectInterfaces = clone;
+  // ⑤ rawRows 行键 = `${tenant} ${datasetId}`（restore 侧同一切分；service.ts:727 的落库键）。
+  //    值是原始业务行（不含 rds id），已在 ③ 随 mem 表换名（无命中 = 无操作）。行键原地重排。
+  const rawRows = memOf("rawRows");
+  if (rawRows) {
+    rawRows.entries = resort(
+      rawRows.entries.map(([k, v]) => {
+        const sep = k.indexOf(" ");
+        if (sep < 0) return [k, v] as [string, unknown];
+        const canon = rdsMap.get(k.slice(sep + 1));
+        return [canon === undefined ? k : `${k.slice(0, sep)} ${canon}`, v] as [string, unknown];
+      }),
+    );
   }
 
   return out;
@@ -419,6 +470,8 @@ const DIFF_POLICY: Record<string, "countOnly" | { ignorePaths: RegExp[] }> = {
   tsAggRuns: { ignorePaths: [/\.runAt$/] },
   // timeseries.ts:380 · lastRunAt 零数据点时回落墙钟 runAt（有数据点时是确定的最大点 ts）
   tsAggSpecs: { ignorePaths: [/\.lastRunAt$/] },
+  // timeseries.ts:151 · ingestedAt = 墙钟（writePoints 给每个落库点盖收到戳；ts/values/tick 全确定）
+  tsPoints: { ignorePaths: [/\.ingestedAt$/] },
   // users：argon2 随机盐（auth.ts:67）—— 同行其余字段全确定
   users: { ignorePaths: [/\.passwordHash$/] },
   // service.ts:430 · updatedAt = 墙钟（params 本体 = BATTERY_SOLVER_PARAMS 常数，strict 比对）
@@ -577,15 +630,17 @@ async function buildWorldTwice(kind: string, seed: number, sourcesSha256: string
   };
   const a = await buildOnce();
   const b = await buildOnce();
-  // 归一化只作用于比对（a 本体原样落快照 —— 还原要写回真实自洽的原 id，见归一化节头注）
+  // ⛔ 顺序是正确性的一部分：先把 a 的**干净字节**序列化出来（快照要保留原 id 自洽），
+  // 再做归一化比对 —— canonicalizeForDiff 会**原地改写**浅共享的 mem 表值（见该函数头注），
+  // 先比对后序列化 = 把规范名写进快照 = 还原出的世界与 live 多出一整类差异。
+  const clean = v8.serialize({ format: FORMAT_VERSION, kind, seed, sourcesSha256, tables: a } satisfies SnapshotFile);
   const report = diffTables(canonicalizeForDiff(a), canonicalizeForDiff(b));
   if (report.unexpected.length > 0) {
     throw new Error(
       `world-snapshot 双跑自证失败（合成非纯函数，R6 破）：\n  ${report.unexpected.slice(0, 50).join("\n  ")}`,
     );
   }
-  const file: SnapshotFile = { format: FORMAT_VERSION, kind, seed, sourcesSha256, tables: a };
-  return v8.serialize(file);
+  return clean;
 }
 
 /**
