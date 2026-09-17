@@ -192,6 +192,24 @@ live `runJob` 的幂等清理 = **只清 origin=SYNTHETIC 的 objects/links/rule
 - 单次合成 24–46s（负载相关）；双跑自证构建 71–119s；归一化+比对 ~14–20s。
 - 快照构建成本 = 每轮套件**一次**（磁盘缓存命中后为零），摊到 318 文件 ≈ 每文件 +0.3s。
 
-### 10.4 验收① 字节相等证明（seed=42 与 seed=7 双证）
+### 10.4 验收① 字节相等证明（seed=42 与 seed=7 双证）—— **PASS**（负载 ~400 标注）
 
-（待填 —— 探针在跑，结果落此节。）
+探针 `zz-probe-byte-equal.test.ts`（测完即删）：每个 seed 各做一次**真 live 合成**（POST
+/a/v1/synthetic/jobs）与一次**快照还原**（另一副全新 repos），全表归一化 + 默认口径比对：
+
+```
+BYTE_EQUAL seed=42 unexpected=0 ignored=200 snapBuilt=true ms=180789
+BYTE_EQUAL seed=7  unexpected=0 ignored=200 snapBuilt=true ms=222425
+Test Files 1 passed · Tests 2 passed（vitest RC=0）
+```
+
+- **seed=7 是硬条件 ① 点名的假绿温床**（808 个调用点里唯一非 42 种子，simclock.test.ts T6）：
+  它的快照是**独立双跑构建的 seed=7 世界**（snapBuilt=true —— 构建点双跑自证同样 PASS，
+  这是 seed=7 的合成纯函数性第一次被实测），还原字节与新鲜 seed=7 合成逐字节相等。
+  快照键丢 seed 维度 ⇒ seed=7 测试拿到 42 的字节 ⇒ 此探针当场红（两世界对象数都不同）。
+- snapBuilt=true ×2 同时证明：两张快照都是本机现建（双跑自证各付一次），非读盘缓存。
+- 耗时含负载 ~400 标注：seed42 全程 181s（fresh ~35s + 双跑 ~90s + 还原+比对 ~25s），
+  seed7 全程 222s（多一次 seed=7 双跑 ~110s）。套件态两张快照读盘后这些成本全部消失。
+- 「≥3 重文件」的世界形状即此 base 链（vle-acceptance / seed-demo-propagation /
+  gap-attribution / enterprise-state.seam / simclock 全部消费 (base,42)，simclock 另消费
+  (base,7)）—— 世界形状已被本节双证覆盖；逐文件 before/after 壁钟见 §10.5。
