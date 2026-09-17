@@ -1224,7 +1224,13 @@ export class SyntheticService {
     // WO-SANDBOX-D2 · supply（清关）: PurchaseOrder → CustomsClearance（仅进口单有）
     for (const cc of ext.customsClearances) await putLink(`lnk_pocc_${P(cc).clearanceId}`, "po_customs_cleared_by", oid("PurchaseOrder", P(cc).poId), oid("CustomsClearance", P(cc).clearanceId));
     // WO-SANDBOX-D2 · quality（到货检验）: PurchaseOrder → IncomingInspection（每单必检）
-    for (const ii of ext.incomingInspections) await putLink(`lnk_poii_${P(ii).inspectionId}`, "po_inspected_by", oid("PurchaseOrder", P(ii).poId), oid("IncomingInspection", P(ii).inspectionId));
+    for (const ii of ext.incomingInspections) {
+      await putLink(`lnk_poii_${P(ii).inspectionId}`, "po_inspected_by", oid("PurchaseOrder", P(ii).poId), oid("IncomingInspection", P(ii).inspectionId));
+      // WO-PROP-REVIEW-V2 ④ 检验放行边的地基：IncomingInspection → Material（ii.matId 直挂，
+      // 与归属边共用同一次遍历 ⇒ 检验单的两条边逐行对齐，改派生式不可能只改一半）。
+      // 实测 30/30 matId 可解析成真 Material（/tmp/t4-probe1.txt ②）。
+      await putLink(`lnk_ifm_${P(ii).inspectionId}`, "inspection_for_material", oid("IncomingInspection", P(ii).inspectionId), oid("Material", P(ii).matId));
+    }
     // WO-RULE-SCOPE-TRIAD · supply（外协）: Material → Outsource（os.matId）——外协批次接入本体图，
     // 无此边则 Outsource 成孤岛切片（slice-connectivity 门会拦）。
     for (const os of ext.outsources) await putLink(`lnk_mos_${P(os).outsourceId}`, "material_has_outsource", oid("Material", P(os).matId), oid("Outsource", P(os).outsourceId));
@@ -1502,6 +1508,13 @@ export class SyntheticService {
         const matId = matIdByName.get(String(P(mb).material));
         if (!matId) continue;
         await putLink(`lnk_mhbal_${P(mb).matBalId}`, "material_has_balance", oid("Material", matId), oid("MaterialBalance", P(mb).matBalId));
+        // WO-PROP-REVIEW-V2 ④ 缺口催货边的地基：MaterialBalance → 同料全部 PurchaseOrder。
+        // 与归属边共用同一次名解析（不是抄一遍派生式）⇒ 改归属口径不可能只改一半；
+        // 「包材」在上面 continue 处已诚实缺席 ⇒ 这里同样不建边。实测 30 条（/tmp/t4-probe1.txt ③）。
+        for (const po of ext.purchaseOrders) {
+          if (P(po).matId !== matId) continue;
+          await putLink(`lnk_bdp_${P(mb).matBalId}_${P(po).poId}`, "balance_drives_po", oid("MaterialBalance", P(mb).matBalId), oid("PurchaseOrder", P(po).poId));
+        }
       }
     }
     // D11：Customer → OverdueRecord（od.customerRef 是 custName ⇒ 经 custByName 换 custId）
