@@ -78,9 +78,22 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
   },
   {
     // WO-Phase3-B §3.2：本体多跳遍历查询（一次 query 顶多次 query_objects）。走 DataCore ontology_query 求解器。
+    //
+    // WO-AGENT-REASONER · 把推理机的 what-if 那一支暴露给 agent：
+    //   引擎 `query-engine.ts:211` 的 `overrides → recompute(dryRun) → before/after deltas` 分支
+    //   **契约有（`OntologyQueryInputSchema.overrides`）· 引擎有 · 求解器接了**，唯独本工具契约里
+    //   没声明这个参数，且描述原文写着「仅遍历+简单聚合…请用对应 invoke_solver」——
+    //   **等于把这台推理机的推理能力对 agent 藏了起来**：模型看不见的参数，它永远不会传。
+    //   形态：「我用『工具已注册』当作『agent 能用到它的推理能力』的证据，而前者并不度量后者。」
+    //   ⚠ 边界必须写在描述里，不许含糊：本工具的 what-if 走的是**§2 派生链**
+    //   （`ontologyCore.recompute`），**不是**沙盘的多拍传导（`sim_tick`）——两者引擎不同、
+    //   问的问题也不同，写糊了 agent 就会拿派生链去答「三个月后缺多少料」。
     name: "query_ontology",
     descriptionForLLM:
-      "本体多跳遍历查询：给定 rootType(+rootFilter) 沿 hops（或自动最短路）走到目标类型，select 投影字段并可做简单聚合(sum/count/avg/max)。回答『某基地关联哪些订单』『某供应商断供影响哪些客户』『某基地产线总产能』等跨类型关联问题——一次调用顶多次 query_objects。每行带 {typeKey,objId,linkPath} 溯源。仅遍历+简单聚合；复杂业务推演(能不能接/供需归因/组合最优)请用对应 invoke_solver。",
+      "本体多跳遍历查询 + 单步假设推演(what-if)。" +
+      "【遍历】给定 rootType(+rootFilter) 沿 hops（或自动最短路）走到目标类型，select 投影字段并可做简单聚合(sum/count/avg/max)。回答『某基地关联哪些订单』『某供应商断供影响哪些客户』『某基地产线总产能』等跨类型关联问题——一次调用顶多次 query_objects。每行带 {typeKey,objId,linkPath} 溯源。" +
+      "【假设推演】传 overrides 即把假设值套到遍历到的对象上、沿本体派生链前向重算，额外返回 deltas[{objId,type,prop,before,after}]，受影响的行 provenance 带 derivedFrom 标记。回答『如果某物料单价涨到 X，哪些型号的成本跟着变、变成多少』『如果某产线产能降到 Y，哪些派生指标会动』这类单步假设问题。**试算不落库**（dryRun），不会改动任何真实数据。" +
+      "边界：假设推演只沿**派生链**重算一步，**不是**多拍时间推演——『扰动传导几拍之后怎样』『三个月后缺多少料』请用 sim_init/sim_tick；能不能接单/供需归因/组合最优请用对应 invoke_solver。",
     inputSchema: {
       type: "object",
       properties: {
@@ -90,6 +103,12 @@ export const BUILTIN_TOOLS: ToolDefinition[] = [
         select: { type: "array", items: { type: "object" }, description: "投影 [{type,fields[],aggregate?,groupBy?}]" },
         orderBy: { type: "object", description: "{field,direction:asc|desc}" },
         limit: { type: "number" },
+        overrides: {
+          type: "array",
+          items: { type: "object" },
+          description:
+            "假设注入 [{objectType,objectId,prop,value}]：把 value 当作该对象该属性的假设值，沿派生链前向重算，返回 deltas。试算不落库。objectId 用遍历结果 provenance 里的 objId。留空=纯遍历不推演。",
+        },
       },
       required: ["rootType", "select"],
     },

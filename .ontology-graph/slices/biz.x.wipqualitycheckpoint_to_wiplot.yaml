@@ -1,0 +1,42 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.x.wipqualitycheckpoint_to_wiplot"
+scope: "cross"
+rootType: "WIPQualityCheckpoint"
+domain: "quality"
+spannedTypes: ["WIPLot", "WIPQualityCheckpoint"]
+spannedDomains: ["process", "quality"]
+paths: [[{ linkKey: "checkpoint_for_lot", direction: "out" }]]
+brief: "跨域接缝切片·process↔quality·在制批次(WIPLot) → 在制质检点(WIPQualityCheckpoint)"
+indexEntities: ["WIPLot", "WIPQualityCheckpoint", "在制批次", "在制质检点"]
+tokens: ["process", "quality", "wiplot", "wipqualitycheckpoint", "切", "切片", "制", "制批", "制质", "在", "在制", "在制批次", "在制质检点", "域", "域接", "批", "批次", "接", "接缝", "检", "检点", "次", "次在", "点", "片", "片在", "缝", "缝切", "质", "质检", "跨", "跨域"]
+counts: { atoms: 14, consumers: 15 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["WIPLot", "WIPQualityCheckpoint"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["WIPLot", "WIPQualityCheckpoint"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["WIPLot"]
+  - atom: "sym:apps/datacore/src/process/flow-rules.ts#BATTERY_PROCESS_FLOW_RULES"
+    via: ["WIPLot"]
+  - atom: "sym:apps/datacore/src/sim/drill.ts#chainNodeDetail"
+    via: ["WIPLot"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["WIPLot", "WIPQualityCheckpoint"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["WIPLot", "WIPQualityCheckpoint"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["WIPLot", "WIPQualityCheckpoint"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["WIPLot"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["WIPLot", "WIPQualityCheckpoint"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/physicalTopology.ts#REAL_DATA_ENTRYPOINTS"
+    via: ["WIPLot"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/physicalTopology.ts#TOPOLOGY_FACT_QUERIES"
+    via: ["WIPLot"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/transitFlow.ts#TRANSIT_SOURCE_SPECS"
+    via: ["WIPLot"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx#TransitFlowLayer"
+    via: ["WIPLot"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/process/ontology.ts", "apps/datacore/src/process/reconstruct.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/solvers/ontology-signature.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/handlers.ts", "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx", "apps/frontend-shell/src/views/sim/SandboxConsole.tsx", "apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx"]

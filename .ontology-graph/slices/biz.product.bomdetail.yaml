@@ -1,0 +1,38 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.product.bomdetail"
+scope: "intra"
+rootType: "BOMDetail"
+domain: "product"
+spannedTypes: ["BOMDetail", "BOMHeader"]
+spannedDomains: ["product"]
+paths: [[{ linkKey: "detail_belongs_to_bom", direction: "out" }]]
+brief: "域内切片·域 product·根 BOM明细(BOMDetail)·覆盖 2 类型：BOM明细、BOM主表"
+indexEntities: ["BOMDetail", "BOMHeader", "BOM主表", "BOM明细"]
+tokens: ["bom", "bomdetail", "bomheader", "bom主表", "bom明细", "product", "主", "主表", "内", "内切", "切", "切片", "型", "型明", "域", "域内", "域根", "明", "明细", "根", "根明", "片", "片域", "盖", "盖类", "类", "类型", "细", "细主", "细覆", "表", "覆", "覆盖"]
+counts: { atoms: 12, consumers: 22 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/datacore/src/sim/pair-weights.ts#buildPairWeights"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/datacore/src/solvers/ontology-signature.ts#SOLVER_ONTOLOGY_SIGNATURES"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryBuiltinSlices"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["BOMDetail", "BOMHeader"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["BOMDetail", "BOMHeader"]
+consumers: ["apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/ontology-governance.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/sim/propagation-inputs.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/handlers.ts"]

@@ -1,0 +1,82 @@
+# 生成物 —— ⛔ 不要手改。
+sliceKey: "biz.x.equipment_to_process"
+scope: "cross"
+rootType: "Equipment"
+domain: "equip"
+spannedTypes: ["Equipment", "Process"]
+spannedDomains: ["equip", "process"]
+paths: [[{ linkKey: "equip_used_in", direction: "out" }]]
+brief: "跨域接缝切片·equip↔process·设备(Equipment) → 工序(Process)"
+indexEntities: ["Equipment", "Process", "工序", "设备"]
+tokens: ["equip", "equipment", "process", "切", "切片", "域", "域接", "备", "备工", "工", "工序", "序", "接", "接缝", "片", "片设", "缝", "缝切", "设", "设备", "跨", "跨域"]
+counts: { atoms: 34, consumers: 39 }
+atoms:
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_LINKS"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/agentcore/src/mocks/ontology-graph.ts#MOCK_ONTOLOGY_TYPES"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#ROLE_PROFILES"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/agentcore/src/mocks/seed.ts#seedRegistry"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/app.ts#buildApp"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/calibration/replay.ts#patchContext"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/calibration/replay.ts#sliceObjectsFor"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/calibration/service.ts#CalibrationService"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/graphmeta.ts#BUSINESS_DOMAINS"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/sim/drill.ts#chainNodeDetail"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/solvers/capacity.ts#computeByProcessModel"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/solvers/capacity.ts#patchCapacityContext"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/solvers/chain-impediment.ts#IMPEDIMENT_RULE_BINDINGS"
+    via: ["Process"]
+  - atom: "sym:apps/datacore/src/solvers/chain-loss.ts#chainLossAttribution"
+    via: ["Process"]
+  - atom: "sym:apps/datacore/src/solvers/ontology-signature.ts#SOLVER_ONTOLOGY_SIGNATURES"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#CoreSolverObjectType"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SOLVER_REQUIRED_TYPES"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/solvers/service.ts#SolverService"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_RULE_SCOPES"
+    via: ["Process"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_TEMPLATE"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#BATTERY_TS_AGG_SPECS"
+    via: ["Process"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryBuiltinSlices"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryLinkTypes"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/synthetic/battery.ts#batteryObjectTypes"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/synthetic/data-categories.ts#batteryDataCategories"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#entityRefFieldOf"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/synthetic/service.ts#SyntheticService"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/datacore/src/vle-oracle.ts#referenceCapacityForecast"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/frontend-shell/src/mocks/fixtures.ts#GRAPH"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/frontend-shell/src/mocks/handlers.ts#handlers"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/frontend-shell/src/mocks/planFixtures.ts#MAPPING_ROWS"
+    via: ["Equipment", "Process"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/physicalTopology.ts#TOPOLOGY_FACT_QUERIES"
+    via: ["Equipment"]
+  - atom: "sym:apps/frontend-shell/src/views/sim/unified/console0828/eventCatalog.ts#BUSINESS_EVENTS"
+    via: ["Equipment"]
+  - atom: "sym:packages/contracts/src/capacity-factors.ts#CAPACITY_FACTOR_BINDINGS"
+    via: ["Equipment", "Process"]
+consumers: ["apps/agentcore/src/main.ts", "apps/agentcore/src/mocks/clients.ts", "apps/datacore/src/app.ts", "apps/datacore/src/calibration/methods.ts", "apps/datacore/src/calibration/pairing.ts", "apps/datacore/src/calibration/service.ts", "apps/datacore/src/databuilder/service.ts", "apps/datacore/src/datahealth.ts", "apps/datacore/src/livedin/bundle.ts", "apps/datacore/src/livedin/engine.ts", "apps/datacore/src/ontology-governance.ts", "apps/datacore/src/ontology.ts", "apps/datacore/src/ontology/refbase-coverage.ts", "apps/datacore/src/ontology/refbase.ts", "apps/datacore/src/opsteam/replay.ts", "apps/datacore/src/opsteam/schedule.ts", "apps/datacore/src/planviews.ts", "apps/datacore/src/rules.ts", "apps/datacore/src/seed-cli.ts", "apps/datacore/src/seed.ts", "apps/datacore/src/server.ts", "apps/datacore/src/simclock.ts", "apps/datacore/src/solvers/capacity.ts", "apps/datacore/src/solvers/chain-loss-matrix.ts", "apps/datacore/src/solvers/impediment-options.ts", "apps/datacore/src/solvers/risk.ts", "apps/datacore/src/solvers/service.ts", "apps/datacore/src/sop.ts", "apps/datacore/src/synthetic/builtin-templates.ts", "apps/datacore/src/synthetic/service.ts", "apps/datacore/src/vle.ts", "apps/frontend-shell/src/mocks/browser.ts", "apps/frontend-shell/src/mocks/handlers.ts", "apps/frontend-shell/src/mocks/simSolvers.ts", "apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx", "apps/frontend-shell/src/views/sim/console/PerturbTree.tsx", "apps/frontend-shell/src/views/sim/inspectorModel.ts", "apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx", "apps/frontend-shell/src/views/sim/unified/rail/perturbRailModel.ts"]
