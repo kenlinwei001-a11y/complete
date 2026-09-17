@@ -3301,9 +3301,13 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   // 名字取「产线受阻压力」而不是「产线阻塞」：该边的 description 原文是
   // 「工序排队 ⇒ 该产线受阻。落在 blockedPressure 这个新量纲上，是为了不回喂 utilPressure 成正反馈环」
   // ⇒ 它度量的是**产线被上游工序堵住的程度**，与既有 `utilPressure`（产线本来就满）分属两个成因。
-  // ⚠ 本键**刻意不进 `STATE_VAR_DOMAINS`**：域表只收「写得出出处」的量纲，而本单没有为它
-  //   声明取值域；未登记者引擎不夹不衰减，且在 tick 回执 `undeclaredStateVars` 里被逐个点名 ——
-  //   缺口留在屏上，不留在注释里（与 `queueDays` 等天数族同一条纪律）。
+  // ⚠ **2026-09-17 订正（WO-SIM-DOMAIN-DECLARE，经 WO-SIM-CALIBRATION 复核后移植）：
+  //   本键已登记进 `STATE_VAR_DOMAINS`。**
+  //   原文写「本键刻意不进域表：域表只收『写得出出处』的量纲，而本单没有为它声明取值域」——
+  //   **后半句是实话，前半句是从它错误推出来的结论**：`WO-SLICE-DOMAINS` 没写出处，
+  //   不等于这个量纲没有出处。它与其余 31 个压力族共用**同两条**既有出处（`PRESSURE_DOMAIN_SOURCE`），
+  //   一条都不用新发明 —— 见该常量下方的登记理由。
+  //   形态（照铁律 0.6 句式）：**「我用『那一单没为它写出处』当作『它没有出处』的证据。」**
   blockedPressure: "产线受阻压力",
   // ── D10 基地与仓储交付：认证排队 / 成品提货 / 来料催交 ──
   qualificationQueue: "认证排队", drawdownPressure: "成品提货压力",
@@ -3372,6 +3376,19 @@ const PRESSURE_DOMAIN_SOURCE =
 export const STATE_VAR_DOMAINS: Record<string, StateVarDomain> = Object.fromEntries(
   [
     // 压力 / 风险 / 指数 / 负载族 —— 出处 ①②，静息点 = 下界 0。
+    // ── 🔴 `blockedPressure` 2026-09-17 补登记（WO-SIM-DOMAIN-DECLARE · WO-SIM-CALIBRATION 移植）──
+    // **它是全仓唯一「入边≠0 且 出边≠0」的未声明积分器** —— 判据不是名字里有没有 `Pressure`，
+    // 是**它在图上的位置**（47 条边逐条数入/出度，`docs/evidence/wo-sim-calibration/` 可复跑）：
+    //   · `deliveryDelay` / `procurementDelay`：**入边 0** ⇒ 外生根，传导从不写它 ⇒ 不会积分发散；
+    //   · `queueDays` / `clearanceQueueDays` / `inspectBacklog` / `repairBacklog` /
+    //     `handlingBacklog` / `qualificationQueue`：**出边 0** ⇒ 叶子汇，自己发散**不喂给任何人**；
+    //   · `blockedPressure`：**入边 1（`Process.queuePressure ×0.55`）+ 出边 1
+    //     （`→ WorkOrder.releasePressure ×0.6`）** ⇒ 唯一一个把无界读数**泵进下游已声明链**的口子。
+    // 出处一条都没新发明，就是 `PRESSURE_DOMAIN_SOURCE` 那两条：① `drill-scan.ts`「压力 0–100」，
+    // 而本键语义由其边的 description 定死（「工序排队 ⇒ 该产线**受阻**」= 无量纲受阻程度，非天非件）；
+    // ② tick0 生成式对**规则里出现的每一个**状态量一视同仁，其出厂值同样落在 [0,100]。
+    // 静息点取下界 0：无入流即不受阻（同压力族）。
+    "blockedPressure",
     "demandPressure", "demandLoad", "loadIndex", "utilPressure", "queuePressure",
     "shortageRisk", "supplyRisk", "expeditePressure", "priceShock", "costPressure",
     "receivablePressure", "overduePressure", "changeoverPressure", "releasePressure",
