@@ -796,7 +796,12 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   "demo_supplier_procurement_delay_to_material_shortage": 0.5,
   "demo_forecast_bias_to_order_demand": -0.6,
   "demo_order_churn_to_line_split": 0.7,
-  "demo_order_churn_to_model_demand_load": 0.5,
+  // ㊶ 负号即方向（传导规则业务评审 v2 ①·2026-09-17）：订单变更以**取消/缩水**为主 ⇒
+  // 变更频度越高，在手需求越被高估 ⇒ 型号需求负载应当**下修**，不是上抬。
+  // 修前 +0.5 的理由是「插单/取消带来排产返工 ⇒ 推高负载」—— 评审定性符号反：
+  // 那条把「变更的**事务扰动**」（改行/改期，由 line_split 边 +0.7 正向表达）与
+  // 「变更的**净需求方向**」（取消占多 ⇒ 向下）混成了一个数。量级 |0.5| 维持不变。
+  "demo_order_churn_to_model_demand_load": -0.5,
   "demo_equipment_failure_to_process_queue": 0.6,
   "demo_process_queue_to_line_blocked": 0.55,
   "demo_line_blocked_to_wo_release": 0.6,

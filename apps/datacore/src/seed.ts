@@ -1285,7 +1285,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   //
   // 与既有 `demo_order_demand_pressure`（Order.demandPressure → Model.demandLoad）同 target
   // 不同源，语义不重复：那条是「需求压力水平」，本条是「订单**变更**频度」——
-  // 插单/取消带来的排产返工本身就会推高型号侧的负载，与需求量高低是两件事。
+  // 变更里取消/缩水占多，在手需求被高估，型号侧负载读数应随变更频度**下修**。
+  //
+  // ⚠ **系数为负**（传导规则业务评审 v2 ①）：修前 +0.5 的理由是「插单/取消带来排产返工 ⇒
+  // 推高负载」，评审定性符号反 —— 那半截「事务扰动」由 `demo_order_churn_to_line_split`
+  // （+0.7，改行/改期压力）正向表达；本条表达的是**净需求方向**：取消占多 ⇒ 向下。
   {
     id: "simpr_demo_order_churn_to_model_demand_load",
     key: "demo_order_churn_to_model_demand_load",
@@ -1295,7 +1299,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
     delayTicks: 0,
-    description: "订单频繁变更 ⇒ 型号需求负载跟着抖动",
+    description: "订单频繁变更 ⇒ 取消/缩水占多、在手需求被高估，型号需求负载随之下修（变更频度 × −0.5 = 需求负载下修量）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -1490,14 +1494,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   // （`demo_order_churn_to_line_split` / `demo_order_churn_to_model_demand_load`）
   // **本来就已经发布**，所以还手一落地，世界立刻知道该怎么往下走：
   //   我方涨价 → Order.costPressure ↑ → Customer.receivablePressure ↑ →〔越过容忍线〕→
-  //   Order.orderChurn ↑ → OrderLine.splitPressure ↑ / Model.demandLoad ↑ → …
+  //   Order.orderChurn ↑ → OrderLine.splitPressure ↑ / Model.demandLoad ↓ → …
   // ⇒ **零新下游**。本条只补上"回来的那一箭"，不另造一条尾巴。
+  //   （demandLoad 的方向是 **↓** 不是 ↑：㊶ 已于评审 v2 ① 翻负，见该边行内注。）
   //
-  // 🔴 **这会闭合一个正反馈环**（需求负载 → 基地负载 → 产线利用 → 工单下达 → 型号成本 →
-  //    订单成本 → 应收压力 → 砍单 → 需求负载）。这**不是设计失误，是对抗的本质** ——
-  //    真实商战里"涨价→客户跑→摊薄成本更高→再涨价"正是这么转的。两道既有闸把它按住：
-  //    ① 容忍线（本条 `tolerance`）让环在低水位**根本不导通**；
-  //    ② `WO-PROP-CLAMP` 的量纲衰减 + 取值域饱和让它收敛到有限稳态而不是发散。
+  // 🔴 **环的性质（评审 v2 ① 之后）= 负反馈自阻尼**：砍单 ⇒ 在手需求**下修** ⇒
+  //    基地负载/产线利用/下达压力回落 ⇒ 成本压力与应收压力随之下行 ⇒ 砍单压力自身减弱。
+  //    修前 ㊶ 为 +0.5 时这里是「涨价→客户跑→负载更高→再涨价」的正反馈螺旋 ——
+  //    那个故事依赖一条图里并不存在的「量减 ⇒ 单位成本升」边；正号是把
+  //    「变更的事务扰动」误当「净需求方向」读出来的（评审 v2 ① 定性符号反）。
+  //    翻负后它恰好成为评审 §1 指认缺失的那类**负反馈环**（修前全图 1/50 负系数、零负反馈）。
+  //    ① 容忍线闸（本条 `tolerance`）不变：低水位环根本不导通；
+  //    ② `WO-PROP-CLAMP` 的量纲衰减 + 取值域饱和仍在，多环叠加也不越域。
   //    确定性（R6）不受影响：全程零随机、零时钟。
   {
     id: "simpr_demo_customer_reaction_cut_order",
