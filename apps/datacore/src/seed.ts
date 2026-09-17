@@ -971,6 +971,69 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     status: "PUBLISHED",
   },
 
+  // ── WO-PROP-REVIEW-V2 ④ · 物料环三条反馈/补口（评审优先级 4「物料是第二高频扰动源，今天零阻尼」）──
+  // 评审原文（v2 §2 物料环）：
+  //   ➕ MaterialAlternative.switchPressure → Material.shortageRisk（负）「有替代料应当降低短缺风险。
+  //      今天 MaterialAlternative 是死胡同 = 假设永远没 Plan B」
+  //   ➕ IncomingInspection.queueDays → Material.shortageRisk（正）「来料检验堵住 ⇒ 物料到了也不可用」
+  //   ➕ MaterialBalance.gapPressure → PurchaseOrder.expeditePressure「算出缺口要驱动催货」
+  // 评审明写后两条「要先补本体关系」⇒ 新链 inspection_for_material / balance_drives_po
+  // （battery.ts 声明 + service.ts 物化，实测各 30 条，/tmp/t4-probe1.txt）。
+  // 环增益自证：shortage→expedite(0.5)×expedite→queue(0.6)×queue→shortage(0.2)=0.06≪1 阻尼；
+  // 替代料边是负环（自阻尼）；缺口边挂在既有正向链上不成新环。
+  // 系数单源在 C36.params（T1 范式：字面量缺席 ⇒ ruleParamOf 当场抛错）。
+  {
+    id: "simpr_demo_alt_to_material",
+    key: "demo_alt_switch_to_material_shortage",
+    sourceTypeKey: "MaterialAlternative",
+    sourceStateVar: "switchPressure",
+    viaLinkKey: "alt_for_material", // 实测 MaterialAlternative→Material，5 条（/tmp/t4-probe1.txt ①）
+    targetTypeKey: "Material",
+    targetStateVar: "shortageRisk",
+    delayTicks: 1, // 替代切换有审批/换线周期 ⇒ 缓解下一拍生效
+    description: "替代料切换压力高 ⇒ Plan B 在启用，主料的短缺风险被缓解（替代料负反馈）",
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    weightRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_inspection_to_material",
+    key: "demo_inspection_queue_to_material_shortage",
+    sourceTypeKey: "IncomingInspection",
+    sourceStateVar: "queueDays",
+    viaLinkKey: "inspection_for_material", // 新链·实测 30 条（/tmp/t4-probe1.txt ②）
+    targetTypeKey: "Material",
+    targetStateVar: "shortageRisk",
+    delayTicks: 0, // 货到堵在检验 = 当下不可用
+    description: "来料检验排队 ⇒ 物料到了也不可用，短缺风险上抬（检验放行）",
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    weightRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_balance_to_po",
+    key: "demo_balance_gap_to_po_expedite",
+    sourceTypeKey: "MaterialBalance",
+    sourceStateVar: "gapPressure",
+    viaLinkKey: "balance_drives_po", // 新链·实测 30 条（/tmp/t4-probe1.txt ③）
+    targetTypeKey: "PurchaseOrder",
+    targetStateVar: "expeditePressure",
+    delayTicks: 1, // MRP 跑出缺口 ⇒ 采购下一拍才催得到
+    description: "MRP 平衡表算出缺口 ⇒ 驱动同料采购单催货（缺口驱动加急）",
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    weightRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
   // ── D06 计划与排产：基地负载 → 跨基地调拨决策压力 ──
   {
     id: "simpr_demo_base_load_to_transfer",
