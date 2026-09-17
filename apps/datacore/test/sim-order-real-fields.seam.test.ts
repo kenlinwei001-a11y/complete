@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+import { seedDemoDerivationSpecs, recomputeDemoDerivationsAtSeed } from "../src/seed-derivation-specs.js";
 import { deriveSeedBaseSnapshot, entersSimWorld } from "../src/sim/seed-world.js";
 import { buildPropagationInputs } from "../src/sim/propagation-inputs.js";
 import { replayWorldLine } from "../src/sim/metric-series.js";
@@ -42,6 +43,57 @@ async function seededApp(): Promise<TestApp> {
   return t;
 }
 
+/**
+ * **生产播种路** —— 与 `server.ts` 的 `SEED_DEMO=1` 序列同一串。
+ *
+ * ⚠ 上面的 `seededApp()` **缺了派生规格那两步**（`seedDemoDerivationSpecs` +
+ * `recomputeDemoDerivationsAtSeed`）⇒ 它铺出来的世界只有 Order 三字段是真值（450 格），
+ * 而真服务是 4,171 格。**同一个函数、两个环境、两个答案** ——
+ * 复验实测（2026-09-17，真服务 `:14899` @ tip 758b5d9c）：
+ *   测试路 `measuredCells` = 450 · 生产路 = 4,171。
+ *
+ * 形态（CLAUDE.md 铁律 0.6 句式）：
+ *   「我用『守门测试绿』当作『生产世界被守住了』的证据，而前者并不度量后者
+ *     —— 它测的那个世界只有 450 格。」
+ * 同源前科：铁律 0.5 判据 6 的 `viaModelingChain`（两个测试都传 `true` 而生产传 `false`，
+ * 测试三周验的是生产已经放弃的那条路）。
+ *
+ * ⛔ 不许在测试里另起一条更窄的播种路 —— 这正是 CLAUDE.md 铁律 1.5「measuredCells 守门员」
+ * 四条设计判据的第 1 条（仓主 2026-09-17 解冻该门时定）。
+ */
+async function productionSeededApp(): Promise<TestApp> {
+  const t = await seededApp();
+  await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+  await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
+  return t;
+}
+
+/**
+ * **独立重算** `measuredCells`：从**已发布规则表**推出世界里有哪些 `(类型,状态变量)` 对，
+ * 再逐对数「进世界且该属性是有限数」的对象。
+ *
+ * ⚠ 它**不走** `deriveSeedBaseSnapshot` —— 那是被测对象，拿它的中间结果算期望值就是自证。
+ * 这条路只用**规则表 + 对象库**这两样独立事实重建同一个数。
+ * 返回逐对明细，**红了能直接点名是哪一对**（守门员四条判据的第 4 条：红了要能指认是谁）。
+ */
+async function recountMeasured(t: TestApp): Promise<{ total: number; perPair: Record<string, number> }> {
+  const rules = await t.repos.sim.listPropagationRules("demo", true);
+  const pairs = new Set<string>();
+  for (const r of rules) {
+    pairs.add(`${r.sourceTypeKey}|${r.sourceStateVar}`);
+    pairs.add(`${r.targetTypeKey}|${r.targetStateVar}`);
+  }
+  const perPair: Record<string, number> = {};
+  let total = 0;
+  for (const key of [...pairs].sort()) {
+    const [ty, sv] = key.split("|") as [string, string];
+    const objs = (await t.repos.objects.listByType("demo", ty)).filter((o) => entersSimWorld(ty, o));
+    const n = objs.filter((o) => typeof o.props[sv] === "number" && Number.isFinite(o.props[sv] as number)).length;
+    if (n > 0) { perPair[key] = n; total += n; }
+  }
+  return { total, perPair };
+}
+
 /** 走完整条链跑到第 `toTick` 拍，回落盘世界态。**与路由同一处装配**，不在这里手搭引擎。 */
 async function runWorld(t: TestApp, toTick: number, perturbations: readonly Perturbation[] = []): Promise<TickState> {
   const { state: seed } = await deriveSeedBaseSnapshot(t.repos, "demo");
@@ -78,7 +130,7 @@ const setProp = async (t: TestApp, o: ObjectInstance, patch: Record<string, unkn
 };
 
 describe("WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM）", () => {
-  it("①正向 measuredCells = 在手订单数 × 3，且两边**各自独立**算一遍再比", async () => {
+  it("①正向【Order 三字段专项·非全局守卫】measuredCells = 在手订单数 × 3，两边各自独立算一遍再比", async () => {
     const t = await seededApp();
     const { origin, state } = await deriveSeedBaseSnapshot(t.repos, "demo");
 
@@ -271,4 +323,37 @@ describe("WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM�
       }
     }
   }, 180000);
+
+  /**
+   * ⑥ **`measuredCells` 守门员（生产播种路）** —— CLAUDE.md 铁律 1.5 该门的四条设计判据：
+   *   ① 走生产播种路（⛔ 不许测试里另起更窄的路）；② 两边各自现算再比（⛔ 不写死数字）；
+   *   ③ 必须有反向臂；④ 红了要能指认是谁。
+   *
+   * ⚠ 本条与 ① 的分工：① 只守 **Order 三字段**（标题已改明），本条守**整个承诺**
+   *   ——「本系统用真实数据算」。少了本条，① 绿着而生产世界退回全哈希也没人说话。
+   */
+  it("⑥ 守门员：生产播种路的 measuredCells 必须等于独立重算值（⛔ 不写死数字）", async () => {
+    // ── 正臂：完整生产播种序列 ──
+    const t = await productionSeededApp();
+    const { origin } = await deriveSeedBaseSnapshot(t.repos, "demo");
+    const { total, perPair } = await recountMeasured(t);
+
+    // 🐤 金丝雀：重算器本身有鉴别力（对数 > 1 且总数 > 0），否则下面的相等是两个 0 相等
+    expect(Object.keys(perPair).length, "独立重算命中的 (类型,变量) 对数为 0 ⇒ 重算器坏了").toBeGreaterThan(1);
+    expect(total, "独立重算总数为 0 ⇒ 重算器坏了").toBeGreaterThan(0);
+
+    // ④ 可指认：红了直接看得到是哪一对偏了
+    expect(origin.measuredCells, `引擎报 ${origin.measuredCells} 格 vs 独立重算 ${total} 格；逐对明细 ${JSON.stringify(perPair)}`)
+      .toBe(total);
+    expect(origin.measuredCells + origin.derivedCells).toBe(origin.cells);
+
+    // ── 反臂：拿掉派生那两步（= 打回前的旧测试路）⇒ 必须显著低于正臂 ──
+    // ⛔ 不断言"等于 450"：写死数字会随交付过期，下一个人会顺手把它改小（守门员判据 ②）。
+    const t2 = await seededApp();                       // 缺 seedDemoDerivationSpecs + recompute
+    const { origin: o2 } = await deriveSeedBaseSnapshot(t2.repos, "demo");
+    const { total: t2Total } = await recountMeasured(t2);
+    expect(o2.measuredCells, "反臂：缺派生步的世界，两边仍须各自自洽").toBe(t2Total);
+    expect(o2.measuredCells, `反臂：缺派生步 ⇒ 真值格必须显著少于生产路（正 ${origin.measuredCells} / 反 ${o2.measuredCells}）`)
+      .toBeLessThan(origin.measuredCells);
+  }, 300000);
 });

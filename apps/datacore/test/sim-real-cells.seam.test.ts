@@ -7,6 +7,7 @@ import {
 } from "../src/seed-derivation-specs.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
 import { deriveSeedBaseSnapshot, seedHash01 } from "../src/sim/seed-world.js";
+import { STATE_VAR_DISPLAY_NAMES, STATE_VAR_DOMAINS } from "../src/synthetic/battery.js";
 import type { ObjectInstance } from "../src/domain.js";
 
 /**
@@ -146,30 +147,85 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     expect(propOf(models, sample.id, "demandLoad")).toBeCloseTo(hand, 4);
   });
 
-  // ── 臂 2 量纲（验收判据 3：任选 5 条，与已知真值同量级，差一个数量级 = 退回）────────────────
-  it("臂2 量纲：5 条抽样全部落在各自业务域内（不越域 = 量纲未错配）", async () => {
-    // 量纲判据的硬锚：压力族 ∈ [0,100]，forecastBias ∈ [−100,100]，天数/比率族不越出实测分布。
-    // 越域 = 量纲错配的指纹（utilPressure 460 vs 91 那次的教训），⛔ 不许写进注释了事。
-    const checks: Array<[string, string, number, number]> = [
-      // [type, prop, min, max] —— 上下界取自 STATE_VAR_DOMAINS / 台账实测分布
-      ["Equipment", "equipmentFailure", 0, 100],
-      ["Line", "utilPressure", 0, 100],
-      ["Process", "queuePressure", 0, 100],
-      ["Model", "costPressure", 0, 100],
-      ["Model", "forecastBias", -100, 100],
-      // A⚠ 档 5 条中实测分布入域的 2 条（③批）；costPressure 40–115 / demandLoad 23.6–138
-      // 越上界是仓主批的「如实」口径（同 expeditePressure 212 / loadIndex 552 先例），不入本表不是错配。
-      ["Order", "demandPressure", 0, 100],
-      ["Order", "shortageRisk", 0, 100],
-    ];
-    for (const [type, prop, lo, hi] of checks) {
-      const objs = await objectsOf(type);
-      for (const o of objs) {
-        const v = o.props[prop];
-        if (typeof v !== "number") continue;
-        expect(v >= lo && v <= hi, `${type}.${prop}=${v} 越出 [${lo},${hi}] = 量纲错配`).toBe(true);
+  // ── 臂 2 量纲 · 上下文规则版（仓主 2026-09-17 打回②修：白名单换全扫）────────────────────
+  it("臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」", async () => {
+    // 打回②的结构病：旧版是 7 元组白名单 —— 只扫得到「有人想起来加进表」的变量。
+    //   全扫第一网就捞到白名单永远看不到的两条：WIPLot.feedPressure 260/260 全在 ≈111（域 [0,100]）、
+    //   Model.supplyRisk 6/6 全负（≈−29）—— 白名单结构性地抓不住表外变量。
+    //   修 = 域在 STATE_VAR_DOMAINS 里声明 ⇒ 自动受守（新增变量不用有人想起来往表里加）；
+    //        没声明 ⇒ 按族归档「刻意无上界」，只断言有限数。
+    //
+    // 如实例外表（回执点名过的先例：式子只算原始值，越域由引擎按域夹，对象上留原始值——
+    //   同 expeditePressure −32~212 / loadIndex 74–552 判例，⛔ 不许 CLAMP 内联边界常数 = R14）。
+    //   区间全部实测于本 tip（探针 /tmp/arm2-scan.mjs：全链播种后全对象扫描），⛔ 不许拍脑袋宽限。
+    //   ⚠ 例外键若永远扫不到 ⇒ 档案腐坏 ⇒ 红（下方 expect(excLeft).toEqual([])），逼维护不逼删守。
+    const EXCEPTIONS: Record<string, readonly [number, number, string]> = {
+      // 应收超授信 25.6%（1 户）：应收 > 授信 = 超压如实。注意 22.67 是臂1锚点那户的值，不是分布上界。
+      "Customer|receivablePressure": [0, 126, "实测 6.40–125.59（n=20，越域 1 户）"],
+      // 16 单 creditUsedRatio>1（i%7 单 1.15×100=115）：超授信即超压（仓主 ③批「如实」）。
+      "Order|costPressure": [0, 116, "实测 40–115（n=500，越域 16 单）"],
+      // 负=未到船期、>100=已超窗（A 档交付记录）。
+      "PurchaseOrder|expeditePressure": [-33, 213, "实测 −32.43–212.5（n=30，越域 13）"],
+      // >100=基地承诺量超两产能之和，超载如实（A 档交付记录）。
+      "Base|loadIndex": [0, 553, "实测 74.18–552.02（n=13，越域 10）"],
+      // 负=超储（在手+在途 > 日耗×提前期），缺货率如实（A 档交付记录）。
+      "Material|shortageRisk": [-162, 52, "实测 −161.42–51.00（n=8，越域 4）"],
+      // >100=在手订单超产能（同 loadIndex 先例，仓主 ③批「如实」）。
+      "Model|demandLoad": [0, 139, "实测 23.57–138（n=6，越域 1）"],
+      // AVG(物料 shortageRisk) 继承负尾（负=该型号物料整体超储）。论界 = 均值必落入输入界 [−161.42, 51.00]。
+      // ⚠ 本条是全扫的第一条新catch：supplyRisk 声明域 [0,100] 是「单物料缺货率」的域，对「跨物料均值」口径不适用；
+      //   白名单时代它从未被扫到。处置 = 如实归档不改式（⛔ 不许为它 CLAMP，同判例）；要不要换口径归仓主裁。
+      "Model|supplyRisk": [-162, 52, "实测 −29.44–−28.86（n=6，全负；输入 shortageRisk ∈ [−161.42, 51.00]）"],
+      // 260/260 全在 ≈111 = 100/0.9（合成 90% 收率不变式：批 qty = 工单 qtyPlanned × 0.9，1:1 链）。
+      // ⚠ 全扫第二条新catch：投料压力恒 ≈111 是合成不变式的镜像，不是业务信号。如实归档不改式；
+      //   「恒值压力有没有推演价值」是仓主的裁决，不是本测试的（它的职责是抓住它 —— 已抓住）。
+      "WIPLot|feedPressure": [111, 112, "实测 111.1111–111.1888（n=260，全部；= 1/0.9 收率镜像）"],
+    };
+    // 无域族归档（打回②要求的「单独归档并写明刻意无上界」；注册表现算 15 键 = 三族）：
+    //   ① 天数族 5：queueDays/clearanceQueueDays/procurementDelay/deliveryDelay/backlogHorizonDays
+    //   ② 件数/积压族 6：inspectBacklog/repairBacklog/handlingBacklog/qualificationQueue/backlogQtyTop/backlogPriceTop
+    //      —— ①② 刻意无上界（battery.ts 域表头注：drill-scan 只说「另一类量纲」没给上界，拍一个 100 就是拍脑袋定）。
+    //   ③ 真值支 3：qty/unitPrice/leadDays —— 带真实单位的业务量（套/元/天）走真值支，不适用压力域（域表出处注）。
+    //   ④ blockedPressure —— 刻意不进域（battery.ts 本键注释：写不出出处就不登记，引擎不夹不衰减、tick 回执逐个点名）。
+    //      对照真值（打回①要求落臂2）：本 tip 实测 **27.72–182.73**（n=130；/tmp/blocked-probe2.mjs +
+    //      /tmp/arm2-scan.mjs 双证；手算 Σout×100/max_capacity_day 与物化值逐字节一致）。
+    //   （打回说的「14 个」与注册表现算 15 差 1：blockedPressure 归类口径 —— 它是刻意无域的**压力**，不属天数/件数族。）
+    const NO_DOMAIN = Object.keys(STATE_VAR_DISPLAY_NAMES).filter((k) => !(k in STATE_VAR_DOMAINS));
+
+    // 金丝雀先行（防扫描空转假绿）：域表至少 32 键（31 压力族 + forecastBias，只能多不能少 —— 少了 = 有人在拆守 ⇒ 红）。
+    expect(Object.keys(STATE_VAR_DOMAINS).length).toBeGreaterThanOrEqual(32);
+
+    const all = await t.repos.objects.list("demo");
+    const excLeft = new Set(Object.keys(EXCEPTIONS));
+    const domGroups = new Set<string>();
+    const noDomGroups = new Set<string>();
+    for (const o of all) {
+      for (const [prop, v] of Object.entries(o.props)) {
+        if (typeof v !== "number" || !Number.isFinite(v)) continue;
+        const key = `${o.type}|${prop}`;
+        const dom = STATE_VAR_DOMAINS[prop];
+        if (dom) {
+          domGroups.add(key);
+          const exc = EXCEPTIONS[key];
+          if (exc) {
+            excLeft.delete(key);
+            expect(v >= exc[0] && v <= exc[1], `${key}=${v} 越出如实例外区间 [${exc[0]},${exc[1]}]（${exc[2]}）`).toBe(true);
+          } else {
+            expect(v >= dom.min && v <= dom.max, `${key}=${v} 越出声明域 [${dom.min},${dom.max}] = 量纲错配（越域 = 量纲错配的指纹，utilPressure 460 vs 91 的教训）`).toBe(true);
+          }
+        } else if (NO_DOMAIN.includes(prop)) {
+          // 刻意无上界 ⇒ 只断言有限数（上方 isFinite 已是断言本身），计数归档。
+          noDomGroups.add(key);
+        }
+        // 其余 prop 不是状态量（普通业务属性），不在本臂守卫范围。
       }
     }
+    // 完整性三断言：① 扫描真的扫到了域键（现算 18 组，⛔ 不许写死 —— 写死不度量今天真的登记了谁）；
+    expect(domGroups.size).toBeGreaterThanOrEqual(15);
+    // ② 例外表零腐坏（扫不到的例外 = 死档案 ⇒ 红）；
+    expect([...excLeft], `例外表腐坏：这些键从未扫到 → ${[...excLeft].join(", ")}`).toEqual([]);
+    // ③ 无域族确实在世界里出现（现算 19 组 Type|prop 组合）。
+    expect(noDomGroups.size).toBeGreaterThanOrEqual(10);
   });
 
   // ── ⓐ 引擎归属（验收判据 ⓐ 方式 2 釜底抽薪）：清掉规格 ⇒ 本单值全消失 ─────────────────
@@ -221,7 +277,7 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
   });
 
   // ── 臂 4 反向（dryRun：拿掉输入 ⇒ 退回 null/0，防写死常数）─────────────────────────
-  it("臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死 22.9285）", async () => {
+  it("臂4 反向：拿掉 Line.max_capacity_day ⇒ blockedPressure 退回（COALESCE 兜 0，非写死常数）", async () => {
     const lines = await objectsOf("Line");
     const sample = lines.find((l) => (l.props.blockedPressure as number) > 0);
     const res = await t.services.ontologyCore.recompute(
