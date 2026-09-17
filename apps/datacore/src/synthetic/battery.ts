@@ -3301,9 +3301,12 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   // 名字取「产线受阻压力」而不是「产线阻塞」：该边的 description 原文是
   // 「工序排队 ⇒ 该产线受阻。落在 blockedPressure 这个新量纲上，是为了不回喂 utilPressure 成正反馈环」
   // ⇒ 它度量的是**产线被上游工序堵住的程度**，与既有 `utilPressure`（产线本来就满）分属两个成因。
-  // ⚠ 本键**刻意不进 `STATE_VAR_DOMAINS`**：域表只收「写得出出处」的量纲，而本单没有为它
-  //   声明取值域；未登记者引擎不夹不衰减，且在 tick 回执 `undeclaredStateVars` 里被逐个点名 ——
-  //   缺口留在屏上，不留在注释里（与 `queueDays` 等天数族同一条纪律）。
+  // ⚠ **2026-09-17 订正（WO-SIM-DOMAIN-DECLARE）：本键已登记进 `STATE_VAR_DOMAINS`。**
+  //   原文写「本键刻意不进域表：域表只收『写得出出处』的量纲，而本单没有为它声明取值域」——
+  //   **后半句是实话，前半句是从它错误推出来的结论**：`WO-SLICE-DOMAINS` 没写出处，
+  //   不等于这个量纲没有出处。它与其余 31 个压力族共用**同两条**既有出处（`PRESSURE_DOMAIN_SOURCE`），
+  //   一条都不用新发明 —— 见该常量下方的登记理由。
+  //   形态（照铁律 0.6 句式）：**「我用『那一单没为它写出处』当作『它没有出处』的证据。」**
   blockedPressure: "产线受阻压力",
   // ── D10 基地与仓储交付：认证排队 / 成品提货 / 来料催交 ──
   qualificationQueue: "认证排队", drawdownPressure: "成品提货压力",
@@ -3368,10 +3371,51 @@ const PRESSURE_DOMAIN_SOURCE =
  *   **刻意不在此表**：`drill-scan.ts` 只说了它们"是另一类量纲"，**没说上界是多少**，
  *   全仓也找不到第二处出处。给它们拍一个 100 天 / 100 件的上界就是本单明令禁止的"拍脑袋定"。
  *   它们今天仍是纯积分器，且**在 tick 回执里被逐个点名** —— 缺口留在屏上，不留在注释里。
+ *   ⚠ 这 8 个**不许**顺手补域，理由不是"还没想好"，是**已经有人按"它无界"在用**：
+ *   `chain-loss.ts` 的 `SIM_DAY_STATE_VAR_BY_CARRIER` 是天数族的**真消费方**（把"这一拍积了几天"
+ *   叠进链损），给它夹个 100 就是把业务量纲改小。同文件 `simDeltaDaysFor` 里那句
+ *   「夹在这里而不是改世界态：**世界态是别人的真相源**」把边界划得很清楚 ——
+ *   负值/超界由**消费方**在读时处理，不是回头去改世界态。
+ *   ⚠ 2026-09-17 实测订正：派单原文说「`battery.ts:1673` 已写明负 `leadDays` 是刻意保留的
+ *   （在制单可低至 −14）」——**该坐标不成立**：1673 行那段讲的是**产能池**（`capacityPoolProps`），
+ *   与 `leadDays` 无关；且 `leadDays` 是 **`Order`** 的属性不是 `Supplier` 的，
+ *   本文件 5868 行原文还写着「实测其 `leadDays` **最小 14**，clamp 从未触发」——**与"可低至 −14"相反**。
+ *   真正成立的那条理由是上面 `chain-loss.ts` 那句，已逐字核过。
+ *
+ * ── 🔴 2026-09-17 补登记 `blockedPressure`（WO-SIM-DOMAIN-DECLARE）─────────────────
+ * **今天的行为 X（真 datacore `SEED_DEMO=1` 实测，非转述）**：`Line.blockedPressure` 未声明域 ⇒
+ * 不夹不衰减 ⇒ 纯积分器。种子世界 tick3 分支出来再推 6 拍，**130/130 格全部越界**，
+ * 最大 **2284.49**（上界 100 的 22.8 倍）。
+ * **应该的 Y**：它与其余 31 个压力族同族同出处，应当落在 [0,100] 并随 C35 衰减。
+ *
+ * ── 为什么它与上面那 8 个**不同类**，不是"顺手多补一个"────────────────────────────
+ * 判据不是名字里有没有 `Pressure`，是**它在图上的位置**（47 条边实测逐条数的入/出度）：
+ *   · `deliveryDelay` / `procurementDelay`：**入边 0** ⇒ 外生根，传导从不写它 ⇒ 压根不会积分发散；
+ *   · `queueDays` / `clearanceQueueDays` / `inspectBacklog` / `repairBacklog` /
+ *     `handlingBacklog` / `qualificationQueue`：**出边 0** ⇒ 叶子汇，它们自己发散**不喂给任何人**；
+ *   · `blockedPressure`：**入边 1（`Process.queuePressure ×0.55`）+ 出边 1
+ *     （`→ WorkOrder.releasePressure ×0.6`）** —— 全仓**唯一**一个"穿透型"未声明积分器。
+ * 于是它是**唯一**一个把无界读数**泵进下游已声明链**的口子：2000+ 的原始值经 ×0.6 灌进
+ * `releasePressure`，把 `releasePressure → feedPressure → defectPressure → costPressure`
+ * 整条链推进**深度饱和区**，而饱和曲线在深区的导数是 `1/(1+u)²` ⇒ 扰动差被压掉几个数量级。
+ * 实测（同一台 Equipment 上 ×1.10 与 ×1.30 两臂）：`costPressure` 两臂只差 **1.12e-7**
+ * —— 这就是"不同扰动给同一个结果"的那一半机制。
+ *
+ * ── 出处：一条都没新发明 ──────────────────────────────────────────────────────────
+ * 用的就是 `PRESSURE_DOMAIN_SOURCE` 那两条：
+ *  ① `drill-scan.ts` 段头「状态变量的量纲各不相同（**压力 0–100**、天数、件数…）」——
+ *     `blockedPressure` 的语义由它那条边的 description 原文定死：「工序排队 ⇒ 该产线**受阻**」，
+ *     是**无量纲受阻程度**，不是天、不是件，故归压力族；
+ *  ② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——
+ *     该函数对**规则里出现的每一个**状态量一视同仁，`blockedPressure` 的出厂值同样落在 [0,100]。
+ * 静息点取下界 0：无入流即不受阻（同压力族）。
  */
 export const STATE_VAR_DOMAINS: Record<string, StateVarDomain> = Object.fromEntries(
   [
     // 压力 / 风险 / 指数 / 负载族 —— 出处 ①②，静息点 = 下界 0。
+    // ⚠ `blockedPressure` 2026-09-17 补登记（WO-SIM-DOMAIN-DECLARE）：它是全仓唯一
+    //   "入边≠0 且 出边≠0" 的未声明积分器，理由与实测四数见上方文档注释。
+    "blockedPressure",
     "demandPressure", "demandLoad", "loadIndex", "utilPressure", "queuePressure",
     "shortageRisk", "supplyRisk", "expeditePressure", "priceShock", "costPressure",
     "receivablePressure", "overduePressure", "changeoverPressure", "releasePressure",
