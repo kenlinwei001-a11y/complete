@@ -4,8 +4,7 @@ import { seedDemoPropagationRules } from "../src/seed.js";
 import { seedDemoSimWorld, DEMO_SIM_WORLD_SESSION_ID } from "../src/sim/seed-world.js";
 
 const E1 = "demo_fg_drawdown_relieves_model_demand";
-const E2 = "demo_transfer_relieves_base_load";
-const DAMP = [E1, E2];
+const DAMP = [E1];
 type St = Record<string, Record<string, number>>;
 
 const enableSim = (t: TestApp) =>
@@ -85,9 +84,8 @@ describe("DAMPING", () => {
     console.log(`EXP2 ON 最大逐拍偏离=${Math.max(...on.dl.map((v, i) => Math.abs(v - onM.dl[i]!))).toFixed(6)}`);
 
     // ── 实验③：变异反证 ──────────────────────────────────────────────────────
-    const m1 = await arm([E1], false), m2 = await arm([E2], false);
-    console.log(`EXP3 删①(fg→demandLoad): demandLoad area=${sum(m1.dl).toFixed(4)} (全开 ${sum(on.dl).toFixed(4)} / 全关 ${sum(off.dl).toFixed(4)})`);
-    console.log(`EXP3 删②(xfer→loadIndex): loadIndex area=${sum(m2.li).toFixed(4)} (全开 ${sum(on.li).toFixed(4)} / 全关 ${sum(off.li).toFixed(4)})`);
+    const m1 = await arm([E1], false);
+    console.log(`EXP3 删①(fg→demandLoad): demandLoad area=${sum(m1.dl).toFixed(4)} (全开 ${sum(on.dl).toFixed(4)} / 全关 ${sum(off.dl).toFixed(4)}) 变异后是否回到全关=${sum(m1.dl).toFixed(4) === sum(off.dl).toFixed(4)}`);
 
     // ── seeded-world 臂（真 demo 世界·饱和区）──────────────────────────────────
     await seedDemoSimWorld(t.repos, t.services.sim, t.adminCtx);
