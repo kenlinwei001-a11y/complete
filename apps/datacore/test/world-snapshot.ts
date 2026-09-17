@@ -10,7 +10,8 @@
  *     （apps/datacore/src 全部 .ts + packages/contracts/dist + packages/llm-adapters/dist
  *      + test/helpers.ts + 本文件）——链上任何一字节变了快照自动作废（审核硬条件 ③，
  *     ⛔ 不许砍成只哈希入口文件：battery.ts 改了而快照不中 = 假绿温床）。
- *   - 构建点**双跑自证**：每次建快照都真合成两遍、逐表逐字段比对（DIFF_POLICY 口径），
+ *   - 构建点**双跑自证**：每次建快照都真合成两遍、逐表逐字段比对（随机 id 引用图先经
+ *     canonicalizeForDiff 归一化、叶子级墙钟/随机盐按 DIFF_POLICY 圈定 —— 两节均有码坐标），
  *     不一致当场抛错 —— 守门员④「两次独立合成字节一致」的证据强度不降格（各文件还原同一批
  *     字节后，文件内两次还原恒等是恒真命题，不再度量「合成是纯函数」；该性质挪到这里，每轮
  *     套件构建快照时仍真测一次）。
@@ -181,12 +182,12 @@ interface SimDump {
   perturbations: [string, { seq: number; p: unknown }][];
   perturbationSeq: number;
 }
-type TableDump = MemDump | TsPointsDump | SimDump;
+export type TableDump = MemDump | TsPointsDump | SimDump;
 
 const sortEntries = <V>(m: Map<string, V>): [string, V][] =>
   [...m.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 
-function dumpReposToTables(repos: Repos): Record<string, TableDump> {
+export function dumpReposToTables(repos: Repos): Record<string, TableDump> {
   const out: Record<string, TableDump> = {};
   for (const [key, store] of Object.entries(repos) as [string, AnyStore | unknown][]) {
     if (typeof store === "function") continue; // ping / close
@@ -226,10 +227,174 @@ function dumpReposToTables(repos: Repos): Record<string, TableDump> {
   return out;
 }
 
-// ── 双跑自证的差异口径 ───────────────────────────────────────────────────────
+// ── 双跑自证的归一化（随机 id 引用图）────────────────────────────────────────
 //
-// 非确定残留（账本 §5.3，逐条有码坐标）：快照还原**原样保留**这些字节（快照内部自洽），
-// 只有「双跑自证」的比对需要圈掉它们 —— 它们今天在同一台机两次新鲜合成之间也不同。
+// 探针实证（双跑全量 diff，证据落账本 §5.3）：合成世界有 4 组 id 是 newId 随机值且**跨表传播**：
+//   connections      「合成数据源（确定性生成）」1 条 id = newId("conn")（service.ts:626；
+//                    另 7 条 conn-erp 等 id 确定），被 rawDatasets.sourceConnId 与
+//                    objects.origin.sourceConnId（实测 ×411）引用；
+//   rawDatasets      id = newId("rds")（service.ts:719，按 (sourceConnId,name) 幂等复用），
+//                    被 objects.origin.rawDatasetId（实测 ×1556）与 rawRows 的行键尾部引用；
+//   derivationRuns   id = newId("drun")（ontology.ts:923/935）；
+//   objectInterfaces id = newId("oif")（ontology-governance.ts:1007）。
+// （objects/links/rules 的 origin.jobId **不是**随机值 —— service.ts:225 刻意用确定性串
+//   `synthetic-${industry}-${scale}-${seed}`，这正是 R6 字节一致的前提；探针证实零 diff。）
+//
+// 处理 = **归一化而非忽略**：随机 id 换成由确定性属性派生的规范名（连接按 name、原始表按
+// 连接+数据集名、derivationRun 按内容序、interface 按 key@version），之后这些表全部回到
+// strict 逐字节比对 —— 引用完整性（对象 backref ⇄ 原始表行 ⇄ rawRows 键）仍被全量验证，
+// 只有「newId 随出了什么字节」这一个真随机维度被折掉。
+// ⛔ 归一化只作用于**比对**（双跑自证 / 验收① 的还原vs新鲜）；快照字节本身保持原样 ——
+//    还原必须把快照那套自洽的原 id 原样写回，否则就是引入新的与 live 的差异类。
+
+const NUL = "";
+/** 规范键冲突时 fail-loud（撞名说明「确定性属性」并不确定，不许静默放行）。 */
+function canonPut(map: Map<string, string>, seen: Set<string>, oldId: string, canon: string, what: string): void {
+  if (seen.has(canon)) throw new Error(`world-snapshot 归一化：${what} 规范键撞名 "${canon}" —— 派生属性不唯一`);
+  seen.add(canon);
+  map.set(oldId, canon);
+}
+
+/** memKey = `${tenant}\0${id}`（memory.ts memKey）—— 只换 id 段，tenant 段原样保留。 */
+function rewriteKeyId(key: string, idMap: Map<string, string>): string {
+  const sep = key.indexOf(NUL);
+  if (sep < 0) return key;
+  const canon = idMap.get(key.slice(sep + 1));
+  return canon === undefined ? key : key.slice(0, sep + 1) + canon;
+}
+
+const resort = (arr: [string, unknown][]): [string, unknown][] =>
+  arr.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+
+/**
+ * 返回一份**比对专用**的归一化副本：外层对象浅拷（未受影响的表 —— 含 tsPoints/tsAggRuns
+ * 两个大头 —— 零成本共享引用），仅 6 张受随机 id 污染的表深拷改写。
+ * 查不到映射的引用**原样保留** —— 悬空引用两次运行各随各的，diff 当场红（fail-loud 方向）。
+ */
+export function canonicalizeForDiff(tables: Record<string, TableDump>): Record<string, TableDump> {
+  const out: Record<string, TableDump> = { ...tables };
+  const memOf = (name: string): MemDump | null => {
+    const d = tables[name];
+    if (d === undefined) return null;
+    if (d.shape !== "mem") throw new Error(`world-snapshot 归一化："${name}" 应为 mem 形态，实际 ${d.shape}`);
+    return d;
+  };
+
+  // ① connections：id → conn#<name>（name 唯一：7 条源系统 + 1 条「合成数据源（确定性生成）」互异）
+  const connMap = new Map<string, string>();
+  const conns = memOf("connections");
+  if (conns) {
+    const seen = new Set<string>();
+    for (const [, v] of conns.entries) {
+      const c = v as { id: string; name: unknown };
+      canonPut(connMap, seen, c.id, `conn#${String(c.name)}`, "connections");
+    }
+    const clone = structuredClone(conns);
+    for (const [, v] of clone.entries) {
+      const c = v as { id: string };
+      c.id = connMap.get(c.id) ?? c.id;
+    }
+    clone.entries = resort(clone.entries.map(([k, v]) => [rewriteKeyId(k, connMap), v] as [string, unknown]));
+    out.connections = clone;
+  }
+
+  // ② rawDatasets：id → rds#<规范连接>#<数据集名>（service.ts:717 的幂等键即此对）；sourceConnId 同步换名
+  const rdsMap = new Map<string, string>();
+  const rawDatasets = memOf("rawDatasets");
+  if (rawDatasets) {
+    const seen = new Set<string>();
+    for (const [, v] of rawDatasets.entries) {
+      const d = v as { id: string; sourceConnId: unknown; name: unknown };
+      const canonConn = connMap.get(String(d.sourceConnId)) ?? String(d.sourceConnId);
+      canonPut(rdsMap, seen, d.id, `rds#${canonConn}#${String(d.name)}`, "rawDatasets");
+    }
+    const clone = structuredClone(rawDatasets);
+    for (const [, v] of clone.entries) {
+      const d = v as { id: string; sourceConnId?: string };
+      if (d.sourceConnId !== undefined) d.sourceConnId = connMap.get(d.sourceConnId) ?? d.sourceConnId;
+      d.id = rdsMap.get(d.id) ?? d.id;
+    }
+    clone.entries = resort(clone.entries.map(([k, v]) => [rewriteKeyId(k, rdsMap), v] as [string, unknown]));
+    out.rawDatasets = clone;
+  }
+
+  // ③ objects 的源头 backref（探针实测 ×1556/×411 —— 换名后 origin 其余字段仍 strict）
+  const objects = memOf("objects");
+  if (objects) {
+    const clone = structuredClone(objects);
+    for (const [, v] of clone.entries) {
+      const o = v as { origin?: { sourceConnId?: string; rawDatasetId?: string } };
+      if (o.origin?.sourceConnId !== undefined) o.origin.sourceConnId = connMap.get(o.origin.sourceConnId) ?? o.origin.sourceConnId;
+      if (o.origin?.rawDatasetId !== undefined) o.origin.rawDatasetId = rdsMap.get(o.origin.rawDatasetId) ?? o.origin.rawDatasetId;
+    }
+    out.objects = clone;
+  }
+
+  // ④ rawRows 行键 = `${tenant} ${datasetId}`（restore 侧同一切分；service.ts:727 的落库键）
+  const rawRows = memOf("rawRows");
+  if (rawRows) {
+    const clone = structuredClone(rawRows);
+    clone.entries = resort(
+      clone.entries.map(([k, v]) => {
+        const sep = k.indexOf(" ");
+        if (sep < 0) return [k, v] as [string, unknown];
+        const canon = rdsMap.get(k.slice(sep + 1));
+        return [canon === undefined ? k : `${k.slice(0, sep)} ${canon}`, v] as [string, unknown];
+      }),
+    );
+    out.rawRows = clone;
+  }
+
+  // ⑤ derivationRuns：id 无确定属性可派生 ⇒ 按确定内容（updatedObjects/order/status/error）
+  //    排序后编序号 drun#<i>。内容不同 ⇒ strict 红；行数不同 ⇒ 数组长度红。
+  const druns = memOf("derivationRuns");
+  if (druns) {
+    const clone = structuredClone(druns);
+    const ordered = clone.entries
+      .map(([k, v], i) => {
+        const d = v as Record<string, unknown>;
+        return { i, k, content: JSON.stringify([d.updatedObjects, d.order, d.status, d.error ?? null]) };
+      })
+      .sort((a, b) => (a.content < b.content ? -1 : a.content > b.content ? 1 : a.i - b.i));
+    const drMap = new Map<string, string>();
+    ordered.forEach(({ k }, idx) => {
+      const sep = k.indexOf(NUL);
+      if (sep >= 0) drMap.set(k.slice(sep + 1), `drun#${idx}`);
+    });
+    for (const [, v] of clone.entries) {
+      const d = v as { id: string };
+      d.id = drMap.get(d.id) ?? d.id;
+    }
+    clone.entries = resort(clone.entries.map(([k, v]) => [rewriteKeyId(k, drMap), v] as [string, unknown]));
+    out.derivationRuns = clone;
+  }
+
+  // ⑥ objectInterfaces：id → oif#<key>#<version>（key+version 表内唯一，governance 的幂等键）
+  const oifs = memOf("objectInterfaces");
+  if (oifs) {
+    const seen = new Set<string>();
+    const oiMap = new Map<string, string>();
+    for (const [, v] of oifs.entries) {
+      const r = v as { id: string; key: unknown; version: unknown };
+      canonPut(oiMap, seen, r.id, `oif#${String(r.key)}#${String(r.version)}`, "objectInterfaces");
+    }
+    const clone = structuredClone(oifs);
+    for (const [, v] of clone.entries) {
+      const r = v as { id: string };
+      r.id = oiMap.get(r.id) ?? r.id;
+    }
+    clone.entries = resort(clone.entries.map(([k, v]) => [rewriteKeyId(k, oiMap), v] as [string, unknown]));
+    out.objectInterfaces = clone;
+  }
+
+  return out;
+}
+
+// ── 双跑自证的差异口径（叶子级非确定残留）────────────────────────────────────
+//
+// 归一化（上节）折掉的是「随机 id 引用图」；本表圈的是**叶子级**非确定：墙钟与随机盐。
+// 快照还原**原样保留**这些字节（快照内部自洽），只有「双跑自证 / 验收①」的比对跳过它们 ——
+// 它们今天在同一台机两次新鲜合成之间也不同（账本 §5.3，逐条有码坐标）。
 //
 // 口径分三档（默认档 = strict，⛔ 未列名的表一律 strict —— 新表冒出非确定字段会当场红，
 // 逼人来这里显式登记，fail-loud 方向）：
@@ -240,30 +405,46 @@ function dumpReposToTables(repos: Repos): Record<string, TableDump> {
 const DIFF_POLICY: Record<string, "countOnly" | { ignorePaths: RegExp[] }> = {
   // service.ts:214/220 · job id = newId("job")（randomBytes）、createdAt = 墙钟
   syntheticJobs: "countOnly",
-  // service.ts:336 · runJob 尾 emit dataset.regenerated（事件 id/at 含墙钟）
+  // service.ts:336 · runJob 尾 emit dataset.regenerated（事件 id/at 含墙钟 + payload 嵌随机 job id）
   outboxEvents: "countOnly",
-  // service.ts:626/632 · 「合成数据源」连接 id = newId("conn")、lastSyncAt = 墙钟；
-  // conn-erp 等 8 条 id 确定但 lastSyncAt 仍是墙钟 ⇒ 整表 countOnly（id 作为 key 一半随机一半确定，混排无意义）
-  connections: "countOnly",
+  // service.ts:632/672 · lastSyncAt = 墙钟（连接的随机 id 已由归一化折掉，其余字段 strict）
+  connections: { ignorePaths: [/\.lastSyncAt$/] },
+  // service.ts:724 · syncedAt = 墙钟（id/sourceConnId 由归一化折掉，fields/rowCount 仍 strict）
+  rawDatasets: { ignorePaths: [/\.syncedAt$/] },
+  // ontology.ts:925-926 · startedAt/finishedAt = 墙钟（id 由归一化折掉）
+  derivationRuns: { ignorePaths: [/\.startedAt$/, /\.finishedAt$/] },
+  // ontology-governance.ts:1018-1019 · createdAt/updatedAt = 墙钟（id 由归一化折掉）
+  objectInterfaces: { ignorePaths: [/\.createdAt$/, /\.updatedAt$/] },
+  // timeseries.ts:283/340 · runAt = 墙钟（实测 153,920 行每行一次；id/rowsIn/value 全确定）
+  tsAggRuns: { ignorePaths: [/\.runAt$/] },
+  // timeseries.ts:380 · lastRunAt 零数据点时回落墙钟 runAt（有数据点时是确定的最大点 ts）
+  tsAggSpecs: { ignorePaths: [/\.lastRunAt$/] },
   // users：argon2 随机盐（auth.ts:67）—— 同行其余字段全确定
-  users: { ignorePaths: [/^\.passwordHash$/] },
+  users: { ignorePaths: [/\.passwordHash$/] },
   // service.ts:430 · updatedAt = 墙钟（params 本体 = BATTERY_SOLVER_PARAMS 常数，strict 比对）
-  solverParams: { ignorePaths: [/^\.updatedAt$/] },
+  solverParams: { ignorePaths: [/\.updatedAt$/] },
   // service.ts:309-310 · createdAt/updatedAt = 墙钟
-  scenarioPackages: { ignorePaths: [/^\.createdAt$/, /^\.updatedAt$/] },
+  scenarioPackages: { ignorePaths: [/\.createdAt$/, /\.updatedAt$/] },
   // service.ts:612 · createdAt = 墙钟（domains 其余字段确定）
-  domains: { ignorePaths: [/^\.createdAt$/] },
+  domains: { ignorePaths: [/\.createdAt$/] },
 };
 
-interface DiffReport {
+export interface DiffReport {
   /** 命中 ignorePaths / countOnly 的差异（预期内，计数备查）。 */
   ignored: string[];
   /** 口径外差异 —— 非空即 R6 破了，必须抛错。 */
   unexpected: string[];
 }
 
-function walkDiff(path: string, x: unknown, y: unknown, ignore: RegExp[] | undefined, report: DiffReport): void {
-  if (report.unexpected.length >= 50) return; // 报 50 条足够定位，别糊屏
+function walkDiff(
+  path: string,
+  x: unknown,
+  y: unknown,
+  ignore: RegExp[] | undefined,
+  report: DiffReport,
+  cap = 50,
+): void {
+  if (report.unexpected.length >= cap) return; // 默认 50 条足够定位，别糊屏；探针可放宽
   if (Object.is(x, y)) return;
   if (ignore?.some((re) => re.test(path))) {
     if (report.ignored.length < 200) report.ignored.push(path);
@@ -274,17 +455,23 @@ function walkDiff(path: string, x: unknown, y: unknown, ignore: RegExp[] | undef
   if (xObj && yObj && Array.isArray(x) === Array.isArray(y)) {
     const keys = new Set([...Object.keys(x as object), ...Object.keys(y as object)]);
     for (const k of [...keys].sort()) {
-      walkDiff(`${path}.${k}`, (x as Record<string, unknown>)[k], (y as Record<string, unknown>)[k], ignore, report);
+      walkDiff(`${path}.${k}`, (x as Record<string, unknown>)[k], (y as Record<string, unknown>)[k], ignore, report, cap);
     }
     return;
   }
   report.unexpected.push(path);
 }
 
-function diffTables(a: Record<string, TableDump>, b: Record<string, TableDump>): DiffReport {
+export function diffTables(
+  a: Record<string, TableDump>,
+  b: Record<string, TableDump>,
+  policyOverride?: Record<string, "countOnly" | { ignorePaths: RegExp[] }>,
+  cap = 50,
+): DiffReport {
+  const policyOf = (key: string) => (policyOverride ?? DIFF_POLICY)[key];
   const report: DiffReport = { ignored: [], unexpected: [] };
   for (const key of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort()) {
-    const policy = DIFF_POLICY[key];
+    const policy = policyOf(key);
     const da = a[key];
     const db = b[key];
     if (!da || !db) {
@@ -296,21 +483,25 @@ function diffTables(a: Record<string, TableDump>, b: Record<string, TableDump>):
       continue;
     }
     if (policy === "countOnly") {
-      const na = JSON.stringify(da).length; // 行数比较：用 entries 长度而非字节长
-      const ca = da.shape === "tspoints" ? da.entries.reduce((n, [, inner]) => n + inner.length, 0) : da.entries.length;
-      const cb = db.shape === "tspoints" ? db.entries.reduce((n, [, inner]) => n + inner.length, 0) : db.entries.length;
-      void na;
+      const countOf = (d: TableDump): number =>
+        d.shape === "tspoints"
+          ? d.entries.reduce((n, [, inner]) => n + inner.length, 0)
+          : d.shape === "sim"
+            ? d.sessions.length + d.ticks.length + d.checkpoints.length + d.rules.length + d.perturbations.length
+            : d.entries.length;
+      const ca = countOf(da);
+      const cb = countOf(db);
       if (ca !== cb) report.unexpected.push(`${key}: 行数 ${ca} ≠ ${cb}`);
       continue;
     }
     const ignore = typeof policy === "object" ? policy.ignorePaths : undefined;
     if (da.shape === "sim" && db.shape === "sim") {
-      walkDiff(`${key}.perturbationSeq`, da.perturbationSeq, db.perturbationSeq, ignore, report);
+      walkDiff(`${key}.perturbationSeq`, da.perturbationSeq, db.perturbationSeq, ignore, report, cap);
       for (const sub of ["sessions", "ticks", "checkpoints", "rules", "perturbations"] as const) {
-        walkDiff(`${key}.${sub}`, da[sub], db[sub], ignore, report);
+        walkDiff(`${key}.${sub}`, da[sub], db[sub], ignore, report, cap);
       }
     } else {
-      walkDiff(key, (da as MemDump | TsPointsDump).entries, (db as MemDump | TsPointsDump).entries, ignore, report);
+      walkDiff(key, (da as MemDump | TsPointsDump).entries, (db as MemDump | TsPointsDump).entries, ignore, report, cap);
     }
   }
   return report;
@@ -356,7 +547,7 @@ async function sweepStale(): Promise<void> {
 }
 
 /** POST /a/v1/synthetic/jobs —— 与 helpers.seedBattery 原实现同一条活路（路由→runJob 同步跑完）。 */
-async function postSyntheticJob(t: BareApp, seed: number): Promise<void> {
+export async function postSyntheticJob(t: BareApp, seed: number): Promise<void> {
   const res = await t.app.inject({
     method: "POST",
     url: "/a/v1/synthetic/jobs",
@@ -386,7 +577,8 @@ async function buildWorldTwice(kind: string, seed: number, sourcesSha256: string
   };
   const a = await buildOnce();
   const b = await buildOnce();
-  const report = diffTables(a, b);
+  // 归一化只作用于比对（a 本体原样落快照 —— 还原要写回真实自洽的原 id，见归一化节头注）
+  const report = diffTables(canonicalizeForDiff(a), canonicalizeForDiff(b));
   if (report.unexpected.length > 0) {
     throw new Error(
       `world-snapshot 双跑自证失败（合成非纯函数，R6 破）：\n  ${report.unexpected.slice(0, 50).join("\n  ")}`,
