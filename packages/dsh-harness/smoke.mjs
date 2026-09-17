@@ -33,12 +33,16 @@ const CORDIS_FILE = 'cordis.poc.yml'
 function preflightHarnessDeps() {
   const cordisText = readFileSync(join(here, CORDIS_FILE), 'utf8')
   const entryNames = [...cordisText.matchAll(/^\s*name:\s*['"]([^'"]+)['"]/gm)].map((m) => m[1])
-  const probes = new Map() // 裸说明符 -> 首个出处（报错时点名"谁要它"）
+  const probes = new Map() // 包名 -> 首个出处（报错时点名"谁要它"）
   const seenFiles = new Set()
   const queue = []
+  // 说明符 ≠ 包名：`@scope/pkg/sub/path.js` 的链农场条目是 `@scope/pkg`。
+  // 不收敛这一步，子路径 import 会被误报成"缺包"（首版实测 4 条假阳，全是
+  // `@modelcontextprotocol/sdk/client/index.js` 这种）—— 假阳比没自检更坏。
+  const pkgNameOf = (spec) => (spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0])
   for (const name of entryNames) {
     if (name.startsWith('.')) queue.push(name)
-    else if (!probes.has(name)) probes.set(name.startsWith('@') ? name.split('/').slice(0, 2).join('/') : name.split('/')[0], CORDIS_FILE)
+    else if (!probes.has(pkgNameOf(name))) probes.set(pkgNameOf(name), CORDIS_FILE)
   }
   // 沿 plugins/ 内部的相对 import 走全闭包：真正让条目挂掉的常常是插件的插件
   // （如 platform-sdk-server → platform-world → mcp-client-tenant 的那几个包）。
@@ -54,11 +58,7 @@ function preflightHarnessDeps() {
       const spec = m[1]
       if (spec.startsWith('node:')) continue
       if (spec.startsWith('.')) { queue.push(join(dirname(rel), spec)); continue }
-      // 说明符 ≠ 包名：`@scope/pkg/sub/path.js` 的链农场条目是 `@scope/pkg`。
-      // 不收敛这一步，子路径 import 会被误报成"缺包"（首版实测 4 条假阳，全是
-      // `@modelcontextprotocol/sdk/client/index.js` 这种）—— 假阳比没自检更坏。
-      const pkg = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]
-      if (!probes.has(pkg)) probes.set(pkg, rel)
+      if (!probes.has(pkgNameOf(spec))) probes.set(pkgNameOf(spec), rel)
     }
   }
   // 金丝雀：探针数为 0 = **解析坏了**，不是"依赖齐全"。
