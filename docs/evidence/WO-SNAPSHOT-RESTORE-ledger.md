@@ -115,12 +115,18 @@ seedBattery(t, seed=42)            test/helpers.ts:61
 ### 6.2 还原入口（test/ 内，src 零改动）
 - `test/world-snapshot.ts`（新文件）：
   - `ensureWorldSnapshot(seed): Buffer`（懒建/读盘）
-  - `restoreWorldIntoRepos(repos, snapshot): Promise<void>`——逐表 putMany 灌入 fresh `createMemoryRepos()`。
-    ⚠ putMany 会 structuredClone 一遍（memory.ts:167）——v1 先接受（正确性优先），若实测还原成本过高再评估给 memory.ts 加**additive** 的快照装填口（动 src/repo 不动 seed 语义，红线允许与否由审核方定）。
+  - `restoreWorldIntoRepos(repos, snapshot): Promise<void>`——还原语义**精确对齐 live runJob**（§6.2.1）。
 - `helpers.ts` 改动（**只包测试工装**）：
   - `makeApp` 不变（seedDemo 很便宜；users/tenants 留在 live 路径，argon2 语义不动）。
   - `seedBattery(t, seed)` 内部改为：有快照 ⇒ `restoreWorldIntoRepos`；无快照 ⇒ 走今天的 POST 真合成 **并把结果写成快照**。**对外签名与语义不变**（调用方零修改，808 处调用点原样受益）。
   - 重链另包：`seedDemoPropagationRules` / `seedDemoDerivationSpecs`+`recompute` 的复合快照键（12+1 个文件受益）——快照内容是「seedBattery 之后再叠这两步」的世界态，键加一层后缀。
+
+#### 6.2.1 还原 ≡ live 的精确语义（读码实测，service.ts:228-234）
+live `runJob` 的幂等清理 = **只清 origin=SYNTHETIC 的 objects/links/rules + synthetic TS（series+points+aggRuns）**，其余一律 put-upsert。
+⇒ 还原路径照抄同一语义：**① 同一组谓词清 SYNTHETIC → ② 快照行 putMany-upsert**。
+论证「对任意前态等价」：测试在 makeApp→seedBattery 之间自建的行，两条路都存活（id 不撞）；世界行 id 确定性（R6 前提），upsert 落同键 ⇒ 与 live 逐字节同。**不是「清空 repos 再灌」**——那会抹掉测试自建行，语义改变。
+- 消费方排查（全量 grep）：`syntheticJobs` 只有 features.test.ts:191 / simclock.test.ts:42 两处读「最新一条 job」——快照含该行即兼容；`lastSyncAt` 零断言；`passwordHash` 三处（admin-platform/org-world/sop-actions）只断「不回显/可登录」，不断具体值。
+- ⚠ putMany 会 structuredClone 一遍（memory.ts:167）——v1 先接受（正确性优先），若实测还原成本过高再评估给 memory.ts 加 **additive** 的快照装填口（动 src/repo 不动 seed 语义，红线允许与否由审核方定）。
 
 ### 6.3 防污染判据（验收④ 的机制）
 - 每次还原 = **重新 deserialize**（v8.deserialize 产出全新对象图）+ putMany 再 clone 一遍 ⇒ **文件间零共享引用**。
@@ -145,3 +151,12 @@ seedBattery(t, seed=42)            test/helpers.ts:61
 - [ ] empty-tenant-bootstrap 负载抖落定性复跑
 - [ ] 世界序列化后字节大小（决定每文件还原成本 → ÷? 的下限）
 - [ ] v8.deserialize + putMany 灌入的单次还原成本实测
+
+## 9 · 阶段① 状态结语（2026-09-17 12:50）
+
+只读分析与设计**完成**；实测数字为**负载态**（load 65–556，与 `complete-wt-sim-severity` worktree 的 vitest 争用；
+两次共 ~20 分钟轮询等不到安静窗，负载最低 144 即回升 500+，另一 run 反复起新 worker）。
+**播种占比数字（负载态推算）**：套件每轮 ≈808 次 seedBattery + ≈1,351 次 makeApp ≈ 0.9–2.2h 纯播种 CPU ≈ **平静机墙钟的 20–45%、负载机 ~50%**；
+期望提速 **÷2–3（Amdahl 诚实口径）**，SOP §6 的 ÷5–10 需阶段② before/after 实测裁决。
+设计一句话：**`seedBattery` 内包一层「v8 字节快照（键=种子链源文件哈希+seed，tmpdir 缓存不进 git）· 有则按 runJob 同语义清 SYNTHETIC+upsert 还原 · 无则真合成并落盘 · 构建点双跑自证 R6」· 808 处调用点零修改**。
+⛔ 等审核方「可以」才进阶段②。
