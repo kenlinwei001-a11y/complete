@@ -160,3 +160,38 @@ live `runJob` 的幂等清理 = **只清 origin=SYNTHETIC 的 objects/links/rule
 期望提速 **÷2–3（Amdahl 诚实口径）**，SOP §6 的 ÷5–10 需阶段② before/after 实测裁决。
 设计一句话：**`seedBattery` 内包一层「v8 字节快照（键=种子链源文件哈希+seed，tmpdir 缓存不进 git）· 有则按 runJob 同语义清 SYNTHETIC+upsert 还原 · 无则真合成并落盘 · 构建点双跑自证 R6」· 808 处调用点零修改**。
 ⛔ 等审核方「可以」才进阶段②。
+
+## 10 · 阶段② 实证证据（2026-09-17 下午，负载 270–416 标注）
+
+### 10.1 非确定残留全枚举 —— §5.3 的 4 类被实证**大幅扩编**（双跑全量 diff 探针，四轮收敛）
+
+探针方法：同机同代码连合两次 seed=42 世界 → dump 全 ~90 表 → 归一化 + 默认口径比对，
+`unexpected` 即「两次新鲜合成之间也不等」的字段全集。四轮：**2000(cap打满) → 2000(cap) → 234 → 0**。
+
+| 类别 | 字段 | 码坐标 | 处置 |
+|---|---|---|---|
+| 随机 id **跨表传播** 8 组 | connections(newId conn)×1 / rawDatasets(rds)×87 / ontologyTypes(otype)×30 / ontologyLinks(ltype)×101 / rules(rule)×29 / ontologyVersions(over)×1 / derivationRuns(drun)×1 / objectInterfaces(oif)×1 | service.ts:626/719 · ontology.ts upsertType/upsertLinkType/:369 · rules.ts:107 · ontology.ts:923/935 · ontology-governance.ts:1007 | **canonicalizeForDiff 归一化**：规范名换随机 id（确定性属性派生），并集映射深度 ExactMatch 改写所有 mem/sim 表值；行键同步换名重排。归一化后全部回 strict 逐字节 |
+| id 传播终点（实证计数） | objects.origin.rawDatasetId ×1556 · objects.origin.sourceConnId ×411 · rawRows 行键 · tsSeries.connId · ontologyTypes.sourceBindings.*.connId · ontologyVersions 整份内嵌快照 | service.ts:749 等 | 同上（深度换名自动覆盖） |
+| 叶子级墙钟 | connections.lastSyncAt ×8 · rawDatasets.syncedAt ×87 · tsAggRuns.runAt ×153920 · tsAggSpecs.lastRunAt · tsPoints.ingestedAt（每点一戳）· derivationRuns.startedAt/finishedAt · objectInterfaces.createdAt/updatedAt · ontologyVersions.createdAt · domains.createdAt ×15 · scenarioPackages.createdAt/updatedAt · solverParams.updatedAt | service.ts:632/724 · timeseries.ts:283/380/151 · ontology.ts:372 等 | DIFF_POLICY ignorePaths（逐字段跳过，其余 strict） |
+| 随机盐/整表随机 | users.passwordHash（argon2 盐）· syntheticJobs（newId job + 墙钟）· outboxEvents（事件 id + 墙钟 + 嵌随机 job id） | auth.ts:67 · service.ts:214/336 | users=ignorePaths；后两表 countOnly（只比行数） |
+| **实证为确定、不纳入** | objects/links/rules 的 origin.jobId（service.ts:225 刻意确定性串 `synthetic-industry-scale-seed`）· tsSeries/tsAggSpecs/tsAggRuns 的 id（tser_/tspec_/tsrun_ 派生串）· tsSeries.createdAt（刻意 new Date(0)）· industryTemplates（battery 不走 LLM 模板路） | — | strict |
+
+**机制教训（写进代码头注）**：随机 id 作 memKey 排序键 ⇒ 双跑排序不同 ⇒ 位置比对全表错位 ——
+第二轮 ontologyTypes 的 properties.displayName ×193 洪峰、第三轮 rules 的 ×29 洪峰**全是错位伪差**，
+不是内容差。这病靠「归一化行键再 strict」根治，靠 ignorePaths 逐字段圈永远圈不完。
+
+### 10.2 双跑自证（守门员④ 性质在构建点的兑现）
+
+第四轮探针（= buildWorldTwice 同口径）：`unexpected=0`（diffMs≈20s / 82.9MB 世界）。
+每次建快照都真合成两遍、按上表口径逐表比对，不一致当场抛错不落盘 ——
+「合成是纯函数」在每轮套件仍真测一次，证据强度不降格为「两次还原相等」（那是恒真命题）。
+
+### 10.3 世界体积与构建成本（负载 270–416，安静窗复测后更新）
+
+- 序列化世界 **82.9MB**（tsPoints 39.57MB · tsAggRuns 30.04MB · objects 7.54MB · rawRows 3.12MB · links 2.18MB）。
+- 单次合成 24–46s（负载相关）；双跑自证构建 71–119s；归一化+比对 ~14–20s。
+- 快照构建成本 = 每轮套件**一次**（磁盘缓存命中后为零），摊到 318 文件 ≈ 每文件 +0.3s。
+
+### 10.4 验收① 字节相等证明（seed=42 与 seed=7 双证）
+
+（待填 —— 探针在跑，结果落此节。）
