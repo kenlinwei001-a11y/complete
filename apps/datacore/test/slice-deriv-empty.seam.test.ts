@@ -218,7 +218,9 @@ describe("WO-SLICE-DERIV-EMPTY ② · 派生溯源：编译 ⇒ 重算 ⇒ input
     //   形态句：「我用『specs 数量恒等于 3』当作『种子规格集未被合法扩充』的证据，而前者并不度量后者。」
     //   为何不比改前弱：断言方向不变（仍锁死全集，少一条/多一条未申报的都红），且从「数 3」升级为
     //   「数 28 + 完整 specKey 名单」（下方），指认粒度更细 —— 多一条未在本单申报的规格照样红。
-    expect(n).toBe(28);
+    // WO-PROP-REVIEW-V2 金值更新（28→29）：库存环新增 `fgi_cover_days` 一条
+    //   （成品覆盖天数 = qtyOnHand ÷ dailyDemand，出处 = 评审 §2 库存环两条边；同一形态句同一判据）。
+    expect(n).toBe(29);
     const active = await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE");
     expect(active.map((s) => s.specKey).sort()).toEqual([
       // 3 条旧（WO-SLICE-DERIV-EMPTY）
@@ -234,11 +236,13 @@ describe("WO-SLICE-DERIV-EMPTY ② · 派生溯源：编译 ⇒ 重算 ⇒ input
       // 5 条 A⚠ 档（WO-REAL-CELLS ③，仓主 2026-09-16 批，逐键点名同上）
       "materialbatch_procurement_delay", "model_demand_load", "order_cost_pressure",
       "order_demand_pressure", "order_shortage_risk",
+      // 1 条库存环（WO-PROP-REVIEW-V2 ②，2026-09-17，逐键点名同上）
+      "fgi_cover_days",
     ].sort());
 
-    // 幂等（R6）：重播不增生（金值 3→23→28，理由同上）。
+    // 幂等（R6）：重播不增生（金值 3→23→28→29，理由同上）。
     await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
-    expect((await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE")).length).toBe(28);
+    expect((await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE")).length).toBe(29);
 
     // §7.4 引用索引同步入库（与 REST 编译路由同动作）。
     const eref = await t.repos.elementRefs.list("demo", (r) => r.refKind === "derivation" && r.refKey === "order_value");

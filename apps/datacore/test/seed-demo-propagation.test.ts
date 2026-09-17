@@ -31,7 +31,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(50); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50
+    expect(cfg.propagationCount).toBe(52); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50 → WO-PROP-REVIEW-V2 库存环 +2 条 **FGI 出边**（`FinishedGoodsInventory.coverDays`→`Model.demandLoad` 系数 −0.5 缓冲吸收 / `FinishedGoodsInventory.drawdownPressure`→`Model.demandLoad` 系数 +0.5 提货回补，皆 PUBLISHED·经 `fg_of_model` 18 条真链路·评审优先级 2「库存 buffer 必须能吸收需求」）= 52
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
@@ -56,6 +56,9 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       // 故刻意不进 `STATE_VAR_DOMAINS`（不夹不衰减，tick 回执 `undeclaredStateVars` 里点名）。
       "backlogHorizonDays", "backlogPriceTop", "backlogQtyTop",
       "blockedPressure", "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure",
+      // WO-PROP-REVIEW-V2 库存环 +1 个量纲 `coverDays`（成品覆盖天数·天）——库存侧**第一个被读**
+      // 的量纲（此前 FinishedGoodsInventory 只当 target）；带真实单位，与天数族同纪律不进 STATE_VAR_DOMAINS。
+      "coverDays",
       "defectPressure", "deliveryDelay", "deliveryHoldRisk", "demandLoad", "demandPressure",
       "drawdownPressure", "equipmentFailure", "expeditePressure", "feedPressure", "forecastBias",
       "gapPressure", "handlingBacklog", "inboundExpeditePressure", "inspectBacklog", "leadDays", "loadIndex",
@@ -78,7 +81,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(50); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50
+    expect(items.length).toBe(52); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50 → WO-PROP-REVIEW-V2 库存环 +2 条 **FGI 出边**（`FinishedGoodsInventory.coverDays`→`Model.demandLoad` 系数 −0.5 缓冲吸收 / `FinishedGoodsInventory.drawdownPressure`→`Model.demandLoad` 系数 +0.5 提货回补，皆 PUBLISHED·经 `fg_of_model` 18 条真链路·评审优先级 2「库存 buffer 必须能吸收需求」）= 52
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
     // WO-SIM-ROOT-TRIAD 新增 4 条根源边全部挂**已物化**的既有链路（零新 linkType、零新物化）：
@@ -96,6 +99,9 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       //   故这份清单里有它 —— 这份清单数的是**目录**，不是"默认世界会跑的边"。
       "customer_has_location", "customer_has_overdue_record", "customer_places_order",
       "defect_raises_exception", "equip_used_in", "equipment_has_maintenance_order",
+      // WO-PROP-REVIEW-V2 库存环两条 FGI 出边**全部挂 `fg_of_model`**（已物化的既有链路 18 条·
+      // 零新 linkType·零新物化）⇒ 本清单新增 2 项（目录 50→52 的构成，见上方计数注释）。
+      "fg_of_model", "fg_of_model",
       "line_belongs_to_base", "line_has_process", "line_runs_work_order", "line_runs_work_order", "material_has_alternative",
       "material_has_balance", "material_has_batch", "material_supplied_by_po", "material_used_by_model", "material_used_by_model",
       "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
@@ -137,7 +143,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(50); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50
+    expect(rules.length).toBe(52); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50 → WO-PROP-REVIEW-V2 库存环 +2 条 **FGI 出边**（`FinishedGoodsInventory.coverDays`→`Model.demandLoad` 系数 −0.5 缓冲吸收 / `FinishedGoodsInventory.drawdownPressure`→`Model.demandLoad` 系数 +0.5 提货回补，皆 PUBLISHED·经 `fg_of_model` 18 条真链路·评审优先级 2「库存 buffer 必须能吸收需求」）= 52
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -182,7 +188,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(50); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50
+    expect(items.length).toBe(52); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50 → WO-PROP-REVIEW-V2 库存环 +2 条 **FGI 出边**（`FinishedGoodsInventory.coverDays`→`Model.demandLoad` 系数 −0.5 缓冲吸收 / `FinishedGoodsInventory.drawdownPressure`→`Model.demandLoad` 系数 +0.5 提货回补，皆 PUBLISHED·经 `fg_of_model` 18 条真链路·评审优先级 2「库存 buffer 必须能吸收需求」）= 52
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {
@@ -294,7 +300,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
   });
 
   // 每条边真触发（REQ143 的验收面 + 档 1 扩面）：一次扰动若干源头，逐组核 trace。
-  it("🔴 逐条真触发：49 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3）", async () => {
+  it("🔴 逐条真触发：51 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3 + 库存环 2）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
@@ -321,6 +327,11 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const rootModelId = head("model_demanded_by_order"), rootEquipId = head("equip_used_in");
     // WO-SIM-ROOT-PROCUREMENT 的两条新物化逆边（收编时嫁接自 48ebb6ac）。
     const procurePoId = head("po_replenishes_material"), procureBatchId = head("batch_replenishes_material");
+    // WO-PROP-REVIEW-V2 库存环：`coverDays` 是**入度 0 的根**（没有任何规则写它），
+    // 与 forecastBias/orderChurn 同性质 ⇒ 必须自带源，指望被带动是自相矛盾的。
+    // 落点取 `fg_of_model` 的 from 端（一行真成品库存）；`drawdownPressure` 同格带上，
+    // 让回补边也在第 1 拍就触发、不依赖「需求负载 → 提货压力」那两拍链先走通。
+    const fgRowId = head("fg_of_model");
 
     const sid = (await (await t.app.inject({
       method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
@@ -339,6 +350,9 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         [materialId]: { priceShock: 5 },
         [rootModelId]: { forecastBias: 10 },
         [rootEquipId]: { equipmentFailure: 10 },
+        // 库存环的活源（见上方 fgRowId 注释）：coverDays 20 天 = 真种子实测均值量级
+        // （/tmp/t3-precheck.txt：1.93–42.34 天，均值 19.78）；drawdownPressure 10 同理给真量级。
+        [fgRowId]: { coverDays: 20, drawdownPressure: 10 },
       } },
     })).json()).id as string;
     // 🔴 为什么是 9 拍不是 6 拍：档 2 把执行链接长了 —— 最深的一条是
@@ -420,10 +434,17 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_order_price_to_model_top_price",
         "demo_order_leaddays_to_model_horizon",
       ],
+      // WO-PROP-REVIEW-V2 库存环：FGI 的两条出边。coverDays 与「根源」档同性质
+      // （入度 0、必须自带源，见上面 baseSnapshot 里 fgRowId 那一格）；
+      // drawdownPressure 那一格同处自带，两条都在第 1 拍就进 trace。
+      库存环: [
+        "demo_fg_cover_days_to_model_demand",
+        "demo_fg_drawdown_to_model_demand",
+      ],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // ── 完整性：十二组 49 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    // ── 完整性：十三组 51 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
     //
     // 🔴 口径修正（WO-ADVERSARY-REACTION）：目录里从此有两类边，**必须分开数**——
     //  · **物理边**（`reaction == null`）：默认世界照跑，逐条都要在上面的 trace 里出现；
@@ -455,7 +476,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
 /**
  * WO-CAUSAL-EDGE-CRUD · **写入口**的引用体检（交付判据 2）。
  *
- * 上面那道「方向可达门」守的是**种子**：种进去的 42 条边方向对不对。
+ * 上面那道「方向可达门」守的是**种子**：种进去的 52 条边方向对不对。
  * 但种子是对的**不度量**运营方经 REST 建出来的边是对的 —— 这一组守的是另一半：
  * `POST/PATCH /a/v1/sim/propagation-rules` 收不收一条端点根本不存在、或方向反了的边。
  *
