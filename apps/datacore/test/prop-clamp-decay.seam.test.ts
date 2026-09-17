@@ -105,6 +105,20 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     const d = stateVarDomains();
     expect(d.queueDays).toBeUndefined();     // 天数族：全仓没有第二处出处，故刻意不声明
     expect(d.inspectBacklog).toBeUndefined(); // 件数族：同上
+    // 🔴 回归钉子（WO-SIM-DOMAIN-DECLARE·2026-09-17，WO-SIM-CALIBRATION 移植）：
+    // `blockedPressure` **必须**已声明。它是 47 条边里**唯一**「入边≠0 且出边≠0」的压力族量纲
+    // （入 `Process.queuePressure ×0.55`、出 `→ WorkOrder.releasePressure ×0.6`）
+    // ⇒ 唯一一个把无界读数**泵进下游已声明链**的口子：漏声明时它是纯积分器，
+    // 无上界地把下游 `releasePressure → … → costPressure` 整条链推进深度饱和区，
+    // 而饱和曲线在深区的导数是 `1/(1+u)²` ⇒ 扰动差被压掉几个数量级（"不同扰动同一个结果"的那一半机制）。
+    // ⚠ 本条与上面两行**不矛盾**：那两个不声明是因为「没有上界的出处」，
+    //   而本键与其余 31 个压力族共用同两条既有出处，一条都没新发明。
+    expect(d.blockedPressure).toBeDefined();
+    expect(d.blockedPressure!.min).toBe(0);
+    expect(d.blockedPressure!.max).toBe(100);
+    expect(d.blockedPressure!.restPoint).toBe(0);
+    // 声明了域**还不够** —— 没有 decayRef 它仍是（带夹值的）纯积分器，会稳稳顶在上界附近。
+    expect(d.blockedPressure!.decayRef?.ruleKey).toBe(STATE_DECAY_RULE_KEY);
     const { last } = run(1, d);
     expect(last.stateVarReport.declaredStateVars).toContain("demandLoad");
     // 本图上只有 demandPressure/demandLoad 两个量纲，都已声明 ⇒ 未声明表为空但字段必须在
