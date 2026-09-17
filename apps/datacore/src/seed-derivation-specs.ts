@@ -74,9 +74,15 @@ export const DEMO_DERIVATION_SPECS: readonly {
   { specKey: "wiplot_feed_pressure", targetType: "WIPLot", targetProp: "feedPressure", formula: "COALESCE(SUM(in(work_order_yields_wip_lot).qtyPlanned) * 100 / this.qty, 0)" },
   // WorkOrder.releasePressure：下达压力 = (计划 − 完工) / 计划 × 100。出处：qtyPlanned/qtyActual。实测 1–15。
   { specKey: "workorder_release_pressure", targetType: "WorkOrder", targetProp: "releasePressure", formula: "COALESCE((this.qtyPlanned - this.qtyActual) * 100 / this.qtyPlanned, 0)" },
-  // Line.blockedPressure：受阻 = 线上工单计划量合计 / 线最大日产能 × 100。出处：WO 已验证范本（22.9285）。
-  //   ⚠ 链方向本树实测是 Line --out(line_runs_work_order)--> WorkOrder（WO 草案写的 in 是反的，260 实例 from=Line）；
-  //   分母取 max_capacity_day（WO 的 16896），不是 capacityDaily(176)（陷阱 4 量纲错配的教训）。
+  // Line.blockedPressure：受阻压力 = 线上工单计划量合计 ÷ 线最大日产能 × 100（= 积压天数占比；
+  //   件÷件×100 量纲自洽，>100 = 积压超一日产能，同 loadIndex 74–552 先例「如实」不夹）。
+  //   链方向本树实测 from=Line（260 实例）⇒ 用 out()（WO 草案写的 in() 在本树全 0）。
+  //   ⚠ 打回①（仓主 2026-09-17）修：删「出处：WO 已验证范本（22.9285）」—— 该值 = 3874×100/16896，
+  //   而本树**没有任何 Σout=3874 的线**（探针 /tmp/blocked-probe2.mjs），范本不可复算；
+  //   引一个不可复算的值当出处 = 幻影锚定（台账早已照实记「不可复算」，注释却照引，两处打架）。
+  //   对照真值 = 本树实测分布 **27.72–182.73**（n=130；手算 Σout×100/max_capacity_day
+  //   与物化值逐字节一致）。打回数值 788–945.2 **在本树不复现**（同一探针），属测量环境差异，
+  //   非本式量纲错 —— 式子两边都是「件」，不是范本（件）对 capacityDaily（套/天）那类错配。
   { specKey: "line_blocked_pressure", targetType: "Line", targetProp: "blockedPressure", formula: "COALESCE(SUM(out(line_runs_work_order).qtyPlanned) * 100 / this.max_capacity_day, 0)" },
   // Line.utilPressure：利用率压力 = utilization 直取（已 0–100，同量纲，避开 460% 那个坑）。对照 91.5472。
   { specKey: "line_util_pressure", targetType: "Line", targetProp: "utilPressure", formula: "this.utilization" },
