@@ -821,6 +821,22 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   //  库存边取 ±0.5，既不压过预测信号也不弱到测不出（对照实验：coverDays bump ⇒ demandLoad 同向非零）。
   "demo_fg_cover_days_to_model_demand": -0.5,
   "demo_fg_drawdown_to_model_demand": 0.5,
+  // 物料环三条（传导规则业务评审 v2 ④·2026-09-17·评审优先级 4「物料是第二高频扰动源，今天零阻尼」）：
+  //  ① 替代料切换压力 ⇒ 主料短缺风险**下修**（负）：有 Plan B 的料不该和无 Plan B 的料同等短缺。
+  //     今天 MaterialAlternative 是死胡同（只有入边）= 图上假设永远没 Plan B（评审原文）。
+  //     强度待评审 §6 Q4「关键料替代料实际可用比例」定档，暂取 −0.3（介于 0 与需求侧 −0.5 家族之间；
+  //     实测源 switchPressure 哈希支 11–95 ⇒ 注入 −3.3~−28.5，对照靶 shortageRisk −161~51，
+  //     /tmp/t4-probe1.txt）。负环自阻尼（入流越大缓解越大），无发散风险。这是 50+2 条边里第 4 个负系数。
+  //  ② 检验排队天数 ⇒ 物料短缺风险**上抬**（正）：来料堵在检验 ⇒ 到了也不可用（评审原文）。
+  //     0.2/天：实测源哈希支 1–99 ⇒ 注入 0.2~19.8；环增益 0.5(shortage→expedite)×0.6(expedite
+  //     →queue)×0.2(本条)=0.06≪1 阻尼自证。queueDays 是天数族纯积分器（无域不夹），其消化速率归 T6。
+  //  ③ MRP 缺口压力 ⇒ 采购加急压力**上抬**（正）：算出缺口要驱动催货（评审原文）。
+  //     系数对齐同落点直接边 shortage→expedite 0.5（同一语义「缺口驱动催货」，MRP 计算路径与
+  //     直接感受路径同强度）；今天规格世界 gapPressure 实测 0–8.99（种子缺口小是数据的诚实现状，
+  //     ⛔ 不拿系数去凑大屏数）。
+  "demo_alt_switch_to_material_shortage": -0.3,
+  "demo_inspection_queue_to_material_shortage": 0.2,
+  "demo_balance_gap_to_po_expedite": 0.5,
 };
 
 export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
@@ -3997,6 +4013,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "po_from_supplier", fromTypeKey: "PurchaseOrder", toTypeKey: "Supplier", cardinality: "N:1" }, // supply（采购责任方）
     { key: "po_customs_cleared_by", fromTypeKey: "PurchaseOrder", toTypeKey: "CustomsClearance", cardinality: "N:1" }, // supply（清关，仅进口单）
     { key: "po_inspected_by", fromTypeKey: "PurchaseOrder", toTypeKey: "IncomingInspection", cardinality: "N:1" }, // quality（到货检验）
+    // WO-PROP-REVIEW-V2 ④ 检验放行边的地基：检验单 → 它检的那个料（ii.matId 直挂）。
+    // 无此链则 IncomingInspection 在影响向上只有入边（po_inspected_by），「检验堵住 ⇒ 料不可用」无处传导。
+    { key: "inspection_for_material", fromTypeKey: "IncomingInspection", toTypeKey: "Material", cardinality: "N:1" }, // quality（影响向·检验单检的是哪个料）
     { key: "material_carbon", fromTypeKey: "Material", toTypeKey: "CarbonFactor", cardinality: "N:N" }, // supply（碳因子）
     { key: "base_energy_meter", fromTypeKey: "Base", toTypeKey: "EnergyMeter", cardinality: "N:N" }, // factory（能耗）
     { key: "base_has_shipment", fromTypeKey: "Base", toTypeKey: "Shipment", cardinality: "N:N" }, // capacity（在途）
@@ -4145,6 +4164,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // D05 采购与供应：Material → {MaterialAlternative, MaterialBalance}
     { key: "material_has_alternative", fromTypeKey: "Material", toTypeKey: "MaterialAlternative", cardinality: "1:N" }, // supply（影响向·`alt_for_material` 之逆）
     { key: "material_has_balance", fromTypeKey: "Material", toTypeKey: "MaterialBalance", cardinality: "1:N" }, // supply（MRP 缺口·按物料名归属）
+    // WO-PROP-REVIEW-V2 ④ 缺口催货边的地基：MRP 平衡表 → 它驱动的同料采购单（按物料名归属，
+    // 与 material_has_balance 同一张名解析）。无此链则 gapPressure 是死胡同，「算出缺口要驱动催货」无处传导。
+    { key: "balance_drives_po", fromTypeKey: "MaterialBalance", toTypeKey: "PurchaseOrder", cardinality: "1:N" }, // supply（影响向·MRP 缺口驱动同料采购单催货）
     // ── WO-SIM-ROOT-PROCUREMENT · 采购**补货向**逆边（G-ROOT-3 的地基）─────────────────────
     // 既有 `material_supplied_by_po`(Material→PurchaseOrder) / `material_has_batch`(Material→MaterialBatch)
     // 表达的是**归属**「这个料有哪些采购单 / 哪些批次」，方向「料→单据」。
