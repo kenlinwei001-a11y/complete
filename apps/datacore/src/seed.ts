@@ -1782,7 +1782,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogQtyTop",
-    coefficient: inflowCoefficient(1), // 稳态增益 1（= 原系数，预算内未缩）× λ
+    // ⚠ **刻意不过 `inflowCoefficient`** —— 见本段「为什么系数恒为 1.0」与下方 λ 段。
+    // `inflowCoefficient(g)` 返回的是 `g × λ`，它服务的是**会衰减**的压力族：目标每拍衰减 λ
+    // ⇒ 稳态 = 入流/λ ⇒ 入流预乘 λ 才能落到稳态增益 g。而这三个量**不在 `STATE_VAR_DOMAINS` 里、
+    // 引擎对它们不衰减**（`propagation.ts` 那句「外生输入：不衰减」只跳过**没被写**的量，
+    // 本量是被写的，只是没登记域 ⇒ `decayRateOf` 里压根没有它 ⇒ 无 λ 可约）。
+    // 于是 λ 不会被下游约掉，而是**直接留在读数里**：实测 `backlogQtyTop = 0.37 × max(Order.qty)`
+    // （4680-NCM 16131 套 → 5968.47，比值逐位 0.370000）。
+    // 屏上这个字段的中文名是「在手订单最大单台数（套）」（`battery.ts` 的 `STATE_VAR_DISPLAY_NAMES`），
+    // 即**本段注释自己警告过的那句话应验了**：「一旦写 0.8，屏上那句…就成了假话」——只是那个数是 0.37。
+    // 形态（铁律 0.6 句式）：「我用『注释里写了系数恒为 1.0』当作『生效系数是 1.0』的证据，
+    // 而前者并不度量后者 —— `inflowCoefficient(1)` 返回 1×λ = 0.37。」
+    coefficient: 1, // 原样透传（同量纲直取 套→套）：⛔ 不乘 λ，理由见上
     delayTicks: 0,
     description: "该型号在手订单里最大的一张是多少套（订单数量原样取最大值，不打折不加权）",
     combine: "max",
@@ -1803,7 +1814,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogPriceTop",
-    coefficient: inflowCoefficient(1), // 稳态增益 1（= 原系数，预算内未缩）× λ
+    // ⛔ 不过 `inflowCoefficient`（不乘 λ）—— 同 `backlogQtyTop` 那条的理由，原文见上。
+    // 实测病象：`backlogPriceTop = 0.37 × max(Order.unitPrice)`（22638 元 → 8376.06）。
+    coefficient: 1, // 原样透传（同量纲直取 元→元）
     delayTicks: 0,
     description: "该型号在手订单里最高的成交单价是多少元（订单单价原样取最大值）",
     combine: "max",
@@ -1822,7 +1835,10 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogHorizonDays",
-    coefficient: inflowCoefficient(1), // 稳态增益 1（= 原系数，预算内未缩）× λ
+    // ⛔ 不过 `inflowCoefficient`（不乘 λ）—— 同 `backlogQtyTop` 那条的理由，原文见上。
+    // 实测病象：`backlogHorizonDays = 0.37 × max(Order.leadDays)`（110 天 → 40.7）。
+    // 本量可为负（−14 = 已逾期 14 天），乘 0.37 同样把"逾期多久"缩成 37%。
+    coefficient: 1, // 原样透传（同量纲直取 天→天）
     delayTicks: 0,
     // ⚠ 「交付时间」是日期，日期不是数 ⇒ 折成**距计划起点的天数**才进得了世界态。
     // 折算式**不是本单新发明的**：`Order.leadDays` 在合成期就是这么算出来的
