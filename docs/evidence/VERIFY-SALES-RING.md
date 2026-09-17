@@ -185,3 +185,84 @@ base 侧回执：`Test Files 2 failed | 1 passed (3)` —— 绿的那一个正�
 产品修复（`seed.ts` 那 22 行）与两台量具的修复**都是对的，值得收**；
 卡住的只有一件：**`edge-money-weight.seam.test.ts:291–296` 那道门必须同单改口径**，
 否则并进 canonical 就是拿一条新的红换一条旧的红。
+
+---
+---
+
+# 第二段 · 收编方按上述最小修改门（2026-09-17 同日）
+
+## 改了什么
+
+`apps/datacore/test/edge-money-weight.seam.test.ts`（**只此一个文件**，+102 −14）：
+
+1. **口径收窄成两支**（⛔ 没删门、⛔ 没加白名单）：
+   支① 目标 ∈ `STATE_VAR_DOMAINS`（引擎会衰减）⇒ **必须**预乘 λ；
+   支② 目标 ∉ 域表（不衰减、无 λ 可约）⇒ **必须不**预乘。
+2. **分支判据从真值读**：`demoPropagationRulesWithDomain()`（`seed.ts` 该函数注释原文
+   「测试与播种**共用这一支**，不许各算一遍」）+ `STATE_VAR_DOMAINS`，
+   与 `seed-demo-propagation.test.ts` §② 增益预算门**同一条判据线**。
+3. **切块正则抽成 `ruleBlocks()`，§3 与 §3b 共用一份** —— 不再各抄一份。
+4. 文本侧只保留两件：「这一行**是怎么写的**」与「λ 不许内联 `0.37`」。
+
+### ⚠ 为什么文本侧不能全删（对最小修路径的一处订正）
+
+我原先写的「文本扫描只留 λ 那半条」**做不到**，实测后订正：
+「有没有预乘 λ」这一问**值判不了** —— `0.222` 既可能是 `inflowCoefficient(0.6)`，
+也可能是有人手写的裸 `0.222`，**两者数值逐字节相同**。
+故文本（怎么写的）与真值（该不该乘）**必须 join**，缺任一半这门就瞎一只眼。
+join 完整性本身也加了金丝雀：真值表里每条规则都必须在文本里找到对应行，**少一条即红**
+（否则它两支都进不去、被静默漏掉 —— 正是「扫描器自洽成绿」的经典形态）。
+
+## 牙还在吗 —— **两侧都验过**（不是单边门）
+
+| | 支① 该乘没乘 | 支② 不该乘却乘 |
+|---|---|---|
+| HEAD 原样 | 0 | 6 |
+| **变异①正向**：三条 backlog 边改回 `inflowCoefficient(1)` | 0 | **9** ⬅ 多出的恰是那 3 条 |
+| **变异②反向**：把 `demo_customer_receivable_to_invoice_overdue`（目标 `overduePressure`**在**域表）的 `inflowCoefficient(0.4)` 拆成裸 `0.148` | **1** ⬅ 恰是被变异那条 | 6 |
+
+⇒ 两个方向各自单独可红，**不是砍掉一半的单边门**。
+反空绿守卫同时在位：两支现算 **41 / 9**，任一为空即当场报「量法坏了」。
+其余金丝雀：规则 50 条、文本抽到 50 行、join 缺 0。
+
+## 🔴 但新门在 **base 与 HEAD 上都红** —— 红的不是本单，是 6 条既有同病边
+
+`NEWGATE_HEAD_RC=1`（`Tests 1 failed | 11 passed`）、`NEWGATE_BASE_RC=1`（同上）。
+
+支② 咬出 **6 条**（HEAD 与 base 相同，与 WO-SALES-RING 无关）：
+
+| 规则 | 目标量纲 | 族 |
+|---|---|---|
+| `demo_po_expedite_to_inspection_queue` | `queueDays` | 天数族 |
+| `demo_po_expedite_to_customs_queue` | `clearanceQueueDays` | 天数族 |
+| `demo_model_demand_to_cert_queue` | `qualificationQueue` | 件数族 |
+| `demo_wo_release_to_quality_backlog` | `inspectBacklog` | 件数族 |
+| `demo_defect_to_exception_backlog` | `handlingBacklog` | 件数族 |
+| `demo_equipment_load_to_repair_backlog` | `repairBacklog` | 件数族 |
+
+**是同一种病**：这两族 `battery.ts` 域表头注明写「**刻意不在此表**」⇒ 引擎**不衰减**它们
+（`combine:"sum"` 纯积分器），而六条全都写着 `inflowCoefficient(g)` ⇒ 那个 λ 没人约。
+样例：`demo_po_expedite_to_inspection_queue` 描述承诺「加急压力 **× 0.6**」，
+实际每拍只加 `0.6 × 0.37 = 0.222` —— **屏上那句话差 1/λ ≈ 2.70 倍**，
+与 backlogQtyTop 那三条**结构完全相同**，只是没人量过。
+
+> **旧门为什么一次都没咬到这 6 条**：它只有支①那一半
+> （「都得经 `inflowCoefficient`」）——**支②那个方向在旧门里根本不存在**。
+> 这 6 条**满足**旧门、**违反**新门，正说明新门比旧门强，不是它变松了。
+
+### ⛔ 这 6 条我没动（顶回来，不是没做完）
+
+改它们 = 动 **6 个状态量**在 demo 世界里的读数，会推动 R6 逐字节金值、`measuredCells`、
+种子世界可达面等一批既有断言 —— 属**产品标定决策**，爆炸半径远超「修一道门」，
+按铁律 2 判据（「做错了要返工/不可逆/属产品决策 ⇒ 才问」）**不由我单方面改**。
+建议单开一张 WO，验收判据照本单：对每条边给「描述承诺 g / 实际每拍 g×λ / 改后」三数。
+
+## 三样交付数
+
+| 项 | 结果 |
+|---|---|
+| 新门 @HEAD | **RC=1** —— 支② 6 条既有病边（支① 0） |
+| 新门 @base | **RC=1** —— 同样 6 条（证明与本单无关） |
+| 静态门 `pnpm gates` | **12 判负，与改前名单逐条相同**（`diff` 空，一条不多） |
+| `pnpm --filter datacore typecheck` | **RC=0** |
+| `eslint src test` | 12 error **全部既有**，我改的文件不在名单里 |
