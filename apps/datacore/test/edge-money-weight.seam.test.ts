@@ -224,7 +224,11 @@ describe("§3 描述里的系数 = 真系数", () => {
     const out: { key: string; coef: number; stated: number[]; ok: boolean }[] = [];
     for (let i = 0; i < idxs.length; i++) {
       const body = src.slice(idxs[i]!.at, i + 1 < idxs.length ? idxs[i + 1]!.at : src.length);
-      const cm = /coefficient:\s*(-?[\d.]+)/.exec(body);
+      // WO-SIM-CALIBRATION：系数现在以 `inflowCoefficient(稳态增益)` 落盘（每拍入流 = 稳态增益 × λ）。
+      // **描述承诺的是稳态增益**（「价格冲击 × 0.65 = 型号成本压力」读作 `target = source × 0.65`），
+      // 故这里比对的对象是 `inflowCoefficient(...)` 的**实参**，不是存进库的那个每拍入流量。
+      // 两种写法都认：助手调用，以及裸字面量（万一将来有边绕过助手，仍要被这道门咬住）。
+      const cm = /coefficient:\s*inflowCoefficient\((-?[\d.]+)\)/.exec(body) ?? /coefficient:\s*(-?[\d.]+)/.exec(body);
       if (!cm) continue; // 不是传导规则块
       const dm = /description:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
       if (!dm) continue;

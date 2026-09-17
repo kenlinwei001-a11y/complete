@@ -344,7 +344,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "demandLoad",
     coefficient: inflowCoefficient(0.018585), // 稳态增益 0.8 → 0.018585（该格增益预算 Σ≤0.75，W=24.83）× λ
     delayTicks: 0,
-    description: "订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.8 = 型号需求负载）",
+    description: "订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.018585 = 型号需求负载）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -451,7 +451,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "shortageRisk",
     coefficient: inflowCoefficient(0.241071), // 稳态增益 0.9 → 0.241071（该格增益预算 Σ≤0.75，W=1）× λ
     delayTicks: 0,
-    description: "供应商交期拖长 ⇒ 它供的物料开始缺（交付延迟 × 0.9 = 物料短缺风险）",
+    description: "供应商交期拖长 ⇒ 它供的物料开始缺（交付延迟 × 0.241071 = 物料短缺风险）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -475,7 +475,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "supplyRisk",
     coefficient: inflowCoefficient(0.4375), // 稳态增益 0.7 → 0.4375（该格增益预算 Σ≤0.75，W=1）× λ
     delayTicks: 0,
-    description: "物料缺 ⇒ 用到它的型号供应告急（物料短缺 × 0.7 = 型号缺料风险）",
+    description: "物料缺 ⇒ 用到它的型号供应告急（物料短缺 × 0.4375 = 型号缺料风险）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -496,7 +496,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "shortageRisk",
     coefficient: inflowCoefficient(0.75), // 稳态增益 0.8 → 0.75（该格增益预算 Σ≤0.75，W=1）× λ
     delayTicks: 0,
-    description: "型号缺料 ⇒ 订这个型号的单子交不齐（型号缺料 × 0.8 = 订单缺口风险）",
+    description: "型号缺料 ⇒ 订这个型号的单子交不齐（型号缺料 × 0.75 = 订单缺口风险）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -518,7 +518,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "queuePressure",
     coefficient: inflowCoefficient(0.403846), // 稳态增益 0.7 → 0.403846（该格增益预算 Σ≤0.75，W=1）× λ
     delayTicks: 0,
-    description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.7 = 工序排队压力）",
+    description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.403846 = 工序排队压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -590,7 +590,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "costPressure",
     coefficient: inflowCoefficient(0.423913), // 稳态增益 0.65 → 0.423913（该格增益预算 Σ≤0.75，W=1）× λ
     delayTicks: 0,
-    description: "物料涨价 ⇒ 用它的型号成本上抬（价格冲击 × 0.65 = 型号成本压力）",
+    description: "物料涨价 ⇒ 用它的型号成本上抬（价格冲击 × 0.423913 = 型号成本压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -613,7 +613,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "costPressure",
     coefficient: inflowCoefficient(0.75), // 稳态增益 0.9 → 0.75（该格增益预算 Σ≤0.75，W=1）× λ
     delayTicks: 0,
-    description: "型号成本上抬 ⇒ 订这个型号的单子毛利被吃掉（型号成本 × 0.9 = 订单成本压力）",
+    description: "型号成本上抬 ⇒ 订这个型号的单子毛利被吃掉（型号成本 × 0.75 = 订单成本压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -657,7 +657,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     // ⚠ 描述里的系数原写 ×0.6，与真值 0.5 差 1.2 倍（`GET /a/v1/sim/propagation-rules` 原样下发
     // 这段中文给用户看 ⇒ 屏上正在说与实际不符的话）。改**描述**一侧对齐真值，
     // 理由见 `DEMO_PROPAGATION_RULES` 上方「描述系数对账」段（9/13 不符，已全部改齐）。
-    description: "订单成本上去 ⇒ 该客户的应收账款压力变大（订单成本 × 0.5，并按该单金额占全域平均单的倍率分摊）",
+    description: "订单成本上去 ⇒ 该客户的应收账款压力变大（订单成本 × 0.084999，并按该单金额占全域平均单的倍率分摊）",
     combine: "sum",
     decay: null,
     clamp: null,
