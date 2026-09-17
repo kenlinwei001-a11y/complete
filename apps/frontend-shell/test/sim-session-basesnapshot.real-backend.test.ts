@@ -5,12 +5,21 @@
  * `sandbox-memory-window.seam.test.tsx` ⑥ 里的「真后端形状臂」走的是 MSW 桩 ——
  * 桩的形状是我们**按真后端实测**钉进去的，它能防回归，但它证明不了「今天真后端
  * 还长这样」。WO 的原话：桩绿不算数，必须真后端两臂。真后端不是任何人随时都有，
- * 所以本文件 **`VITE_DATACORE_URL` 不给就整个 skip** —— skip 的含义是
+ * 所以本文件 **`SIM_REAL_DATACORE_URL` 不给就整个 skip** —— skip 的含义是
  * 「没环境，别跑」，**不是**「绿了」。给了 URL 就必须真打通，断一条都是红。
  *
  * 跑法（datacore 内存模式 `SEED_DEMO=1`，端口换成你自己的）：
- *   VITE_DATACORE_URL=http://127.0.0.1:<port> \
+ *   SIM_REAL_DATACORE_URL=http://127.0.0.1:<port> \
  *     pnpm --filter frontend-shell exec vitest run test/sim-session-basesnapshot.real-backend.test.ts
+ *
+ * ── 为什么是 `SIM_REAL_DATACORE_URL` 而不是 `VITE_DATACORE_URL` ──────────────────
+ * `vitest.config.ts` 的 `test.env` 把 `VITE_DATACORE_URL` **钉死在 `http://a.test`**
+ * （外加 `VITE_MOCK=1`）—— shell 传进来的同名变量根本到不了 `env.ts`，
+ * 请求会打到不存在的 `a.test` 上 `ENOTFOUND`（本文件第一次跑就是这样四条全红的，
+ * 那条失败记录留在证据目录里）。所以本文件用另一个变量名接真地址，
+ * 并在 beforeAll 里**改写已解析的 `env.datacoreUrl` 属性**：
+ * `apiClient.baseUrl()` 每次调用都现读这个属性，改它 = 改被测函数实际打出去的 baseURL，
+ * 被测的那一跳（endpoints → apiClient → 路由形状）一个字节没绕开。afterAll 原样恢复。
  *
  * ── 它要钉死的那件事（2026-09-17 实测，canonical 8775dc67d）────────────────────
  * 真后端今天：`GET /a/v1/sim/sessions` 列表里 **0 个** `baseSnapshot` 字段
@@ -30,8 +39,7 @@
  *   打到真后端 ⇒ 非 null、非空世界、格子是有限数；不存在的 id ⇒ null（不许造空世界）。
  *
  * ⚠ 鉴权：真后端要 `X-Debug-User`（无头实测 401 `UNAUTHORIZED`）。本文件在 fetch 层
- *   注入这个头 —— 被测的那一跳（endpoints → apiClient → URL/路由形状）一个字节没绕开，
- *   注入的只是「登录态」这一事实，与浏览器里 Bearer 的位置相同。
+ *   注入这个头 —— 注入的只是「登录态」这一事实，与浏览器里 Bearer 的位置相同。
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { http, passthrough } from "msw";
@@ -42,12 +50,13 @@ import { env } from "@/env";
 import { fetchSimSessionBaseSnapshot } from "@/api/endpoints";
 import { readSessionsProjected } from "@/api/simSessionsProjection";
 
-const REAL_URL = process.env.VITE_DATACORE_URL;
+const REAL_URL = process.env.SIM_REAL_DATACORE_URL;
 
 /** 真后端形状臂用的固定不存在 id —— 404 臂。 */
 const NO_SUCH = "sims_no_such_session_000";
 
 let origFetch: typeof globalThis.fetch;
+let origDatacoreUrl: string;
 
 beforeAll(() => {
   origFetch = globalThis.fetch;
@@ -56,9 +65,14 @@ beforeAll(() => {
     headers.set("X-Debug-User", "demo:admin:admin");
     return origFetch(input, { ...init, headers });
   }) as typeof fetch;
+  // vitest.config 的 test.env 把 VITE_DATACORE_URL 钉死在 http://a.test ——
+  // 这里把**已解析的** env 对象重新指到真后端（apiClient 每调用现读它），afterAll 恢复。
+  origDatacoreUrl = env.datacoreUrl;
+  if (REAL_URL) env.datacoreUrl = REAL_URL;
 });
 afterAll(() => {
   globalThis.fetch = origFetch;
+  env.datacoreUrl = origDatacoreUrl;
 });
 
 beforeEach(() => {
@@ -73,7 +87,7 @@ beforeEach(() => {
 describe.skipIf(!REAL_URL)("WO-SIM-SEVERITY §2 · 基线捞取的真后端正反两臂", () => {
   it("金丝雀：URL 覆盖真的到了被测模块 · 列表路由今天**确实**不下发 baseSnapshot", async () => {
     // 自证连的是「我以为的那个后端」，不是哪个 agent 的遗留实例（本机 4001 就有别人的）
-    expect(env.datacoreUrl, "VITE_DATACORE_URL 没吃进 env 模块 ⇒ 这一拳打去了别处").toBe(REAL_URL);
+    expect(env.datacoreUrl, "SIM_REAL_DATACORE_URL 没吃进 env 对象 ⇒ 这一拳打去了别处").toBe(REAL_URL);
 
     const res = await api.aRaw("/a/v1/sim/sessions");
     const rawText = await res.clone().text();
