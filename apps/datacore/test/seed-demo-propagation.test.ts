@@ -282,6 +282,17 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(created.statusCode).toBe(201);
 
     const st = (r: unknown) => (r as { state: Record<string, Record<string, number>> }).state;
+    /**
+     * 读一格世界态，**读不到就当场红**（不是悄悄当 0）。
+     * 存在的理由是 `noUncheckedIndexedAccess`：`s[obj]!.v` 里那个 `!` 只消掉**外层**索引，
+     * `.v` 仍是 `number | undefined` ⇒ 参与算术时 TS2532。用它替代连写的 `!`，
+     * 既让类型收敛，又把"这一格根本没有"从**静默 NaN** 变成**指名道姓的断言失败**。
+     */
+    const readVar = (s: Record<string, Record<string, number>>, objId: string, v: string): number => {
+      const got = s[objId]?.[v];
+      expect(typeof got, `世界态里读不到 ${objId}.${v} ⇒ 取数坏了（不是"这条链没通"）`).toBe("number");
+      return got as number;
+    };
 
     // ── ⚠ 金值全改（WO-SIM-DESAT-3 ②③）：9 / 6.3 / 5.04 → 由两个乘数现算 ──────────────
     //
@@ -307,18 +318,39 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       expect(r, `规则表里找不到 ${key} ⇒ 取数坏了，不是"这条边不存在"`).toBeDefined();
       return r!.coefficient;
     };
-    /** 该规则落到某个目标上的权重之和（Σ=1 口径 ⇒ 1；`weightRef:null` ⇒ 入边条数）。 */
-    const weightSumOf = (body: unknown, ruleKey: string, targetId: string): number => {
-      const ex = (body as { pairWeighting?: { report: { explain: { ruleKey: string; targetObjectId: string; weight: number }[] } } })
+    /**
+     * **这一对 (源, 目标) 的权重** —— ⚠ 不是"落到该目标的权重之和"。
+     *
+     * ── 原版错在哪（实测，本行修前该用例红在 tick1）────────────────────────────────
+     * 原版按 `targetObjectId` 一个键聚合再求和：`rows.reduce((s,e)=>s+e.weight,0)`。
+     * `equal_share` 是 Σ=1 口径 ⇒ **该和恒为 1**，于是期望值恒等于"全部源都带着满值"那一档。
+     * 而本用例只给**一个**源（`SUP-001`）施了扰动，同物料的另一个供应商 `deliveryDelay` 仍是 0、
+     * 贡献 0。引擎算的是 `Σ_源 coef × 该对权重 × 该源读数`，只有一项非零 ⇒
+     * `10 × 0.08917 × 0.5 = 0.44585`。实测回包：`demo_supplier_delay_to_material_shortage`
+     * 落到 `obj_material_pos_ncm` 的 explain 行**恰有 2 条、各 0.5**（和 = 1）。
+     * ⇒ 修前期望 0.8917、实测 0.44585，**红的是断言不是引擎**。
+     *
+     * 佐证：本文件上方那段注释自己写的就是正确答案 ——
+     * 「实测本链上那个物料 N=2 ⇒ 权重 0.5，于是 tick1 = `10 × 0.08917 × 0.5 = 0.44585`
+     * （实测值逐位吻合）」。**注释是对的，代码没照它写。**
+     *
+     * 形态（铁律 0.6 句式）：「我用『该目标全部入边的权重和』当作『这条链上那一对的权重』的证据，
+     * 而前者并不度量后者 —— 只有被扰动的那个源带着值，其余源乘 0。」
+     *
+     * **改后不比改前弱**：仍是精确 `toBe`，仍逐跳 `>0` 自证非空；且新版按 (源,目标) 定位，
+     * 扇入条数变化时它跟着变，原版恒 1 反而对扇入不敏感。
+     */
+    const weightOfPair = (body: unknown, ruleKey: string, sourceId: string, targetId: string): number => {
+      const ex = (body as { pairWeighting?: { report: { explain: { ruleKey: string; sourceObjectId: string; targetObjectId: string; weight: number }[] } } })
         .pairWeighting?.report.explain ?? [];
-      const rows = ex.filter((e) => e.ruleKey === ruleKey && e.targetObjectId === targetId);
-      // 该规则没声明口径 ⇒ 回包里没有它的逐对出处 ⇒ 每个源各出一整份，权重和 = 入边条数。
+      const rows = ex.filter((e) => e.ruleKey === ruleKey && e.targetObjectId === targetId && e.sourceObjectId === sourceId);
+      // 该规则没声明口径 ⇒ 回包里没有它的逐对出处 ⇒ 该源出一整份满额 ⇒ 权重 1。
       return rows.length === 0 ? 1 : rows.reduce((s, e) => s + e.weight, 0);
     };
     const tick1 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
     const t1 = st(tick1);
     // tick1：Supplier(10) × 该边每拍入流系数 × 该对权重 → Material.shortageRisk。Order 还没轮到（一 tick 一跳）。
-    const w1 = weightSumOf(tick1, "demo_supplier_delay_to_material_shortage", materialId);
+    const w1 = weightOfPair(tick1, "demo_supplier_delay_to_material_shortage", supplierId, materialId);
     const exp1 = Math.round(10 * coefOf("demo_supplier_delay_to_material_shortage") * w1 * 1e12) / 1e12;
     expect(exp1, "第 1 跳的期望值算成 0 ⇒ 系数或权重取数坏了（0 会让下面三句自洽成绿）").toBeGreaterThan(0);
     expect(t1[materialId]!.shortageRisk).toBe(exp1);
@@ -346,8 +378,12 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // ⚠ `demo_material_shortage_to_model_supply_risk` 本单也挂了 Σ=1 等份口径（N=7）⇒ 权重不再是 7 份满额。
     const tick2 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
     const t2 = st(tick2);
-    const w2 = weightSumOf(tick2, "demo_material_shortage_to_model_supply_risk", modelId);
-    const exp2 = Math.round(t1[materialId]!.shortageRisk * coefOf("demo_material_shortage_to_model_supply_risk") * w2 * 1e12) / 1e12;
+    const w2 = weightOfPair(tick2, "demo_material_shortage_to_model_supply_risk", materialId, modelId);
+    // ⚠ `readVar` 而不是 `x!.y`：`noUncheckedIndexedAccess` 下 `t1[materialId]!.shortageRisk`
+    // 的类型仍是 `number | undefined`（`!` 只消掉外层那一次索引），乘法处 TS2532。
+    // 这两行**在 base 上就是红的**（`origin/claude/base-four-items` 实测同样两条，
+    // 只是行号 350/359），不是本单引入的。用显式读取兼断言，顺手让 `pnpm -r typecheck` 归零。
+    const exp2 = Math.round(readVar(t1, materialId, "shortageRisk") * coefOf("demo_material_shortage_to_model_supply_risk") * w2 * 1e12) / 1e12;
     expect(exp2, "第 2 跳的期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
     expect(t2[modelId]!.supplyRisk).toBe(exp2);
     expect(t2[orderId]?.shortageRisk ?? 0).toBe(0);
@@ -355,8 +391,8 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // 🔴 这一行就是本单的效果层判据：供应侧的一次扰动，真的落到了订单缺口上。
     const tick3 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
     const t3 = st(tick3);
-    const w3 = weightSumOf(tick3, "demo_model_supply_risk_to_order_shortage", orderId);
-    const exp3 = Math.round(t2[modelId]!.supplyRisk * coefOf("demo_model_supply_risk_to_order_shortage") * w3 * 1e12) / 1e12;
+    const w3 = weightOfPair(tick3, "demo_model_supply_risk_to_order_shortage", modelId, orderId);
+    const exp3 = Math.round(readVar(t2, modelId, "supplyRisk") * coefOf("demo_model_supply_risk_to_order_shortage") * w3 * 1e12) / 1e12;
     expect(exp3, "第 3 跳的期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
     expect(t3[orderId]!.shortageRisk).toBe(exp3);
 
