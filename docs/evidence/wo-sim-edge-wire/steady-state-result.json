@@ -1,0 +1,166 @@
+{
+ "port": 58827,
+ "initialCurTick": 96,
+ "canary": {
+  "modelApiCount": 6,
+  "canary1": true,
+  "canary2": true,
+  "canary3": true,
+  "canary4": true
+ },
+ "bomEdgeTrace": {
+  "rows": 42,
+  "sampleKeys": [
+   "ruleKey",
+   "fromObjectId",
+   "toObjectId",
+   "amount",
+   "viaLinkKey"
+  ],
+  "lfpTargets": [
+   "obj_model_4680-LFP",
+   "obj_model_方形-LFP",
+   "obj_model_圆柱-LFP"
+  ],
+  "foilTargets": [
+   "obj_model_2170-NCM",
+   "obj_model_4680-LFP",
+   "obj_model_4680-NCM",
+   "obj_model_方形-LFP",
+   "obj_model_方形-NCM",
+   "obj_model_圆柱-LFP"
+  ],
+  "bothTargets": [
+   "obj_model_4680-LFP",
+   "obj_model_方形-LFP",
+   "obj_model_圆柱-LFP"
+  ]
+ },
+ "tick0materials": {
+  "obj_material_pos_lfp": 2,
+  "obj_material_al_foil": 2
+ },
+ "series": [
+  {
+   "tick": 0,
+   "dist": {
+    "n": 6,
+    "min": 2.4653,
+    "p50": 2.9263,
+    "p90": 3.8858,
+    "max": 3.8858,
+    "mean": 3.156916666666667,
+    "ge90": 0,
+    "ge99": 0,
+    "atClamp100": 0
+   },
+   "d5cells": {
+    "obj_model_4680-LFP": 2.4653,
+    "obj_model_方形-LFP": 3.8819,
+    "obj_model_圆柱-LFP": 3.8858
+   },
+   "worldMovedCellsSincePrev": null
+  },
+  {
+   "tick": 120,
+   "dist": {
+    "n": 6,
+    "min": 1.629189224064,
+    "p50": 2.836144884827,
+    "p90": 2.872219056431,
+    "max": 2.872219056431,
+    "mean": 2.4994127294873336,
+    "ge90": 0,
+    "ge99": 0,
+    "atClamp100": 0
+   },
+   "d5cells": {
+    "obj_model_4680-LFP": 2.389157346991,
+    "obj_model_方形-LFP": 2.398979345495,
+    "obj_model_圆柱-LFP": 1.629189224064
+   },
+   "worldMovedCellsSincePrev": 4632
+  },
+  {
+   "tick": 144,
+   "dist": {
+    "n": 6,
+    "min": 1.629068823398,
+    "p50": 2.835933526642,
+    "p90": 2.871966836452,
+    "max": 2.871966836452,
+    "mean": 2.4991338064958333,
+    "ge90": 0,
+    "ge99": 0,
+    "atClamp100": 0
+   },
+   "d5cells": {
+    "obj_model_4680-LFP": 2.388801682649,
+    "obj_model_方形-LFP": 2.398453019758,
+    "obj_model_圆柱-LFP": 1.629068823398
+   },
+   "worldMovedCellsSincePrev": 3553
+  },
+  {
+   "tick": 192,
+   "dist": {
+    "n": 6,
+    "min": 1.628926151053,
+    "p50": 2.835682930205,
+    "p90": 2.871666706751,
+    "max": 2.871666706751,
+    "mean": 2.498801264736833,
+    "ge90": 0,
+    "ge99": 0,
+    "atClamp100": 0
+   },
+   "d5cells": {
+    "obj_model_4680-LFP": 2.388377019628,
+    "obj_model_方形-LFP": 2.397822635824,
+    "obj_model_圆柱-LFP": 1.628926151053
+   },
+   "worldMovedCellsSincePrev": 3553
+  },
+  {
+   "tick": 224,
+   "dist": {
+    "n": 6,
+    "min": 1.628867470164,
+    "p50": 2.835579816807,
+    "p90": 2.871542863755,
+    "max": 2.871542863755,
+    "mean": 2.4986638405405,
+    "ge90": 0,
+    "ge99": 0,
+    "atClamp100": 0
+   },
+   "d5cells": {
+    "obj_model_4680-LFP": 2.388201325806,
+    "obj_model_方形-LFP": 2.397561199251,
+    "obj_model_圆柱-LFP": 1.628867470164
+   },
+   "worldMovedCellsSincePrev": 3553
+  },
+  {
+   "tick": 256,
+   "dist": {
+    "n": 6,
+    "min": 1.628824374509,
+    "p50": 2.835504073702,
+    "p90": 2.871451762393,
+    "max": 2.871451762393,
+    "mean": 2.498562669765,
+    "ge90": 0,
+    "ge99": 0,
+    "atClamp100": 0
+   },
+   "d5cells": {
+    "obj_model_4680-LFP": 2.38807190609,
+    "obj_model_方形-LFP": 2.397368380475,
+    "obj_model_圆柱-LFP": 1.628824374509
+   },
+   "worldMovedCellsSincePrev": 3553
+  }
+ ],
+ "wallSeconds": 1068.394
+}
