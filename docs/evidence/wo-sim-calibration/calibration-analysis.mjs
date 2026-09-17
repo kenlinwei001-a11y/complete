@@ -1,33 +1,47 @@
 #!/usr/bin/env node
-// WO-SIM-CALIBRATION · 阶段一诊断的**可复跑证据**（纯静态推导：不起服务、不跑 vitest、不读数据库）
+// WO-SIM-CALIBRATION · 标定诊断与方案对比的**可复跑证据**（纯静态：不起服务、不跑 vitest、不读库）
 //
 //   node docs/evidence/wo-sim-calibration/calibration-analysis.mjs
 //
 // ── 它算什么 ────────────────────────────────────────────────────────────────────
 // 把 `sim/propagation.ts` 每拍的三步语义逐条照抄成一个**均场**迭代，解零扰动稳态：
-//   ① 衰减  x ← rest + (1−λ)(x − rest)      仅「被某条规则写入 && 已声明取值域」的量纲
-//   ② 入流  x += Σ_e c_e · N_e · max(0, x_src − tol_e)   （combine:"sum" ⇒ 每个源实例各加满额）
-//   ③ 软饱和 x ← saturateToDomain(x)         仅「已声明取值域」的量纲
-// 均场近似 = 每个 stateVar 用一个标量（该量纲在所有实例上的均值），扇入用**实测** N_e。
+//   ① 衰减  x ← rest + (1−λ)(x − rest)   仅「该 stateVar 被某条规则写入 && 已声明取值域」
+//   ② 入流  x += Σ_e c_e · N_e · max(0, x_src − tol_e)  （combine:"sum" ⇒ 每个源实例各加满额）
+//   ③ 软饱和 x ← saturateToDomain(x)      仅已声明取值域者
+//
+// ⚠⚠ **节点键必须是 `对象类型.状态量`，不是裸状态量** —— 这是本脚本第一版踩的坑，
+//    留在这里当判据：本仓 41 个量纲里有 **3 个同名挂在多个对象类型上**
+//    （`shortageRisk`→Material/Order · `costPressure`→Model/Order · `procurementDelay`→PO/Batch/Supplier）。
+//    按裸名合并，`demo_model_cost_to_order_cost`（Model.costPressure→Order.costPressure, c=0.9）
+//    会**退化成一条自环**，凭空造出一个增益 0.9·N/λ 的正反馈 ⇒ costPressure 被算得恒顶上界。
+//    形态：「我用『两个格的状态量叫同一个名字』当作『它们是同一个格』的证据，而前者并不度量后者。」
+//    ⇒ 下面一律用 `typeKey.stateVar` 作键；而**衰减与域查表仍按裸名**，因为引擎就是这么做的
+//    （`propagation.ts` 的 `writtenVars` 收的是 `r.targetStateVar`，域表也按裸名）。
+//
+// 均场近似 = 每个格用一个标量（该量纲在该类型全部实例上的均值），扇入用**实测** N_e。
 // `delayTicks` 只移时不移稳态，故不建模。
 //
 // ── N_e（扇入）的出处：`fanin-N.json` ──────────────────────────────────────────
-// 不是本单量的，是 `origin/claude/handoff-desat3` 的实测产物
-// （`docs/evidence/wo-sim-desat3/fanin-N.json`，47 条），原样搬来。
-// 独立复核过一条：`demo_process_queue_to_line_blocked = 5`，与 650 条 `lnk_pbl_*`（Process→Line，
-// `synthetic/service.ts` 每个 Process 一条）÷ 130 条 Line 吻合。
+// 不是本单量的，是 `origin/claude/handoff-desat3` 的实测产物（`docs/evidence/wo-sim-desat3/fanin-N.json`）。
+// 独立复核过一条：`demo_process_queue_to_line_blocked = 5`，与 650 条 `lnk_pbl_*`
+// （Process→Line，`synthetic/service.ts:1067` 每个 Process 一条）÷ 130 条 Line 吻合。
 //
-// ── ⚠ 本脚本的三条已知边界（先说清楚，免得被当成它没说的话）────────────────────
-//  ① **均场 ≠ 逐实例**：它答的是「这个量纲整体落在哪」，答不了「130 条产线里有几条越界」。
-//     后者要真起服务（阶段三）。
+// ── W_e（该边落到目标格的权重之和）由**归一方向**决定（`contracts/src/sim.ts` 的 registry）──
+//   bom_cost_share          → IN_EDGES             (Σ=1)         ⇒ W = 1
+//   source_qty_relative     → IN_EDGES_MEAN        (均值=1⇒Σ=N)  ⇒ W = N
+//   source_value_relative   → IN_EDGES_GLOBAL_MEAN               ⇒ W ≈ N
+//   actor_exposure_relative → SOURCE_POOL_MEAN                   ⇒ W ≈ N
+//   weightRef: null         → 每源各加一份满额                    ⇒ W = N
+//
+// ── ⚠ 三条已知边界（先说清楚，免得被当成它没说的话）──────────────────────────────
+//  ① **均场 ≠ 逐实例**：答「这个格整体落在哪」，答不了「130 条产线里有几条越界」。后者要真起服务。
 //  ② 外生根一律 held=50（tick0 生成式 `round(hash01(objectId|stateVar)×100)` 的均值）。
-//  ③ 未声明取值域的量纲是**纯积分器**，没有稳态 —— 它们的值随拍数线性增长，
-//     脚本按固定拍数取样并在输出里打 `*` 标注，⛔ 不许读成稳态。
+//  ③ 未声明取值域者是**纯积分器**，没有稳态 —— 值随拍数线性增长，输出打 `*`，⛔ 不许读成稳态。
 //
 // 金丝雀（铁律 0.6：报结论前先自证量法）：
-//   ① 扇入金丝雀 —— demo_process_queue_to_line_blocked 必须 N=5 且 c=0.55
-//   ② 闭式对拍   —— blockedPressure 强行补域后稳态必须 ≈ 97.669（审核方独立复核过的闭式值）
-//   任一不中 ⇒ 抛错退出，**不许**继续往下报任何数。
+//   ① 扇入 —— demo_process_queue_to_line_blocked 必须 N=5 且 c=0.55
+//   ② 无自环 —— 节点键化之后，不许有任何 src===dst 的边
+//   ③ 闭式对拍 —— blockedPressure 补域后稳态必须 ≈ 97.669（审核方独立复核过的闭式值）
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -35,185 +49,186 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "../../..");
-const SEED_TS = resolve(REPO, "apps/datacore/src/seed.ts");
-const BATTERY_TS = resolve(REPO, "apps/datacore/src/synthetic/battery.ts");
+const LAM = 0.37, BAND = 0.25, SEED = 50;
 
-const LAMBDA = 0.37;   // PRESSURE_DECAY_PER_TICK（battery.ts）= 1 − (1 − 3/4)^(1/3)
-const BAND = 0.25;     // SATURATION_BAND_FRACTION（propagation.ts）
-const SEED_VALUE = 50; // 外生根的均场值
-
-// ══ 1) 从 seed.ts 抽 47 条传导边 ═══════════════════════════════════════════════
-function extractRules() {
-  const src = readFileSync(SEED_TS, "utf8");
-  const si = src.indexOf("const DEMO_PROPAGATION_RULES: ReadonlyArray<");
-  const bodyStart = src.indexOf("> = [", si);
-  if (si < 0 || bodyStart < 0) throw new Error("CANARY-FAIL 找不到 DEMO_PROPAGATION_RULES ⇒ 量法坏了");
-  const rest = src.slice(bodyStart + 4);
-  const body = rest.slice(0, rest.search(/\n\];/));
-  const field = (c, name) => {
-    const m = c.match(new RegExp(`(^|\\n)\\s*${name}:\\s*([^\\n]+?),\\s*(//.*)?$`, "m"));
-    return m ? m[2].trim() : null;
-  };
-  const unq = (v) => (v == null ? null : v.replace(/^["'`]|["'`]$/g, ""));
-  const out = [];
-  for (const c of body.split(/\n  \{\n/).slice(1)) {
-    const id = unq(field(c, "id"));
-    if (!id) continue;
-    out.push({
-      key: unq(field(c, "key")),
-      src: unq(field(c, "sourceStateVar")),
-      dst: unq(field(c, "targetStateVar")),
-      viaLinkKey: unq(field(c, "viaLinkKey")),
-      targetTypeKey: unq(field(c, "targetTypeKey")),
-      c: Number(field(c, "coefficient")),
-    });
-  }
-  return out;
+// ══ 抽 47 条边 ════════════════════════════════════════════════════════════════
+const src = readFileSync(resolve(REPO, "apps/datacore/src/seed.ts"), "utf8");
+const si = src.indexOf("const DEMO_PROPAGATION_RULES: ReadonlyArray<");
+const bs = src.indexOf("> = [", si);
+if (si < 0 || bs < 0) throw new Error("CANARY-FAIL 找不到 DEMO_PROPAGATION_RULES ⇒ 量法坏了");
+const bodyRest = src.slice(bs + 4);
+const body = bodyRest.slice(0, bodyRest.search(/\n\];/));
+const fld = (c, n) => { const m = c.match(new RegExp(`(^|\\n)\\s*${n}:\\s*([^\\n]+?),\\s*(//.*)?$`, "m")); return m ? m[2].trim() : null; };
+const unq = (v) => (v == null ? null : v.replace(/^["'`]|["'`]$/g, ""));
+const rules = [];
+for (const c of body.split(/\n  \{\n/).slice(1)) {
+  if (!unq(fld(c, "id"))) continue;
+  const wr = fld(c, "weightRef");
+  rules.push({
+    key: unq(fld(c, "key")),
+    sT: unq(fld(c, "sourceTypeKey")), sV: unq(fld(c, "sourceStateVar")),
+    tT: unq(fld(c, "targetTypeKey")), tV: unq(fld(c, "targetStateVar")),
+    c: Number(fld(c, "coefficient")),
+    basis: wr && wr !== "null" ? (wr.match(/basis:\s*"([^"]+)"/) || [])[1] : null,
+  });
 }
 
-// ══ 2) 从 battery.ts 抽已声明取值域的量纲 ═════════════════════════════════════
-function extractDeclared() {
-  const bat = readFileSync(BATTERY_TS, "utf8");
-  const blk = bat.slice(bat.indexOf("export const STATE_VAR_DOMAINS"), bat.indexOf("export function stateVarDomains"));
-  const d = new Set([...blk.matchAll(/"([a-zA-Z]+)"/g)].map((m) => m[1]));
-  if (blk.includes("STATE_VAR_DOMAINS.forecastBias")) d.add("forecastBias");
-  if (!d.has("queuePressure")) throw new Error("CANARY-FAIL 域表抽取没命中 queuePressure ⇒ 量法坏了");
-  return d;
-}
+// ══ 域表 ══════════════════════════════════════════════════════════════════════
+const bat = readFileSync(resolve(REPO, "apps/datacore/src/synthetic/battery.ts"), "utf8");
+const dblk = bat.slice(bat.indexOf("export const STATE_VAR_DOMAINS"), bat.indexOf("export function stateVarDomains"));
+const declared = new Set([...dblk.matchAll(/"([a-zA-Z]+)"/g)].map((m) => m[1]));
+if (dblk.includes("STATE_VAR_DOMAINS.forecastBias")) declared.add("forecastBias");
+if (!declared.has("queuePressure")) throw new Error("CANARY-FAIL 域表抽取没命中 queuePressure ⇒ 量法坏了");
 
-const rules = extractRules();
-const declared = extractDeclared();
 const fanin = JSON.parse(readFileSync(resolve(HERE, "fanin-N.json"), "utf8"));
-
-// desat-3 的扇入表按 (viaLinkKey → targetType) 度量，与 stateVar 无关 ⇒ 兄弟边可借。
-// 3 条借自兄弟边/结构，逐条写明出处。⛔ 不许默认 1 —— 默认会把「没量到」读成「扇入为 1」。
-const FANIN_PATCH = {
-  demo_order_demand_pressure: 24.833333333333332,      // 同 order_for_model→Model，借 demo_order_churn_to_model_demand_load
-  demo_order_demand_to_line_split: 1,                   // 同 order_has_line→OrderLine，借 demo_order_churn_to_line_split
-  demo_customer_reaction_cut_order: 1,                  // customer_places_order→Order：一张订单恰有 1 个下单客户
+// 3 条借自兄弟边/结构（扇入按 viaLinkKey→targetType 度量，与 stateVar 无关）。⛔ 不许默认 1。
+const PATCH = {
+  demo_order_demand_pressure: 24.833333333333332,   // 同 order_for_model→Model，借 demo_order_churn_to_model_demand_load
+  demo_order_demand_to_line_split: 1,                // 同 order_has_line→OrderLine，借 demo_order_churn_to_line_split
+  demo_customer_reaction_cut_order: 1,               // customer_places_order→Order：一张订单恰有 1 个下单客户
 };
-const TOL = { demo_customer_reaction_cut_order: 12 };   // seed.ts reaction.tolerance（还手边的 hinge）
+const TOL = { demo_customer_reaction_cut_order: 12 }; // seed.ts reaction.tolerance
 
+const nid = (t, v) => `${t}.${v}`;
 const edges = rules.map((r) => {
-  const N = fanin[r.key] ?? FANIN_PATCH[r.key];
+  const N = fanin[r.key] ?? PATCH[r.key];
   if (N === undefined) throw new Error(`CANARY-FAIL 扇入表缺 ${r.key} ⇒ 量法坏了`);
-  return { ...r, N, tol: TOL[r.key] ?? 0 };
+  return { key: r.key, src: nid(r.sT, r.sV), dst: nid(r.tT, r.tV), v: r.tV, c: r.c, N, basis: r.basis, tol: TOL[r.key] ?? 0 };
 });
+const nodes = new Set(); const nodeVar = {};
+for (const r of rules) { nodes.add(nid(r.sT, r.sV)); nodeVar[nid(r.sT, r.sV)] = r.sV; nodes.add(nid(r.tT, r.tV)); nodeVar[nid(r.tT, r.tV)] = r.tV; }
+const writtenVar = new Set(rules.map((r) => r.tV)); // 引擎按**裸名**判「被写入」
 
-const vars = new Set(); const written = new Set();
-for (const r of rules) { vars.add(r.src); vars.add(r.dst); written.add(r.dst); }
+// ══ 金丝雀 ════════════════════════════════════════════════════════════════════
+const cy = edges.find((e) => e.key === "demo_process_queue_to_line_blocked");
+if (!cy || cy.N !== 5 || cy.c !== 0.55) throw new Error(`CANARY-FAIL 扇入金丝雀 N=${cy?.N} c=${cy?.c} ⇒ 量法坏了`);
+console.log(`CANARY-OK ① 扇入 demo_process_queue_to_line_blocked N=${cy.N} c=${cy.c}（= 650 Process ÷ 130 Line）`);
+const loops = edges.filter((e) => e.src === e.dst);
+if (loops.length) throw new Error(`CANARY-FAIL 键化后仍有 ${loops.length} 条自环 ⇒ 键错了`);
+console.log(`CANARY-OK ② 节点按 typeKey.stateVar 键化后自环 0 条（${nodes.size} 个格 / ${edges.length} 条边）`);
 
-// ══ 3) 引擎语义 ═══════════════════════════════════════════════════════════════
+// ══ 引擎语义 ══════════════════════════════════════════════════════════════════
 const dom = (v) => (v === "forecastBias" ? { min: -100, max: 100, rest: 0 } : { min: 0, max: 100, rest: 0 });
-
-function saturate(raw, d, band) {
-  const r = Math.min(d.max, Math.max(d.min, d.rest));
-  const bHi = (d.max - r) * band;
-  if (bHi > 0) { const k = d.max - bHi; if (raw > k) return d.max - bHi / (1 + (raw - k) / bHi); }
-  else if (raw > d.max) return d.max;
-  const bLo = (r - d.min) * band;
-  if (bLo > 0) { const k = d.min + bLo; if (raw < k) return d.min + bLo / (1 + (k - raw) / bLo); }
-  else if (raw < d.min) return d.min;
+function sat(raw, d) {
+  const r = Math.min(d.max, Math.max(d.min, d.rest)), bHi = (d.max - r) * BAND;
+  if (bHi > 0) { const k = d.max - bHi; if (raw > k) return d.max - bHi / (1 + (raw - k) / bHi); } else if (raw > d.max) return d.max;
+  const bLo = (r - d.min) * BAND;
+  if (bLo > 0) { const k = d.min + bLo; if (raw < k) return d.min + bLo / (1 + (k - raw) / bLo); } else if (raw < d.min) return d.min;
   return raw;
 }
-/** 软饱和在工作点处的导数 dOut/dRaw：带内 = 1；上溢段 = 1/(1+u)²。扰动过这一个节点被衰减 1/deriv 倍。 */
-function deriv(raw, d, band) {
-  const r = Math.min(d.max, Math.max(d.min, d.rest));
-  const bHi = (d.max - r) * band;
+/** 软饱和在工作点的导数 dOut/dRaw：带内=1，上溢段=1/(1+u)²。扰动过这一格被衰减 1/deriv 倍。 */
+function deriv(raw, d) {
+  const r = Math.min(d.max, Math.max(d.min, d.rest)), bHi = (d.max - r) * BAND;
   if (bHi <= 0) return raw > d.max ? 0 : 1;
-  const k = d.max - bHi;
-  if (raw <= k) return 1;
-  const u = (raw - k) / bHi;
-  return 1 / ((1 + u) * (1 + u));
+  const k = d.max - bHi; if (raw <= k) return 1;
+  const u = (raw - k) / bHi; return 1 / ((1 + u) * (1 + u));
 }
-
-function run({ edges, lambda = LAMBDA, band = BAND, ticks, inject = null, extraDeclared = new Set() }) {
-  const isDecl = (v) => declared.has(v) || extraDeclared.has(v);
-  const x = {}; for (const v of vars) x[v] = SEED_VALUE;
-  if (inject) x[inject.v] += inject.d;
+function run({ edges, ticks, inject = null, extra = new Set() }) {
+  const isD = (n) => declared.has(nodeVar[n]) || extra.has(nodeVar[n]);
+  const x = {}; for (const n of nodes) x[n] = SEED;
+  if (inject) x[inject.n] += inject.d;
   let raws = {};
+  const hasIn = new Set(edges.map((e) => e.dst));
   for (let t = 0; t < ticks; t++) {
     const nx = { ...x };
-    for (const v of vars) if (written.has(v) && isDecl(v)) { const d = dom(v); nx[v] = d.rest + (1 - lambda) * (x[v] - d.rest); }
+    for (const n of nodes) if (writtenVar.has(nodeVar[n]) && isD(n)) { const d = dom(nodeVar[n]); nx[n] = d.rest + (1 - LAM) * (x[n] - d.rest); }
     for (const e of edges) nx[e.dst] += e.c * e.N * Math.max(0, x[e.src] - e.tol);
-    if (inject && !written.has(inject.v)) nx[inject.v] = SEED_VALUE + inject.d; // 持续扰动 = 按住在新值
+    if (inject && !hasIn.has(inject.n)) nx[inject.n] = SEED + inject.d; // 持续扰动 = 按住在新值
     raws = { ...nx };
-    for (const v of vars) if (isDecl(v)) nx[v] = saturate(nx[v], dom(v), band);
-    for (const v of vars) x[v] = nx[v];
+    for (const n of nodes) if (isD(n)) nx[n] = sat(nx[n], dom(nodeVar[n]));
+    for (const n of nodes) x[n] = nx[n];
   }
   return { x, raws };
 }
-
-/** 注入点 → costPressure 的总衰减倍数（= 注入量 ÷ 下游读数变化量）。 */
-function attenuation(opts, root = "equipmentFailure") {
-  const a = run(opts);
-  const b = run({ ...opts, inject: { v: root, d: 10 } });
-  const d = Math.abs(b.x.costPressure - a.x.costPressure);
-  return { delta: d, atten: d === 0 ? Infinity : 10 / d, base: a };
+const OUT = "Order.costPressure", ROOT = "Equipment.equipmentFailure";
+function atten(opts) {
+  const a = run(opts), b = run({ ...opts, inject: { n: ROOT, d: 10 } });
+  const d = Math.abs(b.x[OUT] - a.x[OUT]);
+  return { atten: d === 0 ? Infinity : 10 / d, delta: d, base: a };
 }
+const Wof = (e) => (e.basis === "bom_cost_share" ? 1 : e.N);
+function cellGain(edges) { const S = {}; for (const e of edges) S[e.dst] = (S[e.dst] ?? 0) + Math.abs(e.c) * Wof(e) / LAM; return S; }
+function budget(edges, cap = 0.75) { const S = cellGain(edges); return edges.map((e) => ({ ...e, c: e.c * Math.min(1, cap / (S[e.dst] || 1)) })); }
 
-/** 方案 B：把每格 DC 增益 Σ_e c_e·N_e/λ 压到 cap 以下（desat-3 ②③ 的口径）。 */
-function budgetEdges(edges, lambda = LAMBDA, cap = 0.75) {
-  const S = {};
-  for (const e of edges) S[e.dst] = (S[e.dst] ?? 0) + Math.abs(e.c) * e.N / lambda;
-  return edges.map((e) => ({ ...e, c: e.c * Math.min(1, cap / (S[e.dst] || 1)) }));
-}
+// 金丝雀 ③
+const probe = run({ edges, ticks: 4000, extra: new Set(["blockedPressure"]) });
+const bp = probe.x["Line.blockedPressure"];
+console.log(`CANARY-OK ③ blockedPressure 补域后稳态 = ${bp.toFixed(6)}（闭式 97.669316，差 ${(bp - 97.669316).toFixed(6)}）`);
+if (Math.abs(bp - 97.669316) > 0.2) throw new Error("CANARY-FAIL 闭式对不上 ⇒ 模型坏了");
 
-// ══ 4) 金丝雀 ═════════════════════════════════════════════════════════════════
-const cy = edges.find((e) => e.key === "demo_process_queue_to_line_blocked");
-if (!cy || cy.N !== 5 || cy.c !== 0.55) throw new Error(`CANARY-FAIL 扇入金丝雀 N=${cy?.N} c=${cy?.c} ⇒ 量法坏了`);
-console.log(`CANARY-OK ① demo_process_queue_to_line_blocked N=${cy.N} c=${cy.c}（= 650 Process ÷ 130 Line）`);
-
-const probe = run({ edges, ticks: 4000, extraDeclared: new Set(["blockedPressure"]) });
-console.log(`CANARY-OK ② blockedPressure 补域后稳态 = ${probe.x.blockedPressure.toFixed(6)}（闭式 97.669316，差 ${(probe.x.blockedPressure - 97.669316).toFixed(6)}）`);
-console.log(`          其上游 queuePressure = ${probe.x.queuePressure.toFixed(4)}（闭式里代入的实测值 93.32）`);
-// 阈值 0.2：均场把 queuePressure 也算成内生量，与「代入实测 93.32」必然有零点几的差；差过 0.2 说明的就不是这个了。
-if (Math.abs(probe.x.blockedPressure - 97.669316) > 0.2) throw new Error("CANARY-FAIL 闭式对不上 ⇒ 模型坏了");
-
-// ══ 5) 结论一：canonical 现状的饱和分布 ═══════════════════════════════════════
-console.log(`\n══ 结论一 · canonical 语义下 41 个状态量的零扰动稳态（λ=${LAMBDA} BAND=${BAND}）══`);
+// ══ 结论一 · 现状饱和分布 ═════════════════════════════════════════════════════
+console.log(`\n══ 结论一 · canonical 语义下 ${nodes.size} 个格的零扰动稳态（λ=${LAM} BAND=${BAND}）══`);
 const st = run({ edges, ticks: 4000 });
-const bandOf = (v) => (v < 50 ? "<50" : v < 75 ? "50–75" : v < 90 ? "75–90" : "≥90");
 const dist = {};
-const rows = [...vars].sort().map((v) => {
-  const dec = declared.has(v);
-  const b = dec ? bandOf(st.x[v]) : "未声明(纯积分器·发散)";
+const rows = [...nodes].sort().map((n) => {
+  const dec = declared.has(nodeVar[n]); const val = st.x[n];
+  const b = !dec ? "未声明(纯积分器·发散)" : val < 50 ? "<50" : val < 75 ? "50–75" : val < 90 ? "75–90" : "≥90";
   dist[b] = (dist[b] ?? 0) + 1;
-  return { v, dec, val: st.x[v], b, d: dec ? deriv(st.raws[v], dom(v), BAND) : null };
+  return { n, dec, val, d: dec ? deriv(st.raws[n], dom(nodeVar[n])) : null };
 });
 console.log("分布：", JSON.stringify(dist));
-console.log("\nstateVar                     声明  稳态值        区间                   工作点导数");
-for (const r of rows) {
-  console.log(r.v.padEnd(28) + (r.dec ? " ✓  " : " ✗  ") + r.val.toExponential(4).padEnd(14) +
-    r.b.padEnd(23) + (r.d === null ? "—（无饱和可言）" : r.d.toExponential(3)));
-}
+console.log("\n格(类型.量纲)                        声明  稳态值        工作点导数");
+for (const r of rows) console.log(r.n.padEnd(36) + (r.dec ? " ✓  " : " ✗  ") + r.val.toExponential(4).padEnd(14) + (r.d === null ? "—" : r.d.toExponential(3)));
 
-// ══ 6) 结论二：三个方案的可预言后果 ═══════════════════════════════════════════
-const SHOW = ["queuePressure", "blockedPressure", "releasePressure", "costPressure", "supplyRisk", "receivablePressure"];
-function report(name, opts) {
-  const { atten, delta, base } = attenuation({ ticks: 24, ...opts });
+// ══ 结论二 · 方案对比 ═════════════════════════════════════════════════════════
+const show = (name, es, extra = new Set()) => {
+  const S = cellGain(es), over = Object.entries(S).filter(([, g]) => g > 0.7501);
+  const worst = over.sort((p, q) => q[1] - p[1])[0];
+  const r24 = atten({ edges: es, ticks: 24, extra }), r240 = atten({ edges: es, ticks: 240, extra });
   console.log(`\n── ${name} ──`);
-  for (const v of SHOW) {
-    const dec = declared.has(v) || (opts.extraDeclared ?? new Set()).has(v);
-    console.log("  " + v.padEnd(20) + (base.x[v].toExponential(4) + (dec ? "" : "*")).padEnd(16) +
-      (dec ? deriv(base.raws[v], dom(v), opts.band ?? BAND).toExponential(3) : "—"));
-  }
-  console.log(`  注入 equipmentFailure+10 ⇒ ΔcostPressure=${delta.toExponential(4)}  总衰减=${atten === Infinity ? "∞" : atten.toExponential(3) + "×"}`);
+  console.log(`  超预算(>0.75)的格: ${over.length}/${Object.keys(S).length}` + (worst ? `   最差 ${worst[0]} G=${worst[1].toFixed(2)}` : ""));
+  console.log(`  ${OUT} 稳态 t24=${r24.base.x[OUT].toFixed(3)}   总衰减 t24=${r24.atten.toExponential(3)}×  t240=${r240.atten.toExponential(3)}×`);
+};
+console.log(`\n\n══ 结论二 · 方案对比（注入 ${ROOT}+10，读 ${OUT}）══`);
+show("修前 canonical", edges);
+for (const L of [0.9, 0.99]) {
+  const save = LAM; // 方案 A 只改 λ：就地改常量再跑
+  globalThis.__lam = L;
+  console.log(`\n── 方案A λ=${L}（下方数按 λ=${L} 重跑）──`);
+  const es = edges;
+  const oldLam = LAM;
+  // 用闭包重算：简单起见直接内联一个 λ 可变的迭代
+  const f = (ticks, inject) => {
+    const isD = (n) => declared.has(nodeVar[n]);
+    const x = {}; for (const n of nodes) x[n] = SEED; if (inject) x[inject.n] += inject.d;
+    const hasIn = new Set(es.map((e) => e.dst));
+    for (let t = 0; t < ticks; t++) {
+      const nx = { ...x };
+      for (const n of nodes) if (writtenVar.has(nodeVar[n]) && isD(n)) { const d = dom(nodeVar[n]); nx[n] = d.rest + (1 - L) * (x[n] - d.rest); }
+      for (const e of es) nx[e.dst] += e.c * e.N * Math.max(0, x[e.src] - e.tol);
+      if (inject && !hasIn.has(inject.n)) nx[inject.n] = SEED + inject.d;
+      for (const n of nodes) if (isD(n)) nx[n] = sat(nx[n], dom(nodeVar[n]));
+      for (const n of nodes) x[n] = nx[n];
+    }
+    return x;
+  };
+  const a = f(24, null), b = f(24, { n: ROOT, d: 10 });
+  const d = Math.abs(b[OUT] - a[OUT]);
+  console.log(`  ${OUT} 稳态 t24=${a[OUT].toFixed(3)}   总衰减 t24=${(10 / d).toExponential(3)}×`);
+  void save; void oldLam;
 }
-console.log("\n\n══ 结论二 · 三个方案（取样第 24 拍；* = 纯积分器，不是稳态）══");
-report("修前 canonical", { edges });
-for (const lam of [0.5, 0.9, 0.99]) report(`方案A λ=${lam}`, { edges, lambda: lam });
-report("方案B 每格增益预算 ≤0.75", { edges: budgetEdges(edges) });
-report("方案B+补域（blockedPressure 声明取值域）", { edges: budgetEdges(edges), extraDeclared: new Set(["blockedPressure"]) });
-for (const b of [0.5, 0.75]) report(`方案C BAND=${b}（⚠ 引擎侧，超出本单范围边界）`, { edges, band: b });
+const C = budget(edges);
+show("方案B 每格增益预算 ≤0.75（只改 seed.ts 系数）", C);
+show("方案B+补域（blockedPressure 声明取值域）★本单主张★", C, new Set(["blockedPressure"]));
 
-// ══ 7) 结论三：方案 B 单用不耐久（blockedPressure 仍是纯积分器） ═══════════════
-console.log("\n\n══ 结论三 · 耐久性：B 单用 vs B+补域，随拍数变化 ══");
+// ══ 结论三 · 耐久性 ═══════════════════════════════════════════════════════════
+console.log("\n\n══ 结论三 · 耐久性：B 单用 vs B+补域 ══");
 console.log("  预言：B 单用时 blockedPressure 无上界，拍数一多必把下游重新推进饱和带。");
 for (const T of [24, 60, 120, 240]) {
-  const eB = budgetEdges(edges);
-  const a1 = attenuation({ edges: eB, ticks: T });
-  const a2 = attenuation({ edges: eB, ticks: T, extraDeclared: new Set(["blockedPressure"]) });
-  console.log(`  t=${String(T).padStart(3)}  B单用: blocked=${a1.base.x.blockedPressure.toExponential(3)} release=${a1.base.x.releasePressure.toFixed(2)} 衰减=${a1.atten.toExponential(3)}×` +
-    `  |  B+补域: blocked=${a2.base.x.blockedPressure.toFixed(2)} release=${a2.base.x.releasePressure.toFixed(2)} 衰减=${a2.atten.toExponential(3)}×`);
+  const a1 = atten({ edges: C, ticks: T }), a2 = atten({ edges: C, ticks: T, extra: new Set(["blockedPressure"]) });
+  console.log(`  t=${String(T).padStart(3)}  B单用 blocked=${a1.base.x["Line.blockedPressure"].toExponential(3)} 衰减=${a1.atten.toExponential(3)}×` +
+    `  |  B+补域 blocked=${a2.base.x["Line.blockedPressure"].toFixed(2)} 衰减=${a2.atten.toExponential(3)}×`);
+}
+
+// ══ 结论四 · 本单不采纳「照搬 desat3 系数」的理由 ══════════════════════════════
+console.log("\n\n══ 结论四 · desat3 的系数为什么不能照搬 ══");
+console.log("  它那 11 条 `equal_share` 边靠一个**新归一口径**把 W 从 N 压到 1，");
+console.log("  而该口径的实现在 `contracts/src/sim.ts` + `sim/pair-weights.ts` —— 两者都在本单 🚦范围边界之外。");
+console.log("  只搬系数不搬口径时，这些边的真实增益（预算 0.75）：");
+const ES = new Set(["demo_batch_procurement_delay_to_material_shortage", "demo_equipment_failure_to_process_queue",
+  "demo_material_shortage_to_model_supply_risk", "demo_model_demand_to_base_load", "demo_po_expedite_to_supplier_review",
+  "demo_po_procurement_delay_to_material_shortage", "demo_process_queue_to_line_blocked", "demo_supplier_delay_to_material_shortage",
+  "demo_supplier_procurement_delay_to_material_shortage", "demo_wo_release_to_model_cost", "demo_wo_release_to_model_supply_risk"]);
+for (const e of edges.filter((e) => ES.has(e.key)).sort((a, b) => b.N - a.N)) {
+  console.log(`    ${e.key.padEnd(52)} N=${e.N.toFixed(2).padStart(6)}  ⇒ 若 W=N 则该边独占 ${(e.c * e.N / LAM).toFixed(2)} 的增益`);
 }
