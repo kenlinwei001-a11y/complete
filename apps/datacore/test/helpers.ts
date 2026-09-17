@@ -1,14 +1,8 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { loadConfig } from "../src/config.js";
-import { createMemoryRepos } from "../src/repo/memory.js";
-import { LocalFsBlobStore } from "../src/blob.js";
-import { ScriptedLlmClient } from "../src/llm.js";
-import { buildApp, type BuiltApp } from "../src/app.js";
-import { seedDemo } from "../src/seed.js";
+import type { BuiltApp } from "../src/app.js";
+import type { ScriptedLlmClient } from "../src/llm.js";
 import type { AuthCtx } from "../src/domain.js";
 import type { Repos } from "../src/repo/repo.js";
+import { createBareTestApp, ensureWorldSnapshot, restoreWorldFromSnapshot } from "./world-snapshot.js";
 
 export interface TestApp extends BuiltApp {
   repos: Repos;
@@ -17,31 +11,9 @@ export interface TestApp extends BuiltApp {
 }
 
 export async function makeApp(opts?: { fetchImpl?: typeof fetch; seed?: boolean; env?: Record<string, string>; seeding?: () => boolean; bootstrapRequired?: () => Promise<string | null>; processClock?: () => Date }): Promise<TestApp> {
-  const blobDir = await mkdtemp(join(tmpdir(), "dc-test-"));
-  const config = loadConfig({
-    NODE_ENV: "test",
-    LOG_LEVEL: "silent",
-    BLOB_DIR: blobDir,
-    JWT_SECRET: "test-secret",
-    ...(opts?.env ?? {}),
-  } as NodeJS.ProcessEnv);
-  const repos = createMemoryRepos();
-  const llm = new ScriptedLlmClient();
-  const built = await buildApp({
-    config,
-    repos,
-    blob: new LocalFsBlobStore(blobDir),
-    llm,
-    fetchImpl: opts?.fetchImpl,
-    seeding: opts?.seeding,
-    bootstrapRequired: opts?.bootstrapRequired,
-    // WO-PROCESS-INSTANCE：流程运行时的可注入时钟。不传 ⇒ 生产同款真实时钟。
-    // 传了才能对「已等多久」做到毫秒级断言 —— 欠账 #141「挂在墙钟上的断言并发时必假红」的对策。
-    ...(opts?.processClock ? { processClock: opts.processClock } : {}),
-  });
-  let adminCtx: AuthCtx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["admin"], attributes: {} };
-  if (opts?.seed !== false) adminCtx = await seedDemo(repos);
-  return { ...built, repos, llm, adminCtx };
+  // WO-SNAPSHOT-RESTORE：实现委托给 world-snapshot.createBareTestApp（同一实现逐行搬过去，
+  // 放在那边是为了让快照构建器能造 app 而不与 helpers 形成 import 环）。签名与语义不变。
+  return createBareTestApp(opts);
 }
 
 /** X-Debug-User header (dev auth fallback). */
@@ -57,15 +29,31 @@ export function b64(s: string): string {
   return Buffer.from(s, "utf8").toString("base64");
 }
 
-/** Seed the battery synthetic dataset (objects + links + 90d ts history + params + specs). */
+/**
+ * Seed the battery synthetic dataset (objects + links + 90d ts history + params + specs).
+ *
+ * WO-SNAPSHOT-RESTORE：默认走**快照还原**（同 (kind="base", seed) 的世界合成一次 → v8 字节 →
+ * 各文件还原，构建点带双跑自证；还原 ≡ live 的等价论证与世界态非确定枚举见
+ * world-snapshot.ts 头注与 docs/evidence/WO-SNAPSHOT-RESTORE-ledger.md §6/§10）。
+ * 语义与今天的 live POST 逐字节相等（验收① 探针实证 seed 42/7 双证 unexpected=0），
+ * 签名不变 ⇒ 808 个调用点零修改。
+ *
+ * 逃生口：`DC_SEED_LIVE=1` ⇒ 回到原 live POST 路径（真合成）—— 用于 before/after 对照测量、
+ * 快照机制自身调试、以及怀疑快照失真时的一键复核。
+ */
 export async function seedBattery(t: TestApp, seed = 42): Promise<void> {
-  const res = await t.app.inject({
-    method: "POST",
-    url: "/a/v1/synthetic/jobs",
-    headers: ADMIN,
-    payload: { industry: "battery-manufacturing", scale: "S", seed },
-  });
-  if (res.statusCode !== 202) throw new Error(`synthetic job failed: ${res.body}`);
+  if (process.env.DC_SEED_LIVE === "1") {
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/synthetic/jobs",
+      headers: ADMIN,
+      payload: { industry: "battery-manufacturing", scale: "S", seed },
+    });
+    if (res.statusCode !== 202) throw new Error(`synthetic job failed: ${res.body}`);
+    return;
+  }
+  const { buf } = await ensureWorldSnapshot("base", seed);
+  await restoreWorldFromSnapshot(t.repos, buf);
 }
 
 // headers 显式标 Record<string, string>：不标时会从默认值 ADMIN 推成 `{ "x-debug-user": string }`，

@@ -104,6 +104,8 @@ export async function createBareTestApp(opts?: {
     fetchImpl: opts?.fetchImpl,
     seeding: opts?.seeding,
     bootstrapRequired: opts?.bootstrapRequired,
+    // WO-PROCESS-INSTANCE：流程运行时的可注入时钟。不传 ⇒ 生产同款真实时钟。
+    // 传了才能对「已等多久」做到毫秒级断言 —— 欠账 #141「挂在墙钟上的断言并发时必假红」的对策。
     ...(opts?.processClock ? { processClock: opts.processClock } : {}),
   });
   let adminCtx: AuthCtx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["admin"], attributes: {} };
@@ -741,7 +743,8 @@ export async function ensureWorldSnapshot(kind: string, seed: number): Promise<E
 // ── 还原 ─────────────────────────────────────────────────────────────────────
 
 /**
- * 与 live runJob 完全同一组幂等清理谓词（service.ts:229-233 + clearSyntheticTimeseries:400-422）。
+ * 与 live runJob 完全同一组幂等清理谓词（service.ts:229-233 + clearSyntheticTimeseries:400-422
+ * + seedViewConfigs 的 viewConfigs 清理 :1903-1904）。
  * ⛔ 改这里 = 改「还原 ≡ live」的等价论证 —— 谓词必须与 runJob 逐条对得上，对不上先停手。
  */
 async function clearSyntheticLikeRunJob(repos: Repos, tenantId: string): Promise<void> {
@@ -749,6 +752,11 @@ async function clearSyntheticLikeRunJob(repos: Repos, tenantId: string): Promise
   await repos.links.removeWhere(tenantId, (l) => l.origin.type === "SYNTHETIC");
   const oldRules = await repos.rules.list(tenantId, (r) => r.origin.type === "SYNTHETIC");
   for (const r of oldRules) await repos.rules.remove(tenantId, r.id);
+
+  // service.ts:1903-1904 · seedViewConfigs 开头的清理（runJob ⑤ 的唯一额外 clear-and-reseed；
+  // vc_${tenant}_${role} id 虽确定、upsert 已等价，但补上清理使等价论证不依赖「id 集跨 seed 不变」）
+  const oldViews = await repos.viewConfigs.list(tenantId, (v) => v.origin === "SYNTHETIC");
+  for (const v of oldViews) await repos.viewConfigs.remove(tenantId, v.id);
 
   const series = await repos.tsSeries.list(tenantId, (s) => s.origin === "SYNTHETIC");
   const ids = new Set(series.map((s) => s.id));
