@@ -1,0 +1,352 @@
+[
+ {
+  "key": "demo_order_demand_pressure",
+  "source": "Order.demandPressure",
+  "target": "Model.demandLoad",
+  "weightRef": "source_qty_relative",
+  "faninN": 24.666666666666668
+ },
+ {
+  "key": "demo_model_demand_to_base_load",
+  "source": "Model.demandLoad",
+  "target": "Base.loadIndex",
+  "weightRef": "equal_share",
+  "faninN": 1.3846153846153846
+ },
+ {
+  "key": "demo_base_load_to_line_util",
+  "source": "Base.loadIndex",
+  "target": "Line.utilPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_supplier_delay_to_material_shortage",
+  "source": "Supplier.deliveryDelay",
+  "target": "Material.shortageRisk",
+  "weightRef": "equal_share",
+  "faninN": 1.875
+ },
+ {
+  "key": "demo_material_shortage_to_model_supply_risk",
+  "source": "Material.shortageRisk",
+  "target": "Model.supplyRisk",
+  "weightRef": "equal_share",
+  "faninN": 7
+ },
+ {
+  "key": "demo_model_supply_risk_to_order_shortage",
+  "source": "Model.supplyRisk",
+  "target": "Order.shortageRisk",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_line_util_to_process_queue",
+  "source": "Line.utilPressure",
+  "target": "Process.queuePressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_material_shortage_to_po_expedite",
+  "source": "Material.shortageRisk",
+  "target": "PurchaseOrder.expeditePressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_po_expedite_to_inspection_queue",
+  "source": "PurchaseOrder.expeditePressure",
+  "target": "IncomingInspection.queueDays",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_material_price_to_model_cost",
+  "source": "Material.priceShock",
+  "target": "Model.costPressure",
+  "weightRef": "bom_cost_share",
+  "faninN": 7
+ },
+ {
+  "key": "demo_model_cost_to_order_cost",
+  "source": "Model.costPressure",
+  "target": "Order.costPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_order_cost_to_customer_receivable",
+  "source": "Order.costPressure",
+  "target": "Customer.receivablePressure",
+  "weightRef": "source_value_relative",
+  "faninN": 8.823529411764707
+ },
+ {
+  "key": "demo_customer_receivable_to_invoice_overdue",
+  "source": "Customer.receivablePressure",
+  "target": "ARInvoice.overduePressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_model_demand_to_changeover_pressure",
+  "source": "Model.demandLoad",
+  "target": "ChangeoverMatrix.changeoverPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_material_shortage_to_batch_turnover",
+  "source": "Material.shortageRisk",
+  "target": "MaterialBatch.turnoverPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_po_expedite_to_customs_queue",
+  "source": "PurchaseOrder.expeditePressure",
+  "target": "CustomsClearance.clearanceQueueDays",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_base_load_to_maint_window_squeeze",
+  "source": "Base.loadIndex",
+  "target": "MaintPlan.windowSqueeze",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_model_demand_to_cert_queue",
+  "source": "Model.demandLoad",
+  "target": "Certification.qualificationQueue",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_base_load_to_inbound_expedite",
+  "source": "Base.loadIndex",
+  "target": "Shipment.inboundExpeditePressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_line_util_to_wo_release",
+  "source": "Line.utilPressure",
+  "target": "WorkOrder.releasePressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_wo_release_to_wip_feed",
+  "source": "WorkOrder.releasePressure",
+  "target": "WIPLot.feedPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_wo_release_to_quality_backlog",
+  "source": "WorkOrder.releasePressure",
+  "target": "QualityLot.inspectBacklog",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_wip_feed_to_defect_pressure",
+  "source": "WIPLot.feedPressure",
+  "target": "DefectRecord.defectPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_defect_to_exception_backlog",
+  "source": "DefectRecord.defectPressure",
+  "target": "ExceptionEvent.handlingBacklog",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_order_demand_to_line_split",
+  "source": "Order.demandPressure",
+  "target": "OrderLine.splitPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_order_shortage_to_promise_risk",
+  "source": "Order.shortageRisk",
+  "target": "OrderPromise.promiseRisk",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_customer_receivable_to_location_hold",
+  "source": "Customer.receivablePressure",
+  "target": "CustomerLocation.deliveryHoldRisk",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_customer_receivable_to_collection",
+  "source": "Customer.receivablePressure",
+  "target": "OverdueRecord.collectionPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_material_shortage_to_alt_switch",
+  "source": "Material.shortageRisk",
+  "target": "MaterialAlternative.switchPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_material_shortage_to_balance_gap",
+  "source": "Material.shortageRisk",
+  "target": "MaterialBalance.gapPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_base_load_to_transfer_pressure",
+  "source": "Base.loadIndex",
+  "target": "InterBaseTransfer.transferPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_process_queue_to_equipment_load",
+  "source": "Process.queuePressure",
+  "target": "Equipment.loadPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_equipment_load_to_repair_backlog",
+  "source": "Equipment.loadPressure",
+  "target": "MaintenanceOrder.repairBacklog",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_model_demand_to_fg_drawdown",
+  "source": "Model.demandLoad",
+  "target": "FinishedGoodsInventory.drawdownPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_po_expedite_to_supplier_review",
+  "source": "PurchaseOrder.expeditePressure",
+  "target": "Supplier.reviewPressure",
+  "weightRef": "equal_share",
+  "faninN": 3
+ },
+ {
+  "key": "demo_po_procurement_delay_to_material_shortage",
+  "source": "PurchaseOrder.procurementDelay",
+  "target": "Material.shortageRisk",
+  "weightRef": "equal_share",
+  "faninN": 3.75
+ },
+ {
+  "key": "demo_batch_procurement_delay_to_material_shortage",
+  "source": "MaterialBatch.procurementDelay",
+  "target": "Material.shortageRisk",
+  "weightRef": "equal_share",
+  "faninN": 3
+ },
+ {
+  "key": "demo_supplier_procurement_delay_to_material_shortage",
+  "source": "Supplier.procurementDelay",
+  "target": "Material.shortageRisk",
+  "weightRef": "equal_share",
+  "faninN": 1.625
+ },
+ {
+  "key": "demo_forecast_bias_to_order_demand",
+  "source": "Model.forecastBias",
+  "target": "Order.demandPressure",
+  "weightRef": "null",
+  "faninN": "未触发"
+ },
+ {
+  "key": "demo_order_churn_to_line_split",
+  "source": "Order.orderChurn",
+  "target": "OrderLine.splitPressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_order_churn_to_model_demand_load",
+  "source": "Order.orderChurn",
+  "target": "Model.demandLoad",
+  "weightRef": "source_qty_relative",
+  "faninN": 24.833333333333332
+ },
+ {
+  "key": "demo_equipment_failure_to_process_queue",
+  "source": "Equipment.equipmentFailure",
+  "target": "Process.queuePressure",
+  "weightRef": "equal_share",
+  "faninN": 2
+ },
+ {
+  "key": "demo_process_queue_to_line_blocked",
+  "source": "Process.queuePressure",
+  "target": "Line.blockedPressure",
+  "weightRef": "equal_share",
+  "faninN": 5
+ },
+ {
+  "key": "demo_line_blocked_to_wo_release",
+  "source": "Line.blockedPressure",
+  "target": "WorkOrder.releasePressure",
+  "weightRef": "null",
+  "faninN": 1
+ },
+ {
+  "key": "demo_wo_release_to_model_supply_risk",
+  "source": "WorkOrder.releasePressure",
+  "target": "Model.supplyRisk",
+  "weightRef": "equal_share",
+  "faninN": 43.333333333333336
+ },
+ {
+  "key": "demo_wo_release_to_model_cost",
+  "source": "WorkOrder.releasePressure",
+  "target": "Model.costPressure",
+  "weightRef": "equal_share",
+  "faninN": 43.333333333333336
+ },
+ {
+  "key": "demo_customer_reaction_cut_order",
+  "source": "Customer.receivablePressure",
+  "target": "Order.orderChurn",
+  "weightRef": "actor_exposure_relative",
+  "faninN": "未触发"
+ },
+ {
+  "key": "demo_order_qty_to_model_top_qty",
+  "source": "Order.qty",
+  "target": "Model.backlogQtyTop",
+  "weightRef": "null",
+  "faninN": 25
+ },
+ {
+  "key": "demo_order_price_to_model_top_price",
+  "source": "Order.unitPrice",
+  "target": "Model.backlogPriceTop",
+  "weightRef": "null",
+  "faninN": 25
+ },
+ {
+  "key": "demo_order_leaddays_to_model_horizon",
+  "source": "Order.leadDays",
+  "target": "Model.backlogHorizonDays",
+  "weightRef": "null",
+  "faninN": 25
+ }
+]
