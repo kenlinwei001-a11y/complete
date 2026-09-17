@@ -31,7 +31,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(49); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +2 条阻尼边**（库存缓冲 / 产能释放 —— 全表第一次有了「压力会回来」的通路；第三类「需求回落」实测后撤回不落边，理由见 seed.ts ③ 段）= 49
+    expect(cfg.propagationCount).toBe(48); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
@@ -73,7 +73,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(49); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +2 条阻尼边**（库存缓冲 / 产能释放 —— 全表第一次有了「压力会回来」的通路；第三类「需求回落」实测后撤回不落边，理由见 seed.ts ③ 段）= 49
+    expect(items.length).toBe(48); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
     // WO-SIM-ROOT-TRIAD 新增 4 条根源边全部挂**已物化**的既有链路（零新 linkType、零新物化）：
@@ -101,8 +101,6 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       "po_inspected_by", "po_replenishes_material", "process_belongs_to_line", "process_uses_equipment",
       "supplier_supplies_material",
       "supplier_supplies_material",
-      // WO-SIM-DAMPING ②：`transfer_from_base` = `base_dispatches_transfer` 的严格互逆边（实测 17/17，落**调出端**）
-      "transfer_from_base",
       "wip_lot_found_defect", "wo_for_model", "wo_for_model", "work_order_sampled_by_quality_lot",
       "work_order_yields_wip_lot",
     ]);
@@ -134,7 +132,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(49); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +2 条阻尼边**（库存缓冲 / 产能释放 —— 全表第一次有了「压力会回来」的通路；第三类「需求回落」实测后撤回不落边，理由见 seed.ts ③ 段）= 49
+    expect(rules.length).toBe(48); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -179,7 +177,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(49); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +2 条阻尼边**（库存缓冲 / 产能释放 —— 全表第一次有了「压力会回来」的通路；第三类「需求回落」实测后撤回不落边，理由见 seed.ts ③ 段）= 49
+    expect(items.length).toBe(48); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {
@@ -402,18 +400,17 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_process_queue_to_line_blocked", "demo_line_blocked_to_wo_release",
         "demo_wo_release_to_model_supply_risk", "demo_wo_release_to_model_cost",
       ],
-      // WO-SIM-DAMPING：两条**阻尼边**（全表仅有的负系数物理边）。本组同样不额外造源 ——
+      // WO-SIM-DAMPING：**阻尼边**（全表唯一的负系数物理边）。本组同样不额外造源 ——
       // 它们的源恰好就是上面「扩面档 2」里两条正边的**目标**：
-      //   `demo_model_demand_to_fg_drawdown`  → FinishedGoodsInventory.drawdownPressure →（本组①）
-      //   `demo_base_load_to_transfer_pressure` → InterBaseTransfer.transferPressure   →（本组②）
-      // ⇒ 由同一批源头（订单需求 / 基地负载）带动。两条各留 1 拍，故最早在第 3–4 拍进 trace。
+      //   `demo_model_demand_to_fg_drawdown` → FinishedGoodsInventory.drawdownPressure →（本组）
+      // ⇒ 由同一批源头（订单需求）带动。留 1 拍，故最早在第 3 拍进 trace。
       // 🔴 它们**必须出现在这里**：一条阻尼边若恒不触发，屏上看不出任何区别 ——
       //    「图里有一条负边」不度量「压力真的会回来」，正是本仓反复栽的那个形态。
-      阻尼: ["demo_fg_drawdown_relieves_model_demand", "demo_transfer_relieves_base_load"],
+      阻尼: ["demo_fg_drawdown_relieves_model_demand"],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // ── 完整性：十二组 48 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    // ── 完整性：十二组 47 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
     //
     // 🔴 口径修正（WO-ADVERSARY-REACTION）：目录里从此有两类边，**必须分开数**——
     //  · **物理边**（`reaction == null`）：默认世界照跑，逐条都要在上面的 trace 里出现；

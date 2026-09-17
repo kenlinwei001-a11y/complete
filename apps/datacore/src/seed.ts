@@ -1642,45 +1642,51 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   // **X**：47 条边里 **46 条正系数、1 条负**（`demo_forecast_bias_to_order_demand` −0.6，
   //   且它的源 `forecastBias` 是入度 0 的外生根 ⇒ **只有用户手动拨它，世界里才会有一个减量**）。
   //   世界自己**没有任何一条边会让压力下降**：45 个量纲节点里 **20 个是纯 sink**（出度 0）——
-  //   它们只接收压力，接收完什么也不做。其中两个的业务含义**恰恰就是"做点什么把压力卸掉"**：
-  //     · `FinishedGoodsInventory.drawdownPressure`（成品库存被提走）—— 提走了却不冲抵需求
-  //     · `InterBaseTransfer.transferPressure`（跨基地调拨）—— 调出去了却不减调出方负载
-  //   ⇒ 两个对象**存在的理由**（缓冲 / 分流）在传导图上一次都没兑现。
-  //   （第三类「需求回落」实测后**撤回不落边** —— 落点上已有一条负边且它是哑的，见下方 ③ 段。）
+  //   它们只接收压力，接收完什么也不做。**本单只收其中一个**，因为只有它的源是「已执行的动作」：
+  //     · `FinishedGoodsInventory.drawdownPressure`（成品库存**被提走 / 去化**）—— 提走了却不冲抵需求
+  //   另两类（产能释放 / 需求回落）实测后**撤回不落边**，理由分别见下方 ② ③ 段 ——
+  //   **一个是源的语义不对（决策压力 ≠ 已执行），一个是落点本身是哑的**。
+  //   ⚠ 这条筛选判据要记住：**变量名里带 "pressure" 不代表它是「完成量」** ——
+  //     `releasePressure`（工单下达被压着排）、`transferPressure`（调拨决策压力）都是「坏事的程度」，
+  //     拿它们当「好事的完成量」去做反向冲抵，就是把意向当既成事实记账。
   //   金丝雀（证明上面那个"46/1"是真的，不是我数错）：同一把尺子数 `coefficient > 0` 得 **46**、
   //   `< 0` 得 **1**、合计 **47** = `DEMO_PROPAGATION_RULES.length`；
   //   且已知必中的 `demo_material_price_to_model_cost` 量出 **0.65**（与字面量一致）。
-  // **Y**：以上两个动作各自把它吸收掉的那部分**回记成来源的减量**，于是压力有了「去处」——
+  // **Y**：这个动作把它吸收掉的那部分**回记成来源的减量**，于是压力有了「去处」——
   //   扰动过后世界能自己收敛回来，而不是只能一路往上加。
   //
-  // ── 系数从哪来：**镜像判据**（两条共用一条规则，不是各拍一个数）──────────────────
+  // ── 系数从哪来：**镜像判据**（不是拍一个数）────────────────────────────────────
   // 每条阻尼边都是某条**既有正边的反向动作**，两向描述的是**同一条业务关系**
-  // （型号↔成品库存 · 基地↔调拨单）。故：
+  // （型号↔成品库存）。故：
   //   **阻尼边取它所镜像的那条正边的同一个系数，只改符号。**
   // 理由是"没有出处的差额不许存在"：若两向取不同比例，就等于凭空断言
   // 「回来的比去的多（或少）」，而那个差额在本仓找不到任何一份实测或规则表支撑它。
   // 取同值则这条断言退化成「同一笔量，来回记两次账，两次一样大」——它不需要额外出处。
   // ⚠ 这是**约定**不是守恒定律，故写在这里而不是藏在某个数里；要改它得先给出那份差额的出处。
   //
-  // ── 稳定性（为什么这两条不会把世界打到负数或震荡起来）────────────────────────────
+  // ── 稳定性（为什么这条不会把世界打到负数或发散）──────────────────────────────────
   //  · **不会为负**：压力族 `restPoint === min === 0` ⇒ `saturateToDomain` 下侧是**硬地板**
   //    （`sim/propagation.ts` 那行 `else if (raw < min) return min`），阻尼最多把一格压到 0。
-  //  · **不会发散**：两条回路的环增益分别是 0.6×0.6=0.36 与 0.3×0.3=0.09，
-  //    全部 < 1，且每跳还要再乘一次 (1−λ) 的存量衰减（λ=0.37，`PRESSURE_DECAY_PER_TICK`）。
-  //  · **延迟是业务事实不是调参**：两条都留 1 拍 —— 拣货发运要一拍、调拨执行完才卸得掉负载。
+  //  · **不会发散**：回路环增益 = 0.6×0.6 = **0.36 < 1**，
+  //    且每跳还要再乘一次 (1−λ) 的存量衰减（λ=0.37，`PRESSURE_DECAY_PER_TICK`）。
+  //  · **延迟是业务事实不是调参**：留 1 拍 —— 拣货发运要一拍，库存不是当拍就变成客户手里的货。
   //    与还手边 `delayTicks: 1` 同一条理由。
+  //  ⚠ **如实登记一处实测到的行为**：本条在**未饱和**世界里会让 `Model.demandLoad`
+  //    出现「冲高 → 触地板 0 → 再回升」的**振荡**（实测 60 拍：13.77/22.44/27.90/11.52/0/0/0/0/0/0/4.36/10.59），
+  //    不是平滑收敛。成因是「1 拍延迟 + 下界硬地板」，不是系数拍错了。
+  //    ⛔ **刻意不为了把曲线弄好看而改小系数** —— 那就是本单明令禁止的「硬塞负数让曲线好看」的反面同款。
+  //    标定归 `WO-SIM-CALIBRATION`，此处只记账。
   //
-  // ⛔ **本段一行都没碰 `sim/propagation.ts`**：阻尼是**数据**（两行 `sim_propagation_rule`），
+  // ⛔ **本段一行都没碰 `sim/propagation.ts`**：阻尼是**数据**（一行 `sim_propagation_rule`），
   //    不是引擎特性。引擎早就支持负系数（`demo_forecast_bias_to_order_demand` 用了一年），
   //    缺的一直是"没人往图里放过反向的边"。
   //
-  // ⚠ **诚实登记：两条都 `weightRef: null`，逐实例分摊是待定**。
-  //    想按"谁的库存多/谁调得多"分摊，需要的基数分别是
-  //    `FinishedGoodsInventory.qtyAvailable` / `InterBaseTransfer.qty`，
-  //    **两个都不叫 `qty`** ⇒ 在册口径 `source_qty_relative`（读的是 `props.qty`，
-  //    见 `sim/pair-weights.ts`）在这两个类型上会**逐条量出 0**，落成一张全零权重表。
+  // ⚠ **诚实登记：`weightRef: null`，逐实例分摊是待定**。
+  //    想按"谁的库存多"分摊，需要的基数是 `FinishedGoodsInventory.qtyAvailable`，
+  //    **它不叫 `qty`** ⇒ 在册口径 `source_qty_relative`（读的是 `props.qty`，
+  //    见 `sim/pair-weights.ts`）在这个类型上会**逐条量出 0**，落成一张全零权重表。
   //    实测：`FinishedGoodsInventory` 18 个实例里 `props.qty` 为正的 **0 个**（金丝雀：同一把尺子
-  //    量 `Order` 得 500/500、量 `MaterialBatch` 得 24/24 ⇒ 量法是好的，是这两个类型真的没这个字段）。
+  //    量 `Order` 得 500/500、量 `MaterialBatch` 得 24/24 ⇒ 量法是好的，是这个类型真的没这个字段）。
   //    补口径要改 `PAIR_WEIGHT_BASIS_REGISTRY` + `pair-weights.ts`，**超出本单 🚦范围边界**，
   //    故此处只记账不动手 —— 留 null 是诚实，拍一个数填掉是假绿。
   // ══════════════════════════════════════════════════════════════════════════════════
@@ -1701,7 +1707,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "demandLoad",
     coefficient: -0.6, // 镜像判据：与 `demo_model_demand_to_fg_drawdown` 同值反号
     delayTicks: 1, // 拣货发运要一拍：库存不是当拍就变成客户手里的货
-    description: "成品库存被提走 ⇒ 这部分需求已由库存交付，从型号待产负荷里扣掉（去化压力 × 0.6 反向冲抵）",
+    description: "成品库存被提走 ⇒ 这部分需求已由库存交付，从型号待产负荷里扣掉（去化压力 × -0.6 = 型号需求负载的减量）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -1711,32 +1717,30 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     status: "PUBLISHED",
   },
 
-  // ── ② 产能释放：调出去的量，从调出方的负载里卸掉 ────────────────────────────────
-  // 镜像 `demo_base_load_to_transfer_pressure`（`Base.loadIndex --base_dispatches_transfer
-  // ×0.3--> InterBaseTransfer.transferPressure`）。那条只写了"忙不过来所以发起调拨"，
-  // **没写"调拨真的把活分走了"** ⇒ 今天调了等于没调，`InterBaseTransfer` 是纯 sink。
-  // ⚠ 落点必须是**调出端**：`transfer_from_base` 与 `base_dispatches_transfer` 是同一对
-  // （调出方）基地的两向 —— 反过来挂 `transfer_to_base`（调入端）是**加载不是卸载**，
-  // 那条边为正才对，且不构成回路。两向严格互逆由本单接缝测试 §2 当场核对。
-  {
-    id: "simpr_demo_transfer_relieves_base_load",
-    key: "demo_transfer_relieves_base_load",
-    sourceTypeKey: "InterBaseTransfer",
-    sourceStateVar: "transferPressure",
-    viaLinkKey: "transfer_from_base", // 实测 InterBaseTransfer→Base，17 条（本单之前**零条规则**用它）
-    targetTypeKey: "Base",
-    targetStateVar: "loadIndex",
-    coefficient: -0.3, // 镜像判据：与 `demo_base_load_to_transfer_pressure` 同值反号
-    delayTicks: 1, // 调拨要执行完才卸得掉负载，与它镜像的那条同为 1 拍
-    description: "跨基地调拨执行 ⇒ 调出方的负载被分走一部分（调拨压力 × 0.3 反向冲抵基地负载）",
-    combine: "sum",
-    decay: null,
-    clamp: null,
-    coefficientRef: null,
-    weightRef: null, // 待定：应按调拨量分摊，`InterBaseTransfer` 无 `props.qty`（见段头）
-    cadenceNodeId: null,
-    status: "PUBLISHED",
-  },
+  // ── ② 产能释放 —— **本单不落边，列为待定（实测 + 语义复核后撤回）** ────────────────
+  //
+  // 原计划落 `InterBaseTransfer.transferPressure --transfer_from_base--> Base.loadIndex` (-0.3)，
+  // 链路核过是真的（`transfer_from_base` 实测 17 条，且与 `base_dispatches_transfer` 严格互逆 17/17）。
+  // **撤回的理由不是链路，是源的语义** ——
+  //
+  //  ① 种子自己的分节注释写着：`── D06 计划与排产：基地负载 → 跨基地调拨**决策压力** ──`，
+  //     那条边的 description 是「某基地过载 ⇒ 跨基地调拨压力上升」。
+  //     ⇒ `transferPressure` 度量的是「**想不想调**」（决策意向），**不是「已经调走了多少」**。
+  //  ② 拿「想调的压力」当「已经调走的量」去冲抵负载，就是把**意向**当**既成事实**记账 ——
+  //     与本文件里 `WorkOrder.releasePressure`（「工单下达**被压着排**」= 积压，不是产出）
+  //     是**同一类符号错误**：源变量名里有 "pressure"，但它指向的是坏事的程度，不是好事的完成量。
+  //     本单在 `releasePressure` 上避开了这个坑，就没有理由在 `transferPressure` 上踩进去。
+  //  ③ 机器先说话：这条边落上去之后，`metric-series.seam.test.ts` **当场两条红** ——
+  //     那份用例的前提原文是「`Base.loadIndex` 这一格**没有任何边写它**（值来自种子与扰动）」，
+  //     而本条给它加了入边 ⇒ 基线线在第 4 格被压到地板 0（期望 4×0.63^4 = 0.63011844）。
+  //     红得对：它说明这条边在**一个根本没有真实调拨发生的世界里**也会卸载荷 ——
+  //     因为 `transferPressure` 本身就是由 `loadIndex` 现推出来的，等于「越忙就自动越不忙」。
+  //
+  // **真实缺口仍在**（「只有堆积没有疏通的队列必然单调上升」这句话没有被推翻），
+  // 但要补它需要一个**表示「已执行的调拨量」**的量纲 —— 本体里今天没有这个格子
+  // （`InterBaseTransfer` 身上只有 `transferPressure` 一个状态量）。
+  // 造这个格子要动 `battery.ts` 的 `STATE_VAR_DOMAINS` / `STATE_VAR_DISPLAY_NAMES`，
+  // **超出本单范围边界**，故列为待定，不在这里硬凑。
 
   // ── ③ 需求回落 —— **本单不落边，列为待定（这是实测结论，不是没做完）** ────────────
   //
