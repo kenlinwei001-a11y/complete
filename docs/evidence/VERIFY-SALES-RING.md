@@ -81,6 +81,16 @@ base 两文件换回 `b7e3c44b` 后跑 §6，实测原文：
 「🐤 把一条相符的边变异成不符，扫描器必须当场抓到」**同一次运行里是绿的**
 ⇒ 扫描器是好的，不是量法坏了。
 
+拿该门**逐字同一条正则**（`/^[ \t]*coefficient:[ \t]*([^\n]*)/gm`）直接量两个版本的 `seed.ts`：
+
+| 版本 | `coefficient:` 行数（门要求 ≥50） | 绕过 `inflowCoefficient` 的 |
+|---|---|---|
+| base `b7e3c44b` | 50 | **0** ⇒ 绿 |
+| HEAD `ceb6c9ff` | 50 | **3** ⇒ 红 |
+
+三条原文：`1, // 原样透传（同量纲直取 套→套）`／`元→元`／`天→天`。
+行数金丝雀两侧都是 50 ⇒ 抽取器在两个版本上都有效，「0 vs 3」是真差异不是量法差异。
+
 **为什么 dev 没看见**：这道门是**源码文本扫描**（`/^[ \t]*coefficient:/gm` 读 `seed.ts` 原文），
 `pnpm -r build`、`pnpm -r typecheck`、以及本单自己的接缝门**全都绿**。
 形态（铁律 0.6 第 4 条同构）：
@@ -115,22 +125,34 @@ base 两文件换回 `b7e3c44b` 后跑 §6，实测原文：
 `test/seed-demo-propagation.test.ts(350,29)` / `(359,29)` `error TS2532`
 —— 与 dev 报的行号**一字不差**。HEAD **RC=0**。这半条 dev 是对的，且修得干净。
 
-### (b)「剩 2 红是 base 既有」—— **不成立：是 3 红，第 3 条是本单造成的**
-HEAD 全量 datacore（本报告落笔时跑到 142/362 文件）实测 **3 红**：
+### (b)「剩 2 红是 base 既有」—— **半对：那 2 条确是既有，但总数是 3 条，第 3 条本单造成**
 
-| 红 | 实测原文 | 归属 |
-|---|---|---|
-| `sim-seed-world` ⑤ | `结构可达面与真跑对不上…expected 2445 to be 3861` | base 既有（见下） |
-| `sim-real-cells` 臂2 | `Line\|blockedPressure=106.6596 越出声明域 [0,100]` | base 既有（见下） |
-| **`edge-money-weight` §3b** | **`有边绕过 inflowCoefficient…expected […(3)] to deeply equal []`** | **本单造成** |
+HEAD 全量 datacore 跑完：`Test Files 3 failed | 357 passed | 2 skipped (362)`、
+`Tests 3 failed | 2544 passed | 16 skipped (2563)`、RC=1、2234s。
 
-前两条判为 base 既有的**结构性理由**（非猜测）：
-- 臂2 扫的是 `repos.objects.list()` 的**目录对象属性**，`Line.blockedPressure` 由派生规格
-  `line_blocked_pressure`（`seed-derivation-specs.ts:86`）算出，与传导系数**无关**；且它 134ms 就红，
-  根本没跑到传导那一步。
-- ⑤e 比的是 `censusDownstreamCells.length` vs `report.choice!.reachCells`；`reachCells` 是**结构 BFS**，
-  与数值无关。落点是 `equipmentFailure`，而三条 backlog 边的源 `Order.qty` **不是任何规则的目标**
-  ⇒ BFS 走不到它，backlog 格既不在可达面里也不会「动」⇒ 两侧都不受本单影响。
+**归属用实测定，不用推理**（把 `seed.ts` 换回 base、测试留 HEAD，重跑这 3 个文件）：
+
+| 红 | HEAD 实测 | base 实测 | 归属 |
+|---|---|---|---|
+| `sim-seed-world` ⑤ | `expected 2445 to be 3861` | **同一句、同两个数** | base 既有 ✅ |
+| `sim-real-cells` 臂2 | `Line\|blockedPressure=106.6596` | **同一句、同一个数** | base 既有 ✅ |
+| **`edge-money-weight` §3b** | `绕过 inflowCoefficient …(3)` | **绿** | **本单造成** 🔴 |
+
+base 侧回执：`Test Files 2 failed | 1 passed (3)` —— 绿的那一个正是 `edge-money-weight`。
+
+旁证（与实测同向，非替代）：臂2 扫 `repos.objects.list()` 的目录对象属性，
+`Line.blockedPressure` 由派生规格 `line_blocked_pressure`（`seed-derivation-specs.ts:86`）算出，
+134ms 就红、根本没跑到传导；⑤e 比的 `reachCells` 是**结构 BFS**，与数值无关，
+且三条 backlog 边的源 `Order.qty` 不是任何规则的目标 ⇒ BFS 走不到，两侧都不受本单影响。
+
+### 附 · 静态门 12 红：**base 与 HEAD 逐条相同，全部既有**
+`pnpm gates` 两侧同为 12 判负，名单逐条一致。
+⚠ 中途差点误判一次：base 那轮 `check-dark-launch-integrity` 报的是
+**RC=2「门自己没准备好，本次未度量任何代码，结论作废」**（我先前做变异实验时 dist 停在 base，没重 build），
+差点被读成「它在 base 上是绿的」⇒ 差点错报成本单造成。
+两侧各自 `pnpm --filter datacore build` 后重测：**双方都是 RC=1、同样 3 条**
+（`sim.propagation.adversary` / `process.runtime` / `org.world` 未声明投放意图），与本单无关。
+> **形态**：「我用『门没报 FAIL』当作『门通过了』的证据，而前者并不度量后者 —— 它说的是『我没查』。」
 
 ### (c)「两台量具不同意」—— **两台都没错，它们扫的不是同一个集合**
 - A7 越界普查器 `overDomain` 扫**推演世界态**（`SimTickState.state`），引擎对已声明域做 `saturateToDomain` 夹取 ⇒ 0/4937。
