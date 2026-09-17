@@ -213,3 +213,39 @@ Test Files 1 passed · Tests 2 passed（vitest RC=0）
 - 「≥3 重文件」的世界形状即此 base 链（vle-acceptance / seed-demo-propagation /
   gap-attribution / enterprise-state.seam / simclock 全部消费 (base,42)，simclock 另消费
   (base,7)）—— 世界形状已被本节双证覆盖；逐文件 before/after 壁钟见 §10.5。
+
+### 10.5 验收② 单文件 before/after 壁钟（电池证据 /tmp/wo-snapshot-evidence/*.{txt,rc,load}）
+
+测量法：每文件 before（`DC_SEED_LIVE=1` 走今天的 live POST 合成）与 after（默认快照还原）
+**相邻测**（负载噪声时间局部性对两者公平），`--pool=forks --maxWorkers=1`，门前等全机无
+vitest 根进程。负载一律如实标注；⚠ 首轮电池（b57vu0hvd）于 16:06 被外部终止（2/10 已入库），
+其余文件由续跑电池补测后回填本节。
+
+| 文件 | before 壁钟(RC) | after 壁钟(RC) | ÷ | 启动负载(1/5/15min) | 争用标注 |
+|---|---|---|---|---|---|
+| vle-acceptance | 329.8s (rc=1) | 327.0s (rc=1) | **÷1.01** | 65/172/362 → 80/236/336 | 两轮均与另一 datacore vitest 并发（before 轮它抢在门前 9s 起跑；after 轮等窗 20min 超时后争用测） |
+
+**vle-acceptance 是诚实的反例，不藏**：此文件 4 个测试里只有 VL4 消费 1 次 seedBattery；
+VL2/VL5 的成本是各自 2–3 次串行 `services.vle.run`（参照预言机内部自合成，**设计上不经
+seedBattery**，快照机制管不到）。文件成本是 VLE 预言机绑定的，不是播种绑定的 ⇒ ÷1.01 是
+机制边界的真实读数，不是机制失效。
+
+**VL2/VL5 红的定性复诊断（派单要求的「负载抖落 vs 基线红」）**：
+- 两轮失败签名**逐字相同**：`Test timed out in 120000ms`（非断言失败）。
+- VL2 = 串行 2 次 vle.run：负载回落轮 80.3s **过**（≈40s/次）⇒ 负载抖落实锤。
+- VL5 = 串行 **3** 次 vle.run 压 120s 上限：3×40s ≈ 120s 恰在帽沿 —— 安静可过、争用必红，
+  两轮（live 路 / 快照路）同样红 ⇒ **与快照改动无关**（vle.run 根本不走 seedBattery），
+  也非基线内容红（无任何断言走到比对阶段）。安静窗复跑预期全绿，随验收③ 一并定案。
+- VL4 after=62.8s 内含 **seed=42 冷构建**（快照 rename 15:50:05 落在 VL4 窗内，
+  构建在 120s 帽内完成）——冷构建进测试不超时的实证 +1；此后 seed=42 快照全机转暖。
+
+| 文件 | before 壁钟(RC) | after 壁钟(RC) | ÷ | 负载 | 标注 |
+|---|---|---|---|---|---|
+| seed-demo-propagation | _待补_ | _待补_ | | | |
+| gap-attribution | _待补_ | _待补_ | | | |
+| enterprise-state.seam | _待补_ | _待补_ | | | |
+| simclock | _待补_ | _待补_（含 seed=7 冷构建标注） | | | |
+
+**全套件推算**：待 4 文件入库后按 185 文件 / 821 调用点（2026-09-17 复点：320 测试文件、
+seedBattery 实参 42 之外仅 simclock T6 一处 seed=7 ⇒ 快照键=2）做 Amdahl 诚实口径推算；
+若实测落在 ÷2–3 区间，如实写 ÷2–3 —— SOP §6 的 ÷5–10 由审核方自己回写，本节不贴金。
