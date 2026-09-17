@@ -734,6 +734,80 @@ export const STATE_DECAY_PARAM_KEY = "pressureDecayPerTick";
  */
 export const PRESSURE_DECAY_PER_TICK = 0.37;
 
+// ── WO-PROP-COEF-CONFIG · 推演传导系数表（记号必须排在 BATTERY_RULES **之前**，TDZ 理由同 C35 段头）──
+
+/** 传导系数所在的规则（`BATTERY_RULES` 的 C36）—— 改这条规则的 params 即改推演，引擎不内联任何系数。 */
+export const PROPAGATION_COEF_RULE_KEY = "C36";
+
+/**
+ * 50 条 demo 传导边的系数**唯一真源**（传导规则业务评审 v2 §5：0/50 走 coefficientRef ⇒ 系数搬进配置）。
+ *
+ * ── 为什么值必须在这张表里、不能留在 `seed.ts` 各条边的 `coefficient:` 字面量里 ──────
+ * 那是 G-10 P4 治过的同一个病（两份同值字面量，一份真读一份诱饵）：运行期真读的是
+ * **本表**（引擎 `effectiveCoefficient` 经 `coefficientRef` 解析），种子里的内联值只是
+ * **冷启动回落**（ref 解析不到时才用）。两边各写一份，改一边不改另一边就静默分叉，且四包全绿。
+ * 故 `seed.ts` 的边字面量**刻意没有 `coefficient:` 行**：内联值与 `coefficientRef` 在
+ * `demoPropagationRulesWithDomain()` 收尾处从本表**同一个键**派生；缺任一边的键，
+ * `ruleParamOf` 当场在模块加载期抛错（机器先说话）——「种子写了、表里没写」不许静默通过。
+ *
+ * ── 业务怎么改（评审 v2 §5 要的「改配置即改推演」）──────────────────────────────
+ * 改本规则 `params.<边key>`（规则库界面或写路 API）⇒ 下一拍 `effectiveCoefficient`
+ * 解析到的就是新值（`propagation.ts` · G-10 P1），不用改种子、不用重建；
+ * 披露层同步显示 `coefficientSource: "CONFIG_REF"` 与引用键 `C36.<边key>`。
+ */
+export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
+  "demo_order_demand_pressure": 0.8,
+  "demo_model_demand_to_base_load": 0.6,
+  "demo_base_load_to_line_util": 0.5,
+  "demo_supplier_delay_to_material_shortage": 0.9,
+  "demo_material_shortage_to_model_supply_risk": 0.7,
+  "demo_model_supply_risk_to_order_shortage": 0.8,
+  "demo_line_util_to_process_queue": 0.7,
+  "demo_material_shortage_to_po_expedite": 0.5,
+  "demo_po_expedite_to_inspection_queue": 0.6,
+  "demo_material_price_to_model_cost": 0.65,
+  "demo_model_cost_to_order_cost": 0.9,
+  "demo_order_cost_to_customer_receivable": 0.5,
+  "demo_customer_receivable_to_invoice_overdue": 0.4,
+  "demo_model_demand_to_changeover_pressure": 0.4,
+  "demo_material_shortage_to_batch_turnover": 0.5,
+  "demo_po_expedite_to_customs_queue": 0.4,
+  "demo_base_load_to_maint_window_squeeze": 0.4,
+  "demo_model_demand_to_cert_queue": 0.3,
+  "demo_base_load_to_inbound_expedite": 0.35,
+  "demo_line_util_to_wo_release": 0.6,
+  "demo_wo_release_to_wip_feed": 0.7,
+  "demo_wo_release_to_quality_backlog": 0.5,
+  "demo_wip_feed_to_defect_pressure": 0.3,
+  "demo_defect_to_exception_backlog": 0.8,
+  "demo_order_demand_to_line_split": 0.9,
+  "demo_order_shortage_to_promise_risk": 0.8,
+  "demo_customer_receivable_to_location_hold": 0.5,
+  "demo_customer_receivable_to_collection": 0.6,
+  "demo_material_shortage_to_alt_switch": 0.6,
+  "demo_material_shortage_to_balance_gap": 0.7,
+  "demo_base_load_to_transfer_pressure": 0.3,
+  "demo_process_queue_to_equipment_load": 0.5,
+  "demo_equipment_load_to_repair_backlog": 0.6,
+  "demo_model_demand_to_fg_drawdown": 0.6,
+  "demo_po_expedite_to_supplier_review": 0.4,
+  "demo_po_procurement_delay_to_material_shortage": 0.8,
+  "demo_batch_procurement_delay_to_material_shortage": 0.6,
+  "demo_supplier_procurement_delay_to_material_shortage": 0.5,
+  "demo_forecast_bias_to_order_demand": -0.6,
+  "demo_order_churn_to_line_split": 0.7,
+  "demo_order_churn_to_model_demand_load": 0.5,
+  "demo_equipment_failure_to_process_queue": 0.6,
+  "demo_process_queue_to_line_blocked": 0.55,
+  "demo_line_blocked_to_wo_release": 0.6,
+  "demo_wo_release_to_model_supply_risk": 0.5,
+  "demo_wo_release_to_model_cost": 0.5,
+  "demo_customer_reaction_cut_order": 0.35,
+  "demo_order_qty_to_model_top_qty": 1.0,
+  "demo_order_price_to_model_top_price": 1.0,
+  "demo_order_leaddays_to_model_horizon": 1.0,
+};
+
 export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // DF.14：C03/C05/C13/C09 前端 mock 规则库也物化同一条 —— expression 从 `PARITY_RULE_SEEDS` 派生，
   // 两端只此一处，不再各写一份字面量（此前那份手抄副本正是欠账 #78 的机制面：值对齐过一次，机制没变）。
@@ -917,12 +991,25 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // 即内联值**被引用值盖过**）。⇒ 缺的是**种子里没人填 ref**，不是机制不存在。
   // 两者修法完全不同：前者「填数据」，后者「造机制」——把前者报成后者会直接歪掉排期
   // （铁律 0.5 ③ 点名的正是这一形态）。原文的「42」同时也已过期（今日现算 47）。
+  // ✅ **2026-09-17 已闭（WO-PROP-COEF-CONFIG）**：「种子里没人填 ref」这一半已由 C36 补上 ——
+  // 50 条边全部声明 `coefficientRef → C36.params.<边key>`，种子内联值与 ref 从
+  // `PROPAGATION_COEF_PARAMS` 同一个键派生（不再留第二份字面量）。
+  // 「47 / 0 条在用」两个读数自此过期：今日现算 **50 条、50 条解析为 CONFIG_REF**。
   // 衰减率是「一次冲击几天散掉」这条**经营口径**，必须落在规则库里改一处即改推演，
   // 而不是再往引擎里内联一个常数（`STATE_VAR_DOMAINS` 只存**引用**，不存值）。
   // 出厂值的推导见 `PRESSURE_DECAY_PER_TICK` 注释（从 risk.pulseWindow/pulseDecayDen 派生，非拍脑袋）。
   { key: "C35", name: "推演状态量衰减率", expression: `SimStateVar.decayPerTick == ${ruleParamRef(STATE_DECAY_PARAM_KEY)}`, severity: "WARN", params: { [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK }, category: "推演",
     description: "参数载体而非判定规则：推演状态量每 tick 衰减率 λ 的唯一可编辑来源（引擎读 params.pressureDecayPerTick），存在的理由是让「一次冲击几天散掉」这条经营口径改一处即改推演。",
     tags: ["推演", "参数载体", "衰减率"] },
+  // WO-PROP-COEF-CONFIG · 推演传导系数表。**这条规则存在的唯一理由就是让 50 条边的系数可编辑** ——
+  // 上面 C35 段头那段实测已经证明「机制在、缺的是种子里没人填 ref」（三分法：接了线没数据）。
+  // 本规则就是「填数据」那一半：50 条边的 `coefficientRef` 全部指向 `C36.params.<边key>`，
+  // 值与种子内联值**同源派生**（`PROPAGATION_COEF_PARAMS` 单源，禁第二份字面量 = G-10 P4 同一条纪律）。
+  // expression 是占位：载体主语 `SimPropagationEdge` 是引擎命名空间、不是本体对象类型
+  // （照 C35 `SimStateVar` 判例；作用域在 `BATTERY_RULE_SCOPES` 显式登记为空，不静默落 Order 域）。
+  { key: "C36", name: "推演传导系数表", expression: "SimPropagationEdge.coefficient != NULL", severity: "WARN", params: PROPAGATION_COEF_PARAMS, category: "推演",
+    description: "参数载体而非判定规则：50 条传导边系数的唯一可编辑来源（引擎按边 key 读 params.<边key>；种子内联值只是冷启动回落，与本表同源派生）。改 params 即改推演，不用改种子不用重建。",
+    tags: ["推演", "参数载体", "传导系数"] },
 ];
 
 /**
@@ -4985,6 +5072,10 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   // `status === "PUBLISHED"` 全量取、**不看 scopeObjectTypes**，C35 的 λ 照常解析得到
   // （`prop-clamp-decay.seam` 仍绿即为凭证）。这里管的只是"它出现在哪个域的规则清单里"。
   C35: [],
+  // WO-PROP-COEF-CONFIG：C36 照 C35 同一条判例 —— expression 主语 `SimPropagationEdge` 是
+  // 引擎命名空间、不是本体对象类型 ⇒ **显式空**，不静默落 Order 域；且同样不影响
+  // `ruleParams` 装配（那条路只看 PUBLISHED），50 条边的系数照常解析。
+  C36: [],
 };
 
 export interface GeneratedBattery {
