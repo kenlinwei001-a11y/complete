@@ -264,6 +264,28 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *   配合衰减 `v ← v(1−λ)`，源恒定时真实稳态是 **`source × c/λ`** —— λ=0.37 ⇒ **比描述承诺的大 2.7 倍**。
  * **Y**：字段存的就该是引擎真要的那个每拍入流量 ⇒ **`coefficient = 稳态增益 × λ`**。
  *
+ * ── ⚠⚠ **两支口径：只有「目标会衰减」的边才预乘 λ**（WO-SIM-CALIBRATION）────────────
+ * 本助手存在的**唯一理由**是约掉衰减在稳态里引入的那个 `1/λ`（`稳态 = 入流/λ`）。
+ * 而 `STATE_VAR_DOMAINS` **没登记**的量纲（天数族 / 件数族）引擎**不夹不衰减**
+ * ⇒ 它们是 `combine:"sum"` 的**纯积分器**，没有 `1/λ` 可约 ⇒ **预乘 λ 就是凭空把读数打三折**。
+ * 实测代价是用户可见的：`demo_po_expedite_to_inspection_queue` 的 description 承诺
+ * 「加急压力 **× 0.6**」，包了助手之后每拍只加 `0.6 × 0.37 = 0.222` ⇒ **屏上差 2.70 倍**。
+ * 故本表 47 条里 **41 条包助手、6 条刻意裸写**，判据只有一条：
+ * **`targetStateVar` 在不在 `STATE_VAR_DOMAINS` 里。**
+ *
+ * ── 同一个判据也决定「受不受增益预算约束」——**两者不是两道工序，是一件事的两半** ──────
+ * 曾要在「先剥 λ 再按预算缩」与「先缩再剥」之间选顺序 —— **两个都不对**：
+ * 预算里的 `0.75` 是 `[0,100]` 域**软饱和曲线的拐点**（`kneeHi = 0.75 × max`，
+ * 见 `propagation.ts` 的 `SATURATION_BAND_FRACTION = 0.25`）。**没有域就没有拐点**，
+ * 那个 0.75 在无域格上不度量任何东西。⇒ 两个装置由**同一个谓词**开关，一起开、一起关：
+ *   · 目标**已声明域** ⇒ 预乘 λ ✅ + 受预算约束 ✅
+ *   · 目标**未声明域** ⇒ 不预乘 ⛔ + 不受预算 ⛔（用原始裸系数）
+ * ⚠ 于是 `blockedPressure` 补登记进域表这件事**会改变它那条边走哪一支** ——
+ *   两个改动必须一起落，分开落会有一拍口径不自洽。
+ *
+ * ⚠ **「有没有预乘 λ」这一问，值判不了**：`0.222` 与 `inflowCoefficient(0.6)` 的产物**逐字节相同**。
+ *   守它的门必须**文本（怎么写的）join 真值（该不该乘）**，只看其中一半就是瞎一只眼。
+ *
  * ── ⛔ λ 走 C35 规则参数，不内联 0.37（R14/RL5 禁内联业务常数）───────────────────
  * `PRESSURE_DECAY_PER_TICK` **就是** `BATTERY_RULES` 里 C35「推演状态量衰减率」的
  * `params[STATE_DECAY_PARAM_KEY]` 那个值（两处共用同一个记号，不是两份同值字面量）——
@@ -560,7 +582,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "po_inspected_by", // 实测 PurchaseOrder→IncomingInspection，30 条
     targetTypeKey: "IncomingInspection",
     targetStateVar: "queueDays",
-    coefficient: inflowCoefficient(0.6), // 稳态增益 0.6（= 原系数，预算内未缩）× λ
+    coefficient: 0.6, // ⛔**刻意不包 inflowCoefficient**：目标 `queueDays` 未声明取值域 ⇒ 引擎不夹不衰减（纯积分器）
+    // ⇒ 没有 λ 要约掉，预乘 λ 会让每拍只加 description 承诺的 0.2220/0.6 = 37%，屏上差 2.70 倍。
+    // 同理它也**不受每格增益预算**约束：0.75 是 [0,100] 域的软饱和拐点（kneeHi = 0.75×max），无域即无拐点。
     delayTicks: 1, // 检验排队是"下一批才排得上"，故留一个 tick 行程
     description: "采购单催得急 ⇒ 到货集中，来料检验排队天数变长（加急压力 × 0.6）",
     combine: "sum",
@@ -764,7 +788,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "po_customs_cleared_by", // 实测 PurchaseOrder→CustomsClearance，1 条
     targetTypeKey: "CustomsClearance",
     targetStateVar: "clearanceQueueDays",
-    coefficient: inflowCoefficient(0.4), // 稳态增益 0.4（= 原系数，预算内未缩）× λ
+    coefficient: 0.4, // ⛔**刻意不包 inflowCoefficient**：目标 `clearanceQueueDays` 未声明取值域 ⇒ 引擎不夹不衰减（纯积分器）
+    // ⇒ 没有 λ 要约掉，预乘 λ 会让每拍只加 description 承诺的 0.1480/0.4 = 37%，屏上差 2.70 倍。
+    // 同理它也**不受每格增益预算**约束：0.75 是 [0,100] 域的软饱和拐点（kneeHi = 0.75×max），无域即无拐点。
     delayTicks: 1, // 清关是"下一批才排得上"，与 po_inspected_by 同一口径
     description: "加急的进口采购单先堆在海关那一段 ⇒ 清关排队天数变长",
     combine: "sum",
@@ -808,7 +834,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_has_cert", // 实测 Model→Certification，18 条
     targetTypeKey: "Certification",
     targetStateVar: "qualificationQueue",
-    coefficient: inflowCoefficient(0.3), // 稳态增益 0.3（= 原系数，预算内未缩）× λ
+    coefficient: 0.3, // ⛔**刻意不包 inflowCoefficient**：目标 `qualificationQueue` 未声明取值域 ⇒ 引擎不夹不衰减（纯积分器）
+    // ⇒ 没有 λ 要约掉，预乘 λ 会让每拍只加 description 承诺的 0.1110/0.3 = 37%，屏上差 2.70 倍。
+    // 同理它也**不受每格增益预算**约束：0.75 是 [0,100] 域的软饱和拐点（kneeHi = 0.75×max），无域即无拐点。
     delayTicks: 1,
     description: "型号需求上来 ⇒ 该型号的认证/资质排队跟着堵",
     combine: "sum",
@@ -914,7 +942,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "work_order_sampled_by_quality_lot", // 实测 WorkOrder→QualityLot，260 条
     targetTypeKey: "QualityLot",
     targetStateVar: "inspectBacklog",
-    coefficient: inflowCoefficient(0.5), // 稳态增益 0.5（= 原系数，预算内未缩）× λ
+    coefficient: 0.5, // ⛔**刻意不包 inflowCoefficient**：目标 `inspectBacklog` 未声明取值域 ⇒ 引擎不夹不衰减（纯积分器）
+    // ⇒ 没有 λ 要约掉，预乘 λ 会让每拍只加 description 承诺的 0.1850/0.5 = 37%，屏上差 2.70 倍。
+    // 同理它也**不受每格增益预算**约束：0.75 是 [0,100] 域的软饱和拐点（kneeHi = 0.75×max），无域即无拐点。
     delayTicks: 1, // 攒批判定是"这一批做完才检"，留一个 tick
     description: "工单下达多 ⇒ 待检批次积压（工单下达压力 = 质检积压）",
     combine: "sum",
@@ -952,7 +982,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "defect_raises_exception", // 实测 DefectRecord→ExceptionEvent，85 条
     targetTypeKey: "ExceptionEvent",
     targetStateVar: "handlingBacklog",
-    coefficient: inflowCoefficient(0.75), // 稳态增益 0.8 → 0.75（该格增益预算 Σ≤0.75，W=1）× λ
+    coefficient: 0.8, // ⛔**刻意不包 inflowCoefficient**：目标 `handlingBacklog` 未声明取值域 ⇒ 引擎不夹不衰减（纯积分器）
+    // ⇒ 没有 λ 要约掉，预乘 λ 会让每拍只加 description 承诺的 0.2960/0.8 = 37%，屏上差 2.70 倍。
+    // 同理它也**不受每格增益预算**约束：0.75 是 [0,100] 域的软饱和拐点（kneeHi = 0.75×max），无域即无拐点。
     delayTicks: 0,
     description: "缺陷变多 ⇒ 异常事件处理积压（缺陷压力 = 异常处理积压）",
     combine: "sum",
@@ -1133,7 +1165,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "equipment_has_maintenance_order", // 实测 Equipment→MaintenanceOrder，193 条
     targetTypeKey: "MaintenanceOrder",
     targetStateVar: "repairBacklog",
-    coefficient: inflowCoefficient(0.6), // 稳态增益 0.6（= 原系数，预算内未缩）× λ
+    coefficient: 0.6, // ⛔**刻意不包 inflowCoefficient**：目标 `repairBacklog` 未声明取值域 ⇒ 引擎不夹不衰减（纯积分器）
+    // ⇒ 没有 λ 要约掉，预乘 λ 会让每拍只加 description 承诺的 0.2220/0.6 = 37%，屏上差 2.70 倍。
+    // 同理它也**不受每格增益预算**约束：0.75 是 [0,100] 域的软饱和拐点（kneeHi = 0.75×max），无域即无拐点。
     delayTicks: 1,
     description: "设备负载高 ⇒ 维修工单积压",
     combine: "sum",
