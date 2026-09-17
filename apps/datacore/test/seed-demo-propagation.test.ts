@@ -843,7 +843,18 @@ describe("§6 WO-SIM-DESAT-3 · 去饱和三件的联立接缝（种子 → 推�
     ).toBeGreaterThan(100);
 
     // ── 主判据：播完种的世界，已声明量纲的格 0 格反算越界 ────────────────────────
-    const atEnd = overDomain(last as unknown as Record<string, Record<string, number>>);
+    // ⚠ **`getTickState` 回的是 `SimTickState` 包装体**（`{sessionId,tenantId,tick,state,pending,trace}`），
+    // 不是裸的态映射 —— 必须取 `.state`。原文写的是 `overDomain(last as unknown as …)`，
+    // 那个**双重 as 把类型系统这道唯一会说话的防线关掉了**：`overDomain` 于是把
+    // `sessionId/tenantId/tick/state/pending/trace` 当成六个"对象 id"去遍历，
+    // 一个已声明量纲的格都数不到 ⇒ `declared` 恒 0。
+    // 实测：修前 `atEnd.declared = 0` vs `atT0.declared = 4937`（金丝雀②走的是
+    // `session.baseSnapshot`，那**是**裸映射，所以它一直是对的 —— 一对一错正好骗过所有人）。
+    // 形态（铁律 0.6 句式）：「我用『这一句 expect 是绿的/红的』当作『它在量末拍的世界』的证据，
+    // 而前者并不度量后者 —— 它量的是包装体的六个字段名。」
+    // **改后不比改前弱**：改前该行恒 0 ⇒ 后面「末拍 0 格越界」那句在空集上恒真，证明不了任何事；
+    // 改后它第一次真的去量末拍的 4937 格。这是把"没测出来"换成"真测"，不是放宽。
+    const atEnd = overDomain(last!.state as unknown as Record<string, Record<string, number>>);
     expect(atEnd.declared, "末拍一个已声明量纲的格都没数到 ⇒ 取数坏了").toBe(atT0.declared);
     expect(
       atEnd.over,
@@ -857,7 +868,10 @@ describe("§6 WO-SIM-DESAT-3 · 去饱和三件的联立接缝（种子 → 推�
       STATE_VAR_DOMAINS.blockedPressure,
       "blockedPressure 不在 STATE_VAR_DOMAINS ⇒ 它又成了不夹不衰减的纯积分器（修前实测第 120 拍 30,831 且无上界）",
     ).toBeTruthy();
-    const blocked = Object.values(last as unknown as Record<string, Record<string, number>>)
+    // 同上：取 `.state`，不是包装体（原文同样被双重 as 关掉了类型检查 ⇒ 六个字段名上取
+    // `row.blockedPressure` 全是 undefined，被 filter 掉 ⇒ `blocked.length` 恒 0，
+    // 下一句 `toBeGreaterThan(0)` 本该当场红 —— 它红了，只是被上面那句先红盖住了）。
+    const blocked = Object.values(last!.state as unknown as Record<string, Record<string, number>>)
       .map((row) => row.blockedPressure)
       .filter((v): v is number => typeof v === "number");
     expect(blocked.length, "世界里一格 blockedPressure 都没有 ⇒ 设备侧那条链没播上，下面那句是空话").toBeGreaterThan(0);
