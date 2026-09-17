@@ -145,7 +145,8 @@ async function main() {
     const fbRows = (ticked.trace ?? []).filter((t) => t.ruleKey === FB_EDGE);
     const amounts = fbRows.map((r) => r.amount).filter((a) => typeof a === "number");
     const perTarget = new Map();
-    for (const r of fbRows) { const t = r.targetObjectId ?? r.targetId; if (t) perTarget.set(t, (perTarget.get(t) ?? 0) + 1); }
+    // trace 行字段名实测（steady-state 第一次跑咬住）：fromObjectId / toObjectId。
+    for (const r of fbRows) { const t = r.toObjectId ?? r.targetObjectId; if (t) perTarget.set(t, (perTarget.get(t) ?? 0) + 1); }
     const nVals = [...perTarget.values()];
     const canary3 = fbRows.length >= 1 && amounts.some((a) => Math.abs(a) > 0);
     console.log(`══ ②b 触发 ${modelOid}.forecastBias+20：trace ${fbRows.length} 行 / 目标 ${perTarget.size} 个 / 每目标入边 N=${JSON.stringify([...new Set(nVals)].sort())} / |amount| max=${amounts.length ? Math.max(...amounts.map(Math.abs)) : null} ══`);

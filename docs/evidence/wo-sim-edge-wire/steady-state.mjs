@@ -112,14 +112,22 @@ async function main() {
     console.log(`# 🐤② ${LFP}.priceShock=${lfp0} · ${FOIL}.priceShock=${foil0}: ${canary2 ? "✓" : "✗ ⇒ D5 瞄准的物料 id 错了"}`);
     if (!canary2) throw new Error("金丝雀②未过：物料 id 不在世界态里");
 
+    // 种子会话的初始 curTick 先取证再动：第一版实测「+3 后 99、+21 后 120」⇒ 初始 = 96
+    // （合并树播种预滚了 96 拍，desat3 时代 arm.mjs 档案记的是 3 —— 如实记，不擅自当病）。
+    const w0 = await jget(base, `/a/v1/sim/sessions/sims_demo_seed_world/world`);
+    const initialCurTick = w0.tick ?? null;
+    console.log(`# 初始 curTick=${initialCurTick}（baseSnapshot 后已预滚的拍数；偏移量 = 本脚本各检查点 − 此值）`);
+
     // ── 拍 1–3（disclose）拿 bom 边 trace，识别 D5 落点 ──────────────────────
     const first = await jpost(base, `/a/v1/sim/sessions/sims_demo_seed_world/tick`, { n: 3, disclose: true });
     const traceRows = (first.trace ?? []).filter((t) => t.ruleKey === BOM_EDGE);
     const sample = traceRows[0] ?? null;
     if (sample) console.log(`# trace 行字段自证: ${Object.keys(sample).join(",")}`);
     const pick = (row, keys) => { for (const k of keys) if (typeof row[k] === "string") return row[k]; return null; };
-    const srcOf = (row) => pick(row, ["sourceObjectId", "sourceId", "srcObjectId"]);
-    const tgtOf = (row) => pick(row, ["targetObjectId", "targetId", "dstObjectId"]);
+    // 字段名实测（tick 回执 trace 行）：fromObjectId / toObjectId —— 第一版猜
+    // sourceObjectId/targetObjectId 全空、金丝雀③当场咬住（42 行在、识别 0）⇒ 按实测名改。
+    const srcOf = (row) => pick(row, ["fromObjectId", "sourceObjectId", "sourceId"]);
+    const tgtOf = (row) => pick(row, ["toObjectId", "targetObjectId", "targetId"]);
     const lfpTargets = new Set(), foilTargets = new Set();
     for (const r of traceRows) {
       const s = srcOf(r), t = tgtOf(r);
@@ -153,7 +161,7 @@ async function main() {
     }
 
     const out = {
-      port, canary: { modelApiCount, canary1, canary2, canary3, canary4 },
+      port, initialCurTick, canary: { modelApiCount, canary1, canary2, canary3, canary4 },
       bomEdgeTrace: { rows: traceRows.length, sampleKeys: sample ? Object.keys(sample) : [], lfpTargets: [...lfpTargets], foilTargets: [...foilTargets], bothTargets: both },
       tick0materials: { [LFP]: lfp0, [FOIL]: foil0 },
       series,
