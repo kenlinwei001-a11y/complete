@@ -1047,6 +1047,58 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     status: "PUBLISHED",
   },
 
+  // ── WO-PROP-REVIEW-V2 · 库存环两条出边（评审优先级 2「库存 buffer 必须能吸收需求」）──
+  //
+  // 评审原文：「库存环断成死胡同 —— FinishedGoodsInventory 两条边全是**入**边
+  // （drawdownPressure 只进不出），现货对需求的**吸收作用**在图上完全缺席。
+  // 50 条边里负系数只有 1 条，缓冲机制零表达。」⇒ 补两条 FGI → Model.demandLoad 出边，
+  // 与上面 `demo_model_demand_to_fg_drawdown`（Model → FGI 入边）合成库存环的双向结构。
+  //
+  // 链路 `fg_of_model`：实测 FinishedGoodsInventory→Model，18 条（FGI 18/18 行全覆盖，
+  // `/tmp/t3-precheck.txt`），battery.ts `lnk_fg_*` 物化。N:1 基数的方向正好就是
+  // 「每一行现货归一个型号」—— 缓冲/回补都按型号归集，语义与链路一致。
+  //
+  // 🔴 回路安全性（两条都过 `assertReactionWellFormed` 之前先在这里自证）：
+  //   边② 与入边构成 Model.demandLoad ⇄ FGI.drawdownPressure 的二拍环，
+  //   环增益 = 0.6（入）× 0.5（出）= **0.3 < 1** ⇒ 阻尼振荡收敛，不是正反馈自激。
+  //   （量级出处：同落点的需求侧两条边是 −0.6 预测偏差 / −0.5 订单变更，库存边取 ±0.5
+  //    既不压过预测信号也不弱到测不出；C36.params 段内注释同一笔账。）
+  //   边① 的源 coverDays 无出边（没有任何规则读它 ⇒ 纯源），不会成环。
+  {
+    id: "simpr_demo_fg_cover_days_to_model_demand",
+    key: "demo_fg_cover_days_to_model_demand",
+    sourceTypeKey: "FinishedGoodsInventory",
+    sourceStateVar: "coverDays",
+    viaLinkKey: "fg_of_model", // 实测 FinishedGoodsInventory→Model，18 条（FGI 18/18 行覆盖）
+    targetTypeKey: "Model",
+    targetStateVar: "demandLoad",
+    delayTicks: 0,
+    description: "成品现货覆盖天数越高 ⇒ 在手订单簿对该型号的即时需求压力越被库存吸收（缓冲吸收 = 需求负载下修）",
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    weightRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+  {
+    id: "simpr_demo_fg_drawdown_to_model_demand",
+    key: "demo_fg_drawdown_to_model_demand",
+    sourceTypeKey: "FinishedGoodsInventory",
+    sourceStateVar: "drawdownPressure",
+    viaLinkKey: "fg_of_model", // 同一条 FGI→Model 链路；源变量换成提货压力
+    targetTypeKey: "Model",
+    targetStateVar: "demandLoad",
+    delayTicks: 0,
+    description: "渠道/客户持续从成品仓提货 ⇒ 该型号需求真实存在，回补到需求负载（提货回补 = 需求负载上抬）",
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    weightRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
   // ══════════════════════════════════════════════════════════════════════════════════
   // WO-PROCESS-TICK-COVERAGE · 档 3：**闭掉「标着会动、其实不动」那一条**（1 条·零新 linkType）
   //

@@ -811,6 +811,16 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   "demo_order_qty_to_model_top_qty": 1.0,
   "demo_order_price_to_model_top_price": 1.0,
   "demo_order_leaddays_to_model_horizon": 1.0,
+  // 库存环两条出边（传导规则业务评审 v2 ②·2026-09-17·评审优先级 2「库存 buffer 必须能吸收需求」）：
+  //  ① 覆盖天数 ⇒ 需求负载**下修**：现货可盖 N 天需求 ⇒ 在手订单簿对产线的即时压力被 buffer 吸收，
+  //     符号为**负**（成品库存是需求的减震器，不是放大器）。这是 50 条边里第 3 个负系数
+  //     （forecast_bias −0.6 / order_churn −0.5 / 本条 −0.5）。
+  //  ② 提货压力 ⇒ 需求负载**回补**：渠道/客户在从成品仓提货 ⇒ 该型号需求真实存在，回补到需求负载，
+  //     符号为**正**。与 ① 构成一对「现货吸收 − 提货回补」的库存环双向边。
+  //  量级与出入参考系对齐：需求侧同落点的两条边分别是 −0.6（预测偏差）与 −0.5（订单变更），
+  //  库存边取 ±0.5，既不压过预测信号也不弱到测不出（对照实验：coverDays bump ⇒ demandLoad 同向非零）。
+  "demo_fg_cover_days_to_model_demand": -0.5,
+  "demo_fg_drawdown_to_model_demand": 0.5,
 };
 
 export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
@@ -2339,6 +2349,18 @@ const finishedGoodsInvProps: PropertyDef[] = [
   { propKey: "warehouseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Warehouse" }, // 成品仓（WO-WAREHOUSE 已落）
   { propKey: "qtyOnHand", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // = Σ RECEIPT − Σ ISSUE（勾稽）
   { propKey: "qtyReserved", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  // WO-PROP-REVIEW-V2 · ③ 库存环（评审优先级 2）：该型号在手订单簿的**日均需求**（套/天）。
+  // 口径 = Σ Order.qty ÷ 订单簿交期跨度天数（同型号 min(due)…max(due)），由 `deriveModelDailyDemand`
+  // 从**真交期**现算后物化（R6 纯函数），不是哈希也不是常数。出处与量纲：
+  //  · 分子 `Order.qty` 单位 = 套（`docs/DECISION-unit-of-account.md` §1.4 裁决）；
+  //  · 分母 = 订单簿覆盖的真实日历跨度（实测 288–358 天 ⇒ 日均 895.9–1696.9 套/天）；
+  //  · 与 `qtyOnHand` 同量纲由 ATP 同口径佐证：`deriveOrderPromises` 把 qtyOnHand 直接与
+  //    `Order.requestedQty`（套）相抵，该链路经 WO-ATP-PROMISE 真起后端对拍 —— 两边若差 96 倍
+  //    （件/套），ATP 承诺全错。故本格按「套/天」登记；`qtyOnHand` 的 `件` 标签是
+  //    WO-DIMENSION-ERRORS 收口单的地界，本单不动。
+  // ⚠ 本格**不是状态变量**（没有规则读它），只作 `coverDays` 派生规格的分母 ——
+  //    故不进 `STATE_VAR_*` 任何一册，也不进世界快照（`varsByType` 不铺它）。
+  { propKey: "dailyDemand", dataType: "number", isPrimaryKey: false, unit: "套/天", scale: "absolute" },
   { propKey: "asOf", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 // 可用量派生（qtyAvailable = qtyOnHand − qtyReserved）：派生投影非新真值（R13），走 derivedProperties。
@@ -3492,6 +3514,12 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   // ── D10 基地与仓储交付：认证排队 / 成品提货 / 来料催交 ──
   qualificationQueue: "认证排队", drawdownPressure: "成品提货压力",
   inboundExpeditePressure: "来料催交压力",
+  // ── WO-PROP-REVIEW-V2 · 库存环：成品覆盖天数（qtyOnHand ÷ dailyDemand，经 `fgi_cover_days` 规格物化）──
+  // 名字带单位（天），与天数族（queueDays/backlogHorizonDays）同一条纪律；
+  // ⚠ 同天数族**刻意不进 `STATE_VAR_DOMAINS`**：写不出出处的取值域不登记，
+  //   引擎不夹不衰减，`undeclaredStateVars` 点名（它就是 §1 形态②「无域状态变量」的库存环新成员，
+  //   该族域声明归 T6 统一收口，本单不单独为它开域）。
+  coverDays: "成品覆盖天数（天）",
   // ── D06 计划与排产：基地负载 → 跨基地调拨决策压力 ──
   transferPressure: "跨基地调拨压力",
   // ── D03 销售与客户：拆行 / 交期承诺 / 收货暂扣 / 逾期催收 ──
@@ -3700,6 +3728,9 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   "Order|shortageRisk": { specKey: "order_shortage_risk" },
   "MaterialBatch|procurementDelay": { specKey: "materialbatch_procurement_delay" },
   "Model|demandLoad": { specKey: "model_demand_load" },
+  // ── WO-PROP-REVIEW-V2 · 库存环（评审优先级 2）：成品覆盖天数 = qtyOnHand ÷ dailyDemand，
+  //    规格 `fgi_cover_days` 见 seed-derivation-specs.ts（COALESCE 兜底 dailyDemand=0）。
+  "FinishedGoodsInventory|coverDays": { specKey: "fgi_cover_days" },
 };
 
 /** `(类型,变量)` → 显式值绑定（裸对精确命中；未登记 → `undefined` = 走名字撞）。全平台唯一入口。 */
@@ -5172,6 +5203,41 @@ function isoDate(ms: number): string {
 /** 完工工单状态（供完工入库派生判定；WorkOrder.status 枚举中的"已完工"口径）。 */
 const COMPLETED_WO_STATUSES = new Set(["已完成", "已关闭"]);
 
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * WO-PROP-REVIEW-V2 · 型号日均需求派生（确定性·R6 纯函数）。
+ *
+ * 口径：按 `Order.model` 归组，日均需求 = Σ Order.qty ÷ 订单簿交期跨度天数（min(due)…max(due)）。
+ * 分子分母都来自真订单簿：qty 是签约量（套，DECISION-unit-of-account §1.4），due 是真交期。
+ * 跨度 ≤0（单张单 / 全部同一天交）⇒ 该型号日均需求记 0 —— 分母为 0 时臆造一个跨度才是撒谎；
+ * `coverDays` 派生规格侧用 COALESCE(qtyOnHand / dailyDemand, 0) 兜底，与「0 需求 ⇒ 0 覆盖压力」同向。
+ *
+ * 实测量级（seed=42 真种子，/tmp/t3-precheck.txt）：跨度 288–358 天 ⇒ 895.9–1696.9 套/天。
+ * 纯函数：无 random / 无时钟；返回 Map 键序不影响下游（消费方按 fgId 查值）。
+ */
+export function deriveModelDailyDemand(orders: Record<string, unknown>[]): Map<string, number> {
+  const byModel = new Map<string, { sum: number; minDue: number; maxDue: number }>();
+  for (const o of orders) {
+    const modelId = String(o.model ?? "");
+    if (!modelId) continue;
+    const qty = Number(o.qty ?? 0);
+    const dueMs = Date.parse(String(o.due ?? ""));
+    if (!Number.isFinite(qty) || !Number.isFinite(dueMs)) continue; // 缺格订单不进口径（诚实跳过）
+    const r = byModel.get(modelId) ?? { sum: 0, minDue: Number.POSITIVE_INFINITY, maxDue: Number.NEGATIVE_INFINITY };
+    r.sum += qty;
+    r.minDue = Math.min(r.minDue, dueMs);
+    r.maxDue = Math.max(r.maxDue, dueMs);
+    byModel.set(modelId, r);
+  }
+  const out = new Map<string, number>();
+  for (const [modelId, r] of [...byModel.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    const spanDays = (r.maxDue - r.minDue) / MS_PER_DAY;
+    out.set(modelId, spanDays > 0 ? r.sum / spanDays : 0);
+  }
+  return out;
+}
+
 /**
  * WO-INVENTORY-3TIER · 完工入库派生（确定性·非事件后处理·R6）。
  *
@@ -5181,14 +5247,18 @@ const COMPLETED_WO_STATUSES = new Set(["已完成", "已关闭"]);
  * SEAM 铁律：改 WorkOrder.qtyActual → RECEIPT.qty 与 FG.qtyOnHand 同步变（KILL-MOCK-RED）。
  *
  * @param finishedWhByBase baseId → 成品仓 warehouseId（whType=FINISHED；WO-WAREHOUSE 每基地必有）
+ * @param dailyDemandByModel （可选）型号 → 日均需求（套/天），来自 `deriveModelDailyDemand`；
+ *        提供时把该值物化到每行 FG.dailyDemand（coverDays 派生规格的分母）；
+ *        缺省（库存 3 层单测只验收发勾稽、不涉及需求口径）记 0，coverDays 规格侧 COALESCE 兜底。
  * 纯函数：无 random / 无时钟；FG 键按 fgId 稳定排序、Txn 按入参 workOrders 顺序 → 字节一致。
  */
 export function deriveFinishedGoodsIntake(
   workOrders: Record<string, unknown>[],
   finishedWhByBase: Map<string, string>,
   asOf: string,
+  dailyDemandByModel: ReadonlyMap<string, number> = new Map(),
 ): { finishedGoodsInv: Record<string, unknown>[]; inventoryTxns: Record<string, unknown>[] } {
-  const fgMap = new Map<string, { fgId: string; model: string; warehouseId: string; qtyOnHand: number; qtyReserved: number; asOf: string }>();
+  const fgMap = new Map<string, { fgId: string; model: string; warehouseId: string; qtyOnHand: number; qtyReserved: number; dailyDemand: number; asOf: string }>();
   const inventoryTxns: Record<string, unknown>[] = [];
   for (const wo of workOrders) {
     const status = String(wo.status ?? "");
@@ -5201,7 +5271,7 @@ export function deriveFinishedGoodsIntake(
     const fgId = `FG-${modelId}-${warehouseId}`;
     let fg = fgMap.get(fgId);
     if (!fg) {
-      fg = { fgId, model: modelId, warehouseId, qtyOnHand: 0, qtyReserved: 0, asOf };
+      fg = { fgId, model: modelId, warehouseId, qtyOnHand: 0, qtyReserved: 0, dailyDemand: dailyDemandByModel.get(modelId) ?? 0, asOf };
       fgMap.set(fgId, fg);
     }
     fg.qtyOnHand += qtyActual;
@@ -5219,7 +5289,7 @@ export function deriveFinishedGoodsIntake(
   }
   const finishedGoodsInv = [...fgMap.values()]
     .sort((a, b) => (a.fgId < b.fgId ? -1 : a.fgId > b.fgId ? 1 : 0))
-    .map((f) => ({ fgId: f.fgId, model: f.model, warehouseId: f.warehouseId, qtyOnHand: f.qtyOnHand, qtyReserved: f.qtyReserved, asOf: f.asOf }));
+    .map((f) => ({ fgId: f.fgId, model: f.model, warehouseId: f.warehouseId, qtyOnHand: f.qtyOnHand, qtyReserved: f.qtyReserved, dailyDemand: f.dailyDemand, asOf: f.asOf }));
   return { finishedGoodsInv, inventoryTxns };
 }
 
@@ -7122,7 +7192,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   for (const w of warehouses) {
     if (w.whType === "FINISHED") finishedWhByBase.set(String(w.baseId), String(w.warehouseId));
   }
-  const { finishedGoodsInv, inventoryTxns } = deriveFinishedGoodsIntake(workOrders, finishedWhByBase, isoDate(t0));
+  // WO-PROP-REVIEW-V2 · 型号日均需求（从真订单簿派生；coverDays 规格的分母；纯函数不消耗 rng）。
+  const dailyDemandByModel = deriveModelDailyDemand(orders);
+  const { finishedGoodsInv, inventoryTxns } = deriveFinishedGoodsIntake(workOrders, finishedWhByBase, isoDate(t0), dailyDemandByModel);
 
   // WO-ATP-PROMISE · 订单承诺台账（对每 OPEN 订单净读三源算 ATP 基线·与 atp_check 同口径·无 rng/时钟·R6）。
   // 放在 FG 派生后：需现货(FG)/在制(workOrders)/产能(lines) 三源已就绪；纯派生不消耗 rng（不插既有流中间）。

@@ -40,6 +40,20 @@ export const DEMO_DERIVATION_SPECS: readonly {
     targetProp: "qtyAvailable",
     formula: "this.qtyOnHand - this.qtyReserved",
   },
+  // ── WO-PROP-REVIEW-V2 · 库存环（评审优先级 2）──────────────────────────────────
+  // 业务口径：成品覆盖天数 = 现货在手 ÷ 该型号在手订单簿的日均需求（套/天）。
+  //   出处 = 评审 §2「库存环两条边」：「覆盖天数（coverDays）= qtyOnHand ÷ 日均需求」，
+  //   日均需求由 `deriveModelDailyDemand` 从真交期物化到 `dailyDemand` 格（套/天，量纲对齐
+  //   注释见 battery.ts 该 propDef；实测 895.9–1696.9 套/天 ⇒ coverDays 1.93–42.34 天，均值 19.78）。
+  // `COALESCE(..., 0)` 兜 dailyDemand=0/缺格（陷阱 9）：0 需求 ⇒ 0 覆盖压力，与边语义同向。
+  // ⛔ 不 CLAMP：coverDays 刻意不进 STATE_VAR_DOMAINS（与天数族同一条纪律——写不出出处的
+  //   取值域不登记，未登记引擎不夹不衰减，回执 `undeclaredStateVars` 点名）。
+  {
+    specKey: "fgi_cover_days",
+    targetType: "FinishedGoodsInventory",
+    targetProp: "coverDays",
+    formula: "COALESCE(this.qtyOnHand / this.dailyDemand, 0)",
+  },
   // battery.ts interBaseTransferDerived：etaDay = dispatchDay + transitDays
   {
     specKey: "ibt_eta_day",
