@@ -106,7 +106,15 @@ Model.costPressure∈[0,100] · Model.forecastBias∈[−100,100]。无一差一
 | agentcore（四包门那次） | 1 | 唯一红 = solver-cancel 时序抖落（隔离 3/3 绿）；本单 `git diff --stat 0207b9c6 HEAD -- apps/agentcore/` **空** |
 | `pnpm -r typecheck` | 2 | **恰 4 条前置红**，全在 `apps/agentcore/test/`（capability-map-live-seam ×1 · rule-discovery-seam ×3）|
 
-**datacore 4 红逐条归属**（全量墙钟 3.1h，load avg 200–330，负载来自门外 DingMeeting/WindowServer 等；同文件实测负载 187s vs 平静 79s = **2.4×**）：
+**datacore 4 红逐条归属**（全量墙钟 3.1h，load avg 200–330；同文件实测负载 187s vs 平静 79s = **2.4×**）：
+
+> **⚠ 跑在哪台机器（仓主 2026-09-17 打回③补）**：**本机 macOS**（appledeMacBook-Pro-3.local，Darwin 22.6.0，4 核 x86_64 / 16GB），
+> **不是 Linux 容器**。证据 = 全量日志 RUN 行路径为 `/Users/apple/deploy/complete/.claude/worktrees/...`（本机路径，容器里不存在）。
+> 负载归因因此是 macOS 原生语境、内部自洽：当时 live top 采样（会话转录留痕）= DingMeeting 实时会议 30.6% ·
+> WindowServer 49% · 另一 claude agent 17.7% · Terminal 14.6% · Mitu 12.2% · DingTalk 11.8% · TencentMeeting ——
+> 4 核机被门外程序先吃掉 2 核以上；另有部分时段与 frontend 全量并行（门内负载，frontend 24 红同源）。
+> 纪律缺口照实记：该采样当时只走 live 命令、没落同名 .txt+.rc 证据文件（证据纪律要求每件证据 txt 配同名 .rc），
+> 留存形态 = 会话转录；下次负载归因一律先落盘再引用。
 
 | 红 | 全量中形态 | 平静机隔离复跑 | 定性 |
 |---|---|---|---|
@@ -133,8 +141,40 @@ Model.costPressure∈[0,100] · Model.forecastBias∈[−100,100]。无一差一
 `sim-real-cells.seam.test.ts`（**19/19 绿**，③ 后）驱动整条链：编译规格 → recompute → 播种世界 →
 `deriveSeedBaseSnapshot` measuredCells。非只测 `parseFormula` 函数。**19 臂全过**：
 ⓒ 接缝（4,171）+ ⓑ 逐条物化（25 条）+ 臂1×8（含 A⚠ 3 条：shortageRisk×100 / procurementDelay 恒等 /
-demandLoad 先乘后除）+ 臂2（+Order.demandPressure/shortageRisk 入域）+ ⓐ 引擎归属（清规格⇒25属性全消失）+
+demandLoad 先乘后除）+ 臂2（**打回②后 = 全扫域表上下文规则**，白名单已废，见下段）+ ⓐ 引擎归属（清规格⇒25属性全消失）+
 臂3×2 + 臂4 + 臂5 + R6 + §3 + 金丝雀。守门员 `sim-order-real-fields` **6/6** · `slice-deriv-empty` **4/4**（金值 28+名单）。
+
+---
+
+## 打回复修（2026-09-17 · 复验退两条 + 机器句）
+
+**退① · `line_blocked_pressure` 注释幻影锚定（已修）** —— 复验方判「量纲错 35–40 倍（实测 788.0–945.2）」。
+本 tip 逐字节探针（`/tmp/blocked-probe2.mjs` 全链：lines=130、links=260 from=Line）：物化值 **27.72–182.73**，
+与手算 `Σout(line_runs_work_order).qtyPlanned×100/max_capacity_day` **逐字节一致**；全树**没有任何 Σout=3874 的线**，
+788–945.2 **在本树不复现**（同一探针）—— 式子两边都是「件」，口径自洽，非范本（件）对 capacityDaily（套/天）那类错配。
+**但注释引「WO 已验证范本（22.9285）」当出处，属实是幻影锚定**（22.9285 = 3874×100/16896，该分母口径在本树不存在；
+台账早已照实记「不可复算」，注释却照引，两处打架）⇒ 按最小修路径（b）修：**式子不动，注释换诚实出处**
+（口径 = 积压天数占比，件÷件；对照真值 27.72–182.73 落臂2 无域族归档）。⛔句已删。
+
+**退② · 臂2 白名单结构性抓不住表外变量（已修）** —— 按最小修路径换成**上下文规则**：全扫 `STATE_VAR_DOMAINS`
+已声明域的 32 键（31 压力族 + forecastBias）逐个断言不越域，**新增变量自动受守**；无域 15 键按族归档「刻意无上界」
+（天数族 5 / 件数·积压族 6 / 真值支 qty·unitPrice·leadDays 3 / blockedPressure 刻意无域 1 —— 对照真值 27.72–182.73 落此）。
+全扫第一网就捞到白名单永远看不到的两条（探针 `/tmp/arm2-scan.mjs` 全对象 × 全数值属性扫描）：
+
+| 新catch | 实测 | 定性 |
+|---|---|---|
+| **WIPLot.feedPressure** | **260/260 全在 ≈111**（111.1111–111.1888） | = 100/0.9 合成收率不变式的镜像（批 qty = 工单 qtyPlanned×0.9、1:1 链），域 [0,100] 外；旧白名单从未扫它 |
+| **Model.supplyRisk** | **6/6 全负**（−29.44–−28.86） | AVG(物料 shortageRisk) 继承负尾（负=整体超储）；声明域 [0,100] 是单物料缺货率的域，对跨物料均值口径不适用 |
+
+两条均按「如实」判例归档进例外表（实测区间为凭，⛔ 不 CLAMP 不改式）；**「恒 ≈111 的压力有没有推演价值」
+「supplyRisk 口径要不要换」归仓主裁**（本测试的职责是抓住它们 —— 已抓住）。
+例外表共 **8 键**（上 2 + 原有如实先例：Order.costPressure 40–115 越域16 · PurchaseOrder.expeditePressure −32~212 ·
+Base.loadIndex 74–552 · Material.shortageRisk −161~51 · Model.demandLoad 23.6–138 · Customer.receivablePressure 6.4–125.59
+—— 注意 22.67 只是臂1锚点那户的值，不是分布上界，125.59 那户应收超授信 25.6% 如实）。例外键永远扫不到 ⇒ 档案腐坏 ⇒ 红。
+
+**打回③ · 机器句（已补）** —— §6 四包门段与 SOP §4 已补：全量跑在**本机 macOS**（Darwin 22.6.0 / 4 核 / 16GB，
+**非 Linux 容器**，全量日志 RUN 行路径 `/Users/apple/deploy/...` 为证）；负载归因是 macOS 原生语境、内部自洽；
+纪律缺口（live top 采样只留转录、未落同名 .txt+.rc）已照实记，下次负载归因先落盘再引用。
 
 ---
 

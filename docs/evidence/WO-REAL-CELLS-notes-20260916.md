@@ -244,3 +244,48 @@ seam 19/19（臂1+3：shortageRisk×100 逐字节 / procurementDelay 恒等 / de
 slice 4/4（金值 23→28+完整名单）· 守门员 6/6 · build RC=0 ·
 真服务烟囱 47119：**measuredCells=4,171 / cells=6,363**，DERIVED formula 文本点名 5 条新绑定。
 提交：bb3091da8（规格）· 3aab3ae31（valueRef）· c95fc214c（测试金值）。
+
+---
+
+## 2026-09-17 · 打回复修（复验退两条 + 机器句）
+
+### 退① line_blocked_pressure 注释幻影锚定 —— 探针定案：式子留、注释换
+
+- 复验方判「量纲错 35–40 倍，实测 788.0–945.2」。本 tip 全链探针 `/tmp/blocked-probe2.mjs`
+  （seedDemo+Synthetic+PropagationRules+DerivationSpecs+recompute，links 用 `repos.links.list` 过滤
+  line_runs_work_order = 260 from=Line —— ⚠ `links.listByType` 不存在，可选链静默 undefined 曾致 links=0 假读数）：
+  物化 blockedPressure **27.72–182.73**（n=130），与手算 Σout.qtyPlanned×100/max_capacity_day **逐字节一致**；
+  **没有任何 Σout=3874 的线**；49 格 >100、0 格 >200。788–945.2 **在本树不复现**。
+- 裁：式子两边皆「件」（积压天数占比），口径自洽，非范本（件）对 capacityDaily（套/天）那类错配 ⇒ **式子不动**。
+  但注释引「WO 已验证范本（22.9285）」= 幻影锚定（22.9285=3874×100/16896，分母口径本树不存在；
+  台账 line 110-113 早记「不可复算」注释却照引 = 两处打架）⇒ **按最小修路径（b）换诚实出处注释**，⛔句已删。
+- 对照真值按打回要求落臂2 无域族归档：27.72–182.73（n=130，双探针互证）。
+
+### 退② 臂2 白名单换上下文规则 —— 全扫第一网捞到两条白名单永远看不到的
+
+- 结构病：白名单只扫「有人想起来加进表」的变量 ⇒ 换上下文规则：全扫 `STATE_VAR_DOMAINS` 32 键
+  （31 压力族 + forecastBias）逐个断言不越域（新增变量自动受守）；无域 15 键归档「刻意无上界」
+  （天数族 5 / 件数·积压族 6 / 真值支 qty·unitPrice·leadDays 3 / blockedPressure 刻意无域 1）。
+- 探针 `/tmp/arm2-scan.mjs`（全对象 × 全数值 prop 三分类；⚠ ObjectInstance 类型字段是 `.type` 不是 `.typeKey`）：
+  域键命中 18 组，**越域 7 组**，其中两条是新catch ——
+  ① **WIPLot.feedPressure 260/260 全在 ≈111**（111.1111–111.1888 = 100/0.9 合成收率镜像，批 qty=工单 qtyPlanned×0.9 1:1 链）；
+  ② **Model.supplyRisk 6/6 全负**（−29.44–−28.86，AVG 继承 shortageRisk 负尾；声明域 [0,100] 是单物料缺货率的域，对均值口径不适用）。
+  另 5 组是已判例的如实越域：Order.costPressure 40–115 越域16 · expeditePressure −32.43~212.5 · loadIndex 74.18–552.02 ·
+  Material.shortageRisk −161.42~51 · Model.demandLoad 23.57–138 · Customer.receivablePressure 6.40–125.59
+  （**22.67 只是臂1锚点那户，不是分布上界**；125.59 那户应收超授信 25.6% 如实）。
+- 8 键全部进例外表（实测区间为凭，⛔ 不 CLAMP 不改式）；例外键扫不到 ⇒ 档案腐坏 ⇒ 红（逼维护不逼删守）。
+  金丝雀：域表 ≥32 键（只能多不能少，少了=有人拆守）。「恒111 有无推演价值」「supplyRisk 换不换口径」**归仓主裁**。
+- 顺刀：臂4 测试名「非写死 22.9285」也引幻影 ⇒ 改「非写死常数」（幻影值连当陪衬都不许留）。
+
+### 打回③ 机器句 —— 全量跑在本机 macOS，非 Linux 容器
+
+- 证据：全量日志 RUN 行路径 `/Users/apple/deploy/complete/.claude/worktrees/...`（本机路径，容器不存在）；
+  uname = Darwin 22.6.0 x86_64 4 核 16GB。负载归因 = macOS 原生语境（DingMeeting 30.6%/WindowServer 49% 等
+  live top 采样 + 门内并行 frontend 套件），内部自洽。
+- **纪律缺口照实记**：live 采样当时只留会话转录，未落同名 .txt+.rc（违证据 rc 纪律）⇒ 报告/SOP 已记，
+  下次负载归因先落盘再引用。
+
+### 门（全 RC=0，串行 maxWorkers=1）
+
+`pnpm --filter datacore build` RC=0（/tmp/fix-build.txt+.rc）· seam **19/19**（/tmp/fix-seam2.txt+.rc，
+新臂2 全扫 1073ms 过）· 守门员 6/6 + slice 4/4（/tmp/fix-guard.txt+.rc，负载态 382s+）。
