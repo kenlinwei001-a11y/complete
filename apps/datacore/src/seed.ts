@@ -4,6 +4,7 @@ import type { Repos } from "./repo/repo.js";
 import { AuthService } from "./auth.js";
 import type { AuthCtx } from "./domain.js";
 import type { SyntheticService } from "./synthetic/service.js";
+import { PROPAGATION_COEF_RULE_KEY, ruleParamOf } from "./synthetic/battery.js"; // WO-PROP-COEF-CONFIG · 50 边系数单源在 C36.params（G-10 P4：不留第二份字面量）
 import { seedOrgWorld } from "./org/seed.js";
 import { seedProcessLayerOntology } from "./process/ontology.js"; // WO-FLOWTIME · 流程层本体（ProcessDefinition/ProcessInstance + instance_of/carries 链路）随流程层种子一起来
 import { seedProcessStepTemplates } from "./process/step-templates.js"; // WO-STEP-TEMPLATE-LAYER · 步骤模板（65 条里只 7 条有，其余如实标缺席）
@@ -254,7 +255,10 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  * 本单的机器判据落在 `apps/datacore/test/edge-money-weight.seam.test.ts` §3（扫种子，变异反证过）。
  */
 const DEMO_PROPAGATION_RULES: ReadonlyArray<
-  Omit<PropagationRule, "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName" | "reaction"> & {
+  Omit<
+    PropagationRule,
+    "tenantId" | "domainKey" | "domainName" | "sourceTypeName" | "targetTypeName" | "reaction" | "coefficient" | "coefficientRef"
+  > & {
     /**
      * **第五种填法**（WO-ADVERSARY-REACTION）：`reaction` 在这张表里是**可选**的 ——
      * 只有「对手方还手」那几条边写它，其余 46 条**一个字都不用动**
@@ -293,13 +297,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
-    coefficient: 0.8,
     delayTicks: 0,
     description: "订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.8 = 型号需求负载）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     // 逐订单按 `Order.qty` **相对于该型号在手单均值**的倍率（均值=1、Σ=条数 ⇒ 保总量）。
     weightRef: { basis: "source_qty_relative" },
     // 节拍闸门未绑定（WO-SANDBOX-E4）。**这是诚实缺席，不是忘了填**：
@@ -319,13 +321,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_producible_at",
     targetTypeKey: "Base",
     targetStateVar: "loadIndex",
-    coefficient: 0.6,
     delayTicks: 0,
     description: "型号要生产的量涨 ⇒ 能造它的基地跟着变忙（型号需求负载 × 0.6 = 基地负载指数）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null, // 同上：未绑定 = 这条流不过节拍闸门（缺省即旧行为，逐字节不变）
     status: "PUBLISHED",
@@ -364,13 +364,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "line_belongs_to_base",
     targetTypeKey: "Line",
     targetStateVar: "utilPressure",
-    coefficient: 0.5,
     delayTicks: 1,
     description: "基地变忙 ⇒ 负载摊到辖下每条产线（基地负载 × 0.5，隔 1 个时序才到）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null, // 同上
     status: "PUBLISHED",
@@ -398,13 +396,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "supplier_supplies_material", // 实测 Supplier→Material，8 条
     targetTypeKey: "Material",
     targetStateVar: "shortageRisk",
-    coefficient: 0.9,
     delayTicks: 0,
     description: "供应商交期拖长 ⇒ 它供的物料开始缺（交付延迟 × 0.9 = 物料短缺风险）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -420,13 +416,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_used_by_model", // 实测 Material→Model，42 条（SEED_DEMO=1 真后端现读）
     targetTypeKey: "Model",
     targetStateVar: "supplyRisk",
-    coefficient: 0.7,
     delayTicks: 0,
     description: "物料缺 ⇒ 用到它的型号供应告急（物料短缺 × 0.7 = 型号缺料风险）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -439,13 +433,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_demanded_by_order", // 实测 Model→Order，24 条
     targetTypeKey: "Order",
     targetStateVar: "shortageRisk",
-    coefficient: 0.8,
     delayTicks: 0,
     description: "型号缺料 ⇒ 订这个型号的单子交不齐（型号缺料 × 0.8 = 订单缺口风险）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -461,13 +453,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "line_has_process", // 实测 Line→Process，650 条
     targetTypeKey: "Process",
     targetStateVar: "queuePressure",
-    coefficient: 0.7,
     delayTicks: 0,
     description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.7 = 工序排队压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -486,13 +476,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_supplied_by_po", // 实测 Material→PurchaseOrder，30 条
     targetTypeKey: "PurchaseOrder",
     targetStateVar: "expeditePressure",
-    coefficient: 0.5,
     delayTicks: 0,
     description: "物料缺 ⇒ 对应采购单被催（物料短缺 × 0.5 = 采购加急压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -505,13 +493,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "po_inspected_by", // 实测 PurchaseOrder→IncomingInspection，30 条
     targetTypeKey: "IncomingInspection",
     targetStateVar: "queueDays",
-    coefficient: 0.6,
     delayTicks: 1, // 检验排队是"下一批才排得上"，故留一个 tick 行程
     description: "采购单催得急 ⇒ 到货集中，来料检验排队天数变长（加急压力 × 0.6）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -533,13 +519,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_used_by_model",
     targetTypeKey: "Model",
     targetStateVar: "costPressure",
-    coefficient: 0.65,
     delayTicks: 0,
     description: "物料涨价 ⇒ 用它的型号成本上抬（价格冲击 × 0.65 = 型号成本压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     // 逐物料按**该物料在该型号生效 BOM 中的成本占比**分摊（BOMHeader/BOMDetail 真数据，
     // 与 `quote_margin` 共用 `bom.ts` 那一支选取口径 —— 不另起第二套 BOM 解析）。
     // 入边归一 ⇒ 同一型号全部物料权重之和 = 1（就该型号整份 BOM 而言），量纲自洽：
@@ -556,13 +540,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_demanded_by_order",
     targetTypeKey: "Order",
     targetStateVar: "costPressure",
-    coefficient: 0.9,
     delayTicks: 0,
     description: "型号成本上抬 ⇒ 订这个型号的单子毛利被吃掉（型号成本 × 0.9 = 订单成本压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -597,7 +579,6 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_of_customer", // 实测 Order→Customer，358 条已物化边
     targetTypeKey: "Customer",
     targetStateVar: "receivablePressure",
-    coefficient: 0.5,
     delayTicks: 0,
     // ⚠ 描述里的系数原写 ×0.6，与真值 0.5 差 1.2 倍（`GET /a/v1/sim/propagation-rules` 原样下发
     // 这段中文给用户看 ⇒ 屏上正在说与实际不符的话）。改**描述**一侧对齐真值，
@@ -606,7 +587,6 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     // 逐订单按 `Order.value`（= qty × unitPrice）**相对于全域平均单金额**的倍率。
     // 分母是**全租户 500 张单的均值**，不是该客户那几张单的均值 —— 见上「⚠ 用 …」段。
     weightRef: { basis: "source_value_relative" },
@@ -621,13 +601,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "customer_has_invoice", // 实测 Customer→ARInvoice，24 条
     targetTypeKey: "ARInvoice",
     targetStateVar: "overduePressure",
-    coefficient: 0.4,
     delayTicks: 1, // 逾期是"账期到了才显形"，留一个 tick
     description: "客户应收压力大 ⇒ 名下发票逾期风险上升（应收压力 × 0.4 = 发票逾期压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -663,13 +641,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_changeover", // 实测 Model→ChangeoverMatrix，30 条
     targetTypeKey: "ChangeoverMatrix",
     targetStateVar: "changeoverPressure",
-    coefficient: 0.4,
     delayTicks: 0,
     description: "多品种需求同时上来 ⇒ 同一条线换型次数变多、换型损失变大",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -685,13 +661,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_has_batch", // 实测 Material→MaterialBatch，24 条
     targetTypeKey: "MaterialBatch",
     targetStateVar: "turnoverPressure",
-    coefficient: 0.5,
     delayTicks: 0,
     description: "缺料时先动批次：提前拉料、拆批、翻呆滞库存 ⇒ 批次周转压力上升",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -709,13 +683,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "po_customs_cleared_by", // 实测 PurchaseOrder→CustomsClearance，1 条
     targetTypeKey: "CustomsClearance",
     targetStateVar: "clearanceQueueDays",
-    coefficient: 0.4,
     delayTicks: 1, // 清关是"下一批才排得上"，与 po_inspected_by 同一口径
     description: "加急的进口采购单先堆在海关那一段 ⇒ 清关排队天数变长",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -731,13 +703,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "base_maint_plan", // 实测 Base→MaintPlan，13 条
     targetTypeKey: "MaintPlan",
     targetStateVar: "windowSqueeze",
-    coefficient: 0.4,
     delayTicks: 1, // 检修窗是按周排的，负载变化要下一格才反映到排程上
     description: "基地负载越满 ⇒ 能停机检修的窗口越难排（产能与维护的真实对立）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -753,13 +723,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_has_cert", // 实测 Model→Certification，18 条
     targetTypeKey: "Certification",
     targetStateVar: "qualificationQueue",
-    coefficient: 0.3,
     delayTicks: 1,
     description: "型号需求上来 ⇒ 该型号的认证/资质排队跟着堵",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -782,13 +750,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "base_has_shipment", // 实测 Base→Shipment，13 条
     targetTypeKey: "Shipment",
     targetStateVar: "inboundExpeditePressure",
-    coefficient: 0.35,
     delayTicks: 1,
     description: "基地变忙 ⇒ 来料在途被催（基地负载 = 入厂运输加急压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -821,13 +787,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "line_runs_work_order", // 实测 Line→WorkOrder，260 条
     targetTypeKey: "WorkOrder",
     targetStateVar: "releasePressure",
-    coefficient: 0.6,
     delayTicks: 0,
     description: "产线吃紧 ⇒ 工单下达被压着排（产线利用压力 = 工单下达压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -840,13 +804,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "work_order_yields_wip_lot", // 实测 WorkOrder→WIPLot，260 条
     targetTypeKey: "WIPLot",
     targetStateVar: "feedPressure",
-    coefficient: 0.7,
     delayTicks: 0,
     description: "工单下达多 ⇒ 在制批次投料跟着紧（工单下达压力 = 在制投料压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -859,13 +821,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "work_order_sampled_by_quality_lot", // 实测 WorkOrder→QualityLot，260 条
     targetTypeKey: "QualityLot",
     targetStateVar: "inspectBacklog",
-    coefficient: 0.5,
     delayTicks: 1, // 攒批判定是"这一批做完才检"，留一个 tick
     description: "工单下达多 ⇒ 待检批次积压（工单下达压力 = 质检积压）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -878,13 +838,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "wip_lot_found_defect", // 实测 WIPLot→DefectRecord，85 条
     targetTypeKey: "DefectRecord",
     targetStateVar: "defectPressure",
-    coefficient: 0.3,
     delayTicks: 1,
     description: "投料赶得急 ⇒ 缺陷记录跟着涨（在制投料压力 = 缺陷压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -897,13 +855,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "defect_raises_exception", // 实测 DefectRecord→ExceptionEvent，85 条
     targetTypeKey: "ExceptionEvent",
     targetStateVar: "handlingBacklog",
-    coefficient: 0.8,
     delayTicks: 0,
     description: "缺陷变多 ⇒ 异常事件处理积压（缺陷压力 = 异常处理积压）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -918,13 +874,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_has_line", // 实测 Order→OrderLine，38 条
     targetTypeKey: "OrderLine",
     targetStateVar: "splitPressure",
-    coefficient: 0.9,
     delayTicks: 0,
     description: "订单需求压力大 ⇒ 行项被拆分/改期（需求压力 = 订单行拆分压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -937,13 +891,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_has_promise", // 实测 Order→OrderPromise，24 条
     targetTypeKey: "OrderPromise",
     targetStateVar: "promiseRisk",
-    coefficient: 0.8,
     delayTicks: 0,
     description: "订单有缺口 ⇒ 已给客户的交付承诺开始有风险",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -956,13 +908,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "customer_has_location", // 实测 Customer→CustomerLocation，12 条
     targetTypeKey: "CustomerLocation",
     targetStateVar: "deliveryHoldRisk",
-    coefficient: 0.5,
     delayTicks: 0,
     description: "客户欠款压力大 ⇒ 其收货点被暂停发货的风险上升",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -975,13 +925,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "customer_has_overdue_record", // 实测 Customer→OverdueRecord，2 条
     targetTypeKey: "OverdueRecord",
     targetStateVar: "collectionPressure",
-    coefficient: 0.6,
     delayTicks: 1, // 催收是"逾期成立之后"的动作
     description: "客户欠款压力大 ⇒ 逾期记录上的催收压力变大",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -996,13 +944,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_has_alternative", // 实测 Material→MaterialAlternative，5 条
     targetTypeKey: "MaterialAlternative",
     targetStateVar: "switchPressure",
-    coefficient: 0.6,
     delayTicks: 0,
     description: "物料缺 ⇒ 切换到替代料的压力变大",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1015,13 +961,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "material_has_balance", // 实测 Material→MaterialBalance，8 条（"包材"无对应 Material ⇒ 诚实不连）
     targetTypeKey: "MaterialBalance",
     targetStateVar: "gapPressure",
-    coefficient: 0.7,
     delayTicks: 0,
     description: "物料缺 ⇒ 供需平衡表上的缺口变大",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1036,13 +980,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "base_dispatches_transfer", // 实测 Base→InterBaseTransfer，17 条（只逆调出端）
     targetTypeKey: "InterBaseTransfer",
     targetStateVar: "transferPressure",
-    coefficient: 0.3,
     delayTicks: 1,
     description: "某基地过载 ⇒ 跨基地调拨压力上升",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1059,13 +1001,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "process_uses_equipment", // 实测 Process→Equipment，780 条
     targetTypeKey: "Equipment",
     targetStateVar: "loadPressure",
-    coefficient: 0.5,
     delayTicks: 0,
     description: "工序排队 ⇒ 该工序上的设备负载跟着高",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1078,13 +1018,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "equipment_has_maintenance_order", // 实测 Equipment→MaintenanceOrder，193 条
     targetTypeKey: "MaintenanceOrder",
     targetStateVar: "repairBacklog",
-    coefficient: 0.6,
     delayTicks: 1,
     description: "设备负载高 ⇒ 维修工单积压",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1099,13 +1037,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_stocked_as_finished_goods", // 实测 Model→FinishedGoodsInventory，34 条
     targetTypeKey: "FinishedGoodsInventory",
     targetStateVar: "drawdownPressure",
-    coefficient: 0.6,
     delayTicks: 0,
     description: "型号需求上来 ⇒ 成品库存被消耗（需求负载 = 成品去化压力）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1150,13 +1086,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "po_from_supplier", // 实测 PurchaseOrder→Supplier，30 条
     targetTypeKey: "Supplier",
     targetStateVar: "reviewPressure",
-    coefficient: 0.4,
     delayTicks: 1, // 绩效复评是"这一轮加急发生之后"才启动的动作，不与加急同拍
     description: "采购单频繁加急 ⇒ 该供应商被纳入评审的压力上升",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1213,13 +1147,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetStateVar: "shortageRisk",
     // 0.8：在途单是**最直接**的补给。系数低于既有 `supplier_delay→material_shortage`(0.9) ——
     // 那条是"这家供应商整体都在拖"，波及面比单张单大。
-    coefficient: 0.8,
     delayTicks: 0, // 在途单晚到 ⇒ 缺口**当天**就是缺口，没有缓冲垫在中间
     description: "采购流程本身拖慢 ⇒ 物料开始缺（采购延迟 = 物料短缺风险）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1233,13 +1165,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Material",
     targetStateVar: "shortageRisk",
     // 0.6：批次晚入库时，**手上还有上一批**顶着，故弱于在途单那条。
-    coefficient: 0.6,
     delayTicks: 1, // 先吃现有批次的库存，缺口**次拍**才显现
     description: "批次采购拖慢 ⇒ 物料开始缺",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1253,13 +1183,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Material",
     targetStateVar: "shortageRisk",
     // 0.5：供应商级是**跨单聚合**口径，摊到单个物料上最弱（一家供应商供多个料）。
-    coefficient: 0.5,
     delayTicks: 1, // 跨单聚合要等当期在手单都对完账才看得出来，不与单据同拍
     description: "供应商侧采购流程拖慢 ⇒ 物料开始缺",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1310,13 +1238,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "model_demanded_by_order", // 实测 Model→Order，service.ts `lnk_mdbo_*`
     targetTypeKey: "Order",
     targetStateVar: "demandPressure",
-    coefficient: -0.6, // 负号即方向：高估(+) ⇒ 需求压力被下修；低估(−) ⇒ 需求压力上冲
+    // 负号即方向：高估(+) ⇒ 需求压力被下修；低估(−) ⇒ 需求压力上冲
     delayTicks: 0, // 预测口径一改，当期订单侧的需求读数同拍就该跟着走
     description: "预测偏差大 ⇒ 订单侧需求压力被放大（预测失真传到执行层）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1333,13 +1260,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_has_line", // 实测 Order→OrderLine，service.ts `lnk_ohl_*`
     targetTypeKey: "OrderLine",
     targetStateVar: "splitPressure",
-    coefficient: 0.7,
     delayTicks: 0, // 插单/取消当天就要改行，不隔拍
     description: "订单频繁变更 ⇒ 订单行拆分/改期压力上升",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1369,13 +1294,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model", // 实测 Order→Model，service.ts `lnk_ofm_*`（金丝雀边，方向可达门就拿它自证）
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
-    coefficient: 0.5,
     delayTicks: 0,
     description: "订单频繁变更 ⇒ 型号需求负载跟着抖动",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     // ⚠ **必须与 `demo_order_demand_pressure` 用同一个口径**（WO-COEF-FROM-BOM）：
     // 那条与本条**同一条链路（`order_for_model`）、同一个目标格子（`Model.demandLoad`）**，
     // 只是源变量不同。只给其中一条加分摊，`Model.demandLoad` 就变成
@@ -1414,13 +1337,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "equip_used_in", // 实测 Equipment→Process，service.ts `lnk_eui_*`
     targetTypeKey: "Process",
     targetStateVar: "queuePressure",
-    coefficient: 0.6,
     delayTicks: 0, // 设备一停，它那道工序当拍就开始堆
     description: "设备故障 ⇒ 该工序排队压力骤升",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1471,13 +1392,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "process_belongs_to_line", // 本单新物化：Process→Line，650 条（`lnk_pbl_*`）
     targetTypeKey: "Line",
     targetStateVar: "blockedPressure",
-    coefficient: 0.55, // 与相邻边同量级（周围 0.5–0.65）：一道工序堵住，产线并非等比例停摆
+    // 与相邻边同量级（周围 0.5–0.65）：一道工序堵住，产线并非等比例停摆
     delayTicks: 0,
     description: "工序排队 ⇒ 该产线受阻。落在 blockedPressure 这个新量纲上，是为了不回喂 utilPressure 成正反馈环",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1493,13 +1413,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "line_runs_work_order", // 既有已物化：Line→WorkOrder，260 条（`lnk_lrw_*`）
     targetTypeKey: "WorkOrder",
     targetStateVar: "releasePressure",
-    coefficient: 0.6,
     delayTicks: 0,
     description: "产线受阻 ⇒ 工单下达受阻。与「产线本来就满」是两个成因、同一个后果，故与既有那条 sum 累加",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1517,13 +1435,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "wo_for_model", // 本单新物化：WorkOrder→Model，260 条（`lnk_wfm_*`·此前声明了零实例）
     targetTypeKey: "Model",
     targetStateVar: "supplyRisk",
-    coefficient: 0.5,
     delayTicks: 1, // 工单排不下去要过一拍才反映成型号级的供给缺口
     description: "工单下达受阻 ⇒ 该型号供给风险上升。接上这一跳，设备故障就自动继承既有的「型号→订单→交付承诺」两跳",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1541,13 +1457,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "wo_for_model", // 同 ③ 的边，不同 target 量纲
     targetTypeKey: "Model",
     targetStateVar: "costPressure",
-    coefficient: 0.5,
     delayTicks: 1,
     description: "工单下达受阻 ⇒ 该型号成本压力上升。赶工/加班/返工推高单位成本，再由既有那条边带动客户应收",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1598,7 +1512,6 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Order",
     targetStateVar: "orderChurn",
     // 强度：越过容忍线的每 1 个百分点应收压力，换算成 0.35 单位订单变更压力。
-    coefficient: 0.35,
     // 客户不是当天就砍单：要开会、要走内部审批。留一拍 —— 这一拍的延迟本身就是
     // 「对抗方反应有时滞」这条业务事实，不是性能取舍。
     delayTicks: 1,
@@ -1607,7 +1520,6 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     // 单条边的还手力度封顶：一次推演里客户可以砍单，但不会把订单簿一次砍到 0。
     clamp: { min: 0, max: 40 },
-    coefficientRef: null,
     // ⛔ **必须用 `actor_exposure_relative`，两个组内归一口径在这里都恒等于 1**：
     // 本边是 1:N 扇出（一个客户 → 名下 N 张单），每张单只有**一个**客户入边 ⇒
     // `IN_EDGES`(Σ=1) 与 `IN_EDGES_MEAN`(均值=1) 组内只有一行、权重都是 1，形同没加。
@@ -1686,13 +1598,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogQtyTop",
-    coefficient: 1.0,
     delayTicks: 0,
     description: "该型号在手订单里最大的一张是多少套（订单数量原样取最大值，不打折不加权）",
     combine: "max",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     // ⛔ 不加权：`max` 取的是**某一张真单**的台数，乘一个分摊倍率之后它就不再是任何一张单的
     // 真实台数了 —— 那正是本单要消灭的"屏上有数但对不上任何一张单"的形态。
     weightRef: null,
@@ -1707,13 +1617,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogPriceTop",
-    coefficient: 1.0,
     delayTicks: 0,
     description: "该型号在手订单里最高的成交单价是多少元（订单单价原样取最大值）",
     combine: "max",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null, // 同上：加权之后就不再是任何一张真单的成交价
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1726,7 +1634,6 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogHorizonDays",
-    coefficient: 1.0,
     delayTicks: 0,
     // ⚠ 「交付时间」是日期，日期不是数 ⇒ 折成**距计划起点的天数**才进得了世界态。
     // 折算式**不是本单新发明的**：`Order.leadDays` 在合成期就是这么算出来的
@@ -1739,7 +1646,6 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "max",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -1817,7 +1723,21 @@ export function resolveRuleDomain(targetTypeKey: string): { domainKey: string | 
 export function demoPropagationRulesWithDomain(): ReadonlyArray<Omit<PropagationRule, "tenantId">> {
   // `assertReactionWellFormed` 是**构造期**自检（还手方必须就是这条边的源）——
   // 机器先说话，不留给运行期去发现「披露层说客户在还手、引擎沿着别的类型在算」。
-  return assertReactionWellFormed(DEMO_PROPAGATION_RULES).map((r) => ({
+  //
+  // WO-PROP-COEF-CONFIG：系数**先从 C36.params 派生、再进构造期自检**，顺序刻意 ——
+  // 还手边的「自带表内强度」闸（契约 `assertReactionWellFormed`）要求 coefficient /
+  // coefficientRef 至少有一个，而字面量按单源纪律**两者都不写**（值唯一真源在
+  // battery.ts `PROPAGATION_COEF_PARAMS`）。故在此把两个字段从**同一个键**派生出来：
+  //   · coefficientRef = 运行期真读的那条（引擎 `effectiveCoefficient` 解析 `C36.params.<边key>`）；
+  //   · coefficient    = 冷启动回落值，与 ref **同源** ⇒ 不是第二份字面量（G-10 P4 纪律）。
+  // 任一条边的 key 在 C36.params 里缺席，`ruleParamOf` 当场抛错（机器先说话）——
+  // 「种子有边、表里没键」不许静默通过。
+  const withCoef = DEMO_PROPAGATION_RULES.map((r) => ({
+    ...r,
+    coefficient: ruleParamOf(PROPAGATION_COEF_RULE_KEY, r.key),
+    coefficientRef: { ruleKey: PROPAGATION_COEF_RULE_KEY, paramKey: r.key },
+  }));
+  return assertReactionWellFormed(withCoef).map((r) => ({
     ...r,
     ...resolveRuleDomain(r.targetTypeKey),
     /** 缺省 = 普通物理传导（不是还手）。见 `DEMO_PROPAGATION_RULES` 的「第五种填法」。 */
