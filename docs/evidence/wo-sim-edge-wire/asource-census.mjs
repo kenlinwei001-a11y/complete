@@ -106,11 +106,20 @@ async function main() {
         const e = byVar.get(k); e.cells += 1; e.objects.add(oid);
       }
     }
-    const canary1 = measuredTotal === measuredCellsOrigin;
+    // 🐤① 双半：a) 值差法实测格与 origin 绑定法计数之差必须 ∈ [0,50] —— 差值 = 真值恰撞哈希的
+    //    格数（twin-arms 已标定 = 17：2192 占位格全幂等证明公式对，撞值格是「值碰巧相等」不是
+    //    「公式错」），故**不许**断言相等（第一版就死在这：4154 ≠ 4171 差 17，预期内）。
+    //    b) 普查完整性要咬在变量集合上：origin 解析出的 (类型.变量) 对必须**全部**出现在
+    //    分组结果里 —— 某个变量全体撞值会从值差分组里整个消失，只有按名点才算咬住。
+    const coincident = (measuredCellsOrigin ?? 0) - measuredTotal;
+    const canary1a = coincident >= 0 && coincident <= 50;
+    const missingVars = typeSvPairs.filter((p) => !byVar.has(p));
+    const canary1b = missingVars.length === 0 && typeSvPairs.length >= 25;
     const canary2 = unknownType === 0;
-    console.log(`# 🐤① 实测格 ${measuredTotal} vs origin.measuredCells ${measuredCellsOrigin}: ${canary1 ? "✓" : "✗ ⇒ 分组法或占位公式有一边是假的"}`);
+    console.log(`# 🐤①a 值差法 ${measuredTotal} vs 绑定法 ${measuredCellsOrigin}：撞值 ${coincident} 格（容差 0–50，标定值 17）: ${canary1a ? "✓" : "✗ ⇒ 占位公式或计数有一边是假的"}`);
+    console.log(`# 🐤①b origin ${typeSvPairs.length} 个实测变量全覆盖（缺 ${missingVars.length}：${missingVars.join("、") || "无"}）: ${canary1b ? "✓" : "✗ ⇒ 有变量全体撞值消失，按名补上"}`);
     console.log(`# 🐤② 落到未知类型的实测格 ${unknownType}（必须 0）: ${canary2 ? "✓" : "✗ ⇒ oid→type 映射漏类型"}`);
-    if (!canary1 || !canary2) throw new Error("金丝雀①②未过，拒下结论");
+    if (!canary1a || !canary1b || !canary2) throw new Error("金丝雀①②未过，拒下结论");
 
     // ── asSource join 50 条已发布边 ──────────────────────────────────────────
     const rulesBySrc = new Map();
@@ -153,7 +162,7 @@ async function main() {
     console.log(`# 🐤③ trace≥1 行且有非零 amount: ${canary3 ? "✓" : "✗ ⇒ 探针没触到这条边，N 不许编"}`);
 
     const out = {
-      port, canary: { canary1, canary2, canary3, measuredTotal, unknownType },
+      port, canary: { canary1a, canary1b, canary2, canary3, measuredTotal, coincident, missingVars, unknownType },
       census, deadEnds: deadEnds.map((d) => d.var),
       backlogEdges: backlog,
       forecastBias: { tick0: { n: fbVals.length, min: fbVals[0] ?? null, max: fbVals[fbVals.length - 1] ?? null, allZero: fbAllZero }, triggered: canary3 ? { probeModel: modelOid, traceRows: fbRows.length, targets: perTarget.size, perTargetN: [...new Set(nVals)].sort((a, b) => a - b), amountAbsMax: amounts.length ? Math.max(...amounts.map(Math.abs)) : null } : "未触发" },
