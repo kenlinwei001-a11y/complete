@@ -14,6 +14,7 @@
 
 **工业级 AI+推演系统** = 编排可审计 · 推演可证伪 · 数值可复现 · 降级必显式 · 规模有闸。
 分工铁律（沿用设计裁决）：**引擎负责真，求解器负责全，agent 负责问和译，人负责断。LLM 永不进演化层。**
+（agent 的目标运行内核 = dsh，见 §2.1；原生 loop 仅过渡态。）
 
 毕业判据（全部可度量，任一条不满足不毕业）：
 
@@ -83,6 +84,31 @@ enterpriseState.fork · C12→calibration.required 钩子。
 贯穿：计划披露（A1）· 分账（A2）· 预算（A3）· 核对环金丝雀（A6）· skill 编排件（A5）
 ```
 
+### 2.1 目标运行内核：DSH 即 agent（仓主 2026-09-18 明谕：「deepseek harness(DSH)是agent」）
+
+分工铁律里「agent 负责问和译」的那个 agent，**目标运行内核 = 外部运行时 dsh（deepseek-harness，
+被集成的外部产品，照实称呼；平台自有概念不用它命名）**。原生 `runAgentLoop` 是**过渡期脚手架 +
+灰度回退路**，不是目标态。
+
+| 内核 | 坐标 | 定位 |
+|---|---|---|
+| **dsh（目标内核）** | `packages/dsh-harness` + `apps/agentcore/src/dsh-runtime/`；分叉守卫 `engine.ts`（`agent.kernel==="EXTERNAL"` 优先，缺省回落 `DSH_HARNESS` env）；LLM 路由常量 `PRODUCTION_DSH_HARNESS_PROVIDER="platform"`；POC 6 提交 S0–S4/E1–E6 全绿（`REPORT-dsh-poc-s0.md`）；**自带全仓唯一的无条件数字红线硬闸**（`dsh-runtime/reassemble.ts` `NUMERIC_REDLINE_CODE`，`AUDIT-solver-arithmetic.md:182` 坐实）——A7 审计器的天然落点 | 毕业验收内核 |
+| 原生 ReAct 循环（过渡） | `apps/agentcore/src/agent/loop.ts`；其升级规格 `docs/PRD-agent-react-harness.md`（全文 0 次提及 dsh，与 dsh 线是两条线，勿混） | 开发期验收脚手架 + 灰度秒级回退路（ROLLOUT 机制基础） |
+
+**现状与桥（如实标注，不回避）**：
+
+- **现状 = 休眠**：`DECISION-dsh-fusion.md` 裁决「代码可以并，flag 不能翻」——§3 三前置未销账前，
+  任何部署面设 `DSH_HARNESS=1` 即红（D1 门）、入口唯一（D3）；`ROLLOUT-dsh-external-kernel.md`
+  全部档位停 G0。因此本 PRD 已有亲测证据（loop.ts 循环 / 27 工具 / sim.commander 关态）**全部采自原生路**，
+  一律标「过渡态」。
+- **桥归融合线**：三前置销账与灰度推进是**外部依赖**（已有专线与裁决文档，本 PRD 不越俎派活）；
+  销账后按 ROLLOUT 的 per-agent `kernel=EXTERNAL` 逐 agent 灰度，每 run 直读配置、秒级可退。
+- **判级分两环境类**：**E-native**（`DSH_HARNESS=0` 或不设、agent 不设 `kernel`：开发期逐条需求验收用）
+  与 **E-dsh**（销账后灰度租户 `kernel=EXTERNAL`）。**G1/G2/G5 的毕业测量必须在 E-dsh 采** ——
+  E-native 证据只证「契约与链路对了」，不单独构成毕业依据；每件证据文件标注采集环境类。
+- **A 流契约保持内核无关**：plan 披露 / 分账 / 预算 / 工具面定义在契约与 API 层（OBO、R4 模拟态），
+  两核通用 —— 这让 M1（A1/A2/A3）不必等内核翻牌即可先行落地。
+
 ---
 
 ## 3. 功能需求（五工作流；每条：证据 → 需求 → 对照实验验收 → 依赖/优先级）
@@ -132,6 +158,9 @@ perStepVerification[], budget{declared,consumed}}`；无 plan 的编排执行被
 证据：堵点②「~」范式 + outlook 逐行 provenance 范式。需求：agent 叙事每个数值挂
 `{traceId|ruleKey|cellId|solverRunId}`，自由文本只做连接词；引用不存在 ⇒ 机械审计器红；
 provenance 档继承（引 ≈ 级数据 ⇒ 结论不许写「是」）。验收：注入一个编造数 ⇒ 审计器当场红；G2 达标。
+**落点 = 目标内核的重装配层**：全仓唯一的无条件数字红线硬闸已在 `dsh-runtime/reassemble.ts`
+（`NUMERIC_REDLINE_CODE`，`AUDIT-solver-arithmetic.md:182` 坐实）——机械审计器**在该层扩成全引用绑定**
+（接不重造，§7 同纪律）；原生过渡路不另建第三套，其叙事证据只作开发期参考，G2 毕业测量在 E-dsh 采（§2.1）。
 
 **A8（P2）意图编译金标门**
 证据：live-capability-map 金标问句范式（Top-1 即期望 solver）。需求：自然语言→（扰动事件,落点,幅度,时长,求解器）
@@ -150,7 +179,8 @@ sim 指挥台四工具（sim_init/sim_tick/sim_world/sim_certify，OBO+R4 模拟
 ② sim 工具族补全：`sim_act`（**必须走 /perturbations 账 + proposedBy=AGENT + landable 门**，
 ⛔ 不许直改状态）、`sim_drill`、`sim_counterfactual`（沿用 OBO + R4 模拟态纪律）；
 ③ `run_skill` 工具化（消费 A5 的发布 skill，调用进 plan 披露）；
-④ `sim.commander` 上线判据 = **A1/A2/A3 合并之后**（M1 出口联动：无计划披露/分账/预算，不开工具）；
+④ `sim.commander` 上线判据 = **A1/A2/A3 合并之后**（M1 出口联动：无计划披露/分账/预算，不开工具），
+且**生产开通随目标内核（dsh）灰度**（§2.1：三前置销账前 E-native 只作验收脚手架，开通即标「过渡态」）；
 ⑤ 堵后门：agent 身份的 `sim_init` 禁传 `baseSnapshot`（或强制标 `derived-from-agent` 审计）。
 验收（对照实验）：开通 sim.commander 后 agent ReAct 跑「铝箔+20% 会怎样」⇒ plan 披露显示
 discover→sim_init→sim_act（扰动账 proposedBy=AGENT）→sim_tick→invoke_solver 全链；
@@ -227,7 +257,7 @@ discover→sim_init→sim_act（扰动账 proposedBy=AGENT）→sim_tick→invok
 | N5 | 确定性 R6 | 字节一致（已验） | ensemble 下同 seed 名单字节一致；时钟禁令扩到校准窗 | seam 门 |
 | N6 | 多租户/权限 | entitlement + OBO 透传（已验） | agent=独立 principal 走同一 OBO 无后门；租户级预算隔离 | 越权测试 |
 | N7 | 审计 | tick/drill/counterfactual 全披露 | + plan/校准/决策回流全留痕可重放 | 重放测试 |
-| N8 | LLM 成本 | 零调用（未配 key） | token 预算+单价台账，超限即停（A3 同闸） | 账单单测 |
+| N8 | LLM 成本 | 零调用（未配 key） | token 预算+单价台账，超限即停（A3 同闸）；计量覆盖目标内核路由（`PRODUCTION_DSH_HARNESS_PROVIDER="platform"`）与过渡期原生路由 | 账单单测 |
 | N9 | 超时 | solver 15s+真取消（已验） | 范式推广到全部编排调用 | 故障注入 |
 
 ---
@@ -253,6 +283,7 @@ discover→sim_init→sim_act（扰动账 proposedBy=AGENT）→sim_tick→invok
 | R-4 | UQ 假精确（分布档被当精确值） | provenance 档继承（A7）+ deterministic-only 标注（B1） |
 | R-5 | ABM 振荡/失控 | 生态预算 + 振荡检测（B3）+ 每 actor 开关 |
 | R-6 | 范围蔓延 | §7 非目标 + M 出口判据；每 M 出口不过不收编下一段 |
+| R-7 | 目标内核上线被外部依赖卡住：融合线 §3 三前置未销账 ⇒ dsh 不能翻 flag ⇒ G1/G2/G5 毕业测量无环境 | 契约内核无关 ⇒ M1（A1/A2/A3/B5/D1）不等内核先行；E-native 过渡证据持续采并标注、不冒充毕业依据；灰度 per-agent 秒级可退（ROLLOUT）；销账进度与融合线定期对账 |
 
 ## 7. 非目标（明文排除）
 
@@ -264,7 +295,7 @@ LLM 进演化层（永不）· agent 专用数据后门 · 替人拍板（排序
 | 程 | 内容 | 出口判据 |
 |---|---|---|
 | M1 审计地基 | A1 A2 A3 B5 D1 | 编排三件套契约合并；agent 上岗前提齐；timings 缺陷清账 |
-| M2 编排闭环 | A4 A5 A6 A7 A8 A9 | 一句自然语言 → plan 披露完整 → 报告每数有出处（G1 G2 G5）；ReAct 全链施扰走账 |
+| M2 编排闭环 | A4 A5 A6 A7 A8 A9 | 一句自然语言 → plan 披露完整 → 报告每数有出处（G1 G2 G5）；ReAct 全链施扰走账；**G1/G2/G5 毕业测量在 E-dsh 通过**（外部依赖：融合线三前置销账，§2.1） |
 | M3 推演科学 | B1 B2 B3 D2 D3 | 敞口带分布档；每条受阻环节带归因（G3 G4） |
 | M4 V&V 闭环 | C1 C2 C3 C4 | paired>0、回测门进 CI、决策回流走通（G6） |
 | M5 工业化 | N1–N9 D4–D7 | NFR 表全绿；R1–R7 清账（G7 G8） |
@@ -286,7 +317,9 @@ LLM 进演化层（永不）· agent 专用数据后门 · 替人拍板（排序
 ### 10.2 测试标准（四张表，均为本轮实测用过的判据，不是抄来的）
 
 **环境标准**：内存模式 `SEED_DEMO=1`、被测分支合并树 dist；datacore@4001 / agentcore@4002 / vite@5173
-（或脚本自起独立端口，端口真 bind + lsof 咬 pid 自证，不连任何遗留服务）；**清洁窗口**：4 核机
+（或脚本自起独立端口，端口真 bind + lsof 咬 pid 自证，不连任何遗留服务）；**内核环境类**（§2.1）：
+E-native（`DSH_HARNESS=0`/不设、agent 不设 `kernel`）= 开发期逐条验收；E-dsh（销账后灰度租户
+`kernel=EXTERNAL`）= G1/G2/G5 毕业测量；每件证据标注采集环境类，混类证据降 NOT-ADJUDICATED；**清洁窗口**：4 核机
 datacore vitest ≤1 并发，起跑前窗口双零探针（vitest 树根=0）——有前科：撞窗口曾造成 30s 超时假象，
 其产物一律不算数。
 
@@ -362,4 +395,8 @@ frontend-shell 的 D 流条目：测试由测试方执行，修复另派 WO（�
 - `docs/PRD-sim-console-e2e-remediation.md`（R1–R7 与本 PRD D 流全文）
 - `docs/evidence/sim-console-e2e/`（REPORT.md 含根因复验记录 · findings · network.log · tick-response-1.json · 截图）
 - `docs/evidence/sim-subsystem-probe/`（REPORT.md · probe.mjs/probe2.mjs · 逐步 .json/.rc · findings.md/findings2.md）
+- 内核线（§2.1 全部断言的出处）：`docs/DECISION-dsh-fusion.md`（休眠裁决 + §3 三前置）·
+  `docs/ROLLOUT-dsh-external-kernel.md`（per-agent 灰度，全档停 G0）· `docs/REPORT-dsh-poc-s0.md`（POC E1–E6）·
+  `docs/PRD-agentcore-dsh-upgrade.md`（dsh 接入规格）· `docs/PRD-agent-react-harness.md`（原生 loop 升级规格，两条线勿混）·
+  `docs/AUDIT-solver-arithmetic.md:182`（数字红线硬闸唯一落点坐实）
 - 复跑：两目录 REPORT「复现」节。
