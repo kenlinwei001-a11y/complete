@@ -3372,9 +3372,24 @@ export function stateVarDisplayName(stateVar: string): string | undefined {
 //  ① 量纲分类 —— `sim/drill-scan.ts` 段头原文：
 //     「状态变量的量纲各不相同（**压力 0–100**、天数、件数…）」
 //     ⇒ 压力/风险/指数族 = 0–100；**天数族与件数族它明确划成另一类，故本表不登记**。
-//  ② tick0 生成式 —— `sim/seed-world.ts` `deriveSeedBaseSnapshot`：
-//     `round(hash01(objectId|stateVar) × 100)`，且实测 `measuredCells: 0 / derivedCells: 7204`
-//     ⇒ 出厂世界**每一格**都由这个生成式产出，值域恰为 [0,100]。
+//  ② tick0 生成式 —— `sim/seed-world.ts` `deriveSeedBaseSnapshot` 的**派生档**：
+//     `round(hash01(objectId|stateVar) × 100)` ⇒ 该档产出的每一格值域恰为 [0,100]。
+//
+//     ⚠ **原文写的是「出厂世界*每一格*都由这个生成式产出」外加一对写死的实测数
+//       （`measuredCells: 0 / derivedCells: 7204`）——两句今天都不成立了，2026-09-18 订正。**
+//       `deriveSeedBaseSnapshot` 一直是**两档**：同名属性探到有限数走**真读数档**，
+//       探不到才走上面这个派生档。此前真读数档恒 0 格，于是「每一格」碰巧说得通。
+//       `WO-SIM-REAL-DATA` 把派生规格从 3 条加到 29 条并在播种期全量初算之后，
+//       多数格子变成了**对象上的真读数**（实测由 0 变正），这句话随即变成假话。
+//       形态（照 CLAUDE.md 铁律 0.6 句式）：
+//       **「我用『今天真读数档一格都没命中』当作『这个档不存在』的证据，而前者并不度量后者。」**
+//       ⛔ 这里**不再写死任何格数** —— 写死的实测数天生带保质期，而它是**直接印在用户屏上**的
+//       （本常量经 `stateVarValueSources` 下发，是推演可披露层的「出处」那一行）。
+//       屏上要的是**口径**（值从哪来、为什么落在 0–100），不是某一次播种的快照计数。
+//
+//     真读数档的值域由本表**声明**兜住（未登记者引擎不夹不衰减，并在 tick 回执
+//     `undeclaredStateVars` 里逐个点名）—— 所以 0–100 这条边界的出处仍然成立，
+//     只是它对真读数档是「声明并由引擎夹」，对派生档是「生成式天然落在区间内」。
 //
 // ── 静息点为什么不一律取 0 ────────────────────────────────────────────────────
 // `forecastBias` 是本平台唯一**带方向**的量纲（正=高估 / 负=低估，见上表该行注释，
@@ -3382,7 +3397,8 @@ export function stateVarDisplayName(stateVar: string): string | undefined {
 // 故它单独声明 [-100,100] / rest 0；压力族静息点 = 下界 0（无入流即无压力）。
 const PRESSURE_DOMAIN_SOURCE =
   "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；" +
-  "② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）";
+  "② 世界态起点分两档取值 —— 对象上有同名属性的那些格取真读数（越界由本表声明的取值域夹住），" +
+  "其余由 tick0 生成式 `round(hash01(objectId|stateVar)×100)` 产出，天然落在 0–100";
 
 /**
  * 状态量 → 声明取值域（**全平台唯一入口**，与 `STATE_VAR_DISPLAY_NAMES` 同一张登记册的两列）。
