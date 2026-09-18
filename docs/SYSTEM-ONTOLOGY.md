@@ -2007,6 +2007,11 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
   「tick2 峰 +0.0026 后逐拍衰减」（λ=0.37 + 软夹 ⇒ 均衡不累积；`/tmp/t6-triad-probe.txt`），
   断言 `farMax > 0` 不变。
 - **前端**：披露面板「上界」`null` 渲染「无上界」（纯渲染分支，非 mock→real 切换，禁令 2 不触，T7 报备）。
+- **披露层衰减表达式逐变量解析（同日补）**：C35 声明态 expression 只命名默认 param（`pressureDecayPerTick`），
+  T6 后积压族 5 行「衰减出处 `C35.queueDaysDecayPerTick`」与「规则表达式 `…params.pressureDecayPerTick`」
+  同行自相矛盾 ⇒ `disclosure.ts` 按 `decayRef.paramKey` 给**解析后**表达式（压力族替换恒等）。
+  配套：披露夹具 2026-09-18 重采后已含 `rules.adversary`（后端恒下发），对抗方门 ABSENT 态样本
+  改由 `sim-disclosure.pre-adversary.real.json` 承载（2026-09-03 原样回包从 git 历史单独存档）。
 
 **评审 v2 登记而未落（诚实挂账，均不阻塞本段交付）**：
 ⑦ Kingman 排队形状（引擎今天只有 delayTicks 整数延迟，无形状参数 = **引擎缺口**，单独立项）·
