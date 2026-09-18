@@ -148,7 +148,7 @@ const SANDBOX_SECONDARY_ACTION_COUNT = SANDBOX_SECONDARY_ACTIONS.length;
 // 它仍是唯一能让页面开出一个可跑世界的那一支」。删了 = 把那条分支的兜底路一起拆了。
 // 本单的独特贡献因此收敛到**逐格出处**那一半（见下 `baseProvenance`），不碰建会话走哪条路。
 export { deriveBaseSnapshot, hash01 } from "./edgeActiveModel";
-import { deriveBaseSnapshot } from "./edgeActiveModel";
+import { deriveBaseSnapshot, stampAllDerived } from "./edgeActiveModel";
 // WO-SANDBOX-REAL-SNAPSHOT · tick0 **逐格出处**（契约单源；合计口径与后端共用同一支纯函数）。
 import { tallyCellProvenance, type CellProvenance } from "@platform/contracts";
 // WO-STATEVAR-DISPLAYNAME：状态变量中文名的**唯一**消费路径（本文件零中文名映射表）
@@ -211,28 +211,12 @@ export interface WorldSnapshot {
  * `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数 `baseProvenance`。
  * 派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
  */
-/**
- * 给一份**本地现编的**世界逐格盖 `derived` 章（与 `TickState` 同形）。
- *
- * ⚠ 为什么需要它、而不是留空让下游读作「未知」：**「我没记」与「我记了，它是占位」是两个不同的命题**
- * （契约 `CellProvenanceSchema` 头注原话）。`deriveBaseSnapshot` 产出的那一份，
- * 每一格都是 `hash01` 占位，这件事**调用方当场就知道**——留空等于把一个确知的事实说成不知道，
- * 而屏上两档的措辞正好相反（未知那档写「不能断言是占位」）。
- *
- * ⛔ 不许反过来用它给**后端回来的**世界盖章：那一份是混合的，整份盖 `derived`
- * 会把真读数一起否掉（自毁可信度那一支）。本函数只给「我自己编的」那一份用。
- *
- * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
- */
-export function stampAllDerived(state: TickState): CellProvenance {
-  const out: CellProvenance = {};
-  for (const [oid, row] of Object.entries(state)) {
-    const r: Record<string, "measured" | "derived"> = {};
-    for (const v of Object.keys(row ?? {})) r[v] = "derived";
-    out[oid] = r;
-  }
-  return out;
-}
+// WO-SANDBOX-REAL-SNAPSHOT · `stampAllDerived` 的**实现住在 `./edgeActiveModel`**，本文件只 re-export。
+// ⚠ 理由与 `deriveBaseSnapshot` 当年迁过去的那条**一模一样**，别再搬回来：
+// `EdgeActivePanel` 也要用它，而 `SandboxView → EdgeActivePanel` 已经是一条依赖边 ⇒ 反向 import **会成环**。
+// （本单初稿真的把它写在这里、让 `EdgeActivePanel` 反向 import，当场造出了那个环 —— 测试还是绿的，
+//   ESM 循环依赖多数时候不报错，只在求值顺序变化时给你一个 `undefined`。绿不度量没成环。）
+export { stampAllDerived } from "./edgeActiveModel";
 
 export type WorldHonesty = "MEASURED" | "MIXED" | "DERIVED" | "UNKNOWN";
 export function worldHonestyOf(t: { measured: number; derived: number; unknown: number }): WorldHonesty {

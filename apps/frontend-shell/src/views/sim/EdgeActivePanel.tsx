@@ -4,8 +4,6 @@ import { tallyCellProvenance, type SimCounterfactualResult } from "@platform/con
 import { createSimSession, fetchPropagationRules, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import { HintDot } from "./shared";
-// WO-SANDBOX-REAL-SNAPSHOT：本页自己编的世界由本页自己盖 `derived` 章（实现与沙盘同一支，不另写）。
-import { stampAllDerived } from "./SandboxView";
 import {
   buildDiffRows,
   buildDomainSlices,
@@ -13,6 +11,8 @@ import {
   buildVerdict,
   deriveBaseSnapshot,
   pickProbeSession,
+  // WO-SANDBOX-REAL-SNAPSHOT：本页自己编的世界由本页自己盖 `derived` 章（与沙盘同一支实现，不另写）。
+  stampAllDerived,
   PROBE_WORLD_PROVENANCE,
   PROBE_WORLD_PROVENANCE_DETAIL,
   resolveActiveSlice,
