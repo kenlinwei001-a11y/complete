@@ -3,41 +3,51 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
-import type { SandboxViewConfig, TickState } from "@platform/contracts";
+import type { CellProvenance, SandboxViewConfig, TickState } from "@platform/contracts";
 import { server } from "./setup";
-import SandboxView, { deriveBaseSnapshot } from "@/views/sim/SandboxView";
+import SandboxView from "@/views/sim/SandboxView";
 
 /**
- * ══ WO-V4-HONEST-ORIGIN · 顶栏读数**出处记号**门（PRD-sandbox-v4 §2.1 / §4.3）══════════
+ * ══ WO-V4-HONEST-ORIGIN + WO-SANDBOX-REAL-SNAPSHOT · 顶栏读数**出处记号**门 ═══════════════
  *
- * ── 病历（仓主截图 + PRD §2.1 逐行取证）─────────────────────────────────────────
+ * ── 病历一（仓主截图 · 2026-08-13 · WO-V4-HONEST-ORIGIN）────────────────────────────
  * `deriveBaseSnapshot` 用 `hash01(对象id|变量名)×100` 派生 tick0 世界态。它是**确定性占位**
  * （R6 合规），问题不在数值而在**屏上没有任何记号说它是占位**：全对象取均值必然收敛到 50
  * （大数定律），于是顶栏 16 个读数全落在 49.5–50.4；同屏阻滞点行**有**「合成数据」徽标，
  * 顶栏一个都没有 —— 两者并排，读者只会把没记号的那批读成实测。
  *
- * ── ⛔ 不许怎么修 ─────────────────────────────────────────────────────────────
- * 不许改 `hash01` 的派生本身（把值改得"不像 50"只会得到一屏**更像真的**假数据，比现在更坏）。
- * 本门第 ③ 条把这一点也咬住：`deriveBaseSnapshot` 的输出必须仍是那份哈希派生。
+ * ── 病历二（WO-SANDBOX-REAL-SNAPSHOT · 本轮）——**上一轮只修了记号，没修数** ──────────
+ * 那一轮的结论是「修的是记号，不是数值」。它在当时是对的，但把一个更大的事实留在了原地：
+ * **那份世界压根不该由前端造。** 前端没有对象，`deriveBaseSnapshot` 一次 `props` 都不读，
+ * 它唯一能做的就是编 —— 编出来的数**长得和真值一模一样**，加个徽标只是让谎话带了张标签。
+ *
+ * **今天的行为 Y（本轮改完）**：前端**不传** `baseSnapshot`，世界由持有真实对象的服务端派生，
+ * 并**逐格**盖 `measured` / `derived` 章。真后端实测（`SEED_DEMO=1`）：
+ * 8,813 格中 measured **6,271** / derived **2,542** / unknown **0**。
+ *
+ * ⇒ 于是诚实位从**二值**变成**四态**：世界真实地是**混合**的，二值化的两种走法都在撒谎 ——
+ * 全标「实测」把 2,542 格占位说成真读数；全标「占位」把 6,271 格真读数自毁可信度。
  *
  * ── 判据必须**两向**（PRD §4.3 原话「只咬一向证明不了」）──────────────────────
- *  ① 占位期：徽标在，且写着「合成·占位」（`data-origin="DERIVED"`）
- *  ② 实测期：记号**换掉** —— 写「实测」（`data-origin="MEASURED"`），且「合成·占位」**不再出现**
- * 只咬 ① 可能是它永远显示占位（那就成了另一种谎：真实测了还说是占位）；
- * 只咬 ② 可能是它一开始就说实测。
+ * 本门把两向长成了四向（四态各咬一条），外加**两条反向金丝雀**：
+ *  ⛔ `derived` 不许被**藏起来**（藏 = 假装那格不存在，与说它是实测一样不诚实）
+ *  ⛔ 缺出处不许被**并进 `derived`**（那是拿「我没记」冒充「我记了，它是占位」）
  *
  * ── 🔴 本门要防的那个**具体**假绿（不写下来下一个人一定会踩）──────────────────
- * PRD §2.1 写「占位只在 `simWorld` 回来**之前**占屏」。**实测不是这样**：
- * `init()` 建完会话立刻 `qc.setQueryData(["a","sim-world", id], …)` 把占位塞进同一个缓存键，
- * 而该 query 是 `staleTime: Infinity` ⇒ **新建会话的那个 GET 根本不会发**。
- * 所以若拿「`worldQuery.data` 到没到」当判据，徽标会在**屏上全是哈希数**的那一刻就翻成"实测"——
- * 那比今天没有徽标更坏。第 ④ 条用「`GET …/world` 的真实请求数 == 0」把这个事实钉住。
+ * ① `init()` 建完会话立刻 `qc.setQueryData(["a","sim-world", id], …)`，而该 query 是
+ *    `staleTime: Infinity` ⇒ **新建会话的那个 GET 根本不会发**。所以若拿「`worldQuery.data`
+ *    到没到」当判据，徽标会在屏上全是占位的那一刻就翻成"实测"。第 ⑥ 条把这个事实钉住。
+ * ② 本轮之后 `worldOrigin`（整份哪来的）**恒为 `MEASURED`** —— 世界都是后端给的。
+ *    谁把徽标改回读它，屏上就会对着一堆哈希占位写「实测」。第 ② 条的混合世界**全部来自后端**，
+ *    若徽标读 `origin` 该用例当场红。
  *
  * R6 确定性：网络全桩，无时钟、无随机。
  */
 
 // ── 证物 ───────────────────────────────────────────────────────────────────────
 const worldGets: string[] = [];
+/** 建会话请求的 body 原文（**未经 `?? {}` 之类的回填**）—— 第 ① 条要咬「那个键压根不在」。 */
+const createBodies: Record<string, unknown>[] = [];
 
 const CFG: SandboxViewConfig = {
   tenantId: "tenant-origin",
@@ -50,30 +60,57 @@ const CFG: SandboxViewConfig = {
   propagationCount: 1,
 };
 
-/** 后端算出来的世界态（**与前端哈希派生刻意不同**：不同才能证明屏上换的是那一份）。 */
-const SERVER_WORLD: TickState = {
+/**
+ * **服务端派生**的 tick0 世界（形状照真后端 `deriveSeedBaseSnapshot`：真值 + 回落占位混在同一份里）。
+ * 刻意取"不像 50"的值：屏上若出现 50 附近那一族，说明它拿的还是哈希派生那一份。
+ */
+const SERVER_BASE: TickState = {
   obj_a1: { load: 71, risk: 12 },
   obj_a2: { load: 68, risk: 15 },
   obj_b1: { load: 5, risk: 90 },
 };
+/**
+ * 逐格出处：`load` 三格**全实测**；`risk` 两格实测 + 一格回落占位。
+ * ⚠ 刻意做成**按变量不均匀**——均匀的话「逐项记号」与「整份徽标」会退化成同一个判据，
+ * 逐项那一支就算完全没接线也照样绿（那正是本仓「测的是函数不是链路」那个老病）。
+ */
+const SERVER_BASE_PROV: CellProvenance = {
+  obj_a1: { load: "measured", risk: "measured" },
+  obj_a2: { load: "measured", risk: "measured" },
+  obj_b1: { load: "measured", risk: "derived" },
+};
+/** tick 之后的世界（引擎算的）—— 用来证明**出处跟着 tick0 走、不被推拍抹掉**。 */
+const SERVER_WORLD: TickState = {
+  obj_a1: { load: 81, risk: 22 },
+  obj_a2: { load: 78, risk: 25 },
+  obj_b1: { load: 15, risk: 99 },
+};
 
-function installHandlers() {
-  let world: TickState = {};
+/** @param prov 传 `undefined` 模拟「老会话 / 后端没下发出处」那一档（第 ④ 条用）。 */
+function installHandlers(prov: CellProvenance | undefined = SERVER_BASE_PROV) {
   server.use(
     http.post("*/a/v1/sim/sessions", async ({ request }) => {
-      const body = (await request.json()) as { baseSnapshot?: TickState; scope?: Record<string, unknown> };
-      world = JSON.parse(JSON.stringify(body.baseSnapshot ?? {})) as TickState;
+      const body = (await request.json()) as Record<string, unknown>;
+      createBodies.push(body);
       return HttpResponse.json(
-        { id: "sims_origin", tenantId: "demo", baseSnapshot: world, scope: body.scope ?? {}, status: "READY", curTick: 0, parentCheckpointId: null, createdAt: "2026-08-13T00:00:00.000Z" },
+        {
+          id: "sims_origin", tenantId: "demo", baseSnapshot: SERVER_BASE,
+          ...(prov === undefined ? {} : { baseSnapshotProvenance: prov }),
+          scope: (body.scope as Record<string, unknown>) ?? {}, status: "READY", curTick: 0,
+          parentCheckpointId: null, createdAt: "2026-08-13T00:00:00.000Z",
+        },
         { status: 201 },
       );
     }),
     http.get("*/a/v1/sim/sessions", () => HttpResponse.json({ items: [] })),
     http.get("*/a/v1/sim/sessions/:id/world", ({ request }) => {
       worldGets.push(request.url);
-      return HttpResponse.json({ tick: 3, state: SERVER_WORLD });
+      // 真后端在 `tick>0` 时照样带 `baseProvenance`（它描述的是**起点**，不是本回包的 state）。
+      return HttpResponse.json({
+        tick: 3, state: SERVER_WORLD,
+        ...(prov === undefined ? {} : { baseProvenance: prov }),
+      });
     }),
-    // tick 回包 = **后端算的**世界态 ⇒ 屏上记号必须从「合成·占位」换成「实测」。
     http.post("*/a/v1/sim/sessions/:id/tick", () => HttpResponse.json({ curTick: 1, state: SERVER_WORLD })),
     http.get("*/a/v1/sim/sessions/:id/perturbations", () => HttpResponse.json({ items: [] })),
     http.get("*/a/v1/sim/sessions/:id/certification", () =>
@@ -94,85 +131,146 @@ const badge = () => screen.getByTestId("sandbox-kpi-origin");
 
 beforeEach(() => {
   worldGets.length = 0;
-  installHandlers();
+  createBodies.length = 0;
 });
 afterEach(() => cleanup());
 
-describe("WO-V4-HONEST-ORIGIN · 顶栏占位值诚实位（两向）", () => {
-  it("① 占位期：徽标在场且写「合成·占位」（DERIVED）—— 屏上那批数确实是哈希派生的那一份", async () => {
+describe("WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚实位（四态）", () => {
+  it("① 建会话**不传** `baseSnapshot`：那个键在请求 body 里压根不存在（前端不再造世界）", async () => {
+    installHandlers();
     mount();
     await screen.findByTestId("sandbox-view");
-    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("DERIVED"));
-    expect(badge().textContent).toContain("合成·占位");
-    expect(badge().textContent).not.toContain("实测");
+    await waitFor(() => expect(createBodies.length).toBeGreaterThan(0));
 
-    // 屏上的读数确实 == `deriveBaseSnapshot` 那一份（否则"占位"这个记号指的不是屏上这批数）。
-    const base = deriveBaseSnapshot(CFG);
-    const ids = Object.keys(base);
+    const body = createBodies[0]!;
+    // ★ 判据落在**键的存在性**上，不是 `body.baseSnapshot` 的真值性：
+    //   传 `{}`（"我就是要空世界"）与不传（"你替我派生"）是两个不同的命题，后端据此二分。
+    //   写 `!body.baseSnapshot` 的话，传 `{}` 也会绿 —— 那正好是错的那一支。
+    expect("baseSnapshot" in body, "前端仍在往上传世界 —— 本单的病根没拔").toBe(false);
+    // 🐤 金丝雀（否定结论必须配命中证据，铁律 0.6）：同一个 body 里**该有的键确实有**。
+    //   它若也报 false，那是 body 根本没被记下来，上面那个 `false` 什么都证明不了。
+    expect("scope" in body, "连 scope 都不在 ⇒ body 没被记下来，上面那条否定结论作废").toBe(true);
+  });
+
+  it("② 混合世界：徽标标 `MIXED` 且**两个数都写在屏上** —— 不许二值化", async () => {
+    installHandlers();
+    mount();
+    await screen.findByTestId("sandbox-view");
+
+    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("MIXED"));
+    // 5 格实测 + 1 格占位（`obj_b1.risk`）
+    expect(badge().getAttribute("data-measured-cells")).toBe("5");
+    expect(badge().getAttribute("data-derived-cells")).toBe("1");
+    expect(badge().getAttribute("data-unknown-cells")).toBe("0");
+    // ⛔ 反向金丝雀：占位那一档**不许被藏起来**（藏 = 假装那格不存在，同样不诚实）。
+    expect(badge().textContent, "占位格数没写在屏上 —— 藏起来与说成实测一样不诚实").toContain("1");
+    expect(badge().textContent).toContain("占位");
+    expect(badge().textContent).toContain("实测");
+
+    // 屏上的读数真的是**后端那一份**（记号换了但数没换 = 记号在说谎）。
+    const ids = Object.keys(SERVER_BASE);
     expect(ids.length).toBeGreaterThan(2);
-    // 基数下限：空 stateVars 会让下面这个 for **一次都不进**而用例照样绿（`coverage-blind` 的 LOOP_NO_FLOOR）。
-    expect(CFG.stateVars.length).toBeGreaterThan(1);
+    expect(CFG.stateVars.length).toBeGreaterThan(1); // 基数下限：空集上 for 一次都不进也照样绿
     for (const v of CFG.stateVars) {
-      const avg = ids.reduce((a, o) => a + (base[o]?.[v] ?? 0), 0) / ids.length;
+      const avg = ids.reduce((a, o) => a + (SERVER_BASE[o]?.[v] ?? 0), 0) / ids.length;
       const shown = screen.queryByTestId(`sandbox-kpi-${v}-val`);
-      // 分层后只有前 N 个在第一层，其余在 `<details>` 里 —— 折叠态内容仍在 DOM，故一律找得到。
       expect(shown, `stateVar ${v} 的读数不在 DOM 里`).not.toBeNull();
       expect(shown!.textContent).toBe(avg.toFixed(1));
     }
   });
 
-  it("② 实测期：推进一个 tick（后端回包）⇒ 记号**换成**「实测」（MEASURED），「合成·占位」不再出现", async () => {
-    const user = userEvent.setup();
+  it("③ **逐项**记号：全实测的项与含占位的项显示**不一样**（不许两档长得一样）", async () => {
+    installHandlers();
     mount();
     await screen.findByTestId("sandbox-view");
-    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("DERIVED"));
+    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("MIXED"));
 
-    await user.click(screen.getByTestId("sandbox-tick-btn"));
+    // `load`：三格全实测 ⇒ MEASURED
+    const load = screen.getByTestId("sandbox-kpi-load");
+    expect(load.getAttribute("data-origin")).toBe("MEASURED");
+    expect(load.getAttribute("data-derived-cells")).toBe("0");
+    // `risk`：两格实测 + 一格占位 ⇒ MIXED，且占位数要写出来
+    const risk = screen.getByTestId("sandbox-kpi-risk");
+    expect(risk.getAttribute("data-origin")).toBe("MIXED");
+    expect(risk.getAttribute("data-derived-cells")).toBe("1");
+    expect(risk.textContent, "含占位的项没在屏上标出来").toContain("占位");
+    // ★ 这一条是本用例的核心：两档**在屏上真的不同**。
+    //   只咬 `data-origin` 不够 —— 属性对了而文案一样，用户看到的仍是两个没法分辨的数。
+    expect(load.textContent, "全实测项与含占位项文案相同 ⇒ 逐项记号形同虚设").not.toBe(risk.textContent);
+    expect(load.textContent).not.toContain("占位");
+    // 无障碍口径同样两档分开（屏幕阅读器读到的不许是同一句）。
+    expect(load.getAttribute("aria-label")).not.toBe(risk.getAttribute("aria-label"));
+  });
+
+  it("④ 缺出处 ⇒ `UNKNOWN`，**不许并进 `derived`**（「我没记」不等于「它是占位」）", async () => {
+    installHandlers(undefined); // 老会话 / 后端没下发逐格出处
+    mount();
+    await screen.findByTestId("sandbox-view");
+
+    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("UNKNOWN"));
+    expect(badge().getAttribute("data-unknown-cells")).toBe("6");
+    expect(badge().getAttribute("data-derived-cells"), "缺出处被并进了 derived —— 拿「我没记」冒充「它是占位」").toBe("0");
+    expect(badge().getAttribute("data-measured-cells")).toBe("0");
+    expect(badge().textContent).toContain("未知");
+    // ⛔ 两向：不许在未知态说实测，也不许在未知态说占位（两者都是把未知伪装成已知）。
+    expect(badge().textContent).not.toContain("实测");
+    expect(badge().textContent).not.toContain("合成·占位");
+  });
+
+  it("⑤ 全实测世界 ⇒ `MEASURED`，且**占位字样一个都不出现**（反向：不许永远说占位）", async () => {
+    installHandlers({
+      obj_a1: { load: "measured", risk: "measured" },
+      obj_a2: { load: "measured", risk: "measured" },
+      obj_b1: { load: "measured", risk: "measured" },
+    });
+    mount();
+    await screen.findByTestId("sandbox-view");
 
     await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("MEASURED"));
+    expect(badge().getAttribute("data-measured-cells")).toBe("6");
+    expect(badge().getAttribute("data-derived-cells")).toBe("0");
     expect(badge().textContent).toContain("实测");
-    expect(badge().textContent, "占位记号没换掉 —— 只加不换等于没换（只咬一向的那种假绿）").not.toContain("合成·占位");
-
-    // 屏上的读数也真的换成了后端那一份（记号换了但数没换 = 记号在说谎）。
-    const ids = Object.keys(SERVER_WORLD);
-    expect(ids.length).toBeGreaterThan(2);
-    const avgLoad = ids.reduce((a, o) => a + (SERVER_WORLD[o]?.load ?? 0), 0) / ids.length;
-    await waitFor(() => expect(screen.getByTestId("sandbox-kpi-load-val").textContent).toBe(avgLoad.toFixed(1)));
+    expect(badge().textContent, "全实测还在说占位 = 另一种谎（自毁可信度那一支）").not.toContain("占位");
   });
 
-  it("③ `hash01` 派生**没被改**：同一份 cfg 重跑逐字节一致，且全对象均值仍收敛在 50 附近（R6 占位不动）", () => {
-    // 这一条是**反向**约束：本单修的是记号，不是数值。有人"顺手把占位改得不像 50"就在这里红。
-    const a = deriveBaseSnapshot(CFG);
-    const b = deriveBaseSnapshot(CFG);
-    expect(JSON.stringify(a)).toBe(JSON.stringify(b)); // R6 确定性
-    const ids = Object.keys(a);
-    expect(ids.length).toBeGreaterThan(2);
-    expect(CFG.stateVars.length).toBeGreaterThan(1); // 同上：无下限的 for 在空集上恒绿
-    for (const oid of ids) for (const v of CFG.stateVars) {
-      const x = a[oid]![v]!;
-      expect(Number.isInteger(x)).toBe(true);
-      expect(x).toBeGreaterThan(-1);
-      expect(x).toBeLessThan(101);
-    }
-  });
-
-  it("④ 判据不能用「`worldQuery.data` 到没到」—— 新建会话时那个 GET **一次都不会发**（本门钉住这个事实）", async () => {
+  it("⑥ 判据不能用「`worldQuery.data` 到没到」—— 新建会话时那个 GET **一次都不会发**", async () => {
+    installHandlers();
     mount();
     await screen.findByTestId("sandbox-view");
-    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("DERIVED"));
+    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("MIXED"));
 
     // ★ 否定结论先立：页面这一侧一次都没发过 `GET …/world`
-    //   （`init` 用 setQueryData 塞了占位 + `staleTime: Infinity` ⇒ 那个 query 已是 fresh，不会去取）。
+    //   （`init` 用 setQueryData 塞了世界 + `staleTime: Infinity` ⇒ 那个 query 已是 fresh）。
     const fromPage = worldGets.length;
     expect(fromPage).toBe(0);
 
-    // 🐤 金丝雀（**必须在否定结论之后立刻给**，铁律 0.6）：同一个 handler 在**已知必中**的那一面
-    //   必须记得上账 —— 手打一次同一个 URL，计数应当涨。不涨 ⇒ 是 handler 瞎了，不是页面没发。
+    // 🐤 金丝雀（**必须在否定结论之后立刻给**，铁律 0.6）：同一个 handler 在已知必中那一面要记账。
     await fetch("http://localhost/a/v1/sim/sessions/sims_origin/world");
     expect(worldGets.length, "handler 自己不记账 ⇒ 上面那个「0 次」证明不了任何事").toBeGreaterThan(fromPage);
   });
 
-  it("⑤ 事件驱动重取（真 GET 回来的那一份）同样标「实测」—— 出处跟着数据走，不跟着某一个入口走", async () => {
+  it("⑦ 推进 tick（引擎算的世界）后，tick0 的出处**仍在屏上** —— 不许被推拍抹掉", async () => {
+    const user = userEvent.setup();
+    installHandlers();
+    mount();
+    await screen.findByTestId("sandbox-view");
+    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("MIXED"));
+
+    await user.click(screen.getByTestId("sandbox-tick-btn"));
+
+    // 读数换成引擎那一份（tick 真的推了）。
+    const ids = Object.keys(SERVER_WORLD);
+    const avgLoad = ids.reduce((a, o) => a + (SERVER_WORLD[o]?.load ?? 0), 0) / ids.length;
+    await waitFor(() => expect(screen.getByTestId("sandbox-kpi-load-val").textContent).toBe(avgLoad.toFixed(1)));
+
+    // ★ 而起点的出处**没被抹掉**：一条从占位起跑的链，算到第 3 拍依旧是从占位起跑的。
+    //   把它在 tick>0 时丢掉，等于让用户以为推演结果比它的起点更可信。
+    expect(badge().getAttribute("data-origin")).toBe("MIXED");
+    expect(badge().getAttribute("data-derived-cells")).toBe("1");
+  });
+
+  it("⑧ 事件驱动重取（真 GET 回来的那一份）出处照样在 —— 跟着数据走，不跟着某一个入口走", async () => {
+    installHandlers();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
@@ -180,12 +278,12 @@ describe("WO-V4-HONEST-ORIGIN · 顶栏占位值诚实位（两向）", () => {
       </QueryClientProvider>,
     );
     await screen.findByTestId("sandbox-view");
-    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("DERIVED"));
+    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("MIXED"));
 
     // 模拟 `sim.tick_completed` 到达 → invalidateForEvent 把这个 key 标脏 → 真重取。
     await qc.invalidateQueries({ queryKey: ["a", "sim-world", "sims_origin"] });
-    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("MEASURED"));
-    expect(badge().textContent).toContain("实测");
-    expect(worldGets.length).toBeGreaterThan(0);
+    await waitFor(() => expect(worldGets.length).toBeGreaterThan(0));
+    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("MIXED"));
+    expect(badge().getAttribute("data-derived-cells")).toBe("1");
   });
 });
