@@ -102,7 +102,10 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       // ⚠ 它**默认关闭但目录不过滤**（§3.3「关掉的边要可见地降级，不是从图上消失」），
       //   故这份清单里有它 —— 这份清单数的是**目录**，不是"默认世界会跑的边"。
       "customer_has_location", "customer_has_overdue_record", "customer_places_order",
-      "defect_raises_exception", "equip_used_in", "equipment_has_maintenance_order",
+      "defect_raises_exception",
+      // WO-PROP-REVIEW-V2 ㉜ 反向：`equip_used_in` 由 1 条变 2 条（㊷ + 反向后的 ㉜）；
+      // `process_uses_equipment` 相应从本清单退出（链路类型本身保留在结构层）。
+      "equip_used_in", "equip_used_in", "equipment_has_maintenance_order",
       // WO-PROP-REVIEW-V2 库存环两条 FGI 出边**全部挂 `fg_of_model`**（已物化的既有链路 18 条·
       // 零新 linkType·零新物化）⇒ 本清单新增 2 项（目录 50→52 的构成，见上方计数注释）。
       "fg_of_model", "fg_of_model",
@@ -116,7 +119,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       "order_for_model", "order_for_model", "order_for_model", "order_for_model", "order_for_model",
       "order_has_line",
       "order_has_line", "order_has_promise", "order_of_customer", "po_customs_cleared_by", "po_from_supplier",
-      "po_inspected_by", "po_replenishes_material", "process_belongs_to_line", "process_uses_equipment", "supplier_supplies_material",
+      "po_inspected_by", "po_replenishes_material", "process_belongs_to_line", "supplier_supplies_material",
       "supplier_supplies_material", "wip_lot_found_defect", "wo_for_model", "wo_for_model", "work_order_sampled_by_quality_lot",
       "work_order_yields_wip_lot",
     ]);
@@ -337,6 +340,15 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // 落点取 `fg_of_model` 的 from 端（一行真成品库存）；`drawdownPressure` 同格带上，
     // 让回补边也在第 1 拍就触发、不依赖「需求负载 → 提货压力」那两拍链先走通。
     const fgRowId = head("fg_of_model");
+    // WO-PROP-REVIEW-V2 ㉜ 反向：`loadPressure` 升格**根源**（入度 0 —— 原来唯一写它的
+    // ㉜ 已掉头改成由它出发）⇒ 两条出边都要自带源，且**一台设备喂不饱两条边**：
+    // 实测（/tmp/t5-probe4.txt）`head("equip_used_in")` 那台
+    // （obj_equipment_LINE-WS-changzhou-slurry-coating-E1）**没有**
+    // `equipment_has_maintenance_order` 链 ⇒ 单格方案维修积压边 0 次、总触发 53；
+    // 加第二格（`head("equipment_has_maintenance_order")` 那台，
+    // obj_equipment_LINE-WS-changzhou-coating-coating-E1，与第一台不同线）后
+    // 两条边 18/8 次、总触发 54 = 54 整。
+    const maintEquipId = head("equipment_has_maintenance_order");
 
     const sid = (await (await t.app.inject({
       method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
@@ -354,7 +366,13 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         [customsSupplierId]: { deliveryDelay: 10 }, // 进口料的主供 —— 清关段唯一的活源
         [materialId]: { priceShock: 5 },
         [rootModelId]: { forecastBias: 10 },
-        [rootEquipId]: { equipmentFailure: 10 },
+        // ㉜ 反向后 equipmentFailure 与 loadPressure 都是**根源**，同格自带（见上方 maintEquipId 注释）；
+        // 这一格喂两条同链边：故障边（equipmentFailure→Process.queuePressure）与
+        // ㉜ 反向边（loadPressure→Process.queuePressure），都经 equip_used_in。
+        [rootEquipId]: { equipmentFailure: 10, loadPressure: 10 },
+        // 第二格专门喂维修积压边（→MaintenanceOrder.repairBacklogPressure 经
+        // equipment_has_maintenance_order）——rootEquipId 没有那条链，实测单格 0 次。
+        [maintEquipId]: { loadPressure: 10 },
         // 库存环的活源（见上方 fgRowId 注释）：coverDays 20 天 = 真种子实测均值量级
         // （/tmp/t3-precheck.txt：1.93–42.34 天，均值 19.78）；drawdownPressure 10 同理给真量级。
         [fgRowId]: { coverDays: 20, drawdownPressure: 10 },
@@ -387,7 +405,10 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_po_expedite_to_customs_queue", "demo_base_load_to_maint_window_squeeze",
         "demo_model_demand_to_cert_queue", "demo_base_load_to_inbound_expedite",
       ],
-      // WO-PROCESS-TICK-COVERAGE 档 2：挂在新补的**影响向逆边**上的 15 条。
+      // WO-PROCESS-TICK-COVERAGE 档 2：挂在新补的**影响向逆边**上的 13 条（原 15 条 ——
+      // WO-PROP-REVIEW-V2 ㉜ 反向后，`demo_equipment_load_to_process_queue` 与
+      // `demo_equipment_load_to_repair_backlog` 的共享源 `loadPressure` 升格根源、
+      // 不再有上游链可带，移去下方「设备负荷根源」组自带源）。
       // 同样不额外造源 —— 全部由上面那四个源头（订单需求 / 基地负载 / 供应商延迟 / 物料涨价）
       // 沿真链传下来。哪一条没被带到，报错就直接指到它，不用再猜。
       扩面档2: [
@@ -397,7 +418,6 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_customer_receivable_to_location_hold", "demo_customer_receivable_to_collection",
         "demo_material_shortage_to_alt_switch", "demo_material_shortage_to_balance_gap",
         "demo_base_load_to_transfer_pressure",
-        "demo_process_queue_to_equipment_load", "demo_equipment_load_to_repair_backlog",
         "demo_model_demand_to_fg_drawdown",
       ],
       // WO-PROCESS-TICK-COVERAGE 档 3：闭掉「标着会动、其实不动」那一条。
@@ -417,6 +437,13 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_forecast_bias_to_order_demand",
         "demo_order_churn_to_line_split", "demo_order_churn_to_model_demand_load",
         "demo_equipment_failure_to_process_queue",
+      ],
+      // WO-PROP-REVIEW-V2 ㉜ 反向：`loadPressure` 升格**根源**（入度 0 —— 原来唯一写它的
+      // ㉜ 已掉头）⇒ 本组与「根源」档同性质，**必须自带源**（baseSnapshot 里
+      // rootEquipId / maintEquipId 两格；一台设备喂不饱两条边，实测 /tmp/t5-probe4.txt：
+      // 单格维修积压 0 次 / 总数 53，两格 18/8 次 / 总数 54）。
+      设备负荷根源: [
+        "demo_equipment_load_to_process_queue", "demo_equipment_load_to_repair_backlog",
       ],
       // WO-SLICE-DOMAINS：设备侧的**出口**四条。本组同样不额外造源 —— 由上面 baseSnapshot 里
       // 已有的 `equipmentFailure` 那一格沿新链带下来：
@@ -462,7 +489,10 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // ── 完整性：十四组 54 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    // ── 完整性：十六组 54 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    // （组数是 prose、无机器守卫，以本对象实际键数为准：业务 6 + 扩面 3 档 + 采购根源/根源/
+    //  设备负荷根源 3 + 设备侧出口/订单真实字段/库存环/物料环 4 = 16。T4 旧注「十四组」
+    //  当时实已 15 组，少记一组；机器守的是下面 physicalKeys 那条逐字节比对，不是这行字。）
     //
     // 🔴 口径修正（WO-ADVERSARY-REACTION）：目录里从此有两类边，**必须分开数**——
     //  · **物理边**（`reaction == null`）：默认世界照跑，逐条都要在上面的 trace 里出现；
