@@ -138,6 +138,24 @@ provenance 档继承（引 ≈ 级数据 ⇒ 结论不许写「是」）。验�
 编译的金标集回归门；误编译（错事件种类/错落点类型）零容忍。验收：金标集 Top-1 ≥门槛且误编译=0；
 新增事件种类 ⇒ 金标集必须同批扩（门）。
 
+**A9（P1）ReAct 工具面：全资源可调、工具与注册表同源、施扰必须走账**
+证据（本轮亲核）：ReAct 循环在（`agent/loop.ts`：迭代 toolCalls + 停滞检测）；executor 27 工具
+（本体/对象/切片/invoke_solver 全量按权限/evaluate_rules/知识/时序/create_action_draft）；
+sim 指挥台四工具（sim_init/sim_tick/sim_world/sim_certify，OBO+R4 模拟态）被 `sim.commander`
+特性键关着（demo 实测 OFF，`tools/registry.ts:344`「关→工具不存在」R3 暗发）；
+⛔ **无施扰工具**（sim_act/sim_drill/sim_counterfactual grep 零命中——推演第一环对 agent 是断的）；
+⛔ skill 不能作为工具被 loop 调用；⚠ sim_init 的 `baseSnapshot` 入参可绕开扰动账/landable 门（后门形态）。
+需求：
+① **工具面与 DRIL 注册表同源**（tools/registry 从注册表投影，消灭「注册表一本账、工具面另一本账」）；
+② sim 工具族补全：`sim_act`（**必须走 /perturbations 账 + proposedBy=AGENT + landable 门**，
+⛔ 不许直改状态）、`sim_drill`、`sim_counterfactual`（沿用 OBO + R4 模拟态纪律）；
+③ `run_skill` 工具化（消费 A5 的发布 skill，调用进 plan 披露）；
+④ `sim.commander` 上线判据 = **A1/A2/A3 合并之后**（M1 出口联动：无计划披露/分账/预算，不开工具）；
+⑤ 堵后门：agent 身份的 `sim_init` 禁传 `baseSnapshot`（或强制标 `derived-from-agent` 审计）。
+验收（对照实验）：开通 sim.commander 后 agent ReAct 跑「铝箔+20% 会怎样」⇒ plan 披露显示
+discover→sim_init→sim_act（扰动账 proposedBy=AGENT）→sim_tick→invoke_solver 全链；
+关 sim.commander ⇒ 工具列表零 sim_*（R3 暗发门）；agent 试直传 baseSnapshot ⇒ 被拒并披露。
+
 ### WS-B · 推演科学
 
 **B1（P1）引擎级 UQ：确定性 ensemble**
@@ -246,7 +264,7 @@ LLM 进演化层（永不）· agent 专用数据后门 · 替人拍板（排序
 | 程 | 内容 | 出口判据 |
 |---|---|---|
 | M1 审计地基 | A1 A2 A3 B5 D1 | 编排三件套契约合并；agent 上岗前提齐；timings 缺陷清账 |
-| M2 编排闭环 | A4 A5 A6 A7 A8 | 一句自然语言 → plan 披露完整 → 报告每数有出处（G1 G2 G5） |
+| M2 编排闭环 | A4 A5 A6 A7 A8 A9 | 一句自然语言 → plan 披露完整 → 报告每数有出处（G1 G2 G5）；ReAct 全链施扰走账 |
 | M3 推演科学 | B1 B2 B3 D2 D3 | 敞口带分布档；每条受阻环节带归因（G3 G4） |
 | M4 V&V 闭环 | C1 C2 C3 C4 | paired>0、回测门进 CI、决策回流走通（G6） |
 | M5 工业化 | N1–N9 D4–D7 | NFR 表全绿；R1–R7 清账（G7 G8） |
@@ -307,6 +325,7 @@ R6：同输入重跑字节一致；世界初值若被需求改动 ⇒ D4 稳态�
 | A6 核对环 | T4 | 杀掉一个 solver ⇒ 该步 `failed`、后续不执行、结论标降级 |
 | A7 引用绑定 | T4 | 注入一个编造数 ⇒ 审计器红；引 ≈ 级数据 ⇒ 结论不许写「是」 |
 | A8 金标门 | T1 | 金标问句集回归：Top-1 ≥ 门槛 且 误编译 = 0；新事件种类 ⇒ 金标同批扩 |
+| A9 ReAct 工具面 | T1+T4 | 开通后 ReAct 全链（discover→init→act→tick→solver）施扰走账 proposedBy=AGENT；关开关 ⇒ 工具不可见；直传 baseSnapshot ⇒ 被拒+披露 |
 | B1 UQ ensemble | T1+T5 | 同 seed 名单 ×2 ⇒ 字节一致；异名单 ⇒ 异分布；单值读数标 `deterministic-only` |
 | B2 归因维 | T1 | 施 2 件已知扰动（如 铝箔+20% ∧ 容百+7天）⇒ 每条环节归因 = 单独施扰臂实测；相关冒充因果 ⇒ 红 |
 | B3 ABM 生态 | T1+T4 | 新 actor 规格零引擎改动即生效，双臂验开关；构造振荡场景 ⇒ 报警触发 |
