@@ -709,4 +709,130 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
       expect(r.read, `读数回到 ${preFix} ⇒ 该对的权重被当成 1 了（"查不到用量"绝不等于"用量为 1"）`).not.toBe(preFix);
     }
   });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // §5b 同一批边上的**第二条**：缺料 → 型号供应风险（WO-WEIGHT-BASIS-FILL）
+  // ────────────────────────────────────────────────────────────────────────────
+  /**
+   * **这一节堵的是「兄弟边漏网」这个形态，不是补覆盖率。**
+   *
+   * `demo_material_shortage_to_model_supply_risk` 与上面那条 `demo_material_price_to_model_cost`
+   * **源类型 / 目标类型 / 链路 key 完全相同**（实测拓扑逐项相同：42 边 / 6 目标 / 扇入 7），
+   * 而它到 2026-09-18 之前一直挂着 `equal_share`，注释还写着
+   * 「本边无可审计的差异化计量值 ⇒ 等份」——**这句话被它自己的邻居证伪**：
+   * 同一批边上，BOM 成本占比从 2026-09-03 起就一直取得到。
+   *
+   * 修前实测（真后端 seed 42 ·`2170 三元圆柱`· 各料 shortageRisk +15）：
+   * 七种物料权重**全为 1/7**，`supplyRisk` **逐字节同为 0.346875** ——
+   * 占 BOM 大头的三元正极与边角料铝箔**完全同权**。与 `9.75/9.75` 是同一个病的同一个指纹。
+   * 修后：七个读数全不同，三元正极/铝箔 = **38.01×**、隔膜/铝箔 = **73.69×**。
+   *
+   * 形态（照铁律 0.6 句式）：
+   * > 「我用『这条边声明了一个在册口径』当作『它按用量分摊了』的证据，而前者并不度量后者
+   * >  —— `equal_share` 也是在册口径，它恰恰是"不按用量"的那一个。」
+   *
+   * ⚠ 本节额外咬一条上面那节**没有**的判据：**Σ权重 ≡ 1 且世界总量不跳**。
+   * 它区分的是「按用量分摊」与「把量纲从加权平均改成随条数膨胀」——
+   * 后者同样能让四个数"拉开"，却是契约明令禁止的改量纲（`IN_EDGES` vs `IN_EDGES_MEAN`）。
+   * 只断言"拉开了"会把这两者一起放行。
+   */
+  it("种子把 bom_cost_share 接到**缺料→供应风险**这条边上了（此前挂 equal_share·注释被邻居证伪）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/seed.ts", import.meta.url), "utf8");
+    // 🐤 金丝雀：真读到种子了（读空文件时"没找到那行"是句空话）。
+    expect(src.length, "seed.ts 读成空 ⇒ 读取坏了，不是『种子里没有』").toBeGreaterThan(10000);
+    const at = src.indexOf('key: "demo_material_shortage_to_model_supply_risk"');
+    expect(at, "种子里找不到这条边").toBeGreaterThan(0);
+    expect(
+      src.slice(at, at + 2500),
+      "这条边退回了不带用量的口径 ⇒ 七种物料又会同权（修前实测 supplyRisk 逐字节同为 0.346875）",
+    ).toContain('weightRef: { basis: "bom_cost_share" }');
+  });
+
+  it("🔴 对照实验：缺料→供应风险 —— BOM 占比不同的物料各涨 15 ⇒ 读数按占比拉开，且 Σ权重≡1 总量不跳", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+
+    const RULE = "demo_material_shortage_to_model_supply_risk";
+    const SHOCK = 15;
+    // 系数从规则表现取，不写死（同上节理由：本用例守的是**比值**，与标定无关）。
+    const COEFF = ((await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json() as {
+      items: { key: string; coefficient: number }[];
+    }).items.find((r) => r.key === RULE)?.coefficient;
+    expect(COEFF, `取不到 ${RULE} 的系数`).toBeDefined();
+    expect(COEFF, "该边系数为 0 ⇒ 下面每一句期望值都成 0、逐句自洽成绿").toBeGreaterThan(0);
+
+    const drive = async (materialId: string, modelId: string) => {
+      const sid = (await (await t.app.inject({
+        method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
+        payload: { baseSnapshot: { [materialId]: { shortageRisk: SHOCK }, [modelId]: { supplyRisk: 0 } } },
+      })).json()).id as string;
+      const tick = await t.app.inject({
+        method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 },
+      });
+      expect(tick.statusCode).toBe(200);
+      const body = tick.json() as {
+        state: Record<string, Record<string, number>>;
+        pairWeighting?: { report: {
+          explain: { ruleKey: string; sourceObjectId: string; targetObjectId: string; weight: number; denominator: number; formula: string }[];
+          unresolved: { ruleKey: string; reason: string }[];
+        } };
+      };
+      // 口径算不出来时引擎会**诚实报缺**并让本条流不传导 —— 那会让下面每个读数都成 0、逐句自洽成绿。
+      const bad = (body.pairWeighting?.report.unresolved ?? []).filter((u) => u.ruleKey === RULE);
+      expect(bad, `本规则被判"算不出权重"：${bad[0]?.reason ?? ""}`).toHaveLength(0);
+      const ex = body.pairWeighting?.report.explain.find(
+        (e) => e.ruleKey === RULE && e.sourceObjectId === materialId && e.targetObjectId === modelId,
+      );
+      return { read: body.state[modelId]?.supplyRisk ?? 0, ex };
+    };
+
+    // 沿**真链路表**挑型号，不写死 obj_material_*（种子换料时本用例应当跟着走，而不是变成假绿）。
+    const links = await t.repos.links.list("demo", (l) => l.type === "material_used_by_model");
+    expect(links.length, "真链路表里没有 material_used_by_model ⇒ 这条边根本不触发").toBeGreaterThan(0);
+    const byModel = new Map<string, string[]>();
+    for (const l of links) (byModel.get(l.toId) ?? byModel.set(l.toId, []).get(l.toId)!).push(l.fromId);
+    const modelId = [...byModel.keys()].sort().find((m) => (byModel.get(m) ?? []).length >= 2);
+    expect(modelId, "没有任何型号同时用到 ≥2 种物料 ⇒ 这条边根本分不了摊").toBeDefined();
+
+    const runs = [];
+    for (const m of [...(byModel.get(modelId!) ?? [])].sort()) runs.push({ materialId: m, ...(await drive(m, modelId!)) });
+    const scored = runs.filter((r) => r.ex !== undefined).sort((a, b) => a.ex!.weight - b.ex!.weight);
+    expect(scored.length, "一对权重出处都没拿到 ⇒ 该边没在分摊").toBeGreaterThanOrEqual(2);
+    const lo = scored[0]!, hi = scored[scored.length - 1]!;
+
+    // ── 判据 ①：占比最大与最小的两种物料**读数必须不同**（修前逐字节相同，这就是病本身）。
+    expect(
+      hi.read,
+      `占比最大(${hi.ex!.weight})与最小(${lo.ex!.weight})的两种物料给出同一个读数 ⇒ ` +
+        "又退回等份（修前形态复现：七种料各 1/7，贵重料与边角料同权)",
+    ).not.toBe(lo.read);
+    expect(hi.read).toBeGreaterThan(lo.read);
+
+    // ── 判据 ②：读数 = 系数 × BOM 占比 × 源态，占比从回包出处**独立复算**（不写死金值）。
+    for (const r of [lo, hi]) {
+      const expected = Math.round(COEFF! * r.ex!.weight * SHOCK * 1e12) / 1e12;
+      expect(r.read, `${r.materialId} 的读数与「系数 × BOM 占比 × 缺料幅度」对不上`).toBe(expected);
+      expect(r.ex!.formula, "出处不是来自 BOM 用量 ⇒ 份额是凭空来的").toContain("单台用量");
+      expect(r.ex!.denominator, "分母 ≤ 0 ⇒ 占比无意义").toBeGreaterThan(0);
+    }
+
+    // ── 判据 ③：等份那个数**不许**再出现。1/N 是"不带用量"的指纹（修前实测 0.346875）。
+    const equalShare = Math.round((COEFF! * SHOCK / scored.length) * 1e12) / 1e12;
+    for (const r of runs) {
+      expect(r.read, `读数回到等份值 ${equalShare} ⇒ 该对的权重又被当成 1/N 了`).not.toBe(equalShare);
+    }
+
+    // ── 判据 ④：Σ权重 ≡ 1 且**世界总量不跳**（这一条上一节没有，见本节头注）。
+    //   它拦的是「用 IN_EDGES_MEAN 之类把量纲改掉」——那也会让读数"拉开"，却是契约明令禁止的改量纲。
+    const sumW = scored.reduce((s, r) => s + r.ex!.weight, 0);
+    expect(sumW, `Σ权重 = ${sumW} ≠ 1 ⇒ 归一方向被改掉了（强度型目标必须 IN_EDGES·Σ=1）`).toBeCloseTo(1, 9);
+    const sumRead = runs.reduce((s, r) => s + r.read, 0);
+    expect(
+      sumRead,
+      `逐料驱动的读数合计 ${sumRead} ≠ 系数 × ${SHOCK} ⇒ 换口径把世界总量改了（应当只是重新分配）`,
+    ).toBeCloseTo(COEFF! * SHOCK, 9);
+  });
 });
