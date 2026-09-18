@@ -1,6 +1,7 @@
 // Probe: dump every demo propagation rule's effective coefficient + routing facts.
 // Used to compare canonical vs branch WITHOUT string-counting (铁律 0.6 第 6 条).
 import { demoPropagationRulesWithDomain } from "../src/seed.js";
+import { STATE_VAR_DOMAINS, PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
 
 const rules = demoPropagationRulesWithDomain();
 const out = rules.map((r: any) => ({
@@ -11,6 +12,9 @@ const out = rules.map((r: any) => ({
   sourceStateVar: r.sourceStateVar,
   targetTypeKey: r.targetTypeKey,
   targetStateVar: r.targetStateVar,
+  description: r.description,
+  targetDomainMax: (STATE_VAR_DOMAINS as any)[r.targetStateVar]?.max ?? "UNDECLARED",
+  lambda: PRESSURE_DECAY_PER_TICK,
   weightRef: r.weightRef ? JSON.stringify(r.weightRef) : null,
   viaLinkKey: r.viaLinkKey,
   delayTicks: r.delayTicks,

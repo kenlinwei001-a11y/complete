@@ -34,6 +34,7 @@ import {
   type TickState,
 } from "@platform/contracts";
 import { demoPropagationRulesWithDomain } from "../src/seed.js";
+import { STATE_VAR_DOMAINS, PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
 
 const SEED_TS = join(dirname(fileURLToPath(import.meta.url)), "../src/seed.ts");
 
@@ -224,19 +225,40 @@ describe("§3 描述里的系数 = 真系数", () => {
   //   继续扫源码只会扫到 0 条、然后报「0 条不符」—— 那正是铁律 0.6 的「我没找到 ≠ 它不存在」。
   //   故对账改成：**真系数 = 装饰后种子对象上的 coefficient**（= 引擎 `effectiveCoefficient`
   //   解析到的同一个数，C36 探针逐字节核过）；**描述文本仍是用户屏上那句原话**，照扫。
+  // ⚠⚠ **WO-PROP-V2-REBASE 第二次换轨**：上面那段（「真系数 = 装饰后对象上的 coefficient」）
+  //   在并入 canonical 的 WO-SIM-CALIBRATION 之前是对的，之后**就不对了**——
+  //   标定后落库的是**每拍入流** `稳态增益 × λ`，而 description 承诺的一直是**稳态增益**
+  //   （「价格冲击 × 0.65 = 型号成本压力」读作 `target = source × 0.65`，是稳态关系不是单拍增量）。
+  //   实测：不换轨则 14 行里 **12 行**报不符，其中 `demo_model_demand_to_base_load`
+  //   （描述 ×0.6 / 落库 0.222 = 0.6λ）这类**本单一个字都没改过**的边也在内
+  //   ⇒ 那是**口径错位**，不是描述说了谎；照旧断言等于用一道门去咬一个它没在度量的量。
+  //   形态：「我用『落库系数』当作『描述承诺的那个量』的证据，而前者并不度量后者 —— 差一个 λ。」
+  //
+  // 换轨后：**真增益 = 落库系数 ÷ λ（当且仅当该边被预乘过 λ）**。
+  // 判据与 `seed.ts` 的 `inflowCoefficient` **同一个谓词**（不许各抄一份）：
+  //   目标量纲**已声明域且上界有限** ⇒ 引擎会夹会衰减 ⇒ 落库时预乘过 λ ⇒ 除回去；
+  //   未声明域、或声明了但 `max: null`（无界，无饱和拐点）⇒ 纯积分器，没预乘 ⇒ 原样比。
   /** 从描述文本抽「×N」声明数。**主逻辑与金丝雀共用这一支**。 */
   const statedOf = (description: string): number[] =>
     [...description.matchAll(/[×x]\s*(-?[\d.]+)/g)].map((x) => Number(x[1]));
 
+  /** 落库系数 → description 承诺的那个量（稳态增益）。与 `inflowCoefficient` 互为逆运算。 */
+  const gainOf = (targetStateVar: string, coefficient: number): number => {
+    const d = STATE_VAR_DOMAINS[targetStateVar];
+    const lambdaApplied = d != null && typeof d.max === "number";
+    if (!lambdaApplied) return coefficient;
+    return Math.round((coefficient / PRESSURE_DECAY_PER_TICK) * 1e6) / 1e6;
+  };
+
   interface Row { key: string; coef: number; stated: number[]; ok: boolean }
-  /** 判 (key, 真系数, 描述声明数) 三元组：声明数里至少一个与真系数逐字节相符。 */
+  /** 判 (key, 真增益, 描述声明数) 三元组：声明数里至少一个与真增益相符（6 位小数，= 预算取整精度）。 */
   const rowsFromRules = (
-    rules: ReadonlyArray<{ key: string; coefficient: number; description: string }>,
+    rules: ReadonlyArray<{ key: string; coefficient: number; description: string; targetStateVar: string }>,
   ): Row[] =>
     rules
-      .map((r) => ({ key: r.key, coef: r.coefficient, stated: statedOf(r.description) }))
+      .map((r) => ({ key: r.key, coef: gainOf(r.targetStateVar, r.coefficient), stated: statedOf(r.description) }))
       .filter((r) => r.stated.length > 0) // 描述里没写数 ⇒ 不判定（合法）
-      .map((r) => ({ ...r, ok: r.stated.some((s) => Math.abs(s - r.coef) < 1e-9) }));
+      .map((r) => ({ ...r, ok: r.stated.some((s) => Math.abs(s - r.coef) < 1e-6) }));
 
   it("🐤 金丝雀先行：把一条相符的边变异成不符，对账必须当场抓到", () => {
     const rules = demoPropagationRulesWithDomain().map((r) => ({ ...r }));
