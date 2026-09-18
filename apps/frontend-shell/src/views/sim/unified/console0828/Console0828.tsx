@@ -47,7 +47,6 @@
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PropagationRulesResponse, SandboxViewConfig, SimRunDisclosure } from "@platform/contracts";
-import { SimRunDisclosureSchema } from "@platform/contracts";
 import {
   createSimPerturbation,
   fetchAllObjects,
@@ -167,29 +166,38 @@ interface DisclosureBrief {
  * > 「我用『这段代码编译通过了』当作『它读的键真的存在』的证据，而前者并不度量后者
  * > —— `as` 之后类型系统就不再度量这件事了。」
  *
- * ⇒ 故本函数**改成按契约消费**，两道闸都留着，缺一道下次还会静默：
- *   · **编译期**：入参收 `SimRunDisclosure`，字段名写错/契约改名 ⇒ `tsc` 当场红；
- *   · **运行期**：`SimRunDisclosureSchema.safeParse` —— 后端真漂了就判「没取到」，
- *     走屏上既有的「本次没取到披露」那一路，**不许**再退化成一排 `—` 冒充"拿到了但是空"
- *     （`endpoints.ts` 对这条纪律有原文：两者不许长成同一个样子）。
+ * ⇒ 故本函数**改成按契约消费**，闸放在编译期：
+ *   入参收 `SimRunDisclosure`（上游 `endpoints.ts` 本来就是这个型），
+ *   字段名写错 / 契约改名 ⇒ **`tsc` 当场红**，不必等有人真去点那一屏。
+ *   后端与契约同仓同 build ⇒ 真改了名，datacore 自己先编译不过，前端这条也同刻红。
+ *
+ * ⚠ **运行期只校验「本函数真读的那几项」，不整包 `safeParse`** —— 这是实测之后改的口径：
+ * 本屏只取 9 个标量，而整包 schema 会连 `rules.items[]` 里几百个**本函数一个都不读**的字段
+ * 一起要求。拿 2026-09-03 那份真回包实测：整包 `safeParse` **失败 415 处**，
+ * 全部落在后来 `WO-ADVERSARY-REACTION` 新增的还手字段上。
+ * 若按整包判，这一屏会因为**几个读都没读的字段**整块黑掉 ——
+ * 那是把「有一项没对上」升级成「六项全不给」，比本单要修的病更糟。
+ * ⇒ 校验范围与消费范围对齐：读什么就验什么，验不过的**那一项**回 `null`（屏上 `—`），
+ *   其余照常上屏。整段拿不到才回 `null` 走「本次没取到披露」那一路
+ *   （`endpoints.ts` 原文：「没拿到」与「拿到了但是空」不许长成同一个样子）。
  */
 function readDisclosure(raw: SimRunDisclosure | null | undefined): DisclosureBrief | null {
   if (!raw) return null;
-  const parsed = SimRunDisclosureSchema.safeParse(raw);
-  if (!parsed.success) return null;
-  const d = parsed.data;
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
   return {
-    objects: d.data.objects,
-    links: d.data.links,
-    sliceKey: d.slice.sliceKey,
-    hops: d.slice.hops,
-    rulesFired: d.rules.fired,
-    rulesDeclared: d.rules.declared,
-    withCoefficientRef: d.rules.withCoefficientRef,
-    agentInvoked: d.agent.invoked,
+    objects: num(raw.data?.objects),
+    links: num(raw.data?.links),
+    sliceKey: typeof raw.slice?.sliceKey === "string" ? raw.slice.sliceKey : null,
+    hops: num(raw.slice?.hops),
+    rulesFired: num(raw.rules?.fired),
+    rulesDeclared: num(raw.rules?.declared),
+    withCoefficientRef: num(raw.rules?.withCoefficientRef),
+    agentInvoked: typeof raw.agent?.invoked === "boolean" ? raw.agent.invoked : null,
     // 环节键取值来自后端 `DISCLOSURE_PHASE_ORDER`（graph/shadow/engine/persist/total），
     // **真打过一次 tick 核对过**，不是照着注释猜的。没有 `total` 这一格 ⇒ null，不拿别的格顶替。
-    totalMs: d.timings.find((t) => t.phase === "total")?.ms ?? null,
+    // `Array.isArray` 不是多余的：本单修的就是「这里曾被当成对象读」，
+    // 万一哪天真回来个对象，要的是 `—`，不是 `.find is not a function` 把整屏炸掉。
+    totalMs: Array.isArray(raw.timings) ? num(raw.timings.find((t) => t.phase === "total")?.ms) : null,
   };
 }
 
