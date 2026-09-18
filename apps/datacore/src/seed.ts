@@ -369,7 +369,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
     delayTicks: 0,
-    description: "订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.018301 = 型号需求负载）",
+    description: "订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.018585 = 型号需求负载）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -470,7 +470,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Material",
     targetStateVar: "shortageRisk",
     delayTicks: 0,
-    description: "供应商交期拖长 ⇒ 它供的物料开始缺（交付延迟 × 0.204545 = 物料短缺风险）",
+    description: "供应商交期拖长 ⇒ 它供的物料开始缺（交付延迟 × 0.241071 = 物料短缺风险）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -531,7 +531,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Process",
     targetStateVar: "queuePressure",
     delayTicks: 0,
-    description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.291666 = 工序排队压力）",
+    description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.403846 = 工序排队压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -1072,11 +1072,14 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-PROP-V2-REBASE：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（**不是**「不分摊」）。
-    // 与 canonical WO-SIM-CALIBRATION 对 11 条既有边做的是同一件事、同一条理由：
-    // `weightRef: null` 的真实语义是「每源各加一份满额」⇒ Σw = N ⇒ 入流被放大 N 倍，
-    // 而本格的增益预算（Σ 增益×W ≤ 0.75）正是按 **W=1** 算的 —— 留 null 会让预算失真。
-    weightRef: { basis: "equal_share" },
+    // ⚠ WO-PROP-V2-REBASE **实测后撤回 `equal_share`**（本想照 canonical 的 11 条同款补上）：
+    // 真种子世界 9 拍实测，canonical 那 11 条 `equal_share` 边**一条都没触发**，
+    // 并且把下游 9 条边一起饿死（46 条里 20 条不进 trace ——
+    // `seed-demo-propagation.test.ts` 的「逐条真触发」在 **canonical 上就是红的**，不是本单弄红的）。
+    // 在那条路修好之前给新边挂 `equal_share` = 再让 5 条边静默死掉，用户屏上少 5 条因果边。
+    // ⇒ 维持 `null`。代价如实记账：`null` 的语义是「每源各加一份满额」⇒ Σw = N，
+    // 故本边对该格增益预算的占用是 N 倍，而 N（扇入）本单**未实测** —— 见交付报告的预算段。
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1093,11 +1096,14 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-PROP-V2-REBASE：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（**不是**「不分摊」）。
-    // 与 canonical WO-SIM-CALIBRATION 对 11 条既有边做的是同一件事、同一条理由：
-    // `weightRef: null` 的真实语义是「每源各加一份满额」⇒ Σw = N ⇒ 入流被放大 N 倍，
-    // 而本格的增益预算（Σ 增益×W ≤ 0.75）正是按 **W=1** 算的 —— 留 null 会让预算失真。
-    weightRef: { basis: "equal_share" },
+    // ⚠ WO-PROP-V2-REBASE **实测后撤回 `equal_share`**（本想照 canonical 的 11 条同款补上）：
+    // 真种子世界 9 拍实测，canonical 那 11 条 `equal_share` 边**一条都没触发**，
+    // 并且把下游 9 条边一起饿死（46 条里 20 条不进 trace ——
+    // `seed-demo-propagation.test.ts` 的「逐条真触发」在 **canonical 上就是红的**，不是本单弄红的）。
+    // 在那条路修好之前给新边挂 `equal_share` = 再让 5 条边静默死掉，用户屏上少 5 条因果边。
+    // ⇒ 维持 `null`。代价如实记账：`null` 的语义是「每源各加一份满额」⇒ Σw = N，
+    // 故本边对该格增益预算的占用是 N 倍，而 N（扇入）本单**未实测** —— 见交付报告的预算段。
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1114,11 +1120,14 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-PROP-V2-REBASE：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（**不是**「不分摊」）。
-    // 与 canonical WO-SIM-CALIBRATION 对 11 条既有边做的是同一件事、同一条理由：
-    // `weightRef: null` 的真实语义是「每源各加一份满额」⇒ Σw = N ⇒ 入流被放大 N 倍，
-    // 而本格的增益预算（Σ 增益×W ≤ 0.75）正是按 **W=1** 算的 —— 留 null 会让预算失真。
-    weightRef: { basis: "equal_share" },
+    // ⚠ WO-PROP-V2-REBASE **实测后撤回 `equal_share`**（本想照 canonical 的 11 条同款补上）：
+    // 真种子世界 9 拍实测，canonical 那 11 条 `equal_share` 边**一条都没触发**，
+    // 并且把下游 9 条边一起饿死（46 条里 20 条不进 trace ——
+    // `seed-demo-propagation.test.ts` 的「逐条真触发」在 **canonical 上就是红的**，不是本单弄红的）。
+    // 在那条路修好之前给新边挂 `equal_share` = 再让 5 条边静默死掉，用户屏上少 5 条因果边。
+    // ⇒ 维持 `null`。代价如实记账：`null` 的语义是「每源各加一份满额」⇒ Σw = N，
+    // 故本边对该格增益预算的占用是 N 倍，而 N（扇入）本单**未实测** —— 见交付报告的预算段。
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1169,11 +1178,14 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-PROP-V2-REBASE：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（**不是**「不分摊」）。
-    // 与 canonical WO-SIM-CALIBRATION 对 11 条既有边做的是同一件事、同一条理由：
-    // `weightRef: null` 的真实语义是「每源各加一份满额」⇒ Σw = N ⇒ 入流被放大 N 倍，
-    // 而本格的增益预算（Σ 增益×W ≤ 0.75）正是按 **W=1** 算的 —— 留 null 会让预算失真。
-    weightRef: { basis: "equal_share" },
+    // ⚠ WO-PROP-V2-REBASE **实测后撤回 `equal_share`**（本想照 canonical 的 11 条同款补上）：
+    // 真种子世界 9 拍实测，canonical 那 11 条 `equal_share` 边**一条都没触发**，
+    // 并且把下游 9 条边一起饿死（46 条里 20 条不进 trace ——
+    // `seed-demo-propagation.test.ts` 的「逐条真触发」在 **canonical 上就是红的**，不是本单弄红的）。
+    // 在那条路修好之前给新边挂 `equal_share` = 再让 5 条边静默死掉，用户屏上少 5 条因果边。
+    // ⇒ 维持 `null`。代价如实记账：`null` 的语义是「每源各加一份满额」⇒ Σw = N，
+    // 故本边对该格增益预算的占用是 N 倍，而 N（扇入）本单**未实测** —— 见交付报告的预算段。
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1254,11 +1266,14 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-PROP-V2-REBASE：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（**不是**「不分摊」）。
-    // 与 canonical WO-SIM-CALIBRATION 对 11 条既有边做的是同一件事、同一条理由：
-    // `weightRef: null` 的真实语义是「每源各加一份满额」⇒ Σw = N ⇒ 入流被放大 N 倍，
-    // 而本格的增益预算（Σ 增益×W ≤ 0.75）正是按 **W=1** 算的 —— 留 null 会让预算失真。
-    weightRef: { basis: "equal_share" },
+    // ⚠ WO-PROP-V2-REBASE **实测后撤回 `equal_share`**（本想照 canonical 的 11 条同款补上）：
+    // 真种子世界 9 拍实测，canonical 那 11 条 `equal_share` 边**一条都没触发**，
+    // 并且把下游 9 条边一起饿死（46 条里 20 条不进 trace ——
+    // `seed-demo-propagation.test.ts` 的「逐条真触发」在 **canonical 上就是红的**，不是本单弄红的）。
+    // 在那条路修好之前给新边挂 `equal_share` = 再让 5 条边静默死掉，用户屏上少 5 条因果边。
+    // ⇒ 维持 `null`。代价如实记账：`null` 的语义是「每源各加一份满额」⇒ Σw = N，
+    // 故本边对该格增益预算的占用是 N 倍，而 N（扇入）本单**未实测** —— 见交付报告的预算段。
+    weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
   },

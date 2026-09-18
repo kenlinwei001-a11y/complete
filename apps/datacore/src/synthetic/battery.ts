@@ -773,13 +773,13 @@ export const PROPAGATION_COEF_RULE_KEY = "C36";
  * 披露层同步显示 `coefficientSource: "CONFIG_REF"` 与引用键 `C36.<边key>`。
  */
 export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
-  "demo_order_demand_pressure": 0.00677137,
+  "demo_order_demand_pressure": 0.00687645,
   "demo_model_demand_to_base_load": 0.222,
   "demo_base_load_to_line_util": 0.185,
-  "demo_supplier_delay_to_material_shortage": 0.07568165,
+  "demo_supplier_delay_to_material_shortage": 0.08919627,
   "demo_material_shortage_to_model_supply_risk": 0.161875,
   "demo_model_supply_risk_to_order_shortage": 0.2775,
-  "demo_line_util_to_process_queue": 0.10791642,
+  "demo_line_util_to_process_queue": 0.14942302,
   "demo_material_shortage_to_po_expedite": 0.185,
   "demo_po_expedite_to_inspection_queue": 0.6,
   "demo_material_price_to_model_cost": 0.15684781,
@@ -807,13 +807,13 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   // ㉜ 方向反向（传导规则业务评审 v2 ⑤·2026-09-18·评审原文「方向反。是设备负荷导致排队，
   // 不是反过来（㊷ 方向正相反，佐证这条画反了）」）：键随规则 key 改名，系数 0.5 原样保留
   // （评审只裁方向不裁量级）；`loadPressure` 因此升格为**根源**（入度 0，没有任何规则写它）。
-  "demo_equipment_load_to_process_queue": 0.07708321,
+  "demo_equipment_load_to_process_queue": 0.185,
   "demo_equipment_load_to_repair_backlog": 0.6,
   "demo_model_demand_to_fg_drawdown": 0.222,
   "demo_po_expedite_to_supplier_review": 0.148,
-  "demo_po_procurement_delay_to_material_shortage": 0.06727266,
-  "demo_batch_procurement_delay_to_material_shortage": 0.05045431,
-  "demo_supplier_procurement_delay_to_material_shortage": 0.04204532,
+  "demo_po_procurement_delay_to_material_shortage": 0.07928545,
+  "demo_batch_procurement_delay_to_material_shortage": 0.05946418,
+  "demo_supplier_procurement_delay_to_material_shortage": 0.04955336,
   "demo_forecast_bias_to_order_demand": -0.222,
   "demo_order_churn_to_line_split": 0.12140625,
   // ㊶ 负号即方向（传导规则业务评审 v2 ①·2026-09-17）：订单变更以**取消/缩水**为主 ⇒
@@ -821,8 +821,8 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   // 修前 +0.5 的理由是「插单/取消带来排产返工 ⇒ 推高负载」—— 评审定性符号反：
   // 那条把「变更的**事务扰动**」（改行/改期，由 line_split 边 +0.7 正向表达）与
   // 「变更的**净需求方向**」（取消占多 ⇒ 向下）混成了一个数。量级 |0.5| 维持不变。
-  "demo_order_churn_to_model_demand_load": -0.00423206,
-  "demo_equipment_failure_to_process_queue": 0.0925,
+  "demo_order_churn_to_model_demand_load": 0.00429755,
+  "demo_equipment_failure_to_process_queue": 0.12807661,
   "demo_process_queue_to_line_blocked": 0.2035,
   "demo_line_blocked_to_wo_release": 0.13875,
   "demo_wo_release_to_model_supply_risk": 0.115625,
@@ -839,7 +839,7 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   //     符号为**正**。与 ① 构成一对「现货吸收 − 提货回补」的库存环双向边。
   //  量级与出入参考系对齐：需求侧同落点的两条边分别是 −0.6（预测偏差）与 −0.5（订单变更），
   //  库存边取 ±0.5，既不压过预测信号也不弱到测不出（对照实验：coverDays bump ⇒ demandLoad 同向非零）。
-  "demo_fg_cover_days_to_model_demand": -0.00423206,
+  "demo_fg_cover_days_to_model_demand": -0.185,
   // ⛔ "demo_fg_drawdown_to_model_demand" 已删（WO-PROP-V2-REBASE 裁决，见 seed.ts 库存环段）
   // 物料环三条（传导规则业务评审 v2 ④·2026-09-17·评审优先级 4「物料是第二高频扰动源，今天零阻尼」）：
   //  ① 替代料切换压力 ⇒ 主料短缺风险**下修**（负）：有 Plan B 的料不该和无 Plan B 的料同等短缺。
@@ -854,9 +854,9 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   //     系数对齐同落点直接边 shortage→expedite 0.5（同一语义「缺口驱动催货」，MRP 计算路径与
   //     直接感受路径同强度）；今天规格世界 gapPressure 实测 0–8.99（种子缺口小是数据的诚实现状，
   //     ⛔ 不拿系数去凑大屏数）。
-  "demo_alt_switch_to_material_shortage": -0.02522697,
-  "demo_inspection_queue_to_material_shortage": 0.01681798,
-  "demo_balance_gap_to_po_expedite": 0.0925,
+  "demo_alt_switch_to_material_shortage": -0.111,
+  "demo_inspection_queue_to_material_shortage": 0.074,
+  "demo_balance_gap_to_po_expedite": 0.185,
   // ── WO-PROP-V2-REBASE 收编 canonical WO-SIM-DAMPING 的阻尼边（裁决见 seed.ts 库存环段）──
   // ⚠ **逐字节保留 canonical 的 −0.6，刻意不乘 λ**：canonical 自己就没给它包 `inflowCoefficient`
   //   （它的理由是「镜像判据：与 `demo_model_demand_to_fg_drawdown` 同值反号」）。

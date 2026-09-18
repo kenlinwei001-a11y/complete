@@ -2044,21 +2044,31 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 两条都留 = 净 −0.1，一个谁都解释不了的数，**而且不会报红** —— 正是「取并集比冲突危险」那条。
 **留 canonical 的负边、删分支的正边**；「库存吸收需求」由同组 `coverDays`（−0.5，另一个槽位）承担。
 
-**③ 4 个落点格因新增入边而按 canonical 自己的闭式重分配**
-（`f_g = min(1, 0.75 / S_g)`，`S_g = Σ|意图增益|×W`，增益向下取 6 位）：
+**③ 逐条比对 canonical：同值 N=47 / 不同 M=0。**
+46 条共有边 + 阻尼边全部**逐字节等于 canonical**；canonical 独有 1 条
+（`demo_process_queue_to_equipment_load`，㉜ 方向反向时分支有意删）；分支独有 8 条，取值：
 
-| 落点格 | 处置 | 结果 |
+| 分支独有边 | 取值 | 判据 |
 |---|---|---|
-| `Material.shortageRisk` | 重分配（原已满额 0.75，新增 2 条） | `f_g` 0.267857 → **0.227273**，6 条边全部改值 |
-| `Process.queuePressure` | 重分配（原已满额，新增 1 条） | `f_g` 0.576923 → **0.416667**，3 条边全部改值 |
-| `Model.demandLoad` | 重分配（原已满额，新增 1 条） | `f_g` 0.023231 → **0.022877**，3 条边改值 |
-| `PurchaseOrder.expeditePressure` | **余量内塞下**（原只用 0.5/0.75） | canonical 那条**一位不动**，新边取余量 0.25 |
+| `alt_switch` / `inspection_queue` / `balance_gap` / `equipment_load` / `fg_cover_days` | 意图增益 **× λ**（−0.111 / 0.074 / 0.185 / 0.185 / −0.185） | 落点已声明域且上界有限 ⇒ 按 `inflowCoefficient` 同一谓词该预乘 |
+| `order_qty` / `order_price` / `order_leaddays` | **裸 1.0** | `combine:"max"` 真值透传，目标无声明域 ⇒ 不乘 λ、不受预算 |
 
-⇒ 与 canonical 逐条比对：**同值 39 / 不同 8**（8 条全部是上表前三格的 canonical 边，
-理由同一条：该格新增入边）· canonical 独有 1 条（`demo_process_queue_to_equipment_load`，
-㉜ 方向反向时分支有意删）· 分支独有 8 条。**31 个格的增益预算实测全部 ≤0.75。**
-5 条分支新增的 `sum` 边同步补 `weightRef: equal_share`（W=1）——
-留 `null` 的真实语义是「每源各加一份满额 ⇒ Σw=N」，会让按 W=1 算的预算失真。
+> **🔴 原本打算做、实测后撤回的那一步（留档，免得下一个人再走一遍）**：
+> 曾按 canonical 的闭式 `f_g = min(1, 0.75/S_g)` 把 4 个落点格**整格重分配**
+> （8 条 canonical 边改值），并给 5 条新 `sum` 边补 `weightRef: equal_share` 把 W 钉成 1。
+> **撤回的理由是实测，不是保守**：见下 ⑥ —— `equal_share` 在真种子世界里会让边**整条不触发**。
+> 钉不住 W，闭式就没有输入；硬算出来的 `f_g` 是拿一个假的 W 得到的真数字。
+
+**④ 预算的现状与缺口（如实记账，⛔ 不拿一个没量到的数去填）**：
+31 个落点格中，**W 已量到的边** Σ 增益×W 实测全部 **≤ 0.75**。
+但 4 个格里各有 1–2 条边 `weightRef: null` 且其扇入 N **本单未实测**，故**不计入**判定：
+`Material.shortageRisk`（2 条）· `Model.demandLoad`（2 条）· `Process.queuePressure`（1 条）·
+`PurchaseOrder.expeditePressure`（1 条）。
+`null` 的语义是「每源各加一份满额 ⇒ Σw = N」⇒ 这些边对该格预算的真实占用是 N 倍，
+**该格今天有没有超预算，本单答不了**。⛔ 不许拿同格另一条边的扇入顶上 ——
+本单第一版就是这么把 `Model.demandLoad` 的 Σ 算成 41.02 的（把订单扇入 24.83 安给了 FGI 边）。
+补齐它需要真起世界量 `fg_of_model` / `alt_for_material` / `inspection_for_material` /
+`balance_drives_po` / `equip_used_in` 的**逐目标扇入**，单独立项。
 
 **④ 🔴 继承下来的一处自相矛盾（本单不改，交仓主裁决）**：
 canonical 的阻尼边 `demo_fg_drawdown_relieves_model_demand` 系数 **−0.6 未预乘 λ**，
@@ -2072,11 +2082,33 @@ canonical 的阻尼边 `demo_fg_drawdown_relieves_model_demand` 系数 **−0.6 
 **⑤ 对照实验（铁律 1.5 判据一 · 真引擎 `propagateTick`，非静态推算）**：
 改 `C36.params` 某条边 ×0.1 ⇒ 该边传导量**精确 ×0.100000000000**，同轮其余 **33 条一条没动**；
 🐤 反向：摘掉该边 `coefficientRef` 后改同一个参数 ⇒ **一位不动**（证明真读的是 ref 那条路）。
-三条边各跑一遍（canonical 原值边 / 重分配边 / 分支新边），读数
-`7.8423905→0.78423905` · `3.7840825→0.37840825` · `3.8541605→0.38541605`，
-三者均 = 各自 C36 值 × 源值 50 ⇒ 落库表与引擎读数逐字节同源。
+canonical 原值边与分支新边各跑一遍：`7.8423905 → 0.78423905` · `9.25 → 0.925`，
+两者均 = 各自 C36 值 × 源值 50 ⇒ 落库表与引擎读数逐字节同源。
 ⚠ 实验第一版**34 条边一条没触发**（声明了分摊口径却没喂权重表 ⇒ 引擎诚实缺席），
 「目标边没动」曾被读成绿 —— 补上 `pairWeights` 后才是真实验。
+
+**⑥ 🔴 实测发现：`equal_share` 的边在真种子世界里一条都不触发（canonical 上就是红的，非本单引入）**
+
+判据不是推理，是把**同一个测试文件在两棵树上各跑一遍**：
+`apps/datacore/test/seed-demo-propagation.test.ts` 的「逐条真触发」与「效果层 SEAM」——
+**canonical（`1e81671d`）单独跑，同样这两条红**，缺 **20** 条边；本分支缺 **20** 条（口径同 canonical）。
+
+缺席名单的构成**完全可解释**，不是随机：
+**canonical 那 11 条 `equal_share` 边全部缺席**（`supplier_delay_to_material_shortage` /
+`model_demand_to_base_load` / `material_shortage_to_model_supply_risk` /
+`equipment_failure_to_process_queue` / `process_queue_to_line_blocked` /
+`po_expedite_to_supplier_review` / `po_procurement_delay` / `batch_procurement_delay` /
+`supplier_procurement_delay` / `wo_release_to_model_cost` / `wo_release_to_model_supply_risk`），
+**另外 9 条全部是它们的纯下游**（源量纲只由这 11 条写）⇒ 上游不写，下游恒 0 被饿死。
+11 + 9 = 20，**一条不多一条不少**。
+「效果层 SEAM」那条红得更直白：第 1 跳 `supplier_delay_to_material_shortage` 之后
+`t1[materialId]` 是 `undefined` —— 那一格**根本没被写过**。
+
+**危害是用户可见的**：46 条边里 20 条在默认世界永不进 trace ⇒ 沙盘上少 20 条因果链，
+而屏上不会说「这条边没算」，只会安静地少一段。**这是 A 类。**
+**本单据此撤回给新边补 `equal_share` 的打算** —— 那会再让 5 条边静默死掉。
+⛔ 本单**不修这个缺陷**（它在 canonical 的 `pair-weights.ts` / 引擎侧，超出本单范围边界），
+只把它**量清楚并点名**：修它是单独一张单，判据就是上面那两条红转绿且缺席名单归零。
 
 **评审 v2 登记而未落（诚实挂账，均不阻塞本段交付）**：
 ⑦ Kingman 排队形状（引擎今天只有 delayTicks 整数延迟，无形状参数 = **引擎缺口**，单独立项）·
