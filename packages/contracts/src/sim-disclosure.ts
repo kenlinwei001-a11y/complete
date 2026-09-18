@@ -221,7 +221,8 @@ export const SimDisclosureConstraintsSchema = z.object({
     z.object({
       stateVar: z.string(),
       min: z.number(),
-      max: z.number(),
+      /** `null` = 无界声明（与 `StateVarDomain.max` 同一语义：上夹不生效，积压/天数族专用）。 */
+      max: z.number().nullable(),
       restPoint: z.number(),
       unit: z.string(),
       /** 这个边界是谁定的（登记册里写死的出处串）。 */

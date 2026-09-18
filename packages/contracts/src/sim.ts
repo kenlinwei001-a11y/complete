@@ -626,8 +626,18 @@ export function assertReactionWellFormed<
 export const StateVarDomainSchema = z.object({
   /** 取值域下界（含）。 */
   min: z.number(),
-  /** 取值域上界（含）。 */
-  max: z.number(),
+  /**
+   * 取值域上界（含）。**`null` = 无界声明**（WO-PROP-REVIEW-V2 形态②）。
+   *
+   * 为什么允许 null：积压/天数族（`inspectBacklog` 等）业务上**没有写得出来处的上界**
+   * （电池域表头注：「拍一个 100 天就是拍脑袋定」——那个理由对上界成立，但对衰减不成立，
+   * 评审原文：「检验积压的消化速率 = 检验产能，这是有出处的」）。这类量纲的诚实形态是
+   * 「下界 0 + 静息点 0 + 衰减 λ」三件套 + **上界缺席**，而不是为它编一个上界。
+   * ⚠ 不许用 `Infinity` 顶：zod 4 的 `z.number()` 拒绝无限值，且 JSON 串行化会把
+   *   `Infinity` 落成 `null` —— 两条路都试过，都死（2026-09-18 实测 zod 4.4.3）。
+   * 引擎对 `null` 的语义 = **上夹不生效**（下界/静息点/衰减照常），披露层原样透出。
+   */
+  max: z.number().nullable(),
   /**
    * **静息点** —— 无入流时状态量回落到的那个值，必须 ∈ [min,max]。
    *
