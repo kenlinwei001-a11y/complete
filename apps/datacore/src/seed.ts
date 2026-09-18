@@ -1072,7 +1072,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-PROP-V2-REBASE：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（**不是**「不分摊」）。
+    // 与 canonical WO-SIM-CALIBRATION 对 11 条既有边做的是同一件事、同一条理由：
+    // `weightRef: null` 的真实语义是「每源各加一份满额」⇒ Σw = N ⇒ 入流被放大 N 倍，
+    // 而本格的增益预算（Σ 增益×W ≤ 0.75）正是按 **W=1** 算的 —— 留 null 会让预算失真。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1089,7 +1093,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-PROP-V2-REBASE：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（**不是**「不分摊」）。
+    // 与 canonical WO-SIM-CALIBRATION 对 11 条既有边做的是同一件事、同一条理由：
+    // `weightRef: null` 的真实语义是「每源各加一份满额」⇒ Σw = N ⇒ 入流被放大 N 倍，
+    // 而本格的增益预算（Σ 增益×W ≤ 0.75）正是按 **W=1** 算的 —— 留 null 会让预算失真。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1106,7 +1114,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-PROP-V2-REBASE：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（**不是**「不分摊」）。
+    // 与 canonical WO-SIM-CALIBRATION 对 11 条既有边做的是同一件事、同一条理由：
+    // `weightRef: null` 的真实语义是「每源各加一份满额」⇒ Σw = N ⇒ 入流被放大 N 倍，
+    // 而本格的增益预算（Σ 增益×W ≤ 0.75）正是按 **W=1** 算的 —— 留 null 会让预算失真。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1157,7 +1169,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-PROP-V2-REBASE：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（**不是**「不分摊」）。
+    // 与 canonical WO-SIM-CALIBRATION 对 11 条既有边做的是同一件事、同一条理由：
+    // `weightRef: null` 的真实语义是「每源各加一份满额」⇒ Σw = N ⇒ 入流被放大 N 倍，
+    // 而本格的增益预算（Σ 增益×W ≤ 0.75）正是按 **W=1** 算的 —— 留 null 会让预算失真。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1198,23 +1214,33 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     status: "PUBLISHED",
   },
 
-  // ── WO-PROP-REVIEW-V2 · 库存环两条出边（评审优先级 2「库存 buffer 必须能吸收需求」）──
+  // ── WO-PROP-REVIEW-V2 · 库存环出边（评审优先级 2「库存 buffer 必须能吸收需求」）──
   //
   // 评审原文：「库存环断成死胡同 —— FinishedGoodsInventory 两条边全是**入**边
   // （drawdownPressure 只进不出），现货对需求的**吸收作用**在图上完全缺席。
-  // 50 条边里负系数只有 1 条，缓冲机制零表达。」⇒ 补两条 FGI → Model.demandLoad 出边，
+  // 50 条边里负系数只有 1 条，缓冲机制零表达。」⇒ 补 FGI → Model.demandLoad 出边，
   // 与上面 `demo_model_demand_to_fg_drawdown`（Model → FGI 入边）合成库存环的双向结构。
   //
   // 链路 `fg_of_model`：实测 FinishedGoodsInventory→Model，18 条（FGI 18/18 行全覆盖，
   // `/tmp/t3-precheck.txt`），battery.ts `lnk_fg_*` 物化。N:1 基数的方向正好就是
   // 「每一行现货归一个型号」—— 缓冲/回补都按型号归集，语义与链路一致。
   //
-  // 🔴 回路安全性（两条都过 `assertReactionWellFormed` 之前先在这里自证）：
-  //   边② 与入边构成 Model.demandLoad ⇄ FGI.drawdownPressure 的二拍环，
-  //   环增益 = 0.6（入）× 0.5（出）= **0.3 < 1** ⇒ 阻尼振荡收敛，不是正反馈自激。
-  //   （量级出处：同落点的需求侧两条边是 −0.6 预测偏差 / −0.5 订单变更，库存边取 ±0.5
-  //    既不压过预测信号也不弱到测不出；C36.params 段内注释同一笔账。）
-  //   边① 的源 coverDays 无出边（没有任何规则读它 ⇒ 纯源），不会成环。
+  // ── 🔴 WO-PROP-V2-REBASE 裁决：本组**原有两条，现留一条**（⛔ 不许取并集）────────────
+  // 本单原写的边② `demo_fg_drawdown_to_model_demand`（**+0.5**「提货回补」）与 canonical
+  // 的 `demo_fg_drawdown_relieves_model_demand`（**−0.6**「库存缓冲」，WO-SIM-DAMPING 交付）
+  // **源类型 / 源量纲 / 链路 / 目标类型 / 目标量纲 五项全同** ——
+  // `FinishedGoodsInventory.drawdownPressure --fg_of_model--> Model.demandLoad`，
+  // 只有**符号相反**。同一条物理边不许同时存在两个相反符号的副本（两条都留 = 净 −0.1，
+  // 那个数谁都解释不了，而且**不会报红** —— 这正是「取并集比冲突危险」的原话）。
+  // **裁决：留 canonical 那条负的**（本文件下方 WO-SIM-DAMPING 段），删本单这条正的。理由二：
+  //   ① canonical 已交付，删它是回退；
+  //   ② 本单原注自证「环增益 = 0.6(入) × 0.5(出) = 0.3 < 1 ⇒ 阻尼振荡收敛」——
+  //      **这句话对正环不成立**：入边 +0.6、回边再取 +0.5 是**正反馈**，
+  //      闭环 1/(1−0.3) = **1.43 倍放大**；本单想要的那个「阻尼」只有负号给得出。
+  //      形态：「我用『环增益 < 1』当作『这个环是收敛的』的证据 —— 增益不度量符号。」
+  // 「库存吸收需求」这层语义**没丢**：由下面边① `coverDays`（−0.5）承担，源量纲不同、不占同一槽位。
+  //
+  // 🔴 回路安全性：边① 的源 coverDays 无出边（没有任何规则读它 ⇒ 纯源），不会成环。
   {
     id: "simpr_demo_fg_cover_days_to_model_demand",
     key: "demo_fg_cover_days_to_model_demand",
@@ -1228,27 +1254,16 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-PROP-V2-REBASE：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（**不是**「不分摊」）。
+    // 与 canonical WO-SIM-CALIBRATION 对 11 条既有边做的是同一件事、同一条理由：
+    // `weightRef: null` 的真实语义是「每源各加一份满额」⇒ Σw = N ⇒ 入流被放大 N 倍，
+    // 而本格的增益预算（Σ 增益×W ≤ 0.75）正是按 **W=1** 算的 —— 留 null 会让预算失真。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
-  {
-    id: "simpr_demo_fg_drawdown_to_model_demand",
-    key: "demo_fg_drawdown_to_model_demand",
-    sourceTypeKey: "FinishedGoodsInventory",
-    sourceStateVar: "drawdownPressure",
-    viaLinkKey: "fg_of_model", // 同一条 FGI→Model 链路；源变量换成提货压力
-    targetTypeKey: "Model",
-    targetStateVar: "demandLoad",
-    delayTicks: 0,
-    description: "渠道/客户持续从成品仓提货 ⇒ 该型号需求真实存在，回补到需求负载（提货回补 = 需求负载上抬）",
-    combine: "sum",
-    decay: null,
-    clamp: null,
-    weightRef: null,
-    cadenceNodeId: null,
-    status: "PUBLISHED",
-  },
+  // ⛔ 边② `demo_fg_drawdown_to_model_demand`（+0.5）已按上方裁决删除 ——
+  //    它与 canonical `demo_fg_drawdown_relieves_model_demand`（−0.6）是同一槽位的相反符号。
 
   // ══════════════════════════════════════════════════════════════════════════════════
   // WO-PROCESS-TICK-COVERAGE · 档 3：**闭掉「标着会动、其实不动」那一条**（1 条·零新 linkType）
