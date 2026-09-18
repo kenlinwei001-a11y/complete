@@ -180,10 +180,17 @@ export type WorldOrigin = "DERIVED" | "MEASURED";
  *  · `origin`（整份·二值）＝ 这份 `state` **是谁给的**：后端回包（`MEASURED`）vs 本地占位（`DERIVED`）。
  *  · `baseProvenance`（逐格·三态）＝ **tick0 那一格的数是不是真读出来的**（`measured`/`derived`/缺键=未知）。
  *
- * 本单之后前端**再也不造世界**，`origin` 因此恒为 `MEASURED`（都是后端给的）——
- * ⚠ 但「后端给的」**不等于**「每一格都是实测的」：真后端实测 8,813 格里仍有 **2,542 格**是
- * 后端自己回落的哈希占位。若就此把徽标翻成「实测」，那正是本单要消灭的那种谎，只是换了个说法
+ * ⚠ **「世界是谁给的」不度量「每一格是不是真读数」**：服务端派生那条路上，取不到
+ * `props[stateVar]` 的格仍会回落确定性占位 —— 2026-09-18 实测 8,813 格里就有 **2,542 格**是。
+ * 若因为「这份是后端给的」就把徽标翻成「实测」，那是把老谎换了个说法
  * （从「前端编的说成实测」变成「后端编的说成实测」）。故**屏上的徽标改读逐格合计，不读 `origin`**。
+ *
+ * ⚠ 今天 `init` 走的仍是本地 `deriveBaseSnapshot`（建会话走哪条路由 `resolveTick0World` 那张单管），
+ * 本地那一份由 `stampAllDerived` 自己逐格盖 `derived` 章 ⇒ 屏上照样有出处，不落「未知」。
+ *
+ * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的
+ * `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数 `baseProvenance`。
+ * 派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
  */
 export interface WorldSnapshot {
   tick: number;
@@ -196,9 +203,13 @@ export interface WorldSnapshot {
 /**
  * 屏上诚实位的**四态**（由 `tallyCellProvenance` 的三个计数现算，不另存一个 state）。
  *
- * ⚠ 为什么是四态而不是沿用二值：真世界是**混合**的（实测 6,271 / 占位 2,542）。
+ * ⚠ 为什么是四态而不是沿用二值：服务端派生的世界是**混合**的（2026-09-18 实测 6,271 实测 / 2,542 占位）。
  * 二值化只有两种走法，两种都在撒谎：全标「实测」把 2,542 格占位说成真读数；
  * 全标「占位」把 6,271 格真读数自毁可信度。**混合态必须有自己的记号，并把两个数写在屏上。**
+ *
+ * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的
+ * `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数 `baseProvenance`。
+ * 派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
  */
 /**
  * 给一份**本地现编的**世界逐格盖 `derived` 章（与 `TickState` 同形）。
@@ -210,6 +221,8 @@ export interface WorldSnapshot {
  *
  * ⛔ 不许反过来用它给**后端回来的**世界盖章：那一份是混合的，整份盖 `derived`
  * 会把真读数一起否掉（自毁可信度那一支）。本函数只给「我自己编的」那一份用。
+ *
+ * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
  */
 export function stampAllDerived(state: TickState): CellProvenance {
   const out: CellProvenance = {};
@@ -2185,7 +2198,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 * **今天的行为 X（改之前）**：读 `worldOrigin` 这个二值 —— 而本单之后前端再也不造世界，
                 * 它恒为 `MEASURED` ⇒ 徽标会**恒写「实测」**，对着后端回落的 2,542 格哈希占位也照写。
                 * 那是把老谎换了个说法（从「前端编的说成实测」变成「后端编的说成实测」），比原来更难查。
-                * **应该的 Y**：读**逐格合计**。真世界是混合的（真后端实测 measured 6,271 / derived 2,542），
+                * **应该的 Y**：读**逐格合计**。真世界是混合的（2026-09-18 实测 measured 6,271 / derived 2,542；
+                * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。），
                 * 二值化的两种走法都在撒谎 —— 全标实测是骗人，全标占位是自毁可信度。
                 *
                 * ⛔ **两档必须都看得见，且写出各自有几格**：把 `derived` 藏起来 = 假装那些格不存在，
@@ -2287,7 +2301,10 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                 /**
                  * WO-SANDBOX-REAL-SNAPSHOT · **逐项出处记号**（本单验收判据第 3 条）。
                  *
-                 * 顶栏那个总徽标只说「整份里有 2,542 格是占位」，答不了「**我正在看的这一项**
+                 * 顶栏那个总徽标只说「整份里有 N 格是占位」（2026-09-18 实测真后端为 2,542 格；
+                 * 复验：`GET /a/v1/sim/sessions/:id/world` 数回包 `baseProvenance`，
+                 * 派生实现见 `apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`），
+                 * 答不了「**我正在看的这一项**
                  * 是不是占位」—— 而用户读的是这一项，不是那个总数。所以每一项各算自己的合计：
                  * 全实测 = `●`（不额外加字，避免把最贵的一条变成记号墙）；
                  * 含占位 = `◐` 并写出「占位 N/M」；全占位 = `◐ 占位`；出处未知 = `○`。

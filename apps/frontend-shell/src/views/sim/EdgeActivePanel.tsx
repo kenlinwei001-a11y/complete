@@ -199,7 +199,8 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
    * —— 本页自己编一份 `round(hash01(\`${objectId}|${stateVar}\`) × 100)` 的世界当 tick0。
    * **应该的 Y**：**不传** `baseSnapshot`，由持有真实对象的服务端派生并逐格盖章。
    * 于是探针世界与沙盘世界**仍然是同一个世界**（同一支服务端派生），
-   * 而且从「全部占位」变成了**混合**（真后端实测 measured 6,271 / derived 2,542）。
+   * 而且从「全部占位」变成了**混合**（2026-09-18 实测 measured 6,271 / derived 2,542）。
+   * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
    *
    * ⚠ 正因为它不再全是占位，下方那句出处**必须跟着改** —— 继续写死「占位·未实测」
    * 就是把 6,271 格真读数说成占位：方向相反，但同样是假话，且会自毁这条诚实位的可信度。
@@ -388,6 +389,7 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
         </p>
       )}
       {/* ══ WO-SANDBOX-REAL-SNAPSHOT · 这段出处从**写死一句**改成**现算两个数** ═══════════
+          （2026-09-18 实测；复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。）
           **今天的行为 X（改之前）**：无条件渲染 `PROBE_WORLD_PROVENANCE`「占位·未实测」——
           那在探针世界确实全是 `hash01` 占位的年代是真话。本单之后世界由服务端派生，
           真后端实测 8,813 格里 **6,271 格是实测**，再写「占位·未实测」就是反向的谎。
