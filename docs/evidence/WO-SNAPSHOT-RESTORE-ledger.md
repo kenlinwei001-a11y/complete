@@ -148,7 +148,7 @@ live `runJob` 的幂等清理 = **只清 origin=SYNTHETIC 的 objects/links/rule
 ## 8 · 待补（安静窗）
 - [ ] 干净 probe：makeApp / seedBattery 单次成本（无争用）
 - [x] 5 个重文件干净墙钟（§10.8 安静窗全量内取数，maxWorkers=2 自载口径）：vle-acceptance 135.4s 全 4 绿 · seed-demo-propagation 50.2s 绿 · gap-attribution 192.1s 绿 · enterprise-state.seam 118.8s 绿 · empty-tenant-bootstrap 264.1s（1 红 186s 超帽，定性见 §10.8/§10.9）
-- [→] empty-tenant-bootstrap 负载抖落定性复跑 → §10.8 初判「与快照无关、基线贴帽」，单文件无争用定案移 §10.9
+- [x] empty-tenant-bootstrap 负载抖落定性复跑（§10.9 定案：无争用 112.8s 全绿，帽沿+套件自载争用，0 seedBattery 与快照无关）
 - [x] 世界序列化后字节大小（§10.3：82.9MB，tsPoints 39.6MB + tsAggRuns 30.0MB 占大头）
 - [ ] v8.deserialize + putMany 灌入的单次还原成本实测
 
@@ -307,3 +307,37 @@ Buffer，每次还原重新 `v8.deserialize` 出**全新对象图**再 putMany �
   135.4s 全 4 绿（含 VL5 三次 vle.run），负载抖落定性闭环。
 - 316/318 文件绿 = 快照还原在 808 调用点全机实证；两红的单文件归因落 §10.9（等协调方
   15 分钟槽后跑，不并发）。
+
+### 10.9 两红归因定案（2026-09-18 12:47–12:56，单文件无争用，maxWorkers=1，槽位经协调方让渡）
+
+三跑证据 `/tmp/wo-snapshot-evidence/attr-{features-live,features-snap,empty-tenant}.{txt,rc,load}`
+（每跑 CANARY_AT_START=0，串行不并发）：
+
+| 归因跑 | RC | 壁钟 | 结果 | 启动负载(1/5/15) |
+|---|---|---|---|---|
+| features **live 对照**（DC_SEED_LIVE=1） | 0 | 48.8s | 6/6 绿（含 E7） | 13.8/19.1/44.0 |
+| features **快照复现**（默认） | 1 | 53.3s | 1 failed \| 5 passed（E7 红复现） | 14.4/18.4/42.3 |
+| empty-tenant-bootstrap 无争用（默认） | 0 | 112.8s | 2/2 绿（CL.4 在 180s 帽内 63%） | 36.7/23.8/42.8 |
+
+**① E7 = 快照机制真实语义缺口（双向钉死，已立案）**：
+live 绿 / 快照红，单文件独立复现，断言型非抖落。机制：E7 在**同一测试内第二次**
+`seedBattery(t)` 期待「真重跑 synthetic job 并应用刚 PUT 的禁能 feature（view.risk-board=false）
+⇒ 新 job report.views 不含 risk」；快照路径每次 seedBattery 都是**还原 buf**、不产生新 job
+⇒ 最新 job 仍是快照构建时那份（`report.views = ['dash','graph','risk',…(13)]`）⇒
+`features.test.ts:194 expect(...).not.toContain("risk")` AssertionError。
+**炸半径实测 = 全套件 2117 测试中仅此 1 个**：其余 ~150 个含多次 seedBattery 的文件均为
+每测试一次一 app（多次调用是文件级计数非测试级）；幂等类双种断言不受还原语义影响
+（seed-demo-propagation「幂等：重复播种不增项」安静窗绿为证）。
+**与基线红/负载红的关系**：live 对照绿 ⇒ 非基线内容红；19.4s 快败 ⇒ 非负载抖落。
+这是 R6 等价类中「同测试内重复播种并断言新副作用」这一格的**已知失配**，机制修复
+（如「同 app 二次 seedBattery 回落 live」或该测试显式 live 标注）归 WO owner/协调方决策，
+本次只立案不改机制。
+
+**② empty-tenant-bootstrap CL.4 = 帽沿 + 套件自载争用，与快照无关（定案）**：
+无争用 112.8s 全绿（套件内 264.1s/超帽 3% 系 maxWorkers=2 对工 + 桌面背景噪声）；
+该文件 **0 seedBattery**，快照机制物理上管不到 ⇒ §4 负载态两次超时 + 本次套件一次超帽
+全部闭环为「7 步 bootstrap 重计算本来就贴帽，争用即越帽」，**非基线内容红、非快照账**。
+
+**验收③ 诚实口径终稿**：字面「全绿」未达（套件 2 failed）；有效 316 文件中 **315 实质绿**
+（314 套件绿 + empty-tenant 无争用绿），唯一实质红 = features.test.ts 的 E7 快照语义缺口
+（已立案，机制修复不在本 WO 阶段② 测试工装红线内擅动）。2 skipped 为既有跳过文件。
