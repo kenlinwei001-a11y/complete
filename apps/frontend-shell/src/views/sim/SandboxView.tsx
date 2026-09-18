@@ -141,8 +141,16 @@ const SANDBOX_SECONDARY_ACTION_COUNT = SANDBOX_SECONDARY_ACTIONS.length;
 // 而本文件已经 import 了 `EdgeActivePanel` ⇒ 反向 import 会成环。
 // **在那边放一份副本才是错的**：两份 tick0 派生 = 沙盘的世界与探针世界不是同一个世界，
 // 用户看到的差值会对不上账（这正是本仓「第二套真相源」那条老账的形态）。
+//
+// ⚠⚠ **WO-SANDBOX-REAL-SNAPSHOT 一度把这支连实现一起删掉，2026-09-18 已回退** ——
+// 理由不是改主意，是**另一条分支已经在复用它当兜底**：`claude/handoff-real-cells` 的
+// `resolveTick0World`（`edgeActiveModel.ts`）明写「它**不许删**…租户一条播种世界都没有时，
+// 它仍是唯一能让页面开出一个可跑世界的那一支」。删了 = 把那条分支的兜底路一起拆了。
+// 本单的独特贡献因此收敛到**逐格出处**那一半（见下 `baseProvenance`），不碰建会话走哪条路。
 export { deriveBaseSnapshot, hash01 } from "./edgeActiveModel";
-import { deriveBaseSnapshot } from "./edgeActiveModel";
+import { deriveBaseSnapshot, stampAllDerived } from "./edgeActiveModel";
+// WO-SANDBOX-REAL-SNAPSHOT · tick0 **逐格出处**（契约单源；合计口径与后端共用同一支纯函数）。
+import { tallyCellProvenance, type CellProvenance } from "@platform/contracts";
 // WO-STATEVAR-DISPLAYNAME：状态变量中文名的**唯一**消费路径（本文件零中文名映射表）
 import { stateVarLabel, stateVarText } from "./stateVarLabel";
 
@@ -163,14 +171,62 @@ import { stateVarLabel, stateVarText } from "./stateVarLabel";
  *   tick / 扰动的回包同样标 `MEASURED`。谁写的数据谁盖章，不靠下游猜。
  */
 export type WorldOrigin = "DERIVED" | "MEASURED";
-/** 世界态缓存条目（`["a","sim-world", sessionId]`）。`origin` 是**这份 state 的出处**，不是 UI 状态。 */
+/**
+ * 世界态缓存条目（`["a","sim-world", sessionId]`）。`origin` 是**这份 state 的出处**，不是 UI 状态。
+ *
+ * ══ WO-SANDBOX-REAL-SNAPSHOT · 为什么多了 `baseProvenance` 而没有把 `origin` 删掉 ═══════
+ *
+ * 两者量的是**两个不同的轴**，合并任何一个方向都会造出一句谎：
+ *  · `origin`（整份·二值）＝ 这份 `state` **是谁给的**：后端回包（`MEASURED`）vs 本地占位（`DERIVED`）。
+ *  · `baseProvenance`（逐格·三态）＝ **tick0 那一格的数是不是真读出来的**（`measured`/`derived`/缺键=未知）。
+ *
+ * ⚠ **「世界是谁给的」不度量「每一格是不是真读数」**：服务端派生那条路上，取不到
+ * `props[stateVar]` 的格仍会回落确定性占位 —— 2026-09-18 实测 8,813 格里就有 **2,542 格**是。
+ * 若因为「这份是后端给的」就把徽标翻成「实测」，那是把老谎换了个说法
+ * （从「前端编的说成实测」变成「后端编的说成实测」）。故**屏上的徽标改读逐格合计，不读 `origin`**。
+ *
+ * ⚠ 今天 `init` 走的仍是本地 `deriveBaseSnapshot`（建会话走哪条路由 `resolveTick0World` 那张单管），
+ * 本地那一份由 `stampAllDerived` 自己逐格盖 `derived` 章 ⇒ 屏上照样有出处，不落「未知」。
+ *
+ * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的
+ * `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数 `baseProvenance`。
+ * 派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
+ */
 export interface WorldSnapshot {
   tick: number;
   state: TickState;
   origin: WorldOrigin;
+  /** tick0 逐格出处（口径见 `CellProvenanceSchema`）。缺 = 出处未知，⛔ 不许并进 `derived`。 */
+  baseProvenance?: CellProvenance;
 }
 
-// （`deriveBaseSnapshot` 的实现见 `./edgeActiveModel`，本文件顶部已 re-export，签名与行为逐字节不变。）
+/**
+ * 屏上诚实位的**四态**（由 `tallyCellProvenance` 的三个计数现算，不另存一个 state）。
+ *
+ * ⚠ 为什么是四态而不是沿用二值：服务端派生的世界是**混合**的（2026-09-18 实测 6,271 实测 / 2,542 占位）。
+ * 二值化只有两种走法，两种都在撒谎：全标「实测」把 2,542 格占位说成真读数；
+ * 全标「占位」把 6,271 格真读数自毁可信度。**混合态必须有自己的记号，并把两个数写在屏上。**
+ *
+ * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的
+ * `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数 `baseProvenance`。
+ * 派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
+ */
+// WO-SANDBOX-REAL-SNAPSHOT · `stampAllDerived` 的**实现住在 `./edgeActiveModel`**，本文件只 re-export。
+// ⚠ 理由与 `deriveBaseSnapshot` 当年迁过去的那条**一模一样**，别再搬回来：
+// `EdgeActivePanel` 也要用它，而 `SandboxView → EdgeActivePanel` 已经是一条依赖边 ⇒ 反向 import **会成环**。
+// （本单初稿真的把它写在这里、让 `EdgeActivePanel` 反向 import，当场造出了那个环 —— 测试还是绿的，
+//   ESM 循环依赖多数时候不报错，只在求值顺序变化时给你一个 `undefined`。绿不度量没成环。）
+export { stampAllDerived } from "./edgeActiveModel";
+
+export type WorldHonesty = "MEASURED" | "MIXED" | "DERIVED" | "UNKNOWN";
+export function worldHonestyOf(t: { measured: number; derived: number; unknown: number }): WorldHonesty {
+  // 判据顺序刻意如此：只要**还有一格出处未知**，整份就不许自称已知 —— 保守方向错比激进方向错便宜。
+  if (t.measured === 0 && t.derived === 0) return "UNKNOWN";
+  if (t.unknown > 0) return "UNKNOWN";
+  if (t.derived === 0) return "MEASURED";
+  if (t.measured === 0) return "DERIVED";
+  return "MIXED";
+}
 
 /**
  * WO-SANDBOX-MEMORY · 落点下拉一次**渲染**多少个 `<option>`（不是候选集有多少个）。
@@ -592,7 +648,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   );
   const worldQuery = useQuery<WorldSnapshot>({
     queryKey: ["a", "sim-world", sessionId ?? ""],
-    // WO-V4-HONEST-ORIGIN：**真取回来的**那一份盖 `MEASURED` 章。占位那一份由 `init` 盖 `DERIVED`。
+    // WO-V4-HONEST-ORIGIN：**真取回来的**那一份盖 `MEASURED` 章（`origin` = 整份哪来的那个轴）。
+    // WO-SANDBOX-REAL-SNAPSHOT：回包的 `baseProvenance`（tick0 逐格出处）原样带过来 ——
+    // 屏上的诚实位读它，不读 `origin`（两个轴的区别见 `WorldSnapshot` 头注）。
     queryFn: async () => ({ ...(await simWorld(sessionId as string)), origin: "MEASURED" as const }),
     enabled: !!sessionId,
     staleTime: Infinity,
@@ -604,6 +662,18 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    * 两种情形都**不是**实测，先标占位再说；标错方向的代价是把假数说成真数，反过来只是保守。
    */
   const [worldOrigin, setWorldOrigin] = useState<WorldOrigin>("DERIVED");
+  /**
+   * WO-SANDBOX-REAL-SNAPSHOT · **tick0 的逐格出处**（屏上诚实位的真相源）。
+   *
+   * 初值 `undefined` = 出处未知（会话还没建）。⚠ 初值刻意**不是 `{}`**：
+   * 空表在下游会被读成「每一格都缺键 ⇒ 每一格出处未知」，与「我还没拿到这张表」恰好同义，
+   * 但两者若哪天要分开处置（例如只在后者转圈），`{}` 已经把信息抹掉了。`undefined` 留住了它。
+   *
+   * ⚠ 它跟着 **tick0** 走，不跟着 `curTick` 走：推到第 3 拍时 `world` 是引擎算的，
+   * 而这张表描述的自始至终是**起点**。所以推拍/扰动**不清空它**——
+   * 清掉等于让用户以为推演结果比它的起点更可信。
+   */
+  const [baseProvenance, setBaseProvenance] = useState<CellProvenance | undefined>(undefined);
   // 事件驱动重取回来的世界态 → 落到屏上（这一步就是 `sim.tick_completed` 的可观测副作用）。
   useEffect(() => {
     const d = worldQuery.data;
@@ -611,6 +681,9 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     setWorld(d.state);
     setCurTick(d.tick);
     setWorldOrigin(d.origin);
+    // ⚠ 只在**真带回来**时才覆盖：回包没这个键（老会话/老后端）时保留已有的那一份，
+    // 否则切一次世界就把出处抹成「未知」，屏上两档合并——那正是本单要消灭的那种谎。
+    if (d.baseProvenance !== undefined) setBaseProvenance(d.baseProvenance);
   }, [worldQuery.data]);
   const [ticking, setTicking] = useState(false);
   const [history, setHistory] = useState<number[]>([]); // 逐 tick 全局均值轨迹（时间轴/KPI heat）
@@ -786,6 +859,21 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   }, [world]);
 
   /**
+   * WO-SANDBOX-REAL-SNAPSHOT · tick0 逐格出处的**合计**（顶栏诚实位 + 逐项记号共用这一份）。
+   *
+   * ⚠ 合计用**契约里的那一支** `tallyCellProvenance`，前端不再数一遍：
+   * 后端 `scope.baseSnapshotOrigin` 报的 `measuredCells/derivedCells` 与本地这个数
+   * 必须是同一个口径，各数各的就会出现「顶栏说 6,271、浮层说 6,270」这种**看不出来的**错
+   * （数还是那些数，只是两处按不同规则数的）。
+   *
+   * ⚠ 键集按 `world` 走而不是按 `baseProvenance` 走：屏上显示的是 `world`，
+   * 合计必须覆盖屏上每一格 —— 出处表里多出来的键（若有）不在屏上，不该被算进去；
+   * 屏上有而出处表里没有的键，才正是要被数成 `unknown` 的那些。
+   */
+  const provTally = useMemo(() => tallyCellProvenance(world, baseProvenance), [world, baseProvenance]);
+  const worldHonesty = useMemo(() => worldHonestyOf(provTally), [provTally]);
+
+  /**
    * WO-U7-U9-REST · 判据 U9：导出物自带出处与生成时间。
    * 渲染半是共享件 `ExportReportButton`（一份实现、多页挂载，出处措辞只有一处）；
    * 这里只提供**本页的**口径行与世界快照读数。`build` 故意做成函数：导出要的是
@@ -808,6 +896,17 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
         worldOrigin === "MEASURED"
           ? "世界态出处：GET /a/v1/sim/sessions/:id/world 取回（后端真实读数，非本地占位）"
           : "世界态出处：本地基线快照（占位，未经后端重演——按此复算会与屏上不同源）",
+        /**
+         * WO-SANDBOX-REAL-SNAPSHOT · 导出件必须带上**逐格出处合计**。
+         *
+         * ⚠ 上面那行只说「这份是后端给的」；本单之后它恒真，于是**单靠它会读成「全是实测」**。
+         * 导出件常被拿去对账、回贴进工单、给不看屏的人读 —— 屏上标了占位而导出件没标，
+         * 等于把诚实位停在了屏幕边界上。两个数都写出来，读者才自己判断得了。
+         */
+        provTally.unknown > 0
+          ? `逐格出处：本会话未带回逐格出处（${provTally.unknown} 格未知）——⛔ 既不可当实测读，也不能断言是占位`
+          : `逐格出处：实测 ${provTally.measured} 格 · 确定性占位 ${provTally.derived} 格（共 ${provTally.measured + provTally.derived} 格）` +
+            `${provTally.derived > 0 ? "；占位格由起点派生式回落（对象上取不到该状态变量），其量级不可当实测读" : ""}`,
         `推演范围：${describeSandboxScope(scope)}`,
       ],
       sections: [
@@ -904,6 +1003,12 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   /**
    * 建会话：baseSnapshot 由配置派生（无业务常数）。
    *
+   * ⚠ **建会话走哪条路，本单刻意不动**（2026-09-18 回退）：`claude/handoff-real-cells` 上的
+   * `resolveTick0World`（「先问后端播种的那一份要，要不到才本地派生」）已经在解决这件事。
+   * 本单一度改成「不传 `baseSnapshot`，让服务端现派生」——**那是第二套取法**，
+   * 而本仓「两套真相源」正是反复炸的那个东西。两条路的差异已实测并上报，由主持方裁决对齐方式。
+   * 本单在这里只保留**逐格出处**那一半：世界是谁给的不归我管，但**每一格是实测还是编的**必须写在屏上。
+   *
    * WO-SIM-SCOPE-LOCAL ②：`scope` 从前是硬写的 **`{}`**（空范围）——向导屏里用户逐步选好的
    * `{kind,target}` 被它当场作废（向导 `:112` 建会话 A → `:133` navigate → A 的 id 随组件 state 蒸发 →
    * 本屏 `!sessionId` 又建了个范围为空的会话 B）。现在把**用户当前选的范围真的写进会话**，
@@ -917,19 +1022,33 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       setSessionId(s.id);
       setSessionScope(scope);
       setWorld(base);
-      // 基线快照取**后端回的那一份**（`s.baseSnapshot`），不是本地 `base` ——
-      // 两者今天相同，但真相源是会话对象；写 `base` 就是在本地留了第二套真相源。
-      setBaseWorld(s.baseSnapshot);
+      /**
+       * WO-SANDBOX-REAL-SNAPSHOT · 逐格出处。
+       *
+       * 回包带了就用回包的（服务端派生那条路会逐格盖章）；**没带就自己盖** ——
+       * 这一支的世界是本地 `deriveBaseSnapshot` 现编的哈希占位，
+       * **我自己编的东西，我当然知道它每一格都是编的**。
+       * ⛔ 此处留 `undefined`（=「出处未知」）是**错的**：那是把一个我确知的事实说成不知道，
+       * 而屏上"未知"与"占位"的处置不同（未知会写「不能断言是占位」，正好说反）。
+       */
+      setBaseProvenance(s.baseSnapshotProvenance ?? stampAllDerived(base));
+      // 基线快照就是上面那一份（同一个 `s.baseSnapshot`），沿用同一个局部量，不再各读一次。
+      setBaseWorld(base);
       // WO-SANDBOX-MEMORY：连同"这份基线属于哪个会话"一起记 —— 记了，上面那条懒查询
       // 首次挂载就**一发都不发**（省掉一整跳 285MB），只有真的切世界时才去捞那一条。
       setBaseWorldFor(s.id);
       setCurTick(0);
-      // WO-V4-HONEST-ORIGIN：这一份是**前端哈希占位**，盖 `DERIVED` 章 —— 顶栏据此标「合成·占位」。
+      // WO-V4-HONEST-ORIGIN：这一份是**前端哈希占位**，盖 `DERIVED` 章（`origin` = 整份哪来的那个轴）。
       setWorldOrigin("DERIVED");
       // 权威副本就地写入（避免刚建完又去 GET 一次同样的东西）；此后只有事件失效才触发真重取。
       // ⚠ 正因为这一行，新建会话时那个 GET **不会发**（staleTime: Infinity）——
       //   所以出处必须跟着数据盖章，不能靠「data 到没到」推断（详见 WorldOrigin 的注释）。
-      qc.setQueryData<WorldSnapshot>(["a", "sim-world", s.id], { tick: 0, state: base, origin: "DERIVED" });
+      qc.setQueryData<WorldSnapshot>(["a", "sim-world", s.id], {
+        tick: 0,
+        state: base,
+        origin: "DERIVED",
+        baseProvenance: s.baseSnapshotProvenance ?? stampAllDerived(base),
+      });
       // 建会话 = 世界列表多一行。发起方这一页立刻可见；别的标签页走 sim.session_created 事件。
       void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
       setHistory([Object.keys(base).reduce((a, o) => a + aggregate(base[o]), 0) / Math.max(1, Object.keys(base).length)]);
@@ -2057,17 +2176,55 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                * 两向（缺一向都证明不了）：占位期必须有记号 ⇒ `DERIVED`／「合成·占位」；
                * 后端世界态到达后记号必须**换掉** ⇒ `MEASURED`／「实测」。
                */}
+              {/**
+                * ══ WO-SANDBOX-REAL-SNAPSHOT · 徽标从**二值**改成**四态 + 两个真数** ═════════
+                *
+                * **今天的行为 X（改之前）**：读 `worldOrigin` 这个二值 —— 而本单之后前端再也不造世界，
+                * 它恒为 `MEASURED` ⇒ 徽标会**恒写「实测」**，对着后端回落的 2,542 格哈希占位也照写。
+                * 那是把老谎换了个说法（从「前端编的说成实测」变成「后端编的说成实测」），比原来更难查。
+                * **应该的 Y**：读**逐格合计**。真世界是混合的（2026-09-18 实测 measured 6,271 / derived 2,542；
+                * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。），
+                * 二值化的两种走法都在撒谎 —— 全标实测是骗人，全标占位是自毁可信度。
+                *
+                * ⛔ **两档必须都看得见，且写出各自有几格**：把 `derived` 藏起来 = 假装那些格不存在，
+                * 与把它说成实测一样不诚实（本单验收判据第 3 条原文）。
+                */}
               <span
                 data-testid="sandbox-kpi-origin"
-                data-origin={worldOrigin}
-                style={{ color: worldOrigin === "DERIVED" ? "var(--warn-txt)" : "var(--ok-txt)" }}
+                data-origin={worldHonesty}
+                data-measured-cells={provTally.measured}
+                data-derived-cells={provTally.derived}
+                data-unknown-cells={provTally.unknown}
+                style={{
+                  color:
+                    worldHonesty === "MEASURED"
+                      ? "var(--ok-txt)"
+                      : worldHonesty === "UNKNOWN"
+                        ? "var(--muted-txt)"
+                        : "var(--warn-txt)",
+                }}
               >
-                {worldOrigin === "DERIVED" ? "◐ 合成·占位" : "● 实测"}
+                {worldHonesty === "MEASURED"
+                  ? `● 实测 ${provTally.measured} 格`
+                  : worldHonesty === "DERIVED"
+                    ? `◐ 合成·占位 ${provTally.derived} 格`
+                    : worldHonesty === "MIXED"
+                      ? `◑ 实测 ${provTally.measured} 格 · 占位 ${provTally.derived} 格`
+                      : "○ 出处未知"}
                 <InfoPopover topic={zh.sim.sandbox.info.kpiOrigin} testId="kpi-origin">
                   <span data-testid="sandbox-kpi-origin-note">
-                    {worldOrigin === "DERIVED"
-                      ? zh.sim.sandbox.info.kpiOriginDerived
-                      : zh.sim.sandbox.info.kpiOriginMeasured}
+                    {worldHonesty === "MEASURED"
+                      ? zh.sim.sandbox.info.kpiOriginMeasured
+                      : worldHonesty === "DERIVED"
+                        ? zh.sim.sandbox.info.kpiOriginDerived
+                        : worldHonesty === "MIXED"
+                          ? `本屏读数是**混合**的：${provTally.measured} 格取自对象真实属性，` +
+                            `${provTally.derived} 格因该对象上取不到这个状态变量而回落为确定性占位` +
+                            `（起点派生式，非实测）。下方逐项读数以「◐」标出含占位的那些，` +
+                            `凡含占位的项，其量级不可当实测读。`
+                          : `本会话没有带回逐格出处（老会话或调用方自带世界）——` +
+                            `⛔ 这不等于「都是占位」，也不等于「都是实测」，而是**未知**。` +
+                            `要拿到出处，重建一次会话即可（世界改由服务端派生并逐格盖章）。`}
                   </span>
                 </InfoPopover>
               </span>
@@ -2125,16 +2282,60 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                  *   初稿这里写的就是 `title`，被 `sandbox-ui-integrate.seam.test.tsx` 的原生 title 棘轮
                  *   **当场抖出**（84→85）—— 机器先说话的又一例，不是人想起来的。
                  */
+                /**
+                 * WO-SANDBOX-REAL-SNAPSHOT · **逐项出处记号**（本单验收判据第 3 条）。
+                 *
+                 * 顶栏那个总徽标只说「整份里有 N 格是占位」（2026-09-18 实测真后端为 2,542 格；
+                 * 复验：`GET /a/v1/sim/sessions/:id/world` 数回包 `baseProvenance`，
+                 * 派生实现见 `apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`），
+                 * 答不了「**我正在看的这一项**
+                 * 是不是占位」—— 而用户读的是这一项，不是那个总数。所以每一项各算自己的合计：
+                 * 全实测 = `●`（不额外加字，避免把最贵的一条变成记号墙）；
+                 * 含占位 = `◐` 并写出「占位 N/M」；全占位 = `◐ 占位`；出处未知 = `○`。
+                 *
+                 * ⛔ 不许对占位项**不标**（= 把它说成实测），也⛔ 不许把占位项**从清单里拿掉**
+                 * （= 假装那一项不存在）。两条都是不诚实，只是方向相反。
+                 *
+                 * ⚠ **不新增 DOM 元素节点**：本区受 KPI 分层/密度纪律约束（见上方长注释），
+                 * 多一个 `<span>` 会动到 declutter/density 两组用例数的判据。故记号走
+                 * **文本节点 + `data-*` 属性 + `aria-label`**，元素树逐字节不变。
+                 */
                 const cell = (r: { v: string; avg: number }) => {
                   const lab = stateVarLabel(r.v, cfg.stateVarNames);
+                  const t = { measured: 0, derived: 0, unknown: 0 };
+                  for (const o of objs) {
+                    if (world[o]?.[r.v] === undefined) continue; // 这个对象没有这一格 ⇒ 屏上也没有，不计
+                    const org = baseProvenance?.[o]?.[r.v];
+                    if (org === "measured") t.measured += 1;
+                    else if (org === "derived") t.derived += 1;
+                    else t.unknown += 1; // 缺键 = 未知，⛔ 不许并进 derived
+                  }
+                  const h = worldHonestyOf(t);
+                  const mark = h === "MEASURED" ? "●" : h === "UNKNOWN" ? "○" : "◐";
+                  // 含占位的那些把两个数写在屏上；全实测的只留一个点，不占字。
+                  const note =
+                    h === "MIXED" ? ` 占位 ${t.derived}/${t.measured + t.derived}` : h === "DERIVED" ? " 占位" : "";
                   return (
                     <span
                       key={r.v}
                       data-testid={`sandbox-kpi-${r.v}`}
                       data-statevar-named={lab.named ? "true" : "false"}
-                      aria-label={lab.named ? `${lab.text}（状态变量 ${lab.key}）` : `状态变量 ${lab.key}：本体未登记中文名，显示接线名`}
+                      data-origin={h}
+                      data-derived-cells={t.derived}
+                      data-measured-cells={t.measured}
+                      aria-label={
+                        (lab.named ? `${lab.text}（状态变量 ${lab.key}）` : `状态变量 ${lab.key}：本体未登记中文名，显示接线名`) +
+                        (h === "MEASURED"
+                          ? `；${t.measured} 格全部取自对象真实属性`
+                          : h === "MIXED"
+                            ? `；${t.measured} 格实测、${t.derived} 格为确定性占位，量级不可当实测读`
+                            : h === "DERIVED"
+                              ? `；${t.derived} 格全部为确定性占位（对象上取不到这个状态变量），量级不可当实测读`
+                              : "；本会话未带回逐格出处，既不能当实测读也不能断言是占位")
+                      }
                     >
                       {lab.text} <b data-testid={`sandbox-kpi-${r.v}-val`}>{r.avg.toFixed(1)}</b>
+                      {` ${mark}${note}`}
                     </span>
                   );
                 };
