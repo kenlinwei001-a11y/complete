@@ -311,6 +311,17 @@ export function SandboxConsole({
   const [imp, setImp] = useState<ImpLoad>({ status: "loading" });
   const [dimKind, setDimKind] = useState<ChainImpedimentKind | null>(null);
   /**
+   * WO-SANDBOX-IMPEDIMENT-RESIDUAL · 阻滞点清单**展开了没有**。
+   *
+   * ⚠ 为什么必须有这个 state，而不是靠 `<details>` 自己「折叠就不挂载」：
+   * **React 对 `<details>` 是渲染子树 + 由浏览器 CSS 隐藏，不是不挂载。**
+   * 实测（真前端、真后端，`details.open=false`）：新加的逐条触发判定条在**折叠态下照样**
+   * 打满 **18 次 `decision_play`**，展开时增量为 0 —— 也就是说用户为一块他没打开的明细付了 18 次求解。
+   * 故沿用本仓既有那条懒挂载写法（`DecisionPlayEmbed` 里的 `onToggle` → `{open ? … : null}`）：
+   * 展开才请求。收起时屏上仍有带真计数的入口，**不是把功能藏起来**。
+   */
+  const [impListOpen, setImpListOpen] = useState(false);
+  /**
    * 基地范围：**受控/非受控二合一**（WO-SANDBOX-IA-CONSOLIDATE）。
    * 宿主同时给了 `scopeBaseIds` + `onScopeBaseIdsChange` ⇒ 用宿主那一份（跨模式活着）；
    * 否则退回内部 state = 今天的行为（六个直接挂载本组件的门一个字都不用改）。
@@ -1287,7 +1298,11 @@ export function SandboxConsole({
         {/* WO-SANDBOX-V3：整条清单（截图里 7 行）降为**第二层**（PRD §2 第 3 行）。
             第一层记号 = summary 上的**条数** ——「有几条」是结论（第一层），
             「是哪几条」是明细（第二层）。 */}
-        <details className={styles.zoneSection} data-testid="sc-impjump-details">
+        <details
+          className={styles.zoneSection}
+          data-testid="sc-impjump-details"
+          onToggle={(e) => setImpListOpen((e.currentTarget as HTMLDetailsElement).open)}
+        >
           <summary data-testid="sc-impjump-summary">
             {zh.sim.sandbox.zones.impedimentList} · <b data-testid="sc-impjump-count">{jumpCount}</b>
             {zh.sim.sandbox.zones.rows}
@@ -1299,6 +1314,7 @@ export function SandboxConsole({
         <ImpedimentJumpBar
           model={model}
           kind={dimKind}
+          listOpen={impListOpen}
           notes={
             honesty ? (
               <>
@@ -1470,26 +1486,35 @@ interface JumpBarProps {
   kind: ChainImpedimentKind | null;
   /** 说明性文字的 `?` 触发器（WO-SANDBOX-DECLUTTER）：贴在计数那一行，不另占一整段。 */
   notes?: ReactNode;
+  /**
+   * 宿主那个 `<details>` 展开了没有（WO-SANDBOX-IMPEDIMENT-RESIDUAL）。
+   * 只管**触发判定条要不要去打求解器**这一件事 —— 其余内容（严重度 / 阈值出处 / 候选）
+   * 一律照旧无条件渲染。⚠ 缺省 `true`：六个不带 Router 的门直接挂 `JumpList`，
+   * 缺省 false 会让它们那侧的判定条**静默消失**，而「静默降层等于删除」。
+   */
+  listOpen?: boolean;
 }
 
-function ImpedimentJumpBar({ model, kind, notes }: JumpBarProps) {
+function ImpedimentJumpBar({ model, kind, notes, listOpen }: JumpBarProps) {
   const inRouter = useInRouterContext();
-  return inRouter ? <RoutedJumpBar model={model} kind={kind} notes={notes} /> : <PlainJumpBar model={model} kind={kind} notes={notes} />;
+  const p = { model, kind, notes, listOpen };
+  return inRouter ? <RoutedJumpBar {...p} /> : <PlainJumpBar {...p} />;
 }
 
-function RoutedJumpBar({ model, kind, notes }: JumpBarProps) {
+function RoutedJumpBar({ model, kind, notes, listOpen }: JumpBarProps) {
   const navigate = useNavigate();
-  return <JumpList model={model} kind={kind} notes={notes} onOpen={(href) => navigate(href)} />;
+  return <JumpList model={model} kind={kind} notes={notes} listOpen={listOpen} onOpen={(href) => navigate(href)} />;
 }
 
-function PlainJumpBar({ model, kind, notes }: JumpBarProps) {
-  return <JumpList model={model} kind={kind} notes={notes} onOpen={null} />;
+function PlainJumpBar({ model, kind, notes, listOpen }: JumpBarProps) {
+  return <JumpList model={model} kind={kind} notes={notes} listOpen={listOpen} onOpen={null} />;
 }
 
 function JumpList({
   model,
   kind,
   notes,
+  listOpen = true,
   onOpen,
 }: JumpBarProps & {
   onOpen: ((href: string) => void) | null;
@@ -1598,7 +1623,7 @@ function JumpList({
           <ImpedimentChainLeg im={im} />
           {/* WO-SANDBOX-IMPEDIMENT-RESIDUAL ②③ · 阈值出处 + 触发判定明细 + 严重度口径。
               同样必须是 `<a>` 的**兄弟节点**（里面有 `InfoPopover` 与 `TriggerVerdictStrip`）。 */}
-          <ImpedimentResidual im={im} />
+          <ImpedimentResidual im={im} verdictLive={listOpen} />
           <CandidateBlock im={im} />
         </div>
       ))}
@@ -1638,7 +1663,7 @@ function JumpList({
  *
  * ⚠ **口径说明一律降浮层**：规范 §1「第一层只放数值/状态/名字，公式与口径降浮层」。
  */
-function ImpedimentResidual({ im }: { im: ImpedimentVM }) {
+function ImpedimentResidual({ im, verdictLive = true }: { im: ImpedimentVM; verdictLive?: boolean }) {
   const t = zh.sim.sandbox.impedimentRow;
   const src = im.thresholdSource;
   return (
@@ -1668,12 +1693,16 @@ function ImpedimentResidual({ im }: { im: ImpedimentVM }) {
         </span>
       </p>
       {/* ③ 触发判定明细：哪条信号 · 该越多少 · 现在多少 · 越没越 · 阈值来自哪。
-          组件自带 loading / error / empty 三态三句，本处不再包一层判断（包了就是第二套口径）。 */}
-      <TriggerVerdictStrip
-        metricKey=""
-        locus={{ objectType: im.locus.objectType, objectId: im.locus.objectId, label: im.locus.label }}
-        testId={`sc-imp-play-${im.impedimentId}`}
-      />
+          组件自带 loading / error / empty 三态三句，本处不再包一层判断（包了就是第二套口径）。
+          ⚠ `verdictLive` 只在**宿主清单展开**时为真：`<details>` 折叠态 React 照样挂子树，
+          不拦就是 18 次 `decision_play` 白打（实测数）。展开即挂、即请求。 */}
+      {verdictLive ? (
+        <TriggerVerdictStrip
+          metricKey=""
+          locus={{ objectType: im.locus.objectType, objectId: im.locus.objectId, label: im.locus.label }}
+          testId={`sc-imp-play-${im.impedimentId}`}
+        />
+      ) : null}
     </div>
   );
 }
