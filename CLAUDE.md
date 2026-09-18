@@ -372,11 +372,18 @@ git fetch origin && git merge-base --is-ancestor HEAD $CANON \
   || echo "HEAD 不落后于 canonical，可原地开工"
 ```
 判据是**祖先关系**：`HEAD` 若是 canonical 的祖先，就是落后，无论哪个文件在不在。
-派单模板同时必须写明两条环境前置（同样被 dev 顶回来过）：
+派单模板同时必须写明**三**条环境前置（每一条都被 dev 实测顶回来过）：
 **worktree 可能没有 `node_modules`**（先 `pnpm install --prefer-offline`）、
-**`@platform/contracts` 可能未 build**（先 `pnpm --filter @platform/contracts build`）——
-不装就会报 `Failed to resolve entry for package "@platform/contracts"` 这种**与本单无关的假红**，
-极易被误判成契约包坏了。
+**`@platform/contracts` 可能未 build**（先 `pnpm --filter @platform/contracts build`）、
+**`@platform/llm-adapters` 同样可能未 build**（先 `pnpm --filter @platform/llm-adapters build`）——
+不装就会报 `Failed to resolve entry for package "@platform/contracts"` /
+`Failed to resolve entry for package "@platform/llm-adapters"`（后者落在 `apps/datacore/src/llm.ts`）
+这种**与本单无关的假红**，极易被误判成契约包/适配器包坏了。
+
+⚠️ **第三条是 2026-09-18 两个 dev 各自独立踩到才补上的**，而本节在那之前只写了两条 ——
+少写的那一条让**每一个 import 到 `datacore/src/llm.ts` 的测试文件全部假红**，
+两个 dev 分别为此排查了一轮。**形态：「我用『我列了环境前置』当作『前置列全了』的证据」** ——
+前置清单本身也会过期，它随依赖图长而长。判据：**假红的第一反应是核前置，不是核代码。**
 
 ## ⛔ 铁律 1 · 长任务必须**主动探针**，不许干等也不许凭时长猜（违反即事故·已真实发生 5 次）
 
