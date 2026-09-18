@@ -154,7 +154,96 @@ npx vitest run test/seed-demo-propagation.test.ts -t "联立接缝" --pool=forks
 
 ---
 
-<!--PLACEHOLDER-2-3-4-->
+### ② `apps/datacore/test/object-constraint-refs.seam.test.ts` — **环境伪红**
+
+| 栏 | 内容 |
+|---|---|
+| **两次 RC** | run1 `RC=0` / 22s · run2 `RC=0` / 22s（两次均 `8 passed (8)`） |
+| **失败用例名** | 无 —— **全绿** |
+| **断言原文** | 无 |
+| **归因** | **环境伪红**（基线那 1 条 × 是污染窗口产物） |
+
+**报「全绿」必须贴的金丝雀（起跑前树根 = 0）**：
+```
+=== PRE-RUN CANARY 2026-09-18T02:32:06+00:00 ===   |   === PRE-RUN CANARY 2026-09-18T02:32:28+00:00 ===
+file=object-constraint-refs.seam.test.ts run=1     |   file=object-constraint-refs.seam.test.ts run=2
+vitest_tree_roots=0                                |   vitest_tree_roots=0
+vitest_proc_total=0                                |   vitest_proc_total=0
+```
+（两个量同时为 0 ⇒ 不是「匹配坏了假装空闲」；`run.sh` 对 `roots=0 && total>0` 会 RC=98 拒跑。）
+
+基线点名的那条 ⑤b，本次两跑都绿且**快了 7–8 倍**：
+
+| 用例 | 基线（污染） | run1 | run2 |
+|---|---|---|---|
+| `⑤b 非数字属性…不许塌给 id 字典序` | 17.4s（×） | **2.409s ✓** | **2.080s ✓** |
+
+---
+
+### ③ `apps/datacore/test/sim-order-real-fields.seam.test.ts` — **真红**
+
+| 栏 | 内容 |
+|---|---|
+| **两次 RC** | run1 `RC=1` / 24s · run2 `RC=1` / 22s（两次均 `3 failed \| 3 passed (6)`） |
+| **失败用例名** | ② 改真值 ⇒ 下游读数必须跟着变 · ③ 两张金额差一个量级的真订单…必须拉开 · ⑤ 接缝：真值必须出现在传导结果里，且 max 语义不随拍数漂 |
+| **断言原文** | 见下（两次**逐字节相同**） |
+| **归因** | **合并树真红** |
+
+```
+FAIL ② 改真值 ⇒ 下游读数必须跟着变：把一张单的价格 ×1.5，重跑同一套推演
+AssertionError: expected 8376.06 to be 22638 // Object.is equality
+ ❯ test/sim-order-real-fields.seam.test.ts:166:24
+    165|     // 系数 1.0 原样透传 + max ⇒ 下游读数就是那张 top 单的真实单价（可预言，不是"大概相关"）
+    166|     expect(readBefore).toBe(top.props.unitPrice);
+
+FAIL ③ 两张金额差一个量级的真订单，同一个扰动 ⇒ 下游读数必须拉开
+AssertionError: expected 5430.4900000000125 to be 14677 // Object.is equality
+ ❯ test/sim-order-real-fields.seam.test.ts:228:8
+    226|     // 可预言：差额恰等于两张单真实台数之差（系数 1.0 + delta 同幅 + max）
+    227|     expect((readBig as number) - (readSmall as number))
+    228|       .toBe((big.props.qty as number) - (small.props.qty as number));
+
+FAIL ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器）
+AssertionError: obj_model_4680-NCM.backlogHorizonDays @tick1: expected 40.7 to be 110 // Object.is equality
+ ❯ test/sim-order-real-fields.seam.test.ts:262:70
+    262|         expect(w1[modelId]?.[target], `${modelId}.${target} @tick1`).t…
+```
+
+#### 指纹：三条 × 是**同一个**因子，不是三个 bug
+
+```
+8376.06            / 22638 = 0.370000000000   inverse = 2.702703
+5430.4900000000125 / 14677 = 0.370000000000   inverse = 2.702703
+40.7               / 110   = 0.370000000000   inverse = 2.702703
+```
+
+**三条读数全是期望值的 `×0.37`，精确到 12 位小数。** 这个 `2.702703` 不是巧合 ——
+`seed-demo-propagation.test.ts:851` 的失败信息里白纸黑字写着「**② 没 ×λ ⇒ 每格稳态大 2.7 倍**」。
+
+机制指向（**只指不修**，本单零代码改动）：`src/sim/propagation.ts:743`
+```ts
+bucket[stateVar] = round12(rest + (1 - lambda) * (cur - rest));
+```
+`rest = 0` 且 `lambda = 0.63` 时该式恰为 `0.37 × cur`；同文件 `:705` 的注释就拿 0.63 当范例
+（`1+0.63+0.397=2.0269`）。而本文件三条断言写的都是「**系数 1.0 原样透传**」——
+即 `desat3` 侧新加的每拍衰减 λ，与 `real-cells` 侧「真值原样透传」的断言，**两半各自成立、合起来不成立**。
+
+> **这正是 SEAM-GATE 要抓的那一类**：两个半边分别绿，接缝上红。
+> ⚠ 与文件 ① (a) 的 `×0.5` **不是同一个因子** ⇒ 至少两处独立的接缝不一致，别当成一个 bug 去修。
+
+**最小复现**
+```bash
+cd apps/datacore
+npx vitest run test/sim-order-real-fields.seam.test.ts -t "改真值" --pool=forks --maxWorkers=1
+```
+
+**耗时对照**：基线 44s / 66s / 70s → 本次 **2.877s / 3.258s / 2.740s**（快 15–25 倍），**清洁窗口照样红**。
+
+---
+
+### ④ `apps/datacore/test/sim-seed-world.seam.test.ts` — <!--F4-VERDICT-->
+
+<!--F4-BODY-->
 
 ---
 
