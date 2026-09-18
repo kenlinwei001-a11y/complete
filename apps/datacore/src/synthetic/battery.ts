@@ -787,7 +787,10 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   "demo_material_shortage_to_alt_switch": 0.6,
   "demo_material_shortage_to_balance_gap": 0.7,
   "demo_base_load_to_transfer_pressure": 0.3,
-  "demo_process_queue_to_equipment_load": 0.5,
+  // ㉜ 方向反向（传导规则业务评审 v2 ⑤·2026-09-18·评审原文「方向反。是设备负荷导致排队，
+  // 不是反过来（㊷ 方向正相反，佐证这条画反了）」）：键随规则 key 改名，系数 0.5 原样保留
+  // （评审只裁方向不裁量级）；`loadPressure` 因此升格为**根源**（入度 0，没有任何规则写它）。
+  "demo_equipment_load_to_process_queue": 0.5,
   "demo_equipment_load_to_repair_backlog": 0.6,
   "demo_model_demand_to_fg_drawdown": 0.6,
   "demo_po_expedite_to_supplier_review": 0.4,

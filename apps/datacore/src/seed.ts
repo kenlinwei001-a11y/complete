@@ -1054,18 +1054,29 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   },
 
   // ── D09 设备与维护：工序排队 → 设备负荷 → 维修派工积压 ──
-  // Equipment **不是任何流程的承载物**，它在这里是**中间跳**：没有它，工序压力落不到维修单上。
-  // 这也是本档唯一一处"为了够到一个承载物而补两条边"的地方，故单独说明。
+  // Equipment **不是任何流程的承载物**，它在设备侧两条边里是**中间跳**：没有它，工序压力落不到维修单上。
+  //
+  // ── ⚠ ㉜ 方向反向（传导规则业务评审 v2 ⑤·2026-09-18·评审优先级 5）──────────────────────
+  // 评审原文：「🔴 **方向反**。是设备负荷导致排队，不是反过来（㊷ 方向正相反，佐证这条画反了）。
+  // 建议删或反向」。反向前的旧形态：`Process.queuePressure --process_uses_equipment--> Equipment.loadPressure`
+  // （「工序排队 ⇒ 该工序上的设备负载跟着高」）。
+  // 反向后：**`loadPressure` 升格为根源**（入度 0——今天全世界只有旧 ㉜ 这一条边写它，反向即归零）。
+  // 🔴 不构成回路的判据反而更简单：环要闭合必须有人写 `loadPressure`，反向之后**没有** ⇒ 环不存在。
+  // ⚠ 三根源单（WO-SIM-ROOT-TRIAD）里「equipmentFailure → queuePressure → loadPressure 两跳」的
+  //   落点随之不复存在——那条链的业务因果让位给评审裁决；故障信号现在经
+  //   `queuePressure → Line.blockedPressure`（本档①）走向产能主链，比原来更远、更贴近订单侧。
+  // id 保持 `simpr_demo_process_queue_to_equipment` 不改：pg 部署按 id upsert，
+  // 改 id 会在已有库上留下旧行（规则数 55→56 幻影）。
   {
     id: "simpr_demo_process_queue_to_equipment",
-    key: "demo_process_queue_to_equipment_load",
-    sourceTypeKey: "Process",
-    sourceStateVar: "queuePressure",
-    viaLinkKey: "process_uses_equipment", // 实测 Process→Equipment，780 条
-    targetTypeKey: "Equipment",
-    targetStateVar: "loadPressure",
-    delayTicks: 0,
-    description: "工序排队 ⇒ 该工序上的设备负载跟着高",
+    key: "demo_equipment_load_to_process_queue",
+    sourceTypeKey: "Equipment",
+    sourceStateVar: "loadPressure",
+    viaLinkKey: "equip_used_in", // 实测 Equipment→Process，780 条（与 process_uses_equipment 同数互逆）
+    targetTypeKey: "Process",
+    targetStateVar: "queuePressure",
+    delayTicks: 0, // 设备顶满，它那道工序当拍就开始堆
+    description: "设备负荷顶满 ⇒ 该设备所在工序的排队压力上抬（负荷是排队的因，不是果）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -1428,7 +1439,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     status: "PUBLISHED",
   },
 
-  // ── G-ROOT-4 · 设备故障率 → 工序排队压力（→ 已有下游直通设备负荷压力）───────────────
+  // ── G-ROOT-4 · 设备故障率 → 工序排队压力（→ 经本档①直通产线受阻）─────────────────
   //
   // ⚠ **派单原文要求的是 `equipmentFailure → loadPressure`。实测必须多一跳，理由两条硬约束。**
   //  (1) `loadPressure` 挂在 `Equipment` 自己身上，而**设备故障率最自然的落点也是 `Equipment`**
@@ -1442,8 +1453,11 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   //        （那道门守的正是「屏上标着随节拍变、读数推多少拍都不动」这个假绿形态）。
   //
   // ⇒ 落在 `Equipment.equipmentFailure`，沿**已物化**的 `equip_used_in`(Equipment→Process·`lnk_eui_*`)
-  //    推到工序，再由既有的 `process_uses_equipment` 回到 `Equipment.loadPressure`。
-  //    业务因果是真的、不是为了绕门：**某台设备故障 ⇒ 它所在工序排队 ⇒ 该工序其余设备负荷被顶上去**。
+  //    推到工序。⚠ 派单时的第二跳「再由 `process_uses_equipment` 回到 `Equipment.loadPressure`」
+  //    **已于评审 v2 ㉜ 被裁反向**（2026-09-18，见上方 ㉜ 段）：`loadPressure` 升格为根源，
+  //    故障信号的下游改走本档① `queuePressure → Line.blockedPressure` —— 比原来更远、
+  //    更贴近订单侧。原句「某台设备故障 ⇒ 工序排队 ⇒ 其余设备负荷被顶上去」作为**被取代的
+  //    旧形态**留此备查，不再描述今天的图。
   //
   // 🔴 **不构成正反馈回路**：本条写的是 `Process.queuePressure`，读的是 `Equipment.equipmentFailure`；
   //    而 `equipmentFailure` **没有任何规则写它**（这正是它是根源的定义）⇒ 环不闭合，不自我放大。
@@ -1474,7 +1488,8 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
   // **{Equipment, MaintenanceOrder, Process}** —— 到不了 Order / Customer / Material。
   // 真跑一次也是这个结果：`Equipment.equipmentFailure` 置 100 推 8 拍，
   // 全程只有 3 条规则触发（`demo_equipment_failure_to_process_queue` /
-  // `demo_process_queue_to_equipment_load` / `demo_equipment_load_to_repair_backlog`），
+  // `demo_process_queue_to_equipment_load`（今名 `demo_equipment_load_to_process_queue`——评审 v2 ㉜ 反向）/
+  // `demo_equipment_load_to_repair_backlog`），
   // `Line.utilPressure` / `Order.*` / `Customer.receivablePressure` **恒 0**
   // ⇒ **设备故障对毛利的贡献恒为 0**。
   //
