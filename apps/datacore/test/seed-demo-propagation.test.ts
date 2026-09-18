@@ -743,10 +743,32 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
     expect(src.length, "seed.ts 读成空 ⇒ 读取坏了，不是『种子里没有』").toBeGreaterThan(10000);
     const at = src.indexOf('key: "demo_material_shortage_to_model_supply_risk"');
     expect(at, "种子里找不到这条边").toBeGreaterThan(0);
+
+    // ⚠ **必须剥注释后再断言，且要咬"赋值行"而不是"这段文字里出现过那个串"。**
+    // 这一条是**变异反证当场逼出来的**，不是设计时想到的：本条边的注释里
+    // 正文引用了 `weightRef: { basis: "bom_cost_share" }` 这个字面量（用来解释邻居边），
+    // 于是把种子改回 `equal_share` 之后 `toContain` **照样绿** —— 门成了装饰品。
+    // 形态（照铁律 0.6 句式）：
+    // > 「我用『这段源码里出现过这个串』当作『这个赋值存在』的证据，而前者并不度量后者
+    // >  —— 注释里引用一个赋值，和那个赋值真的存在，是两个命题。」
+    // 同源前车：本仓 `weightRef` 计数也栽在这里（3 行注释被数成赋值，51 vs 48）。
+    const block = src.slice(at, at + 2500);
+    const codeOnly = block.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+    // 🐤 金丝雀：剥注释别把整块剥没了（剥空时"没找到那行"同样是句空话）。
+    expect(codeOnly, "剥注释后连 key 行都没了 ⇒ 剥注释坏了，不是『种子里没有』").toContain(
+      'key: "demo_material_shortage_to_model_supply_risk"',
+    );
+    // 🐤 金丝雀（反向）：证明本块的注释里**确实**有那个字面量 —— 即上面那层剥离不是多余的。
     expect(
-      src.slice(at, at + 2500),
+      block.split("\n").filter((l) => /^\s*\/\//.test(l) && l.includes("bom_cost_share")).length,
+      "本块注释里已不含该字面量 ⇒ 上面的剥注释失去意义，可简化；但**先确认**再简化",
+    ).toBeGreaterThan(0);
+
+    const assign = codeOnly.split("\n").find((l) => /^\s*weightRef:/.test(l))?.trim();
+    expect(
+      assign,
       "这条边退回了不带用量的口径 ⇒ 七种物料又会同权（修前实测 supplyRisk 逐字节同为 0.346875）",
-    ).toContain('weightRef: { basis: "bom_cost_share" }');
+    ).toBe('weightRef: { basis: "bom_cost_share" },');
   });
 
   it("🔴 对照实验：缺料→供应风险 —— BOM 占比不同的物料各涨 15 ⇒ 读数按占比拉开，且 Σ权重≡1 总量不跳", async () => {
