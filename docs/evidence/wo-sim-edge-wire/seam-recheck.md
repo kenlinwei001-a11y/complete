@@ -107,9 +107,15 @@ AssertionError: expected 0.44585 to be 0.8917 // Object.is equality
 **指纹：received 恰好是 expected 的 1/2**（`0.8917 / 0.44585 = 2.000000`，两次跑同值）。
 期望式是 `exp1 = 10 × coefOf(rule) × w1`，其中 `w1 = weightSumOf(tick1 回包, rule, materialId)`，
 而 `weightSumOf` 在**回包里没有该规则的逐对出处时回落为 1**（`:316` `rows.length === 0 ? 1 : Σweight`）。
-⇒ 读数与期望差一个精确的 0.5 ⇒ **引擎实际施加的对权重与 `pairWeighting.report.explain` 回包不一致**（一边 0.5 一边落回 1）。
-**这正是两半合并才会暴露的接缝**：权重口径（`real-cells` 侧）与三跳断言（`desat3` 侧）各自成立、合起来不一致。
-注意 `:323` 的防线（`exp1 > 0`）**通过了** ⇒ 不是「取数坏了自洽成绿」那一态，是真差一半。
+⇒ **期望式与引擎读数之间差一个精确的 0.5。** 注意 `:323` 的防线（`exp1 > 0`）**通过了**
+⇒ 不是「取数坏了自洽成绿」那一态，是真差一半。
+
+⚠ **到此为止是实测；再往下是候选，本单不裁决**（铁律 0.5：不许拿一层推断当结论）。
+`coefOf` 与引擎读的是同一张规则表 ⇒ 系数是共享的，差异只可能落在 `w1` 这一侧。两个候选：
+① 引擎按 Σ=1 对两个源各施 0.5，而回包 `explain` 里该 (ruleKey,targetObjectId) **一行都没有** ⇒
+`weightSumOf` 走 `:316` 的 `rows.length === 0 ? 1` 回落成 1；② 回包有行但口径与引擎实际施加的不同。
+**分辨这两者要打印 `tick1.pairWeighting.report.explain` 的实际行数 —— 留给修单，本单不改代码不下此结论。**
+可以确定的是：**这是两半合并才暴露的接缝** —— 权重口径（`real-cells` 侧）与三跳断言（`desat3` 侧）各自成立、合起来不一致。
 
 **(b) `seed-demo-propagation.test.ts:847:54`**
 ```
