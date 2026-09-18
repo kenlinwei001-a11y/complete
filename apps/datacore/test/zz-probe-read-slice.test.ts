@@ -5,28 +5,26 @@ import { selectEffectiveBom, bomRowCost } from "../src/bom.js";
 import { num, str } from "../src/solvers/types.js";
 
 describe("PROBE · 两法对照", () => {
-  it("属性平铺 vs 链路遍历", async () => {
+  it("判据1 分叉清单：属性 join vs 链路遍历", async () => {
     const t = await makeApp();
     await seedBattery(t);
     const T = async (k: string) => (await t.repos.objects.listByType("demo", k)).filter((o) => !o.mergedInto);
-    const [models, versions, headers, details, materials] = await Promise.all([
-      T("Model"), T("ProductVersion"), T("BOMHeader"), T("BOMDetail"), T("Material"),
+    const [models, headers, details, materials] = await Promise.all([
+      T("Model"), T("BOMHeader"), T("BOMDetail"), T("Material"),
     ]);
     const links = await t.repos.links.list("demo");
     const byKey = (k: string) => links.filter((l) => l.type === k);
-    console.log(`\n=== 计数 ===`);
-    console.log(`Model ${models.length} · ProductVersion ${versions.length} · BOMHeader ${headers.length} · BOMDetail ${details.length} · Material ${materials.length}`);
-    for (const k of ["version_belongs_to_model", "bom_belongs_to_version", "detail_belongs_to_bom", "detail_uses_material"]) {
-      console.log(`link ${k}: ${byKey(k).length}`);
-    }
-    // 🐤 金丝雀：一个确定存在的 linkKey 必须有边
-    console.log(`🐤 canary link order_has_line: ${byKey("order_has_line").length}`);
+    // 🐤 金丝雀：确定存在的 linkKey 必须有边；全 0 ⇒ 量法坏了而不是"图上没有"
+    console.log(`🐤 canary order_has_line=${byKey("order_has_line").length} material_used_by_model=${byKey("material_used_by_model").length}`);
 
     const hdrProps = headers.map((o) => o.props);
     const dtlProps = details.map((o) => o.props);
     const priceByMatKey = new Map(materials.map((o) => [str(o.props.matId) || str(o.objectKey), num(o.props.unitPrice)]));
+    const priceByObjId = new Map(materials.map((o) => [o.id, num(o.props.unitPrice)]));
+    const matKeyOf = new Map(materials.map((o) => [o.id, str(o.props.matId) || str(o.objectKey)]));
+    const modelKeyOf = new Map(models.map((o) => [o.id, str(o.props.modelId) || str(o.objectKey)]));
 
-    // 链路索引
+    // 链路索引（全部按 **对象 id**，零字符串 join）
     const verToModel = new Map<string, string>();
     for (const l of byKey("version_belongs_to_model")) verToModel.set(l.fromId, l.toId);
     const hdrToVer = new Map<string, string>();
@@ -35,78 +33,96 @@ describe("PROBE · 两法对照", () => {
     for (const l of byKey("detail_belongs_to_bom")) dtlToHdr.set(l.fromId, l.toId);
     const dtlToMat = new Map<string, string>();
     for (const l of byKey("detail_uses_material")) dtlToMat.set(l.fromId, l.toId);
-
     const hdrById = new Map(headers.map((o) => [o.id, o]));
-    const matById = new Map(materials.map((o) => [o.id, o]));
-
-    console.log(`\n=== 逐型号：属性法 vs 链路法 ===`);
-    for (const m of models.sort((a, b) => a.id.localeCompare(b.id))) {
-      const modelKey = str(m.props.modelId) || str(m.objectKey);
-      // (a) 属性法
-      const eff = selectEffectiveBom(hdrProps, dtlProps, modelKey);
-      const effBomId = eff.header ? str(eff.header.bomId) : null;
-      // (b) 链路法：Model ←version_belongs_to_model― PV ←bom_belongs_to_version― BOMHeader
-      const myVers = [...verToModel.entries()].filter(([, mid]) => mid === m.id).map(([vid]) => vid);
-      const myHdrs = [...hdrToVer.entries()].filter(([, vid]) => myVers.includes(vid)).map(([hid]) => hid);
-      const chainBomIds = myHdrs.map((h) => str(hdrById.get(h)?.props.bomId)).sort();
-      // 属性法说这个型号有几份头
-      const attrBomIds = hdrProps.filter((h) => str(h.modelId) === modelKey).map((h) => str(h.bomId)).sort();
-      console.log(
-        `${modelKey.padEnd(12)} | 属性法选中 ${String(effBomId).padEnd(14)} (候选 ${attrBomIds.length}: ${attrBomIds.join(",")}) | 链路法可达 ${chainBomIds.length}: ${chainBomIds.join(",")}`,
-      );
-    }
-
-    // 逐 BOMHeader 的 status / version 详情
-    console.log(`\n=== BOMHeader 明细 ===`);
-    for (const h of headers.sort((a, b) => str(a.props.bomId).localeCompare(str(b.props.bomId)))) {
-      const vid = hdrToVer.get(h.id);
-      const ver = versions.find((v) => v.id === vid);
-      console.log(
-        `${str(h.props.bomId).padEnd(14)} model=${str(h.props.modelId).padEnd(12)} status=${str(h.props.status).padEnd(6)} → PV ${ver ? str(ver.props.versionCode) : "（无链路）"} status=${ver ? str(ver.props.status) : "-"}`,
-      );
-    }
-
-    // 逐 BOMDetail 的归属：属性 bomId vs 链路 detail_belongs_to_bom
-    let dtlAgree = 0, dtlDisagree = 0, dtlNoLink = 0;
+    const dtlByHdr = new Map<string, typeof details>();
     for (const d of details) {
-      const hid = dtlToHdr.get(d.id);
-      if (!hid) { dtlNoLink += 1; continue; }
-      const linkBomId = str(hdrById.get(hid)?.props.bomId);
-      if (linkBomId === str(d.props.bomId)) dtlAgree += 1; else dtlDisagree += 1;
+      const h = dtlToHdr.get(d.id);
+      if (!h) continue;
+      (dtlByHdr.get(h) ?? dtlByHdr.set(h, []).get(h)!).push(d);
     }
-    console.log(`\n=== BOMDetail 归属：属性 bomId vs 链路 detail_belongs_to_bom ===`);
-    console.log(`一致 ${dtlAgree} · 不一致 ${dtlDisagree} · 无链路 ${dtlNoLink} （共 ${details.length}）`);
 
-    // 逐 BOMDetail 的物料：属性 materialId vs 链路 detail_uses_material
-    let matAgree = 0, matDisagree = 0, matNoLink = 0;
-    for (const d of details) {
-      const mid = dtlToMat.get(d.id);
-      if (!mid) { matNoLink += 1; continue; }
-      const linkMatKey = str(matById.get(mid)?.props.matId) || str(matById.get(mid)?.objectKey);
-      if (linkMatKey === str(d.props.materialId)) matAgree += 1; else matDisagree += 1;
-    }
-    console.log(`=== BOMDetail→Material：属性 materialId vs 链路 detail_uses_material ===`);
-    console.log(`一致 ${matAgree} · 不一致 ${matDisagree} · 无链路 ${matNoLink} （共 ${details.length}）`);
-
-    // 方形-LFP 上两个样例物料的占比（判据 2 的基线）
-    console.log(`\n=== 方形-LFP BOM 成本占比（判据 2 基线）===`);
-    const eff = selectEffectiveBom(hdrProps, dtlProps, "方形-LFP");
-    if (eff.header) {
+    /** 链路法：从 Model 对象 id 出发走 4 跳，返回 (Material objId → cost) + total + bomId。 */
+    const chainBom = (modelObjId: string) => {
+      const vers = [...verToModel.entries()].filter(([, m]) => m === modelObjId).map(([v]) => v);
+      const hdrs = [...hdrToVer.entries()].filter(([, v]) => vers.includes(v)).map(([h]) => h);
+      // 生效选取：复用 bom.ts 那一支（唯一判据），但**候选集来自图**而非属性匹配
+      const reachableProps = hdrs.map((h) => hdrById.get(h)!.props);
+      const eff = selectEffectiveBom(reachableProps, dtlProps, modelKeyOf.get(modelObjId) ?? "");
+      const effHdrObj = hdrs.find((h) => str(hdrById.get(h)!.props.bomId) === str(eff.header?.bomId));
+      const row = new Map<string, number>();
       let total = 0;
-      const rows: { mat: string; cost: number }[] = [];
-      for (const r of eff.rows) {
-        const c = bomRowCost(r, (mk) => priceByMatKey.get(mk) ?? 0);
+      for (const d of effHdrObj ? (dtlByHdr.get(effHdrObj) ?? []) : []) {
+        const matObj = dtlToMat.get(d.id);
+        const price = matObj ? priceByObjId.get(matObj) ?? 0 : 0;
+        const c = bomRowCost(d.props, () => price);
         total += c;
-        rows.push({ mat: str(r.materialId), cost: c });
+        if (matObj) row.set(matObj, (row.get(matObj) ?? 0) + c);
       }
-      console.log(`bomId=${str(eff.header.bomId)} total=${total}`);
-      for (const r of rows.sort((a, b) => b.cost - a.cost)) {
-        console.log(`  ${r.mat.padEnd(20)} cost=${r.cost} share=${(r.cost / total * 100).toFixed(6)}%`);
+      return { row, total, bomId: eff.header ? str(eff.header.bomId) : null, reachableHdrs: hdrs.length };
+    };
+
+    /** 属性法：今天 pair-weights.ts 走的那一支（逐字搬过来）。 */
+    const attrBom = (modelObjId: string) => {
+      const { header, rows } = selectEffectiveBom(hdrProps, dtlProps, modelKeyOf.get(modelObjId) ?? "");
+      const row = new Map<string, number>();
+      let total = 0;
+      for (const r of rows) {
+        const c = bomRowCost(r, (mk) => priceByMatKey.get(mk) ?? 0);
+        const k = str(r.materialId);
+        row.set(k, (row.get(k) ?? 0) + c);
+        total += c;
       }
+      return { row, total, bomId: header ? str(header.bomId) : null };
+    };
+
+    console.log(`\n=== 判据 1：逐 (Material, Model) 对，两法权重对照 ===`);
+    let same = 0, diff = 0;
+    const diffs: string[] = [];
+    for (const e of byKey("material_used_by_model").sort((a, b) => a.fromId.localeCompare(b.fromId) || a.toId.localeCompare(b.toId))) {
+      const a = attrBom(e.toId), c = chainBom(e.toId);
+      const mk = matKeyOf.get(e.fromId) ?? "";
+      const wA = a.total > 0 ? (a.row.get(mk) ?? 0) / a.total : 0;
+      const wC = c.total > 0 ? (c.row.get(e.fromId) ?? 0) / c.total : 0;
+      if (wA === wC) same += 1;
+      else { diff += 1; diffs.push(`${mk} → ${modelKeyOf.get(e.toId)}  属性=${wA}  链路=${wC}  Δ=${wC - wA}`); }
+    }
+    console.log(`逐位相同 ${same} 对 · 不同 ${diff} 对（共 ${byKey("material_used_by_model").length} 对）`);
+    for (const d of diffs) console.log(`  ⚠ ${d}`);
+
+    console.log(`\n=== 逐型号 total / bomId 对照 ===`);
+    for (const m of models.sort((a, b) => str(a.props.modelId).localeCompare(str(b.props.modelId)))) {
+      const a = attrBom(m.id), c = chainBom(m.id);
+      console.log(
+        `${str(m.props.modelId).padEnd(12)} 属性 bom=${String(a.bomId).padEnd(16)} total=${a.total}` +
+        ` | 链路 bom=${String(c.bomId).padEnd(16)} total=${c.total} 可达头数=${c.reachableHdrs} | ${a.total === c.total && a.bomId === c.bomId ? "✅同" : "⚠️异"}`,
+      );
     }
 
-    // 传导规则声明：哪些边用了 weightRef
-    const rules = await t.repos.sim.listPropagationRules("demo", false).catch(() => []);
-    console.log(`\n=== 传导规则（本次未播 seedDemoPropagationRules，应为 0）: ${rules.length} ===`);
+    // ── 若**去掉生效选取**、把可达的 2–3 份 BOM 全池化，会差多少（说明选取规则不可省）──
+    console.log(`\n=== 反证：去掉「生效选取」改为池化全部可达 BOM 的后果 ===`);
+    for (const m of models.sort((a, b) => str(a.props.modelId).localeCompare(str(b.props.modelId)))) {
+      const vers = [...verToModel.entries()].filter(([, mm]) => mm === m.id).map(([v]) => v);
+      const hdrs = [...hdrToVer.entries()].filter(([, v]) => vers.includes(v)).map(([h]) => h);
+      let total = 0; const row = new Map<string, number>();
+      for (const h of hdrs) for (const d of dtlByHdr.get(h) ?? []) {
+        const mo = dtlToMat.get(d.id); const price = mo ? priceByObjId.get(mo) ?? 0 : 0;
+        const c = bomRowCost(d.props, () => price); total += c; if (mo) row.set(mo, (row.get(mo) ?? 0) + c);
+      }
+      const eff = chainBom(m.id);
+      const pos = [...row.keys()].find((k) => matKeyOf.get(k) === "pos_lfp" || matKeyOf.get(k) === "pos_ncm");
+      const wPool = pos && total > 0 ? (row.get(pos) ?? 0) / total : 0;
+      const wEff = pos && eff.total > 0 ? (eff.row.get(pos) ?? 0) / eff.total : 0;
+      console.log(`${str(m.props.modelId).padEnd(12)} 正极占比 生效BOM=${wEff.toFixed(9)} 池化全部=${wPool.toFixed(9)} 差=${((wPool - wEff) / (wEff || 1) * 100).toFixed(2)}%`);
+    }
+
+    // ── material_used_by_model 边 vs BOM 实际用料（配对是否一致）──
+    console.log(`\n=== material_used_by_model 边 vs BOM 明细实际用料 ===`);
+    for (const m of models.sort((a, b) => str(a.props.modelId).localeCompare(str(b.props.modelId)))) {
+      const edgeMats = new Set(byKey("material_used_by_model").filter((l) => l.toId === m.id).map((l) => l.fromId));
+      const bomMats = new Set(chainBom(m.id).row.keys());
+      const onlyEdge = [...edgeMats].filter((x) => !bomMats.has(x)).map((x) => matKeyOf.get(x));
+      const onlyBom = [...bomMats].filter((x) => !edgeMats.has(x)).map((x) => matKeyOf.get(x));
+      console.log(`${str(m.props.modelId).padEnd(12)} 边=${edgeMats.size} BOM=${bomMats.size} 仅边有=[${onlyEdge.join(",")}] 仅BOM有=[${onlyBom.join(",")}]`);
+    }
   }, 180_000);
 });

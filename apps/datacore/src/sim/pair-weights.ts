@@ -105,6 +105,100 @@ interface Measure {
   bomId: string | null;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// 声明式路径遍历（WO-SIM-READ-SLICE）—— 「本体切片不就是解决『传导』的推演吗」
+//
+// ── 今天是 X / 应该是 Y ─────────────────────────────────────────────────────────
+// **今天的行为是**：`bom_cost_share` 把「这个型号的 BOM 是哪一份、这一行用的什么料」
+// 用**属性平铺匹配**算出来（`h.modelId === modelId` · `d.bomId === header.bomId` ·
+// `r.materialId → priceByMatKey`）。三处 join 全是**字符串比对**，一次 `repos.links` 都不读。
+// 而本体里这条链**本来就有边**：`version_belongs_to_model` / `bom_belongs_to_version` /
+// `detail_belongs_to_bom` / `detail_uses_material`，`synthetic/battery.ts` 的
+// `order_to_material_bom` 切片正是照这四跳声明的（本模块只**读**那条切片的形状，不改它）。
+// ⇒ 同一个问题「这个型号用哪些料、各用多少」在本仓有**两条算法**：图一条、属性一条。
+// **应该是**：遍历走图，属性只当**分叉探测器**——两法给出不同答案时诚实报缺，**不许自己挑一个**。
+//
+// ── 为什么这不是「为了优雅而重构」────────────────────────────────────────────────
+// 属性 join 的失效是**静默**的：`BOMHeader.modelId` 改名/缺失 ⇒ `mine` 为空 ⇒ 该型号
+// 权重整列 0 ⇒ 屏上只是「这条边今天没动」。链路走不通则**当场报缺**（`report.unresolved`），
+// 引擎按诚实缺席处理。两种失效**长得完全不同**，而前者正是本仓反复治的那种假绿。
+//
+// ── 边界（实测后收窄，别照抄成"全部口径都能声明路径"）──────────────────────────
+// 四个口径里**只有 `bom_cost_share` 有 join 可迁**：另外三个的计量值就长在边自己的
+// 源/目标实例身上（`source_qty_relative`/`source_value_relative` 读 `o.props`，路径长度 0；
+// `actor_exposure_relative` 聚合的就是**本规则自己那批边**，本来就是图驱动），
+// `equal_share` 计量值恒 1、不读任何数据。**给它们编一条路径 = 编一个不存在的概念。**
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 一跳声明：沿 `linkKey` 的 `out`(from→to) 或 `in`(to→from) 方向走一步。**是数据，不是代码**。 */
+interface PathStep {
+  linkKey: string;
+  direction: "in" | "out";
+}
+
+/**
+ * `bom_cost_share` 的**声明式路径**：从传导边的**目标**（Model）走到承载计量值的那些节点。
+ * 与 `synthetic/battery.ts` 切片 `order_to_material_bom` 的后四跳**逐跳同构**（那条切片从
+ * Order 起步，本处从它的第三跳 Model 起步；四个 linkKey 与四个 direction 逐字相同）。
+ *
+ * ⚠ **Model→BOMHeader 必须过 ProductVersion，这不是绕路**：全表 linkType 里 BOM 头唯一的
+ * 上挂边是 `bom_belongs_to_version`，没有任何 Model→BOMHeader 的直边 ——
+ * `BOMHeader.modelId` 是**属性**不是链路，照属性猜着连就是造一条悬空边（切片注释原文）。
+ */
+const BOM_COST_SHARE_PATH: { toHeaders: PathStep[]; toDetails: PathStep[]; toMaterial: PathStep[] } = {
+  // Model ←version_belongs_to_model― ProductVersion ←bom_belongs_to_version― BOMHeader
+  toHeaders: [
+    { linkKey: "version_belongs_to_model", direction: "in" },
+    { linkKey: "bom_belongs_to_version", direction: "in" },
+  ],
+  // BOMHeader ←detail_belongs_to_bom― BOMDetail
+  toDetails: [{ linkKey: "detail_belongs_to_bom", direction: "in" }],
+  // BOMDetail ―detail_uses_material→ Material
+  toMaterial: [{ linkKey: "detail_uses_material", direction: "out" }],
+};
+
+/** 人读的路径串（进 `explain.fields`：可披露要求「一个看不到代码的人能自己判断这是算的还是拍的」）。 */
+const pathLabel = (...steps: readonly PathStep[][]): string =>
+  `链路 ${steps.flat().map((s) => `${s.linkKey}:${s.direction}`).join(" → ")}`;
+
+/** 按 linkKey + 方向建的邻接索引：`out` 是 fromId→toId[]，`in` 是 toId→fromId[]。 */
+type LinkIndex = Map<string, { out: Map<string, string[]>; in: Map<string, string[]> }>;
+
+const indexLinks = (links: readonly { fromId: string; toId: string; type: string }[]): LinkIndex => {
+  const idx: LinkIndex = new Map();
+  for (const l of links) {
+    let e = idx.get(l.type);
+    if (!e) {
+      e = { out: new Map(), in: new Map() };
+      idx.set(l.type, e);
+    }
+    (e.out.get(l.fromId) ?? e.out.set(l.fromId, []).get(l.fromId)!).push(l.toId);
+    (e.in.get(l.toId) ?? e.in.set(l.toId, []).get(l.toId)!).push(l.fromId);
+  }
+  return idx;
+};
+
+/**
+ * 沿声明的路径逐跳走，返回落点对象 id。
+ *
+ * R6：落点**去重 + 升序**——下游把它们的成本浮点累加成 `total`，而浮点加法不满足交换律，
+ * 序变了分母就可能差最后一位（本仓多处逐字节断言会当场红）。
+ *
+ * 链路在本体里根本不存在 ⇒ 返回 `[]`（诚实为空）。**绝不**回落去猜属性：
+ * 回落就是把刚拆掉的第二套真相源原样接回来，而且是静默的。
+ */
+const walkPath = (idx: LinkIndex, start: string, path: readonly PathStep[]): string[] => {
+  let frontier = [start];
+  for (const step of path) {
+    const e = idx.get(step.linkKey);
+    if (!e) return [];
+    const next = new Set<string>();
+    for (const id of frontier) for (const n of (step.direction === "out" ? e.out : e.in).get(id) ?? []) next.add(n);
+    frontier = [...next];
+  }
+  return frontier.sort((a, b) => a.localeCompare(b));
+};
+
 /**
  * 把 `(targetId → [Measure])` 归一成权重表片段 + 逐对出处。
  *
@@ -218,6 +312,22 @@ export async function buildPairWeights(
     return rows;
   };
 
+  /**
+   * 链路表**按需读一次**（只有走声明路径的口径才会碰它）——「零声明 ⇒ 零读」那条既有性能
+   * 特征原样保留：上面 `weighted.length === 0` 已经先返回了，这里再加一层惰性，
+   * 于是「声明了口径、但声明的是 `equal_share`」也一条链路都不读。
+   *
+   * ⚠ **读的是全租户链路表，不是 `graph.links`**——这与本口径「分母 = **整份 BOM**」的既有
+   * 口径是同一条纪律（见 `normalizeInEdges` 的 `denomOf` 注释）：范围裁剪（LOCAL）时
+   * 若跟着裁 BOM 链，分母会悄悄缩水，局部与全域的占比不再可比。范围只裁**要分摊的对**
+   * （`edges` 走 `graph.links`），不裁**算占比用的那张 BOM**。
+   */
+  let linkIdx: LinkIndex | null = null;
+  const linkIndex = async (): Promise<LinkIndex> => {
+    if (!linkIdx) linkIdx = indexLinks(await repos.links.list(tenantId));
+    return linkIdx;
+  };
+
   const weights: PairWeightLookup = {};
   // 规则按 key 稳定排序（R6：装配序不引入新的不确定来源）。
   for (const rule of [...weighted].sort((a, b) => a.key.localeCompare(b.key))) {
@@ -265,47 +375,106 @@ export async function buildPairWeights(
         );
         continue;
       }
-      const matKeyOf = new Map(sources.map((o) => [o.id, str(o.props.matId) || str(o.objectKey)]));
-      const priceByMatKey = new Map(sources.map((o) => [str(o.props.matId) || str(o.objectKey), num(o.props.unitPrice)]));
+      // ── 遍历走**本体链路**（WO-SIM-READ-SLICE）：三处字符串 join 全部退休 ─────────────
+      // 旧：`h.modelId === modelId` · `d.bomId === header.bomId` · `r.materialId → priceByMatKey`
+      // 新：`version_belongs_to_model` → `bom_belongs_to_version` → `detail_belongs_to_bom`
+      //     → `detail_uses_material`，全程按**对象 id** 走（`BOM_COST_SHARE_PATH` 是数据不是代码）。
+      const idx = await linkIndex();
+      const allSteps = [...BOM_COST_SHARE_PATH.toHeaders, ...BOM_COST_SHARE_PATH.toDetails, ...BOM_COST_SHARE_PATH.toMaterial];
+      const missingLinks = [...new Set(allSteps.map((s) => s.linkKey))].filter((k) => !idx.has(k)).sort();
+      if (missingLinks.length > 0) {
+        // 判据 4（诚实边界）：走不通就**红**，⛔ 不许 catch 成静默回落到属性 join。
+        // 「算不出来」与「悄悄换一条路算出一个数」是两个命题，后者正是本单要拆掉的病。
+        fail(
+          `本租户缺链路 ${missingLinks.join(" / ")} ⇒ 声明的 BOM 路径走不通（${pathLabel(allSteps)}）。` +
+            `本条流不传导——回落属性匹配等于把刚拆掉的第二套真相源原样接回来，而且是静默的。`,
+        );
+        continue;
+      }
+      const hdrById = new Map(headers.map((o) => [o.id, o]));
+      const dtlById = new Map(details.map((o) => [o.id, o]));
+      /** 物料**对象 id** → 单价（不再经 matId 字符串中转）。 */
+      const priceByObjId = new Map(sources.map((o) => [o.id, num(o.props.unitPrice)]));
       const modelKeyOf = new Map(targets.map((o) => [o.id, str(o.props.modelId) || str(o.objectKey)]));
-      const hdrProps = headers.map(props);
-      const dtlProps = details.map(props);
-      /** 型号对象 id → (物料主键 → {成本, 用量, 损耗}) + 整份 BOM 的成本合计 + bomId。 */
+      const hdrPropsAll = headers.map(props);
+      /** 图与属性给出不同生效 BOM 的型号（判据 1 的分叉探测器；实测 6/6 从不触发）。 */
+      const divergent: string[] = [];
+      /** 型号对象 id → (物料**对象 id** → {成本, 用量, 损耗}) + 整份 BOM 的成本合计 + bomId。 */
       const bomOf = new Map<string, { row: Map<string, { cost: number; qty: number; loss: number }>; total: number; bomId: string | null }>();
       const bomFor = (modelObjId: string) => {
         const hit = bomOf.get(modelObjId);
         if (hit) return hit;
-        const { header, rows } = selectEffectiveBom(hdrProps, dtlProps, modelKeyOf.get(modelObjId) ?? "");
+        // ① **候选集来自图**：Model → ProductVersion → BOMHeader（不再是 `h.modelId === modelId`）。
+        const reachable = walkPath(idx, modelObjId, BOM_COST_SHARE_PATH.toHeaders);
+        const idOfProps = new Map<Record<string, unknown>, string>();
+        for (const h of reachable) idOfProps.set(hdrById.get(h)!.props, h);
+        // ② **选取仍走 `bom.ts` 那一支**（全仓唯一判据：量产优先 + bomId 升序 · 与 `quote_margin` 同源）。
+        //    这里只借它的**选取**，明细行改走链路 ⇒ 故 `details` 传 `[]`、`rows` 弃用不看。
+        //    ⚠ 「哪一份 BOM 是生效的」是**业务规则不是图性质** —— 图只说「可达 2–3 份」，
+        //    说不出哪份当前生效（实测：量产 V1.0/V1.1 并存，试产 V2.0 也在同一条链上）。
+        //    所以这一步不能、也不该被路径取代；能被取代的是**遍历**，不是**裁决**。
+        const eff = selectEffectiveBom([...idOfProps.keys()], [], modelKeyOf.get(modelObjId) ?? "");
+        const effId = eff.header ? idOfProps.get(eff.header) ?? null : null;
+        // ③ 分叉探测：属性平铺法若选出**另一份** BOM，两套真相源就是真的分叉了。
+        const attrHeader = selectEffectiveBom(hdrPropsAll, [], modelKeyOf.get(modelObjId) ?? "").header;
+        const attrBomId = attrHeader ? str(attrHeader.bomId) : null;
+        const chainBomId = effId ? str(hdrById.get(effId)!.props.bomId) : null;
+        if (attrBomId !== chainBomId) {
+          divergent.push(`${modelKeyOf.get(modelObjId) ?? modelObjId}：链路法选 ${chainBomId ?? "（无）"}、属性法选 ${attrBomId ?? "（无）"}`);
+        }
+        // ④ 明细与物料也走链路：BOMHeader ← BOMDetail → Material。
         const row = new Map<string, { cost: number; qty: number; loss: number }>();
         let total = 0;
-        for (const r of rows) {
-          const c = bomRowCost(r, (mk) => priceByMatKey.get(mk) ?? 0);
-          const k = str(r.materialId);
-          const prev = row.get(k);
-          row.set(k, { cost: (prev?.cost ?? 0) + c, qty: num(r.quantity), loss: num(r.lossRate) });
+        for (const did of effId ? walkPath(idx, effId, BOM_COST_SHARE_PATH.toDetails) : []) {
+          const d = dtlById.get(did);
+          if (!d) continue;
+          // `detail_uses_material` 是 N:1（契约声明）；真出现多条时取升序首条，R6 稳定。
+          const matObjId = walkPath(idx, did, BOM_COST_SHARE_PATH.toMaterial)[0] ?? null;
+          const price = matObjId ? priceByObjId.get(matObjId) ?? 0 : 0;
+          // 成本式仍是 `bom.ts` 那一条（`quote_margin` 同源），**不另立第二套金额口径**；
+          // 只是单价不再按 `row.materialId` 字符串查，而是按链路解出来的物料对象直接给。
+          const c = bomRowCost(d.props, () => price);
           total += c;
+          if (matObjId) {
+            const prev = row.get(matObjId);
+            row.set(matObjId, { cost: (prev?.cost ?? 0) + c, qty: num(d.props.quantity), loss: num(d.props.lossRate) });
+          }
         }
-        const built = { row, total, bomId: header ? str(header.bomId) : null };
+        const built = { row, total, bomId: chainBomId };
         bomOf.set(modelObjId, built);
         return built;
       };
       const measures = new Map<string, Measure[]>();
       for (const e of edges) {
         const bom = bomFor(e.toId);
-        const matKey = matKeyOf.get(e.fromId) ?? "";
         // 链路说「这个料用在这个型号上」而 BOM 里没有这一行 ⇒ 占比 **0**（算得出来的真值：
         // 不在 BOM 里就是占该型号 BOM 成本 0%）。**不是**报缺 —— 报缺会让整条规则停摆。
-        const hitRow = bom.row.get(matKey);
-        const price = priceByMatKey.get(matKey) ?? 0;
+        const hitRow = bom.row.get(e.fromId);
+        const price = priceByObjId.get(e.fromId) ?? 0;
         (measures.get(e.toId) ?? measures.set(e.toId, []).get(e.toId)!).push({
           sourceId: e.fromId,
           measure: hitRow?.cost ?? 0,
           formula: hitRow
             ? `单台用量 ${hitRow.qty} × 单价 ${price} × (1 + 损耗率 ${hitRow.loss})`
             : `该物料在 BOM ${bom.bomId ?? "（无生效 BOM）"} 中**没有明细行** ⇒ 计量值 0`,
-          fields: ["BOMDetail.quantity(单台用量)", "Material.unitPrice", "BOMDetail.lossRate", "BOMHeader.bomId"],
+          fields: [
+            "BOMDetail.quantity(单台用量)", "Material.unitPrice", "BOMDetail.lossRate", "BOMHeader.bomId",
+            // 可披露（铁律 1.5 判据二）：把**走过的那条路径**原样列出来 ——
+            // 读者据此能判断这个占比是沿图算的，还是照属性猜的。
+            pathLabel(BOM_COST_SHARE_PATH.toHeaders, BOM_COST_SHARE_PATH.toDetails, BOM_COST_SHARE_PATH.toMaterial),
+          ],
           bomId: bom.bomId,
         });
+      }
+      // 🔴 判据 1（WO-SIM-READ-SLICE 头号判据）：两法给出不同的生效 BOM ⇒ **不许自己挑一个**。
+      // 整条规则诚实报缺，让机器先说话 —— 挑一个就是把「本仓有两个答案」这件事盖过去。
+      // 实测 2026-09-18（demo·seed 42）：6/6 型号、42/42 对逐位相同 ⇒ 这一支从不触发。
+      if (divergent.length > 0) {
+        fail(
+          `图与属性对「哪一份 BOM 生效」给出不同答案（${divergent.join("；")}）⇒ 本仓两套真相源已分叉。` +
+            `本条流不传导——自己挑一个等于把分叉盖过去，而两个答案里必然有一个在骗人。`,
+        );
+        continue;
       }
       // 分母 = **整份 BOM 的成本合计**，不是图里现有入边之和（见 `normalizeInEdges` 注释）。
       const r = normalizeInEdges(rule.key, basis, normalize, measures, (targetId) => bomFor(targetId).total);
