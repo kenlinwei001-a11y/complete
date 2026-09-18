@@ -1,0 +1,43 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/datacore
+
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 白名单对象=2150 每对象最多7格 ⇒ 批大小=71 批数=31（上限=500）
+
+stdout | test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+[SIM-SEED-WORLD ⑤b] 合并后 3550 格（一次发完会是 3550>500 ⇒ truncated:true，这就是本条曾经的红）
+
+ ❯ test/sim-seed-world.seam.test.ts (4 tests | 1 failed) 1389826ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ① 播种 → GET /a/v1/sim/sessions 里有一条 RUNNING(curTick≥1)、baseSnapshot 非空；② tick 态落盘且真动过；③ 幂等  107563ms
+   × WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身 1174168ms
+     → 结构可达面与真跑对不上 ⇒ 排序键度量的不是传导: expected 2445 to be 3861 // Object.is equality
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ⑥ 确定性（R6）：同一份世界重播一遍，选出来的落点与幅度**逐字节一致**  107447ms
+   ✓ WO-SIM-SEED-WORLD · 种子世界接缝 > ④ 诚实缺席：零传导规则/零物化对象的租户**不建空世界**（空 baseSnapshot 的 RUNNING = 另一种占位）  646ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/sim-seed-world.seam.test.ts > WO-SIM-SEED-WORLD · 种子世界接缝 > ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+AssertionError: 结构可达面与真跑对不上 ⇒ 排序键度量的不是传导: expected 2445 to be 3861 // Object.is equality
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 3861[39m
+[31m+ 2445[39m
+
+ ❯ test/sim-seed-world.seam.test.ts:459:70
+    457|     // `reachCells` 的口径：**不含落点那一格**（落点对象上的其它格仍算下游）。
+    458|     const censusDownstreamCells = census.moved.filter((k) => k !== lan…
+    459|     expect(censusDownstreamCells.length, "结构可达面与真跑对不上 ⇒ 排序键度量的不是传导").t…
+       |                                                                      ^
+    460|     // `reachObjects` 的口径：**不含落点对象**。两个数分属排序键结构里两个不同字段，
+    461|     // 只对其中一个 ⇒ 另一个可以随便错而没人知道（"一个数盖住两件事"的老形态）。
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+   Start at  14:31:30
+   Duration  1405.85s (transform 8.41s, setup 0ms, collect 14.82s, tests 1389.83s, environment 0ms, prepare 165ms)
+

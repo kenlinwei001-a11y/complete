@@ -1,72 +1,28 @@
 
  RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/datacore
 
- ❯ test/seed-demo-propagation.test.ts (19 tests | 2 failed) 171499ms
-   ✓ SEED_DEMO · 沙盘传导规则种子 > 种子后 view-config：propagationCount≥2 + stateVars 非空（消空世界）  10350ms
-   ✓ SEED_DEMO · 沙盘传导规则种子 > 种的规则沿真链路（Order/Model/Base）：发布且 viaLinkKey 是 demo 真链路  876ms
-   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门：每条种子规则的 source─via→target 在**真链路表**上真的走得通（#158 复发闸）  7262ms
-   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门的变异反证：喂一条方向写反的规则（#158 原文），门必须判它死  7707ms
-   ✓ SEED_DEMO · 沙盘传导规则种子 > 确定性 R6：同 SEED_DEMO 重跑规则字节一致（固定 id/系数）  1817ms
-   ✓ SEED_DEMO · 沙盘传导规则种子 > 幂等：重复播种不增项（固定 id 覆盖）  815ms
-   ✓ SEED_DEMO · 沙盘传导规则种子 > live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导  9066ms
-   × SEED_DEMO · 沙盘传导规则种子 > 🔴 效果层 SEAM：供应侧扰动（Supplier.deliveryDelay）跨 3 跳真的传导到 Order.shortageRisk 7093ms
-     → expected 0.44585 to be 0.8917 // Object.is equality
-   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 逐条真触发：49 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3）  7427ms
-   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🐤 金丝雀：端点/链路全合法的边**必须建得出来**（证明这组门不是一律拒绝）  4991ms
-   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 端点不存在的边必须 400（link-types 那次 81/133 全放行的复发闸）  5942ms
-   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 链路类型不存在的边必须 400  4983ms
-   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 方向写反的边必须 400 —— 引擎只沿 from→to 单向走，反向边语法全对但恒贡献 0  6026ms
-   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 coefficientRef 解析不到必须 400 —— 否则静默回落内联系数，用户以为改规则生效其实无效  5991ms
-   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 PATCH 也走同一道体检：塞非法 coefficientRef 必须 400，而合法系数照常放行  4905ms
-   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 体检在 upsert **之前**跑：非法边不许先把同 key 的合法边覆盖掉再报错  8824ms
-   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 种子把 bom_cost_share 接上了（兄弟边 edge-money-weight §4 的同款闸，本条边此前漏着） 4ms
-   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：同一型号上，BOM 占比不同的两种物料各涨 15 ⇒ 读数必须按占比拉开（修前同为 9.75）  9698ms
-   × §6 WO-SIM-DESAT-3 · 去饱和三件的联立接缝（种子 → 推演结果） > 🔴 联立接缝：播完种的世界 0 格反算越界；同一把尺子在 tick0 必须量出数百格（金丝雀） 67668ms
-     → 末拍一个已声明量纲的格都没数到 ⇒ 取数坏了: expected +0 to be 4937 // Object.is equality
+ ✓ test/seed-demo-propagation.test.ts (19 tests) 146020ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种子后 view-config：propagationCount≥2 + stateVars 非空（消空世界）  8201ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 种的规则沿真链路（Order/Model/Base）：发布且 viaLinkKey 是 demo 真链路  605ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门：每条种子规则的 source─via→target 在**真链路表**上真的走得通（#158 复发闸）  5332ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 方向可达门的变异反证：喂一条方向写反的规则（#158 原文），门必须判它死  6424ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 确定性 R6：同 SEED_DEMO 重跑规则字节一致（固定 id/系数）  884ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 幂等：重复播种不增项（固定 id 覆盖）  398ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导  4521ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 效果层 SEAM：供应侧扰动（Supplier.deliveryDelay）跨 3 跳真的传导到 Order.shortageRisk  6478ms
+   ✓ SEED_DEMO · 沙盘传导规则种子 > 🔴 逐条真触发：49 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3）  5940ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🐤 金丝雀：端点/链路全合法的边**必须建得出来**（证明这组门不是一律拒绝）  4096ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 端点不存在的边必须 400（link-types 那次 81/133 全放行的复发闸）  4764ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 链路类型不存在的边必须 400  4702ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 方向写反的边必须 400 —— 引擎只沿 from→to 单向走，反向边语法全对但恒贡献 0  4018ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 coefficientRef 解析不到必须 400 —— 否则静默回落内联系数，用户以为改规则生效其实无效  5040ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 PATCH 也走同一道体检：塞非法 coefficientRef 必须 400，而合法系数照常放行  5072ms
+   ✓ WO-CAUSAL-EDGE-CRUD · 因果边写入的引用体检 > 🔴 体检在 upsert **之前**跑：非法边不许先把同 key 的合法边覆盖掉再报错  4782ms
+   ✓ §5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子） > 🔴 对照实验：同一型号上，BOM 占比不同的两种物料各涨 15 ⇒ 读数必须按占比拉开（修前同为 9.75）  8951ms
+   ✓ §6 WO-SIM-DESAT-3 · 去饱和三件的联立接缝（种子 → 推演结果） > 🔴 联立接缝：播完种的世界 0 格反算越界；同一把尺子在 tick0 必须量出数百格（金丝雀）  65757ms
 
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
-
- FAIL  test/seed-demo-propagation.test.ts > SEED_DEMO · 沙盘传导规则种子 > 🔴 效果层 SEAM：供应侧扰动（Supplier.deliveryDelay）跨 3 跳真的传导到 Order.shortageRisk
-AssertionError: expected 0.44585 to be 0.8917 // Object.is equality
-
-[32m- Expected[39m
-[31m+ Received[39m
-
-[32m- 0.8917[39m
-[31m+ 0.44585[39m
-
- ❯ test/seed-demo-propagation.test.ts:324:42
-    322|     const exp1 = Math.round(10 * coefOf("demo_supplier_delay_to_materi…
-    323|     expect(exp1, "第 1 跳的期望值算成 0 ⇒ 系数或权重取数坏了（0 会让下面三句自洽成绿）").toBeGreate…
-    324|     expect(t1[materialId]!.shortageRisk).toBe(exp1);
-       |                                          ^
-    325|     expect(t1[orderId]?.shortageRisk ?? 0).toBe(0);
-    326|     // tick2：Model.supplyRisk = 9 × 0.7 = 6.3。
-
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
-
- FAIL  test/seed-demo-propagation.test.ts > §6 WO-SIM-DESAT-3 · 去饱和三件的联立接缝（种子 → 推演结果） > 🔴 联立接缝：播完种的世界 0 格反算越界；同一把尺子在 tick0 必须量出数百格（金丝雀）
-AssertionError: 末拍一个已声明量纲的格都没数到 ⇒ 取数坏了: expected +0 to be 4937 // Object.is equality
-
-[32m- Expected[39m
-[31m+ Received[39m
-
-[32m- 4937[39m
-[31m+ 0[39m
-
- ❯ test/seed-demo-propagation.test.ts:847:54
-    845|     // ── 主判据：播完种的世界，已声明量纲的格 0 格反算越界 ────────────────────────
-    846|     const atEnd = overDomain(last as unknown as Record<string, Record<…
-    847|     expect(atEnd.declared, "末拍一个已声明量纲的格都没数到 ⇒ 取数坏了").toBe(atT0.declare…
-       |                                                      ^
-    848|     expect(
-    849|       atEnd.over,
-
-⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
-
-
- Test Files  1 failed (1)
-      Tests  2 failed | 17 passed (19)
-   Start at  12:28:18
-   Duration  186.18s (transform 8.06s, setup 0ms, collect 13.88s, tests 171.50s, environment 0ms, prepare 233ms)
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+   Start at  13:41:56
+   Duration  157.54s (transform 5.93s, setup 0ms, collect 10.29s, tests 146.02s, environment 0ms, prepare 385ms)
 
