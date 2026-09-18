@@ -103,8 +103,11 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
   // ── §3 未声明的量纲**不许被偷偷夹住**，且必须在回执里有名字 ──────────────────────
   it("§3 未声明取值域的量纲不夹不衰减，但被逐个点名（诚实缺席，不是静默兜底）", () => {
     const d = stateVarDomains();
-    expect(d.queueDays).toBeUndefined();     // 天数族：全仓没有第二处出处，故刻意不声明
-    expect(d.inspectBacklog).toBeUndefined(); // 件数族：同上
+    // 样本 = 「仍刻意在表外」的量纲，两个的理由各异（2026-09-18 T6 换样：
+    // 原样本 queueDays/inspectBacklog 已进表 —— 评审形态②裁定「消化速率=产能，有出处」，
+    // 本断言的前提被那单有意拆掉的正是「全仓没有第二处出处」）。
+    expect(d.clearanceQueueDays).toBeUndefined(); // 天数族：T6 裁决 defer —— 实测 −8.9 天负值交仓主，夹下界 0 = 把数据 bug 藏成正常
+    expect(d.qty).toBeUndefined();                // 件数族：Order 真值支属性，设计上永不登记取值域（真值支不饱和，饱和即污染业务真值）
     const { last } = run(1, d);
     expect(last.stateVarReport.declaredStateVars).toContain("demandLoad");
     // 本图上只有 demandPressure/demandLoad 两个量纲，都已声明 ⇒ 未声明表为空但字段必须在
