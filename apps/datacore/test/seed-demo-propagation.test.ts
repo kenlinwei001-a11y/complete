@@ -31,7 +31,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(48); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48
+    expect(cfg.propagationCount).toBe(51); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48 → **WO-SIM-REAL-DATA +3 条 Order 真值边**（qty/unitPrice/leadDays 同名直取 → Model.backlog*，系数 1.0 不过 λ）= 51
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
@@ -49,15 +49,24 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // {Equipment, MaintenanceOrder, Process}，设备故障对订单/毛利的贡献恒为 0。
     // 之所以另起量纲而不复用 `utilPressure`：既有 `demo_line_util_to_process_queue` 已写
     // `Line.utilPressure → Process.queuePressure`，反着写回去就闭成自我放大的二环。
+    // WO-SIM-REAL-DATA 再补 6 个，**它们与上面 41 个不是同一类，别混着读**：
+    //  · 源侧 `qty` / `unitPrice` / `leadDays` —— 这三个**本来就是 `Order` 上的真实业务属性**
+    //    （套 / 元 / 天）。让它们直接当状态变量名，`deriveSeedBaseSnapshot` 的同名探测才撞得上
+    //    ⇒ 那三格走**真读数档**而不是 `round(hash01(...)×100)`。这就是 `measuredCells` 从 0 变正的机制。
+    //  · 目标侧 `backlogQtyTop` / `backlogPriceTop` / `backlogHorizonDays` —— 在手订单簿的三个极值。
+    //  ⛔ 这 6 个**刻意不进 `STATE_VAR_DOMAINS`**（与天数族/件数族同一条纪律）：
+    //    它们带真实单位，拍一个 0–100 的上界会把 21777 套夹成 100。未登记 ⇒ 引擎不夹不衰减，
+    //    并在 tick 回执 `undeclaredStateVars` 里被逐个点名（缺口留在屏上，不留在注释里）。
     expect(cfg.stateVars).toEqual([
+      "backlogHorizonDays", "backlogPriceTop", "backlogQtyTop",
       "blockedPressure", "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure",
       "defectPressure", "deliveryDelay", "deliveryHoldRisk", "demandLoad", "demandPressure",
       "drawdownPressure", "equipmentFailure", "expeditePressure", "feedPressure", "forecastBias",
-      "gapPressure", "handlingBacklog", "inboundExpeditePressure", "inspectBacklog", "loadIndex",
+      "gapPressure", "handlingBacklog", "inboundExpeditePressure", "inspectBacklog", "leadDays", "loadIndex",
       "loadPressure", "orderChurn", "overduePressure", "priceShock", "procurementDelay",
-      "promiseRisk", "qualificationQueue", "queueDays", "queuePressure", "receivablePressure",
+      "promiseRisk", "qty", "qualificationQueue", "queueDays", "queuePressure", "receivablePressure",
       "releasePressure", "repairBacklog", "reviewPressure", "shortageRisk", "splitPressure",
-      "supplyRisk", "switchPressure", "transferPressure", "turnoverPressure", "utilPressure",
+      "supplyRisk", "switchPressure", "transferPressure", "turnoverPressure", "unitPrice", "utilPressure",
       "windowSqueeze",
     ]);
     // 节点类型派生自本体（含 demo 真类型）。
@@ -73,7 +82,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(48); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48
+    expect(items.length).toBe(51); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48 → **WO-SIM-REAL-DATA +3 条 Order 真值边**（qty/unitPrice/leadDays 同名直取 → Model.backlog*，系数 1.0 不过 λ）= 51
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
     // WO-SIM-ROOT-TRIAD 新增 4 条根源边全部挂**已物化**的既有链路（零新 linkType、零新物化）：
@@ -96,7 +105,11 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       "line_belongs_to_base", "line_has_process", "line_runs_work_order", "line_runs_work_order", "material_has_alternative",
       "material_has_balance", "material_has_batch", "material_supplied_by_po", "material_used_by_model", "material_used_by_model",
       "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
-      "model_producible_at", "model_stocked_as_finished_goods", "order_for_model", "order_for_model", "order_has_line",
+      // WO-SIM-REAL-DATA 的三条 Order 真值边同样挂 `order_for_model`（⛔ 不新造链路 ——
+      // 它是本仓已物化且被方向可达门当金丝雀用的那条边），故这里从 2 条变 5 条。
+      "model_producible_at", "model_stocked_as_finished_goods",
+      "order_for_model", "order_for_model", "order_for_model", "order_for_model", "order_for_model",
+      "order_has_line",
       "order_has_line", "order_has_promise", "order_of_customer", "po_customs_cleared_by", "po_from_supplier",
       "po_inspected_by", "po_replenishes_material", "process_belongs_to_line", "process_uses_equipment",
       "supplier_supplies_material",
@@ -132,7 +145,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(48); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48
+    expect(rules.length).toBe(51); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48 → **WO-SIM-REAL-DATA +3 条 Order 真值边**（qty/unitPrice/leadDays 同名直取 → Model.backlog*，系数 1.0 不过 λ）= 51
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -177,7 +190,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(48); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48
+    expect(items.length).toBe(51); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48 → **WO-SIM-REAL-DATA +3 条 Order 真值边**（qty/unitPrice/leadDays 同名直取 → Model.backlog*，系数 1.0 不过 λ）= 51
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {
@@ -335,7 +348,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
   });
 
   // 每条边真触发（REQ143 的验收面 + 档 1 扩面）：一次扰动若干源头，逐组核 trace。
-  it("🔴 逐条真触发：46 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4）", async () => {
+  it("🔴 逐条真触发：49 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
@@ -366,7 +379,12 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const sid = (await (await t.app.inject({
       method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
       payload: { baseSnapshot: {
-        [orderId]: { demandPressure: 10, costPressure: 8, orderChurn: 10 },
+        // WO-SIM-REAL-DATA 三条 Order 真值边（qty/unitPrice/leadDays）与「根源」组同一条纪律：
+        // 它们**入度 0**（没有任何规则写 `Order.qty`），不自带源就永远进不了 trace。
+        // ⛔ 这里给的是**世界态的格子**，不是对象属性 —— 真实播种路上这三格由
+        //    `deriveSeedBaseSnapshot` 的同名探测从 `Order.props` 直取（那条链由
+        //    `sim-order-real-fields.seam.test.ts` 专门咬），本用例只负责证明「边会触发」。
+        [orderId]: { demandPressure: 10, costPressure: 8, orderChurn: 10, qty: 1200, unitPrice: 18000, leadDays: 45 },
         [baseId]: { loadIndex: 20 },
         [supplierId]: { deliveryDelay: 10, procurementDelay: 7 },
         [procurePoId]: { procurementDelay: 7 },
@@ -453,10 +471,21 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       // 🔴 它们**必须出现在这里**：一条阻尼边若恒不触发，屏上看不出任何区别 ——
       //    「图里有一条负边」不度量「压力真的会回来」，正是本仓反复栽的那个形态。
       阻尼: ["demo_fg_drawdown_relieves_model_demand"],
+      // WO-SIM-REAL-DATA：Order 的三个**真实业务字段**直接当状态变量名，同名直取进世界态
+      //（`deriveSeedBaseSnapshot` 探到 `Order.props.qty` 是有限数 ⇒ 真读数档，不走哈希）。
+      // 与「根源」组同一条纪律：三者**入度 0**，必须自带源（见上面 baseSnapshot 的 orderId 那行）。
+      // 🔴 它们**必须出现在这里**：这三条是全表唯一「读数能对上某一张真单」的通路 ——
+      //    一旦恒不触发，屏上那句「该型号在手订单最大的一张是多少套」就是纯哈希编的数，
+      //    而**不会有任何东西变红**（它们刻意不进 `STATE_VAR_DOMAINS`，不夹不衰减）。
+      订单真值: [
+        "demo_order_qty_to_model_top_qty",
+        "demo_order_price_to_model_top_price",
+        "demo_order_leaddays_to_model_horizon",
+      ],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // ── 完整性：十二组 47 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    // ── 完整性：十三组 50 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
     //
     // 🔴 口径修正（WO-ADVERSARY-REACTION）：目录里从此有两类边，**必须分开数**——
     //  · **物理边**（`reaction == null`）：默认世界照跑，逐条都要在上面的 trace 里出现；
