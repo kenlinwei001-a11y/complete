@@ -1,9 +1,9 @@
 {
-  "fromTick": 5,
-  "toTick": 6,
+  "fromTick": 3,
+  "toTick": 4,
   "data": {
-    "objects": 12745,
-    "links": 12192,
+    "objects": 12499,
+    "links": 13593,
     "types": [
       {
         "typeKey": "EquipmentOEE",
@@ -24,10 +24,6 @@
       {
         "typeKey": "InspectionResult",
         "count": 520
-      },
-      {
-        "typeKey": "Order",
-        "count": 500
       },
       {
         "typeKey": "ProductEquipmentCapability",
@@ -66,6 +62,14 @@
         "count": 150
       },
       {
+        "typeKey": "Order",
+        "count": 150
+      },
+      {
+        "typeKey": "CapacityPool",
+        "count": 130
+      },
+      {
         "typeKey": "Line",
         "count": 130
       },
@@ -96,10 +100,6 @@
       {
         "typeKey": "ARInvoice",
         "count": 60
-      },
-      {
-        "typeKey": "FinishedGoodsInventory",
-        "count": 57
       },
       {
         "typeKey": "OrderPromise",
@@ -143,6 +143,10 @@
       },
       {
         "typeKey": "Certification",
+        "count": 18
+      },
+      {
+        "typeKey": "FinishedGoodsInventory",
         "count": 18
       },
       {
@@ -191,6 +195,10 @@
       },
       {
         "typeKey": "MaintPlan",
+        "count": 13
+      },
+      {
+        "typeKey": "Region",
         "count": 13
       },
       {
@@ -384,6 +392,10 @@
         "count": 650
       },
       {
+        "linkKey": "customer_places_order",
+        "count": 500
+      },
+      {
         "linkKey": "model_demanded_by_order",
         "count": 500
       },
@@ -404,12 +416,16 @@
         "count": 376
       },
       {
-        "linkKey": "exc_sourced_from",
-        "count": 372
-      },
-      {
         "linkKey": "capability_belongs_to_operation",
         "count": 345
+      },
+      {
+        "linkKey": "consumes_capacity",
+        "count": 260
+      },
+      {
+        "linkKey": "fulfills",
+        "count": 260
       },
       {
         "linkKey": "line_runs_work_order",
@@ -432,8 +448,20 @@
         "count": 193
       },
       {
+        "linkKey": "exc_sourced_from",
+        "count": 166
+      },
+      {
         "linkKey": "operation_belongs_to_routing",
         "count": 150
+      },
+      {
+        "linkKey": "operation_depends_on",
+        "count": 135
+      },
+      {
+        "linkKey": "has_capacity",
+        "count": 130
       },
       {
         "linkKey": "line_belongs_to_base",
@@ -460,6 +488,10 @@
         "count": 117
       },
       {
+        "linkKey": "exc_sourced_from_alarm",
+        "count": 111
+      },
+      {
         "linkKey": "detail_belongs_to_bom",
         "count": 105
       },
@@ -469,6 +501,10 @@
       },
       {
         "linkKey": "defect_raises_exception",
+        "count": 85
+      },
+      {
+        "linkKey": "exc_sourced_from_defect",
         "count": 85
       },
       {
@@ -484,10 +520,6 @@
         "count": 60
       },
       {
-        "linkKey": "fg_at_warehouse",
-        "count": 57
-      },
-      {
         "linkKey": "order_has_promise",
         "count": 50
       },
@@ -496,15 +528,19 @@
         "count": 50
       },
       {
+        "linkKey": "material_used_by_model",
+        "count": 42
+      },
+      {
+        "linkKey": "model_uses_material",
+        "count": 42
+      },
+      {
         "linkKey": "standard_belongs_to_model",
         "count": 36
       },
       {
-        "linkKey": "fg_of_model",
-        "count": 34
-      },
-      {
-        "linkKey": "model_stocked_as_finished_goods",
+        "linkKey": "warehouse_located_in",
         "count": 34
       },
       {
@@ -512,11 +548,23 @@
         "count": 34
       },
       {
+        "linkKey": "balance_drives_po",
+        "count": 30
+      },
+      {
+        "linkKey": "custloc_located_in",
+        "count": 30
+      },
+      {
         "linkKey": "custloc_of_customer",
         "count": 30
       },
       {
         "linkKey": "customer_has_location",
+        "count": 30
+      },
+      {
+        "linkKey": "inspection_for_material",
         "count": 30
       },
       {
@@ -548,16 +596,16 @@
         "count": 24
       },
       {
-        "linkKey": "material_used_by_model",
-        "count": 24
-      },
-      {
-        "linkKey": "model_uses_material",
-        "count": 24
-      },
-      {
         "linkKey": "caused_by",
         "count": 23
+      },
+      {
+        "linkKey": "fg_at_warehouse",
+        "count": 18
+      },
+      {
+        "linkKey": "fg_of_model",
+        "count": 18
       },
       {
         "linkKey": "model_certified_on",
@@ -569,6 +617,10 @@
       },
       {
         "linkKey": "model_producible_at",
+        "count": 18
+      },
+      {
+        "linkKey": "model_stocked_as_finished_goods",
         "count": 18
       },
       {
@@ -604,7 +656,15 @@
         "count": 15
       },
       {
+        "linkKey": "material_supplied_by",
+        "count": 15
+      },
+      {
         "linkKey": "routing_belongs_to_model",
+        "count": 15
+      },
+      {
+        "linkKey": "supplier_supplies_material",
         "count": 15
       },
       {
@@ -621,6 +681,10 @@
       },
       {
         "linkKey": "base_has_shipment",
+        "count": 13
+      },
+      {
+        "linkKey": "base_located_in",
         "count": 13
       },
       {
@@ -652,12 +716,8 @@
         "count": 8
       },
       {
-        "linkKey": "material_supplied_by",
-        "count": 8
-      },
-      {
-        "linkKey": "supplier_supplies_material",
-        "count": 8
+        "linkKey": "exc_sourced_from_balance",
+        "count": 7
       },
       {
         "linkKey": "model_belongs_to_series",
@@ -684,6 +744,10 @@
         "count": 5
       },
       {
+        "linkKey": "exc_sourced_from_trigger",
+        "count": 3
+      },
+      {
         "linkKey": "scenario_to_finance",
         "count": 3
       },
@@ -696,34 +760,34 @@
         "count": 1
       }
     ],
-    "snapshotVersion": "5e1f365be4aa"
+    "snapshotVersion": "3bd042573aab"
   },
   "slice": {
     "sliceKey": "GLOBAL",
     "kind": "GLOBAL",
     "target": null,
     "hops": 1,
-    "nodes": 12745,
-    "edges": 12192,
+    "nodes": 12499,
+    "edges": 13593,
     "droppedNodes": 0,
     "droppedEdges": 0,
     "unresolved": null
   },
   "rules": {
-    "declared": 46,
-    "fired": 46,
-    "withCoefficientRef": 0,
+    "declared": 54,
+    "fired": 49,
+    "withCoefficientRef": 54,
     "refUnresolved": 0,
-    "withWeightRef": 3,
-    "contributions": 8753,
-    "perturbationWrites": 2,
+    "withWeightRef": 4,
+    "contributions": 7189,
+    "perturbationWrites": 0,
     "items": [
       {
-        "ruleKey": "demo_base_load_to_inbound_expedite",
+        "ruleKey": "demo_alt_switch_to_material_shortage",
         "fired": true,
-        "coefficient": 0.35,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficient": -0.3,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_alt_switch_to_material_shortage",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -732,14 +796,73 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "Base.loadIndex --base_has_shipment--> Shipment.inboundExpeditePressure"
+        "via": "MaterialAlternative.switchPressure --alt_for_material--> Material.shortageRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_balance_gap_to_po_expedite",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_balance_gap_to_po_expedite",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "MaterialBalance.gapPressure --balance_drives_po--> PurchaseOrder.expeditePressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_base_load_to_inbound_expedite",
+        "fired": true,
+        "coefficient": 0.35,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_base_load_to_inbound_expedite",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Base.loadIndex --base_has_shipment--> Shipment.inboundExpeditePressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_base_load_to_line_util",
         "fired": true,
         "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_base_load_to_line_util",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -748,14 +871,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "Base.loadIndex --line_belongs_to_base--> Line.utilPressure"
+        "via": "Base.loadIndex --line_belongs_to_base--> Line.utilPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_base_load_to_maint_window_squeeze",
         "fired": true,
         "coefficient": 0.4,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_base_load_to_maint_window_squeeze",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -764,14 +896,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "Base.loadIndex --base_maint_plan--> MaintPlan.windowSqueeze"
+        "via": "Base.loadIndex --base_maint_plan--> MaintPlan.windowSqueeze",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_base_load_to_transfer_pressure",
         "fired": true,
         "coefficient": 0.3,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_base_load_to_transfer_pressure",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -780,14 +921,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "Base.loadIndex --base_dispatches_transfer--> InterBaseTransfer.transferPressure"
+        "via": "Base.loadIndex --base_dispatches_transfer--> InterBaseTransfer.transferPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_batch_procurement_delay_to_material_shortage",
         "fired": true,
         "coefficient": 0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_batch_procurement_delay_to_material_shortage",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -796,14 +946,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "MaterialBatch.procurementDelay --batch_replenishes_material--> Material.shortageRisk"
+        "via": "MaterialBatch.procurementDelay --batch_replenishes_material--> Material.shortageRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_customer_receivable_to_collection",
         "fired": true,
         "coefficient": 0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_customer_receivable_to_collection",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -812,14 +971,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "Customer.receivablePressure --customer_has_overdue_record--> OverdueRecord.collectionPressure"
+        "via": "Customer.receivablePressure --customer_has_overdue_record--> OverdueRecord.collectionPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_customer_receivable_to_invoice_overdue",
         "fired": true,
         "coefficient": 0.4,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_customer_receivable_to_invoice_overdue",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -828,14 +996,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "Customer.receivablePressure --customer_has_invoice--> ARInvoice.overduePressure"
+        "via": "Customer.receivablePressure --customer_has_invoice--> ARInvoice.overduePressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_customer_receivable_to_location_hold",
         "fired": true,
         "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_customer_receivable_to_location_hold",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -844,14 +1021,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Customer.receivablePressure --customer_has_location--> CustomerLocation.deliveryHoldRisk"
+        "via": "Customer.receivablePressure --customer_has_location--> CustomerLocation.deliveryHoldRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_defect_to_exception_backlog",
         "fired": true,
         "coefficient": 0.8,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_defect_to_exception_backlog",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -860,14 +1046,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "DefectRecord.defectPressure --defect_raises_exception--> ExceptionEvent.handlingBacklog"
+        "via": "DefectRecord.defectPressure --defect_raises_exception--> ExceptionEvent.handlingBacklog",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_equipment_failure_to_process_queue",
         "fired": true,
         "coefficient": 0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_equipment_failure_to_process_queue",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -876,14 +1071,48 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Equipment.equipmentFailure --equip_used_in--> Process.queuePressure"
+        "via": "Equipment.equipmentFailure --equip_used_in--> Process.queuePressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_equipment_load_to_process_queue",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_equipment_load_to_process_queue",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Equipment.loadPressure --equip_used_in--> Process.queuePressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_equipment_load_to_repair_backlog",
         "fired": true,
         "coefficient": 0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_equipment_load_to_repair_backlog",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -892,14 +1121,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "Equipment.loadPressure --equipment_has_maintenance_order--> MaintenanceOrder.repairBacklog"
+        "via": "Equipment.loadPressure --equipment_has_maintenance_order--> MaintenanceOrder.repairBacklog",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
-        "ruleKey": "demo_forecast_bias_to_order_demand",
+        "ruleKey": "demo_fg_cover_days_to_model_demand",
         "fired": true,
-        "coefficient": -0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficient": -0.5,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_fg_cover_days_to_model_demand",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -908,14 +1146,73 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Model.forecastBias --model_demanded_by_order--> Order.demandPressure"
+        "via": "FinishedGoodsInventory.coverDays --fg_of_model--> Model.demandLoad",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_fg_drawdown_to_model_demand",
+        "fired": true,
+        "coefficient": 0.5,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_fg_drawdown_to_model_demand",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "FinishedGoodsInventory.drawdownPressure --fg_of_model--> Model.demandLoad",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_inspection_queue_to_material_shortage",
+        "fired": true,
+        "coefficient": 0.2,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_inspection_queue_to_material_shortage",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "IncomingInspection.queueDays --inspection_for_material--> Material.shortageRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_line_blocked_to_wo_release",
         "fired": true,
         "coefficient": 0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_line_blocked_to_wo_release",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -924,14 +1221,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Line.blockedPressure --line_runs_work_order--> WorkOrder.releasePressure"
+        "via": "Line.blockedPressure --line_runs_work_order--> WorkOrder.releasePressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_line_util_to_process_queue",
         "fired": true,
         "coefficient": 0.7,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_line_util_to_process_queue",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -940,14 +1246,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Line.utilPressure --line_has_process--> Process.queuePressure"
+        "via": "Line.utilPressure --line_has_process--> Process.queuePressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_line_util_to_wo_release",
         "fired": true,
         "coefficient": 0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_line_util_to_wo_release",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -956,30 +1271,48 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Line.utilPressure --line_runs_work_order--> WorkOrder.releasePressure"
+        "via": "Line.utilPressure --line_runs_work_order--> WorkOrder.releasePressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_material_price_to_model_cost",
         "fired": true,
         "coefficient": 0.65,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_material_price_to_model_cost",
         "refUnresolved": false,
         "weightBasis": "bom_cost_share",
         "weightNormalize": "IN_EDGES",
-        "weightPairs": 24,
-        "weightZeroPairs": 3,
-        "weightElapsedMs": 3,
+        "weightPairs": 42,
+        "weightZeroPairs": 0,
+        "weightElapsedMs": 40,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Material.priceShock --material_used_by_model--> Model.costPressure"
+        "via": "Material.priceShock --material_used_by_model--> Model.costPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_material_shortage_to_alt_switch",
         "fired": true,
         "coefficient": 0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_material_shortage_to_alt_switch",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -988,14 +1321,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Material.shortageRisk --material_has_alternative--> MaterialAlternative.switchPressure"
+        "via": "Material.shortageRisk --material_has_alternative--> MaterialAlternative.switchPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_material_shortage_to_balance_gap",
         "fired": true,
         "coefficient": 0.7,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_material_shortage_to_balance_gap",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1004,14 +1346,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Material.shortageRisk --material_has_balance--> MaterialBalance.gapPressure"
+        "via": "Material.shortageRisk --material_has_balance--> MaterialBalance.gapPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_material_shortage_to_batch_turnover",
         "fired": true,
         "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_material_shortage_to_batch_turnover",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1020,14 +1371,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Material.shortageRisk --material_has_batch--> MaterialBatch.turnoverPressure"
+        "via": "Material.shortageRisk --material_has_batch--> MaterialBatch.turnoverPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_material_shortage_to_model_supply_risk",
         "fired": true,
         "coefficient": 0.7,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_material_shortage_to_model_supply_risk",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1036,14 +1396,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Material.shortageRisk --material_used_by_model--> Model.supplyRisk"
+        "via": "Material.shortageRisk --material_used_by_model--> Model.supplyRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_material_shortage_to_po_expedite",
         "fired": true,
         "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_material_shortage_to_po_expedite",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1052,14 +1421,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Material.shortageRisk --material_supplied_by_po--> PurchaseOrder.expeditePressure"
+        "via": "Material.shortageRisk --material_supplied_by_po--> PurchaseOrder.expeditePressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_model_cost_to_order_cost",
         "fired": true,
         "coefficient": 0.9,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_model_cost_to_order_cost",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1068,78 +1446,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Model.costPressure --model_demanded_by_order--> Order.costPressure"
-      },
-      {
-        "ruleKey": "demo_model_demand_to_base_load",
-        "fired": true,
-        "coefficient": 0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
-        "refUnresolved": false,
-        "weightBasis": null,
-        "weightNormalize": null,
-        "weightPairs": null,
-        "weightZeroPairs": null,
-        "weightElapsedMs": null,
-        "delayTicks": 0,
-        "combine": "sum",
-        "via": "Model.demandLoad --model_producible_at--> Base.loadIndex"
-      },
-      {
-        "ruleKey": "demo_model_demand_to_cert_queue",
-        "fired": true,
-        "coefficient": 0.3,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
-        "refUnresolved": false,
-        "weightBasis": null,
-        "weightNormalize": null,
-        "weightPairs": null,
-        "weightZeroPairs": null,
-        "weightElapsedMs": null,
-        "delayTicks": 1,
-        "combine": "sum",
-        "via": "Model.demandLoad --model_has_cert--> Certification.qualificationQueue"
-      },
-      {
-        "ruleKey": "demo_model_demand_to_changeover_pressure",
-        "fired": true,
-        "coefficient": 0.4,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
-        "refUnresolved": false,
-        "weightBasis": null,
-        "weightNormalize": null,
-        "weightPairs": null,
-        "weightZeroPairs": null,
-        "weightElapsedMs": null,
-        "delayTicks": 0,
-        "combine": "sum",
-        "via": "Model.demandLoad --model_changeover--> ChangeoverMatrix.changeoverPressure"
-      },
-      {
-        "ruleKey": "demo_model_demand_to_fg_drawdown",
-        "fired": true,
-        "coefficient": 0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
-        "refUnresolved": false,
-        "weightBasis": null,
-        "weightNormalize": null,
-        "weightPairs": null,
-        "weightZeroPairs": null,
-        "weightElapsedMs": null,
-        "delayTicks": 0,
-        "combine": "sum",
-        "via": "Model.demandLoad --model_stocked_as_finished_goods--> FinishedGoodsInventory.drawdownPressure"
+        "via": "Model.costPressure --model_demanded_by_order--> Order.costPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_model_supply_risk_to_order_shortage",
         "fired": true,
         "coefficient": 0.8,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_model_supply_risk_to_order_shortage",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1148,14 +1471,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Model.supplyRisk --model_demanded_by_order--> Order.shortageRisk"
+        "via": "Model.supplyRisk --model_demanded_by_order--> Order.shortageRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_order_churn_to_line_split",
         "fired": true,
         "coefficient": 0.7,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_order_churn_to_line_split",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1164,62 +1496,98 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Order.orderChurn --order_has_line--> OrderLine.splitPressure"
+        "via": "Order.orderChurn --order_has_line--> OrderLine.splitPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_order_churn_to_model_demand_load",
         "fired": true,
-        "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficient": -0.5,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_order_churn_to_model_demand_load",
         "refUnresolved": false,
         "weightBasis": "source_qty_relative",
         "weightNormalize": "IN_EDGES_MEAN",
-        "weightPairs": 500,
+        "weightPairs": 150,
         "weightZeroPairs": 0,
-        "weightElapsedMs": 9,
+        "weightElapsedMs": 18,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Order.orderChurn --order_for_model--> Model.demandLoad"
+        "via": "Order.orderChurn --order_for_model--> Model.demandLoad",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_order_cost_to_customer_receivable",
         "fired": true,
         "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_order_cost_to_customer_receivable",
         "refUnresolved": false,
-        "weightBasis": null,
-        "weightNormalize": null,
-        "weightPairs": null,
-        "weightZeroPairs": null,
-        "weightElapsedMs": null,
+        "weightBasis": "source_value_relative",
+        "weightNormalize": "IN_EDGES_GLOBAL_MEAN",
+        "weightPairs": 150,
+        "weightZeroPairs": 0,
+        "weightElapsedMs": 2,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Order.costPressure --order_of_customer--> Customer.receivablePressure"
+        "via": "Order.costPressure --order_of_customer--> Customer.receivablePressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_order_demand_pressure",
         "fired": true,
         "coefficient": 0.8,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_order_demand_pressure",
         "refUnresolved": false,
         "weightBasis": "source_qty_relative",
         "weightNormalize": "IN_EDGES_MEAN",
-        "weightPairs": 500,
+        "weightPairs": 150,
         "weightZeroPairs": 0,
-        "weightElapsedMs": 1,
+        "weightElapsedMs": 2,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Order.demandPressure --order_for_model--> Model.demandLoad"
+        "via": "Order.demandPressure --order_for_model--> Model.demandLoad",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_order_demand_to_line_split",
         "fired": true,
         "coefficient": 0.9,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_order_demand_to_line_split",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1228,14 +1596,98 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Order.demandPressure --order_has_line--> OrderLine.splitPressure"
+        "via": "Order.demandPressure --order_has_line--> OrderLine.splitPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_order_leaddays_to_model_horizon",
+        "fired": true,
+        "coefficient": 1,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_order_leaddays_to_model_horizon",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "max",
+        "via": "Order.leadDays --order_for_model--> Model.backlogHorizonDays",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_order_price_to_model_top_price",
+        "fired": true,
+        "coefficient": 1,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_order_price_to_model_top_price",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "max",
+        "via": "Order.unitPrice --order_for_model--> Model.backlogPriceTop",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_order_qty_to_model_top_qty",
+        "fired": true,
+        "coefficient": 1,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_order_qty_to_model_top_qty",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "max",
+        "via": "Order.qty --order_for_model--> Model.backlogQtyTop",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_order_shortage_to_promise_risk",
         "fired": true,
         "coefficient": 0.8,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_order_shortage_to_promise_risk",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1244,14 +1696,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Order.shortageRisk --order_has_promise--> OrderPromise.promiseRisk"
+        "via": "Order.shortageRisk --order_has_promise--> OrderPromise.promiseRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_po_expedite_to_customs_queue",
         "fired": true,
         "coefficient": 0.4,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_po_expedite_to_customs_queue",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1260,14 +1721,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "PurchaseOrder.expeditePressure --po_customs_cleared_by--> CustomsClearance.clearanceQueueDays"
+        "via": "PurchaseOrder.expeditePressure --po_customs_cleared_by--> CustomsClearance.clearanceQueueDays",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_po_expedite_to_inspection_queue",
         "fired": true,
         "coefficient": 0.6,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_po_expedite_to_inspection_queue",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1276,14 +1746,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "PurchaseOrder.expeditePressure --po_inspected_by--> IncomingInspection.queueDays"
+        "via": "PurchaseOrder.expeditePressure --po_inspected_by--> IncomingInspection.queueDays",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_po_expedite_to_supplier_review",
         "fired": true,
         "coefficient": 0.4,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_po_expedite_to_supplier_review",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1292,14 +1771,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "PurchaseOrder.expeditePressure --po_from_supplier--> Supplier.reviewPressure"
+        "via": "PurchaseOrder.expeditePressure --po_from_supplier--> Supplier.reviewPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_po_procurement_delay_to_material_shortage",
         "fired": true,
         "coefficient": 0.8,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_po_procurement_delay_to_material_shortage",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1308,30 +1796,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "PurchaseOrder.procurementDelay --po_replenishes_material--> Material.shortageRisk"
-      },
-      {
-        "ruleKey": "demo_process_queue_to_equipment_load",
-        "fired": true,
-        "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
-        "refUnresolved": false,
-        "weightBasis": null,
-        "weightNormalize": null,
-        "weightPairs": null,
-        "weightZeroPairs": null,
-        "weightElapsedMs": null,
-        "delayTicks": 0,
-        "combine": "sum",
-        "via": "Process.queuePressure --process_uses_equipment--> Equipment.loadPressure"
+        "via": "PurchaseOrder.procurementDelay --po_replenishes_material--> Material.shortageRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_process_queue_to_line_blocked",
         "fired": true,
         "coefficient": 0.55,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_process_queue_to_line_blocked",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1340,14 +1821,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Process.queuePressure --process_belongs_to_line--> Line.blockedPressure"
+        "via": "Process.queuePressure --process_belongs_to_line--> Line.blockedPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_supplier_delay_to_material_shortage",
         "fired": true,
         "coefficient": 0.9,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_supplier_delay_to_material_shortage",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1356,14 +1846,23 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "Supplier.deliveryDelay --supplier_supplies_material--> Material.shortageRisk"
+        "via": "Supplier.deliveryDelay --supplier_supplies_material--> Material.shortageRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_supplier_procurement_delay_to_material_shortage",
         "fired": true,
         "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_supplier_procurement_delay_to_material_shortage",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1372,14 +1871,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "Supplier.procurementDelay --supplier_supplies_material--> Material.shortageRisk"
+        "via": "Supplier.procurementDelay --supplier_supplies_material--> Material.shortageRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_wip_feed_to_defect_pressure",
         "fired": true,
         "coefficient": 0.3,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_wip_feed_to_defect_pressure",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1388,14 +1896,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "WIPLot.feedPressure --wip_lot_found_defect--> DefectRecord.defectPressure"
+        "via": "WIPLot.feedPressure --wip_lot_found_defect--> DefectRecord.defectPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_wo_release_to_model_cost",
         "fired": true,
         "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_wo_release_to_model_cost",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1404,14 +1921,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "WorkOrder.releasePressure --wo_for_model--> Model.costPressure"
+        "via": "WorkOrder.releasePressure --wo_for_model--> Model.costPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_wo_release_to_model_supply_risk",
         "fired": true,
         "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_wo_release_to_model_supply_risk",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1420,14 +1946,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "WorkOrder.releasePressure --wo_for_model--> Model.supplyRisk"
+        "via": "WorkOrder.releasePressure --wo_for_model--> Model.supplyRisk",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_wo_release_to_quality_backlog",
         "fired": true,
         "coefficient": 0.5,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_wo_release_to_quality_backlog",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1436,14 +1971,23 @@
         "weightElapsedMs": null,
         "delayTicks": 1,
         "combine": "sum",
-        "via": "WorkOrder.releasePressure --work_order_sampled_by_quality_lot--> QualityLot.inspectBacklog"
+        "via": "WorkOrder.releasePressure --work_order_sampled_by_quality_lot--> QualityLot.inspectBacklog",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       },
       {
         "ruleKey": "demo_wo_release_to_wip_feed",
         "fired": true,
         "coefficient": 0.7,
-        "coefficientSource": "INLINE",
-        "coefficientRef": null,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_wo_release_to_wip_feed",
         "refUnresolved": false,
         "weightBasis": null,
         "weightNormalize": null,
@@ -1452,20 +1996,174 @@
         "weightElapsedMs": null,
         "delayTicks": 0,
         "combine": "sum",
-        "via": "WorkOrder.releasePressure --work_order_yields_wip_lot--> WIPLot.feedPressure"
+        "via": "WorkOrder.releasePressure --work_order_yields_wip_lot--> WIPLot.feedPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_forecast_bias_to_order_demand",
+        "fired": false,
+        "coefficient": -0.6,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_forecast_bias_to_order_demand",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Model.forecastBias --model_demanded_by_order--> Order.demandPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_model_demand_to_base_load",
+        "fired": false,
+        "coefficient": 0.6,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_model_demand_to_base_load",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Model.demandLoad --model_producible_at--> Base.loadIndex",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_model_demand_to_cert_queue",
+        "fired": false,
+        "coefficient": 0.3,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_model_demand_to_cert_queue",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 1,
+        "combine": "sum",
+        "via": "Model.demandLoad --model_has_cert--> Certification.qualificationQueue",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_model_demand_to_changeover_pressure",
+        "fired": false,
+        "coefficient": 0.4,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_model_demand_to_changeover_pressure",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Model.demandLoad --model_changeover--> ChangeoverMatrix.changeoverPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
+      },
+      {
+        "ruleKey": "demo_model_demand_to_fg_drawdown",
+        "fired": false,
+        "coefficient": 0.6,
+        "coefficientSource": "CONFIG_REF",
+        "coefficientRef": "C36.demo_model_demand_to_fg_drawdown",
+        "refUnresolved": false,
+        "weightBasis": null,
+        "weightNormalize": null,
+        "weightPairs": null,
+        "weightZeroPairs": null,
+        "weightElapsedMs": null,
+        "delayTicks": 0,
+        "combine": "sum",
+        "via": "Model.demandLoad --model_stocked_as_finished_goods--> FinishedGoodsInventory.drawdownPressure",
+        "isReaction": false,
+        "reactionActorTypeKey": null,
+        "reactionMove": null,
+        "reactionMoveName": null,
+        "reactionTolerance": null,
+        "reactionTriggeredActors": null,
+        "reactionSelectedBy": null,
+        "reactionSelectedByName": null,
+        "reactionSelectorRef": null
       }
     ],
-    "unresolvedWeights": []
+    "unresolvedWeights": [],
+    "adversary": {
+      "enabled": false,
+      "declared": 0,
+      "suppressed": 1,
+      "fired": 0,
+      "triggeredActors": 0,
+      "moves": [],
+      "selectors": []
+    }
   },
   "constraints": {
     "stateVarBounds": [
+      {
+        "stateVar": "blockedPressure",
+        "min": 0,
+        "max": 100,
+        "restPoint": 0,
+        "unit": "0–100 压力指数",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域；WO-PROP-REVIEW-V2 形态② 裁决：名字自报 0–100 压力指数 ⇒ 无界累积到 945 即病，归压力族收口（⚠ 本键走真值支：Line 对象上有同名属性，与上面 31 个派生支成员的出处差这一句）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
       {
         "stateVar": "changeoverPressure",
         "min": 0,
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1476,7 +2174,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1487,7 +2185,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1498,7 +2196,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1509,7 +2207,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1520,7 +2218,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1531,7 +2229,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1542,7 +2240,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1553,7 +2251,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": null,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1564,7 +2262,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1575,7 +2273,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1586,7 +2284,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "−100–100 偏差指数（正=高估）",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）；方向性出处 = 上表 forecastBias 行注释「唯一带方向的量纲（正=高估/负=低估）」⇒ 静息点取 0 而非下界，下界取 −max 以保持两侧对称",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域；方向性出处 = 上表 forecastBias 行注释「唯一带方向的量纲（正=高估/负=低估）」⇒ 静息点取 0 而非下界，下界取 −max 以保持两侧对称",
         "decayLambda": null,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1597,9 +2295,20 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "handlingBacklog",
+        "min": 0,
+        "max": null,
+        "restPoint": 0,
+        "unit": "件",
+        "source": "WO-PROP-REVIEW-V2 形态② · ⚠ 暂定档：ExceptionEvent 无处置工期属性（只有 occurredAt+status），借维修工期 med=1 天（处置 = 现场纠正措施，与维修同族作业）⇒ λ=0.75，待仓主定档",
+        "decayLambda": 0.75,
+        "decayRef": "C35.handlingBacklogDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
       },
       {
@@ -1608,9 +2317,20 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "inspectBacklog",
+        "min": 0,
+        "max": null,
+        "restPoint": 0,
+        "unit": "件",
+        "source": "WO-PROP-REVIEW-V2 形态② · ⚠ 暂定档：QualityLot 无工期/产能属性（实测 n=260 零命中），借来料检验周期 med=3 天（同「检验」物理过程）⇒ λ=0.37，待仓主定档",
+        "decayLambda": 0.37,
+        "decayRef": "C35.inspectBacklogDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
       },
       {
@@ -1619,7 +2339,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1630,8 +2350,8 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
-        "decayLambda": 0.37,
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
+        "decayLambda": null,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
       },
@@ -1641,7 +2361,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": null,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1652,7 +2372,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1663,7 +2383,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": null,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1674,9 +2394,31 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "qualificationQueue",
+        "min": 0,
+        "max": null,
+        "restPoint": 0,
+        "unit": "件",
+        "source": "WO-PROP-REVIEW-V2 形态② · 认证周期 certHours med=134h÷24=5.58 天（n=18，2.1–8.0）⇒ λ=1−0.25^(1/5.58)≈0.22",
+        "decayLambda": 0.22,
+        "decayRef": "C35.qualificationQueueDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "queueDays",
+        "min": 0,
+        "max": null,
+        "restPoint": 0,
+        "unit": "天",
+        "source": "WO-PROP-REVIEW-V2 形态② · 来料检验周期 releasedDay−arrivedDay med=3 天（n=30，1–4）⇒ λ=1−0.25^(1/3)≈0.37（与压力族同一把尺子，独立 paramKey）",
+        "decayLambda": 0.37,
+        "decayRef": "C35.queueDaysDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
       },
       {
@@ -1685,7 +2427,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1696,7 +2438,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1707,9 +2449,20 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
+        "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
+      },
+      {
+        "stateVar": "repairBacklog",
+        "min": 0,
+        "max": null,
+        "restPoint": 0,
+        "unit": "件",
+        "source": "WO-PROP-REVIEW-V2 形态② · 维修工期 actualEnd−actualStart med=1 天（n=193，0–2）⇒ λ=1−0.25=0.75（评审原文：积压的消化速率 = 产能）",
+        "decayLambda": 0.75,
+        "decayRef": "C35.repairBacklogDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
       },
       {
@@ -1718,7 +2471,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1729,7 +2482,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1740,7 +2493,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1751,7 +2504,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1762,7 +2515,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1773,7 +2526,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1784,7 +2537,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1795,7 +2548,7 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
@@ -1806,26 +2559,27 @@
         "max": 100,
         "restPoint": 0,
         "unit": "0–100 压力指数",
-        "source": "压力族 0–100：① `sim/drill-scan.ts` 段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`·实测 derivedCells 7204 / measuredCells 0）",
+        "source": "压力族 0–100：① 下钻扫描器段头「状态变量的量纲各不相同（压力 0–100、天数、件数…）」；② tick0 派生支生成式 `round(hash01(objectId|stateVar)×100)`（`deriveSeedBaseSnapshot`）——本族 31 个变量在本体里没有同名属性，实测 100% 走派生支，故值域恰为 0–100；带真实单位的业务量（套/元/天）走的是同一函数的**真值支**，不适用本出处，也不登记取值域",
         "decayLambda": 0.37,
         "decayRef": "C35.pressureDecayPerTick",
         "decayRuleExpression": "SimStateVar.decayPerTick == params.pressureDecayPerTick"
       }
     ],
     "undeclaredStateVars": [
-      "blockedPressure",
+      "backlogHorizonDays",
+      "backlogPriceTop",
+      "backlogQtyTop",
       "clearanceQueueDays",
+      "coverDays",
       "deliveryDelay",
-      "handlingBacklog",
-      "inspectBacklog",
+      "leadDays",
       "procurementDelay",
-      "qualificationQueue",
-      "queueDays",
-      "repairBacklog"
+      "qty",
+      "unitPrice"
     ],
     "decayUnresolved": [],
     "ruleClamps": [],
-    "saturations": 4692,
+    "saturations": 2150,
     "cadence": [],
     "cadenceSkipped": [
       {
@@ -1855,23 +2609,23 @@
   "timings": [
     {
       "phase": "graph",
-      "ms": 157
+      "ms": 1534
     },
     {
       "phase": "shadow",
-      "ms": 235
+      "ms": 757
     },
     {
       "phase": "engine",
-      "ms": 90
+      "ms": 984
     },
     {
       "phase": "persist",
-      "ms": 15
+      "ms": 111
     },
     {
       "phase": "total",
-      "ms": 533
+      "ms": 3629
     }
   ]
 }

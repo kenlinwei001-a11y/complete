@@ -164,7 +164,7 @@ describe("§2 可披露层：一个看不到代码的人能自己判断这是真
     const rows = screen.getByTestId("sim-disclosure-rule-items").querySelectorAll("li");
     const reaction = [...rows].filter((r) => r.getAttribute("data-reaction") === "1");
     const physical = [...rows].filter((r) => r.getAttribute("data-reaction") === "0");
-    // 金丝雀：物理边必须占绝大多数（46 条边里只有 1 条是还手）——
+    // 金丝雀：物理边必须占绝大多数（55 条已发布里只有 1 条是还手，逐条上屏的 54 条全是物理边）——
     // 两边条数若接近，说明标记打错了，不是数据长这样。
     expect(physical.length, "物理边为 0 ⇒ 标记反了").toBeGreaterThan(10);
     expect(reaction.length).toBe(REAL.reacted.rules.adversary.declared);

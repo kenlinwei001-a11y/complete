@@ -5,16 +5,17 @@
  * 前端渲染（`views/sim/unified/rail/DisclosurePanel.tsx`）是两半。本文件喂给面板的
  * **不是手写夹具，是真后端一次真跑的原样回包**：
  *
- *   `fixtures/sim-disclosure.real.json` = 2026-09-03 起内存态 datacore（`SEED_DEMO=1`·seed 42·
- *   demo 租户 `sims_demo_seed_world`）经 `POST /a/v1/sim/sessions/{id}/tick` 带 `disclose:true`
- *   拿到的 `disclosure` 段，一个字节没改。规模：46 条规则 / 32 条取值域 / 87 个对象类型。
+ *   `fixtures/sim-disclosure.real.json` = 2026-09-18 重采：复刻 `SEED_DEMO=1` 播撒序的内存态 datacore
+ *   （seed 42·demo 租户 `sims_demo_seed_world`）经 `POST /a/v1/sim/sessions/{id}/tick?disclose=1`
+ *   拿到的 `disclosure` 段，一个字节没改（/tmp/t6-fixture-capture.txt RC=0）。
+ *   规模：54 条规则逐条上屏（55 已发布 − 1 条挂起还手）/ 38 条取值域（5 条无界 max）/ 89 个对象类型。
  *
  * ⇒ 后端哪天改了字段名或少给一项，这里当场红；而**手写夹具做不到这一点**
  *   （手写的会跟着前端一起改，两边一起漂还一起绿）。
  *
  * ── 本文件存在的第二个理由：文体约束只能机器验 ────────────────────────────────
  * 仓主对这块屏定了三条硬约束，**三条都是「屏上不许出现 X」** ——
- * 这类约束靠人眼看截图是查不全的（46 条规则 × 每条 8 个字段），必须扫渲染后的文本：
+ * 这类约束靠人眼看截图是查不全的（54 条规则 × 每条 8 个字段），必须扫渲染后的文本：
  *   ① 不许出现 Markdown 字面量（`**` / 反引号）——本仓刚修掉两处泄漏；
  *   ② 不许打源码文件名 / 行号（R-UI-4）；
  *   ③ 只给「标签 + 值 + 状态」，不许出现描述性句子。
@@ -66,7 +67,7 @@ describe("§1 六项都在屏上（铁律 1.5 判据二逐项）", () => {
 
   it("真后端的读数**原样**上屏（不是写死的展示）", () => {
     const t = screenText();
-    // 这些数全部来自真跑：46 条规则、12,745 个对象、12,192 条边、快照版本串。
+    // 这些数全部来自真跑：54 条规则、12,499 个对象、13,593 条边、快照版本串。
     expect(t).toContain(String(REAL.rules.declared));
     expect(t).toContain(REAL.data.snapshotVersion);
     expect(t).toContain(REAL.slice.sliceKey);
@@ -135,29 +136,31 @@ describe("§2 文体三条硬约束（每条先跑金丝雀证明扫法是好的
 });
 
 describe("§3 逐规则那张表把「系数打哪来」讲清楚", () => {
-  it("46 条规则逐条上屏，命中与未命中用**词**分开（不靠颜色单独承载语义）", () => {
+  it("54 条规则逐条上屏，命中与未命中用**词**分开（不靠颜色单独承载语义）", () => {
     const t = screenText();
-    expect(REAL.rules.items.length).toBe(46);
+    expect(REAL.rules.items.length).toBe(54);
     for (const r of REAL.rules.items.slice(0, 5)) expect(t).toContain(r.ruleKey);
     expect(t).toContain("命中");
   });
 
-  it("⛔ 系数来源按解析结果显示 —— 真后端这一跑 46 条全是内联，屏上就得这么写", () => {
-    // 这正是铁律 1.5 判据四那笔账的读数：注释写着「两条路都来自配置」，
-    // 实测走 `coefficientRef` 的是 **0 条**。屏上必须照实测写，不照注释写。
-    expect(REAL.rules.withCoefficientRef, "真后端实测：走 coefficientRef 的规则条数").toBe(0);
+  it("⛔ 系数来源按解析结果显示 —— T1 收口后这一跑 54 条全部来自配置，屏上就得这么写", () => {
+    // 这正是铁律 1.5 判据四那笔账的**翻转读数**：2026-09-03 实测 0/50 走 coefficientRef
+    // （注释写着「两条路都来自配置」，实测全内联回落）；WO-PROP-COEF-CONFIG（T1）把 54 条
+    // 物理边系数全部单源进 `C36.params`。本断言从今往后守的是**收口不回退**：
+    expect(REAL.rules.withCoefficientRef, "真后端实测：走 coefficientRef 的规则条数").toBe(54);
+    expect(REAL.rules.refUnresolved, "声明了引用却取不到 = 回落内联，一条都不许有").toBe(0);
     render(<DisclosurePanel disclosure={REAL} />);
     // ⚠ 判据落在**逐规则那张表**上，不是整块面板：汇总行里有一对
-    // 「系数来自配置 0」的标签+值，那是**如实报 0**，不是给某条规则贴错标。
+    // 「系数内联 0」的标签+值，那是**如实报 0**，不是给某条规则贴错标。
     // 拿整块面板的文本去断言，会把那个正确的 0 读成违规 —— 这条断言第一版就是这么写错的，
     // 形态正是「我用一个看起来相关的串当判据，而它并不度量我要度量的东西」。
     const rows = screen.getByTestId("sim-disclosure-rule-items").textContent ?? "";
-    expect(rows).toContain("内联常数");
-    expect(rows, "这一跑 46 条全是内联，规则行里不许出现「来自配置」这个记号").not.toContain("来自配置");
+    expect(rows).toContain("来自配置");
+    expect(rows, "这一跑 54 条全部来自配置，规则行里不许出现「内联常数」这个记号").not.toContain("内联常数");
   });
 
-  it("权重口径与归一方式都上屏（真后端这一跑 3 条带分摊）", () => {
-    expect(REAL.rules.withWeightRef).toBe(3);
+  it("权重口径与归一方式都上屏（真后端这一跑 4 条带分摊）", () => {
+    expect(REAL.rules.withWeightRef).toBe(4);
     const t = screenText();
     expect(t).toContain("bom_cost_share");
     expect(t).toContain("IN_EDGES");
@@ -172,7 +175,7 @@ describe("§4 约束那一节回答「阈值来自哪条规则表达式」", () 
     expect(t).toContain(b.stateVar);
     expect(t).toContain(b.decayRef ?? "");
     expect(t).toContain(b.decayRuleExpression ?? "");
-    // 真后端这一跑：32 条取值域、9 个量纲没声明、饱和 4,000+ 次 —— 三个数都要在屏上。
+    // 真后端这一跑：38 条取值域（5 条无界 max）、10 个量纲没声明、饱和 2,000+ 次 —— 三个数都要在屏上。
     expect(t).toContain(REAL.constraints.saturations.toLocaleString("zh-CN"));
   });
 });
