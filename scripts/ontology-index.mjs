@@ -102,7 +102,19 @@ function anchorsFrom(text) {
   return out;
 }
 
-const STATUS_MARKS = ["🔴", "◑", "✅"];
+/**
+ * 状态标记的**全集**。
+ *
+ * ⚠ 派单里写的是「🔴/◑/✅ 或无标记」三个 —— 实测本体**在用 5 个**：
+ *   ✅ 352 · ◑ 129 · 🔴 12 · 🟡 8 · 🟢 6（§8 整节字符计数）。
+ *   只认三个的那一版，把 8 条 🟡 / 🟢 的条目报成了「无标记」——
+ *   即**把「我的词表里没有」说成了「原文没标」**。故按实测扩到 5 个，⛔ 不去凑派单里的那三个。
+ *   下面的迁移正则由本数组**现算**，不另抄一份字符类（抄了就会漏掉后加的标记）。
+ */
+const STATUS_MARKS = ["🔴", "🟡", "🟢", "◑", "✅"];
+const STATUS_CLASS = `[${STATUS_MARKS.join("")}]`;
+const STATUS_TRANSITION_RE = new RegExp(`^\\s*(${STATUS_CLASS})\\s*→\\s*(${STATUS_CLASS})`, "u");
+
 function marksIn(text) {
   const out = [];
   for (const ch of Array.from(text)) if (STATUS_MARKS.includes(ch)) out.push(ch);
@@ -155,11 +167,22 @@ function aliasesFrom(raw) {
 
 /* ═══════════════════════ markdown 表格 ═══════════════════════ */
 
-/** 按**未转义**的 `|` 切单元格（本体里真有 `RAW\|FINISHED\|TRANSIT` 这种转义竖线）。 */
-function splitRow(line) {
+/**
+ * 按**未转义、且不在反引号内**的 `|` 切单元格。
+ *
+ * ⚠ 两条都是被实测逼出来的，少一条就会把状态读到错的格子上：
+ *   ① `RAW\|FINISHED\|TRANSIT` 这种**转义**竖线不是分隔符；
+ *   ② 行内代码里的竖线（`` `method-match|path-only-blind` ``）**也不是** ——
+ *      §8 的 3484 行不做保护会被切成 **10 格**（应为 4 格），于是「最后一格」落在一段正文上、
+ *      状态被读成「无标记」，而它真实是 ✅。这正是同节 `G-GATE-EXTRACTOR-CROSS-OBJECT-MISBIND`
+ *      记的那个形态：**把 A 的 key 绑到 B 的值上**。
+ * 反引号数为奇数时保护不可靠，故若保护后格数**少于**表头列数，退回不保护的切法。
+ */
+function splitRowRaw(line, protectTicks) {
   const t = line.trim();
   const parts = [];
   let cur = "";
+  let tick = false;
   for (let i = 0; i < t.length; i++) {
     const ch = t[i];
     if (ch === "\\" && t[i + 1] === "|") {
@@ -167,7 +190,12 @@ function splitRow(line) {
       i++;
       continue;
     }
-    if (ch === "|") {
+    if (protectTicks && ch === "`") {
+      tick = !tick;
+      cur += ch;
+      continue;
+    }
+    if (ch === "|" && !tick) {
       parts.push(cur);
       cur = "";
       continue;
@@ -178,6 +206,25 @@ function splitRow(line) {
   if (parts.length && parts[0].trim() === "") parts.shift();
   if (parts.length && parts[parts.length - 1].trim() === "") parts.pop();
   return parts.map((s) => s.trim());
+}
+
+function splitRow(line, headerLen) {
+  const protectedCells = splitRowRaw(line, true);
+  if (headerLen && protectedCells.length < headerLen) {
+    const plain = splitRowRaw(line, false);
+    if (plain.length >= headerLen) return plain;
+  }
+  return protectedCells;
+}
+
+/**
+ * 状态/编号所在的格子由**表头**定，不由「最后一格」定。
+ * §8 的 3483 行结尾漏了 `|`，切出 5 格；「最后一格」是一段正文（无标记），
+ * 而**表头第 4 列**才是真正的性质格（`◑→✅ …`）。判据落在语法位置上，不在「哪格排最后」。
+ */
+function cellByHeader(cells, headerLen, idx) {
+  const i = Math.min(idx, headerLen - 1);
+  return cells[i] ?? "";
 }
 const isSeparatorRow = (cells) => cells.length > 0 && cells.every((c) => /^:?-{3,}:?$/.test(c));
 
@@ -216,7 +263,7 @@ function scanTableHeaders(lines) {
     let j = n;
     while (j <= lines.length && isTableLine(lines[j - 1])) j++;
     const end = j - 1;
-    const first = splitRow(lines[n - 1]);
+    const first = splitRow(lines[n - 1], last ? last.cells.length : 0);
     const hasOwn = end >= n + 1 && isSeparatorRow(splitRow(lines[n]));
     if (hasOwn) {
       last = { cells: first, endLine: end };
@@ -237,7 +284,26 @@ function scanTableHeaders(lines) {
 const isFence = (L) => /^```/.test(L);
 const isTableLine = (L) => L.startsWith("|");
 const isBullet = (L) => /^\s*-\s+\S/.test(L);
-const isBoldOnly = (L) => /^\*\*[^*].*\*\*\s*$/.test(L);
+/**
+ * 独占一行的 **粗体** 当作分组标题（§3 的链路分组名就是这个形态）。
+ *
+ * ⚠ 但**强调句不是标题**：§8 的 3649 行 `**这条红本身就是本门有牙的最强证据：…不是我造的变异。**`
+ *   是段落里的强调，被当成标题之后，它后面整段表格都成了它的子节点，
+ *   还生出 `8/这条红本身就是本门有牙的最强证据：它咬的是别人独/...` 这种路径。
+ *   判据落在**句末标点**上，不在长度上 —— 实测 §3 真正的链路分组名最长 122 码点
+ *   （`DRIL 智能资源路由链（WO-DRIL·Decision Resource Intelligence Layer·…`），
+ *   用「≤40 码点」当判据会把 93/114/119/122 这几条**真**分组头一起砍掉：
+ *   那又是一次「我用长度当作『这是不是标题』的证据，而长度并不度量它」。
+ *   先剥掉结尾的引号/括号再判（`…而前者并不度量后者。」` 这种句号在引号里面）。
+ */
+const isBoldOnly = (L) => {
+  const m = L.match(/^\*\*([^*].*)\*\*\s*$/);
+  if (!m) return false;
+  const inner = m[1].trim();
+  if (Array.from(inner).length > 130) return false;
+  const tail = inner.replace(/[」』"'）)\]】]+$/u, "");
+  return !/[。！？；.!?;]$/.test(tail);
+};
 
 /** 标题层级：# → 1..6；独占一行的 **粗体** → 7（本体用它当 §3 的链路分组名）。 */
 function headingLevel(L) {
@@ -320,7 +386,7 @@ function blockPartition(ctx, from, to) {
           );
         }
         for (let r = info.own ? n + 2 : n; r <= end; r++) {
-          const cells = splitRow(ctx.lines[r - 1]);
+          const cells = splitRow(ctx.lines[r - 1], header.length);
           if (isSeparatorRow(cells)) {
             seq.note++;
             nodes.push(mkNode(ctx, { idRaw: `_sep${seq.note}`, titleRaw: "", start: r, end: r, ownEnd: r, children: [], form: "note" }));
@@ -455,12 +521,20 @@ function annotate(nodes, parentPath, sectionKey, ctx) {
 
     if (nd.kind === "breakpoint") {
       if (nd.form === "table_row") {
-        const last = nd._cells[nd._cells.length - 1] ?? "";
+        const hlen = (nd._header ?? []).length || nd._cells.length;
+        const statusIdx = hlen - 1;
+        const last = cellByHeader(nd._cells, hlen, statusIdx);
         const st = marksIn(last);
-        nd.status = st.length ? st[0] : "无标记";
-        nd.status_from = "表格最后一列（性质）";
+        // 性质格**以** `X→Y` 开头 = 作者在写状态迁移（如 `◑→✅ 增量封死 + 存量清零`），取箭头右侧＝当前态。
+        // 这是**语法**规则（开头处的「标记 箭头 标记」），不是读语义猜意图；取左侧会把已闭的条目报成半开。
+        const trans = last.match(STATUS_TRANSITION_RE);
+        if (trans) {
+          nd.status = trans[2];
+          nd.status_note = `原文写作状态迁移 ${trans[1]}→${trans[2]}，取箭头右侧（当前态）`;
+        } else nd.status = st.length ? st[0] : "无标记";
+        nd.status_from = `表头第 ${statusIdx + 1} 列（性质）`;
         nd.status_cell = cutText(last, 110);
-        nd.body_marks = marksIn(nd._cells.slice(1, -1).join(" ")).length;
+        nd.body_marks = marksIn(nd._cells.filter((_, i) => i !== 0 && i !== statusIdx).join(" ")).length;
       } else {
         const head = ctx.lines[nd.lines[0] - 1];
         const st = marksIn(head);
@@ -1007,11 +1081,14 @@ function buildDoc(B) {
   for (const nd of all) byKind[nd.kind] = (byKind[nd.kind] ?? 0) + 1;
 
   const bps = all.filter((nd) => nd.kind === "breakpoint");
-  const dist = { "🔴": 0, "◑": 0, "✅": 0, 无标记: 0 };
+  const dist = {};
+  for (const m of STATUS_MARKS) dist[m] = 0;
+  dist["无标记"] = 0;
   for (const e of bps) dist[e.status] = (dist[e.status] ?? 0) + 1;
   const sec8 = B.nodeByPath.get("8");
   const sec8Text = sec8 ? B.lines.slice(sec8.lines[0] - 1, sec8.lines[1]).join("\n") : "";
-  const raw8 = { "🔴": 0, "◑": 0, "✅": 0 };
+  const raw8 = {};
+  for (const m of STATUS_MARKS) raw8[m] = 0;
   for (const ch of marksIn(sec8Text)) raw8[ch]++;
 
   // 哪几节**说出了**关系（按 source_section = 陈述句所在的那一节），哪几节一条都没说。
@@ -1106,6 +1183,7 @@ const NODE_EMIT_KEYS = [
   "own_lines",
   "status",
   "status_from",
+  "status_note",
   "status_cell",
   "body_marks",
   "anchors",
@@ -1201,11 +1279,22 @@ function toYaml(doc) {
 function parseOwn(text) {
   const fields = new Map();
   let cur = "<顶层>";
+  let pendingId = null; // `- id:` 排在 `path:` 之前，先挂起，等 path 定了上下文再记，
+  //                       否则它会被算到**上一个**节点头上（变异反证时屏上就是这么错报的）。
   for (const L of text.split("\n")) {
     if (L.startsWith("#")) continue;
+    const mid = L.match(/^\s*- id:\s*(.*)$/);
+    if (mid) {
+      pendingId = mid[1];
+      continue;
+    }
     const mp = L.match(/^\s*(?:- )?path:\s*(".*")\s*$/);
     if (mp) {
       cur = JSON.parse(mp[1]);
+      if (pendingId !== null) {
+        fields.set(`${cur} id`, pendingId);
+        pendingId = null;
+      }
       continue;
     }
     const mf = L.match(/^\s*(?:- )?([A-Za-z_][A-Za-z0-9_]*):\s*(.+)$/);
@@ -1432,9 +1521,9 @@ function main() {
   console.log(`  边：stated ${c.stated_edges} · shared_anchor ${c.shared_anchor_edges}（派生，默认不走）`);
   console.log(`  §8：条目 ${s8.entries_total}（表行 ${s8.from_table_rows} + 小节 ${s8.from_headings}）· 不重复 id ${s8.unique_ids}`);
   const d = s8.status_by_syntax_position;
-  console.log(`  §8 状态（按语法位置）：🔴 ${d["🔴"]} · ◑ ${d["◑"]} · ✅ ${d["✅"]} · 无标记 ${d["无标记"]}`);
+  console.log(`  §8 状态（按语法位置）：` + Object.entries(d).map(([k, v]) => `${k} ${v}`).join(" · "));
   const r = s8.raw_marker_occurrences_in_section_text;
-  console.log(`  §8 整节标记原始出现次数（仅对账，与条目数天然不等）：🔴 ${r["🔴"]} · ◑ ${r["◑"]} · ✅ ${r["✅"]}`);
+  console.log(`  §8 整节标记原始出现次数（仅对账，与条目数天然不等）：` + Object.entries(r).map(([k, v]) => `${k} ${v}`).join(" · "));
   if (doc.edges_summary.sections_without_stated_edges.length)
     console.log(`  无 stated 边的章节：` + doc.edges_summary.sections_without_stated_edges.map((s) => `§${s.section}`).join(" "));
 }

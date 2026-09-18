@@ -52,7 +52,7 @@ canary:
       hit: false
   non_empty:
     - kind: "link_chain"
-      count: 48
+      count: 43
       hit: true
     - kind: "gate"
       count: 136
@@ -87,19 +87,19 @@ partition_check:
   exact: true
   total_lines: 3844
   covered_lines: 3844
-  own_intervals: 1091
+  own_intervals: 1079
   gaps: []
   overlaps: []
 counts:
-  nodes_total: 1091
+  nodes_total: 1079
   by_kind:
     section: 12
-    note: 138
+    note: 132
     code_block: 52
     subsection: 47
     object_type: 108
     object_group: 22
-    link_chain: 48
+    link_chain: 43
     item: 75
     table_header: 29
     table_row: 77
@@ -107,7 +107,7 @@ counts:
     invariant: 26
     gate: 136
     breakpoint: 193
-    group: 2
+    group: 1
     self_domain: 11
     slice: 15
     cross_domain_node: 12
@@ -120,11 +120,15 @@ section_8_summary:
   unique_ids: 192
   status_by_syntax_position:
     🔴: 4
-    ◑: 35
+    🟡: 5
+    🟢: 4
+    ◑: 36
     ✅: 141
-    无标记: 13
+    无标记: 3
   raw_marker_occurrences_in_section_text:
     🔴: 12
+    🟡: 8
+    🟢: 6
     ◑: 129
     ✅: 352
   note: "status 只取语法位置（表格最后一列『性质』/ 小节标题行）；条目正文里的标记记在 body_marks，⛔ 不当该条目的状态 —— 正文完全可能引用别的条目的状态。raw_marker_occurrences 是整节文本的字符出现次数，与条目数天然不等，仅供对账。"
@@ -4436,120 +4440,94 @@ tree:
             path: "3/WO-ADOPTION-SURVIVES-FIX/_note2"
             kind: "note"
             form: "note"
-            title: ""
+            title: "**这条链存在的理由（一句话）**：**「把问题解决了」和「记录被抹掉了」在屏上长得一模一样。**"
             lines:
               - 1265
-              - 1265
+              - 1272
             own_lines:
               - 1265
-              - 1265
+              - 1272
             status: null
             children: []
-          - id: "这条链存在的理由"
-            path: "3/WO-ADOPTION-SURVIVES-FIX/这条链存在的理由"
-            kind: "link_chain"
-            form: "group"
-            title: "这条链存在的理由（一句话）**：**「把问题解决了」和「记录被抹掉了」在屏上长得一模一样。"
+          - id: "_thead"
+            path: "3/WO-ADOPTION-SURVIVES-FIX/_thead"
+            kind: "table_header"
+            form: "table_header"
+            title: "| 采纳 | 该 pair peak | crossDay | 卡在不在 | 真实机制 |"
             lines:
-              - 1266
+              - 1273
+              - 1274
+            own_lines:
+              - 1273
+              - 1274
+            status: null
+            children: []
+          - id: "无"
+            path: "3/WO-ADOPTION-SURVIVES-FIX/无"
+            kind: "table_row"
+            form: "table_row"
+            title: "98 | 1 | 在（第 5 位） | —"
+            lines:
+              - 1275
+              - 1275
+            own_lines:
+              - 1275
+              - 1275
+            status: null
+            children: []
+          - id: "常州·瓶颈工序 debottleneck"
+            path: "3/WO-ADOPTION-SURVIVES-FIX/常州·瓶颈工序 debottleneck"
+            kind: "table_row"
+            form: "table_row"
+            title: "97.9949 | 1 | **在**（第 6 位） | 峰值排名保住"
+            lines:
+              - 1276
+              - 1276
+            own_lines:
+              - 1276
+              - 1276
+            status: null
+            children: []
+          - id: "常州·瓶颈工序 reroute"
+            path: "3/WO-ADOPTION-SURVIVES-FIX/常州·瓶颈工序 reroute"
+            kind: "table_row"
+            form: "table_row"
+            title: "97.9531 | 1 | **不在** | **`cards.slice(0,maxCards=8)` 截断**（低于成都 97.9935）"
+            lines:
+              - 1277
+              - 1277
+            own_lines:
+              - 1277
+              - 1277
+            status: null
+            children: []
+          - id: "江门·物料齐套 air_freight"
+            path: "3/WO-ADOPTION-SURVIVES-FIX/江门·物料齐套 air_freight"
+            kind: "table_row"
+            form: "table_row"
+            title: "97.8399→82.8399 | **null** | **不在** | `if (!pair.forced && crossDay===null) continue`"
+            lines:
+              - 1278
+              - 1278
+            own_lines:
+              - 1278
+              - 1278
+            status: null
+            children: []
+          - id: "_note3"
+            path: "3/WO-ADOPTION-SURVIVES-FIX/_note3"
+            kind: "note"
+            form: "note"
+            title: "即 `reroute` 那张卡**越线一次都没被消解**（三态 crossDay 全为 1），决定它去留的是 **0.0"
+            title_truncated: true
+            lines:
+              - 1279
               - 1283
             own_lines:
-              - 1266
-              - 1266
+              - 1279
+              - 1283
             status: null
-            children:
-              - id: "_note1"
-                path: "3/WO-ADOPTION-SURVIVES-FIX/这条链存在的理由/_note1"
-                kind: "note"
-                form: "note"
-                title: "风险卡的出卡条件是「本窗越线」，采纳披露此前**只挂在卡片上** ⇒ 卡一走，记录跟着走"
-                lines:
-                  - 1267
-                  - 1272
-                own_lines:
-                  - 1267
-                  - 1272
-                status: null
-                children: []
-              - id: "_thead"
-                path: "3/WO-ADOPTION-SURVIVES-FIX/这条链存在的理由/_thead"
-                kind: "table_header"
-                form: "table_header"
-                title: "| 采纳 | 该 pair peak | crossDay | 卡在不在 | 真实机制 |"
-                lines:
-                  - 1273
-                  - 1274
-                own_lines:
-                  - 1273
-                  - 1274
-                status: null
-                children: []
-              - id: "无"
-                path: "3/WO-ADOPTION-SURVIVES-FIX/这条链存在的理由/无"
-                kind: "table_row"
-                form: "table_row"
-                title: "98 | 1 | 在（第 5 位） | —"
-                lines:
-                  - 1275
-                  - 1275
-                own_lines:
-                  - 1275
-                  - 1275
-                status: null
-                children: []
-              - id: "常州·瓶颈工序 debottleneck"
-                path: "3/WO-ADOPTION-SURVIVES-FIX/这条链存在的理由/常州·瓶颈工序 debottleneck"
-                kind: "table_row"
-                form: "table_row"
-                title: "97.9949 | 1 | **在**（第 6 位） | 峰值排名保住"
-                lines:
-                  - 1276
-                  - 1276
-                own_lines:
-                  - 1276
-                  - 1276
-                status: null
-                children: []
-              - id: "常州·瓶颈工序 reroute"
-                path: "3/WO-ADOPTION-SURVIVES-FIX/这条链存在的理由/常州·瓶颈工序 reroute"
-                kind: "table_row"
-                form: "table_row"
-                title: "97.9531 | 1 | **不在** | **`cards.slice(0,maxCards=8)` 截断**（低于成都 97.9935）"
-                lines:
-                  - 1277
-                  - 1277
-                own_lines:
-                  - 1277
-                  - 1277
-                status: null
-                children: []
-              - id: "江门·物料齐套 air_freight"
-                path: "3/WO-ADOPTION-SURVIVES-FIX/这条链存在的理由/江门·物料齐套 air_freight"
-                kind: "table_row"
-                form: "table_row"
-                title: "97.8399→82.8399 | **null** | **不在** | `if (!pair.forced && crossDay===null) continue`"
-                lines:
-                  - 1278
-                  - 1278
-                own_lines:
-                  - 1278
-                  - 1278
-                status: null
-                children: []
-              - id: "_note2"
-                path: "3/WO-ADOPTION-SURVIVES-FIX/这条链存在的理由/_note2"
-                kind: "note"
-                form: "note"
-                title: "即 `reroute` 那张卡**越线一次都没被消解**（三态 crossDay 全为 1），决定它去留的是 **0.0"
-                title_truncated: true
-                lines:
-                  - 1279
-                  - 1283
-                own_lines:
-                  - 1279
-                  - 1283
-                status: null
-                children: []
+            children: []
           - id: "不变量"
             path: "3/WO-ADOPTION-SURVIVES-FIX/不变量"
             kind: "link_chain"
@@ -5466,83 +5444,48 @@ tree:
             title_truncated: true
             lines:
               - 1846
-              - 1852
+              - 1867
             own_lines:
               - 1846
-              - 1852
+              - 1867
             status: null
             anchors:
               - "sim-root-triad.seam.test.ts §1"
-            children: []
-          - id: "🔴 demandPressure 由根源降级为一"
-            path: "3/WO-SIM-ROOT-TRIAD/🔴 demandPressure 由根源降级为一"
-            kind: "link_chain"
-            form: "group"
-            title: "🔴 `demandPressure` 由根源降级为一级衍生（入度 0 → 1）—— 有意的模型修正，不是副作用。"
-            lines:
-              - 1853
-              - 1892
-            own_lines:
-              - 1853
-              - 1853
-            status: null
-            anchors:
               - "ontology/invariants.ts"
               - "sim/seed-world.ts"
               - "statevar-display-name.seam.test.ts ⑥"
+            children: []
+          - id: "接不到"
+            path: "3/WO-SIM-ROOT-TRIAD/接不到"
+            kind: "item"
+            form: "item"
+            title: "`orderChurn → releasePressure`（工单下达）**接不到**：`releasePressure` 挂在 `WorkOrder` 上，"
+            lines:
+              - 1868
+              - 1872
+            own_lines:
+              - 1868
+              - 1872
+            status: null
+            children: []
+          - id: "必须多一跳"
+            path: "3/WO-SIM-ROOT-TRIAD/必须多一跳"
+            kind: "item"
+            form: "item"
+            title: "`equipmentFailure → loadPressure` **必须多一跳**：`loadPressure` 挂在 `Equipment` 自己身上，"
+            lines:
+              - 1873
+              - 1892
+            own_lines:
+              - 1873
+              - 1892
+            status: null
+            anchors:
               - "service.ts"
               - "seed-demo-propagation.test.ts"
               - "process-tick-coverage.seam.test.ts §C4"
               - "apps/datacore/test/sim-root-triad.seam.test.ts"
-            children:
-              - id: "_note1"
-                path: "3/WO-SIM-ROOT-TRIAD/🔴 demandPressure 由根源降级为一/_note1"
-                kind: "note"
-                form: "note"
-                title: "语义上「需求压力」**没有方向**，而「预测偏差」有：正 = 高估（按虚高的预测备产 ⇒ 真实订单需求压力"
-                lines:
-                  - 1854
-                  - 1867
-                own_lines:
-                  - 1854
-                  - 1867
-                status: null
-                anchors:
-                  - "ontology/invariants.ts"
-                  - "sim/seed-world.ts"
-                  - "statevar-display-name.seam.test.ts ⑥"
-                children: []
-              - id: "接不到"
-                path: "3/WO-SIM-ROOT-TRIAD/🔴 demandPressure 由根源降级为一/接不到"
-                kind: "item"
-                form: "item"
-                title: "`orderChurn → releasePressure`（工单下达）**接不到**：`releasePressure` 挂在 `WorkOrder` 上，"
-                lines:
-                  - 1868
-                  - 1872
-                own_lines:
-                  - 1868
-                  - 1872
-                status: null
-                children: []
-              - id: "必须多一跳"
-                path: "3/WO-SIM-ROOT-TRIAD/🔴 demandPressure 由根源降级为一/必须多一跳"
-                kind: "item"
-                form: "item"
-                title: "`equipmentFailure → loadPressure` **必须多一跳**：`loadPressure` 挂在 `Equipment` 自己身上，"
-                lines:
-                  - 1873
-                  - 1892
-                own_lines:
-                  - 1873
-                  - 1892
-                status: null
-                anchors:
-                  - "service.ts"
-                  - "seed-demo-propagation.test.ts"
-                  - "process-tick-coverage.seam.test.ts §C4"
-                  - "apps/datacore/test/sim-root-triad.seam.test.ts"
-                children: []
+            children: []
       - id: "WO-ADVERSARY-REACTION"
         path: "3/WO-ADVERSARY-REACTION"
         kind: "subsection"
@@ -6242,51 +6185,19 @@ tree:
             title_truncated: true
             lines:
               - 2176
-              - 2185
+              - 2199
             own_lines:
               - 2176
-              - 2185
+              - 2199
             status: null
             anchors:
               - "apps/datacore/test/finance-worldstate.seam.test.ts"
               - "apps/frontend-shell/test/sandbox-finance-worldstate.seam.test.tsx"
               - "SandboxImpactBand.tsx"
-            children: []
-          - id: "丢掉它们的后果一句话：屏上一个金额，看的人无从知"
-            path: "3/WO-FINANCE-WORLDSTATE/丢掉它们的后果一句话：屏上一个金额，看的人无从知"
-            kind: "link_chain"
-            form: "group"
-            title: "丢掉它们的后果一句话：屏上一个金额，看的人无从知道它是 500 个对象里 3 个撑起来的，还是拿不到金额权重、退回等权硬算出来的。"
-            lines:
-              - 2186
-              - 2199
-            own_lines:
-              - 2186
-              - 2186
-            status: null
-            anchors:
               - "finance-world.ts"
               - "finance-world.ts:146"
               - "apps/frontend-shell/test/finance-provenance.seam.test.tsx"
-            children:
-              - id: "_note1"
-                path: "3/WO-FINANCE-WORLDSTATE/丢掉它们的后果一句话：屏上一个金额，看的人无从知/_note1"
-                kind: "note"
-                form: "note"
-                title: "形态（铁律 0.6 句式）：**「我用『这块面板接上了』当作『这个回包的诚实位都上屏了』的证据，而前者并不度量后者。」*"
-                title_truncated: true
-                lines:
-                  - 2187
-                  - 2199
-                own_lines:
-                  - 2187
-                  - 2199
-                status: null
-                anchors:
-                  - "finance-world.ts"
-                  - "finance-world.ts:146"
-                  - "apps/frontend-shell/test/finance-provenance.seam.test.tsx"
-                children: []
+            children: []
       - id: "WO-ACTIVE-EDGE-UX"
         path: "3/WO-ACTIVE-EDGE-UX"
         kind: "subsection"
@@ -6557,47 +6468,18 @@ tree:
             title_truncated: true
             lines:
               - 2285
-              - 2318
+              - 2330
             own_lines:
               - 2285
-              - 2318
+              - 2330
             status: null
             anchors:
               - "apps/frontend-shell/test/edge-panel-3pages.seam.test.tsx"
               - "scripts/check-edge-active-mounts.mjs"
               - "scripts/lib/sim-page-roster.mjs"
               - "scripts/edge-active-mounts-baseline.json"
-            children: []
-          - id: "「我用『门里那张表有几行』当作『该被问的页有几页"
-            path: "3/WO-EDGE-PANEL-3PAGES/「我用『门里那张表有几行』当作『该被问的页有几页"
-            kind: "link_chain"
-            form: "group"
-            title: "「我用『门里那张表有几行』当作『该被问的页有几页』的证据，而前者并不度量后者。」"
-            lines:
-              - 2319
-              - 2330
-            own_lines:
-              - 2319
-              - 2319
-            status: null
-            anchors:
               - "scripts/gate-ledger.json"
-            children:
-              - id: "_note1"
-                path: "3/WO-EDGE-PANEL-3PAGES/「我用『门里那张表有几行』当作『该被问的页有几页/_note1"
-                kind: "note"
-                form: "note"
-                title: "同一个病连犯两次（08-14 少数一页 · 08-16 少问三页），第二次的修法才是对的：**名册现算**。"
-                lines:
-                  - 2320
-                  - 2330
-                own_lines:
-                  - 2320
-                  - 2330
-                status: null
-                anchors:
-                  - "scripts/gate-ledger.json"
-                children: []
+            children: []
       - id: "WO-DBUI-FLOW"
         path: "3/WO-DBUI-FLOW"
         kind: "subsection"
@@ -7810,101 +7692,71 @@ tree:
                 title: "上一节的**算法**是对的（对照四数 / 越界两数不动），红的是它**两处装配**。两条同一个形态："
                 lines:
                   - 2774
-                  - 2775
+                  - 2777
                 own_lines:
                   - 2774
-                  - 2775
+                  - 2777
                 status: null
                 children: []
-              - id: "某个东西登记在 A 处，而真正决定行为的是 B"
-                path: "3/WO-CAPACITY-EDGE/WO-CAPACITY-EDGE-FIX/某个东西登记在 A 处，而真正决定行为的是 B"
-                kind: "link_chain"
-                form: "group"
-                title: "某个东西登记在 A 处，而真正决定行为的是 B 处，两处说了相反的话。"
+              - id: "_thead"
+                path: "3/WO-CAPACITY-EDGE/WO-CAPACITY-EDGE-FIX/_thead"
+                kind: "table_header"
+                form: "table_header"
+                title: "| # | 今天的行为 X | 应该的行为 Y | 落点 |"
                 lines:
-                  - 2776
-                  - 2793
+                  - 2778
+                  - 2779
                 own_lines:
-                  - 2776
-                  - 2776
+                  - 2778
+                  - 2779
+                status: null
+                children: []
+              - id: "①"
+                path: "3/WO-CAPACITY-EDGE/WO-CAPACITY-EDGE-FIX/①"
+                kind: "table_row"
+                form: "table_row"
+                title: "`CapacityPool.{consumed,remaining}CellsDaily` 登记在 `properties`（该表契约 = 非派生字段必须落种子值），播种器却一格不写，描述还自陈「派生·不落种子值」⇒ **登记处与描述在同一个类型定义里互相打脸**（`synthetic-field-alignment`"
+                title_truncated: true
+                lines:
+                  - 2780
+                  - 2780
+                own_lines:
+                  - 2780
+                  - 2780
                 status: null
                 anchors:
                   - "synthetic/battery.ts"
+                children: []
+              - id: "②"
+                path: "3/WO-CAPACITY-EDGE/WO-CAPACITY-EDGE-FIX/②"
+                kind: "table_row"
+                form: "table_row"
+                title: "`withCapacityLedger` 只由两处生产派发点传，`loadContext` 不从 `solverKey` 推导 ⇒ 直接 `loadContext(t,…,{solverKey})` 建的 ctx 里 `capacityUnits` 恒缺席，`compute` 必抛 400，报的还是「本体里读不到量纲声"
+                title_truncated: true
+                lines:
+                  - 2781
+                  - 2781
+                own_lines:
+                  - 2781
+                  - 2781
+                status: null
+                anchors:
                   - "solver-context-lazy-loading.seam.test.ts"
                   - "solvers/service.ts"
-                children:
-                  - id: "_note1"
-                    path: "3/WO-CAPACITY-EDGE/WO-CAPACITY-EDGE-FIX/某个东西登记在 A 处，而真正决定行为的是 B/_note1"
-                    kind: "note"
-                    form: "note"
-                    title: ""
-                    lines:
-                      - 2777
-                      - 2777
-                    own_lines:
-                      - 2777
-                      - 2777
-                    status: null
-                    children: []
-                  - id: "_thead"
-                    path: "3/WO-CAPACITY-EDGE/WO-CAPACITY-EDGE-FIX/某个东西登记在 A 处，而真正决定行为的是 B/_thead"
-                    kind: "table_header"
-                    form: "table_header"
-                    title: "| # | 今天的行为 X | 应该的行为 Y | 落点 |"
-                    lines:
-                      - 2778
-                      - 2779
-                    own_lines:
-                      - 2778
-                      - 2779
-                    status: null
-                    children: []
-                  - id: "①"
-                    path: "3/WO-CAPACITY-EDGE/WO-CAPACITY-EDGE-FIX/某个东西登记在 A 处，而真正决定行为的是 B/①"
-                    kind: "table_row"
-                    form: "table_row"
-                    title: "`CapacityPool.{consumed,remaining}CellsDaily` 登记在 `properties`（该表契约 = 非派生字段必须落种子值），播种器却一格不写，描述还自陈「派生·不落种子值」⇒ **登记处与描述在同一个类型定义里互相打脸**（`synthetic-field-alignment`"
-                    title_truncated: true
-                    lines:
-                      - 2780
-                      - 2780
-                    own_lines:
-                      - 2780
-                      - 2780
-                    status: null
-                    anchors:
-                      - "synthetic/battery.ts"
-                    children: []
-                  - id: "②"
-                    path: "3/WO-CAPACITY-EDGE/WO-CAPACITY-EDGE-FIX/某个东西登记在 A 处，而真正决定行为的是 B/②"
-                    kind: "table_row"
-                    form: "table_row"
-                    title: "`withCapacityLedger` 只由两处生产派发点传，`loadContext` 不从 `solverKey` 推导 ⇒ 直接 `loadContext(t,…,{solverKey})` 建的 ctx 里 `capacityUnits` 恒缺席，`compute` 必抛 400，报的还是「本体里读不到量纲声"
-                    title_truncated: true
-                    lines:
-                      - 2781
-                      - 2781
-                    own_lines:
-                      - 2781
-                      - 2781
-                    status: null
-                    anchors:
-                      - "solver-context-lazy-loading.seam.test.ts"
-                      - "solvers/service.ts"
-                    children: []
-                  - id: "_note2"
-                    path: "3/WO-CAPACITY-EDGE/WO-CAPACITY-EDGE-FIX/某个东西登记在 A 处，而真正决定行为的是 B/_note2"
-                    kind: "note"
-                    form: "note"
-                    title: "⛔ **①「落真值」这条路被否掉的理由**（不是嫌麻烦）：那会造出**第二个真值源** —— 边一改，"
-                    lines:
-                      - 2782
-                      - 2793
-                    own_lines:
-                      - 2782
-                      - 2793
-                    status: null
-                    children: []
+                children: []
+              - id: "_note2"
+                path: "3/WO-CAPACITY-EDGE/WO-CAPACITY-EDGE-FIX/_note2"
+                kind: "note"
+                form: "note"
+                title: "⛔ **①「落真值」这条路被否掉的理由**（不是嫌麻烦）：那会造出**第二个真值源** —— 边一改，"
+                lines:
+                  - 2782
+                  - 2793
+                own_lines:
+                  - 2782
+                  - 2793
+                status: null
+                children: []
       - id: "WO-RATE-DIMENSION"
         path: "3/WO-RATE-DIMENSION"
         kind: "subsection"
@@ -9974,7 +9826,7 @@ tree:
         path: "4/sim.session_status_chang"
         kind: "event"
         form: "table_row"
-        title: "L-sim | 沙盘会话生命周期迁移（WO-SIMSESSION-BIZ-REUSE·负载带 `from`/`status`）：通用路由 `PATCH /a/v1/sim/sessions/:id/status` 与产能页 `POST /a/v1/sim/live-scenarios/:id/pause | end` "
+        title: "L-sim | 沙盘会话生命周期迁移（WO-SIMSESSION-BIZ-REUSE·负载带 `from`/`status`）：通用路由 `PATCH /a/v1/sim/sessions/:id/status` 与产能页 `POST /a/v1/sim/live-scenarios/:id/pause|end` 共用"
         title_truncated: true
         lines:
           - 3169
@@ -13225,7 +13077,7 @@ tree:
           - 3478
           - 3478
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已修（WO-DIST-FRESHNESS-GUARD）**：共享守卫 `scripts/dist-freshness.mjs`（fail-closed：`max(mtime) over src/` > `max("
         anchors:
           - "await import(\".../dist/x.js\")"
@@ -13247,7 +13099,7 @@ tree:
           - 3479
           - 3479
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已修（WO-R9-SCAN-EXTRACTOR）**：抽取器改为**按对象边界切分**（`topLevelObjects`/`topLevelProps`，括号配对 —— 正则做不到「同一个对象」，这是把可能性拿"
         anchors:
           - "apps/datacore/src/synthetic/battery.ts"
@@ -13268,7 +13120,7 @@ tree:
           - 3480
           - 3480
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已闭**：`apps/datacore/test/a6-cross-segment-contention.seam.test.ts` 新增 **CONTENTION-7** —— ① 对**每一条**在场业务线逐"
         anchors:
           - "apps/datacore/src/solvers/chain-impediment.ts"
@@ -13289,7 +13141,7 @@ tree:
           - 3481
           - 3481
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ **增量已封死**（`prd-data-grounding:check` §7 三层判据 + 棘轮基线 `scripts/prd-data-grounding-baseline.json`，新增即红）；**存量待 b"
         anchors:
           - "docs/PRD-sandbox-redesign.md"
@@ -13315,7 +13167,7 @@ tree:
           - 3482
           - 3482
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 增量已封死（门在），存量 102 + 盲区 3 处待 burn-down；`process_flow_time` 整器零消费方待**导航信息架构**裁决"
         body_marks: 2
         anchors:
@@ -13341,10 +13193,11 @@ tree:
         own_lines:
           - 3483
           - 3483
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
-        status_cell: "**2026-08-14 第四批 burn-down（WO-BEFE-D · 组织与因果 14 条）**：分诊 真缺口 13（已接）· 不该有前端 1（`POST /a/v1/growth/fill-data` 由 B "
-        body_marks: 4
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_note: "原文写作状态迁移 ◑→✅，取箭头右侧（当前态）"
+        status_cell: "◑→✅ 增量封死 + 存量清零（2026-08-16）；残余盲区：widget 集合差集未配对　⚠ **去重注记（2026-08-17 WO-ONTO-DEDUPE）**：本编号原另有两行重复登记，内容与本行同源——仅状"
+        body_marks: 2
         anchors:
           - "apps/frontend-shell/src/mocks/handlers.ts:4097 (linkTypes)"
           - "apps/datacore/src/synthetic/battery.ts:3595 (batteryLinkTypes)"
@@ -13363,10 +13216,10 @@ tree:
         own_lines:
           - 3484
           - 3484
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
-        status_cell: "wildcard-literal-claim`）+ `--explain-wildcard` 现算三桶归因差集。收紧实测翻转 3 条，逐条核实：calibration 2 条 = 真接线（兜底覆盖，不入基线）；`GET "
-        body_marks: 7
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ 门的失明已闭；残余 (甲) **✅ 2026-08-17 已闭**（`ProcessInstanceDetailView` 接上两个函数 + 路由已挂 · 提交 `dc998e41`）· 残余 (乙) 通配段冒领 *"
+        body_marks: 4
         anchors:
           - "scripts/check-backend-frontend-seam.mjs"
           - "（server.ts:2998 单条场景读取）= **真缺口**——此前被前端字面"
@@ -13384,9 +13237,9 @@ tree:
         own_lines:
           - 3485
           - 3485
-        status: "✅"
-        status_from: "表格最后一列（性质）"
-        status_cell: "RETIRED`，仓储参数叫 `publishedOnly`）；且 `POST /a/v1/sim/propagation-rules` 把 `id: newId(\"simpr\")` 写在 body 展开**之后**（`"
+        status: "◑"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "◑ 增量已封死（门在），存量 180 待 burn-down"
         body_marks: 3
         anchors:
           - "apps/agentcore/src/router/orchestrator.ts:2578 (emitWithRole)"
@@ -13413,7 +13266,7 @@ tree:
           - 3486
           - 3486
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 增量已封死（门在），存量待 burn-down"
         body_marks: 2
         anchors:
@@ -13437,7 +13290,7 @@ tree:
           - 3487
           - 3487
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已修**：新增只读投影 `GET /a/v1/ontology/slices/{key}/layers`（纯函数 `apps/datacore/src/ontology/slice-layers.ts:168 ("
         anchors:
           - "docs/AUDIT-slice-16-layers.md"
@@ -13458,7 +13311,7 @@ tree:
           - 3488
           - 3488
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已修**：`origin`/`epoch` 改为**加性**带出（既有消费方读同名字段，多两字段不破契约）。实测修后 origin **531/531**，可沿 `sourceConnId→rawDatasetI"
         anchors:
           - "apps/datacore/src/ontology-core.ts:640 (addNode)"
@@ -13476,7 +13329,7 @@ tree:
           - 3489
           - 3489
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "**开**（本单只做诚实标注：界面标 absent 并说明「缺的是上报方，不是切片」）。修法 = 让 B 侧发布 workflow/plan/agent 时把 `resolve_slice` 步里的 `sliceKey`"
         anchors:
           - "apps/datacore/src/ontology-governance.ts:426 (sliceReferences)"
@@ -13503,7 +13356,7 @@ tree:
           - 3490
           - 3490
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已闭（WO-CLOSE-SIM-ONTO-2 · 2026-09-09）**：入参改 `actionTypes:{key,targetTypeKey?}[]`，⑮ 层两条归因路取并集并去重；`absentReas"
         anchors:
           - "app.ts scopeActions"
@@ -13522,7 +13375,7 @@ tree:
           - 3491
           - 3491
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已修**：`apps/datacore/src/ontology/slice-layers.ts:124 (diagnoseEmptyGraph)` 下发 `graph.empty{reason: missing"
         anchors:
           - "docs/AUDIT-slice-16-layers.md"
@@ -13543,7 +13396,7 @@ tree:
           - 3492
           - 3492
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已修**（WO-SLICE-DERIV-EMPTY·2026-08-19）：`GET /a/v1/ontology/slices` 摘要加性下发 `requiredArgs[]`（占位符扫描与 `diagnose"
         children: []
       - id: "G-DERIVSPEC-EMPTY"
@@ -13559,7 +13412,7 @@ tree:
           - 3493
           - 3493
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已修**（WO-SLICE-DERIV-EMPTY·2026-08-19）：形态确证「接了线没数据」⇒ 补数据不删分支。新种子模块 `apps/datacore/src/seed-derivation-specs"
         anchors:
           - "apps/datacore/src/ontology/slice-layers.ts:168 (projectSliceLayers)"
@@ -13582,7 +13435,7 @@ tree:
           - 3494
           - 3494
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "**开**（结构性·持久化窄门）；修法 = `upsertType` 透传该四字段（加性），或改为整体展开；另立单 ✅ 已闭（2026-08-18 复核：`ontology.ts upsertType` 已改 `...i"
         anchors:
           - "apps/datacore/src/pipeline/subgraph.ts:53 (buildTypeDefs)"
@@ -13606,7 +13459,7 @@ tree:
           - 3495
           - 3495
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ **命名纪律已定死**（「十六层」单指 A 集；B 集改称「REQ153 十六层（外部出处 S7）」；覆盖数引用必须写明哪一套+哪条切片+哪个快照，见对账文 §6），三处来源已就地加注记（`packages/cont"
         anchors:
           - "docs/RECONCILE-slice-16-layers-two-sets.md"
@@ -13632,7 +13485,7 @@ tree:
           - 3496
           - 3496
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "结构性·◑ **部分闭合**（2026-08-20 WO-GRAPH-EXEC-CONSOLIDATE：并发实现 3→1·总套数 4→2·门已建并有变异反证；剩 `workflow/executor.ts` 线性执行器未"
         body_marks: 1
         anchors:
@@ -13659,7 +13512,7 @@ tree:
           - 3497
           - 3497
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已闭**（WO-SKILL-GRAPH-RENDER-CLOSURE，**两半同单做**——只补校验会把所有图编译废，只做节点则门照缺）。**① 节点落地**：`render` 进 `IMPLEMENTED_NO"
         anchors:
           - "packages/contracts/src/skill-graph.ts compileGraph"
@@ -13680,7 +13533,7 @@ tree:
           - 3498
           - 3498
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（门在 + 红线闸真接线；W2 存量 13 条棘轮待 burn-down）"
         body_marks: 1
         anchors:
@@ -13708,7 +13561,7 @@ tree:
           - 3499
           - 3499
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已修**：`loadSkill` 回调契约增治理位并由两路共用的 `apps/agentcore/src/agent/loop.ts:451 (skillGovernance)` 唯一构造（判定单源仍是契约 `i"
         anchors:
           - "apps/agentcore/src/engine.ts:466 (skillWriteMode)"
@@ -13733,7 +13586,7 @@ tree:
           - 3500
           - 3500
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已修**：`ontology-writeback:check` 补 G3 三判据（a 未登账即红 · b 宣称已接线实则零调用即红 · c 已建未接线数入棘轮只降不升）+ 新门 `gate-ledger:chec"
         anchors:
           - "check-ontology-writeback.mjs"
@@ -13746,7 +13599,7 @@ tree:
         path: "8/G-SECURITY-COLUMN-LEVEL"
         kind: "breakpoint"
         form: "table_row"
-        title: "**权限只到行级、无列级（属性级）安全**（WO-69 P1）：修前 `PermissionPolicy` 只有 `rowFilter`（看哪些行），**无属性维**（列级 grep `maskedProps | hiddenProps | allowedProps | propMask | columnPolicy "
+        title: "**权限只到行级、无列级（属性级）安全**（WO-69 P1）：修前 `PermissionPolicy` 只有 `rowFilter`（看哪些行），**无属性维**（列级 grep `maskedProps|hiddenProps|allowedProps|propMask|columnPolicy|property"
         title_truncated: true
         lines:
           - 3501
@@ -13755,7 +13608,7 @@ tree:
           - 3501
           - 3501
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ P1 已落 + **P2 已按签名收窄**（18 求解器可放行·其余保守拒）·残口②③④仍登记 ◑ 部分闭合（2026-08-18 复核：契约 `propertyPolicy` 与互斥校验在位；残口②③④仍登记）"
         body_marks: 1
         anchors:
@@ -13778,7 +13631,7 @@ tree:
           - 3502
           - 3502
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ P2 已落（19 求解器已签名·其中 18 个由 S5 实跑比对门守）·其余求解器待补声明（缺省保守拒）·⚠ **签名会随实现漂移，且只有实跑门看得见**：2026-08-14 并线 `WO-QUOTE-MARGIN"
         body_marks: 1
         anchors:
@@ -13804,7 +13657,7 @@ tree:
           - 3503
           - 3503
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ P3 已落（定义/门/查询三面闭，残口见左） ◑ 部分闭合（2026-08-18 复核：contracts `object-interface.ts` 与发布门在位；残口见左）"
         body_marks: 1
         anchors:
@@ -13827,7 +13680,7 @@ tree:
           - 3504
           - 3504
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（P2 投影闭残面 + BP-4 闭 sop 纯指针）"
         anchors:
           - "mocks/seed.ts"
@@ -13846,7 +13699,7 @@ tree:
           - 3505
           - 3505
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（P2 清两残）"
         anchors:
           - "risk.ts:337"
@@ -13864,7 +13717,7 @@ tree:
           - 3506
           - 3506
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ P1+P2+CL.2+CL.3+CL.4+CL.6 已落 ✅ 已闭（2026-08-18 复核：`CommandPalette` 已挂 `ShellLayout`、`ScenarioLauncherPage` 与 `"
         body_marks: 1
         anchors:
@@ -13891,7 +13744,7 @@ tree:
           - 3507
           - 3507
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修"
         children: []
       - id: "G-5"
@@ -13907,7 +13760,7 @@ tree:
           - 3508
           - 3508
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 大部修：8a 结构/8b 数据/8c 文案/8e generic-inference 已落；**`debattery:check` 基线 0**（业务常数全 genericize/config-drive/`deba"
         body_marks: 3
         anchors:
@@ -13929,7 +13782,7 @@ tree:
           - 3509
           - 3509
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 三路+生成器统一；数据模版+FK 一致收口"
         body_marks: 1
         anchors:
@@ -13949,7 +13802,7 @@ tree:
           - 3510
           - 3510
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 部分修（下拉半已修；枚举半 **PRD 已出待裁决**） ◑ 部分闭合（2026-08-20 复核：`LlmProvidersPage` 可见性修复在位；枚举扩展 PRD 已交付，落实现待仓主裁 3 个决策点）"
         anchors:
           - "LlmProvidersPage.tsx"
@@ -13973,7 +13826,7 @@ tree:
           - 3511
           - 3511
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ CHAIN+SHAPE+跨系统 scaffold 已闭合；执行已工作流化；A3-SUITE-4 slice-planner 输出形状已纳入 `chain:check`/SHAPE（`SlicePlanSchema` "
         body_marks: 7
         anchors:
@@ -13999,7 +13852,7 @@ tree:
           - 3512
           - 3512
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已落"
         children: []
       - id: "G-9"
@@ -14015,7 +13868,7 @@ tree:
           - 3513
           - 3513
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ P1+P2 已落 + P3 O9-O12 接线全建但**非「全闭」（2026-07 评审打回校正）**：**O9 ❌招牌未达**——「缺件卡→自动补→GOVERNED」活体里**从不发生**（验证 agent 真起双"
         body_marks: 4
         anchors:
@@ -14043,7 +13896,7 @@ tree:
           - 3514
           - 3514
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已收（依赖 WO-SCALE-COHERENCE·已集成）"
         body_marks: 3
         anchors:
@@ -14066,7 +13919,7 @@ tree:
           - 3515
           - 3515
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑→**评估维 + 数值维均已落**（P1/P2/P4 ✅ · P3 ◑ · A3-SUITE-1 ✅）；**仍开**：expression↔params 双份（需 DSL 插值）· C08 值分叉未裁决 · C28 求"
         body_marks: 3
         anchors:
@@ -14094,7 +13947,7 @@ tree:
           - 3516
           - 3516
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 后端 0–4 齐 + **P0 主体真砌齐 + tick UI 传导哑已修（API+真浏览器双证节点真变色）+ 扰动闭环已闭（用户动作→`/perturbations`→传导→KPI 变，接缝门双向变异反证）+ Tr"
         body_marks: 3
         anchors:
@@ -14121,7 +13974,7 @@ tree:
           - 3517
           - 3517
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（确定性归结层，仅用现有 SessionContext）"
         body_marks: 1
         anchors:
@@ -14141,7 +13994,7 @@ tree:
           - 3518
           - 3518
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（空结果显性化，真无解 vs 数据未接齐）"
         body_marks: 1
         anchors:
@@ -14160,7 +14013,7 @@ tree:
           - 3519
           - 3519
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 增量 1-5 + WO-CROSS-OBJECT-MULTIOBJ（多目标三 method + 跨对象占用，SOLVER_KEYS 52，SEAM-1/2 真 CP-SAT 通）；待增量6 离线进化器(远期)；**前"
         body_marks: 3
         anchors:
@@ -14188,7 +14041,7 @@ tree:
           - 3520
           - 3520
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（两正交维·合成不冒充实测·前端诚实灰；WO-GSIM-3 产线派生 DAG 灰数据补 dataMode:LIVE+热力上色·非恒灰；#13 闭死接线[baseId 名归一 resolveRef]+bottlen"
         body_marks: 1
         anchors:
@@ -14216,7 +14069,7 @@ tree:
           - 3521
           - 3521
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（真 BFS 多跳 hops + FK 兜底补丢链 + 切片间连通门 + 门有牙·结构启发边界诚实标）"
         body_marks: 1
         anchors:
@@ -14237,7 +14090,7 @@ tree:
           - 3522
           - 3522
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ CORE 已修（顶层目标一等化 + 单一登记册 + 删假周期 + 细分责任；月/季对象化诚实待后续）"
         body_marks: 1
         anchors:
@@ -14260,7 +14113,7 @@ tree:
           - 3523
           - 3523
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（引擎垂直切片真跑 + 勾稽/铁律/R6/系数配置化 + metric-aware 4 指标域路由 C5 亲手驱动测绿；广度后续·前端另单）"
         body_marks: 3
         anchors:
@@ -14285,7 +14138,7 @@ tree:
           - 3524
           - 3524
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（引擎垂直切片真跑 + 多方案/比对/触发 fire/收窄/颗粒铁律 7 测绿；agent 战略推理 CEO-6·前端另单）。**WO-GSIM-3 前端推进（方案对比可视 + 行动占位·全局推演决策驾驶舱）**"
         body_marks: 1
         anchors:
@@ -14312,8 +14165,8 @@ tree:
           - 3525
           - 3525
         status: "✅"
-        status_from: "表格最后一列（性质）"
-        status_cell: "✅ 已闭（决策内核垂直切片真跑 + 404 双闸/真派生/门不绕/状态机/R2/R6 8 测绿；NL 入口 CEO-6·前端另单；成效反馈学习闭环 WO-LEARNING-LOOP-FEEDBACK 已补 **QOS↔内"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ 已闭（决策内核垂直切片真跑 + 404 双闸/真派生/门不绕/状态机/R2/R6 8 测绿；NL 入口 CEO-6·前端另单；**成效反馈学习闭环已补（WO-LEARNING-LOOP-FEEDBACK）**：状态机"
         body_marks: 2
         anchors:
           - "contracts/decision-kernel.ts"
@@ -14339,7 +14192,7 @@ tree:
           - 3526
           - 3526
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（后端+前端+mock+口径四处一遍归一·同价基消 30x 劈裂·mock 真公式防绿测试掩盖·数量标签套）"
         body_marks: 1
         anchors:
@@ -14363,7 +14216,7 @@ tree:
           - 3527
           - 3527
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（双向归因引擎真跑 + 勾稽/颗粒铁律双侧/双向敏感/R6 8 测绿 + 端到端 curl 真值；前端另单）"
         body_marks: 1
         anchors:
@@ -14383,7 +14236,7 @@ tree:
           - 3528
           - 3528
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（求解器+路由+前端渲染三半 SEAM 14 测绿·真跑 SO-3402 挤占 SO-3415 跨 2 基地；换型同型号 0 诚实边界·mock 逐口径移植防绿测试掩盖）"
         body_marks: 1
         anchors:
@@ -14407,7 +14260,7 @@ tree:
           - 3529
           - 3529
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（求解器+sidecar+前端+金值 一人整单·SEAM 真 CP-SAT 单/联对拍 SO-3415 分开双占 vs 联合守恒 5 例亲验绿+默认门 7 绿+前端 2 绿·SOLVER_KEYS 55；在产 W"
         body_marks: 1
         anchors:
@@ -14434,7 +14287,7 @@ tree:
           - 3530
           - 3530
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 全闭（数据×引擎接缝·service.ts 接真 wiring + integration門 gsim-integrate.test.ts 守·mock 回退默认不走）；数据半原行状态逐字并录：「✅ 数据半已闭（供芯"
         body_marks: 2
         anchors:
@@ -14457,7 +14310,7 @@ tree:
           - 3531
           - 3531
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 口径迁移(hours)·◑ 线级推进(lineId 无实测→全局兜底)"
         body_marks: 2
         anchors:
@@ -14478,7 +14331,7 @@ tree:
           - 3532
           - 3532
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（前端投影·引擎不改；诚实边界：gap_attribution 无 base×factor 作用域→客户端过滤+缺则诚实灰·未按因子细分据实披露·CI-b 用 mitigation_select 非 decisi"
         body_marks: 2
         anchors:
@@ -14499,7 +14352,7 @@ tree:
           - 3533
           - 3533
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（数据+引擎+前端一人整单·SEAM 改颗粒前瞻真变·byModel↔capacity_forecast 同源勾稽·四包全绿·金值 SOLVER_KEYS 55[与 portfolio 双占·reconcile "
         body_marks: 1
         anchors:
@@ -14522,7 +14375,7 @@ tree:
           - 3534
           - 3534
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（四源归一一等对象 + 三源物化 refId 不悬空 + SEAM 改源变桶咬 + R6·四包全绿）"
         body_marks: 1
         anchors:
@@ -14544,7 +14397,7 @@ tree:
           - 3535
           - 3535
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（仓库+客户地点地基·SEAM 4 绿·金值 83/3321；物流/交付求解器·Shipment 接仓位后续）"
         body_marks: 1
         anchors:
@@ -14566,7 +14419,7 @@ tree:
           - 3536
           - 3536
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（三层闭环垂直切片真跑·完工入库确定性派生+勾稽+SEAM 红咬 6 绿·金值 85/3766；ISSUE/预留/库存求解器后续）"
         body_marks: 1
         anchors:
@@ -14588,7 +14441,7 @@ tree:
           - 3537
           - 3537
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（ATP/CTP 承诺垂直切片真跑·净读三源+可承接量+承诺日+改产能/库存→承诺变 SEAM 红咬 8 绿·金值 86/3790·SOLVER_KEYS 50；行级/工厂日历/型号产能分摊后续）"
         body_marks: 1
         anchors:
@@ -14612,7 +14465,7 @@ tree:
           - 3538
           - 3538
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已缓解（订单拆行行级数据+rollup 勾稽真跑·一单多型号真表达·改行→头变 SEAM 红咬 8 绿·金值 87/3828·24 单头级未移；ATP/齐套/归因行级消费下沉后续 WO）"
         body_marks: 1
         anchors:
@@ -14634,7 +14487,7 @@ tree:
           - 3539
           - 3539
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（五层尺度 round-trip 自洽真跑·SEAM 四方互核绿·C<B·常州 weeklyCap 对 gwh 0 误差·计数金值 89/11074/54/22 冻结·需求 375万套/700亿锚不动；AOP 5"
         body_marks: 1
         anchors:
@@ -14656,7 +14509,7 @@ tree:
           - 3540
           - 3540
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（WO-TIER2-A+TIER2-B·单测 + node 亲验）"
         anchors:
           - "catalog.ts discover()"
@@ -14675,7 +14528,7 @@ tree:
           - 3541
           - 3541
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ P1 已落（五角色+Coordinator+scope 隔离+前端汇总卡）·P2 双向 A2A 二期"
         anchors:
           - "seed.ts"
@@ -14700,7 +14553,7 @@ tree:
           - 3542
           - 3542
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（SEAM `s01-variant-routing-seam.test.ts`：会话继承秒答 path-A/非 AGENT/无 coordinator ⊕ compose 变体 capacity_forecas"
         body_marks: 1
         anchors:
@@ -14721,7 +14574,7 @@ tree:
           - 3543
           - 3543
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（全 13 基地设备/OEE 数据齐·合肥设备叶非空·`gap-attribution.test` C3/C4 绿·SEAM `ceo-data2-seam` D1×E1 绿）"
         body_marks: 1
         anchors:
@@ -14740,7 +14593,7 @@ tree:
           - 3544
           - 3544
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（DataCore 4 测 + AgentCore SEAM 2 测绿·单位万套·demandDelta 真驱动·p50===0 诚实 EMPTY·provenance formula/valueLabel）"
         body_marks: 1
         anchors:
@@ -14760,7 +14613,7 @@ tree:
           - 3545
           - 3545
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（SEAM `ceo-data2-seam` D1×E1 + **`factor-scope-singlesource.seam.test.ts` 9 绿**〔单源/树真的不同/7 因子互不相同/per-base"
         body_marks: 1
         anchors:
@@ -14781,7 +14634,7 @@ tree:
           - 3546
           - 3546
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **全闭**（路由侧 WO-QOS-1 qos-det-gate SEAM ⊕ 跨域 WO-DETERMINISTIC-CROSS-DOMAIN deterministic-multi-domain-seam SEA"
         body_marks: 4
         anchors:
@@ -14809,7 +14662,7 @@ tree:
           - 3547
           - 3547
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（适配器 SEAM 7 例 + loop SEAM ⑥ 抢救→强制收尾/控制轮·四包全绿 212fecfc）；**WO-Phase4 兼容加固**：硬预算/超时降级路径**复用**本抢救机制（`degrade` "
         body_marks: 1
         anchors:
@@ -14830,7 +14683,7 @@ tree:
           - 3548
           - 3548
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 数据半已闭（距离派生真咬·SEAM 绿；物流求解器后续）"
         body_marks: 1
         anchors:
@@ -14850,7 +14703,7 @@ tree:
           - 3549
           - 3549
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 数据半已闭（运费派生真咬·SEAM 绿；成本进求解器后续）"
         body_marks: 1
         anchors:
@@ -14871,7 +14724,7 @@ tree:
           - 3550
           - 3550
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 部分闭合（2026-08-20 · WO-CAPACITY-QAPANEL-REAL-NL：假 NL 与真对话「并列不可分辨」这一残留已收口，方案 = 诚实降级，非换心/非摘掉）。**还差什么才算 ✅**：产能问答意"
         anchors:
           - "RiskBoardView.tsx"
@@ -14894,7 +14747,7 @@ tree:
           - 3551
           - 3551
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 引擎半闭（数据+引擎整单·SEAM 绿·前端半待 WO-CAPLIVE-2）"
         body_marks: 1
         anchors:
@@ -14917,7 +14770,7 @@ tree:
           - 3552
           - 3552
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（WO-LIVE-DISPOSITION·数据+引擎+前端整单·datacore SEAM 5 绿 + frontend SEAM 4 绿 + base-outlook 既有测零回归 + debattery/ge"
         body_marks: 1
         anchors:
@@ -14940,7 +14793,7 @@ tree:
           - 3553
           - 3553
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 前端半落（WO-GSLIVE-1）·**⚠ 2026-09-09 WO-ONTO-UNMARKED-9 实测：本行点名的那个阻塞物已解除，◑ 的理由已过期** —— 「待真端点合并」中的真端点**已在正线**（`ap"
         body_marks: 3
         anchors:
@@ -14967,10 +14820,10 @@ tree:
         own_lines:
           - 3554
           - 3554
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
-        status_cell: "useConsoleSession` 命中 **0** ⇒ 仍走同步求解另一血脉；`sim/sessions` 前端消费方仍全在 `views/sim/**` 与 api/store/mocks 基础设施层"
-        body_marks: 3
+        status: "◑"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "◑ **部分闭合**（2026-09-09 WO-ONTO-UNMARKED-9 实测：**两半状态已分叉，原「🔴 未修」把已闭的那半也盖住了**）。**已闭的半 —— PAUSED/ENDED 迁移**：`apps/d"
+        body_marks: 1
         anchors:
           - "app.ts:1228-1496"
           - "SandboxView.tsx"
@@ -14994,7 +14847,7 @@ tree:
           - 3555
           - 3555
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 路由半闭（gap_attribution 真算·6 绿）· **症状半诚实化（EMPTY 标·非静默 0·AUDIT 修）** · **前端活台半闭（WO-CAPLIVE-TRUECHAIN·拨杆经 capacity"
         body_marks: 1
         anchors:
@@ -15019,7 +14872,7 @@ tree:
           - 3556
           - 3556
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 症状诚实化（dataMode:MOCK 标·非裸渲染）·数据半待补（逐日审计实测时序源） ◑ 部分闭合（2026-08-18 复核：`risk.ts auditTimeline` 的 dataMode 披露机制在位；"
         body_marks: 1
         anchors:
@@ -15041,7 +14894,7 @@ tree:
           - 3557
           - 3557
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ P3 闭（graphDistance 复用 planSlice·质量 EWMA 叠加·relations 抽取+端点·compose 组包 additive）"
         body_marks: 1
         anchors:
@@ -15067,7 +14920,7 @@ tree:
           - 3558
           - 3558
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ P4 闭（path-B 组包注入·discover registry-first·治理 UI·暗发零回归·SEAM 端到端 round-trip≤4 + ⟦ref⟧ 溯源）"
         body_marks: 1
         anchors:
@@ -15091,7 +14944,7 @@ tree:
           - 3559
           - 3559
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已收（真实订单簿·后端真重排·SEAM 权重驱动·归一密度贪心·R6/R14）"
         body_marks: 1
         anchors:
@@ -15108,7 +14961,7 @@ tree:
         path: "8/G-SEG-ATTR-CROSS-SEGMENT"
         kind: "breakpoint"
         form: "table_row"
-        title: "**gap_attribution 结构反向分摊跨细分铺订单·细分达成率根因下钻混入他细分客户**（WO-SEG-ATTR-SCOPE）：`seg_attain_{ess | pas | com}` 无专属因果域 → 回落通用结构分摊（`service.ts:1334-1352`），`affected = orders"
+        title: "**gap_attribution 结构反向分摊跨细分铺订单·细分达成率根因下钻混入他细分客户**（WO-SEG-ATTR-SCOPE）：`seg_attain_{ess|pas|com}` 无专属因果域 → 回落通用结构分摊（`service.ts:1334-1352`），`affected = orders.fil"
         title_truncated: true
         lines:
           - 3560
@@ -15117,7 +14970,7 @@ tree:
           - 3560
           - 3560
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（SEAM 门守·四包全绿·亲手真跑储能叶无整车厂）"
         body_marks: 2
         anchors:
@@ -15141,7 +14994,7 @@ tree:
           - 3561
           - 3561
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（门闭·SEAM router×plan×solver 驱动通·base 族两症同收·四包待审核隔离复验）"
         body_marks: 3
         anchors:
@@ -15169,7 +15022,7 @@ tree:
           - 3562
           - 3562
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（单一出处·两半 SEAM 驱动通·变异反证 ×2 亲手验红）"
         body_marks: 1
         anchors:
@@ -15195,7 +15048,7 @@ tree:
           - 3563
           - 3563
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（本单·5 条真报文 SEAM + 变异反证亲手验红）"
         body_marks: 2
         anchors:
@@ -15217,7 +15070,7 @@ tree:
           - 3564
           - 3564
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（本单·终态断言 SEAM + 三条变异反证亲手验红）"
         body_marks: 1
         anchors:
@@ -15237,7 +15090,7 @@ tree:
           - 3565
           - 3565
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（本单·四组 SEAM 驱动通 + 四条变异反证亲手验红）"
         body_marks: 1
         anchors:
@@ -15265,7 +15118,7 @@ tree:
           - 3566
           - 3566
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（本单·真报文 fixture SEAM + 反向拆坏测试 + 变异反证 ×2 亲手验红）"
         body_marks: 1
         anchors:
@@ -15286,7 +15139,7 @@ tree:
           - 3567
           - 3567
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（query 透传 + 别名兜底 + 时间归一化 + SEAM 红咬 + 静态门）"
         body_marks: 1
         anchors:
@@ -15310,7 +15163,7 @@ tree:
           - 3568
           - 3568
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（budget 不泄漏 + CANCELLED 不误判成功）"
         body_marks: 1
         anchors:
@@ -15329,7 +15182,7 @@ tree:
           - 3569
           - 3569
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（词表单源 + fixture strict + 可达性反证 + 出厂 WRITE 演练者 + 变异两红）"
         body_marks: 1
         anchors:
@@ -15355,7 +15208,7 @@ tree:
           - 3570
           - 3570
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 部分闭合（WO-ENTITLEMENT-SERVER-SIDE·2026-08-20）：**主路已闭** —— `POST /a/v1/action-drafts` 现按 `actionTypeKey` 过 `Fea"
         body_marks: 1
         anchors:
@@ -15379,7 +15232,7 @@ tree:
           - 3571
           - 3571
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（WO-ADOPT-SCHEME-CARRIER · 2026-08-18 · 证据指针 tip `184c19c0`）。**修法四要点**：① **立承载**——`scheme_adoptions` 专用 do"
         anchors:
           - "frontend-shell/src/views/sim/PlanGenerateView.tsx adoptScheme()"
@@ -15406,7 +15259,7 @@ tree:
           - 3572
           - 3572
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 部分闭合（带 levers 的一半已接线并有效果层接缝测试；无 levers 的四条生产者仍诚实失败·错误信息已列出收到的键，供审批人分辨「生产者少发字段」与「本型无落点」）  **状态订正 · 2026-08-18"
         anchors:
           - "OrderChainView.tsx"
@@ -15444,7 +15297,7 @@ tree:
           - 3574
           - 3574
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 全闭（**状态订正 · 2026-08-18 · WO-ADOPT-SCHEME-CARRIER**）：已注册 11 型**全部 WIRED**——`采纳经营方案` 落 `scheme_adoptions` 台账（专"
         anchors:
           - "apps/datacore/src/app.ts:677 (domainExecutor)"
@@ -15471,7 +15324,7 @@ tree:
           - 3575
           - 3575
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（契约单源 + 14 消费端全派生 + 静态门 + 变异反证）"
         body_marks: 1
         anchors:
@@ -15493,7 +15346,7 @@ tree:
           - 3576
           - 3576
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "**✅ 已闭（2026-08-17 · WO-BREAKPOINT-TRIAGE 复核发现「已修但本体没回写」）**：修法① 已落地 —— DSL 增 `paramRef` 操作数 `params.<名>`（类型 `ap"
         anchors:
           - "battery.ts"
@@ -15517,7 +15370,7 @@ tree:
           - 3577
           - 3577
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（T1-T4 全落·SEAM ①-⑥ 绿·门层自证置空→红→还原→绿）"
         body_marks: 1
         anchors:
@@ -15537,7 +15390,7 @@ tree:
           - 3578
           - 3578
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（出口防线 + 降级声明 + SEAM-A/B/B2/C/D/D2 · 变异反证 3/3 真红；触发面见 #91 补记：200k 路不触发·≤128k 路触发）"
         body_marks: 1
         anchors:
@@ -15561,7 +15414,7 @@ tree:
           - 3579
           - 3579
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（静态门 + 效果层 SEAM 双守·变异反证 4/4 + 3/3）"
         body_marks: 1
         anchors:
@@ -15583,7 +15436,7 @@ tree:
           - 3580
           - 3580
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（OBO 透传 + fail-open 唯一出口记账 + 调用侧哨兵·变异反证 2/2 + 真跑 green→red→green）"
         body_marks: 1
         anchors:
@@ -15603,7 +15456,7 @@ tree:
           - 3581
           - 3581
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（暗发·默认关·门开则端到端通·变异反证 4/4）"
         body_marks: 1
         anchors:
@@ -15629,7 +15482,7 @@ tree:
           - 3582
           - 3582
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（服务侧记账+执行 2026-08-13 · **管理侧配置面 2026-08-14 补齐**，两端俱全）"
         body_marks: 2
         anchors:
@@ -15655,8 +15508,8 @@ tree:
         own_lines:
           - 3583
           - 3583
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
+        status: "🟡"
+        status_from: "表头第 4 列（性质）"
         status_cell: "🟡 词条+结构兜底已闭（防复发不变量在案）·**\"正则先于检索\"范式未根治**（Track A）"
         body_marks: 1
         anchors:
@@ -15683,8 +15536,8 @@ tree:
         own_lines:
           - 3584
           - 3584
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
+        status: "🟢"
+        status_from: "表头第 4 列（性质）"
         status_cell: "🟢 **已闭**（2026-09-09 WO-ONTO-UNMARKED-9 实测回写；此前一直标「修复在途」是台账没回写，不是活没做）：D2/D3 两件都在生产路上 —— `packages/contracts/src"
         anchors:
           - "apps/agentcore/src/workflow/executor.ts:81 (runWorkflow)"
@@ -15710,7 +15563,7 @@ tree:
           - 3585
           - 3585
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（取消真下传·双触发共用一个控制器）"
         body_marks: 1
         anchors:
@@ -15729,7 +15582,7 @@ tree:
           - 3586
           - 3586
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（锚 `] as const`·57/57）"
         body_marks: 1
         anchors:
@@ -15751,7 +15604,7 @@ tree:
           - 3587
           - 3587
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（注册表 + 落库 + 查表消费 + 新门）"
         body_marks: 1
         anchors:
@@ -15772,7 +15625,7 @@ tree:
           - 3588
           - 3588
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（欠账 #98）"
         body_marks: 1
         anchors:
@@ -15791,7 +15644,7 @@ tree:
           - 3589
           - 3589
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭"
         body_marks: 1
         anchors:
@@ -15812,7 +15665,7 @@ tree:
           - 3590
           - 3590
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 2026-08-20 三处全闭（WO-SKILL-REFGRAPH-TAIL 收尾）—— 三处分别定性、分别处置，混为一谈就会修错地方：① 死抽取器 `extractRelations` **✅ 2026-08-18"
         body_marks: 4
         anchors:
@@ -15840,7 +15693,7 @@ tree:
           - 3591
           - 3591
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（WO-STEP-VOCAB-UPLIFT · 2026-08-18）：`ExtraToolStepSchema` 原形状上提进 `packages/contracts/src/skill-compile.ts`"
         anchors:
           - "packages/contracts/src/qos.ts:109 (PlanStepSchema)"
@@ -15867,7 +15720,7 @@ tree:
           - 3592
           - 3592
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（门序搬家·非词表补丁·对照门 + 变异反证真红）"
         body_marks: 1
         anchors:
@@ -15889,7 +15742,7 @@ tree:
           - 3593
           - 3593
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（状态机层·非逐分支补丁·变异反证真红）"
         body_marks: 1
         anchors:
@@ -15916,7 +15769,7 @@ tree:
           - 3594
           - 3594
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（引擎半 SEAM 5/5 绿 + 三轮变异反证真红 + 亲手真跑经真 HTTP 出四段分解；前端渲染半 可达门 13/13 绿 + 四轮变异反证真红 + `check-view-reachable.mjs` 0"
         body_marks: 3
         anchors:
@@ -15944,7 +15797,7 @@ tree:
           - 3595
           - 3595
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（门账 41 条·现算一致·provenRed 基线 35）"
         body_marks: 1
         anchors:
@@ -15968,7 +15821,7 @@ tree:
           - 3596
           - 3596
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（下一轮推演真变）"
         body_marks: 1
         children: []
@@ -15985,7 +15838,7 @@ tree:
           - 3597
           - 3597
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（暗发 `qos.opt-whatif-route`）"
         body_marks: 1
         children: []
@@ -16002,7 +15855,7 @@ tree:
           - 3598
           - 3598
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（引擎半 SEAM `decision-info-seam.test.ts` 9 绿·改真颗粒→三块输出真变；**前端半** `decision-info-fe.test.tsx` 14/14 绿 + 变异反证真"
         body_marks: 1
         anchors:
@@ -16028,7 +15881,7 @@ tree:
           - 3599
           - 3599
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ **运输层已闭**（槽位派生 + preset 降为默认值 + 诚实缺席守卫 + 差分门/变异反证真红）；**引擎层作用域维**：`G-SOLVER-SCOPE-ECHO`（假个性化）**已全闭 7/7**，`G-S"
         body_marks: 1
         anchors:
@@ -16056,7 +15909,7 @@ tree:
           - 3600
           - 3600
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **7/7 已闭**（3 处真重算 + 2 处显性标缺席，第一轮 2 处见上）·两道差分门 `engine-scope-fidelity.seam.test.ts`(14 例) + `engine-scope-fid"
         body_marks: 2
         anchors:
@@ -16084,7 +15937,7 @@ tree:
           - 3601
           - 3601
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ **4/16 已闭**（差分门 + 变异反证真红：退回双键守卫即报「问 zaozhuang 却返回了别的基地的卡」；退回只读 `baseName` 即报 `expected '' to be '常州'` —— 那个空"
         body_marks: 3
         anchors:
@@ -16105,7 +15958,7 @@ tree:
           - 3602
           - 3602
         status: "🔴"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "❌ 未修（但**已诚实**：现状 `dataMode:EMPTY`+note，不给错数）；取证单原「接线即可·量级中」判定**作废** 🔴 未修（2026-08-18 复核：`extended.ts` 仍 `dataMo"
         anchors:
           - "docs/WO-ENGINE-SCOPE-FORENSICS.md"
@@ -16130,7 +15983,7 @@ tree:
           - 3603
           - 3603
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **F2/F3/F4 三例已逐个补线 + 各自可达门**；**类未闭**（注册表无自动扫描/无机械门，新视图仍可能零登记生死）；**类已闭**：`view-reachable:check` 机械门上链（`script"
         body_marks: 1
         anchors:
@@ -16158,7 +16011,7 @@ tree:
           - 3604
           - 3604
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **类已闭**：机械门 `migration-numbering:check` 上链（`scripts/check-migration-numbering.mjs`·见 §7·变异反证 5/5 真红，含用三条分支上*"
         anchors:
           - "028_solver_rule_bindings.sql"
@@ -16184,8 +16037,8 @@ tree:
         own_lines:
           - 3605
           - 3605
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
+        status: "🟡"
+        status_from: "表头第 4 列（性质）"
         status_cell: "🟡 诚实降级中（按 stage 联动·非静默错答）"
         anchors:
           - "packages/contracts/src/chain-sim.ts:890 (ChainLocusSchema)"
@@ -16204,10 +16057,10 @@ tree:
         own_lines:
           - 3606
           - 3606
-        status: "✅"
-        status_from: "表格最后一列（性质）"
-        status_cell: "🟢 已闭（① 候选枚举器 ✅ + 接缝门 + 变异反证 4/4；① 前端消费端 ✅ 2026-08-11 + 真路由接缝门 11 例 + 变异反证 4/4；**② `decision_play` join ✅ 2026-"
-        body_marks: 27
+        status: "🟡"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "🟡 半闭（① 候选枚举器 ✅ 已闭 + 接缝门 + 变异反证 4/4；**① 前端消费端 ✅ 2026-08-11 已闭 + 真路由接缝门 11 例 + 变异反证 4/4**；② `decision_play` join"
+        body_marks: 31
         anchors:
           - "apps/datacore/src/solvers/service.ts"
           - "service.ts"
@@ -16233,7 +16086,7 @@ tree:
           - 3607
           - 3607
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（SEAM `apps/datacore/test/worldstate-contract.seam.test.ts` 7 例 + 真浏览器截图 `wsc-02-pareto-before.png`/`wsc-0"
         body_marks: 1
         anchors:
@@ -16255,7 +16108,7 @@ tree:
           - 3608
           - 3608
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已闭（WO-CLOSE-SIM-ONTO-2 · 2026-09-09）**：键改为 `[\"a\",\"sim-pareto-assemble\", sessionId, worldVersion]`，`worldVe"
         body_marks: 1
         anchors:
@@ -16274,8 +16127,8 @@ tree:
         own_lines:
           - 3609
           - 3609
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
+        status: "🟢"
+        status_from: "表头第 4 列（性质）"
         status_cell: "🟢 **6/6 全接·已闭**（WO-EVENT-SUB-CLOSURE·2026-08-20 闭最后一条；前值 4/5·WO-L4B·2026-08-09 · 再前 1/5·WO-SANDBOX-A10·2026-08"
         anchors:
           - "apps/datacore/src/app.ts:2058 (sim.session_created)"
@@ -16302,7 +16155,7 @@ tree:
           - 3610
           - 3610
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（夹取 + 门 + 变异反证）"
         body_marks: 1
         children: []
@@ -16319,9 +16172,9 @@ tree:
           - 3611
           - 3611
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（位置已修 `73cfe874` + 机械门 `nav-group-coverage:check` 八判据·已抓到两例真缺口：`chain-impediments` / `procurement-legs`）"
-        body_marks: 6
+        body_marks: 7
         anchors:
           - "ShellLayout.tsx"
           - "apps/frontend-shell/src/pages/ShellLayout.tsx:283 (NAV_GROUPS)"
@@ -16344,7 +16197,7 @@ tree:
           - 3612
           - 3612
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（真收编 + 判据⑨ 机械门 + 12 例 SEAM·2026-08-17 WO-SANDBOX-NAV-CONSOLIDATE）"
         body_marks: 1
         anchors:
@@ -16364,7 +16217,7 @@ tree:
           - 3613
           - 3613
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭"
         body_marks: 1
         anchors:
@@ -16386,7 +16239,7 @@ tree:
           - 3614
           - 3614
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（读端 + 唯一装配处 · 两条路同源同范围）"
         body_marks: 1
         anchors:
@@ -16414,7 +16267,7 @@ tree:
           - 3615
           - 3615
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（向导退役·能力并入控制台）"
         body_marks: 1
         children: []
@@ -16430,8 +16283,8 @@ tree:
         own_lines:
           - 3616
           - 3616
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
+        status: "🟢"
+        status_from: "表头第 4 列（性质）"
         status_cell: "🟢 **已闭**（schema 半 WO-R13-ONTOCHAIN-PANEL 补齐：`chainLineMap.ts` 的 `ChainLossPayloadSchema` 现声明 `evidence: z.arra"
         anchors:
           - "apps/frontend-shell/src/views/sim/chainLineMap.ts"
@@ -16451,7 +16304,7 @@ tree:
           - 3617
           - 3617
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（登记 + 门 + 变异反证）"
         body_marks: 1
         anchors:
@@ -16471,7 +16324,7 @@ tree:
           - 3618
           - 3618
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（登记 + 门 + 变异反证）；残留「派生键拨不动」如实标注"
         body_marks: 1
         anchors:
@@ -16491,7 +16344,7 @@ tree:
           - 3619
           - 3619
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（派生化 + 接线 + 缺口锁）"
         body_marks: 2
         anchors:
@@ -16513,8 +16366,8 @@ tree:
         own_lines:
           - 3620
           - 3620
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
+        status: "🟡"
+        status_from: "表头第 4 列（性质）"
         status_cell: "🟡 第一形态已修 1 处·同族 5 处在册未清；**第二形态（屏上字面量）2026-08-14 已建机械判据 STALE-5..8 并全量点名**：13 条 `CONFIRMED-STALE` 在 `scripts/st"
         anchors:
           - "apps/frontend-shell/src/views/sim/inspectorModel.ts:558 (CADENCE_ABSENCE_REASON)"
@@ -16541,7 +16394,7 @@ tree:
           - 3621
           - 3621
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（按请求现算 + TTL + 手动刷新 · 成因拆成可区分两态 · 变异反证 4/4）"
         body_marks: 1
         anchors:
@@ -16569,7 +16422,7 @@ tree:
           - 3622
           - 3622
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅已闭（2026-08-17）：两份文档逐处解冲突（本体 theirs 侧为空 ⇒ 取 ours；判据表保留 ours 的表与逐格去向块，**三行过期合计合并为一行、并与两个独立口径对过账**——逐格数 80/32/8/"
         anchors:
           - "docs/SYSTEM-ONTOLOGY.md"
@@ -16589,7 +16442,7 @@ tree:
           - 3623
           - 3623
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅已闭（2026-08-10）：逻辑模块改名 `sandboxConsoleModel.ts`（与同目录 `inspectorModel.ts` 一致），键/id（`global-sim` 等）逐字节未动；同批建 `ca"
         anchors:
           - "apps/frontend-shell/src/views/sim/SandboxConsole.tsx"
@@ -16610,8 +16463,8 @@ tree:
         own_lines:
           - 3624
           - 3624
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
+        status: "🟢"
+        status_from: "表头第 4 列（性质）"
         status_cell: "🟢 **判据已闭**（WO-EVENT-SUB-CLOSURE·2026-08-20）：发射端上门之后本单把判据本身改成「量发出的事件有没有人接」——新增 **1c 发射→订阅对账**（每个真 emit 至少一处静态订阅"
         anchors:
           - "scripts/check-system-ontology.mjs:30 (codeEvents)"
@@ -16631,7 +16484,7 @@ tree:
           - 3625
           - 3625
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭合（2026-08-18 两单并闭：WO-PROMPT-KEYS-WIRE 接 `extraction`/`modeling`/`answer_compose` 三键 + WO-PROMPT-KEY-LINT 接"
         anchors:
           - "ruledocs.ts"
@@ -16658,7 +16511,7 @@ tree:
           - 3626
           - 3626
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "**✅ 已闭（2026-08-17 · WO-BREAKPOINT-TRIAGE 复核发现「已修但本体没回写」）**：生产调用点 `apps/datacore/src/databuilder/service.ts:82 "
         anchors:
           - "apps/datacore/src/databuilder/provisional-honesty.ts:12 (checkProvisionalHonesty)"
@@ -16681,7 +16534,7 @@ tree:
           - 3627
           - 3627
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（读投影 + SEAM 4/4 + 变异反证 2/2）"
         body_marks: 1
         anchors:
@@ -16704,10 +16557,10 @@ tree:
         own_lines:
           - 3628
           - 3628
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
+        status: "🟡"
+        status_from: "表头第 4 列（性质）"
         status_cell: "🟡 部分闭（后端 REGISTERED 路已归属 + SEAM 绿；**前端消费方已收编·用户可见**；残余探索路/旧记录两类**仍未闭**，诚实位常驻）。⊕ **WO-EVENT-SUB-CLOSURE 2026-08"
-        body_marks: 2
+        body_marks: 3
         anchors:
           - "packages/contracts/src/qos.ts:484 (QueryTaskSchema)"
           - "packages/contracts/src/qos.ts:764 (AgentRunRecordSchema)"
@@ -16733,7 +16586,7 @@ tree:
           - 3629
           - 3629
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（引擎层+表结构两层同修·后端 SEAM 绿；**前端两个消费方已收编·用户可见**·前端 SEAM 绿）"
         body_marks: 2
         anchors:
@@ -16761,7 +16614,7 @@ tree:
           - 3630
           - 3630
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（改正 + Schema.parse 防复发）"
         body_marks: 1
         anchors:
@@ -16784,7 +16637,7 @@ tree:
           - 3631
           - 3631
         status: "◑"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "◑ 部分处置·**仍开**（承载体已立·中间两跳待落）"
         body_marks: 2
         anchors:
@@ -16807,7 +16660,7 @@ tree:
           - 3632
           - 3632
         status: "🔴"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "🔴 未闭 —— 3 条已修（金值更新 + 新增等价断言），2159 条无看守；需一道「最短路 diff 报告」门"
         anchors:
           - "ontology-query-engine.test.ts"
@@ -16827,7 +16680,7 @@ tree:
           - 3633
           - 3633
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已修（门闭·差分门变异反证 9 例真红；WO-SOLVER-ARGHINTS-DRIFT 再闭 4 条「必填键漏提示」并补上按求解器分别咬的接缝测试 ⇒ 门内存量 REAL-DRIFT 9→8，余 8 条全在 CP-"
         body_marks: 1
         anchors:
@@ -16855,7 +16708,7 @@ tree:
           - 3634
           - 3634
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ 已闭（WO-MOCK-ENGINE-PARITY · 2026-08-19）：**两个真值源合成一个 + 牙已落**。① mock 侧 `apps/agentcore/src/mocks/ontology-graph"
         anchors:
           - "apps/agentcore/src/mocks/clients.ts:671 (linkPath)"
@@ -16878,7 +16731,7 @@ tree:
           - 3635
           - 3635
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已闭（2026-08-10）**：意图落到 `scripts/feature-rollout.json` 显式声明（30/30 已定性：tiered 15 · explicit 15 · dark 0），`dar"
         anchors:
           - "features.ts"
@@ -16900,10 +16753,10 @@ tree:
         own_lines:
           - 3636
           - 3636
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
-        status_cell: "1fr`（25/50/25），影响带从独立第三行移进栅格当第三栏；真浏览器实测 @1440×900 画布 **568/1148 = 49.5%**、首屏锚点仍 **319**。"
-        body_marks: 5
+        status: "◑"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "◑ 增量已封死（门在 · 95 个文件全部登记棘轮基线）；**存量首批 5 页已 burn-down**（降层率 11.3%→13.4%），余量待续派：`GlobalSimView` 209/prose 17 · `Sa"
+        body_marks: 4
         anchors:
           - "docs/CONVENTION-ui-information-layering.md"
           - "docs/AUDIT-ui-first-layer-density.md"
@@ -16928,10 +16781,10 @@ tree:
         own_lines:
           - 3637
           - 3637
-        status: "无标记"
-        status_from: "表格最后一列（性质）"
-        status_cell: "**2026-08-14 第一批 burn-down（WO-BEFE-CLEANUP · admin 侧 11 页）**：把 BEFE 系列（A/B/C/D/E/F/G）新增/改动带来的第一层堆料清掉 —— `Agent"
-        body_marks: 5
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ **已闭**（6 个量纲 6 个名字 · 零兼容别名 · 三处 `unit` 字面量算术复核过 · 屏上分母到位 · R6 金值字节对拍不变 · 门 RC=0 + 接缝测试接住屏上那一半）；**残口另立**：`G-L"
+        body_marks: 4
         anchors:
           - "apps/datacore/src/synthetic/battery.ts:1812 (demandSegmentProps)"
           - "sop.ts"
@@ -16957,7 +16810,7 @@ tree:
           - 3638
           - 3638
         status: "✅"
-        status_from: "表格最后一列（性质）"
+        status_from: "表头第 4 列（性质）"
         status_cell: "✅ **已闭**（定性经实测订正 · 判别式联合零兼容分支 · 历史留痕逐字节未动 · 运行时断言 + 静态门两层 · 变异反证：病灶原样复原 ⇒ 门 RC=1 且两条接缝测试同时红）。**复验命令**：`grep -n"
         body_marks: 1
         anchors:
@@ -16984,9 +16837,10 @@ tree:
         own_lines:
           - 3639
           - 3639
-        status: "◑"
-        status_from: "表格最后一列（性质）"
-        status_cell: "**版面无人守：62 道门全在守「信息诚实」，没有一道量「这一屏排出来能不能看」。** 仓主 2026-08-17 看推演沙盘部署截图问「这是你最终的推演沙盘的UI，UX吗？」。**根因不在那一页，在门的分布**：既有门"
+        status: "无标记"
+        status_from: "表头第 4 列（性质）"
+        status_cell: ""
+        body_marks: 1
         anchors:
           - "scripts/ui-smoke-*.mjs"
           - "docs/PRD-harness-ux-adoption.md"
@@ -16998,739 +16852,701 @@ tree:
         title: "门当场报 `单屏可见交互控件数 变坏：49 → 52（棘轮方向：只许降）`，两个视口同时红。"
         lines:
           - 3640
-          - 3648
+          - 3651
         own_lines:
           - 3640
-          - 3648
+          - 3651
         status: null
         anchors:
           - "sandboxModes.ts"
-        children: []
-      - id: "这条红本身就是本门有牙的最强证据：它咬的是别人独"
-        path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独"
-        kind: "group"
-        form: "group"
-        title: "这条红本身就是本门有牙的最强证据：它咬的是别人独立提交的真改动，不是我造的变异。"
-        lines:
-          - 3649
-          - 3695
-        own_lines:
-          - 3649
-          - 3649
-        status: null
-        anchors:
           - "apps/frontend-shell/src/views/sim/*.module.css"
           - "apps/frontend-shell/src/pages/ShellLayout.tsx"
           - "scripts/check-layout-legibility.mjs"
           - "scripts/lib/layout-probe.mjs"
+        children: []
+      - id: "G-TEXT-ILLEGIBLE-SMALL-CJK"
+        path: "8/G-TEXT-ILLEGIBLE-SMALL-CJK"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**小字号中文「WCAG 达标却读不了」：可读性判据里没有字号这一维。** 仓主 2026-08-14 截屏实测点名推演沙盘「文字与背景色反差太低」。真浏览器逐元素量（`/v/sim-sandbox` 真后端 · 422 个含文本元素）：最大的一组是 `--muted2 #9ba9b7` 压 `--panel #2c3"
+        title_truncated: true
+        lines:
+          - 3652
+          - 3652
+        own_lines:
+          - 3652
+          - 3652
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ 已闭（门在 · 三套主题真浏览器实测 0 不达标 · 增量由棘轮 + 令牌矩阵双向封死）"
+        body_marks: 1
+        anchors:
           - "tokens.css"
           - "apps/frontend-shell/src/styles/tokens.css"
           - "apps/frontend-shell/src/**/*.module.css"
           - "scripts/check-text-legibility.mjs"
+        children: []
+      - id: "G-FACTLOCK-POSITION-ANCHOR"
+        path: "8/G-FACTLOCK-POSITION-ANCHOR"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**事实锁锚在「位置」上 ⇒ 一次无害搬家同时产出假红+假绿，训练人把门删掉**（WO-C·2026-08-11 全仓普查 31 处）。形态 = `expect(readRepo(\"某文件\")).toContain(\"某符号\")` —— 把「符号在某文件里」当作「事实成立」的证据，而前者不度量后者。实测病历：`stal"
+        title_truncated: true
+        lines:
+          - 3653
+          - 3653
+        own_lines:
+          - 3653
+          - 3653
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ 已修（门 + 棘轮基线 + 30 处改造 · 变异反证 GONE 24/24 红 · MOVE 全绿）"
+        body_marks: 1
+        anchors:
           - "app.ts"
           - "sim/propagation-inputs.ts"
-        children:
-          - id: "_note1"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/_note1"
-            kind: "note"
-            form: "note"
-            title: "**为什么只算部分闭**：① 棘轮只锁 `sim-sandbox` 一页，其余 11 页**已量但未进棘轮**（量到 ≠"
-            title_truncated: true
-            lines:
-              - 3650
-              - 3651
-            own_lines:
-              - 3650
-              - 3651
-            status: null
-            anchors:
-              - "apps/frontend-shell/src/views/sim/*.module.css"
-              - "apps/frontend-shell/src/pages/ShellLayout.tsx"
-              - "scripts/check-layout-legibility.mjs"
-              - "scripts/lib/layout-probe.mjs"
-            children: []
-          - id: "G-TEXT-ILLEGIBLE-SMALL-CJK"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-TEXT-ILLEGIBLE-SMALL-CJK"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**小字号中文「WCAG 达标却读不了」：可读性判据里没有字号这一维。** 仓主 2026-08-14 截屏实测点名推演沙盘「文字与背景色反差太低」。真浏览器逐元素量（`/v/sim-sandbox` 真后端 · 422 个含文本元素）：最大的一组是 `--muted2 #9ba9b7` 压 `--panel #2c3"
-            title_truncated: true
-            lines:
-              - 3652
-              - 3652
-            own_lines:
-              - 3652
-              - 3652
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ 已闭（门在 · 三套主题真浏览器实测 0 不达标 · 增量由棘轮 + 令牌矩阵双向封死）"
-            body_marks: 1
-            anchors:
-              - "tokens.css"
-              - "apps/frontend-shell/src/styles/tokens.css"
-              - "apps/frontend-shell/src/**/*.module.css"
-              - "scripts/check-text-legibility.mjs"
-            children: []
-          - id: "G-FACTLOCK-POSITION-ANCHOR"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-FACTLOCK-POSITION-ANCHOR"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**事实锁锚在「位置」上 ⇒ 一次无害搬家同时产出假红+假绿，训练人把门删掉**（WO-C·2026-08-11 全仓普查 31 处）。形态 = `expect(readRepo(\"某文件\")).toContain(\"某符号\")` —— 把「符号在某文件里」当作「事实成立」的证据，而前者不度量后者。实测病历：`stal"
-            title_truncated: true
-            lines:
-              - 3653
-              - 3653
-            own_lines:
-              - 3653
-              - 3653
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ 已修（门 + 棘轮基线 + 30 处改造 · 变异反证 GONE 24/24 红 · MOVE 全绿）"
-            body_marks: 1
-            anchors:
-              - "app.ts"
-              - "sim/propagation-inputs.ts"
-              - "apps/frontend-shell/test/factlock.ts"
-              - "apps/datacore/src/solvers/risk.ts:231 (resolveRef)"
-              - "check-stale-claims.mjs"
-            children: []
-          - id: "G-RULE-SCOPE-NAMESPACE-CONFUSION"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-RULE-SCOPE-NAMESPACE-CONFUSION"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**规则作用域抄了表达式的注入命名空间 ⇒ 规则永不参与评估、且零信号**（WO-RULE-SCOPE-DROP·2026-08-11·**三条已修、两条仍开**）。`RuleEntry` 上 `expression` 前缀（求值期**注入命名空间**，调用方喂 payload）与 `scopeObjectTypes`"
-            title_truncated: true
-            lines:
-              - 3654
-              - 3654
-            own_lines:
-              - 3654
-              - 3654
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ 闭合（2026-08-20·WO-RULE-SCOPE-TRIAD：命名漂移清零；C31/C10 各按其真实定性收口·见下两条）"
-            body_marks: 1
-            anchors:
-              - "battery.ts"
-              - "scheduler.ts:266 (listByType)"
-              - "apps/datacore/src/rule-scope.ts:108 (findUnknownScopeTypes)"
-              - "databuilder/comprehend.ts"
-              - "scheduler.ts"
-            children: []
-          - id: "G-RULE-SCOPE-NO-CARRIER-C31"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-RULE-SCOPE-NO-CARRIER-C31"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**C31 外协质量门无承载对象类型（真缺口，非改名可解）**：`Outsource.yieldRate < Outsource.minYieldRate`，而本体 94 个类型里**零候选**（`rule-scope.ts` 判 `NO_CARRIER`）。最接近的数据 `Material.outsourceYiel"
-            title_truncated: true
-            lines:
-              - 3655
-              - 3655
-            own_lines:
-              - 3655
-              - 3655
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ 已修（2026-08-20·WO-RULE-SCOPE-TRIAD：补建承载类型·C31 真评估出 BLOCK 判定）"
-            body_marks: 1
-            anchors:
-              - "rule-scope.ts"
-              - "test/rule-scope-triad.seam.test.ts"
-            children: []
-          - id: "G-RULE-SCOPE-CATEGORY-ERROR-C10"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-RULE-SCOPE-CATEGORY-ERROR-C10"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**C10 的作用域跨到了另一类本体要素 —— 范畴错误，不是拼写错误**（审核方裁决·**别读成「差个改名就好了」**）。`Action.approver == NULL OR Action.audited == FALSE` 管的是**平台自身 Action 制品有没有审批留痕**；而 `Action`/`Scen"
-            title_truncated: true
-            lines:
-              - 3656
-              - 3656
-            own_lines:
-              - 3656
-              - 3656
-            status: "🔴"
-            status_from: "表格最后一列（性质）"
-            status_cell: "○ 未修（诚实登记·已可观察） 🔴 未修（2026-08-20 复核：维持「任何改名都错」；新证据=字段本身无承载 + checkRules 对 payload 求值接不住 + 意图已由 S2 结构保证；下一步=治理制品"
-            body_marks: 1
-            anchors:
-              - "actions.ts"
-            children: []
-          - id: "G-GATE-RC1-MASQUERADE"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-GATE-RC1-MASQUERADE"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**「工具坏了」伪装成「你的代码有问题」：node 对未捕获异常一律退 1，恰撞上三分约定的「真有问题」码。** 2026-08-11 一天之内两道不同的门各撞一次：① `check-ui-first-layer.mjs` 缺 `node_modules` 时 `require(\"typescript\")` 抛未捕获异"
-            title_truncated: true
-            lines:
-              - 3657
-              - 3657
-            own_lines:
-              - 3657
-              - 3657
-            status: "◑"
-            status_from: "表格最后一列（性质）"
-            status_cell: "◑ 机制已建（结构层封死 · 金丝雀+selftest 双向机验过）；语义层（各门逐条环境路径）随用随修 ◑ 部分闭合（2026-08-18 复核：`check-gate-exit-discipline.mjs` 在位；"
-            body_marks: 1
-            anchors:
-              - "check-ui-first-layer.mjs"
-              - "check-backend-frontend-seam.mjs"
-              - "scripts/check-no-raw-nul.mjs:38 (process.on)"
-              - "scripts/check-*.mjs"
-              - "gate.sh"
-              - "check-gate-exit-discipline.mjs"
-            children: []
-          - id: "G-GATE-SCOPE-MISSES-SUBJECT"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-GATE-SCOPE-MISSES-SUBJECT"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**「门的检测逻辑没瞎、金丝雀全中、RC=0 —— 而它的射程里压根没有要被检测的那个东西住的那个文件」整类**（假绿的又一形态 · 2026-08-17 实测 · WO-SCREEN-PLAINSPEAK）。**形态（铁律 0.6 句式）：「我用『门 RC=0 且金丝雀全中』当作『被守的那件事没出问题』的证据，而前者"
-            title_truncated: true
-            lines:
-              - 3658
-              - 3658
-            own_lines:
-              - 3658
-              - 3658
-            status: "◑"
-            status_from: "表格最后一列（性质）"
-            status_cell: "◑ 机制已建于 `dev-jargon:check`（扫描面补 `locales/**` + `.ts`，10→135→46；分母下界已立，金丝雀 6→25）；**其余 60+ 个门的扫描面是否同病，待逐个复核** ◑ "
-            body_marks: 1
-            anchors:
-              - "apps/frontend-shell/src/locales/zh.ts"
-              - "check-*.mjs"
-              - "scripts/check-*.mjs"
-              - "scripts/check-dev-jargon-onscreen.mjs"
-              - ".ts"
-              - "docs/AUDIT-gate-reach-sweep.md"
-            children: []
-          - id: "G-RATCHET-NEWFILE-BLIND"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-RATCHET-NEWFILE-BLIND"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**「棘轮以**文件**为度量单位，而要度量的是**内容** —— 搬一次家就失忆」整类**（假绿的又一形态 · 2026-08-14 合成沙盘实测 · WO-RATCHET-NEWFILE-BLINDSPOT）。**形态（铁律 0.6 句式）：「我用『基线里那一条的数字没涨』当作『屏上/仓里那些内容没变多』的证据，而"
-            title_truncated: true
-            lines:
-              - 3659
-              - 3659
-            own_lines:
-              - 3659
-              - 3659
-            status: "◑"
-            status_from: "表格最后一列（性质）"
-            status_cell: "◑ 机制已建于 `ui-first-layer:check`（沙盘两个盲区各自复现→修好→复跑证明双红）；**整类未普查**：其余 18 个基线写入方是否同病，待逐个复核 ◑ 部分闭合（2026-08-18 复核：`ui"
-            body_marks: 1
-            anchors:
-              - "scripts/check-*.mjs"
-              - "scripts/*-baseline.json"
-              - "docs/AUDIT-gate-reach-sweep.md"
-            children: []
-          - id: "G-PROP-DIRECTION-SILENT-DEAD"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-PROP-DIRECTION-SILENT-DEAD"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**传导规则方向写反 ⇒ 规则一次不触发，且不报任何错**（`G-MOCK-PATH-ENUM-DRIFT` 的同族，但这一条落在**推演心脏**上：沙盘的核心动作是「扰动→传导→看影响扩散」，一条从不触发的传导规则 = 沙盘在这条链上**根本不推演**）。成因是**判据取错**：`propagateTick` 的 `"
-            title_truncated: true
-            lines:
-              - 3660
-              - 3660
-            own_lines:
-              - 3660
-              - 3660
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ 已闭（两处方向均改正 + 三道分层门 + 变异反证真红过）"
-            body_marks: 1
-            anchors:
-              - "apps/datacore/src/sim/propagation.ts:757 (navOut)"
-              - "synthetic/battery.ts"
-              - "apps/datacore/src/seed.ts:328 (demo_base_load_to_line_util)"
-              - "test/seed-demo-propagation.test.ts"
-              - "test/sim-propagation-direction.seam.test.ts"
-              - "test/mock-linktype-direction.gate.test.ts"
-              - "apps/datacore/src/seed.ts"
-              - "apps/datacore/src/synthetic/battery.ts:3608 (line_belongs_to_base)"
-              - "apps/frontend-shell/src/mocks/handlers.ts"
-            children: []
-          - id: "G-GRAPH-DESC-CONTRACT-SPLIT"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-GRAPH-DESC-CONTRACT-SPLIT"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**图谱视角的叙事描述卡生产态一张都不渲染**（容器 + 字段名 + 链接形状，三重错位）。后端把描述写进 **`layout`**：`apps/datacore/src/synthetic/service.ts:2058 (graphView)` 的第 3 形参即 `layout`，八视角各传 `{descripti"
-            title_truncated: true
-            lines:
-              - 3661
-              - 3661
-            own_lines:
-              - 3661
-              - 3661
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "**接了线接错地方**。→ **✅ 已闭（WO-GRAPH-DESC-CONTRACT）**：契约新增 `GraphViewDescSchema`/`GraphDescLinkSchema`（`packages/cont"
-            anchors:
-              - "apps/datacore/src/synthetic/service.ts:2058 (graphView)"
-              - "apps/frontend-shell/src/views/OntologyGraphView.tsx:91 (GraphViewDescSchema)"
-              - "mocks/fixtures.ts"
-              - "datacore/test/planviews.test.ts"
-              - "apps/frontend-shell/test/f25.graph-viewpoints.test.tsx:56 (link)"
-              - "packages/contracts/src/planviews.ts"
-              - "databuilder/pull-target.ts"
-              - "frontend-shell/test/graph-desc-contract.seam.test.tsx"
-              - "planviews.test.ts"
-            children: []
-          - id: "G-GRAPH-ENTRY-DUP"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-GRAPH-ENTRY-DUP"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**「本体图谱」与「图谱·全景」是同一页面的两份等价配置**（IA 重复入口）。二者 renderer 同为 `ontology-graph`；`graph` 此前**零配置**（`view-manifest.ts` `layout:{}`、无 `options`），而 `graph-all` 显式带的 `{color"
-            title_truncated: true
-            lines:
-              - 3662
-              - 3662
-            own_lines:
-              - 3662
-              - 3662
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "**接了线没数据**（配置项接线通、值等于缺省 ⇒ 等价于没配）。→ **✅ 已闭（WO-GRAPH-DESC-CONTRACT·仓主裁决「两个入口都留但必须真的不同」）**：`graph` 配 `ONTOLOGY_BR"
-            anchors:
-              - "view-manifest.ts"
-              - "apps/frontend-shell/src/views/OntologyGraphView.tsx:69 (DEFAULT_OPTIONS)"
-            children: []
-          - id: "G-PROV-DRILL-DANGLING"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-PROV-DRILL-DANGLING"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**溯源标签指向一个不存在的出处：聚合值被填上单对象主键位，下钻路径悬空**（WO-R13-DRILLFIELD·欠账 #96 复验单·R13 的**标签侧**缺口）。#96 原病（`gap_attribution` 订单叶标 `drillField:\"value\"` 却回万元归因权重 `orderVal`，与元口径的"
-            title_truncated: true
-            lines:
-              - 3663
-              - 3663
-            own_lines:
-              - 3663
-              - 3663
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "⚠ 部分闭（`gap_attribution` 侧 4 处聚合节点改 `drillId:\"*\"`·通用判据 SINGLE/AGGREGATE 无第三类·5 次变异反证 WO-93 复跑真红·金丝雀 84 三元组实测在扫；"
-            anchors:
-              - "solvers/service.ts gapAttribution"
-              - "test/prov-drillfield-truth.test.ts"
-              - "apps/datacore/src/solvers/service.ts"
-              - "catalog.ts"
-              - "DashboardView.tsx"
-              - "test/supply-demand-gap-attribution.test.ts"
-              - "components/ProvenanceDag.tsx"
-              - "views/DashboardView.tsx"
-            children: []
-          - id: "G-DOMAIN-ENTRY-ALPHASORT"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-DOMAIN-ENTRY-ALPHASORT"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**整棵归因树从哪个节点开始长，判据只是 `factorId` 的字母顺序**（WO-ORDER-DEPENDENT-PICK·2026-08-14 实测登记并当日闭·与 `G-DECISION-EVIDENCE-SPLIT` **同族更狠的一处**）。**病灶**：`apps/datacore/src/solvers"
-            title_truncated: true
-            lines:
-              - 3664
-              - 3664
-            own_lines:
-              - 3664
-              - 3664
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "**接了线接错地方**（域路由在、metricDomain 在、都有牙，只是「入口是谁」从来不是从因果图解出来的）。→ **✅ 已闭（WO-ORDER-DEPENDENT-PICK）**：新增 `resolveDomai"
-            anchors:
-              - "apps/datacore/src/solvers/service.ts"
-              - "apps/datacore/src/solvers/chain-loss.ts"
-              - "apps/datacore/test/order-dependent-pick.seam.test.ts"
-            children: []
-          - id: "G-DECISION-EVIDENCE-SPLIT"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-DECISION-EVIDENCE-SPLIT"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**同一根因树上，两条方案各认了不同的一份证据对象 —— 屏上读起来通顺，实际张冠李戴，而用户分辨不出**（WO-LTA-EVIDENCE-CONFLICT·2026-08-14 实测登记并当日闭）。**病灶**：`apps/datacore/src/solvers/service.ts` 的 `decisionPla"
-            title_truncated: true
-            lines:
-              - 3665
-              - 3665
-            own_lines:
-              - 3665
-              - 3665
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "**接了线接错地方**（依据门在、有牙、已验有牙，只是方案侧的证据 id 从来不是从树上解出来的）。→ **✅ 已闭（WO-LTA-EVIDENCE-CONFLICT）**：新增 `resolveEvidenceLta`"
-            anchors:
-              - "apps/datacore/src/solvers/service.ts"
-              - "apps/datacore/src/synthetic/battery-extended.ts"
-              - "solvers/service.ts"
-              - "apps/datacore/test/decision-play-lta-evidence.seam.test.ts"
-            children: []
-          - id: "G-PROCESS-TICK-COVERAGE"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-PROCESS-TICK-COVERAGE"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**推演沙盘第五档的节拍覆盖面：9/65（13.8%）→ 29/65（44.6%）**（WO-PROCESS-CANVAS-LIVE 2026-08-14 登记缺口 · WO-PROCESS-TICK-COVERAGE 同日收编大半）。**这条不是实现缺陷，是数据层覆盖面**，故与「没接线」分开记：接线半早已完成并有门"
-            title_truncated: true
-            lines:
-              - 3666
-              - 3666
-            own_lines:
-              - 3666
-              - 3666
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "**接了线数据不够，已收编大半**（29/65）。屏上**如实报**：36 条标「本层不随节拍变」并在浮层写明该判据**测不出**「本质上该不该随节拍变」。⚠ **前端两处文案里的当日数字（`processCanvas."
-            body_marks: 1
-            anchors:
-              - "synthetic/service.ts"
-              - "apps/datacore/test/process-tick-coverage.seam.test.ts"
-              - "service.ts"
-              - "apps/datacore/src/seed.ts"
-              - "synthetic/battery.ts batteryLinkTypes()"
-              - "views/sim/processCanvas.ts classifyTickDrive"
-              - "processCanvas.ts"
-              - "locales/zh.ts"
-            children: []
-          - id: "G-GATE-ROSTER-HANDCOPIED"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-GATE-ROSTER-HANDCOPIED"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**门的名单是手抄的 ⇒ 漏掉的对象永远绿**（WO-HARNESS-UX-ADOPTION 2026-08-15 实测发现·整类）。**现场**（历史态·2026-08-16 已收口，见下「◑ 部分闭合」）：`scripts/check-edge-active-mounts.mjs` 的 `PAGES` 曾是**手抄"
-            title_truncated: true
-            lines:
-              - 3667
-              - 3667
-            own_lines:
-              - 3667
-              - 3667
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "Promote` 前缀族现算 · `outsource-redline:CONSUMERS` 补登漏登记的 `livedin.ts` 并加断言⑤「现算全仓引用方 ⊆ 名册」漏登记即红 · `object-interfac"
-            body_marks: 11
-            anchors:
-              - "scripts/check-edge-active-mounts.mjs"
-              - "features.ts"
-              - "scripts/lib/sim-page-roster.mjs"
-              - "check-edge-active-mounts.mjs"
-              - "apps/frontend-shell/test/edge-active.seam.test.tsx"
-              - "scripts/edge-active-mounts-baseline.json"
-              - "grep -n \"const PAGES\\|const FILES\\|const TARGETS\" scripts/*.mjs"
-              - "check-boundary-singlesource.mjs"
-              - ".ts/.tsx"
-              - "check-ref-closure.mjs"
-            children: []
-          - id: "G-NAME-DUAL-LABEL"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-NAME-DUAL-LABEL"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**同一个视图三份名字、三条下发链、零校验 ⇒「导航点 A、进去看到 B」没人拦得住**（WO-NAME-CONSISTENCY 2026-08-16 全量取证）。**三份**：①**功能名** `BUILTIN_VIEWS[].featureName` → `FEATURE_REGISTRY[].name` → 「功"
-            title_truncated: true
-            lines:
-              - 3668
-              - 3668
-            own_lines:
-              - 3668
-              - 3668
-            status: "◑"
-            status_from: "表格最后一列（性质）"
-            status_cell: "◑ **部分闭合**：门 `name-consistency:check`（`scripts/check-name-consistency.mjs`）已上线 —— **不替仓主拍板「叫哪个名字」，只守「不一致的必须登记过"
-            anchors:
-              - "FeaturesPage.tsx:232 {def.name}"
-              - "service.ts:1864"
-              - "locales/zh.ts"
-              - "packages/contracts/src/feature-names.ts:127 (assertSharedFeatureNames)"
-              - "feature-names.ts:28-32"
-              - "scripts/check-name-consistency.mjs"
-              - "docs/AUDIT-name-consistency.md"
-            children: []
-          - id: "G-OEE-DUAL-TRUTH"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-OEE-DUAL-TRUTH"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**同一个业务量「设备 OEE」有三套互不知情的真值源，算出三台不同的「最差设备」**（WO-OEE-SSOT 2026-08-16 实测登记；TRACE「🔶 等你裁决」第 2 条原记为「两套」，**实测是三套**）。**实测**（demo 真实入参 `seed=42, scale=\"S\"`，780 台设备，直接 im"
-            title_truncated: true
-            lines:
-              - 3669
-              - 3669
-            own_lines:
-              - 3669
-              - 3669
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "` 逐台平均 **0.0814**（8 个百分点量级）；① 的最差那台在 ② 里排 **731/780**（属最好的一档）—— **不是精度差异，是指向不同的设备**。**病根在接缝不在模块内部**：`Equipment"
-            anchors:
-              - "synthetic/battery.ts"
-              - "battery.ts"
-              - "timeseries.ts"
-              - "packages/contracts/src/capacity-factors.ts"
-              - "views/capacity/factorOntology.ts"
-              - "capacity-factors.ts"
-              - "apps/datacore/src/synthetic/battery.ts:2782 (PROP_DISPLAY_NAMES)"
-              - "apps/datacore/test/oee-ssot.seam.test.ts"
-              - "scripts/dispatch-deficit.sh"
-              - "docs/WO-QUEUE-breakpoints.md"
-            children: []
-          - id: "G-DSH-DORMANT-UNGUARDED"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-DSH-DORMANT-UNGUARDED"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**「休眠分叉」并进来了，却没有任何机制拦住以后有人把它打开**（WO-DSH-FUSE-GUARDS 2026-08-16 登记并同日闭）。**现场**：POC 分支 `claude/handoff-wo-dsh-poc-s1` @ `6b9a7558` 把外部 agent 运行时 **dsh（deepseek-ha"
-            title_truncated: true
-            lines:
-              - 3670
-              - 3670
-            own_lines:
-              - 3670
-              - 3670
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ **已闭（机制侧）**：新门 `dsh-dormancy:check`（§7）三条判据 D1/D2/D3 + 28 条与主逻辑共用实现的金丝雀 + 扫描面下界自证 + 退出码三分；**真变异反证 7/7 在「已并入 "
-            anchors:
-              - "scripts/check-system-ontology.mjs"
-              - "apps/agentcore/src/engine.ts"
-              - "await import(\"./dsh-runtime/index.js\")"
-              - "docs/DECISION-dsh-fusion.md"
-              - "apps/agentcore/src/agent/loop.ts"
-              - "dshpoctestresults.md"
-              - "docs/REPORT-*.md"
-              - "docker-compose*.yml"
-              - "apps/agentcore/package.json"
-            children: []
-          - id: "G-SPLITACCOUNT-PROMISE-ONLY"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-SPLITACCOUNT-PROMISE-ONLY"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**拆账拆出去的那一半只剩一句承诺 ⇒ 「判不了 0」被读成「都验完了」**（WO-GATE-B-SPLITACCOUNT 2026-08-16 实测发现·整类）。**现场**：`docs/PRD-harness-ux-adoption.md` §2.1 把六条判据各拆成两半，可判的那半留在 §4 表里逐页判，不可判的"
-            title_truncated: true
-            lines:
-              - 3671
-              - 3671
-            own_lines:
-              - 3671
-              - 3671
-            status: "◑"
-            status_from: "表格最后一列（性质）"
-            status_cell: "**拆账拆出去的那一半只剩一句承诺 ⇒ 「判不了 0」被读成「都验完了」**（WO-GATE-B-SPLITACCOUNT 2026-08-16 实测发现·整类）。**现场**：`docs/PRD-harness-ux-"
-            anchors:
-              - "docs/PRD-harness-ux-adoption.md"
-              - "scripts/lib/layout-probe.mjs"
-              - "docs/WO-QUEUE-breakpoints.md"
-            children: []
-          - id: "G-TYPECHECK-SKIPS-TESTS"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-TYPECHECK-SKIPS-TESTS"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**`typecheck` 全绿，而它连测试文件看都没看 —— 「配置写了」不等于「它生效了」**（WO-TEST-TYPECHECK-BLIND 2026-08-16 实测·假绿第 13 形态）。**病灶**：`apps/datacore` 与 `apps/agentcore` 的 `tsconfig.typeche"
-            title_truncated: true
-            lines:
-              - 3672
-              - 3672
-            own_lines:
-              - 3672
-              - 3672
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ **已修（WO-TEST-TYPECHECK-BLIND 2026-08-16）**：① 两包 `typecheck` 脚本改指 `tsconfig.typecheck.json`（build 用的 `tsconfi"
-            anchors:
-              - "tsconfig.typecheck.json"
-              - "package.json"
-              - "tsconfig.json"
-              - "<pkg>/package.json"
-              - "<pkg>/tsconfig*.json"
-            children: []
-          - id: "G-MOCK-PARAM-ARITY-SILENT-DROP"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-MOCK-PARAM-ARITY-SILENT-DROP"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**mock 比接口「少写形参」⇒ 语义被静默改写，而 `tsc` 一声不吭**（WO-MOCKDC-SIGNATURE 2026-08-17 实测·假绿第 14 形态）。**机制**：TypeScript 里**形参个数少是合法子类型**（`(a)=>R` 可赋给 `(a,b)=>R`），所以 `class Mock"
-            title_truncated: true
-            lines:
-              - 3673
-              - 3673
-            own_lines:
-              - 3673
-              - 3673
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ 已闭（编译期守卫 + 运行期接缝门 + 四条变异反证；9 处形参全数补齐后 `agentcore` typecheck RC=0、172 测试文件全绿 1068 passed）"
-            body_marks: 1
-            anchors:
-              - "apps/agentcore/src/tools/executor.ts:106 (taskSnapshotEpoch)"
-              - "apps/agentcore/src/tools/executor.ts:246 (dispatch)"
-              - "apps/agentcore/src/mocks/signature-parity.ts"
-              - "mocks/clients.ts"
-              - "apps/agentcore/test/mockdc-signature.seam.test.ts"
-              - "apps/agentcore/src/tools/clients.ts"
-              - "apps/agentcore/src/mocks/clients.ts"
-              - "apps/agentcore/src/server.ts:2500 (solver.invoke)"
-              - "apps/agentcore/src/server.ts:118 (buildServer)"
-              - "apps/agentcore/src/dril/resource-registry.ts:115 (projectTenant)"
-            children: []
-          - id: "G-DERIVED-FORMULA-UNVERIFIED"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-DERIVED-FORMULA-UNVERIFIED"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**派生属性有公式、对象上有值，而两者从来没对过账**（WO-DERIVED-RECOMPUTE-CHECK · 参照物 `docs/REF-ontology-twin-ux.html:124`「重算一致性核对」）。`derivedProperties.formula` 由 `runDerivations()`（`ap"
-            title_truncated: true
-            lines:
-              - 3674
-              - 3674
-            own_lines:
-              - 3674
-              - 3674
-            status: "◑"
-            status_from: "表格最后一列（性质）"
-            status_cell: "◑ 部分闭合（门 + 三组变异反证 + 量纲挂账 3 条）；「公式本身对不对」与 `DerivationSpec` 两维如实标注未覆盖"
-            body_marks: 2
-            anchors:
-              - "docs/REF-ontology-twin-ux.html:124"
-              - "apps/datacore/src/ontology.ts:1531 (runDerivations)"
-              - "apps/datacore/src/ontology.ts:127 (evalArithmetic)"
-              - "navigation-slice.ts"
-              - "apps/datacore/src/synthetic/service.ts:2431 (derivationSpotChecks)"
-              - "apps/datacore/test/synthetic.test.ts"
-              - "synthetic/service.ts"
-              - "scripts/derived-recompute-baseline.json"
-              - "battery.ts"
-            children: []
-          - id: "G-GSIM-LIVE-FLAG-STALE"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-GSIM-LIVE-FLAG-STALE"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**一句已不成立的理由把门关了三周，而两侧 flag 反向让前端测试全程绿**（WO-GSIM-LIVE-FLAG-REASON 2026-08-17 实测·`G-DARKFLAG-OVERRIDDEN-BY-TEMPLATE` 的**下一层**）。两个病叠在一起，任何一个单独都不致命：**① 理由过期**——`app"
-            title_truncated: true
-            lines:
-              - 3675
-              - 3675
-            own_lines:
-              - 3675
-              - 3675
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ **已闭（2026-08-17 · WO-GSIM-LIVE-FLAG-REASON）**，四件事一起做完：**① 前置逐条追到处理体**（不是只看路由注册行）：五条端点全部非空壳 / 非 501 / 非恒抛，鉴权与"
-            anchors:
-              - "apps/datacore/src/features.ts"
-              - "apps/agentcore/src/server.ts"
-              - "apps/datacore/src/app.ts"
-              - "apps/frontend-shell/src/mocks/fixtures.ts"
-              - "features.ts"
-              - "live-scenarios-seam.test.ts"
-              - "featureGate.tsx"
-              - "GlobalSimView.tsx"
-              - "mocks/fixtures.ts"
-              - "scripts/feature-rollout.json"
-            children: []
-          - id: "G-ONTO-TRUNCATE-NO-GATE"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-ONTO-TRUNCATE-NO-GATE"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**「提交信息声称已回写」而 diff 把 2127 行本体写成空 blob，且当时没有任何门看守这个动作**（2026-08-17 真事故 `3298add3`，详账见 `G-OEE-DUAL-TRUTH` 行内「为什么停在等裁决一整天」段）。形态（铁律 0.6 句式）：**「我用『提交信息里写了已回写』当作『本体真"
-            title_truncated: true
-            lines:
-              - 3676
-              - 3676
-            own_lines:
-              - 3676
-              - 3676
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ 已闭（WO-ONTO-TRUNCATE-GUARD · 2026-08-18）"
-            body_marks: 1
-            anchors:
-              - "scripts/check-file-truncation.mjs"
-              - "scripts/file-truncation-exemptions.json"
-              - "docs/SYSTEM-ONTOLOGY.md"
-              - "check-file-truncation.mjs"
-            children: []
-          - id: "G-FACT-USAGE-UNREGISTERED"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-FACT-USAGE-UNREGISTERED"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**没有「事实 → 读取它的页面集合」注册表 ⇒ B-3（U5 跨屏面）连该比哪两个数都列不出来**（WO-GATE-B-SPLITACCOUNT 2026-08-16 把 B-3 判为「不能机检，且缺的前置比 B-1 更靠前」时点名的前置缺口；`G-SPLITACCOUNT-PROMISE-ONLY` 缩小后缺口③）"
-            title_truncated: true
-            lines:
-              - 3677
-              - 3677
-            own_lines:
-              - 3677
-              - 3677
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ **已闭（WO-FACT-USAGE-REGISTRY · 2026-08-17 建门 · 2026-08-18 收口接线）**：注册表现算器 + 门 `fact-usage:check`（§7）已并入 `pnpm "
-            anchors:
-              - "api/endpoints.ts"
-              - "views/registry.ts"
-              - "App.tsx"
-              - "scripts/lib/fact-usage.mjs"
-              - "docs/AUDIT-fact-usage-registry.md"
-            children: []
-          - id: "G-OBJECTS-QUERY-1000-CAP"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-OBJECTS-QUERY-1000-CAP"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**对象查询 ≤1000 截断 vs 5460 行事实表 ⇒ 逐行路只能拿到 18%**（WO-OEE-SSOT-C 2026-08-19 复核登记；债本身由 WO-OEE-UNIFY 期间在 `views/sim/physicalTopology.ts` 头注实测记档：/5460 行只拿 1000/）。**实测链**"
-            title_truncated: true
-            lines:
-              - 3678
-              - 3678
-            own_lines:
-              - 3678
-              - 3678
-            status: "🔴"
-            status_from: "表格最后一列（性质）"
-            status_cell: "🔴 未修（已绕过·不误导屏上数；2026-08-19 WO-OEE-SSOT-C 复核：绕过路径在、截断伤口在）"
-            anchors:
-              - "views/sim/physicalTopology.ts"
-              - "ontology-governance.ts"
-              - "app.ts"
-              - "ontology.ts"
-              - "apps/datacore/src/app.ts"
-            children: []
-          - id: "G-RISKBOARD-SILENT-TRUNCATION"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-RISKBOARD-SILENT-TRUNCATION"
-            kind: "breakpoint"
-            form: "table_row"
-            title: "**风险榜 `slice(0, maxCards=8)` 静默截断 ⇒ 屏上「风险基地 8」而真值是 13**（WO-RISKBOARD-TRUNCATION 2026-09-08 真后端 + 真浏览器实测）。**同 `G-WHATIF-HARDCODED-LEVERS` 的排序后 `slice` 家族**，但这一条直"
-            title_truncated: true
-            lines:
-              - 3679
-              - 3679
-            own_lines:
-              - 3679
-              - 3679
-            status: "✅"
-            status_from: "表格最后一列（性质）"
-            status_cell: "✅ 已闭（2026-09-08·真浏览器 10/10 从登录走起）"
-            anchors:
-              - "risk.ts"
-              - "apps/datacore/src/solvers/risk.ts"
-              - "packages/contracts/src/solvers.ts"
-              - "apps/frontend-shell/src/views/RiskBoardView.tsx"
-              - "datacore/test/riskboard-truncation.seam.test.ts"
-            children: []
-          - id: "_note2"
-            path: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/_note2"
-            kind: "note"
-            form: "note"
-            title: "> **WO-CAPACITY-PAGE-100PCT 残口补闭（2026-07-30 · 「产能推演」页 100% 实"
-            title_truncated: true
-            lines:
-              - 3680
-              - 3695
-            own_lines:
-              - 3680
-              - 3695
-            status: null
-            anchors:
-              - "docs/capacity-page-audit-ledger.md"
-              - "service.ts baseCapacityOutlook"
-              - "risk.ts resolveBaseId"
-              - "datacore/test/capacity-page-100pct.test.ts"
-              - "service.ts gapAttribution"
-              - "handlers.ts gap_attribution"
-              - "caplive-cockpit.test.tsx"
-              - "apps/frontend-shell/src/mocks/fixtures.ts"
-              - "service.ts discoverCapacityLevers"
-              - "risk.ts affectedOrdersAggregate"
-            children: []
+          - "apps/frontend-shell/test/factlock.ts"
+          - "apps/datacore/src/solvers/risk.ts:231 (resolveRef)"
+          - "check-stale-claims.mjs"
+        children: []
+      - id: "G-RULE-SCOPE-NAMESPACE-CONFUSION"
+        path: "8/G-RULE-SCOPE-NAMESPACE-CONFUSION"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**规则作用域抄了表达式的注入命名空间 ⇒ 规则永不参与评估、且零信号**（WO-RULE-SCOPE-DROP·2026-08-11·**三条已修、两条仍开**）。`RuleEntry` 上 `expression` 前缀（求值期**注入命名空间**，调用方喂 payload）与 `scopeObjectTypes`"
+        title_truncated: true
+        lines:
+          - 3654
+          - 3654
+        own_lines:
+          - 3654
+          - 3654
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ 闭合（2026-08-20·WO-RULE-SCOPE-TRIAD：命名漂移清零；C31/C10 各按其真实定性收口·见下两条）"
+        body_marks: 1
+        anchors:
+          - "battery.ts"
+          - "scheduler.ts:266 (listByType)"
+          - "apps/datacore/src/rule-scope.ts:108 (findUnknownScopeTypes)"
+          - "databuilder/comprehend.ts"
+          - "scheduler.ts"
+        children: []
+      - id: "G-RULE-SCOPE-NO-CARRIER-C31"
+        path: "8/G-RULE-SCOPE-NO-CARRIER-C31"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**C31 外协质量门无承载对象类型（真缺口，非改名可解）**：`Outsource.yieldRate < Outsource.minYieldRate`，而本体 94 个类型里**零候选**（`rule-scope.ts` 判 `NO_CARRIER`）。最接近的数据 `Material.outsourceYiel"
+        title_truncated: true
+        lines:
+          - 3655
+          - 3655
+        own_lines:
+          - 3655
+          - 3655
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ 已修（2026-08-20·WO-RULE-SCOPE-TRIAD：补建承载类型·C31 真评估出 BLOCK 判定）"
+        body_marks: 1
+        anchors:
+          - "rule-scope.ts"
+          - "test/rule-scope-triad.seam.test.ts"
+        children: []
+      - id: "G-RULE-SCOPE-CATEGORY-ERROR-C10"
+        path: "8/G-RULE-SCOPE-CATEGORY-ERROR-C10"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**C10 的作用域跨到了另一类本体要素 —— 范畴错误，不是拼写错误**（审核方裁决·**别读成「差个改名就好了」**）。`Action.approver == NULL OR Action.audited == FALSE` 管的是**平台自身 Action 制品有没有审批留痕**；而 `Action`/`Scen"
+        title_truncated: true
+        lines:
+          - 3656
+          - 3656
+        own_lines:
+          - 3656
+          - 3656
+        status: "🔴"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "○ 未修（诚实登记·已可观察） 🔴 未修（2026-08-20 复核：维持「任何改名都错」；新证据=字段本身无承载 + checkRules 对 payload 求值接不住 + 意图已由 S2 结构保证；下一步=治理制品"
+        body_marks: 1
+        anchors:
+          - "actions.ts"
+        children: []
+      - id: "G-GATE-RC1-MASQUERADE"
+        path: "8/G-GATE-RC1-MASQUERADE"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**「工具坏了」伪装成「你的代码有问题」：node 对未捕获异常一律退 1，恰撞上三分约定的「真有问题」码。** 2026-08-11 一天之内两道不同的门各撞一次：① `check-ui-first-layer.mjs` 缺 `node_modules` 时 `require(\"typescript\")` 抛未捕获异"
+        title_truncated: true
+        lines:
+          - 3657
+          - 3657
+        own_lines:
+          - 3657
+          - 3657
+        status: "◑"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "◑ 机制已建（结构层封死 · 金丝雀+selftest 双向机验过）；语义层（各门逐条环境路径）随用随修 ◑ 部分闭合（2026-08-18 复核：`check-gate-exit-discipline.mjs` 在位；"
+        body_marks: 1
+        anchors:
+          - "check-ui-first-layer.mjs"
+          - "check-backend-frontend-seam.mjs"
+          - "scripts/check-no-raw-nul.mjs:38 (process.on)"
+          - "scripts/check-*.mjs"
+          - "gate.sh"
+          - "check-gate-exit-discipline.mjs"
+        children: []
+      - id: "G-GATE-SCOPE-MISSES-SUBJECT"
+        path: "8/G-GATE-SCOPE-MISSES-SUBJECT"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**「门的检测逻辑没瞎、金丝雀全中、RC=0 —— 而它的射程里压根没有要被检测的那个东西住的那个文件」整类**（假绿的又一形态 · 2026-08-17 实测 · WO-SCREEN-PLAINSPEAK）。**形态（铁律 0.6 句式）：「我用『门 RC=0 且金丝雀全中』当作『被守的那件事没出问题』的证据，而前者"
+        title_truncated: true
+        lines:
+          - 3658
+          - 3658
+        own_lines:
+          - 3658
+          - 3658
+        status: "◑"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "◑ 机制已建于 `dev-jargon:check`（扫描面补 `locales/**` + `.ts`，10→135→46；分母下界已立，金丝雀 6→25）；**其余 60+ 个门的扫描面是否同病，待逐个复核** ◑ "
+        body_marks: 1
+        anchors:
+          - "apps/frontend-shell/src/locales/zh.ts"
+          - "check-*.mjs"
+          - "scripts/check-*.mjs"
+          - "scripts/check-dev-jargon-onscreen.mjs"
+          - ".ts"
+          - "docs/AUDIT-gate-reach-sweep.md"
+        children: []
+      - id: "G-RATCHET-NEWFILE-BLIND"
+        path: "8/G-RATCHET-NEWFILE-BLIND"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**「棘轮以**文件**为度量单位，而要度量的是**内容** —— 搬一次家就失忆」整类**（假绿的又一形态 · 2026-08-14 合成沙盘实测 · WO-RATCHET-NEWFILE-BLINDSPOT）。**形态（铁律 0.6 句式）：「我用『基线里那一条的数字没涨』当作『屏上/仓里那些内容没变多』的证据，而"
+        title_truncated: true
+        lines:
+          - 3659
+          - 3659
+        own_lines:
+          - 3659
+          - 3659
+        status: "◑"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "◑ 机制已建于 `ui-first-layer:check`（沙盘两个盲区各自复现→修好→复跑证明双红）；**整类未普查**：其余 18 个基线写入方是否同病，待逐个复核 ◑ 部分闭合（2026-08-18 复核：`ui"
+        body_marks: 1
+        anchors:
+          - "scripts/check-*.mjs"
+          - "scripts/*-baseline.json"
+          - "docs/AUDIT-gate-reach-sweep.md"
+        children: []
+      - id: "G-PROP-DIRECTION-SILENT-DEAD"
+        path: "8/G-PROP-DIRECTION-SILENT-DEAD"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**传导规则方向写反 ⇒ 规则一次不触发，且不报任何错**（`G-MOCK-PATH-ENUM-DRIFT` 的同族，但这一条落在**推演心脏**上：沙盘的核心动作是「扰动→传导→看影响扩散」，一条从不触发的传导规则 = 沙盘在这条链上**根本不推演**）。成因是**判据取错**：`propagateTick` 的 `"
+        title_truncated: true
+        lines:
+          - 3660
+          - 3660
+        own_lines:
+          - 3660
+          - 3660
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ 已闭（两处方向均改正 + 三道分层门 + 变异反证真红过）"
+        body_marks: 1
+        anchors:
+          - "apps/datacore/src/sim/propagation.ts:757 (navOut)"
+          - "synthetic/battery.ts"
+          - "apps/datacore/src/seed.ts:328 (demo_base_load_to_line_util)"
+          - "test/seed-demo-propagation.test.ts"
+          - "test/sim-propagation-direction.seam.test.ts"
+          - "test/mock-linktype-direction.gate.test.ts"
+          - "apps/datacore/src/seed.ts"
+          - "apps/datacore/src/synthetic/battery.ts:3608 (line_belongs_to_base)"
+          - "apps/frontend-shell/src/mocks/handlers.ts"
+        children: []
+      - id: "G-GRAPH-DESC-CONTRACT-SPLIT"
+        path: "8/G-GRAPH-DESC-CONTRACT-SPLIT"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**图谱视角的叙事描述卡生产态一张都不渲染**（容器 + 字段名 + 链接形状，三重错位）。后端把描述写进 **`layout`**：`apps/datacore/src/synthetic/service.ts:2058 (graphView)` 的第 3 形参即 `layout`，八视角各传 `{descripti"
+        title_truncated: true
+        lines:
+          - 3661
+          - 3661
+        own_lines:
+          - 3661
+          - 3661
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "**接了线接错地方**。→ **✅ 已闭（WO-GRAPH-DESC-CONTRACT）**：契约新增 `GraphViewDescSchema`/`GraphDescLinkSchema`（`packages/cont"
+        anchors:
+          - "apps/datacore/src/synthetic/service.ts:2058 (graphView)"
+          - "apps/frontend-shell/src/views/OntologyGraphView.tsx:91 (GraphViewDescSchema)"
+          - "mocks/fixtures.ts"
+          - "datacore/test/planviews.test.ts"
+          - "apps/frontend-shell/test/f25.graph-viewpoints.test.tsx:56 (link)"
+          - "packages/contracts/src/planviews.ts"
+          - "databuilder/pull-target.ts"
+          - "frontend-shell/test/graph-desc-contract.seam.test.tsx"
+          - "planviews.test.ts"
+        children: []
+      - id: "G-GRAPH-ENTRY-DUP"
+        path: "8/G-GRAPH-ENTRY-DUP"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**「本体图谱」与「图谱·全景」是同一页面的两份等价配置**（IA 重复入口）。二者 renderer 同为 `ontology-graph`；`graph` 此前**零配置**（`view-manifest.ts` `layout:{}`、无 `options`），而 `graph-all` 显式带的 `{color"
+        title_truncated: true
+        lines:
+          - 3662
+          - 3662
+        own_lines:
+          - 3662
+          - 3662
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "**接了线没数据**（配置项接线通、值等于缺省 ⇒ 等价于没配）。→ **✅ 已闭（WO-GRAPH-DESC-CONTRACT·仓主裁决「两个入口都留但必须真的不同」）**：`graph` 配 `ONTOLOGY_BR"
+        anchors:
+          - "view-manifest.ts"
+          - "apps/frontend-shell/src/views/OntologyGraphView.tsx:69 (DEFAULT_OPTIONS)"
+        children: []
+      - id: "G-PROV-DRILL-DANGLING"
+        path: "8/G-PROV-DRILL-DANGLING"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**溯源标签指向一个不存在的出处：聚合值被填上单对象主键位，下钻路径悬空**（WO-R13-DRILLFIELD·欠账 #96 复验单·R13 的**标签侧**缺口）。#96 原病（`gap_attribution` 订单叶标 `drillField:\"value\"` 却回万元归因权重 `orderVal`，与元口径的"
+        title_truncated: true
+        lines:
+          - 3663
+          - 3663
+        own_lines:
+          - 3663
+          - 3663
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "⚠ 部分闭（`gap_attribution` 侧 4 处聚合节点改 `drillId:\"*\"`·通用判据 SINGLE/AGGREGATE 无第三类·5 次变异反证 WO-93 复跑真红·金丝雀 84 三元组实测在扫；"
+        anchors:
+          - "solvers/service.ts gapAttribution"
+          - "test/prov-drillfield-truth.test.ts"
+          - "apps/datacore/src/solvers/service.ts"
+          - "catalog.ts"
+          - "DashboardView.tsx"
+          - "test/supply-demand-gap-attribution.test.ts"
+          - "components/ProvenanceDag.tsx"
+          - "views/DashboardView.tsx"
+        children: []
+      - id: "G-DOMAIN-ENTRY-ALPHASORT"
+        path: "8/G-DOMAIN-ENTRY-ALPHASORT"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**整棵归因树从哪个节点开始长，判据只是 `factorId` 的字母顺序**（WO-ORDER-DEPENDENT-PICK·2026-08-14 实测登记并当日闭·与 `G-DECISION-EVIDENCE-SPLIT` **同族更狠的一处**）。**病灶**：`apps/datacore/src/solvers"
+        title_truncated: true
+        lines:
+          - 3664
+          - 3664
+        own_lines:
+          - 3664
+          - 3664
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "**接了线接错地方**（域路由在、metricDomain 在、都有牙，只是「入口是谁」从来不是从因果图解出来的）。→ **✅ 已闭（WO-ORDER-DEPENDENT-PICK）**：新增 `resolveDomai"
+        anchors:
+          - "apps/datacore/src/solvers/service.ts"
+          - "apps/datacore/src/solvers/chain-loss.ts"
+          - "apps/datacore/test/order-dependent-pick.seam.test.ts"
+        children: []
+      - id: "G-DECISION-EVIDENCE-SPLIT"
+        path: "8/G-DECISION-EVIDENCE-SPLIT"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**同一根因树上，两条方案各认了不同的一份证据对象 —— 屏上读起来通顺，实际张冠李戴，而用户分辨不出**（WO-LTA-EVIDENCE-CONFLICT·2026-08-14 实测登记并当日闭）。**病灶**：`apps/datacore/src/solvers/service.ts` 的 `decisionPla"
+        title_truncated: true
+        lines:
+          - 3665
+          - 3665
+        own_lines:
+          - 3665
+          - 3665
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "**接了线接错地方**（依据门在、有牙、已验有牙，只是方案侧的证据 id 从来不是从树上解出来的）。→ **✅ 已闭（WO-LTA-EVIDENCE-CONFLICT）**：新增 `resolveEvidenceLta`"
+        anchors:
+          - "apps/datacore/src/solvers/service.ts"
+          - "apps/datacore/src/synthetic/battery-extended.ts"
+          - "solvers/service.ts"
+          - "apps/datacore/test/decision-play-lta-evidence.seam.test.ts"
+        children: []
+      - id: "G-PROCESS-TICK-COVERAGE"
+        path: "8/G-PROCESS-TICK-COVERAGE"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**推演沙盘第五档的节拍覆盖面：9/65（13.8%）→ 29/65（44.6%）**（WO-PROCESS-CANVAS-LIVE 2026-08-14 登记缺口 · WO-PROCESS-TICK-COVERAGE 同日收编大半）。**这条不是实现缺陷，是数据层覆盖面**，故与「没接线」分开记：接线半早已完成并有门"
+        title_truncated: true
+        lines:
+          - 3666
+          - 3666
+        own_lines:
+          - 3666
+          - 3666
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "**接了线数据不够，已收编大半**（29/65）。屏上**如实报**：36 条标「本层不随节拍变」并在浮层写明该判据**测不出**「本质上该不该随节拍变」。⚠ **前端两处文案里的当日数字（`processCanvas."
+        body_marks: 1
+        anchors:
+          - "synthetic/service.ts"
+          - "apps/datacore/test/process-tick-coverage.seam.test.ts"
+          - "service.ts"
+          - "apps/datacore/src/seed.ts"
+          - "synthetic/battery.ts batteryLinkTypes()"
+          - "views/sim/processCanvas.ts classifyTickDrive"
+          - "processCanvas.ts"
+          - "locales/zh.ts"
+        children: []
+      - id: "G-GATE-ROSTER-HANDCOPIED"
+        path: "8/G-GATE-ROSTER-HANDCOPIED"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**门的名单是手抄的 ⇒ 漏掉的对象永远绿**（WO-HARNESS-UX-ADOPTION 2026-08-15 实测发现·整类）。**现场**（历史态·2026-08-16 已收口，见下「◑ 部分闭合」）：`scripts/check-edge-active-mounts.mjs` 的 `PAGES` 曾是**手抄"
+        title_truncated: true
+        lines:
+          - 3667
+          - 3667
+        own_lines:
+          - 3667
+          - 3667
+        status: "无标记"
+        status_from: "表头第 4 列（性质）"
+        status_cell: ""
+        body_marks: 12
+        anchors:
+          - "scripts/check-edge-active-mounts.mjs"
+          - "features.ts"
+          - "scripts/lib/sim-page-roster.mjs"
+          - "check-edge-active-mounts.mjs"
+          - "apps/frontend-shell/test/edge-active.seam.test.tsx"
+          - "scripts/edge-active-mounts-baseline.json"
+          - "grep -n \"const PAGES\\|const FILES\\|const TARGETS\" scripts/*.mjs"
+          - "check-boundary-singlesource.mjs"
+          - ".ts/.tsx"
+          - "check-ref-closure.mjs"
+        children: []
+      - id: "G-NAME-DUAL-LABEL"
+        path: "8/G-NAME-DUAL-LABEL"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**同一个视图三份名字、三条下发链、零校验 ⇒「导航点 A、进去看到 B」没人拦得住**（WO-NAME-CONSISTENCY 2026-08-16 全量取证）。**三份**：①**功能名** `BUILTIN_VIEWS[].featureName` → `FEATURE_REGISTRY[].name` → 「功"
+        title_truncated: true
+        lines:
+          - 3668
+          - 3668
+        own_lines:
+          - 3668
+          - 3668
+        status: "◑"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "◑ **部分闭合**：门 `name-consistency:check`（`scripts/check-name-consistency.mjs`）已上线 —— **不替仓主拍板「叫哪个名字」，只守「不一致的必须登记过"
+        anchors:
+          - "FeaturesPage.tsx:232 {def.name}"
+          - "service.ts:1864"
+          - "locales/zh.ts"
+          - "packages/contracts/src/feature-names.ts:127 (assertSharedFeatureNames)"
+          - "feature-names.ts:28-32"
+          - "scripts/check-name-consistency.mjs"
+          - "docs/AUDIT-name-consistency.md"
+        children: []
+      - id: "G-OEE-DUAL-TRUTH"
+        path: "8/G-OEE-DUAL-TRUTH"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**同一个业务量「设备 OEE」有三套互不知情的真值源，算出三台不同的「最差设备」**（WO-OEE-SSOT 2026-08-16 实测登记；TRACE「🔶 等你裁决」第 2 条原记为「两套」，**实测是三套**）。**实测**（demo 真实入参 `seed=42, scale=\"S\"`，780 台设备，直接 im"
+        title_truncated: true
+        lines:
+          - 3669
+          - 3669
+        own_lines:
+          - 3669
+          - 3669
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "` 逐台平均 **0.0814**（8 个百分点量级）；① 的最差那台在 ② 里排 **731/780**（属最好的一档）—— **不是精度差异，是指向不同的设备**。**病根在接缝不在模块内部**：`Equipment"
+        anchors:
+          - "synthetic/battery.ts"
+          - "battery.ts"
+          - "timeseries.ts"
+          - "packages/contracts/src/capacity-factors.ts"
+          - "views/capacity/factorOntology.ts"
+          - "capacity-factors.ts"
+          - "apps/datacore/src/synthetic/battery.ts:2782 (PROP_DISPLAY_NAMES)"
+          - "apps/datacore/test/oee-ssot.seam.test.ts"
+          - "scripts/dispatch-deficit.sh"
+          - "docs/WO-QUEUE-breakpoints.md"
+        children: []
+      - id: "G-DSH-DORMANT-UNGUARDED"
+        path: "8/G-DSH-DORMANT-UNGUARDED"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**「休眠分叉」并进来了，却没有任何机制拦住以后有人把它打开**（WO-DSH-FUSE-GUARDS 2026-08-16 登记并同日闭）。**现场**：POC 分支 `claude/handoff-wo-dsh-poc-s1` @ `6b9a7558` 把外部 agent 运行时 **dsh（deepseek-ha"
+        title_truncated: true
+        lines:
+          - 3670
+          - 3670
+        own_lines:
+          - 3670
+          - 3670
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ **已闭（机制侧）**：新门 `dsh-dormancy:check`（§7）三条判据 D1/D2/D3 + 28 条与主逻辑共用实现的金丝雀 + 扫描面下界自证 + 退出码三分；**真变异反证 7/7 在「已并入 "
+        anchors:
+          - "scripts/check-system-ontology.mjs"
+          - "apps/agentcore/src/engine.ts"
+          - "await import(\"./dsh-runtime/index.js\")"
+          - "docs/DECISION-dsh-fusion.md"
+          - "apps/agentcore/src/agent/loop.ts"
+          - "dshpoctestresults.md"
+          - "docs/REPORT-*.md"
+          - "docker-compose*.yml"
+          - "apps/agentcore/package.json"
+        children: []
+      - id: "G-SPLITACCOUNT-PROMISE-ONLY"
+        path: "8/G-SPLITACCOUNT-PROMISE-ONLY"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**拆账拆出去的那一半只剩一句承诺 ⇒ 「判不了 0」被读成「都验完了」**（WO-GATE-B-SPLITACCOUNT 2026-08-16 实测发现·整类）。**现场**：`docs/PRD-harness-ux-adoption.md` §2.1 把六条判据各拆成两半，可判的那半留在 §4 表里逐页判，不可判的"
+        title_truncated: true
+        lines:
+          - 3671
+          - 3671
+        own_lines:
+          - 3671
+          - 3671
+        status: "无标记"
+        status_from: "表头第 4 列（性质）"
+        status_cell: ""
+        body_marks: 1
+        anchors:
+          - "docs/PRD-harness-ux-adoption.md"
+          - "scripts/lib/layout-probe.mjs"
+          - "docs/WO-QUEUE-breakpoints.md"
+        children: []
+      - id: "G-TYPECHECK-SKIPS-TESTS"
+        path: "8/G-TYPECHECK-SKIPS-TESTS"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**`typecheck` 全绿，而它连测试文件看都没看 —— 「配置写了」不等于「它生效了」**（WO-TEST-TYPECHECK-BLIND 2026-08-16 实测·假绿第 13 形态）。**病灶**：`apps/datacore` 与 `apps/agentcore` 的 `tsconfig.typeche"
+        title_truncated: true
+        lines:
+          - 3672
+          - 3672
+        own_lines:
+          - 3672
+          - 3672
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ **已修（WO-TEST-TYPECHECK-BLIND 2026-08-16）**：① 两包 `typecheck` 脚本改指 `tsconfig.typecheck.json`（build 用的 `tsconfi"
+        anchors:
+          - "tsconfig.typecheck.json"
+          - "package.json"
+          - "tsconfig.json"
+          - "<pkg>/package.json"
+          - "<pkg>/tsconfig*.json"
+        children: []
+      - id: "G-MOCK-PARAM-ARITY-SILENT-DROP"
+        path: "8/G-MOCK-PARAM-ARITY-SILENT-DROP"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**mock 比接口「少写形参」⇒ 语义被静默改写，而 `tsc` 一声不吭**（WO-MOCKDC-SIGNATURE 2026-08-17 实测·假绿第 14 形态）。**机制**：TypeScript 里**形参个数少是合法子类型**（`(a)=>R` 可赋给 `(a,b)=>R`），所以 `class Mock"
+        title_truncated: true
+        lines:
+          - 3673
+          - 3673
+        own_lines:
+          - 3673
+          - 3673
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ 已闭（编译期守卫 + 运行期接缝门 + 四条变异反证；9 处形参全数补齐后 `agentcore` typecheck RC=0、172 测试文件全绿 1068 passed）"
+        body_marks: 1
+        anchors:
+          - "apps/agentcore/src/tools/executor.ts:106 (taskSnapshotEpoch)"
+          - "apps/agentcore/src/tools/executor.ts:246 (dispatch)"
+          - "apps/agentcore/src/mocks/signature-parity.ts"
+          - "mocks/clients.ts"
+          - "apps/agentcore/test/mockdc-signature.seam.test.ts"
+          - "apps/agentcore/src/tools/clients.ts"
+          - "apps/agentcore/src/mocks/clients.ts"
+          - "apps/agentcore/src/server.ts:2500 (solver.invoke)"
+          - "apps/agentcore/src/server.ts:118 (buildServer)"
+          - "apps/agentcore/src/dril/resource-registry.ts:115 (projectTenant)"
+        children: []
+      - id: "G-DERIVED-FORMULA-UNVERIFIED"
+        path: "8/G-DERIVED-FORMULA-UNVERIFIED"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**派生属性有公式、对象上有值，而两者从来没对过账**（WO-DERIVED-RECOMPUTE-CHECK · 参照物 `docs/REF-ontology-twin-ux.html:124`「重算一致性核对」）。`derivedProperties.formula` 由 `runDerivations()`（`ap"
+        title_truncated: true
+        lines:
+          - 3674
+          - 3674
+        own_lines:
+          - 3674
+          - 3674
+        status: "◑"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "◑ 部分闭合（门 + 三组变异反证 + 量纲挂账 3 条）；「公式本身对不对」与 `DerivationSpec` 两维如实标注未覆盖"
+        body_marks: 2
+        anchors:
+          - "docs/REF-ontology-twin-ux.html:124"
+          - "apps/datacore/src/ontology.ts:1531 (runDerivations)"
+          - "apps/datacore/src/ontology.ts:127 (evalArithmetic)"
+          - "navigation-slice.ts"
+          - "apps/datacore/src/synthetic/service.ts:2431 (derivationSpotChecks)"
+          - "apps/datacore/test/synthetic.test.ts"
+          - "synthetic/service.ts"
+          - "scripts/derived-recompute-baseline.json"
+          - "battery.ts"
+        children: []
+      - id: "G-GSIM-LIVE-FLAG-STALE"
+        path: "8/G-GSIM-LIVE-FLAG-STALE"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**一句已不成立的理由把门关了三周，而两侧 flag 反向让前端测试全程绿**（WO-GSIM-LIVE-FLAG-REASON 2026-08-17 实测·`G-DARKFLAG-OVERRIDDEN-BY-TEMPLATE` 的**下一层**）。两个病叠在一起，任何一个单独都不致命：**① 理由过期**——`app"
+        title_truncated: true
+        lines:
+          - 3675
+          - 3675
+        own_lines:
+          - 3675
+          - 3675
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ **已闭（2026-08-17 · WO-GSIM-LIVE-FLAG-REASON）**，四件事一起做完：**① 前置逐条追到处理体**（不是只看路由注册行）：五条端点全部非空壳 / 非 501 / 非恒抛，鉴权与"
+        anchors:
+          - "apps/datacore/src/features.ts"
+          - "apps/agentcore/src/server.ts"
+          - "apps/datacore/src/app.ts"
+          - "apps/frontend-shell/src/mocks/fixtures.ts"
+          - "features.ts"
+          - "live-scenarios-seam.test.ts"
+          - "featureGate.tsx"
+          - "GlobalSimView.tsx"
+          - "mocks/fixtures.ts"
+          - "scripts/feature-rollout.json"
+        children: []
+      - id: "G-ONTO-TRUNCATE-NO-GATE"
+        path: "8/G-ONTO-TRUNCATE-NO-GATE"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**「提交信息声称已回写」而 diff 把 2127 行本体写成空 blob，且当时没有任何门看守这个动作**（2026-08-17 真事故 `3298add3`，详账见 `G-OEE-DUAL-TRUTH` 行内「为什么停在等裁决一整天」段）。形态（铁律 0.6 句式）：**「我用『提交信息里写了已回写』当作『本体真"
+        title_truncated: true
+        lines:
+          - 3676
+          - 3676
+        own_lines:
+          - 3676
+          - 3676
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ 已闭（WO-ONTO-TRUNCATE-GUARD · 2026-08-18）"
+        body_marks: 1
+        anchors:
+          - "scripts/check-file-truncation.mjs"
+          - "scripts/file-truncation-exemptions.json"
+          - "docs/SYSTEM-ONTOLOGY.md"
+          - "check-file-truncation.mjs"
+        children: []
+      - id: "G-FACT-USAGE-UNREGISTERED"
+        path: "8/G-FACT-USAGE-UNREGISTERED"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**没有「事实 → 读取它的页面集合」注册表 ⇒ B-3（U5 跨屏面）连该比哪两个数都列不出来**（WO-GATE-B-SPLITACCOUNT 2026-08-16 把 B-3 判为「不能机检，且缺的前置比 B-1 更靠前」时点名的前置缺口；`G-SPLITACCOUNT-PROMISE-ONLY` 缩小后缺口③）"
+        title_truncated: true
+        lines:
+          - 3677
+          - 3677
+        own_lines:
+          - 3677
+          - 3677
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ **已闭（WO-FACT-USAGE-REGISTRY · 2026-08-17 建门 · 2026-08-18 收口接线）**：注册表现算器 + 门 `fact-usage:check`（§7）已并入 `pnpm "
+        anchors:
+          - "api/endpoints.ts"
+          - "views/registry.ts"
+          - "App.tsx"
+          - "scripts/lib/fact-usage.mjs"
+          - "docs/AUDIT-fact-usage-registry.md"
+        children: []
+      - id: "G-OBJECTS-QUERY-1000-CAP"
+        path: "8/G-OBJECTS-QUERY-1000-CAP"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**对象查询 ≤1000 截断 vs 5460 行事实表 ⇒ 逐行路只能拿到 18%**（WO-OEE-SSOT-C 2026-08-19 复核登记；债本身由 WO-OEE-UNIFY 期间在 `views/sim/physicalTopology.ts` 头注实测记档：/5460 行只拿 1000/）。**实测链**"
+        title_truncated: true
+        lines:
+          - 3678
+          - 3678
+        own_lines:
+          - 3678
+          - 3678
+        status: "🔴"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "🔴 未修（已绕过·不误导屏上数；2026-08-19 WO-OEE-SSOT-C 复核：绕过路径在、截断伤口在）"
+        anchors:
+          - "views/sim/physicalTopology.ts"
+          - "ontology-governance.ts"
+          - "app.ts"
+          - "ontology.ts"
+          - "apps/datacore/src/app.ts"
+        children: []
+      - id: "G-RISKBOARD-SILENT-TRUNCATION"
+        path: "8/G-RISKBOARD-SILENT-TRUNCATION"
+        kind: "breakpoint"
+        form: "table_row"
+        title: "**风险榜 `slice(0, maxCards=8)` 静默截断 ⇒ 屏上「风险基地 8」而真值是 13**（WO-RISKBOARD-TRUNCATION 2026-09-08 真后端 + 真浏览器实测）。**同 `G-WHATIF-HARDCODED-LEVERS` 的排序后 `slice` 家族**，但这一条直"
+        title_truncated: true
+        lines:
+          - 3679
+          - 3679
+        own_lines:
+          - 3679
+          - 3679
+        status: "✅"
+        status_from: "表头第 4 列（性质）"
+        status_cell: "✅ 已闭（2026-09-08·真浏览器 10/10 从登录走起）"
+        anchors:
+          - "risk.ts"
+          - "apps/datacore/src/solvers/risk.ts"
+          - "packages/contracts/src/solvers.ts"
+          - "apps/frontend-shell/src/views/RiskBoardView.tsx"
+          - "datacore/test/riskboard-truncation.seam.test.ts"
+        children: []
+      - id: "_note4"
+        path: "8/_note4"
+        kind: "note"
+        form: "note"
+        title: "> **WO-CAPACITY-PAGE-100PCT 残口补闭（2026-07-30 · 「产能推演」页 100% 实"
+        title_truncated: true
+        lines:
+          - 3680
+          - 3695
+        own_lines:
+          - 3680
+          - 3695
+        status: null
+        anchors:
+          - "docs/capacity-page-audit-ledger.md"
+          - "service.ts baseCapacityOutlook"
+          - "risk.ts resolveBaseId"
+          - "datacore/test/capacity-page-100pct.test.ts"
+          - "service.ts gapAttribution"
+          - "handlers.ts gap_attribution"
+          - "caplive-cockpit.test.tsx"
+          - "apps/frontend-shell/src/mocks/fixtures.ts"
+          - "service.ts discoverCapacityLevers"
+          - "risk.ts affectedOrdersAggregate"
+        children: []
       - id: "G-ONTOLOGY-INVARIANT-ENFORCEMENT-UNDECIDED"
         path: "8/G-ONTOLOGY-INVARIANT-ENFORCEMENT-UNDECIDED"
         kind: "breakpoint"
@@ -18023,7 +17839,7 @@ tree:
               - 3758
               - 3758
             status: "✅"
-            status_from: "表格最后一列（性质）"
+            status_from: "表头第 4 列（性质）"
             status_cell: "✅ **已修**：优先序改为**逐目标 min-max 归一后的单位产能净价值密度** `Σ ±w_k·norm_k(读数_k / qty)`（营收与\"避掉的违约金\" `+`、指派代价 `−`；归一口径与契约 `rank"
             anchors:
               - "solvers/service.ts"
@@ -19626,7 +19442,7 @@ edges:
       to: "8/G-GATE-ENTRYPOINT-PHANTOM"
       anchor: "apps/datacore/src/databuilder/service.ts:73 (assertProvisionalHonesty)"
     - from: "7/WO-DERIVED-RECOMPUTE-CHECK"
-      to: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-DERIVED-FORMULA-UNVERIFIED"
+      to: "8/G-DERIVED-FORMULA-UNVERIFIED"
       anchor: "apps/datacore/src/ontology.ts:127 (evalArithmetic)"
     - from: "8/G-DERIVSPEC-EMPTY"
       to: "8/G-SLICE-16LAYER-PROJECTION"
@@ -19641,10 +19457,10 @@ edges:
       to: "8/G-MIGRATION-NUMBER-COLLISION"
       anchor: "apps/datacore/src/repo/pg.ts:815 (runMigrations)"
     - from: "2/I/PropagationRule"
-      to: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-PROP-DIRECTION-SILENT-DEAD"
+      to: "8/G-PROP-DIRECTION-SILENT-DEAD"
       anchor: "apps/datacore/src/seed.ts:328 (demo_base_load_to_line_util)"
     - from: "2/I/PropagationRule"
-      to: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-PROP-DIRECTION-SILENT-DEAD"
+      to: "8/G-PROP-DIRECTION-SILENT-DEAD"
       anchor: "apps/datacore/src/sim/propagation.ts:757 (navOut)"
     - from: "8/G-BASE-SLOT-TYPE-SPLIT"
       to: "8/G-SOLVER-ARG-KEY-DRIFT"
@@ -19668,7 +19484,7 @@ edges:
       to: "8/G-MOCK-OVERCLAIM"
       anchor: "apps/datacore/src/synthetic/battery.ts:3595 (batteryLinkTypes)"
     - from: "7/WO-DERIVED-RECOMPUTE-CHECK"
-      to: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-DERIVED-FORMULA-UNVERIFIED"
+      to: "8/G-DERIVED-FORMULA-UNVERIFIED"
       anchor: "apps/datacore/src/synthetic/service.ts:2431 (derivationSpotChecks)"
     - from: "7/WO-GATE-MOCK-FIDELITY"
       to: "7/WO-GATE-MOCK-FIDELITY#2"
@@ -19701,7 +19517,7 @@ edges:
       to: "4/rule.scope_unresolved"
       anchor: "scheduler.ts:215 (reportUnresolvedScopes)"
     - from: "3/数据→本体→推演链"
-      to: "8/这条红本身就是本门有牙的最强证据：它咬的是别人独/G-RULE-SCOPE-NAMESPACE-CONFUSION"
+      to: "8/G-RULE-SCOPE-NAMESPACE-CONFUSION"
       anchor: "scheduler.ts:266 (listByType)"
     - from: "5/R-ARG-FIDELITY"
       to: "8/G-ARG-DROP-SEAM"
