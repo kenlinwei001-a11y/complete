@@ -407,7 +407,13 @@ export async function buildPairWeights(
         // ① **候选集来自图**：Model → ProductVersion → BOMHeader（不再是 `h.modelId === modelId`）。
         const reachable = walkPath(idx, modelObjId, BOM_COST_SHARE_PATH.toHeaders);
         const idOfProps = new Map<Record<string, unknown>, string>();
-        for (const h of reachable) idOfProps.set(hdrById.get(h)!.props, h);
+        // 落点**不是 BOMHeader** 就丢掉（路径写错/少写一跳时会落在 ProductVersion 上）。
+        // 丢掉后候选集为空 ⇒ 下面 ③ 的分叉探测当场报缺 —— 这正是判据 3 变异反证要的那种
+        // **可诊断的红**；若在这里 `!` 断言下去，得到的是一个 500 栈，看不出是路径写错了。
+        for (const h of reachable) {
+          const o = hdrById.get(h);
+          if (o) idOfProps.set(o.props, h);
+        }
         // ② **选取仍走 `bom.ts` 那一支**（全仓唯一判据：量产优先 + bomId 升序 · 与 `quote_margin` 同源）。
         //    这里只借它的**选取**，明细行改走链路 ⇒ 故 `details` 传 `[]`、`rows` 弃用不看。
         //    ⚠ 「哪一份 BOM 是生效的」是**业务规则不是图性质** —— 图只说「可达 2–3 份」，
