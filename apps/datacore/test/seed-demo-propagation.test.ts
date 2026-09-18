@@ -307,18 +307,28 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       expect(r, `规则表里找不到 ${key} ⇒ 取数坏了，不是"这条边不存在"`).toBeDefined();
       return r!.coefficient;
     };
-    /** 该规则落到某个目标上的权重之和（Σ=1 口径 ⇒ 1；`weightRef:null` ⇒ 入边条数）。 */
-    const weightSumOf = (body: unknown, ruleKey: string, targetId: string): number => {
-      const ex = (body as { pairWeighting?: { report: { explain: { ruleKey: string; targetObjectId: string; weight: number }[] } } })
+    /** 这一跳**实际开火的那一对**的权重 —— 引擎逐对取 `weights[源|目标]` 应用，
+     *  单源触发 ⇒ 乘数就是那一对的 weight，**不是**全目标的权重和。
+     *  修前的 `weightSumOf` 把全目标和（equal_share 恒 Σ=1）当成单源乘数 ⇒ 期望凭空大 N 倍，
+     *  这正是本用例 WIP·未验 落盘（f5cfb931e）从未真绿过的口径错：注释里「N=2 ⇒ 0.44585」
+     *  算得对、引擎也给的就是 0.44585，唯独取乘数的函数取错了那一格。
+     *  口径：挂了 weightRef ⇒ 从 explain 取那一对的行，取不到 = 取数坏了（⛔ 不许静默回落 1，
+     *  空出处上「和=1」恒真，正是本仓点名的陷阱）；`weightRef:null` ⇒ 每条开火入边各加一份
+     *  满额 ⇒ 单源乘数恒 1，与入边条数无关。 */
+    const pairWeightOf = (ruleKey: string, sourceId: string, targetId: string, body: unknown): number => {
+      const rule = rules.find((x) => x.key === ruleKey);
+      expect(rule, `规则表里找不到 ${ruleKey} ⇒ 取数坏了`).toBeDefined();
+      if (rule!.weightRef == null) return 1;
+      const ex = (body as { pairWeighting?: { report: { explain: { ruleKey: string; sourceObjectId: string; targetObjectId: string; weight: number }[] } } })
         .pairWeighting?.report.explain ?? [];
-      const rows = ex.filter((e) => e.ruleKey === ruleKey && e.targetObjectId === targetId);
-      // 该规则没声明口径 ⇒ 回包里没有它的逐对出处 ⇒ 每个源各出一整份，权重和 = 入边条数。
-      return rows.length === 0 ? 1 : rows.reduce((s, e) => s + e.weight, 0);
+      const row = ex.find((e) => e.ruleKey === ruleKey && e.sourceObjectId === sourceId && e.targetObjectId === targetId);
+      expect(row, `${ruleKey}（${JSON.stringify(rule!.weightRef)}）的逐对出处缺 ${sourceId}→${targetId} ⇒ 取数坏了，不许回落`).toBeDefined();
+      return row!.weight;
     };
     const tick1 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
     const t1 = st(tick1);
     // tick1：Supplier(10) × 该边每拍入流系数 × 该对权重 → Material.shortageRisk。Order 还没轮到（一 tick 一跳）。
-    const w1 = weightSumOf(tick1, "demo_supplier_delay_to_material_shortage", materialId);
+    const w1 = pairWeightOf("demo_supplier_delay_to_material_shortage", supplierId, materialId, tick1);
     const exp1 = Math.round(10 * coefOf("demo_supplier_delay_to_material_shortage") * w1 * 1e12) / 1e12;
     expect(exp1, "第 1 跳的期望值算成 0 ⇒ 系数或权重取数坏了（0 会让下面三句自洽成绿）").toBeGreaterThan(0);
     expect(t1[materialId]!.shortageRisk).toBe(exp1);
@@ -346,7 +356,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // ⚠ `demo_material_shortage_to_model_supply_risk` 本单也挂了 Σ=1 等份口径（N=7）⇒ 权重不再是 7 份满额。
     const tick2 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
     const t2 = st(tick2);
-    const w2 = weightSumOf(tick2, "demo_material_shortage_to_model_supply_risk", modelId);
+    const w2 = pairWeightOf("demo_material_shortage_to_model_supply_risk", materialId, modelId, tick2);
     const exp2 = Math.round(t1[materialId]!.shortageRisk * coefOf("demo_material_shortage_to_model_supply_risk") * w2 * 1e12) / 1e12;
     expect(exp2, "第 2 跳的期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
     expect(t2[modelId]!.supplyRisk).toBe(exp2);
@@ -355,7 +365,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // 🔴 这一行就是本单的效果层判据：供应侧的一次扰动，真的落到了订单缺口上。
     const tick3 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
     const t3 = st(tick3);
-    const w3 = weightSumOf(tick3, "demo_model_supply_risk_to_order_shortage", orderId);
+    const w3 = pairWeightOf("demo_model_supply_risk_to_order_shortage", modelId, orderId, tick3);
     const exp3 = Math.round(t2[modelId]!.supplyRisk * coefOf("demo_model_supply_risk_to_order_shortage") * w3 * 1e12) / 1e12;
     expect(exp3, "第 3 跳的期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
     expect(t3[orderId]!.shortageRisk).toBe(exp3);
@@ -825,6 +835,10 @@ describe("§6 WO-SIM-DESAT-3 · 去饱和三件的联立接缝（种子 → 推�
     expect(session!.curTick, "播种拍数不是 DEMO_SIM_WORLD_TICKS ⇒ ④ 没落地").toBe(DEMO_SIM_WORLD_TICKS);
     const last = await t.repos.sim.getTickState("demo", DEMO_SIM_WORLD_SESSION_ID, DEMO_SIM_WORLD_TICKS);
     expect(last, `tick${DEMO_SIM_WORLD_TICKS} 行不在库里 ⇒ 取数坏了`).not.toBeNull();
+    // `getTickState` 返回整行 `SimTickState`（{tick, state, pending, trace}），世界态在 `.state` 里 ——
+    // 修前把整行当世界态往下喂 ⇒ 在包装层上数格、`declared` 恒 0
+    // （本用例 WIP·未验 落盘 f5cfb931e 从未真绿过的形状错；app.ts 全部 6 个调用点都取 `.state`）。
+    const lastState = last!.state as unknown as Record<string, Record<string, number>>;
 
     // 🐤 金丝雀①：往返自证 `unsaturate` 真的是 `saturateToDomain` 的逆 ——
     //   逆写错了，下面那个"0 格"就毫无意义（它会把越界的格算成没越界）。
@@ -843,7 +857,7 @@ describe("§6 WO-SIM-DESAT-3 · 去饱和三件的联立接缝（种子 → 推�
     ).toBeGreaterThan(100);
 
     // ── 主判据：播完种的世界，已声明量纲的格 0 格反算越界 ────────────────────────
-    const atEnd = overDomain(last as unknown as Record<string, Record<string, number>>);
+    const atEnd = overDomain(lastState);
     expect(atEnd.declared, "末拍一个已声明量纲的格都没数到 ⇒ 取数坏了").toBe(atT0.declared);
     expect(
       atEnd.over,
@@ -857,7 +871,7 @@ describe("§6 WO-SIM-DESAT-3 · 去饱和三件的联立接缝（种子 → 推�
       STATE_VAR_DOMAINS.blockedPressure,
       "blockedPressure 不在 STATE_VAR_DOMAINS ⇒ 它又成了不夹不衰减的纯积分器（修前实测第 120 拍 30,831 且无上界）",
     ).toBeTruthy();
-    const blocked = Object.values(last as unknown as Record<string, Record<string, number>>)
+    const blocked = Object.values(lastState)
       .map((row) => row.blockedPressure)
       .filter((v): v is number => typeof v === "number");
     expect(blocked.length, "世界里一格 blockedPressure 都没有 ⇒ 设备侧那条链没播上，下面那句是空话").toBeGreaterThan(0);
