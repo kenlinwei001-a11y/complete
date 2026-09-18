@@ -12,8 +12,11 @@ merge 树与 merge-tree 干跑逐字节一致）。本报告覆盖：复验方 R
 | `asource-census.mjs` | `asource-census.json`（D6①普查 + ② forecast_bias） | 0 |
 | `d5-fingerprint.mjs` | `d5-fingerprint.json`（D6③ 四数） | 0 |
 
-环境基线：`pnpm install` RC=0 · `pnpm -r build` RC=0 · `pnpm -r typecheck` RC=2（恰 4 条**前置**红：
-agentcore/test `capability-map-live-seam.test.ts:398` ×1 + `rule-discovery-seam.test.ts:274-275` ×3，零新增）·
+环境基线：`pnpm install` RC=0 · `pnpm -r build` RC=0 · `pnpm -r typecheck` RC=2（4 条**前置**红：
+agentcore/test `capability-map-live-seam.test.ts:398` ×1 + `rule-discovery-seam.test.ts:274-275` ×3；
+⚠ **2026-09-18 订正**：`pnpm -r` 在 agentcore **bail 即停**，datacore typecheck 当时**没真跑到**——
+直跑 `pnpm --filter datacore typecheck` 实测另有 2 条前置 TS 错（同在 f5cfb931e 那份 WIP·未验 测试里，
+exp2/exp3 索引窄化），已随本轮修复收口，**现 datacore typecheck RC=0**）·
 datacore vitest 全量：**仓主叫停于 124/362，18 条 × 判 NOT-ADJUDICATED**（详见末节「vitest 基线叫停记录」）。
 
 ---
@@ -177,7 +180,24 @@ D5 落点格（`obj_model_方形-LFP`）轨迹：3.8819 → 2.398979（120）→
     旁证：本单 steady-state 在世界龄 256 仍量到 6 格已声明量纲的 costPressure ⇒ 世界末拍并非真 0 格，
     是该测试的末拍取数路径对不上合并树（desat3 时代 curTick=3 假设 vs 96 拍预滚后的会话形态）。
   - **同文件 §5 对照实验（铁律 1.5「9.75 不许再出现」守门）两跑皆绿**（9.7s）⇒ D5 判据在套件层再确认。
-  - 剩余 3 文件 6 次跑：编排器排队等下一个清洁窗口，跑完即补全表。
+
+**修复（仓主令「找到根源去修复它」，2026-09-18；commit 508a81e5c + 窄化补丁）——
+根源不是引擎，是 desat3 两个 `WIP·未验` 提交（f5cfb931e 测试 / e18e1eed9 实现）从未真跑过：**
+
+- ① 3-hop 用例：注释算术（`10×0.08917×0.5=0.44585`）与引擎产出**逐位吻合**，唯一错的是取乘数的
+  `weightSumOf`——把「全目标权重和」（equal_share 恒 Σ=1）当成「单源触发那一对的权重」，
+  期望凭空大 N 倍。修为 `pairWeightOf`：按 (ruleKey, 开火源, 目标) 取**那一对**的 weight；
+  挂了 weightRef 而 explain 缺行 ⇒ 报「取数坏了」**⛔ 不许静默回落 1**（空集上「和=1」恒真，
+  正是本仓点名的陷阱）；`weightRef:null` ⇒ 单源乘数恒 1。顺带收口两条**前置** TS 错
+  （exp2/exp3 在 `Record` 索引值上做算术，noUncheckedIndexedAccess 下是 `number|undefined`；
+  基线没看见它们是 `pnpm -r` bail 截断所致）——`?.` + 存在性金丝雀，
+  「格读不到」与「数值不对」分开报。
+- ② §6 用例：`getTickState` 返回整行 `SimTickState`（app.ts 全部 6 个调用点都取 `.state`），
+  用例把整行当世界态喂 `overDomain` ⇒ 包装层数格、`declared` 恒 0。修为解包 `last.state`
+  （主判据与 blockedPressure 检查两处）。
+- 修后复验：编排器重跑 4 文件 × 各 2 次（文件① = 修后验证，文件②③④ = 原范围剩余），
+  跑完补全表。若 §6 主判据（末拍 0 格反算越界）不过，那是 desat3 ①②③ 的**产品侧**真账，
+  本单只点名不修（`seed-derivation-specs.ts` 仍禁碰）。
 
 ## 剩余
 

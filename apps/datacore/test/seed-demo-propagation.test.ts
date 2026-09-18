@@ -331,7 +331,9 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const w1 = pairWeightOf("demo_supplier_delay_to_material_shortage", supplierId, materialId, tick1);
     const exp1 = Math.round(10 * coefOf("demo_supplier_delay_to_material_shortage") * w1 * 1e12) / 1e12;
     expect(exp1, "第 1 跳的期望值算成 0 ⇒ 系数或权重取数坏了（0 会让下面三句自洽成绿）").toBeGreaterThan(0);
-    expect(t1[materialId]!.shortageRisk).toBe(exp1);
+    const m1 = t1[materialId]?.shortageRisk;
+    expect(m1, "tick1 后 Material.shortageRisk 格读不到 ⇒ 第 1 跳没发生，下面全是空话").toBeDefined();
+    expect(m1).toBe(exp1);
     expect(t1[orderId]?.shortageRisk ?? 0).toBe(0);
     // tick2：Model.supplyRisk = 9 × 0.7 = 6.3。
     //
@@ -357,16 +359,18 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const tick2 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
     const t2 = st(tick2);
     const w2 = pairWeightOf("demo_material_shortage_to_model_supply_risk", materialId, modelId, tick2);
-    const exp2 = Math.round(t1[materialId]!.shortageRisk * coefOf("demo_material_shortage_to_model_supply_risk") * w2 * 1e12) / 1e12;
+    const exp2 = Math.round(m1! * coefOf("demo_material_shortage_to_model_supply_risk") * w2 * 1e12) / 1e12;
     expect(exp2, "第 2 跳的期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
-    expect(t2[modelId]!.supplyRisk).toBe(exp2);
+    const s2 = t2[modelId]?.supplyRisk;
+    expect(s2, "tick2 后 Model.supplyRisk 格读不到 ⇒ 第 2 跳没发生，下面全是空话").toBeDefined();
+    expect(s2).toBe(exp2);
     expect(t2[orderId]?.shortageRisk ?? 0).toBe(0);
     // tick3：Model(上一跳读数) × 该边每拍入流系数 × 该对权重 → Order.shortageRisk。
     // 🔴 这一行就是本单的效果层判据：供应侧的一次扰动，真的落到了订单缺口上。
     const tick3 = (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
     const t3 = st(tick3);
     const w3 = pairWeightOf("demo_model_supply_risk_to_order_shortage", modelId, orderId, tick3);
-    const exp3 = Math.round(t2[modelId]!.supplyRisk * coefOf("demo_model_supply_risk_to_order_shortage") * w3 * 1e12) / 1e12;
+    const exp3 = Math.round(s2! * coefOf("demo_model_supply_risk_to_order_shortage") * w3 * 1e12) / 1e12;
     expect(exp3, "第 3 跳的期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
     expect(t3[orderId]!.shortageRisk).toBe(exp3);
 
