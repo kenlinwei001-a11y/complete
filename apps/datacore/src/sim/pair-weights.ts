@@ -429,11 +429,19 @@ export async function buildPairWeights(
           divergent.push(`${modelKeyOf.get(modelObjId) ?? modelObjId}：链路法选 ${chainBomId ?? "（无）"}、属性法选 ${attrBomId ?? "（无）"}`);
         }
         // ④ 明细与物料也走链路：BOMHeader ← BOMDetail → Material。
+        //
+        // ⚠ **明细必须按 `bom.ts` 声明的那个序遍历**（`sequence` 升序，并列再按 `bomDetailId`），
+        //   不能拿 `walkPath` 的对象 id 序直接用 —— 下面 `total` 是**浮点累加**，而浮点加法
+        //   不满足结合律：换个序，分母就可能差最后一位，权重跟着差，本仓逐字节断言当场红。
+        //   排序口径也是「只此一份」的一部分：遍历换成图，**排序仍随 `bom.ts`**。
+        const walked = (effId ? walkPath(idx, effId, BOM_COST_SHARE_PATH.toDetails) : [])
+          .map((did) => dtlById.get(did))
+          .filter((d): d is ObjectInstance => d !== undefined)
+          .sort((a, b) => num(a.props.sequence) - num(b.props.sequence) || (str(a.props.bomDetailId) < str(b.props.bomDetailId) ? -1 : 1));
         const row = new Map<string, { cost: number; qty: number; loss: number }>();
         let total = 0;
-        for (const did of effId ? walkPath(idx, effId, BOM_COST_SHARE_PATH.toDetails) : []) {
-          const d = dtlById.get(did);
-          if (!d) continue;
+        for (const d of walked) {
+          const did = d.id;
           // `detail_uses_material` 是 N:1（契约声明）；真出现多条时取升序首条，R6 稳定。
           const matObjId = walkPath(idx, did, BOM_COST_SHARE_PATH.toMaterial)[0] ?? null;
           const price = matObjId ? priceByObjId.get(matObjId) ?? 0 : 0;
