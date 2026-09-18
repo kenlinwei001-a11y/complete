@@ -113,6 +113,54 @@
 真值覆盖率；卡点 ① 是未建版面如实禁用，卡点 ② 是环境。**没有发现任何一处 mock 冒充真后端、
 也没有发现任何一处卡住后被静默绕过。**
 
+## 模块调用矩阵（2026-09-18 补：哪些件真被调了，哪些没调）
+
+证据源：tick-response-1.json 全披露 + datacore.log + agentcore.log 双服务端访问日志（比浏览器侧
+network.log 更全 —— 浏览器只看得到自己发的，agentcore→datacore 的 OBO 服务间调用只有服务端日志有）。
+
+| 模块 | 调了吗 | 实测证据 |
+|---|---|---|
+| **本体切片** | ✅ | `slice: GLOBAL · hops=1 · 12,499 节点 / 13,533 边 · 0 丢弃 · unresolved=null` |
+| **规则（传导边）** | ✅ | 声明 49 / 触发 48；items 49 条逐条带 coefficient/coefficientSource/weightBasis/weightPairs/delayTicks/combine；`withCoefficientRef=0`（全内联常数，与 D5 审计一致）；对抗方 `enabled=false`（1 条还手规则 suppressed 如实列出） |
+| **约束** | ✅ | constraints 七子键：stateVarBounds **33 条**（值域 min/max/restPoint + 衰减 λ=0.37 + decayRef 出处逐条可溯）· ruleClamps 0 · saturations 40 · cadenceSkipped 4 · undeclaredStateVars 14 · decayUnresolved 0 |
+| **求解器 ×4 种** | ✅ | datacore.log 实到：`chain_impediments` ×2（受阻环节 18：卡点5·堵点6·断点7）、`chain_loss_attribution` ×2（损失归因）—— 这两个走 **agentcore `/b/v1/solvers/:key/run` OBO 透传**（server.ts:2468：entitlement 先查 → 15s 超时真取消 → OBO 到 `/a/v1/solvers/{key}/invoke`）；`bottleneck_matrix` ×8 + `mitigation_select` ×8（专家页签直调 datacore） |
+| **agent** | ❌ 未调 | `agent: {invoked:false, calls:0, provider:null, model:null}` —— 披露层如实，屏上如实 |
+| **skill（B4）** | ❌ 未调 | agentcore.log 全程零 skill 路由；skill 是问答编排路的件，控制台推演主链不经过 |
+| **LLM** | ❌ 未调 | agentcore.log 零 provider 调用；推演助手 AI 问答（c0828-ai-ask）未点击（未测面已声明，需供应商 key） |
+| **agentcore 本体** | ✅ 但只是透传+场景卡 | `/b/v1/solvers/*/run` ×4 · `/b/v1/scenarios` ×2 · `/b/v1/outbox` ×12（事件轮询）· features ×1 |
+
+timings 五段（真耗时）：graph 362 / **shadow 11,085** / engine 1,180 / persist 263 / total 12,955ms —— 大头在影子线段。
+
+## hash01 占位数据：是不是 mock、被没被引用（2026-09-18 补，逐格实测）
+
+**是不是 mock**：不是 MSW/拦截桩，是种子世界 tick0 的**确定性占位初值** —— `deriveSeedBaseSnapshot`
+（sim/seed-world.ts:488）对「本体里没有同名数值属性」的 (类型,变量) 格铺
+`round(seedHash01(objectId|变量) × 100)`（FNV-1a，同种子重跑逐字节一致，R6）；有同名数值属性的走
+真值支直读对象属性。平台**没有拿它冒充实测**：会话出处标 `origin=DERIVED`，屏上长文给两个真数
+（tick0：4,171 格实测 + 2,192 格占位）。
+
+**被没被引用 —— 被，而且是引擎级引用，三层实锤**：
+
+1. **存在即被引用**：格子按 `varsByType(rules)` 铺 —— 只有被 50 条传导边的源/目标引用的 (类型,变量)
+   才有格。占位格的存在本身就是规则引用的结果。
+2. **源侧占位每拍都在驱动下游**：引擎读的是**绝对值**（`propagation.ts:864`
+   `sourceVal = effState[sourceId]?.[var] ?? 0` ⇒ `baseAmount = 系数 × sourceVal × 权重`）；
+   且**源侧专用变量不衰减**（`propagation.ts:715` 外生输入 skip）⇒ 源侧占位值永生、每拍注入。
+   tick97 逐格重算 hash 实测：**413/6,363 格（6.5%）仍逐字节持占位初值**（handlingBacklog 287/372 ·
+   orderChurn 110/150 · equipmentFailure 10/780 · splitPressure 4/873 · leadDays 2/150）。
+   真实 97→100 trace 对账：**312/6,770 行（4.6%）由占位源驱动**，按规则 =
+   demo_order_churn_to_line_split 191 + demo_order_churn_to_model_demand_load 109 +
+   demo_equipment_failure_to_process_queue 10 + demo_order_leaddays_to_model_horizon 2；
+   但 |amount| 占比仅 **0.16%**（2,138 / 1,361,201）—— 占位源在传，量级很小。
+3. **目标侧占位已被真推演洗掉**：96 拍预滚后，2,192 → 413；本次 3,580 格变化里
+   **从占位初值变走的 = 0 格**（占位格全是「只被读不被写」的源侧或无入边终态）。
+
+结论一句：**占位数据不是 mock 拦截、没有冒充真后端；但它不是死数据 —— 有 122 个源侧占位格
+（orderChurn 110 + equipmentFailure 10 + leadDays 2）今天仍在以「系数×占位值」每拍注入下游，
+占拍内传导总量 0.16%。** 平台对这件事的标注（出处 DERIVED + 实测/占位两真数）是实的；
+要消掉这 0.16%，路径是给这 3 个 (类型,变量) 补真实属性源（同 WO-SIM-REAL-DATA 的 valueRef 口径），
+属产品决策，本单只点名。
+
 ## 未测面（如实声明）
 
 - 推演助手 AI 问答（`c0828-ai-ask`，需 LLM 供应商配置；agentcore 已起但未配 key）。
