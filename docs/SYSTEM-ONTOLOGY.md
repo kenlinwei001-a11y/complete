@@ -1979,9 +1979,39 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 - **⑭ 只标不动**：评审同条还标了「⑭ 方向**可能**反」（换型压力取决于型号数与切换频率，
   单型号负荷高反而长批次、换型更少）—— 措辞是「可能」，**留仓主定夺，本段不改**（见 §6 答复表）。
 
+**落地 ⑤ · 形态② 收口：6 个纯积分器带域声明，4 个逐项裁决 defer（2026-09-18）**：
+评审原文：「给积压类变量声明**消化速率**（不是上界 —— 上界确实拍不出来，但**消化速率**有出处：产能）」
+「那个理由对上界成立，但对衰减不成立 —— 检验积压的消化速率 = 检验产能，这是有出处的。」
+
+- **契约**：`StateVarDomain.max` 两个 schema 改 **nullable**（`null` = 无界声明；
+  ⛔ 不许 `Infinity` —— zod 4 拒无限值、JSON 串行化落 `null`，两条路 2026-09-18 实测都死）。
+  引擎 `saturateToDomain` 加显式 `null` 支（⛔ 不许 `max ?? Infinity` 混进有界路径：bandHi=∞ ⇒ kneeHi=NaN，
+  「碰巧不夹」不是「声明了无界」）。
+- **6 个进表**：`queueDays`（λ=0.37 ← 检验周期 med 3 天 n=30）· `repairBacklog`（0.75 ← 维修工期 med 1 天 n=193）·
+  `qualificationQueue`（0.22 ← certHours med 134h=5.58 天 n=18）· `inspectBacklog`（0.37 **⚠ 暂定档**，
+  QualityLot 无工期/产能属性，借检验周期）· `handlingBacklog`（0.75 **⚠ 暂定档**，ExceptionEvent 无处置工期，
+  借维修工期）—— 五者 `min 0 / max null / rest 0`，λ 全部走 `C35.params` 新增 5 个 paramKey（R14 零内联）；
+  `blockedPressure` 归压力族 `[0,100]` 共享 `pressureDecayPerTick`（评审：「名字是 0–100 压力指数，
+  却无界累积到 945」⇒ 自报量纲即出处）。
+- **λ 推导同一把尺**：几何衰减、med 工期后残留 25% ⇒ `λ = 1 − 0.25^(1/med)`（与压力族既有约定同源；
+  工期全部实测 `/tmp/t6-duration-probe.txt`）。行为探针 `/tmp/t6-probe.txt` RC=0：
+  纯衰减对照 7/7（100×(1−λ) 逐位相等）、1e6 无暗夹、`blockedPressure` 200→91.78 夹入带内 + saturations 记账。
+- **4 个 defer（理由各异，不许再拿一句「写不出出处」混盖）**：`clearanceQueueDays`
+  （实测 **−8.9 天负值**可疑 ⇒ 交仓主 —— 夹下界 0 是把数据 bug 藏成正常）· `procurementDelay`/`deliveryDelay`
+  （**根源**入度 0，无入流不累积 ⇒ 非积分器）· `coverDays`（根源 + 真值支 + restPoint≠0 无出处）。
+  tick 回执 `undeclaredStateVars` 实测 16 → **10**，缺口继续留在屏上。
+- **种子超界真值**：`Line.blockedPressure` 实测 27.72–182.73（n=130，越界 49 条 `/tmp/t6-arm2-scan.txt`）——
+  引擎 tick1 软夹 129 条逐笔记 saturations；对象真值在臂2 EXCEPTIONS `[0,183]` 如实归档；
+  **种子生成式是否收口 0–100 交仓主**（动种子 = 动 hash，不在本单）。
+- **triad G-ROOT-4 远端金值重测**：信号形态从「积分器累积 +0.2050→+0.4563」变为
+  「tick2 峰 +0.0026 后逐拍衰减」（λ=0.37 + 软夹 ⇒ 均衡不累积；`/tmp/t6-triad-probe.txt`），
+  断言 `farMax > 0` 不变。
+- **前端**：披露面板「上界」`null` 渲染「无上界」（纯渲染分支，非 mock→real 切换，禁令 2 不触，T7 报备）。
+
 **评审 v2 登记而未落（诚实挂账，均不阻塞本段交付）**：
 ⑦ Kingman 排队形状（引擎今天只有 delayTicks 整数延迟，无形状参数 = **引擎缺口**，单独立项）·
-⑭ 方向裁决待仓主 · ⑫ 保留/删除待仓主 · 积压族 decay λ 值（形态②）随 T6 单处理。
+⑭ 方向裁决待仓主 · ⑫ 保留/删除待仓主 · λ 暂定档 ×2（inspectBacklog/handlingBacklog）待仓主定档 ·
+clearanceQueueDays 负值数据待仓主 · 种子 blockedPressure 0–100 收口待仓主 · §6 Q4 替代料可用比例（−0.3 暂定档）。
 
 ### 对抗链路 · 我方应对 → 对手方**还手** → 回流进世界态（WO-ADVERSARY-REACTION · 2026-09-07 · 默认关闭）
 
