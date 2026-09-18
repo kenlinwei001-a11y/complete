@@ -914,10 +914,23 @@ ChainImpediment(卡点/堵点/断点,判定器产出) --origin{binding,obj}(判�
   --rungsFor(档位只取真实存在的值:规则阈值 THRESHOLD / 同侪 PEER_NEXT|PEER_BEST)--> Rung[]  ⚠ 零步长常数(R14/RL5)
   --逐候选真试算(patchCapacityContext → 判据读数重算 + Σ computeByProcessModel.p50)--> effectKind 量出来
       · 拨完什么都没动 或 全维不改善 → 丢弃(照抄 discoverLevers 的 sensitivity===0 诚实空)
+      · **丢弃必须记账**(WO-IMPEDIMENT-LEVERS 2026-09-18 补):triedRungs/flatRungs/worseRungs 三桶
+        → 试算台账 unshift 进 gaps 首位 ⇒ 屏上的 noCandidateReason 一定带它(slice(0,4) 挤不掉)
+        ⚠ 修前这两个分支是**静默 continue**,于是屏上只剩 join 侧那句「够不着」,把「够着了、试过了、没传导」
+          误报成「没有可拨动落点」——修法相反(后者补落点册一点用都没有),已照此立错一张单
   --全序 compareSolutionCandidate → 每根杠杆留最好一个 → 效果雷同判重复 → 截 N--> ChainImpediment.candidates[]
 有效候选 < MIN(2) → candidates:[] + noCandidateReason(给人读) + noCandidateKind(给代码判)
       · NONE        枚举跑完了,真没有有效解法        → 真结论,该修数据面
       · UNAVAILABLE 枚举没跑完(预算耗尽/规则快照缺失/origin 未回传) → 缺答不是答  ⚠ 两者修法相反,禁塌成一个
+      ⚠ **NONE 内部还要再分两类,别再合起来读**(2026-09-18 真起 SEED_DEMO=1 实测,18 点/4 有方案/14 NONE):
+        14 条 NONE **没有一条**是「一根杠杆都够不着」——每条都探到 2–10 个锚点、真跑 5–34 次逐档试算。
+        三面墙(各自有对照实验,见 `docs/evidence/` 与本链说明):
+        ① patchCapacityContext 只克隆 Process/Equipment/Line/Material/ChangeoverMatrix
+           ⇒ 落点登记在 MaterialBalance/MaterialBatch/Base 上一律「拨不动」(枚举器自己会报这句)
+        ② matFactor = min over 关键物料 of onHand/(dailyUse×leadTime) ⇒ **只有 argmin 那一个物料有改善敏感度**
+           (今日 argmin = 磷酸铁锂正极 cov 0.3812);其余 7 个物料怎么拨,Σp50 一格不动
+        ③ Line.capacityDaily 在**同一基地内 10 条线取值完全相同**(13 基地各 1 个值)
+           ⇒ rungsFor 取不到任何同侪档位,按「拒绝拍一个步长」返回空档位集
 候选 id --唯一构造处--> contracts solutionCandidateId()  ⚠ 入参全取自候选公开字段 ⇒ 单源可被机器核
 候选采纳 --另起--> ActionDraft(走正门 R4)   ⚠ 沙盘只推演不写真值(RL4);候选是值对象,不落表不进审批面
 ```
