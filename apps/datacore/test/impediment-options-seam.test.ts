@@ -329,6 +329,10 @@ describe("WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种�
     await seedBattery(t);
     const s = await scan(t);
 
+    // 前置金丝雀：本例断言的是**算完了**那一态。预算耗尽（truncated）时产能维压根没算，
+    // 台账按设计不出（见 `impediment-options.ts` 的 `!truncated` 注释），那是 S3-5 的地盘。
+    expect(s.candidatesTruncated).toBe(false);
+
     // 与 S3-4 同一个选集口径（`candidates !== undefined` ⇒ 枚举真跑过这一条，不是字段压根没下发）
     const empties = s.impediments.filter((im) => (im.candidates ?? []).length === 0 && im.candidates !== undefined);
     expect(empties.length).toBeGreaterThan(0); // 金丝雀：这条空了下面全是空跑

@@ -806,7 +806,10 @@ export function enumerateImpedimentOptions(
     // 为什么 `unshift` 而不是 `push`：`noCandidateReason` 只取 `gaps.slice(0, 4)`，而 join 侧那几条
     // （LOCUS_PROP / RULE_GATE 够不着）是**先**被 push 进来的。不置顶，这条最强的事实会被挤出屏幕，
     // 于是屏上永远只剩"够不着"——正是本次要治的那个误导。
-    if (triedRungs > 0) {
+    // ⚠ `!truncated` 是必须的，不是保险：探针预算耗尽时产能那一维**压根没算**（`capacityFor` 直接返回
+    // null），此时说「拨完两维读数一动不动」是假话 —— 而且同一句回包的前缀正写着「枚举**未能算完**」，
+    // 两句自相矛盾。预算耗尽这一态由 `UNAVAILABLE` 那套文案负责解释，本台账不掺和。
+    if (triedRungs > 0 && !truncated) {
       const ledger =
         `真试算 ${triedRungs} 个档位 → 有效 ${effective.length} 个：` +
         `${flatRungs} 个拨完两维读数（判据超阈幅度 ${binding.metricPath} / 产能 cellsPerDayP50）一动不动、` +
