@@ -1890,6 +1890,63 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 含三个金丝雀：源码抽取器恒等式 · 入度计数器拿已知非零量纲自证 · 传导用已知走得通的老根源
 `deliveryDelay` 自证（它若也不动 ⇒ 报「引擎坏了」，不许报「新边接错了」）。
 
+### 传导规则业务评审 v2 · 落地段（WO-PROP-REVIEW-V2 · 2026-09-17/18 · 传导规则 50 → 55）
+
+> 评审核心判据（仓主）：**「推演推的是『变化』，不是『存量』」** —— 一条边该进图，
+> 当且仅当它传导的东西**经常变**；排序尺子 = **场景敞口（单次金额 × 年频次）**。
+> v1 的化成/分容 4 条边按此判据**撤回、从未落地**。评审三条结构性发现：
+> ① 全图几乎无负反馈（18/32 类型是死胡同，负系数 1/50）；② 15 个无域状态变量是纯积分器
+> （修法 = 声明消化速率 decay，不是加上界）；③ 系数 0/50 走 `coefficientRef`。
+> ③ 已由 `WO-PROP-COEF-CONFIG`（T1）闭合：**全部 55 条边**系数单源在 `C36.params`，
+> `ruleParamOf` 在模块装载期缺 key 即抛错（`seed.ts demoPropagationRulesWithDomain`）。
+
+**落地 ① · ㊶ `orderChurn → Model.demandLoad` 符号翻负（+0.5 → −0.5 · 评审优先级 1）**：
+「插单/取消带来排产返工 ⇒ 推高负载」把**事务扰动**与**净需求方向**混在一格。
+变更里取消/缩水占多、在手需求被高估 ⇒ 需求负载应随变更频度**下修**；
+事务扰动那半截由既有 `demo_order_churn_to_line_split`（+0.7 · 改行/改期压力）正向表达，两条不重复。
+这是**全图第 2 条负系数**（第 1 条是 G-ROOT-1 `forecastBias` −0.6）。
+`weightRef: { basis: "source_qty_relative" }` 与同格同链的 `demo_order_demand_pressure` 同口径（WO-COEF-FROM-BOM 的「同格同口径」纪律）。
+
+**落地 ② · 库存环：FGI 两条出边（评审优先级 2「库存 buffer 必须能吸收需求」）**：
+`FinishedGoodsInventory` 此前只当 target ⇒ 库存对需求零阻尼。
+`coverDays`（成品覆盖天数）由派生规格 `fgi_cover_days` 落到世界格，成为**库存侧第一个被读的量纲**。
+
+| 边 | 系数 | 语义 |
+|---|---|---|
+| `FGI.coverDays --fg_of_model--> Model.demandLoad` | **−0.5** | 现货覆盖越高 ⇒ 在手订单的即时需求压力越被库存吸收（缓冲） |
+| `FGI.drawdownPressure --fg_of_model--> Model.demandLoad` | +0.5 | 渠道持续提货 ⇒ 需求真实存在，回补（第 3 条负系数的配对正边） |
+
+链路 `fg_of_model` 已物化 18 条（FGI 18/18 行全覆盖）⇒ **零新 linkType、零新物化**。
+回路安全性：边②与入边构成 `Model.demandLoad ⇄ FGI.drawdownPressure` 二拍环，
+环增益 0.6 × 0.5 = **0.3 < 1** ⇒ 阻尼收敛；边①的源 `coverDays` 无出边（纯源）不成环。
+
+**落地 ③ · 物料环：先补本体两条链，再补三条边（评审优先级 4「物料是第二高频扰动源，今天零阻尼」）**：
+评审明写「5 条补一行规则即可，2 条要先补本体关系——而那两条恰好都在物料环上」。
+
+| 链路 key | 方向 | 实例数 | 说明 |
+|---|---|---|---|
+| `inspection_for_material` | IncomingInspection → Material | 30 | **影响向**·不补它 `IncomingInspection` 只有入边（`po_inspected_by` 的末端）永远当死胡同；与 `po_inspected_by` **共用同一个循环变量**物化（改归属不可能只改一半） |
+| `balance_drives_po` | MaterialBalance → PurchaseOrder | 30 | **影响向**·MRP 缺口到采购单的唯一一跳；按同料名解析（`material_has_balance` 同一循环内），包材无 PO 诚实不连 |
+
+| 边 | 系数 | delay | 语义 |
+|---|---|---|---|
+| `MaterialAlternative.switchPressure --alt_for_material(5条·已物化)--> Material.shortageRisk` | **−0.3**（第 4 条负系数） | 1 | 替代切换有审批/换线周期 ⇒ 缓解下一拍生效；**负环自阻尼**（有 Plan B ⇒ 短缺风险下降） |
+| `IncomingInspection.queueDays --inspection_for_material--> Material.shortageRisk` | +0.2 | 0 | 货到堵在检验 = 当下不可用 |
+| `MaterialBalance.gapPressure --balance_drives_po--> PurchaseOrder.expeditePressure` | +0.5 | 1 | MRP 跑出缺口 ⇒ 采购下一拍才催得到 |
+
+环增益自证：`shortage→expedite(0.5) × expedite→queue(0.6) × queue→shortage(0.2) = 0.06 ≪ 1` 阻尼。
+**世界格数不变式**（实测 `/tmp/t4-probe2.txt`）：三个源格（switchPressure/queueDays/gapPressure）
+早已作为既有边的 target 在世界里 ⇒ `totalCells 6381 / measuredCells 4189` **逐字节不变**；
+规则 52 → 55，金值 `seed-demo-propagation.test.ts` 同步（DIRS 物料环组**不额外造源**——
+三源量纲非入度 0 根，由供应商延迟源头沿既有链带到，探针实测 9 拍内各触发 12/60/72 次）。
+
+**⚠ −0.3 是暂定档**：替代料可用比例（§6 Q4）待仓主定档，系数只取「方向对 + 量级不压过
+主链（短缺入边 0.8/0.6/0.5）」，**不拿系数凑大屏数**。
+
+**评审 v2 登记而未落（诚实挂账，均不阻塞本段交付）**：
+⑦ Kingman 排队形状（引擎今天只有 delayTicks 整数延迟，无形状参数 = **引擎缺口**，单独立项）·
+⑭ 方向裁决待仓主 · ⑫ 保留/删除待仓主 · 积压族 decay λ 值（形态②）随 T6 单处理。
+
 ### 对抗链路 · 我方应对 → 对手方**还手** → 回流进世界态（WO-ADVERSARY-REACTION · 2026-09-07 · 默认关闭）
 
 **今天的行为 X（实测·金丝雀见下）/ 应该的 Y**
