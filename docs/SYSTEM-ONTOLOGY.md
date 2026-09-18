@@ -1828,6 +1828,10 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 > `forecastBias → demandPressure` 有意为之（预测偏差带方向，需求压力不带），**不是回归**。
 > 收编时 `WO-SIM-ROOT-PROCUREMENT` 接缝测试的金丝雀因此改指 `deliveryDelay`（仍是入度 0），
 > 并加了一条反向断言钉住「降级是有意的」。下文保留本单开发时的原始度量，读时以本框为准。
+> ⚠ **2026-09-18 再更新（WO-PROP-REVIEW-V2 ㉜ 反向，见下节落地④）**：根源 6 → **7** ——
+> `loadPressure` 升格根源（原来唯一写它的 ㉜ 被裁方向反、掉头成由它出发，入度 1→0、出度 2）。
+> 根源七个：`deliveryDelay` · `equipmentFailure` · `forecastBias` · `loadPressure` · `orderChurn` ·
+> `priceShock` · `procurementDelay`。传导边现为 **55**（v2 落地①②③合计 +5 条，详见下节）。
 
 **来历**：仓主给的扰动因素**分层判据** ——「要找的是**根源**扰动因素，不是**衍生**因素
 （比如库存就是衍生因素），而物料采购是根源扰动因素……比如销售预测的准确性，
@@ -1879,6 +1883,11 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
   ⇒ 落在 `Equipment.equipmentFailure`，两跳到 `loadPressure`：
   `equipmentFailure → Process.queuePressure → Equipment.loadPressure`（业务因果为真：
   某台设备故障 ⇒ 它那道工序排队 ⇒ 该工序其余设备负荷被顶上去）。
+  ⚠ **2026-09-18 第二跳被取代（评审 v2 ㉜，见下节落地④）**：`queuePressure → loadPressure`
+  这条边被裁「🔴 方向反」（是设备负荷导致排队，不是反过来）并已删除，`loadPressure` 升格根源。
+  `equipmentFailure` 的远端落点改经 `queuePressure → Line.blockedPressure`
+  （triad G-ROOT-4 远端臂已重瞄，实测到达拍 tick2 = +0.2050、单调阻尼增至 tick8 = +0.4563；
+  反向证据 = 扰 `equipmentFailure` 后 `loadPressure` 逐拍 Δ 全 0）。
 
 **🔴 三条新边都不构成正反馈回路**：三个新量纲**没有任何规则写它们**（这正是「根源」的定义）
 ⇒ 环不闭合，不自我放大。同一条判据在档 3 `demo_po_expedite_to_supplier_review` 处已立过。
@@ -1942,6 +1951,33 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 
 **⚠ −0.3 是暂定档**：替代料可用比例（§6 Q4）待仓主定档，系数只取「方向对 + 量级不压过
 主链（短缺入边 0.8/0.6/0.5）」，**不拿系数凑大屏数**。
+
+**落地 ④ · ㉜ 方向反向：`Equipment.loadPressure → Process.queuePressure`（评审优先级 5，2026-09-18）**：
+评审原文：「🔴 **方向反**。是设备负荷导致排队，不是反过来（㊷ 方向正相反，佐证这条画反了）。建议删或反向」。
+按「反向」落地（不删）：旧边 `Process.queuePressure --process_uses_equipment--> Equipment.loadPressure`（0.5）
+改为 `Equipment.loadPressure --equip_used_in--> Process.queuePressure`（系数 0.5 **原样保留**——评审只裁方向不裁量级；
+两条链类型 780 条实例、恰好互逆）。
+
+- **规则 id 原样保留**（`simpr_demo_process_queue_to_equipment`）：pg 部署按 id upsert，
+  换 id 会在 pg 库里留下幽灵旧行；key 改为 `demo_equipment_load_to_process_queue`，
+  `C36.params` 同步改名（`ruleParamOf` 装载期按 key 查，缺 key 即抛错，改名必然成对）。
+- **`loadPressure` 升格第 7 个根源**：入度 1→0（grep 全表原来只有 ㉜ 写它），
+  出度 2（反向 ㉜ + `demo_equipment_load_to_repair_backlog`）。回路安全性自证**平凡化**：
+  没有任何规则写它 ⇒ 不可能成环。
+- **世界格数不变式**（实测 `/tmp/t5-probe.txt`）：`totalCells 6381 / measuredCells 4189`
+  **逐字节不变**（同一对格子角色互换：queuePressure 少一条出边、loadPressure 少一条入边）；
+  默认世界 8 拍三条受影响边全触发（反向 ㉜ 6240 次 · 维修积压 1351 次 · 线受阻 5200 次）。
+- **逐条真触发世界必须自带源，且一台设备喂不饱两条边**（实测 `/tmp/t5-probe4.txt`）：
+  `head("equip_used_in")` 那台（slurry-coating-E1）**没有** `equipment_has_maintenance_order` 链
+  ⇒ 单格方案维修积压边 0 次、总触发 53；金值写**两格**（rootEquipId + maintEquipId），
+  两条边 18/8 次、总触发 54 = 54 整。DIRS 新组「设备负荷根源」，组数 prose 更正为十六组
+  （旧注「十四组」当时实已 15 组 —— prose 无机器守卫，机器守的是 physicalKeys 逐字节比对）。
+- **triad G-ROOT-4 远端臂重瞄**：旧落点 `Equipment.loadPressure` 随反向不复存在
+  （反向证据：扰 `equipmentFailure` 后其逐拍 Δ **全 0**），改瞄 `Line.blockedPressure`
+  —— 比原来更远一跳、更贴近订单侧（走 `demo_process_queue_to_line_blocked` 0.55/delay0），
+  实测到达拍 tick2 = +0.2050、单调阻尼增至 tick8 = +0.4563（`/tmp/t5-triad-probe.txt`）。
+- **⑭ 只标不动**：评审同条还标了「⑭ 方向**可能**反」（换型压力取决于型号数与切换频率，
+  单型号负荷高反而长批次、换型更少）—— 措辞是「可能」，**留仓主定夺，本段不改**（见 §6 答复表）。
 
 **评审 v2 登记而未落（诚实挂账，均不阻塞本段交付）**：
 ⑦ Kingman 排队形状（引擎今天只有 delayTicks 整数延迟，无形状参数 = **引擎缺口**，单独立项）·
