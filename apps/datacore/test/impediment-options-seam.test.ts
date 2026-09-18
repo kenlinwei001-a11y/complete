@@ -347,7 +347,7 @@ describe("WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种�
       // 正向：台账必须落到用户看得见的那半，而不是只进 candidateStats。
       const m = LEDGER.exec(im.noCandidateReason ?? "");
       expect(m, `NONE 阻滞点 ${im.impedimentId} 的 noCandidateReason 缺试算台账：${im.noCandidateReason}`).not.toBeNull();
-      const [, tried, eff, flat, worse] = m!.map(Number) as [string, number, number, number, number];
+      const [tried, eff, flat, worse] = [Number(m![1]), Number(m![2]), Number(m![3]), Number(m![4])];
 
       // 反向①：`tried` 与另一段代码算的 `probes` 必须逐字节对上。
       expect(tried).toBe(st.probes);
