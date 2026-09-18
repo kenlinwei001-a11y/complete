@@ -10,7 +10,9 @@ import { BATTERY_SOLVER_PARAMS } from "../src/synthetic/battery.js";
  * 「`status==="量产"` 优先 + `bomId` 字典序最小」，**`effectiveDate`/`expireDate` 一个字都不读**
  * （金丝雀：修前 `bom.ts` 里 `effectiveDate` 命中 0 / `expireDate` 命中 0，而同文件 `status` 命中 2
  * ⇒ 查法有鉴别力，是真没读不是没查到）。于是 6/6 型号恒选 `V1.0`，而 V1.0 在业务基准日
- * `forecastStart = 2026-06-10` 已失效 **约 18 个月**（`expireDate: 2024-12-31`）。
+ * `forecastStart = 2026-06-10` 已失效 **526 天（≈17.3 个月）**（`expireDate: 2024-12-31`）。
+ * ⚠ 派单里写的「约 21 个月」是按**墙上时钟今天**算的；本仓判据只认**业务基准日**
+ * （R6 禁时钟），按 `forecastStart` 算是 526 天 —— 两个数不是一回事，此处以可复算的那个为准。
  *
  * ⚠ **本文件的命门是 §3 变异反证**：本仓今日 15 份 BOM 摊开**只有 2 个明细指纹**
  * （同型号 V1.0/V1.1/V2.0 逐行相同 —— `battery.ts` 三版共用同一张 `BOM_ITEM_TEMPLATES`），
@@ -31,6 +33,27 @@ describe("WO-BOM-EFFECTIVE-DATE · 生效期裁决", () => {
     const models = [...new Set(hdrs.map((h) => String(h.modelId)))].sort();
     expect(models.length, "金丝雀：种子里应有 6 个型号；为 0 说明没播种，下面的断言全是空转").toBe(6);
     expect(hdrs.length).toBe(15);
+
+    // 判据1 · 修前/修后逐型号选中的 bomId（**实测钉死**，不是推导出来的）。
+    // 修前 6/6 恒选 V1.0（不看日期）；修后 3 型改选当期试产 V2.0、3 型无当期候选落 stale-fallback（身份仍 V1.0）。
+    const EXPECTED: Record<string, { before: string; after: string; rule: string }> = {
+      "2170-NCM": { before: "BOM-2170-NCM-V1.0", after: "BOM-2170-NCM-V1.0", rule: "stale-fallback:量产" },
+      "4680-LFP": { before: "BOM-4680-LFP-V1.0", after: "BOM-4680-LFP-V1.0", rule: "stale-fallback:量产" },
+      "4680-NCM": { before: "BOM-4680-NCM-V1.0", after: "BOM-4680-NCM-V1.0", rule: "stale-fallback:量产" },
+      "圆柱-LFP": { before: "BOM-圆柱-LFP-V1.0", after: "BOM-圆柱-LFP-V2.0", rule: "in-effect:非量产" },
+      "方形-LFP": { before: "BOM-方形-LFP-V1.0", after: "BOM-方形-LFP-V2.0", rule: "in-effect:非量产" },
+      "方形-NCM": { before: "BOM-方形-NCM-V1.0", after: "BOM-方形-NCM-V2.0", rule: "in-effect:非量产" },
+    };
+    for (const m of models) {
+      const exp = EXPECTED[m];
+      expect(exp, `型号 ${m} 不在预期表里 —— 种子型号集变了，判据1 的基线要重取`).toBeDefined();
+      const pre = selectEffectiveBom(hdrs, dtls, m); // 修前口径
+      expect(String(pre.header?.bomId), `${m}: 修前基线对不上`).toBe(exp!.before);
+      expect(pre.rule).toBe("no-date-filter");
+      const post = selectEffectiveBom(hdrs, dtls, m, ASOF); // 修后口径
+      expect(String(post.header?.bomId), `${m}: 修后选取对不上`).toBe(exp!.after);
+      expect(post.rule, `${m}: 裁决路径对不上`).toBe(exp!.rule);
+    }
 
     for (const m of models) {
       const eff = selectEffectiveBom(hdrs, dtls, m, ASOF);
@@ -140,6 +163,19 @@ describe("WO-BOM-EFFECTIVE-DATE · 生效期裁决", () => {
     expect(noDate.stale, "没给基准日时不许宣称 stale —— 那是没算，不是算出来过期").toBe(false);
     expect(noDate.dateFilterApplied).toBe(false);
     expect(noDate.asOf).toBeNull();
+  });
+
+  it("「给了坏日期」与「没给日期」必须可区分（否则传错的人会以为过滤生效了）", () => {
+    const headers = [{ bomId: "B1", modelId: "T", status: "量产", effectiveDate: "2024-01-01", expireDate: "2024-12-31" }];
+    for (const bad of ["2026/06/10", "今天", "2026-6-10", "2026-06-10T00:00:00Z"]) {
+      const r = selectEffectiveBom(headers, [], "T", bad);
+      expect(r.rule, `坏日期「${bad}」应报 bad-date`).toBe("bad-date");
+      expect(r.dateFilterApplied).toBe(false);
+      expect(r.asOf).toBeNull();
+    }
+    expect(selectEffectiveBom(headers, [], "T").rule).toBe("no-date-filter");
+    // 金丝雀：同一批断言里放一个**好**日期，证明上面报 bad-date 不是因为函数恒报 bad-date。
+    expect(selectEffectiveBom(headers, [], "T", "2024-06-01").rule).toBe("in-effect:量产");
   });
 
   // ── ⑤ 边界：空 expireDate = 未失效（种子里 V2.0 就是空串）────────────────

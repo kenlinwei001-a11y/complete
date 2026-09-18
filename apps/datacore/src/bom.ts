@@ -45,6 +45,23 @@ import { num, str } from "./solvers/types.js";
  * 仍返回一份 BOM 供调用方兜底，但**必须**带 `stale: true` + `rule: "stale-fallback:*"` ——
  * 回落本身不是错，**不说出来才是错**。调用方拿到 `stale` 就该在输出里挑明
  * 「本次计价基于一份已不当期的 BOM」，而不是把它当成正常报价。
+ *
+ * ── 🔴 接线状态（WO-BOM-EFFECTIVE-DATE 交付时实测，**别把它读成已完工**）──────────
+ * 生效期裁决**已实现且已被门咬住**，但**三个生产调用方今天一个都没传 `asOfDate`**
+ * （`solvers/extended.ts` 的 `quote_margin` 真 BOM 段一处，`sim/pair-weights.ts` 的
+ * `bomFor()` 内两处 —— ⚠ 按符号找，别按行号：本仓行号天生带保质期）。
+ * ⇒ 三处都走 `rule: "no-date-filter"`，**生产行为与本单之前逐字节相同**。
+ * 照铁律 0.5 判据 2，这一档叫「**只有 test 引用 = 已排练，不是已实现**」。
+ * 补完只需在这三处传 `str(c.params.forecastStart)`（`SolverContext.params` 上已有，确定性常量非时钟）。
+ *
+ * ⛔ **但先别传** —— 传上去会改变业务结果，而那一步需要人拍板。实测（基准日 2026-06-10）：
+ *   · **3 型**（圆柱-LFP / 方形-LFP / 方形-NCM）唯一当期的是**试产 V2.0** ⇒ 选取从 V1.0 变 V2.0；
+ *   · **3 型**（2170-NCM / 4680-LFP / 4680-NCM）**一份当期的都没有**（只有 V1.0/V1.1，双双失效）
+ *     ⇒ 落 `stale-fallback:量产`，身份仍是 V1.0，但从此带 `stale: true`。
+ * 「按一份**试产** BOM 报价」与「**拒绝**报价」都是合法口径，**这是业务裁决不是实现细节**
+ * （见上「为什么日期是硬过滤」末段）。本单**刻意停在这里**，不替业务选。
+ * ⚠ 钱在本仓今天**不会变**：15 份 BOM 摊开只有 2 个明细指纹（同型号三版逐行相同），
+ * 故换版后 `bomCost` 逐位不变 —— 但这是**今天的种子**碰巧如此，**不是这条链路的保证**。
  */
 
 /** 本次裁决实际走的是哪一条 —— 门与调用方断言这个，**不许只看 `header` 非空就当正常**。 */
@@ -59,6 +76,12 @@ export type BomSelectionRule =
   | "stale-fallback:其他"
   /** 调用方未给基准日 ⇒ 未按日期裁决，口径同本单之前。 */
   | "no-date-filter"
+  /**
+   * 调用方**给了**基准日但**不是** `YYYY-MM-DD` ⇒ 同样不裁决，但**与"没给"分开报**。
+   * ⚠ 这两档必须可区分：合成一档就等于「我没找到」和「它不存在」混为一谈 ——
+   * 传了个坏日期的调用方会看到和没传一模一样的结果，然后以为日期过滤生效了。
+   */
+  | "bad-date"
   /** 该型号一份 BOMHeader 都没有。 */
   | "none";
 
@@ -134,9 +157,10 @@ export function selectEffectiveBom(
     header = null;
     rule = "none";
   } else if (asOf === null) {
-    // 调用方没给基准日 ⇒ 不编日期、不裁决，维持本单之前的口径并**如实声明**。
+    // 没给基准日 / 给的日期读不懂 ⇒ 都不编日期、不裁决，维持本单之前的口径，
+    // 但**两者分开报**（见 `BomSelectionRule.bad-date`）。
     header = pick(mine);
-    rule = "no-date-filter";
+    rule = asOfDate === undefined || asOfDate === "" ? "no-date-filter" : "bad-date";
   } else {
     const inEffect = mine.filter((h) => isBomInEffect(h, asOf));
     inEffectCount = inEffect.length;
