@@ -1,14 +1,17 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tallyCellProvenance, type SimCounterfactualResult } from "@platform/contracts";
-import { createSimSession, fetchPropagationRules, fetchSimSessions, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
+import { createSimSession, fetchPropagationRules, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import { HintDot } from "./shared";
+// WO-SANDBOX-REAL-SNAPSHOT：本页自己编的世界由本页自己盖 `derived` 章（实现与沙盘同一支，不另写）。
+import { stampAllDerived } from "./SandboxView";
 import {
   buildDiffRows,
   buildDomainSlices,
   buildEdgeRows,
   buildVerdict,
+  deriveBaseSnapshot,
   pickProbeSession,
   PROBE_WORLD_PROVENANCE,
   PROBE_WORLD_PROVENANCE_DETAIL,
@@ -205,9 +208,13 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
    */
   const ensureSession = useCallback(async (): Promise<string | null> => {
     if (effectiveSessionId) return effectiveSessionId;
-    const s = await createSimSession({ scope: { kind: "GLOBAL", target: null } });
+    const cfg = await fetchSimViewConfig();
+    const base = deriveBaseSnapshot(cfg);
+    const s = await createSimSession({ baseSnapshot: base, scope: { kind: "GLOBAL", target: null } });
     setProbeCreated(s.id);
-    setProbeTally(tallyCellProvenance(s.baseSnapshot, s.baseSnapshotProvenance));
+    // 出处：回包带了用回包的；没带就**自己盖 `derived`** —— 这一份是本页现编的哈希占位，
+    // 「我自己编的东西我知道它是编的」，留空当未知是把确知的事实说成不知道（同 `SandboxView.stampAllDerived`）。
+    setProbeTally(tallyCellProvenance(base, s.baseSnapshotProvenance ?? stampAllDerived(base)));
     void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
     return s.id;
   }, [effectiveSessionId, qc]);
@@ -377,8 +384,7 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
       {!effectiveSessionId && (
         <p data-testid={tid("no-session")} className={css.note}>
           本页不持有推演世界，本租户当前也没有可推演的会话。
-          拨动任一开关时会<b>就地开一个探针世界</b>来算差值 ——
-          起始值<b>由服务端从真实对象逐格取数</b>，取不到该状态变量的格才回落确定性占位。
+          拨动任一开关时会<b>就地开一个探针世界</b>（起始值由配置派生的占位值）来算差值。
         </p>
       )}
       {/* ══ WO-SANDBOX-REAL-SNAPSHOT · 这段出处从**写死一句**改成**现算两个数** ═══════════
@@ -404,15 +410,19 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
           ) : probeTally.derived === 0 ? (
             <>
               <b>实测 {probeTally.measured} 格</b>：本页就地开的探针世界，tick0 全部取自对象真实属性。
-              下方差值反映这条边在**实测起点**上的影响。
+              下方差值反映这条边在实测起点上的影响。
+            </>
+          ) : probeTally.measured === 0 ? (
+            <>
+              <b>{PROBE_WORLD_PROVENANCE}</b>（{probeTally.derived} 格全部是占位）：{PROBE_WORLD_PROVENANCE_DETAIL}
+              要在实测世界上对照，请在「推演沙盘」里建世界后再回到本页。
             </>
           ) : (
             <>
-              <b>{PROBE_WORLD_PROVENANCE}</b>：本页就地开的探针世界，tick0 共 {probeTally.measured + probeTally.derived} 格，
+              <b>含占位格</b>：本页就地开的探针世界，tick0 共 {probeTally.measured + probeTally.derived} 格，
               其中 <b>{probeTally.measured} 格取自对象真实属性</b>、<b>{probeTally.derived} 格为确定性占位</b>
               （该对象上取不到这个状态变量，按起点派生式回落）。
-              {PROBE_WORLD_PROVENANCE_DETAIL}
-              要让占位那部分也变成实测，需要这些状态变量在对象上真的有值 —— 不是换个算法能解决的。
+              凡差值涉及占位格的那些边，量级不可当实测读。
             </>
           )}
         </p>

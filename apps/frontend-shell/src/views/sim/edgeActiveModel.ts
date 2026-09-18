@@ -15,9 +15,7 @@
  * 前端另写一份 `cf - base` 看着无害，但两侧一旦漂移（取整、缺格当 0、容差），
  * 屏上那个"关掉这条边涨了 3.2"就是个查无对证的数。本文件只做**排版**，不做**算术**。
  */
-// WO-SANDBOX-REAL-SNAPSHOT：`SandboxViewConfig` / `TickState` 随 `deriveBaseSnapshot` 一起退场 ——
-// 本文件删掉那支之后再无任何地方构造世界态，留着这两个 type import 就是"删了实现、签名还在"的半截活。
-import type { PropagationRule, SimCounterfactualResult, SimStateDiffCell } from "@platform/contracts";
+import type { PropagationRule, SandboxViewConfig, SimCounterfactualResult, SimStateDiffCell, TickState } from "@platform/contracts";
 // WO-STATEVAR-DISPLAYNAME：状态变量中文名的唯一消费路径（真值源在后端，此处只翻译不编名）
 import { qualifiedStateVarText, stateVarText } from "./stateVarLabel";
 
@@ -347,43 +345,64 @@ export function pickProbeSession<T extends { id: string; createdAt: string; scop
   return [...usable].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))[0] ?? null;
 }
 
-// ── 探针世界的出处记号 ────────────────────────────────────────────────────────────────
+// ── tick0 世界态派生（**从 SandboxView 迁来，不是新写的第二份**）─────────────────────────
 /**
- * ══ WO-SANDBOX-REAL-SNAPSHOT · `hash01` / `deriveBaseSnapshot` **已删除** ═══════════════
+ * 字符串 → 稳定 [0,1)（把抽象 key 映射成可视初值；与行业无关，R14）。
  *
- * 它们原先住在这里（由 WO-ACTIVE-EDGE-UX 从 `SandboxView.tsx` 迁来），产出
- * `round(hash01(\`${objectId}|${stateVar}\`) × 100)` 的 tick0 世界态 —— **一次 `props` 都不读**。
- *
- * **今天的行为 X（本单开工前实测）**：两个调用点（`SandboxView.init` / `EdgeActivePanel.ensureSession`）
- * 各自调它编一份世界 POST 给后端，于是屏上那批数**长得和真值一模一样**却与真实对象毫无关系。
- * **应该的 Y**：世界由**持有真实对象的那一侧**（datacore `deriveSeedBaseSnapshot`）派生并逐格盖章。
- * 真后端实测（`SEED_DEMO=1`）：8,813 格中 measured **6,271** / derived **2,542** / unknown 0。
- *
- * ⛔ **为什么连函数一起删、不是只停止调用**：留着它 = 留着一个「前端也能自己造一个世界」的入口。
- * 本仓的老账就是「第二套真相源」—— 只要那支还在，下一个人接新链路时会照旧调它，
- * 屏上又会多一份**没有出处**的世界。删除前已核：src 侧调用点只剩上述两处（皆本单改掉）。
- *
- * ⚠ **占位这件事本身没有消失，只是挪到了后端并且有了名分**：后端取不到 `props[stateVar]` 时
- * 仍按确定性式回落，但那一格会被盖 `derived` 章、屏上逐格标出。
- * 「占位」与「谎」的区别从来不在数值，在**有没有记号**。
+ * ⚠ **迁移说明（重要，别读成"又造了一份"）**：`hash01` / `deriveBaseSnapshot` 原本住在
+ * `SandboxView.tsx`，本单把它们迁到这里、由 `SandboxView` 反向 import —— **实现一行未改**，
+ * 迁的唯一理由是：`EdgeActivePanel` 也要用它（给没有推演世界的页就地开一个探针世界），
+ * 而 `SandboxView → EdgeActivePanel` 已经是一条依赖边，反向 import 会成环。
+ * 在这里放一份**副本**才是错的：两份 tick0 派生 ⇒ 沙盘的世界与探针世界不是同一个世界，
+ * 而用户看到的差值会因此对不上账。
  */
 /**
- * 探针世界含占位格时的**来源记号**（屏上真渲染的字符串，不是注释）。
+ * `deriveBaseSnapshot` 产出的那批读数的**来源记号**（屏上真渲染的字符串，不是注释）。
  *
- * 为什么必须是导出的常量而不是各页各写一句：占位派生出的数**长得和真值一模一样**
- * （有量纲感、有小数位、会随对象变化），用户没有任何办法分辨。记号只有一份，
- * 才不会出现"改了产生这批数的地方、记号留在原处"的情况 ——
- * `screen-value-provenance:check` 当初**当场就是这么报红的**。
+ * 为什么必须是导出的常量而不是各页各写一句：`hash01` 派生出的数**长得和真值一模一样**
+ * （有量纲感、有小数位、会随对象变化），用户没有任何办法分辨。记号只有一份、跟着这个函数走，
+ * 才不会出现"迁了实现、记号留在原文件"的情况 —— 本单迁移 `deriveBaseSnapshot` 时，
+ * `screen-value-provenance:check` **当场就是这么报红的**：源点跟着代码走了，记号没跟。
  *
  * ⚠ 不许为了让门变绿在文件里随手塞一个含"占位"二字的字符串（门只到文件级，确实拦不住）——
  * 那是把一个可见的债换成一个看不见的谎。本常量**必须真的渲染在屏上**
  * （消费方：`EdgeActivePanel` 的探针世界出处段）。
- *
- * ⚠ 措辞刻意从「占位·未实测」的**整份断言**退成**部分断言**：本单之后探针世界是**混合**的，
- * 说整份「未实测」会把 6,271 格真读数一起否掉 —— 方向相反，但同样是假话。
- * 具体几格实测、几格占位由 `EdgeActivePanel` 现算后填在这句旁边（它才知道是哪个世界）。
  */
-export const PROBE_WORLD_PROVENANCE = "含占位格";
+export const PROBE_WORLD_PROVENANCE = "占位·未实测";
 /** 探针世界出处的完整说明（同上，屏上真渲染）。 */
 export const PROBE_WORLD_PROVENANCE_DETAIL =
-  "凡差值涉及占位格的那些边，反映的只是这条边的结构影响（系数 × 延迟 × 链路扇出），量级不可当实测读。";
+  "本页就地开的探针世界，其 tick0 世界态由本体配置结构派生（合成占位值，非实测）。" +
+  "下方差值反映的是这条边的结构影响（系数 × 延迟 × 链路扇出），量级不可当实测读。";
+
+export function hash01(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 1000) / 1000;
+}
+
+/**
+ * 从配置派生 tick0 世界态。键 = **真物化对象 id**（`cfg.nodeObjectIds`，与 `propagateTick` 引擎
+ * `idsByType` 同源）→ `state[sourceId]` 真命中 → tick 真传导。
+ * 空世界（该类型无对象）退 `${type}#0` 占位（无传导，页面仍可跑）。
+ *
+ * ⚠ **这批值是 `DERIVED` 占位、不是实测**（`SandboxView` 的 `WorldOrigin` 章程原文）。
+ * 凡是拿它当起点算出来的差值，界面上必须跟着标出处 —— 见 `EdgeActivePanel` 里那句
+ * 「本页就地开的探针世界」。不标 = 把占位值算出来的数当实测给人看，那是 R13 明令禁止的。
+ */
+export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
+  const state: TickState = {};
+  const vars = cfg.stateVars.length > 0 ? cfg.stateVars : ["v"]; // 无传导规则态：单占位变量，保证页面可跑
+  for (const t of cfg.nodeTypes) {
+    const ids = cfg.nodeObjectIds?.[t] ?? [];
+    const keys = ids.length > 0 ? ids : [`${t}#0`]; // 有真对象用真 id；空世界退占位键
+    for (const oid of keys) {
+      const row: Record<string, number> = {};
+      for (const v of vars) row[v] = Math.round(hash01(`${oid}|${v}`) * 100);
+      state[oid] = row;
+    }
+  }
+  return state;
+}

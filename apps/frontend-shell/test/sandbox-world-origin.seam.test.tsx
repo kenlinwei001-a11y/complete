@@ -3,9 +3,9 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
-import type { CellProvenance, SandboxViewConfig, TickState } from "@platform/contracts";
+import { tallyCellProvenance, type CellProvenance, type SandboxViewConfig, type TickState } from "@platform/contracts";
 import { server } from "./setup";
-import SandboxView from "@/views/sim/SandboxView";
+import SandboxView, { deriveBaseSnapshot, stampAllDerived, worldHonestyOf } from "@/views/sim/SandboxView";
 
 /**
  * ══ WO-V4-HONEST-ORIGIN + WO-SANDBOX-REAL-SNAPSHOT · 顶栏读数**出处记号**门 ═══════════════
@@ -21,12 +21,19 @@ import SandboxView from "@/views/sim/SandboxView";
  * **那份世界压根不该由前端造。** 前端没有对象，`deriveBaseSnapshot` 一次 `props` 都不读，
  * 它唯一能做的就是编 —— 编出来的数**长得和真值一模一样**，加个徽标只是让谎话带了张标签。
  *
- * **今天的行为 Y（本轮改完）**：前端**不传** `baseSnapshot`，世界由持有真实对象的服务端派生，
- * 并**逐格**盖 `measured` / `derived` 章。真后端实测（`SEED_DEMO=1`）：
+ * **本轮真正落地的那一半（⚠ 边界写清楚，别读成"世界也归后端了"）**：
+ * 后端 `deriveSeedBaseSnapshot` 现在**逐格**盖 `measured` / `derived` 章，并随会话/世界回包下发；
+ * 屏上的诚实位改读**逐格合计**。真后端实测（`SEED_DEMO=1`）：
  * 8,813 格中 measured **6,271** / derived **2,542** / unknown **0**。
  *
- * ⇒ 于是诚实位从**二值**变成**四态**：世界真实地是**混合**的，二值化的两种走法都在撒谎 ——
- * 全标「实测」把 2,542 格占位说成真读数；全标「占位」把 6,271 格真读数自毁可信度。
+ * ⛔ **建会话走哪条路，本单刻意没动**（2026-09-18 回退）：`claude/handoff-real-cells` 的
+ * `resolveTick0World`（「先问后端播种的那一份要，要不到才本地派生」）已经在解决那件事，
+ * 本单再写一版就是**第二套取法**。故今天 `init` 仍走本地 `deriveBaseSnapshot` ——
+ * 而本单要求它**为自己编的那一份逐格盖 `derived` 章**（用例 ①）：
+ * 我自己编的东西，我知道它是编的，留空当「未知」是把确知的事实说成不知道。
+ *
+ * ⇒ 诚实位从**二值**变成**四态**：世界可以是**混合**的，二值化的两种走法都在撒谎 ——
+ * 全标「实测」把占位说成真读数；全标「占位」把真读数自毁可信度。
  *
  * ── 判据必须**两向**（PRD §4.3 原话「只咬一向证明不了」）──────────────────────
  * 本门把两向长成了四向（四态各咬一条），外加**两条反向金丝雀**：
@@ -34,12 +41,9 @@ import SandboxView from "@/views/sim/SandboxView";
  *  ⛔ 缺出处不许被**并进 `derived`**（那是拿「我没记」冒充「我记了，它是占位」）
  *
  * ── 🔴 本门要防的那个**具体**假绿（不写下来下一个人一定会踩）──────────────────
- * ① `init()` 建完会话立刻 `qc.setQueryData(["a","sim-world", id], …)`，而该 query 是
- *    `staleTime: Infinity` ⇒ **新建会话的那个 GET 根本不会发**。所以若拿「`worldQuery.data`
- *    到没到」当判据，徽标会在屏上全是占位的那一刻就翻成"实测"。第 ⑥ 条把这个事实钉住。
- * ② 本轮之后 `worldOrigin`（整份哪来的）**恒为 `MEASURED`** —— 世界都是后端给的。
- *    谁把徽标改回读它，屏上就会对着一堆哈希占位写「实测」。第 ② 条的混合世界**全部来自后端**，
- *    若徽标读 `origin` 该用例当场红。
+ * `init()` 建完会话立刻 `qc.setQueryData(["a","sim-world", id], …)`，而该 query 是
+ * `staleTime: Infinity` ⇒ **新建会话的那个 GET 根本不会发**。所以若拿「`worldQuery.data`
+ * 到没到」当判据，徽标会在屏上全是占位的那一刻就翻成"实测"。第 ⑥ 条把这个事实钉住。
  *
  * R6 确定性：网络全桩，无时钟、无随机。
  */
@@ -145,20 +149,24 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚实位（四态）", () => {
-  it("① 建会话**不传** `baseSnapshot`：那个键在请求 body 里压根不存在（前端不再造世界）", async () => {
-    installHandlers();
+  it("① 本地现编的世界，**由本地自己盖 `derived` 章** —— 不许留空当「出处未知」", async () => {
+    // 回包**不带**逐格出处（= 今天走 `deriveBaseSnapshot` 那条路的真实形态）。
+    installHandlers(null);
     mount();
     await screen.findByTestId("sandbox-view");
     await waitFor(() => expect(createBodies.length).toBeGreaterThan(0));
 
-    const body = createBodies[0]!;
-    // ★ 判据落在**键的存在性**上，不是 `body.baseSnapshot` 的真值性：
-    //   传 `{}`（"我就是要空世界"）与不传（"你替我派生"）是两个不同的命题，后端据此二分。
-    //   写 `!body.baseSnapshot` 的话，传 `{}` 也会绿 —— 那正好是错的那一支。
-    expect("baseSnapshot" in body, "前端仍在往上传世界 —— 本单的病根没拔").toBe(false);
-    // 🐤 金丝雀（否定结论必须配命中证据，铁律 0.6）：同一个 body 里**该有的键确实有**。
-    //   它若也报 false，那是 body 根本没被记下来，上面那个 `false` 什么都证明不了。
-    expect("scope" in body, "连 scope 都不在 ⇒ body 没被记下来，上面那条否定结论作废").toBe(true);
+    // 前提：这一路确实是前端自己造的世界（`resolveTick0World` 收编前的现状）。
+    expect("baseSnapshot" in createBodies[0]!, "这条用例的前提是前端自己造世界；前提变了请改判据不是改数字").toBe(true);
+
+    // ★ 判据：`hash01` 派生的每一格都是占位，而**调用方当场就知道** ⇒ 必须盖 `derived`，
+    //   ⛔ 不许留空让下游读成「未知」——「我没记」与「我记了，它是占位」是两个不同的命题，
+    //   而两档屏上的措辞正好相反（未知那档会写「不能断言是占位」，把确知的事实说反）。
+    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("DERIVED"));
+    expect(badge().getAttribute("data-derived-cells")).toBe("6");
+    expect(badge().getAttribute("data-unknown-cells"), "自己编的世界却报「未知」").toBe("0");
+    expect(badge().textContent).toContain("占位");
+    expect(badge().textContent).not.toContain("未知");
   });
 
   it("② 混合世界：徽标标 `MIXED` 且**两个数都写在屏上** —— 不许二值化", async () => {
@@ -176,12 +184,20 @@ describe("WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚
     expect(badge().textContent).toContain("占位");
     expect(badge().textContent).toContain("实测");
 
-    // 屏上的读数真的是**后端那一份**（记号换了但数没换 = 记号在说谎）。
-    const ids = Object.keys(SERVER_BASE);
+    /**
+     * 屏上的读数 == `init` 真正放上去的那一份（否则"出处"这个记号指的不是屏上这批数）。
+     *
+     * ⚠ 今天 `init` 放的是**本地 `deriveBaseSnapshot(cfg)`**，不是回包的 `baseSnapshot`
+     * —— 建会话走哪条路本单刻意不动（`resolveTick0World` 那张单在管）。
+     * 所以这里对的是本地那一份；**哪天建会话改成用回包的世界，这条会红** ——
+     * 那正是它该做的事：记号与数据必须来自同一份，改了一边就得改另一边。
+     */
+    const base = deriveBaseSnapshot(CFG);
+    const ids = Object.keys(base);
     expect(ids.length).toBeGreaterThan(2);
     expect(CFG.stateVars.length).toBeGreaterThan(1); // 基数下限：空集上 for 一次都不进也照样绿
     for (const v of CFG.stateVars) {
-      const avg = ids.reduce((a, o) => a + (SERVER_BASE[o]?.[v] ?? 0), 0) / ids.length;
+      const avg = ids.reduce((a, o) => a + (base[o]?.[v] ?? 0), 0) / ids.length;
       const shown = screen.queryByTestId(`sandbox-kpi-${v}-val`);
       expect(shown, `stateVar ${v} 的读数不在 DOM 里`).not.toBeNull();
       expect(shown!.textContent).toBe(avg.toFixed(1));
@@ -211,19 +227,36 @@ describe("WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚
     expect(load.getAttribute("aria-label")).not.toBe(risk.getAttribute("aria-label"));
   });
 
-  it("④ 缺出处 ⇒ `UNKNOWN`，**不许并进 `derived`**（「我没记」不等于「它是占位」）", async () => {
-    installHandlers(null); // 老会话 / 后端没下发逐格出处（哨兵必须是 null，见 installHandlers 头注）
-    mount();
-    await screen.findByTestId("sandbox-view");
-
-    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("UNKNOWN"));
-    expect(badge().getAttribute("data-unknown-cells")).toBe("6");
-    expect(badge().getAttribute("data-derived-cells"), "缺出处被并进了 derived —— 拿「我没记」冒充「它是占位」").toBe("0");
-    expect(badge().getAttribute("data-measured-cells")).toBe("0");
-    expect(badge().textContent).toContain("未知");
-    // ⛔ 两向：不许在未知态说实测，也不许在未知态说占位（两者都是把未知伪装成已知）。
-    expect(badge().textContent).not.toContain("实测");
-    expect(badge().textContent).not.toContain("合成·占位");
+  /**
+   * ④ 是**纯函数级**判据，不走组件 —— 这个降级是刻意的，理由要写下来否则下一个人会以为是偷懒：
+   *
+   * `init` 现在对本地现编的世界**自己盖 `derived` 章**（用例 ①），而 `worldQuery` 的回包
+   * 只在**带了** `baseProvenance` 时才覆盖 ⇒ 组件里 `UNKNOWN` 今天**到不了**。
+   * 拿组件去咬一个到不了的状态，只会得到一条永远绿、什么都不证明的用例
+   * （「测的是函数不是链路」那个老病的镜像版：这次是链路里根本没有那一段）。
+   *
+   * 但「缺键 ≠ `derived`」这条保证**必须有机器守着** —— 它是 `CellProvenanceSchema` 的契约，
+   * 也是本单唯一一处「不许把我没记的说成我记了」的落点。故在它真正的住处（纯函数）咬它。
+   */
+  it("④ 缺键 ⇒ `unknown`，**不许并进 `derived`**（「我没记」不等于「它是占位」·纯函数级）", () => {
+    // 半有半无：`load` 有出处、`risk` 整列缺键。
+    const partial: CellProvenance = { obj_a1: { load: "measured" }, obj_a2: { load: "derived" } };
+    const t = tallyCellProvenance(SERVER_BASE, partial);
+    expect(t).toEqual({ measured: 1, derived: 1, unknown: 4 });
+    // ★ 只要还有一格出处未知，整份就不许自称已知（保守方向错比激进方向错便宜）。
+    expect(worldHonestyOf(t)).toBe("UNKNOWN");
+    // 🐤 双向金丝雀：把那 4 格补齐出处后，同一支函数必须给出**不同**的答案 ——
+    //   否则它可能是恒返回 UNKNOWN，上面那条断言就什么都没证明。
+    const full: CellProvenance = {
+      obj_a1: { load: "measured", risk: "measured" },
+      obj_a2: { load: "derived", risk: "measured" },
+      obj_b1: { load: "measured", risk: "measured" },
+    };
+    const t2 = tallyCellProvenance(SERVER_BASE, full);
+    expect(t2).toEqual({ measured: 5, derived: 1, unknown: 0 });
+    expect(worldHonestyOf(t2)).toBe("MIXED");
+    // 反向：整份自盖 derived（`init` 那条路）⇒ DERIVED，且一格 unknown 都没有。
+    expect(worldHonestyOf(tallyCellProvenance(SERVER_BASE, stampAllDerived(SERVER_BASE)))).toBe("DERIVED");
   });
 
   it("⑤ 全实测世界 ⇒ `MEASURED`，且**占位字样一个都不出现**（反向：不许永远说占位）", async () => {
