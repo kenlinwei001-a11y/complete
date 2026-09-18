@@ -3322,6 +3322,27 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   //   下拉里只写「销售预测偏差」，用户填 +10 时无从知道那是"多估了"还是"少估了"，
   //   而这条边的系数是**负**的（高估 ⇒ 需求压力下修），方向搞反读数就整条反了。
   forecastBias: "销售预测偏差（正=高估）", orderChurn: "订单变更压力", equipmentFailure: "设备故障率",
+  // ── WO-SIM-REAL-DATA · Order 三个**真实业务字段**当状态变量 + 它们的三个落点 ──────────
+  // 与上面所有条目不同，`qty`/`unitPrice`/`leadDays` **本来就是 `Order` 上的对象属性**，
+  // 带真实单位（套 / 元 / 天）。播种时由 `deriveSeedBaseSnapshot` 的同名探测直接读真值
+  // —— 这就是 `measuredCells` 从 0 变正的那条机制。
+  //
+  // ⚠ **中文名里必须带单位**，理由不是好看：`qty` 这个属性名在本体里**横跨 11 个类型、
+  //   三种单位**（实测：`Order`/`OrderLine`/`InterBaseTransfer` 是「套」，
+  //   `InventoryTxn`/`ProductionSchedule`/`WIPLot`/`WIPMove`/`DefectRecord`/`Outsource` 是「件」，
+  //   `MaterialBatch`/`PurchaseOrder` 是「吨」）。而本表是**按裸变量名**建的
+  //   （见本表头注「名字属于变量本身，不属于 (类型,变量) 对」）⇒ 一个名字只能有一个中文名。
+  //   把单位写进名字，屏上就不可能出现「21777」却不知道是套还是吨这种读法。
+  //   （`unitPrice` 同理横跨 4 个类型，`Material.unitPrice` 是「元/计量单位」不是「元」；
+  //    `leadDays` 实测只在 `Order` 上有，单位「天」，本身就是全局唯一的。）
+  //
+  // ⛔ **不登记就会把裸键印在用户屏上**：本表未登记者 `stateVarDisplayName` 返回 `undefined`，
+  //   前端回落裸键 ⇒ 沙盘下拉里会出现 `backlogQtyTop` 这种开发用语。
+  //   所以这六条是上面那三条传导边的**注册即更**，不是可选的装饰。
+  qty: "订单数量（套）", unitPrice: "订单单价（元）", leadDays: "交付前置天数（天）",
+  // 三个落点，量纲与各自的源逐一相同（套→套 / 元→元 / 天→天，系数 1.0 原样透传）。
+  backlogQtyTop: "在手订单最大单台数（套）", backlogPriceTop: "在手订单最高单价（元）",
+  backlogHorizonDays: "在手订单最远交期天数（天）",
 };
 
 /**
