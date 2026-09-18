@@ -161,8 +161,10 @@ async function idsOfType(t: TestApp, typeKey: string): Promise<string[]> {
  * 而信号**到达那一拍**是活的：G-ROOT-1 远端 tick2 = −86.97（WO-PROP-REVIEW-V2 库存环两条边进场后
  * 的重测值，/tmp/t3-triad-probe.txt；翻负后初测 −65.35 见 /tmp/t2-diag3.txt —— 库存环的恒定下压力
  * 让被扰世界提前一拍撞 0 轨，到达拍的差分从「−65」变成「把整场 86.97 全压掉」，判据不变）、
- * G-ROOT-4 远端 tick2 = +0.2050 → tick8 = +0.4563（㉜ 反向后重瞄 Line.blockedPressure，
- * /tmp/t5-triad-probe.txt；反向前的旧落点 Equipment.loadPressure 实测 tick2 = +5.82，反向证据 = 其逐拍 Δ 全 0）、
+ * G-ROOT-4 远端 tick2 达峰 +0.0026 后逐拍衰减（㉜ 反向重瞄 Line.blockedPressure，T6 形态② 后重测
+ * /tmp/t6-triad-probe.txt；积分器时代旧值 tick2=+0.2050 单调增至 tick8=+0.4563 见 /tmp/t5-triad-probe.txt ——
+ * 量级差 ~100× 是「纯积分器累积 vs λ=0.37+[0,100] 夹后均衡」的结构性差，不是信号变弱；
+ * 反向证据 = 旧落点 Equipment.loadPressure 逐拍 Δ 全 0）、
  * G-ROOT-2 远端 tick5–8 = −0.0001x∼−0.0002（四跳残迹）。
  * 故远端断言取**窗口内有向极值**
  * （方向对 ⇒ 极值必然同号非零；没到 ⇒ 恒 0），这既咬可达性又咬方向，且不拿死端点冒充证据。
@@ -484,7 +486,8 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
     expect(
       p4.farMax,
       `G-ROOT-4 远端：设备故障两跳（→工序排队→产线受阻）之后 Line.blockedPressure 必须真的动` +
-        `（窗口有向极值；实测到达拍 tick2 = +0.2050，单调增至 tick8 = +0.4563（/tmp/t5-triad-probe.txt）；逐拍 Δ = ${fmtTraj(p4.farTraj)}）`,
+        `（窗口有向极值；T6 形态② 后 blockedPressure 带 λ=0.37 衰减 + [0,100] 软夹，信号均衡不累积：` +
+        `实测 tick2 达峰 +0.0026 后逐拍衰减（/tmp/t6-triad-probe.txt；积分器时代旧值 +0.2050→+0.4563）；逐拍 Δ = ${fmtTraj(p4.farTraj)}）`,
     ).toBeGreaterThan(0);
   }, 300000);
 });
