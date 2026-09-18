@@ -185,20 +185,26 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
       // ⚠ 全扫第二条新catch：投料压力恒 ≈111 是合成不变式的镜像，不是业务信号。如实归档不改式；
       //   「恒值压力有没有推演价值」是仓主的裁决，不是本测试的（它的职责是抓住它 —— 已抓住）。
       "WIPLot|feedPressure": [111, 112, "实测 111.1111–111.1888（n=260，全部；= 1/0.9 收率镜像）"],
+      // T6 形态②（2026-09-18）：本键起声明域 [0,100]（评审原文「名字是 0–100 压力指数，却无界累积到 945」⇒ 自报量纲即出处），
+      //   但**种子真值本就超界**（/tmp/t6-arm2-scan.txt RC=0）——域管引擎每拍夹（tick1 实测 129 条 saturations 记账），
+      //   对象上的原始真值如实归档（同 expeditePressure −32~212 判例，⛔ 不许为它改种子 = 动 hash）。种子收口交仓主。
+      "Line|blockedPressure": [0, 183, "实测 27.72–182.73（n=130，越界 49 条）"],
     };
-    // 无域族归档（打回②要求的「单独归档并写明刻意无上界」；注册表现算 15 键 = 三族）：
-    //   ① 天数族 5：queueDays/clearanceQueueDays/procurementDelay/deliveryDelay/backlogHorizonDays
-    //   ② 件数/积压族 6：inspectBacklog/repairBacklog/handlingBacklog/qualificationQueue/backlogQtyTop/backlogPriceTop
-    //      —— ①② 刻意无上界（battery.ts 域表头注：drill-scan 只说「另一类量纲」没给上界，拍一个 100 就是拍脑袋定）。
+    // 无域族归档（打回②要求的「单独归档并写明刻意无上界」；注册表现算 **10 键**，T6 形态② 后重排）：
+    //   ① 天数族 4：clearanceQueueDays/procurementDelay/deliveryDelay/backlogHorizonDays
+    //      —— procurementDelay/deliveryDelay 是**根源**（入度 0，无入流不累积 ⇒ 非积分器，形态② 不适用）；
+    //         clearanceQueueDays 实测 **−8.9 负值**可疑 ⇒ 交仓主：此刻声明下界 0 是把数据 bug 夹成看起来正常。
+    //   ② 件数族 2：backlogQtyTop/backlogPriceTop —— 业务原值统计量，不该夹（同 ③ 判例）。
     //   ③ 真值支 3：qty/unitPrice/leadDays —— 带真实单位的业务量（套/元/天）走真值支，不适用压力域（域表出处注）。
-    //   ④ blockedPressure —— 刻意不进域（battery.ts 本键注释：写不出出处就不登记，引擎不夹不衰减、tick 回执逐个点名）。
-    //      对照真值（打回①要求落臂2）：本 tip 实测 **27.72–182.73**（n=130；/tmp/blocked-probe2.mjs +
-    //      /tmp/arm2-scan.mjs 双证；手算 Σout×100/max_capacity_day 与物化值逐字节一致）。
-    //   （打回说的「14 个」与注册表现算 15 差 1：blockedPressure 归类口径 —— 它是刻意无域的**压力**，不属天数/件数族。）
+    //   ④ coverDays —— 根源 + 真值支 + restPoint≠0 无出处（T6 逐项裁决 defer，理由见 battery.ts 域表头注）。
+    //   （T6 前 15 键：queueDays/inspectBacklog/repairBacklog/handlingBacklog/qualificationQueue 已带
+    //    「下界 0 + 无界 max + 消化速率 decayRef」进域表（均非对象 prop，臂2 扫不到，归 tick 回执守）；
+    //    blockedPressure 归压力族，其种子超界真值上移进 EXCEPTIONS，不再是本族成员。）
     const NO_DOMAIN = Object.keys(STATE_VAR_DISPLAY_NAMES).filter((k) => !(k in STATE_VAR_DOMAINS));
 
-    // 金丝雀先行（防扫描空转假绿）：域表至少 32 键（31 压力族 + forecastBias，只能多不能少 —— 少了 = 有人在拆守 ⇒ 红）。
-    expect(Object.keys(STATE_VAR_DOMAINS).length).toBeGreaterThanOrEqual(32);
+    // 金丝雀先行（防扫描空转假绿）：域表至少 38 键（31 压力族 + forecastBias + T6 形态② 6 键，
+    // 只能多不能少 —— 少了 = 有人在拆守 ⇒ 红）。
+    expect(Object.keys(STATE_VAR_DOMAINS).length).toBeGreaterThanOrEqual(38);
 
     const all = await t.repos.objects.list("demo");
     const excLeft = new Set(Object.keys(EXCEPTIONS));
@@ -216,7 +222,8 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
             excLeft.delete(key);
             expect(v >= exc[0] && v <= exc[1], `${key}=${v} 越出如实例外区间 [${exc[0]},${exc[1]}]（${exc[2]}）`).toBe(true);
           } else {
-            expect(v >= dom.min && v <= dom.max, `${key}=${v} 越出声明域 [${dom.min},${dom.max}] = 量纲错配（越域 = 量纲错配的指纹，utilPressure 460 vs 91 的教训）`).toBe(true);
+            // `max === null` = T6 无界声明（积压/天数族）：上夹不生效，只守下界（⛔ 不许 `?? Infinity` 把无界混进有界路径）。
+            expect(v >= dom.min && (dom.max === null || v <= dom.max), `${key}=${v} 越出声明域 [${dom.min},${dom.max ?? "无上界"}] = 量纲错配（越域 = 量纲错配的指纹，utilPressure 460 vs 91 的教训）`).toBe(true);
           }
         } else if (NO_DOMAIN.includes(prop)) {
           // 刻意无上界 ⇒ 只断言有限数（上方 isFinite 已是断言本身），计数归档。
@@ -225,11 +232,12 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
         // 其余 prop 不是状态量（普通业务属性），不在本臂守卫范围。
       }
     }
-    // 完整性三断言：① 扫描真的扫到了域键（现算 18 组，⛔ 不许写死 —— 写死不度量今天真的登记了谁）；
+    // 完整性三断言：① 扫描真的扫到了域键（现算 21 组 /tmp/t6-arm2-scan.txt，⛔ 不许写死 —— 写死不度量今天真的登记了谁）；
     expect(domGroups.size).toBeGreaterThanOrEqual(15);
     // ② 例外表零腐坏（扫不到的例外 = 死档案 ⇒ 红）；
     expect([...excLeft], `例外表腐坏：这些键从未扫到 → ${[...excLeft].join(", ")}`).toEqual([]);
-    // ③ 无域族确实在世界里出现（现算 19 组 Type|prop 组合）。
+    // ③ 无域族确实在世界里出现（现算 19 组 Type|prop 组合 /tmp/t6-arm2-scan.txt ——
+    //    计数与 T6 前恰同，成分已换：coverDays 进、blockedPressure 出）。
     expect(noDomGroups.size).toBeGreaterThanOrEqual(10);
   });
 
