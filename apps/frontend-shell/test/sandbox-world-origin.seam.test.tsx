@@ -86,8 +86,17 @@ const SERVER_WORLD: TickState = {
   obj_b1: { load: 15, risk: 99 },
 };
 
-/** @param prov 传 `undefined` 模拟「老会话 / 后端没下发出处」那一档（第 ④ 条用）。 */
-function installHandlers(prov: CellProvenance | undefined = SERVER_BASE_PROV) {
+/**
+ * @param prov 传 **`null`** 模拟「老会话 / 后端没下发出处」那一档（第 ④ 条用）。
+ *
+ * ⚠ **哨兵是 `null` 不是 `undefined`，这一行踩过坑**：JS 的默认形参对 `undefined` **也会生效** ——
+ * 写 `installHandlers(undefined)` 会**静默落回 `SERVER_BASE_PROV`**，于是第 ④ 条（"缺出处"那一档）
+ * 实际测的是混合世界，报 `expected 'MIXED' to be 'UNKNOWN'`，而且**看起来像产品有 bug**。
+ * 形态与本单要修的那个病同构：
+ * **「我用『我传了 undefined』当作『被调方收到了"没有"』的证据，而前者并不度量后者。」**
+ * （后端 `createSimSessionWorld` 区分"省略"与"显式 `{}`"，靠的正是不能用 `??` 把两者合并。）
+ */
+function installHandlers(prov: CellProvenance | null = SERVER_BASE_PROV) {
   server.use(
     http.post("*/a/v1/sim/sessions", async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>;
@@ -95,7 +104,7 @@ function installHandlers(prov: CellProvenance | undefined = SERVER_BASE_PROV) {
       return HttpResponse.json(
         {
           id: "sims_origin", tenantId: "demo", baseSnapshot: SERVER_BASE,
-          ...(prov === undefined ? {} : { baseSnapshotProvenance: prov }),
+          ...(prov === null ? {} : { baseSnapshotProvenance: prov }),
           scope: (body.scope as Record<string, unknown>) ?? {}, status: "READY", curTick: 0,
           parentCheckpointId: null, createdAt: "2026-08-13T00:00:00.000Z",
         },
@@ -108,7 +117,7 @@ function installHandlers(prov: CellProvenance | undefined = SERVER_BASE_PROV) {
       // 真后端在 `tick>0` 时照样带 `baseProvenance`（它描述的是**起点**，不是本回包的 state）。
       return HttpResponse.json({
         tick: 3, state: SERVER_WORLD,
-        ...(prov === undefined ? {} : { baseProvenance: prov }),
+        ...(prov === null ? {} : { baseProvenance: prov }),
       });
     }),
     http.post("*/a/v1/sim/sessions/:id/tick", () => HttpResponse.json({ curTick: 1, state: SERVER_WORLD })),
@@ -203,7 +212,7 @@ describe("WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚
   });
 
   it("④ 缺出处 ⇒ `UNKNOWN`，**不许并进 `derived`**（「我没记」不等于「它是占位」）", async () => {
-    installHandlers(undefined); // 老会话 / 后端没下发逐格出处
+    installHandlers(null); // 老会话 / 后端没下发逐格出处（哨兵必须是 null，见 installHandlers 头注）
     mount();
     await screen.findByTestId("sandbox-view");
 
