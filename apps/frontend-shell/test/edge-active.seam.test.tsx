@@ -247,61 +247,6 @@ describe("WO-ACTIVE-EDGE-UX · 前端接缝：从 workspace 到「关掉一条�
     expect(picked!.id).toBe("new"); // 最新的**可推演**会话，不是最新的那一行
   });
 
-  /**
-   * ── ⑥' WO-SIM-FRONTEND-SEED · `pickSeededWorldSession`：挑「后端播种的那个世界」──────
-   *
-   * **为什么它必须与 `pickProbeSession` 是两支、判据也不同**（合并回一支就会各错一半）：
-   *  · `pickProbeSession` 答「用户此刻在推的是哪个世界」⇒ 取**最新**；
-   *  · 本函数答「哪个世界带着后端播的真业务数」⇒ 取**实测格最多**的那个。
-   * 若本函数也取最新：本页自己刚建的那个会话（带着复制来的记号）会顶掉播种世界 ——
-   * **它跟着自己跑**，而不是跟着真值源跑。下面第 ③ 条就是钉这一点的。
-   *
-   * ⛔ 判据**落在记号上，不落在会话 id 上**：写死 `sims_demo_seed_world` 那种 id 顶 R14
-   * （零业务常数），且换租户/换播种批次会**静默**失配 —— 表现是悄悄退回哈希世界，没人会发现。
-   * 第 ④ 条用一个 id 完全不同的播种世界钉住这件事。
-   */
-  it("pickSeededWorldSession：按记号挑（实测格多者优先）· 不认 id · 不取最新 · 排除方案快照", async () => {
-    const { pickSeededWorldSession } = await import("@/views/sim/edgeActiveModel");
-    const withOrigin = (id: string, createdAt: string, measuredCells: number, cells: number, extra: Record<string, unknown> = {}) => ({
-      id,
-      createdAt,
-      scope: { ...extra, baseSnapshotOrigin: { kind: "DERIVED", measuredCells, cells } } as Record<string, unknown>,
-    });
-    const plain = (id: string, createdAt: string) => ({ id, createdAt, scope: {} as Record<string, unknown> });
-
-    // ① 一个带记号的都没有 ⇒ null（调用方退 `deriveBaseSnapshot` 兜底，⛔ 不许硬造一个）
-    expect(pickSeededWorldSession([])).toBeNull();
-    expect(pickSeededWorldSession([plain("a", "2026-01-01T00:00:00Z"), plain("b", "2026-02-01T00:00:00Z")])).toBeNull();
-
-    // ② 记号缺 `kind` ⇒ 不算候选（`readSnapshotOrigin` 的判据，不在这里另立一套）
-    expect(pickSeededWorldSession([{ id: "x", createdAt: "2026-01-01T00:00:00Z", scope: { baseSnapshotOrigin: { cells: 9 } } }])).toBeNull();
-
-    // ③ 🔴 头号判据：**不取最新** —— 实测格多的那个赢，哪怕它是最早建的。
-    //    （本页自己建的会话也带记号；取最新 = 跟着自己跑，而不是跟着播种世界跑。）
-    const picked = pickSeededWorldSession([
-      withOrigin("own_newer", "2026-09-16T00:00:00Z", 3, 9),
-      withOrigin("seeded", "2026-01-01T00:00:00Z", 450, 6363),
-      plain("plain_newest", "2026-09-17T00:00:00Z"),
-      withOrigin("snapshot", "2026-09-18T00:00:00Z", 999, 999, { snapshotKind: "gslive" }), // 方案快照：排除
-    ]);
-    expect(picked!.id).toBe("seeded");
-
-    // ④ id 不参与判定：换一个完全不同的 id，只要记号在，照样挑得出来（R14 零业务常数）。
-    const renamed = pickSeededWorldSession([withOrigin("sims_whatever_other_tenant", "2026-05-05T00:00:00Z", 7, 20)]);
-    expect(renamed!.id).toBe("sims_whatever_other_tenant");
-
-    // ⑤ R6 全序：同样的一组输入，顺序打乱后选出的是同一个（不靠数组顺序碰运气）。
-    const set = [
-      withOrigin("p", "2026-03-01T00:00:00Z", 10, 100),
-      withOrigin("q", "2026-04-01T00:00:00Z", 10, 100),
-      withOrigin("r", "2026-02-01T00:00:00Z", 10, 90),
-    ];
-    const a = pickSeededWorldSession(set)!.id;
-    const b = pickSeededWorldSession([...set].reverse())!.id;
-    expect(a).toBe(b);
-    expect(a).toBe("p"); // 实测格/总格相同 ⇒ createdAt 早者胜（播种世界的 createdAt 是固定值）
-  });
-
   // ── ⑦ 未知 key 不静默忽略：真打后端（MSW 镜像了同一条纪律）⇒ 400 而不是"看着关掉了" ──
   it("🔴 未知 ruleKey ⇒ 后端 400 UNKNOWN_PROPAGATION_RULE_KEY（mock 与真后端同一条纪律）", async () => {
     const { patchSimDisabledRules } = await import("@/api/endpoints");

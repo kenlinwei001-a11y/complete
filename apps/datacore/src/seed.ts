@@ -1966,13 +1966,15 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "fg_of_model", // 实测 FinishedGoodsInventory→Model，18 条（本单之前**零条规则**用它）
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
-    coefficient: -0.6, // 镜像判据：与 `demo_model_demand_to_fg_drawdown` 同值反号
+    // 系数（**−0.6**，镜像判据：与 `demo_model_demand_to_fg_drawdown` 同值反号）**不写在这里** ——
+    // 单源纪律：本表所有边的 coefficient / coefficientRef 都从 `C36.params.<边key>` 同一个键派生
+    // （`demoPropagationRulesWithDomain` 收尾装饰）。canonical 上它是内联字面量，收编时按本分支的
+    // 范式移进 C36.params，**值一位没动**（含「它刻意没预乘 λ」这一点，留待仓主裁决，见 C36 段内注）。
     delayTicks: 1, // 拣货发运要一拍：库存不是当拍就变成客户手里的货
     description: "成品库存被提走 ⇒ 这部分需求已由库存交付，从型号待产负荷里扣掉（每拍按去化压力的 0.6 倍下修 —— 本边刻意未预乘 λ，故不按稳态增益口径标注，见 C36.params 段内说明）",
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null, // 待定：应按 `qtyAvailable` 分摊，在册口径读不到该字段（见段头）
     cadenceNodeId: null,
     status: "PUBLISHED",

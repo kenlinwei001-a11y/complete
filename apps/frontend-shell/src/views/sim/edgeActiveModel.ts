@@ -18,14 +18,6 @@
 import type { PropagationRule, SandboxViewConfig, SimCounterfactualResult, SimStateDiffCell, TickState } from "@platform/contracts";
 // WO-STATEVAR-DISPLAYNAME：状态变量中文名的唯一消费路径（真值源在后端，此处只翻译不编名）
 import { qualifiedStateVarText, stateVarText } from "./stateVarLabel";
-/**
- * WO-SIM-FRONTEND-SEED · `scope.baseSnapshotOrigin` 的读法**只有这一支**，从这里借。
- * ⛔ 不在本文件另写一个「读 origin」的小函数：那就是第二份读法，字段名/容错口径迟早漂
- * （`measuredCells` 缺失时是 `null` 还是 `0`，这两者在屏上是两句完全不同的话）。
- * 该函数是纯函数、零 React/网络依赖，与本文件同级（`unified/metricWallModel.ts` 只 import
- * contracts 与 `../stateVarLabel`）⇒ 不成环、不把 unified 那一坨拖进本文件的依赖图。
- */
-import { readSnapshotOrigin, type SnapshotOrigin } from "./unified/metricWallModel";
 
 /** 一行边的展示模型。 */
 export interface EdgeRowVM {
@@ -399,11 +391,6 @@ export function hash01(s: string): number {
  * ⚠ **这批值是 `DERIVED` 占位、不是实测**（`SandboxView` 的 `WorldOrigin` 章程原文）。
  * 凡是拿它当起点算出来的差值，界面上必须跟着标出处 —— 见 `EdgeActivePanel` 里那句
  * 「本页就地开的探针世界」。不标 = 把占位值算出来的数当实测给人看，那是 R13 明令禁止的。
- *
- * ══ WO-SIM-FRONTEND-SEED · 本函数今天是**兜底**，不再是第一选择 ═══════════════════
- * 它**不许删**（本单验收判据②）：租户一条播种世界都没有时（非 `SEED_DEMO` 部署 / 本体里
- * 一条已发布传导规则都没有），它仍是唯一能让页面开出一个可跑世界的那一支。
- * 但**它不该再是默认路径** —— 默认路径见下面的 `resolveTick0World`。
  */
 export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
   const state: TickState = {};
@@ -418,139 +405,4 @@ export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
     }
   }
   return state;
-}
-
-// ── tick0 世界态的**取法**（WO-SIM-FRONTEND-SEED）────────────────────────────────
-/**
- * ══ 病灶：今天的行为是 X，应该是 Y ═══════════════════════════════════════════════
- *
- * **X（2026-09-16 开工实测，真后端 `SEED_DEMO=1` 内存模式，非转述）**：`SandboxView` 与 `EdgeActivePanel`
- * 两个入口各自 `createSimSession({ baseSnapshot: deriveBaseSnapshot(cfg) })` ——
- * **前端现算一份 100% 哈希世界 POST 上去**。后端 `POST /a/v1/sim/sessions` 是纯透传
- * （`baseSnapshot ?? {}` 原样落库），**它不播种**；于是这两个入口建出来的会话：
- *   · `scope.baseSnapshotOrigin` **整个字段不存在**（不是 `measuredCells:0`，是压根没有记号）
- *   · 12,510 对象 × 47 变量 = **587,970 格，一格实测都没有**
- * 而同一租户里后端启动时播下的那个世界是 `cells 6363 / measuredCells 450 / derivedCells 5913`
- * （命中 `Order.qty` / `Order.unitPrice` / `Order.leadDays` 三个真业务字段）。
- * ⇒ 走统一推演台看得到那 450 格真业务数，从这两个入口进去**一格都看不到**。
- *
- * **Y（应该）**：tick0 世界态先问**后端播种的那一份**要；要不到才退 `deriveBaseSnapshot`。
- *
- * **怎么亲手再验一遍（两条，都不用读代码）**，`H='X-Debug-User: demo:admin:admin|planner|catalog_admin'`：
- *   ① 播种世界确实有实测格（金丝雀，必中；不中 ⇒ 是这条查法坏了，不是数据没有）：
- *      `curl -sH "$H" .../a/v1/sim/sessions/sims_demo_seed_world` → `scope.baseSnapshotOrigin.measuredCells`
- *   ② 反向臂（把本函数换回 `deriveBaseSnapshot` 即复现）：照前端旧路 POST 一份自算世界
- *      `curl -sH "$H" -X POST .../a/v1/sim/sessions -d '{"baseSnapshot":{…},"scope":{"kind":"GLOBAL"}}'`
- *      → 回读该会话，`scope.baseSnapshotOrigin` **整个字段不存在**。
- * 单测那一份：`apps/frontend-shell/test/sandbox-world-origin.seam.test.tsx` 的 ⑥⑦⑧ 三条
- * （⛔ 刻意不另起新文件 —— 仓主 2026-08-20 冻结令：不许新增门）。
- *
- * ══ ⛔ 为什么不是「在前端也读一遍真值」 ═══════════════════════════════════════════
- * 那会得到**第二套真相源**：后端播种的两档判据（状态变量名恰好是该对象的一个数值属性 ⇒ 取真值）
- * 与前端各写一份，两边迟早漂移，而漂移后屏上那个「实测」记号会变成一句查无对证的话。
- * 本函数**一个业务字段都不读** —— 它只做一件事：把后端已经播好的那份世界态**原样取回来**，
- * 连同后端自己写的出处记号（`scope.baseSnapshotOrigin`）一起带走。
- *
- * ══ 出处记号为什么必须跟着数据一起复制 ═══════════════════════════════════════════
- * 新会话的 `baseSnapshot` **逐字节等于**源会话那一份 ⇒ 描述它的那条记号（多少格、几格实测）
- * 对新会话**同样为真**，不是"抄了个好看的标签"。反过来，只搬数据不搬记号，屏上就会
- * 把 450 格真业务数与 5,913 格占位**混成一句没有记号的读数** —— 那正是 R13 禁止的形态。
- */
-export interface SeededSessionLike {
-  readonly id: string;
-  readonly createdAt: string;
-  readonly scope: Record<string, unknown>;
-}
-
-/**
- * 从会话列表里挑「**后端播种的那个世界**」。挑不出来 ⇒ `null`（调用方退兜底，不许硬造）。
- *
- * 判据落在**记号本身**（`scope.baseSnapshotOrigin` 读得出来），⛔ 不是会话 id ——
- * 写死 `sims_demo_seed_world` 那种 id 就是往 R14「零业务常数」上撞：换个租户/换个播种批次
- * 立刻失配，而失配的表现是**静默退回哈希世界**，没有任何人会发现。
- *
- * 排序（确定性 R6，同一份输入永远选同一个）：实测格多的优先 → 总格多的优先 →
- * `createdAt` 早的优先（播种世界的 `createdAt` 是固定值）→ `id` 字典序。
- * ⚠ **不取"最新一条"**：本入口自己建的会话也带着复制来的记号，取最新会变成"跟着自己跑"。
- *
- * 排除 `scope.snapshotKind` 非空的那批 —— 那是活方案快照借 `sim_session` 承载，不是可推演世界
- * （与 `pickProbeSession` 同一条判据，理由见那个函数）。
- */
-export function pickSeededWorldSession<T extends SeededSessionLike>(sessions: readonly T[]): T | null {
-  const scored: { s: T; measured: number; cells: number }[] = [];
-  for (const s of sessions) {
-    if ((s.scope as { snapshotKind?: unknown })?.snapshotKind) continue;
-    const o = readSnapshotOrigin(s.scope);
-    if (o === null) continue;
-    scored.push({ s, measured: o.measuredCells ?? 0, cells: o.cells ?? 0 });
-  }
-  if (scored.length === 0) return null;
-  scored.sort(
-    (a, b) =>
-      b.measured - a.measured ||
-      b.cells - a.cells ||
-      a.s.createdAt.localeCompare(b.s.createdAt) ||
-      a.s.id.localeCompare(b.s.id),
-  );
-  return scored[0]!.s;
-}
-
-/** `resolveTick0World` 要的两跳（**注入**，不在本文件 import `@/api/endpoints`）。 */
-export interface Tick0WorldDeps {
-  /** 会话列表（`fetchSimSessions`，或走 React Query 缓存的等价物）。 */
-  listSessions: () => Promise<{ items: readonly SeededSessionLike[] }>;
-  /** 指名一条会话的 `baseSnapshot`（`fetchSimSessionBaseSnapshot`）。取不到 ⇒ `null`。 */
-  readBaseSnapshot: (sessionId: string) => Promise<TickState | null>;
-}
-
-/** tick0 世界态 + 它**是哪来的**。`origin === null` ⇔ `source === "DERIVED"`（两者不许各说各话）。 */
-export interface Tick0World {
-  readonly baseSnapshot: TickState;
-  /** `SEEDED` = 后端播种世界的副本；`DERIVED` = 本地哈希占位兜底。 */
-  readonly source: "SEEDED" | "DERIVED";
-  /** 出处记号（已解析，供屏上显示）。兜底路为 `null`。 */
-  readonly origin: SnapshotOrigin | null;
-  /** 出处记号的**原始记录**，原样写进新会话 `scope.baseSnapshotOrigin`。兜底路为 `null`。 */
-  readonly originRaw: Record<string, unknown> | null;
-  /** 副本取自哪条会话（兜底路 `null`）。屏上不显示，供报告/测试对账。 */
-  readonly sourceSessionId: string | null;
-}
-
-/**
- * 拿一份 tick0 世界态：**先问后端播种的那一份，要不到才本地派生**。
- *
- * 两个入口（`SandboxView.init` / `EdgeActivePanel.ensureSession`）共用这一支，
- * ⛔ 不许任何一方再写第二份取法 —— 两份取法 = 两个入口开出来的世界不是同一个世界，
- * 而用户并排看两页时对不上账（本仓「第二套真相源」那条老账的原形）。
- *
- * **任何一跳失败都退兜底、不抛** ——「列表这一跳 500 了」不该变成「沙盘打不开」。
- * 但 ⚠ 失败与"本来就没有播种世界"在**屏上必须同样诚实**：两者都落 `DERIVED`，
- * 而 `DERIVED` 这个记号说的正是"这批数不是实测"，对两种情形都为真。
- */
-export async function resolveTick0World(cfg: SandboxViewConfig, deps: Tick0WorldDeps): Promise<Tick0World> {
-  const fallback = (): Tick0World => ({
-    baseSnapshot: deriveBaseSnapshot(cfg),
-    source: "DERIVED",
-    origin: null,
-    originRaw: null,
-    sourceSessionId: null,
-  });
-  try {
-    const seed = pickSeededWorldSession((await deps.listSessions())?.items ?? []);
-    if (seed === null) return fallback();
-    const snapshot = await deps.readBaseSnapshot(seed.id);
-    // 空世界不算"取到了"：拿一个 0 格的世界去建会话，屏上会是一片算不出来的空白，
-    // 比哈希占位更难看，而且它还会带着一个说"有 N 格"的记号 —— 记号与数据当场对不上。
-    if (snapshot === null || Object.keys(snapshot).length === 0) return fallback();
-    const raw = (seed.scope as { baseSnapshotOrigin?: unknown }).baseSnapshotOrigin;
-    return {
-      baseSnapshot: snapshot,
-      source: "SEEDED",
-      origin: readSnapshotOrigin(seed.scope),
-      originRaw: typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : null,
-      sourceSessionId: seed.id,
-    };
-  } catch {
-    return fallback();
-  }
 }

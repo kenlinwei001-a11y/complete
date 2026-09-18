@@ -11,8 +11,6 @@ import {
   fetchSimSessions,
   // WO-SANDBOX-MEMORY：单条基线（列表不再下发 baseSnapshot ⇒ 要用才捞，一次一条）
   fetchSimSessionBaseSnapshot,
-  // WO-SIM-FRONTEND-SEED：走裸 `:id` 路由的那一支（上面那支今天恒 null，理由见 endpoints.ts 头注）
-  fetchSimSessionWorldBase,
   fetchSimViewConfig,
   simBranch,
   simCheckpoint,
@@ -144,10 +142,7 @@ const SANDBOX_SECONDARY_ACTION_COUNT = SANDBOX_SECONDARY_ACTIONS.length;
 // **在那边放一份副本才是错的**：两份 tick0 派生 = 沙盘的世界与探针世界不是同一个世界，
 // 用户看到的差值会对不上账（这正是本仓「第二套真相源」那条老账的形态）。
 export { deriveBaseSnapshot, hash01 } from "./edgeActiveModel";
-// WO-SIM-FRONTEND-SEED：tick0 世界态的取法**只有这一支**（先问后端播种的那份，要不到才本地派生），
-// 与 `EdgeActivePanel` 共用 —— 两个入口各写一份取法 = 两个入口开的不是同一个世界。
-import { resolveTick0World, type Tick0WorldDeps } from "./edgeActiveModel";
-import type { SnapshotOrigin } from "./unified/metricWallModel";
+import { deriveBaseSnapshot } from "./edgeActiveModel";
 // WO-STATEVAR-DISPLAYNAME：状态变量中文名的**唯一**消费路径（本文件零中文名映射表）
 import { stateVarLabel, stateVarText } from "./stateVarLabel";
 
@@ -609,39 +604,6 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
    * 两种情形都**不是**实测，先标占位再说；标错方向的代价是把假数说成真数，反过来只是保守。
    */
   const [worldOrigin, setWorldOrigin] = useState<WorldOrigin>("DERIVED");
-  /**
-   * WO-SIM-FRONTEND-SEED · 本会话 tick0 世界态的**出处记号**（后端播种时写的那一份，原样拿来显示）。
-   *
-   * 与上面的 `worldOrigin` **两个都要，不许合并**，它们回答两个不同的问题：
-   *  · `worldOrigin`  —— 屏上这批数是「后端重演回来的」还是「本地基线」（跟着数据盖章，逐帧变）
-   *  · `baseOrigin`   —— tick0 那一份里**几格是真业务数、几格是结构派生占位**（整局不变）
-   * 合成一个布尔就会丢掉「450/6363 实测」这句话 —— 而那正是本单要让用户看见的东西。
-   * `null` = 走了 `deriveBaseSnapshot` 兜底（没有播种世界可取），屏上就只剩「合成·占位」那一个记号。
-   */
-  const [baseOrigin, setBaseOrigin] = useState<SnapshotOrigin | null>(null);
-  /**
-   * `resolveTick0World` 的两跳。列表走 **React Query 缓存**（与 `sessionsQuery` 同一个 key
-   * `["a","sim-sessions"]` + `staleTime: Infinity`）⇒ 建会话这一步**不多打一跳**，
-   * 用的就是本页本来就要取的那份列表。
-   *
-   * ⚠ **两个 endpoint 都必须包在箭头函数里传，不许写成裸的函数引用**（`readBaseSnapshot:
-   * fetchSimSessionBaseSnapshot` 那种）。理由不是风格：本仓 29 份前端测试用
-   * `vi.mock("@/api/endpoints")` 做**部分 mock**，vitest 对**没列进 mock 的导出**是在
-   * **属性读取那一刻就抛**（`No "x" export is defined on the … mock`）。裸引用 = 在
-   * `useMemo` 里、也就是**渲染期**读它 ⇒ 抛在 React 渲染里，`resolveTick0World` 的 try/catch
-   * 根本够不着，整棵组件当场炸。**2026-09-16 实测**代价：**14 个测试文件、101 条**一起红，
-   * 而它们没有一个与本单的行为改动有关。包一层之后读取推迟到**调用期**（在那条 try 里面），
-   * 未 mock 的导出退化成一次兜底，与"租户没有播种世界"同一条路。
-   * 复验：`pnpm --filter frontend-shell exec vitest run test/sandbox-view.test.tsx`（改前 3/3 红）。
-   */
-  const tick0Deps = useMemo<Tick0WorldDeps>(
-    () => ({
-      listSessions: () =>
-        qc.ensureQueryData({ queryKey: ["a", "sim-sessions"], queryFn: () => fetchSimSessions(), staleTime: Infinity }),
-      readBaseSnapshot: (id) => fetchSimSessionWorldBase(id),
-    }),
-    [qc],
-  );
   // 事件驱动重取回来的世界态 → 落到屏上（这一步就是 `sim.tick_completed` 的可观测副作用）。
   useEffect(() => {
     const d = worldQuery.data;
@@ -940,40 +902,20 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   }, [perturbTargets, pObjectFilter, effPObject]);
 
   /**
-   * 建会话：tick0 世界态**先问后端播种的那一份要**，要不到才本地派生（`resolveTick0World`）。
+   * 建会话：baseSnapshot 由配置派生（无业务常数）。
    *
-   * ══ WO-SIM-FRONTEND-SEED · 这里原来是什么样、为什么改 ═══════════════════════════
-   * **改前**：`deriveBaseSnapshot(c)` 现算一份 100% 哈希世界 POST 上去。**2026-09-16 实测**（真后端
-   * `SEED_DEMO=1` 内存模式）这样建出来的会话 `scope.baseSnapshotOrigin` **整个字段不存在** ——
-   * 后端 `POST /a/v1/sim/sessions` 是纯透传、**它不播种**，前端给什么它存什么。
-   * 于是同一租户里后端启动时播下的那 450 格真业务数（`Order.qty`/`unitPrice`/`leadDays`），
-   * 从本页进去**一格也看不到**；统一推演台走播种世界，看得到。同一个租户两套读数。
-   * **改后**：先取播种世界的 `baseSnapshot` 原样当本会话的 tick0，连同后端自己写的出处记号
-   * 一起复制进 `scope.baseSnapshotOrigin`。取法只有一支（`resolveTick0World`），
-   * `EdgeActivePanel` 用的是同一支 —— 两个入口开出来的世界因此是同一个世界。
-   *
-   * ⛔ **不是「在前端再读一遍真值」**：本页一个业务字段都没读，读的是后端已经播好的那份数据。
-   * ⛔ `deriveBaseSnapshot` **没删**：没有播种世界的租户仍靠它开出一个可跑的世界。
-   *
-   * 复验（正反两臂 + 金丝雀，命令与数字全在 `edgeActiveModel.ts` 的 `resolveTick0World` 头注里）；
-   * 单测：`apps/frontend-shell/test/sandbox-world-origin.seam.test.tsx` 的 ⑥⑦⑧ 三条
- * （⛔ 刻意不另起新文件 —— 仓主 2026-08-20 冻结令：不许新增门）。
+   * WO-SIM-SCOPE-LOCAL ②：`scope` 从前是硬写的 **`{}`**（空范围）——向导屏里用户逐步选好的
+   * `{kind,target}` 被它当场作废（向导 `:112` 建会话 A → `:133` navigate → A 的 id 随组件 state 蒸发 →
+   * 本屏 `!sessionId` 又建了个范围为空的会话 B）。现在把**用户当前选的范围真的写进会话**，
+   * 会话再也不是"空范围"的了；并记下 `sessionScope` 以便屏上随时对得上账。
    */
   const init = useCallback(async (c: SandboxViewConfig, kind: "GLOBAL" | "LOCAL", target: string | null) => {
     try {
-      const w = await resolveTick0World(c, tick0Deps);
-      const base = w.baseSnapshot;
-      // 出处记号**跟着数据一起写进会话**（后端写的那一份，原样复制，前端不重算）。
-      // 不复制 = 这份世界里那 450 格真业务数与 5,913 格占位在屏上混成一句没有记号的读数（顶 R13）。
-      const scope = {
-        kind,
-        target: kind === "LOCAL" ? target : null,
-        ...(w.originRaw === null ? {} : { baseSnapshotOrigin: w.originRaw }),
-      };
+      const base = deriveBaseSnapshot(c);
+      const scope = { kind, target: kind === "LOCAL" ? target : null };
       const s = await createSimSession({ baseSnapshot: base, scope });
       setSessionId(s.id);
-      setSessionScope({ kind, target: kind === "LOCAL" ? target : null });
-      setBaseOrigin(w.origin);
+      setSessionScope(scope);
       setWorld(base);
       // 基线快照取**后端回的那一份**（`s.baseSnapshot`），不是本地 `base` ——
       // 两者今天相同，但真相源是会话对象；写 `base` 就是在本地留了第二套真相源。
@@ -982,18 +924,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       // 首次挂载就**一发都不发**（省掉一整跳 285MB），只有真的切世界时才去捞那一条。
       setBaseWorldFor(s.id);
       setCurTick(0);
-      /**
-       * WO-V4-HONEST-ORIGIN：tick0 这一份盖 `DERIVED` 章 —— 顶栏据此标「合成·占位」。
-       *
-       * ⚠ WO-SIM-FRONTEND-SEED **刻意不把它改成 `MEASURED`**，哪怕这份世界现在来自后端：
-       * 播种世界自己的记号写的就是 `kind:"DERIVED"`（2026-09-16 实测：6,363 格里 450 格实测、
-       * 5,913 格结构派生；复验 `GET /a/v1/sim/sessions/sims_demo_seed_world` 的
-       * `scope.baseSnapshotOrigin`）。整份盖「实测」是把 93% 的占位说成真数 —— 比这条保守记号坏得多。
-       * 那 450 格**不是不说**，而是由 `baseOrigin` 在旁边如实写出分项：
-       * **一个粗记号 + 一个分项**，而不是把两件事挤进一个布尔里说错。
-       * ⚠ 这三个数会随本体/种子变（它们是**现算**下发的，不是写死的）——屏上那一行读的是回包，
-       * 本注释里的数字只是当天的样本，别拿它当判据。
-       */
+      // WO-V4-HONEST-ORIGIN：这一份是**前端哈希占位**，盖 `DERIVED` 章 —— 顶栏据此标「合成·占位」。
       setWorldOrigin("DERIVED");
       // 权威副本就地写入（避免刚建完又去 GET 一次同样的东西）；此后只有事件失效才触发真重取。
       // ⚠ 正因为这一行，新建会话时那个 GET **不会发**（staleTime: Infinity）——
@@ -1012,7 +943,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     } catch (e) {
       toastError(e);
     }
-  }, [qc, tick0Deps]);
+  }, [qc]);
 
   // 首个会话按**当前选中的范围**建（默认 GLOBAL = 整本体，是个真范围，不是空对象）。
   // 依赖里刻意不放 certScope/effectiveTarget：它们变了要走「重建会话」那条显式路径，
@@ -2140,43 +2071,6 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                   </span>
                 </InfoPopover>
               </span>
-              {/**
-               * WO-SIM-FRONTEND-SEED（2026-09-16）· tick0 世界态的**实测/派生分项**（后端播种记号的原样转述）。
-               *
-               * ── 为什么它必须与上面那个徽标**分开两个元素** ─────────────────────────
-               * 上面那个是**整份世界态**的粗记号（两态：本地基线 / 后端重演回来的）。
-               * 本行答的是另一个问题：tick0 那一份里**几格是真业务数**。两者不同源、不同步变化，
-               * 塞进同一个元素就会让「不含实测」与「含 450 格实测」在 DOM 上无法分辨 ——
-               * 而 `sandbox-world-origin.seam.test.tsx` ① 的「徽标里不许出现『实测』二字」
-               * 正是钉住占位期不许自称实测的那一向，塞进去会把那条两向判据废掉一半。
-               *
-               * ── 措辞取自 `UnifiedSimShell` 已在用的那一句，⛔ 不另编一套说法 ──────────
-               * 同一条记号在两个页面上两种说法 = 用户以为看到的是两回事。
-               * 数字直接来自后端 `scope.baseSnapshotOrigin`，前端不做任何折算。
-               *
-               * 记号**缺席时整行不渲染**（没有播种世界可取 ⇒ 走了本地派生兜底）：
-               * ⛔ 不许退成「实测格 0/N」—— 「我没有这个记号」与「这份世界零格实测」是两个命题，
-               * 后者是个具体断言，而兜底路根本没人算过这个数，写出来就是编的。
-               *
-               * 屏上这两个数**现算下发、不写死**（来源 `scope.baseSnapshotOrigin`，后端
-               * `sim/seed-world.ts` 逐格探出来的）；复验见本文件 `init` 头注给的那两条 curl。
-               */}
-              {baseOrigin !== null && baseOrigin.measuredCells !== null && baseOrigin.cells !== null && (
-                <span
-                  data-testid="sandbox-kpi-base-origin"
-                  data-measured-cells={baseOrigin.measuredCells}
-                  data-cells={baseOrigin.cells}
-                  style={{ color: baseOrigin.measuredCells > 0 ? "var(--ok-txt)" : "var(--warn-txt)" }}
-                >
-                  {` · 实测格 ${baseOrigin.measuredCells}/${baseOrigin.cells}`}
-                  {baseOrigin.note !== null && (
-                    <InfoPopover topic={zh.sim.sandbox.info.kpiOrigin} testId="kpi-base-origin">
-                      {/* 后端特意备好的「一句人话的出处说明」—— 原样承接，前端不另写措辞。 */}
-                      <span data-testid="sandbox-kpi-base-origin-note">{baseOrigin.note}</span>
-                    </InfoPopover>
-                  )}
-                </span>
-              )}
               {/**
                * WO-SANDBOX-KPI-LAYER · **按偏离度分层**（规范 §1 第一层只放要回答的那个数）。
                *

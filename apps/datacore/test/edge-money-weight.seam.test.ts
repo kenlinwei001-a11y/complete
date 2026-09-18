@@ -253,18 +253,19 @@ describe("§3 描述里的系数 = 真系数", () => {
   interface Row { key: string; coef: number; stated: number[]; ok: boolean }
   /** 判 (key, 真增益, 描述声明数) 三元组：声明数里至少一个与真增益相符（6 位小数，= 预算取整精度）。 */
   const rowsFromRules = (
-    rules: ReadonlyArray<{ key: string; coefficient: number; description: string; targetStateVar: string }>,
+    rules: ReadonlyArray<{ key: string; coefficient: number; description: string | null; targetStateVar: string }>,
   ): Row[] =>
     rules
-      .map((r) => ({ key: r.key, coef: gainOf(r.targetStateVar, r.coefficient), stated: statedOf(r.description) }))
-      .filter((r) => r.stated.length > 0) // 描述里没写数 ⇒ 不判定（合法）
+      .map((r) => ({ key: r.key, coef: gainOf(r.targetStateVar, r.coefficient), stated: statedOf(r.description ?? "") }))
+      .filter((r) => r.stated.length > 0) // 描述里没写数（或压根没描述）⇒ 不判定（合法）
       .map((r) => ({ ...r, ok: r.stated.some((s) => Math.abs(s - r.coef) < 1e-6) }));
 
   it("🐤 金丝雀先行：把一条相符的边变异成不符，对账必须当场抓到", () => {
     const rules = demoPropagationRulesWithDomain().map((r) => ({ ...r }));
     const victim = rules.find((r) => r.key === "demo_customer_receivable_to_invoice_overdue");
     expect(victim, "变异靶子不在种子里 ⇒ 这条金丝雀证明不了任何事").toBeTruthy();
-    victim!.description = victim!.description.replace("× 0.4", "× 0.8");
+    expect(victim!.description, "靶子没有描述 ⇒ 变异无处可注，这条金丝雀证明不了任何事").toBeTruthy();
+    victim!.description = victim!.description!.replace("× 0.4", "× 0.8");
     expect(victim!.description, "变异没注进去 ⇒ 下面那条断言证明不了任何事").not.toContain("× 0.4");
     const bad = rowsFromRules(rules).filter((r) => !r.ok);
     expect(bad.map((r) => r.key)).toContain("demo_customer_receivable_to_invoice_overdue");

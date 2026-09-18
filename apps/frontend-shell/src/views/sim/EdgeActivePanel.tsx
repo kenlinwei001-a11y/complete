@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SimCounterfactualResult } from "@platform/contracts";
-import { createSimSession, fetchPropagationRules, fetchSimSessionWorldBase, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
+import { createSimSession, fetchPropagationRules, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import { HintDot } from "./shared";
 import {
@@ -9,17 +9,15 @@ import {
   buildDomainSlices,
   buildEdgeRows,
   buildVerdict,
+  deriveBaseSnapshot,
   pickProbeSession,
   PROBE_WORLD_PROVENANCE,
   PROBE_WORLD_PROVENANCE_DETAIL,
   resolveActiveSlice,
-  resolveTick0World,
   toggleEdge,
   UNASSIGNED_DOMAIN_DETAIL,
   UNASSIGNED_SLICE_ID,
-  type Tick0WorldDeps,
 } from "./edgeActiveModel";
-import type { SnapshotOrigin } from "./unified/metricWallModel";
 // 命名成 `css` 而不是惯用的 `s`：本文件已有 `const tid = (s: string) => …`，
 // 用 `s` 会被那个形参遮蔽 —— 遮蔽后类名读作 `undefined`，样式**静默全丢**（不报错）。
 import css from "./EdgeActivePanel.module.css";
@@ -178,69 +176,27 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
   /** 本页没有会话、租户也一个都没有时，就地开出来的**探针世界**（懒建：只在第一次拨开关时才建）。 */
   const [probeCreated, setProbeCreated] = useState<string | null>(null);
   const effectiveSessionId = probeSession?.id ?? probeCreated;
-  /**
-   * WO-SIM-FRONTEND-SEED · 就地开的那个探针世界，tick0 **是哪来的**（后端播种的记号，原样拿来显示）。
-   * `null` = 还没开 / 开的时候要不到播种世界（走了 `deriveBaseSnapshot` 兜底）。
-   */
-  const [probeOrigin, setProbeOrigin] = useState<SnapshotOrigin | null>(null);
-  /**
-   * 差值算在哪个世界上：自带会话/租户已有会话 = 真世界；探针世界 = 就地开的那个。
-   *
-   * ⚠ WO-SIM-FRONTEND-SEED 后，「就地开的」**不再等同于**「tick0 全是占位」——
-   * 探针世界现在优先拿后端播种的那一份当 tick0。故本旗标只回答「这个世界是不是本页现开的」，
-   * 「它的数是不是占位」由 `probeOrigin` 单独回答。两个问题两个变量，⛔ 别再合成一个布尔：
-   * 合并回去就会出现「明明有真业务数在里面，屏上却写着『占位·未实测』」这种**反向的谎**。
-   * （2026-09-16 实测的那份样本与复验命令见 `edgeActiveModel.ts` 的 `resolveTick0World` 头注。）
-   */
+  /** 差值算在哪个世界上：自带会话/租户已有会话 = 真世界；探针世界 = tick0 为 DERIVED 占位。 */
   const probeIsSynthetic = !sessionId && !probeSession && probeCreated !== null;
-
-  /**
-   * `resolveTick0World` 的两跳；列表走本页本来就有的那份缓存（`["a","sim-sessions"]`），不多打一跳。
-   * ⚠ 两个 endpoint 都**包一层箭头函数**再传 —— 裸引用会在渲染期读属性，而本仓 29 份测试做的是
-   * `vi.mock("@/api/endpoints")` 部分 mock，未列出的导出**一读就抛**，抛在渲染里 try/catch 够不着。
-   * 同一条坑的完整来历写在 `SandboxView` 的 `tick0Deps` 头注里（2026-09-16 实测 14 文件 / 101 条红；
-   * 复验 `pnpm --filter frontend-shell exec vitest run test/sandbox-view.test.tsx`）。
-   */
-  const tick0Deps = useMemo<Tick0WorldDeps>(
-    () => ({
-      listSessions: () =>
-        qc.ensureQueryData({ queryKey: ["a", "sim-sessions"], queryFn: () => fetchSimSessions(), staleTime: 60_000 }),
-      readBaseSnapshot: (id) => fetchSimSessionWorldBase(id),
-    }),
-    [qc],
-  );
 
   /**
    * 拿一个能算对照的世界。顺序：本页自带 → 租户已有 → **就地开一个探针世界**。
    *
    * ⚠ 为什么允许"就地开"：`SimSession` 是仿真世界，不是真值（R4-sim），建它不经 Action 审批；
-   * 而且 tick0 走的是**与沙盘同一支取法**（`resolveTick0World`）—— 不是本页新发明的世界。
+   * 而且 tick0 走的是**沙盘自己那一份** `deriveBaseSnapshot` —— 不是本单新发明的世界。
    * ⚠ 为什么必须**懒建**：页面一挂载就建会话 = 每打开一次推演页就多一行世界，属于无声副作用。
    *   只在用户真的拨了开关（= 明确表达"我想看关掉之后怎么样"）时才建。
-   * ⚠ 为什么必须**标出处**：tick0 可能是 `hash01` 占位值 —— 拿它算出来的差值只反映**边的结构影响**，
-   *   不是实测量级。不标 = 拿占位值冒充实测（顶 R13）。记号见下方 `probe-origin` 那一段。
-   *
-   * ── WO-SIM-FRONTEND-SEED：这条路今天什么时候真的会走到（2026-09-16 逐行复核，别按直觉猜）──
-   * `pickProbeSession`（`edgeActiveModel.ts`，判据 `usable.length === 0 → null`）
-   * 只在**会话列表为空或还没回来**时返回 `null`，所以本分支不是常态路径。
-   * 但它**确实会走到**：用户在列表这一跳落地**之前**就拨了开关 —— 那一刻租户明明有播种世界，
-   * 而本页会凭空造一个 100% 哈希世界去算差值。`resolveTick0World` 里那一跳走的是
-   * React Query 缓存，在飞的同一个请求会被合流，于是这个竞态窗口里也拿得到播种世界。
+   * ⚠ 为什么必须**标出处**：tick0 是 `hash01` 占位值（沙盘自己也把它盖章 `DERIVED`），
+   *   拿它算出来的差值只反映**边的结构影响**，不是实测量级。不标 = 拿占位值冒充实测（顶 R13）。
    */
   const ensureSession = useCallback(async (): Promise<string | null> => {
     if (effectiveSessionId) return effectiveSessionId;
     const cfg = await fetchSimViewConfig();
-    const w = await resolveTick0World(cfg, tick0Deps);
-    const s = await createSimSession({
-      baseSnapshot: w.baseSnapshot,
-      // 出处记号原样跟着数据走（后端写的那一份）。⛔ 前端不重算，也不在这里编一份。
-      scope: { kind: "GLOBAL", target: null, ...(w.originRaw === null ? {} : { baseSnapshotOrigin: w.originRaw }) },
-    });
+    const s = await createSimSession({ baseSnapshot: deriveBaseSnapshot(cfg), scope: { kind: "GLOBAL", target: null } });
     setProbeCreated(s.id);
-    setProbeOrigin(w.origin);
     void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
     return s.id;
-  }, [effectiveSessionId, qc, tick0Deps]);
+  }, [effectiveSessionId, qc]);
 
   const rules = rulesQuery.data?.items ?? [];
   /** 屏上的屏蔽集：拨过开关就用本地候选集，否则用会话上持久的那一份。 */
@@ -413,32 +369,11 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
       )}
       {/* R13 出处：拿占位世界算出来的差值只反映**边的结构影响**，不是实测量级 —— 必须标，不许含糊。
           记号文案取自 `edgeActiveModel` 的导出常量（**与产生这批数的那个函数同一个文件**），
-          免得再出现"迁了实现、记号留在原文件"那种事（本单迁 `deriveBaseSnapshot` 时被门当场抓到过）。
-
-          ══ WO-SIM-FRONTEND-SEED · 这段现在**分两支**，而不是多加一句 ═══════════════════
-          探针世界的 tick0 现在优先取后端播种的那一份（含真业务数），此时再写「占位·未实测」
-          就是**反向的谎** —— 把已经实测到的格子说成没实测，和把占位说成实测一样不可接受。
-          ⛔ 记号本身**没有消失**（`docs/CONVENTION-ui-information-layering.md` §1：诚实位可降层不可删）：
-            · 走播种世界 ⇒ 记号换成「N/M 格实测」+ 后端自己写的那句出处说明；
-            · 走本地派生兜底 ⇒ 常量原样照旧，一个字没改。
-          两支都留在**第一层**（不折叠、不降浮层），testid 仍是同一个 `probe-origin`。 */}
+          免得再出现"迁了实现、记号留在原文件"那种事（本单迁 `deriveBaseSnapshot` 时被门当场抓到过）。 */}
       {probeIsSynthetic && (
         <p data-testid={tid("probe-origin")} className={css.note}>
-          {probeOrigin !== null && probeOrigin.measuredCells !== null && probeOrigin.cells !== null ? (
-            <>
-              <b data-testid={tid("probe-origin-measured")}>
-                {`实测格 ${probeOrigin.measuredCells}/${probeOrigin.cells}`}
-              </b>
-              ：本页就地开的探针世界，其 tick0 世界态取自本租户已播种的世界（非本页现算）。
-              {/* 后端备好的「一句人话的出处说明」——原样承接，⛔ 前端不另编措辞。 */}
-              {probeOrigin.note !== null && ` ${probeOrigin.note}`}
-            </>
-          ) : (
-            <>
-              <b>{PROBE_WORLD_PROVENANCE}</b>：{PROBE_WORLD_PROVENANCE_DETAIL}
-              要在实测世界上对照，请在「推演沙盘」里建世界后再回到本页。
-            </>
-          )}
+          <b>{PROBE_WORLD_PROVENANCE}</b>：{PROBE_WORLD_PROVENANCE_DETAIL}
+          要在实测世界上对照，请在「推演沙盘」里建世界后再回到本页。
         </p>
       )}
 

@@ -2011,7 +2011,13 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
   T6 后积压族 5 行「衰减出处 `C35.queueDaysDecayPerTick`」与「规则表达式 `…params.pressureDecayPerTick`」
   同行自相矛盾 ⇒ `disclosure.ts` 按 `decayRef.paramKey` 给**解析后**表达式（压力族替换恒等）。
   配套：披露夹具 2026-09-18 重采后已含 `rules.adversary`（后端恒下发），对抗方门 ABSENT 态样本
-  改由 `sim-disclosure.pre-adversary.real.json` 承载（2026-09-03 原样回包从 git 历史单独存档）。
+  ~~改由 `sim-disclosure.pre-adversary.real.json` 承载（2026-09-03 原样回包从 git 历史单独存档）~~
+  ⚠ **2026-09-18 晚 WO-PROP-V2-REBASE 订正**：该存档触仓主**禁令 3**（新增基线 JSON 一律冻结），
+  1,876 行已删。ABSENT 样本改为**从 `sim-disclosure.adversary.real.json` 的 `off` 态现算**
+  （只删 `rules.adversary` 一个键）。这不只是省行数 —— 旧存档是**另一代世界**
+  （46 规则 / 12,499 对象），两态之差里混着「世界不同」这个混杂因子；现算版把变量收敛到唯一一个，
+  对照实验才真正成立。门里补了双向金丝雀：源回包里该键**必须本来就在**（否则「删掉它」什么都没做），
+  且除该键外两者**逐字节同源**。
 
 **评审 v2 登记而未落（诚实挂账，均不阻塞本段交付）**：
 ⑦ Kingman 排队形状（引擎今天只有 delayTicks 整数延迟，无形状参数 = **引擎缺口**，单独立项）·

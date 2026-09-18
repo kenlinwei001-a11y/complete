@@ -39,14 +39,25 @@ const REAL = JSON.parse(
   readFileSync(join(TEST_DIR, "fixtures/sim-disclosure.adversary.real.json"), "utf8"),
 ) as { off: SimRunDisclosure; noReaction: SimRunDisclosure; reacted: SimRunDisclosure };
 /**
- * 这一份**没有** `rules.adversary`（2026-09-03 抓的，早于该字段）⇒ 天然是 `ABSENT` 态的真样本。
- * ⚠ 2026-09-18（T6 重采）：`sim-disclosure.real.json` 已含 `adversary` 字段（后端现在恒下发），
- * 不能再当 ABSENT 样本 —— 故把当年那份原样回包**单独存档**为本文件
- * （从 git 历史 `5f7e5141c` 原样取出，一个字节没改；46 条规则 / 12,499 个对象那一代的世界）。
+ * `ABSENT` 态样本 = **从上面那份真回包现算**（删掉 `rules.adversary` 这一个键），
+ * ⛔ **不另存基线 JSON**（仓主禁令 3：新增基线一律冻结）。
+ *
+ * ── 为什么现算比存一份旧回包**更强**，不只是更省 ────────────────────────────────
+ * 本单原先存了一份 1,876 行的 `sim-disclosure.pre-adversary.real.json`
+ * （2026-09-03 那一代的回包，46 条规则 / 12,499 个对象），理由是「它天然没有这个字段」。
+ * 但那份回包与 `REAL.off` **是两个世界**（规则数、对象数、系数全不同）⇒
+ * 屏上两态的差别里混着**世界不同**这个混杂因子，而本门要验的是**只有这一个键在变**。
+ * 现算版把变量收敛成一个：同一份回包、同一个世界，唯一差别就是 `adversary` 在不在。
+ * 形态：「我用『这两份回包的屏上不一样』当作『是那个键造成的』的证据 —— 世界也不一样。」
+ *
+ * ⚠ 它仍然**不是手写夹具**：整份数据来自真后端回包，只是少一个键 ——
+ * 后端哪天改了别的字段名，这里照样当场红（那正是存真回包的全部意义）。
  */
-const PRE_FIELD = JSON.parse(
-  readFileSync(join(TEST_DIR, "fixtures/sim-disclosure.pre-adversary.real.json"), "utf8"),
-) as SimRunDisclosure;
+const PRE_FIELD: SimRunDisclosure = (() => {
+  const { adversary: _dropped, ...rulesWithoutAdversary } = REAL.off.rules as SimRunDisclosure["rules"] &
+    Record<string, unknown>;
+  return { ...REAL.off, rules: rulesWithoutAdversary } as SimRunDisclosure;
+})();
 
 /**
  * 整块渲染开（含二层 `<details>`），返回屏上全部可见文本。
@@ -86,8 +97,16 @@ describe("§0 夹具自证（金丝雀先行 —— 不然下面全是废话）"
     expect(c.triggeredActors, "越线对手数为 0 ⇒ 这一格没验到东西").toBeGreaterThan(0);
   });
 
-  it("旧夹具确实没有这一栏（= ABSENT 态的真样本，不是我编的）", () => {
+  it("ABSENT 样本确实没有这一栏，且**只**少这一栏（现算法的双向自证）", () => {
+    // 正向：那个键真的不在 —— 否则下面 §1 的 ABSENT 断言全是空转。
     expect("adversary" in (PRE_FIELD.rules as object)).toBe(false);
+    // 🐤 反向金丝雀：源回包里那个键**本来是在的** —— 否则「删掉它」这个动作什么都没做，
+    //    而屏上照样显示 ABSENT，这道门就成了装饰品。
+    expect("adversary" in (REAL.off.rules as object)).toBe(true);
+    // 🐤 除该键外逐字节同源 —— 证明两态之间**只有这一个变量在动**（对照实验成立的前提）。
+    const stripped = { ...(REAL.off.rules as Record<string, unknown>) };
+    delete stripped.adversary;
+    expect(JSON.stringify(PRE_FIELD.rules)).toBe(JSON.stringify(stripped));
   });
 });
 
