@@ -251,7 +251,7 @@ npx vitest run test/sim-order-real-fields.seam.test.ts -t "改真值" --pool=for
 
 | 栏 | 内容 |
 |---|---|
-| **两次 RC** | run1 `RC=1` / **328s**（`1 failed \| 3 passed (4)`）· run2 <!--F4-RUN2--> |
+| **两次 RC** | run1 `RC=1` / **328s** · run2 `RC=1` / **323s**（两次均 `1 failed \| 3 passed (4)`，断言读数**逐字节相同**） |
 | **失败用例名** | `⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身`（256487ms） |
 | **断言原文** | 见下 |
 | **归因** | **合并树真红**（另 3 条 × 是**环境伪红**，清洁窗口全绿） |
@@ -260,12 +260,15 @@ npx vitest run test/sim-order-real-fields.seam.test.ts -t "改真值" --pool=for
 
 | 用例 | 基线（污染） | run1（清洁） |
 |---|---|---|
-| ① 播种 / tick 落盘 / 幂等 | × | **✓ 20.889s** |
-| ⑥ 确定性 R6 逐字节一致 | × | **✓ 45.885s** |
-| ④ 诚实缺席（不建空世界） | × | **✓ 0.375s** |
-| ⑤ 扰动接缝 | × | **× 256.487s（真红）** |
+| 用例 | 基线（污染） | run1（清洁） | run2（清洁） |
+|---|---|---|---|
+| ① 播种 / tick 落盘 / 幂等 | × | **✓ 20.889s** | **✓ 20.624s** |
+| ⑥ 确定性 R6 逐字节一致 | × | **✓ 45.885s** | **✓ 45.828s** |
+| ④ 诚实缺席（不建空世界） | × | **✓ 0.375s** | **✓ 0.492s** |
+| ⑤ 扰动接缝 | × | **× 256.487s** | **× 251.214s** |
 
-整文件 328s vs 基线 **4,527s** ⇒ 快 **13.8 倍**，但**红没被快掉**。
+整文件 328s / 323s vs 基线 **4,527s** ⇒ 快 **13.8 倍**，但**红没被快掉**：
+⑤ 两跑都红，且 `expected 2445 to be 3861` **两次逐字节相同** ⇒ 不是 flaky。
 
 ```
 FAIL ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
@@ -340,4 +343,50 @@ npx vitest run test/sim-seed-world.seam.test.ts -t "扰动接缝" --pool=forks -
 
 ## §4 总判
 
-<!--PLACEHOLDER-VERDICT-->
+### 逐文件总判（派单要求的那一句）
+
+| # | 文件 | 总判 |
+|---|---|---|
+| ① | `seed-demo-propagation.test.ts` | **真红待修**（2 条） |
+| ② | `object-constraint-refs.seam.test.ts` | **清洁窗口成立**（两跑全绿 8/8） |
+| ③ | `sim-order-real-fields.seam.test.ts` | **真红待修**（3 条，同一个 ×0.37） |
+| ④ | `sim-seed-world.seam.test.ts` | **真红待修**（1 条；另 3 条平反为环境伪红） |
+
+### 18 条 × 里，本单射程内那 10 条的归属
+
+| 文件 | 基线 × | 清洁窗口 × | 平反 |
+|---|---:|---:|---:|
+| `seed-demo-propagation` | 2 | **2** | 0 |
+| `object-constraint-refs.seam` | 1 | **0** | 1 |
+| `sim-order-real-fields.seam` | 3 | **3** | 0 |
+| `sim-seed-world.seam` | 4 | **1** | 3 |
+| **合计** | **10** | **6** | **4** |
+
+⇒ **基线那 10 条 ×，4 条是污染窗口的假象，6 条是合并树真红。**
+⚠ 另外 6 个 ❯ 文件（`sim-sessions-projection.seam` 3 · `dynamic-drill-resolve.seam` 1 ·
+`engine-scope-fidelity.seam` 1 · `factor-scope-singlesource.seam` 1 · `m11-calibration` 1 ·
+`column-security` 1，共 8 条）**不在本单射程**，仍是 **NOT-ADJUDICATED**，本报告不对它们下任何结论。
+
+### 6 条真红是**至少 3 个独立缺陷**，不是一个
+
+| 缺陷 | 指纹 | 涉及 |
+|---|---|---|
+| **A** | 读数 = 期望 **×0.5** | ①(a) 三跳权重 |
+| **B** | 读数 = 期望 **×0.37**（= `1−λ`，λ=0.63） | ③ 全部 3 条 |
+| **C** | 计数对不上（`2445 ≠ 3861`）、末拍格数 `0 ≠ 4937` | ①(b) + ④⑤ |
+
+**⛔ 别当成一个 bug 去修** —— 0.5 与 0.37 是两个不同的因子，C 类根本不是比例问题。
+
+### 本单没做、留给修单的两件（明说，免得被当成已核）
+
+1. **①(a) 的两个候选没分辨**（引擎权重 0.5 vs 回包 explain 缺行）——
+   需要打印 `tick1.pairWeighting.report.explain` 的实际行数才能定。
+2. **④⑤ 的「两半合起来才红」是比对推断，不是对照跑实测** ——
+   需在 `f072c8dc` 与 `4bde203f` 上各跑一次 `-t "扰动接缝"` 坐实。
+
+### 纪律自查
+
+- **零代码改动**：本单只量不修。`git diff 631c9730..HEAD --stat` 只含 `docs/evidence/wo-sim-edge-wire/seam-recheck.md` 一个文件。
+- **八次跑全部落 `.txt`/`.rc`/`.canary`，RC 由 `$?` 直接捕获**，⛔ 无 `cmd | tail; echo $?`（那取的是 `tail` 的 RC）。
+- **八次起跑闸门全部 `roots=0 total=0`，零 ABORT**（§1）。
+- **⛔ 未推 canonical**；产出只在 `claude/handoff-edge-wire-seam-recheck`。
