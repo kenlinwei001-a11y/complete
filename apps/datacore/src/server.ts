@@ -9,7 +9,7 @@ import { createLlmClient } from "./llm.js";
 import { buildApp } from "./app.js";
 import { bootstrapPlatformAdmin, bootstrapReadiness } from "./bootstrap.js";
 import { seedDemo, seedDemoSynthetic, seedDemoPropagationRules, seedDemoProcessLayer, seedDemoOrgWorld, seedDemoEntitlements, DEMO_TENANT } from "./seed.js";
-import { seedDemoDerivationSpecs } from "./seed-derivation-specs.js";
+import { seedDemoDerivationSpecs, recomputeDemoDerivationsAtSeed } from "./seed-derivation-specs.js";
 import { seedDemoSimWorld } from "./sim/seed-world.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -100,6 +100,11 @@ async function main(): Promise<void> {
       phase("seed:derivation-specs");
       const nSpecs = await seedDemoDerivationSpecs(repos, services.ontologyCore, services.governance, adminCtx);
       logger.info(`SEED_DEMO=1: compiled ${nSpecs} demo derivation specs (evidence layer non-empty)`);
+      // WO-SIM-REAL-DATA §1：规格编译完**立刻全量初算一次**，且必须排在 `seedDemoSimWorld` 之前 ——
+      // 世界快照是一次性铺的（`o.props[v]` 当时取到啥就是啥），派生值晚了不回填。
+      phase("seed:derivation-recompute");
+      const nDerived = await recomputeDemoDerivationsAtSeed(repos, services.ontologyCore, adminCtx);
+      logger.info(`SEED_DEMO=1: seed-time derivation recompute materialized ${nDerived} objects`);
       // WO-SIM-SEED-WORLD 推演种子世界（**必须排在最后**）：它铺的 tick0 世界态取自**别人播完的产物**
       // ——合成本体的物化对象 + 传导规则 + 流程层对象。谁没播完，世界就是残的。
       // 走 `services.sim` = 两条路由用的同一份实现（建会话 + 真 tick），不在这里另写一套。
