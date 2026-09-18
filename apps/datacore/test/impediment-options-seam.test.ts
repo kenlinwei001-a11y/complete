@@ -329,7 +329,8 @@ describe("WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种�
     await seedBattery(t);
     const s = await scan(t);
 
-    const empties = s.impediments.filter((im) => (im.candidates ?? []).length === 0);
+    // 与 S3-4 同一个选集口径（`candidates !== undefined` ⇒ 枚举真跑过这一条，不是字段压根没下发）
+    const empties = s.impediments.filter((im) => (im.candidates ?? []).length === 0 && im.candidates !== undefined);
     expect(empties.length).toBeGreaterThan(0); // 金丝雀：这条空了下面全是空跑
 
     const LEDGER = /真试算 (\d+) 个档位 → 有效 (\d+) 个：(\d+) 个拨完两维读数[^、]*一动不动、(\d+) 个动了但没往好里动/;
