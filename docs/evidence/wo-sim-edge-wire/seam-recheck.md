@@ -247,9 +247,77 @@ npx vitest run test/sim-order-real-fields.seam.test.ts -t "改真值" --pool=for
 
 ---
 
-### ④ `apps/datacore/test/sim-seed-world.seam.test.ts` — <!--F4-VERDICT-->
+### ④ `apps/datacore/test/sim-seed-world.seam.test.ts` — **真红（但只剩 1/4，不是基线的 4/4）**
 
-<!--F4-BODY-->
+| 栏 | 内容 |
+|---|---|
+| **两次 RC** | run1 `RC=1` / **328s**（`1 failed \| 3 passed (4)`）· run2 <!--F4-RUN2--> |
+| **失败用例名** | `⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身`（256487ms） |
+| **断言原文** | 见下 |
+| **归因** | **合并树真红**（另 3 条 × 是**环境伪红**，清洁窗口全绿） |
+
+**基线 4/4 全红 ⇒ 本次 1/4 红。被平反的三条**：
+
+| 用例 | 基线（污染） | run1（清洁） |
+|---|---|---|
+| ① 播种 / tick 落盘 / 幂等 | × | **✓ 20.889s** |
+| ⑥ 确定性 R6 逐字节一致 | × | **✓ 45.885s** |
+| ④ 诚实缺席（不建空世界） | × | **✓ 0.375s** |
+| ⑤ 扰动接缝 | × | **× 256.487s（真红）** |
+
+整文件 328s vs 基线 **4,527s** ⇒ 快 **13.8 倍**，但**红没被快掉**。
+
+```
+FAIL ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+AssertionError: 结构可达面与真跑对不上 ⇒ 排序键度量的不是传导: expected 2445 to be 3861 // Object.is equality
+- Expected   3861
++ Received   2445
+ ❯ test/sim-seed-world.seam.test.ts:459:70
+    457|     // `reachCells` 的口径：**不含落点那一格**（落点对象上的其它格仍算下游）。
+    458|     const censusDownstreamCells = census.moved.filter((k) => k !== lan…
+    459|     expect(censusDownstreamCells.length, "结构可达面与真跑对不上 ⇒ 排序键度量的不是传导").t…
+```
+
+**这是真断言失败，不是超时**：`Tests 1 failed | 3 passed` 且报的是 `AssertionError`，
+不是 vitest 的 timeout 文案。⚠ 它跑了 256s 却**没被 180s 超时打断** —— 因为该用例的重活是
+**同步 CPU 密集**（两条世界线回放），JS 计时器在同步块里根本没机会触发。
+**这恰好解释了基线那个 3491s**：不是「超时设得大」，是**超时压根打不断它**。
+
+**最小复现**
+```bash
+cd apps/datacore
+npx vitest run test/sim-seed-world.seam.test.ts -t "扰动接缝" --pool=forks --maxWorkers=1
+```
+
+#### ⚠⚠ 派单 §2 判读钥匙 ② 把两半**写反了**（实测，三个提交逐一取证）
+
+派单原文：「断言的是 **desat3 时代行为（全新世界 `curTick=3`）**，而合并树已是 **96 拍预滚**」。
+
+**实测恰恰相反**：
+
+| 提交 | `src/sim/seed-world.ts` 的 `DEMO_SIM_WORLD_TICKS` |
+|---|---|
+| `desat3@f072c8dc` | **96**（`:129`） |
+| `real-cells@4bde203f` | **3**（`:106`） |
+| 合并树 `631c9730` | **96**（`:129`） |
+
+⇒ **96 才是 desat3 侧的值，3 是 real-cells 侧的值。** 照钥匙原文去找「desat3 时代的 curTick=3」
+会一个都找不到，然后误以为这条钥匙过期。
+
+**而且这条钥匙的『真红』触发条件在本文件不成立**：全文**零个**写死的 tick 字面量断言
+（查 `toBe(3)` / `curTick.*3` / `=== 3` 全部零命中；**金丝雀**：同一查法查 `DEMO_SIM_WORLD_TICKS` 命中 **3 次**
+⇒ 查法是好的，是那个形状真的不在）。三处 tick 断言（`:201` `:265`，以及 ①的 `:825`）**全部走常量**，
+所以 3→96 之后断言自己会跟着走，**不会因此变红**。
+
+**但 3→96 把成本放大了 32 倍，这才是文件 ④ 又慢又是重灾区的真因**：
+`sim-seed-world.seam.test.ts:143-144` 的普查助手每次调用都**回放两条完整世界线**
+（`replayWorldLine(..., toTick: s.curTick)` × 2 = actual + baseline），
+随后对每个格子铺 `curTick + 1` 长的数组并 `JSON.stringify` 比对（`:162` `:168-176`）。
+`s.curTick` 从 real-cells 的 **3** 变成合并树的 **96** ⇒ **回放与比对的工作量 ×32**。
+
+> **形态（照铁律 0.6 句式）**：
+> 「我用『断言用的是常量所以跟着走了』当作『这个合并没有后果』的证据，而前者并不度量后者
+> —— 断言的**正确性**跟着常量走了，断言的**成本**也跟着走了，后者没人看。」
 
 ---
 
