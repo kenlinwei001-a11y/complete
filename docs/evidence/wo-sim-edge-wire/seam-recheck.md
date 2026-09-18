@@ -390,3 +390,11 @@ npx vitest run test/sim-seed-world.seam.test.ts -t "扰动接缝" --pool=forks -
 - **八次跑全部落 `.txt`/`.rc`/`.canary`，RC 由 `$?` 直接捕获**，⛔ 无 `cmd | tail; echo $?`（那取的是 `tail` 的 RC）。
 - **八次起跑闸门全部 `roots=0 total=0`，零 ABORT**（§1）。
 - **⛔ 未推 canonical**；产出只在 `claude/handoff-edge-wire-seam-recheck`。
+- **收尾自证：窗口全程独占，且本单零残留。**
+  八次跑的时间跨度 = `02:28:45`（首个 canary）→ `02:44:47`（run2 收尾）。
+  收尾时进程表里确有一组 vitest，但**不是我的**：`/proc/<pid>/cwd` 指向
+  `worktrees/agent-a9062d94254a902ae`（另一个 agent），`cmdline` 为 `vitest run --root apps/datacore`
+  且带 worker 1/2/3，而**本单八次全部 `--maxWorkers=1`**；其进程起始时刻 **02:45**，
+  **晚于 run2 结束（02:44:47）** ⇒ 与本单**零重叠**，既没污染我，我也没留下孤儿。
+  ⚠ 这一条是照铁律 1「别拿『进程表里有 vitest』当『我的没清干净』的证据」查的 ——
+  **判据落在 `cwd` + `cmdline` + 起始时刻上，不是「有没有 vitest 字样」。**
