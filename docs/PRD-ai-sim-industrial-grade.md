@@ -110,8 +110,13 @@ perStepVerification[], budget{declared,consumed}}`；无 plan 的编排执行被
 **A4（P1）推演资源入册（DRIL 投影扩展）**
 证据：H1 + DRIL 实测规模（59/94/813）。需求：投影面加 perturbation-event / sim-session / datasource 三类；
 资源 schema 加 `costHints / preconditions`；控制台求解器键改从注册表取（消灭 Console0828 硬编码字面量）。
-验收：`POST /b/v1/resources/search` 查「涨价」双命中扰动事件与求解器；grep 控制台 `chain_impediments`
-字面量零命中（防回退门）。
+验收：① `POST /b/v1/resources/search` 查「涨价」双命中扰动事件与求解器；
+② grep 控制台 `chain_impediments` 字面量零命中（防回退门）；
+③ **动态发现变异反证**：新注册一个求解器（或扰动事件种类），不改控制台/agent 一行代码 ⇒
+下一次检索即可见且可调用（防 live-capability-map「59 在册、手写镜像只 19 可见」病灶复发——
+「入册」不等于「被发现」，这条门度量的正是差集）；
+④ 扰动事件条目必须带**候选获取路径**（argHints 指向 landable 候选端点，复用控制台 8/15/500/500 真候选那一路）
+与 costHints/preconditions，三者任一为空 ⇒ 入册门红（⛔ 不许注册一个调不了的条目）。
 
 **A5（P1）runM 五步下沉为发布 skill**
 证据：H1 + skill-orchestrator 成熟度（分层并发唯一化、数据沿边强制、StepAudit）。需求：
