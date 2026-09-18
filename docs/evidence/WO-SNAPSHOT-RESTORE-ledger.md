@@ -147,9 +147,9 @@ live `runJob` 的幂等清理 = **只清 origin=SYNTHETIC 的 objects/links/rule
 
 ## 8 · 待补（安静窗）
 - [ ] 干净 probe：makeApp / seedBattery 单次成本（无争用）
-- [ ] 5 个重文件（vle-acceptance / empty-tenant-bootstrap / seed-demo-propagation / gap-attribution / enterprise-state.seam）干净墙钟
-- [ ] empty-tenant-bootstrap 负载抖落定性复跑
-- [ ] 世界序列化后字节大小（决定每文件还原成本 → ÷? 的下限）
+- [x] 5 个重文件干净墙钟（§10.8 安静窗全量内取数，maxWorkers=2 自载口径）：vle-acceptance 135.4s 全 4 绿 · seed-demo-propagation 50.2s 绿 · gap-attribution 192.1s 绿 · enterprise-state.seam 118.8s 绿 · empty-tenant-bootstrap 264.1s（1 红 186s 超帽，定性见 §10.8/§10.9）
+- [→] empty-tenant-bootstrap 负载抖落定性复跑 → §10.8 初判「与快照无关、基线贴帽」，单文件无争用定案移 §10.9
+- [x] 世界序列化后字节大小（§10.3：82.9MB，tsPoints 39.6MB + tsAggRuns 30.0MB 占大头）
 - [ ] v8.deserialize + putMany 灌入的单次还原成本实测
 
 ## 9 · 阶段① 状态结语（2026-09-17 12:50）
@@ -285,3 +285,25 @@ Buffer，每次还原重新 `v8.deserialize` 出**全新对象图**再 putMany �
 - 污染样本保留：/tmp/wo-snapshot-evidence/full-suite.{txt,load}（full-suite.rc 不存在 ——
   进程被杀，无自然退出码，这本身即污染证据的一部分）。
 - 安静窗重跑 = 验收③，见 §10.8。
+
+### 10.8 验收③ 安静窗全量 —— 跑到终态：314/318 文件绿，两红均不在快照机制面上（归因见 §10.9）
+
+- 窗口与槽位（2026-09-18）：起跑 10:37，`LOAD_AT_START 11.63/38.17/101.29` —— 1min 11.6 < 20
+  达标（5/15min 是 §10.7 首跑污染的**滞后**读数；起跑时全机无 vitest、无 CPU 大户，
+  top 为 WindowServer/Chrome 桌面背景）。**双向金丝雀探槽**：闲时报 0、单 run 时报 1 均兑现
+  （探针 `ps -eo args= | grep -cE "^node \(vitest\) *$"` —— 初版 `grep -xc` 被 args 列
+  尾空格打出假 0，已修正并双向复验；跑中抽查恒 =1，槽全程独占）。
+- 终态（墙钟 **6570.7s ≈ 109.5min**，RC=1，证据 full-suite-quiet.{txt,rc,load}）：
+  `Test Files 2 failed | 314 passed | 2 skipped (318)` ·
+  `Tests 2 failed | 2099 passed | 16 skipped (2117)`。
+- **两红初判（均不在快照机制面上）**：
+  1. `features.test.ts > E7 禁能特征跳过视图种子`（19.4s 快败 = **断言型**，非超时）——
+     待 §10.9 DC_SEED_LIVE=1 对照裁决：live 红 ⇒ 基线/内容红；live 绿 ⇒ 快照回归，当场立案。
+  2. `empty-tenant-bootstrap.test.ts > CL.4 空租户冷启动 7 步`（186.2s 超 180s 帽 **3%**）——
+     该文件 **0 seedBattery**（§4 实测账本），快照机制物理上管不到它，与本次改动**无关**；
+     §4 负载态两次 180s 超时前科 + 安静窗仍贴帽 ⇒ 倾向「基线就在帽沿」，§10.9 单文件
+     无争用复跑定案（不再全量复跑）。
+- **副产物定案**：§10.5 预言「VL2/VL5 安静窗预期全绿」**兑现** —— vle-acceptance 安静窗
+  135.4s 全 4 绿（含 VL5 三次 vle.run），负载抖落定性闭环。
+- 316/318 文件绿 = 快照还原在 808 调用点全机实证；两红的单文件归因落 §10.9（等协调方
+  15 分钟槽后跑，不并发）。
