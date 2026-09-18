@@ -502,9 +502,23 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     coefficientRef: null,
-    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
-    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 7.00（实测扇入）⇒ 入流被放大 7.00 倍。
-    weightRef: { basis: "equal_share" },
+    // WO-WEIGHT-BASIS-FILL 订正：本行原写 `equal_share`，注释原文是
+    // 「本边无可审计的差异化计量值 ⇒ 等份 Σ=1」—— **这句话被它自己的邻居证伪**：
+    // `demo_material_price_to_model_cost`（本文件下方，`weightRef: { basis: "bom_cost_share" }`）
+    // 与本边**源类型 / 目标类型 / 链路 key 完全相同**（实测拓扑逐项相同：42 边 / 6 目标 / 扇入 7），
+    // 它从 2026-09-03 起就在用 BOM 成本占比取数。**同一批边上，可审计的差异化计量值一直都在。**
+    //
+    // 今天的行为 X（修前实测·真后端 seed 42·`2170 三元圆柱`·各料 shortageRisk +15）：
+    //   七种物料权重**全为 1/7 = 0.142857142857**，`Model.supplyRisk` **逐字节同为 0.346875** ——
+    //   占 BOM 大头的**三元正极**与边角料**铝箔**，对型号缺料风险的贡献**完全相同**。
+    //   这与 `costPressure` 那条边修前的 `9.75/9.75` 是**同一个病的同一个指纹**。
+    // 应该的 Y：按该料在该型号生效 BOM 里的**成本占比**分摊（用量 × 单价 ×(1+损耗)÷ 整份 BOM 合计）。
+    //
+    // ⚠ 归一方向**不变**：`bom_cost_share` 与 `equal_share` 同为 `IN_EDGES`（Σ=1·加权平均），
+    //   配的仍是**强度**型目标（`supplyRisk` 是风险指数不是总量）⇒ 量纲不动、世界总量不跳，
+    //   只把「七种料各 1/7」换成「按真实用量分摊」。⛔ 未内联任何业务常数（R14/RL5）：
+    //   用量取 `BOMDetail.quantity`、单价取 `Material.unitPrice`，引擎侧只拿一张纯数值表。
+    weightRef: { basis: "bom_cost_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
