@@ -166,8 +166,18 @@ D5 落点格（`obj_model_方形-LFP`）轨迹：3.8819 → 2.398979（120）→
 - 叫停后处置（19:09）：该 agent 两个孤儿 worker（ppid=1，父进程已死，合计 ~56% CPU 白烧）
   已按确切 pid 清掉；随后同一 worktree 起了新的单文件跑（`enterprise-state.seam.test.ts`，
   `--maxWorkers=1`）⇒ **datacore vitest 窗口此刻仍被占**，本机 ≤1 并发纪律下本单不抢。
-- 下一步（**等仓主点头，不擅自再起 vitest**）：清洁窗口逐文件重跑上述 10 个文件
-  （单文件串行、各自 .txt/.rc、断言原文当场落盘），才能把 18 条 × 归因到「环境」或「合并树」。
+- 重跑（仓主令「那 8 次测试需要重跑」）：`seam-recheck-run.sh` 编排 4 文件 × 各 2 次，
+  窗口双零等待 + watcher 旁证。当前进度 2/8：
+  **① `seed-demo-propagation` 两跑皆 RC=1、断言逐字节同病 ⇒ 清洁窗口真红（非环境）**：
+  - `效果层SEAM 3-hop`（:324）expected 0.8917 / received 0.44585 = **恰好一半**。病因已定位
+    （本单边清单即证）：`demo_supplier_delay_to_material_shortage` 在合并树挂 **equal_share**，
+    该材料入边 N=2 ⇒ 逐实例贡献 ÷2；测试期望值仍按 weightRef=null 时代全额算 ⇒ **旧期望对新权重，
+    引擎传导本身通**（值真到了 Order，只是按 §2 方向归一了）。判：陈旧期望，归边主/派单方裁决更新。
+  - `§6 DESAT-3 联立接缝`（:847）`atEnd.declared` expected 4937 / received 0（「取数坏了」）。
+    旁证：本单 steady-state 在世界龄 256 仍量到 6 格已声明量纲的 costPressure ⇒ 世界末拍并非真 0 格，
+    是该测试的末拍取数路径对不上合并树（desat3 时代 curTick=3 假设 vs 96 拍预滚后的会话形态）。
+  - **同文件 §5 对照实验（铁律 1.5「9.75 不许再出现」守门）两跑皆绿**（9.7s）⇒ D5 判据在套件层再确认。
+  - 剩余 3 文件 6 次跑：编排器排队等下一个清洁窗口，跑完即补全表。
 
 ## 剩余
 
