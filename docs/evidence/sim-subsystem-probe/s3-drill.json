@@ -1,0 +1,4005 @@
+{
+  "status": 200,
+  "pick": "ORDER_REPRICE",
+  "catalogKinds": [
+    "ORDER_RESCHEDULE+stateEffect",
+    "ORDER_CANCEL+stateEffect",
+    "ORDER_INSERT+stateEffect",
+    "ORDER_RELOCATE+stateEffect",
+    "ORDER_REPRICE+stateEffect",
+    "MATERIAL_DELAY+stateEffect",
+    "MATERIAL_SHORTAGE+stateEffect",
+    "MATERIAL_REPRICE+stateEffect",
+    "EQUIPMENT_FAILURE+stateEffect",
+    "CAPACITY_LOSS+stateEffect",
+    "FORECAST_BIAS+stateEffect"
+  ],
+  "response": {
+    "worldId": "sims_demo_seed_world",
+    "forkedFromStateId": null,
+    "horizonDays": 7,
+    "tickDays": 1,
+    "ticks": 7,
+    "events": [
+      {
+        "kind": "ORDER_REPRICE",
+        "targetObjectId": "obj_material_al_foil",
+        "payload": {
+          "pct": 15,
+          "deltaPct": 15,
+          "magnitude": 15
+        },
+        "effectiveDay": 1
+      }
+    ],
+    "findings": [
+      {
+        "key": "propagation::choke::obj_equipment_LINE-WS-changzhou-assembly-assembly-E1::equipmentFailure",
+        "kind": "卡点",
+        "severity": 99.935897,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E1",
+          "label": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 39 已越过本世界该变量的 P95 分位（22）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 39,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E1",
+          "stateVar": "equipmentFailure",
+          "value": 39
+        }
+      },
+      {
+        "key": "propagation::choke::obj_process_LINE-WS-handan-slitting-assembly::queuePressure",
+        "kind": "卡点",
+        "severity": 99.923077,
+        "where": {
+          "objectType": "Process",
+          "objectId": "obj_process_LINE-WS-handan-slitting-assembly",
+          "label": "obj_process_LINE-WS-handan-slitting-assembly·排队压力"
+        },
+        "when": null,
+        "why": "排队压力 现值 11.307148 已越过本世界该变量的 P95 分位（9.233148）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "queuePressure",
+            "value": 11.307148,
+            "p90": 8.712148,
+            "p95": 9.233148,
+            "sampleCount": 650,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_process_LINE-WS-handan-slitting-assembly",
+          "stateVar": "queuePressure",
+          "value": 11.307148373866
+        }
+      },
+      {
+        "key": "propagation::choke::obj_equipment_LINE-WS-handan-slitting-assembly-E1::loadPressure",
+        "kind": "卡点",
+        "severity": 99.871795,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-handan-slitting-assembly-E1",
+          "label": "obj_equipment_LINE-WS-handan-slitting-assembly-E1·设备负荷压力"
+        },
+        "when": null,
+        "why": "设备负荷压力 现值 5.653698 已越过本世界该变量的 P95 分位（4.755478）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "loadPressure",
+            "value": 5.653698,
+            "p90": 4.529198,
+            "p95": 4.755478,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-handan-slitting-assembly-E1",
+          "stateVar": "loadPressure",
+          "value": 5.653698253398
+        }
+      },
+      {
+        "key": "propagation::choke::obj_equipment_LINE-WS-handan-slitting-assembly-E2::loadPressure",
+        "kind": "卡点",
+        "severity": 99.871795,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-handan-slitting-assembly-E2",
+          "label": "obj_equipment_LINE-WS-handan-slitting-assembly-E2·设备负荷压力"
+        },
+        "when": null,
+        "why": "设备负荷压力 现值 5.653698 已越过本世界该变量的 P95 分位（4.755478）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "loadPressure",
+            "value": 5.653698,
+            "p90": 4.529198,
+            "p95": 4.755478,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-handan-slitting-assembly-E2",
+          "stateVar": "loadPressure",
+          "value": 5.653698253398
+        }
+      },
+      {
+        "key": "propagation::choke::obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-wuhan-slurry-0::handlingBacklog",
+        "kind": "卡点",
+        "severity": 99.865591,
+        "where": {
+          "objectType": "ExceptionEvent",
+          "objectId": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-wuhan-slurry-0",
+          "label": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-wuhan-slurry-0·异常处置积压"
+        },
+        "when": null,
+        "why": "异常处置积压 现值 176.04813 已越过本世界该变量的 P95 分位（148.38092）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "handlingBacklog",
+            "value": 176.04813,
+            "p90": 123.149333,
+            "p95": 148.38092,
+            "sampleCount": 372,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-wuhan-slurry-0",
+          "stateVar": "handlingBacklog",
+          "value": 176.048129637857
+        }
+      },
+      {
+        "key": "propagation::choke::obj_qualitylot_QLOT-WO-LINE-WS-zaozhuang-calendering-1::inspectBacklog",
+        "kind": "卡点",
+        "severity": 99.807692,
+        "where": {
+          "objectType": "QualityLot",
+          "objectId": "obj_qualitylot_QLOT-WO-LINE-WS-zaozhuang-calendering-1",
+          "label": "obj_qualitylot_QLOT-WO-LINE-WS-zaozhuang-calendering-1·检验积压"
+        },
+        "when": null,
+        "why": "检验积压 现值 282.823917 已越过本世界该变量的 P95 分位（254.568949）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "inspectBacklog",
+            "value": 282.823917,
+            "p90": 244.829908,
+            "p95": 254.568949,
+            "sampleCount": 260,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_qualitylot_QLOT-WO-LINE-WS-zaozhuang-calendering-1",
+          "stateVar": "inspectBacklog",
+          "value": 282.82391707645
+        }
+      },
+      {
+        "key": "propagation::choke::obj_orderline_SO-900404-L1::splitPressure",
+        "kind": "卡点",
+        "severity": 99.770905,
+        "where": {
+          "objectType": "OrderLine",
+          "objectId": "obj_orderline_SO-900404-L1",
+          "label": "obj_orderline_SO-900404-L1·订单行拆分压力"
+        },
+        "when": null,
+        "why": "订单行拆分压力 现值 52.666268 已越过本世界该变量的 P95 分位（52.662571）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "splitPressure",
+            "value": 52.666268,
+            "p90": 46.2,
+            "p95": 52.662571,
+            "sampleCount": 873,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_orderline_SO-900404-L1",
+          "stateVar": "splitPressure",
+          "value": 52.666268258947
+        }
+      },
+      {
+        "key": "propagation::choke::obj_orderline_SO-900487-L1::splitPressure",
+        "kind": "卡点",
+        "severity": 99.770905,
+        "where": {
+          "objectType": "OrderLine",
+          "objectId": "obj_orderline_SO-900487-L1",
+          "label": "obj_orderline_SO-900487-L1·订单行拆分压力"
+        },
+        "when": null,
+        "why": "订单行拆分压力 现值 52.666268 已越过本世界该变量的 P95 分位（52.662571）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "splitPressure",
+            "value": 52.666268,
+            "p90": 46.2,
+            "p95": 52.662571,
+            "sampleCount": 873,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_orderline_SO-900487-L1",
+          "stateVar": "splitPressure",
+          "value": 52.666268258947
+        }
+      },
+      {
+        "key": "propagation::choke::obj_orderline_SO-900487-L2::splitPressure",
+        "kind": "卡点",
+        "severity": 99.770905,
+        "where": {
+          "objectType": "OrderLine",
+          "objectId": "obj_orderline_SO-900487-L2",
+          "label": "obj_orderline_SO-900487-L2·订单行拆分压力"
+        },
+        "when": null,
+        "why": "订单行拆分压力 现值 52.666268 已越过本世界该变量的 P95 分位（52.662571）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "splitPressure",
+            "value": 52.666268,
+            "p90": 46.2,
+            "p95": 52.662571,
+            "sampleCount": 873,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_orderline_SO-900487-L2",
+          "stateVar": "splitPressure",
+          "value": 52.666268258947
+        }
+      },
+      {
+        "key": "propagation::choke::obj_orderline_SO-900487-L3::splitPressure",
+        "kind": "卡点",
+        "severity": 99.770905,
+        "where": {
+          "objectType": "OrderLine",
+          "objectId": "obj_orderline_SO-900487-L3",
+          "label": "obj_orderline_SO-900487-L3·订单行拆分压力"
+        },
+        "when": null,
+        "why": "订单行拆分压力 现值 52.666268 已越过本世界该变量的 P95 分位（52.662571）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "splitPressure",
+            "value": 52.666268,
+            "p90": 46.2,
+            "p95": 52.662571,
+            "sampleCount": 873,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_orderline_SO-900487-L3",
+          "stateVar": "splitPressure",
+          "value": 52.666268258947
+        }
+      },
+      {
+        "key": "propagation::choke::obj_process_LINE-WS-meishan-filling-coating::queuePressure",
+        "kind": "卡点",
+        "severity": 99.769231,
+        "where": {
+          "objectType": "Process",
+          "objectId": "obj_process_LINE-WS-meishan-filling-coating",
+          "label": "obj_process_LINE-WS-meishan-filling-coating·排队压力"
+        },
+        "when": null,
+        "why": "排队压力 现值 10.961148 已越过本世界该变量的 P95 分位（9.233148）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "queuePressure",
+            "value": 10.961148,
+            "p90": 8.712148,
+            "p95": 9.233148,
+            "sampleCount": 650,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_process_LINE-WS-meishan-filling-coating",
+          "stateVar": "queuePressure",
+          "value": 10.961148373866
+        }
+      },
+      {
+        "key": "propagation::choke::obj_maintenanceorder_MO-LINE-WS-handan-slitting-assembly-E2::repairBacklog",
+        "kind": "卡点",
+        "severity": 99.740933,
+        "where": {
+          "objectType": "MaintenanceOrder",
+          "objectId": "obj_maintenanceorder_MO-LINE-WS-handan-slitting-assembly-E2",
+          "label": "obj_maintenanceorder_MO-LINE-WS-handan-slitting-assembly-E2·维修派工积压"
+        },
+        "when": null,
+        "why": "维修派工积压 现值 278.270333 已越过本世界该变量的 P95 分位（244.542783）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "repairBacklog",
+            "value": 278.270333,
+            "p90": 236.618068,
+            "p95": 244.542783,
+            "sampleCount": 193,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_maintenanceorder_MO-LINE-WS-handan-slitting-assembly-E2",
+          "stateVar": "repairBacklog",
+          "value": 278.270333151201
+        }
+      },
+      {
+        "key": "propagation::choke::obj_material_sep_film::shortageRisk",
+        "kind": "卡点",
+        "severity": 99.683544,
+        "where": {
+          "objectType": "Material",
+          "objectId": "obj_material_sep_film",
+          "label": "obj_material_sep_film·短缺风险"
+        },
+        "when": null,
+        "why": "短缺风险 现值 16.136167 已越过本世界该变量的 P95 分位（4.854165）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "shortageRisk",
+            "value": 16.136167,
+            "p90": 4.854165,
+            "p95": 4.854165,
+            "sampleCount": 158,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_material_sep_film",
+          "stateVar": "shortageRisk",
+          "value": 16.136166666667
+        }
+      },
+      {
+        "key": "propagation::choke::obj_model_4680-NCM::costPressure",
+        "kind": "卡点",
+        "severity": 99.679487,
+        "where": {
+          "objectType": "Model",
+          "objectId": "obj_model_4680-NCM",
+          "label": "obj_model_4680-NCM·成本压力"
+        },
+        "when": null,
+        "why": "成本压力 现值 3.002108 已越过本世界该变量的 P95 分位（2.213973）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "costPressure",
+            "value": 3.002108,
+            "p90": 2.213973,
+            "p95": 2.213973,
+            "sampleCount": 156,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_model_4680-NCM",
+          "stateVar": "costPressure",
+          "value": 3.002107605579
+        }
+      },
+      {
+        "key": "propagation::choke::obj_order_SO-3391::demandPressure",
+        "kind": "卡点",
+        "severity": 99.666667,
+        "where": {
+          "objectType": "Order",
+          "objectId": "obj_order_SO-3391",
+          "label": "obj_order_SO-3391·需求压力"
+        },
+        "when": null,
+        "why": "需求压力 现值 0.295479 已越过本世界该变量的 P95 分位（0）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "demandPressure",
+            "value": 0.295479,
+            "p90": 0,
+            "p95": 0,
+            "sampleCount": 150,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_order_SO-3391",
+          "stateVar": "demandPressure",
+          "value": 0.295479087565
+        }
+      },
+      {
+        "key": "propagation::choke::obj_order_SO-3458::qty",
+        "kind": "卡点",
+        "severity": 99.666667,
+        "where": {
+          "objectType": "Order",
+          "objectId": "obj_order_SO-3458",
+          "label": "obj_order_SO-3458·订单数量（套）"
+        },
+        "when": null,
+        "why": "订单数量（套） 现值 21777 已越过本世界该变量的 P95 分位（13319）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "qty",
+            "value": 21777,
+            "p90": 8872,
+            "p95": 13319,
+            "sampleCount": 150,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_order_SO-3458",
+          "stateVar": "qty",
+          "value": 21777
+        }
+      },
+      {
+        "key": "propagation::choke::obj_order_SO-900493::leadDays",
+        "kind": "卡点",
+        "severity": 99.666667,
+        "where": {
+          "objectType": "Order",
+          "objectId": "obj_order_SO-900493",
+          "label": "obj_order_SO-900493·交付前置天数（天）"
+        },
+        "when": null,
+        "why": "交付前置天数（天） 现值 178 已越过本世界该变量的 P95 分位（107.75）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "leadDays",
+            "value": 178,
+            "p90": 73.3,
+            "p95": 107.75,
+            "sampleCount": 150,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_order_SO-900493",
+          "stateVar": "leadDays",
+          "value": 178
+        }
+      },
+      {
+        "key": "propagation::choke::obj_equipment_LINE-WS-meishan-filling-coating-E1::loadPressure",
+        "kind": "卡点",
+        "severity": 99.615385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-meishan-filling-coating-E1",
+          "label": "obj_equipment_LINE-WS-meishan-filling-coating-E1·设备负荷压力"
+        },
+        "when": null,
+        "why": "设备负荷压力 现值 5.480698 已越过本世界该变量的 P95 分位（4.755478）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "loadPressure",
+            "value": 5.480698,
+            "p90": 4.529198,
+            "p95": 4.755478,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-meishan-filling-coating-E1",
+          "stateVar": "loadPressure",
+          "value": 5.480698253398
+        }
+      },
+      {
+        "key": "propagation::choke::obj_equipment_LINE-WS-meishan-filling-coating-E2::loadPressure",
+        "kind": "卡点",
+        "severity": 99.615385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-meishan-filling-coating-E2",
+          "label": "obj_equipment_LINE-WS-meishan-filling-coating-E2·设备负荷压力"
+        },
+        "when": null,
+        "why": "设备负荷压力 现值 5.480698 已越过本世界该变量的 P95 分位（4.755478）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "loadPressure",
+            "value": 5.480698,
+            "p90": 4.529198,
+            "p95": 4.755478,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-meishan-filling-coating-E2",
+          "stateVar": "loadPressure",
+          "value": 5.480698253398
+        }
+      },
+      {
+        "key": "propagation::choke::obj_line_LINE-WS-meishan-filling::blockedPressure",
+        "kind": "卡点",
+        "severity": 99.615385,
+        "where": {
+          "objectType": "Line",
+          "objectId": "obj_line_LINE-WS-meishan-filling",
+          "label": "obj_line_LINE-WS-meishan-filling·产线受阻压力"
+        },
+        "when": null,
+        "why": "产线受阻压力 现值 3.916438 已越过本世界该变量的 P95 分位（3.660485）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "blockedPressure",
+            "value": 3.916438,
+            "p90": 3.57405,
+            "p95": 3.660485,
+            "sampleCount": 130,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_line_LINE-WS-meishan-filling",
+          "stateVar": "blockedPressure",
+          "value": 3.916438078736
+        }
+      },
+      {
+        "key": "propagation::choke::obj_process_LINE-WS-changzhou-assembly-assembly::queuePressure",
+        "kind": "卡点",
+        "severity": 99.615385,
+        "where": {
+          "objectType": "Process",
+          "objectId": "obj_process_LINE-WS-changzhou-assembly-assembly",
+          "label": "obj_process_LINE-WS-changzhou-assembly-assembly·排队压力"
+        },
+        "when": null,
+        "why": "排队压力 现值 10.817838 已越过本世界该变量的 P95 分位（9.233148）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "queuePressure",
+            "value": 10.817838,
+            "p90": 8.712148,
+            "p95": 9.233148,
+            "sampleCount": 650,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_process_LINE-WS-changzhou-assembly-assembly",
+          "stateVar": "queuePressure",
+          "value": 10.817838484074
+        }
+      },
+      {
+        "key": "propagation::choke::obj_wiplot_LOT-WO-LINE-WS-zaozhuang-winding-0::feedPressure",
+        "kind": "卡点",
+        "severity": 99.615385,
+        "where": {
+          "objectType": "WIPLot",
+          "objectId": "obj_wiplot_LOT-WO-LINE-WS-zaozhuang-winding-0",
+          "label": "obj_wiplot_LOT-WO-LINE-WS-zaozhuang-winding-0·投料压力"
+        },
+        "when": null,
+        "why": "投料压力 现值 3.588323 已越过本世界该变量的 P95 分位（3.528379）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "feedPressure",
+            "value": 3.588323,
+            "p90": 3.365759,
+            "p95": 3.528379,
+            "sampleCount": 260,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_wiplot_LOT-WO-LINE-WS-zaozhuang-winding-0",
+          "stateVar": "feedPressure",
+          "value": 3.588323137077
+        }
+      },
+      {
+        "key": "propagation::choke::obj_wiplot_LOT-WO-LINE-WS-zaozhuang-winding-1::feedPressure",
+        "kind": "卡点",
+        "severity": 99.615385,
+        "where": {
+          "objectType": "WIPLot",
+          "objectId": "obj_wiplot_LOT-WO-LINE-WS-zaozhuang-winding-1",
+          "label": "obj_wiplot_LOT-WO-LINE-WS-zaozhuang-winding-1·投料压力"
+        },
+        "when": null,
+        "why": "投料压力 现值 3.588323 已越过本世界该变量的 P95 分位（3.528379）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "feedPressure",
+            "value": 3.588323,
+            "p90": 3.365759,
+            "p95": 3.528379,
+            "sampleCount": 260,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_wiplot_LOT-WO-LINE-WS-zaozhuang-winding-1",
+          "stateVar": "feedPressure",
+          "value": 3.588323137077
+        }
+      },
+      {
+        "key": "propagation::choke::obj_workorder_WO-LINE-WS-zaozhuang-winding-0::releasePressure",
+        "kind": "卡点",
+        "severity": 99.615385,
+        "where": {
+          "objectType": "WorkOrder",
+          "objectId": "obj_workorder_WO-LINE-WS-zaozhuang-winding-0",
+          "label": "obj_workorder_WO-LINE-WS-zaozhuang-winding-0·工单下达压力"
+        },
+        "when": null,
+        "why": "工单下达压力 现值 5.125953 已越过本世界该变量的 P95 分位（5.040318）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "releasePressure",
+            "value": 5.125953,
+            "p90": 4.807938,
+            "p95": 5.040318,
+            "sampleCount": 260,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_workorder_WO-LINE-WS-zaozhuang-winding-0",
+          "stateVar": "releasePressure",
+          "value": 5.125952628563
+        }
+      },
+      {
+        "key": "propagation::choke::obj_workorder_WO-LINE-WS-zaozhuang-winding-1::releasePressure",
+        "kind": "卡点",
+        "severity": 99.615385,
+        "where": {
+          "objectType": "WorkOrder",
+          "objectId": "obj_workorder_WO-LINE-WS-zaozhuang-winding-1",
+          "label": "obj_workorder_WO-LINE-WS-zaozhuang-winding-1·工单下达压力"
+        },
+        "when": null,
+        "why": "工单下达压力 现值 5.125953 已越过本世界该变量的 P95 分位（5.040318）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "releasePressure",
+            "value": 5.125953,
+            "p90": 4.807938,
+            "p95": 5.040318,
+            "sampleCount": 260,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_workorder_WO-LINE-WS-zaozhuang-winding-1",
+          "stateVar": "releasePressure",
+          "value": 5.125952628563
+        }
+      },
+      {
+        "key": "propagation::choke::obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-zigong-grading-0::handlingBacklog",
+        "kind": "卡点",
+        "severity": 99.596774,
+        "where": {
+          "objectType": "ExceptionEvent",
+          "objectId": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-zigong-grading-0",
+          "label": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-zigong-grading-0·异常处置积压"
+        },
+        "when": null,
+        "why": "异常处置积压 现值 174.2128 已越过本世界该变量的 P95 分位（148.38092）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "handlingBacklog",
+            "value": 174.2128,
+            "p90": 123.149333,
+            "p95": 148.38092,
+            "sampleCount": 372,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-zigong-grading-0",
+          "stateVar": "handlingBacklog",
+          "value": 174.212800240889
+        }
+      },
+      {
+        "key": "propagation::choke::obj_orderline_SO-900257-L1::splitPressure",
+        "kind": "卡点",
+        "severity": 99.484536,
+        "where": {
+          "objectType": "OrderLine",
+          "objectId": "obj_orderline_SO-900257-L1",
+          "label": "obj_orderline_SO-900257-L1·订单行拆分压力"
+        },
+        "when": null,
+        "why": "订单行拆分压力 现值 52.666202 已越过本世界该变量的 P95 分位（52.662571）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "splitPressure",
+            "value": 52.666202,
+            "p90": 46.2,
+            "p95": 52.662571,
+            "sampleCount": 873,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_orderline_SO-900257-L1",
+          "stateVar": "splitPressure",
+          "value": 52.666202433353
+        }
+      },
+      {
+        "key": "propagation::choke::obj_process_LINE-WS-zaozhuang-grading-winding::queuePressure",
+        "kind": "卡点",
+        "severity": 99.461538,
+        "where": {
+          "objectType": "Process",
+          "objectId": "obj_process_LINE-WS-zaozhuang-grading-winding",
+          "label": "obj_process_LINE-WS-zaozhuang-grading-winding·排队压力"
+        },
+        "when": null,
+        "why": "排队压力 现值 10.74766 已越过本世界该变量的 P95 分位（9.233148）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "queuePressure",
+            "value": 10.74766,
+            "p90": 8.712148,
+            "p95": 9.233148,
+            "sampleCount": 650,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_process_LINE-WS-zaozhuang-grading-winding",
+          "stateVar": "queuePressure",
+          "value": 10.74766013013
+        }
+      },
+      {
+        "key": "propagation::choke::obj_qualitylot_QLOT-WO-LINE-WS-handan-winding-0::inspectBacklog",
+        "kind": "卡点",
+        "severity": 99.423077,
+        "where": {
+          "objectType": "QualityLot",
+          "objectId": "obj_qualitylot_QLOT-WO-LINE-WS-handan-winding-0",
+          "label": "obj_qualitylot_QLOT-WO-LINE-WS-handan-winding-0·检验积压"
+        },
+        "when": null,
+        "why": "检验积压 现值 273.598468 已越过本世界该变量的 P95 分位（254.568949）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "inspectBacklog",
+            "value": 273.598468,
+            "p90": 244.829908,
+            "p95": 254.568949,
+            "sampleCount": 260,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_qualitylot_QLOT-WO-LINE-WS-handan-winding-0",
+          "stateVar": "inspectBacklog",
+          "value": 273.598468198101
+        }
+      },
+      {
+        "key": "propagation::choke::obj_defectrecord_DEF-WO-LINE-WS-zaozhuang-winding-1::defectPressure",
+        "kind": "卡点",
+        "severity": 99.411765,
+        "where": {
+          "objectType": "DefectRecord",
+          "objectId": "obj_defectrecord_DEF-WO-LINE-WS-zaozhuang-winding-1",
+          "label": "obj_defectrecord_DEF-WO-LINE-WS-zaozhuang-winding-1·缺陷压力"
+        },
+        "when": null,
+        "why": "缺陷压力 现值 1.076566 已越过本世界该变量的 P95 分位（1.044795）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "defectPressure",
+            "value": 1.076566,
+            "p90": 1.009666,
+            "p95": 1.044795,
+            "sampleCount": 85,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_defectrecord_DEF-WO-LINE-WS-zaozhuang-winding-1",
+          "stateVar": "defectPressure",
+          "value": 1.07656551736
+        }
+      },
+      {
+        "key": "propagation::choke::obj_equipment_LINE-WS-zaozhuang-grading-winding-E1::loadPressure",
+        "kind": "卡点",
+        "severity": 99.358974,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-grading-winding-E1",
+          "label": "obj_equipment_LINE-WS-zaozhuang-grading-winding-E1·设备负荷压力"
+        },
+        "when": null,
+        "why": "设备负荷压力 现值 5.373926 已越过本世界该变量的 P95 分位（4.755478）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "loadPressure",
+            "value": 5.373926,
+            "p90": 4.529198,
+            "p95": 4.755478,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-grading-winding-E1",
+          "stateVar": "loadPressure",
+          "value": 5.373926069639
+        }
+      },
+      {
+        "key": "propagation::choke::obj_equipment_LINE-WS-zaozhuang-grading-winding-E2::loadPressure",
+        "kind": "卡点",
+        "severity": 99.358974,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-grading-winding-E2",
+          "label": "obj_equipment_LINE-WS-zaozhuang-grading-winding-E2·设备负荷压力"
+        },
+        "when": null,
+        "why": "设备负荷压力 现值 5.373926 已越过本世界该变量的 P95 分位（4.755478）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "loadPressure",
+            "value": 5.373926,
+            "p90": 4.529198,
+            "p95": 4.755478,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-grading-winding-E2",
+          "stateVar": "loadPressure",
+          "value": 5.373926069639
+        }
+      },
+      {
+        "key": "propagation::choke::obj_order_SO-900404::orderChurn",
+        "kind": "卡点",
+        "severity": 99.333333,
+        "where": {
+          "objectType": "Order",
+          "objectId": "obj_order_SO-900404",
+          "label": "obj_order_SO-900404·订单变更压力"
+        },
+        "when": null,
+        "why": "订单变更压力 现值 75.231481 已越过本世界该变量的 P95 分位（75.230737）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "orderChurn",
+            "value": 75.231481,
+            "p90": 75.229216,
+            "p95": 75.230737,
+            "sampleCount": 150,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_order_SO-900404",
+          "stateVar": "orderChurn",
+          "value": 75.23148148148
+        }
+      },
+      {
+        "key": "propagation::choke::obj_order_SO-900487::orderChurn",
+        "kind": "卡点",
+        "severity": 99.333333,
+        "where": {
+          "objectType": "Order",
+          "objectId": "obj_order_SO-900487",
+          "label": "obj_order_SO-900487·订单变更压力"
+        },
+        "when": null,
+        "why": "订单变更压力 现值 75.231481 已越过本世界该变量的 P95 分位（75.230737）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "orderChurn",
+            "value": 75.231481,
+            "p90": 75.229216,
+            "p95": 75.230737,
+            "sampleCount": 150,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_order_SO-900487",
+          "stateVar": "orderChurn",
+          "value": 75.23148148148
+        }
+      },
+      {
+        "key": "propagation::choke::obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-wuhan-winding-0::handlingBacklog",
+        "kind": "卡点",
+        "severity": 99.327957,
+        "where": {
+          "objectType": "ExceptionEvent",
+          "objectId": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-wuhan-winding-0",
+          "label": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-wuhan-winding-0·异常处置积压"
+        },
+        "when": null,
+        "why": "异常处置积压 现值 174.040168 已越过本世界该变量的 P95 分位（148.38092）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "handlingBacklog",
+            "value": 174.040168,
+            "p90": 123.149333,
+            "p95": 148.38092,
+            "sampleCount": 372,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-wuhan-winding-0",
+          "stateVar": "handlingBacklog",
+          "value": 174.040167754767
+        }
+      },
+      {
+        "key": "propagation::choke::obj_process_LINE-WS-hefei-filling-coating::queuePressure",
+        "kind": "卡点",
+        "severity": 99.307692,
+        "where": {
+          "objectType": "Process",
+          "objectId": "obj_process_LINE-WS-hefei-filling-coating",
+          "label": "obj_process_LINE-WS-hefei-filling-coating·排队压力"
+        },
+        "when": null,
+        "why": "排队压力 现值 10.743031 已越过本世界该变量的 P95 分位（9.233148）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "queuePressure",
+            "value": 10.743031,
+            "p90": 8.712148,
+            "p95": 9.233148,
+            "sampleCount": 650,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_process_LINE-WS-hefei-filling-coating",
+          "stateVar": "queuePressure",
+          "value": 10.743031270249
+        }
+      },
+      {
+        "key": "propagation::choke::obj_materialbatch_neg_graphite_b2::procurementDelay",
+        "kind": "卡点",
+        "severity": 99.275362,
+        "where": {
+          "objectType": "MaterialBatch",
+          "objectId": "obj_materialbatch_neg_graphite_b2",
+          "label": "obj_materialbatch_neg_graphite_b2·采购到货延迟"
+        },
+        "when": null,
+        "why": "采购到货延迟 现值 154 已越过本世界该变量的 P95 分位（131）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "procurementDelay",
+            "value": 154,
+            "p90": 72.4,
+            "p95": 131,
+            "sampleCount": 69,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_materialbatch_neg_graphite_b2",
+          "stateVar": "procurementDelay",
+          "value": 154
+        }
+      },
+      {
+        "key": "propagation::choke::obj_maintenanceorder_MO-LINE-WS-handan-winding-winding-E2::repairBacklog",
+        "kind": "卡点",
+        "severity": 99.222798,
+        "where": {
+          "objectType": "MaintenanceOrder",
+          "objectId": "obj_maintenanceorder_MO-LINE-WS-handan-winding-winding-E2",
+          "label": "obj_maintenanceorder_MO-LINE-WS-handan-winding-winding-E2·维修派工积压"
+        },
+        "when": null,
+        "why": "维修派工积压 现值 274.213238 已越过本世界该变量的 P95 分位（244.542783）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "repairBacklog",
+            "value": 274.213238,
+            "p90": 236.618068,
+            "p95": 244.542783,
+            "sampleCount": 193,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_maintenanceorder_MO-LINE-WS-handan-winding-winding-E2",
+          "stateVar": "repairBacklog",
+          "value": 274.213238085797
+        }
+      },
+      {
+        "key": "propagation::choke::obj_orderline_SO-900245-L1::splitPressure",
+        "kind": "卡点",
+        "severity": 99.198167,
+        "where": {
+          "objectType": "OrderLine",
+          "objectId": "obj_orderline_SO-900245-L1",
+          "label": "obj_orderline_SO-900245-L1·订单行拆分压力"
+        },
+        "when": null,
+        "why": "订单行拆分压力 现值 52.665968 已越过本世界该变量的 P95 分位（52.662571）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "splitPressure",
+            "value": 52.665968,
+            "p90": 46.2,
+            "p95": 52.662571,
+            "sampleCount": 873,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_orderline_SO-900245-L1",
+          "stateVar": "splitPressure",
+          "value": 52.665967767019
+        }
+      },
+      {
+        "key": "propagation::choke::obj_orderline_SO-900245-L2::splitPressure",
+        "kind": "卡点",
+        "severity": 99.198167,
+        "where": {
+          "objectType": "OrderLine",
+          "objectId": "obj_orderline_SO-900245-L2",
+          "label": "obj_orderline_SO-900245-L2·订单行拆分压力"
+        },
+        "when": null,
+        "why": "订单行拆分压力 现值 52.665968 已越过本世界该变量的 P95 分位（52.662571）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "splitPressure",
+            "value": 52.665968,
+            "p90": 46.2,
+            "p95": 52.662571,
+            "sampleCount": 873,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_orderline_SO-900245-L2",
+          "stateVar": "splitPressure",
+          "value": 52.665967767019
+        }
+      },
+      {
+        "key": "propagation::choke::obj_orderline_SO-900245-L3::splitPressure",
+        "kind": "卡点",
+        "severity": 99.198167,
+        "where": {
+          "objectType": "OrderLine",
+          "objectId": "obj_orderline_SO-900245-L3",
+          "label": "obj_orderline_SO-900245-L3·订单行拆分压力"
+        },
+        "when": null,
+        "why": "订单行拆分压力 现值 52.665968 已越过本世界该变量的 P95 分位（52.662571）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "splitPressure",
+            "value": 52.665968,
+            "p90": 46.2,
+            "p95": 52.662571,
+            "sampleCount": 873,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_orderline_SO-900245-L3",
+          "stateVar": "splitPressure",
+          "value": 52.665967767019
+        }
+      },
+      {
+        "key": "propagation::choke::obj_orderline_SO-900462-L1::splitPressure",
+        "kind": "卡点",
+        "severity": 99.198167,
+        "where": {
+          "objectType": "OrderLine",
+          "objectId": "obj_orderline_SO-900462-L1",
+          "label": "obj_orderline_SO-900462-L1·订单行拆分压力"
+        },
+        "when": null,
+        "why": "订单行拆分压力 现值 52.665968 已越过本世界该变量的 P95 分位（52.662571）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "splitPressure",
+            "value": 52.665968,
+            "p90": 46.2,
+            "p95": 52.662571,
+            "sampleCount": 873,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_orderline_SO-900462-L1",
+          "stateVar": "splitPressure",
+          "value": 52.665967767019
+        }
+      },
+      {
+        "key": "propagation::choke::obj_process_LINE-WS-zaozhuang-pack-coating::queuePressure",
+        "kind": "卡点",
+        "severity": 99.153846,
+        "where": {
+          "objectType": "Process",
+          "objectId": "obj_process_LINE-WS-zaozhuang-pack-coating",
+          "label": "obj_process_LINE-WS-zaozhuang-pack-coating·排队压力"
+        },
+        "when": null,
+        "why": "排队压力 现值 10.57466 已越过本世界该变量的 P95 分位（9.233148）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "queuePressure",
+            "value": 10.57466,
+            "p90": 8.712148,
+            "p95": 9.233148,
+            "sampleCount": 650,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_process_LINE-WS-zaozhuang-pack-coating",
+          "stateVar": "queuePressure",
+          "value": 10.57466013013
+        }
+      },
+      {
+        "key": "propagation::choke::obj_equipment_LINE-WS-changzhou-assembly-assembly-E1::loadPressure",
+        "kind": "卡点",
+        "severity": 99.102564,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E1",
+          "label": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E1·设备负荷压力"
+        },
+        "when": null,
+        "why": "设备负荷压力 现值 5.349267 已越过本世界该变量的 P95 分位（4.755478）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "loadPressure",
+            "value": 5.349267,
+            "p90": 4.529198,
+            "p95": 4.755478,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E1",
+          "stateVar": "loadPressure",
+          "value": 5.349267246614
+        }
+      },
+      {
+        "key": "propagation::choke::obj_equipment_LINE-WS-changzhou-assembly-assembly-E2::loadPressure",
+        "kind": "卡点",
+        "severity": 99.102564,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E2",
+          "label": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E2·设备负荷压力"
+        },
+        "when": null,
+        "why": "设备负荷压力 现值 5.349267 已越过本世界该变量的 P95 分位（4.755478）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "loadPressure",
+            "value": 5.349267,
+            "p90": 4.529198,
+            "p95": 4.755478,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E2",
+          "stateVar": "loadPressure",
+          "value": 5.349267246614
+        }
+      },
+      {
+        "key": "propagation::choke::obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-changzhou-grading-1::handlingBacklog",
+        "kind": "卡点",
+        "severity": 99.05914,
+        "where": {
+          "objectType": "ExceptionEvent",
+          "objectId": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-changzhou-grading-1",
+          "label": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-changzhou-grading-1·异常处置积压"
+        },
+        "when": null,
+        "why": "异常处置积压 现值 173.038594 已越过本世界该变量的 P95 分位（148.38092）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "handlingBacklog",
+            "value": 173.038594,
+            "p90": 123.149333,
+            "p95": 148.38092,
+            "sampleCount": 372,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_exceptionevent_EXC-DF-DEF-WO-LINE-WS-changzhou-grading-1",
+          "stateVar": "handlingBacklog",
+          "value": 173.038594216339
+        }
+      },
+      {
+        "key": "propagation::choke::obj_material_pos_lfp::shortageRisk",
+        "kind": "卡点",
+        "severity": 99.050633,
+        "where": {
+          "objectType": "Material",
+          "objectId": "obj_material_pos_lfp",
+          "label": "obj_material_pos_lfp·短缺风险"
+        },
+        "when": null,
+        "why": "短缺风险 现值 14.303192 已越过本世界该变量的 P95 分位（4.854165）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "shortageRisk",
+            "value": 14.303192,
+            "p90": 4.854165,
+            "p95": 4.854165,
+            "sampleCount": 158,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_material_pos_lfp",
+          "stateVar": "shortageRisk",
+          "value": 14.303192112988
+        }
+      },
+      {
+        "key": "propagation::choke::obj_model_方形-NCM::costPressure",
+        "kind": "卡点",
+        "severity": 99.038462,
+        "where": {
+          "objectType": "Model",
+          "objectId": "obj_model_方形-NCM",
+          "label": "obj_model_方形-NCM·成本压力"
+        },
+        "when": null,
+        "why": "成本压力 现值 2.979419 已越过本世界该变量的 P95 分位（2.213973）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "costPressure",
+            "value": 2.979419,
+            "p90": 2.213973,
+            "p95": 2.213973,
+            "sampleCount": 156,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_model_方形-NCM",
+          "stateVar": "costPressure",
+          "value": 2.979419414699
+        }
+      },
+      {
+        "key": "propagation::choke::obj_qualitylot_QLOT-WO-LINE-WS-handan-calendering-0::inspectBacklog",
+        "kind": "卡点",
+        "severity": 99.038462,
+        "where": {
+          "objectType": "QualityLot",
+          "objectId": "obj_qualitylot_QLOT-WO-LINE-WS-handan-calendering-0",
+          "label": "obj_qualitylot_QLOT-WO-LINE-WS-handan-calendering-0·检验积压"
+        },
+        "when": null,
+        "why": "检验积压 现值 270.838436 已越过本世界该变量的 P95 分位（254.568949）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "inspectBacklog",
+            "value": 270.838436,
+            "p90": 244.829908,
+            "p95": 254.568949,
+            "sampleCount": 260,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_qualitylot_QLOT-WO-LINE-WS-handan-calendering-0",
+          "stateVar": "inspectBacklog",
+          "value": 270.838435846967
+        }
+      },
+      {
+        "key": "propagation::choke::obj_order_SO-3495::qty",
+        "kind": "卡点",
+        "severity": 99,
+        "where": {
+          "objectType": "Order",
+          "objectId": "obj_order_SO-3495",
+          "label": "obj_order_SO-3495·订单数量（套）"
+        },
+        "when": null,
+        "why": "订单数量（套） 现值 19357 已越过本世界该变量的 P95 分位（13319）",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "qty",
+            "value": 19357,
+            "p90": 8872,
+            "p95": 13319,
+            "sampleCount": 150,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_order_SO-3495",
+          "stateVar": "qty",
+          "value": 19357
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-changzhou-coating-winding-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-changzhou-coating-winding-E1",
+          "label": "obj_equipment_LINE-WS-changzhou-coating-winding-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-changzhou-coating-winding-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-changzhou-formation-winding-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-changzhou-formation-winding-E1",
+          "label": "obj_equipment_LINE-WS-changzhou-formation-winding-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-changzhou-formation-winding-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-changzhou-slitting-assembly-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-changzhou-slitting-assembly-E1",
+          "label": "obj_equipment_LINE-WS-changzhou-slitting-assembly-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-changzhou-slitting-assembly-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-changzhou-slitting-winding-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-changzhou-slitting-winding-E2",
+          "label": "obj_equipment_LINE-WS-changzhou-slitting-winding-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-changzhou-slitting-winding-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-chengdu-winding-assembly-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-chengdu-winding-assembly-E1",
+          "label": "obj_equipment_LINE-WS-chengdu-winding-assembly-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-chengdu-winding-assembly-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-chengdu-winding-coating-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-chengdu-winding-coating-E2",
+          "label": "obj_equipment_LINE-WS-chengdu-winding-coating-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-chengdu-winding-coating-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-handan-assembly-coating-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-handan-assembly-coating-E1",
+          "label": "obj_equipment_LINE-WS-handan-assembly-coating-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-handan-assembly-coating-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-handan-calendering-winding-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-handan-calendering-winding-E1",
+          "label": "obj_equipment_LINE-WS-handan-calendering-winding-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-handan-calendering-winding-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-handan-pack-winding-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-handan-pack-winding-E2",
+          "label": "obj_equipment_LINE-WS-handan-pack-winding-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-handan-pack-winding-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-handan-slitting-assembly-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-handan-slitting-assembly-E1",
+          "label": "obj_equipment_LINE-WS-handan-slitting-assembly-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-handan-slitting-assembly-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-handan-slitting-assembly-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-handan-slitting-assembly-E2",
+          "label": "obj_equipment_LINE-WS-handan-slitting-assembly-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-handan-slitting-assembly-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-jiangmen-pack-coating-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-jiangmen-pack-coating-E1",
+          "label": "obj_equipment_LINE-WS-jiangmen-pack-coating-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-jiangmen-pack-coating-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-jiangmen-slurry-coating-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-jiangmen-slurry-coating-E2",
+          "label": "obj_equipment_LINE-WS-jiangmen-slurry-coating-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-jiangmen-slurry-coating-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-jinhua-formation-assembly-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-jinhua-formation-assembly-E2",
+          "label": "obj_equipment_LINE-WS-jinhua-formation-assembly-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-jinhua-formation-assembly-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-jinhua-pack-assembly-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-jinhua-pack-assembly-E2",
+          "label": "obj_equipment_LINE-WS-jinhua-pack-assembly-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-jinhua-pack-assembly-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-jinhua-slitting-coating-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-jinhua-slitting-coating-E1",
+          "label": "obj_equipment_LINE-WS-jinhua-slitting-coating-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-jinhua-slitting-coating-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-jinhua-slurry-coating-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-jinhua-slurry-coating-E1",
+          "label": "obj_equipment_LINE-WS-jinhua-slurry-coating-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-jinhua-slurry-coating-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-meishan-calendering-assembly-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-meishan-calendering-assembly-E1",
+          "label": "obj_equipment_LINE-WS-meishan-calendering-assembly-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-meishan-calendering-assembly-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-meishan-filling-winding-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-meishan-filling-winding-E1",
+          "label": "obj_equipment_LINE-WS-meishan-filling-winding-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-meishan-filling-winding-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-wuhan-coating-assembly-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-wuhan-coating-assembly-E1",
+          "label": "obj_equipment_LINE-WS-wuhan-coating-assembly-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-wuhan-coating-assembly-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-wuhan-coating-assembly-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-wuhan-coating-assembly-E2",
+          "label": "obj_equipment_LINE-WS-wuhan-coating-assembly-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-wuhan-coating-assembly-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-wuhan-slitting-assembly-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-wuhan-slitting-assembly-E2",
+          "label": "obj_equipment_LINE-WS-wuhan-slitting-assembly-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-wuhan-slitting-assembly-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-wuhan-slitting-coating-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-wuhan-slitting-coating-E1",
+          "label": "obj_equipment_LINE-WS-wuhan-slitting-coating-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-wuhan-slitting-coating-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-xiamen-assembly-assembly-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-xiamen-assembly-assembly-E1",
+          "label": "obj_equipment_LINE-WS-xiamen-assembly-assembly-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-xiamen-assembly-assembly-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-xiamen-coating-coating-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-xiamen-coating-coating-E1",
+          "label": "obj_equipment_LINE-WS-xiamen-coating-coating-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-xiamen-coating-coating-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-xiamen-grading-assembly-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-xiamen-grading-assembly-E1",
+          "label": "obj_equipment_LINE-WS-xiamen-grading-assembly-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-xiamen-grading-assembly-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-xiamen-grading-coating-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-xiamen-grading-coating-E1",
+          "label": "obj_equipment_LINE-WS-xiamen-grading-coating-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-xiamen-grading-coating-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-xinyang-assembly-coating-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-xinyang-assembly-coating-E2",
+          "label": "obj_equipment_LINE-WS-xinyang-assembly-coating-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-xinyang-assembly-coating-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-xinyang-coating-assembly-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-xinyang-coating-assembly-E1",
+          "label": "obj_equipment_LINE-WS-xinyang-coating-assembly-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-xinyang-coating-assembly-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-xinyang-filling-winding-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-xinyang-filling-winding-E2",
+          "label": "obj_equipment_LINE-WS-xinyang-filling-winding-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-xinyang-filling-winding-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-xinyang-slurry-winding-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-xinyang-slurry-winding-E1",
+          "label": "obj_equipment_LINE-WS-xinyang-slurry-winding-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-xinyang-slurry-winding-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-xinyang-winding-winding-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-xinyang-winding-winding-E1",
+          "label": "obj_equipment_LINE-WS-xinyang-winding-winding-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-xinyang-winding-winding-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-yangzhou-filling-coating-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-yangzhou-filling-coating-E2",
+          "label": "obj_equipment_LINE-WS-yangzhou-filling-coating-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-yangzhou-filling-coating-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-yangzhou-grading-winding-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-yangzhou-grading-winding-E1",
+          "label": "obj_equipment_LINE-WS-yangzhou-grading-winding-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-yangzhou-grading-winding-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-yangzhou-pack-coating-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-yangzhou-pack-coating-E2",
+          "label": "obj_equipment_LINE-WS-yangzhou-pack-coating-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-yangzhou-pack-coating-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-zaozhuang-assembly-coating-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-assembly-coating-E1",
+          "label": "obj_equipment_LINE-WS-zaozhuang-assembly-coating-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-assembly-coating-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-zaozhuang-pack-coating-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-pack-coating-E1",
+          "label": "obj_equipment_LINE-WS-zaozhuang-pack-coating-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-pack-coating-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-zaozhuang-slurry-coating-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-slurry-coating-E1",
+          "label": "obj_equipment_LINE-WS-zaozhuang-slurry-coating-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-slurry-coating-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-zaozhuang-winding-assembly-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-winding-assembly-E2",
+          "label": "obj_equipment_LINE-WS-zaozhuang-winding-assembly-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-zaozhuang-winding-assembly-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-zigong-assembly-winding-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-zigong-assembly-winding-E1",
+          "label": "obj_equipment_LINE-WS-zigong-assembly-winding-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-zigong-assembly-winding-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-zigong-calendering-assembly-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-zigong-calendering-assembly-E2",
+          "label": "obj_equipment_LINE-WS-zigong-calendering-assembly-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-zigong-calendering-assembly-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-zigong-filling-assembly-E2::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-zigong-filling-assembly-E2",
+          "label": "obj_equipment_LINE-WS-zigong-filling-assembly-E2·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-zigong-filling-assembly-E2",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_equipment_LINE-WS-zigong-slurry-assembly-E1::equipmentFailure",
+        "kind": "脆弱点",
+        "severity": 97.115385,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "obj_equipment_LINE-WS-zigong-slurry-assembly-E1",
+          "label": "obj_equipment_LINE-WS-zigong-slurry-assembly-E1·设备故障率"
+        },
+        "when": null,
+        "why": "设备故障率 现值 22 落在警戒带 P90(20) ~ P95(22)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "equipmentFailure",
+            "value": 22,
+            "p90": 20,
+            "p95": 22,
+            "sampleCount": 780,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_equipment_LINE-WS-zigong-slurry-assembly-E1",
+          "stateVar": "equipmentFailure",
+          "value": 22
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_line_LINE-WS-zaozhuang-assembly::utilPressure",
+        "kind": "脆弱点",
+        "severity": 96.153846,
+        "where": {
+          "objectType": "Line",
+          "objectId": "obj_line_LINE-WS-zaozhuang-assembly",
+          "label": "obj_line_LINE-WS-zaozhuang-assembly·利用率压力"
+        },
+        "when": null,
+        "why": "利用率压力 现值 9.926746 落在警戒带 P90(9.728578) ~ P95(9.926746)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "utilPressure",
+            "value": 9.926746,
+            "p90": 9.728578,
+            "p95": 9.926746,
+            "sampleCount": 130,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_line_LINE-WS-zaozhuang-assembly",
+          "stateVar": "utilPressure",
+          "value": 9.926746223461
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_line_LINE-WS-zaozhuang-calendering::utilPressure",
+        "kind": "脆弱点",
+        "severity": 96.153846,
+        "where": {
+          "objectType": "Line",
+          "objectId": "obj_line_LINE-WS-zaozhuang-calendering",
+          "label": "obj_line_LINE-WS-zaozhuang-calendering·利用率压力"
+        },
+        "when": null,
+        "why": "利用率压力 现值 9.926746 落在警戒带 P90(9.728578) ~ P95(9.926746)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "utilPressure",
+            "value": 9.926746,
+            "p90": 9.728578,
+            "p95": 9.926746,
+            "sampleCount": 130,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_line_LINE-WS-zaozhuang-calendering",
+          "stateVar": "utilPressure",
+          "value": 9.926746223461
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_line_LINE-WS-zaozhuang-coating::utilPressure",
+        "kind": "脆弱点",
+        "severity": 96.153846,
+        "where": {
+          "objectType": "Line",
+          "objectId": "obj_line_LINE-WS-zaozhuang-coating",
+          "label": "obj_line_LINE-WS-zaozhuang-coating·利用率压力"
+        },
+        "when": null,
+        "why": "利用率压力 现值 9.926746 落在警戒带 P90(9.728578) ~ P95(9.926746)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "utilPressure",
+            "value": 9.926746,
+            "p90": 9.728578,
+            "p95": 9.926746,
+            "sampleCount": 130,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_line_LINE-WS-zaozhuang-coating",
+          "stateVar": "utilPressure",
+          "value": 9.926746223461
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_line_LINE-WS-zaozhuang-filling::utilPressure",
+        "kind": "脆弱点",
+        "severity": 96.153846,
+        "where": {
+          "objectType": "Line",
+          "objectId": "obj_line_LINE-WS-zaozhuang-filling",
+          "label": "obj_line_LINE-WS-zaozhuang-filling·利用率压力"
+        },
+        "when": null,
+        "why": "利用率压力 现值 9.926746 落在警戒带 P90(9.728578) ~ P95(9.926746)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "utilPressure",
+            "value": 9.926746,
+            "p90": 9.728578,
+            "p95": 9.926746,
+            "sampleCount": 130,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_line_LINE-WS-zaozhuang-filling",
+          "stateVar": "utilPressure",
+          "value": 9.926746223461
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_line_LINE-WS-zaozhuang-formation::utilPressure",
+        "kind": "脆弱点",
+        "severity": 96.153846,
+        "where": {
+          "objectType": "Line",
+          "objectId": "obj_line_LINE-WS-zaozhuang-formation",
+          "label": "obj_line_LINE-WS-zaozhuang-formation·利用率压力"
+        },
+        "when": null,
+        "why": "利用率压力 现值 9.926746 落在警戒带 P90(9.728578) ~ P95(9.926746)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "utilPressure",
+            "value": 9.926746,
+            "p90": 9.728578,
+            "p95": 9.926746,
+            "sampleCount": 130,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_line_LINE-WS-zaozhuang-formation",
+          "stateVar": "utilPressure",
+          "value": 9.926746223461
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_line_LINE-WS-zaozhuang-grading::utilPressure",
+        "kind": "脆弱点",
+        "severity": 96.153846,
+        "where": {
+          "objectType": "Line",
+          "objectId": "obj_line_LINE-WS-zaozhuang-grading",
+          "label": "obj_line_LINE-WS-zaozhuang-grading·利用率压力"
+        },
+        "when": null,
+        "why": "利用率压力 现值 9.926746 落在警戒带 P90(9.728578) ~ P95(9.926746)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "utilPressure",
+            "value": 9.926746,
+            "p90": 9.728578,
+            "p95": 9.926746,
+            "sampleCount": 130,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_line_LINE-WS-zaozhuang-grading",
+          "stateVar": "utilPressure",
+          "value": 9.926746223461
+        }
+      },
+      {
+        "key": "propagation::fragile::obj_line_LINE-WS-zaozhuang-pack::utilPressure",
+        "kind": "脆弱点",
+        "severity": 96.153846,
+        "where": {
+          "objectType": "Line",
+          "objectId": "obj_line_LINE-WS-zaozhuang-pack",
+          "label": "obj_line_LINE-WS-zaozhuang-pack·利用率压力"
+        },
+        "when": null,
+        "why": "利用率压力 现值 9.926746 落在警戒带 P90(9.728578) ~ P95(9.926746)，尚未越线",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "A 方案·阈值取该变量在本世界的分位数（零配置）",
+            "stateVar": "utilPressure",
+            "value": 9.926746,
+            "p90": 9.728578,
+            "p95": 9.926746,
+            "sampleCount": 130,
+            "severityBasis": "百分位秩 × 100（无量纲·与 tightness 同口径）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "objectId": "obj_line_LINE-WS-zaozhuang-pack",
+          "stateVar": "utilPressure",
+          "value": 9.926746223461
+        }
+      },
+      {
+        "key": "propagation::block::Model::forecastBias",
+        "kind": "堵点",
+        "severity": 56.862745,
+        "where": {
+          "objectType": "Model",
+          "objectId": "Model.forecastBias",
+          "label": "Model·销售预测偏差（正=高估）"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 29/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 29,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Model",
+          "stateVar": "forecastBias",
+          "closureSize": 29
+        }
+      },
+      {
+        "key": "propagation::block::Order::demandPressure",
+        "kind": "堵点",
+        "severity": 54.901961,
+        "where": {
+          "objectType": "Order",
+          "objectId": "Order.demandPressure",
+          "label": "Order·需求压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 28/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 28,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Order",
+          "stateVar": "demandPressure",
+          "closureSize": 28
+        }
+      },
+      {
+        "key": "propagation::block::Order::orderChurn",
+        "kind": "堵点",
+        "severity": 54.901961,
+        "where": {
+          "objectType": "Order",
+          "objectId": "Order.orderChurn",
+          "label": "Order·订单变更压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 28/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 28,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Order",
+          "stateVar": "orderChurn",
+          "closureSize": 28
+        }
+      },
+      {
+        "key": "propagation::block::Model::demandLoad",
+        "kind": "堵点",
+        "severity": 50.980392,
+        "where": {
+          "objectType": "Model",
+          "objectId": "Model.demandLoad",
+          "label": "Model·需求负载"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 26/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 26,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Model",
+          "stateVar": "demandLoad",
+          "closureSize": 26
+        }
+      },
+      {
+        "key": "propagation::block::Base::loadIndex",
+        "kind": "堵点",
+        "severity": 43.137255,
+        "where": {
+          "objectType": "Base",
+          "objectId": "Base.loadIndex",
+          "label": "Base·负载指数"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 22/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 22,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Base",
+          "stateVar": "loadIndex",
+          "closureSize": 22
+        }
+      },
+      {
+        "key": "propagation::block::Equipment::equipmentFailure",
+        "kind": "堵点",
+        "severity": 35.294118,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "Equipment.equipmentFailure",
+          "label": "Equipment·设备故障率"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 18/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 18,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Equipment",
+          "stateVar": "equipmentFailure",
+          "closureSize": 18
+        }
+      },
+      {
+        "key": "propagation::block::Line::utilPressure",
+        "kind": "堵点",
+        "severity": 35.294118,
+        "where": {
+          "objectType": "Line",
+          "objectId": "Line.utilPressure",
+          "label": "Line·利用率压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 18/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 18,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Line",
+          "stateVar": "utilPressure",
+          "closureSize": 18
+        }
+      },
+      {
+        "key": "propagation::block::Process::queuePressure",
+        "kind": "堵点",
+        "severity": 33.333333,
+        "where": {
+          "objectType": "Process",
+          "objectId": "Process.queuePressure",
+          "label": "Process·排队压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 17/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 17,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Process",
+          "stateVar": "queuePressure",
+          "closureSize": 17
+        }
+      },
+      {
+        "key": "propagation::block::Line::blockedPressure",
+        "kind": "堵点",
+        "severity": 27.45098,
+        "where": {
+          "objectType": "Line",
+          "objectId": "Line.blockedPressure",
+          "label": "Line·产线受阻压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 14/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 14,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Line",
+          "stateVar": "blockedPressure",
+          "closureSize": 14
+        }
+      },
+      {
+        "key": "propagation::block::WorkOrder::releasePressure",
+        "kind": "堵点",
+        "severity": 25.490196,
+        "where": {
+          "objectType": "WorkOrder",
+          "objectId": "WorkOrder.releasePressure",
+          "label": "WorkOrder·工单下达压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 13/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 13,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "WorkOrder",
+          "stateVar": "releasePressure",
+          "closureSize": 13
+        }
+      },
+      {
+        "key": "propagation::block::MaterialBatch::procurementDelay",
+        "kind": "堵点",
+        "severity": 21.568627,
+        "where": {
+          "objectType": "MaterialBatch",
+          "objectId": "MaterialBatch.procurementDelay",
+          "label": "MaterialBatch·采购到货延迟"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 11/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 11,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "MaterialBatch",
+          "stateVar": "procurementDelay",
+          "closureSize": 11
+        }
+      },
+      {
+        "key": "propagation::block::PurchaseOrder::procurementDelay",
+        "kind": "堵点",
+        "severity": 21.568627,
+        "where": {
+          "objectType": "PurchaseOrder",
+          "objectId": "PurchaseOrder.procurementDelay",
+          "label": "PurchaseOrder·采购到货延迟"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 11/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 11,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "PurchaseOrder",
+          "stateVar": "procurementDelay",
+          "closureSize": 11
+        }
+      },
+      {
+        "key": "propagation::block::Supplier::deliveryDelay",
+        "kind": "堵点",
+        "severity": 21.568627,
+        "where": {
+          "objectType": "Supplier",
+          "objectId": "Supplier.deliveryDelay",
+          "label": "Supplier·交付延迟"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 11/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 11,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Supplier",
+          "stateVar": "deliveryDelay",
+          "closureSize": 11
+        }
+      },
+      {
+        "key": "propagation::block::Supplier::procurementDelay",
+        "kind": "堵点",
+        "severity": 21.568627,
+        "where": {
+          "objectType": "Supplier",
+          "objectId": "Supplier.procurementDelay",
+          "label": "Supplier·采购到货延迟"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 11/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 11,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Supplier",
+          "stateVar": "procurementDelay",
+          "closureSize": 11
+        }
+      },
+      {
+        "key": "propagation::block::Material::shortageRisk",
+        "kind": "堵点",
+        "severity": 19.607843,
+        "where": {
+          "objectType": "Material",
+          "objectId": "Material.shortageRisk",
+          "label": "Material·短缺风险"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 10/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 10,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Material",
+          "stateVar": "shortageRisk",
+          "closureSize": 10
+        }
+      },
+      {
+        "key": "propagation::block::Material::priceShock",
+        "kind": "堵点",
+        "severity": 11.764706,
+        "where": {
+          "objectType": "Material",
+          "objectId": "Material.priceShock",
+          "label": "Material·价格冲击"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 6/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 6,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Material",
+          "stateVar": "priceShock",
+          "closureSize": 6
+        }
+      },
+      {
+        "key": "propagation::block::Model::costPressure",
+        "kind": "堵点",
+        "severity": 9.803922,
+        "where": {
+          "objectType": "Model",
+          "objectId": "Model.costPressure",
+          "label": "Model·成本压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 5/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 5,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Model",
+          "stateVar": "costPressure",
+          "closureSize": 5
+        }
+      },
+      {
+        "key": "propagation::block::Order::costPressure",
+        "kind": "堵点",
+        "severity": 7.843137,
+        "where": {
+          "objectType": "Order",
+          "objectId": "Order.costPressure",
+          "label": "Order·成本压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 4/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 4,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Order",
+          "stateVar": "costPressure",
+          "closureSize": 4
+        }
+      },
+      {
+        "key": "propagation::block::Customer::receivablePressure",
+        "kind": "堵点",
+        "severity": 5.882353,
+        "where": {
+          "objectType": "Customer",
+          "objectId": "Customer.receivablePressure",
+          "label": "Customer·应收压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 3/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 3,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Customer",
+          "stateVar": "receivablePressure",
+          "closureSize": 3
+        }
+      },
+      {
+        "key": "propagation::block::PurchaseOrder::expeditePressure",
+        "kind": "堵点",
+        "severity": 5.882353,
+        "where": {
+          "objectType": "PurchaseOrder",
+          "objectId": "PurchaseOrder.expeditePressure",
+          "label": "PurchaseOrder·加急压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 3/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 3,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "PurchaseOrder",
+          "stateVar": "expeditePressure",
+          "closureSize": 3
+        }
+      },
+      {
+        "key": "propagation::block::Model::supplyRisk",
+        "kind": "堵点",
+        "severity": 3.921569,
+        "where": {
+          "objectType": "Model",
+          "objectId": "Model.supplyRisk",
+          "label": "Model·供应风险"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 2/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 2,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Model",
+          "stateVar": "supplyRisk",
+          "closureSize": 2
+        }
+      },
+      {
+        "key": "propagation::block::WIPLot::feedPressure",
+        "kind": "堵点",
+        "severity": 3.921569,
+        "where": {
+          "objectType": "WIPLot",
+          "objectId": "WIPLot.feedPressure",
+          "label": "WIPLot·投料压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 2/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 2,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "WIPLot",
+          "stateVar": "feedPressure",
+          "closureSize": 2
+        }
+      },
+      {
+        "key": "propagation::block::DefectRecord::defectPressure",
+        "kind": "堵点",
+        "severity": 1.960784,
+        "where": {
+          "objectType": "DefectRecord",
+          "objectId": "DefectRecord.defectPressure",
+          "label": "DefectRecord·缺陷压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 1/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 1,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "DefectRecord",
+          "stateVar": "defectPressure",
+          "closureSize": 1
+        }
+      },
+      {
+        "key": "propagation::block::Equipment::loadPressure",
+        "kind": "堵点",
+        "severity": 1.960784,
+        "where": {
+          "objectType": "Equipment",
+          "objectId": "Equipment.loadPressure",
+          "label": "Equipment·设备负荷压力"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 1/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 1,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Equipment",
+          "stateVar": "loadPressure",
+          "closureSize": 1
+        }
+      },
+      {
+        "key": "propagation::block::Order::leadDays",
+        "kind": "堵点",
+        "severity": 1.960784,
+        "where": {
+          "objectType": "Order",
+          "objectId": "Order.leadDays",
+          "label": "Order·交付前置天数（天）"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 1/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 1,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Order",
+          "stateVar": "leadDays",
+          "closureSize": 1
+        }
+      },
+      {
+        "key": "propagation::block::Order::qty",
+        "kind": "堵点",
+        "severity": 1.960784,
+        "where": {
+          "objectType": "Order",
+          "objectId": "Order.qty",
+          "label": "Order·订单数量（套）"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 1/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 1,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Order",
+          "stateVar": "qty",
+          "closureSize": 1
+        }
+      },
+      {
+        "key": "propagation::block::Order::shortageRisk",
+        "kind": "堵点",
+        "severity": 1.960784,
+        "where": {
+          "objectType": "Order",
+          "objectId": "Order.shortageRisk",
+          "label": "Order·短缺风险"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 1/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 1,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Order",
+          "stateVar": "shortageRisk",
+          "closureSize": 1
+        }
+      },
+      {
+        "key": "propagation::block::Order::unitPrice",
+        "kind": "堵点",
+        "severity": 1.960784,
+        "where": {
+          "objectType": "Order",
+          "objectId": "Order.unitPrice",
+          "label": "Order·订单单价（元）"
+        },
+        "when": null,
+        "why": "传导图上动这一格会牵动下游 1/51 格（传递闭包），是必经咽喉",
+        "source": {
+          "solverKey": "propagation",
+          "dataMode": "LIVE",
+          "provenance": {
+            "basis": "传导图现算传递闭包（不手工登记层级）",
+            "closureSize": 1,
+            "totalCells": 51,
+            "ruleCount": 49
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "typeKey": "Order",
+          "stateVar": "unitPrice",
+          "closureSize": 1
+        }
+      },
+      {
+        "key": "(event)::unevaluated::ORDER_REPRICE::obj_material_al_foil",
+        "kind": "未能评估",
+        "severity": 0,
+        "where": {
+          "objectType": "",
+          "objectId": "obj_material_al_foil",
+          "label": "(event) 未能评估"
+        },
+        "when": null,
+        "why": "事件校验未通过：订单改价缺必填字段 pctChange（卖价涨跌百分比：+8 = 提价 8%，-5 = 降价 5%）",
+        "source": {
+          "solverKey": "(event)",
+          "dataMode": "UNDECLARED",
+          "provenance": {
+            "unevaluated": true,
+            "reason": "事件校验未通过：订单改价缺必填字段 pctChange（卖价涨跌百分比：+8 = 提价 8%，-5 = 降价 5%）"
+          }
+        },
+        "reconciled": null,
+        "evidence": null
+      },
+      {
+        "key": "state-effect::unapplied::ORDER_REPRICE::obj_material_al_foil",
+        "kind": "未能评估",
+        "severity": 0,
+        "where": {
+          "objectType": "DrillEvent",
+          "objectId": "obj_material_al_foil",
+          "label": "ORDER_REPRICE·obj_material_al_foil"
+        },
+        "when": null,
+        "why": "本次「ORDER_REPRICE」的世界态冲击**未能施加**：幅度取自「pctChange」这一格，而本次没填（或不是一个数）—— 没有幅度就没有冲击，绝不按 0 施加（0 的冲击与「打上了但影响很小」在屏上长得一模一样）。故下面的结论里不含这件事的影响。",
+        "source": {
+          "solverKey": "drill-state-effect",
+          "dataMode": "EMPTY",
+          "provenance": {
+            "kind": "ORDER_REPRICE",
+            "targetObjectId": "obj_material_al_foil",
+            "reason": "幅度取自「pctChange」这一格，而本次没填（或不是一个数）—— 没有幅度就没有冲击，绝不按 0 施加（0 的冲击与「打上了但影响很小」在屏上长得一模一样）"
+          }
+        },
+        "reconciled": null,
+        "evidence": {
+          "kind": "ORDER_REPRICE",
+          "targetObjectId": "obj_material_al_foil",
+          "reason": "幅度取自「pctChange」这一格，而本次没填（或不是一个数）—— 没有幅度就没有冲击，绝不按 0 施加（0 的冲击与「打上了但影响很小」在屏上长得一模一样）"
+        }
+      }
+    ],
+    "totalByKind": {
+      "卡点": 264,
+      "脆弱点": 313,
+      "堵点": 28,
+      "未能评估": 2
+    },
+    "truncated": true,
+    "appliedLimitPerKind": 50,
+    "degraded": [],
+    "appliedStateEffects": [],
+    "worldCellsMoved": 0,
+    "worldCellsTotal": 6363,
+    "findingsChanged": 0,
+    "findingsBaseline": 0,
+    "solverRuns": [
+      {
+        "solverKey": "(event)",
+        "eventKind": "ORDER_REPRICE",
+        "ok": false,
+        "dataMode": "UNDECLARED",
+        "error": "订单改价缺必填字段 pctChange（卖价涨跌百分比：+8 = 提价 8%，-5 = 降价 5%）",
+        "findingCount": 1
+      }
+    ],
+    "summary": {
+      "allFailed": false,
+      "trustworthy": true,
+      "dataMode": "LIVE",
+      "text": "本次演习扫出 605 条结论（卡点 264·堵点 28·脆弱点 313），另有 2 条未能评估；本次每类只回前 50 条（共 607 条）。数据模式=LIVE。"
+    }
+  },
+  "readOnly": {
+    "before": 100,
+    "after": 100
+  }
+}

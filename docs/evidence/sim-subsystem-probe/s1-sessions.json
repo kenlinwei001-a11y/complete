@@ -1,0 +1,44 @@
+{
+  "status": 200,
+  "count": 1,
+  "demo": {
+    "id": "sims_demo_seed_world",
+    "tenantId": "demo",
+    "scope": {
+      "seedWorld": true,
+      "label": "demo 种子世界",
+      "baseSnapshotOrigin": {
+        "kind": "DERIVED",
+        "formula": "两档取值。① 真读数：状态变量名恰好是该对象的一个数值属性时，直接取该属性的值，不做任何二次折算（该属性自己的口径见对象类型里它的说明）；本次命中 Base.loadIndex、Customer.receivablePressure、DefectRecord.defectPressure、Equipment.equipmentFailure、Equipment.loadPressure、Line.blockedPressure、Line.utilPressure、Material.priceShock、Material.shortageRisk、MaterialBalance.gapPressure、MaterialBatch.procurementDelay、Model.costPressure、Model.demandLoad、Model.forecastBias、Model.supplyRisk、Order.costPressure、Order.demandPressure、Order.leadDays、Order.qty、Order.shortageRisk、Order.unitPrice、Process.queuePressure、PurchaseOrder.expeditePressure、PurchaseOrder.procurementDelay、Supplier.deliveryDelay、Supplier.procurementDelay、WIPLot.feedPressure、WorkOrder.releasePressure。② 派生占位：其余格子 round(hash01(`${objectId}|${stateVar}`) × 100)（FNV-1a · 与前端 deriveBaseSnapshot 同式）。",
+        "note": "种子世界的 tick0 读数分两种：4171 格是实测（状态变量名就是对象上的属性名，直接读了那个对象的真实业务数）；其余 2192 格是本体结构派生的确定性占位（这些状态变量在本平台不是对象属性，对象上取不到值）。拿占位格当起点算出的差值，量级不可当实测读；实测格没有这个问题。其中 Base.loadIndex、Customer.receivablePressure、DefectRecord.defectPressure、Equipment.equipmentFailure、Equipment.loadPressure、Line.blockedPressure、Line.utilPressure、Material.priceShock、Material.shortageRisk、MaterialBalance.gapPressure、MaterialBatch.procurementDelay、Model.costPressure、Model.demandLoad、Model.forecastBias、Model.supplyRisk、Order.costPressure、Order.demandPressure、Order.shortageRisk、Process.queuePressure、PurchaseOrder.expeditePressure、PurchaseOrder.procurementDelay、Supplier.deliveryDelay、Supplier.procurementDelay、WIPLot.feedPressure、WorkOrder.releasePressure 由显式规格绑定取值（每条公式的口径见派生规格表，规格缺失会在播种时直接报错，不会退回占位）。",
+        "types": 32,
+        "objects": 4425,
+        "cells": 6363,
+        "measuredCells": 4171,
+        "derivedCells": 2192
+      },
+      "seedPerturbation": {
+        "targetObjectId": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E1",
+        "targetStateVar": "equipmentFailure",
+        "magnitude": 20,
+        "varMax": 22,
+        "varMin": 2,
+        "outRules": 1,
+        "reachCells": 3824,
+        "reachObjects": 3381,
+        "candidates": 3442
+      },
+      "seedWorldCompletedTicks": 96
+    },
+    "status": "RUNNING",
+    "curTick": 100,
+    "parentCheckpointId": null,
+    "disabledRuleKeys": [],
+    "tickDays": 1,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "baseSnapshotScale": {
+      "objects": 4425,
+      "cells": 6363
+    }
+  }
+}

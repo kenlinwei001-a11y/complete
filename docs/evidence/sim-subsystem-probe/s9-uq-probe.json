@@ -1,0 +1,15 @@
+{
+  "status": 200,
+  "topKeys": [
+    "curTick",
+    "state",
+    "trace",
+    "cadence",
+    "scope",
+    "stateVarReport",
+    "pairWeighting",
+    "signalToNoise",
+    "appliedPerturbations"
+  ],
+  "uqEcho": []
+}

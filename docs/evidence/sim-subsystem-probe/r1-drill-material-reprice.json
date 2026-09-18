@@ -1,0 +1,63 @@
+{
+  "status": 200,
+  "appliedStateEffects": [
+    {
+      "eventKind": "MATERIAL_REPRICE",
+      "targetObjectId": "obj_material_al_foil",
+      "targetStateVar": "priceShock",
+      "mode": "delta",
+      "magnitude": 3.3,
+      "startTick": 103,
+      "applied": true,
+      "rawMagnitude": 15,
+      "magnitudeBasis": "幅度键本身即百分点，1:1 不换算",
+      "targetLabel": "铝箔",
+      "rangePct": 15,
+      "observedRange": 22,
+      "downstream": [
+        "Model.costPressure ×0.15651"
+      ]
+    }
+  ],
+  "worldCellsMoved": 254,
+  "worldCellsTotal": 6363,
+  "findingsChanged": 0,
+  "totalByKind": {
+    "卡点": 273,
+    "脆弱点": 312,
+    "堵点": 28
+  },
+  "solverRuns": [
+    {
+      "solverKey": "quote_margin",
+      "eventKind": "MATERIAL_REPRICE",
+      "ok": true,
+      "dataMode": "UNDECLARED",
+      "error": null,
+      "findingCount": 1
+    },
+    {
+      "solverKey": "supply_demand_gap_attribution",
+      "eventKind": "MATERIAL_REPRICE",
+      "ok": true,
+      "dataMode": "UNDECLARED",
+      "error": null,
+      "findingCount": 1
+    },
+    {
+      "solverKey": "risk_timeline",
+      "eventKind": "MATERIAL_REPRICE",
+      "ok": true,
+      "dataMode": "PARTIAL",
+      "error": null,
+      "findingCount": 8
+    }
+  ],
+  "degraded": [],
+  "summary": {
+    "allFailed": false,
+    "trustworthy": false,
+    "dataMode": "PARTIAL",
+    "text": "本次演习扫出 613 条结论（卡点 273·堵点 28·脆弱点 312）；本次每类只回前 50 条（共 613 条）。数据模式=PARTIAL。"
+  }
+}

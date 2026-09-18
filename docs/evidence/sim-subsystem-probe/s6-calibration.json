@@ -1,0 +1,217 @@
+{
+  "report": {
+    "status": 200,
+    "body": {
+      "points": [
+        {
+          "date": "2026-05-27",
+          "mape": 10.86
+        },
+        {
+          "date": "2026-05-28",
+          "mape": 10.69
+        },
+        {
+          "date": "2026-05-29",
+          "mape": 10.75
+        },
+        {
+          "date": "2026-05-30",
+          "mape": 9.86
+        },
+        {
+          "date": "2026-05-31",
+          "mape": 9.59
+        },
+        {
+          "date": "2026-06-01",
+          "mape": 9.84
+        },
+        {
+          "date": "2026-06-02",
+          "mape": 9.79
+        },
+        {
+          "date": "2026-06-03",
+          "mape": 8.72
+        },
+        {
+          "date": "2026-06-04",
+          "mape": 9.13
+        },
+        {
+          "date": "2026-06-05",
+          "mape": 8.12
+        },
+        {
+          "date": "2026-06-06",
+          "mape": 8.22
+        },
+        {
+          "date": "2026-06-07",
+          "mape": 7.42
+        },
+        {
+          "date": "2026-06-08",
+          "mape": 6.95
+        },
+        {
+          "date": "2026-06-09",
+          "mape": 6.53
+        }
+      ],
+      "thresholdPct": 8,
+      "triggerMarks": [
+        {
+          "date": "2026-05-27",
+          "ruleKey": "C12"
+        },
+        {
+          "date": "2026-05-28",
+          "ruleKey": "C12"
+        },
+        {
+          "date": "2026-05-29",
+          "ruleKey": "C12"
+        },
+        {
+          "date": "2026-05-30",
+          "ruleKey": "C12"
+        },
+        {
+          "date": "2026-05-31",
+          "ruleKey": "C12"
+        },
+        {
+          "date": "2026-06-01",
+          "ruleKey": "C12"
+        },
+        {
+          "date": "2026-06-02",
+          "ruleKey": "C12"
+        },
+        {
+          "date": "2026-06-03",
+          "ruleKey": "C12"
+        },
+        {
+          "date": "2026-06-04",
+          "ruleKey": "C12"
+        },
+        {
+          "date": "2026-06-05",
+          "ruleKey": "C12"
+        },
+        {
+          "date": "2026-06-06",
+          "ruleKey": "C12"
+        }
+      ],
+      "nMin": 10
+    }
+  },
+  "proposals": {
+    "status": 200,
+    "body": [
+      {
+        "id": "calp_demo_seed_maint",
+        "parameter": "检修产能系数（OEE 基线）",
+        "paramPath": "maintMult",
+        "objectRef": "Solver:capacity_forecast",
+        "currentValue": 0.72,
+        "proposedValue": 0.75,
+        "basis": {
+          "windowFrom": "2026-06-10",
+          "windowTo": "2026-06-30",
+          "samples": 96
+        },
+        "trigger": "手动",
+        "sliceKey": "capacity_forecast|all|圆柱-LFP",
+        "paramRef": {
+          "scope": "SOLVER_PARAMS",
+          "path": "maintMult"
+        },
+        "method": "EMA",
+        "evidence": {
+          "windowFrom": "2026-06-10",
+          "windowTo": "2026-06-30",
+          "nPairs": 96,
+          "mapeBefore": 9.8,
+          "simulatedMapeAfter": 8.1,
+          "bias": -0.034,
+          "flags": []
+        },
+        "tenantId": "demo",
+        "status": "PENDING",
+        "createdAt": "2026-06-10T00:00:00.000Z"
+      },
+      {
+        "id": "calp_demo_seed_ramp",
+        "parameter": "产能预测·爬坡系数基线",
+        "paramPath": "ramp.base",
+        "objectRef": "Solver:capacity_forecast",
+        "currentValue": 0.88,
+        "proposedValue": 0.9,
+        "basis": {
+          "windowFrom": "2026-06-17",
+          "windowTo": "2026-06-30",
+          "samples": 168
+        },
+        "trigger": "C12",
+        "sliceKey": "capacity_forecast|all|4680-NCM",
+        "paramRef": {
+          "scope": "SOLVER_PARAMS",
+          "path": "ramp.base"
+        },
+        "method": "REPLAY_ATTRIBUTION",
+        "evidence": {
+          "windowFrom": "2026-06-17",
+          "windowTo": "2026-06-30",
+          "nPairs": 168,
+          "mapeBefore": 11.2,
+          "simulatedMapeAfter": 8.9,
+          "bias": 0.061,
+          "flags": [
+            "ATTRIBUTION_SHARE:0.82"
+          ]
+        },
+        "tenantId": "demo",
+        "status": "PENDING",
+        "createdAt": "2026-06-10T00:00:00.000Z"
+      }
+    ]
+  },
+  "history": {
+    "status": 200,
+    "body": [
+      {
+        "id": "calh_demo_seed_1",
+        "tenantId": "demo",
+        "at": "2026-06-15T08:00:00.000Z",
+        "trigger": "C12",
+        "changedParams": [
+          "良率基线（化成）"
+        ],
+        "mapeBefore": 11.2,
+        "mapeAfter": 8.4,
+        "method": "EMA",
+        "simulatedMapeAfter": 8.4,
+        "realizedMape": 8.7
+      }
+    ]
+  },
+  "run": {
+    "status": 200,
+    "body": {
+      "paired": 0,
+      "deferred": 0,
+      "staleDeferred": false,
+      "slicesEvaluated": 0,
+      "created": 0,
+      "autoApplied": 0,
+      "held": 0,
+      "dropped": 0,
+      "insufficient": 0
+    }
+  }
+}

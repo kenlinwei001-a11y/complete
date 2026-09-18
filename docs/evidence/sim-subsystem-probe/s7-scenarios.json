@@ -1,0 +1,62 @@
+{
+  "status": 200,
+  "count": 20,
+  "first": {
+    "sNo": "S01",
+    "name": "订单可承接性评审",
+    "view": "project",
+    "domain": "产能与项目",
+    "intentKey": "capacity_feasibility",
+    "triggerQuestion": "4680-NCM 加 20% 六周能不能接？",
+    "solver": "capacity_forecast",
+    "rules": [
+      "C01",
+      "C02",
+      "C03",
+      "C09"
+    ],
+    "riskLevel": "COMPUTE",
+    "summary": "解读产能可承接结论的口径",
+    "mode": "WORKFLOW_FIRST",
+    "presetContext": {
+      "targetView": "project",
+      "selectedObjects": [
+        {
+          "objectType": "Model",
+          "objectId": "4680-NCM",
+          "label": "4680-NCM"
+        }
+      ],
+      "slotPresets": {
+        "model": "4680-NCM",
+        "demandDelta": 0.2,
+        "weeks": 6
+      }
+    },
+    "status": "PUBLISHED",
+    "willProduceDraft": false,
+    "inactive": false
+  },
+  "all": [
+    "S01:capacity_forecast:undefined",
+    "S02:affected_orders:undefined",
+    "S03:risk_timeline:undefined",
+    "S04:plan_audit:undefined",
+    "S05:plan_generate:undefined",
+    "S06:mitigation_select:undefined",
+    "S07:cert_schedule:undefined",
+    "S08:kit_readiness:undefined",
+    "S09:lta_gap:undefined",
+    "S10:inventory_optimize:undefined",
+    "S11:changeover_sequence:undefined",
+    "S12:yield_diagnosis:undefined",
+    "S13:maintenance_stagger:undefined",
+    "S14:outsourcing_split:undefined",
+    "S15:quote_margin:undefined",
+    "S16:credit_exposure:undefined",
+    "S17:capex_scenario:undefined",
+    "S18:sop_balance:undefined",
+    "S19:quarterly_gap:undefined",
+    "S20:carbon_footprint:undefined"
+  ]
+}

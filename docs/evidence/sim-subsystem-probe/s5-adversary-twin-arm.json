@@ -1,0 +1,29 @@
+{
+  "order": {
+    "id": "obj_order_SO-3490",
+    "cust": "东风汽车",
+    "value": 352397826
+  },
+  "armA": {
+    "session": "sims_x2d82t6sne23vhe4",
+    "perturbStatus": 201,
+    "traceRows": 6,
+    "reactionRows": 0,
+    "reactionSample": [],
+    "adversaryEnabled": null,
+    "receivablePressure": null,
+    "orderChurn": null
+  },
+  "armB": {
+    "session": "sims_mj3pkmg6xf7acp26",
+    "perturbStatus": 201,
+    "traceRows": 6,
+    "reactionRows": 0,
+    "reactionSample": [],
+    "adversaryEnabled": null,
+    "receivablePressure": null,
+    "orderChurn": null
+  },
+  "putStatus": 200,
+  "restoreStatus": 200
+}

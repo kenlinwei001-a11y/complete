@@ -1,0 +1,17 @@
+{
+  "status": 200,
+  "baseId": "changzhou",
+  "topKeys": [
+    "baseId",
+    "baseName",
+    "forecastStart",
+    "horizons",
+    "dayPlan",
+    "summary",
+    "byModel"
+  ],
+  "confidenceHits": [
+    "P50"
+  ],
+  "snippet": "{\"data\":{\"baseId\":\"changzhou\",\"baseName\":\"常州\",\"forecastStart\":\"2026-06-10\",\"horizons\":[{\"horizon\":30,\"windowStart\":\"2026-06-10\",\"windowEnd\":\"2026-07-10\",\"lines\":[{\"key\":\"available\",\"label\":\"可用产能\",\"value\":6336,\"provenance\":{\"kind\":\"派生\",\"drillType\":\"Line\",\"drillId\":\"changzhou\",\"drillField\":\"capacityDaily\",\"drillValue\":211.2}},{\"key\":\"inProduction\",\"label\":\"在产订单占用\",\"value\":11912.67,\"provenance\":{\"kind\":\"实测\",\"drillType\":\"WorkOrder\",\"drillId\":\"changzhou\",\"drillField\":\"qtyActual\",\"drillValue\":35738}},{\"key\":\"futureOrders\",\"label\":\"未来订单\",\"value\":159263,\"provenance\":{\"kind\":\"实测\",\"drillType\":\"Order\",\"drillId\":\"changzhou\",\"drillField\":\"qty\",\"drillValue\":159263}},{\"key\":\"salesForecast\",\"label\":\"销售预测\",\"value\":27132.33,\"provenance\":{\"kind\":\"派生\",\"drillType\":\"DemandSegment\",\"drillId\":\"*\",\"drillField\":\"de"
+}

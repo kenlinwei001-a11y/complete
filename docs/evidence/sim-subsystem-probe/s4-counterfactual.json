@@ -1,0 +1,29 @@
+{
+  "good": {
+    "status": 200,
+    "diffCount": 564,
+    "firedInBaseline": [
+      "demo_material_price_to_model_cost"
+    ],
+    "keys": [
+      "fromTick",
+      "ticks",
+      "disabledRuleKeys",
+      "suppressedRules",
+      "baselineState",
+      "counterfactualState",
+      "diffs",
+      "suppressedRulesFiredInBaseline"
+    ]
+  },
+  "bad": {
+    "status": 400,
+    "body": {
+      "error": {
+        "code": "UNKNOWN_PROPAGATION_RULE_KEY",
+        "message": "未知传导规则 key：zz_no_such_rule。对照跑同样拒绝静默忽略——否则差值恒 0，而你会以为\"关掉这条边没有影响\"。",
+        "requestId": "req_rs5r2dnmr2em3gd4"
+      }
+    }
+  }
+}

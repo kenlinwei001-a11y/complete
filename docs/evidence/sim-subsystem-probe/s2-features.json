@@ -1,0 +1,4 @@
+{
+  "status": 200,
+  "adversarySnippet": "lse,\"requires\":[\"sim.propagation\"]},{\"key\":\"sim.propagation.adversary\",\"name\":\"对抗方反应\",\"level\":\"BLOCK\",\"defaultOn\":false,\"requires\":[\"sim.propagation\"]},{\"key\":\"sim.checkpoint\",\"name\":\"检查点/回滚\",\"level\":\"BLOCK\",\"defaultOn\":"
+}
