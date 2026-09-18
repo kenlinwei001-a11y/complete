@@ -161,7 +161,9 @@ async function idsOfType(t: TestApp, typeKey: string): Promise<string[]> {
  * 而信号**到达那一拍**是活的：G-ROOT-1 远端 tick2 = −86.97（WO-PROP-REVIEW-V2 库存环两条边进场后
  * 的重测值，/tmp/t3-triad-probe.txt；翻负后初测 −65.35 见 /tmp/t2-diag3.txt —— 库存环的恒定下压力
  * 让被扰世界提前一拍撞 0 轨，到达拍的差分从「−65」变成「把整场 86.97 全压掉」，判据不变）、
- * G-ROOT-4 远端 tick2 = +5.82、G-ROOT-2 远端 tick5–8 = −0.0001x∼−0.0002（四跳残迹）。
+ * G-ROOT-4 远端 tick2 = +0.2050 → tick8 = +0.4563（㉜ 反向后重瞄 Line.blockedPressure，
+ * /tmp/t5-triad-probe.txt；反向前的旧落点 Equipment.loadPressure 实测 tick2 = +5.82，反向证据 = 其逐拍 Δ 全 0）、
+ * G-ROOT-2 远端 tick5–8 = −0.0001x∼−0.0002（四跳残迹）。
  * 故远端断言取**窗口内有向极值**
  * （方向对 ⇒ 极值必然同号非零；没到 ⇒ 恒 0），这既咬可达性又咬方向，且不拿死端点冒充证据。
  */
@@ -470,17 +472,19 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
         `（窗口有向极值 —— 四跳残迹实测 tick5–8 ≈ −0.0001x，小但同号非零；逐拍 Δ = ${fmtTraj(p2.farTraj)}）`,
     ).toBeLessThan(0);
 
-    // ── G-ROOT-4 · 设备故障 → 工序排队压力；远端真的走到设备负荷压力 ──────────────
+    // ── G-ROOT-4 · 设备故障 → 工序排队压力；远端真的走到产线受阻压力 ──────────────
     const r4 = rules.find((r) => r.key === "demo_equipment_failure_to_process_queue")!;
     expect(r4.coefficient).toBeGreaterThan(0);
-    const p4 = await probe(r4, "Equipment", "loadPressure");
+    const p4 = await probe(r4, "Line", "blockedPressure");
     expectPropagated(p4.oneHopDelta, TICKS * r4.coefficient * BUMP * p4.oneHopTargets, `G-ROOT-4 传导臂（落点 ${p4.pickId}）`);
-    // 🔴 派单原文要的 `equipmentFailure → loadPressure`：多一跳（设备→工序→设备负荷），
-    //    因为 loadPressure 挂在 Equipment 自己身上、全表零自环边。这条断言它**真的**走到了。
+    // 🔴 远端重瞄（WO-PROP-REVIEW-V2 ㉜ · 2026-09-18）：派单原文的两跳落点
+    //    `queuePressure → Equipment.loadPressure` 已随 ㉜ 反向不复存在（`loadPressure` 升格根源、入度 0）。
+    //    反向证据：扰 equipmentFailure 后 `loadPressure` 逐拍 Δ **全 0**（/tmp/t5-triad-probe.txt 对照行）。
+    //    故障信号改经 `demo_process_queue_to_line_blocked` 走向产能主链 —— 比原来更远一跳、更贴近订单侧。
     expect(
       p4.farMax,
-      `G-ROOT-4 远端：设备故障两跳（→工序排队→设备负荷）之后 Equipment.loadPressure 必须真的动` +
-        `（窗口有向极值；逐拍 Δ = ${fmtTraj(p4.farTraj)}）`,
+      `G-ROOT-4 远端：设备故障两跳（→工序排队→产线受阻）之后 Line.blockedPressure 必须真的动` +
+        `（窗口有向极值；实测到达拍 tick2 = +0.2050，单调增至 tick8 = +0.4563（/tmp/t5-triad-probe.txt）；逐拍 Δ = ${fmtTraj(p4.farTraj)}）`,
     ).toBeGreaterThan(0);
   }, 300000);
 });
