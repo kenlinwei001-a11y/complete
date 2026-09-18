@@ -734,6 +734,23 @@ export const STATE_DECAY_PARAM_KEY = "pressureDecayPerTick";
  */
 export const PRESSURE_DECAY_PER_TICK = 0.37;
 
+// ── WO-PROP-REVIEW-V2 形态② · 积压/天数族消化速率（评审原文：「上界确实拍不出来，但消化速率
+//    有出处：产能」「那个理由对上界成立，但对衰减不成立 —— 检验积压的消化速率 = 检验产能」）──
+// 与压力族同一把尺子：几何衰减、**med 工期后残留 25%** ⇒ `λ = 1 − 0.25^(1/med工期)`。
+// 工期全部实测于本 tip（/tmp/t6-duration-probe.{txt,rc} RC=0，全链播种后对象层扫描）：
+/** 检验排队消化：来料检验周期 `releasedDay − arrivedDay` med = 3 天（n=30，1–4）⇒ `1 − 0.25^(1/3)`。 */
+export const QUEUE_DAYS_DECAY_PER_TICK = 0.37;
+/** 维修积压消化：维修工期 `actualEnd − actualStart` med = 1 天（n=193，0–2）⇒ `1 − 0.25`。 */
+export const REPAIR_BACKLOG_DECAY_PER_TICK = 0.75;
+/** 认证排队消化：`certHours` med = 134h ÷ 24 = 5.58 天（n=18，2.1–8.0）⇒ `1 − 0.25^(1/5.58)`。 */
+export const QUALIFICATION_QUEUE_DECAY_PER_TICK = 0.22;
+/** 检验积压消化：⚠ **暂定档** —— QualityLot 上无工期/产能属性（实测 /tmp/t6-capacity-probe.txt），
+ *  借来料检验周期 med 3 天（同「检验」物理过程）。待仓主定档（评审 §6 同族问题），不拿它凑读数。 */
+export const INSPECT_BACKLOG_DECAY_PER_TICK = 0.37;
+/** 异常处置积压消化：⚠ **暂定档** —— ExceptionEvent 无处置工期属性（只有 occurredAt + status），
+ *  借维修工期 med 1 天（处置 = 现场纠正措施，与维修同族作业）。待仓主定档。 */
+export const HANDLING_BACKLOG_DECAY_PER_TICK = 0.75;
+
 // ── WO-PROP-COEF-CONFIG · 推演传导系数表（记号必须排在 BATTERY_RULES **之前**，TDZ 理由同 C35 段头）──
 
 /** 传导系数所在的规则（`BATTERY_RULES` 的 C36）—— 改这条规则的 params 即改推演，引擎不内联任何系数。 */
@@ -1032,7 +1049,16 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // 衰减率是「一次冲击几天散掉」这条**经营口径**，必须落在规则库里改一处即改推演，
   // 而不是再往引擎里内联一个常数（`STATE_VAR_DOMAINS` 只存**引用**，不存值）。
   // 出厂值的推导见 `PRESSURE_DECAY_PER_TICK` 注释（从 risk.pulseWindow/pulseDecayDen 派生，非拍脑袋）。
-  { key: "C35", name: "推演状态量衰减率", expression: `SimStateVar.decayPerTick == ${ruleParamRef(STATE_DECAY_PARAM_KEY)}`, severity: "WARN", params: { [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK }, category: "推演",
+  { key: "C35", name: "推演状态量衰减率", expression: `SimStateVar.decayPerTick == ${ruleParamRef(STATE_DECAY_PARAM_KEY)}`, severity: "WARN",
+    params: {
+      [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK,
+      // WO-PROP-REVIEW-V2 形态② · 积压/天数族消化速率（推导见各常量注释，全部实测工期派生）：
+      queueDaysDecayPerTick: QUEUE_DAYS_DECAY_PER_TICK,
+      repairBacklogDecayPerTick: REPAIR_BACKLOG_DECAY_PER_TICK,
+      qualificationQueueDecayPerTick: QUALIFICATION_QUEUE_DECAY_PER_TICK,
+      inspectBacklogDecayPerTick: INSPECT_BACKLOG_DECAY_PER_TICK, // ⚠ 暂定档
+      handlingBacklogDecayPerTick: HANDLING_BACKLOG_DECAY_PER_TICK, // ⚠ 暂定档
+    }, category: "推演",
     description: "参数载体而非判定规则：推演状态量每 tick 衰减率 λ 的唯一可编辑来源（引擎读 params.pressureDecayPerTick），存在的理由是让「一次冲击几天散掉」这条经营口径改一处即改推演。",
     tags: ["推演", "参数载体", "衰减率"] },
   // WO-PROP-COEF-CONFIG · 推演传导系数表。**这条规则存在的唯一理由就是让 50 条边的系数可编辑** ——
@@ -3526,18 +3552,20 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   // 名字取「产线受阻压力」而不是「产线阻塞」：该边的 description 原文是
   // 「工序排队 ⇒ 该产线受阻。落在 blockedPressure 这个新量纲上，是为了不回喂 utilPressure 成正反馈环」
   // ⇒ 它度量的是**产线被上游工序堵住的程度**，与既有 `utilPressure`（产线本来就满）分属两个成因。
-  // ⚠ 本键**刻意不进 `STATE_VAR_DOMAINS`**：域表只收「写得出出处」的量纲，而本单没有为它
-  //   声明取值域；未登记者引擎不夹不衰减，且在 tick 回执 `undeclaredStateVars` 里被逐个点名 ——
-  //   缺口留在屏上，不留在注释里（与 `queueDays` 等天数族同一条纪律）。
+  // ✅ 2026-09-18（WO-PROP-REVIEW-V2 形态②）本键**已进 `STATE_VAR_DOMAINS`**：[0,100] + 压力族共享衰减。
+  //   本段旧注（「刻意不进…写不出出处」）被评审原文证伪：「名字是 0–100 压力指数，却无界累积到 945」——
+  //   出处就是它自报的量纲。⚠ 但实测 Line 对象上本键真值 27.72–182.73（n=130），种子数据已有超界值：
+  //   引擎域照落，超界真值在 sim-real-cells 臂2 EXCEPTIONS 归档点名，种子收口交仓主（动种子 = 动 hash）。
   blockedPressure: "产线受阻压力",
   // ── D10 基地与仓储交付：认证排队 / 成品提货 / 来料催交 ──
   qualificationQueue: "认证排队", drawdownPressure: "成品提货压力",
   inboundExpeditePressure: "来料催交压力",
   // ── WO-PROP-REVIEW-V2 · 库存环：成品覆盖天数（qtyOnHand ÷ dailyDemand，经 `fgi_cover_days` 规格物化）──
   // 名字带单位（天），与天数族（queueDays/backlogHorizonDays）同一条纪律；
-  // ⚠ 同天数族**刻意不进 `STATE_VAR_DOMAINS`**：写不出出处的取值域不登记，
-  //   引擎不夹不衰减，`undeclaredStateVars` 点名（它就是 §1 形态②「无域状态变量」的库存环新成员，
-  //   该族域声明归 T6 统一收口，本单不单独为它开域）。
+  // ⚠ 仍**刻意不进 `STATE_VAR_DOMAINS`**（2026-09-18 T6 收口裁决，不再是"归 T6 统一收口"的待办）：
+  //   它是**根源**（入度 0），没有入流就不会累积 ⇒ 不是形态② 的积分器；
+  //   且走真值支、restPoint≠0 写不出出处。引擎不夹不衰减，`undeclaredStateVars` 继续点名
+  //   （评审逐项裁决的 defer 理由已写进域表头注，与本行互见）。
   coverDays: "成品覆盖天数（天）",
   // ── D06 计划与排产：基地负载 → 跨基地调拨决策压力 ──
   transferPressure: "跨基地调拨压力",
@@ -3627,11 +3655,22 @@ const PRESSURE_DOMAIN_SOURCE =
 /**
  * 状态量 → 声明取值域（**全平台唯一入口**，与 `STATE_VAR_DISPLAY_NAMES` 同一张登记册的两列）。
  *
- * ⚠ 天数族（`queueDays` / `clearanceQueueDays` / `procurementDelay` / `deliveryDelay`）、
- *   件数/积压族（`inspectBacklog` / `repairBacklog` / `handlingBacklog` / `qualificationQueue`）
- *   **刻意不在此表**：`drill-scan.ts` 只说了它们"是另一类量纲"，**没说上界是多少**，
- *   全仓也找不到第二处出处。给它们拍一个 100 天 / 100 件的上界就是本单明令禁止的"拍脑袋定"。
- *   它们今天仍是纯积分器，且**在 tick 回执里被逐个点名** —— 缺口留在屏上，不留在注释里。
+ * ⚠ 2026-09-18（WO-PROP-REVIEW-V2 形态②）**本条旧纪律被评审推翻一半**：
+ *   「`drill-scan.ts` 没说上界是多少，拍一个 100 天 / 100 件就是拍脑袋定」——
+ *   这个理由对**上界**仍然成立（故 5 个积压/天数变量用 `max: null` **无界声明**，不拍上界），
+ *   但对**衰减**不成立。评审原文：「那个理由对上界成立，但对衰减不成立 ——
+ *   **检验积压的消化速率 = 检验产能，这是有出处的。**」
+ *   故 `queueDays` / `inspectBacklog` / `repairBacklog` / `handlingBacklog` / `qualificationQueue`
+ *   现已全部带域声明（下界 0 + 无界 max + 消化速率 decayRef），**不再是纯积分器**；
+ *   `blockedPressure` 归压力族 [0,100]（名字自报 0–100 压力指数，无界累积到 945 即病）。
+ *
+ * ⚠ 仍**刻意不在此表**的四个，理由各不相同（评审逐项裁决，不许再拿一句"写不出出处"混盖）：
+ *   · `clearanceQueueDays`：实测出现 **−8.9 天负值**（n=1），数据本身可疑 ⇒ 交仓主 ——
+ *     此刻声明下界 0 会把数据 bug 夹成看起来正常，那不叫修，叫藏。
+ *   · `procurementDelay` / `deliveryDelay`：都是**根源**（入度 0），只能被外部打进，
+ *     没有入流就不会累积 ⇒ 不是积分器，形态② 不适用。
+ *   · `coverDays`：库存环新成员，同为根源；且走真值支、restPoint≠0 写不出出处。
+ *   它们仍在 tick 回执 `undeclaredStateVars` 里被逐个点名 —— 缺口留在屏上，不留在注释里。
  */
 export const STATE_VAR_DOMAINS: Record<string, StateVarDomain> = Object.fromEntries(
   [
@@ -3661,6 +3700,64 @@ STATE_VAR_DOMAINS.forecastBias = {
   source:
     `${PRESSURE_DOMAIN_SOURCE}；方向性出处 = 上表 forecastBias 行注释「唯一带方向的量纲（正=高估/负=低估）」` +
     `⇒ 静息点取 0 而非下界，下界取 −max 以保持两侧对称`,
+};
+
+// ── WO-PROP-REVIEW-V2 形态② · 积压/天数族：下界 0 + **无界 max** + 消化速率 decayRef ─────────────
+// 评审原文：「给积压类变量声明**消化速率**（不是上界 —— 上界确实拍不出来，但**消化速率**有出处：产能）」。
+// `max: null` 是**无界声明**，不是"没声明"：契约 `StateVarDomain.max` 已为它改成 nullable
+//（不许用 Infinity 顶：zod 4 拒无限值，JSON 串行化落 null —— 两条路都试过，都死）。
+// λ 推导见各常量注释，全部实测工期派生（/tmp/t6-duration-probe.txt，几何衰减 med 工期后残留 25%）。
+STATE_VAR_DOMAINS.queueDays = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: "queueDaysDecayPerTick" },
+  unit: "天",
+  source:
+    "WO-PROP-REVIEW-V2 形态② · 来料检验周期 releasedDay−arrivedDay med=3 天（n=30，1–4）" +
+    "⇒ λ=1−0.25^(1/3)≈0.37（与压力族同一把尺子，独立 paramKey）",
+};
+STATE_VAR_DOMAINS.inspectBacklog = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: "inspectBacklogDecayPerTick" },
+  unit: "件",
+  source:
+    "WO-PROP-REVIEW-V2 形态② · ⚠ 暂定档：QualityLot 无工期/产能属性（实测 n=260 零命中），" +
+    "借来料检验周期 med=3 天（同「检验」物理过程）⇒ λ=0.37，待仓主定档",
+};
+STATE_VAR_DOMAINS.repairBacklog = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: "repairBacklogDecayPerTick" },
+  unit: "件",
+  source:
+    "WO-PROP-REVIEW-V2 形态② · 维修工期 actualEnd−actualStart med=1 天（n=193，0–2）" +
+    "⇒ λ=1−0.25=0.75（评审原文：积压的消化速率 = 产能）",
+};
+STATE_VAR_DOMAINS.handlingBacklog = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: "handlingBacklogDecayPerTick" },
+  unit: "件",
+  source:
+    "WO-PROP-REVIEW-V2 形态② · ⚠ 暂定档：ExceptionEvent 无处置工期属性（只有 occurredAt+status），" +
+    "借维修工期 med=1 天（处置 = 现场纠正措施，与维修同族作业）⇒ λ=0.75，待仓主定档",
+};
+STATE_VAR_DOMAINS.qualificationQueue = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: "qualificationQueueDecayPerTick" },
+  unit: "件",
+  source:
+    "WO-PROP-REVIEW-V2 形态② · 认证周期 certHours med=134h÷24=5.58 天（n=18，2.1–8.0）" +
+    "⇒ λ=1−0.25^(1/5.58)≈0.22",
+};
+// 评审原文：「blockedPressure 名字是 0–100 压力指数，却无界累积到 945」⇒ 自报量纲就是出处，
+// 归压力族 [0,100] + 共享 pressureDecayPerTick（不开新参数）。
+// ⚠ 实测 Line 对象上本键真值 27.72–182.73（n=130），**种子数据已有超界值**：引擎域照落，
+// 超界真值在 sim-real-cells 臂2 EXCEPTIONS 归档点名；种子生成式是否收口交仓主（动种子 = 动 hash，不在本单）。
+STATE_VAR_DOMAINS.blockedPressure = {
+  min: 0, max: 100, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "0–100 压力指数",
+  source:
+    `${PRESSURE_DOMAIN_SOURCE}；WO-PROP-REVIEW-V2 形态② 裁决：名字自报 0–100 压力指数 ⇒ 无界累积到 945 即病，` +
+    "归压力族收口（⚠ 本键走真值支：Line 对象上有同名属性，与上面 31 个派生支成员的出处差这一句）",
 };
 
 /**

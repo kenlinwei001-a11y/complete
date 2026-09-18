@@ -430,7 +430,19 @@ const SATURATION_BAND_FRACTION = 0.25;
  *
  * 纯函数：无随机 / 无时钟 / 无外部状态（R6 同入参字节一致）。
  */
-export function saturateToDomain(raw: number, min: number, max: number, restPoint: number): number {
+export function saturateToDomain(raw: number, min: number, max: number | null, restPoint: number): number {
+  // 无界声明（WO-PROP-REVIEW-V2 形态② · 积压/天数族）：上夹**不生效**，只有下界一侧。
+  // ⛔ 不许靠 `max ?? Infinity` 混进下面的有界路径：bandHi = ∞ ⇒ kneeHi = NaN，
+  //    全部比较静默变 false —— 能跑，但那是「碰巧不夹」不是「声明了无界」，下一个人改不动它。
+  if (max === null) {
+    const restLo = Math.max(min, restPoint);
+    const bandLo = (restLo - min) * SATURATION_BAND_FRACTION;
+    if (bandLo > 0) {
+      const kneeLo = min + bandLo;
+      if (raw < kneeLo) return min + bandLo / (1 + (kneeLo - raw) / bandLo);
+    } else if (raw < min) return min; // 静息点贴着下界（积压族 rest=min=0 的常态）⇒ 硬地板
+    return raw;
+  }
   if (!(max > min)) return raw; // 退化域（max<=min）⇒ 不压缩，交由调用方的声明校验去报
   const rest = Math.min(max, Math.max(min, restPoint));
   const bandHi = (max - rest) * SATURATION_BAND_FRACTION;
