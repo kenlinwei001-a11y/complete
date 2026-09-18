@@ -1,0 +1,18 @@
+
+ RUN  v3.2.6 /Users/apple/deploy/wo-edge-wire/apps/datacore
+
+ ✓ test/object-constraint-refs.seam.test.ts (8 tests) 41170ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ① 存得住：配 1 条 → 回读 1 条（修前是 201 但整键被 zod 静默 strip 掉 ⇒ 回读 0 条）  6061ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ② 引用不存在的规则 / 不存在的属性 → 400（不许静默收下：静默丢弃比报错危险得多）  6698ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ③ 求解器读得到对象上挂的约束：挂之前 4 条、挂之后 5 条，且新增那条点名取证对象  4867ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ④ 对照实验：只换引用的规则（阈值 96 → 95），同一求解器同一入参的结论 PASS → BLOCK  4655ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ⑤ 全称约束取『最可能违规的那个实例』：上限型必须取 max，取平均会把超限稀释成 PASS  5550ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ⑤b 非数字属性（日期/文本）上选实例必须**按值**比，不许塌给 id 字典序  4375ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ⑥ 规则挂上之后被下线 → 诚实标 NOT_APPLICABLE 点名断链（不静默跳过）  4294ms
+   ✓ WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→存储→求解器读取 全链） > ⑦ 向后兼容（R6）：一条约束都没配时，求解器输出与本单上线前逐字节一致  4667ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  15:11:34
+   Duration  54.92s (transform 7.55s, setup 0ms, collect 12.01s, tests 41.17s, environment 0ms, prepare 598ms)
+

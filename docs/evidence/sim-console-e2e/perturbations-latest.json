@@ -1,0 +1,74 @@
+{
+ "items": [
+  {
+   "id": "sims_demo_seed_world_p0",
+   "tenantId": "demo",
+   "sessionId": "sims_demo_seed_world",
+   "kind": "demand_shift",
+   "targetObjectId": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E1",
+   "targetStateVar": "equipmentFailure",
+   "startTick": 1,
+   "durationTicks": null,
+   "magnitude": 20,
+   "mode": "delta",
+   "label": "种子扰动 · 把「设备故障率」抬高一个全距（+20）｜落点 = 传导可达面最大的一格（3442 个候选里下游 3824 格 / 3381 个对象）",
+   "createdAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+   "id": "simpert_thxrtmm1f3kwhqav",
+   "tenantId": "demo",
+   "sessionId": "sims_demo_seed_world",
+   "kind": "cost_shock",
+   "targetObjectId": "obj_material_al_foil",
+   "targetStateVar": "priceShock",
+   "startTick": 97,
+   "durationTicks": null,
+   "magnitude": 20,
+   "mode": "delta",
+   "label": "原材料涨价 · 铝箔",
+   "createdAt": "2026-09-18T06:58:44.655Z"
+  },
+  {
+   "id": "simpert_zwnqrynq4tgq8546",
+   "tenantId": "demo",
+   "sessionId": "sims_demo_seed_world",
+   "kind": "supply_disruption",
+   "targetObjectId": "obj_supplier_SUP-001",
+   "targetStateVar": "deliveryDelay",
+   "startTick": 97,
+   "durationTicks": null,
+   "magnitude": 7,
+   "mode": "delta",
+   "label": "物料到货延迟 · 容百科技",
+   "createdAt": "2026-09-18T06:58:44.778Z"
+  },
+  {
+   "id": "simpert_z0r16jp047svky20",
+   "tenantId": "demo",
+   "sessionId": "sims_demo_seed_world",
+   "kind": "demand_shift",
+   "targetObjectId": "obj_order_SO-3391",
+   "targetStateVar": "demandPressure",
+   "startTick": 97,
+   "durationTicks": null,
+   "magnitude": 30,
+   "mode": "delta",
+   "label": "临时插单 · 广汽集团",
+   "createdAt": "2026-09-18T06:58:44.888Z"
+  },
+  {
+   "id": "simpert_fhcvrxznhp1exht7",
+   "tenantId": "demo",
+   "sessionId": "sims_demo_seed_world",
+   "kind": "capacity_loss",
+   "targetObjectId": "obj_equipment_LINE-WS-changzhou-assembly-assembly-E1",
+   "targetStateVar": "equipmentFailure",
+   "startTick": 97,
+   "durationTicks": null,
+   "magnitude": 2,
+   "mode": "delta",
+   "label": "设备故障 · obj_equipment_LINE-WS-changzhou-assembly-assembly-E1",
+   "createdAt": "2026-09-18T06:58:45.046Z"
+  }
+ ]
+}

@@ -257,7 +257,17 @@ describe("WO-CONSTRAINT-REFS · 对象约束 = 对规则库的引用（写入→
     expect(rows.length, "金丝雀：Line 应当有文本属性 name（为 0 说明取数坏了，不是实现对了）").toBeGreaterThan(0);
 
     // 上限型按值取最大；若实现塌给 id，取到的会是 id 最小的那个。两者必须不同，这条测试才区分得开。
-    const maxByValue = rows.slice().sort((x, y) => String(y.props.name).localeCompare(String(x.props.name)) || (x.id < y.id ? -1 : 1))[0]!;
+    // ⚠ 期望值必须与实现**同一套比较**：`service.ts constraintPayload` 的 `cmp` 对字符串走**码元序**
+    //   （`ls < rs`），不是 `localeCompare` —— CJK 下两者排序不同（「自贡」U+81EA 拼音序最后，
+    //   「金华」U+91D1 码元序更大）。本测试此前用 localeCompare 算期望 ⇒ 把实现选出的码元序最大
+    //   `obj_line_LINE-WS-jinhua-calendering`（金华辊压线）误判成「塌给 id 字典序」。塌给 id 时选出
+    //   id 最小者（常州装配线），与码元序最大仍不同 ⇒ 病灶判据不因此修复变钝。
+    const byCodeUnitDesc = (x: (typeof rows)[number], y: (typeof rows)[number]): number => {
+      const xs = String(x.props.name);
+      const ys = String(y.props.name);
+      return (xs < ys ? 1 : xs > ys ? -1 : 0) || (x.id < y.id ? -1 : 1);
+    };
+    const maxByValue = rows.slice().sort(byCodeUnitDesc)[0]!;
     const minById = rows.slice().sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))[0]!;
     expect(maxByValue.id, "构造前提：按值最大的不能同时是 id 最小的").not.toBe(minById.id);
 
