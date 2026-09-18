@@ -245,6 +245,42 @@ console.log("赋值",(s.match(/^\s*weightRef: /gm)||[]).length,"| null",(s.match
 
 ---
 
+## ④ 接缝门 + 变异反证
+
+**扩的是已有文件**（⛔ 未新建门）：`apps/datacore/test/seed-demo-propagation.test.ts` §5 内新增 2 个用例。
+它**驱动接缝**：数据侧（`seed.ts` 的 basis 赋值）× 引擎侧（`pair-weights.ts` 的 BOM 取数），任一半漏即红。
+
+四条判据：① 占比最大/最小两料读数必须不同 · ② 读数 = 系数 × 占比 × 源态（占比从回包出处**独立复算**，不写死金值）·
+③ 等份值 `1/N` 不许再出现 · ④ **Σ权重 ≡ 1 且世界总量不跳**。
+
+### ⚠ 变异反证当场抓出「我自己的门是装饰品」
+
+第一轮反证（把种子改回 `equal_share`）：**对照实验红了，而"种子声明"那道门照样绿**。
+病因：我写的注释里**正文引用了** `weightRef: { basis: "bom_cost_share" }` 这个字面量，
+于是 `toContain` 匹到的是**注释**，不是赋值。
+
+**形态（照铁律 0.6 句式，与本文件开头订正 51/35 计数那条同构）**：
+> **「我用『这段源码里出现过这个串』当作『这个赋值存在』的证据，而前者并不度量后者。」**
+
+**同一个形态在本单里出现了两次**（一次是派单书的计数，一次是我自己的门）——
+故已落地为判据而非「下次注意」：**断言一律剥注释后咬赋值行**，并配**双向金丝雀**
+（剥完仍含 key 行 ⊕ 本块注释里确实有该字面量 ⇒ 证明这层剥离不是多余的）。
+
+**修完重跑反证：两道门同时红**（`expected 'weightRef: { basis: "equal_share" },' to be '…bom_cost_share…'`
+＋ `expected 0.346875 not to be 0.346875`）⇒ 门有牙。
+
+### 回归范围
+
+| 范围 | 结果 |
+|---|---|
+| `seed-demo-propagation.test.ts` 全文件 | **20/20 绿** |
+| 8 个 sim/传导相关接缝门（`sim-propagation` / `-direction` / `root-triad` / `root-procurement` / `seed-world` / `impact-propagation` / `e4-cadence` / `disclosure`） | **70/70 绿** |
+
+**为什么标定不必重跑**：`bom_cost_share` 与 `equal_share` 归一方向同为 `IN_EDGES`（Σ=1），
+实测 Σ权重与世界总量修前修后**逐位相同** ⇒ 该格增益预算（W=1）不变。
+`docs/evidence/wo-sim-calibration/fanin-N.json` 记的扇入 N=7 亦不变（边数没动），
+且实测**无任何代码/门读取该文件**（只在 `seed.ts` 注释里作为证据被提及 —— 提及 ≠ 读取）。
+
 ## 本体引用与影响
 
 - **对象类型**：`Material` · `Model` · `BOMHeader` · `BOMDetail`
@@ -253,3 +289,58 @@ console.log("赋值",(s.match(/^\s*weightRef: /gm)||[]).length,"| null",(s.match
 - **不变量**：R6（确定性·按 id 升序写权重表）· R14（引擎零业务常数）
 - **口径**：`PAIR_WEIGHT_BASIS_REGISTRY.bom_cost_share`（`IN_EDGES`·Σ=1）
 - **不新增**：对象类型 / 链路 / 事件 / 门 / 基线 JSON —— 本单只改 1 个字段值 + 扩已有接缝门断言
+- **本体回写（铁律 0）**：`docs/SYSTEM-ONTOLOGY.md` §`weightRef` 段已回写 ——
+  该边从 `equal_share` 档移出并入 `bom_cost_share` 档（11 条 → 10 条），附对照实验四数与
+  「Σ权重/总量逐位不变」的证据。**不回写就是下一张单的过期前提**（本仓 `WO-PROP-QTY` 正是这样白跑一趟的）。
+
+---
+
+## 还差什么（4 条，具体到能直接动手）
+
+### ① 在册口径缺一格：**「按源计量值分摊 + Σ=1」** —— 卡着档 3 的 5 条边
+
+现有 5 条口径里，`IN_EDGES`（Σ=1·配强度型目标）只有两条：`bom_cost_share`（取数路**写死在 BOM 上**，
+只认 `Material→Model`）与 `equal_share`（**恒 1，不看数据**）。
+⇒ **「强度型目标 ＋ 源端有一个通用数量字段」这一格是空的。**
+
+这正是下面 5 条边全部卡住的原因（它们**都有真实非均匀 `qty`**，目标却都是强度量，不能用 Σ=N 的 `source_qty_relative`）：
+
+| 边 | 源端计量值（实测） | 扇入 |
+|---|---|---|
+| `demo_batch_procurement_delay_to_material_shortage` | `MaterialBatch.qty` 24/24 | 3 |
+| `demo_po_procurement_delay_to_material_shortage` | `PurchaseOrder.qty` 30/30 | 4 |
+| `demo_po_expedite_to_supplier_review` | `PurchaseOrder.qty` 30/30 | 4 |
+| `demo_wo_release_to_model_cost` | `WorkOrder.qtyPlanned` | **70** |
+| `demo_wo_release_to_model_supply_risk` | `WorkOrder.qtyPlanned` | **70** |
+
+**动手处**：`packages/contracts/src/sim.ts` 的 `PAIR_WEIGHT_BASIS_REGISTRY` 加一条
+`source_qty_share`（`normalize: "IN_EDGES"`，measure = 源计量值 ÷ 该目标入边源计量值之和），
+＋ `apps/datacore/src/sim/pair-weights.ts` 加对应分支（可复用 `normalizeInEdges`）。
+⛔ **本单没做**：`packages/contracts/` **不在 🚦范围边界内**（zod `refine` 拒绝未注册串，改一半会直接 500）。
+⚠ 扇入 70 的那两条**收益最大**：今天 260 个工单对 6 个型号各摊 1/70，与工单大小无关。
+
+### ② 字段名对不上：`source_qty_relative` 只读 `props.qty`
+
+`demo_fg_drawdown_relieves_model_demand`（`FinishedGoodsInventory→Model.demandLoad`，18 边 / 6 目标 / 扇入 4）
+是**唯一一条量纲已经对上、只差字段名**的边：目标 `demandLoad` 是**广延量** ⇒ `IN_EDGES_MEAN` 正确，
+而源端 `FinishedGoodsInventory` 只有 `qtyAvailable`（18/18 非均匀）/ `qtyOnHand` / `qtyReserved`，**没有 `qty`**。
+⚠ 本体 §`weightRef` 段**已把这条记成「诚实缺席不是遗漏」并给了同样的金丝雀**（`Order` 500/500、`MaterialBatch` 24/24）——
+本单实测**与本体记载一致**，不是新发现，故未擅自改实现。
+**动手处**：要么给该口径一个**声明式取数字段**（`weightRef: { basis, field }`），要么在合成侧补 `qty` 别名。
+⛔ 两条都要动 contracts 或合成器，均不在本单边界。
+
+### ③ 需要**产品裁决**，不是实现判断：3 条「退化但源端有金额」的边
+
+`demo_order_demand_to_line_split` / `demo_order_churn_to_line_split`（`Order→OrderLine`，各 873 边）与
+`demo_order_shortage_to_promise_risk`（`Order→OrderPromise`，50 边）——
+`Order.value` 500/500 非均匀（1158 万–3.52 亿），`source_value_relative`（`IN_EDGES_GLOBAL_MEAN`）**不退化**、技术上能用。
+**但目标是强度量**（`splitPressure` / `promiseRisk`），而该归一方向按契约是**为金额敞口保留的**。
+⇒ 真正的问题是业务口径：**「一张 3.5 亿的单，它的订单行拆分压力是否就该是 1158 万那张单的 30 倍？」**
+答"是" ⇒ 改这 3 条；答"否" ⇒ 在种子注释里把「退化 ⇒ 权重恒 1」写清，免得下一张单又把它当欠账派出来。
+⛔ 这是价值裁决不是实现裁决，**未擅自改**。
+
+### ④ 派单书的计数口径需要回写（否则同一个错会再派一次）
+
+派单书的 **51 / 35** 来自把 3 行**注释**数成了赋值（详见本文件开头）。真值 **48 / 32**。
+建议把本文件开头那条**剥注释计数命令**收进复验脚本，让机器先说话 ——
+本单里这个形态**出现了两次**（派单书计数 ＋ 我自己那道门），两次都是「出现过那个串 ≠ 那个赋值存在」。
