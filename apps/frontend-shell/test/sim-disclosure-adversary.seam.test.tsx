@@ -38,9 +38,14 @@ const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const REAL = JSON.parse(
   readFileSync(join(TEST_DIR, "fixtures/sim-disclosure.adversary.real.json"), "utf8"),
 ) as { off: SimRunDisclosure; noReaction: SimRunDisclosure; reacted: SimRunDisclosure };
-/** 这一份**没有** `rules.adversary`（2026-09-03 抓的，早于该字段）⇒ 天然是 `ABSENT` 态的真样本。 */
+/**
+ * 这一份**没有** `rules.adversary`（2026-09-03 抓的，早于该字段）⇒ 天然是 `ABSENT` 态的真样本。
+ * ⚠ 2026-09-18（T6 重采）：`sim-disclosure.real.json` 已含 `adversary` 字段（后端现在恒下发），
+ * 不能再当 ABSENT 样本 —— 故把当年那份原样回包**单独存档**为本文件
+ * （从 git 历史 `5f7e5141c` 原样取出，一个字节没改；46 条规则 / 12,499 个对象那一代的世界）。
+ */
 const PRE_FIELD = JSON.parse(
-  readFileSync(join(TEST_DIR, "fixtures/sim-disclosure.real.json"), "utf8"),
+  readFileSync(join(TEST_DIR, "fixtures/sim-disclosure.pre-adversary.real.json"), "utf8"),
 ) as SimRunDisclosure;
 
 /**

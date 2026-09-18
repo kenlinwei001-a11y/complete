@@ -67,11 +67,14 @@ describe("§1 六项都在屏上（铁律 1.5 判据二逐项）", () => {
 
   it("真后端的读数**原样**上屏（不是写死的展示）", () => {
     const t = screenText();
-    // 这些数全部来自真跑：54 条规则、12,499 个对象、13,593 条边、快照版本串。
+    // 这些数全部来自真跑（2026-09-18 重采）：54 条规则、12,499 个对象、13,593 条边、快照版本串。
+    // ⚠ 数字一律从夹具取，不许再写死字面量 —— 上一版写死 12,745（旧夹具的对象数），
+    // 重采后世界变了它当场红，而屏上那个数从来没错：那是拿「硬编码金值」当「屏上如实」的
+    // 判据，金值一过期红的是测试不是产品。夹具本身就是真回包，断言该钉在「夹具 = 屏」上。
     expect(t).toContain(String(REAL.rules.declared));
     expect(t).toContain(REAL.data.snapshotVersion);
     expect(t).toContain(REAL.slice.sliceKey);
-    expect(t).toContain((12745).toLocaleString("zh-CN")); // 千分位，与屏上一致
+    expect(t).toContain(REAL.data.objects.toLocaleString("zh-CN")); // 千分位，与屏上一致
   });
 
   it("「没取到披露」与「取到了但是零」不许长成同一个样子", () => {
@@ -97,15 +100,22 @@ describe("§2 文体三条硬约束（每条先跑金丝雀证明扫法是好的
   });
 
   it("⛔ 屏上不许出现源码文件名 / 行号（R-UI-4）", () => {
-    // 真后端的 `constraints.stateVarBounds[].source` 里**确实带**源码文件名
-    // （实测每条 6 个反引号 + 形如 `sim/drill-scan.ts` 的坐标）——
-    // 金丝雀先证明：那个串真的在回包里，且我的扫法抓得住它。
-    const rawSource = REAL.constraints.stateVarBounds[0]?.source ?? "";
     const SRC_RE = /[A-Za-z0-9_./-]+\.(ts|tsx|mjs|js|json)(:\d+)?/;
-    expect(rawSource.length > 0, "夹具里没有 source 字段 ⇒ 这条断言什么都没在验").toBe(true);
-    expect(SRC_RE.test(rawSource), "金丝雀不中 ⇒ 扫法坏了").toBe(true);
+    // 金丝雀①：扫法本身是好的（合成串必中，与上一条 Markdown 金丝雀同法）。
+    expect(SRC_RE.test("出处见 sim/drill-scan.ts:42 的扫描段"), "金丝雀不中 ⇒ 扫法坏了").toBe(true);
+    // 金丝雀②：面板**永不渲染** `source` 字段。2026-09-18 起真回包 38 条
+    // `stateVarBounds[].source` 已全部是无文件坐标的出处文（旧版每条带 `sim/drill-scan.ts`
+    // 坐标的时代结束），天然载体没了 ⇒ 改为**注入**：把坐标塞进克隆夹具再渲染 ——
+    // 面板哪天把 source 渲上屏，这里当场红。这比旧版更强：旧版只证「回包有坐标 ∧ 屏上干净」
+    // 两件独立的事，这版直接证「就算后端给坐标，面板也不漏」。
+    const dirty = structuredClone(REAL);
+    dirty.constraints.stateVarBounds[0]!.source = "出处见 sim/drill-scan.ts:42";
+    expect(
+      SRC_RE.test(screenText(dirty)),
+      "面板把 stateVarBounds[].source 渲上了屏（泄漏源码坐标）",
+    ).toBe(false);
 
-    // 而屏上必须一个都没有。
+    // 而真跑屏上必须一个都没有。
     const t = screenText();
     expect(SRC_RE.test(t), `屏上出现了源码坐标：${t.match(SRC_RE)?.[0] ?? ""}`).toBe(false);
   });
