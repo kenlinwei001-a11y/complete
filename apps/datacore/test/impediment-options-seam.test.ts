@@ -353,11 +353,13 @@ describe("WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种�
       // 反向②：三分法无遗漏 —— 试过的每一档都必须落进三桶之一。
       expect(flat + worse + eff).toBe(tried);
       expect(eff).toBe(st.effective);
-      // 空集这一档，有效必须是 0（否则它就不该在 empties 里）。
-      expect(eff).toBe(0);
-      // 且必须当面否掉"够不着"这个错误病因 —— 这句话正是修前屏上唯一的那句。
-      expect(im.noCandidateReason).toContain("不是");
-      expect(im.noCandidateReason).toContain("够不着落点");
+      // ⚠ 这里**不许**断言 `eff === 0`：空候选有两种来路 —— 有效 0 个，或有效 1 个但不足 MIN(2)。
+      // 后者今日种子上不出现，但写死 0 就是把"今天的数据长相"当成不变量（本仓反复栽的那个坑）。
+      // 「够不着不是病因」这句只有在**一个有效候选都没有**时才成立，故按 `eff` 分支断言。
+      if (eff === 0) {
+        expect(im.noCandidateReason).toContain("不是");
+        expect(im.noCandidateReason).toContain("够不着落点");
+      }
 
       triedSeen.push(tried);
       if (st.anchors > 0) reachedAndTried++;
