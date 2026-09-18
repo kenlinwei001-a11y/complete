@@ -157,16 +157,23 @@ describe("WO-AGENT-INTO-SIM · A↔B 提案接缝（真 HTTP · 真 B 路由 · 
     expect(byKey["lines.b.capacity"]).toEqual([10, 30]);
   }, 30_000);
 
-  it("③ 鉴权是真的：token 不对 ⇒ B 拒收 ⇒ A 诚实降级（不是静默当成功）", async () => {
+  it("③ 鉴权是真的：token 不对 ⇒ B 拒收 ⇒ A **明确失败**（不编一份摆上去）", async () => {
     scriptValidDraft();
     const client = httpProposerClient(baseUrl, "wrong-token");
-    const { proposal } = await generateAndFreeze(freezeDeps(), client, {
-      tenantId: TENANT, sessionId: "sims_badtoken", menu: menuFixture(), agentId: "agt_proposer",
-    });
-    expect(proposal.provenance.agentInvolved).toBe(false);
-    expect(proposal.provenance.fallbackReason).toMatch(/agentcore|401|403/i);
-    // 降级不是丢东西：仍然给得出确定性兜底方案，屏上不会空着。
-    expect(proposal.draft.options.length).toBeGreaterThan(0);
+    const deps = freezeDeps();
+    // ⚠ 本条**原来断言的是相反的行为**：「降级不是丢东西：仍然给得出确定性兜底方案，屏上不会空着」。
+    //   那句话正是降级得以存在的理由，2026-09-18 由仓主撤销（「谁同意你降级的？」）。
+    //   鉴权失败是**运行故障**，此时屏上就该空着并说明原因 —— 不空着才是问题：
+    //   用户看到三张带版本号的卡，会把它读成系统的建议，而那里面没有任何针对本次事件的判断。
+    await expect(
+      generateAndFreeze(deps, client, { tenantId: TENANT, sessionId: "sims_badtoken", menu: menuFixture(), agentId: "agt_proposer" }),
+    ).rejects.toMatchObject({ code: "AGENT_PROPOSAL_UNAVAILABLE", statusCode: 503 });
+    // 原因仍要带出来（诚实位没变，变的是「不编」）：
+    await expect(
+      generateAndFreeze(deps, client, { tenantId: TENANT, sessionId: "sims_badtoken", menu: menuFixture(), agentId: "agt_proposer" }),
+    ).rejects.toThrow(/agentcore|401|403/i);
+    // 反空绿守卫：失败路上一版都没落盘（落了 ⇒ 指纹命中会把它复用出去）。
+    expect(await deps.countProposals(TENANT, "sims_badtoken")).toBe(0);
   }, 30_000);
 
   it("④ 越界下标：拒收于**定版之前**，且落盘的那一份不带 agent 署名（本单实测缺陷的回归守卫）", async () => {
@@ -176,15 +183,27 @@ describe("WO-AGENT-INTO-SIM · A↔B 提案接缝（真 HTTP · 真 B 路由 · 
     ];
     const menu = menuFixture();
     const deps = freezeDeps();
-    const { proposal } = await generateAndFreeze(deps, httpProposerClient(baseUrl, SERVICE_TOKEN), {
-      tenantId: TENANT, sessionId: "sims_oob", menu, agentId: "agt_proposer",
-    });
 
-    // 修前：越界 draft 被定版落盘 → 兑现层抛 → 路由 500，且因指纹复用**该会话永远 500**。
-    expect(proposal.provenance.agentInvolved).toBe(false);
-    expect(proposal.provenance.fallbackReason).toMatch(/越界|兑现不出/);
-    // 落盘的那一份必须是**兑现得出来的**（这是「永远 500」不再可能的机器判据）。
-    expect(() => resolveProposalToLevers(menu, proposal.draft)).not.toThrow();
+    // 修前（缺陷一）：越界 draft 被定版落盘 → 兑现层抛 → 路由 500，且因指纹复用**该会话永远 500**。
+    // 修后一版（缺陷二）：改成拒收 + 编一份兜底落盘 —— 500 没了，但屏上多了一份没人批准的"方案"。
+    // 今天（2026-09-18）：**拒收 + 明确失败 + 零落盘**。三态的区别在于「坏产出进没进定版」
+    // 与「有没有拿编的东西冒充产出」，两个问题都必须是"没有"。
+    await expect(
+      generateAndFreeze(deps, httpProposerClient(baseUrl, SERVICE_TOKEN), {
+        tenantId: TENANT, sessionId: "sims_oob", menu, agentId: "agt_proposer",
+      }),
+    ).rejects.toMatchObject({ code: "AGENT_PROPOSAL_UNAVAILABLE" });
+    // 原因必须点名是越界（否则「连不上」与「回了坏产出」在运维眼里一模一样）。
+    t.llm.agentTurns = [
+      { content: [toolUse("final_answer", { options: [{ name: "越界", rationale: "故意越界。", picks: [{ leverIndex: 0, valueIndex: 9 }] }], comparisonNote: "" })] },
+    ];
+    await expect(
+      generateAndFreeze(deps, httpProposerClient(baseUrl, SERVICE_TOKEN), {
+        tenantId: TENANT, sessionId: "sims_oob2", menu, agentId: "agt_proposer",
+      }),
+    ).rejects.toThrow(/越界|兑现不出/);
+    // 「永远 500」不再可能的机器判据：**坏产出一版都没进定版**。
+    expect(await deps.countProposals(TENANT, "sims_oob")).toBe(0);
 
     // ⚠ 同时确认红线**没有被放松**：兑现层对越界 draft 依旧抛，不夹档、不跳过。
     expect(() => resolveProposalToLevers(menu, { options: [{ name: "越界", rationale: "x", picks: [{ leverIndex: 0, valueIndex: 9 }] }], comparisonNote: "" }))

@@ -231,7 +231,16 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     );
     expect(explain, "回包里没有这一对的权重出处 ⇒ 可披露这条没落地（仓主硬要求①）").toBeDefined();
     expect(explain!.denominator, "分母（该型号在手单 qty 均值）为 0 ⇒ 出处算错了").toBeGreaterThan(0);
-    const expected = Math.round(0.8 * (explain!.numerator / explain!.denominator) * 10 * 1e12) / 1e12;
+    // ⚠ **系数同样不许写死**（WO-SIM-CALIBRATION）：原文写死 `0.8`，而标定后该边的每拍入流系数是
+    //   `稳态增益 × λ`。写死就等于把断言钉在某一次标定上 —— 改标定即红，而红的不是行为、是这个字面量。
+    //   判据与上面那句同源：**断言与实现各自独立地算一遍同一个式子**，系数就该从规则表这个唯一真源取。
+    const ruleList = (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json() as {
+      items: { key: string; coefficient: number }[];
+    };
+    const coeff = ruleList.items.find((r) => r.key === "demo_order_demand_pressure")?.coefficient;
+    expect(coeff, "取不到该边系数 ⇒ 下面那句会拿 undefined 去算，NaN 比对必红但红错地方").toBeDefined();
+    expect(coeff, "该边系数为 0 ⇒ 期望值恒 0，下面那句会自洽成绿").toBeGreaterThan(0);
+    const expected = Math.round(coeff! * (explain!.numerator / explain!.denominator) * 10 * 1e12) / 1e12;
     expect(body.state[modelId]!.demandLoad).toBe(expected);
     // 且**必须真的与 8 不同**（除非这张单恰好是均值单）—— 否则这条用例又退回去度量"没分摊"。
     expect(explain!.weight).toBeGreaterThan(0);
@@ -271,9 +280,35 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(created.statusCode).toBe(201);
 
     const st = (r: unknown) => (r as { state: Record<string, Record<string, number>> }).state;
-    // tick1：Supplier(10) ×0.9 → Material.shortageRisk = 9。Order 还没轮到（一 tick 一跳）。
-    const t1 = st((await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } })).json());
-    expect(t1[materialId]!.shortageRisk).toBe(9);
+    // ── WO-SIM-CALIBRATION：三跳的期望值**不再写死** ─────────────────────────────────
+    // 原文写死 `9 / 6.3 / 5.04`，那是「系数 = 稳态增益」且「每源各加一份满额」时代的数。
+    // 标定后每拍入流系数是 `稳态增益 × λ`，且 11 条边按 `equal_share` 归一（Σw=1）⇒ 三个数全变。
+    // **但变的是标定，不是这条链通不通** —— 本用例的职责是后者，所以期望值改为
+    // 从**规则表（系数唯一真源）× 回包自带的权重出处**现算，逐跳比对。
+    // ⚠ 每个派生期望都配一条反空绿守卫：取数坏了会让期望变成 0，而 `toBe(0)` 会自洽成绿。
+    const rl = (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json() as {
+      items: { key: string; coefficient: number }[];
+    };
+    const cOf = (k: string) => {
+      const c = rl.items.find((r) => r.key === k)?.coefficient;
+      expect(c, `取不到边 ${k} 的系数 ⇒ 下面的期望值算不出来`).toBeDefined();
+      expect(c, `边 ${k} 系数为 0 ⇒ 期望值恒 0，下面那句会自洽成绿`).toBeGreaterThan(0);
+      return c!;
+    };
+    type Explain = { ruleKey: string; sourceObjectId: string; targetObjectId: string; weight: number };
+    // 有 `weightRef` 的边：权重从回包的出处取；`weightRef: null` 的边：每源各加一份满额 ⇒ 1。
+    const wOf = (body: unknown, ruleKey: string, src: string, dst: string) =>
+      ((body as { pairWeighting?: { report: { explain: Explain[] } } }).pairWeighting?.report.explain ?? [])
+        .find((e) => e.ruleKey === ruleKey && e.sourceObjectId === src && e.targetObjectId === dst)?.weight ?? 1;
+    const r12 = (x: number) => Math.round(x * 1e12) / 1e12;
+    const tickOnce = async () => (await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 } })).json();
+
+    // tick1：Supplier(10) × 系数 × 权重 → Material.shortageRisk。Order 还没轮到（一 tick 一跳）。
+    const b1 = await tickOnce();
+    const t1 = st(b1);
+    const exp1 = r12(10 * cOf("demo_supplier_delay_to_material_shortage") * wOf(b1, "demo_supplier_delay_to_material_shortage", supplierId, materialId));
+    expect(exp1, "第 1 跳期望值算成 0 ⇒ 系数或权重取数坏了").toBeGreaterThan(0);
+    expect(t1[materialId]!.shortageRisk).toBe(exp1);
     expect(t1[orderId]?.shortageRisk ?? 0).toBe(0);
     // tick2：Model.supplyRisk = 9 × 0.7 = 6.3。
     //
@@ -294,13 +329,24 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     //   `linktype-computed-edge.seam.test.ts` §7 直接断言两向严格互逆来守 —— 那是更强的判据：
     //   它咬的是两个集合相等，不是某一个读数恰好翻倍。
     // Order 仍为 0 —— 证明它确实**跨了多跳**，不是某条一跳捷径顺手写到的。
-    const t2 = st((await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } })).json());
-    expect(t2[modelId]!.supplyRisk).toBe(6.3);
+    const b2 = await tickOnce();
+    const t2 = st(b2);
+    // ⚠ 源读数取**上一拍实测值**而不是再写一个字面量：本跳验的是「这一跳的算术」，
+    //   上一跳对不对已由上面那句负责 —— 两件事分开咬，红了才知道红在哪一跳。
+    const exp2 = r12(t1[materialId]!.shortageRisk! * cOf("demo_material_shortage_to_model_supply_risk") * wOf(b2, "demo_material_shortage_to_model_supply_risk", materialId, modelId));
+    expect(exp2, "第 2 跳期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
+    expect(t2[modelId]!.supplyRisk).toBe(exp2);
     expect(t2[orderId]?.shortageRisk ?? 0).toBe(0);
-    // tick3：Model(6.3) ×0.8 → Order.shortageRisk = 5.04。
+    // tick3：Model × 系数 → Order.shortageRisk。
     // 🔴 这一行就是本单的效果层判据：供应侧的一次扰动，真的落到了订单缺口上。
-    const t3 = st((await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } })).json());
-    expect(t3[orderId]!.shortageRisk).toBe(5.04);
+    const b3 = await tickOnce();
+    const t3 = st(b3);
+    const exp3 = r12(t2[modelId]!.supplyRisk! * cOf("demo_model_supply_risk_to_order_shortage") * wOf(b3, "demo_model_supply_risk_to_order_shortage", modelId, orderId));
+    expect(exp3, "第 3 跳期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
+    expect(t3[orderId]!.shortageRisk).toBe(exp3);
+    // 🔴 并且**必须真的传到了**（不是三跳都算出 0 然后逐句自洽成绿）——
+    //    这条链通不通才是本用例的职责，标定怎么改都不该让它变成 0。
+    expect(t3[orderId]!.shortageRisk, "扰动跨 3 跳后落到订单上的读数为 0 ⇒ 这条链断了").toBeGreaterThan(0);
 
     // 并且 trace 里能读到这三跳的原文（North Star「断点」维要的溯源承载物）。
     const trace = (await t.repos.sim.getTickState("demo", sid, 3))!.trace!;
@@ -466,13 +512,29 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_order_price_to_model_top_price",
         "demo_order_leaddays_to_model_horizon",
       ],
-      // WO-PROP-REVIEW-V2 库存环：FGI 的两条出边。coverDays 与「根源」档同性质
-      // （入度 0、必须自带源，见上面 baseSnapshot 里 fgRowId 那一格）；
-      // drawdownPressure 那一格同处自带，两条都在第 1 拍就进 trace。
+      // WO-PROP-REVIEW-V2 库存环：FGI 的出边。coverDays 与「根源」档同性质
+      // （入度 0、必须自带源，见上面 baseSnapshot 里 fgRowId 那一格），第 1 拍就进 trace。
       库存环: [
         "demo_fg_cover_days_to_model_demand",
-        "demo_fg_drawdown_to_model_demand",
       ],
+      // ── WO-SIM-DAMPING **阻尼边**（canonical 交付；WO-PROP-V2-REBASE 收编时裁决保留）──
+      // 🔴 裁决记账（⛔ 不许取并集，取并集会留下**同一条槽位上符号相反的两份**）：
+      //   本分支曾另建 `demo_fg_drawdown_to_model_demand`（**+0.5**），与本条
+      //   `demo_fg_drawdown_relieves_model_demand`（**−0.6**）**源类型/源量纲/链路/目标全同**
+      //   （`FinishedGoodsInventory.drawdownPressure --fg_of_model--> Model.demandLoad`）
+      //   ⇒ 同一条物理边的两个相反符号，二者只能留一。**留 canonical 这条负的**，两条理由：
+      //   ① 它已在集成线上交付（WO-SIM-DAMPING），删它是回退；
+      //   ② 分支那条 +0.5 的自证写着「环增益 = 0.6(入) × 0.5(出) = 0.3 < 1 ⇒ 阻尼振荡收敛」——
+      //      **对正环不成立**：入边 `demo_model_demand_to_fg_drawdown` 是 +0.6，回边再取正
+      //      就是**正反馈**，闭环增益 1/(1−0.3) = 1.43 倍放大，不是阻尼。
+      //      它自己想要的那个「阻尼」，恰恰只有负号那条给得出。
+      //   「库存吸收需求」这层语义没丢：由同组 `demo_fg_cover_days_to_model_demand`（−0.5）承担，
+      //   源量纲是 coverDays、与本条不同槽位，两条并存不冲突。
+      // 本组不额外造源 —— 源恰是「扩面档 2」里 `demo_model_demand_to_fg_drawdown` 的目标；
+      // 留 1 拍，故最早在第 3 拍进 trace。
+      // 🔴 它**必须出现在这里**：一条阻尼边若恒不触发，屏上看不出任何区别 ——
+      //    「图里有一条负边」不度量「压力真的会回来」，正是本仓反复栽的那个形态。
+      阻尼: ["demo_fg_drawdown_relieves_model_demand"],
       // WO-PROP-REVIEW-V2 物料环：替代料负反馈 + 检验放行 + 缺口催货三条。
       // 本组**不额外造源**——三个源量纲都**不是入度 0 的根**：switchPressure 由
       // `demo_material_shortage_to_alt_switch`（扩面档2）写入、queueDays 由
@@ -675,7 +737,15 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
     await enableSim(t);
 
     const SHOCK = 15; // 涨价 15 个百分点
-    const COEFF = 0.65; // 该边的整条边强度（种子值；下面只用它复算，不改它）
+    // ⚠ **系数从规则表现取，不写死**（WO-SIM-CALIBRATION）：原文写死 `0.65`，
+    //   而标定后该边的每拍入流系数是 `稳态增益 0.423913 × λ = 0.15684781`。
+    //   写死就把本用例钉在某一次标定上 —— 而它要守的是「**按 BOM 占比拉开**」这件事，
+    //   那是**比值**性质，与系数取多少无关（同格统一缩放，比值逐位不变：实测仍是 19.3658×）。
+    const COEFF = ((await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json() as {
+      items: { key: string; coefficient: number }[];
+    }).items.find((r) => r.key === "demo_material_price_to_model_cost")?.coefficient;
+    expect(COEFF, "取不到 demo_material_price_to_model_cost 的系数").toBeDefined();
+    expect(COEFF, "该边系数为 0 ⇒ 下面每一句期望值都成 0、逐句自洽成绿").toBeGreaterThan(0);
 
     /** 对某个物料施加 priceShock=SHOCK，跑一拍，回读该型号的 costPressure + 这一对的权重出处。 */
     const drive = async (materialId: string, modelId: string) => {
@@ -724,7 +794,7 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
 
     // ── 判据 ②：读数 = 强度 × 占比 × 源态，占比从回包出处**独立复算**（不写死金值）。
     for (const r of [lo, hi]) {
-      const expected = Math.round(COEFF * r.ex!.weight * SHOCK * 1e12) / 1e12;
+      const expected = Math.round(COEFF! * r.ex!.weight * SHOCK * 1e12) / 1e12;
       expect(r.read, `${r.materialId} 的读数与「强度 × BOM 占比 × 涨幅」对不上`).toBe(expected);
       // 出处必须真的来自 BOM 用量，而不是某个凭空的份额。
       expect(r.ex!.formula).toContain("单台用量");
@@ -732,7 +802,7 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
     }
 
     // ── 判据 ③：修前那个数**不许**再出现。9.75 = 0.65 × 15，是"没有用量项"的指纹。
-    const preFix = Math.round(COEFF * SHOCK * 1e12) / 1e12;
+    const preFix = Math.round(COEFF! * SHOCK * 1e12) / 1e12;
     for (const r of runs) {
       expect(r.read, `读数回到 ${preFix} ⇒ 该对的权重被当成 1 了（"查不到用量"绝不等于"用量为 1"）`).not.toBe(preFix);
     }

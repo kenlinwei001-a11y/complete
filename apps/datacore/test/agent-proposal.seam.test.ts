@@ -7,7 +7,7 @@
  *  · 兑现处开始夹逼越界下标而不是抛 ⇒ §2 红（幻觉下标会拿到一个合法的数）；
  *  · 同一提案版本重跑解出不同网格 ⇒ §3 红（确定性 R6 当场破）；
  *  · 换事件而指纹不变 ⇒ §4 红（提案没读世界态，只是换了张固定表）；
- *  · 兜底路径把 `agentInvolved` 留白或写成 true ⇒ §5 红（诚实位）。
+ *  · agent 拿不到产出时又开始自己编一份方案 ⇒ §5 红（**降级已于 2026-09-18 撤销**）。
  *
  * ⚠ 断言全部是**对照实验**式（铁律 1.5 判据一）：不是「跑得起来吗」，
  *   是「把 X 改成 X'，Y 必须按可预言的方式变」—— §3/§4 各带一条**反向**断言
@@ -30,7 +30,6 @@ import {
 } from "@platform/contracts";
 import {
   buildProposalMenu,
-  deterministicFallbackDraft,
   fingerprintMenu,
   generateAndFreeze,
   noAgentProvenance,
@@ -209,27 +208,34 @@ describe("§4 · 换事件 ⇒ 指纹变；不换 ⇒ 一个字节都不许变",
   });
 });
 
-// ══ §5 · 诚实位：未调用 agent 必须明写，不许留白 ═══════════════════════════════
-describe("§5 · agentInvolved 不许留白", () => {
-  it("§5a 无 A→B 通路 ⇒ agentInvolved:false + route:NONE + 写清原因", async () => {
+// ══ §5 · 拿不到 agent 产出 ⇒ **明确失败，一个字都不编** ════════════════════════
+//
+// ⚠ 本节**原来断言的是相反的行为**：「兜底仍给可比方案」`options.length > 0`。
+//   那条断言把「降级」钉成了正确行为，于是降级在仓里活了下来 —— 直到 2026-09-18
+//   仓主问「谁同意你降级的？」才撤销。**这正是测试反过来锁死缺陷的形态**：
+//   门是真的、绿是真的，只是它咬的是一个没人批准过的行为。
+//   改这一节时留着这段话，是为了让下一个想"恢复兜底让测试好过"的人先读到这里。
+describe("§5 · 拿不到 agent 产出 ⇒ 明确失败，不编方案", () => {
+  it("§5a 无 A→B 通路 ⇒ 抛 AGENT_PROPOSAL_UNAVAILABLE(503)，且**零定版落盘**", async () => {
     const { deps } = memDeps();
-    const r = await generateAndFreeze(deps, null, { tenantId: "t1", sessionId: "s1", menu: MENU, agentId: "a" });
-    expect(r.proposal.provenance.agentInvolved).toBe(false);
-    expect(r.proposal.provenance.route).toBe("NONE");
-    expect(r.proposal.provenance.fallbackReason).toBeTruthy(); // ← 留白即红
-    expect(r.proposal.draft.options.length).toBeGreaterThan(0); // 兜底仍给可比方案
+    await expect(
+      generateAndFreeze(deps, null, { tenantId: "t1", sessionId: "s1", menu: MENU, agentId: "a" }),
+    ).rejects.toMatchObject({ code: "AGENT_PROPOSAL_UNAVAILABLE", statusCode: 503 });
+    // 反空绿守卫：失败路上**没有**把任何一版写进去（写了 ⇒ 指纹命中会把坏版复用出来）。
+    expect(await deps.countProposals("t1", "s1")).toBe(0);
+
   });
-  it("§5b agent 产出不合契约 ⇒ **拒收**并降级，绝不把它写进定版", async () => {
+
+  it("§5b agent 产出不合契约 ⇒ 拒收 + 失败，**不退化成自己编一份**", async () => {
     const { deps } = memDeps();
     // 这一份 draft 里塞了自带数值的 `value` —— 正是「agent 自己算了个数」的形态。
-    const r = await generateAndFreeze(deps, scriptedClient({ options: [{ name: "X", rationale: "y", picks: [{ leverIndex: 0, valueIndex: 0, value: 0.87 }] }] }), {
-      tenantId: "t1", sessionId: "s1", menu: MENU, agentId: "a",
-    });
-    expect(r.proposal.provenance.agentInvolved).toBe(false);
-    expect(r.proposal.provenance.fallbackReason).toContain("提案");
-    // 且落盘的那一份**不含**那个编出来的数：
-    expect(JSON.stringify(r.proposal.draft)).not.toContain("0.87");
+    const bad = scriptedClient({ options: [{ name: "X", rationale: "y", picks: [{ leverIndex: 0, valueIndex: 0, value: 0.87 }] }] });
+    await expect(
+      generateAndFreeze(deps, bad, { tenantId: "t1", sessionId: "s1", menu: MENU, agentId: "a" }),
+    ).rejects.toMatchObject({ code: "AGENT_PROPOSAL_UNAVAILABLE" });
+    expect(await deps.countProposals("t1", "s1")).toBe(0);
   });
+
   it("§5c 走 dsh ⇒ route 如实回 EXTERNAL（走内置回 NATIVE）", async () => {
     const { deps } = memDeps();
     const ext = await generateAndFreeze(deps, scriptedClient(DRAFT, "EXTERNAL"), { tenantId: "t1", sessionId: "sE", menu: MENU, agentId: "a" });
@@ -237,12 +243,14 @@ describe("§5 · agentInvolved 不许留白", () => {
     const nat = await generateAndFreeze(deps, scriptedClient(DRAFT, "NATIVE"), { tenantId: "t1", sessionId: "sN", menu: MENU, agentId: "a" });
     expect(nat.proposal.provenance).toMatchObject({ agentInvolved: true, route: "NATIVE" });
   });
-  it("§5d 兜底提案自己也不造数（档位全部来自菜单）", () => {
-    const fb = deterministicFallbackDraft(MENU);
-    for (const g of resolveProposalToLevers(MENU, fb)) {
-      const src = MENU.levers.find((l) => l.key === g.key)!;
-      for (const v of g.values) expect(src.values).toContain(v);
-    }
+
+  it("§5d 🐤 金丝雀：agent 正常时照旧出版本 —— 证明上面两条红的是降级，不是把这条路整个关死了", async () => {
+    const { deps } = memDeps();
+    const ok = await generateAndFreeze(deps, scriptedClient(DRAFT), { tenantId: "t1", sessionId: "sOK", menu: MENU, agentId: "a" });
+    expect(ok.proposal.provenance.agentInvolved).toBe(true);
+    expect(ok.proposal.draft.options.length).toBeGreaterThan(0);
+    expect(await deps.countProposals("t1", "sOK")).toBe(1);
+    // `noAgentProvenance` 本身保留（仍用于把原因带进异常文案），诚实位不变。
     expect(noAgentProvenance("x").agentInvolved).toBe(false);
   });
 });

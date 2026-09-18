@@ -34,6 +34,7 @@ import {
   resolveProposalToLevers,
 } from "@platform/contracts";
 import { canonicalJson } from "../prng.js";
+import { AppError } from "../errors.js";
 
 /** 未调用 agent 的诚实回执 —— **必须明写，不许留白**（铁律 1.5 判据二）。 */
 export function noAgentProvenance(reason: string): ProposalProvenance {
@@ -131,14 +132,28 @@ export interface FreezeDeps {
 }
 
 /**
- * 生成 + 定版。**返回的一定是一份可用的定版**（或 `null` 表示装配不出、连菜单都没有）。
+ * 生成 + 定版。**要么给出一份真由 agent 出的定版，要么明确失败 —— 没有第三条路。**
  *
- * 三条路，回包里必须分得开（诚实位）：
+ * 两条路：
  *  · **复用**：指纹命中已有定版 ⇒ 直接返回它，**不再调模型**（重跑字节级一致靠这条）。
- *  · **新出**：调 agent 成功 ⇒ 定版落盘。
- *  · **兜底**：agent 不可用/产出不合契约 ⇒ 仍落一版**确定性兜底提案**，
- *    但 `provenance.agentInvolved=false` + `fallbackReason` 写清原因。
- *    ⚠ 兜底**不是**静默降级：屏上必须读得出「本次未调用 agent」。
+ *  · **新出**：调 agent 成功且产出兑现得出杠杆 ⇒ 定版落盘。
+ *
+ * ── ⛔ 这里**曾经**有第三条「确定性兜底」，2026-09-18 由仓主当场撤销 ──────────────
+ * 原实现在 agent 不可用 / 产出不合契约 / 兑现不出杠杆 / 压根没配 A→B 通路这**四种**情形下，
+ * 一律现编一份三档提案（保守/折中/进取 = 菜单首/中/末档），**并 `putProposal` 定版落盘、带版本号**，
+ * 只把 `agentInvolved:false` + `fallbackReason` 写进 `provenance`。
+ *
+ * 当时的辩护是「兜底不是静默降级，屏上读得出『本次未调用 agent』」。**这条辩护不成立**：
+ * > **「我用『降级被如实标注了』当作『降级可以存在』的证据，而前者并不度量后者。」**
+ * 标注解决的是「有没有骗人」，解决不了「**谁批准了这件事**」—— 没有人批准。
+ * 而后果是实的：屏上出现三张带版本号的「方案」，用户读到的是**系统的建议**，
+ * 实际上那里面**没有任何针对本次事件的取舍判断**（原 `comparisonNote` 自己都这么写）。
+ * 更糟的是它会进 Pareto 比对，于是「方案比对」这个功能在 agent 不可达时**照常出图**。
+ *
+ * ⛔ 也**不许**改用 `applicable:false` 来装这件事：契约 `sim.ts` 白纸黑字定义那个值是
+ * 「本租户本体撑不起这个模型」这个**结论**（明确写着「不是错误，不是 4xx/5xx」）。
+ * agent 连不上是**运行故障**，不是本体结论 —— 混用就又是一次「拿 X 表示 Y 而 X 不度量 Y」。
+ * 故此处抛 `AGENT_PROPOSAL_UNAVAILABLE`（503），原因原样带出，让调用方自己决定怎么显示。
  */
 export async function generateAndFreeze(
   deps: FreezeDeps,
@@ -200,7 +215,15 @@ export async function generateAndFreeze(
       provenance = noAgentProvenance(`调 agentcore 失败：${(e as Error).message}`);
     }
   }
-  if (!draft) draft = deterministicFallbackDraft(args.menu);
+  // ⛔ 拿不到真 agent 产出 ⇒ **明确失败，不编**。四种情形（没配通路 / 调用抛 / 产出不合契约 /
+  //    兑现不出杠杆）共用这一个出口，原因原样带给调用方 —— 见本函数头注「第三条路已撤销」。
+  if (!draft) {
+    throw new AppError(
+      "AGENT_PROPOSAL_UNAVAILABLE",
+      `方案生成未能由 agent 完成，本次不出方案：${provenance.fallbackReason ?? "原因未记录"}`,
+      503,
+    );
+  }
 
   const version = (await deps.countProposals(args.tenantId, args.sessionId)) + 1;
   const proposal = FrozenProposalSchema.parse({
@@ -219,34 +242,11 @@ export async function generateAndFreeze(
 }
 
 /**
- * **确定性兜底提案**（agent 不可用时）—— 每根杠杆各取首/中/末三档，拼成至多 3 个方案。
+ * ⛔ **`deterministicFallbackDraft` 已于 2026-09-18 删除，不许恢复。**
  *
- * ⚠ 它存在的意义是「关掉 agent 时这条路仍然能走通」，**不是**冒充 agent 的产出：
- *   `provenance.agentInvolved=false` 与 `fallbackReason` 同时下发，屏上分得开。
- *   ⛔ 这里同样**不造数**：取的是菜单已有档位的下标，没有任何新数值。
+ * 它原来在 agent 不可用时按菜单首/中/末档现编三个「方案」（保守/折中/进取）并**定版落盘**。
+ * 删除理由见 `generateAndFreeze` 头注：**没有人批准过降级**；「把降级如实标注」不等于「降级可以存在」。
+ *
+ * 要恢复这类行为，先回答一个问题：**屏上那三张卡，用户会不会把它读成系统的建议？**
+ * 会 ⇒ 它就不该在 agent 没参与时出现，无论 `provenance` 里写了什么。
  */
-export function deterministicFallbackDraft(menu: ProposalMenu): AgentProposalDraft {
-  const picksAt = (pos: "first" | "mid" | "last") =>
-    menu.levers.map((l, i) => ({
-      leverIndex: i,
-      valueIndex: pos === "first" ? 0 : pos === "last" ? l.values.length - 1 : Math.floor((l.values.length - 1) / 2),
-    }));
-  const seen = new Set<string>();
-  const options = (["first", "mid", "last"] as const)
-    .map((pos) => ({
-      name: pos === "first" ? "保守档" : pos === "mid" ? "折中档" : "进取档",
-      rationale: "确定性兜底：本次未调用 agent，按菜单档位的首/中/末位各取一组，仅用于让方案寻优仍有可比的候选。",
-      picks: picksAt(pos),
-    }))
-    // 单档杠杆下三组会重复 —— 去重，免得屏上出现三个一模一样的"方案"。
-    .filter((o) => {
-      const k = canonicalJson(o.picks);
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
-  return AgentProposalDraftSchema.parse({
-    options,
-    comparisonNote: "本次未调用 agent（确定性兜底）：三档之间只有杠杆档位高低之分，没有针对本次事件的取舍判断。",
-  });
-}

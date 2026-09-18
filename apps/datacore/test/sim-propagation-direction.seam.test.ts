@@ -123,9 +123,22 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     const fired = (t2.trace ?? []).filter((x) => x.ruleKey === "demo_base_load_to_line_util");
     expect(fired.length).toBe(10);
     expect(fired.map((x) => x.toObjectId).sort()).toEqual(lineIds);
-    expect(fired.every((x) => x.amount === 10)).toBe(true);
+    // WO-SIM-CALIBRATION：`20 × 0.5 = 10` 里的 `0.5` 是标定前的系数。现在每拍入流系数是
+    // `稳态增益 × λ`，故期望值从**规则表**现取 —— 本用例守的是「方向对不对」，不是某次标定的数。
+    const RULES = ((await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json() as {
+      items: { key: string; coefficient: number }[];
+    }).items;
+    const coefOf = (k: string) => {
+      const c = RULES.find((r) => r.key === k)?.coefficient;
+      expect(c, `取不到边 ${k} 的系数`).toBeDefined();
+      expect(c, `边 ${k} 系数为 0 ⇒ 期望值恒 0，下面那句会自洽成绿`).toBeGreaterThan(0);
+      return c!;
+    };
+    const EXPECT_UTIL = round12(20 * coefOf("demo_base_load_to_line_util"));
+    expect(EXPECT_UTIL, "基线期望值算成 0 ⇒ 下面「每条产线各得它」会自洽成绿").toBeGreaterThan(0);
+    expect(fired.every((x) => x.amount === EXPECT_UTIL)).toBe(true);
     // 🔴 判据 b：下游状态变量**真的变了**，且变成了它该变成的那个数（不是 ">0"）。
-    for (const lineId of lineIds) expect(t2.state[lineId]!.utilPressure).toBe(10);
+    for (const lineId of lineIds) expect(t2.state[lineId]!.utilPressure).toBe(EXPECT_UTIL);
     // 源端没被**传导**写坏（扰动是 set 20，传导不回写源）——
     // 判据从「恒等 20」改成「恰等两拍纯衰减」：唯一动过它的只能是衰减律，
     // 一旦有贡献回写到源，这个数就不再等于 decayN(20,2)（故这不是放宽，是把"没人写它"钉得更死）。
@@ -140,9 +153,14 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     const t3 = await tick(t, sid);
     const q = (t3.trace ?? []).filter((x) => x.ruleKey === "demo_line_util_to_process_queue");
     expect(q.length).toBeGreaterThan(0);
-    expect(q.every((x) => x.amount === 7)).toBe(true); // 10 × 0.7
+    // ⚠ 源读数**不带本拍衰减**：`propagateTick` 先 `next = clone(effState)` 再对 `next` 施衰减，
+    //   而贡献读的是 `effState[sourceId]`（衰减前那份）⇒ 本拍贡献 = 上拍末的 `utilPressure` × 系数。
+    //   （第一版在这里多套了一层 `decayN`，被本行断言当场咬红 —— 咬的正是这条口径。）
+    const EXPECT_QUEUE = round12(EXPECT_UTIL * coefOf("demo_line_util_to_process_queue"));
+    expect(EXPECT_QUEUE, "第三跳期望值算成 0 ⇒ 取数坏了").toBeGreaterThan(0);
+    expect(q.every((x) => x.amount === EXPECT_QUEUE)).toBe(true);
     const processId = q[0]!.toObjectId;
-    expect(t3.state[processId]!.queuePressure).toBe(7);
+    expect(t3.state[processId]!.queuePressure).toBe(EXPECT_QUEUE);
   });
 
   // ── ② 方向性反证：把 link 方向反过来 ⇒ 规则不应触发 ─────────────────────────────────
@@ -241,9 +259,20 @@ describe("WO-SANDBOX-PROP-DIRECTION · 出厂传导规则的方向（#158 复发
     const demandLoadT1 = t1.state[orderLink.toId]!.demandLoad!;
     expect(demandLoadT1, "金丝雀链在 t1 没喂到 Model ⇒ 下面这条恒等式无从谈起").toBeGreaterThan(0);
     // 衰减相并入后这条恒等式多了一项：t1 那格先衰减一拍，再叠加本拍贡献
-    // ⇒ `decayN(20,2) + demandLoad@t1 × 0.6`（`decayN(20,1)` 再衰减一拍 = `decayN(20,2)`）。
-    // 0.6 这一跳照旧被咬住 —— 跨规则乘子链漂了，本行仍会红。
-    expect(t2.state[BASE_ID]!.loadIndex).toBe(round12(decayN(20, 2) + demandLoadT1 * 0.6));
+    // ⇒ `decayN(20,2) + demandLoad@t1 × 该边系数`（`decayN(20,1)` 再衰减一拍 = `decayN(20,2)`）。
+    // 这一跳照旧被咬住 —— 跨规则乘子链漂了，本行仍会红。
+    // WO-SIM-CALIBRATION：系数从规则表现取（原写死 `0.6`，那是标定前的稳态增益口径）。
+    const cModelToBase = ((await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json() as {
+      items: { key: string; coefficient: number }[];
+    }).items.find((r) => r.key === "demo_model_demand_to_base_load")?.coefficient;
+    expect(cModelToBase, "取不到 demo_model_demand_to_base_load 的系数").toBeDefined();
+    expect(cModelToBase, "该边系数为 0 ⇒ 下面那条恒等式退化成纯衰减，会自洽成绿").toBeGreaterThan(0);
+    // ⚠ 该边已改用 `equal_share` 归一（Σw=1）⇒ 每个源型号只占 `1/N`，N = 落到本基地的入边条数。
+    //   权重在这里**独立复算**（从真链路表数 N），不是从回包抄一个数回来比自己 —— 那样就成了循环论证。
+    const inEdges = await t.repos.links.list("demo", (l) => l.type === "model_producible_at" && l.toId === BASE_ID);
+    expect(inEdges.length, "本基地一条 model_producible_at 入边都没有 ⇒ 下面的权重算不出来").toBeGreaterThan(0);
+    const wModelToBase = 1 / inEdges.length;
+    expect(t2.state[BASE_ID]!.loadIndex).toBe(round12(decayN(20, 2) + demandLoadT1 * cModelToBase! * wModelToBase));
     // 反向钉死：它**必须严格大于纯衰减轨迹** —— 证明金丝雀那条链真的额外喂了 Base 一口，
     // 而不是这一格什么都没发生、只是自己在往下掉。
     //（原文写 `> 20`，那是无衰减年代"只增不减"的写法；今天总量会掉，比 20 是拿错了尺子。）

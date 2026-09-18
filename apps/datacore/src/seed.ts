@@ -8,6 +8,7 @@ import { PROPAGATION_COEF_RULE_KEY, ruleParamOf } from "./synthetic/battery.js";
 import { seedOrgWorld } from "./org/seed.js";
 import { seedProcessLayerOntology } from "./process/ontology.js"; // WO-FLOWTIME · 流程层本体（ProcessDefinition/ProcessInstance + instance_of/carries 链路）随流程层种子一起来
 import { seedProcessStepTemplates } from "./process/step-templates.js"; // WO-STEP-TEMPLATE-LAYER · 步骤模板（65 条里只 7 条有，其余如实标缺席）
+import { PRESSURE_DECAY_PER_TICK, STATE_DECAY_RULE_KEY, STATE_DECAY_PARAM_KEY } from "./synthetic/battery.js"; // WO-SIM-CALIBRATION · 系数定标要用 λ（C35 规则参数），见 `inflowCoefficient`
 
 export const DEMO_TENANT = "demo";
 
@@ -254,6 +255,76 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  * 两者都动到写路与前端，超出本单 🚦范围边界，故此处只记账不动手。
  * 本单的机器判据落在 `apps/datacore/test/edge-money-weight.seam.test.ts` §3（扫种子，变异反证过）。
  */
+/**
+ * **每拍入流系数 = 稳态增益 × λ**（WO-SIM-CALIBRATION · 本表 47 条边全部经它）
+ *
+ * ── 今天的行为 X / 应该的 Y（实测，不是推断）──────────────────────────────────
+ * **X**：`coefficient` 按「**稳态增益**」的口径写，而引擎按「**每拍入流**」的口径用。
+ *   规则自己的 `description` 原文就是稳态口径 ——「价格冲击 **× 0.65** = 型号成本压力」，
+ *   读作 `target = source × c`。而 `propagation.ts` 每拍做的是 `target += source × c`，
+ *   配合衰减 `v ← v(1−λ)`，源恒定时真实稳态是 **`source × c/λ`** —— λ=0.37 ⇒ **比描述承诺的大 2.7 倍**。
+ * **Y**：字段存的就该是引擎真要的那个每拍入流量 ⇒ **`coefficient = 稳态增益 × λ`**。
+ *
+ * ── ⚠⚠ **两支口径：只有「目标会衰减」的边才预乘 λ**（WO-SIM-CALIBRATION）────────────
+ * 本助手存在的**唯一理由**是约掉衰减在稳态里引入的那个 `1/λ`（`稳态 = 入流/λ`）。
+ * 而 `STATE_VAR_DOMAINS` **没登记**的量纲（天数族 / 件数族）引擎**不夹不衰减**
+ * ⇒ 它们是 `combine:"sum"` 的**纯积分器**，没有 `1/λ` 可约 ⇒ **预乘 λ 就是凭空把读数打三折**。
+ * 实测代价是用户可见的：`demo_po_expedite_to_inspection_queue` 的 description 承诺
+ * 「加急压力 **× 0.6**」，包了助手之后每拍只加 `0.6 × 0.37 = 0.222` ⇒ **屏上差 2.70 倍**。
+ * 故本表 47 条里 **41 条包助手、6 条刻意裸写**，判据只有一条：
+ * **`targetStateVar` 在不在 `STATE_VAR_DOMAINS` 里。**
+ *
+ * ── 同一个判据也决定「受不受增益预算约束」——**两者不是两道工序，是一件事的两半** ──────
+ * 曾要在「先剥 λ 再按预算缩」与「先缩再剥」之间选顺序 —— **两个都不对**：
+ * 预算里的 `0.75` 是 `[0,100]` 域**软饱和曲线的拐点**（`kneeHi = 0.75 × max`，
+ * 见 `propagation.ts` 的 `SATURATION_BAND_FRACTION = 0.25`）。**没有域就没有拐点**，
+ * 那个 0.75 在无域格上不度量任何东西。⇒ 两个装置由**同一个谓词**开关，一起开、一起关：
+ *   · 目标**已声明域** ⇒ 预乘 λ ✅ + 受预算约束 ✅
+ *   · 目标**未声明域** ⇒ 不预乘 ⛔ + 不受预算 ⛔（用原始裸系数）
+ * ⚠ 于是 `blockedPressure` 补登记进域表这件事**会改变它那条边走哪一支** ——
+ *   两个改动必须一起落，分开落会有一拍口径不自洽。
+ *
+ * ⚠ **「有没有预乘 λ」这一问，值判不了**：`0.222` 与 `inflowCoefficient(0.6)` 的产物**逐字节相同**。
+ *   守它的门必须**文本（怎么写的）join 真值（该不该乘）**，只看其中一半就是瞎一只眼。
+ *
+ * ── ⛔ λ 走 C35 规则参数，不内联 0.37（R14/RL5 禁内联业务常数）───────────────────
+ * `PRESSURE_DECAY_PER_TICK` **就是** `BATTERY_RULES` 里 C35「推演状态量衰减率」的
+ * `params[STATE_DECAY_PARAM_KEY]` 那个值（两处共用同一个记号，不是两份同值字面量）——
+ * 改那条规则即同时改这里。下面两行 `void` 不是装饰：它们让「本函数依赖 C35」这件事
+ * **被类型系统咬住** —— 谁把 C35 的 ruleKey/paramKey 改名，这里当场编译红。
+ *
+ * ── 为什么定精度到 12 位 ────────────────────────────────────────────────────
+ * `0.6 × 0.37` 在 IEEE754 下是 `0.22199999999999998`。引擎侧 `propagation.ts` 的 `round12`
+ * 已按 12 位定精度，种子侧不定精度就会把一串浮点尾巴带进**逐字节快照断言**（R6）。
+ */
+const inflowCoefficient = (steadyGain: number): number => {
+  void STATE_DECAY_RULE_KEY; void STATE_DECAY_PARAM_KEY; // λ 的出处坐标（见上方注释），改名即编译红
+  return Math.round(steadyGain * PRESSURE_DECAY_PER_TICK * 1e12) / 1e12;
+};
+
+/**
+ * ── 每格的**增益预算** `Σ_e 稳态增益_e × W_e ≤ 0.75`（WO-SIM-CALIBRATION）────────────
+ *
+ * `W_e` = 该规则落到这一格的**权重之和**，由 `weightRef` 的**归一方向**决定（`contracts/sim.ts`）：
+ *   · `bom_cost_share` / `equal_share` → `IN_EDGES`（Σ=1）              ⇒ **W = 1**
+ *   · `source_qty_relative` → `IN_EDGES_MEAN`（均值=1 ⇒ Σw = N）          ⇒ **W = N**
+ *   · `source_value_relative` / `actor_exposure_relative`（均值口径）      ⇒ **W ≈ N**
+ *   · `weightRef: null` → 每源各加一份满额                                  ⇒ **W = N**
+ * ⚠ **「Σ=1 口径 ⇒ W=1」只对前一类成立** —— 把 `*_relative`（均值=1）也当成 Σ=1 是实测踩过的坑：
+ *   `Model.demandLoad` 因此被漏算，G 停在 **32.28**（预算 0.75 的 43 倍）。
+ *   形态：「我用『它归一过』当作『它的权重和是 1』的证据 —— 均值=1 的权重和是 N 不是 1。」
+ *
+ * 0.75 是饱和曲线的**拐点**（`propagation.ts` 的 `SATURATION_BAND_FRACTION = 0.25`
+ * ⇒ `kneeHi = 0.75 × max`）：落在它以下，全部源顶到量纲上界时目标仍不进饱和段。
+ *
+ * 分配法（闭式·一趟·与遍历序无关）：
+ * `f_g = min(1, 0.75 / S_g)`，`S_g = Σ_{e∈g} |意图增益_e| × W_e`（意图增益 = 改造前的字面量，
+ * 即 description 承诺的那个数），再 `稳态增益_e = |意图增益_e| × f_g` **向下**取整到 6 位小数
+ * （判据是不等式 ⇒ 只许向下；取 6 位而非 3 位，是为了不把小增益抹成 0 —— 抹成 0 等于悄悄删边）。
+ * 可行性可证：任意格 `Σ_e |c_e|·f_g·W_e ≤ (0.75/S_g)·S_g = 0.75`。
+ * **47 条里 24 条增益原样保留**（只多了 `× λ`），23 条按上式缩 —— 逐条在该规则的 `coefficient` 行注明。
+ * 复跑证据：`docs/evidence/wo-sim-calibration/calibration-analysis.mjs`。
+ */
 const DEMO_PROPAGATION_RULES: ReadonlyArray<
   Omit<
     PropagationRule,
@@ -298,7 +369,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
     delayTicks: 0,
-    description: "订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.8 = 型号需求负载）",
+    description: "订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.018585 = 型号需求负载）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -326,7 +397,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 1.38（实测扇入）⇒ 入流被放大 1.38 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null, // 同上：未绑定 = 这条流不过节拍闸门（缺省即旧行为，逐字节不变）
     status: "PUBLISHED",
   },
@@ -397,11 +470,13 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Material",
     targetStateVar: "shortageRisk",
     delayTicks: 0,
-    description: "供应商交期拖长 ⇒ 它供的物料开始缺（交付延迟 × 0.9 = 物料短缺风险）",
+    description: "供应商交期拖长 ⇒ 它供的物料开始缺（交付延迟 × 0.241071 = 物料短缺风险）",
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 1.88（实测扇入）⇒ 入流被放大 1.88 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -417,11 +492,13 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Model",
     targetStateVar: "supplyRisk",
     delayTicks: 0,
-    description: "物料缺 ⇒ 用到它的型号供应告急（物料短缺 × 0.7 = 型号缺料风险）",
+    description: "物料缺 ⇒ 用到它的型号供应告急（物料短缺 × 0.4375 = 型号缺料风险）",
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 7.00（实测扇入）⇒ 入流被放大 7.00 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -434,7 +511,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Order",
     targetStateVar: "shortageRisk",
     delayTicks: 0,
-    description: "型号缺料 ⇒ 订这个型号的单子交不齐（型号缺料 × 0.8 = 订单缺口风险）",
+    description: "型号缺料 ⇒ 订这个型号的单子交不齐（型号缺料 × 0.75 = 订单缺口风险）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -454,7 +531,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Process",
     targetStateVar: "queuePressure",
     delayTicks: 0,
-    description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.7 = 工序排队压力）",
+    description: "产线满负荷 ⇒ 线上各道工序排队变长（产线利用压力 × 0.403846 = 工序排队压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -520,7 +597,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Model",
     targetStateVar: "costPressure",
     delayTicks: 0,
-    description: "物料涨价 ⇒ 用它的型号成本上抬（价格冲击 × 0.65 = 型号成本压力）",
+    description: "物料涨价 ⇒ 用它的型号成本上抬（价格冲击 × 0.423913 = 型号成本压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -541,7 +618,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Order",
     targetStateVar: "costPressure",
     delayTicks: 0,
-    description: "型号成本上抬 ⇒ 订这个型号的单子毛利被吃掉（型号成本 × 0.9 = 订单成本压力）",
+    description: "型号成本上抬 ⇒ 订这个型号的单子毛利被吃掉（型号成本 × 0.75 = 订单成本压力）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -583,7 +660,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     // ⚠ 描述里的系数原写 ×0.6，与真值 0.5 差 1.2 倍（`GET /a/v1/sim/propagation-rules` 原样下发
     // 这段中文给用户看 ⇒ 屏上正在说与实际不符的话）。改**描述**一侧对齐真值，
     // 理由见 `DEMO_PROPAGATION_RULES` 上方「描述系数对账」段（9/13 不符，已全部改齐）。
-    description: "订单成本上去 ⇒ 该客户的应收账款压力变大（订单成本 × 0.5，并按该单金额占全域平均单的倍率分摊）",
+    description: "订单成本上去 ⇒ 该客户的应收账款压力变大（订单成本 × 0.084999，并按该单金额占全域平均单的倍率分摊）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -1217,7 +1294,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 3.00（实测扇入）⇒ 入流被放大 3.00 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1278,7 +1357,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 3.75（实测扇入）⇒ 入流被放大 3.75 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1296,7 +1377,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 3.00（实测扇入）⇒ 入流被放大 3.00 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1314,7 +1397,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 1.88（实测扇入）⇒ 入流被放大 1.88 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1475,7 +1560,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 1.99（实测扇入）⇒ 入流被放大 1.99 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1532,7 +1619,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 5.00（实测扇入）⇒ 入流被放大 5.00 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1574,7 +1663,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null, // 单实例传导，不按 BOM 占比分摊（WO-COEF-FROM-BOM 并线补齐）
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 43.33（实测扇入）⇒ 入流被放大 43.33 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1596,7 +1687,9 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    weightRef: null,
+    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
+    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 43.33（实测扇入）⇒ 入流被放大 43.33 倍。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1788,6 +1881,134 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // WO-SIM-DAMPING · **阻尼边：这张图第一次有了「压力自己会回来」的通路**
+  //
+  // ── 今天的行为 X（实测·金丝雀见下）/ 应该的 Y ────────────────────────────────────
+  // **X**：47 条边里 **46 条正系数、1 条负**（`demo_forecast_bias_to_order_demand` −0.6，
+  //   且它的源 `forecastBias` 是入度 0 的外生根 ⇒ **只有用户手动拨它，世界里才会有一个减量**）。
+  //   世界自己**没有任何一条边会让压力下降**：45 个量纲节点里 **20 个是纯 sink**（出度 0）——
+  //   它们只接收压力，接收完什么也不做。**本单只收其中一个**，因为只有它的源是「已执行的动作」：
+  //     · `FinishedGoodsInventory.drawdownPressure`（成品库存**被提走 / 去化**）—— 提走了却不冲抵需求
+  //   另两类（产能释放 / 需求回落）实测后**撤回不落边**，理由分别见下方 ② ③ 段 ——
+  //   **一个是源的语义不对（决策压力 ≠ 已执行），一个是落点本身是哑的**。
+  //   ⚠ 这条筛选判据要记住：**变量名里带 "pressure" 不代表它是「完成量」** ——
+  //     `releasePressure`（工单下达被压着排）、`transferPressure`（调拨决策压力）都是「坏事的程度」，
+  //     拿它们当「好事的完成量」去做反向冲抵，就是把意向当既成事实记账。
+  //   金丝雀（证明上面那个"46/1"是真的，不是我数错）：同一把尺子数 `coefficient > 0` 得 **46**、
+  //   `< 0` 得 **1**、合计 **47** = `DEMO_PROPAGATION_RULES.length`；
+  //   且已知必中的 `demo_material_price_to_model_cost` 量出 **0.65**（与字面量一致）。
+  // **Y**：这个动作把它吸收掉的那部分**回记成来源的减量**，于是压力有了「去处」——
+  //   扰动过后世界能自己收敛回来，而不是只能一路往上加。
+  //
+  // ── 系数从哪来：**镜像判据**（不是拍一个数）────────────────────────────────────
+  // 每条阻尼边都是某条**既有正边的反向动作**，两向描述的是**同一条业务关系**
+  // （型号↔成品库存）。故：
+  //   **阻尼边取它所镜像的那条正边的同一个系数，只改符号。**
+  // 理由是"没有出处的差额不许存在"：若两向取不同比例，就等于凭空断言
+  // 「回来的比去的多（或少）」，而那个差额在本仓找不到任何一份实测或规则表支撑它。
+  // 取同值则这条断言退化成「同一笔量，来回记两次账，两次一样大」——它不需要额外出处。
+  // ⚠ 这是**约定**不是守恒定律，故写在这里而不是藏在某个数里；要改它得先给出那份差额的出处。
+  //
+  // ── 稳定性（为什么这条不会把世界打到负数或发散）──────────────────────────────────
+  //  · **不会为负**：压力族 `restPoint === min === 0` ⇒ `saturateToDomain` 下侧是**硬地板**
+  //    （`sim/propagation.ts` 那行 `else if (raw < min) return min`），阻尼最多把一格压到 0。
+  //  · **不会发散**：回路环增益 = 0.6×0.6 = **0.36 < 1**，
+  //    且每跳还要再乘一次 (1−λ) 的存量衰减（λ=0.37，`PRESSURE_DECAY_PER_TICK`）。
+  //  · **延迟是业务事实不是调参**：留 1 拍 —— 拣货发运要一拍，库存不是当拍就变成客户手里的货。
+  //    与还手边 `delayTicks: 1` 同一条理由。
+  //  ⚠ **如实登记一处实测到的行为**：本条在**未饱和**世界里会让 `Model.demandLoad`
+  //    出现「冲高 → 触地板 0 → 再回升」的**振荡**（实测 60 拍：13.77/22.44/27.90/11.52/0/0/0/0/0/0/4.36/10.59），
+  //    不是平滑收敛。成因是「1 拍延迟 + 下界硬地板」，不是系数拍错了。
+  //    ⛔ **刻意不为了把曲线弄好看而改小系数** —— 那就是本单明令禁止的「硬塞负数让曲线好看」的反面同款。
+  //    标定归 `WO-SIM-CALIBRATION`，此处只记账。
+  //
+  // ⛔ **本段一行都没碰 `sim/propagation.ts`**：阻尼是**数据**（一行 `sim_propagation_rule`），
+  //    不是引擎特性。引擎早就支持负系数（`demo_forecast_bias_to_order_demand` 用了一年），
+  //    缺的一直是"没人往图里放过反向的边"。
+  //
+  // ⚠ **诚实登记：`weightRef: null`，逐实例分摊是待定**。
+  //    想按"谁的库存多"分摊，需要的基数是 `FinishedGoodsInventory.qtyAvailable`，
+  //    **它不叫 `qty`** ⇒ 在册口径 `source_qty_relative`（读的是 `props.qty`，
+  //    见 `sim/pair-weights.ts`）在这个类型上会**逐条量出 0**，落成一张全零权重表。
+  //    实测：`FinishedGoodsInventory` 18 个实例里 `props.qty` 为正的 **0 个**（金丝雀：同一把尺子
+  //    量 `Order` 得 500/500、量 `MaterialBatch` 得 24/24 ⇒ 量法是好的，是这个类型真的没这个字段）。
+  //    补口径要改 `PAIR_WEIGHT_BASIS_REGISTRY` + `pair-weights.ts`，**超出本单 🚦范围边界**，
+  //    故此处只记账不动手 —— 留 null 是诚实，拍一个数填掉是假绿。
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  // ── ① 库存缓冲：成品库存被提走的那部分需求，已经交付了 ⇒ 从型号待产负荷里扣掉 ──────
+  // 镜像 `demo_model_demand_to_fg_drawdown`（`Model.demandLoad --model_stocked_as_finished_goods
+  // ×0.6--> FinishedGoodsInventory.drawdownPressure`）。那条只写了"库存被消耗"，
+  // **没写"消耗掉的那部分需求已经被满足"** ⇒ 库存在这张图里只承压、不吸收，
+  // 而**吸收波动正是库存存在的全部理由**。
+  // 闭环：`Model.demandLoad ↑ → 成品去化 ↑ →（本条）→ Model.demandLoad ↓` = 需求尖峰被库存削平。
+  {
+    id: "simpr_demo_fg_drawdown_relieves_model_demand",
+    key: "demo_fg_drawdown_relieves_model_demand",
+    sourceTypeKey: "FinishedGoodsInventory",
+    sourceStateVar: "drawdownPressure",
+    viaLinkKey: "fg_of_model", // 实测 FinishedGoodsInventory→Model，18 条（本单之前**零条规则**用它）
+    targetTypeKey: "Model",
+    targetStateVar: "demandLoad",
+    coefficient: -0.6, // 镜像判据：与 `demo_model_demand_to_fg_drawdown` 同值反号
+    delayTicks: 1, // 拣货发运要一拍：库存不是当拍就变成客户手里的货
+    description: "成品库存被提走 ⇒ 这部分需求已由库存交付，从型号待产负荷里扣掉（去化压力 × -0.6 = 型号需求负载的减量）",
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    weightRef: null, // 待定：应按 `qtyAvailable` 分摊，在册口径读不到该字段（见段头）
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+  },
+
+  // ── ② 产能释放 —— **本单不落边，列为待定（实测 + 语义复核后撤回）** ────────────────
+  //
+  // 原计划落 `InterBaseTransfer.transferPressure --transfer_from_base--> Base.loadIndex` (-0.3)，
+  // 链路核过是真的（`transfer_from_base` 实测 17 条，且与 `base_dispatches_transfer` 严格互逆 17/17）。
+  // **撤回的理由不是链路，是源的语义** ——
+  //
+  //  ① 种子自己的分节注释写着：`── D06 计划与排产：基地负载 → 跨基地调拨**决策压力** ──`，
+  //     那条边的 description 是「某基地过载 ⇒ 跨基地调拨压力上升」。
+  //     ⇒ `transferPressure` 度量的是「**想不想调**」（决策意向），**不是「已经调走了多少」**。
+  //  ② 拿「想调的压力」当「已经调走的量」去冲抵负载，就是把**意向**当**既成事实**记账 ——
+  //     与本文件里 `WorkOrder.releasePressure`（「工单下达**被压着排**」= 积压，不是产出）
+  //     是**同一类符号错误**：源变量名里有 "pressure"，但它指向的是坏事的程度，不是好事的完成量。
+  //     本单在 `releasePressure` 上避开了这个坑，就没有理由在 `transferPressure` 上踩进去。
+  //  ③ 机器先说话：这条边落上去之后，`metric-series.seam.test.ts` **当场两条红** ——
+  //     那份用例的前提原文是「`Base.loadIndex` 这一格**没有任何边写它**（值来自种子与扰动）」，
+  //     而本条给它加了入边 ⇒ 基线线在第 4 格被压到地板 0（期望 4×0.63^4 = 0.63011844）。
+  //     红得对：它说明这条边在**一个根本没有真实调拨发生的世界里**也会卸载荷 ——
+  //     因为 `transferPressure` 本身就是由 `loadIndex` 现推出来的，等于「越忙就自动越不忙」。
+  //
+  // **真实缺口仍在**（「只有堆积没有疏通的队列必然单调上升」这句话没有被推翻），
+  // 但要补它需要一个**表示「已执行的调拨量」**的量纲 —— 本体里今天没有这个格子
+  // （`InterBaseTransfer` 身上只有 `transferPressure` 一个状态量）。
+  // 造这个格子要动 `battery.ts` 的 `STATE_VAR_DOMAINS` / `STATE_VAR_DISPLAY_NAMES`，
+  // **超出本单范围边界**，故列为待定，不在这里硬凑。
+
+  // ── ③ 需求回落 —— **本单不落边，列为待定（这是实测结论，不是没做完）** ────────────
+  //
+  // 原计划落 `OrderPromise.promiseRisk --promise_for_order--> Order.demandPressure` (-0.8)。
+  // **实测推翻了这个计划的前提**，故撤回。三步证据，每步都能自证：
+  //
+  //  ① **落点上已经有一条负边了**：`Order.demandPressure` 的入边只有 1 条 ——
+  //     `demo_forecast_bias_to_order_demand`，`coefficient: -0.6`。
+  //     （金丝雀：同一把尺子数 `Order.costPressure` 入边得 1、`Model.demandLoad` 得 2 ⇒ 数法有效。）
+  //  ② **那条边的「需求上冲」分支从上线起一次都没执行过**：它的源 `Model.forecastBias`
+  //     入度 0 = 外生根，只由种子生成器写；而生成器是
+  //     `round(seedHash01(...) × 100)`，`seedHash01` 返回 `((h>>>0) % 1000)/1000` ∈ [0, 0.999]
+  //     ⇒ **恒非负**（`sim/seed-world.ts`）。于是唯一入流 `-0.6 × forecastBias` **恒 ≤ 0**，
+  //     而 `demandPressure` 是压力族（`min = restPoint = 0`，下侧硬地板）
+  //     ⇒ 该量纲**只会被压在 0**。那条边注释写的「低估(-) ⇒ 需求压力上冲」那一支，**进不去**。
+  //  ③ ⇒ 再往这个落点加一条**负**边，只是给一个**永远抬不起来的量纲**再添一条往下压的路，
+  //     一行读数都不会变。**病不在缺边，在入口是堵的。**
+  //
+  // **所以「需求回落」这一类的真实缺口是「那条已有的负边是哑的」，不是「少一条边」** ——
+  // 修入口要动种子生成器（`sim/seed-world.ts`），**超出本单范围边界**，另单处理。
+  // ⛔ 在入口修好之前，这里**不许**补边：补了会造出「两条通往同一个哑落点的路」，
+  //    让「已经有一条负边且它是哑的」这个真相更难被发现。
 ];
 
 /**

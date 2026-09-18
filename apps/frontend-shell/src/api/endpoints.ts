@@ -115,7 +115,7 @@ import type {
   InterfaceViolation,
 } from "@platform/contracts";
 import { ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 真实世界 worldId 单源（前端不许再写一个 "REAL" 字面量）
-import { api } from "./apiClient";
+import { ApiClientError, api } from "./apiClient";
 import { SYNONYMS_BY_SNO } from "@/config/eventGuidance"; // WO-HOME-ENTRY-FLOW · ⌘K 事件同义词（数据侧补词，面板组件不动）
 // WO-SANDBOX-MEMORY：`GET /a/v1/sim/sessions` 的流式投影（解析前剥掉 285MB 的 baseSnapshot）
 import { readSessionsProjected, type WithoutBaseSnapshot } from "./simSessionsProjection";
@@ -870,26 +870,41 @@ export const fetchSimSessions = async (): Promise<{ items: SimSessionListItem[] 
 /**
  * 单条会话的 `baseSnapshot`（下区差分的左端）。**一次只把一条世界搬进内存。**
  *
- * 为什么仍然打列表而不是 `GET /a/v1/sim/sessions/:id`：
- * ⚠ **2026-08-23 复核订正**（原文写「后端今天没有这条路由」，**今天已不成立**）——
- *   裸 `:id` 那条路由**已经存在**：`apps/datacore/src/app.ts:1968`
- *   `app.get("/a/v1/sim/sessions/:id", …)`，与本函数同一批（2026-08-22）补上，
- *   头注里点名的消费方就是沙盘这一跳。复验两条：
- *     · `apps/datacore/src/app.ts:1968`（读到 `app.get("/a/v1/sim/sessions/:id"`）；
- *     · `pnpm --filter datacore exec vitest run test/sim-sessions-projection.seam.test.ts`
- *       —— 用例 ④ 就在打这条裸 `:id`（别租户 404 / 功能关闭 404）。
- *   所以这里**不是"后端没有"，是"前端这一跳还没改过去"**（改打新路由是另一张单：
- *   要连着 `readSessionsProjected` 的 `keepFor` 分支一起退役，属行为改动）。
- * 今天的做法：仍打列表，但用 `keepFor` 让扫描器**只留指名那一条**、其余 34 条边扫边丢 ——
- * 峰值从 285MB 降到一条 8.4MB（2026-08-22 实测，复验同上条 `test/sandbox-memory-projection.test.ts` 用例 ②/⑨）。
+ * ══ WO-SIM-SEVERITY §2 · 本函数曾在真后端**静默恒 null**，2026-09-17 改走裸 `:id` ═══════
  *
- * 取不到 ⇒ `null`（**不造一个空世界出来**）：屏上诚实显示"没有基线"，
- * 好过拿空世界算出一组看着合理的假差值。
+ * ── 今天的行为是 X（2026-09-17 真后端实测，canonical `8775dc67d`，本机 datacore :46317）──
+ * 后端列表投影下沉到仓储层之后，`GET /a/v1/sim/sessions` 回包里 `baseSnapshot` **一个都没有**
+ * （首条 keys 只剩 id/…/baseSnapshotScale；回包 `"baseSnapshot"` 出现 **0** 次），
+ * 而裸 `:id` 路由 → **1** 个、4,775 格（🐤 金丝雀：数据在，是列表路由不下发）。
+ * 旧实现只扫列表（`readSessionsProjected(res, keepFor)` 是纯响应体扫描器，没有第二跳）
+ * ⇒ `kept` 恒 null ⇒ **返回值恒 null，且静悄悄**：调用方拿 null 显示「没有基线」，
+ * 读者分不清「真没有」与「这条路从来就没取到过」。它一直绿，是因为桩的列表路由
+ * **比真后端慷慨**（桩在列表里回 baseSnapshot）——本仓最典型的假绿形态。
+ * ⇒ 本条的验收只在真后端上做，桩上绿不算数。复验（`SEED_DEMO=1` 起 datacore 后）：
+ *   `curl -sH 'X-Debug-User: demo:admin:admin' …/a/v1/sim/sessions | grep -c '"baseSnapshot"'` → 0
+ *   `curl -sH 同上 …/a/v1/sim/sessions/sims_demo_seed_world | grep -c '"baseSnapshot"'` → 1
+ *
+ * ── 应该是 Y ──
+ * 走裸 `:id` 拿整条会话、读它的 `baseSnapshot`；会话不存在（404）⇒ 返回 `null` 的旧契约不变
+ * （「取不到」与「造一个空世界」仍然分得开）。
+ * ⛔ 别改打 `/sessions/:id/world` —— 那条回的是**当前 tick** 世界态、不是基线（后端该路由
+ *   头注原话）；拿当前态当基线，屏上每一格差分恒为 0 —— 一个看着完全正常的错答。
+ *
+ * ⚠ 收编提示（2026-09-17）：未收编的 `claude/handoff-real-cells` /
+ *   `claude/handoff-sim-world-single-source` 上有一个**同路由同目的** 的
+ *   `fetchSimSessionWorldBase`（WO-SIM-FRONTEND-SEED，与本修法同款）；
+ *   该分支同时仍保留旧列表扫描版与它的消费方。两边并合时**去重留一个**。
  */
 export const fetchSimSessionBaseSnapshot = async (sessionId: string): Promise<TickState | null> => {
-  const res = await api.aRaw("/a/v1/sim/sessions");
-  const { kept } = await readSessionsProjected<SimSession>(res, sessionId);
-  return (kept as TickState | null) ?? null;
+  try {
+    const s = await api.a<SimSession>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}`);
+    // 契约上 `baseSnapshot` 必填；`?? null` 防的是「后端哪天把 `:id` 也投影了」那一态 ——
+    // 那一态的读法必须是「没有基线」，不许悄悄变成「空世界 = 全零差分」。
+    return s.baseSnapshot ?? null;
+  } catch (e) {
+    if (e instanceof ApiClientError && e.status === 404) return null;
+    throw e;
+  }
 };
 /**
  * ══ WO-SIM-FRONTEND-SEED · 单条会话的 `baseSnapshot`，走**裸 `:id` 路由** ═══════════

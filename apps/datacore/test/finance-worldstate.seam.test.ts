@@ -305,12 +305,20 @@ describe("WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影", () 
     // ② 传导链：真规则 id + 真系数（改种子系数 → 这里跟着变）。
     expect(out.chain.length).toBeGreaterThan(3);
     const hop = out.chain.find((h) => h.ruleKey === "demo_material_price_to_model_cost")!;
-    expect(hop.coefficient).toBe(0.65); // = seed.ts 里那条规则的真系数
+    // WO-SIM-CALIBRATION：原文写死 `0.65`，但本行要验的是「披露层报的系数 = 种子里那条规则的真系数」
+    // —— 那是一条**恒等式**，把右边写成字面量反而让它变成「= 某一次标定的值」。
+    // 故右边改为从规则表现取；标定怎么改，这条恒等式都该成立（改坏了才红）。
+    const realCoef = ((await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json() as {
+      items: { key: string; coefficient: number }[];
+    }).items.find((r) => r.key === "demo_material_price_to_model_cost")?.coefficient;
+    expect(realCoef, "取不到该边的真系数 ⇒ 下面那条恒等式无从谈起").toBeDefined();
+    expect(realCoef, "该边系数为 0 ⇒ 恒等式退化成 0==0，自洽成绿").toBeGreaterThan(0);
+    expect(hop.coefficient).toBe(realCoef);
     expect(hop.from).toBe("Material.priceShock");
     expect(hop.to).toBe("Model.costPressure");
     expect(hop.provenance.drillType).toBe("PropagationRule");
     expect(hop.provenance.drillId).toBe("simpr_demo_material_price_to_model_cost"); // 单对象 → 真主键
-    expect(hop.provenance.drillValue).toBe(0.65);
+    expect(hop.provenance.drillValue).toBe(realCoef);
 
     // ③ 每个金额带 provenance，且**单对象填真主键**（不是 "*"）。
     expect(out.lines.length).toBeGreaterThan(2);

@@ -297,19 +297,55 @@ run_test() {
     FAILED+=("TEST 逐包点名 ${cnt}/${EXPECT_PKGS}")
     return
   fi
-  # PRD 原文机器核：「输出含 dsh-harness 且绿」= 包段落头在 ∧ 哨兵在 ∧ RC=0。
-  # 段落头形态 = pnpm 递归输出的 `> @platform/dsh-harness@<ver> test <path>` 行。
-  if ! printf '%s\n' "$plain" | grep -qE "@platform/dsh-harness@[0-9][^ ]* test "; then
-    echo "❌ TEST (六包·串行) 输出缺 @platform/dsh-harness 包段落头 —— harness 未进入 pnpm -r test 递归面（RC=0 不算通过）"
-    FAILED+=("TEST dsh-harness 段落头缺失")
+  # PRD 原文机器核：「输出含 dsh-harness 且绿」= harness 真进了递归面 ∧ 三段全过 ∧ RC=0。
+  #
+  # ⚠ 2026-09-17 订正：原判据找的是 pnpm 递归输出的段落头 `> @platform/dsh-harness@<ver> test <path>`。
+  #   **pnpm 10.33.0 在六包递归成功时不发任何 per-package 标识** —— 实测一次完整 gate 的日志里：
+  #     · `@platform/dsh-harness@[0-9][^ ]* test ` 命中 **0**
+  #     · `^/.*/(apps|packages)/[^:]+:$`（路径分隔行）命中 **0**
+  #     · 连 `packages/dsh-harness` 这个子串都命中 **0**
+  #   而同一份日志里 harness **确实跑了且全过**（`HARNESS_TESTS_OK smoke=PASS unit_files=2 drift=PASS`）。
+  #   ⇒ 那条判据**构造上不可满足**，对每一个分支恒红，**包括 canonical 自己**。
+  #
+  #   ⚠ 它为什么骗了两个人：用 `--filter` 跑 1–2 个包时，pnpm **会**发旧式段落头，正则命中 1。
+  #   于是「拿单包验一下」得出的结论与门的真实条件相反。
+  #   **形态**：「我用『单包跑时 banner 在』当作『六包跑时也在』的证据 —— pnpm 的 reporter 随包数切换。」
+  #
+  # 现判据 = 哨兵全形，它**严格强于**原段落头：段落头只证明「被调用了」，
+  # 而 `HARNESS_TESTS_OK smoke=… unit_files=… drift=…` 由 `test/run.mjs` 三段**全部通过后**才打印
+  # ⇒ 打得出来就必然进了递归面，且 smoke/unit/drift 一段没落。
+  #
+  # ⚠ 判据查的是 `$roll` 不是 `$plain` —— 这不是随手选的，是**实测逼出来的**：
+  #   2026-09-17 有一次 gate 里，`$roll` 明明打印出了整行
+  #   `HARNESS_TESTS_OK smoke=PASS unit_files=2 drift=PASS`（就在本段上方的「逐包点名」里），
+  #   而同一次运行中 `printf '%s\n' "$plain" | grep -qE "HARNESS_TESTS_OK smoke=PASS .*drift=PASS"` **不中**。
+  #   `$roll` 是 :278 从 `$plain` grep 出来的 ⇒ 两者不该分歧。
+  #   ⛔ **这处分歧至今没有解释**，下列可能性已逐条实测排除，别再重走：
+  #     · 正则错  → 拿真串（`od -c` 无隐藏字符）分段测，三段全中
+  #     · 捕获截断 → 真跑一次六包落盘 8249 行，哨兵在第 133 行、`Tests ` 行在 20/167/654/4273/8247；
+  #                  从任一端截断都不可能「留下 5 行 Tests 却丢掉哨兵」
+  #     · 变量路径 → 把那 961,839 字符原样灌进变量走同一条 `printf | grep`，命中 1
+  #     · 作用域    → `local plain` 在 :276，本段同函数内，函数止于本段下方
+  #   故改用**可证必然成立**的那个对象：gate 自己 `echo "$roll"` 打印过那一行。
+  #   查 `$roll` 仍**严格强于**原判据（原判据只查裸 token `HARNESS_TESTS_OK`，本判据查三段全形）。
+  #
+  # 金丝雀（量法自证，与主判据共用同一份 `$roll`，不另抄一份正则）：
+  #   `$roll` 行数必须 = `$cnt` 且 ≥ EXPECT_PKGS。为 0 ⇒ 捕获空 ⇒ 报「量法坏了」，
+  #   **不许**读作「哨兵缺失」——「我没找到」和「它不存在」是两个命题。
+  local roll_lines
+  roll_lines="$(printf '%s\n' "$roll" | grep -c . || true)"
+  if [ "${roll_lines:-0}" -lt "$EXPECT_PKGS" ]; then
+    echo "❌ TEST (六包·串行) 金丝雀不中：点名表只有 ${roll_lines} 行（期望 ≥ ${EXPECT_PKGS}）—— **量法坏了**（捕获为空/被截断），不是哨兵缺失"
+    FAILED+=("TEST 点名表金丝雀不中 ${roll_lines}/${EXPECT_PKGS}")
     return
   fi
-  if ! printf '%s\n' "$roll" | grep -q "HARNESS_TESTS_OK"; then
-    echo "❌ TEST (六包·串行) 点名缺 HARNESS_TESTS_OK 哨兵 —— harness 绿但看不见（哨兵被删/改名？），RC=0 不算通过"
+  if ! printf '%s\n' "$roll" | grep -qE "HARNESS_TESTS_OK smoke=PASS .*drift=PASS"; then
+    echo "❌ TEST (六包·串行) 缺 HARNESS_TESTS_OK 哨兵全形 —— harness 未进入递归面，或 smoke/unit/drift 有一段没过（RC=0 不算通过）"
+    echo "   （金丝雀已过：点名表有 ${roll_lines} 行 ⇒ 捕获是完整的，确实是哨兵不在）"
     FAILED+=("TEST HARNESS_TESTS_OK 哨兵缺失")
     return
   fi
-  echo "✅ TEST (六包·串行) RC=0（${cnt}/${EXPECT_PKGS} 包全部点名，dsh-harness 段落头+哨兵在）"
+  echo "✅ TEST (六包·串行) RC=0（${cnt}/${EXPECT_PKGS} 包全部点名，dsh-harness 哨兵全形在·金丝雀 ${roll_lines} 行）"
 }
 
 if [ "${1:-}" != "--no-test" ]; then

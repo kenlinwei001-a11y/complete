@@ -3,7 +3,7 @@ import { resolveSimScope, type PropagationRule, type TickState } from "@platform
 import { ADMIN, makeApp, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
 import { buildPropagationInputs } from "../src/sim/propagation-inputs.js";
-import { propagateTick } from "../src/sim/propagation.js";
+import { propagateTick, pairWeightKey } from "../src/sim/propagation.js";
 import { deriveSeedBaseSnapshot } from "../src/sim/seed-world.js";
 import { stateVarDisplayName } from "../src/synthetic/battery.js";
 
@@ -191,12 +191,20 @@ describe("WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SE
     const out = propagateTick(
       inputs.graph, { [poLink.fromId]: { [ROOT_VAR]: MAG } }, rules, [], 0,
       inputs.ruleParams, inputs.cadenceGates,
+      [], // perturbations：本臂直接给初态，不走扰动路由
+      // ⚠ 与上面金丝雀同一条理由（WO-SIM-CALIBRATION 后这三条根源边已声明 `equal_share`）：
+      //   少喂权重表 ⇒ 引擎按**诚实缺席**处理、该规则整条不传导 ⇒ 这里读到 undefined，
+      //   而那会被误读成"这条边不通"。少喂输入与边不通是两件事，判据不能混。
+      inputs.pairWeights,
     );
+    expect(out.unresolvedWeights, "🐤 权重表没喂进去 ⇒ 下面『不通』读不出真假").toEqual([]);
     const got = out.next[poLink.toId]?.[RESULT_VAR];
     // 方向：抬高（不是"没报错"、也不是"变了一点"）。
     expect(got, `${poLink.toId} 的 ${RESULT_VAR} 没动 ⇒ 扰了不传导`).toBeGreaterThan(0);
-    // 量级：**逐值对得上系数**。写死 0.8 会在改系数时变成一句谎；这里从规则自己读。
-    expect(got).toBe(poRule.coefficient * MAG);
+    // 量级：**逐值对得上系数 × 该对的权重**。写死 0.8 会在改系数时变成一句谎；两者都从真值读。
+    const wPo = inputs.pairWeights[poRule.key]?.[pairWeightKey(poLink.fromId, poLink.toId)] ?? 1;
+    expect(wPo, "该对的权重为 0 ⇒ 期望值恒 0，下面那句会自洽成绿").toBeGreaterThan(0);
+    expect(got).toBe(Math.round(poRule.coefficient * MAG * wPo * 1e12) / 1e12);
     // 溯源：trace 里真有这条规则的行（"值变了"与"是这条规则改的"是两个命题）。
     expect(out.trace.some((x) => x.ruleKey === poRule.key && x.toObjectId === poLink.toId)).toBe(true);
 
@@ -218,10 +226,13 @@ describe("WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SE
       expect(link, `${rule.viaLinkKey} 零实例`).toBeDefined();
 
       const MAG = 4;
+      // ⚠ 权重表必须一起喂（同 ③ 的理由）：这两条根源边已声明 `equal_share`，
+      //   少喂 ⇒ 引擎诚实报缺、整条不传导 ⇒ 下面「延迟贡献没落地」会误报成"这条边不通"。
       const t0 = propagateTick(
         inputs.graph, { [link.fromId]: { [ROOT_VAR]: MAG } }, rules, [], 0,
-        inputs.ruleParams, inputs.cadenceGates,
+        inputs.ruleParams, inputs.cadenceGates, [], inputs.pairWeights,
       );
+      expect(t0.unresolvedWeights, `${typeKey}: 🐤 权重表没喂进去`).toEqual([]);
       // delayTicks=1 ⇒ 本拍**不**到达，先排进 pending（"到货晚"要等下一拍才显现，不是当拍）。
       expect(t0.next[link.toId]?.[RESULT_VAR] ?? 0, `${typeKey}: delayTicks=1 却当拍就到了`).toBe(0);
       expect(t0.pending.some((p) => p.ruleKey === rule.key && p.targetObjectId === link.toId)).toBe(true);
@@ -229,9 +240,13 @@ describe("WO-SIM-ROOT-PROCUREMENT · 物料采购是根源（种子 × 引擎 SE
       // 下一拍结算：值必须**逐值等于** 系数 × 幅度。
       const t1 = propagateTick(
         inputs.graph, t0.next, rules, t0.pending, 1,
-        inputs.ruleParams, inputs.cadenceGates,
+        inputs.ruleParams, inputs.cadenceGates, [], inputs.pairWeights,
       );
-      expect(t1.next[link.toId]?.[RESULT_VAR], `${typeKey}: 延迟贡献没落地 ⇒ 这条边其实不通`).toBe(rule.coefficient * MAG);
+      // 值 = 系数 × 幅度 × 该对权重（`equal_share` 后权重 = 1/N，从真值表读，不写死）。
+      const w = inputs.pairWeights[rule.key]?.[pairWeightKey(link.fromId, link.toId)] ?? 1;
+      expect(w, `${typeKey}: 该对权重为 0 ⇒ 期望值恒 0，下面那句自洽成绿`).toBeGreaterThan(0);
+      expect(t1.next[link.toId]?.[RESULT_VAR], `${typeKey}: 延迟贡献没落地 ⇒ 这条边其实不通`)
+        .toBe(Math.round(rule.coefficient * MAG * w * 1e12) / 1e12);
     }
   });
 

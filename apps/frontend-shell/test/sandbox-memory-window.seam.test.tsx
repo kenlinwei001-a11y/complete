@@ -102,6 +102,23 @@ function installHandlers() {
       sessionsPayloadBytes = payload.length;
       return new HttpResponse(payload, { headers: { "Content-Type": "application/json" } });
     }),
+    http.get("*/a/v1/sim/sessions/:id", ({ params }) => {
+      // WO-SIM-SEVERITY §2：基线捞取改走这条裸 `:id`（真后端实测：列表路由已不下发 baseSnapshot，
+      // 裸 `:id` 仍下发 —— 本桩的两路形状必须**分别**与真后端对齐，否则又是「桩比真后端慷慨」）。
+      const id = params.id as string;
+      if (id === "sims_not_there") {
+        return HttpResponse.json(
+          { error: { code: "NOT_FOUND", message: `sim session ${id} not found` } },
+          { status: 404 },
+        );
+      }
+      const base = id === "sims_mem" ? world : BIG_BASE;
+      return HttpResponse.json({
+        id, tenantId: "demo", baseSnapshot: base, scope: { kind: "GLOBAL", target: null },
+        status: "READY", curTick: 0, parentCheckpointId: null, disabledRuleKeys: [],
+        createdAt: "2026-08-22T00:00:00.000Z",
+      });
+    }),
     http.get("*/a/v1/sim/sessions/:id/world", () => HttpResponse.json({ tick: 0, state: world })),
     http.post("*/a/v1/sim/sessions/:id/perturbations", async ({ request }) => {
       const body = (await request.json()) as Record<string, unknown>;
@@ -241,5 +258,29 @@ describe("WO-SANDBOX-MEMORY · 沙盘这一屏不再把整个世界搬进 DOM / 
     expect(snap, "单条基线捞不回来 ⇒ 切世界之后下区差分永远算不出").not.toBeNull();
     const miss = await list.fetchSimSessionBaseSnapshot("sims_not_there");
     expect(miss, "捞不到时必须是 null，不许造一个空世界出来").toBeNull();
+
+    /* WO-SIM-SEVERITY §2 · **真后端形状**这一臂（2026-09-17 实测钉进桩）：
+       真后端的列表路由今天**一个 baseSnapshot 都不下发**（投影下沉到仓储层；
+       复验 `GET /a/v1/sim/sessions | grep -c '"baseSnapshot"'` → 0，裸 `:id` → 1）。
+       旧实现只扫列表 ⇒ 这一臂必返回 null —— 正是它在线上静默恒 null 而本门全绿的原因
+       （上面的默认桩在列表里**慷慨地**带着 baseSnapshot）。这一臂不过 ⇒ 修复是装饰品。 */
+    server.use(
+      http.get("*/a/v1/sim/sessions", () =>
+        HttpResponse.json({
+          items: ["sims_bulk_0", "sims_bulk_3"].map((id) => ({
+            id, tenantId: "demo", scope: { kind: "GLOBAL", target: null }, status: "READY",
+            curTick: 0, parentCheckpointId: null, disabledRuleKeys: [],
+            createdAt: "2026-08-22T00:00:00.000Z",
+            // ⚠ 刻意没有 baseSnapshot —— 真后端列表路由今日的真实形状。
+          })),
+        }),
+      ),
+    );
+    const afterListDriedUp = await list.fetchSimSessionBaseSnapshot("sims_bulk_3");
+    expect(
+      afterListDriedUp,
+      "列表不下发 baseSnapshot 之后基线仍必须到得了（走裸 :id）——返回 null 就是「桩比真后端慷慨」养出的静默断链",
+    ).not.toBeNull();
+    expect(Object.keys(afterListDriedUp ?? {}).length, "捞回来的基线是空世界 ⇒ 差分恒 0，比 null 更坏").toBeGreaterThan(0);
   });
 });
