@@ -361,6 +361,9 @@ export const CANDIDATE_EFFECT_LABEL = {
  *                  ⚠ 2026-09-19 订正：原文写死「本体上这个落点确实没有可拨的杠杆」，
  *                    而后端实测 14 条 NONE 里**够不着 0 条**、不是瓶颈 11 条、不进公式 3 条
  *                    ⇒ 那句话对 14 条里的 14 条都不成立，且会把人支去「补落点册」这条错路。
+ *                    复验（2026-09-19 实测）：
+ *                      cd apps/datacore && npx vitest run test/impediment-options-seam.test.ts
+ *                    四类定性的计数断言在该文件；分档实现见 `solvers/impediment-options.ts`。
  *  · `UNAVAILABLE` 枚举**跑不完**：探针预算耗尽 / 规则快照缺失 ⇒ 没能把候选算出来。
  *                  → **缺答不是答**，该修的是算力与接线，绝不许被读成「这个阻滞点没救了」。
  * 第三态是**载荷层**的（契约注释写明：`candidates` 字段缺省 = 本次扫描没有跑候选枚举）：
