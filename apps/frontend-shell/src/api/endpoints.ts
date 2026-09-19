@@ -912,10 +912,16 @@ export const fetchSimSessions = async (): Promise<{ items: SimSessionListItem[] 
  * ⛔ 别改打 `/sessions/:id/world` —— 那条回的是**当前 tick** 世界态、不是基线（后端该路由
  *   头注原话）；拿当前态当基线，屏上每一格差分恒为 0 —— 一个看着完全正常的错答。
  *
- * ⚠ 收编提示（2026-09-17）：未收编的 `claude/handoff-real-cells` /
- *   `claude/handoff-sim-world-single-source` 上有一个**同路由同目的** 的
- *   `fetchSimSessionWorldBase`（WO-SIM-FRONTEND-SEED，与本修法同款）；
- *   该分支同时仍保留旧列表扫描版与它的消费方。两边并合时**去重留一个**。
+ * ✅ 收编闭环（2026-09-18·WO-PROP-V2-REBASE）：上面那条 2026-09-17 的提示**已执行完毕**。
+ *   `claude/handoff-real-cells` 上那个同路由同目的的 `fetchSimSessionWorldBase`
+ *   （WO-SIM-FRONTEND-SEED）在本次 rebase 中**已删**，按本注原话「两边并合时去重留一个」
+ *   留下的就是本函数。连同它的两个消费方（`SandboxView` / `EdgeActivePanel` 切
+ *   `resolveTick0World`）一并退出本分支 —— 那两个文件属仓主**禁令 2** 范围
+ *   （`views/sim/` 从 mock/合成切真实数据源的 UX 改动，未经逐案批准不许开工），
+ *   且另有单在做、会撞车。整个 WO-SIM-FRONTEND-SEED 单元原样留给那条线。
+ *   ⚠ **刻意整单撤，不是只撤那两笔**：`resolveTick0World` / `pickSeededWorldSession`
+ *   的**生产调用方只有那两个视图**，只撤视图会把它们变成「实现有、测试有、零生产调用方」
+ *   —— 本仓点过名的假绿第 9 形态（测试咬的是函数不是链路）。
  */
 export const fetchSimSessionBaseSnapshot = async (sessionId: string): Promise<TickState | null> => {
   try {

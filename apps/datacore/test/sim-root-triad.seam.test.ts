@@ -147,19 +147,47 @@ async function idsOfType(t: TestApp, typeKey: string): Promise<string[]> {
   return rows.filter((o) => !o.mergedInto).map((o) => o.id).sort((a, b) => a.localeCompare(b));
 }
 
-/** 建会话 + 推 n 拍，回**回包里**的世界态（走真路由，不碰内部函数）。 */
-async function runWorld(t: TestApp, baseSnapshot: TickState, n: number): Promise<TickState> {
+/**
+ * 建会话 + **逐拍**推 n 拍，回 [tick0..tickN] 的整条状态轨迹（走真路由，不碰内部函数）。
+ *
+ * 为什么远端臂必须用轨迹而不是端点（实测，不是推断 —— /tmp/t2-diag3.txt）：
+ * 本引擎是「线性传导 + 几何衰减（λ=0.37）+ 声明域软夹」三件套。根源量（入度 0）逐拍恒定
+ * （§3 头注的恒等式正靠这一条），而**衍生量**的稳态 = rest + 入流/λ —— 入流量级与声明域
+ * 不匹配时（已登记的「扇入未按量纲归一」缺陷），目标格被钉死在域轨上：
+ * 实测 `Model.demandLoad` 全场自 tick3 起 = 0.0000（`Order.demandPressure` 快衰减
+ * 7707→5.8，而 `Order.orderChurn` 准静态 ≈7700，㊶ 翻负后 churn 项恒定 −643/型号/拍
+ * 压过 dp 项 ⇒ 全场撞 0 下轨；翻负前同样饱和，只是钉在 100 上轨）。
+ * 信号一旦撞轨，**该方向上的余量归零，端点差分恒 = 0** —— 端点量的是「轨的泄漏」不是「传导」。
+ * 而信号**到达那一拍**是活的：G-ROOT-1 远端 tick2 = −86.97（WO-PROP-REVIEW-V2 库存环两条边进场后
+ * 的重测值，/tmp/t3-triad-probe.txt；翻负后初测 −65.35 见 /tmp/t2-diag3.txt —— 库存环的恒定下压力
+ * 让被扰世界提前一拍撞 0 轨，到达拍的差分从「−65」变成「把整场 86.97 全压掉」，判据不变）、
+ * G-ROOT-4 远端 tick2 达峰 +0.0026 后逐拍衰减（㉜ 反向重瞄 Line.blockedPressure，T6 形态② 后重测
+ * /tmp/t6-triad-probe.txt；积分器时代旧值 tick2=+0.2050 单调增至 tick8=+0.4563 见 /tmp/t5-triad-probe.txt ——
+ * 量级差 ~100× 是「纯积分器累积 vs λ=0.37+[0,100] 夹后均衡」的结构性差，不是信号变弱；
+ * 反向证据 = 旧落点 Equipment.loadPressure 逐拍 Δ 全 0）、
+ * G-ROOT-2 远端 tick5–8 = −0.0001x∼−0.0002（四跳残迹）。
+ * 故远端断言取**窗口内有向极值**
+ * （方向对 ⇒ 极值必然同号非零；没到 ⇒ 恒 0），这既咬可达性又咬方向，且不拿死端点冒充证据。
+ */
+async function runWorldTrajectory(t: TestApp, baseSnapshot: TickState, n: number): Promise<TickState[]> {
   const created = await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: { baseSnapshot } });
   expect(created.statusCode, `建会话失败：${created.body}`).toBe(201);
   const sid = (created.json() as { id: string }).id;
-  const ticked = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n } });
-  expect(ticked.statusCode, `推拍失败：${ticked.body}`).toBe(200);
-  return (ticked.json() as { state: TickState }).state;
+  const traj: TickState[] = [baseSnapshot];
+  for (let i = 0; i < n; i++) {
+    const ticked = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
+    expect(ticked.statusCode, `推拍失败：${ticked.body}`).toBe(200);
+    traj.push((ticked.json() as { state: TickState }).state);
+  }
+  return traj;
 }
 
 /** 一批对象在某量纲上的读数之和（缺格记 0）。 */
 const sumOf = (state: TickState, ids: readonly string[], stateVar: string): number =>
   ids.reduce((acc, id) => acc + (state[id]?.[stateVar] ?? 0), 0);
+
+/** 逐拍 Δ 轨迹压成一行短串（只进断言消息：红了时轨迹本身就是诊断）。 */
+const fmtTraj = (traj: readonly number[]): string => traj.map((d) => d.toFixed(4)).join("/");
 
 /** 深拷贝一份世界态（两条线必须从**逐字节相同**的起点出发，否则差值不度量扰动）。 */
 const cloneState = (s: TickState): TickState => JSON.parse(JSON.stringify(s)) as TickState;
@@ -287,12 +315,43 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
     const cells = Object.values(state).reduce((n, row) => n + Object.keys(row).length, 0);
     expect(cells, "工具坏了：派生出来的世界态是空的").toBeGreaterThan(100);
 
+    /**
+     * 落点集合**从生产真正 offer 给用户的那一份取**（`view-config.nodeObjectIds`），
+     * ⛔ 不在测试里再抄一份过滤谓词 —— 抄一份就是装饰品：改生产那份时这份拿旧的去测、照样绿。
+     *
+     * ⚠ 为什么不再用 `repos.objects.listByType`（2026-09-15 改，来历是一次真事故）：
+     * 引擎侧把**已完成订单**排除出推演世界（`entersSimWorld`：扰动不该推动已成交的单）之后，
+     * `listByType` 仍回 500 张而 `world.state` 只剩 150 ⇒ 本断言报「350/500 个落点没进 state」。
+     * 当时两种改法都能变绿，只有一种是对的：
+     *   ✗ 把断言放宽成「允许缺失」—— 那等于把「静默错答」这个真风险的守卫拆掉
+     *   ✓ 把「落点」的口径对齐到**用户真能选到的那一份** —— 本条采用
+     * 判据没有变弱：它现在咬的是**真实接缝**（view-config ↔ world.state），
+     * 谁把 `nodeObjectIds` 的过滤改漂了，这里当场红。
+     */
+    const vcRes = await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN });
+    expect(vcRes.statusCode, "取不到 view-config ⇒ 本条无从判定").toBe(200);
+    const nodeObjectIds = (vcRes.json() as { nodeObjectIds?: Record<string, string[]> }).nodeObjectIds ?? {};
+    // 🐤 金丝雀：这份清单真的非空，否则下面「每个落点都在 state 里」恒真（空集恒满足）
+    const offeredTotal = Object.values(nodeObjectIds).reduce((n, a) => n + a.length, 0);
+    expect(offeredTotal, "工具坏了：view-config 一个落点都不下发 ⇒ 下面的全称断言恒绿").toBeGreaterThan(100);
+
     for (const { gate, stateVar, ruleKey } of TRIAD) {
       const rule = rules.find((r) => r.key === ruleKey);
       expect(rule, `${gate} · 规则 ${ruleKey} 没播进来`).toBeDefined();
       const landingType = rule!.sourceTypeKey;
-      const ids = await idsOfType(t, landingType);
+      const ids = [...(nodeObjectIds[landingType] ?? [])];
       expect(ids.length, `${gate} · 落点类型 ${landingType} 在 demo 里零对象 ⇒ 这个根源扰不动`).toBeGreaterThan(0);
+
+      // ── 反向咬一口：只断言「offer ⊆ state」是不够的，把 offer 砍成 1 条也满足它。
+      //    所以再钉死：offer 的那份必须**恰好**是全目录里真正进了世界的那批，一个不多一个不少。
+      //    多出来的会静默错答（屏上「施加成功」下游不动）；少掉的是用户本该能扰却选不到。
+      const inWorld = (await idsOfType(t, landingType)).filter(
+        (id) => typeof state[id]?.[stateVar] === "number",
+      );
+      expect(
+        ids.slice().sort(),
+        `${gate} · ${landingType} 的落点清单与「进了世界的那批」不是同一集合`,
+      ).toEqual(inWorld.slice().sort());
 
       // ── 真带上：**每一个**落点对象都要有这一格（不是"某几个有"）──────────────
       const missing = ids.filter((id) => typeof state[id]?.[stateVar] !== "number");
@@ -330,10 +389,10 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
     const targetsOf = (linkKey: string, fromId: string, targetType: string): string[] =>
       links.filter((l) => l.type === linkKey && l.fromId === fromId && typeOf.get(l.toId) === targetType).map((l) => l.toId).sort();
 
-    // 基线：整个世界一个字节不动，推 N 拍。三个根源共用它（省一半机器时间）。
-    const baseline = await runWorld(t, cloneState(seed), TICKS);
+    // 基线：整个世界一个字节不动，逐拍推 N 拍。三个根源共用这条轨迹（省一半机器时间）。
+    const baseline = await runWorldTrajectory(t, cloneState(seed), TICKS);
 
-    /** 把某一格抬高 D 再跑一遍，回「1 跳目标的实测 Δ」与「远端下游的实测 Δ」。 */
+    /** 把某一格抬高 D 再逐拍跑一遍，回「1 跳目标的端点 Δ」与「远端下游的逐拍 Δ 轨迹」。 */
     const probe = async (rule: LiveRule, farType: string, farVar: string) => {
       const landingIds = await idsOfType(t, rule.sourceTypeKey);
       // 选落点：第一个**沿这条边真有下游**的对象（没有下游的落点扰了也不会动，测它等于测空气）
@@ -351,13 +410,19 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
 
       const bumped = cloneState(seed);
       bumped[pick!.id]![rule.sourceStateVar] = before! + BUMP;
-      const after = await runWorld(t, bumped, TICKS);
+      const after = await runWorldTrajectory(t, bumped, TICKS);
 
       const farIds = await idsOfType(t, farType);
+      // 远端逐拍 Δ（tick1..TICKS；tick0 两世界逐字节相同，Δ 恒 0，不进窗口）。
+      const farTraj = baseline.map((b, i) => sumOf(after[i]!, farIds, farVar) - sumOf(b, farIds, farVar)).slice(1);
       return {
-        oneHopDelta: sumOf(after, pick!.targets, rule.targetStateVar) - sumOf(baseline, pick!.targets, rule.targetStateVar),
+        oneHopDelta:
+          sumOf(after[TICKS]!, pick!.targets, rule.targetStateVar) - sumOf(baseline[TICKS]!, pick!.targets, rule.targetStateVar),
         oneHopTargets: pick!.targets.length,
-        farDelta: sumOf(after, farIds, farVar) - sumOf(baseline, farIds, farVar),
+        /** 远端窗口有向极值：min ≤ 逐拍 Δ ≤ max。信号到达 ⇒ 对应一侧非零；没到 ⇒ 两侧皆 0。 */
+        farMin: Math.min(...farTraj),
+        farMax: Math.max(...farTraj),
+        farTraj,
         pickId: pick!.id,
       };
     };
@@ -378,7 +443,14 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
     const p1 = await probe(r1, "Model", "demandLoad");
     expectPropagated(p1.oneHopDelta, TICKS * r1.coefficient * BUMP * p1.oneHopTargets, `G-ROOT-1 传导臂（落点 ${p1.pickId}）`);
     expect(p1.oneHopDelta, "方向错了：高估预测应当把需求压力**压低**").toBeLessThan(0);
-    expect(p1.farDelta, "G-ROOT-1 远端：需求压力下修应当把型号需求负载一起带下去").toBeLessThan(0);
+    // ⚠ 远端取**窗口极值**不取端点：实测 demandLoad 全场自 tick3 起钉死 0 下轨
+    //    （churn 准静态 × ㊶ −0.5 压过快衰减的 dp 项），端点差分恒 = 0 —— 死端点不度量传导。
+    //    信号在到达拍是活的（tick2 = −86.97，/tmp/t3-triad-probe.txt —— WO-PROP-REVIEW-V2
+    //    库存环进场后重测；初测 −65.35 见 /tmp/t2-diag3.txt），窗口 min 咬的就是它。
+    expect(
+      p1.farMin,
+      `G-ROOT-1 远端：需求压力下修应当把型号需求负载一起带下去（窗口有向极值；逐拍 Δ = ${fmtTraj(p1.farTraj)}）`,
+    ).toBeLessThan(0);
 
     // ── G-ROOT-2 · 订单变更 → 订单行拆分压力；远端真的走到工单下达压力 ───────────
     const r2 = rules.find((r) => r.key === "demo_order_churn_to_line_split")!;
@@ -388,21 +460,34 @@ describe("WO-SIM-ROOT-TRIAD · 三个根源扰动因素（SEAM：种子数据 ×
     // 🔴 派单原文要的是 `orderChurn → releasePressure`。Order→WorkOrder 没有任何链路
     //    （`workOrderProps` 里根本没有订单 FK），故改走 order_for_model 四跳。这一条断言的正是
     //    「虽然多了两跳，它**真的**走到了工单下达压力」—— 不然那句改接就只是说说。
+    //
+    // ⚠ **方向已于评审 v2 ① 翻负**（WO-PROP-COEF-CONFIG·T2，2026-09-17）：
+    //    落点那张单的 orderChurn 同时点火两条边 —— 本条（→ splitPressure，**死胡同**，
+    //    无出边，信号到不了工单）与 `demo_order_churn_to_model_demand_load`（㊶）。
+    //    故远端信号**全部**走 ㊶ 的四跳链：orderChurn → Model.demandLoad → Base.loadIndex
+    //    → Line.utilPressure → WorkOrder.releasePressure。㊶ 系数 +0.5 → **−0.5**
+    //    （取消/缩水占多 ⇒ 净需求下修 ⇒ 下达压力随之下行，下游三边皆正 ⇒ 远端必为负）。
+    //    断言从「顶起来」改成「压下去」—— 变的只是方向，**可达性照旧被这条咬着**。
     expect(
-      p2.farDelta,
-      "G-ROOT-2 远端：插单/取消四跳（→型号需求负载→基地负载→产线利用率→工单下达）之后工单侧必须被顶起来",
-    ).toBeGreaterThan(0);
+      p2.farMin,
+      `G-ROOT-2 远端：变更沿四跳（→型号需求负载→基地负载→产线利用率→工单下达）之后工单侧必须随净需求下修而下行` +
+        `（窗口有向极值 —— 四跳残迹实测 tick5–8 ≈ −0.0001x，小但同号非零；逐拍 Δ = ${fmtTraj(p2.farTraj)}）`,
+    ).toBeLessThan(0);
 
-    // ── G-ROOT-4 · 设备故障 → 工序排队压力；远端真的走到设备负荷压力 ──────────────
+    // ── G-ROOT-4 · 设备故障 → 工序排队压力；远端真的走到产线受阻压力 ──────────────
     const r4 = rules.find((r) => r.key === "demo_equipment_failure_to_process_queue")!;
     expect(r4.coefficient).toBeGreaterThan(0);
-    const p4 = await probe(r4, "Equipment", "loadPressure");
+    const p4 = await probe(r4, "Line", "blockedPressure");
     expectPropagated(p4.oneHopDelta, TICKS * r4.coefficient * BUMP * p4.oneHopTargets, `G-ROOT-4 传导臂（落点 ${p4.pickId}）`);
-    // 🔴 派单原文要的 `equipmentFailure → loadPressure`：多一跳（设备→工序→设备负荷），
-    //    因为 loadPressure 挂在 Equipment 自己身上、全表零自环边。这条断言它**真的**走到了。
+    // 🔴 远端重瞄（WO-PROP-REVIEW-V2 ㉜ · 2026-09-18）：派单原文的两跳落点
+    //    `queuePressure → Equipment.loadPressure` 已随 ㉜ 反向不复存在（`loadPressure` 升格根源、入度 0）。
+    //    反向证据：扰 equipmentFailure 后 `loadPressure` 逐拍 Δ **全 0**（/tmp/t5-triad-probe.txt 对照行）。
+    //    故障信号改经 `demo_process_queue_to_line_blocked` 走向产能主链 —— 比原来更远一跳、更贴近订单侧。
     expect(
-      p4.farDelta,
-      "G-ROOT-4 远端：设备故障两跳（→工序排队→设备负荷）之后 Equipment.loadPressure 必须真的动",
+      p4.farMax,
+      `G-ROOT-4 远端：设备故障两跳（→工序排队→产线受阻）之后 Line.blockedPressure 必须真的动` +
+        `（窗口有向极值；T6 形态② 后 blockedPressure 带 λ=0.37 衰减 + [0,100] 软夹，信号均衡不累积：` +
+        `实测 tick2 达峰 +0.0026 后逐拍衰减（/tmp/t6-triad-probe.txt；积分器时代旧值 +0.2050→+0.4563）；逐拍 Δ = ${fmtTraj(p4.farTraj)}）`,
     ).toBeGreaterThan(0);
   }, 300000);
 });

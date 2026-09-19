@@ -70,6 +70,9 @@ export * from "./ontology-semantics.js"; // WO-QOS-ONTOLOGY-CONTEXT · type-sema
 export * from "./pipeline.js"; // OntoFlow（PRD v2）· 本体建模工作流契约（数据先行⊕图谱先行·嫁接自 main 平行线）
 export * from "./ontology-query.js"; // WO-Phase3-B · 本体查询引擎 ontology_query 契约（planSlice+executeSlice+简单聚合·join≠compute·R6/R13）
 export * from "./solver-args.js"; // WO-Phase2-C 地基 · 求解器 args zod schema 注册表（组合器输入模式派生源·A/B 共享）
+// WO-SOLVER-INPUTSCHEMA · 求解器**入参模式**（JSON Schema）单一来源 —— 给模型看的说明书，从实现反推非照抄 argHints。
+// ⚠ 与上一行的 solver-args 分工不同、故意两张表：那张管「组合器能不能串」（加 key = 行为变更），本张管「模型能传什么」（纯声明）。
+export * from "./solver-input-schema.js";
 export * from "./solver-taxonomy.js"; // WO-L7A · 求解器决策问题分类维（10 类枚举 + 类目定义·按"解决什么决策问题"分·非算法分·R13 派生投影不改 key）
 export * from "./execution-plan.js"; // WO-Phase2-C · 组合执行计划契约 ExecutionPlan（compileSolverPlan → executePlan → 一次综合）
 export * from "./global-sim.js"; // WO-GSIM-2-SOLVER · 全域联合仿真契约（物料/线级换型小时/电芯-Pack两段/分批/杠杆/硬锁/递进·§3 冻结契约·R6/R13/R14）
@@ -97,3 +100,4 @@ export * from "./finance-world.js"; // WO-FINANCE-WORLDSTATE · 财务**金额**
 export * from "./ontology-invariant.js"; // WO-ONTOLOGY-EDGE-TRICLASS · 本体第三类边「不变式守卫」（前两类结构边/因果边不动）：表达式极性与 A5 规则一致（为真=不成立）；容差与停用是**试算开关**不落库、与治理「停用/下线」两套语义并存不合并；违反必带参与元素（是边不是孤立数字）；阻断与否收敛成单一 enforcement.mode，产品裁决前恒 ANNOTATE_ONLY
 export * from "./scheme-adoption.js"; // WO-ADOPT-SCHEME-CARRIER · 方案采纳台账（G-ADOPT-SCHEME-NO-CARRIER 收口）：「采纳经营方案」payload 逐字段 @unit（rev=归一指数/gm=0-1小数/share=百分数，三者不同轴）+ SchemeAdoption 台账记录（专用 doc-jsonb 表 037，非本体对象——公司级审批留痕与 Decision 台账同族）；同年份至多一条 ACTIVE 是写时不变量；targets 只是拍板快照，无写回 PLAN_GOAL_TARGETS 的路径
 export * from "./sim-proposal.js"; // WO-AGENT-IN-LOOP · 「agent 出方案 / 求解器出数」的契约层：菜单（确定性侧，所有真实数值都在这里）+ agent 产出（**只有下标与文字，没有一个数值格** —— 红线是结构性的不是提示词纪律）+ 定版记录（proposalId/version/inputFingerprint，重跑读定版不重调模型）；`resolveProposalToLevers` 是唯一的数值兑现处，下标越界 fail-closed 抛错（静默夹逼等于给幻觉发合法通行证）
+export * from "./responds-to-input.js"; // 对照实验断言（铁律 1.5 判据一的机器化）

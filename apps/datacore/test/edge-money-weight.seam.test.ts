@@ -33,6 +33,8 @@ import {
   type PropagationRule,
   type TickState,
 } from "@platform/contracts";
+import { demoPropagationRulesWithDomain } from "../src/seed.js";
+import { STATE_VAR_DOMAINS, PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
 
 const SEED_TS = join(dirname(fileURLToPath(import.meta.url)), "../src/seed.ts");
 
@@ -209,50 +211,70 @@ describe("§2 口径登记册", () => {
 //
 // `GET /a/v1/sim/propagation-rules` **原样把 `description` 下发给用户**。
 // 修前实测 13 条写了系数的边里 **9 条不符**（最大差 2 倍：`demo_customer_receivable_to_invoice_overdue`
-// 描述 ×0.8 / 真值 0.4）。本节扫种子源码，不符即红。
+// 描述 ×0.8 / 真值 0.4）。本节对账**装饰后的真种子对象**（真系数 ← C36.params 单源派生；
+// 描述文本 = 屏上原话），不符即红。
 //
 // ⚠ 扫描类断言必须先自证工具（铁律 0.6 已落地的机制）：金丝雀 = 把一条已知相符的边
 // **就地变异**成不符，扫描器必须当场抓到。抓不到 ⇒ 报「工具坏了」，不许报「代码干净」。
 // ══════════════════════════════════════════════════════════════════════════════
 describe("§3 描述里的系数 = 真系数", () => {
-  /** 从 seed.ts 抽 (key, coefficient, description) 三元组。**主逻辑与金丝雀共用这一支**。 */
-  function scan(src: string): { key: string; coef: number; stated: number[]; ok: boolean }[] {
-    const idxs: { key: string; at: number }[] = [];
-    const re = /key:\s*"([a-z0-9_]+)"/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(src)) !== null) idxs.push({ key: m[1]!, at: m.index });
-    const out: { key: string; coef: number; stated: number[]; ok: boolean }[] = [];
-    for (let i = 0; i < idxs.length; i++) {
-      const body = src.slice(idxs[i]!.at, i + 1 < idxs.length ? idxs[i + 1]!.at : src.length);
-      // WO-SIM-CALIBRATION：系数现在以 `inflowCoefficient(稳态增益)` 落盘（每拍入流 = 稳态增益 × λ）。
-      // **描述承诺的是稳态增益**（「价格冲击 × 0.65 = 型号成本压力」读作 `target = source × 0.65`），
-      // 故这里比对的对象是 `inflowCoefficient(...)` 的**实参**，不是存进库的那个每拍入流量。
-      // 两种写法都认：助手调用，以及裸字面量（万一将来有边绕过助手，仍要被这道门咬住）。
-      const cm = /coefficient:\s*inflowCoefficient\((-?[\d.]+)\)/.exec(body) ?? /coefficient:\s*(-?[\d.]+)/.exec(body);
-      if (!cm) continue; // 不是传导规则块
-      const dm = /description:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
-      if (!dm) continue;
-      const stated = [...dm[1]!.matchAll(/[×x]\s*(-?[\d.]+)/g)].map((x) => Number(x[1]));
-      if (stated.length === 0) continue; // 描述里没写数 ⇒ 不判定（合法）
-      const coef = Number(cm[1]);
-      out.push({ key: idxs[i]!.key, coef, stated, ok: stated.some((s) => Math.abs(s - coef) < 1e-9) });
-    }
-    return out;
-  }
+  // ⚠ **真系数的取法已于 WO-PROP-COEF-CONFIG 换轨**：修前本节扫 seed.ts 源码里的
+  //   `coefficient: <数>` 字面量当真系数；该字面量已按单源纪律（G-10 P4）**移出 seed.ts** ——
+  //   唯一真源在 battery.ts `PROPAGATION_COEF_PARAMS`（C36.params），种子对象的
+  //   `coefficient` / `coefficientRef` 都由它派生（`demoPropagationRulesWithDomain` 装饰）。
+  //   继续扫源码只会扫到 0 条、然后报「0 条不符」—— 那正是铁律 0.6 的「我没找到 ≠ 它不存在」。
+  //   故对账改成：**真系数 = 装饰后种子对象上的 coefficient**（= 引擎 `effectiveCoefficient`
+  //   解析到的同一个数，C36 探针逐字节核过）；**描述文本仍是用户屏上那句原话**，照扫。
+  // ⚠⚠ **WO-PROP-V2-REBASE 第二次换轨**：上面那段（「真系数 = 装饰后对象上的 coefficient」）
+  //   在并入 canonical 的 WO-SIM-CALIBRATION 之前是对的，之后**就不对了**——
+  //   标定后落库的是**每拍入流** `稳态增益 × λ`，而 description 承诺的一直是**稳态增益**
+  //   （「价格冲击 × 0.65 = 型号成本压力」读作 `target = source × 0.65`，是稳态关系不是单拍增量）。
+  //   实测：不换轨则 14 行里 **12 行**报不符，其中 `demo_model_demand_to_base_load`
+  //   （描述 ×0.6 / 落库 0.222 = 0.6λ）这类**本单一个字都没改过**的边也在内
+  //   ⇒ 那是**口径错位**，不是描述说了谎；照旧断言等于用一道门去咬一个它没在度量的量。
+  //   形态：「我用『落库系数』当作『描述承诺的那个量』的证据，而前者并不度量后者 —— 差一个 λ。」
+  //
+  // 换轨后：**真增益 = 落库系数 ÷ λ（当且仅当该边被预乘过 λ）**。
+  // 判据与 `seed.ts` 的 `inflowCoefficient` **同一个谓词**（不许各抄一份）：
+  //   目标量纲**已声明域且上界有限** ⇒ 引擎会夹会衰减 ⇒ 落库时预乘过 λ ⇒ 除回去；
+  //   未声明域、或声明了但 `max: null`（无界，无饱和拐点）⇒ 纯积分器，没预乘 ⇒ 原样比。
+  /** 从描述文本抽「×N」声明数。**主逻辑与金丝雀共用这一支**。 */
+  const statedOf = (description: string): number[] =>
+    [...description.matchAll(/[×x]\s*(-?[\d.]+)/g)].map((x) => Number(x[1]));
 
-  const SRC = readFileSync(SEED_TS, "utf8");
+  /** 落库系数 → description 承诺的那个量（稳态增益）。与 `inflowCoefficient` 互为逆运算。 */
+  const gainOf = (targetStateVar: string, coefficient: number): number => {
+    const d = STATE_VAR_DOMAINS[targetStateVar];
+    const lambdaApplied = d != null && typeof d.max === "number";
+    if (!lambdaApplied) return coefficient;
+    return Math.round((coefficient / PRESSURE_DECAY_PER_TICK) * 1e6) / 1e6;
+  };
 
-  it("🐤 金丝雀先行：把一条相符的边变异成不符，扫描器必须当场抓到", () => {
-    const mutated = SRC.replace("应收压力 × 0.4 = 发票逾期压力", "应收压力 × 0.8 = 发票逾期压力");
-    expect(mutated, "变异没注进去 ⇒ 下面那条断言证明不了任何事").not.toBe(SRC);
-    const bad = scan(mutated).filter((r) => !r.ok);
+  interface Row { key: string; coef: number; stated: number[]; ok: boolean }
+  /** 判 (key, 真增益, 描述声明数) 三元组：声明数里至少一个与真增益相符（6 位小数，= 预算取整精度）。 */
+  const rowsFromRules = (
+    rules: ReadonlyArray<{ key: string; coefficient: number; description: string | null; targetStateVar: string }>,
+  ): Row[] =>
+    rules
+      .map((r) => ({ key: r.key, coef: gainOf(r.targetStateVar, r.coefficient), stated: statedOf(r.description ?? "") }))
+      .filter((r) => r.stated.length > 0) // 描述里没写数（或压根没描述）⇒ 不判定（合法）
+      .map((r) => ({ ...r, ok: r.stated.some((s) => Math.abs(s - r.coef) < 1e-6) }));
+
+  it("🐤 金丝雀先行：把一条相符的边变异成不符，对账必须当场抓到", () => {
+    const rules = demoPropagationRulesWithDomain().map((r) => ({ ...r }));
+    const victim = rules.find((r) => r.key === "demo_customer_receivable_to_invoice_overdue");
+    expect(victim, "变异靶子不在种子里 ⇒ 这条金丝雀证明不了任何事").toBeTruthy();
+    expect(victim!.description, "靶子没有描述 ⇒ 变异无处可注，这条金丝雀证明不了任何事").toBeTruthy();
+    victim!.description = victim!.description!.replace("× 0.4", "× 0.8");
+    expect(victim!.description, "变异没注进去 ⇒ 下面那条断言证明不了任何事").not.toContain("× 0.4");
+    const bad = rowsFromRules(rules).filter((r) => !r.ok);
     expect(bad.map((r) => r.key)).toContain("demo_customer_receivable_to_invoice_overdue");
   });
 
   it("种子里 0 条描述与真系数不符", () => {
-    const rows = scan(SRC);
-    // 金丝雀②：扫到的规则块数必须是真数量级，抽 0 条时上面那句"0 条不符"毫无意义。
-    expect(rows.length, "描述里写了系数的边条数（抽 0 条 = 抽取器坏了）").toBeGreaterThanOrEqual(13);
+    const rows = rowsFromRules(demoPropagationRulesWithDomain());
+    // 金丝雀②：对账行数必须是真数量级，0 行时那句"0 条不符"毫无意义。
+    expect(rows.length, "描述里写了系数的边条数（0 行 = 对账空转）").toBeGreaterThanOrEqual(13);
     const bad = rows.filter((r) => !r.ok);
     expect(
       bad.map((r) => `${r.key}: 描述 ×${r.stated.join("/")} vs 真值 ${r.coef}`),

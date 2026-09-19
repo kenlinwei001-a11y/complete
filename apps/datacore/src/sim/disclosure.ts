@@ -237,6 +237,7 @@ export function buildSimRunDisclosure(inp: BuildDisclosureInput): SimRunDisclosu
       if (!d) return null;
       const ref = d.decayRef;
       const lambda = decayApplied[sv];
+      const rawExpr = ref ? (inp.ruleExpressions[ref.ruleKey] ?? null) : null;
       return {
         stateVar: sv,
         min: d.min,
@@ -246,7 +247,14 @@ export function buildSimRunDisclosure(inp: BuildDisclosureInput): SimRunDisclosu
         source: d.source,
         decayLambda: typeof lambda === "number" ? lambda : null,
         decayRef: ref ? `${ref.ruleKey}.${ref.paramKey}` : null,
-        decayRuleExpression: ref ? (inp.ruleExpressions[ref.ruleKey] ?? null) : null,
+        // WO-PROP-REVIEW-V2 形态②（T6）：衰减规则（C35）是**参数载体**，声明态 expression
+        // 只命名了默认参数（pressureDecayPerTick）；引擎实际读的是逐变量 `decayRef.paramKey`
+        // （propagation-inputs 按 ref 解析）。屏上必须给**解析后**的那一句 —— 否则积压族
+        // 5 个变量的「衰减出处 C35.queueDaysDecayPerTick」与「规则表达式 …pressureDecayPerTick」
+        // 在同一行自相矛盾（判据二：阈值来自哪条规则表达式，说错=披露层撒谎）。
+        // 压力族变量的 paramKey 恰是被替换的那一段 ⇒ 替换对它们是恒等，不受影响。
+        decayRuleExpression:
+          ref && rawExpr ? rawExpr.replace(/params\.[A-Za-z0-9_]+/, `params.${ref.paramKey}`) : null,
       };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null)

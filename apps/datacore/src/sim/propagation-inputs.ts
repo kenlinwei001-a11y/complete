@@ -4,6 +4,7 @@ import type { Repos } from "../repo/repo.js";
 import { stateVarDomains } from "../synthetic/battery.js";
 import { cadenceFromProps } from "../synthetic/cadence.js";
 import { buildPairWeights, type PairWeightReport } from "./pair-weights.js";
+import { listSimWorldObjects } from "./seed-world.js";
 import {
   buildCadenceGates,
   scopePropagationGraph,
@@ -97,12 +98,13 @@ export async function buildPropagationInputs(
   rules: readonly PropagationRule[],
 ): Promise<PropagationInputs> {
   // 物化图（走正门 R16/R4：从本体库读已物化对象 + 链路，任意行业；零硬编码）。
-  const objects: PropagationGraph["objects"] = [];
-  for (const t of await repos.ontologyTypes.list(c.tenantId)) {
-    for (const o of await repos.objects.listByType(c.tenantId, t.key)) {
-      if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type });
-    }
-  }
+  //
+  // ⚠ 成员集合走 `listSimWorldObjects`**唯一物化入口**（2026-09-15，来历见该函数头注）：
+  //   「谁算推演世界的成员」此前被手抄了 5 份，这里是其中之一。⛔ 别在这里写
+  //   `for (types) for (listByType) if (...)` —— 那就是第 6 份抄件。
+  const objects: PropagationGraph["objects"] = (await listSimWorldObjects(repos, c.tenantId)).map(
+    ({ obj }) => ({ id: obj.id, typeKey: obj.type }),
+  );
   const links = (await repos.links.list(c.tenantId)).map((l) => ({ fromId: l.fromId, toId: l.toId, linkKey: l.type }));
   // ── 会话/认证范围读端：裁剪就发生在这里，两条路（tick / Trial Tick）因此天然同口径 ──
   const scoped = scopePropagationGraph({ objects, links }, scope);

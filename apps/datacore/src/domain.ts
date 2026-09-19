@@ -201,6 +201,10 @@ export interface Rule {
   params?: Record<string, number | string | string[]>;
   /** WO-RULES-CLASSIFY（加性）：业务类别（产能/物料/财务/合规/换型…），规则库分类筛选的真元数据。可空（手工/旧规则）。 */
   category?: string;
+  /** WO-RULE-DISCOVERY（加性）：发现面元数据——DRIL 检索的标签/样例问句（description 是主文本，早已在）。
+   *  可空：手工/旧规则没有时 B 侧 projectRules 回落 name（字典式可检索，不是发现）。 */
+  tags?: string[];
+  answersQuestions?: string[];
   origin: RuleOrigin;
   version: number;
   status: "DRAFT" | "PUBLISHED" | "RETIRED";
@@ -1739,4 +1743,122 @@ export interface OntologyWorkflowRecord {
   tenantId: string;
   doc: import("@platform/contracts").OntologyWorkflow;
   updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// WO-ONTOGRAPH-DB · 本体图谱（机器抽取面）落库记录
+//
+// 为什么这四个记录住在 domain.ts 而不是 @platform/contracts：
+//   本体图谱是 **datacore 内部的仓储面**，agentcore 与前端今天一个字段都不读。
+//   放进 contracts 会让「跨包共享契约」这句话失去鉴别力 —— 那一层的判据是
+//   「有没有第二个包在读」，不是「看起来够正式」。有第二个消费方时再上迁。
+//
+// 为什么全部走 `doc`-jsonb 而不逐字段建列（与 026/030/033/037 同一模子）：
+//   原子的字段集合由抽取器决定、随抽取器演进（本轮已有 registry/slices 两个可选字段），
+//   逐列表会让「抽取器加一个字段」变成「加一次 migration + 改两个实现」，
+//   而那一层恰恰是 `PgStore` 注释里写死的那句「本类不可能成为吞字段的那一层」。
+//
+// ⚠ R6 确定性：这四个记录里**没有任何时间戳字段**。`created_at` 只在 SQL 层由 pg
+//   自己打（那一列不进 `doc`、不参与任何对账），所以「同一 commit 重跑两次，库里
+//   读回的内容逐字节相同」是可验证的命题。⛔ 谁往 doc 里加 `generatedAt` 谁就破掉它。
+// ---------------------------------------------------------------------------
+
+/** 一个原子的入边计数与样例坐标（计数全量、样例封顶 25 —— 见抽取器 INBOUND_CAP）。 */
+export interface OntoGraphAtomInbound {
+  /** 跨文件 src 引用方数（**全量，从不截断**，三态就是从它判的）。 */
+  srcCount: number;
+  /** 同文件内的生产使用次数（两套三态口径的差额全部来自它）。 */
+  selfUses: number;
+  /** 同文件使用的一个样例行号；无则 null。 */
+  selfLine: number | null;
+  /** 跨文件 test 引用方数（全量）。 */
+  testCount: number;
+  /** src 引用方坐标样例（≤25 条，按 file 升序）。 */
+  src: { file: string; line: number }[];
+  /** test 引用方坐标样例（≤25 条，按 file 升序）。 */
+  test: { file: string; line: number }[];
+}
+
+/** 图谱原子（= 一个被导出的符号）。`doc` 与 `atoms/<pkg>.yaml` 里的一条逐字段同形。 */
+export interface OntoGraphAtomRecord {
+  /** `${snapshotId}:${atomId}` —— 见 scripts/ontology-graph/graph-db.mjs 的 atomRowId()。 */
+  id: string;
+  tenantId: string;
+  snapshotId: string;
+  /** 抽取器给的原子 id（形如 `sym:<file>:<name>`），**快照内唯一**。 */
+  atomId: string;
+  /** 所属包（datacore / agentcore / frontend-shell / contracts / llm-adapters）。 */
+  pkg: string;
+  doc: {
+    id: string;
+    name: string;
+    kind: string;
+    file: string;
+    line: number;
+    brief: string;
+    docSource: "jsdoc" | "none";
+    tags: string[];
+    wo: string | null;
+    /** 三态（`includingSelfFileUse` 口径）：wired | test-only | no-ref。 */
+    state: string;
+    reexportOf: string | null;
+    registry?: unknown;
+    slices?: string[];
+    inbound: OntoGraphAtomInbound;
+  };
+}
+
+/**
+ * 图谱边。八种边**字段集合不同**（registers 带 confidence、seeds 带 count、
+ * asserts 带 line、inSlice 带 via 且**没有 pkg**），故整条进 `doc`。
+ *
+ * ⚠ `id` 用**排序后的序号**而不是 `(kind,from,to)`：同一 (kind,from,to) 可以合法地
+ *   出现多次（同一测试文件对同一字段在两行各钉一次）。拿它当主键会**静默去重**，
+ *   于是「21032 条边」落库变成「20xxx 条」而两边都不报错 —— 那正是本单验收 ② 要咬的
+ *   「落库丢了数据」。序号来自一次**显式排序**，故 R6 成立。
+ */
+export interface OntoGraphEdgeRecord {
+  /** `${snapshotId}:edge:${ordinal}`。 */
+  id: string;
+  tenantId: string;
+  snapshotId: string;
+  /** 八种之一：reexports | declares | reads | registers | seeds | asserts | inSlice。 */
+  kind: string;
+  doc: {
+    kind: string;
+    from: string;
+    to: string;
+    pkg?: string;
+    line?: number;
+    count?: number;
+    confidence?: string;
+    via?: string;
+  };
+}
+
+/** 图谱切片（`slices/<sliceKey>.yaml` 整份即一条）。 */
+export interface OntoGraphSliceRecord {
+  /** `${snapshotId}:slice:${sliceKey}`。 */
+  id: string;
+  tenantId: string;
+  snapshotId: string;
+  sliceKey: string;
+  doc: Record<string, unknown>;
+}
+
+/**
+ * 图谱快照（= 一次抽取）。`doc` 即 `INDEX.yaml` 的全部内容
+ * （counts / byState 两套口径 / canary / blindSpots / registries / fieldStats /
+ *  atomShards / slices 目录索引），**一个键都不裁**。
+ *
+ * ⚠ 裁掉 canary 段会让「图谱说它没有 X」与「抽取器当时就坏了」在库里长得一模一样 ——
+ *   那是本仓最贵的一类误判（README「金丝雀怎么验」那段记着修前 no-ref 3031 / 修后 446）。
+ */
+export interface OntoGraphSnapshotRecord {
+  /** `${tenantId}:${generatedFrom}`。 */
+  id: string;
+  tenantId: string;
+  /** 抽取时 HEAD 的短 hash（INDEX.generatedFrom）。 */
+  generatedFrom: string;
+  doc: Record<string, unknown>;
 }

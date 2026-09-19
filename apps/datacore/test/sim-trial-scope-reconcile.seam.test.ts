@@ -31,7 +31,7 @@
  *  · 破坏 B 侧：`app.ts trialPropagate` 整体 → 改回 `{ fired: 0, declared: 0 }`（= 修之前的行为）⇒ ② 红。
  *  · 破坏同源：把 `trialPropagate` 里的 `buildPropagationInputs` 换成就地再物化一份 ⇒ ③ 红。
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { debugUser, makeApp, type TestApp } from "./helpers.js";
@@ -251,15 +251,57 @@ describe("WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场", ()
       expect(countCodeSites("const x = scopePropagationGraph(a, b);", SCOPE_CROP()), "剔注释把真代码也剔了").toBe(1);
     });
 
-    it("图物化只有一处，且**不在 app.ts 里**（谁再抄一份装配，当场变 2 / 变 1）", () => {
+    /**
+     * ⚠ **判据从「钉在某个文件里」改成「全仓结构性」**（2026-09-15 —— 本条自己的失败文案救了它）：
+     *
+     * 原断言是 `countCodeSites(INPUTS_SRC, GRAPH_MATERIALIZE()) === 1`，把「唯一一处」钉在
+     * `propagation-inputs.ts` **这一个文件**上。当图物化被收进 `seed-world.ts::listSimWorldObjects`
+     * 之后，不变量**仍然成立**（还是只有一处、还是不在 app.ts），而本条当场红 ——
+     * 它的失败文案原文就写着「**先看它是不是被搬走了**」，写的人预见到了这一天。
+     *
+     * 形态：**「我用『它在这个文件里出现一次』当作『全仓只有一处』的证据，而前者并不度量后者。」**
+     * 同源于本仓那条「写死位置的引用天生带保质期」。
+     *
+     * 新判据**严格更强**：数的是**成员判据 `entersSimWorld` 的调用点**，范围是 `src/sim/` 全体 + app.ts。
+     *   · 旧判据只在 app.ts 里查抄件 ⇒ 抄到第三个文件里它一声不吭。
+     *     这正是真事故：成员判据一度被手抄 5 份（propagation-inputs / change-impact / app.ts /
+     *     测试 helper / seed-world），改一份不会让另外四份变红。
+     *   · 新判据：只准有 2 个调用点，且都在 `seed-world.ts` —— `listSimWorldObjects`（全目录物化）
+     *     与 `deriveSeedBaseSnapshot`（规则驱动的类型子集）。**出现第 3 处即红，无论它在哪个文件。**
+     */
+    it("推演世界的成员判据只有 2 个调用点、且都在单一出处文件里（抄到任何别处都当场红）", () => {
+      const SEED_WORLD = fileURLToPath(new URL("../src/sim/seed-world.ts", import.meta.url));
+      const SIM_DIR = fileURLToPath(new URL("../src/sim/", import.meta.url));
+      const SEED_SRC = readFileSync(SEED_WORLD, "utf8");
+      const ENTERS = () => /entersSimWorld\(/g;
+
+      // 🐤 正向金丝雀：数数器在已知必中处必须中，否则下面的计数不许信。
+      expect(countCodeSites(SEED_SRC, /export function entersSimWorld/g), "金丝雀不中 ⇒ 数数器坏了").toBe(1);
+      expect(countCodeSites(SEED_SRC, /export async function listSimWorldObjects/g), "唯一物化入口不见了").toBe(1);
+
+      const files = readdirSync(SIM_DIR).filter((f) => f.endsWith(".ts"));
+      // 🐤 反向金丝雀：扫描面非空（空目录会让下面每条计数恒等于期望值）。
+      expect(files.length, "扫描面为空 ⇒ 工具坏了，不是代码干净").toBeGreaterThan(5);
+
+      const hits: string[] = [];
+      for (const f of files) {
+        const n = countCodeSites(readFileSync(SIM_DIR + f, "utf8"), ENTERS());
+        for (let i = 0; i < n; i++) hits.push(`sim/${f}`);
+      }
+      for (let i = 0; i < countCodeSites(APP_SRC, ENTERS()); i++) hits.push("app.ts");
+      // 期望恰好 3 处、且全在单一出处文件里：
+      //   ① `export function entersSimWorld(` 定义本身
+      //   ② `listSimWorldObjects` 里（全目录物化）
+      //   ③ `deriveSeedBaseSnapshot` 里（规则驱动的类型子集）
+      // ⚠ 口径写死在这儿是**故意的**：任何第 4 处出现都必须有人解释它为什么需要自己判成员。
       expect(
-        countCodeSites(INPUTS_SRC, GRAPH_MATERIALIZE()),
-        "🔴 装配处里没有图物化 ⇒ 先修工具或先看它是不是被搬走了",
-      ).toBe(1);
-      expect(
-        countCodeSites(APP_SRC, GRAPH_MATERIALIZE()),
-        "🔴 app.ts 里出现了图物化 ⇒ 「认证说能跑、真 tick 不是这个数」的老形态回来了",
-      ).toBe(0);
+        hits.sort(),
+        "🔴 成员判据被抄到了别处 ⇒ 「谁算推演世界的成员」又成了多套真相源。" +
+          "要物化推演世界请调 listSimWorldObjects，别自己判成员",
+      ).toEqual(["sim/seed-world.ts", "sim/seed-world.ts", "sim/seed-world.ts"]);
+
+      // app.ts 不许自己物化（原意图保留：它只能调那个唯一入口）。
+      expect(countCodeSites(APP_SRC, GRAPH_MATERIALIZE()), "🔴 app.ts 里出现了图物化").toBe(0);
     });
 
     /**
@@ -331,7 +373,13 @@ describe("WO-SIM-TRIAL-SCOPE-RECONCILE · 合并后两侧功能同时在场", ()
       expect(start, "找不到装配处 ⇒ 先修工具再看结论").toBeGreaterThan(-1);
       const body = INPUTS_SRC.slice(start);
       // 三件事都在同一个函数体里 = 「单一装配处 ∧ 范围裁剪」这条合成判据的结构证据。
-      expect(countCodeSites(body, GRAPH_MATERIALIZE()), "图物化不在装配处里").toBe(1);
+      // ⚠ 图物化本身已收进 `listSimWorldObjects`（成员判据单一出处，见上一条的头注），
+      //   所以这里咬的是**装配处调了那个唯一入口恰好一次** —— 合成判据不变：
+      //   物化、裁剪、闸门仍在同一个函数体里，只是物化那一步换成了一次调用。
+      expect(
+        countCodeSites(body, /listSimWorldObjects\(/g),
+        "图物化不在装配处里（它应当调 listSimWorldObjects 恰好一次）",
+      ).toBe(1);
       expect(countCodeSites(body, SCOPE_CROP()), "🔴 范围裁剪不在装配处里 ⇒ 谁调用谁自己裁 = 装配处纪律作废").toBe(1);
       expect(countCodeSites(body, CADENCE_ASSEMBLE()), "闸门装配不在装配处里").toBe(1);
       // 两条路都吃它（tick 路 + trialPropagate）。少一条 = 有一条路又自己造轮子了。

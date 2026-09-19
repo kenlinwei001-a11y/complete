@@ -45,6 +45,16 @@ export type CapacityFactorBinding = z.infer<typeof CapacityFactorBindingSchema>;
 /**
  * 20 原子因子绑定单源（marks ①–⑳·6 层产能金字塔·与 factorOntology.ONTO_FACTORS 圈号一一对应）。
  * 数值不入本表（本表只声明"因子落在哪个 object.property·什么颗粒·可否拨动"）；真值由求解器沿链路真算。
+ *
+ * @syncWith apps/datacore/src/solvers/impediment-options.ts#enumerateImpedimentOptions
+ * @verifyBy 本表的落点对象类型集合，必须与 chain_impediments 真跑出来的阻滞点落点类型集合**有交集**；
+ *   交集为空的那些类型，屏上一律「0 种对策」。实测 2026-09-14（demo 租户，真服务真调用）：
+ *   本表落点类型 = {Equipment×4, Process×5, Line×5, Material×3, ChangeoverMatrix×1, MaintPlan×1, Order×1}；
+ *   阻滞点落点类型 = {MaterialBalance×7, MaterialBatch×6, Base×3, Line×2} ⇒ **交集只有 Line**，
+ *   于是 2 条 Line 各出 4 条对策、其余 16 条零对策。ruleGate 侧同理：本表只有 C03/C06/C16/C08，
+ *   阻滞点判据是 C28/C34/C06/C05 ⇒ **交集只有 C06**。
+ * @verifyBy 往本表加一条 Base 落点 ⇒ 常州/枣庄/武汉三处的 effective 必须从 0 变正；不变 ⇒ 接线没通
+ * @prd docs/PRD-platform-foundry-aip.md §S1（产能求解器·6 层金字塔）
  */
 export const CAPACITY_FACTOR_BINDINGS: CapacityFactorBinding[] = [
   // 层1 设备（节拍×OEE×通道×班次 → 单机日产出）

@@ -734,10 +734,155 @@ export const STATE_DECAY_PARAM_KEY = "pressureDecayPerTick";
  */
 export const PRESSURE_DECAY_PER_TICK = 0.37;
 
+// ── WO-PROP-REVIEW-V2 形态② · 积压/天数族消化速率（评审原文：「上界确实拍不出来，但消化速率
+//    有出处：产能」「那个理由对上界成立，但对衰减不成立 —— 检验积压的消化速率 = 检验产能」）──
+// 与压力族同一把尺子：几何衰减、**med 工期后残留 25%** ⇒ `λ = 1 − 0.25^(1/med工期)`。
+// 工期全部实测于本 tip（/tmp/t6-duration-probe.{txt,rc} RC=0，全链播种后对象层扫描）：
+/** 检验排队消化：来料检验周期 `releasedDay − arrivedDay` med = 3 天（n=30，1–4）⇒ `1 − 0.25^(1/3)`。 */
+export const QUEUE_DAYS_DECAY_PER_TICK = 0.37;
+/** 维修积压消化：维修工期 `actualEnd − actualStart` med = 1 天（n=193，0–2）⇒ `1 − 0.25`。 */
+export const REPAIR_BACKLOG_DECAY_PER_TICK = 0.75;
+/** 认证排队消化：`certHours` med = 134h ÷ 24 = 5.58 天（n=18，2.1–8.0）⇒ `1 − 0.25^(1/5.58)`。 */
+export const QUALIFICATION_QUEUE_DECAY_PER_TICK = 0.22;
+/** 检验积压消化：⚠ **暂定档** —— QualityLot 上无工期/产能属性（实测 /tmp/t6-capacity-probe.txt），
+ *  借来料检验周期 med 3 天（同「检验」物理过程）。待仓主定档（评审 §6 同族问题），不拿它凑读数。 */
+export const INSPECT_BACKLOG_DECAY_PER_TICK = 0.37;
+/** 异常处置积压消化：⚠ **暂定档** —— ExceptionEvent 无处置工期属性（只有 occurredAt + status），
+ *  借维修工期 med 1 天（处置 = 现场纠正措施，与维修同族作业）。待仓主定档。 */
+export const HANDLING_BACKLOG_DECAY_PER_TICK = 0.75;
+
+// ── WO-PROP-COEF-CONFIG · 推演传导系数表（记号必须排在 BATTERY_RULES **之前**，TDZ 理由同 C35 段头）──
+
+/** 传导系数所在的规则（`BATTERY_RULES` 的 C36）—— 改这条规则的 params 即改推演，引擎不内联任何系数。 */
+export const PROPAGATION_COEF_RULE_KEY = "C36";
+
+/**
+ * 50 条 demo 传导边的系数**唯一真源**（传导规则业务评审 v2 §5：0/50 走 coefficientRef ⇒ 系数搬进配置）。
+ *
+ * ── 为什么值必须在这张表里、不能留在 `seed.ts` 各条边的 `coefficient:` 字面量里 ──────
+ * 那是 G-10 P4 治过的同一个病（两份同值字面量，一份真读一份诱饵）：运行期真读的是
+ * **本表**（引擎 `effectiveCoefficient` 经 `coefficientRef` 解析），种子里的内联值只是
+ * **冷启动回落**（ref 解析不到时才用）。两边各写一份，改一边不改另一边就静默分叉，且四包全绿。
+ * 故 `seed.ts` 的边字面量**刻意没有 `coefficient:` 行**：内联值与 `coefficientRef` 在
+ * `demoPropagationRulesWithDomain()` 收尾处从本表**同一个键**派生；缺任一边的键，
+ * `ruleParamOf` 当场在模块加载期抛错（机器先说话）——「种子写了、表里没写」不许静默通过。
+ *
+ * ── 业务怎么改（评审 v2 §5 要的「改配置即改推演」）──────────────────────────────
+ * 改本规则 `params.<边key>`（规则库界面或写路 API）⇒ 下一拍 `effectiveCoefficient`
+ * 解析到的就是新值（`propagation.ts` · G-10 P1），不用改种子、不用重建；
+ * 披露层同步显示 `coefficientSource: "CONFIG_REF"` 与引用键 `C36.<边key>`。
+ */
+export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
+  "demo_order_demand_pressure": 0.00687645,
+  "demo_model_demand_to_base_load": 0.222,
+  "demo_base_load_to_line_util": 0.185,
+  "demo_supplier_delay_to_material_shortage": 0.08919627,
+  "demo_material_shortage_to_model_supply_risk": 0.161875,
+  "demo_model_supply_risk_to_order_shortage": 0.2775,
+  "demo_line_util_to_process_queue": 0.14942302,
+  "demo_material_shortage_to_po_expedite": 0.185,
+  "demo_po_expedite_to_inspection_queue": 0.6,
+  "demo_material_price_to_model_cost": 0.15684781,
+  "demo_model_cost_to_order_cost": 0.2775,
+  "demo_order_cost_to_customer_receivable": 0.03144963,
+  "demo_customer_receivable_to_invoice_overdue": 0.148,
+  "demo_model_demand_to_changeover_pressure": 0.148,
+  "demo_material_shortage_to_batch_turnover": 0.185,
+  "demo_po_expedite_to_customs_queue": 0.4,
+  "demo_base_load_to_maint_window_squeeze": 0.148,
+  "demo_model_demand_to_cert_queue": 0.3,
+  "demo_base_load_to_inbound_expedite": 0.1295,
+  "demo_line_util_to_wo_release": 0.13875,
+  "demo_wo_release_to_wip_feed": 0.259,
+  "demo_wo_release_to_quality_backlog": 0.5,
+  "demo_wip_feed_to_defect_pressure": 0.111,
+  "demo_defect_to_exception_backlog": 0.8,
+  "demo_order_demand_to_line_split": 0.15609375,
+  "demo_order_shortage_to_promise_risk": 0.2775,
+  "demo_customer_receivable_to_location_hold": 0.185,
+  "demo_customer_receivable_to_collection": 0.222,
+  "demo_material_shortage_to_alt_switch": 0.222,
+  "demo_material_shortage_to_balance_gap": 0.259,
+  "demo_base_load_to_transfer_pressure": 0.111,
+  // ㉜ 方向反向（传导规则业务评审 v2 ⑤·2026-09-18·评审原文「方向反。是设备负荷导致排队，
+  // 不是反过来（㊷ 方向正相反，佐证这条画反了）」）：键随规则 key 改名，系数 0.5 原样保留
+  // （评审只裁方向不裁量级）；`loadPressure` 因此升格为**根源**（入度 0，没有任何规则写它）。
+  "demo_equipment_load_to_process_queue": 0.185,
+  "demo_equipment_load_to_repair_backlog": 0.6,
+  "demo_model_demand_to_fg_drawdown": 0.222,
+  "demo_po_expedite_to_supplier_review": 0.148,
+  "demo_po_procurement_delay_to_material_shortage": 0.07928545,
+  "demo_batch_procurement_delay_to_material_shortage": 0.05946418,
+  "demo_supplier_procurement_delay_to_material_shortage": 0.04955336,
+  "demo_forecast_bias_to_order_demand": -0.222,
+  "demo_order_churn_to_line_split": 0.12140625,
+  // ㊶ 负号即方向（传导规则业务评审 v2 ①·2026-09-17）：订单变更以**取消/缩水**为主 ⇒
+  // 变更频度越高，在手需求越被高估 ⇒ 型号需求负载应当**下修**，不是上抬。
+  // 修前 +0.5 的理由是「插单/取消带来排产返工 ⇒ 推高负载」—— 评审定性符号反：
+  // 那条把「变更的**事务扰动**」（改行/改期，由 line_split 边 +0.7 正向表达）与
+  // 「变更的**净需求方向**」（取消占多 ⇒ 向下）混成了一个数。量级 |0.5| 维持不变。
+  "demo_order_churn_to_model_demand_load": 0.00429755,
+  "demo_equipment_failure_to_process_queue": 0.12807661,
+  "demo_process_queue_to_line_blocked": 0.2035,
+  "demo_line_blocked_to_wo_release": 0.13875,
+  "demo_wo_release_to_model_supply_risk": 0.115625,
+  "demo_wo_release_to_model_cost": 0.12065182,
+  "demo_customer_reaction_cut_order": 0.1295,
+  "demo_order_qty_to_model_top_qty": 1.0,
+  "demo_order_price_to_model_top_price": 1.0,
+  "demo_order_leaddays_to_model_horizon": 1.0,
+  // 库存环两条出边（传导规则业务评审 v2 ②·2026-09-17·评审优先级 2「库存 buffer 必须能吸收需求」）：
+  //  ① 覆盖天数 ⇒ 需求负载**下修**：现货可盖 N 天需求 ⇒ 在手订单簿对产线的即时压力被 buffer 吸收，
+  //     符号为**负**（成品库存是需求的减震器，不是放大器）。这是 50 条边里第 3 个负系数
+  //     （forecast_bias −0.6 / order_churn −0.5 / 本条 −0.5）。
+  //  ② 提货压力 ⇒ 需求负载**回补**：渠道/客户在从成品仓提货 ⇒ 该型号需求真实存在，回补到需求负载，
+  //     符号为**正**。与 ① 构成一对「现货吸收 − 提货回补」的库存环双向边。
+  //  量级与出入参考系对齐：需求侧同落点的两条边分别是 −0.6（预测偏差）与 −0.5（订单变更），
+  //  库存边取 ±0.5，既不压过预测信号也不弱到测不出（对照实验：coverDays bump ⇒ demandLoad 同向非零）。
+  "demo_fg_cover_days_to_model_demand": -0.185,
+  // ⛔ "demo_fg_drawdown_to_model_demand" 已删（WO-PROP-V2-REBASE 裁决，见 seed.ts 库存环段）
+  // 物料环三条（传导规则业务评审 v2 ④·2026-09-17·评审优先级 4「物料是第二高频扰动源，今天零阻尼」）：
+  //  ① 替代料切换压力 ⇒ 主料短缺风险**下修**（负）：有 Plan B 的料不该和无 Plan B 的料同等短缺。
+  //     今天 MaterialAlternative 是死胡同（只有入边）= 图上假设永远没 Plan B（评审原文）。
+  //     强度待评审 §6 Q4「关键料替代料实际可用比例」定档，暂取 −0.3（介于 0 与需求侧 −0.5 家族之间；
+  //     实测源 switchPressure 哈希支 11–95 ⇒ 注入 −3.3~−28.5，对照靶 shortageRisk −161~51，
+  //     /tmp/t4-probe1.txt）。负环自阻尼（入流越大缓解越大），无发散风险。这是 50+2 条边里第 4 个负系数。
+  //  ② 检验排队天数 ⇒ 物料短缺风险**上抬**（正）：来料堵在检验 ⇒ 到了也不可用（评审原文）。
+  //     0.2/天：实测源哈希支 1–99 ⇒ 注入 0.2~19.8；环增益 0.5(shortage→expedite)×0.6(expedite
+  //     →queue)×0.2(本条)=0.06≪1 阻尼自证。queueDays 是天数族纯积分器（无域不夹），其消化速率归 T6。
+  //  ③ MRP 缺口压力 ⇒ 采购加急压力**上抬**（正）：算出缺口要驱动催货（评审原文）。
+  //     系数对齐同落点直接边 shortage→expedite 0.5（同一语义「缺口驱动催货」，MRP 计算路径与
+  //     直接感受路径同强度）；今天规格世界 gapPressure 实测 0–8.99（种子缺口小是数据的诚实现状，
+  //     ⛔ 不拿系数去凑大屏数）。
+  "demo_alt_switch_to_material_shortage": -0.111,
+  "demo_inspection_queue_to_material_shortage": 0.074,
+  "demo_balance_gap_to_po_expedite": 0.185,
+  // ── WO-PROP-V2-REBASE 收编 canonical WO-SIM-DAMPING 的阻尼边 ────────────────────
+  // ✅ **2026-09-19 仓主裁决：补预乘 λ。`-0.6 → -0.222`（= −0.6 × 0.37，λ=`PRESSURE_DECAY_PER_TICK`）。**
+  //
+  // 裁决的判据不是业务偏好，是**让代码遵守它自己声明的约定**：`inflowCoefficient` 存在的全部理由
+  // 就是「打进**已声明域**落点的边要预乘 λ」，而本边的落点 `Model.demandLoad` 已声明域。
+  // canonical 原写 −0.6 未乘 λ，理由是「镜像判据：与 `demo_model_demand_to_fg_drawdown` 同值反号」
+  // —— 但镜像的是**意图增益**，不是**入流系数**；同落点的邻居
+  // `demo_fg_cover_days_to_model_demand` = −0.185 = −0.5 × 0.37 就是同口径的反例。
+  //
+  // **旁证比谓词更硬**（这条是把「疏漏」与「选择」分开的关键）：canonical 那格的
+  // `S_g = 32.28` **恰等于** `0.8×24.83 + 0.5×24.83` ⇒ **预算算式里压根没算这条边**
+  // ⇒ 它未预乘是**疏漏，不是有意的选择**。
+  //
+  // ⚠ 改完之后 `Model.demandLoad` 那一格**仍然超预算**（实测 3.05 → 1.916，上限 0.75）——
+  //   如实记在这里，⛔ 不为了达标再去动别的边。整格重分配是另一张单。
+  "demo_fg_drawdown_relieves_model_demand": -0.222,
+
+};
+
 export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // DF.14：C03/C05/C13/C09 前端 mock 规则库也物化同一条 —— expression 从 `PARITY_RULE_SEEDS` 派生，
   // 两端只此一处，不再各写一份字面量（此前那份手抄副本正是欠账 #78 的机制面：值对齐过一次，机制没变）。
-  { key: "C03", name: "产能上限约束", expression: parityRuleExpression("C03"), severity: "BLOCK", category: "产能" },
+  { key: "C03", name: "产能上限约束", expression: parityRuleExpression("C03"), severity: "BLOCK", category: "产能",
+    description: "订单需求增量 demandDelta 超过 50% 即阻断——需求增幅超出产能可吸收范围的承接评审线。",
+    tags: ["产能", "承接评审", "需求增量"],
+    answersQuestions: ["4680-NCM 加 20% 六周能不能接？", "订单加量多少就接不了了？"] },
     // DF.13 C08 外协红线：**表达式与命名阈值同源生成**，禁内联。此前 expression 写死一个比现行更宽的常数，
     // 而三个求解器、界面文案、livedin 发布态都按现行红线走 —— 规则库与推演各说各话，且四包测试全绿。
     // WO-RULE-EXPR-PARAMS（闭掉 G-C08-EXPR-PARAM-SPLIT）：expression 现在**引用** `params.outsourceRatioMax`
@@ -746,31 +891,73 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
     // ⚠ key/name/severity/category 刻意保持**字面量**：规则码是标识符、不是会漂的业务数，
     //   且 `rule-closure:check` 靠正则 `key: "Cxx", name:` 扫本表建"已定义规则集"——把 key 也派生会让它瞎掉
     //   （亲测：改成 OUTSOURCE_REDLINE.ruleKey 后该门立刻报「C08 被引用但未定义」）。**只有阈值该单源**。
-    { key: "C08", name: "外协比例红线", expression: outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { param: OUTSOURCE_REDLINE.paramKey }), severity: "WARN", params: { [OUTSOURCE_REDLINE.paramKey]: OUTSOURCE_REDLINE.maxRatio }, category: "外协" },
-  { key: "C13", name: "客户信用额度", expression: parityRuleExpression("C13"), severity: "BLOCK", category: "财务" },
+    { key: "C08", name: "外协比例红线", expression: outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { param: OUTSOURCE_REDLINE.paramKey }), severity: "WARN", params: { [OUTSOURCE_REDLINE.paramKey]: OUTSOURCE_REDLINE.maxRatio }, category: "外协",
+      description: "订单外协比例超过命名阈值 params.outsourceRatioMax 即预警——外协可补缺口保交付，越线提示风险敞口；阈值单源在 params，改它即改判定与推演。",
+      tags: ["外协", "红线", "缺口补缺", "比例"],
+      answersQuestions: ["推荐哪个经营方案？", "缺口 8 万套自产加班还是外协？", "Q2 缺口用什么组合补？", "采纳常州的三班制方案"] },
+  { key: "C13", name: "客户信用额度", expression: parityRuleExpression("C13"), severity: "BLOCK", category: "财务",
+    description: "订单使客户信用已用比例 creditUsedRatio 超过 100% 即阻断——超信用额度的新单拒接。",
+    tags: ["财务", "信用额度", "接单评审", "客户"],
+    answersQuestions: ["宇通客车还能接新单吗？", "这个客户信用额度还够接单吗？"] },
   // A8.5 timeseries rules — evaluated against ts_agg_runs by RULE_SCAN (SUSTAIN).
-  { key: "C05", name: "产线利用率持续越线", expression: parityRuleExpression("C05"), severity: "WARN", category: "产能" },
-  { key: "C12", name: "预测偏差触发重校", expression: parityRuleExpression("C12"), severity: "WARN", category: "需求" },
+  { key: "C05", name: "产线利用率持续越线", expression: parityRuleExpression("C05"), severity: "WARN", category: "产能",
+    description: "产线利用率连续 3 期超过 95% 即预警——持续满负荷意味着零缓冲，任何扰动都会传导成交期风险。",
+    tags: ["产能", "利用率", "持续越线", "交期风险"],
+    answersQuestions: ["常州基地影响哪些订单？", "产线利用率长期拉满有什么风险？"] },
+  { key: "C12", name: "预测偏差触发重校", expression: parityRuleExpression("C12"), severity: "WARN", category: "需求",
+    description: "型号预测偏差 forecast_deviation 超过 8% 即触发预警（SUSTAIN 1 期）——预测与实际差到这条线就该重新校准需求预测。",
+    tags: ["需求", "预测偏差", "重校", "预测"],
+    answersQuestions: ["需求预测偏差多大要重新校准？", "预测和实际差多少要重校？"] },
   // §7.14 年度情景规则校验（情景卡的 C18/C23 行走真实规则引擎）。
   // C18 params.cashFloor：现金垫底线 —— 出厂值从**目标登记册** `PLAN_GOAL_TARGETS.cashFloor` 派生
   // （不再写第三份同值 50：此前 sop.cashFloor / planGenerate.targets.cashFloor / C18 expression 各一份）。
   // 出厂后它是**可编辑的当期口径**：发布新版 C18 即投影进 solver_params 的两处现金底线（见 RULE_PARAM_BINDINGS）。
   // WO-RULE-EXPR-PARAMS：expression 引用 `params.cashFloor`，不再复写一遍 50 —— 此前改 params 只改了
   // 求解器算数（sop.cashFloor / planGenerate.targets.cashFloor），C18 自己的判定仍按 expression 里的 50 走。
-  { key: "C18", name: "现金垫底线", expression: `AnnualScenario.cashCushion < ${ruleParamRef("cashFloor")}`, severity: "BLOCK", params: { cashFloor: PLAN_GOAL_TARGETS.cashFloor }, category: "财务" },
-  { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN", category: "财务" },
+  { key: "C18", name: "现金垫底线", expression: `AnnualScenario.cashCushion < ${ruleParamRef("cashFloor")}`, severity: "BLOCK", params: { cashFloor: PLAN_GOAL_TARGETS.cashFloor }, category: "财务",
+    description: "年度情景现金垫 cashCushion 低于命名阈值 params.cashFloor（出厂 50 亿）即阻断——方案/投资体检的现金安全底线条。",
+    tags: ["财务", "现金", "底线", "情景体检"],
+    answersQuestions: ["现金垫 45 亿过得了体检吗？", "推荐哪个经营方案？", "枣庄储能线值得投吗？"] },
+  { key: "C23", name: "CAPEX 情景测算门槛", expression: "AnnualScenario.capex >= 10", severity: "WARN", category: "财务",
+    description: "年度情景 CAPEX 达到 10 亿门槛即预警——达到这条线的资本开支情景必须走测算评审。",
+    tags: ["财务", "CAPEX", "门槛", "情景测算"],
+    answersQuestions: ["枣庄储能线值得投吗？", "多大口径的 CAPEX 要走情景测算？"] },
   // catalog-battery §3 C26–C33（DSL 表达式 = 违规谓词,expression 真→passed=false；复杂算术取
   // 去归一化/派生字段：yieldFloor=基线-0.02 / minYieldRate=自产-0.02 / daysToStart=开工日-today
   // / deviationPct=ABS(实际-计划)/计划。此前硬编码在求解器,规则引擎不可见;现注册为一等规则。
-  { key: "C26", name: "认证资源上限", expression: "Cert.parallelTasks > Cert.engineerGroups", severity: "BLOCK", category: "认证" },
-  { key: "C27", name: "长协执行偏差", expression: "Lta.deviationPct > 0.05", severity: "WARN", category: "物料" },
-  { key: "C28", name: "呆滞预警", expression: "Batch.idleDays > 90", severity: "WARN", category: "物料" },
-  { key: "C29", name: "排产冻结期", expression: "Order.daysToStart < 3", severity: "BLOCK", category: "排产" },
-  { key: "C30", name: "良率连降停线评审", expression: "SUSTAIN(Process.dailyYield < Process.yieldFloor, 3)", severity: "BLOCK", category: "质量" },
-  { key: "C31", name: "外协质量门", expression: "Outsource.yieldRate < Outsource.minYieldRate", severity: "BLOCK", category: "外协" },
-  { key: "C32", name: "逾期冻结", expression: "Customer.maxOverdueDays > 30", severity: "BLOCK", category: "财务" },
+  { key: "C26", name: "认证资源上限", expression: "Cert.parallelTasks > Cert.engineerGroups", severity: "BLOCK", category: "认证",
+    description: "并行认证任务数超过认证工程师组数即阻断——认证排期不得超过真实人力组数，排了也执行不了。",
+    tags: ["认证", "资源上限", "排期"],
+    answersQuestions: ["待认证的型号怎么排认证顺序？", "认证资源最多能并行几个型号？"] },
+  { key: "C27", name: "长协执行偏差", expression: "Lta.deviationPct > 0.05", severity: "WARN", category: "物料",
+    description: "长协执行偏差（|实际−计划|/计划）超过 5% 即预警——长协提货节奏偏离合同计划要复核覆盖缺口。",
+    tags: ["物料", "长协", "执行偏差"],
+    answersQuestions: ["7 月正极长协覆盖够吗？缺口怎么补？", "长协执行偏离计划多少要预警？"] },
+  { key: "C28", name: "呆滞预警", expression: "Batch.idleDays > 90", severity: "WARN", category: "物料",
+    description: "批次呆滞天数超过 90 天即预警——呆滞库存占用资金，是库存水位优化释放资金的候选。",
+    tags: ["物料", "呆滞", "库存", "资金占用"],
+    answersQuestions: ["哪些物料超储/欠储？能释放多少资金？", "哪些批次呆滞超期了？"] },
+  { key: "C29", name: "排产冻结期", expression: "Order.daysToStart < 3", severity: "BLOCK", category: "排产",
+    description: "距开工不足 3 天的订单进入排产冻结期即阻断改排——临开工换排的成本高于任何重排收益。",
+    tags: ["排产", "冻结期", "开工"],
+    answersQuestions: ["下周订单怎么排能少换型？", "Q2 缺口用什么组合补？", "离开工还有几天就不能改排了？"] },
+  { key: "C30", name: "良率连降停线评审", expression: "SUSTAIN(Process.dailyYield < Process.yieldFloor, 3)", severity: "BLOCK", category: "质量",
+    description: "工序日良率连续 3 天低于良率地板 yieldFloor（基线−0.02）即阻断并触发停线评审——连降不是波动，是工艺失控信号。",
+    tags: ["质量", "良率", "停线评审", "工序"],
+    answersQuestions: ["涂布良率为什么掉了？", "良率连续下降几天要停线评审？"] },
+  { key: "C31", name: "外协质量门", expression: "Outsource.yieldRate < Outsource.minYieldRate", severity: "BLOCK", category: "外协",
+    description: "外协厂良率低于最低可接受良率 minYieldRate（自产−0.02）即阻断——外协补缺口不得突破质量门。",
+    tags: ["外协", "良率", "质量门"],
+    answersQuestions: ["缺口 8 万套自产加班还是外协？", "外协厂良率什么水平就不能用了？"] },
+  { key: "C32", name: "逾期冻结", expression: "Customer.maxOverdueDays > 30", severity: "BLOCK", category: "财务",
+    description: "客户最长逾期天数超过 30 天即冻结——有严重逾期记录的客户暂停接新单。",
+    tags: ["财务", "逾期", "冻结", "客户"],
+    answersQuestions: ["宇通客车还能接新单吗？", "客户逾期多久要冻结接单？"] },
   // C33 碳护照前置：约束 = 目的地EU IMPLIES 碳足迹<=阈值；违规 = NOT(约束)（用 IMPLIES，C33 的招牌用例）。
-  { key: "C33", name: "碳护照前置", expression: "NOT (Order.destination == 'EU' IMPLIES Order.carbonFootprint <= Order.euCarbonThreshold)", severity: "BLOCK", category: "合规" },
+  { key: "C33", name: "碳护照前置", expression: "NOT (Order.destination == 'EU' IMPLIES Order.carbonFootprint <= Order.euCarbonThreshold)", severity: "BLOCK", category: "合规",
+    description: "目的地为欧盟的订单碳足迹超过其欧盟碳阈值即阻断（IMPLIES 取反）——出口欧盟须先过碳护照，不达标不得承诺出口单。",
+    tags: ["合规", "碳足迹", "欧盟", "碳护照", "出口"],
+    answersQuestions: ["4680-NCM 出口欧盟的碳足迹达标吗？", "出口欧盟的单碳足迹超限怎么办？"] },
   // 规则即引用（PRD-rules-as-references 附录A）：补全 13 条「被引用但未定义」规则为一等规则——
   // 消灭前端"（当前库中未找到定义）"、规则闸不再空过。expression 用既有 DSL（无算术/无 param 插值），
   // 命名阈值落 params（求解器 P2 改读 rule.params 去硬编码；改 param 即改推演）。C15/C24 毛利底线
@@ -780,29 +967,68 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   //   ② 其余阈值若已写在 expression 里并由规则引擎真求值，就**不再复制一份进 params**
   //      （C11 minBufferDays / C22 maxChangeoverMin / C25 assumeTolerancePct 曾各存一份同值副本、
   //       全代码库无人读 = 诱饵，已删；阈值单源 = expression）。
-  { key: "C01", name: "产线设计产能上限", expression: parityRuleExpression("C01"), severity: "BLOCK", params: {}, category: "产能" },
-  { key: "C02", name: "化成/老化串并产能口径", expression: parityRuleExpression("C02"), severity: "WARN", params: {}, category: "产能" },
+  { key: "C01", name: "产线设计产能上限", expression: parityRuleExpression("C01"), severity: "BLOCK", params: {}, category: "产能",
+    description: "产线周产能 weeklyCapacityWan 超过设计上限 designCeilingWan 即阻断——排产/承接不得突破产线设计能力。",
+    tags: ["产能", "设计上限", "产线", "承接评审"],
+    answersQuestions: ["4680-NCM 加 20% 六周能不能接？", "产线最大能排到多少产能？"] },
+  { key: "C02", name: "化成/老化串并产能口径", expression: parityRuleExpression("C02"), severity: "WARN", params: {}, category: "产能",
+    description: "化成/老化工序串并线实际吞吐低于需求吞吐即预警——瓶颈工序口径，决定整线有效产能而非名义产能。",
+    tags: ["产能", "化成老化", "吞吐", "瓶颈工序"],
+    answersQuestions: ["4680-NCM 加 20% 六周能不能接？", "化成老化是不是产能瓶颈？"] },
   // C04 **刻意不引用 params**（别"顺手统一"）：它的 expression 是**分类谓词**（认证状态≠量产），
   // 里面没有可参数化的数值阈值；而它的两个 params 是**产能折算系数**（算数维，经 RULE_PARAM_BINDINGS
   // 投影进 `certFactors.*` 供求解器乘）。二者不是同一个数的两份拷贝，故无分叉可言 —— 这条规则
   // 本来就没有 G-C08-EXPR-PARAM-SPLIT 那个病。硬塞一个 `params.x` 进去只会造出一个新的假阈值。
-  { key: "C04", name: "仅认证产线计入产能", expression: "Line.certStatus != '量产'", severity: "WARN", params: { productionFactor: 1, pendingCertFactor: 0.6 }, category: "认证" },
-  { key: "C06", name: "物料齐套缺口口径(MRP)", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料" },
+  { key: "C04", name: "仅认证产线计入产能", expression: "Line.certStatus != '量产'", severity: "WARN", params: { productionFactor: 1, pendingCertFactor: 0.6 }, category: "认证",
+    description: "认证状态非「量产」的产线只按折算系数计入产能（params：量产 1.0 / 认证中 0.6）——把未量产线当满格产能会高估供给。",
+    tags: ["认证", "产能折算", "产线", "供给口径"],
+    answersQuestions: ["待认证的型号怎么排认证顺序？", "认证中的产线产能怎么算？"] },
+  { key: "C06", name: "物料齐套缺口口径(MRP)", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料",
+    description: "MRP 口径下物料平衡出现正缺口 gapTon（吨）即预警——这是「缺料开不了工」的判定口径本身。",
+    tags: ["物料", "齐套", "MRP", "缺口"],
+    answersQuestions: ["常州物料齐套为什么这天越线？", "下周哪些订单缺料开不了工？"] },
   // C09 params：staleHours（何时降级）+ degradedFactor（降到多少）= 规则拥有的两个真阈值，投影进
   // solver_params `health.*`。**normalFactor 已删**：未降级时的 P90 基线系数 `health.normal` 归 M11 校准
   // 参数 `p90_health`（QUANTILE 方法按覆盖率反解）所有——规则再声明一份同值就是第二个写者 + 诱饵。
   // WO-RULE-EXPR-PARAMS：`> params.staleHours` 取代写死的 `> 2` —— 阈值只存 params 一处。
   // DF.14：表达式与两个 params 都从 `PARITY_RULE_SEEDS` 派生（前端 mock 物化同一条，见 fixtures.ts）。
-  { key: "C09", name: "数据时延临时降级", expression: parityRuleExpression("C09"), severity: "WARN", params: parityRuleParams("C09"), category: "质量" },
-  { key: "C10", name: "场景必填+行动审批留痕", expression: "Action.approver == NULL OR Action.audited == FALSE", severity: "BLOCK", params: {}, category: "合规" },
-  { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", severity: "WARN", params: {}, category: "排产" },
-  { key: "C15", name: "经营毛利底线", expression: "Order.marginPct < Order.floorPct", severity: "BLOCK", params: {}, category: "财务" },
-  { key: "C16", name: "齐套缺口预警", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料" },
+  { key: "C09", name: "数据时延临时降级", expression: parityRuleExpression("C09"), severity: "WARN", params: parityRuleParams("C09"), category: "质量",
+    description: "关键数据源（critical）且时延超过 params.staleHours 小时即预警——相关读数按 degradedFactor 临时降级使用，不把陈旧数据当最新值。",
+    tags: ["质量", "数据健康", "时延", "降级"],
+    answersQuestions: ["4680-NCM 加 20% 六周能不能接？", "数据时延多大要降级使用？"] },
+  { key: "C10", name: "场景必填+行动审批留痕", expression: "Action.approver == NULL OR Action.audited == FALSE", severity: "BLOCK", params: {}, category: "合规",
+    description: "行动缺审批人（approver 为空）或未留痕审计（audited 为假）即阻断——处置方案必须先审批留痕才能落地。",
+    tags: ["合规", "审批", "留痕", "行动"],
+    answersQuestions: ["采纳常州的三班制方案", "处置方案没有审批人能采纳吗？"] },
+  { key: "C11", name: "检修窗口与交付高峰错峰", expression: "MaintPlan.bufferDays < 3", severity: "WARN", params: {}, category: "排产",
+    description: "检修计划与交付高峰之间缓冲不足 3 天即预警——检修撞上交付高峰时要错峰调整。",
+    tags: ["排产", "检修", "错峰", "缓冲"],
+    answersQuestions: ["检修计划和交付高峰撞了怎么调？", "常州物料齐套为什么这天越线？"] },
+  { key: "C15", name: "经营毛利底线", expression: "Order.marginPct < Order.floorPct", severity: "BLOCK", params: {}, category: "财务",
+    description: "订单毛利率低于该单地板线 floorPct 即阻断——亏损单不接；地板线求值期按分段对象字段解析，不复制第二份。",
+    tags: ["财务", "毛利", "地板线", "接单评审"],
+    answersQuestions: ["小鹏汽车这单毛利过线吗？", "现金垫 45 亿过得了体检吗？", "推荐哪个经营方案？"] },
+  { key: "C16", name: "齐套缺口预警", expression: "MaterialBalance.gapTon > 0", severity: "WARN", params: {}, category: "物料",
+    description: "与 C06 同一条违规谓词（MaterialBalance.gapTon > 0）的预警维登记——物料平衡出正缺口即提示，覆盖长协/库存/规划体检等提醒场景。",
+    tags: ["物料", "齐套", "预警", "缺口"],
+    answersQuestions: ["下周哪些订单缺料开不了工？", "7 月正极长协覆盖够吗？缺口怎么补？", "哪些物料超储/欠储？能释放多少资金？", "现金垫 45 亿过得了体检吗？"] },
   // WO-RULE-EXPR-PARAMS：`> params.balanceDeviationPct` 取代写死的 `> 0.10`（曾是同值第二份）。
-  { key: "C21", name: "产销平衡偏差", expression: `SopVersionRow.balanceDeviationPct > ${ruleParamRef("balanceDeviationPct")}`, severity: "WARN", params: { balanceDeviationPct: 0.1 }, category: "规划" },
-  { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: {}, category: "换型" },
-  { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {}, category: "财务" },
-  { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: {}, category: "需求" },
+  { key: "C21", name: "产销平衡偏差", expression: `SopVersionRow.balanceDeviationPct > ${ruleParamRef("balanceDeviationPct")}`, severity: "WARN", params: { balanceDeviationPct: 0.1 }, category: "规划",
+    description: "S&OP 版本行产销平衡偏差超过 params.balanceDeviationPct（出厂 10%）即预警——产与销摆不平到这条线要回调计划。",
+    tags: ["规划", "产销平衡", "S&OP", "偏差"],
+    answersQuestions: ["本月产销平衡到哪一步了？", "现金垫 45 亿过得了体检吗？"] },
+  { key: "C22", name: "换型损失/排产约束", expression: "Order.changeoverMin > 120", severity: "WARN", params: {}, category: "换型",
+    description: "订单换型时长超过 120 分钟即预警——排产排序必须把换型损失计入，高换型单是排序优化的首选对象。",
+    tags: ["换型", "排产", "损失", "排序"],
+    answersQuestions: ["下周订单怎么排能少换型？", "本月产销平衡到哪一步了？"] },
+  { key: "C24", name: "接单毛利过线", expression: "Quote.marginPct < Quote.floorPct", severity: "BLOCK", params: {}, category: "财务",
+    description: "报价毛利率低于地板线 floorPct 即阻断——毛利不过线的报价不建议接单。",
+    tags: ["财务", "毛利", "报价", "接单评审"],
+    answersQuestions: ["小鹏汽车这单毛利过线吗？", "这单报价毛利够不够地板线？"] },
+  { key: "C25", name: "外部终端需求假设偏离", expression: "ExternalSignal.deviationPct > 0.05", severity: "WARN", params: {}, category: "需求",
+    description: "外部终端需求信号与内部需求假设偏离超过 5% 即预警——外部市场风向变了，内部需求假设要复核。",
+    tags: ["需求", "外部信号", "假设偏离"],
+    answersQuestions: ["外部终端需求假设偏离了怎么办？", "终端市场信号和我们的需求假设差多少要预警？"] },
   // ── WO-A6-CONTENTION · 规则库里的**第一条多主体谓词**（`docs/PRD-sandbox-redesign.md` §9 A6 的前半段）──
   // 病根（`docs/AUDIT-a6-rule-carriers.md` §4.4 实测）：此前 28 条 expression 的形状只有 5 种，
   // **无一条是多主体谓词** —— 全是「某一个对象的某个量越某条线」。而「同一基地被 ≥2 条业务线争」
@@ -817,7 +1043,10 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   //     只要基地上有两条业务线就报争用，而两条线各占一半、产能绰绰有余时无须任何取舍。
   // 阈值（产能面）是**另一个字段**而不是数字 ⇒ `readRuleThreshold` 判 source="field"：改数据即改判定，
   // 引擎里一个业务阈值都不用存（`chain-impediment.ts` 文件头铁律），也不抬 A2 的 literal 棘轮。
-  { key: "C34", name: "跨业务线产能争用", expression: "COUNT(Base.segClaims.dailyRate) > 1 AND Base.claimedDailyRate > Base.capacityDailyPacks", severity: "BLOCK", params: {}, category: "产能" },
+  { key: "C34", name: "跨业务线产能争用", expression: "COUNT(Base.segClaims.dailyRate) > 1 AND Base.claimedDailyRate > Base.capacityDailyPacks", severity: "BLOCK", params: {}, category: "产能",
+    description: "同一基地被 2 条以上业务线申报日产率、且申报合计超过基地日产能即阻断——规则库唯一的多主体谓词，专判跨业务线抢产能。",
+    tags: ["产能", "争用", "业务线", "基地"],
+    answersQuestions: ["常州和金华这两条业务线抢同一个基地的产能吗？", "多条业务线争同一个基地产能怎么裁？"] },
   // WO-PROP-CLAMP · 推演状态量衰减率。**这条规则存在的唯一理由就是让 λ 可编辑**：
   // 本仓 **47** 条传导边的 `coefficientRef` 实测 **0 条在用**、全部回落内联。
   // ⚠ **订正（WO-COEF-FROM-BOM·2026-09-08 实测）**：原文写「引用机制**形同虚设**」——**这个定性是错的，
@@ -830,10 +1059,34 @@ export const BATTERY_RULES: NonNullable<IndustryTemplate["rules"]> = [
   // 即内联值**被引用值盖过**）。⇒ 缺的是**种子里没人填 ref**，不是机制不存在。
   // 两者修法完全不同：前者「填数据」，后者「造机制」——把前者报成后者会直接歪掉排期
   // （铁律 0.5 ③ 点名的正是这一形态）。原文的「42」同时也已过期（今日现算 47）。
+  // ✅ **2026-09-17 已闭（WO-PROP-COEF-CONFIG）**：「种子里没人填 ref」这一半已由 C36 补上 ——
+  // 50 条边全部声明 `coefficientRef → C36.params.<边key>`，种子内联值与 ref 从
+  // `PROPAGATION_COEF_PARAMS` 同一个键派生（不再留第二份字面量）。
+  // 「47 / 0 条在用」两个读数自此过期：今日现算 **50 条、50 条解析为 CONFIG_REF**。
   // 衰减率是「一次冲击几天散掉」这条**经营口径**，必须落在规则库里改一处即改推演，
   // 而不是再往引擎里内联一个常数（`STATE_VAR_DOMAINS` 只存**引用**，不存值）。
   // 出厂值的推导见 `PRESSURE_DECAY_PER_TICK` 注释（从 risk.pulseWindow/pulseDecayDen 派生，非拍脑袋）。
-  { key: "C35", name: "推演状态量衰减率", expression: `SimStateVar.decayPerTick == ${ruleParamRef(STATE_DECAY_PARAM_KEY)}`, severity: "WARN", params: { [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK }, category: "推演" },
+  { key: "C35", name: "推演状态量衰减率", expression: `SimStateVar.decayPerTick == ${ruleParamRef(STATE_DECAY_PARAM_KEY)}`, severity: "WARN",
+    params: {
+      [STATE_DECAY_PARAM_KEY]: PRESSURE_DECAY_PER_TICK,
+      // WO-PROP-REVIEW-V2 形态② · 积压/天数族消化速率（推导见各常量注释，全部实测工期派生）：
+      queueDaysDecayPerTick: QUEUE_DAYS_DECAY_PER_TICK,
+      repairBacklogDecayPerTick: REPAIR_BACKLOG_DECAY_PER_TICK,
+      qualificationQueueDecayPerTick: QUALIFICATION_QUEUE_DECAY_PER_TICK,
+      inspectBacklogDecayPerTick: INSPECT_BACKLOG_DECAY_PER_TICK, // ⚠ 暂定档
+      handlingBacklogDecayPerTick: HANDLING_BACKLOG_DECAY_PER_TICK, // ⚠ 暂定档
+    }, category: "推演",
+    description: "参数载体而非判定规则：推演状态量每 tick 衰减率 λ 的唯一可编辑来源（引擎读 params.pressureDecayPerTick），存在的理由是让「一次冲击几天散掉」这条经营口径改一处即改推演。",
+    tags: ["推演", "参数载体", "衰减率"] },
+  // WO-PROP-COEF-CONFIG · 推演传导系数表。**这条规则存在的唯一理由就是让 50 条边的系数可编辑** ——
+  // 上面 C35 段头那段实测已经证明「机制在、缺的是种子里没人填 ref」（三分法：接了线没数据）。
+  // 本规则就是「填数据」那一半：50 条边的 `coefficientRef` 全部指向 `C36.params.<边key>`，
+  // 值与种子内联值**同源派生**（`PROPAGATION_COEF_PARAMS` 单源，禁第二份字面量 = G-10 P4 同一条纪律）。
+  // expression 是占位：载体主语 `SimPropagationEdge` 是引擎命名空间、不是本体对象类型
+  // （照 C35 `SimStateVar` 判例；作用域在 `BATTERY_RULE_SCOPES` 显式登记为空，不静默落 Order 域）。
+  { key: "C36", name: "推演传导系数表", expression: "SimPropagationEdge.coefficient != NULL", severity: "WARN", params: PROPAGATION_COEF_PARAMS, category: "推演",
+    description: "参数载体而非判定规则：50 条传导边系数的唯一可编辑来源（引擎按边 key 读 params.<边key>；种子内联值只是冷启动回落，与本表同源派生）。改 params 即改推演，不用改种子不用重建。",
+    tags: ["推演", "参数载体", "传导系数"] },
 ];
 
 /**
@@ -1578,7 +1831,10 @@ const orderProps: PropertyDef[] = [
   { propKey: "demandDelta", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
   { propKey: "outsourceRatio", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
   { propKey: "creditUsedRatio", dataType: "number", isPrimaryKey: false, unit: "dimensionless", scale: "ratio" },
-  { propKey: "leadDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute" },
+  // WO-SIM-ORDER-REAL-FIELDS：本属性现在**同时**是推演世界的一个状态变量（同名直取，
+  // 见 `sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`）⇒ 它的折算式会被用户在推演台上读到，
+  // 必须写在这里（属性自己的定义处），⛔ 不许写进引擎侧 —— 那是把本行业的口径焊进平台（R14）。
+  { propKey: "leadDays", dataType: "number", isPrimaryKey: false, unit: "天", scale: "absolute", description: "合同交期距计划起点的天数 = round((due − forecastStart) ÷ 1 天)，forecastStart 取自求解器参数。「交付时间」是日期，日期进不了世界态，折成天数才有量纲可算。负数有真实含义且刻意保留：在制单可低至 −14，即合同交期已过去 14 天仍未交付；夹到 0 会让「已逾期」与「今天到期」在屏上变成同一个数。" },
   { propKey: "unitPrice", dataType: "number", isPrimaryKey: false, unit: "元", scale: "absolute" }, // 按型号反范式化的单价（value 派生依赖）
   // WO-W5·业务类型维度（乘/商/储·全局推演勾选筛选 + 分口径聚合）。early/earlyDue = 乘用车部分客户提前交付（三重张力之一）。
   { propKey: "businessType", dataType: "enum", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" }, // passenger | commercial | storage
@@ -2155,6 +2411,18 @@ const finishedGoodsInvProps: PropertyDef[] = [
   { propKey: "warehouseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Warehouse" }, // 成品仓（WO-WAREHOUSE 已落）
   { propKey: "qtyOnHand", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" }, // = Σ RECEIPT − Σ ISSUE（勾稽）
   { propKey: "qtyReserved", dataType: "number", isPrimaryKey: false, unit: "件", scale: "absolute" },
+  // WO-PROP-REVIEW-V2 · ③ 库存环（评审优先级 2）：该型号在手订单簿的**日均需求**（套/天）。
+  // 口径 = Σ Order.qty ÷ 订单簿交期跨度天数（同型号 min(due)…max(due)），由 `deriveModelDailyDemand`
+  // 从**真交期**现算后物化（R6 纯函数），不是哈希也不是常数。出处与量纲：
+  //  · 分子 `Order.qty` 单位 = 套（`docs/DECISION-unit-of-account.md` §1.4 裁决）；
+  //  · 分母 = 订单簿覆盖的真实日历跨度（实测 288–358 天 ⇒ 日均 895.9–1696.9 套/天）；
+  //  · 与 `qtyOnHand` 同量纲由 ATP 同口径佐证：`deriveOrderPromises` 把 qtyOnHand 直接与
+  //    `Order.requestedQty`（套）相抵，该链路经 WO-ATP-PROMISE 真起后端对拍 —— 两边若差 96 倍
+  //    （件/套），ATP 承诺全错。故本格按「套/天」登记；`qtyOnHand` 的 `件` 标签是
+  //    WO-DIMENSION-ERRORS 收口单的地界，本单不动。
+  // ⚠ 本格**不是状态变量**（没有规则读它），只作 `coverDays` 派生规格的分母 ——
+  //    故不进 `STATE_VAR_*` 任何一册，也不进世界快照（`varsByType` 不铺它）。
+  { propKey: "dailyDemand", dataType: "number", isPrimaryKey: false, unit: "套/天", scale: "absolute" },
   { propKey: "asOf", dataType: "date", isPrimaryKey: false, unit: "dimensionless", scale: "absolute" },
 ];
 // 可用量派生（qtyAvailable = qtyOnHand − qtyReserved）：派生投影非新真值（R13），走 derivedProperties。
@@ -3301,16 +3569,27 @@ export const STATE_VAR_DISPLAY_NAMES: Record<string, string> = {
   // 名字取「产线受阻压力」而不是「产线阻塞」：该边的 description 原文是
   // 「工序排队 ⇒ 该产线受阻。落在 blockedPressure 这个新量纲上，是为了不回喂 utilPressure 成正反馈环」
   // ⇒ 它度量的是**产线被上游工序堵住的程度**，与既有 `utilPressure`（产线本来就满）分属两个成因。
-  // ⚠ **2026-09-17 订正（WO-SIM-DOMAIN-DECLARE）：本键已登记进 `STATE_VAR_DOMAINS`。**
-  //   原文写「本键刻意不进域表：域表只收『写得出出处』的量纲，而本单没有为它声明取值域」——
-  //   **后半句是实话，前半句是从它错误推出来的结论**：`WO-SLICE-DOMAINS` 没写出处，
-  //   不等于这个量纲没有出处。它与其余 31 个压力族共用**同两条**既有出处（`PRESSURE_DOMAIN_SOURCE`），
-  //   一条都不用新发明 —— 见该常量下方的登记理由。
+  // ✅ 本键**已进 `STATE_VAR_DOMAINS`**：[0,100] + 压力族共享衰减。
+  //   ⚠ 两条线**各自独立**得出同一结论，此处只留一份状态（WO-PROP-V2-REBASE 收编时合并，⛔ 不取并集）：
+  //     · canonical `WO-SIM-DOMAIN-DECLARE`（2026-09-17）· 分支 `WO-PROP-REVIEW-V2` 形态②（2026-09-18）。
+  //   旧注（「刻意不进…写不出出处」）两条线都判它证伪，理由一致：
+  //   `WO-SLICE-DOMAINS` 没写出处 ≠ 这个量纲没有出处 —— 它与其余 31 个压力族共用**同两条**既有出处
+  //   （`PRESSURE_DOMAIN_SOURCE`），一条都不用新发明；评审原文「名字是 0–100 压力指数，却无界累积到 945」
+  //   里的出处就是它自报的量纲。
   //   形态（照铁律 0.6 句式）：**「我用『那一单没为它写出处』当作『它没有出处』的证据。」**
+  //   ⚠ 但实测 Line 对象上本键真值 27.72–182.73（n=130），种子数据已有超界值：
+  //   引擎域照落，超界真值在 sim-real-cells 臂2 EXCEPTIONS 归档点名，种子收口交仓主（动种子 = 动 hash）。
   blockedPressure: "产线受阻压力",
   // ── D10 基地与仓储交付：认证排队 / 成品提货 / 来料催交 ──
   qualificationQueue: "认证排队", drawdownPressure: "成品提货压力",
   inboundExpeditePressure: "来料催交压力",
+  // ── WO-PROP-REVIEW-V2 · 库存环：成品覆盖天数（qtyOnHand ÷ dailyDemand，经 `fgi_cover_days` 规格物化）──
+  // 名字带单位（天），与天数族（queueDays/backlogHorizonDays）同一条纪律；
+  // ⚠ 仍**刻意不进 `STATE_VAR_DOMAINS`**（2026-09-18 T6 收口裁决，不再是"归 T6 统一收口"的待办）：
+  //   它是**根源**（入度 0），没有入流就不会累积 ⇒ 不是形态② 的积分器；
+  //   且走真值支、restPoint≠0 写不出出处。引擎不夹不衰减，`undeclaredStateVars` 继续点名
+  //   （评审逐项裁决的 defer 理由已写进域表头注，与本行互见）。
+  coverDays: "成品覆盖天数（天）",
   // ── D06 计划与排产：基地负载 → 跨基地调拨决策压力 ──
   transferPressure: "跨基地调拨压力",
   // ── D03 销售与客户：拆行 / 交期承诺 / 收货暂扣 / 逾期催收 ──
@@ -3403,12 +3682,27 @@ const PRESSURE_DOMAIN_SOURCE =
 /**
  * 状态量 → 声明取值域（**全平台唯一入口**，与 `STATE_VAR_DISPLAY_NAMES` 同一张登记册的两列）。
  *
- * ⚠ 天数族（`queueDays` / `clearanceQueueDays` / `procurementDelay` / `deliveryDelay`）、
- *   件数/积压族（`inspectBacklog` / `repairBacklog` / `handlingBacklog` / `qualificationQueue`）
- *   **刻意不在此表**：`drill-scan.ts` 只说了它们"是另一类量纲"，**没说上界是多少**，
- *   全仓也找不到第二处出处。给它们拍一个 100 天 / 100 件的上界就是本单明令禁止的"拍脑袋定"。
- *   它们今天仍是纯积分器，且**在 tick 回执里被逐个点名** —— 缺口留在屏上，不留在注释里。
- *   ⚠ 这 8 个**不许**顺手补域，理由不是"还没想好"，是**已经有人按"它无界"在用**：
+ * ⚠ 2026-09-18（WO-PROP-REVIEW-V2 形态②）**本条旧纪律被评审推翻一半**：
+ *   「`drill-scan.ts` 没说上界是多少，拍一个 100 天 / 100 件就是拍脑袋定」——
+ *   这个理由对**上界**仍然成立（故 5 个积压/天数变量用 `max: null` **无界声明**，不拍上界），
+ *   但对**衰减**不成立。评审原文：「那个理由对上界成立，但对衰减不成立 ——
+ *   **检验积压的消化速率 = 检验产能，这是有出处的。**」
+ *   故 `queueDays` / `inspectBacklog` / `repairBacklog` / `handlingBacklog` / `qualificationQueue`
+ *   现已全部带域声明（下界 0 + 无界 max + 消化速率 decayRef），**不再是纯积分器**；
+ *   `blockedPressure` 归压力族 [0,100]（名字自报 0–100 压力指数，无界累积到 945 即病）。
+ *
+ * ⚠ 仍**刻意不在此表**的四个，理由各不相同（评审逐项裁决，不许再拿一句"写不出出处"混盖）：
+ *   · `clearanceQueueDays`：实测出现 **−8.9 天负值**（n=1），数据本身可疑 ⇒ 交仓主 ——
+ *     此刻声明下界 0 会把数据 bug 夹成看起来正常，那不叫修，叫藏。
+ *   · `procurementDelay` / `deliveryDelay`：都是**根源**（入度 0），只能被外部打进，
+ *     没有入流就不会累积 ⇒ 不是积分器，形态② 不适用。
+ *   · `coverDays`：库存环新成员，同为根源；且走真值支、restPoint≠0 写不出出处。
+ *   它们仍在 tick 回执 `undeclaredStateVars` 里被逐个点名 —— 缺口留在屏上，不留在注释里。
+ *
+ * ── ⚠ 上界为什么仍然是 `null`（canonical `WO-SIM-DOMAIN-DECLARE` 的论据，**未被推翻，逐字保留**）──
+ *   `drill-scan.ts` 只说了天数/件数族"是另一类量纲"，**没说上界是多少**，全仓也找不到第二处出处。
+ *   给它们拍一个 100 天 / 100 件的上界就是明令禁止的"拍脑袋定" —— 这正是上面 `max: null` 的理由。
+ *   ⚠ 更硬的一条：**已经有人按"它无界"在用**：
  *   `chain-loss.ts` 的 `SIM_DAY_STATE_VAR_BY_CARRIER` 是天数族的**真消费方**（把"这一拍积了几天"
  *   叠进链损），给它夹个 100 就是把业务量纲改小。同文件 `simDeltaDaysFor` 里那句
  *   「夹在这里而不是改世界态：**世界态是别人的真相源**」把边界划得很清楚 ——
@@ -3480,6 +3774,64 @@ STATE_VAR_DOMAINS.forecastBias = {
     `⇒ 静息点取 0 而非下界，下界取 −max 以保持两侧对称`,
 };
 
+// ── WO-PROP-REVIEW-V2 形态② · 积压/天数族：下界 0 + **无界 max** + 消化速率 decayRef ─────────────
+// 评审原文：「给积压类变量声明**消化速率**（不是上界 —— 上界确实拍不出来，但**消化速率**有出处：产能）」。
+// `max: null` 是**无界声明**，不是"没声明"：契约 `StateVarDomain.max` 已为它改成 nullable
+//（不许用 Infinity 顶：zod 4 拒无限值，JSON 串行化落 null —— 两条路都试过，都死）。
+// λ 推导见各常量注释，全部实测工期派生（/tmp/t6-duration-probe.txt，几何衰减 med 工期后残留 25%）。
+STATE_VAR_DOMAINS.queueDays = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: "queueDaysDecayPerTick" },
+  unit: "天",
+  source:
+    "WO-PROP-REVIEW-V2 形态② · 来料检验周期 releasedDay−arrivedDay med=3 天（n=30，1–4）" +
+    "⇒ λ=1−0.25^(1/3)≈0.37（与压力族同一把尺子，独立 paramKey）",
+};
+STATE_VAR_DOMAINS.inspectBacklog = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: "inspectBacklogDecayPerTick" },
+  unit: "件",
+  source:
+    "WO-PROP-REVIEW-V2 形态② · ⚠ 暂定档：QualityLot 无工期/产能属性（实测 n=260 零命中），" +
+    "借来料检验周期 med=3 天（同「检验」物理过程）⇒ λ=0.37，待仓主定档",
+};
+STATE_VAR_DOMAINS.repairBacklog = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: "repairBacklogDecayPerTick" },
+  unit: "件",
+  source:
+    "WO-PROP-REVIEW-V2 形态② · 维修工期 actualEnd−actualStart med=1 天（n=193，0–2）" +
+    "⇒ λ=1−0.25=0.75（评审原文：积压的消化速率 = 产能）",
+};
+STATE_VAR_DOMAINS.handlingBacklog = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: "handlingBacklogDecayPerTick" },
+  unit: "件",
+  source:
+    "WO-PROP-REVIEW-V2 形态② · ⚠ 暂定档：ExceptionEvent 无处置工期属性（只有 occurredAt+status），" +
+    "借维修工期 med=1 天（处置 = 现场纠正措施，与维修同族作业）⇒ λ=0.75，待仓主定档",
+};
+STATE_VAR_DOMAINS.qualificationQueue = {
+  min: 0, max: null, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: "qualificationQueueDecayPerTick" },
+  unit: "件",
+  source:
+    "WO-PROP-REVIEW-V2 形态② · 认证周期 certHours med=134h÷24=5.58 天（n=18，2.1–8.0）" +
+    "⇒ λ=1−0.25^(1/5.58)≈0.22",
+};
+// 评审原文：「blockedPressure 名字是 0–100 压力指数，却无界累积到 945」⇒ 自报量纲就是出处，
+// 归压力族 [0,100] + 共享 pressureDecayPerTick（不开新参数）。
+// ⚠ 实测 Line 对象上本键真值 27.72–182.73（n=130），**种子数据已有超界值**：引擎域照落，
+// 超界真值在 sim-real-cells 臂2 EXCEPTIONS 归档点名；种子生成式是否收口交仓主（动种子 = 动 hash，不在本单）。
+STATE_VAR_DOMAINS.blockedPressure = {
+  min: 0, max: 100, restPoint: 0,
+  decayRef: { ruleKey: STATE_DECAY_RULE_KEY, paramKey: STATE_DECAY_PARAM_KEY },
+  unit: "0–100 压力指数",
+  source:
+    `${PRESSURE_DOMAIN_SOURCE}；WO-PROP-REVIEW-V2 形态② 裁决：名字自报 0–100 压力指数 ⇒ 无界累积到 945 即病，` +
+    "归压力族收口（⚠ 本键走真值支：Line 对象上有同名属性，与上面 31 个派生支成员的出处差这一句）",
+};
+
 /**
  * 状态量声明取值域查表（**全平台唯一入口**；未登记 → `undefined` = 不夹不衰减 + 回执点名）。
  */
@@ -3499,6 +3851,90 @@ export function stateVarDisplayNames(stateVars: readonly string[]): Record<strin
   for (const v of [...stateVars].sort()) {
     const zh = stateVarDisplayName(v);
     if (zh !== undefined) out[v] = zh;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// 状态变量 → 派生规格的**显式值绑定**（WO-SIM-REAL-DATA §3 · `valueRef`）
+// ---------------------------------------------------------------------------
+//
+// ── 病灶：绑定靠**名字撞上**，失败**静默回落哈希** ───────────────────────────────
+// `deriveSeedBaseSnapshot` 给状态变量取基线值只有一条判据：`o.props[stateVar]` 恰好是
+// 有限数 ⇒ 算实测格；否则 `round(hash01(...)×100)` 哈希兜底。改个名、动个类型，
+// 那一格悄悄退回哈希 —— 不报错、不变红、屏上照样有数。
+//
+// ── 本表把「这个状态变量的基线值来自哪条 DerivationSpec」做成**显式引用** ────────
+// 与 `PropagationRule.coefficientRef` / `weightRef` / `StateVarDomain.decayRef` 同一个
+// `xxxRef` 惯用法：登记 = 名字可以随便改而绑定不断，且绑定失败**必须红**（不许静默回落）。
+//
+// ── 两个消费点（同一真值源，单源 > 并存）──────────────────────────────────────
+//   ① `deriveSeedBaseSnapshot`（种子世界播种）：登记的 (类型,变量) 先按 `valueRef.specKey`
+//      解到 ACTIVE 规格；解不到 ⇒ **抛错变红**（⛔ 不许静默回落哈希）。规格解到了，
+//      值经 §1 的播种期 recompute 物化进 `o.props[targetProp]`，仍由真读数支取走 ——
+//      本表改的是**绑定方式**（显式引用 > 名字撞），不是取值引擎。
+//   ② `GET /a/v1/sim/view-config` 的 `stateVarValueRefs`：读时投影，屏上能说出
+//      「这一格的值来自哪条公式」。
+//
+// ── 判据与 `STATE_VAR_DISPLAY_NAMES` / `STATE_VAR_DOMAINS` 同一条 ────────────────
+// 只登记**有规格可指**的 (类型,变量)；没登记 = 明确的「没有显式绑定，走名字撞」，
+// 不是「没绑上」。Order.qty/unitPrice/leadDays 那三个（WO 红线 4 不碰）不登记 ——
+// 它们没有 DerivationSpec，绑定就是名字本尊，无需引用。
+//
+// ⚠ 键是 `(类型,变量) 对` 不是裸变量名：同一个变量名可以挂在多个类型上、各指各的规格
+//   （`shortageRisk` 挂 Material 也挂 Order，口径不同）。用 `|` 拼键与仓里既有
+//   （`seed-world.ts` 的 measuredVarKeys、本表上方注释）同式。
+export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
+  // ── §2 落地一条登记一条；本单先行交付的是**机制**（引用 + 变红 + 屏上出处），
+  //    32 条式子的登记随 §2 的规格一起进。下面这条是 A 档第一条，也是机制的活样本。
+  "Customer|receivablePressure": { specKey: "customer_receivable_pressure" },
+  // ── §2 A 档第 2–19 条（specKey 与 seed-derivation-specs.ts 逐一对齐；量纲实测见
+  //    docs/evidence/WO-REAL-CELL-notes-20260916.md §2 段）。登记即绑定：specKey 断 ⇒ 播种抛错变红。
+  "Equipment|equipmentFailure": { specKey: "equipment_failure_rate" },
+  "Equipment|loadPressure": { specKey: "equipment_load_pressure" },
+  "Process|queuePressure": { specKey: "process_queue_pressure" },
+  "WIPLot|feedPressure": { specKey: "wiplot_feed_pressure" },
+  "WorkOrder|releasePressure": { specKey: "workorder_release_pressure" },
+  "Line|blockedPressure": { specKey: "line_blocked_pressure" },
+  "Line|utilPressure": { specKey: "line_util_pressure" },
+  "DefectRecord|defectPressure": { specKey: "defect_record_pressure" },
+  "PurchaseOrder|expeditePressure": { specKey: "purchaseorder_expedite_pressure" },
+  "PurchaseOrder|procurementDelay": { specKey: "purchaseorder_procurement_delay" },
+  "Supplier|deliveryDelay": { specKey: "supplier_delivery_delay" },
+  "Supplier|procurementDelay": { specKey: "supplier_procurement_delay" },
+  "Base|loadIndex": { specKey: "base_load_index" },
+  "MaterialBalance|gapPressure": { specKey: "materialbalance_gap_pressure" },
+  "Material|priceShock": { specKey: "material_price_shock" },
+  "Material|shortageRisk": { specKey: "material_shortage_risk" },
+  "Model|costPressure": { specKey: "model_cost_pressure" },
+  "Model|forecastBias": { specKey: "model_forecast_bias" },
+  "Model|supplyRisk": { specKey: "model_supply_risk" },
+  // ── A⚠ 档 5 条（仓主 2026-09-16 ③全批落 5；orderChurn 无诚实源停笔，理由见
+  //    seed-derivation-specs.ts 该段尾注）。specKey 与规格表逐一对齐。
+  "Order|costPressure": { specKey: "order_cost_pressure" },
+  "Order|demandPressure": { specKey: "order_demand_pressure" },
+  "Order|shortageRisk": { specKey: "order_shortage_risk" },
+  "MaterialBatch|procurementDelay": { specKey: "materialbatch_procurement_delay" },
+  "Model|demandLoad": { specKey: "model_demand_load" },
+  // ── WO-PROP-REVIEW-V2 · 库存环（评审优先级 2）：成品覆盖天数 = qtyOnHand ÷ dailyDemand，
+  //    规格 `fgi_cover_days` 见 seed-derivation-specs.ts（COALESCE 兜底 dailyDemand=0）。
+  "FinishedGoodsInventory|coverDays": { specKey: "fgi_cover_days" },
+};
+
+/** `(类型,变量)` → 显式值绑定（裸对精确命中；未登记 → `undefined` = 走名字撞）。全平台唯一入口。 */
+export function stateVarValueRef(typeKey: string, stateVar: string): { specKey: string } | undefined {
+  return STATE_VAR_VALUE_REFS[`${typeKey}|${stateVar}`];
+}
+
+/**
+ * 把一批 `类型.变量` 键投影成 `裸键 → specKey` 字典（**只收登记过的**；与 `stateVarDisplayNames` 同式）。
+ * 入参形态 = `view-config` 里现成的 `sourceStateVar ∪ targetStateVar` 展开成 `类型.变量` 的键集。
+ */
+export function stateVarValueRefs(typeVarKeys: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of [...typeVarKeys].sort()) {
+    const ref = STATE_VAR_VALUE_REFS[k];
+    if (ref !== undefined) out[k] = ref.specKey;
   }
   return out;
 }
@@ -3749,6 +4185,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     { key: "po_from_supplier", fromTypeKey: "PurchaseOrder", toTypeKey: "Supplier", cardinality: "N:1" }, // supply（采购责任方）
     { key: "po_customs_cleared_by", fromTypeKey: "PurchaseOrder", toTypeKey: "CustomsClearance", cardinality: "N:1" }, // supply（清关，仅进口单）
     { key: "po_inspected_by", fromTypeKey: "PurchaseOrder", toTypeKey: "IncomingInspection", cardinality: "N:1" }, // quality（到货检验）
+    // WO-PROP-REVIEW-V2 ④ 检验放行边的地基：检验单 → 它检的那个料（ii.matId 直挂）。
+    // 无此链则 IncomingInspection 在影响向上只有入边（po_inspected_by），「检验堵住 ⇒ 料不可用」无处传导。
+    { key: "inspection_for_material", fromTypeKey: "IncomingInspection", toTypeKey: "Material", cardinality: "N:1" }, // quality（影响向·检验单检的是哪个料）
     { key: "material_carbon", fromTypeKey: "Material", toTypeKey: "CarbonFactor", cardinality: "N:N" }, // supply（碳因子）
     { key: "base_energy_meter", fromTypeKey: "Base", toTypeKey: "EnergyMeter", cardinality: "N:N" }, // factory（能耗）
     { key: "base_has_shipment", fromTypeKey: "Base", toTypeKey: "Shipment", cardinality: "N:N" }, // capacity（在途）
@@ -3897,6 +4336,9 @@ export function batteryLinkTypes(): Omit<LinkTypeDef, "id" | "tenantId" | "versi
     // D05 采购与供应：Material → {MaterialAlternative, MaterialBalance}
     { key: "material_has_alternative", fromTypeKey: "Material", toTypeKey: "MaterialAlternative", cardinality: "1:N" }, // supply（影响向·`alt_for_material` 之逆）
     { key: "material_has_balance", fromTypeKey: "Material", toTypeKey: "MaterialBalance", cardinality: "1:N" }, // supply（MRP 缺口·按物料名归属）
+    // WO-PROP-REVIEW-V2 ④ 缺口催货边的地基：MRP 平衡表 → 它驱动的同料采购单（按物料名归属，
+    // 与 material_has_balance 同一张名解析）。无此链则 gapPressure 是死胡同，「算出缺口要驱动催货」无处传导。
+    { key: "balance_drives_po", fromTypeKey: "MaterialBalance", toTypeKey: "PurchaseOrder", cardinality: "1:N" }, // supply（影响向·MRP 缺口驱动同料采购单催货）
     // ── WO-SIM-ROOT-PROCUREMENT · 采购**补货向**逆边（G-ROOT-3 的地基）─────────────────────
     // 既有 `material_supplied_by_po`(Material→PurchaseOrder) / `material_has_batch`(Material→MaterialBatch)
     // 表达的是**归属**「这个料有哪些采购单 / 哪些批次」，方向「料→单据」。
@@ -4860,6 +5302,10 @@ export const BATTERY_RULE_SCOPES: Record<string, string[]> = {
   // `status === "PUBLISHED"` 全量取、**不看 scopeObjectTypes**，C35 的 λ 照常解析得到
   // （`prop-clamp-decay.seam` 仍绿即为凭证）。这里管的只是"它出现在哪个域的规则清单里"。
   C35: [],
+  // WO-PROP-COEF-CONFIG：C36 照 C35 同一条判例 —— expression 主语 `SimPropagationEdge` 是
+  // 引擎命名空间、不是本体对象类型 ⇒ **显式空**，不静默落 Order 域；且同样不影响
+  // `ruleParams` 装配（那条路只看 PUBLISHED），50 条边的系数照常解析。
+  C36: [],
 };
 
 export interface GeneratedBattery {
@@ -4951,6 +5397,41 @@ function isoDate(ms: number): string {
 /** 完工工单状态（供完工入库派生判定；WorkOrder.status 枚举中的"已完工"口径）。 */
 const COMPLETED_WO_STATUSES = new Set(["已完成", "已关闭"]);
 
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * WO-PROP-REVIEW-V2 · 型号日均需求派生（确定性·R6 纯函数）。
+ *
+ * 口径：按 `Order.model` 归组，日均需求 = Σ Order.qty ÷ 订单簿交期跨度天数（min(due)…max(due)）。
+ * 分子分母都来自真订单簿：qty 是签约量（套，DECISION-unit-of-account §1.4），due 是真交期。
+ * 跨度 ≤0（单张单 / 全部同一天交）⇒ 该型号日均需求记 0 —— 分母为 0 时臆造一个跨度才是撒谎；
+ * `coverDays` 派生规格侧用 COALESCE(qtyOnHand / dailyDemand, 0) 兜底，与「0 需求 ⇒ 0 覆盖压力」同向。
+ *
+ * 实测量级（seed=42 真种子，/tmp/t3-precheck.txt）：跨度 288–358 天 ⇒ 895.9–1696.9 套/天。
+ * 纯函数：无 random / 无时钟；返回 Map 键序不影响下游（消费方按 fgId 查值）。
+ */
+export function deriveModelDailyDemand(orders: Record<string, unknown>[]): Map<string, number> {
+  const byModel = new Map<string, { sum: number; minDue: number; maxDue: number }>();
+  for (const o of orders) {
+    const modelId = String(o.model ?? "");
+    if (!modelId) continue;
+    const qty = Number(o.qty ?? 0);
+    const dueMs = Date.parse(String(o.due ?? ""));
+    if (!Number.isFinite(qty) || !Number.isFinite(dueMs)) continue; // 缺格订单不进口径（诚实跳过）
+    const r = byModel.get(modelId) ?? { sum: 0, minDue: Number.POSITIVE_INFINITY, maxDue: Number.NEGATIVE_INFINITY };
+    r.sum += qty;
+    r.minDue = Math.min(r.minDue, dueMs);
+    r.maxDue = Math.max(r.maxDue, dueMs);
+    byModel.set(modelId, r);
+  }
+  const out = new Map<string, number>();
+  for (const [modelId, r] of [...byModel.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    const spanDays = (r.maxDue - r.minDue) / MS_PER_DAY;
+    out.set(modelId, spanDays > 0 ? r.sum / spanDays : 0);
+  }
+  return out;
+}
+
 /**
  * WO-INVENTORY-3TIER · 完工入库派生（确定性·非事件后处理·R6）。
  *
@@ -4960,14 +5441,18 @@ const COMPLETED_WO_STATUSES = new Set(["已完成", "已关闭"]);
  * SEAM 铁律：改 WorkOrder.qtyActual → RECEIPT.qty 与 FG.qtyOnHand 同步变（KILL-MOCK-RED）。
  *
  * @param finishedWhByBase baseId → 成品仓 warehouseId（whType=FINISHED；WO-WAREHOUSE 每基地必有）
+ * @param dailyDemandByModel （可选）型号 → 日均需求（套/天），来自 `deriveModelDailyDemand`；
+ *        提供时把该值物化到每行 FG.dailyDemand（coverDays 派生规格的分母）；
+ *        缺省（库存 3 层单测只验收发勾稽、不涉及需求口径）记 0，coverDays 规格侧 COALESCE 兜底。
  * 纯函数：无 random / 无时钟；FG 键按 fgId 稳定排序、Txn 按入参 workOrders 顺序 → 字节一致。
  */
 export function deriveFinishedGoodsIntake(
   workOrders: Record<string, unknown>[],
   finishedWhByBase: Map<string, string>,
   asOf: string,
+  dailyDemandByModel: ReadonlyMap<string, number> = new Map(),
 ): { finishedGoodsInv: Record<string, unknown>[]; inventoryTxns: Record<string, unknown>[] } {
-  const fgMap = new Map<string, { fgId: string; model: string; warehouseId: string; qtyOnHand: number; qtyReserved: number; asOf: string }>();
+  const fgMap = new Map<string, { fgId: string; model: string; warehouseId: string; qtyOnHand: number; qtyReserved: number; dailyDemand: number; asOf: string }>();
   const inventoryTxns: Record<string, unknown>[] = [];
   for (const wo of workOrders) {
     const status = String(wo.status ?? "");
@@ -4980,7 +5465,7 @@ export function deriveFinishedGoodsIntake(
     const fgId = `FG-${modelId}-${warehouseId}`;
     let fg = fgMap.get(fgId);
     if (!fg) {
-      fg = { fgId, model: modelId, warehouseId, qtyOnHand: 0, qtyReserved: 0, asOf };
+      fg = { fgId, model: modelId, warehouseId, qtyOnHand: 0, qtyReserved: 0, dailyDemand: dailyDemandByModel.get(modelId) ?? 0, asOf };
       fgMap.set(fgId, fg);
     }
     fg.qtyOnHand += qtyActual;
@@ -4998,7 +5483,7 @@ export function deriveFinishedGoodsIntake(
   }
   const finishedGoodsInv = [...fgMap.values()]
     .sort((a, b) => (a.fgId < b.fgId ? -1 : a.fgId > b.fgId ? 1 : 0))
-    .map((f) => ({ fgId: f.fgId, model: f.model, warehouseId: f.warehouseId, qtyOnHand: f.qtyOnHand, qtyReserved: f.qtyReserved, asOf: f.asOf }));
+    .map((f) => ({ fgId: f.fgId, model: f.model, warehouseId: f.warehouseId, qtyOnHand: f.qtyOnHand, qtyReserved: f.qtyReserved, dailyDemand: f.dailyDemand, asOf: f.asOf }));
   return { finishedGoodsInv, inventoryTxns };
 }
 
@@ -6901,7 +7386,9 @@ export function generateBattery(seed: number, scale: "S" | "M" | "L" | "XL"): Ge
   for (const w of warehouses) {
     if (w.whType === "FINISHED") finishedWhByBase.set(String(w.baseId), String(w.warehouseId));
   }
-  const { finishedGoodsInv, inventoryTxns } = deriveFinishedGoodsIntake(workOrders, finishedWhByBase, isoDate(t0));
+  // WO-PROP-REVIEW-V2 · 型号日均需求（从真订单簿派生；coverDays 规格的分母；纯函数不消耗 rng）。
+  const dailyDemandByModel = deriveModelDailyDemand(orders);
+  const { finishedGoodsInv, inventoryTxns } = deriveFinishedGoodsIntake(workOrders, finishedWhByBase, isoDate(t0), dailyDemandByModel);
 
   // WO-ATP-PROMISE · 订单承诺台账（对每 OPEN 订单净读三源算 ATP 基线·与 atp_check 同口径·无 rng/时钟·R6）。
   // 放在 FG 派生后：需现货(FG)/在制(workOrders)/产能(lines) 三源已就绪；纯派生不消耗 rng（不插既有流中间）。

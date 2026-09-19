@@ -37,7 +37,7 @@ import {
 } from "@platform/contracts";
 import type { AuthCtx } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
-import { stateVarDisplayName } from "../synthetic/battery.js";
+import { stateVarDisplayName, stateVarValueRef } from "../synthetic/battery.js";
 import { buildPropagationInputs } from "./propagation-inputs.js";
 import type { PropagationGraph } from "./propagation.js";
 
@@ -179,6 +179,95 @@ export const DEMO_SIM_WORLD_COMPLETE_KEY = "seedWorldCompletedTicks";
  *   每一拍的世界态 jsonb 全搬回进程，只为了数几行 —— 用一个刚为省流量修过的病去做体检，说不过去。
  */
 export type SeedWorldCompleteness = "COMPLETE" | "LEGACY" | "INCOMPLETE";
+
+/**
+ * ══ WO-SIM-SETTLED-ORDERS · 这个对象该不该进**推演世界** ═══════════════════════
+ *
+ * 仓主实拍三次报同一件事：「输入的扰动因素还是影响已经完成的订单」。
+ * 前两版只在**视图层**滤掉（前端不显示），**引擎照旧给它们算传导** ⇒
+ *  · 白算 350 张单的读数；
+ *  · 任何不走前端的消费方（求解器 / `/a/v1/sim/**` / 导出）拿到的仍是错的。
+ * ⇒ 口径必须落在**建世界**这一层：已完成的单从一开始就不进推演世界。
+ *
+ * 判据：货已交、款已结 ⇒ 后续任何扰动都改不了它的结果，给它算读数是无意义的计算。
+ *
+ * ⛔ 本谓词是**唯一出处**，`seed-world` 与 `GET /a/v1/sim/view-config` 的 `nodeObjectIds`
+ *   必须共用它（那行注释自己就写着「同源同过滤」）。各抄一份则两边口径分家 ⇒
+ *   推演图上出现**有节点、无读数**的幽灵，而且没有任何东西会红。
+ *
+ * 实测（2026-09-14，demo 租户 SEED_DEMO=1）：
+ *   Order 共 500 张 = COMPLETED 350 · IN_PRODUCTION 100 · OPEN 50
+ *   ⇒ 推演世界对象数 4775 → 约 4425（-7.3%），剔除的全是不可能被扰动的单。
+ * 🐤 金丝雀：若剔除数为 0 而对象层 COMPLETED 非 0 ⇒ 本谓词没生效（多半是状态字段改名），
+ *   此时**不许**报「没有已完成订单」。
+ */
+export function entersSimWorld(
+  typeKey: string,
+  o: { readonly mergedInto?: string | null; readonly props: Record<string, unknown> },
+): boolean {
+  if (o.mergedInto) return false;
+  if (typeKey === "Order" && o.props["status"] === "COMPLETED") return false;
+  return true;
+}
+
+/** `listSimWorldObjects` 回的一行：原对象 + 它所属的类型键（`typeKey` 与 `o.type` 可能不同名）。 */
+export interface SimWorldRow {
+  readonly typeKey: string;
+  readonly obj: {
+    readonly id: string;
+    readonly type: string;
+    readonly mergedInto?: string | null;
+    readonly props: Record<string, unknown>;
+  };
+}
+
+/**
+ * ══ 推演世界成员集合的**唯一物化入口** ══════════════════════════════════════════
+ *
+ * ── 为什么必须有这个函数（2026-09-15，代价是三轮返工）───────────────────────────
+ * 「谁算推演世界的成员」这条不变量，此前被**手抄了 5 份**：
+ *   ① `deriveSeedBaseSnapshot`（本文件）          ② `app.ts` 的 `nodeObjectIds`
+ *   ③ `propagation-inputs.ts` 的 `graph.objects`  ④ `change-impact.ts::buildChangeImpactWorld`
+ *   ⑤ 测试 helper `adversary-reaction.seam.test.ts::ordersByCustomer`
+ * 每份都长成 `for (类型) for (对象) if (条件) push(...)`，而条件各写各的。
+ * 给 ①② 加上「已完成订单不进世界」之后，③④⑤ 没跟上，于是一轮修完下一轮才浮出来：
+ *   · ③ 漏 ⇒ `sim-root-triad` 报「350/500 个落点没进 world.state」、
+ *          `sim-seed-world` 报「1755 格 vs 2097 格」（缺的 342 格全是 `orderChurn`）
+ *   · ④ 漏 ⇒ `change-impact-preview` 报「预览 1641 格 vs 真跑 1206 格」——
+ *          **而 ④ 自己的注释就写着「镜像 buildPropagationInputs」**，镜像却没人守
+ *   · ⑤ 漏 ⇒ `adversary-reaction §3` 挑中「条数相同但多数已完成」的客户 ⇒ 还手力度恒 0
+ *
+ * 形态（照铁律 0.6 句式）：
+ *   **「我用『我改了这条规则』当作『这条规则在全系统一致』的证据，而前者并不度量后者
+ *   —— 规则被抄成了 5 份，改一份不会让另外 4 份变红。」**
+ *
+ * ── 这个函数要解决的不是「把 5 份改对」，是「让第 6 份抄不出来」──────────────────
+ * 把**遍历 + 过滤**这一步收成一个函数，调用方只负责 `map` 成自己要的形状。
+ * 于是差异只可能出现在 `map` 上（形状不同本来就正常），不可能再出现在**成员判据**上。
+ * ⛔ 新增任何「推演世界有哪些对象」的物化点，一律走本函数；
+ *   要写 `for (t of types) for (o of listByType) if (...)` 之前，先问一句：
+ *   我要的成员集合是不是推演世界？是 ⇒ 用本函数，别再抄第 6 份。
+ *
+ * 排序：类型按 `ontologyTypes.list` 的返回序，同类型内按对象 id 升序 —— 确定性 R6
+ * （调用方若自己再排一次也无妨，但**不许依赖未排序的遍历序**）。
+ */
+export async function listSimWorldObjects(
+  repos: {
+    ontologyTypes: { list(tenantId: string): Promise<readonly { key: string }[]> };
+    objects: { listByType(tenantId: string, typeKey: string): Promise<readonly SimWorldRow["obj"][]> };
+  },
+  tenantId: string,
+): Promise<SimWorldRow[]> {
+  const out: SimWorldRow[] = [];
+  for (const t of await repos.ontologyTypes.list(tenantId)) {
+    const rows = [...(await repos.objects.listByType(tenantId, t.key))].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
+    for (const obj of rows) if (entersSimWorld(t.key, obj)) out.push({ typeKey: t.key, obj });
+  }
+  return out;
+}
+
 export function seedWorldCompleteness(s: SimSession): SeedWorldCompleteness {
   if ((s.scope as Record<string, unknown>)[DEMO_SIM_WORLD_COMPLETE_KEY] === DEMO_SIM_WORLD_TICKS) return "COMPLETE";
   if (s.status === "RUNNING" && s.curTick >= DEMO_SIM_WORLD_TICKS) return "LEGACY";
@@ -307,6 +396,13 @@ export async function deriveSeedBaseSnapshot(
 ): Promise<{ state: TickState; origin: SeedWorldSnapshotOrigin; provenance: CellProvenance }> {
   const rules = await repos.sim.listPropagationRules(tenantId, true);
   const byType = varsByType(rules);
+  // WO-SIM-REAL-DATA §3：登记的 (类型,变量) 走**显式 valueRef**（`STATE_VAR_VALUE_REFS`），
+  // 不再只靠「名字撞上属性」这一条。先把引用解到 ACTIVE 规格 —— 解不到**当场抛错变红**，
+  // ⛔ 不许静默回落哈希（那就是本单要消灭的病）。规格解到了，值经 §1 播种期 recompute
+  // 物化进 `o.props[targetProp]`，下面仍由真读数支取走；`measuredRefVarKeys` 把「这几格
+  // 是显式绑定来的」与「这几格是名字撞上的」分开记，出处里说清。
+  const activeSpecs = await repos.derivationSpecs.list(tenantId, (s) => s.status === "ACTIVE");
+  const specByKey = new Map(activeSpecs.map((s) => [s.specKey, s]));
   const state: TickState = {};
   /**
    * 逐格出处（WO-SANDBOX-REAL-SNAPSHOT）。**与 `measuredCells` 在同一个 `if/else` 里写**，
@@ -318,11 +414,57 @@ export async function deriveSeedBaseSnapshot(
   let objects = 0;
   let cells = 0;
   let measuredCells = 0;
+  /**
+   * 真读数那一档**现场命中的** `类型.变量`（升序去重）。
+   *
+   * ⛔ 这一份必须是**现算**的，不许在下面的 `formula` 里写死一串名字：写死的字面量
+   * 不度量"今天真的读到了谁"—— 规则一改、属性一改名，屏上那句话就开始说假话而不会红。
+   * （本仓已登记过同构的账：`PRESSURE_DOMAIN_SOURCE` 里写死的 `measuredCells: 0` 在本单
+   * 落地当天就过期了。）
+   */
+  const measuredVarKeys = new Set<string>();
+  /** 其中走**显式 valueRef 绑定**（而非名字撞）命中的 `类型.变量`（出处里单独点名）。 */
+  const measuredRefVarKeys = new Set<string>();
+  /**
+   * 显式绑定校验（WO §3「绑定失败会红」）：凡 `STATE_VAR_VALUE_REFS` 登记、且该变量真的
+   * 被本世界铺到的 (类型,变量)，其 specKey 必须解到一条 ACTIVE 规格。在**铺格之前**全量核一遍，
+   * 一次把坏引用全部报出来，而不是铺到一半才红在某一张对象上。
+   * ⛔ 不许静默回落哈希：坏引用退回哈希 = 本单要消灭的病换了个入口回来。
+   *
+   * ⚠ 作用域 = 「本世界走了显式绑定这条路」（规格库非空）才强制。
+   *   生产播种路径（SEED_DEMO=1）先 `seedDemoDerivationSpecs` ⇒ 规格库非空 ⇒ 全强制，断引用必红。
+   *   而**不播种规格**的调用方（如只验「名字撞」那条路的单元接缝测试 `sim-order-real-fields`）
+   *   规格库整体空 ⇒ 它压根没走显式绑定这条路 ⇒ 跳过校验，不许把生产不变量错套到它头上。
+   *   判据一句话：**你播种了规格，就得绑得上；你没播种规格，这条路对你不存在。**
+   *   （变异反证仍有效：规格库非空 + 指一个查无的 specKey ⇒ `specByKey.get` 落空 ⇒ 红。）
+   */
+  const brokenRefs: string[] = [];
+  if (specByKey.size > 0) {
+    for (const typeKey of byType.keys()) {
+      for (const v of byType.get(typeKey) ?? new Set<string>()) {
+        const ref = stateVarValueRef(typeKey, v);
+        if (ref === undefined) continue;
+        const spec = specByKey.get(ref.specKey);
+        if (spec === undefined) {
+          brokenRefs.push(`${typeKey}.${v} → specKey "${ref.specKey}"（查无 ACTIVE 规格）`);
+        } else if (spec.targetType !== typeKey || spec.targetProp !== v) {
+          brokenRefs.push(
+            `${typeKey}.${v} → specKey "${ref.specKey}"（规格落点是 ${spec.targetType}.${spec.targetProp}，不指回本格）`,
+          );
+        }
+      }
+    }
+  }
+  if (brokenRefs.length > 0) {
+    throw new Error(
+      `WO-SIM-REAL-DATA §3 valueRef 绑定断裂（⛔ 不许静默回落哈希）：\n  · ${brokenRefs.join("\n  · ")}`,
+    );
+  }
   // 类型有序 + 对象按 id 有序 ⇒ 同一租户同一本体重跑，落库字节一致（R6）。
   for (const typeKey of [...byType.keys()].sort((a, b) => a.localeCompare(b))) {
     const vars = [...(byType.get(typeKey) ?? new Set<string>())].sort((a, b) => a.localeCompare(b));
     const rows = (await repos.objects.listByType(tenantId, typeKey))
-      .filter((o) => !o.mergedInto) // 与 `GET /a/v1/sim/view-config` 的 nodeObjectIds 同源同过滤
+      .filter((o) => entersSimWorld(typeKey, o)) // 与 `GET /a/v1/sim/view-config` 的 nodeObjectIds 同源同过滤
       .sort((a, b) => a.id.localeCompare(b.id));
     for (const o of rows) {
       const row: Record<string, number> = {};
@@ -333,6 +475,10 @@ export async function deriveSeedBaseSnapshot(
           row[v] = real;
           originRow[v] = "measured";
           measuredCells += 1;
+          measuredVarKeys.add(`${typeKey}.${v}`);
+          // §3：这一格是显式绑定来的（登记了 valueRef 且规格落点回指本格）⇒ 单独记一笔，
+          // 出处里能说「这几格的值来自哪条公式」，而不只「名字撞上了」。
+          if (stateVarValueRef(typeKey, v) !== undefined) measuredRefVarKeys.add(`${typeKey}.${v}`);
         } else {
           row[v] = Math.round(seedHash01(`${o.id}|${v}`) * 100);
           originRow[v] = "derived";
@@ -353,7 +499,29 @@ export async function deriveSeedBaseSnapshot(
     provenance,
     origin: {
       kind: "DERIVED",
-      formula: "round(hash01(`${objectId}|${stateVar}`) × 100)（FNV-1a · 与前端 deriveBaseSnapshot 同式）",
+      /**
+       * ⛔ 与 `note` 同一条纪律：**纯文本上屏，不许 markdown**（消费方见 `note` 上方那段）。
+       *
+       * ── 为什么是现算的两句，而不是一句写死的哈希式（WO-SIM-ORDER-REAL-FIELDS）────────
+       * 本函数一直是**两档**（真读数 / 派生占位），而这句 `formula` 以前**只描述了派生那一档** ——
+       * 在 `measuredCells` 恒 0 的年代它恰好不算错，于是没人发现它少说了一半。
+       * 本单让真读数那一档第一次真的命中（450 格），这句话当场变成半真半假：
+       * 屏上说"读数由哈希派生"，而其中 450 格是订单的真实台数/单价/交期天数。
+       * ⇒ 改成**按本次实际命中现算**：一格真读数都没有时，输出与本单之前**逐字节相同**
+       *   （其余 30+ 个类型今天仍然全靠派生支，不许让它们的屏上文案变样）；
+       *   命中了才多说一句，并**点名**是哪几个 `类型.属性` —— 名字现取，不写死。
+       * ⚠ R14：这里只说"直接取该对象同名属性的值"，⛔ 不解释任何一个具体属性的业务口径
+       *   （如交期怎么折成天数）—— 那是行业包的事，写在该属性自己的 `description` 上，
+       *   随对象类型下发；写进引擎就是把本行业的建模判断焊进平台。
+       */
+      formula:
+        measuredVarKeys.size === 0
+          ? "round(hash01(`${objectId}|${stateVar}`) × 100)（FNV-1a · 与前端 deriveBaseSnapshot 同式）"
+          : "两档取值。① 真读数：状态变量名恰好是该对象的一个数值属性时，直接取该属性的值，" +
+            "不做任何二次折算（该属性自己的口径见对象类型里它的说明）；" +
+            `本次命中 ${[...measuredVarKeys].sort((a, b) => a.localeCompare(b)).join("、")}。` +
+            "② 派生占位：其余格子 round(hash01(`${objectId}|${stateVar}`) × 100)" +
+            "（FNV-1a · 与前端 deriveBaseSnapshot 同式）。",
       /**
        * ⛔ **这句是直接印在用户屏上的，必须是纯文本人话** —— 不许写 markdown 标记，
        *    也不许写接口字段名 / 变量名。
@@ -374,10 +542,29 @@ export async function deriveSeedBaseSnapshot(
        *    ⇒ 这不是一处笔误，是「注释里的 Markdown 习惯漏进上屏串」这一类，改这句时先看本段。
        */
 
+      /**
+       * ⚠ **2026-09-15 订正（WO-SIM-ORDER-REAL-FIELDS）**：原文整句写死
+       * 「推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值」。
+       * 那句话在 `measuredCells` 恒 0 的年代是对的，本单落地当天变成**假话** ——
+       * `Order.qty`/`unitPrice`/`leadDays` 就是对象属性，就是取得到值。
+       * 而它是**直接印在用户屏上**的（见上方消费方清单），所以这不是注释过期，是屏上说假话。
+       * ⇒ 改成按本次真实的两档占比现算：一格都没实测到时逐字节维持原句（其余 30+ 类型的屏
+       *   不受影响），实测到了才如实说"哪些是真读数、其余仍是占位"。
+       */
       note:
-        "种子世界的 tick0 读数由本体结构派生（确定性占位），不是实测：" +
-        "推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值 —— " +
-        "「实测格」一项计的就是每次播种现场探到的真读数格数。凡拿它当起点算出的差值，量级不可当实测读。",
+        measuredCells === 0
+          ? "种子世界的 tick0 读数由本体结构派生（确定性占位），不是实测：" +
+            "推演状态变量（loadIndex/demandPressure…）在本平台不是对象属性，对象上取不到值 —— " +
+            "「实测格」一项计的就是每次播种现场探到的真读数格数。凡拿它当起点算出的差值，量级不可当实测读。"
+          : `种子世界的 tick0 读数分两种：${measuredCells} 格是实测（状态变量名就是对象上的属性名，` +
+            `直接读了那个对象的真实业务数）；其余 ${cells - measuredCells} 格是本体结构派生的确定性占位` +
+            "（这些状态变量在本平台不是对象属性，对象上取不到值）。" +
+            "拿占位格当起点算出的差值，量级不可当实测读；实测格没有这个问题。" +
+            // §3：显式绑定来的格子，出处里点名它们各自来自哪条公式（纯文本，不上 markdown）。
+            (measuredRefVarKeys.size > 0
+              ? `其中 ${[...measuredRefVarKeys].sort((a, b) => a.localeCompare(b)).join("、")} ` +
+                "由显式规格绑定取值（每条公式的口径见派生规格表，规格缺失会在播种时直接报错，不会退回占位）。"
+              : ""),
       types: byType.size,
       objects,
       cells,

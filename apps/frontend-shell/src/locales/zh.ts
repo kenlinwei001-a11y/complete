@@ -984,38 +984,44 @@ export const zh = {
              这不是为了过门，是规范 §2 的原文要求（第一层只放数值/状态/名字）。
            ══════════════════════════════════════════════════════════════════════ */
 
-        /** 三档的**全称**（浮层与读屏用）。屏上那句「本层不随节拍变」就出自这里。 */
+        /** 四档的**全称**（浮层与读屏用）。屏上那句「本层不随节拍变」就出自这里。 */
         driveLabel: {
           TICK_DRIVEN: "随节拍变",
           NO_CARRIER_OBJECTS: "无承载对象",
+          SOURCE_ONLY: "只当源头·自己不动",
           NOT_TICK_DRIVEN: "本层不随节拍变",
-        } as Record<"TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN", string>,
+        } as Record<"TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "SOURCE_ONLY" | "NOT_TICK_DRIVEN", string>,
         /**
          * 站上第三行的**短标**（65 座站每座都要印，全称会把地铁图淹掉）。
          *
-         * ⛔ 两档**必须是两句不同的话**（派单的变异反证就咬这一条）：
-         *   「不随节拍」= 传导图里没有这类承载物 ⇒ 结构上不会动；
-         *   「无承载对象」= 传导图够得着，但这个世界里一个该类对象都没有 ⇒ 补数据即动。
-         * 合成一句 = 把两个定性不同、修法不同的事实盖成一个，正是本仓「一个数盖住两个事实」的形态。
-         * ⚠ 两者都**不是**留白、也不是灰掉：留白读作"加载中/坏了"，灰掉读作"被禁用"。
+         * ⛔ 三档**必须是三句不同的话**（派单的变异反证就咬这一条）：
+         *   「不随节拍」  = 传导图里没有这类承载物 ⇒ 结构上不会动，要先建模；
+         *   「无承载对象」= 传导图够得着，但这个世界里一个该类对象都没有 ⇒ 补数据即动；
+         *   「只当源头」  = **在图里，但没有任何规则写它**（入度 0）⇒ 它推得动别人、自己不动，
+         *                  修法是补一条写它的入边 —— 与上面两条**都不是一回事**。
+         * 合成一句 = 把定性不同、修法不同的事实盖成一个，正是本仓「一个数盖住两个事实」的形态。
+         * ⚠ 三者都**不是**留白、也不是灰掉：留白读作"加载中/坏了"，灰掉读作"被禁用"。
          */
         driveMark: {
           TICK_DRIVEN: "",
           NO_CARRIER_OBJECTS: "无承载对象",
+          SOURCE_ONLY: "只当源头",
           NOT_TICK_DRIVEN: "不随节拍",
-        } as Record<"TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN", string>,
+        } as Record<"TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "SOURCE_ONLY" | "NOT_TICK_DRIVEN", string>,
         /** 站上读数后面那一小截增量。没有上一拍就**根本不印**，不印一个假的 `+0`。 */
         deltaSuffix: (d: number) => (d > 0 ? ` ▲${d}` : d < 0 ? ` ▼${Math.abs(d)}` : " ＝0"),
         /** 随节拍变、但这一拍拿不到读数（世界态里还没有这些对象的条目）。 */
         liveNoReading: "本拍无读数",
         /** 站的读屏补充（`aria-label` 尾巴）。读屏用户拿不到颜色与形状，这里必须把话说全。 */
-        stationLiveAria: (drive: "TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN", reading: number | null, delta: number | null, objects: number) => {
+        stationLiveAria: (drive: "TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "SOURCE_ONLY" | "NOT_TICK_DRIVEN", reading: number | null, delta: number | null, objects: number) => {
           const head =
             drive === "TICK_DRIVEN"
               ? "随节拍变"
               : drive === "NO_CARRIER_OBJECTS"
                 ? "无承载对象：传导图够得着这类承载物，但这个世界里一个该类对象都没有，所以这一拍不会动"
-                : "本层不随节拍变：传导图里没有这类承载物，节拍引擎写不到它";
+                : drive === "SOURCE_ONLY"
+                  ? "只当源头，自己不动：有传导规则从这类承载物出发，但没有任何规则写它，所以推拍它的读数不会变"
+                  : "本层不随节拍变：传导图里没有这类承载物，节拍引擎写不到它";
           const r = reading === null ? "本拍无读数" : `本拍读数 ${reading}`;
           const d = delta === null ? "没有可比的上一拍" : delta === 0 ? "与上一拍相同" : `相比上一拍 ${delta > 0 ? "增加" : "减少"} ${Math.abs(delta)}`;
           return ` · ${head} · 承载对象 ${objects} 个 · ${r} · ${d}`;
@@ -1038,6 +1044,7 @@ export const zh = {
           comparable: boolean;
           driven: number;
           noData: number;
+          sourceOnly: number;
           staticCount: number;
           moved: number;
           netDelta: number | null;
@@ -1047,7 +1054,11 @@ export const zh = {
             a.sessionId === null || a.tick === null
               ? "推演沙盘还没有世界（左边控制条上先建一个，这里才有节拍可读）"
               : `世界 ${a.sessionId} · 第 ${a.tick} 拍${a.origin === "DERIVED" ? "（建会话时的占位态，不是引擎算的）" : "（引擎回包）"}`;
-          const scale = `随节拍变 ${a.driven} 条 · 无承载对象 ${a.noData} 条 · 本层不随节拍变 ${a.staticCount} 条`;
+          // ⚠ 四档**全部印出来**：读者会把这几个数加起来对总条数。少印一档，
+          //   那一档的流程就从总数里凭空蒸发了 —— 那正是本块头注说的「把事实藏进留白」。
+          const scale =
+            `随节拍变 ${a.driven} 条 · 无承载对象 ${a.noData} 条 · ` +
+            `只当源头自己不动 ${a.sourceOnly} 条 · 本层不随节拍变 ${a.staticCount} 条`;
           if (a.sessionId === null || a.tick === null) return `${where}；${scale}。`;
           if (!a.comparable) {
             return `${where}；${scale}。这是第一张快照，没有可比的上一拍 —— 推一拍再回来看，动了的站会亮出脉冲环。`;
@@ -1070,12 +1081,22 @@ export const zh = {
         /* ── 以下四条一律在 `?` 浮层里（第一层只留上面那一句结论 + 这个 `?` 记号）── */
         /**
          * 判据的技术出处与复验（不上屏）：
-         *  ① 随节拍变 = 该流程的承载类型出现在已发布传导规则的 source 或 target 一端
+         *  ① 随节拍变 = 该流程的承载类型出现在已发布传导规则的 **target 一端**
          *     （`GET /a/v1/sim/propagation-rules`），且该类型在这个世界里真有物化对象
          *     （`GET /a/v1/sim/view-config` 的 `nodeObjectIds`）；
-         *  ② 无承载对象 = 类型在规则两端里，但 0 个物化对象；
-         *  ③ 本层不随节拍变 = 类型不在规则两端集合里。第三档是**结构性**的：传导引擎
-         *     `propagateTick` 唯一的写法是写到规则 target 那一端的对象上，够不着的类型怎么推都不会动。
+         *  ② 无承载对象 = 类型在规则 **target 端**里，但 0 个物化对象；
+         *  ③ 只当源头自己不动 = 类型在规则两端里，但**只出现在 source 端**（入度 0）——
+         *     有规则从它出发，却没有任何规则写它；
+         *  ④ 本层不随节拍变 = 类型不在规则两端集合里。
+         *  ③④ 都是**结构性**的：传导引擎 `propagateTick` 唯一的写法是
+         *     `next[targetObjectId][targetStateVar] = …`，`targetObjectId` 只能来自规则 target 那一端
+         *     ⇒ 不在 target 集合里的类型，怎么推都不会动。
+         *  ⚠ **③ 与 ④ 不是一回事、修法不同**：③ 已经在传导图里，补一条写它的入边即动；
+         *     ④ 压根不在图里，要先建模。
+         *
+         * ⚠ **2026-09-19 订正**：①② 原写的是「source **或** target 一端」——**那是错的判据**，
+         *   它把「只当源」的类型判成了「随节拍变」。形态：「我用『它出现在某条规则的两端』
+         *   当作『它会动』的证据，而前者并不度量后者。」③ 这一档就是为此拆出来的。
          *
          * 2026-08-14 实测：真后端种子下这三档是 9 / 0 / 56
          * （65 条流程、64 种承载物、13 条传导规则、规则两端 11 种类型）。复验命令：

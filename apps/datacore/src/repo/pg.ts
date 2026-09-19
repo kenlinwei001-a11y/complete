@@ -8,6 +8,10 @@ import type {
   KbChunkRecord,
   LinkInstance,
   ObjectInstance,
+  OntoGraphAtomRecord,
+  OntoGraphEdgeRecord,
+  OntoGraphSliceRecord,
+  OntoGraphSnapshotRecord,
   ScheduledJobRecord,
   Tenant,
   TsPointRecord,
@@ -19,6 +23,8 @@ import type {
   ExecutionLockStore,
   LinkStore,
   ObjectStore,
+  OntoGraphCounts,
+  OntoGraphRepo,
   RawRowStore,
   Repos,
   ScheduledJobStore,
@@ -820,6 +826,188 @@ class PgVectorIndex implements VectorIndex {
   }
 }
 
+/**
+ * 本体图谱 pg 仓储（WO-ONTOGRAPH-DB · migrations/041 · R9 与 `memory.ts MemOntoGraphRepo` 成对）。
+ *
+ * 三张子表的批量写**刻意抄 `PgStore.putMany` 的算法而不是 SQL**（见下 `insertChunks`）：
+ * 那个方法头注里三条坑全部在本表上成立，且第 ② 条**在这里是必炸不是可能炸** ——
+ * 边表 21,032 行 × 5 列 = **105,160 个绑定参数**，而 pg 线协议上限是 int16 的 65,535。
+ * 一次 INSERT 打完整批会直接报 `bind message has N parameter formats but M parameters`。
+ * ⇒ chunk 必须**按实际列数反算**（写死行数就是等下次加一列时悄悄炸）。
+ */
+class PgOntoGraphRepo implements OntoGraphRepo {
+  constructor(private pool: pg.Pool) {}
+
+  async putSnapshot(s: OntoGraphSnapshotRecord): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO ontograph_snapshot (id, tenant_id, generated_from, doc)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (id) DO UPDATE SET doc = EXCLUDED.doc,
+         generated_from = EXCLUDED.generated_from, updated_at = now()`,
+      [s.id, s.tenantId, s.generatedFrom, JSON.stringify(s.doc)],
+    );
+  }
+
+  async getSnapshot(tenantId: string, snapshotId: string): Promise<OntoGraphSnapshotRecord | null> {
+    const r = await this.pool.query(
+      `SELECT id, tenant_id, generated_from, doc FROM ontograph_snapshot
+       WHERE id = $1 AND tenant_id = $2`,
+      [snapshotId, tenantId],
+    );
+    const row = r.rows[0];
+    return row
+      ? { id: row.id, tenantId: row.tenant_id, generatedFrom: row.generated_from, doc: row.doc }
+      : null;
+  }
+
+  async listSnapshots(tenantId: string): Promise<OntoGraphSnapshotRecord[]> {
+    // R6：排序显式，与 memory 侧 sort(generatedFrom → id) 逐字对应。
+    const r = await this.pool.query(
+      `SELECT id, tenant_id, generated_from, doc FROM ontograph_snapshot
+       WHERE tenant_id = $1 ORDER BY generated_from, id`,
+      [tenantId],
+    );
+    return r.rows.map((row) => ({
+      id: row.id, tenantId: row.tenant_id, generatedFrom: row.generated_from, doc: row.doc,
+    }));
+  }
+
+  async deleteSnapshot(tenantId: string, snapshotId: string): Promise<boolean> {
+    // 先清三张子表再删索引行 —— 反过来的话中途失败会留下够不着的孤儿，
+    // 而它们照样被 counts() 数进去，下一次对账凭空多出两万条。
+    for (const t of ["ontograph_atom", "ontograph_edge", "ontograph_slice"]) {
+      await this.pool.query(`DELETE FROM ${t} WHERE tenant_id = $1 AND snapshot_id = $2`, [tenantId, snapshotId]);
+    }
+    const r = await this.pool.query(
+      `DELETE FROM ontograph_snapshot WHERE id = $1 AND tenant_id = $2`,
+      [snapshotId, tenantId],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * 整批替换：**同一个事务里**先删该快照旧行再插新行。
+   *
+   * 为什么非事务不可（这一条 memory 侧天然成立，pg 侧必须显式买）：删与插之间若崩，
+   * 库里留下的是「这个快照零条原子」——而那在读侧与「抽取器本来就没抽到东西」**完全同形**。
+   * 本仓最贵的一类误判正是这个：把「我没读到」当成「它不存在」。
+   */
+  private async replaceRows(
+    table: string, cols: string[], tenantId: string, snapshotId: string,
+    rows: Record<string, unknown>[],
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM ${table} WHERE tenant_id = $1 AND snapshot_id = $2`, [tenantId, snapshotId]);
+      // 绑定参数上限 65535（int16）⇒ chunk 按**实际列数**反算，留余量取 60000。
+      const chunkRows = Math.max(1, Math.floor(60000 / cols.length));
+      for (let off = 0; off < rows.length; off += chunkRows) {
+        const slice = rows.slice(off, off + chunkRows);
+        const vals: unknown[] = [];
+        const tuples = slice.map((row, i) => {
+          for (const c of cols) vals.push(row[c]);
+          const base = i * cols.length;
+          return `(${cols.map((_, k) => `$${base + k + 1}`).join(",")})`;
+        });
+        await client.query(
+          `INSERT INTO ${table} (${cols.join(",")}) VALUES ${tuples.join(",")}
+           ON CONFLICT (id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = now()`,
+          vals,
+        );
+      }
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async replaceAtoms(tenantId: string, snapshotId: string, rows: OntoGraphAtomRecord[]): Promise<void> {
+    await this.replaceRows(
+      "ontograph_atom", ["id", "tenant_id", "snapshot_id", "atom_id", "pkg", "doc"],
+      tenantId, snapshotId,
+      rows.map((r) => ({
+        id: r.id, tenant_id: r.tenantId, snapshot_id: r.snapshotId,
+        atom_id: r.atomId, pkg: r.pkg, doc: JSON.stringify(r.doc),
+      })),
+    );
+  }
+
+  async replaceEdges(tenantId: string, snapshotId: string, rows: OntoGraphEdgeRecord[]): Promise<void> {
+    await this.replaceRows(
+      "ontograph_edge", ["id", "tenant_id", "snapshot_id", "kind", "doc"],
+      tenantId, snapshotId,
+      rows.map((r) => ({
+        id: r.id, tenant_id: r.tenantId, snapshot_id: r.snapshotId,
+        kind: r.kind, doc: JSON.stringify(r.doc),
+      })),
+    );
+  }
+
+  async replaceSlices(tenantId: string, snapshotId: string, rows: OntoGraphSliceRecord[]): Promise<void> {
+    await this.replaceRows(
+      "ontograph_slice", ["id", "tenant_id", "snapshot_id", "slice_key", "doc"],
+      tenantId, snapshotId,
+      rows.map((r) => ({
+        id: r.id, tenant_id: r.tenantId, snapshot_id: r.snapshotId,
+        slice_key: r.sliceKey, doc: JSON.stringify(r.doc),
+      })),
+    );
+  }
+
+  async listAtoms(tenantId: string, snapshotId: string, pkg?: string): Promise<OntoGraphAtomRecord[]> {
+    const r = await this.pool.query(
+      `SELECT id, tenant_id, snapshot_id, atom_id, pkg, doc FROM ontograph_atom
+       WHERE tenant_id = $1 AND snapshot_id = $2 ${pkg ? "AND pkg = $3" : ""} ORDER BY pkg, atom_id`,
+      pkg ? [tenantId, snapshotId, pkg] : [tenantId, snapshotId],
+    );
+    return r.rows.map((row) => ({
+      id: row.id, tenantId: row.tenant_id, snapshotId: row.snapshot_id,
+      atomId: row.atom_id, pkg: row.pkg, doc: row.doc,
+    }));
+  }
+
+  async listEdges(tenantId: string, snapshotId: string, kind?: string): Promise<OntoGraphEdgeRecord[]> {
+    const r = await this.pool.query(
+      `SELECT id, tenant_id, snapshot_id, kind, doc FROM ontograph_edge
+       WHERE tenant_id = $1 AND snapshot_id = $2 ${kind ? "AND kind = $3" : ""} ORDER BY id`,
+      kind ? [tenantId, snapshotId, kind] : [tenantId, snapshotId],
+    );
+    return r.rows.map((row) => ({
+      id: row.id, tenantId: row.tenant_id, snapshotId: row.snapshot_id, kind: row.kind, doc: row.doc,
+    }));
+  }
+
+  async listSlices(tenantId: string, snapshotId: string): Promise<OntoGraphSliceRecord[]> {
+    const r = await this.pool.query(
+      `SELECT id, tenant_id, snapshot_id, slice_key, doc FROM ontograph_slice
+       WHERE tenant_id = $1 AND snapshot_id = $2 ORDER BY slice_key`,
+      [tenantId, snapshotId],
+    );
+    return r.rows.map((row) => ({
+      id: row.id, tenantId: row.tenant_id, snapshotId: row.snapshot_id,
+      sliceKey: row.slice_key, doc: row.doc,
+    }));
+  }
+
+  async counts(tenantId: string, snapshotId: string): Promise<OntoGraphCounts> {
+    // ⚠ 三个 COUNT 在**服务端**做。拉回进程再 .length 的话，「我读回了 N 条」与
+    //   「库里有 N 条」变成同一个数，对账就再也抓不到「读法错了」那一类。
+    const r = await this.pool.query(
+      `SELECT
+         (SELECT count(*) FROM ontograph_atom  WHERE tenant_id = $1 AND snapshot_id = $2) AS atoms,
+         (SELECT count(*) FROM ontograph_edge  WHERE tenant_id = $1 AND snapshot_id = $2) AS edges,
+         (SELECT count(*) FROM ontograph_slice WHERE tenant_id = $1 AND snapshot_id = $2) AS slices`,
+      [tenantId, snapshotId],
+    );
+    const row = r.rows[0];
+    return { atoms: Number(row.atoms), edges: Number(row.edges), slices: Number(row.slices) };
+  }
+}
+
 export async function runMigrations(pool: pg.Pool, migrationsDir: string): Promise<void> {
   await pool.query(
     `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
@@ -988,6 +1176,10 @@ export async function createPgRepos(databaseUrl: string, migrationsDir: string):
     processInstances: new PgStore(pool, "process_instances"),
     processTasks: new PgStore(pool, "process_tasks"),
     sim: new PgSimRepo(pool),
+    // WO-ONTOGRAPH-DB · 本体图谱（R9 四处同改之四 —— migrations/041 + repo.ts 接口 + memory.ts + 本行）。
+    // 表名写错**不会编译报错**，只在 pg 模式运行时炸 —— 本单靠真起一个 pg 跑完整往返来验，
+    // 见 `scripts/ontology-graph/graph-db.mjs --selftest` 与 docs/ontology-graph/DATA-MODEL.md §9。
+    ontoGraph: new PgOntoGraphRepo(pool),
     async ping() {
       await pool.query("SELECT 1");
     },

@@ -27,25 +27,33 @@ import { seedDemoPropagationRules, seedDemoProcessLayer } from "../src/seed.js";
  * 这里**照抄口径、不照抄实现**：前端读的是它自己那份视图模型，本门读的是
  * **引擎 tick 回包的真 state**。两边算出同一个方向的结论才叫接缝通。
  *
- * ── 三档判据（与前端 `classifyTickDrive` 同一套，**结构性**结论）────────────────
+ * ── 四档判据（与前端 `classifyTickDrive` 同一套，**结构性**结论）────────────────
  * | 档 | 判据 | 定性 |
  * |---|---|---|
- * | `TICK_DRIVEN`        | carrier ∈ 规则两端类型 **且** 该类型有物化对象 | 推 tick 它真会动 |
- * | `NO_CARRIER_OBJECTS` | carrier ∈ 规则两端类型，但 0 个物化对象 | 接了线没数据 |
- * | `NOT_TICK_DRIVEN`    | carrier ∉ 规则两端类型 | 没接线：引擎结构上写不到它 |
+ * | `TICK_DRIVEN`        | carrier ∈ 规则 **target** 端 **且** 该类型有物化对象 | 推 tick 它真会动 |
+ * | `NO_CARRIER_OBJECTS` | carrier ∈ 规则 **target** 端，但 0 个物化对象 | 接了线没数据 |
+ * | `SOURCE_ONLY`        | carrier ∈ 规则两端，但**只在 source 端**（入度 0） | 只当源：推得动别人，自己不动 |
+ * | `NOT_TICK_DRIVEN`    | carrier ∉ 规则两端类型 | 没接线：引擎结构上够不着它 |
  * 结构性的根据：`sim/propagation.ts propagateTick` 唯一的写法是
  * `next[targetObjectId][targetStateVar] = …`，`targetObjectId` 只能来自规则的
- * `targetTypeKey` 那一端 ⇒ 不在两端集合里的类型**不可能变**，不是"今天恰好没变"。
+ * `targetTypeKey` 那一端 ⇒ **不在 target 集合里的类型不可能变**，不是"今天恰好没变"。
+ *
+ * ── 🔴 2026-09-19：判据从「∈ 两端」改成「∈ target 端」（原判据是错的）────────────
+ * **形态（铁律 0.6 句式）**：
+ * > 「我用『它出现在某条规则的两端』当作『它会动』的证据，而前者并不度量后者
+ * > —— 出现在**源**端只说明它能推动别人，不说明它自己会动。」
+ * ⚠ **本门自己也写着正确的根据（上一段「只能来自 targetTypeKey 那一端」），而判据写的是两端**
+ *   —— 注释与代码各说各的，谁都没红。这就是为什么本门**刻意不 import 生产那份实现**：
+ *   两边各写一份、同一套判据，错了才有第二个证人。
  *
  * ── ⚠ 本门**如实亮出**的诚实缺席（不许被绿色盖住）─────────────────────────────
- * ① `NO_CARRIER_OBJECTS` 这一档在真世界里**现为 0 条**。
- *    不能因此说"这一档没用" —— 它照样必须**说得出话**，否则一个只会返回两档的
- *    实现同样能让本文件全绿。故 §A3 用构造输入逼它开口（金丝雀，不是真数据）。
- * ② 分档判据取的是「source **或** target 两端」，而**只当 source 的类型读数永远不会变**
- *    （没有任何规则写它）。档 1/2 交付时本世界里确有一个（`Supplier`/P28），
- *    **档 3 已把它闭掉**（`demo_po_expedite_to_supplier_review` 真写 `Supplier.reviewPressure`）。
- *    §C4 因此从「登记这处缺席」翻转成**守住它不再复发**：`sourceOnly` 必须恒为空 ——
- *    将来谁再补一条只读不写的类型进来，机器当场红，而不是等人去屏上发现"标着会动却不动"。
+ * ① `NO_CARRIER_OBJECTS` 与 `SOURCE_ONLY` 这两档在真世界里**现为 0 条流程**。
+ *    不能因此说"这两档没用" —— 它们照样必须**说得出话**，否则一个只会返回两档的
+ *    实现同样能让本文件全绿。故 §A3 用构造输入逼它们开口（金丝雀，不是真数据）。
+ * ② **类型级**的「只当源」今天有一个：`Equipment`（`WO-PROP-REVIEW-V2 ㉜` 方向反向之后
+ *    入度归 0；仓主裁决保留 ㉜，且实测本体里没有任何真实链路能写它）。
+ *    但它**不是 65 条流程里任何一条的承载物** ⇒ 流程级 `SOURCE_ONLY` 仍为 0 条。
+ *    §C4 因此钉死名单而不是断言空集：**再多一个只出不进的类型就红**。
  */
 
 const SEED_PATH = fileURLToPath(new URL("../src/seed.ts", import.meta.url));
@@ -56,11 +64,27 @@ const enableSim = async (t: Awaited<ReturnType<typeof makeApp>>) =>
     payload: { overrides: { "sim.sandbox": true, "sim.propagation": true } },
   });
 
-type Drive = "TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN";
+type Drive = "TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "SOURCE_ONLY" | "NOT_TICK_DRIVEN";
 
-/** 与前端 `classifyTickDrive` 同一套判据（**本门唯一一支实现**，金丝雀与主逻辑共用它）。 */
-function classify(carrierTypeKey: string, ruleTypeKeys: ReadonlySet<string>, carrierObjectCount: number): Drive {
-  if (!ruleTypeKeys.has(carrierTypeKey)) return "NOT_TICK_DRIVEN";
+/**
+ * 与前端 `classifyTickDrive` **同一套判据、各自一份实现**（**本门唯一一支**，金丝雀与主逻辑共用它）。
+ *
+ * ⛔ **刻意不 import 生产那份** —— 本门要当的是「第二个独立证人」。
+ * import 过来就变成「自己证自己」：生产判据写错时门跟着一起错，照样全绿
+ * （那正是 2026-09-19 这次要治的病：旧判据「∈ 两端」两边一样错，门陪着绿了一路）。
+ *
+ * ⚠ 判据 2026-09-19 订正：`TICK_DRIVEN` 要求 carrier 在规则的 **target** 端。
+ * 只在 source 端 = 入度 0 = 没有任何规则写它 ⇒ 推拍它自己不动 ⇒ 落 `SOURCE_ONLY`。
+ * 形态：「我用『它出现在某条规则的两端』当作『它会动』的证据，而前者并不度量后者。」
+ */
+function classify(
+  carrierTypeKey: string,
+  ruleTargetTypes: ReadonlySet<string>,
+  ruleEndpointTypes: ReadonlySet<string>,
+  carrierObjectCount: number,
+): Drive {
+  if (!ruleEndpointTypes.has(carrierTypeKey)) return "NOT_TICK_DRIVEN";
+  if (!ruleTargetTypes.has(carrierTypeKey)) return "SOURCE_ONLY";
   return carrierObjectCount > 0 ? "TICK_DRIVEN" : "NO_CARRIER_OBJECTS";
 }
 
@@ -107,8 +131,13 @@ interface Trichotomy {
   byKey: Map<string, { domainKey: string; carrier: string; drive: Drive }>;
   driven: string[];
   noData: string[];
+  /** 在图里、但只当源（入度 0）⇒ 推拍自己不动。2026-09-19 从 `driven` 里拆出来的那一档。 */
+  sourceOnly: string[];
   dark: string[];
   ruleEndpointTypes: Set<string>;
+  ruleTargetTypes: Set<string>;
+  /** 规则的类型级有向边（source → target），供 §C1 做「从种子可达」的前向闭包。 */
+  ruleEdges: { sourceTypeKey: string; targetTypeKey: string }[];
   objectIdsByType: Map<string, string[]>;
 }
 
@@ -123,13 +152,15 @@ async function trichotomy(t: Awaited<ReturnType<typeof makeApp>>): Promise<Trich
     nodeObjectIds: Record<string, string[]>;
   };
   const ruleEndpointTypes = new Set(rules.flatMap((r) => [r.sourceTypeKey, r.targetTypeKey]));
+  // 「会不会动」只看 target 端（引擎唯一的写法是写到 target 那一端的对象上）。
+  const ruleTargetTypes = new Set(rules.map((r) => r.targetTypeKey));
   const objectIdsByType = new Map(Object.entries(cfg.nodeObjectIds));
   const byKey = new Map<string, { domainKey: string; carrier: string; drive: Drive }>();
   for (const d of defs.definitions) {
     byKey.set(d.key, {
       domainKey: d.domainKey,
       carrier: d.carrierTypeKey,
-      drive: classify(d.carrierTypeKey, ruleEndpointTypes, (objectIdsByType.get(d.carrierTypeKey) ?? []).length),
+      drive: classify(d.carrierTypeKey, ruleTargetTypes, ruleEndpointTypes, (objectIdsByType.get(d.carrierTypeKey) ?? []).length),
     });
   }
   const pick = (v: Drive) => [...byKey.entries()].filter(([, x]) => x.drive === v).map(([k]) => k).sort();
@@ -137,8 +168,11 @@ async function trichotomy(t: Awaited<ReturnType<typeof makeApp>>): Promise<Trich
     byKey,
     driven: pick("TICK_DRIVEN"),
     noData: pick("NO_CARRIER_OBJECTS"),
+    sourceOnly: pick("SOURCE_ONLY"),
     dark: pick("NOT_TICK_DRIVEN"),
     ruleEndpointTypes,
+    ruleTargetTypes,
+    ruleEdges: rules.map((r) => ({ sourceTypeKey: r.sourceTypeKey, targetTypeKey: r.targetTypeKey })),
     objectIdsByType,
   };
 }
@@ -179,11 +213,17 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     expect(after.via).toEqual(before.via);
   });
 
-  it("§A3 🐤 分档函数三档都说得出话（一个恒返回某一档的实现必须在这里就红）", () => {
-    const rules = new Set(["CanaryType"]);
-    expect(classify("CanaryType", rules, 3)).toBe("TICK_DRIVEN");
-    expect(classify("CanaryType", rules, 0)).toBe("NO_CARRIER_OBJECTS"); // 真世界里现为 0 条，故必须在这里逼它开口
-    expect(classify("NotInGraph", rules, 3)).toBe("NOT_TICK_DRIVEN");
+  it("§A3 🐤 分档函数四档都说得出话（一个恒返回某一档的实现必须在这里就红）", () => {
+    const targets = new Set(["CanaryType"]);
+    const ends = new Set(["CanaryType", "CanarySourceOnly"]);
+    expect(classify("CanaryType", targets, ends, 3)).toBe("TICK_DRIVEN");
+    expect(classify("CanaryType", targets, ends, 0)).toBe("NO_CARRIER_OBJECTS"); // 真世界里现为 0 条，故必须在这里逼它开口
+    // 2026-09-19 新拆的第四档：在两端集合里、但**不在 target 集合里** ⇒ 没人写它 ⇒ 自己不动。
+    expect(classify("CanarySourceOnly", targets, ends, 3)).toBe("SOURCE_ONLY");
+    expect(classify("NotInGraph", targets, ends, 3)).toBe("NOT_TICK_DRIVEN");
+    // 🐤 判定序：只当源的类型**即便 0 对象**也必须落 SOURCE_ONLY，不许落 NO_CARRIER_OBJECTS
+    //    （后者的语义是「补数据即动」—— 对一个没人写的类型来说那是假话）。
+    expect(classify("CanarySourceOnly", targets, ends, 0)).toBe("SOURCE_ONLY");
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -198,7 +238,8 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
 
     const tri = await trichotomy(t);
     expect(tri.byKey.size).toBe(65); // 先证明"确实拿到了 65 条"，否则下面的计数都在数空气
-    expect(tri.driven.length + tri.noData.length + tri.dark.length).toBe(65);
+    // 四档合计必须仍然 = 65（新拆出的 SOURCE_ONLY 必须进这个和，否则那一档的流程从总数里蒸发）
+    expect(tri.driven.length + tri.noData.length + tri.sourceOnly.length + tri.dark.length).toBe(65);
 
     // 🔴 本单的量化交付面：9/65（13.8%）→ 29/65（44.6%）。
     expect(tri.driven.length).toBe(29);
@@ -279,18 +320,48 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     const after = (tickRes.json() as { state: Record<string, Record<string, number>> }).state;
     const before = baseSnapshot;
 
-    // ── C1 三个源头类型之外，**每一个** TICK_DRIVEN 承载物的读数都必须从 0 变成非 0 ──
+    // ── C1 三个源头类型之外，**每一个从这三个种子够得到的** TICK_DRIVEN 承载物都必须从 0 变成非 0 ──
     // 断言的是「这条链真的通到了它」，不是「它有一条规则」。
+    //
+    // ⚠ **2026-09-19：这里必须按「从种子可达」筛，而不是拿整个 driven 名单**。
+    //   原写法隐含了一个从没写出来的前提：「driven 名单里每一个都从这三个种子够得到」。
+    //   ㉜ 方向反向（`Equipment.loadPressure → Process.queuePressure`）之后这个前提破了 ——
+    //   `Equipment` 成了入度 0 的根，而 `MaintenanceOrder` 的**唯一**上游就是它
+    //   ⇒ 只塞 Supplier/Order/Material 这三个种子，`MaintenanceOrder` 结构上就走不到。
+    //   形态：「我用『它是某条规则的 target』当作『这三个种子推得动它』的证据，而前者并不度量后者。」
+    //   ⛔ 这不是把期望放宽：够不到的那一组**逐条钉死在下面**，多一个就红。
     const SOURCE_SEEDED = new Set(["Supplier", "Order", "Material"]);
+    // 从种子出发沿规则边（source → target）做前向可达闭包。
+    const reachable = new Set(SOURCE_SEEDED);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const r of tri.ruleEdges) {
+        if (reachable.has(r.sourceTypeKey) && !reachable.has(r.targetTypeKey)) {
+          reachable.add(r.targetTypeKey);
+          grew = true;
+        }
+      }
+    }
+    // 🐤 可达闭包非空且真的长过：至少要够到 Model（Order→Model 是第一跳），否则闭包算法坏了。
+    expect(reachable.has("Model"), "可达闭包必须至少够到 Model；不够 ⇒ 闭包算坏了").toBe(true);
+
     const drivenCarriers = [...new Set(tri.driven.map((k) => tri.byKey.get(k)!.carrier))];
+    const mustMove = drivenCarriers.filter((c) => !SOURCE_SEEDED.has(c) && reachable.has(c));
+    const unreachable = drivenCarriers.filter((c) => !SOURCE_SEEDED.has(c) && !reachable.has(c)).sort();
+    expect(mustMove.length, "可达的 driven 承载物不能为空，否则下面的断言在空跑").toBeGreaterThan(0);
+
     const stillZero: string[] = [];
-    for (const carrier of drivenCarriers) {
-      if (SOURCE_SEEDED.has(carrier)) continue;
+    for (const carrier of mustMove) {
       const ids = idsOf(carrier);
       expect(reading(before, ids)).toBe(0); // 起点必须真是 0，否则"变了"是废话
       if ((reading(after, ids) ?? 0) === 0) stillZero.push(carrier);
     }
     expect(stillZero).toEqual([]);
+
+    // 🔴 够不到的那一组**逐条钉死**：它们是 target（所以判 `TICK_DRIVEN` 没错 —— 用户直接扰动
+    //    它们的上游根就会动），但**这三个种子推不动它们**。多出一个 ⇒ 又有一条链被从根上断开了，
+    //    机器在这里当场红，而不是等人去屏上发现"标着会动却不动"。
+    expect(unreachable).toEqual(["MaintenanceOrder"]);
 
     // ── C2 三个被塞了初值的源头类型：也必须**变**（不是"起点就非 0"蒙混过去）──
     // 三个都是下游规则的 target：Order（订单缺口/成本）· Material（物料短缺）·
@@ -320,18 +391,41 @@ describe("WO-PROCESS-TICK-COVERAGE · 第五档流程画布的节拍覆盖面（
     // `Supplier`（P28 供应商准入与评估）。档 3 给它补了真正写它的规则
     // （`demo_po_expedite_to_supplier_review`：采购单反复加急 ⇒ 供应商绩效复评压力）。
     //
-    // 判据从「登记它」翻转成「守住它」：`sourceOnly` 恒为空。将来谁再补一条**只读不写**的
-    // 类型进来（哪怕规则条数涨了、屏上多一个点"亮着"），机器在这里当场红 ——
-    // 而不是等人去屏上发现「标着会动却推多少拍都不动」。
     // 🔴 这一条与 C1 度量的**不是同一件事**：C1 问「这个类型的读数变了吗」（只覆盖 driven 名单），
     //    C4 问「规则图上有没有只出不进的类型」（结构性，覆盖所有端点类型）。分开写，别合并。
-    const rules = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as {
-      sourceTypeKey: string; targetTypeKey: string;
-    }[];
-    const targets = new Set(rules.map((r) => r.targetTypeKey));
+    //
+    // ⚠ **2026-09-19：判据从「恒为空」改成「逐条钉死」**。
+    //   `WO-PROP-REVIEW-V2 ㉜` 有意把 `Process.queuePressure → Equipment.loadPressure` 掉头成
+    //   `Equipment.loadPressure → Process.queuePressure`（评审优先级 5），`Equipment` 因此**升格为根**
+    //   （入度 0）。仓主裁决：**保留 ㉜ 反向**，且实测本体里**没有**任何一条真实链路能写 `Equipment`
+    //   （6 条声明指向 Equipment 的链路：`process_uses_equipment` 正是 ㉜ 删掉的那条 ·
+    //    `product_equip_capability` 源是静态主数据 · 另 4 条实例数为 0）。
+    //   ⇒ 这是**已知且被接受的结构事实**，不是回归。故这里钉死名单而不是断言空集 ——
+    //   **再多出一个只出不进的类型，照样当场红。**
+    //   ⛔ 不许改回 `toEqual([])`（那是在要求补一条编出来的边），也⛔ 不许放宽成 `length <= 1`。
     expect(tri.ruleEndpointTypes.size).toBeGreaterThan(0); // 先证明真拿到了端点集，否则空集恒过
-    const sourceOnly = [...tri.ruleEndpointTypes].filter((k) => !targets.has(k)).sort();
-    expect(sourceOnly).toEqual([]);
+    const sourceOnly = [...tri.ruleEndpointTypes].filter((k) => !tri.ruleTargetTypes.has(k)).sort();
+    expect(sourceOnly).toEqual(["Equipment"]);
+
+    // 🔴 **把分档函数按在真数据上咬一次**（这一行就是判据本身的变异反证锚点）：
+    //    真类型 `Equipment` + 真对象数，必须判 `SOURCE_ONLY`。
+    //    判据若被改回「carrier ∈ 规则**两端** ⇒ TICK_DRIVEN」，这一行**当场红**。
+    //    ⚠ 没有这一行，§C 咬不住判据本身 —— 因为 `Equipment` **不是任何一条流程的承载物**，
+    //      判据改错在流程级（driven/dark 名单）上一个数都不动。这正是「门看起来在守、其实没守」的形态。
+    expect(classify("Equipment", tri.ruleTargetTypes, tri.ruleEndpointTypes, idsOf("Equipment").length))
+      .toBe("SOURCE_ONLY");
+    // 正向金丝雀：`Process` 是 `demo_equipment_load_to_process_queue` 的 target ⇒ 必须仍判 TICK_DRIVEN。
+    // （若改完之后**全部**落进 SOURCE_ONLY，说明判据写反了 —— 这一行会先红。）
+    expect(classify("Process", tri.ruleTargetTypes, tri.ruleEndpointTypes, idsOf("Process").length))
+      .toBe("TICK_DRIVEN");
+    // ⚠ **类型级的「只当源」与流程级的 `SOURCE_ONLY` 档不是同一个数，别混**：
+    //   `Equipment` 在规则图上确实只当源（上面那条），但它**不是 65 条流程里任何一条的承载物**
+    //   （实测 `carrierTypeKey: "Equipment"` 命中 0）⇒ 屏上没有它的格子
+    //   ⇒ 流程级 `SOURCE_ONLY` 这一档今天**恒为空**。
+    //   这一档为空**不等于**它没用：§A3 已用构造输入逼分档函数为它开过口
+    //   （一个永远说不出 `SOURCE_ONLY` 的实现在那里就红）。
+    //   将来谁把某条流程的承载物改成一个只当源的类型，这一行会从 `[]` 变红。
+    expect(tri.sourceOnly).toEqual([]);
     // 并且 Supplier 这一条**真的在动**（光有规则不算数 —— 那正是"条数不度量链路通不通"）。
     expect(reading(before, idsOf("Supplier"))).not.toBe(reading(after, idsOf("Supplier")));
   }, 180000);

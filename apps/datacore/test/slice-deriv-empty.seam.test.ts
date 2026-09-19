@@ -226,7 +226,7 @@ describe("WO-SLICE-DERIV-EMPTY ② · 派生溯源：编译 ⇒ 重算 ⇒ input
     const active = await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE");
     expect(active.map((s) => s.specKey).sort()).toEqual(expectedKeys);
 
-    // 幂等（R6）：重播不增生。
+    // 幂等（R6）：重播不增生（金值 3→23→28→29，理由同上）。
     await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
     expect((await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE")).length).toBe(
       DEMO_DERIVATION_SPECS.length,

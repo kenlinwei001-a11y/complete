@@ -96,7 +96,10 @@ import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact
 // 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
 import { buildMetricSeries } from "./sim/metric-series.js";
 // WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
-import { deriveSeedBaseSnapshot, type SimWorldOps } from "./sim/seed-world.js";
+// 两个符号各有真实调用点，缺一个就编译不过：
+//   `listSimWorldObjects` → 落点成员集合物化入口（本文件 `:4138`，WO-IMPEDIMENT-LEVERS 侧）
+//   `deriveSeedBaseSnapshot` → 建会话缺省快照服务端派生（本文件 `:2073`，WO-SANDBOX-REAL 侧）
+import { deriveSeedBaseSnapshot, listSimWorldObjects, type SimWorldOps } from "./sim/seed-world.js";
 // WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细（算法全在 sim/drill.ts 纯函数层，本文件只做 IO 与 A6 装配）
 import { ChainLossDrillRequestSchema } from "@platform/contracts";
 import { chainLossDrill, chainNodeDetail, type DrillObject, type DrillWorld } from "./sim/drill.js";
@@ -104,7 +107,7 @@ import { nodeLossShare, type ChainLossResult } from "./solvers/chain-loss.js";
 // WO-SANDBOX-E4：`cadenceFromProps`（Cadence 落库行 → Cadence 的**唯一**读回口）刻意**不在本文件 import** ——
 // 它只该出现在装配处 `sim/propagation-inputs.ts` 里，与上面 `buildCadenceGates` / `scopePropagationGraph` 同一条纪律。
 // WO-STATEVAR-DISPLAYNAME：推演状态变量中文名的**唯一**投影口（单源表在 battery.ts，两条路由共用此函数）
-import { stateVarDisplayNames, stateVarDisplayName } from "./synthetic/battery.js";
+import { stateVarDisplayNames, stateVarDisplayName, stateVarValueRefs } from "./synthetic/battery.js";
 // WO-SIM-DRILL-P12 · 推演演习（事件型扰动 → 数据驱动路由 → 真调求解器 → 归一成卡点清单）。
 // 算法全在 sim/drill-scan.ts（纯函数扫描器）与 sim/drill-orchestrator.ts（编排+归一），本文件只做 IO 装配。
 // ⚠ 与上面的 `sim/drill.ts`（WO-SIM-BE-DRILL·根因二级下钻）**是两件不同的事**，别混：
@@ -4124,14 +4127,16 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const links = await repos.ontologyLinks.list(c.tenantId);
     const rules = await repos.sim.listPropagationRules(c.tenantId, true);
     const stateVars = [...new Set(rules.flatMap((r) => [r.sourceStateVar, r.targetStateVar]))].sort();
-    // P0 修：每 nodeType → 真物化对象 id（= tick 引擎 idsByType 同源：repos.objects.listByType 非 mergedInto，稳定排序）。
+    // P0 修：每 nodeType → 真物化对象 id（= tick 引擎 idsByType 同源，稳定排序）。
+    // ⚠ 成员集合走 `listSimWorldObjects` **唯一物化入口**：这份是「用户能选到的落点」，
+    //   与传导图必须逐条相同 —— 否则用户选中一个不在世界里的落点 ⇒ 屏上「施加成功」
+    //   而下游一动不动（静默错答）。`sim-root-triad.seam.test.ts` §2 用**真端点**咬死这条等式。
     const nodeObjectIds: Record<string, string[]> = {};
-    for (const t of types) {
-      nodeObjectIds[t.key] = (await repos.objects.listByType(c.tenantId, t.key))
-        .filter((o) => !o.mergedInto)
-        .map((o) => o.id)
-        .sort((a, b) => a.localeCompare(b));
+    for (const t of types) nodeObjectIds[t.key] = [];
+    for (const { typeKey, obj } of await listSimWorldObjects(repos, c.tenantId)) {
+      nodeObjectIds[typeKey]?.push(obj.id);
     }
+    for (const ids of Object.values(nodeObjectIds)) ids.sort((a, b) => a.localeCompare(b));
     const cfg = {
       tenantId: c.tenantId,
       nodeTypes: types.map((t) => t.key).sort(),
@@ -4140,6 +4145,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       stateVars,
       // WO-STATEVAR-DISPLAYNAME · 状态变量中文名（读时投影自后端单源表；未登记的键不进字典 ⇒ 前端回落裸键）。
       stateVarNames: stateVarDisplayNames(stateVars),
+      // WO-SIM-REAL-DATA §3 · 状态变量显式值绑定（`类型.变量` → 派生规格 specKey；读时投影自
+      // 同一后端单源表 `STATE_VAR_VALUE_REFS`；未登记的对不进字典 = 明确的「走名字撞」）。
+      // 屏上据此能说出「这一格的值来自哪条公式」；规格缺失在播种侧已变红，不会走到这里。
+      stateVarValueRefs: stateVarValueRefs(
+        rules.flatMap((r) => [
+          `${r.sourceTypeKey}|${r.sourceStateVar}`,
+          `${r.targetTypeKey}|${r.targetStateVar}`,
+        ]),
+      ),
       radarDims: [
         { key: "structure", label: "结构" },
         { key: "knowledge", label: "知识" },

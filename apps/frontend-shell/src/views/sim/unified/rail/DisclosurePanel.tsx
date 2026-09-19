@@ -453,7 +453,8 @@ export default function DisclosurePanel({ disclosure: d }: DisclosurePanelProps)
                   <li key={b.stateVar} className={styles.row}>
                     <span className={styles.mono}>{b.stateVar}</span>
                     <KV k="下界" v={String(b.min)} />
-                    <KV k="上界" v={String(b.max)} />
+                    {/* T6 形态②：max 可空（无界声明，积压/天数族）—— 不许把 "null" 打上屏（R-UI-4 同源：屏上只许业务语言）。 */}
+                    <KV k="上界" v={b.max === null ? "无上界" : String(b.max)} />
                     <KV k="静息" v={String(b.restPoint)} />
                     <KV k="量纲" v={b.unit} />
                     {b.decayLambda === null ? null : <KV k="衰减" v={String(b.decayLambda)} />}

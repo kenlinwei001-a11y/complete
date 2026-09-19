@@ -92,6 +92,9 @@ export class RulesService {
       params?: Record<string, number | string | string[]>;
       /** WO-RULES-CLASSIFY（加性）：业务类别，随规则落库供规则库分类筛选。 */
       category?: string;
+      /** WO-RULE-DISCOVERY（加性）：发现面元数据（DRIL 检索的标签/样例问句），随种子/创建落库。 */
+      tags?: string[];
+      answersQuestions?: string[];
       origin?: RuleOrigin;
       status?: "DRAFT" | "PUBLISHED";
     },
@@ -114,6 +117,8 @@ export class RulesService {
       severity: input.severity,
       params: input.params ?? {},
       ...(input.category ? { category: input.category } : {}),
+      ...(input.tags && input.tags.length > 0 ? { tags: input.tags } : {}),
+      ...(input.answersQuestions && input.answersQuestions.length > 0 ? { answersQuestions: input.answersQuestions } : {}),
       origin: input.origin ?? { type: "MANUAL" },
       version,
       status: input.status ?? "DRAFT",
@@ -255,7 +260,7 @@ export class RulesService {
   async update(
     ctx: AuthCtx,
     id: string,
-    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity" | "params" | "category">>,
+    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity" | "params" | "category" | "tags" | "answersQuestions">>,
   ): Promise<Rule> {
     const rule = await this.get(ctx, id);
     if (rule.status !== "DRAFT") {
@@ -316,6 +321,7 @@ export class RulesService {
     payload: Record<string, unknown>,
   ): Promise<RuleVerdict[]> {
     let rules: Rule[];
+    let notFound: string[] = [];
     if (ruleIds === "ALL_APPLICABLE") {
       rules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
     } else {
@@ -323,6 +329,11 @@ export class RulesService {
       rules = all.filter(
         (r) => (ruleIds.includes(r.id) || ruleIds.includes(r.key)) && r.status !== "RETIRED",
       );
+      // WO-RULE-DISCOVERY：显式点名却查无（或已退役）的 key **不许静默丢弃**——
+      // 实测「要 ["C33","C34","C35","C07"] 回 3 条 verdict，C07 消失、无错误无警告」，
+      // 模型照工具说明去要不存在的 C07/C14/C17/C19/C20 时拿不到任何「这条不存在」的反馈。
+      const matched = new Set(rules.flatMap((r) => [r.id, r.key]));
+      notFound = ruleIds.filter((id) => !matched.has(id));
     }
     const verdicts: RuleVerdict[] = [];
     for (const rule of rules) {
@@ -350,6 +361,17 @@ export class RulesService {
         explanation,
         // 引用模式增量 §2.2：求值结果带实际生效版本（留痕「当时生效」）
         ruleVersion: rule.version,
+      });
+    }
+    // 查无 key 的占位 verdict（WARN 不阻断·explanation 说清「不存在/已退役」）：看见 ≠ 判得准，
+    // 但「看不见自己看漏了」比两者都坏。规则清单的正确取法写进 explanation，指路牌不再靠记。
+    for (const key of notFound) {
+      verdicts.push({
+        ruleId: key,
+        passed: false,
+        severity: "WARN",
+        explanation: `${key}: 规则库中不存在或已退役，未评估——可用规则清单经 retrieve_knowledge(kinds=["rule"]) 或 GET /a/v1/rules 核对`,
+        notFound: true,
       });
     }
     return verdicts;

@@ -36,6 +36,7 @@ import { partitionAdversaryRules } from "@platform/contracts";
 import { evalArithmetic, parseAggregate } from "../ontology.js";
 import { parseExpression } from "../ruledsl.js";
 import type { Repos } from "../repo/repo.js";
+import { listSimWorldObjects } from "./seed-world.js";
 
 // ---------------------------------------------------------------------------
 // 世界输入（纯数据；装配器在文件底部，是唯一 I/O 处）
@@ -649,16 +650,21 @@ export async function buildChangeImpactWorld(
   tenantId: string,
   adversaryEnabled: boolean,
 ): Promise<ChangeImpactWorld> {
-  // 传导图物化**不过滤 status**——镜像 buildPropagationInputs（propagation-inputs.ts :72）：
+  // 传导图物化**不过滤 status**——镜像 `buildPropagationInputs`：
   // propagateTick 的 typeOf/idsByType 收全类型对象，非 ACTIVE 类型的对象与边在真传导图里，
   // 预览少了它们 = recompute 桶假阴性（对抗审查实证：曾把派生族的 ACTIVE 过滤漏进图物化）。
+  //
+  // ⚠ 但「谁算推演世界的成员」必须与主件**逐条相同**，走 `listSimWorldObjects` 唯一入口（2026-09-15）：
+  //   本段原先手抄了 `!o.mergedInto`。主件加上「已完成订单不进世界」之后镜像没跟上 ⇒
+  //   预览 recompute 集合 1641 格、真跑只动 1206 格，`change-impact-preview.seam.test.ts` 当场红。
+  //   **这正是本段自己警告过的那种「第二套真相源」** —— 它当年防住了 `reaction != null` 的重复判据，
+  //   却没防住成员判据本身。⛔ 别在这里写第二份遍历；要改口径就改那一个函数。
   const allTypes = await repos.ontologyTypes.list(tenantId);
-  const objects: ChangeImpactObject[] = [];
-  for (const t of allTypes) {
-    for (const o of await repos.objects.listByType(tenantId, t.key)) {
-      if (!o.mergedInto) objects.push({ id: o.id, typeKey: o.type, props: o.props });
-    }
-  }
+  const objects: ChangeImpactObject[] = (await listSimWorldObjects(repos, tenantId)).map(({ obj }) => ({
+    id: obj.id,
+    typeKey: obj.type,
+    props: obj.props,
+  }));
   // ACTIVE 过滤只留给派生族（runDerivations 走 listTypes=ACTIVE，ontology.ts :144/:864）。
   const types = allTypes.filter((t) => t.status === "ACTIVE");
   const links = (await repos.links.list(tenantId)).map((l) => ({

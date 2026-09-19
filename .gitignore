@@ -29,3 +29,12 @@ db-seed/*.sql
 !db-seed/agentcore-seed.sql
 .claude/worktrees/
 scratchpad/
+
+# 本体图谱产物（WO-ONTOGRAPH-DB）—— 15 万行机器抽取的**快照**，真相源是源码 + 数据库。
+# 产生它的逻辑与关系写在 docs/ontology-graph/DATA-MODEL.md（那份进 git）。
+# 抽取：node scripts/ontology-graph/extract.mjs [--to-db]
+.ontology-graph/
+# 旧家（有人用 `--out docs/ontology-graph` 时仍然拦住；⛔ 同目录下三份手写 .md 照常进 git）
+docs/ontology-graph/INDEX.yaml
+docs/ontology-graph/atoms/
+docs/ontology-graph/slices/
