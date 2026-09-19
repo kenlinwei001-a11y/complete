@@ -157,6 +157,79 @@ describe("WO-LEVER-BINDING-DRIFT · 设备层拨杆在生产实参下必须反�
     expect(sum(patchCapacityContext(c, "Equipment", "obj_e1", "oee_current", 0.81))).not.toBe(baseline);
   });
 
+  /**
+   * WO-LEVER-WALLS · **对照实验**：`matFactor = min(各物料齐套系数)` 的偏导为什么恒 0，以及它**不是 bug**。
+   *
+   * ── 判据（铁律 1.5 判据一：把 X 改成 X'，Y 必须按可预言的方式变化）───────────────
+   *  · **正向**：拨**当前瓶颈**物料（覆盖率最低那个）+15% ⇒ Σp50 必须变，且变化量可预言 ——
+   *    新的 min 变成**第二紧**那个（因为 f₁×1.15 > f₂），故比值必须恰好等于 f₂/f₁。
+   *  · **反向 🐤**：拨**非瓶颈**物料 +15% ⇒ Σp50 必须**逐字节不动**。
+   *    这一格既证明 min() 的语义是对的，也证明探针真的接上了（都动/都不动都说明实验没接线）。
+   *  · **非空 🐤**：参与对照的关键物料池必须非空 —— 本仓真发生过"没喂权重表、34 条边一条没触发、
+   *    目标没动被读成通过"的空绿。
+   *
+   * ── 实测四数（SEED_DEMO 真种子 · 2026-09-19）────────────────────────────────────
+   *    基线 Σp50 = 32,081,231.8899
+   *    瓶颈 磷酸铁锂正极（f=0.381249）+15% → 36,603,161.7531（比值 1.140951 = f₂/f₁ = 0.434987/0.381249）
+   *    非瓶颈 隔膜（f=1.000000）+15% → 32,081,231.8899（逐字节相同）
+   *
+   * ⛔ **不许"修"这条 min()**：非瓶颈物料多给一点，产能本来就不该涨。把 min() 换成加权和/softmin
+   * 去制造非零偏导，会让产能模型开始撒谎 —— 比屏上那句话更糟。本条把这个语义钉死。
+   */
+  it("对照实验：min() 齐套约束 —— 拨瓶颈物料 Σp50 按 f₂/f₁ 变，拨非瓶颈物料逐字节不动", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const c = await t.services.solvers.loadContext("demo", undefined, { withExtended: true });
+
+    const sum = (ctx: SolverContext): number => {
+      let total = 0;
+      for (const m of [...ctx.certByModel.keys()].sort()) {
+        for (const r of computeByProcessModel(ctx, m, CAPACITY_FACTOR_BINDINGS)) total += r.cellsPerDayP50;
+      }
+      return Math.round(total * 1e4) / 1e4;
+    };
+
+    // 覆盖率在**测试里独立重算一遍**（不复用生产函数）——这才叫独立旁证：
+    // 生产公式若改了口径，本条会红，而不是跟着一起错。
+    const mats = (c.materials ?? []).filter((m) => typeof m.props.onHand === "number");
+    const keyMats = mats.filter((m) => m.props.isKeyMaterial === true);
+    const pool = keyMats.length > 0 ? keyMats : mats;
+    expect(pool.length, "🐤 非空金丝雀：关键物料池为空 ⇒ 下面的『目标没动』全是空绿").toBeGreaterThan(1);
+    const cov = pool
+      .map((m) => {
+        const onHand = Number(m.props.onHand);
+        const denom = Math.max(1, Number(m.props.dailyUse ?? 1) * Number(m.props.leadTime ?? 1));
+        return { id: m.id, name: String(m.props.name ?? m.props.matId), onHand, f: Math.min(1, Math.max(0, onHand / denom)) };
+      })
+      .sort((a, b) => a.f - b.f);
+    const tight = cov[0]!; // 当前瓶颈 = 覆盖最紧那个
+    const second = cov[1]!;
+    const loose = cov[cov.length - 1]!;
+    expect(tight.id, "🐤 瓶颈与非瓶颈必须是两个不同对象，否则对照实验退化成自己比自己").not.toBe(loose.id);
+
+    const base = sum(c);
+    expect(base).toBeGreaterThan(0);
+
+    // ── 正向：瓶颈 +15% ⇒ 变，且比值可预言 ──────────────────────────────────────
+    const EPS = 0.15;
+    const afterTight = sum(patchCapacityContext(c, "Material", tight.id, "onHand", tight.onHand * (1 + EPS)));
+    expect(afterTight, `拨瓶颈物料 ${tight.name} +15% 竟然不改变 Σp50 —— 齐套约束没接上`).not.toBe(base);
+    expect(afterTight).toBeGreaterThan(base);
+    // 可预言：新 matFactor = min(f₁×1.15, f₂)，故 Σp50 比值 = 该值 / f₁。
+    const predicted = Math.min(tight.f * (1 + EPS), second.f) / tight.f;
+    expect(
+      afterTight / base,
+      `瓶颈 +15% 后 Σp50 比值 ${afterTight / base} 与按覆盖率独立预测的 ${predicted} 对不上（${base} → ${afterTight}）`,
+    ).toBeCloseTo(predicted, 6);
+
+    // ── 反向 🐤：非瓶颈 +15% ⇒ 逐字节不动（min() 的正确语义，不是缺陷）──────────────
+    const afterLoose = sum(patchCapacityContext(c, "Material", loose.id, "onHand", loose.onHand * (1 + EPS)));
+    expect(
+      afterLoose,
+      `拨非瓶颈物料 ${loose.name} +15% 竟然改变了 Σp50（${base} → ${afterLoose}）—— 说明 min() 被换成了加权/软化形态，产能模型开始撒谎`,
+    ).toBe(base);
+  });
+
   it("交叉校验不变量：LEVER_FACTOR_PROPS 的每个因子键，至少有一个落点在 CAPACITY_FACTOR_BINDINGS 里可拨动", () => {
     // 与门 `scripts/check-lever-binding-drift.mjs` 同一条不变量（门守全仓静态、此处守运行时契约）。
     const keys = factorPropKeys();

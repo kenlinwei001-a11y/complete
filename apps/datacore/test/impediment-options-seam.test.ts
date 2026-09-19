@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CANDIDATE_JOIN_KINDS,
   CANDIDATE_RUNG_KINDS,
+  CAPACITY_FACTOR_BINDINGS,
   SolutionCandidateSchema,
   solutionCandidateId,
   ruleParamRef,
@@ -9,6 +10,7 @@ import {
   type SolutionCandidate,
 } from "@platform/contracts";
 import type { LinkInstance, ObjectInstance } from "../src/domain.js";
+import { computeByProcessModel, mapCapacityContextProp } from "../src/solvers/capacity.js";
 import { detectChainImpediments } from "../src/solvers/chain-impediment.js";
 import { ADMIN, makeApp, seedBattery, type TestApp } from "./helpers.js";
 
@@ -376,6 +378,106 @@ describe("WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种�
     // 本单的核心事实：空集里**确实存在**"够着了杠杆、也真试算过"的那一类，
     // 它与"一根杠杆都够不着"是两种缺口、修法相反。这一条空了说明种子变了，结论要重取证。
     expect(reachedAndTried).toBeGreaterThan(0);
+  }, 180000);
+
+  /**
+   * S3-4c · WO-LEVER-WALLS · **一条 NONE 不许再以「没有可拨动落点」这种不可区分的形态上屏**。
+   *
+   * ── 这条为什么存在（实测，不是假想）──────────────────────────────────────────
+   * S3-4b 已经逼出了试算台账，但屏上**仍然**跟着一句类型级的
+   * 「对象类型 Base 在 CAPACITY_FACTOR_BINDINGS 上没有任何可拨动落点」——
+   * 而这条阻滞点实测探到 **10 根**杠杆、真跑了 **34 次**试算。**够不着 / 够着了没传导 / 没有档位可拨**
+   * 是三件事、三种修法，压成一句读者只会去补落点册，而那对后两种一条都治不了。
+   *
+   * ── 今天的分母（真种子 SEED_DEMO 实测，2026-09-19）────────────────────────────
+   * 18 个阻滞点：4 个真长出候选 / **14 个 NONE** / 0 个 UNAVAILABLE。14 条的定性分布：
+   *   · **不是当前瓶颈** 11 条（拨的是物料到货/现货库存，而当前瓶颈是设备OEE）
+   *   · **这根杠杆不进产能公式** 3 条（⑩ 产线利用率：整类拨大拨小 Σp50 逐字节不动）
+   *   · 够不着（克隆面挡住） **0 条** —— `writable` 的 11 个落点全在克隆面内，这堵"墙"今天不挡任何人
+   *   · 同组取值全同 **0 条**
+   * 11 + 3 = 14 ⇒ 三分法无遗漏。
+   *
+   * ── 双向金丝雀（缺一半这道断言就是装饰品）──────────────────────────────────
+   *  · 正向：每条 NONE 都必须带定性，且定性里的类别必须来自已知词表（不许留白、不许新词裸奔）。
+   *  · 反向：**定性必须是算出来的，不是写死的串** —— 凡声称"这根杠杆不进产能公式"，
+   *    本测试拿 `mapCapacityContextProp` **另算一遍**（整类 ×2）去核，核不上即红。
+   */
+  it("S3-4c · NONE 必须带三选一定性，且「不进产能公式」这一类要顶得住独立复算", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+    expect(s.candidatesTruncated).toBe(false); // 前置：算完了才谈得上定性（没算完是 S3-5 的地盘）
+
+    const nones = s.impediments.filter((im) => im.noCandidateKind === "NONE");
+    expect(nones.length).toBeGreaterThan(0); // 金丝雀：这条空了下面全是空跑
+
+    const CATS = [
+      "**没试过·够不着落点**",
+      "**没试过·落点不在克隆面内**",
+      "**试过了·不是当前瓶颈**",
+      "**试过了·这根杠杆今天不进产能公式**",
+      "**没有档位可拨·同组取值全同**",
+      "**没测出来**",
+    ] as const;
+
+    const tally = new Map<string, number>();
+    const noPathMarks = new Set<string>();
+    for (const im of nones) {
+      const why = im.noCandidateReason ?? "";
+      // ① 屏上那句类型级谎言不许再出现 —— 它正是本条要治的东西。
+      expect(why, `NONE ${im.impedimentId} 仍在用类型级措辞「没有任何可拨动落点」：${why}`).not.toContain("没有任何可拨动落点");
+      // ② 必须当场定性，且类别来自已知词表（留白最容易被读成"确实无解"）。
+      expect(why, `NONE ${im.impedimentId} 没有定性段：${why}`).toContain("定性 ——");
+      const hit = CATS.filter((k) => why.includes(k));
+      expect(hit.length, `NONE ${im.impedimentId} 的定性没有命中任何已知类别：${why}`).toBeGreaterThan(0);
+      for (const k of hit) tally.set(k, (tally.get(k) ?? 0) + 1);
+      // ③ 声称"不是当前瓶颈"就必须**点名瓶颈是谁** —— 不点名等于换了个说法继续含糊。
+      if (why.includes("**试过了·不是当前瓶颈**")) {
+        expect(why, `NONE ${im.impedimentId} 说了"不是当前瓶颈"却没点名瓶颈：${why}`).toMatch(/当前瓶颈是「[^」]+」/);
+      }
+      // ④ 收集"不进产能公式"声称里的因子圈号，下面逐个独立复算。
+      // ⚠ 只在**该分句内**取圈号，不扫整条理由：整条里还有「不是任何可拨动因子的 ruleGate」这类句子，
+      // 全串扫会把「的」当成圈号抓走（实测踩到，本条断言当场报红）——
+      // CLAUDE.md 铁律 0.6 第 6 条：「那个串出现过」不度量「那是它的赋值」，数之前先定语法位置。
+      const seg = /\*\*试过了·这根杠杆今天不进产能公式\*\*：([^；|]*)/u.exec(why);
+      if (seg) {
+        for (const m of seg[1]!.matchAll(/（因子(\S)\s/gu)) noPathMarks.add(m[1]!);
+      }
+    }
+
+    // ⑤ 三分法无遗漏：每条 NONE 至少落一类，且各类计数之和 ≥ NONE 条数。
+    const summed = [...tally.values()].reduce((a, b) => a + b, 0);
+    expect(summed, `定性计数之和 ${summed} < NONE 条数 ${nones.length} ⇒ 有条目没被归类`).toBeGreaterThanOrEqual(nones.length);
+
+    // ⑥ 反向金丝雀：定性不是写死的串 —— 「不进产能公式」的每个因子，拿另一条路**独立复算**。
+    //    整类同属性 ×2 若把 Σp50 拨动了，说明它其实有路 ⇒ 定性说谎 ⇒ 本条红。
+    const c = await t.services.solvers.loadContext("demo", undefined, { withExtended: true });
+    const objective = (ctx: typeof c): number => {
+      let total = 0;
+      for (const m of [...ctx.certByModel.keys()].sort()) {
+        for (const r of computeByProcessModel(ctx, m, CAPACITY_FACTOR_BINDINGS)) total += r.cellsPerDayP50;
+      }
+      return Math.round(total * 1e4) / 1e4;
+    };
+    const baseObj = objective(c);
+    expect(baseObj).toBeGreaterThan(0); // 金丝雀：目标函数本身活着，否则下面"都没动"是空绿
+    // 正样例先行：一个**确定有路**的因子（⑥ 工序良率）整类 ×2 必须真把目标拨动 —— 证明这套复算有鉴别力。
+    const yb = CAPACITY_FACTOR_BINDINGS.find((b) => b.mark === "⑥" && b.writable)!;
+    expect(
+      objective(mapCapacityContextProp(c, yb.objectType, yb.prop, (v) => v * 2)),
+      "金丝雀失败：整类拨动工序良率竟然不改变 Σp50 ⇒ 复算量法坏了，下面的『无路』结论一律不许信",
+    ).not.toBe(baseObj);
+    for (const mark of noPathMarks) {
+      const b = CAPACITY_FACTOR_BINDINGS.find((x) => x.mark === mark && x.writable);
+      expect(b, `定性点名了因子${mark}，但它不是一个可拨动落点`).toBeDefined();
+      const up = objective(mapCapacityContextProp(c, b!.objectType, b!.prop, (v) => (v === 0 ? 1 : v * 2)));
+      const dn = objective(mapCapacityContextProp(c, b!.objectType, b!.prop, (v) => (v === 0 ? -1 : v * 0.5)));
+      expect(
+        up === baseObj && dn === baseObj,
+        `定性声称因子${mark}（${b!.objectType}.${b!.prop}）不进产能公式，但独立复算把 Σp50 从 ${baseObj} 拨到了 ×2:${up} / ×0.5:${dn} ⇒ 定性说谎`,
+      ).toBe(true);
+    }
+    expect(noPathMarks.size + tally.size, "定性词表一条都没命中 ⇒ 这道断言是装饰品").toBeGreaterThan(0);
   }, 180000);
 
   it("S3-5 · 「算不了」≠「没有」：同一份数据只拧算力旋钮 → 同一批阻滞点从 NONE 翻成 UNAVAILABLE", async () => {
