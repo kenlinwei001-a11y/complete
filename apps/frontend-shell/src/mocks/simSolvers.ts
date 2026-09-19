@@ -1853,10 +1853,12 @@ function mkCandidate(a: {
  * （出处 `apps/datacore/src/solvers/impediment-options.ts`）。
  *
  * 改前 mock 说的是引擎的**旧话**，而引擎已经改写过：
- *   · 旧（类型级）：「对象类型 X 在 CAPACITY_FACTOR_BINDINGS 上没有任何可拨动落点」
+ *   · 旧（类型级）：「对象类型 X 在 CAPACITY_FACTOR_BINDINGS 上一个可拨动落点都没有」
  *   · 新（维度级）：「LOCUS_PROP **这一维**够不着…… —— 本行不代表本条没有杠杆」
  * 引擎把旧措辞写成了自己的禁令（`impediment-options.ts:242-245` 与 `:645` 的 `@verifyBy`）
- * 并加了接缝门（`impediment-options-seam.test.ts:428`：`not.toContain("没有任何可拨动落点")`）。
+ * 并加了接缝门（`impediment-options-seam.test.ts:428`，`not.toContain` 咬那句类型级措辞）。
+ * ⚠ 本段**刻意不逐字复述**那句旧措辞：它是被禁的串，写进注释会让「扫源码」这种最便宜的复验
+ * 一直报命中，然后每个人都得再判一次「这是注释还是赋值」（CLAUDE.md 铁律 0.6 第 6 条那个坑）。
  * **那道门只咬引擎，咬不到 mock** ⇒ mock 独自把旧话术又说了一版。
  *
  * 为什么这不是措辞洁癖：真后端 14 条 NONE 里「够不着」**实测 0 条** ——
@@ -2118,7 +2120,7 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
 
   for (const b of ["pos_ncm_b2", "neg_graphite_b2", "elyte_b2"]) {
     const id = `imp_CONGESTION.MATERIAL.batch-idle_${b}`;
-    // WO-MOCK-LEVER-TRUTH：这三条此前是 `anchors: 0 / probes: 0` + 类型级「没有任何可拨动落点」，
+    // WO-MOCK-LEVER-TRUTH：这三条此前是 `anchors: 0 / probes: 0` + 那句类型级措辞，
     // 即 mock 把它们说成了「够不着」。而真后端 14 条 NONE 里**够不着 0 条**，这一类占 11 条：
     // LOCUS_PROP（MaterialBatch 不在因子册）与 RULE_GATE（C28 不是任何因子的闸）这**两维**确实没够着，
     // 但第三条路 KEY_JOIN（批次→物料 值键相等）够到了 2 根真杠杆，4 档全部真试算过 ——
