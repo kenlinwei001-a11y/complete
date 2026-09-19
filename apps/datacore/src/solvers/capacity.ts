@@ -304,8 +304,15 @@ export function computeByProcessModel(
 // WO-CAPLIVE-TRUECHAIN · patchCapacityContext —— 纯函数克隆 ctx 并 patch 单对象单属性
 // （浅克隆相关数组·不 mutate 原对象·R6 无副作用）。供 discoverCapacityLevers（±ε 敏感度探针）与
 // service.ts capacityInferenceApply（活台拨杆 before/after 真重算）共用同一克隆语义（单源·避免两处漂移）。
-// 仅 patch 产能链相关类型（Process/Equipment/Line/Material）；其余类型返回无变更浅克隆——apply 落点不在
+// 仅 patch 产能链相关类型；其余类型返回无变更浅克隆——apply 落点不在
 // 产能链上 → computeByProcessModel 读不到 → 无 delta → 上层诚实标 EMPTY（不臆造·KILL-MOCK-RED）。
+//
+// ⚠ 2026-09-19 WO-LEVER-WALLS 实测订正：本行原文写「（Process/Equipment/Line/Material）」**四类，已过期** ——
+// `ChangeoverMatrix` 早由 WO-ENGINE-2 补进 switch，今天的克隆面是**五类**。
+// 实测法（⛔ 不许 grep 源码数 case，注释/错误串/夹具里都会出现类型名）：真 patch 一个真对象再回读，
+// 五类回读得到新值、`MaintPlan`/`Order` 回读 `undefined`（静默丢弃）。
+// **但这两类今天挡不住任何候选**：`CAPACITY_FACTOR_BINDINGS` 里 `writable` 的 11 个落点分布在
+// {Equipment, Process, Line, Material, ChangeoverMatrix} —— 全部在克隆面内，故"够不着"这一态实测 0 条。
 // ---------------------------------------------------------------------------
 export function patchCapacityContext(
   c: SolverContext,
@@ -314,8 +321,41 @@ export function patchCapacityContext(
   prop: string,
   value: unknown,
 ): SolverContext {
-  const bump = (arr: SolverContext["processes"]): SolverContext["processes"] =>
-    arr.map((o) => (o.id === objId ? { ...o, props: { ...o.props, [prop]: value } } : o));
+  return mapCapacityContext(c, typeKey, (arr) =>
+    arr.map((o) => (o.id === objId ? { ...o, props: { ...o.props, [prop]: value } } : o)),
+  );
+}
+
+/**
+ * WO-LEVER-WALLS · **整类批量改写**（诊断专用，与 `patchCapacityContext` 共用同一份克隆面 switch）。
+ *
+ * 为什么需要它：单实例拨动"读数没动"有**两种完全不同**的病因 —— ①这根杠杆压根不进目标函数
+ * （⑩ `Line.utilization` / ⑤ `ChangeoverMatrix.minutes` 实测如此）；②进的，但这个实例不是当前瓶颈
+ * （`matFactor = min(…)` 的非瓶颈支）。**两者修法相反**，屏上说错等于把人支到错误的方向。
+ * 判别法只有一个可靠：**把整类同时拨大/拨小，看目标动不动** —— 动 ⇒ 有路，是瓶颈问题；
+ * 不动 ⇒ 无路，补数据/换瓶颈都没用。
+ *
+ * ⚠ 单实例探针**不构成**这个判据：实测 ② `Process.channels` 单实例拨 0→494 目标纹丝不动
+ * （那个工序 `processCap<=0` 被 `continue` 跳过了），而整类 ×2 目标从 32,081,231.8899 → 37,690,253.9869。
+ * 照单实例读数会得出「channels 无路」这个**与事实相反**的结论。
+ */
+export function mapCapacityContextProp(
+  c: SolverContext,
+  typeKey: string,
+  prop: string,
+  f: (v: number) => number,
+): SolverContext {
+  return mapCapacityContext(c, typeKey, (arr) =>
+    arr.map((o) => (typeof o.props[prop] === "number" && Number.isFinite(o.props[prop]) ? { ...o, props: { ...o.props, [prop]: f(o.props[prop] as number) } } : o)),
+  );
+}
+
+/** 克隆面的**唯一** switch（两个 patch 入口共用；改克隆面只改这一处）。 */
+function mapCapacityContext(
+  c: SolverContext,
+  typeKey: string,
+  bump: (arr: SolverContext["processes"]) => SolverContext["processes"],
+): SolverContext {
   switch (typeKey) {
     case "Process":
       return { ...c, processes: bump(c.processes) };
@@ -331,10 +371,6 @@ export function patchCapacityContext(
     // 故 ∂cellsPerDayP50/∂minutes 仍恒 0。第三重死见 `engine2-changeover-lever.seam.test.ts` 的逐重实测。
     case "ChangeoverMatrix":
       return { ...c, changeoverMatrix: bump(c.changeoverMatrix ?? []) };
-    // WO-ENGINE-2 件一：⑤ 换型损失的 override 此前落进 `default` ⇒ 克隆世界与基线**逐字节相同** ⇒ 敏感度恒 0。
-    // 补此分支后 override 真落进 ctx；但**这仍不足以让 ⑤ 复活**——`computeByProcessModel` 的
-    // cellsPerDayP50 = processCap × certFactor × yieldRebase × matFactor **不含换型项**（本文件全文 0 次 changeover），
-    // 故 ∂cellsPerDayP50/∂minutes 仍恒 0。第三重死见 `lever-binding-drift.test.ts` 的具名记账。
     default:
       return { ...c };
   }
