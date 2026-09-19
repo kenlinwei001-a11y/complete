@@ -821,8 +821,16 @@ export const zh = {
        * 每条卡点自己的严重度 · `scanId` · 阈值出处 · 触发判定明细。
        * 于是 14 条没有候选方案的卡点，用户在任何点得到的地方都**看不出它们有多严重**。
        *
+       * ⚠ **上面那个 0/18 的实测日期是 2026-09-18，且它是本块落地「之前」的读数，不是今天的现状。**
+       *   本块连同 `SandboxConsole.tsx` 的 `ImpedimentResidual` 就是来收这四样的 ——
+       *   落地后严重度已逐条在屏（那一行调的就是下面的 `impedimentRow.severity`）。
+       *   复验：`SEED_DEMO=1` 起 datacore 后 `POST /a/v1/solvers/chain_impediments/invoke {"args":{}}`，
+       *   把逐条载荷与沙盘屏上那一行对一遍 —— 四样里**只有严重度在引擎载荷里**，
+       *   阈值出处是派生层连出来的（见 `SandboxConsole.tsx` 的 `ImpedimentResidual` 注）。
+       *
        * ── ⚠ 头号约束：「严重度」这个词在这一屏上已经有主了 ──────────────────────
-       * 同一条卡点 `mbal-2`，屏上今天有两个数，**两个都叫「严重度」**（实测）：
+       * 同一条卡点 `mbal-2`，屏上今天有两个数，**两个都叫「严重度」**（2026-09-18 实测；
+       * 复验：`impediment-options.ts` 的 `severityOf` 头注里记着同一组对照数 16 / 6）：
        *  · **16** —— 卡点**自己现在**的严重度，`chain-impediment.ts` 双因子
        *    `round(100 × sqrt(breachFactor × exposureFactor))`，第二因子是下游受影响订单金额敞口；
        *  · **6**  —— 候选方案对照表里那一维，`impediment-options.ts` 的 `severityOf`，**单因子**

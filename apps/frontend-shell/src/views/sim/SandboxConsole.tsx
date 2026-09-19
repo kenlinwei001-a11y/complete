@@ -315,10 +315,15 @@ export function SandboxConsole({
    *
    * ⚠ 为什么必须有这个 state，而不是靠 `<details>` 自己「折叠就不挂载」：
    * **React 对 `<details>` 是渲染子树 + 由浏览器 CSS 隐藏，不是不挂载。**
-   * 实测（真前端、真后端，`details.open=false`）：新加的逐条触发判定条在**折叠态下照样**
+   * 实测（**2026-09-18**，真前端、真后端 `SEED_DEMO=1`，`details.open=false`）：新加的逐条触发判定条在**折叠态下照样**
    * 打满 **18 次 `decision_play`**，展开时增量为 0 —— 也就是说用户为一块他没打开的明细付了 18 次求解。
    * 故沿用本仓既有那条懒挂载写法（`DecisionPlayEmbed` 里的 `onToggle` → `{open ? … : null}`）：
    * 展开才请求。收起时屏上仍有带真计数的入口，**不是把功能藏起来**。
+   *
+   * 复验（本 state 今天确实在拦，别只信这段话）：把下面 `ImpedimentResidual` 的 `verdictLive`
+   * 实参由本 state 改成常量 `true`，清单保持收起，浏览器 Network 里
+   * `POST /a/v1/solvers/decision_play/invoke` 会重新打满 18 次；
+   * 取数口在 `views/DecisionPlayPanel.tsx` 的 `TriggerVerdictStrip`。
    */
   const [impListOpen, setImpListOpen] = useState(false);
   /**
@@ -1590,10 +1595,14 @@ function JumpList({
               {im.evidence.unit}
             </span>
             {/* WO-SANDBOX-IMPEDIMENT-RESIDUAL ① · **这条卡点自己有多严重**。
-                收编前独立屏 18/18 都有这个数，收编后沙盘 0/18 —— 于是那 14 条没有候选方案的卡点，
+                收编前独立屏 18/18 都有这个数，收编后沙盘 0/18（**2026-09-18 实测，且是本行落地之前**
+                的读数 —— 本行就是来收它的，落地后沙盘也是 18/18）—— 于是那 14 条没有候选方案的卡点，
                 用户在任何点得到的地方都看不出它们的轻重，排序也就无从谈起。
                 ⚠ 名字里必须带「卡点当前」四个字：下面候选表里另有一维也在说严重度，
-                但那是**单因子**口径（实测同一条卡点 16 对 6），两个数不能直接比大小。
+                但那是**单因子**口径（2026-09-18 实测同一条卡点 16 对 6；复验：这两个口径的公式分别在
+                `apps/datacore/src/solvers/chain-impediment.ts` 的 `severity` 赋值处与
+                `apps/datacore/src/solvers/impediment-options.ts` 的 `severityOf`，
+                后者头注里记着同一组对照数），两个数不能直接比大小。
                 口径说明是**明细**，降到下面那个 `?` 里（规范 §1：第一层只留数值/状态/名字）。
                 ⚠ 这里**只放数字不放 `?`**：`InfoPopover` 里是真 `<button>`，
                 嵌进 `<a>` 既是非法 HTML，又会把"点浮层"变成"点了跳走"。 */}
@@ -1641,7 +1650,7 @@ function JumpList({
  * ── 为什么会有这个组件（不是新功能，是补一次有损收编）──────────────────────────
  * `chain-impediments` 这条导航被 `ShellLayout.CONSOLIDATED_INTO_SANDBOX` 收进沙盘，
  * 那条登记的 `where` 自己写着「沙盘主屏阻滞点统计条 + 逐条清单（**残差见 AUDIT §2**）」——
- * 收编是刻意的，但**有损**。实测（真起 datacore `SEED_DEMO=1`，18 条阻滞点）：
+ * 收编是刻意的，但**有损**。实测（**2026-09-18**，真起 datacore `SEED_DEMO=1`，18 条阻滞点）：
  *
  * | | 独立屏 `/v/chain-impediments` | 收编后的沙盘 |
  * |---|---|---|
@@ -1649,6 +1658,11 @@ function JumpList({
  * | `scanId`             | 有（`scan_ae9a578c`） | **无** |
  * | 阈值出处             | 有（`THRESHOLD_SOURCE_LABEL` + `fieldPath`） | **无** |
  * | 触发判定明细         | 有（`TriggerVerdictStrip`） | **无** |
+ *
+ * ⚠ **右列是本组件落地「之前」的读数**（那正是本组件存在的理由）—— 今天右列四样都已补齐，
+ *   别把这张表读成现状。左列与条数的复验：`SEED_DEMO=1` 起 datacore 后
+ *   `POST /a/v1/solvers/chain_impediments/invoke {"args":{}}` 数 `impediments[]` 的长度与逐条字段；
+ *   `scanId` 随每次扫描变，`scan_ae9a578c` 只是那一次的值，**不是常量**。
  *
  * 后果落在**没有候选方案的那 14 条**上：它们在沙盘里既没有严重度也没有判定依据，
  * 于是「哪条先管」这个问题在屏上**没有任何输入**。
@@ -1695,7 +1709,9 @@ function ImpedimentResidual({ im, verdictLive = true }: { im: ImpedimentVM; verd
       {/* ③ 触发判定明细：哪条信号 · 该越多少 · 现在多少 · 越没越 · 阈值来自哪。
           组件自带 loading / error / empty 三态三句，本处不再包一层判断（包了就是第二套口径）。
           ⚠ `verdictLive` 只在**宿主清单展开**时为真：`<details>` 折叠态 React 照样挂子树，
-          不拦就是 18 次 `decision_play` 白打（实测数）。展开即挂、即请求。 */}
+          不拦就是 18 次 `decision_play` 白打（2026-09-18 实测数；复验方式与那次实测的完整口径
+          见本文件顶部 `impListOpen` 那条 state 的注，一句话版：把本参数改成常量 `true` 再收起清单，
+          Network 里 `POST /a/v1/solvers/decision_play/invoke` 会重新打满 18 次）。展开即挂、即请求。 */}
       {verdictLive ? (
         <TriggerVerdictStrip
           metricKey=""
