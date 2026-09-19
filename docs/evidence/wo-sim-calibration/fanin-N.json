@@ -45,5 +45,11 @@
  "demo_process_queue_to_equipment_load": 1,
  "demo_wip_feed_to_defect_pressure": 1,
  "demo_wo_release_to_quality_backlog": 1,
- "demo_wo_release_to_wip_feed": 1
+ "demo_wo_release_to_wip_feed": 1,
+ "demo_alt_switch_to_material_shortage": 1.0,
+ "demo_inspection_queue_to_material_shortage": 3.75,
+ "demo_balance_gap_to_po_expedite": 1.0,
+ "demo_equipment_load_to_process_queue": 2.0,
+ "demo_fg_cover_days_to_model_demand": 3.0,
+ "demo_fg_drawdown_relieves_model_demand": 3.0
 }

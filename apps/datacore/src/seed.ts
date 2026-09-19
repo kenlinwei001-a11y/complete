@@ -1087,14 +1087,20 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // ⚠ WO-PROP-V2-REBASE **实测后撤回 `equal_share`**（本想照 canonical 的 11 条同款补上）：
-    // 真种子世界 9 拍实测，canonical 那 11 条 `equal_share` 边**一条都没触发**，
-    // 并且把下游 9 条边一起饿死（46 条里 20 条不进 trace ——
-    // `seed-demo-propagation.test.ts` 的「逐条真触发」在 **canonical 上就是红的**，不是本单弄红的）。
-    // 在那条路修好之前给新边挂 `equal_share` = 再让 5 条边静默死掉，用户屏上少 5 条因果边。
-    // ⇒ 维持 `null`。代价如实记账：`null` 的语义是「每源各加一份满额」⇒ Σw = N，
-    // 故本边对该格增益预算的占用是 N 倍，而 N（扇入）本单**未实测** —— 见交付报告的预算段。
-    weightRef: null,
+    // WO-PROP-V2-REBASE 订正（2026-09-19）：上一版这里写的「撤回 `equal_share`」**建立在一次假红上** ——
+    // 病因是 `packages/contracts/dist/sim.js` 陈旧（合并后 src 有 `equal_share`、dist 没有）⇒
+    // `pairWeightNormalizeOf` 认不出它 ⇒ 整条边落进 `unresolved` 不传导。重 build 之后实测：
+    // **canonical(a0960fd2) 与本分支各跑一遍 `seed-demo-propagation` 都是 20/20 绿（RC=0）**，
+    // 且「逐条真触发」那道门**要求每条物理边都进 trace** ⇒ 在册 `equal_share` 边全部会触发。
+    // ⇒ 恢复 `equal_share`。判据是**实测增益预算**，不是照抄 canonical：
+    //   `weightRef: null` 语义 =「每源各加一份满额」⇒ Σw = N ⇒ 该边占用 g×N；
+    //   `equal_share` 归一到 Σ=1 ⇒ 占用 g×1。扇入 N 已实测并登记在
+    //   `docs/evidence/wo-sim-calibration/fanin-N.json`（本次新增 5 条）。
+    // ⚠ 量纲自洽：本边目标是**强度**型（风险/压力指数，不是总量），Σ=1 的加权平均才是对的口径
+    //   —— 与 `demo_material_price_to_model_cost` 用 `bom_cost_share` 同一条判据。
+    // ⚠ 未尽：`equal_share` 只表示「今天没有可审计的差异化计量值」。日后若能按检验批量/库存量
+    //   取到真实占比，应照 `bom_cost_share` 的先例升级；本单不新造计量基。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1111,14 +1117,20 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // ⚠ WO-PROP-V2-REBASE **实测后撤回 `equal_share`**（本想照 canonical 的 11 条同款补上）：
-    // 真种子世界 9 拍实测，canonical 那 11 条 `equal_share` 边**一条都没触发**，
-    // 并且把下游 9 条边一起饿死（46 条里 20 条不进 trace ——
-    // `seed-demo-propagation.test.ts` 的「逐条真触发」在 **canonical 上就是红的**，不是本单弄红的）。
-    // 在那条路修好之前给新边挂 `equal_share` = 再让 5 条边静默死掉，用户屏上少 5 条因果边。
-    // ⇒ 维持 `null`。代价如实记账：`null` 的语义是「每源各加一份满额」⇒ Σw = N，
-    // 故本边对该格增益预算的占用是 N 倍，而 N（扇入）本单**未实测** —— 见交付报告的预算段。
-    weightRef: null,
+    // WO-PROP-V2-REBASE 订正（2026-09-19）：上一版这里写的「撤回 `equal_share`」**建立在一次假红上** ——
+    // 病因是 `packages/contracts/dist/sim.js` 陈旧（合并后 src 有 `equal_share`、dist 没有）⇒
+    // `pairWeightNormalizeOf` 认不出它 ⇒ 整条边落进 `unresolved` 不传导。重 build 之后实测：
+    // **canonical(a0960fd2) 与本分支各跑一遍 `seed-demo-propagation` 都是 20/20 绿（RC=0）**，
+    // 且「逐条真触发」那道门**要求每条物理边都进 trace** ⇒ 在册 `equal_share` 边全部会触发。
+    // ⇒ 恢复 `equal_share`。判据是**实测增益预算**，不是照抄 canonical：
+    //   `weightRef: null` 语义 =「每源各加一份满额」⇒ Σw = N ⇒ 该边占用 g×N；
+    //   `equal_share` 归一到 Σ=1 ⇒ 占用 g×1。扇入 N 已实测并登记在
+    //   `docs/evidence/wo-sim-calibration/fanin-N.json`（本次新增 5 条）。
+    // ⚠ 量纲自洽：本边目标是**强度**型（风险/压力指数，不是总量），Σ=1 的加权平均才是对的口径
+    //   —— 与 `demo_material_price_to_model_cost` 用 `bom_cost_share` 同一条判据。
+    // ⚠ 未尽：`equal_share` 只表示「今天没有可审计的差异化计量值」。日后若能按检验批量/库存量
+    //   取到真实占比，应照 `bom_cost_share` 的先例升级；本单不新造计量基。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1135,14 +1147,20 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // ⚠ WO-PROP-V2-REBASE **实测后撤回 `equal_share`**（本想照 canonical 的 11 条同款补上）：
-    // 真种子世界 9 拍实测，canonical 那 11 条 `equal_share` 边**一条都没触发**，
-    // 并且把下游 9 条边一起饿死（46 条里 20 条不进 trace ——
-    // `seed-demo-propagation.test.ts` 的「逐条真触发」在 **canonical 上就是红的**，不是本单弄红的）。
-    // 在那条路修好之前给新边挂 `equal_share` = 再让 5 条边静默死掉，用户屏上少 5 条因果边。
-    // ⇒ 维持 `null`。代价如实记账：`null` 的语义是「每源各加一份满额」⇒ Σw = N，
-    // 故本边对该格增益预算的占用是 N 倍，而 N（扇入）本单**未实测** —— 见交付报告的预算段。
-    weightRef: null,
+    // WO-PROP-V2-REBASE 订正（2026-09-19）：上一版这里写的「撤回 `equal_share`」**建立在一次假红上** ——
+    // 病因是 `packages/contracts/dist/sim.js` 陈旧（合并后 src 有 `equal_share`、dist 没有）⇒
+    // `pairWeightNormalizeOf` 认不出它 ⇒ 整条边落进 `unresolved` 不传导。重 build 之后实测：
+    // **canonical(a0960fd2) 与本分支各跑一遍 `seed-demo-propagation` 都是 20/20 绿（RC=0）**，
+    // 且「逐条真触发」那道门**要求每条物理边都进 trace** ⇒ 在册 `equal_share` 边全部会触发。
+    // ⇒ 恢复 `equal_share`。判据是**实测增益预算**，不是照抄 canonical：
+    //   `weightRef: null` 语义 =「每源各加一份满额」⇒ Σw = N ⇒ 该边占用 g×N；
+    //   `equal_share` 归一到 Σ=1 ⇒ 占用 g×1。扇入 N 已实测并登记在
+    //   `docs/evidence/wo-sim-calibration/fanin-N.json`（本次新增 5 条）。
+    // ⚠ 量纲自洽：本边目标是**强度**型（风险/压力指数，不是总量），Σ=1 的加权平均才是对的口径
+    //   —— 与 `demo_material_price_to_model_cost` 用 `bom_cost_share` 同一条判据。
+    // ⚠ 未尽：`equal_share` 只表示「今天没有可审计的差异化计量值」。日后若能按检验批量/库存量
+    //   取到真实占比，应照 `bom_cost_share` 的先例升级；本单不新造计量基。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1193,14 +1211,20 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // ⚠ WO-PROP-V2-REBASE **实测后撤回 `equal_share`**（本想照 canonical 的 11 条同款补上）：
-    // 真种子世界 9 拍实测，canonical 那 11 条 `equal_share` 边**一条都没触发**，
-    // 并且把下游 9 条边一起饿死（46 条里 20 条不进 trace ——
-    // `seed-demo-propagation.test.ts` 的「逐条真触发」在 **canonical 上就是红的**，不是本单弄红的）。
-    // 在那条路修好之前给新边挂 `equal_share` = 再让 5 条边静默死掉，用户屏上少 5 条因果边。
-    // ⇒ 维持 `null`。代价如实记账：`null` 的语义是「每源各加一份满额」⇒ Σw = N，
-    // 故本边对该格增益预算的占用是 N 倍，而 N（扇入）本单**未实测** —— 见交付报告的预算段。
-    weightRef: null,
+    // WO-PROP-V2-REBASE 订正（2026-09-19）：上一版这里写的「撤回 `equal_share`」**建立在一次假红上** ——
+    // 病因是 `packages/contracts/dist/sim.js` 陈旧（合并后 src 有 `equal_share`、dist 没有）⇒
+    // `pairWeightNormalizeOf` 认不出它 ⇒ 整条边落进 `unresolved` 不传导。重 build 之后实测：
+    // **canonical(a0960fd2) 与本分支各跑一遍 `seed-demo-propagation` 都是 20/20 绿（RC=0）**，
+    // 且「逐条真触发」那道门**要求每条物理边都进 trace** ⇒ 在册 `equal_share` 边全部会触发。
+    // ⇒ 恢复 `equal_share`。判据是**实测增益预算**，不是照抄 canonical：
+    //   `weightRef: null` 语义 =「每源各加一份满额」⇒ Σw = N ⇒ 该边占用 g×N；
+    //   `equal_share` 归一到 Σ=1 ⇒ 占用 g×1。扇入 N 已实测并登记在
+    //   `docs/evidence/wo-sim-calibration/fanin-N.json`（本次新增 5 条）。
+    // ⚠ 量纲自洽：本边目标是**强度**型（风险/压力指数，不是总量），Σ=1 的加权平均才是对的口径
+    //   —— 与 `demo_material_price_to_model_cost` 用 `bom_cost_share` 同一条判据。
+    // ⚠ 未尽：`equal_share` 只表示「今天没有可审计的差异化计量值」。日后若能按检验批量/库存量
+    //   取到真实占比，应照 `bom_cost_share` 的先例升级；本单不新造计量基。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1281,14 +1305,20 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // ⚠ WO-PROP-V2-REBASE **实测后撤回 `equal_share`**（本想照 canonical 的 11 条同款补上）：
-    // 真种子世界 9 拍实测，canonical 那 11 条 `equal_share` 边**一条都没触发**，
-    // 并且把下游 9 条边一起饿死（46 条里 20 条不进 trace ——
-    // `seed-demo-propagation.test.ts` 的「逐条真触发」在 **canonical 上就是红的**，不是本单弄红的）。
-    // 在那条路修好之前给新边挂 `equal_share` = 再让 5 条边静默死掉，用户屏上少 5 条因果边。
-    // ⇒ 维持 `null`。代价如实记账：`null` 的语义是「每源各加一份满额」⇒ Σw = N，
-    // 故本边对该格增益预算的占用是 N 倍，而 N（扇入）本单**未实测** —— 见交付报告的预算段。
-    weightRef: null,
+    // WO-PROP-V2-REBASE 订正（2026-09-19）：上一版这里写的「撤回 `equal_share`」**建立在一次假红上** ——
+    // 病因是 `packages/contracts/dist/sim.js` 陈旧（合并后 src 有 `equal_share`、dist 没有）⇒
+    // `pairWeightNormalizeOf` 认不出它 ⇒ 整条边落进 `unresolved` 不传导。重 build 之后实测：
+    // **canonical(a0960fd2) 与本分支各跑一遍 `seed-demo-propagation` 都是 20/20 绿（RC=0）**，
+    // 且「逐条真触发」那道门**要求每条物理边都进 trace** ⇒ 在册 `equal_share` 边全部会触发。
+    // ⇒ 恢复 `equal_share`。判据是**实测增益预算**，不是照抄 canonical：
+    //   `weightRef: null` 语义 =「每源各加一份满额」⇒ Σw = N ⇒ 该边占用 g×N；
+    //   `equal_share` 归一到 Σ=1 ⇒ 占用 g×1。扇入 N 已实测并登记在
+    //   `docs/evidence/wo-sim-calibration/fanin-N.json`（本次新增 5 条）。
+    // ⚠ 量纲自洽：本边目标是**强度**型（风险/压力指数，不是总量），Σ=1 的加权平均才是对的口径
+    //   —— 与 `demo_material_price_to_model_cost` 用 `bom_cost_share` 同一条判据。
+    // ⚠ 未尽：`equal_share` 只表示「今天没有可审计的差异化计量值」。日后若能按检验批量/库存量
+    //   取到真实占比，应照 `bom_cost_share` 的先例升级；本单不新造计量基。
+    weightRef: { basis: "equal_share" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },

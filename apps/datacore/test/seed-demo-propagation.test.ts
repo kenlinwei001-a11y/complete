@@ -511,6 +511,10 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       // 不同点是它们的 tick0 值在**真种子世界**里不是外部打进来的，而是
       // `deriveSeedBaseSnapshot` 从对象属性上**直接读到的真值**（实测 measuredCells 450）。
       // 本用例用显式 baseSnapshot 建会话，所以这里仍要自带源。
+      // 🔴 它们**必须出现在这里**（收编 canonical WO-SIM-REAL-DATA 时并入的理由，比原注更强）：
+      //    这三条是全表唯一「读数能对上某一张真单」的通路 —— 一旦恒不触发，
+      //    屏上那句「该型号在手订单最大的一张是多少套」就是纯哈希编的数，
+      //    而**不会有任何东西变红**（它们刻意不进 `STATE_VAR_DOMAINS`，不夹不衰减）。
       订单真实字段: [
         "demo_order_qty_to_model_top_qty",
         "demo_order_price_to_model_top_price",
@@ -551,16 +555,6 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_alt_switch_to_material_shortage",
         "demo_inspection_queue_to_material_shortage",
         "demo_balance_gap_to_po_expedite",
-      // WO-SIM-REAL-DATA：Order 的三个**真实业务字段**直接当状态变量名，同名直取进世界态
-      //（`deriveSeedBaseSnapshot` 探到 `Order.props.qty` 是有限数 ⇒ 真读数档，不走哈希）。
-      // 与「根源」组同一条纪律：三者**入度 0**，必须自带源（见上面 baseSnapshot 的 orderId 那行）。
-      // 🔴 它们**必须出现在这里**：这三条是全表唯一「读数能对上某一张真单」的通路 ——
-      //    一旦恒不触发，屏上那句「该型号在手订单最大的一张是多少套」就是纯哈希编的数，
-      //    而**不会有任何东西变红**（它们刻意不进 `STATE_VAR_DOMAINS`，不夹不衰减）。
-      订单真值: [
-        "demo_order_qty_to_model_top_qty",
-        "demo_order_price_to_model_top_price",
-        "demo_order_leaddays_to_model_horizon",
       ],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
