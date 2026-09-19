@@ -651,6 +651,15 @@ export function enumerateImpedimentOptions(
 
     const effective: SolutionCandidate[] = [];
     let probesHere = 0;
+    // WO-IMPEDIMENT-LEVERS · **试算台账**：够不着（join 缺一维）与「够着了、真试算过了、没用」是两种缺口，
+    // 修法**相反** —— 前者补落点册，后者补落点册一点用都没有（见下方 `triedRungs` 的 gap 原文）。
+    // 旧实现对后者是**两个静默 `continue`**：一次试算都不记，于是 `noCandidateReason` 里只剩下
+    // join 侧那条「LOCUS_PROP 够不着」，读者（包括派单方）据此判定"缺落点"，而真相是落点探到了、档位取到了、
+    // 逐档试算跑完了、这些杠杆对该判据**没有传导**。实测：7 条 `MaterialBalance` 断点里 6 条如此
+    // （每条 5–11 次真试算，屏上只说"没有可拨动落点"）。**报错误的病因比不报更贵**。
+    let triedRungs = 0; // 真跑到"两维读数重算"这一步的档位数（patch 被丢弃的不算，那条另有 gap）
+    let flatRungs = 0; // 拨完两维都一动不动
+    let worseRungs = 0; // 动了，但没有任何一维往好里动
     for (const anchor of anchors) {
       const peers = arraysOf(anchor.binding.objectType);
       const { rungs, gaps: rungGaps } = rungsFor({ anchor, im, metricPath: binding.metricPath, peers });
@@ -672,15 +681,22 @@ export function enumerateImpedimentOptions(
         const afterJudge = rule ? judgeOnCtx({ ruleExpression: rule, binding, locusObjId: locusObj.id, arraysOf: (t) => arraysOfPatched(patched, arrays, t) }) : null;
         const afterCap = capacityFor(locusBase, { typeKey: anchor.binding.objectType, objId: anchor.objId, prop: anchor.binding.prop, value: rung.toValue });
         probesHere++;
+        triedRungs++;
 
         const breachMoved = baseJudge !== null && afterJudge !== null && afterJudge.breach !== baseJudge.breach;
         const capMoved = baseCap !== null && afterCap !== null && afterCap !== baseCap;
-        if (!breachMoved && !capMoved) continue; // 拨了什么都没动 → 非有效杠杆（诚实丢弃，照抄 discoverLevers）
+        if (!breachMoved && !capMoved) {
+          flatRungs++; // 拨了什么都没动 → 非有效杠杆（诚实丢弃，照抄 discoverLevers）；**但要记账**，见 triedRungs
+          continue;
+        }
         // 「动了」还不够，还得**往好里动**：全维不改善（甚至全维变差）的拨法不是方案，是反面教材。
         // 判据走 contracts 的 `candidateDimImprovement`（betterWhen 是维自己声明的，不在这里猜方向）。
         const breachImproves = breachMoved && afterJudge!.breach < baseJudge!.breach;
         const capImproves = capMoved && afterCap! > baseCap!;
-        if (!breachImproves && !capImproves) continue;
+        if (!breachImproves && !capImproves) {
+          worseRungs++;
+          continue;
+        }
 
         // ── effectKind 是**量出来的**，不是按 kind switch 出来的 ──
         const isMetricProp = `${anchor.binding.objectType}.${anchor.binding.prop}` === binding.metricPath;
@@ -784,6 +800,25 @@ export function enumerateImpedimentOptions(
         }
         effective.push(parsed.data);
       }
+    }
+
+    // ── 试算台账进 gaps，**排在最前** ──────────────────────────────────────────
+    // 为什么 `unshift` 而不是 `push`：`noCandidateReason` 只取 `gaps.slice(0, 4)`，而 join 侧那几条
+    // （LOCUS_PROP / RULE_GATE 够不着）是**先**被 push 进来的。不置顶，这条最强的事实会被挤出屏幕，
+    // 于是屏上永远只剩"够不着"——正是本次要治的那个误导。
+    // ⚠ `!truncated` 是必须的，不是保险：探针预算耗尽时产能那一维**压根没算**（`capacityFor` 直接返回
+    // null），此时说「拨完两维读数一动不动」是假话 —— 而且同一句回包的前缀正写着「枚举**未能算完**」，
+    // 两句自相矛盾。预算耗尽这一态由 `UNAVAILABLE` 那套文案负责解释，本台账不掺和。
+    if (triedRungs > 0 && !truncated) {
+      const ledger =
+        `真试算 ${triedRungs} 个档位 → 有效 ${effective.length} 个：` +
+        `${flatRungs} 个拨完两维读数（判据超阈幅度 ${binding.metricPath} / 产能 cellsPerDayP50）一动不动、` +
+        `${worseRungs} 个动了但没往好里动`;
+      gaps.unshift(
+        effective.length === 0
+          ? `${ledger} ⇒ 本阻滞点的缺口**不是**「够不着落点」，而是「够着了、真试算过了、这些杠杆对它没有传导」——两者修法相反，补落点册治不了后者`
+          : ledger,
+      );
     }
 
     // ── 全序 → 每根杠杆只留最好的一个实例 → 去重（效果雷同的算重复）→ 截 N ──

@@ -301,6 +301,83 @@ describe("WO-SANDBOX-S3-ENUM · 阻滞点 → 候选对策枚举 SEAM（真种�
     }
   }, 180000);
 
+  /**
+   * S3-4b · WO-IMPEDIMENT-LEVERS · **「够不着」与「够着了、试过了、没用」必须分开说**。
+   *
+   * ── 这条为什么存在（真实代价，不是假想）──────────────────────────────────────
+   * 修前：两个"没往好里动"的分支是**静默 `continue`** —— 一次试算都不记账。于是 `noCandidateReason`
+   * 里只剩下 join 侧那条「LOCUS_PROP 够不着：对象类型 X 没有任何可拨动落点」，而它**渲染在用户屏上**
+   * （`DecisionPlayPanel.tsx` 的 `im.noCandidateReason`）。真起 `SEED_DEMO=1` 实测：14 条 NONE 里
+   * **没有一条**是真的"够不着" —— 每条都探到了 2–10 个杠杆锚点、真跑了 5–34 次逐档试算，
+   * 全部因为**两维读数一动不动**被丢弃。屏上却写着"没有可拨动落点"。
+   * 代价是实的：一张工单（WO-IMPEDIMENT-LEVERS）照这句话把工作量定成"补落点册"，
+   * 而补落点册对这 14 条**一条都治不了**（三面墙实测见交回）。**报错误的病因比不报更贵。**
+   *
+   * ── 形态（CLAUDE.md 铁律 0.6 句式）────────────────────────────────────────────
+   * 「我用『join 侧报了一条缺口』当作『这条阻滞点的缺口就是够不着』的证据，而前者并不度量后者
+   *   —— join 够着了几根杠杆、试算跑了多少次，是另外两个数。」
+   *
+   * ── 双向金丝雀（缺一半这道断言就是装饰品）──────────────────────────────────
+   *  · 正向：台账必须出现在**用户看得见的那半**（`noCandidateReason`），不是只进 `candidateStats`。
+   *  · 反向：台账里的数必须是**算出来的**不是写死的 —— 用两个独立来源交叉验：
+   *      ① `tried` 必须逐条等于 `candidateStats.probes`（另一段代码另算的数）；
+   *      ② `flat + worse + effective` 必须等于 `tried`（三分法无遗漏，没有被吞掉的档位）；
+   *      ③ 各条的 `tried` 不许全相等（全等 ⇒ 是个常量串，不是现算的）。
+   */
+  it("S3-4b · 反向 · 空集的理由必须分清「够不着」与「够着了但没传导」，且台账数与逐点账对得上", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const s = await scan(t);
+
+    // 前置金丝雀：本例断言的是**算完了**那一态。预算耗尽（truncated）时产能维压根没算，
+    // 台账按设计不出（见 `impediment-options.ts` 的 `!truncated` 注释），那是 S3-5 的地盘。
+    expect(s.candidatesTruncated).toBe(false);
+
+    // 与 S3-4 同一个选集口径（`candidates !== undefined` ⇒ 枚举真跑过这一条，不是字段压根没下发）
+    const empties = s.impediments.filter((im) => (im.candidates ?? []).length === 0 && im.candidates !== undefined);
+    expect(empties.length).toBeGreaterThan(0); // 金丝雀：这条空了下面全是空跑
+
+    const LEDGER = /真试算 (\d+) 个档位 → 有效 (\d+) 个：(\d+) 个拨完两维读数[^、]*一动不动、(\d+) 个动了但没往好里动/;
+    const triedSeen: number[] = [];
+    let reachedAndTried = 0;
+
+    for (const im of empties) {
+      const st = s.candidateStats.find((x) => x.impedimentId === im.impedimentId)!;
+      if (st.probes === 0) {
+        // 一次都没试算过 ⇒ **不许**打印试算台账（否则就是拿一句套话冒充证据）。
+        expect(im.noCandidateReason).not.toMatch(LEDGER);
+        continue;
+      }
+      // 正向：台账必须落到用户看得见的那半，而不是只进 candidateStats。
+      const m = LEDGER.exec(im.noCandidateReason ?? "");
+      expect(m, `NONE 阻滞点 ${im.impedimentId} 的 noCandidateReason 缺试算台账：${im.noCandidateReason}`).not.toBeNull();
+      const [tried, eff, flat, worse] = [Number(m![1]), Number(m![2]), Number(m![3]), Number(m![4])];
+
+      // 反向①：`tried` 与另一段代码算的 `probes` 必须逐字节对上。
+      expect(tried).toBe(st.probes);
+      // 反向②：三分法无遗漏 —— 试过的每一档都必须落进三桶之一。
+      expect(flat + worse + eff).toBe(tried);
+      expect(eff).toBe(st.effective);
+      // ⚠ 这里**不许**断言 `eff === 0`：空候选有两种来路 —— 有效 0 个，或有效 1 个但不足 MIN(2)。
+      // 后者今日种子上不出现，但写死 0 就是把"今天的数据长相"当成不变量（本仓反复栽的那个坑）。
+      // 「够不着不是病因」这句只有在**一个有效候选都没有**时才成立，故按 `eff` 分支断言。
+      if (eff === 0) {
+        expect(im.noCandidateReason).toContain("不是");
+        expect(im.noCandidateReason).toContain("够不着落点");
+      }
+
+      triedSeen.push(tried);
+      if (st.anchors > 0) reachedAndTried++;
+    }
+
+    // 反向③：台账不许是常量串 —— 各条试算数必须真的不一样。
+    expect(triedSeen.length).toBeGreaterThan(1);
+    expect(new Set(triedSeen).size).toBeGreaterThan(1);
+    // 本单的核心事实：空集里**确实存在**"够着了杠杆、也真试算过"的那一类，
+    // 它与"一根杠杆都够不着"是两种缺口、修法相反。这一条空了说明种子变了，结论要重取证。
+    expect(reachedAndTried).toBeGreaterThan(0);
+  }, 180000);
+
   it("S3-5 · 「算不了」≠「没有」：同一份数据只拧算力旋钮 → 同一批阻滞点从 NONE 翻成 UNAVAILABLE", async () => {
     const t = await makeApp();
     await seedBattery(t);
