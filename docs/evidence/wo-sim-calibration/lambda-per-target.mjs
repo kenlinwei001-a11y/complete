@@ -95,7 +95,9 @@ async function main() {
 
     // ══ 判据③（件B）先跑：基准世界里 Model.demandLoad 的逐拍轨迹 ══════════════════
     console.log(`\n══ 判据③ 件B · 基准世界（零扰动）中 \`Model.demandLoad\` 的逐拍读数 ══`);
-    const models = ((await jget(base, "/a/v1/objects?typeKey=Model&pageSize=50")).items ?? []).map((o) => o.id);
+    // ⚠ 本端点的参数名是 `type` 不是 `typeKey`，且未知分页参数会 **400 点名**（不静默忽略）。
+    const models = ((await jget(base, "/a/v1/objects?type=Model&pageSize=50")).items ?? []).map((o) => o.id);
+    if (models.length === 0) throw new Error("🐤 一个 Model 都没取到 ⇒ 取数坏了，下面的轨迹是空话");
     const s = await jpost(base, "/a/v1/sim/sessions", { baseSnapshot: t0, scope: {} });
     const traj = [];
     for (let i = 0; i <= 8; i++) {
@@ -110,20 +112,53 @@ async function main() {
     console.log(`  判定：tick3 起 ${pinned ? "⛔ 仍恒为域下界 0（件B 没修好）" : "✅ 不再恒为域下界 0"}`);
     if (pinned) bad += 1;
 
+    // ── 🐤 对照组：同一个基准世界里**别的格子**是不是也归零 ────────────────────────────
+    // ⚠ 没有这一组，「demandLoad 最后也到 0」会被读成「件B 没修好」——而真相可能是
+    //   **零扰动世界里所有压力族都松弛到静息点 0**（`rest + 入流/λ`，入流随源一起衰减 ⇒ 稳态就是 rest）。
+    //   判据必须是「它跟同族**一样**，还是**只有它**塌」，而不是「它最后是不是 0」。
+    //   形态：「我用『它归零了』当作『它被夹死了』的证据 —— 松弛到静息点与被地板夹死不是一回事。」
+    const CMP = [["Base", "loadIndex"], ["Line", "utilPressure"], ["Order", "demandPressure"], ["WorkOrder", "releasePressure"]];
+    console.log(`\n  🐤 对照组（同一份 tick0、同一条零扰动轨迹）：`);
+    const s2 = await jpost(base, "/a/v1/sim/sessions", { baseSnapshot: t0, scope: {} });
+    const snaps = [];
+    for (let i = 0; i <= 8; i++) {
+      if (i > 0) await jpost(base, `/a/v1/sim/sessions/${s2.id}/tick`, { n: 1 });
+      snaps.push((await jget(base, `/a/v1/sim/sessions/${s2.id}/world`)).state);
+    }
+    console.log(`    格子                        tick0 Σ        tick4 Σ        tick8 Σ     tick8 归零?`);
+    for (const [tk, sv] of CMP) {
+      const ids = ((await jget(base, `/a/v1/objects?type=${tk}&pageSize=50`)).items ?? []).map((o) => o.id);
+      const sumAt = (k) => ids.reduce((a, id) => a + (typeof snaps[k][id]?.[sv] === "number" ? snaps[k][id][sv] : 0), 0);
+      console.log(`    ${`${tk}.${sv}`.padEnd(26)} ${sumAt(0).toFixed(4).padStart(12)} ${sumAt(4).toFixed(4).padStart(12)} ${sumAt(8).toFixed(4).padStart(12)}   ${sumAt(8) === 0 ? "是" : "否"}`);
+    }
+    console.log(`    ⇒ 若对照组同样在 tick8 归零，则 \`Model.demandLoad\` 归零是**零扰动世界松弛到静息点**的常态，`);
+    console.log(`      不是「被地板夹死」。两者的区别看 G-ROOT-1：夹死时扰动推不动它（逐拍 Δ 全 0）。`);
+
     // ══ 判据①正向：改后 vs 改前（PATCH 回裸 g），增量比 = 该落点自己的 λ ══════════════
     console.log(`\n══ 判据① 正向 · 同 ${TICKS} 拍、同一份 tick0，只差「系数有没有预乘 λ」══`);
     const after = await runSum();
     const seed0 = await runSum(0);            // tick0 出厂存量：两臂完全相同，必须减掉
+
+    // ── 「改前」臂怎么造：**必须改 C36 的 params，不是改边上的 `coefficient` 字段** ──────────
+    // ⚠ 这一步是本脚本相对 `backlog-lambda.mjs` 的**第二处换轨**，且是被实测逼出来的：
+    //   WO-PROP-COEF-CONFIG 之后引擎走 `effectiveCoefficient` —— **`coefficientRef` 解析优先**，
+    //   解析不到才回落边上的内联 `coefficient`。于是 `PATCH /sim/propagation-rules/:id {coefficient}`
+    //   **对读路毫无影响**：ref 仍解析到 C36 里那个旧值。
+    //   实测代价：照旧写法跑，5 格的「改前/改后」增量**逐字节相同**、比值一律 1.000000000，
+    //   而正确答案是 0.37/0.75/0.22 ⇒ 会被读成「预乘 λ 根本没生效」这个**恰好相反**的结论。
+    //   形态：「我用『我 PATCH 了系数』当作『引擎读到的系数变了』的证据，而前者并不度量后者。」
+    //   ⚠ `docs/evidence/wo-sim-calibration/backlog-lambda.mjs` 仍是旧写法 ⇒ 它今天给的是假阴性。
+    const c36 = ((await jget(base, "/a/v1/rules?pageSize=200")).items ?? []).find((r) => r.key === "C36");
+    if (!c36) throw new Error("取不到 C36 规则 ⇒ 「改前」臂造不出来");
+    const patched = { ...c36.params };
+    for (const [k, [, g]] of Object.entries(FIVE)) patched[k] = g;      // 改前 = 裸 g
+    await fetch(`${base}/a/v1/rules/${c36.id}`, { method: "PUT", headers: H, body: JSON.stringify({ params: patched }) })
+      .then((r) => { if (!r.ok) throw new Error(`PUT /a/v1/rules/${c36.id} ${r.status}`); });
+    const c36b = ((await jget(base, "/a/v1/rules?pageSize=200")).items ?? []).find((r) => r.key === "C36");
     for (const [k, [, g]] of Object.entries(FIVE)) {
-      const r = rules.find((x) => x.key === k);
-      await jpatch(base, `/a/v1/sim/propagation-rules/${r.id}`, { coefficient: g });  // 改前 = 裸 g
+      if (Math.abs(Number(c36b.params[k]) - g) > 1e-12) throw new Error(`C36.${k} 没改成裸 ${g}（实得 ${c36b.params[k]}）⇒ 「改前」臂无效`);
     }
-    rules = (await jget(base, "/a/v1/sim/propagation-rules")).items ?? [];
-    for (const [k, [, g]] of Object.entries(FIVE)) {
-      const c = rules.find((x) => x.key === k).coefficient;
-      if (Math.abs(c - g) > 1e-12) throw new Error(`${k} PATCH 没生效（${c} ≠ ${g}）⇒ 「改前」臂无效`);
-    }
-    console.log(`  🐤 自证③ 5 条已 PATCH 回裸 g ⇒ 「改前」臂成立`);
+    console.log(`  🐤 自证③ C36.params 里这 5 条已改回裸 g ⇒ 「改前」臂成立（改的是引擎真读的那一份）`);
     const before = await runSum();
 
     console.log(`\n  落点状态量            λ(该格)  改前增量        改后增量        实测比值      期望=λ   判定`);
