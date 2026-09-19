@@ -129,6 +129,25 @@ for (const r of rules) {
   for (const v of byTarget.values()) for (const id of v.srcIds) srcIdSet.add(id);
   for (const id of srcIdSet) { const v = t0[id]?.[r.sourceStateVar]; if (typeof v === "number") allSrc.push(v); }
   const E = allSrc.length ? allSrc.reduce((a, b) => a + b, 0) / allSrc.length : 0;
+
+  // ── B 列的**精确**算法：逐目标算真入流，再除这一格的 λ，最后对目标取均值 ────────────
+  // ⛔ 不用 `|g| × W̄ × Ē`：那要求 w 与源读数在组内**独立**，而 `source_value_relative`
+  //   正是「权重就是源金额」⇒ 两者完全相关 ⇒ 乘均值会系统性低估。
+  //   形态：「我用『均值之积』当作『积之均值』的证据，而前者并不度量后者。」
+  //   两个数都打出来（B 与 B̂），差多少当场看得见 —— 差得大就说明这条边上不能用近似式。
+  let inflowSum = 0;
+  for (const [tid, v] of byTarget) {
+    for (const sid of v.srcIds) {
+      const raw0 = t0[sid]?.[r.sourceStateVar];
+      if (typeof raw0 !== "number") continue;
+      // 与 `propagation.ts:888` 同一支：还手边只把**超出容忍线**的那部分当驱动量。
+      const drive = r.reaction == null ? raw0 : Math.max(0, raw0 - r.reaction.tolerance);
+      const fac = r.decay ? (1 > r.decay.window ? 0 : 1 - 1 / r.decay.den) : 1;
+      const pw = w === null ? 1 : (w[pairWeightKey(sid, tid)] ?? 0);
+      inflowSum += eff * drive * fac * pw;
+    }
+  }
+  const exactB = lam == null ? null : inflowSum / byTarget.size / lam;
   // 出处：这条边的源格今天是实测还是哈希占位（逐格问生产自己的 provenance 表）。
   let meas = 0, deriv = 0;
   for (const id of srcIdSet) { const o = provenance[id]?.[r.sourceStateVar]; if (o === "measured") meas++; else if (o === "derived") deriv++; }
@@ -138,8 +157,14 @@ for (const r of rules) {
   rows.push({
     key: r.key, cell: `${r.targetTypeKey}.${r.targetStateVar}`, src: `${r.sourceTypeKey}.${r.sourceStateVar}`,
     eff, lam, gain, sw, E, prov, nSrc: allSrc.length, nTgt: byTarget.size,
+    basis: r.weightRef?.basis ?? "null(每源各加一份满额)",
     colA: gain == null ? null : Math.abs(gain) * sw,
-    colB: gain == null ? null : Math.abs(gain) * sw * E,
+    // B 列 = **精确**逐目标稳态贡献（带符号），排序/主导判定一律用 |colB|。
+    colB: exactB == null ? null : Math.abs(exactB),
+    signedB: exactB,
+    inflowSum,
+    // B̂ = 近似式 `|g|×W̄×Ē`，只为把「近似差多少」摆出来，⛔ 不参与任何判定。
+    approxB: gain == null ? null : Math.abs(gain) * sw * E,
     knee: dom ? typeof dom.max === "number" : null,
   });
 }
@@ -147,16 +172,21 @@ for (const r of rules) {
 // ── 打表 ──────────────────────────────────────────────────────────────────────
 const live = rows.filter((x) => !x.skip && x.colA != null);
 console.log(`\n共 ${rules.length} 条边；进表 ${live.length} 条（其余：无域/无三元组，逐条见末尾）\n`);
-const hdr = `${"边".padEnd(46)} ${"落点格".padEnd(30)} ${"源".padEnd(28)} ${"出处".padEnd(5)} ${"|g|".padStart(9)} ${"W".padStart(8)} ${"E[源]".padStart(10)} ${"A=|g|W".padStart(9)} ${"B=|g|W·E".padStart(11)}`;
+const hdr = `${"边".padEnd(46)} ${"落点格".padEnd(30)} ${"源".padEnd(28)} ${"出处".padEnd(5)} ${"|g|".padStart(9)} ${"W".padStart(8)} ${"E[源]".padStart(10)} ${"A=|g|W".padStart(9)} ${"B(精确·带符号)".padStart(15)} ${"B̂=|g|WE".padStart(10)}`;
 console.log(hdr);
 console.log("-".repeat(hdr.length));
 for (const x of [...live].sort((a, b) => b.colB - a.colB)) {
   console.log(
     `${x.key.padEnd(46)} ${x.cell.padEnd(30)} ${x.src.padEnd(28)} ${x.prov.padEnd(5)} ` +
     `${Math.abs(x.gain).toFixed(5).padStart(9)} ${x.sw.toFixed(4).padStart(8)} ${x.E.toFixed(3).padStart(10)} ` +
-    `${x.colA.toFixed(5).padStart(9)} ${x.colB.toFixed(4).padStart(11)}`,
+    `${x.colA.toFixed(5).padStart(9)} ${x.signedB.toFixed(4).padStart(15)} ${x.approxB.toFixed(4).padStart(10)}`,
   );
 }
+// 近似式差多少 —— 只报，不参与判定。
+const devs = live.map((x) => ({ key: x.key, r: x.approxB === 0 ? (x.colB === 0 ? 1 : Infinity) : x.colB / x.approxB }))
+  .sort((a, b) => Math.abs(Math.log(b.r || 1e-9)) - Math.abs(Math.log(a.r || 1e-9)));
+console.log(`\n══ 近似式 B̂=|g|·W̄·Ē 相对精确 B 的偏差（前 5 名，⚠ 说明「均值之积 ≠ 积之均值」）：`);
+for (const d of devs.slice(0, 5)) console.log(`   ${d.key.padEnd(48)} 精确/近似 = ${d.r.toFixed(4)}`);
 
 // ── 两列的排序一致吗 ──────────────────────────────────────────────────────────
 const byA = [...live].sort((a, b) => b.colA - a.colA || a.key.localeCompare(b.key)).map((x) => x.key);
@@ -190,18 +220,22 @@ for (const f of flips) {
 
 // ── Model.demandLoad 专栏（本单的起点）───────────────────────────────────────────
 console.log(`\n══ Model.demandLoad 逐边（带符号）══`);
-for (const x of live.filter((x) => x.cell === "Model.demandLoad").sort((a, b) => Math.abs(b.colB) - Math.abs(a.colB))) {
-  console.log(`   ${x.key.padEnd(46)} 源=${x.src.padEnd(26)} 出处=${x.prov.padEnd(4)} 增益=${x.gain.toFixed(6).padStart(11)} W=${x.sw.toFixed(4)} E=${x.E.toFixed(3).padStart(8)} 带符号A=${(x.gain * x.sw).toFixed(6).padStart(11)} 带符号B=${(x.gain * x.sw * x.E).toFixed(4).padStart(9)}`);
+const dl = live.filter((x) => x.cell === "Model.demandLoad").sort((a, b) => Math.abs(b.colB) - Math.abs(a.colB));
+for (const x of dl) {
+  console.log(`   ${x.key.padEnd(46)} 源=${x.src.padEnd(26)} 出处=${x.prov.padEnd(4)} 增益=${x.gain.toFixed(6).padStart(11)} W=${x.sw.toFixed(4)} E=${x.E.toFixed(3).padStart(8)} 带符号A=${(x.gain * x.sw).toFixed(6).padStart(11)} 带符号B=${x.signedB.toFixed(4).padStart(9)}`);
 }
+console.log(`   ── 合计：带符号 A = ${dl.reduce((s, x) => s + x.gain * x.sw, 0).toFixed(6)}   带符号 B = ${dl.reduce((s, x) => s + x.signedB, 0).toFixed(4)}`);
 
 // ── 5 格欠账专栏 ─────────────────────────────────────────────────────────────
 console.log(`\n══ 5 格超预算欠账逐边 ══`);
 for (const cell of ["Material.shortageRisk", "Process.queuePressure", "PurchaseOrder.expeditePressure", "Customer.receivablePressure", "Order.orderChurn"]) {
   const es = (cells.get(cell) ?? []).sort((a, b) => b.colA - a.colA);
   const sumA = es.reduce((s, e) => s + e.colA, 0);
-  console.log(`\n   ${cell}   Σ A = ${sumA.toFixed(4)} (${(sumA / 0.75).toFixed(2)}×)   入边 ${es.length} 条`);
+  const sumB = es.reduce((s, e) => s + e.signedB, 0);
+  const dom = inp.stateVarDomains[cell.split(".")[1]];
+  console.log(`\n   ${cell}   Σ A = ${sumA.toFixed(4)} (${(sumA / 0.75).toFixed(2)}×)   入边 ${es.length} 条   Σ带符号B = ${sumB.toFixed(4)}   域=[${dom?.min},${dom?.max}] rest=${dom?.rest} knee=${typeof dom?.max === "number" ? 0.75 * dom.max : "无"}`);
   for (const x of es) {
-    console.log(`     ${x.key.padEnd(48)} 源=${x.src.padEnd(26)} 出处=${x.prov.padEnd(4)} |g|=${Math.abs(x.gain).toFixed(5).padStart(8)} λ=${x.lam} W=${x.sw.toFixed(4).padStart(8)} E=${x.E.toFixed(3).padStart(9)} A=${x.colA.toFixed(5).padStart(8)} B=${x.colB.toFixed(4).padStart(10)}  nSrc=${x.nSrc} nTgt=${x.nTgt}`);
+    console.log(`     ${x.key.padEnd(48)} 源=${x.src.padEnd(26)} 出处=${x.prov.padEnd(4)} |g|=${Math.abs(x.gain).toFixed(5).padStart(8)} λ=${x.lam} W=${x.sw.toFixed(4).padStart(8)} E=${x.E.toFixed(3).padStart(9)} A=${x.colA.toFixed(5).padStart(8)} B=${x.signedB.toFixed(4).padStart(10)}  nSrc=${x.nSrc} nTgt=${x.nTgt} 权重口径=${x.basis}`);
   }
 }
 
@@ -216,5 +250,38 @@ for (const x of live) provCount[x.prov] = (provCount[x.prov] ?? 0) + 1;
 console.log(`\n══ 进表 ${live.length} 条边的源出处分布：${JSON.stringify(provCount)}`);
 const hashTop = [...live].sort((a, b) => b.colB - a.colB).slice(0, 10).filter((x) => x.prov === "哈希").length;
 console.log(`   B 列前 10 名里，源走哈希占位的有 ${hashTop} 条`);
+
+// ══ 旁证：真跑一拍，比 trace 里每条边的传导量合计 vs 我上面算的 inflowSum ══════════════
+// 铁律 0.6 第 6 条判据 2：「凡报『共 N 条』，先找一个**不同来源**的 N 对一下。」
+// 这里的不同来源 = 引擎自己跑出来的 trace，⛔ 不是我这段代码再算一遍。
+{
+  const feat = await built.app.inject({
+    method: "PUT", url: "/a/v1/tenants/demo/features", headers: ADMIN,
+    payload: { overrides: { "sim.sandbox": true, "sim.propagation": true } },
+  });
+  if (feat.statusCode >= 400) throw new Error(`开特性失败 ${feat.statusCode}`);
+  const mk = await built.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: { baseSnapshot: t0, scope: {} } });
+  if (mk.statusCode >= 400) throw new Error(`建会话失败 ${mk.statusCode}: ${mk.body.slice(0, 300)}`);
+  const sid = JSON.parse(mk.body).id;
+  const tk = await built.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
+  if (tk.statusCode >= 400) throw new Error(`tick 失败 ${tk.statusCode}: ${tk.body.slice(0, 300)}`);
+  const body = JSON.parse(tk.body);
+  const tr = body.trace ?? body.result?.trace ?? [];
+  if (tr.length === 0) throw new Error("🐤 反空绿：单拍 trace 是空的 ⇒ 一条边都没传导，下面的对账是空话");
+  const byRule = {};
+  for (const t of tr) byRule[t.ruleKey] = (byRule[t.ruleKey] ?? 0) + t.amount;
+  console.log(`\n══ 旁证 · 真跑一拍：trace ${tr.length} 行 / 覆盖 ${Object.keys(byRule).length} 条边`);
+  console.log(`   ⚠ 只对得上 \`delayTicks:0\` 且本拍开闸的边；其余不是"对不上"，是"还在路上/没开闸"，逐条标出。`);
+  let ok = 0, off = 0;
+  for (const x of live) {
+    const got = byRule[x.key];
+    if (got == null) continue;
+    const want = x.inflowSum;
+    const rel = want === 0 ? (got === 0 ? 0 : Infinity) : Math.abs(got - want) / Math.abs(want);
+    if (rel < 1e-6) ok += 1; else { off += 1; console.log(`   ⛔ ${x.key.padEnd(48)} trace 合计 ${got.toFixed(6)} vs 我算 ${want.toFixed(6)}（相对差 ${(rel * 100).toFixed(3)}%）`); }
+  }
+  console.log(`   ⇒ 逐字节对上 ${ok} 条 · 对不上 ${off} 条`);
+  if (ok === 0) throw new Error("🐤 一条都对不上 ⇒ 我的 inflowSum 算法与引擎不同源，上面 B 列全是空话");
+}
 
 await built.app.close();
