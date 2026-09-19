@@ -1277,15 +1277,40 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
       over,
       `超预算格子集合变了 —— 新增即回归，减少即有人改了标定，两种都必须先解释。\n  全表现值：\n  ${table}`,
     ).toEqual([
-      "Customer.receivablePressure",        // 1.15x · source_value_relative，Σw 随客户金额敞口走
-      // ⚠ WO-GAIN-REACH 实测订正：本格**入边只有 1 条**（`demo_order_cost_to_customer_receivable`）。
-      //   原注写「6 条边各自小、合计超」那类「多边合计」的说法对**本格与 `Order.orderChurn` 不成立** ——
-      //   这两格是**单边**，超的是 `Σw`（10.1327 / 2.3995）不是边数。修法因此完全不同：
-      //   多边合计要重分配 `f_g`；单边超标只能改这条边的意图增益，或承认 `*_relative` 的 W 本就是扇入数。
-      "Material.shortageRisk",              // 1.67x · 6 条边各自小，合计超（没人算总账）
-      "Order.orderChurn",                   // 1.12x · actor_exposure_relative（**单边**，同上）
-      "Process.queuePressure",              // 1.67x · 3 条边合计超
-      "PurchaseOrder.expeditePressure",     // 1.33x · 2 条边合计超
+      // ── WO-GAIN-REACH 逐格判定（真起数据实测，逐边读数见 `docs/evidence/wo-gain-reach/`）────
+      // ⚠ 派单原文「**全是** λ=0.37 的压力族，且**都不是单边超标、是多边合计**」——
+      //   λ 那半对（5 格都是 0.37），**「多边合计」那半错**：下面 5 格里 **2 格是单边**。
+      //   两者修法完全不同：多边合计要重分配 `f_g`；单边超的是 `Σw`，`f_g` 动它等于直接改那条边的意图增益。
+      //
+      // 【判据不适用·②】单边 + `actor_exposure_relative`。更要紧的是：这一格今天**在引擎眼里没有入边** ——
+      //   唯一入边 `demo_customer_reaction_cut_order` 带 `reaction`，被 `sim.propagation.adversary`
+      //   闸掉（demo 租户在 `features.ts` `WORLD_DARK_LAUNCH_FEATURES` 里 ⇒ 关）。
+      //   ⇒ 引擎按「入度 0 = 外生输入」处理它：**不衰减**，`decayApplied` 里查无此项（回执实测）。
+      //   没有入边就没有稳态增益，0.75 这把尺子量的是一条**不参与推演**的边。
+      //   开关打开后它才成立，届时 1.12× 是真的（W=2.3995 × 意图 0.35）。
+      "Customer.receivablePressure",        // 1.15x · 【真超标·口径】单边 `source_value_relative`，
+      // W=10.1327 是**金额加权的扇入数**（150 单 / 17 客户 ≈ 8.8，按金额加权到 10.13）。
+      // 意图增益 0.085 显然是**按某个假设的扇入数**反算的（0.085 × 8.82 ≈ 0.75 恰好配满）——
+      // 真实扇入 10.13 ⇒ 超 15%。成因是「标定时假设的 W ≠ 实测 W」，属**口径错**这一类，
+      // 合格修法 = 按实测 W 重算这一条的意图增益，⛔ 不是全表缩系数。
+      "Material.shortageRisk",              // 1.67x · 【真超标】6 条边**全是 `equal_share`(Σw=1)**
+      // ⇒ W 恒 1 ⇒ ΣA = Σ|g| = 1.25 是个**有意义的和**，预算对它成立，就是没人算总账。
+      // 业务理由（指向正确的修法，而不是一律缩小）：这 6 个源是**同一件事的六种测法**
+      // （替代料切换压力 / 供应商交付延迟 / PO 到货延迟 / 来料检验排队 / 批次库龄 / 供应商处理天数），
+      // 高度相关 ⇒ 相加是**重复计数**。该合并口径或按相关性降权，不是把 6 条一起乘 0.6。
+      // ⚠ 且其中 2 条的源是**哈希占位**（`alt_switch` / `inspection_queue`，判据⑤ 名单里）
+      // ⇒ 这 1.67× 有一部分建立在编出来的源读数上。
+      "Order.orderChurn",                   // 1.12x · 见上方【判据不适用·②】
+      "Process.queuePressure",              // 1.67x · 【真超标】同 `Material.shortageRisk` 一型：
+      // 3 条边 W 全 = 1（2 条 `equal_share`；`line_util` 那条 `weightRef: null` 但每个 Process 只有
+      // 1 条 Line 入边 ⇒ N=1 ⇒ W 也是 1。⚠ 别照 seed 头注「null ⇒ W=N」直接读成 N>1）。
+      // 业务理由：设备负荷 / 产线利用率 / 设备故障率三者同源共动，相加重复计数。
+      "PurchaseOrder.expeditePressure",     // 1.33x · 【判据不适用·①】**符号被 `|·|` 吃掉了**：
+      // `demo_material_shortage_to_po_expedite` 的源 `Material.shortageRisk` 实测均值 **−20.405**
+      // （缺料风险为负 = 超储），这条边今天在**缓解**这一格（实际拉力 **−9.92**）。
+      // 而 A 列取 `|g|` ⇒ 把它记成 +0.5 的负担 ⇒ 凑出 1.33×。
+      // 全格带符号实际拉力 = **−7.36**：这一格净受缓解，不是超载。
+      // ⇒ 作为「这一格会不会被推过拐点」的判据**不成立**；作为回路增益上界仍然成立（两列各管各的）。
     ].sort());
 
     // ══════════════════════════════════════════════════════════════════════════════
