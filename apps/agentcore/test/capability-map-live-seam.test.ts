@@ -389,7 +389,7 @@ describe("WO-TOOLS-LIST · SEAM ①d 目录段仍走同一套 scope 隔离", () 
     // 金丝雀：窄 scope 下**确实还看得见东西**（全空 ⇒ 下面的"越界不可见"退化成同义反复）。
     expect(visible.length, "窄 scope 把图筛空了 ⇒ 本条没有判别力（不是隔离对了，是量法没内容可量）").toBeGreaterThan(0);
     // 全可见集必须是「读 Material 的 ∪ 无对象域声明的」子集 —— 判据**算出来**，不抄 key。
-    const inScope = new Set(
+    const inScope = new Set<string>(
       LIVE_SOLVER_CATALOG_FIXTURE.filter((s) => {
         const reads = ((s as { scopeObjectTypes?: string[] }).scopeObjectTypes ?? []) as string[];
         return reads.length === 0 || reads.includes("Material");

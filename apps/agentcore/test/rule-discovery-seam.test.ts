@@ -270,9 +270,9 @@ describe("WO-RULE-DISCOVERY · 接缝③：导航图规则目录段（文件10·
     expect(i33).toBeLessThan(i35);
     // brief 截断：C33 原文 55 字 > 40 字窗 ⇒ 渲染出的必是截断版（≤ 窗+1=41·句末切点的边界形态）。
     const c33line = out.split("\n").find((l) => l.includes("· C33："))!;
-    const brief = c33line.split("· C33：")[1];
+    const brief = c33line.split("· C33：")[1]!;
     expect(brief.length).toBeLessThanOrEqual(41);
-    expect(brief.length).toBeLessThan(RULE_CATALOG.C33.capability.length);
+    expect(brief.length).toBeLessThan(RULE_CATALOG.C33!.capability.length);
     // 指引文案只许指 retrieve_knowledge（discover 枚举缺 "rules" 是未修硬伤，指那条路 = 引导模型打会被拒的调用）。
     expect(out).toContain('retrieve_knowledge(kinds:["rule"]');
     expect(out).not.toContain('discover(kind:"rules"');
