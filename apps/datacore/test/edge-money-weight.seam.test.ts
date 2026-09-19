@@ -248,9 +248,21 @@ describe("§3 描述里的系数 = 真系数", () => {
   //  ② **λ 不是全表一个数**。C35 下挂 6 个 paramKey，实测 0.37/0.37/**0.75**/**0.75**/**0.22**。
   //     拿 `PRESSURE_DECAY_PER_TICK` 全表除，对后三个量纲分别错 2.03×/2.03×/0.59×。
   // ⇒ 现判据（与引擎同一条路，⛔ 不许各抄一份）：**`decayRef` 解析得出 λ∈(0,1) ⇒ 预乘过 ⇒ 除回去**。
-  /** 从描述文本抽「×N」声明数。**主逻辑与金丝雀共用这一支**。 */
+  /**
+   * 从描述文本抽「×N」声明数。**主逻辑与金丝雀共用这一支**（不许各抄一份正则）。
+   *
+   * 🔴 **2026-09-19 WO-COEF-LAMBDA 实测补洞：负号必须同时认 ASCII `-` 与 U+2212 `−`。**
+   * 旧正则只写 `-?`（U+002D）。而种子的中文 description 一律用**排版减号** U+2212
+   * （「变更频度 × **−0.5** = 需求负载下修量」）⇒ `× ` 后面第一个字符既不是 `-?` 也不是
+   * `[\d.]`，整个 match **在该位置失败**，`stated.length === 0`
+   * ⇒ 这条边被 `.filter(r => r.stated.length > 0)` 当成「描述里没写数（合法）」**整条放过**。
+   * ⇒ **全表 4 条负系数边的 description 从来没被这道门对过账**，而它们恰恰是最容易写反符号的那些。
+   * 形态：「我用『这道门是绿的』当作『描述与系数对上了』的证据，而前者并不度量后者
+   *        —— 它根本没在判这几条。」实测：补上 U+2212 后 `demo_forecast_bias_to_order_demand`
+   *        等 4 条首次进入对账集合（对账行数 13 → 17）。
+   */
   const statedOf = (description: string): number[] =>
-    [...description.matchAll(/[×x]\s*(-?[\d.]+)/g)].map((x) => Number(x[1]));
+    [...description.matchAll(/[×x]\s*([-−]?[\d.]+)/g)].map((x) => Number(x[1].replace("−", "-")));
 
   /** 落库系数 → description 承诺的那个量（稳态增益）= `系数 ÷ 该落点自己的 λ`。 */
   const gainOf = (targetStateVar: string, coefficient: number): number => {
@@ -286,10 +298,18 @@ describe("§3 描述里的系数 = 真系数", () => {
     expect(bad.map((r) => r.key)).toContain("demo_customer_receivable_to_invoice_overdue");
   });
 
+  it("🐤 金丝雀②：**排版减号 U+2212** 的声明数必须抽得出来（旧正则在这里整条放过）", () => {
+    // 正样例中了不够 —— 本条要证明的是「它能认出 U+2212」，故正反两个样例都跑，且共用主逻辑那一支。
+    expect(statedOf("（变更频度 × −0.25 = 需求负载下修量）"), "U+2212 负号没抽出来 ⇒ 负系数边全体逃过对账").toEqual([-0.25]);
+    expect(statedOf("（x × -0.25 = y）"), "ASCII 负号回归").toEqual([-0.25]);
+    expect(statedOf("（这句话里没有乘号声明数）"), "无声明数时必须是空数组，否则会凭空造出对账行").toEqual([]);
+  });
+
   it("种子里 0 条描述与真系数不符", () => {
     const rows = rowsFromRules(demoPropagationRulesWithDomain());
-    // 金丝雀②：对账行数必须是真数量级，0 行时那句"0 条不符"毫无意义。
-    expect(rows.length, "描述里写了系数的边条数（0 行 = 对账空转）").toBeGreaterThanOrEqual(13);
+    // 金丝雀③：对账行数必须是真数量级，0 行时那句"0 条不符"毫无意义。
+    // ⚠ 下界 13 → **17**：补上 U+2212 之后 4 条负系数边首次进入对账集合（见 `statedOf` 注）。
+    expect(rows.length, "描述里写了系数的边条数（0 行 = 对账空转）").toBeGreaterThanOrEqual(17);
     const bad = rows.filter((r) => !r.ok);
     expect(
       bad.map((r) => `${r.key}: 描述 ×${r.stated.join("/")} vs 真值 ${r.coef}`),

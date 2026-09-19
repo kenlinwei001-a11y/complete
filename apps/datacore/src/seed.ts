@@ -376,7 +376,10 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
     delayTicks: 0,
-    description: "订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.018585 = 型号需求负载）",
+    // ⚠ 屏上这个数是**该格重分配之后的稳态增益**（意图 0.5 × f_g），不是意图增益本身 ——
+    // 同格四条边共用一个 f_g，f_g 变则这四条的 description 一起变。
+    // WO-COEF-LAMBDA 件B 整格重跑：f_g 0.0372 → 0.0377833753 ⇒ 0.018585 → **0.018891**。
+    description: "订单接得多 ⇒ 该型号要生产的量跟着涨（订单需求压力 × 0.018891 = 型号需求负载）",
     combine: "sum",
     decay: null,
     clamp: null,
@@ -1591,7 +1594,10 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
     delayTicks: 0,
-    description: "订单频繁变更 ⇒ 取消/缩水占多、在手需求被高估，型号需求负载随之下修（变更频度 × −0.5 = 需求负载下修量）",
+    // ⚠ 屏上这个数 = **意图稳态增益**，必须与 `C36.params` 里那条 `系数/λ` 对上
+    //（`edge-money-weight.seam.test.ts` §3 逐条对账，改一边不改另一边当场红）。
+    // WO-COEF-LAMBDA 件B 把折扣率从「100%」改成「1/2」⇒ −0.5 → **−0.25**，理由见 C36 该行注。
+    description: "订单频繁变更 ⇒ 取消/缩水占多、在手需求被高估，型号需求负载随之下修（变更频度 × −0.25 = 需求负载下修量）",
     combine: "sum",
     decay: null,
     clamp: null,

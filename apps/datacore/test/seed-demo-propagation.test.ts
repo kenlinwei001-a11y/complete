@@ -1135,16 +1135,32 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
     }
 
     // ── 判据①：`Model.demandLoad` 的现值（本单的落点）──────────────────────────────
-    // 改前 3.0550（4.07×）—— 其中 `demo_fg_drawdown_relieves_model_demand` 独占 **1.8000**
-    // （`weightRef: null` ⇒ Σw = N = 3），占全格 59%。
-    // 本单把它归一到 Σw=1 后 ⇒ 1.8550（2.47×）。**仍然超预算，如实钉在这里，不许拿系数去凑。**
+    // 3.0550（4.07×）→ 1.8550（2.47×，归一 Σw）→ **0.749961（1.00×，本单整格重跑 f_g）**。
     const demand = cells.get("Model.demandLoad")!;
     expect(demand.edges.length, "入边条数变了 ⇒ 预算得重新分配，先解释再改这个数").toBe(4);
     expect(
       demand.sum,
       "`Model.demandLoad` 的 Σ|增益|×Σw 变了。变大 ⇒ 又有人往这格加边/抬系数；" +
         "变小 ⇒ 若是靠缩系数达标，退回（缩系数不改相对动态，只让缺口看起来没了）",
-    ).toBeCloseTo(1.855, 4);
+    ).toBeCloseTo(0.749961, 6);
+
+    // ── 判据①b：**带符号**净增益必须 > 0（WO-COEF-LAMBDA 件B 的业务判据）──────────────
+    // ⚠ 上面判据① 量的是 **Σ|增益|**，它**不度量方向** —— 一格可以又达标又恒为 0。
+    //   实测就是这么发生的：整格达标（1.00×）而四条边净和 −0.92575 ⇒ `Model.demandLoad`
+    //   被夹死在域下界 0，`sim-root-triad` 的 G-ROOT-1 逐拍 Δ 全 0.0000。
+    // **业务判据**：`demandLoad`「型号需求负载」的定义是 `orderCount × 100 / capacity`
+    //   （`seed-derivation-specs.ts` `model_demand_load`，真值实测 21.7–232）。
+    //   订单簿 **500 张单 / 454.64 亿**是已签成交 —— 一个型号的需求负载恒等于 0 不成立。
+    //   ⇒ 该格对「需求」的**净**响应必须为正；负则说明修正项（变更折扣 / 库存吸收）压过了一阶驱动。
+    // ⛔ 这一条**不许**靠缩某条边的系数来满足：f_g 是全格同一个乘数，缩它不改符号
+    //   （实测：只重跑 f_g、量级全不动 ⇒ 净增益 −0.0316，仍为负）。改的必须是某条边的**意图增益**。
+    const net = demand.edges.reduce((s, e) => s + e.gain * e.sw, 0);
+    expect(
+      net,
+      `\`Model.demandLoad\` 的**带符号**净增益 = ${net.toFixed(6)} ≤ 0 ⇒ 该格会被夹死在域下界 0，` +
+        `屏上每个型号的「需求负载」都读 0，而真值派生式给的是 21.7–232。` +
+        `逐边：${demand.edges.map((e) => `${e.key}=${(e.gain * e.sw).toFixed(6)}`).join(" ")}`,
+    ).toBeGreaterThan(0);
 
     // ── 判据②：目标边真的归一到 Σw=1（这是本单改的那一件事）─────────────────────────
     const relieve = demand.edges.find((e) => e.key === "demo_fg_drawdown_relieves_model_demand")!;
