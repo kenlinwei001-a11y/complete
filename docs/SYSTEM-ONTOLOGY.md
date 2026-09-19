@@ -2110,22 +2110,38 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 | `alt_switch` / `inspection_queue` / `balance_gap` / `equipment_load` / `fg_cover_days` | 意图增益 **× λ**（−0.111 / 0.074 / 0.185 / 0.185 / −0.185） | 落点已声明域且上界有限 ⇒ 按 `inflowCoefficient` 同一谓词该预乘 |
 | `order_qty` / `order_price` / `order_leaddays` | **裸 1.0** | `combine:"max"` 真值透传，目标无声明域 ⇒ 不乘 λ、不受预算 |
 
-> **🔴 原本打算做、实测后撤回的那一步（留档，免得下一个人再走一遍）**：
+> **🔴 撤回过一次、2026-09-19 又撤回了那次撤回（留档，免得下一个人再走一遍）**：
 > 曾按 canonical 的闭式 `f_g = min(1, 0.75/S_g)` 把 4 个落点格**整格重分配**
-> （8 条 canonical 边改值），并给 5 条新 `sum` 边补 `weightRef: equal_share` 把 W 钉成 1。
-> **撤回的理由是实测，不是保守**：见下 ⑥ —— `equal_share` 在真种子世界里会让边**整条不触发**。
-> 钉不住 W，闭式就没有输入；硬算出来的 `f_g` 是拿一个假的 W 得到的真数字。
+> （8 条 canonical 边改值），并给 5 条新 `sum` 边补 `weightRef: equal_share` 把 W 钉成 1；
+> 随后**据「`equal_share` 会让边整条不触发」把两件都撤了**。
+> **那条撤回理由是一次假红**（见下 ⑥ 订正）：病因是 `packages/contracts/dist/sim.js` 陈旧，
+> 与种子、与 `equal_share` 本身都无关。
+> ⇒ **`weightRef: equal_share` 已恢复**（5 条边）；**整格重分配仍未做**，理由见 ④ —— 不是忘了。
 
-**④ 预算的现状与缺口（如实记账，⛔ 不拿一个没量到的数去填）**：
-31 个落点格中，**W 已量到的边** Σ 增益×W 实测全部 **≤ 0.75**。
-但 4 个格里各有 1–2 条边 `weightRef: null` 且其扇入 N **本单未实测**，故**不计入**判定：
-`Material.shortageRisk`（2 条）· `Model.demandLoad`（2 条）· `Process.queuePressure`（1 条）·
-`PurchaseOrder.expeditePressure`（1 条）。
-`null` 的语义是「每源各加一份满额 ⇒ Σw = N」⇒ 这些边对该格预算的真实占用是 N 倍，
-**该格今天有没有超预算，本单答不了**。⛔ 不许拿同格另一条边的扇入顶上 ——
-本单第一版就是这么把 `Model.demandLoad` 的 Σ 算成 41.02 的（把订单扇入 24.83 安给了 FGI 边）。
-补齐它需要真起世界量 `fg_of_model` / `alt_for_material` / `inspection_for_material` /
-`balance_drives_po` / `equip_used_in` 的**逐目标扇入**，单独立项。
+**④ 预算：扇入 N 已实测，四格**全部超预算**（2026-09-19 订正，此前写的「本单答不了」已补上）**：
+逐目标扇入实测（真种子 `seedBattery`，按 `toId` 分组取均值；🐤 金丝雀 `material_used_by_model`
+42 边 / 6 目标 = **7**，与 `fanin-N.json` 既有条目逐字吻合 ⇒ 量法与该表同口径），
+已登记进 `docs/evidence/wo-sim-calibration/fanin-N.json`：
+`alt_for_material` **1** · `inspection_for_material` **3.75** · `balance_drives_po` **1** ·
+`equip_used_in` **2** · `fg_of_model` **3**。
+
+补 `equal_share`（W: N→1）后，四格 `S_g = Σ|稳态增益|×W` 实测（上限 0.75）：
+
+| 落点格 | 补之前 | 补之后 | 判定 |
+|---|---|---|---|
+| `Material.shortageRisk` | 1.80 | **1.25** | 🔴 仍 1.67× |
+| `Process.queuePressure` | 1.75 | **1.25** | 🔴 仍 1.67× |
+| `Model.demandLoad` | 4.05 | **3.05** | 🔴 仍 4.07× |
+| `PurchaseOrder.expeditePressure` | 1.00 | 1.00 | 🔴 1.33×（该格两条边 N 均 = 1，不受本改动影响） |
+
+⇒ 补 `equal_share` 是**严格改善但不充分**；整格重分配仍需做，**但今天做不了**，两条硬阻塞：
+① `Model.demandLoad` 的主导项是下面 ④ 那条**继承的阻尼边**（单条占用 **1.80 = 预算的 2.4 倍**），
+   而它被明令「原样带过来、一位没动」⇒ 该格结构上收不进预算，除非先裁决那条边。
+② 闭式的权威工具 `docs/evidence/wo-sim-calibration/calibration-analysis.mjs`
+   **在 canonical 上就跑不起来**（实测 RC=1，它自己的金丝雀报扇入表缺该阻尼边）——
+   不是本分支弄坏的，但没有它就只能手算意图增益，而那正是上一版留下符号翻转的那条路
+   （v1 把 `demo_order_churn_to_model_demand_load` 存成 **−0.00423206**，canonical 是 **+0.00429755**，
+   且该负值与同版 FGI 边**逐字节相同** ⇒ 复制粘贴的符号翻转）。⛔ 故不照搬 v1。
 
 **④ 🔴 继承下来的一处自相矛盾（本单不改，交仓主裁决）**：
 canonical 的阻尼边 `demo_fg_drawdown_relieves_model_demand` 系数 **−0.6 未预乘 λ**，
@@ -2133,39 +2149,59 @@ canonical 的阻尼边 `demo_fg_drawdown_relieves_model_demand` 系数 **−0.6 
 旁证：canonical 那格的 `S_g = 32.28` 恰等于 `0.8×24.83 + 0.5×24.83`，**不含这条边**
 ⇒ 它从未被计入预算。本单**原样带过来（值一位没动）**，不夹带一笔没人要求的重标定。
 连带影响：该边的 description 原写「× -0.6」会被读成稳态增益（真稳态增益是 −1.62），
-已改成每拍口径的真话；它的 `weightRef` 仍为 `null`，`fg_of_model` 的扇入 N **本单未实测**，
-故该格预算只能就「已量到的 3 条」判定 —— **不许拿同格另一条边的扇入顶上**（第一版就是这么把 Σ 算成 41.02 的）。
+已改成每拍口径的真话；它的 `weightRef` 仍为 `null`。
+⚠ **2026-09-19 补测**：`fg_of_model` 扇入 **N = 3**（18 边 / 6 目标，与 seed.ts 行内注「实测 18 条」吻合）
+⇒ 该边单条占用 **|−0.6| × 3 = 1.80 = 预算 0.75 的 2.40 倍**，是 `Model.demandLoad` 那格
+（`S_g = 3.05`）的**主导项** —— 换言之**这格收不进预算，主因就是这条未被裁决的边**，
+不是本分支新加的那 4 条。裁决它之前，该格的重分配做不了（见上 ④ 阻塞 ①）。
+⚠ 它也让 `calibration-analysis.mjs` **在 canonical 上直接 RC=1**：canonical 加了这条边却没同步
+`fanin-N.json`，脚本自己的金丝雀当场报「扇入表缺 `demo_fg_drawdown_relieves_model_demand`」。
+本单已把实测值补进该表（**补表不等于裁决系数**，值一位没动）。
 
-**⑤ 对照实验（铁律 1.5 判据一 · 真引擎 `propagateTick`，非静态推算）**：
-改 `C36.params` 某条边 ×0.1 ⇒ 该边传导量**精确 ×0.100000000000**，同轮其余 **33 条一条没动**；
-🐤 反向：摘掉该边 `coefficientRef` 后改同一个参数 ⇒ **一位不动**（证明真读的是 ref 那条路）。
-canonical 原值边与分支新边各跑一遍：`7.8423905 → 0.78423905` · `9.25 → 0.925`，
-两者均 = 各自 C36 值 × 源值 50 ⇒ 落库表与引擎读数逐字节同源。
-⚠ 实验第一版**34 条边一条没触发**（声明了分摊口径却没喂权重表 ⇒ 引擎诚实缺席），
-「目标边没动」曾被读成绿 —— 补上 `pairWeights` 后才是真实验。
+**⑤ 对照实验（铁律 1.5 判据一 · 真引擎 `propagateTick`，非静态推算 · 2026-09-19 并完 canonical 后复跑）**：
+改 `C36.params.demo_customer_receivable_to_location_hold` ×0.1 ⇒ 该边传导量
+**5.850413455836 → 0.585041345577**（比值 **0.0999999999988719**），同轮 **17/18 条一条没动**；
+🐤 反向：摘掉该边 `coefficientRef` 后再把同一个参数 ×0.01 ⇒ **0 条边变动**，
+该边读数**逐字节不变**（5.850413455836 → 5.850413455836）⇒ 证明真读的是 ref 那条路。
 
-**⑥ 🔴 实测发现：`equal_share` 的边在真种子世界里一条都不触发（canonical 上就是红的，非本单引入）**
+⚠ **被测边必须挑叶子边（目标是纯 sink），否则「同轮其余边不动」这条判据本身不成立**：
+实测拿 `demo_inspection_queue_to_material_shortage` 做，**12 条边一起动**（×0.0977–0.0998）——
+那不是单源坏了，是 `Material.shortageRisk` 处在一条**真实反馈环**上
+（`inspection_queue → shortageRisk → po_expedite → inspection_queue`）。
+形态：「我用『其余边动了』当作『单源被破坏了』的证据，而前者并不度量后者 —— 级联本来就该动。」
+⚠ 另一条前置：**空会话实测 0 条边有传导量** —— 传导是 delta 驱动的，光有绝对水位不产生入流；
+且 `seedBattery` **不播**传导规则（实测 0 条），要另调 `seedDemoPropagationRules`。
 
-判据不是推理，是把**同一个测试文件在两棵树上各跑一遍**：
-`apps/datacore/test/seed-demo-propagation.test.ts` 的「逐条真触发」与「效果层 SEAM」——
-**canonical（`1e81671d`）单独跑，同样这两条红**，缺 **20** 条边；本分支缺 **20** 条（口径同 canonical）。
+**⑥ ❌ 作废（2026-09-19 实测推翻）：「`equal_share` 的边一条都不触发」是一次假红**
 
-缺席名单的构成**完全可解释**，不是随机：
-**canonical 那 11 条 `equal_share` 边全部缺席**（`supplier_delay_to_material_shortage` /
-`model_demand_to_base_load` / `material_shortage_to_model_supply_risk` /
-`equipment_failure_to_process_queue` / `process_queue_to_line_blocked` /
-`po_expedite_to_supplier_review` / `po_procurement_delay` / `batch_procurement_delay` /
-`supplier_procurement_delay` / `wo_release_to_model_cost` / `wo_release_to_model_supply_risk`），
-**另外 9 条全部是它们的纯下游**（源量纲只由这 11 条写）⇒ 上游不写，下游恒 0 被饿死。
-11 + 9 = 20，**一条不多一条不少**。
-「效果层 SEAM」那条红得更直白：第 1 跳 `supplier_delay_to_material_shortage` 之后
-`t1[materialId]` 是 `undefined` —— 那一格**根本没被写过**。
+> **原结论（错的，留档当判据）**：「canonical 那 11 条 `equal_share` 边全部缺席 + 9 条纯下游被饿死
+> = 20 条，一条不多一条不少；canonical 上就是红的；故撤回给新边补 `equal_share`。」
+> 那份「完全可解释」的缺席名单**确实自洽** —— 这正是它骗过一轮的原因。
 
-**危害是用户可见的**：46 条边里 20 条在默认世界永不进 trace ⇒ 沙盘上少 20 条因果链，
-而屏上不会说「这条边没算」，只会安静地少一段。**这是 A 类。**
-**本单据此撤回给新边补 `equal_share` 的打算** —— 那会再让 5 条边静默死掉。
-⛔ 本单**不修这个缺陷**（它在 canonical 的 `pair-weights.ts` / 引擎侧，超出本单范围边界），
-只把它**量清楚并点名**：修它是单独一张单，判据就是上面那两条红转绿且缺席名单归零。
+**真病因**：`packages/contracts/dist/sim.js` **陈旧**。合并后 `src/sim.ts` 有 `equal_share`
+而 `dist/sim.js` 没有（dist mtime 早于合并），⇒ `pairWeightNormalizeOf("equal_share")` 返 `null`
+⇒ **整条边落进 `unresolvedWeights` 不传导**。缺的不是种子、不是引擎，是**没 build 契约包**。
+
+**订正后的实测**（先 `pnpm --filter @platform/contracts build`，RC=0，`dist/sim.js` 现含 `equal_share`）：
+
+| 树 | `seed-demo-propagation` | RC |
+|---|---|---|
+| canonical `a0960fd2` | **20/20 绿** | 0 |
+| 本分支（并完 canonical，5 条边已补 `equal_share`） | **20/20 绿** | 0 |
+
+**正面证据不止"绿"**：该文件里「逐条真触发」那道门**要求每条物理边都进 trace**，
+它绿 ⇒ 在册 **15** 条 `equal_share` 边**全部真触发**。另有单源对照实验现场读数为旁证：
+`demo_inspection_queue_to_material_shortage` = **0.628021151794**、
+`demo_alt_switch_to_material_shortage` = **−0.065696744631**、
+`demo_balance_gap_to_po_expedite` = **0.51097468046**（皆为本单新补 `equal_share` 的边）。
+
+**形态（照铁律 0.6 句式）**：
+> **「我用『两棵树上同一个测试都红、且缺席名单能完整解释』当作『这是代码里的真缺陷』的证据，
+> 而前者并不度量后者 —— 两棵树共用同一份陈旧的 `dist`，假红当然也一模一样地可解释。」**
+
+⇒ **判据补一条**：跨树对拍时，**两棵树的 `dist` 必须各自重 build 之后才算数**；
+否则"两棵树表现一致"只证明它们共享同一个构建产物，不证明代码。
+（这与 CLAUDE.md 派单模板那三条环境前置同源：**假红的第一反应是核前置，不是核代码。**）
 
 **评审 v2 登记而未落（诚实挂账，均不阻塞本段交付）**：
 ⑦ Kingman 排队形状（引擎今天只有 delayTicks 整数延迟，无形状参数 = **引擎缺口**，单独立项）·
