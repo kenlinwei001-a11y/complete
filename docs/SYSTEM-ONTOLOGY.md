@@ -1675,17 +1675,34 @@ GET /a/v1/process-definitions/{key}/inspect
   是最难查的一类假象。门在 `apps/frontend-shell/test/sandbox-process-live.seam.test.tsx` §B4
   （切档不许推进任何一拍 + 推一拍后本档看的 sessionId 不许变）。
 
-  **⛔ 结构不变量 R-PROC-DRIVE-TRICHOTOMY（本单新增）**：每条流程必须落且只落三档之一，
-  三档条数之和恒等于端点下发条数（`liveDriveCoversAll`）：
+  **⛔ 结构不变量 R-PROC-DRIVE-TRICHOTOMY（本单新增 · 2026-09-19 由三档扩为**四档**）**：
+  每条流程必须落且只落一档，**四档**条数之和恒等于端点下发条数（`liveDriveCoversAll`）：
 
   | 档 | 判据（全部现算自下发数据，前端零字面量名单） | 定性 · 修法 |
   |---|---|---|
-  | `TICK_DRIVEN` | `carrierTypeKey ∈ (⋃rules.sourceTypeKey ∪ ⋃rules.targetTypeKey)` **且** `nodeObjectIds[carrier].length > 0` | 推 tick 真会动 |
-  | `NO_CARRIER_OBJECTS` | 在规则两端集合里，但该类型 0 个物化对象 | **接了线没数据** · 补数据即动 |
-  | `NOT_TICK_DRIVEN` | 不在规则两端集合里 | **没接线** · 引擎结构上写不到它 |
+  | `TICK_DRIVEN` | `carrierTypeKey ∈ ⋃rules.**targetTypeKey**` **且** `nodeObjectIds[carrier].length > 0` | 推 tick 真会动 |
+  | `NO_CARRIER_OBJECTS` | 在规则 **target** 集合里，但该类型 0 个物化对象 | **接了线没数据** · 补数据即动 |
+  | `SOURCE_ONLY` | 在规则两端集合里，但**只在 source 端**（入度 0） | **只当源** · 推得动别人、自己不动；补一条写它的入边即动 |
+  | `NOT_TICK_DRIVEN` | 不在规则两端集合里 | **没接线** · 引擎结构上够不着它 |
 
-  第三档是**结构性**结论不是经验性观察：`apps/datacore/src/sim/propagation.ts:607 (propagateTick)` 唯一的写法是
-  写到规则 `targetTypeKey` 那一端的对象上，够不着的类型**怎么推都不会动**。
+  后两档都是**结构性**结论不是经验性观察：`sim/propagation.ts` 的 `propagateTick` 唯一的写法是
+  `next[targetObjectId][targetStateVar] = …`，`targetObjectId` **只能来自规则 `targetTypeKey` 那一端**
+  ⇒ 不在 target 集合里的类型**怎么推都不会动**。
+
+  **🔴 2026-09-19 判据订正（原判据是错的，别照旧文改回去）**：
+  第一/二档原写的是 `∈ (source ∪ target)`。
+  **形态（铁律 0.6 句式）**：「我用『它出现在某条规则的两端』当作『它会动』的证据，
+  而前者并不度量后者 —— 出现在**源**端只说明它能推动别人，不说明它自己会动。」
+  ⚠ 本段**上一行就写着正确的根据**（「只能来自 targetTypeKey 那一端」），而判据写的是两端 ——
+  注释与代码各说各的，两边都没红；门那份是照同一套判据各写一份，于是陪着一起错。
+  触发它的是 `WO-PROP-REVIEW-V2 ㉜`（`Process.queuePressure → Equipment.loadPressure` 掉头）：
+  `Equipment` 入度归 0，旧判据把它判成「随节拍变」。
+  ⚠ **`SOURCE_ONLY` 与 `NOT_TICK_DRIVEN` 不许合并** —— 都「不会动」但修法不同（补边 vs 先建模）。
+  ⚠ 判定序：`SOURCE_ONLY` **排在对象数检查之前**（只当源的补多少数据都不会动，
+  落 `NO_CARRIER_OBJECTS` 的「补数据即动」是假话）。
+  **今天的实况**：类型级只当源的有 **1 个**（`Equipment`，仓主裁决保留 ㉜ 且实测本体里没有
+  任何真实链路能写它）；但它**不是 65 条流程里任何一条的承载物** ⇒ 流程级该档现为 **0 条**
+  （由 §A3 构造输入逼分档函数为它开口，不靠真数据）。
   **屏上三档必须用三句不同的话**（`不随节拍` / `无承载对象` / 读数），合成一句即红
   （§C2·变异反证实测 RC=1）——「照不亮」与「本来就不该亮」是两个命题，
   合并就是本仓「一个数盖住两个事实」的老形态。
@@ -3663,8 +3680,8 @@ fetchOntologyInvariants()                 evaluateOntologyInvariants(overrides)
   变异反证已亲手做过两条：① `identifyingProps` 砍掉 name/alias（退回只按 id 查）→ 两半共 13 条红，且红出生产原症
   `AWAITING_CLARIFICATION rounds=1`；② 抹掉 `matchedBy`/`attempts` → 两半共 8 条红。
 - **槽位通路接缝门 SEAM（WO-SLOT-HARVEST·test-backed·堵 §8 `G-SLOT-HARVEST-BLIND` + `G-SLOT-LLM-SINGLE-POINT`）**：两半各一条、任一半漏即红。
-- **推演沙盘第五档节拍接缝门 SEAM（WO-PROCESS-CANVAS-LIVE·test-backed·守 §3 消费端②b 的 R-PROC-OBSERVER / R-PROC-DRIVE-TRICHOTOMY·登记 §8 `G-PROCESS-TICK-COVERAGE`）**：`apps/frontend-shell/test/sandbox-process-live.seam.test.tsx`（22 例·**一律从 `/v/sim-sandbox` 真路由出发**，不直接渲染组件 —— 直接渲染只证明「拿到组件能画」，证不了「控制条上推的那一拍真的打到了这张图」，而本单唯一有价值的就是这条接缝）。**§A 金丝雀先说话**：分档函数必须三档都说得出话（一个恒返回 `NOT_TICK_DRIVEN` 的实现同样能让 §C 全绿）+ 本次世界真造出了三档 + tick 回包两拍真不同。**§B 接缝**：点 `sandbox-tick-btn` 真按钮 → 能动的那几条**屏上文本真的变了** + 脉冲环 `toBeVisible()` + **屏上读数 == 引擎回包那批对象的读数**（不是本地自增的假象）+ 观察者纪律（切档不推拍、推拍后 sessionId 不变）。**§C 反面判据**：不随节拍变那批有可见文字（不是留白不是灰掉）+ **两档措辞交集为空**（屏上文本与 `aria-label` 两条通路都不许合并）+ 无承载对象那批推多少拍都不动 + 诚实位「判据测不出本质上该不该随节拍变」必须在浮层里。**§G additive**：比对 `test/fixtures/process-canvas-model-baseline.json`（**基线实现**的真输出，非手打期望值）+ G4 反恒真护栏。**§H 守恒**：既有四条诚实位 + 图例降层不是删除 + 零原生 tooltip。**五轮变异反证实测全红（RC=1）**：① 两档措辞合成一句 ⇒ C1/C2 红；② 分档恒返回「不随节拍变」⇒ **§A1 金丝雀 11ms 首个报红**（机器先说话）+ 另 6 例；③ `live: undefined` 占槽 ⇒ 仅 G3 红（`JSON.stringify` 会丢 undefined，G1 照绿 —— 两条断言度量的不是同一件事，这正是分开写的理由）；③b `live: null` ⇒ G1+G3 红；④ 观察者不订阅缓存 ⇒ B2/B3/B4/C3 红；⑤ `comparable` 放宽成「有上一张快照」⇒ G5 红。每轮均先 `git diff --numstat` 自证变异体 ≠ 原文（本仓踩过 `sed` 是 BRE / python `replace` 静默 no-op 两次），还原后 `git status --porcelain` 空。跑法：`pnpm --filter frontend-shell exec vitest run test/sandbox-process-live.seam.test.tsx`。
-- **流程节拍覆盖面接缝门 SEAM（WO-PROCESS-TICK-COVERAGE·test-backed·守 §8 `G-PROCESS-TICK-COVERAGE`）**：`apps/datacore/test/process-tick-coverage.seam.test.ts`（7 例）。与上一条**分工不同、不重叠**：上一条守「前端这张图有没有真被那一拍打到」（渲染侧接缝），本条守「**后端种子够不够得着这些流程**」（数据侧覆盖面）—— 两条都绿才叫这一档能用。**头号判据是效果层，不是规则条数**：条数度量种子数量，不度量链路通不通（#158 正是栽在这一句上）。**§A 金丝雀先说话**：种子抽取器的金丝雀是**恒等式**（抽出条数 === 原文 `^\s*sourceTypeKey:` / `{ key: "P##"` 行数），不等即报「工具坏了」不许报覆盖率 —— 上一单的抽取器正是「只验抽到了一条」而漏抽 8/13 却照样绿；§A2 拿「`viaLinkKey` 行尾加注释」这一真实原坑做变异反证；§A3 逼分档函数**三档都开口**（`NO_CARRIER_OBJECTS` 真世界现为 0 条，不逼它开口则只会返回两档的实现同样全绿）。**§B 三档现算**（全部取自真路由 `GET /a/v1/process-definitions` + `/sim/propagation-rules` + `/sim/view-config`，零字面量名单）：29 / 0 / 36 合计 65，并逐条列出被点亮的 29 个 key；**§B2 是红线的机器化** —— D01+D02 共 11 条必须整域 `NOT_TICK_DRIVEN`。**§C 接缝**：只在三个**纯源量纲**（`deliveryDelay`/`demandPressure`/`priceShock`，无任何规则写它们）上给初值，其余全靠传导自己走到；读数口径照抄前端第五档（该类型全部对象全部状态变量的平均值）但数据取自**引擎 tick 回包的真 state** ⇒ C1 每个点亮承载物 0→非 0 · C3 36 条黑档推 12 拍后**精确仍为 0** · 两组交集为空（防「全塞进 driven」作弊）· C4 **守住「标着会动其实不动」不再复发**（`sourceOnly === []` 恒空 + `Supplier` 读数前后不等 ——档 3 补 `demo_po_expedite_to_supplier_review` 之前这里是一处诚实缺席，现已闭）。**§D 变异反证（内建）**：删掉 `line_runs_work_order` 的**全部链路实例**而**规则一条不动**（仍 35 条）⇒ D07 下游整串（工单/在制/质检批/缺陷/异常）必须塌成 0，而不在这条链上的照常亮。**另两轮外部变异反证实测全红（RC=1）**：① 把 `demo_model_demand_to_fg_drawdown` 系数改 0 ⇒ §C1 红，报文精确指到 `FinishedGoodsInventory`；② 把 `demo_order_demand_pressure` 改成打到 D01 的 `PlanTarget` ⇒ §B2 红，报文精确指到 `P01`。两轮均先 `git diff --numstat` 自证变异真发生，还原后 `git status --porcelain` 空。跑法：`pnpm --filter datacore exec vitest run test/process-tick-coverage.seam.test.ts`。
+- **推演沙盘第五档节拍接缝门 SEAM（WO-PROCESS-CANVAS-LIVE·test-backed·守 §3 消费端②b 的 R-PROC-OBSERVER / R-PROC-DRIVE-TRICHOTOMY·登记 §8 `G-PROCESS-TICK-COVERAGE`）**：`apps/frontend-shell/test/sandbox-process-live.seam.test.tsx`（22 例·**一律从 `/v/sim-sandbox` 真路由出发**，不直接渲染组件 —— 直接渲染只证明「拿到组件能画」，证不了「控制条上推的那一拍真的打到了这张图」，而本单唯一有价值的就是这条接缝）。**§A 金丝雀先说话**：分档函数必须**四档**都说得出话（一个恒返回 `NOT_TICK_DRIVEN` 的实现同样能让 §C 全绿）+ 本次世界真造出了四档（fixture 的规则是 D0→D1、D1→NODATA ⇒ **D0 天然就只当源**，一条 def 都不用加） + tick 回包两拍真不同。**§B 接缝**：点 `sandbox-tick-btn` 真按钮 → 能动的那几条**屏上文本真的变了** + 脉冲环 `toBeVisible()` + **屏上读数 == 引擎回包那批对象的读数**（不是本地自增的假象）+ 观察者纪律（切档不推拍、推拍后 sessionId 不变）。**§C 反面判据**：不随节拍变那批有可见文字（不是留白不是灰掉）+ **两档措辞交集为空**（屏上文本与 `aria-label` 两条通路都不许合并）+ 无承载对象那批推多少拍都不动 + 诚实位「判据测不出本质上该不该随节拍变」必须在浮层里。**§G additive**：比对 `test/fixtures/process-canvas-model-baseline.json`（**基线实现**的真输出，非手打期望值）+ G4 反恒真护栏。**§H 守恒**：既有四条诚实位 + 图例降层不是删除 + 零原生 tooltip。**五轮变异反证实测全红（RC=1）**：① 两档措辞合成一句 ⇒ C1/C2 红；② 分档恒返回「不随节拍变」⇒ **§A1 金丝雀 11ms 首个报红**（机器先说话）+ 另 6 例；③ `live: undefined` 占槽 ⇒ 仅 G3 红（`JSON.stringify` 会丢 undefined，G1 照绿 —— 两条断言度量的不是同一件事，这正是分开写的理由）；③b `live: null` ⇒ G1+G3 红；④ 观察者不订阅缓存 ⇒ B2/B3/B4/C3 红；⑤ `comparable` 放宽成「有上一张快照」⇒ G5 红。每轮均先 `git diff --numstat` 自证变异体 ≠ 原文（本仓踩过 `sed` 是 BRE / python `replace` 静默 no-op 两次），还原后 `git status --porcelain` 空。跑法：`pnpm --filter frontend-shell exec vitest run test/sandbox-process-live.seam.test.tsx`。
+- **流程节拍覆盖面接缝门 SEAM（WO-PROCESS-TICK-COVERAGE·test-backed·守 §8 `G-PROCESS-TICK-COVERAGE`）**：`apps/datacore/test/process-tick-coverage.seam.test.ts`（7 例）。与上一条**分工不同、不重叠**：上一条守「前端这张图有没有真被那一拍打到」（渲染侧接缝），本条守「**后端种子够不够得着这些流程**」（数据侧覆盖面）—— 两条都绿才叫这一档能用。**头号判据是效果层，不是规则条数**：条数度量种子数量，不度量链路通不通（#158 正是栽在这一句上）。**§A 金丝雀先说话**：种子抽取器的金丝雀是**恒等式**（抽出条数 === 原文 `^\s*sourceTypeKey:` / `{ key: "P##"` 行数），不等即报「工具坏了」不许报覆盖率 —— 上一单的抽取器正是「只验抽到了一条」而漏抽 8/13 却照样绿；§A2 拿「`viaLinkKey` 行尾加注释」这一真实原坑做变异反证；§A3 逼分档函数**四档都开口**（`NO_CARRIER_OBJECTS` 与 `SOURCE_ONLY` 真世界均现为 0 条流程，不逼它们开口则只会返回两档的实现同样全绿）。**§B 三档现算**（全部取自真路由 `GET /a/v1/process-definitions` + `/sim/propagation-rules` + `/sim/view-config`，零字面量名单）：29 / 0 / 36 合计 65，并逐条列出被点亮的 29 个 key；**§B2 是红线的机器化** —— D01+D02 共 11 条必须整域 `NOT_TICK_DRIVEN`。**§C 接缝**：只在三个**纯源量纲**（`deliveryDelay`/`demandPressure`/`priceShock`，无任何规则写它们）上给初值，其余全靠传导自己走到；读数口径照抄前端第五档（该类型全部对象全部状态变量的平均值）但数据取自**引擎 tick 回包的真 state** ⇒ C1 每个点亮承载物 0→非 0 · C3 36 条黑档推 12 拍后**精确仍为 0** · 两组交集为空（防「全塞进 driven」作弊）· C4 **守住「标着会动其实不动」不再复发**（⚠ **2026-09-19 起** `sourceOnly` 由「恒空」改为**逐条钉死** `["Equipment"]` —— ㉜ 方向反向后它入度归 0 且实测无真实链路可写，属已知且被接受的结构事实，**再多一个只出不进的类型照样红** + `Supplier` 读数前后不等 ——档 3 补 `demo_po_expedite_to_supplier_review` 之前这里是一处诚实缺席，现已闭）。**§D 变异反证（内建）**：删掉 `line_runs_work_order` 的**全部链路实例**而**规则一条不动**（仍 35 条）⇒ D07 下游整串（工单/在制/质检批/缺陷/异常）必须塌成 0，而不在这条链上的照常亮。**另两轮外部变异反证实测全红（RC=1）**：① 把 `demo_model_demand_to_fg_drawdown` 系数改 0 ⇒ §C1 红，报文精确指到 `FinishedGoodsInventory`；② 把 `demo_order_demand_pressure` 改成打到 D01 的 `PlanTarget` ⇒ §B2 红，报文精确指到 `P01`。两轮均先 `git diff --numstat` 自证变异真发生，还原后 `git status --porcelain` 空。跑法：`pnpm --filter datacore exec vitest run test/process-tick-coverage.seam.test.ts`。
   解析半 `packages/llm-adapters/src/openai.test.ts`（§3.1）：2026-08-05 真 Kimi k2.5 抓的 **5 条原样响应体**
   逐字节做 fixture（含 ```json 围栏 + 额外 `reason` 字段 + candidate 内嵌槽位三种真实变形），经真适配器
   `classify` 断言 **5/5** 拿到 `base="常州" && day="D+5"`；另含收割器合并顺序（顶层>candidate·candidate 按
