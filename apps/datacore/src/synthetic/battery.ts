@@ -857,14 +857,22 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   "demo_alt_switch_to_material_shortage": -0.111,
   "demo_inspection_queue_to_material_shortage": 0.074,
   "demo_balance_gap_to_po_expedite": 0.185,
-  // ── WO-PROP-V2-REBASE 收编 canonical WO-SIM-DAMPING 的阻尼边（裁决见 seed.ts 库存环段）──
-  // ⚠ **逐字节保留 canonical 的 −0.6，刻意不乘 λ**：canonical 自己就没给它包 `inflowCoefficient`
-  //   （它的理由是「镜像判据：与 `demo_model_demand_to_fg_drawdown` 同值反号」）。
-  //   按 canonical 自己的判据（目标 `Model.demandLoad` **已声明域** ⇒ 该乘 λ 且受预算），这条是
-  //   canonical 上的一处**自相矛盾**，且它没被计入该格的增益预算（实测：canonical 那格 S_g=32.28
-  //   恰等于 0.8×24.83 + 0.5×24.83，**不含本条**）。本单**不顺手改它** —— 改了就是在一次 rebase 里
-  //   夹带一笔没人要求的重标定。原样带过来，差异登记在交付报告，裁决交仓主。
-  "demo_fg_drawdown_relieves_model_demand": -0.6,
+  // ── WO-PROP-V2-REBASE 收编 canonical WO-SIM-DAMPING 的阻尼边 ────────────────────
+  // ✅ **2026-09-19 仓主裁决：补预乘 λ。`-0.6 → -0.222`（= −0.6 × 0.37，λ=`PRESSURE_DECAY_PER_TICK`）。**
+  //
+  // 裁决的判据不是业务偏好，是**让代码遵守它自己声明的约定**：`inflowCoefficient` 存在的全部理由
+  // 就是「打进**已声明域**落点的边要预乘 λ」，而本边的落点 `Model.demandLoad` 已声明域。
+  // canonical 原写 −0.6 未乘 λ，理由是「镜像判据：与 `demo_model_demand_to_fg_drawdown` 同值反号」
+  // —— 但镜像的是**意图增益**，不是**入流系数**；同落点的邻居
+  // `demo_fg_cover_days_to_model_demand` = −0.185 = −0.5 × 0.37 就是同口径的反例。
+  //
+  // **旁证比谓词更硬**（这条是把「疏漏」与「选择」分开的关键）：canonical 那格的
+  // `S_g = 32.28` **恰等于** `0.8×24.83 + 0.5×24.83` ⇒ **预算算式里压根没算这条边**
+  // ⇒ 它未预乘是**疏漏，不是有意的选择**。
+  //
+  // ⚠ 改完之后 `Model.demandLoad` 那一格**仍然超预算**（实测 3.05 → 1.916，上限 0.75）——
+  //   如实记在这里，⛔ 不为了达标再去动别的边。整格重分配是另一张单。
+  "demo_fg_drawdown_relieves_model_demand": -0.222,
 
 };
 

@@ -528,7 +528,8 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       // ── WO-SIM-DAMPING **阻尼边**（canonical 交付；WO-PROP-V2-REBASE 收编时裁决保留）──
       // 🔴 裁决记账（⛔ 不许取并集，取并集会留下**同一条槽位上符号相反的两份**）：
       //   本分支曾另建 `demo_fg_drawdown_to_model_demand`（**+0.5**），与本条
-      //   `demo_fg_drawdown_relieves_model_demand`（**−0.6**）**源类型/源量纲/链路/目标全同**
+      //   `demo_fg_drawdown_relieves_model_demand`（意图增益 **−0.6**；⚠ 2026-09-19 仓主裁决后
+      //   其 `C36` 值为 **−0.222 = −0.6 × λ**，预乘了 λ —— 镜像的是意图增益不是入流系数）**源类型/源量纲/链路/目标全同**
       //   （`FinishedGoodsInventory.drawdownPressure --fg_of_model--> Model.demandLoad`）
       //   ⇒ 同一条物理边的两个相反符号，二者只能留一。**留 canonical 这条负的**，两条理由：
       //   ① 它已在集成线上交付（WO-SIM-DAMPING），删它是回退；

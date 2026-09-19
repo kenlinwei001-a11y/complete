@@ -1922,12 +1922,15 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "fg_of_model", // 实测 FinishedGoodsInventory→Model，18 条（本单之前**零条规则**用它）
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
-    // 系数（**−0.6**，镜像判据：与 `demo_model_demand_to_fg_drawdown` 同值反号）**不写在这里** ——
-    // 单源纪律：本表所有边的 coefficient / coefficientRef 都从 `C36.params.<边key>` 同一个键派生
-    // （`demoPropagationRulesWithDomain` 收尾装饰）。canonical 上它是内联字面量，收编时按本分支的
-    // 范式移进 C36.params，**值一位没动**（含「它刻意没预乘 λ」这一点，留待仓主裁决，见 C36 段内注）。
+    // 系数**不写在这里** —— 单源纪律：本表所有边的 coefficient / coefficientRef 都从
+    // `C36.params.<边key>` 同一个键派生（`demoPropagationRulesWithDomain` 收尾装饰）。
+    // ✅ **2026-09-19 仓主裁决**：该值由 canonical 的 `−0.6`（未预乘 λ）改为 **`−0.222` = −0.6 × λ**。
+    //    意图增益仍是 **−0.6**（镜像判据不变：与 `demo_model_demand_to_fg_drawdown` 同值反号）——
+    //    **镜像的是意图增益，不是入流系数**。落点 `Model.demandLoad` 已声明域 ⇒ 按
+    //    `inflowCoefficient` 的谓词必须预乘 λ，同落点邻居 `demo_fg_cover_days_to_model_demand`
+    //    （−0.185 = −0.5×0.37）就是同口径的反例。理由与旁证见 C36.params 段内注。
     delayTicks: 1, // 拣货发运要一拍：库存不是当拍就变成客户手里的货
-    description: "成品库存被提走 ⇒ 这部分需求已由库存交付，从型号待产负荷里扣掉（每拍按去化压力的 0.6 倍下修 —— 本边刻意未预乘 λ，故不按稳态增益口径标注，见 C36.params 段内说明）",
+    description: "成品库存被提走 ⇒ 这部分需求已由库存交付，从型号待产负荷里扣掉（稳态按去化压力的 0.6 倍下修）",
     combine: "sum",
     decay: null,
     clamp: null,
