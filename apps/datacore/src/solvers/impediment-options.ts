@@ -61,7 +61,7 @@ import {
 import type { LinkInstance, ObjectInstance } from "../domain.js";
 import { round } from "../prng.js";
 import { resolveField } from "../ruledsl.js";
-import { computeByProcessModel, patchCapacityContext } from "./capacity.js";
+import { computeByProcessModel, mapCapacityContextProp, patchCapacityContext } from "./capacity.js";
 import {
   breachAmount,
   readBaseContention,
@@ -94,6 +94,12 @@ export const MAX_CANDIDATES_PER_IMPEDIMENT = 4;
 export const MIN_CANDIDATES_PER_IMPEDIMENT = 2;
 /** 全扫描的产能探针预算（每次探针 = 一遍 `computeByProcessModel`）。超预算 → 显式 `truncated`。 */
 export const CANDIDATE_PROBE_BUDGET = 400;
+/**
+ * WO-LEVER-WALLS · **诊断**预算（解释"这一档为什么没用"），与候选试算预算**分账**。
+ * 诊断结果全部按 (杠杆, 作用域) 缓存 ⇒ 实际用量 ≈ 2×不同杠杆数 + 作用域数，远小于此上界。
+ * 用尽 ⇒ 诊断诚实返回"没测出来"，**绝不**降级成"无路"这个否定结论。
+ */
+export const DIAG_PROBE_BUDGET = 120;
 
 /** 本枚举器的 provenance solverKey —— 与判定器同一个 key（候选是阻滞点的一部分，不新增 solver key）。 */
 export const IMPEDIMENT_OPTION_SOLVER_KEY = "chain_impediments";
@@ -233,7 +239,10 @@ export function resolveLeverAnchors(args: {
     push(b, { typeKey: im.locus.objectType, obj: locusObj }, "LOCUS_PROP", `${im.locus.objectType}(locus) 自身承载 ${b.objectType}.${b.prop}（因子${b.mark} ${b.factorName}）`);
   }
   if (bindings.every((x) => x.objectType !== im.locus.objectType)) {
-    gaps.push({ reason: `LOCUS_PROP 够不着：对象类型 ${im.locus.objectType} 在 CAPACITY_FACTOR_BINDINGS 上没有任何可拨动落点` });
+    // ⚠ 措辞刻意是**维度级**不是类型级：本文件 `@verifyBy` 明令禁止「对象类型 X 没有任何可拨动落点」——
+    // 那句话会被读成"这条阻滞点够不着杠杆"，而实测 14 条 NONE 里**没有一条**如此（各探到 2–10 根）。
+    // 「这一维没够着」与「这条够不着」是两个命题，修法相反：前者不用补落点册，后者才要。
+    gaps.push({ reason: `LOCUS_PROP 这一维够不着：落点对象类型 ${im.locus.objectType} 自身不承载可拨动因子（杠杆得靠另两条 join 路找 —— 本行不代表本条没有杠杆）` });
   }
 
   // ── ② LINK_HOP：沿一等关系行一跳可达 ────────────────────────────────────────
@@ -278,7 +287,7 @@ export function resolveLeverAnchors(args: {
   // ── ④ RULE_GATE：判据规则码 == 因子拨动闸；实例由值键相等收窄 ────────────────
   const gated = im.evidence.ruleKey ? bindings.filter((x) => x.ruleGate === im.evidence.ruleKey) : [];
   if (im.evidence.ruleKey && gated.length === 0) {
-    gaps.push({ reason: `RULE_GATE 够不着：规则 ${im.evidence.ruleKey} 不是任何可拨动因子的 ruleGate（该判据与产能因子册今天没有共同的规则码）` });
+    gaps.push({ reason: `RULE_GATE 这一维够不着：规则 ${im.evidence.ruleKey} 不是任何可拨动因子的 ruleGate（该判据与产能因子册今天没有共同的规则码 —— 本行不代表本条没有杠杆）` });
   }
   for (const b of gated) {
     const targets = arrays.get(b.objectType) ?? [];
@@ -408,10 +417,18 @@ export function rungsFor(args: {
   im: ChainImpediment;
   metricPath: string;
   peers: readonly ObjectInstance[];
-}): { rungs: Rung[]; gaps: AnchorGap[] } {
+}): { rungs: Rung[]; gaps: AnchorGap[]; degenerate: boolean; peerScope?: string; peerValue?: number } {
   const { anchor, im, metricPath, peers } = args;
   const rungs: Rung[] = [];
   const gaps: AnchorGap[] = [];
+  /**
+   * WO-LEVER-WALLS：**同侪取值全同** —— 这是「没有档位可拨」，不是「拨了没用」。
+   * 结构化回传而不是让调用方去匹配上面那句中文 —— 匹字符串的门改一个字就变装饰品
+   * （CLAUDE.md 铁律 0.6 第 6 条：「那个串出现过」不度量「那件事成立」）。
+   */
+  let degenerate = false;
+  let peerScope: string | undefined;
+  let peerValue: number | undefined;
   const propKey = `${anchor.binding.objectType}.${anchor.binding.prop}`;
 
   // ① 阈值档：只有"杠杆 == 判据量测属性"时才成立（否则拨到阈值毫无语义）。
@@ -450,10 +467,13 @@ export function rungsFor(args: {
     add("PEER_BEST", hi, "真实极值（最大）");
     add("PEER_BEST", lo, "真实极值（最小）");
     if (uniq.length === 1 && uniq[0] === anchor.currentValue) {
+      degenerate = true;
+      peerScope = `${scopeNote}·${pool.length} 个同侪`;
+      peerValue = anchor.currentValue;
       gaps.push({ reason: `同侪无档位：${propKey} 在同侪里取值全等于当前值 ${anchor.currentValue}（${scopeNote}）—— 拒绝拍一个步长` });
     }
   }
-  return { rungs, gaps };
+  return { rungs, gaps, degenerate, ...(peerScope === undefined ? {} : { peerScope }), ...(peerValue === undefined ? {} : { peerValue }) };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -474,6 +494,44 @@ function capacityObjective(c: SolverContext, baseFilter?: string): number | null
   }
   if (rows === 0) return null; // 诚实空：该作用域无逐工序格，不返回 0 冒充"产能为 0"
   return round(total, 4);
+}
+
+/**
+ * WO-LEVER-WALLS · 本作用域**当前的瓶颈是谁** —— 直接读 `computeByProcessModel` 逐格行上的
+ * `bottleneck`/`bottleneckMark`/`material`/`tightness`（那是产能链**已经算好**的主瓶颈，单源不另算）。
+ *
+ * 为什么必须给这个：`matFactor = min(各物料齐套系数)` —— 非瓶颈物料多给一点，产能**本来就不该涨**。
+ * 这是对的业务语义，不是缺陷。但屏上只说「没有可拨动落点」，使用者会以为系统**够不着**；
+ * 真话是「**这个落点不是当前瓶颈（瓶颈是 X），多给它不提产**」—— 后者才让人知道下一步该动谁。
+ */
+function describeScopeBottleneck(
+  c: SolverContext,
+  baseFilter?: string,
+): { factor: string; mark: string; tightness: number; material?: string; rows: number } | null {
+  const models = [...c.certByModel.keys()].sort();
+  const tally = new Map<string, { mark: string; factor: string; n: number; tightness: number }>();
+  let rows = 0;
+  let material: string | undefined;
+  for (const m of models) {
+    for (const r of computeByProcessModel(c, m, CAPACITY_FACTOR_BINDINGS, baseFilter)) {
+      rows++;
+      if (material === undefined && typeof r.material === "string") material = r.material;
+      // 逐格行上取不到主瓶颈标记时**跳过这一格**，不拿一个占位符去参与众数投票
+      // （否则占位符可能当选，屏上就会出现一个不存在的瓶颈名 —— 比不说更坏）。
+      const mk = typeof r.bottleneckMark === "string" ? r.bottleneckMark : undefined;
+      if (mk === undefined) continue;
+      const tight = typeof r.tightness === "number" && Number.isFinite(r.tightness) ? r.tightness : 0;
+      const e = tally.get(mk);
+      if (e) {
+        e.n++;
+        if (tight > e.tightness) e.tightness = tight;
+      } else tally.set(mk, { mark: mk, factor: typeof r.bottleneck === "string" ? r.bottleneck : mk, n: 1, tightness: tight });
+    }
+  }
+  if (rows === 0) return null; // 诚实空：该作用域没有逐工序格 ⇒ 不编一个瓶颈出来
+  // 众数即该作用域的主瓶颈；并列时按圈号全序（R6：同输入同输出）。
+  const top = [...tally.values()].sort((a, b) => b.n - a.n || (a.mark < b.mark ? -1 : 1))[0]!;
+  return { factor: top.factor, mark: top.mark, tightness: top.tightness, ...(material === undefined ? {} : { material }), rows };
 }
 
 /** 判据读数与超阈幅度（在给定 ctx 上重算 —— 与 `judgeOne` 同一套阈值读回 + 同一个比较符）。 */
@@ -633,6 +691,42 @@ export function enumerateImpedimentOptions(
     return v;
   };
 
+  // ── WO-LEVER-WALLS · 诊断探针（与候选试算**分账**）──────────────────────────────
+  // 为什么要分账：候选试算的预算耗尽要把结论降成 UNAVAILABLE（"算不了"），而诊断只是解释
+  // "为什么这一档没用"。把两者混在一个预算里，诊断会把候选试算挤掉 —— 拿解释换掉答案，本末倒置。
+  const pathCache = new Map<string, boolean | null>();
+  let diagProbes = 0;
+  const bottleneckCache = new Map<string, ReturnType<typeof describeScopeBottleneck>>();
+  const scopeBottleneck = (baseFilter: string | undefined): ReturnType<typeof describeScopeBottleneck> => {
+    const k = baseFilter ?? "*";
+    const hit = bottleneckCache.get(k);
+    if (hit !== undefined) return hit;
+    if (diagProbes >= DIAG_PROBE_BUDGET) return null;
+    diagProbes++;
+    const v = describeScopeBottleneck(c, baseFilter);
+    bottleneckCache.set(k, v);
+    return v;
+  };
+  /**
+   * 这根杠杆在本作用域的产能目标里**有没有路**（`null` = 没测出来，⛔ 不许读成"无路"）。
+   * 判法：整类同属性一起 ×2 与 ×0.5，目标任一动即有路。
+   * ⚠ **单实例探针不构成这个判据**（实测 `Process.channels` 单实例拨动目标纹丝不动、整类 ×2 动 5.6e6）。
+   */
+  const leverHasPath = (typeKey: string, prop: string, baseFilter: string | undefined): boolean | null => {
+    const key = `${typeKey}.${prop}|${baseFilter ?? "*"}`;
+    const hit = pathCache.get(key);
+    if (hit !== undefined) return hit;
+    if (diagProbes + 2 > DIAG_PROBE_BUDGET) return null;
+    const base = capacityFor(baseFilter); // 基线已在本轮算过 ⇒ 走缓存，不额外耗候选预算
+    if (base === null) return null;
+    diagProbes += 2;
+    const up = capacityObjective(mapCapacityContextProp(c, typeKey, prop, (v) => (v === 0 ? 1 : v * 2)), baseFilter);
+    const dn = capacityObjective(mapCapacityContextProp(c, typeKey, prop, (v) => (v === 0 ? -1 : v * 0.5)), baseFilter);
+    const v = up === null && dn === null ? null : up !== base || dn !== base;
+    pathCache.set(key, v);
+    return v;
+  };
+
   const byImpediment = new Map<string, { candidates: SolutionCandidate[]; noCandidateReason?: string; noCandidateKind?: NoCandidateKind }>();
   const stats: OptionEnumStat[] = [];
   /** 唯一键现算一次、全扫描共享（650 工序 × 全属性 逐阻滞点重算一遍是纯浪费）。 */
@@ -687,10 +781,25 @@ export function enumerateImpedimentOptions(
     let triedRungs = 0; // 真跑到"两维读数重算"这一步的档位数（patch 被丢弃的不算，那条另有 gap）
     let flatRungs = 0; // 拨完两维都一动不动
     let worseRungs = 0; // 动了，但没有任何一维往好里动
+    // ── WO-LEVER-WALLS · 「没动」的**病因**分桶（三者修法完全不同，压成一句就是今天屏上那个谎）──
+    let notAttemptedRungs = 0; // ① 克隆面不认这个类型 ⇒ 从没真试过
+    let notBindingRungs = 0; // ② 试过了，这根杠杆有路、但这个落点不是当前瓶颈（min 的非瓶颈支）
+    let noPathRungs = 0; // ③ 试过了，这根杠杆整条链都不进产能公式
+    let unknownFlatRungs = 0; // 诊断预算没测出来 —— ⛔ 不许并进上面任何一桶
+    let degenerateAnchors = 0; // 同侪取值全同 ⇒ 压根没有档位可拨（连试都无从试）
+    const notBindingLevers = new Set<string>();
+    const noPathLevers = new Set<string>();
+    const degenerateLevers = new Set<string>();
+    const notAttemptedTypes = new Set<string>();
     for (const anchor of anchors) {
       const peers = arraysOf(anchor.binding.objectType);
-      const { rungs, gaps: rungGaps } = rungsFor({ anchor, im, metricPath: binding.metricPath, peers });
+      const leverKeyName = `${LEVER_PROP_META[`${anchor.binding.objectType}.${anchor.binding.prop}`]?.label ?? `${anchor.binding.objectType}.${anchor.binding.prop}`}（因子${anchor.binding.mark} ${anchor.binding.factorName}）`;
+      const { rungs, gaps: rungGaps, degenerate, peerScope, peerValue } = rungsFor({ anchor, im, metricPath: binding.metricPath, peers });
       for (const g of rungGaps) gaps.push(g.reason);
+      if (degenerate) {
+        degenerateAnchors++;
+        degenerateLevers.add(`${leverKeyName}：${peerScope ?? "同侪"}取值全是 ${peerValue ?? anchor.currentValue}`);
+      }
       if (rungs.length === 0) continue;
 
       for (const rung of rungs) {
@@ -699,6 +808,8 @@ export function enumerateImpedimentOptions(
           (o) => o.id === anchor.objId && o.props[anchor.binding.prop] === rung.toValue,
         );
         if (!patchApplied) {
+          notAttemptedRungs++;
+          notAttemptedTypes.add(anchor.binding.objectType);
           gaps.push(
             `${anchor.binding.objectType}.${anchor.binding.prop} 拨不动：patchCapacityContext 不认对象类型 ${anchor.binding.objectType}（override 会被静默丢弃）—— ` +
               `属"接了线接错地方"，补该类型的克隆分支即可`,
@@ -714,6 +825,17 @@ export function enumerateImpedimentOptions(
         const capMoved = baseCap !== null && afterCap !== null && afterCap !== baseCap;
         if (!breachMoved && !capMoved) {
           flatRungs++; // 拨了什么都没动 → 非有效杠杆（诚实丢弃，照抄 discoverLevers）；**但要记账**，见 triedRungs
+          // ── 「没动」不是一种病，是三种 —— 当场分开，别等到屏上压成一句 ──────────────
+          const path = leverHasPath(anchor.binding.objectType, anchor.binding.prop, locusBase);
+          if (path === false) {
+            noPathRungs++;
+            noPathLevers.add(leverKeyName);
+          } else if (path === true) {
+            notBindingRungs++;
+            notBindingLevers.add(leverKeyName);
+          } else {
+            unknownFlatRungs++; // 诊断没测出来 ⇒ 诚实留白，⛔ 不许塞进上面任何一桶冒充已知
+          }
           continue;
         }
         // 「动了」还不够，还得**往好里动**：全维不改善（甚至全维变差）的拨法不是方案，是反面教材。
@@ -879,6 +1001,38 @@ export function enumerateImpedimentOptions(
       // `NONE`        = 这一轮**算完了**：join 走到了、档位取到了、逐候选真试算过了，结论就是没有。
       const budgetGone = truncated; // 含 truncatedBefore：预算是全扫描共享的，之前耗尽就轮不到本轮算
       const kind: NoCandidateKind = budgetGone || rule === undefined ? "UNAVAILABLE" : "NONE";
+
+      // ── WO-LEVER-WALLS · **定性**：把「没有任何可拨动落点」拆成它其实是的那几件事 ────────────
+      // 屏上原话对这 14 条里的每一条都是假的：它们各探到 2–10 根杠杆、真跑了 5–34 次试算。
+      // 「够不着」「够着了但不是当前瓶颈」「够着了但这根杠杆根本不进产能公式」「压根没有档位可拨」
+      // —— 四件事、四种修法。压成一句，读的人只会去补落点册，而那对后三种**一条都治不了**。
+      // ⚠ 与试算台账同样 `!truncated`：预算耗尽时两维压根没算，此时下"没传导"的定性是假话。
+      if (!budgetGone) {
+        const bn = scopeBottleneck(locusBase);
+        const bnText = bn
+          ? `当前瓶颈是「${bn.factor}」（紧度 ${bn.tightness}/100，覆盖 ${bn.rows} 个逐工序格${bn.material ? `；物料齐套口径上最紧的是 ${bn.material}` : ""}）`
+          : "当前瓶颈算不出来（该作用域没有逐工序格）";
+        const parts: string[] = [];
+        if (anchors.length === 0) {
+          parts.push(`**没试过·够不着落点**：三条 join 路（落点自身 / 一跳关系 / 值键相等）都没够到任何可拨动落点，这一条确实无从下手`);
+        }
+        if (notAttemptedRungs > 0) {
+          parts.push(`**没试过·落点不在克隆面内**：${notAttemptedRungs} 档落在 ${[...notAttemptedTypes].sort().join("、")} 上，拨动会被静默丢弃 ⇒ 这些落点从没被真试过，补该类型克隆分支即可救回`);
+        }
+        if (notBindingRungs > 0) {
+          parts.push(`**试过了·不是当前瓶颈**：${notBindingRungs} 档拨的是 ${[...notBindingLevers].sort().join("、")} —— 这些杠杆对产能**有传导路**，但${bnText}，多给它不提产（这是对的业务语义，不是缺陷）`);
+        }
+        if (noPathRungs > 0) {
+          parts.push(`**试过了·这根杠杆今天不进产能公式**：${noPathRungs} 档拨的是 ${[...noPathLevers].sort().join("、")} —— 整类同时拨大拨小，产能读数逐字节不动 ⇒ 补数据、换瓶颈都没用，缺的是模型里那一项`);
+        }
+        if (degenerateAnchors > 0) {
+          parts.push(`**没有档位可拨·同组取值全同**：${degenerateAnchors} 根杠杆（${[...degenerateLevers].sort().join("；")}）同侪取值完全一样，拿不出"别人已经做到的数"当档位，拒绝拍一个步长`);
+        }
+        if (unknownFlatRungs > 0) {
+          parts.push(`**没测出来**：${unknownFlatRungs} 档读数没动但诊断预算已用尽 ⇒ 不下定性（"没测出来"不是"没有"）`);
+        }
+        if (parts.length > 0) gaps.unshift(`定性 —— ${parts.join("；")}`);
+      }
       if (budgetGone) {
         gaps.push(
           truncatedBefore
