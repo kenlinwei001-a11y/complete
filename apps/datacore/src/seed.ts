@@ -1594,10 +1594,13 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     targetTypeKey: "Model",
     targetStateVar: "demandLoad",
     delayTicks: 0,
-    // ⚠ 屏上这个数 = **意图稳态增益**，必须与 `C36.params` 里那条 `系数/λ` 对上
-    //（`edge-money-weight.seam.test.ts` §3 逐条对账，改一边不改另一边当场红）。
-    // WO-COEF-LAMBDA 件B 把折扣率从「100%」改成「1/2」⇒ −0.5 → **−0.25**，理由见 C36 该行注。
-    description: "订单频繁变更 ⇒ 取消/缩水占多、在手需求被高估，型号需求负载随之下修（变更频度 × −0.25 = 需求负载下修量）",
+    // ⚠ 屏上这个数 = **该格重分配之后的稳态增益**（`C36 系数 ÷ λ`），与同格邻居
+    //   `demo_order_demand_pressure`（× 0.018891）**同一口径** —— 两个数的比恰为 **1/2**，
+    //   那就是「变更折扣率 = 1/2」这条业务裁决在屏上的样子。
+    // ⚠ 旧文写的是**意图增益** −0.5，与本门的口径不一致；它此前没被咬住，是因为
+    //   `edge-money-weight.seam.test.ts` §3 的正则不认**排版减号 U+2212**，
+    //   这一条 description **整条被当成「没写数」放过了**（全仓唯一一条，已补，见该文件 `statedOf` 注）。
+    description: "订单频繁变更 ⇒ 取消/缩水占多、在手需求被高估，型号需求负载随之下修（变更频度 × −0.009445 = 需求负载下修量）",
     combine: "sum",
     decay: null,
     clamp: null,

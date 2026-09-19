@@ -2107,10 +2107,45 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 判据不是口味，是**引擎真读的是哪个数**：`sim/propagation.ts` 的 `effectiveCoefficient`
 解析 `coefficientRef` 后**原样返回** `ruleParams[C36][边key]` ——
 若表里存稳态增益，运行期就会少乘一次 λ，**定标在真正的读路上丢掉**。
-故 `稳态增益 × λ`（λ = C35 `pressureDecayPerTick` = 0.37）的**乘积**进表。
-⚠ 谓词与 `seed.ts` 的 `inflowCoefficient` **同一条**，不许各抄一份：
-**目标量纲已声明域且上界有限** ⇒ 预乘 λ 且受增益预算；**未声明域、或声明了但 `max: null`（无界）**
-⇒ 纯积分器，无饱和拐点，**不预乘也不受预算**（`combine:"max"` 的真值透传边同理）。
+故 `稳态增益 × λ` 的**乘积**进表。
+
+> **🔴 2026-09-19 WO-COEF-LAMBDA 订正（原文留档在下方，因为照旧文去做会做错两处）**
+>
+> 旧文：「λ = C35 `pressureDecayPerTick` = 0.37」＋「谓词与 `inflowCoefficient` 同一条：
+> **目标量纲已声明域且上界有限** ⇒ 预乘 λ **且**受增益预算；未声明域、或 `max: null`
+> ⇒ 纯积分器，无饱和拐点，**不预乘也不受预算**」。**两处都不成立**：
+>
+> **订正① λ 不是全表一个数。** C35 下挂 **6 个 paramKey**，实测三档：
+> `pressureDecayPerTick` **0.37**（压力族 32 格）· `queueDaysDecayPerTick` /
+> `inspectBacklogDecayPerTick` **0.37** · `repairBacklogDecayPerTick` /
+> `handlingBacklogDecayPerTick` **0.75** · `qualificationQueueDecayPerTick` **0.22**。
+> 拿 0.37 全表乘/除，对后三个量纲分别错 **2.03× / 2.03× / 0.59×**。
+>
+> **订正② 「预乘 λ」与「受 0.75 预算」不是同一个谓词**，引擎里是两处互不相干的判断：
+>
+> | 装置 | 引擎里的判据 | 与 `max` 的关系 |
+> |---|---|---|
+> | **预乘 λ** | `propagation.ts` `resolveDecayRate(d, ruleParams)` —— **只看 `d.decayRef`** | **无关** |
+> | **受 0.75 预算** | `propagation.ts` `saturateToDomain(...)`：`max === null` 那一支**没有上拐点** ⇒ `kneeHi = 0.75 × max` 不存在 | **只看 `max`** |
+>
+> 旧文把两者绑死，在**每个已声明域都有有限 `max`** 的年代碰巧成立；WO-PROP-REVIEW-V2 形态②
+> 引入 `max: null` 的积压族之后就不成立了。于是多出**第三档**，而旧文里没有它：
+> `queueDays` / `inspectBacklog` / `repairBacklog` / `handlingBacklog` / `qualificationQueue`
+> —— **会衰减 ⇒ 预乘 ✅；无上拐点 ⇒ 不受预算 ⛔**。
+>
+> **代价是实的**：这 5 个量纲于形态② 补登记进域表时，**5 条打向它们的边没人回头改系数**
+> ⇒ 它们以裸系数跑了下来，真稳态是 description 承诺的 `1/λ` 倍
+> （2.70× / 2.70× / 1.33× / 1.33× / 4.55×），而四包全绿。
+> **根因是没有机器把「补域」和「回改系数」绑在一起** —— 已补：
+> `seed-demo-propagation.test.ts` §6 判据ⓠ 逐格断言 `系数/λ == 在册意图增益`，
+> 且 §6 的两个谓词已拆开（`knee` 标志），旧的「同一个谓词」写法不再存在于代码里。
+
+**今天的谓词（三档，逐条对应引擎的两处判断）**：
+| 落点量纲 | 预乘 λ | 受 0.75 预算 | 本仓实例 |
+|---|---|---|---|
+| 已声明域 + `max` 有限 | ✅（用该格自己的 λ） | ✅ | 32 个压力/风险/负载族 |
+| 已声明域 + `max: null` | ✅（用该格自己的 λ） | ⛔ 无上拐点 | 5 个积压/天数族 |
+| **未声明域**（无 `decayRef`） | ⛔ 纯积分器，没有 `1/λ` 可约 | ⛔ | 只剩 `clearanceQueueDays` 1 条边；`combine:"max"` 真值透传边同理 |
 
 **② 同槽位符号冲突的裁决（⛔ 不取并集）**：
 `FGI.drawdownPressure --fg_of_model--> Model.demandLoad` 这**一个槽位**上，
@@ -2134,7 +2169,9 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 > 随后**据「`equal_share` 会让边整条不触发」把两件都撤了**。
 > **那条撤回理由是一次假红**（见下 ⑥ 订正）：病因是 `packages/contracts/dist/sim.js` 陈旧，
 > 与种子、与 `equal_share` 本身都无关。
-> ⇒ **`weightRef: equal_share` 已恢复**（5 条边）；**整格重分配仍未做**，理由见 ④ —— 不是忘了。
+> ⇒ **`weightRef: equal_share` 已恢复**（5 条边）；~~**整格重分配仍未做**，理由见 ④ —— 不是忘了。~~
+> ✅ **2026-09-19 WO-COEF-LAMBDA 件B 已做**：`Model.demandLoad` 四条入边整格重跑
+> `f_g = min(1, 0.75/S_g)`，该格 `Σ|增益|×W` **1.855 → 0.749961（2.47× → 1.00×）**。见下方 ④ 的闭合记账。
 
 **④ 预算：扇入 N 已实测，四格**全部超预算**（2026-09-19 订正，此前写的「本单答不了」已补上）**：
 逐目标扇入实测（真种子 `seedBattery`，按 `toId` 分组取均值；🐤 金丝雀 `material_used_by_model`
@@ -2149,17 +2186,34 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 |---|---|---|---|
 | `Material.shortageRisk` | 1.80 | **1.25** | 🔴 仍 1.67× |
 | `Process.queuePressure` | 1.75 | **1.25** | 🔴 仍 1.67× |
-| `Model.demandLoad` | 4.05 | **3.05** | 🔴 仍 4.07× |
+| `Model.demandLoad` | 4.05 | **3.05** | ✅ **0.749961（1.00×）** —— WO-COEF-LAMBDA 件B 整格重跑后 |
 | `PurchaseOrder.expeditePressure` | 1.00 | 1.00 | 🔴 1.33×（该格两条边 N 均 = 1，不受本改动影响） |
 
-⇒ 补 `equal_share` 是**严格改善但不充分**；整格重分配仍需做，**但今天做不了**，两条硬阻塞：
-① `Model.demandLoad` 的主导项是下面 ④ 那条**继承的阻尼边**（单条占用 **1.80 = 预算的 2.4 倍**），
-   而它被明令「原样带过来、一位没动」⇒ 该格结构上收不进预算，除非先裁决那条边。
-② 闭式的权威工具 `docs/evidence/wo-sim-calibration/calibration-analysis.mjs`
-   **在 canonical 上就跑不起来**（实测 RC=1，它自己的金丝雀报扇入表缺该阻尼边）——
-   不是本分支弄坏的，但没有它就只能手算意图增益，而那正是上一版留下符号翻转的那条路
-   （v1 把 `demo_order_churn_to_model_demand_load` 存成 **−0.00423206**，canonical 是 **+0.00429755**，
-   且该负值与同版 FGI 边**逐字节相同** ⇒ 复制粘贴的符号翻转）。⛔ 故不照搬 v1。
+⇒ 补 `equal_share` 是**严格改善但不充分**；~~整格重分配仍需做，**但今天做不了**，两条硬阻塞~~
+**✅ 2026-09-19 WO-COEF-LAMBDA 件B 已做完 `Model.demandLoad` 这一格**，两条阻塞都已解除：
+① 那条「继承的阻尼边」`demo_fg_drawdown_relieves_model_demand` 已于 2026-09-19 由仓主裁决补预乘 λ
+   （−0.6 → −0.222），「原样带过来不许动」的禁令随该裁决失效 ⇒ 可以进重分配了。
+② 手算路径已由**机器**接管，不再依赖跑不起来的 `calibration-analysis.mjs`：
+   `seed-demo-propagation.test.ts` §6 从 `buildPropagationInputs` **现算**每格 `Σ|增益|×Σw`
+   与**带符号净增益**，两个数都钉在断言里。上一版那个符号翻转（v1 存 −0.00423206 而
+   canonical +0.00429755）今天会被 §6 判据①b 当场咬住。
+
+**件B 的实测四数（改前 → 改后）**：
+| 量 | 改前 | 改后 |
+|---|---|---|
+| `Σ\|增益\|×W`（预算，上限 0.75） | 1.855（2.47×） | **0.749961（1.00×）** |
+| **带符号净增益** | **−0.92575** | **+0.194589** |
+| `Model.demandLoad` 基准世界读数 | tick3 起**恒 0**（域下界） | 见 §件B 轨迹 |
+| `sim-root-triad` G-ROOT-1 | 🔴 逐拍 Δ 全 0.0000 | ✅ 与 G-ROOT-2 **同时**绿 |
+
+⚠ **改的是什么、不是什么**：四条边的**意图增益**只动了一条
+（`demo_order_churn_to_model_demand_load` 的**量级** 0.5 → 0.25，符号不动），
+其余三条意图增益一位没改，只是把 `f_g` 在全格重跑了一遍（此前四条边各带各的 f_g：
+0.0372 / 0.0232 / **1** / **1** —— 后两条是新边进场后没人重跑留下的）。
+**对照实验证明这不是「调参到达标」**：只重跑 f_g、量级全不动 ⇒ 净增益 **−0.0316**，
+仍为负、仍落地板 ⇒ 该格的病不在分摊，在那条边的量级本身。
+量级为什么该改，见 `battery.ts` 该行的业务理由（一句话：`orderChurn` 是对在手订单簿的**折扣**，
+把折扣写成与订单簿等量反向 = 宣称折扣率 100%，而订单簿 500 张单 / 454.64 亿是已签成交）。
 
 **④ ✅ 继承下来的那处自相矛盾 —— 2026-09-19 仓主裁决：补预乘 λ，已改**：
 canonical 的阻尼边 `demo_fg_drawdown_relieves_model_demand` 系数原为 **−0.6 未预乘 λ**，

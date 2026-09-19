@@ -258,8 +258,13 @@ describe("§3 描述里的系数 = 真系数", () => {
    * ⇒ 这条边被 `.filter(r => r.stated.length > 0)` 当成「描述里没写数（合法）」**整条放过**。
    * ⇒ **全表 4 条负系数边的 description 从来没被这道门对过账**，而它们恰恰是最容易写反符号的那些。
    * 形态：「我用『这道门是绿的』当作『描述与系数对上了』的证据，而前者并不度量后者
-   *        —— 它根本没在判这几条。」实测：补上 U+2212 后 `demo_forecast_bias_to_order_demand`
-   *        等 4 条首次进入对账集合（对账行数 13 → 17）。
+   *        —— 它根本没在判这几条。」
+   * **实测（55 行 description 逐行扫，不是估的）**：旧正则命中 **13** 行，新正则 **14** 行 ——
+   * 只有 `demo_order_churn_to_model_demand_load` 一条因 U+2212 逃掉过。
+   * ⚠ 另 4 条负系数边（`forecast_bias` / `alt_switch` / `fg_cover_days` / `fg_drawdown_relieves`）
+   *   **不在增量里**，原因不是正则而是**它们的 description 压根没写「×N」**
+   *   ⇒ 它们至今仍不被本门对账（合法，但不是"被验过"）。
+   *   形态同族：「我用『补好了正则』当作『负系数边都被对上了』的证据。」——补正则只捞回 1 条。
    */
   const statedOf = (description: string): number[] =>
     [...description.matchAll(/[×x]\s*([-−]?[\d.]+)/g)].map((x) => Number(x[1].replace("−", "-")));
@@ -308,8 +313,8 @@ describe("§3 描述里的系数 = 真系数", () => {
   it("种子里 0 条描述与真系数不符", () => {
     const rows = rowsFromRules(demoPropagationRulesWithDomain());
     // 金丝雀③：对账行数必须是真数量级，0 行时那句"0 条不符"毫无意义。
-    // ⚠ 下界 13 → **17**：补上 U+2212 之后 4 条负系数边首次进入对账集合（见 `statedOf` 注）。
-    expect(rows.length, "描述里写了系数的边条数（0 行 = 对账空转）").toBeGreaterThanOrEqual(17);
+    // ⚠ 下界 13 → **14**：补上 U+2212 之后 `demo_order_churn_to_model_demand_load` 进来了（实测，见 `statedOf` 注）。
+    expect(rows.length, "描述里写了系数的边条数（0 行 = 对账空转）").toBeGreaterThanOrEqual(14);
     const bad = rows.filter((r) => !r.ok);
     expect(
       bad.map((r) => `${r.key}: 描述 ×${r.stated.join("/")} vs 真值 ${r.coef}`),
