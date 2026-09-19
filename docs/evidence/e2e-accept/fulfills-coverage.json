@@ -1,0 +1,59 @@
+{
+  "orderTotal": 500,
+  "workOrderTotal": 260,
+  "workOrdersWithOrderRef": 260,
+  "distinctOrdersReferenced": 186,
+  "ordersCovered": 186,
+  "coveragePct": 37.2,
+  "danglingOrderRefs": 0,
+  "danglingSample": [],
+  "sampleCoveredOrders": [
+    "SO-3391",
+    "SO-3420",
+    "SO-3431",
+    "SO-3437",
+    "SO-3452"
+  ],
+  "firstPageUiOrders": [
+    {
+      "so": "SO-3391",
+      "workOrders": 1
+    },
+    {
+      "so": "SO-3402",
+      "workOrders": 0
+    },
+    {
+      "so": "SO-3415",
+      "workOrders": 0
+    },
+    {
+      "so": "SO-3420",
+      "workOrders": 1
+    },
+    {
+      "so": "SO-3431",
+      "workOrders": 2
+    },
+    {
+      "so": "SO-3437",
+      "workOrders": 1
+    },
+    {
+      "so": "SO-3445",
+      "workOrders": 0
+    },
+    {
+      "so": "SO-3452",
+      "workOrders": 2
+    },
+    {
+      "so": "SO-3458",
+      "workOrders": 0
+    },
+    {
+      "so": "SO-3464",
+      "workOrders": 0
+    }
+  ]
+}

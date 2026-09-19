@@ -6,6 +6,14 @@
 | 对齐契约 | 求解器增量 PRD §S1.2 / S1.6 / S1.7 / S1.8 的输出结构（字段名以该文档为准） |
 | 设计基准 | 原型 HTML 对应页面：规划体检（buildAuditView）、规划建议（buildGenView）、S&OP 平衡台（buildSOP）、项目推演（pmCalc/pmDagSVG 六步） |
 
+## 0. 本体引用与影响（补录）
+
+> 遗留 PRD 追溯补录（治理 #2，prd:check 入图）；仅引用平台真实不变量(§5 R1–R14)/断点(§8 G-1..G-8)。
+
+- **触及不变量**（§5）：R13 · R14
+- **触及断点**（§8）：（无特定断点）
+- **范畴**：前端推演视图渲染器（§7.10–7.13）：结论可溯源、应用层无业务常数
+
 ## 0. 契约补充（先于视图实现）
 
 1. **renderer 枚举扩展**（PRD-frontend §7.1）：新增 `"plan-audit" | "plan-generate" | "sop-balance" | "project-sim"`，共八种。

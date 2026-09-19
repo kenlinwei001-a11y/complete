@@ -1,0 +1,5 @@
+{
+  "note": "screen-value-provenance 棘轮基线：存量「含合成数值来源点却零来源记号」的具名豁免，只许降不许升。每条必须写 why。键 = 仓库相对文件路径。",
+  "generatedBy": "node scripts/check-screen-value-provenance.mjs --update",
+  "exempt": {}
+}

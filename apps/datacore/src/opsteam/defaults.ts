@@ -69,7 +69,7 @@ export const DEFAULT_PLAYBOOK: OpsPlaybook = {
       { kind: "ask", persona: "vp_catalog_op", view: "graph", queryPool: "catalog_daily", prob: 0.3 },
     ],
     weekly: [
-      { kind: "run_forecast", persona: "vp_planner_zhang", modelPool: ["S192-LFP", "4680-NCM"] },
+      { kind: "run_forecast", persona: "vp_planner_zhang", modelPool: ["圆柱-LFP", "4680-NCM"] },
       {
         kind: "review_actions",
         persona: "vp_approver_li",

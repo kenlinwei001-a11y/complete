@@ -1,0 +1,492 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { PropagationRule, SandboxViewConfig, SimMetricSeriesResponse } from "@platform/contracts";
+
+/**
+ * ══ WO-SIM-SESSION-WIRE · 会话生命周期 + 变更波及面的**接缝门**（咬链路不咬函数）══════
+ *
+ * 本门驱动的是「**用户在屏上按一下 → 真发那一跳 → 回包（或错误）回到屏上**」这一整条，
+ * 不是「某个 endpoints 函数返回了对的值」。八臂全部在**响应这一层**改东西，断言**屏上跟着变**。
+ *
+ * ── 为什么要有这道门（开工实测的两条前提，铁律 0.5：派单给的是线索不是结论）─────────
+ *
+ * ① **今天的行为是 X**：后端 `PATCH …/sim/sessions/:id/status`（`apps/datacore/src/app.ts:2049`）
+ *    与 `setSimSessionStatus` 早就在，PAUSED/ENDED 还是**世界真的冻结**（推进 / 扰动 / 回滚
+ *    一律 409）；而统一推演控制台顶部**只印会话 id 与「会话哪来的」**，会话自己是什么状态
+ *    一个字都没有，更没有任何控制。
+ *    **应该是 Y**：状态上屏 + 三个迁移按钮真发那一跳，三种「没成功」分开说。
+ *
+ * ② **今天的行为是 X**：`POST …/sim/change-impact-preview` 的四桶波及面**前端零调用**
+ *    （开工实测 `grep -rn "change-impact" apps/frontend-shell/src` 零命中；
+ *     金丝雀：同法 grep `propagation-rules` 命中 2 处 ⇒ 检索面是好的）。
+ *    **应该是 Y**：右栏检视里能就地问一次，且**不问就一发不发**（只读语义不做成副作用节奏）。
+ *
+ * ── 八臂 ───────────────────────────────────────────────────────────────────────
+ *  ⓪ 金丝雀：外壳与状态条挂得起来，且屏上那个状态**来自会话清单回包**（改回包 ⇒ 屏上跟着变）
+ *  ① 迁移真发那一跳：按「暂停」⇒ 打出 `PATCH`，实参是清单里那条会话的 id 与 `PAUSED`
+ *  ② 迁移成功 ⇒ 清单被重取，屏上状态跟着翻（不是本地存一份 status 副本自嗨）
+ *  ③ 后端 409 ⇒ **后端那句原话**上屏（不是一句「失败」）
+ *  ④ 这一跳没走通 ⇒ 屏上说「不知道成没成」，且与 ③ 那句**字面不同**（两态不许合并）
+ *  ⑤ 会话清单这一跳失败 ⇒ 状态位说「不知道它现在是什么状态」；
+ *     而「清单回来了、里面没有这一条」是**另一句**（本门咬住两句不同）
+ *  ⑥ 波及面：**不问一发不发**；问了才发，四桶计数与逐条上屏
+ *  ⑦ 波及面的空集**分两态**：确为叶子 vs 有算不出来的部分（合并成一句即红）
+ *  ⑧ 波及面这一跳没走通 ⇒ 「不知道有没有波及」，与 ⑦ 的「不波及任何下游」**字面不同**
+ *
+ * R6 确定性：网络全桩，无时钟、无随机。
+ */
+
+// ══════════════════════════════════════════════════════════════════════════════
+// fixture
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 状态变量。**每一档都要有卡铺出来**，否则右栏那几臂在空集上恒真。 */
+const STATE_VARS = ["demandLoad", "loadIndex", "queueDays", "supplyRisk", "costPressure", "defectPressure"] as const;
+const NAMES: Record<string, string> = {
+  demandLoad: "需求负载",
+  loadIndex: "负载指数",
+  queueDays: "排队天数",
+  supplyRisk: "供应风险",
+};
+const TICKS = [0, 1, 2, 3];
+const SESSION_ID = "sims_lifecycle";
+
+/** 卡上要有 `objectId` 才组得出焦点 —— 焦点是 `objectId × stateVar` 那一格。 */
+function seriesFor(vars: readonly string[]): SimMetricSeriesResponse {
+  const metrics = vars.map((sv, i) => ({
+    key: `obj_${i}.${sv}`,
+    objectId: `obj_${i}`,
+    stateVar: sv,
+    label: NAMES[sv] ?? sv,
+    labelIsFallback: NAMES[sv] === undefined,
+    unit: null,
+    baseline: TICKS.map(() => 10 + i),
+    // 全部「被推动」⇒ 全部铺在第一层，用例不必先展开收起块
+    actual: TICKS.map((_, t) => 10 + i + (t === 0 ? 0 : (i + 1) * 2)),
+    segments: [],
+  }));
+  return {
+    sessionId: SESSION_ID,
+    fromTick: 0,
+    toTick: 3,
+    ticks: TICKS,
+    tickDays: 15,
+    metrics,
+    totalMetrics: metrics.length,
+    truncated: false,
+    appliedLimit: 500,
+    appliedOrder: "magnitude",
+    baselineOrigin: { sessionId: SESSION_ID, seedTick: 0, excludedPerturbationIds: [] },
+    clamped: false,
+  } as unknown as SimMetricSeriesResponse;
+}
+
+function cfgFor(vars: readonly string[]): SandboxViewConfig {
+  return {
+    tenantId: "demo",
+    nodeTypes: ["Base", "Line"],
+    nodeObjectIds: { Base: ["obj_0"], Line: ["obj_1"] },
+    linkTypes: ["feeds"],
+    stateVars: [...vars],
+    stateVarNames: NAMES,
+    radarDims: [],
+    screens: ["sandbox"],
+    propagationCount: 0,
+  } as unknown as SandboxViewConfig;
+}
+
+/** 一条链：`demandLoad → loadIndex → queueDays`，于是选中卡有真的下游可谈。 */
+function rules(): PropagationRule[] {
+  const edges = [
+    { from: "demandLoad", to: "loadIndex" },
+    { from: "loadIndex", to: "queueDays" },
+  ];
+  return edges.map((e, i) => ({
+    id: `spr_${i}`,
+    tenantId: "demo",
+    key: `rule_${i}`,
+    sourceTypeKey: "Base",
+    sourceStateVar: e.from,
+    viaLinkKey: "feeds",
+    targetTypeKey: "Line",
+    targetStateVar: e.to,
+    coefficient: 0.5,
+    delayTicks: 1,
+    combine: "sum",
+    decay: null,
+    clamp: null,
+    coefficientRef: null,
+    cadenceNodeId: null,
+    status: "PUBLISHED",
+    domainKey: null,
+    domainName: null,
+    sourceTypeName: null,
+    targetTypeName: null,
+  })) as unknown as PropagationRule[];
+}
+
+// ── 可变桩状态（每个用例 beforeEach 重置）─────────────────────────────────────
+/** 会话清单当前回什么。`"throw"` = 这一跳自己失败；`[]` = 回来了但里面没有这一条。 */
+let sessionsMode: "ok" | "throw" | "absent" = "ok";
+let sessionStatus = "RUNNING";
+/** `PATCH …/status` 桩：`null` = 成功；否则抛这个错。 */
+let patchFailure: unknown = null;
+const patchCalls: { sessionId: string; status: string }[] = [];
+/** 波及面桩：`"throw"` = 这一跳失败；其余是回包本身。 */
+let impactMode: "full" | "leaf" | "unresolved" | "throw" = "full";
+const impactCalls: unknown[] = [];
+
+/**
+ * 与 `apiClient` 的 `ApiClientError` **同一个类**（`vi.mock` 里的实例要能被生产代码 `instanceof` 认出来）。
+ *
+ * ⚠ 必须走 `vi.hoisted`，不能写成裸的 `class` 声明：`vi.mock` 会被提升到文件最顶端，
+ * 而它的工厂里引用了本类 ⇒ 工厂求值时 `class` 还在 TDZ 里，整个文件在**收集阶段**就炸
+ * （`ReferenceError: Cannot access 'FakeApiError' before initialization`，
+ * 表现为「Failed Suites 1」而不是某条用例红 —— 本文件此前 8 条用例一条都没跑过）。
+ * `vi.hoisted` 与 `vi.mock` 一起提升，故工厂与下面各处 `new FakeApiError(...)` 拿到的是同一个类。
+ */
+const { FakeApiError } = vi.hoisted(() => {
+  class FakeApiError extends Error {
+    code: string;
+    status: number;
+    constructor(status: number, code: string, message: string) {
+      super(message);
+      this.name = "ApiClientError";
+      this.status = status;
+      this.code = code;
+    }
+  }
+  return { FakeApiError };
+});
+
+/** 后端 409 的**原话**（`app.ts` 的 `setSimSessionStatus` 逐字，2026-08-26 真跑 curl 抄回来的）。 */
+const BACKEND_409 = `会话 ${SESSION_ID} 不能从 PAUSED 迁到 PAUSED（PAUSED 允许的去向：RUNNING/ENDED）。`;
+
+const IMPACT_FULL = {
+  focus: { kind: "stateVar", objectId: "obj_0", stateVar: "demandLoad" },
+  items: [
+    { bucket: "recompute", target: "sv:obj_base_changzhou.loadIndex", hops: 1, via: "demo_model_demand_to_base_load" },
+    { bucket: "recompute", target: "sv:obj_base_hefei.loadIndex", hops: 1, via: "demo_model_demand_to_base_load" },
+    { bucket: "rederive", target: "op:obj_base_changzhou.capacity", hops: 2, via: "derived:Base.capacity" },
+    { bucket: "rejudge", target: "rule:redline_outsource", hops: 2, via: "expression" },
+  ],
+  unresolved: [],
+  truncated: false,
+  maxHops: 6,
+};
+const IMPACT_LEAF = { ...IMPACT_FULL, items: [], unresolved: [], truncated: false };
+const IMPACT_UNRESOLVED = {
+  ...IMPACT_FULL,
+  items: [],
+  unresolved: [{ what: "派生规格 Base.capacity", missing: "表达式里的对象类型没物化" }],
+  truncated: false,
+};
+
+vi.mock("@/api/apiClient", () => ({
+  ApiClientError: FakeApiError,
+  api: {
+    a: vi.fn(async (path: string) => {
+      if (path.includes("metric-series")) return seriesFor(STATE_VARS);
+      throw new Error(`未桩的路径：${path}`);
+    }),
+    b: vi.fn(),
+    aRaw: vi.fn(),
+  },
+}));
+
+vi.mock("@/api/endpoints", () => ({
+  fetchSimViewConfig: vi.fn(async () => cfgFor(STATE_VARS)),
+  fetchDrillStateVarLayers: vi.fn(async () => ({
+    layers: [
+      { stateVar: "demandLoad", layer: "根源", label: NAMES.demandLoad },
+      { stateVar: "loadIndex", layer: "枢纽", label: NAMES.loadIndex },
+      { stateVar: "queueDays", layer: "末端", label: NAMES.queueDays },
+    ],
+    ruleCount: 2,
+  })),
+  fetchPropagationRules: vi.fn(async () => ({ items: rules(), stateVarNames: NAMES })),
+  fetchSimSessions: vi.fn(async () => {
+    if (sessionsMode === "throw") throw new FakeApiError(500, "INTERNAL_ERROR", "会话清单这一跳炸了");
+    if (sessionsMode === "absent") return { items: [] };
+    return {
+      items: [
+        {
+          id: SESSION_ID,
+          tenantId: "demo",
+          status: sessionStatus,
+          curTick: 3,
+          parentCheckpointId: null,
+          createdAt: "2026-08-26T00:00:00.000Z",
+          scope: {},
+        },
+      ],
+    };
+  }),
+  fetchSimPerturbations: vi.fn(async () => ({ items: [] })),
+  createSimPerturbation: vi.fn(),
+  patchSimSessionStatus: vi.fn(async (sessionId: string, status: string) => {
+    patchCalls.push({ sessionId, status });
+    if (patchFailure !== null) throw patchFailure;
+    sessionStatus = status; // 后端真的落了库 ⇒ 下一次清单回的就是新状态
+    return { id: sessionId, status, curTick: 3 };
+  }),
+  previewChangeImpact: vi.fn(async (focus: unknown) => {
+    impactCalls.push(focus);
+    if (impactMode === "throw") throw new FakeApiError(500, "INTERNAL_ERROR", "波及面这一跳炸了");
+    if (impactMode === "leaf") return IMPACT_LEAF;
+    if (impactMode === "unresolved") return IMPACT_UNRESOLVED;
+    return IMPACT_FULL;
+  }),
+}));
+
+import UnifiedSimShell, { SESSION_STATUS_TEXT } from "@/views/sim/unified/UnifiedSimShell";
+
+function mount() {
+  const r = render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <UnifiedSimShell />
+    </QueryClientProvider>,
+  );
+  enterExpert();
+  return r;
+}
+
+/**
+ * 走进「专家模式」——本文件测的那套工作台从 2026-09-10 起退到了它后面。
+ *
+ * ══ 为什么是在这里补一步，而不是改断言 ═══════════════════════════════════════
+ * 08-28 决策屏（`console0828`）成了 `UnifiedSimShell` 的**默认视图**
+ * （`UnifiedSimShell.tsx:778` `if (!expert)` 提前 return），工作台连同它那 80 个 `usim-*` 锚点
+ * 整体挪到 `data-view="expert"` 那一支里。
+ * **功能一个没少，变的是到达路径** —— 这正是 08-28 设计稿页脚写的那句「专家模式 ▸」。
+ * ⇒ 测试要测工作台，就得先走到工作台；改断言去迁就默认屏，测的就不是这套东西了。
+ *
+ * ⛔ **按钮找不到就抛，不静默跳过。** 静默跳过会让下面每一条断言红在
+ * 「找不到 usim-xxx」上，指向一个跟病因毫不相干的地方 —— 正是本仓反复栽的那个形态。
+ */
+function enterExpert(): void {
+  const btn = screen.queryByTestId("c0828-expert");
+  if (btn === null)
+    throw new Error(
+      "[mount] 默认屏上没有「专家模式」按钮（c0828-expert）—— 到达路径断了，" +
+        "本文件所有断言都会红在「找不到 usim-*」上而指向错误的病因。先修到达路径。",
+    );
+  fireEvent.click(btn);
+}
+
+/** 等到会话解析完（状态位不再是 `loading`）—— 不等就会断言在「还在路上」那一帧上。 */
+async function lifecycleReady(): Promise<HTMLElement> {
+  const bar = await screen.findByTestId("usim-lifecycle");
+  await waitFor(() => expect(bar.getAttribute("data-status")).not.toBe("loading"));
+  return bar;
+}
+
+/** 选中一张卡，拿到右栏检视（右栏那三臂的前置）。 */
+async function selectCard(sv: string): Promise<void> {
+  const card = await screen.findByTestId(`usim-card-${sv}`);
+  await userEvent.click(card);
+  await screen.findByTestId("usim-inspector");
+}
+
+beforeEach(() => {
+  sessionsMode = "ok";
+  sessionStatus = "RUNNING";
+  patchFailure = null;
+  patchCalls.length = 0;
+  impactMode = "full";
+  impactCalls.length = 0;
+});
+afterEach(cleanup);
+
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("WO-SIM-SESSION-WIRE · 会话生命周期与变更波及面接缝门", () => {
+  it("⓪ 金丝雀：状态条挂得起来，且屏上那个状态来自会话清单回包 —— 改回包，屏上跟着变（失败 ⇒ 报「工具坏了」，不许读作「这块屏没做」）", async () => {
+    mount();
+    const bar = await lifecycleReady();
+    expect(bar.getAttribute("data-status")).toBe("RUNNING");
+    // 人看人话、机器看枚举（`UnifiedSimShell` 头注的原话）：枚举只在 `data-status` 上，
+    // 屏上那行是 `SESSION_STATUS_TEXT` 的人话版。**从单源取**，不手抄字面量 ——
+    // 抄一份就会漂（改了文案而这里拿旧串去测、照样绿）。
+    expect(bar.textContent).toContain(SESSION_STATUS_TEXT.RUNNING);
+    // 三个迁移按钮都在，且**都不是禁用的**（有会话就该点得动）
+    for (const t of ["paused", "running", "ended"]) {
+      const btn = screen.getByTestId(`usim-status-${t}`) as HTMLButtonElement;
+      expect(btn.disabled).toBe(false);
+    }
+
+    // 改回包 ⇒ 屏上跟着变（这一步才是本臂的判据：屏上那个状态不是写死的）
+    cleanup();
+    sessionStatus = "PAUSED";
+    mount();
+    const bar2 = await lifecycleReady();
+    // ⚠ 这里**不能**期望 `PAUSED`：**自动选取只认 `RUNNING`**（见 `UnifiedSimShell` 那句
+    // "它已经不在推演中了，自动选取不会再选中它"，以及本文件判据 ⑨）。全新挂载时清单里
+    // 只有一条 PAUSED 会话 ⇒ 一条都选不中 ⇒ 状态位是诚实的 `no-session`，不是 `PAUSED`。
+    // 本臂要证的是「屏上那个状态不是写死的、改回包它就跟着变」—— 从 RUNNING 那一条
+    // 变成"一条都没选中"，这件事同样证得了，且顺带把自动选取的规则钉住。
+    //（"暂停后仍钉住已选中的那条"是另一条路径，由 ⑨ 专门咬，两者不许混为一谈。）
+    await waitFor(() => expect(bar2.getAttribute("data-status")).toBe("no-session"));
+    // 屏上那行人话也必须跟着换（只验 data-* 的话，人话那半漏了也看不出来）
+    expect(bar2.textContent).not.toContain(SESSION_STATUS_TEXT.RUNNING);
+  });
+
+  it("① 迁移真发那一跳：按「暂停」⇒ 打出 PATCH，实参是清单里那条会话的 id 与 PAUSED（不是别的会话、也不是别的目标）", async () => {
+    mount();
+    await lifecycleReady();
+    expect(patchCalls.length).toBe(0); // 不点不发
+    await userEvent.click(screen.getByTestId("usim-status-paused"));
+    await waitFor(() => expect(patchCalls.length).toBe(1));
+    expect(patchCalls[0]).toEqual({ sessionId: SESSION_ID, status: "PAUSED" });
+  });
+
+  it("② 迁移成功 ⇒ 清单被重取、屏上状态跟着翻（状态只有清单那一个出处，不在组件里另存一份副本）", async () => {
+    mount();
+    const bar = await lifecycleReady();
+    expect(bar.getAttribute("data-status")).toBe("RUNNING");
+    await userEvent.click(screen.getByTestId("usim-status-paused"));
+    await waitFor(() => expect(bar.getAttribute("data-status")).toBe("PAUSED"));
+    // 反证：屏上翻过去的这个值是**清单重取回来的**，桩里 `sessionStatus` 已经是 PAUSED
+    expect(sessionStatus).toBe("PAUSED");
+    expect(screen.queryByTestId("usim-status-error")).toBeNull(); // 成功路径上不许有错误位
+  });
+
+  it("③ 后端 409 ⇒ 后端那句原话上屏（用户读到的是权威答案，不是前端猜的一句「失败」）", async () => {
+    patchFailure = new FakeApiError(409, "INVALID_SIM_STATUS_TRANSITION", BACKEND_409);
+    mount();
+    await lifecycleReady();
+    await userEvent.click(screen.getByTestId("usim-status-paused"));
+    const err = await screen.findByTestId("usim-status-error");
+    expect(err.textContent).toContain(BACKEND_409);
+    expect(err.textContent).toContain("后端拒绝了这次迁移"); // ③ 的招牌句（④ 必须没有这一句，见下）
+    // 状态**没有**被前端乐观地改掉（后端没答应，屏上就不许显示已经暂停了）
+    expect(screen.getByTestId("usim-lifecycle").getAttribute("data-status")).toBe("RUNNING");
+  });
+
+  it("④ 这一跳没走通 ⇒ 屏上说「不知道成没成」，且与 ③ 那句字面不同（两态合并成一句即红）", async () => {
+    patchFailure = new TypeError("Failed to fetch");
+    mount();
+    await lifecycleReady();
+    await userEvent.click(screen.getByTestId("usim-status-ended"));
+    const err = await screen.findByTestId("usim-status-error");
+    expect(err.textContent).toContain("不知道迁移成没成");
+    // ⚠ 禁的是 ③ 的**招牌句**「后端拒绝了这次迁移」，不是宽泛的「后端拒绝」四个字：
+    // ④ 今天的文案正是靠**点名**那一态来把两者划开（"这和「后端拒绝了」是两件事"），
+    // 拿宽泛子串去禁，等于禁止这句话说清楚自己不是什么 —— 那是拿错了尺子，
+    // 被禁的恰好是本判据想要的东西。判据仍是「两态不许合并」，只是钉在 ③ 的招牌句上。
+    expect(err.textContent).not.toContain("后端拒绝了这次迁移");
+    expect(err.textContent).not.toContain(BACKEND_409);
+  });
+
+  it("⑤ 「清单这一跳失败」与「清单里没有这一条」是两句不同的话（合并即红 —— 前者是不知道，后者是清单的结论）", async () => {
+    sessionsMode = "throw";
+    mount();
+    const bar = await lifecycleReady();
+    // 清单炸了 ⇒ **不知道**（不是"没有会话"）—— 这两句在屏上必须分得开
+    expect(bar.getAttribute("data-status")).toBe("unavailable");
+    const absentText = screen.getByTestId("usim-status-absent").textContent ?? "";
+    expect(absentText).toContain("不知道它现在是什么状态");
+    expect(absentText).not.toContain("没有会话，也就没有状态可迁移");
+
+    // 另一态：清单回来了，但里面没有指名那一条 —— 显式指定会话时才到得了
+    cleanup();
+    sessionsMode = "absent";
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <UnifiedSimShell
+          view={{ key: "k", title: "t", renderer: "r", layout: undefined, options: { sessionId: SESSION_ID } }}
+        />
+      </QueryClientProvider>,
+    );
+    enterExpert(); // 这处是内联 render，没走 mount() ⇒ 得自己走一步（见 enterExpert 头注）
+    const bar2 = await lifecycleReady();
+    await waitFor(() => expect(bar2.getAttribute("data-status")).toBe("absent"));
+    const absentText2 = screen.getByTestId("usim-status-absent").textContent ?? "";
+    expect(absentText2).toContain("会话清单里没有这一条");
+    expect(absentText2).not.toBe(absentText); // 两句话不许长一样
+  });
+
+  it("⑥ 波及面：不问一发不发；问了才发，四桶计数与逐条上屏（只读语义不做成副作用节奏）", async () => {
+    mount();
+    await lifecycleReady();
+    await selectCard("demandLoad");
+    expect(impactCalls.length).toBe(0); // 选中卡**不**触发预览
+
+    await userEvent.click(screen.getByTestId("usim-impact-ask"));
+    await waitFor(() => expect(impactCalls.length).toBe(1));
+    // 焦点就是那一格：`objectId × stateVar`
+    expect(impactCalls[0]).toEqual({ kind: "stateVar", objectId: "obj_0", stateVar: "demandLoad" });
+
+    const result = await screen.findByTestId("usim-impact-result");
+    expect(result.getAttribute("data-items")).toBe(String(IMPACT_FULL.items.length));
+    const buckets = screen.getByTestId("usim-impact-buckets").textContent ?? "";
+    expect(buckets).toContain("传导重算 2");
+    expect(buckets).toContain("派生重算 1");
+    expect(buckets).toContain("规则重判 1");
+    const list = screen.getByTestId("usim-impact-list").textContent ?? "";
+    expect(list).toContain("sv:obj_base_changzhou.loadIndex");
+    expect(screen.queryByTestId("usim-impact-unresolved")).toBeNull();
+  });
+
+  it("⑦ 空集分两态：确为叶子 vs 有算不出来的部分（契约原文：items 空 + unresolved 空 才是叶子）", async () => {
+    impactMode = "leaf";
+    mount();
+    await lifecycleReady();
+    await selectCard("demandLoad");
+    await userEvent.click(screen.getByTestId("usim-impact-ask"));
+    const leaf = await screen.findByTestId("usim-impact-leaf");
+    expect(leaf.textContent).toContain("不波及任何下游");
+    expect(screen.queryByTestId("usim-impact-unresolved")).toBeNull();
+
+    // 另一态：一条都没算出来，但**有算不出来的部分** ⇒ 绝不许说成「不波及」
+    cleanup();
+    impactMode = "unresolved";
+    mount();
+    await lifecycleReady();
+    await selectCard("demandLoad");
+    await userEvent.click(screen.getByTestId("usim-impact-ask"));
+    const un = await screen.findByTestId("usim-impact-unresolved");
+    expect(un.textContent).toContain("算不出来");
+    expect(un.textContent).toContain("派生规格 Base.capacity");
+    expect(screen.queryByTestId("usim-impact-leaf")).toBeNull();
+  });
+
+  it("⑨ 暂停不是单程路：暂停之后「恢复」仍然点得动，且真能迁回 RUNNING（2026-08-26 真浏览器实测抓到的死路，机器从此先说话）", async () => {
+    mount();
+    await lifecycleReady();
+    await userEvent.click(screen.getByTestId("usim-status-paused"));
+    const bar = screen.getByTestId("usim-lifecycle");
+    await waitFor(() => expect(bar.getAttribute("data-status")).toBe("PAUSED"));
+
+    // ⛔ 这一条就是那条死路的机器化：自动选取只认 RUNNING ⇒ 会话一暂停就被丢掉 ⇒
+    //    「恢复」按钮当场变灰 —— 把它恢复回来的那个按钮被它自己按没了。
+    const resume = screen.getByTestId("usim-status-running") as HTMLButtonElement;
+    expect(resume.disabled).toBe(false);
+    // 屏上要明说"这块屏还盯着它"，不许闷着（钉住 ≠ 冒充 RUNNING）
+    const reason = screen.getByTestId("usim-session-reason");
+    expect(reason.getAttribute("data-pinned")).toBe("1");
+    // WO-SCREEN-TOKENS-2：这句改说人话（枚举 `RUNNING` 不再上屏），断言跟着改成人话那半句。
+    // 机器读的那一份仍是枚举，就在下一行的 `data-status` 上 —— 两者各测各的，别混。
+    expect(reason.textContent).toContain("已经不在推演中了");
+    expect(reason.textContent, "接口枚举不许当人话印在用户屏上").not.toContain("RUNNING");
+
+    await userEvent.click(resume);
+    await waitFor(() => expect(bar.getAttribute("data-status")).toBe("RUNNING"));
+    expect(patchCalls.map((c) => c.status)).toEqual(["PAUSED", "RUNNING"]);
+    expect(screen.getByTestId("usim-session-reason").getAttribute("data-pinned")).toBe("0");
+  });
+
+  it("⑧ 波及面这一跳没走通 ⇒ 「不知道有没有波及」，与 ⑦ 的「不波及任何下游」字面不同", async () => {
+    impactMode = "throw";
+    mount();
+    await lifecycleReady();
+    await selectCard("demandLoad");
+    await userEvent.click(screen.getByTestId("usim-impact-ask"));
+    const err = await screen.findByTestId("usim-impact-error");
+    expect(err.textContent).toContain("不知道有没有波及");
+    expect(screen.queryByTestId("usim-impact-leaf")).toBeNull();
+    expect(screen.queryByTestId("usim-impact-result")).toBeNull();
+  });
+});

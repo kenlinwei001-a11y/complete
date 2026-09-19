@@ -1,0 +1,469 @@
+{
+  "counters": {
+    "steps": 8,
+    "clicks": 6,
+    "navs": 5
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 191,
+    "127.0.0.1:4051": 24,
+    "127.0.0.1:4052": 2
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/mapping/registries",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/object-types",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/domains",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/versions",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/propagation-rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/publish-requests",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/rules",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/invariants",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/link-types",
+      "status": 201,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/mapping/registries",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/links/e2e_probe_edge/deprecate",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/links/e2e_probe_edge/retire",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/ontology/mapping/registries",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/sim/view-config",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:45:10.568Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:45:10.590Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:45:11.284Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:45:11.321Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:45:11.324Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:45:11.326Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:45:13.082Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:45:13.160Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:45:13.345Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:45:16.711Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:45:16.711Z",
+      "kind": "STEP",
+      "msg": "#3 侧边栏 →「本体关系」"
+    },
+    {
+      "t": "2026-09-04T02:45:16.715Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「本体关系」"
+    },
+    {
+      "t": "2026-09-04T02:45:16.759Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/admin/ontology-relations"
+    },
+    {
+      "t": "2026-09-04T02:45:24.821Z",
+      "kind": "CANARY",
+      "msg": "关系页基线读数（应非空）",
+      "结构边": "·",
+      "状态变量": "41",
+      "生效因果边": "46",
+      "rowCount": 191
+    },
+    {
+      "t": "2026-09-04T02:45:24.854Z",
+      "kind": "PROBE",
+      "msg": "页面 select 数=243"
+    },
+    {
+      "t": "2026-09-04T02:45:24.854Z",
+      "kind": "SEL",
+      "msg": "[0] n=99 v= :: 来源类型… Base Model ProductPlatform ProductSeries ProductVersion BOMHeade"
+    },
+    {
+      "t": "2026-09-04T02:45:24.854Z",
+      "kind": "SEL",
+      "msg": "[1] n=99 v= :: 去向类型… Base Model ProductPlatform ProductSeries ProductVersion BOMHeade"
+    },
+    {
+      "t": "2026-09-04T02:45:24.854Z",
+      "kind": "SEL",
+      "msg": "[2] n=4 v=1:N :: 1:1 1:N N:1 N:N"
+    },
+    {
+      "t": "2026-09-04T02:45:24.854Z",
+      "kind": "SEL",
+      "msg": "[3] n=1 v= :: 先选来源与去向类型"
+    },
+    {
+      "t": "2026-09-04T02:45:24.854Z",
+      "kind": "SEL",
+      "msg": "[4] n=99 v= :: 来源类型… Base Model ProductPlatform ProductSeries ProductVersion BOMHeade"
+    },
+    {
+      "t": "2026-09-04T02:45:24.854Z",
+      "kind": "SEL",
+      "msg": "[5] n=117 v= :: 经由结构边… alarm_for_equip alt_for_material att_for_line base_data_health "
+    },
+    {
+      "t": "2026-09-04T02:45:24.854Z",
+      "kind": "SEL",
+      "msg": "[6] n=99 v= :: 去向类型… Base Model ProductPlatform ProductSeries ProductVersion BOMHeade"
+    },
+    {
+      "t": "2026-09-04T02:45:24.854Z",
+      "kind": "SEL",
+      "msg": "[7] n=2 v=PUBLISHED :: 启用（进推演） 停用（在册不生效）"
+    },
+    {
+      "t": "2026-09-04T02:45:24.860Z",
+      "kind": "PROBE",
+      "msg": "按钮词表",
+      "有建": true,
+      "有改编辑": false,
+      "有停用": true,
+      "有下线删除": true,
+      "全部": "🕐,健康度,🌙,A\nadmin\n▾,▾\n规划与平衡,▾\n推演,▾\n台账与地图,▾\n数据接入,▾\n建模与图谱,▾\n图谱体系,▾\n规则与校准,▾\n构建与成长,▾\n编排与场景,▾\n运营与审批,▾\n平台与系统,?,建结构边,查引用,停用,下线,建因果边,✕,挂上这条约束,停用类型,下线类型"
+    },
+    {
+      "t": "2026-09-04T02:45:24.860Z",
+      "kind": "STEP",
+      "msg": "#4 动作【建】：选来源=Order、去向=WorkOrder，点「建结构边」"
+    },
+    {
+      "t": "2026-09-04T02:45:25.218Z",
+      "kind": "SET",
+      "msg": "来源/去向",
+      "s1": {
+        "ok": true,
+        "value": "Order",
+        "text": "Order"
+      },
+      "s2": {
+        "ok": true,
+        "value": "WorkOrder",
+        "text": "WorkOrder"
+      }
+    },
+    {
+      "0": {
+        "i": 0,
+        "ph": "全局搜索对象…",
+        "v": ""
+      },
+      "1": {
+        "i": 1,
+        "ph": "关系 key（如 supplies_to）",
+        "v": ""
+      },
+      "2": {
+        "i": 2,
+        "ph": "规则 key",
+        "v": ""
+      },
+      "3": {
+        "i": 3,
+        "ph": "来源状态变量",
+        "v": ""
+      },
+      "4": {
+        "i": 4,
+        "ph": "去向状态变量",
+        "v": ""
+      },
+      "5": {
+        "i": 5,
+        "ph": "影响说明（这条边在业务上是什么意思）",
+        "v": ""
+      },
+      "t": "2026-09-04T02:45:26.427Z",
+      "kind": "PROBE",
+      "msg": "文本框"
+    },
+    {
+      "t": "2026-09-04T02:45:26.597Z",
+      "kind": "FILL",
+      "msg": "关系 key := e2e_probe_edge"
+    },
+    {
+      "t": "2026-09-04T02:45:27.437Z",
+      "kind": "BTN",
+      "msg": "建结构边 disabled?",
+      "mkDisabled": false
+    },
+    {
+      "t": "2026-09-04T02:45:27.456Z",
+      "kind": "CLICK",
+      "msg": "#4 点「建结构边」"
+    },
+    {
+      "t": "2026-09-04T02:45:31.592Z",
+      "kind": "ACT-建",
+      "msg": "结果",
+      "表里出现": true,
+      "新文本": [
+        "结构边 117",
+        "先选来源与去向类型",
+        "域：产品（23）",
+        "e2e_probe_edge\tOrder → WorkOrder\t1:N\t启用\t",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge",
+        "e2e_probe_edge"
+      ]
+    },
+    {
+      "t": "2026-09-04T02:45:31.765Z",
+      "kind": "SHOT",
+      "msg": "i4-after-create"
+    },
+    {
+      "t": "2026-09-04T02:45:31.792Z",
+      "kind": "DUMP",
+      "msg": "i4-after-create",
+      "chars": 343240
+    },
+    {
+      "t": "2026-09-04T02:45:31.792Z",
+      "kind": "STEP",
+      "msg": "#5 非法【端点不存在】：直接打后端 —— 屏上路径先试 UI，再核后端回包话术"
+    },
+    {
+      "t": "2026-09-04T02:45:31.792Z",
+      "kind": "STEP",
+      "msg": "#6 动作【停】：点新建那条边的「停用」"
+    },
+    {
+      "t": "2026-09-04T02:45:31.823Z",
+      "kind": "CLICK",
+      "msg": "#5 「停用」"
+    },
+    {
+      "t": "2026-09-04T02:45:35.455Z",
+      "kind": "ACT-停",
+      "msg": "行状态",
+      "附近": " / e2e_probe_edge\tOrder → WorkOrder\t1:N\t已停用\t / 查引用 / 停用 / 下线 /  / line_of_order\tOrderLine → Order\tN:1\t启用\t"
+    },
+    {
+      "t": "2026-09-04T02:45:35.596Z",
+      "kind": "SHOT",
+      "msg": "i4-after-stop"
+    },
+    {
+      "t": "2026-09-04T02:45:35.596Z",
+      "kind": "STEP",
+      "msg": "#7 动作【改】：找这条边的编辑入口"
+    },
+    {
+      "t": "2026-09-04T02:45:35.613Z",
+      "kind": "ACT-改",
+      "msg": "该行按钮",
+      "rowBtns": [
+        "查引用",
+        "停用",
+        "下线"
+      ],
+      "有编辑": false
+    },
+    {
+      "t": "2026-09-04T02:45:35.613Z",
+      "kind": "STEP",
+      "msg": "#8 动作【删】：点「下线」"
+    },
+    {
+      "t": "2026-09-04T02:45:35.650Z",
+      "kind": "CLICK",
+      "msg": "#6 「下线」"
+    },
+    {
+      "t": "2026-09-04T02:45:39.782Z",
+      "kind": "ACT-删",
+      "msg": "结果",
+      "表里还在": true
+    },
+    {
+      "t": "2026-09-04T02:45:39.939Z",
+      "kind": "SHOT",
+      "msg": "i4-after-delete"
+    },
+    {
+      "t": "2026-09-04T02:45:39.971Z",
+      "kind": "DUMP",
+      "msg": "i4-final",
+      "chars": 343213
+    }
+  ]
+}

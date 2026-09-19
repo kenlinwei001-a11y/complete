@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { ClassificationSchema, ClassifierParseError } from "./anthropic.js";
+import { ClassifierParseError } from "./anthropic.js";
+import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
+import { describeJsonDefect, parseLlmJson, reportJsonRepairs } from "./json-repair.js";
 import type { CompletionResp, CompletionReq, ParseReq, RawClassification } from "./types.js";
 
 /**
@@ -17,26 +19,17 @@ interface Completer {
   complete(req: CompletionReq): Promise<CompletionResp>;
 }
 
-/** 提取模型输出中的 JSON 对象（容忍 ```json 代码栅栏 / 前后说明文字）。 */
+/**
+ * 提取模型输出中的 JSON 对象（容忍 ```json 代码栅栏 / 前后说明文字 / **结构性语法破损**）。
+ *
+ * ⚠ 实现**已收归** `json-repair.ts::parseLlmJson`（唯一出处）。此处此前是第二份各自抄的
+ *   「剥围栏 + 取首末花括号」，与 openai.ts 那份并存 —— 两份都只提取不修复，于是
+ *   Kimi 关思考后 4/4 次的 `"key":` 缺值一次都救不回来。⛔ 别在这里重新写提取逻辑。
+ */
 export function extractJsonObject(text: string): unknown {
-  const trimmed = text.trim();
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(trimmed);
-  const body = (fenced ? fenced[1] : trimmed) ?? "";
-  try {
-    return JSON.parse(body);
-  } catch {
-    // 兜底：截取首个 { 到最后一个 } 之间的内容
-    const start = body.indexOf("{");
-    const end = body.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      try {
-        return JSON.parse(body.slice(start, end + 1));
-      } catch {
-        return undefined;
-      }
-    }
-    return undefined;
-  }
+  const attempt = parseLlmJson(text);
+  reportJsonRepairs("degrade.extractJsonObject", attempt.repairs);
+  return attempt.value;
 }
 
 function jsonModeSystem(system: string, jsonSchema: unknown): string {
@@ -78,15 +71,36 @@ export async function parseWithJsonModeDegradation<T>(client: Completer, req: Pa
         },
       ];
     } else {
+      // ⚠ 纠正语必须**指得出位置**。原来只说「不是合法 JSON」，模型只能整篇重摇；
+      //   把偏移 + 前后文给它，它改的是那一处。错误串来自它自己的输出，不额外花 token。
+      //   实测见过、而修复器**故意不修**的一类就靠这条路：`"locus "常州…`（键值粘连缺冒号）——
+      //   要修就得猜「键到哪个字为止」，那是编内容，见 json-repair.ts 纪律 ①。
       messages = [
         ...messages,
         { role: "assistant" as const, content: text },
-        { role: "user" as const, content: "上一条输出不是合法 JSON。请重新只输出一个符合 schema 的 JSON 对象。" },
+        {
+          role: "user" as const,
+          content:
+            `上一条输出不是合法 JSON。${describeJsonDefect(text)}\n` +
+            `请只输出一个符合 schema 的 JSON 对象，不要任何解释文字。`,
+        },
       ];
     }
   }
   return null;
 }
+
+/**
+ * WO-SLOT-HARVEST · JSON-mode 降级路的**分类信封 schema**：只校验路由骨架（candidates + outOfCatalog），
+ * 且**逐层 loose（不剔除未知键）** —— 这条路服务的正是"没有原生结构化输出"的兼容端点（Kimi/DeepSeek/vLLM 一类），
+ * 也正是最爱把槽位塞进 `candidates[i].extractedSlots` 的那批。用旧的 `ClassificationSchema`（candidates 严格剔未知键
+ * ＋ `extractedSlots` 必填）会**先删证据、再因缺字段判校验失败**：重试 2 次仍失败 → ClassifierParseError → 路径 B。
+ * 槽位不由本 schema 负责，一律交 `harvestClassificationSlots`（单源）。
+ */
+const ClassificationEnvelopeSchema = z.looseObject({
+  candidates: z.array(z.looseObject({ intentKey: z.string(), confidence: z.number() })).max(3),
+  outOfCatalog: z.boolean(),
+});
 
 /** 分类调用点的 JSON-mode 降级（L3）：失败语义 = ClassifierParseError → 既有路径 B。 */
 export async function classifyWithJsonModeDegradation(
@@ -97,9 +111,16 @@ export async function classifyWithJsonModeDegradation(
     model: req.model,
     system: req.system,
     messages: [{ role: "user", content: req.user }],
-    schema: ClassificationSchema,
+    schema: ClassificationEnvelopeSchema,
     maxTokens: 1024,
   });
   if (out == null) throw new ClassifierParseError();
-  return out;
+  // 槽位走单源收割器（顶层/candidate × 对象/JSON 串四形态全收），收不掉的进 unconsumed 并落日志。
+  const harvest = harvestClassificationSlots(out);
+  reportUnconsumedSlots("degrade.classify", harvest);
+  return {
+    candidates: out.candidates.map((c) => ({ intentKey: c.intentKey, confidence: c.confidence })),
+    outOfCatalog: out.outOfCatalog,
+    extractedSlots: harvest.slots,
+  };
 }

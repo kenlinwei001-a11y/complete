@@ -1,21 +1,65 @@
-import type { PublishImpact, RuleDryRunResult, RuleVerdict, RuleOrigin } from "@platform/contracts";
+import type { PublishImpact, RuleDryRunResult, RuleVerdict, RuleOrigin, RuleParamChange } from "@platform/contracts";
+import { RULE_PARAM_BINDINGS, applyRuleParamBindings, missingBoundThresholdRefs } from "@platform/contracts";
 import type { AuthCtx, Rule } from "./domain.js";
 import type { Repos } from "./repo/repo.js";
 import { newId } from "./ids.js";
-import { DslError, evaluateExpression, parseExpression } from "./ruledsl.js";
+import { DslError, collectParamRefs, evaluateExpression, parseExpression } from "./ruledsl.js";
 import { AppError, notFound, validationError } from "./errors.js";
 import type { OutboxService } from "./outbox.js";
+import type { AuthzService } from "./authz.js";
+import { SolverService } from "./solvers/service.js";
 
-/** 管理平台增量 §5：DSL 解析校验，错误定位到字符位（消息含「位置 N」，前端内联标注）。 */
-export function assertValidExpression(expression: string): void {
+/**
+ * 管理平台增量 §5：DSL 解析校验，错误定位到字符位（消息含「位置 N」，前端内联标注）。
+ *
+ * WO-RULE-EXPR-PARAMS 追加**闭包校验**：`expression` 引用的 `params.<名>` 必须都在该规则的
+ * `params` 里声明过。这道校验是"诚实缺席"的前移——否则一条引用了未声明阈值的规则能顺利发布，
+ * 到运行期才在每个消费点抛错，而两处 catch 都是 fail-open（`按通过处理` / `violated = false`），
+ * 结果就是**规则静悄悄变哑弹**：界面上规则在、状态 PUBLISHED、测试全绿，判定永不触发。
+ *
+ * WO-RULES-DSL-FAMILY 追加**反向**闭包（传 `ruleKey` 时生效）：被 `RULE_PARAM_BINDINGS` 登记为
+ * `threshold` 的 param，只要这条规则声明了它，expression 就**必须引用**它。
+ * 缺了这一向，正向校验对 `AnnualScenario.cashCushion < 50`（零引用）恒过 —— 管理员把 C18 的
+ * `params.cashFloor` 引用改回字面量再发布，阈值当场退回两份，G-C08-EXPR-PARAM-SPLIT 原地复发。
+ * 这正是 §8 记的「静态门看不见（门是源码扫描，看不到运行时规则记录）」那半。
+ */
+export function assertValidExpression(
+  expression: string,
+  declaredParams?: Record<string, unknown>,
+  ruleKey?: string,
+): void {
+  let ast;
   try {
-    parseExpression(expression);
+    ast = parseExpression(expression);
   } catch (e) {
     if (e instanceof DslError) {
       const pos = e.position ?? 0;
       throw validationError(`表达式语法错误（位置 ${pos}）：${e.message}`);
     }
     throw e;
+  }
+  if (declaredParams === undefined) return; // 调用方未提供 params 上下文（如纯语法校验）→ 只查语法
+  const declared = new Set(Object.keys(declaredParams));
+  const referenced = collectParamRefs(ast);
+  const missing = [...referenced].filter((n) => !declared.has(n));
+  if (missing.length > 0) {
+    throw validationError(
+      `表达式引用了未声明的命名阈值：${missing.map((n) => `params.${n}`).join("、")} —— ` +
+        `请在规则 params 中声明（阈值只存 params 一处，expression 只引用不复制）`,
+    );
+  }
+  // 反向闭包（本单补）：被绑定的**阈值型** param 必须真被 expression 引用，否则阈值又有第二份。
+  // 只有 ruleKey 已知时才查得了（绑定表按规则码索引）——纯语法校验路径不传 key，跳过。
+  if (ruleKey !== undefined) {
+    const unreferenced = missingBoundThresholdRefs(ruleKey, declaredParams, referenced);
+    if (unreferenced.length > 0) {
+      throw validationError(
+        `规则 ${ruleKey} 声明了阈值 ${unreferenced.map((n) => `params.${n}`).join("、")}，` +
+          `但 expression 没有引用它 —— 该阈值同时喂求解器算数（RULE_PARAM_BINDINGS），` +
+          `不引用就等于把同一个数写成两份（expression 里的字面量 + params），改一份不动另一份。` +
+          `请把表达式里的字面量换成 ${unreferenced.map((n) => `params.${n}`).join("、")}`,
+      );
+    }
   }
 }
 
@@ -27,6 +71,13 @@ export class RulesService {
   constructor(
     private repos: Repos,
     private outbox: OutboxService,
+    /**
+     * WO-69 P1 并线：`SolverService` 的列级（属性级）安全把 `authz` 变成**必填**构造参数
+     * （求解器上下文投影与 REST 走同一份 `decide()`——一个机制，不许各处再实现一套）。
+     * 本服务在 `projectRuleParams` 里自建 SolverService，故必须把同一个 authz 传下去；
+     * 若在此改成可选/传 null 兜过编译，就等于给列级守卫开了一个静默旁路。
+     */
+    private authz: AuthzService,
   ) {}
 
   async create(
@@ -38,6 +89,12 @@ export class RulesService {
       expression: string;
       scopeObjectTypes: string[];
       severity: "BLOCK" | "WARN" | "INFO";
+      params?: Record<string, number | string | string[]>;
+      /** WO-RULES-CLASSIFY（加性）：业务类别，随规则落库供规则库分类筛选。 */
+      category?: string;
+      /** WO-RULE-DISCOVERY（加性）：发现面元数据（DRIL 检索的标签/样例问句），随种子/创建落库。 */
+      tags?: string[];
+      answersQuestions?: string[];
       origin?: RuleOrigin;
       status?: "DRAFT" | "PUBLISHED";
     },
@@ -58,15 +115,55 @@ export class RulesService {
       expression: input.expression,
       scopeObjectTypes: input.scopeObjectTypes,
       severity: input.severity,
+      params: input.params ?? {},
+      ...(input.category ? { category: input.category } : {}),
+      ...(input.tags && input.tags.length > 0 ? { tags: input.tags } : {}),
+      ...(input.answersQuestions && input.answersQuestions.length > 0 ? { answersQuestions: input.answersQuestions } : {}),
       origin: input.origin ?? { type: "MANUAL" },
       version,
       status: input.status ?? "DRAFT",
     };
     await this.repos.rules.put(rule);
     if (rule.status === "PUBLISHED") {
+      await this.projectRuleParams(ctx, rule.key);
       await this.outbox.emit(ctx.tenantId, "rules.updated", { ruleKey: rule.key, version });
     }
     return rule;
+  }
+
+  /**
+   * 规则即引用 **P4 · 数值维**（G-10）：规则发布后，把它声明的**命名阈值**投影进本租户 `solver_params`
+   * —— 令 `rule.params` 成为该阈值的**唯一上游真源**，`solver_params` 只是派生副本。
+   *
+   * 为什么必须有这一步（P1/P2 之后仍缺的那一半）：P2 让求解器**评估**规则（`evaluatedRules`），但求解器
+   * **算数**用的系数仍读 `solver_params` 里自己那份同值字面量（C04 `certFactors.认证中` / C09 `health.*` /
+   * C18 `sop.cashFloor` / C21 `sop.dvThreshold`）。于是「改规则种子」只改了个没人读的诱饵，推演分毫不动。
+   * 投影之后：**改规则定义（经 /a/v1/rules 编辑路径）、不改任何代码 → 求解器输出真的变**。
+   *
+   * 边界（写在这里，别靠猜）：
+   *  · 只在**被绑定的规则**（`RULE_PARAM_BINDINGS`）发布时触发，其余规则零开销；
+   *  · 经 `SolverService.mutateParams`（solver_params 唯一写入通道）→ 版本 +1 + 双份历史快照，可回溯；
+   *  · 值未变则**不写**（种子期规则与 solver_params 本就同源同值 → 零写入，R6 字节一致不破）；
+   *  · **写回整个顶层键**（如整个 `health` 对象）—— `getParams` 对存储层是**浅合并**，只写子键会把同层
+   *    其它子键（`health.normal`）冲掉；
+   *  · `retire` **不回滚**已投影的值（参数保留最后一次已知口径），需要改回请发布新版本规则。
+   */
+  private async projectRuleParams(ctx: AuthCtx, ruleKey: string): Promise<RuleParamChange[]> {
+    if (!RULE_PARAM_BINDINGS.some((b) => b.ruleKey === ruleKey)) return [];
+    const published = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
+    const solvers = new SolverService(this.repos, this.authz);
+    const effective = (await solvers.getParams(ctx.tenantId)) as unknown as Record<string, unknown>;
+    const { params: next, changes } = applyRuleParamBindings(effective, published);
+    if (changes.length === 0) return [];
+    const topKeys = [...new Set(changes.map((c) => c.path.split(".")[0] as string))];
+    await solvers.mutateParams(
+      ctx.tenantId,
+      (stored) => {
+        for (const k of topKeys) stored[k] = structuredClone(next[k]);
+      },
+      `rule-params: ${changes.map((c) => `${c.ruleKey}.${c.param}→${c.path}=${String(c.to)}`).join(" · ")}`,
+    );
+    return changes;
   }
 
   async list(ctx: AuthCtx, status?: string): Promise<Rule[]> {
@@ -128,6 +225,9 @@ export class RulesService {
     id: string,
   ): Promise<Rule & { impact: PublishImpact; warnings: { code: string; message: string }[] }> {
     const rule = await this.get(ctx, id);
+    // 发布闸：expression × params 必须自洽（引用的阈值都已声明）。发布是"这条规则开始真判定"的时刻，
+    // 让不自洽的规则在这里被拒，好过让它以哑弹形态活在规则库里。
+    assertValidExpression(rule.expression, rule.params ?? {}, rule.key);
     const siblings = await this.repos.rules.list(
       ctx.tenantId,
       (r) => r.key === rule.key && r.status === "PUBLISHED" && r.id !== rule.id,
@@ -148,6 +248,8 @@ export class RulesService {
     for (const old of siblings) await this.repos.rules.put({ ...old, status: "RETIRED" });
     const updated: Rule = { ...rule, status: "PUBLISHED" };
     await this.repos.rules.put(updated);
+    // G-10 P4：发布即让该规则的命名阈值成为推演参数的真源（改规则即改推演，无需改代码）。
+    await this.projectRuleParams(ctx, rule.key);
     await this.outbox.emit(ctx.tenantId, "rules.updated", { ruleKey: rule.key, version: rule.version });
     const impact = await this.impact(ctx, rule.key);
     return { ...updated, impact, warnings };
@@ -158,14 +260,18 @@ export class RulesService {
   async update(
     ctx: AuthCtx,
     id: string,
-    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity">>,
+    patch: Partial<Pick<Rule, "name" | "description" | "expression" | "scopeObjectTypes" | "severity" | "params" | "category" | "tags" | "answersQuestions">>,
   ): Promise<Rule> {
     const rule = await this.get(ctx, id);
     if (rule.status !== "DRAFT") {
       throw new AppError("IMMUTABLE_VERSION", "仅 DRAFT 状态的规则可修改；已发布版本请新建版本（同 key 再 POST）", 409);
     }
-    if (patch.expression !== undefined) assertValidExpression(patch.expression);
     const updated: Rule = { ...rule, ...patch, id: rule.id, key: rule.key, version: rule.version };
+    // 语法 + 阈值闭包一起校验：按**合并后**的 params 判，否则"只改 expression 不改 params"或
+    // "只删 params 不改 expression"这两种最常见的分叉编辑都能溜过去。
+    if (patch.expression !== undefined || patch.params !== undefined) {
+      assertValidExpression(updated.expression, updated.params ?? {}, updated.key);
+    }
     await this.repos.rules.put(updated);
     return updated;
   }
@@ -178,8 +284,15 @@ export class RulesService {
     return retired;
   }
 
-  /** POST /a/v1/rules/dry-run：编辑器「测试」按钮 —— 即时求值或定位语法错误字符位。 */
-  dryRun(expression: string, samplePayload: Record<string, unknown>): RuleDryRunResult {
+  /**
+   * POST /a/v1/rules/dry-run：编辑器「测试」按钮 —— 即时求值或定位语法错误字符位。
+   * `params`（可选·加性）= 编辑器里正在编的命名阈值，供 `params.<名>` 求值；缺则该引用报错而非兜底。
+   */
+  dryRun(
+    expression: string,
+    samplePayload: Record<string, unknown>,
+    params?: Record<string, unknown>,
+  ): RuleDryRunResult {
     try {
       parseExpression(expression);
     } catch (e) {
@@ -189,7 +302,7 @@ export class RulesService {
       throw e;
     }
     try {
-      const violated = evaluateExpression(expression, { payload: samplePayload });
+      const violated = evaluateExpression(expression, { payload: samplePayload, params });
       return {
         ok: true,
         violated,
@@ -208,6 +321,7 @@ export class RulesService {
     payload: Record<string, unknown>,
   ): Promise<RuleVerdict[]> {
     let rules: Rule[];
+    let notFound: string[] = [];
     if (ruleIds === "ALL_APPLICABLE") {
       rules = await this.repos.rules.list(ctx.tenantId, (r) => r.status === "PUBLISHED");
     } else {
@@ -215,6 +329,11 @@ export class RulesService {
       rules = all.filter(
         (r) => (ruleIds.includes(r.id) || ruleIds.includes(r.key)) && r.status !== "RETIRED",
       );
+      // WO-RULE-DISCOVERY：显式点名却查无（或已退役）的 key **不许静默丢弃**——
+      // 实测「要 ["C33","C34","C35","C07"] 回 3 条 verdict，C07 消失、无错误无警告」，
+      // 模型照工具说明去要不存在的 C07/C14/C17/C19/C20 时拿不到任何「这条不存在」的反馈。
+      const matched = new Set(rules.flatMap((r) => [r.id, r.key]));
+      notFound = ruleIds.filter((id) => !matched.has(id));
     }
     const verdicts: RuleVerdict[] = [];
     for (const rule of rules) {
@@ -223,12 +342,17 @@ export class RulesService {
       let explanation: string;
       try {
         parseExpression(rule.expression);
-        violated = evaluateExpression(rule.expression, { payload });
+        // WO-RULE-EXPR-PARAMS：喂本规则的命名阈值 —— `params.cashFloor` 这类引用在**生产判定路径**
+        // 上真正可解析。此前只有前端编辑器把 params 并进 dry-run 载荷（客户端合并），
+        // 生产路径一个字都没喂 ⇒ 编辑器"测试"说命中、线上判定说通过。
+        violated = evaluateExpression(rule.expression, { payload, params: rule.params });
         explanation = violated
           ? `${rule.key} ${rule.name}: 违反约束（${rule.expression}）`
           : `${rule.key} ${rule.name}: 通过`;
-      } catch {
-        explanation = `${rule.key} ${rule.name}: 表达式不可求值，按通过处理`;
+      } catch (e) {
+        // fail-open 保留（不因一条坏规则拖垮整批评估），但**把原因写进 explanation**：
+        // 静默的 "按通过处理" 曾让阈值缺失的哑弹规则看起来一切正常。
+        explanation = `${rule.key} ${rule.name}: 表达式不可求值，按通过处理（${e instanceof Error ? e.message : String(e)}）`;
       }
       verdicts.push({
         ruleId: rule.key,
@@ -237,6 +361,17 @@ export class RulesService {
         explanation,
         // 引用模式增量 §2.2：求值结果带实际生效版本（留痕「当时生效」）
         ruleVersion: rule.version,
+      });
+    }
+    // 查无 key 的占位 verdict（WARN 不阻断·explanation 说清「不存在/已退役」）：看见 ≠ 判得准，
+    // 但「看不见自己看漏了」比两者都坏。规则清单的正确取法写进 explanation，指路牌不再靠记。
+    for (const key of notFound) {
+      verdicts.push({
+        ruleId: key,
+        passed: false,
+        severity: "WARN",
+        explanation: `${key}: 规则库中不存在或已退役，未评估——可用规则清单经 retrieve_knowledge(kinds=["rule"]) 或 GET /a/v1/rules 核对`,
+        notFound: true,
       });
     }
     return verdicts;

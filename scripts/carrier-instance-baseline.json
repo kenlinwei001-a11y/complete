@@ -1,0 +1,34 @@
+{
+  "note": "carrier-has-instances 棘轮基线：存量「流程承载物零实例」的具名豁免，只许降不许升。每条必须写 why。键 = `<流程号>|<承载物类型>`。",
+  "generatedBy": "node scripts/check-carrier-has-instances.mjs --update",
+  "exempt": {
+    "P37|ProductionSchedule": {
+      "verdict": "NOT_MATERIALIZED",
+      "why": "「没接线」不是「没数据」：generateBattery(42,'S') 真产了 650 行 productionSchedules，只是 instantiateBattery 的物化清单里没有 putAll(\"ProductionSchedule\", …)。这是 apps/datacore/src/synthetic/service.ts:821 明写的判断——「高量低值执行类(ShiftPlan/ProductionSchedule/WIPMove/操作工考勤等)保持模型态不物化（避单次 seed 逾万对象拖垮）」。代价是 P37(MPS 编制) 与 P40(APS 排产) 这两条 PRD §3.2.2 点名的编号锚点流程，在 demo 里下钻不到任何一条排产单。修法属另一张 WO（或补物化点并接受对象量、或给这两条流程换承载物）。"
+    },
+    "P40|ProductionSchedule": {
+      "verdict": "NOT_MATERIALIZED",
+      "why": "同 P37：共用承载物 ProductionSchedule，生成器产 650 行、物化清单未列。共用承载物本身是合法的（process-layer.test.ts 明确断言 P37/P40 都指 ProductionSchedule），问题在于这个承载物一条都不落库。"
+    },
+    "P44|WIPMove": {
+      "verdict": "NOT_MATERIALIZED",
+      "why": "同族：generateBattery 产 765 行 wipMoves，属 service.ts:821 点名的「高量低值执行类」，刻意不物化。后果是 P44(工序流转报工) 下钻不到任何流转记录。"
+    },
+    "P53|SparePartConsumption": {
+      "verdict": "NOT_MATERIALIZED",
+      "why": "generateBattery 产 193 行 sparePartConsumptions，物化清单未列。注意同批的 MaintenanceOrder（同样 193 行）已于 WO-OPT-WHATIF-CLOSE 补进物化清单（service.ts:833），备件消耗是同一笔欠账里**没补完**的那一半。"
+    },
+    "P61|ShiftPlan": {
+      "verdict": "NOT_MATERIALIZED",
+      "why": "generateBattery 产 1820 行 shiftPlans，属 service.ts:821 点名的「高量低值执行类」，刻意不物化（1820 行是 demo 里最大的一类之一）。后果是 P61(班次计划排定) 下钻不到任何班次计划。"
+    },
+    "P62|OperatorSkillCert": {
+      "verdict": "NOT_MATERIALIZED",
+      "why": "generateBattery 产 97 行 operatorSkillCerts，物化清单未列。97 行并不「高量」——它落在 service.ts:821 那句括号里的「操作工考勤等」一并被略过，属可以低成本补上的一条。"
+    },
+    "P65|AdoptedMitigation": {
+      "verdict": "NOT_MATERIALIZED",
+      "why": "**与上面六条性质不同，别混为一谈**：AdoptedMitigation 不是合成种子该产的东西，它是**运行期台账**——由 adopt_mitigation 这个 Action 审批通过后写入（apps/datacore/src/app.ts:658 objects.put({type:\"AdoptedMitigation\"})），risk_timeline 随后按它扣风险（solvers/risk.ts:512）。种子期零实例是**设计如此**（还没人采纳过任何处置方案），不是缺陷。之所以仍进基线而不是从判据里剔除：本门守的是「流程行能不能下钻到东西」，P65 在 demo 里确实下钻不到，这个事实要可见；把它悄悄排除掉，就等于让门替人做了「这不算问题」的判断。"
+    }
+  }
+}

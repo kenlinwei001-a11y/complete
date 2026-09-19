@@ -24,4 +24,4 @@ export type {
   ToolLoopReq,
 } from "@platform/llm-adapters";
 
-export { isContextWindowExceededError } from "@platform/llm-adapters";
+export { isContextWindowExceededError, LlmEmptyResponseError } from "@platform/llm-adapters";

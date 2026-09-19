@@ -58,7 +58,7 @@ const POOLS: Record<PoolKey, readonly string[]> = {
   ],
   // S&OP 第⑤步决议（对策池，按当月缺口选；name + delta 两段，这里只存 name 文本）
   sop_resolution: [
-    "宜宾二线提前爬坡补缺口",
+    "枣庄一线提前爬坡补缺口",
     "正极提前备料专项（到货风险对冲）",
     "检修季错峰排产平滑产出",
     "跨基地产能借调消化高峰需求",

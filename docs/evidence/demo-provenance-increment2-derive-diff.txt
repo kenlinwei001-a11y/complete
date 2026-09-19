@@ -1,0 +1,36 @@
+
+=== 34/34 types differ ===
+ • Base: name:'Base'vs'生产基地' | domain:'unassigned'vs'factory' | MISSING derivedProps:[committedQty,oeeIndex,orderCount] | dtype:baseId:ref/string | ref:baseId:Line/null
+ • Model: name:'Model'vs'电池型号' | domain:'unassigned'vs'product' | MISSING derivedProps:[orderCount,totalDemand] | dtype:bases:string/json
+ • Order: name:'Order'vs'销售订单' | domain:'unassigned'vs'product' | MISSING derivedProps:[value] | dtype:cust:ref/string bases:string/json unitPrice:ref/number | ref:cust:Customer/null unitPrice:Model/null
+ • Line: name:'Line'vs'产线' | domain:'unassigned'vs'factory' | onlyCurated:[utilization,actual_output_daily,schedule_attainment]
+ • Process: name:'Process'vs'工序' | domain:'unassigned'vs'process' | onlyCurated:[yield_baseline] | dtype:name:enum/string
+ • Equipment: name:'Equipment'vs'设备' | domain:'unassigned'vs'equip' | onlyCurated:[oee_current]
+ • MaintPlan: name:'MaintPlan'vs'检修计划' | domain:'unassigned'vs'equip'
+ • Segment: name:'Segment'vs'应用细分' | domain:'unassigned'vs'product' | dtype:name:ref/string gmRate:ref/number | ref:name:DemandSegment/null gmRate:DemandSegment/null
+ • Shipment: name:'Shipment'vs'在途批次' | domain:'unassigned'vs'capacity'
+ • DataSourceHealth: name:'DataSourceHealth'vs'数据源健康度' | domain:'unassigned'vs'quality'
+ • DemandSegment: name:'DemandSegment'vs'需求细分' | domain:'unassigned'vs'forecast' | MISSING derivedProps:[marginWan,revenueWan] | dtype:segment:ref/string marginPct:ref/number | ref:segment:Segment/null marginPct:Segment/null
+ • FinancePlan: name:'FinancePlan'vs'财务预算' | domain:'unassigned'vs'finance'
+ • MaterialBalance: name:'MaterialBalance'vs'物料平衡' | domain:'unassigned'vs'material' | dtype:material:ref/string etaDate:date/string | ref:material:Material/null
+ • KSF: name:'KSF'vs'关键成功要素' | domain:'unassigned'vs'decision' | dtype:key:string/enum
+ • Principal: name:'Principal'vs'责任主体' | domain:'unassigned'vs'people' | dtype:parentRef:enum/ref | ref:parentRef:null/Principal
+ • Metric: name:'Metric'vs'经营指标' | domain:'unassigned'vs'decision' | MISSING derivedProps:[delta,gapPct] | dtype:category:string/enum unit:enum/string chainKey:ref/string | ref:chainKey:RootCauseChain/null
+ • RootCauseChain: name:'RootCauseChain'vs'根因归因链' | domain:'unassigned'vs'decision' | dtype:kpiCategory:ref/enum driverType:enum/string selectField:enum/string baseWeight:ref/number | ref:kpiCategory:Metric/null baseWeight:DataSourceHealth/null
+ • SopVersionRow: name:'SopVersionRow'vs'S&OP版本演进' | domain:'unassigned'vs'plan' | MISSING derivedProps:[gap] | dtype:date:date/string
+ • Material: name:'Material'vs'物料' | domain:'unassigned'vs'supply' | dtype:matId:ref/string carbonFactor:ref/number | ref:matId:CarbonFactor/null carbonFactor:CarbonFactor/null
+ • MaterialBatch: name:'MaterialBatch'vs'物料批次' | domain:'unassigned'vs'supply' | dtype:matId:ref/string | ref:matId:Material/null
+ • Customer: name:'Customer'vs'客户' | domain:'unassigned'vs'commercial'
+ • ARInvoice: name:'ARInvoice'vs'应收发票' | domain:'unassigned'vs'commercial' | dtype:custName:ref/string | ref:custName:Customer/null
+ • Certification: name:'Certification'vs'认证' | domain:'unassigned'vs'factory' | dtype:modelId:ref/string lineId:ref/string status:enum/string | ref:modelId:Model/null lineId:Line/null
+ • EnergyMeter: name:'EnergyMeter'vs'能耗计量' | domain:'unassigned'vs'factory' | dtype:baseId:ref/string processKey:enum/string | ref:baseId:Base/null
+ • ChangeoverMatrix: name:'ChangeoverMatrix'vs'换型矩阵' | domain:'unassigned'vs'factory' | dtype:fromModel:ref/string toModel:ref/string | ref:fromModel:Model/null toModel:Model/null
+ • CapexProject: name:'CapexProject'vs'产能投资项目' | domain:'unassigned'vs'plan'
+ • PurchaseOrder: name:'PurchaseOrder'vs'采购订单' | domain:'unassigned'vs'supply' | dtype:matId:ref/string | ref:matId:Material/null
+ • CarbonFactor: name:'CarbonFactor'vs'碳因子' | domain:'unassigned'vs'supply' | dtype:kind:enum/string
+ • FinanceAccount: name:'FinanceAccount'vs'基地财务账户' | domain:'unassigned'vs'finance' | dtype:baseId:ref/string | ref:baseId:Base/null
+ • FinanceMetric: name:'FinanceMetric'vs'情景财务指标' | domain:'unassigned'vs'finance' | dtype:scenarioKey:ref/string cashCushion:ref/number irr:ref/number capexSpent:ref/number | ref:scenarioKey:AnnualScenario/null cashCushion:AnnualScenario/null irr:AnnualScenario/null capexSpent:AnnualScenario/null
+ • ExternalSignal: name:'ExternalSignal'vs'外部信号' | domain:'unassigned'vs'external' | dtype:asOf:date/string trend:enum/string
+ • AnnualScenario: name:'AnnualScenario'vs'年度情景' | domain:'unassigned'vs'plan' | dtype:key:ref/enum year:ref/number capex:ref/number irr:ref/number cashCushion:ref/number | ref:key:FinanceMetric/null year:PlanTarget/null capex:FinanceMetric/null irr:FinanceMetric/null cashCushion:FinanceMetric/null
+ • ScenarioTrigger: name:'ScenarioTrigger'vs'情景触发条件' | domain:'unassigned'vs'plan' | dtype:notifiedTo:string/json
+ • PlanTarget: name:'PlanTarget'vs'计划目标' | domain:'unassigned'vs'plan' | dtype:scenarioKey:ref/string | ref:scenarioKey:FinanceMetric/null

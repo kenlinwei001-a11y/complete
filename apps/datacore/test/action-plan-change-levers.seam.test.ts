@@ -1,0 +1,538 @@
+import { describe, expect, it } from "vitest";
+import { makeApp, seedBattery, ADMIN, type TestApp } from "./helpers.js";
+import { BATTERY_ACTION_TYPES } from "../src/synthetic/battery.js";
+
+/**
+ * WO-ACTION-NOOP-EXEC · 非 global-sim 的 `plan_change` **按 payload 形态二分**（G-ACTION-NOOP-EXEC 续接）。
+ *
+ * ── 病灶与本单改动 ───────────────────────────────────────────────────────────
+ * `plan_change` 一个 key 承载多条生产者，此前只有 `source:"global-sim"` 一条有真执行器，
+ * 其余**一律诚实失败**。实测（WO-ACTION-NOOP-EXEC）发现这一刀切错了半边：
+ * 风险看板「采纳风险处置方案」（`RiskBoardView.tsx adoptScenario()`）发的
+ * `payload.levers = LiveScenario.apply`，其契约就是 `{objectType,objectId,prop,value}[]` ——
+ * **与 `采纳产能保障方案` 的杠杆同形**，也就是说它一直带着一份可直接落库的真值写入指令，
+ * 却因为 source 不叫 global-sim 而被判「未实现」。据此二分：
+ *   · 带 levers → 真写本体属性 + runDerivations（与 `采纳产能保障方案` **同一份**写入器）；
+ *   · 不带 levers → 仍诚实失败，但错误里说清**为什么**（模拟态结论 / 无落点），欠账可读。
+ *
+ * ── 2026-08-18（WO-PLAN-CHANGE-LEVER-MAP）────────────────────────────────────
+ * 带 levers 的生产者从 1 条 → **3 条**：order-chain 结论（交期紧张→Order.outsourceRatio /
+ * 需提价→Order.unitPrice）与协调加产（被挤占比→Order.outsourceRatio）带上了真域映射，
+ * 由下方「★ 主判据③④」逐字段回读咬住；「变异反证」用例把同一载荷摘掉 levers，
+ * 证明它**当场回到诚实失败**（判据在 payload 形状，不在生产者身份）。
+ *
+ * ── 本测的头号判据（写死在这里防回潮）─────────────────────────────────────────
+ * **审批后回仓储查那个对象，属性必须真的变成了拨定值。**
+ * 断言 `ok:true` / `status==="EXECUTED"` / targetRef 非空都是**运输层**断言 ——
+ * 那正是让「假 MO 号」这个病灶存活至今的东西（状态全绿、真值零动）。
+ *
+ * ── 为什么第一条是金丝雀（铁律 0.6：扫描/检查类结论一律先自证工具）───────────────
+ * 本测的核心手法是「建草稿 → 审批 → 回读对象核对字段」。若这套手法本身坏了
+ * （回读端点换形状 / 种子里没这个对象 / 审批路由改了），那么**所有**用例都会读到"没变"，
+ * 而我会把它读成"代码没写"——恰好是相反的结论。故先拿一个**确知有真写入路径**的型
+ * （`对象数据变更`，`app.ts domainExecutor` 里第一批就有分支）跑同一套手法：
+ * 它若也报"没变"，报的是**工具坏了**，不许报"代码没写"。
+ */
+
+interface ExecDone {
+  status: string;
+  executionResult: { ok?: boolean; targetRef?: string; error?: string };
+}
+
+/**
+ * 审批用**多角色**身份：`adopt_mitigation` 的审批链是 planner → admin **两步**
+ * （`battery.ts BATTERY_ACTION_TYPES`）。只带 admin 角色时第一步会 409 INVALID_STEP，
+ * 草稿停在 PENDING_APPROVAL —— **执行器根本没被调用**，而它看起来"没报未实现"，
+ * 于是会被误判成「已接线」。这正是本文件反复警告的那种病：**信号是真的，只是它不指向我要断言的东西**。
+ */
+const APPROVER = { "x-debug-user": "demo:admin:admin|planner" };
+
+/**
+ * 建草稿 → 提交 → **走完整条审批链** → 返回终态。
+ * 两种回包形状都认（审批端点历史上回过 draft 包裹与裸包两形态）。
+ */
+async function submitAndApprove(t: TestApp, actionTypeKey: string, payload: Record<string, unknown>): Promise<ExecDone> {
+  const created = await t.app.inject({
+    method: "POST",
+    url: "/a/v1/action-drafts",
+    headers: APPROVER,
+    payload: { actionTypeKey, payload, submit: true },
+  });
+  expect(created.statusCode, created.body).toBeLessThan(300);
+  const draftId = (created.json() as { draftId: string }).draftId;
+
+  let out: ExecDone = { status: "", executionResult: {} };
+  // 多步链需要逐步批；上限 6 步足够覆盖本仓最长的链（2 步），超了说明链没在推进。
+  for (let step = 0; step < 6; step++) {
+    const approved = await t.app.inject({
+      method: "POST",
+      url: `/a/v1/action-drafts/${draftId}/approve`,
+      headers: APPROVER,
+      payload: {},
+    });
+    const b = approved.json() as {
+      status?: string;
+      draft?: { status: string; executionResult?: ExecDone["executionResult"] };
+      executionResult?: ExecDone["executionResult"];
+    };
+    out = {
+      status: b.draft?.status ?? b.status ?? "",
+      executionResult: b.draft?.executionResult ?? b.executionResult ?? {},
+    };
+    if (out.status !== "PENDING_APPROVAL" && out.status !== "APPROVED") break;
+  }
+  return out;
+}
+
+/** 回仓储读一个对象的属性真值（**不复用审批响应里的回显**——回显证明不了落库）。 */
+async function readProp(t: TestApp, type: string, objectId: string, prop: string): Promise<unknown> {
+  const res = await t.app.inject({ method: "GET", url: `/a/v1/objects?type=${type}&pageSize=500`, headers: ADMIN });
+  const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+  const hit = items.find((o) => o.id === objectId);
+  expect(hit, `回读不到对象 ${objectId}（类型 ${type}）—— 是回读手法坏了，不是写入没发生`).toBeTruthy();
+  return hit!.props[prop];
+}
+
+async function firstEquipment(t: TestApp): Promise<{ id: string; oee: number }> {
+  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Equipment&pageSize=1", headers: ADMIN });
+  const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+  expect(items.length, "种子里应有 Equipment 对象（否则本测无从验证写回）").toBeGreaterThan(0);
+  const e = items[0]!;
+  return { id: e.id, oee: Number(e.props.oee_current) };
+}
+
+/**
+ * 取种子锚单 SO-3391（`order_fullchain` 契约头注的实测锚单·WO-PLAN-CHANGE-LEVER-MAP 新增）。
+ * 从 **API 回读**（不走仓储内部接口）——与前端生产者拿到的是同一条路的同一对象。
+ */
+async function anchorOrder(t: TestApp): Promise<{ id: string; so: string; qty: number; unitPrice: number }> {
+  const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Order&pageSize=500", headers: ADMIN });
+  const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+  const hit = items.find((o) => String(o.props.so) === "SO-3391");
+  expect(hit, "种子里应有 SO-3391（order_fullchain 契约锚单）——没有 ⇒ 本测的种子前提变了").toBeTruthy();
+  return { id: hit!.id, so: "SO-3391", qty: Number(hit!.props.qty), unitPrice: Number(hit!.props.unitPrice) };
+}
+
+describe("plan_change（非 global-sim）· 按 payload 形态二分：带杠杆真写 / 无杠杆诚实失败", () => {
+  it("金丝雀（先自证检查手法）：`对象数据变更` 走同一套「审批→回读核对」必须看得见真值变化", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const eq = await firstEquipment(t);
+    const target = Math.min(0.99, Number((eq.oee + 0.05).toFixed(4)));
+    expect(target, "构造值必须与现值不同，否则本金丝雀无法区分'写了'与'没写'").not.toBe(eq.oee);
+
+    const done = await submitAndApprove(t, "对象数据变更", {
+      objectId: eq.id,
+      patch: { oee_current: target },
+      reason: "金丝雀：验证「审批→回读核对」这套手法本身是通的",
+    });
+    expect(done.status, `金丝雀执行失败：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+    const after = Number(await readProp(t, "Equipment", eq.id, "oee_current"));
+    expect(
+      after,
+      "⛔ 金丝雀不中 ⇒ **本测的检查手法坏了**（回读端点/种子/审批路由变了），" +
+        "下面任何用例报出的『真值没变』都不许读作『代码没写』——本次结论作废，先修手法。",
+    ).toBeCloseTo(target, 6);
+  }, 120000);
+
+  it("★ 主判据：plan_change 带 levers → 审批后 Equipment.oee_current **在仓储里真的变了**", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const eq = await firstEquipment(t);
+    const target = Math.min(0.99, Number((eq.oee + 0.08).toFixed(4)));
+    expect(target).not.toBe(eq.oee);
+
+    // 载荷逐字照抄生产者 `RiskBoardView.tsx adoptScenario()`：versionId + reason + baseId + levers(=LiveScenario.apply)。
+    const done = await submitAndApprove(t, "plan_change", {
+      versionId: `risk:changzhou:scn-1`,
+      reason: "采纳风险处置方案：设备提效（基地 changzhou）",
+      baseId: "changzhou",
+      scenarioId: "scn-1",
+      scenarioName: "设备提效",
+      levers: [{ objectType: "Equipment", objectId: eq.id, prop: "oee_current", value: target }],
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+
+    // ★ 效果层：这一条红 = 又回到「审批通过但什么都没写」。
+    const after = Number(await readProp(t, "Equipment", eq.id, "oee_current"));
+    expect(after, "审批通过但 Equipment.oee_current 未变 —— 空执行回潮（G-ACTION-NOOP-EXEC）").toBeCloseTo(target, 6);
+    expect(after).not.toBeCloseTo(eq.oee, 6);
+
+    // targetRef 自证写了什么，且**绝不能是 MO 形态**（假单号与真单号不可分辨正是病灶）。
+    expect(done.executionResult.targetRef).toContain("PLAN-CHANGE-LEVER");
+    expect(String(done.executionResult.targetRef)).not.toMatch(/^MO-\d{4}/);
+  }, 120000);
+
+  it("诚实边界①：sim_sandbox 结论（patch.simulated:true·无杠杆）→ 失败且点名「仿真不得回流真实」，真值零动", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const eq = await firstEquipment(t);
+
+    // 载荷照抄 `SandboxView.tsx onAdopt()`。
+    const done = await submitAndApprove(t, "plan_change", {
+      versionId: "sim:sess-1@tick3",
+      reason: "采纳推演沙盘结论（GLOBAL · 全局态 71.4）",
+      patch: { source: "sim_sandbox", simulated: true, sessionId: "sess-1", tick: 3, globalKpi: 71.4, scope: "GLOBAL" },
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
+    expect(done.executionResult.error, "错误必须说清『为什么』，否则欠账只活在源码注释里").toContain("simulated");
+    expect(done.executionResult.error).toContain("仿真");
+    // 且真值未被污染。
+    expect(Number(await readProp(t, "Equipment", eq.id, "oee_current"))).toBeCloseTo(eq.oee, 6);
+  }, 120000);
+
+  it("诚实边界②：order-chain 结论的无杠杆形态（「可接」无附加条件 / 生产者反查不到对象）→ 失败且点名「没有 levers 落点」", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // ⚠️ 2026-08-18 更新（WO-PLAN-CHANGE-LEVER-MAP）：OrderChainView 在**有数值对冲项**时会带 levers
+    //    （见下方主判据③）；本用例喂的是它仍合法的**无杠杆形态**——判据在 payload 形状不在生产者身份：
+    //    「可接」无条件 / 信用阻断（收款是事件不是拨杆·不映射）/ 反查不到 Order 对象时，生产者仍发这个形状，
+    //    诚实失败**仍是正确行为**。
+    const done = await submitAndApprove(t, "plan_change", {
+      versionId: "order-chain:SO-00001",
+      reason: "全链判定：可接",
+      so: "SO-00001",
+      verdict: "可接",
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
+    expect(done.executionResult.error).toContain("levers");
+    // 错误里必须把收到的键列出来——审批人据此判断"是生产者少发了字段"还是"这一型本来就没落点"。
+    expect(done.executionResult.error).toContain("verdict");
+  }, 120000);
+
+  it("★ 主判据③（WO-PLAN-CHANGE-LEVER-MAP）：order-chain 结论带真域映射 levers → Order 属性逐字段真落库 + 派生重算", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const ord = await anchorOrder(t);
+
+    // 生产者算术逐式复刻（`OrderChainView.tsx` 采纳按钮）：
+    //   交期判「紧张」→ Order.outsourceRatio = (demand − P90)/demand；财务判「需提价8%」→ unitPrice × 1.08。
+    // P90 锚 = 2520（contracts OrderDeliveryJudgeSchema 头注·seed 42·SO-3391：可产基地 4 × 700 × 0.9）。
+    const p90 = 2520;
+    expect(ord.qty, "契约锚变了：SO-3391 qty 应大于 P90 锚 2520，否则『交期紧张』场景不成立").toBeGreaterThan(p90);
+    const outsource = Math.round(((ord.qty - p90) / ord.qty) * 1e4) / 1e4;
+    const newPrice = Math.round(ord.unitPrice * 1.08 * 1e4) / 1e4;
+    expect(newPrice).not.toBe(ord.unitPrice);
+    expect(outsource).toBeGreaterThan(0);
+
+    // 载荷逐字照抄新生产者（WO-PLAN-CHANGE-LEVER-MAP 后形态·两条 cond 同时成立的案例）。
+    const done = await submitAndApprove(t, "plan_change", {
+      versionId: `order-chain:${ord.so}`,
+      reason: `订单 ${ord.so}（4680-NCM·${ord.qty}）结论：提价8%接；周供给 P90 ${p90} 套/周 < 本单需求 ${ord.qty} 套（按整单落单周折算·C02），需夜班/外协对冲`,
+      so: ord.so,
+      verdict: "提价8%接",
+      levers: [
+        { objectType: "Order", objectId: ord.id, prop: "outsourceRatio", value: outsource },
+        { objectType: "Order", objectId: ord.id, prop: "unitPrice", value: newPrice },
+      ],
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+
+    // ★ 效果层·逐字段相等（红 = 回到「审批通过但什么都没写」）。
+    expect(
+      Number(await readProp(t, "Order", ord.id, "outsourceRatio")),
+      "order-chain 采纳后 Order.outsourceRatio 未落库 —— 杠杆映射空转",
+    ).toBe(outsource);
+    expect(Number(await readProp(t, "Order", ord.id, "unitPrice")), "提价杠杆未落库").toBe(newPrice);
+    // 派生重算证据：Order.value = qty × unitPrice（orderDerived）必须跟着变 —— 证明 runDerivations 真跑了。
+    expect(
+      Number(await readProp(t, "Order", ord.id, "value")),
+      "unitPrice 落库但派生 Order.value 没重算 —— runDerivations 没跑（与 prng.round 同式对拍）",
+    ).toBe(Math.round(ord.qty * newPrice * 1e6) / 1e6);
+
+    expect(done.executionResult.targetRef).toContain("PLAN-CHANGE-LEVER");
+    expect(String(done.executionResult.targetRef)).not.toMatch(/^MO-\d{4}/);
+  }, 120000);
+
+  it("★ 主判据④（WO-PLAN-CHANGE-LEVER-MAP）：协调加产 intent:coordinate_capacity 带 levers → Order.outsourceRatio 真落库", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const ord = await anchorOrder(t);
+
+    // 生产者算术逐式复刻（`CustomerImpactBar.tsx coordLevers`）：外协占比 = 被挤套数 ÷ 整单套数，封顶 1。
+    const displaced = Math.floor(ord.qty / 3);
+    const ratio = Math.min(1, Math.round((displaced / ord.qty) * 1e4) / 1e4);
+    expect(ratio).toBeGreaterThan(0);
+
+    // 载荷逐字照抄 `CustomerImpactBar.tsx confirmCoordinate`（WO-PLAN-CHANGE-LEVER-MAP 后形态）。
+    const done = await submitAndApprove(t, "plan_change", {
+      intent: "coordinate_capacity", orderId: ord.so, cust: "广汽集团", seg: "乘用车",
+      qty: displaced, impactYi: Math.round(((displaced * 1.8) / 1e4) * 1000) / 1000,
+      versionId: `global-sim-impact:sess-9:${ord.so}`,
+      reason: `协调加产：为 ${ord.so}（广汽集团）协调产能以消减被挤单影响`,
+      levers: [{ objectType: "Order", objectId: ord.id, prop: "outsourceRatio", value: ratio }],
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+    expect(
+      Number(await readProp(t, "Order", ord.id, "outsourceRatio")),
+      "协调加产采纳后 Order.outsourceRatio 未落库 —— 杠杆映射空转",
+    ).toBe(ratio);
+    expect(done.executionResult.targetRef).toContain("PLAN-CHANGE-LEVER");
+    expect(String(done.executionResult.targetRef)).not.toMatch(/^MO-\d{4}/);
+  }, 120000);
+
+  it("变异反证（摘掉 lever 映射 ⇒ 回到诚实失败）：同一协调加产载荷摘掉 levers → EXECUTION_FAILED 且点名 levers", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const ord = await anchorOrder(t);
+    const before = Number(await readProp(t, "Order", ord.id, "outsourceRatio"));
+
+    // 主判据④的载荷**原样摘掉 levers 键**（= 生产者退回旧形态）——必须回到诚实失败，且真值零动。
+    const done = await submitAndApprove(t, "plan_change", {
+      intent: "coordinate_capacity", orderId: ord.so, cust: "广汽集团", seg: "乘用车",
+      qty: 100, impactYi: 0.02,
+      versionId: `global-sim-impact:sess-10:${ord.so}`,
+      reason: `协调加产：为 ${ord.so}（广汽集团）协调产能以消减被挤单影响`,
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult.error).toContain("EXECUTOR_NOT_IMPLEMENTED");
+    expect(done.executionResult.error).toContain("levers");
+    expect(done.executionResult.error).toContain("intent"); // 收到的键照实列出
+    expect(Number(await readProp(t, "Order", ord.id, "outsourceRatio")), "诚实失败却写了真值").toBe(before);
+  }, 120000);
+
+  it("原子性：杠杆行缺 value → 拒绝臆造写入，且**一个字节都不写**", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const eq = await firstEquipment(t);
+
+    const done = await submitAndApprove(t, "plan_change", {
+      versionId: "risk:changzhou:scn-2",
+      reason: "采纳风险处置方案（残缺载荷）",
+      levers: [{ objectType: "Equipment", objectId: eq.id, prop: "oee_current" }],
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult.error).toContain("拒绝臆造写入");
+    expect(Number(await readProp(t, "Equipment", eq.id, "oee_current"))).toBeCloseTo(eq.oee, 6);
+  }, 120000);
+});
+
+/**
+ * ── 兜底线普查（WO-ACTION-NOOP-EXEC · 机器先说话）──────────────────────────────
+ *
+ * 为什么要有这一条：`G-ACTION-NOOP-EXEC` 这张账被人手改过四轮，每轮都留下一句
+ * 「现在还剩 N 型」，而**每一轮的那个 N 到下一轮都是错的**（本体 §116 与 §8 两处同源过期
+ * 就是实证）。根因是那个数一直靠**读代码推算**，没有任何机器在数。
+ *
+ * 本条把「还剩几型落兜底线」变成**跑出来的**结果：把每个已注册 ActionType 用一份最小合法载荷
+ * 真推过 `建草稿 → 提交 → 审批 → domainExecutor`，看它最终**落在哪条线上**。
+ * 判别标记是 `EXECUTOR_NOT_IMPLEMENTED:` —— 它只由 `actions.ts notImplementedResult()` 产出，
+ * 是兜底线的唯一出口；任何其它结局（EXECUTED、或"情景不存在"这类**领域**错误）都证明它进了真分支。
+ *
+ * ⚠️ 金丝雀内置：`对象数据变更` / `采纳产能保障方案` 是**确知已接**的型。它们若也被数进兜底线，
+ *    那是本普查的手法坏了（载荷构造错 / 审批路由变了），**不许**读作「代码没接」。
+ */
+/**
+ * ⚠️ 实测纠正（**别照着源码推算，这一条就是推算会错的活例**）：
+ * `定稿月度计划版本` / `计划版本变更` 的草稿在 **POST /a/v1/action-drafts 建草稿期**
+ * 就校验 S&OP 版本存在，喂假 id 直接 404 —— **根本走不到执行器**，普查会在这里断掉。
+ * 我第一版按读代码推断「它们会落到执行器再失败」，实跑第一次就被打脸。故这两型必须喂**真版本 id**。
+ */
+function minimalPayloads(sopVersionId: string): Record<string, Record<string, unknown>> {
+  return {
+    adopt_mitigation: { base: "常州", factor: "cf-nonexistent-probe", planKey: "probe" },
+    plan_change: { versionId: "census:probe", reason: "普查探针（无杠杆形态）" },
+    AOP情景拍板: { scenarioKey: "__census_probe__", year: 2026 },
+    校准参数变更: { proposalId: "__census_probe__", mode: "approve" },
+    // WO-ADOPT-SCHEME-CARRIER 后：该型已接真执行器（app.ts SCHEME-ADOPT 分支），这份残缺载荷
+    // **进真分支**、被 SchemeAdoptionPayloadSchema 拒收（错误含「payload 不合契约」）→
+    // 普查把它数进「进真分支」组，不再落兜底线。载荷保持残缺不动：普查判的是落哪条线，
+    // 契约拒绝同样是「进了真分支」的证据（判别标记 EXECUTOR_NOT_IMPLEMENTED 只在兜底线产出）。
+    采纳经营方案: { schemeNo: "壹", scheme: {}, targets: {} },
+    定稿月度计划版本: { versionId: sopVersionId, snapshot: {} },
+    计划版本变更: { versionId: sopVersionId, reason: "普查探针" },
+    采纳产能保障方案: { modelId: "4680-NCM", levers: [] },
+    对象数据变更: { objectId: "__census_probe__", patch: {}, reason: "普查探针" },
+    // WO-SIM-ACTION-REAL 新增型。载荷形状照 `ForecastAdoptionPayloadSchema` 逐字段填，**不自创**
+    // ——普查若因我编错入参而失败，会被读成「执行器没接」，那正是本普查要避免的误判。
+    采纳产能预测结论: {
+      source: "project-sim",
+      modelId: "4680-NCM",
+      mode: "single",
+      demandWan: 40,
+      weeks: 6,
+      snapshot: { capWanP50: 42, capWanP90: 38, gapWan: 2, healthFactor: 0.9, ok: false, mainBn: "__census_probe__" },
+    },
+    流水线发布物化: { workflowId: "__census_probe__", nodeId: "n1", rows: [] },
+  };
+}
+
+/**
+ * 造一个走到 `EXEC_MEETING` 的真 S&OP 版本（`定稿月度计划版本` 的前置）。
+ * 步骤序列与实参照抄既有 `test/sop-actions.test.ts` 的真实用法——**不自创**，
+ * 免得本普查因为自己编的入参失败，然后被读成「执行器没接」。
+ */
+async function makeSopVersionAtExecMeeting(t: TestApp): Promise<string> {
+  const created = await t.app.inject({
+    method: "POST",
+    url: "/a/v1/sop/versions",
+    headers: APPROVER,
+    payload: { month: "2026-07", inputs: { demTotal: 120 } },
+  });
+  expect(created.statusCode, created.body).toBe(201);
+  const id = (created.json() as { id: string }).id;
+  const advance = (step: number, payload: Record<string, unknown> = {}) =>
+    t.app.inject({ method: "POST", url: `/a/v1/sop/versions/${id}/advance`, headers: APPROVER, payload: { step, payload } });
+  await advance(1);
+  await advance(2, {
+    segments: [
+      { key: "pas", name: "乘用车", target: 60, rolling: 61, lastActual: 58 },
+      { key: "ess", name: "储能", target: 38, rolling: 37, lastActual: 36 },
+      { key: "com", name: "商用车", target: 22, rolling: 21, lastActual: 20 },
+    ],
+  });
+  await advance(3, {});
+  await advance(4, { revSum: 100, gmSum: 14, gmBudget: 14, cashCushion: 56 });
+  const s5 = await advance(5, { resolutions: [{ name: "常州夜班", delta: 1.2 }] });
+  expect((s5.json() as { status?: string }).status, `S&OP 版本没走到 EXEC_MEETING：${s5.body}`).toBe("EXEC_MEETING");
+  return id;
+}
+
+/** 已知**确已接**真执行器的型（金丝雀基准·改这里等于改基准，请连同论据一起改）。 */
+const KNOWN_WIRED_CANARIES = ["对象数据变更", "采纳产能保障方案"];
+
+/**
+ * 实测 golden：**跑出来的**、当前真正落在兜底线上的探针。
+ * 改这个数组前必须先跑本用例看新输出，**不许照着源码推算**（那正是本条要根治的病）。
+ *
+ * ⚠️ 这个数组的第一版我写的是 `["采纳经营方案"]` —— **推算的，实跑当场证伪**：
+ *    机器数出来是 **2** 个。差的那个是 `plan_change`，因为它是**条件成员**：
+ *    同一个 key 承载六条生产者，本普查喂的是「无杠杆」那一形态（`{versionId, reason}`），
+ *    它确实落兜底线；而**带 levers 的那一形态真写真值**——由本文件「★ 主判据」用例
+ *    回读 `Equipment.oee_current` 逐字段咬住。
+ *    ⇒ **「落兜底线」是 (型 × 载荷形态) 的属性，不是型的属性。** 这正是 `G-PLAN-CHANGE-NO-LEVER`
+ *      要表达的东西，也是本仓「N 型没接」这个说法每轮都错的根源：它把一个二维事实压成了一维。
+ *
+ * 2026-08-18 实跑更新（WO-ADOPT-SCHEME-CARRIER 接线后）：`采纳经营方案` 已接真执行器
+ * （app.ts SCHEME-ADOPT 分支，合法载荷落 scheme_adoptions 台账），普查喂的残缺载荷
+ * 进真分支被契约拒绝（「payload 不合契约」），机器数出的兜底线回到 **1** 个 = `plan_change`
+ * （仍只是它的「无杠杆形态」这个条件成员）。本数组按机器输出据实改，不是照源码推算。
+ */
+const EXPECTED_FALLBACK = ["plan_change"];
+
+describe("兜底线普查 · 「还剩几型审批通过后什么都不写」由机器数，不由人推算", () => {
+  it("逐型真推过 domainExecutor，落兜底线者必须恰好等于登记在案的那一组", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    const registered = BATTERY_ACTION_TYPES.map((a) => a.key);
+    expect(registered.length, "BATTERY_ACTION_TYPES 读出 0 型 ⇒ **本普查坏了**，不许读作『没有动作类型』").toBeGreaterThan(0);
+
+    // 先造一个**真** S&OP 版本并把它推到 EXEC_MEETING（见 minimalPayloads 头注）。
+    // ⚠️ 又一次实测纠正：只建版本还不够 —— `定稿月度计划版本` 的草稿在建草稿期还要求版本
+    //    **已走完五步状态机**，否则 409「cannot request finalize from DRAFT (run step ⑤ first)」，
+    //    同样走不到执行器。步骤序列照抄既有 `test/sop-actions.test.ts` 的真实用法，不自创。
+    const sopVersionId = await makeSopVersionAtExecMeeting(t);
+    const payloads = minimalPayloads(sopVersionId);
+
+    const fallback: string[] = [];
+    const realBranch: { key: string; outcome: string }[] = [];
+    for (const key of registered) {
+      const payload = payloads[key];
+      expect(payload, `新增了 ActionType「${key}」却没给普查载荷 —— 本普查会漏数它，请补 minimalPayloads()`).toBeTruthy();
+      const done = await submitAndApprove(t, key, payload!);
+      // ⚠️ 先证明「执行器真的被调用过」再分类。停在 PENDING_APPROVAL/DRAFT = **本次没测到执行器**，
+      //    它既不是「已接线」也不是「没接线」——把它算进任何一桶都是拿一个不度量该事实的信号下结论。
+      expect(
+        done.status,
+        `「${key}」没走到执行终态（停在 ${done.status || "空"}）⇒ **本普查这一型没测到执行器**，` +
+          `结论作废：既不许算作已接线，也不许算作没接线。多半是审批链角色不够或载荷没过 paramsSchema。`,
+      ).toMatch(/^(EXECUTED|EXECUTION_FAILED)$/);
+      const err = String(done.executionResult.error ?? "");
+      if (err.includes("EXECUTOR_NOT_IMPLEMENTED")) fallback.push(key);
+      else realBranch.push({ key, outcome: done.status + (err ? `(${err.slice(0, 60)})` : "") });
+    }
+
+    // 普查结果原样打印——交单报告里的那个数字直接取这里，不再手抄。
+    // eslint-disable-next-line no-console
+    console.log(
+      `\n[兜底线普查] 已注册 ${registered.length} 型｜落兜底线 ${fallback.length} 型：${fallback.join("、") || "（无）"}\n` +
+        realBranch.map((r) => `   进真分支：${r.key} → ${r.outcome}`).join("\n"),
+    );
+
+    // 每一型都必须被数到（普查覆盖率自证：漏数一型就等于替它作了「已接线」的默认判断）。
+    expect(fallback.length + realBranch.length, "普查覆盖数 ≠ 已注册数 ⇒ 有型被漏数").toBe(registered.length);
+
+    // ★ 金丝雀先说话：确知已接的型若也被数进兜底线，是手法坏了，不是代码没接。
+    for (const c of KNOWN_WIRED_CANARIES) {
+      expect(
+        fallback,
+        `⛔ 金丝雀「${c}」被数进了兜底线 ⇒ **本普查的手法坏了**（载荷/审批路由/判别标记变了）。` +
+          `本次普查结论作废：不许据此报「还剩 N 型没接」。`,
+      ).not.toContain(c);
+    }
+
+    expect(
+      [...fallback].sort(),
+      "兜底线成员变了。多出来 = 有型退回空执行（回潮）；少了 = 有型接上了，" +
+        "请同步改 EXPECTED_FALLBACK 与本体 §8 G-ACTION-NOOP-EXEC 的状态描述（**别只改代码不改账**）。",
+    ).toEqual([...EXPECTED_FALLBACK].sort());
+  }, 300000);
+});
+
+describe("采纳经营方案 · 契约拒绝 ⇒ 诚实失败（**拒绝臆造写入**，非法载荷不得进台账）", () => {
+  it("契约不过的载荷 → 审批后诚实失败（「payload 不合契约」），且 scheme_adoptions 台账零条", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // 载荷刻意残缺（scheme.scores 缺六维、targets 缺 hard 开关）：WO-ADOPT-SCHEME-CARRIER 接线后，
+    // 它进 app.ts SCHEME-ADOPT 真分支，被 SchemeAdoptionPayloadSchema 当场拒收——这是**契约拒绝**的
+    // 诚实失败，不是兜底线的 EXECUTOR_NOT_IMPLEMENTED（该型已 WIRED，「域映射缺失」一说不复存在）。
+    const done = await submitAndApprove(t, "采纳经营方案", {
+      schemeNo: "壹",
+      pathKey: "P2",
+      scheme: { name: "稳健", outcome: { rev: 512, gm: 0.171, share: 0.19, turns: 6.2, cash: 46, capex: 22 }, scores: {}, hardViol: [] },
+      targets: { revGrowthPct: 18, gmFloor: 0.155, sharePts: 12, turnsFloor: 6, capexCap: 30, cashFloor: 40 },
+    });
+    expect(done.status).toBe("EXECUTION_FAILED");
+    expect(done.executionResult.error).toContain("payload 不合契约");
+    expect(done.executionResult.error).toContain("拒绝臆造写入");
+    // 据实反向咬死：失败理由不再是「未接执行器」——若哪天它重新出现，说明真分支被 bypass 回了兜底线。
+    expect(done.executionResult.error).not.toContain("EXECUTOR_NOT_IMPLEMENTED");
+    // ★ 本条用例的保留价值：非法载荷**一个字节都不许写进台账**。
+    expect(
+      await t.repos.schemeAdoptions.list("demo"),
+      "契约不过的载荷却落进了 scheme_adoptions 台账 —— 「拒绝臆造写入」的红线被突破",
+    ).toEqual([]);
+  }, 120000);
+
+  it("硬约束（业务已裁定·勿改）：采纳动作**绝不覆盖**经营目标基线 —— 真落台账后 plan_generate 输出逐字节相同", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+
+    // 用真消费者取证：`plan_generate` 读的就是目标基线。目标若被动过，同参数两次调用不可能同输出。
+    const before = await t.app.inject({ method: "POST", url: "/a/v1/solvers/plan_generate/invoke", headers: ADMIN, payload: { args: {} } });
+    expect(before.statusCode, before.body).toBeLessThan(300);
+
+    // 载荷按 SchemeAdoptionPayloadSchema 逐字段填全——本例现在**真的执行**（接线前它停在诚实失败，
+    // 「基线未动」是空转断言；执行器活着且真写台账，「不写回基线」这条裁定才真在被检验）。
+    const done = await submitAndApprove(t, "采纳经营方案", {
+      schemeNo: "叁",
+      pathKey: "P5",
+      year: 2026,
+      scheme: {
+        name: "进取",
+        outcome: { rev: 610, gm: 0.142, share: 0.24, turns: 5.4, cash: 31, capex: 44 },
+        scores: { profit: 61, scale: 72, cash: 55, growth: 80, stability: 48, total: 63 },
+        hardViol: ["C15"],
+      },
+      // 刻意送一组**与基线完全不同**的目标：若执行器哪天偷偷把 targets 写回基线，本例立刻变红。
+      targets: { revGrowthPct: 99, gmFloor: 0.99, sharePts: 99, turnsFloor: 99, capexCap: 999, cashFloor: 999, hard: { gm: true, cash: true, capex: true } },
+    });
+    expect(done.status, `采纳执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+    // 效果层自证：台账真落了一条（否则下面的「基线未动」重新沦为空转断言）。
+    expect(
+      (await t.repos.schemeAdoptions.list("demo")).length,
+      "采纳已 EXECUTED 但 scheme_adoptions 台账没有记录 —— 写路径断了",
+    ).toBe(1);
+
+    const after = await t.app.inject({ method: "POST", url: "/a/v1/solvers/plan_generate/invoke", headers: ADMIN, payload: { args: {} } });
+    expect(
+      JSON.stringify((after.json() as { data: unknown }).data),
+      "采纳动作改动了经营目标基线 —— 违反业务硬裁定「目标不能改」（scheme-adoption.ts 契约头注：targets 只供对账，没有任何写回基线的路径）",
+    ).toBe(JSON.stringify((before.json() as { data: unknown }).data));
+  }, 120000);
+});

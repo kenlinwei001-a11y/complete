@@ -1,0 +1,7 @@
+[
+  {
+    "commit": "e6a19e3f6",
+    "id": "G-STEP-VOCAB-SPLIT-TWO-HOMES",
+    "reason": "审核方合并 wo-anchor-recal-2 时解冲突用了「同 G-编号行取 theirs」这条规则，而对表格行来说 theirs 未必是更新的一侧，于是把已闭合的 ✅（WO-STEP-VOCAB-UPLIFT 落地）取回了旧的 🔴。属真回退、非有意打回；已在 8a54df0f 按父提交内容逐字恢复为 ✅。本条登记的是历史事实，不是承认该行应为 🔴。"
+  }
+]
