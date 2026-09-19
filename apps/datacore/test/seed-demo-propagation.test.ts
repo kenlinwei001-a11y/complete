@@ -1018,7 +1018,12 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
       if (!Object.prototype.hasOwnProperty.call(inp.stateVarDomains, r.targetStateVar)) continue;
       const ref = r.coefficientRef;
       // 引擎真读的那个值：`coefficientRef` 解析优先，解析不到才回落内联（G-10 P1 同一条路）。
-      const eff = ref ? (inp.ruleParams[ref.ruleKey]?.[ref.paramKey] ?? r.coefficient) : r.coefficient;
+      // ⚠ `RuleParamLookup` 的值是 `unknown` ⇒ 必须**显式收窄**，且收不到就报红：
+      //   悄悄 `as number` 会让「params 里塞了个字符串」变成 `NaN`，而 `NaN > 0.75` 恒 false
+      //   ⇒ 那一格从此永远"达标"。**把红吞成绿，比没有这道门更坏。**
+      const raw: unknown = ref ? (inp.ruleParams[ref.ruleKey]?.[ref.paramKey] ?? r.coefficient) : r.coefficient;
+      expect(typeof raw, `${r.key} 的生效系数不是数 ⇒ 预算算不出来（不许当 0 跳过）`).toBe("number");
+      const eff = raw as number;
       const w = inp.pairWeights[r.key] ?? null;
       const byTarget = new Map<string, number>();
       for (const l of inp.graph.links) {
