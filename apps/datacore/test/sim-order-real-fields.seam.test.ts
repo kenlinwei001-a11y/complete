@@ -93,6 +93,10 @@ describe("WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM�
     const completed = all.filter((o) => o.props.status === "COMPLETED").length;
     expect(live.length, "在手订单集不应为空").toBeGreaterThan(0);
     expect(completed, "对象层应当有 COMPLETED 单；为 0 则本用例的过滤臂在空跑").toBeGreaterThan(0);
+    // ⚠ **本行由 `toBe(0)` 翻成 `toBe(completed)`，是照 canonical 自己留的指令翻的**：
+    //   canonical 原注写「`WO-SIM-SETTLED-ORDERS`（`entersSimWorld`）落地那天，这里会红 —— 那是对的：
+    //   那时把本行改成 `toBe(completed)`，而不是把这条断言删掉。」**收编本分支那天就是那一天** ——
+    //   `sim/seed-world.ts` 的 `deriveSeedBaseSnapshot` 与 `listSimWorldObjects` 现都按 `entersSimWorld` 过滤。
     expect(all.length - live.length).toBe(completed);
 
     // 每张在手单的三个字段都必须是有限数（否则它那格会落哈希，B 的算式就不成立）

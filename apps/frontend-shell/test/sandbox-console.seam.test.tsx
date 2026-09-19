@@ -1023,3 +1023,134 @@ describe("§9 · WO-CONSOLE-CLEANUP：五笔欠账收口", () => {
     expect(CHAIN_STAGES.length, "段数已经是 5，若这里仍是 4 说明 fixture/契约漂了").toBe(5);
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+describe("§10 · WO-SANDBOX-IMPEDIMENT-RESIDUAL：收编掉的那几样必须在沙盘里", () => {
+  /**
+   * ── 这一节守的命题 ────────────────────────────────────────────────────────
+   * `chain-impediments` 被 `ShellLayout.CONSOLIDATED_INTO_SANDBOX` 收进沙盘（那条登记的
+   * `where` 自己写着「残差见 AUDIT §2」）。收编是**有损**的：独立屏 18/18 有的四样，
+   * 收编后的沙盘 **0/18**（真起 datacore `SEED_DEMO=1` 实测）——
+   * 每条卡点自己的严重度 · `scanId` · 阈值出处 · 触发判定明细。
+   *
+   * 后果落在**没有候选方案的那些卡点**上：它们既没有严重度也没有判定依据，
+   * 「哪条先管」在屏上没有任何输入。本 fixture 的 8 条**候选数全为 0**，
+   * 正是这一档 —— 所以它咬的就是最痛的那一档，不是顺手的那一档。
+   *
+   * ⚠ **本节不新增门文件**（禁令 3），扩的是本已有的 seam 文件。
+   */
+
+  /** 🐤 金丝雀：fixture 必须真的是「零候选」那一档，否则本节咬的不是它自称咬的东西。 */
+  it("🐤 前提自证：本 fixture 8 条全部零候选 —— 正是「看不到有多严重」最痛的那一档", () => {
+    const imp = loadImp();
+    expect(imp.impediments.length, "条数变了就说明 fixture 换了，下面的逐条断言得跟着重核").toBe(8);
+    expect(
+      imp.impediments.filter((i) => (i.candidates ?? []).length === 0).length,
+      "若 fixture 变成有候选，这一节就不再覆盖「没有候选方案的卡点看不到严重度」那一档",
+    ).toBe(8);
+  });
+
+  it("① 每条卡点自己的严重度上屏，且与载荷逐字节相等（收编后实测 0/8）", async () => {
+    mount();
+    await ready();
+    const imp = loadImp();
+    for (const im of imp.impediments) {
+      const el = await screen.findByTestId(`sc-imp-severity-${im.impedimentId}`);
+      // 咬 data 属性 = 咬「这个数是从载荷来的」，不是咬某段中文怎么排版
+      expect(el.getAttribute("data-severity"), `${im.impedimentId} 的严重度与载荷不逐字节相等`).toBe(
+        String(im.severity),
+      );
+      expect(el.textContent ?? "").toContain(String(im.severity));
+    }
+  });
+
+  /**
+   * ② **本单的头号判据：「严重度」这个词不许再有第二个无标注的主。**
+   *
+   * 实测（真起 datacore）同一条卡点 `mbal-2` 屏上有两个数、两个都叫「严重度」：
+   *  · **16** —— 卡点自己现在的严重度，双因子 `round(100 × sqrt(breach × exposure))`；
+   *  · **6**  —— 候选方案对照表那一维，单因子 `round(breach × 100)`。
+   * 它们**不是「现在 vs 施策后」，是两种口径**（该候选 baseline 与 value 实测都是 6，压根没动）。
+   * 所以本单不许只是"再加一个数上去" —— 加一个同名的第三个数比不加更坏。
+   */
+  it("② 严重度消歧：行内那个数自带「卡点当前」限定，且口径说明可点开（不是光秃秃三个字）", async () => {
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    const imp = loadImp();
+    const first = imp.impediments[0]!;
+    const sev = await screen.findByTestId(`sc-imp-severity-${first.impedimentId}`);
+    const txt = sev.textContent ?? "";
+    expect(txt, "必须写明这是「卡点当前」的严重度 —— 屏上另有一个单因子口径的同名数").toContain("卡点当前严重度");
+    // 🐤 反向金丝雀：把限定词剥掉之后不许还剩一个独立的「严重度」——
+    // 否则「卡点当前严重度（严重度 N）」这种两头都占的写法也能蒙混过关。
+    expect(txt.replace("卡点当前严重度", ""), "去掉限定词后不许还剩一个独立的「严重度」").not.toContain("严重度");
+
+    // 口径差必须点得开，且把「不能直接比大小」说出来（这才是消歧的实质，不是换个词而已）
+    const why = await openInfo(user, `sc-imp-sev-why-${first.impedimentId}`);
+    const whyTxt = why.textContent ?? "";
+    expect(whyTxt, "两个因子必须说清").toContain("下游受影响订单金额");
+    expect(whyTxt, "候选表那一维是单因子这件事必须当面说").toContain("单因子");
+    expect(whyTxt, "最要紧的一句：两个数不能直接比大小").toContain("不能直接比大小");
+  });
+
+  it("③ 阈值出处上屏，且按 ruleKey 连回载荷 thresholds[]（不是前端自己编一个出处）", async () => {
+    mount();
+    await ready();
+    const imp = loadImp();
+    const byRule = new Map((imp.thresholds ?? []).map((t) => [t.ruleKey, t]));
+    let checked = 0;
+    for (const im of imp.impediments) {
+      const rk = im.evidence.ruleKey;
+      if (rk === null || rk === undefined) continue;
+      const t = byRule.get(rk);
+      if (t === undefined) continue;
+      const el = await screen.findByTestId(`sc-imp-threshold-src-${im.impedimentId}`);
+      const txt = el.textContent ?? "";
+      // `fieldPath` 那一档最要紧：「改数据即改判定」和「改规则才改判定」是两种完全不同的修法
+      if (t.fieldPath !== undefined) expect(txt, `${im.impedimentId} 没把 fieldPath 打出来`).toContain(t.fieldPath);
+      checked++;
+    }
+    // 🐤 金丝雀：一条都没核到 ⇒ 上面的循环整个空转，而空转的循环永远是绿的
+    expect(
+      checked,
+      "一条阈值出处都没核到 —— 是 fixture 的 ruleKey 与 thresholds 对不上，不是屏上没问题",
+    ).toBeGreaterThan(0);
+  });
+
+  it("④ scanId 上屏且与载荷相等 —— 两屏对不上账时靠它判「是不是同一轮扫描」", async () => {
+    mount();
+    await ready();
+    const imp = loadImp();
+    const el = await screen.findByTestId("sc-imp-scan-id");
+    expect(el.getAttribute("data-scan-id")).toBe(imp.scanId);
+    expect(el.textContent ?? "").toContain(imp.scanId);
+  });
+
+  it("⑤ 触发判定条逐条在场 —— 复用独立屏那一份实现，不是沙盘另写一个", async () => {
+    const user = userEvent.setup();
+    mount();
+    await ready();
+    const imp = loadImp();
+    const first = imp.impediments[0]!;
+
+    // 🐤 反向先跑（这半是**懒挂载**的钉子，不是凑绿的步骤）：
+    // 折叠态**必须不挂**子树。实测依据：`<details>` 折叠时 React 照样挂子树，
+    // 新加的判定条会**白打 18 次 `decision_play`**；改懒挂载后折叠 0 次 / 展开 18 次。
+    // ⛔ 若这里改成「折叠态也能找到」，等于把那次性能修复悄悄退掉而没有任何东西会红。
+    expect(
+      screen.queryByTestId(`sc-imp-play-${first.impedimentId}-trigstrip`),
+      "折叠态不许挂子树 —— 挂了就是每次渲染白打一轮 decision_play",
+    ).toBeNull();
+
+    // 展开后才谈「在不在场」：用户看不见的东西，本来就不该被要求渲染。
+    await user.click(await screen.findByTestId("sc-impjump-summary"));
+
+    for (const im of imp.impediments) {
+      // `TriggerVerdictStrip` 自带 loading/error/empty 三态三句，本处只咬「它确实挂上去了」；
+      // 三态的措辞归 `decision-play` 那边的门管，两处不重复咬（重复咬 = 两套口径将来各飘各的）。
+      const strip = await screen.findByTestId(`sc-imp-play-${im.impedimentId}-trigstrip`);
+      expect(strip.getAttribute("data-state"), "触发判定条必须报出它处在哪一态，不许无属性").toBeTruthy();
+    }
+  });
+});

@@ -28,6 +28,8 @@
 import {
   PerturbationKindSchema,
   resolveSimScope,
+  type CellOrigin,
+  type CellProvenance,
   type Perturbation,
   type PropagationRule,
   type SimSession,
@@ -53,7 +55,14 @@ export interface SimWorldOps {
    */
   createSession(
     c: AuthCtx,
-    input: { baseSnapshot?: TickState; scope?: Record<string, unknown>; id?: string; createdAt?: string },
+    input: {
+      baseSnapshot?: TickState;
+      /** 逐格出处（WO-SANDBOX-REAL-SNAPSHOT）。与 `baseSnapshot` **成对**传：传了世界不传出处 ⇒ 那份世界逐格「出处未知」。 */
+      baseSnapshotProvenance?: CellProvenance;
+      scope?: Record<string, unknown>;
+      id?: string;
+      createdAt?: string;
+    },
   ): Promise<SimSession>;
   /** 真推 n 拍：逐格 `putTickState` + 会话进位置 RUNNING + 发 `sim.tick_completed`。 */
   tick(c: AuthCtx, s: SimSession, n: number): Promise<{ curTick: number }>;
@@ -384,7 +393,7 @@ function varsByType(rules: readonly PropagationRule[]): Map<string, Set<string>>
 export async function deriveSeedBaseSnapshot(
   repos: Repos,
   tenantId: string,
-): Promise<{ state: TickState; origin: SeedWorldSnapshotOrigin }> {
+): Promise<{ state: TickState; origin: SeedWorldSnapshotOrigin; provenance: CellProvenance }> {
   const rules = await repos.sim.listPropagationRules(tenantId, true);
   const byType = varsByType(rules);
   // WO-SIM-REAL-DATA §3：登记的 (类型,变量) 走**显式 valueRef**（`STATE_VAR_VALUE_REFS`），
@@ -395,6 +404,13 @@ export async function deriveSeedBaseSnapshot(
   const activeSpecs = await repos.derivationSpecs.list(tenantId, (s) => s.status === "ACTIVE");
   const specByKey = new Map(activeSpecs.map((s) => [s.specKey, s]));
   const state: TickState = {};
+  /**
+   * 逐格出处（WO-SANDBOX-REAL-SNAPSHOT）。**与 `measuredCells` 在同一个 `if/else` 里写**，
+   * 不另起一轮循环、也不事后按类型回推：两处各判一次「这一格是不是实测」就是第二套真相源，
+   * 判据一漂，屏上那一格的出处就会与它的值来自不同的分支 —— 而这种错**看不出来**
+   * （数还是那个数，只是章盖反了），比崩掉更难查。
+   */
+  const provenance: CellProvenance = {};
   let objects = 0;
   let cells = 0;
   let measuredCells = 0;
@@ -452,10 +468,12 @@ export async function deriveSeedBaseSnapshot(
       .sort((a, b) => a.id.localeCompare(b.id));
     for (const o of rows) {
       const row: Record<string, number> = {};
+      const originRow: Record<string, CellOrigin> = {};
       for (const v of vars) {
         const real = o.props[v];
         if (typeof real === "number" && Number.isFinite(real)) {
           row[v] = real;
+          originRow[v] = "measured";
           measuredCells += 1;
           measuredVarKeys.add(`${typeKey}.${v}`);
           // §3：这一格是显式绑定来的（登记了 valueRef 且规格落点回指本格）⇒ 单独记一笔，
@@ -463,6 +481,7 @@ export async function deriveSeedBaseSnapshot(
           if (stateVarValueRef(typeKey, v) !== undefined) measuredRefVarKeys.add(`${typeKey}.${v}`);
         } else {
           row[v] = Math.round(seedHash01(`${o.id}|${v}`) * 100);
+          originRow[v] = "derived";
         }
         cells += 1;
       }
@@ -470,12 +489,14 @@ export async function deriveSeedBaseSnapshot(
       // 却一格都没有"，读起来像数据丢了。
       if (vars.length > 0) {
         state[o.id] = row;
+        provenance[o.id] = originRow; // 与 `state[o.id]` 同一个条件写入 ⇒ 两表的键集恒等
         objects += 1;
       }
     }
   }
   return {
     state,
+    provenance,
     origin: {
       kind: "DERIVED",
       /**
@@ -808,7 +829,7 @@ export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: Auth
       perturbationReason: existingPerturbations.length === 0 ? "幂等命中的老世界零扰动，本次不补播（补播需再推拍，与幂等冲突）" : null,
     };
   }
-  const { state, origin } = await deriveSeedBaseSnapshot(repos, ctx.tenantId);
+  const { state, origin, provenance } = await deriveSeedBaseSnapshot(repos, ctx.tenantId);
   // 诚实缺席：没有规则或没有物化对象 ⇒ **不建空世界**。一条 baseSnapshot 为空的 RUNNING 会话
   // 会让四页从"没有世界"变成"有世界但每一格都取不到数"——后者更难查（判据同 `useConsoleSession`
   // 分五态的理由：`no-running-session` 与"有会话但这一格没数据"处置完全不同）。
@@ -852,6 +873,9 @@ export async function seedDemoSimWorld(repos: Repos, sim: SimWorldOps, ctx: Auth
 
   const session = await sim.createSession(ctx, {
     baseSnapshot: state,
+    // 逐格出处与世界**同一次派生的产物**，必须一起落库：分两次算就会出现
+    // 「值来自这一次派生、出处来自另一次」的错配（对象在两次之间被改过就会漂）。
+    baseSnapshotProvenance: provenance,
     scope: seedScope,
     id: DEMO_SIM_WORLD_SESSION_ID,
     createdAt: DEMO_SIM_WORLD_CREATED_AT,

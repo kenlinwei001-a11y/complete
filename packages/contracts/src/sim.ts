@@ -776,10 +776,69 @@ export type PropagationRulePatch = z.infer<typeof PropagationRulePatchSchema>;
 export const SimSessionStatusSchema = z.enum(["DRAFT", "READY", "RUNNING", "PAUSED", "ENDED"]);
 export type SimSessionStatus = z.infer<typeof SimSessionStatusSchema>;
 
+/**
+ * 一格读数的**出处**（WO-SANDBOX-REAL-SNAPSHOT）。两态，没有第三态，也**不许缺省成某一态**。
+ *
+ * · `measured` = 播这一格时**真从对象属性上读到**的有限数（`o.props[stateVar]`）。
+ * · `derived`  = 探不到属性 ⇒ 结构派生的确定性占位（`round(hash01(objectId|stateVar)×100)`）。
+ *
+ * ⚠ **为什么必须逐格而不是整份一个记号**：种子世界今天两档**混在同一份快照里**
+ * （派生规格桥让一部分状态变量真的落到了对象属性上，另一部分没有）。
+ * 整份盖一个章 ⇒ 要么把派生占位说成实测（撒谎），要么把实测说成占位（自毁可信度）。
+ * 这正是本仓已经被整改过一次的那个病：**算不出来就编一个看起来正常的数摆出去**。
+ */
+export const CellOriginSchema = z.enum(["measured", "derived"]);
+export type CellOrigin = z.infer<typeof CellOriginSchema>;
+
+/**
+ * 与 `TickState` **同形**的逐格出处表：`provenance[objectId][stateVar] = "measured" | "derived"`。
+ *
+ * 同形是刻意的 —— 消费方用**同一对键**就能取到值和它的出处，不需要另一套索引口径
+ * （另一套索引 = 第二套真相源，两边一漂就会把 A 格的出处贴到 B 格上）。
+ *
+ * ⚠ **缺键 ≠ `derived`**：一格在 `state` 里有、在本表里没有，读作「**出处未知**」，
+ * 是与两态都不同的**第三种情形**（老会话、外部传入的 `baseSnapshot` 都是这一档）。
+ * 把缺键读成 `derived` 就是拿「我没记」冒充「我记了，它是占位」——
+ * 本文件 `SimSessionScaleSchema` 头注那句「『我没给你』与『它就是空的』是两个不同的命题」同源。
+ */
+export const CellProvenanceSchema = z.record(z.string(), z.record(z.string(), CellOriginSchema));
+export type CellProvenance = z.infer<typeof CellProvenanceSchema>;
+
+/** 逐格出处的合计（`measured`/`derived`/`unknown` 三分，口径见 `CellProvenanceSchema`）。 */
+export function tallyCellProvenance(
+  state: TickState,
+  provenance: CellProvenance | undefined,
+): { measured: number; derived: number; unknown: number } {
+  let measured = 0;
+  let derived = 0;
+  let unknown = 0;
+  for (const [oid, row] of Object.entries(state)) {
+    for (const v of Object.keys(row ?? {})) {
+      const o = provenance?.[oid]?.[v];
+      if (o === "measured") measured += 1;
+      else if (o === "derived") derived += 1;
+      else unknown += 1; // 缺键 = 出处未知，**不许并进 derived**
+    }
+  }
+  return { measured, derived, unknown };
+}
+
 export const SimSessionSchema = z.object({
   id: z.string(),
   tenantId: z.string(), // R2
   baseSnapshot: TickStateSchema, // tick0 世界态（合成/连接器/切片物化而来，走正门）
+  /**
+   * `baseSnapshot` 的**逐格出处**（WO-SANDBOX-REAL-SNAPSHOT）。口径见 `CellProvenanceSchema`。
+   *
+   * ⚠ **与 `scope.baseSnapshotOrigin` 两个都要，不许合并**：后者是**整份的合计**
+   * （几格实测、几格派生、公式是什么），随列表投影下发，小而定长；
+   * 本字段是**逐格的明细**，只随单条会话下发。合并成一个 ⇒ 要么列表被明细撑爆
+   * （本文件已经因为这个病崩过一次渲染进程），要么屏上逐格标不出出处。
+   *
+   * `.optional()` 而非必填，理由同 `disabledRuleKeys`：前端测试里 `SimSession` 被当字面量
+   * 构造多处，置为必填会把整包前端打成编译红。缺失 ⇒ 逐格读作「出处未知」（见上）。
+   */
+  baseSnapshotProvenance: CellProvenanceSchema.optional(),
   /**
    * 范围裁剪（§2.1 原文「复用 slice-planner 子图」）。**故意保持 `record`**：
    * 本列同时被 `WO-LIVE-ENDPOINTS` 的活方案快照借用（`snapshotKind`/`label`/`page`/`baseId` …），
@@ -919,7 +978,17 @@ export type SimSessionScale = z.infer<typeof SimSessionScaleSchema>;
  * ⚠ 本类型**刻意不带** `baseSnapshot: never` 之类的占位键：多一个恒 `undefined` 的键，
  * 只会让 `if ("baseSnapshot" in s)` 这种探测读出错误答案。没有就是没有。
  */
-export const SimSessionListItemSchema = SimSessionSchema.omit({ baseSnapshot: true }).extend({
+export const SimSessionListItemSchema = SimSessionSchema.omit({
+  baseSnapshot: true,
+  /**
+   * ⚠ **逐格出处表必须与 `baseSnapshot` 一起被拿掉**（WO-SANDBOX-REAL-SNAPSHOT）。
+   * 它与世界同形、同量级（demo 实测 3,494 格）⇒ 留在列表里就是把刚修好的那个
+   * O(N × 世界规模) 回包**原样复活一遍**，只是这次装的是出处而不是数值。
+   * 要逐格出处的按 id 单取（`GET /a/v1/sim/sessions/:id`）。
+   * 列表侧的诚实位走 `scope.baseSnapshotOrigin` 的合计（定长，见 `SeedWorldSnapshotOrigin`）。
+   */
+  baseSnapshotProvenance: true,
+}).extend({
   /** 被拿掉的那份世界内容有多大（诚实位·口径见 `SimSessionScaleSchema`）。 */
   baseSnapshotScale: SimSessionScaleSchema,
 });

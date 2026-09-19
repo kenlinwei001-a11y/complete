@@ -926,7 +926,24 @@ export interface DerivationSpecRecord {
   targetProp: string;
   formula: string; // §2 DSL
   deps: { typeKey: string; prop: string; via?: string; direction?: "out" | "in" }[];
-  status: "ACTIVE" | "RETIRED";
+  /**
+   * `UNSATISFIABLE` = 公式引用了**本体上不存在的属性**，规格算不出来。
+   *
+   * ⚠ 为什么不复用 `RETIRED`：「有人主动关掉它」与「它根本算不了」是两个命题，
+   * 合成一个标签就再也分不开 —— 而本仓反复炸的正是这个形态。
+   *
+   * ⚠ 为什么这一档必须存在（2026-09-18 实测的账）：`fgi_cover_days` 引用
+   * `FinishedGoodsInventory.dailyDemand`，该属性**全租户 100 个对象类型零命中**，
+   * 而 `compileSpecs` 从不校验 deps ⇒ 规格照样落成 ACTIVE ⇒ 公式里的
+   * `COALESCE(this.qtyOnHand / this.dailyDemand, 0)` 每次都落 0 ⇒
+   * `coverDays` **18 个对象、1 个 distinct 值：0**（同档对照：`qtyAvailable` 18 distinct
+   * / `etaDay` 10 distinct / `Order.value` 500 distinct）。
+   * **不报错、不为空、typeof 是 number** —— 屏上与真实算出来的 0 一模一样。
+   * 29 条规格里 **17 条**带 `COALESCE(..., 0)`，任何一条的源属性哪天没了都是同样的下场。
+   */
+  status: "ACTIVE" | "RETIRED" | "UNSATISFIABLE";
+  /** 仅 `UNSATISFIABLE` 时有值：本体上找不到的那些 dep，逐条列出（供人直接去补或删规格）。 */
+  unsatisfiedDeps?: { typeKey: string; prop: string }[];
 }
 
 /**

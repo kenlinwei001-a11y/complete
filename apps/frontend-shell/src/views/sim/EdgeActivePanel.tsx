@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { SimCounterfactualResult } from "@platform/contracts";
+import { tallyCellProvenance, type SimCounterfactualResult } from "@platform/contracts";
 import { createSimSession, fetchPropagationRules, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import { HintDot } from "./shared";
@@ -11,6 +11,8 @@ import {
   buildVerdict,
   deriveBaseSnapshot,
   pickProbeSession,
+  // WO-SANDBOX-REAL-SNAPSHOT：本页自己编的世界由本页自己盖 `derived` 章（与沙盘同一支实现，不另写）。
+  stampAllDerived,
   PROBE_WORLD_PROVENANCE,
   PROBE_WORLD_PROVENANCE_DETAIL,
   resolveActiveSlice,
@@ -180,20 +182,40 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
   const probeIsSynthetic = !sessionId && !probeSession && probeCreated !== null;
 
   /**
+   * WO-SANDBOX-REAL-SNAPSHOT · 探针世界的**逐格出处合计**（`null` = 还没建过探针世界）。
+   * 建会话那一刻就地算好：`SimSession.baseSnapshotProvenance` 只随**建会话/单取**回包下发，
+   * 列表投影里已被摘掉（它与世界同形、同量级，留在列表里就是把 285MB 那个病换个装填物复活）。
+   */
+  const [probeTally, setProbeTally] = useState<{ measured: number; derived: number; unknown: number } | null>(null);
+  /**
    * 拿一个能算对照的世界。顺序：本页自带 → 租户已有 → **就地开一个探针世界**。
    *
-   * ⚠ 为什么允许"就地开"：`SimSession` 是仿真世界，不是真值（R4-sim），建它不经 Action 审批；
-   * 而且 tick0 走的是**沙盘自己那一份** `deriveBaseSnapshot` —— 不是本单新发明的世界。
+   * ⚠ 为什么允许"就地开"：`SimSession` 是仿真世界，不是真值（R4-sim），建它不经 Action 审批。
    * ⚠ 为什么必须**懒建**：页面一挂载就建会话 = 每打开一次推演页就多一行世界，属于无声副作用。
    *   只在用户真的拨了开关（= 明确表达"我想看关掉之后怎么样"）时才建。
-   * ⚠ 为什么必须**标出处**：tick0 是 `hash01` 占位值（沙盘自己也把它盖章 `DERIVED`），
-   *   拿它算出来的差值只反映**边的结构影响**，不是实测量级。不标 = 拿占位值冒充实测（顶 R13）。
+   *
+   * ══ WO-SANDBOX-REAL-SNAPSHOT · 这里改了什么 ═══════════════════════════════════════
+   * **今天的行为 X（改之前）**：`createSimSession({ baseSnapshot: deriveBaseSnapshot(cfg), … })`
+   * —— 本页自己编一份 `round(hash01(\`${objectId}|${stateVar}\`) × 100)` 的世界当 tick0。
+   * **应该的 Y**：**不传** `baseSnapshot`，由持有真实对象的服务端派生并逐格盖章。
+   * 于是探针世界与沙盘世界**仍然是同一个世界**（同一支服务端派生），
+   * 而且从「全部占位」变成了**混合**（2026-09-18 实测 measured 6,271 / derived 2,542）。
+   * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
+   *
+   * ⚠ 正因为它不再全是占位，下方那句出处**必须跟着改** —— 继续写死「占位·未实测」
+   * 就是把 6,271 格真读数说成占位：方向相反，但同样是假话，且会自毁这条诚实位的可信度。
+   * ⚠ `fetchSimViewConfig` 这一跳**随之删掉**：它此前唯一的用途就是喂 `deriveBaseSnapshot`。
+   *   留着 = 打一个没人读回包的请求（本页挂在 8 个推演页上，那是 8 次白跑）。
    */
   const ensureSession = useCallback(async (): Promise<string | null> => {
     if (effectiveSessionId) return effectiveSessionId;
     const cfg = await fetchSimViewConfig();
-    const s = await createSimSession({ baseSnapshot: deriveBaseSnapshot(cfg), scope: { kind: "GLOBAL", target: null } });
+    const base = deriveBaseSnapshot(cfg);
+    const s = await createSimSession({ baseSnapshot: base, scope: { kind: "GLOBAL", target: null } });
     setProbeCreated(s.id);
+    // 出处：回包带了用回包的；没带就**自己盖 `derived`** —— 这一份是本页现编的哈希占位，
+    // 「我自己编的东西我知道它是编的」，留空当未知是把确知的事实说成不知道（同 `SandboxView.stampAllDerived`）。
+    setProbeTally(tallyCellProvenance(base, s.baseSnapshotProvenance ?? stampAllDerived(base)));
     void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
     return s.id;
   }, [effectiveSessionId, qc]);
@@ -364,16 +386,47 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
         <p data-testid={tid("no-session")} className={css.note}>
           本页不持有推演世界，本租户当前也没有可推演的会话。
           拨动任一开关时会<b>就地开一个探针世界</b>（起始值由配置派生的占位值）来算差值。
-
         </p>
       )}
-      {/* R13 出处：拿占位世界算出来的差值只反映**边的结构影响**，不是实测量级 —— 必须标，不许含糊。
-          记号文案取自 `edgeActiveModel` 的导出常量（**与产生这批数的那个函数同一个文件**），
-          免得再出现"迁了实现、记号留在原文件"那种事（本单迁 `deriveBaseSnapshot` 时被门当场抓到过）。 */}
-      {probeIsSynthetic && (
-        <p data-testid={tid("probe-origin")} className={css.note}>
-          <b>{PROBE_WORLD_PROVENANCE}</b>：{PROBE_WORLD_PROVENANCE_DETAIL}
-          要在实测世界上对照，请在「推演沙盘」里建世界后再回到本页。
+      {/* ══ WO-SANDBOX-REAL-SNAPSHOT · 这段出处从**写死一句**改成**现算两个数** ═══════════
+          （2026-09-18 实测；复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。）
+          **今天的行为 X（改之前）**：无条件渲染 `PROBE_WORLD_PROVENANCE`「占位·未实测」——
+          那在探针世界确实全是 `hash01` 占位的年代是真话。本单之后世界由服务端派生，
+          真后端实测 8,813 格里 **6,271 格是实测**，再写「占位·未实测」就是反向的谎。
+          **应该的 Y**：报**这一个探针世界自己**的合计，三档各说各的话。
+          ⚠ 三档都要有话说：⛔ 不许在「全实测」那档把整段藏起来（藏 = 让读者以为这页没有出处可言），
+          也⛔ 不许在「有占位」那档只说个总数不写占位几格。 */}
+      {probeIsSynthetic && probeTally !== null && (
+        <p
+          data-testid={tid("probe-origin")}
+          className={css.note}
+          data-measured-cells={probeTally.measured}
+          data-derived-cells={probeTally.derived}
+          data-unknown-cells={probeTally.unknown}
+        >
+          {probeTally.unknown > 0 ? (
+            <>
+              <b>出处未知</b>：本页就地开的探针世界没有带回逐格出处（{probeTally.unknown} 格未知）。
+              下方差值<b>既不可当实测读，也不能断言是占位</b>。
+            </>
+          ) : probeTally.derived === 0 ? (
+            <>
+              <b>实测 {probeTally.measured} 格</b>：本页就地开的探针世界，tick0 全部取自对象真实属性。
+              下方差值反映这条边在实测起点上的影响。
+            </>
+          ) : probeTally.measured === 0 ? (
+            <>
+              <b>{PROBE_WORLD_PROVENANCE}</b>（{probeTally.derived} 格全部是占位）：{PROBE_WORLD_PROVENANCE_DETAIL}
+              要在实测世界上对照，请在「推演沙盘」里建世界后再回到本页。
+            </>
+          ) : (
+            <>
+              <b>含占位格</b>：本页就地开的探针世界，tick0 共 {probeTally.measured + probeTally.derived} 格，
+              其中 <b>{probeTally.measured} 格取自对象真实属性</b>、<b>{probeTally.derived} 格为确定性占位</b>
+              （该对象上取不到这个状态变量，按起点派生式回落）。
+              凡差值涉及占位格的那些边，量级不可当实测读。
+            </>
+          )}
         </p>
       )}
 

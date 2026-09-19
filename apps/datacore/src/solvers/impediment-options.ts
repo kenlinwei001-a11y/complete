@@ -516,7 +516,25 @@ function judgeOnCtx(args: {
   return { metric: metricRaw, breach: round(breachAmount(metricRaw, th.value, th.op, th.metricOnLeft), 6) };
 }
 
-/** severity 口径必须与 `judgeOne` 同一份：`超阈幅度 / 规模基准` × 100，clamp 0–100。 */
+/**
+ * 本枚举器的 severity = **单因子**口径：`超阈幅度 / 规模基准` × 100，clamp 0–100。
+ *
+ * ⚠ **它与阻滞点自己的 `ChainImpediment.severity` 不是同一个量，别当成同一个数读**
+ * （WO-SANDBOX-IMPEDIMENT-RESIDUAL 实测）：
+ * `solvers/chain-impediment.ts` 的 `severity` 自 WO-IMP-CARRIER 起是**双因子**
+ * —— `round(100 × sqrt(breachFactor × exposureFactor))`，第二因子是下游受影响订单金额敞口。
+ * 本函数只有第一个因子。实测 `imp_BREAK.MATERIAL.material-gap_mbal-2`：
+ * 双因子 **16**（breachFactor 0.059942 × exposureFactor 0.436053），单因子 **6**。
+ *
+ * ⚠ **本注释原文曾写「severity 口径必须与 `judgeOne` 同一份」——那句话已经过期且会误导**：
+ * 双因子上线时这一侧没跟着改，于是「必须同一份」成了一句没有任何东西在守的断言
+ * （铁律 1.5 判据四：信注释 = 信台账，同样要实测）。
+ *
+ * **为什么这里刻意不改成双因子**：本函数要算的是「**施策后**会变成多少」，
+ * 而 exposureFactor 需要沿 carriers 重新遍历一遍下游订单——候选是假设态，那条遍历跑不出来。
+ * 故这一侧只能维持单因子，**代价是它与卡点自己的严重度不可直接比大小**。
+ * 这件事必须写在屏上（见下方 `dims` 里该维的 `label`），不能只写在注释里。
+ */
 function severityOf(breach: number, denom: number): number | null {
   if (!(denom > 0)) return null;
   return Math.max(0, Math.min(100, Math.round((breach / denom) * 100)));
@@ -660,6 +678,15 @@ export function enumerateImpedimentOptions(
 
     const effective: SolutionCandidate[] = [];
     let probesHere = 0;
+    // WO-IMPEDIMENT-LEVERS · **试算台账**：够不着（join 缺一维）与「够着了、真试算过了、没用」是两种缺口，
+    // 修法**相反** —— 前者补落点册，后者补落点册一点用都没有（见下方 `triedRungs` 的 gap 原文）。
+    // 旧实现对后者是**两个静默 `continue`**：一次试算都不记，于是 `noCandidateReason` 里只剩下
+    // join 侧那条「LOCUS_PROP 够不着」，读者（包括派单方）据此判定"缺落点"，而真相是落点探到了、档位取到了、
+    // 逐档试算跑完了、这些杠杆对该判据**没有传导**。实测：7 条 `MaterialBalance` 断点里 6 条如此
+    // （每条 5–11 次真试算，屏上只说"没有可拨动落点"）。**报错误的病因比不报更贵**。
+    let triedRungs = 0; // 真跑到"两维读数重算"这一步的档位数（patch 被丢弃的不算，那条另有 gap）
+    let flatRungs = 0; // 拨完两维都一动不动
+    let worseRungs = 0; // 动了，但没有任何一维往好里动
     for (const anchor of anchors) {
       const peers = arraysOf(anchor.binding.objectType);
       const { rungs, gaps: rungGaps } = rungsFor({ anchor, im, metricPath: binding.metricPath, peers });
@@ -681,15 +708,22 @@ export function enumerateImpedimentOptions(
         const afterJudge = rule ? judgeOnCtx({ ruleExpression: rule, binding, locusObjId: locusObj.id, arraysOf: (t) => arraysOfPatched(patched, arrays, t) }) : null;
         const afterCap = capacityFor(locusBase, { typeKey: anchor.binding.objectType, objId: anchor.objId, prop: anchor.binding.prop, value: rung.toValue });
         probesHere++;
+        triedRungs++;
 
         const breachMoved = baseJudge !== null && afterJudge !== null && afterJudge.breach !== baseJudge.breach;
         const capMoved = baseCap !== null && afterCap !== null && afterCap !== baseCap;
-        if (!breachMoved && !capMoved) continue; // 拨了什么都没动 → 非有效杠杆（诚实丢弃，照抄 discoverLevers）
+        if (!breachMoved && !capMoved) {
+          flatRungs++; // 拨了什么都没动 → 非有效杠杆（诚实丢弃，照抄 discoverLevers）；**但要记账**，见 triedRungs
+          continue;
+        }
         // 「动了」还不够，还得**往好里动**：全维不改善（甚至全维变差）的拨法不是方案，是反面教材。
         // 判据走 contracts 的 `candidateDimImprovement`（betterWhen 是维自己声明的，不在这里猜方向）。
         const breachImproves = breachMoved && afterJudge!.breach < baseJudge!.breach;
         const capImproves = capMoved && afterCap! > baseCap!;
-        if (!breachImproves && !capImproves) continue;
+        if (!breachImproves && !capImproves) {
+          worseRungs++;
+          continue;
+        }
 
         // ── effectKind 是**量出来的**，不是按 kind switch 出来的 ──
         const isMetricProp = `${anchor.binding.objectType}.${anchor.binding.prop}` === binding.metricPath;
@@ -711,7 +745,11 @@ export function enumerateImpedimentOptions(
           },
           {
             key: "severity",
-            label: "严重度",
+            // ⚠ label 必须自带口径 —— 屏上另有一个也叫「严重度」的数（卡点自己的双因子 severity，
+            // 同一条卡点实测 16，而这一维是 6）。两个不同的量同名摆在同一块屏上，
+            // 比不显示更坏：读的人会把 6 当成 16 的「施策后」，而它们连口径都不同。
+            // 口径差的成因与「为什么不能统一」见 `severityOf` 的注释。
+            label: "严重度（单因子·只看超阈幅度）",
             value: afterSeverity,
             baseline: baseSeverity,
             unit: "",
@@ -793,6 +831,25 @@ export function enumerateImpedimentOptions(
         }
         effective.push(parsed.data);
       }
+    }
+
+    // ── 试算台账进 gaps，**排在最前** ──────────────────────────────────────────
+    // 为什么 `unshift` 而不是 `push`：`noCandidateReason` 只取 `gaps.slice(0, 4)`，而 join 侧那几条
+    // （LOCUS_PROP / RULE_GATE 够不着）是**先**被 push 进来的。不置顶，这条最强的事实会被挤出屏幕，
+    // 于是屏上永远只剩"够不着"——正是本次要治的那个误导。
+    // ⚠ `!truncated` 是必须的，不是保险：探针预算耗尽时产能那一维**压根没算**（`capacityFor` 直接返回
+    // null），此时说「拨完两维读数一动不动」是假话 —— 而且同一句回包的前缀正写着「枚举**未能算完**」，
+    // 两句自相矛盾。预算耗尽这一态由 `UNAVAILABLE` 那套文案负责解释，本台账不掺和。
+    if (triedRungs > 0 && !truncated) {
+      const ledger =
+        `真试算 ${triedRungs} 个档位 → 有效 ${effective.length} 个：` +
+        `${flatRungs} 个拨完两维读数（判据超阈幅度 ${binding.metricPath} / 产能 cellsPerDayP50）一动不动、` +
+        `${worseRungs} 个动了但没往好里动`;
+      gaps.unshift(
+        effective.length === 0
+          ? `${ledger} ⇒ 本阻滞点的缺口**不是**「够不着落点」，而是「够着了、真试算过了、这些杠杆对它没有传导」——两者修法相反，补落点册治不了后者`
+          : ledger,
+      );
     }
 
     // ── 全序 → 每根杠杆只留最好的一个实例 → 去重（效果雷同的算重复）→ 截 N ──

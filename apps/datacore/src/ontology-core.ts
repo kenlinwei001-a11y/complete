@@ -220,7 +220,12 @@ export class OntologyCoreService {
     ctx: AuthCtx,
     ontologyVersion: number,
     specs: { specKey: string; targetType: string; targetProp: string; formula: string }[],
-  ): Promise<{ order: { typeKey: string; prop: string }[]; specs: DerivationSpecRecord[] }> {
+  ): Promise<{
+    order: { typeKey: string; prop: string }[];
+    specs: DerivationSpecRecord[];
+    /** 体检没过的规格：算不出来，已判 UNSATISFIABLE 不落 ACTIVE。调用方该把它显示出来而不是当成功。 */
+    unsatisfiable: { specKey: string; missing: { typeKey: string; prop: string }[] }[];
+  }> {
     const linkTypes = await this.repos.ontologyLinks.list(ctx.tenantId);
     const linkResolve = this.makeLinkResolver(linkTypes);
     const compiled: { rec: DerivationSpecRecord; ast: Ast }[] = [];
@@ -242,9 +247,47 @@ export class OntologyCoreService {
         },
       });
     }
-    const order = this.topoSort(compiled.map((c) => c.rec));
+
+    // -- dep 可满足性体检（在写库之前跑）----------------------------------
+    // 本体上找不到的 dep ⇒ 该规格判 UNSATISFIABLE，**不落 ACTIVE**。
+    // 不做这一步的后果不是「报错」而是「静默给个看起来正常的数」：公式里的
+    // `COALESCE(..., 0)` 会把「读不到」变成 0，与真算出来的 0 在屏上完全一样。
+    // 判据落在**本体声明**上（properties / derivedProperties / stateVariables），
+    // 外加**本批规格自己的产物** —— 后者不可省：`model_supply_risk` 依赖的
+    // `Material.shortageRisk` 正是同批第 21 条规格的 targetProp，不是声明属性。
+    const typeDefs = await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.status === "ACTIVE");
+    const declared = new Map<string, Set<string>>();
+    for (const t of typeDefs) {
+      const s = new Set<string>();
+      for (const p of t.properties ?? []) s.add(p.propKey);
+      for (const p of t.derivedProperties ?? []) s.add(p.propKey);
+      for (const v of t.stateVariables ?? []) s.add(v.propKey);
+      declared.set(t.key, s);
+    }
+    for (const c of compiled) {
+      const own = declared.get(c.rec.targetType) ?? new Set<string>();
+      own.add(c.rec.targetProp);
+      declared.set(c.rec.targetType, own);
+    }
+    for (const c of compiled) {
+      const missing = c.rec.deps.filter((d) => !(declared.get(d.typeKey)?.has(d.prop) ?? false));
+      if (missing.length > 0) {
+        c.rec.status = "UNSATISFIABLE";
+        c.rec.unsatisfiedDeps = missing.map((d) => ({ typeKey: d.typeKey, prop: d.prop }));
+      }
+    }
+    // ⚠ 拓扑排序只排跑得了的那些；UNSATISFIABLE 的不进序，也就不会被 recompute 捡起来
+    //   （§2.4 recompute 只 list `status === "ACTIVE"`）。
+    const runnable = compiled.filter((c) => c.rec.status === "ACTIVE").map((c) => c.rec);
+    const order = this.topoSort(runnable);
     for (const c of compiled) await this.repos.derivationSpecs.put(c.rec);
-    return { order, specs: compiled.map((c) => c.rec) };
+    return {
+      order,
+      specs: compiled.map((c) => c.rec),
+      unsatisfiable: compiled
+        .filter((c) => c.rec.status === "UNSATISFIABLE")
+        .map((c) => ({ specKey: c.rec.specKey, missing: c.rec.unsatisfiedDeps ?? [] })),
+    };
   }
 
   private makeLinkResolver(

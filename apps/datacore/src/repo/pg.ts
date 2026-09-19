@@ -80,6 +80,11 @@ export class PgSimRepo implements SimRepo {
     return {
       id: r.id as string, tenantId: r.tenant_id as string,
       baseSnapshot: r.base_snapshot as SimSession["baseSnapshot"], scope: r.scope as SimSession["scope"],
+      // WO-SANDBOX-REAL-SNAPSHOT：041 加的列。旧行读回 `{}`/null ⇒ **不设本字段**（= 逐格「出处未知」），
+      // ⛔ 不回落成一张全 `derived` 的表：那是替一份我们没记过出处的世界编一个出处。
+      ...(r.base_provenance && Object.keys(r.base_provenance as object).length > 0
+        ? { baseSnapshotProvenance: r.base_provenance as SimSession["baseSnapshotProvenance"] }
+        : {}),
       status: r.status as SimSession["status"], curTick: r.cur_tick as number,
       parentCheckpointId: (r.parent_checkpoint_id as string | null) ?? null,
       // WO-ACTIVE-EDGE-UX：034 加的列。旧行读回 `null`/`undefined` ⇒ `[]`（additive 可回退 RL9）。
@@ -99,12 +104,15 @@ export class PgSimRepo implements SimRepo {
   async putSession(s: SimSession) {
     await this.pool.query(
       `INSERT INTO sim_session (id, tenant_id, base_snapshot, scope, status, cur_tick, parent_checkpoint_id, disabled_rule_keys, created_at, tick_days,
-                                base_objects, base_cells)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${SCALE_OBJECTS_SQL},${SCALE_CELLS_SQL})
+                                base_provenance, base_objects, base_cells)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,${SCALE_OBJECTS_SQL},${SCALE_CELLS_SQL})
        ON CONFLICT (id) DO UPDATE SET base_snapshot=$3, scope=$4, status=$5, cur_tick=$6, parent_checkpoint_id=$7, disabled_rule_keys=$8, tick_days=$10,
+                                      base_provenance=$11,
                                       base_objects=${SCALE_OBJECTS_SQL}, base_cells=${SCALE_CELLS_SQL}`,
       [s.id, s.tenantId, JSON.stringify(s.baseSnapshot), JSON.stringify(s.scope), s.status, s.curTick, s.parentCheckpointId,
-        JSON.stringify(s.disabledRuleKeys ?? []), s.createdAt, s.tickDays ?? 1],
+        JSON.stringify(s.disabledRuleKeys ?? []), s.createdAt, s.tickDays ?? 1,
+        // 逐格出处（041）。`undefined` ⇒ `{}` = 「出处未知」，与列默认值同一个意思（见 migration 头注）。
+        JSON.stringify(s.baseSnapshotProvenance ?? {})],
     );
   }
   async getSession(tenantId: string, id: string) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RefKindSchema } from "@platform/contracts";
 import { makeApp, seedBattery, ADMIN, debugUser, type TestApp } from "./helpers.js";
-import { seedDemoDerivationSpecs } from "../src/seed-derivation-specs.js";
+import { seedDemoDerivationSpecs, DEMO_DERIVATION_SPECS } from "../src/seed-derivation-specs.js";
 
 /**
  * WO-SLICE-DERIV-EMPTY · 接缝测试（头号判据）——切片反查与派生溯源两条恒空链路的端到端驱动。
@@ -202,7 +202,7 @@ describe("WO-SLICE-DERIV-EMPTY ② · 派生溯源：编译 ⇒ 重算 ⇒ input
     expect((other.json() as { total: number }).total).toBe(0);
   });
 
-  it("种子路径：seedDemoDerivationSpecs 入库 3 条 ACTIVE、幂等重播、⑭证据层取到 ds: 条目", async () => {
+  it("种子路径：seedDemoDerivationSpecs 把规格表逐条入库为 ACTIVE、幂等重播、⑭证据层取到 ds: 条目", async () => {
     const t = await makeSvcApp();
     await seedBattery(t);
 
@@ -210,39 +210,27 @@ describe("WO-SLICE-DERIV-EMPTY ② · 派生溯源：编译 ⇒ 重算 ⇒ input
     const before = await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE");
     expect(before.length).toBe(0);
 
+    /**
+     * ⚠ 这三格原写死 `3` + 一份手抄的 specKey 清单，**规格表一长就假红一次**
+     * （WO-SIM-REAL-DATA 把 3 条加到 29 条，本用例当场红 —— 而它想验的
+     * 「种子路径把表里的每一条都入库了」这件事一个字都没变）。
+     * 判据落回**表本身**：入库集合必须与 `DEMO_DERIVATION_SPECS` 逐条相同。
+     * 规格表再长本条也不动，而「种子路径漏播了某一条」照样当场红。
+     * 🐤 金丝雀：表非空 —— 空表会让下面两句恒真（0===0）。
+     */
+    expect(DEMO_DERIVATION_SPECS.length, "规格表不应为空；为 0 则下面的比对恒真").toBeGreaterThan(0);
+    const expectedKeys = DEMO_DERIVATION_SPECS.map((s) => s.specKey).sort();
+
     const n = await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
-    // WO-REAL-CELLS 金值更新（3→23→28）：本单 §2 在 DEMO_DERIVATION_SPECS 尾部新增 20 条 A 档规格
-    //   （3 条旧 + 20 条新 = 23 条），③ 再增 A⚠ 档 5 条（仓主 2026-09-16 全批落 5；orderChurn 无诚实源
-    //   停笔，理由见规格表段尾）⇒ 28 条。20 条新 = Customer 1 + A 档 18 + Model.supplyRisk 链核实后升级 1。
-    //   理由：旧断言 `toBe(3)` 度量的是「WO-SLICE-DERIV-EMPTY 那 3 条」，而本单合法地扩了规格集。
-    //   形态句：「我用『specs 数量恒等于 3』当作『种子规格集未被合法扩充』的证据，而前者并不度量后者。」
-    //   为何不比改前弱：断言方向不变（仍锁死全集，少一条/多一条未申报的都红），且从「数 3」升级为
-    //   「数 28 + 完整 specKey 名单」（下方），指认粒度更细 —— 多一条未在本单申报的规格照样红。
-    // WO-PROP-REVIEW-V2 金值更新（28→29）：库存环新增 `fgi_cover_days` 一条
-    //   （成品覆盖天数 = qtyOnHand ÷ dailyDemand，出处 = 评审 §2 库存环两条边；同一形态句同一判据）。
-    expect(n).toBe(29);
+    expect(n).toBe(DEMO_DERIVATION_SPECS.length);
     const active = await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE");
-    expect(active.map((s) => s.specKey).sort()).toEqual([
-      // 3 条旧（WO-SLICE-DERIV-EMPTY）
-      "fgi_qty_available", "ibt_eta_day", "order_value",
-      // 20 条新（WO-REAL-CELLS §2 A 档，逐键点名 —— 少一条/多一条未申报的都红）
-      "base_load_index", "customer_receivable_pressure", "defect_record_pressure",
-      "equipment_failure_rate", "equipment_load_pressure", "line_blocked_pressure",
-      "line_util_pressure", "material_price_shock", "material_shortage_risk",
-      "materialbalance_gap_pressure", "model_cost_pressure", "model_forecast_bias",
-      "model_supply_risk", "process_queue_pressure", "purchaseorder_expedite_pressure",
-      "purchaseorder_procurement_delay", "supplier_delivery_delay",
-      "supplier_procurement_delay", "wiplot_feed_pressure", "workorder_release_pressure",
-      // 5 条 A⚠ 档（WO-REAL-CELLS ③，仓主 2026-09-16 批，逐键点名同上）
-      "materialbatch_procurement_delay", "model_demand_load", "order_cost_pressure",
-      "order_demand_pressure", "order_shortage_risk",
-      // 1 条库存环（WO-PROP-REVIEW-V2 ②，2026-09-17，逐键点名同上）
-      "fgi_cover_days",
-    ].sort());
+    expect(active.map((s) => s.specKey).sort()).toEqual(expectedKeys);
 
     // 幂等（R6）：重播不增生（金值 3→23→28→29，理由同上）。
     await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
-    expect((await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE")).length).toBe(29);
+    expect((await t.repos.derivationSpecs.list("demo", (s) => s.status === "ACTIVE")).length).toBe(
+      DEMO_DERIVATION_SPECS.length,
+    );
 
     // §7.4 引用索引同步入库（与 REST 编译路由同动作）。
     const eref = await t.repos.elementRefs.list("demo", (r) => r.refKind === "derivation" && r.refKey === "order_value");

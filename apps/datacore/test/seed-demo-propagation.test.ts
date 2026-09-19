@@ -31,7 +31,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(55); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50 → WO-PROP-REVIEW-V2 库存环 +2 条 **FGI 出边**（`FinishedGoodsInventory.coverDays`→`Model.demandLoad` 系数 −0.5 缓冲吸收 / `FinishedGoodsInventory.drawdownPressure`→`Model.demandLoad` 系数 +0.5 提货回补，皆 PUBLISHED·经 `fg_of_model` 18 条真链路·评审优先级 2「库存 buffer 必须能吸收需求」）= 52 → WO-PROP-REVIEW-V2 物料环 +3 条（替代料负反馈 `MaterialAlternative.switchPressure`→`Material.shortageRisk` 系数 −0.3 经已物化 `alt_for_material` 5 条 / 检验放行 `IncomingInspection.queueDays`→`Material.shortageRisk` 系数 +0.2 经**新声明+新物化**链 `inspection_for_material` 30 条 / 缺口催货 `MaterialBalance.gapPressure`→`PurchaseOrder.expeditePressure` 系数 +0.5 经**新声明+新物化**链 `balance_drives_po` 30 条，皆 PUBLISHED·评审优先级 4「物料是第二高频扰动源，今天零阻尼」·环增益 0.06≪1 阻尼）= 55
+    expect(cfg.propagationCount).toBe(55); // 55 = canonical 51 − 1（WO-PROP-REVIEW-V2 ㉜ 方向反向：`demo_process_queue_to_equipment_load` 被 `demo_equipment_load_to_process_queue` **取代** —— 是换不是增）+ 5（反向替代边 1 · 库存环 `demo_fg_cover_days_to_model_demand` 1 · 物料环 3：替代料负反馈/检验放行/缺口催货）。canonical 的 51 = 47 + WO-SIM-DAMPING 阻尼边 1 + WO-SIM-REAL-DATA Order 真值边 3。⚠ Order 真值三条**两边各自落地过**（本分支 WO-SIM-ORDER-REAL-FIELDS / canonical WO-SIM-REAL-DATA），收编时已去重、留 canonical 那一份 —— 它带 `coefficient: 1` **不过 λ** 的修复，本分支那份没有。
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
@@ -49,11 +49,15 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // {Equipment, MaintenanceOrder, Process}，设备故障对订单/毛利的贡献恒为 0。
     // 之所以另起量纲而不复用 `utilPressure`：既有 `demo_line_util_to_process_queue` 已写
     // `Line.utilPressure → Process.queuePressure`，反着写回去就闭成自我放大的二环。
+    // WO-SIM-REAL-DATA 再补 6 个，**它们与上面 41 个不是同一类，别混着读**：
+    //  · 源侧 `qty` / `unitPrice` / `leadDays` —— 这三个**本来就是 `Order` 上的真实业务属性**
+    //    （套 / 元 / 天）。让它们直接当状态变量名，`deriveSeedBaseSnapshot` 的同名探测才撞得上
+    //    ⇒ 那三格走**真读数档**而不是 `round(hash01(...)×100)`。这就是 `measuredCells` 从 0 变正的机制。
+    //  · 目标侧 `backlogQtyTop` / `backlogPriceTop` / `backlogHorizonDays` —— 在手订单簿的三个极值。
+    //  ⛔ 这 6 个**刻意不进 `STATE_VAR_DOMAINS`**（与天数族/件数族同一条纪律）：
+    //    它们带真实单位，拍一个 0–100 的上界会把 21777 套夹成 100。未登记 ⇒ 引擎不夹不衰减，
+    //    并在 tick 回执 `undeclaredStateVars` 里被逐个点名（缺口留在屏上，不留在注释里）。
     expect(cfg.stateVars).toEqual([
-      // WO-SIM-ORDER-REAL-FIELDS +6：前三个是**订单身上那三个属性本尊**（`Order.qty`/`unitPrice`/
-      // `leadDays`，同名直取 ⇒ tick0 读的是真值，`measuredCells` 由 0 变 450），后三个是它们
-      // 沿 `order_for_model` 的落点。⚠ 这 6 个**不是压力量纲**，带真实单位（套/元/天），
-      // 故刻意不进 `STATE_VAR_DOMAINS`（不夹不衰减，tick 回执 `undeclaredStateVars` 里点名）。
       "backlogHorizonDays", "backlogPriceTop", "backlogQtyTop",
       "blockedPressure", "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure",
       // WO-PROP-REVIEW-V2 库存环 +1 个量纲 `coverDays`（成品覆盖天数·天）——库存侧**第一个被读**
@@ -81,7 +85,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(55); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50 → WO-PROP-REVIEW-V2 库存环 +2 条 **FGI 出边**（`FinishedGoodsInventory.coverDays`→`Model.demandLoad` 系数 −0.5 缓冲吸收 / `FinishedGoodsInventory.drawdownPressure`→`Model.demandLoad` 系数 +0.5 提货回补，皆 PUBLISHED·经 `fg_of_model` 18 条真链路·评审优先级 2「库存 buffer 必须能吸收需求」）= 52 → WO-PROP-REVIEW-V2 物料环 +3 条（替代料负反馈 `MaterialAlternative.switchPressure`→`Material.shortageRisk` 系数 −0.3 经已物化 `alt_for_material` 5 条 / 检验放行 `IncomingInspection.queueDays`→`Material.shortageRisk` 系数 +0.2 经**新声明+新物化**链 `inspection_for_material` 30 条 / 缺口催货 `MaterialBalance.gapPressure`→`PurchaseOrder.expeditePressure` 系数 +0.5 经**新声明+新物化**链 `balance_drives_po` 30 条，皆 PUBLISHED·评审优先级 4「物料是第二高频扰动源，今天零阻尼」·环增益 0.06≪1 阻尼）= 55
+    expect(items.length).toBe(55); // 55 = canonical 51 − 1（WO-PROP-REVIEW-V2 ㉜ 方向反向：`demo_process_queue_to_equipment_load` 被 `demo_equipment_load_to_process_queue` **取代** —— 是换不是增）+ 5（反向替代边 1 · 库存环 `demo_fg_cover_days_to_model_demand` 1 · 物料环 3：替代料负反馈/检验放行/缺口催货）。canonical 的 51 = 47 + WO-SIM-DAMPING 阻尼边 1 + WO-SIM-REAL-DATA Order 真值边 3。⚠ Order 真值三条**两边各自落地过**（本分支 WO-SIM-ORDER-REAL-FIELDS / canonical WO-SIM-REAL-DATA），收编时已去重、留 canonical 那一份 —— 它带 `coefficient: 1` **不过 λ** 的修复，本分支那份没有。
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
     // WO-SIM-ROOT-TRIAD 新增 4 条根源边全部挂**已物化**的既有链路（零新 linkType、零新物化）：
@@ -113,8 +117,8 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       "line_belongs_to_base", "line_has_process", "line_runs_work_order", "line_runs_work_order", "material_has_alternative",
       "material_has_balance", "material_has_batch", "material_supplied_by_po", "material_used_by_model", "material_used_by_model",
       "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
-      // WO-SIM-ORDER-REAL-FIELDS 三条订单真实字段边**全部挂 `order_for_model`**
-      // （已物化的既有链路·零新 linkType·零新物化）⇒ 这一项由 2 条变 5 条。
+      // WO-SIM-REAL-DATA 的三条 Order 真值边同样挂 `order_for_model`（⛔ 不新造链路 ——
+      // 它是本仓已物化且被方向可达门当金丝雀用的那条边），故这里从 2 条变 5 条。
       "model_producible_at", "model_stocked_as_finished_goods",
       "order_for_model", "order_for_model", "order_for_model", "order_for_model", "order_for_model",
       "order_has_line",
@@ -151,7 +155,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(55); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50 → WO-PROP-REVIEW-V2 库存环 +2 条 **FGI 出边**（`FinishedGoodsInventory.coverDays`→`Model.demandLoad` 系数 −0.5 缓冲吸收 / `FinishedGoodsInventory.drawdownPressure`→`Model.demandLoad` 系数 +0.5 提货回补，皆 PUBLISHED·经 `fg_of_model` 18 条真链路·评审优先级 2「库存 buffer 必须能吸收需求」）= 52 → WO-PROP-REVIEW-V2 物料环 +3 条（替代料负反馈 `MaterialAlternative.switchPressure`→`Material.shortageRisk` 系数 −0.3 经已物化 `alt_for_material` 5 条 / 检验放行 `IncomingInspection.queueDays`→`Material.shortageRisk` 系数 +0.2 经**新声明+新物化**链 `inspection_for_material` 30 条 / 缺口催货 `MaterialBalance.gapPressure`→`PurchaseOrder.expeditePressure` 系数 +0.5 经**新声明+新物化**链 `balance_drives_po` 30 条，皆 PUBLISHED·评审优先级 4「物料是第二高频扰动源，今天零阻尼」·环增益 0.06≪1 阻尼）= 55
+    expect(rules.length).toBe(55); // 55 = canonical 51 − 1（WO-PROP-REVIEW-V2 ㉜ 方向反向：`demo_process_queue_to_equipment_load` 被 `demo_equipment_load_to_process_queue` **取代** —— 是换不是增）+ 5（反向替代边 1 · 库存环 `demo_fg_cover_days_to_model_demand` 1 · 物料环 3：替代料负反馈/检验放行/缺口催货）。canonical 的 51 = 47 + WO-SIM-DAMPING 阻尼边 1 + WO-SIM-REAL-DATA Order 真值边 3。⚠ Order 真值三条**两边各自落地过**（本分支 WO-SIM-ORDER-REAL-FIELDS / canonical WO-SIM-REAL-DATA），收编时已去重、留 canonical 那一份 —— 它带 `coefficient: 1` **不过 λ** 的修复，本分支那份没有。
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -196,7 +200,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(55); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处的口径一致、数也一致）= 47 → WO-SIM-ORDER-REAL-FIELDS +3 条**订单真实字段边**（`Order.qty`/`unitPrice`/`leadDays` → `Model.backlogQtyTop`/`backlogPriceTop`/`backlogHorizonDays`，皆 PUBLISHED·combine max·系数 1.0 原样透传）= 50 → WO-PROP-REVIEW-V2 库存环 +2 条 **FGI 出边**（`FinishedGoodsInventory.coverDays`→`Model.demandLoad` 系数 −0.5 缓冲吸收 / `FinishedGoodsInventory.drawdownPressure`→`Model.demandLoad` 系数 +0.5 提货回补，皆 PUBLISHED·经 `fg_of_model` 18 条真链路·评审优先级 2「库存 buffer 必须能吸收需求」）= 52 → WO-PROP-REVIEW-V2 物料环 +3 条（替代料负反馈 `MaterialAlternative.switchPressure`→`Material.shortageRisk` 系数 −0.3 经已物化 `alt_for_material` 5 条 / 检验放行 `IncomingInspection.queueDays`→`Material.shortageRisk` 系数 +0.2 经**新声明+新物化**链 `inspection_for_material` 30 条 / 缺口催货 `MaterialBalance.gapPressure`→`PurchaseOrder.expeditePressure` 系数 +0.5 经**新声明+新物化**链 `balance_drives_po` 30 条，皆 PUBLISHED·评审优先级 4「物料是第二高频扰动源，今天零阻尼」·环增益 0.06≪1 阻尼）= 55
+    expect(items.length).toBe(55); // 55 = canonical 51 − 1（WO-PROP-REVIEW-V2 ㉜ 方向反向：`demo_process_queue_to_equipment_load` 被 `demo_equipment_load_to_process_queue` **取代** —— 是换不是增）+ 5（反向替代边 1 · 库存环 `demo_fg_cover_days_to_model_demand` 1 · 物料环 3：替代料负反馈/检验放行/缺口催货）。canonical 的 51 = 47 + WO-SIM-DAMPING 阻尼边 1 + WO-SIM-REAL-DATA Order 真值边 3。⚠ Order 真值三条**两边各自落地过**（本分支 WO-SIM-ORDER-REAL-FIELDS / canonical WO-SIM-REAL-DATA），收编时已去重、留 canonical 那一份 —— 它带 `coefficient: 1` **不过 λ** 的修复，本分支那份没有。
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {
@@ -399,12 +403,12 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const sid = (await (await t.app.inject({
       method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
       payload: { baseSnapshot: {
-        // WO-SIM-ORDER-REAL-FIELDS 三个真实业务字段与 `orderChurn` 一样是**入度 0 的根**
-        // （没有任何规则写它们）⇒ 必须自带源，指望被别的源带动是自相矛盾的。
-        // 值取真实量级（本租户在手单实测 qty 708–21777 套 / unitPrice 13594–22660 元 /
-        // leadDays −14–178 天），⛔ 不能填 0：引擎对 `sourceVal === 0` 直接跳过，
-        // 填 0 会让这三条"没触发"，而原因是数据不是接线 —— 那正是本仓最难查的那类假红。
-        [orderId]: { demandPressure: 10, costPressure: 8, orderChurn: 10, qty: 5000, unitPrice: 18000, leadDays: 30 },
+        // WO-SIM-REAL-DATA 三条 Order 真值边（qty/unitPrice/leadDays）与「根源」组同一条纪律：
+        // 它们**入度 0**（没有任何规则写 `Order.qty`），不自带源就永远进不了 trace。
+        // ⛔ 这里给的是**世界态的格子**，不是对象属性 —— 真实播种路上这三格由
+        //    `deriveSeedBaseSnapshot` 的同名探测从 `Order.props` 直取（那条链由
+        //    `sim-order-real-fields.seam.test.ts` 专门咬），本用例只负责证明「边会触发」。
+        [orderId]: { demandPressure: 10, costPressure: 8, orderChurn: 10, qty: 1200, unitPrice: 18000, leadDays: 45 },
         [baseId]: { loadIndex: 20 },
         [supplierId]: { deliveryDelay: 10, procurementDelay: 7 },
         [procurePoId]: { procurementDelay: 7 },
@@ -547,6 +551,16 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_alt_switch_to_material_shortage",
         "demo_inspection_queue_to_material_shortage",
         "demo_balance_gap_to_po_expedite",
+      // WO-SIM-REAL-DATA：Order 的三个**真实业务字段**直接当状态变量名，同名直取进世界态
+      //（`deriveSeedBaseSnapshot` 探到 `Order.props.qty` 是有限数 ⇒ 真读数档，不走哈希）。
+      // 与「根源」组同一条纪律：三者**入度 0**，必须自带源（见上面 baseSnapshot 的 orderId 那行）。
+      // 🔴 它们**必须出现在这里**：这三条是全表唯一「读数能对上某一张真单」的通路 ——
+      //    一旦恒不触发，屏上那句「该型号在手订单最大的一张是多少套」就是纯哈希编的数，
+      //    而**不会有任何东西变红**（它们刻意不进 `STATE_VAR_DOMAINS`，不夹不衰减）。
+      订单真值: [
+        "demo_order_qty_to_model_top_qty",
+        "demo_order_price_to_model_top_price",
+        "demo_order_leaddays_to_model_horizon",
       ],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
@@ -808,5 +822,153 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
     for (const r of runs) {
       expect(r.read, `读数回到 ${preFix} ⇒ 该对的权重被当成 1 了（"查不到用量"绝不等于"用量为 1"）`).not.toBe(preFix);
     }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // §5b 同一批边上的**第二条**：缺料 → 型号供应风险（WO-WEIGHT-BASIS-FILL）
+  // ────────────────────────────────────────────────────────────────────────────
+  /**
+   * **这一节堵的是「兄弟边漏网」这个形态，不是补覆盖率。**
+   *
+   * `demo_material_shortage_to_model_supply_risk` 与上面那条 `demo_material_price_to_model_cost`
+   * **源类型 / 目标类型 / 链路 key 完全相同**（实测拓扑逐项相同：42 边 / 6 目标 / 扇入 7），
+   * 而它到 2026-09-18 之前一直挂着 `equal_share`，注释还写着
+   * 「本边无可审计的差异化计量值 ⇒ 等份」——**这句话被它自己的邻居证伪**：
+   * 同一批边上，BOM 成本占比从 2026-09-03 起就一直取得到。
+   *
+   * 修前实测（真后端 seed 42 ·`2170 三元圆柱`· 各料 shortageRisk +15）：
+   * 七种物料权重**全为 1/7**，`supplyRisk` **逐字节同为 0.346875** ——
+   * 占 BOM 大头的三元正极与边角料铝箔**完全同权**。与 `9.75/9.75` 是同一个病的同一个指纹。
+   * 修后：七个读数全不同，三元正极/铝箔 = **38.01×**、隔膜/铝箔 = **73.69×**。
+   *
+   * 形态（照铁律 0.6 句式）：
+   * > 「我用『这条边声明了一个在册口径』当作『它按用量分摊了』的证据，而前者并不度量后者
+   * >  —— `equal_share` 也是在册口径，它恰恰是"不按用量"的那一个。」
+   *
+   * ⚠ 本节额外咬一条上面那节**没有**的判据：**Σ权重 ≡ 1 且世界总量不跳**。
+   * 它区分的是「按用量分摊」与「把量纲从加权平均改成随条数膨胀」——
+   * 后者同样能让四个数"拉开"，却是契约明令禁止的改量纲（`IN_EDGES` vs `IN_EDGES_MEAN`）。
+   * 只断言"拉开了"会把这两者一起放行。
+   */
+  it("种子把 bom_cost_share 接到**缺料→供应风险**这条边上了（此前挂 equal_share·注释被邻居证伪）", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/seed.ts", import.meta.url), "utf8");
+    // 🐤 金丝雀：真读到种子了（读空文件时"没找到那行"是句空话）。
+    expect(src.length, "seed.ts 读成空 ⇒ 读取坏了，不是『种子里没有』").toBeGreaterThan(10000);
+    const at = src.indexOf('key: "demo_material_shortage_to_model_supply_risk"');
+    expect(at, "种子里找不到这条边").toBeGreaterThan(0);
+
+    // ⚠ **必须剥注释后再断言，且要咬"赋值行"而不是"这段文字里出现过那个串"。**
+    // 这一条是**变异反证当场逼出来的**，不是设计时想到的：本条边的注释里
+    // 正文引用了 `weightRef: { basis: "bom_cost_share" }` 这个字面量（用来解释邻居边），
+    // 于是把种子改回 `equal_share` 之后 `toContain` **照样绿** —— 门成了装饰品。
+    // 形态（照铁律 0.6 句式）：
+    // > 「我用『这段源码里出现过这个串』当作『这个赋值存在』的证据，而前者并不度量后者
+    // >  —— 注释里引用一个赋值，和那个赋值真的存在，是两个命题。」
+    // 同源前车：本仓 `weightRef` 计数也栽在这里（3 行注释被数成赋值，51 vs 48）。
+    const block = src.slice(at, at + 2500);
+    const codeOnly = block.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+    // 🐤 金丝雀：剥注释别把整块剥没了（剥空时"没找到那行"同样是句空话）。
+    expect(codeOnly, "剥注释后连 key 行都没了 ⇒ 剥注释坏了，不是『种子里没有』").toContain(
+      'key: "demo_material_shortage_to_model_supply_risk"',
+    );
+    // 🐤 金丝雀（反向）：证明本块的注释里**确实**有那个字面量 —— 即上面那层剥离不是多余的。
+    expect(
+      block.split("\n").filter((l) => /^\s*\/\//.test(l) && l.includes("bom_cost_share")).length,
+      "本块注释里已不含该字面量 ⇒ 上面的剥注释失去意义，可简化；但**先确认**再简化",
+    ).toBeGreaterThan(0);
+
+    const assign = codeOnly.split("\n").find((l) => /^\s*weightRef:/.test(l))?.trim();
+    expect(
+      assign,
+      "这条边退回了不带用量的口径 ⇒ 七种物料又会同权（修前实测 supplyRisk 逐字节同为 0.346875）",
+    ).toBe('weightRef: { basis: "bom_cost_share" },');
+  });
+
+  it("🔴 对照实验：缺料→供应风险 —— BOM 占比不同的物料各涨 15 ⇒ 读数按占比拉开，且 Σ权重≡1 总量不跳", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+
+    const RULE = "demo_material_shortage_to_model_supply_risk";
+    const SHOCK = 15;
+    // 系数从规则表现取，不写死（同上节理由：本用例守的是**比值**，与标定无关）。
+    const COEFF = ((await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json() as {
+      items: { key: string; coefficient: number }[];
+    }).items.find((r) => r.key === RULE)?.coefficient;
+    expect(COEFF, `取不到 ${RULE} 的系数`).toBeDefined();
+    expect(COEFF, "该边系数为 0 ⇒ 下面每一句期望值都成 0、逐句自洽成绿").toBeGreaterThan(0);
+
+    const drive = async (materialId: string, modelId: string) => {
+      const sid = (await (await t.app.inject({
+        method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
+        payload: { baseSnapshot: { [materialId]: { shortageRisk: SHOCK }, [modelId]: { supplyRisk: 0 } } },
+      })).json()).id as string;
+      const tick = await t.app.inject({
+        method: "POST", url: `/a/v1/sim/sessions/${sid}/tick?explain=1`, headers: ADMIN, payload: { n: 1 },
+      });
+      expect(tick.statusCode).toBe(200);
+      const body = tick.json() as {
+        state: Record<string, Record<string, number>>;
+        pairWeighting?: { report: {
+          explain: { ruleKey: string; sourceObjectId: string; targetObjectId: string; weight: number; denominator: number; formula: string }[];
+          unresolved: { ruleKey: string; reason: string }[];
+        } };
+      };
+      // 口径算不出来时引擎会**诚实报缺**并让本条流不传导 —— 那会让下面每个读数都成 0、逐句自洽成绿。
+      const bad = (body.pairWeighting?.report.unresolved ?? []).filter((u) => u.ruleKey === RULE);
+      expect(bad, `本规则被判"算不出权重"：${bad[0]?.reason ?? ""}`).toHaveLength(0);
+      const ex = body.pairWeighting?.report.explain.find(
+        (e) => e.ruleKey === RULE && e.sourceObjectId === materialId && e.targetObjectId === modelId,
+      );
+      return { read: body.state[modelId]?.supplyRisk ?? 0, ex };
+    };
+
+    // 沿**真链路表**挑型号，不写死 obj_material_*（种子换料时本用例应当跟着走，而不是变成假绿）。
+    const links = await t.repos.links.list("demo", (l) => l.type === "material_used_by_model");
+    expect(links.length, "真链路表里没有 material_used_by_model ⇒ 这条边根本不触发").toBeGreaterThan(0);
+    const byModel = new Map<string, string[]>();
+    for (const l of links) (byModel.get(l.toId) ?? byModel.set(l.toId, []).get(l.toId)!).push(l.fromId);
+    const modelId = [...byModel.keys()].sort().find((m) => (byModel.get(m) ?? []).length >= 2);
+    expect(modelId, "没有任何型号同时用到 ≥2 种物料 ⇒ 这条边根本分不了摊").toBeDefined();
+
+    const runs = [];
+    for (const m of [...(byModel.get(modelId!) ?? [])].sort()) runs.push({ materialId: m, ...(await drive(m, modelId!)) });
+    const scored = runs.filter((r) => r.ex !== undefined).sort((a, b) => a.ex!.weight - b.ex!.weight);
+    expect(scored.length, "一对权重出处都没拿到 ⇒ 该边没在分摊").toBeGreaterThanOrEqual(2);
+    const lo = scored[0]!, hi = scored[scored.length - 1]!;
+
+    // ── 判据 ①：占比最大与最小的两种物料**读数必须不同**（修前逐字节相同，这就是病本身）。
+    expect(
+      hi.read,
+      `占比最大(${hi.ex!.weight})与最小(${lo.ex!.weight})的两种物料给出同一个读数 ⇒ ` +
+        "又退回等份（修前形态复现：七种料各 1/7，贵重料与边角料同权)",
+    ).not.toBe(lo.read);
+    expect(hi.read).toBeGreaterThan(lo.read);
+
+    // ── 判据 ②：读数 = 系数 × BOM 占比 × 源态，占比从回包出处**独立复算**（不写死金值）。
+    for (const r of [lo, hi]) {
+      const expected = Math.round(COEFF! * r.ex!.weight * SHOCK * 1e12) / 1e12;
+      expect(r.read, `${r.materialId} 的读数与「系数 × BOM 占比 × 缺料幅度」对不上`).toBe(expected);
+      expect(r.ex!.formula, "出处不是来自 BOM 用量 ⇒ 份额是凭空来的").toContain("单台用量");
+      expect(r.ex!.denominator, "分母 ≤ 0 ⇒ 占比无意义").toBeGreaterThan(0);
+    }
+
+    // ── 判据 ③：等份那个数**不许**再出现。1/N 是"不带用量"的指纹（修前实测 0.346875）。
+    const equalShare = Math.round((COEFF! * SHOCK / scored.length) * 1e12) / 1e12;
+    for (const r of runs) {
+      expect(r.read, `读数回到等份值 ${equalShare} ⇒ 该对的权重又被当成 1/N 了`).not.toBe(equalShare);
+    }
+
+    // ── 判据 ④：Σ权重 ≡ 1 且**世界总量不跳**（这一条上一节没有，见本节头注）。
+    //   它拦的是「用 IN_EDGES_MEAN 之类把量纲改掉」——那也会让读数"拉开"，却是契约明令禁止的改量纲。
+    const sumW = scored.reduce((s, r) => s + r.ex!.weight, 0);
+    expect(sumW, `Σ权重 = ${sumW} ≠ 1 ⇒ 归一方向被改掉了（强度型目标必须 IN_EDGES·Σ=1）`).toBeCloseTo(1, 9);
+    const sumRead = runs.reduce((s, r) => s + r.read, 0);
+    expect(
+      sumRead,
+      `逐料驱动的读数合计 ${sumRead} ≠ 系数 × ${SHOCK} ⇒ 换口径把世界总量改了（应当只是重新分配）`,
+    ).toBeCloseTo(COEFF! * SHOCK, 9);
   });
 });
