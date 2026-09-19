@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+// §6 每格增益预算现算所需：装配走**生产同一处**（`buildPropagationInputs`），
+// 权重键走引擎同一支（`pairWeightKey`），λ 走 C35 同一个记号 —— 三者都不许在测里另抄一份。
+import { buildPropagationInputs } from "../src/sim/propagation-inputs.js";
+import { pairWeightKey } from "../src/sim/propagation.js";
+import { PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
+import { resolveSimScope } from "@platform/contracts";
 
 /**
  * 沙盘消"空世界"（审计 §3.5）：SEED_DEMO 给 demo 租户播 sim PropagationRule 种子。
@@ -966,4 +972,129 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
       `逐料驱动的读数合计 ${sumRead} ≠ 系数 × ${SHOCK} ⇒ 换口径把世界总量改了（应当只是重新分配）`,
     ).toBeCloseTo(COEFF! * SHOCK, 9);
   });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════
+// §6 每格增益预算 —— **现算，不查表**（WO-DEMANDLOAD-BUDGET）
+//
+// ── 今天的行为 X / 应该的 Y ──────────────────────────────────────────────────────
+// **X**：`seed.ts` 头注声明了每格预算 `Σ_e |稳态增益_e| × W_e ≤ 0.75`（0.75 = `[0,100]` 域
+//   软饱和曲线的拐点 `kneeHi = 0.75 × max`），且给了闭式分配法 `f_g = min(1, 0.75/S_g)`。
+//   但那次分配**只在 WO-SIM-CALIBRATION 当时跑过一次**，之后每加一条入边都没有重跑 ——
+//   **没有任何东西在守它**。实测：`Model.demandLoad` 当时按两条 Order 边恰好配满 0.75，
+//   后来又进来三条边（coverDays / 阻尼 / 真值边），**合计 4.07 倍**而四包全绿。
+// **Y**：预算是**现算**出来的，不是记在注释里的。本段把它变成机器。
+//
+// ── ⚠ 为什么 `W_e` 必须**真起数据量**，不许从 `weightRef` 的口径名推 ────────────────
+// `seed.ts` 头注那张「口径 → W」对照表（`equal_share ⇒ W=1`、`null ⇒ W=N`…）**是对的**，
+// 但「N 是多少」只有真图知道，而**同一个口径在不同边上的 W 天差地别**：
+// 实测 `demo_model_demand_to_fg_drawdown`（`null`）的 Σw = **1**（`fg_of_model` 是 N:1，
+// 组内只有一行），而同一个 `null` 在反向的 `demo_fg_drawdown_relieves_model_demand` 上是 **3**。
+// **形态**：「我用『这条边的 weightRef 是 null』当作『它占 N 份』的证据，而前者并不度量后者
+// —— N 由链路基数决定，可以恰好是 1。」⇒ 本段一律从 `buildPairWeights` 的**真权重表**求和。
+//
+// ── ⚠ 受不受预算约束，判据只有一条：`targetStateVar` 在不在 `STATE_VAR_DOMAINS` 里 ──────
+// 没有域就没有拐点，`0.75` 在无域格上不度量任何东西（`seed.ts` 的 `inflowCoefficient` 段头
+// 立的同一条判据：预乘 λ 与受预算约束**由同一个谓词开关，一起开一起关**）。
+// ══════════════════════════════════════════════════════════════════════════════════
+describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
+  /** 每格现算 `Σ_e |稳态增益_e| × Σw_e`。Σw 取各 target 的**均值**（与在册口径同源）。 */
+  const measureBudget = async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+    const rules = await t.repos.sim.listPropagationRules("demo", true);
+    const inp = await buildPropagationInputs(
+      t.repos,
+      { tenantId: "demo", userId: "admin", roles: ["admin"] } as never,
+      resolveSimScope(null),
+      rules,
+    );
+    const typeOf = new Map(inp.graph.objects.map((o) => [o.id, o.typeKey]));
+    const cells = new Map<string, { sum: number; edges: { key: string; gain: number; sw: number }[] }>();
+    for (const r of rules) {
+      // 无域 ⇒ 纯积分器，没有拐点也没有 1/λ 可约 ⇒ 不受预算（与预乘 λ 同一个谓词）。
+      if (!Object.prototype.hasOwnProperty.call(inp.stateVarDomains, r.targetStateVar)) continue;
+      const ref = r.coefficientRef;
+      // 引擎真读的那个值：`coefficientRef` 解析优先，解析不到才回落内联（G-10 P1 同一条路）。
+      // ⚠ `RuleParamLookup` 的值是 `unknown` ⇒ 必须**显式收窄**，且收不到就报红：
+      //   悄悄 `as number` 会让「params 里塞了个字符串」变成 `NaN`，而 `NaN > 0.75` 恒 false
+      //   ⇒ 那一格从此永远"达标"。**把红吞成绿，比没有这道门更坏。**
+      const raw: unknown = ref ? (inp.ruleParams[ref.ruleKey]?.[ref.paramKey] ?? r.coefficient) : r.coefficient;
+      expect(typeof raw, `${r.key} 的生效系数不是数 ⇒ 预算算不出来（不许当 0 跳过）`).toBe("number");
+      const eff = raw as number;
+      const w = inp.pairWeights[r.key] ?? null;
+      const byTarget = new Map<string, number>();
+      for (const l of inp.graph.links) {
+        if (l.linkKey !== r.viaLinkKey) continue;
+        if (typeOf.get(l.fromId) !== r.sourceTypeKey || typeOf.get(l.toId) !== r.targetTypeKey) continue;
+        byTarget.set(l.toId, (byTarget.get(l.toId) ?? 0) + (w === null ? 1 : (w[pairWeightKey(l.fromId, l.toId)] ?? 0)));
+      }
+      if (byTarget.size === 0) continue;
+      const sw = [...byTarget.values()].reduce((s, x) => s + x, 0) / byTarget.size;
+      const cellKey = `${r.targetTypeKey}.${r.targetStateVar}`;
+      const c = cells.get(cellKey) ?? { sum: 0, edges: [] };
+      // 稳态增益 = 每拍入流 ÷ λ（`inflowCoefficient` 的逆）。λ 从 C35 现读，不内联 0.37。
+      const gain = eff / PRESSURE_DECAY_PER_TICK;
+      c.sum += Math.abs(gain) * sw;
+      c.edges.push({ key: r.key, gain, sw });
+      cells.set(cellKey, c);
+    }
+    return cells;
+  };
+
+  it("🔴 超预算格子集合 + `Model.demandLoad` 读数必须与在册一致（加边/抬系数即红）", async () => {
+    const cells = await measureBudget();
+
+    // 🐤 金丝雀①（非空 + 有鉴别力）：本仓真发生过"空绿"——权重没喂进去、一条边没触发，
+    //    于是「没有格子超预算」被读成通过。故先证明量法**量到了东西**，且**分得出两档**。
+    expect(cells.size, "一个受预算约束的格子都没量到 ⇒ 量法坏了（不许读成『全部达标』）").toBe(36);
+    const inBudget = cells.get("Base.loadIndex");
+    expect(inBudget, "`Base.loadIndex` 没量到 ⇒ 量法坏了").toBeDefined();
+    expect(inBudget!.sum, "已知达标的格子被判成超预算 ⇒ 判据本身坏了").toBeCloseTo(0.6, 6);
+
+    // ── 判据①：`Model.demandLoad` 的现值（本单的落点）──────────────────────────────
+    // 改前 3.0550（4.07×）—— 其中 `demo_fg_drawdown_relieves_model_demand` 独占 **1.8000**
+    // （`weightRef: null` ⇒ Σw = N = 3），占全格 59%。
+    // 本单把它归一到 Σw=1 后 ⇒ 1.8550（2.47×）。**仍然超预算，如实钉在这里，不许拿系数去凑。**
+    const demand = cells.get("Model.demandLoad")!;
+    expect(demand.edges.length, "入边条数变了 ⇒ 预算得重新分配，先解释再改这个数").toBe(4);
+    expect(
+      demand.sum,
+      "`Model.demandLoad` 的 Σ|增益|×Σw 变了。变大 ⇒ 又有人往这格加边/抬系数；" +
+        "变小 ⇒ 若是靠缩系数达标，退回（缩系数不改相对动态，只让缺口看起来没了）",
+    ).toBeCloseTo(1.855, 4);
+
+    // ── 判据②：目标边真的归一到 Σw=1（这是本单改的那一件事）─────────────────────────
+    const relieve = demand.edges.find((e) => e.key === "demo_fg_drawdown_relieves_model_demand")!;
+    expect(
+      relieve.sw,
+      "库存缓冲边的 Σw 又回到 N ⇒ `weightRef` 被改回 null。" +
+        "后果两条，都能实测：① 去程 `demo_model_demand_to_fg_drawdown` 记 0.6、回程记 0.6×N，" +
+        "种子自己写的「来回两次一样大」不成立；② 环增益从 0.36 变成 0.6×0.6×N > 1 ⇒ 振荡冲过头",
+    ).toBeCloseTo(1, 9);
+
+    // ── 判据③：**分母** —— 超预算的不止这一格，集合钉死，少一个多一个都要先解释 ──────────
+    // ⚠ 这一条守的是「别人家的格子悄悄变坏/变好没人知道」。
+    //   ⛔ 它不是允许超预算的许可证：这 11 个格子每一个都是**真欠账**，来历见 WO 报告。
+    // ⚠ 另有 4 格 **恰好压在线上**（Σ = 0.75000，1.00×）：`Order.costPressure` /
+    //   `Order.shortageRisk` / `OrderPromise.promiseRisk` / `WorkOrder.releasePressure` ——
+    //   它们是 `f_g` 当年**配满**的痕迹（`f_g = 0.75/S_g` 取等号），不是巧合，故不在本集合里。
+    //   给这四格任一条边再抬一点系数，它们就会掉进本集合 ⇒ 这道门会红。
+    const over = [...cells.entries()].filter(([, v]) => v.sum > 0.75 + 1e-9).map(([k]) => k).sort();
+    expect(over, "超预算格子集合变了 —— 新增即回归，减少即有人改了标定，两种都必须先解释").toEqual([
+      "Certification.qualificationQueue",   // 1.08x · 单边 0.3 未预乘 λ
+      "Customer.receivablePressure",        // 1.15x · source_value_relative，Σw 随客户金额敞口走
+      "ExceptionEvent.handlingBacklog",     // 2.88x · 单边 0.8 未预乘 λ（全表最高）
+      "IncomingInspection.queueDays",       // 2.16x · 单边 0.6 未预乘 λ
+      "MaintenanceOrder.repairBacklog",     // 2.16x · 单边 0.6 未预乘 λ
+      "Material.shortageRisk",              // 1.67x · 6 条边各自小，合计超（没人算总账）
+      "Model.demandLoad",                   // 2.47x · 本单落点
+      "Order.orderChurn",                   // 1.12x · actor_exposure_relative
+      "Process.queuePressure",              // 1.67x · 3 条边合计超
+      "PurchaseOrder.expeditePressure",     // 1.33x · 2 条边合计超
+      "QualityLot.inspectBacklog",          // 1.80x · 单边 0.5 未预乘 λ
+    ].sort());
+  }, 300000);
 });
