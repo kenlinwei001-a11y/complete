@@ -134,21 +134,13 @@ const SANDBOX_SECONDARY_ACTION_COUNT = SANDBOX_SECONDARY_ACTIONS.length;
 // 施加表单（本文件）与扰动时间轴（那里）显示的是同一批分类名，两处各写一份迟早对不上。
 // 依赖方向是单向的（SandboxView → PerturbationTimeline），不成环。
 
-// ── 确定性派生（R6/R14）：从配置 + 索引算初值，无任何业务常数（纯结构哈希）。 ────────────
-// ⚠ WO-ACTIVE-EDGE-UX 迁移：`hash01` / `deriveBaseSnapshot` 的**实现已迁到
-// `./edgeActiveModel`（一行未改）**，本文件改为 import + 原名 re-export，对外签名逐字节不变。
-// 迁移的唯一理由：`EdgeActivePanel` 也要用同一份 tick0 派生（给没有推演世界的推演页就地开探针世界），
-// 而本文件已经 import 了 `EdgeActivePanel` ⇒ 反向 import 会成环。
-// **在那边放一份副本才是错的**：两份 tick0 派生 = 沙盘的世界与探针世界不是同一个世界，
-// 用户看到的差值会对不上账（这正是本仓「第二套真相源」那条老账的形态）。
-//
-// ⚠⚠ **WO-SANDBOX-REAL-SNAPSHOT 一度把这支连实现一起删掉，2026-09-18 已回退** ——
-// 理由不是改主意，是**另一条分支已经在复用它当兜底**：`claude/handoff-real-cells` 的
-// `resolveTick0World`（`edgeActiveModel.ts`）明写「它**不许删**…租户一条播种世界都没有时，
-// 它仍是唯一能让页面开出一个可跑世界的那一支」。删了 = 把那条分支的兜底路一起拆了。
-// 本单的独特贡献因此收敛到**逐格出处**那一半（见下 `baseProvenance`），不碰建会话走哪条路。
-export { deriveBaseSnapshot, hash01 } from "./edgeActiveModel";
-import { deriveBaseSnapshot, stampAllDerived } from "./edgeActiveModel";
+// ── tick0 世界态：前端自造实现**已整支删除**（WO-M0-GROUND-TRUTH · F0，2026-09-19）──────
+// **X（删之前）**：`init` 建会话时在浏览器里按 `round(hash01(objectId|stateVar)×100)` 现编
+// tick0 世界（实现原住 `./edgeActiveModel`，一次 `props` 都不读），POST 上去落库 ——
+// 按仓主定义（PRD §2.0.1：只存储在前端的数据 = mock 数据）那是生产路径上的假数据。
+// **Y（= 现在）**：`init` **不传** `baseSnapshot`，服务端 `deriveSeedBaseSnapshot` 从真实对象
+// 现派生并逐格盖 `measured`/`derived` 章随 201 回包下发；屏上世界 = 回包里的那一份。
+// 路 A（复制后端冻结播种快照）实测读旧值（真值 75 它读 17）⇒ 裁决照路 B，不收编路 A。
 // WO-SANDBOX-REAL-SNAPSHOT · tick0 **逐格出处**（契约单源；合计口径与后端共用同一支纯函数）。
 import { tallyCellProvenance, type CellProvenance } from "@platform/contracts";
 // WO-STATEVAR-DISPLAYNAME：状态变量中文名的**唯一**消费路径（本文件零中文名映射表）
@@ -157,18 +149,16 @@ import { stateVarLabel, stateVarText } from "./stateVarLabel";
 /**
  * ══ WO-V4-HONEST-ORIGIN（PRD-sandbox-v4 §2.1 / §4.3）· 屏上这批读数**是哪来的** ══════════
  *
- * `DERIVED` = 前端 `deriveBaseSnapshot` 的哈希占位值（`hash01(对象id|变量名)×100`）。
- *   它是 R6 合规的确定性占位，**不改它的派生本身** —— 改成"看着不像 50"只会得到一屏
- *   更像真的假数据，比现在更坏（PRD §2.1 末段原话）。要修的是**记号**，不是数值。
- * `MEASURED` = 后端世界态（`GET …/:id/world` 回包 / `POST …/tick` 回包 / `POST …/perturbations` 回包）。
+ * `DERIVED` = 前端自编的哈希占位值（`hash01(对象id|变量名)×100`）—— **历史取值**：
+ *   那支前端派生已被 F0 整支删除（WO-M0-GROUND-TRUTH，2026-09-19），今天不再产生；
+ *   枚举保留是因为缓存条目/导出文案仍用它区分「这份 state 不是后端给的」那一档。
+ * `MEASURED` = 后端世界态（建会话 201 回包 / `GET …/:id/world` 回包 / `POST …/tick` 回包 / `POST …/perturbations` 回包）。
  *
  * ⚠ 为什么出处必须**跟着数据走**、不能用 `worldQuery.data !== undefined` 推断：
- *   `init()` 建完会话就 `qc.setQueryData(["a","sim-world", id], …)` 把**占位值**塞进了同一个缓存键，
+ *   `init()` 建完会话就 `qc.setQueryData(["a","sim-world", id], …)` 把世界塞进了同一个缓存键，
  *   而该 query 是 `staleTime: Infinity` ⇒ 新建会话的那个 GET **根本不会发**。
- *   于是「data 到达」这个信号在新建会话时**恒真且恒假**（有 data，但那是前端自己塞的占位）。
- *   照它标记就会立刻显示"实测"而屏上全是哈希数 —— 那正是本单要消灭的那种谎，只是换了个说法。
- *   故把出处**写进缓存条目本身**：塞占位时标 `DERIVED`，`queryFn` 真取回来时标 `MEASURED`，
- *   tick / 扰动的回包同样标 `MEASURED`。谁写的数据谁盖章，不靠下游猜。
+ *   于是「data 到达」这个信号在新建会话时**恒真且恒假**（有 data，但那是建会话回包里带的那一份）。
+ *   故把出处**写进缓存条目本身**：回包是哪来的就标哪来的，谁写的数据谁盖章，不靠下游猜。
  */
 export type WorldOrigin = "DERIVED" | "MEASURED";
 /**
@@ -185,8 +175,9 @@ export type WorldOrigin = "DERIVED" | "MEASURED";
  * 若因为「这份是后端给的」就把徽标翻成「实测」，那是把老谎换了个说法
  * （从「前端编的说成实测」变成「后端编的说成实测」）。故**屏上的徽标改读逐格合计，不读 `origin`**。
  *
- * ⚠ 今天 `init` 走的仍是本地 `deriveBaseSnapshot`（建会话走哪条路由 `resolveTick0World` 那张单管），
- * 本地那一份由 `stampAllDerived` 自己逐格盖 `derived` 章 ⇒ 屏上照样有出处，不落「未知」。
+ * ⚠ F0 之后 `init` 的世界**整份来自服务端回包**（不传 `baseSnapshot`，`deriveSeedBaseSnapshot` 现派生），
+ * 逐格出处用回包自带的 `baseSnapshotProvenance`；回包没带 ⇒ 落 `undefined` = 未知，
+ * ⛔ 不许再由前端自盖 `derived` —— 前端没编这份世界，「不知道」就是「不知道」。
  *
  * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的
  * `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数 `baseProvenance`。
@@ -211,13 +202,6 @@ export interface WorldSnapshot {
  * `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数 `baseProvenance`。
  * 派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
  */
-// WO-SANDBOX-REAL-SNAPSHOT · `stampAllDerived` 的**实现住在 `./edgeActiveModel`**，本文件只 re-export。
-// ⚠ 理由与 `deriveBaseSnapshot` 当年迁过去的那条**一模一样**，别再搬回来：
-// `EdgeActivePanel` 也要用它，而 `SandboxView → EdgeActivePanel` 已经是一条依赖边 ⇒ 反向 import **会成环**。
-// （本单初稿真的把它写在这里、让 `EdgeActivePanel` 反向 import，当场造出了那个环 —— 测试还是绿的，
-//   ESM 循环依赖多数时候不报错，只在求值顺序变化时给你一个 `undefined`。绿不度量没成环。）
-export { stampAllDerived } from "./edgeActiveModel";
-
 export type WorldHonesty = "MEASURED" | "MIXED" | "DERIVED" | "UNKNOWN";
 export function worldHonestyOf(t: { measured: number; derived: number; unknown: number }): WorldHonesty {
   // 判据顺序刻意如此：只要**还有一格出处未知**，整份就不许自称已知 —— 保守方向错比激进方向错便宜。
@@ -658,8 +642,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   });
   /**
    * 屏上这批读数的出处（顶栏诚实位的唯一真相源）。
-   * 初值 `DERIVED`：会话还没建时屏上是空世界 / 建完就是 `deriveBaseSnapshot` 的占位 ——
-   * 两种情形都**不是**实测，先标占位再说；标错方向的代价是把假数说成真数，反过来只是保守。
+   * 初值 `DERIVED`：会话还没建时屏上是空世界，**不是**实测，先标保守方向；
+   * 建完 `init` 会按回包改标 `MEASURED`（标错方向的代价是把假数说成真数，反过来只是保守）。
    */
   const [worldOrigin, setWorldOrigin] = useState<WorldOrigin>("DERIVED");
   /**
@@ -791,7 +775,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   /**
    * 本世界的**基线快照**（`SimSession.baseSnapshot`）—— 下区差分的左端。
    *
-   * ⚠ 不用 `deriveBaseSnapshot(cfg)` 现算：切到别人的世界（`sandbox-world-switch-*`）之后，
+   * ⚠ 不拿本屏当前 cfg 现算基线：切到别人的世界（`sandbox-world-switch-*`）之后，
    *   那个世界的基线是**它自己建会话时**的那一份，与本屏当前 cfg 现算的不一定是同一个东西。
    *   现算 = 拿一个看起来相关的数字当基线，差分会安静地算错。取不到就是 `null`，屏上诚实说没有。
    */
@@ -1001,53 +985,46 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   }, [perturbTargets, pObjectFilter, effPObject]);
 
   /**
-   * 建会话：baseSnapshot 由配置派生（无业务常数）。
+   * 建会话：tick0 世界**由服务端现派生**（WO-M0-GROUND-TRUTH · F0，2026-09-19 裁决落地）。
    *
-   * ⚠ **建会话走哪条路，本单刻意不动**（2026-09-18 回退）：`claude/handoff-real-cells` 上的
-   * `resolveTick0World`（「先问后端播种的那一份要，要不到才本地派生」）已经在解决这件事。
-   * 本单一度改成「不传 `baseSnapshot`，让服务端现派生」——**那是第二套取法**，
-   * 而本仓「两套真相源」正是反复炸的那个东西。两条路的差异已实测并上报，由主持方裁决对齐方式。
-   * 本单在这里只保留**逐格出处**那一半：世界是谁给的不归我管，但**每一格是实测还是编的**必须写在屏上。
+   * **X（改之前）**：`createSimSession({ baseSnapshot: <前端 hash01 现编>, scope })` —— 前端没有
+   * 对象，一次 `props` 都不读，编出来的世界逐字节落库（仓主定义：只存前端的 = 假数据）。
+   * **Y（= 现在）**：**不传 `baseSnapshot`** ⇒ 服务端 `deriveSeedBaseSnapshot` 从真实对象现派生，
+   * 逐格盖 `measured`/`derived` 章随 201 回包下发；本页屏上世界 = 回包里的那一份（`s.baseSnapshot`）。
+   * 路 A（`handoff-real-cells` 复制后端冻结播种快照）裁决**不收编**：实测同一时刻真值 75 它读 17。
    *
    * WO-SIM-SCOPE-LOCAL ②：`scope` 从前是硬写的 **`{}`**（空范围）——向导屏里用户逐步选好的
    * `{kind,target}` 被它当场作废（向导 `:112` 建会话 A → `:133` navigate → A 的 id 随组件 state 蒸发 →
    * 本屏 `!sessionId` 又建了个范围为空的会话 B）。现在把**用户当前选的范围真的写进会话**，
    * 会话再也不是"空范围"的了；并记下 `sessionScope` 以便屏上随时对得上账。
    */
-  const init = useCallback(async (c: SandboxViewConfig, kind: "GLOBAL" | "LOCAL", target: string | null) => {
+  const init = useCallback(async (kind: "GLOBAL" | "LOCAL", target: string | null) => {
     try {
-      const base = deriveBaseSnapshot(c);
       const scope = { kind, target: kind === "LOCAL" ? target : null };
-      const s = await createSimSession({ baseSnapshot: base, scope });
+      const s = await createSimSession({ scope });
+      // 世界 = 回包里的那一份（服务端派生 + 逐格出处都在里面）。前端一格都没造，
+      // 回包没带出处 ⇒ `undefined` = 未知 —— 「我没编这份，不知道就是不知道」，不许自盖。
+      const base = s.baseSnapshot;
       setSessionId(s.id);
       setSessionScope(scope);
       setWorld(base);
-      /**
-       * WO-SANDBOX-REAL-SNAPSHOT · 逐格出处。
-       *
-       * 回包带了就用回包的（服务端派生那条路会逐格盖章）；**没带就自己盖** ——
-       * 这一支的世界是本地 `deriveBaseSnapshot` 现编的哈希占位，
-       * **我自己编的东西，我当然知道它每一格都是编的**。
-       * ⛔ 此处留 `undefined`（=「出处未知」）是**错的**：那是把一个我确知的事实说成不知道，
-       * 而屏上"未知"与"占位"的处置不同（未知会写「不能断言是占位」，正好说反）。
-       */
-      setBaseProvenance(s.baseSnapshotProvenance ?? stampAllDerived(base));
+      setBaseProvenance(s.baseSnapshotProvenance);
       // 基线快照就是上面那一份（同一个 `s.baseSnapshot`），沿用同一个局部量，不再各读一次。
       setBaseWorld(base);
       // WO-SANDBOX-MEMORY：连同"这份基线属于哪个会话"一起记 —— 记了，上面那条懒查询
       // 首次挂载就**一发都不发**（省掉一整跳 285MB），只有真的切世界时才去捞那一条。
       setBaseWorldFor(s.id);
       setCurTick(0);
-      // WO-V4-HONEST-ORIGIN：这一份是**前端哈希占位**，盖 `DERIVED` 章（`origin` = 整份哪来的那个轴）。
-      setWorldOrigin("DERIVED");
+      // 这一份是**服务端回包**的世界 ⇒ `MEASURED`（`origin` = 整份哪来的那个轴；逐格是不是真读数看 `baseProvenance`）。
+      setWorldOrigin("MEASURED");
       // 权威副本就地写入（避免刚建完又去 GET 一次同样的东西）；此后只有事件失效才触发真重取。
       // ⚠ 正因为这一行，新建会话时那个 GET **不会发**（staleTime: Infinity）——
       //   所以出处必须跟着数据盖章，不能靠「data 到没到」推断（详见 WorldOrigin 的注释）。
       qc.setQueryData<WorldSnapshot>(["a", "sim-world", s.id], {
         tick: 0,
         state: base,
-        origin: "DERIVED",
-        baseProvenance: s.baseSnapshotProvenance ?? stampAllDerived(base),
+        origin: "MEASURED",
+        baseProvenance: s.baseSnapshotProvenance,
       });
       // 建会话 = 世界列表多一行。发起方这一页立刻可见；别的标签页走 sim.session_created 事件。
       void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
@@ -1068,7 +1045,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   // 依赖里刻意不放 certScope/effectiveTarget：它们变了要走「重建会话」那条显式路径，
   // 不许在会话建立途中把这个 effect 顶成第二次 createSimSession（重复建会话正是本单要根治的病）。
   useEffect(() => {
-    if (cfg && !sessionId) void init(cfg, certScopeRef.current.kind, certScopeRef.current.target);
+    if (cfg && !sessionId) void init(certScopeRef.current.kind, certScopeRef.current.target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg, sessionId, init]);
 
@@ -1079,7 +1056,7 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
     try {
       setBranchId(null);
       setCompare(null);
-      await init(cfg, certScope, certScope === "LOCAL" ? effectiveTarget : null);
+      await init(certScope, certScope === "LOCAL" ? effectiveTarget : null);
       toast(`已按范围 ${certScope}${certScope === "LOCAL" ? `:${effectiveTarget}` : ""} 重建会话（推演从 tick 0 重开）`, "success");
     } finally {
       setRebuilding(false);
@@ -2167,11 +2144,8 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
                * `hash01(对象id|变量名)×100` 全对象取均值的**必然**结果（大数定律），
                * 不是"企业各项压力恰好都在中位"。同屏阻滞点行**有**「合成数据」徽标，顶栏一个都没有；
                * 两者并排，读者只会把没记号的那批读成实测。
-               * 复验：`apps/frontend-shell/test/sandbox-world-origin.seam.test.tsx` 第 ① 条
-               * 把屏上每个读数与 `deriveBaseSnapshot(cfg)` 的均值逐个对等。
-               *
-               * ⛔ 修的是**记号**不是数值：`hash01` 的派生本身一行不动（它是 R6 合规的确定性占位）。
-               *    把占位值改得"不像 50"只会得到一屏更像真的假数据，比现在更坏。
+               * 复验：`apps/frontend-shell/test/sandbox-world-origin.seam.test.tsx` 第 ② 条
+               * 把屏上每个读数与建会话回包 `baseSnapshot` 的均值逐个对等。
                *
                * 两向（缺一向都证明不了）：占位期必须有记号 ⇒ `DERIVED`／「合成·占位」；
                * 后端世界态到达后记号必须**换掉** ⇒ `MEASURED`／「实测」。

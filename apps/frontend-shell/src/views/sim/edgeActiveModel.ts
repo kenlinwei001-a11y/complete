@@ -347,9 +347,9 @@ export function pickProbeSession<T extends { id: string; createdAt: string; scop
 
 // ── tick0 世界态的前端自造实现**已整支删除**（WO-M0-GROUND-TRUTH · F0）──────────────────
 /**
- * **今天的行为 X（删之前，2026-09-19 实测）**：本文件住着 `hash01` / `deriveBaseSnapshot`
- * / `stampAllDerived` 三支 —— 前端在浏览器里按 `round(hash01(objectId|stateVar)×100)` 编
- * tick0 世界，一次 `props` 都不读，经 `createSimSession({baseSnapshot})` 落库。按仓主定义
+ * **今天的行为 X（删之前，2026-09-19 实测）**：本文件住着前端哈希派生三件套 ——
+ * 浏览器里按 `round(hash01(objectId|stateVar)×100)` 编 tick0 世界 + 自盖 `derived` 章，
+ * 一次 `props` 都不读，经 `createSimSession({baseSnapshot})` 落库。按仓主定义
  * （PRD §2.0.1：只存储在前端的数据 = mock 数据）那是**假数据，且在生产路径上**。
  * **应该是 Y**：世界态由服务端 `deriveSeedBaseSnapshot` 现派生（`app.ts` 建会话端点，
  * 不传 `baseSnapshot` 即触发），逐格盖 `measured`/`derived` 章随回包下发。

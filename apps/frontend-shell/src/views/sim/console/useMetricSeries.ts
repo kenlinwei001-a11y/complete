@@ -201,7 +201,7 @@ const SPEC_ROWS: readonly SpecRow[] = [ // hardcoded-data-allow —— **规格�
  *
  * 🔴 病灶（**2026-08-22 实测**原文，真 datacore `SEED_DEMO=1` + 真浏览器走真实用户路径）：
  * 本 hook 原先**不带任何裁剪入参**地打 `GET …/metric-series`，而生产量级世界
- * （`deriveBaseSnapshot(view-config)` = 11,348 对象 × 36 状态变量）下端点回
+ * （view-config 全量 = 11,348 对象 × 36 状态变量）下端点回
  * **408,528 条 / 116,859,540 字节**、**20 秒回不来** ⇒ 请求永远悬着 ⇒
  * `[data-testid=sandbox-home-gantt]` 的 `data-source` 恒 `placeholder`。
  * 用户看不到自己的数，**而屏上不报错** —— 静默错答。
