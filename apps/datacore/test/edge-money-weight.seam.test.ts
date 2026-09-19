@@ -34,7 +34,10 @@ import {
   type TickState,
 } from "@platform/contracts";
 import { demoPropagationRulesWithDomain } from "../src/seed.js";
-import { STATE_VAR_DOMAINS, PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
+// ⛔ 刻意**不再** import `PRESSURE_DECAY_PER_TICK`（WO-COEF-LAMBDA）：λ 逐格不同，
+// 把那个记号留在手边，下一个人顺手拿它当全表默认值就又回到「全表一个 λ」那个病。
+// `ruleParamOf` 是 C35 参数的**唯一读法**（与引擎 `resolveDecayRate` 读的是同一张 params 表）。
+import { STATE_VAR_DOMAINS, ruleParamOf } from "../src/synthetic/battery.js";
 
 const SEED_TS = join(dirname(fileURLToPath(import.meta.url)), "../src/seed.ts");
 
@@ -235,19 +238,31 @@ describe("§3 描述里的系数 = 真系数", () => {
   //   形态：「我用『落库系数』当作『描述承诺的那个量』的证据，而前者并不度量后者 —— 差一个 λ。」
   //
   // 换轨后：**真增益 = 落库系数 ÷ λ（当且仅当该边被预乘过 λ）**。
-  // 判据与 `seed.ts` 的 `inflowCoefficient` **同一个谓词**（不许各抄一份）：
-  //   目标量纲**已声明域且上界有限** ⇒ 引擎会夹会衰减 ⇒ 落库时预乘过 λ ⇒ 除回去；
-  //   未声明域、或声明了但 `max: null`（无界，无饱和拐点）⇒ 纯积分器，没预乘 ⇒ 原样比。
+  // ── 🔴 WO-COEF-LAMBDA 第三次换轨（2026-09-19）：上一版这两句都不对，逐条订正 ────────────
+  // 旧写法 `lambdaApplied = d != null && typeof d.max === "number"`，附带理由
+  // 「声明了但 `max: null`（无界，无饱和拐点）⇒ 纯积分器，没预乘」。**两处错**：
+  //  ① **`max` 不度量「会不会衰减」**。引擎 `propagation.ts` 的 `resolveDecayRate(d, ruleParams)`
+  //     **只看 `d.decayRef`**，与 `max` 毫无关系；`max` 只决定 `saturateToDomain` 有没有上拐点。
+  //     `max: null` 的积压族**照样按各自的 λ 衰减**，稳态里照样有 `1/λ` 要约 ⇒ **该预乘**。
+  //     形态：「我用『有没有上界』当作『会不会衰减』的证据，而前者并不度量后者。」
+  //  ② **λ 不是全表一个数**。C35 下挂 6 个 paramKey，实测 0.37/0.37/**0.75**/**0.75**/**0.22**。
+  //     拿 `PRESSURE_DECAY_PER_TICK` 全表除，对后三个量纲分别错 2.03×/2.03×/0.59×。
+  // ⇒ 现判据（与引擎同一条路，⛔ 不许各抄一份）：**`decayRef` 解析得出 λ∈(0,1) ⇒ 预乘过 ⇒ 除回去**。
   /** 从描述文本抽「×N」声明数。**主逻辑与金丝雀共用这一支**。 */
   const statedOf = (description: string): number[] =>
     [...description.matchAll(/[×x]\s*(-?[\d.]+)/g)].map((x) => Number(x[1]));
 
-  /** 落库系数 → description 承诺的那个量（稳态增益）。与 `inflowCoefficient` 互为逆运算。 */
+  /** 落库系数 → description 承诺的那个量（稳态增益）= `系数 ÷ 该落点自己的 λ`。 */
   const gainOf = (targetStateVar: string, coefficient: number): number => {
-    const d = STATE_VAR_DOMAINS[targetStateVar];
-    const lambdaApplied = d != null && typeof d.max === "number";
-    if (!lambdaApplied) return coefficient;
-    return Math.round((coefficient / PRESSURE_DECAY_PER_TICK) * 1e6) / 1e6;
+    const ref = STATE_VAR_DOMAINS[targetStateVar]?.decayRef;
+    if (!ref) return coefficient; // 无域/无衰减引用 ⇒ 纯积分器，没预乘 ⇒ 原样比
+    const lambda = ruleParamOf(ref.ruleKey, ref.paramKey);
+    // λ 读不成一个可用衰减率 ⇒ 报红，⛔ 不静默按"没预乘"处理：那会把一处配置坏掉读成一条合规的边。
+    expect(
+      Number.isFinite(lambda) && lambda > 0 && lambda < 1,
+      `${targetStateVar} 的 λ 引用 ${ref.ruleKey}.${ref.paramKey} 解析成 ${String(lambda)} ⇒ 不是可用衰减率`,
+    ).toBe(true);
+    return Math.round((coefficient / lambda) * 1e6) / 1e6;
   };
 
   interface Row { key: string; coef: number; stated: number[]; ok: boolean }

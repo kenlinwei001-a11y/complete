@@ -8,7 +8,9 @@ import { PROPAGATION_COEF_RULE_KEY, ruleParamOf } from "./synthetic/battery.js";
 import { seedOrgWorld } from "./org/seed.js";
 import { seedProcessLayerOntology } from "./process/ontology.js"; // WO-FLOWTIME · 流程层本体（ProcessDefinition/ProcessInstance + instance_of/carries 链路）随流程层种子一起来
 import { seedProcessStepTemplates } from "./process/step-templates.js"; // WO-STEP-TEMPLATE-LAYER · 步骤模板（65 条里只 7 条有，其余如实标缺席）
-import { PRESSURE_DECAY_PER_TICK, STATE_DECAY_RULE_KEY, STATE_DECAY_PARAM_KEY } from "./synthetic/battery.js"; // WO-SIM-CALIBRATION · 系数定标要用 λ（C35 规则参数），见 `inflowCoefficient`
+// ⛔ WO-COEF-LAMBDA：`PRESSURE_DECAY_PER_TICK` / `STATE_DECAY_*` 的 import 已撤 —— 随 `inflowCoefficient`
+// 一起删。λ 逐落点不同（C35 下挂 6 个 paramKey，实测 0.37/0.75/0.22 三档），本文件里留着那个
+// 压力族常数，下一个人顺手拿它当全表默认值就又回到「全表一个 λ」那个病。要 λ 请走 `decayRef`。
 
 export const DEMO_TENANT = "demo";
 
@@ -265,42 +267,47 @@ export async function seedDemoSynthetic(synthetic: SyntheticService, ctx: AuthCt
  *   配合衰减 `v ← v(1−λ)`，源恒定时真实稳态是 **`source × c/λ`** —— λ=0.37 ⇒ **比描述承诺的大 2.7 倍**。
  * **Y**：字段存的就该是引擎真要的那个每拍入流量 ⇒ **`coefficient = 稳态增益 × λ`**。
  *
- * ── ⚠⚠ **两支口径：只有「目标会衰减」的边才预乘 λ**（WO-SIM-CALIBRATION）────────────
- * 本助手存在的**唯一理由**是约掉衰减在稳态里引入的那个 `1/λ`（`稳态 = 入流/λ`）。
- * 而 `STATE_VAR_DOMAINS` **没登记**的量纲（天数族 / 件数族）引擎**不夹不衰减**
- * ⇒ 它们是 `combine:"sum"` 的**纯积分器**，没有 `1/λ` 可约 ⇒ **预乘 λ 就是凭空把读数打三折**。
- * 实测代价是用户可见的：`demo_po_expedite_to_inspection_queue` 的 description 承诺
- * 「加急压力 **× 0.6**」，包了助手之后每拍只加 `0.6 × 0.37 = 0.222` ⇒ **屏上差 2.70 倍**。
- * 故本表 47 条里 **41 条包助手、6 条刻意裸写**，判据只有一条：
- * **`targetStateVar` 在不在 `STATE_VAR_DOMAINS` 里。**
+ * ── ⚠ 系数的值**不在本文件**（WO-PROP-COEF-CONFIG）──────────────────────────────
+ * 曾有一个 `inflowCoefficient(steadyGain)` 助手把 `× λ` 包在这里；系数搬进
+ * `battery.ts` 的 `PROPAGATION_COEF_PARAMS`（C36.params，用户可改的唯一真源）之后，
+ * **它一个调用方都不剩了**（2026-09-19 剥注释实测：源码 3 处命中全在注释里，语法位置 0 处）。
+ * 留着一个没人调的助手 + 一段写着"本表 41 条包助手"的段头 = 第二套真相源，故删。
+ * 今天每条边的系数 = `demoPropagationRulesWithDomain()` 收尾处 `ruleParamOf(C36, r.key)` 取。
  *
- * ── 同一个判据也决定「受不受增益预算约束」——**两者不是两道工序，是一件事的两半** ──────
- * 曾要在「先剥 λ 再按预算缩」与「先缩再剥」之间选顺序 —— **两个都不对**：
- * 预算里的 `0.75` 是 `[0,100]` 域**软饱和曲线的拐点**（`kneeHi = 0.75 × max`，
- * 见 `propagation.ts` 的 `SATURATION_BAND_FRACTION = 0.25`）。**没有域就没有拐点**，
- * 那个 0.75 在无域格上不度量任何东西。⇒ 两个装置由**同一个谓词**开关，一起开、一起关：
- *   · 目标**已声明域** ⇒ 预乘 λ ✅ + 受预算约束 ✅
- *   · 目标**未声明域** ⇒ 不预乘 ⛔ + 不受预算 ⛔（用原始裸系数）
- * ⚠ 于是 `blockedPressure` 补登记进域表这件事**会改变它那条边走哪一支** ——
- *   两个改动必须一起落，分开落会有一拍口径不自洽。
+ * ── ⚠⚠ **只有「目标会衰减」的边才预乘 λ，且乘的是该落点自己的那个 λ** ────────────────
+ * 预乘存在的**唯一理由**是约掉衰减在稳态里引入的那个 `1/λ`（`稳态 = 入流/λ`）。
+ * 没有 `decayRef` 的量纲引擎**不衰减** ⇒ `combine:"sum"` 的**纯积分器**，没有 `1/λ` 可约
+ * ⇒ **预乘就是凭空把读数打三折**。今天全表**只有 `clearanceQueueDays`** 属这一档（1 条边）。
  *
- * ⚠ **「有没有预乘 λ」这一问，值判不了**：`0.222` 与 `inflowCoefficient(0.6)` 的产物**逐字节相同**。
- *   守它的门必须**文本（怎么写的）join 真值（该不该乘）**，只看其中一半就是瞎一只眼。
+ * ── 🔴 2026-09-19 WO-COEF-LAMBDA 两处订正（原文照录，因为照旧文去做会做错）──────────
+ * **订正①**：旧文写「两个装置（预乘 λ / 受 0.75 预算）由**同一个谓词**开关，一起开一起关」。
+ * 那句话在**每个已声明域都有有限 `max`** 的年代是对的；WO-PROP-REVIEW-V2 形态② 引入
+ * `max: null` 的积压族之后**就不对了**。引擎里这是两处互不相干的判断（逐行读的）：
+ *   · `propagation.ts` `resolveDecayRate(d, ruleParams)` —— **只看 `d.decayRef`**，与 `max` 无关
+ *     ⇒ 决定**该不该预乘 λ**；
+ *   · `propagation.ts` `saturateToDomain(raw, min, max, rest)` —— `max === null` 那一支
+ *     **没有上拐点** ⇒ `kneeHi = 0.75 × max` 不存在 ⇒ 决定**受不受 0.75 预算约束**。
+ *   ⇒ `queueDays` / `inspectBacklog` / `repairBacklog` / `handlingBacklog` / `qualificationQueue`
+ *     这 5 格：**预乘 ✅ + 不受预算 ⛔**。旧文没有这一档，于是这 5 条边被两头都读错了。
  *
- * ── ⛔ λ 走 C35 规则参数，不内联 0.37（R14/RL5 禁内联业务常数）───────────────────
- * `PRESSURE_DECAY_PER_TICK` **就是** `BATTERY_RULES` 里 C35「推演状态量衰减率」的
- * `params[STATE_DECAY_PARAM_KEY]` 那个值（两处共用同一个记号，不是两份同值字面量）——
- * 改那条规则即同时改这里。下面两行 `void` 不是装饰：它们让「本函数依赖 C35」这件事
- * **被类型系统咬住** —— 谁把 C35 的 ruleKey/paramKey 改名，这里当场编译红。
+ * **订正②**：旧文写「λ = 0.37」当成全表常数。C35 下挂 **6 个 paramKey**，实测三档：
+ *   `pressureDecayPerTick` 0.37（压力族 32 格）· `queueDaysDecayPerTick` / `inspectBacklogDecayPerTick` 0.37 ·
+ *   `repairBacklogDecayPerTick` / `handlingBacklogDecayPerTick` **0.75** · `qualificationQueueDecayPerTick` **0.22**。
+ *   形态：「我用『压力族的那个 λ』当作『这一格的 λ』的证据，而前者并不度量后者。」
+ *
+ * **这两条订正为什么是本单的根因**：域补登记（把 5 个量纲写进 `STATE_VAR_DOMAINS`）与
+ * 系数回改（给 5 条边乘上各自的 λ）是**两个必须同时落的改动**，而当时**没有任何机器**
+ * 把它们绑在一起 —— 域落了，系数没人回头改，四包照样全绿。
+ * ⇒ 机器已补：`seed-demo-propagation.test.ts` §6 判据⓪ 逐格断言 `c/λ == 在册意图增益`。
+ *
+ * ⚠ **「有没有预乘 λ」这一问，值判不了**：`0.222` 与 `0.6 × λ` 的产物**逐字节相同**。
+ *   守它的门必须**文本（description 怎么写的）join 真值（该不该乘）**，只看其中一半就是瞎一只眼
+ *   —— 那正是 `edge-money-weight.seam.test.ts` §3 在做的事。
  *
  * ── 为什么定精度到 12 位 ────────────────────────────────────────────────────
  * `0.6 × 0.37` 在 IEEE754 下是 `0.22199999999999998`。引擎侧 `propagation.ts` 的 `round12`
- * 已按 12 位定精度，种子侧不定精度就会把一串浮点尾巴带进**逐字节快照断言**（R6）。
+ * 已按 12 位定精度，写进 C36.params 的值不定精度就会把一串浮点尾巴带进**逐字节快照断言**（R6）。
  */
-const inflowCoefficient = (steadyGain: number): number => {
-  void STATE_DECAY_RULE_KEY; void STATE_DECAY_PARAM_KEY; // λ 的出处坐标（见上方注释），改名即编译红
-  return Math.round(steadyGain * PRESSURE_DECAY_PER_TICK * 1e12) / 1e12;
-};
 
 /**
  * ── 每格的**增益预算** `Σ_e 稳态增益_e × W_e ≤ 0.75`（WO-SIM-CALIBRATION）────────────
