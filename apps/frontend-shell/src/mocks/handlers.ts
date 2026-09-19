@@ -143,6 +143,13 @@ import {
   mockSopReschedule,
   mockBaseOutlook,
   mockChainImpediments,
+  // WO-MOCK-LEVER-TRUTH：空候选的缺口/定性文案与引擎逐字同构，**只有 simSolvers 一份**，别在本文件重抄。
+  MOCK_LEVER_NAMES,
+  mockLocusGap,
+  mockRuleGateGap,
+  mockTriedLedger,
+  mockQualNoPath,
+  mockNoneWhy,
   PLAN_VERSION_CURRENT,
   SopMockError,
   sopPlanLocked,
@@ -1080,8 +1087,17 @@ function mockDecisionPlay(metricKey?: string): Record<string, unknown> {
           ruleKey: "C34",
           join: { kind: "BASE_SCOPE", path: "gap_attribution.levels[1] 基地面含 changzhou → 阻滞点落在该基地面上" },
           candidates: [],
-          noCandidateReason:
-            "枚举已跑完，有效候选 0 个（探了 10 个杠杆锚点 / 34 次试算）。缺口：对象类型 Base 上没有任何可拨动落点；判据 C34 不是任何可拨动因子的门。",
+          // WO-MOCK-LEVER-TRUTH：此前这句用的是被引擎禁掉的**类型级**措辞（「对象类型 Base 上
+          // 一个可拨动落点都没有；判据 C34 不是任何可拨动因子的门」）—— 而它自己同一行就写着
+          // **探了 10 个锚点 / 34 次试算**。探到了 10 根杠杆还说一个落点都没有，同一个字符串里自相矛盾。
+          // 真定性是引擎四类里的第三类（真后端 14 条 NONE 里这类 3 条）：够着了、真拨了，
+          // 但这根杠杆整条链**不进产能公式** ⇒ 补落点册、换瓶颈都没用，缺的是模型里那一项。
+          noCandidateReason: mockNoneWhy(10, 34, [
+            mockQualNoPath({ rungs: 34, levers: [MOCK_LEVER_NAMES.lineUtilization] }),
+            mockTriedLedger({ tried: 34, flat: 34, worse: 0, metricPath: "Base.claimedDailyRate" }),
+            mockLocusGap("Base"),
+            mockRuleGateGap("C34"),
+          ]),
           noCandidateKind: "NONE",
         },
       ],
