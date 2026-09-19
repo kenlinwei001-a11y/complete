@@ -117,6 +117,13 @@ export const MOCK_ONTOLOGY_LINKS: MockOntologyLink[] = [
   { linkKey: "product_equip_capability", fromTypeKey: "ProductEquipmentCapability", toTypeKey: "Equipment" },
   { linkKey: "change_affects_model", fromTypeKey: "EngineeringChange", toTypeKey: "Model" },
   { linkKey: "alt_for_material", fromTypeKey: "MaterialAlternative", toTypeKey: "Material" },
+  // 两条**物料环新链**（A 侧 WO-PROP-REVIEW-V2 T4 新声明 + 新物化，供影响向传导用）：
+  // `IncomingInspection.queueDays --inspection_for_material--> Material.shortageRisk`（检验放行）·
+  // `MaterialBalance.gapPressure --balance_drives_po--> PurchaseOrder.expeditePressure`（缺口催货）。
+  // ⚠ 它们是被 `mock-engine-parity.test.ts` §2 当场咬出来的 —— A 侧加了链路声明而本表没跟，
+  //   正是那道门要治的漂移；⛔ 改 A 侧本体链路表时这里必须同步（金值/注册即更）。
+  { linkKey: "inspection_for_material", fromTypeKey: "IncomingInspection", toTypeKey: "Material" },
+  { linkKey: "balance_drives_po", fromTypeKey: "MaterialBalance", toTypeKey: "PurchaseOrder" },
   { linkKey: "material_supplied_by", fromTypeKey: "Material", toTypeKey: "Supplier" },
   { linkKey: "line_has_process", fromTypeKey: "Line", toTypeKey: "Process" },
   { linkKey: "process_belongs_to_line", fromTypeKey: "Process", toTypeKey: "Line" },
