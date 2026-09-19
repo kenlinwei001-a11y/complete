@@ -207,15 +207,15 @@ async function main() {
       console.log(`  ${(k + " → " + sv).padEnd(38)} ${String(lam).padEnd(8)} ${b.toFixed(9).padEnd(17)} ${a.toFixed(9).padEnd(17)} ${ratio.toFixed(12).padEnd(15)} ${ok ? "✅" : "⛔"}`);
     }
     // ── 🐤 反向金丝雀：**动了的必须全在被改边的下游**（⛔ 不是「其余边一律不动」）──────────
-    // 单拍 + 逐字节相同的 tick0 ⇒ 级联还没发生 ⇒ 变动集合必须**恰好**是被改的这 5 条。
+    // 前两拍 + 逐字节相同的 tick0 ⇒ 这 5 个落点的回路都还没闭上 ⇒ 变动集合必须**恰好**是被改的 5 条。
     // 这一条同时是**非空**的：若变动集合为空，说明 PATCH 根本没生效（比值那一栏也就没意义）。
     const moved = [...new Set([...Object.keys(traceBefore), ...Object.keys(traceAfter)])]
       .filter((k) => (traceBefore[k] ?? 0) !== (traceAfter[k] ?? 0)).sort();
     const want = Object.keys(FIVE).sort();
     const same = moved.length === want.length && moved.every((k, i) => k === want[i]);
-    console.log(`\n  🐤 反向金丝雀（单拍变动集合，应恰为被改的 5 条）：`);
+    console.log(`\n  🐤 反向金丝雀（前两拍变动集合，应恰为被改的 5 条）：`);
     console.log(`     实测动了 ${moved.length} 条：${moved.join(" / ") || "（空 ⇒ PATCH 没生效）"}`);
-    console.log(`     ⇒ ${same ? "✅ 恰为被改的 5 条，级联未起（单拍）" : "⛔ 与被改集合不符"}`);
+    console.log(`     ⇒ ${same ? "✅ 恰为被改的 5 条，回路未闭（前两拍）" : "⛔ 与被改集合不符"}`);
     if (!same) bad += 1;
     for (const [k, [sv]] of Object.entries(BARE)) {
       const b = traceBefore[k], a = traceAfter[k];
