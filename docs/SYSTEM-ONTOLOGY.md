@@ -1099,7 +1099,29 @@ ChainImpediment.locus{objectType,objectId}（真对象）
       · 就地嵌入 DecisionPlayEmbed（默认折叠的 <details>，第一层只留一个可见记号 ⇒ 宿主页 first 不涨）
         挂载点：views/sim/ChainImpedimentView.tsx 逐条阻滞点（带真 locus 锚）
                 views/plan/OrderChainView.tsx 订单面板（**不锚 locus**：订单站点与阻滞点落点今日无共同 id，见 G-IMPEDIMENT-LOSS-NOJOIN）
+      · **只取 TriggerVerdictStrip（不整块嵌 DecisionPlayEmbed）的挂载点**（WO-SANDBOX-IMPEDIMENT-RESIDUAL）：
+        views/sim/SandboxConsole.tsx 的 ImpedimentResidual（阻滞点逐条，testId `sc-imp-play-<impedimentId>-trigstrip`）
+        理由：沙盘同一行下面已有 CandidateBlock（候选方案对照），再嵌一份 DecisionPlayPanel 抽屉 = 同屏两套方案区 ⇒ 两套真相源
       · 「壳与嵌入是同一份实现」是**可核结构**：面板里 dp-impl-stamp 一行文案改一处，两处断言一起红
+
+  ── 收编残差补回（WO-SANDBOX-IMPEDIMENT-RESIDUAL·2026-09-18 真起 SEED_DEMO=1 实测）─────────
+  `chain-impediments` 经 ShellLayout.CONSOLIDATED_INTO_SANDBOX 收进沙盘（该登记 where 原文自带「残差见 AUDIT §2」），
+  收编**有损**：独立屏 18/18 有、收编后沙盘 **0/18** 的四样，现已补回 SandboxConsole.tsx 逐条行：
+    ① 卡点自己的 severity（`sc-imp-severity-<id>`）② scanId（`sc-imp-scan-id`）
+    ③ 阈值出处（`sc-imp-threshold-src-<id>`，派生层按 ruleKey 连 payload.thresholds[]；**引擎逐条载荷里无此字段**，实测 18 条全无）
+    ④ 触发判定明细（见上 TriggerVerdictStrip 挂载点）
+  两条路已实测**同源**：datacore `/a/v1/solvers/chain_impediments/invoke` 与 agentcore `/b/v1/solvers/chain_impediments/run`
+  同 scanId、18/18 severity 逐条相等（B 路是 server.ts:2468 经 OBO 代理到 A，非第二套实现）。
+
+  ⚠ **「严重度」是两个不同的量，屏上必须分得开**（本单消歧，别再合并）：
+    · `ChainImpediment.severity` —— **双因子** `round(100×sqrt(breachFactor×exposureFactor))`
+      （solvers/chain-impediment.ts，第二因子 = 下游受影响订单金额 ÷ 订单簿总额，两因子原样回带在 carriers 里可复算）
+    · `SolutionCandidate.dims[key="severity"]` —— **单因子** `round(breach/denom×100)`（solvers/impediment-options.ts severityOf）
+      单因子**不是退化，是必须**：候选是假设态，沿 carriers 重走下游订单那条遍历跑不出来 ⇒ exposureFactor 算不出
+    实测同一条卡点 `imp_BREAK.MATERIAL.material-gap_mbal-2`：双因子 **16**、单因子 **6**，且该候选 baseline 与 value **都是 6**
+    ⇒ 二者**不是「现在 vs 施策后」，是两种口径，不可直接比大小**。
+    屏上措辞：前者「卡点当前严重度 N/100」，后者由引擎 label 自带「严重度（单因子·只看超阈幅度）」（R14 单源，前端不另建映射表）。
+    ⚠ `severityOf` 的注释原文曾写「口径必须与 judgeOne 同一份」——该句随双因子上线即过期，已就地订正。
 数据半（同单补·synthetic/battery-extended.ts CHAIN_LOCUS_CAUSAL_FACTORS）：
   cf-batch-idle(MaterialBatch.idleDays·正是判据 C28 读的字段) · cf-base-capacity-contention(Base.util)
   metricKey=`chain_flow` 新域，**故意不挂 Metric/因果边** ⇒ 不进任何 gap_attribution 树 ⇒ 既有归因结论逐字节不变

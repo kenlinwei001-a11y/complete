@@ -516,7 +516,25 @@ function judgeOnCtx(args: {
   return { metric: metricRaw, breach: round(breachAmount(metricRaw, th.value, th.op, th.metricOnLeft), 6) };
 }
 
-/** severity 口径必须与 `judgeOne` 同一份：`超阈幅度 / 规模基准` × 100，clamp 0–100。 */
+/**
+ * 本枚举器的 severity = **单因子**口径：`超阈幅度 / 规模基准` × 100，clamp 0–100。
+ *
+ * ⚠ **它与阻滞点自己的 `ChainImpediment.severity` 不是同一个量，别当成同一个数读**
+ * （WO-SANDBOX-IMPEDIMENT-RESIDUAL 实测）：
+ * `solvers/chain-impediment.ts` 的 `severity` 自 WO-IMP-CARRIER 起是**双因子**
+ * —— `round(100 × sqrt(breachFactor × exposureFactor))`，第二因子是下游受影响订单金额敞口。
+ * 本函数只有第一个因子。实测 `imp_BREAK.MATERIAL.material-gap_mbal-2`：
+ * 双因子 **16**（breachFactor 0.059942 × exposureFactor 0.436053），单因子 **6**。
+ *
+ * ⚠ **本注释原文曾写「severity 口径必须与 `judgeOne` 同一份」——那句话已经过期且会误导**：
+ * 双因子上线时这一侧没跟着改，于是「必须同一份」成了一句没有任何东西在守的断言
+ * （铁律 1.5 判据四：信注释 = 信台账，同样要实测）。
+ *
+ * **为什么这里刻意不改成双因子**：本函数要算的是「**施策后**会变成多少」，
+ * 而 exposureFactor 需要沿 carriers 重新遍历一遍下游订单——候选是假设态，那条遍历跑不出来。
+ * 故这一侧只能维持单因子，**代价是它与卡点自己的严重度不可直接比大小**。
+ * 这件事必须写在屏上（见下方 `dims` 里该维的 `label`），不能只写在注释里。
+ */
 function severityOf(breach: number, denom: number): number | null {
   if (!(denom > 0)) return null;
   return Math.max(0, Math.min(100, Math.round((breach / denom) * 100)));
@@ -718,7 +736,11 @@ export function enumerateImpedimentOptions(
           },
           {
             key: "severity",
-            label: "严重度",
+            // ⚠ label 必须自带口径 —— 屏上另有一个也叫「严重度」的数（卡点自己的双因子 severity，
+            // 同一条卡点实测 16，而这一维是 6）。两个不同的量同名摆在同一块屏上，
+            // 比不显示更坏：读的人会把 6 当成 16 的「施策后」，而它们连口径都不同。
+            // 口径差的成因与「为什么不能统一」见 `severityOf` 的注释。
+            label: "严重度（单因子·只看超阈幅度）",
             value: afterSeverity,
             baseline: baseSeverity,
             unit: "",
