@@ -284,6 +284,13 @@ console.log(`\n══ 进表 ${live.length} 条边的源出处分布：${JSON.st
 const hashTop = [...live].sort((a, b) => b.colB - a.colB).slice(0, 10).filter((x) => x.prov === "哈希").length;
 console.log(`   B 列前 10 名里，源走哈希占位的有 ${hashTop} 条`);
 
+// ── 给 §6 断言用的**全精度**取值（⛔ 别照抄上面表里的 4 位小数，那是显示用的）────────────
+console.log(`\n══ §6 断言用取值（全精度）══`);
+console.log(`   主导权分歧格集合 = ${JSON.stringify(flips.map((f) => f.cell).sort())}`);
+console.log(`   Model.demandLoad 带符号实际拉力合计 = ${dl.reduce((s, x) => s + x.signedB, 0)}`);
+for (const x of dl) console.log(`     ${x.key} = ${x.signedB}  (出处 ${x.prov})`);
+console.log(`   源走哈希占位的边（共 ${live.filter((x) => x.prov === "哈希").length} 条）= ${JSON.stringify(live.filter((x) => x.prov === "哈希").map((x) => x.key).sort())}`);
+
 // ══ 旁证：真跑一拍，比 trace 里每条边的传导量合计 vs 我上面算的 inflowSum ══════════════
 // 铁律 0.6 第 6 条判据 2：「凡报『共 N 条』，先找一个**不同来源**的 N 对一下。」
 // 这里的不同来源 = 引擎自己跑出来的 trace，⛔ 不是我这段代码再算一遍。
