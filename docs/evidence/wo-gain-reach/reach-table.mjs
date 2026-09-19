@@ -36,6 +36,12 @@ const { LocalFsBlobStore } = await import(R + "blob.js");
 const { ScriptedLlmClient } = await import(R + "llm.js");
 const { buildApp } = await import(R + "app.js");
 const { seedDemo, seedDemoPropagationRules } = await import(R + "seed.js");
+// ⚠⚠ 这两步是**生产播种序列里的**（`server.ts:101` / `:105`），且**必须排在世界快照之前** ——
+//   世界快照一次性取 `o.props[v]`，派生值晚了不回填。
+//   第一版探针漏了它们 ⇒ 51 条边的源**全部**读成「哈希」，包括 `Order.demandPressure`。
+//   形态：「我用『测试助手 seedBattery 播完了』当作『世界与生产同源』的证据，而前者并不度量后者
+//   —— 生产播种序列比它多两步，而那两步恰好决定了每一格是真读数还是哈希占位。」
+const { seedDemoDerivationSpecs, recomputeDemoDerivationsAtSeed } = await import(R + "seed-derivation-specs.js");
 const { buildPropagationInputs } = await import(R + "sim/propagation-inputs.js");
 const { pairWeightKey } = await import(R + "sim/propagation.js");
 const { deriveSeedBaseSnapshot } = await import(R + "sim/seed-world.js");
@@ -58,6 +64,11 @@ const job = await built.app.inject({
 });
 if (job.statusCode !== 202) throw new Error(`合成作业失败 ${job.statusCode}: ${job.body.slice(0, 300)}`);
 await seedDemoPropagationRules(repos);
+const adminCtx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["admin"], attributes: {} };
+const nSpecs = await seedDemoDerivationSpecs(repos, built.services.ontologyCore, built.services.governance, adminCtx);
+const nDerived = await recomputeDemoDerivationsAtSeed(repos, built.services.ontologyCore, adminCtx);
+if (nSpecs === 0 || nDerived === 0) throw new Error(`🐤④ 派生规格 ${nSpecs} 条 / 物化 ${nDerived} 个对象 —— 有一个为 0 就说明这一步没生效，下面的「实测」章全是假的`);
+console.log(`🐤④ 生产播种序列补跑：派生规格 ${nSpecs} 条 · 播种期全量初算物化 ${nDerived} 个对象（server.ts:101/:105 同两步）`);
 
 const rules = await repos.sim.listPropagationRules("demo", true);
 if (rules.length !== 55) throw new Error(`🐤① 规则 ${rules.length} 条 ≠ 55 ⇒ 种子/取法坏了，下面全是空话`);
