@@ -267,7 +267,7 @@ describe("§3 描述里的系数 = 真系数", () => {
    *   形态同族：「我用『补好了正则』当作『负系数边都被对上了』的证据。」——补正则只捞回 1 条。
    */
   const statedOf = (description: string): number[] =>
-    [...description.matchAll(/[×x]\s*([-−]?[\d.]+)/g)].map((x) => Number(x[1].replace("−", "-")));
+    [...description.matchAll(/[×x]\s*([-−]?[\d.]+)/g)].map((x) => Number((x[1] ?? "").replace("−", "-")));
 
   /** 落库系数 → description 承诺的那个量（稳态增益）= `系数 ÷ 该落点自己的 λ`。 */
   const gainOf = (targetStateVar: string, coefficient: number): number => {

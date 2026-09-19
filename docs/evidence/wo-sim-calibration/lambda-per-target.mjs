@@ -134,10 +134,43 @@ async function main() {
     console.log(`    ⇒ 若对照组同样在 tick8 归零，则 \`Model.demandLoad\` 归零是**零扰动世界松弛到静息点**的常态，`);
     console.log(`      不是「被地板夹死」。两者的区别看 G-ROOT-1：夹死时扰动推不动它（逐拍 Δ 全 0）。`);
 
-    // ══ 判据①正向：改后 vs 改前（PATCH 回裸 g），增量比 = 该落点自己的 λ ══════════════
-    console.log(`\n══ 判据① 正向 · 同 ${TICKS} 拍、同一份 tick0，只差「系数有没有预乘 λ」══`);
-    const after = await runSum();
-    const seed0 = await runSum(0);            // tick0 出厂存量：两臂完全相同，必须减掉
+    // ══ 判据①正向：**单拍 trace 里那条边的传导量**，改后 ÷ 改前 = 该落点自己的 λ ════════
+    //
+    // ⚠⚠ **观测量必须是「单拍传导量」，不是「推 N 拍之后的世界读数」** —— 这是本脚本第三处换轨，
+    //    同样被实测逼出来（前两版都错了，读数如下，留在这里当判据）：
+    //  · 错法 A：比「推 24 拍后的世界读数」。这 5 个量纲**现在会衰减**（本单之前它们是纯积分器），
+    //    24 拍后的读数由**出厂存量的衰减**主导，不由入流主导 ⇒ 两臂比值实测 1.00–1.36，不是 λ。
+    //    形态：「我用『世界读数之比』当作『入流之比』的证据 —— 读数里有一大块是在衰减的旧存量。」
+    //  · 错法 B：反向金丝雀写成「对照边 `clearanceQueueDays` 一律不动」。实测它**动了**
+    //    （56.647 → 48.354），而那是**真级联不是病**：
+    //    `queueDays → Material.shortageRisk → PurchaseOrder.expeditePressure → clearanceQueueDays`
+    //    （`demo_inspection_queue_to_material_shortage` 那条边把环闭上了）。
+    //    ⇒ 反向判据只能写成「**动了的必须全在被改边的下游**」。
+    // ⇒ 现在的观测量：从**逐字节相同的 tick0** 各推**一拍**，比 `trace` 里每条边的 `amount` 合计。
+    //   单拍 ⇒ 源世界两臂完全相同 ⇒ 比值 = 系数之比 = λ，**精确**，且级联还来不及发生
+    //   ⇒ 「只有这 5 条边变了」这句话此时才是可断言的。
+    // ⚠ **推 2 拍不是 1 拍**（第四处换轨，同样是实测逼出来的）：本组 6 条边里 **5 条 `delayTicks: 1`**
+    //   —— 它们这一拍算出来的贡献**下一拍才落地**，单拍 trace 里根本没有它们那一行。
+    //   实测：单拍只量到 `demo_defect_to_exception_backlog`（唯一 `delayTicks: 0`），
+    //   其余 4 条报「这条边单拍没传导」⇒ 会被读成「预乘没生效」这个**恰好相反**的结论。
+    //   形态：「我用『单拍 trace 里没有这条边』当作『这条边没传导』的证据 —— 它只是还在路上。」
+    //   2 拍仍然安全：这 5 个落点里 4 个是**叶子汇**（出边 0），`queueDays` 唯一有出边，
+    //   但它的回路 `queueDays → shortageRisk → expeditePressure → queueDays` 要 ≥3 跳才闭上
+    //   ⇒ 第 2 拍时各边的**源**两臂仍逐字节相同，比值仍然纯粹是系数之比。
+    const traceByRule = async () => {
+      const s = await jpost(base, "/a/v1/sim/sessions", { baseSnapshot: t0, scope: {} });
+      const by = {};
+      let rows = 0;
+      for (let i = 0; i < 2; i++) {
+        const r = await jpost(base, `/a/v1/sim/sessions/${s.id}/tick`, { n: 1 });
+        for (const t of (r.trace ?? r.result?.trace ?? [])) { by[t.ruleKey] = (by[t.ruleKey] ?? 0) + t.amount; rows += 1; }
+      }
+      if (rows === 0) throw new Error("🐤 反空绿：两拍 trace 都是空的 ⇒ 一条边都没触发，下面全是空话");
+      return by;
+    };
+    console.log(`\n══ 判据① 正向 · **前两拍传导量合计**（同一份 tick0，只差「系数有没有预乘 λ」）══`);
+    const traceAfter = await traceByRule();
+    console.log(`  🐤 非空金丝雀：改后臂两拍 trace 覆盖 ${Object.keys(traceAfter).length} 条边`);
 
     // ── 「改前」臂怎么造：**必须改 C36 的 params，不是改边上的 `coefficient` 字段** ──────────
     // ⚠ 这一步是本脚本相对 `backlog-lambda.mjs` 的**第二处换轨**，且是被实测逼出来的：
@@ -148,33 +181,47 @@ async function main() {
     //   而正确答案是 0.37/0.75/0.22 ⇒ 会被读成「预乘 λ 根本没生效」这个**恰好相反**的结论。
     //   形态：「我用『我 PATCH 了系数』当作『引擎读到的系数变了』的证据，而前者并不度量后者。」
     //   ⚠ `docs/evidence/wo-sim-calibration/backlog-lambda.mjs` 仍是旧写法 ⇒ 它今天给的是假阴性。
-    const c36 = ((await jget(base, "/a/v1/rules?pageSize=200")).items ?? []).find((r) => r.key === "C36");
-    if (!c36) throw new Error("取不到 C36 规则 ⇒ 「改前」臂造不出来");
-    const patched = { ...c36.params };
-    for (const [k, [, g]] of Object.entries(FIVE)) patched[k] = g;      // 改前 = 裸 g
-    await fetch(`${base}/a/v1/rules/${c36.id}`, { method: "PUT", headers: H, body: JSON.stringify({ params: patched }) })
-      .then((r) => { if (!r.ok) throw new Error(`PUT /a/v1/rules/${c36.id} ${r.status}`); });
-    const c36b = ((await jget(base, "/a/v1/rules?pageSize=200")).items ?? []).find((r) => r.key === "C36");
+    //   改 C36 本身走不通：`PUT /a/v1/rules/:id` **只允许改 DRAFT**，C36 是 PUBLISHED ⇒ 409 IMMUTABLE_VERSION。
+    //   故「改前」臂改走：**摘掉这 5 条边的 `coefficientRef`**（ref 解析不到 ⇒ 按 G-10 P1 回落内联
+    //   `coefficient`），同时把内联值 PATCH 成裸 g。两步一起下，缺一步都还是读到旧值。
     for (const [k, [, g]] of Object.entries(FIVE)) {
-      if (Math.abs(Number(c36b.params[k]) - g) > 1e-12) throw new Error(`C36.${k} 没改成裸 ${g}（实得 ${c36b.params[k]}）⇒ 「改前」臂无效`);
+      const r = rules.find((x) => x.key === k);
+      await jpatch(base, `/a/v1/sim/propagation-rules/${r.id}`, { coefficient: g, coefficientRef: null });
     }
-    console.log(`  🐤 自证③ C36.params 里这 5 条已改回裸 g ⇒ 「改前」臂成立（改的是引擎真读的那一份）`);
-    const before = await runSum();
+    rules = (await jget(base, "/a/v1/sim/propagation-rules")).items ?? [];
+    for (const [k, [, g]] of Object.entries(FIVE)) {
+      const r = rules.find((x) => x.key === k);
+      if (Math.abs(r.coefficient - g) > 1e-12) throw new Error(`${k} 内联系数没改成裸 ${g}（实得 ${r.coefficient}）⇒ 「改前」臂无效`);
+      if (r.coefficientRef) throw new Error(`${k} 的 coefficientRef 没摘掉（${JSON.stringify(r.coefficientRef)}）⇒ 引擎仍读 C36 旧值，「改前」臂无效`);
+    }
+    console.log(`  🐤 自证③ 5 条已摘 ref + 内联改回裸 g ⇒ 「改前」臂成立（改的是引擎真读的那一份）`);
+    const traceBefore = await traceByRule();
 
-    console.log(`\n  落点状态量            λ(该格)  改前增量        改后增量        实测比值      期望=λ   判定`);
-    for (const [, [sv, , lam]] of Object.entries(FIVE)) {
-      const s0 = seed0[sv], b = before[sv] - s0, a = after[sv] - s0;
-      if (a === 0 && b === 0) { console.log(`  ${sv.padEnd(22)} 两臂增量都是 0 ⇒ 🐤 反空绿守卫：这一格没在动，比值是空话`); bad += 1; continue; }
+    console.log(`\n  边 / 落点量纲                      λ(该格)  改前传导量        改后传导量        实测比值        判定`);
+    for (const [k, [sv, , lam]] of Object.entries(FIVE)) {
+      const b = traceBefore[k], a = traceAfter[k];
+      if (b == null || a == null || b === 0) { console.log(`  ${k.padEnd(38)} 这条边两拍都没传导 ⇒ 🐤 反空绿守卫：比值是空话`); bad += 1; continue; }
       const ratio = a / b;
-      const ok = Math.abs(ratio - lam) < 1e-6;
+      const ok = Math.abs(ratio - lam) < 1e-9;
       if (!ok) bad += 1;
-      console.log(`  ${sv.padEnd(22)} ${String(lam).padEnd(8)} ${b.toExponential(6).padEnd(15)} ${a.toExponential(6).padEnd(15)} ${ratio.toFixed(9).padEnd(13)} ${String(lam).padEnd(8)} ${ok ? "✅" : "⛔"}`);
+      console.log(`  ${(k + " → " + sv).padEnd(38)} ${String(lam).padEnd(8)} ${b.toFixed(9).padEnd(17)} ${a.toFixed(9).padEnd(17)} ${ratio.toFixed(12).padEnd(15)} ${ok ? "✅" : "⛔"}`);
     }
-    // 对照边：本轮**没被 PATCH**，两臂读数必须逐字节相同（它不在任何一条被改边的下游）
-    for (const [, [sv]] of Object.entries(BARE)) {
-      const same = before[sv] === after[sv];
-      console.log(`  ${sv.padEnd(22)} [对照·无域不预乘] 改前 ${before[sv]} / 改后 ${after[sv]} ⇒ ${same ? "✅ 逐字节相同" : "⛔ 动了"}`);
-      if (!same) bad += 1;
+    // ── 🐤 反向金丝雀：**动了的必须全在被改边的下游**（⛔ 不是「其余边一律不动」）──────────
+    // 单拍 + 逐字节相同的 tick0 ⇒ 级联还没发生 ⇒ 变动集合必须**恰好**是被改的这 5 条。
+    // 这一条同时是**非空**的：若变动集合为空，说明 PATCH 根本没生效（比值那一栏也就没意义）。
+    const moved = [...new Set([...Object.keys(traceBefore), ...Object.keys(traceAfter)])]
+      .filter((k) => (traceBefore[k] ?? 0) !== (traceAfter[k] ?? 0)).sort();
+    const want = Object.keys(FIVE).sort();
+    const same = moved.length === want.length && moved.every((k, i) => k === want[i]);
+    console.log(`\n  🐤 反向金丝雀（单拍变动集合，应恰为被改的 5 条）：`);
+    console.log(`     实测动了 ${moved.length} 条：${moved.join(" / ") || "（空 ⇒ PATCH 没生效）"}`);
+    console.log(`     ⇒ ${same ? "✅ 恰为被改的 5 条，级联未起（单拍）" : "⛔ 与被改集合不符"}`);
+    if (!same) bad += 1;
+    for (const [k, [sv]] of Object.entries(BARE)) {
+      const b = traceBefore[k], a = traceAfter[k];
+      const eq = b === a;
+      console.log(`     对照边 ${k} → ${sv}（无域·不预乘·本轮没改）：${b} vs ${a} ⇒ ${eq ? "✅ 逐字节相同" : "⛔ 动了"}`);
+      if (!eq) bad += 1;
     }
     console.log(`\n  ⚠ 比值三档（0.37 / 0.75 / 0.22）互不相同 —— 这正是「λ 不是全表一个数」的实测证据：`);
     console.log(`    若某一格比值被测成 0.37 而它的 λ 是 0.75，说明有人又拿压力族的 λ 去乘别人家的格子。`);
