@@ -5,9 +5,9 @@
 
 ## 连通图摘要
 
-- 本体：类型 **97**，链路 **116**
-- 切片库：**61**（域内 7 · 跨域 54）
-- 连通边：**796**（shared-type 228 · bridge-link 568）
+- 本体：类型 **97**，链路 **118**
+- 切片库：**63**（域内 7 · 跨域 56）
+- 连通边：**824**（shared-type 236 · bridge-link 588）
 - 孤岛：**0**（豁免 1 · 非豁免 0）
 
 ## 孤岛表
@@ -75,6 +75,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.process.operation` | `biz.x.model_to_material` | routing_belongs_to_model: Routing→Model |
 | `biz.process.operation` | `biz.x.qualitystandard_to_model` | routing_belongs_to_model: Routing→Model |
 | `biz.process.operation` | `biz.x.workorder_to_model` | routing_belongs_to_model: Routing→Model |
+| `biz.product.bomdetail` | `biz.x.incominginspection_to_material` | detail_uses_material: BOMDetail→Material |
 | `biz.product.bomdetail` | `biz.x.material_to_materialbalance` | detail_uses_material: BOMDetail→Material |
 | `biz.product.bomdetail` | `biz.x.material_to_model` | detail_uses_material: BOMDetail→Material |
 | `biz.product.bomdetail` | `biz.x.model_to_material` | detail_uses_material: BOMDetail→Material |
@@ -187,12 +188,13 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.bomdetail_to_material` | `biz.x.exceptionevent_to_materialbalance` | material_has_balance: Material→MaterialBalance |
 | `biz.x.bomdetail_to_material` | `biz.x.finishedgoodsinventory_to_model` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.interbasetransfer_to_model` | material_used_by_model: Material→Model |
+| `biz.x.bomdetail_to_material` | `biz.x.materialbalance_to_purchaseorder` | material_has_balance: Material→MaterialBalance |
 | `biz.x.bomdetail_to_material` | `biz.x.model_to_base` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.model_to_certification` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.model_to_changeovermatrix` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.model_to_finishedgoodsinventory` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.model_to_line` | material_used_by_model: Material→Model |
-| `biz.x.bomdetail_to_material` | `biz.x.purchaseorder_to_incominginspection` | material_supplied_by_po: Material→PurchaseOrder |
+| `biz.x.bomdetail_to_material` | `biz.x.purchaseorder_to_incominginspection` | inspection_for_material: IncomingInspection→Material |
 | `biz.x.bomdetail_to_material` | `biz.x.qualitystandard_to_model` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.routing_to_model` | material_used_by_model: Material→Model |
 | `biz.x.bomdetail_to_material` | `biz.x.workorder_to_model` | material_used_by_model: Material→Model |
@@ -253,16 +255,22 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.equipment_to_process` | `biz.x.wiplot_to_line` | line_has_process: Line→Process |
 | `biz.x.equipment_to_process` | `biz.x.workorder_to_line` | line_has_process: Line→Process |
 | `biz.x.exceptionevent_to_equipmentalarm` | `biz.x.material_to_materialbalance` | exc_sourced_from_balance: ExceptionEvent→MaterialBalance |
+| `biz.x.exceptionevent_to_equipmentalarm` | `biz.x.materialbalance_to_purchaseorder` | exc_sourced_from_balance: ExceptionEvent→MaterialBalance |
 | `biz.x.exceptionevent_to_equipmentalarm` | `biz.x.process_to_equipment` | alarm_for_equip: EquipmentAlarm→Equipment |
 | `biz.x.exceptionevent_to_equipmentalarm` | `biz.x.wiplot_to_defectrecord` | defect_raises_exception: DefectRecord→ExceptionEvent |
 | `biz.x.exceptionevent_to_equipmentdowntime` | `biz.x.material_to_materialbalance` | exc_sourced_from_balance: ExceptionEvent→MaterialBalance |
+| `biz.x.exceptionevent_to_equipmentdowntime` | `biz.x.materialbalance_to_purchaseorder` | exc_sourced_from_balance: ExceptionEvent→MaterialBalance |
 | `biz.x.exceptionevent_to_equipmentdowntime` | `biz.x.process_to_equipment` | dt_for_equip: EquipmentDowntime→Equipment |
 | `biz.x.exceptionevent_to_equipmentdowntime` | `biz.x.wiplot_to_defectrecord` | defect_raises_exception: DefectRecord→ExceptionEvent |
+| `biz.x.exceptionevent_to_materialbalance` | `biz.x.incominginspection_to_material` | material_has_balance: Material→MaterialBalance |
 | `biz.x.exceptionevent_to_materialbalance` | `biz.x.material_to_model` | material_has_balance: Material→MaterialBalance |
 | `biz.x.exceptionevent_to_materialbalance` | `biz.x.model_to_material` | material_has_balance: Material→MaterialBalance |
+| `biz.x.exceptionevent_to_materialbalance` | `biz.x.purchaseorder_to_incominginspection` | balance_drives_po: MaterialBalance→PurchaseOrder |
 | `biz.x.exceptionevent_to_materialbalance` | `biz.x.wiplot_to_defectrecord` | defect_raises_exception: DefectRecord→ExceptionEvent |
 | `biz.x.exceptionevent_to_triggerrule` | `biz.x.material_to_materialbalance` | exc_sourced_from_balance: ExceptionEvent→MaterialBalance |
+| `biz.x.exceptionevent_to_triggerrule` | `biz.x.materialbalance_to_purchaseorder` | exc_sourced_from_balance: ExceptionEvent→MaterialBalance |
 | `biz.x.exceptionevent_to_triggerrule` | `biz.x.wiplot_to_defectrecord` | defect_raises_exception: DefectRecord→ExceptionEvent |
+| `biz.x.finishedgoodsinventory_to_model` | `biz.x.incominginspection_to_material` | material_used_by_model: Material→Model |
 | `biz.x.finishedgoodsinventory_to_model` | `biz.x.interbasetransfer_to_base` | model_producible_at: Model→Base |
 | `biz.x.finishedgoodsinventory_to_model` | `biz.x.inventorytxn_to_workorder` | txn_for_fg: InventoryTxn→FinishedGoodsInventory |
 | `biz.x.finishedgoodsinventory_to_model` | `biz.x.line_to_capacitypool` | model_certified_on: Model→Line |
@@ -294,6 +302,16 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.finishedgoodsinventory_to_warehouse` | `biz.x.qualitystandard_to_model` | fg_of_model: FinishedGoodsInventory→Model |
 | `biz.x.finishedgoodsinventory_to_warehouse` | `biz.x.routing_to_model` | fg_of_model: FinishedGoodsInventory→Model |
 | `biz.x.finishedgoodsinventory_to_warehouse` | `biz.x.workorder_to_model` | fg_of_model: FinishedGoodsInventory→Model |
+| `biz.x.incominginspection_to_material` | `biz.x.interbasetransfer_to_model` | material_used_by_model: Material→Model |
+| `biz.x.incominginspection_to_material` | `biz.x.materialbalance_to_purchaseorder` | material_has_balance: Material→MaterialBalance |
+| `biz.x.incominginspection_to_material` | `biz.x.model_to_base` | material_used_by_model: Material→Model |
+| `biz.x.incominginspection_to_material` | `biz.x.model_to_certification` | material_used_by_model: Material→Model |
+| `biz.x.incominginspection_to_material` | `biz.x.model_to_changeovermatrix` | material_used_by_model: Material→Model |
+| `biz.x.incominginspection_to_material` | `biz.x.model_to_finishedgoodsinventory` | material_used_by_model: Material→Model |
+| `biz.x.incominginspection_to_material` | `biz.x.model_to_line` | material_used_by_model: Material→Model |
+| `biz.x.incominginspection_to_material` | `biz.x.qualitystandard_to_model` | material_used_by_model: Material→Model |
+| `biz.x.incominginspection_to_material` | `biz.x.routing_to_model` | material_used_by_model: Material→Model |
+| `biz.x.incominginspection_to_material` | `biz.x.workorder_to_model` | material_used_by_model: Material→Model |
 | `biz.x.interbasetransfer_to_base` | `biz.x.line_to_capacitypool` | line_belongs_to_base: Base→Line |
 | `biz.x.interbasetransfer_to_base` | `biz.x.line_to_process` | line_belongs_to_base: Base→Line |
 | `biz.x.interbasetransfer_to_base` | `biz.x.line_to_workorder` | line_belongs_to_base: Base→Line |
@@ -400,17 +418,18 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.material_to_materialbalance` | `biz.x.model_to_changeovermatrix` | material_used_by_model: Material→Model |
 | `biz.x.material_to_materialbalance` | `biz.x.model_to_finishedgoodsinventory` | material_used_by_model: Material→Model |
 | `biz.x.material_to_materialbalance` | `biz.x.model_to_line` | material_used_by_model: Material→Model |
-| `biz.x.material_to_materialbalance` | `biz.x.purchaseorder_to_incominginspection` | material_supplied_by_po: Material→PurchaseOrder |
+| `biz.x.material_to_materialbalance` | `biz.x.purchaseorder_to_incominginspection` | balance_drives_po: MaterialBalance→PurchaseOrder |
 | `biz.x.material_to_materialbalance` | `biz.x.qualitystandard_to_model` | material_used_by_model: Material→Model |
 | `biz.x.material_to_materialbalance` | `biz.x.routing_to_model` | material_used_by_model: Material→Model |
 | `biz.x.material_to_materialbalance` | `biz.x.workorder_to_model` | material_used_by_model: Material→Model |
+| `biz.x.material_to_model` | `biz.x.materialbalance_to_purchaseorder` | material_has_balance: Material→MaterialBalance |
 | `biz.x.material_to_model` | `biz.x.operatorattendance_to_line` | model_certified_on: Model→Line |
 | `biz.x.material_to_model` | `biz.x.order_to_customer` | model_demanded_by_order: Model→Order |
 | `biz.x.material_to_model` | `biz.x.order_to_orderpromise` | model_demanded_by_order: Model→Order |
 | `biz.x.material_to_model` | `biz.x.order_to_plantarget` | model_demanded_by_order: Model→Order |
 | `biz.x.material_to_model` | `biz.x.orderpromise_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.material_to_model` | `biz.x.process_to_line` | model_certified_on: Model→Line |
-| `biz.x.material_to_model` | `biz.x.purchaseorder_to_incominginspection` | material_supplied_by_po: Material→PurchaseOrder |
+| `biz.x.material_to_model` | `biz.x.purchaseorder_to_incominginspection` | inspection_for_material: IncomingInspection→Material |
 | `biz.x.material_to_model` | `biz.x.qualitylot_to_workorder` | wo_for_model: WorkOrder→Model |
 | `biz.x.material_to_model` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.material_to_model` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |
@@ -418,6 +437,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.material_to_model` | `biz.x.workorder_to_line` | model_certified_on: Model→Line |
 | `biz.x.material_to_model` | `biz.x.workorder_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.material_to_model` | `biz.x.workorder_to_qualitylot` | wo_for_model: WorkOrder→Model |
+| `biz.x.materialbalance_to_purchaseorder` | `biz.x.model_to_material` | material_has_balance: Material→MaterialBalance |
 | `biz.x.metric_to_principal` | `biz.x.order_to_plantarget` | plantarget_ownedby: PlanTarget→Principal |
 | `biz.x.model_to_base` | `biz.x.operatorattendance_to_line` | line_belongs_to_base: Base→Line |
 | `biz.x.model_to_base` | `biz.x.order_to_customer` | model_demanded_by_order: Model→Order |
@@ -488,7 +508,7 @@ _无孤岛：所有切片至少与一个其他切片可 join。_
 | `biz.x.model_to_material` | `biz.x.order_to_plantarget` | model_demanded_by_order: Model→Order |
 | `biz.x.model_to_material` | `biz.x.orderpromise_to_order` | model_demanded_by_order: Model→Order |
 | `biz.x.model_to_material` | `biz.x.process_to_line` | model_certified_on: Model→Line |
-| `biz.x.model_to_material` | `biz.x.purchaseorder_to_incominginspection` | material_supplied_by_po: Material→PurchaseOrder |
+| `biz.x.model_to_material` | `biz.x.purchaseorder_to_incominginspection` | inspection_for_material: IncomingInspection→Material |
 | `biz.x.model_to_material` | `biz.x.qualitylot_to_workorder` | wo_for_model: WorkOrder→Model |
 | `biz.x.model_to_material` | `biz.x.shiftplan_to_line` | model_certified_on: Model→Line |
 | `biz.x.model_to_material` | `biz.x.wiplot_to_line` | model_certified_on: Model→Line |

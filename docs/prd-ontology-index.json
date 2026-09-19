@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17",
+  "generatedAt": "2026-09-19",
   "ontology": {
     "invariants": [
       "R1",
@@ -611,6 +611,17 @@
         "packages/contracts/src/agentcore.ts",
         "packages/dsh-harness/README.md",
         "packages/dsh-harness/cordis.yml"
+      ],
+      "brokenArtifacts": []
+    },
+    "PRD-ai-sim-rev2-ground-truth.md": {
+      "hasOntologyRef": false,
+      "invariants": [],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/sim/explain-slice.ts",
+        "apps/datacore/src/sim/pair-weights.ts",
+        "apps/datacore/src/sim/propagation-inputs.ts"
       ],
       "brokenArtifacts": []
     },
@@ -3483,6 +3494,15 @@
     ],
     "packages/dsh-harness/cordis.yml": [
       "PRD-agentcore-dsh-upgrade.md"
+    ],
+    "apps/datacore/src/sim/explain-slice.ts": [
+      "PRD-ai-sim-rev2-ground-truth.md"
+    ],
+    "apps/datacore/src/sim/pair-weights.ts": [
+      "PRD-ai-sim-rev2-ground-truth.md"
+    ],
+    "apps/datacore/src/sim/propagation-inputs.ts": [
+      "PRD-ai-sim-rev2-ground-truth.md"
     ],
     "apps/datacore/src/planviews.ts": [
       "PRD-aop-annual-scenario-1to1.md",
