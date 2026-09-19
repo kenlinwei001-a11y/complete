@@ -34,7 +34,10 @@ import {
   type TickState,
 } from "@platform/contracts";
 import { demoPropagationRulesWithDomain } from "../src/seed.js";
-import { STATE_VAR_DOMAINS, PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
+// ⛔ 刻意**不再** import `PRESSURE_DECAY_PER_TICK`（WO-COEF-LAMBDA）：λ 逐格不同，
+// 把那个记号留在手边，下一个人顺手拿它当全表默认值就又回到「全表一个 λ」那个病。
+// `ruleParamOf` 是 C35 参数的**唯一读法**（与引擎 `resolveDecayRate` 读的是同一张 params 表）。
+import { STATE_VAR_DOMAINS, ruleParamOf } from "../src/synthetic/battery.js";
 
 const SEED_TS = join(dirname(fileURLToPath(import.meta.url)), "../src/seed.ts");
 
@@ -235,19 +238,48 @@ describe("§3 描述里的系数 = 真系数", () => {
   //   形态：「我用『落库系数』当作『描述承诺的那个量』的证据，而前者并不度量后者 —— 差一个 λ。」
   //
   // 换轨后：**真增益 = 落库系数 ÷ λ（当且仅当该边被预乘过 λ）**。
-  // 判据与 `seed.ts` 的 `inflowCoefficient` **同一个谓词**（不许各抄一份）：
-  //   目标量纲**已声明域且上界有限** ⇒ 引擎会夹会衰减 ⇒ 落库时预乘过 λ ⇒ 除回去；
-  //   未声明域、或声明了但 `max: null`（无界，无饱和拐点）⇒ 纯积分器，没预乘 ⇒ 原样比。
-  /** 从描述文本抽「×N」声明数。**主逻辑与金丝雀共用这一支**。 */
+  // ── 🔴 WO-COEF-LAMBDA 第三次换轨（2026-09-19）：上一版这两句都不对，逐条订正 ────────────
+  // 旧写法 `lambdaApplied = d != null && typeof d.max === "number"`，附带理由
+  // 「声明了但 `max: null`（无界，无饱和拐点）⇒ 纯积分器，没预乘」。**两处错**：
+  //  ① **`max` 不度量「会不会衰减」**。引擎 `propagation.ts` 的 `resolveDecayRate(d, ruleParams)`
+  //     **只看 `d.decayRef`**，与 `max` 毫无关系；`max` 只决定 `saturateToDomain` 有没有上拐点。
+  //     `max: null` 的积压族**照样按各自的 λ 衰减**，稳态里照样有 `1/λ` 要约 ⇒ **该预乘**。
+  //     形态：「我用『有没有上界』当作『会不会衰减』的证据，而前者并不度量后者。」
+  //  ② **λ 不是全表一个数**。C35 下挂 6 个 paramKey，实测 0.37/0.37/**0.75**/**0.75**/**0.22**。
+  //     拿 `PRESSURE_DECAY_PER_TICK` 全表除，对后三个量纲分别错 2.03×/2.03×/0.59×。
+  // ⇒ 现判据（与引擎同一条路，⛔ 不许各抄一份）：**`decayRef` 解析得出 λ∈(0,1) ⇒ 预乘过 ⇒ 除回去**。
+  /**
+   * 从描述文本抽「×N」声明数。**主逻辑与金丝雀共用这一支**（不许各抄一份正则）。
+   *
+   * 🔴 **2026-09-19 WO-COEF-LAMBDA 实测补洞：负号必须同时认 ASCII `-` 与 U+2212 `−`。**
+   * 旧正则只写 `-?`（U+002D）。而种子的中文 description 一律用**排版减号** U+2212
+   * （「变更频度 × **−0.5** = 需求负载下修量」）⇒ `× ` 后面第一个字符既不是 `-?` 也不是
+   * `[\d.]`，整个 match **在该位置失败**，`stated.length === 0`
+   * ⇒ 这条边被 `.filter(r => r.stated.length > 0)` 当成「描述里没写数（合法）」**整条放过**。
+   * ⇒ **全表 4 条负系数边的 description 从来没被这道门对过账**，而它们恰恰是最容易写反符号的那些。
+   * 形态：「我用『这道门是绿的』当作『描述与系数对上了』的证据，而前者并不度量后者
+   *        —— 它根本没在判这几条。」
+   * **实测（55 行 description 逐行扫，不是估的）**：旧正则命中 **13** 行，新正则 **14** 行 ——
+   * 只有 `demo_order_churn_to_model_demand_load` 一条因 U+2212 逃掉过。
+   * ⚠ 另 4 条负系数边（`forecast_bias` / `alt_switch` / `fg_cover_days` / `fg_drawdown_relieves`）
+   *   **不在增量里**，原因不是正则而是**它们的 description 压根没写「×N」**
+   *   ⇒ 它们至今仍不被本门对账（合法，但不是"被验过"）。
+   *   形态同族：「我用『补好了正则』当作『负系数边都被对上了』的证据。」——补正则只捞回 1 条。
+   */
   const statedOf = (description: string): number[] =>
-    [...description.matchAll(/[×x]\s*(-?[\d.]+)/g)].map((x) => Number(x[1]));
+    [...description.matchAll(/[×x]\s*([-−]?[\d.]+)/g)].map((x) => Number((x[1] ?? "").replace("−", "-")));
 
-  /** 落库系数 → description 承诺的那个量（稳态增益）。与 `inflowCoefficient` 互为逆运算。 */
+  /** 落库系数 → description 承诺的那个量（稳态增益）= `系数 ÷ 该落点自己的 λ`。 */
   const gainOf = (targetStateVar: string, coefficient: number): number => {
-    const d = STATE_VAR_DOMAINS[targetStateVar];
-    const lambdaApplied = d != null && typeof d.max === "number";
-    if (!lambdaApplied) return coefficient;
-    return Math.round((coefficient / PRESSURE_DECAY_PER_TICK) * 1e6) / 1e6;
+    const ref = STATE_VAR_DOMAINS[targetStateVar]?.decayRef;
+    if (!ref) return coefficient; // 无域/无衰减引用 ⇒ 纯积分器，没预乘 ⇒ 原样比
+    const lambda = ruleParamOf(ref.ruleKey, ref.paramKey);
+    // λ 读不成一个可用衰减率 ⇒ 报红，⛔ 不静默按"没预乘"处理：那会把一处配置坏掉读成一条合规的边。
+    expect(
+      Number.isFinite(lambda) && lambda > 0 && lambda < 1,
+      `${targetStateVar} 的 λ 引用 ${ref.ruleKey}.${ref.paramKey} 解析成 ${String(lambda)} ⇒ 不是可用衰减率`,
+    ).toBe(true);
+    return Math.round((coefficient / lambda) * 1e6) / 1e6;
   };
 
   interface Row { key: string; coef: number; stated: number[]; ok: boolean }
@@ -271,10 +303,18 @@ describe("§3 描述里的系数 = 真系数", () => {
     expect(bad.map((r) => r.key)).toContain("demo_customer_receivable_to_invoice_overdue");
   });
 
+  it("🐤 金丝雀②：**排版减号 U+2212** 的声明数必须抽得出来（旧正则在这里整条放过）", () => {
+    // 正样例中了不够 —— 本条要证明的是「它能认出 U+2212」，故正反两个样例都跑，且共用主逻辑那一支。
+    expect(statedOf("（变更频度 × −0.25 = 需求负载下修量）"), "U+2212 负号没抽出来 ⇒ 负系数边全体逃过对账").toEqual([-0.25]);
+    expect(statedOf("（x × -0.25 = y）"), "ASCII 负号回归").toEqual([-0.25]);
+    expect(statedOf("（这句话里没有乘号声明数）"), "无声明数时必须是空数组，否则会凭空造出对账行").toEqual([]);
+  });
+
   it("种子里 0 条描述与真系数不符", () => {
     const rows = rowsFromRules(demoPropagationRulesWithDomain());
-    // 金丝雀②：对账行数必须是真数量级，0 行时那句"0 条不符"毫无意义。
-    expect(rows.length, "描述里写了系数的边条数（0 行 = 对账空转）").toBeGreaterThanOrEqual(13);
+    // 金丝雀③：对账行数必须是真数量级，0 行时那句"0 条不符"毫无意义。
+    // ⚠ 下界 13 → **14**：补上 U+2212 之后 `demo_order_churn_to_model_demand_load` 进来了（实测，见 `statedOf` 注）。
+    expect(rows.length, "描述里写了系数的边条数（0 行 = 对账空转）").toBeGreaterThanOrEqual(14);
     const bad = rows.filter((r) => !r.ok);
     expect(
       bad.map((r) => `${r.key}: 描述 ×${r.stated.join("/")} vs 真值 ${r.coef}`),
