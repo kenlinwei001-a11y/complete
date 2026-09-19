@@ -5,7 +5,8 @@ import { seedDemoPropagationRules } from "../src/seed.js";
 // 权重键走引擎同一支（`pairWeightKey`），λ 走 C35 同一个记号 —— 三者都不许在测里另抄一份。
 import { buildPropagationInputs } from "../src/sim/propagation-inputs.js";
 import { pairWeightKey } from "../src/sim/propagation.js";
-import { PRESSURE_DECAY_PER_TICK } from "../src/synthetic/battery.js";
+// ⛔ 刻意**不再** import `PRESSURE_DECAY_PER_TICK`：§6 的 λ 一律逐格从 `decayRef` 现读。
+// 把那个记号留在手边，下一个人顺手拿它当默认值就又回到「全表一个 λ」那个病（WO-COEF-LAMBDA）。
 import { resolveSimScope } from "@platform/contracts";
 
 /**
@@ -993,11 +994,42 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
 // **形态**：「我用『这条边的 weightRef 是 null』当作『它占 N 份』的证据，而前者并不度量后者
 // —— N 由链路基数决定，可以恰好是 1。」⇒ 本段一律从 `buildPairWeights` 的**真权重表**求和。
 //
-// ── ⚠ 受不受预算约束，判据只有一条：`targetStateVar` 在不在 `STATE_VAR_DOMAINS` 里 ──────
-// 没有域就没有拐点，`0.75` 在无域格上不度量任何东西（`seed.ts` 的 `inflowCoefficient` 段头
-// 立的同一条判据：预乘 λ 与受预算约束**由同一个谓词开关，一起开一起关**）。
+// ── 🔴 WO-COEF-LAMBDA 订正：**两个装置不是同一个谓词**（此前三处各写了一个，且都不全对）──────
+// 旧原文：「预乘 λ 与受预算约束由同一个谓词开关，一起开一起关」。那句话在
+// **每个已声明域都有有限 max** 的年代是对的；WO-PROP-REVIEW-V2 形态② 引入 `max: null`
+// 的积压族之后**就不对了**。引擎里这是两处互不相干的判断（逐行读的，不是推断）：
+//   · `propagation.ts` `resolveDecayRate(d, ruleParams)` —— **只看 `d.decayRef`**，与 `max` 无关
+//     ⇒ 会不会衰减 ⇒ 稳态里有没有 `1/λ` 要约 ⇒ **该不该预乘 λ**；
+//   · `propagation.ts` `saturateToDomain(raw, min, max, rest)` —— `max === null` 那一支
+//     **没有上拐点**（只有下带）⇒ `kneeHi = 0.75 × max` 根本不存在 ⇒ **不受 0.75 预算约束**。
+// ⇒ 判据拆成两条，**各管各的**：
+//   | 装置 | 谓词 | 本仓命中 |
+//   | 预乘 λ | `decayRef` 能解析出 λ∈[0,1) | 37 个量纲（含 5 个 `max:null` 积压族）|
+//   | 0.75 预算 | `max` 有限（上拐点存在） | 32 个量纲（积压族 5 个**不在内**）|
+// ⚠ 且 **λ 逐格不同**：压力族 0.37，而 `repairBacklog`/`handlingBacklog` = **0.75**、
+//   `qualificationQueue` = **0.22**（C35 各自的 paramKey）。旧代码全表除以 `PRESSURE_DECAY_PER_TICK`
+//   ⇒ 对这 3 个量纲，算出来的"稳态增益"分别错 2.03× / 2.03× / 0.59×。
+//   形态：「我用『压力族的那个 λ』当作『这一格的 λ』的证据，而前者并不度量后者。」
 // ══════════════════════════════════════════════════════════════════════════════════
 describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
+  /**
+   * 这一格真正生效的 λ —— 照 `propagation.ts` `resolveDecayRate` **同一条路**：
+   * 只走 `decayRef`，从 `ruleParams` 现读，拒 NaN / <0 / ≥1。
+   * ⛔ 不回落 `PRESSURE_DECAY_PER_TICK`：回落会让「这一格的 λ 是 0.75」与「没配 decayRef」
+   * 在算式里一模一样，而两者的稳态增益差 2 倍。解析不到就报红，不许静默替一个默认值。
+   */
+  const lambdaOf = (stateVar: string, inp: Awaited<ReturnType<typeof buildPropagationInputs>>): number => {
+    const ref = inp.stateVarDomains[stateVar]?.decayRef;
+    expect(ref, `${stateVar} 受预算约束却没有 decayRef ⇒ 稳态增益算不出来（不许拿 0.37 顶）`).toBeTruthy();
+    const raw: unknown = inp.ruleParams[ref!.ruleKey]?.[ref!.paramKey];
+    const n = typeof raw === "number" ? raw : Number(raw);
+    expect(
+      Number.isFinite(n) && n > 0 && n < 1,
+      `${stateVar} 的 λ 引用 ${ref!.ruleKey}.${ref!.paramKey} 解析成 ${String(raw)} ⇒ 不是可用衰减率`,
+    ).toBe(true);
+    return n;
+  };
+
   /** 每格现算 `Σ_e |稳态增益_e| × Σw_e`。Σw 取各 target 的**均值**（与在册口径同源）。 */
   const measureBudget = async () => {
     const t = await makeApp();
@@ -1012,10 +1044,17 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
       rules,
     );
     const typeOf = new Map(inp.graph.objects.map((o) => [o.id, o.typeKey]));
-    const cells = new Map<string, { sum: number; edges: { key: string; gain: number; sw: number }[] }>();
+    const cells = new Map<
+      string,
+      { sum: number; knee: boolean; edges: { key: string; gain: number; sw: number }[] }
+    >();
     for (const r of rules) {
-      // 无域 ⇒ 纯积分器，没有拐点也没有 1/λ 可约 ⇒ 不受预算（与预乘 λ 同一个谓词）。
-      if (!Object.prototype.hasOwnProperty.call(inp.stateVarDomains, r.targetStateVar)) continue;
+      const dom = inp.stateVarDomains[r.targetStateVar];
+      // **谓词①（本循环的入场券）= 会不会衰减** ⇒ 有没有 `1/λ` 可约 ⇒ 稳态增益算不算得出来。
+      // 无域 ⇒ 纯积分器，没有稳态，`gain` 这个量对它不成立 ⇒ 跳过（今天全表只有 `clearanceQueueDays`）。
+      if (dom == null) continue;
+      // **谓词②（受不受 0.75 约束）= 上拐点存不存在** = `max` 有限。两条谓词各管各的，见段头。
+      const knee = typeof dom.max === "number";
       const ref = r.coefficientRef;
       // 引擎真读的那个值：`coefficientRef` 解析优先，解析不到才回落内联（G-10 P1 同一条路）。
       // ⚠ `RuleParamLookup` 的值是 `unknown` ⇒ 必须**显式收窄**，且收不到就报红：
@@ -1034,9 +1073,10 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
       if (byTarget.size === 0) continue;
       const sw = [...byTarget.values()].reduce((s, x) => s + x, 0) / byTarget.size;
       const cellKey = `${r.targetTypeKey}.${r.targetStateVar}`;
-      const c = cells.get(cellKey) ?? { sum: 0, edges: [] };
-      // 稳态增益 = 每拍入流 ÷ λ（`inflowCoefficient` 的逆）。λ 从 C35 现读，不内联 0.37。
-      const gain = eff / PRESSURE_DECAY_PER_TICK;
+      const c = cells.get(cellKey) ?? { sum: 0, knee, edges: [] };
+      // 稳态增益 = 每拍入流 ÷ λ。λ 走**这一格自己的** `decayRef`，⛔ 不许全表用 `PRESSURE_DECAY_PER_TICK`：
+      // 本仓 C35 下挂 6 个 paramKey，实测值 0.37/0.37/0.75/0.75/0.22 三档不同。
+      const gain = eff / lambdaOf(r.targetStateVar, inp);
       c.sum += Math.abs(gain) * sw;
       c.edges.push({ key: r.key, gain, sw });
       cells.set(cellKey, c);
@@ -1049,10 +1089,50 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
 
     // 🐤 金丝雀①（非空 + 有鉴别力）：本仓真发生过"空绿"——权重没喂进去、一条边没触发，
     //    于是「没有格子超预算」被读成通过。故先证明量法**量到了东西**，且**分得出两档**。
-    expect(cells.size, "一个受预算约束的格子都没量到 ⇒ 量法坏了（不许读成『全部达标』）").toBe(36);
+    // ⚠ 36 与改造前**同一个数**，这是对的：旧谓词「在不在域表里」与本条谓词①「会不会衰减」
+    //   在本仓恰好等价（每个已声明域都配了 decayRef）。变的不是入场的格子数，是**这 36 格里
+    //   哪几格受 0.75 约束**（谓词②）以及**每格的 λ 取哪个数**。
+    expect(cells.size, "一个会衰减的格子都没量到 ⇒ 量法坏了（不许读成『全部达标』）").toBe(36);
     const inBudget = cells.get("Base.loadIndex");
     expect(inBudget, "`Base.loadIndex` 没量到 ⇒ 量法坏了").toBeDefined();
     expect(inBudget!.sum, "已知达标的格子被判成超预算 ⇒ 判据本身坏了").toBeCloseTo(0.6, 6);
+
+    // 🐤 金丝雀②（**这一条是 WO-COEF-LAMBDA 新加的，它证明量法分得出两个谓词**）：
+    //    `max: null` 的积压族必须**被量到**（会衰减 ⇒ 有稳态增益）但**不带上拐点**（不受 0.75）。
+    //    只证「量到了」不够 —— 那与"把它们当普通格子"在屏上一模一样；必须证 `knee === false`。
+    const kneeless = [...cells.entries()].filter(([, v]) => !v.knee).map(([k]) => k).sort();
+    expect(
+      kneeless,
+      "无上拐点（`max: null`）的格子集合变了 —— 它们会衰减故有稳态增益，但 `0.75 × max` 在它们身上不存在",
+    ).toEqual([
+      "Certification.qualificationQueue",
+      "ExceptionEvent.handlingBacklog",
+      "IncomingInspection.queueDays",
+      "MaintenanceOrder.repairBacklog",
+      "QualityLot.inspectBacklog",
+    ]);
+
+    // ── 判据⓪：这 5 格的**稳态增益** = 在册意图增益（WO-COEF-LAMBDA 方向②）────────────────
+    // 它们没有拐点 ⇒ 0.75 咬不住它们 ⇒ **必须另有一条机器**，否则「域补登记了、系数没回头改」
+    // 这个形态会再犯一次（上一次就是这么漏的：5 个量纲补进域表，5 条边的系数没人动）。
+    // 判据 = `c/λ` 必须等于 description / 在册注释承诺的那个稳态增益。λ 逐格不同（0.37/0.75/0.22），
+    // 故这一条**同时**咬住「系数改了没重算」与「λ 改了没重算」两个方向。
+    for (const [cell, intent] of [
+      ["IncomingInspection.queueDays", 0.6],
+      ["QualityLot.inspectBacklog", 0.5],
+      ["MaintenanceOrder.repairBacklog", 0.6],
+      ["ExceptionEvent.handlingBacklog", 0.8],
+      ["Certification.qualificationQueue", 0.3],
+    ] as const) {
+      const c = cells.get(cell)!;
+      expect(c.edges.length, `${cell} 入边条数变了 ⇒ 下面那个增益不再是单边增益`).toBe(1);
+      expect(
+        c.edges[0]!.gain,
+        `${cell} 的稳态增益 ≠ 在册意图 ${intent}。两种成因都要查：` +
+          `① C36 里那条边的系数被改了没跟着乘 λ；② C35 里这一格的 λ 被改了没跟着重算系数。` +
+          `⛔ 不许改这个期望值来让它绿 —— 该改的是系数。`,
+      ).toBeCloseTo(intent, 9);
+    }
 
     // ── 判据①：`Model.demandLoad` 的现值（本单的落点）──────────────────────────────
     // 改前 3.0550（4.07×）—— 其中 `demo_fg_drawdown_relieves_model_demand` 独占 **1.8000**
@@ -1082,19 +1162,24 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
     //   `Order.shortageRisk` / `OrderPromise.promiseRisk` / `WorkOrder.releasePressure` ——
     //   它们是 `f_g` 当年**配满**的痕迹（`f_g = 0.75/S_g` 取等号），不是巧合，故不在本集合里。
     //   给这四格任一条边再抬一点系数，它们就会掉进本集合 ⇒ 这道门会红。
-    const over = [...cells.entries()].filter(([, v]) => v.sum > 0.75 + 1e-9).map(([k]) => k).sort();
-    expect(over, "超预算格子集合变了 —— 新增即回归，减少即有人改了标定，两种都必须先解释").toEqual([
-      "Certification.qualificationQueue",   // 1.08x · 单边 0.3 未预乘 λ
+    const over = [...cells.entries()]
+      .filter(([, v]) => v.knee && v.sum > 0.75 + 1e-9)
+      .map(([k]) => k)
+      .sort();
+    // 红了的时候把**全表**打出来：只报集合差不报数值，下一个人还得自己再跑一遍才知道差多少。
+    const table = [...cells.entries()]
+      .sort((a, b) => b[1].sum - a[1].sum)
+      .map(([k, v]) => `${k} ${v.sum.toFixed(4)} (${(v.sum / 0.75).toFixed(2)}×)${v.knee ? "" : " [无拐点·不受预算]"}`)
+      .join("\n  ");
+    expect(
+      over,
+      `超预算格子集合变了 —— 新增即回归，减少即有人改了标定，两种都必须先解释。\n  全表现值：\n  ${table}`,
+    ).toEqual([
       "Customer.receivablePressure",        // 1.15x · source_value_relative，Σw 随客户金额敞口走
-      "ExceptionEvent.handlingBacklog",     // 2.88x · 单边 0.8 未预乘 λ（全表最高）
-      "IncomingInspection.queueDays",       // 2.16x · 单边 0.6 未预乘 λ
-      "MaintenanceOrder.repairBacklog",     // 2.16x · 单边 0.6 未预乘 λ
       "Material.shortageRisk",              // 1.67x · 6 条边各自小，合计超（没人算总账）
-      "Model.demandLoad",                   // 2.47x · 本单落点
       "Order.orderChurn",                   // 1.12x · actor_exposure_relative
       "Process.queuePressure",              // 1.67x · 3 条边合计超
       "PurchaseOrder.expeditePressure",     // 1.33x · 2 条边合计超
-      "QualityLot.inspectBacklog",          // 1.80x · 单边 0.5 未预乘 λ
     ].sort());
   }, 300000);
 });

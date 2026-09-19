@@ -773,7 +773,9 @@ export const PROPAGATION_COEF_RULE_KEY = "C36";
  * 披露层同步显示 `coefficientSource: "CONFIG_REF"` 与引用键 `C36.<边key>`。
  */
 export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
-  "demo_order_demand_pressure": 0.00687645,
+  // WO-COEF-LAMBDA 件B 整格重跑：稳态增益 0.5 × f_g(0.0377833753) = 0.018891 × λ0.37 ⇒ 本行
+  // （旧值 0.00687645 对应 f_g=0.0372，是 churn 还是 |0.5| 那一版算出来的）。
+  "demo_order_demand_pressure": 0.00698967,
   "demo_model_demand_to_base_load": 0.222,
   "demo_base_load_to_line_util": 0.185,
   "demo_supplier_delay_to_material_shortage": 0.08919627,
@@ -847,7 +849,31 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   //    **形态**：「我用『这道门没红』当作『这条边方向是对的』的证据 ——
   //    而它当时根本没在量方向，它在量一串被地板夹死的 0。」
   //    把 Σw 归一到 1 之后（本单同批改动）读数复活，方向当场露出来：+0.0121/+0.0427/+0.0667/+0.0793。
-  "demo_order_churn_to_model_demand_load": -0.00429755,
+  //
+  // ── 🔴 2026-09-19 WO-COEF-LAMBDA 件B：**量级** |0.5| → |0.25|（符号不动，仍为负）──────────
+  // 上面那段评审**只裁了符号，原文白纸黑字「量级 |0.5| 维持不变」** —— 于是 0.5 这个数
+  // 是从**被推翻的那套旧语义**（「插单/取消带来排产返工 ⇒ **推高**负载」，一个放大项）
+  // 继承下来的，换成「折扣项」语义之后**从没有人重新推导过它**。
+  //
+  // **今天的行为 X（实测，非推断）**：本条与同落点的 `demo_order_demand_pressure`
+  // **同源类型、同链路 `order_for_model`、同落点、同 Σw=25**，而意图增益恰好等量反号
+  // ⇒ 两者在该格**精确抵消**，`Model.demandLoad` 的净符号于是完全由两条库存边（皆负）决定
+  // ⇒ 带符号净增益 **−0.92575**，该格恒被夹在域下界 0。
+  // **对照实验（已跑，见本单报告）**：只把 f_g 在四条边上重跑一遍、量级全不动 ⇒ 净增益 **−0.0316**，
+  // **仍为负、仍落地板** ⇒ 证明这不是分摊没重跑的问题，是**量级本身定错了**。
+  //
+  // **应该的 Y（业务理由，不靠读代码）**：
+  //  ① `Order.demandPressure` 有真实出处（派生式 `demandDelta × 100`，实测 0–60），它是需求的**水平**；
+  //     本条的源 `Order.orderChurn` **无诚实源**（`seed-derivation-specs.ts` 明写「停笔」、走哈希 0–100），
+  //     它是对那个水平的**置信度折扣**。折扣与被折扣的量等量反向 ⇒ 等价于宣称「折扣率 = 100%」，
+  //     即「变更压力顶格 ⇒ 该型号需求归零」—— 而订单簿 **500 张单 / 454.64 亿是已签成交**。
+  //  ② 落点 `Model.demandLoad` 自己有真实派生式（`orderCount × 100 / capacity`，实测 **21.7–232**）。
+  //     把它推到恒 0，是**拿假读数换掉真数据**，不是"一道门红了"。
+  //  ③ 折扣率取 **1/2**：评审原文只支持「取消/缩水**占多**」，其**最弱充分解释**即净向下不超过半数。
+  //     ⇒ |意图增益| = 0.5 × 1/2 = **0.25**。取最弱解释是刻意的：没有第二处出处时，宁可低估折扣。
+  // ⇒ 四条边按 `f_g = min(1, 0.75/S_g)` **整格重跑一次**（S_g=19.85 ⇒ f_g=0.0377833753），
+  //   稳态增益 −0.009445 × λ(demandLoad)=0.37 ⇒ 本行。
+  "demo_order_churn_to_model_demand_load": -0.00349465,
   "demo_equipment_failure_to_process_queue": 0.12807661,
   "demo_process_queue_to_line_blocked": 0.2035,
   "demo_line_blocked_to_wo_release": 0.13875,
@@ -865,7 +891,11 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   //     符号为**正**。与 ① 构成一对「现货吸收 − 提货回补」的库存环双向边。
   //  量级与出入参考系对齐：需求侧同落点的两条边分别是 −0.6（预测偏差）与 −0.5（订单变更），
   //  库存边取 ±0.5，既不压过预测信号也不弱到测不出（对照实验：coverDays bump ⇒ demandLoad 同向非零）。
-  "demo_fg_cover_days_to_model_demand": -0.185,
+  // WO-COEF-LAMBDA 件B 整格重跑：意图增益仍是 **−0.5**（缓冲吸收的定性一个字没改），
+  // 变的只是 f_g —— 此前这条边 f_g=1（新边进场后没人重跑全格），与同格另两条 f_g≈0.037 的边
+  // **不在同一把尺子上**，于是 W=1 的它反而压过了 W=25 的一阶驱动。
+  // 稳态增益 −0.5 × 0.0377833753 = −0.018891 × λ0.37 ⇒ 本行。
+  "demo_fg_cover_days_to_model_demand": -0.00698967,
   // ⛔ "demo_fg_drawdown_to_model_demand" 已删（WO-PROP-V2-REBASE 裁决，见 seed.ts 库存环段）
   // 物料环三条（传导规则业务评审 v2 ④·2026-09-17·评审优先级 4「物料是第二高频扰动源，今天零阻尼」）：
   //  ① 替代料切换压力 ⇒ 主料短缺风险**下修**（负）：有 Plan B 的料不该和无 Plan B 的料同等短缺。
@@ -898,7 +928,10 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   //
   // ⚠ 改完之后 `Model.demandLoad` 那一格**仍然超预算**（实测 3.05 → 1.916，上限 0.75）——
   //   如实记在这里，⛔ 不为了达标再去动别的边。整格重分配是另一张单。
-  "demo_fg_drawdown_relieves_model_demand": -0.222,
+  //   ✅ **那张单就是本单**（WO-COEF-LAMBDA 件B，2026-09-19）：意图增益仍是 **−0.6**
+  //   （镜像 `demo_model_demand_to_fg_drawdown` 的定性不变），只把 f_g 与同格另三条对齐
+  //   ⇒ −0.6 × 0.0377833753 = −0.022670 × λ0.37 ⇒ 本行。该格 Σ|增益|×W 自此 = 0.749961 ≤ 0.75。
+  "demo_fg_drawdown_relieves_model_demand": -0.0083879,
 
 };
 
