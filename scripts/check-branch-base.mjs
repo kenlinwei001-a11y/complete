@@ -50,7 +50,10 @@
  */
 import { execFileSync } from "node:child_process";
 
-const DEFAULT_ONTO = "origin/claude/verify-reclaim-6";
+// ⚠ 2026-09-19 改：原值 origin/claude/verify-reclaim-6 停在 2026-08-25，且本身是 canonical 的祖先。
+//   本门的职责正是"告诉 dev 你的分叉点是不是太老"——默认 onto 指着一个 25 天前的祖先时，
+//   它会对着一棵过期的树说"基线够新"，**方向恰好相反**。本仓有前科：4 个 dev 在落后 1310 提交的树上开工。
+const DEFAULT_ONTO = "origin/claude/inspiring-gates-aqczjg";
 const DEFAULT_MAX = 200;
 
 function toolBroken(what, hint) {

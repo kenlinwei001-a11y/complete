@@ -68,7 +68,11 @@ import { join } from "node:path";
 
 const ROOT = process.cwd();
 const EXEMPTIONS_PATH = join(ROOT, "scripts/file-truncation-exemptions.json");
-const DEFAULT_BASE = "origin/claude/verify-reclaim-6";
+// ⚠ 2026-09-19 改：原值 origin/claude/verify-reclaim-6 已于 2026-08-25 停更，
+//   且实测**它本身就是 canonical 的祖先**（merge-base --is-ancestor RC=0）⇒ 拿它当基线，
+//   等于拿正线 25 天前的一个祖先当"尖端"。病因 2026-09-10 就已写进
+//   docs/evidence/HANDOFF-TRIAGE-20260910.md，但常量没改，于是又骗了 9 天。
+const DEFAULT_BASE = "origin/claude/inspiring-gates-aqczjg";
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 // ── 阈值（来历见头注「判据」节；改它们必须重跑 926 样本分布取证）─────────────
