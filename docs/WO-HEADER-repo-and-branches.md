@@ -16,9 +16,17 @@
 
 | 线 | 分支全名 | 它是什么 | 你和它的关系 |
 |---|---|---|---|
-| **集成线** | `claude/verify-reclaim-6` | **当前唯一的开工基线**，审核方在这条线上收编所有 WO | **← 从这条开分支，rebase 也回这条** |
-| canonical | `claude/inspiring-gates-aqczjg` | 仓主指定的正线，集成线过完门链后并进来 | 你**不碰** |
-| main | `main` | **陈旧的历史起点，落后集成线 2417 个提交** | ⛔ **绝对不要从它开分支** |
+| **canonical（= 开工基线）** | `claude/inspiring-gates-aqczjg` | 仓主指定的正线，审核方在这条线上收编所有 WO | **← 从这条开分支，rebase 也回这条** |
+| ~~旧集成线~~ | ~~`claude/verify-reclaim-6`~~ | **已停更（2026-08-25）且本身已是 canonical 的祖先** | ⛔ **绝对不要从它开分支** |
+| main | `main` | **陈旧的历史起点** | ⛔ **绝对不要从它开分支** |
+
+> ⚠️ **2026-09-19 订正 —— 这张表自己踩了它下面那个陷阱。**
+> 原文把 `claude/verify-reclaim-6` 写成「当前唯一的开工基线」。实测
+> `git merge-base --is-ancestor origin/claude/verify-reclaim-6 origin/claude/inspiring-gates-aqczjg`
+> **RC=0** ⇒ 它早已整条并进 canonical，只是正线 25 天前的一个祖先。
+> 照原文开工 = 在一棵落后 25 天的树上开工，**与下面那个 `main` 陷阱是同一个病，只差一个量级**。
+> 同一个常量当时还写死在 4 个脚本里，其中 `check-branch-base.mjs`（**专门用来告诉你"基线够不够新"的那道门**）
+> 因此会对着过期的树说"够新"—— 方向恰好相反。已于同日一并修正。
 
 ⚠️ **`main` 是个陷阱，已经真的坑过人**：2026-08-17 有一条交单分支从 `main` 开出，
 六项证据 + 一轮「独立复验 PASS」全部走完，才发现基线差 2417 个提交 ——
@@ -36,11 +44,11 @@
 git clone https://github.com/kenlinwei001-a11y/complete && cd complete
 
 # ② 判断当前树对不对 —— 判据是**祖先关系**，不是「某个文件在不在」
-CANON=origin/claude/verify-reclaim-6
+CANON=origin/claude/inspiring-gates-aqczjg
 git fetch origin
 git merge-base --is-ancestor HEAD $CANON \
-  && { echo "HEAD 是集成线的祖先 ⇒ 落后，必须重开"; git checkout -B <本单分支名> $CANON; } \
-  || echo "HEAD 不落后于集成线，可原地开工"
+  && { echo "HEAD 是 canonical 的祖先 ⇒ 落后，必须重开"; git checkout -B <本单分支名> $CANON; } \
+  || echo "HEAD 不落后于 canonical，可原地开工"
 
 # ③ 机器复核基线（不许只看上面那句 echo）
 node scripts/check-branch-base.mjs HEAD
@@ -82,10 +90,10 @@ git push -u origin HEAD:claude/handoff-<本单编号小写>
 
 ## 🧭 上游变了怎么办
 
-集成线每天都在动。开工中途若要同步：
+canonical 每天都在动。开工中途若要同步：
 
 ```bash
-git fetch origin && git rebase origin/claude/verify-reclaim-6
+git fetch origin && git rebase origin/claude/inspiring-gates-aqczjg
 node scripts/check-branch-base.mjs HEAD          # 复核
 git push --force-with-lease -u origin HEAD:claude/handoff-<本单编号小写>   # 别用 --force
 ```
