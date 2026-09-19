@@ -496,7 +496,6 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     // WO-WEIGHT-BASIS-FILL 订正：本行原写 `equal_share`，注释原文是
     // 「本边无可审计的差异化计量值 ⇒ 等份 Σ=1」—— **这句话被它自己的邻居证伪**：
     // `demo_material_price_to_model_cost`（本文件下方，`weightRef: { basis: "bom_cost_share" }`）
@@ -2027,13 +2026,16 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     // ⇒ 乘了 λ 之后屏上那句话就成了假话。
     // 形态（铁律 0.6 句式）：「我用『注释里写了系数恒为 1.0』当作『生效系数是 1.0』的证据，
     // 而前者并不度量后者 —— `inflowCoefficient(1)` 返回 1×λ = 0.37。」
-    coefficient: 1, // 原样透传（同量纲直取 套→套）：⛔ 不乘 λ，理由见上
+    //
+    // ⚠ **这条修复的值现在落在 `C36.params.demo_order_qty_to_model_top_qty` = 1.0（不是 0.37）**。
+    // canonical 那份把 `coefficient: 1` 写在本字面量里；本分支按 WO-PROP-COEF-CONFIG 单源纪律
+    // **字面量不写系数**（类型已 Omit 掉这两个字段），两者由 `demoPropagationRulesWithDomain`
+    // 从 C36 同一个键派生。⛔ 别因为这段注释提到 `coefficient: 1` 就把它加回字面量 —— 加回即 TS2353。
     delayTicks: 0,
     description: "该型号在手订单里最大的一张是多少套（订单数量原样取最大值，不打折不加权）",
     combine: "max",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     // ⛔ 不加权：`max` 取的是**某一张真单**的台数，乘一个分摊倍率之后它就不再是任何一张单的
     // 真实台数了 —— 那正是本段要消灭的「屏上有数但对不上任何一张单」的形态。
     weightRef: null,
@@ -2048,15 +2050,14 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogPriceTop",
-    // ⛔ 不过 `inflowCoefficient`（不乘 λ）—— 同 `backlogQtyTop` 那条的理由，原文见上。
+    // ⛔ 不过 `inflowCoefficient`（不乘 λ）—— 同 `backlogQtyTop` 那条的理由，原文见上；
+    //   值同样在 `C36.params.<本边key>` = 1.0，字面量按单源纪律不写系数。
     // 实测病象：`backlogPriceTop = 0.37 × max(Order.unitPrice)`（22638 元 → 8376.06）。
-    coefficient: 1, // 原样透传（同量纲直取 元→元）
     delayTicks: 0,
     description: "该型号在手订单里最高的成交单价是多少元（订单单价原样取最大值）",
     combine: "max",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null, // 同上：加权之后就不再是任何一张真单的成交价
     cadenceNodeId: null,
     status: "PUBLISHED",
@@ -2069,10 +2070,10 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     viaLinkKey: "order_for_model",
     targetTypeKey: "Model",
     targetStateVar: "backlogHorizonDays",
-    // ⛔ 不过 `inflowCoefficient`（不乘 λ）—— 同 `backlogQtyTop` 那条的理由，原文见上。
+    // ⛔ 不过 `inflowCoefficient`（不乘 λ）—— 同 `backlogQtyTop` 那条的理由，原文见上；
+    //   值同样在 `C36.params.<本边key>` = 1.0，字面量按单源纪律不写系数。
     // 实测病象：`backlogHorizonDays = 0.37 × max(Order.leadDays)`（110 天 → 40.7）。
     // 本量可为负（−14 = 已逾期 14 天），乘 0.37 同样把「逾期多久」缩成 37%。
-    coefficient: 1, // 原样透传（同量纲直取 天→天）
     delayTicks: 0,
     // ⚠ 「交付时间」是日期，日期不是数 ⇒ 折成**距计划起点的天数**才进得了世界态。
     // 折算式**不是本段新发明的**：`Order.leadDays` 在合成期就是这么算出来的
@@ -2085,7 +2086,6 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "max",
     decay: null,
     clamp: null,
-    coefficientRef: null,
     weightRef: null,
     cadenceNodeId: null,
     status: "PUBLISHED",
