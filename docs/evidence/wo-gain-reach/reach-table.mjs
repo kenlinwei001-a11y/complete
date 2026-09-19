@@ -218,6 +218,39 @@ for (const f of flips) {
   console.log(`       B 列头名 ${f.topB.key}  (B=${f.topB.colB.toFixed(4)}, 占该格 ${(f.shareB * 100).toFixed(1)}%, 源出处=${f.topB.prov}, E=${f.topB.E.toFixed(3)})`);
 }
 
+// ── 逐格汇总：今天的判据（满量程假设）vs 实际落点 ─────────────────────────────────
+// 预算原文（`seed.ts` 增益预算段）：「落在它以下，**全部源顶到量纲上界**时目标仍不进饱和段」
+// ⇒ A 列 × max = 「满量程假设下的稳态落点」；B 列 = 「真实源读数下的稳态落点」。
+// 两者之比 = E[源]/max 的加权平均 —— 这就是这把尺子**没有算进去**的那个因子。
+console.log(`\n══ 逐格：满量程假设 vs 实际落点（稳态 ≈ restPoint + Σ入流/λ，拐点 = 0.75×max）══`);
+const ch = `${"格".padEnd(38)} ${"入边".padStart(4)} ${"ΣA".padStart(8)} ${"倍数".padStart(6)} ${"满量程落点".padStart(11)} ${"实际落点(带符号)".padStart(17)} ${"拐点".padStart(6)} ${"满量程过拐点?".padStart(13)} ${"实际过拐点?".padStart(11)}`;
+console.log(ch);
+console.log("-".repeat(ch.length));
+const cellRows = [];
+for (const [cell, es] of [...cells].sort((a, b) => b[1].reduce((s, e) => s + e.colA, 0) - a[1].reduce((s, e) => s + e.colA, 0))) {
+  const sv = cell.split(".")[1];
+  const dom = inp.stateVarDomains[sv];
+  const knee = typeof dom?.max === "number" ? 0.75 * dom.max : null;
+  const sumA = es.reduce((s, e) => s + e.colA, 0);
+  const sumB = es.reduce((s, e) => s + e.signedB, 0);
+  const rest = typeof dom?.restPoint === "number" ? dom.restPoint : 0;
+  const fullScale = rest + sumA * (typeof dom?.max === "number" ? dom.max : 100);
+  const actual = rest + sumB;
+  cellRows.push({ cell, n: es.length, sumA, sumB, knee, fullScale, actual, es });
+  console.log(
+    `${cell.padEnd(38)} ${String(es.length).padStart(4)} ${sumA.toFixed(4).padStart(8)} ${knee == null ? "  ——  " : (sumA / 0.75).toFixed(2).padStart(6)} ` +
+    `${fullScale.toFixed(2).padStart(11)} ${actual.toFixed(2).padStart(17)} ${knee == null ? "  无  " : String(knee).padStart(6)} ` +
+    `${knee == null ? "不适用".padStart(13) : (fullScale > knee ? "⛔ 是" : "✅ 否").padStart(13)} ${knee == null ? "不适用".padStart(11) : (actual > knee ? "⛔ 是" : "✅ 否").padStart(11)}`,
+  );
+}
+const overFull = cellRows.filter((r) => r.knee != null && r.fullScale > r.knee).length;
+const overReal = cellRows.filter((r) => r.knee != null && r.actual > r.knee).length;
+console.log(`\n   ⇒ 满量程假设下过拐点的格子 ${overFull} 个；**真实源读数下过拐点的** ${overReal} 个。`);
+console.log(`   ⇒ 两集合的差 = 这把尺子的报警里有多少是满量程假设带来的；`);
+console.log(`     而**真实过拐点却不在超预算名单里的**那些，正是它漏报的。`);
+const missed = cellRows.filter((r) => r.knee != null && r.actual > r.knee && r.sumA <= 0.75 + 1e-9);
+console.log(`   ⚠ 漏报（今天判据说达标、实际却已过拐点）：${missed.length} 个${missed.length ? "：" + missed.map((r) => `${r.cell} 实际 ${r.actual.toFixed(2)} > 75 而 ΣA=${r.sumA.toFixed(4)}`).join(" · ") : ""}`);
+
 // ── Model.demandLoad 专栏（本单的起点）───────────────────────────────────────────
 console.log(`\n══ Model.demandLoad 逐边（带符号）══`);
 const dl = live.filter((x) => x.cell === "Model.demandLoad").sort((a, b) => Math.abs(b.colB) - Math.abs(a.colB));
@@ -282,6 +315,26 @@ console.log(`   B 列前 10 名里，源走哈希占位的有 ${hashTop} 条`);
   }
   console.log(`   ⇒ 逐字节对上 ${ok} 条 · 对不上 ${off} 条`);
   if (ok === 0) throw new Error("🐤 一条都对不上 ⇒ 我的 inflowSum 算法与引擎不同源，上面 B 列全是空话");
+
+  // ══ 直接验「过拐点」：⛔ 不拿上面的稳态代数当证据，真推够拍数去读那几格 ══════════════
+  // 上面「实际落点」是我算的稳态；这里是引擎真跑出来的读数。两者对不上以**这里**为准。
+  await built.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 23 } });
+  const w = await built.app.inject({ method: "GET", url: `/a/v1/sim/sessions/${sid}/world`, headers: ADMIN });
+  const st = JSON.parse(w.body).state;
+  console.log(`\n══ 真推 24 拍后，逐格读数 vs 拐点 75（⛔ 这一段是引擎读数，不是我算的稳态）══`);
+  const watch = [
+    ["Line", "utilPressure"], ["MaintPlan", "windowSqueeze"], ["Shipment", "inboundExpeditePressure"],
+    ["Process", "queuePressure"], ["Material", "shortageRisk"], ["PurchaseOrder", "expeditePressure"],
+    ["Customer", "receivablePressure"], ["Order", "orderChurn"], ["Model", "demandLoad"],
+  ];
+  for (const [tk, sv] of watch) {
+    const ids = inp.graph.objects.filter((o) => o.typeKey === tk).map((o) => o.id);
+    const vals = ids.map((id) => st[id]?.[sv]).filter((v) => typeof v === "number");
+    if (vals.length === 0) { console.log(`   ${`${tk}.${sv}`.padEnd(38)} 🐤 一格都读不到 ⇒ 取数坏了，不是"它没值"`); continue; }
+    const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const over = vals.filter((v) => v > 75).length;
+    console.log(`   ${`${tk}.${sv}`.padEnd(38)} n=${String(vals.length).padStart(4)} min=${Math.min(...vals).toFixed(3).padStart(9)} 均值=${mean.toFixed(3).padStart(9)} max=${Math.max(...vals).toFixed(3).padStart(9)}  >75 的格数 ${String(over).padStart(4)}/${vals.length}  ${over > 0 ? "⛔ 已入饱和段" : "✅"}`);
+  }
 }
 
 await built.app.close();
