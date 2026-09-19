@@ -781,22 +781,33 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   "demo_model_supply_risk_to_order_shortage": 0.2775,
   "demo_line_util_to_process_queue": 0.14942302,
   "demo_material_shortage_to_po_expedite": 0.185,
-  "demo_po_expedite_to_inspection_queue": 0.6,
+  // ── WO-COEF-LAMBDA 方向② · 域补登记之后没人回头改系数的 5 条（本条与下面 4 条）────────
+  // 稳态增益 0.6 × λ(queueDays)=0.37 ⇒ 0.222。修前裸写 0.6，而 `queueDays` 已于
+  // WO-PROP-REVIEW-V2 形态② 补登记 `decayRef: C35.queueDaysDecayPerTick` ⇒ 引擎**会衰减**
+  // ⇒ 真稳态 = 0.6/0.37 = 1.62，比 description 承诺的「加急压力 × 0.6」大 2.70 倍。
+  "demo_po_expedite_to_inspection_queue": 0.222,
   "demo_material_price_to_model_cost": 0.15684781,
   "demo_model_cost_to_order_cost": 0.2775,
   "demo_order_cost_to_customer_receivable": 0.03144963,
   "demo_customer_receivable_to_invoice_overdue": 0.148,
   "demo_model_demand_to_changeover_pressure": 0.148,
   "demo_material_shortage_to_batch_turnover": 0.185,
+  // ⛔ **本条刻意裸写 0.4，不预乘 λ** —— 落点 `clearanceQueueDays` 是全表**唯一**仍未声明域的
+  // 传导目标（实测出现 −8.9 天负值，数据本身可疑，`STATE_VAR_DOMAINS` 段头逐条裁决过）
+  // ⇒ 无 `decayRef` ⇒ 引擎不衰减 ⇒ 纯积分器，没有 `1/λ` 可约。预乘就是凭空把读数打三折。
   "demo_po_expedite_to_customs_queue": 0.4,
   "demo_base_load_to_maint_window_squeeze": 0.148,
-  "demo_model_demand_to_cert_queue": 0.3,
+  // 稳态增益 0.3 × λ(qualificationQueue)=**0.22** ⇒ 0.066。⚠ 这条的 λ 不是 0.37 ——
+  // 认证周期 med 5.58 天 ⇒ `1−0.25^(1/5.58)`。拿 0.37 去乘会把它做小 1.68 倍。
+  "demo_model_demand_to_cert_queue": 0.066,
   "demo_base_load_to_inbound_expedite": 0.1295,
   "demo_line_util_to_wo_release": 0.13875,
   "demo_wo_release_to_wip_feed": 0.259,
-  "demo_wo_release_to_quality_backlog": 0.5,
+  // 稳态增益 0.5 × λ(inspectBacklog)=0.37 ⇒ 0.185。
+  "demo_wo_release_to_quality_backlog": 0.185,
   "demo_wip_feed_to_defect_pressure": 0.111,
-  "demo_defect_to_exception_backlog": 0.8,
+  // 稳态增益 0.8 × λ(handlingBacklog)=**0.75** ⇒ 0.6。⚠ λ 不是 0.37：处置工期 med 1 天 ⇒ `1−0.25`。
+  "demo_defect_to_exception_backlog": 0.6,
   "demo_order_demand_to_line_split": 0.15609375,
   "demo_order_shortage_to_promise_risk": 0.2775,
   "demo_customer_receivable_to_location_hold": 0.185,
@@ -808,7 +819,8 @@ export const PROPAGATION_COEF_PARAMS: Record<string, number> = {
   // 不是反过来（㊷ 方向正相反，佐证这条画反了）」）：键随规则 key 改名，系数 0.5 原样保留
   // （评审只裁方向不裁量级）；`loadPressure` 因此升格为**根源**（入度 0，没有任何规则写它）。
   "demo_equipment_load_to_process_queue": 0.185,
-  "demo_equipment_load_to_repair_backlog": 0.6,
+  // 稳态增益 0.6 × λ(repairBacklog)=**0.75** ⇒ 0.45。⚠ λ 不是 0.37：维修工期 med 1 天 ⇒ `1−0.25`。
+  "demo_equipment_load_to_repair_backlog": 0.45,
   "demo_model_demand_to_fg_drawdown": 0.222,
   "demo_po_expedite_to_supplier_review": 0.148,
   "demo_po_procurement_delay_to_material_shortage": 0.07928545,
