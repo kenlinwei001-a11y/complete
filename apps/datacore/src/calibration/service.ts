@@ -28,6 +28,12 @@ import {
 import { meanProp, patchContext, replayPairs, sliceObjectsFor } from "./replay.js";
 import { runPairing, simNow, type PairingResult } from "./pairing.js";
 import {
+  assertRealizedGateOpen,
+  gateStatusOf,
+  type LearningCapabilityKey,
+  type RealizedGateStatus,
+} from "./gate.js";
+import {
   pairRealizedWithForecasts,
   registerRealizedOutcome,
   type RealizedPairingResult,
@@ -135,6 +141,19 @@ export class CalibrationService {
       oldestUnpairedAgeDays:
         unpairedRows.length === 0 ? null : Math.max(...unpairedRows.map((f) => Math.max(0, daysBetween(f.createdAt, nowDate)))),
     };
+  }
+
+  /**
+   * M0-F3 实料闸（PRD-ground-truth §2.1 F3）：B7/C5/C6/A10 四项学习类能力**运行时读同一个闸**。
+   * 未达标 ⇒ 拒绝启用并披露原因，⛔ 不许降级成「用仿真数据凑合跑」。
+   */
+  async realizedGateStatus(tenantId: string): Promise<RealizedGateStatus> {
+    return gateStatusOf(await this.debt(tenantId));
+  }
+
+  /** 学习类能力入口的统一准入断言（未达标 ⇒ 409 披露）；未来 B7/C5/C6/A10 模块落地必须调它。 */
+  async assertGateOpen(tenantId: string, capability: LearningCapabilityKey): Promise<void> {
+    return assertRealizedGateOpen(this.repos, this.solvers, tenantId, capability, (t) => this.debt(t));
   }
 
   /**

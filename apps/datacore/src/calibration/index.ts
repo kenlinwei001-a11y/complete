@@ -15,6 +15,16 @@ export {
   type RealizedPairingResult,
   type RealizedRegistrationInput,
 } from "./realized.js";
+export {
+  assertRealizedGateOpen,
+  evaluateRealizedGate,
+  gateStatusOf,
+  LEARNING_CAPABILITIES,
+  type CapabilityAdmission,
+  type LearningCapabilityKey,
+  type RealizedGateStatus,
+  type RealizedGateVerdict,
+} from "./gate.js";
 export { mapePct, biasOf, coverageOf, rollingMapeSeries, buildSlices } from "./metrics.js";
 export {
   methodEma,
