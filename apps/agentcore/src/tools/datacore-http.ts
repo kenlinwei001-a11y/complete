@@ -282,7 +282,7 @@ class HttpRuleEngineClient implements RuleEngineClient {
   async listPublishedRules(ctx: ToolAuthCtx): Promise<import("./clients.js").RuleSummary[]> {
     // WO-DRIL-P1：只投影已发布规则（可发现纪律）；R1 经 REST 读 A 不 import 源。
     const rules = await call<
-      { key: string; name?: string; description?: string; scopeObjectTypes?: string[]; severity?: string; expression?: string }[]
+      { key: string; name?: string; description?: string; scopeObjectTypes?: string[]; severity?: string; expression?: string; tags?: string[]; answersQuestions?: string[] }[]
     >(this.baseUrl, ctx, "GET", PUBLISHED_RULES_PATH);
     return (rules ?? []).map((r) => ({
       key: r.key,
@@ -291,6 +291,8 @@ class HttpRuleEngineClient implements RuleEngineClient {
       scopeObjectTypes: r.scopeObjectTypes,
       severity: r.severity,
       expression: r.expression,
+      tags: r.tags,
+      answersQuestions: r.answersQuestions,
     }));
   }
 }

@@ -39,6 +39,10 @@ import type {
   LlmPurposeBindingRecord,
   ObjectInstance,
   ObjectTypeDef,
+  OntoGraphAtomRecord,
+  OntoGraphEdgeRecord,
+  OntoGraphSliceRecord,
+  OntoGraphSnapshotRecord,
   OntologyDraft,
   OntologyVersion,
   ObjectInterfaceRecord,
@@ -385,9 +389,89 @@ export interface Repos {
   schemeAdoptions: Store<import("@platform/contracts").SchemeAdoption>;
   // 推演沙盘（migration026·SPEC-sandbox-propagation-and-session §2.3；行业无关 jsonb）
   sim: SimRepo;
+  // ── WO-ONTOGRAPH-DB · 本体图谱机器抽取面（migrations/041_ontology_graph.sql）────────────
+  // R9 四处同改：migrations/041 + 本接口 + memory.ts createMemoryRepos + pg.ts createPgRepos。
+  // **不走通用 Store**（对比 processDefinitions 那批）—— 理由不是洁癖，是三条语义约束通用 Store 给不了：
+  //   ① 「同一次抽取重跑是**覆盖**不是追加」要求**按 snapshot 整批替换**（先删该快照的旧行再写），
+  //      而 Store 只有单条 remove ⇒ 用它得先 list 再逐条 remove，27,000 次 round-trip；
+  //   ② 读侧一律**按 snapshot 成批取**（自检器一次要全部 6,266 原子），Store.list 只能按租户全取，
+  //      多快照共存时会把别的 commit 的原子混进来 —— 那是「读法错了」而不是「数据错了」，最难查；
+  //   ③ 对账只需要**条数**（验收 ②/③ 的三个数），Store 没有 count ⇒ 只能把两万行拉回进程再数。
+  ontoGraph: OntoGraphRepo;
   /** Liveness for /readyz. */
   ping(): Promise<void>;
   close(): Promise<void>;
+}
+
+/** 三个基数 —— 验收「落库没丢数据」与「幂等」全靠它们，故必须能在**服务端**数出来。 */
+export interface OntoGraphCounts {
+  atoms: number;
+  edges: number;
+  slices: number;
+}
+
+/**
+ * 本体图谱仓储（WO-ONTOGRAPH-DB）。
+ *
+ * 一次抽取 = 一个 **snapshot**（id = `${tenantId}:${generatedFrom}`）。
+ * 同一 commit 重跑写的是同一个 snapshot ⇒ **覆盖**；换个 commit 是新 snapshot ⇒ 并存。
+ *
+ * ⚠ R2：所有读写都吃 tenantId，跨租户一律读不到（不是"过滤掉"，是"查无此条"）。
+ *   `snapshotId` 里恰好含租户前缀，但⛔ **不许**拿它当租户闸 —— 那是拿命名约定当权限，
+ *   与 `getPropagationRule` 注释里记的那个「参数里的 id 是客户端给的」同一个坑。
+ *
+ * R9 三实现对齐：本接口 + `memory.ts MemOntoGraphRepo` + `pg.ts PgOntoGraphRepo`，语义须无漂移。
+ */
+export interface OntoGraphRepo {
+  /** 落一份快照索引（幂等覆盖：同 id 重写）。⛔ 它**不动** atoms/edges/slices 三张表。 */
+  putSnapshot(s: OntoGraphSnapshotRecord): Promise<void>;
+  /** 按 id 取快照索引。跨租户一律 null（R2）。 */
+  getSnapshot(tenantId: string, snapshotId: string): Promise<OntoGraphSnapshotRecord | null>;
+  /** 列出本租户的全部快照。**排序必须确定**（R6）：`generatedFrom` 升序 → `id` 升序。 */
+  listSnapshots(tenantId: string): Promise<OntoGraphSnapshotRecord[]>;
+  /** 删一个快照**及其三张表的全部行**。返回是否真的删到了（false = 不存在或不属本租户 ⇒ 404）。 */
+  deleteSnapshot(tenantId: string, snapshotId: string): Promise<boolean>;
+  /**
+   * 整批替换某快照的原子（**先删该快照旧行，再写新行**）。
+   *
+   * 「替换」而不是「upsert」是本单验收 ③ 的前提：上一轮多出来的行必须消失，
+   * 否则抽取器删掉一个符号之后，库里那一条会**永远活着**，而两次的条数都"看起来对"。
+   * ⚠ 空数组是合法输入 —— 语义是「这个快照一条原子都没有」，必须真把旧行删干净。
+   */
+  replaceAtoms(tenantId: string, snapshotId: string, rows: OntoGraphAtomRecord[]): Promise<void>;
+  /** 整批替换某快照的边。语义同 replaceAtoms。 */
+  replaceEdges(tenantId: string, snapshotId: string, rows: OntoGraphEdgeRecord[]): Promise<void>;
+  /** 整批替换某快照的切片。语义同 replaceAtoms。 */
+  replaceSlices(tenantId: string, snapshotId: string, rows: OntoGraphSliceRecord[]): Promise<void>;
+  /**
+   * 取某快照的原子（可按包过滤）。排序 `(pkg, atomId)` 升序 —— **按各自存储的排序规则**。
+   *
+   * ⚠⚠ **这个顺序在两个实现之间不保证逐字相同，调用方不许依赖它**（本单实测踩出来的）：
+   *   pg 的 `ORDER BY` 走**数据库的 collation**，memory 走 JS `localeCompare`。
+   *   本机 pg 集群是 `locale=C`（字节序，大写全在小写前），于是
+   *   `AtpCheckArgs < argsSatisfiable`；而 JS `localeCompare` 给的是
+   *   `argsSatisfiable < AtpCheckArgs`。**集合完全相同、顺序不同**。
+   *   同一份数据于是在「读目录」与「读库」两条路上产出了两张只差 3 行的对账表，
+   *   而两边都不报错、都 rc=0 —— `--equiv` 才把它抓出来。
+   *
+   *   形态（照 CLAUDE.md 铁律 0.6 句式）：
+   *   **「我用『两侧都写了 ORDER BY / .sort()』当作『两侧顺序相同』的证据，
+   *   而前者并不度量后者 —— 排序规则来自部署环境，不来自我的代码。」**
+   *
+   * ⇒ 谁需要**跨存储一致**的顺序，就在应用层自己再排一次
+   *   （`premise-check.mjs graphFromNormalized` 就是这么做的）。⛔ 别指望 SQL。
+   */
+  listAtoms(tenantId: string, snapshotId: string, pkg?: string): Promise<OntoGraphAtomRecord[]>;
+  /** 取某快照的边（可按种类过滤）。**排序确定**：`id` 升序（= 落库时那次显式排序的序号序）。 */
+  listEdges(tenantId: string, snapshotId: string, kind?: string): Promise<OntoGraphEdgeRecord[]>;
+  /** 取某快照的切片。**排序确定**：`sliceKey` 升序。 */
+  listSlices(tenantId: string, snapshotId: string): Promise<OntoGraphSliceRecord[]>;
+  /**
+   * 三个基数。**必须在存储侧数**，不许把两万行拉回进程再 `.length` ——
+   * 那样「我读回了 N 条」与「库里有 N 条」是同一个数，对账就失去鉴别力
+   * （读法错了会让两边一起错，屏上全绿）。
+   */
+  counts(tenantId: string, snapshotId: string): Promise<OntoGraphCounts>;
 }
 
 /**

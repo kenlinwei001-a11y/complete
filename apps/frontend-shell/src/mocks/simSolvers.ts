@@ -1848,6 +1848,85 @@ function mkCandidate(a: {
   };
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * WO-MOCK-LEVER-TRUTH · 空候选的缺口/定性文案 —— **与引擎逐字同构**
+ * （出处 `apps/datacore/src/solvers/impediment-options.ts`）。
+ *
+ * 改前 mock 说的是引擎的**旧话**，而引擎已经改写过：
+ *   · 旧（类型级）：「对象类型 X 在 CAPACITY_FACTOR_BINDINGS 上一个可拨动落点都没有」
+ *   · 新（维度级）：「LOCUS_PROP **这一维**够不着…… —— 本行不代表本条没有杠杆」
+ * 引擎把旧措辞写成了自己的禁令（`impediment-options.ts:242-245` 与 `:645` 的 `@verifyBy`）
+ * 并加了接缝门（`impediment-options-seam.test.ts:428`，`not.toContain` 咬那句类型级措辞）。
+ * ⚠ 本段**刻意不逐字复述**那句旧措辞：它是被禁的串，写进注释会让「扫源码」这种最便宜的复验
+ * 一直报命中，然后每个人都得再判一次「这是注释还是赋值」（CLAUDE.md 铁律 0.6 第 6 条那个坑）。
+ * **那道门只咬引擎，咬不到 mock** ⇒ mock 独自把旧话术又说了一版。
+ *
+ * 为什么这不是措辞洁癖：真后端 14 条 NONE 里「够不着」**实测 0 条**（2026-09-19 实测）——
+ * 11 条是「试过了·不是当前瓶颈」、3 条是「试过了·这根杠杆不进产能公式」。
+ * 复验：`cd apps/datacore && npx vitest run test/impediment-options-seam.test.ts`
+ * （四类定性的计数断言在该文件；分档函数出处 `apps/datacore/src/solvers/impediment-options.ts`）。
+ * 三件事**修法相反**（补落点册 / 换瓶颈 / 补模型里缺的那一项），
+ * 压成一句「没有可拨动落点」会把读的人整批支去补落点册，而那对后两种一条都治不了。
+ *
+ * ⚠ 本段是这几句话在前端的**唯一**出处，`handlers.ts` 一并引它 —— 别再抄第二份。
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 杠杆人读名 —— 同引擎 `impediment-options.ts:796`：`label` + `（因子<mark> <factorName>）`。
+ * `mark`/`factorName` 走 `factorOf` **现查契约**（漂了当场抛）；`label` 是 datacore 侧
+ * `LEVER_PROP_META` 的派生值（`TYPE_ABBR` + `·` + `PROP_DISPLAY_NAMES`），前端取不到，按本文件既有惯例写死。
+ */
+const leverName = (objectType: string, prop: string, label: string): string => {
+  const f = factorOf(objectType, prop);
+  return `${label}（因子${f.mark} ${f.factorName}）`;
+};
+
+export const MOCK_LEVER_NAMES = {
+  materialOnHand: leverName("Material", "onHand", "物料·现货库存"),
+  materialLeadTime: leverName("Material", "leadTime", "物料·到货周期"),
+  lineUtilization: leverName("Line", "utilization", "产线·利用率"),
+} as const;
+
+/** join 维度①：落点类型自身不承载因子。逐字镜像引擎 `impediment-options.ts:245`。 */
+export const mockLocusGap = (objectType: string): string =>
+  `LOCUS_PROP 这一维够不着：落点对象类型 ${objectType} 自身不承载可拨动因子（杠杆得靠另两条 join 路找 —— 本行不代表本条没有杠杆）`;
+
+/** join 维度④：判据规则码不是任何因子的拨动闸。逐字镜像引擎 `impediment-options.ts:290`。 */
+export const mockRuleGateGap = (ruleKey: string): string =>
+  `RULE_GATE 这一维够不着：规则 ${ruleKey} 不是任何可拨动因子的 ruleGate（该判据与产能因子册今天没有共同的规则码 —— 本行不代表本条没有杠杆）`;
+
+/**
+ * 试算台账（`effective === 0` 那一支）。逐字镜像引擎 `impediment-options.ts:965-975`。
+ * 引擎用 `unshift` 把它顶到 `gaps` 最前，理由见该处注释：不置顶就会被 `gaps.slice(0, 4)`
+ * 挤出屏幕，屏上于是只剩 join 侧那几条「够不着」—— 正是本单要治的那个误导。
+ */
+export const mockTriedLedger = (a: { tried: number; flat: number; worse: number; metricPath: string }): string =>
+  `真试算 ${a.tried} 个档位 → 有效 0 个：${a.flat} 个拨完两维读数（判据超阈幅度 ${a.metricPath} / 产能 cellsPerDayP50）一动不动、` +
+  `${a.worse} 个动了但没往好里动 ⇒ 本阻滞点的缺口**不是**「够不着落点」，而是「够着了、真试算过了、这些杠杆对它没有传导」——两者修法相反，补落点册治不了后者`;
+
+/** 作用域主瓶颈的人读串。镜像引擎 `impediment-options.ts:1012-1014`。 */
+export const mockBottleneckText = (a: { factor: string; tightness: number; rows: number; material?: string }): string =>
+  `当前瓶颈是「${a.factor}」（紧度 ${a.tightness}/100，覆盖 ${a.rows} 个逐工序格` +
+  `${a.material === undefined ? "" : `；物料齐套口径上最紧的是 ${a.material}`}）`;
+
+/**
+ * 定性②「试过了·不是当前瓶颈」。镜像引擎 `impediment-options.ts:1023`。
+ * 真后端 14 条 NONE 里这一类占 **11 条**，是绝对多数 —— mock 的分布照此。
+ */
+export const mockQualNotBinding = (a: { rungs: number; levers: readonly string[]; bottleneck: string }): string =>
+  `定性 —— **试过了·不是当前瓶颈**：${a.rungs} 档拨的是 ${[...a.levers].sort().join("、")} —— ` +
+  `这些杠杆对产能**有传导路**，但${a.bottleneck}，多给它不提产（这是对的业务语义，不是缺陷）`;
+
+/** 定性③「试过了·这根杠杆今天不进产能公式」。镜像引擎 `impediment-options.ts:1026`（真后端 3 条）。 */
+export const mockQualNoPath = (a: { rungs: number; levers: readonly string[] }): string =>
+  `定性 —— **试过了·这根杠杆今天不进产能公式**：${a.rungs} 档拨的是 ${[...a.levers].sort().join("、")} —— ` +
+  `整类同时拨大拨小，产能读数逐字节不动 ⇒ 补数据、换瓶颈都没用，缺的是模型里那一项`;
+
+/** 空候选的原因文案 —— 逐字镜像引擎 `impediment-options.ts:1046-1052` 的 `why` 拼法（MIN=2）。 */
+export const mockNoneWhy = (anchors: number, probes: number, gaps: readonly string[]): string =>
+  `枚举已跑完，有效候选 0 个（探了 ${anchors} 个杠杆锚点 / ${probes} 次试算），不足 2 个 ⇒ 构不成多方案对比，诚实不下发。` +
+  (gaps.length > 0 ? `缺口：${gaps.slice(0, 4).join(" | ")}` : "");
+
 export function mockChainImpediments(args: Record<string, unknown>): Record<string, unknown> {
   const rawScope = (args.scope ?? {}) as Record<string, unknown>;
   // R-ARG-FIDELITY：真后端对这两维显式 400 而非静默返全域（datacore service.ts:3124）——
@@ -1919,10 +1998,8 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
   const STATS: Record<string, unknown>[] = [];
   const NO_CAND: Record<string, { reason: string; kind: "NONE" | "UNAVAILABLE" }> = {};
 
-  /** 空候选的原因文案 —— 逐字镜像引擎 `impediment-options.ts:793-798` 的 `why` 拼法（MIN=2）。 */
-  const noneWhy = (anchors: number, probes: number, gaps: string[]): string =>
-    `枚举已跑完，有效候选 0 个（探了 ${anchors} 个杠杆锚点 / ${probes} 次试算），不足 2 个 ⇒ 构不成多方案对比，诚实不下发。` +
-    (gaps.length > 0 ? `缺口：${gaps.slice(0, 4).join(" | ")}` : "");
+  /** 空候选的原因文案 —— 见模块顶部 `mockNoneWhy`（与 `handlers.ts` 共用同一份，不各抄一份）。 */
+  const noneWhy = mockNoneWhy;
 
   // ① 两条产线（C05）：杠杆**就是判据的量测属性本身**（`Line.utilization` == metricPath）⇒ LOCUS_PROP + 阈值档。
   //    利用率往下拨 → 判据读数回到线内（breach↓），但产能也跟着降 —— 两个方向如实各自呈现，不藏。
@@ -2036,14 +2113,30 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
   ];
 
   // ③ 其余一律**诚实 NONE**（与生产基线同构：15 个点里 11 个 NONE）。缺口原文照引擎 gap 拼法。
-  const LOCUS_GAP = (t: string) => `LOCUS_PROP 够不着：对象类型 ${t} 在 CAPACITY_FACTOR_BINDINGS 上没有任何可拨动落点`;
-  const RULEGATE_GAP = (r: string) =>
-    `RULE_GATE 够不着：规则 ${r} 不是任何可拨动因子的 ruleGate（该判据与产能因子册今天没有共同的规则码）`;
+  const LOCUS_GAP = mockLocusGap;
+  const RULEGATE_GAP = mockRuleGateGap;
+
+  // 作用域主瓶颈：MaterialBatch 类阻滞点不带基地面 ⇒ 引擎 `scopeBottleneck(undefined)` 走全租户口径，
+  // 三条批次点因此拿到**同一句**瓶颈描述（结构相同的点，引擎本就给相同的数 —— 不为了好看人为拉开）。
+  const TENANT_BOTTLENECK = mockBottleneckText({ factor: "设备OEE", tightness: 77, rows: 48, material: "三元正极" });
+
   for (const b of ["pos_ncm_b2", "neg_graphite_b2", "elyte_b2"]) {
     const id = `imp_CONGESTION.MATERIAL.batch-idle_${b}`;
-    const gaps = [LOCUS_GAP("MaterialBatch"), RULEGATE_GAP("C28")];
-    NO_CAND[id] = { reason: noneWhy(0, 0, gaps), kind: "NONE" };
-    STATS.push({ impedimentId: id, anchors: 0, probes: 0, effective: 0, emitted: 0, gaps, noCandidateKind: "NONE" });
+    // WO-MOCK-LEVER-TRUTH：这三条此前是 `anchors: 0 / probes: 0` + 那句类型级措辞，
+    // 即 mock 把它们说成了「够不着」。而真后端 14 条 NONE 里**够不着 0 条**，这一类占 11 条：
+    // LOCUS_PROP（MaterialBatch 不在因子册）与 RULE_GATE（C28 不是任何因子的闸）这**两维**确实没够着，
+    // 但第三条路 KEY_JOIN（批次→物料 值键相等）够到了 2 根真杠杆，4 档全部真试算过 ——
+    // 读数一动不动的原因是**这个落点不是当前瓶颈**，不是没落点。两者修法相反。
+    const levers = [MOCK_LEVER_NAMES.materialOnHand, MOCK_LEVER_NAMES.materialLeadTime];
+    const gaps = [
+      mockQualNotBinding({ rungs: 4, levers, bottleneck: TENANT_BOTTLENECK }),
+      mockTriedLedger({ tried: 4, flat: 4, worse: 0, metricPath: "Batch.idleDays" }),
+      LOCUS_GAP("MaterialBatch"),
+      RULEGATE_GAP("C28"),
+    ];
+    // 2 根锚点 × 2 种档位（PEER_NEXT / PEER_BEST）= 4 次试算，与 `gaps` 里的 4 自洽。
+    NO_CAND[id] = { reason: noneWhy(2, 4, gaps), kind: "NONE" };
+    STATS.push({ impedimentId: id, anchors: 2, probes: 4, effective: 0, emitted: 0, gaps, noCandidateKind: "NONE" });
   }
   for (const [mb, name, peers] of [
     ["mbal-1", "三元正极", "当前 21373"],
@@ -2052,7 +2145,11 @@ export function mockChainImpediments(args: Record<string, unknown>): Record<stri
     const id = `imp_BREAK.MATERIAL.material-gap_${mb}`;
     // 锚点探到了（规则闸 C06 收窄到该物料），档位也取到了 —— 但同侪里没有比当前更高的真实取值，
     // 往下拨只会让缺口更大 ⇒ 逐候选真试算后**一维都没改善**，全被丢弃。这是「查过了，确实没有」。
+    // ⚠ 这两条**不出定性行**，是忠于引擎而不是漏写：定性的四个桶都挂在 `flatRungs`（拨完两维一动不动）
+    // 上，而这里 2 档都**动了、只是没往好里动**（`worseRungs`）⇒ 引擎 `parts` 为空、不 `unshift` 定性行。
+    // 台账行仍然出，并且它自己就写明「不是够不着落点」—— 该说的话一句没少。
     const gaps = [
+      mockTriedLedger({ tried: 2, flat: 0, worse: 2, metricPath: "MaterialBalance.gapTon" }),
       LOCUS_GAP("MaterialBalance"),
       `同侪 Material.onHand 无更高档位：${name} 的现货已是同侪真实极值（3 个不同取值·${peers}）—— 往下拨只会让缺口更大，拒绝拍一个步长`,
     ];

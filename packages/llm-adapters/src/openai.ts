@@ -18,6 +18,7 @@ import type {
   ToolLoopReq,
 } from "./types.js";
 import { runToolLoop } from "./toolloop.js";
+import { extractJsonCandidate, parseLlmJson, reportJsonRepairs } from "./json-repair.js";
 import { harvestClassificationSlots, reportUnconsumedSlots } from "./slot-harvest.js";
 
 /**
@@ -207,12 +208,12 @@ export class OpenAiLlmClient implements FullLlmClient {
     this.trackUsage(req.model, resp.usage);
     const content = resp.choices[0]?.message?.content;
     if (typeof content !== "string" || content.length === 0) throw new ClassifierParseError();
-    let raw: unknown;
-    try {
-      raw = JSON.parse(extractJsonText(content)); // 兼容 Moonshot/Kimi 的 ```json``` 围栏
-    } catch {
-      throw new ClassifierParseError();
-    }
+    // 剥围栏 → 直解析 → 坏了才**保守修复**（json-repair.ts 是唯一出处）。
+    // 实测 Kimi 关思考后 4/4 次吐的 JSON 都带 `"key":` 缺值这种结构破损，光剥围栏救不回来。
+    const attempt = parseLlmJson(content);
+    reportJsonRepairs("openai.classify", attempt.repairs);
+    if (attempt.value === undefined) throw new ClassifierParseError();
+    const raw: unknown = attempt.value;
     const parsed = OpenAiClassificationSchema.safeParse(raw);
     if (!parsed.success) throw new ClassifierParseError();
     // ★ WO-SLOT-HARVEST 命门：收割器跑在 **raw** 上（不是 parsed.data —— 窄 schema 会先把证据删掉）。
@@ -351,13 +352,10 @@ export class OpenAiLlmClient implements FullLlmClient {
     this.trackUsage(req.model, resp.usage);
     const content = resp.choices[0]?.message?.content;
     if (!content) return null;
-    let raw: unknown;
-    try {
-      raw = JSON.parse(extractJsonText(content));
-    } catch {
-      return null;
-    }
-    const parsed = req.schema.safeParse(raw);
+    const attempt = parseLlmJson(content);
+    reportJsonRepairs("openai.json", attempt.repairs);
+    if (attempt.value === undefined) return null;
+    const parsed = req.schema.safeParse(attempt.value);
     return parsed.success ? parsed.data : null;
   }
 
@@ -375,12 +373,11 @@ export { OpenAiLlmClient as OpenAICompatAdapter };
  * 都不命中则原样返回（让 JSON.parse 自行判定）。纯函数、无副作用。
  */
 export function extractJsonText(content: string): string {
-  const fence = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fence?.[1]) return fence[1].trim();
-  const first = content.indexOf("{");
-  const last = content.lastIndexOf("}");
-  if (first >= 0 && last > first) return content.slice(first, last + 1);
-  return content.trim();
+  // ⚠ 实现**已收归** `json-repair.ts::extractJsonCandidate`（唯一出处）。
+  //   本包此前有两份各自抄的提取逻辑（这里 + degrade.ts），改一份另一份照样绿 ——
+  //   本仓 `quantile-field-naming` 记过这笔账：抄一份就是装饰品。
+  //   ⛔ 别在这里重新写正则；要改提取规则去改那一份。
+  return extractJsonCandidate(content);
 }
 
 /**

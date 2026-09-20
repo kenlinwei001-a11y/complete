@@ -5,6 +5,10 @@ import type {
   KbChunkRecord,
   LinkInstance,
   ObjectInstance,
+  OntoGraphAtomRecord,
+  OntoGraphEdgeRecord,
+  OntoGraphSliceRecord,
+  OntoGraphSnapshotRecord,
   ScheduledJobRecord,
   Tenant,
   TsPointRecord,
@@ -15,6 +19,8 @@ import type {
   ExecutionLockStore,
   LinkStore,
   ObjectStore,
+  OntoGraphCounts,
+  OntoGraphRepo,
   RawRowStore,
   Repos,
   EpochStore,
@@ -169,6 +175,92 @@ class MemSimRepo implements SimRepo {
 
 function clone<T>(v: T): T {
   return structuredClone(v);
+}
+
+/**
+ * 本体图谱内存仓储（WO-ONTOGRAPH-DB · R9 与 `pg.ts PgOntoGraphRepo` 成对）。
+ *
+ * ⚠ 本实现**进程退出即失**。它存在的意义不是"落盘"，是让
+ * 「抽取 → 落库 → 读回，三个数逐一相等」这条对账在**不依赖数据库**的前提下也能跑
+ * —— 那条对账验的是**映射与幂等**（行 id 怎么铸、覆盖有没有真删旧行），两侧同一套逻辑。
+ * ⛔ 但它证明不了 pg 那一半：表名写错、列名写错、jsonb 往返丢字段，memory 一个都看不见。
+ *   这正是本仓 `MemSimRepo` 头注那句「memory 测试全绿永远不构成 pg 也行的证据」。
+ */
+class MemOntoGraphRepo implements OntoGraphRepo {
+  private snapshots = new Map<string, OntoGraphSnapshotRecord>(); // memKey(tenant,id)
+  private atoms = new Map<string, OntoGraphAtomRecord>();
+  private edges = new Map<string, OntoGraphEdgeRecord>();
+  private slices = new Map<string, OntoGraphSliceRecord>();
+
+  async putSnapshot(s: OntoGraphSnapshotRecord) {
+    this.snapshots.set(memKey(s.tenantId, s.id), clone(s));
+  }
+  async getSnapshot(tenantId: string, snapshotId: string) {
+    return clone(this.snapshots.get(memKey(tenantId, snapshotId)) ?? null);
+  }
+  async listSnapshots(tenantId: string) {
+    return [...this.snapshots.values()]
+      .filter((s) => s.tenantId === tenantId)
+      // R6：排序显式，且与 pg 侧 ORDER BY generated_from, id 逐字对应
+      .sort((a, b) => a.generatedFrom.localeCompare(b.generatedFrom) || a.id.localeCompare(b.id))
+      .map(clone);
+  }
+  async deleteSnapshot(tenantId: string, snapshotId: string) {
+    const had = this.snapshots.delete(memKey(tenantId, snapshotId));
+    // 三张子表一并清 —— 只删索引行会留下 27,000 条**够不着的**孤儿，
+    // 而它们照样被 counts() 数进去 ⇒ 下一次对账凭空多出两万条。
+    for (const m of [this.atoms, this.edges, this.slices] as Map<string, { tenantId: string; snapshotId: string }>[]) {
+      for (const [k, v] of m) if (v.tenantId === tenantId && v.snapshotId === snapshotId) m.delete(k);
+    }
+    return had;
+  }
+
+  /** 三张子表共用的「先删该快照旧行，再写新行」—— 删与写必须同一个谓词，否则会漏删。 */
+  private replaceInto<T extends { id: string; tenantId: string; snapshotId: string }>(
+    m: Map<string, T>, tenantId: string, snapshotId: string, rows: T[],
+  ) {
+    for (const [k, v] of m) if (v.tenantId === tenantId && v.snapshotId === snapshotId) m.delete(k);
+    for (const r of rows) m.set(memKey(r.tenantId, r.id), clone(r));
+  }
+  async replaceAtoms(tenantId: string, snapshotId: string, rows: OntoGraphAtomRecord[]) {
+    this.replaceInto(this.atoms, tenantId, snapshotId, rows);
+  }
+  async replaceEdges(tenantId: string, snapshotId: string, rows: OntoGraphEdgeRecord[]) {
+    this.replaceInto(this.edges, tenantId, snapshotId, rows);
+  }
+  async replaceSlices(tenantId: string, snapshotId: string, rows: OntoGraphSliceRecord[]) {
+    this.replaceInto(this.slices, tenantId, snapshotId, rows);
+  }
+
+  private pick<T extends { id: string; tenantId: string; snapshotId: string }>(
+    m: Map<string, T>, tenantId: string, snapshotId: string, extra?: (r: T) => boolean,
+  ): T[] {
+    return [...m.values()]
+      .filter((r) => r.tenantId === tenantId && r.snapshotId === snapshotId && (!extra || extra(r)))
+      .map(clone);
+  }
+  async listAtoms(tenantId: string, snapshotId: string, pkg?: string) {
+    // R9：与 pg 侧 `ORDER BY pkg, atom_id` 逐字对应。⛔ 别改成按 id 排 ——
+    // 集合一样、顺序不同，而顺序正是 YAML 那侧分片布局的语义（见 repo.ts 该方法注释）。
+    return this.pick(this.atoms, tenantId, snapshotId, pkg ? (r) => r.pkg === pkg : undefined)
+      .sort((a, b) => a.pkg.localeCompare(b.pkg) || a.atomId.localeCompare(b.atomId));
+  }
+  async listEdges(tenantId: string, snapshotId: string, kind?: string) {
+    return this.pick(this.edges, tenantId, snapshotId, kind ? (r) => r.kind === kind : undefined)
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+  async listSlices(tenantId: string, snapshotId: string) {
+    return this.pick(this.slices, tenantId, snapshotId)
+      .sort((a, b) => a.sliceKey.localeCompare(b.sliceKey));
+  }
+  async counts(tenantId: string, snapshotId: string): Promise<OntoGraphCounts> {
+    const n = <T extends { tenantId: string; snapshotId: string }>(m: Map<string, T>) => {
+      let c = 0;
+      for (const v of m.values()) if (v.tenantId === tenantId && v.snapshotId === snapshotId) c++;
+      return c;
+    };
+    return { atoms: n(this.atoms), edges: n(this.edges), slices: n(this.slices) };
+  }
 }
 
 /**
@@ -585,6 +677,8 @@ export function createMemoryRepos(): Repos {
     processInstances: new MemStore(),
     processTasks: new MemStore(),
     sim: new MemSimRepo(),
+    // WO-ONTOGRAPH-DB · 本体图谱（R9 四处同改之三 —— migrations/041 + repo.ts 接口 + 本行 + pg.ts）
+    ontoGraph: new MemOntoGraphRepo(),
     async ping() {
       /* always ready */
     },

@@ -36,6 +36,7 @@ import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "./ontology-signat
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { assembleParetoModel } from "./opt-assemble.js"; // WO-SIM-PARETO-MODEL-EXIT · 模型装配的**出口**（此前装配能力有、无人能调）
 import { buildWorldReadView } from "../sim/world-read.js"; // WO-WORLDSTATE-CONTRACT · 世界态读取契约（产出侧读这次推演的态，不是本体真值）
+import { applyWorldStateToContext } from "./world-surface.js"; // WO-WORLDSTATE-SURFACE · 统一世界态读取面（白名单+开关+不静默回落三道闸）
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING · 复用 A13 角色推断机制（field-roles/resolveFieldRoles 同源词库·配置化 R14·非业务常数）+ 结构信号 fanOut（R6·零 LLM）
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
@@ -6215,7 +6216,12 @@ export class SolverService {
     });
     const params =
       opts?.params ?? (opts?.paramsVersion !== undefined ? await this.paramsAt(tenantId, opts.paramsVersion) : c.params);
-    return this.compute({ ...c, params }, solverKey, args);
+    // WO-WORLDSTATE-SURFACE：与 invoke 同一个注入点（compute 同步 ⇒ 世界态只能 async 预注入；
+    // runWithParams 是校准重放/规则 payload 的入口，同一份 args 必须走同一道闸，否则两条路两个口径）。
+    await applyWorldStateToContext(this.repos, tenantId, solverKey, args, c);
+    const out = this.compute({ ...c, params }, solverKey, args);
+    if (c.world) out.worldState = c.world.disclosure; // 加性键（不传 worldId ⇒ c.world undefined ⇒ 逐字节同旧）
+    return out;
   }
 
   /**
@@ -6399,7 +6405,11 @@ export class SolverService {
     // WO-D1 检查点②（loadContext 之后 / compute 之前）：全表扫刚完就被取消 → 不再进同步 compute。
     // ⚠ 诚实：compute 是**同步**的，一旦进去就无法从外部打断（Node 单线程）——取消只能卡在这个边界上。
     throwIfCancelled(`solver ${solverKey} compute 前`);
+    // WO-WORLDSTATE-SURFACE：白名单求解器 + args.worldId ⇒ 把该世界当前拍的态叠进 ctx（三道闸见 world-surface.ts 头注）。
+    // 不传 worldId / 非白名单 ⇒ 一行不执行 ⇒ 与本单上线前逐字节一致（R6）。
+    await applyWorldStateToContext(this.repos, ctx.tenantId, solverKey, args, c);
     const out = this.compute(c, solverKey, args);
+    if (c.world) out.worldState = c.world.disclosure; // 加性键：读了哪几格/经哪条链路/按哪条公式随包下发（铁律 1.5 判据二）
     if (solverKey === "capacity_forecast") {
       // T9 deviation line: remember the prediction for tick-time comparison.
       const modelId = str(args.modelId);
@@ -6523,7 +6533,9 @@ export class SolverService {
       //   日期属性上时**每个实例都得 0**，排序整个塌给 `id` 字典序 —— 结果是确定性的（R6 不破），
       //   但选出来的是「id 最小的那个」而不是「日期最晚的那个」，**语义上等于随便挑一个**。
       //   这正是本单要修的那类病换个位置复发：跑得起来、不报错、算的不是那回事。
-      //   故按值的**实际类型**比：数字走数值序，字符串走字典序（ISO-8601 日期的字典序 = 时间序），
+      //   故按值的**实际类型**比：数字走数值序，字符串走 `localeCompare` 值序（与测试/展示同一口径；
+      //   同格式 ISO-8601 日期的值序 = 时间序）。**不许用 `<` 的 UTF-16 码元序**：中文按码元排
+      //   与按值排会分叉（实测：码元序最大=金华 U+91D1，值序最大=自贡 ⇒ 取证对象选错实例），
       //   类型不一致时数字排在字符串前（固定次序，不留"看情况"的空档）。
       const cmp = (l: unknown, r: unknown): number => {
         if (typeof l === "number" && typeof r === "number") return l - r;
@@ -6531,7 +6543,7 @@ export class SolverService {
         if (typeof r === "number") return 1;
         const ls = String(l);
         const rs = String(r);
-        return ls < rs ? -1 : ls > rs ? 1 : 0;
+        return ls.localeCompare(rs);
       };
       const worst = rows.slice().sort((x, y) => {
         const d = cmp(x.props[b.propKey], y.props[b.propKey]);

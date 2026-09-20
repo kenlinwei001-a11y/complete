@@ -716,6 +716,7 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
             data-comparable={model.live?.comparable === true ? "1" : "0"}
             data-driven={model.live?.byDrive.find((g) => g.kind === "TICK_DRIVEN")?.count ?? ""}
             data-nodata={model.live?.byDrive.find((g) => g.kind === "NO_CARRIER_OBJECTS")?.count ?? ""}
+            data-sourceonly={model.live?.byDrive.find((g) => g.kind === "SOURCE_ONLY")?.count ?? ""}
             data-static={model.live?.byDrive.find((g) => g.kind === "NOT_TICK_DRIVEN")?.count ?? ""}
             data-moved={model.live?.movedKeys.length ?? ""}
           >
@@ -729,6 +730,7 @@ export function ProcessCanvasView({ selectedProcessKey, onPick, honesty = true }
                   comparable: model.live.comparable,
                   driven: model.live.byDrive.find((g) => g.kind === "TICK_DRIVEN")?.count ?? 0,
                   noData: model.live.byDrive.find((g) => g.kind === "NO_CARRIER_OBJECTS")?.count ?? 0,
+                  sourceOnly: model.live.byDrive.find((g) => g.kind === "SOURCE_ONLY")?.count ?? 0,
                   staticCount: model.live.byDrive.find((g) => g.kind === "NOT_TICK_DRIVEN")?.count ?? 0,
                   moved: model.live.movedKeys.length,
                   netDelta: model.live.netDelta,

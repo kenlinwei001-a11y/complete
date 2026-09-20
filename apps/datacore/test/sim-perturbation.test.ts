@@ -88,7 +88,16 @@ describe("WO-P0 · 扰动一等公民", () => {
     // ⚠ 上面这一条**单独拿出来是同义反复** —— 两条路走同一个 `applyPerturbationToState`，
     // 相等是结构上保证的。它证明的是"不会漂移"，不是"算得对"。
     // 故必须再钉一个**字面量**：施加器本身算错时（比如把 set 写成 delta），上面那条照样绿，这条会红。
-    expect(worldAct).toEqual({ tick: 2, state: { o1: { risk: 0.9 }, o2: { risk: 0.2 } } });
+    //
+    // ⚠ `baseProvenance` 是 `a67ed05c`（WO-SANDBOX-REAL-SNAPSHOT 后端半）给
+    // `GET …/:id/world` 加的**第三个字段** = tick0 起点那一格的逐格出处。
+    // 本例两条路都**显式传了 `baseSnapshot`**（`BASE`），属于「调用方自带世界」那一档 ——
+    // 服务端不替它声明出处（`app.ts` 的 `s.baseSnapshotProvenance ?? {}`）⇒ 恒为 `{}`。
+    // 消费方是前端 `SandboxView`（`d.baseProvenance` → `tallyCellProvenance` → 逐格三态渲染）。
+    // ⇒ 字段是真的、该在，**钉子照旧保留**：`toEqual` 仍是穷尽比对，
+    //   施加器算错（set 写成 delta）照样红；将来谁再加第四个字段，这条也会再红一次，
+    //   **那正是这颗钉子存在的理由**（逼一次有意识的裁决，而不是让回包悄悄长胖）。
+    expect(worldAct).toEqual({ tick: 2, state: { o1: { risk: 0.9 }, o2: { risk: 0.2 } }, baseProvenance: {} });
     // …而扰动这条路**多留下了一个实体**（这正是升格的全部意义：/act 做完什么都不剩）。
     expect(created.json().perturbation).toMatchObject({ kind: "capacity_loss", startTick: 2, durationTicks: null, mode: "set", label: "常州 A 线停机" });
   });

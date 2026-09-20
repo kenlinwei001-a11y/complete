@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
-import { deriveSeedBaseSnapshot } from "../src/sim/seed-world.js";
+import { deriveSeedBaseSnapshot, entersSimWorld } from "../src/sim/seed-world.js";
 import { buildPropagationInputs } from "../src/sim/propagation-inputs.js";
 import { replayWorldLine } from "../src/sim/metric-series.js";
 import { resolveSimScope, type Perturbation, type TickState } from "@platform/contracts";
@@ -60,21 +60,10 @@ async function runWorld(t: TestApp, toTick: number, perturbations: readonly Pert
   return line.states[toTick]!;
 }
 
-/**
- * 进推演世界的订单 —— **判据必须与 `deriveSeedBaseSnapshot` 逐条相同**，否则①的
- * 「引擎报的数 vs 独立重算的数」两边量的就不是同一个集合，红了也说明不了问题。
- *
- * ⚠ 今天的判据只有 `!mergedInto`（`sim/seed-world.ts` 里 `deriveSeedBaseSnapshot` 的原文
- *   `.filter((o) => !o.mergedInto)`）—— **已完成订单照样进世界**。
- * 那不是本段偷懒：`entersSimWorld`（「COMPLETED 单不进推演世界」）是 `WO-SIM-SETTLED-ORDERS`
- * 的内容，它要求 `app.ts` 的 `nodeObjectIds` / `propagation-inputs.ts` / `change-impact.ts`
- * **五个物化点同时改口径**，超出本单 🚦 范围边界，尚未落地。
- * ⛔ 在那张单落地之前，这里**不许**抢先按 COMPLETED 过滤 —— 那会造出「测试按 150 张算、
- *   引擎按 500 张算」这种两边都自洽却对不上的假红/假绿。
- */
+/** 进推演世界的订单（= `entersSimWorld`，⛔ 不在这里另抄一份成员判据）。 */
 async function liveOrders(t: TestApp): Promise<ObjectInstance[]> {
   const all = await t.repos.objects.listByType("demo", "Order");
-  return all.filter((o) => !o.mergedInto);
+  return all.filter((o) => entersSimWorld("Order", o));
 }
 
 /** 某张订单挂在哪个型号上（走真链路 `order_for_model`，⛔ 不按名字猜）。 */
@@ -98,17 +87,17 @@ describe("WO-SIM-ORDER-REAL-FIELDS · 订单真实字段进推演世界（SEAM�
 
     // ── 算法 B：完全独立地重算一遍 —— 数"进世界的订单 × 真值字段"，不碰 origin ──
     const live = await liveOrders(t);
+    // 🐤 金丝雀：在手订单集非空，且确实被 COMPLETED 过滤剔过（剔除数为 0 而对象层有 COMPLETED
+    //   ⇒ `entersSimWorld` 没生效，此时**不许**报「没有已完成订单」——见该函数头注）。
     const all = await t.repos.objects.listByType("demo", "Order");
     const completed = all.filter((o) => o.props.status === "COMPLETED").length;
-    expect(live.length, "进世界的订单集不应为空").toBeGreaterThan(0);
-    // 🐤 金丝雀：对象层确实有 COMPLETED 单 —— 为 0 则下面那条「今天不过滤」的断言在空跑，
-    //   既证明不了过滤生效、也证明不了没生效（本仓「金丝雀不中要报工具坏了」那条纪律）。
-    expect(completed, "对象层应当有 COMPLETED 单；为 0 则本用例的状态臂在空跑").toBeGreaterThan(0);
-    // ⚠ **今天的行为，如实钉住**：`deriveSeedBaseSnapshot` 只过滤 `mergedInto`，
-    //   已完成订单**照样进推演世界** ⇒ 剔除数恒 0。
-    //   `WO-SIM-SETTLED-ORDERS`（`entersSimWorld`）落地那天，这里会红 —— **那是对的**：
-    //   那时把本行改成 `toBe(completed)`，而不是把这条断言删掉。
-    expect(all.length - live.length, "今天推演世界的成员判据只有 mergedInto（见 liveOrders 头注）").toBe(0);
+    expect(live.length, "在手订单集不应为空").toBeGreaterThan(0);
+    expect(completed, "对象层应当有 COMPLETED 单；为 0 则本用例的过滤臂在空跑").toBeGreaterThan(0);
+    // ⚠ **本行由 `toBe(0)` 翻成 `toBe(completed)`，是照 canonical 自己留的指令翻的**：
+    //   canonical 原注写「`WO-SIM-SETTLED-ORDERS`（`entersSimWorld`）落地那天，这里会红 —— 那是对的：
+    //   那时把本行改成 `toBe(completed)`，而不是把这条断言删掉。」**收编本分支那天就是那一天** ——
+    //   `sim/seed-world.ts` 的 `deriveSeedBaseSnapshot` 与 `listSimWorldObjects` 现都按 `entersSimWorld` 过滤。
+    expect(all.length - live.length).toBe(completed);
 
     // 每张在手单的三个字段都必须是有限数（否则它那格会落哈希，B 的算式就不成立）
     for (const o of live) {

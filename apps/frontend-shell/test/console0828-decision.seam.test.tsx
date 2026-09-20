@@ -854,4 +854,186 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       expect(t).toContain("落点 ");
     }
   });
+
+  /* ════════════════════════════════════════════════════════════════════════════
+   * ⑧⑨⑩⑪ WO-SIM-PLAIN-WORDS · 左栏加扰动表单：业务语言 + 一次性事件不摆「持续时长」
+   * ════════════════════════════════════════════════════════════════════════════
+   * ⑥ 管的是**时点**（第 N 拍 → 哪一天），已在上面。这四条管的是另外三件事：
+   *  ⑧ **长度**这一头的主次（拍 vs 天），两个方向都要测；
+   *  ⑨ 一次性事件**不渲染**「持续」那一格 —— 必须带反向臂，否则「永远不渲染」也会绿；
+   *  ⑩ 它提交出去的 `durationTicks` 真的是 `null`（屏上没了不等于载荷里没了）；
+   *  ⑪ 降层/改措辞**一个字都没删**。
+   */
+  describe("WO-SIM-PLAIN-WORDS · 加扰动表单的业务语言与时间形态", () => {
+    /** 展开一件事的表单（不选落点、不提交）—— ⑧⑨⑪ 只看屏上的字。 */
+    function openForm(eventId: string): void {
+      fireEvent.click(screen.getByTestId(`c0828-ev-${eventId}`));
+    }
+
+    /**
+     * 两个样本，**都从目录现取**、不写死：
+     *  · `once`      样本 = `material-price-up`（fixture 里 `Material.priceShock` 可落地）
+     *  · `sustained` 样本 = `capacity-loss`（fixture 里 `Base.loadIndex` 可落地）
+     * 取完**当场核对它俩的 `timeShape` 真是一 once 一 sustained** —— 若有人把归类改了，
+     * 这两个样本会静悄悄地变成同一类，⑨ 的「反向臂」就名存实亡（两臂测的是同一件事，照样全绿）。
+     */
+    const ONCE_ID = "material-price-up";
+    const SUSTAINED_ID = "capacity-loss";
+    function shapeOf(id: string): string {
+      const ev = BUSINESS_EVENTS.find((e) => e.id === id);
+      expect(ev, `目录里没有 ${id} —— 样本选错了，不是「这件事没有时间形态」`).toBeDefined();
+      return (ev as { timeShape: string }).timeShape;
+    }
+
+    it("⑧ 对照实验 · 长度口径：持续填 3，tickDays 1→3 屏上必须从「3 天」变成「9 天」；取不到刻度则退回「3 拍」+ 原因", async () => {
+      // ── 臂 1：tickDays = 1 ⇒ 一拍就是一天，单位词写「天」是逐字相等，不是换算。
+      sessionTickDays = 1;
+      mount();
+      await railReady();
+      openForm(SUSTAINED_ID);
+      fireEvent.change(await screen.findByTestId(`c0828-dur-${SUSTAINED_ID}`), { target: { value: "3" } });
+      const echoTd1 = screen.getByTestId(`c0828-dur-echo-${SUSTAINED_ID}`).textContent ?? "";
+      expect(echoTd1).toContain("3 天");
+      expect(echoTd1).toContain("（3 拍）"); // 拍不许删干净：后端回执上的量就是它
+      cleanup();
+
+      // ── 臂 2：tickDays = 3 ⇒ **同一个 3**，天数必须跟着口径变。这才是对照实验本身。
+      perturbCalls = [];
+      sessionTickDays = 3;
+      mount();
+      await railReady();
+      openForm(SUSTAINED_ID);
+      fireEvent.change(await screen.findByTestId(`c0828-dur-${SUSTAINED_ID}`), { target: { value: "3" } });
+      const echoTd3 = screen.getByTestId(`c0828-dur-echo-${SUSTAINED_ID}`).textContent ?? "";
+      expect(echoTd3).toContain("9 天");
+      expect(echoTd3).toContain("（3 拍）");
+      // 换了口径屏上的数真的变了 —— 两串不许相同（相同 = 那个乘法根本没接上 `tickDays`）。
+      expect(echoTd3).not.toBe(echoTd1);
+      cleanup();
+
+      // ── 臂 3（反方向）：刻度真取不到 ⇒ 退回「N 拍」并写明为什么，⛔ 不许默认 tickDays=1 假装知道。
+      perturbCalls = [];
+      sessionTickDays = null;
+      sessionCreatedAtRaw = null;
+      mount();
+      await railReady();
+      openForm(SUSTAINED_ID);
+      fireEvent.change(await screen.findByTestId(`c0828-dur-${SUSTAINED_ID}`), { target: { value: "3" } });
+      const echoNone = screen.getByTestId(`c0828-dur-echo-${SUSTAINED_ID}`).textContent ?? "";
+      expect(echoNone).toContain("3 拍");
+      expect(echoNone).toContain("按拍显示"); // 原因必须在场
+      // 「3 天」这个编出来的数一个字都不许出现 —— 那正是「默认 tickDays=1 假装知道」的指纹。
+      expect(echoNone).not.toContain("3 天");
+    });
+
+    it("⑨ 一次性事件查不到「持续」那一格，持续型查得到（反向臂缺一条则「永远不渲染」也会绿）", async () => {
+      // 金丝雀：两个样本必须真是一 once 一 sustained，否则下面两臂测的是同一件事。
+      expect(shapeOf(ONCE_ID)).toBe("once");
+      expect(shapeOf(SUSTAINED_ID)).toBe("sustained");
+      // 目录层面两类都非空 —— 全 once（或全 sustained）时本用例会退化成单臂。
+      const onceN = BUSINESS_EVENTS.filter((e) => e.timeShape === "once").length;
+      const sustN = BUSINESS_EVENTS.filter((e) => e.timeShape === "sustained").length;
+      expect(onceN).toBeGreaterThan(0);
+      expect(sustN).toBeGreaterThan(0);
+      expect(onceN + sustN).toBe(BUSINESS_EVENTS.length);
+
+      mount();
+      await railReady();
+
+      // ── 正臂：一次性 ⇒ 没有「持续」那一格，且第一层说清为什么没有。
+      openForm(ONCE_ID);
+      await screen.findByTestId(`c0828-form-${ONCE_ID}`);
+      expect(screen.queryByTestId(`c0828-dur-${ONCE_ID}`)).toBeNull();
+      // 「没有这一格」必须配一句解释，⛔ 不许只是悄悄少一格（少一格用户会当成 bug）。
+      expect(screen.getByTestId(`c0828-seg2-${ONCE_ID}`).textContent ?? "").toContain("一次性变更，之后一直生效");
+      expect((screen.getByTestId(`c0828-once-${ONCE_ID}`).textContent ?? "").length).toBeGreaterThan(20);
+
+      // ── 反臂：持续型 ⇒ 那一格必须在。没有这一臂，组件里写死 `return null` 也照样全绿。
+      openForm(ONCE_ID); // 收起上一件
+      openForm(SUSTAINED_ID);
+      await screen.findByTestId(`c0828-form-${SUSTAINED_ID}`);
+      expect(screen.queryByTestId(`c0828-dur-${SUSTAINED_ID}`)).not.toBeNull();
+      expect(screen.queryByTestId(`c0828-once-${SUSTAINED_ID}`)).toBeNull();
+      expect(screen.getByTestId(`c0828-seg2-${SUSTAINED_ID}`).textContent ?? "").not.toContain("一次性变更");
+    });
+
+    it("⑩ 提交形状：一次性事件的载荷 `durationTicks === null`（永久）；持续型填了 3 就发 3", async () => {
+      sessionTickDays = 1;
+      mount();
+      await railReady();
+
+      // 一次性：表单上压根没有那一格 ⇒ 载荷必须显式 `null`（契约「null = 永久」），
+      // ⛔ 不是 `undefined` 蒙混，也不是 0（0 会被契约 zod `min(1)` 拒）。
+      await addEvent(ONCE_ID, "mat_licarb", 15);
+      // 持续型对照臂：同一次推演里填 3 ⇒ 必须原样发出去。
+      // 没有这一臂，组件里把 `durationTicks` 写死成 `null` 也会全绿。
+      openForm(SUSTAINED_ID);
+      const sel = await screen.findByTestId(`c0828-pick-${SUSTAINED_ID}`);
+      await waitFor(() => {
+        expect(within(sel as HTMLSelectElement).getAllByRole("option").length).toBeGreaterThan(1);
+      });
+      fireEvent.change(sel, { target: { value: "base_cz" } });
+      fireEvent.change(screen.getByTestId(`c0828-dur-${SUSTAINED_ID}`), { target: { value: "3" } });
+      fireEvent.click(screen.getByTestId(`c0828-add-${SUSTAINED_ID}`));
+
+      fireEvent.click(screen.getByTestId("c0828-go"));
+      await screen.findByTestId("c0828-money");
+
+      expect(perturbCalls).toHaveLength(2);
+      const onceCall = perturbCalls.find((c) => String(c.targetObjectId) === "mat_licarb");
+      const sustCall = perturbCalls.find((c) => String(c.targetObjectId) === "base_cz");
+      expect(onceCall, "一次性那条扰动没发出去 —— 后面的断言就不度量本条命题了").toBeDefined();
+      expect(sustCall).toBeDefined();
+      expect(Object.keys(onceCall as object)).toContain("durationTicks"); // 键必须在（不是 undefined 蒙混）
+      expect((onceCall as { durationTicks: unknown }).durationTicks).toBeNull();
+      expect((sustCall as { durationTicks: unknown }).durationTicks).toBe(3);
+
+      // `mode` 一条都没改：一次性靠 `durationTicks:null` 表达，不是靠 `mode:"set"`。
+      // （`set` 把相对量 15% 当成「把该量设为 15」，不会报错，只会静默算错。）
+      expect((onceCall as { mode: unknown }).mode).toBe("delta");
+    });
+
+    it("⑪ 一个字都没删：改措辞/降层前表单上有的可读文本，改完之后一条不少", async () => {
+      sessionTickDays = 1;
+      mount();
+      await railReady();
+      openForm(SUSTAINED_ID);
+      const form = await screen.findByTestId(`c0828-form-${SUSTAINED_ID}`);
+      const text = form.textContent ?? "";
+
+      /**
+       * 下面这一串是**改动之前**表单区就有的可读内容，逐条抄下来当断言
+       * （判据 4：降层允许、删除不允许 —— `docs/CONVENTION-ui-information-layering.md` §1）。
+       * ⚠ 抄的是**语义单位**不是整句：措辞本来就要改（那正是本单要做的事），
+       *   能拿来当「没被删掉」证据的只有那些**不因改措辞而消失的诚实位**。
+       */
+      const MUST_KEEP = [
+        "落点对象", // 选哪一个实体
+        "幅度", // 加多少
+        "Base", // 落点类型（typeKey）—— 降到第二层，⛔ 不许删
+        "loadIndex", // 状态变量（stateVar）—— 同上
+        "整段落在过去", // 「填了也不生效」那条诚实位
+        "201", // 后端仍会受理这件事本身
+      ];
+      for (const s of MUST_KEEP) {
+        expect(text, `表单里丢了「${s}」—— 降层允许，删除不允许`).toContain(s);
+      }
+      // `ev.detail`（这件事先推动什么）整句仍在第二层。
+      const ev = BUSINESS_EVENTS.find((e) => e.id === SUSTAINED_ID) as { detail: string };
+      expect(text).toContain(ev.detail);
+
+      // 三段式的三个抬头都在，且就是仓主说的那三个词、那个顺序。
+      const i1 = text.indexOf("什么事");
+      const i2 = text.indexOf("发生时间");
+      const i3 = text.indexOf("调整了什么");
+      expect(i1).toBeGreaterThanOrEqual(0);
+      expect(i2).toBeGreaterThan(i1);
+      expect(i3).toBeGreaterThan(i2);
+
+      // 内部字段名**降层不删**：typeKey / stateVar 必须在 `<details>` 里，不在第一层。
+      const detailsText = (form.querySelector("details")?.textContent ?? "");
+      expect(detailsText).toContain("Base");
+      expect(detailsText).toContain("loadIndex");
+    });
+  });
 });

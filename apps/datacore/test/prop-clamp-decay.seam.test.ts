@@ -103,8 +103,11 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
   // ── §3 未声明的量纲**不许被偷偷夹住**，且必须在回执里有名字 ──────────────────────
   it("§3 未声明取值域的量纲不夹不衰减，但被逐个点名（诚实缺席，不是静默兜底）", () => {
     const d = stateVarDomains();
-    expect(d.queueDays).toBeUndefined();     // 天数族：全仓没有第二处出处，故刻意不声明
-    expect(d.inspectBacklog).toBeUndefined(); // 件数族：同上
+    // 样本 = 「仍刻意在表外」的量纲，两个的理由各异（2026-09-18 T6 换样：
+    // 原样本 queueDays/inspectBacklog 已进表 —— 评审形态②裁定「消化速率=产能，有出处」，
+    // 本断言的前提被那单有意拆掉的正是「全仓没有第二处出处」）。
+    expect(d.clearanceQueueDays).toBeUndefined(); // 天数族：T6 裁决 defer —— 实测 −8.9 天负值交仓主，夹下界 0 = 把数据 bug 藏成正常
+    expect(d.qty).toBeUndefined();                // 件数族：Order 真值支属性，设计上永不登记取值域（真值支不饱和，饱和即污染业务真值）
     // 🔴 回归钉子（WO-SIM-DOMAIN-DECLARE·2026-09-17）：`blockedPressure` **必须**已声明。
     // 它是 47 条边里**唯一**「入边≠0 且出边≠0」的压力族量纲（入 `Process.queuePressure ×0.55`、
     // 出 `→ WorkOrder.releasePressure ×0.6`）⇒ 唯一一个把无界读数**泵进下游已声明链**的口子。
@@ -112,6 +115,8 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     //   130/130 格越界，max **2284.49**（上界的 22.8 倍）；补上后 130/130 全部落回 [0,100]，max 97.68。
     // ⚠ 本条与上面两行**不矛盾**：那两个不声明是因为「没有上界的出处」，
     //   而本键与其余 31 个压力族共用同两条既有出处，一条都没新发明。
+    // ⚠ WO-PROP-V2-REBASE 收编：canonical 这枚钉子与分支的换样**同时成立**（断言的是不同的键），
+    //   故两段都留、⛔ 不是「取并集」—— 取并集指的是同一条目留下状态相反的两份。
     expect(d.blockedPressure).toBeDefined();
     expect(d.blockedPressure!.min).toBe(0);
     expect(d.blockedPressure!.max).toBe(100);

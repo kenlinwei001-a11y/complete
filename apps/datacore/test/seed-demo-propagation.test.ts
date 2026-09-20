@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, ADMIN, seedBattery, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+// §6 每格增益预算现算所需：装配走**生产同一处**（`buildPropagationInputs`），
+// 权重键走引擎同一支（`pairWeightKey`），λ 走 C35 同一个记号 —— 三者都不许在测里另抄一份。
+import { buildPropagationInputs } from "../src/sim/propagation-inputs.js";
+import { pairWeightKey } from "../src/sim/propagation.js";
+// WO-GAIN-REACH · 实际拉力列所需，三者都走**生产同一支**：
+//  · `deriveSeedBaseSnapshot` —— tick0 世界态 + 逐格出处（真读数 / 哈希占位），⛔ 测里不另抄两档判定；
+//  · 播种期两步 —— `server.ts` 的 seed:derivation-specs / seed:derivation-recompute，
+//    少了它们本测的世界与生产不同源（实测「实测格」4189 → 450），理由见 `measureBudget` 内注释。
+import { deriveSeedBaseSnapshot } from "../src/sim/seed-world.js";
+import { seedDemoDerivationSpecs, recomputeDemoDerivationsAtSeed } from "../src/seed-derivation-specs.js";
+// ⛔ 刻意**不再** import `PRESSURE_DECAY_PER_TICK`：§6 的 λ 一律逐格从 `decayRef` 现读。
+// 把那个记号留在手边，下一个人顺手拿它当默认值就又回到「全表一个 λ」那个病（WO-COEF-LAMBDA）。
+import { resolveSimScope } from "@platform/contracts";
 
 /**
  * 沙盘消"空世界"（审计 §3.5）：SEED_DEMO 给 demo 租户播 sim PropagationRule 种子。
@@ -31,7 +44,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const cfg = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/view-config", headers: ADMIN })).json()) as {
       nodeTypes: string[]; stateVars: string[]; propagationCount: number;
     };
-    expect(cfg.propagationCount).toBe(51); // WO-P1 13 → 档 1 +6 → 档 2 +15 → 档 3 +1 = 35 → WO-SIM-ROOT-TRIAD +4 = 39 → 补 3 条 = 42 → WO-SLICE-DOMAINS 设备侧出口 +4 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48 → **WO-SIM-REAL-DATA +3 条 Order 真值边**（qty/unitPrice/leadDays 同名直取 → Model.backlog*，系数 1.0 不过 λ）= 51
+    expect(cfg.propagationCount).toBe(55); // 55 = canonical 51 − 1（WO-PROP-REVIEW-V2 ㉜ 方向反向：`demo_process_queue_to_equipment_load` 被 `demo_equipment_load_to_process_queue` **取代** —— 是换不是增）+ 5（反向替代边 1 · 库存环 `demo_fg_cover_days_to_model_demand` 1 · 物料环 3：替代料负反馈/检验放行/缺口催货）。canonical 的 51 = 47 + WO-SIM-DAMPING 阻尼边 1 + WO-SIM-REAL-DATA Order 真值边 3。⚠ Order 真值三条**两边各自落地过**（本分支 WO-SIM-ORDER-REAL-FIELDS / canonical WO-SIM-REAL-DATA），收编时已去重、留 canonical 那一份 —— 它带 `coefficient: 1` **不过 λ** 的修复，本分支那份没有。
     expect(cfg.stateVars.length).toBeGreaterThan(0);
     // stateVars 派生自规则 source/target stateVar。WO-P1 后覆盖六个方向的量纲：
     // 需求(demandPressure/demandLoad/loadIndex/utilPressure) · 产能(queuePressure) ·
@@ -60,6 +73,9 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(cfg.stateVars).toEqual([
       "backlogHorizonDays", "backlogPriceTop", "backlogQtyTop",
       "blockedPressure", "changeoverPressure", "clearanceQueueDays", "collectionPressure", "costPressure",
+      // WO-PROP-REVIEW-V2 库存环 +1 个量纲 `coverDays`（成品覆盖天数·天）——库存侧**第一个被读**
+      // 的量纲（此前 FinishedGoodsInventory 只当 target）；带真实单位，与天数族同纪律不进 STATE_VAR_DOMAINS。
+      "coverDays",
       "defectPressure", "deliveryDelay", "deliveryHoldRisk", "demandLoad", "demandPressure",
       "drawdownPressure", "equipmentFailure", "expeditePressure", "feedPressure", "forecastBias",
       "gapPressure", "handlingBacklog", "inboundExpeditePressure", "inspectBacklog", "leadDays", "loadIndex",
@@ -82,7 +98,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const items = (await (await t.app.inject({ method: "GET", url: "/a/v1/sim/propagation-rules", headers: ADMIN })).json()).items as Array<{
       key: string; status: string; viaLinkKey: string; sourceTypeKey: string; targetTypeKey: string;
     }>;
-    expect(items.length).toBe(51); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48 → **WO-SIM-REAL-DATA +3 条 Order 真值边**（qty/unitPrice/leadDays 同名直取 → Model.backlog*，系数 1.0 不过 λ）= 51
+    expect(items.length).toBe(55); // 55 = canonical 51 − 1（WO-PROP-REVIEW-V2 ㉜ 方向反向：`demo_process_queue_to_equipment_load` 被 `demo_equipment_load_to_process_queue` **取代** —— 是换不是增）+ 5（反向替代边 1 · 库存环 `demo_fg_cover_days_to_model_demand` 1 · 物料环 3：替代料负反馈/检验放行/缺口催货）。canonical 的 51 = 47 + WO-SIM-DAMPING 阻尼边 1 + WO-SIM-REAL-DATA Order 真值边 3。⚠ Order 真值三条**两边各自落地过**（本分支 WO-SIM-ORDER-REAL-FIELDS / canonical WO-SIM-REAL-DATA），收编时已去重、留 canonical 那一份 —— 它带 `coefficient: 1` **不过 λ** 的修复，本分支那份没有。
     expect(items.every((r) => r.status === "PUBLISHED")).toBe(true);
     const viaKeys = items.map((r) => r.viaLinkKey).sort();
     // WO-SIM-ROOT-TRIAD 新增 4 条根源边全部挂**已物化**的既有链路（零新 linkType、零新物化）：
@@ -94,14 +110,23 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     // `wo_for_model` 两条（**本单新物化**：该 linkType 早已声明却从未落过一条实例，
     // 是制造侧回到产品/订单侧的唯一一跳；两条分别走供给面 supplyRisk 与成本面 costPressure）。
     expect(viaKeys).toEqual([
+      // WO-PROP-REVIEW-V2 物料环三条：替代料负反馈挂**已物化**的 `alt_for_material`（5 条·零新物化）；
+      // 检验放行 / 缺口催货各挂**本单新声明+新物化**的影响向链 `inspection_for_material`（30 条）/
+      // `balance_drives_po`（30 条）—— 没有这两条链，IncomingInspection 只有入边、MaterialBalance 的缺口算出来也到不了采购单。
+      "alt_for_material", "balance_drives_po",
       "base_dispatches_transfer", "base_has_shipment", "base_maint_plan", "batch_replenishes_material", "customer_has_invoice",
       // WO-ADVERSARY-REACTION 的还手边挂 `customer_places_order`（`order_of_customer` 的影响向逆边）。
       // ⚠ 它**默认关闭但目录不过滤**（§3.3「关掉的边要可见地降级，不是从图上消失」），
       //   故这份清单里有它 —— 这份清单数的是**目录**，不是"默认世界会跑的边"。
       "customer_has_location", "customer_has_overdue_record", "customer_places_order",
-      "defect_raises_exception", "equip_used_in", "equipment_has_maintenance_order",
-      // WO-SIM-DAMPING ①：`fg_of_model` = `model_stocked_as_finished_goods` 的严格互逆边（实测 18/18 双向重合）
-      "fg_of_model",
+      "defect_raises_exception",
+      // WO-PROP-REVIEW-V2 ㉜ 反向：`equip_used_in` 由 1 条变 2 条（㊷ + 反向后的 ㉜）；
+      // `process_uses_equipment` 相应从本清单退出（链路类型本身保留在结构层）。
+      "equip_used_in", "equip_used_in", "equipment_has_maintenance_order",
+      // WO-PROP-REVIEW-V2 库存环两条 FGI 出边**全部挂 `fg_of_model`**（已物化的既有链路 18 条·
+      // 零新 linkType·零新物化）⇒ 本清单新增 2 项（目录 50→52 的构成，见上方计数注释）。
+      "fg_of_model", "fg_of_model",
+      "inspection_for_material",
       "line_belongs_to_base", "line_has_process", "line_runs_work_order", "line_runs_work_order", "material_has_alternative",
       "material_has_balance", "material_has_batch", "material_supplied_by_po", "material_used_by_model", "material_used_by_model",
       "model_changeover", "model_demanded_by_order", "model_demanded_by_order", "model_demanded_by_order", "model_has_cert",
@@ -111,10 +136,8 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
       "order_for_model", "order_for_model", "order_for_model", "order_for_model", "order_for_model",
       "order_has_line",
       "order_has_line", "order_has_promise", "order_of_customer", "po_customs_cleared_by", "po_from_supplier",
-      "po_inspected_by", "po_replenishes_material", "process_belongs_to_line", "process_uses_equipment",
-      "supplier_supplies_material",
-      "supplier_supplies_material",
-      "wip_lot_found_defect", "wo_for_model", "wo_for_model", "work_order_sampled_by_quality_lot",
+      "po_inspected_by", "po_replenishes_material", "process_belongs_to_line", "supplier_supplies_material",
+      "supplier_supplies_material", "wip_lot_found_defect", "wo_for_model", "wo_for_model", "work_order_sampled_by_quality_lot",
       "work_order_yields_wip_lot",
     ]);
   });
@@ -145,7 +168,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     expect(canary.length).toBeGreaterThan(0);
 
     const rules = await t.repos.sim.listPropagationRules("demo", true);
-    expect(rules.length).toBe(51); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48 → **WO-SIM-REAL-DATA +3 条 Order 真值边**（qty/unitPrice/leadDays 同名直取 → Model.backlog*，系数 1.0 不过 λ）= 51
+    expect(rules.length).toBe(55); // 55 = canonical 51 − 1（WO-PROP-REVIEW-V2 ㉜ 方向反向：`demo_process_queue_to_equipment_load` 被 `demo_equipment_load_to_process_queue` **取代** —— 是换不是增）+ 5（反向替代边 1 · 库存环 `demo_fg_cover_days_to_model_demand` 1 · 物料环 3：替代料负反馈/检验放行/缺口催货）。canonical 的 51 = 47 + WO-SIM-DAMPING 阻尼边 1 + WO-SIM-REAL-DATA Order 真值边 3。⚠ Order 真值三条**两边各自落地过**（本分支 WO-SIM-ORDER-REAL-FIELDS / canonical WO-SIM-REAL-DATA），收编时已去重、留 canonical 那一份 —— 它带 `coefficient: 1` **不过 λ** 的修复，本分支那份没有。
     const dead: string[] = [];
     for (const r of rules) {
       const ok = links.some(
@@ -190,7 +213,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     await seedDemoPropagationRules(t.repos);
     await seedDemoPropagationRules(t.repos);
     const items = await t.repos.sim.listPropagationRules("demo", true);
-    expect(items.length).toBe(51); // WO-SLICE-DOMAINS：42 + 设备侧出口 4 条 = 46 → WO-ADVERSARY-REACTION +1 条**还手边**（对手方反应·默认关闭，但**目录不过滤** —— §3.3「关掉的边要可见地降级，不是从图上消失」，故这四处数的都是 47） = 47 → **WO-SIM-DAMPING +1 条阻尼边**（库存缓冲 —— 全表第一次有了「压力会回来」的通路；另两类「产能释放 / 需求回落」实测后撤回不落边，理由见 seed.ts ② ③ 段）= 48 → **WO-SIM-REAL-DATA +3 条 Order 真值边**（qty/unitPrice/leadDays 同名直取 → Model.backlog*，系数 1.0 不过 λ）= 51
+    expect(items.length).toBe(55); // 55 = canonical 51 − 1（WO-PROP-REVIEW-V2 ㉜ 方向反向：`demo_process_queue_to_equipment_load` 被 `demo_equipment_load_to_process_queue` **取代** —— 是换不是增）+ 5（反向替代边 1 · 库存环 `demo_fg_cover_days_to_model_demand` 1 · 物料环 3：替代料负反馈/检验放行/缺口催货）。canonical 的 51 = 47 + WO-SIM-DAMPING 阻尼边 1 + WO-SIM-REAL-DATA Order 真值边 3。⚠ Order 真值三条**两边各自落地过**（本分支 WO-SIM-ORDER-REAL-FIELDS / canonical WO-SIM-REAL-DATA），收编时已去重、留 canonical 那一份 —— 它带 `coefficient: 1` **不过 λ** 的修复，本分支那份没有。
   });
 
   it("live-fire：种子规则 + 真 Order→Model 链路 → tick 真跨对象传导", async () => {
@@ -348,7 +371,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
   });
 
   // 每条边真触发（REQ143 的验收面 + 档 1 扩面）：一次扰动若干源头，逐组核 trace。
-  it("🔴 逐条真触发：49 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4）", async () => {
+  it("🔴 逐条真触发：54 条规则在真 tick 的 trace 里一条不缺（REQ143 + 档 1/2/3 + 采购根源 3 + 三根源 4 + 设备侧出口 4 + 订单真实字段 3 + 库存环 2 + 物料环 3）", async () => {
     const t = await makeApp();
     await seedBattery(t);
     await seedDemoPropagationRules(t.repos);
@@ -375,6 +398,20 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
     const rootModelId = head("model_demanded_by_order"), rootEquipId = head("equip_used_in");
     // WO-SIM-ROOT-PROCUREMENT 的两条新物化逆边（收编时嫁接自 48ebb6ac）。
     const procurePoId = head("po_replenishes_material"), procureBatchId = head("batch_replenishes_material");
+    // WO-PROP-REVIEW-V2 库存环：`coverDays` 是**入度 0 的根**（没有任何规则写它），
+    // 与 forecastBias/orderChurn 同性质 ⇒ 必须自带源，指望被带动是自相矛盾的。
+    // 落点取 `fg_of_model` 的 from 端（一行真成品库存）；`drawdownPressure` 同格带上，
+    // 让回补边也在第 1 拍就触发、不依赖「需求负载 → 提货压力」那两拍链先走通。
+    const fgRowId = head("fg_of_model");
+    // WO-PROP-REVIEW-V2 ㉜ 反向：`loadPressure` 升格**根源**（入度 0 —— 原来唯一写它的
+    // ㉜ 已掉头改成由它出发）⇒ 两条出边都要自带源，且**一台设备喂不饱两条边**：
+    // 实测（/tmp/t5-probe4.txt）`head("equip_used_in")` 那台
+    // （obj_equipment_LINE-WS-changzhou-slurry-coating-E1）**没有**
+    // `equipment_has_maintenance_order` 链 ⇒ 单格方案维修积压边 0 次、总触发 53；
+    // 加第二格（`head("equipment_has_maintenance_order")` 那台，
+    // obj_equipment_LINE-WS-changzhou-coating-coating-E1，与第一台不同线）后
+    // 两条边 18/8 次、总触发 54 = 54 整。
+    const maintEquipId = head("equipment_has_maintenance_order");
 
     const sid = (await (await t.app.inject({
       method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
@@ -392,7 +429,16 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         [customsSupplierId]: { deliveryDelay: 10 }, // 进口料的主供 —— 清关段唯一的活源
         [materialId]: { priceShock: 5 },
         [rootModelId]: { forecastBias: 10 },
-        [rootEquipId]: { equipmentFailure: 10 },
+        // ㉜ 反向后 equipmentFailure 与 loadPressure 都是**根源**，同格自带（见上方 maintEquipId 注释）；
+        // 这一格喂两条同链边：故障边（equipmentFailure→Process.queuePressure）与
+        // ㉜ 反向边（loadPressure→Process.queuePressure），都经 equip_used_in。
+        [rootEquipId]: { equipmentFailure: 10, loadPressure: 10 },
+        // 第二格专门喂维修积压边（→MaintenanceOrder.repairBacklogPressure 经
+        // equipment_has_maintenance_order）——rootEquipId 没有那条链，实测单格 0 次。
+        [maintEquipId]: { loadPressure: 10 },
+        // 库存环的活源（见上方 fgRowId 注释）：coverDays 20 天 = 真种子实测均值量级
+        // （/tmp/t3-precheck.txt：1.93–42.34 天，均值 19.78）；drawdownPressure 10 同理给真量级。
+        [fgRowId]: { coverDays: 20, drawdownPressure: 10 },
       } },
     })).json()).id as string;
     // 🔴 为什么是 9 拍不是 6 拍：档 2 把执行链接长了 —— 最深的一条是
@@ -422,7 +468,10 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_po_expedite_to_customs_queue", "demo_base_load_to_maint_window_squeeze",
         "demo_model_demand_to_cert_queue", "demo_base_load_to_inbound_expedite",
       ],
-      // WO-PROCESS-TICK-COVERAGE 档 2：挂在新补的**影响向逆边**上的 15 条。
+      // WO-PROCESS-TICK-COVERAGE 档 2：挂在新补的**影响向逆边**上的 13 条（原 15 条 ——
+      // WO-PROP-REVIEW-V2 ㉜ 反向后，`demo_equipment_load_to_process_queue` 与
+      // `demo_equipment_load_to_repair_backlog` 的共享源 `loadPressure` 升格根源、
+      // 不再有上游链可带，移去下方「设备负荷根源」组自带源）。
       // 同样不额外造源 —— 全部由上面那四个源头（订单需求 / 基地负载 / 供应商延迟 / 物料涨价）
       // 沿真链传下来。哪一条没被带到，报错就直接指到它，不用再猜。
       扩面档2: [
@@ -432,7 +481,6 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_customer_receivable_to_location_hold", "demo_customer_receivable_to_collection",
         "demo_material_shortage_to_alt_switch", "demo_material_shortage_to_balance_gap",
         "demo_base_load_to_transfer_pressure",
-        "demo_process_queue_to_equipment_load", "demo_equipment_load_to_repair_backlog",
         "demo_model_demand_to_fg_drawdown",
       ],
       // WO-PROCESS-TICK-COVERAGE 档 3：闭掉「标着会动、其实不动」那一条。
@@ -453,6 +501,13 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_order_churn_to_line_split", "demo_order_churn_to_model_demand_load",
         "demo_equipment_failure_to_process_queue",
       ],
+      // WO-PROP-REVIEW-V2 ㉜ 反向：`loadPressure` 升格**根源**（入度 0 —— 原来唯一写它的
+      // ㉜ 已掉头）⇒ 本组与「根源」档同性质，**必须自带源**（baseSnapshot 里
+      // rootEquipId / maintEquipId 两格；一台设备喂不饱两条边，实测 /tmp/t5-probe4.txt：
+      // 单格维修积压 0 次 / 总数 53，两格 18/8 次 / 总数 54）。
+      设备负荷根源: [
+        "demo_equipment_load_to_process_queue", "demo_equipment_load_to_repair_backlog",
+      ],
       // WO-SLICE-DOMAINS：设备侧的**出口**四条。本组同样不额外造源 —— 由上面 baseSnapshot 里
       // 已有的 `equipmentFailure` 那一格沿新链带下来：
       //   Equipment.equipmentFailure → Process.queuePressure → Line.blockedPressure
@@ -464,28 +519,66 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
         "demo_process_queue_to_line_blocked", "demo_line_blocked_to_wo_release",
         "demo_wo_release_to_model_supply_risk", "demo_wo_release_to_model_cost",
       ],
-      // WO-SIM-DAMPING：**阻尼边**（全表唯一的负系数物理边）。本组同样不额外造源 ——
-      // 它们的源恰好就是上面「扩面档 2」里两条正边的**目标**：
-      //   `demo_model_demand_to_fg_drawdown` → FinishedGoodsInventory.drawdownPressure →（本组）
-      // ⇒ 由同一批源头（订单需求）带动。留 1 拍，故最早在第 3 拍进 trace。
-      // 🔴 它们**必须出现在这里**：一条阻尼边若恒不触发，屏上看不出任何区别 ——
-      //    「图里有一条负边」不度量「压力真的会回来」，正是本仓反复栽的那个形态。
-      阻尼: ["demo_fg_drawdown_relieves_model_demand"],
-      // WO-SIM-REAL-DATA：Order 的三个**真实业务字段**直接当状态变量名，同名直取进世界态
-      //（`deriveSeedBaseSnapshot` 探到 `Order.props.qty` 是有限数 ⇒ 真读数档，不走哈希）。
-      // 与「根源」组同一条纪律：三者**入度 0**，必须自带源（见上面 baseSnapshot 的 orderId 那行）。
-      // 🔴 它们**必须出现在这里**：这三条是全表唯一「读数能对上某一张真单」的通路 ——
-      //    一旦恒不触发，屏上那句「该型号在手订单最大的一张是多少套」就是纯哈希编的数，
+      // WO-SIM-ORDER-REAL-FIELDS：订单**真实业务字段**的三条出边。
+      // 与「根源」那一档同性质（入度 0、必须自带源，见上面 baseSnapshot 里那三格），
+      // 不同点是它们的 tick0 值在**真种子世界**里不是外部打进来的，而是
+      // `deriveSeedBaseSnapshot` 从对象属性上**直接读到的真值**（实测 measuredCells 450）。
+      // 本用例用显式 baseSnapshot 建会话，所以这里仍要自带源。
+      // 🔴 它们**必须出现在这里**（收编 canonical WO-SIM-REAL-DATA 时并入的理由，比原注更强）：
+      //    这三条是全表唯一「读数能对上某一张真单」的通路 —— 一旦恒不触发，
+      //    屏上那句「该型号在手订单最大的一张是多少套」就是纯哈希编的数，
       //    而**不会有任何东西变红**（它们刻意不进 `STATE_VAR_DOMAINS`，不夹不衰减）。
-      订单真值: [
+      订单真实字段: [
         "demo_order_qty_to_model_top_qty",
         "demo_order_price_to_model_top_price",
         "demo_order_leaddays_to_model_horizon",
       ],
+      // WO-PROP-REVIEW-V2 库存环：FGI 的出边。coverDays 与「根源」档同性质
+      // （入度 0、必须自带源，见上面 baseSnapshot 里 fgRowId 那一格），第 1 拍就进 trace。
+      库存环: [
+        "demo_fg_cover_days_to_model_demand",
+      ],
+      // ── WO-SIM-DAMPING **阻尼边**（canonical 交付；WO-PROP-V2-REBASE 收编时裁决保留）──
+      // 🔴 裁决记账（⛔ 不许取并集，取并集会留下**同一条槽位上符号相反的两份**）：
+      //   本分支曾另建 `demo_fg_drawdown_to_model_demand`（**+0.5**），与本条
+      //   `demo_fg_drawdown_relieves_model_demand`（意图增益 **−0.6**；⚠ 2026-09-19 仓主裁决后
+      //   其 `C36` 值为 **−0.222 = −0.6 × λ**，预乘了 λ —— 镜像的是意图增益不是入流系数）**源类型/源量纲/链路/目标全同**
+      //   （`FinishedGoodsInventory.drawdownPressure --fg_of_model--> Model.demandLoad`）
+      //   ⇒ 同一条物理边的两个相反符号，二者只能留一。**留 canonical 这条负的**，两条理由：
+      //   ① 它已在集成线上交付（WO-SIM-DAMPING），删它是回退；
+      //   ② 分支那条 +0.5 的自证写着「环增益 = 0.6(入) × 0.5(出) = 0.3 < 1 ⇒ 阻尼振荡收敛」——
+      //      **对正环不成立**：入边 `demo_model_demand_to_fg_drawdown` 是 +0.6，回边再取正
+      //      就是**正反馈**，闭环增益 1/(1−0.3) = 1.43 倍放大，不是阻尼。
+      //      它自己想要的那个「阻尼」，恰恰只有负号那条给得出。
+      //   「库存吸收需求」这层语义没丢：由同组 `demo_fg_cover_days_to_model_demand`（−0.5）承担，
+      //   源量纲是 coverDays、与本条不同槽位，两条并存不冲突。
+      // 本组不额外造源 —— 源恰是「扩面档 2」里 `demo_model_demand_to_fg_drawdown` 的目标；
+      // 留 1 拍，故最早在第 3 拍进 trace。
+      // 🔴 它**必须出现在这里**：一条阻尼边若恒不触发，屏上看不出任何区别 ——
+      //    「图里有一条负边」不度量「压力真的会回来」，正是本仓反复栽的那个形态。
+      阻尼: ["demo_fg_drawdown_relieves_model_demand"],
+      // WO-PROP-REVIEW-V2 物料环：替代料负反馈 + 检验放行 + 缺口催货三条。
+      // 本组**不额外造源**——三个源量纲都**不是入度 0 的根**：switchPressure 由
+      // `demo_material_shortage_to_alt_switch`（扩面档2）写入、queueDays 由
+      // `demo_po_expedite_to_inspection_queue`（交付）写入、gapPressure 由
+      // `demo_material_shortage_to_balance_gap`（扩面档2）写入，全部从供应商延迟源头沿既有链带到。
+      // 实测（/tmp/t4-probe3.txt）：被扰供应商短掉 三元正极/磷酸铁锂正极/电解液，
+      // 三者都有平衡行且各带 4 条 balance_drives_po、前两者带替代料 ⇒
+      // 三条新边在 9 拍内各触发 12/60/72 次，总触发 54 = 51 + 3 一条不缺。
+      物料环: [
+        "demo_alt_switch_to_material_shortage",
+        "demo_inspection_queue_to_material_shortage",
+        "demo_balance_gap_to_po_expedite",
+      ],
     };
     const missing = Object.entries(DIRS).flatMap(([dir, keys]) => keys.filter((k) => !fired.has(k)).map((k) => `${dir}/${k}`));
     expect(missing).toEqual([]);
-    // ── 完整性：十三组 50 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    // ── 完整性：十七组 54 条 = **默认世界里会跑的**全部规则（没有哪条游离在分组之外）──
+    // （组数是 prose、无机器守卫，以本对象实际键数为准：业务 6 + 扩面 3 档 + 采购根源/根源/
+    //  设备负荷根源 3 + 设备侧出口/订单真实字段/库存环/阻尼/物料环 5 = 17。
+    //  T4 旧注「十四组」当时实已 15 组、后又写成「十六组」——**这行字一路都在漂**，
+    //  正因为它没有机器守；机器守的是下面 physicalKeys 那条逐字节比对，不是这行字。
+    //  WO-PROP-V2-REBASE：库存环 2→1 条（FGI 同槽位符号冲突裁决），新增「阻尼」组 1 条，总数不变。）
     //
     // 🔴 口径修正（WO-ADVERSARY-REACTION）：目录里从此有两类边，**必须分开数**——
     //  · **物理边**（`reaction == null`）：默认世界照跑，逐条都要在上面的 trace 里出现；
@@ -517,7 +610,7 @@ describe("SEED_DEMO · 沙盘传导规则种子", () => {
 /**
  * WO-CAUSAL-EDGE-CRUD · **写入口**的引用体检（交付判据 2）。
  *
- * 上面那道「方向可达门」守的是**种子**：种进去的 42 条边方向对不对。
+ * 上面那道「方向可达门」守的是**种子**：种进去的 55 条边方向对不对。
  * 但种子是对的**不度量**运营方经 REST 建出来的边是对的 —— 这一组守的是另一半：
  * `POST/PATCH /a/v1/sim/propagation-rules` 收不收一条端点根本不存在、或方向反了的边。
  *
@@ -886,6 +979,480 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
       `逐料驱动的读数合计 ${sumRead} ≠ 系数 × ${SHOCK} ⇒ 换口径把世界总量改了（应当只是重新分配）`,
     ).toBeCloseTo(COEFF! * SHOCK, 9);
   });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════
+// §6 每格增益预算 —— **现算，不查表**（WO-DEMANDLOAD-BUDGET）
+//
+// ── 今天的行为 X / 应该的 Y ──────────────────────────────────────────────────────
+// **X**：`seed.ts` 头注声明了每格预算 `Σ_e |稳态增益_e| × W_e ≤ 0.75`（0.75 = `[0,100]` 域
+//   软饱和曲线的拐点 `kneeHi = 0.75 × max`），且给了闭式分配法 `f_g = min(1, 0.75/S_g)`。
+//   但那次分配**只在 WO-SIM-CALIBRATION 当时跑过一次**，之后每加一条入边都没有重跑 ——
+//   **没有任何东西在守它**。实测：`Model.demandLoad` 当时按两条 Order 边恰好配满 0.75，
+//   后来又进来三条边（coverDays / 阻尼 / 真值边），**合计 4.07 倍**而四包全绿。
+// **Y**：预算是**现算**出来的，不是记在注释里的。本段把它变成机器。
+//
+// ── ⚠ 为什么 `W_e` 必须**真起数据量**，不许从 `weightRef` 的口径名推 ────────────────
+// `seed.ts` 头注那张「口径 → W」对照表（`equal_share ⇒ W=1`、`null ⇒ W=N`…）**是对的**，
+// 但「N 是多少」只有真图知道，而**同一个口径在不同边上的 W 天差地别**：
+// 实测 `demo_model_demand_to_fg_drawdown`（`null`）的 Σw = **1**（`fg_of_model` 是 N:1，
+// 组内只有一行），而同一个 `null` 在反向的 `demo_fg_drawdown_relieves_model_demand` 上是 **3**。
+// **形态**：「我用『这条边的 weightRef 是 null』当作『它占 N 份』的证据，而前者并不度量后者
+// —— N 由链路基数决定，可以恰好是 1。」⇒ 本段一律从 `buildPairWeights` 的**真权重表**求和。
+//
+// ── 🔴 WO-COEF-LAMBDA 订正：**两个装置不是同一个谓词**（此前三处各写了一个，且都不全对）──────
+// 旧原文：「预乘 λ 与受预算约束由同一个谓词开关，一起开一起关」。那句话在
+// **每个已声明域都有有限 max** 的年代是对的；WO-PROP-REVIEW-V2 形态② 引入 `max: null`
+// 的积压族之后**就不对了**。引擎里这是两处互不相干的判断（逐行读的，不是推断）：
+//   · `propagation.ts` `resolveDecayRate(d, ruleParams)` —— **只看 `d.decayRef`**，与 `max` 无关
+//     ⇒ 会不会衰减 ⇒ 稳态里有没有 `1/λ` 要约 ⇒ **该不该预乘 λ**；
+//   · `propagation.ts` `saturateToDomain(raw, min, max, rest)` —— `max === null` 那一支
+//     **没有上拐点**（只有下带）⇒ `kneeHi = 0.75 × max` 根本不存在 ⇒ **不受 0.75 预算约束**。
+// ⇒ 判据拆成两条，**各管各的**：
+//   | 装置 | 谓词 | 本仓命中 |
+//   | 预乘 λ | `decayRef` 能解析出 λ∈[0,1) | 37 个量纲（含 5 个 `max:null` 积压族）|
+//   | 0.75 预算 | `max` 有限（上拐点存在） | 32 个量纲（积压族 5 个**不在内**）|
+// ⚠ 且 **λ 逐格不同**：压力族 0.37，而 `repairBacklog`/`handlingBacklog` = **0.75**、
+//   `qualificationQueue` = **0.22**（C35 各自的 paramKey）。旧代码全表除以 `PRESSURE_DECAY_PER_TICK`
+//   ⇒ 对这 3 个量纲，算出来的"稳态增益"分别错 2.03× / 2.03× / 0.59×。
+//   形态：「我用『压力族的那个 λ』当作『这一格的 λ』的证据，而前者并不度量后者。」
+// ══════════════════════════════════════════════════════════════════════════════════
+describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
+  /**
+   * 这一格真正生效的 λ —— 照 `propagation.ts` `resolveDecayRate` **同一条路**：
+   * 只走 `decayRef`，从 `ruleParams` 现读，拒 NaN / <0 / ≥1。
+   * ⛔ 不回落 `PRESSURE_DECAY_PER_TICK`：回落会让「这一格的 λ 是 0.75」与「没配 decayRef」
+   * 在算式里一模一样，而两者的稳态增益差 2 倍。解析不到就报红，不许静默替一个默认值。
+   */
+  const lambdaOf = (stateVar: string, inp: Awaited<ReturnType<typeof buildPropagationInputs>>): number => {
+    const ref = inp.stateVarDomains[stateVar]?.decayRef;
+    expect(ref, `${stateVar} 受预算约束却没有 decayRef ⇒ 稳态增益算不出来（不许拿 0.37 顶）`).toBeTruthy();
+    const raw: unknown = inp.ruleParams[ref!.ruleKey]?.[ref!.paramKey];
+    const n = typeof raw === "number" ? raw : Number(raw);
+    expect(
+      Number.isFinite(n) && n > 0 && n < 1,
+      `${stateVar} 的 λ 引用 ${ref!.ruleKey}.${ref!.paramKey} 解析成 ${String(raw)} ⇒ 不是可用衰减率`,
+    ).toBe(true);
+    return n;
+  };
+
+  /** 每格现算 `Σ_e |稳态增益_e| × Σw_e`。Σw 取各 target 的**均值**（与在册口径同源）。 */
+  const measureBudget = async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    // ── WO-GAIN-REACH：补齐**生产播种序列**里缺的两步（`server.ts` seed:derivation-specs / :recompute）──
+    //
+    // 🔴 为什么必须补：`deriveSeedBaseSnapshot` 铺 tick0 世界态时**一次性**取 `o.props[v]`，
+    //    取到有限数走「真读数档」、取不到才走 `round(hash01(...)×100)` 占位档。派生值晚了不回填。
+    //    ⇒ 不跑这两步，本测里的世界与生产**不是同一个世界**：实测 6381 格里的「实测格」
+    //    从 **4189 → 450**，`Order.demandPressure` 这类格子整批从真读数掉回哈希占位。
+    //    形态（照铁律 0.6 句式）：**「我用『测试助手 seedBattery 播完了』当作『世界与生产同源』
+    //    的证据，而前者并不度量后者 —— 生产播种序列比它多两步，而那两步恰好决定每格是真值还是占位。」**
+    // ⚠ 这两步**不改 §6 既有的 A 列读数**（A 列只吃系数/λ/权重，不吃源读数）——
+    //   判据⓪①①b②③ 的期望值一个没动，就是这件事的实测证据。
+    const seedCtx = { tenantId: "demo", userId: "usr_demo_admin", roles: ["admin"], attributes: {} };
+    await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, seedCtx as never);
+    const materialized = await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, seedCtx as never);
+    expect(materialized, "播种期全量初算一个对象都没物化 ⇒ 下面的「实测源」全是假的").toBeGreaterThan(0);
+    await enableSim(t);
+    const rules = await t.repos.sim.listPropagationRules("demo", true);
+    const inp = await buildPropagationInputs(
+      t.repos,
+      { tenantId: "demo", userId: "admin", roles: ["admin"] } as never,
+      resolveSimScope(null),
+      rules,
+    );
+    const typeOf = new Map(inp.graph.objects.map((o) => [o.id, o.typeKey]));
+    // tick0 世界态 + **逐格出处**，走生产同一支（不在测里另抄一份两档判定 —— 那就是第二套真相源）。
+    const { state: t0, provenance } = await deriveSeedBaseSnapshot(t.repos, "demo");
+    const cells = new Map<
+      string,
+      {
+        sum: number;
+        knee: boolean;
+        edges: {
+          key: string; gain: number; sw: number;
+          /** 实际拉力（带符号）= 逐目标真入流 ÷ λ 再对目标取均值。⛔ 不是 `g×W×Ē`，见下方注释。 */
+          pull: number;
+          /** 该边的源格今天是真读数还是哈希占位 —— 问生产自己的 `provenance` 表，⛔ 不手维护名单。 */
+          prov: "实测" | "哈希" | "混" | "缺席";
+          /** 引擎单拍 trace 应当记的传导量合计（本测的自证锚点）。 */
+          inflow: number;
+        }[];
+      }
+    >();
+    for (const r of rules) {
+      const dom = inp.stateVarDomains[r.targetStateVar];
+      // **谓词①（本循环的入场券）= 会不会衰减** ⇒ 有没有 `1/λ` 可约 ⇒ 稳态增益算不算得出来。
+      // 无域 ⇒ 纯积分器，没有稳态，`gain` 这个量对它不成立 ⇒ 跳过（今天全表只有 `clearanceQueueDays`）。
+      if (dom == null) continue;
+      // **谓词②（受不受 0.75 约束）= 上拐点存不存在** = `max` 有限。两条谓词各管各的，见段头。
+      const knee = typeof dom.max === "number";
+      const ref = r.coefficientRef;
+      // 引擎真读的那个值：`coefficientRef` 解析优先，解析不到才回落内联（G-10 P1 同一条路）。
+      // ⚠ `RuleParamLookup` 的值是 `unknown` ⇒ 必须**显式收窄**，且收不到就报红：
+      //   悄悄 `as number` 会让「params 里塞了个字符串」变成 `NaN`，而 `NaN > 0.75` 恒 false
+      //   ⇒ 那一格从此永远"达标"。**把红吞成绿，比没有这道门更坏。**
+      const raw: unknown = ref ? (inp.ruleParams[ref.ruleKey]?.[ref.paramKey] ?? r.coefficient) : r.coefficient;
+      expect(typeof raw, `${r.key} 的生效系数不是数 ⇒ 预算算不出来（不许当 0 跳过）`).toBe("number");
+      const eff = raw as number;
+      const w = inp.pairWeights[r.key] ?? null;
+      const byTarget = new Map<string, number>();
+      /** 逐目标记下**喂到它的那些源实例**——必须与 `byTarget` 在同一个循环里取：
+       *  两处各遍历一次链路表，「W 的分母」与「拉力的分母」就会来自不同的对象集合（第二套真相源）。 */
+      const srcOf = new Map<string, string[]>();
+      for (const l of inp.graph.links) {
+        if (l.linkKey !== r.viaLinkKey) continue;
+        if (typeOf.get(l.fromId) !== r.sourceTypeKey || typeOf.get(l.toId) !== r.targetTypeKey) continue;
+        byTarget.set(l.toId, (byTarget.get(l.toId) ?? 0) + (w === null ? 1 : (w[pairWeightKey(l.fromId, l.toId)] ?? 0)));
+        (srcOf.get(l.toId) ?? srcOf.set(l.toId, []).get(l.toId)!).push(l.fromId);
+      }
+      if (byTarget.size === 0) continue;
+      const sw = [...byTarget.values()].reduce((s, x) => s + x, 0) / byTarget.size;
+      const cellKey = `${r.targetTypeKey}.${r.targetStateVar}`;
+      const c = cells.get(cellKey) ?? { sum: 0, knee, edges: [] };
+      // 稳态增益 = 每拍入流 ÷ λ。λ 走**这一格自己的** `decayRef`，⛔ 不许全表用 `PRESSURE_DECAY_PER_TICK`：
+      // 本仓 C35 下挂 6 个 paramKey，实测值 0.37/0.37/0.75/0.75/0.22 三档不同。
+      const lam = lambdaOf(r.targetStateVar, inp);
+      const gain = eff / lam;
+
+      // ── WO-GAIN-REACH · **实际拉力**：把各源的真实读数算进去 ──────────────────────
+      //
+      // ⛔ **不写成 `|g| × W̄ × Ē`**（均值之积）：那要求「权重」与「源读数」在组内独立，
+      //    而 `source_value_relative` 的权重**就是**源金额 ⇒ 两者完全相关 ⇒ 系统性偏。
+      //    实测偏差最大的一条 `demo_customer_reaction_cut_order` 精确/近似 = **0.7216**。
+      //    形态：「我用『均值之积』当作『积之均值』的证据，而前者并不度量后者。」
+      // ⇒ 逐对算真入流（与 `propagation.ts` 同一支：`reaction` hinge → `decay` factor → 逐对权重），
+      //   合计再 ÷λ 得稳态贡献，最后对目标取均值。`inflow` 单独留着当**自证锚点**：
+      //   它必须逐字节等于引擎单拍 trace 里这条边的 `amount` 合计（判据④）。
+      let inflow = 0;
+      let meas = 0;
+      let deriv = 0;
+      const seenSrc = new Set<string>();
+      for (const [tid, sids] of srcOf) {
+        for (const sid of sids) {
+          if (!seenSrc.has(sid)) {
+            seenSrc.add(sid);
+            const o = provenance[sid]?.[r.sourceStateVar];
+            if (o === "measured") meas += 1;
+            else if (o === "derived") deriv += 1;
+          }
+          const v0 = t0[sid]?.[r.sourceStateVar];
+          if (typeof v0 !== "number") continue;
+          // `propagation.ts` 还手边只把**超出容忍线**的那部分当驱动量（hinge，不是阶跃）。
+          const drive = r.reaction == null ? v0 : Math.max(0, v0 - r.reaction.tolerance);
+          const factor = r.decay ? (1 > r.decay.window ? 0 : 1 - 1 / r.decay.den) : 1;
+          inflow += eff * drive * factor * (w === null ? 1 : (w[pairWeightKey(sid, tid)] ?? 0));
+        }
+      }
+      const prov = meas > 0 && deriv === 0 ? "实测" : deriv > 0 && meas === 0 ? "哈希" : meas + deriv === 0 ? "缺席" : "混";
+      c.sum += Math.abs(gain) * sw;
+      c.edges.push({ key: r.key, gain, sw, pull: inflow / byTarget.size / lam, prov, inflow });
+      cells.set(cellKey, c);
+    }
+    return { cells, t };
+  };
+
+  it("🔴 超预算格子集合 + `Model.demandLoad` 读数必须与在册一致（加边/抬系数即红）", async () => {
+    const { cells, t } = await measureBudget();
+
+    // 🐤 金丝雀①（非空 + 有鉴别力）：本仓真发生过"空绿"——权重没喂进去、一条边没触发，
+    //    于是「没有格子超预算」被读成通过。故先证明量法**量到了东西**，且**分得出两档**。
+    // ⚠ 36 与改造前**同一个数**，这是对的：旧谓词「在不在域表里」与本条谓词①「会不会衰减」
+    //   在本仓恰好等价（每个已声明域都配了 decayRef）。变的不是入场的格子数，是**这 36 格里
+    //   哪几格受 0.75 约束**（谓词②）以及**每格的 λ 取哪个数**。
+    expect(cells.size, "一个会衰减的格子都没量到 ⇒ 量法坏了（不许读成『全部达标』）").toBe(36);
+    const inBudget = cells.get("Base.loadIndex");
+    expect(inBudget, "`Base.loadIndex` 没量到 ⇒ 量法坏了").toBeDefined();
+    expect(inBudget!.sum, "已知达标的格子被判成超预算 ⇒ 判据本身坏了").toBeCloseTo(0.6, 6);
+
+    // 🐤 金丝雀②（**这一条是 WO-COEF-LAMBDA 新加的，它证明量法分得出两个谓词**）：
+    //    `max: null` 的积压族必须**被量到**（会衰减 ⇒ 有稳态增益）但**不带上拐点**（不受 0.75）。
+    //    只证「量到了」不够 —— 那与"把它们当普通格子"在屏上一模一样；必须证 `knee === false`。
+    const kneeless = [...cells.entries()].filter(([, v]) => !v.knee).map(([k]) => k).sort();
+    expect(
+      kneeless,
+      "无上拐点（`max: null`）的格子集合变了 —— 它们会衰减故有稳态增益，但 `0.75 × max` 在它们身上不存在",
+    ).toEqual([
+      "Certification.qualificationQueue",
+      "ExceptionEvent.handlingBacklog",
+      "IncomingInspection.queueDays",
+      "MaintenanceOrder.repairBacklog",
+      "QualityLot.inspectBacklog",
+    ]);
+
+    // ── 判据⓪：这 5 格的**稳态增益** = 在册意图增益（WO-COEF-LAMBDA 方向②）────────────────
+    // 它们没有拐点 ⇒ 0.75 咬不住它们 ⇒ **必须另有一条机器**，否则「域补登记了、系数没回头改」
+    // 这个形态会再犯一次（上一次就是这么漏的：5 个量纲补进域表，5 条边的系数没人动）。
+    // 判据 = `c/λ` 必须等于 description / 在册注释承诺的那个稳态增益。λ 逐格不同（0.37/0.75/0.22），
+    // 故这一条**同时**咬住「系数改了没重算」与「λ 改了没重算」两个方向。
+    for (const [cell, intent] of [
+      ["IncomingInspection.queueDays", 0.6],
+      ["QualityLot.inspectBacklog", 0.5],
+      ["MaintenanceOrder.repairBacklog", 0.6],
+      ["ExceptionEvent.handlingBacklog", 0.8],
+      ["Certification.qualificationQueue", 0.3],
+    ] as const) {
+      const c = cells.get(cell)!;
+      expect(c.edges.length, `${cell} 入边条数变了 ⇒ 下面那个增益不再是单边增益`).toBe(1);
+      expect(
+        c.edges[0]!.gain,
+        `${cell} 的稳态增益 ≠ 在册意图 ${intent}。两种成因都要查：` +
+          `① C36 里那条边的系数被改了没跟着乘 λ；② C35 里这一格的 λ 被改了没跟着重算系数。` +
+          `⛔ 不许改这个期望值来让它绿 —— 该改的是系数。`,
+      ).toBeCloseTo(intent, 9);
+    }
+
+    // ── 判据①：`Model.demandLoad` 的现值（本单的落点）──────────────────────────────
+    // 3.0550（4.07×）→ 1.8550（2.47×，归一 Σw）→ **0.749961（1.00×，本单整格重跑 f_g）**。
+    const demand = cells.get("Model.demandLoad")!;
+    expect(demand.edges.length, "入边条数变了 ⇒ 预算得重新分配，先解释再改这个数").toBe(4);
+    expect(
+      demand.sum,
+      "`Model.demandLoad` 的 Σ|增益|×Σw 变了。变大 ⇒ 又有人往这格加边/抬系数；" +
+        "变小 ⇒ 若是靠缩系数达标，退回（缩系数不改相对动态，只让缺口看起来没了）",
+    ).toBeCloseTo(0.749961, 6);
+
+    // ── 判据①b：**带符号**净增益必须 > 0（WO-COEF-LAMBDA 件B 的业务判据）──────────────
+    // ⚠ 上面判据① 量的是 **Σ|增益|**，它**不度量方向** —— 一格可以又达标又恒为 0。
+    //   实测就是这么发生的：整格达标（1.00×）而四条边净和 −0.92575 ⇒ `Model.demandLoad`
+    //   被夹死在域下界 0，`sim-root-triad` 的 G-ROOT-1 逐拍 Δ 全 0.0000。
+    // **业务判据**：`demandLoad`「型号需求负载」的定义是 `orderCount × 100 / capacity`
+    //   （`seed-derivation-specs.ts` `model_demand_load`，真值实测 21.7–232）。
+    //   订单簿 **500 张单 / 454.64 亿**是已签成交 —— 一个型号的需求负载恒等于 0 不成立。
+    //   ⇒ 该格对「需求」的**净**响应必须为正；负则说明修正项（变更折扣 / 库存吸收）压过了一阶驱动。
+    // ⛔ 这一条**不许**靠缩某条边的系数来满足：f_g 是全格同一个乘数，缩它不改符号
+    //   （实测：只重跑 f_g、量级全不动 ⇒ 净增益 −0.0316，仍为负）。改的必须是某条边的**意图增益**。
+    //
+    // ⚠⚠ **这条判据是必要不充分，别拿它当「这一格活了」的证据**（WO-COEF-LAMBDA 如实记）：
+    //   它算的是 `Σ 增益×Σw`，**没有算进各个源的实际量程**。实测本格改后净增益 **+0.194589 > 0**，
+    //   而零扰动基准世界里 `Model.demandLoad` **仍在 tick6 落到 0 并停住**
+    //   （对照组 `Base.loadIndex` / `Line.utilPressure` / `Order.demandPressure` /
+    //    `WorkOrder.releasePressure` 同一条轨迹上 tick8 **都不为 0** ⇒ 这不是"零扰动世界都会松弛到静息点"）。
+    //   病因（实测两数）：`Order.demandPressure` 是真值派生（`demandDelta×100`），
+    //   种子里 **150 张单合计 876.0 ⇒ 均值 5.84**；而 `Order.orderChurn` **无诚实源**
+    //   （`seed-derivation-specs.ts` 明写「停笔」），走 tick0 生成式 `round(hash01(...)×100)` ⇒ **均值 ≈ 50**。
+    //   ⇒ 折扣项以 **8.56×** 的量程优势抵消掉了「增益只有一半」这件事：
+    //      实际拉力 0.018891×5.84 = **0.110** vs 0.009445×50 = **0.472**，churn 仍胜 **4.28×**。
+    //   形态：「我用『带符号净增益 > 0』当作『这一格会被需求推起来』的证据，而前者并不度量后者
+    //          —— 净增益没有算进各源的实际量程。」
+    //   ⛔ **不在本单靠改系数去补这 8.56×**：那等于拿一个哈希分布去标定业务模型（`orderChurn`
+    //     今天就是哈希），是铁律 1.5 判据四点名的那类「信注释/信占位当真值」。
+    //     真正的修法是给 `orderChurn` 一个诚实数据源（仓主已明令停笔）或由仓主定折扣档位 —— 两条都不在本单范围。
+    const net = demand.edges.reduce((s, e) => s + e.gain * e.sw, 0);
+    expect(
+      net,
+      `\`Model.demandLoad\` 的**带符号**净增益 = ${net.toFixed(6)} ≤ 0 ⇒ 该格会被夹死在域下界 0，` +
+        `屏上每个型号的「需求负载」都读 0，而真值派生式给的是 21.7–232。` +
+        `逐边：${demand.edges.map((e) => `${e.key}=${(e.gain * e.sw).toFixed(6)}`).join(" ")}`,
+    ).toBeGreaterThan(0);
+
+    // ── 判据②：目标边真的归一到 Σw=1（这是本单改的那一件事）─────────────────────────
+    const relieve = demand.edges.find((e) => e.key === "demo_fg_drawdown_relieves_model_demand")!;
+    expect(
+      relieve.sw,
+      "库存缓冲边的 Σw 又回到 N ⇒ `weightRef` 被改回 null。" +
+        "后果两条，都能实测：① 去程 `demo_model_demand_to_fg_drawdown` 记 0.6、回程记 0.6×N，" +
+        "种子自己写的「来回两次一样大」不成立；② 环增益从 0.36 变成 0.6×0.6×N > 1 ⇒ 振荡冲过头",
+    ).toBeCloseTo(1, 9);
+
+    // ── 判据③：**分母** —— 超预算的不止这一格，集合钉死，少一个多一个都要先解释 ──────────
+    // ⚠ 这一条守的是「别人家的格子悄悄变坏/变好没人知道」。
+    //   ⛔ 它不是允许超预算的许可证：这 11 个格子每一个都是**真欠账**，来历见 WO 报告。
+    // ⚠ 另有 4 格 **恰好压在线上**（Σ = 0.75000，1.00×）：`Order.costPressure` /
+    //   `Order.shortageRisk` / `OrderPromise.promiseRisk` / `WorkOrder.releasePressure` ——
+    //   它们是 `f_g` 当年**配满**的痕迹（`f_g = 0.75/S_g` 取等号），不是巧合，故不在本集合里。
+    //   给这四格任一条边再抬一点系数，它们就会掉进本集合 ⇒ 这道门会红。
+    const over = [...cells.entries()]
+      .filter(([, v]) => v.knee && v.sum > 0.75 + 1e-9)
+      .map(([k]) => k)
+      .sort();
+    // 红了的时候把**全表**打出来：只报集合差不报数值，下一个人还得自己再跑一遍才知道差多少。
+    const table = [...cells.entries()]
+      .sort((a, b) => b[1].sum - a[1].sum)
+      .map(([k, v]) => `${k} ${v.sum.toFixed(4)} (${(v.sum / 0.75).toFixed(2)}×)${v.knee ? "" : " [无拐点·不受预算]"}`)
+      .join("\n  ");
+    expect(
+      over,
+      `超预算格子集合变了 —— 新增即回归，减少即有人改了标定，两种都必须先解释。\n  全表现值：\n  ${table}`,
+    ).toEqual([
+      // ── WO-GAIN-REACH 逐格判定（真起数据实测，逐边读数见 `docs/evidence/wo-gain-reach/`）────
+      // ⚠ 派单原文「**全是** λ=0.37 的压力族，且**都不是单边超标、是多边合计**」——
+      //   λ 那半对（5 格都是 0.37），**「多边合计」那半错**：下面 5 格里 **2 格是单边**。
+      //   两者修法完全不同：多边合计要重分配 `f_g`；单边超的是 `Σw`，`f_g` 动它等于直接改那条边的意图增益。
+      //
+      // 【判据不适用·②】单边 + `actor_exposure_relative`。更要紧的是：这一格今天**在引擎眼里没有入边** ——
+      //   唯一入边 `demo_customer_reaction_cut_order` 带 `reaction`，被 `sim.propagation.adversary`
+      //   闸掉（demo 租户在 `features.ts` `WORLD_DARK_LAUNCH_FEATURES` 里 ⇒ 关）。
+      //   ⇒ 引擎按「入度 0 = 外生输入」处理它：**不衰减**，`decayApplied` 里查无此项（回执实测）。
+      //   没有入边就没有稳态增益，0.75 这把尺子量的是一条**不参与推演**的边。
+      //   开关打开后它才成立，届时 1.12× 是真的（W=2.3995 × 意图 0.35）。
+      "Customer.receivablePressure",        // 1.15x · 【真超标·口径】单边 `source_value_relative`，
+      // W=10.1327 是**金额加权的扇入数**（150 单 / 17 客户 ≈ 8.8，按金额加权到 10.13）。
+      // 意图增益 0.085 显然是**按某个假设的扇入数**反算的（0.085 × 8.82 ≈ 0.75 恰好配满）——
+      // 真实扇入 10.13 ⇒ 超 15%。成因是「标定时假设的 W ≠ 实测 W」，属**口径错**这一类，
+      // 合格修法 = 按实测 W 重算这一条的意图增益，⛔ 不是全表缩系数。
+      "Material.shortageRisk",              // 1.67x · 【真超标】6 条边**全是 `equal_share`(Σw=1)**
+      // ⇒ W 恒 1 ⇒ ΣA = Σ|g| = 1.25 是个**有意义的和**，预算对它成立，就是没人算总账。
+      // 业务理由（指向正确的修法，而不是一律缩小）：这 6 个源是**同一件事的六种测法**
+      // （替代料切换压力 / 供应商交付延迟 / PO 到货延迟 / 来料检验排队 / 批次库龄 / 供应商处理天数），
+      // 高度相关 ⇒ 相加是**重复计数**。该合并口径或按相关性降权，不是把 6 条一起乘 0.6。
+      // ⚠ 且其中 2 条的源是**哈希占位**（`alt_switch` / `inspection_queue`，判据⑤ 名单里）
+      // ⇒ 这 1.67× 有一部分建立在编出来的源读数上。
+      "Order.orderChurn",                   // 1.12x · 见上方【判据不适用·②】
+      "Process.queuePressure",              // 1.67x · 【真超标】同 `Material.shortageRisk` 一型：
+      // 3 条边 W 全 = 1（2 条 `equal_share`；`line_util` 那条 `weightRef: null` 但每个 Process 只有
+      // 1 条 Line 入边 ⇒ N=1 ⇒ W 也是 1。⚠ 别照 seed 头注「null ⇒ W=N」直接读成 N>1）。
+      // 业务理由：设备负荷 / 产线利用率 / 设备故障率三者同源共动，相加重复计数。
+      "PurchaseOrder.expeditePressure",     // 1.33x · 【判据不适用·①】**符号被 `|·|` 吃掉了**：
+      // `demo_material_shortage_to_po_expedite` 的源 `Material.shortageRisk` 实测均值 **−20.405**
+      // （缺料风险为负 = 超储），这条边今天在**缓解**这一格（实际拉力 **−9.92**）。
+      // 而 A 列取 `|g|` ⇒ 把它记成 +0.5 的负担 ⇒ 凑出 1.33×。
+      // 全格带符号实际拉力 = **−7.36**：这一格净受缓解，不是超载。
+      // ⇒ 作为「这一格会不会被推过拐点」的判据**不成立**；作为回路增益上界仍然成立（两列各管各的）。
+    ].sort());
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // WO-GAIN-REACH · 判据④⑤⑥ —— **这把尺子没有算进各源的实际量程**
+    //
+    // ── 今天的行为 X / 应该的 Y ──────────────────────────────────────────────────
+    // **X**：上面判据③ 的 `Σ|g|×W ≤ 0.75` 被当成「这一格不会被某一条边主导」的依据。
+    //   但 `seed.ts` 增益预算段自己写着它的前提：「落在它以下，**全部源顶到量纲上界**时
+    //   目标仍不进饱和段」—— 即它**假设 E[源] = max = 100**。
+    //   真实 tick0 源读数实测跨度 **0.000 – 220.580**，还有 4 条边的源**均值为负**
+    //   （`Material.shortageRisk` −20.405 = 超储，`PurchaseOrder.procurementDelay` −2.800 = 提前到货）。
+    //   而 A 列取 `|g|`（绝对值）⇒ 一条**在缓解**这一格的边，被记成和加压边一样的负担。
+    // **Y**：「谁主导这一格」必须**可被机器说出来**，且与「回路稳不稳」分开记。
+    //
+    // 🔴 **两列各有各的用处，⛔ 不许拿本段去替换判据③**：
+    //   · A 列 `Σ|g|×W`  —— 与量程无关，约束的是**回路增益/稳定性**（满量程最坏情形）。
+    //   · B 列 实际拉力   —— 吃今天的源读数，回答**「今天谁在推这一格」**。
+    //   删掉任一列都会瞎掉一半：只看 A 会把「今天没人推」的格子报成欠账；
+    //   只看 B 会在源读数恰好很小的那天，把一条真会失稳的边放过去。
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    // ── 判据④（🐤 工具自证 · 缺了下面两条就都是空话）────────────────────────────────
+    // 本测自己算的 `inflow` 必须**逐字节**等于引擎单拍 trace 里那条边的 `amount` 合计。
+    // ⛔ 不许拿「我又算了一遍」当旁证 —— 那是同一个脑子算两次；锚点必须来自**引擎**。
+    const mk = await t.app.inject({
+      method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
+      payload: { baseSnapshot: (await deriveSeedBaseSnapshot(t.repos, "demo")).state, scope: {} },
+    });
+    expect(mk.statusCode, `建会话失败：${mk.body.slice(0, 300)}`).toBeLessThan(400);
+    const tickRes = await t.app.inject({
+      method: "POST", url: `/a/v1/sim/sessions/${(mk.json() as { id: string }).id}/tick`,
+      headers: ADMIN, payload: { n: 1 },
+    });
+    expect(tickRes.statusCode, `tick 失败：${tickRes.body.slice(0, 300)}`).toBeLessThan(400);
+    const traceRows = (tickRes.json() as { trace?: { ruleKey: string; amount: number }[] }).trace ?? [];
+    expect(traceRows.length, "🐤 单拍 trace 为空 ⇒ 一条边都没传导，下面的拉力对账是空话").toBeGreaterThan(0);
+    const traceByRule = new Map<string, number>();
+    for (const row of traceRows) traceByRule.set(row.ruleKey, (traceByRule.get(row.ruleKey) ?? 0) + row.amount);
+    const allEdges = [...cells.values()].flatMap((v) => v.edges);
+    let anchored = 0;
+    for (const e of allEdges) {
+      const got = traceByRule.get(e.key);
+      if (got === undefined) continue; // `delayTicks>0` / 本拍没开闸 ⇒ 不是"对不上"，是"还在路上"
+      expect(
+        got,
+        `${e.key} 的单拍传导量：引擎 trace 记 ${got}，本测算 ${e.inflow} ⇒ ` +
+          `本测的拉力算法与引擎不同源（漏了 reaction hinge / decay factor / 逐对权重中的某一项），` +
+          `⛔ 不许改这个期望值，该改的是上面那段算法。`,
+      ).toBeCloseTo(e.inflow, 9);
+      anchored += 1;
+    }
+    expect(anchored, "🐤 一条边都没能拿引擎 trace 锚住 ⇒ 自证失败，不许读成『算法是对的』").toBeGreaterThanOrEqual(25);
+
+    // 🐤 出处表必须**分得出两档**：只证「标了章」不够，全盖同一个章在屏上一模一样。
+    const provCount = { 实测: 0, 哈希: 0, 混: 0, 缺席: 0 };
+    for (const e of allEdges) provCount[e.prov] += 1;
+    expect(
+      provCount.实测 > 0 && provCount.哈希 > 0,
+      `源出处只有一档（${JSON.stringify(provCount)}）⇒ 它分不出真读数与哈希占位，下面的标注是装饰品`,
+    ).toBe(true);
+
+    // ── 判据⑤：**源无诚实数据源**的边，名单钉死 ─────────────────────────────────────
+    // 这些边的「实际拉力」只是**当前哈希基线**，不是业务事实 —— 不许悄悄混进一个看起来同质的数里。
+    // ⚠ 名单缩短 = 有人给某个源接上了诚实数据源（**好事**，改这里并在 WO 里说明）；
+    //   名单变长 = 有诚实源的格子退回了占位（**回归**，先查 `recomputeDemoDerivationsAtSeed`）。
+    // ⚠ `orderChurn` 在列：`seed-derivation-specs.ts` 段尾「⛔ orderChurn 停笔」是**仓主的裁决**，
+    //   不是漏做 —— Order 上 ratio 族三个字段已各归其主，再复用就是与 `demandPressure` 字节级复制。
+    const hashSourced = allEdges.filter((e) => e.prov === "哈希").map((e) => e.key).sort();
+    expect(
+      hashSourced,
+      "「源走哈希占位」的边集合变了 —— 见上方两种成因，两种都必须先解释再改这个名单。",
+    ).toEqual([
+      "demo_alt_switch_to_material_shortage",       // 源 MaterialAlternative.switchPressure 无派生规格
+      "demo_fg_drawdown_relieves_model_demand",     // 源 FinishedGoodsInventory.drawdownPressure 无派生规格
+      "demo_inspection_queue_to_material_shortage", // 源 IncomingInspection.queueDays 无派生规格
+      "demo_order_churn_to_line_split",             // 源 Order.orderChurn —— 仓主 2026-09-16 明令停笔
+      "demo_order_churn_to_model_demand_load",      // 同上（本格就是 `Model.demandLoad`）
+    ]);
+
+    // ── 判据⑥：**A 列的头名 ≠ B 列的头名** 的格子集合钉死 ────────────────────────────
+    // 这一条就是本段全部的价值：它让「今天这一格被谁主导」变成**机器说得出来**的事。
+    // 实测 8 个多入边格子里 **6 个**两列头名不同 ⇒ 判据③ 回答不了「谁主导」这个问题。
+    // ⚠ 集合变了不一定是坏事（源读数本就会随种子演进），但**必须先解释再改**：
+    //   它同时会咬住「有人改了系数却没想到改变了主导权」这一类。
+    const flipped = [...cells.entries()]
+      .filter(([, v]) => v.edges.length >= 2)
+      .filter(([, v]) => {
+        const topA = [...v.edges].sort((a, b) => Math.abs(b.gain) * b.sw - Math.abs(a.gain) * a.sw)[0]!;
+        const topB = [...v.edges].sort((a, b) => Math.abs(b.pull) - Math.abs(a.pull))[0]!;
+        return topA.key !== topB.key;
+      })
+      .map(([k]) => k)
+      .sort();
+    const flipTable = [...cells.entries()]
+      .filter(([, v]) => v.edges.length >= 2)
+      .map(([k, v]) => {
+        const topA = [...v.edges].sort((a, b) => Math.abs(b.gain) * b.sw - Math.abs(a.gain) * a.sw)[0]!;
+        const topB = [...v.edges].sort((a, b) => Math.abs(b.pull) - Math.abs(a.pull))[0]!;
+        return `${k}  A头名=${topA.key}(${(Math.abs(topA.gain) * topA.sw).toFixed(5)})  B头名=${topB.key}(${topB.pull.toFixed(4)}·源${topB.prov})`;
+      })
+      .join("\n  ");
+    expect(
+      flipped,
+      `「A 列头名 ≠ B 列头名」的格子集合变了。\n  8 个多入边格子现值：\n  ${flipTable}`,
+    ).toEqual([
+      "Model.costPressure",            // A: material_price(0.42391) / B: wo_release(源 E=7.758 但 |g| 0.326)
+      "Model.demandLoad",              // A: order_demand(+) / B: order_churn(哈希源 E=53.58)
+      "OrderLine.splitPressure",       // A: order_demand / B: order_churn（同因）
+      "Process.queuePressure",         // A: equipment_load(E=17.5) / B: line_util(E=92.0)
+      "PurchaseOrder.expeditePressure",// A: balance_gap / B: material_shortage（源均值 **−20.405**，实为缓解）
+      "WorkOrder.releasePressure",     // A: line_blocked(E=90.6) / B: line_util(E=92.0)，仅差 0.8%
+    ]);
+
+    // ── 判据⑦：`Model.demandLoad` 的**带符号实际拉力**今天是负的 ────────────────────
+    // 上面判据①b 断言「带符号净增益 > 0」并自注「必要不充分」。本条把那个缺口量出来：
+    //   净增益 **+0.194589 > 0**（判据①b 绿），而带符号实际拉力 **−1.8978 < 0**。
+    // ⇒ 同一格，两把尺子给出**相反**的答案；屏上 `Model.demandLoad` 真跑 6 拍即落到域下界 0
+    //   并停住（真起数据实测，6/6 个型号读 0.000）。
+    // ⚠ **这一条钉的是缺口不是目标**：它转正才是修好了。⛔ 不许靠缩系数让它转正 ——
+    //   `f_g` 是全格同一个乘数，缩它不改符号（上面判据①b 已记过这次实测）。
+    // 🔴 病因**不是**派单里写的「两源量程差 8.56 倍」（实测 26.287 vs 53.580 = **2.038 倍**，
+    //   拉力 12.3511 vs 12.5527，churn 只赢 **1.63%**）。逐跳实测的真因有两层：
+    //   ① `Model.forecastBias` **结构性恒 0**：`model_forecast_bias` 式子是
+    //      `(totalDemand − Σin(order_for_model).qty)/totalDemand`，而合成器里 `totalDemand`
+    //      **就是**那个 Σ（6/6 个型号逐字节相等，如 4680-NCM 490412 = 490412）⇒ 恒 0。
+    //      ⇒ `Order.demandPressure` 唯一入边贡献恒 0 ⇒ 它 λ=0.37 衰减到 ~0（12 拍后 0.1028）
+    //      ⇒ 正驱动消失。（该规格注释写「实测 49–77」，**已过期**。）
+    //   ② `Order.orderChurn` 的唯一入边 `demo_customer_reaction_cut_order` 带 `reaction`，
+    //      被 `sim.propagation.adversary` 闸掉（demo 租户在 `WORLD_DARK_LAUNCH_FEATURES` 里 ⇒ **关**）
+    //      ⇒ 引擎眼里没有任何规则写 `orderChurn` ⇒ 按「入度 0 = 外生输入」**不衰减**
+    //      ⇒ 折扣项恒为出厂值。对照实验（唯一变量 = 该开关，系数一个没动）：
+    //      关臂 12 拍后 53.58→50.99（−4.8%），开臂 53.58→**14.67**（−72.6%），
+    //      引擎回执 `decayApplied.orderChurn` 关臂**不在表里**、开臂 **0.37**。
+    //      复跑：`node docs/evidence/wo-gain-reach/churn-exogenous.mjs`
+    const demandPull = cells.get("Model.demandLoad")!.edges.reduce((s, e) => s + e.pull, 0);
+    expect(
+      demandPull,
+      `\`Model.demandLoad\` 的带符号实际拉力 = ${demandPull.toFixed(6)}。` +
+        `转正 ⇒ 缺口已修，请连同本段注释一起更新（并说明修的是①还是②）；` +
+        `变得更负 ⇒ 回归。逐边：${cells.get("Model.demandLoad")!.edges.map((e) => `${e.key}=${e.pull.toFixed(4)}(源${e.prov})`).join(" ")}`,
+    ).toBeCloseTo(-1.8977932307, 6);
+  }, 300000);
 });
 
 // ── M0-A11 · 解释切片（PRD-ai-sim-rev2-ground-truth §2.1 A11）────────────────────

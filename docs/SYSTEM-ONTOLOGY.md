@@ -286,7 +286,7 @@
   **⚠ 方向是硬约束，不是排版（WO-SANDBOX-PROP-DIRECTION·2026-08-11 实测复核，闭 #158/#160）**：`propagateTick` 的 `navOut` **只沿 `fromId→toId` 走**（`apps/datacore/src/sim/propagation.ts:757 (navOut)`），故规则的 `(sourceTypeKey, viaLinkKey, targetTypeKey)` 必须与本体 linkType 声明的 `(fromType, key, toType)` **同向**；写反 ⇒ `targetsOf` 恒空 ⇒ **该规则一次都不触发，且不报任何错**（trace 里没有它、下游一个字节不动，界面上只看得到"一条安静的零"）。这是本仓栽过两次的同一个错，写成一句：**「我用『这个 linkKey 的名字读起来像 A→B』当作『它在本体里就是 A→B』的证据。」** `line_belongs_to_base` 名字读作 Line→Base，而契约 cardinality 只允许 1:1/1:N/N:N，**N:1 语义一律翻转方向表达为 1:N**（`synthetic/battery.ts` linkType 声明处注释原文）⇒ 真方向是 **`Base --line_belongs_to_base(1:N)--> Line`**。两处副本：种子规则（#158，WO-P1 已修：`demo_line_util_to_base_load` → `demo_base_load_to_line_util`，`apps/datacore/src/seed.ts:328 (demo_base_load_to_line_util)`）· 前端 mock（#160，WO-SANDBOX-PROP-DIRECTION 已修：`frontend-shell/src/mocks/handlers.ts` registries handler）。**三道门守（缺一不可，各咬一层）**：① `test/seed-demo-propagation.test.ts`「方向可达门」咬**链路表**（图上走不走得通）· ② `test/sim-propagation-direction.seam.test.ts` 咬**效果层**（真扰动 → tick → 下游状态变量的**数值**，并含「把边反过来 ⇒ 必须不触发」的方向反证）· ③ `test/mock-linktype-direction.gate.test.ts` 咬 **mock ⇄ 真路由**（前端 mock 的方向与 `GET /a/v1/ontology/mapping/registries` 真响应逐条比对）。①②③ 分层的理由是实测得来的：只有①时「图对而引擎没算」照样绿；只有②时「trace 里出现过这个名字」被当成「数是对的」照样绿。
   **业务域归属 `domainKey`/`domainName`（WO-DISRUPTION-CARDS·2026-08-17·屏上分类卡片的唯一分组依据）**：仓主看推演页截图后的原话「**按照卡片，建立不同扰动因素的分类展示**」。病灶是 demo 租户 **35 条传导边一次全倒在屏上**——无分类、无栅格（勾选框不在一条竖线上）、字号过小（实测最小 12px 且含 3 处 12px `<code>`，等宽字视觉更小）。**分组依据一直在数据里，不是本单发明的**：`DEMO_PROCESS_DEFINITIONS` 每条流程都带 `domainKey`(D01–D13) + `carrierTypeKey`（承载物对象类型），而种子作者当初选边时用的就是这条关系，逐条写在注释里（「承载物 MaterialBatch 即 P36」「承载物 MaintPlan 即 P50」「全世界恰好一个：`Supplier`（P28）」）——只是**躺在注释里、没进数据结构、屏上拿不到**。本单把它搬进数据。**口径：域 = target 承载物所属的域，不是 source**（依据是种子自己的分节注释：`── D09 设备与维护 · 检修窗：基地负载 → 计划检修窗挤压 ──` 源 `Base`(D10) 而节名 D09 = target `MaintPlan` 的域）；语义上也对——用户按域找一条边，找的是「它**影响**哪个域的活动」。⛔ **不是照分节注释逐条硬编码**（那只是把手抄名单从前端搬到后端，病没治）：`seed.ts resolveRuleDomain()` 从承载物登记册**现算** ⇒ 新增一条规则只要 target 是某流程的承载物，域自动就有，**「忘了归域」在本设计里不可能发生**。⛔ **前端同样零对照表**（本体 §8 `G-GATE-ROSTER-HANDCOPIED`）：`edgeActiveModel.buildDomainSlices` 只按边自带的 `domainKey` 做 `groupBy`，一个业务判断都不做。**实测 35 条 → 9 个域 + 3 条未归域**（D03 销售与客户 6 · D04 产品与工程 3 · D05 采购与供应 7 · D06 计划与排产 2 · D07 生产制造 3 · D08 质量管理 3 · D09 设备与维护 2 · D10 基地与仓储交付 4 · D11 财务与成本 2 · 未归域 3），最大一片 7 条（参照物「一屏 5–8 行」口径）。**`null` 是诚实缺席不是漏填**：那 3 条的 target（`Material`/`Process`/`Equipment`）不是任何流程的承载物 —— 种子注释自己就写着「Equipment **不是任何流程的承载物**，它在这里是**中间跳**」；屏上单列「未归域」分片并写清原因，**不许硬塞进最近的那个域**。**注释与现算的 4 处分歧如实登记**（18 条带 D 号分节里 15 条一致）：`demo_wo_release_to_quality_backlog`/`demo_wip_feed_to_defect_pressure`/`demo_defect_to_exception_backlog` 落在节名 `D07 生产制造执行链`下而三个 target 承载物均属 **D08 质量管理**（那句节名写的是一条**跨域的链**，不是一个域）；`demo_customer_receivable_to_collection` 节名 `D03` 而 target `OverdueRecord` 属 **D11**（取 D11 顺带与同属 D11 且无分节注释的 `demo_customer_receivable_to_invoice_overdue` 归到一起）。取现算值 = 取**逐条可复算**的口径；注释那 4 处不改（它描述的是叙事链路，本来没错）。**同批新增 `sourceTypeName`/`targetTypeName`：读时投影，不入库** —— `GET /a/v1/sim/propagation-rules` 每次 join 本租户 `ObjectType.displayName` 后填（种子/POST 存进去恒 `null`），存一份会在类型改名后变成查无对证的旧名字。⚠ **初稿把它做成前端 `useQuery(fetchObjectTypes)`，实测把全仓 29 个做 `vi.mock("@/api/endpoints")` 部分 mock 的前端测试全部打红** —— 该面板挂在 8 个推演页上，给共享面板加 endpoint 依赖是结构性负债，故改成随边下发（面板只依赖一个响应）。**状态变量（`loadIndex`/`demandLoad` …）在全仓没有任何中文名**（只作为字符串存在于传导规则里，本体 `properties`/`derivedProperties` 都不含它们）⇒ 只出现在第二级的系统键那一行，前端不给它编名字（R14）。存储零迁移（`sim_propagation_rule` 是 doc-jsonb 表）· 缺省 `null` ⇒ 与本字段引入前逐字节相同（additive 可回退 RL9）。**门**：`apps/datacore/test/sim-rule-domain.seam.test.ts`（期望值取自**另一条独立路径** `GET /a/v1/process-definitions`，零写死 key/条数；含正反金丝雀 + 集合相等而非数量相等 + 单条最小变异反证）· `apps/frontend-shell/test/disruption-cards.seam.test.tsx`（chip 条数两边现算 · 切片判据同时落在**可见性与 DOM 存在性**上——`<details>` 折叠时子节点照样在 DOM 里，本仓已有 dev 在这条上栽过 · 拨动断的是**差值表里的数**不是勾选框 checked）。
   **根源/枢纽/末端三层（WO-SIM-ROOT-PROCUREMENT·2026-08-25·G-ROOT-3·链路详见 §3「根源扰动层 · 物料采购」）**：传导规则集自带一张**量纲图**（一条规则 = `sourceStateVar → targetStateVar` 一条边），按**入度**分层：**入度 0 = 根源**（没有上游 ⇒ 只能被外部扰动打进来，扰它才是扰"因"）· 入度>0 且出度>0 = **枢纽**（扰它 = 从半路插入，推演结论会失真）· 出度 0 = **末端**（通常是"看"的不是"扰"的）。**这一层必须现算，不许硬编根源名单** —— 硬编的名单在下一条边加进来时会**悄悄失效**（同 `domainKey` 拒绝硬编分节注释的那条纪律）。改前实测 3 根源 / 13 枢纽 / 20 末端；库存 `shortageRisk` 入度 2 ⇒ **是果不是源**，而仓主点名的高频根源「物料采购」当时**一个变量都没有**。本单补 `procurementDelay`（采购到货延迟）为**第 4 个根源**，三类采购台账各一条边指向 `Material.shortageRisk`（PurchaseOrder 30 / MaterialBatch 24 / Supplier 15 个落点）。⛔ **`procurementDelay` 的入度必须恒为 0**：全仓不许有任何规则写它，谁加一条 `… → procurementDelay` 它就从根源掉成枢纽 —— 门 `sim-root-procurement.seam.test.ts ①` 用**现算**入度咬死这件事。
-  **逐实例分摊 `weightRef`（WO-COEF-FROM-BOM · 2026-09-03 实测复核 · 治铁律 0.5 三分法答不了的**第四态：接对了、跑通了、但算错了**）**：`coefficient` 是**整条边的强度**，`weightRef` 决定这个强度**在多个目标实例之间怎么分** —— 两件事两个字段，不许合并。**病灶**：`propagateTick` 的 `amount = coeff × sourceVal × factor` **公式里没有用量项** ⇒ 同一条边上每个 (源,目标) 对落**同一个额**。**对照实验**（真起 datacore `SEED_DEMO=1` · 空世界 + 单一 `Material.priceShock delta+15` · 唯一变量 = 该规则 `weightRef`）：磷酸铁锂正极（占 `方形-LFP` 生效 BOM 成本 **17.815%**）与铝箔（**0.9199%**）各涨 15% ⇒ 修前 `Model.costPressure` **同为 9.75**（= `15×0.65`，两数逐字节相同 = 病）；修后 **1.736965383896** / **0.089692584529**，**拉开 19.37 倍**，比值恰等于两者 BOM 成本占比之比。权重出处逐对可复算：`单台用量 1 × 单价 94.35 × (1+损耗率 0.02) = 96.237 ÷ 540.20118`（`BOM-方形-LFP-V1.0`）。**分工是硬约束**：引擎 `sim/propagation.ts` 只吃一张 `ruleKey → "src\u0000tgt" → 权重` 的**纯数值表**（R14 零业务常数 ⇒ **`BOMDetail`/`bomUnit` 在该文件恒 0 命中是设计不是缺陷**，金丝雀应打在 `pairWeight` 上：实测 9 命中）；BOM 遍历算在 `sim/pair-weights.ts`，与 `quote_margin` 共用 `bom.ts` 同一支选取口径（不另起第二套 BOM 解析）。**两种归一，选哪种看目标量纲**（口径决策，非实现细节）：`IN_EDGES`（Σ权重=1 ⇒ 加权平均）配**强度**型目标（`Model.costPressure`）· `IN_EDGES_MEAN`（均值=1、Σ=N ⇒ 保总量）配**广延**型目标（`Model.demandLoad`，500 张订单扇入 —— 用 Σ=1 会把 500 张单塌缩成一张的平均，那是把负载改成了均值）。**因此扇入不爆**：实测 6 拍空转 `demandLoad` 稳在 99.6–99.8（域 0–100），未出现"用量直乘 ⇒ 稳态 94 倍天花板"那条路。**⛔ 拿不到整张表时绝不退回权重 1**：退回 1 得到的正是本口径要治的错行为（逐目标同额），却还挂着"已按用量分摊"的名义 ⇒ 比修前更难发现的假绿；故该规则本 tick **不传导**并进 `unresolvedWeights`（诚实缺席，照 `unresolvedGates` 范式）。表在而**某一对**查不到 ⇒ 权重 **0**（算得出来的真值：不在 BOM 里就是占该型号 0%），不报缺。**可披露**：`POST …/tick?explain=1` 回带 `pairWeighting.report.explain[]`，逐对给分子/分母/用哪张 BOM/哪几个字段/本跳耗时，`formula` 写的是**代入真实数字**的式子（判据：看不到代码的人读完能自己判断「这个数是算的还是拍的」）；默认不下发 —— demo 租户三条已分摊边共 **1024 对 / 504,837 字节**，占 tick 回包 **99.75%**，设成默认会让"可披露"本身变成性能事故然后被一刀关掉。实测 demo 租户 **48** 条规则中 **16 条**声明分摊（⚠ **2026-09-08 WO-COEF-FROM-BOM 复核订正**：原文写「46 条中 3 条 / 该边 24 对 / 其余 43 条缺省」，**四个数今日全部过期** —— 边数与已分摊边数都在此后长过，照旧数派单会再把已落地的活当成没做）：`demo_material_price_to_model_cost`（`bom_cost_share`，**42 对**·zeroPairs 0）· **⊕ WO-WEIGHT-BASIS-FILL（2026-09-18）把同三元组的第二条边也接上了同一条取数路**：`demo_material_shortage_to_model_supply_risk`（`bom_cost_share`，**42 对** —— 与上一条**源类型/目标类型/链路 key 完全相同**，拓扑逐项相同：42 边 / 6 目标 / 扇入 7）。它此前挂 `equal_share`，注释写着「本边无可审计的差异化计量值」——**被它自己的邻居证伪**：同一批边上 BOM 成本占比从 2026-09-03 起就取得到。**对照实验**（真种子 seed 42 ·`2170 三元圆柱`· 各料 `shortageRisk +15`）：修前七种物料权重全为 `1/7`、`supplyRisk` **逐字节同为 0.346875**（三元正极与铝箔完全同权 = `9.75/9.75` 那个病的同一指纹）；修后**三元正极 0.724678645960 / 铝箔 0.019067246483（38.01×）**，全表极差 73.69×。⚠ **归一方向未变**（两者同为 `IN_EDGES`·Σ=1）⇒ 实测 Σ权重 ≡ **1.000000000000**、七次驱动读数合计 **2.428125 修前修后逐位相同** —— 本次是**纯重新分配，不改量纲、增益预算不动**（故标定无需重跑）。守门：`seed-demo-propagation.test.ts` §5b（判据 ④ 同时咬 Σ权重与世界总量 —— 只断言"四数拉开"会把「换成 `IN_EDGES_MEAN` 改量纲」一起放行）· `demo_order_churn_to_model_demand_load` / `demo_order_demand_pressure`（`source_qty_relative`，各 500 对）· `demo_order_cost_to_customer_receivable`（`source_value_relative`，500 对）· `demo_customer_reaction_cut_order`（`actor_exposure_relative`，反应型边，仅在触发时铺表）· **⊕ WO-SIM-CALIBRATION（2026-09-17 收编）新增 11 条 `equal_share`**（⚠ **2026-09-18 WO-WEIGHT-BASIS-FILL 订正为 10 条**：下列第三项 `demo_material_shortage_to_model_supply_risk` 已改用 `bom_cost_share`，见上方 ⊕ 段）（`IN_EDGES`·Σw=1 —— 本体里拿不到可审计的差异化计量值时的**诚实等份**，⛔ 不编一个轻重排序出来；`null` 不是「不分摊」而是「每源各加一份满额 ⇒ Σw=N」，实测该口径把 `Model.costPressure` 的两条系数几乎相同的入边拉出 **51 倍**入流差）：`demo_batch_procurement_delay_to_material_shortage` · `demo_equipment_failure_to_process_queue` · ~~`demo_material_shortage_to_model_supply_risk`~~（**2026-09-18 起为 `bom_cost_share`，已不在本档**） · `demo_model_demand_to_base_load` · `demo_po_expedite_to_supplier_review` · `demo_po_procurement_delay_to_material_shortage` · `demo_process_queue_to_line_blocked` · `demo_supplier_delay_to_material_shortage` · `demo_supplier_procurement_delay_to_material_shortage` · `demo_wo_release_to_model_cost` · `demo_wo_release_to_model_supply_risk`；其余 **32** 条 `weightRef` 缺省 ⇒ 逐字节同旧（additive 可回退 RL9）。⚠ **边数 47 → 48 的那一条是 WO-SIM-DAMPING 的阻尼边** `demo_fg_drawdown_relieves_model_demand`（`FinishedGoodsInventory.drawdownPressure --fg_of_model ×-0.6--> Model.demandLoad`，`delayTicks 1`）—— **全表第一条把压力"送回去"的物理边**（此前 47 条里唯一的负系数 `demo_forecast_bias_to_order_demand` 其源是入度 0 的外生根，世界自己不会产生减量）。它的 `weightRef` 为 `null` 是**诚实缺席不是遗漏**：按"谁的库存多"分摊需要 `FinishedGoodsInventory.qtyAvailable`，而在册口径 `source_qty_relative` 读的是 `props.qty`，该类型 18 个实例里为正的 **0 个**（金丝雀：同一把尺子量 `Order` 得 500/500、`MaterialBatch` 得 24/24 ⇒ 量法是好的）。⚠ **CLAUDE.md 铁律 1.5 举例用的「碳酸锂 96,000 元/吨」在本体里不是 `Material` 对象**（只是 `synthetic/battery-extended.ts` 的商品周价行与 `connectors/registry.ts` 的外部信号），**因而根本不是传导图上的节点**；BOM 大头的同族真节点是**磷酸铁锂正极**（`Material.unitPrice` 94.35），上述取证即以它为准 —— 引用该例时勿照抄物料名。
+  **逐实例分摊 `weightRef`（WO-COEF-FROM-BOM · 2026-09-03 实测复核 · 治铁律 0.5 三分法答不了的**第四态：接对了、跑通了、但算错了**）**：`coefficient` 是**整条边的强度**，`weightRef` 决定这个强度**在多个目标实例之间怎么分** —— 两件事两个字段，不许合并。**病灶**：`propagateTick` 的 `amount = coeff × sourceVal × factor` **公式里没有用量项** ⇒ 同一条边上每个 (源,目标) 对落**同一个额**。**对照实验**（真起 datacore `SEED_DEMO=1` · 空世界 + 单一 `Material.priceShock delta+15` · 唯一变量 = 该规则 `weightRef`）：磷酸铁锂正极（占 `方形-LFP` 生效 BOM 成本 **17.815%**）与铝箔（**0.9199%**）各涨 15% ⇒ 修前 `Model.costPressure` **同为 9.75**（= `15×0.65`，两数逐字节相同 = 病）；修后 **1.736965383896** / **0.089692584529**，**拉开 19.37 倍**，比值恰等于两者 BOM 成本占比之比。权重出处逐对可复算：`单台用量 1 × 单价 94.35 × (1+损耗率 0.02) = 96.237 ÷ 540.20118`（`BOM-方形-LFP-V1.0`）。**分工是硬约束**：引擎 `sim/propagation.ts` 只吃一张 `ruleKey → "src\u0000tgt" → 权重` 的**纯数值表**（R14 零业务常数 ⇒ **`BOMDetail`/`bomUnit` 在该文件恒 0 命中是设计不是缺陷**，金丝雀应打在 `pairWeight` 上：实测 9 命中）；BOM 遍历算在 `sim/pair-weights.ts`，与 `quote_margin` 共用 `bom.ts` 同一支选取口径（不另起第二套 BOM 解析）。**两种归一，选哪种看目标量纲**（口径决策，非实现细节）：`IN_EDGES`（Σ权重=1 ⇒ 加权平均）配**强度**型目标（`Model.costPressure`）· `IN_EDGES_MEAN`（均值=1、Σ=N ⇒ 保总量）配**广延**型目标（`Model.demandLoad`，500 张订单扇入 —— 用 Σ=1 会把 500 张单塌缩成一张的平均，那是把负载改成了均值）。**因此扇入不爆**：实测 6 拍空转 `demandLoad` 稳在 99.6–99.8（域 0–100），未出现"用量直乘 ⇒ 稳态 94 倍天花板"那条路。**⛔ 拿不到整张表时绝不退回权重 1**：退回 1 得到的正是本口径要治的错行为（逐目标同额），却还挂着"已按用量分摊"的名义 ⇒ 比修前更难发现的假绿；故该规则本 tick **不传导**并进 `unresolvedWeights`（诚实缺席，照 `unresolvedGates` 范式）。表在而**某一对**查不到 ⇒ 权重 **0**（算得出来的真值：不在 BOM 里就是占该型号 0%），不报缺。**可披露**：`POST …/tick?explain=1` 回带 `pairWeighting.report.explain[]`，逐对给分子/分母/用哪张 BOM/哪几个字段/本跳耗时，`formula` 写的是**代入真实数字**的式子（判据：看不到代码的人读完能自己判断「这个数是算的还是拍的」）；默认不下发 —— demo 租户三条已分摊边共 **1024 对 / 504,837 字节**，占 tick 回包 **99.75%**，设成默认会让"可披露"本身变成性能事故然后被一刀关掉。实测 demo 租户 **48** 条规则中 **16 条**声明分摊（⚠ **2026-09-08 WO-COEF-FROM-BOM 复核订正**：原文写「46 条中 3 条 / 该边 24 对 / 其余 43 条缺省」，**四个数今日全部过期** —— 边数与已分摊边数都在此后长过，照旧数派单会再把已落地的活当成没做）：`demo_material_price_to_model_cost`（`bom_cost_share`，**42 对**·zeroPairs 0）· **⊕ WO-WEIGHT-BASIS-FILL（2026-09-18）把同三元组的第二条边也接上了同一条取数路**：`demo_material_shortage_to_model_supply_risk`（`bom_cost_share`，**42 对** —— 与上一条**源类型/目标类型/链路 key 完全相同**，拓扑逐项相同：42 边 / 6 目标 / 扇入 7）。它此前挂 `equal_share`，注释写着「本边无可审计的差异化计量值」——**被它自己的邻居证伪**：同一批边上 BOM 成本占比从 2026-09-03 起就取得到。**对照实验**（真种子 seed 42 ·`2170 三元圆柱`· 各料 `shortageRisk +15`）：修前七种物料权重全为 `1/7`、`supplyRisk` **逐字节同为 0.346875**（三元正极与铝箔完全同权 = `9.75/9.75` 那个病的同一指纹）；修后**三元正极 0.724678645960 / 铝箔 0.019067246483（38.01×）**，全表极差 73.69×。⚠ **归一方向未变**（两者同为 `IN_EDGES`·Σ=1）⇒ 实测 Σ权重 ≡ **1.000000000000**、七次驱动读数合计 **2.428125 修前修后逐位相同** —— 本次是**纯重新分配，不改量纲、增益预算不动**（故标定无需重跑）。守门：`seed-demo-propagation.test.ts` §5b（判据 ④ 同时咬 Σ权重与世界总量 —— 只断言"四数拉开"会把「换成 `IN_EDGES_MEAN` 改量纲」一起放行）· `demo_order_churn_to_model_demand_load` / `demo_order_demand_pressure`（`source_qty_relative`，各 500 对）· `demo_order_cost_to_customer_receivable`（`source_value_relative`，500 对）· `demo_customer_reaction_cut_order`（`actor_exposure_relative`，反应型边，仅在触发时铺表）· **⊕ WO-SIM-CALIBRATION（2026-09-17 收编）新增 11 条 `equal_share`**（⚠ **2026-09-18 WO-WEIGHT-BASIS-FILL 订正为 10 条**：下列第三项 `demo_material_shortage_to_model_supply_risk` 已改用 `bom_cost_share`，见上方 ⊕ 段）（`IN_EDGES`·Σw=1 —— 本体里拿不到可审计的差异化计量值时的**诚实等份**，⛔ 不编一个轻重排序出来；`null` 不是「不分摊」而是「每源各加一份满额 ⇒ Σw=N」，实测该口径把 `Model.costPressure` 的两条系数几乎相同的入边拉出 **51 倍**入流差）：`demo_batch_procurement_delay_to_material_shortage` · `demo_equipment_failure_to_process_queue` · ~~`demo_material_shortage_to_model_supply_risk`~~（**2026-09-18 起为 `bom_cost_share`，已不在本档**） · `demo_model_demand_to_base_load` · `demo_po_expedite_to_supplier_review` · `demo_po_procurement_delay_to_material_shortage` · `demo_process_queue_to_line_blocked` · `demo_supplier_delay_to_material_shortage` · `demo_supplier_procurement_delay_to_material_shortage` · `demo_wo_release_to_model_cost` · `demo_wo_release_to_model_supply_risk`；其余 **32** 条 `weightRef` 缺省 ⇒ 逐字节同旧（additive 可回退 RL9）。⚠ **边数 47 → 48 的那一条是 WO-SIM-DAMPING 的阻尼边** `demo_fg_drawdown_relieves_model_demand`（`FinishedGoodsInventory.drawdownPressure --fg_of_model--> Model.demandLoad`，意图增益 **−0.6**、`C36` 值 **−0.222 = −0.6 × λ**（2026-09-19 仓主裁决补预乘 λ），`delayTicks 1`）—— **全表第一条把压力"送回去"的物理边**（此前 47 条里唯一的负系数 `demo_forecast_bias_to_order_demand` 其源是入度 0 的外生根，世界自己不会产生减量）。它的 `weightRef` 为 `null` 是**诚实缺席不是遗漏**：按"谁的库存多"分摊需要 `FinishedGoodsInventory.qtyAvailable`，而在册口径 `source_qty_relative` 读的是 `props.qty`，该类型 18 个实例里为正的 **0 个**（金丝雀：同一把尺子量 `Order` 得 500/500、`MaterialBatch` 得 24/24 ⇒ 量法是好的）。⚠ **CLAUDE.md 铁律 1.5 举例用的「碳酸锂 96,000 元/吨」在本体里不是 `Material` 对象**（只是 `synthetic/battery-extended.ts` 的商品周价行与 `connectors/registry.ts` 的外部信号），**因而根本不是传导图上的节点**；BOM 大头的同族真节点是**磷酸铁锂正极**（`Material.unitPrice` 94.35），上述取证即以它为准 —— 引用该例时勿照抄物料名。
 
 - **SimCertification（就绪认证 · 派生投影对象，非真值，R4 豁免）**：把 SimSession 能否进推演投影成 L0-L4（INVALID→CONFIGURED→RUNNABLE→VERIFIED→CERTIFIED）+ 三维准备度（结构/知识/行为/综合）+ L4 三元组（fanoutSafe/writebackComplete/observabilityMet）+ worldCompleteness（范围预检）+ `canEnterSimulation`（=L4 ∧ trialTick.passed ∧ closure.gatePassed）+ `gaps[]`（缺件诚实，绝不静默放行）· **WO-CERT-HONESTY 口径收口（2026-08-10 · 四处「名不副实」，改的是口径不是判据）**：① 删 `worldCompleteness.stateVars{present,needed}` —— present 与 `derivationRules` 取同一个变量、needed 在 `app.ts` 是逐字节相同的表达式 ⇒ 零独立事实且把派生在 `pct` 分子分母各数两遍；真状态变量改由 `worldCompleteness.stateVarKeys[]`（传导规则 `sourceStateVar ∪ targetStateVar` 去重集，与 `SandboxViewConfig.stateVars` 单源）以**清单**呈现，**不做成比值**（无任何承载物声明「应有几个」，编一个 needed 即错答）· ② `entering[]` 是 DERIVATION|ACTION|PROPAGATION **三类混装的「要素」**，不是「状态变量」（实测 demo 真跑 23 条 = 行动 10 · 传导 13 · 派生 0），前端按 kind 分组计数· ③ `trialTick.rulesFired` → `derivationNodes`（= 拓扑排序出的派生规格节点数 = 图规模，**不是触发数**：空跑不喂变更集 ⇒ 零条派生被求值）；`passed` 语义 = 「重算未抛异常（派生图无环）」≠「这个世界推得动」· **WO-CERT-CONTRACT-RECONCILE 契约合成（2026-08-10 · 两条 WO 各对一半，功劳分开记，别并成一条）**：㊀ **WO-CERT-HONESTY 的口径判断成立且已实测复验** —— `recompute` 的 `order.length` 在「空变更集（认证路实参）」与「喂真变更集」两趟里**同为 2**，而 `updatedObjects` 分别 0 与 1 ⇒ 该数与「触发」正交、度量的是**图规模**，故 `derivationNodes` 名副其实（取证 `apps/datacore/test/sim-cert-contract-reconcile.seam.test.ts` ③）；㊁ **WO-SIM-SCOPE-TRIAL 的实现同样成立且必须保留** —— 认证路**已真跑传导相**并以 `firedPropagationRuleKeys` 只数「真产出贡献」的规则（遍历到但源态为 0 / 无匹配边 / 闸门拿不到**都不算触发**）⇒ `propagationRulesFired` 是**真·触发计数**；⇒ 故 `trialTick.propagationCovered` **今天恒 `true`**（WO-CERT-HONESTY 原文「由构造恒 false / 从不调传导核」是对**它自己那条分支**的如实描述，合流后已不成立，此处据实翻正，欠账 #152 `G-SIM-TRIAL-TICK-NOT-PROPAGATION` **已闭**）；㊂ 两数**性质不同、不可相加** ⇒ 旧字段 `rulesFired`（= 规模 + 触发）量纲不成立，连同 `derivationRulesFired` 一并转 `@deprecated`（仍下发原值以可回退，删除条件写在契约注释里）；㊃ 新增 `trialTick.propagationRulesDeclared`（= fired 的**分母**）—— 只报 fired 时「本来就没有传导规则」与「声明了一堆但全哑火」在屏上都是 0，有了分母才分得开，并由新 gap `PROPAGATION_ALL_SILENT`（`covered ∧ declared>0 ∧ fired===0`）与 `PROPAGATION_NOT_COVERED`（未覆盖传导相 ⇒ 触发数不可解读）显式报出· ④ `canEnterSimulation` **故意不含 worldCompleteness 且不许加**（认证判「能不能跑」/完整度判「建得全不全」，互不蕴含），缺的只是屏上那句解释 —— 已补在完整度卡· 接缝门 `apps/frontend-shell/test/sim-cert-honesty.seam.test.tsx`（真 `deriveCertification` → 真 `SimReadinessPanel`，任一半改口径即红）· **RL3 单源：全部 DERIVE 自既有 `closure.ts` 五维（OBJECT/DATA/FORWARD/CHAIN/SHAPE）+ GapReport + 一次 Trial Tick，零新校验逻辑**（纯函数 `deriveCertification`，增量 2 新建）· `canEnterSimulation` 对齐 `ScenarioOntogenesisRun` maturity 语义（GOVERNED=真可用/PROVISIONAL=有缺口不假装）。**WO-SIM-ACT-CLOSE 修 Trial Tick（2026-08-10·闭 #152）**：`trialTick` 长期**只跑派生相**（`ontologyCore.recompute(dryRun)`），`rulesFired` 恒 = topo order 长度，注释停在「传导 propagateTick 待增量3」——而增量 3 早已落地（`POST …/tick` 真跑传导）。形态 = 铁律 0.5 之「**接了线接错地方**」：引擎接了 tick 路、没接认证路（既非没实现、也非没数据）。净效果是静默错答：**一条传导都跑不动的世界，认证照样报漂亮数字**，而 `worldCompleteness.propagationRules` 那一栏按"声明了几条"照计完整度。修：`app.ts` 新增 `trialPropagate`，在会话**当前态**上真跑一 tick 传导（`pending`/`perturbations` 都传 `[]` —— Trial Tick 是**探针不是续跑**，同一份世界态必须每次得同一结论 R6，不许被在途队列/扰动历史带偏）；图/规则参数/节拍闸门经**新抽的唯一装配处** `buildPropagationInputs` 取得，**与真 tick 同源**（另抄一份就会出现「认证说能跑、真 tick 不是这个数」）。契约 `trialTick` 加三个 **optional** 拆账字段 `derivationRulesFired`/`propagationRulesFired`/`propagationRulesDeclared`（additive·老回包无则前端整段不显·逐字节可回退）——拆开报是必须的：一个合数 `rulesFired` 恰好把「传导零触发」盖得严严实实（同族戒律：一个笼统数字盖住两个不同事实）。`declared>0 && fired===0` 是**诚实位**（规则在册、当前世界态驱动不动它们），`SimReadinessPanel` 用告警色显式写出。`certification.ts` 仍**一相都不跑**（纯投影 RL3，门 `sim-readiness:check` 守住）。**WO-RC1-CLOSURE-SCOPE 前向闭合硬前置收口（2026-07-16）**：canonical 上 seedBattery/demo 世界的唯一前向 HARD 缺口 = 规则 `C24` 的 scope 引用 `Quote`（仅 evaluate 期注入的命名空间，非本体对象类型），令 `closure.forwardMissing>0` 把 cert 钉在 `L1_CONFIGURED`（L2 需 `!forwardMissing`）→ `canEnterSimulation` 恒 false（「暂不可进入推演」）。修：规则 scope 归真实类型 `BATTERY_RULE_SCOPES.C24 [Quote,DemandSegment]→[Order,DemandSegment]`（Order 与 Quote 命名空间同 `marginPct/floorPct`·镜像 C15；仅改 scope 元数据不动 expression，`quote_margin` 评估仍走 eval 期 Quote 注入）→ `forwardMissing 1→0`·`gatePassed=true` → GLOBAL cert `L1_CONFIGURED→L4_CERTIFIED`·`canEnterSimulation false→true`·`gaps[]` 空·「✓可进入推演」亮（真跑就绪认证端点逐值证）。canonical 无 July 线的融合型 `ErpOrder/MesOrder/SrmOrder`（`observabilityMet` 本已 true）与 `C45/C50` 定义，故仅需 C24 一处 scope 修（`observability` 非阻断）。零字节基线移动（scope 数组非对象类型/对象·`debattery`/`meta:sync` 绿）。
 - **ChainImpediment（链路阻滞点 · 派生对象，不进 R4 审批面 · 契约 `packages/contracts/src/chain-sim.ts` §6 冻结 · 判定器 `apps/datacore/src/solvers/chain-impediment.ts`）**：全链扫描产出的**卡点/堵点/断点**三类阻滞点（`BOTTLENECK` 能力不够·加产能有用 / `CONGESTION` 流不动·加产能没用 / `BREAK` 链接不上，三亚型 `MATERIAL|LEADTIME|DATA`）。**三类互斥**，同一 locus 同时命中时按「利用率是否达红线」裁决（达线=卡点），裁决只在 `arbitrateByLocus` 一处（不靠 if 顺序的巧合，教训 `wo-capacity-100pct` R7–R9）。求解器 `chain_impediments`（`POST /a/v1/solvers/chain_impediments/invoke`）。
@@ -329,7 +329,8 @@
   ③ **效果**是**量出来的**：逐候选真 patch 真重算（`patchCapacityContext` + 判据读数重算 + `Σ computeByProcessModel.p50`），`effectKind` 由重算结果判定而非 `switch (im.kind)`；拨完什么都没动、或全维不改善 ⇒ 丢弃。
   **id 单源**：`chain-sim.ts:1050 (solutionCandidateId)` 是候选 id 的**唯一构造处**，入参全部取自候选自身的公开字段 ⇒ 消费方能拿候选反算出同一个 id，单源因此**可被机器核**（同族前车之鉴 `chainOpNodeId()`：拼法散在三处，改一处漂一处而谁都不会红）。
   **「空集」与「算不了」是两个命题，schema 层锁死不许塌成一个**（`chain-sim.ts:1213 (NO_CANDIDATE_KINDS)`）：`candidates: []` 时必须同时给 `noCandidateReason`（给人读）**与** `noCandidateKind`（给代码判）—— `NONE` = 枚举跑完了、真没有有效解法（真结论，该修数据面）；`UNAVAILABLE` = 枚举压根没跑完（探针预算耗尽 / 规则快照缺失 / 判定器未回传 origin），是**缺答不是答**，绝不许被读成「这个阻滞点没救了」。两者修法相反，只给一段中文就等于让消费方读散文猜。
-  **实测（2026-08-10 · `seedBattery` seed=42 · 经 `POST /a/v1/solvers/chain_impediments/invoke` 真跑）**：15 个阻滞点（2 卡 / 6 堵 / 7 断）中 **4 个真长出候选**（4+4+2+2 条），11 个诚实 `NONE` 并写清缺哪一维（`MaterialBatch`/`MaterialBalance` 在 `CAPACITY_FACTOR_BINDINGS` 上无可拨动落点、一跳可达类型上没有真杠杆）；探针 119 次未截断。走通的 join 路实测有 `LOCUS_PROP`/`LINK_HOP`/`KEY_JOIN` 三条（`RULE_GATE` 今天恒够不着 —— 判据规则码与产能因子册无共同规则码，属**接了线没数据**，已记入 `gaps`）。
+  **实测（2026-08-10 · `seedBattery` seed=42 · 经 `POST /a/v1/solvers/chain_impediments/invoke` 真跑）**：15 个阻滞点（2 卡 / 6 堵 / 7 断）中 **4 个真长出候选**（4+4+2+2 条），11 个诚实 `NONE` 并写清缺哪一维（`MaterialBatch`/`MaterialBalance` 在 `CAPACITY_FACTOR_BINDINGS` 上无可拨动落点、一跳可达类型上没有真杠杆）；探针 119 次未截断。
+  > ⚠️ **2026-09-19 WO-LEVER-WALLS 实测订正：上一句括号里的病因是错的，照它派单会把工作量定成"补落点册"，而那对今天的 14 条一条都治不了。** 今日真数：18 个阻滞点 / 4 个有候选 / **14 个 `NONE`** / 0 个 `UNAVAILABLE`（探针 224 未截断）。14 条的定性：**不是当前瓶颈 11 条**（够着了、真试算过，但拨的不是 argmin —— `matFactor = min(各物料齐套系数)` 的非瓶颈支，属**正确**业务语义）、**杠杆不进产能公式 3 条**（⑩ `Line.utilization`：整类 ×2/×0.5，Σ`cellsPerDayP50` 逐字节不动）、**够不着 0 条**、**同组取值全同 0 条**（11+3=14）。「够不着」这一态今天**不存在**：`writable` 的 11 个落点分布在 {Equipment, Process, Line, Material, ChangeoverMatrix}，**全部在 `patchCapacityContext` 克隆面内**。守门的是 `impediment-options-seam.test.ts` S3-4c（定性缺失即红 + 「不进产能公式」须顶得住整类复算）。走通的 join 路实测有 `LOCUS_PROP`/`LINK_HOP`/`KEY_JOIN` 三条（`RULE_GATE` 今天恒够不着 —— 判据规则码与产能因子册无共同规则码，属**接了线没数据**，已记入 `gaps`）。
   SEAM `apps/datacore/test/impediment-options-seam.test.ts:103 (realValuesOf)`（数据半 × 引擎半 · 七条全走 HTTP 全链）：候选非空且逐条回真数据取证 —— `fromValue` 必须逐字节等于真对象上该属性的当前值；`toValue` 必须是同侪真实取值或规则阈值本身（**写 `×1.1` 这类"看着合理的一步"当场红**）；`join.path` 必须能在真 links 行 / 真属性值上复现。反向面：诚实空集 + 定性 + 缺口原文，且 200 不报错。变异反证 4/4 实跑，见 §8 `G-IMPEDIMENT-OPTION-NOJOIN`。
 - **SandboxViewConfig（沙盘视图配置 · 配置驱动 5 屏，R14）**：沙盘 5 屏（数据管道建模/逐实体/就绪认证/初始化向导/沙盘主屏）配置驱动渲染 · 复用既有 `view_configs` 形态 + 前端 `views/sim/` 组件（RadarChart/PropagationTimeline/PmDag/useLiveSolver，基本不重写）· additive 进 ModelingPage（增量 4 才落 UI，本增量只立对象）。
 - **方案环（Plays Loop · 派生投影，**零新对象类型 / 零新端点 / 零新事件** · WO-V4-PLAYS · `docs/PRD-sandbox-v4-backward-derivation.md` §3.3 · 前端 `apps/frontend-shell/src/views/sim/SandboxPlaysPanel.tsx`）**：把已有的五样东西接成一条闭环 —— **拨扰动 → `decision_play` 出 N 个方案 → 每个方案开一个平行世界 → 并排比对 → 采纳走 Action 审批**。五段各自的承载物**本来就都在**（`decision_play` 求解器 · `POST …/:id/checkpoint` + `…/branch` · `POST …/:id/perturbations` · `GET /a/v1/sim/compare` · `POST /a/v1/action-drafts`），本单**一个真值源都没新增**，是接线不是造能力。
@@ -1103,7 +1104,29 @@ ChainImpediment.locus{objectType,objectId}（真对象）
       · 就地嵌入 DecisionPlayEmbed（默认折叠的 <details>，第一层只留一个可见记号 ⇒ 宿主页 first 不涨）
         挂载点：views/sim/ChainImpedimentView.tsx 逐条阻滞点（带真 locus 锚）
                 views/plan/OrderChainView.tsx 订单面板（**不锚 locus**：订单站点与阻滞点落点今日无共同 id，见 G-IMPEDIMENT-LOSS-NOJOIN）
+      · **只取 TriggerVerdictStrip（不整块嵌 DecisionPlayEmbed）的挂载点**（WO-SANDBOX-IMPEDIMENT-RESIDUAL）：
+        views/sim/SandboxConsole.tsx 的 ImpedimentResidual（阻滞点逐条，testId `sc-imp-play-<impedimentId>-trigstrip`）
+        理由：沙盘同一行下面已有 CandidateBlock（候选方案对照），再嵌一份 DecisionPlayPanel 抽屉 = 同屏两套方案区 ⇒ 两套真相源
       · 「壳与嵌入是同一份实现」是**可核结构**：面板里 dp-impl-stamp 一行文案改一处，两处断言一起红
+
+  ── 收编残差补回（WO-SANDBOX-IMPEDIMENT-RESIDUAL·2026-09-18 真起 SEED_DEMO=1 实测）─────────
+  `chain-impediments` 经 ShellLayout.CONSOLIDATED_INTO_SANDBOX 收进沙盘（该登记 where 原文自带「残差见 AUDIT §2」），
+  收编**有损**：独立屏 18/18 有、收编后沙盘 **0/18** 的四样，现已补回 SandboxConsole.tsx 逐条行：
+    ① 卡点自己的 severity（`sc-imp-severity-<id>`）② scanId（`sc-imp-scan-id`）
+    ③ 阈值出处（`sc-imp-threshold-src-<id>`，派生层按 ruleKey 连 payload.thresholds[]；**引擎逐条载荷里无此字段**，实测 18 条全无）
+    ④ 触发判定明细（见上 TriggerVerdictStrip 挂载点）
+  两条路已实测**同源**：datacore `/a/v1/solvers/chain_impediments/invoke` 与 agentcore `/b/v1/solvers/chain_impediments/run`
+  同 scanId、18/18 severity 逐条相等（B 路是 server.ts:2468 经 OBO 代理到 A，非第二套实现）。
+
+  ⚠ **「严重度」是两个不同的量，屏上必须分得开**（本单消歧，别再合并）：
+    · `ChainImpediment.severity` —— **双因子** `round(100×sqrt(breachFactor×exposureFactor))`
+      （solvers/chain-impediment.ts，第二因子 = 下游受影响订单金额 ÷ 订单簿总额，两因子原样回带在 carriers 里可复算）
+    · `SolutionCandidate.dims[key="severity"]` —— **单因子** `round(breach/denom×100)`（solvers/impediment-options.ts severityOf）
+      单因子**不是退化，是必须**：候选是假设态，沿 carriers 重走下游订单那条遍历跑不出来 ⇒ exposureFactor 算不出
+    实测同一条卡点 `imp_BREAK.MATERIAL.material-gap_mbal-2`：双因子 **16**、单因子 **6**，且该候选 baseline 与 value **都是 6**
+    ⇒ 二者**不是「现在 vs 施策后」，是两种口径，不可直接比大小**。
+    屏上措辞：前者「卡点当前严重度 N/100」，后者由引擎 label 自带「严重度（单因子·只看超阈幅度）」（R14 单源，前端不另建映射表）。
+    ⚠ `severityOf` 的注释原文曾写「口径必须与 judgeOne 同一份」——该句随双因子上线即过期，已就地订正。
 数据半（同单补·synthetic/battery-extended.ts CHAIN_LOCUS_CAUSAL_FACTORS）：
   cf-batch-idle(MaterialBatch.idleDays·正是判据 C28 读的字段) · cf-base-capacity-contention(Base.util)
   metricKey=`chain_flow` 新域，**故意不挂 Metric/因果边** ⇒ 不进任何 gap_attribution 树 ⇒ 既有归因结论逐字节不变
@@ -1657,17 +1680,34 @@ GET /a/v1/process-definitions/{key}/inspect
   是最难查的一类假象。门在 `apps/frontend-shell/test/sandbox-process-live.seam.test.tsx` §B4
   （切档不许推进任何一拍 + 推一拍后本档看的 sessionId 不许变）。
 
-  **⛔ 结构不变量 R-PROC-DRIVE-TRICHOTOMY（本单新增）**：每条流程必须落且只落三档之一，
-  三档条数之和恒等于端点下发条数（`liveDriveCoversAll`）：
+  **⛔ 结构不变量 R-PROC-DRIVE-TRICHOTOMY（本单新增 · 2026-09-19 由三档扩为**四档**）**：
+  每条流程必须落且只落一档，**四档**条数之和恒等于端点下发条数（`liveDriveCoversAll`）：
 
   | 档 | 判据（全部现算自下发数据，前端零字面量名单） | 定性 · 修法 |
   |---|---|---|
-  | `TICK_DRIVEN` | `carrierTypeKey ∈ (⋃rules.sourceTypeKey ∪ ⋃rules.targetTypeKey)` **且** `nodeObjectIds[carrier].length > 0` | 推 tick 真会动 |
-  | `NO_CARRIER_OBJECTS` | 在规则两端集合里，但该类型 0 个物化对象 | **接了线没数据** · 补数据即动 |
-  | `NOT_TICK_DRIVEN` | 不在规则两端集合里 | **没接线** · 引擎结构上写不到它 |
+  | `TICK_DRIVEN` | `carrierTypeKey ∈ ⋃rules.**targetTypeKey**` **且** `nodeObjectIds[carrier].length > 0` | 推 tick 真会动 |
+  | `NO_CARRIER_OBJECTS` | 在规则 **target** 集合里，但该类型 0 个物化对象 | **接了线没数据** · 补数据即动 |
+  | `SOURCE_ONLY` | 在规则两端集合里，但**只在 source 端**（入度 0） | **只当源** · 推得动别人、自己不动；补一条写它的入边即动 |
+  | `NOT_TICK_DRIVEN` | 不在规则两端集合里 | **没接线** · 引擎结构上够不着它 |
 
-  第三档是**结构性**结论不是经验性观察：`apps/datacore/src/sim/propagation.ts:607 (propagateTick)` 唯一的写法是
-  写到规则 `targetTypeKey` 那一端的对象上，够不着的类型**怎么推都不会动**。
+  后两档都是**结构性**结论不是经验性观察：`sim/propagation.ts` 的 `propagateTick` 唯一的写法是
+  `next[targetObjectId][targetStateVar] = …`，`targetObjectId` **只能来自规则 `targetTypeKey` 那一端**
+  ⇒ 不在 target 集合里的类型**怎么推都不会动**。
+
+  **🔴 2026-09-19 判据订正（原判据是错的，别照旧文改回去）**：
+  第一/二档原写的是 `∈ (source ∪ target)`。
+  **形态（铁律 0.6 句式）**：「我用『它出现在某条规则的两端』当作『它会动』的证据，
+  而前者并不度量后者 —— 出现在**源**端只说明它能推动别人，不说明它自己会动。」
+  ⚠ 本段**上一行就写着正确的根据**（「只能来自 targetTypeKey 那一端」），而判据写的是两端 ——
+  注释与代码各说各的，两边都没红；门那份是照同一套判据各写一份，于是陪着一起错。
+  触发它的是 `WO-PROP-REVIEW-V2 ㉜`（`Process.queuePressure → Equipment.loadPressure` 掉头）：
+  `Equipment` 入度归 0，旧判据把它判成「随节拍变」。
+  ⚠ **`SOURCE_ONLY` 与 `NOT_TICK_DRIVEN` 不许合并** —— 都「不会动」但修法不同（补边 vs 先建模）。
+  ⚠ 判定序：`SOURCE_ONLY` **排在对象数检查之前**（只当源的补多少数据都不会动，
+  落 `NO_CARRIER_OBJECTS` 的「补数据即动」是假话）。
+  **今天的实况**：类型级只当源的有 **1 个**（`Equipment`，仓主裁决保留 ㉜ 且实测本体里没有
+  任何真实链路能写它）；但它**不是 65 条流程里任何一条的承载物** ⇒ 流程级该档现为 **0 条**
+  （由 §A3 构造输入逼分档函数为它开口，不靠真数据）。
   **屏上三档必须用三句不同的话**（`不随节拍` / `无承载对象` / 读数），合成一句即红
   （§C2·变异反证实测 RC=1）——「照不亮」与「本来就不该亮」是两个命题，
   合并就是本仓「一个数盖住两个事实」的老形态。
@@ -1867,6 +1907,10 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 > `forecastBias → demandPressure` 有意为之（预测偏差带方向，需求压力不带），**不是回归**。
 > 收编时 `WO-SIM-ROOT-PROCUREMENT` 接缝测试的金丝雀因此改指 `deliveryDelay`（仍是入度 0），
 > 并加了一条反向断言钉住「降级是有意的」。下文保留本单开发时的原始度量，读时以本框为准。
+> ⚠ **2026-09-18 再更新（WO-PROP-REVIEW-V2 ㉜ 反向，见下节落地④）**：根源 6 → **7** ——
+> `loadPressure` 升格根源（原来唯一写它的 ㉜ 被裁方向反、掉头成由它出发，入度 1→0、出度 2）。
+> 根源七个：`deliveryDelay` · `equipmentFailure` · `forecastBias` · `loadPressure` · `orderChurn` ·
+> `priceShock` · `procurementDelay`。传导边现为 **55**（v2 落地①②③合计 +5 条，详见下节）。
 
 **来历**：仓主给的扰动因素**分层判据** ——「要找的是**根源**扰动因素，不是**衍生**因素
 （比如库存就是衍生因素），而物料采购是根源扰动因素……比如销售预测的准确性，
@@ -1918,6 +1962,11 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
   ⇒ 落在 `Equipment.equipmentFailure`，两跳到 `loadPressure`：
   `equipmentFailure → Process.queuePressure → Equipment.loadPressure`（业务因果为真：
   某台设备故障 ⇒ 它那道工序排队 ⇒ 该工序其余设备负荷被顶上去）。
+  ⚠ **2026-09-18 第二跳被取代（评审 v2 ㉜，见下节落地④）**：`queuePressure → loadPressure`
+  这条边被裁「🔴 方向反」（是设备负荷导致排队，不是反过来）并已删除，`loadPressure` 升格根源。
+  `equipmentFailure` 的远端落点改经 `queuePressure → Line.blockedPressure`
+  （triad G-ROOT-4 远端臂已重瞄，实测到达拍 tick2 = +0.2050、单调阻尼增至 tick8 = +0.4563；
+  反向证据 = 扰 `equipmentFailure` 后 `loadPressure` 逐拍 Δ 全 0）。
 
 **🔴 三条新边都不构成正反馈回路**：三个新量纲**没有任何规则写它们**（这正是「根源」的定义）
 ⇒ 环不闭合，不自我放大。同一条判据在档 3 `demo_po_expedite_to_supplier_review` 处已立过。
@@ -1928,6 +1977,361 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 远端断言方向）。该等式成立的前提正是「它是根源」（源值逐拍恒定）⇒ 门本身也在守这条性质。
 含三个金丝雀：源码抽取器恒等式 · 入度计数器拿已知非零量纲自证 · 传导用已知走得通的老根源
 `deliveryDelay` 自证（它若也不动 ⇒ 报「引擎坏了」，不许报「新边接错了」）。
+
+### 传导规则业务评审 v2 · 落地段（WO-PROP-REVIEW-V2 · 2026-09-17/18 · 传导规则 50 → 55）
+
+> 评审核心判据（仓主）：**「推演推的是『变化』，不是『存量』」** —— 一条边该进图，
+> 当且仅当它传导的东西**经常变**；排序尺子 = **场景敞口（单次金额 × 年频次）**。
+> v1 的化成/分容 4 条边按此判据**撤回、从未落地**。评审三条结构性发现：
+> ① 全图几乎无负反馈（18/32 类型是死胡同，负系数 1/50）；② 15 个无域状态变量是纯积分器
+> （修法 = 声明消化速率 decay，不是加上界）；③ 系数 0/50 走 `coefficientRef`。
+> ③ 已由 `WO-PROP-COEF-CONFIG`（T1）闭合：**全部 55 条边**系数单源在 `C36.params`，
+> `ruleParamOf` 在模块装载期缺 key 即抛错（`seed.ts demoPropagationRulesWithDomain`）。
+
+**落地 ① · ㊶ `orderChurn → Model.demandLoad` 符号翻负（+0.5 → −0.5 · 评审优先级 1）**：
+「插单/取消带来排产返工 ⇒ 推高负载」把**事务扰动**与**净需求方向**混在一格。
+变更里取消/缩水占多、在手需求被高估 ⇒ 需求负载应随变更频度**下修**；
+事务扰动那半截由既有 `demo_order_churn_to_line_split`（+0.7 · 改行/改期压力）正向表达，两条不重复。
+这是**全图第 2 条负系数**（第 1 条是 G-ROOT-1 `forecastBias` −0.6）。
+`weightRef: { basis: "source_qty_relative" }` 与同格同链的 `demo_order_demand_pressure` 同口径（WO-COEF-FROM-BOM 的「同格同口径」纪律）。
+
+**落地 ② · 库存环：FGI 两条出边（评审优先级 2「库存 buffer 必须能吸收需求」）**：
+`FinishedGoodsInventory` 此前只当 target ⇒ 库存对需求零阻尼。
+`coverDays`（成品覆盖天数）由派生规格 `fgi_cover_days` 落到世界格，成为**库存侧第一个被读的量纲**。
+
+| 边 | 系数 | 语义 |
+|---|---|---|
+| `FGI.coverDays --fg_of_model--> Model.demandLoad` | **−0.5**（意图增益；落库 −0.00423206，见下方 rebase 段） | 现货覆盖越高 ⇒ 在手订单的即时需求压力越被库存吸收（缓冲） |
+| ~~`FGI.drawdownPressure --fg_of_model--> Model.demandLoad` +0.5~~ | **已删** | 见下方 **rebase 裁决 ②** |
+
+链路 `fg_of_model` 已物化 18 条（FGI 18/18 行全覆盖）⇒ **零新 linkType、零新物化**。
+边① 的源 `coverDays` 无出边（纯源）不成环。
+
+> ⚠ **2026-09-18 WO-PROP-V2-REBASE 订正**：上面原有的「回路安全性：环增益 0.6 × 0.5 = 0.3 < 1 ⇒ 阻尼收敛」
+> **是错的，已随边② 一并删除**。入边 `demo_model_demand_to_fg_drawdown` 是 **+0.6**，回边再取 **+0.5**
+> ⇒ 这是**正反馈环**，闭环 `1/(1−0.3) = 1.43` 倍**放大**，不是阻尼收敛。
+> **形态（铁律 0.6 句式）**：「我用『环增益 < 1』当作『这个环是收敛的』的证据，而前者并不度量后者 —— 增益不度量符号。」
+
+**落地 ③ · 物料环：先补本体两条链，再补三条边（评审优先级 4「物料是第二高频扰动源，今天零阻尼」）**：
+评审明写「5 条补一行规则即可，2 条要先补本体关系——而那两条恰好都在物料环上」。
+
+| 链路 key | 方向 | 实例数 | 说明 |
+|---|---|---|---|
+| `inspection_for_material` | IncomingInspection → Material | 30 | **影响向**·不补它 `IncomingInspection` 只有入边（`po_inspected_by` 的末端）永远当死胡同；与 `po_inspected_by` **共用同一个循环变量**物化（改归属不可能只改一半） |
+| `balance_drives_po` | MaterialBalance → PurchaseOrder | 30 | **影响向**·MRP 缺口到采购单的唯一一跳；按同料名解析（`material_has_balance` 同一循环内），包材无 PO 诚实不连 |
+
+| 边 | 系数 | delay | 语义 |
+|---|---|---|---|
+| `MaterialAlternative.switchPressure --alt_for_material(5条·已物化)--> Material.shortageRisk` | **−0.3**（第 4 条负系数） | 1 | 替代切换有审批/换线周期 ⇒ 缓解下一拍生效；**负环自阻尼**（有 Plan B ⇒ 短缺风险下降） |
+| `IncomingInspection.queueDays --inspection_for_material--> Material.shortageRisk` | +0.2 | 0 | 货到堵在检验 = 当下不可用 |
+| `MaterialBalance.gapPressure --balance_drives_po--> PurchaseOrder.expeditePressure` | +0.5 | 1 | MRP 跑出缺口 ⇒ 采购下一拍才催得到 |
+
+环增益自证：`shortage→expedite(0.5) × expedite→queue(0.6) × queue→shortage(0.2) = 0.06 ≪ 1` 阻尼。
+**世界格数不变式**（实测 `/tmp/t4-probe2.txt`）：三个源格（switchPressure/queueDays/gapPressure）
+早已作为既有边的 target 在世界里 ⇒ `totalCells 6381 / measuredCells 4189` **逐字节不变**；
+规则 52 → 55，金值 `seed-demo-propagation.test.ts` 同步（DIRS 物料环组**不额外造源**——
+三源量纲非入度 0 根，由供应商延迟源头沿既有链带到，探针实测 9 拍内各触发 12/60/72 次）。
+
+**⚠ −0.3 是暂定档**：替代料可用比例（§6 Q4）待仓主定档，系数只取「方向对 + 量级不压过
+主链（短缺入边 0.8/0.6/0.5）」，**不拿系数凑大屏数**。
+
+**落地 ④ · ㉜ 方向反向：`Equipment.loadPressure → Process.queuePressure`（评审优先级 5，2026-09-18）**：
+评审原文：「🔴 **方向反**。是设备负荷导致排队，不是反过来（㊷ 方向正相反，佐证这条画反了）。建议删或反向」。
+按「反向」落地（不删）：旧边 `Process.queuePressure --process_uses_equipment--> Equipment.loadPressure`（0.5）
+改为 `Equipment.loadPressure --equip_used_in--> Process.queuePressure`（系数 0.5 **原样保留**——评审只裁方向不裁量级；
+两条链类型 780 条实例、恰好互逆）。
+
+- **规则 id 原样保留**（`simpr_demo_process_queue_to_equipment`）：pg 部署按 id upsert，
+  换 id 会在 pg 库里留下幽灵旧行；key 改为 `demo_equipment_load_to_process_queue`，
+  `C36.params` 同步改名（`ruleParamOf` 装载期按 key 查，缺 key 即抛错，改名必然成对）。
+- **`loadPressure` 升格第 7 个根源**：入度 1→0（grep 全表原来只有 ㉜ 写它），
+  出度 2（反向 ㉜ + `demo_equipment_load_to_repair_backlog`）。回路安全性自证**平凡化**：
+  没有任何规则写它 ⇒ 不可能成环。
+- **世界格数不变式**（实测 `/tmp/t5-probe.txt`）：`totalCells 6381 / measuredCells 4189`
+  **逐字节不变**（同一对格子角色互换：queuePressure 少一条出边、loadPressure 少一条入边）；
+  默认世界 8 拍三条受影响边全触发（反向 ㉜ 6240 次 · 维修积压 1351 次 · 线受阻 5200 次）。
+- **逐条真触发世界必须自带源，且一台设备喂不饱两条边**（实测 `/tmp/t5-probe4.txt`）：
+  `head("equip_used_in")` 那台（slurry-coating-E1）**没有** `equipment_has_maintenance_order` 链
+  ⇒ 单格方案维修积压边 0 次、总触发 53；金值写**两格**（rootEquipId + maintEquipId），
+  两条边 18/8 次、总触发 54 = 54 整。DIRS 新组「设备负荷根源」，组数 prose 更正为十六组
+  （旧注「十四组」当时实已 15 组 —— prose 无机器守卫，机器守的是 physicalKeys 逐字节比对）。
+- **triad G-ROOT-4 远端臂重瞄**：旧落点 `Equipment.loadPressure` 随反向不复存在
+  （反向证据：扰 `equipmentFailure` 后其逐拍 Δ **全 0**），改瞄 `Line.blockedPressure`
+  —— 比原来更远一跳、更贴近订单侧（走 `demo_process_queue_to_line_blocked` 0.55/delay0），
+  实测到达拍 tick2 = +0.2050、单调阻尼增至 tick8 = +0.4563（`/tmp/t5-triad-probe.txt`）。
+- **⑭ 只标不动**：评审同条还标了「⑭ 方向**可能**反」（换型压力取决于型号数与切换频率，
+  单型号负荷高反而长批次、换型更少）—— 措辞是「可能」，**留仓主定夺，本段不改**（见 §6 答复表）。
+
+**落地 ⑤ · 形态② 收口：6 个纯积分器带域声明，4 个逐项裁决 defer（2026-09-18）**：
+评审原文：「给积压类变量声明**消化速率**（不是上界 —— 上界确实拍不出来，但**消化速率**有出处：产能）」
+「那个理由对上界成立，但对衰减不成立 —— 检验积压的消化速率 = 检验产能，这是有出处的。」
+
+- **契约**：`StateVarDomain.max` 两个 schema 改 **nullable**（`null` = 无界声明；
+  ⛔ 不许 `Infinity` —— zod 4 拒无限值、JSON 串行化落 `null`，两条路 2026-09-18 实测都死）。
+  引擎 `saturateToDomain` 加显式 `null` 支（⛔ 不许 `max ?? Infinity` 混进有界路径：bandHi=∞ ⇒ kneeHi=NaN，
+  「碰巧不夹」不是「声明了无界」）。
+- **6 个进表**：`queueDays`（λ=0.37 ← 检验周期 med 3 天 n=30）· `repairBacklog`（0.75 ← 维修工期 med 1 天 n=193）·
+  `qualificationQueue`（0.22 ← certHours med 134h=5.58 天 n=18）· `inspectBacklog`（0.37 **⚠ 暂定档**，
+  QualityLot 无工期/产能属性，借检验周期）· `handlingBacklog`（0.75 **⚠ 暂定档**，ExceptionEvent 无处置工期，
+  借维修工期）—— 五者 `min 0 / max null / rest 0`，λ 全部走 `C35.params` 新增 5 个 paramKey（R14 零内联）；
+  `blockedPressure` 归压力族 `[0,100]` 共享 `pressureDecayPerTick`（评审：「名字是 0–100 压力指数，
+  却无界累积到 945」⇒ 自报量纲即出处）。
+- **λ 推导同一把尺**：几何衰减、med 工期后残留 25% ⇒ `λ = 1 − 0.25^(1/med)`（与压力族既有约定同源；
+  工期全部实测 `/tmp/t6-duration-probe.txt`）。行为探针 `/tmp/t6-probe.txt` RC=0：
+  纯衰减对照 7/7（100×(1−λ) 逐位相等）、1e6 无暗夹、`blockedPressure` 200→91.78 夹入带内 + saturations 记账。
+- **4 个 defer（理由各异，不许再拿一句「写不出出处」混盖）**：`clearanceQueueDays`
+  （实测 **−8.9 天负值**可疑 ⇒ 交仓主 —— 夹下界 0 是把数据 bug 藏成正常）· `procurementDelay`/`deliveryDelay`
+  （**根源**入度 0，无入流不累积 ⇒ 非积分器）· `coverDays`（根源 + 真值支 + restPoint≠0 无出处）。
+  tick 回执 `undeclaredStateVars` 实测 16 → **10**，缺口继续留在屏上。
+- **种子超界真值**：`Line.blockedPressure` 实测 27.72–182.73（n=130，越界 49 条 `/tmp/t6-arm2-scan.txt`）——
+  引擎 tick1 软夹 129 条逐笔记 saturations；对象真值在臂2 EXCEPTIONS `[0,183]` 如实归档；
+  **种子生成式是否收口 0–100 交仓主**（动种子 = 动 hash，不在本单）。
+- **triad G-ROOT-4 远端金值重测**：信号形态从「积分器累积 +0.2050→+0.4563」变为
+  「tick2 峰 +0.0026 后逐拍衰减」（λ=0.37 + 软夹 ⇒ 均衡不累积；`/tmp/t6-triad-probe.txt`），
+  断言 `farMax > 0` 不变。
+- **前端**：披露面板「上界」`null` 渲染「无上界」（纯渲染分支，非 mock→real 切换，禁令 2 不触，T7 报备）。
+- **披露层衰减表达式逐变量解析（同日补）**：C35 声明态 expression 只命名默认 param（`pressureDecayPerTick`），
+  T6 后积压族 5 行「衰减出处 `C35.queueDaysDecayPerTick`」与「规则表达式 `…params.pressureDecayPerTick`」
+  同行自相矛盾 ⇒ `disclosure.ts` 按 `decayRef.paramKey` 给**解析后**表达式（压力族替换恒等）。
+  配套：披露夹具 2026-09-18 重采后已含 `rules.adversary`（后端恒下发），对抗方门 ABSENT 态样本
+  ~~改由 `sim-disclosure.pre-adversary.real.json` 承载（2026-09-03 原样回包从 git 历史单独存档）~~
+  ⚠ **2026-09-18 晚 WO-PROP-V2-REBASE 订正**：该存档触仓主**禁令 3**（新增基线 JSON 一律冻结），
+  1,876 行已删。ABSENT 样本改为**从 `sim-disclosure.adversary.real.json` 的 `off` 态现算**
+  （只删 `rules.adversary` 一个键）。这不只是省行数 —— 旧存档是**另一代世界**
+  （46 规则 / 12,499 对象），两态之差里混着「世界不同」这个混杂因子；现算版把变量收敛到唯一一个，
+  对照实验才真正成立。门里补了双向金丝雀：源回包里该键**必须本来就在**（否则「删掉它」什么都没做），
+  且除该键外两者**逐字节同源**。
+
+### WO-PROP-V2-REBASE · 与 canonical `WO-SIM-CALIBRATION` 并线（2026-09-18）
+
+本段把「系数单源」（本分支）与「每拍入流定标」（canonical）**两个成果合到一棵树上**。
+两者原本互斥：取分支丢定标（边被推回饱和区），取 canonical 丢单源（系数回到种子字面量）。
+
+**① `C36.params` 里存的从此是「每拍入流系数」，不是「稳态增益」。**
+判据不是口味，是**引擎真读的是哪个数**：`sim/propagation.ts` 的 `effectiveCoefficient`
+解析 `coefficientRef` 后**原样返回** `ruleParams[C36][边key]` ——
+若表里存稳态增益，运行期就会少乘一次 λ，**定标在真正的读路上丢掉**。
+故 `稳态增益 × λ` 的**乘积**进表。
+
+> **🔴 2026-09-19 WO-COEF-LAMBDA 订正（原文留档在下方，因为照旧文去做会做错两处）**
+>
+> 旧文：「λ = C35 `pressureDecayPerTick` = 0.37」＋「谓词与 `inflowCoefficient` 同一条：
+> **目标量纲已声明域且上界有限** ⇒ 预乘 λ **且**受增益预算；未声明域、或 `max: null`
+> ⇒ 纯积分器，无饱和拐点，**不预乘也不受预算**」。**两处都不成立**：
+>
+> **订正① λ 不是全表一个数。** C35 下挂 **6 个 paramKey**，实测三档：
+> `pressureDecayPerTick` **0.37**（压力族 32 格）· `queueDaysDecayPerTick` /
+> `inspectBacklogDecayPerTick` **0.37** · `repairBacklogDecayPerTick` /
+> `handlingBacklogDecayPerTick` **0.75** · `qualificationQueueDecayPerTick` **0.22**。
+> 拿 0.37 全表乘/除，对后三个量纲分别错 **2.03× / 2.03× / 0.59×**。
+>
+> **订正② 「预乘 λ」与「受 0.75 预算」不是同一个谓词**，引擎里是两处互不相干的判断：
+>
+> | 装置 | 引擎里的判据 | 与 `max` 的关系 |
+> |---|---|---|
+> | **预乘 λ** | `propagation.ts` `resolveDecayRate(d, ruleParams)` —— **只看 `d.decayRef`** | **无关** |
+> | **受 0.75 预算** | `propagation.ts` `saturateToDomain(...)`：`max === null` 那一支**没有上拐点** ⇒ `kneeHi = 0.75 × max` 不存在 | **只看 `max`** |
+>
+> 旧文把两者绑死，在**每个已声明域都有有限 `max`** 的年代碰巧成立；WO-PROP-REVIEW-V2 形态②
+> 引入 `max: null` 的积压族之后就不成立了。于是多出**第三档**，而旧文里没有它：
+> `queueDays` / `inspectBacklog` / `repairBacklog` / `handlingBacklog` / `qualificationQueue`
+> —— **会衰减 ⇒ 预乘 ✅；无上拐点 ⇒ 不受预算 ⛔**。
+>
+> **代价是实的**：这 5 个量纲于形态② 补登记进域表时，**5 条打向它们的边没人回头改系数**
+> ⇒ 它们以裸系数跑了下来，真稳态是 description 承诺的 `1/λ` 倍
+> （2.70× / 2.70× / 1.33× / 1.33× / 4.55×），而四包全绿。
+> **根因是没有机器把「补域」和「回改系数」绑在一起** —— 已补：
+> `seed-demo-propagation.test.ts` §6 判据ⓠ 逐格断言 `系数/λ == 在册意图增益`，
+> 且 §6 的两个谓词已拆开（`knee` 标志），旧的「同一个谓词」写法不再存在于代码里。
+
+**今天的谓词（三档，逐条对应引擎的两处判断）**：
+| 落点量纲 | 预乘 λ | 受 0.75 预算 | 本仓实例 |
+|---|---|---|---|
+| 已声明域 + `max` 有限 | ✅（用该格自己的 λ） | ✅ | 32 个压力/风险/负载族 |
+| 已声明域 + `max: null` | ✅（用该格自己的 λ） | ⛔ 无上拐点 | 5 个积压/天数族 |
+| **未声明域**（无 `decayRef`） | ⛔ 纯积分器，没有 `1/λ` 可约 | ⛔ | 只剩 `clearanceQueueDays` 1 条边；`combine:"max"` 真值透传边同理 |
+
+**② 同槽位符号冲突的裁决（⛔ 不取并集）**：
+`FGI.drawdownPressure --fg_of_model--> Model.demandLoad` 这**一个槽位**上，
+分支的 `demo_fg_drawdown_to_model_demand`（**+0.5**）与 canonical 的
+`demo_fg_drawdown_relieves_model_demand`（**−0.6**，WO-SIM-DAMPING）**五项全同、只有符号相反**。
+两条都留 = 净 −0.1，一个谁都解释不了的数，**而且不会报红** —— 正是「取并集比冲突危险」那条。
+**留 canonical 的负边、删分支的正边**；「库存吸收需求」由同组 `coverDays`（−0.5，另一个槽位）承担。
+
+**③ 逐条比对 canonical：同值 N=47 / 不同 M=0。**
+46 条共有边 + 阻尼边全部**逐字节等于 canonical**；canonical 独有 1 条
+（`demo_process_queue_to_equipment_load`，㉜ 方向反向时分支有意删）；分支独有 8 条，取值：
+
+| 分支独有边 | 取值 | 判据 |
+|---|---|---|
+| `alt_switch` / `inspection_queue` / `balance_gap` / `equipment_load` / `fg_cover_days` | 意图增益 **× λ**（−0.111 / 0.074 / 0.185 / 0.185 / −0.185） | 落点已声明域且上界有限 ⇒ 按 `inflowCoefficient` 同一谓词该预乘 |
+| `order_qty` / `order_price` / `order_leaddays` | **裸 1.0** | `combine:"max"` 真值透传，目标无声明域 ⇒ 不乘 λ、不受预算 |
+
+> **🔴 撤回过一次、2026-09-19 又撤回了那次撤回（留档，免得下一个人再走一遍）**：
+> 曾按 canonical 的闭式 `f_g = min(1, 0.75/S_g)` 把 4 个落点格**整格重分配**
+> （8 条 canonical 边改值），并给 5 条新 `sum` 边补 `weightRef: equal_share` 把 W 钉成 1；
+> 随后**据「`equal_share` 会让边整条不触发」把两件都撤了**。
+> **那条撤回理由是一次假红**（见下 ⑥ 订正）：病因是 `packages/contracts/dist/sim.js` 陈旧，
+> 与种子、与 `equal_share` 本身都无关。
+> ⇒ **`weightRef: equal_share` 已恢复**（5 条边）；~~**整格重分配仍未做**，理由见 ④ —— 不是忘了。~~
+> ✅ **2026-09-19 WO-COEF-LAMBDA 件B 已做**：`Model.demandLoad` 四条入边整格重跑
+> `f_g = min(1, 0.75/S_g)`，该格 `Σ|增益|×W` **1.855 → 0.749961（2.47× → 1.00×）**。见下方 ④ 的闭合记账。
+
+**④ 预算：扇入 N 已实测，四格**全部超预算**（2026-09-19 订正，此前写的「本单答不了」已补上）**：
+逐目标扇入实测（真种子 `seedBattery`，按 `toId` 分组取均值；🐤 金丝雀 `material_used_by_model`
+42 边 / 6 目标 = **7**，与 `fanin-N.json` 既有条目逐字吻合 ⇒ 量法与该表同口径），
+已登记进 `docs/evidence/wo-sim-calibration/fanin-N.json`：
+`alt_for_material` **1** · `inspection_for_material` **3.75** · `balance_drives_po` **1** ·
+`equip_used_in` **2** · `fg_of_model` **3**。
+
+补 `equal_share`（W: N→1）后，四格 `S_g = Σ|稳态增益|×W` 实测（上限 0.75）：
+
+| 落点格 | 补之前 | 补之后 | 判定 |
+|---|---|---|---|
+| `Material.shortageRisk` | 1.80 | **1.25** | 🔴 仍 1.67× ——【**真超标**】6 条边全 `equal_share`(W≡1) ⇒ `ΣA = Σ\|g\|` 是有意义的和。业务理由：6 个源是「供应晚了」的**六种测法**（替代料切换/供应商交付延迟/PO 到货延迟/来料检验排队/批次库龄/供应商处理天数），高度相关 ⇒ 相加是**重复计数**，该合并口径或按相关性降权，⛔ 不是 6 条一起乘 `f_g`。⚠ 其中 2 条源是**哈希占位**（`alt_switch`/`inspection_queue`）⇒ 这 1.67× 有一部分建在编出来的读数上 |
+| `Process.queuePressure` | 1.75 | **1.25** | 🔴 仍 1.67× ——【**真超标**】同上一型：3 条边 W 全 = 1（2 条 `equal_share`；`line_util` 那条 `weightRef: null` 但每个 `Process` 只 1 条 `Line` 入边 ⇒ N=1 ⇒ W 也是 1，⚠ 别照「null ⇒ W=N」读成 N>1）。业务理由：设备负荷/产线利用率/设备故障率三者同源共动，相加重复计数 |
+| `Model.demandLoad` | 4.05 | **3.05** | ◑ 预算 ✅ **0.749961（1.00×）**，但**带符号实际拉力 −1.8978**、真跑 6 拍 6/6 型号读 0.000 ⇒ **这一格没活**。病因两层见下方 WO-GAIN-REACH 段（`forecastBias` 结构性恒 0 · `orderChurn` 引擎眼里入度 0），**都不是系数问题** |
+| `PurchaseOrder.expeditePressure` | 1.00 | 1.00 | 🔴 1.33×（该格两条边 N 均 = 1，不受本改动影响）——【**判据不适用**】符号被 `\|·\|` 吃掉：`demo_material_shortage_to_po_expedite` 的源 `Material.shortageRisk` 实测均值 **−20.405**（缺料风险为负 = 超储），这条边今天在**缓解**这一格（实际拉力 **−9.92**），而 A 列记成 +0.5 的负担 ⇒ 凑出 1.33×。全格带符号实际拉力 **−7.36**：净受缓解，不是超载。作为「会不会被推过拐点」的判据不成立；作为回路增益上界仍成立 |
+| `Customer.receivablePressure` | — | 0.8613 | 🔴 1.15× ——【**真超标·口径错**】⚠ **单边**（派单原文「都不是单边超标」对本格不成立）。`W = 10.1327` 是**金额加权的扇入数**（150 单 / 17 客户 ≈ 8.8，按金额加权到 10.13）；意图增益 0.085 显然按某个假设扇入数反算（0.085 × 8.82 ≈ 0.75 恰好配满）⇒ 真实扇入 10.13 时超 15%。成因 = 「标定时假设的 W ≠ 实测 W」，合格修法 = 按实测 W 重算**这一条**的意图增益 |
+| `Order.orderChurn` | — | 0.8398 | 🔴 1.12× ——【**判据不适用**】⚠ 同样是**单边**。且这一格今天**在引擎眼里根本没有入边**（唯一入边被 `sim.propagation.adversary` 闸掉，demo 租户该门**关**）⇒ 没有入边就没有稳态增益，0.75 量的是一条**不参与推演**的边。开关打开后 1.12× 才成立（W=2.3995 × 意图 0.35） |
+
+⇒ 补 `equal_share` 是**严格改善但不充分**；~~整格重分配仍需做，**但今天做不了**，两条硬阻塞~~
+**✅ 2026-09-19 WO-COEF-LAMBDA 件B 已做完 `Model.demandLoad` 这一格**，两条阻塞都已解除：
+① 那条「继承的阻尼边」`demo_fg_drawdown_relieves_model_demand` 已于 2026-09-19 由仓主裁决补预乘 λ
+   （−0.6 → −0.222），「原样带过来不许动」的禁令随该裁决失效 ⇒ 可以进重分配了。
+② 手算路径已由**机器**接管，不再依赖跑不起来的 `calibration-analysis.mjs`：
+   `seed-demo-propagation.test.ts` §6 从 `buildPropagationInputs` **现算**每格 `Σ|增益|×Σw`
+   与**带符号净增益**，两个数都钉在断言里。上一版那个符号翻转（v1 存 −0.00423206 而
+   canonical +0.00429755）今天会被 §6 判据①b 当场咬住。
+
+**件B 的实测四数（改前 → 改后）**：
+| 量 | 改前 | 改后 |
+|---|---|---|
+| `Σ\|增益\|×W`（预算，上限 0.75） | 1.855（2.47×） | **0.749961（1.00×）** |
+| **带符号净增益** | **−0.92575** | **+0.194589** |
+| `Model.demandLoad` 基准世界读数 | tick3 起**恒 0**（域下界） | 见 §件B 轨迹 |
+| `sim-root-triad` G-ROOT-1 | 🔴 逐拍 Δ 全 0.0000 | ✅ 与 G-ROOT-2 **同时**绿 |
+
+#### 🔴 WO-GAIN-REACH（2026-09-19）—— 这把尺子**没有算进各源的实际量程**，且上表「改后」那一格仍未活
+
+**`Σ|增益|×W ≤ 0.75` 度量的是什么**：`seed.ts` 增益预算段自己写着前提 ——
+「落在它以下，**全部源顶到量纲上界**时目标仍不进饱和段」⇒ 它假设 **E[源] = max = 100**。
+真实 tick0 源读数实测跨度 **0.000 – 220.580**，且 4 条边的源**均值为负**。
+⇒ **它约束的是回路增益（满量程最坏情形），不度量「今天这一格被谁主导」。**
+
+**实测（真起数据 · 55 条边 · 逐边两列 · 引擎 trace 逐字节锚定 30 条）**：
+| 判据 | 结果 |
+|---|---|
+| 全表按 A 列 vs 按 B 列排序，名次不同 | **49 / 51** 条 |
+| 多入边格子里「A 列头名 ≠ B 列头名」 | **6 / 8** 格 |
+⇒ 命题成立：**A 列不能当「不会被某条边主导」的证据**。两列**各管各的，缺一列瞎一半**
+（只看 A 会把「今天没人推」的格子报成欠账；只看 B 会在源读数恰好很小的那天放过真会失稳的边）。
+守门：`seed-demo-propagation.test.ts` §6 判据④⑤⑥⑦（④ 拿**引擎自己的单拍 trace** 锚住算法；
+⑤ 钉「源走哈希占位」的边名单；⑥ 钉主导权分歧格集合；⑦ 钉 `demandLoad` 带符号实际拉力）。
+变异反证：去掉逐对权重 ⇒ ④ 红；去掉播种期初算 ⇒ ⑤ 红（51 条边的源全部退回哈希）。
+
+**⚠ 上表「改后 `Model.demandLoad` 净增益 +0.194589」仍不等于这一格活了** ——
+带符号**实际拉力** = **−1.8978**（同一格，两把尺子给出相反答案），真起数据推 6 拍后
+6/6 个型号读 **0.000**。病因**不是**「两源量程差 8.56 倍」（实测 26.287 vs 53.580 = **2.038 倍**，
+拉力 12.3511 vs 12.5527，折扣项只赢 **1.63%**），逐跳实测是两层，**都不是系数问题**：
+- **① `Model.forecastBias` 结构性恒 0**：`model_forecast_bias` 式子是
+  `(totalDemand − Σin(order_for_model).qty)/totalDemand`，而合成器里 `totalDemand` **就是**那个 Σ
+  （6/6 个型号逐字节相等，如 `4680-NCM` 490412 = 490412）⇒ 恒 0 ⇒ `Order.demandPressure`
+  唯一入边贡献恒 0 ⇒ 它按 λ=0.37 衰减到 ~0（12 拍后 0.1028）⇒ **正驱动消失**。
+  （`seed-derivation-specs.ts` 该规格注释写「实测 49–77」，**已过期**。）
+- **② `Order.orderChurn` 在引擎眼里入度 0**：唯一入边 `demo_customer_reaction_cut_order` 带 `reaction`，
+  被 `sim.propagation.adversary` 闸掉（demo 租户在 `features.ts` `WORLD_DARK_LAUNCH_FEATURES` 里 ⇒ **关**）
+  ⇒ 按「入度 0 = 外生输入，引擎无权让它自己变小」**不衰减** ⇒ 折扣项恒为出厂值。
+  对照实验（**唯一变量 = 该开关，系数一个没动**）：关臂 12 拍 53.58→50.99（−4.8%），
+  开臂 53.58→**14.67**（−72.6%）；引擎回执 `decayApplied.orderChurn` 关臂**查无此项**、开臂 **0.37**；
+  只在开臂触发的边恰为 `["demo_customer_reaction_cut_order"]`（反向金丝雀：动的全在该开关下游）。
+  复跑：`node docs/evidence/wo-gain-reach/churn-exogenous.mjs`
+⇒ **两条入边不在同一个衰减制度里**，这是量程/增益都度量不到的第三个维度。
+⚠ 开关打开后 `demandLoad` 仍在第 7 拍落 0（只晚 1 拍）⇒ ② 是加速项不是全部，① 才是断的那一根。
+
+⚠ **改的是什么、不是什么**：四条边的**意图增益**只动了一条
+（`demo_order_churn_to_model_demand_load` 的**量级** 0.5 → 0.25，符号不动），
+其余三条意图增益一位没改，只是把 `f_g` 在全格重跑了一遍（此前四条边各带各的 f_g：
+0.0372 / 0.0232 / **1** / **1** —— 后两条是新边进场后没人重跑留下的）。
+**对照实验证明这不是「调参到达标」**：只重跑 f_g、量级全不动 ⇒ 净增益 **−0.0316**，
+仍为负、仍落地板 ⇒ 该格的病不在分摊，在那条边的量级本身。
+量级为什么该改，见 `battery.ts` 该行的业务理由（一句话：`orderChurn` 是对在手订单簿的**折扣**，
+把折扣写成与订单簿等量反向 = 宣称折扣率 100%，而订单簿 500 张单 / 454.64 亿是已签成交）。
+
+**④ ✅ 继承下来的那处自相矛盾 —— 2026-09-19 仓主裁决：补预乘 λ，已改**：
+canonical 的阻尼边 `demo_fg_drawdown_relieves_model_demand` 系数原为 **−0.6 未预乘 λ**，
+**现为 `C36` = −0.222 = −0.6 × 0.37**（意图增益仍是 −0.6）。
+裁决判据：`inflowCoefficient` 存在的全部理由就是「打进已声明域落点的边要预乘 λ」；
+**旁证比谓词更硬** —— canonical 那格 `S_g = 32.28` 恰等于 `0.8×24.83 + 0.5×24.83`，
+**预算算式里压根没算这条边** ⇒ 未预乘是**疏漏不是选择**。
+实测（同扰动、只改这一个参数）：该边传导量合计 **−31.627602874808 → −11.702213063679**，
+比值 **0.3700000000000013** = λ；同轮其余 **0/6** 条边变动（非下游边一条没动，金丝雀非空）。
+`Model.demandLoad` 那格 `Σ|增益|×W`：**6.1148 → 3.0500**（该边单条 4.8649 → 1.8000）。
+⚠ **该格仍超预算 4.07×**，如实记账 —— ⛔ 未为达标去动别的边，整格重分配是另一张单。
+
+原记（保留当判据）：
+而它的目标 `Model.demandLoad` **已声明域** ⇒ 按 canonical 自己的谓词它**应当**预乘且受预算。
+旁证：canonical 那格的 `S_g = 32.28` 恰等于 `0.8×24.83 + 0.5×24.83`，**不含这条边**
+⇒ 它从未被计入预算。本单**原样带过来（值一位没动）**，不夹带一笔没人要求的重标定。
+连带影响：该边的 description 原写「× -0.6」会被读成稳态增益（**而未预乘 λ 时真稳态增益是 −1.62**，是它自己承诺的 2.70 倍），
+已改成每拍口径的真话；它的 `weightRef` 仍为 `null`。
+⚠ **2026-09-19 补测**：`fg_of_model` 扇入 **N = 3**（18 边 / 6 目标，与 seed.ts 行内注「实测 18 条」吻合）
+⇒ 该边单条占用 **|−0.6| × 3 = 1.80 = 预算 0.75 的 2.40 倍**，是 `Model.demandLoad` 那格
+（`S_g = 3.05`）的**主导项** —— 换言之**这格收不进预算，主因就是这条未被裁决的边**，
+不是本分支新加的那 4 条。裁决它之前，该格的重分配做不了（见上 ④ 阻塞 ①）。
+⚠ 它也让 `calibration-analysis.mjs` **在 canonical 上直接 RC=1**：canonical 加了这条边却没同步
+`fanin-N.json`，脚本自己的金丝雀当场报「扇入表缺 `demo_fg_drawdown_relieves_model_demand`」。
+本单已把实测值补进该表（**补表不等于裁决系数**，值一位没动）。
+
+**⑤ 对照实验（铁律 1.5 判据一 · 真引擎 `propagateTick`，非静态推算 · 2026-09-19 并完 canonical 后复跑）**：
+改 `C36.params.demo_customer_receivable_to_location_hold` ×0.1 ⇒ 该边传导量
+**5.850413455836 → 0.585041345577**（比值 **0.0999999999988719**），同轮 **17/18 条一条没动**；
+🐤 反向：摘掉该边 `coefficientRef` 后再把同一个参数 ×0.01 ⇒ **0 条边变动**，
+该边读数**逐字节不变**（5.850413455836 → 5.850413455836）⇒ 证明真读的是 ref 那条路。
+
+⚠ **被测边必须挑叶子边（目标是纯 sink），否则「同轮其余边不动」这条判据本身不成立**：
+实测拿 `demo_inspection_queue_to_material_shortage` 做，**12 条边一起动**（×0.0977–0.0998）——
+那不是单源坏了，是 `Material.shortageRisk` 处在一条**真实反馈环**上
+（`inspection_queue → shortageRisk → po_expedite → inspection_queue`）。
+形态：「我用『其余边动了』当作『单源被破坏了』的证据，而前者并不度量后者 —— 级联本来就该动。」
+⚠ 另一条前置：**空会话实测 0 条边有传导量** —— 传导是 delta 驱动的，光有绝对水位不产生入流；
+且 `seedBattery` **不播**传导规则（实测 0 条），要另调 `seedDemoPropagationRules`。
+
+**⑥ ❌ 作废（2026-09-19 实测推翻）：「`equal_share` 的边一条都不触发」是一次假红**
+
+> **原结论（错的，留档当判据）**：「canonical 那 11 条 `equal_share` 边全部缺席 + 9 条纯下游被饿死
+> = 20 条，一条不多一条不少；canonical 上就是红的；故撤回给新边补 `equal_share`。」
+> 那份「完全可解释」的缺席名单**确实自洽** —— 这正是它骗过一轮的原因。
+
+**真病因**：`packages/contracts/dist/sim.js` **陈旧**。合并后 `src/sim.ts` 有 `equal_share`
+而 `dist/sim.js` 没有（dist mtime 早于合并），⇒ `pairWeightNormalizeOf("equal_share")` 返 `null`
+⇒ **整条边落进 `unresolvedWeights` 不传导**。缺的不是种子、不是引擎，是**没 build 契约包**。
+
+**订正后的实测**（先 `pnpm --filter @platform/contracts build`，RC=0，`dist/sim.js` 现含 `equal_share`）：
+
+| 树 | `seed-demo-propagation` | RC |
+|---|---|---|
+| canonical `a0960fd2` | **20/20 绿** | 0 |
+| 本分支（并完 canonical，5 条边已补 `equal_share`） | **20/20 绿** | 0 |
+
+**正面证据不止"绿"**：该文件里「逐条真触发」那道门**要求每条物理边都进 trace**，
+它绿 ⇒ 在册 **15** 条 `equal_share` 边**全部真触发**。另有单源对照实验现场读数为旁证：
+`demo_inspection_queue_to_material_shortage` = **0.628021151794**、
+`demo_alt_switch_to_material_shortage` = **−0.065696744631**、
+`demo_balance_gap_to_po_expedite` = **0.51097468046**（皆为本单新补 `equal_share` 的边）。
+
+**形态（照铁律 0.6 句式）**：
+> **「我用『两棵树上同一个测试都红、且缺席名单能完整解释』当作『这是代码里的真缺陷』的证据，
+> 而前者并不度量后者 —— 两棵树共用同一份陈旧的 `dist`，假红当然也一模一样地可解释。」**
+
+⇒ **判据补一条**：跨树对拍时，**两棵树的 `dist` 必须各自重 build 之后才算数**；
+否则"两棵树表现一致"只证明它们共享同一个构建产物，不证明代码。
+（这与 CLAUDE.md 派单模板那三条环境前置同源：**假红的第一反应是核前置，不是核代码。**）
+
+**评审 v2 登记而未落（诚实挂账，均不阻塞本段交付）**：
+⑦ Kingman 排队形状（引擎今天只有 delayTicks 整数延迟，无形状参数 = **引擎缺口**，单独立项）·
+⑭ 方向裁决待仓主 · ⑫ 保留/删除待仓主 · λ 暂定档 ×2（inspectBacklog/handlingBacklog）待仓主定档 ·
+clearanceQueueDays 负值数据待仓主 · 种子 blockedPressure 0–100 收口待仓主 · §6 Q4 替代料可用比例（−0.3 暂定档）。
 
 ### 对抗链路 · 我方应对 → 对手方**还手** → 回流进世界态（WO-ADVERSARY-REACTION · 2026-09-07 · 默认关闭）
 
@@ -3384,8 +3788,8 @@ fetchOntologyInvariants()                 evaluateOntologyInvariants(overrides)
   变异反证已亲手做过两条：① `identifyingProps` 砍掉 name/alias（退回只按 id 查）→ 两半共 13 条红，且红出生产原症
   `AWAITING_CLARIFICATION rounds=1`；② 抹掉 `matchedBy`/`attempts` → 两半共 8 条红。
 - **槽位通路接缝门 SEAM（WO-SLOT-HARVEST·test-backed·堵 §8 `G-SLOT-HARVEST-BLIND` + `G-SLOT-LLM-SINGLE-POINT`）**：两半各一条、任一半漏即红。
-- **推演沙盘第五档节拍接缝门 SEAM（WO-PROCESS-CANVAS-LIVE·test-backed·守 §3 消费端②b 的 R-PROC-OBSERVER / R-PROC-DRIVE-TRICHOTOMY·登记 §8 `G-PROCESS-TICK-COVERAGE`）**：`apps/frontend-shell/test/sandbox-process-live.seam.test.tsx`（22 例·**一律从 `/v/sim-sandbox` 真路由出发**，不直接渲染组件 —— 直接渲染只证明「拿到组件能画」，证不了「控制条上推的那一拍真的打到了这张图」，而本单唯一有价值的就是这条接缝）。**§A 金丝雀先说话**：分档函数必须三档都说得出话（一个恒返回 `NOT_TICK_DRIVEN` 的实现同样能让 §C 全绿）+ 本次世界真造出了三档 + tick 回包两拍真不同。**§B 接缝**：点 `sandbox-tick-btn` 真按钮 → 能动的那几条**屏上文本真的变了** + 脉冲环 `toBeVisible()` + **屏上读数 == 引擎回包那批对象的读数**（不是本地自增的假象）+ 观察者纪律（切档不推拍、推拍后 sessionId 不变）。**§C 反面判据**：不随节拍变那批有可见文字（不是留白不是灰掉）+ **两档措辞交集为空**（屏上文本与 `aria-label` 两条通路都不许合并）+ 无承载对象那批推多少拍都不动 + 诚实位「判据测不出本质上该不该随节拍变」必须在浮层里。**§G additive**：比对 `test/fixtures/process-canvas-model-baseline.json`（**基线实现**的真输出，非手打期望值）+ G4 反恒真护栏。**§H 守恒**：既有四条诚实位 + 图例降层不是删除 + 零原生 tooltip。**五轮变异反证实测全红（RC=1）**：① 两档措辞合成一句 ⇒ C1/C2 红；② 分档恒返回「不随节拍变」⇒ **§A1 金丝雀 11ms 首个报红**（机器先说话）+ 另 6 例；③ `live: undefined` 占槽 ⇒ 仅 G3 红（`JSON.stringify` 会丢 undefined，G1 照绿 —— 两条断言度量的不是同一件事，这正是分开写的理由）；③b `live: null` ⇒ G1+G3 红；④ 观察者不订阅缓存 ⇒ B2/B3/B4/C3 红；⑤ `comparable` 放宽成「有上一张快照」⇒ G5 红。每轮均先 `git diff --numstat` 自证变异体 ≠ 原文（本仓踩过 `sed` 是 BRE / python `replace` 静默 no-op 两次），还原后 `git status --porcelain` 空。跑法：`pnpm --filter frontend-shell exec vitest run test/sandbox-process-live.seam.test.tsx`。
-- **流程节拍覆盖面接缝门 SEAM（WO-PROCESS-TICK-COVERAGE·test-backed·守 §8 `G-PROCESS-TICK-COVERAGE`）**：`apps/datacore/test/process-tick-coverage.seam.test.ts`（7 例）。与上一条**分工不同、不重叠**：上一条守「前端这张图有没有真被那一拍打到」（渲染侧接缝），本条守「**后端种子够不够得着这些流程**」（数据侧覆盖面）—— 两条都绿才叫这一档能用。**头号判据是效果层，不是规则条数**：条数度量种子数量，不度量链路通不通（#158 正是栽在这一句上）。**§A 金丝雀先说话**：种子抽取器的金丝雀是**恒等式**（抽出条数 === 原文 `^\s*sourceTypeKey:` / `{ key: "P##"` 行数），不等即报「工具坏了」不许报覆盖率 —— 上一单的抽取器正是「只验抽到了一条」而漏抽 8/13 却照样绿；§A2 拿「`viaLinkKey` 行尾加注释」这一真实原坑做变异反证；§A3 逼分档函数**三档都开口**（`NO_CARRIER_OBJECTS` 真世界现为 0 条，不逼它开口则只会返回两档的实现同样全绿）。**§B 三档现算**（全部取自真路由 `GET /a/v1/process-definitions` + `/sim/propagation-rules` + `/sim/view-config`，零字面量名单）：29 / 0 / 36 合计 65，并逐条列出被点亮的 29 个 key；**§B2 是红线的机器化** —— D01+D02 共 11 条必须整域 `NOT_TICK_DRIVEN`。**§C 接缝**：只在三个**纯源量纲**（`deliveryDelay`/`demandPressure`/`priceShock`，无任何规则写它们）上给初值，其余全靠传导自己走到；读数口径照抄前端第五档（该类型全部对象全部状态变量的平均值）但数据取自**引擎 tick 回包的真 state** ⇒ C1 每个点亮承载物 0→非 0 · C3 36 条黑档推 12 拍后**精确仍为 0** · 两组交集为空（防「全塞进 driven」作弊）· C4 **守住「标着会动其实不动」不再复发**（`sourceOnly === []` 恒空 + `Supplier` 读数前后不等 ——档 3 补 `demo_po_expedite_to_supplier_review` 之前这里是一处诚实缺席，现已闭）。**§D 变异反证（内建）**：删掉 `line_runs_work_order` 的**全部链路实例**而**规则一条不动**（仍 35 条）⇒ D07 下游整串（工单/在制/质检批/缺陷/异常）必须塌成 0，而不在这条链上的照常亮。**另两轮外部变异反证实测全红（RC=1）**：① 把 `demo_model_demand_to_fg_drawdown` 系数改 0 ⇒ §C1 红，报文精确指到 `FinishedGoodsInventory`；② 把 `demo_order_demand_pressure` 改成打到 D01 的 `PlanTarget` ⇒ §B2 红，报文精确指到 `P01`。两轮均先 `git diff --numstat` 自证变异真发生，还原后 `git status --porcelain` 空。跑法：`pnpm --filter datacore exec vitest run test/process-tick-coverage.seam.test.ts`。
+- **推演沙盘第五档节拍接缝门 SEAM（WO-PROCESS-CANVAS-LIVE·test-backed·守 §3 消费端②b 的 R-PROC-OBSERVER / R-PROC-DRIVE-TRICHOTOMY·登记 §8 `G-PROCESS-TICK-COVERAGE`）**：`apps/frontend-shell/test/sandbox-process-live.seam.test.tsx`（22 例·**一律从 `/v/sim-sandbox` 真路由出发**，不直接渲染组件 —— 直接渲染只证明「拿到组件能画」，证不了「控制条上推的那一拍真的打到了这张图」，而本单唯一有价值的就是这条接缝）。**§A 金丝雀先说话**：分档函数必须**四档**都说得出话（一个恒返回 `NOT_TICK_DRIVEN` 的实现同样能让 §C 全绿）+ 本次世界真造出了四档（fixture 的规则是 D0→D1、D1→NODATA ⇒ **D0 天然就只当源**，一条 def 都不用加） + tick 回包两拍真不同。**§B 接缝**：点 `sandbox-tick-btn` 真按钮 → 能动的那几条**屏上文本真的变了** + 脉冲环 `toBeVisible()` + **屏上读数 == 引擎回包那批对象的读数**（不是本地自增的假象）+ 观察者纪律（切档不推拍、推拍后 sessionId 不变）。**§C 反面判据**：不随节拍变那批有可见文字（不是留白不是灰掉）+ **两档措辞交集为空**（屏上文本与 `aria-label` 两条通路都不许合并）+ 无承载对象那批推多少拍都不动 + 诚实位「判据测不出本质上该不该随节拍变」必须在浮层里。**§G additive**：比对 `test/fixtures/process-canvas-model-baseline.json`（**基线实现**的真输出，非手打期望值）+ G4 反恒真护栏。**§H 守恒**：既有四条诚实位 + 图例降层不是删除 + 零原生 tooltip。**五轮变异反证实测全红（RC=1）**：① 两档措辞合成一句 ⇒ C1/C2 红；② 分档恒返回「不随节拍变」⇒ **§A1 金丝雀 11ms 首个报红**（机器先说话）+ 另 6 例；③ `live: undefined` 占槽 ⇒ 仅 G3 红（`JSON.stringify` 会丢 undefined，G1 照绿 —— 两条断言度量的不是同一件事，这正是分开写的理由）；③b `live: null` ⇒ G1+G3 红；④ 观察者不订阅缓存 ⇒ B2/B3/B4/C3 红；⑤ `comparable` 放宽成「有上一张快照」⇒ G5 红。每轮均先 `git diff --numstat` 自证变异体 ≠ 原文（本仓踩过 `sed` 是 BRE / python `replace` 静默 no-op 两次），还原后 `git status --porcelain` 空。跑法：`pnpm --filter frontend-shell exec vitest run test/sandbox-process-live.seam.test.tsx`。
+- **流程节拍覆盖面接缝门 SEAM（WO-PROCESS-TICK-COVERAGE·test-backed·守 §8 `G-PROCESS-TICK-COVERAGE`）**：`apps/datacore/test/process-tick-coverage.seam.test.ts`（7 例）。与上一条**分工不同、不重叠**：上一条守「前端这张图有没有真被那一拍打到」（渲染侧接缝），本条守「**后端种子够不够得着这些流程**」（数据侧覆盖面）—— 两条都绿才叫这一档能用。**头号判据是效果层，不是规则条数**：条数度量种子数量，不度量链路通不通（#158 正是栽在这一句上）。**§A 金丝雀先说话**：种子抽取器的金丝雀是**恒等式**（抽出条数 === 原文 `^\s*sourceTypeKey:` / `{ key: "P##"` 行数），不等即报「工具坏了」不许报覆盖率 —— 上一单的抽取器正是「只验抽到了一条」而漏抽 8/13 却照样绿；§A2 拿「`viaLinkKey` 行尾加注释」这一真实原坑做变异反证；§A3 逼分档函数**四档都开口**（`NO_CARRIER_OBJECTS` 与 `SOURCE_ONLY` 真世界均现为 0 条流程，不逼它们开口则只会返回两档的实现同样全绿）。**§B 三档现算**（全部取自真路由 `GET /a/v1/process-definitions` + `/sim/propagation-rules` + `/sim/view-config`，零字面量名单）：29 / 0 / 36 合计 65，并逐条列出被点亮的 29 个 key；**§B2 是红线的机器化** —— D01+D02 共 11 条必须整域 `NOT_TICK_DRIVEN`。**§C 接缝**：只在三个**纯源量纲**（`deliveryDelay`/`demandPressure`/`priceShock`，无任何规则写它们）上给初值，其余全靠传导自己走到；读数口径照抄前端第五档（该类型全部对象全部状态变量的平均值）但数据取自**引擎 tick 回包的真 state** ⇒ C1 每个点亮承载物 0→非 0 · C3 36 条黑档推 12 拍后**精确仍为 0** · 两组交集为空（防「全塞进 driven」作弊）· C4 **守住「标着会动其实不动」不再复发**（⚠ **2026-09-19 起** `sourceOnly` 由「恒空」改为**逐条钉死** `["Equipment"]` —— ㉜ 方向反向后它入度归 0 且实测无真实链路可写，属已知且被接受的结构事实，**再多一个只出不进的类型照样红** + `Supplier` 读数前后不等 ——档 3 补 `demo_po_expedite_to_supplier_review` 之前这里是一处诚实缺席，现已闭）。**§D 变异反证（内建）**：删掉 `line_runs_work_order` 的**全部链路实例**而**规则一条不动**（仍 35 条）⇒ D07 下游整串（工单/在制/质检批/缺陷/异常）必须塌成 0，而不在这条链上的照常亮。**另两轮外部变异反证实测全红（RC=1）**：① 把 `demo_model_demand_to_fg_drawdown` 系数改 0 ⇒ §C1 红，报文精确指到 `FinishedGoodsInventory`；② 把 `demo_order_demand_pressure` 改成打到 D01 的 `PlanTarget` ⇒ §B2 红，报文精确指到 `P01`。两轮均先 `git diff --numstat` 自证变异真发生，还原后 `git status --porcelain` 空。跑法：`pnpm --filter datacore exec vitest run test/process-tick-coverage.seam.test.ts`。
   解析半 `packages/llm-adapters/src/openai.test.ts`（§3.1）：2026-08-05 真 Kimi k2.5 抓的 **5 条原样响应体**
   逐字节做 fixture（含 ```json 围栏 + 额外 `reason` 字段 + candidate 内嵌槽位三种真实变形），经真适配器
   `classify` 断言 **5/5** 拿到 `base="常州" && day="D+5"`；另含收割器合并顺序（顶层>candidate·candidate 按

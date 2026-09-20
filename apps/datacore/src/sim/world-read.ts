@@ -28,8 +28,15 @@
  *  ① **同名直取（DIRECT）**：`state[objId][v]` 里 `v` 恰好是该对象一个属性 ⇒ 直接覆盖。
  *     这是 `seed-world.ts` `deriveSeedBaseSnapshot` 播种纪律的**逆向** —— 它播种时先探
  *     `props[stateVar]`「同名属性存在且是有限数 ⇒ 那就是真读数」。读写两侧共用**一个身份**，
- *     不另立映射。（demo 上 `measuredCells:0` ⇒ 这一档今天恒 0 格；本体哪天长出这些属性，
- *     它**自己就会开始生效**，不用等人想起来改代码。）
+ *     不另立映射。
+ *     ⚠ **2026-09-15 订正（WO-SIM-ORDER-REAL-FIELDS）**：原文写「demo 上 `measuredCells:0`
+ *     ⇒ 这一档今天恒 0 格；本体哪天长出这些属性，它**自己就会开始生效**」——
+ *     **那一天到了，这一档现在真的在跑**，别再照原文当它是死分支。
+ *     `Order.qty` / `Order.unitPrice` / `Order.leadDays` 三个属性已作为状态变量进世界
+ *     （实测 `measuredCells: 450` = 150 张在手单 × 3），⇒ DIRECT 档对 `Order` 已有实际落点：
+ *     沙盘里把某张单的台数扰动到 2 万，**求解器读到的就是 2 万**，而不再是本体真值。
+ *     这正是本文件当初要的那件事（「让方案寻优读的是这次推演的世界态而不是本体真值」），
+ *     但它现在**真的会改写求解器入参**了 —— 改这一档之前先想清楚这一点。
  *  ② **压力投影（PROJECTED）**：压力类变量不是属性，要一座量纲桥才能作用到金额/产能上。
  *     桥**复用 `FINANCE_WORLD_PRESSURE_DIVISOR`**（`finance-world.ts` 已声明并已在跑的那座），
  *     公式与它逐字同形：`量' = 量 ×（1 ± 压力 ÷ divisor）`。
@@ -144,25 +151,51 @@ export interface WorldReadView {
 }
 
 /**
- * 建一个世界态读取视图。
+ * WO-WORLDSTATE-SURFACE · **世界态叠加核**（从 `buildWorldReadView` 原样抽出，单一实现两处复用）。
+ *
+ * 与 `WorldReadView` 的分工：
+ *   · `WorldReadView.listByType` = **仓储读** + 叠加（装配器路径：它自己打 `repos.objects.listByType`）。
+ *   · `SolverWorldOverlay.overlayRows` = **只叠加**（求解器路径：行已由 `loadContext` 载好，
+ *     且已经过了 A6 行级过滤与 WO-69 列投影 —— 再打一次仓储会绕开列投影，把被禁列叠回求解器）。
+ *
+ * ⛔ 两处必须共用同一个叠加核：各抄一份就是「装配器叠一套、求解器叠另一套」，
+ * 同一个世界在两屏上给出两个都"对"的数 —— 第二套真相源。
+ */
+export interface SolverWorldOverlay {
+  readonly worldId: string;
+  readonly tick: number;
+  readonly source: "TICK" | "BASE_SNAPSHOT";
+  /** 世界态里有态的对象数（0 ⇒ 披露块如实说「未发生世界隔离」，不静默当真值算）。 */
+  readonly objectsWithState: number;
+  /**
+   * 把世界态叠到**已加载的**对象行上。只改返回的副本（R4：仓储行一个字节不动）；
+   * 一格都没被改写的行返回**同一引用**（调用方 `c.orders = overlayRows(...)` 在无世界态时逐字节等价）。
+   */
+  overlayRows(typeKey: string, rows: readonly ObjectInstance[]): ObjectInstance[];
+  /** 收尾取披露块 —— 只统计**真被 overlayRows 处理过**的类型。 */
+  disclosure(): SimWorldReadDisclosure;
+}
+
+/**
+ * 建一个世界态叠加核（`buildWorldReadView` 与求解器统一读取面共用）。
  *
  * @throws `notFound("sim session")` —— 会话不存在**或**属于别的租户（R2 暗发，
  *   与 `getSimOr404` / `finance-world.ts` 同一个闸门）。
  *   ⛔ **绝不静默退化成「读本体真值」** —— 那正是本单要修的这个病的形态：
  *   悄悄给你一份看起来正常、其实答非所问的数。
  */
-export async function buildWorldReadView(
+export async function buildSolverWorldOverlay(
   repos: Repos,
-  ctx: AuthCtx,
-  sessionId: string,
+  tenantId: string,
+  worldId: string,
   opts: { pressureUnit?: "pp" | "ratio" } = {},
-): Promise<WorldReadView> {
-  const session = await repos.sim.getSession(ctx.tenantId, sessionId);
+): Promise<SolverWorldOverlay> {
+  const session = await repos.sim.getSession(tenantId, worldId);
   if (!session) throw notFound("sim session");
 
   // 取**当前拍**的态；该拍还没落格就回落开局快照 —— 与 `loadChainSimOverlay`
   // （`wo-drill-verdict-backend`）和 `finance-world.ts` 同一条判据，不另写一条。
-  const tickRow = await repos.sim.getTickState(ctx.tenantId, session.id, session.curTick);
+  const tickRow = await repos.sim.getTickState(tenantId, session.id, session.curTick);
   const world: TickState = tickRow?.state ?? session.baseSnapshot;
   const source: SimWorldReadDisclosure["source"] = tickRow ? "TICK" : "BASE_SNAPSHOT";
 
@@ -176,7 +209,7 @@ export async function buildWorldReadView(
    * `Order --order_has_line--> OrderLine` 在 demo 上**两条边都真实存在**，
    * 只索引一个方向会漏掉一半承载体（实测过：只索 out 时 `Order.costPressure` 取不到）。
    */
-  const links = await repos.links.list(ctx.tenantId, () => true);
+  const links = await repos.links.list(tenantId, () => true);
   const neighbors = new Map<string, Carrier[]>();
   const pushNb = (from: string, c: Carrier): void => {
     const cur = neighbors.get(from);
@@ -222,18 +255,24 @@ export async function buildWorldReadView(
     return [...cands].sort((a, b) => a.via.localeCompare(b.via) || a.id.localeCompare(b.id))[0];
   };
 
-  const listByType = async (tenantId: string, typeKey: string): Promise<ObjectInstance[]> => {
-    const rows = await repos.objects.listByType(tenantId, typeKey);
+  const overlayRows = (typeKey: string, inputRows: readonly ObjectInstance[]): ObjectInstance[] => {
+    const rows = inputRows as ObjectInstance[];
     for (const o of rows) typeOfId.set(o.id, o.type);
     const stat = typeStats.get(typeKey) ?? { objects: 0, cellsApplied: 0 };
     stat.objects = rows.length;
 
-    // R6：对象按 id 升序处理 ⇒ `applied[]` 的截断取的永远是同一批格子。
-    const out = [...rows]
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((o) => {
-        const props = { ...o.props };
-        let touched = false;
+    /**
+     * R6 双重序：**处理序**按 id 升序（`applied[]` 截断永远取同一批格子），
+     * **返回序保持输入序** —— 叠加只缩格，**不重排**。
+     * 求解器路径的入参是 `loadContext` 载好的 ctx 数组，其顺序是加载层的口径；
+     * 零压力时本函数必须返回「同序同引用」的行，否则「世界态零压力」与「没传 worldId」
+     * 会因**行序**不同而给出不同回包 —— 那就不是世界态在起作用，是排序在起作用。
+     * （装配器路径要 id 升序由 `buildWorldReadView` 自己 sort —— 那是它开工前就有的契约。）
+     */
+    const patched = new Map<string, ObjectInstance>();
+    for (const o of [...rows].sort((a, b) => a.id.localeCompare(b.id))) {
+      const props = { ...o.props };
+      let touched = false;
 
         // ── ① 同名直取（DIRECT）──────────────────────────────────────────────
         // 变量按名升序 ⇒ 遍历序确定（R6）。
@@ -282,12 +321,13 @@ export async function buildWorldReadView(
           }
         }
 
-        // R4：只改**返回给调用方的副本**，仓储里那一行一个字节不动。
-        return touched ? { ...o, props } : o;
-      });
+      // R4：只改**返回给调用方的副本**，仓储里那一行一个字节不动。
+      if (touched) patched.set(o.id, { ...o, props });
+    }
 
     typeStats.set(typeKey, stat);
-    return out;
+    // 返回序 == 输入序；没被改写的行返回**同一引用**（零压力 ⇒ 整个数组与输入逐格等价）。
+    return rows.map((o) => patched.get(o.id) ?? o);
   };
 
   const disclosure = (): SimWorldReadDisclosure => {
@@ -337,5 +377,38 @@ export async function buildWorldReadView(
     };
   };
 
-  return { listByType, disclosure };
+  return {
+    worldId: session.id,
+    tick: session.curTick,
+    source,
+    objectsWithState: Object.keys(world).length,
+    overlayRows,
+    disclosure,
+  };
+}
+
+/**
+ * 建一个世界态读取视图（装配器路径的薄壳：仓储读 + 同一个叠加核）。
+ *
+ * @throws `notFound("sim session")` —— 会话不存在**或**属于别的租户（R2 暗发，
+ *   与 `getSimOr404` / `finance-world.ts` 同一个闸门）。
+ *   ⛔ **绝不静默退化成「读本体真值」** —— 那正是本单要修的这个病的形态：
+ *   悄悄给你一份看起来正常、其实答非所问的数。
+ */
+export async function buildWorldReadView(
+  repos: Repos,
+  ctx: AuthCtx,
+  sessionId: string,
+  opts: { pressureUnit?: "pp" | "ratio" } = {},
+): Promise<WorldReadView> {
+  const overlay = await buildSolverWorldOverlay(repos, ctx.tenantId, sessionId, opts);
+  return {
+    // 装配器路径的契约从本契约落地第一天起就是 **id 升序**（叠加核改成「返回序保持输入序」之前
+    // 就在这里排）——sort 留在这层，与开工前逐字节一致；求解器路径不受这层约束。
+    listByType: async (tenantId, typeKey) =>
+      overlay
+        .overlayRows(typeKey, await repos.objects.listByType(tenantId, typeKey))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    disclosure: overlay.disclosure,
+  };
 }

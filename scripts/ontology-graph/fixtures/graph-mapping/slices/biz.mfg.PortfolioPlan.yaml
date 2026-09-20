@@ -1,0 +1,14 @@
+key: biz.mfg.PortfolioPlan
+rootType: Order
+scope: intra
+brief: "组合排产切片：订单 → 基地/产线产能单元 → 换型 → 排产结果"
+tags: [datacore, solver, portfolio]
+spannedTypes: [Order, Base, Line, WorkOrder, Model]
+atoms:
+  - sym:apps/datacore/src/solvers/portfolio.ts#portfolioOptimize
+  - sym:apps/datacore/src/solvers/portfolio.ts#lineGranularity
+  - sym:apps/datacore/src/solvers/portfolio.ts#lineModelCompat
+  - sym:packages/contracts/src/global-sim.ts#lineGranularity
+consumers:
+  - { file: apps/datacore/src/solvers/service.ts, line: 3560 }
+  - { file: apps/datacore/src/app.ts, line: 6241 }

@@ -23,6 +23,7 @@ import { createHash } from "node:crypto";
 import { ADVERSARY_FEATURE_KEY, assertReactionWellFormed } from "@platform/contracts";
 import { makeApp, seedBattery, ADMIN, type TestApp } from "./helpers.js";
 import { seedDemoPropagationRules } from "../src/seed.js";
+import { entersSimWorld } from "../src/sim/seed-world.js";
 
 const REACTION_RULE_KEY = "demo_customer_reaction_cut_order";
 const REACTION_LINK_KEY = "customer_places_order";
@@ -49,12 +50,37 @@ async function boot(adversary: boolean): Promise<TestApp> {
   return t;
 }
 
-/** 客户 → 其名下订单 id（走还手边本身，与引擎同一批边，不另开取数路）。 */
+/**
+ * 客户 → 其名下**进了推演世界**的订单 id（走还手边本身，与引擎同一批边，不另开取数路）。
+ *
+ * ⚠ 成员判据**直接 import 生产那一支** `entersSimWorld` —— 引用单一出处不是「抄一份」，重写才是。
+ *
+ * 来历（2026-09-15）：引擎把已完成订单排除出推演世界后，本函数仍按**全部**边计数 ⇒
+ * §3 会挑中「条数相同但多数已完成」的两个客户，它们在世界里几乎没有可砍的单 ⇒
+ * 还手力度实测为 0，断言报「这一格没验到东西」。
+ * 病不在断言，在**挑样本的总体与引擎的总体不是同一个**。
+ * 业务上本来也该如此：**已交付的单砍不了**，把它算进「可砍条数」从一开始就不对。
+ */
 async function ordersByCustomer(t: TestApp): Promise<Map<string, string[]>> {
   const links = await t.repos.links.list("demo", (l) => l.type === REACTION_LINK_KEY);
   const m = new Map<string, string[]>();
-  for (const l of links) (m.get(l.fromId) ?? m.set(l.fromId, []).get(l.fromId)!).push(l.toId);
+  let skipped = 0;
+  for (const l of links) {
+    const o = await t.repos.objects.get("demo", l.toId);
+    if (o === undefined || !entersSimWorld("Order", o)) {
+      skipped += 1;
+      continue;
+    }
+    (m.get(l.fromId) ?? m.set(l.fromId, []).get(l.fromId)!).push(l.toId);
+  }
   for (const v of m.values()) v.sort();
+  // 🐤 双向金丝雀：既要真滤掉了东西（否则这层过滤是摆设、等于没改），
+  //    也不能把所有单都滤光（否则 §3 恒「没验到」，看起来却像业务结论）。
+  expect(skipped, "一条都没滤掉 ⇒ entersSimWorld 在这棵树上没起作用，本函数是摆设").toBeGreaterThan(0);
+  expect(
+    [...m.values()].reduce((n, v) => n + v.length, 0),
+    "全滤光了 ⇒ 过滤条件过宽",
+  ).toBeGreaterThan(0);
   return m;
 }
 

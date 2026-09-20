@@ -86,7 +86,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ONTO = join(ROOT, "docs", "SYSTEM-ONTOLOGY.md");
 const ONTO_REL = "docs/SYSTEM-ONTOLOGY.md";
 const EXEMPTIONS_PATH = join(ROOT, "scripts", "ontology-s8-status-exemptions.json");
-const DEFAULT_BASE = "origin/claude/verify-reclaim-6";
+// ⚠ 2026-09-19 改：原值 origin/claude/verify-reclaim-6 停在 2026-08-25，且本身是 canonical 的祖先。
+const DEFAULT_BASE = "origin/claude/inspiring-gates-aqczjg";
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 const ID_ROW_RE = /^\|\s*([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)\s*\|/;

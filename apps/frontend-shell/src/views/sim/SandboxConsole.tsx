@@ -32,11 +32,21 @@ import {
   CHAIN_IMPEDIMENT_SOLVER_KEY,
   ChainImpedimentPayloadSchema,
   DATA_MODE_LABEL,
+  THRESHOLD_SOURCE_LABEL,
   type CandidateAbsenceKind,
   type CandidateVM,
   type ChainImpedimentModel,
   type ImpedimentVM,
 } from "./chainImpediment";
+/**
+ * WO-SANDBOX-IMPEDIMENT-RESIDUAL · 触发判定条**复用独立屏那一份实现**，不另写一个。
+ *
+ * 独立屏 `ChainImpedimentView` 是经 `DecisionPlayEmbed` 间接挂上它的；这里**只取
+ * `TriggerVerdictStrip` 这一个**，不整块嵌 `DecisionPlayEmbed`——沙盘这一行下面已经有
+ * `CandidateBlock`（候选方案对照），再嵌一份 `DecisionPlayPanel` 的抽屉就是**同一屏上两套方案区**，
+ * 而「两套真相源」正是本仓从头到尾在防的那个东西。
+ */
+import { TriggerVerdictStrip } from "@/views/DecisionPlayPanel";
 import {
   buildPareto,
   buildStageBoard,
@@ -300,6 +310,22 @@ export function SandboxConsole({
   const [loss, setLoss] = useState<ChainLossPayload | null>(null);
   const [imp, setImp] = useState<ImpLoad>({ status: "loading" });
   const [dimKind, setDimKind] = useState<ChainImpedimentKind | null>(null);
+  /**
+   * WO-SANDBOX-IMPEDIMENT-RESIDUAL · 阻滞点清单**展开了没有**。
+   *
+   * ⚠ 为什么必须有这个 state，而不是靠 `<details>` 自己「折叠就不挂载」：
+   * **React 对 `<details>` 是渲染子树 + 由浏览器 CSS 隐藏，不是不挂载。**
+   * 实测（**2026-09-18**，真前端、真后端 `SEED_DEMO=1`，`details.open=false`）：新加的逐条触发判定条在**折叠态下照样**
+   * 打满 **18 次 `decision_play`**，展开时增量为 0 —— 也就是说用户为一块他没打开的明细付了 18 次求解。
+   * 故沿用本仓既有那条懒挂载写法（`DecisionPlayEmbed` 里的 `onToggle` → `{open ? … : null}`）：
+   * 展开才请求。收起时屏上仍有带真计数的入口，**不是把功能藏起来**。
+   *
+   * 复验（本 state 今天确实在拦，别只信这段话）：把下面 `ImpedimentResidual` 的 `verdictLive`
+   * 实参由本 state 改成常量 `true`，清单保持收起，浏览器 Network 里
+   * `POST /a/v1/solvers/decision_play/invoke` 会重新打满 18 次；
+   * 取数口在 `views/DecisionPlayPanel.tsx` 的 `TriggerVerdictStrip`。
+   */
+  const [impListOpen, setImpListOpen] = useState(false);
   /**
    * 基地范围：**受控/非受控二合一**（WO-SANDBOX-IA-CONSOLIDATE）。
    * 宿主同时给了 `scopeBaseIds` + `onScopeBaseIdsChange` ⇒ 用宿主那一份（跨模式活着）；
@@ -1277,7 +1303,11 @@ export function SandboxConsole({
         {/* WO-SANDBOX-V3：整条清单（截图里 7 行）降为**第二层**（PRD §2 第 3 行）。
             第一层记号 = summary 上的**条数** ——「有几条」是结论（第一层），
             「是哪几条」是明细（第二层）。 */}
-        <details className={styles.zoneSection} data-testid="sc-impjump-details">
+        <details
+          className={styles.zoneSection}
+          data-testid="sc-impjump-details"
+          onToggle={(e) => setImpListOpen((e.currentTarget as HTMLDetailsElement).open)}
+        >
           <summary data-testid="sc-impjump-summary">
             {zh.sim.sandbox.zones.impedimentList} · <b data-testid="sc-impjump-count">{jumpCount}</b>
             {zh.sim.sandbox.zones.rows}
@@ -1289,6 +1319,7 @@ export function SandboxConsole({
         <ImpedimentJumpBar
           model={model}
           kind={dimKind}
+          listOpen={impListOpen}
           notes={
             honesty ? (
               <>
@@ -1460,26 +1491,35 @@ interface JumpBarProps {
   kind: ChainImpedimentKind | null;
   /** 说明性文字的 `?` 触发器（WO-SANDBOX-DECLUTTER）：贴在计数那一行，不另占一整段。 */
   notes?: ReactNode;
+  /**
+   * 宿主那个 `<details>` 展开了没有（WO-SANDBOX-IMPEDIMENT-RESIDUAL）。
+   * 只管**触发判定条要不要去打求解器**这一件事 —— 其余内容（严重度 / 阈值出处 / 候选）
+   * 一律照旧无条件渲染。⚠ 缺省 `true`：六个不带 Router 的门直接挂 `JumpList`，
+   * 缺省 false 会让它们那侧的判定条**静默消失**，而「静默降层等于删除」。
+   */
+  listOpen?: boolean;
 }
 
-function ImpedimentJumpBar({ model, kind, notes }: JumpBarProps) {
+function ImpedimentJumpBar({ model, kind, notes, listOpen }: JumpBarProps) {
   const inRouter = useInRouterContext();
-  return inRouter ? <RoutedJumpBar model={model} kind={kind} notes={notes} /> : <PlainJumpBar model={model} kind={kind} notes={notes} />;
+  const p = { model, kind, notes, listOpen };
+  return inRouter ? <RoutedJumpBar {...p} /> : <PlainJumpBar {...p} />;
 }
 
-function RoutedJumpBar({ model, kind, notes }: JumpBarProps) {
+function RoutedJumpBar({ model, kind, notes, listOpen }: JumpBarProps) {
   const navigate = useNavigate();
-  return <JumpList model={model} kind={kind} notes={notes} onOpen={(href) => navigate(href)} />;
+  return <JumpList model={model} kind={kind} notes={notes} listOpen={listOpen} onOpen={(href) => navigate(href)} />;
 }
 
-function PlainJumpBar({ model, kind, notes }: JumpBarProps) {
-  return <JumpList model={model} kind={kind} notes={notes} onOpen={null} />;
+function PlainJumpBar({ model, kind, notes, listOpen }: JumpBarProps) {
+  return <JumpList model={model} kind={kind} notes={notes} listOpen={listOpen} onOpen={null} />;
 }
 
 function JumpList({
   model,
   kind,
   notes,
+  listOpen = true,
   onOpen,
 }: JumpBarProps & {
   onOpen: ((href: string) => void) | null;
@@ -1499,6 +1539,16 @@ function JumpList({
         <b>逐条阻滞点 · 点一条进决策推演看方案对比</b>
         {kind === null ? "（当前：全部 " : `（当前只看「${rows[0]?.im.kindLabel ?? kind}」 `}
         {rows.length} 条{kind === null ? "，点上面的卡可筛某一类" : "，再点一次那张卡取消筛选"}）。
+        {/* WO-SANDBOX-IMPEDIMENT-RESIDUAL ④ · 本次扫描批次号。
+            独立屏有（`ci-scan-id`）、收编后的沙盘没有 ⇒ 两屏读数对不上时无从判断
+            「是不是同一轮扫描」。它是**名字**（规范 §1 准许的三样之一），留第一层；
+            「这个号有什么用」是明细，降 `?`。 */}
+        <span className={styles.impJumpScan} data-testid="sc-imp-scan-id" data-scan-id={model.scanId}>
+          {zh.sim.sandbox.impedimentRow.scan(model.scanId)}
+          <InfoPopover topic={zh.sim.sandbox.impedimentRow.scanTopic} testId="sc-imp-scan-why">
+            <span data-testid="sc-imp-scan-why-body">{zh.sim.sandbox.impedimentRow.scanWhy}</span>
+          </InfoPopover>
+        </span>
         {notes}
       </p>
       <CandidateSummaryLine model={model} />
@@ -1544,6 +1594,25 @@ function JumpList({
               {im.evidence.unit} vs 阈值 {im.evidence.threshold}
               {im.evidence.unit}
             </span>
+            {/* WO-SANDBOX-IMPEDIMENT-RESIDUAL ① · **这条卡点自己有多严重**。
+                收编前独立屏 18/18 都有这个数，收编后沙盘 0/18（**2026-09-18 实测，且是本行落地之前**
+                的读数 —— 本行就是来收它的，落地后沙盘也是 18/18）—— 于是那 14 条没有候选方案的卡点，
+                用户在任何点得到的地方都看不出它们的轻重，排序也就无从谈起。
+                ⚠ 名字里必须带「卡点当前」四个字：下面候选表里另有一维也在说严重度，
+                但那是**单因子**口径（2026-09-18 实测同一条卡点 16 对 6；复验：这两个口径的公式分别在
+                `apps/datacore/src/solvers/chain-impediment.ts` 的 `severity` 赋值处与
+                `apps/datacore/src/solvers/impediment-options.ts` 的 `severityOf`，
+                后者头注里记着同一组对照数），两个数不能直接比大小。
+                口径说明是**明细**，降到下面那个 `?` 里（规范 §1：第一层只留数值/状态/名字）。
+                ⚠ 这里**只放数字不放 `?`**：`InfoPopover` 里是真 `<button>`，
+                嵌进 `<a>` 既是非法 HTML，又会把"点浮层"变成"点了跳走"。 */}
+            <span
+              className={styles.impJumpSeverity}
+              data-testid={`sc-imp-severity-${im.impedimentId}`}
+              data-severity={String(im.severity)}
+            >
+              {zh.sim.sandbox.impedimentRow.severity(im.severity)}
+            </span>
             {/* ③ 诚实位随行：非 LIVE 的当面标出来，别让用户以为跳过去看到的是确凿结论 */}
             <span
               className={styles.impJumpBadge}
@@ -1561,9 +1630,95 @@ function JumpList({
               （按钮嵌进链接里既是非法 HTML，又会把"点开关"变成"点了跳走"）。
               上面那个 `<a>` 的 href / onClick / testid 一个属性都没动。 */}
           <ImpedimentChainLeg im={im} />
+          {/* WO-SANDBOX-IMPEDIMENT-RESIDUAL ②③ · 阈值出处 + 触发判定明细 + 严重度口径。
+              同样必须是 `<a>` 的**兄弟节点**（里面有 `InfoPopover` 与 `TriggerVerdictStrip`）。 */}
+          <ImpedimentResidual im={im} verdictLive={listOpen} />
           <CandidateBlock im={im} />
         </div>
       ))}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-SANDBOX-IMPEDIMENT-RESIDUAL · 收编进沙盘时掉在门外的那几样
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 一条阻滞点的**残差区**：阈值出处 · 触发判定明细 · 严重度口径。
+ *
+ * ── 为什么会有这个组件（不是新功能，是补一次有损收编）──────────────────────────
+ * `chain-impediments` 这条导航被 `ShellLayout.CONSOLIDATED_INTO_SANDBOX` 收进沙盘，
+ * 那条登记的 `where` 自己写着「沙盘主屏阻滞点统计条 + 逐条清单（**残差见 AUDIT §2**）」——
+ * 收编是刻意的，但**有损**。实测（**2026-09-18**，真起 datacore `SEED_DEMO=1`，18 条阻滞点）：
+ *
+ * | | 独立屏 `/v/chain-impediments` | 收编后的沙盘 |
+ * |---|---|---|
+ * | 每条卡点自己的严重度 | 18/18 有 | **0/18** |
+ * | `scanId`             | 有（`scan_ae9a578c`） | **无** |
+ * | 阈值出处             | 有（`THRESHOLD_SOURCE_LABEL` + `fieldPath`） | **无** |
+ * | 触发判定明细         | 有（`TriggerVerdictStrip`） | **无** |
+ *
+ * ⚠ **右列是本组件落地「之前」的读数**（那正是本组件存在的理由）—— 今天右列四样都已补齐，
+ *   别把这张表读成现状。左列与条数的复验：`SEED_DEMO=1` 起 datacore 后
+ *   `POST /a/v1/solvers/chain_impediments/invoke {"args":{}}` 数 `impediments[]` 的长度与逐条字段；
+ *   `scanId` 随每次扫描变，`scan_ae9a578c` 只是那一次的值，**不是常量**。
+ *
+ * 后果落在**没有候选方案的那 14 条**上：它们在沙盘里既没有严重度也没有判定依据，
+ * 于是「哪条先管」这个问题在屏上**没有任何输入**。
+ *
+ * ── 三样全部复用既有实现，本组件零自造 ────────────────────────────────────────
+ *  · 阈值出处 → `chainImpediment.THRESHOLD_SOURCE_LABEL`（与独立屏同一张表）；
+ *    `im.thresholdSource` 本身是派生层按 `ruleKey` 连 `thresholds[]` 连出来的，
+ *    **引擎逐条载荷里并没有这个字段**（实测 18 条全无）—— 所以这里取的必须是派生层那份，
+ *    不是去翻原始响应。
+ *  · 触发判定明细 → `views/DecisionPlayPanel.TriggerVerdictStrip`（与独立屏同一个组件）。
+ *  · 严重度口径 → 文案在 `zh.sim.sandbox.impedimentRow`，数字在行内那个 `<span>`。
+ *
+ * ⚠ **口径说明一律降浮层**：规范 §1「第一层只放数值/状态/名字，公式与口径降浮层」。
+ */
+function ImpedimentResidual({ im, verdictLive = true }: { im: ImpedimentVM; verdictLive?: boolean }) {
+  const t = zh.sim.sandbox.impedimentRow;
+  const src = im.thresholdSource;
+  return (
+    <div className={styles.impResidual} data-testid={`sc-imp-residual-${im.impedimentId}`}>
+      <p className={styles.impResidualLine}>
+        {/* ① 严重度口径 —— 数字在上面那一行，这里只放「它是怎么算的、和候选表里那个差在哪」。
+            这正是本单最要紧的一件：不让屏上出现第二个同名的「严重度」而无从分辨。 */}
+        <InfoPopover topic={t.severityTopic} testId={`sc-imp-sev-why-${im.impedimentId}`}>
+          <span data-testid={`sc-imp-sev-why-body-${im.impedimentId}`}>{t.severityWhy}</span>
+        </InfoPopover>
+        {/* ② 阈值出处：「改哪个旋钮能改掉这条判定」。缺位时如实说缺位，不留白。 */}
+        <span className={styles.impResidualKv} data-testid={`sc-imp-threshold-src-${im.impedimentId}`}>
+          <b>{t.thresholdSrc}</b>{" "}
+          {src === null ? (
+            t.thresholdSrcNone
+          ) : (
+            <>
+              {THRESHOLD_SOURCE_LABEL[src.source]}
+              {src.fieldPath !== undefined ? (
+                <>
+                  {" "}
+                  · <code>{src.fieldPath}</code>
+                </>
+              ) : null}
+            </>
+          )}
+        </span>
+      </p>
+      {/* ③ 触发判定明细：哪条信号 · 该越多少 · 现在多少 · 越没越 · 阈值来自哪。
+          组件自带 loading / error / empty 三态三句，本处不再包一层判断（包了就是第二套口径）。
+          ⚠ `verdictLive` 只在**宿主清单展开**时为真：`<details>` 折叠态 React 照样挂子树，
+          不拦就是 18 次 `decision_play` 白打（2026-09-18 实测数；复验方式与那次实测的完整口径
+          见本文件顶部 `impListOpen` 那条 state 的注，一句话版：把本参数改成常量 `true` 再收起清单，
+          Network 里 `POST /a/v1/solvers/decision_play/invoke` 会重新打满 18 次）。展开即挂、即请求。 */}
+      {verdictLive ? (
+        <TriggerVerdictStrip
+          metricKey=""
+          locus={{ objectType: im.locus.objectType, objectId: im.locus.objectId, label: im.locus.label }}
+          testId={`sc-imp-play-${im.impedimentId}`}
+        />
+      ) : null}
     </div>
   );
 }

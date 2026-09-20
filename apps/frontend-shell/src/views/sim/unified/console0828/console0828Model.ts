@@ -114,10 +114,46 @@ export interface MoneyView {
   readonly exposedOrders: number;
   /**
    * 引擎给它算了 delta、但因**已完成**而被本视图排除的张数。
-   * ⚠ 这个数必须上屏：不上屏就等于「500 悄悄变成 150」，读者无从判断少掉的 350 去哪了。
-   * 🐤 它同时是本过滤的金丝雀 —— 报 0 而状态分布里 COMPLETED 非 0 ⇒ 过滤没生效。
+   *
+   * ⚠⚠ **本字段的金丝雀口径已于 2026-09-15 反转，原文照 0.6 记账**：
+   * 原注释写「🐤 报 0 而状态分布里 COMPLETED 非 0 ⇒ 过滤没生效」——
+   * **那个判据现在整个反了**。引擎层已把已完成单挡在推演世界之外
+   * （`entersSimWorld` 收归 `listSimWorldObjects` 单一出处，覆盖种子世界态 / 落点清单 / 传导图 /
+   * 变更预览四处），于是本视图**根本见不到**已完成单的 delta ⇒ 本字段**恒为 0**。
+   * 真浏览器实测（2026-09-15）：屏上这一行不出现，因为渲染条件是 `settledExcluded > 0`。
+   *
+   * 形态：**「我用『这个计数为 0』当作『上游过滤没生效』的证据，而在上游修好之后，
+   * 0 恰恰是过滤生效的结果。」** —— 一条写在最容易被信的地方的反向判据，比没有更危险。
+   *
+   * ⇒ 今天它的正确读法：
+   *   · **恒 0 = 正常**（已完成单在引擎层就没进世界）
+   *   · **非 0 = 引擎层过滤漏了**（有已完成单混进了推演世界）—— 这才是要警觉的方向
+   * 「500 → 150 少掉的 350 去哪了」这个问题的答案，现在由 `view-config.nodeObjectIds`
+   * 的落点数回答（实测 Order = 150，不是 500），不再由本字段回答。
    */
   readonly settledExcluded: number;
+  /**
+   * WO-EXPOSURE-MAGNITUDE · 被推动单的**变化幅度分档**（每单取它所有格的最大 |delta|）。
+   *
+   * ⚠ 为什么必须有这一格：`exposedOrders` 的判据是 `diffWorld(eps=1e-9)`——只问「这格动没动」，
+   *   不问「动了多少」。而传导必然推到全网 ⇒ 它**恒等于全部未完成单**，两个完全不同的扰动
+   *   给出逐字节相同的数（2026-09-14 真浏览器对照实验：原材料涨价 vs 设备故障，
+   *   150/350/17家/156.6亿 全同）。
+   *   形态：「我用『这张单的读数动了』当作『这次扰动影响了它』的证据，而前者并不度量后者。」
+   * ⇒ 幅度分档是**随扰动变的那个量**：落点不同 ⇒ 传导路径不同 ⇒ 各单受力大小不同。
+   * ⛔ 刻意**不**引入「显著」阈值来二次筛选 —— 那个门槛无业务出处，编一个就是造口径。
+   *   这里只如实给出分布，由使用方判断。
+   */
+  /** 读数动了、但幅度在噪声级（≤0.01/100）而未计入「被推动」的张数。必须上屏。 */
+  readonly faintOnly: number;
+  readonly magnitude: {
+    readonly buckets: readonly { readonly label: string; readonly n: number }[];
+    /** 本次扰动下，各单 |Δ| 的中位数（0–100 压力标度，非需求/产能分位 —— R18：名字自带口径）。 */
+    readonly deltaMagnitudeP50: number | null;
+    /** 同上，P90。 */
+    readonly deltaMagnitudeP90: number | null;
+    readonly max: number | null;
+  };
   /** 订单簿总额（元）与张数 —— 现算，**不写死**。 */
   readonly bookTotal: number;
   readonly bookOrders: number;
@@ -200,12 +236,81 @@ export function buildMoneyView(
   const touched = new Set<string>();
   // ⚠ 用 Set 而不是计数器：一张单会有多条 delta（每个 stateVar 一条），计数器会重复计。
   const settled = new Set<string>();
+  // 每单取它所有格的最大 |delta| —— 这是「这张单被推得多狠」的可比标量。
+  const maxAbs = new Map<string, number>();
   for (const d of deltas) {
     const o = byId.get(d.objectId);
     if (o === undefined) continue;
-    (isSettledOrder(o) ? settled : touched).add(d.objectId);
+    if (isSettledOrder(o)) { settled.add(d.objectId); continue; }
+    touched.add(d.objectId);
+    const m = Math.abs(d.delta);
+    const prev = maxAbs.get(d.objectId);
+    if (prev === undefined || m > prev) maxAbs.set(d.objectId, m);
   }
+  /* ══ WO-EXPOSURE-MAGNITUDE · 「被推动的单」必须只算**受到实质扰动**的单 ═══════════
+   *
+   * 仓主实拍：「我输入不同的扰动因素，该截屏数据没有变化…前端展示的都是假的？」——**成立**。
+   * 2026-09-14 真浏览器对照实验（原材料涨价 vs 设备故障）：150 / 350 / 17家 / 156.6亿 **逐字节相同**。
+   *
+   * 病因：判据来自 `diffWorld(eps=1e-9)`——只问「这格动没动」，不问「动了多少」。
+   * 传导必然推到全网 ⇒ 它恒等于**全部未完成单**，与扰动内容无关。
+   * 形态：「我用『这张单的读数动了』当作『这次扰动影响了它』的证据，而前者并不度量后者。」
+   *
+   * ⚠ 我第一版的修法是错的：只在旁边加了幅度分档，**把恒定不变的 150 留在主位**。
+   *   屏上第一眼看的还是它，它仍然声称「这次影响了 150 张」。加注解不等于改对。
+   *   当时我用「阈值无业务出处、编一个就是造口径」挡住了自己 —— 那是**纪律的误用**：
+   *   摆一个确定性的谎言，比摆一个有量纲依据、真实响应的数更糟。
+   *
+   * ── 阈值 0.01 的依据（不是拍的）──────────────────────────────────────────────
+   * 推演读数是 **0–100 的压力标度**（`costPressure`/`demandPressure`/`utilPressure`…），
+   * 0.01 即满量程的 **0.01%** —— 在这个标度上属数值噪声级，不构成业务影响。
+   * 实测支撑 **2026-09-14**（同一组落点，两个不同扰动，真后端 + 真浏览器）：
+   *   原材料涨价 → 微弱 0 · 轻 81 · 中 51 · 重 18  ⇒ 实质受扰 **150**（p90/max 11.27 / 18.49）
+   *   设备故障   → 微弱 94 · 轻 36 · 中 20 · 重 0  ⇒ 实质受扰 **56**（p90/max 1.07 / 4.54）
+   *
+   * 复验方式（任选其一，都不需要读本文件）：
+   *   ① 真链路：`SEED_DEMO=1` 起 datacore(4001) + agentcore(4002) + 前端，登录 demo/admin/demo1234，
+   *      进「统一推演控制台」→ 分别选事件「原材料涨价」与「设备故障」→ 加入 → 开始推演，
+   *      读「本次扰动波及」块的四个分档数与 p90/最大。两次必须不同。
+   *   ② 断言：`apps/frontend-shell/test/exposure-responds-to-perturbation.seam.test.ts`
+   *      用 `respondsToInput()`（`@platform/contracts`）咬死「两个不同扰动 ⇒ exposedOrders 必须不同」，
+   *      并配反向金丝雀 `stableForSameInput()`（同输入必须同输出，R6）。
+   *   ③ 阈值本身：见上方「标度依据」—— 0–100 压力标度，0.01 = 满量程 0.01%。
+   * ⇒ 主数字自此**真的随扰动变**。被滤掉的那批**照样上屏**（「仅微弱扰动 N 张」），
+   *   不许让 150 悄悄变成 56 而读者不知道少掉的是什么。
+   */
+  const NOISE_FLOOR = 0.01;
+  for (const [oid, m] of maxAbs) if (m <= NOISE_FLOOR) touched.delete(oid);
+  const faintOnly = [...maxAbs.values()].filter((m) => m <= NOISE_FLOOR).length;
+  const mags = [...maxAbs.values()].sort((a, b) => a - b);
+  const quant = (f: number): number | null =>
+    mags.length === 0 ? null : (mags[Math.min(mags.length - 1, Math.floor(mags.length * f))] ?? null);
+  const inRange = (lo: number, hi: number): number => mags.filter((m) => m > lo && m <= hi).length;
+  /**
+   * 分档边界**从 `NOISE_FLOOR` 派生**，标签由边界现生成 —— ⛔ 不许判据写一遍、标签再写一遍。
+   * 原写法把 `0.01 / 1 / 10` 各写了两份（`inRange(0.01, 1)` 与 `"轻 0.01–1"`），
+   * 改一处漏一处时**屏上的区间说明与实际分档判据会背离**，而 typecheck 一个都看不见
+   * ——「旧名/旧值以字符串形态存在」的那一类，本仓记过账。
+   *
+   * 标度依据（不是拍的）：推演读数是 **0–100 的压力标度**。
+   * `NOISE_FLOOR` = 0.01 = 满量程 **0.01%**，噪声级；往上按十倍递进取两档：
+   * ×100 ⇒ 1（满量程 1%）· ×1000 ⇒ 10（满量程 10%）。
+   */
+  const MAG_EDGES = [NOISE_FLOOR, NOISE_FLOOR * 100, NOISE_FLOOR * 1000] as const;
+  const [eFaint, eLight, eMid] = MAG_EDGES;
+  const magnitude = {
+    buckets: [
+      { label: `微弱 ≤${eFaint}`, n: inRange(0, eFaint) },
+      { label: `轻 ${eFaint}–${eLight}`, n: inRange(eFaint, eLight) },
+      { label: `中 ${eLight}–${eMid}`, n: inRange(eLight, eMid) },
+      { label: `重 >${eMid}`, n: inRange(eMid, Number.POSITIVE_INFINITY) },
+    ],
+    deltaMagnitudeP50: quant(0.5),
+    deltaMagnitudeP90: quant(0.9),
+    max: mags.length === 0 ? null : (mags[mags.length - 1] ?? null),
+  };
 
+  // ⚠ 敞口金额必须与「被推动的单」同口径 —— 否则会出现「56 张单却还是 156.6 亿」的自相矛盾。
   let exposure = 0;
   for (const id of touched) {
     const v = byId.get(id)?.value;
@@ -234,6 +339,8 @@ export function buildMoneyView(
     exposure,
     exposedOrders: touched.size,
     settledExcluded: settled.size,
+    faintOnly,
+    magnitude,
     bookTotal,
     bookOrders: orders.length,
     breakdown: [
@@ -418,6 +525,64 @@ export function tickLabel(cal: TickCalendar | null, tick: number, opts?: { reado
   const iso = tickDateISO(cal, tick);
   if (iso === null) return `第 ${tick} 拍`;
   return `${opts?.short === true ? iso.slice(5) : iso}（第 ${tick} 拍）`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * 时间**长度**的屏上口径（WO-SIM-PLAIN-WORDS）—— 主单位给天，「拍」作括注
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 今天的行为是 X ──
+ * 上面 `tickLabel` 管的是**时点**（第 N 拍 → 哪一天），那一头 WO-C0828-VOICE 已经反过来了：
+ * 日期主、拍括注。但**长度**这一头还是反的 —— 左栏加扰动表单里
+ * `fieldLabel` 写「起始拍」/「持续」、`aria-label` 写「起始拍」/「持续拍数」、
+ * `placeholder` 写「留空=当前拍」、`unit` 那个 `<span>` 写「拍」，
+ * 天数只在下面一行小字里作回显。**同一块屏两套主次相反。**
+ * 更难看的是那句理由（`Console0828.tsx` 顶栏范围选择器那段注释）：
+ *   > 「『一拍等于几天』今天全平台没有登记册。」
+ * 登记册就是 `TickCalendar.tickDays`，这个文件自己就在用它做乘法。
+ *
+ * ── 应该是 Y ──
+ * 长度也按「天（N 拍）」读。`cal === null`（刻度真取不到）时**退回「N 拍」并由调用方
+ * 另给一句原因**（组件的 `calShortfall`）—— ⛔ 不许默认 `tickDays = 1` 假装知道
+ * （`apps/datacore/src/sim/drill.ts` 对同一件事的原话：「补了就把『这条会话没声明刻度』
+ * 说成了『一拍等于一天』」）。
+ */
+
+/** 一段 `ticks` 拍等于几天。`cal === null` ⇒ `null`（**算不出来**，不是 0 也不是 ticks）。 */
+export function spanDays(cal: TickCalendar | null, ticks: number): number | null {
+  if (cal === null || !Number.isFinite(ticks)) return null;
+  // 乘法一律转调契约的唯一实现，本文件不自己写 `t * td`（同 `tickDateISO`）。
+  return daysForTicks(ticks, cal.tickDays);
+}
+
+/**
+ * 屏上主口径（长度）：`15 天（3 拍）`；取不到刻度就只剩 `3 拍`。
+ *
+ * ⛔ 「拍」不许删干净 —— 后端回执、`startTick`、引擎日志里的量都是拍，
+ * 两层对不上账时没有别的东西可追（与 `tickLabel` 同一条纪律）。
+ */
+export function spanLabel(cal: TickCalendar | null, ticks: number): string {
+  const d = spanDays(cal, ticks);
+  if (d === null) return `${ticks} 拍`;
+  return `${d} 天（${ticks} 拍）`;
+}
+
+/**
+ * 数字输入框旁边那个**单位词**。
+ *
+ * ⚠ 这里刻意**不是**无条件给「天」—— 输入框里那个数是**拍数**（后端 `durationTicks` 收的就是它）。
+ *   · `tickDays === 1` ⇒ 一拍**就是**一天，写「天」是逐字相等，不是换算，也不会骗人；
+ *   · `tickDays > 1`  ⇒ 写「天」就是把 3 说成 3 天而它其实是 15 天 —— **那是造口径**，
+ *     本仓禁止（铁律 0.5 那条「不许默认 tickDays=1」同源）。此档仍写「拍」，
+ *     而**天数由旁边的 `spanLabel` 回显给足**，两层对得上账。
+ *   · `cal === null`  ⇒ 写「拍」，并由调用方另给一句「为什么没有天」。
+ *
+ * ⚠ 另一条路（把输入框本身改成收天数、提交时用契约 `ticksForDays` 向上取整）**本单没走**：
+ *   它会让「填 5 天、落成 6 天」这种取整跳变出现在一个本来精确的格子里，
+ *   而本单的问题是**措辞**不是**输入口径**。留给需要日期选择器的那张单。
+ */
+export function tickUnitWord(cal: TickCalendar | null): string {
+  return cal !== null && cal.tickDays === 1 ? "天" : "拍";
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════

@@ -43,6 +43,50 @@ import type { PerturbationKind } from "@platform/contracts";
 /** 扰动写法：与后端 `POST …/perturbations` 的 `mode` 同名同义。 */
 export type EventMode = "delta" | "scale" | "set";
 
+/* ══════════════════════════════════════════════════════════════════════════════
+ * 时间形态（WO-SIM-PLAIN-WORDS）—— 「这件事发生完就结束」还是「它持续存在一段时间」
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 今天的行为是 X ──
+ * 本表 12 条**一个时间形态字段都没有**。**实测于 2026-09-15**，查的是改动前那一版；
+ * 复验命令（三条同法，`<F>` = 本文件路径）：
+ *   `git show <本单基线 commit>:<F> | grep -c "timeShape"`      → **0**
+ *   `git show <本单基线 commit>:<F> | grep -c "defaultMagnitude"` → **14**（金丝雀：必中，证明查法没坏）
+ *   `git show <本单基线 commit>:<F> | grep -c 'mode: "delta"'`    → **12**；同法 `'mode: "set"'` → **0**
+ * ⇒ 「零命中」是真没有，不是工具坏了。于是 12 条共用**同一套**「起始 + 持续」表单。
+ * 而引擎侧 `durationTicks` 的语义是**到期把这笔 delta 撤掉**
+ * （`apps/datacore/src/sim/propagation.ts` 的 `exitsAt` / `revertValue`：
+ *  `mode:"delta"` 的回退值 = `current − magnitude`）。
+ * ⇒ 屏上「**改交付地点 · 持续 5 拍**」的字面意思是「第 6 天收货地自己改回去」。
+ *   业务上不存在这回事。「批次不良 / 召回」同理：召回是一次性的处置动作，
+ *   会衰减的是它的**后果**（检验积压排空），不是「召回持续期」到点后不良品自己变合格。
+ *
+ * ── 应该是 Y ──
+ * 每件事自己声明时间形态：
+ *  · `once`      —— 发生完就结束的**变更**。表单**不渲染「持续」那一格**，
+ *                   提交 `durationTicks: null`。契约 `packages/contracts/src/sim.ts`
+ *                   的该字段原文「`null` = 永久」，且 `isPerturbationActiveAt` 对 `null`
+ *                   在 `startTick` 之后**恒真** ⇒ 永不回退。屏上第一层写「一次性变更，之后一直生效」。
+ *  · `sustained` —— 真的持续一段时间、期满恢复的**状态**。维持今天的行为（起始 + 持续两格）。
+ *
+ * ── ⛔ 为什么 `mode` 一条都不改（本单实测后的裁决，不是省事）───────────────────
+ * 派单里留了「先实测再决定要不要也改 `mode`」。实测结论是**不改**，理由两条：
+ *  ① `/act` 那条路（`apps/datacore/src/app.ts` 的 `POST …/sessions/:id/act`）传
+ *     `mode:"set"`，是因为它收的是**绝对值**（`body.value`）；而本表单的 `magnitude`
+ *     是**相对量**（「涨幅 20 %」「增量 30 点」「改派 20 点」）。契约的
+ *     `applyPerturbationToState` 对 `set` 是 `bucket[var] = m` —— 把 20 当成「把该量设为 20」，
+ *     与输入框旁边那个「%」「点」的单位直接矛盾，且**不会报错，只会静默算错**。
+ *  ② 「永久」这个语义由 `durationTicks` 单独承载，与 `mode` **正交** ——
+ *     `isPerturbationActiveAt` 只读 `startTick` / `durationTicks`，一个字都不读 `mode`。
+ *     ⇒ 要的是 `durationTicks: null`，不是 `mode:"set"`。两者混为一谈会把「一次性」
+ *     改成「把读数设为 20」，那是另一件事。
+ */
+export type EventTimeShape =
+  /** 发生完就结束的一次性变更 ⇒ 无「持续」一格，`durationTicks: null`（= 永久生效）。 */
+  | "once"
+  /** 持续存在一段时间、期满恢复的状态 ⇒ 保留「持续」一格。 */
+  | "sustained";
+
 export interface BusinessEvent {
   readonly id: string;
   /** 屏上那个名字，逐字取自设计稿左栏。 */
@@ -61,6 +105,12 @@ export interface BusinessEvent {
   readonly kind: PerturbationKind;
   /** 「加多少」的写法与单位。 */
   readonly mode: EventMode;
+  /**
+   * 这件事**发生完就结束**，还是**持续存在一段时间**（见 `EventTimeShape` 头注）。
+   * 判据是业务常识，不是实现方便：决定表单渲不渲染「持续」那一格，
+   * 也决定提交时 `durationTicks` 是不是恒 `null`。
+   */
+  readonly timeShape: EventTimeShape;
   readonly unit: string;
   readonly defaultMagnitude: number;
   /** 第二层：这件事**先推动什么**。成句，只在展开后出现。 */
@@ -97,6 +147,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["priceShock"],
     kind: "cost_shock",
     mode: "delta",
+    // once：调价是一次签发的**变更**：新价一经确认就按新价结算，不存在「到期自动跌回原价」；
+    //       真要表达「只涨一个季度」，那是两条扰动（涨、再跌），不是一条带保质期的涨价。
+    timeShape: "once",
     unit: "%",
     defaultMagnitude: 20,
     detail: "提高该物料的价格冲击，先传导至型号成本压力，再经订单传导至客户应收。",
@@ -109,6 +162,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["inspectBacklog", "defectPressure", "turnoverPressure"],
     kind: "quality_event",
     mode: "delta",
+    // once：召回 / 判不良是**一次性处置动作**：不良批次不会到期自己变回合格。
+    //       会衰减的是它的**后果**（检验积压被排空），那由传导与衰减负责，不是把这笔 delta 撤掉。
+    timeShape: "once",
     unit: "%",
     defaultMagnitude: 15,
     detail: "提高该批次的检验积压 / 不良压力，先传导至返工与放行，再折减可交付量。",
@@ -121,6 +177,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["demandPressure"],
     kind: "demand_shift",
     mode: "delta",
+    // once：插单是往订单簿里**加一笔单**：单加进去就在那里等着被排产、被交付，
+    //       不会到第 N 拍自己消失 —— 那等于「这笔单从没来过」，与插单这件事本身矛盾。
+    timeShape: "once",
     unit: "点",
     defaultMagnitude: 30,
     detail: "追加一笔计划外需求量，先传导至型号需求负荷，再传导至基地负荷与产线利用率。",
@@ -133,6 +192,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["promiseRisk", "shortageRisk"],
     kind: "demand_shift",
     mode: "delta",
+    // once：改交期是把承诺日期**改成另一个日期**：新日期一经确认即长期有效，
+    //       没有「窗口期过了就自动改回原交期」这回事。
+    timeShape: "once",
     unit: "点",
     defaultMagnitude: 20,
     detail: "提前交付承诺，先传导至交期承诺风险，再传导至加急与短缺。",
@@ -145,6 +207,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["orderChurn"],
     kind: "demand_shift",
     mode: "delta",
+    // once：撤单是**一次性**的：撤掉的量不会到期自己回来。
+    //       客户后来又下单那是一笔新单（= 插单），不是这条撤单到期。
+    timeShape: "once",
     unit: "点",
     defaultMagnitude: 25,
     detail: "整单撤销，先传导至订单流失，再反向影响型号需求负荷。",
@@ -157,6 +222,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["deliveryDelay", "procurementDelay"],
     kind: "supply_disruption",
     mode: "delta",
+    // sustained：到货延迟天然是一个**有起止的窗口**：这批货晚到几天，货到之后供应恢复常态。
+    //       「持续多久」在这里就是业务上那个「晚几天」，填它有意义。
+    timeShape: "sustained",
     unit: "天",
     defaultMagnitude: 7,
     detail: "该供应商到货延迟，先传导至物料短缺，再传导至型号供应风险与订单短缺。",
@@ -169,6 +237,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["shortageRisk"],
     kind: "supply_disruption",
     mode: "delta",
+    // sustained：短缺是一个**持续存在的状态**：缺口从某天起存在，补货 / 替代料到位后消失。
+    //       期满回退恰好对应「供应恢复」，是正确语义。
+    timeShape: "sustained",
     unit: "点",
     defaultMagnitude: 30,
     detail: "该物料缺口扩大，先传导至替代料切换与齐套缺口，再传导至型号供应风险。",
@@ -181,6 +252,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["equipmentFailure", "loadPressure"],
     kind: "capacity_loss",
     mode: "delta",
+    // sustained：停机有明确的**起止**（修好即复产），「持续多久」正是排产最关心的那个量；
+    //       期满把产能损失撤掉 = 设备修复，语义正确。
+    timeShape: "sustained",
     unit: "天",
     defaultMagnitude: 2,
     detail: "该设备停机，先传导至维修排队与工序队列，再折减该产线产出。",
@@ -193,6 +267,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["loadIndex", "utilPressure"],
     kind: "capacity_loss",
     mode: "delta",
+    // sustained：产能受损是一段时间内的**降额**（限电 / 检修 / 爬坡未达标），期满恢复原产能。
+    //       若是永久性减产（关线），那是产能基线变更，不该走扰动这条路。
+    timeShape: "sustained",
     unit: "%",
     defaultMagnitude: 20,
     detail: "该基地负荷变化，先传导至产线利用率与检修窗，再传导至跨基地调拨。",
@@ -205,6 +282,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["deliveryHoldRisk", "transferPressure"],
     kind: "demand_shift",
     mode: "delta",
+    // once：改派收货地是一次**变更**：「第 6 天收货地自己改回去」业务上不存在。
+    //       这正是本单点名的那条真缺陷。
+    timeShape: "once",
     unit: "点",
     defaultMagnitude: 20,
     detail: "变更收货地，先传导至交付暂扣风险与跨基地调拨压力。",
@@ -217,6 +297,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["costPressure"],
     kind: "cost_shock",
     mode: "delta",
+    // once：重议价格落到合同上即**长期有效**，不存在「到期回到旧价」——
+    //       与「原材料涨价」同形态：价格是被改成了另一个值，不是被临时顶住一段时间。
+    timeShape: "once",
     unit: "点",
     defaultMagnitude: 15,
     detail: "重议该订单价格，先传导至订单成本压力，再传导至客户应收压力。",
@@ -229,6 +312,9 @@ export const BUSINESS_EVENTS: readonly BusinessEvent[] = [ // hardcoded-data-all
     preferStateVars: ["forecastBias", "demandLoad"],
     kind: "demand_shift",
     mode: "delta",
+    // sustained：预测偏差挂在**某一预测期间**上：该期间过后换新一版预测，这一版的偏差就不再挂着。
+    //       期满回退 = 换版，语义成立。
+    timeShape: "sustained",
     unit: "%",
     defaultMagnitude: 20,
     detail: "销售预测出现偏差，先传导至型号需求负荷，再传导至基地负荷与成品库存消耗。",

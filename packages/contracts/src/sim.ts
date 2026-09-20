@@ -660,8 +660,18 @@ export function assertReactionWellFormed<
 export const StateVarDomainSchema = z.object({
   /** 取值域下界（含）。 */
   min: z.number(),
-  /** 取值域上界（含）。 */
-  max: z.number(),
+  /**
+   * 取值域上界（含）。**`null` = 无界声明**（WO-PROP-REVIEW-V2 形态②）。
+   *
+   * 为什么允许 null：积压/天数族（`inspectBacklog` 等）业务上**没有写得出来处的上界**
+   * （电池域表头注：「拍一个 100 天就是拍脑袋定」——那个理由对上界成立，但对衰减不成立，
+   * 评审原文：「检验积压的消化速率 = 检验产能，这是有出处的」）。这类量纲的诚实形态是
+   * 「下界 0 + 静息点 0 + 衰减 λ」三件套 + **上界缺席**，而不是为它编一个上界。
+   * ⚠ 不许用 `Infinity` 顶：zod 4 的 `z.number()` 拒绝无限值，且 JSON 串行化会把
+   *   `Infinity` 落成 `null` —— 两条路都试过，都死（2026-09-18 实测 zod 4.4.3）。
+   * 引擎对 `null` 的语义 = **上夹不生效**（下界/静息点/衰减照常），披露层原样透出。
+   */
+  max: z.number().nullable(),
   /**
    * **静息点** —— 无入流时状态量回落到的那个值，必须 ∈ [min,max]。
    *
@@ -1729,6 +1739,24 @@ export const SandboxViewConfigSchema = z.object({
    * 缺省 `undefined` ⇒ 与本字段引入前**逐字节同屏**（additive · 可回退 RL9）：全部回落裸键，页面照常可用。
    */
   stateVarNames: z.record(z.string(), z.string()).optional(),
+  /**
+   * WO-SIM-REAL-DATA §3 · **状态变量裸键 → 派生规格 specKey**（`receivablePressure` → `customer_receivable_pressure`）。
+   *
+   * 病灶是**绑定靠名字撞上、失败静默**（`deriveSeedBaseSnapshot` 的 `o.props[stateVar]` 探测）：
+   * 改个名、动个类型，那一格悄悄退回哈希 —— 不报错、不变红、屏上照样有数。
+   * 本字段把「这个状态变量的基线值来自哪条 DerivationSpec」做成**显式引用**，
+   * 与 `PropagationRule.coefficientRef` / `weightRef` / `StateVarDomain.decayRef` 同一 `xxxRef` 惯用法。
+   *
+   * ⚠ **读时投影，不是入库字段**：由 `GET /a/v1/sim/view-config` 每次从**后端单源表**
+   * （`synthetic/battery.ts` 的 `STATE_VAR_VALUE_REFS`）现查后填，与 `stateVarNames` 同一条纪律。
+   *
+   * ⚠ **只收登记过的键**：查不到的变量**不出现在本字典里**（缺席 = 明确的「没有显式绑定，
+   * 走名字撞」），与 `stateVarNames` 的「缺席 = 没有名字」同义。
+   *
+   * ⚠ **`.optional()` 而不是必填**：与 `stateVarNames` 同一条理由（additive · 可回退 RL9，
+   * 缺省 `undefined` ⇒ 与引入前逐字节同屏，前端照常回落）。
+   */
+  stateVarValueRefs: z.record(z.string(), z.string()).optional(),
 });
 export type SandboxViewConfig = z.infer<typeof SandboxViewConfigSchema>;
 

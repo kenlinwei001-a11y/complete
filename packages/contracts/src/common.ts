@@ -41,6 +41,9 @@ export const RuleVerdictSchema = z.object({
   explanation: z.string(),
   /** 引用模式增量 §2.2（additive）：求值时实际生效的规则版本（留痕用） */
   ruleVersion: z.number().int().optional(),
+  /** WO-RULE-DISCOVERY（additive）：显式点名但规则库查无（或已退役）的占位 verdict——
+   *  此前不存在的 key 被静默丢弃（要 4 回 3，模型拿不到「这条不存在」的任何反馈）。 */
+  notFound: z.boolean().optional(),
 });
 export type RuleVerdict = z.infer<typeof RuleVerdictSchema>;
 

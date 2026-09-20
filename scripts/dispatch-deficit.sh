@@ -232,7 +232,32 @@ fi
 Q_VERIFY=0
 Q_VERIFY_LIST=""
 Q_VERIFY_UNKNOWN=0
-INTEG="origin/claude/verify-reclaim-6"
+# ⚠️ **2026-09-19 改基准点**（原值 origin/claude/verify-reclaim-6）。
+#    上面那段记的是「判据方法」踩的坑（祖先关系 → 加时间闸），**而这次错的是基准点本身**：
+#    verify-reclaim-6 停在 2026-08-25，且实测**它本身就是 canonical 的祖先**
+#    （git merge-base --is-ancestor origin/claude/verify-reclaim-6 origin/claude/inspiring-gates-aqczjg → RC=0）。
+#    ⇒ 8-25 之后每一条已经并进 canonical 的分支，都同时满足「不是 INTEG 的祖先」+「tip 不比 INTEG 旧」，
+#      于是被当成待复验。形态：
+#      **「我用『它不是 verify-reclaim-6 的后代』当作『它没并进正线』的证据，而前者并不度量后者
+#        —— verify-reclaim-6 早已不是正线的尖端，它只是正线 25 天前的一个祖先。」**
+#    实测误差双向且都大于队列本身：高估 216 条 · 低估 198 条（时间闸滤掉"推得早、至今没并"的）。
+#    ⚠️ 病因 2026-09-10 就已落账（docs/evidence/HANDOFF-TRIAGE-20260910.md:53、
+#      docs/MERGE-INVENTORY.md:679），连"只要参照物还是它，队列照样把已收编工作报成待复验"都写了
+#      —— **写了，常量没改，于是又骗了 9 天**。这正是 CLAUDE.md 禁令 4 那句：
+#      「我用『我把这件事记下来了』当作『这件事解决了』的证据，而前者并不度量后者。」
+#
+#    ⛔⛔ **改完之后，上面那道时间闸的含义当场反转了 —— 读这个数之前必须先读这一段。**
+#    时间闸是「分支 tip 不比 INTEG tip 旧」。INTEG 过期 25 天时，它几乎放行一切；
+#    INTEG 换成**此刻的** canonical 之后，它几乎拦下一切（canonical 刚推过，比任何 handoff 分支都新）。
+#    实测：同一条命令，改基准点前后 **待复验 266 → 3**，而按**内容**现算（两点差残留 + git cherry
+#    双信号都说未并）的真值是 **246**（`docs/evidence/reverify-triage-20260919.md`，904 条全扫）。
+#    ⇒ **今天这个「待复验 N」是个下界，不是估计值。** 3 不代表只剩 3 条待收编。
+#    误差方向从「高估 216」翻成「低估约 243」—— 换了个方向骗人，不是不骗人了。
+#    ⛔ 不许把它读成「队列快空了」；要真名单请用上面那份按内容现算的台账。
+#    （为什么不顺手把时间闸换成内容判据：内容判据 904 条要跑 11 分钟，而本探针的用途是
+#      「每次要写『我先去测/等一下』之前跑一下」—— 11 分钟的探针没人会跑，等于没有。
+#      把它做对需要缓存层，那是另一张单，不在本次一行常量修复的范围内。）
+INTEG="origin/claude/inspiring-gates-aqczjg"
 if git -C "$ROOT_DIR" rev-parse --verify -q "$INTEG" >/dev/null 2>&1; then
   INTEG_TS=$(git -C "$ROOT_DIR" log -1 --format=%ct "$INTEG" 2>/dev/null || echo 0)
   HANDOFFS=$(git -C "$ROOT_DIR" ls-remote origin 'refs/heads/claude/handoff-*' 2>/dev/null)
