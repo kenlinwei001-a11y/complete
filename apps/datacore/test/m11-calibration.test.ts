@@ -647,7 +647,8 @@ describe("M0-F1 RealizedOutcome 配对键（T4）", () => {
             },
           },
         },
-      });
+      },
+    });
     expect(patch.statusCode).toBe(200);
     const sync = await t.app.inject({ method: "POST", url: `/a/v1/connections/${connId}/sync`, headers: ADMIN });
     expect(sync.statusCode).toBe(202);
@@ -759,7 +760,7 @@ describe("M0-F1 RealizedOutcome 配对键（T4）", () => {
             },
           },
         },
-      }),
+      },
     });
     expect(mockDecl.statusCode).toBe(400);
     expect(JSON.stringify(mockDecl.json())).toContain("mock_erp");
