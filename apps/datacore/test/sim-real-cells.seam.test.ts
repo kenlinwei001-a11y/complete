@@ -68,7 +68,7 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
   }, 180_000);
 
   // ── ⓒ 接缝驱动（验收判据 7）：编译→recompute→播种→读数 整条通 ─────────────────
-  it("ⓒ 接缝驱动：26 条规格编译入库 + 物化后 measuredCells 从 470 涨到 4189（主判据 3,896 过线）", () => {
+  it("ⓒ 接缝驱动：26 条规格编译入库 + 物化后 measuredCells 从 470 涨到 4183（主判据 3,896 过线）", () => {
     // 前态锚点：§1 只带 3 条旧规格时 measuredCells=470（WO 实测基线，含 Customer 那条 20 格）。
     // 20 条 A 档物化 +3,221 ⇒ 3691；A⚠ 5 条（仓主 2026-09-16 ③批）再 +480（Order 150×3 +
     // MaterialBatch 24 + Model 6）⇒ 4171 ≥ 主判据 3,896（+275）。orderChurn 停笔不减格（它从未物化）。
@@ -76,8 +76,14 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     // (FinishedGoodsInventory, coverDays) 纳入规则触及集 ⇒ 世界新铺 18 格（FGI 18 行 × 1 新量纲），
     // 且 `fgi_cover_days` 规格把这 18 格全部物化成真值 ⇒ totalCells 6363→6381、measuredCells 4171→4189
     // （/tmp/t3-probe.txt ③ 实测两数，与预测逐字节一致）。
+    // ⚠ WO-FORECASTBIAS-RETIRE（2026-09-20）**减 6**：4189→4183。退役 `model_forecast_bias`
+    //   （分子 `totalDemand − SUM(in(order_for_model).qty)` 两项同源 ⇒ **恒 0**，却盖着 "measured" 章）
+    //   ⇒ `Model.forecastBias` 6 格从「实测」退回哈希占位。
+    //   **`totalCells` 一格不动（仍 6381）**：格子还在，换的是出处章 —— 这正是本条该有的样子，
+    //   两个数一起看才分得清「少了一格」与「同一格换了出处」。
+    //   ⛔ 别把这 −6 读成「丢了 6 格真读数」：那 6 格原本就不是真读数，是一个恒等式的零。
     expect(totalCells).toBe(6381);
-    expect(measuredCells).toBe(4189);
+    expect(measuredCells).toBe(4183);
   });
 
   // ── ⓑ 指认粒度（验收判据 ⓑ）：逐条点名物化数，红了能指出是哪一条 ─────────────────
@@ -353,8 +359,57 @@ describe("WO-SIM-REAL-DATA · 真业务数进推演世界（SEAM 组合）", () 
     }
     // 复原后必须能正常播种（证明变异真的被复原，不留残毒）。
     const ok = await deriveSeedBaseSnapshot(t.repos, "demo");
-    expect(ok.origin.measuredCells).toBe(4189); // WO-PROP-REVIEW-V2：4171→4189（+18 库存环 coverDays 格，理由见 ⓒ 段注释）
+    // WO-PROP-REVIEW-V2：4171→4189（+18 库存环 coverDays 格）；
+    // WO-FORECASTBIAS-RETIRE：4189→4183（−6 Model.forecastBias 格退役回哈希）。理由见 ⓒ 段注释。
+    expect(ok.origin.measuredCells).toBe(4183);
   });
+
+  // ── WO-FORECASTBIAS-RETIRE（2026-09-20）：退役必须**两处同时**干净 ──────────────────
+  // 上面 ⓒ / §3 两处的 `4183` 是**计数**，计数能被别的改动补平（一格退役 + 一格新增 = 数不动）。
+  // 本条咬的是**这件事本身**：那条恒 0 的式子没了，且没有任何地方还指着它。
+  // ⚠ 两臂缺一不可 —— 只咬规格没了，会漏掉「规格删了但 valueRef 还登记着」这个**播种抛错**态；
+  //   只咬登记没了，会漏掉「登记删了但规格还在物化假的 measured 值」这个**假绿**态。
+  it("§退役 · `model_forecast_bias` 与它的 valueRef 登记必须同时不存在（残留任一处即红）", async () => {
+    const battery = await import("../src/synthetic/battery.js");
+    // 臂①：规格表里查无此式（`DEMO_DERIVATION_SPECS` 是播种的唯一真相源）。
+    expect(
+      DEMO_DERIVATION_SPECS.map((s) => s.specKey),
+      "`model_forecast_bias` 又回来了 —— 它的分子 `totalDemand − SUM(in(order_for_model).qty)` " +
+        "两项同源、**恒等于 0**，且会给 `Model.forecastBias` 盖上 \"measured\" 章（屏上谎称实测）。" +
+        "⛔ 要复活它必须先让分子的两项来自**不同**的量。",
+    ).not.toContain("model_forecast_bias");
+    // 臂②：没有任何 valueRef 还指着它（指着 ⇒ `deriveSeedBaseSnapshot` 抛「绑定断裂」）。
+    expect(
+      Object.entries(battery.STATE_VAR_VALUE_REFS)
+        .filter(([, v]) => v.specKey === "model_forecast_bias")
+        .map(([k]) => k),
+      "还有 valueRef 指着已退役的 `model_forecast_bias` ⇒ SEED_DEMO 播种会当场抛「绑定断裂」。",
+    ).toEqual([]);
+    // 🐤 双向金丝雀：这把尺子得能**数得到**别的登记，否则上面两个空集是「工具坏了」不是「干净」。
+    expect(
+      Object.entries(battery.STATE_VAR_VALUE_REFS).filter(([, v]) => v.specKey === "model_cost_pressure").map(([k]) => k),
+      "🐤 同一把尺子连 `model_cost_pressure` 的登记都数不到 ⇒ **量法坏了**，上面的空集不构成证据",
+    ).toEqual(["Model|costPressure"]);
+    expect(
+      DEMO_DERIVATION_SPECS.map((s) => s.specKey),
+      "🐤 同一把尺子连 `model_cost_pressure` 都查不到 ⇒ **量法坏了**",
+    ).toContain("model_cost_pressure");
+    // 臂③：退役后这一格必须**真的**回到哈希占位档，且出处章如实写 "derived"（不是 "measured"）。
+    // ⛔ 只查「规格没了」不够：那是查源码，不是查读数（本仓铁律 0.6 第 6 条）。
+    const { state, provenance } = await deriveSeedBaseSnapshot(t.repos, "demo");
+    const modelIds = (await objectsOf("Model")).map((o) => o.id).filter((id) => state[id]);
+    expect(modelIds.length, "🐤 进世界的 Model 数对不上 6 ⇒ 先解释再往下走").toBe(6);
+    const provs = modelIds.map((id) => provenance[id]?.forecastBias);
+    expect(provs, "退役后 `Model.forecastBias` 的出处章必须是 derived —— 哈希占位不是实测").toEqual(
+      new Array(6).fill("derived"),
+    );
+    // 值必须**不再全等于 0**（恒 0 正是病的指纹）。
+    const vals = modelIds.map((id) => state[id]!.forecastBias!);
+    expect(
+      new Set(vals).size,
+      `退役后 6 个型号的 forecastBias 仍然只有一个取值 [${vals.join(",")}] —— 恒等式那个零回来了？`,
+    ).toBeGreaterThan(1);
+  }, 120_000);
 
   // ── seedHash01 金丝雀（校验哈希兜底路径仍在，占位格仍可复现）────────────────────────
   it("金丝雀：seedHash01 确定性（占位格的哈希兜底未受本单影响）", () => {

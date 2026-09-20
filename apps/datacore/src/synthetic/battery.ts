@@ -3966,7 +3966,13 @@ export const STATE_VAR_VALUE_REFS: Record<string, { specKey: string }> = {
   "Material|priceShock": { specKey: "material_price_shock" },
   "Material|shortageRisk": { specKey: "material_shortage_risk" },
   "Model|costPressure": { specKey: "model_cost_pressure" },
-  "Model|forecastBias": { specKey: "model_forecast_bias" },
+  // ⛔ `"Model|forecastBias": { specKey: "model_forecast_bias" }` 已于 2026-09-20 退役
+  //    （WO-FORECASTBIAS-RETIRE）。原式分子两项同源（Σ 减它自己）⇒ 恒 0，病因与实测见
+  //    `seed-derivation-specs.ts` 该段。**本行与那条规格必须同生共死**：
+  //    只删规格、留着本行 ⇒ `deriveSeedBaseSnapshot` 把「登记了 valueRef 却解不到 ACTIVE 规格」
+  //    判为 `brokenRefs` 并**抛错**，整条 SEED_DEMO 播种路当场炸
+  //    （实测原文：`Model.forecastBias → specKey "model_forecast_bias"（查无 ACTIVE 规格）`）。
+  //    退役后本格回到「没有显式绑定」那一档，由 `sim/seed-world.ts` 的哈希占位铺，出处章 = "derived"。
   "Model|supplyRisk": { specKey: "model_supply_risk" },
   // ── A⚠ 档 5 条（仓主 2026-09-16 ③全批落 5；orderChurn 无诚实源停笔，理由见
   //    seed-derivation-specs.ts 该段尾注）。specKey 与规格表逐一对齐。

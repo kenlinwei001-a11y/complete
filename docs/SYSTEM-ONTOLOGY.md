@@ -1939,7 +1939,7 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 
 | 记号 | 新量纲（中文名） | 落点类型 | 传导边（现算入度均为 0） |
 |---|---|---|---|
-| G-ROOT-1 | `forecastBias` 销售预测偏差（正=高估） | `Model` | `Model.forecastBias --model_demanded_by_order--> Order.demandPressure`（**系数 −0.6**） |
+| G-ROOT-1 | `forecastBias` 销售预测偏差（正=高估） | `Model` | `Model.forecastBias --model_demanded_by_order--> Order.demandPressure`（**系数 −0.6**）。⚠ **2026-09-20 起该根由哈希占位播种**（`sim/seed-world.ts`，出处章 `derived`）—— 此前覆写它的派生式 `model_forecast_bias` 因**恒等于 0** 已退役（详见下方 WO-GAIN-REACH 段 ①）。⚠ 占位 ∈ [0,100] **恒非负** ⇒ 这条负边**只单向传导**，「低估(−)」那一支仍进不去 |
 | G-ROOT-2 | `orderChurn` 订单变更压力 | `Order` | `--order_has_line--> OrderLine.splitPressure`(0.7) · `--order_for_model--> Model.demandLoad`(0.5) |
 | G-ROOT-4 | `equipmentFailure` 设备故障率 | `Equipment` | `--equip_used_in--> Process.queuePressure`(0.6) |
 
@@ -2206,7 +2206,7 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 |---|---|---|---|
 | `Material.shortageRisk` | 1.80 | **1.25** | 🔴 仍 1.67× ——【**真超标**】6 条边全 `equal_share`(W≡1) ⇒ `ΣA = Σ\|g\|` 是有意义的和。业务理由：6 个源是「供应晚了」的**六种测法**（替代料切换/供应商交付延迟/PO 到货延迟/来料检验排队/批次库龄/供应商处理天数），高度相关 ⇒ 相加是**重复计数**，该合并口径或按相关性降权，⛔ 不是 6 条一起乘 `f_g`。⚠ 其中 2 条源是**哈希占位**（`alt_switch`/`inspection_queue`）⇒ 这 1.67× 有一部分建在编出来的读数上 |
 | `Process.queuePressure` | 1.75 | **1.25** | 🔴 仍 1.67× ——【**真超标**】同上一型：3 条边 W 全 = 1（2 条 `equal_share`；`line_util` 那条 `weightRef: null` 但每个 `Process` 只 1 条 `Line` 入边 ⇒ N=1 ⇒ W 也是 1，⚠ 别照「null ⇒ W=N」读成 N>1）。业务理由：设备负荷/产线利用率/设备故障率三者同源共动，相加重复计数 |
-| `Model.demandLoad` | 4.05 | **3.05** | ◑ 预算 ✅ **0.749961（1.00×）**，但**带符号实际拉力 −1.8978**、真跑 6 拍 6/6 型号读 0.000 ⇒ **这一格没活**。病因两层见下方 WO-GAIN-REACH 段（`forecastBias` 结构性恒 0 · `orderChurn` 引擎眼里入度 0），**都不是系数问题** |
+| `Model.demandLoad` | 4.05 | **3.05** | ◑ 预算 ✅ **0.749961（1.00×）**，但**带符号实际拉力 −1.8978**、真跑 6 拍 6/6 型号读 0.000 ⇒ **这一格没活**。病因两层见下方 WO-GAIN-REACH 段（~~`forecastBias` 结构性恒 0~~ **① 已于 2026-09-20 闭**，见该段 · `orderChurn` 引擎眼里入度 0 **仍开**），**都不是系数问题**。⚠ **本行三个数（3.05 / −1.8978 / 6 拍读 0.000）不因 ① 闭合而变**：它们量的是 `Model.demandLoad` 的 **tick0 基线**，而该基线由 `order_demand_pressure` 规格（demandDelta×100）给，不由那条负边给；负边影响的是后续拍。⛔ 别把「① 已闭」读成「这一格活了」 |
 | `PurchaseOrder.expeditePressure` | 1.00 | 1.00 | 🔴 1.33×（该格两条边 N 均 = 1，不受本改动影响）——【**判据不适用**】符号被 `\|·\|` 吃掉：`demo_material_shortage_to_po_expedite` 的源 `Material.shortageRisk` 实测均值 **−20.405**（缺料风险为负 = 超储），这条边今天在**缓解**这一格（实际拉力 **−9.92**），而 A 列记成 +0.5 的负担 ⇒ 凑出 1.33×。全格带符号实际拉力 **−7.36**：净受缓解，不是超载。作为「会不会被推过拐点」的判据不成立；作为回路增益上界仍成立 |
 | `Customer.receivablePressure` | — | 0.8613 | 🔴 1.15× ——【**真超标·口径错**】⚠ **单边**（派单原文「都不是单边超标」对本格不成立）。`W = 10.1327` 是**金额加权的扇入数**（150 单 / 17 客户 ≈ 8.8，按金额加权到 10.13）；意图增益 0.085 显然按某个假设扇入数反算（0.085 × 8.82 ≈ 0.75 恰好配满）⇒ 真实扇入 10.13 时超 15%。成因 = 「标定时假设的 W ≠ 实测 W」，合格修法 = 按实测 W 重算**这一条**的意图增益 |
 | `Order.orderChurn` | — | 0.8398 | 🔴 1.12× ——【**判据不适用**】⚠ 同样是**单边**。且这一格今天**在引擎眼里根本没有入边**（唯一入边被 `sim.propagation.adversary` 闸掉，demo 租户该门**关**）⇒ 没有入边就没有稳态增益，0.75 量的是一条**不参与推演**的边。开关打开后 1.12× 才成立（W=2.3995 × 意图 0.35） |
@@ -2250,11 +2250,31 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 带符号**实际拉力** = **−1.8978**（同一格，两把尺子给出相反答案），真起数据推 6 拍后
 6/6 个型号读 **0.000**。病因**不是**「两源量程差 8.56 倍」（实测 26.287 vs 53.580 = **2.038 倍**，
 拉力 12.3511 vs 12.5527，折扣项只赢 **1.63%**），逐跳实测是两层，**都不是系数问题**：
-- **① `Model.forecastBias` 结构性恒 0**：`model_forecast_bias` 式子是
-  `(totalDemand − Σin(order_for_model).qty)/totalDemand`，而合成器里 `totalDemand` **就是**那个 Σ
-  （6/6 个型号逐字节相等，如 `4680-NCM` 490412 = 490412）⇒ 恒 0 ⇒ `Order.demandPressure`
-  唯一入边贡献恒 0 ⇒ 它按 λ=0.37 衰减到 ~0（12 拍后 0.1028）⇒ **正驱动消失**。
-  （`seed-derivation-specs.ts` 该规格注释写「实测 49–77」，**已过期**。）
+- **① ~~`Model.forecastBias` 结构性恒 0~~ ⇒ ✅ 2026-09-20 已闭（WO-FORECASTBIAS-RETIRE）**：
+  原病 —— `model_forecast_bias` 式子是 `(totalDemand − Σin(order_for_model).qty)/totalDemand`，
+  而合成器里 `totalDemand` **就是**那个 Σ（6/6 个型号逐字节相等，如 `4680-NCM` 490412 = 490412）
+  ⇒ 恒 0 ⇒ `Order.demandPressure` 唯一入边贡献恒 0 ⇒ 它按 λ=0.37 衰减到 ~0（12 拍后 0.1028）
+  ⇒ **正驱动消失**。且该格盖的是 **`"measured"`** 章 —— 屏上谎称实测
+  （`seed-derivation-specs.ts` 该规格注释写「实测 49–77」，**从来就是假的**）。
+  **处置 = 退役该派生式**（理由不依赖后继方案：两项同源 ⇒ 无论拿什么替代它，它自己都是错的；
+  且 `forecastBias` 入度 0 是外生根，`sim/propagation.ts` 衰减豁免段点名了它
+  ——「引擎无权让它自己变小」，派生式覆写外生根与该纪律直接抵触）。
+  ⚠ **退役必须动两处，缺一处 `SEED_DEMO=1` 播种当场抛错**（不是静默回落）：
+  `seed-derivation-specs.ts` 的规格 **＋** `synthetic/battery.ts` 的
+  `STATE_VAR_VALUE_REFS["Model|forecastBias"]` 登记。
+  实测（`docs/evidence/wo-forecastbias-retire/`）：6 型号 `0/measured` → **1,88,50,88,8,79 / derived**；
+  那条**全图唯一的负系数边** `demo_forecast_bias_to_order_demand` 单拍 trace **0 行 → 150 行 /
+  传导量 −1705.848**（反向金丝雀：`Material.priceShock` 8 格 `[2,2,2,2,2,2,8,2]` 逐字节不变）。
+  ⚠ **遗留缺口（未闭，另单）**：哈希占位 ∈ **[0,100]**（⚠ 上界 100 不是 99 —— `seedHash01` ∈ [0,0.999]，
+  `round(0.999×100)=100`；`seed.ts` ③ 段写的 [0,99] 差一档）**恒非负** ⇒ 唯一入流 `−0.6 × forecastBias`
+  恒 ≤ 0，而 `demandPressure` 是压力族（`min = restPoint = 0` 硬地板）⇒ 24 拍后 6/6 读 **0.000000**。
+  该边注释写的「低估(−) ⇒ 需求压力上冲」那一支**仍然进不去** ——
+  退役把「恒 0」换成「恒非负」，**边从不传导变成只单向传导：变好但没闭合**。
+  要闭得给 `forecastBias` 一个带负区间的诚实来源（改 `sim/seed-world.ts` 种子生成器）。
+  ⚠ 另订正一处**说过头的话**：此前把它记作「沙盘唯一的需求高估杠杆是死的」。实测
+  （`lever-probe.mjs` 四臂对照）：`sim-drill.ts` 的 `FORECAST_BIAS.stateEffect.mode === "delta"`
+  ⇒ **用户拨杆那条路退役前就是通的**（基线全 0 时拨 +20 仍得 trace 150 行 / −666.000）。
+  死掉的是**零扰动空转的基线**，不是杠杆本身。
 - **② `Order.orderChurn` 在引擎眼里入度 0**：唯一入边 `demo_customer_reaction_cut_order` 带 `reaction`，
   被 `sim.propagation.adversary` 闸掉（demo 租户在 `features.ts` `WORLD_DARK_LAUNCH_FEATURES` 里 ⇒ **关**）
   ⇒ 按「入度 0 = 外生输入，引擎无权让它自己变小」**不衰减** ⇒ 折扣项恒为出厂值。

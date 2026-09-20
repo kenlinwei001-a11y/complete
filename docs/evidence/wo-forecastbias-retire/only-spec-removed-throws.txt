@@ -1,0 +1,14 @@
+🐤① 生产播种序列：派生规格 28 条 · 播种期全量初算物化 2825 个对象
+
+══ model_forecast_bias 规格：**已退役（查无此规格）**
+file:///home/user/complete/.claude/worktrees/agent-acc57186b580542d6/apps/datacore/dist/sim/seed-world.js:294
+        throw new Error(`WO-SIM-REAL-DATA §3 valueRef 绑定断裂（⛔ 不许静默回落哈希）：\n  · ${brokenRefs.join("\n  · ")}`);
+              ^
+
+Error: WO-SIM-REAL-DATA §3 valueRef 绑定断裂（⛔ 不许静默回落哈希）：
+  · Model.forecastBias → specKey "model_forecast_bias"（查无 ACTIVE 规格）
+    at deriveSeedBaseSnapshot (file:///home/user/complete/.claude/worktrees/agent-acc57186b580542d6/apps/datacore/dist/sim/seed-world.js:294:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///home/user/complete/.claude/worktrees/agent-acc57186b580542d6/docs/evidence/wo-forecastbias-retire/fb-probe.mjs:60:43
+
+Node.js v22.22.2
