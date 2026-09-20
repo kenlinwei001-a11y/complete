@@ -21,6 +21,30 @@ import { deriveTurnDynamics, readWorldLine, WORLD_LINE_DEFAULT_WINDOW } from "..
  * "第几拍才看得见"本身就是回合语义，单张快照答不出来。
  *
  * ⚠ 本文件**不新增门/棘轮/基线 JSON**（禁令 3），就是一个普通 vitest 接缝测试。
+ *
+ * ── ⚠ 2026-09-20 判据换轨：tick0 起点**不再是空世界** ────────────────────────────────
+ * **病因（不是本文件的错，是它的前提被换掉了）**：`a67ed05c`（WO-SANDBOX-REAL-SNAPSHOT
+ * 后端半，抢救提交·提交信息自述「未经任何验证，未跑测试」）把 `createSimSessionWorld` 从
+ *   `const base = input.baseSnapshot ?? {};`            ← 不传 ⇒ **空世界**
+ * 改成「不传 `baseSnapshot` ⇒ 服务端 `deriveSeedBaseSnapshot` 从真实对象派生 tick0 世界」。
+ * 本文件的 `newSession()` 正是**不传** `baseSnapshot` 的那条路 ⇒ 起点从「0 个承载对象」
+ * 变成「150/500 张订单带 `costPressure`」⇒ 原来那几条 `toBe(0)` 全部失去前提。
+ * ⇒ **`toBe(0)` 当年为真，靠的是「聚合了个空集」，而不是「到达延迟」** —— 判据一直没在
+ *   度量它自称度量的东西。换轨后（对照臂）才真的在度量。
+ *
+ * **🔴 顺带测出、本文件刻意不下结论的一件事（⛔ 别把它当成已裁决）**：
+ * 起点非空之后，`Order.costPressure` 的轨迹是**下行**的，且与扰动幅度不单调 ——
+ * 实测（本夹具，tick×3，聚合值）：
+ *   · 不扰动      `[17.213662, 15.715810, 14.040165, 13.059346]`  direction=FALLING peak=t0
+ *   · +20 价格冲击 `[17.213662, 15.715810, 13.997682, 12.963336]`
+ *   · +40 价格冲击 `[17.213662, 15.715810, 14.044885, 13.070014]`  ← 比 +20 **高**
+ * 跑满生产播种（`seedDemoDerivationSpecs` + `recomputeDemoDerivationsAtSeed`，
+ * 此时 500/500 订单带**真派生** `costPressure`）同样下行：`[24.026731, …, 6.606615]`。
+ * 即：推拍把「起点那份成本压力」换成了引擎算出来的小得多的数，而非在其上叠加。
+ * ⇒ 原来的 `direction==="RISING"` / `peak.tick===3` / `t3>t2` 三条**今天全不成立**。
+ * **故意不改写成 `toBe("FALLING")`**：那会把一个没查清的行为焊成基线
+ * （「源涨 ⇒ 下游必涨」是本文件选这条链的**全部理由**，见上「用哪条链」）。
+ * 留作独立工单，判据在传导相的 combine 语义与起点值的关系上，不在本文件。
  */
 
 const enableSim = async (t: TestApp) =>
@@ -137,8 +161,16 @@ describe("WO-TURN-LOOP · 回合推进对求解器可见（接缝）", () => {
   });
 
   // ── ② 核心接缝：求解器读得到**前若干拍**，不只是当前一格 ──────────────────────────
-  it("🔴 SEAM：tick×3 后求解器给出 4 拍轨迹，且前两拍为 0（两跳链的到达延迟 = 回合语义）", async () => {
+  it("🔴 SEAM：tick×3 后求解器给出 4 拍轨迹，前两拍与无扰动对照臂逐字节相同（两跳链的到达延迟 = 回合语义）", async () => {
     const t = await seededApp();
+    /**
+     * **对照臂**（本单判据的承重墙）：同一棵种子、同一串 tick，**不施加扰动**。
+     * `deriveSeedBaseSnapshot` 是确定性的（R6）⇒ 两臂 tick0 必然同源，差别只可能来自扰动。
+     */
+    const ctrlSid = await newSession(t);
+    for (let i = 0; i < 3; i++) await tick(t, ctrlSid);
+    const ctrl = (await project(t, ctrlSid)).turnDynamics!.byStateVar.costPressure!;
+
     const sid = await newSession(t);
     await perturb(t, sid, MAT_ID, 20, 0);
     for (let i = 0; i < 3; i++) await tick(t, sid);
@@ -151,13 +183,17 @@ describe("WO-TURN-LOOP · 回合推进对求解器可见（接缝）", () => {
     expect(td!.ticksUsed).toBe(Math.min(WORLD_LINE_DEFAULT_WINDOW, 4));
     const cp = td!.byStateVar.costPressure!;
     expect(cp.trajectory.map((p) => p.tick)).toEqual([0, 1, 2, 3]);
-    // 两跳链：t0/t1 还没传到 ⇒ 必须是 0；t2 起必须抬头。这四个数**单张快照给不出**。
-    expect(cp.trajectory[0]!.value).toBe(0);
-    expect(cp.trajectory[1]!.value).toBe(0);
-    expect(cp.trajectory[2]!.value).toBeGreaterThan(0);
-    expect(cp.trajectory[3]!.value).toBeGreaterThan(cp.trajectory[2]!.value);
-    expect(cp.direction).toBe("RISING");
-    expect(cp.peak!.tick).toBe(3);
+    /**
+     * 两跳链的**到达延迟**：t0/t1 扰动还没传到 ⇒ 必须与对照臂**逐字节相同**；
+     * t2 是**第一个**分岔的拍。「第几拍才看得见」本身就是回合语义，单张快照答不出来。
+     *
+     * ⚠ 这条判据**比原来的 `toBe(0)` 强**：`toBe(0)` 在**空世界**下恒真（一个承载对象都没有，
+     *   聚合当然是 0）——它其实没在度量到达延迟。对照臂式只可能被真的延迟满足：
+     *   链若在 t0/t1 就到了，两臂会分岔；链若压根没到，t2 不会分岔。
+     */
+    expect(cp.trajectory[0]!.value).toBe(ctrl.trajectory[0]!.value);
+    expect(cp.trajectory[1]!.value).toBe(ctrl.trajectory[1]!.value);
+    expect(cp.trajectory[2]!.value).not.toBe(ctrl.trajectory[2]!.value);
     // 末拍值必须与既有 `pressures` 里那一行**同一个数** —— 两处口径若漂，曲线就与当前值对不上。
     const cur = out.pressures.find((p) => p.stateVar === "costPressure")!;
     expect(cp.trajectory[3]!.value).toBe(cur.value);
@@ -232,8 +268,16 @@ describe("WO-TURN-LOOP · 回合推进对求解器可见（接缝）", () => {
     expect(cp.deltaFromPrev).toBeNull();
     expect(cp.ticksUsed).toBe(1);
     expect(out.turnDynamics!.note).toContain("尚未推进过");
-    // 既有读数：未推进 ⇒ 传导没跑 ⇒ 压力仍为 0（本单不许改既有行为）。
-    expect(out.pressures.find((p) => p.stateVar === "costPressure")!.value).toBe(0);
+    /**
+     * 既有读数：未推进 ⇒ 传导没跑 ⇒ 压力**仍是 tick0 起点那一份**（本单不许改既有行为）。
+     *
+     * ⚠ 判据从「恒 0」换成「等于无扰动的同一棵世界」——`toBe(0)` 编码的是
+     * `a67ed05c` 之前那个**空世界**（见本文件头注「tick0 起点不再是空世界」）。
+     * 对照臂同样证得住「扰动还没到」，而且不依赖起点恰好是 0。
+     */
+    const ctrl = await project(t, await newSession(t)); // 同种子、不扰动、不推进
+    expect(out.pressures.find((p) => p.stateVar === "costPressure")!.value)
+      .toBe(ctrl.pressures.find((p) => p.stateVar === "costPressure")!.value);
   });
 
   // ── ⑥ 窗口：世界线比窗口长时必须诚实标 truncated ─────────────────────────────────
