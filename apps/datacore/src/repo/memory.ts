@@ -554,6 +554,7 @@ export function createMemoryRepos(): Repos {
     calibrationHistory: new MemStore(),
     calibrationForecasts: new MemStore(),
     calibrationPairs: new MemStore(),
+    realizedOutcomes: new MemStore(),
     riskCases: new MemStore(),
     livedInStates: new MemStore(),
     opsSchedules: new MemStore(),
