@@ -1375,16 +1375,28 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
     // ── 判据⑤：**源无诚实数据源**的边，名单钉死 ─────────────────────────────────────
     // 这些边的「实际拉力」只是**当前哈希基线**，不是业务事实 —— 不许悄悄混进一个看起来同质的数里。
     // ⚠ 名单缩短 = 有人给某个源接上了诚实数据源（**好事**，改这里并在 WO 里说明）；
-    //   名单变长 = 有诚实源的格子退回了占位（**回归**，先查 `recomputeDemoDerivationsAtSeed`）。
+    //   名单变长 = **两种成因，定性相反，必须先分清再改名单**：
+    //     (a) 有诚实源的格子**退回**了占位 ⇒ **回归**，先查 `recomputeDemoDerivationsAtSeed`；
+    //     (b) 某个源原本盖着 "measured" 章、而那个"实测值"**根本不是实测** ⇒ 退役它是**好事**，
+    //         名单变长恰恰是**病被记上账**（哈希占位至少诚实地说自己是占位）。
+    //   ⚠ (b) 这一档是 2026-09-20 WO-FORECASTBIAS-RETIRE 补的 —— 原文只写了 (a)，
+    //     于是「一个假的实测值」被退役时，这道门会把它误判成回归。
+    //     **形态**：「我用『这一格从 measured 掉到 derived』当作『它丢了一个诚实源』的证据，
+    //     而前者并不度量后者 —— 它原本那个 measured 可能就是假的。」
     // ⚠ `orderChurn` 在列：`seed-derivation-specs.ts` 段尾「⛔ orderChurn 停笔」是**仓主的裁决**，
     //   不是漏做 —— Order 上 ratio 族三个字段已各归其主，再复用就是与 `demandPressure` 字节级复制。
     const hashSourced = allEdges.filter((e) => e.prov === "哈希").map((e) => e.key).sort();
     expect(
       hashSourced,
-      "「源走哈希占位」的边集合变了 —— 见上方两种成因，两种都必须先解释再改这个名单。",
+      "「源走哈希占位」的边集合变了 —— 见上方三种成因，三种都必须先解释再改这个名单。",
     ).toEqual([
       "demo_alt_switch_to_material_shortage",       // 源 MaterialAlternative.switchPressure 无派生规格
       "demo_fg_drawdown_relieves_model_demand",     // 源 FinishedGoodsInventory.drawdownPressure 无派生规格
+      // 源 Model.forecastBias —— 2026-09-20 走 (b)：原规格 `model_forecast_bias` 的分子是
+      // `totalDemand − SUM(in(order_for_model).qty)`，两项同源 ⇒ **恒 0**，却盖着 "measured" 章。
+      // 退役后回哈希占位（实测 6 型号 1/88/50/88/8/79）⇒ 这条全图唯一的负系数边**首次真正传导**
+      // （单拍 trace 0 行 → 150 行 / −1705.848）。⛔ 别把它读成回归。
+      "demo_forecast_bias_to_order_demand",
       "demo_inspection_queue_to_material_shortage", // 源 IncomingInspection.queueDays 无派生规格
       "demo_order_churn_to_line_split",             // 源 Order.orderChurn —— 仓主 2026-09-16 明令停笔
       "demo_order_churn_to_model_demand_load",      // 同上（本格就是 `Model.demandLoad`）
@@ -1433,11 +1445,21 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
     //   `f_g` 是全格同一个乘数，缩它不改符号（上面判据①b 已记过这次实测）。
     // 🔴 病因**不是**派单里写的「两源量程差 8.56 倍」（实测 26.287 vs 53.580 = **2.038 倍**，
     //   拉力 12.3511 vs 12.5527，churn 只赢 **1.63%**）。逐跳实测的真因有两层：
-    //   ① `Model.forecastBias` **结构性恒 0**：`model_forecast_bias` 式子是
-    //      `(totalDemand − Σin(order_for_model).qty)/totalDemand`，而合成器里 `totalDemand`
-    //      **就是**那个 Σ（6/6 个型号逐字节相等，如 4680-NCM 490412 = 490412）⇒ 恒 0。
-    //      ⇒ `Order.demandPressure` 唯一入边贡献恒 0 ⇒ 它 λ=0.37 衰减到 ~0（12 拍后 0.1028）
-    //      ⇒ 正驱动消失。（该规格注释写「实测 49–77」，**已过期**。）
+    //   ① ~~`Model.forecastBias` **结构性恒 0**~~ —— ✅ **2026-09-20 已闭**（WO-FORECASTBIAS-RETIRE）。
+    //      原病：`model_forecast_bias` 式子是 `(totalDemand − Σin(order_for_model).qty)/totalDemand`，
+    //      而合成器里 `totalDemand` **就是**那个 Σ（6/6 个型号逐字节相等，如 4680-NCM 490412 = 490412）
+    //      ⇒ 恒 0，且盖着 "measured" 章。该规格注释写的「实测 49–77」从来就是假的。
+    //      处置：**退役该规格**（连同 `battery.ts` 的 `STATE_VAR_VALUE_REFS["Model|forecastBias"]`
+    //      —— 两处必须同生共死，只删一处播种当场抛错）。退役后该格回哈希占位
+    //      （6 型号实测 1/88/50/88/8/79），那条**全图唯一的负系数边**首次真正传导：
+    //      单拍 trace **0 行 → 150 行 / −1705.848**。
+    //      ⚠ **本判据⑦ 的数不因此变**：`Order.demandPressure` 的 **tick0 基线**由它自己的规格
+    //      `order_demand_pressure`（demandDelta×100，实测均值 26.287）给，不由这条负边给；
+    //      负边影响的是**后续拍**。别把「①已闭」读成「拉力该转正了」。
+    //      ⚠ **遗留缺口（未闭）**：哈希占位 ∈ [0,99] **恒非负** ⇒ 唯一入流 `−0.6 × forecastBias`
+    //      恒 ≤ 0，而 `demandPressure` 是压力族（min = restPoint = 0 硬地板）⇒ 24 拍后 6/6 读 0.000000。
+    //      边注释写的「低估(−) ⇒ 需求压力上冲」那一支**仍然进不去**。要闭得给 forecastBias
+    //      一个带负区间的诚实来源（改 `sim/seed-world.ts` 种子生成器），另单。
     //   ② `Order.orderChurn` 的唯一入边 `demo_customer_reaction_cut_order` 带 `reaction`，
     //      被 `sim.propagation.adversary` 闸掉（demo 租户在 `WORLD_DARK_LAUNCH_FEATURES` 里 ⇒ **关**）
     //      ⇒ 引擎眼里没有任何规则写 `orderChurn` ⇒ 按「入度 0 = 外生输入」**不衰减**
