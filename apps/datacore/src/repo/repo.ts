@@ -6,6 +6,7 @@ import type {
   CalibrationHistoryRecord,
   CalibrationPairRecord,
   CalibrationProposalRecord,
+  RealizedOutcome,
   ClockTickReport,
   Connection,
   DerivationRun,
@@ -319,6 +320,8 @@ export interface Repos {
   calibrationHistory: Store<CalibrationHistoryRecord>;
   calibrationForecasts: Store<CalibrationForecastRecord>;
   calibrationPairs: Store<CalibrationPairRecord>;
+  // M0-F1 实料配对键（PRD-ground-truth §2.1）：摄取行认领为预测 actual
+  realizedOutcomes: Store<RealizedOutcome>;
   // 运营态出厂配置增量（lived-in）
   riskCases: Store<RiskCaseRecord>;
   livedInStates: Store<LivedInStateRecord>;

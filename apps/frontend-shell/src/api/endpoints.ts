@@ -840,8 +840,9 @@ export const fetchSimViewConfig = () => api.a<SandboxViewConfig>("/a/v1/sim/view
  * ══ WO-SANDBOX-REAL-SNAPSHOT · 为什么这个参数从必填变成可选 ═══════════════════════════
  *
  * **今天的行为 X（本单开工前实测）**：两个调用点（`SandboxView.init` / `EdgeActivePanel.ensureSession`）
- * 各自调 `deriveBaseSnapshot(cfg)` —— `round(hash01(\`${objectId}|${stateVar}\`) × 100)` ——
+ * 各自在浏览器里 `round(hash01(\`${objectId}|${stateVar}\`) × 100)` ——
  * **一次 `props` 都不读**，把一份纯哈希编出来的世界当 tick0 传给后端。
+ * （2026-09-19 · WO-M0-GROUND-TRUTH F0：那两个调用点**已改为不传**，前端那支哈希派生已整支删除。）
  * **应该的 Y**：世界内容由**持有真实对象的那一侧**（datacore）派生，且**逐格带出处**。
  * 前端没有对象，它唯一能做的就是编；编出来的数**长得和真值一模一样**（有量纲感、有小数位、
  * 会随对象变化），用户没有任何办法分辨 —— 这正是 R13 明令禁止的那种谎。
@@ -1389,6 +1390,8 @@ import {
   CalibrationReportSchema,
   CalibrationRunResultSchema,
   type CalibrationRunResult,
+  CalibrationDebtSchema,
+  type CalibrationDebt,
   DataHealthResponseSchema,
   HistoryBundleSchema,
   HistoryWatermarkSchema,
@@ -1442,6 +1445,10 @@ export const decideCalibrationProposal = (id: string, decision: "approve" | "rol
 /** M11 §3 手动「立即校准」（catalog_admin）：配对 → 元闭环 → 全切片提案生成 */
 export const runCalibration = async (): Promise<CalibrationRunResult> =>
   CalibrationRunResultSchema.parse(await api.a<unknown>("/a/v1/calibration/run", { body: {} }));
+
+/** M0-F2 实料欠账计（PRD-ground-truth §2.1）：expected 必填 —— 屏上读数与回包逐字一致。 */
+export const fetchCalibrationDebt = async (): Promise<CalibrationDebt> =>
+  CalibrationDebtSchema.parse(await api.a<unknown>("/a/v1/calibration/debt"));
 
 export const fetchDataHealth = async (): Promise<DataHealthResponse> =>
   DataHealthResponseSchema.parse(await api.a<unknown>("/a/v1/data-health"));

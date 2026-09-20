@@ -15,7 +15,7 @@
  * 前端另写一份 `cf - base` 看着无害，但两侧一旦漂移（取整、缺格当 0、容差），
  * 屏上那个"关掉这条边涨了 3.2"就是个查无对证的数。本文件只做**排版**，不做**算术**。
  */
-import type { CellProvenance, PropagationRule, SandboxViewConfig, SimCounterfactualResult, SimStateDiffCell, TickState } from "@platform/contracts";
+import type { PropagationRule, SimCounterfactualResult, SimStateDiffCell } from "@platform/contracts";
 // WO-STATEVAR-DISPLAYNAME：状态变量中文名的唯一消费路径（真值源在后端，此处只翻译不编名）
 import { qualifiedStateVarText, stateVarText } from "./stateVarLabel";
 
@@ -345,27 +345,22 @@ export function pickProbeSession<T extends { id: string; createdAt: string; scop
   return [...usable].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))[0] ?? null;
 }
 
-// ── tick0 世界态派生（**从 SandboxView 迁来，不是新写的第二份**）─────────────────────────
+// ── tick0 世界态的前端自造实现**已整支删除**（WO-M0-GROUND-TRUTH · F0）──────────────────
 /**
- * 字符串 → 稳定 [0,1)（把抽象 key 映射成可视初值；与行业无关，R14）。
- *
- * ⚠ **迁移说明（重要，别读成"又造了一份"）**：`hash01` / `deriveBaseSnapshot` 原本住在
- * `SandboxView.tsx`，本单把它们迁到这里、由 `SandboxView` 反向 import —— **实现一行未改**，
- * 迁的唯一理由是：`EdgeActivePanel` 也要用它（给没有推演世界的页就地开一个探针世界），
- * 而 `SandboxView → EdgeActivePanel` 已经是一条依赖边，反向 import 会成环。
- * 在这里放一份**副本**才是错的：两份 tick0 派生 ⇒ 沙盘的世界与探针世界不是同一个世界，
- * 而用户看到的差值会因此对不上账。
+ * **今天的行为 X（删之前，2026-09-19 实测）**：本文件住着前端哈希派生三件套 ——
+ * 浏览器里按 `round(hash01(objectId|stateVar)×100)` 编 tick0 世界 + 自盖 `derived` 章，
+ * 一次 `props` 都不读，经 `createSimSession({baseSnapshot})` 落库。按仓主定义
+ * （PRD §2.0.1：只存储在前端的数据 = mock 数据）那是**假数据，且在生产路径上**。
+ * **应该是 Y**：世界态由服务端 `deriveSeedBaseSnapshot` 现派生（`app.ts` 建会话端点，
+ * 不传 `baseSnapshot` 即触发），逐格盖 `measured`/`derived` 章随回包下发。
+ * **裁决留档**：`claude/handoff-real-cells` 的 `resolveTick0World`（路 A：复制后端**冻结**
+ * 播种快照）实测同一时刻读到 `equipmentFailure=17`，而真值是 75（路 B：服务端现派生读得）。
+ * ⇒ 本单照**路 B** 清，路 A 不收编；两支哈希函数与其唯一调用方（`SandboxView.init` /
+ * `EdgeActivePanel.ensureSession`）一起删，不留死代码。
  */
 /**
- * `deriveBaseSnapshot` 产出的那批读数的**来源记号**（屏上真渲染的字符串，不是注释）。
- *
- * 为什么必须是导出的常量而不是各页各写一句：`hash01` 派生出的数**长得和真值一模一样**
- * （有量纲感、有小数位、会随对象变化），用户没有任何办法分辨。记号只有一份、跟着这个函数走，
- * 才不会出现"迁了实现、记号留在原文件"的情况 —— 本单迁移 `deriveBaseSnapshot` 时，
- * `screen-value-provenance:check` **当场就是这么报红的**：源点跟着代码走了，记号没跟。
- *
- * ⚠ 不许为了让门变绿在文件里随手塞一个含"占位"二字的字符串（门只到文件级，确实拦不住）——
- * 那是把一个可见的债换成一个看不见的谎。本常量**必须真的渲染在屏上**
+ * `PROBE_WORLD_PROVENANCE` 那段记号（屏上真渲染的字符串，不是注释）**保留**：
+ * 服务端派生的世界里取不到真值的格仍是确定性占位，「全占位」那一档措辞仍由它承载
  * （消费方：`EdgeActivePanel` 的探针世界出处段）。
  */
 export const PROBE_WORLD_PROVENANCE = "占位·未实测";
@@ -373,59 +368,3 @@ export const PROBE_WORLD_PROVENANCE = "占位·未实测";
 export const PROBE_WORLD_PROVENANCE_DETAIL =
   "本页就地开的探针世界，其 tick0 世界态由本体配置结构派生（合成占位值，非实测）。" +
   "下方差值反映的是这条边的结构影响（系数 × 延迟 × 链路扇出），量级不可当实测读。";
-
-export function hash01(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return ((h >>> 0) % 1000) / 1000;
-}
-
-/**
- * 从配置派生 tick0 世界态。键 = **真物化对象 id**（`cfg.nodeObjectIds`，与 `propagateTick` 引擎
- * `idsByType` 同源）→ `state[sourceId]` 真命中 → tick 真传导。
- * 空世界（该类型无对象）退 `${type}#0` 占位（无传导，页面仍可跑）。
- *
- * ⚠ **这批值是 `DERIVED` 占位、不是实测**（`SandboxView` 的 `WorldOrigin` 章程原文）。
- * 凡是拿它当起点算出来的差值，界面上必须跟着标出处 —— 见 `EdgeActivePanel` 里那句
- * 「本页就地开的探针世界」。不标 = 把占位值算出来的数当实测给人看，那是 R13 明令禁止的。
- */
-export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
-  const state: TickState = {};
-  const vars = cfg.stateVars.length > 0 ? cfg.stateVars : ["v"]; // 无传导规则态：单占位变量，保证页面可跑
-  for (const t of cfg.nodeTypes) {
-    const ids = cfg.nodeObjectIds?.[t] ?? [];
-    const keys = ids.length > 0 ? ids : [`${t}#0`]; // 有真对象用真 id；空世界退占位键
-    for (const oid of keys) {
-      const row: Record<string, number> = {};
-      for (const v of vars) row[v] = Math.round(hash01(`${oid}|${v}`) * 100);
-      state[oid] = row;
-    }
-  }
-  return state;
-}
-
-/**
- * 给一份**本地现编的**世界逐格盖 `derived` 章（与 `TickState` 同形）。
- *
- * ⚠ 为什么需要它、而不是留空让下游读作「未知」：**「我没记」与「我记了，它是占位」是两个不同的命题**
- * （契约 `CellProvenanceSchema` 头注原话）。`deriveBaseSnapshot` 产出的那一份，
- * 每一格都是 `hash01` 占位，这件事**调用方当场就知道**——留空等于把一个确知的事实说成不知道，
- * 而屏上两档的措辞正好相反（未知那档写「不能断言是占位」）。
- *
- * ⛔ 不许反过来用它给**后端回来的**世界盖章：那一份是混合的，整份盖 `derived`
- * 会把真读数一起否掉（自毁可信度那一支）。本函数只给「我自己编的」那一份用。
- *
- * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
- */
-export function stampAllDerived(state: TickState): CellProvenance {
-  const out: CellProvenance = {};
-  for (const [oid, row] of Object.entries(state)) {
-    const r: Record<string, "measured" | "derived"> = {};
-    for (const v of Object.keys(row ?? {})) r[v] = "derived";
-    out[oid] = r;
-  }
-  return out;
-}

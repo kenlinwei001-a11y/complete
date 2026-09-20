@@ -120,6 +120,8 @@ export interface SyncJob {
   finishedAt?: string;
   rowCounts: Record<string, number>; // dataset -> rows
   error?: string;
+  /** M0-F1：本次 sync 的实料登记回执（仅挂了 realizedOutcome 映射的数据集有）——跳过必须点名哪行缺哪个字段。 */
+  realizedOutcomes?: { registered: number; skipped: { rowRef: string; reason: string }[] };
 }
 
 export interface RawDataset {
@@ -1525,6 +1527,38 @@ export interface CalibrationPairRecord {
   sliceKey: string; // solverKey|baseId|modelId
   weekOfWindow: number;
   pairedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// M0-F1 实料配对键（PRD-ai-sim-rev2-ground-truth §2.1）：摄取行/结案/人工 ⇒
+// 「某次预测的 actual」的认领记录。仓主定义：落库即真实数据（合成也算）；
+// 唯一硬拒条件 = provenance 不全（追不回哪次 sync 的哪一行）。
+// ---------------------------------------------------------------------------
+
+export type RealizedOutcomeSource = "INGESTED" | "WORK_ORDER_CLOSURE" | "MANUAL_ENTRY";
+
+export interface RealizedSubjectRef {
+  typeKey: string; // 对象类型（预测侧现为 "Model"）
+  objectId: string; // 对象 id（预测分基地切片为 "<modelId>@<baseId>"）
+  prop: string; // 被观测的属性（产能预测 = "dailyOutputWan" 万套/日）
+}
+
+export interface RealizedOutcome {
+  id: string; // realized_<tenant>_<hash(subjectRef|asOf|value|provenance)>
+  tenantId: string;
+  subjectRef: RealizedSubjectRef;
+  asOf: string; // ISO date —— 该实际值属于哪个预测窗口（日窗口 = windowTo）
+  value: number;
+  unit: string;
+  source: RealizedOutcomeSource;
+  provenance: {
+    connId?: string; // INGESTED 必填 —— 哪条连接
+    syncJobId?: string; // INGESTED 必填 —— 哪次 sync（可追回 sync_jobs 行）
+    datasetKey?: string; // INGESTED 必填 —— 哪个数据集
+    rowRef?: string; // INGESTED 必填 —— 该数据集内第几行（0 起）
+    importedBy: string; // 登记人（ctx.userId；同步路径 = 触发 sync 的用户）
+    importedAt: string; // 登记时刻 ISO
+  };
 }
 
 // ---------------------------------------------------------------------------

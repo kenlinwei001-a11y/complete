@@ -543,6 +543,14 @@ export const zh = {
     historySection: "校准历史",
     historyLine: (trigger: string, params: string) => `触发：${trigger} · 变更参数：${params}`,
     mapeChange: (before: number, after: number) => `MAPE ${before.toFixed(1)}% → ${after.toFixed(1)}%`,
+    // M0-F2 实料欠账计（PRD-ground-truth §2.1：读数必须上屏且带期望值 —— 欠条不是装饰）
+    debtSection: "实料欠账",
+    debtLine: (forecasts: number, paired: number, unpaired: number, coveragePct: number) =>
+      `预测 ${forecasts} 条 · 已配对 ${paired} · 未配对 ${unpaired} · 覆盖 ${coveragePct}%`,
+    debtExpected: (minPaired: number, shortfall: number) =>
+      shortfall > 0 ? `期望 ≥${minPaired} 对 · 欠 ${shortfall} 对` : `期望 ≥${minPaired} 对 · 已达标`,
+    debtOldest: (days: number | null) => (days === null ? "无未配对账龄" : `最老未配对账龄 ${days} 天`),
+    debtByMetric: (metricKey: string, forecasts: number, paired: number) => `${metricKey}：${paired}/${forecasts}`,
   },
   /** §7.22 数据健康度（文案同源：连接器页 / 顶栏徽章 / 推演降级说明共用） */
   health: {

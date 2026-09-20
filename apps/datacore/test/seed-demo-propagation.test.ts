@@ -9,7 +9,9 @@ import { pairWeightKey } from "../src/sim/propagation.js";
 //  · `deriveSeedBaseSnapshot` —— tick0 世界态 + 逐格出处（真读数 / 哈希占位），⛔ 测里不另抄两档判定；
 //  · 播种期两步 —— `server.ts` 的 seed:derivation-specs / seed:derivation-recompute，
 //    少了它们本测的世界与生产不同源（实测「实测格」4189 → 450），理由见 `measureBudget` 内注释。
-import { deriveSeedBaseSnapshot } from "../src/sim/seed-world.js";
+// M0-A11 另需 `listSimWorldObjects`：「谁算推演世界的成员」的**唯一物化入口**。
+// 稀疏世界必须只从它回的那批单里挑 —— 详见 A11 段头注（已完成订单不进世界）。
+import { deriveSeedBaseSnapshot, listSimWorldObjects } from "../src/sim/seed-world.js";
 import { seedDemoDerivationSpecs, recomputeDemoDerivationsAtSeed } from "../src/seed-derivation-specs.js";
 // ⛔ 刻意**不再** import `PRESSURE_DECAY_PER_TICK`：§6 的 λ 一律逐格从 `decayRef` 现读。
 // 把那个记号留在手边，下一个人顺手拿它当默认值就又回到「全表一个 λ」那个病（WO-COEF-LAMBDA）。
@@ -1475,4 +1477,162 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
         `变得更负 ⇒ 回归。逐边：${cells.get("Model.demandLoad")!.edges.map((e) => `${e.key}=${e.pull.toFixed(4)}(源${e.prov})`).join(" ")}`,
     ).toBeCloseTo(-1.8977932307, 6);
   }, 300000);
+});
+
+// ── M0-A11 · 解释切片（PRD-ai-sim-rev2-ground-truth §2.1 A11）────────────────────
+// 只读投影：`GET /a/v1/sim/sessions/:id/explain-slice` 从**已算完**的 trace 收敛 ≤20 节点小图。
+// ⛔ 与「计算范围」无关：传导引擎照走全图，切片只是事后投影，大小只影响看得懂多少。
+// 判据（派单 T1+T3）：
+//  ① 真推演 trace ⇒ 节点 ≤20 且 amountCoveredPct 与**手算**一致（手算 = 按文档取舍规则
+//     从原始 trace 独立复算，不经过 buildExplainSlice —— 断言与实现各自算一遍，同源病见
+//     本文件 live-fire 用例的「断言与实现各自独立地算同一个式子」）。
+//  ② 🐤 反向金丝雀：maxNodes 超过全链节点数 ⇒ truncated:false · amountCoveredPct:100
+//     （若 ① 的截断账本是假的——比如恒报截断——这里当场红）。
+//  ③ 🐤 存在性金丝雀：trace 行数必须 >0（否则 ① 验的是空图，绿得毫无意义）。
+// 实验设计：稀疏世界 = 同一型号 25 张订单各置 demandPressure:10，其余一切为零
+//  ⇒ 型号的入边**恰好** 25 条（零额边不落 trace：propagation.ts `amount === 0 ⇒ continue`），
+//  maxNodes=20 时父位只有 19 个 ⇒ 必然截掉 6 个，coverage 四个数全部能手算到分毫不差。
+//
+// ⚠ **25 张单必须从「进得了推演世界」的那批里挑** —— 2026-09-20 实测，代价是一条红。
+//   原版从**原始链路表**挑（`links.list` 回的 500 条 `order_for_model` 全在里面），
+//   而链路表里有大量**已完成订单**：`sim/seed-world.ts::entersSimWorld` 明令
+//   `Order.status === "COMPLETED"` **不进推演世界**（已完成的单不可能被扰动），
+//   于是它们既不在 `graph.objects` 里、也不在 `pairWeights` 表里，一条边都不产生。
+//   实测（demo·seed 42）：`Order` 500 张 = COMPLETED 350 · IN_PRODUCTION 100 · OPEN 50
+//   ⇒ 进世界 150 张；`obj_model_4680-LFP` 名下 116 张单里只有 **37** 张进得去。
+//   按原版挑法，前 25 张里 13 张是 COMPLETED ⇒ 入边只有 12 条，金丝雀当场报红。
+//   **那条红是对的**：它说的正是「稀疏世界的前提破了」—— 只不过破的原因是**选样**，
+//   不是"有第二个写入源"。⛔ 所以修法**不是**把 25 改成 12（12 没有任何独立出处，
+//   且把断言钉死在观测值上等于让这条金丝雀从此不再守任何前提）；
+//   修法是**让前提重新成立**：只从真能参与传导的单里挑，25 这个数继续由我们自己播种决定。
+//   成员判据走**生产唯一物化入口** `listSimWorldObjects`，⛔ 测里不另抄一份
+//   `status !== "COMPLETED"` —— 那正是该函数头注点名要消灭的「第 6 份手抄」。
+describe("M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本）", () => {
+  it("真推演 trace ⇒ 截断账本与手算一致；maxNodes 放大 ⇒ 完整（T1+T3）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+
+    // 取 order_for_model 链路最多的型号 + 它的 25 张订单（稀疏世界只打这 25 张）。
+    const links = await t.repos.links.list("demo", (l) => l.type === "order_for_model");
+    expect(links.length, "order_for_model 链路为 0 ⇒ 实验前提不成立").toBeGreaterThan(0);
+    // 推演世界成员集合 —— 生产同一个入口，测里不重新判定「谁进得了世界」。
+    const inWorld = new Set((await listSimWorldObjects(t.repos, "demo")).map((r) => r.obj.id));
+    const byModel = new Map<string, string[]>();
+    for (const l of links) {
+      if (!inWorld.has(l.fromId)) continue; // 进不了世界的单不产生边，挑了也是零额
+      const arr = byModel.get(l.toId);
+      if (arr) arr.push(l.fromId);
+      else byModel.set(l.toId, [l.fromId]);
+    }
+    const [modelId, orderIds] = [...byModel.entries()].sort(
+      (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]), // 平手按型号 id，R6 确定性
+    )[0]!;
+    expect(orderIds.length, `最多订单的型号只有 ${orderIds.length} 张**进得了世界的**单 < 25 ⇒ 截断实验搭不起来`).toBeGreaterThanOrEqual(25);
+    const picked = orderIds.slice(0, 25);
+
+    // 🐤 筛子非空金丝雀：这个型号名下的**原始**链路数必须**严格大于**进世界的数 ——
+    //    两者相等 ⇒ `entersSimWorld` 这道筛子没生效（多半是 `status` 字段改了名），
+    //    此时上面的"只从进世界的单里挑"是句空话，⛔ 不许把它读成"筛子没删东西"。
+    //    实测基线：116 张原始链路 → 37 张进世界（`entersSimWorld` 头注同一条金丝雀纪律）。
+    const rawForModel = links.filter((l) => l.toId === modelId).length;
+    expect(
+      rawForModel,
+      `型号 ${modelId} 原始链路 ${rawForModel} 条 = 进世界 ${orderIds.length} 张 ⇒ ` +
+        `entersSimWorld 这道筛子一张都没剔掉（字段改名？），本用例的选样前提无从谈起`,
+    ).toBeGreaterThan(orderIds.length);
+
+    // 稀疏世界：25 张订单各 10 点需求压力 + 型号清零；其余对象/变量一律不进世界（=0）。
+    const baseSnapshot: Record<string, Record<string, number>> = { [modelId]: { demandLoad: 0 } };
+    for (const o of picked) baseSnapshot[o] = { demandPressure: 10 };
+    const sid = (await (await t.app.inject({
+      method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
+      payload: { baseSnapshot },
+    })).json()).id as string;
+    const tick = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
+    expect(tick.statusCode).toBe(200);
+
+    // 🐤 ③ 存在性金丝雀：tick1 的持久化 trace 非空，且型号的入边恰好 = 25（多一条少一条
+    //    都说明稀疏世界前提被打破了——比如又有别的规则往型号写——手算随即作废）。
+    const row = await t.repos.sim.getTickState("demo", sid, 1);
+    const trace = row?.trace ?? [];
+    expect(trace.length, "tick1 trace 为空 ⇒ 切片验的是空图（假绿形态）").toBeGreaterThan(0);
+    const inEdges = trace.filter((e) => e.toObjectId === modelId);
+    expect(
+      inEdges.length,
+      `型号入边 ${inEdges.length} 条 ≠ 25 ⇒ 稀疏世界前提破了，手算作废。` +
+        `**多**出来 ⇒ 有第二个写入源（又一条规则往 ${modelId} 写）；` +
+        `**少**了 ⇒ 被打的单里有人没参与传导 —— 先查它进没进推演世界` +
+        `（\`entersSimWorld\`：已完成订单不进；2026-09-20 就是这一条让入边从 25 掉到 12），` +
+        `再查它的 pairWeight 是不是 0（\`source_qty_relative\` 读 Order.qty）。` +
+        `⛔ 不许把这个 25 改成当天观测到的数字 —— 那等于让本金丝雀从此不再守任何前提。`,
+    ).toBe(25);
+    expect(inEdges.every((e) => e.ruleKey === "demo_order_demand_pressure" && Math.abs(e.amount) > 0)).toBe(true);
+
+    // ── 手算（独立于 buildExplainSlice 的第二份实现，照文档取舍规则）────────────────
+    // 同跳按 |amount| 降序、平手按 fromObjectId 字典序；目标占 1 位，父位 = maxNodes−1 = 19。
+    const sorted = [...inEdges].sort(
+      (a, b) => Math.abs(b.amount) - Math.abs(a.amount) || a.fromObjectId.localeCompare(b.fromObjectId),
+    );
+    const kept = sorted.slice(0, 19);
+    const total = sorted.reduce((s, e) => s + Math.abs(e.amount), 0);
+    const keptSum = kept.reduce((s, e) => s + Math.abs(e.amount), 0);
+    expect(total, "型号入边总额 0 ⇒ 手算分母为 0，覆盖率读数无意义").toBeGreaterThan(0);
+    const expectedPct = Math.round((keptSum / total) * 100 * 100) / 100;
+
+    // ── ① 正向：maxNodes=20 ⇒ 25 父 > 19 父位 ⇒ 截断账本四个数逐一咬死 ──────────────
+    const r20 = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&tick=1&maxNodes=20`, headers: ADMIN,
+    });
+    expect(r20.statusCode).toBe(200);
+    const s20 = r20.json() as {
+      target: { objectId: string };
+      nodes: { objectId: string; hop: number }[];
+      edges: { fromObjectId: string; toObjectId: string; amount: number }[];
+      coverage: { maxNodes: number; truncated: boolean; droppedNodes: number; droppedEdges: number; amountCoveredPct: number };
+    };
+    expect(s20.target.objectId).toBe(modelId);
+    expect(s20.nodes.length, "切片超过 20 节点 ⇒ 上限没咬住").toBeLessThanOrEqual(20);
+    expect(s20.nodes.length).toBe(20); // 目标 1 + 父 19（25 个候选挤 19 个位，必然满）
+    expect(s20.nodes.filter((n) => n.hop === 0).map((n) => n.objectId)).toEqual([modelId]);
+    // 留下的 19 个父必须与手算的 19 个**逐一同名**（取舍规则确定性：同输入同输出）。
+    expect(new Set(s20.nodes.filter((n) => n.hop === 1).map((n) => n.objectId)))
+      .toEqual(new Set(kept.map((e) => e.fromObjectId)));
+    expect(s20.edges.length).toBe(19);
+    expect(s20.coverage).toEqual({
+      maxNodes: 20,
+      truncated: true,
+      droppedNodes: 6,   // 25 − 19，挤不下的 6 个父
+      droppedEdges: 6,   // 每个被挤掉的父带走它那条入边
+      amountCoveredPct: expectedPct, // 与手算分毫不差
+    });
+    // 诚实性硬判据：25 父丢 6，覆盖率**必须**明显小于 100 —— 恒报 100 就是拿残图冒充全图。
+    expect(s20.coverage.amountCoveredPct).toBeLessThan(100);
+
+    // ── ② 🐤 反向金丝雀：maxNodes=1000 > 全链节点数 ⇒ 不截断、覆盖率 100 ────────────
+    const rFull = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&tick=1&maxNodes=1000`, headers: ADMIN,
+    });
+    expect(rFull.statusCode).toBe(200);
+    const sFull = rFull.json() as typeof s20;
+    expect(sFull.nodes.length).toBe(26); // 目标 + 25 父（hop2 候选全部零额 ⇒ 链到此为止）
+    expect(sFull.edges.length).toBe(25);
+    expect(sFull.coverage.truncated).toBe(false);
+    expect(sFull.coverage.droppedNodes).toBe(0);
+    expect(sFull.coverage.droppedEdges).toBe(0);
+    expect(sFull.coverage.amountCoveredPct).toBe(100);
+
+    // ── 边界：缺 targetObjectId ⇒ 400 点名；空 trace ⇒ 404 不出空切片冒充 ────────────
+    const rBad = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?tick=1`, headers: ADMIN,
+    });
+    expect(rBad.statusCode).toBe(400);
+    expect(JSON.stringify(rBad.json())).toContain("targetObjectId");
+    const rEmpty = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&tick=99&maxNodes=20`, headers: ADMIN,
+    });
+    expect(rEmpty.statusCode).toBe(404);
+    expect(JSON.stringify(rEmpty.json())).toContain("空 trace");
+  });
 });

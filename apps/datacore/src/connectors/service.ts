@@ -10,6 +10,7 @@ import { CredentialCipher } from "../crypto.js";
 import { newId } from "../ids.js";
 import { notFound, validationError } from "../errors.js";
 import { createAdapter, CREDENTIAL_FIELDS, getConnectorType } from "./registry.js";
+import { registerRealizedOutcome } from "../calibration/realized.js";
 import { profileRows, suggestDatasetKind } from "./profiler.js";
 import { probeHttp, probeTimeoutMs, safeTarget, TYPES_WITHOUT_ADAPTER } from "./probe.js";
 
@@ -21,6 +22,37 @@ interface DatasetConfig {
   entityRefField?: string;
   timeField?: string;
   measureFields?: string[];
+  /**
+   * M0-F1 实料映射（PRD-ground-truth §2.1）：声明本数据集的行是「某对象的某属性在某日的实际值」，
+   * sync 落行后逐行登记 RealizedOutcome（source:INGESTED，provenance 带 connId/syncJobId/datasetKey/rowRef）。
+   */
+  realizedOutcome?: {
+    typeKey: string; // 字面量对象类型（预测侧 = "Model"）
+    objectIdField: string; // 行里承载对象 id 的字段
+    prop: string; // 字面量属性名（产能 = "dailyOutputWan"）
+    asOfField: string; // 行里承载日期的字段（YYYY-MM-DD）
+    valueField: string; // 行里承载实际值的字段（有限数）
+    unitField?: string; // 行里承载单位的字段（缺省时用 unit）
+    unit?: string; // 字面量单位（unitField 缺省时必填）
+  };
+}
+
+/**
+ * M0-F1 申报期硬拒：mock_* 连接不许挂实料映射（PRD §2.1——「记录真实、数据合成」形态的防线）。
+ * 在 create/update 两处声明点拒绝并点名，而不是等 sync 时静默不登记。
+ */
+function assertRealizedMappingAllowed(connectorTypeKey: string, config: Record<string, unknown>): void {
+  if (!connectorTypeKey.startsWith("mock_")) return;
+  const datasets = config.datasets as Record<string, DatasetConfig> | undefined;
+  const offenders = Object.entries(datasets ?? {})
+    .filter(([, d]) => d?.realizedOutcome)
+    .map(([name]) => name);
+  if (offenders.length > 0) {
+    throw validationError(
+      `connectorTypeKey 是 ${connectorTypeKey}（mock_*）⇒ 数据集 [${offenders.join(", ")}] 拒绝挂 realizedOutcome 实料映射` +
+        `（mock 适配器的行不落真实摄取面，不可登记为实料）`,
+    );
+  }
 }
 
 /** A1 connector framework: connections, schema discovery, sync → RawDataset | ts writer. */
@@ -83,6 +115,7 @@ export class ConnectorService {
       // A11：实例 category 默认取连接器类型 registry category，显式传则覆盖（可自定义值 R14）。
       category: input.category?.trim() || type.category,
     };
+    assertRealizedMappingAllowed(conn.connectorTypeKey, conn.config);
     await this.repos.connections.put(conn);
     // S3: connections with schedule.cron auto-register a CONNECTOR_SYNC job.
     if (this.scheduler && input.schedule?.cron) {
@@ -204,6 +237,7 @@ export class ConnectorService {
       for (const [k, v] of Object.entries(patch.config)) {
         conn.config[k] = CREDENTIAL_FIELDS.has(k) && typeof v === "string" ? this.cipher.encrypt(v) : v;
       }
+      assertRealizedMappingAllowed(conn.connectorTypeKey, conn.config);
     }
     if (patch.schedule !== undefined) {
       conn.schedule = patch.schedule ?? undefined;
@@ -346,6 +380,59 @@ export class ConnectorService {
         await this.repos.rawRows.replace(ctx.tenantId, ds.id, rows);
         job.rowCounts[name] = rows.length;
         landedDatasetIds.push(ds.id);
+        // M0-F1：挂了实料映射的数据集 ⇒ 逐行登记 RealizedOutcome（provenance 可追回哪次 sync 的哪一行）。
+        // ⛔ 行级缺字段不许静默丢弃 —— 哪一行缺哪个字段都点进 sync 回执（job.realizedOutcomes.skipped）。
+        if (dsCfg?.realizedOutcome) {
+          const mapping = dsCfg.realizedOutcome;
+          const importedAt = new Date().toISOString();
+          const receipt = { registered: 0, skipped: [] as { rowRef: string; reason: string }[] };
+          for (let i = 0; i < rows.length; i++) {
+            const row = rows[i]!;
+            const rowRef = `#${i}`;
+            const objectId = row[mapping.objectIdField];
+            const asOf = row[mapping.asOfField];
+            const rawValue = row[mapping.valueField];
+            const unit = mapping.unitField ? row[mapping.unitField] : mapping.unit;
+            if (objectId === undefined || objectId === null || String(objectId) === "") {
+              receipt.skipped.push({ rowRef, reason: `缺字段 ${mapping.objectIdField}（objectId）` });
+              continue;
+            }
+            if (typeof asOf !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+              receipt.skipped.push({ rowRef, reason: `字段 ${mapping.asOfField} 不是 YYYY-MM-DD 日期（asOf）` });
+              continue;
+            }
+            const value = typeof rawValue === "number" ? rawValue : Number(rawValue);
+            if (!Number.isFinite(value)) {
+              receipt.skipped.push({ rowRef, reason: `字段 ${mapping.valueField} 不是有限数（value）` });
+              continue;
+            }
+            if (typeof unit !== "string" || unit === "") {
+              receipt.skipped.push({
+                rowRef,
+                reason: mapping.unitField ? `字段 ${mapping.unitField} 缺（unit）` : "映射缺 unit（unitField 未配且 unit 未给）",
+              });
+              continue;
+            }
+            await registerRealizedOutcome(this.repos, ctx.tenantId, {
+              subjectRef: { typeKey: mapping.typeKey, objectId: String(objectId), prop: mapping.prop },
+              asOf,
+              value,
+              unit,
+              source: "INGESTED",
+              provenance: {
+                connId: conn.id,
+                syncJobId: job.id,
+                datasetKey: name,
+                rowRef,
+                importedBy: ctx.userId,
+                importedAt,
+              },
+            });
+            receipt.registered++;
+          }
+          job.realizedOutcomes = receipt;
+          await this.repos.syncJobs.put(job);
+        }
       }
       job.status = "SUCCEEDED";
       job.finishedAt = new Date().toISOString();

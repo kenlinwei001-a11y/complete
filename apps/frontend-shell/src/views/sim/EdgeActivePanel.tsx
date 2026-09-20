@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tallyCellProvenance, type SimCounterfactualResult } from "@platform/contracts";
-import { createSimSession, fetchPropagationRules, fetchSimSessions, fetchSimViewConfig, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
+import { createSimSession, fetchPropagationRules, fetchSimSessions, patchSimDisabledRules, simCounterfactual } from "@/api/endpoints";
 import { toastError } from "@/store/toastStore";
 import { HintDot } from "./shared";
 import {
@@ -9,10 +9,7 @@ import {
   buildDomainSlices,
   buildEdgeRows,
   buildVerdict,
-  deriveBaseSnapshot,
   pickProbeSession,
-  // WO-SANDBOX-REAL-SNAPSHOT：本页自己编的世界由本页自己盖 `derived` 章（与沙盘同一支实现，不另写）。
-  stampAllDerived,
   PROBE_WORLD_PROVENANCE,
   PROBE_WORLD_PROVENANCE_DETAIL,
   resolveActiveSlice,
@@ -194,28 +191,26 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
    * ⚠ 为什么必须**懒建**：页面一挂载就建会话 = 每打开一次推演页就多一行世界，属于无声副作用。
    *   只在用户真的拨了开关（= 明确表达"我想看关掉之后怎么样"）时才建。
    *
-   * ══ WO-SANDBOX-REAL-SNAPSHOT · 这里改了什么 ═══════════════════════════════════════
-   * **今天的行为 X（改之前）**：`createSimSession({ baseSnapshot: deriveBaseSnapshot(cfg), … })`
-   * —— 本页自己编一份 `round(hash01(\`${objectId}|${stateVar}\`) × 100)` 的世界当 tick0。
-   * **应该的 Y**：**不传** `baseSnapshot`，由持有真实对象的服务端派生并逐格盖章。
-   * 于是探针世界与沙盘世界**仍然是同一个世界**（同一支服务端派生），
-   * 而且从「全部占位」变成了**混合**（2026-09-18 实测 measured 6,271 / derived 2,542）。
-   * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
+   * ══ WO-M0-GROUND-TRUTH · F0 · 探针世界**不再由前端编** ══════════════════════════════
+   * **今天的行为 X（改之前，2026-09-19 实测）**：建会话 body 自带 `baseSnapshot`
+   * —— 本页在浏览器里编一份 `round(hash01(\`${objectId}|${stateVar}\`) × 100)` 的世界当 tick0，
+   * 一次 `props` 都不读；按仓主定义（PRD §2.0.1）那是**只存在前端的假数据**。
+   * **应该的 Y（= 现在）**：**不传** `baseSnapshot`，服务端 `deriveSeedBaseSnapshot` 从真实对象
+   * 现派生并逐格盖 `measured`/`derived` 章随 201 回包下发（`app.ts` 建会话端点）。
+   * 探针世界与沙盘世界**是同一个派生路径**（同一支服务端实现），出处合计直接数回包那一份。
+   * 复验（真后端 `SEED_DEMO=1` 内存模式）：`POST /a/v1/sim/sessions`（空 body）后
+   * `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。
    *
-   * ⚠ 正因为它不再全是占位，下方那句出处**必须跟着改** —— 继续写死「占位·未实测」
-   * 就是把 6,271 格真读数说成占位：方向相反，但同样是假话，且会自毁这条诚实位的可信度。
-   * ⚠ `fetchSimViewConfig` 这一跳**随之删掉**：它此前唯一的用途就是喂 `deriveBaseSnapshot`。
+   * ⚠ `fetchSimViewConfig` 这一跳**随之删掉**：它此前唯一的用途就是喂前端那支哈希派生。
    *   留着 = 打一个没人读回包的请求（本页挂在 8 个推演页上，那是 8 次白跑）。
    */
   const ensureSession = useCallback(async (): Promise<string | null> => {
     if (effectiveSessionId) return effectiveSessionId;
-    const cfg = await fetchSimViewConfig();
-    const base = deriveBaseSnapshot(cfg);
-    const s = await createSimSession({ baseSnapshot: base, scope: { kind: "GLOBAL", target: null } });
+    const s = await createSimSession({ scope: { kind: "GLOBAL", target: null } });
     setProbeCreated(s.id);
-    // 出处：回包带了用回包的；没带就**自己盖 `derived`** —— 这一份是本页现编的哈希占位，
-    // 「我自己编的东西我知道它是编的」，留空当未知是把确知的事实说成不知道（同 `SandboxView.stampAllDerived`）。
-    setProbeTally(tallyCellProvenance(base, s.baseSnapshotProvenance ?? stampAllDerived(base)));
+    // 出处合计：回包的世界 + 回包的逐格出处，两头都来自服务端那一份（前端一格都没造）。
+    // 回包没带出处 ⇒ `unknown` —— 前端没编这份世界，「不知道」就是「不知道」，不许盖 `derived`。
+    setProbeTally(tallyCellProvenance(s.baseSnapshot, s.baseSnapshotProvenance));
     void qc.invalidateQueries({ queryKey: ["a", "sim-sessions"] });
     return s.id;
   }, [effectiveSessionId, qc]);
@@ -385,7 +380,7 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
       {!effectiveSessionId && (
         <p data-testid={tid("no-session")} className={css.note}>
           本页不持有推演世界，本租户当前也没有可推演的会话。
-          拨动任一开关时会<b>就地开一个探针世界</b>（起始值由配置派生的占位值）来算差值。
+          拨动任一开关时会<b>就地开一个探针世界</b>（tick0 由服务端从真实对象派生，逐格带出处）来算差值。
         </p>
       )}
       {/* ══ WO-SANDBOX-REAL-SNAPSHOT · 这段出处从**写死一句**改成**现算两个数** ═══════════

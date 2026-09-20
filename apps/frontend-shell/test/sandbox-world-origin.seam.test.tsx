@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { tallyCellProvenance, type CellProvenance, type SandboxViewConfig, type TickState } from "@platform/contracts";
 import { server } from "./setup";
-import SandboxView, { deriveBaseSnapshot, stampAllDerived, worldHonestyOf } from "@/views/sim/SandboxView";
+import SandboxView, { worldHonestyOf } from "@/views/sim/SandboxView";
 
 /**
  * ══ WO-V4-HONEST-ORIGIN + WO-SANDBOX-REAL-SNAPSHOT · 顶栏读数**出处记号**门 ═══════════════
@@ -31,6 +31,14 @@ import SandboxView, { deriveBaseSnapshot, stampAllDerived, worldHonestyOf } from
  * 本单再写一版就是**第二套取法**。故今天 `init` 仍走本地 `deriveBaseSnapshot` ——
  * 而本单要求它**为自己编的那一份逐格盖 `derived` 章**（用例 ①）：
  * 我自己编的东西，我知道它是编的，留空当「未知」是把确知的事实说成不知道。
+ *
+ * ── 🔄 F0 订正（WO-M0-GROUND-TRUTH，2026-09-19 路B裁决落地，2026-09-20 本测试重锚）──
+ * 上一段说的「刻意没动」**已被 F0 动掉**：路A（`resolveTick0World` 复制后端冻结播种快照）
+ * 实测同一时刻真值 75 它读 17 ⇒ 裁决不收编；`init` 现在**不传 `baseSnapshot`**，
+ * 世界 = 服务端 `deriveSeedBaseSnapshot` 现派生的 201 回包那份，前端一格都没造。
+ * `deriveBaseSnapshot` / `stampAllDerived` 两个导出随 F0 摘除（前端 `src` 零命中），
+ * 用例 ①② 随之重锚：① 从「本地自盖 derived 章」改为「body 无 baseSnapshot 键 + 缺出处⇒UNKNOWN」，
+ * ② 的对照基准从本地派生改为回包 `SERVER_BASE`（判据更强：屏上出现 50 族值即自造回潮）。
  *
  * ⇒ 诚实位从**二值**变成**四态**：世界可以是**混合**的，二值化的两种走法都在撒谎 ——
  * 全标「实测」把占位说成真读数；全标「占位」把真读数自毁可信度。
@@ -149,24 +157,23 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚实位（四态）", () => {
-  it("① 本地现编的世界，**由本地自己盖 `derived` 章** —— 不许留空当「出处未知」", async () => {
-    // 回包**不带**逐格出处（= 今天走 `deriveBaseSnapshot` 那条路的真实形态）。
+  it("① F0 后建会话**不传 `baseSnapshot`**（前端一格都没造）；回包缺出处 ⇒ `UNKNOWN`（不知道就是不知道，不许自盖）", async () => {
+    // 回包**不带**逐格出处（= 老会话 / 后端没下发出处那一档）。
     installHandlers(null);
     mount();
     await screen.findByTestId("sandbox-view");
     await waitFor(() => expect(createBodies.length).toBeGreaterThan(0));
 
-    // 前提：这一路确实是前端自己造的世界（`resolveTick0World` 收编前的现状）。
-    expect("baseSnapshot" in createBodies[0]!, "这条用例的前提是前端自己造世界；前提变了请改判据不是改数字").toBe(true);
+    // ★ F0（WO-M0-GROUND-TRUTH，2026-09-19 路B裁决落地）接缝判据：建会话 body 里
+    //   **`baseSnapshot` 这个键压根不在** —— 前端没有对象，它造的那一份是假数据（仓主定义），
+    //   世界由服务端 `deriveSeedBaseSnapshot` 现派生随 201 回包下发。
+    expect("baseSnapshot" in createBodies[0]!, "F0 后前端还在往建会话 body 里塞自己编的世界 —— 路B裁决被回潮").toBe(false);
 
-    // ★ 判据：`hash01` 派生的每一格都是占位，而**调用方当场就知道** ⇒ 必须盖 `derived`，
-    //   ⛔ 不许留空让下游读成「未知」——「我没记」与「我记了，它是占位」是两个不同的命题，
-    //   而两档屏上的措辞正好相反（未知那档会写「不能断言是占位」，把确知的事实说反）。
-    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("DERIVED"));
-    expect(badge().getAttribute("data-derived-cells")).toBe("6");
-    expect(badge().getAttribute("data-unknown-cells"), "自己编的世界却报「未知」").toBe("0");
-    expect(badge().textContent).toContain("占位");
-    expect(badge().textContent).not.toContain("未知");
+    // 回包没带出处 ⇒ 每一格都是「我没编这份，不知道就是不知道」⇒ UNKNOWN；
+    //   ⛔ 不许自盖 derived（前端没编 ⇒ 它连「这是占位」都不能断言），更不许装 MEASURED。
+    await waitFor(() => expect(badge().getAttribute("data-origin")).toBe("UNKNOWN"));
+    expect(badge().getAttribute("data-unknown-cells")).toBe("6");
+    expect(badge().textContent).toContain("未知");
   });
 
   it("② 混合世界：徽标标 `MIXED` 且**两个数都写在屏上** —— 不许二值化", async () => {
@@ -187,12 +194,11 @@ describe("WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚
     /**
      * 屏上的读数 == `init` 真正放上去的那一份（否则"出处"这个记号指的不是屏上这批数）。
      *
-     * ⚠ 今天 `init` 放的是**本地 `deriveBaseSnapshot(cfg)`**，不是回包的 `baseSnapshot`
-     * —— 建会话走哪条路本单刻意不动（`resolveTick0World` 那张单在管）。
-     * 所以这里对的是本地那一份；**哪天建会话改成用回包的世界，这条会红** ——
-     * 那正是它该做的事：记号与数据必须来自同一份，改了一边就得改另一边。
+     * ⚠ F0 后 `init` 放的是**服务端回包的 `baseSnapshot`**（= 本桩的 `SERVER_BASE`），
+     * 前端一格都没造 —— 所以对的就是回包那一份；记号与数据必须来自同一份，改了一边就得改另一边。
+     * （判据反而更强了：屏上若出现 hash01 那族的 50 附近值，说明前端自造数据回潮。）
      */
-    const base = deriveBaseSnapshot(CFG);
+    const base = SERVER_BASE;
     const ids = Object.keys(base);
     expect(ids.length).toBeGreaterThan(2);
     expect(CFG.stateVars.length).toBeGreaterThan(1); // 基数下限：空集上 for 一次都不进也照样绿
@@ -255,8 +261,13 @@ describe("WO-SANDBOX-REAL-SNAPSHOT · tick0 世界归服务端 + 逐格出处诚
     const t2 = tallyCellProvenance(SERVER_BASE, full);
     expect(t2).toEqual({ measured: 5, derived: 1, unknown: 0 });
     expect(worldHonestyOf(t2)).toBe("MIXED");
-    // 反向：整份自盖 derived（`init` 那条路）⇒ DERIVED，且一格 unknown 都没有。
-    expect(worldHonestyOf(tallyCellProvenance(SERVER_BASE, stampAllDerived(SERVER_BASE)))).toBe("DERIVED");
+    // 反向：整份都是 derived 章 ⇒ DERIVED，且一格 unknown 都没有。
+    const allDerived: CellProvenance = {
+      obj_a1: { load: "derived", risk: "derived" },
+      obj_a2: { load: "derived", risk: "derived" },
+      obj_b1: { load: "derived", risk: "derived" },
+    };
+    expect(worldHonestyOf(tallyCellProvenance(SERVER_BASE, allDerived))).toBe("DERIVED");
   });
 
   it("⑤ 全实测世界 ⇒ `MEASURED`，且**占位字样一个都不出现**（反向：不许永远说占位）", async () => {

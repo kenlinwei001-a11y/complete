@@ -1,0 +1,17 @@
+## I 本体回写核对 2026-09-20 11:52:48
+
+### 四行存在性（SYSTEM-ONTOLOGY.md :185-188）
+RealizedOutcome :185 · CalibrationDebt :186 · RealizedGate :187 · ExplainSlice :188 —— 全在
+链路/测试锚四行齐全；RealizedGate 与 ExplainSlice 带显式不变量段；RealizedOutcome 带硬拒纪律；CalibrationDebt 带 expected 必填 + 三处同源。
+
+### 发现 1（顶回 P3）：ontology 索引过期
+node scripts/ontology-index.mjs --check RC=1：节点新增 4 个（2/E/A11, 2/E/F2, 2/E/F3, 2/E/RealizedOutcome）未入索引，
+source_sha256 漂移，total_lines 3844→3883。builder 改了本体没重生成 docs/system-ontology-index.yaml。
+最小修路径：node scripts/ontology-index.mjs（重生成索引）+ 提交。
+
+### 发现 2（顶回 P3）：A11 章节坐标错引
+PRD 里 A11 = §4（docs/PRD-ai-sim-rev2-ground-truth.md:242「## §4 A11 解释切片 ≤20 节点」）。
+而 SYSTEM-ONTOLOGY.md:188 与 seed-demo-propagation.test.ts:891 注释均写「§2.1 A11」；
+app.ts:2240 端点注释写「§4」是对的。最小修路径：两处「§2.1 A11」改「§4 A11」。
+
+### --check 原始输出（落盘 /tmp 副本，rc=1）
