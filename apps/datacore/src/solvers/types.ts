@@ -215,6 +215,8 @@ export interface CalibrationConfigShape {
   metaLoopDays: number; // 元闭环回看天数（默认 14，模拟时钟激活时按模拟日）
   quantile: { lowCov: number; highCov: number; step: number; min: number; max: number };
   params: CalibratableParamDef[];
+  /** M0-F2 实料闸期望（PRD-ground-truth §2.1）：学习类能力准入的最低实料配对数；缺省 = EVAL_WINDOW_DAYS。 */
+  minPairedRealized?: number;
 }
 
 /**

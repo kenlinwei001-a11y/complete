@@ -96,6 +96,48 @@ export class CalibrationService {
   }
 
   /**
+   * M0-F2 实料欠账计（PRD-ground-truth §2.1 F2）：`GET /a/v1/calibration/debt` 的实现。
+   * ⛔ `expected` 必填 —— 没有期望值的指标是装饰不是监控（本仓前科：`实测格 0/7295`
+   * 在屏上与启动日志里亮了几个月无人动，因为它没有目标，且报给了改不了它的人）。
+   * 🐤 存在性金丝雀：`forecasts` 必须 >0 —— 为 0 说明取数坏了，不是「没有欠账」。
+   */
+  async debt(tenantId: string): Promise<import("@platform/contracts").CalibrationDebt> {
+    const forecasts = await this.repos.calibrationForecasts.list(tenantId, () => true);
+    const pairedN = forecasts.filter((f) => f.pairedAt).length;
+    const unpairedRows = forecasts.filter((f) => !f.pairedAt);
+    const cfg = calibrationConfig(await this.solvers.getParams(tenantId));
+    const minPaired = cfg.minPairedRealized ?? EVAL_WINDOW_DAYS;
+    const { date: nowDate } = await simNow(this.repos, tenantId);
+    const byMetricMap = new Map<string, { forecasts: number; paired: number }>();
+    for (const f of forecasts) {
+      const key = `${f.solverKey}/${f.modelId}`;
+      const e = byMetricMap.get(key) ?? { forecasts: 0, paired: 0 };
+      e.forecasts++;
+      if (f.pairedAt) e.paired++;
+      byMetricMap.set(key, e);
+    }
+    return {
+      forecasts: forecasts.length,
+      paired: pairedN,
+      unpaired: unpairedRows.length,
+      coveragePct: forecasts.length === 0 ? 0 : round((pairedN / forecasts.length) * 100, 2),
+      expected: {
+        minPaired,
+        rationale:
+          `学习类能力（B7 代理模型 / C5 结构校准 / C6 经验库 / A10 搜索环）准入至少需要 ${minPaired} 对实料配对` +
+          `（缺省 = 一个评估窗口 EVAL_WINDOW_DAYS=${EVAL_WINDOW_DAYS} 的覆盖；solverParams.calibration.minPairedRealized 可覆盖）。` +
+          `当前欠 ${Math.max(0, minPaired - pairedN)} 对 —— 没有期望值的指标是装饰不是监控（PRD-ground-truth §2.1 F2）。`,
+      },
+      byMetric: [...byMetricMap.entries()]
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+        .map(([metricKey, v]) => ({ metricKey, forecasts: v.forecasts, paired: v.paired })),
+      // 无未配对 ⇒ null（诚实缺席）：0 会被读成「刚预测完」，而真相是「没有欠账主体」
+      oldestUnpairedAgeDays:
+        unpairedRows.length === 0 ? null : Math.max(...unpairedRows.map((f) => Math.max(0, daysBetween(f.createdAt, nowDate)))),
+    };
+  }
+
+  /**
    * M0-F1 登记入口（三入口共用 realized.ts 登记器；本方法 = 人工录入/显式登记的服务侧门面）。
    * importedBy/importedAt 由调用方（路由）从 AuthCtx 填好后传入；登记成功即跑一轮实料配对。
    */

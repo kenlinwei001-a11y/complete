@@ -8083,6 +8083,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   );
   // 实料 × 预测配对单跑（验收金丝雀需要 paired 与 examined 两个数都打出来）。
   app.post("/a/v1/calibration/realized/pair", async (req) => calibration.pairRealizedOnce(ctx(req).tenantId));
+  // M0-F2 欠账计（PRD-ground-truth §2.1 F2）：expected 必填 —— 没有期望值的指标是装饰不是监控。
+  app.get("/a/v1/calibration/debt", async (req) => calibration.debt(ctx(req).tenantId));
 
   // ---- 数据健康度（增量 §7.22；与 C09/P90 降级同一事实源）------------------------------------------
   app.get("/a/v1/data-health", async (req) => buildDataHealth(repos, solvers, features, ctx(req).tenantId));
