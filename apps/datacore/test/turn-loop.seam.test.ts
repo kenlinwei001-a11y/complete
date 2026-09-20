@@ -32,19 +32,28 @@ import { deriveTurnDynamics, readWorldLine, WORLD_LINE_DEFAULT_WINDOW } from "..
  * ⇒ **`toBe(0)` 当年为真，靠的是「聚合了个空集」，而不是「到达延迟」** —— 判据一直没在
  *   度量它自称度量的东西。换轨后（对照臂）才真的在度量。
  *
- * **🔴 顺带测出、本文件刻意不下结论的一件事（⛔ 别把它当成已裁决）**：
- * 起点非空之后，`Order.costPressure` 的轨迹是**下行**的，且与扰动幅度不单调 ——
- * 实测（本夹具，tick×3，聚合值）：
- *   · 不扰动      `[17.213662, 15.715810, 14.040165, 13.059346]`  direction=FALLING peak=t0
- *   · +20 价格冲击 `[17.213662, 15.715810, 13.997682, 12.963336]`
- *   · +40 价格冲击 `[17.213662, 15.715810, 14.044885, 13.070014]`  ← 比 +20 **高**
- * 跑满生产播种（`seedDemoDerivationSpecs` + `recomputeDemoDerivationsAtSeed`，
- * 此时 500/500 订单带**真派生** `costPressure`）同样下行：`[24.026731, …, 6.606615]`。
- * 即：推拍把「起点那份成本压力」换成了引擎算出来的小得多的数，而非在其上叠加。
- * ⇒ 原来的 `direction==="RISING"` / `peak.tick===3` / `t3>t2` 三条**今天全不成立**。
- * **故意不改写成 `toBe("FALLING")`**：那会把一个没查清的行为焊成基线
- * （「源涨 ⇒ 下游必涨」是本文件选这条链的**全部理由**，见上「用哪条链」）。
- * 留作独立工单，判据在传导相的 combine 语义与起点值的关系上，不在本文件。
+ * ── ✅ 2026-09-20 结案：上一版头注里那条「与扰动幅度不单调」是**误读，不是缺陷** ──────────
+ * 原文（现已删除）写：不扰动 `[…13.059346]` · +20 `[…12.963336]` · +40 `[…13.070014]`
+ * 「+40 比 +20 高」，并留作独立工单。**实测推翻：那三条读数全对，结论全错。**
+ *
+ * 病因是**量法**不是引擎：`perturb()` 用的是 `mode:"set"`，而 `Material.priceShock` 的
+ * tick0 起点**不是 0** —— `deriveSeedBaseSnapshot` 给 `obj_material_pos_ncm` 播的是 **38**
+ * （⛔ 不在 `Material.props` 上，8 个 Material 的 `props.priceShock` 实测全 `undefined`，
+ * 只在世界态里；所以 grep 种子文件永远找不到它）。⇒ `set M` 的**真实冲击是 `M − 38`**：
+ *   · 「+20」其实是 **−18**（降价！）· 「+40」其实是 **+2** · 「不扰动」其实是 **+0**
+ * 逐字节旁证：`mode:"delta"` 的 `+2` 臂轨迹 = `[17.213662, 15.715810, 14.044885, 13.070014]`
+ * 与上面那条「+40」**一字不差**；`delta +0` 臂 = 「不扰动」臂一字不差。
+ * ⇒ 「+40 比 +20 高」正是**单调**的表现（+2 > −18），不是反常。
+ *
+ * 真·相对扰动（`mode:"delta"`）下，0→+1000 十一个点上聚合值/单对象值**严格单调**（§⑩ 咬住）。
+ * 「下行」本身也不是缺陷：递推式是 `x(t+1)=rest+(1−λ)(x(t)−rest)+inflow`（`propagation.ts` 衰减相），
+ * 入流小于衰减损失即下行 —— 它**叠加**在衰减后的存量上，不是「换成引擎算的数」。
+ *
+ * **形态（照铁律 0.6 句式）**：
+ * > 「我用『magnitude 这个数大』当作『扰动强度大』的证据，而前者并不度量后者 ——
+ * >  `mode:"set"` 下强度 = `magnitude − 起点值`，而起点值是 38。」
+ * 这与本文件 §⑤ 那条「`toBe(0)` 靠的是聚合了个空集」是**同一个病的第二次**：
+ * 两次都是**默认起点是 0**，而 `a67ed05c` 之后它不是。⇒ 机制见 §⑨ 反向金丝雀。
  */
 
 const enableSim = async (t: TestApp) =>
@@ -77,6 +86,34 @@ async function perturb(t: TestApp, sid: string, objectId: string, magnitude: num
     payload: { kind: "cost_shock", targetObjectId: objectId, targetStateVar: "priceShock", magnitude, mode: "set", startTick, durationTicks: null, label: `${objectId} +${magnitude}` },
   });
   expect(r.statusCode).toBe(201);
+}
+
+/**
+ * **相对**扰动（`mode:"delta"`）—— 真正的「源值 +N」。
+ *
+ * ⚠ 与上面的 `perturb`（`mode:"set"`）是**两件事，别混**：`set M` 的真实强度是 `M − 起点值`，
+ * 而本夹具里 `Material.priceShock` 的起点值是 **38**（见文件头注「2026-09-20 结案」）。
+ * 凡要问「扰动加大，下游是不是更大」这类**单调性**问题，只有 `delta` 答得了 ——
+ * `set` 的横轴原点在 38 上，拿它画曲线必然把「−18 vs +2」读成「+20 vs +40」。
+ */
+async function perturbDelta(t: TestApp, sid: string, objectId: string, magnitude: number): Promise<void> {
+  const r = await t.app.inject({
+    method: "POST", url: `/a/v1/sim/sessions/${sid}/perturbations`, headers: ADMIN,
+    payload: { kind: "cost_shock", targetObjectId: objectId, targetStateVar: "priceShock", magnitude, mode: "delta", startTick: 0, durationTicks: null, label: `${objectId} delta+${magnitude}` },
+  });
+  expect(r.statusCode).toBe(201);
+}
+
+/**
+ * 某个 (对象, 状态量) 在 **tick0 世界态**里的起点值。
+ * ⛔ 不写死 38、也⛔ 不读 `Material.props`（实测 8 个 Material 的 `props.priceShock` 全 `undefined`，
+ * 这个数只活在 `deriveSeedBaseSnapshot` 派生出来的世界态里）——种子改了要红在断言上，不该红在魔数上。
+ */
+async function tick0Value(t: TestApp, sid: string, objectId: string, stateVar: string): Promise<number> {
+  const wl = await readWorldLine(t.repos, "demo", sid, 0, 1);
+  const v = wl.frames[0]?.state[objectId]?.[stateVar];
+  expect(typeof v).toBe("number"); // 金丝雀：起点真的承载这个量（不承载就不是"起点为 0"，是"读错地方了"）
+  return v as number;
 }
 
 /**
@@ -322,5 +359,69 @@ describe("WO-TURN-LOOP · 回合推进对求解器可见（接缝）", () => {
     expect(wl.frames.length).toBe(0);
     expect(wl.ticksUsed).toBe(0);
     expect(wl.note).toContain("读不到历史");
+  });
+
+  // ── ⑨ 反向金丝雀：「不扰动」的唯一正确对照臂 ──────────────────────────────────────
+  it("🐤 反向金丝雀：set(tick0 起点值) ⇒ 与不扰动臂逐字节相同；set(0) ⇒ 必须不同（幅度 0 ≠ 没扰动）", async () => {
+    const t = await seededApp();
+
+    const ctrlSid = await newSession(t);
+    const seedVal = await tick0Value(t, ctrlSid, MAT_ID, "priceShock");
+    // 金丝雀：起点**不是 0** —— 这一条正是上一版头注误读的根。它若某天真的变成 0，
+    // 下面两条断言会分别变红/变绿，而不是悄悄换掉本文件全部结论的前提。
+    expect(seedVal).toBeGreaterThan(0);
+    for (let i = 0; i < 3; i++) await tick(t, ctrlSid);
+    const ctrl = await project(t, ctrlSid);
+
+    // ① 把源**设回它本来的值** = 没有改变任何东西 ⇒ 必须逐字节同对照臂。
+    const sameSid = await newSession(t);
+    await perturb(t, sameSid, MAT_ID, seedVal, 0);
+    for (let i = 0; i < 3; i++) await tick(t, sameSid);
+    expect(fingerprint(await project(t, sameSid))).toBe(fingerprint(ctrl));
+
+    // ② `set 0` 把源从 seedVal **降到 0** ⇒ 是一次真扰动（降价），结果必须不同。
+    //    ⚠ 这一条是本文件的要害：没有它，「幅度 0」会被当成「没扰动」，
+    //    于是整条响应曲线的横轴原点错位 38，把单调读成不单调。
+    const zeroSid = await newSession(t);
+    await perturb(t, zeroSid, MAT_ID, 0, 0);
+    for (let i = 0; i < 3; i++) await tick(t, zeroSid);
+    expect(fingerprint(await project(t, zeroSid))).not.toBe(fingerprint(ctrl));
+  });
+
+  // ── ⑩ 响应曲线单调：扰动加大 ⇒ 下游必须更大（方向性正确的底线）───────────────────
+  it("📈 单调：delta 扰动阶梯 0→+1000 ⇒ 聚合读数与单对象读数都严格递增（源涨⇒下游涨）", async () => {
+    const t = await seededApp();
+    const MODEL = "obj_model_2170-NCM";
+    /**
+     * 为什么必须**同时**咬聚合值与单对象值（工单 §6 的那个问题）：
+     * `aggregatePressure` 是 `Σwᵢpᵢ / Σwᵢ`，权重 `wᵢ = qty × unitPrice` 取自**本体对象**、
+     * 与世界态无关 ⇒ 分母对扰动恒定，聚合是 pᵢ 的**固定线性泛函**，结构上造不出非单调。
+     * 实测旁证：九个臂上 `carriers/universe` 恒为 150/500、`weighting` 恒为 VALUE。
+     * 两条曲线并排咬住 ⇒ 万一哪天真非单调了，能当场分清是「引擎单格」还是「聚合口径」。
+     */
+    const ladder = [0, 2, 10, 40, 200, 1000];
+    const aggs: number[] = [];
+    const cells: number[] = [];
+    for (const m of ladder) {
+      const sid = await newSession(t);
+      if (m !== 0) await perturbDelta(t, sid, MAT_ID, m);
+      for (let i = 0; i < 3; i++) await tick(t, sid);
+      const out = await project(t, sid);
+      const cost = out.pressures.find((p) => p.stateVar === "costPressure")!;
+      // 🐤 非空金丝雀：真的有承载对象在参与聚合（0 承载 ⇒ 下面的"单调"是拿空集比出来的）。
+      expect(cost.carriers).toBeGreaterThan(0);
+      expect(cost.universe).toBeGreaterThan(cost.carriers);
+      const td = out.turnDynamics!.byStateVar.costPressure!;
+      aggs.push(td.trajectory[td.trajectory.length - 1]!.value);
+      // 单对象末拍读数（走世界线末帧，与聚合同一份态）。
+      const wl = await readWorldLine(t.repos, "demo", sid, 3, WORLD_LINE_DEFAULT_WINDOW);
+      const v = wl.frames[wl.frames.length - 1]!.state[MODEL]?.costPressure;
+      expect(typeof v).toBe("number"); // 金丝雀：观测点真的承载这个量
+      cells.push(v as number);
+    }
+    for (let i = 1; i < ladder.length; i++) {
+      expect(aggs[i]!).toBeGreaterThan(aggs[i - 1]!);   // 聚合口径单调
+      expect(cells[i]!).toBeGreaterThan(cells[i - 1]!); // 引擎单格单调
+    }
   });
 });
