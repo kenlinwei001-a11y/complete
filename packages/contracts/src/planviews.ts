@@ -266,6 +266,27 @@ export const CalibrationReportSchema = z.object({
 });
 export type CalibrationReport = z.infer<typeof CalibrationReportSchema>;
 
+/**
+ * M0-F2 实料欠账计（PRD-ai-sim-rev2-ground-truth §2.1 F2）：
+ * 「还差多少对」必须带期望值 —— 没有期望值的指标是装饰不是监控
+ * （paired:0 ⇒ 装饰；paired:0（期望 ≥N · 欠 N 对）⇒ 欠条）。
+ * 该读数必须同时上屏（CalibrationPage）与进启动输出（SEED_DEMO 预热日志）。
+ */
+export const CalibrationDebtSchema = z.object({
+  forecasts: z.number().int(), // 预测记录总数（🐤 存在性金丝雀：必须 >0，为 0 是取数坏了）
+  paired: z.number().int(), // 已配对（forecast.pairedAt 落章）
+  unpaired: z.number().int(),
+  coveragePct: z.number(), // paired / forecasts × 100
+  expected: z.object({
+    minPaired: z.number().int(), // 学习类能力准入的最低配对数（默认 = 一个评估窗口）
+    rationale: z.string(), // 这个期望值为什么是这个数 —— 必填，不许裸数
+  }),
+  byMetric: z.array(z.object({ metricKey: z.string(), forecasts: z.number().int(), paired: z.number().int() })),
+  /** 最老未配对预测的账龄（天，模拟时钟基准）；无未配对 ⇒ null（诚实缺席，不是 0） */
+  oldestUnpairedAgeDays: z.number().nullable(),
+});
+export type CalibrationDebt = z.infer<typeof CalibrationDebtSchema>;
+
 export const CalibrationProposalSchema = z.object({
   id: z.string(),
   parameter: z.string(), // 节拍/良率/OEE 基线
