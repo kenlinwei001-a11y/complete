@@ -9,7 +9,9 @@ import { pairWeightKey } from "../src/sim/propagation.js";
 //  · `deriveSeedBaseSnapshot` —— tick0 世界态 + 逐格出处（真读数 / 哈希占位），⛔ 测里不另抄两档判定；
 //  · 播种期两步 —— `server.ts` 的 seed:derivation-specs / seed:derivation-recompute，
 //    少了它们本测的世界与生产不同源（实测「实测格」4189 → 450），理由见 `measureBudget` 内注释。
-import { deriveSeedBaseSnapshot } from "../src/sim/seed-world.js";
+// M0-A11 另需 `listSimWorldObjects`：「谁算推演世界的成员」的**唯一物化入口**。
+// 稀疏世界必须只从它回的那批单里挑 —— 详见 A11 段头注（已完成订单不进世界）。
+import { deriveSeedBaseSnapshot, listSimWorldObjects } from "../src/sim/seed-world.js";
 import { seedDemoDerivationSpecs, recomputeDemoDerivationsAtSeed } from "../src/seed-derivation-specs.js";
 // ⛔ 刻意**不再** import `PRESSURE_DECAY_PER_TICK`：§6 的 λ 一律逐格从 `decayRef` 现读。
 // 把那个记号留在手边，下一个人顺手拿它当默认值就又回到「全表一个 λ」那个病（WO-COEF-LAMBDA）。
@@ -1468,6 +1470,21 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
 // 实验设计：稀疏世界 = 同一型号 25 张订单各置 demandPressure:10，其余一切为零
 //  ⇒ 型号的入边**恰好** 25 条（零额边不落 trace：propagation.ts `amount === 0 ⇒ continue`），
 //  maxNodes=20 时父位只有 19 个 ⇒ 必然截掉 6 个，coverage 四个数全部能手算到分毫不差。
+//
+// ⚠ **25 张单必须从「进得了推演世界」的那批里挑** —— 2026-09-20 实测，代价是一条红。
+//   原版从**原始链路表**挑（`links.list` 回的 500 条 `order_for_model` 全在里面），
+//   而链路表里有大量**已完成订单**：`sim/seed-world.ts::entersSimWorld` 明令
+//   `Order.status === "COMPLETED"` **不进推演世界**（已完成的单不可能被扰动），
+//   于是它们既不在 `graph.objects` 里、也不在 `pairWeights` 表里，一条边都不产生。
+//   实测（demo·seed 42）：`Order` 500 张 = COMPLETED 350 · IN_PRODUCTION 100 · OPEN 50
+//   ⇒ 进世界 150 张；`obj_model_4680-LFP` 名下 116 张单里只有 **37** 张进得去。
+//   按原版挑法，前 25 张里 13 张是 COMPLETED ⇒ 入边只有 12 条，金丝雀当场报红。
+//   **那条红是对的**：它说的正是「稀疏世界的前提破了」—— 只不过破的原因是**选样**，
+//   不是"有第二个写入源"。⛔ 所以修法**不是**把 25 改成 12（12 没有任何独立出处，
+//   且把断言钉死在观测值上等于让这条金丝雀从此不再守任何前提）；
+//   修法是**让前提重新成立**：只从真能参与传导的单里挑，25 这个数继续由我们自己播种决定。
+//   成员判据走**生产唯一物化入口** `listSimWorldObjects`，⛔ 测里不另抄一份
+//   `status !== "COMPLETED"` —— 那正是该函数头注点名要消灭的「第 6 份手抄」。
 describe("M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本）", () => {
   it("真推演 trace ⇒ 截断账本与手算一致；maxNodes 放大 ⇒ 完整（T1+T3）", async () => {
     const t = await makeApp();
@@ -1478,15 +1495,31 @@ describe("M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本）", () 
     // 取 order_for_model 链路最多的型号 + 它的 25 张订单（稀疏世界只打这 25 张）。
     const links = await t.repos.links.list("demo", (l) => l.type === "order_for_model");
     expect(links.length, "order_for_model 链路为 0 ⇒ 实验前提不成立").toBeGreaterThan(0);
+    // 推演世界成员集合 —— 生产同一个入口，测里不重新判定「谁进得了世界」。
+    const inWorld = new Set((await listSimWorldObjects(t.repos, "demo")).map((r) => r.obj.id));
     const byModel = new Map<string, string[]>();
     for (const l of links) {
+      if (!inWorld.has(l.fromId)) continue; // 进不了世界的单不产生边，挑了也是零额
       const arr = byModel.get(l.toId);
       if (arr) arr.push(l.fromId);
       else byModel.set(l.toId, [l.fromId]);
     }
-    const [modelId, orderIds] = [...byModel.entries()].sort((a, b) => b[1].length - a[1].length)[0]!;
-    expect(orderIds.length, `最多订单的型号只有 ${orderIds.length} 张单 < 25 ⇒ 截断实验搭不起来`).toBeGreaterThanOrEqual(25);
+    const [modelId, orderIds] = [...byModel.entries()].sort(
+      (a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]), // 平手按型号 id，R6 确定性
+    )[0]!;
+    expect(orderIds.length, `最多订单的型号只有 ${orderIds.length} 张**进得了世界的**单 < 25 ⇒ 截断实验搭不起来`).toBeGreaterThanOrEqual(25);
     const picked = orderIds.slice(0, 25);
+
+    // 🐤 筛子非空金丝雀：这个型号名下的**原始**链路数必须**严格大于**进世界的数 ——
+    //    两者相等 ⇒ `entersSimWorld` 这道筛子没生效（多半是 `status` 字段改了名），
+    //    此时上面的"只从进世界的单里挑"是句空话，⛔ 不许把它读成"筛子没删东西"。
+    //    实测基线：116 张原始链路 → 37 张进世界（`entersSimWorld` 头注同一条金丝雀纪律）。
+    const rawForModel = links.filter((l) => l.toId === modelId).length;
+    expect(
+      rawForModel,
+      `型号 ${modelId} 原始链路 ${rawForModel} 条 = 进世界 ${orderIds.length} 张 ⇒ ` +
+        `entersSimWorld 这道筛子一张都没剔掉（字段改名？），本用例的选样前提无从谈起`,
+    ).toBeGreaterThan(orderIds.length);
 
     // 稀疏世界：25 张订单各 10 点需求压力 + 型号清零；其余对象/变量一律不进世界（=0）。
     const baseSnapshot: Record<string, Record<string, number>> = { [modelId]: { demandLoad: 0 } };
@@ -1506,7 +1539,12 @@ describe("M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本）", () 
     const inEdges = trace.filter((e) => e.toObjectId === modelId);
     expect(
       inEdges.length,
-      `型号入边 ${inEdges.length} 条 ≠ 25 ⇒ 稀疏世界前提破了（有第二个写入源/有订单没参与），手算作废`,
+      `型号入边 ${inEdges.length} 条 ≠ 25 ⇒ 稀疏世界前提破了，手算作废。` +
+        `**多**出来 ⇒ 有第二个写入源（又一条规则往 ${modelId} 写）；` +
+        `**少**了 ⇒ 被打的单里有人没参与传导 —— 先查它进没进推演世界` +
+        `（\`entersSimWorld\`：已完成订单不进；2026-09-20 就是这一条让入边从 25 掉到 12），` +
+        `再查它的 pairWeight 是不是 0（\`source_qty_relative\` 读 Order.qty）。` +
+        `⛔ 不许把这个 25 改成当天观测到的数字 —— 那等于让本金丝雀从此不再守任何前提。`,
     ).toBe(25);
     expect(inEdges.every((e) => e.ruleKey === "demo_order_demand_pressure" && Math.abs(e.amount) > 0)).toBe(true);
 
