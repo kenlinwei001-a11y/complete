@@ -8,6 +8,13 @@
  */
 export { CalibrationService, type CalibrationReportQuery, type SliceGenerationResult } from "./service.js";
 export { runPairing, simNow, type PairingResult } from "./pairing.js";
+export {
+  forecastSubjectRef,
+  pairRealizedWithForecasts,
+  registerRealizedOutcome,
+  type RealizedPairingResult,
+  type RealizedRegistrationInput,
+} from "./realized.js";
 export { mapePct, biasOf, coverageOf, rollingMapeSeries, buildSlices } from "./metrics.js";
 export {
   methodEma,

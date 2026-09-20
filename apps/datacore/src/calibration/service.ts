@@ -27,6 +27,12 @@ import {
 } from "./methods.js";
 import { meanProp, patchContext, replayPairs, sliceObjectsFor } from "./replay.js";
 import { runPairing, simNow, type PairingResult } from "./pairing.js";
+import {
+  pairRealizedWithForecasts,
+  registerRealizedOutcome,
+  type RealizedPairingResult,
+  type RealizedRegistrationInput,
+} from "./realized.js";
 
 const BASELINE_DAYS = 14;
 const DEFAULT_THRESHOLD_PCT = 8;
@@ -74,8 +80,32 @@ export class CalibrationService {
 
   // -- §1 配对 + 元闭环（模拟时钟 tick / 周任务 / 手动触发共用） ------------------------
 
-  async runPairingOnce(tenantId: string): Promise<PairingResult> {
-    return runPairing(this.repos, this.solvers, tenantId);
+  /**
+   * M0-F1 后：一次配对 = ts 聚合配对（M11 原引擎）+ 实料配对（RealizedOutcome × 预测）。
+   * 两个 actual 源各配各的未配对预测，「一个预测只配对一次」纪律两边同守（先到先得）。
+   */
+  async runPairingOnce(tenantId: string): Promise<PairingResult & { realized: RealizedPairingResult }> {
+    const tsResult = await runPairing(this.repos, this.solvers, tenantId);
+    const realized = await this.pairRealizedOnce(tenantId);
+    return { ...tsResult, realized };
+  }
+
+  /** M0-F1：实料 × 预测配对单跑（登记后即时配对也走它）。 */
+  async pairRealizedOnce(tenantId: string): Promise<RealizedPairingResult> {
+    return pairRealizedWithForecasts(this.repos, tenantId, await this.solvers.paramsVersion(tenantId));
+  }
+
+  /**
+   * M0-F1 登记入口（三入口共用 realized.ts 登记器；本方法 = 人工录入/显式登记的服务侧门面）。
+   * importedBy/importedAt 由调用方（路由）从 AuthCtx 填好后传入；登记成功即跑一轮实料配对。
+   */
+  async registerRealized(
+    tenantId: string,
+    input: RealizedRegistrationInput,
+  ): Promise<{ outcome: Awaited<ReturnType<typeof registerRealizedOutcome>>; pairing: RealizedPairingResult }> {
+    const outcome = await registerRealizedOutcome(this.repos, tenantId, input);
+    const pairing = await this.pairRealizedOnce(tenantId);
+    return { outcome, pairing };
   }
 
   /** 模拟时钟 tick 钩子：聚合后配对 + 元闭环（C12 扫描在其后，按切片消费新配对）。 */
