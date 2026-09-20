@@ -154,6 +154,7 @@ import { AOP_BASE_REVENUE_YI, DEMAND_YEAR, FINANCE_PNL_YEAR, REV_ATTAIN_PCT, SOP
 import {
   affectedOrdersOutput,
   AOP_RESPONSE,
+  CALIBRATION_DEBT,
   CALIBRATION_HISTORY,
   CALIBRATION_PROPOSALS,
   calibrationReportFor,
@@ -4207,6 +4208,8 @@ export const handlers = [
   }),
   http.get("*/a/v1/calibration/proposals", () => HttpResponse.json(CALIBRATION_PROPOSALS)),
   http.get("*/a/v1/calibration/history", () => HttpResponse.json(CALIBRATION_HISTORY)),
+  // M0-F2 实料欠账计：屏上读数必须与回包逐字一致（单测替身；交付证据在 datacore T1+T3）
+  http.get("*/a/v1/calibration/debt", () => HttpResponse.json(CALIBRATION_DEBT)),
   // 批准/回滚不直改参数：生成「校准参数变更」Action 草稿走 §S2 审批流
   http.post("*/a/v1/calibration/proposals/:id/:decision", ({ params, request }) => {
     const account = auth(request);

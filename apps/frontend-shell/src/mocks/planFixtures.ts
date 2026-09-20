@@ -5,6 +5,7 @@ import {
   CalibrationReportSchema,
   CalibrationProposalSchema,
   CalibrationHistoryEntrySchema,
+  CalibrationDebtSchema,
   DataHealthResponseSchema,
   OrderProblemGroupSchema,
   type AopResponse,
@@ -13,6 +14,7 @@ import {
   type CalibrationReport,
   type CalibrationProposal,
   type CalibrationHistoryEntry,
+  type CalibrationDebt,
   type DataHealthResponse,
   type OrderProblemGroup,
   SEG_REGISTRY,
@@ -189,6 +191,20 @@ export const CALIBRATION_REPORT_BASE: CalibrationReport = CalibrationReportSchem
     { sliceKey: "capacity_forecast|all|4680-NCM", solverKey: "capacity_forecast", baseId: "all", modelId: "4680-NCM", nPairs: 42, mape7d: 4.9, mape30d: 5.6, bias: 0.031, coverage: 0.9, flags: [] },
     { sliceKey: "capacity_forecast|changzhou|4680-NCM", solverKey: "capacity_forecast", baseId: "changzhou", modelId: "4680-NCM", nPairs: 6, mape7d: 5.4, mape30d: 6.1, bias: 0.05, coverage: 0.83, flags: ["INSUFFICIENT_SAMPLES"] },
   ],
+});
+
+/** M0-F2 实料欠账计（PRD-ground-truth §2.1）：欠账态样例 —— 期望 30 对、实测 3 对、欠 27 对。 */
+export const CALIBRATION_DEBT: CalibrationDebt = CalibrationDebtSchema.parse({
+  forecasts: 252,
+  paired: 3,
+  unpaired: 249,
+  coveragePct: 1.19,
+  expected: {
+    minPaired: 30,
+    rationale: "学习类能力（B7/C5/C6/A10）准入至少需要 30 对实料配对（一个评估窗口覆盖）。当前欠 27 对。",
+  },
+  byMetric: [{ metricKey: "capacity_forecast/4680-NCM", forecasts: 252, paired: 3 }],
+  oldestUnpairedAgeDays: 12,
 });
 
 /** M11：方法（EMA/重放归因/分位数）+ 回测证据 + HOLD/REJECTED 状态 + 元闭环 realizedMape */

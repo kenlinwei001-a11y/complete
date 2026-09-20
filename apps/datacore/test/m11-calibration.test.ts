@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  CalibrationDebtSchema,
   CalibrationProposalSchema,
   CalibrationReportSchema,
   CalibrationRunResultSchema,
@@ -778,5 +779,108 @@ describe("M0-F1 RealizedOutcome 配对键（T4）", () => {
       },
     });
     expect(manual.statusCode).toBe(201);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// M0-F2（PRD-ai-sim-rev2-ground-truth §2.1 F2）实料欠账计 —— T1+T3 验收：
+// ① 无实料 ⇒ paired:0 · expected.minPaired:N · coveragePct:0（+🐤 forecasts>0 存在性金丝雀）；
+// ② 录 M 条并配对 ⇒ 三数同步变，oldestUnpairedAgeDays 单调（账龄机制正控 + 墙钟钳制反证）；
+// ③ 🐤 forecasts 为 0 是取数坏了，不是「没有欠账」。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("M0-F2 欠账计 GET /a/v1/calibration/debt（T1+T3）", () => {
+  const getDebt = async (t: TestApp) => {
+    const res = await t.app.inject({ method: "GET", url: "/a/v1/calibration/debt", headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    return CalibrationDebtSchema.parse(res.json());
+  };
+
+  it("T1① 无实料 ⇒ paired:0 · expected.minPaired:N · coveragePct:0 · 🐤 forecasts>0", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 6 });
+    const d = await getDebt(t);
+    expect(d.forecasts).toBeGreaterThan(0); // 🐤 存在性金丝雀
+    expect(d.paired).toBe(0);
+    expect(d.unpaired).toBe(d.forecasts);
+    expect(d.coveragePct).toBe(0);
+    expect(d.expected.minPaired).toBe(30); // 缺省 = 一个评估窗口 EVAL_WINDOW_DAYS
+    expect(d.expected.rationale).toContain("30");
+    expect(d.expected.rationale).toContain("欠 30 对"); // 欠条形态：期望值必须带欠账读数
+    expect(d.byMetric).toEqual([
+      { metricKey: `capacity_forecast/${MODEL}`, forecasts: d.forecasts, paired: 0 },
+    ]);
+    expect(d.oldestUnpairedAgeDays).not.toBeNull();
+  });
+
+  it("T1②+T3 录 M 条配对 ⇒ 三数同步变 · 账龄随钟 +1（正控）· 墙钟未来账龄钳 0（反证）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 6 });
+    const d0 = await getDebt(t);
+
+    // 录 M=2 条实料（全基地合计切片前 2 个日窗口）并配对
+    const agg = (await t.repos.calibrationForecasts.list("demo"))
+      .filter((f) => !f.baseId)
+      .sort((a, b) => (a.windowTo < b.windowTo ? -1 : 1));
+    const targets = agg.slice(0, 2);
+    const M = targets.length;
+    const csv =
+      "model,date,output_wan\n" + targets.map((f) => `${MODEL},${f.windowTo},${f.predicted.toFixed(6)}`).join("\n") + "\n";
+    const up = (
+      await t.app.inject({ method: "POST", url: "/a/v1/uploads", headers: ADMIN, payload: { filename: "actuals.csv", contentBase64: b64(csv) } })
+    ).json() as { connection: { id: string } };
+    await t.app.inject({
+      method: "PATCH",
+      url: `/a/v1/connections/${up.connection.id}`,
+      headers: ADMIN,
+      payload: {
+        config: {
+          datasets: {
+            actuals: {
+              realizedOutcome: { typeKey: "Model", objectIdField: "model", prop: "dailyOutputWan", asOfField: "date", valueField: "output_wan", unit: "万套/日" },
+            },
+          },
+        },
+      },
+    });
+    await t.app.inject({ method: "POST", url: `/a/v1/connections/${up.connection.id}/sync`, headers: ADMIN });
+    const pairing = await t.services.calibration.pairRealizedOnce("demo");
+    expect(pairing.paired).toBe(M);
+
+    // 三个数同步变（可预言的精确值）
+    const d1 = await getDebt(t);
+    expect(d1.paired).toBe(d0.paired + M);
+    expect(d1.unpaired).toBe(d0.unpaired - M);
+    expect(d1.coveragePct).toBe(round(((d0.paired + M) / d0.forecasts) * 100, 2));
+    expect(d1.byMetric[0]!.paired).toBe(M);
+
+    // 账龄单调机制正控：种一条 createdAt 在模拟钟 t0 前 5 天的未配对预测（直接写仓储），tick 1d ⇒ 账龄 5→6
+    const stale = {
+      id: "calf_demo_capfc_stale-age-probe",
+      tenantId: "demo",
+      solverKey: "capacity_forecast",
+      modelId: MODEL,
+      windowFrom: "2099-01-01", // 远未来窗口 ⇒ 永不满足配对/过期条件，纯账龄探针
+      windowTo: "2099-01-01",
+      predicted: 1,
+      predictedP90: 1,
+      paramsVersion: 1,
+      weekOfWindow: 1,
+      createdAt: "2026-06-05T00:00:00.000Z", // 模拟钟 t0=2026-06-10 的 5 天前
+    };
+    await t.repos.calibrationForecasts.put(stale);
+    const d2 = await getDebt(t);
+    expect(d2.oldestUnpairedAgeDays).toBe(5); // 正控起点（t0 钟面）
+    await tick(t, "1d");
+    const d3 = await getDebt(t);
+    expect(d3.oldestUnpairedAgeDays).toBe(6); // 随钟 +1 —— 单调
+    expect(d3.oldestUnpairedAgeDays).toBeGreaterThanOrEqual(d2.oldestUnpairedAgeDays!);
+    // 🐤 反证（不该变的没变）：墙钟创建的预测账龄被钳在 0（模拟钟面 2026-06 < 墙钟 createdAt），
+    // ⛔ 不许报出负账龄 —— 钳制若失效，d3 会冒出 -100 级别的谎数。
+    expect(d3.oldestUnpairedAgeDays).toBeLessThan(100);
+    // 🐤 反证二：配了对的那 M 条不被账龄探针复活（一个预测只配对一次）
+    const stillPaired = await t.repos.calibrationForecasts.list("demo", (f) => !!f.pairedAt);
+    expect(stillPaired.length).toBe(M);
   });
 });
