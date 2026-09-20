@@ -5,7 +5,7 @@ import {
   CalibrationReportSchema,
   CalibrationRunResultSchema,
 } from "@platform/contracts";
-import { makeApp, seedBattery, invokeSolver, ADMIN, PLANNER, type TestApp } from "./helpers.js";
+import { makeApp, seedBattery, invokeSolver, ADMIN, PLANNER, b64, type TestApp } from "./helpers.js";
 import {
   buildReplayModel,
   calibrationConfig,
@@ -582,5 +582,200 @@ describe("M11 校准引擎（PRD-addendum-m11-calibration C1–C9）", () => {
     expect(yieldHolds.length).toBeGreaterThanOrEqual(0); // HOLD 仅当候选再次过闸（不强约束）
     const planner403 = await t.app.inject({ method: "POST", url: "/a/v1/calibration/run", headers: PLANNER, payload: {} });
     expect(planner403.statusCode).toBe(403); // catalog_admin only
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// M0-F1（PRD-ai-sim-rev2-ground-truth §2.1）实料配对键 —— T4 故障注入验收：
+// ① file_upload 真传 CSV ⇒ 落 RealizedOutcome 且 provenance.syncJobId 可追回那次 sync；
+// ② provenance 残缺 ⇒ 400 并点名缺哪个字段（⛔ 不许静默丢弃）；
+// ③ 🐤 金丝雀：登记前 paired=N、登记并配对后 = N+K，两个数都打出来。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("M0-F1 RealizedOutcome 配对键（T4）", () => {
+  const uploadActuals = async (t: TestApp, csv: string) => {
+    const up = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/uploads",
+      headers: ADMIN,
+      payload: { filename: "actuals.csv", contentBase64: b64(csv) },
+    });
+    expect(up.statusCode).toBe(201);
+    return up.json() as { connection: { id: string }; syncJobId: string };
+  };
+
+  it("T4①③ file_upload 真传 CSV ⇒ 实料落库可追回 syncJobId · 配对前后 paired 两数都动", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 6 });
+
+    // 🐤 存在性金丝雀：预测记录必须 >0（为 0 是取数坏了，不是「没有欠账」）
+    const fcsts = await t.repos.calibrationForecasts.list("demo");
+    expect(fcsts.length).toBeGreaterThan(0);
+    const pairedBefore = fcsts.filter((f) => f.pairedAt).length;
+    expect(pairedBefore).toBe(0);
+
+    // 取全基地合计切片（baseId 缺省 ⇒ subjectRef.objectId = modelId）的前 3 个日窗口当 K
+    const agg = fcsts.filter((f) => !f.baseId).sort((a, b) => (a.windowTo < b.windowTo ? -1 : 1));
+    expect(agg.length).toBeGreaterThanOrEqual(3);
+    const targets = agg.slice(0, 3);
+    const K = targets.length;
+    // 对照实验的可预言值：actual 取 predicted − 0.5 ⇒ error 必须 = +0.5（逐条可手算）
+    const csv =
+      "model,date,output_wan\n" +
+      targets.map((f) => `${MODEL},${f.windowTo},${(f.predicted - 0.5).toFixed(6)}`).join("\n") +
+      "\n";
+    const up = await uploadActuals(t, csv);
+    const connId = up.connection.id;
+
+    // 挂数据集级映射（datasetKey → subjectRef 字段 + asOf 字段），再 sync 触发登记
+    const patch = await t.app.inject({
+      method: "PATCH",
+      url: `/a/v1/connections/${connId}`,
+      headers: ADMIN,
+      payload: {
+        config: {
+          datasets: {
+            actuals: {
+              realizedOutcome: {
+                typeKey: "Model",
+                objectIdField: "model",
+                prop: "dailyOutputWan",
+                asOfField: "date",
+                valueField: "output_wan",
+                unit: "万套/日",
+              },
+            },
+          },
+        },
+      });
+    expect(patch.statusCode).toBe(200);
+    const sync = await t.app.inject({ method: "POST", url: `/a/v1/connections/${connId}/sync`, headers: ADMIN });
+    expect(sync.statusCode).toBe(202);
+    const { syncJobId } = sync.json() as { syncJobId: string };
+
+    // ① 落 RealizedOutcome 且 provenance 可追回哪次 sync 的哪一行
+    const job = (await t.app.inject({ method: "GET", url: `/a/v1/sync-jobs/${syncJobId}`, headers: ADMIN })).json() as {
+      id: string;
+      connId: string;
+      realizedOutcomes?: { registered: number; skipped: { rowRef: string; reason: string }[] };
+    };
+    expect(job.connId).toBe(connId);
+    expect(job.realizedOutcomes?.registered).toBe(K);
+    expect(job.realizedOutcomes?.skipped).toEqual([]);
+    const outcomes = (await t.app.inject({ method: "GET", url: "/a/v1/calibration/realized", headers: ADMIN })).json() as {
+      subjectRef: { typeKey: string; objectId: string; prop: string };
+      asOf: string;
+      value: number;
+      source: string;
+      provenance: { connId?: string; syncJobId?: string; datasetKey?: string; rowRef?: string };
+    }[];
+    expect(outcomes).toHaveLength(K);
+    for (const [i, o] of outcomes.entries()) {
+      expect(o.source).toBe("INGESTED");
+      expect(o.provenance.syncJobId).toBe(syncJobId); // 可追回那次 sync
+      expect(o.provenance.connId).toBe(connId);
+      expect(o.provenance.datasetKey).toBe("actuals");
+      expect(o.provenance.rowRef).toBe(`#${i}`);
+      expect(o.subjectRef).toEqual({ typeKey: "Model", objectId: MODEL, prop: "dailyOutputWan" });
+    }
+
+    // ③ 配对：paired 前后两个数都打出来（0 ⇒ K）
+    const pairing = await t.services.calibration.pairRealizedOnce("demo");
+    expect(pairing.paired).toBe(K);
+    expect(pairing.examined).toBe(fcsts.length); // 参与检查的未配对预测 = 全部
+    const after = await t.repos.calibrationForecasts.list("demo");
+    const pairedAfter = after.filter((f) => f.pairedAt).length;
+    expect({ pairedBefore, pairedAfter }).toEqual({ pairedBefore: 0, pairedAfter: K });
+
+    // 对照实验正向：每对 actual = predicted − 0.5 ⇒ error 必须逐条 = +0.5
+    const pairs = await t.repos.calibrationPairs.list("demo");
+    expect(pairs).toHaveLength(K);
+    for (const f of targets) {
+      const p = pairs.find((x) => x.windowTo === f.windowTo && !x.baseId)!;
+      expect(p.actual).toBe(round(f.predicted - 0.5, 6));
+      expect(p.error).toBe(0.5);
+    }
+    // 🐤 反向金丝雀：没给实料的窗口必须**不**配对（不该变的没变）
+    const untouched = after.find((f) => !f.baseId && !targets.some((x) => x.id === f.id))!;
+    expect(untouched.pairedAt).toBeUndefined();
+  });
+
+  it("T4② provenance 残缺 ⇒ 400 并点名缺哪个字段；mock_* 申报期即拒", async () => {
+    const t = await makeApp();
+    // 缺 syncJobId —— 400 点名 syncJobId
+    const missing = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/calibration/realized",
+      headers: ADMIN,
+      payload: {
+        subjectRef: { typeKey: "Model", objectId: MODEL, prop: "dailyOutputWan" },
+        asOf: "2026-06-11",
+        value: 10,
+        unit: "万套/日",
+        source: "INGESTED",
+        provenance: { connId: "conn_x", datasetKey: "actuals", rowRef: "#0" },
+      },
+    });
+    expect(missing.statusCode).toBe(400);
+    expect(JSON.stringify(missing.json())).toContain("syncJobId");
+
+    // syncJobId 追不到该连接的真实 sync —— 400 点名（先造一条从未 sync 的连接）
+    const conn = (
+      await t.app.inject({
+        method: "POST",
+        url: "/a/v1/connections",
+        headers: ADMIN,
+        payload: { connectorTypeKey: "rest_api", name: "never-synced", config: { url: "https://example.invalid/api" } },
+      })
+    ).json() as { id: string };
+    const bogus = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/calibration/realized",
+      headers: ADMIN,
+      payload: {
+        subjectRef: { typeKey: "Model", objectId: MODEL, prop: "dailyOutputWan" },
+        asOf: "2026-06-11",
+        value: 10,
+        unit: "万套/日",
+        source: "INGESTED",
+        provenance: { connId: conn.id, syncJobId: "sync_nope", datasetKey: "actuals", rowRef: "#0" },
+      },
+    });
+    expect(bogus.statusCode).toBe(400);
+    expect(JSON.stringify(bogus.json())).toContain("sync_nope");
+
+    // mock_* 连接申报实料映射 ⇒ 创建期即拒并点名 connectorTypeKey
+    const mockDecl = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/connections",
+      headers: ADMIN,
+      payload: {
+        connectorTypeKey: "mock_erp",
+        name: "mock-with-mapping",
+        config: {
+          datasets: {
+            orders: {
+              realizedOutcome: { typeKey: "Model", objectIdField: "m", prop: "dailyOutputWan", asOfField: "d", valueField: "v", unit: "万套/日" },
+            },
+          },
+        },
+      }),
+    });
+    expect(mockDecl.statusCode).toBe(400);
+    expect(JSON.stringify(mockDecl.json())).toContain("mock_erp");
+    // 🐤 反向：同形状的合法登记（MANUAL_ENTRY 审计留痕）必须**不被**误拒
+    const manual = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/calibration/realized",
+      headers: ADMIN,
+      payload: {
+        subjectRef: { typeKey: "Model", objectId: MODEL, prop: "dailyOutputWan" },
+        asOf: "2026-06-11",
+        value: 10,
+        unit: "万套/日",
+        source: "MANUAL_ENTRY",
+      },
+    });
+    expect(manual.statusCode).toBe(201);
   });
 });
