@@ -120,6 +120,8 @@ export interface SyncJob {
   finishedAt?: string;
   rowCounts: Record<string, number>; // dataset -> rows
   error?: string;
+  /** M0-F1：本次 sync 的实料登记回执（仅挂了 realizedOutcome 映射的数据集有）——跳过必须点名哪行缺哪个字段。 */
+  realizedOutcomes?: { registered: number; skipped: { rowRef: string; reason: string }[] };
 }
 
 export interface RawDataset {
