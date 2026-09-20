@@ -128,6 +128,17 @@ async function main(): Promise<void> {
           : `SEED_DEMO=1: demo sim world not created — ${simWorld.reason ?? "unknown"}`;
       // 修复是异常事件（意味着上一次启动被打断过），按 warn 出；正常路径照旧 info。
       logger[simWorld.repaired ? "warn" : "info"]({ ...simWorld, origin: simWorld.origin ?? undefined }, msg);
+      // M0-F2 欠账计进启动输出（PRD-ground-truth §2.1：读数必须同时上屏与进 build 输出 ——
+      // 欠账要报给能修的人，不只报给用户。前科：`实测格 0/7295` 亮在启动日志里几个月无人动，
+      // 因为它没有期望值 ⇒ 本行必须带 expected 与「欠 N 对」。新鲜播种尚无预测记录时
+      // forecasts=0 是实话（求解器还没跑过），expected 让它读作欠条而不是「没有欠账」）。
+      phase("seed:calibration-debt");
+      const calDebt = await services.calibration.debt(DEMO_TENANT);
+      logger.info(
+        `SEED_DEMO=1: calibration debt — forecasts=${calDebt.forecasts} paired=${calDebt.paired} ` +
+          `expected.minPaired=${calDebt.expected.minPaired} 欠 ${Math.max(0, calDebt.expected.minPaired - calDebt.paired)} 对 ` +
+          `coveragePct=${calDebt.coveragePct}`,
+      );
     }
   } finally {
     readiness.seeding = false; // 预热完成（成/败均放行 → /readyz 落到 bootstrap 检查·失败则 main().catch 退出）
