@@ -887,3 +887,125 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
     ).toBeCloseTo(COEFF! * SHOCK, 9);
   });
 });
+
+// ── M0-A11 · 解释切片（PRD-ai-sim-rev2-ground-truth §2.1 A11）────────────────────
+// 只读投影：`GET /a/v1/sim/sessions/:id/explain-slice` 从**已算完**的 trace 收敛 ≤20 节点小图。
+// ⛔ 与「计算范围」无关：传导引擎照走全图，切片只是事后投影，大小只影响看得懂多少。
+// 判据（派单 T1+T3）：
+//  ① 真推演 trace ⇒ 节点 ≤20 且 amountCoveredPct 与**手算**一致（手算 = 按文档取舍规则
+//     从原始 trace 独立复算，不经过 buildExplainSlice —— 断言与实现各自算一遍，同源病见
+//     本文件 live-fire 用例的「断言与实现各自独立地算同一个式子」）。
+//  ② 🐤 反向金丝雀：maxNodes 超过全链节点数 ⇒ truncated:false · amountCoveredPct:100
+//     （若 ① 的截断账本是假的——比如恒报截断——这里当场红）。
+//  ③ 🐤 存在性金丝雀：trace 行数必须 >0（否则 ① 验的是空图，绿得毫无意义）。
+// 实验设计：稀疏世界 = 同一型号 25 张订单各置 demandPressure:10，其余一切为零
+//  ⇒ 型号的入边**恰好** 25 条（零额边不落 trace：propagation.ts `amount === 0 ⇒ continue`），
+//  maxNodes=20 时父位只有 19 个 ⇒ 必然截掉 6 个，coverage 四个数全部能手算到分毫不差。
+describe("M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本）", () => {
+  it("真推演 trace ⇒ 截断账本与手算一致；maxNodes 放大 ⇒ 完整（T1+T3）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    await enableSim(t);
+
+    // 取 order_for_model 链路最多的型号 + 它的 25 张订单（稀疏世界只打这 25 张）。
+    const links = await t.repos.links.list("demo", (l) => l.type === "order_for_model");
+    expect(links.length, "order_for_model 链路为 0 ⇒ 实验前提不成立").toBeGreaterThan(0);
+    const byModel = new Map<string, string[]>();
+    for (const l of links) {
+      const arr = byModel.get(l.toId);
+      if (arr) arr.push(l.fromId);
+      else byModel.set(l.toId, [l.fromId]);
+    }
+    const [modelId, orderIds] = [...byModel.entries()].sort((a, b) => b[1].length - a[1].length)[0]!;
+    expect(orderIds.length, `最多订单的型号只有 ${orderIds.length} 张单 < 25 ⇒ 截断实验搭不起来`).toBeGreaterThanOrEqual(25);
+    const picked = orderIds.slice(0, 25);
+
+    // 稀疏世界：25 张订单各 10 点需求压力 + 型号清零；其余对象/变量一律不进世界（=0）。
+    const baseSnapshot: Record<string, Record<string, number>> = { [modelId]: { demandLoad: 0 } };
+    for (const o of picked) baseSnapshot[o] = { demandPressure: 10 };
+    const sid = (await (await t.app.inject({
+      method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
+      payload: { baseSnapshot },
+    })).json()).id as string;
+    const tick = await t.app.inject({ method: "POST", url: `/a/v1/sim/sessions/${sid}/tick`, headers: ADMIN, payload: { n: 1 } });
+    expect(tick.statusCode).toBe(200);
+
+    // 🐤 ③ 存在性金丝雀：tick1 的持久化 trace 非空，且型号的入边恰好 = 25（多一条少一条
+    //    都说明稀疏世界前提被打破了——比如又有别的规则往型号写——手算随即作废）。
+    const row = await t.repos.sim.getTickState("demo", sid, 1);
+    const trace = row?.trace ?? [];
+    expect(trace.length, "tick1 trace 为空 ⇒ 切片验的是空图（假绿形态）").toBeGreaterThan(0);
+    const inEdges = trace.filter((e) => e.toObjectId === modelId);
+    expect(
+      inEdges.length,
+      `型号入边 ${inEdges.length} 条 ≠ 25 ⇒ 稀疏世界前提破了（有第二个写入源/有订单没参与），手算作废`,
+    ).toBe(25);
+    expect(inEdges.every((e) => e.ruleKey === "demo_order_demand_pressure" && Math.abs(e.amount) > 0)).toBe(true);
+
+    // ── 手算（独立于 buildExplainSlice 的第二份实现，照文档取舍规则）────────────────
+    // 同跳按 |amount| 降序、平手按 fromObjectId 字典序；目标占 1 位，父位 = maxNodes−1 = 19。
+    const sorted = [...inEdges].sort(
+      (a, b) => Math.abs(b.amount) - Math.abs(a.amount) || a.fromObjectId.localeCompare(b.fromObjectId),
+    );
+    const kept = sorted.slice(0, 19);
+    const total = sorted.reduce((s, e) => s + Math.abs(e.amount), 0);
+    const keptSum = kept.reduce((s, e) => s + Math.abs(e.amount), 0);
+    expect(total, "型号入边总额 0 ⇒ 手算分母为 0，覆盖率读数无意义").toBeGreaterThan(0);
+    const expectedPct = Math.round((keptSum / total) * 100 * 100) / 100;
+
+    // ── ① 正向：maxNodes=20 ⇒ 25 父 > 19 父位 ⇒ 截断账本四个数逐一咬死 ──────────────
+    const r20 = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&tick=1&maxNodes=20`, headers: ADMIN,
+    });
+    expect(r20.statusCode).toBe(200);
+    const s20 = r20.json() as {
+      target: { objectId: string };
+      nodes: { objectId: string; hop: number }[];
+      edges: { fromObjectId: string; toObjectId: string; amount: number }[];
+      coverage: { maxNodes: number; truncated: boolean; droppedNodes: number; droppedEdges: number; amountCoveredPct: number };
+    };
+    expect(s20.target.objectId).toBe(modelId);
+    expect(s20.nodes.length, "切片超过 20 节点 ⇒ 上限没咬住").toBeLessThanOrEqual(20);
+    expect(s20.nodes.length).toBe(20); // 目标 1 + 父 19（25 个候选挤 19 个位，必然满）
+    expect(s20.nodes.filter((n) => n.hop === 0).map((n) => n.objectId)).toEqual([modelId]);
+    // 留下的 19 个父必须与手算的 19 个**逐一同名**（取舍规则确定性：同输入同输出）。
+    expect(new Set(s20.nodes.filter((n) => n.hop === 1).map((n) => n.objectId)))
+      .toEqual(new Set(kept.map((e) => e.fromObjectId)));
+    expect(s20.edges.length).toBe(19);
+    expect(s20.coverage).toEqual({
+      maxNodes: 20,
+      truncated: true,
+      droppedNodes: 6,   // 25 − 19，挤不下的 6 个父
+      droppedEdges: 6,   // 每个被挤掉的父带走它那条入边
+      amountCoveredPct: expectedPct, // 与手算分毫不差
+    });
+    // 诚实性硬判据：25 父丢 6，覆盖率**必须**明显小于 100 —— 恒报 100 就是拿残图冒充全图。
+    expect(s20.coverage.amountCoveredPct).toBeLessThan(100);
+
+    // ── ② 🐤 反向金丝雀：maxNodes=1000 > 全链节点数 ⇒ 不截断、覆盖率 100 ────────────
+    const rFull = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&tick=1&maxNodes=1000`, headers: ADMIN,
+    });
+    expect(rFull.statusCode).toBe(200);
+    const sFull = rFull.json() as typeof s20;
+    expect(sFull.nodes.length).toBe(26); // 目标 + 25 父（hop2 候选全部零额 ⇒ 链到此为止）
+    expect(sFull.edges.length).toBe(25);
+    expect(sFull.coverage.truncated).toBe(false);
+    expect(sFull.coverage.droppedNodes).toBe(0);
+    expect(sFull.coverage.droppedEdges).toBe(0);
+    expect(sFull.coverage.amountCoveredPct).toBe(100);
+
+    // ── 边界：缺 targetObjectId ⇒ 400 点名；空 trace ⇒ 404 不出空切片冒充 ────────────
+    const rBad = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?tick=1`, headers: ADMIN,
+    });
+    expect(rBad.statusCode).toBe(400);
+    expect(JSON.stringify(rBad.json())).toContain("targetObjectId");
+    const rEmpty = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&tick=99&maxNodes=20`, headers: ADMIN,
+    });
+    expect(rEmpty.statusCode).toBe(404);
+    expect(JSON.stringify(rEmpty.json())).toContain("空 trace");
+  });
+});
