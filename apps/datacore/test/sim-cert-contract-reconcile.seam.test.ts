@@ -258,10 +258,36 @@ describe("WO-CERT-CONTRACT-RECONCILE ③ 派生那个数名副其实（规模 �
     await enable(t, TEN);
     await publishTwoRules(t, TEN);
     const ctx = { tenantId: TEN, userId: "u", roles: ["admin"], attributes: {} };
+    /**
+     * ⚠ `threeNodeWorld` 是给**传导**用的抽象三点链，三个类型都声明 `properties: []`。
+     * 本例却往 `a1` 塞了一个**本体上没声明**的 `qty`，再编一条依赖 `TypeA.qty` 的派生规格。
+     *
+     * 提交 `f853c7b6` 给 `compileSpecs` 加了**写库前的 dep 可满足性体检**（判据 = 本体声明
+     * `properties/derivedProperties/stateVariables` ∪ 本批规格自己的产物）后，这条规格
+     * 被如实判成 `UNSATISFIABLE` ⇒ 不进拓扑序 ⇒ `derivationNodes` 落 0。
+     * **实测读数**：`unsatisfiable = [{specKey:"a_twice", missing:[{typeKey:"TypeA", prop:"qty"}]}]`，
+     * 而 `TypeA` 的三份声明当时确实全空（properties=[] / derived=[] / stateVars=[]）——
+     * **体检是对的，欠声明的是这个夹具**（同一把查法在生产 demo 种子上 29/29 全 ACTIVE、0 条 UNSATISFIABLE）。
+     *
+     * ⛔ 因此**不许**把下面的 `toBe(1)` 改成 `toBe(0)` 了事：那会让本例的主语
+     * （「派生那个数是**图的规模**，不随源态变」）整个蒸发 —— 规模 0 与触发数 0 撞成同一个数，
+     * 头注变异表里**只有本例能抓到**的 M3（`derivationNodes` 换成 `rc.updatedObjects`）当场变绿。
+     * 正解是把夹具补诚实：`qty` 本来就该在本体上声明，对象上才有资格带它。
+     */
+    await t.repos.ontologyTypes.put({
+      id: `otype_TypeA_${TEN}`, tenantId: TEN, key: "TypeA", displayName: "TypeA",
+      properties: [{ propKey: "qty", dataType: "number" }] as never,
+      derivedProperties: [], sourceBindings: [], version: 1, status: "ACTIVE",
+    });
     await t.repos.objects.put({ id: "a1", tenantId: TEN, type: "TypeA", props: { qty: 2 }, origin: ORG });
-    await t.services.ontologyCore.compileSpecs(ctx, 1, [
+    const compiled = await t.services.ontologyCore.compileSpecs(ctx, 1, [
       { specKey: "a_twice", targetType: "TypeA", targetProp: "twice", formula: "this.qty * 2" },
     ]);
+    // 🐤 前置金丝雀：规格真的落成 ACTIVE 了，下面那个 1 才有意义。
+    // 若哪天 dep 体检再把它判掉，这里会先红并**逐条点名缺了哪个 prop**，
+    // 而不是让人对着一个光秃秃的 `expected 0 to be 1` 去猜。
+    expect(compiled.unsatisfiable, JSON.stringify(compiled.unsatisfiable)).toHaveLength(0);
+    expect(compiled.order).toHaveLength(1);
 
     // 两次认证：源态一次有料、一次全 0 —— 世界的"活跃度"截然不同。
     const live = await certify(t, TEN, "scope=GLOBAL");
