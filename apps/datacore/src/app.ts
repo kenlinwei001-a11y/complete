@@ -95,6 +95,7 @@ import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact
 // WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节分段）的**模型层**。回放/归属/分段一律在那边，
 // 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
 import { buildMetricSeries } from "./sim/metric-series.js";
+import { buildExplainSlice } from "./sim/explain-slice.js";
 // WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
 import { deriveSeedBaseSnapshot, type SimWorldOps } from "./sim/seed-world.js";
 // WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细（算法全在 sim/drill.ts 纯函数层，本文件只做 IO 与 A6 装配）
@@ -2235,6 +2236,26 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
      * 或调用方自带世界那一档），前端按第三态渲染，**不许并进 `derived`**。
      */
     return { tick: s.curTick, state: await simCurrent(c, s), baseProvenance: s.baseSnapshotProvenance ?? {} };
+  });
+  // M0-A11 解释切片（PRD-ground-truth §4）：从已完成 tick 的 trace 反向收敛目标格的因果子图。
+  // ⛔ 只读投影 —— 不参与计算、不裁剪传导范围（计算范围卡 20 会切断真实传导链，得到的是错的推演）。
+  // coverage 必填并随回包下发：一张 ≤20 节点的图解释几千边的链必然残缺，不报 = 拿残图冒充全图。
+  app.get("/a/v1/sim/sessions/:id/explain-slice", async (req) => {
+    const c = ctx(req); await requireSim(c, "sim.sandbox");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const q = req.query as { targetObjectId?: string; tick?: string; maxNodes?: string };
+    if (!q.targetObjectId) throw validationError("targetObjectId 必填（解释切片收敛的是「某一格为什么变成这样」）");
+    const tickN = q.tick === undefined ? s.curTick : Number(q.tick);
+    if (!Number.isInteger(tickN) || tickN < 0) throw validationError(`tick 必须是非负整数（实测值：'${q.tick}'）`);
+    const row = await repos.sim.getTickState(c.tenantId, s.id, tickN);
+    const trace = row?.trace ?? [];
+    // 🐤 存在性诚实：trace 空 ≠ 「没有因果链」（可能是取数坏了/该拍无贡献）—— 点名，不出空切片冒充。
+    if (trace.length === 0) {
+      throw notFound(`tick ${tickN} 的传导 trace（该拍无贡献行或 tick 不存在；空 trace 不出切片 —— 空图会被读成「没有因果链」）`);
+    }
+    const maxNodes = q.maxNodes === undefined ? 20 : Number(q.maxNodes);
+    if (!Number.isInteger(maxNodes) || maxNodes < 1) throw validationError(`maxNodes 必须是 ≥1 的整数（实测值：'${q.maxNodes}'）`);
+    return buildExplainSlice(trace, q.targetObjectId, maxNodes);
   });
   /**
    * WO-SIM-BE-SERIES · **指标时序**：基线线 + 扰动后线 + 环节分段。
