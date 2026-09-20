@@ -1456,7 +1456,7 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
     //      ⚠ **本判据⑦ 的数不因此变**：`Order.demandPressure` 的 **tick0 基线**由它自己的规格
     //      `order_demand_pressure`（demandDelta×100，实测均值 26.287）给，不由这条负边给；
     //      负边影响的是**后续拍**。别把「①已闭」读成「拉力该转正了」。
-    //      ⚠ **遗留缺口（未闭）**：哈希占位 ∈ [0,99] **恒非负** ⇒ 唯一入流 `−0.6 × forecastBias`
+    //      ⚠ **遗留缺口（未闭）**：哈希占位 ∈ [0,100] **恒非负** ⇒ 唯一入流 `−0.6 × forecastBias`
     //      恒 ≤ 0，而 `demandPressure` 是压力族（min = restPoint = 0 硬地板）⇒ 24 拍后 6/6 读 0.000000。
     //      边注释写的「低估(−) ⇒ 需求压力上冲」那一支**仍然进不去**。要闭得给 forecastBias
     //      一个带负区间的诚实来源（改 `sim/seed-world.ts` 种子生成器），另单。

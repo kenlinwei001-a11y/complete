@@ -1919,7 +1919,7 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
 
 | 记号 | 新量纲（中文名） | 落点类型 | 传导边（现算入度均为 0） |
 |---|---|---|---|
-| G-ROOT-1 | `forecastBias` 销售预测偏差（正=高估） | `Model` | `Model.forecastBias --model_demanded_by_order--> Order.demandPressure`（**系数 −0.6**）。⚠ **2026-09-20 起该根由哈希占位播种**（`sim/seed-world.ts`，出处章 `derived`）—— 此前覆写它的派生式 `model_forecast_bias` 因**恒等于 0** 已退役（详见下方 WO-GAIN-REACH 段 ①）。⚠ 占位 ∈ [0,99] **恒非负** ⇒ 这条负边**只单向传导**，「低估(−)」那一支仍进不去 |
+| G-ROOT-1 | `forecastBias` 销售预测偏差（正=高估） | `Model` | `Model.forecastBias --model_demanded_by_order--> Order.demandPressure`（**系数 −0.6**）。⚠ **2026-09-20 起该根由哈希占位播种**（`sim/seed-world.ts`，出处章 `derived`）—— 此前覆写它的派生式 `model_forecast_bias` 因**恒等于 0** 已退役（详见下方 WO-GAIN-REACH 段 ①）。⚠ 占位 ∈ [0,100] **恒非负** ⇒ 这条负边**只单向传导**，「低估(−)」那一支仍进不去 |
 | G-ROOT-2 | `orderChurn` 订单变更压力 | `Order` | `--order_has_line--> OrderLine.splitPressure`(0.7) · `--order_for_model--> Model.demandLoad`(0.5) |
 | G-ROOT-4 | `equipmentFailure` 设备故障率 | `Equipment` | `--equip_used_in--> Process.queuePressure`(0.6) |
 
@@ -2245,7 +2245,8 @@ Material.shortageRisk → Model.supplyRisk → Order.shortageRisk（既有供应
   实测（`docs/evidence/wo-forecastbias-retire/`）：6 型号 `0/measured` → **1,88,50,88,8,79 / derived**；
   那条**全图唯一的负系数边** `demo_forecast_bias_to_order_demand` 单拍 trace **0 行 → 150 行 /
   传导量 −1705.848**（反向金丝雀：`Material.priceShock` 8 格 `[2,2,2,2,2,2,8,2]` 逐字节不变）。
-  ⚠ **遗留缺口（未闭，另单）**：哈希占位 ∈ [0,99] **恒非负** ⇒ 唯一入流 `−0.6 × forecastBias`
+  ⚠ **遗留缺口（未闭，另单）**：哈希占位 ∈ **[0,100]**（⚠ 上界 100 不是 99 —— `seedHash01` ∈ [0,0.999]，
+  `round(0.999×100)=100`；`seed.ts` ③ 段写的 [0,99] 差一档）**恒非负** ⇒ 唯一入流 `−0.6 × forecastBias`
   恒 ≤ 0，而 `demandPressure` 是压力族（`min = restPoint = 0` 硬地板）⇒ 24 拍后 6/6 读 **0.000000**。
   该边注释写的「低估(−) ⇒ 需求压力上冲」那一支**仍然进不去** ——
   退役把「恒 0」换成「恒非负」，**边从不传导变成只单向传导：变好但没闭合**。
