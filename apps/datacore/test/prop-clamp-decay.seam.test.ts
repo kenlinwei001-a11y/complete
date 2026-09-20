@@ -182,4 +182,97 @@ describe("WO-PROP-CLAMP · 传导核不再是无衰减无夹值的纯积分器",
     expect(withArg.stateVarReport.saturations).toEqual([]);
     expect(withArg.stateVarReport.decayApplied).toEqual({});
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // §7 WO-SATURATE-EXOGENOUS · **压缩器只许压「这一拍产生的新读数」**
+  //
+  // 病灶：`saturateToDomain` 在合法域内不是恒等、且不幂等（`u ← u/(1+u)` ⇒ 全体漂向 kneeHi），
+  // 而饱和相每拍对 `next` 里每格无差别重跑一遍 ⇒ **零驱动的格子自己会走**。
+  // 真链路实测（真 datacore `SEED_DEMO=1` + 真 REST，`obj_material_al_foil.priceShock`，
+  // `mode:"set"` 推 12 拍）修前四臂：
+  //   SET  74 ⇒ 74 …… 74（带内，本来就不动）
+  //   SET  80 ⇒ 80 → 79.1667 …… **76.470588235293**（合法值自己缩水）
+  //   SET 150 ⇒ 150 → 93.75 …… **77.027027027027**
+  //   SET 200 ⇒ 200 → 95.8333 …… **77.049180327869**
+  // 最贵的一层不是"数变小"：**第一次压缩好不容易保住的序被抹平** —— 12 拍后 150 与 200
+  // 只差 **0.0222**（一次性压缩本该差 2.0833，94 倍），正是软拐点当初要根治的那个病走后门回来。
+  //
+  // ⚠ 这里**不许**改成「照抄衰减相的 `writtenVars` 豁免」：那只治入度 0 的外生量纲
+  //   （demo 租户实测 4 个：equipmentFailure / forecastBias / loadPressure / priceShock），
+  //   而入度>0 的 29 个累加器同样中招 —— ② 就是那个反例，豁免版照样红。
+  // ══════════════════════════════════════════════════════════════════════════
+  describe("§7 饱和相只压缩本拍产生的新读数（WO-SATURATE-EXOGENOUS）", () => {
+    const d = stateVarDomains();
+    /** 拐点：域 [0,100] rest=0 ⇒ bandHi=(100−0)×0.25=25 ⇒ kneeHi=75。 */
+    const KNEE_HI = 75;
+    /** λ=0 = **显式**要纯积分器（引擎注释：「尊重它」）⇒ 衰减相一格不碰，动了就只能是饱和相。 */
+    const NO_DECAY = { [STATE_DECAY_RULE_KEY]: { [STATE_DECAY_PARAM_KEY]: 0 } };
+
+    /** 连推 n 拍，回 (a1.demandPressure, b1.demandLoad) 两条轨迹。 */
+    function drive(n: number, st0: TickState, params: typeof RULE_PARAMS) {
+      let st = st0;
+      let pend: Parameters<typeof propagateTick>[3] = [];
+      const src: number[] = []; const tgt: number[] = []; const satCount: number[] = [];
+      for (let t = 0; t < n; t++) {
+        const r = propagateTick(graph, st, [rule()], pend, t, params, {}, [], {}, d);
+        st = r.next; pend = r.pending;
+        src.push(st.a1!.demandPressure!); tgt.push(st.b1!.demandLoad!);
+        satCount.push(r.stateVarReport.saturations.length);
+      }
+      return { src, tgt, satCount };
+    }
+
+    it("§7.0 🐤 非空金丝雀 · 本夹具里确实存在入度 0 的已声明量纲（否则 §7.1 什么都没测）", () => {
+      const written = new Set([rule().targetStateVar]);
+      const exogenous = ["demandPressure", "demandLoad"].filter((v) => !written.has(v) && d[v] !== undefined);
+      expect(exogenous).toEqual(["demandPressure"]); // 入度 0 且已声明 ⇒ 非空
+      // 且它高侧真的有压缩带（带宽为 0 的量纲根本不会出现本单的病）
+      expect((d.demandPressure!.max! - d.demandPressure!.restPoint) * 0.25).toBe(25);
+    });
+
+    it("§7.1 外生量纲（入度 0）：合法值零漂移，超界值**只夹一次**且保序", () => {
+      // 合法值 80 ∈ (kneeHi,max]：修前 12 拍漂到 76.470588235293，修后必须逐拍恒 80。
+      const legal = drive(12, { a1: { demandPressure: 80 }, b1: { demandLoad: 0 } }, RULE_PARAMS);
+      expect(new Set(legal.src)).toEqual(new Set([80]));
+
+      // 🐤 对照臂：拐点下的 74 修前修后**逐字节不变** —— 证明带内行为一个字节没动。
+      const ctrl = drive(12, { a1: { demandPressure: 74 }, b1: { demandLoad: 0 } }, RULE_PARAMS);
+      expect(new Set(ctrl.src)).toEqual(new Set([74]));
+
+      // 超界 150 / 200：第 1 拍各夹一次进域内，此后恒定（幂等）。
+      const a150 = drive(12, { a1: { demandPressure: 150 }, b1: { demandLoad: 0 } }, RULE_PARAMS);
+      const a200 = drive(12, { a1: { demandPressure: 200 }, b1: { demandLoad: 0 } }, RULE_PARAMS);
+      expect(a150.src[0]).toBeCloseTo(93.75, 10);
+      expect(a200.src[0]).toBeCloseTo(95.833333333333, 10);
+      expect(new Set(a150.src)).toEqual(new Set([a150.src[0]]));   // 夹过就不再动
+      expect(new Set(a200.src)).toEqual(new Set([a200.src[0]]));
+      for (const v of [a150.src[11]!, a200.src[11]!]) { expect(v).toBeLessThan(100); expect(v).toBeGreaterThan(KNEE_HI); }
+
+      // 🔴 序必须**跨 12 拍**活下来：修前两臂在第 12 拍只差 0.0222，被磨成同一个数。
+      const gap12 = a200.src[11]! - a150.src[11]!;
+      expect(gap12).toBeGreaterThan(2);           // 修前 0.0222 ⇒ 这一条当场红
+      expect(gap12).toBeCloseTo(a200.src[0]! - a150.src[0]!, 10); // 与第 1 拍的差**一模一样**＝零磨损
+    });
+
+    it("§7.2 零入流累加器（入度>0 · λ=0 · inflow=0）：12 拍逐字节不动 —— 豁免修法在这里必红", () => {
+      // 源恒 0 ⇒ 贡献 = 1×0 = 0；λ=0 ⇒ 衰减相跳过 ⇒ 本拍**没有任何相位**动过 b1.demandLoad。
+      // 修前：80 → 76.470588235293，且每拍都记一次饱和事件（零动力学的暗流）。
+      const r = drive(12, { a1: { demandPressure: 0 }, b1: { demandLoad: 80 } }, NO_DECAY);
+      expect(new Set(r.tgt)).toEqual(new Set([80]));
+      expect(r.satCount.reduce((a, b) => a + b, 0)).toBe(0); // 一次饱和都不该发生
+      // 金丝雀：同一装置在**有**入流时照样会饱和（否则上一行只是"装置坏了"）
+      const hot = drive(1, { a1: { demandPressure: 5000 }, b1: { demandLoad: 80 } }, NO_DECAY);
+      expect(hot.satCount[0]).toBeGreaterThan(0);
+    });
+
+    it("§7.3 有新读数的格子照旧压缩 —— 发散防线一个字节没动", () => {
+      // 常量入流 50、λ=0（无衰减）⇒ 唯一的收敛机制就是饱和相。6 拍必须仍留在域内且收敛。
+      const { series } = run(6, d, NO_DECAY);
+      for (const v of series) { expect(v).toBeGreaterThan(0); expect(v).toBeLessThan(100); }
+      const deltas = series.slice(1).map((v, i) => v - series[i]!);
+      expect(Math.abs(deltas.at(-1)!)).toBeLessThan(Math.abs(deltas[0]!));
+      // 🐤 同一装置去掉域声明就发散（证明这条"没发散"有鉴别力）
+      expect(run(6, {}, NO_DECAY).series[5]!).toBeGreaterThan(250);
+    });
+  });
 });
