@@ -879,8 +879,114 @@ describe("M0-F2 欠账计 GET /a/v1/calibration/debt（T1+T3）", () => {
     // 🐤 反证（不该变的没变）：墙钟创建的预测账龄被钳在 0（模拟钟面 2026-06 < 墙钟 createdAt），
     // ⛔ 不许报出负账龄 —— 钳制若失效，d3 会冒出 -100 级别的谎数。
     expect(d3.oldestUnpairedAgeDays).toBeLessThan(100);
-    // 🐤 反证二：配了对的那 M 条不被账龄探针复活（一个预测只配对一次）
-    const stillPaired = await t.repos.calibrationForecasts.list("demo", (f) => !!f.pairedAt);
-    expect(stillPaired.length).toBe(M);
+    // 🐤 反证二：tick 后 ts 引擎照常配对过期窗口（既有行为，配对数会 >M —— 那不是病）；
+    // 但实料配上的 M 条必须保持实料 actual 原样 —— 「一个预测只配对一次」跨两个 actual 源同守，
+    // 若 ts 引擎覆写了它们，actual 会被换成 ts_agg_runs 聚合值（≠ 我上传的 predicted 原值）。
+    const pairs = await t.repos.calibrationPairs.list("demo");
+    for (const f of targets) {
+      const p = pairs.find((x) => x.windowTo === f.windowTo && !x.baseId)!;
+      expect(p.actual).toBe(round(f.predicted, 6)); // 上传值 = predicted ⇒ error 0；被覆写即非 0
+      expect(p.error).toBe(0);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// M0-F3（PRD-ai-sim-rev2-ground-truth §2.1 F3）实料闸 —— T2 变异反证验收：
+// ① paired 人为置 0 ⇒ B7/C5/C6/A10 全部拒绝且各自披露（点名能力 + 欠 N 对）；
+// ② 置到阈值以上 ⇒ 全部放行；
+// ③ 把闸关掉 ⇒ 本组门必须红 —— 机制：本组断言**直接咬判定函数与准入断言**
+//    （端点 gateStatusOf + assertGateOpen 都走 evaluateRealizedGate 这一份实现），
+//    闸被改成恒放行 ⇒ ①的 allowed:false / 409 断言当场红（不红 = 门是装饰品）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("M0-F3 实料闸（T2 变异反证）", () => {
+  it("T2① paired=0 ⇒ 四项全拒且各自披露（点名能力 + 欠 N 对）· assertGateOpen 409", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 6 });
+    // 🐤 存在性金丝雀：forecasts >0 —— paired=0 是「没实料」不是「取数坏了」
+    const debt = await t.services.calibration.debt("demo");
+    expect(debt.forecasts).toBeGreaterThan(0);
+    expect(debt.paired).toBe(0); // 人为置 0 态（无实料登记）
+
+    const res = await t.app.inject({ method: "GET", url: "/a/v1/calibration/gate", headers: ADMIN });
+    expect(res.statusCode).toBe(200);
+    const gate = res.json() as {
+      open: boolean; paired: number; minPaired: number; shortfall: number;
+      capabilities: { key: string; name: string; allowed: boolean; reason: string }[];
+      rationale: string;
+    };
+    expect(gate.open).toBe(false);
+    expect(gate.paired).toBe(0);
+    expect(gate.minPaired).toBe(30);
+    expect(gate.shortfall).toBe(30);
+    // 四项一个不少、全部拒绝、各自披露（点名哪项能力 + 欠几对 + 不许降级仿真）
+    expect(gate.capabilities.map((c) => c.key)).toEqual(["B7", "C5", "C6", "A10"]);
+    for (const c of gate.capabilities) {
+      expect(c.allowed).toBe(false);
+      expect(c.reason).toContain(c.key);
+      expect(c.reason).toContain("欠 30 对");
+      expect(c.reason).toContain("不许降级成用仿真数据凑合跑");
+    }
+    // 准入断言：四项各自 409 且报文点名能力（REALIZED_GATE_CLOSED）
+    for (const key of ["B7", "C5", "C6", "A10"] as const) {
+      await expect(t.services.calibration.assertGateOpen("demo", key)).rejects.toMatchObject({
+        statusCode: 409,
+        code: "REALIZED_GATE_CLOSED",
+      });
+      await expect(t.services.calibration.assertGateOpen("demo", key)).rejects.toThrow(new RegExp(key));
+    }
+  });
+
+  it("T2② paired≥minPaired ⇒ 四项全放行 · 🐤 反向：闸读数与 debt 同源（不是第二套真相）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await invokeSolver(t, "capacity_forecast", { modelId: MODEL, qty: 40, weeks: 6 });
+    // 补 30 对实料（= minPaired 阈值）：全基地合计切片前 30 个日窗口
+    const agg = (await t.repos.calibrationForecasts.list("demo"))
+      .filter((f) => !f.baseId)
+      .sort((a, b) => (a.windowTo < b.windowTo ? -1 : 1));
+    expect(agg.length).toBeGreaterThanOrEqual(30);
+    const targets = agg.slice(0, 30);
+    const csv =
+      "model,date,output_wan\n" + targets.map((f) => `${MODEL},${f.windowTo},${f.predicted.toFixed(6)}`).join("\n") + "\n";
+    const up = (
+      await t.app.inject({ method: "POST", url: "/a/v1/uploads", headers: ADMIN, payload: { filename: "actuals.csv", contentBase64: b64(csv) } })
+    ).json() as { connection: { id: string } };
+    await t.app.inject({
+      method: "PATCH",
+      url: `/a/v1/connections/${up.connection.id}`,
+      headers: ADMIN,
+      payload: {
+        config: {
+          datasets: {
+            actuals: {
+              realizedOutcome: { typeKey: "Model", objectIdField: "model", prop: "dailyOutputWan", asOfField: "date", valueField: "output_wan", unit: "万套/日" },
+            },
+          },
+        },
+      },
+    });
+    await t.app.inject({ method: "POST", url: `/a/v1/connections/${up.connection.id}/sync`, headers: ADMIN });
+    const pairing = await t.services.calibration.pairRealizedOnce("demo");
+    expect(pairing.paired).toBe(30); // 恰好阈值 —— 边界态（>= 即放行）
+
+    const gate = (await t.app.inject({ method: "GET", url: "/a/v1/calibration/gate", headers: ADMIN })).json() as {
+      open: boolean; paired: number; shortfall: number;
+      capabilities: { key: string; allowed: boolean; reason: string }[];
+    };
+    expect(gate.open).toBe(true);
+    expect(gate.paired).toBe(30);
+    expect(gate.shortfall).toBe(0);
+    for (const c of gate.capabilities) {
+      expect(c.allowed).toBe(true); // 全部放行
+      expect(c.reason).toContain("准予启用");
+    }
+    for (const key of ["B7", "C5", "C6", "A10"] as const) {
+      await expect(t.services.calibration.assertGateOpen("demo", key)).resolves.toBeUndefined();
+    }
+    // 🐤 反向金丝雀：闸读数与 debt 端点**同源**（不是第二套真相源）—— paired 必须与 debt 逐字一致
+    const debt = (await t.app.inject({ method: "GET", url: "/a/v1/calibration/debt", headers: ADMIN })).json() as { paired: number };
+    expect(gate.paired).toBe(debt.paired);
   });
 });
