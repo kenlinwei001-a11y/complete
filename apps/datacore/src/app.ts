@@ -8043,6 +8043,47 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     return calibration.runAll(c.tenantId, "手动");
   });
 
+  // ── M0-F1 实料配对键（PRD-ground-truth §2.1）────────────────────────────────
+  // 登记（人工录入/显式登记入口；INGESTED 主入口走摄取 sync 自动登记）。
+  // ⛔ provenance 残缺 ⇒ 400 并点名缺哪个字段（登记器 realized.ts 统一硬拒，不许静默丢弃）。
+  const RealizedOutcomeCreateSchema = z.object({
+    subjectRef: z.object({ typeKey: z.string(), objectId: z.string(), prop: z.string() }),
+    asOf: z.string(),
+    value: z.number(),
+    unit: z.string(),
+    source: z.enum(["INGESTED", "WORK_ORDER_CLOSURE", "MANUAL_ENTRY"]),
+    provenance: z
+      .object({
+        connId: z.string().optional(),
+        syncJobId: z.string().optional(),
+        datasetKey: z.string().optional(),
+        rowRef: z.string().optional(),
+        importedBy: z.string().optional(),
+        importedAt: z.string().optional(),
+      })
+      .partial()
+      .optional(),
+  });
+  app.post("/a/v1/calibration/realized", async (req, reply) => {
+    const c = ctx(req);
+    const body = parseBody(RealizedOutcomeCreateSchema, req.body);
+    const result = await calibration.registerRealized(c.tenantId, {
+      ...body,
+      provenance: {
+        ...body.provenance,
+        // 审计留痕：登记人/时刻以服务端为准（调用方可给 importedAt 声明观测时刻外的登记时）
+        importedBy: body.provenance?.importedBy ?? c.userId,
+        importedAt: body.provenance?.importedAt ?? new Date().toISOString(),
+      },
+    });
+    return reply.status(201).send(result);
+  });
+  app.get("/a/v1/calibration/realized", async (req) =>
+    repos.realizedOutcomes.list(ctx(req).tenantId, () => true),
+  );
+  // 实料 × 预测配对单跑（验收金丝雀需要 paired 与 examined 两个数都打出来）。
+  app.post("/a/v1/calibration/realized/pair", async (req) => calibration.pairRealizedOnce(ctx(req).tenantId));
+
   // ---- 数据健康度（增量 §7.22；与 C09/P90 降级同一事实源）------------------------------------------
   app.get("/a/v1/data-health", async (req) => buildDataHealth(repos, solvers, features, ctx(req).tenantId));
 
