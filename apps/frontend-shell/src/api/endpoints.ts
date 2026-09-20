@@ -1384,6 +1384,8 @@ import {
   CalibrationReportSchema,
   CalibrationRunResultSchema,
   type CalibrationRunResult,
+  CalibrationDebtSchema,
+  type CalibrationDebt,
   DataHealthResponseSchema,
   HistoryBundleSchema,
   HistoryWatermarkSchema,
@@ -1437,6 +1439,10 @@ export const decideCalibrationProposal = (id: string, decision: "approve" | "rol
 /** M11 §3 手动「立即校准」（catalog_admin）：配对 → 元闭环 → 全切片提案生成 */
 export const runCalibration = async (): Promise<CalibrationRunResult> =>
   CalibrationRunResultSchema.parse(await api.a<unknown>("/a/v1/calibration/run", { body: {} }));
+
+/** M0-F2 实料欠账计（PRD-ground-truth §2.1）：expected 必填 —— 屏上读数与回包逐字一致。 */
+export const fetchCalibrationDebt = async (): Promise<CalibrationDebt> =>
+  CalibrationDebtSchema.parse(await api.a<unknown>("/a/v1/calibration/debt"));
 
 export const fetchDataHealth = async (): Promise<DataHealthResponse> =>
   DataHealthResponseSchema.parse(await api.a<unknown>("/a/v1/data-health"));

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CalibrationMethod, CalibrationProposal } from "@platform/contracts";
 import {
   decideCalibrationProposal,
+  fetchCalibrationDebt,
   fetchCalibrationHistory,
   fetchCalibrationProposals,
   fetchCalibrationReport,
@@ -53,6 +54,8 @@ export default function CalibrationPage() {
   });
   const { data: proposals } = useQuery({ queryKey: ["a", "calibration-proposals", {}], queryFn: fetchCalibrationProposals });
   const { data: history } = useQuery({ queryKey: ["a", "calibration-history", {}], queryFn: fetchCalibrationHistory });
+  // M0-F2 实料欠账计（PRD-ground-truth §2.1）：屏上读数 = 回包逐字（不重算）——欠条必须报给读屏的人。
+  const { data: debt } = useQuery({ queryKey: ["a", "calibration-debt", {}], queryFn: fetchCalibrationDebt });
   // 去电池锁死（R14）：基地筛选项来自 Base 对象（全量、按租户），不再写死 4/12 个
   const { data: basesData } = useQuery({ queryKey: ["a", "objects", { type: "Base", view: "calib" }], queryFn: () => fetchAllObjects("Base") });
   const baseIds = basesData && basesData.items.length > 0 ? basesData.items.map((o) => String(o.props.name ?? o.id)) : BASE_IDS;
@@ -86,6 +89,34 @@ export default function CalibrationPage() {
           立即校准
         </button>
       </div>
+
+      {/* M0-F2 实料欠账计：paired/forecasts/覆盖 + expected（欠 N 对）+ 账龄 + 分指标 ——
+          ⛔ 读数与回包逐字一致（屏上不重算），没有期望值的指标是装饰不是监控。 */}
+      {debt && (
+        <div className="panel" style={{ marginBottom: 14 }} data-testid="calib-debt-panel">
+          <div className="section-title">{t.debtSection}</div>
+          <div style={{ fontSize: 13 }} data-testid="calib-debt-line">
+            {t.debtLine(debt.forecasts, debt.paired, debt.unpaired, debt.coveragePct)}
+            {" · "}
+            <span
+              data-testid="calib-debt-expected"
+              style={{ color: debt.paired >= debt.expected.minPaired ? "var(--ok, #4caf50)" : "var(--warn, #e6a23c)" }}
+            >
+              {t.debtExpected(debt.expected.minPaired, Math.max(0, debt.expected.minPaired - debt.paired))}
+            </span>
+            {" · "}
+            <span data-testid="calib-debt-oldest">{t.debtOldest(debt.oldestUnpairedAgeDays)}</span>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }} data-testid="calib-debt-rationale">
+            {debt.expected.rationale}
+          </div>
+          {debt.byMetric.length > 0 && (
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }} data-testid="calib-debt-bymetric">
+              {debt.byMetric.map((m) => t.debtByMetric(m.metricKey, m.forecasts, m.paired)).join(" · ")}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 三级下钻筛选 */}
       <div style={{ display: "flex", gap: 12, marginBottom: 12, fontSize: 12, color: "var(--muted)" }}>
