@@ -15,8 +15,12 @@ import { deriveTurnDynamics, readWorldLine, WORLD_LINE_DEFAULT_WINDOW } from "..
  * 所以①②③ 一律走**真路由 inject**（真种子 → 真规则 → 真会话 → 真扰动 → 真 tick → 真 invoke）。
  *
  * ── 用哪条链（为什么是这条）────────────────────────────────────────────────────────
- * `Material.priceShock --×0.65--> Model.costPressure --×0.9--> Order.costPressure`
+ * `Material.priceShock --> Model.costPressure --> Order.costPressure`
  * （出厂种子实测：46 条规则里通往 `Order.costPressure` 的就这一条两跳链）。
+ * ⚠ 本行原写 `×0.65` / `×0.9`，**两个系数都已过期**（2026-09-20 实测订正）：求解器自己下发的
+ * `chain` 里是 `demo_material_price_to_model_cost` **0.15684781** ·
+ * `demo_model_cost_to_order_cost` **0.2775**，两条 `delayTicks` 均为 **0**
+ * （两跳仍要两拍：第 1 拍写 Model，第 2 拍 Model 才喂 Order）。系数以 `chain` 下发值为准，别信这行注释。
  * 选它的理由是**读数可预言**：源涨 ⇒ 下游必涨，且要跨 2 跳才到，所以前两拍必然还是 0 ——
  * "第几拍才看得见"本身就是回合语义，单张快照答不出来。
  *
@@ -156,7 +160,8 @@ interface TurnDyn {
 interface FinanceOut {
   worldId: string;
   curTick: number;
-  pressures: { stateVar: string; value: number }[];
+  /** `carriers`/`universe` 是 §⑩ 非空金丝雀要读的两个数（承载集 / 全域）—— 不列出来类型系统看不见它们。 */
+  pressures: { stateVar: string; value: number; carriers: number; universe: number }[];
   turnDynamics?: { curTick: number; ticksUsed: number; windowRequested: number; truncated: boolean; note: string | null; byStateVar: Record<string, TurnDyn> };
   [k: string]: unknown;
 }
