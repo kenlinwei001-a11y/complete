@@ -1703,9 +1703,21 @@ export default function Console0828({
             <span className={`${styles.badge} ${styles.badgeQuiet}`} data-testid="c0828-run-badge">
               {runM.isPending ? "推演中" : "未推演"}
             </span>
+            {/*
+              * 第一层只留**状态**，操作说明降进 `?` 浮层 —— 与本文件**推演后**那一行
+              * （`c0828-verdict-sub`：短句 + `topic="这一屏怎么读"` 浮层）**同一个写法**。
+              * 改前这里把整段说明摊在第一层，而推演后是收着的：同一件事两种排法，
+              * 且未推演态恰恰是新用户第一眼看到的那一屏。
+              *
+              * ⛔ 诚实位「各格为空属正常」**留在第一层**，不许只写进浮层 ——
+              *   它回答的是「这是不是坏了」，必须在**不点任何东西**的情况下就读得到
+              *   （规范 §1：静默降层等于删除；`?` 本身就是降层后留下的那个可见记号）。
+              */}
             <p className={styles.pageSub}>
-              左栏选事件 → 开始推演 → 本屏第一层给四个数与「怎么办」，明细在下方页签；右栏给要点与建议。
-              尚未推演，下方各格为空属正常。
+              下方各格为空 —— 尚未推演，不是取数失败。
+              <InfoPopover topic="这一屏怎么读" testId="c0828-pagehead-howto">
+                左栏选事件 → 开始推演 → 本屏第一层给四个数与「怎么办」，明细在下方页签；右栏给要点与建议。
+              </InfoPopover>
             </p>
           </div>
         ) : null}
@@ -2855,16 +2867,30 @@ export default function Console0828({
         <div className={styles.aiSec} data-testid="c0828-ai-stream">
           <span className={styles.aiSecHead}>① 本次推演做了什么</span>
           {result === null ? (
+            /* 第一层只留「诚实位」（空的原因是「还没算」而不是「算不出来」——
+               它回答「这是不是坏了」，必须不点任何东西就读得到）；
+               「点了之后会看到什么」属操作说明，降进 `?` 浮层。 */
             <div className={styles.aiBubble}>
-              尚未推演。左栏选事件、定推演时长，点「开始推演」后，这里会逐项列出本次引用的数据、
-              走过的本体切片、命中的规则与耗时。
-              <br />
-              <b>现在这里是空的，是因为还没算 —— 不是因为算不出来。</b>
+              <b>还没算 —— 不是算不出来。</b>
+              <InfoPopover topic="推演后这里会有什么" testId="c0828-ai-stream-howto">
+                左栏选事件、定推演时长，点「开始推演」后，这里会逐项列出本次引用的数据、
+                走过的本体切片、命中的规则与耗时。
+              </InfoPopover>
             </div>
           ) : (
+            /*
+              * ⚠ 这一段大部分不许降层：铁律 1.5 判据二明令「规则 key、切片 key、
+              *   系数值、耗时、条数必须给 —— 它们是业务事实不是实现细节」，
+              *   且「一个看不到代码的人，读完这一层应当能自己判断这是真推演还是查表」。
+              *   所以下面的「引用对象 N 个 · 关系 N 条 · 切片 X · 跳数 N · 耗时」**留在第一层**。
+              * 能降的只有「系统内部怎么跑」这一句（五次服务调用的流水）——
+              *   它是实现过程，不是用户据以判断的事实。
+              */
             <div className={styles.aiBubble}>
-              一次操作依次执行：施加扰动 · 推进世界 · 财务影响 · 卡点识别 · 对策生成，共五次服务调用。
               世界态自 {tickLabel(cal, result.beforeTick)} 推进至 {tickLabel(cal, result.afterTick)}。
+              <InfoPopover topic="这一次内部跑了什么" testId="c0828-ai-pipeline">
+                一次操作依次执行：施加扰动 · 推进世界 · 财务影响 · 卡点识别 · 对策生成，共五次服务调用。
+              </InfoPopover>
               {result.disclosure === null ? (
                 <>
                   <br />
