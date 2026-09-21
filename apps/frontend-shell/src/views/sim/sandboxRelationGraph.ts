@@ -14,8 +14,10 @@
  * ── ⛔ 算式是**还原**，不是编造（本文件最容易做错、也最要害的一处）──────────────
  * 屏上那一行算式**逐字对应引擎的真实算术**，不是前端替这条边编一句业务话。对照
  * `apps/datacore/src/sim/propagation.ts`（本单亲手读过的那一版）：
- *   · `const amount = round12(coeff * sourceVal * factor)`          ⇒ `系数 × 源量`
+ *   · `const baseAmount = round12(coeff * drive * factor)`          ⇒ `系数 × 源量`
  *   · `factor = 1 - dist/decay.den`（源与目标在抽象图上相邻 ⇒ dist=1） ⇒ `× 衰减系数`
+ *   · `weights === null ? baseAmount : round12(baseAmount * (weights[pairWeightKey(s,t)] ?? 0))`
+ *                                                                  ⇒ `× 分摊权重[口径]`
  *   · `applyContribution(..., combine)`：`sum` ⇒ `cur + amount`；`max` ⇒ `Math.max(cur, amount)`
  *   · `arriveTick = releaseTick + delayTicks`                        ⇒ `延迟 N 拍到达`
  *   · `§3) 应用 clamp`：按规则在其 target 上夹值                      ⇒ `再夹到 [min, max]`
@@ -142,10 +144,13 @@ export const RELATION_FORMULA_PROVENANCE = "算式由声明字段还原";
 
 /** 出处记号的全文（屏上真渲染，收在浮层里）。 */
 export const RELATION_FORMULA_PROVENANCE_DETAIL =
-  "这一行不是后端下发的公式 —— 传导规则里存的是系数 / 延迟 / 合并方式 / 衰减 / 上下限这几个参数，" +
+  "这一行不是后端下发的公式 —— 传导规则里存的是系数 / 延迟 / 合并方式 / 衰减 / 上下限 / 分摊口径这几个参数，" +
   "本页把它们写回引擎真实执行的那个算术形态（传导 tick `propagateTick`）。" +
   "所以它可核对、可反驳；但它也会随引擎改动而过期，核对时以引擎实现为准。" +
-  "状态变量在本体里没有中文名可取，故算式里只出现系统键 —— 这是数据的实情，本页不替它编一个。";
+  "状态变量在本体里没有中文名可取，故算式里只出现系统键 —— 这是数据的实情，本页不替它编一个。" +
+  "带「分摊权重[口径]」的边表示：同一条规则下，每个源实例出多大力由该口径逐对算，" +
+  "不是人人一份满额；口径的计量方式见契约登记册 PAIR_WEIGHT_BASIS_REGISTRY。" +
+  "没有这一段的边（线上 33/55）即 `weightRef: null` —— 那**不是「不分摊」，是每条入边各加一份满额**。";
 
 /**
  * 一条边 → 一行算式。**每一段都对应引擎里的一行代码**（见文件头逐条对照）。
@@ -165,6 +170,17 @@ export function describeEdgeFormula(rule: {
   decay?: { window: number; den: number } | null;
   clamp?: { min: number; max: number } | null;
   coefficientRef?: { ruleKey: string; paramKey: string } | null;
+  /**
+   * 逐实例**分摊口径**（`PAIR_WEIGHT_BASIS_REGISTRY` 的 key）。
+   *
+   * ⚠ **2026-09-21 补：此前本函数收都不收它，于是 22/55 条线上规则的算式都缺一项乘数。**
+   * 缺的不是装饰项 —— 它正是「同一条边、不同源实例该不该出一样的力」那件事：
+   * `demo_material_price_to_model_cost` 声明 `bom_cost_share`，磷酸铁锂正极（BOM 占比
+   * 17.815%）与铝箔（0.920%）各涨 15%，引擎给出的成本压力差 19.37 倍；
+   * 而屏上那行 `系数 × 源` 对两者**逐字相同** ⇒ 读者只能得出「一样」这个与引擎相反的结论。
+   * 这恰是本仓 `weightRef` / `pairWeights` 机制被引入时要消灭的那个病，在屏上又活了一次。
+   */
+  weightRef?: { basis: string } | null;
 }): string {
   const src = relationNodeKey(rule.sourceTypeKey, rule.sourceStateVar);
   const dst = relationNodeKey(rule.targetTypeKey, rule.targetStateVar);
@@ -176,6 +192,11 @@ export function describeEdgeFormula(rule: {
     // `window < 1` 时引擎 `continue`（超窗无贡献）—— 那是"这条边不传导"，不是"乘一个系数"。
     term = rule.decay.window < 1 ? `0（超衰减窗 ${rule.decay.window}，本边不传导）` : `${term} × (1 − 1/${rule.decay.den})`;
   }
+  // 分摊权重排在衰减**之后** —— 与引擎同序（`propagation.ts`：
+  // `baseAmount = round12(coeff × drive × factor)` 先算完，再 `round12(baseAmount × weights[...])`）。
+  // 乘法可交换、数值不受影响，但这一行的契约是"逐段对应引擎的那一行"，顺序也要对得上。
+  // ⛔ 口径的人话名只能从契约登记册取，前端不许自己编一个（编了就是第二套真相源）。
+  if (rule.weightRef) term += ` × 分摊权重[${rule.weightRef.basis}]`;
   const combine = rule.combine ?? "sum";
   let out = combine === "max" ? `${dst} ← max(${dst}, ${term})` : `${dst} ← ${dst} + ${term}`;
   if (rule.delayTicks > 0) out += `，延迟 ${rule.delayTicks} 拍到达`;
