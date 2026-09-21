@@ -1018,6 +1018,8 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
               <InspectorPane
                 view={inspector}
                 facts={objectFacts}
+                sessionId={sessionId ?? null}
+                curTick={current?.curTick ?? null}
                 onExpand={() => {
                   setDrawerOpen(true);
                   say(`展开抽屉 ${inspector?.card.stateVar ?? ""}`);

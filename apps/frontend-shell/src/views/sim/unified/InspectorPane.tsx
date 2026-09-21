@@ -13,6 +13,7 @@
 import type { InspectorView } from "./metricWallModel";
 import { sparkGeometry } from "./sparkline";
 import { FACTS_ABSENCE_TEXT, type ObjectFactsView } from "./objectFacts";
+import { CellExplainPanel } from "../CellExplainPanel";
 import styles from "./UnifiedSimShell.module.css";
 
 function fmt(n: number): string {
@@ -67,6 +68,12 @@ export interface InspectorPaneProps {
    * 而「没接线」与「接了线取不到」在屏上会长得一模一样（本仓治过多次的那类混淆）。
    */
   facts: ObjectFactsView;
+  /**
+   * 当前推演会话与拍数 —— 「这一拍实际被谁推的」那一段要用（解释切片按「一格 × 一拍」取）。
+   * `null` = 还没有会话 ⇒ 该段不渲染（没有会话时它问不出任何东西，摆一个空壳是假入口）。
+   */
+  sessionId: string | null;
+  curTick: number | null;
   /** 底部抽屉展开（右栏「展开」进抽屉）—— **今天右栏唯一活的动作**。 */
   onExpand: () => void;
 }
@@ -106,7 +113,7 @@ function ObjectFactsLine({ objectId, facts }: { objectId: string | null; facts: 
  * （本仓「只有 test 引用 = 已排练，不是已实现」的同族形态）。
  * 将来真接线时，连同那时要发的请求一起加回来即可 —— 那才是它第一次有意义。
  */
-export function InspectorPane({ view, facts, onExpand }: InspectorPaneProps): JSX.Element {
+export function InspectorPane({ view, facts, sessionId, curTick, onExpand }: InspectorPaneProps): JSX.Element {
   if (view === null) {
     return (
       <div data-testid="usim-inspector-empty" className={styles.calibre}>
@@ -205,6 +212,27 @@ export function InspectorPane({ view, facts, onExpand }: InspectorPaneProps): JS
           </ul>
         )}
       </section>
+
+      {/*
+        * 「这一拍实际被谁推的」—— 与上面那段是**两个不同的问题**，不是重复：
+        *   · 上面「谁推的（上游一跳）」读的是**已发布的规则表**：谁**可能**推它，静态，与本次推演无关；
+        *   · 本段读的是**这一拍真实的传导 trace**：实际推了多少、各占几成、还有多少没画出来。
+        * 一条规则可能存在却一次都没触发（系数 0 / 源量为 0 / 超衰减窗），两段因此会不一致 ——
+        * 那不是缺陷，正是这块面板存在的理由。
+        *
+        * 没有会话就整段不渲染：没有 trace 可问，摆个空壳就是假入口（本仓「假旋钮」那一类）。
+        */}
+      {sessionId !== null && curTick !== null && c.objectId !== null ? (
+        <section className={styles.section} data-testid="usim-why-section">
+          <div className={styles.sectionHead}>这一拍实际被谁推的</div>
+          <CellExplainPanel
+            sessionId={sessionId}
+            objectId={c.objectId}
+            stateVar={c.stateVar}
+            tick={curTick}
+          />
+        </section>
+      ) : null}
 
       <section className={styles.section}>
         <div className={styles.sectionHead}>推坏谁（下游一跳）</div>
