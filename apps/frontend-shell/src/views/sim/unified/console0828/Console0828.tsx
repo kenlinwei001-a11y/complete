@@ -757,8 +757,123 @@ export default function Console0828({
    *   只给实例 id，`C28`/`C06` 这层「为什么它算卡点」就丢了（看板里那一列正是它）。
    * ⛔ 不加「①②」这种序号：序号不解释任何东西，只是把重名藏起来。
    */
-  const fixTag = (i: { readonly evidence: { readonly ruleKey: string | null }; readonly locus: { readonly objectId: string } }): string =>
-    `判据 ${i.evidence.ruleKey ?? "未给"} · 落点 ${i.locus.objectId}`;
+  /**
+   * 判据码 + 落点实例。**第一层只留判据码，实例 id 降进 `?` 浮层。**
+   *
+   * ⚠ 改前它是一个返回字符串的函数，屏上直出
+   * `判据 C05 · 落点 LINE-WS-jinhua-slitting` —— 而同一行前面 20 个字就已经写着
+   * 「针对「金华分切线」」：**同一个对象在同一行里印了两遍，一遍中文名一遍裸 id**。
+   * 按 R-UI-4 的判据「这句话用户读了能做什么决定？」—— `LINE-WS-jinhua-slitting`
+   * 答不出，它是给工程师复现用的，不该占第一层。
+   *
+   * ⛔ 但**不许删**：上面头注那条顾虑是真的（同名标签实测 5 组 × 2 行），
+   *   实例 id 是重名时唯一分得开的东西。规范 §1 说得明白 ——
+   *   允许降层、不许删除，且降层后第一层要留可见记号（`?` 就是那个记号）。
+   * 判据码留在第一层：它是铁律 1.5 判据二点名必须给的「规则 key」，
+   *   也正是「为什么它算卡点」那一层信息（C05 / C28 各不相同）。
+   *
+   * 三处调用共用这一个组件 —— 各写一份迟早各说各话。
+   */
+  const FixTag = ({ i }: {
+    i: {
+      readonly evidence: { readonly ruleKey: string | null };
+      readonly locus: { readonly objectId: string; readonly label: string };
+    };
+  }): JSX.Element => (
+    <>
+      判据 {i.evidence.ruleKey ?? "未给"}
+      <InfoPopover topic="这一处是怎么定位的" testId={`c0828-fixtag-${i.locus.objectId}`}>
+        落点实例 <b>{i.locus.objectId}</b>（{i.locus.label}）。
+        判据码与落点实例两样都留着才分得开：只给判据码，同判据同名的两行会撞；
+        只给实例 id，「为什么它算卡点」就丢了。
+        <br />
+        系统不给推荐，决策由使用方作出。
+      </InfoPopover>
+    </>
+  );
+
+  /**
+   * 对策方案四栏网格 —— **内联与放大弹窗共用这一份**。
+   *
+   * ⚠ 起因（仓主截图指出）：这块卡片落在中栏页签里，可视只有 ~364px，
+   *   卡片下半截被切掉看不完整。故加「放大」按钮，走全仓通用 `Modal`
+   *   （焦点陷阱 + Esc，22 处在用，不另造一套）。
+   * ⛔ 不许把这段 JSX 复制一份进弹窗：复制即两套真相源 ——
+   *   改了内联忘了弹窗，两处对同一个方案给出两种说法，比看不全更糟。
+   */
+  const OptionsGrid = ({ p, mv }: { p: NonNullable<typeof picked>; mv: NonNullable<typeof money> }): JSX.Element => (
+    <div className={styles.opts} data-testid="c0828-opt-grid">
+      {p.candidates.slice(0, 3).map((c) => (
+        <div key={c.candidateId} className={styles.opt} data-testid={`c0828-opt-${c.candidateId}`}>
+          <h5 className={styles.optTitle}>{c.label}</h5>
+          <div className={styles.dims}>
+            <span className={styles.dimKey}>调到哪</span>
+            <span className={styles.dimVal}>{BIZ_RUNG[c.rung.kind].label}</span>
+            <span className={styles.dimKey}>杠杆在哪</span>
+            <span className={styles.dimVal}>{BIZ_JOIN[c.join.kind].label}</span>
+            <span className={styles.dimKey}>动完会怎样</span>
+            <span className={`${styles.dimVal} ${styles.mid}`}>{BIZ_EFFECT[c.effect.kind].label}</span>
+          </div>
+          <div className={styles.saves}>
+            <span className={styles.savesTitle}>判定依据</span>
+            <details className={styles.more}>
+              <summary>明细</summary>
+              <div className={styles.moreBody} data-testid={`c0828-opt-why-${c.candidateId}`}>
+                <p>{BIZ_RUNG[c.rung.kind].why}</p>
+                <p>{BIZ_JOIN[c.join.kind].why}</p>
+                <p>{BIZ_EFFECT[c.effect.kind].why}</p>
+                {/* 业务事实（规则码 / 真值 / 单位）**必须给** —— 铁律 1.5 判据二。
+                    该消失的是「它在代码里长什么样」，不是「这个数打哪来」。 */}
+                <p className={styles.calibre}>
+                  取值：{c.fromText} → {c.toText}
+                  {c.lever.factorName === null ? "" : ` · 因子「${c.lever.factorName}」`}
+                </p>
+              </div>
+            </details>
+          </div>
+          <button type="button" className={`${styles.btn} ${styles.btnPrimary} ${styles.pick}`}>
+            采纳此方案
+          </button>
+        </div>
+      ))}
+
+      {/* ⚠ 第四栏是设计核心，**不许省** */}
+      <div className={`${styles.opt} ${styles.optNone}`} data-testid="c0828-opt-donothing">
+        <h5 className={styles.optTitle}>不处置</h5>
+        <div className={styles.dims}>
+          <span className={styles.dimKey}>多久见效</span>
+          <span className={`${styles.dimVal} ${styles.na}`}>——</span>
+          <span className={styles.dimKey}>代价</span>
+          <span className={`${styles.dimVal} ${styles.na}`}>见下</span>
+          <span className={styles.dimKey}>风险</span>
+          <span className={`${styles.dimVal} ${styles.na}`}>——</span>
+        </div>
+        <div className={styles.saves}>
+          <span className={styles.savesTitle}>该处将持续超线</span>
+          <ul className={styles.savesList}>
+            <li>
+              <span>实测</span>
+              <span className={styles.late}>{p.evidence.metricValue.toFixed(2)}</span>
+            </li>
+            <li>
+              <span>红线</span>
+              <span>{p.evidence.threshold.toFixed(2)}</span>
+            </li>
+            <li>
+              <span>超出</span>
+              <span className={styles.late}>{p.evidence.breach.toFixed(2)}</span>
+            </li>
+          </ul>
+          <div className={styles.tot}>
+            被推动的订单敞口 <span className={styles.totBig}>{fmtMoney(mv.exposure, "元")}</span>
+            <br />
+            <span className={styles.calibre}>{mv.exposedOrders} 张单仍在此路径上</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
 
   /* ── WO-AGENT-INTO-SIM · 「让 agent 想想办法」──────────────────────────────────
    *
@@ -1260,8 +1375,18 @@ export default function Console0828({
                   展开的那一层只放「凭什么这么说」的取证细节（R-UI-3），
                   而**结论本身与每张卡上的 `~` / 小牌子都在第一层** ⇒ 不是静默降层。 */}
             <p className={styles.calibre} data-testid="c0828-verdict-origin">
-              <b>先看「受阻环节」与下方「怎么办」</b>：读真字段、判真红线。带 <b>~</b> 的三个数只作<b>量级参考</b>
-              <InfoPopover topic="为什么带 ~ 的三个数只作量级参考" testId="c0828-verdict-origin">
+              {/*
+                * 改前这一句混了**三样不同的东西**，只有第三样该在第一层：
+                *   ① 「先看「受阻环节」与下方「怎么办」」—— 操作指引（怎么读这屏）⇒ 浮层
+                *   ② 「读真字段、判真红线」—————————— 口径（凭什么可信）⇒ 浮层（规范 §1）
+                *   ③ 「带 ~ 的三个数只作量级参考」———— **诚实位**（这数能不能用）⇒ 留第一层
+                * 上面那条「这一句必须第一层可见」的注释，保的是 ③，不是 ①②。
+                * 形态：「我用『注释说这一句必须第一层可见』当作『整句都必须第一层可见』的证据。」
+                */}
+              带 <b>~</b> 的三个数只作<b>量级参考</b>
+              <InfoPopover topic="怎么读这一屏 · 为什么带 ~ 的三个数只作量级参考" testId="c0828-verdict-origin">
+                <b>先看「受阻环节」与下方「怎么办」</b>：那两处读对象层真字段、判规则表真红线，与下面的占位世界无关。
+                <br />
                 本会话世界态出处回包标为 <b>结构派生</b>（不是量出来的）：
                 生成式 <b>round(hash01(对象id|状态变量) × 100)</b>，
                 <b>5,895 格全部为派生值，真读数 0 格</b>。
@@ -1281,7 +1406,7 @@ export default function Console0828({
                 {picked === null ? null : (
                   <>
                     {" "}· 针对「{picked.locus.label}」（{picked.candidates.length} 条）
-                    <span className={styles.howWho}>{fixTag(picked)} · 系统不给推荐，决策由使用方作出</span>
+                    <span className={styles.howWho}><FixTag i={picked} /></span>
                   </>
                 )}
               </span>
@@ -2195,79 +2320,10 @@ export default function Console0828({
                       复验：`POST /a/v1/solvers/chain_impediments/invoke` 读
                       `data.impediments[].locus.label` 做词频；判据见上 `fixTag` 头注。 */}
                   <span className={styles.headRight} data-testid="c0828-options-tag">
-                    {fixTag(picked)} · 系统不给推荐，决策由使用方作出
+                    <FixTag i={picked} />
                   </span>
                 </div>
-                <div className={styles.opts} data-testid="c0828-opt-grid">
-                  {picked.candidates.slice(0, 3).map((c) => (
-                    <div key={c.candidateId} className={styles.opt} data-testid={`c0828-opt-${c.candidateId}`}>
-                      <h5 className={styles.optTitle}>{c.label}</h5>
-                      <div className={styles.dims}>
-                        <span className={styles.dimKey}>调到哪</span>
-                        <span className={styles.dimVal}>{BIZ_RUNG[c.rung.kind].label}</span>
-                        <span className={styles.dimKey}>杠杆在哪</span>
-                        <span className={styles.dimVal}>{BIZ_JOIN[c.join.kind].label}</span>
-                        <span className={styles.dimKey}>动完会怎样</span>
-                        <span className={`${styles.dimVal} ${styles.mid}`}>{BIZ_EFFECT[c.effect.kind].label}</span>
-                      </div>
-                      <div className={styles.saves}>
-                        <span className={styles.savesTitle}>判定依据</span>
-                        <details className={styles.more}>
-                          <summary>明细</summary>
-                          <div className={styles.moreBody} data-testid={`c0828-opt-why-${c.candidateId}`}>
-                            <p>{BIZ_RUNG[c.rung.kind].why}</p>
-                            <p>{BIZ_JOIN[c.join.kind].why}</p>
-                            <p>{BIZ_EFFECT[c.effect.kind].why}</p>
-                            {/* 业务事实（规则码 / 真值 / 单位）**必须给** —— 铁律 1.5 判据二。
-                                该消失的是「它在代码里长什么样」，不是「这个数打哪来」。 */}
-                            <p className={styles.calibre}>
-                              取值：{c.fromText} → {c.toText}
-                              {c.lever.factorName === null ? "" : ` · 因子「${c.lever.factorName}」`}
-                            </p>
-                          </div>
-                        </details>
-                      </div>
-                      <button type="button" className={`${styles.btn} ${styles.btnPrimary} ${styles.pick}`}>
-                        采纳此方案
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* ⚠ 第四栏是设计核心，**不许省** */}
-                  <div className={`${styles.opt} ${styles.optNone}`} data-testid="c0828-opt-donothing">
-                    <h5 className={styles.optTitle}>不处置</h5>
-                    <div className={styles.dims}>
-                      <span className={styles.dimKey}>多久见效</span>
-                      <span className={`${styles.dimVal} ${styles.na}`}>——</span>
-                      <span className={styles.dimKey}>代价</span>
-                      <span className={`${styles.dimVal} ${styles.na}`}>见下</span>
-                      <span className={styles.dimKey}>风险</span>
-                      <span className={`${styles.dimVal} ${styles.na}`}>——</span>
-                    </div>
-                    <div className={styles.saves}>
-                      <span className={styles.savesTitle}>该处将持续超线</span>
-                      <ul className={styles.savesList}>
-                        <li>
-                          <span>实测</span>
-                          <span className={styles.late}>{picked.evidence.metricValue.toFixed(2)}</span>
-                        </li>
-                        <li>
-                          <span>红线</span>
-                          <span>{picked.evidence.threshold.toFixed(2)}</span>
-                        </li>
-                        <li>
-                          <span>超出</span>
-                          <span className={styles.late}>{picked.evidence.breach.toFixed(2)}</span>
-                        </li>
-                      </ul>
-                      <div className={styles.tot}>
-                        被推动的订单敞口 <span className={styles.totBig}>{fmtMoney(money.exposure, "元")}</span>
-                        <br />
-                        <span className={styles.calibre}>{money.exposedOrders} 张单仍在此路径上</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <OptionsGrid p={picked} mv={money} />
                 {/* WO-UI-LAYER-DEMOTE：第一层留事实（无按钮·不处置无需操作），理由降第二层。 */}
                 <p className={styles.calibre} data-testid="c0828-donothing-note">
                   第四栏无按钮 —— 不处置无需操作，属默认发生。
@@ -2496,7 +2552,7 @@ export default function Console0828({
                                   <span>
                                     {i.locus.label}
                                     <br />
-                                    <span className={styles.calibre}>{fixTag(i)}</span>
+                                    <span className={styles.calibre}><FixTag i={i} /></span>
                                   </span>
                                   <button
                                     type="button"
