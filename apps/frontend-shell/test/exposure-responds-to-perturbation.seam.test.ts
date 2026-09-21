@@ -4,12 +4,30 @@
  * 仓主实拍（2026-09-14）：「我输入不同的扰动因素，该截屏数据没有变化…前端展示的都是假的？」
  * 真浏览器对照实验证实：原材料涨价 vs 设备故障 → 150/350/17家/156.6亿 **逐字节相同**。
  *
- * 本门就是那次事故的机器化。⛔ 断言的是**关系**（不同输入⇒不同输出），不是**值**：
- * 写死期望值的断言，在被测逻辑改成另一个恒定值时照样能改绿；这一条改不绿。
+ * ── 2026-09-21 第二次事故（WO-EXPOSURE-CONTRIB）：第一次的修法只改了 `buildMoneyView`
+ * 内部（加 NOISE_FLOOR），**没有动 deltas 的产地**。产地是
+ * `Console0828.tsx` runM 的 `diffWorld(推演前, 推演后)` —— 它度量「时间走了 N 拍世界变了什么」，
+ * 种子永久扰动（+212.42）每拍都在传导 ⇒ 背景 churn p50≈8.64 ≫ 0.01 门槛 ⇒ 150 张永远全入选。
+ * 零扰动对照（两个 dev 各独立测一次）：照样 150 / 15,663,001,584 / 17。
+ * 形态：「我用『buildMoneyView 对两组不同 deltas 给出不同结果』当作『屏上的影响面随扰动变化』
+ * 的证据，而前者并不度量后者 —— 坏的不是 buildMoneyView，是喂给它的 deltas 根本不是扰动的贡献。」
+ *
+ * 故本门分两层：
+ *  · ①-④ 守 `buildMoneyView` 内部逻辑（幅度地板 / 状态排除 / R6）——第一次事故的那一层，保留。
+ *  · ⑤-⑦ 守 **deltas 产地**（`buildRunExposureDeltas` 与它的接线）——第二次事故的这一层。
+ *    反向金丝雀 ⑤ 是本门的心脏：对照 ≡ 实跑（零扰动的定义）⇒ 必须 0 张 / 0 元；
+ *    只验「不同输入给不同输出」抓不住「所有输入都给同一个非零常数」——上一次就是这么漏的。
  */
 import { describe, expect, it } from "vitest";
 import { respondsToInput, stableForSameInput } from "@platform/contracts";
-import { buildMoneyView, type CellDelta, type OrderRow } from "../src/views/sim/unified/console0828/console0828Model";
+import {
+  buildMoneyView,
+  buildRunExposureDeltas,
+  type CellDelta,
+  type OrderRow,
+  type WorldCells,
+} from "../src/views/sim/unified/console0828/console0828Model";
+import { checkedTree, factHits } from "./factlock";
 
 /** 真实形态的订单：三种状态按实测比例（COMPLETED 350 / IN_PRODUCTION 100 / OPEN 50 的缩样）。 */
 const ORDERS: OrderRow[] = [
@@ -24,6 +42,23 @@ const noCause = (): string | null => null;
 const A: CellDelta[] = [d("o_prod_0", 5), d("o_prod_1", 3), d("o_open_0", 2), d("o_done_0", 9)];
 // 扰动 B：同样三张单都动了，但**全在噪声级**（≤0.01）——业务上等于没影响
 const B: CellDelta[] = [d("o_prod_0", 0.002), d("o_prod_1", 0.001), d("o_open_0", 0.003), d("o_done_0", 9)];
+
+/* ── ⑤⑥⑦ 的布景：一个被背景 churn 推过的对照世界（压力读数在 churn 量级） ──────────
+ * 对照 = 同 active 规则集 · 同 horizon · 无本批扰动的世界（counterfactualState）。
+ * 零扰动时实跑终态与它**逐字节相同**（tick vs counterfactual 根因单实测 6381 格 diff=0）。 */
+const CONTROL: WorldCells = {
+  o_done_0: { costPressure: 91.2 },
+  o_prod_0: { costPressure: 58.64 },
+  o_prod_1: { costPressure: 47.11 },
+  o_open_0: { costPressure: 33.33 },
+};
+/** 在对照世界上叠一个边际效应 = 这次扰动真推出来的那一下。 */
+const bump = (base: WorldCells, oid: string, by: number): WorldCells => ({
+  ...base,
+  [oid]: { costPressure: (base[oid]?.costPressure ?? 0) + by },
+});
+const applyAll = (base: WorldCells, bumps: readonly [string, number][]): WorldCells =>
+  bumps.reduce((w, [oid, by]) => bump(w, oid, by), base);
 
 describe("SEAM · 扰动影响面随扰动变化", () => {
   it("① 两个不同扰动 ⇒ 被推动的单数必须不同（这一条就是那次事故）", () => {
@@ -47,5 +82,56 @@ describe("SEAM · 扰动影响面随扰动变化", () => {
     const v = buildMoneyView(A, ORDERS, noCause);
     expect(v.settledExcluded, "引擎给已完成单算了 delta，本视图必须把它们计入 settledExcluded 并排除").toBe(1);
     expect(v.exposedOrders + v.settledExcluded + v.faintOnly).toBe(new Set(A.map((x) => x.objectId)).size);
+  });
+
+  it("⑤ 反向金丝雀·本门的心脏：对照 ≡ 实跑（零扰动）⇒ 0 张 / 0 元，无论背景 churn 多大", () => {
+    // 零扰动的定义：实跑终态逐字节复现对照世界（根因单实测 6381 格 diff=0）。
+    // CONTROL 里的读数全在 churn 量级（33–91）——旧口径 diffWorld(推演前, 推演后)
+    // 会把这四张单全报成「被推动」；对照差分下它们必须一格都不剩。
+    const deltas = buildRunExposureDeltas(CONTROL, structuredClone(CONTROL));
+    expect(deltas, "对照与实跑相同 ⇒ 边际贡献必须为空；非空 = 又把 churn 当扰动贡献").toEqual([]);
+    const money = buildMoneyView(deltas, ORDERS, noCause);
+    expect(money.exposedOrders).toBe(0);
+    expect(money.exposure).toBe(0);
+  });
+
+  it("⑥ churn 之上叠两种不同的边际效应 ⇒ 四数不同，且 churn 一格都不许漏进 deltas", () => {
+    const afterA = applyAll(CONTROL, [["o_prod_0", 5], ["o_prod_1", 3], ["o_open_0", 2], ["o_done_0", 9]]);
+    const afterB = applyAll(CONTROL, [["o_prod_0", 0.002], ["o_prod_1", 0.001], ["o_open_0", 0.003], ["o_done_0", 9]]);
+    const deltasA = buildRunExposureDeltas(CONTROL, afterA);
+    const deltasB = buildRunExposureDeltas(CONTROL, afterB);
+    // churn 相消：deltas 里只能有边际效应那几格，背景一格都不许在。
+    expect(deltasA.map((x) => x.objectId).sort()).toEqual(["o_done_0", "o_open_0", "o_prod_0", "o_prod_1"]);
+    expect(deltasB.map((x) => x.objectId).sort()).toEqual(["o_done_0", "o_open_0", "o_prod_0", "o_prod_1"]);
+    const r = respondsToInput("被推动的单", buildMoneyView(deltasA, ORDERS, noCause), buildMoneyView(deltasB, ORDERS, noCause), (v) => v.exposedOrders);
+    expect(r.ok, r.message).toBe(true);
+    const r2 = respondsToInput("合计敞口", buildMoneyView(deltasA, ORDERS, noCause), buildMoneyView(deltasB, ORDERS, noCause), (v) => v.exposure);
+    expect(r2.ok, r2.message).toBe(true);
+  });
+
+  it("⑦ 结构判据：屏上的 deltas 必须产自从对照世界出发的差分（接线挪回旧路 = 红）", () => {
+    const tree = checkedTree(
+      "apps/frontend-shell/src/views/sim/unified/console0828",
+      "useMutation", // 已知必中：Console0828.tsx 代码里一定有
+      2, // 该目录至少 tsx + model + eventCatalog 三个源文件
+    );
+    // 正向：deltas 的产地函数在屏组件里被真调用（import 行无括号，天然不算）。
+    const callers = factHits(tree, /(?<![\w.])buildRunExposureDeltas\s*\(/);
+    expect(
+      callers.some((f) => f.endsWith("Console0828.tsx")),
+      `runM 必须真调 buildRunExposureDeltas（对照差分的唯一产地）；命中文件：${callers.join(",") || "无"}`,
+    ).toBe(true);
+    // 反向：旧接线不许复活 —— diffWorld(before.state … 量的是时间 churn，不是扰动贡献。
+    const oldWiring = factHits(tree, /diffWorld\s*\(\s*before\.state/);
+    expect(
+      oldWiring,
+      `旧接线复活：diffWorld(before.state, after.state) 量的是「时间走 N 拍的总 churn」，零扰动也报 150 张 / 156.6 亿；命中：${oldWiring.join(",")}`,
+    ).toEqual([]);
+    // 对照来源：组件必须真调 simCounterfactual（拿 counterfactualState 的那条路）。
+    const control = factHits(tree, /(?<![\w.])simCounterfactual\s*\(/);
+    expect(
+      control.some((f) => f.endsWith("Console0828.tsx")),
+      "对照世界只能来自 simCounterfactual 的 counterfactualState（active 规则集）；baselineState 不过对抗方闸，不可用",
+    ).toBe(true);
   });
 });
