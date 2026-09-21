@@ -28,85 +28,41 @@
  * 所以 {@link ExplainSlice.coverage} 是**必填**，且调用方有义务把它显示出来。
  */
 
-import type { PropagationTrace } from "@platform/contracts";
+import type { PropagationTrace, SimExplainNode, SimExplainEdge, SimExplainSlice } from "@platform/contracts";
 
-/** 解释切片里的一个节点 = 一个对象（不是一个格；一个对象可能有多个状态变量参与）。 */
-export interface ExplainNode {
-  objectId: string;
-  /** 从目标倒着数第几跳：目标自己 = 0。 */
-  hop: number;
-  /** 该节点**流向目标方向**的贡献量合计（沿被保留的边累加，绝对值）。 */
-  contribution: number;
-}
+/**
+ * ⚠ **2026-09-21：形状搬进契约（`packages/contracts/src/sim.ts`），本文件不再另写一份。**
+ *
+ * 搬家的理由是前端要消费它。留在这里只有两条路给前端，两条都是本仓明令禁止的：
+ * `as` 硬转（运行期零检查，本仓实测过它让沙盘整页白屏）或前端另抄一份类型（第二套真相源）。
+ * 下面三个名字是**别名不是定义** —— 存量引用（本文件 + `app.ts`）照旧可用，真相只有契约那一份。
+ */
+export type ExplainNode = SimExplainNode;
+export type ExplainEdge = SimExplainEdge;
+export type ExplainSlice = SimExplainSlice;
 
-export interface ExplainEdge {
-  fromObjectId: string;
-  toObjectId: string;
-  ruleKey: string;
-  viaLinkKey: string;
-  amount: number;
-}
-
-export interface ExplainSlice {
-  /**
-   * 被解释的那**一格** = (对象, 量纲)。
-   *
-   * ⚠ **2026-09-21 补上 `stateVar`：此前只有 `objectId`，于是本切片答非所问。**
-   * 病灶不是排序写错了，是**问题问错了** —— 一个对象同时承载多个量纲，
-   * 而它们的单位互不可比。实测 `Model.方形-LFP` 七个量纲：
-   *   `backlogQtyTop`(件 ~21,777) · `backlogPriceTop`(元 ~14,420) · `backlogHorizonDays`(天)
-   *   · `costPressure` / `demandLoad` / `forecastBias` / `supplyRisk`（压力点，0–100 域）
-   * 把它们的入边混在一起按 |amount| 排序，**件/元 以 ~10⁶ 倍碾过压力点**。
-   *
-   * 真机实测（磷酸铁锂正极 `priceShock +30`，推 3 拍，问「解释 方形-LFP」）：
-   *   该拍打向它的边 297 条 → 切片保留 92 条 → **其中成本链 0 条**，
-   *   而它的 `costPressure` 确实动了（7.654358560825），trace 里 cost 边有 602 条。
-   *   ⇒ 用户问「成本压力为什么变了」，它回答「因为订单有数量」。
-   *
-   * 形态：**「我用『|amount| 更大』当作『它对这个结果更重要』的证据，
-   * 而前者并不度量后者 —— 不同量纲的数不能比大小。」**
-   *
-   * ⚠ 这条裂缝**本文件自己早就写下了**：`ExplainNode` 的注释「一个节点 = 一个对象
-   * （不是一个格；一个对象可能有多个状态变量参与）」，而本字段的注释一直写着「那一格」。
-   * 文档说格、类型给对象 —— 写下来了，没当成问题。
-   */
-  target: { objectId: string; stateVar: string };
-  nodes: ExplainNode[];
-  edges: ExplainEdge[];
-  /**
-   * 截断账本 —— **必填，调用方必须显示**。
-   *
-   * `amountCoveredPct` 是本切片诚实性的核心读数：保留下来的边的 |amount| 合计，
-   * 占「目标的全部入边 |amount| 合计」的百分比。
-   * 它 = 100 表示这张图解释了全部；= 40 表示屏上这张图**只解释了四成**，
-   * 而用户看到的是一张看起来完整的图。⛔ 不显示它 = 拿残图冒充全图。
-   */
-  coverage: {
-    maxNodes: number;
-    truncated: boolean;
-    /** 达到 maxNodes 之后被丢掉的节点数（0 = 没截断）。 */
-    droppedNodes: number;
-    droppedEdges: number;
-    /**
-     * 目标那一格这一拍的**全部**入边条数 —— `amountCoveredPct` 的分母基数，**必填**。
-     *
-     * ⚠ **2026-09-21 补：没有它，`amountCoveredPct` 在空图上会撒谎。**
-     * 分母为 0 时百分比取 100（0/0 只能这么取），于是「这一格这拍根本没动」
-     * 与「这一格被完整解释了」**在屏上逐字节相同**。真机实测两例同时中招：
-     *   · `forecastBias` —— 真实的格，该拍确无入边 ⇒ 0 边 / 100%
-     *   · 一个**压根不存在**的量纲 —— 同样 0 边 / 100%，且 HTTP 200
-     * 本仓的形态句式：**「我用『覆盖率 100%』当作『这张图解释完整』的证据，
-     * 而前者并不度量后者 —— 0/0 也是 100%。」**
-     *
-     * 带上基数之后，`targetInEdges: 0` 自己就说清了「没有可解释的东西」，
-     * 与 `targetInEdges: 25, pct: 100` 再不会长得一样。
-     * ⛔ 调用方显示覆盖率时必须同时读它：`pct` 单独一个数不构成诚实读数。
-     */
-    targetInEdges: number;
-    /** 见字段注释：保留边占目标全部入边贡献的百分比，保留两位。⚠ 必须与 `targetInEdges` 同读。 */
-    amountCoveredPct: number;
-  };
-}
+/**
+ * ── 为什么 `target` 必须带量纲（病因留在这里，契约那边只留结论）────────────────
+ *
+ * ⚠ **2026-09-21 补上 `stateVar`：此前只有 `objectId`，于是本切片答非所问。**
+ * 病灶不是排序写错了，是**问题问错了** —— 一个对象同时承载多个量纲，
+ * 而它们的单位互不可比。实测 `Model.方形-LFP` 七个量纲：
+ *   `backlogQtyTop`(件 ~21,777) · `backlogPriceTop`(元 ~14,420) · `backlogHorizonDays`(天)
+ *   · `costPressure` / `demandLoad` / `forecastBias` / `supplyRisk`（压力点，0–100 域）
+ * 把它们的入边混在一起按 |amount| 排序，**件/元 以 ~10⁶ 倍碾过压力点**。
+ *
+ * 真机实测（磷酸铁锂正极 `priceShock +30`，推 3 拍，问「解释 方形-LFP」）：
+ *   该拍打向它的边 297 条 → 切片保留 92 条 → **其中成本链 0 条**，
+ *   而它的 `costPressure` 确实动了（7.654358560825），trace 里 cost 边有 602 条。
+ *   ⇒ 用户问「成本压力为什么变了」，它回答「因为订单有数量」。
+ *
+ * 形态：**「我用『|amount| 更大』当作『它对这个结果更重要』的证据，
+ * 而前者并不度量后者 —— 不同量纲的数不能比大小。」**
+ *
+ * ⚠ 这条裂缝**本文件自己早就写下了**：`ExplainNode` 的注释「一个节点 = 一个对象
+ * （不是一个格；一个对象可能有多个状态变量参与）」，而 target 的注释一直写着「那一格」。
+ * 文档说格、类型给对象 —— 写下来了，没当成问题。
+ */
 
 /**
  * 从 trace 反向收敛出目标对象的因果子图。

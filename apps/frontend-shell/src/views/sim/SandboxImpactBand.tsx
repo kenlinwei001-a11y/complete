@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 // 校形用**契约那一份 schema**（`safeParse`），故这里不再 import 它的 type：
 // 类型由 `parsed.data` 推出来，与运行期校验**同一个出处** —— 两者分家正是上一版 `as` 硬转的病根。
@@ -8,7 +8,8 @@ import { InfoPopover } from "@/components/InfoPopover";
 import { runSolver } from "@/api/endpoints";
 import zh from "@/locales/zh";
 import { ImpactAnalysisPanel } from "./ImpactAnalysisPanel";
-import { stateVarLabel } from "./stateVarLabel";
+import { stateVarLabel, stateVarText } from "./stateVarLabel";
+import { CellExplainPanel } from "./CellExplainPanel";
 // 引擎原文（markdown）的强调渲染 —— 全仓唯一被批准的那一份实现，不另抄一套正则。
 import { parseEmphasis } from "./decisionConsoleModel";
 import styles from "./SandboxConsole.module.css";
@@ -143,6 +144,50 @@ export function deriveStateVarDeltas(
 /** 判「动了没有」的容差。浮点减法会给出 1e-15 这种"动了"，那不是动了，是二进制。 */
 const EPS = 1e-9;
 export const isMoved = (d: StateVarDelta): boolean => Math.abs(d.delta) > EPS;
+
+/** 一格 =（对象, 量纲）。上面的 `StateVarDelta` 是**跨对象均值**，这里才是具体某一格。 */
+export interface MovedCell {
+  objectId: string;
+  base: number;
+  now: number;
+  delta: number;
+}
+
+/**
+ * 某个量纲上**具体哪几个对象在动** —— 从均值下钻到格的那一跳。
+ *
+ * ⚠ 为什么必须有这一跳：上面那行差分是 `avgOf`（全对象均值），而
+ * `explain-slice` 解释的是**一格**（对象 + 量纲）。均值没有因果链可讲 ——
+ * 「全世界的 costPressure 平均涨了 0.3」这句话问不出「为什么」，
+ * 「`obj_model_方形-LFP` 的 costPressure 涨了 7.65」才问得出。
+ * 拿均值去问后端等于**问错对象**，与本轮修 explain-slice 时治的是同一个病。
+ *
+ * 纯本地派生：两份快照都已在 props 里，**不新增任何取数**。
+ * 全序比较器（平手回 0）—— 这一带一屏常常全是等值项，正是 V8 会给出任意顺序的那种输入。
+ */
+export function topMovedCells(
+  baseWorld: Record<string, Record<string, number>> | null,
+  world: Record<string, Record<string, number>>,
+  v: string,
+  limit = 6,
+): MovedCell[] {
+  if (baseWorld === null) return [];
+  const rows: MovedCell[] = [];
+  for (const objectId of Object.keys(world)) {
+    const now = world[objectId]?.[v];
+    const base = baseWorld[objectId]?.[v];
+    if (typeof now !== "number" || typeof base !== "number") continue;
+    const delta = now - base;
+    if (Math.abs(delta) <= EPS) continue;
+    rows.push({ objectId, base, now, delta });
+  }
+  rows.sort(
+    (a, b) =>
+      Math.abs(b.delta) - Math.abs(a.delta) ||
+      (a.objectId < b.objectId ? -1 : a.objectId > b.objectId ? 1 : 0),
+  );
+  return rows.slice(0, limit);
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // WO-FINANCE-WORLDSTATE · 金额投影面板（本带右半的第一块）
@@ -621,7 +666,15 @@ export function SandboxImpactBand({
             {moved.length > 0 ? (
               <ul className={styles.deltaList} data-testid="sandbox-impact-delta-list">
                 {moved.map((d) => (
-                  <DeltaRow key={d.v} d={d} />
+                  <DeltaRow
+                    key={d.v}
+                    d={d}
+                    sessionId={sessionId}
+                    curTick={curTick}
+                    baseWorld={baseWorld}
+                    world={world}
+                    stateVarNames={stateVarNames}
+                  />
                 ))}
               </ul>
             ) : null}
@@ -632,7 +685,15 @@ export function SandboxImpactBand({
                 </summary>
                 <ul className={styles.deltaList} data-testid="sandbox-impact-delta-rest-list">
                   {flat.map((d) => (
-                    <DeltaRow key={d.v} d={d} />
+                    <DeltaRow
+                      key={d.v}
+                      d={d}
+                      sessionId={sessionId}
+                      curTick={curTick}
+                      baseWorld={baseWorld}
+                      world={world}
+                      stateVarNames={stateVarNames}
+                    />
                   ))}
                 </ul>
               </details>
@@ -644,22 +705,128 @@ export function SandboxImpactBand({
   );
 }
 
-/** 一行差分：名字 · 基线 → 现值 · 变化量。三样都是规范 §1 允许在第一层的（名字 / 数值 / 状态）。 */
-function DeltaRow({ d }: { d: StateVarDelta }) {
+/**
+ * 一行差分：名字 · 基线 → 现值 · 变化量。三样都是规范 §1 允许在第一层的（名字 / 数值 / 状态）。
+ *
+ * ⚠ **2026-09-21 加「为什么」两跳**（WO-EXPLAIN-WIRE）：本行的数是**跨对象均值**，
+ * 而「为什么变成这样」只有落到**一格**（对象 + 量纲）才答得了。故展开分两跳：
+ *   ① 这个量纲上**具体哪几个对象在动**（纯本地派生，两份快照都在 props 里，零新增取数）；
+ *   ② 点其中一个 ⇒ 调后端 `explain-slice` 出**真实 trace 的因果链**（`CellExplainPanel`）。
+ * 第 ② 跳是这条链路第一次接到屏上 —— 此前该端点前端消费方为 0。
+ */
+function DeltaRow({
+  d,
+  sessionId,
+  curTick,
+  baseWorld,
+  world,
+  stateVarNames,
+}: {
+  d: StateVarDelta;
+  sessionId: string | null;
+  curTick: number;
+  baseWorld: Record<string, Record<string, number>> | null;
+  world: Record<string, Record<string, number>>;
+  stateVarNames?: Readonly<Record<string, string>>;
+}) {
   const up = d.delta > 0;
+  const moved = isMoved(d);
+  const [open, setOpen] = useState(false);
+  const [cell, setCell] = useState<string | null>(null);
+  // 只在展开时才算 —— 一屏几十行，每行都扫一遍全世界对象是白烧。
+  const cells = useMemo(
+    () => (open ? topMovedCells(baseWorld, world, d.v) : []),
+    [open, baseWorld, world, d.v],
+  );
+  // 没动的行不给「为什么」：没有因果链可讲，给了就是个必然落空的入口。
+  const askable = moved && sessionId !== null;
+
   return (
-    <li className={styles.deltaRow} data-testid={`sandbox-impact-delta-${d.v}`} data-moved={isMoved(d) ? "1" : "0"}>
-      <span className={styles.deltaName}>{d.v}</span>
-      <span className={styles.deltaVals} data-testid={`sandbox-impact-delta-${d.v}-vals`}>
-        {d.base.toFixed(1)} → <b>{d.now.toFixed(1)}</b>
-      </span>
-      <span
-        className={styles.deltaAmt}
-        data-testid={`sandbox-impact-delta-${d.v}-amt`}
-        data-dir={isMoved(d) ? (up ? "up" : "down") : "flat"}
-      >
-        {isMoved(d) ? `${up ? "+" : "−"}${Math.abs(d.delta).toFixed(1)}` : "0.0"}
-      </span>
+    <li className={styles.deltaRowExpandable} data-testid={`sandbox-impact-delta-${d.v}`} data-moved={moved ? "1" : "0"}>
+      {/* 行首一横条。⚠ 不能把按钮/面板直接塞进三列 grid，见 `.deltaRowExpandable` 的注释。 */}
+      <div className={styles.deltaRowHead}>
+        {/*
+          * 屏上显**中文业务名**，裸键退到 `title` 与 testid 里。
+          * ⚠ 此前这里直接渲 `{d.v}` —— 实测后端 `stateVarNames` **48/48 全有中文名**，
+          * 字典就在本组件 props 里、同文件 282 行已在正常使用，这一栏却是 48 个英文键。
+          * 形态：「我用『字典传进来了』当作『屏上用上了』的证据。」
+          * ⛔ 字典缺名时回落裸键（`stateVarText` 的既定行为），前端**不替它编一个**（R14）。
+          */}
+        <span className={styles.deltaName} title={d.v}>
+          {stateVarText(d.v, stateVarNames)}
+        </span>
+        <span className={styles.deltaVals} data-testid={`sandbox-impact-delta-${d.v}-vals`}>
+          {d.base.toFixed(1)} → <b>{d.now.toFixed(1)}</b>
+        </span>
+        <span
+          className={styles.deltaAmt}
+          data-testid={`sandbox-impact-delta-${d.v}-amt`}
+          data-dir={moved ? (up ? "up" : "down") : "flat"}
+        >
+          {moved ? `${up ? "+" : "−"}${Math.abs(d.delta).toFixed(1)}` : "0.0"}
+        </span>
+        {askable ? (
+          <button
+            type="button"
+            className={styles.impChainBtn}
+            data-testid={`sandbox-impact-why-${d.v}`}
+            aria-expanded={open}
+            onClick={() => { setOpen((o) => !o); setCell(null); }}
+          >
+            {open ? "收起" : "为什么"}
+          </button>
+        ) : (
+          <span />
+        )}
+      </div>
+
+      {open ? (
+        <div className={styles.impChainPanel} data-testid={`sandbox-impact-why-panel-${d.v}`}>
+          {cells.length === 0 ? (
+            <p className={styles.note}>
+              这个量纲上没有任何**单个对象**的读数变化超过容差 —— 均值动了而逐格没动，
+              多半是参与平均的对象集合变了。⛔ 这一格没有因果链可问。
+            </p>
+          ) : (
+            <>
+              <p className={styles.stateLine}>
+                上面那个数是<b>全对象均值</b>，均值问不出「为什么」。先挑一格：
+              </p>
+              <ul className={styles.deltaList} data-testid={`sandbox-impact-why-cells-${d.v}`}>
+                {cells.map((c) => (
+                  <li className={styles.whyRow} key={c.objectId}>
+                    <button
+                      type="button"
+                      className={styles.impChainBtn}
+                      data-testid={`sandbox-impact-why-cell-${c.objectId}`}
+                      data-selected={cell === c.objectId ? "1" : "0"}
+                      onClick={() => setCell((x) => (x === c.objectId ? null : c.objectId))}
+                    >
+                      {c.objectId}
+                    </button>
+                    <span className={styles.deltaVals}>
+                      {c.base.toFixed(2)} → <b>{c.now.toFixed(2)}</b>
+                    </span>
+                    <span className={styles.deltaAmt} data-dir={c.delta > 0 ? "up" : "down"}>
+                      {c.delta > 0 ? "+" : "−"}
+                      {Math.abs(c.delta).toFixed(2)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {cell !== null && sessionId !== null ? (
+                <CellExplainPanel
+                  sessionId={sessionId}
+                  objectId={cell}
+                  stateVar={d.v}
+                  tick={curTick}
+                  stateVarNames={stateVarNames}
+                />
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
     </li>
   );
 }

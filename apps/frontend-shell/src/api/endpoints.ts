@@ -143,7 +143,7 @@ import type { ProcessDefinitionsResponse, ProcessInstancesResponse } from "@/vie
 // WO-V4-INSPECT · 流程节点检视响应契约（前端不重定义·R1 contracts-only-shared）
 import type { ProcessInspectResponse } from "@platform/contracts";
 // WO-SIM-DRILL-P12 · 推演演习契约（事件目录 / 演习请求 / 演习报告）
-import type { DrillCatalog, DrillReport, DrillEvent } from "@platform/contracts";
+import type { DrillCatalog, DrillReport, DrillEvent, SimExplainSlice } from "@platform/contracts";
 /** `POST …/drill` 的请求体（`DrillRunRequestSchema` 的**输入**侧：带默认值的字段可省）。 */
 export interface DrillRunRequestInput {
   events?: DrillEvent[];
@@ -1058,6 +1058,36 @@ export const simTick = (sessionId: string, n = 1, disclose = false) =>
 export const simWorld = (sessionId: string) =>
   api.a<{ tick: number; state: TickState; baseProvenance?: CellProvenance }>(
     `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/world`,
+  );
+
+/**
+ * 解释切片 —— **「这一格这一拍为什么变成这样」**，从已算完的 trace 事后收敛的只读投影。
+ *
+ * ⚠ **`stateVar` 必填，这不是可选参数**：一格 =（对象, 量纲）。只给对象，后端会 400 点名。
+ *   理由是真机实测出来的：一个对象同时承载多个量纲且单位互不可比
+ *   （`Model.方形-LFP` 的 `backlogQtyTop` ~2.2e4 件 vs `costPressure` ~3e-3 压力点，差 ~10⁶ 倍）。
+ *   旧版只收对象、按 |amount| 混排 ⇒「成本压力为什么变了」被答成「因为订单有数量」。
+ *
+ * ⚠ **回包的 `coverage` 调用方有义务显示，且 `amountCoveredPct` 不许单独读** ——
+ *   分母为 0 时它只能取 100，「这拍根本没动」与「解释完整」会长得一模一样。
+ *   必须与 `coverage.targetInEdges` 同读。校形走契约那一份 schema（⛔ 禁 `as` 硬转：
+ *   本文件邻居 `FinanceProjectionPanel` 实测过，回包缺字段时整棵 React 树被卸掉 —— 沙盘白屏）。
+ *
+ * 该拍无贡献行 ⇒ 后端回 **404**（不出空切片冒充「没有因果链」），调用方按「拿不到数」渲染。
+ */
+export const simExplainSlice = (
+  sessionId: string,
+  targetObjectId: string,
+  targetStateVar: string,
+  tick: number,
+  maxNodes = 20,
+) =>
+  api.a<SimExplainSlice>(
+    `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/explain-slice` +
+      `?targetObjectId=${encodeURIComponent(targetObjectId)}` +
+      `&targetStateVar=${encodeURIComponent(targetStateVar)}` +
+      `&tick=${encodeURIComponent(String(tick))}` +
+      `&maxNodes=${encodeURIComponent(String(maxNodes))}`,
   );
 
 // ── WO-SIM-DRILL-P12 · 推演**演习**（事件型扰动 → 真调求解器 → 卡点清单）───────────

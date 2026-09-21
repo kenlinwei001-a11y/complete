@@ -654,6 +654,51 @@
   align-items: baseline;
   padding: 2px 0;
 }
+/*
+ * 可展开的差分行（行首读数 + 展开出来的因果面板）。
+ *
+ * ⚠ 外层**必须是块级**，不能直接复用 `.deltaRow` —— 后者是**三列 grid**，
+ * 往里多塞一个按钮或一个面板，多出来的子元素会落进**隐式行**并压在相邻单元格上。
+ * 2026-09-21 真浏览器实测原文：按钮 `element is visible, enabled and stable`，
+ * 但 `<span class="_deltaVals_"> intercepts pointer events` —— **看得见、点不动**。
+ * 这种缺陷 typecheck 与 jsdom 都抓不到（两者都不做命中测试），只有真点才会现形。
+ */
+.deltaRowExpandable {
+  display: block;
+  padding: 2px 0;
+}
+/** 行首那一横条：比 `.deltaRow` 多一列，留给「为什么」按钮。 */
+.deltaRowHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: baseline;
+}
+/*
+ * 因果面板里的一行（挑格 / 逐条因果边）。**竖排，不是横向 grid。**
+ *
+ * ⚠ 它活在右侧窄栏里，可用宽实测 ~130px。用 `.deltaRow` 那种
+ * `minmax(0,1fr) auto auto` 的横向 grid 时，第一列会被压成 **0px**
+ * （2026-09-21 真浏览器实测 `grid-template-columns: "0px 53.5px 48px 0px"`），
+ * 于是第一列里那个 18px 宽的按钮**溢出自己的格子**、被相邻列的 span 盖住点击区 ——
+ * 屏上看得见、点不动。对象 id 又长（`obj_order_SO-900052`），横排在窄栏里本就排不下。
+ * ⇒ 名字独占一行（溢出省略号），数值折到下一行。
+ */
+.whyRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 2px 0;
+}
+.whyRow > :first-child {
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
 .deltaName {
   font: 600 var(--sbx-fs-body, 13px)/1.4 var(--font-mono);
   color: var(--muted);

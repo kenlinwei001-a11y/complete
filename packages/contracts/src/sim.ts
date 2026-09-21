@@ -2397,3 +2397,68 @@ export const ParetoAssembleResultSchema = z.discriminatedUnion("applicable", [
   }),
 ]);
 export type ParetoAssembleResult = z.infer<typeof ParetoAssembleResultSchema>;
+
+// ── 解释切片（`GET /a/v1/sim/sessions/:id/explain-slice`）──────────────────────
+/**
+ * **「这一格这一拍为什么变成这样」的回包形状。**
+ *
+ * ⚠ 2026-09-21 提进契约的理由（不是为了整齐）：此前它只是 `apps/datacore/src/sim/explain-slice.ts`
+ * 里的一个 TS `interface`，**跨不了包**。于是前端要消费它就只有两条路，两条都是本仓明令禁止的：
+ *   · `as ExplainSlice` 硬转 —— 编译期断言、运行期零检查。本仓实测过它的代价：
+ *     `FinanceProjectionPanel` 第一版这么写，回包缺 `lines` 时整棵 React 树被卸掉（**沙盘白屏**），
+ *     连坐 4 个用例。**一块面板绝不能有权力让整页消失。**
+ *   · 前端另抄一份类型 —— 那就是第二套真相源，后端改字段时前端不会红。
+ *
+ * 所以形状定在这里，**datacore 与前端各自从这一份推导**，谁都不另写。
+ *
+ * ⛔ 与「计算范围」不是一回事：本切片是**事后从已算完的 trace 收敛出的只读投影**，
+ *    不参与计算、不影响任何读数。大小只影响看得懂多少，不影响算得对不对。
+ */
+export const SimExplainNodeSchema = z.strictObject({
+  objectId: z.string(),
+  /** 从目标倒着数第几跳：目标自己 = 0。 */
+  hop: z.number().int().nonnegative(),
+  /** 该节点流向目标方向的贡献量合计（沿被保留的边累加，绝对值）。 */
+  contribution: z.number(),
+});
+export type SimExplainNode = z.infer<typeof SimExplainNodeSchema>;
+
+export const SimExplainEdgeSchema = z.strictObject({
+  fromObjectId: z.string(),
+  toObjectId: z.string(),
+  ruleKey: z.string(),
+  viaLinkKey: z.string(),
+  amount: z.number(),
+});
+export type SimExplainEdge = z.infer<typeof SimExplainEdgeSchema>;
+
+/**
+ * 截断账本 —— **必填，调用方有义务显示**。
+ *
+ * 一张 20 节点的图去解释一条数千边的链，**必然是残缺的**。不把「丢了多少」报出来，
+ * 它就变成又一个「看起来完整、其实是编的」。
+ *
+ * ⚠ `amountCoveredPct` **不许单独读**：分母为 0 时它只能取 100，于是
+ * 「这一格这拍根本没动」与「这一格被完整解释了」在回包里逐字节相同。
+ * 必须与 `targetInEdges` 同读 —— 后者为 0 即「没有可解释的东西」，不是「解释完整」。
+ */
+export const SimExplainCoverageSchema = z.strictObject({
+  maxNodes: z.number().int().positive(),
+  truncated: z.boolean(),
+  droppedNodes: z.number().int().nonnegative(),
+  droppedEdges: z.number().int().nonnegative(),
+  /** 目标那一格这一拍的**全部**入边条数 = 覆盖率的分母基数。见本对象头注。 */
+  targetInEdges: z.number().int().nonnegative(),
+  /** 保留边占目标那一格全部入边贡献的百分比，保留两位。⚠ 必须与 `targetInEdges` 同读。 */
+  amountCoveredPct: z.number(),
+});
+export type SimExplainCoverage = z.infer<typeof SimExplainCoverageSchema>;
+
+export const SimExplainSliceSchema = z.strictObject({
+  /** 被解释的那**一格** =（对象, 量纲）。⚠ 只给对象答不了「为什么变成这样」：同一对象的多个量纲单位不可比。 */
+  target: z.strictObject({ objectId: z.string(), stateVar: z.string() }),
+  nodes: z.array(SimExplainNodeSchema),
+  edges: z.array(SimExplainEdgeSchema),
+  coverage: SimExplainCoverageSchema,
+});
+export type SimExplainSlice = z.infer<typeof SimExplainSliceSchema>;
