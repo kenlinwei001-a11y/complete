@@ -782,10 +782,12 @@ function DeltaRow({
 
       {open ? (
         <div className={styles.impChainPanel} data-testid={`sandbox-impact-why-panel-${d.v}`}>
+          {/* ⚠ 下面这段按纯文本渲染，markdown 星号会原样印在屏上 —— 强调一律用 <b>。
+              这条是 `dev-jargon:check` 当场咬出来的（基线 0 → 1）。 */}
           {cells.length === 0 ? (
             <p className={styles.note}>
-              这个量纲上没有任何**单个对象**的读数变化超过容差 —— 均值动了而逐格没动，
-              多半是参与平均的对象集合变了。⛔ 这一格没有因果链可问。
+              这个量纲上没有任何<b>单个对象</b>的读数变化超过容差 —— 均值动了而逐格没动，
+              多半是参与平均的对象集合变了。
             </p>
           ) : (
             <>

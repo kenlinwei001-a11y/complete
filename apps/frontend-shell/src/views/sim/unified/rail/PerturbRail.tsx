@@ -1042,7 +1042,7 @@ export default function PerturbRail({ sessionId, onAppliedChange, onApplied }: P
               data-reason={b.reason}
               aria-disabled="true"
             >
-              {b.factorName} <span className={styles.mono}>{b.key}</span>
+              {b.factorName}
             </li>
           ))}
         </ul>

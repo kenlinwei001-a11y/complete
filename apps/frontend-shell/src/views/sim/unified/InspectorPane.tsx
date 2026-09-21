@@ -122,8 +122,10 @@ export function InspectorPane({ view, facts, onExpand }: InspectorPaneProps): JS
       {/* ① 这是什么 */}
       <section className={styles.section}>
         <div className={styles.sectionHead}>这是什么</div>
-        <div className={styles.cardName}>{c.label.text}</div>
-        <div className={styles.cardKey}>{c.label.key}</div>
+        {/* 接线名退到 `title`（同 `MetricWall` 那条：第一层只放中文名）。 */}
+        <div className={styles.cardName}>
+          {c.label.text}
+        </div>
         <div className={styles.calibre} data-testid="usim-inspector-layer" data-layer={c.layer}>
           层级 {c.layer}
           {c.layerKnown ? "" : "（后端未下发层级：它不在传导图里 —— 与「它是末端」是两回事）"} · 量纲{" "}
@@ -194,7 +196,7 @@ export function InspectorPane({ view, facts, onExpand }: InspectorPaneProps): JS
           <ul className={styles.list} data-testid="usim-upstream">
             {view.upstream.map((e) => (
               <li key={e.ruleKey} data-testid={`usim-up-${e.peerStateVar}`}>
-                {e.peerLabel.text} <span className={styles.cardKey}>{e.peerLabel.key}</span> · 系数{" "}
+                {e.peerLabel.text} · 系数{" "}
                 {fmt(e.coefficient)}
                 {e.coefficientIsRef ? "（引用规则参数，屏上这个数不是最终值）" : ""} · 延迟 {e.delayTicks} 拍 /{" "}
                 {e.delayDays} 天
@@ -214,7 +216,7 @@ export function InspectorPane({ view, facts, onExpand }: InspectorPaneProps): JS
           <ul className={styles.list} data-testid="usim-downstream">
             {view.downstream.map((e) => (
               <li key={e.ruleKey} data-testid={`usim-down-${e.peerStateVar}`}>
-                {e.peerLabel.text} <span className={styles.cardKey}>{e.peerLabel.key}</span> · 系数{" "}
+                {e.peerLabel.text} · 系数{" "}
                 {fmt(e.coefficient)}
                 {e.coefficientIsRef ? "（引用规则参数，屏上这个数不是最终值）" : ""} · 延迟 {e.delayTicks} 拍 /{" "}
                 {e.delayDays} 天

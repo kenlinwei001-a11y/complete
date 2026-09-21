@@ -53,10 +53,19 @@ export function MetricCardButton({ card, selected, quiet, onSelect }: MetricCard
       className={`${styles.card} ${selected ? styles.cardOn : ""} ${quiet ? styles.cardQuiet : ""}`}
       onClick={() => onSelect(card.stateVar)}
     >
-      <div className={styles.cardName} title={card.label.key}>
-        {card.label.text}
-      </div>
-      <div className={styles.cardKey}>{card.label.key}</div>
+      {/*
+        * 第一层只留**中文业务名**。接线名（`costPressure` 等）**一层都不上屏**。
+        *
+        * ⚠ 此前这里在中文名下面无条件再印一行裸英文键（`styles.cardKey`），
+        *   而键在当时的 `title` 里已经有一份。实测这一屏纯英文片段 47 个，卡墙独占 6 个。
+        * ⛔ 中途我一度把键挪进 `title=` —— 那是错的，规范 §2 与 R-UI-4 两处都禁：
+        *   「`title` 也是**屏上的字**」，挪进去只是把同一句开发话换个地方印。
+        *   判据是「这句话用户读了能做什么决定？」—— 接线名答不出，故彻底不上屏。
+        * 可审计性没丢：`data-testid` 与 `data-named` 都在（那不是屏上文案），
+        *   且字典查不到名字时 `label.text` 本就回落成裸键（`stateVarLabel` 的既定行为），
+        *   所以「没有中文名」这件事屏上照样看得见 —— 诚实位一个字没减。
+        */}
+      <div className={styles.cardName}>{card.label.text}</div>
       <div className={styles.cardValue} data-testid={`usim-value-${card.stateVar}`}>
         {NUM(card.current)}
         {card.unit === null ? "" : ` ${card.unit}`}
