@@ -99,6 +99,7 @@ import {
   type ChainImpedimentModel,
 } from "../../chainImpediment";
 import { InfoPopover } from "@/components/InfoPopover";
+import { Modal } from "@/components/ui/Modal";
 import styles from "./Console0828.module.css";
 
 /** 左栏「已添加 N 件扰动事件」里的一条 —— **还没提交**，提交发生在「开始推演」。 */
@@ -358,6 +359,8 @@ export default function Console0828({
 
   /* ── 左栏交互态 ───────────────────────────────────────────────────────── */
   const [openEvent, setOpenEvent] = useState<string | null>(null);
+  /** 对策四栏「放大」弹窗。页签里可视仅 ~364px，四栏被切一半，比不了。 */
+  const [optionsZoom, setOptionsZoom] = useState(false);
   const [staged, setStaged] = useState<readonly StagedEvent[]>([]);
   const [horizon, setHorizon] = useState(3);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -2322,8 +2325,37 @@ export default function Console0828({
                   <span className={styles.headRight} data-testid="c0828-options-tag">
                     <FixTag i={picked} />
                   </span>
+                  {/*
+                    * 「放大」—— 这四栏卡片摆在中栏页签里，**可视只有 ~364px**，实测卡片下半截
+                    * （判定依据 / 采纳按钮 / 不处置那栏的红线对照）被切掉，要滚才看得全。
+                    * 而这四栏正是「选哪个方案」的决策面，看不全就选不了。
+                    * ⛔ 不靠「让用户自己滚」了事：滚动时四栏会错位，横向比对当场失效 ——
+                    *   这块面板存在的理由就是**并排比**。
+                    * 走全仓通用 `Modal`（焦点陷阱 + Esc + 焦点归还，22 处在用），不另造浮层。
+                    */}
+                  <button
+                    type="button"
+                    className={styles.btn}
+                    data-testid="c0828-options-zoom"
+                    onClick={() => setOptionsZoom(true)}
+                  >
+                    ⤢ 放大
+                  </button>
                 </div>
                 <OptionsGrid p={picked} mv={money} />
+                {optionsZoom ? (
+                  /* ⚠ 弹窗里渲染的是**同一个 `OptionsGrid`**，不是复制一份 JSX。
+                     复制即两套真相源：改了内联忘了弹窗，两处对同一个方案给出两种说法。 */
+                  <Modal
+                    title={`对策方案 · ${picked.locus.label} · ${picked.candidates.length} 种对策`}
+                    onClose={() => setOptionsZoom(false)}
+                    width={1280}
+                  >
+                    <div data-testid="c0828-options-zoom-body">
+                      <OptionsGrid p={picked} mv={money} />
+                    </div>
+                  </Modal>
+                ) : null}
                 {/* WO-UI-LAYER-DEMOTE：第一层留事实（无按钮·不处置无需操作），理由降第二层。 */}
                 <p className={styles.calibre} data-testid="c0828-donothing-note">
                   第四栏无按钮 —— 不处置无需操作，属默认发生。
