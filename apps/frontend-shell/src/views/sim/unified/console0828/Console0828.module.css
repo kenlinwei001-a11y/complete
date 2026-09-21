@@ -201,6 +201,30 @@
 .more[open] > summary::before { content: "▾ "; }
 .moreBody { margin-top: 6px; line-height: 1.7; display: flex; flex-direction: column; gap: 6px; }
 
+/*
+ * ⛔ 收起态必须**真的收起**。
+ *
+ * 浏览器 UA 样式表靠 `display: none` 隐藏关闭态 `<details>` 的非 summary 子元素，
+ * 而作者样式里任何一条 `display: flex/block` 都会**把它盖掉** —— 于是正文照常排版、
+ * 撑满高度，并**溢出到父盒外面**压在下面的内容上。`<details>` 自身仍报 `open=false`，
+ * 所以从代码上看一切正常，只有量盒子才看得见。
+ *
+ * 真机实测（2026-09-21 · 1700×1000 · 推演后）：三个「已收起」的说明块
+ *   · 服务端历史扰动   自身 23px / 正文 250px / 溢出 256px（display:block）
+ *   · 本次推演执行记录 自身 29px / 正文 208px / 溢出 214px（display:flex）
+ *   · 本看板的口径边界 自身 26px / 正文 292px / 溢出 298px（display:flex）
+ * 合计 **750px 的「收起」散文一直占着位**，而视口才 1000px。这正是「这屏拉不完」的一半病因。
+ *
+ * 形态：**「我用『我写了 <details>，它报 open=false』当作『这段收起来了』的证据，
+ * 而前者并不度量后者 —— 收没收起看的是 display，不是 open。」**
+ *
+ * 用 `*:not(summary)` 而不是点名 `.moreBody`：下次谁在里面加第二个子元素，这条照样罩得住。
+ */
+.more:not([open]) > *:not(summary),
+.topDetails:not([open]) > *:not(summary) {
+  display: none;
+}
+
 .btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 6px 12px; border-radius: 8px;
@@ -537,7 +561,34 @@
 .why b { color: var(--txt); font-weight: 600; }
 
 /* 表 */
-.tblWrap { overflow-x: auto; }
+/*
+ * 页签里的表格容器 —— **横竖都要有界**。
+ *
+ * 改前只有 `overflow-x`，竖向不设上限。真机实测（2026-09-21 · 1700×1000 · 推演后）：
+ * 「对策看板」18 行把表撑到 653px、整块看板 806px，而它所在的中栏页签
+ * `c0828-tabbody` **可视只有 364px** ⇒ 看板底边落在 y=1374，伸到视口外 374px，
+ * 页签内要滚 **2.32 屏**，且滚动时表头跟着滚掉、看到一半就不知道哪列是哪列。
+ *
+ * ⚠ 上半屏（页头 + 四数块）已固定吃掉 490px（49% 视口），三栏只分到 422px ——
+ *   在这个前提下，表越长越是直接转成「拉不完」的观感。所以有界的是**表**，
+ *   不是让用户去滚整个页签。
+ *
+ * `vh` 在这里是合适的（与本文件 §区⑤b 那条「@media 量视口宽不对」的警告不冲突）：
+ * 那条讲的是**宽度** —— 控制台左边被导航和左栏吃掉，视口宽 ≠ 可用宽；
+ * 而**竖向**这个控制台基本就是视口高减页头，`vh` 与可用高同量级。
+ */
+.tblWrap {
+  overflow-x: auto;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+/* 表头吸顶 —— 有了内滚就必须有它，否则滚两行就认不出列。 */
+.tblWrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+}
 .tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
 .tbl th {
   text-align: left; font-weight: 500; color: var(--muted2);
