@@ -2246,8 +2246,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/sim/sessions/:id/explain-slice", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
-    const q = req.query as { targetObjectId?: string; tick?: string; maxNodes?: string };
+    const q = req.query as { targetObjectId?: string; targetStateVar?: string; tick?: string; maxNodes?: string };
     if (!q.targetObjectId) throw validationError("targetObjectId 必填（解释切片收敛的是「某一格为什么变成这样」）");
+    // ⚠ 2026-09-21：`targetStateVar` 由「没有」改成**必填**。一格 = (对象, 量纲)，
+    //    而一个对象同时承载多个量纲且单位互不可比（件/元 对 压力点差 ~10⁶）。
+    //    只给对象时本端点会把入边混在一起按 |amount| 排序 ⇒ 大单位恒胜 ⇒ 真机实测
+    //    「磷酸铁锂正极涨价 → 解释 方形-LFP」保留 92 条边里**成本链 0 条**，答非所问。
+    if (!q.targetStateVar) {
+      throw validationError(
+        "targetStateVar 必填 —— 一格 = (对象, 量纲)。只给对象答不了「为什么变成这样」：" +
+          "同一对象的多个量纲单位不可比，混在一起排序会把你问的那一条整条截掉。",
+      );
+    }
     const tickN = q.tick === undefined ? s.curTick : Number(q.tick);
     if (!Number.isInteger(tickN) || tickN < 0) throw validationError(`tick 必须是非负整数（实测值：'${q.tick}'）`);
     const row = await repos.sim.getTickState(c.tenantId, s.id, tickN);
@@ -2258,7 +2268,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     }
     const maxNodes = q.maxNodes === undefined ? 20 : Number(q.maxNodes);
     if (!Number.isInteger(maxNodes) || maxNodes < 1) throw validationError(`maxNodes 必须是 ≥1 的整数（实测值：'${q.maxNodes}'）`);
-    return buildExplainSlice(trace, q.targetObjectId, maxNodes);
+    // trace 行只有 {ruleKey, from, to, amount, viaLinkKey}，**没有目标量纲** ——
+    // 经已发布规则表把它还原到「格」这一层（规则表是 targetStateVar 的唯一出处）。
+    const pubRules = await repos.sim.listPropagationRules(c.tenantId, true);
+    const ruleTargetVar = new Map(pubRules.map((r) => [r.key, r.targetStateVar]));
+    return buildExplainSlice(trace, q.targetObjectId, q.targetStateVar, ruleTargetVar, maxNodes);
   });
   /**
    * WO-SIM-BE-SERIES · **指标时序**：基线线 + 扰动后线 + 环节分段。

@@ -1489,6 +1489,12 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
 //  ② 🐤 反向金丝雀：maxNodes 超过全链节点数 ⇒ truncated:false · amountCoveredPct:100
 //     （若 ① 的截断账本是假的——比如恒报截断——这里当场红）。
 //  ③ 🐤 存在性金丝雀：trace 行数必须 >0（否则 ① 验的是空图，绿得毫无意义）。
+//  ④ 🐤 空格金丝雀（2026-09-21 加）：问一个**没有入边**的量纲 ⇒ `targetInEdges: 0`。
+//     没有这条基数，`amountCoveredPct: 100` 同时是「解释完整」和「压根没动」两句话。
+// ⚠ 本用例 2026-09-21 随契约改口：`targetStateVar` **必填**（一格 = 对象 + 量纲）。
+//   起因是真机实测：磷酸铁锂正极涨价后问「解释 方形-LFP」，保留的 92 条边里**成本链 0 条** ——
+//   件(~2.2e4)/元(~1.4e4) 按 |amount| 恒压过压力点(~3e-3)，压力族传导必然被整条截掉。
+//   修法是排序判据换成**占本格入流的比例**（无量纲），并只收写目标那一格的边。
 // 实验设计：稀疏世界 = 同一型号 25 张订单各置 demandPressure:10，其余一切为零
 //  ⇒ 型号的入边**恰好** 25 条（零额边不落 trace：propagation.ts `amount === 0 ⇒ continue`），
 //  maxNodes=20 时父位只有 19 个 ⇒ 必然截掉 6 个，coverage 四个数全部能手算到分毫不差。
@@ -1572,6 +1578,12 @@ describe("M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本）", () 
 
     // ── 手算（独立于 buildExplainSlice 的第二份实现，照文档取舍规则）────────────────
     // 同跳按 |amount| 降序、平手按 fromObjectId 字典序；目标占 1 位，父位 = maxNodes−1 = 19。
+    //
+    // ⚠ 2026-09-21：实现改成按**占本格入流的比例**（share = |amount| / 本格入流合计）排序，
+    //   本手算仍按 |amount| —— **在本用例里两者等价且必须等价**：稀疏世界的 25 条入边
+    //   全部出自同一条规则、写同一格 ⇒ 分母是同一个正数 ⇒ share 是 |amount| 的正单调变换，
+    //   名次逐位相同。这正是本用例还能当"第二份实现"的前提；⛔ 哪天它不再是单格单规则，
+    //   这段手算就必须一起改成 share，否则它验的是另一套取舍规则。
     const sorted = [...inEdges].sort(
       (a, b) => Math.abs(b.amount) - Math.abs(a.amount) || a.fromObjectId.localeCompare(b.fromObjectId),
     );
@@ -1582,17 +1594,20 @@ describe("M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本）", () 
     const expectedPct = Math.round((keptSum / total) * 100 * 100) / 100;
 
     // ── ① 正向：maxNodes=20 ⇒ 25 父 > 19 父位 ⇒ 截断账本四个数逐一咬死 ──────────────
+    // ⚠ `targetStateVar` 2026-09-21 起必填：一格 = (对象, 量纲)。本用例的 25 条入边全部
+    //   出自 `demo_order_demand_pressure`，它写的是 `demandLoad` —— 问的就是这一格。
+    const CELL = "demandLoad";
     const r20 = await t.app.inject({
-      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&tick=1&maxNodes=20`, headers: ADMIN,
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&targetStateVar=${CELL}&tick=1&maxNodes=20`, headers: ADMIN,
     });
     expect(r20.statusCode).toBe(200);
     const s20 = r20.json() as {
-      target: { objectId: string };
+      target: { objectId: string; stateVar: string };
       nodes: { objectId: string; hop: number }[];
       edges: { fromObjectId: string; toObjectId: string; amount: number }[];
-      coverage: { maxNodes: number; truncated: boolean; droppedNodes: number; droppedEdges: number; amountCoveredPct: number };
+      coverage: { maxNodes: number; truncated: boolean; droppedNodes: number; droppedEdges: number; targetInEdges: number; amountCoveredPct: number };
     };
-    expect(s20.target.objectId).toBe(modelId);
+    expect(s20.target).toEqual({ objectId: modelId, stateVar: CELL });
     expect(s20.nodes.length, "切片超过 20 节点 ⇒ 上限没咬住").toBeLessThanOrEqual(20);
     expect(s20.nodes.length).toBe(20); // 目标 1 + 父 19（25 个候选挤 19 个位，必然满）
     expect(s20.nodes.filter((n) => n.hop === 0).map((n) => n.objectId)).toEqual([modelId]);
@@ -1605,6 +1620,7 @@ describe("M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本）", () 
       truncated: true,
       droppedNodes: 6,   // 25 − 19，挤不下的 6 个父
       droppedEdges: 6,   // 每个被挤掉的父带走它那条入边
+      targetInEdges: 25, // 覆盖率的分母基数 —— 没有它，0/0 也报 100%（见下 ③ 空格金丝雀）
       amountCoveredPct: expectedPct, // 与手算分毫不差
     });
     // 诚实性硬判据：25 父丢 6，覆盖率**必须**明显小于 100 —— 恒报 100 就是拿残图冒充全图。
@@ -1612,7 +1628,7 @@ describe("M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本）", () 
 
     // ── ② 🐤 反向金丝雀：maxNodes=1000 > 全链节点数 ⇒ 不截断、覆盖率 100 ────────────
     const rFull = await t.app.inject({
-      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&tick=1&maxNodes=1000`, headers: ADMIN,
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&targetStateVar=${CELL}&tick=1&maxNodes=1000`, headers: ADMIN,
     });
     expect(rFull.statusCode).toBe(200);
     const sFull = rFull.json() as typeof s20;
@@ -1621,16 +1637,45 @@ describe("M0-A11 解释切片（≤20 节点只读投影 + 覆盖账本）", () 
     expect(sFull.coverage.truncated).toBe(false);
     expect(sFull.coverage.droppedNodes).toBe(0);
     expect(sFull.coverage.droppedEdges).toBe(0);
+    expect(sFull.coverage.targetInEdges).toBe(25);
     expect(sFull.coverage.amountCoveredPct).toBe(100);
 
-    // ── 边界：缺 targetObjectId ⇒ 400 点名；空 trace ⇒ 404 不出空切片冒充 ────────────
+    // ── ④ 🐤 空格金丝雀：`100%` 必须靠 `targetInEdges` 才读得出真假 ────────────────
+    // 病（2026-09-21 真机实测，本用例是它的机器）：分母为 0 时百分比只能取 100，
+    // 于是「这一格这拍根本没动」与「这一格被完整解释了」**在回包里逐字节相同**。
+    // ⇒ 拿一个该型号身上**没有任何入边**的量纲来问：必须是 `targetInEdges: 0`，
+    //   而不是只回一个孤零零的 `amountCoveredPct: 100`。
+    // ⛔ 这条金丝雀咬的是**基数字段在不在**，不是百分比等于几 ——
+    //   把它写成 `expect(pct).not.toBe(100)` 就错了：0/0 取 100 是对的，撒谎的是"只给百分比"。
+    const rEmptyCell = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&targetStateVar=supplyRisk&tick=1&maxNodes=20`, headers: ADMIN,
+    });
+    expect(rEmptyCell.statusCode).toBe(200);
+    const sEmpty = rEmptyCell.json() as typeof s20;
+    expect(
+      sEmpty.coverage.targetInEdges,
+      "稀疏世界里只有 demandLoad 有入边；supplyRisk 这一格入边应为 0 —— " +
+        "若 >0 说明切片把**别的量纲**的边算进了这一格（跨量纲混答，正是本次要修的那个病）",
+    ).toBe(0);
+    expect(sEmpty.edges.length).toBe(0);
+    // 🐤 正样例对照：同一个回包结构，有边的那一格基数必须 >0（否则是"基数恒 0"的坏实现）。
+    expect(s20.coverage.targetInEdges).toBeGreaterThan(0);
+
+    // ── 边界：缺 targetObjectId / 缺 targetStateVar ⇒ 400 点名；空 trace ⇒ 404 不出空切片冒充 ──
     const rBad = await t.app.inject({
       method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?tick=1`, headers: ADMIN,
     });
     expect(rBad.statusCode).toBe(400);
     expect(JSON.stringify(rBad.json())).toContain("targetObjectId");
+    // 只给对象、不给量纲 ⇒ 必须 400。这一条就是本次修复的**契约面**：
+    // 旧行为（回 200 混排所有量纲）实测让「成本压力为什么变了」被答成「因为订单有数量」。
+    const rNoVar = await t.app.inject({
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&tick=1`, headers: ADMIN,
+    });
+    expect(rNoVar.statusCode, "只给对象不给量纲仍回 200 ⇒ 又在跨量纲混排").toBe(400);
+    expect(JSON.stringify(rNoVar.json())).toContain("targetStateVar");
     const rEmpty = await t.app.inject({
-      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&tick=99&maxNodes=20`, headers: ADMIN,
+      method: "GET", url: `/a/v1/sim/sessions/${sid}/explain-slice?targetObjectId=${encodeURIComponent(modelId)}&targetStateVar=${CELL}&tick=99&maxNodes=20`, headers: ADMIN,
     });
     expect(rEmpty.statusCode).toBe(404);
     expect(JSON.stringify(rEmpty.json())).toContain("空 trace");
