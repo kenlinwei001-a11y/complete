@@ -134,4 +134,37 @@ describe("SEAM · 扰动影响面随扰动变化", () => {
       "对照世界只能来自 simCounterfactual 的 counterfactualState（active 规则集）；baselineState 不过对抗方闸，不可用",
     ).toBe(true);
   });
+
+  /* ── ⑧ ②b 摘牌结构判据（WO-EXPOSURE-CONTRIB ②b）────────────────────────────
+   * 第四个数「受阻环节」是另一种病：不是口径错，是**压根没接线** —— runM 里那一句
+   * `runSolver(chain_impediments, { scope })` 的全部入参就是 scope，没有 sid/扰动/tick，
+   * 构造性不可能随扰动变（实测零扰动 18、加扰动仍 18）。裁决 = 摘牌：
+   * 移出「本次推演结果」语境，明标「基础数据现状 · 与本次扰动无关」。
+   * ⛔ 工单明令禁止第三条路：留在原位只把标签改模糊 —— 那是把谎言降层，不是消除它。
+   * 故本条守三样：两卡不许复活 · `.impediments` 字段访问不许复活 · 明标必须在场。
+   * 反向金丝雀在注释里写死：把 `runSolver` 塞回 runM（全文件第 2 个调用点）即红。 */
+  it("⑧ 摘牌结构判据：受阻环节不许再回到「本次推演结果」语境", () => {
+    const tree = checkedTree(
+      "apps/frontend-shell/src/views/sim/unified/console0828",
+      "useMutation",
+      2,
+    );
+    // ① 「受阻环节」「可处置」两张 KPI 卡不许复活 —— 那是把构造性恒定数摆进推演结果第一屏。
+    const cards = factHits(tree, /key:\s*"(?:imp|fix)"/);
+    expect(cards, `imp/fix 两卡复活（②b 摘牌被回退）；命中：${cards.join(",")}`).toEqual([]);
+    // ② RunResult 的 `.impediments` 字段访问不许复活（顶栏 scope 回显必须来自 impQ.data）。
+    const field = factHits(tree, /\.impediments\b/);
+    expect(field, `result.impediments 复活（摘牌被回退）；命中：${field.join(",")}`).toEqual([]);
+    // ③ runSolver 全目录只能剩 **1 个**调用点（impQ 独立查询）；塞回 runM = 第 2 处 ⇒ 当场红。
+    const tsx = tree.find(([p]) => p.endsWith("Console0828.tsx"));
+    expect(tsx, "Console0828.tsx 必须在 checkedTree 里（金丝雀：目录/文件名变了这里先红）").toBeDefined();
+    const solverCalls = (tsx?.[1].match(/(?<![\w.])runSolver\s*\(/g) ?? []).length;
+    expect(solverCalls, `runSolver 调用点 = ${solverCalls}，应恰为 1（impQ）；为 2 = 已塞回 runM`).toBe(1);
+    // ④ 摘牌后的明标必须在场：「基础数据现状 · 与本次扰动无关」（读者不读代码也能判断）。
+    const caption = factHits(tree, /c0828-base-status/);
+    expect(
+      caption.some((f) => f.endsWith("Console0828.tsx")),
+      "c0828-base-status 明标缺失 —— 摘牌不是删数，新位置的措辞必须让读者自己判断它与扰动无关",
+    ).toBe(true);
+  });
 });
