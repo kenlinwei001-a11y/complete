@@ -341,6 +341,14 @@
 .lensTabOn { color: var(--accent-txt); border-bottom-color: var(--accent); font-weight: 600; }
 /* 页签上的条数（`[受阻环节 18]` 那个 18）—— 取自引擎回包，⛔ 不是写死的装饰。 */
 .lensN { font-family: var(--font-mono); font-weight: 600; margin-left: 4px; }
+/* 页签分组标（WO-EXPOSURE-CONTRIB ②b）：「基础数据现状 · 与本次扰动无关」/「本次推演结果」。
+   必须第一层可见 —— 它是读者判断「这组数跟不跟这次扰动有关」的唯一凭据；
+   字小号、灰色、不可点，与真页签一眼分开（它是标注，不是可切的面板）。 */
+.lensGroup {
+  flex: none; align-self: center;
+  font-size: 11px; color: var(--muted2); white-space: nowrap;
+  padding: 0 6px 0 10px; cursor: default; user-select: none;
+}
 /* 「专家工作台」是**另一套 UX**不是本页的一个切面 ⇒ 钉在最右，且**不进滚动区**
    （`flex:none` + 左侧分隔线：一眼看出它与左边那排不是同一类东西）。 */
 .lensRight { flex: none; border-left: 1px solid var(--line2); margin-left: 6px; }

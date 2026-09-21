@@ -25,8 +25,11 @@
  *   ③ `createSimPerturbation` × N   把左栏那 N 件事逐条施加
  *   ④ `simTick(n, disclose:true)`   推 N 拍，并要**披露层**（规则/切片/耗时/是否调 agent）
  *   ⑤ `simWorld`      读**扰动后**的世界
- *   ⑥ `runSolver("chain_impediments")` 出卡点与对策
- * 六步在一个 mutation 里顺序跑完，屏上只有一个按钮。
+ * 五步在一个 mutation 里顺序跑完，屏上只有一个按钮。
+ * ⛔ `runSolver("chain_impediments")` **曾经**是这里的第 ⑥ 步 —— 已摘出（WO-EXPOSURE-CONTRIB
+ *   ②b）：它只收 `{scope}`、不读会话/世界态/扰动 ⇒ 算的时候根本不知道有扰动这回事，
+ *   摆在「本次推演结果」里就是把一个构造性恒定的数放进推演语境。现在它走独立的 `impQ`
+ *   （挂载与换范围时跑），展区明标「基础数据现状 · 与本次扰动无关」（页签行 `c0828-base-status`）。
  *
  * ── 时间一律给**真实日期**，「第 N 拍」作括注（WO-C0828-VOICE，仓主 2026-09-11）──────
  * 仓主原话：「里面的『从几拍』起，太模糊了，为何不调整为日期呢？」，并裁决
@@ -131,8 +134,12 @@ interface RunResult {
   /** 每条扰动的落库回执（`startTick` 是后端定的，不是前端猜的）。 */
   readonly receipts: readonly { readonly name: string; readonly startTick: number | null }[];
   readonly disclosure: DisclosureBrief | null;
-  readonly impediments: ChainImpedimentModel | null;
-  readonly impedimentError: string | null;
+  /**
+   * ⛔ 这里**不许**再有 `impediments` 字段（WO-EXPOSURE-CONTRIB ②b · 摘牌）：
+   * 全流程扫描只收 `{scope}`，不读会话 / 世界态 / 扰动 —— 它算的时候根本不知道有扰动这回事，
+   * 把它挂在「本次推演结果」上就是把一个构造性恒定的数摆进推演语境。
+   * 它现在有自己独立的一跳（`impQ`）与自己的展区（「基础数据现状 · 与本次扰动无关」）。
+   */
 }
 
 /** 披露层里屏上真要给的那几项（铁律 1.5 判据二：推演过程必须可披露）。 */
@@ -276,7 +283,12 @@ type TabKey = "board" | "options" | "scan" | "cust" | "money" | "log";
  * ⚠ 与本单原派单里「COO 先看钱」的排法**相反**，以红线 4 为准：
  *   诊断（哪里卡着）与对策（能调什么）用的是真数据，是这一屏唯一站得住的部分。
  */
-const HEADLINE_KPIS: readonly string[] = ["imp", "orders", "cust", "exposure"];
+/**
+ * 第一屏那几张（仓主指定）。⚠ 按 `HEADLINE_KPIS` 的**顺序**取，不是按 `kpis` 的顺序。
+ * ②b 摘牌后只剩本次推演的三个真边际量 —— 「受阻环节」曾是第一张，它是构造性恒定数
+ * （不读扰动），已移出演算结果语境（下方「基础数据现状」展区）。
+ */
+const HEADLINE_KPIS: readonly string[] = ["exposure", "orders", "cust"];
 
 export default function Console0828({
   sessionId,
@@ -578,18 +590,6 @@ export default function Console0828({
       }
       const ticked = await simTick(sid, horizon, true);
       const after = await simWorld(sid);
-      let imp: ChainImpedimentModel | null = null;
-      let impErr: string | null = null;
-      try {
-        // 范围**由顶栏选择器给**，不再写死 `{}`。`null` = 未限定（全域）。
-        // ⛔ 不许在这里编一个默认基地：未限定与「默认某个基地」是两个不同的结论集。
-        const scope = scopeBaseId === null ? {} : { baseIds: [scopeBaseId] };
-        const res = await runSolver(CHAIN_IMPEDIMENT_SOLVER_KEY, { scope });
-        imp = buildChainImpedimentModel(ChainImpedimentPayloadSchema.parse(res.data));
-      } catch (e) {
-        // ⛔ 不许静默吞：卡点这一跳没走通 ≠ 没有卡点。屏上必须分得开。
-        impErr = e instanceof Error ? e.message : String(e);
-      }
       return {
         beforeTick: before.tick,
         afterTick: ticked.curTick,
@@ -597,8 +597,6 @@ export default function Console0828({
         staged,
         receipts,
         disclosure: readDisclosure(ticked.disclosure),
-        impediments: imp,
-        impedimentError: impErr,
       };
     },
     onSuccess: (r) => {
@@ -653,9 +651,32 @@ export default function Console0828({
     [orders, touchedOrderIds],
   );
 
+  /**
+   * ── 全流程扫描（WO-EXPOSURE-CONTRIB ②b · 摘牌）────────────────────────────────
+   * 这一跳**独立**于 `runM`：挂载与换范围时各跑一次，「开始推演」**不再**触发它。
+   * 它的入参只有 `{scope}` —— 不读会话、不读世界态、不读扰动（`runSolver(chain_impediments)`
+   * 的契约里压根没有这些入参）⇒ 它算的时候**根本不知道有扰动这回事**，加不加扰动恒为同一个数
+   * （实测：零扰动 18 处，加扰动仍 18 处）。
+   * 形态：「我用『这个数是这次推演算出来的』当作『它度量了这次推演』的证据，而前者并不度量后者。」
+   * ⇒ 它不属于「本次推演结果」，属于**基础数据现状**；展区与措辞都按这个身份给（见页签行
+   *   `c0828-base-status` 那句明标）。
+   * 范围**由顶栏选择器给**，不写死 `{}`。`null` = 未限定（全域）。
+   * ⛔ 不许在这里编一个默认基地：未限定与「默认某个基地」是两个不同的结论集。
+   */
+  const impQ = useQuery({
+    queryKey: ["a", "chain-impediments", scopeBaseId ?? "all"],
+    queryFn: async (): Promise<ChainImpedimentModel> => {
+      const scope = scopeBaseId === null ? {} : { baseIds: [scopeBaseId] };
+      const res = await runSolver(CHAIN_IMPEDIMENT_SOLVER_KEY, { scope });
+      return buildChainImpedimentModel(ChainImpedimentPayloadSchema.parse(res.data));
+    },
+  });
+  /** 调用失败要原样上屏 —— 「没走通」与「无卡点」处置相反，⛔ 不许静默吞。 */
+  const impErr: string | null = impQ.error instanceof Error ? impQ.error.message : impQ.error === null ? null : String(impQ.error);
+
   /** 区④/⑤：能动的 N 处 / 只能盯着的 M 处 —— 全部取自引擎，前端零判定。 */
   const impGroups = useMemo(() => {
-    const m = result?.impediments;
+    const m = impQ.data ?? null;
     if (m === undefined || m === null) return null;
     const all = m.groups.flatMap((g) => g.items);
     const actionable = all.filter((i) => i.candidates.length > 0);
@@ -691,7 +712,9 @@ export default function Console0828({
     const watchOnly = [...raw].sort((a, b) => ratioOf(b) - ratioOf(a) || b.severity - a.severity);
     const severityTied = raw.filter((i) => i.severity >= 100).length;
     return { all, actionable, watchOnly, model: m, ratioOf, severityTied };
-  }, [result]);
+    // ⛔ 依赖必须是 `impQ.data`（②b 摘牌后取数在 impQ）—— 挂 `[result]` 的话
+    // 扫描回来了也不重算，屏上恒为「未取到」：依赖数组写错 = 接了线不触发。
+  }, [impQ.data]);
 
   const picked = useMemo(() => {
     if (impGroups === null) return null;
@@ -820,7 +843,9 @@ export default function Console0828({
    * ⛔ 不许把这段 JSX 复制一份进弹窗：复制即两套真相源 ——
    *   改了内联忘了弹窗，两处对同一个方案给出两种说法，比看不全更糟。
    */
-  const OptionsGrid = ({ p, mv }: { p: NonNullable<typeof picked>; mv: NonNullable<typeof money> }): JSX.Element => (
+  /* ②b：本面板是基础数据（不随扰动变），唯有第四栏这一格「代价」是**本次推演**的量
+     （敞口 / 单数来自 `runM`）⇒ `mv` 放宽为可空，空 = 尚未推演，那格如实写，⛔ 不编数。 */
+  const OptionsGrid = ({ p, mv }: { p: NonNullable<typeof picked>; mv: NonNullable<typeof money> | null }): JSX.Element => (
     <div className={styles.opts} data-testid="c0828-opt-grid">
       {p.candidates.slice(0, 3).map((c) => (
         <div key={c.candidateId} className={styles.opt} data-testid={`c0828-opt-${c.candidateId}`}>
@@ -884,9 +909,15 @@ export default function Console0828({
             </li>
           </ul>
           <div className={styles.tot}>
-            被推动的订单敞口 <span className={styles.totBig}>{fmtMoney(mv.exposure, "元")}</span>
-            <br />
-            <span className={styles.calibre}>{mv.exposedOrders} 张单仍在此路径上</span>
+            {mv === null ? (
+              <span className={styles.calibre}>不处置的代价（被推动的订单敞口）—— <b>尚未推演</b>，跑完「开始推演」在此给出。</span>
+            ) : (
+              <>
+                被推动的订单敞口 <span className={styles.totBig}>{fmtMoney(mv.exposure, "元")}</span>
+                <br />
+                <span className={styles.calibre}>{mv.exposedOrders} 张单仍在此路径上</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -954,7 +985,7 @@ export default function Console0828({
    * ── 关于「迷你走势」（sparkline）：**今天没有，如实缺着** ────────────────────
    *   参考稿每张 KPI 卡都带一条走势线。本屏画不出来，原因是真的：
    *   `runM` 走的是 `simTick(sid, horizon)` **一次跳 N 拍**，然后 `simWorld` 读**一次**终态
-   *   （本文件头注那五步的 ③④）⇒ 全屏只有「扰动前」「扰动后」**两个**观测点，
+   *   （本文件头注那五步的 ③④）⇒ 全屏只有「无扰动对照」「扰动后终态」**两个**观测点，
    *   中间每一拍的读数**从未取回**。两点画不出走势，补一条是编历史。
    *   ⇒ 屏上给一句说明（`c0828-kpi-nospark`），**不画那条线**。
    *   ⚠ 这不是「没做」，是「没有数据源」——两者处置相反，故写明是哪一种。
@@ -1056,7 +1087,7 @@ export default function Console0828({
         value: fmtMoney(money.exposure, "元"),
         small: true,
         cmp: `占订单簿 ${pct(share)} · 基数 ${fmtMoney(money.bookTotal, "元")}`,
-        cal: (<>口径：本次推演中读数发生变化的订单，按对象层成交额合计 —— 是「<b>受影响订单的金额规模</b>」，<b>不是利润损失</b>（毛利 / 成本 / 应收三项本次无法计算，见下方「金额勾稽」）。
+        cal: (<>口径：本次推演中<b>相对无本批扰动的对照世界</b>读数发生变化的订单，按对象层成交额合计 —— 是「<b>受影响订单的金额规模</b>」，<b>不是利润损失</b>（毛利 / 成本 / 应收三项本次无法计算，见下方「金额勾稽」）。
           <br />
           <b>⚠ 这个数今天不能直接用来做决策。</b>金额本身是真的（对象层 Order.value），
           但「<b>哪些订单算被推动</b>」由<b>结构派生的占位世界</b>决定，不由「这张单是否真用了出事的物料」决定：
@@ -1080,12 +1111,14 @@ export default function Console0828({
         label: "受影响订单",
         value: String(money.exposedOrders),
         cmp: `共 ${money.bookOrders} 张 · 读到 ${money.ordersSeen} 张`,
-        cal: (<>口径：按<b>世界差分全集</b>判定，<b>不按</b>被扰动的源格判定 —— 源变量常被顶在域上界，源格只动千分之几而下游动千百倍。读到 0 张表示遍历失效，不是「无波及」。
+        cal: (<>口径：按<b>世界差分全集</b>判定，<b>不按</b>被扰动的源格判定 —— 源变量常被顶在域上界，源格只动千分之几而下游动千百倍。
+          差分基准 = 同会话、同 N 拍、<b>无本批扰动的对照世界</b>（不是推演前快照）⇒ 读到 0 张 = 本批扰动没有推动任何一张单，
+          零扰动时 0 正是<b>期望结果</b>，不是遍历失效。
           <br />
           ⚠ 这是<b>张数</b>，可靠性与上面那笔金额同源：<b>哪些单进这个集合</b>由结构派生的占位世界决定
           （本会话实测 <b>实测格 0 / 派生格 5,895</b>）⇒ 张数可信为「有这么多单被推动」，
           但<b>不可读作「这几张单真的因这件事受影响」</b>。</>),
-        calOne: "按世界差分全集判定 · 不按源格",
+        calOne: "对无扰动对照世界差分判定 · 不按源格",
         estimated: true,
         estTag: "集合由占位世界选出",
       },
@@ -1101,39 +1134,13 @@ export default function Console0828({
         estimated: true,
         estTag: "集合由占位世界选出",
       },
-      {
-        key: "imp",
-        label: "受阻环节",
-        value: impGroups === null ? "—" : String(impGroups.all.length),
-        cmp:
-          impGroups === null
-            ? "本次未取到"
-            : impGroups.model.groups.map((g) => `${g.label}${g.items.length}`).join(" · "),
-        cal: (<>口径：卡点 / 堵点 / 断点是引擎回包里 kind 的<b>三个不同取值</b>，处置相反，<b>不合并</b>成一个词。取不到时显「—」，那是<b>调用失败</b>，不是「无卡点」。
-          <br />
-          <b>这一格是本屏出身最硬的数</b>：全流程扫描只收<b>范围</b>，不收会话 / 世界态 / 扰动 ——
-          它读的是<b>对象层真字段</b>、判的是<b>规则表里的真红线</b>（每处都带判据码与实测值 / 阈值），
-          与那个结构派生的占位世界<b>无关</b>。
-          ⚠ 同一枚硬币的另一面：<b>加不加扰动，这个数都不会变</b>（本次实测 12 件扰动与 1 件扰动同为 18 处）——
-          它答的是「这条链今天哪里卡着」，<b>不是</b>「这次扰动卡出了什么」。</>),
-        calOne: "读对象层真字段 · 判规则表真红线 · 不随扰动变",
-      },
-      {
-        key: "fix",
-        label: "可处置",
-        value: impGroups === null ? "—" : String(impGroups.actionable.length),
-        cmp: impGroups === null ? "本次未取到" : `仅可监控 ${impGroups.watchOnly.length} 处`,
-        // 「一处都动不了」是真告警 ⇒ 这一张才允许染色（纪律第 4 条）。
-        alert: impGroups !== null && impGroups.all.length > 0 && impGroups.actionable.length === 0,
-        // 这两句是**阈值式定义**，不是断言：逐字对应上面 `impGroups` 的两条 filter
-        // （`candidates.length > 0` / `=== 0`），每次渲染现算 ⇒ 不存在「过时」这一态，
-        // 故**不挂** `@stale-fact`。⛔ 别写成「一条都没有」那种否定断言形态：
-        // 同一个意思，前者是定义（恒真），后者读起来像在报一个当下的事实（会过时）。
-        cal: (<>口径：「可处置」= 引擎为该处<b>枚举出的对策条数 ≥ 1</b>；「仅可监控」= 该条数<b>为 0</b>。<b>系统不给推荐，决策由使用方作出。</b></>),
-        calOne: "引擎枚举出的对策条数 ≥ 1",
-      },
-      /* 第六张 —— 与推演前那张 `entity` **同一个取数**（`entityTotal` / `entityCounts`），
-         ⛔ 不是为了凑满六格新编的量。`key` 也沿用 `entity`，testid 因此前后一致。 */
+      /* ⛔ 这里**不再有**「受阻环节」「可处置」两张卡（WO-EXPOSURE-CONTRIB ②b · 摘牌）：
+         全流程扫描不读会话 / 世界态 / 扰动，加不加扰动恒为同一个数 ⇒ 它不是「本次推演结果」，
+         摆在这一格里就是把一个构造性恒定的数放进推演语境。
+         那个数没有删 —— 它在下方页签行自己独立的展区（「基础数据现状 · 与本次扰动无关」）里，
+         读者一眼能判断它与这次扰动无关。 */
+      /* 第四张 —— 与推演前那张 `entity` **同一个取数**（`entityTotal` / `entityCounts`），
+         ⛔ 不是为了凑格新编的量。`key` 也沿用 `entity`，testid 因此前后一致。 */
       {
         key: "entity",
         label: "可落点实体",
@@ -1144,7 +1151,7 @@ export default function Console0828({
       },
     ];
     // `cal` 进依赖：「推演时长」那格的长度口径现在读它（天/拍），会话口径一到手这张卡要重算。
-  }, [result, money, custView, impGroups, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts, cal]);
+  }, [result, money, custView, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts, cal]);
 
   /* ══ WO-C0828-COO-FIRST-SCREEN · 「怎么办」那 3–4 行 ═══════════════════════════
    *
@@ -1183,17 +1190,28 @@ export default function Console0828({
    * 页签表。**条数全部来自引擎回包**（`impGroups` / `picked` / `custView`），⛔ 无一写死。
    * ⚠ 取不到时给 `null` 而不是 `0` —— 「没取到」与「有 0 条」处置相反，
    *   页签上显示一个 `0` 会把「这次没问出来」读成「这里确实空」。
+   *
+   * ── 两组，不许混（WO-EXPOSURE-CONTRIB ②b · 摘牌）──────────────────────────
+   * `BASE_TABS` = 全流程扫描一家（board/options/scan）：求解器只收 `{scope}`，
+   *   不读会话 / 世界态 / 扰动 ⇒ 构造性恒定，属**基础数据现状**，独立于「开始推演」常驻。
+   * `RESULT_TABS` = 本次推演的边际结果（cust/money/log）：`runM` 跑完才存在。
+   * 两组在同一行里并排，但各有各的分组标 —— 读者**不读代码**也能判断哪组跟这次扰动有关。
    */
-  const TABS = useMemo(
+  const BASE_TABS = useMemo(
     (): readonly { key: TabKey; label: string; n: number | null }[] => [
       { key: "board", label: "受阻环节", n: impGroups?.all.length ?? null },
       { key: "options", label: "对策方案", n: picked?.candidates.length ?? null },
       { key: "scan", label: "全流程扫描", n: impGroups?.watchOnly.length ?? null },
+    ],
+    [impGroups, picked],
+  );
+  const RESULT_TABS = useMemo(
+    (): readonly { key: TabKey; label: string; n: number | null }[] => [
       { key: "cust", label: "客户与订单", n: custView?.touchedCustomers ?? null },
       { key: "money", label: "财务影响", n: null },
       { key: "log", label: "执行记录", n: null },
     ],
-    [impGroups, picked, custView],
+    [custView],
   );
 
   /* ── 渲染 ─────────────────────────────────────────────────────────────── */
@@ -1256,7 +1274,7 @@ export default function Console0828({
     </div>
   );
 
-  /** 第一屏那四张（仓主指定）。⚠ 按 `HEADLINE_KPIS` 的**顺序**取，不是按 `kpis` 的顺序。 */
+  /** 第一屏那三张（②b 摘牌后：原本打头的「受阻环节」是构造性恒定数，已移出演算结果语境）。⚠ 按 `HEADLINE_KPIS` 的**顺序**取，不是按 `kpis` 的顺序。 */
   const headKpis = HEADLINE_KPIS.map((key) => kpis.find((k) => k.key === key)).filter(
     (k): k is KpiCard => k !== undefined,
   );
@@ -1290,14 +1308,16 @@ export default function Console0828({
           </select>
         </label>
 
-        {/* 引擎**回带**的那个 scope —— 不是我送出去的那个。两者若不一致，这里会当场看得见。 */}
-        {result?.impediments != null ? (
+        {/* 引擎**回带**的那个 scope —— 不是我送出去的那个。两者若不一致，这里会当场看得见。
+            ②b 摘牌后取自 `impQ`（扫描独立于推演）：换范围即自动重扫，
+            ⛔ 不许再写「须重新推演方可生效」—— 那句话在摘牌后是谎言。 */}
+        {impQ.data != null ? (
           <span className={styles.topTag} data-testid="c0828-scope-echo">
-            引擎本次实际扫描范围：<b>{formatScope(result.impediments.scope, result.impediments.scopeUnscoped)}</b>
+            当前扫描范围：<b>{formatScope(impQ.data.scope, impQ.data.scopeUnscoped)}</b>
           </span>
         ) : (
           <span className={styles.topDim} data-testid="c0828-scope-pending">
-            范围变更后须重新推演方可生效
+            正在按当前范围扫描…
           </span>
         )}
 
@@ -1881,8 +1901,40 @@ export default function Console0828({
         <div className={styles.lens} role="tablist" aria-label="推演控制台视图" data-testid="c0828-lens">
           {/* 会滚的那一段 —— 页签多到放不下时它自己横滚，⛔ 不折行（折行要多占一整行 37px）。 */}
           <div className={styles.lensScroll}>
-          {result !== null && money !== null
-            ? TABS.map((t) => (
+          {/* ══ 第一组 · 基础数据现状（WO-EXPOSURE-CONTRIB ②b · 摘牌）══════════════
+              这三个页签的数据来自全流程扫描（`impQ`）：只按范围裁，不读会话/世界态/扰动
+              ⇒ 加不加扰动、跑不跑推演，它们一字不变。分组标**第一层可见**，读者不读代码
+              也能判断这组数与这次扰动无关 —— 这就是摘牌的全部意义：
+              一个诚实的「这个数和你这次扰动无关」，比一个假装相关的数有价值。 */}
+          <span className={styles.lensGroup} data-testid="c0828-base-status">
+            基础数据现状 · 与本次扰动无关
+            <InfoPopover topic="为什么这组数与本次扰动无关" testId="c0828-base-status">
+              这三个页签由全流程扫描提供：它<b>只按范围裁剪</b>，入参里没有会话、没有扰动、没有世界态
+              —— 它算的时候<b>根本不知道有扰动这回事</b>，所以换一个扰动重跑，这组数一字不变。
+              它回答的是「<b>现在哪里卡着</b>」（对象层当前快照），不是「<b>这次扰动会卡在哪</b>」。
+              右边「本次推演结果」那组才是随这次扰动算出来的边际变化。
+            </InfoPopover>
+          </span>
+          {BASE_TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
+              className={tab === t.key ? `${styles.lensTab} ${styles.lensTabOn}` : styles.lensTab}
+              data-testid={`c0828-tab-${t.key}`}
+              onClick={() => { goTab(t.key); }}
+            >
+              {t.label}
+              {/* 条数取自引擎回包，⛔ 不是写死的装饰；取不到时**不显示数字**而不是显示 0。 */}
+              {t.n === null ? null : <span className={styles.lensN}>{t.n}</span>}
+            </button>
+          ))}
+          {/* ══ 第二组 · 本次推演结果 —— `runM` 跑完才存在，⛔ 不许提前摆出来 ══ */}
+          {result !== null && money !== null ? (
+            <>
+              <span className={styles.lensGroup} data-testid="c0828-result-status">本次推演结果</span>
+              {RESULT_TABS.map((t) => (
                 <button
                   key={t.key}
                   type="button"
@@ -1893,21 +1945,11 @@ export default function Console0828({
                   onClick={() => { goTab(t.key); }}
                 >
                   {t.label}
-                  {/* 条数取自引擎回包，⛔ 不是写死的装饰；取不到时**不显示数字**而不是显示 0。 */}
                   {t.n === null ? null : <span className={styles.lensN}>{t.n}</span>}
                 </button>
-              ))
-            : (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={true}
-                className={`${styles.lensTab} ${styles.lensTabOn}`}
-                data-testid="c0828-lens-console"
-              >
-                推演与对策
-              </button>
-            )}
+              ))}
+            </>
+          ) : null}
           </div>
           {/* ⚠ `c0828-expert` 这个 testid **原样保留**（3 个既有测试文件靠它进专家态）。
               它不是本页的一个切面而是**另一套 UX** ⇒ 钉在最右，**在滚动区之外** ——
@@ -1996,17 +2038,20 @@ export default function Console0828({
           </section>
         ) : null}
 
+        {/* ══ 六块面板的宿主 fragment —— ②b 摘牌后**常驻**，不再整体等 `runM` ════════
+            board / options / scan 三块来自 `impQ`（基础数据现状，与扰动无关）⇒ 挂载即在；
+            cust / money / log 三块才是「本次推演结果」⇒ 各自单独门在 `result && money` 上。
+            ⚠⚠ 原注释在这里写着「两块都仍挂在 DOM 里（**没有做成互斥页签**）——
+              既有接缝门要求 money / cust / impediment / board **同时在场**」。
+            **现在确实做成页签了，而那条约束一个字没破** ——
+            `.tabPane` 用 `hidden` 属性切换，跑完推演后几块**全部留在 DOM 里**：
+            `getByTestId` / `textContent` 都不看可见性 ⇒ 接缝门的「同时在场」照旧成立，
+            而 `display:none` 的子树**不计入 `scrollHeight`** ⇒ 一屏也成立。两件事不冲突。
+            ⛔ 这里**不许改成条件渲染**（`{tab === "cust" && …}`）：那才是真把它们拆散，
+              接缝门 ④ 与 ⑦ 会当场红，且红在「找不到 testid」这种**指向错误病因**的地方。 */}
         {result !== null && money !== null ? (
-          <>
-            {/* ══ WO-C0828-COO-FIRST-SCREEN · 页签「客户与订单」════════════════════
-                ⚠⚠ 原注释在这里写着「两块都仍挂在 DOM 里（**没有做成互斥页签**）——
-                  既有接缝门要求 money / cust / impediment / board **同时在场**」。
-                **现在确实做成页签了，而那条约束一个字没破** ——
-                `.tabPane` 用 `hidden` 属性切换，四块**全部留在 DOM 里**：
-                `getByTestId` / `textContent` 都不看可见性 ⇒ 接缝门的「同时在场」照旧成立，
-                而 `display:none` 的子树**不计入 `scrollHeight`** ⇒ 一屏也成立。两件事不冲突。
-                ⛔ 这里**不许改成条件渲染**（`{tab === "cust" && …}`）：那才是真把它们拆散，
-                  接缝门 ④ 与 ⑦ 会当场红，且红在「找不到 testid」这种**指向错误病因**的地方。 */}
+            <>
+            {/* ══ WO-C0828-COO-FIRST-SCREEN · 页签「客户与订单」（本次推演结果 ⇒ 单独门）══ */}
             <div className={styles.tabPane} hidden={tab !== "cust"} data-testid="c0828-pane-cust">
             <div className={styles.grid2}>
 
@@ -2152,10 +2197,24 @@ export default function Console0828({
             ) : null}
             </div>
             </div>
+            </>
+        ) : null}
+        {/* ══ 以下 board / options / scan 三块 = 基础数据现状（`impQ`），⛔ 不许再门在 runM 上 ══ */}
 
             {/* ══ 页签「受阻环节」—— 默认页签。它是第一屏「怎么办」那几行的宿主：
                 点进来就是逐处环节 + 每处几条对策，接着往下走。 ══ */}
             <div className={styles.tabPane} hidden={tab !== "board"} data-testid="c0828-pane-board">
+            {/* ②b 常驻化后，扫描的**进行中 / 失败**两态必须有自己的位子 ——
+                空白会被读成「无卡点」，而那与「没扫完」处置相反。 */}
+            {impGroups === null && impErr === null && impQ.isPending ? (
+              <p className={styles.empty} data-testid="c0828-board-loading">正在按当前范围扫描…</p>
+            ) : null}
+            {impErr === null ? null : (
+              <div className={styles.warnBox} data-testid="c0828-board-error">
+                卡点识别未完成：{impErr}
+                <br />—— 这是<b>调用失败</b>，不是「无卡点」。二者处置相反，故分列。
+              </div>
+            )}
             {/* ══ 区⑤ 对策看板 ══ */}
             {impGroups !== null && impGroups.all.length > 0 ? (
               <section className={styles.panel} data-testid="c0828-board">
@@ -2557,17 +2616,24 @@ export default function Console0828({
                   {zone("4", "受阻环节")}
                   <h3 className={styles.headTitle}>全流程扫描结果</h3>
                   <span className={styles.headRight}>
-                    {impGroups === null ? "本次调用未完成" : `扫出 ${impGroups.all.length} 处`}
+                    {/* ②b：本块独立于「开始推演」（`impQ` 挂载即跑），措辞不许再带「本次」推演语境。 */}
+                    {impGroups !== null
+                      ? `扫出 ${impGroups.all.length} 处`
+                      : impQ.isPending
+                        ? "正在扫描…"
+                        : "扫描未完成"}
                   </span>
                 </div>
 
-                {result.impedimentError !== null ? (
+                {impErr !== null ? (
                   <div className={styles.warnBox} data-testid="c0828-imp-error">
-                    卡点识别未完成：{result.impedimentError}
+                    卡点识别未完成：{impErr}
                     <br />—— 这是<b>调用失败</b>，不是「无卡点」。二者处置相反，故分列。
                   </div>
                 ) : impGroups === null ? (
-                  <p className={styles.empty}>本次未取到卡点数据。</p>
+                  <p className={styles.empty}>
+                    {impQ.isPending ? "正在按当前范围扫描…" : "本次未取到卡点数据 —— 调用未完成，不是「无卡点」。"}
+                  </p>
                 ) : (
                   <>
                     {/* ⚠ 「卡点 / 堵点 / 断点」是引擎回包里 `kind` 的**三个不同取值**，
@@ -2699,7 +2765,10 @@ export default function Console0828({
                       </div>
                     </div>
 
-                    {/* 时间线：主口径给**日期**，拍作括注保留（引擎的量是拍，删干净就两层对不上账）。 */}
+                    {/* 时间线：主口径给**日期**，拍作括注保留（引擎的量是拍，删干净就两层对不上账）。
+                        它是**本次推演**的内容（起止 tick 来自 `runM`）⇒ ②b 后单独门在 `result` 上，
+                        不许跟着本块的基础数据一起常驻。 */}
+                    {result !== null ? (
                     <div className={styles.tl}>
                       <div className={styles.statKey} style={{ marginBottom: 12, fontWeight: 600 }} data-testid="c0828-tl-head">
                         本次推演 {horizon} 拍：{tickLabel(cal, result.beforeTick)} → {tickLabel(cal, result.afterTick)}
@@ -2751,12 +2820,16 @@ export default function Console0828({
                         </div>
                       </details>
                     </div>
+                    ) : null}
                   </>
                 )}
               </section>
             </div>
 
-            {/* ══ 页签「财务影响」—— 金额勾稽（第一屏只给敞口一个数，明细在这里）══ */}
+            {/* ══ 页签「财务影响」—— 金额勾稽（第一屏只给敞口一个数，明细在这里）══
+                本次推演结果 ⇒ 单独门在 `result && money`（②b：不许再跟基础数据那三块共用一个门）。 */}
+        {result !== null && money !== null ? (
+            <>
             <div className={styles.tabPane} hidden={tab !== "money"} data-testid="c0828-pane-money">
               {/* ══ 区③ 钱上差多少 ══ */}
               <section className={styles.panel} data-testid="c0828-money">
@@ -2850,6 +2923,8 @@ export default function Console0828({
                 </div>
               </section>
             </div>
+            </>
+        ) : null}
 
             {/* ══ 页签「执行记录」════════════════════════════════════════════════
                 收三样，**全部是既有内容换了挂载点，一个字都不是新编的**：
@@ -2857,7 +2932,10 @@ export default function Console0828({
                  ② 被挪下来的两张 KPI 卡（`fix` 可处置 / `entity` 可落点实体）——
                    它们**没有被删**，只是让出第一屏那四格；
                    `entity` 同时仍在左栏页脚 `c0828-entity-counts` 第一层可见。
-                 ③ 本次扰动的**落库回执**（起始拍由后端定，不是前端猜的）。 */}
+                 ③ 本次扰动的**落库回执**（起始拍由后端定，不是前端猜的）。
+                本次推演结果 ⇒ 单独门在 `result`（②b 同口径）。 */}
+        {result !== null ? (
+            <>
             <div className={styles.tabPane} hidden={tab !== "log"} data-testid="c0828-pane-log">
             {restKpis.length === 0 ? null : (
               <>
@@ -2894,7 +2972,7 @@ export default function Console0828({
             <details className={`${styles.calibre} ${styles.footNote}`}>
               <summary>为什么没有走势线 · 第二行为什么不是环比</summary>
               本次推演一次跳 {horizon} 拍后只读<b>一次</b>终态，
-              全屏只有「扰动前」「扰动后」两个观测点，中间每一拍的读数从未取回{/* @stale-fact apps/frontend-shell/src/api/endpoints.ts /curTick: number; state: TickState; trace\?: unknown\[\]; disclosure\?: SimRunDisclosure/ ==1 */}
+              全屏只有「无扰动对照」「扰动后终态」两个观测点，中间每一拍的读数从未取回{/* @stale-fact apps/frontend-shell/src/api/endpoints.ts /curTick: number; state: TickState; trace\?: unknown\[\]; disclosure\?: SimRunDisclosure/ ==1 */}
               —— 两点画不出走势，补一条就是编造历史。这是缺数据源，不是缺实现。
               本屏也不留存历史推演，没有上一期可比，故第二行给的是同次推演内的真实对比。
             </details>
@@ -2993,7 +3071,9 @@ export default function Console0828({
             <div className={styles.aiBubble}>
               世界态自 {tickLabel(cal, result.beforeTick)} 推进至 {tickLabel(cal, result.afterTick)}。
               <InfoPopover topic="这一次内部跑了什么" testId="c0828-ai-pipeline">
-                一次操作依次执行：施加扰动 · 推进世界 · 财务影响 · 卡点识别 · 对策生成，共五次服务调用。
+                一次操作依次执行：读扰动前世界 · 取无扰动对照世界 · 施加扰动 · 推进世界 · 读扰动后世界；
+                财务影响由「终态 − 对照」的差分在前端算出。卡点识别<b>不在其中</b> ——
+                它不读扰动、独立常驻（见页签行「基础数据现状」），与本次推演无关。
               </InfoPopover>
               {result.disclosure === null ? (
                 <>
