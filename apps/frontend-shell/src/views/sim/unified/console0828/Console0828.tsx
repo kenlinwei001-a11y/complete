@@ -823,7 +823,10 @@ export default function Console0828({
     };
   }): JSX.Element => (
     <>
-      判据 {i.evidence.ruleKey ?? "未给"}
+      {/* 判据码 + 落点实例**两样都在第一层**（接缝门 ⑦/⑦b 咬的就是这个）：
+          只给判据码，同判据同名的两处会撞成同一串（实测两条都渲染「判据 C28」），
+          对策面板跟着选择走时读者分不出换没换 —— 那不是辨识串，是装饰。 */}
+      判据 {i.evidence.ruleKey ?? "未给"} · 落点 {i.locus.objectId}
       <InfoPopover topic="这一处是怎么定位的" testId={`c0828-fixtag-${i.locus.objectId}`}>
         落点实例 <b>{i.locus.objectId}</b>（{i.locus.label}）。
         判据码与落点实例两样都留着才分得开：只给判据码，同判据同名的两行会撞；
