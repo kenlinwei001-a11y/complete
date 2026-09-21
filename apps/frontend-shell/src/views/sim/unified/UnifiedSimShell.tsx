@@ -120,6 +120,7 @@ import {
   type PerturbationBrief,
 } from "./metricWallModel";
 import { MetricWall } from "./MetricWall";
+import { InfoPopover } from "@/components/InfoPopover";
 import { InspectorPane } from "./InspectorPane";
 import { BottomDrawer } from "./BottomDrawer";
 import Console0828 from "./console0828/Console0828";
@@ -839,9 +840,21 @@ export default function UnifiedSimShell({ view }: { view?: ViewConfigVM }): JSX.
 
       {/* ── 区② 状态条：会话出处 + 世界态出处（诚实位，两件事分开说）── */}
       <div className={styles.status} data-testid="usim-status" data-session-reason={session.reason}>
+        {/*
+          * 会话 id（`sims_demo_seed_world`）是**机器地址**，降进 `?` 浮层。
+          * R-UI-4 判据：「这句话用户读了能做什么决定？」—— 一串 id 答不出；
+          * 它对「我现在盯的是哪个世界」这件事，唯一有用的是旁边那句出处说明（已在第一层）。
+          * ⛔ 降层不删除：出了问题要对账时它是唯一坐标，`?` 就是留在第一层的可见记号。
+          */}
         <span>
           <span className={styles.statusKey}>会话 </span>
-          {sessionId ?? "—"}
+          {sessionId === undefined || sessionId === "" ? (
+            "—"
+          ) : (
+            <InfoPopover topic="这个推演世界的标识" testId="usim-session-id">
+              <span data-testid="usim-session-id-text">{sessionId}</span>
+            </InfoPopover>
+          )}
         </span>
         <span className={styles.calibre} data-testid="usim-session-reason" data-pinned={usingPinned ? "1" : "0"}>
           {usingPinned

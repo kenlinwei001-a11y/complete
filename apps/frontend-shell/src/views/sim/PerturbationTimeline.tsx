@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { isPerturbationActiveAt, type Perturbation, type PerturbationKind } from "@platform/contracts";
 import { deleteSimPerturbation, fetchSimPerturbations } from "@/api/endpoints";
 import { toast, toastError } from "@/store/toastStore";
+import { InfoPopover } from "@/components/InfoPopover";
 import { HintDot } from "./shared";
 import styles from "./SimViews.module.css";
 
@@ -292,8 +293,27 @@ export function PerturbationTimeline({ sessionId, curTick }: PerturbationTimelin
                  *    （`SandboxView.tsx` 扰动表单段，单源同在 battery.ts）——理解路径在入口侧，
                  *    本行回答的是「落在哪个坐标」。
                  */}
-                <b>{lane.objectId}</b>
-                <span>.{lane.stateVar}</span>
+                {/*
+                  * 第一层显**人话名**，坐标（`objectId.stateVar`）降进 `?` 浮层。
+                  *
+                  * ⚠ 上面那段保留裸键的理由，论据 ② 今天**已过期**，实测推翻：
+                  *   原文「`objectId` 那一半全仓没有任何展示名真值源」——
+                  *   `GET /a/v1/objects?type=Material` 回包里 `props.name` 就是中文：
+                  *   `obj_material_al_foil → 铝箔` · `obj_material_elyte → 电解液`（本机实测）。
+                  * 但**不在这里去取那份数据**：本组件挂在 2 个页上，加一次 `useQuery` 会把
+                  *   宿主的 endpoint mock 全炸一遍（`EdgeActivePanel` 头注记着这笔事故）。
+                  * ⇒ 用**手上已有的**那份人话名：扰动记录自带 `label`
+                  *   （控制台建扰动时写的「事件名 · 落点名」），零新增请求。
+                  * 取不到 label 时回落坐标 —— 诚实回落，不编名字（R14）。
+                  *
+                  * 论据 ① 的坐标身份没丢：分组键与 testid 仍是那对裸键，坐标本身进了浮层。
+                  */}
+                <b>{lane.items[0]?.label ?? lane.objectId}</b>
+                <InfoPopover topic="这条泳道的坐标" testId={`ptl-lane-${lane.objectId}-${lane.stateVar}`}>
+                  <span data-testid={`ptl-coord-${lane.objectId}-${lane.stateVar}`}>
+                    {lane.objectId}.{lane.stateVar}
+                  </span>
+                </InfoPopover>
                 {lane.activeNow >= 2 && (
                   <div className={styles.ptlStack} data-testid={`ptl-stack-${lane.objectId}-${lane.stateVar}`}>
                     ⚠ 叠加 {lane.activeNow} 层

@@ -238,11 +238,21 @@ describe("WO-DISRUPTION-CARDS · 扰动因素按域分片的卡片", () => {
     await userEvent.setup().click(within(panel).getByTestId(tid(`domain-${named!.domainKey}`)));
 
     const row = within(panel).getByTestId(tid(`edge-${named!.key}`));
-    // 第二级：系统键那一行**逐字**含 `源类型.状态变量` / 链路 / `目标类型.状态变量`。
-    const keys = within(row).getByTestId(tid(`keys-${named!.key}`));
-    expect(keys.textContent).toContain(`${named!.sourceTypeKey}.${named!.sourceStateVar}`);
-    expect(keys.textContent).toContain(named!.viaLinkKey);
-    expect(keys.textContent).toContain(`${named!.targetTypeKey}.${named!.targetStateVar}`);
+    /*
+     * 接线名**降进 `?` 浮层**（2026-09-21 · R-UI-4：开发的话任何一层都不上屏）。
+     * 改前它直接印在第二级；第一级已是「类型中文名 · 量纲中文名」，那一行成了纯冗余。
+     *
+     * ⛔ 本断言**不许改成「屏上没有接线名就算过」** —— 规范 §1 是「允许降层，不许删除」。
+     *   所以这里咬的是「点开 `?` 之后，那三段逐字都在」：既守住了不上屏，也守住了没被删。
+     */
+    const keyTid = tid(`keys-${named!.key}`);
+    // 第一层不许再有接线名
+    expect(within(row).queryByTestId(tid(`keys-text-${named!.key}`))).toBeNull();
+    await userEvent.setup().hover(within(row).getByTestId(`info-${keyTid}`));
+    const body = await within(row).findByTestId(`info-body-${keyTid}`);
+    expect(body.textContent).toContain(`${named!.sourceTypeKey}.${named!.sourceStateVar}`);
+    expect(body.textContent).toContain(named!.viaLinkKey);
+    expect(body.textContent).toContain(`${named!.targetTypeKey}.${named!.targetStateVar}`);
 
     // 第一级：业务名。取自本体 `displayName`（`Line`→产线 / `Base`→生产基地），
     // **不是前端内联的中文名映射**（R14 零业务常数）—— 故这里断的是"屏上出现了本体给的那个名字"。

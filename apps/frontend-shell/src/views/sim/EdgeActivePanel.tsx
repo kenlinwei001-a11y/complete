@@ -19,6 +19,7 @@ import {
 } from "./edgeActiveModel";
 // 命名成 `css` 而不是惯用的 `s`：本文件已有 `const tid = (s: string) => …`，
 // 用 `s` 会被那个形参遮蔽 —— 遮蔽后类名读作 `undefined`，样式**静默全丢**（不报错）。
+import { InfoPopover } from "@/components/InfoPopover";
 import css from "./EdgeActivePanel.module.css";
 
 /**
@@ -458,10 +459,25 @@ export default function EdgeActivePanel({ sessionId, pageKey, ticks = 1 }: EdgeA
               {r.sourceLabel}
               <span className={css.rowArrow}>→</span>
               {r.targetLabel}
-              <small className={css.rowKeys} data-testid={tid(`keys-${r.key}`)}>
-                {r.from} —{r.viaLinkKey}→ {r.to}
-              </small>
             </label>
+            {/*
+              * 接线名（`Line.utilization —line_in_base→ Base.loadIndex`）**降进 `?` 浮层**。
+              *
+              * 改前它作为第二级**直接印在屏上**。那一版的理由是「同名的边靠它才分得开」——
+              * 而 `sourceLabel`/`targetLabel` 现在已是「类型中文名 · 量纲中文名」
+              * （`qualifiedStateVarText`），区分度已经在第一级里了，第二级那行成了纯冗余。
+              *
+              * ⛔ 降层不是删除（规范 §1）：本面板挂在 9 个视图上，接线名是工程侧复现这条边的
+              *   唯一坐标，`?` 就是「降层后第一层留下的可见记号」。
+              * 判据是 R-UI-4：「这句话用户读了能做什么决定？」—— 要决定关不关这条边，
+              *   读「产线·利用率 → 生产基地·负载指数」就够了；`line_in_base` 答不出。
+              * ⚠ 链路键没有中文名，前端**不许编一个**（R14 零业务常数），所以它只能原样进浮层。
+              */}
+            <InfoPopover topic="这条边的接线名" testId={tid(`keys-${r.key}`)}>
+              <span data-testid={tid(`keys-text-${r.key}`)}>
+                {r.from} —{r.viaLinkKey}→ {r.to}
+              </span>
+            </InfoPopover>
             {/*
              * 第 3 列：系数/延迟 —— 这两个数是**边的声明值**（"算出来的"），
              * 与第 1 列那个"你能拨的"开关在视觉上分开：等宽 + 弱化 + `声明值` tag。
