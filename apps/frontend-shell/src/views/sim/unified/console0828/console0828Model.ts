@@ -100,6 +100,35 @@ export function diffWorld(before: WorldCells, after: WorldCells, eps = 1e-9): re
   return out.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || a.objectId.localeCompare(b.objectId));
 }
 
+/**
+ * ══ WO-EXPOSURE-CONTRIB · 「被这次扰动推动的」必须真的度量扰动的贡献 ═══════════
+ *
+ * 仓主实拍（2026-09-14 与 2026-09-21 两次独立的零扰动对照，两个 dev 各测一次）：
+ *   **一个扰动都不加**直接「开始推演」，屏上照样 150 张 / 15,663,001,584 元 / 17 家。
+ *
+ * 病因：deltas 取自 `diffWorld(推演前, 推演后)` —— 度量「**时间走了 N 拍，世界变了什么**」。
+ *   播种世界自带一条**永久**扰动（种子 `_p0`，durationTicks:null，幅度 +212.42），
+ *   每一拍都在继续传导，背景漂移实测 p50 ≈ 8.64 压力点 ≫ `NOISE_FLOOR`(0.01)
+ *   ⇒ 150 张在世单**全部**越过门槛，与扰动内容无关。
+ * 形态：「我用『推演前后两个世界的差』当作『这次扰动推动了什么』的证据，
+ *   而前者并不度量后者 —— 不加任何扰动、光让时间走 N 拍，世界照样会变。」
+ *
+ * 修法：deltas = **对照世界 vs 实跑世界** 的差。
+ *   对照 = 同会话 active 规则集 · 同 horizon · 同背景（种子扰动照样传导）·
+ *          唯一差别 = **没有本批扰动**（`counterfactualState`，在施加本批扰动**之前**取）。
+ *   ⇒ 背景 churn 两侧相消，剩下的就是这批扰动的**边际贡献**。
+ *   对照的合法性实测（tick vs counterfactual 根因单，决定性实验）：
+ *   零扰动时该对照与真 tick **6381 格逐字节相同（diff=0）** —— 同规则集、同算法、同起点。
+ *
+ * ⛔ 不许拿 counterfactual 回包里的 `baselineState` 当对照：
+ *   它走 published 全规则集、**不过对抗方闸**，比真 tick 多一条 C36 还手边
+ *   （`demo_customer_reaction_cut_order`），与实跑世界差 **425 格**、
+ *   `Order.orderChurn` 单格最高差 **80.26** —— 拿它当对照等于给每张单先塞一个 80 的假贡献。
+ */
+export function buildRunExposureDeltas(controlState: WorldCells, afterState: WorldCells): readonly CellDelta[] {
+  return diffWorld(controlState, afterState);
+}
+
 /** 一个金额在屏上的三态。**「算不出来」与「是 0」必须分得开**（稿上删除线的语义）。 */
 export type MoneyCell =
   | { readonly kind: "value"; readonly yuan: number }

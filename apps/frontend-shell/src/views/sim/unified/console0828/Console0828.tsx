@@ -18,12 +18,15 @@
  *   > 「其余 12,675 个对象只在**结果里**出现，不进选择器 …… **专家模式 ▸**」
  *
  * ── 「开始推演」这一下到底做了什么（稿上那句「用户不需要知道这是五次调用」）──────
- *   ① `simWorld`      读**扰动前**的世界（差分的基准）
- *   ② `createSimPerturbation` × N   把左栏那 N 件事逐条施加
- *   ③ `simTick(n, disclose:true)`   推 N 拍，并要**披露层**（规则/切片/耗时/是否调 agent）
- *   ④ `simWorld`      读**扰动后**的世界
- *   ⑤ `runSolver("chain_impediments")` 出卡点与对策
- * 五步在一个 mutation 里顺序跑完，屏上只有一个按钮。
+ *   ① `simWorld`      读**扰动前**的世界（起止 tick 与版面基准）
+ *   ② `simCounterfactual(n)` 取**对照世界**：同会话 active 规则集 · 同 N 拍 ·
+ *      同背景，唯一差别 = 没有本批扰动（WO-EXPOSURE-CONTRIB —— 波及面差分的**基准是它**，
+ *      不是 ①；拿 ① 当基准量到的是「时间走了 N 拍的总 churn」，零扰动也报 150 张）
+ *   ③ `createSimPerturbation` × N   把左栏那 N 件事逐条施加
+ *   ④ `simTick(n, disclose:true)`   推 N 拍，并要**披露层**（规则/切片/耗时/是否调 agent）
+ *   ⑤ `simWorld`      读**扰动后**的世界
+ *   ⑥ `runSolver("chain_impediments")` 出卡点与对策
+ * 六步在一个 mutation 里顺序跑完，屏上只有一个按钮。
  *
  * ── 时间一律给**真实日期**，「第 N 拍」作括注（WO-C0828-VOICE，仓主 2026-09-11）──────
  * 仓主原话：「里面的『从几拍』起，太模糊了，为何不调整为日期呢？」，并裁决
@@ -56,6 +59,7 @@ import {
   fetchSimViewConfig,
   proposeSimCandidates,
   runSolver,
+  simCounterfactual,
   simTick,
   simWorld,
   type SimProposalResponse,
@@ -76,9 +80,9 @@ import {
   BIZ_RUNG,
   buildCustomerView,
   buildMoneyView,
+  buildRunExposureDeltas,
   buildTickCalendar,
   IMPEDIMENT_KIND_PLAIN,
-  diffWorld,
   fmtMoney,
   NOCALC_WHY,
   ORDER_STATUS_TEXT,
@@ -541,11 +545,23 @@ export default function Console0828({
     setOpenEvent(null);
   };
 
-  /* ── 「开始推演」——五步一次走完 ───────────────────────────────────────── */
+  /* ── 「开始推演」——六步一次走完 ───────────────────────────────────────── */
   const runM = useMutation({
     mutationFn: async (): Promise<RunResult> => {
       const sid = sessionId as string;
       const before = await simWorld(sid);
+      /**
+       * 对照世界（WO-EXPOSURE-CONTRIB）：**必须在施加本批扰动之前取**。
+       * `counterfactualState` = 同会话 active 规则集 · 同 horizon · 同背景（种子扰动照样传导），
+       * 唯一差别 = 没有本批扰动 ⇒ 它与实跑终态之差才是这批扰动的**边际贡献**。
+       * ⛔ 两个不许：
+       *  · 不许用 `before.state`（推演前快照）当基准 —— 那量到的是「时间走 N 拍的总 churn」，
+       *    种子永久扰动每拍都在传导，零扰动也报 150 张 / 156.6 亿（仓主两次零扰动对照实拍）。
+       *  · 不许用回包里的 `baselineState` —— 它走 published 全规则集、不过对抗方闸，
+       *    比真 tick 多一条 C36 还手边，与实跑世界差 425 格（orderChurn 单格最高差 80.26）。
+       * 本调用只读（persist:false），不写世界态、不推 curTick。
+       */
+      const control = await simCounterfactual(sid, { n: horizon });
       const receipts: { name: string; startTick: number | null }[] = [];
       for (const s of staged) {
         const r = await createSimPerturbation(sid, {
@@ -577,7 +593,7 @@ export default function Console0828({
       return {
         beforeTick: before.tick,
         afterTick: ticked.curTick,
-        deltas: diffWorld(before.state as WorldCells, after.state as WorldCells),
+        deltas: buildRunExposureDeltas(control.counterfactualState as WorldCells, after.state as WorldCells),
         staged,
         receipts,
         disclosure: readDisclosure(ticked.disclosure),
