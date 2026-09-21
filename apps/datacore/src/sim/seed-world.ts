@@ -960,8 +960,15 @@ async function finishSeedWorld(
         // （`stateVarDisplayName` 查不到就回落裸变量名，长度不受本仓控制）。
         // 超一个字 ⇒ `safeParse` 失败 ⇒ 播种抛错 ⇒ **整个服务起不来**。
         // 一句展示文案不值得赌服务启动；真正的出处在 `scope.seedPerturbation` 里，那份不截。
+        // ⚠ 幅度只在**这句话里**降精度，`magnitude` 字段本身一个位都不动。
+        // 理由：`magnitude = hi - lo` 是两个实测极值的浮点减法，尾巴是 IEEE754 的
+        // （实测屏上出现 `+212.42020000000002`）。但它同时是**真正喂给引擎的 delta** ——
+        // 改它会让播种世界的每个数在第 10 位后漂移，确定性基线（R6 同种子逐字节一致）当场作废。
+        // ⇒ 只改这句人话，机器值留在 `magnitude` 与 `scope.seedPerturbation` 里，可复算。
+        // `toPrecision(6)` 而不是定点小数位：全距可能小到 0.0003，定点两位会显示成
+        // `+0.00` —— 那不是"精简"，那是把一个真发生的扰动说成没发生。
         label: (
-          `种子扰动 · 把「${varLabel}」抬高一个全距（+${choice.magnitude}）` +
+          `种子扰动 · 把「${varLabel}」抬高一个全距（+${Number(choice.magnitude.toPrecision(6))}）` +
           `｜落点 = 传导可达面最大的一格（${choice.candidates} 个候选里下游 ${choice.reachCells} 格 / ${choice.reachObjects} 个对象）`
         ).slice(0, 200),
       },
