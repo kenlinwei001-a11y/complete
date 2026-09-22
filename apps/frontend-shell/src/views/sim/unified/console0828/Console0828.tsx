@@ -282,6 +282,36 @@ const HEADLINE_KPIS: readonly string[] = ["imp", "orders", "cust", "exposure"];
  */
 const PICK_LIMIT = 500;
 
+/**
+ * 一条对策**改善最大的那一维**。
+ *
+ * ⛔⛔ **一个编出来的量都没有。** 逐行读过契约原文复核：
+ *   `packages/contracts/src/chain-sim.ts` 的 `SolutionCandidateSchema` 是 `z.strictObject`，
+ *   字段清单只有 candidateId / impedimentId / label / lever / fromValue / toValue /
+ *   join / rungKind / rungSource / effectKind / dims / provenance / dataMode。
+ *   **没有 cost、没有 leadTime、没有「见效时间」、没有「风险等级」。**
+ *   `strictObject` 还意味着后端多塞一个字段会直接 parse 失败 ⇒ 这份清单就是全部。
+ *   （屏上那两格 `——` 的说明浮层 `c0828-opt-nocost` 讲的就是这件事。）
+ *
+ * ⚠ `improvement` 的**方向判定走 contracts 单源** `candidateDimImprovement`（>0 = 比基线好），
+ *   前端不自己判「越大越好还是越小越好」——`betterWhen` 两种都有，自己判必错一半。
+ * ⚠ 只取 `moved === true` 的维：契约 `superRefine` 只保证**至少一维**动了，
+ *   没动的那些维 `improvement` 为 0，拿它当「改善」就是把「没变化」报成「改善 0」。
+ * ⛔ 没有拿 `breach` 冒充「代价」，也没有拿改善量冒充「见效天数」——
+ *   前者是超阈幅度，后者是 KPI 改善量，两个都不是时间也不是钱。
+ *
+ * ⚠ 写成**模块级纯函数**而不是组件内 `useMemo`：消费方 `OptionsGrid` 定义在文件更上方，
+ *   组件内的 `const` 在它那一行是 TDZ。同理 `fmtGain`。
+ */
+type CandDim = { readonly label: string; readonly unit: string; readonly moved: boolean; readonly improvement: number };
+function bestDimOf(c: { readonly dims: readonly CandDim[] }): CandDim | null {
+  const moved = c.dims.filter((d) => d.moved && Number.isFinite(d.improvement));
+  return [...moved].sort((a, b) => b.improvement - a.improvement)[0] ?? null;
+}
+
+/** 改善量的显示。⚠ 单位一律用引擎给的 `d.unit`，⛔ 前端不换算也不补单位。 */
+const fmtGain = (n: number): string => n.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+
 export default function Console0828({
   sessionId,
   onExpert,
@@ -894,6 +924,29 @@ export default function Console0828({
             <span className={styles.dimVal}>{BIZ_JOIN[c.join.kind].label}</span>
             <span className={styles.dimKey}>动完会怎样</span>
             <span className={`${styles.dimVal} ${styles.mid}`}>{BIZ_EFFECT[c.effect.kind].label}</span>
+            {/*
+              「改善最大的那一维」原本只长在页签**之上**那块「怎么办」里。那块已删（它把同样
+              四条对策又画了一遍、吃掉 169px，把本页签挤出屏幕），**但这个量不许跟着消失** ——
+              它是这条对策唯一带数值的凭据。搬到这里，与「调到哪/杠杆在哪/动完会怎样」同层。
+              ⚠ 方向判定走 contracts 单源 `candidateDimImprovement`，前端不自己判大小好坏；
+              ⚠ 只取 `moved === true` 的维 —— 没动的维 improvement 为 0，
+                拿它当「改善」就是把「没变化」报成「改善 0」。
+            */}
+            <span className={styles.dimKey}>改善最大</span>
+            <span className={styles.dimVal} data-testid={`c0828-opt-gain-${c.candidateId}`}>
+              {bestDimOf(c) === null ? (
+                <span className={styles.nocalc}>本次无改善维可报</span>
+              ) : (
+                <>
+                  {bestDimOf(c)!.label}{" "}
+                  <span className={styles.howGainNum}>
+                    {bestDimOf(c)!.improvement > 0 ? "+" : ""}
+                    {fmtGain(bestDimOf(c)!.improvement)}
+                  </span>{" "}
+                  {bestDimOf(c)!.unit}
+                </>
+              )}
+            </span>
           </div>
           <div className={styles.saves}>
             <span className={styles.savesTitle}>判定依据</span>
@@ -923,7 +976,24 @@ export default function Console0828({
         <h5 className={styles.optTitle}>不处置</h5>
         <div className={styles.dims}>
           <span className={styles.dimKey}>多久见效</span>
-          <span className={`${styles.dimVal} ${styles.na}`}>——</span>
+          {/*
+            ⚠⚠ 诚实位 · **不许删**（规范 §1：允许降层，绝不允许删除，且第一层要留可见记号）。
+            这两格的 `——` 正是那句话解释的对象 ⇒ 记号就挂在它们身上，比原先另起一段更近。
+            原先它是页签**之上**那块「怎么办」底下的一整段说明文字（两行），仓主点名：
+            「这种描述居然还出现在页面里」。成段的解释进浮层，第一层只留 `——` 与 `?`。
+          */}
+          <span className={`${styles.dimVal} ${styles.na}`}>
+            ——
+            <InfoPopover topic="为什么没有代价与见效时间" testId="c0828-opt-nocost">
+              方案候选（`SolutionCandidate`）今天只有：落点、从多少拨到多少、逐维 KPI 改善量、
+              档位出处、join 路径与生成公式 —— <b>没有 cost、没有 leadTime、没有风险等级</b>。
+              它是<b>严格对象</b>（多一个字段就会解析失败），所以这份清单就是全部。
+              ⇒ 这两格的 <b>——</b> 是<b>字段不存在</b>，<b>不是这次没取到</b>：
+              前者要上游先定义口径，后者重试即可，<b>处置相反</b>。
+              ⛔ 屏上也没有拿<b>超阈幅度</b>冒充代价、拿 <b>KPI 改善量</b>冒充天数 ——
+              那两样都不是时间，也不是钱。
+            </InfoPopover>
+          </span>
           <span className={styles.dimKey}>代价</span>
           <span className={`${styles.dimVal} ${styles.na}`}>见下</span>
           <span className={styles.dimKey}>风险</span>
@@ -1208,39 +1278,6 @@ export default function Console0828({
     // `cal` 进依赖：「推演时长」那格的长度口径现在读它（天/拍），会话口径一到手这张卡要重算。
   }, [result, money, custView, impGroups, ordersQ.data, orders, bookTotalRaw, staged.length, horizon, entityTotal, entityCounts, cal]);
 
-  /* ══ WO-C0828-COO-FIRST-SCREEN · 「怎么办」那 3–4 行 ═══════════════════════════
-   *
-   * ⛔⛔ **一个编出来的量都没有。** 开工时逐行读过契约原文复核：
-   *   `packages/contracts/src/chain-sim.ts` 的 `SolutionCandidateSchema` 是 `z.strictObject`，
-   *   字段清单只有 candidateId / impedimentId / label / lever / fromValue / toValue /
-   *   join / rungKind / rungSource / effectKind / dims / provenance / dataMode。
-   *   **没有 cost、没有 leadTime、没有「见效时间」、没有「风险等级」。**
-   *   `strictObject` 还意味着后端多塞一个字段会直接 parse 失败 ⇒ 这份清单就是全部。
-   *
-   * 故每行只摆三样**真有的**：
-   *   ① 动什么 —— `label`（引擎派生，R14 禁内联业务名词）
-   *   ② 从多少拨到多少 —— `fromText` → `toText`（按 `valueKind` 格式化后的真值）
-   *   ③ 改善最大的那一维 —— `dims` 里 `improvement` 最大的那条
-   *
-   * ⚠ `improvement` 的**方向判定走 contracts 单源** `candidateDimImprovement`（>0 = 比基线好），
-   *   前端不自己判「越大越好还是越小越好」——`betterWhen` 两种都有，自己判必错一半。
-   * ⚠ 只取 `moved === true` 的维：契约 `superRefine` 只保证**至少一维**动了，
-   *   没动的那些维 `improvement` 为 0，拿它当「改善」就是把「没变化」报成「改善 0」。
-   * ⛔ 没有拿 `breach` 冒充「代价」，也没有拿改善量冒充「见效天数」——
-   *   前者是超阈幅度（该处今天超线多少），后者是 KPI 改善量，两个都不是时间也不是钱。
-   */
-  const howtoRows = useMemo(() => {
-    if (picked === null) return null;
-    return picked.candidates.slice(0, 3).map((c) => {
-      const moved = c.dims.filter((d) => d.moved && Number.isFinite(d.improvement));
-      const best = [...moved].sort((a, b) => b.improvement - a.improvement)[0] ?? null;
-      return { id: c.candidateId, label: c.label, fromText: c.fromText, toText: c.toText, best };
-    });
-  }, [picked]);
-
-  /** 改善量的显示。⚠ 单位一律用引擎给的 `d.unit`，⛔ 前端不换算也不补单位。 */
-  const fmtGain = (n: number): string => n.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
-
   /**
    * 页签表。**条数全部来自引擎回包**（`impGroups` / `picked` / `custView`），⛔ 无一写死。
    * ⚠ 取不到时给 `null` 而不是 `0` —— 「没取到」与「有 0 条」处置相反，
@@ -1478,78 +1515,37 @@ export default function Console0828({
               </InfoPopover>
             </p>
 
-            {/* ③ 怎么办 —— 引擎枚举出来的对策，每条一行 */}
-            <div className={styles.howto} data-testid="c0828-howto">
-              {/* 小节标题与「这一行对策是谁的」合成一行 —— 单开一行要多 18px，
-                  而这 18px 是直接从页签内容区身上扣的。 */}
-              <span className={styles.vSecHead}>
-                怎么办
-                {picked === null ? null : (
-                  <>
-                    {" "}· 针对「{picked.locus.label}」（{picked.candidates.length} 条）
-                    <span className={styles.howWho}><FixTag i={picked} /></span>
-                  </>
-                )}
-              </span>
-              {picked === null || howtoRows === null ? (
-                <p className={styles.calibre} data-testid="c0828-howto-none">
-                  {impGroups === null
-                    ? "本次未取到卡点数据，故无对策可列 —— 这是调用未完成，不是「无对策」。"
-                    : "本次扫出的卡点均无可拨杠杆，引擎给不出对策 —— 这是推演结论，不是加载失败。可在「受阻环节」页签里交由 agent 再试一条路。"}
-                </p>
-              ) : (
-                <>
-                  {howtoRows.map((r) => (
-                    <div key={r.id} className={styles.howRow} data-testid={`c0828-how-${r.id}`}>
-                      <span className={styles.howName}>{r.label}</span>
-                      <span className={styles.howMove}>
-                        {r.fromText} → {r.toText}
-                      </span>
-                      <span className={styles.howGain}>
-                        {r.best === null ? (
-                          // 契约只保证「至少一维动了」；真取不到时如实说，⛔ 不填 0。
-                          <span className={styles.nocalc}>本次无改善维可报</span>
-                        ) : (
-                          <>
-                            {r.best.label}{" "}
-                            <span className={styles.howGainNum}>
-                              {r.best.improvement > 0 ? "+" : ""}
-                              {fmtGain(r.best.improvement)}
-                            </span>{" "}
-                            {r.best.unit}
-                          </>
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                  {/* 第四行「不处置」—— 设计核心，⛔ 不许省：没有它，上面几行的代价都读作净支出。 */}
-                  <div className={`${styles.howRow} ${styles.howRowNone}`} data-testid="c0828-how-donothing">
-                    <span className={styles.howName}>不处置</span>
-                    <span className={styles.howMove}>
-                      实测 {picked.evidence.metricValue.toFixed(2)} / 红线 {picked.evidence.threshold.toFixed(2)}
-                    </span>
-                    <span className={styles.howGain}>
-                      该处持续超线 <span className={styles.late}>{picked.evidence.breach.toFixed(2)}</span>，
-                      {money.exposedOrders} 张单仍在此路径上
-                    </span>
-                  </div>
-                </>
-              )}
-              {/* ⚠⚠ 诚实位 · **不许删**：屏上不给「代价 / 见效时间」，必须说清是哪一种「没有」。
-                  第一层留**可判定的那一句**（是字段不存在，不是这次没取到）——
-                  这正是规范 §1 要求降层后必须保留的那半；取证细节进浮层。 */}
-              <p className={styles.calibre} data-testid="c0828-howto-nocost">
-                这几行<b>不给「代价」与「见效时间」</b>：引擎回包里<b>没有这两个字段</b> —— 是<b>字段不存在</b>，不是这次没取到
-                <InfoPopover topic="为什么没有代价与见效时间" testId="c0828-howto-nocost">
-                  方案候选（`SolutionCandidate`）今天只有：落点、从多少拨到多少、逐维 KPI 改善量、
-                  档位出处、join 路径与生成公式 —— <b>没有 cost、没有 leadTime、没有风险等级</b>。
-                  它是<b>严格对象</b>（多一个字段就会解析失败），所以这份清单就是全部。
-                  「字段不存在」与「这次没取到」<b>处置相反</b>：前者要上游先定义口径，后者重试即可。
-                  ⛔ 屏上也没有拿<b>超阈幅度</b>冒充代价、拿 <b>KPI 改善量</b>冒充天数 ——
-                  那两样都不是时间，也不是钱。
-                </InfoPopover>
-              </p>
-            </div>
+            {/*
+              ══ 「怎么办」那一整块已删 —— WO-C0828-FIRST-SCREEN-FIT ═══════════════════
+              仓主实拍两条，实为同一处：
+                ①「点击推演后都看不完整页面，用户没有感知」
+                ②「『这几行不给代价与见效时间…』这种描述居然还出现在页面里」
+
+              ── 今天的行为是 X（真浏览器实测，视口 1680×927）──────────────────────
+              这块在页签**之上**占 169px，画的是**和「对策方案」页签同样的四条对策**
+              （两处都是 `p.candidates.slice(0, 3)` + 一个「不处置」）。净效果：
+                `c0828-tabbody`  top=548 · 可见 291px · 内容 660px ⇒ **要滚 2.27 屏**
+              —— 用户点完推演，看到的是一条缝。**同一屏把同样四条画两遍，代价是下面那遍看不见。**
+
+              ── 两处的差集（删之前逐字段比过，不是看着像就删）────────────────────
+              重叠：对策名 · 实测/红线/超线/N 张单（「不处置」那格两边一字不差）
+              仅上面有：`fromText → toText`（下面「判定依据·明细」里**已经有**，原文
+                        「取值：… → …」）、`best.improvement`（**真差集** ⇒ 已搬进
+                        `OptionsGrid` 的「改善最大」一格，见那里的注释）
+              仅下面有：调到哪 / 杠杆在哪 / 动完会怎样 / 判定依据明细 / 采纳按钮 /
+                        多久见效·代价·风险
+              ⇒ 下面那份是**超集**，删上面这份不丢任何量。
+
+              ── 诚实位去哪了（规范 §1：允许降层，绝不允许删除）──────────────────
+              「不给代价与见效时间」那段成段说明 ⇒ 已挂到 `OptionsGrid`「不处置」卡
+              **那两格 `——` 本身**（`c0828-opt-nocost`），第一层只留 `——` 与 `?`。
+              记号比原先更近：它现在就长在它解释的那个空格上。
+
+              ⚠ `c0828-howto` / `c0828-how-*` / `c0828-howto-nocost` 这几个 testid
+                **无任何测试咬着**（按字典序核过 `apps/frontend-shell/test/` 下全部
+                `c0828-*`：`c0828-honesty` → `c0828-horizon` → `c0828-idle`，中间没有
+                `c0828-how*`；同一支查法能查到 `c0828-base-status` 等一大批 ⇒ 工具没坏）。
+            */}
           </div>
         ) : kpis.length === 0 ? null : (
           /* 推演前：`--kpi-n` = 本次真的有几张卡（3 张真量）。
