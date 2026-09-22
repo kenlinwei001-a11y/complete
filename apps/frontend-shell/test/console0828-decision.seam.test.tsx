@@ -354,6 +354,11 @@ vi.mock("@/api/endpoints", () => ({
   }),
   proposeSimCandidates: vi.fn(),
 
+  // ── WO-SIM-OPTIONS-P1：采纳接线用到的 action-drafts 端点 ──
+  createActionDraft: vi.fn(async () => ({ draftId: "act_test", status: "PENDING_APPROVAL" })),
+  fetchActionDraft: vi.fn(async () => ({ id: "act_test", status: "PENDING_APPROVAL" })),
+  fetchActionDrafts: vi.fn(async () => []),
+
   // ── 外壳 `UnifiedSimShell` 在提前 return 之前照样跑的那几个 hook ──
   fetchSimSessions: vi.fn(async () => ({
     items: [
@@ -373,6 +378,7 @@ vi.mock("@/api/endpoints", () => ({
   fetchDrillStateVarLayers: vi.fn(async () => ({ layers: [], ruleCount: edges.length })),
   patchSimSessionStatus: vi.fn(),
   previewChangeImpact: vi.fn(),
+  fetchWorkspace: vi.fn(),
 }));
 
 vi.mock("@/api/apiClient", () => ({

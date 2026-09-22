@@ -47,6 +47,7 @@ import type {
   CandidateJoinKind,
   CandidateRungKind,
 } from "@platform/contracts";
+import type { CandidateVM } from "../../chainImpediment";
 
 /** 推演世界一格的读数表：`objectId → { stateVar: number }`。 */
 export type WorldCells = Readonly<Record<string, Readonly<Record<string, number>>>>;
@@ -642,64 +643,86 @@ export function tickUnitWord(cal: TickCalendar | null): string {
  * ⛔ 别改成 `Partial<Record<…>>` —— 那正好把这道门关掉。
  */
 
-/** 这个杠杆**长在哪** —— 原 `join`。 */
-export const BIZ_JOIN = {
-  LOCUS_PROP: {
-    label: "就在这个环节上",
-    why: "这个杠杆就长在卡住的那个环节上，动它最直接。",
-  },
-  LINK_HOP: {
-    label: "在直接相连的上一环",
-    why: "这个杠杆不在卡住的环节本身，在与它直接相连的上一环 —— 谁连着谁取自现场数据，不是写死的对照表。",
-  },
-  KEY_JOIN: {
-    label: "同一个编号对上的另一处",
-    why: "两处记的是同一个东西（编号一致），所以动那一处也管这一处。一个编号对上不止一处时一律不用 —— 分不清动的是哪一个。",
-  },
-  RULE_GATE: {
-    label: "同一条红线管着的",
-    why: "这处受阻环节与这个杠杆归同一条业务规则管（判据列那个规则码就是它），拨它能松这条线。",
-  },
-} as const satisfies Record<CandidateJoinKind, { readonly label: string; readonly why: string }>;
+/** 这个杠杆**长在哪** —— 由候选自身字段现生成。 */
+export function candidateJoinShort(c: CandidateVM): string {
+  const loc = c.leverName || c.lever.objectId;
+  switch (c.join.kind) {
+    case "LOCUS_PROP":
+      return `${loc}（${c.lever.objectId}）`;
+    case "LINK_HOP":
+      return `在 ${loc} 直接相连的上一环${c.join.path ? `（${c.join.path}）` : ""}`;
+    case "KEY_JOIN":
+      return `同一编号对上的 ${loc}${c.join.path ? `（${c.join.path}）` : ""}`;
+    case "RULE_GATE":
+      return `同一条红线（${c.join.path || "规则"}）管着的 ${loc}`;
+  }
+}
+export function candidateJoinWhy(c: CandidateVM): string {
+  const loc = c.leverName || c.lever.objectId;
+  switch (c.join.kind) {
+    case "LOCUS_PROP":
+      return `杠杆就长在 ${loc}（${c.lever.objectId}）这个环节上，动它最直接。`;
+    case "LINK_HOP":
+      return `杠杆不在卡住的环节本身，而在与 ${loc} 直接相连的上一环${c.join.path ? `（${c.join.path}）` : ""}——谁连着谁取自现场数据。`;
+    case "KEY_JOIN":
+      return `两处记的是同一个东西（编号一致：${c.join.path || "同一编号"}），所以动 ${loc} 也管这一处。`;
+    case "RULE_GATE":
+      return `这处受阻环节与杠杆归同一条业务规则管（${c.join.path || "规则码未给出"}），拨它能松这条线。`;
+  }
+}
 
-/** 目标值**是怎么定的** —— 原 `rung`。三档全部取自数据里真实存在的值，没有一个是拍的。 */
-export const BIZ_RUNG = {
-  THRESHOLD: {
-    label: "拉回红线以内",
-    why: "目标值就是这条红线本身 —— 取自规则，不是这里拍的数。",
-  },
-  PEER_NEXT: {
-    label: "同类里的下一档",
-    why: "目标值取自同类里紧挨着当前值的下一个真实数 —— 数据里真有对象在这个数上，不是拍的。",
-  },
-  PEER_BEST: {
-    label: "同类做到过的最好水平",
-    why: "目标值取自同类已经达到过的最好水平 —— 不是拍的，同类里真有人做到。",
-  },
-} as const satisfies Record<CandidateRungKind, { readonly label: string; readonly why: string }>;
+/** 目标值**是怎么定的** —— 由候选自身字段现生成。 */
+export function candidateRungShort(c: CandidateVM): string {
+  return `${c.lever.prop} ${c.direction} ${c.toText}`;
+}
+export function candidateRungWhy(c: CandidateVM): string {
+  switch (c.rung.kind) {
+    case "THRESHOLD":
+      return `把 ${c.lever.prop} 从 ${c.fromText} 调到规则红线 ${c.rung.source}，取回安全区间。`;
+    case "PEER_NEXT":
+      return `把 ${c.lever.prop} 从 ${c.fromText} 调到同类里紧挨着的下一档 ${c.toText}——数据里真有对象在这个数上。`;
+    case "PEER_BEST":
+      return `把 ${c.lever.prop} 从 ${c.fromText} 调到同类已经达到过的最好水平 ${c.toText}（参照：${c.rung.source}）。`;
+  }
+}
+
+/** 动完之后**真变了什么** —— 由候选 dims 现生成。 */
+export function candidateEffectShort(c: CandidateVM): string {
+  const moved = c.dims.filter((d) => d.moved);
+  if (moved.length === 0) return "本次无改善维度可报";
+  const best = moved.reduce((a, b) => (a.improvement > b.improvement ? a : b));
+  const sign = best.betterWhen === "lower" ? "↓" : "↑";
+  return `${best.label} ${sign} ${Math.abs(best.improvement).toFixed(1)}${best.unit || ""}`;
+}
+export function candidateEffectWhy(c: CandidateVM): string {
+  const moved = c.dims.filter((d) => d.moved && d.value !== null && d.baseline !== null);
+  if (moved.length === 0) return "本次无改善维度可报——拨到目标值后重算，没有维度发生变化。";
+  const lines = moved
+    .map(
+      (d) =>
+        `${d.label}: ${d.baseline!.toFixed(2)}${d.unit || ""} → ${d.value!.toFixed(2)}${d.unit || ""}` +
+        `（改善 ${d.improvement > 0 ? "+" : ""}${d.improvement.toFixed(2)}${d.unit || ""}）`,
+    )
+    .join("；");
+  return `拨动后重算，真正变化的维度：${lines}。`;
+}
 
 /**
- * 动完之后**真变了什么** —— 原 `effect`。
- *
- * ⚠ 三态是**实测出来的**（拨到目标值后重算，看动了什么就是什么），不是预先分的类。
- * ⚠ `DOWNSTREAM_ONLY` 那句里的「堵点」**刻意保留** —— 它是引擎三类之一（`CONGESTION`）的名字，
- *   不是修饰语。换成泛称就把「能力不够」与「流不动」两类合并了，而两者**处置相反**
- *   （前者加产能有用，后者加产能没用）。见下 `IMPEDIMENT_KIND_PLAIN`。
+ * WO-SIM-OPTIONS-P1 · 把 Pareto 杠杆 key（`lines.obj_xxx.capacity`）解析成对象落点。
+ * 后端菜单当前只回 `key/label/values`，但 key 本身携带 `objectType.objectId.prop`，
+ * 前端从这里投影出 adopt 需要的三元组。
  */
-export const BIZ_EFFECT = {
-  METRIC_SELF: {
-    label: "直接把超线的指标压回来",
-    why: "直接把超线的那个指标拉回红线以内。",
-  },
-  METRIC_DERIVED: {
-    label: "间接带动超线的指标",
-    why: "动的不是超线那个指标本身，但算下来它真的跟着变好了。",
-  },
-  DOWNSTREAM_ONLY: {
-    label: "指标不变，产能真上去",
-    why: "这一招不会让超线的那个数变好看，但产能是真的上去了 —— 遇到「能力够却流不动」那一类（屏上标「堵点」），只有这一类管用。",
-  },
-} as const satisfies Record<CandidateEffectKind, { readonly label: string; readonly why: string }>;
+export function parseParetoLeverKey(key: string): { objectType: string; objectId: string; prop: string } | null {
+  const i1 = key.indexOf(".");
+  if (i1 < 0) return null;
+  const i2 = key.indexOf(".", i1 + 1);
+  if (i2 < 0) return null;
+  const objectType = key.slice(0, i1);
+  const objectId = key.slice(i1 + 1, i2);
+  const prop = key.slice(i2 + 1);
+  if (!objectType || !objectId || !prop) return null;
+  return { objectType, objectId, prop };
+}
 
 /* ══════════════════════════════════════════════════════════════════════════════
  * 卡点 / 堵点 / 断点 —— **三个量，不是一个量的三种叫法**

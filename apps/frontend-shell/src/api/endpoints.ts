@@ -1271,7 +1271,17 @@ export interface SimProposalResponse {
     version: number;
     inputFingerprint: string;
     menu: {
-      levers: { key: string; label: string; values: number[]; note?: string }[];
+      /** WO-SIM-OPTIONS-P1：adopt 需要知道杠杆落在哪个对象的哪个属性，后端菜单 key 已携带，
+       *  但显式投影（或前端解析）出的 objectType/objectId/prop 更不容易出错。 */
+      levers: {
+        key: string;
+        label: string;
+        values: number[];
+        note?: string;
+        objectType?: string;
+        objectId?: string;
+        prop?: string;
+      }[];
       objectives: { key: string; label?: string; dir: "max" | "min" }[];
       worldDigest: {
         events: { kind: string; target: string; magnitude: number | null }[];

@@ -243,6 +243,12 @@ vi.mock("@/api/endpoints", () => ({
     if (impactMode === "unresolved") return IMPACT_UNRESOLVED;
     return IMPACT_FULL;
   }),
+
+  // WO-SIM-OPTIONS-P1：默认屏 console0828 adopt 接线新增 import
+  createActionDraft: vi.fn(async () => ({ draftId: "act_test", status: "PENDING_APPROVAL" })),
+  fetchActionDraft: vi.fn(async () => ({ id: "act_test", status: "PENDING_APPROVAL" })),
+  fetchActionDrafts: vi.fn(async () => []),
+  fetchWorkspace: vi.fn(),
 }));
 
 import UnifiedSimShell, { SESSION_STATUS_TEXT } from "@/views/sim/unified/UnifiedSimShell";

@@ -273,6 +273,10 @@ vi.mock("@/api/endpoints", () => ({
   deleteSimPerturbation: vi.fn(),
   createActionDraft: vi.fn(),
   fetchWorkspace: vi.fn(),
+
+  // WO-SIM-OPTIONS-P1：console0828 adopt 接线新增 import（shared 路径可能走到）
+  fetchActionDraft: vi.fn(async () => ({ id: "act_test", status: "PENDING_APPROVAL" })),
+  fetchActionDrafts: vi.fn(async () => []),
 }));
 
 import PerturbRail from "@/views/sim/unified/rail/PerturbRail";

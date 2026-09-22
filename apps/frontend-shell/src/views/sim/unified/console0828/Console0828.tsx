@@ -79,17 +79,21 @@ import {
   type LandingState,
 } from "./eventCatalog";
 import {
-  BIZ_EFFECT,
-  BIZ_JOIN,
-  BIZ_RUNG,
   buildCustomerView,
   buildMoneyView,
   buildRunExposureDeltas,
   buildTickCalendar,
+  candidateEffectShort,
+  candidateEffectWhy,
+  candidateJoinShort,
+  candidateJoinWhy,
+  candidateRungShort,
+  candidateRungWhy,
   IMPEDIMENT_KIND_PLAIN,
   fmtMoney,
   NOCALC_WHY,
   ORDER_STATUS_TEXT,
+  parseParetoLeverKey,
   spanLabel,
   tickDateISO,
   tickLabel,
@@ -100,6 +104,7 @@ import {
   type WorldCells,
   isSettledOrder,
 } from "./console0828Model";
+import { useOptionAdopt, type AdoptLever } from "./useOptionAdopt";
 import {
   buildChainImpedimentModel,
   ChainImpedimentPayloadSchema,
@@ -991,11 +996,11 @@ export default function Console0828({
           <h5 className={styles.optTitle}>{c.label}</h5>
           <div className={styles.dims}>
             <span className={styles.dimKey}>调到哪</span>
-            <span className={styles.dimVal}>{BIZ_RUNG[c.rung.kind].label}</span>
+            <span className={styles.dimVal}>{candidateRungShort(c)}</span>
             <span className={styles.dimKey}>杠杆在哪</span>
-            <span className={styles.dimVal}>{BIZ_JOIN[c.join.kind].label}</span>
+            <span className={styles.dimVal}>{candidateJoinShort(c)}</span>
             <span className={styles.dimKey}>动完会怎样</span>
-            <span className={`${styles.dimVal} ${styles.mid}`}>{BIZ_EFFECT[c.effect.kind].label}</span>
+            <span className={`${styles.dimVal} ${styles.mid}`}>{candidateEffectShort(c)}</span>
             {/*
               「改善最大的那一维」原本只长在页签**之上**那块「怎么办」里。那块已删（它把同样
               四条对策又画了一遍、吃掉 169px，把本页签挤出屏幕），**但这个量不许跟着消失** ——
@@ -1027,9 +1032,9 @@ export default function Console0828({
             <details className={styles.more}>
               <summary>判定依据 · 明细</summary>
               <div className={styles.moreBody} data-testid={`c0828-opt-why-${c.candidateId}`}>
-                <p>{BIZ_RUNG[c.rung.kind].why}</p>
-                <p>{BIZ_JOIN[c.join.kind].why}</p>
-                <p>{BIZ_EFFECT[c.effect.kind].why}</p>
+                <p>{candidateRungWhy(c)}</p>
+                <p>{candidateJoinWhy(c)}</p>
+                <p>{candidateEffectWhy(c)}</p>
                 {/* 业务事实（规则码 / 真值 / 单位）**必须给** —— 铁律 1.5 判据二。
                     该消失的是「它在代码里长什么样」，不是「这个数打哪来」。 */}
                 <p className={styles.calibre}>
@@ -1039,9 +1044,46 @@ export default function Console0828({
               </div>
             </details>
           </div>
-          <button type="button" className={`${styles.btn} ${styles.btnPrimary} ${styles.pick}`}>
-            采纳此方案
-          </button>
+          {(() => {
+            const st = adopt.statuses[c.candidateId] ?? { kind: "idle" };
+            const canClick = st.kind === "idle" || st.kind === "rejected" || st.kind === "failed";
+            const text =
+              st.kind === "idle"
+                ? "采纳此方案"
+                : st.kind === "submitting"
+                  ? "提交中…"
+                  : st.kind === "pending"
+                    ? "已送审 · 待审批"
+                    : st.kind === "approved"
+                      ? `已采纳 · ${st.targetRef ?? "已执行"}`
+                      : st.kind === "rejected"
+                        ? `已驳回 · ${st.reason ?? "重新送审"}`
+                        : `失败 · ${st.error}`;
+            return (
+              <button
+                type="button"
+                className={`${styles.btn} ${styles.btnPrimary} ${styles.pick}`}
+                disabled={!canClick}
+                data-testid={`c0828-adopt-${c.candidateId}`}
+                onClick={() =>
+                  adopt.adopt({
+                    key: c.candidateId,
+                    candidateId: c.candidateId,
+                    levers: [
+                      {
+                        objectType: c.lever.objectType,
+                        objectId: c.lever.objectId,
+                        prop: c.lever.prop,
+                        value: c.toValue,
+                      },
+                    ],
+                  })
+                }
+              >
+                {text}
+              </button>
+            );
+          })()}
         </div>
       ))}
 
@@ -1144,17 +1186,25 @@ export default function Console0828({
       name: o.name,
       rationale: o.rationale,
       // 「动哪个 / 动到几档」：逐条从菜单里把 agent 挑的那一档的**数值**取出来。
+      // WO-SIM-OPTIONS-P1：同时从 key 解析出 objectType/objectId/prop，供 adopt 落点使用。
       moves: o.picks.map((pk) => {
         const lv = p.menu.levers[pk.leverIndex];
+        const parsed = lv?.key ? parseParetoLeverKey(lv.key) : null;
         return {
           key: lv?.key ?? `杠杆#${String(pk.leverIndex)}`,
           label: lv?.label ?? lv?.key ?? `杠杆#${String(pk.leverIndex)}`,
           value: lv?.values[pk.valueIndex] ?? null,
           slot: `第 ${String(pk.valueIndex + 1)} / ${String(lv?.values.length ?? 0)} 档`,
+          objectType: parsed?.objectType ?? lv?.objectType ?? "",
+          objectId: parsed?.objectId ?? lv?.objectId ?? "",
+          prop: parsed?.prop ?? lv?.prop ?? "",
         };
       }),
     }));
   }, [agentRes]);
+
+  /** WO-SIM-OPTIONS-P1：采纳 → ActionDraft 生产者 + 态机。 */
+  const adopt = useOptionAdopt(sessionId, restored);
 
   /* ══ WO-UX-UNIFY · KPI 条的取数（纪律第 2 条「KPI 条 3–5 张」）════════════════
    *
@@ -2645,9 +2695,41 @@ export default function Console0828({
                               </div>
                             </details>
                           </div>
-                          <button type="button" className={`${styles.btn} ${styles.btnPrimary} ${styles.pick}`}>
-                            采纳此方案
-                          </button>
+                          {(() => {
+                            const st = adopt.statuses[o.id] ?? { kind: "idle" };
+                            const levers: AdoptLever[] = o.moves
+                              .filter((mv) => mv.objectId && mv.prop && typeof mv.value === "number")
+                              .map((mv) => ({
+                                objectType: mv.objectType,
+                                objectId: mv.objectId,
+                                prop: mv.prop,
+                                value: mv.value as number,
+                              }));
+                            const canClick = levers.length > 0 && ["idle", "rejected", "failed"].includes(st.kind);
+                            const text =
+                              st.kind === "idle"
+                                ? "采纳此方案"
+                                : st.kind === "submitting"
+                                  ? "提交中…"
+                                  : st.kind === "pending"
+                                    ? "已送审 · 待审批"
+                                    : st.kind === "approved"
+                                      ? `已采纳 · ${st.targetRef ?? "已执行"}`
+                                      : st.kind === "rejected"
+                                        ? `已驳回 · ${st.reason ?? "重新送审"}`
+                                        : `失败 · ${st.error}`;
+                            return (
+                              <button
+                                type="button"
+                                className={`${styles.btn} ${styles.btnPrimary} ${styles.pick}`}
+                                disabled={!canClick}
+                                data-testid={`c0828-agent-adopt-${o.id}`}
+                                onClick={() => adopt.adopt({ key: o.id, candidateId: o.id, levers })}
+                              >
+                                {text}
+                              </button>
+                            );
+                          })()}
                         </div>
                       ))}
 
@@ -3349,7 +3431,7 @@ export default function Console0828({
                       {c.label}
                       <br />
                       <span className={styles.calibre}>
-                        调到哪：{BIZ_RUNG[c.rung.kind].label} · 杠杆：{BIZ_JOIN[c.join.kind].label}
+                        调到哪：{candidateRungShort(c)} · 杠杆：{candidateJoinShort(c)}
                       </span>
                     </span>
                   </li>
