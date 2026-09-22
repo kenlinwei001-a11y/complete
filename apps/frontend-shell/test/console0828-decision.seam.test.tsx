@@ -36,11 +36,20 @@ import type { PropagationRule, SandboxViewConfig, SimRunDisclosure } from "@plat
  *  ③ **加事件 → 暂存**：回包（`view-config` × `propagation-rules` × 对象层）决定哪件事落得了地，
  *     选落点 + 填幅度 → `c0828-add-*` → `c0828-staged-count` 跟着变。
  *     **加两件**（1 件与多件在模型层不是同一段：`causeOf` 只在单件时答得上主因）。
- *  ④ **算一下 → 出结果**：一个按钮背后是五跳（world → perturbation×N → tick → world → solver），
- *     断言四块结果面板**同时**出现，且它们读的是同一次结果。
+ *  ④ **算一下 → 出结果**：一个按钮背后是五跳（world → counterfactual → perturbation×N →
+ *     tick → world），断言四块结果面板**同时**出现，且它们读的是同一次结果。
  *  ⑤ **诚实态不许被吞**：三种「算不出来」各有各的屏上位置，且**都不许显示 0 或空白** ——
  *     「算不出来」与「等于 0」是两个不同的命题（`c0828-nocalc-*` / `c0828-run-error` /
  *     `c0828-imp-error`），屏上混了就是骗人。
+ *
+ * ── ②b（WO-EXPOSURE-CONTRIB · 摘牌）─────────────────────────────────────────
+ * 全流程扫描（`chain_impediments`）**不读会话/世界态/扰动** ⇒ 它构造性不可能随扰动变。
+ * 2026-09-21 起它**不再**是「算一下」的一环：改走独立的 `impQ`（挂载/换范围触发），
+ * 展区明标「基础数据现状 · 与本次扰动无关」（`c0828-base-status`）。
+ * ⇒ ⑤b 的语义**反转**：推演整跳失败时，基础数据那两块（impediment/board）**必须在场** ——
+ *   它们与这次推演的成败无关；摘牌后还让推演失败把它们拖黑，就是把同一个谎言换个位置。
+ * ⇒ ⑤c 的语义不变但路径变了：`c0828-imp-error` 现在来自 `impQ` 的失败（挂载即触发），
+ *   不再来自 runM 里的那一跳。
  *
  * ── ⓪ 金丝雀 ────────────────────────────────────────────────────────────────
  * 用例 ⓪ 先跑一个**已知必中**的样例（12 件事全部渲染出按钮）。它若失败 ⇒ 报「**工具坏了**」，
@@ -296,6 +305,20 @@ vi.mock("@/api/endpoints", () => ({
   simWorld: vi.fn(async () => ({
     tick: perturbCalls.length === 0 ? 0 : 3,
     state: perturbCalls.length === 0 ? WORLD_BEFORE : WORLD_AFTER,
+  })),
+  /* WO-EXPOSURE-CONTRIB：对照世界桩。`runM` 的差分基准 = 它的 `counterfactualState`
+     （同会话 active 规则集 · 同 N 拍 · 无本批扰动）。桩成 `WORLD_BEFORE` ⇒ 差分与
+     改前 `diffWorld(before, after)` 逐格相同，④ 的全部期望原样成立 —— 这不是巧合，
+     零扰动时对照世界 ≡ 推演前世界（真后端实测 6381 格 diff=0）。 */
+  simCounterfactual: vi.fn(async () => ({
+    fromTick: 0,
+    ticks: 3,
+    disabledRuleKeys: [],
+    suppressedRules: [],
+    baselineState: WORLD_BEFORE,
+    counterfactualState: WORLD_BEFORE,
+    diffs: [],
+    suppressedRulesFiredInBaseline: [],
   })),
   createSimPerturbation: vi.fn(async (_sid: string, body: Record<string, unknown>) => {
     perturbCalls.push(body);
@@ -558,6 +581,13 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     expect(screen.getByTestId("c0828-board")).toBeInTheDocument();
     expect(screen.queryByTestId("c0828-idle")).toBeNull();
 
+    /* ②b 摘牌的两块明标（第一层可见）：基础组与结果组各有各的分组标，
+       读者不读代码也能判断哪组数随这次扰动。 */
+    const baseCap = screen.getByTestId("c0828-base-status");
+    expect(baseCap.textContent ?? "").toContain("基础数据现状");
+    expect(baseCap.textContent ?? "").toContain("与本次扰动无关");
+    expect(screen.getByTestId("c0828-result-status").textContent ?? "").toContain("本次推演结果");
+
     // 打出去的扰动实参 = 我在屏上选的那一个（落点/量/幅度/kind 逐项对得上，不是「发了个请求」）。
     expect(perturbCalls).toHaveLength(1);
     expect(perturbCalls[0]).toMatchObject({
@@ -688,22 +718,30 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     // 屏上必须写明这是「这一跳失败」，与「结果是 0」分开 —— 两者处置相反。
     expect(err.textContent ?? "").toContain("不是「结果为 0」");
 
-    // 且**一个数都不许摆出来**：没有结果就没有钱那三行、没有卡点、没有看板。
+    // 推演结果一个数都不许摆出来：没有结果就没有钱那两块、没有执行记录。
     expect(screen.queryByTestId("c0828-money")).toBeNull();
     expect(screen.queryByTestId("c0828-cust")).toBeNull();
-    expect(screen.queryByTestId("c0828-impediment")).toBeNull();
-    expect(screen.queryByTestId("c0828-board")).toBeNull();
     expect(screen.getByTestId("c0828-idle")).toBeInTheDocument();
+
+    /* ②b 反转（WO-EXPOSURE-CONTRIB · 摘牌）：基础数据那两块**必须在场** ——
+       全流程扫描独立于「开始推演」（`impQ` 挂载即跑），推演失败与它们无关；
+       摘牌后还让失败把它们拖黑，就是把「这个数是这次推演算出来的」换个位置继续撒。
+       且分组明标必须在第一层，读者不读代码就能判断这组数与扰动无关。 */
+    await screen.findByTestId("c0828-impediment");
+    await screen.findByTestId("c0828-board");
+    const baseStatus = screen.getByTestId("c0828-base-status");
+    expect(baseStatus.textContent ?? "").toContain("基础数据现状");
+    expect(baseStatus.textContent ?? "").toContain("与本次扰动无关");
   });
 
-  it("⑤c 诚实态 · 半跳失败：钱照出，而卡点那半说「没问出来」——不许静默吞成「没有卡点」", async () => {
+  it("⑤c 诚实态 · 扫描失败：钱照出，而卡点那半说「没问出来」——不许静默吞成「没有卡点」", async () => {
     solverFails = true;
     mount();
     await railReady();
     await addEvent("material-price-up", "mat_licarb", 15);
     fireEvent.click(screen.getByTestId("c0828-go"));
 
-    // 钱这一半走通了，照常上屏（一跳失败不该把整屏拖黑）。
+    // 钱这一半走通了，照常上屏（扫描的失败不该把推演结果拖黑 —— ②b 后两者本就不在一跳里）。
     await screen.findByTestId("c0828-money");
     expect(screen.queryByTestId("c0828-run-error")).toBeNull();
 
