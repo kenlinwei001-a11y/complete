@@ -240,6 +240,9 @@ const tickSpy = vi.hoisted(() => vi.fn(async (_sessionId: string, _n?: number) =
 const worldSpy = vi.hoisted(() => vi.fn(async (_sessionId: string) => ({ tick: 0, state: {} })));
 
 vi.mock("@/api/endpoints", () => ({
+  /* 落点下拉的「号」取自本体主键。⚠ 手写的 mock 导出面不会跟着组件的新 import 走。
+     形态见 `console0828-decision.seam.test.tsx` 同名桩上的那段账。 */
+  fetchObjectTypes: vi.fn(async () => []),
   fetchSimViewConfig: vi.fn(async () => ({
     tenantId: "demo",
     nodeTypes: [...new Set(edges.flatMap((e) => [e.sourceType, e.targetType]))],

@@ -274,6 +274,12 @@ const perturbations = [
 ];
 
 vi.mock("@/api/endpoints", () => ({
+  /* 落点下拉的「号」取自本体主键。⚠ 这条桩是被真跑逼出来的：组件新增一个
+     `fetchObjectTypes` import 后 typecheck 绿、真浏览器跑通，而这里的 `vi.mock`
+     是**手写的导出清单**、不会自动跟上 ⇒ 组件拿到 undefined ⇒ 本文件 13/13 全红。
+     形态：「我用『typecheck 绿』当作『新 import 处处可用』的证据 —— mock 的导出面
+     是手写的，类型系统看不见。」（CLAUDE.md 铁律 0.6 第 4 条同族。） */
+  fetchObjectTypes: vi.fn(async () => []),
   fetchSimViewConfig: vi.fn(async () => cfg),
   fetchDrillStateVarLayers: vi.fn(async () => ({ layers: layersFromEdges(edges), ruleCount: edges.length })),
   fetchPropagationRules: vi.fn(async () => ({ items: rulesFromEdges(edges), stateVarNames: NAMES })),

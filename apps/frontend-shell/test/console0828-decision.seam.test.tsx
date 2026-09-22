@@ -302,6 +302,26 @@ vi.mock("@/api/endpoints", () => ({
     const items = OBJECTS[type] ?? [];
     return { items, total: items.length, hasMore: false, page: 1, pageSize: 500 };
   }),
+  /*
+   * 落点下拉的「号」取自**本体声明的主键**（`properties.find(isPrimaryKey).propKey`）——
+   * 单一真相源，⛔ 前端不手抄「哪个键是订单号」的清单。
+   *
+   * ⚠ 这条桩是被本门**当场逼出来的**，值得记一笔：
+   *   组件新增一个 `fetchObjectTypes` import 之后，typecheck 绿、真浏览器跑通，
+   *   而这里的 `vi.mock` 是**手写的导出清单**，不会自动跟上 ⇒ 组件拿到 `undefined`
+   *   ⇒ 渲染当场抛错 ⇒ 本文件 **18/18 全红，连 ⓪ 金丝雀一起**。
+   *   形态：「我用『typecheck 绿 + 真浏览器跑通』当作『这个新 import 处处可用』的证据，
+   *          而前者并不度量后者 —— mock 的导出面是手写的，类型系统一个字都看不见。」
+   *   （同族见 CLAUDE.md 铁律 0.6 第 4 条：改名/加名要连断言一起改。）
+   *
+   * 桩里只给 `Order` 与 `Material` 两个类型，各带一个主键：
+   * 够本屏用（12 件事的落点类型），且**故意不给全** —— 取不到主键时下拉应只显示名字，
+   * 那条回退路径也该被真跑到，不该被一份"什么都有"的桩掩盖。
+   */
+  fetchObjectTypes: vi.fn(async () => [
+    { key: "Order", displayName: "销售订单", properties: [{ propKey: "so", dataType: "string", isPrimaryKey: true }] },
+    { key: "Material", displayName: "物料", properties: [{ propKey: "matId", dataType: "string", isPrimaryKey: true }] },
+  ]),
   simWorld: vi.fn(async () => ({
     tick: perturbCalls.length === 0 ? 0 : 3,
     state: perturbCalls.length === 0 ? WORLD_BEFORE : WORLD_AFTER,
