@@ -406,6 +406,34 @@ export default function Console0828({
   /** 当前页签。默认「受阻环节」—— 它是「怎么办」那几行的宿主，点进去接着往下走。 */
   const [tab, setTab] = useState<TabKey>("board");
 
+  /* ══ WO-C0828-FIRST-SCREEN-FIT · 宽页签时让「推演助手」收成一条竖边 ═══════════
+   *
+   * 仓主实拍：「点击推演后都看不完整页面，用户没有感知」。
+   *
+   * ── 为什么只有这一条路（真浏览器实测的账，不是版面偏好）───────────────────
+   * 视口 900px 下控制台**总共只有 744px**（app 外壳给底部输入条留了 80px，动不得）：
+   *   topbar 43 + 结论区 186 + 三栏区 499
+   * 三栏 = 扰动事件 328 | 中栏 728 | 推演助手 316（外壳 1372）。
+   * ⇒ 「对策方案」面板实得 654px，`.opts` 的容器查询在 ≤1120px 退成 2 列
+   * ⇒ 4 张卡排 **2 行 = 606px**，内容 758px 塞进 441px 可见区 = **1.72 屏**。
+   * 排成 1 行只要 ~333px（窄栏标题会多折一行），**差的 273px 正好是缺的那 0.7 屏**。
+   * 算过所有不动版面的省法（KPI 口径降层 −38、判定依据标签并进折叠条 −115）合计到不了。
+   *
+   * ── 判据落在**面板自己的宽度**上，不落在窗口宽度上 ────────────────────────
+   * `.opts` 的 `@container (…)` **没写容器名** ⇒ 它量的是最近的容器 = `.panel` 自己
+   * （`Console0828.module.css` 的 `.panel { container-type: inline-size }`），
+   * 不是 `.shell`。所以收窄右栏**真的会**让它重新判定 —— 这一条开工前核过，
+   * 若它量的是 `.shell`（1372px 恒定），收侧栏一点用都没有，白做。
+   *
+   * ── ⛔ 收起不是删除 ────────────────────────────────────────────────────────
+   * 收起态保留一条 28px 的竖边（`c0828-ai-collapsed`），带标题与展开按钮 ——
+   * 「静默降层等于删除」。用户手动展开后 `aiPinned` 置真，**本次会话不再自动收**：
+   * 自动行为可以帮人，但不许覆盖人刚做的选择。
+   */
+  const WIDE_TABS: readonly TabKey[] = ["options", "scan"];
+  const [aiPinned, setAiPinned] = useState(false);
+  const aiCollapsed = WIDE_TABS.includes(tab) && !aiPinned;
+
   /**
    * ══ 顶栏 · 范围选择器（设计稿「常州 · 全网」那半截）════════════════════════════
    *
@@ -1558,7 +1586,7 @@ export default function Console0828({
             {kpis.map((k, i) => renderKpi(k, i, kpis.length))}
           </div>
         )}
-      <div className={styles.wrap} data-testid="c0828-root">
+      <div className={styles.wrap} data-testid="c0828-root" data-ai={aiCollapsed ? "collapsed" : "open"}>
       {/* ══ 区① 左栏 ══ */}
       <aside className={styles.rail} data-testid="c0828-rail">
         {zone("1", "扰动事件")}
@@ -3023,6 +3051,24 @@ export default function Console0828({
        *      挪过来是归位，不是新增；原位置的按钮同时保留，两处调的是同一个 mutation）
        *   ④ **今天没有本栏独立的对话框** —— 如实写明，⛔ 不摆一个点了没反应的输入框（假旋钮）
        */}
+      {/*
+        收起态：一条 28px 竖边，标题竖排 + 展开按钮。⛔ 不许整块消失 ——
+        规范 §1「降层不删除，第一层必须留可见记号」。这条边就是那个记号。
+      */}
+      {aiCollapsed ? (
+        <aside className={styles.aiStrip} data-testid="c0828-ai-collapsed">
+          <button
+            type="button"
+            className={styles.aiStripBtn}
+            data-testid="c0828-ai-expand"
+            aria-label="展开推演助手"
+            onClick={() => setAiPinned(true)}
+          >
+            <span className={styles.aiStripText}>推演助手</span>
+            <span aria-hidden="true">‹</span>
+          </button>
+        </aside>
+      ) : (
       <aside className={styles.ai} data-testid="c0828-ai">
         <div className={styles.aiHead}>
           <h2 className={styles.aiTitle}>推演助手</h2>
@@ -3270,6 +3316,7 @@ export default function Console0828({
           </details>
         </div>
       </aside>
+      )}
       </div>
 
 

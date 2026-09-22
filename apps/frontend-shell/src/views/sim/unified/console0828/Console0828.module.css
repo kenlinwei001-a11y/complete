@@ -93,6 +93,25 @@
   flex: 1 1 auto;
   min-height: 0;
 }
+/* WO-C0828-FIRST-SCREEN-FIT：宽页签（对策方案 / 全流程扫描）下右栏收成 28px 竖边，
+   把 288px 让给中栏 —— 「对策方案」面板因此从 654px 涨到约 942px，
+   `.opts` 的容器查询（量的是 `.panel` 自己）随之从 2 列翻到 4 列，4 张卡由 2 行变 1 行。
+   ⛔ 收起不是删除：那 28px 里有标题与展开按钮（`c0828-ai-expand`）。 */
+.wrap[data-ai="collapsed"] { grid-template-columns: 328px minmax(0, 1fr) 28px; }
+
+.aiStrip {
+  background: var(--panel2); border-left: 1px solid var(--line);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 10px 0; min-width: 0; overflow: hidden;
+}
+.aiStripBtn {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--txt-dim); font-size: 12px; line-height: 1.2;
+}
+.aiStripBtn:hover { color: var(--txt); }
+/* 竖排标题：`writing-mode` 而不是逐字换行 —— 后者在 28px 里会把标点排成孤行。 */
+.aiStripText { writing-mode: vertical-rl; letter-spacing: 2px; }
 
 /* ── rowB · 受阻环节表 | 金额勾稽表（WO-SIM-DENSE ③）────────────────────────
    稿子 rowB 是等宽两格、横跨整幅。⛔ 不用 `auto-fit minmax()`：那在窄屏会悄悄
@@ -698,8 +717,21 @@
  *   看起来都是净支出）。故窄下来时是 2×2 **换行**，不是丢掉第四栏。
  */
 .opts { display: grid; grid-template-columns: repeat(3, 1fr) 1.1fr; gap: 12px; }
-/* ~1120px 是量出来的：再窄下去每栏就 < 260px，方案名开始折第三行。 */
-@container (max-width: 1120px) { .opts { grid-template-columns: 1fr 1fr; } }
+/*
+ * 断点 1120 → **900**（WO-C0828-FIRST-SCREEN-FIT）。
+ *
+ * 原值 1120 的依据是「再窄每栏 < 260px，方案名折第三行」——**那个依据没变，是取舍变了**：
+ * 实测（真浏览器 1680×900，收起右栏后面板约 942px）四栏每栏 (942 − 3×12)/4.1 ≈ **221px**，
+ * 方案名确实多折一行、卡高从 297 → 约 333px。但换来的是 4 张卡由 **2 行变 1 行**：
+ *     2 行 606px  →  1 行 333px   **净省 273px**
+ * 而整块内容 758px 挤在 441px 可见区里（1.72 屏）——**多折一行是 36px，少一行是 273px。**
+ * 仓主原话：「点击推演后都看不完整页面，用户没有感知」⇒ 这笔换划算。
+ *
+ * ⚠ 900 不是拍的：收起右栏后面板实测 ~942px，留 42px 余量，
+ *   且**仍高于**四栏各 221px 时的最小可读宽度（`.optTitle` 有 `overflow-wrap: anywhere`）。
+ * ⚠ 展开右栏时面板回到 ~654px < 900 ⇒ 自动退回 2×2，不需要另写一条规则。
+ */
+@container (max-width: 900px) { .opts { grid-template-columns: 1fr 1fr; } }
 @container (max-width: 560px) { .opts { grid-template-columns: 1fr; } }
 /* 长方案名在窄栏里要能断行，否则会把栏撑破（中文可断，型号 id 是长 ASCII 串必须显式许可）。 */
 .optTitle { overflow-wrap: anywhere; }
