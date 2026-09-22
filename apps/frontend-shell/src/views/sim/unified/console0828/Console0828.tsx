@@ -50,6 +50,7 @@ import type { PropagationRulesResponse, SandboxViewConfig, SimRunDisclosure } fr
 import {
   createSimPerturbation,
   fetchAllObjects,
+  fetchObjectTypes,
   fetchPropagationRules,
   fetchSimPerturbations,
   fetchSimSessions,
@@ -274,6 +275,13 @@ type TabKey = "board" | "options" | "scan" | "cust" | "money" | "log";
  */
 const HEADLINE_KPIS: readonly string[] = ["imp", "orders", "cust", "exposure"];
 
+/**
+ * 落点下拉最多列几条。有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+ * 但**截断必须上屏** —— 见 `pickTruncated`：只写「（500 个）」而实际更多时，
+ * 用户会把「翻遍了没找到」读成「系统里没有这一条」。
+ */
+const PICK_LIMIT = 500;
+
 export default function Console0828({
   sessionId,
   onExpert,
@@ -486,17 +494,87 @@ export default function Console0828({
     retry: false,
   });
 
-  /** 一条候选实体在下拉里的显示名。**名字只来自对象层**，取不到就退回 id，不编。 */
+  /**
+   * 本体声明的主键属性（typeKey → propKey）。下拉里那个「号」只认它。
+   * ⛔ 不在前端手抄一份「哪个键是订单号」的清单 —— 那就是第二套真相源，
+   *   加一个对象类型就得改两处，而漏改的那处不会报错，只会在屏上少一截。
+   * 取法与 `DisruptionRadiusView` / `WhatIfView` 逐字相同（`properties.find(isPrimaryKey)`）。
+   */
+  const typesQ = useQuery({
+    queryKey: ["a", "object-types"],
+    queryFn: fetchObjectTypes,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const pkByType = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of typesQ.data ?? []) {
+      const pk = t.properties.find((p) => p.isPrimaryKey)?.propKey;
+      if (pk !== undefined) m.set(t.key, pk);
+    }
+    return m as ReadonlyMap<string, string>;
+  }, [typesQ.data]);
+
+  /*
+   * ══ 一条候选实体在下拉里的显示名 ══════════════════════════════════════════════
+   *
+   * 仓主实拍：「『订单改价』里面显示的就是客户名字，而不是客户+orderID」，
+   * 并且因此读成「客户数量还是 500 个」。**属实。**
+   *
+   * ── 今天的行为是 X，应该是 Y（真数据实测，不是读码推断）─────────────────────
+   * `GET /a/v1/objects?type=Order` 回包实测：
+   *   props = { so:"SO-3391", cust:"广汽集团", customerId:"cust_14", … }
+   * **`so` 与 `cust` 两个都在。** 而原写法是「一串键里第一个有值的赢」，
+   * 且 `cust` 排在 `so` 前面 ⇒ 500 张单全被标成 20 个客户名反复出现，
+   * 下拉里根本**选不中具体哪一张**，占位符还写着「请选择（500 个）」。
+   *
+   * 形态：「我用『这个对象有个能读的字符串字段』当作『它能把这条记录认出来』的证据，
+   *        而前者并不度量后者 —— 名字是**共享**的，号才是**唯一**的。」
+   *
+   * ── 修法 ────────────────────────────────────────────────────────────────────
+   * **名与号分两个槽，各取各的，都在就都给**：
+   *   · 名 = 人读的业务名（`name`/`custName`/`cust`/…）⛔ 这串里不再含 `so`：那是号不是名；
+   *   · 号 = **本体声明的主键**（`pkByType`），单一真相源，换对象类型自动跟着走。
+   * 两者都取不到才退回 `it.id`（机器地址，是兜底不是常态）。
+   */
   const options = useMemo(() => {
     const items = pickQ.data?.items ?? [];
-    return items.slice(0, 500).map((it) => {
+    const pkKey = pickTypeKey === null ? undefined : pkByType.get(pickTypeKey);
+    const rows = items.slice(0, PICK_LIMIT).map((it) => {
       const p = (it.props ?? {}) as Record<string, unknown>;
-      const nm = ["name", "custName", "cust", "matName", "so", "supplierName"]
-        .map((k) => p[k])
-        .find((v): v is string => typeof v === "string" && v.trim() !== "");
-      return { id: it.id, label: nm ?? it.id };
+      const str = (k: string | undefined): string | null => {
+        const v = k === undefined ? undefined : p[k];
+        return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+      };
+      const nm = ["name", "custName", "cust", "matName", "supplierName"].map(str).find((v) => v !== null) ?? null;
+      const no = str(pkKey);
+      return { id: it.id, nm, no: no !== null && no !== nm ? no : null };
     });
-  }, [pickQ.data]);
+    /*
+     * **号只在需要消歧时才上屏**（实测两种类型给出相反的答案，故不能一刀切）：
+     *   · `Order` —— 20 个客户名摊到 500 张单，名字必然重复 ⇒ 必须带号，否则选不中；
+     *   · `Material` —— 8 个物料名本就互不重复 ⇒ 带上 `al_foil` 这种机器键只是噪声（R-UI-4）。
+     * 判据是**这一批候选里名字有没有撞**，不是「这个类型是什么」——
+     * 后者要前端再抄一份类型清单，换个租户数据就不成立了。
+     * 撞则**整批都带号**：一半带一半不带看起来像随机，用户会以为那两种是不同的东西。
+     */
+    const named = rows.map((r) => r.nm).filter((v): v is string => v !== null);
+    const needNo = new Set(named).size < named.length;
+    return rows.map((r) => ({
+      id: r.id,
+      label: r.nm === null ? (r.no ?? r.id) : needNo && r.no !== null ? `${r.nm} · ${r.no}` : r.nm,
+    }));
+  }, [pickQ.data, pickTypeKey, pkByType]);
+
+  /**
+   * 下拉被截断了多少 —— **必须上屏**。
+   * `slice` 本身有 UI 理由（沙盘同族控件实测 12,740 项，全塞进 `<select>` 没法用），
+   * 但「列了前 N 条」与「一共就这么多」是两件事：屏上只写「（500 个）」而实际有更多时，
+   * 用户会把「我翻遍了也没找到」读成「系统里没有这一条」。本仓 `WO-PAGING-SILENT-TRUNCATION-SCAN`
+   * 记过同一笔账（`Order` 恰好 500，正好把这个截断藏住）。
+   */
+  const pickTotal = pickQ.data?.items.length ?? 0;
+  const pickTruncated = pickTotal > options.length;
 
   const [pickId, setPickId] = useState<string>("");
   const [magnitude, setMagnitude] = useState<number>(0);
@@ -1582,7 +1660,13 @@ export default function Console0828({
                         onChange={(e) => setPickId(e.target.value)}
                       >
                         <option value="">
-                          {pickQ.isPending ? "载入中…" : `请选择（${options.length} 个）`}
+                          {pickQ.isPending
+                            ? "载入中…"
+                            : pickTruncated
+                              ? // 截断如实说 —— ⛔ 不许只写「（N 个）」：那会把「列了前 N 条」
+                                // 读成「一共就这么多」，于是「翻遍了没找到」变成「系统里没有」。
+                                `请选择（列出前 ${options.length} / 共 ${pickTotal} 个）`
+                              : `请选择（${options.length} 个）`}
                         </option>
                         {options.map((o) => (
                           <option key={o.id} value={o.id}>
