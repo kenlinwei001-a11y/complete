@@ -977,9 +977,11 @@ export default function Console0828({
             </span>
           </div>
           <div className={styles.saves}>
-            <span className={styles.savesTitle}>判定依据</span>
+            {/* 「判定依据」原是单独一行标签，紧跟着一个写「明细」的折叠条 —— 两行说的是同一件事。
+                并成一行 ⇒ 每张卡省一行，而卡片现在排成一行、这一行省的是整块内容的高。
+                ⛔ 没有删任何内容：折叠条里那三段判定理由 + 取值一字未动。 */}
             <details className={styles.more}>
-              <summary>明细</summary>
+              <summary>判定依据 · 明细</summary>
               <div className={styles.moreBody} data-testid={`c0828-opt-why-${c.candidateId}`}>
                 <p>{BIZ_RUNG[c.rung.kind].why}</p>
                 <p>{BIZ_JOIN[c.join.kind].why}</p>
@@ -1374,12 +1376,21 @@ export default function Console0828({
         ) : null}
       </span>
       <span className={styles.kpiCmp}>{k.cmp}</span>
-      {/* 第一层口径：**一行**，超长 ellipsis（`.kpiCal1`）。
-          完整那段在上面的浮层里，一字未删 —— 两者由 `cal` / `calOne` 各管一头。
-          ⚠ `data-testid` 沿用 `c0828-kpical-*`：既有测试靠它找口径，改名等于把门拆了。 */}
-      <span className={styles.kpiCal1} data-testid={`c0828-kpical-${k.key}`}>
-        {k.calOne}
-      </span>
+      {/*
+        ══ 口径那一行已从第一层撤掉（WO-C0828-FIRST-SCREEN-FIT）══════════════════
+        规范 §1 分三层：**第一层放结论（数值/状态/名字）· 浮层放「凭什么」（口径·公式·
+        数据来源）**。`calOne` 是口径（「真金额 × 占位世界选出的订单集合 · 只作量级参考」
+        这类），本就该在浮层；而**完整版 `cal` 早就在上面那个 `?` 里**，`calOne` 是它的
+        真子集 ⇒ 撤掉第一层这一行**一个字都不丢**，`?` 就是留在第一层的可见记号。
+
+        代价换回来的空间：每张卡 −18px ⇒ 结论区 186 → 168 ⇒ 页签内容区同额变高。
+        仓主实拍「点击推演后都看不完整页面」，这 18px 是直接从那块屏身上扣的。
+
+        ⚠ 原注释写「既有测试靠 `c0828-kpical-*` 找口径，改名等于把门拆了」——
+        **今天已过期**：`grep -rn c0828-kpical apps/frontend-shell/test scripts docs` 为 0，
+        同一支查法查 `c0828-go` 命中 11 ⇒ 不是工具坏了，是真没有门咬它。
+        （留这条账是因为：一条写在最容易被信的地方的过期注释，比没有更危险。）
+      */}
     </div>
   );
 
