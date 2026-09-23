@@ -806,7 +806,7 @@ export async function scenarioFingerprint(
   return sha256Hex(canonical);
 }
 
-/** 把引擎候选的 lever 字段转成 plan_change 杠杆行。 */
+/** 把引擎候选的 lever 字段转成 adopt_sim_option 杠杆行。 */
 export function candidateToAdoptLevers(c: CandidateVM): AdoptLever[] {
   return [
     {
