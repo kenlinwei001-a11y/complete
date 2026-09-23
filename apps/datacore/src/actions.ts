@@ -70,6 +70,11 @@ export const ACTION_WIRING: Record<string, ActionWiring> = {
   //   业务裁定（勿改）：采纳方案**不得覆盖** PLAN_GOAL_TARGETS 基线——targets 只作拍板快照留痕对账。
   //   效果层断言（端到端读回字段真变）见 test/action-adopt-scheme.seam.test.ts。
   采纳经营方案: "WIRED",
+  // ← 已接：WO-C0828-P1 推演控制台对策区「采纳此方案」→ 与 plan_change 杠杆形态同一套
+  //   applyLeverWrites 落本体属性真值 + runDerivations（app.ts domainExecutor 分支·payload 无
+  //   levers 时诚实失败不穿透兜底）。效果层断言（审批后经对象读回 utilization/utilPressure
+  //   同步真变）见 test/action-plan-change-levers.seam.test.ts。
+  adopt_sim_option: "WIRED",
 };
 
 /**
