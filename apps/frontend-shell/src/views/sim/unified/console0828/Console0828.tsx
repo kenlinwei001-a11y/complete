@@ -1048,8 +1048,8 @@ export default function Console0828({
                       ? `已采纳 · ${st.targetRef ?? "已执行"}`
                       : st.kind === "rejected"
                         ? `已驳回 · ${st.reason ?? "重新送审"}`
-                        : `失败 · ${st.error}`;
-            return (
+                        : "送审失败";
+            const button = (
               <button
                 type="button"
                 className={`${styles.btn} ${styles.btnPrimary} ${styles.pick}`}
@@ -1066,6 +1066,16 @@ export default function Console0828({
               >
                 {text}
               </button>
+            );
+            return st.kind === "failed" ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {button}
+                <InfoPopover topic="失败原因" testId={`c0828-adopt-err-${c.candidateId}`}>
+                  {st.error}
+                </InfoPopover>
+              </div>
+            ) : (
+              button
             );
           })()}
         </div>
