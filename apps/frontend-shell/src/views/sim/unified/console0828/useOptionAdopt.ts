@@ -7,9 +7,11 @@
  * - objectId 映射：候选里的 objectId 是业务键，必须回读对象清单换成真对象 id 才建稿。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchActionDraft, fetchActionDrafts, fetchAllObjects } from "@/api/endpoints";
+import { useQuery } from "@tanstack/react-query";
+import { fetchActionDraft, fetchActionDrafts, fetchAllObjects, fetchObjectTypes } from "@/api/endpoints";
 import { useAdoptToDraft } from "../../shared";
 import { scenarioFingerprint, type AdoptLever } from "./console0828Model";
+import { resolveObjectId } from "./resolveObjectId";
 
 interface SimPerturbationLike {
   kind: string;
@@ -34,26 +36,23 @@ export interface AdoptInput {
   levers: AdoptLever[];
 }
 
-function resolveObjectId(
-  objectType: string,
-  bizKey: string,
-  page: Awaited<ReturnType<typeof fetchAllObjects>>,
-): string | null {
-  // ① 按任意 props 值等于业务键来匹配（不硬编码 lineId 等属性名）。
-  const byProp = page.items.find((o) =>
-    Object.entries(o.props).some(([, v]) => typeof v === "string" && v === bizKey),
-  );
-  if (byProp) return byProp.id;
-  // ② 回退到命名约定，但必须验证存在。
-  const guessed = `obj_${objectType.toLowerCase()}_${bizKey}`;
-  const byId = page.items.find((o) => o.id === guessed);
-  return byId ? byId.id : null;
-}
+export { resolveObjectId };
 
 export function useOptionAdopt(sessionId: string | undefined, perturbations: readonly SimPerturbationLike[]) {
   const adoptToDraft = useAdoptToDraft("adopt_sim_option");
   const [statuses, setStatuses] = useState<Record<string, AdoptStatus>>({});
   const fingerprint = useMemo(() => scenarioFingerprint(perturbations), [perturbations]);
+  // 主键表（§3）：与 Console0828 的 pkByType **同一条 query**（queryKey/queryFn 相同 ⇒
+  // TanStack 缓存去重，零额外请求）；在此另起 hook 只为不越范围边界改 Console0828.tsx。
+  const typesQ = useQuery({ queryKey: ["a", "object-types"], queryFn: fetchObjectTypes, staleTime: Infinity, retry: false });
+  const pkByType = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of typesQ.data ?? []) {
+      const pk = t.properties.find((p) => p.isPrimaryKey)?.propKey;
+      if (pk !== undefined) m.set(t.key, pk);
+    }
+    return m as ReadonlyMap<string, string>;
+  }, [typesQ.data]);
 
   useEffect(() => {
     const pending = Object.entries(statuses).filter(([, s]) => s.kind === "pending") as [
@@ -127,13 +126,13 @@ export function useOptionAdopt(sessionId: string | undefined, perturbations: rea
           objectCache.set(l.objectType, cached);
         }
         const page = await cached;
-        const realId = resolveObjectId(l.objectType, l.objectId, page);
+        const realId = resolveObjectId(l.objectType, l.objectId, page, pkByType.get(l.objectType));
         if (realId === null) {
           setStatuses((prev) => ({
             ...prev,
             [input.key]: {
               kind: "failed",
-              error: `未找到对象 ${l.objectType}.${l.objectId}（按业务键/约定 id 均查无）`,
+              error: `未找到对象 ${l.objectType}.${l.objectId}（按主键/业务键/约定 id 均查无）`,
             },
           }));
           return;
@@ -180,7 +179,7 @@ export function useOptionAdopt(sessionId: string | undefined, perturbations: rea
         },
       );
     },
-    [adoptToDraft, fingerprint, sessionId],
+    [adoptToDraft, fingerprint, sessionId, pkByType],
   );
 
   const reset = useCallback((key: string) => {
