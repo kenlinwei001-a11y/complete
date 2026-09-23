@@ -334,6 +334,12 @@ describe("plan_change（非 global-sim）· 按 payload 形态二分：带杠杆
 function minimalPayloads(sopVersionId: string): Record<string, Record<string, unknown>> {
   return {
     adopt_mitigation: { base: "常州", factor: "cf-nonexistent-probe", planKey: "probe" },
+    adopt_sim_option: {
+      source: "census-probe",
+      levers: [{ objectType: "Line", objectId: "obj_line_LINE-WS-jinhua-slitting", prop: "utilization", value: 90 }],
+      reason: "普查探针",
+      evidence: { sessionId: "sess-census", candidateId: "cand-census", scenarioFingerprint: "fp-census", pricing: null, disclosure: { agentInvolved: false } },
+    },
     plan_change: { versionId: "census:probe", reason: "普查探针（无杠杆形态）" },
     AOP情景拍板: { scenarioKey: "__census_probe__", year: 2026 },
     校准参数变更: { proposalId: "__census_probe__", mode: "approve" },
@@ -534,5 +540,52 @@ describe("采纳经营方案 · 契约拒绝 ⇒ 诚实失败（**拒绝臆造�
       JSON.stringify((after.json() as { data: unknown }).data),
       "采纳动作改动了经营目标基线 —— 违反业务硬裁定「目标不能改」（scheme-adoption.ts 契约头注：targets 只供对账，没有任何写回基线的路径）",
     ).toBe(JSON.stringify((before.json() as { data: unknown }).data));
+  }, 120000);
+});
+
+describe("WO-C0828-P1 · adopt_sim_option 写 Line.utilization 后 utilPressure 同步", () => {
+  it("数据检查：全量 Line 的 utilization 都是数值型（否则派生 evalArithmetic 会归零）", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Line&pageSize=500", headers: ADMIN });
+    const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+    expect(items.length, "种子里应至少有一条 Line").toBeGreaterThan(0);
+    for (const line of items) {
+      const v = line.props.utilization;
+      expect(typeof v, `Line ${line.id}.utilization 不是数值：${String(v)}`).toBe("number");
+      expect(Number.isFinite(v), `Line ${line.id}.utilization 非有限：${String(v)}`).toBe(true);
+    }
+  }, 120000);
+
+  it("E3-b′：adopt_sim_option 审批后 Line.utilization 与 utilPressure 都变成拨定值", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    const beforeRes = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Line&pageSize=500", headers: ADMIN });
+    const items = (beforeRes.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+    const line = items.find((o) => o.id === "obj_line_LINE-WS-jinhua-slitting");
+    expect(line, "种子里应有 obj_line_LINE-WS-jinhua-slitting").toBeTruthy();
+    const target = 89.9153;
+    expect(Number(line!.props.utilization)).not.toBeCloseTo(target, 6);
+
+    const done = await submitAndApprove(t, "adopt_sim_option", {
+      source: "sim-console-options",
+      levers: [{ objectType: "Line", objectId: line!.id, prop: "utilization", value: target }],
+      reason: "WO-C0828-P1 E3-b′ 采纳对策",
+      evidence: {
+        sessionId: "sess-test",
+        candidateId: "cand_test",
+        scenarioFingerprint: "fp-test",
+        pricing: null,
+        disclosure: { agentInvolved: false },
+      },
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+
+    const afterRes = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Line&pageSize=500", headers: ADMIN });
+    const after = (afterRes.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+    const hit = after.find((o) => o.id === line!.id);
+    expect(hit, "审批后应仍能回读到同一条 Line").toBeTruthy();
+    expect(Number(hit!.props.utilization), "utilization 未落到拨定值").toBeCloseTo(target, 6);
+    expect(Number(hit!.props.utilPressure), "utilPressure 未随 utilization 派生更新").toBeCloseTo(target, 6);
   }, 120000);
 });
