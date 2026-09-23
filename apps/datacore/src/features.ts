@@ -388,6 +388,7 @@ export const ACTION_TYPE_FEATURE_MAP: Record<string, string> = {
   //   PlanAuditView / GlobalSim / Sandbox / OrderChain / RiskBoard 情景采纳 → plan_change ·
   //   RiskBoardView 处置方案采纳 → adopt_mitigation（前端 mock 注册表本就把它写成该 flag 的 binding）。
   plan_change: "act.adopt-to-draft",
+  adopt_sim_option: "act.adopt-to-draft",
   adopt_mitigation: "act.adopt-to-draft",
   采纳经营方案: "act.adopt-to-draft",
   采纳产能预测结论: "act.adopt-to-draft",

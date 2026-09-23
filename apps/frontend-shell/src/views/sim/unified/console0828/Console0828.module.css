@@ -542,12 +542,12 @@
   /* 每块面板都是自己内部网格的**度量基准**（④ 的修法，理由见 `.opts`）。 */
   container-type: inline-size;
   background: var(--panel-glass); border: 1px solid var(--line2); border-radius: 12px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   backdrop-filter: blur(16px) saturate(1.2);
   -webkit-backdrop-filter: blur(16px) saturate(1.2);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 8px 24px rgba(0, 0, 0, 0.2);
 }
-.head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 .headTitle { margin: 0; font-weight: 600; font-size: 13px; }
 .headRight { margin-left: auto; font-size: 12px; color: var(--muted2); }
 .calibre { font-size: 12px; color: var(--muted2); line-height: 1.7; }
@@ -746,8 +746,8 @@
 /* 长方案名在窄栏里要能断行，否则会把栏撑破（中文可断，型号 id 是长 ASCII 串必须显式许可）。 */
 .optTitle { overflow-wrap: anywhere; }
 .opt {
-  border: 1px solid var(--line2); border-radius: 12px; padding: 13px;
-  display: flex; flex-direction: column; gap: 10px; background: rgba(226, 235, 245, 0.04);
+  border: 1px solid var(--line2); border-radius: 12px; padding: 10px;
+  display: flex; flex-direction: column; gap: 7px; background: rgba(226, 235, 245, 0.04);
 }
 .optNone {
   border-color: var(--danger-txt); background: rgba(240, 180, 184, 0.07);
@@ -776,19 +776,20 @@
   font-size: 12px; color: var(--muted2); margin-bottom: 10px; line-height: 1.7;
 }
 .agentBar code { font-family: var(--font-mono); color: var(--muted); }
-.optTitle { margin: 0; font-weight: 600; font-size: 13px; }
+.optTitle { margin: 0; font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .optHead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.dims { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12px; }
-.dimKey { color: var(--muted2); }
-.dimVal { text-align: right; font-weight: 600; font-family: var(--font-mono); }
+.dims { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 12px; }
+.dimKey { color: var(--muted2); white-space: nowrap; }
+.dimVal { text-align: right; font-weight: 600; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hi { color: var(--danger-txt); }
 .mid { color: var(--warn-txt); }
 .lo { color: var(--ok-txt); }
-.saves { border-top: 1px solid var(--line); padding-top: 9px; font-size: 12px; color: var(--muted); flex: 1; }
-.savesTitle { font-size: 12px; color: var(--muted2); margin-bottom: 5px; display: block; }
+.saves { border-top: 1px solid var(--line); padding-top: 9px; font-size: 12px; color: var(--muted); }
+.savesTitle { font-size: 12px; color: var(--muted2); margin-bottom: 2px; display: block; }
 .savesList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.savesList li { display: flex; gap: 8px; justify-content: space-between; font-family: var(--font-mono); font-size: 12px; }
-.tot { border-top: 1px solid var(--line2); margin-top: 8px; padding-top: 8px; font-size: 12px; line-height: 1.7; }
+.savesList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
+.savesList li { display: flex; gap: 8px; justify-content: space-between; font-family: var(--font-mono); font-size: 12px; line-height: 1.4; }
+.tot { border-top: 1px solid var(--line2); margin-top: 4px; padding-top: 4px; font-size: 12px; line-height: 1.4; }
 .totBig { font-size: 13px; font-weight: 700; color: var(--danger-txt); font-family: var(--font-mono); }
 .pick { width: 100%; justify-content: center; }
 

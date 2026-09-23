@@ -169,13 +169,13 @@ export function HeatStrip({ series, threshold }: { series: number[]; threshold: 
   );
 }
 
-/** 采纳 → Action 草稿（C10 审批留痕，统一 actionTypeKey=plan_change —— 体检页旧链路保留） */
-export function useAdoptToDraft() {
+/** 采纳 → Action 草稿（C10 审批留痕，默认 plan_change；可改 actionTypeKey） */
+export function useAdoptToDraft(actionTypeKey = "plan_change") {
   const { data: workspace } = useWorkspace();
   return useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
       createActionDraft({
-        actionTypeKey: "plan_change",
+        actionTypeKey,
         payload,
         origin: { userId: workspace?.user?.id ?? "usr-unknown" },
         submit: true,

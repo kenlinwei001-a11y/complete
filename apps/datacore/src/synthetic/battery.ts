@@ -5173,6 +5173,14 @@ export const BATTERY_ACTION_TYPES = [
     checkRules: [] as string[],
     approvalChain: [{ role: "admin" }],
   },
+  // WO-SIM-OPTIONS-P1：推演控制台「采纳此方案」→ 真写入本体属性（委托 applyLeverWrites）。
+  {
+    key: "adopt_sim_option",
+    name: "采纳推演对策",
+    paramsSchema: { type: "object", required: ["levers", "reason"], properties: { levers: { type: "array" }, reason: { type: "string" }, source: { type: "string" }, evidence: { type: "object" } } },
+    checkRules: [] as string[],
+    approvalChain: [{ role: "admin" }],
+  },
   // §7.14 「拍板情景」：finalize 经 Action 审批执行（不直改）。
   {
     key: "AOP情景拍板",

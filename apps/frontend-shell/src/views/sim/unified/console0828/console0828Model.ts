@@ -643,18 +643,18 @@ export function tickUnitWord(cal: TickCalendar | null): string {
  * ⛔ 别改成 `Partial<Record<…>>` —— 那正好把这道门关掉。
  */
 
-/** 这个杠杆**长在哪** —— 由候选自身字段现生成。 */
+/** 这个杠杆**长在哪** —— 由候选自身字段现生成（第一层只给结论，逐跳链路进明细）。 */
 export function candidateJoinShort(c: CandidateVM): string {
   const loc = c.leverName || c.lever.objectId;
   switch (c.join.kind) {
     case "LOCUS_PROP":
-      return `${loc}（${c.lever.objectId}）`;
+      return `${loc}`;
     case "LINK_HOP":
-      return `在 ${loc} 直接相连的上一环${c.join.path ? `（${c.join.path}）` : ""}`;
+      return `在 ${loc} 直接相连的上一环`;
     case "KEY_JOIN":
-      return `同一编号对上的 ${loc}${c.join.path ? `（${c.join.path}）` : ""}`;
+      return `同一编号：${loc}`;
     case "RULE_GATE":
-      return `同一条红线（${c.join.path || "规则"}）管着的 ${loc}`;
+      return `同一条红线：${loc}`;
   }
 }
 export function candidateJoinWhy(c: CandidateVM): string {
@@ -686,13 +686,14 @@ export function candidateRungWhy(c: CandidateVM): string {
   }
 }
 
-/** 动完之后**真变了什么** —— 由候选 dims 现生成。 */
+/** 动完之后**真变了什么** —— 由候选 dims 现生成（第一层只给结论数，明细进折叠条）。 */
 export function candidateEffectShort(c: CandidateVM): string {
   const moved = c.dims.filter((d) => d.moved);
   if (moved.length === 0) return "本次无改善维度可报";
   const best = moved.reduce((a, b) => (a.improvement > b.improvement ? a : b));
   const sign = best.betterWhen === "lower" ? "↓" : "↑";
-  return `${best.label} ${sign} ${Math.abs(best.improvement).toFixed(1)}${best.unit || ""}`;
+  const shortLabel = best.label.split("（")[0] ?? best.label;
+  return `${shortLabel} ${sign} ${Math.abs(best.improvement).toFixed(1)}${best.unit || ""}`;
 }
 export function candidateEffectWhy(c: CandidateVM): string {
   const moved = c.dims.filter((d) => d.moved && d.value !== null && d.baseline !== null);
@@ -750,3 +751,69 @@ export const IMPEDIMENT_KIND_PLAIN: Readonly<Record<string, string>> = {
   CONGESTION: "能力够，但流不动（在排队 / 在途积压）—— 加产能没用",
   BREAK: "链条接不上，上一环给不了这一环要的",
 };
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * WO-SIM-OPTIONS-P1 · 采纳 → ActionDraft 的辅助函数（零 React）
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/** plan_change 杠杆行。 */
+export interface AdoptLever {
+  objectType: string;
+  objectId: string;
+  prop: string;
+  value: number;
+}
+
+interface SimPerturbationLike {
+  kind: string;
+  targetObjectId: string;
+  targetStateVar: string;
+  magnitude: number | null;
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  // 测试环境 fallback：稳定字符串哈希，不依赖 WebCrypto。
+  let h = 0;
+  for (let i = 0; i < input.length; i++) {
+    h = (h << 5) - h + input.charCodeAt(i);
+    h |= 0;
+  }
+  return `fallback_${Math.abs(h).toString(16).padStart(8, "0")}`;
+}
+
+/** 用排序后的会话扰动生成场景指纹，用于 adopt 幂等。 */
+export async function scenarioFingerprint(
+  perturbations: readonly SimPerturbationLike[],
+): Promise<string> {
+  const sorted = [...perturbations].sort((a, b) => {
+    const ka = `${a.targetObjectId}.${a.targetStateVar}`;
+    const kb = `${b.targetObjectId}.${b.targetStateVar}`;
+    return ka.localeCompare(kb);
+  });
+  const canonical = JSON.stringify(
+    sorted.map((p) => ({
+      kind: p.kind,
+      target: `${p.targetObjectId}.${p.targetStateVar}`,
+      magnitude: p.magnitude,
+    })),
+  );
+  return sha256Hex(canonical);
+}
+
+/** 把引擎候选的 lever 字段转成 plan_change 杠杆行。 */
+export function candidateToAdoptLevers(c: CandidateVM): AdoptLever[] {
+  return [
+    {
+      objectType: c.lever.objectType,
+      objectId: c.lever.objectId,
+      prop: c.lever.prop,
+      value: c.toValue,
+    },
+  ];
+}

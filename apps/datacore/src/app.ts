@@ -713,6 +713,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
                 `已可真写；本形态属域映射缺失，见本体 §8 G-PLAN-CHANGE-NO-LEVER。`,
         );
       }
+      // WO-SIM-OPTIONS-P1：推演控制台「采纳此方案」→ 真写入本体属性。
+      if (draft.actionTypeKey === "adopt_sim_option") {
+        const levers = parseLevers(draft.payload);
+        if (levers.kind !== "ABSENT" && levers.kind !== "EMPTY") {
+          return applyLeverWrites(draft, levers, "采纳推演对策", "ADOPT-SIM-OPTION");
+        }
+        return notImplementedResult(
+          "adopt_sim_option",
+          "本草稿的 payload 里没有可写入的 levers，无法把对策落成本体属性真值。",
+        );
+      }
       if (draft.actionTypeKey === "AOP情景拍板") {
         const r = await plan.applyFinalize(draft.tenantId, draft);
         return { ok: true, targetRef: r.targetRef };

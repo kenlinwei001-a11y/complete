@@ -98,13 +98,15 @@ import {
   tickDateISO,
   tickLabel,
   tickUnitWord,
+  candidateToAdoptLevers,
+  type AdoptLever,
   type CellDelta,
   type OrderRow,
   type TickCalendar,
   type WorldCells,
   isSettledOrder,
 } from "./console0828Model";
-import { useOptionAdopt, type AdoptLever } from "./useOptionAdopt";
+import { useOptionAdopt } from "./useOptionAdopt";
 import {
   buildChainImpedimentModel,
   ChainImpedimentPayloadSchema,
@@ -993,57 +995,45 @@ export default function Console0828({
     <div className={styles.opts} data-testid="c0828-opt-grid">
       {p.candidates.slice(0, 3).map((c) => (
         <div key={c.candidateId} className={styles.opt} data-testid={`c0828-opt-${c.candidateId}`}>
-          <h5 className={styles.optTitle}>{c.label}</h5>
-          <div className={styles.dims}>
-            <span className={styles.dimKey}>调到哪</span>
-            <span className={styles.dimVal}>{candidateRungShort(c)}</span>
-            <span className={styles.dimKey}>杠杆在哪</span>
-            <span className={styles.dimVal}>{candidateJoinShort(c)}</span>
-            <span className={styles.dimKey}>动完会怎样</span>
-            <span className={`${styles.dimVal} ${styles.mid}`}>{candidateEffectShort(c)}</span>
-            {/*
-              「改善最大的那一维」原本只长在页签**之上**那块「怎么办」里。那块已删（它把同样
-              四条对策又画了一遍、吃掉 169px，把本页签挤出屏幕），**但这个量不许跟着消失** ——
-              它是这条对策唯一带数值的凭据。搬到这里，与「调到哪/杠杆在哪/动完会怎样」同层。
-              ⚠ 方向判定走 contracts 单源 `candidateDimImprovement`，前端不自己判大小好坏；
-              ⚠ 只取 `moved === true` 的维 —— 没动的维 improvement 为 0，
-                拿它当「改善」就是把「没变化」报成「改善 0」。
-            */}
-            <span className={styles.dimKey}>改善最大</span>
-            <span className={styles.dimVal} data-testid={`c0828-opt-gain-${c.candidateId}`}>
-              {bestDimOf(c) === null ? (
-                <span className={styles.nocalc}>本次无改善维可报</span>
-              ) : (
-                <>
-                  {bestDimOf(c)!.label}{" "}
-                  <span className={styles.howGainNum}>
-                    {bestDimOf(c)!.improvement > 0 ? "+" : ""}
-                    {fmtGain(bestDimOf(c)!.improvement)}
-                  </span>{" "}
-                  {bestDimOf(c)!.unit}
-                </>
-              )}
-            </span>
-          </div>
-          <div className={styles.saves}>
-            {/* 「判定依据」原是单独一行标签，紧跟着一个写「明细」的折叠条 —— 两行说的是同一件事。
-                并成一行 ⇒ 每张卡省一行，而卡片现在排成一行、这一行省的是整块内容的高。
-                ⛔ 没有删任何内容：折叠条里那三段判定理由 + 取值一字未动。 */}
-            <details className={styles.more}>
-              <summary>判定依据 · 明细</summary>
-              <div className={styles.moreBody} data-testid={`c0828-opt-why-${c.candidateId}`}>
-                <p>{candidateRungWhy(c)}</p>
-                <p>{candidateJoinWhy(c)}</p>
-                <p>{candidateEffectWhy(c)}</p>
-                {/* 业务事实（规则码 / 真值 / 单位）**必须给** —— 铁律 1.5 判据二。
-                    该消失的是「它在代码里长什么样」，不是「这个数打哪来」。 */}
-                <p className={styles.calibre}>
-                  取值：{c.fromText} → {c.toText}
-                  {c.lever.factorName === null ? "" : ` · 因子「${c.lever.factorName}」`}
-                </p>
+          <h5 className={styles.optTitle}>{`${c.leverName || c.lever.objectId} · ${candidateRungShort(c)}`}</h5>
+          {/* WO-C0828-P1-E6：第一层只留结论名与动作，所有明细收进「判定依据 · 明细」。 */}
+          <details className={styles.more}>
+            <summary>判定依据 · 明细</summary>
+            <div className={styles.moreBody} data-testid={`c0828-opt-why-${c.candidateId}`}>
+              <div className={styles.dims}>
+                <span className={styles.dimKey}>调到哪</span>
+                <span className={styles.dimVal}>{candidateRungShort(c)}</span>
+                <span className={styles.dimKey}>杠杆在哪</span>
+                <span className={styles.dimVal}>{candidateJoinShort(c)}</span>
+                <span className={styles.dimKey}>动完会怎样</span>
+                <span className={`${styles.dimVal} ${styles.mid}`}>{candidateEffectShort(c)}</span>
+                <span className={styles.dimKey}>改善最大</span>
+                <span className={styles.dimVal} data-testid={`c0828-opt-gain-${c.candidateId}`}>
+                  {bestDimOf(c) === null ? (
+                    <span className={styles.nocalc}>本次无改善维可报</span>
+                  ) : (
+                    <>
+                      {bestDimOf(c)!.label}{" "}
+                      <span className={styles.howGainNum}>
+                        {bestDimOf(c)!.improvement > 0 ? "+" : ""}
+                        {fmtGain(bestDimOf(c)!.improvement)}
+                      </span>{" "}
+                      {bestDimOf(c)!.unit}
+                    </>
+                  )}
+                </span>
               </div>
-            </details>
-          </div>
+              <p>{candidateRungWhy(c)}</p>
+              <p>{candidateJoinWhy(c)}</p>
+              <p>{candidateEffectWhy(c)}</p>
+              {/* 业务事实（规则码 / 真值 / 单位）**必须给** —— 铁律 1.5 判据二。
+                  该消失的是「它在代码里长什么样」，不是「这个数打哪来」。 */}
+              <p className={styles.calibre}>
+                取值：{c.fromText} → {c.toText}
+                {c.lever.factorName === null ? "" : ` · 因子「${c.lever.factorName}」`}
+              </p>
+            </div>
+          </details>
           {(() => {
             const st = adopt.statuses[c.candidateId] ?? { kind: "idle" };
             const canClick = st.kind === "idle" || st.kind === "rejected" || st.kind === "failed";
@@ -1069,14 +1059,8 @@ export default function Console0828({
                   adopt.adopt({
                     key: c.candidateId,
                     candidateId: c.candidateId,
-                    levers: [
-                      {
-                        objectType: c.lever.objectType,
-                        objectId: c.lever.objectId,
-                        prop: c.lever.prop,
-                        value: c.toValue,
-                      },
-                    ],
+                    toText: c.toText,
+                    levers: candidateToAdoptLevers(c),
                   })
                 }
               >
@@ -1090,59 +1074,58 @@ export default function Console0828({
       {/* ⚠ 第四栏是设计核心，**不许省** */}
       <div className={`${styles.opt} ${styles.optNone}`} data-testid="c0828-opt-donothing">
         <h5 className={styles.optTitle}>不处置</h5>
-        <div className={styles.dims}>
-          <span className={styles.dimKey}>多久见效</span>
-          {/*
-            ⚠⚠ 诚实位 · **不许删**（规范 §1：允许降层，绝不允许删除，且第一层要留可见记号）。
-            这两格的 `——` 正是那句话解释的对象 ⇒ 记号就挂在它们身上，比原先另起一段更近。
-            原先它是页签**之上**那块「怎么办」底下的一整段说明文字（两行），仓主点名：
-            「这种描述居然还出现在页面里」。成段的解释进浮层，第一层只留 `——` 与 `?`。
-          */}
-          <span className={`${styles.dimVal} ${styles.na}`}>
-            ——
-            <InfoPopover topic="为什么没有代价与见效时间" testId="c0828-opt-nocost">
-              方案候选（`SolutionCandidate`）今天只有：落点、从多少拨到多少、逐维 KPI 改善量、
-              档位出处、join 路径与生成公式 —— <b>没有 cost、没有 leadTime、没有风险等级</b>。
-              它是<b>严格对象</b>（多一个字段就会解析失败），所以这份清单就是全部。
-              ⇒ 这两格的 <b>——</b> 是<b>字段不存在</b>，<b>不是这次没取到</b>：
-              前者要上游先定义口径，后者重试即可，<b>处置相反</b>。
-              ⛔ 屏上也没有拿<b>超阈幅度</b>冒充代价、拿 <b>KPI 改善量</b>冒充天数 ——
-              那两样都不是时间，也不是钱。
-            </InfoPopover>
-          </span>
-          <span className={styles.dimKey}>代价</span>
-          <span className={`${styles.dimVal} ${styles.na}`}>见下</span>
-          <span className={styles.dimKey}>风险</span>
-          <span className={`${styles.dimVal} ${styles.na}`}>——</span>
-        </div>
-        <div className={styles.saves}>
-          <span className={styles.savesTitle}>该处将持续超线</span>
-          <ul className={styles.savesList}>
-            <li>
-              <span>实测</span>
-              <span className={styles.late}>{p.evidence.metricValue.toFixed(2)}</span>
-            </li>
-            <li>
-              <span>红线</span>
-              <span>{p.evidence.threshold.toFixed(2)}</span>
-            </li>
-            <li>
-              <span>超出</span>
-              <span className={styles.late}>{p.evidence.breach.toFixed(2)}</span>
-            </li>
-          </ul>
-          <div className={styles.tot}>
-            {mv === null ? (
-              <span className={styles.calibre}>不处置的代价（被推动的订单敞口）—— <b>尚未推演</b>，跑完「开始推演」在此给出。</span>
-            ) : (
-              <>
-                被推动的订单敞口 <span className={styles.totBig}>{fmtMoney(mv.exposure, "元")}</span>
-                <br />
-                <span className={styles.calibre}>{mv.exposedOrders} 张单仍在此路径上</span>
-              </>
-            )}
+        <details className={styles.more}>
+          <summary>判定依据 · 明细</summary>
+          <div className={styles.moreBody}>
+            <div className={styles.dims}>
+              <span className={styles.dimKey}>多久见效</span>
+              <span className={`${styles.dimVal} ${styles.na}`}>
+                ——
+                <InfoPopover topic="为什么没有代价与见效时间" testId="c0828-opt-nocost">
+                  方案候选（`SolutionCandidate`）今天只有：落点、从多少拨到多少、逐维 KPI 改善量、
+                  档位出处、join 路径与生成公式 —— <b>没有 cost、没有 leadTime、没有风险等级</b>。
+                  它是<b>严格对象</b>（多一个字段就会解析失败），所以这份清单就是全部。
+                  ⇒ 这两格的 <b>——</b> 是<b>字段不存在</b>，<b>不是这次没取到</b>：
+                  前者要上游先定义口径，后者重试即可，<b>处置相反</b>。
+                  ⛔ 屏上也没有拿<b>超阈幅度</b>冒充代价、拿 <b>KPI 改善量</b>冒充天数 ——
+                  那两样都不是时间，也不是钱。
+                </InfoPopover>
+              </span>
+              <span className={styles.dimKey}>代价</span>
+              <span className={`${styles.dimVal} ${styles.na}`}>见下</span>
+              <span className={styles.dimKey}>风险</span>
+              <span className={`${styles.dimVal} ${styles.na}`}>——</span>
+            </div>
+            <div className={styles.saves}>
+              <span className={styles.savesTitle}>该处将持续超线</span>
+              <ul className={styles.savesList}>
+                <li>
+                  <span>实测</span>
+                  <span className={styles.late}>{p.evidence.metricValue.toFixed(2)}</span>
+                </li>
+                <li>
+                  <span>红线</span>
+                  <span>{p.evidence.threshold.toFixed(2)}</span>
+                </li>
+                <li>
+                  <span>超出</span>
+                  <span className={styles.late}>{p.evidence.breach.toFixed(2)}</span>
+                </li>
+              </ul>
+              <div className={styles.tot}>
+                {mv === null ? (
+                  <span className={styles.calibre}>不处置的代价（被推动的订单敞口）—— <b>尚未推演</b>，跑完「开始推演」在此给出。</span>
+                ) : (
+                  <>
+                    被推动的订单敞口 <span className={styles.totBig}>{fmtMoney(mv.exposure, "元")}</span>
+                    <br />
+                    <span className={styles.calibre}>{mv.exposedOrders} 张单仍在此路径上</span>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        </details>
       </div>
     </div>
   );
@@ -1195,9 +1178,9 @@ export default function Console0828({
           label: lv?.label ?? lv?.key ?? `杠杆#${String(pk.leverIndex)}`,
           value: lv?.values[pk.valueIndex] ?? null,
           slot: `第 ${String(pk.valueIndex + 1)} / ${String(lv?.values.length ?? 0)} 档`,
-          objectType: parsed?.objectType ?? lv?.objectType ?? "",
-          objectId: parsed?.objectId ?? lv?.objectId ?? "",
-          prop: parsed?.prop ?? lv?.prop ?? "",
+          objectType: parsed?.objectType ?? "",
+          objectId: parsed?.objectId ?? "",
+          prop: parsed?.prop ?? "",
         };
       }),
     }));

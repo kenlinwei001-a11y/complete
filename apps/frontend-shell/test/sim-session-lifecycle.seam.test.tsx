@@ -248,6 +248,7 @@ vi.mock("@/api/endpoints", () => ({
   createActionDraft: vi.fn(async () => ({ draftId: "act_test", status: "PENDING_APPROVAL" })),
   fetchActionDraft: vi.fn(async () => ({ id: "act_test", status: "PENDING_APPROVAL" })),
   fetchActionDrafts: vi.fn(async () => []),
+  fetchAllObjects: vi.fn(async () => ({ items: [], total: 0, hasMore: false })),
   fetchWorkspace: vi.fn(),
 }));
 

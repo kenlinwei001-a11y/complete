@@ -1,30 +1,15 @@
 /**
- * WO-SIM-OPTIONS-P1 · 对策区「采纳此方案」→ ActionDraft 生产者。
+ * WO-SIM-OPTIONS-P1 · 对策区「采纳此方案」
  *
- * - 后端零改动：复用 `POST /a/v1/action-drafts` + `plan_change` + `submit=true`。
- * - 幂等：以 `candidateId + scenarioFingerprint` 为键，先查现有草稿，PENDING/APPROVED Reuse。
- * - 态机：idle → submitting → pending → approved / rejected / failed，轮询 `GET /a/v1/action-drafts/:id`。
+ * - 幂等：以 candidateId + scenarioFingerprint 为键，先查现有草稿复用。
+ * - 态机：idle → submitting → pending → approved / rejected / failed。
+ * - 建稿委托给 shared.tsx 的 useAdoptToDraft，不在这里另写生产者。
+ * - objectId 映射：候选里的 objectId 是业务键，必须回读对象清单换成真对象 id 才建稿。
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { useWorkspace } from "@/workspace/useWorkspace";
-import { createActionDraft, fetchActionDraft, fetchActionDrafts } from "@/api/endpoints";
-import type { CandidateVM } from "../../chainImpediment";
-
-export interface AdoptLever {
-  objectType: string;
-  objectId: string;
-  prop: string;
-  value: number;
-}
-
-type AdoptStatus =
-  | { kind: "idle" }
-  | { kind: "submitting" }
-  | { kind: "pending"; draftId: string }
-  | { kind: "approved"; draftId: string; targetRef?: string }
-  | { kind: "rejected"; draftId: string; reason?: string }
-  | { kind: "failed"; error: string };
+import { fetchActionDraft, fetchActionDrafts, fetchAllObjects } from "@/api/endpoints";
+import { useAdoptToDraft } from "../../shared";
+import { scenarioFingerprint, type AdoptLever } from "./console0828Model";
 
 interface SimPerturbationLike {
   kind: string;
@@ -33,47 +18,43 @@ interface SimPerturbationLike {
   magnitude: number | null;
 }
 
-async function sha256Hex(input: string): Promise<string> {
-  if (typeof crypto !== "undefined" && crypto.subtle) {
-    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-    return Array.from(new Uint8Array(buf))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-  }
-  // 测试环境 fallback：稳定字符串哈希，不依赖 WebCrypto。
-  let h = 0;
-  for (let i = 0; i < input.length; i++) {
-    h = (h << 5) - h + input.charCodeAt(i);
-    h |= 0;
-  }
-  return `fallback_${Math.abs(h).toString(16).padStart(8, "0")}`;
+export type AdoptStatus =
+  | { kind: "idle" }
+  | { kind: "submitting" }
+  | { kind: "pending"; draftId: string }
+  | { kind: "approved"; draftId: string; targetRef?: string }
+  | { kind: "rejected"; draftId: string; reason?: string }
+  | { kind: "failed"; error: string };
+
+export interface AdoptInput {
+  key: string;
+  candidateId: string;
+  /** 前端显示用的目标值文本（如 "90%"），只进 reason，不进执行载荷。 */
+  toText?: string;
+  levers: AdoptLever[];
 }
 
-export async function scenarioFingerprint(perturbations: readonly SimPerturbationLike[]): Promise<string> {
-  const sorted = [...perturbations].sort((a, b) => {
-    const ka = `${a.targetObjectId}.${a.targetStateVar}`;
-    const kb = `${b.targetObjectId}.${b.targetStateVar}`;
-    return ka.localeCompare(kb);
-  });
-  const canonical = JSON.stringify(
-    sorted.map((p) => ({
-      kind: p.kind,
-      target: `${p.targetObjectId}.${p.targetStateVar}`,
-      magnitude: p.magnitude,
-    })),
+function resolveObjectId(
+  objectType: string,
+  bizKey: string,
+  page: Awaited<ReturnType<typeof fetchAllObjects>>,
+): string | null {
+  // ① 按任意 props 值等于业务键来匹配（不硬编码 lineId 等属性名）。
+  const byProp = page.items.find((o) =>
+    Object.entries(o.props).some(([, v]) => typeof v === "string" && v === bizKey),
   );
-  return sha256Hex(canonical);
+  if (byProp) return byProp.id;
+  // ② 回退到命名约定，但必须验证存在。
+  const guessed = `obj_${objectType.toLowerCase()}_${bizKey}`;
+  const byId = page.items.find((o) => o.id === guessed);
+  return byId ? byId.id : null;
 }
 
-export function useOptionAdopt(
-  sessionId: string | undefined,
-  perturbations: readonly SimPerturbationLike[],
-) {
-  const { data: workspace } = useWorkspace();
+export function useOptionAdopt(sessionId: string | undefined, perturbations: readonly SimPerturbationLike[]) {
+  const adoptToDraft = useAdoptToDraft("adopt_sim_option");
   const [statuses, setStatuses] = useState<Record<string, AdoptStatus>>({});
   const fingerprint = useMemo(() => scenarioFingerprint(perturbations), [perturbations]);
 
-  /** 轮询所有 pending 草稿，直到终态。 */
   useEffect(() => {
     const pending = Object.entries(statuses).filter(([, s]) => s.kind === "pending") as [
       string,
@@ -86,23 +67,17 @@ export function useOptionAdopt(
         try {
           const d = await fetchActionDraft(draftId);
           if (!alive) return;
-          const terminal = ["EXECUTED", "EXECUTION_FAILED", "REJECTED", "CANCELLED"].includes(d.status);
           const next: AdoptStatus =
-            d.status === "APPROVED"
+            d.status === "APPROVED" || d.status === "EXECUTED"
               ? { kind: "approved", draftId, targetRef: d.executionResult?.targetRef }
               : d.status === "PENDING_APPROVAL"
                 ? { kind: "pending", draftId }
                 : d.status === "REJECTED"
                   ? { kind: "rejected", draftId, reason: d.executionResult?.error }
-                  : d.status === "EXECUTED"
-                    ? { kind: "approved", draftId, targetRef: d.executionResult?.targetRef }
-                    : d.status === "EXECUTION_FAILED"
-                      ? { kind: "failed", error: d.executionResult?.error ?? "执行失败" }
-                      : { kind: "failed", error: `未知状态 ${d.status}` };
+                  : d.status === "EXECUTION_FAILED"
+                    ? { kind: "failed", error: d.executionResult?.error ?? "执行失败" }
+                    : { kind: "failed", error: `未知状态 ${d.status}` };
           setStatuses((prev) => ({ ...prev, [key]: next }));
-          if (terminal) {
-            // 到达终态后停止本轮；effect 重新收集剩余 pending。
-          }
         } catch {
           // 轮询失败保持原态，下次再试。
         }
@@ -116,12 +91,12 @@ export function useOptionAdopt(
     };
   }, [statuses]);
 
-  const adopt = useMutation({
-    mutationFn: async (input: { key: string; candidateId: string; levers: AdoptLever[] }) => {
+  const adopt = useCallback(
+    async (input: AdoptInput) => {
       const fp = await fingerprint;
       const drafts = await fetchActionDrafts();
       const existing = drafts.find((d) => {
-        if (d.actionTypeKey !== "plan_change") return false;
+        if (d.actionTypeKey !== "adopt_sim_option") return false;
         const ev = d.payload?.evidence as Record<string, unknown> | undefined;
         const src = d.payload?.source as string | undefined;
         return (
@@ -132,45 +107,81 @@ export function useOptionAdopt(
         );
       });
       if (existing) {
-        return { draftId: existing.id, status: existing.status, reused: true };
+        const next: AdoptStatus =
+          existing.status === "PENDING_APPROVAL"
+            ? { kind: "pending", draftId: existing.id }
+            : ["APPROVED", "EXECUTED"].includes(existing.status)
+              ? { kind: "approved", draftId: existing.id, targetRef: existing.executionResult?.targetRef }
+              : { kind: "pending", draftId: existing.id };
+        setStatuses((prev) => ({ ...prev, [input.key]: next }));
+        return;
       }
-      const r = await createActionDraft({
-        actionTypeKey: "plan_change",
-        payload: {
+
+      // 业务键 → 真对象 id
+      const objectCache = new Map<string, ReturnType<typeof fetchAllObjects>>();
+      const resolvedLevers: AdoptLever[] = [];
+      for (const l of input.levers) {
+        let cached = objectCache.get(l.objectType);
+        if (!cached) {
+          cached = fetchAllObjects(l.objectType);
+          objectCache.set(l.objectType, cached);
+        }
+        const page = await cached;
+        const realId = resolveObjectId(l.objectType, l.objectId, page);
+        if (realId === null) {
+          setStatuses((prev) => ({
+            ...prev,
+            [input.key]: {
+              kind: "failed",
+              error: `未找到对象 ${l.objectType}.${l.objectId}（按业务键/约定 id 均查无）`,
+            },
+          }));
+          return;
+        }
+        resolvedLevers.push({ ...l, objectId: realId });
+      }
+
+      const reason = `采纳对策候选 ${input.candidateId}：拨 ${resolvedLevers
+        .map((l) => `${l.prop} → ${input.toText ?? String(l.value)}`)
+        .join("，")}`;
+
+      setStatuses((prev) => ({ ...prev, [input.key]: { kind: "submitting" } }));
+      adoptToDraft.mutate(
+        {
           source: "sim-console-options",
-          levers: input.levers,
+          levers: resolvedLevers,
+          reason,
           evidence: {
             sessionId,
             candidateId: input.candidateId,
             scenarioFingerprint: fp,
             pricing: null,
-            disclosure: { tickCount: null, elapsedMs: null, agentInvolved: false },
+            disclosure: { agentInvolved: false },
           },
         },
-        origin: { userId: workspace?.user?.id ?? "usr-unknown" },
-        submit: true,
-      });
-      return { draftId: r.draftId, status: r.status, reused: false };
+        {
+          onSuccess: (r: { draftId?: string; status?: string }) => {
+            const status = r.status ?? "PENDING_APPROVAL";
+            const draftId = r.draftId ?? "unknown";
+            const next: AdoptStatus =
+              status === "PENDING_APPROVAL"
+                ? { kind: "pending", draftId }
+                : ["APPROVED", "EXECUTED"].includes(status)
+                  ? { kind: "approved", draftId }
+                  : { kind: "pending", draftId };
+            setStatuses((prev) => ({ ...prev, [input.key]: next }));
+          },
+          onError: (err: unknown) => {
+            setStatuses((prev) => ({
+              ...prev,
+              [input.key]: { kind: "failed", error: err instanceof Error ? err.message : String(err) },
+            }));
+          },
+        },
+      );
     },
-    onMutate: (input) => {
-      setStatuses((prev) => ({ ...prev, [input.key]: { kind: "submitting" } }));
-    },
-    onSuccess: (r, input) => {
-      const next: AdoptStatus =
-        r.status === "PENDING_APPROVAL"
-          ? { kind: "pending", draftId: r.draftId }
-          : ["APPROVED", "EXECUTED"].includes(r.status)
-            ? { kind: "approved", draftId: r.draftId }
-            : { kind: "pending", draftId: r.draftId };
-      setStatuses((prev) => ({ ...prev, [input.key]: next }));
-    },
-    onError: (err, input) => {
-      setStatuses((prev) => ({
-        ...prev,
-        [input.key]: { kind: "failed", error: err instanceof Error ? err.message : String(err) },
-      }));
-    },
-  });
+    [adoptToDraft, fingerprint, sessionId],
+  );
 
   const reset = useCallback((key: string) => {
     setStatuses((prev) => {
@@ -180,17 +191,5 @@ export function useOptionAdopt(
     });
   }, []);
 
-  return { statuses, fingerprint, adopt: adopt.mutate, isPending: adopt.isPending, reset };
-}
-
-/** 把引擎候选的 lever 字段转成 plan_change 杠杆行。 */
-export function candidateToAdoptLevers(c: CandidateVM): AdoptLever[] {
-  return [
-    {
-      objectType: c.lever.objectType,
-      objectId: c.lever.objectId,
-      prop: c.lever.prop,
-      value: c.toValue,
-    },
-  ];
+  return { statuses, fingerprint, adopt, isPending: adoptToDraft.isPending, reset };
 }
