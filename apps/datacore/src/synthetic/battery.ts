@@ -1902,6 +1902,17 @@ const orderProps: PropertyDef[] = [
 ];
 const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice", unit: "元", scale: "absolute" }];
 
+/**
+ * WO-C0828-P1 · Line 派生属性。
+ *
+ * `utilPressure` 与 `utilization` 同值、同单位、同刻度。
+ * runDerivations 的非聚合支路用裸标识符 formula，故写 `"utilization"` 而非 `"this.utilization"`
+ * （后者是播种期独立规格层的方言，runDerivations 不认）。
+ */
+const lineDerived: DerivedPropertyDef[] = [
+  { propKey: "utilPressure", formula: "utilization", unit: "%", scale: "ratio" },
+];
+
 const lineProps: PropertyDef[] = [
   { propKey: "lineId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
   { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },
@@ -4094,7 +4105,7 @@ export function batteryObjectTypes(): Omit<ObjectTypeDef, "id" | "tenantId" | "v
     { key: "Order", displayName: "销售订单", domain: "product", properties: withGovernance("Order", orderProps), derivedProperties: orderDerived, sourceBindings: BINDINGS.Order ?? [] },
     // WO-ORDERLINE：订单明细行（SO→型号行·一单多型号多行·紧随 Order·勾稽 Σ行===头）
     plain("OrderLine", "订单明细行", orderLineProps),
-    plain("Line", "产线", lineProps),
+    { ...plain("Line", "产线", lineProps), derivedProperties: lineDerived },
     // WO-CAPACITY-EDGE：产能池（产线的产能升格为一等对象，紧随 Line —— 它就是 Line 那一列的承载）
     plainD(
       "CapacityPool",
