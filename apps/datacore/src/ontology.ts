@@ -180,17 +180,23 @@ export function evalArithmetic(expr: string, props: Record<string, unknown>): nu
  */
 export function translateSpecFormula(formula: string): { inner: string; fallback?: number } | null {
   if (/\b(?:out|in)\s*\(/.test(formula)) return null;
+  // 函数调用一律拒译（evalArithmetic 只识数字/标识符/四则/括号）：spec 方言里聚合只剩
+  // AVG/SUM(out|in(...))，已被上一行拦住；这里兜底 COUNT/MAX 等他方言串与不认识的形状，
+  // 译出去就是编造口径。判据 = 「标识符紧跟 (」；纯分组括号（前头是运算符或串首）不误伤。
+  const hasCall = (s: string) => /[A-Za-z_][A-Za-z0-9_.]*\s*\(/.test(s);
   const stripped = formula.replace(/\bthis\./g, "");
   const m = stripped.match(/^COALESCE\((.*),\s*(-?\d+(?:\.\d+)?)\)$/s);
   if (m) {
     const inner = m[1]!;
     if (/COALESCE\s*\(/.test(inner)) return null;
+    if (hasCall(inner)) return null;
     const opens = (inner.match(/\(/g) ?? []).length;
     const closes = (inner.match(/\)/g) ?? []).length;
     if (opens !== closes) return null;
     return { inner, fallback: Number(m[2]) };
   }
   if (/COALESCE\s*\(/.test(stripped)) return null;
+  if (hasCall(stripped)) return null;
   return { inner: stripped };
 }
 

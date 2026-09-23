@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN, type TestApp } from "./helpers.js";
 import { BATTERY_ACTION_TYPES } from "../src/synthetic/battery.js";
+import { seedDemoDerivationSpecs, recomputeDemoDerivationsAtSeed } from "../src/seed-derivation-specs.js";
 
 /**
  * WO-ACTION-NOOP-EXEC · 非 global-sim 的 `plan_change` **按 payload 形态二分**（G-ACTION-NOOP-EXEC 续接）。
@@ -560,6 +561,10 @@ describe("WO-C0828-P1 · adopt_sim_option 写 Line.utilization 后 utilPressure 
   it("E3-b′：adopt_sim_option 审批后 Line.utilization 与 utilPressure 都变成拨定值", async () => {
     const t = await makeApp();
     await seedBattery(t);
+    // R3′：utilPressure 的跟随改由规格层 line_util_pressure 承担（derivedProperties 实例声明已撤，
+    // 见 battery.ts Line 段注释）——本臂须先走生产同链把规格播上，否则规格库为空、格不存在。
+    await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+    await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
     const beforeRes = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Line&pageSize=500", headers: ADMIN });
     const items = (beforeRes.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
     const line = items.find((o) => o.id === "obj_line_LINE-WS-jinhua-slitting");
@@ -607,6 +612,10 @@ describe("WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随", () =>
   it("E3-b′ 臂①：Material.leadTime → shortageRisk 按 material_shortage_risk 式子跟随", async () => {
     const t = await makeApp();
     await seedBattery(t);
+    // 生产 SEED_DEMO=1 同一条链（server.ts boot）：编译规格入库 → 播种期全量初算物化进 props。
+    // 少了这两步，测试租户规格库为空、shortageRisk 格根本不存在——而真身上它是存在的。
+    await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+    await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
     const beforeRes = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Material&pageSize=500", headers: ADMIN });
     const items = (beforeRes.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
     const mat = items.find((o) => o.id === "obj_material_pos_lfp");
@@ -641,6 +650,8 @@ describe("WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随", () =>
   it("E3-b′ 臂②：Process.utilization → queuePressure 按 process_queue_pressure 式子跟随", async () => {
     const t = await makeApp();
     await seedBattery(t);
+    await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+    await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
     const beforeRes = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Process&pageSize=500", headers: ADMIN });
     const items = (beforeRes.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
     const proc = items.find((o) => o.id === "obj_process_LINE-WS-jinhua-slitting-assembly");
@@ -670,9 +681,19 @@ describe("WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随", () =>
   it("规格层聚合 DSL（out(/in(）在运行期诚实跳过、不炸批、不生成新格", async () => {
     const t = await makeApp();
     await seedBattery(t);
+    await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+    await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
     // model_supply_risk = COALESCE(AVG(out(model_uses_material).shortageRisk), 0) —— 运行期不译。
     // 采纳 Material.leadTime 后 Material.shortageRisk 已跟随（臂①），若聚合条被错误翻译执行，
-    // Model.supplyRisk 会跟着变；正确行为 = 它不动（跳过），且整批不抛错（臂①已 EXECUTED 证明）。
+    // Model.supplyRisk 会跟着变；正确行为 = 它原地不动（跳过），且整批不抛错（臂①已 EXECUTED 证明）。
+    const beforeRes = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Model&pageSize=500", headers: ADMIN });
+    const beforeItems = (beforeRes.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+    expect(beforeItems.length).toBeGreaterThan(0);
+    const riskBefore = new Map(beforeItems.map((m) => [m.id, m.props.supplyRisk]));
+    for (const m of beforeItems) {
+      expect("supplyRisk" in m.props, `Model ${m.id} 缺 supplyRisk 格（播种期物化格必须存在）`).toBe(true);
+      expect(typeof m.props.supplyRisk).toBe("number");
+    }
     const done = await submitAndApprove(t, "adopt_sim_option", {
       source: "sim-console-options",
       levers: [{ objectType: "Material", objectId: "obj_material_pos_lfp", prop: "leadTime", value: 10 }],
@@ -682,12 +703,11 @@ describe("WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随", () =>
     expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
     const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Model&pageSize=500", headers: ADMIN });
     const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
-    expect(items.length).toBeGreaterThan(0);
     for (const m of items) {
-      // supplyRisk 格不被改写键集（不新增/不消失）；值不与任何 Material.shortageRisk 重算值耦合——
-      // 跳过语义的代价（聚合不跟）已在报告里如实披露，此处咬「键集不变+仍是数」。
-      expect("supplyRisk" in m.props, `Model ${m.id} 缺 supplyRisk 格（播种期物化格不许被运行期吃掉）`).toBe(true);
-      expect(typeof m.props.supplyRisk).toBe("number");
+      // 跳过语义：格不被改写、值与采纳前逐字节相同（上游 shortageRisk 已变，聚合没跟——
+      // 代价已在报告里如实披露：运行期聚合不跟，屏上该格仍是播种期初算值）。
+      expect("supplyRisk" in m.props, `Model ${m.id} 的 supplyRisk 格被运行期吃掉`).toBe(true);
+      expect(m.props.supplyRisk, `Model ${m.id} 的 supplyRisk 被运行期改写（聚合条应跳过）`).toBe(riskBefore.get(m.id));
     }
   }, 120000);
 });
