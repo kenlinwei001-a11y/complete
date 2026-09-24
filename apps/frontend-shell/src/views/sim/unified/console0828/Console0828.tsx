@@ -89,8 +89,8 @@ import {
   IMPEDIMENT_KIND_PLAIN,
   fmtMoney,
   NOCALC_WHY,
-  ORDER_STATUS_TEXT,
   spanLabel,
+  splitOrderScope,
   tickDateISO,
   tickLabel,
   tickUnitWord,
@@ -98,7 +98,6 @@ import {
   type OrderRow,
   type TickCalendar,
   type WorldCells,
-  isSettledOrder,
 } from "./console0828Model";
 import {
   buildChainImpedimentModel,
@@ -754,17 +753,24 @@ export default function Console0828({
     [ordersQ.data],
   );
 
+  /**
+   * WO-ORDER-SCOPE · 订单簿三档 —— **钱那半与客户那半共用这一份**。
+   * 各自再切一次的话，两半的基数会各自漂，而屏上那个
+   * 「被推动 N 张 / 涉及 M 家」的分数就再也不成立（本仓已因此矛盾过一次）。
+   */
+  const orderScope = useMemo(() => splitOrderScope(orders), [orders]);
+
   /** 波及订单 id 集合。**按差分算，不按源格算**（教训 ①）。 */
   const touchedOrderIds = useMemo(() => {
-    const ids = new Set(orders.map((o) => o.id));
     const out = new Set<string>();
-    // WO-EXPOSURE-STATUS：与 buildMoneyView 共用 isSettledOrder —— 已完成单不进客户面，
-    // 否则屏上会出现「被推动 150 张，却涉及全部 20 家客户」这种自相矛盾。
-    const byId = new Map(orders.map((o) => [o.id, o]));
-    for (const d of result?.deltas ?? [])
-      if (ids.has(d.objectId) && !isSettledOrder(byId.get(d.objectId))) out.add(d.objectId);
+    /* WO-ORDER-SCOPE：判据从「不是已完成」改成「**在手**」（正面白名单）——
+       与 `buildMoneyView` 同一个 `orderScope.onHand`，所以客户面与敞口口径一致。
+       ⚠ 原写法 `!isSettledOrder(...)` 是取反：状态**判不了**的单会落进这里，
+       于是客户面把它算成「被波及」，而钱那半（改后）把它排除 ⇒ 两半对不上账。 */
+    const onHandIds = new Set(orderScope.onHand.map((o) => o.id));
+    for (const d of result?.deltas ?? []) if (onHandIds.has(d.objectId)) out.add(d.objectId);
     return out;
-  }, [result, orders]);
+  }, [result, orderScope]);
 
   /**
    * 「这张单是被哪件事推的」。
@@ -779,12 +785,12 @@ export default function Console0828({
   );
 
   const money = useMemo(
-    () => (result === null ? null : buildMoneyView(result.deltas, orders, causeOf)),
-    [result, orders, causeOf],
+    () => (result === null ? null : buildMoneyView(result.deltas, orderScope, causeOf)),
+    [result, orderScope, causeOf],
   );
   const custView = useMemo(
-    () => (orders.length === 0 ? null : buildCustomerView(orders, touchedOrderIds)),
-    [orders, touchedOrderIds],
+    () => (orders.length === 0 ? null : buildCustomerView(orderScope, touchedOrderIds)),
+    [orders, orderScope, touchedOrderIds],
   );
 
   /**
@@ -2183,8 +2189,24 @@ export default function Console0828({
                 <div className={styles.head}>
                   {zone("3", "客户与订单敞口")}
                   <h3 className={styles.headTitle}>受影响客户与订单</h3>
+                  {/* WO-ORDER-SCOPE · 表头这句是**全簿口径**，故家数读 `bookCustomers`
+                      （不是 `totalCustomers` —— 那个是在手口径，见下方口径浮层）。
+                      混用会让「订单簿 … N 家」比实际少报，且没人看得出来。 */}
                   <span className={styles.headRight}>
-                    订单簿 {fmtMoney(money.bookTotal, "元")} · {custView.totalCustomers} 家 · {money.bookOrders} 张
+                    订单簿 {fmtMoney(money.bookTotal, "元")} · {custView.bookCustomers} 家 · {money.bookOrders} 张
+                    <InfoPopover topic="这一屏的两个基数" testId="c0828-scope-caliber">
+                      这一屏同时摆着<b>两个基数</b>，各有各的用途，不是同一个数的两种写法。
+                      <b>在手口径 {money.scope.onHand} 张</b>（已下待排产 + 进行中）：左边客户表的张数、
+                      金额、占比、家数，以及「本次扰动波及」那一组，全部按它算 —— 扰动只改得了还没交出去的单，
+                      所以影响面的基数只能是它。
+                      <b>全簿口径 {money.bookOrders} 张</b>（{fmtMoney(money.bookTotal, "元")} ·{" "}
+                      {custView.bookCustomers} 家）：右边状态分布与本行表头按它算 —— 它回答「这些单都处在
+                      什么状态」，用在手口径去数就把已交付那批从图里抹掉了。
+                      三档现算：在手 {money.scope.onHand} · 已交付关闭 {money.scope.offHand} ·
+                      状态判不了 {money.scope.undecidable} —— 三者之和 = 全簿 {money.bookOrders} 张。
+                      「判不了」指状态值平台不认识（含字段压根没回来）：它<b>不并进</b>上面任何一档，
+                      正常态应当是 0，<b>非 0 说明取数或状态枚举出了问题</b>，不是业务现象。
+                    </InfoPopover>
                   </span>
                 </div>
                 <div className={styles.two}>
@@ -2226,8 +2248,13 @@ export default function Console0828({
                     <details className={styles.more}>
                       <summary>数据来源</summary>
                       <div className={styles.moreBody}>
-                        按对象层订单的客户名分组，合计成交额后排序。占比分母为订单簿合计。
-                        「本次波及」= 该客户名下在本次推演中读数发生变化的订单数。
+                        按对象层订单的客户名分组，合计成交额后排序。
+                        {/* WO-ORDER-SCOPE：这一句原文写「占比分母为订单簿合计」——
+                            改口径后那句成了假话（分子只数在手单），故连分母一起点名。 */}
+                        本表<b>只数在手单</b>（已下待排产 + 进行中，共 {money.scope.onHand} 张，
+                        合计 {fmtMoney(custView.onHandValue, "元")}），占比分母即这个在手合计额；
+                        已交付关闭的单不在本表内（它们出现在右边的状态分布里）。
+                        「本次波及」= 该客户名下在本次推演中读数发生变化的在手订单数。
                         客户对象另有信用额度与应收数，其计量单位无登记册可据，故不上屏。
                       </div>
                     </details>
@@ -2264,6 +2291,27 @@ export default function Console0828({
                           <li>
                             <span>已完成·不计入</span>
                             <span className={styles.mono}>{money.settledExcluded} 张</span>
+                          </li>
+                        ) : null}
+                        {/* WO-ORDER-SCOPE · 「状态判不了」必须自己占一行，⛔ 不许并进上面那条。
+                            两者处置相反：上面一条是正常业务（已交付本就不该计入），
+                            这一条是**取数或状态枚举出了问题**，要有人去看。
+                            渲染条件同样是 `> 0`（正常态 0 ⇒ 不占屏位），非 0 时第一层就看得见。 */}
+                        {money.undecidableExcluded > 0 ? (
+                          <li data-testid="c0828-undecidable">
+                            <span>状态判不了·不计入</span>
+                            <span className={styles.mono}>
+                              {money.undecidableExcluded} 张
+                              <InfoPopover topic="「状态判不了」是什么意思" testId="c0828-undecidable-why">
+                                这些单的状态值<b>平台不认识</b> —— 要么状态字段压根没回来，
+                                要么后端新增了一个本屏还不认识的状态。它们<b>不计入</b>影响面与敞口，
+                                也<b>不算</b>已交付关闭：把「我不知道」写成「它不在手」会让敞口静默变小，
+                                而屏上和「这次谁都没被波及」长得一模一样。
+                                这一行出现就说明<b>取数或状态枚举要有人去看</b>，正常态它不出现。
+                                全簿三档现算：在手 {money.scope.onHand} · 已交付关闭 {money.scope.offHand} ·
+                                判不了 {money.scope.undecidable}。
+                              </InfoPopover>
+                            </span>
                           </li>
                         ) : null}
                         {/* WO-EXPOSURE-MAGNITUDE：「被推动的单」恒等于全部未完成单（判据是「动没动」
