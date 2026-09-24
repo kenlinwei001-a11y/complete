@@ -37,7 +37,7 @@
 import { validationError } from "../errors.js";
 import type { ObjectInstance } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
-import { buildSolverWorldOverlay } from "../sim/world-read.js";
+import { buildSolverWorldOverlay, type SolverWorldOverlay } from "../sim/world-read.js";
 import { str, type SolverContext } from "./types.js";
 
 /**
@@ -108,6 +108,58 @@ const CTX_ARRAYS: ReadonlyArray<readonly [typeKey: string, get: (c: SolverContex
 ];
 
 /**
+ * `args.worldId` 三态判读（**单一实现**，两条挂载路共用）。
+ *
+ * 返回 `null` = 调用方没给 worldId ⇒ 真值口径，**一行都不许再执行**（R6 兼容判据）。
+ * 返回非空串 = 推演口径。给了但不是非空字符串 ⇒ 抛 400。
+ *
+ * ⛔ 抽出来的唯一理由是**第二条挂载路**（拦截路求解器在自己入口叠同一个核，
+ * 见 `docs/AUDIT-worldstate-rollout.md` D 段：`portfolio` / `chain_impediments` 这一类
+ * 在通用 `loadContext` 之前就 return 了，结构上够不着本文件的预注入器）。
+ * 各抄一份 `str(args.worldId)` + 400 文案，就会出现「一条路 400、另一条路静默当没传」
+ * —— 而静默那条正是这个病的形态本身。
+ */
+export function readWorldIdArg(solverKey: string, args: Record<string, unknown>): string | null {
+  if (args.worldId === undefined || args.worldId === null) return null;
+  const worldId = str(args.worldId);
+  if (worldId === "") {
+    throw validationError(
+      `${solverKey} 的 args.worldId 必须是非空字符串（收到 ${JSON.stringify(args.worldId)}）——` +
+        "不静默当没传：静默会让调用方以为自己拿到的是推演口径，屏上却是真值口径。",
+    );
+  }
+  return worldId;
+}
+
+/**
+ * 把叠加核作用到 `SolverContext` 里**已加载**的每个对象数组上（`CTX_ARRAYS` 是那张映射的唯一出处）。
+ *
+ * ⛔ 抽出来的唯一理由同 `readWorldIdArg`：拦截路求解器要叠同一批 ctx 数组。
+ * 在别处重列一遍 `CTX_ARRAYS` 就是第二套映射 —— 本文件头注那句
+ * 「新增 ctx 对象数组时两处一起加，漏哪一处哪一处就静默少一维」会立刻变成三处。
+ */
+export function overlayContextArrays(overlay: SolverWorldOverlay, c: SolverContext): void {
+  for (const [typeKey, get, set] of CTX_ARRAYS) {
+    const rows = get(c);
+    if (rows === undefined) continue; // 按需未加载 ⇒ 保持 undefined（「没载」≠「空」）
+    set(c, overlay.overlayRows(typeKey, rows));
+  }
+}
+
+/** 披露块 → `SolverContext.world`（两条挂载路同形，不各拼一份）。 */
+export function worldContextField(overlay: SolverWorldOverlay): NonNullable<SolverContext["world"]> {
+  const disclosure = overlay.disclosure();
+  return {
+    worldId: overlay.worldId,
+    tick: overlay.tick,
+    source: overlay.source,
+    objectsWithState: overlay.objectsWithState,
+    cellsApplied: disclosure.cellsApplied,
+    disclosure,
+  };
+}
+
+/**
  * **世界态预注入器**（唯一挂载点：async 派发口 invoke / runWithParams，loadContext 之后 compute 之前）。
  *
  * 三道闸全过才会动 ctx：白名单 ⇒ 开关 ⇒ 404/400 硬错误。全过之后：
@@ -125,30 +177,11 @@ export async function applyWorldStateToContext(
   // 闸①：白名单 —— 机制只对登记的求解器生效（C 类台账/体检求解器够不着这个口）。
   if (worldAwareReason(solverKey) === undefined) return;
   // 闸②：开关 —— 不传 worldId ⇒ 真值口径（R6：与本单上线前逐字节一致，一行都不许执行）。
-  if (args.worldId === undefined || args.worldId === null) return;
-  const worldId = str(args.worldId);
-  // 闸③a：给了但不是非空字符串 ⇒ 400，不静默当没传（静默 = 「以为在看推演、屏上是真值」）。
-  if (worldId === "") {
-    throw validationError(
-      `${solverKey} 的 args.worldId 必须是非空字符串（收到 ${JSON.stringify(args.worldId)}）——` +
-        "不静默当没传：静默会让调用方以为自己拿到的是推演口径，屏上却是真值口径。",
-    );
-  }
+  // 闸③a：给了但不是非空字符串 ⇒ 400（两条闸都在 `readWorldIdArg` 里，单一实现）。
+  const worldId = readWorldIdArg(solverKey, args);
+  if (worldId === null) return;
   // 闸③b：会话不存在/跨租户 ⇒ 404（叠加核闸门，与 finance_world_projection 同一个 notFound）。
   const overlay = await buildSolverWorldOverlay(repos, tenantId, worldId);
-
-  for (const [typeKey, get, set] of CTX_ARRAYS) {
-    const rows = get(c);
-    if (rows === undefined) continue; // 按需未加载 ⇒ 保持 undefined（「没载」≠「空」）
-    set(c, overlay.overlayRows(typeKey, rows));
-  }
-  const disclosure = overlay.disclosure();
-  c.world = {
-    worldId: overlay.worldId,
-    tick: overlay.tick,
-    source: overlay.source,
-    objectsWithState: overlay.objectsWithState,
-    cellsApplied: disclosure.cellsApplied,
-    disclosure,
-  };
+  overlayContextArrays(overlay, c);
+  c.world = worldContextField(overlay);
 }
