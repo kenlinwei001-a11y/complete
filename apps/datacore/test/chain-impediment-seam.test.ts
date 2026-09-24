@@ -6,9 +6,12 @@ import {
   arbitrateByLocus,
   breachAmount,
   detectChainImpediments,
+  impedimentNumericInputs,
   readRuleThreshold,
   type ImpedimentCandidate,
 } from "../src/solvers/chain-impediment.js";
+import type { ChainWorldCoverage } from "../src/solvers/service.js";
+import type { SimWorldReadDisclosure } from "@platform/contracts";
 import type { SolverContext } from "../src/solvers/types.js";
 
 /**
@@ -36,6 +39,9 @@ interface ScanOut {
   unresolved: { bindingId: string; kind: string; ruleKey?: string; status: string; reason: string }[];
   caveats: { bindingId: string; ruleKey: string; note: string }[];
   thresholds: { bindingId: string; ruleKey: string; source: string; ruleParamKey?: string; fieldPath?: string; value: number; unit: string }[];
+  /** WO-IMP-WORLDSTATE 加性键：只在传了 `args.worldId` 时出现（不传 ⇒ 两键都 undefined）。 */
+  worldState?: SimWorldReadDisclosure;
+  worldCoverage?: ChainWorldCoverage;
 }
 
 async function scan(t: TestApp, args: Record<string, unknown> = {}): Promise<ScanOut> {
@@ -649,5 +655,219 @@ describe("WO-SANDBOX-E3 · 判定内核（纯函数 · 判据不靠 if 顺序的
     }
     // 判据 id 唯一（impedimentId 靠它拼，重了就会串条）。
     expect(new Set(IMPEDIMENT_RULE_BINDINGS.map((b) => b.bindingId)).size).toBe(IMPEDIMENT_RULE_BINDINGS.length);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WO-IMP-WORLDSTATE · 推演世界态 SEAM（世界半 × 判定半）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * ── 修之前的真实行为（实测原文，本机内存态 demo 租户 seed 42）────────────────────────
+ * **X**：`chain_impediments` 的全部输入来自本体真值，`args.worldId` **被整个忽略** ——
+ *   传一个压根不存在的会话 id，回包 **200**（不是 404）。结构上的原因：这个求解器在
+ *   `invoke` 里**先于通用 `loadContext` 就 return** 了，而 `world-surface.ts` 的预注入器挂在
+ *   `loadContext 之后 / compute 之前` ⇒ 这条路够不着那个口。
+ * **Y**：按 `docs/AUDIT-worldstate-rollout.md` D 段那条既定形态 —— 拦截路求解器**在自己入口叠同一个核**
+ *   （`buildSolverWorldOverlay`），`args.worldId` 是**口径开关**不是第二个求解器。
+ *
+ * ── 这道门跨的三半（SEAM-GATE：各半绿不算）───────────────────────────────────────
+ *  ① **世界半**：`POST /a/v1/sim/sessions` 真建世界（`baseSnapshot` 走生产写路径）；
+ *  ② **机制半**：叠加核把世界态叠到**三处**输入面上（ctx 数组 + 自读的 `MaterialBalance` + `OrderLine`）；
+ *  ③ **判定半**：`detectChainImpediments` 的**结论**（`counts` / 阻滞点 id 集合）真的跟着变。
+ *
+ * ── 🔴 头号判据（对照实验，铁律 1.5 判据一）────────────────────────────────────
+ * 全域 130 条产线同施 `utilPressure`，幅度 **15 → 80**：
+ *   `counts.BOTTLENECK` 必须 **5 → 7**（产能面被压窄 ⇒ 更多基地跨进争用）。
+ *   修前两个数**必然相同**（世界态进不了判定），那就是病。
+ *
+ * ── 反向金丝雀（比正向更重要）─────────────────────────────────────────────────
+ * 只验「不同输入给不同输出」抓不住「所有输入都给同一个非零常数」。故必须同时验：
+ *   ① **不传 worldId** ⇒ 回包无 `worldState`/`worldCoverage` 两键，且与本单上线前逐字节一致；
+ *   ② **零压力世界**（真建了世界、态里压力全 0）⇒ **剥掉两个加性键后与真值口径逐字节相同**，
+ *      且 `cellsByInput` 为空 —— 「读了世界」与「世界改了数」是两个命题。
+ *
+ * ── ⚠ 派单原文里两条前提实测不成立，这里按实测写（证据见交付报告）───────────────
+ *  · 「幅度 15 vs 100000 ⇒ 阻滞点集合必须不同」——**单张订单的 demandPressure 做不到**：
+ *    该变量是规则写入量，取值域声明每拍合法衰减，实测 mag=15 →4 拍→ **0**、
+ *    mag=100000 →4 拍→ **2.5036**（不是 6667 倍，量级压根传不过去）⇒ 判定集合逐字节相同。
+ *    真能翻判定的是**直接压产能面**那条路（本文件用的这条）。
+ *  · 「零扰动 ⇒ 新旧口径逐字节相同」——**生产播种世界不是零扰动世界**：
+ *    实测 tick0 的 6381 格里 **6349 格非零**，故它本身就把 `counts.BOTTLENECK` 从 5 抬到 7。
+ *    反向金丝雀必须用**显式零压力** `baseSnapshot`，否则这一条会假红。
+ */
+describe("WO-IMP-WORLDSTATE · 推演世界态 SEAM（世界半 × 判定半）", () => {
+  const enableSim = (t: TestApp) =>
+    t.app.inject({
+      method: "PUT",
+      url: "/a/v1/tenants/demo/features",
+      headers: ADMIN,
+      payload: { overrides: { "sim.sandbox": true, "sim.propagation": true } },
+    });
+
+  /** 真建世界（生产写路径）。`snap` 就是这次推演的起点态。 */
+  async function makeWorld(t: TestApp, snap: Record<string, Record<string, number>>): Promise<string> {
+    const res = await t.app.inject({
+      method: "POST",
+      url: "/a/v1/sim/sessions",
+      headers: ADMIN,
+      payload: { baseSnapshot: snap },
+    });
+    expect(res.statusCode, `建会话失败：${res.body}`).toBe(201);
+    return (res.json() as { id: string }).id;
+  }
+
+  /** 全域产线同施同一个 `utilPressure` —— 产能面那条投影的唯一入口。 */
+  async function linePressureWorld(t: TestApp, mag: number): Promise<string> {
+    const lines = await t.repos.objects.listByType("demo", "Line");
+    // R6 断言不许咬空集：产线为空时叠加是空转，下面的对照实验会变成「两个都没变 ⇒ 绿」。
+    expect(lines.length, "Line 种子为空 ⇒ 取数坏了，不是『没产线可压』").toBeGreaterThan(100);
+    const snap: Record<string, Record<string, number>> = {};
+    for (const l of lines) snap[l.id] = { utilPressure: mag };
+    return makeWorld(t, snap);
+  }
+
+  const idsOf = (s: ScanOut): string[] => s.impediments.map((i) => i.impedimentId).sort();
+  /** 剥掉两个加性键 —— 它们本就只该在「读了世界」时多出来。 */
+  const stripWorld = (s: ScanOut): Record<string, unknown> => {
+    const { worldState: _ws, worldCoverage: _wc, ...rest } = s as unknown as Record<string, unknown>;
+    return rest;
+  };
+
+  async function boot(): Promise<TestApp> {
+    const t = await makeApp();
+    await seedBattery(t);
+    await enableSim(t);
+    return t;
+  }
+
+  it("金丝雀 · 真值口径先得是活的（三类都判得出来），否则下面「变没变」读不出是机制坏了还是真没变", async () => {
+    const t = await boot();
+    const truth = await scan(t);
+    expect(truth.counts.total).toBeGreaterThan(10);
+    expect(truth.counts.BOTTLENECK).toBeGreaterThan(0);
+    expect(truth.counts.CONGESTION).toBeGreaterThan(0);
+    expect(truth.counts.BREAK).toBeGreaterThan(0);
+    // 反向金丝雀：真值口径**不许**带世界态两键（带了说明开关漏了，真值口径被静默换成推演口径）。
+    expect("worldState" in (truth as unknown as Record<string, unknown>)).toBe(false);
+    expect("worldCoverage" in (truth as unknown as Record<string, unknown>)).toBe(false);
+  });
+
+  it("🔴 头号判据 · 对照实验：全域产线 utilPressure 15 → 80 ⇒ counts.BOTTLENECK 必须 5 → 7（修前两数必然相同）", async () => {
+    const t = await boot();
+    const truth = await scan(t);
+    const lo = await scan(t, { scope: {}, worldId: await linePressureWorld(t, 15) });
+    const hi = await scan(t, { scope: {}, worldId: await linePressureWorld(t, 80) });
+    // 四个数先全部落盘，断言另起一轮（修前第一个 ≠ 断言就红，后面的证据就永远打不出来）。
+    console.log(
+      `[contrast] truth.BOTTLENECK=${truth.counts.BOTTLENECK} mag15=${lo.counts.BOTTLENECK} mag80=${hi.counts.BOTTLENECK}` +
+        ` total ${truth.counts.total}/${lo.counts.total}/${hi.counts.total}`,
+    );
+    // 🔴 结论真的跟着世界态走（不是「读到了世界态」——那是运输层）。
+    expect(hi.counts.BOTTLENECK, "压窄产能面后卡点没变多 ⇒ 世界态没进判定（病未愈）").toBeGreaterThan(lo.counts.BOTTLENECK);
+    expect(idsOf(hi)).not.toEqual(idsOf(lo));
+    // 单调方向可预言：被压窄的是产能面 ⇒ 多出来的必须是**争用卡点**，不是随便哪一类变了。
+    const newOnes = idsOf(hi).filter((x) => !idsOf(lo).includes(x));
+    expect(newOnes.length).toBeGreaterThan(0);
+    for (const id of newOnes) expect(id).toContain("BOTTLENECK.CAPACITY.cross-segment-contention");
+    // 量法自证：真的改写了格子，且改的是 `Line.capacityDaily` 这一格（不是别处巧合地动了）。
+    expect(hi.worldCoverage?.fromWorld).toContain("Line.capacityDaily");
+    expect(hi.worldCoverage?.cellsByInput.find((c) => c.input === "Line.capacityDaily")?.cellsApplied).toBeGreaterThan(100);
+  });
+
+  it("🔴 反向金丝雀 · 零压力世界 ⇒ 剥加性键后与真值口径**逐字节相同**（抓「所有输入都给同一个非零常数」）", async () => {
+    const t = await boot();
+    const truth = await scan(t);
+    // ① 空世界（0 个对象有态）：叠加 0 格，结论必须等同真值口径。
+    const empty = await scan(t, { scope: {}, worldId: await makeWorld(t, {}) });
+    expect(stripWorld(empty)).toEqual(stripWorld(truth));
+    expect(empty.worldCoverage?.cellsByInput).toEqual([]);
+    expect(empty.worldState?.worldObjects).toBe(0);
+    // 诚实位：世界为空必须**明说**未发生世界隔离，不许静默当推演结果。
+    expect(empty.worldCoverage?.note).toContain("一格判定输入都没改写");
+    // ② 零压力世界（真有对象有态，压力全 0）：同样必须逐字节等同真值口径。
+    const zero = await scan(t, { scope: {}, worldId: await linePressureWorld(t, 0) });
+    expect(stripWorld(zero)).toEqual(stripWorld(truth));
+    expect(zero.worldCoverage?.cellsByInput).toEqual([]);
+    // ③ 幅度 15 已经真的改写了 130 格产能，**而结论仍等同真值口径** ——
+    //    这一条是本文件最值钱的断言：它证明 `fromWorld` 非空 ≠ 结论会变，
+    //    正是「我用『它读了世界态』当作『它的结论随扰动变了』的证据」那个形态的反证。
+    const lo = await scan(t, { scope: {}, worldId: await linePressureWorld(t, 15) });
+    expect(lo.worldCoverage?.cellsByInput.find((c) => c.input === "Line.capacityDaily")?.cellsApplied).toBeGreaterThan(100);
+    expect(lo.counts).toEqual(truth.counts);
+  });
+
+  it("🔴 不响应族必须点名 · CONGESTION/BREAK 在任何幅度下都不动，且 worldCoverage 明列它们", async () => {
+    const t = await boot();
+    const truth = await scan(t);
+    const mags = [15, 80, 100000];
+    const seen: string[] = [];
+    for (const mag of mags) {
+      const s = await scan(t, { scope: {}, worldId: await linePressureWorld(t, mag) });
+      seen.push(`mag=${mag} CONGESTION=${s.counts.CONGESTION} BREAK=${s.counts.BREAK}`);
+      // 「它不动」已披露就不是 bug，**没披露才是**。
+      expect(s.counts.CONGESTION, `mag=${mag} 堵点动了 ⇒ 覆盖率把 CONGESTION 列进不响应族是说谎`).toBe(truth.counts.CONGESTION);
+      expect(s.counts.BREAK, `mag=${mag} 断点动了 ⇒ 覆盖率把 BREAK 列进不响应族是说谎`).toBe(truth.counts.BREAK);
+      expect(s.worldCoverage?.unresponsiveKinds).toContain("CONGESTION");
+      expect(s.worldCoverage?.unresponsiveKinds).toContain("BREAK");
+      // 这四个量是这两族**唯一**的判定输入，世界态一个都不带 ⇒ 必须落在 fromTruth 里。
+      for (const k of ["MaterialBatch.idleDays", "MaterialBalance.gapTon", "MaterialBalance.netDemandTon", "DataSourceHealth.lagHours"]) {
+        expect(s.worldCoverage?.fromTruth, `${k} 该在 fromTruth 里`).toContain(k);
+      }
+      expect(s.worldCoverage?.note).toContain("与本次扰动无关");
+    }
+    console.log(`[unresponsive] truth CONGESTION=${truth.counts.CONGESTION} BREAK=${truth.counts.BREAK} | ${seen.join(" | ")}`);
+  });
+
+  it("🔴 粒度必须是判据不是族 · BOTTLENECK 只**部分**响应（C34 会动，C05 利用率红线不会）", async () => {
+    const t = await boot();
+    const s = await scan(t, { scope: {}, worldId: await linePressureWorld(t, 80) });
+    const cov = s.worldCoverage!;
+    // 族级：BOTTLENECK 会动 ⇒ 不许进 unresponsiveKinds；但同族内有判据不动 ⇒ 必须进 partially。
+    expect(cov.unresponsiveKinds).not.toContain("BOTTLENECK");
+    expect(cov.partiallyResponsiveKinds).toContain("BOTTLENECK");
+    const byId = new Map(cov.bindings.map((b) => [b.bindingId, b]));
+    // C34 跨业务线争用：真读 Line.capacityDaily ⇒ 响应。
+    const c34 = byId.get("BOTTLENECK.CAPACITY.cross-segment-contention");
+    expect(c34?.responsive).toBe(true);
+    expect(c34?.fromWorld).toContain("Line.capacityDaily");
+    // C05 产线利用率红线：`Line.utilization` 世界态不带（也没有投影落到它身上）⇒ 不响应。
+    const c05 = byId.get("BOTTLENECK.CAPACITY.line-utilization-redline");
+    expect(c05?.responsive).toBe(false);
+    expect(c05?.fromTruth).toContain("Line.utilization");
+    // 覆盖率的读集必须与判据声明表**同一份**（漂了就会说谎：说某族响应而判定其实读别的属性）。
+    expect(cov.bindings.map((b) => b.bindingId).sort()).toEqual(IMPEDIMENT_RULE_BINDINGS.map((b) => b.bindingId).sort());
+    // 声明侧自检：每条判据至少声明一个数值输入，且 Type.prop 形态（空集会让覆盖率恒「不响应」）。
+    for (const { binding, inputs } of impedimentNumericInputs()) {
+      expect(inputs.length, `${binding.bindingId} 没声明任何数值输入 ⇒ 覆盖率对它恒说「不响应」`).toBeGreaterThan(0);
+      for (const i of inputs) expect(`${i.typeKey}.${i.prop}`).toMatch(/^[A-Za-z]+\.[A-Za-z][A-Za-z0-9]*$/);
+    }
+  });
+
+  it("不静默回落 · worldId 空串 ⇒ 400；会话不存在/跨租户 ⇒ 404（⛔ 绝不静默给真值口径）", async () => {
+    const t = await boot();
+    const call = (args: Record<string, unknown>, headers = ADMIN) =>
+      t.app.inject({ method: "POST", url: "/a/v1/solvers/chain_impediments/invoke", headers, payload: { args } });
+    // 修前这两个都回 **200**（worldId 被整个忽略）—— 那就是「以为在看推演、屏上是真值」那条路。
+    const blank = await call({ scope: {}, worldId: "" });
+    expect(blank.statusCode, blank.body).toBe(400);
+    const ghost = await call({ scope: {}, worldId: "sims_not_a_real_session" });
+    expect(ghost.statusCode, ghost.body).toBe(404);
+    // 跨租户：别人的世界对你**不存在**（R2 暗发 404，不是 403）。
+    const mine = await linePressureWorld(t, 80);
+    const other = await call({ scope: {}, worldId: mine }, {
+      "x-debug-user": encodeURIComponent("other:admin:admin"),
+    } as Record<string, string>);
+    expect([404, 403]).toContain(other.statusCode);
+  });
+
+  it("R6 · 同 (worldId, tick, args) 两跑逐字节一致（含两个加性键）", async () => {
+    const t = await boot();
+    const sid = await linePressureWorld(t, 80);
+    const a = await scan(t, { scope: {}, worldId: sid });
+    const b = await scan(t, { scope: {}, worldId: sid });
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+    expect(a.worldState?.source).toBe("BASE_SNAPSHOT");
+    expect(a.worldState?.tick).toBe(0);
   });
 });
