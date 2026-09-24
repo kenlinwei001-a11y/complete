@@ -4705,18 +4705,18 @@ export class SolverService {
      * 读成「没动」—— 一个**否定结论**建在一张有上限的表上，这是本仓记过账的形态。
      */
     const readSet = impedimentNumericInputs();
-    const probes = new Map<string, { typeKey: string; prop: string; roles: Set<string>; before: (number | undefined)[] }>();
+    const probes = new Map<string, { typeKey: string; prop: string; before: (number | undefined)[] }>();
     const rowsOfType = (typeKey: string): readonly ObjectInstance[] =>
       typeKey === "MaterialBalance" ? materialBalances
       : typeKey === "OrderLine" ? orderLines
       : ctxRowsOfType(c, typeKey);
     for (const { inputs } of readSet) {
-      for (const { typeKey, prop, role } of inputs) {
+      // 同一个 `Type.prop` 可能被多条判据读（如 C34 与将来的判据都读 `Line.capacityDaily`）⇒ 只探一次。
+      for (const { typeKey, prop } of inputs) {
         const key = `${typeKey}.${prop}`;
-        const cur = probes.get(key);
-        if (cur) { cur.roles.add(role); continue; }
+        if (probes.has(key)) continue;
         probes.set(key, {
-          typeKey, prop, roles: new Set([role]),
+          typeKey, prop,
           before: rowsOfType(typeKey).map((o) => (typeof o.props[prop] === "number" ? (o.props[prop] as number) : undefined)),
         });
       }
