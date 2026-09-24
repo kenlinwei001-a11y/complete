@@ -21,6 +21,50 @@ import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import type { OutboxService } from "../outbox.js";
 import type { SolverArtifact, SolverGenDraft } from "@platform/contracts";
 import type { ParetoAssembleRequest, ParetoAssembleResult } from "@platform/contracts"; // WO-SIM-PARETO-MODEL-EXIT
+import type { SimWorldReadDisclosure } from "@platform/contracts"; // WO-IMP-WORLDSTATE · 叠加核的披露块（加性键 `worldState`，同 risk_timeline 先例）
+
+/**
+ * WO-IMP-WORLDSTATE · **词汇覆盖率**（`chain_impediments` 传了 `worldId` 时随回包下发）。
+ *
+ * 存在的理由只有一句：**「这个求解器收了 worldId、也真读了世界态」不度量「它的结论随扰动变了」。**
+ * 判定读的那几个量，推演世界可能一个都不携带 —— 那时回包里的数与真值口径逐字节相同，
+ * 而屏上若只写「已读世界态」，读者会把「这一族结构上不响应」当成「这一族没问题」。
+ *
+ * ⛔ 三个数组**全部现算**（读集 × 叠加前后实测差），不许写死字面量：
+ * 写死就是下一次两处漂移（世界态多带一个变量、这张表还是旧的），而漂移的那一侧不会报红。
+ */
+export interface ChainWorldCoverage {
+  worldId: string;
+  tick: number;
+  /** 态取自当前拍还是开局快照（同 `SimWorldReadDisclosure.source`）。 */
+  source: SimWorldReadDisclosure["source"];
+  /** 被本次世界态**真的改写了**的判定输入（`Type.prop`，升序）。 */
+  fromWorld: string[];
+  /** 仍取本体真值的判定输入（升序）。**这一份才是缺口清单。** */
+  fromTruth: string[];
+  /** 每个被改写的输入改了几行（量法自证：`fromWorld` 非空而这里全 0 ⇒ 量法坏了）。 */
+  cellsByInput: { input: string; cellsApplied: number }[];
+  /**
+   * 逐**判据**的响应情况。粒度是判据不是族 —— 同族判据读的量完全不同
+   * （C02 读工序柜位 / C05 读产线利用率 / C34 读订单量与产线日产能），
+   * 只报族级必然虚报或漏报其中一半。
+   */
+  bindings: {
+    bindingId: string;
+    kind: string;
+    ruleKey: string;
+    reads: string[];
+    fromWorld: string[];
+    fromTruth: string[];
+    responsive: boolean;
+  }[];
+  /** 该族**每一条**判据都不响应 ⇒ `counts.<kind>` 与本次扰动无关。 */
+  unresponsiveKinds: string[];
+  /** 该族**部分**判据不响应 ⇒ `counts.<kind>` 会动，但动的不是全部判据。 */
+  partiallyResponsiveKinds: string[];
+  /** 人读结论（把上面几个数组说成一句话，屏上直接可用）。 */
+  note: string;
+}
 import { capacityForecast, computeByProcessModel, computeCapacityLedger, computeRollup, curveMult, patchCapacityContext, type CapacityLedgerArgs, type ForecastArgs } from "./capacity.js";
 import { CAPACITY_FACTOR_BINDINGS, matchesGrain, type FactorGrain } from "@platform/contracts";
 // WO-AUDIT-TIMELINE-LIVESOURCE：审计口径 → A8 真日序列源映射（单一出处·loadContext 按需加载 audit_ts_daily）。
@@ -35,8 +79,8 @@ import { EXTENDED_SOLVERS, deriveExtendedArgs } from "./extended.js";
 import { SOLVER_ONTOLOGY_SIGNATURES, mergeReadSurfaces } from "./ontology-signature.js";
 import { bindToSolverArgs, type BindingOntologyView } from "./opt-binding.js";
 import { assembleParetoModel } from "./opt-assemble.js"; // WO-SIM-PARETO-MODEL-EXIT · 模型装配的**出口**（此前装配能力有、无人能调）
-import { buildWorldReadView } from "../sim/world-read.js"; // WO-WORLDSTATE-CONTRACT · 世界态读取契约（产出侧读这次推演的态，不是本体真值）
-import { applyWorldStateToContext } from "./world-surface.js"; // WO-WORLDSTATE-SURFACE · 统一世界态读取面（白名单+开关+不静默回落三道闸）
+import { buildWorldReadView, buildSolverWorldOverlay } from "../sim/world-read.js"; // WO-WORLDSTATE-CONTRACT · 世界态读取契约（产出侧读这次推演的态，不是本体真值）+ WO-IMP-WORLDSTATE 拦截路自挂同一叠加核
+import { applyWorldStateToContext, ctxRowsOfType, overlayContextArrays, readWorldIdArg } from "./world-surface.js"; // WO-WORLDSTATE-SURFACE · 统一世界态读取面（白名单+开关+不静默回落三道闸）
 import { runOptimizeWhatif, type SolveArgsFn } from "./opt-whatif.js";
 import { lexiconHit } from "./field-role-lexicon.js"; // WO-OPTWHATIF-NL-WIRING · 复用 A13 角色推断机制（field-roles/resolveFieldRoles 同源词库·配置化 R14·非业务常数）+ 结构信号 fanOut（R6·零 LLM）
 import { sopReschedule as runSopReschedule } from "./sop-reschedule.js";
@@ -46,7 +90,7 @@ import { chainLossAttribution as runChainLossAttribution, type ChainLossObject, 
 // WO-SANDBOX-E2 · 推演作用域（业务线/基地/型号）归一**单一出处**（勿在各求解器方法里另写一套解析/过滤）。
 import { describeChainScope, echoChainScope, isChainScopeUnscoped, normalizeChainScope, orderInChainScope, resolveScopeBaseIds, type ChainScope } from "./scope.js";
 import { normalizeSolverArgs } from "./arg-aliases.js"; // WO-SILENT-WRONG-ANSWER-3 · 入参键名归一单一出处（base/baseId/baseName · horizon/days）
-import { detectChainImpediments, CONTENTION_LOCUS_TYPE, IMPEDIMENT_RULE_BINDINGS, type ImpedimentRuleBinding } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）+ WO-DECISION-PLAY-OPTIONS 判据册（决策路按落点类型收窄）
+import { detectChainImpediments, CONTENTION_LOCUS_TYPE, IMPEDIMENT_RULE_BINDINGS, impedimentNumericInputs, type ImpedimentRuleBinding } from "./chain-impediment.js"; // WO-SANDBOX-E3 · 阻滞点判定（纯函数·阈值全从规则读回）+ WO-DECISION-PLAY-OPTIONS 判据册（决策路按落点类型收窄）+ WO-IMP-WORLDSTATE 判据读集声明
 import { isDynamicDrillId, resolveDynamicDrill, type DrillResolution } from "./dynamic-drill.js"; // WO-DYNAMIC-DRILL-RESOLVE · `DYNAMIC-*`/`*` 占位的查询期解析（单一出处·口径由数据声明）
 import { projectProcessFlowTime } from "./process-flow.js"; // WO-FLOWTIME · 流程实例流转时长（站间时长/卡顿站/瓶颈站·反推非编造）
 import { projectFinanceWorld, type FinanceWorldArgs } from "./finance-world.js"; // WO-FINANCE-WORLDSTATE · 财务金额随世界态扰动的投影（finance_pnl 缺的那半·只读 R4）
@@ -4556,6 +4600,10 @@ export class SolverService {
     }
     const parsed = ChainScopeSchema.safeParse(rawScope);
     if (!parsed.success) throw validationError(`scope 不合法：${parsed.error.issues.map((i) => i.message).join("；")}`);
+    // WO-IMP-WORLDSTATE 闸①/②：`args.worldId` 不给 ⇒ `null` ⇒ **下面一行世界态代码都不执行**
+    // （真值口径与本单上线前逐字节一致）；给了但不是非空字符串 ⇒ 400（判读与文案在
+    // `world-surface.readWorldIdArg` 里单一实现，两条挂载路共用）。
+    const worldId = readWorldIdArg("chain_impediments", args);
     const c = await this.loadContext(ctx.tenantId, undefined, { withExtended: true });
     const materialBalances = await this.repos.objects.listByType(ctx.tenantId, "MaterialBalance");
     // WO-SANDBOX-S3：一等关系行是候选枚举器 `LINK_HOP` join 的**唯一**可达面来源（改种子里的关系，
@@ -4565,7 +4613,16 @@ export class SolverService {
     // 与上面 `materialBalances` 同形：`OrderLine` 不在 SolverContext 的核心/扩展字段里，故这里自行读取。
     // 缺它 ⇒ 判定器诚实不带 `carriers` 字段、severity 退回单因子口径，**不会**回落成按基地 join。
     const orderLines = await this.repos.objects.listByType(ctx.tenantId, "OrderLine");
-    const scan = detectChainImpediments({ c, materialBalances, orderLines, links, scope: parsed.data });
+    // WO-IMP-WORLDSTATE 闸③：worldId 给了 ⇒ 叠加核（会话不存在/跨租户在核里 404）。
+    // 叠加做在**调用方**：`detectChainImpediments` 是纯函数、数据由调用方注入 ⇒ 判定算式一个字不动。
+    const world = worldId === null ? null : await this.chainImpedimentsWorld(ctx, worldId, c, materialBalances, orderLines);
+    const scan = detectChainImpediments({
+      c,
+      materialBalances: world?.materialBalances ?? materialBalances,
+      orderLines: world?.orderLines ?? orderLines,
+      links,
+      scope: parsed.data,
+    });
     // WO-VULNERABILITY-REI 第 3 件 · **未断但脆弱**搭既有回包出屏，不另开页。
     //
     // 为什么挂这里：这一页问的是「今天哪里出问题了」，而「明天最可能从哪里出问题」是同一个
@@ -4586,6 +4643,165 @@ export class SolverService {
           orders: c.orders,
         }),
       ),
+      // 加性键（同 risk_timeline/capacity_forecast 的 `worldState` 先例）：不传 worldId ⇒ 两键都不出现
+      // ⇒ 回包与本单上线前逐字节一致。⛔ 不许把 `worldCoverage` 做成「总是给一份」——
+      // 真值口径下谈「哪几格来自世界态」没有意义，给了反而像是在看推演。
+      ...(world === null ? {} : { worldState: world.disclosure, worldCoverage: world.coverage }),
+    };
+  }
+
+  /**
+   * WO-IMP-WORLDSTATE · 把推演世界态叠到全链阻滞点扫描的**全部输入面**上，并现算词汇覆盖率。
+   *
+   * ══ 今天的行为是 X，应该是 Y（开工实测原文，本机内存态 demo 租户 seed 42）════════════
+   *
+   * **X**：`chain_impediments` 在 `invoke` 里**先于通用 `loadContext` 就 return 了**
+   *   （派发表那行注释原文：「需 SolverContext…**且**需 MaterialBalance…故先于通用 loadContext 拦截」），
+   *   而 `world-surface.ts` 的预注入器挂在 `loadContext 之后 / compute 之前`
+   *   ⇒ 这条路**结构上够不着**那个口。实测：`args.worldId` 传一个压根不存在的会话 id，
+   *   回包 **200**（不是 404）—— 那个键被整个忽略；`docs/AUDIT-worldstate-rollout.md` 把它列进
+   *   E 段 `worldAware:false`，理由原文「链上堵点检测（事实体检）；**另有并行 WO 可能动它，本单明令不碰**」。
+   *
+   * **Y（本方法）**：按该审计文档 **D 段**那条既定形态办 —— 「拦截路求解器**在自己入口叠同一个核**」
+   *   （D 段 `portfolio` 那行原话：「intercepted 直读 repos，须在 portfolioOptimize 入口叠同一核」）。
+   *   ⛔ **不新开兄弟 solverKey**：`world-surface.ts` 头注已把这件事定了口径 ——
+   *   「『真值口径 / 推演口径』变成一个开关（`args.worldId`），**而不是两个求解器**」。
+   *   再开一个 `chain_impediments_world` 就是同一判定器的第二个目录条目 + 第二份描述 +
+   *   第二处内部调用点（`impedimentLocusDrill` 那条 `this.chainImpediments(ctx,{scope:{}})` 也得跟着分叉），
+   *   即本仓从头到尾在防的**第二套真相源**。
+   *
+   * ══ 为什么叠加面必须是「ctx 数组 + 这两个自读数组」三份，少一份就是假修 ═══════════════
+   * 判定器的输入有三处来源，`world-surface` 的预注入器只管第一处：
+   *   ① `SolverContext` 里的 Line/Process/Order/MaterialBatch/DataSourceHealth/Base（`CTX_ARRAYS`）
+   *   ② `MaterialBalance` —— C06 断点·物理那一族的**唯一**落点，不在 ctx 里（本方法自读）
+   *   ③ `OrderLine` —— 承载金额（`qty × unitPrice`）那一档，同样不在 ctx 里
+   * 只叠 ① 就会得到「BREAK 那 7 条永远不动，而屏上写着已读世界态」。
+   *
+   * ══ R4 / R6 ════════════════════════════════════════════════════════════════════
+   * R4：叠加只发生在**返回给判定器的副本**上（叠加核 `overlayRows` 返回新数组/新 props），仓储行一字节不动。
+   * R6：叠加核全程排序遍历、无时钟无随机；覆盖率由读集×实际改写现算 ⇒ 同 (worldId, tick, args) 两跑字节一致。
+   */
+  private async chainImpedimentsWorld(
+    ctx: AuthCtx,
+    worldId: string,
+    c: SolverContext,
+    materialBalances: ObjectInstance[],
+    orderLines: ObjectInstance[],
+  ): Promise<{
+    materialBalances: ObjectInstance[];
+    orderLines: ObjectInstance[];
+    disclosure: SimWorldReadDisclosure;
+    coverage: ChainWorldCoverage;
+  }> {
+    // 会话不存在 / 属于别的租户 ⇒ `notFound`（叠加核里那一个闸门，R2 暗发；
+    // ⛔ 不在这里再写一遍 —— 两处 404 迟早一处漂成静默回落）。
+    const overlay = await buildSolverWorldOverlay(this.repos, ctx.tenantId, worldId);
+    /**
+     * 叠加**之前**的读数，按 `${typeKey}.${prop}` 收一份 —— 覆盖率的判据就是它与叠加后的差。
+     *
+     * ⛔ 为什么不用披露块的 `applied[]` 去算覆盖率：那张明细**有 200 条上限**
+     * （`WORLD_READ_APPLIED_LIMIT`，被截断的条数才如实记在 `appliedTruncated`）。
+     * 拿一张会被截断的明细去回答「这个属性到底动没动」，就会把「动了但没印出来」
+     * 读成「没动」—— 一个**否定结论**建在一张有上限的表上，这是本仓记过账的形态。
+     */
+    const readSet = impedimentNumericInputs();
+    const probes = new Map<string, { typeKey: string; prop: string; roles: Set<string>; before: (number | undefined)[] }>();
+    const rowsOfType = (typeKey: string): readonly ObjectInstance[] =>
+      typeKey === "MaterialBalance" ? materialBalances
+      : typeKey === "OrderLine" ? orderLines
+      : ctxRowsOfType(c, typeKey);
+    for (const { inputs } of readSet) {
+      for (const { typeKey, prop, role } of inputs) {
+        const key = `${typeKey}.${prop}`;
+        const cur = probes.get(key);
+        if (cur) { cur.roles.add(role); continue; }
+        probes.set(key, {
+          typeKey, prop, roles: new Set([role]),
+          before: rowsOfType(typeKey).map((o) => (typeof o.props[prop] === "number" ? (o.props[prop] as number) : undefined)),
+        });
+      }
+    }
+
+    // ── 三份输入面各叠一次（同一个核）──────────────────────────────────────────────
+    overlayContextArrays(overlay, c);
+    const mb = overlay.overlayRows("MaterialBalance", materialBalances);
+    const ol = overlay.overlayRows("OrderLine", orderLines);
+
+    // ── 覆盖率现算：`fromWorld` = 这次推演**真的改写了**的那几个量 ─────────────────────
+    // ⛔ 不许写死字面量数组：写死就是下一次两处漂移（世界态多带一个变量、这张表还是旧的）。
+    const after = (typeKey: string): readonly ObjectInstance[] =>
+      typeKey === "MaterialBalance" ? mb : typeKey === "OrderLine" ? ol : ctxRowsOfType(c, typeKey);
+    const moved = new Set<string>();
+    const cells = new Map<string, number>();
+    for (const [key, p] of probes) {
+      const rows = after(p.typeKey);
+      let n = 0;
+      for (let i = 0; i < rows.length && i < p.before.length; i += 1) {
+        const a = rows[i]?.props[p.prop];
+        const b = p.before[i];
+        if (typeof a === "number" ? a !== b : b !== undefined) n += 1;
+      }
+      if (n > 0) { moved.add(key); cells.set(key, n); }
+    }
+    const sortedKeys = [...probes.keys()].sort((a, b) => a.localeCompare(b));
+    const fromWorld = sortedKeys.filter((k) => moved.has(k));
+    const fromTruth = sortedKeys.filter((k) => !moved.has(k));
+
+    /**
+     * **不响应的判据 / 不响应的族** —— 判据级先算，族级由判据级推出。
+     *
+     * ⚠ 粒度必须是**判据**不是**族**：`BOTTLENECK` 底下三条判据读的量完全不同
+     * （C02 读工序柜位 · C05 读产线利用率 · C34 读订单量与产线日产能），
+     * 一条动了另两条没动时，"这一族响不响应"这个问题本身没有真值。
+     * 只报族级 ⇒ 要么把「有一条会动」说成整族会动（虚报），要么反过来（漏报）。
+     */
+    const bindingRows = readSet.map(({ binding, inputs }) => {
+      const keys = [...new Set(inputs.map((i) => `${i.typeKey}.${i.prop}`))].sort((a, b) => a.localeCompare(b));
+      const hit = keys.filter((k) => moved.has(k));
+      return {
+        bindingId: binding.bindingId,
+        kind: binding.kind,
+        ruleKey: binding.ruleKey,
+        reads: keys,
+        fromWorld: hit,
+        fromTruth: keys.filter((k) => !moved.has(k)),
+        responsive: hit.length > 0,
+      };
+    });
+    const kinds = [...new Set(bindingRows.map((r) => r.kind))].sort((a, b) => a.localeCompare(b));
+    const unresponsiveKinds = kinds.filter((k) => bindingRows.filter((r) => r.kind === k).every((r) => !r.responsive));
+    const partialKinds = kinds.filter(
+      (k) => !unresponsiveKinds.includes(k) && bindingRows.some((r) => r.kind === k && !r.responsive),
+    );
+    const disclosure = overlay.disclosure();
+    const nameOf = (ks: string[]): string => ks.map((k) => `counts.${k}`).join(" / ");
+    return {
+      materialBalances: mb,
+      orderLines: ol,
+      disclosure,
+      coverage: {
+        worldId: overlay.worldId,
+        tick: overlay.tick,
+        source: overlay.source,
+        fromWorld,
+        fromTruth,
+        cellsByInput: [...cells.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([input, cellsApplied]) => ({ input, cellsApplied })),
+        bindings: bindingRows,
+        unresponsiveKinds,
+        partiallyResponsiveKinds: partialKinds,
+        note:
+          (fromWorld.length === 0
+            ? `本次推演一格判定输入都没改写（世界 ${overlay.worldId} 第 ${overlay.tick} 拍，${overlay.objectsWithState} 个对象有态）——` +
+              "全部结论等同真值口径。这不是「扰动不影响阻滞点」，是「这个世界还没把压力传到判定读的那几个量上」。"
+            : `判定读的 ${sortedKeys.length} 个数值输入里，${fromWorld.length} 个被本次世界态改写` +
+              `（${fromWorld.join("、")}），其余 ${fromTruth.length} 个仍取本体真值（${fromTruth.join("、")}）。`) +
+          (unresponsiveKinds.length > 0
+            ? ` ⚠ ${nameOf(unresponsiveKinds)} 这${unresponsiveKinds.length}族**与本次扰动无关**：该族每一条判据读的量推演世界都不携带。`
+            : "") +
+          (partialKinds.length > 0
+            ? ` ⚠ ${nameOf(partialKinds)} 只**部分**响应：同族内有判据读的量世界态不带，逐条见 bindings[]。`
+            : ""),
+      },
     };
   }
 

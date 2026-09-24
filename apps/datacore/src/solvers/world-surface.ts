@@ -146,6 +146,18 @@ export function overlayContextArrays(overlay: SolverWorldOverlay, c: SolverConte
   }
 }
 
+/**
+ * ctx 里某个本体类型**当前已加载**的行（`CTX_ARRAYS` 仍是那张映射的唯一出处）。
+ *
+ * 用途：拦截路求解器要在叠加**前后**各读一次同一批行来现算覆盖率
+ * （「这个属性到底动没动」只能这么量）。未加载 / 不在映射里 ⇒ 空数组：
+ * 调用方拿它算「改写了几格」，`0` 与「没这一类」在覆盖率里是同一句话（都是"没动"）。
+ */
+export function ctxRowsOfType(c: SolverContext, typeKey: string): readonly ObjectInstance[] {
+  const row = CTX_ARRAYS.find(([k]) => k === typeKey);
+  return row ? (row[1](c) ?? []) : [];
+}
+
 /** 披露块 → `SolverContext.world`（两条挂载路同形，不各拼一份）。 */
 export function worldContextField(overlay: SolverWorldOverlay): NonNullable<SolverContext["world"]> {
   const disclosure = overlay.disclosure();
