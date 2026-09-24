@@ -41,11 +41,12 @@
  *   700.00 亿 = 需求 P50 预测 · 250.60 亿 = 方案寻优毛利。只有订单簿总额随订单簿变。
  */
 
-import { daysForTicks } from "@platform/contracts";
+import { daysForTicks, isOnHandOrderStatus, ORDER_STATUSES } from "@platform/contracts";
 import type {
   CandidateEffectKind,
   CandidateJoinKind,
   CandidateRungKind,
+  OrderStatus,
 } from "@platform/contracts";
 
 /** 推演世界一格的读数表：`objectId → { stateVar: number }`。 */
@@ -139,7 +140,11 @@ export type MoneyCell =
 export interface MoneyView {
   /** 波及订单的敞口合计（元）—— 对象层 `Order.value` 求和，真金额。 */
   readonly exposure: number;
-  /** 波及的订单张数 —— **已排除已完成单**（见 buildMoneyView 的 WO-EXPOSURE-STATUS 段）。 */
+  /**
+   * 波及的订单张数 —— 基数是**在手单**（`OrderScope.onHand`）。
+   * ⚠ 口径不是「已排除已完成单」那个二值说法了（WO-ORDER-SCOPE 改的就是这一点）：
+   *   已完成与**状态判不了**的单各自出局、各自计数，见 `settledExcluded` / `undecidableExcluded`。
+   */
   readonly exposedOrders: number;
   /**
    * 引擎给它算了 delta、但因**已完成**而被本视图排除的张数。
@@ -161,6 +166,31 @@ export interface MoneyView {
    * 的落点数回答（实测 Order = 150，不是 500），不再由本字段回答。
    */
   readonly settledExcluded: number;
+  /**
+   * WO-ORDER-SCOPE · 引擎给它算了 delta、但**状态判不了**（不在 `ORDER_STATUSES` 里，
+   * 含 `null`）而被本视图排除的张数。
+   *
+   * ⚠ **它与 `settledExcluded` 是两件事，⛔ 不许合并成一个「被排除」计数**：
+   *  · `settledExcluded` 非 0 ⇒ 有已交付关闭的单混进了推演世界（**引擎侧过滤漏了**）；
+   *  · 本字段非 0     ⇒ 状态值**平台不认识** —— 取数那一跳没回 `status`、
+   *    后端加了新枚举、或者拼错了。这不是业务现象，是**数据/契约出了问题**，
+   *    要有人去看；把它并进上面那个数，就把「该去查的」混进了「正常排除的」。
+   * ⇒ 正常态是 **0**。非 0 时屏上必须看得见（渲染条件 `> 0`），⛔ 不许静默吸收。
+   */
+  readonly undecidableExcluded: number;
+  /**
+   * WO-ORDER-SCOPE · 全簿三档的**张数**（不是「被 delta 碰到的」那一层，是订单簿本身）。
+   *
+   * 屏上口径浮层直接读它，于是「敞口的基数到底是哪 N 张」这句话有出处可给，
+   * 而不是让读者自己拿 `bookOrders − settledExcluded` 去减 —— 那个减法今天减不出来
+   * （`settledExcluded` 只数**有 delta 的**那些，不是全簿的已完成数）。
+   * 🐤 金丝雀：`onHand + offHand + undecidable` 必须 `=== bookOrders`；对不上 ⇒ 划分漏了一档。
+   */
+  readonly scope: {
+    readonly onHand: number;
+    readonly offHand: number;
+    readonly undecidable: number;
+  };
   /**
    * WO-EXPOSURE-MAGNITUDE · 被推动单的**变化幅度分档**（每单取它所有格的最大 |delta|）。
    *
@@ -213,19 +243,101 @@ export const NOCALC_WHY = {
  */
 export const MONEY_BREAKDOWN_LABELS = ["毛利差额", "新增成本", "占压应收"] as const;
 
+/* ══════════════════════════════════════════════════════════════════════════════
+ * WO-ORDER-SCOPE · 订单簿的**三档**划分 —— 「判不了」必须自己占一档
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ── 今天的行为是 X ──
+ * 影响面的取舍只有**一个二值谓词**（本文件原先的 `isSettledOrder`，判据是
+ * `o?.status === "COMPLETED"`）。于是状态值只要**不认识** —— 拼错、后端新增一个枚举、
+ * 字段压根没回来（`null`/`undefined`）—— 谓词返回 `false`，那张单就被归到
+ * 「不是已结清」这一侧，**照常计入敞口与张数，而屏上没有任何痕迹**。
+ * 形态（铁律 0.6 句式）：
+ *   **「我用『这张单不是已完成』当作『这张单在手』的证据，而前者并不度量后者
+ *     —— 两者之间还夹着『我根本不认识这个状态』这一整档。」**
+ * 这不是假想：本仓接缝门的订单夹具当时写的是 `CONFIRMED` / `PLANNED`，
+ * **两个都不在 `ORDER_STATUSES` 里**，三张单全部从这条缝里漏进了敞口。
+ *
+ * ── 应该是 Y ──
+ * 三档，**互斥且并集 = 全簿**（`onHand + offHand + undecidable ≡ all`，门里现算 Σ 咬死）：
+ *  · `onHand`      在手（`isOnHandOrderStatus` 为真）—— 影响面与敞口的**唯一**基数；
+ *  · `offHand`     认识、但不在手（在 `ORDER_STATUSES` 里且非在手）—— 今天恰好只有已完成；
+ *  · `undecidable` **判不了**（不在 `ORDER_STATUSES` 里，含 `null`/`undefined`）——
+ *    ⛔ 不许静默并进上面任一侧，必须单独上屏。
+ *
+ * ── ⛔ 为什么不能只切两档（这是本段最容易被省掉的一句）──────────────────────────
+ * `isOnHandOrderStatus` 对**任何**不认识的值（含 `null`）都返回 `false`。只切
+ * 「在手 / 非在手」两档的话，取数那一跳没回 `status` 时**全簿一起掉进「非在手」**
+ * ⇒ 敞口与张数**静默变成 0**，屏上读起来和「这次谁都没被波及」一模一样。
+ * 「判不了」这一档买的就是这两句话的区别：**「我不知道」不许被写成「它不在手」。**
+ *
+ * ⚠ 一个状态字面量都不写：在手判据、全集、off-hand 的差集**全部**来自
+ *   `@platform/contracts`（`order-status.ts` 的 `ORDER_STATUSES` / `isOnHandOrderStatus`）。
+ *   后端哪天加第四个状态，`OFF_HAND_STATUSES` 当场跟着变，这里一行都不用改。
+ */
+
+/** 认识、但不在手的状态集 —— **现算的差集**，⛔ 不写 `["COMPLETED"]`。 */
+const OFF_HAND_STATUSES: readonly string[] = ORDER_STATUSES.filter((s) => !isOnHandOrderStatus(s));
+
+/** 这个状态值平台认不认识（不认识 ⇒ 判不了，而不是「不在手」）。 */
+function isKnownOrderStatus(status: string | null | undefined): boolean {
+  return typeof status === "string" && (ORDER_STATUSES as readonly string[]).includes(status);
+}
+
+/** 订单簿三档。**三档互斥，并集 = `all`** —— 这条性质由接缝门现算 Σ 守。 */
+export interface OrderScope {
+  /** 全簿原样（分母与金丝雀都从这里取，⛔ 调用方不要另存一份）。 */
+  readonly all: readonly OrderRow[];
+  /** 在手：`OPEN` + `IN_PRODUCTION`（口径出处 = 契约 `ON_HAND_ORDER_STATUSES`）。 */
+  readonly onHand: readonly OrderRow[];
+  /** 认识但不在手（今天 = 已交付关闭）。 */
+  readonly offHand: readonly OrderRow[];
+  /** **判不了**：状态不在 `ORDER_STATUSES` 里，含 `null`/`undefined`。 */
+  readonly undecidable: readonly OrderRow[];
+}
+
+/**
+ * 全簿 → 三档。**判据顺序是「先问认不认识，再问在不在手」**，不许颠倒：
+ * 颠倒之后不认识的值会先被 `isOnHandOrderStatus` 判成假，然后落进 `offHand`，
+ * 「判不了」这一档就永远是空的 —— 那等于把本段要修的病换个位置继续犯。
+ */
+export function splitOrderScope(all: readonly OrderRow[]): OrderScope {
+  const onHand: OrderRow[] = [];
+  const offHand: OrderRow[] = [];
+  const undecidable: OrderRow[] = [];
+  for (const o of all) {
+    if (!isKnownOrderStatus(o.status)) undecidable.push(o);
+    else if (isOnHandOrderStatus(o.status)) onHand.push(o);
+    else offHand.push(o);
+  }
+  return { all, onHand, offHand, undecidable };
+}
+
 /**
  * 区③。
  *
  * @param deltas   世界差分（`diffWorld` 的结果）
- * @param orders   对象层全部订单（**必须是全量**，翻页翻到底的那份；拿首页 50 条会把 500 张读成 50）
+ * @param scope    订单簿三档（`splitOrderScope` 的结果）。
+ *                 ⚠ 传**三档**而不是「在手那一个数组」：本视图既要用在手当敞口基数，
+ *                 又要把 `offHand` / `undecidable` 两个排除档如实报出来 ——
+ *                 只收在手数组的话，被排除的那些**连数都数不出来**，
+ *                 屏上就只剩一个没法核的 150（那正是 WO-EXPOSURE-STATUS 记过的账）。
+ *                 全簿总额与张数同样从 `scope.all` 现算，⛔ 调用方不另传一份。
  * @param causeOf  `objectId → 是哪件事推的`；用于「主要是 X」。取不到就返回 `null`，不硬凑。
  */
 export function buildMoneyView(
   deltas: readonly CellDelta[],
-  orders: readonly OrderRow[],
+  scope: OrderScope,
   causeOf: (objectId: string) => string | null,
 ): MoneyView {
+  const orders = scope.all;
   const byId = new Map(orders.map((o) => [o.id, o]));
+  /* WO-ORDER-SCOPE · 取舍改由**三档**决定，不再由「是不是已完成」这个二值判据决定。
+     两个排除档各用一个 id 集，⛔ 不合并成一个「非在手」集 ——
+     合并之后「已交付关闭」与「我不认识这个状态」在屏上就分不开了，而两者处置相反：
+     前者是正常业务（不该计入），后者是**取数或枚举出了问题**（要有人去看）。 */
+  const onHandIds = new Set(scope.onHand.map((o) => o.id));
+  const undecidableIds = new Set(scope.undecidable.map((o) => o.id));
 
   /* ══ WO-EXPOSURE-STATUS · 扰动影响面必须按订单状态收窄 ═══════════════════════
    *
@@ -265,12 +377,17 @@ export function buildMoneyView(
   const touched = new Set<string>();
   // ⚠ 用 Set 而不是计数器：一张单会有多条 delta（每个 stateVar 一条），计数器会重复计。
   const settled = new Set<string>();
+  /** WO-ORDER-SCOPE · 引擎给它算了 delta、但**状态判不了**而被排除的那批。必须单独上屏。 */
+  const undecided = new Set<string>();
   // 每单取它所有格的最大 |delta| —— 这是「这张单被推得多狠」的可比标量。
   const maxAbs = new Map<string, number>();
   for (const d of deltas) {
     const o = byId.get(d.objectId);
     if (o === undefined) continue;
-    if (isSettledOrder(o)) { settled.add(d.objectId); continue; }
+    /* 三档各有各的出口，**先判「判不了」** —— 见 `splitOrderScope` 头注：
+       顺序颠倒会让「判不了」这一档永远为空。 */
+    if (undecidableIds.has(d.objectId)) { undecided.add(d.objectId); continue; }
+    if (!onHandIds.has(d.objectId)) { settled.add(d.objectId); continue; }
     touched.add(d.objectId);
     const m = Math.abs(d.delta);
     const prev = maxAbs.get(d.objectId);
@@ -368,6 +485,12 @@ export function buildMoneyView(
     exposure,
     exposedOrders: touched.size,
     settledExcluded: settled.size,
+    undecidableExcluded: undecided.size,
+    scope: {
+      onHand: scope.onHand.length,
+      offHand: scope.offHand.length,
+      undecidable: scope.undecidable.length,
+    },
     faintOnly,
     magnitude,
     bookTotal,
@@ -387,20 +510,34 @@ export interface CustomerRow {
   readonly cust: string;
   readonly orders: number;
   readonly value: number;
-  /** 占订单簿的比例（0–1）。 */
+  /**
+   * 占比（0–1）。
+   * ⚠ 分母是**在手合计额**（`CustomerView.onHandValue`），不是订单簿总额 ——
+   * 分子只数在手单，分母若用全簿，这一列会恒小于真实占比且没人看得出来。
+   */
   readonly share: number;
   /** 这次扰动波及了它几张单。 */
   readonly touchedOrders: number;
   readonly touchedValue: number;
 }
 
+/** 状态字段压根没回来时，在状态分布里占的那一格。**屏上必须看得见**，不许丢。 */
+export const UNDECIDABLE_STATUS_KEY = "（无状态）";
+
 /** 区③b「落在谁头上」。 */
 export interface CustomerView {
+  /** **在手口径**：客户聚合（见 `buildCustomerView` 头注的双基数段）。 */
   readonly rows: readonly CustomerRow[];
-  /** 500 张单的三段分布（现算，**不写死** 350/100/50）。 */
+  /** **全簿口径**：500 张单的三段分布（现算，**不写死** 350/100/50）。 */
   readonly statusDist: readonly { readonly status: string; readonly label: string; readonly n: number }[];
+  /** **在手口径**：本次波及到的客户家数（`totalCustomers` 的子集，同基数）。 */
   readonly touchedCustomers: number;
+  /** **在手口径**：有在手单的客户家数 —— `touchedCustomers / totalCustomers` 的分母。 */
   readonly totalCustomers: number;
+  /** **全簿口径**：订单簿里一共有几家客户（表头那句「订单簿 … N 家」读它）。 */
+  readonly bookCustomers: number;
+  /** **在手口径**：在手单的合计成交额（元）—— `CustomerRow.share` 的分母。 */
+  readonly onHandValue: number;
 }
 
 /**
@@ -415,51 +552,108 @@ export interface CustomerView {
  * 判据用**黑名单**（列出终态）而非白名单（列出活跃态）：
  *   白名单漏一个新状态 ⇒ 那批单静默消失在影响面里，屏上看不出区别（假绿）；
  *   黑名单漏一个新终态 ⇒ 它被多算，屏上与状态分布对不上，**人能看见**。
+ *
+ * ⚠ **WO-ORDER-SCOPE 改了它的实现，没改它的语义**：原文写死 `o?.status === "COMPLETED"`，
+ *   现在读**现算的差集** `OFF_HAND_STATUSES`（= `ORDER_STATUSES` − 在手两态）。
+ *   今天两者解出同一个集合（恰好只有已完成），但字面量没了 ⇒ 后端加第四个终态时
+ *   这里自动跟上，而写死的那一版会把新终态读成「在手」。
+ * ⚠ 它**答不了「判不了」这一档** —— 对不认识的状态它返回 `false`，而 `false` 在这里读作
+ *   「不是已结清」，不读作「在手」。凡要判「这张单进不进敞口」，一律走 `splitOrderScope`，
+ *   ⛔ 别用本谓词取反（那正是本单要修的那条缝）。
  */
 export function isSettledOrder(o: { readonly status: string | null } | undefined): boolean {
-  return o?.status === "COMPLETED";
+  return typeof o?.status === "string" && OFF_HAND_STATUSES.includes(o.status);
 }
 
-/** 订单状态枚举 → 人话。⛔ 屏上不许直接印 `IN_PRODUCTION` 这种接口枚举。 */
-export const ORDER_STATUS_TEXT: Readonly<Record<string, string>> = {
+/**
+ * 订单状态枚举 → 人话。⛔ 屏上不许直接印 `IN_PRODUCTION` 这种接口枚举。
+ *
+ * ⚠ 键是 `OrderStatus` **穷举**（不是 `Record<string, string>`）：契约加第四个状态时
+ *   这里**当场 typecheck 红**，而宽类型只会让屏上悄悄印出裸枚举名。
+ *   —— 契约没有中文标签字典，所以这一份必须留在前端；穷举是它唯一的守。
+ */
+export const ORDER_STATUS_TEXT: Readonly<Record<OrderStatus, string>> = {
   COMPLETED: "已完成",
   IN_PRODUCTION: "在产",
   OPEN: "已下待排产",
 };
 
+/** 状态 → 人话；**认不出来就照实回退原值**，⛔ 不许编一个标签盖住「判不了」。 */
+export function orderStatusText(status: string): string {
+  return (ORDER_STATUS_TEXT as Readonly<Record<string, string>>)[status] ?? status;
+}
+
+/**
+ * 区③b。
+ *
+ * ══ WO-ORDER-SCOPE · **两个基数，两个循环，故意不合并** ═══════════════════════════
+ *
+ * ── 今天的行为是 X ──
+ * 原实现是**一个** `for (const o of orders)`，在同一趟里既喂客户聚合（`agg`）
+ * 又喂状态分布（`status`），于是两者**共用同一个基数（全簿）**。
+ * 后果在屏上是自相矛盾的一行：**「被推动 150 张，却涉及全部 20 家客户」**——
+ * `touchedCustomers` 数的是在手口径，`totalCustomers` 数的是全簿口径，
+ * 而它们被摆成同一个分数的分子与分母。
+ *
+ * ── 应该是 Y ──
+ * 两个口径**各走一趟**，各自说得出自己是谁：
+ *  · **在手口径**（`scope.onHand`）⇒ 客户聚合 `rows` · 占比 `share` 的分母 · 家数 `totalCustomers`
+ *    —— 与 `buildMoneyView` 的敞口基数**同一个**，所以 `touchedCustomers / totalCustomers`
+ *    这个分数两端同源，读得通；
+ *  · **全簿口径**（`scope.all`）⇒ 状态分布 `statusDist`
+ *    —— 它的整个用途就是回答「这 N 张单都是什么状态」，用在手口径去数它等于
+ *    把已完成那 350 张从状态分布里抹掉，那张图就没有意义了。
+ *
+ * ⛔ **不许把两趟合并回一趟**：合并就必须选一个基数，而这两个数**本来就不该相等** ——
+ *   合并等于把两个口径压成一个，屏上再也分不出哪个数是哪个口径算的。
+ *   （同一条病在 `OrderLineStatus` 上记过账：把两个正交维度压成一个字段。）
+ */
 export function buildCustomerView(
-  orders: readonly OrderRow[],
+  scope: OrderScope,
   touchedIds: ReadonlySet<string>,
   topN = 6,
 ): CustomerView {
+  /* ── 第一趟 · **在手口径** ── 客户聚合 / 占比分母 / 家数，与敞口同基数。 */
   const agg = new Map<string, { orders: number; value: number; tOrders: number; tValue: number }>();
-  const status = new Map<string, number>();
-  let book = 0;
-  for (const o of orders) {
+  let onHandValue = 0;
+  for (const o of scope.onHand) {
     const c = o.cust ?? "（无客户名）";
     const e = agg.get(c) ?? { orders: 0, value: 0, tOrders: 0, tValue: 0 };
     const v = typeof o.value === "number" && Number.isFinite(o.value) ? o.value : 0;
-    e.orders += 1; e.value += v; book += v;
+    e.orders += 1; e.value += v; onHandValue += v;
     if (touchedIds.has(o.id)) { e.tOrders += 1; e.tValue += v; }
     agg.set(c, e);
-    const s = o.status ?? "（无状态）";
-    status.set(s, (status.get(s) ?? 0) + 1);
   }
+
+  /* ── 第二趟 · **全簿口径** ── 状态分布。`null` 状态照实归到「判不了」那一格，
+     ⛔ 不许悄悄丢掉：丢掉之后 Σ statusDist 就不等于全簿张数，而屏上看不出少了谁。 */
+  const status = new Map<string, number>();
+  let bookCustomers = 0;
+  const custSeen = new Set<string>();
+  for (const o of scope.all) {
+    const s = o.status ?? UNDECIDABLE_STATUS_KEY;
+    status.set(s, (status.get(s) ?? 0) + 1);
+    const c = o.cust ?? "（无客户名）";
+    if (!custSeen.has(c)) { custSeen.add(c); bookCustomers += 1; }
+  }
+
   const rows = [...agg.entries()]
     .sort((a, b) => b[1].value - a[1].value)
     .slice(0, topN)
     .map(([cust, e]) => ({
       cust, orders: e.orders, value: e.value,
-      share: book === 0 ? 0 : e.value / book,
+      share: onHandValue === 0 ? 0 : e.value / onHandValue,
       touchedOrders: e.tOrders, touchedValue: e.tValue,
     }));
   return {
     rows,
     statusDist: [...status.entries()]
       .sort((a, b) => b[1] - a[1])
-      .map(([s, n]) => ({ status: s, label: ORDER_STATUS_TEXT[s] ?? s, n })),
+      .map(([s, n]) => ({ status: s, label: orderStatusText(s), n })),
     touchedCustomers: [...agg.values()].filter((e) => e.tOrders > 0).length,
     totalCustomers: agg.size,
+    bookCustomers,
+    onHandValue,
   };
 }
 
