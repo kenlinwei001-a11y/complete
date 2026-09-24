@@ -23,6 +23,7 @@ import { respondsToInput, stableForSameInput } from "@platform/contracts";
 import {
   buildMoneyView,
   buildRunExposureDeltas,
+  splitOrderScope,
   type CellDelta,
   type OrderRow,
   type WorldCells,
@@ -35,6 +36,16 @@ const ORDERS: OrderRow[] = [
   ...Array.from({ length: 2 }, (_, i) => ({ id: `o_prod_${i}`, cust: `C${i}`, qty: 10, value: 1e8, due: null, status: "IN_PRODUCTION", model: "M" })),
   { id: "o_open_0", cust: "C0", qty: 10, value: 1e8, due: null, status: "OPEN", model: "M" },
 ];
+/**
+ * WO-ORDER-SCOPE · `buildMoneyView` 改吃**三档**（在手 / 认识但不在手 / 判不了），
+ * 不再吃裸订单数组 —— 敞口基数从此是「在手」而不是「不是已完成」。
+ *
+ * ⚠ 本文件的期望值**一个都没改**，因为上面这份夹具的状态全部取自契约 `ORDER_STATUSES`
+ *   ⇒ `undecidable` 恒为空，三档退化成原来的两档，④ 的 `settledExcluded === 1` 照样成立。
+ *   （反例见 `console0828-decision.seam.test.tsx`：那份夹具原本写的是 `CONFIRMED`/`PLANNED`，
+ *     两个都不在契约枚举里，三张单会全部落进「判不了」—— 那才是本单要暴露的那条缝。）
+ */
+const SCOPE = splitOrderScope(ORDERS);
 const d = (id: string, delta: number): CellDelta => ({ objectId: id, stateVar: "costPressure", before: 50, after: 50 + delta, delta });
 const noCause = (): string | null => null;
 
@@ -62,26 +73,33 @@ const applyAll = (base: WorldCells, bumps: readonly [string, number][]): WorldCe
 
 describe("SEAM · 扰动影响面随扰动变化", () => {
   it("① 两个不同扰动 ⇒ 被推动的单数必须不同（这一条就是那次事故）", () => {
-    const va = buildMoneyView(A, ORDERS, noCause);
-    const vb = buildMoneyView(B, ORDERS, noCause);
+    const va = buildMoneyView(A, SCOPE, noCause);
+    const vb = buildMoneyView(B, SCOPE, noCause);
     const r = respondsToInput("被推动的单", va, vb, (v) => v.exposedOrders);
     expect(r.ok, r.message).toBe(true);
   });
 
   it("② 敞口金额同口径 —— 否则会出现「单数变了金额没变」的自相矛盾", () => {
-    const r = respondsToInput("合计敞口", buildMoneyView(A, ORDERS, noCause), buildMoneyView(B, ORDERS, noCause), (v) => v.exposure);
+    const r = respondsToInput("合计敞口", buildMoneyView(A, SCOPE, noCause), buildMoneyView(B, SCOPE, noCause), (v) => v.exposure);
     expect(r.ok, r.message).toBe(true);
   });
 
   it("③ 反向金丝雀：同一个扰动跑两次必须完全相同（R6）", () => {
-    const r = stableForSameInput("被推动的单", buildMoneyView(A, ORDERS, noCause), buildMoneyView(A, ORDERS, noCause), (v) => v.exposedOrders);
+    const r = stableForSameInput("被推动的单", buildMoneyView(A, SCOPE, noCause), buildMoneyView(A, SCOPE, noCause), (v) => v.exposedOrders);
     expect(r.ok, r.message).toBe(true);
   });
 
   it("④ 已完成单一张都不进影响面（仓主报的原始 bug）", () => {
-    const v = buildMoneyView(A, ORDERS, noCause);
+    const v = buildMoneyView(A, SCOPE, noCause);
     expect(v.settledExcluded, "引擎给已完成单算了 delta，本视图必须把它们计入 settledExcluded 并排除").toBe(1);
-    expect(v.exposedOrders + v.settledExcluded + v.faintOnly).toBe(new Set(A.map((x) => x.objectId)).size);
+    /* WO-ORDER-SCOPE：这个恒等式现在有**四**项 —— 补上 `undecidableExcluded`。
+       留三项的话，哪天真冒出一个不认识的状态，那张单会从等式里凭空消失而这条断言照样绿
+       （本仓记过账：「少掉的那批静默消失在影响面里，屏上看不出区别」）。
+       本夹具状态全在契约枚举内 ⇒ 该项此刻恒 0，先钉住它，等式才对得起「划分」这个词。 */
+    expect(v.undecidableExcluded, "本夹具状态全部取自契约 ORDER_STATUSES ⇒ 判不了这一档必须是空的").toBe(0);
+    expect(v.exposedOrders + v.settledExcluded + v.undecidableExcluded + v.faintOnly).toBe(
+      new Set(A.map((x) => x.objectId)).size,
+    );
   });
 
   it("⑤ 反向金丝雀·本门的心脏：对照 ≡ 实跑（零扰动）⇒ 0 张 / 0 元，无论背景 churn 多大", () => {
@@ -90,7 +108,7 @@ describe("SEAM · 扰动影响面随扰动变化", () => {
     // 会把这四张单全报成「被推动」；对照差分下它们必须一格都不剩。
     const deltas = buildRunExposureDeltas(CONTROL, structuredClone(CONTROL));
     expect(deltas, "对照与实跑相同 ⇒ 边际贡献必须为空；非空 = 又把 churn 当扰动贡献").toEqual([]);
-    const money = buildMoneyView(deltas, ORDERS, noCause);
+    const money = buildMoneyView(deltas, SCOPE, noCause);
     expect(money.exposedOrders).toBe(0);
     expect(money.exposure).toBe(0);
   });
@@ -103,9 +121,9 @@ describe("SEAM · 扰动影响面随扰动变化", () => {
     // churn 相消：deltas 里只能有边际效应那几格，背景一格都不许在。
     expect(deltasA.map((x) => x.objectId).sort()).toEqual(["o_done_0", "o_open_0", "o_prod_0", "o_prod_1"]);
     expect(deltasB.map((x) => x.objectId).sort()).toEqual(["o_done_0", "o_open_0", "o_prod_0", "o_prod_1"]);
-    const r = respondsToInput("被推动的单", buildMoneyView(deltasA, ORDERS, noCause), buildMoneyView(deltasB, ORDERS, noCause), (v) => v.exposedOrders);
+    const r = respondsToInput("被推动的单", buildMoneyView(deltasA, SCOPE, noCause), buildMoneyView(deltasB, SCOPE, noCause), (v) => v.exposedOrders);
     expect(r.ok, r.message).toBe(true);
-    const r2 = respondsToInput("合计敞口", buildMoneyView(deltasA, ORDERS, noCause), buildMoneyView(deltasB, ORDERS, noCause), (v) => v.exposure);
+    const r2 = respondsToInput("合计敞口", buildMoneyView(deltasA, SCOPE, noCause), buildMoneyView(deltasB, SCOPE, noCause), (v) => v.exposure);
     expect(r2.ok, r2.message).toBe(true);
   });
 
