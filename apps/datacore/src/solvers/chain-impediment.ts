@@ -40,6 +40,7 @@ import {
   BUSINESS_TYPE_LABEL,
   ChainImpedimentSchema,
   compareChainImpediment,
+  HARD_CAPACITY_UNIT_SPECS,
   isChainScopeUnscoped,
   readProcessHardCapacity,
   resolveContentionKeep,
@@ -268,6 +269,83 @@ export const UNBOUND_IMPEDIMENT_JUDGEMENTS: readonly {
       "本引擎拒绝自造提前期阈值 —— 需先在规则库定义一条提前期规则，本判定器随即可绑定（R16 生长信号）",
   },
 ] as const;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// § 1.4 · 每条判据**真读哪几个数值属性**（WO-IMP-WORLDSTATE · 词汇覆盖率的声明侧）
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** 一条判据的一个数值输入：它落在哪个**本体对象类型**的哪个属性上，以及它是怎么进判定的。 */
+export interface ImpedimentNumericInput {
+  /** 本体对象类型 key —— **世界态按 `objectId` 挂在这个类型的行上**，故覆盖率只能按类型算。 */
+  typeKey: string;
+  /** 数值属性名。 */
+  prop: string;
+  /**
+   * · `metric` —— 判据的被比较量（`metricPath` 直读该属性）
+   * · `magnitude` —— 超阈幅度的分母（`magnitudePath`）
+   * · `derived` —— `metricPath` 指的量**不是对象属性**，由这些属性现算出来
+   *   （C02 的硬容量、C34 的争用读数都是这一档 —— 它们的 `metricPath` 在本体上无承载）
+   */
+  role: "metric" | "magnitude" | "derived";
+}
+
+/**
+ * `metricPath` / `magnitudePath` 的属性名 = 最后一段（与 `resolveField` 的「前缀可省」同口径）。
+ * 类型**一律取 `locusObjectType`**，不取路径前缀 —— 两者会不一致（C28 的路径写 `Batch.idleDays`，
+ * 落点类型却是 `MaterialBatch`）；世界态按 objectId 挂在**落点对象**上，故只有后者是对的。
+ */
+const tailProp = (path: string): string => {
+  const i = path.lastIndexOf(".");
+  return i < 0 ? path : path.slice(i + 1);
+};
+
+/**
+ * `metricPath` 指的量**不是对象属性、而是本文件现算出来的**那几条判据 —— 它们真读的属性在此登记。
+ *
+ * ⚠ 这张表是**声明**，不是判定逻辑：改判定读的属性必须同时改这里，否则覆盖率会说谎
+ * （说「这个量来自世界态」而判定其实读的是另一个属性）。接缝测试 §7 咬这一条。
+ * ⛔ 属性名不写死在本表里的部分（C02 那五个）由 `HARD_CAPACITY_UNIT_SPECS` 现算 ——
+ * 契约那张表加一种硬容量单元，这里自动跟着走。
+ */
+const DERIVED_INPUTS: Readonly<Record<string, readonly ImpedimentNumericInput[]>> = {
+  // C02：`Process.parallelThroughput` 全本体无承载，由 `readProcessHardCapacity(o.props)` 现算
+  //（单元数 × 单元日通过量 × 工序良率）——单元数/速率的属性名来自契约那张单元册。
+  "BOTTLENECK.CAPACITY.process-hard-capacity": [
+    ...HARD_CAPACITY_UNIT_SPECS.flatMap((s) => [
+      { typeKey: "Process", prop: s.unitsProp, role: "derived" as const },
+      { typeKey: "Process", prop: s.rateProp, role: "derived" as const },
+    ]),
+    { typeKey: "Process", prop: "yield", role: "derived" as const },
+  ],
+  // C34：`Base.claimedDailyRate` / `Base.capacityDailyPacks` 同样不是 Base 的属性，
+  // 由 `readBaseContention(base, c.orders, c.lines)` 现算 ⇒ 真读的是**订单与产线**上的三个量。
+  "BOTTLENECK.CAPACITY.cross-segment-contention": [
+    { typeKey: "Order", prop: "qty", role: "derived" as const },
+    { typeKey: "Order", prop: "leadDays", role: "derived" as const },
+    { typeKey: "Line", prop: "capacityDaily", role: "derived" as const },
+  ],
+};
+
+/**
+ * 判据 → 它真读的数值属性集合（**现算**，不是写死的清单）。
+ *
+ * 为什么必须有这张表：`counts.BOTTLENECK` 这类**聚合数**随不随扰动变，取决于
+ * 「这一族判据读的那几个量，推演世界到底带不带」。不把读集摊开，就只能拿
+ * 「这个求解器收了 worldId」当「它的结论随扰动变了」的证据 —— 而前者不度量后者。
+ */
+export function impedimentNumericInputs(
+  bindings: readonly ImpedimentRuleBinding[] = IMPEDIMENT_RULE_BINDINGS,
+): { binding: ImpedimentRuleBinding; inputs: readonly ImpedimentNumericInput[] }[] {
+  return bindings.map((b) => {
+    const derived = DERIVED_INPUTS[b.bindingId];
+    if (derived) return { binding: b, inputs: derived };
+    const inputs: ImpedimentNumericInput[] = [
+      { typeKey: b.locusObjectType, prop: tailProp(b.metricPath), role: "metric" },
+    ];
+    if (b.magnitudePath) inputs.push({ typeKey: b.locusObjectType, prop: tailProp(b.magnitudePath), role: "magnitude" });
+    return { binding: b, inputs };
+  });
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // § 1.5 · 跨业务线争用读数（C34 的 payload 组装 —— **单一实现**，判定与枚举共用同一份）
