@@ -765,7 +765,7 @@ export default function Console0828({
     const out = new Set<string>();
     /* WO-ORDER-SCOPE：判据从「不是已完成」改成「**在手**」（正面白名单）——
        与 `buildMoneyView` 同一个 `orderScope.onHand`，所以客户面与敞口口径一致。
-       ⚠ 原写法 `!isSettledOrder(...)` 是取反：状态**判不了**的单会落进这里，
+       ⚠ 原写法 `!isSettledOrder(...)`（该谓词已随本单删除）是取反：状态**判不了**的单会落进这里，
        于是客户面把它算成「被波及」，而钱那半（改后）把它排除 ⇒ 两半对不上账。 */
     const onHandIds = new Set(orderScope.onHand.map((o) => o.id));
     for (const d of result?.deltas ?? []) if (onHandIds.has(d.objectId)) out.add(d.objectId);

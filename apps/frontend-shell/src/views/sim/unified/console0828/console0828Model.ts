@@ -248,7 +248,7 @@ export const MONEY_BREAKDOWN_LABELS = ["毛利差额", "新增成本", "占压�
  * ══════════════════════════════════════════════════════════════════════════════
  *
  * ── 今天的行为是 X ──
- * 影响面的取舍只有**一个二值谓词**（本文件原先的 `isSettledOrder`，判据是
+ * 影响面的取舍只有**一个二值谓词**（本文件原先的 `isSettledOrder`，现已删除，判据是
  * `o?.status === "COMPLETED"`）。于是状态值只要**不认识** —— 拼错、后端新增一个枚举、
  * 字段压根没回来（`null`/`undefined`）—— 谓词返回 `false`，那张单就被归到
  * 「不是已结清」这一侧，**照常计入敞口与张数，而屏上没有任何痕迹**。
@@ -275,9 +275,6 @@ export const MONEY_BREAKDOWN_LABELS = ["毛利差额", "新增成本", "占压�
  *   `@platform/contracts`（`order-status.ts` 的 `ORDER_STATUSES` / `isOnHandOrderStatus`）。
  *   后端哪天加第四个状态，`OFF_HAND_STATUSES` 当场跟着变，这里一行都不用改。
  */
-
-/** 认识、但不在手的状态集 —— **现算的差集**，⛔ 不写 `["COMPLETED"]`。 */
-const OFF_HAND_STATUSES: readonly string[] = ORDER_STATUSES.filter((s) => !isOnHandOrderStatus(s));
 
 /** 这个状态值平台认不认识（不认识 ⇒ 判不了，而不是「不在手」）。 */
 function isKnownOrderStatus(status: string | null | undefined): boolean {
@@ -540,30 +537,22 @@ export interface CustomerView {
   readonly onHandValue: number;
 }
 
-/**
- * WO-EXPOSURE-STATUS · 「这张单已经结清了吗」的**唯一**判据。
+/* ══ WO-ORDER-SCOPE · `isSettledOrder` 已删除，**不许再加回来** ═══════════════════
  *
- * ⛔ 两处消费方（`buildMoneyView` 的敞口、`Console0828` 的 `touchedOrderIds` → 客户面）
- *   必须共用这一份。各抄一份的话，改其中一处而另一处照旧 ⇒ 屏上会出现
- *   「被推动 150 张，却涉及全部 20 家客户」这种自相矛盾，而且没有任何东西会红。
- *   （本仓纪律原文：「门脚本里的金丝雀必须与主逻辑共用同一份实现，不许各抄一份正则 ——
- *     抄了就是装饰品」。同一个道理。）
+ * 它原是「这张单已经结清了吗」的唯一判据（`o?.status === "COMPLETED"`），两处消费方
+ * （`buildMoneyView` 的敞口、`Console0828` 的 `touchedOrderIds`）共用。
+ * 本单把这两处都改成了读 `splitOrderScope` 的三档 ⇒ 它**零调用方**。
  *
- * 判据用**黑名单**（列出终态）而非白名单（列出活跃态）：
- *   白名单漏一个新状态 ⇒ 那批单静默消失在影响面里，屏上看不出区别（假绿）；
- *   黑名单漏一个新终态 ⇒ 它被多算，屏上与状态分布对不上，**人能看见**。
+ * ⛔ 为什么必须删而不是留着：它是个**二值**谓词，而这件事有**三**档。
+ *   留着它 = 留一个名字听起来很权威、却答不出「判不了」的第二真相源；
+ *   下一个人用 `!isSettledOrder(o)` 当「在手」，本单修的那条缝就原样回来了
+ *   —— 而且不会红（两套实现都能跑、都能过门，正是本仓从头到尾在防的那个东西）。
+ * ⇒ 要判「这张单进不进敞口」只有一条路：`splitOrderScope(...).onHand`。
  *
- * ⚠ **WO-ORDER-SCOPE 改了它的实现，没改它的语义**：原文写死 `o?.status === "COMPLETED"`，
- *   现在读**现算的差集** `OFF_HAND_STATUSES`（= `ORDER_STATUSES` − 在手两态）。
- *   今天两者解出同一个集合（恰好只有已完成），但字面量没了 ⇒ 后端加第四个终态时
- *   这里自动跟上，而写死的那一版会把新终态读成「在手」。
- * ⚠ 它**答不了「判不了」这一档** —— 对不认识的状态它返回 `false`，而 `false` 在这里读作
- *   「不是已结清」，不读作「在手」。凡要判「这张单进不进敞口」，一律走 `splitOrderScope`，
- *   ⛔ 别用本谓词取反（那正是本单要修的那条缝）。
+ * 顺带删掉的还有它唯一的依赖 `OFF_HAND_STATUSES`（`ORDER_STATUSES` − 在手两态）——
+ * `splitOrderScope` 的 `offHand` 是**按剩余项归档**得来的，不需要那个差集常量。
+ * （这一条是**变异反证**逼出来的：把该差集取反后整门 20/20 照样绿 ⇒ 它当时已经没有消费方了。）
  */
-export function isSettledOrder(o: { readonly status: string | null } | undefined): boolean {
-  return typeof o?.status === "string" && OFF_HAND_STATUSES.includes(o.status);
-}
 
 /**
  * 订单状态枚举 → 人话。⛔ 屏上不许直接印 `IN_PRODUCTION` 这种接口枚举。
