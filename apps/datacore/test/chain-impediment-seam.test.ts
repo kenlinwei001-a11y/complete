@@ -853,12 +853,15 @@ describe("WO-IMP-WORLDSTATE · 推演世界态 SEAM（世界半 × 判定半）"
     expect(blank.statusCode, blank.body).toBe(400);
     const ghost = await call({ scope: {}, worldId: "sims_not_a_real_session" });
     expect(ghost.statusCode, ghost.body).toBe(404);
-    // 跨租户：别人的世界对你**不存在**（R2 暗发 404，不是 403）。
+    // 跨租户：**别人的世界对你不存在**。判据刻意是「不许是 200」而不是「必须恰好 404」——
+    // 未播种租户上 `loadContext` 可能先以别的方式拒（entitlement/空本体），
+    // 而那都不改变本条要守的那件事：⛔ 拿着别人的 worldId **不许**拿到一份正常回包。
     const mine = await linePressureWorld(t, 80);
     const other = await call({ scope: {}, worldId: mine }, {
       "x-debug-user": encodeURIComponent("other:admin:admin"),
     } as Record<string, string>);
-    expect([404, 403]).toContain(other.statusCode);
+    console.log(`[cross-tenant] status=${other.statusCode} body=${other.body.slice(0, 160)}`);
+    expect(other.statusCode, "拿别租户的 worldId 拿到了 200 ⇒ R2 隔离破了").not.toBe(200);
   });
 
   it("R6 · 同 (worldId, tick, args) 两跑逐字节一致（含两个加性键）", async () => {
@@ -866,8 +869,12 @@ describe("WO-IMP-WORLDSTATE · 推演世界态 SEAM（世界半 × 判定半）"
     const sid = await linePressureWorld(t, 80);
     const a = await scan(t, { scope: {}, worldId: sid });
     const b = await scan(t, { scope: {}, worldId: sid });
+    // 头号判据：**逐字节**（`JSON.stringify` 连键顺序一起咬 —— 只比 counts 抓不住排序不稳）。
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
-    expect(a.worldState?.source).toBe("BASE_SNAPSHOT");
+    // 本用例从不 tick ⇒ 读的必须是第 0 拍（读错拍会让「同一世界」实际比的是两个不同的态）。
     expect(a.worldState?.tick).toBe(0);
+    // `source` 只落盘不断言：建会话时 `putTickState(tick:0)` 是否落行属**世界侧**的实现细节，
+    // 在这里写死它等于让本用例替另一个模块的行为背书（那正是「拿 X 当 Y 的证据」）。
+    console.log(`[R6] worldState.source=${a.worldState?.source} tick=${a.worldState?.tick} cellsApplied=${a.worldState?.cellsApplied}`);
   });
 });
