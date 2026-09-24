@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PropagationRule, SandboxViewConfig, SimRunDisclosure } from "@platform/contracts";
+import { isOnHandOrderStatus, ON_HAND_ORDER_STATUSES, ORDER_STATUSES } from "@platform/contracts";
 
 /**
  * ══ WO-C0828-SEAM · 「统一推演控制台」`console0828` 的**接缝门**（SEAM-GATE：咬链路不咬函数）══
@@ -149,6 +150,41 @@ function cfg(): SandboxViewConfig {
   } as unknown as SandboxViewConfig;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════
+ * WO-ORDER-SCOPE · 订单状态一律**取自契约**，⛔ 门里不写状态字面量
+ * ══════════════════════════════════════════════════════════════════════════════
+ *
+ * ⚠ **本段是被一次真红逼出来的，值得记一笔**：本夹具原文写的是
+ *   `status: "CONFIRMED"` / `"PLANNED"` —— **两个都不在 `ORDER_STATUSES` 里**
+ *   （契约三态只有 `OPEN` / `IN_PRODUCTION` / `COMPLETED`）。
+ *   旧口径的取舍判据是二值的 `status === "COMPLETED"` 取反，于是这三张**状态压根不认识**的单
+ *   全部被静默算进敞口，屏上照样报「2 张单」⇒ **门一直是绿的，而它咬的是一个假前提**。
+ *   改吃在手口径后同一份夹具当场红：
+ *     `expected '0 张单 · 占订单簿 0.0%' to contain '2 张单'`
+ *   —— 三张单全部落进「判不了」。**这一红就是本单要修的那条缝的指纹。**
+ *   形态（铁律 0.6 句式）：**「我用『门是绿的』当作『夹具的状态值是真的』的证据，
+ *   而前者并不度量后者 —— 二值判据对任何不认识的值都给同一个答案。」**
+ *
+ * ⇒ 状态值从此**全部现取自契约**，一个字面量都不写：契约哪天改枚举，夹具自动跟上，
+ *   不会再出现「夹具用着一个平台不认识的状态，而门照样绿」这一态。
+ *   （唯一故意写字面量的地方是 ④d 那个**刻意不认识**的状态 —— 那是被测对象本身。）
+ */
+function pickStatus(from: readonly string[], i: number, what: string): string {
+  const s = from[i];
+  /* 🐤 金丝雀：取不到就**当场抛**，⛔ 不许回落成 `undefined`。
+     `undefined` 状态恰好就是 ④d 要测的「判不了」那一档 ⇒ 一旦回落，
+     ④c 会从「已完成不计入」悄悄变成「判不了不计入」，两条用例一起失去鉴别力，
+     而屏上两者都表现为「这张单没进敞口」，红不了。 */
+  if (s === undefined) throw new Error(`契约状态集取不到${what}（i=${i}）⇒ 量法坏了，不是代码坏了`);
+  return s;
+}
+/** 在手两态（口径出处 = 契约 `ON_HAND_ORDER_STATUSES`）。 */
+const ST_OPEN = pickStatus(ON_HAND_ORDER_STATUSES, 0, "在手第一态");
+const ST_IN_PRODUCTION = pickStatus(ON_HAND_ORDER_STATUSES, 1, "在手第二态");
+/** 认识但不在手 —— **现算的差集**，今天恰好只有「已交付关闭」。 */
+const OFF_HAND_STATUSES = ORDER_STATUSES.filter((s) => !isOnHandOrderStatus(s));
+const ST_COMPLETED = pickStatus(OFF_HAND_STATUSES, 0, "认识但不在手的态");
+
 /**
  * 订单簿。**单独具名**（而不是只活在 `OBJECTS.Order` 里）——
  * 本包开了 `noUncheckedIndexedAccess`，`OBJECTS.Order` 取出来是 `T | undefined`，
@@ -156,10 +192,23 @@ function cfg(): SandboxViewConfig {
  * 而不是另抄一个字面量：抄一份就等于「期望值和被测数据各自漂」，改了 fixture 测试照样绿。
  */
 const ORDERS: { id: string; props: Record<string, unknown> }[] = [
-  { id: "ord_1", props: { cust: "宁德时代", qty: 1200, value: 30_000_000, due: "2026-10-01", status: "CONFIRMED", model: "M1" } },
-  { id: "ord_2", props: { cust: "宁德时代", qty: 800, value: 20_000_000, due: "2026-11-01", status: "PLANNED", model: "M2" } },
-  { id: "ord_3", props: { cust: "比亚迪", qty: 500, value: 12_000_000, due: "2026-12-01", status: "CONFIRMED", model: "M1" } },
+  { id: "ord_1", props: { cust: "宁德时代", qty: 1200, value: 30_000_000, due: "2026-10-01", status: ST_IN_PRODUCTION, model: "M1" } },
+  { id: "ord_2", props: { cust: "宁德时代", qty: 800, value: 20_000_000, due: "2026-11-01", status: ST_OPEN, model: "M2" } },
+  { id: "ord_3", props: { cust: "比亚迪", qty: 500, value: 12_000_000, due: "2026-12-01", status: ST_OPEN, model: "M1" } },
 ];
+
+/**
+ * ④c / ④d 的**追加**订单（默认空 ⇒ 其余 18 条用例的订单簿仍是 3 张，一个期望值都不动）。
+ *
+ * ⚠ 为什么不直接加进 `ORDERS`：`bookOrders` / `bookTotal` / 状态分布 / 客户家数
+ *   全都是**现算**的，加进去会同时改掉十几条既有断言的被测数据 —— 那就分不清
+ *   「新加的两条在测什么」与「旧的十几条为什么数变了」。
+ */
+let extraOrders: { id: string; props: Record<string, unknown> }[] = [];
+/** 本次用例的订单簿 = 基线三张 + 追加。取数桩与期望值**同读这一个函数**。 */
+function orderBook(): { id: string; props: Record<string, unknown> }[] {
+  return [...ORDERS, ...extraOrders];
+}
 
 /** 对象层。名字只从这里来（组件取 `props.name` / `props.cust` 等，取不到就回落 id，不编）。 */
 const OBJECTS: Record<string, { id: string; props: Record<string, unknown> }[]> = {
@@ -196,6 +245,27 @@ const WORLD_AFTER = {
   ord_3: { costPressure: 30 },
   mat_licarb: { priceShock: 20 },
 };
+
+/**
+ * ④c / ④d 的追加格：给追加单一个**大幅** delta（10 → 90，远超噪声地板 0.01）。
+ *
+ * 「动了也不算」这句话要有鉴别力，前提是它**真的动了**：
+ * 若追加单没有 delta，它不进敞口的原因就分不清是「状态被排除了」还是「压根没动」——
+ * 那条用例会在一个假象上变绿（本仓原话：「链路通了但读数没动」的假绿）。
+ *
+ * ⚠ 这两格**跟着 `extraOrders` 一起开关**，⛔ 不许常开：`result.deltas.length` 是上屏的数
+ * （「N 格读数发生变化」），常开会把其余用例的那个数从 2 改成 4。
+ */
+const EXTRA_CELLS_BEFORE: Record<string, Record<string, number>> = {
+  ord_extra: { costPressure: 10 },
+};
+const EXTRA_CELLS_AFTER: Record<string, Record<string, number>> = {
+  ord_extra: { costPressure: 90 },
+};
+const worldBefore = (): Record<string, Record<string, number>> =>
+  extraOrders.length === 0 ? WORLD_BEFORE : { ...WORLD_BEFORE, ...EXTRA_CELLS_BEFORE };
+const worldAfter = (): Record<string, Record<string, number>> =>
+  extraOrders.length === 0 ? WORLD_AFTER : { ...WORLD_AFTER, ...EXTRA_CELLS_AFTER };
 
 /**
  * 披露层回包 —— **真后端一次真跑的原样回包**，不是手写夹具（复用既有
@@ -299,7 +369,8 @@ vi.mock("@/api/endpoints", () => ({
   fetchSimViewConfig: vi.fn(async () => cfg()),
   fetchPropagationRules: vi.fn(async () => ({ items: rulesFromEdges(edges), stateVarNames: {} })),
   fetchAllObjects: vi.fn(async (type: string) => {
-    const items = OBJECTS[type] ?? [];
+    // WO-ORDER-SCOPE：`Order` 走 `orderBook()`（基线三张 + 本用例的追加），其余类型原样。
+    const items = type === "Order" ? orderBook() : (OBJECTS[type] ?? []);
     return { items, total: items.length, hasMore: false, page: 1, pageSize: 500 };
   }),
   /*
@@ -324,7 +395,7 @@ vi.mock("@/api/endpoints", () => ({
   ]),
   simWorld: vi.fn(async () => ({
     tick: perturbCalls.length === 0 ? 0 : 3,
-    state: perturbCalls.length === 0 ? WORLD_BEFORE : WORLD_AFTER,
+    state: perturbCalls.length === 0 ? worldBefore() : worldAfter(),
   })),
   /* WO-EXPOSURE-CONTRIB：对照世界桩。`runM` 的差分基准 = 它的 `counterfactualState`
      （同会话 active 规则集 · 同 N 拍 · 无本批扰动）。桩成 `WORLD_BEFORE` ⇒ 差分与
@@ -335,8 +406,8 @@ vi.mock("@/api/endpoints", () => ({
     ticks: 3,
     disabledRuleKeys: [],
     suppressedRules: [],
-    baselineState: WORLD_BEFORE,
-    counterfactualState: WORLD_BEFORE,
+    baselineState: worldBefore(),
+    counterfactualState: worldBefore(),
     diffs: [],
     suppressedRulesFiredInBaseline: [],
   })),
@@ -346,7 +417,7 @@ vi.mock("@/api/endpoints", () => ({
   }),
   simTick: vi.fn(async (_sid: string, n: number) => {
     if (tickFails) throw new Error("推进这一跳没走通（桩：本用例刻意不回）");
-    return { curTick: n, state: WORLD_AFTER, disclosure: DISCLOSURE };
+    return { curTick: n, state: worldAfter(), disclosure: DISCLOSURE };
   }),
   runSolver: vi.fn(async () => {
     if (solverFails) throw new Error("求解器这一跳没走通（桩：本用例刻意不回）");
@@ -388,7 +459,9 @@ vi.mock("@/api/apiClient", () => ({
 
 import UnifiedSimShell from "@/views/sim/unified/UnifiedSimShell";
 import { BUSINESS_EVENTS } from "@/views/sim/unified/console0828/eventCatalog";
-import { MONEY_BREAKDOWN_LABELS } from "@/views/sim/unified/console0828/console0828Model";
+/* ⚠ `fmtMoney` 从**被测代码的单源**取（它自己也是转调 `ParetoChart.fmtXTick` 的那一份）——
+   ⛔ 不在门里另写一遍「元 → 亿/万」的折算：抄一份就是期望值与屏上各自漂，改一边照样绿。 */
+import { fmtMoney, MONEY_BREAKDOWN_LABELS } from "@/views/sim/unified/console0828/console0828Model";
 
 function mount() {
   return render(
@@ -434,6 +507,51 @@ async function addEvent(eventId: string, objectId: string, magnitude?: number): 
   fireEvent.click(add);
 }
 
+/**
+ * WO-ORDER-SCOPE · ④c/④d 的公共动作：挂载 → 加一件事 → 算一下 → 等钱那块出来。
+ * 两条用例只在 `extraOrders` 上不同，动作一字不差 —— 抄两份就会出现
+ * 「一条改了动作另一条没改」而两条都还绿的那种漂移。
+ */
+async function runFlow(): Promise<void> {
+  mount();
+  await railReady();
+  await addEvent("material-price-up", "mat_licarb", 15);
+  fireEvent.click(screen.getByTestId("c0828-go"));
+  await screen.findByTestId("c0828-money");
+  /* ⚠ 必须**真点那个页签**再断言可见性：五块面板用 `hidden` 属性切换、全留在 DOM 里
+     （`.tabPane[hidden]{display:none}`）⇒ 不切页签时 `c0828-cust` 整棵子树对
+     `toBeVisible()` 是不可见的，而 `toBeInTheDocument()` 照样过。
+     这正是本仓「读屏照样念 / 门也白降」那条的同一面：**在不在 DOM ≠ 看得见**。
+     顺带这也让 ④c/④d 走的是用户真实动线（点页签），不是直接摸 DOM。 */
+  fireEvent.click(screen.getByTestId("c0828-tab-cust"));
+  await waitFor(() => {
+    expect(screen.getByTestId("c0828-pane-cust")).toBeVisible();
+  });
+}
+
+/** 打开口径浮层并回正文（`InfoPopover` 关着时正文**不在 DOM**，必须真点开）。 */
+async function openInfo(testId: string): Promise<HTMLElement> {
+  expect(
+    screen.queryByTestId(`info-body-${testId}`),
+    "浮层正文默认就在 DOM ⇒ 它没起到收纳作用（读屏照样念）",
+  ).toBeNull();
+  const trigger = screen.getByTestId(`info-${testId}`);
+  expect(trigger, "第一层没有 `?` 记号 ⇒ 静默降层 = 删除（规范 §1）").toBeVisible();
+  fireEvent.click(trigger);
+  return screen.findByTestId(`info-body-${testId}`);
+}
+
+/** 屏上「三档」那三个数 —— 从**口径浮层正文**里现取，⛔ 不读组件内部 state。 */
+function scopeCountsFrom(body: HTMLElement): { onHand: number; offHand: number; undecidable: number } {
+  const t = body.textContent ?? "";
+  const grab = (label: string): number => {
+    const m = new RegExp(`${label}\\s*(\\d+)`).exec(t);
+    if (m?.[1] === undefined) throw new Error(`口径浮层里读不到「${label}」⇒ 量法坏了，不是屏上没数。正文：${t}`);
+    return Number(m[1]);
+  };
+  return { onHand: grab("在手"), offHand: grab("已交付关闭"), undecidable: grab("判不了") };
+}
+
 beforeEach(() => {
   nodeObjectIds = baseNodeObjectIds();
   edges = baseEdges();
@@ -443,6 +561,7 @@ beforeEach(() => {
   sessionTickDays = null;
   sessionCreatedAtRaw = "2026-09-10T00:00:00.000Z";
   withCandidates = false;
+  extraOrders = [];
 });
 afterEach(cleanup);
 
@@ -697,6 +816,113 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     const cause = screen.getByTestId("c0828-maincause").textContent ?? "";
     expect(cause).toContain("无法归因到单一事件");
     expect(cause).not.toContain("原材料涨价");
+  });
+
+  /* ══ WO-ORDER-SCOPE · ④c / ④d ════════════════════════════════════════════════
+   *
+   * 这两条守的是**「哪些单进得来」**这一件事，⛔ 不碰「每张单算多少钱」（那是红线，需签字）。
+   *
+   * 判据落在**屏上**（DOM 文本），不落在模型返回值：口径改对了而屏上没接线，
+   * 读者看到的还是旧数 —— 本仓原话「绿测试 ≠ 能用，断在接缝」。
+   */
+  const EXTRA_VALUE = 99_000_000;
+  /** ④c/④d 的追加单：同一张单，**只有 `status` 不同** —— 这就是两条用例的唯一自变量。 */
+  const extraOrder = (status: string) => [
+    { id: "ord_extra", props: { cust: "追加客户", qty: 100, value: EXTRA_VALUE, due: "2026-12-31", status, model: "M1" } },
+  ];
+  /** 基线两张动了的单的敞口（ord_1 + ord_2）—— 由 fixture 现算，⛔ 不写死 5000 万。 */
+  const MOVED_VALUE = ORDERS.filter((o) => ["ord_1", "ord_2"].includes(o.id)).reduce(
+    (s, o) => s + (o.props.value as number),
+    0,
+  );
+
+  it("④c 已交付关闭的单**动了也不算**：不进敞口、不进张数，且口径在屏上说得出来", async () => {
+    // 追加一张**已完成**单，并给它一个大幅 delta（10 → 90，远超噪声地板 0.01）。
+    // 🐤 前提金丝雀：它必须真的动了 —— 否则「动了也不算」这句话没有鉴别力，
+    //    它不进敞口的原因就分不清是「状态被排除」还是「压根没动」。
+    extraOrders = extraOrder(ST_COMPLETED);
+    expect(EXTRA_CELLS_AFTER.ord_extra?.costPressure).not.toBe(EXTRA_CELLS_BEFORE.ord_extra?.costPressure);
+
+    await runFlow();
+
+    // ① 张数与金额都还是基线那两张 —— 已完成单**一张都没混进来**。
+    const sub = screen.getByTestId("c0828-exposure-sub").textContent ?? "";
+    expect(sub, "已完成单混进了影响面（仓主报的原始 bug 复活）").toContain("2 张单");
+    const exposure = screen.getByTestId("c0828-exposure").textContent ?? "";
+    expect(exposure).toContain(fmtMoney(MOVED_VALUE, "元"));
+    // ⛔ 反向：它的钱也不许进敞口。只咬张数抓不住「张数对了金额多算了」。
+    expect(exposure, "已完成单的金额被算进了敞口").not.toContain(fmtMoney(MOVED_VALUE + EXTRA_VALUE, "元"));
+
+    // ② 诚实位：被排除的那张必须**上屏**（只报 2 不报「另有 1 张已完成不计入」= 不可核）。
+    const settled = screen.getByTestId("c0828-cust").textContent ?? "";
+    expect(settled).toContain("已完成·不计入");
+
+    // ③ 它是**认识**的状态 ⇒ 不许落到「判不了」那一档去（两档混了等于没分）。
+    expect(
+      screen.queryByTestId("c0828-undecidable"),
+      "已完成单被算成「状态判不了」——两个排除档混成了一个",
+    ).toBeNull();
+
+    // ④ 口径在屏上说得出来：三档 + Σ 恒等式（= 全簿），读者不读代码就能自己核。
+    const body = await openInfo("c0828-scope-caliber");
+    const c = scopeCountsFrom(body);
+    expect(c).toEqual({ onHand: ORDERS.length, offHand: 1, undecidable: 0 });
+    expect(
+      c.onHand + c.offHand + c.undecidable,
+      "三档之和 ≠ 全簿张数 ⇒ 划分漏了一档（互斥且并集=全簿 这条性质破了）",
+    ).toBe(orderBook().length);
+  });
+
+  it("④d 状态不认识的单落「判不了」，**不静默并进任一侧**；反向金丝雀：改成认识的在手态就必须离开这一档", async () => {
+    /* ⚠ 本条**必须配反向金丝雀**：只验「不认识的落进判不了」抓不住
+     *   「所有单都落进判不了」这个相反的故障 —— 本仓记过这笔账，
+     *   而且今天开工时它就真的发生过一次（夹具的 CONFIRMED/PLANNED 让三张全落判不了，
+     *   屏上 `0 张单 · 占订单簿 0.0%`）。故第二臂把同一张单的状态换成**认识的在手态**，
+     *   它必须**离开**这一档并**进入**敞口。 */
+
+    // ── 臂 ① 状态平台不认识（含它压根不是契约枚举里的值）──────────────────────
+    const WEIRD = "WAT_IS_THIS";
+    expect(
+      (ORDER_STATUSES as readonly string[]).includes(WEIRD),
+      "这个状态居然在契约枚举里 ⇒ 本条用例的自变量选错了，它测不到「判不了」",
+    ).toBe(false);
+    extraOrders = extraOrder(WEIRD);
+    await runFlow();
+
+    const undecidable = screen.getByTestId("c0828-undecidable");
+    expect(undecidable.textContent ?? "", "状态判不了的单没有单独上屏").toContain("1 张");
+    // 不静默并进「已完成」那一侧。
+    expect(
+      screen.getByTestId("c0828-cust").textContent ?? "",
+      "判不了的单被并进了「已完成·不计入」——那会让人以为它是正常业务排除",
+    ).not.toContain("已完成·不计入");
+    // 也不静默并进敞口：张数与金额都还是基线那两张。
+    const sub1 = screen.getByTestId("c0828-exposure-sub").textContent ?? "";
+    expect(sub1, "状态判不了的单被算进了影响面（这就是本单要修的那条缝）").toContain("2 张单");
+    const exp1 = screen.getByTestId("c0828-exposure").textContent ?? "";
+    expect(exp1).toContain(fmtMoney(MOVED_VALUE, "元"));
+    expect(exp1).not.toContain(fmtMoney(MOVED_VALUE + EXTRA_VALUE, "元"));
+
+    const body1 = await openInfo("c0828-scope-caliber");
+    expect(scopeCountsFrom(body1)).toEqual({ onHand: ORDERS.length, offHand: 0, undecidable: 1 });
+
+    // ── 臂 ② 反向金丝雀：同一张单，状态换成**认识的在手态** ───────────────────
+    cleanup();
+    perturbCalls = []; // 世界态桩按它判「推演前/后」，不清会让第二臂拿到 after 当 before。
+    extraOrders = extraOrder(ST_IN_PRODUCTION);
+    await runFlow();
+
+    expect(
+      screen.queryByTestId("c0828-undecidable"),
+      "换成认识的在手态之后它还留在「判不了」⇒ 这一档是个黑洞：所有单都会掉进去，而第一臂照样绿",
+    ).toBeNull();
+    const sub2 = screen.getByTestId("c0828-exposure-sub").textContent ?? "";
+    expect(sub2, "在手单没有进影响面 ⇒ 划分把在手态也排除了").toContain("3 张单");
+    const exp2 = screen.getByTestId("c0828-exposure").textContent ?? "";
+    expect(exp2, "在手单的金额没进敞口").toContain(fmtMoney(MOVED_VALUE + EXTRA_VALUE, "元"));
+
+    const body2 = await openInfo("c0828-scope-caliber");
+    expect(scopeCountsFrom(body2)).toEqual({ onHand: ORDERS.length + 1, offHand: 0, undecidable: 0 });
   });
 
   it("⑤ 诚实态 · 三行钱：算不出来的画「这次算不出来」——⛔ 不许显示 0，也不许留空", async () => {
