@@ -114,8 +114,9 @@ const CTX_ARRAYS: ReadonlyArray<readonly [typeKey: string, get: (c: SolverContex
  * 返回非空串 = 推演口径。给了但不是非空字符串 ⇒ 抛 400。
  *
  * ⛔ 抽出来的唯一理由是**第二条挂载路**（拦截路求解器在自己入口叠同一个核，
- * 见 `docs/AUDIT-worldstate-rollout.md` D 段：`portfolio` / `chain_impediments` 这一类
- * 在通用 `loadContext` 之前就 return 了，结构上够不着本文件的预注入器）。
+ * 见 `docs/AUDIT-worldstate-rollout.md` D 段 `portfolio` 那一类：它们在通用 `loadContext`
+ * 之前就 return 了，结构上够不着本文件的预注入器。第一个照这条形态落地的是
+ * `chain_impediments`（WO-IMP-WORLDSTATE，已移入该台账 C 段））。
  * 各抄一份 `str(args.worldId)` + 400 文案，就会出现「一条路 400、另一条路静默当没传」
  * —— 而静默那条正是这个病的形态本身。
  */

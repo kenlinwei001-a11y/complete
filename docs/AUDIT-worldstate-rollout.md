@@ -24,7 +24,7 @@
 不变量：R2（跨租户 404 暗发）、R4（只叠副本，仓储行不动）、R6（无 worldId ⇒ 逐字节同旧）。
 本文件是审计台账，不改任何链路/事件/门禁。
 
-## 判定总表（63 = true 26 + false 32 + 判不了 5）
+## 判定总表（63 = true 27 + false 31 + 判不了 5）
 
 ### A · worldAware: true —— 已接线（3，本单落地）
 
@@ -51,7 +51,7 @@
 | outsourcing_split | 外包拆分吃产能缺口，capacity 投影直达。 |
 | quote_margin | 报价毛利 = 按当前成本结构的前瞻回答；costPressure→cost↑ 落其读的 BOM 成本格 ⇒ 世界态报价才是诚实报价。 |
 
-### C · worldAware: true —— 已有自己的世界态口（4，不走本机制）
+### C · worldAware: true —— 已有自己的世界态口（5，不走本机制）
 
 | solver | 一句理由 |
 |---|---|
@@ -59,6 +59,7 @@
 | chain_loss_attribution | 专口 `args.sessionId` → `loadChainSimOverlay`；传就变、不传就不变（本单病的金丝雀对照组）。 |
 | multi_objective | 装配路世界口：`assembleParetoModel` 里 `input.sessionId` → `buildWorldReadView`；不传 sessionId ⇒ view 不建 ⇒ 逐字节同旧。 |
 | optimize_whatif | 同 multi_objective 的装配路口（同一 assembleParetoModel）。 |
+| chain_impediments | **WO-IMP-WORLDSTATE 已落地**（原在 E 段，那行的理由「另有并行 WO 可能动它」就是本单）：按 D 段形态在拦截路自入口挂同一个 `buildSolverWorldOverlay`，叠**三处**输入面（ctx 数组 + 自读的 MaterialBalance + OrderLine）。`args.worldId` 是口径开关（不给 ⇒ 真值口径逐字节同旧），空串 400 / 会话不存在 404。回包带 `worldState` + `worldCoverage`（逐判据现算：哪几个判定输入来自世界态、因此哪一族结论与本次扰动无关）。⚠ 实测只有 `Line.capacityDaily`（经 utilPressure/loadIndex 投影）与 `Order.qty`（DIRECT + demandPressure 投影）落进判定读集 ⇒ `counts.CONGESTION` / `counts.BREAK` **结构上不响应**（它们读的 `MaterialBatch.idleDays` / `MaterialBalance.gapTon` / `netDemandTon` / `DataSourceHealth.lagHours` 世界态一个都不带），已由 `worldCoverage.unresponsiveKinds` 点名。 |
 
 ### D · worldAware: true —— 候选·拦截路·需在自入口挂同一叠加核（7，剩余清单第二梯队）
 
@@ -72,7 +73,7 @@
 | supplier_disruption_radius | 名字即推演：「这个供应商断供波及多大半径」，断供场景天然该来自 sim 会话。 |
 | shared_bottleneck | 通用瓶颈（读任意对象图），与 bottleneck_matrix 同判定，不同数据口。 |
 
-### E · worldAware: false —— 台账/审计/体检/查询/纯参数（32，机制不许够着它们）
+### E · worldAware: false —— 台账/审计/体检/查询/纯参数（31，机制不许够着它们）
 
 | solver | 一句理由 |
 |---|---|
@@ -90,7 +91,8 @@
 | order_fullchain | 订单全链路追溯，事实链路。 |
 | mrp_netting | 净需求台账计算，答「今天缺多少料」。 |
 | finance_pnl | 真值 P&L 台账；推演口径已有 finance_world_projection 专口，不许把台账做成随推演变。 |
-| chain_impediments | 链上堵点检测（事实体检）；另有并行 WO 可能动它，本单明令不碰。 |
+<!-- chain_impediments 已于 WO-IMP-WORLDSTATE 移入 C 段（worldAware:true·自入口挂同一叠加核）。
+     ⛔ 不许在此留一行旧状态 —— 同一条目在两段里状态相反，比冲突危险得多：冲突会红，双份不会。 -->
 | process_flow_time | 流程实例流转时长统计，事实口径。 |
 | ontology_query | 本体图遍历查询，结构事实。 |
 | generic_inference | 本体派生引擎带 recompute（写路径）；世界态叠加只该发生在只读副本上（R4），要世界态版须在派生源数据层做，不是本机制。 |
