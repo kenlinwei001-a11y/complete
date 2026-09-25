@@ -15,7 +15,7 @@
  * 前端另写一份 `cf - base` 看着无害，但两侧一旦漂移（取整、缺格当 0、容差），
  * 屏上那个"关掉这条边涨了 3.2"就是个查无对证的数。本文件只做**排版**，不做**算术**。
  */
-import type { CellProvenance, PropagationRule, SandboxViewConfig, SimCounterfactualResult, SimStateDiffCell, TickState } from "@platform/contracts";
+import type { PropagationRule, SandboxViewConfig, SimCounterfactualResult, SimStateDiffCell, TickState } from "@platform/contracts";
 // WO-STATEVAR-DISPLAYNAME：状态变量中文名的唯一消费路径（真值源在后端，此处只翻译不编名）
 import { qualifiedStateVarText, stateVarText } from "./stateVarLabel";
 
@@ -405,27 +405,4 @@ export function deriveBaseSnapshot(cfg: SandboxViewConfig): TickState {
     }
   }
   return state;
-}
-
-/**
- * 给一份**本地现编的**世界逐格盖 `derived` 章（与 `TickState` 同形）。
- *
- * ⚠ 为什么需要它、而不是留空让下游读作「未知」：**「我没记」与「我记了，它是占位」是两个不同的命题**
- * （契约 `CellProvenanceSchema` 头注原话）。`deriveBaseSnapshot` 产出的那一份，
- * 每一格都是 `hash01` 占位，这件事**调用方当场就知道**——留空等于把一个确知的事实说成不知道，
- * 而屏上两档的措辞正好相反（未知那档写「不能断言是占位」）。
- *
- * ⛔ 不许反过来用它给**后端回来的**世界盖章：那一份是混合的，整份盖 `derived`
- * 会把真读数一起否掉（自毁可信度那一支）。本函数只给「我自己编的」那一份用。
- *
- * 复验（2026-09-18 实测·真后端 `SEED_DEMO=1` 内存模式）：起 datacore 后读启动日志 `seeded demo sim world` 那行的 `measuredCells` / `derivedCells`；或 `POST /a/v1/sim/sessions`（空 body）后 `GET /a/v1/sim/sessions/:id/world` 数回包的 `baseProvenance`。派生实现：`apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot`。
- */
-export function stampAllDerived(state: TickState): CellProvenance {
-  const out: CellProvenance = {};
-  for (const [oid, row] of Object.entries(state)) {
-    const r: Record<string, "measured" | "derived"> = {};
-    for (const v of Object.keys(row ?? {})) r[v] = "derived";
-    out[oid] = r;
-  }
-  return out;
 }

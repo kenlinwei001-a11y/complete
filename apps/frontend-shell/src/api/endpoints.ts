@@ -72,9 +72,6 @@ import type {
   SimCertification,
   SimCheckpoint,
   TickState,
-  // WO-SANDBOX-REAL-SNAPSHOT · tick0 的**逐格出处**表（与 `TickState` 同形：`[objectId][stateVar] = "measured"|"derived"`）。
-  // 契约单源（`packages/contracts/src/sim.ts`），前端不重定义（contracts-only-shared）。
-  CellProvenance,
   // WO-SIM-SESSION-WIRE · 变更传播预览（POST /a/v1/sim/change-impact-preview）——
   // 请求 `focus` 与回包四桶全部取契约，前端一个形状都不重定义（contracts-only-shared）。
   ChangeFocus,
@@ -834,27 +831,8 @@ export const fetchTickReports = () => api.a<TickReportVM[]>("/a/v1/synthetic/clo
 // 全部经 sim.sandbox entitlement 暗发（关 = 404 FEATURE_NOT_FOUND）。
 /** 沙盘视图配置 = 租户本体 + 传导规则派生（nodeTypes/linkTypes/stateVars/radarDims/screens/propagationCount）。 */
 export const fetchSimViewConfig = () => api.a<SandboxViewConfig>("/a/v1/sim/view-config");
-/**
- * 创建会话（init）：`scope`=范围裁剪；`baseSnapshot` **可省**。
- *
- * ══ WO-SANDBOX-REAL-SNAPSHOT · 为什么这个参数从必填变成可选 ═══════════════════════════
- *
- * **今天的行为 X（本单开工前实测）**：两个调用点（`SandboxView.init` / `EdgeActivePanel.ensureSession`）
- * 各自调 `deriveBaseSnapshot(cfg)` —— `round(hash01(\`${objectId}|${stateVar}\`) × 100)` ——
- * **一次 `props` 都不读**，把一份纯哈希编出来的世界当 tick0 传给后端。
- * **应该的 Y**：世界内容由**持有真实对象的那一侧**（datacore）派生，且**逐格带出处**。
- * 前端没有对象，它唯一能做的就是编；编出来的数**长得和真值一模一样**（有量纲感、有小数位、
- * 会随对象变化），用户没有任何办法分辨 —— 这正是 R13 明令禁止的那种谎。
- *
- * ⚠ **省略与显式传 `{}` 是两个不同的命题**，后端据此二分（`app.ts` 的 `=== undefined` 判据）：
- * 省略 = 「你替我派生」；显式 `{}` = 「我就是要一个空世界」。故本签名用 `?:` 而不是 `| {}`，
- * 调用方不传时**字面上就没有这个键**，`JSON.stringify` 不会把它变成 `"baseSnapshot":null`。
- *
- * 回包的 `SimSession` 带 `baseSnapshotProvenance`（逐格 `measured|derived`），
- * 屏上据此**逐格区分显示** —— ⛔ 不许两档显示成一样，⛔ 也不许把 `derived` 藏起来
- * （藏起来 = 假装那格不存在，同样不诚实）。
- */
-export const createSimSession = (body: { baseSnapshot?: TickState; scope?: Record<string, unknown> }) =>
+/** 创建会话（init）：baseSnapshot=tick0 世界态（对象→状态变量→数值），scope=范围裁剪。 */
+export const createSimSession = (body: { baseSnapshot: TickState; scope?: Record<string, unknown> }) =>
   api.a<SimSession>("/a/v1/sim/sessions", { body });
 /**
  * 沙盘「世界列表」= 本租户全部推演会话（主线 + 各分支子会话；后端 `app.ts:1405` 已滤除方案快照）。
@@ -1037,21 +1015,9 @@ export const simTick = (sessionId: string, n = 1, disclose = false) =>
     `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/tick`,
     { body: disclose ? { n, disclose: true } : { n } },
   );
-/**
- * 读当前世界态（curTick + state + **tick0 逐格出处**）。
- *
- * ⚠ `baseProvenance` 描述的是 **tick0 起点**那一格的出处，**不是本回包 `state` 的出处**：
- * `tick>0` 时 `state` 是引擎算出来的，那些数的出处是「传导结果」，不是 `measured|derived` 这对二选一。
- * 起点仍然值得一路带着 —— 一条从哈希占位起跑的链，算到第 3 拍依旧是从占位起跑的；
- * 把它在 `tick>0` 时丢掉，等于让用户以为推演结果比它的起点更可信。
- *
- * 缺键 = **出处未知**（老会话、或调用方自带世界那一档），是与两态都不同的**第三种情形**，
- * ⛔ 不许并进 `derived`（那是拿「我没记」冒充「我记了，它是占位」）。
- */
+/** 读当前世界态（curTick + state）。 */
 export const simWorld = (sessionId: string) =>
-  api.a<{ tick: number; state: TickState; baseProvenance?: CellProvenance }>(
-    `/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/world`,
-  );
+  api.a<{ tick: number; state: TickState }>(`/a/v1/sim/sessions/${encodeURIComponent(sessionId)}/world`);
 
 // ── WO-SIM-DRILL-P12 · 推演**演习**（事件型扰动 → 真调求解器 → 卡点清单）───────────
 /**
