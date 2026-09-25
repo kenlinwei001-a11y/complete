@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-06",
+  "generatedAt": "2026-09-07",
   "ontology": {
     "invariants": [
       "R1",
@@ -1386,6 +1386,7 @@
         "scripts/sim-ux-criteria-baseline.json"
       ],
       "brokenArtifacts": [
+        "apps/agentcore/dist/mocks/seed.js",
         "packages/bundle/headless/README.md"
       ]
     },
