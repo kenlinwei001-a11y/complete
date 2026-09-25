@@ -58,22 +58,7 @@ import type {
 import { ParetoRequestSchema } from "@platform/contracts";
 import type { OntologyBinding } from "@platform/contracts";
 import type { ObjectInstance, ObjectTypeDef, PropertyDef } from "../domain.js";
-import { PROPERTY_UNITS } from "../domain.js";
-import { CURRENCY_BASE_UNIT, CURRENCY_SCALE, denomOfCurrencyUnit, lexiconHit, parseCurrencyUnit } from "./field-role-lexicon.js";
-
-/**
- * 平台今天**发得出去**的「币种/分母」复合单位（如 `元/kWh`、`元/吨`）——
- * 现算自单位字典 `PROPERTY_UNITS`，**不写死**。
- *
- * ⚠ 为什么必须现算：这串会原样打进毛利轴报缺的**恢复条件**给用户看。
- * 写死的例子会过期，更糟的是会**教错**：本单初稿在这里手写了「如 元/套、元/kWh」，
- * 而 `元/套` 恰恰是单位字典**刻意不收**的那一个
- * （`docs/DECISION-unit-of-account.md` §1.5「套/电芯不得充当金额分母」）——
- * 照着那句去声明的人会被发布门拒掉，然后以为是平台坏了。
- * **屏上给的每一个可选项，都必须是这个平台真的收得下的。**
- */
-const DENOMINATED_CURRENCY_UNITS: string[] = (PROPERTY_UNITS as readonly string[])
-  .filter((u) => parseCurrencyUnit(u)?.denom !== undefined);
+import { CURRENCY_BASE_UNIT, CURRENCY_SCALE, lexiconHit } from "./field-role-lexicon.js";
 import { bindCrossObjectOccupancy, type BindingOntologyView } from "./opt-binding.js";
 
 /**
@@ -100,6 +85,23 @@ const hits = (t: ObjectTypeDef, role: Parameters<typeof lexiconHit>[1]): string[
   numProps(t).map((p) => p.propKey).filter((k) => lexiconHit(k, role));
 const refsTo = (t: ObjectTypeDef, typeKey: string): string[] =>
   t.properties.filter((p) => p.refToTypeKey === typeKey).map((p) => p.propKey).sort();
+
+/**
+ * 从单位串里取**分母**（「每什么」那一半）：`元/套` → `套`；`元` → `undefined`。
+ *
+ * ⚠ `undefined` 的语义是「**这一格没声明分母**」，**不是**「分母是 1」，更不是
+ * 「和另一格一样」。这个区分是本文件下面 `denomCoherent` 的全部要害 ——
+ * 两格都返回 `undefined` 时**不许**读成"相等"：那正是 `currencyScaleOf` 犯过的病
+ * （两格都写「元」⇒ 判"已对齐"⇒ 一个按套计价的价与一个按电芯计价的成本被直接相减）。
+ * **缺声明 ≠ 声明相同**；把前者当后者，是「我用 X 当作 Y 的证据，而 X 并不度量 Y」的又一例。
+ */
+const denomOf = (unit: string | undefined): string | undefined => {
+  if (typeof unit !== "string") return undefined;
+  const i = unit.indexOf("/");
+  if (i <= 0) return undefined;
+  const d = unit.slice(i + 1).trim();
+  return d === "" ? undefined : d;
+};
 
 /** 一次装配用到的全部读本体入口（与绑定层同一个视图接口，不另造一套）。 */
 export interface AssembleDeps {
@@ -394,22 +396,11 @@ export async function assembleParetoModel(
   //     本次改动对它们逐字节无影响（这也是本次不做成"无差别下架"的判据）。
   //
   // 🔓 **恢复条件（写在这里，让下一个人不必考古）**：
-  //   把 `${订单类型}.${单价格}` 与 `${订单类型}.${单件成本格}` 两格的单位**声明到「每什么」
-  //   这一层且两者一致** —— 按 `docs/DECISION-unit-of-account.md` §1.5 统一记 `元/kWh`。
+  //   把 `${订单类型}.${单价格}` 与 `${订单类型}.${单件成本格}` 两格的单位声明到「每什么」
+  //   这一层且两者一致（如按 `docs/DECISION-unit-of-account.md` §1.5 统一记 元/kWh）。
   //   声明一改，`denomCoherent` 当场变真，本轴**自动**回到 `objectives` 打头位 ——
   //   ⛔ 不需要、也不许再改本文件一行代码去"放它回来"。
-  //
-  //   ✅ **这条路今天就是通的，不是画饼**（本单实测，`margin-axis-honesty.seam.test.ts` 咬住）：
-  //      `domain.ts` 的 `PROPERTY_UNITS` **已含** `元/kWh`、`元/吨` ⇒ 复合单位本来就发得出去，
-  //      发布门不会拒。缺的那一半在**求解器侧**：`currencyScaleOf` 从前只认光币种串
-  //      （`元`/`万元`/`亿元`），`元/kWh` 一律返回 `undefined` ⇒ `currencyAligned:false`
-  //      ⇒ 就算有人老老实实照 §1.5 声明了，毛利轴照样出不来，且报的是**另一个死因**。
-  //      本单已补：`parseCurrencyUnit` 拆「币种 / 分母」两半 —— 刻度只看币种那半，
-  //      能不能相减才看分母那半。**「是不是同一种钱」与「能不能相减」是两个问题**，
-  //      从前被合成了一个，那正是 `G-UNIT-MARGIN-CROSS-DENOM` 的成因。
-  //   ⚠ 仍**不通**的是「元/套」「元/电芯」：`PROPERTY_UNITS` 刻意不收它们
-  //      （§1.5 原文「套/电芯不得充当金额分母」）⇒ 想靠声明「元/套」把轴骗回来这条路是堵死的，
-  //      **这是有意的**，别当成缺陷去补。
+  //   ⚠ 注意「元/件」今天进不了单位词库（发布门 400 会拒），故重锚是种子/词库两侧的活。
   const revUnit = orderT.properties.find((p) => p.propKey === revProp)?.unit;
   const costOwner = eligT && eligCostProp ? eligT : lineT;
   const costPropKey = eligT && eligCostProp ? eligCostProp : assignCostProp;
@@ -449,8 +440,8 @@ export async function assembleParetoModel(
    *   ⛔ 尤其**不许**拿它去乘一下"对齐"：那个比值里含毛利本身，乘完只是把一个错数换成另一个。
    */
   const crossDenomRisk = revIsUnitRate && unitCostProp !== undefined;
-  const revDenom = denomOfCurrencyUnit(revUnit);
-  const costDenom = denomOfCurrencyUnit(unitCostUnit);
+  const revDenom = denomOf(revUnit);
+  const costDenom = denomOf(unitCostUnit);
   const denomCoherent = !crossDenomRisk || (revDenom !== undefined && costDenom !== undefined && revDenom === costDenom);
   /**
    * 两个 rate 的**观测比值区间**（只在要报缺时才算，纯读、全序、无随机 ⇒ 不破 R6 确定性）。
@@ -573,11 +564,7 @@ export async function assembleParetoModel(
                     ? `比值逐行不同 ⇒ 相减不只是绝对值偏，方案之间的名次也会被扭曲，而名次正是这根轴要回答的东西。`
                     : `比值逐行一致 ⇒ 绝对值整体偏移，名次尚可比，但读数本身不是毛利。`)
                 : ``) +
-              `恢复条件：把这两格的计价单位声明到"每什么"这一层并使两者一致` +
-              (DENOMINATED_CURRENCY_UNITS.length > 0
-                ? `（本平台今天认的有 ${DENOMINATED_CURRENCY_UNITS.join("、")}）`
-                : ``) +
-              `，本轴自动回到在册目标。`
+              `恢复条件：把这两格的计价单位声明到"每什么"这一层（如 元/套、元/kWh）并使两者一致，本轴自动回到在册目标。`
             : `今天算不出：营收侧 ${orderT.key}.${revProp}（单位 ${revUnit ?? "未声明"}）与成本侧 ` +
               `${costPropKey ? `${costOwner.key}.${costPropKey}` : "未绑定"}（单位 ${costUnit ?? "未声明"}）` +
               (assignCostBound
