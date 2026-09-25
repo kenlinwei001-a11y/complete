@@ -9,8 +9,6 @@ import {
   SimMetricSegmentSchema,
   baseScopeOptions,
   chainNodeDef,
-  LOSS_EXPOSURE_CAPTION,
-  MONEY_CONSERVATION_TOLERANCE_YUAN,
   type ChainLossMatrixResult,
 } from "@platform/contracts";
 import { server } from "./setup";
@@ -54,8 +52,7 @@ const NODE_B = "material.kitting";
 const BASE_KEEP = "changzhou";
 const BASE_DROP = "hefei";
 
-// 金额桩自洽：Σ本列各格 == 本列敞口（守恒），两列敞口故意不同（基地维要拆得开）。
-const colTotal = (baseId: string, days: number, exposureYuan: number) => ({
+const colTotal = (baseId: string, days: number) => ({
   baseId,
   anchorSo: `SO-DEAD-${baseId}`,
   anchorBaseId: baseId,
@@ -66,12 +63,6 @@ const colTotal = (baseId: string, days: number, exposureYuan: number) => ({
   missingNodeIds: [],
   reason: null,
   probe: null,
-  exposureYuan,
-  exposureOrderCount: 1,
-  exposureSkippedOrders: 0,
-  exposureDeliveredOrders: 0,
-  moneyResidualYuan: 0,
-  moneyOk: true,
 });
 
 const MATRIX_TWO_BASES: ChainLossMatrixResult = {
@@ -84,16 +75,16 @@ const MATRIX_TWO_BASES: ChainLossMatrixResult = {
     { baseId: BASE_DROP, name: "合肥" },
   ],
   cells: [
-    { nodeId: NODE_A, baseId: BASE_KEEP, pct: 37, days: 4.1, valueAtRiskYuan: 370_000 },
-    { nodeId: NODE_B, baseId: BASE_KEEP, pct: 63, days: 6.9, valueAtRiskYuan: 630_000 },
-    { nodeId: NODE_A, baseId: BASE_DROP, pct: 21, days: 2.2, valueAtRiskYuan: 105_000 },
-    { nodeId: NODE_B, baseId: BASE_DROP, pct: 79, days: 8.4, valueAtRiskYuan: 395_000 },
+    { nodeId: NODE_A, baseId: BASE_KEEP, pct: 37, days: 4.1 },
+    { nodeId: NODE_B, baseId: BASE_KEEP, pct: 63, days: 6.9 },
+    { nodeId: NODE_A, baseId: BASE_DROP, pct: 21, days: 2.2 },
+    { nodeId: NODE_B, baseId: BASE_DROP, pct: 79, days: 8.4 },
   ],
   rowTotals: [
-    { nodeId: NODE_A, days: 6.3, pctOfGrandLoss: 29, baseCount: 2, valueAtRiskYuan: 475_000 },
-    { nodeId: NODE_B, days: 15.3, pctOfGrandLoss: 71, baseCount: 2, valueAtRiskYuan: 1_025_000 },
+    { nodeId: NODE_A, days: 6.3, pctOfGrandLoss: 29, baseCount: 2 },
+    { nodeId: NODE_B, days: 15.3, pctOfGrandLoss: 71, baseCount: 2 },
   ],
-  colTotals: [colTotal(BASE_KEEP, 11, 1_000_000), colTotal(BASE_DROP, 10.6, 500_000)],
+  colTotals: [colTotal(BASE_KEEP, 11), colTotal(BASE_DROP, 10.6)],
   residual: {
     byBase: [
       { baseId: BASE_KEEP, residualPct: 0, ok: true, reason: null },
@@ -102,18 +93,6 @@ const MATRIX_TWO_BASES: ChainLossMatrixResult = {
     rows: 0,
     rowsOk: true,
     tolerancePct: 0.5,
-  },
-  money: {
-    orderBookTotalYuan: 1_200_000,
-    orderBookCount: 2,
-    orderBookSkipped: 0,
-    orderBookDelivered: 0,
-    exposureSumYuan: 1_500_000,
-    // 1.25× —— 一单可产多基地故 Σ各列敞口 > 订单簿，与真回包同形。
-    exposureOverlapRatio: 1.25,
-    allColumnsMoneyOk: true,
-    toleranceYuan: MONEY_CONSERVATION_TOLERANCE_YUAN,
-    caption: LOSS_EXPOSURE_CAPTION,
   },
   summary: "死控件门桩：两环节 × 两基地",
 };
