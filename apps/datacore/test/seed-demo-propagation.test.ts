@@ -1315,6 +1315,36 @@ describe("§6 WO-DEMANDLOAD-BUDGET · 每格增益预算现算", () => {
       // ⇒ 作为「这一格会不会被推过拐点」的判据**不成立**；作为回路增益上界仍然成立（两列各管各的）。
     ].sort());
 
+    // ── 判据③b（WO-WEIGHT-FROM-GRAPH 新增）：超预算格子的**数值**也钉死，不只钉集合 ──────
+    //
+    // **为什么必须加这一条**（实测逼出来的，不是补充说明）：判据③ 比的是**集合**，
+    // 而集合是二值的 —— 它度量不了「**已经在集合里**的那一格又坏了几倍」。
+    // 实测：把 `demo_batch_procurement_delay_to_material_shortage` 从 `equal_share`
+    // 换成 `source_qty_relative`（唯一读 `MaterialBatch.qty` 的既有口径），
+    // 该边 Σw 从 **1.000000000000 → 3.000000000000**（8 个 Material 目标逐个 3.0000×，
+    // 全体 Σw 8 → 24），而 `Material.shortageRisk` 本来就在超预算集合里（1.67×）
+    // ⇒ **集合一个字没变** ⇒ 判据③ 绿、四包 42/42 全绿，一个 3 倍的量级错就这么进了正线。
+    //
+    // 形态（照铁律 0.6 句式）：
+    // **「我用『超预算格子集合没变』当作『没有格子变坏』的证据，而前者并不度量后者。」**
+    //
+    // 判据落在**每格的数**上（6 位小数），任何一条入边的 basis / 归一方向 / 系数被改动，
+    // 只要挪动了这几格的合计就当场红。⛔ 别用「都变了」这种一锅断言 —— 那读不出是哪一格。
+    const overValues = Object.fromEntries(
+      over.map((k) => [k, Number((cells.get(k)!.sum).toFixed(6))]),
+    );
+    expect(
+      overValues,
+      "超预算格子的**合计值**变了。集合没变不代表没变坏：已在集合里的格子再坏 N 倍，集合是看不出来的。\n" +
+        `  全表现值：\n  ${table}`,
+    ).toEqual({
+      "Customer.receivablePressure": 0.86127,
+      "Material.shortageRisk": 1.249998,
+      "Order.orderChurn": 0.839823,
+      "Process.queuePressure": 1.249999,
+      "PurchaseOrder.expeditePressure": 1,
+    });
+
     // ══════════════════════════════════════════════════════════════════════════════
     // WO-GAIN-REACH · 判据④⑤⑥ —— **这把尺子没有算进各源的实际量程**
     //
