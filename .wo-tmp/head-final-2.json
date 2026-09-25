@@ -1,0 +1,238 @@
+{
+ "bases": {
+  "n": 13,
+  "sha": "6f3faa9dfb69ad67"
+ },
+ "bomDetails": {
+  "n": 105,
+  "sha": "0916b1754520c2bf"
+ },
+ "bomHeaders": {
+  "n": 15,
+  "sha": "f10d88c9894b22a5"
+ },
+ "capacityPools": {
+  "n": 130,
+  "sha": "f2c0473c7464b87b"
+ },
+ "certLinks": {
+  "n": 18,
+  "sha": "ca2b15fba37d990c"
+ },
+ "dataHealth": {
+  "n": 9,
+  "sha": "9d9aee7984aea3bc"
+ },
+ "defectRecords": {
+  "n": 85,
+  "sha": "72bc922de1e2380b"
+ },
+ "demandSegments": {
+  "n": 3,
+  "sha": "d4fa1b6e66fe74d2"
+ },
+ "engineeringChanges": {
+  "n": 9,
+  "sha": "e9add61abffe6e96"
+ },
+ "equipment": {
+  "n": 780,
+  "sha": "628d05f2fa942abc"
+ },
+ "equipmentAlarms": {
+  "n": 111,
+  "sha": "348c893d3442c21c"
+ },
+ "equipmentDowntimes": {
+  "n": 166,
+  "sha": "4fff002a8933c3e7"
+ },
+ "equipmentOEEs": {
+  "n": 5460,
+  "sha": "61cd958c7b202f9a"
+ },
+ "exceptionEvents": {
+  "n": 369,
+  "sha": "5f594b6955521473"
+ },
+ "financePlans": {
+  "n": 3,
+  "sha": "529a6f6f770614b4"
+ },
+ "finishedGoodsInv": {
+  "n": 18,
+  "sha": "f6aac1a0cec53abd"
+ },
+ "inspectionCharacteristics": {
+  "n": 72,
+  "sha": "9be387a978b62aea"
+ },
+ "inspectionResults": {
+  "n": 520,
+  "sha": "2b0c270b9bf7177d"
+ },
+ "interBaseTransfers": {
+  "n": 17,
+  "sha": "203baf5129bb9d4c"
+ },
+ "inventoryTxns": {
+  "n": 128,
+  "sha": "b0c524969b33ac69"
+ },
+ "ksfs": {
+  "n": 5,
+  "sha": "9e1113285593af15"
+ },
+ "lines": {
+  "n": 130,
+  "sha": "4475672d7d8e2da3"
+ },
+ "maintPlans": {
+  "n": 13,
+  "sha": "f9b0b48fe829ff02"
+ },
+ "maintenanceOrders": {
+  "n": 193,
+  "sha": "fc2f027e371d0ac5"
+ },
+ "materialAlternatives": {
+  "n": 5,
+  "sha": "47db43a03ffeec88"
+ },
+ "materialBalances": {
+  "n": 9,
+  "sha": "0e3eb0ac99407a4f"
+ },
+ "metrics": {
+  "n": 10,
+  "sha": "3ae86fd37b7e5470"
+ },
+ "models": {
+  "n": 6,
+  "sha": "a818bccab308d8fb"
+ },
+ "operations": {
+  "n": 150,
+  "sha": "edec0fac316ef718"
+ },
+ "operatorAttendances": {
+  "n": 1820,
+  "sha": "17a35d2eb3bee537"
+ },
+ "operatorSkillCerts": {
+  "n": 97,
+  "sha": "c910a3fe494ff800"
+ },
+ "orderLines": {
+  "n": 873,
+  "sha": "a172a0ace0608d04"
+ },
+ "orderPromises": {
+  "n": 50,
+  "sha": "81c64a87387509c8"
+ },
+ "orders": {
+  "n": 500,
+  "sha": "82b1247af6a75a7d"
+ },
+ "principals": {
+  "n": 7,
+  "sha": "b868c95daeb2e59b"
+ },
+ "processCapabilities": {
+  "n": 345,
+  "sha": "e62707ab0a483d8e"
+ },
+ "processes": {
+  "n": 650,
+  "sha": "b1ec8e52c730e96b"
+ },
+ "productEquipmentCapabilities": {
+  "n": 376,
+  "sha": "b106aad939482d47"
+ },
+ "productLineCapabilities": {
+  "n": 18,
+  "sha": "dd93922bd8650363"
+ },
+ "productPlatforms": {
+  "n": 3,
+  "sha": "3e4565d23900d5da"
+ },
+ "productSeries": {
+  "n": 6,
+  "sha": "99a2e9908d0b3b6e"
+ },
+ "productVersions": {
+  "n": 15,
+  "sha": "30919b2baacac4d2"
+ },
+ "productionSchedules": {
+  "n": 650,
+  "sha": "cde8505d8b765a14"
+ },
+ "qualityLots": {
+  "n": 260,
+  "sha": "7174096f7080ecec"
+ },
+ "qualityStandards": {
+  "n": 36,
+  "sha": "3bc577b6bc20dc6e"
+ },
+ "rootCauseChains": {
+  "n": 4,
+  "sha": "ad0e3c9ca83efbce"
+ },
+ "routings": {
+  "n": 15,
+  "sha": "cf76b80a521225ed"
+ },
+ "segments": {
+  "n": 3,
+  "sha": "89d4c483f84c42a0"
+ },
+ "shiftPlans": {
+  "n": 1820,
+  "sha": "342723f63797ee51"
+ },
+ "shipments": {
+  "n": 13,
+  "sha": "048d089253692fb5"
+ },
+ "sopVersionRows": {
+  "n": 4,
+  "sha": "2c2a2f83efcdc5ab"
+ },
+ "sparePartConsumptions": {
+  "n": 193,
+  "sha": "33ce6d1b878b05e8"
+ },
+ "warehouses": {
+  "n": 34,
+  "sha": "c5a70d0fd36da3ce"
+ },
+ "wipLots": {
+  "n": 260,
+  "sha": "4689d55a5952c543"
+ },
+ "wipMoves": {
+  "n": 765,
+  "sha": "c1c369d8bd55cfd0"
+ },
+ "wipQualityCheckpoints": {
+  "n": 390,
+  "sha": "2c543cfaa825aebb"
+ },
+ "workOrders": {
+  "n": 260,
+  "sha": "4d393f546934be4b"
+ },
+ "workshops": {
+  "n": 130,
+  "sha": "ab03c4e362df848e"
+ },
+ "__ALL__": {
+  "n": null,
+  "sha": "3f1c0859149a7a1c"
+ }
+}
