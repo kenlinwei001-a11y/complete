@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-10",
+  "generatedAt": "2026-09-14",
   "ontology": {
     "invariants": [
       "R1",
@@ -2264,6 +2264,22 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-sim-console-tabbed-20260911.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R14",
+        "R17",
+        "R18",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/solvers/finance-world.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-sim-drill-parallel-world.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -2585,6 +2601,17 @@
         "packages/contracts/src/agentcore.ts",
         "packages/contracts/src/qos.ts"
       ],
+      "brokenArtifacts": []
+    },
+    "PRD-slice-consumption-governance-20260912.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R13",
+        "R17",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [],
       "brokenArtifacts": []
     },
     "PRD-sop-balance-1to1.md": {
@@ -4121,6 +4148,9 @@
     ],
     "scripts/check-chain-node-singlesource.mjs": [
       "PRD-semantics-singlesource.md"
+    ],
+    "apps/datacore/src/solvers/finance-world.ts": [
+      "PRD-sim-console-tabbed-20260911.md"
     ],
     "apps/datacore/src/twin/enterprise-state.ts": [
       "PRD-sim-drill-parallel-world.md"
