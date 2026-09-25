@@ -1,0 +1,17 @@
+
+SHA256=e8f7024e2600c97345683566a4807bd6313bfdaafcc80106ca4d3c5648d2489e
+SET DemandSegment a482602e8f809623
+SET DemandSegment.sums d1a485f2b8ce2d78
+SET Line.sample 6dc17e77da4026ff
+SET Line.totals 65c9a44f94d10b89
+SET Material ccb847cda9e91067
+SET Order.sample b75179d1d0437be8
+SET Order.totals c07c924ee745d928
+SET count.BOMDetail e262c1ce7839d055
+SET count.DemandSegment e262c1ce7839d055
+SET count.Line e262c1ce7839d055
+SET count.Material e262c1ce7839d055
+SET count.Order e262c1ce7839d055
+SET inventory_optimize d4e547618872c8c7
+SET inventory_optimize.overProbe b791a87d4d99d80d
+SET margin_waterfall b9abefb46e6d99bd

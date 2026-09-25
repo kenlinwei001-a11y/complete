@@ -1,0 +1,22 @@
+
+=== A_production ===
+  over 行数 = 5   releasableCash = 870009.54
+    {'matId': 'al_foil', 'overQty': 8175, 'value': 265524, 'valueUnit': '元'}
+    {'matId': 'cell_case', 'overQty': 2604.4, 'value': 47764.7, 'valueUnit': '元'}
+    {'matId': 'cu_foil', 'overQty': 2183.35, 'value': 138206.06, 'valueUnit': '元'}
+  未给 value 的行数 = 0
+
+=== B_passthru_with_unit ===
+  over 行数 = 5   releasableCash = 870009.54
+    {'matId': 'al_foil', 'overQty': 8175, 'value': 265524, 'valueUnit': '元'}
+    {'matId': 'cell_case', 'overQty': 2604.4, 'value': 47764.7, 'valueUnit': '元'}
+    {'matId': 'cu_foil', 'overQty': 2183.35, 'value': 138206.06, 'valueUnit': '元'}
+  未给 value 的行数 = 0
+
+=== C_passthru_bad_unit ===
+  over 行数 = 5   releasableCash = 0
+    {'matId': 'al_foil', 'overQty': 8175, 'value': None, 'valueUnit': None}
+    {'matId': 'cell_case', 'overQty': 2604.4, 'value': None, 'valueUnit': None}
+    {'matId': 'cu_foil', 'overQty': 2183.35, 'value': None, 'valueUnit': None}
+  未给 value 的行数 = 5
+  首条原因: 物料 'al_foil' 的计量单位 '卷' 不在单位词表内，无法证明 库存量 × 单价 得到的是金额 —— 本行不计入可释放资金（不拿 0 冒充「没有可释放的钱」）

@@ -1,0 +1,1612 @@
+import type {
+  ActionStatus,
+  ApprovalStep,
+  ActionType,
+  CandidateRule,
+  PermissionPolicy,
+  RuleOrigin,
+  IndustryTemplate,
+  FieldProfile,
+  ScheduledJobKind,
+  SopVersionStatus,
+  TsAggSpec,
+} from "@platform/contracts";
+
+// ---------------------------------------------------------------------------
+// A0 IAM
+// ---------------------------------------------------------------------------
+
+export interface Tenant {
+  id: string;
+  tenantId: string; // == id (uniform Store shape)
+  name: string;
+  industry?: string;
+  // ---- 管理平台增量 §2（additive）----
+  key?: string; // == id（展示用短键）
+  status?: "ACTIVE" | "SUSPENDED";
+  createdAt?: string;
+}
+
+export interface User {
+  id: string;
+  tenantId: string;
+  username: string;
+  passwordHash: string;
+  roles: string[];
+  attributes: Record<string, unknown>; // e.g. { baseScope: ["changzhou"] }
+  // ---- 管理平台增量 §2（additive）----
+  email?: string;
+  displayName?: string;
+  status?: "ACTIVE" | "DISABLED"; // 缺省 = ACTIVE（旧种子兼容）
+  lastLoginAt?: string;
+}
+
+/** 管理平台增量 §3：场景包（空建 / 行业模板实例化 / 克隆）。 */
+export interface ScenarioPackageRecord {
+  id: string; // pkg_
+  tenantId: string;
+  name: string;
+  fromTemplate?: string; // industryKey | fromPackageId
+  views: string[];
+  toolWhitelist: string[];
+  modelOverrides: Record<string, string>;
+  thresholds: Record<string, number>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 管理平台增量 §3：ViewConfig 联动注册的动态功能（view.{viewKey}，默认开）。 */
+export interface DynamicFeatureRecord {
+  id: string; // dynf_<tenant>_<key>
+  tenantId: string;
+  key: string; // view.{viewKey}
+  name: string;
+  level: "VIEW";
+  defaultOn: boolean;
+  createdAt: string;
+}
+
+export interface ViewConfig {
+  id: string;
+  tenantId: string;
+  role: string; // resolved by tenant + role
+  scenarioPackages: string[];
+  views: {
+    key: string;
+    title: string;
+    /** 前端 PRD §7.1 渲染器键（dashboard | ontology-graph | risk-board | ledger | plan-audit | …） */
+    renderer?: string;
+    layout?: Record<string, unknown>;
+    options?: Record<string, unknown>;
+  }[];
+  theme: Record<string, unknown>;
+  navigation: { key: string; label: string; viewKey?: string; group?: "business" | "admin" }[];
+  origin?: "SYNTHETIC" | "MANUAL";
+}
+
+export interface AuthCtx {
+  tenantId: string;
+  userId: string;
+  roles: string[];
+  attributes: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// A1 connectors
+// ---------------------------------------------------------------------------
+
+export interface Connection {
+  id: string; // conn_
+  tenantId: string;
+  connectorTypeKey: string;
+  name: string;
+  config: Record<string, unknown>; // credential fields stored encrypted (enc:v1:...)
+  schedule?: { cron: string };
+  status: "ACTIVE" | "DISABLED" | "ERROR";
+  lastSyncAt?: string;
+  lastError?: string;
+  /** A11 per-connection 归类：实例级来源系统类（创建时默认取连接器类型 category，可覆盖、可自定义值 R14）。 */
+  category?: string;
+  /** 约束执行层（可配置,按租户）：该源导入数据的本体校验策略 + 字段映射（适配不同数据字段）。 */
+  validationPolicy?: import("@platform/contracts").ValidationPolicy;
+}
+
+export interface SyncJob {
+  id: string; // sync_
+  tenantId: string;
+  connId: string;
+  status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  startedAt: string;
+  finishedAt?: string;
+  rowCounts: Record<string, number>; // dataset -> rows
+  error?: string;
+}
+
+export interface RawDataset {
+  id: string; // rds_
+  tenantId: string;
+  sourceConnId: string;
+  name: string; // dataset name
+  fields: FieldProfile[];
+  rowCount: number;
+  syncedAt: string;
+  /** A11 溯源继承：产出该数据集的连接 category（便于数据浏览按来源类筛）。 */
+  sourceCategory?: string;
+}
+
+// ---------------------------------------------------------------------------
+// A2 rule docs
+// ---------------------------------------------------------------------------
+
+export type RuleDocStatus =
+  | "UPLOADED"
+  | "PARSED"
+  | "EXTRACTED"
+  | "IN_REVIEW"
+  | "PUBLISHED"
+  | "REJECTED"
+  // 执行语义 §6：分段抽取部分失败（已成功段落可审，失败段落可单独重试）
+  | "PARTIAL";
+
+export interface DocSegment {
+  idx: number;
+  heading?: string;
+  text: string;
+  spanStart: number;
+  spanEnd: number;
+}
+
+export interface RuleDoc {
+  id: string; // doc_
+  tenantId: string;
+  filename: string;
+  blobKey: string;
+  status: RuleDocStatus;
+  extractJobId?: string;
+  segments?: DocSegment[];
+  droppedCandidates: number; // failed sourceQuote substring validation
+  createdAt: string;
+}
+
+export interface RuleCandidate {
+  id: string; // cand_
+  tenantId: string;
+  docId: string;
+  extractJobId: string;
+  segmentIdx: number;
+  span: { start: number; end: number };
+  candidate: CandidateRule;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  diff?: "新增" | "变更" | "疑似删除";
+  publishedRuleId?: string;
+  /** S4.2 near-duplicate detection: embedding similarity > threshold vs a published rule. */
+  suspectedDuplicateOf?: { ruleId: string; ruleKey: string; similarity: number };
+}
+
+// ---------------------------------------------------------------------------
+// A5 rules
+// ---------------------------------------------------------------------------
+
+export interface Rule {
+  id: string; // rule_
+  tenantId: string;
+  key: string; // e.g. C03
+  name: string;
+  description?: string;
+  expression: string;
+  scopeObjectTypes: string[];
+  severity: "BLOCK" | "WARN" | "INFO";
+  /** 规则即引用：命名阈值（求解器读 rule.params 去硬编码；改 param 即改推演）。
+   * A3-SUITE-1：同时承载切片契约字符串数组（mustIncludeTypes / mustIncludeLinkKeys）。 */
+  params?: Record<string, number | string | string[]>;
+  /** WO-RULES-CLASSIFY（加性）：业务类别（产能/物料/财务/合规/换型…），规则库分类筛选的真元数据。可空（手工/旧规则）。 */
+  category?: string;
+  origin: RuleOrigin;
+  version: number;
+  status: "DRAFT" | "PUBLISHED" | "RETIRED";
+}
+
+// ---------------------------------------------------------------------------
+// A4 ontology + objects
+// ---------------------------------------------------------------------------
+
+/**
+ * WO-UNIT-KWH · 量纲刻度：这个数是**绝对量**还是**比例量**。
+ *
+ * - `"absolute"` 绝对量 —— 可直接相加求和（GWh / 元 / 吨 / 天 / 个 / 计数 / 标识）。
+ * - `"ratio"`    比例量 —— **不可直接相加**，合并必须按底数加权（利用率 / 良率 / 达成率 / 毛利率）。
+ *
+ * 为什么与 `unit` 分开声明：`unit` 只说「单位是什么」，说不了「这个数能不能相加」。
+ * 本仓 `Line.schedule_attainment` 的 100× 显示错、以及「产能利用率同名两套量纲」，
+ * 根子都是**比例量被当绝对量搬运**。两个字段合起来才能把这类错在编译期区分开：
+ *   `unit:"%"            scale:"ratio"`  ⇒ 0–100 表示法（91.1 读作 91.1%）
+ *   `unit:"dimensionless" scale:"ratio"` ⇒ 0–1 表示法（0.911 读作 91.1%）
+ * 单看 `unit` 这两者长得一模一样 —— 那正是 100× 那个 bug 的藏身处。
+ */
+export type PropertyScale = "absolute" | "ratio";
+
+/**
+ * WO-UNIT-KWH · 量纲单位。**必填**，无量纲必须显式写 `"dimensionless"`。
+ *
+ * 为什么必填而不是可选：改之前 `unit?: string`，873 个属性里只有 24 个声明了单位，
+ * 其余 849 个**沉默**；而下游一律用真值判断（`p.unit ? … : …`）把沉默读成「没单位」。
+ * 于是「**还没人看过这个字段**」与「**看过了，确实无量纲**」在类型和运行时都长得一模一样。
+ * 今天所有量纲事故的根都是这一条：**沉默被默认读成没单位**。必填把沉默变成明确声明。
+ *
+ * ⚠ 闭合联合（不是 `string`）是有意的：新增一个单位从此是**故意动作**而非顺手打字 ——
+ * 写一个不在册的单位当场编译失败，逼作者回到这里加一条并说明它属于哪一族。
+ * 这也让 `UNIT_DICTIONARY`（运行时字典门）能从本类型派生，消掉「种子直写绕过字典门」
+ * 那处不对称（既有实测：`unit:'点'` 走 REST upsert 报 400，走仓储直写却放行）。
+ *
+ * ⛔ **R-UNIT**（`docs/DECISION-unit-of-account.md` §1 裁决）：
+ * 钱与产能一律以 kWh 记账；**「套 / 电芯」只作物理计数，不得充当金额或产能的分母**。
+ * 故本册**没有** `"元/套"` 这类单位 —— 它在改前真实存在过一处，是本裁决要收掉的东西。
+ */
+export const PROPERTY_UNITS = [
+  // ── 明确无量纲（计数无单位 / 标识 / 名称 / 枚举 / 日期 / 引用 / 0–1 比值）───────────
+  "dimensionless",
+  // ── 钱（R-UNIT：绝对额锚到「元」；单价一律以 kWh 或物料自身单位作分母，禁用「套」）──
+  "元",
+  "万元",
+  "亿元",
+  "元/kWh",
+  "元/吨",
+  // WO-RATE-DIMENSION · 物料单价的四种真实分母。改前 `Material.unitPrice` 声明成 `元`
+  // （= 把**强度量**当成**绝对额**），而实测同一列逐行分母不同：三元正极/石墨/铜箔/铝箔 `kg`、
+  // 隔膜 `㎡`、电解液 `L`、电芯壳体 `个`（分母就写在同对象的 `Material.unit` 那一格）。
+  "元/kg",
+  "元/个",
+  "元/L",
+  "元/㎡",
+  // ── 能量 / 产能（kWh 同族 —— 裁决后产能直接用本族，不再换算成「套」）──────────────
+  "kWh",
+  "MWh",
+  "GWh",
+  // ── 物理计数（可作物理量，**不可作金额/产能分母**）──────────────────────────────
+  "套",
+  "万套",
+  "电芯",
+  "件",
+  "个",
+  "台",
+  "条",
+  "批",
+  "单",
+  "项",
+  "次",
+  // ── 质量 / 体积 / 面积 ─────────────────────────────────────────────────────────
+  "吨",
+  "kg",
+  "g",
+  "㎡",
+  "L",
+  // ── 电气 / 物理规格（电芯铭牌：energy = capacity × voltage 三者同族）──────────────
+  "Ah",
+  "V",
+  "Wh",
+  "kgCO2e",
+  "°",
+  // ── 人 / 班 ───────────────────────────────────────────────────────────────────
+  "人",
+  "班",
+  // ── 时间 ──────────────────────────────────────────────────────────────────────
+  "秒",
+  "分钟",
+  "h",
+  "天",
+  "周",
+  "月",
+  "年",
+  // ── 速率 / 流量（分母是时间或窗口）─────────────────────────────────────────────
+  "万套/年",
+  "万套/月",
+  "万套/窗口",
+  "套/天",
+  "套/日",
+  "件/日",
+  "电芯/天",
+  "GWh/年",
+  // ── 比例 / 评分 ───────────────────────────────────────────────────────────────
+  "%",
+  "点",
+  "级",
+  // ── 参数化量纲（WO-RATE-DIMENSION）───────────────────────────────────────────
+  // 分母（或分子）由**同对象另一格的值**给出，由 {@link PropertyDef.unitRefProp} 指出是哪一格，
+  // `units.ts resolveParametricUnit()` 在读到具体对象时求出**具体单位**（`元/kg` / `㎡` …）。
+  // 为什么必须有这一档：一个属性只能声明一个 `unit`，而 `Material.unitPrice` 的真实量纲
+  // **逐行不同** —— 这个形态改前在模型里**无处安放**，只能退化成 `元`（强度量被当成绝对额）。
+  // 占位符字面量见 `units.ts UNIT_REF_PLACEHOLDER`，两处必须一致（本册是词表侧的那一份）。
+  "元/计量单位",
+  "计量单位",
+] as const;
+
+/** 见 {@link PROPERTY_UNITS}。类型与运行时字典同一份数据派生 —— 不许各抄一份。 */
+export type PropertyUnit = (typeof PROPERTY_UNITS)[number];
+
+/**
+ * 取**可显示**的单位：`"dimensionless"` ⇒ `undefined`（屏上不显示单位），其余原样返回。
+ *
+ * ⚠ 为什么必须有这个函数：量纲改必填后 `unit` **恒非空**，而下游一路都是
+ * `p.unit ? \`单位 ${p.unit}\` : null` 这类**真值判断** —— 直接放行会让每个名称/枚举/日期字段
+ * 在屏上和喂给 Agent 的地图里都长出一句「单位 dimensionless」。
+ * 「明确声明无量纲」是**给机器看的**，不是给人看的；两者的区别就落在这一个函数里。
+ * 所有展示/投影侧一律经它取值，不许再直接读 `p.unit` 做真值判断。
+ */
+export function displayUnit(unit: PropertyUnit | undefined): string | undefined {
+  return unit && unit !== "dimensionless" ? unit : undefined;
+}
+
+/** `PropertyDef.dataType` 的取值域。 */
+export type PropertyDataType = "string" | "number" | "boolean" | "date" | "enum" | "ref" | "json";
+/**
+ * 非数值型数据类型 —— **结构上不可能承载量纲**（名称/枚举/日期/引用/布尔/JSON 没有单位）。
+ * 属性工厂用它把「这类属性必然 dimensionless」升级成**类型级事实**，
+ * 从而只对真正能出量纲事故的 `number` 强制作者报量纲。
+ */
+export type NonNumericDataType = Exclude<PropertyDataType, "number">;
+
+export interface PropertyDef {
+  propKey: string;
+  dataType: PropertyDataType;
+  isPrimaryKey: boolean;
+  /**
+   * WO-UNIT-KWH · 量纲单位（**必填**）。无量纲写 `"dimensionless"`，不许省略、不许空串。
+   * 详见 {@link PropertyUnit}。
+   */
+  unit: PropertyUnit;
+  /**
+   * WO-UNIT-KWH · 量纲刻度（**必填**）。绝对量 `"absolute"` / 比例量 `"ratio"`。
+   * 详见 {@link PropertyScale}。
+   */
+  scale: PropertyScale;
+  /**
+   * WO-RATE-DIMENSION · **参数化量纲的取值格**：当 `unit` 含占位符 `计量单位`
+   * （`元/计量单位` / `计量单位`）时，本字段指出**由同对象的哪一格提供真实单位**。
+   *
+   * 为什么必须有这一格：`Material.unitPrice` 的真实量纲**逐行不同**
+   * （三元正极 `元/kg` · 隔膜 `元/㎡` · 电解液 `元/L` · 电芯壳体 `元/个`），
+   * 而一个属性只能声明一个 `unit`。改前它退化成 `元` —— **把强度量当成了绝对额**，
+   * 于是任何拿它做的成本算术都失去了量纲校验的依据。
+   *
+   * ⚠ 与 `unit` 的一致性由 REST 建类型门兑现（两者必须**同时**成立或**同时**不成立）：
+   * 声明了参数化单位却不给本格 ⇒ 400；给了本格却不是参数化单位 ⇒ 400。
+   * 单向成立会造出一个「看起来配好了、实际永远解析不出来」的属性，正是本仓最危险的那个形态。
+   *
+   * 求值见 `units.ts resolveParametricUnit()`；解析不出（该行 `unit` 写了词表外的值）时
+   * 按「该行量纲未知」处理，**不许回落成声明值**。
+   */
+  unitRefProp?: string;
+  refToTypeKey?: string | null;
+  /** 本体原子规格 §1：枚举取值（dataType=enum）。 */
+  enumValues?: string[];
+  /** 本体原子规格 §1：required 标记。 */
+  required?: boolean;
+  /** 本体原子规格 §1：temporal=true 的属性变更落 object_prop_history。 */
+  temporal?: boolean;
+  /** 治理增量 §3：关键词搜索命中范围（A3 建议对名称类字段置 true）。 */
+  searchable?: boolean;
+  /** 治理增量 §4：展示格式（如 "0.0"）。单位已上移为必填的 `unit`（见 {@link PropertyUnit}）。 */
+  displayFormat?: string;
+  /**
+   * WO-SCHEMA-ZH · 属性中文业务名（"leadTime" → "到货周期"）——与 unit 并列的**展示层单一真值**。
+   * 补一层展示名而非改 propKey：key 是求解器/规则/派生公式/金值的接线名，改它会连带打断整条链。
+   * **可缺省 = 诚实留白**：含义未经业务确证的属性不臆造中文名，下游一律回落 propKey（不得渲染 undefined/空白），
+   * 也不得在前端各存一份中文映射（单源优于并存）。值的单一来源见 synthetic/battery.ts PROP_DISPLAY_NAMES。
+   */
+  displayName?: string;
+  /** DF.5 语义目录：属性业务语义描述（"这字段是什么"），喂生成接地 prompt + /catalog/search 检索。 */
+  description?: string;
+}
+
+export interface SourceBinding {
+  connId: string;
+  dataset: string;
+  fieldMappings: Record<string, string>; // propKey -> sourceField
+}
+
+/** Declarative derivation formula, recomputed in dependency topo order. */
+export interface DerivedPropertyDef {
+  propKey: string;
+  /** e.g. "SUM(Order.qty BY model)" | "COUNT(Order.so BY bases)" | "qty * unitPrice" */
+  formula: string;
+  /**
+   * WO-UNIT-KWH · 量纲单位（**必填**，与 {@link PropertyDef} 同一套词表）。
+   *
+   * ⚠ 为什么派生属性也必须报量纲：派生值**恰恰是最容易出量纲事故的那一类** —— 它的单位由公式
+   * 决定，而公式里两个因子的单位常常不同（`Order.value = qty(件) × unitPrice(元)` ⇒ 元；
+   * `revenueWan = 需求(万套) × priceWan(万元/套)` ⇒ **万元**）。改前 `DerivedPropertyDef` 只有
+   * `propKey` 与 `formula`，**结构上就没有地方声明单位**，于是这三个金额字段的口径只活在行尾注释里：
+   *   `revenueWan` 注释「收入(万)」· `marginWan` 注释「毛利额(万)」· `Order.value` 注释在别处。
+   * 本仓真实为此吃过亏：`gap_attribution` 曾标 `drillField:"value"`（`Order.value` 单位=元）
+   * 却回万元口径的归因权重，**差 1e4**（见 `solvers/chain-loss.ts` 的病史注释）。
+   * 注释救不了机器 —— 补上声明位，让派生值的单位和普通属性一样可被读取与校验。
+   */
+  unit: PropertyUnit;
+  /** WO-UNIT-KWH · 量纲刻度（**必填**）。绝对量 / 比例量，判据同 {@link PropertyScale}。 */
+  scale: PropertyScale;
+  /**
+   * WO-ORDER-WORKORDER-UI · 派生属性的中文业务名 —— 与 {@link PropertyDef.displayName}
+   * **同一张真值表**（`synthetic/battery.ts` 的 `PROP_DISPLAY_NAMES`，键仍是 `Type.prop`）。
+   *
+   * 为什么派生属性也必须有这一格：台账行展开逐格显示 `Order` 的 18 个键，其中 `value`
+   * （= `qty * unitPrice`·订单金额）**恰恰是最有业务含义的那一格**，而它住在
+   * `derivedProperties` 里 —— 结构上此前没有承载展示名的位置，于是不管真值表登不登记，
+   * 它在屏上永远是裸英文 `value`。补声明位，不动 `propKey`（那是公式/求解器/金值的接线名）。
+   *
+   * **可缺省 = 诚实留白**，语义同 {@link PropertyDef.displayName}：未登记就回落 `propKey`，
+   * 下游不得渲染 undefined/空白，也不得在前端自建第二份中文映射。
+   */
+  displayName?: string;
+}
+
+/** 治理增量 §2.2 弃用元数据（type/link/prop 复用同结构）。 */
+export interface DeprecationMeta {
+  status: "ACTIVE" | "DEPRECATED" | "RETIRED";
+  supersededBy?: string;
+  deprecatedAt?: string;
+  graceUntil?: string; // 缺省 deprecatedAt + 90d
+  retiredAt?: string;
+}
+
+export interface ObjectTypeDef {
+  id: string; // otype_
+  tenantId: string;
+  key: string;
+  displayName: string;
+  /** 治理增量 §1：归域强制（FK 校验到 domains；无法判断归 unassigned）。 */
+  domain?: string;
+  properties: PropertyDef[];
+  derivedProperties: DerivedPropertyDef[];
+  sourceBindings: SourceBinding[];
+  // OntoFlow（PRD v2）扩展 —— 全部可选，缺省即沿用既有"本体图谱"语义（不破既有快照）。嫁接自 main 平行线。
+  /** 存储模式：STATIC=静态图谱(纯结构,不参与派生/推演)；ONTOLOGY=完整本体。缺省视为 ONTOLOGY。 */
+  storageMode?: "STATIC" | "ONTOLOGY";
+  /** 状态变量（事件折叠产物，如 order_risk = Max(event.risk)）。 */
+  stateVariables?: { propKey: string; fromField: string; fn: string; dataType: string }[];
+  /** 类型级函数（推演可调用，如 adjustCapacity）。 */
+  functions?: { name: string; returns: string; builtin?: string; expr?: string }[];
+  /** 绑定的行动（S2 ActionType key）。 */
+  actions?: { actionTypeKey: string }[];
+  /** 逐属性脱敏规则（读出层应用）。 */
+  security?: { prop: string; strategy: "HASH" | "REDACT" | "PARTIAL"; scopeRoles?: string[] }[];
+  /** 语义分类标签（如 人/传感器/银行卡）。 */
+  entityCategory?: string;
+  /** 对象描述（文档 + agent 提示）。 */
+  description?: string;
+  /**
+   * WO-69 P3 · **实现的对象接口**（多态抽象）。沿用本结构既有的"可选扩展"先例（OntoFlow 字段全可选，
+   * 老快照不破）：**缺省不声明 = 逐字节沿用现状**，发布门一条都不走。
+   * 一个类型可实现 N 个接口（组合优于继承）；平台**没有** `extends`。
+   * `version:"latest"` 跟随最新已发布接口版本（接口一改，下次发布即被要求补齐）；
+   * 固定数字 = pin 住（接口演进不会悄悄让已发布实现者失效）。
+   */
+  implements?: import("@platform/contracts").ImplementsRef[];
+  /**
+   * WO-CONSTRAINT-REFS · **对象自身的约束条件 = 对规则库的引用**（仓主原话见契约
+   * `ObjectConstraintRefSchema` 注释）。缺省不声明 = 该类型没配约束（逐字节沿用现状）。
+   *
+   * ⚠ 只存 `ruleKey`，**不存表达式/severity/阈值** —— 那些一律回规则库现取，
+   * 于是「改规则即改约束判定」，对象侧不可能与规则库分叉出第二份业务常数。
+   * 消费方：`solvers/service.ts` 的 `objectConstraintRefs()`（求解器评估时并入引用集）。
+   */
+  constraintRefs?: import("@platform/contracts").ObjectConstraintRef[];
+  version: number;
+  status: "ACTIVE" | "RETIRED";
+  /** 治理增量 §2：是否曾 PUBLISHED（API 名不可变纪律的锚点）。 */
+  published?: boolean;
+  /** 治理增量 §2.2：弃用状态机。 */
+  deprecation?: DeprecationMeta;
+}
+
+export interface LinkTypeDef {
+  id: string; // ltype_
+  tenantId: string;
+  key: string;
+  fromTypeKey: string;
+  toTypeKey: string;
+  cardinality: "1:1" | "1:N" | "N:1" | "N:N";
+  /**
+   * WO-LINKTYPE-IMPL · **这条边由来源类型的哪个属性实现**（`fromTypeKey` 上的外键属性 `propKey`）。
+   *
+   * ── 为什么必须有这个字段 ──────────────────────────────────────────────────
+   * `LinkTypeDef` 是**声明**（A 与 B 有关系），而多跳检索 `executeSlice` 遍历的是
+   * `repos.links` 里的 **`LinkInstance` 实例行**（带 `fromId`/`toId`）。两张表之间原先
+   * **没有桥**：全仓 `repos.links.put` 的非测试调用方只有「出厂种子硬编码 / 命名空间迁移 /
+   * 实体归并改 id / 平台元本体」四处，**没有任何一处从 LinkTypeDef 推出 LinkInstance**。
+   * ⇒ 经 `POST /a/v1/ontology/link-types` 建出来的边永远 0 实例，检索恒返回 0 条边。
+   * 实测（demo 租户）：出厂边 `series_belongs_to_platform` 返回 6 条边；同向同 FK 的新建边
+   * 返回 0 条 —— 差的就是这一个字段。
+   *
+   * 语义：对每个 `fromTypeKey` 对象，取 `props[viaProperty]` 的值，去 `toTypeKey` 对象的
+   * **业务主键**（`objectKey ?? props[pk]`）上查同值者，命中即物化一条 `LinkInstance`。
+   * 这正是出厂种子里手写的 `putLink(… oid("ProductSeries", s.seriesId), oid("ProductPlatform", s.platformId))`，
+   * 只是改为**由声明驱动**而非硬编码。
+   *
+   * **诚实边界**：只支持「外键属性 → 对侧业务主键」这一种连接；非主键连接（任意 fromField↔toField
+   * 对）、以及一条边要靠中间表/数组才能表达的（如出厂 `model_producible_at` 走的是数组、
+   * `model_certified_on` 走的是独立认证清单）**不在本字段语义内**，需要时另行扩展，不要硬凑。
+   *
+   * 可选（加性·零回归）：不填 ⇒ 完全维持老行为（只声明不物化），出厂那批手写实例边不受影响。
+   */
+  viaProperty?: string;
+  /**
+   * WO-LINKTYPE-IMPL · `viaProperty` **长在哪一侧**。缺省 `"from"`（外键在来源类型上）。
+   *
+   * 为什么必须有这一维：实测 demo 租户 116 条结构边，**23 条（19.8%）的外键长在去向类型上**
+   * —— 一对多边正是这个形态（`base_has_shipment: Base → Shipment`，外键是 `Shipment.baseId`；
+   * `line_belongs_to_base: Base → Line`，外键是 `Line.baseId`）。只支持 from 侧的话，用户在
+   * 表单里选中这类边会看到一个**空的属性下拉**、无路可走 —— 那还是「建完的边用不了」，
+   * 只是换了个死法。
+   *
+   * · `"from"`：来源对象的 `props[viaProperty]` → 去向类型的业务主键；边 = 来源 → 命中的去向。
+   * · `"to"`  ：去向对象的 `props[viaProperty]` → 来源类型的业务主键；边 = 命中的来源 → 去向。
+   */
+  viaSide?: "from" | "to";
+  /**
+   * WO-MATERIALIZE-3EXT（桶②·外键指向的不是对侧主键）· **carrier 的外键值对到 anchor 的哪一列**。
+   * 缺省 = anchor 的业务主键（`objectKey ?? props[pk]`）⇒ 不填时逐字节沿用老行为，零回归。
+   *
+   * ── 为什么必须有这个字段（实测，不是推想）────────────────────────────────
+   * 真起服务（SEED_DEMO=1）逐条建边实测：**5 条边的外键值确实在，也确实对得上，
+   * 但对上的那一列不是主键**，于是 `materializeDeclaredLinks` 全部 `created:0`：
+   * · `customer_has_invoice`   ARInvoice.custName    → Customer.custName（主键 custId）  60 载体 / 60 未命中
+   * · `customer_has_overdue_record` OverdueRecord.customerRef → Customer.custName        2 / 2
+   * · `material_has_balance`   MaterialBalance.material → Material.name（主键 matId）     9 / 9
+   * · `scenario_to_target`     PlanTarget.scenarioKey → AnnualScenario.key（主键 scnId） 17 / 17
+   * · `scenario_to_finance`    FinanceMetric.scenarioKey → AnnualScenario.key             3 / 3
+   * 出厂种子对这 5 条各自手写了一张反查表（`custByName` / `matIdByName` / `AOP-2026-${key}` 拼串），
+   * 所以**出厂边有实例、用户自建同形状的边 0 实例** —— 同一条边两种命运，这个不一致本身就是缺陷。
+   *
+   * ⚠ **一对多风险如实回报，不静默取第一个**：按非主键列匹配可能撞车（两个客户同名 ⇒ 一张发票
+   * 连到哪个客户？）。物化时同值 anchor 计入 `ambiguousAnchors` 并原样回给调用方，
+   * 匹配仍取**排序后第一个**（R6 确定性），但调用方能看见「这里有歧义」而不是以为对得干干净净。
+   */
+  anchorProperty?: string;
+  /**
+   * WO-MATERIALIZE-3EXT（桶⑤·数组值外键）· **`props[viaProperty]` 是数组 ⇒ 逐元素各物化一条边**。
+   * 缺省 `false` ⇒ 沿用老行为（`String(raw)`，数组会被拼成 `"a,b,c"` 而匹配不上任何主键）。
+   *
+   * 实测（真服务）：`model_producible_at` Model→Base，`Model.bases = ["wuhan","xiamen","zigong"]`，
+   * 声明 `viaProperty:"bases"` 得 `{created:0, unresolved:6, carrierObjects:6}` —— 6 个型号全部落空。
+   * 出厂种子绕开物化器、手写双层 for（`synthetic/service.ts` 的 `lnk_mpa_` 那段）才有边。
+   *
+   * ⚠ **显式开关，不做类型嗅探**：不许「看见是数组就自动展开」—— 那是推断。
+   * 一个属性今天恰好是数组、明天数据换一批变成字符串，嗅探式行为会**静默改变边数**；
+   * 显式声明则数据变形时当场 0 条、有人会发现。
+   */
+  viaMultiValue?: boolean;
+  /**
+   * WO-MATERIALIZE-3EXT（桶①·关系即实体）· **本边由一个桥类型的两个外键实现**。
+   *
+   * 形态：关系本身是个对象（桥表），它既该以**节点**出现（审计要看「谁在什么时候认证的」），
+   * 又该以**边**出现（推演要看「这个型号能不能上这条线」）。今天只能是节点。
+   * 实测：`model_certified_on` Model→Line 两侧都没有对侧 FK（Model 无 lineId、Line 无 modelId），
+   * 建边直接 400；桥 `Certification(certId*, modelId, lineId, status, certHours, gapContribution)`
+   * 却**早就是一等类型且有实例**。
+   *
+   * **一份记录两个投影，不造可分叉的双份**：桥对象的 `props` **原样**写进 `LinkInstance.props`
+   * （外加 `bridgeObjectId` 回指），不做字段白名单 —— 白名单是第二份真相，迟早与桥分叉。
+   * 这条边上的 `status` / `certHours` 因此不再丢失（旧物化路 `LinkInstance` 一律无 props，
+   * 认证状态、换型分钟数、BOM 用量一个都带不过来 —— 这正是「用量不在边上 ⇒ 传导只能用常数系数」的根）。
+   *
+   * **诚实边界（实测顶回来的）**：本字段只表达**单跳桥**（一条桥记录同时握着两端的外键）。
+   * `model_uses_material` / `material_used_by_model` 的桥是 `BOMDetail(bomId, materialId)`，
+   * 它**没有 modelId** —— 要 `Model ←modelId– BOMHeader –bomId→ BOMDetail –materialId→ Material`
+   * 这样的**多跳桥链**，那是另一种形状，本字段表达不了，也不许硬凑。
+   */
+  viaBridge?: LinkBridgeSpec;
+  /**
+   * WO-PREDICATE-EDGE · **谓词**：这条边额外要求 carrier 行满足的条件（A5 规则 DSL 表达式原文）。
+   *
+   * ── 为什么 `viaProperty` 一个人不够 ────────────────────────────────────────
+   * `viaProperty` 只问「值对不对得上」，不问「这一行**该不该**参与这条边」。实测本仓两条边
+   * 正是差这一问，且**差了不会报错、只会静默多连**：
+   * · `material_carbon`：`CarbonFactor(kind,key)` 是**通用查表**，只有 `kind==="material"` 时
+   *   `key` 才是 `matId`（种子守卫见 `synthetic/service.ts:1103`）。没有谓词 ⇒ 能源/运输因子行
+   *   一旦 `key` 撞上 matId 也会被连进碳排链。
+   * · `defect_raises_exception`：只在 `refType === "DefectRecord"` 时成立（`:1129`）。
+   *   没有谓词 ⇒ 另外 4 种 `refType` 的异常被一起连进缺陷链，下钻结果静默变多。
+   *
+   * **「能连出边」和「连对了边」是两个命题**（铁律 1.5）。多出来的边不会红，只会让结论变胖。
+   *
+   * 语义：对 carrier 一侧（`viaSide === "from" ? fromTypeKey : toTypeKey`）的**每一行**求值，
+   * 假则跳过该行。求值器复用 `ruledsl.ts`（A5 同一份 `parseExpression` + `evaluateAst`），
+   * **纯函数、零时钟、零随机** ⇒ R6 确定性不受影响。
+   * 例：`material_carbon` ⇒ `viaProperty:"key", viaSide:"to", viaWhere:"CarbonFactor.kind == 'material'"`。
+   *
+   * **诚实边界**：谓词只**筛行**，不**算端点**。端点要靠值变换（`PT-${due.slice(0,7)}`）、
+   * 条件常量（`level==="month" ? …`）、叉积（每基地 × 每数据源）或多态目标类型得出的，
+   * 本字段一律表达不了 —— 那要的是「表达式产边」，是另一件事。详见 `ontology-link-predicate.ts` 头注。
+   *
+   * 可选（加性·零回归）：不填 ⇒ 与今天逐字节同行为；填了必须同时有 `viaProperty`
+   * （谓词只能收窄一个已存在的连接，自己造不出连接），否则写入期 400。
+   */
+  viaWhere?: string;
+  version: number;
+  published?: boolean;
+  deprecation?: DeprecationMeta;
+}
+
+/**
+ * WO-MATERIALIZE-3EXT · 桥实体投影规格（`LinkTypeDef.viaBridge`）。
+ *
+ * 每一端都**显式声明**「桥上的哪一列」与「对到端点类型的哪一列」——
+ * ⛔ **绝不推断**。实测反例：`transfer_from_base` 与 `transfer_to_base` 的候选属性集
+ * 完全相同（都是 `[fromBase, toBase]`，各 17 条命中），任何「取第一个」的推断器都会把
+ * 调出/调入接到同一个端点上，**其中一条拓扑静默接反且不报错**。
+ * 全仓实测有此歧义的边共 **7 条**（另含 `alt_for_material` / `material_has_alternative` /
+ * `base_dispatches_transfer` / `caused_by` / `model_changeover`）。
+ * 显式填写的「麻烦」是这套机制的正确性来源，不是它的缺陷。
+ */
+export interface LinkBridgeSpec {
+  /** 桥对象类型 key（如 `Certification`）。必须已存在，否则建边 400。 */
+  typeKey: string;
+  /** 桥上指向**来源类型**的列（如 `Certification.modelId`）。 */
+  fromProperty: string;
+  /** 桥上指向**去向类型**的列（如 `Certification.lineId`）。 */
+  toProperty: string;
+  /** 来源类型上被对到的列；缺省 = 来源类型的业务主键。语义同 `anchorProperty`。 */
+  fromAnchorProperty?: string;
+  /** 去向类型上被对到的列；缺省 = 去向类型的业务主键。 */
+  toAnchorProperty?: string;
+}
+
+/** 治理增量 §1：域（升格为一等治理单元）。UNIQUE(tenant, domainKey)。 */
+export interface DomainRecord {
+  id: string; // dom_<tenant>_<key>
+  tenantId: string;
+  domainKey: string;
+  displayName: string;
+  color?: string;
+  ownerUserId?: string | null;
+  description?: string;
+  createdAt: string;
+}
+
+/** 治理增量 §7.4：发布物入库时抽取的引用三元组（查询即索引查表）。 */
+export interface ElementRefRecord {
+  id: string; // eref_
+  tenantId: string;
+  elementKind: "type" | "link" | "prop" | "slice" | "rule";
+  elementKey: string;
+  prop?: string;
+  refKind: "slice" | "derivation" | "rule" | "plan" | "intent" | "agent";
+  refKey: string;
+  refVersion: number | "latest";
+  where: string;
+}
+
+/** 治理增量 §7.1：发布请求（域 owner 会签状态机）。 */
+export interface PublishRequestRecord {
+  id: string; // preq_
+  tenantId: string;
+  ontologyVersion: number;
+  requestedBy: string;
+  /**
+   * 会签请求状态。**取值域来自契约**（`PublishRequestStatusSchema`），不是本文件手抄一份。
+   *
+   * ⚠ WO-SIGNOFF-CHAIN：本单修的那个 bug 的**形态**就是「同一个取值域被抄了两份，
+   * 其中一份抄错了」—— 前端抄成了 `"PENDING"`，后端从来没发过这个值，
+   * 于是会签面板两颗按钮恒灰、15 条会签 0 条可处置，而**两边各自都编译通过**。
+   * 前端那份已改为引契约；本行是**剩下的另一份手抄**。
+   *
+   * 只修前端会留下这条：今天它与契约恰好一字不差，所以「看起来没问题」——
+   * 但「今天恰好一致」不度量「不会再分叉」。哪天契约加一个态（如 `WITHDRAWN`），
+   * 本行不会红，`PublishRequestRecord` 就再一次成了那份**抄错了也没人说话**的副本。
+   * 改成引契约之后，分叉当场是编译错误 —— **机器先说话**。
+   */
+  status: import("@platform/contracts").PublishRequestView["status"];
+  /**
+   * 本次发布触及的域。
+   *
+   * ⚠ WO-ONTO-CRASH：这个字段**此前不存在** —— 路由层算出 touchedDomains 后只拿去实例化
+   * signoff 行，算完就扔。而前端 `/admin/ontology-relations` 的会签表按契约读 `touchedDomains`
+   * 并 `.join()` ⇒ 租户里只要有一条会签请求，那一页**每次打开都崩**（F5 救不回：
+   * 崩溃条件在这条落库记录上，不在浏览器）。这是「读端按契约读、写端从没写过」的接缝断裂。
+   * 现予落库并下发。老记录没有此字段，故为可选，前端另有从 `signoffs` 现推的回退。
+   */
+  touchedDomains?: string[];
+  signoffs: PublishSignoffRecord[];
+  createdAt: string;
+  decidedAt?: string;
+}
+
+export interface PublishSignoffRecord {
+  domainKey: string;
+  ownerUserId: string | null;
+  decision: "APPROVE" | "REJECT" | null;
+  comment?: string;
+  decidedAt?: string;
+  onBehalfOf?: string;
+}
+
+export interface OntologyVersion {
+  id: string; // over_
+  tenantId: string;
+  version: number;
+  snapshot: { objectTypes: ObjectTypeDef[]; linkTypes: LinkTypeDef[] };
+  createdAt: string;
+}
+
+/**
+ * WO-69 P3 · 对象接口仓储记录（id 前缀 `oif_`）。契约见 `packages/contracts/src/object-interface.ts`
+ * （契约已含 id/tenantId → 此处只做 domain 侧别名，R1 不重定义）。
+ */
+export type ObjectInterfaceRecord = import("@platform/contracts").ObjectInterface;
+
+export type ObjectOrigin =
+  // 活数据可溯（PRD-live-traceable-data §3.1，additive）：合成对象现经"合成数据源→RawDataset→物化"
+  // 落地，origin 记源头 backref（sourceConnId/rawDatasetId/rawRowIdx）→ 结果可溯回原始行与连接器。
+  | { type: "SYNTHETIC"; jobId: string; sourceConnId?: string; rawDatasetId?: string; rawRowIdx?: number }
+  | { type: "MATERIALIZED"; datasetId: string; jobId: string }
+  | { type: "MANUAL" }
+  // Dogfooding：系统本体自反投影（从 SYSTEM-ONTOLOGY.md/prd-index 确定性重生成,可溯回章节锚点）。
+  | { type: "META"; source: string; anchor?: string }
+  // OntoFlow（PRD v2 P3）：流水线发布物化落地的对象（origin 记工作流 backref）。嫁接自 main 平行线。
+  | { type: "PIPELINE"; workflowId: string }
+  // WO-GSIM-5-ACTION：S2 Action 执行回灌物化的对象（在产 WorkOrder / 跨基地调剂 InterBaseTransfer），
+  // origin 记 actionId + 方案指纹 backref → R13 溯回采纳的方案（G-DECISION 行动半 / G-LOOP-FEEDBACK）。
+  | { type: "ACTION"; actionId: string; source?: string; fingerprint?: string }
+  // WO-LINKTYPE-IMPL：由 `LinkTypeDef.viaProperty` 声明**推导**出的链路实例（非手写、非物化对象）。
+  // 单独一个 origin 变体是为了让重算时的 removeWhere 能**精确只删自己造的那批** ——
+  // 出厂种子的边是 origin=SYNTHETIC，绝不会被这条推导路径误删。
+  // WO-MATERIALIZE-3EXT：桥实体投影出的边同样归本变体（重算 removeWhere 一并收拾），
+  // 但它没有 `viaProperty`（连接靠桥的两列）⇒ 该字段改为可选，另记 `viaBridgeTypeKey`。
+  // 加性：老记录仍带 viaProperty，读端（本仓仅 ontology.ts 三处）不受影响。
+  | { type: "LINK_DERIVED"; linkTypeKey: string; viaProperty?: string; viaBridgeTypeKey?: string };
+
+export interface ObjectInstance {
+  id: string; // obj_
+  tenantId: string;
+  type: string; // objectType key
+  props: Record<string, unknown>;
+  origin: ObjectOrigin;
+  /** 本体原子规格 §1：业务主键（缺省 = props[primaryKey]）。 */
+  objectKey?: string;
+  /** 本体原子规格 §1：写入批次序号（snapshotVersion = {ontologyVersion}.{epoch}）。 */
+  epoch?: number;
+  /** OC1 实体解析：被并入 golden 对象的 id（置则该对象不出现在查询/切片/聚合，只见 golden）。 */
+  mergedInto?: string;
+  updatedAt?: string;
+}
+
+/**
+ * 本体原子规格 §1：epoch 是租户级单调序列；每个写入批次（连接器同步/对象化/
+ * 派生运行/Action 写回）+1，批内所有行打同一 epoch。一条/租户（id == tenantId）。
+ */
+export interface EpochCounterRecord {
+  id: string; // == tenantId
+  tenantId: string;
+  epoch: number;
+  updatedAt: string;
+}
+
+/**
+ * 本体原子规格 §1：temporal=true 属性变更落历史（append-only）。当前值始终在
+ * objects.props，读路径不查此表。
+ */
+export interface ObjectPropHistoryRecord {
+  id: string; // ophist_
+  tenantId: string;
+  objectId: string;
+  prop: string;
+  value: unknown;
+  epoch: number;
+  validFrom: string;
+  recordedAt: string;
+  provenance?: Record<string, unknown>;
+}
+
+/**
+ * 本体原子规格 §2：派生规格（编译期解析公式→缓存 deps）。spec_key 唯一/版本。
+ */
+export interface DerivationSpecRecord {
+  id: string; // dspec_
+  tenantId: string;
+  ontologyVersion: number;
+  specKey: string;
+  targetType: string;
+  targetProp: string;
+  formula: string; // §2 DSL
+  deps: { typeKey: string; prop: string; via?: string; direction?: "out" | "in" }[];
+  status: "ACTIVE" | "RETIRED";
+}
+
+/**
+ * 本体原子规格 §2.4：每次派生写值同步记录（inputs 快照 + epoch），溯源弹窗数据源。
+ */
+export interface DerivationValueRunRecord {
+  id: string; // dvrun_
+  tenantId: string;
+  specId: string;
+  specKey: string;
+  objectId: string;
+  targetProp: string;
+  value: unknown;
+  inputs: { objectId: string; prop: string; value: unknown }[];
+  epoch: number;
+  ranAt: string;
+  warnings?: string[];
+}
+
+/** 本体原子规格 §3：切片规格（版本化场景包内容，slices 表）。 */
+export interface SliceSpecRecord {
+  id: string; // slice_
+  tenantId: string;
+  sliceKey: string;
+  version: number;
+  spec: {
+    root: { typeKey: string; selector: { byKey?: string; filter?: Record<string, unknown> } };
+    paths: {
+      linkKey: string;
+      direction: "out" | "in";
+      filter?: Record<string, unknown>;
+      limitPerNode?: number;
+      project?: string[];
+    }[][];
+    maxNodes?: number;
+    /** 治理增量 §7.2：切片契约 fixtures（每 PUBLISHED slice ≥1）。 */
+    contractFixtures?: {
+      name: string;
+      args: Record<string, string | number>;
+      expect: {
+        rootType: string;
+        minNodes: number;
+        mustIncludeTypes?: string[];
+        mustIncludeLinkKeys?: string[];
+        maxNodes?: number;
+        // A3-SUITE-1：约束可来自一等 RuleEntry.params（G-10 切片维）。
+        // 若提供 ruleRef，运行时从已发布规则读参数；否则退回到内联数组（冷启动 fallback）。
+        ruleRef?: {
+          ruleKey: string;
+          typesParam: string;
+          linksParam: string;
+        };
+      };
+    }[];
+  };
+}
+
+export interface LinkInstance {
+  id: string; // lnk_
+  tenantId: string;
+  type: string; // linkType key
+  fromId: string;
+  toId: string;
+  /** Edge properties (e.g. certification status on model↔line links, §S1.2). */
+  props?: Record<string, unknown>;
+  origin: ObjectOrigin;
+}
+
+export interface DerivationRun {
+  id: string; // drun_
+  tenantId: string;
+  startedAt: string;
+  finishedAt?: string;
+  updatedObjects: number;
+  order: string[]; // type keys in topo order
+  status: "SUCCEEDED" | "FAILED";
+  error?: string;
+}
+
+/** S2 action draft with the full approval state machine (contracts ActionDraftSchema shape). */
+export interface ActionDraft {
+  id: string; // act_
+  tenantId: string;
+  actionTypeKey: string;
+  payload: Record<string, unknown>; // immutable after submit
+  origin: { taskId?: string; agentId?: string; userId: string };
+  status: ActionStatus;
+  approvalSteps: ApprovalStep[];
+  executionResult?: { ok: boolean; targetRef?: string; error?: string; attempts: number };
+  /** WO-GSIM-5-ACTION：确定性方案指纹（同方案两次采纳 → 幂等·返回既有草稿不重复生成·R6）。 */
+  fingerprint?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ActionTypeRecord extends ActionType {
+  id: string; // atype_
+  tenantId: string;
+}
+
+// ---------------------------------------------------------------------------
+// A3 modeling
+// ---------------------------------------------------------------------------
+
+export type DraftOperation =
+  | { op: "renameType"; typeKey: string; newTypeKey: string; newDisplayName?: string }
+  | {
+      op: "addProperty";
+      typeKey: string;
+      property: {
+        propKey: string;
+        sourceField: string;
+        dataType: "string" | "number" | "boolean" | "date" | "enum" | "ref";
+        isPrimaryKey: boolean;
+        refToTypeKey: string | null;
+      };
+    }
+  | { op: "removeProperty"; typeKey: string; propKey: string }
+  | { op: "renameProperty"; typeKey: string; propKey: string; newPropKey: string }
+  | { op: "setRef"; typeKey: string; propKey: string; refToTypeKey: string | null }
+  | { op: "setPrimaryKey"; typeKey: string; propKey: string }
+  | { op: "setDomain"; typeKey: string; domain: string }
+  | { op: "removeObjectType"; typeKey: string };
+
+export interface FkCandidate {
+  fromDataset: string;
+  fromField: string;
+  toDataset: string;
+  toField: string;
+  containment: number;
+}
+
+export interface OntologyDraft {
+  id: string; // draft_
+  tenantId: string;
+  status: "DRAFT" | "REVIEWED" | "PUBLISHED";
+  rawDatasetIds: string[];
+  fkCandidates: FkCandidate[];
+  suggestion: import("@platform/contracts").ModelingSuggestion;
+  operationLog: { at: string; operation: DraftOperation }[];
+  publishedVersion?: number;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// A7 synthetic
+// ---------------------------------------------------------------------------
+
+export interface IndustryTemplateRecord {
+  id: string; // tmpl_
+  tenantId: string;
+  industryKey: string;
+  template: IndustryTemplate;
+  source: "BUILTIN" | "LLM";
+  createdAt: string;
+}
+
+export interface SyntheticJob {
+  id: string; // job_
+  tenantId: string;
+  industry: string;
+  scale: "S" | "M" | "L" | "XL";
+  seed: number;
+  status: "SUCCEEDED" | "FAILED";
+  report?: SyntheticReport;
+  error?: string;
+  createdAt: string;
+  /** 运营态出厂配置增量 §1：livedIn 回放统计（批次/天数/点数/墙钟耗时）。 */
+  livedIn?: { batches: number; days: number; points: number; durationMs: number };
+}
+
+export interface SyntheticReport {
+  rowCounts: Record<string, number>;
+  fkChecks: { check: string; passed: boolean; sampled: number }[];
+  ruleScan: { ruleKey: string; evaluated: number; violations: number }[];
+  derivationSpotChecks: { typeKey: string; propKey: string; objectId: string; ok: boolean }[];
+  views: string[];
+  accounts: string[];
+  /** A8.6: history point counts / gap scan / aggregation spot recomputation. */
+  timeseries?: {
+    pointCounts: Record<string, number>;
+    gaps: { seriesKey: string; entityId: string; missingDays: number }[];
+    aggSpotChecks: { specKey: string; entityId: string; ok: boolean }[];
+  };
+}
+
+// ---------------------------------------------------------------------------
+// C-2 webhook outbox
+// ---------------------------------------------------------------------------
+
+export interface WebhookRegistration {
+  id: string; // wh_
+  tenantId: string;
+  url: string;
+  events: string[]; // e.g. ["ontology.published", "rules.updated"]
+  status: "ACTIVE" | "DISABLED";
+}
+
+export interface OutboxEvent {
+  id: string; // evt_
+  tenantId: string;
+  /** §2: globally-unique id consumers dedupe on (defaults to id for legacy rows). */
+  eventId: string;
+  event: string;
+  /** §2: per-aggregate ordering — same aggregateKey delivered serially by seq. */
+  aggregateKey: string;
+  seq: number;
+  payload: Record<string, unknown>;
+  status: "PENDING" | "DELIVERED" | "FAILED" | "DEAD";
+  attempts: number;
+  nextAttemptAt: string;
+  lastError?: string;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Execution semantics（PRD-addendum-execution-semantics §1/§4/§6）
+// ---------------------------------------------------------------------------
+
+/** §1 管线执行互斥与重入：每 (kind,key) 一行，fence 单调每次获取 +1。 */
+export interface ExecutionLockRecord {
+  id: string; // = `${resourceKind}|${resourceKey}`
+  tenantId: string;
+  resourceKind: string;
+  resourceKey: string;
+  holderId: string;
+  acquiredAt: string;
+  leaseUntil: string;
+  fence: number;
+  /** §1.3 变更触发类：持锁期间累积的"待重跑"标志。 */
+  rerunRequested: boolean;
+}
+
+/** §2/§4 幂等记录：同键重复请求返回首次结果摘要（7d 过期）。 */
+export interface IdempotencyRecord {
+  id: string; // = idempotency key
+  tenantId: string;
+  scope: string; // e.g. "approval" | "sop" | "replay"
+  responseDigest: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** §4 回放进度检查点：每 tick 提交，中断重入从 last+1 续。 */
+export interface ReplayProgressRecord {
+  id: string; // = `replay|${tenantId}`
+  tenantId: string;
+  lastCompletedTick: number;
+  updatedAt: string;
+}
+
+/** 闭环验证引擎 VLE：一次验证运行的报告（七段×断言点 + 覆盖率 + 工程验证度）。 */
+export interface ValidationRunRecord {
+  id: string; // vrun_
+  tenantId: string;
+  profile: "SMOKE" | "FULL" | "SOAK";
+  seed: number;
+  startedAt: string;
+  finishedAt?: string;
+  report?: Record<string, unknown>;
+}
+
+/** 运营完备性 §9 通知中心：定向站内通知（铃铛未读 + 跳转 refType 对应页）。 */
+export interface NotificationRecord {
+  id: string; // ntf_
+  tenantId: string;
+  userId: string;
+  kind: string; // approval_pending | action_approved | action_rejected | ...
+  title: string;
+  body: string;
+  refType?: string; // action | sop | ...
+  refId?: string;
+  readAt?: string;
+  createdAt: string;
+}
+
+/** 运营完备性 §4 数据隔离区：行级失败不再使批次失败，异常行落隔离区可修复重处理。 */
+/** Dogfooding P2：元本体访问策略记录（id=tenantId;角色白名单,默认 ["admin"]）。 */
+export interface MetaAccessPolicyRecord {
+  id: string; // = tenantId
+  tenantId: string;
+  roles: string[];
+  updatedAt?: string;
+}
+
+export interface QuarantineRowRecord {
+  id: string; // qr_
+  tenantId: string;
+  connId: string; // datasetId（来源管线锚点）
+  dataset: string; // dataset 名
+  raw: Record<string, unknown>; // 原始行（可行内编辑后重投）
+  reason: "SCHEMA_MISMATCH" | "TYPE_ERROR" | "REF_NOT_FOUND" | "UNIT_ERROR" | "RULE_REJECT" | "DUP_KEY";
+  detail?: string;
+  status: "PENDING" | "REPROCESSED" | "DISCARDED";
+  /** 重处理上下文：目标类型 + 字段映射 + 主键（重投时重建对象）。 */
+  reprocess: { targetKey: string; mapping: { propKey: string; sourceField: string }[]; pk?: string };
+  createdAt: string;
+}
+
+/** §6 A2 分段抽取的段落级状态表（PARTIAL 任务可单段重试）。 */
+export interface ExtractSegmentRecord {
+  id: string; // = `${docId}|${segNo}`
+  tenantId: string;
+  docId: string;
+  segNo: number;
+  status: "OK" | "FAILED" | "PENDING";
+  result?: Record<string, unknown>;
+  error?: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// S1.8 S&OP monthly plan versions
+// ---------------------------------------------------------------------------
+
+export interface SopVersion {
+  id: string; // sop_
+  tenantId: string;
+  month: string; // "2026-07"
+  status: SopVersionStatus;
+  inputs: Record<string, unknown>;
+  steps: {
+    s1?: Record<string, unknown>;
+    s2?: Record<string, unknown>;
+    s3?: Record<string, unknown>;
+    s4?: Record<string, unknown>;
+    s5?: Record<string, unknown>;
+  };
+  agenda: { source: string; title: string; detail?: Record<string, unknown> }[];
+  resolutions: { name: string; delta: number }[];
+  supFinal?: number;
+  /** 增量 §7.12：定稿 Action 草稿已创建、待审批（EXECUTED → FINAL 时清除） */
+  pendingApproval?: { draftId: string } | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// S3 scheduler
+// ---------------------------------------------------------------------------
+
+export interface ScheduledJobRecord {
+  id: string; // sjob_
+  tenantId: string;
+  kind: ScheduledJobKind;
+  refId: string;
+  cron: string;
+  timezone: string;
+  nextRunAt: string;
+  lastRunAt?: string;
+  status: "ACTIVE" | "PAUSED";
+  lastError?: string;
+}
+
+export interface SchedulerRunRecord {
+  id: string; // `${jobId}@${scheduledAt}` — the idempotency key
+  tenantId: string;
+  jobId: string;
+  scheduledAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  status: "RUNNING" | "SUCCEEDED" | "FAILED" | "MISSED";
+  error?: string;
+}
+
+// ---------------------------------------------------------------------------
+// A8 timeseries
+// ---------------------------------------------------------------------------
+
+export interface TsSeriesRecord {
+  id: string; // tser_
+  tenantId: string;
+  connId?: string;
+  seriesKey: string; // e.g. "oee:equip"
+  entityType: string;
+  entityRefField: string;
+  timeField: string;
+  measureFields: string[]; // [0] is the primary measure; weighted_avg weight may be [1]
+  unit?: string;
+  origin?: "SYNTHETIC" | "CONNECTOR";
+  createdAt: string;
+}
+
+export interface TsPointRecord {
+  seriesId: string;
+  entityId: string;
+  ts: string; // ISO timestamp (bucket start for day-grain synthetic data)
+  values: Record<string, number>;
+  ingestedAt: string;
+  tick?: number; // simulation tick that produced the point (0 = initial history)
+  /** 运营态增量 §6：origin 标记（缺省 = 系列 origin；LIVE = 真历史按月回填覆盖）。 */
+  origin?: "SYNTHETIC" | "LIVE";
+}
+
+export interface TsLateArrivalRecord {
+  id: string;
+  tenantId: string;
+  seriesId: string;
+  entityId: string;
+  ts: string;
+  values: Record<string, number>;
+  receivedAt: string;
+}
+
+export interface TsAggSpecRecord extends TsAggSpec {
+  lastRunAt?: string;
+}
+
+export interface TsAggRunRecord {
+  id: string; // run id (specKey + entity + window)
+  tenantId: string;
+  specId: string;
+  specKey: string;
+  specVersion: number;
+  entityId: string;
+  windowStart: string;
+  windowEnd: string;
+  rowsIn: number;
+  value: number;
+  runAt: string;
+}
+
+export interface RetentionPolicyRecord {
+  id: string;
+  tenantId: string;
+  seriesKey: string;
+  rawDays: number;
+  downsampleAfterDays?: number;
+  downsampleGrain?: "day" | "week";
+}
+
+// ---------------------------------------------------------------------------
+// A8.6 simulation clock
+// ---------------------------------------------------------------------------
+
+export interface SimulationClockRecord {
+  id: string; // == tenantId
+  tenantId: string;
+  t0: string; // ISO date of "now" at initial synthesis
+  currentTick: number;
+  seed: number;
+  industry: string;
+  scale: "S" | "M" | "L" | "XL";
+  status: "ACTIVE" | "TICKING" | "RESETTING";
+  firedEvents: { tick: number; event: string; params: Record<string, unknown> }[];
+  /** alert keys (ruleKey:entityId) active after the last RULE_SCAN — for raised/cleared diffs */
+  activeAlerts: string[];
+}
+
+export interface ClockTickReport {
+  id: string; // tickjob_
+  tenantId: string;
+  fromTick: number;
+  toTick: number;
+  newPoints: number;
+  topChangedSnapshots: { objectId: string; objectType: string; property: string; from: number | null; to: number }[];
+  alertsRaised: string[];
+  alertsCleared: string[];
+  scenarioEvents: { tick: number; event: string }[];
+  forecastDeviation?: { modelId: string; predictedDaily: number; actualDaily: number; deviation: number };
+  createdAt: string;
+}
+
+/** Stored when capacity_forecast runs — feeds the T9 deviation/calibration loop. */
+export interface ForecastSnapshotRecord {
+  id: string; // fcst_<tenant>_<model>
+  tenantId: string;
+  modelId: string;
+  /** @unit 万套/窗口 */
+  capWanP50: number;
+  weeks: number;
+  predictedDaily: number; // 万套/日
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// M11 校准（§7.21）：参数更新提案 + 校准历史（提案变更必须走 校准参数变更 Action）
+// ---------------------------------------------------------------------------
+
+export type CalibrationMethodKind = "EMA" | "REPLAY_ATTRIBUTION" | "QUANTILE";
+
+export interface CalibrationEvidenceRecord {
+  windowFrom: string;
+  windowTo: string;
+  nPairs: number;
+  mapeBefore: number; // %（百分点口径）
+  simulatedMapeAfter: number; // % — 建议参数对窗口内全部配对样本重放
+  bias: number; // Σerror / Σactual
+  flags: string[]; // STRUCTURAL_SHIFT | NO_IMPROVEMENT | FREQUENCY_LIMIT | CASCADE_HOLD | AUTO_APPLIED | …
+}
+
+export interface CalibrationProposalRecord {
+  id: string; // cal_（M11；旧种子 calp_ 兼容）
+  tenantId: string;
+  parameter: string; // 节拍/良率/OEE 基线 等展示名
+  /** solver_params 内的点路径（如 "ramp.base"），Action EXECUTED 后写入（= paramRef.path） */
+  paramPath: string;
+  objectRef?: string;
+  currentValue: number;
+  proposedValue: number;
+  basis: { windowFrom: string; windowTo: string; samples: number };
+  trigger: string; // "C12" | "手动" | "CALIBRATION_RUN"
+  status: "PENDING" | "APPLIED" | "ROLLED_BACK" | "REJECTED" | "HOLD";
+  /** 应用前的旧值（回滚还原用） */
+  appliedFrom?: number;
+  appliedAt?: string;
+  createdAt: string;
+  // ---- M11 增量 ----
+  sliceKey?: string; // solverKey|baseId|modelId
+  paramRef?: { scope: "SOLVER_PARAMS" | "ONTOLOGY_PROPERTY"; path: string };
+  method?: CalibrationMethodKind;
+  evidence?: CalibrationEvidenceRecord;
+  /** §6 元闭环：APPLIED 14 天后回写（预言 vs 实现） */
+  realizedMape?: number;
+  /** 应用后的 solver_params 版本（回滚 = 恢复上一版本） */
+  appliedParamsVersion?: number;
+  /** 应用时刻的模拟时钟 tick（元闭环 14 个模拟日计时锚点） */
+  appliedTick?: number;
+  /** ONTOLOGY_PROPERTY scope：应用前各对象旧值快照（精确回滚） */
+  appliedSnapshot?: Record<string, number>;
+}
+
+export interface CalibrationHistoryRecord {
+  id: string; // calh_
+  tenantId: string;
+  at: string;
+  trigger: string; // "C12" | "手动" | "回滚"
+  changedParams: string[];
+  mapeBefore: number;
+  mapeAfter: number;
+  // ---- M11 增量：预言 vs 实现 ----
+  proposalId?: string;
+  method?: CalibrationMethodKind;
+  simulatedMapeAfter?: number;
+  realizedMape?: number;
+}
+
+// ---------------------------------------------------------------------------
+// M11 §1 配对引擎：轻量预测记录（capacity_forecast 运行/快照刷新时写入）+
+// 配对样本（窗口完全过期 + 数据新鲜度正常后一次性配对）。
+// ---------------------------------------------------------------------------
+
+export interface CalibrationForecastRecord {
+  id: string; // calf_<tenant>_<solver>_<model>_<base|all>_<date>
+  tenantId: string;
+  solverKey: string; // capacity_forecast
+  modelId: string;
+  /** undefined = 全基地合计；否则单基地切片 */
+  baseId?: string;
+  windowFrom: string; // ISO date（本期按日窗口：from == to）
+  windowTo: string;
+  predicted: number; // 万套/日（窗口内日均预测）
+  predictedP90: number; // predicted × healthFactor
+  paramsVersion: number; // 预测时的 solver_params 版本
+  weekOfWindow: number; // 距 forecastStart 的预测周序（1 起，爬坡归因用）
+  createdAt: string;
+  /** 一个预测只配对一次 */
+  pairedAt?: string;
+}
+
+export interface CalibrationPairRecord {
+  id: string; // calpair_
+  tenantId: string;
+  solverKey: string;
+  entityRef: string; // "Model:<id>" 或 "Model:<id>@Base:<id>"
+  modelId: string;
+  baseId?: string;
+  windowFrom: string;
+  windowTo: string;
+  predicted: number;
+  predictedP90: number;
+  actual: number; // ts_agg_runs 同窗口聚合（A8）
+  error: number; // predicted − actual
+  ape: number; // |error| / max(actual, ε)
+  paramsVersion: number;
+  /** 预测后参数已变更：仍用于评估旧参数，不进入新提案回测基线 */
+  staleParams: boolean;
+  sliceKey: string; // solverKey|baseId|modelId
+  weekOfWindow: number;
+  pairedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// 运营态出厂配置增量（lived-in）：告警-处置闭环案例 + 运营态元数据
+// ---------------------------------------------------------------------------
+
+/** §1.2 告警-处置闭环案例：越线日→采纳方案（关联 Action）→曲线消解→受影响订单清单。 */
+export interface RiskCaseRecord {
+  id: string; // case_lh_<tenant>_<n>
+  tenantId: string;
+  caseNo: string; // CASE-001..
+  title: string;
+  baseId: string;
+  baseName: string;
+  factor: string;
+  severity: string;
+  windowFrom: string; // 风险窗口（叙事互引的时间窗）
+  windowTo: string;
+  crossedAt: string;
+  adoptedAt: string;
+  resolvedAt: string;
+  mitigation: { name: string; planKey: string };
+  /** 关联的已执行 Action（act_lh_*） */
+  actionId: string;
+  affectedOrders: string[]; // SO 号
+  timeline: { date: string; event: string }[];
+  tags: string[]; // 如 ["到货危机"]
+  /** 前端案例点击回放当时的时序曲线（query_timeseries_agg 参数） */
+  curve: { seriesKey: string; entityId: string; from: string; to: string };
+}
+
+/**
+ * 运营态元数据（livedIn 合成时写入，每租户一条，id == tenantId）：
+ * generatedFrom（水印来源）、52 周 MAPE 叙事、场景任务史副本（事实源 =
+ * contracts LIVED_IN_SCENE_HISTORY 常量，A/B 各自消费同一常量）、孵化记录、
+ * 规则演进备注、LIVE 回填月份（origin 替换路径 §6）。
+ */
+export interface LivedInStateRecord {
+  id: string; // == tenantId
+  tenantId: string;
+  generatedFrom: {
+    industry: string;
+    scale: string;
+    seed: number;
+    jobId: string;
+    replayFrom: string;
+    replayTo: string;
+    replayDays: number;
+  };
+  crisisWindow: { from: string; to: string };
+  mapeSeries: { week: number; weekStart: string; mape: number; event?: string }[];
+  taskHistory: { scene: string; question: string; answer: string; trustLevel: string; date: string }[];
+  incubated: { intentKey: string; name: string; question: string; count: number; incubatedAt: string }[];
+  ruleChanges: { key: string; name: string; version: number; label: string; expression: string; reason: string; changedAt: string; status: string; tags: string[] }[];
+  liveMonths: string[];
+  replay: { batches: number; days: number; points: number };
+}
+
+/** S1 修订：solver_params 版本历史（runWithParams(version) / 回滚锚点）。 */
+export interface SolverParamsHistoryRecord {
+  id: string; // sparh_<tenant>_v<version>
+  tenantId: string;
+  version: number;
+  params: Record<string, unknown>;
+  note?: string;
+  createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// S4 knowledge base / vectors
+// ---------------------------------------------------------------------------
+
+export interface KbDocRecord {
+  id: string; // kbdoc_
+  tenantId: string;
+  connId: string;
+  filename: string;
+  blobKey: string;
+  chunkCount: number;
+  createdAt: string;
+}
+
+export interface KbChunkRecord {
+  id: string; // kbch_
+  tenantId: string;
+  connId: string;
+  docId: string;
+  seq: number;
+  text: string;
+  span: { start: number; end: number };
+  embedding: number[];
+}
+
+// ---------------------------------------------------------------------------
+// Feature entitlement
+// ---------------------------------------------------------------------------
+
+export interface FeatureConfigRecord {
+  id: string; // fcfg_<tenant> | fcfg_<tenant>_<role>
+  tenantId: string;
+  role?: string; // absent = tenant layer
+  overrides: Record<string, boolean>;
+  configVersion: number;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface FeatureAuditRecord {
+  id: string;
+  tenantId: string;
+  role?: string;
+  diff: Record<string, { from: boolean | null; to: boolean }>;
+  configVersion: number;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Per-tenant solver params (scenario-pack constants, §S1 通用约定)
+// ---------------------------------------------------------------------------
+
+export interface SolverParamsRecord {
+  id: string; // spar_<tenant>
+  tenantId: string;
+  params: Record<string, unknown>;
+  version: number;
+  updatedAt: string;
+}
+
+export type { PermissionPolicy };
+
+// ---------------------------------------------------------------------------
+// LLM Provider 配置体系增量 §1.1（表 llm_providers / llm_purpose_bindings）
+// ---------------------------------------------------------------------------
+
+export interface LlmProviderRecord {
+  id: string; // llmp_
+  tenantId: string; // "platform" = 平台级模板（platform_admin 维护，可克隆）
+  name: string;
+  kind: "anthropic" | "openai_compatible" | "custom_http";
+  baseUrl?: string;
+  /** apiKey 写入即 AES-GCM 密文（与连接器凭据同套 CredentialCipher），永不回显 */
+  apiKeyCiphertext?: string;
+  models: {
+    modelId: string;
+    displayName: string;
+    capabilities: { tools: boolean; structuredOutput: boolean; maxContext: number };
+  }[];
+  status: "ACTIVE" | "DISABLED";
+  /** 不可用时的降级目标（≤1 级，禁止链式） */
+  fallbackProviderId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 增量 §1.3：用途绑定（租户级默认；id = llmb_{purpose}，每租户每用途一条）。 */
+export interface LlmPurposeBindingRecord {
+  id: string; // llmb_{purpose}
+  tenantId: string;
+  purpose: string; // classifier|agent|extraction|modeling|template_gen|compose|comprehend
+  providerId: string;
+  modelId: string;
+  /** WO-QOS-NOREASON「关推理」：ON → 解析期若绑定模型为推理型，改用同 provider 非推理兄弟（存 JSONB doc·无需迁移）。 */
+  noReasoning?: boolean;
+  updatedAt: string;
+}
+
+/**
+ * 引用模式增量 §2.3：B→A 引用上报登记（B 资源发布时上报其对 A 资源的出向引用，
+ * 规则发布据此反查影响面）。id = refr_{sourceKind}_{sourceKey}（每来源一条，覆盖式）。
+ */
+export interface ReportedRefRecord {
+  id: string;
+  tenantId: string;
+  source: { kind: string; key: string; name?: string };
+  refs: { kind: string; key: string; version: number | "latest" }[];
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// 回放编排器与虚拟操作团队（PRD-addendum-replay-orchestrator）
+// ---------------------------------------------------------------------------
+
+/**
+ * §6 OpsSchedule 存储记录（tenantId 唯一 → id == tenantId）。
+ * 契约 OpsScheduleRecord 的存储映射（额外携带 Store 必需的 id）。
+ */
+export interface OpsScheduleStoreRecord {
+  id: string; // == tenantId
+  tenantId: string;
+  forecasts: { cron: string; modelIds: string[] | "ALL_ACTIVE"; weeks: number }[];
+  sopCycle?: { openCron: string; stepDeadlines: number[]; escalateAfterDays: number };
+  approvalReminder?: { remindAfterDays: number; escalateAfterDays: number; escalateToRole: string };
+  autoApprove?: { actionTypes: string[]; maxAmount?: number; enabled: boolean };
+  updatedAt: string;
+  updatedBy: string;
+}
+
+/**
+ * §3 OpsTickReport 持久化（每 SYNTHETIC 租户的剧本第⑦步执行报告，可下钻）。
+ * id == ops_tick_<tenant>_<tick>。
+ */
+export interface OpsTickReportRecord {
+  id: string;
+  tenantId: string;
+  tick: number;
+  date: string;
+  executed: { kind: string; persona: string; ref?: string; decision?: string }[];
+  skipped: { kind: string; persona: string; reason: string }[];
+  createdAt: string;
+}
+
+/** OntoFlow（PRD v2）：本体建模工作流持久化记录（doc = OntologyWorkflow 契约）。嫁接自 main 平行线。 */
+export interface OntologyWorkflowRecord {
+  id: string; // wf_
+  tenantId: string;
+  doc: import("@platform/contracts").OntologyWorkflow;
+  updatedAt: string;
+}
