@@ -17,21 +17,10 @@
 import { chromium } from "/opt/node22/lib/node_modules/playwright/index.mjs";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 export const BASE = process.env.E2E_BASE ?? "http://127.0.0.1:5173";
-/**
- * 截图落点。**锚在本文件自己身上，不是 `process.cwd()`**。
- *
- * ⚠ 原来写的是 `path.resolve(process.cwd(), "apps/frontend-shell/test/e2e/shots")` ——
- * 只有从**仓库根**跑才对。从 `apps/frontend-shell/` 跑同一个脚本，截图会静静地落到
- * `apps/frontend-shell/apps/frontend-shell/test/e2e/shots/`，**脚本照样 RC=0、回包里
- * 还是那个 basename**，于是报告引用的 `adv-on.png` 其实是**上一次跑剩下的旧图**。
- * 形态：**「我用『脚本回了这个文件名』当作『这张图是这次跑出来的』的证据，而前者并不度量后者。」**
- * 实测踩过（2026-09-08，本单）：新图落进嵌套目录，仓库里那两张一个字节没动。
- * 锚在 `import.meta.url` 上之后，从哪个目录跑都落同一处。
- */
-export const SHOT_DIR = process.env.E2E_SHOTS ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "shots");
+export const SHOT_DIR =
+  process.env.E2E_SHOTS ?? path.resolve(process.cwd(), "apps/frontend-shell/test/e2e/shots");
 
 mkdirSync(SHOT_DIR, { recursive: true });
 
@@ -100,31 +89,17 @@ export async function login(page, { user = "admin", password = "demo1234", tenan
 }
 
 /**
- * 后端端口（datacore|agentcore）。默认 4001/4002 —— 与 `serve.sh` 同一组，既有单不受影响。
- *
- * ⚠ **必须可覆盖**：本机会同时跑好几个 agent，4001/4002 常被别人占着
- * （实测：`ss -ltnp` 报"空闲"而 `listen` 报 EADDRINUSE —— **`ss` 在这个沙箱里看不见别人的 socket，
- * 拿它当"端口可用"的证据是错的量法**；唯一可靠的判据是**真去 bind 一次**）。
- * 换端口之后若这里仍写死 4001/4002，`assertNoMock` 会**恒报"疑似 mock"** ——
- * 而那不是 mock 的证据，是**量法对错了端口**。形态：
- * 「我用『没看到打 4001 的包』当作『页面在用 mock』的证据，而前者并不度量后者。」
- */
-export const E2E_API_PORTS = process.env.E2E_API_PORTS ?? "4001|4002";
-
-/**
  * 实测「这一屏真的在打真后端」——不是靠「我没设 VITE_MOCK」这种自证。
- * 判据：网络记录里必须出现打到**本次实际使用的**后端端口的 200 回包。
- * MSW mock 模式下请求被 service worker 截胡，`fromServiceWorker` 为真且不会有真后端连接。
+ * 判据：网络记录里必须出现打到 4001/4002 的 200 回包。
+ * MSW mock 模式下请求被 service worker 截胡，`fromServiceWorker` 为真且不会有真 4001 连接。
  */
 export function assertNoMock(netLog) {
-  const re = new RegExp(`127\\.0\\.0\\.1:(${E2E_API_PORTS})`);
-  const real = netLog.filter((e) => re.test(e.url) && e.status >= 200 && e.status < 400);
+  const real = netLog.filter(
+    (e) => /127\.0\.0\.1:(4001|4002)/.test(e.url) && e.status >= 200 && e.status < 400,
+  );
   return {
     ok: real.length > 0,
     realHits: real.length,
-    // 报 ok:false 时必须让人一眼看出"我在找哪个端口" —— 否则"端口配错"与"真的在用 mock"
-    // 在屏上一模一样，而这两件事的修法完全相反。
-    portsProbed: E2E_API_PORTS,
     sample: real.slice(0, 5).map((e) => `${e.status} ${e.method} ${e.url}`),
   };
 }
