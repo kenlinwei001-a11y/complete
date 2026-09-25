@@ -333,6 +333,28 @@
   **R4 红线（本环最容易写错的一处）**：采纳**只**建 `ActionDraft` 并进审批流，**绝不写本体真值**。判据不是人肉 review —— `apps/frontend-shell/test/sandbox-plays.seam.test.tsx` §2 把本环发出的**全部**请求端点集合与白名单做**等号**比较（`toContain` 在未裁的超集上恒真 = 等于没断言）。⚠ 该门第一版**是装饰品**：收集口写在各 MSW handler 的 `calls.push` 里，往采纳里塞一行 `fetch("/a/v1/objects/x",{method:"PATCH"})` 它**照样绿**（没 handler 拦 ⇒ 压根没进表）。形态：**「我用『我桩过的端点被调了哪些』当作『页面调了哪些端点』的证据」**。已改为 `server.events.on("request:start")` 拦截层收集 + 一只**真打未桩 PATCH** 的金丝雀，变异反证复跑当场红。
   **实测（2026-08-13 · 连真后端 `SEED_DEMO=1` · 非 `VITE_MOCK` 桩 · 复验命令见 `apps/frontend-shell/live-acceptance/sandbox-plays.live.tsx` 文件头）**：`decision_play` 回 **3** 个方案（根因 `seg_attain_ess` 缺口 27.8% · 收窄 11.8%）→ 三个平行世界回补 **4.1% / 7.5% / 9.7%**（= 各自 `closesGap ÷ 缺口`）→ `compare` 两列在落点上差 **0.996**（不是 0）→ 采纳后**读回后端** `GET /a/v1/action-drafts`，草稿 `status = PENDING_APPROVAL`（**不是** EXECUTED）。AI 指挥台同单从右栏折叠区**提到左区一等位置**（`sc-rail-commander` 那一格保留为入口记号 —— D4 是「升层也不许把原入口抹掉」，三处既有断言咬着它）。
 - **世界态出处（WorldOrigin · 诚实位，非对象 · WO-V4-HONEST-ORIGIN · PRD-sandbox-v4 §2.1/§4.3）**：顶栏那批读数**是哪来的**。`DERIVED` = 前端 `deriveBaseSnapshot` 的哈希占位（`hash01(对象id|变量名)×100`）· `MEASURED` = 后端世界态（`GET …/:id/world` / tick / 扰动回包）。病灶不是"值假"而是**屏上没有任何记号说它是占位**：全对象取均值必然收敛到 50（大数定律），而同屏阻滞点行**有**「合成数据」徽标、顶栏一个都没有 ⇒ 读者只会把没记号的读成实测。⛔ 修的是**记号**不是数值：`hash01` 的派生一行未动（它是 R6 合规的确定性占位；把值改得"不像 50"只会得到一屏更像真的假数据）。
+  · **↑ 此条自 WO-SANDBOX-REAL-SNAPSHOT（2026-09-18）起只覆盖「整份哪来的」那一个轴，另加一个正交的轴，两者不许合并。**
+    **CellProvenance（逐格出处 · 诚实位，非对象）**（`packages/contracts/src/sim.ts` 的 `CellOriginSchema` / `CellProvenanceSchema` / `tallyCellProvenance`）：
+    与 `TickState` **同形**的逐格表 `provenance[objectId][stateVar] = "measured" | "derived"`。
+    产地 = `apps/datacore/src/sim/seed-world.ts` 的 `deriveSeedBaseSnapshot` —— 真读得到 `o.props[stateVar]` 的格盖 `measured`，
+    取不到才回落确定性占位并盖 `derived`（**与值在同一个 `if/else` 里写**，不另起一轮循环、不事后按类型回推：
+    两处各判一次就是第二套真相源，判据一漂，屏上那一格的出处会与它的值来自不同分支，而这种错**看不出来**）。
+    承载：`SimSession.baseSnapshotProvenance`（`.optional()`）+ 迁移 `041_sim_session_base_provenance.sql`；
+    下发：建会话回包 / `GET /a/v1/sim/sessions/:id/world` 的 `baseProvenance`；
+    ⛔ **列表投影 `SimSessionListItemSchema` 把它与 `baseSnapshot` 一起摘掉** —— 它与世界同形同量级，留在列表里就是把已修好的 O(N×世界规模) 回包换个装填物复活一遍。
+    · **为什么必须逐格而不是整份一个记号**：种子世界两档**混在同一份快照里**（2026-09-18 真后端 `SEED_DEMO=1` 实测 8,813 格 = measured **6,271** / derived **2,542** / unknown **0**；
+      复验：启动日志 `seeded demo sim world` 那行，或空 body 建会话后读 `GET …/:id/world` 的 `baseProvenance`）。
+      整份盖一个章 ⇒ 要么把占位说成实测（撒谎），要么把实测说成占位（自毁可信度）。
+    · **缺键 ≠ `derived`**：读作「**出处未知**」，是与两态都不同的**第三种情形**（老会话 / 调用方自带世界）。把缺键读成 `derived` = 拿「我没记」冒充「我记了，它是占位」。
+    · **屏上**（`SandboxView` 顶栏 `sandbox-kpi-origin`）据此四态显示：`MEASURED` / `MIXED`（**两个数都写出来**）/ `DERIVED` / `UNKNOWN`，
+      并**逐项**给每个状态变量各算一次（`data-origin` + `data-derived-cells` + `aria-label`）——总徽标答不了「我正在看的这一项是不是占位」。
+      ⛔ 两条红线：`derived` 不许**藏起来**（藏 = 假装那格不存在），缺键不许**并进 `derived`**。
+      本地现编的世界（`deriveBaseSnapshot` 那一支）由 `stampAllDerived` **自己逐格盖 `derived`** —— 我自己编的东西我知道它是编的，留空当「未知」是把确知的事实说成不知道。
+    · ⚠ **它描述的是 tick0 起点，不是 `tick>0` 的回包**：那些数的出处是「传导结果」，不是这对二选一。起点仍一路带着 ——
+      一条从占位起跑的链算到第 3 拍依旧是从占位起跑的，丢掉它等于让用户以为推演结果比它的起点更可信。
+    · 门：`apps/frontend-shell/test/sandbox-world-origin.seam.test.tsx`（四态各一条 + 两条反向金丝雀，8/8 绿）。
+    · ⚠ **未闭**：`SandboxView.init` / `EdgeActivePanel.ensureSession` 今天**仍自己造世界**（本地 `deriveBaseSnapshot`）——
+      「tick0 该问谁要」由 `claude/handoff-real-cells` 的 `resolveTick0World` 另单负责，本条只保证**无论世界哪来的，每一格都有出处**。
   **实现要点（这一条是本单最容易被下一个人改错的地方）**：出处**写进缓存条目本身**（`WorldSnapshot.origin`，谁写数据谁盖章），**不许**用「`worldQuery.data` 到没到」推断 —— `init()` 建完会话就 `qc.setQueryData(["a","sim-world",id], …)` 把**占位值**塞进同一个缓存键，且该 query 是 `staleTime: Infinity` ⇒ **新建会话的那个 GET 根本不会发**（实测：`live-acceptance` 那一跑的出站端点清单里没有 `GET …/world`）。照「data 到没到」标记，徽标会在屏上全是哈希数的那一刻就翻成「实测」—— 比今天没有徽标更坏。门 `apps/frontend-shell/test/sandbox-world-origin.seam.test.tsx` **两向都咬**（占位期必须有记号 ∧ 实测期记号必须换掉），外加一条**反向**约束锁住 `hash01` 没被顺手改。
 
 ### J. 优化融合域（DataCore · G-12 · 增量 0 本体先行 · 行业无关/零业务常数 R14 · 契约 `packages/contracts/src/opt-template.ts`）
