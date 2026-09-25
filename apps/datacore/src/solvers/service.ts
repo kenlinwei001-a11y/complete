@@ -6,7 +6,7 @@ import type { OptimizerClient } from "./optimizer-client.js";
 import { notFound, validationError, solverColumnRestricted } from "../errors.js";
 import { round, hashString, canonicalJson } from "../prng.js";
 import { getByPath, setByPath } from "../paths.js";
-import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, type AtpSupplyInputs } from "../synthetic/battery.js";
+import { BATTERY_SOLVER_PARAMS, baseDistanceKm, cellSourceMap as cellSourceMapFn, computeOrderPromise, MODEL_BASE_MAP, orderBookYearRevenue, yuanToYi, type AtpSupplyInputs } from "../synthetic/battery.js";
 import { BottleneckMatrixOutputSchema, CapacityForecastOutputSchema, PlanAuditOutputSchema, PlanGenerateOutputSchema, RiskTimelineOutputSchema, BUSINESS_TYPE_LABEL } from "@platform/contracts";
 import { num, str, dayFrom, normalizeBaseRef, type SolverContext, type SolverParamsShape } from "./types.js";
 import { CONSTRAINT_KINDS_UPPER, SOLVER_RULE_REFS, type EvaluatedRule, type ObjectConstraintKind, type OrderDeliveryJudge } from "@platform/contracts";
@@ -1614,21 +1614,38 @@ export class SolverService {
    */
   /**
    * DS.2 经营驾驶舱富 KPI：从对象库确定性派生 5 标量（R13 溯源对象 / R6），各 kpi widget valuePath 取。
-   * 可供给V7=最终版 SopVersionRow.supply · 收入达成=收入行 rolling÷budget×100 · 利用率瓶颈=max(Base.util)
-   * · AOP基准=baseline 情景 revenue · 现金垫=baseline 情景 cashCushion。
+   * 可供给V7=最终版 SopVersionRow.supply · 收入达成=**订单簿计划年成交额 ÷ 收入行预算**×100 ·
+   * 利用率瓶颈=max(Base.util) · AOP基准=baseline 情景 revenue · 现金垫=baseline 情景 cashCushion。
+   *
+   * ── WO-METRIC-IDENTITY 病② · `revAttainPct` 修前是个**恒等式**，不是达成率 ────────────
+   * **今天的行为是 X**：`revAttainPct = FinancePlan.收入.rolling ÷ FinancePlan.收入.budget`，
+   *   而合成侧两列**同出一处**（`budget = rolling × 0.98`）⇒ 比值 **≡ 1/0.98 = 102.04%**，
+   *   与任何输入无关。实测把订单簿砍到 1/5，本卡两轮都读 **102**，逐字节不动。
+   *   「收入达成率 102%」会被读成「今年超额完成 2 个点」，实际它只是**预算按 98% 编制**这条
+   *   编制口径的复读 —— 数字是对的，**读法是错的**，而屏上没有任何东西拦得住这个误读。
+   * **应该是 Y**：分子换成**成交侧**（订单簿计划年窗，`Order` 真值聚合），分母留在**计划侧**
+   *   （`FinancePlan.收入.budget`，本单已改为取自年度目标登记册）。两条链分开 ⇒
+   *   它随订单簿增减而变，也随年度预算调整而变，**再没有一个常数能把它钉住**。
+   *
+   * ⚠ 分子**不在这里重算公式**，走 `orderBookYearRevenue`（与合成侧 `Metric.kpi-revenue.actual`
+   * 同一个函数）—— 两处各抄一遍口径，改一处漏一处不会红，那正是本仓反复付账的形态。
+   * ⚠ 故本求解器的读取面**多了 `Order`**，`ontology-signature.ts` 已同步声明（少声明即假绿：
+   * 「它读了什么」是签名的一等事实，不是注释）。
    */
   private async cockpitKpi(ctx: AuthCtx): Promise<Record<string, unknown>> {
     const sops = await this.repos.objects.listByType(ctx.tenantId, "SopVersionRow");
     const fins = await this.repos.objects.listByType(ctx.tenantId, "FinancePlan");
     const bases = await this.repos.objects.listByType(ctx.tenantId, "Base");
     const scns = await this.repos.objects.listByType(ctx.tenantId, "AnnualScenario");
+    const orders = await this.repos.objects.listByType(ctx.tenantId, "Order");
     const finalSop = sops.find((s) => s.props.isFinal === true) ?? [...sops].sort((a, b) => str(b.props.ver).localeCompare(str(a.props.ver)))[0];
     const rev = fins.find((f) => str(f.props.line) === "收入");
     const baseline = scns.find((s) => str(s.props.key) === "baseline");
     const utils = bases.map((b) => num(b.props.util)).filter((u) => u > 0);
+    const bookYuan = orderBookYearRevenue(orders.map((o) => o.props)).yuan;
     return {
       supplyV7: finalSop ? round(num(finalSop.props.supply), 1) : 0,
-      revAttainPct: rev && num(rev.props.budget) > 0 ? round((num(rev.props.rolling) / num(rev.props.budget)) * 100, 1) : 0,
+      revAttainPct: rev && num(rev.props.budget) > 0 ? round((yuanToYi(bookYuan) / num(rev.props.budget)) * 100, 1) : 0,
       utilPeak: utils.length > 0 ? round(Math.max(...utils) <= 1 ? Math.max(...utils) * 100 : Math.max(...utils), 1) : 0, // 转百分（datacore 小数/mock 整数兼容）
       aopBaseRev: baseline ? round(num(baseline.props.revenue), 1) : 0,
       cashCushion: baseline ? round(num(baseline.props.cashCushion), 1) : 0,
@@ -4285,6 +4302,9 @@ export class SolverService {
           level: str(p.level), category: str(p.category), target, actual,
           delta: round(actual - target, 4), miss: actual < floorVal, floorVal,
           ksfRef: p.ksfRef ?? null, ownerRef: p.ownerRef ?? null, chainKey: str(p.chainKey),
+          // WO-METRIC-IDENTITY：口径自述随指标一起下发（R14 前端零写死）。
+          // 缺省 `null` 而不是 `""` —— 前端据此判「这条没声明口径」，与「口径是空串」区分得开。
+          basis: p.basis !== undefined && p.basis !== null ? str(p.basis) : null,
         };
       })
       .sort((a, b) => a.metricId.localeCompare(b.metricId));

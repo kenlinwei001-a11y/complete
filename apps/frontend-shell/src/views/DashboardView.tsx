@@ -803,7 +803,13 @@ function Widget({ def, decor, drillMetric, onDrillMetric }: { def: DashboardWidg
 }
 
 /** SPINE.4 经营指标条：metric_rollup 产出的 Metric（目标 vs 实际 + delta + 越线红），各视图 KPI 单一出处 R-一致。 */
-type MetricRow = { metricId: string; key?: string; name: string; unit?: string; target: number; actual: number; delta: number; miss: boolean };
+/**
+ * WO-METRIC-IDENTITY · `basis` = 该指标的**口径自述**（`actual`/`target` 各自从哪条链取数），
+ * 由后端逐条下发（`Metric.basis` → `metric_rollup`），前端**零写死**（R14）——
+ * 这一条不许在前端拼文案：同一块指标条上 11 条指标口径互不相同，
+ * 前端拼出来的任何一句都会在某几条上是假话，而且改后端口径时它不会红。
+ */
+type MetricRow = { metricId: string; key?: string; name: string; unit?: string; target: number; actual: number; delta: number; miss: boolean; basis?: string | null };
 /** #9 驾驶舱指标下钻选择：点左「经营指标」任一行 → 右「未达成指标根因下钻」联动该指标（达成/未达成皆可）。 */
 export type CockpitMetricSel = { key: string; name: string };
 function MetricStrip({ metrics, selectedKey, onSelect }: { metrics: MetricRow[] | undefined; selectedKey?: string | null; onSelect?: (m: CockpitMetricSel | null) => void }) {
@@ -868,6 +874,13 @@ function MetricStrip({ metrics, selectedKey, onSelect }: { metrics: MetricRow[] 
             <div style={{ fontSize: 12, color: m.miss ? "var(--danger-txt)" : "var(--muted2)" }}>
               目标 {formatKpiValue(m.target, m.unit)}{m.unit} · 差 {m.delta > 0 ? "+" : ""}{formatKpiValue(m.delta, m.unit)}{m.unit}{m.miss ? " · 越线" : ""}
             </div>
+            {/* 口径自述（后端下发才显示 —— 没声明就不显示，绝不前端补一句默认口径顶上：
+                那样「后端没说」与「后端说了这个」在屏上会一模一样）。 */}
+            {m.basis ? (
+              <div data-testid={`metric-basis-${m.metricId}`} style={{ fontSize: 11, color: "var(--muted2)", lineHeight: 1.45 }}>
+                口径 · {m.basis}
+              </div>
+            ) : null}
           </button>
         );
       })}
