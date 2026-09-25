@@ -21,7 +21,7 @@ import { BASE_REGISTRY, SEG_REGISTRY } from "@platform/contracts";
 import type { OutboxService } from "../outbox.js";
 import type { SolverArtifact, SolverGenDraft } from "@platform/contracts";
 import type { ParetoAssembleRequest, ParetoAssembleResult } from "@platform/contracts"; // WO-SIM-PARETO-MODEL-EXIT
-import { capacityForecast, computeByProcessModel, computeCapacityLedger, computeRollup, curveMult, patchCapacityContext, type CapacityLedgerArgs, type ForecastArgs } from "./capacity.js";
+import { capacityForecast, computeByProcessModel, computeRollup, curveMult, patchCapacityContext, type ForecastArgs } from "./capacity.js";
 import { CAPACITY_FACTOR_BINDINGS, matchesGrain, type FactorGrain } from "@platform/contracts";
 // WO-AUDIT-TIMELINE-LIVESOURCE：审计口径 → A8 真日序列源映射（单一出处·loadContext 按需加载 audit_ts_daily）。
 import { AUDIT_KIND_LIVE_SOURCES } from "@platform/contracts";
@@ -260,11 +260,6 @@ interface OptWhatifRoleHints { decisionObjectType?: string; selectionIds?: strin
 
 export const SOLVER_KEYS = [
   "capacity_rollup",
-  // WO-CAPACITY-EDGE 产能台账：沿 `has_capacity` / `consumes_capacity` 两条边算池余量与超载。
-  // 与 `capacity_rollup` 的分工：rollup 答「这条线**能**做多少」（设备→工序→线→基地金字塔），
-  // ledger 答「这条线**还剩**多少」（池产能 − Σ 入边消耗）。前者是能力面，后者是占用面，
-  // 两者量纲不同（rollup 走套/日 pack，ledger 走件/日 cell），**不许合成一个求解器**。
-  "capacity_ledger",
   "capacity_forecast",
   "bottleneck_matrix",
   "risk_timeline",
@@ -456,12 +451,6 @@ const DECISION_INFO_SOLVERS = new Set(["risk_timeline", "counterfactual_timeline
 const COMMERCE_GRAPH_SOLVERS = new Set(["quote_margin"]);
 
 /**
- * WO-CAPACITY-EDGE · 需要「产能池 + `consumes_capacity` 边 + 本体单位册」的求解器（**按需加载**）。
- * 只有 `capacity_ledger` 要沿这两条边走；其余求解器一次都不打这三样 ⇒ 上线前后逐字节一致（R6）。
- */
-const CAPACITY_LEDGER_SOLVERS = new Set(["capacity_ledger"]);
-
-/**
  * WO-AUDIT-TIMELINE-LIVESOURCE · 需要「A8 真日序列（tsPoints）」的求解器（**按需加载**·照 ADOPTION_AWARE_SOLVERS 写法）。
  * 只有 `audit_timeline` 要按 `AUDIT_KIND_LIVE_SOURCES`（contracts 单一出处）把真源日序列载进 `ctx.auditTsDaily`。
  * 不加载 → 字段空对象 → 全部 kind 走 MOCK 哈希投影（与本单上线前逐字节一致·向后兼容 R6·诚实披露不冒充 LIVE）。
@@ -471,10 +460,6 @@ const AUDIT_TS_SOLVERS = new Set(["audit_timeline"]);
 export const SOLVER_REQUIRED_TYPES: Record<string, readonly CoreSolverObjectType[]> = {
   // capacity_rollup：computeRollup 设备→工序→产线→基地 金字塔——只读这 4 类（无 certByModel/订单/健康/检修）。
   capacity_rollup: ["Base", "Line", "Process", "Equipment"],
-  // WO-CAPACITY-EDGE：产能台账**一个核心 10 类都不需要** —— 池、入边、工单三样都不在这 10 类里
-  // （见下方 `withCapacityLedger` 的按需加载）。这里必须显式声明成空数组而不是不写：
-  // 不写 ⇒ `required` 为 undefined ⇒ 走全量 10 次全表扫，等于本单白省。
-  capacity_ledger: [],
   // capacity_forecast：computeRollup(Base/Line/Process/Equipment) + certByModel(⟹连带 Line+Model) + 数据健康 C09(DataSourceHealth)
   //   + 检修周(MaintPlan) + model chem/pos(Model) + liveTightness(Base/Line/Process/Equipment) + ruleEvalPayload 最坏源(DataSourceHealth)。
   //   无 Order/Shipment/Segment（byProcessModel 的 Material 属**扩展层**·随 withExtended·不在核心表）。
@@ -517,10 +502,6 @@ export const SOLVER_OUTPUT_SHAPES: Record<string, string[]> = {
   plan_generate: shapeKeys(PlanGenerateOutputSchema),
   // 其余 17 求解器输出形状（取自实现的成功路径返回对象顶层 key；权威=求解器实现）
   capacity_rollup: ["bases", "ruleRefs"],
-  // WO-CAPACITY-EDGE：权威 = `computeCapacityLedger` 成功路径的顶层 key（**穷尽**，四个就是四个）。
-  // 条数与合计不在顶层，落 `disclosure.counts` / `disclosure.totals`（理由见该函数返回处的注释：
-  // 条数本就是披露项，且 poolCount/violationCount 曾与 pools.length/violations.length 字面重复）。
-  capacity_ledger: ["pools", "violations", "disclosure", "summary"],
   // 通用 what-if（recompute dryRun 包装）：顶层渲染键 = 派生 before/after deltas + 受影响计数。
   generic_inference: ["deltas", "rows", "affectedObjects", "count", "rootTypes"],
   shared_bottleneck: ["bottlenecks", "contention", "downgraded", "summary"],
@@ -5448,13 +5429,6 @@ export class SolverService {
       withDecisionInfo?: boolean;
       /** WO-R8-RECLAIM-ENGINE · 商业图（收编自 handoff-wo-reclaim-engine，与 authCtx 加性并存）。 */
       withCommerceGraph?: boolean;
-      /**
-       * WO-CAPACITY-EDGE · 载产能池 + `consumes_capacity` 边 + 本体单位册。
-       * **缺省不是 false**：不传时按 `solverKey` 推导，与核心 10 类同一条契约
-       *（声明求解器 ⇒ 仅 `capacity_ledger` 载；无 solverKey / 未声明 ⇒ 全量载）。
-       * 传了则显式优先。详见加载处 `wantCapacityLedger` 的注释（WO-CAPACITY-EDGE-FIX）。
-       */
-      withCapacityLedger?: boolean;
       /** WO-AUDIT-TIMELINE-LIVESOURCE · 仅 audit_timeline：按 AUDIT_KIND_LIVE_SOURCES 载 A8 真日序列进 ctx。 */
       withAuditTs?: boolean;
       /** WO-69 P1 列级：带上调用者身份 → 求解器上下文与读投影同约束（不可读列不进求解器）。 */
@@ -5582,97 +5556,6 @@ export class SolverService {
     // 且 withExtended 已载过时不重复打仓储（保住两单各自的按需加载意图）。
     const bomHeaders = opts?.withExtended ? bomHeadersExt : bomHeadersCommerce;
     const bomDetails = opts?.withExtended ? bomDetailsExt : bomDetailsCommerce;
-    // ══════════════════════════════════════════════════════════════════════════════
-    // WO-CAPACITY-EDGE · 产能台账三样（**按需**·仅 CAPACITY_LEDGER_SOLVERS）
-    //  ① `CapacityPool` 对象  ② `consumes_capacity` 边（**读边上的 props**）  ③ 本体单位册
-    //
-    // ⚠ ② 是本单的接缝：这里必须取 `l.props?.consumedCellsDaily`，**不许**改成从
-    //   `WorkOrder.qtyPlanned ÷ spanDays` 现算。改了的话把边上的 props 全删掉、读数一个
-    //   字节都不变 ⇒ 边成装饰品而测试照样绿（本仓登记过的假绿形态）。
-    //   端点 id → 业务键：池侧读 `CapacityPool.poolId`，工单侧读 `WorkOrder.woId`；
-    //   `link.props` 里**不另存一份端点键**（存了就是第二个真值源，会与端点对象分叉）。
-    // ⚠ ③ 单位从本体 `PropertyDef.unit` 现取而不是在求解器里写 "件/日"：
-    //   `coefficientRef` 那次的教训是「注释说来自配置」不度量「真来自配置」。
-    // ══════════════════════════════════════════════════════════════════════════════
-    let capacityPools: ObjectInstance[] = empty;
-    let capacityConsumptions: NonNullable<SolverContext["capacityConsumptions"]> = [];
-    let capacityUnits: SolverContext["capacityUnits"];
-    // ══ WO-CAPACITY-EDGE-FIX · 产能三样的**加载条件**（这是本单修的第二条红）═══════════
-    //
-    // ── 今天的行为 X → 应该的行为 Y ──────────────────────────────────────────────
-    // **X**（修前）：判据只有 `opts?.withCapacityLedger`，而这个开关**只有两处生产派发点会传**
-    //   （`invoke` / `runWithParams` 各自 `CAPACITY_LEDGER_SOLVERS.has(solverKey)`）。任何**直接**
-    //   `loadContext(tenant, …, { solverKey })` 的调用方拿到的 ctx 里 `capacityUnits` 恒 undefined
-    //   ⇒ `compute(ctx,"capacity_ledger")` 必抛 400，报的还是「本体里读不到量纲声明」——
-    //   **本体明明声明了，是 ctx 没载**。同一个 solverKey，经 invoke 走能算、经 loadContext 走必抛：
-    //   装配方式决定结果，正是三分法里「接了线接错地方」那一态。
-    // **Y**：`loadContext` 自己就收着 `solverKey`，该由它推导（与核心 10 类的 `required` 同一条路），
-    //   两条装配路径产出同一个 ctx。
-    //
-    // ── 缺省语义与核心 10 类**逐字对齐**（不是新发明的一条规矩）──────────────────────
-    // 上面 `loadCore` 写的是 `!required || required.includes(t)` ——「**无 solverKey / 未声明 ⇒ 全量**」，
-    // 这条契约由 `solver-context-lazy-loading.seam.test.ts` 的 SEAM-COMPAT 亲自咬着
-    //（标题原文「未声明求解器 + 无 solverKey 调用方 → 全量 10 类」）。产能三样修前**没跟上**这条契约，
-    // 于是「全量」这个词在同一个函数里有了两种含义。此处补齐：`required` 在 ⇒ 按声明裁剪；不在 ⇒ 全量。
-    // ⚠ 显式 `opts.withCapacityLedger` 仍然优先（`??`）：两处派发点在 lazy flag 关时不传 solverKey、
-    //   只传这个开关，那条路必须逐字节不变。
-    const wantCapacityLedger =
-      opts?.withCapacityLedger ?? (required ? CAPACITY_LEDGER_SOLVERS.has(opts!.solverKey!) : true);
-    if (wantCapacityLedger) {
-      const [pools, workOrders, ccLinks, poolType, woType] = await Promise.all([
-        this.repos.objects.listByType(tenantId, "CapacityPool"),
-        this.repos.objects.listByType(tenantId, "WorkOrder"),
-        this.repos.links.list(tenantId, (l) => l.type === "consumes_capacity"),
-        this.repos.ontologyTypes.list(tenantId, (t) => t.key === "CapacityPool"),
-        this.repos.ontologyTypes.list(tenantId, (t) => t.key === "WorkOrder"),
-      ]);
-      capacityPools = await project("CapacityPool", pools);
-      const poolKeyById = new Map(pools.map((p) => [p.id, str(p.props.poolId)]));
-      const woKeyById = new Map(workOrders.map((w) => [w.id, str(w.props.woId)]));
-      capacityConsumptions = ccLinks
-        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) // R6：边序确定
-        .map((l) => {
-          const amount = l.props?.consumedCellsDaily;
-          const qty = l.props?.qtyPlanned;
-          const span = l.props?.spanDays;
-          return {
-            woId: woKeyById.get(l.fromId) ?? l.fromId,
-            poolId: poolKeyById.get(l.toId) ?? l.toId,
-            // 缺量的边**不补默认值**：留 undefined 让台账计入 `unpricedEdges` 如实回报。
-            ...(typeof amount === "number" ? { consumedCellsDaily: amount } : {}),
-            ...(typeof qty === "number" ? { qtyPlanned: qty } : {}),
-            ...(typeof span === "number" ? { spanDays: span } : {}),
-          };
-        });
-      const unitOf = (t: (typeof poolType)[number] | undefined, propKey: string): string =>
-        t?.properties.find((p) => p.propKey === propKey)?.unit ?? "";
-      // ══ 量纲册 · 三个读数的单位从**两处真声明**推出，不是三处各抄一份 ══════════════
-      // WO-CAPACITY-EDGE-FIX：`CapacityPool.{consumed,remaining}CellsDaily` 两格已删
-      //（它们是读数不是属性，理由见 `synthetic/battery.ts` 的 `capacityPoolProps` 注释）。
-      // 于是量纲出处收敛成两条真声明：
-      //   · 池侧 `CapacityPool.capacityCellsDaily.unit`（件/日）—— 申报产能的族
-      //   · 单侧 `WorkOrder.qtyPlanned.unit`(件) ÷ `WorkOrder.spanDays.unit`(天) —— 消耗的族
-      // `余量 = 申报 − Σ消耗` **只在同族内才是合法减法** ⇒ 池的单位必须以 `qtyPlanned 的单位 + "/"`
-      // 开头。这一句就是本链路那条「零换算系数」纪律的机器版：把池换成 `Line.capacityDaily`
-      //（**套**/日）当场 400，而不是照样算出一个「跑得起来但错两处」的数（件↔套 + 存量↔速率）。
-      // 三个读数同族 ⇒ consumed / remaining 一律用池那一格的单位串，本文件仍**零内联单位**。
-      const poolUnit = unitOf(poolType[0], "capacityCellsDaily");
-      const qtyUnit = unitOf(woType[0], "qtyPlanned");
-      const spanUnit = unitOf(woType[0], "spanDays");
-      if (poolUnit && qtyUnit && !poolUnit.startsWith(`${qtyUnit}/`)) {
-        throw validationError(
-          `capacity_ledger：产能池量纲 ${poolUnit} 与工单量纲 ${qtyUnit} 不同族——` +
-            `余量 = 申报产能 − Σ(${qtyUnit}÷${spanUnit || "工期"}) 是跨族减法，拒绝出数`,
-        );
-      }
-      capacityUnits = {
-        capacity: poolUnit,
-        consumed: poolUnit,
-        remaining: poolUnit,
-        qtyPlanned: qtyUnit,
-        spanDays: spanUnit,
-      };
-    }
     // WO-AUDIT-TIMELINE-LIVESOURCE · A8 真日序列**按需加载**（仅 audit_timeline·其余求解器一次 ts 仓储都不打）。
     // 映射表 = contracts `AUDIT_KIND_LIVE_SOURCES`（单一出处·引擎零 if 链）；序列没播种/点为空 → 键缺席 →
     // auditTimeline 对该 kind 走 MOCK 哈希投影 + 诚实披露（绝不冒充 LIVE）。点按 (date,entityId) 升序（R6）。
@@ -5741,10 +5624,6 @@ export class SolverService {
       // WO-ENGINE-SCOPE-FIX2 逐型号 BOM（sortById → R6 确定性·同型号多版本时取排序首个 BOM，见 extended.ts）。
       bomHeaders: sortById(bomHeaders),
       bomDetails: sortById(bomDetails),
-      // WO-CAPACITY-EDGE 产能台账三样（不载时为空 ⇒ 逐字节向后兼容·加载条件见 `wantCapacityLedger`）。
-      capacityPools: sortById(capacityPools),
-      capacityConsumptions,
-      ...(capacityUnits ? { capacityUnits } : {}),
       rules,
       ruleSetVersion,
       auditTsDaily,
@@ -5802,22 +5681,6 @@ export class SolverService {
       case "capacity_rollup": {
         const r = computeRollup(c);
         return { bases: r.bases, ruleRefs: r.ruleRefs };
-      }
-      // WO-CAPACITY-EDGE 产能台账：池 + `consumes_capacity` 边上的量 → 余量 / 超载。
-      case "capacity_ledger": {
-        // 单位册取不到就**当场 400**，不拿空串糊过去 —— 量纲缺席被读成「无量纲」正是
-        // `PROPERTY_UNITS` 头注登记的那个根因（873 个属性里 849 个沉默、下游全按真值判断）。
-        // ⚠ WO-CAPACITY-EDGE-FIX：点名的三格改成**真存在**的三条声明。修前这句点的是
-        // `CapacityPool.consumedCellsDaily / remainingCellsDaily`，而那两格已经不是属性了 ——
-        // 一条把人指向不存在的字段的报错，比没有报错更贵（找不到就会去「补」一格假属性）。
-        const u = c.capacityUnits;
-        if (!u || !u.capacity || !u.qtyPlanned || !u.spanDays) {
-          throw validationError(
-            "capacity_ledger：本体里读不到量纲声明（CapacityPool.capacityCellsDaily / WorkOrder.qtyPlanned / WorkOrder.spanDays 的 unit）——" +
-              "拒绝用无量纲的数做产能判定",
-          );
-        }
-        return computeCapacityLedger(c.capacityPools ?? [], c.capacityConsumptions ?? [], u, args as CapacityLedgerArgs);
       }
       case "capacity_forecast":
         return capacityForecast(c, args as unknown as ForecastArgs);
@@ -5931,7 +5794,6 @@ export class SolverService {
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
       // WO-QUOTE-MARGIN-CUSTOMER：真 BOM + 订单客户归属边只给 quote_margin 载（按需·不全表扫）。
       withCommerceGraph: COMMERCE_GRAPH_SOLVERS.has(solverKey),
-      withCapacityLedger: CAPACITY_LEDGER_SOLVERS.has(solverKey), // WO-CAPACITY-EDGE
       // WO-AUDIT-TIMELINE-LIVESOURCE：A8 真日序列只给 audit_timeline 载（按需·其余求解器零 ts 仓储调用）。
       withAuditTs: AUDIT_TS_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
@@ -6110,7 +5972,6 @@ export class SolverService {
       withDecisionInfo: DECISION_INFO_SOLVERS.has(solverKey),
       // WO-QUOTE-MARGIN-CUSTOMER：真 BOM + 订单客户归属边只给 quote_margin 载（按需·不全表扫）。
       withCommerceGraph: COMMERCE_GRAPH_SOLVERS.has(solverKey),
-      withCapacityLedger: CAPACITY_LEDGER_SOLVERS.has(solverKey), // WO-CAPACITY-EDGE
       // WO-AUDIT-TIMELINE-LIVESOURCE：A8 真日序列只给 audit_timeline 载（按需·其余求解器零 ts 仓储调用）。
       withAuditTs: AUDIT_TS_SOLVERS.has(solverKey),
       ...(lazy ? { solverKey } : {}),
