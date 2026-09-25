@@ -360,50 +360,6 @@
 .impJumpRow[data-join="NO_FACTOR_DIMENSION"] .impJumpJoin {
   color: var(--amber-txt, #d89b28);
 }
-/* ══ WO-SANDBOX-IMPEDIMENT-RESIDUAL ═══════════════════════════════════════════
-   收编进沙盘时掉在门外的那几样：卡点自己的严重度 · scanId · 阈值出处 · 触发判定明细。
-   ⚠ 三条硬约束，改这一段前先读：
-    ① **零硬编码颜色** —— 全部走 tokens 变量，dark / light / warm 三套自动跟随；
-    ② **字号只用 `--sbx-fs-body`** —— `ui-first-layer:check` 的 D3 判据数的是本文件
-       实际用到的**不同字号个数**（规范 §2 R-UI-2：一屏最多三级）。新起一个字号会把
-       该数顶上去，而那是**棘轮**，只降不升；
-    ③ 严重度是**可扫读的排序依据**，故给 mono 字体等宽对齐 —— 18 行摞在一起时
-       比例字体会让数字参差，人就扫不出轻重。 */
-.impJumpSeverity {
-  font-family: var(--font-mono);
-  font-size: var(--sbx-fs-body, 13px);
-  color: var(--text);
-  border: 1px solid var(--line2);
-  border-radius: 4px;
-  padding: 0 5px;
-  white-space: nowrap;
-}
-.impJumpScan {
-  font-family: var(--font-mono);
-  font-size: var(--sbx-fs-body, 13px);
-  color: var(--muted2);
-  margin-left: 8px;
-}
-.impResidual {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 4px 0 0 10px;
-  padding-left: 8px;
-  border-left: 1px dashed var(--line2);
-}
-.impResidualLine {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-  font-size: var(--sbx-fs-body, 13px);
-  color: var(--muted);
-}
-.impResidualKv code {
-  font-family: var(--font-mono);
-}
 @media (max-width: 900px) {
   .impBar {
     grid-template-columns: repeat(2, minmax(0, 1fr));

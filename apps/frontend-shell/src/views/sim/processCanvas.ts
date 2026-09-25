@@ -266,28 +266,11 @@ export type ProcessOrderBasis = "display-order" | "measured";
  *   ② `GET /a/v1/sim/view-config` 的 `nodeObjectIds[typeKey]`
  *      —— **这个世界里该类型有没有真物化对象**。
  *
- * | 档 | 判据 | 定性（四形态，修法各不相同） |
+ * | 档 | 判据 | 定性（三形态，修法不同） |
  * |---|---|---|
- * | `TICK_DRIVEN`        | carrier ∈ 规则 **target** 端 **且** 该类型有物化对象 | 推 tick 它真会动 |
- * | `NO_CARRIER_OBJECTS` | carrier ∈ 规则 **target** 端，但该类型 0 个物化对象 | **接了线没数据**：补数据即动 |
- * | `SOURCE_ONLY`        | carrier ∈ 规则两端，但**只在 source 端**（入度 0）      | **只当源**：它能推动别人，但没人写它 ⇒ 自己不动 |
- * | `NOT_TICK_DRIVEN`    | carrier ∉ 规则两端类型                                 | **没接线**：引擎结构上够不着它 |
- *
- * ── 🔴 `SOURCE_ONLY` 是 2026-09-19 拆出来的，因为原判据是错的（门当场咬出来的）──────
- * 原判据写的是「carrier ∈ 规则**两端**类型 ⇒ 推 tick 它真会动」。
- * **形态（铁律 0.6 句式）**：
- * > **「我用『它出现在某条规则的两端』当作『它会动』的证据，而前者并不度量后者
- * > —— 出现在**源**端只说明它能推动别人，不说明它自己会动。」**
- *
- * 实例：`WO-PROP-REVIEW-V2 ㉜` 把 `Process.queuePressure → Equipment.loadPressure` 掉头成
- * `Equipment.loadPressure → Process.queuePressure` 之后，**`Equipment` 成了全表唯一「只当源」的类型**
- * （入度 0，没有任何规则写它）。旧判据把它判成 `TICK_DRIVEN` ⇒ 屏上标着「推拍会动」，
- * 而它和它下游的 `MaintenanceOrder.repairBacklog` **实测一动不动**。
- * `process-tick-coverage.seam.test.ts` §C 的 `stillZero` 当场报 `['MaintenanceOrder']`。
- *
- * ⚠ **`SOURCE_ONLY` 与 `NOT_TICK_DRIVEN` 不许合并成一档** —— 两者都「不会动」，但**不是一回事**、
- * 修法也不同：前者**已经在传导图里**，缺的是一条写它的入边（补边即动）；
- * 后者**压根不在图里**，要先建模。合并 = 又一次「两个不同事实盖一个标签」。
+ * | `TICK_DRIVEN`        | carrier ∈ 规则两端类型 **且** 该类型有物化对象 | 推 tick 它真会动 |
+ * | `NO_CARRIER_OBJECTS` | carrier ∈ 规则两端类型，但该类型 0 个物化对象 | **接了线没数据**：补数据即动 |
+ * | `NOT_TICK_DRIVEN`    | carrier ∉ 规则两端类型                       | **没接线**：引擎结构上写不到它 |
  *
  * 为什么这条判据是**结构性**的而不是经验性的：`propagateTick`
  * （`apps/datacore/src/sim/propagation.ts:442`）唯一的写法是
@@ -320,10 +303,10 @@ export type ProcessOrderBasis = "display-order" | "measured";
  * ⇒ 本档如实把这句话写在屏上（`spc-live-limit`），不拿一个算得出的数去冒充一个算不出的结论。
  * 这正是本仓「我用 X 当作 Y 的证据，而 X 并不度量 Y」那条戒律的正面用法。
  */
-export type ProcessTickDrive = "TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "SOURCE_ONLY" | "NOT_TICK_DRIVEN";
+export type ProcessTickDrive = "TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN";
 
-/** 四档的稳定展示序（R6：不依赖 Map 迭代序；屏上与模型同一份序）。由「最活」到「最死」。 */
-export const TICK_DRIVE_ORDER: readonly ProcessTickDrive[] = ["TICK_DRIVEN", "NO_CARRIER_OBJECTS", "SOURCE_ONLY", "NOT_TICK_DRIVEN"];
+/** 三档的稳定展示序（R6：不依赖 Map 迭代序；屏上与模型同一份序）。 */
+export const TICK_DRIVE_ORDER: readonly ProcessTickDrive[] = ["TICK_DRIVEN", "NO_CARRIER_OBJECTS", "NOT_TICK_DRIVEN"];
 
 /**
  * 传导规则的**两端类型投影**。
@@ -469,44 +452,27 @@ function carrierReading(
   return { value: n === 0 ? null : round2(sum / n), stateVarKeys: [...varKeys].sort() };
 }
 
-/**
- * 承载类型 → 四档之一。**判据现算，前端零名单**（见 `ProcessTickDrive` 的长注释）。
- *
- * ⚠ **两个集合不许合并成一个** —— 这正是本判据 2026-09-19 修的那个错：
- *   · `ruleTargetTypeKeys` 回答「**会不会动**」：`propagateTick` 唯一的写法是
- *     `next[targetObjectId][targetStateVar] = …`，`targetObjectId` 只能来自 `targetTypeKey` 那一端。
- *   · `ruleEndTypeKeys` **只**用来把「只当源」与「压根不在图里」分开，⛔ 不参与「会不会动」的判定。
- *
- * ⚠ 判定序也是有意的：`SOURCE_ONLY` **排在对象数检查之前**。
- *   一个只当源的类型，**补多少数据都不会动**，落 `NO_CARRIER_OBJECTS`（「补数据即动」）就是假话。
- */
+/** 承载类型 → 三档之一。**判据现算，前端零名单**（见 `ProcessTickDrive` 的长注释）。 */
 export function classifyTickDrive(
   carrierTypeKey: string,
-  ruleTargetTypeKeys: ReadonlySet<string>,
-  ruleEndTypeKeys: ReadonlySet<string>,
+  ruleTypeKeys: ReadonlySet<string>,
   carrierObjectCount: number,
 ): ProcessTickDrive {
-  if (!ruleEndTypeKeys.has(carrierTypeKey)) return "NOT_TICK_DRIVEN";
-  if (!ruleTargetTypeKeys.has(carrierTypeKey)) return "SOURCE_ONLY";
+  if (!ruleTypeKeys.has(carrierTypeKey)) return "NOT_TICK_DRIVEN";
   return carrierObjectCount > 0 ? "TICK_DRIVEN" : "NO_CARRIER_OBJECTS";
 }
 
 /**
- * 金丝雀：喂一个**已知必中**的样例进去，四档必须各自说得出话。
+ * 金丝雀：喂一个**已知必中**的样例进去，三档必须各自说得出话。
  * 一个恒返回 `NOT_TICK_DRIVEN` 的实现同样能让"56 条不随节拍变"这条断言全绿 ——
  * 所以在报「有 N 条不随节拍变」之前，必须先证明这个函数**能说「随」**。
- * ⚠ `sourceOnly` 这一格是本次新加的：没有它，一个把 `SOURCE_ONLY` 恒判成别档的实现照样全绿。
  */
-export function classifyTickDriveCanary(): {
-  driven: ProcessTickDrive; noData: ProcessTickDrive; sourceOnly: ProcessTickDrive; dark: ProcessTickDrive;
-} {
-  const targets = new Set(["CanaryType"]);
-  const ends = new Set(["CanaryType", "CanarySourceOnly"]);
+export function classifyTickDriveCanary(): { driven: ProcessTickDrive; noData: ProcessTickDrive; dark: ProcessTickDrive } {
+  const rules = new Set(["CanaryType"]);
   return {
-    driven: classifyTickDrive("CanaryType", targets, ends, 3),
-    noData: classifyTickDrive("CanaryType", targets, ends, 0),
-    sourceOnly: classifyTickDrive("CanarySourceOnly", targets, ends, 3),
-    dark: classifyTickDrive("NotInGraph", targets, ends, 3),
+    driven: classifyTickDrive("CanaryType", rules, 3),
+    noData: classifyTickDrive("CanaryType", rules, 0),
+    dark: classifyTickDrive("NotInGraph", rules, 3),
   };
 }
 
@@ -818,19 +784,15 @@ export function buildProcessCanvasModel(
   // ── 节拍维：先按**承载类型**算一遍（同类型的多条流程共享同一份读数，不重复算 N 遍）
   //    `liveByKey === null` ⇒ 全程走本单之前那条路，一个键都不多产出（additive 契约）。
   const liveByKey: Map<string, ProcessStationLiveVM> | null = live == null ? null : (() => {
-    // 两个集合各司其职（见 `classifyTickDrive` 头注）：target 端判「会不会动」，
-    // 两端并集只用来把「只当源」与「压根不在图里」分开。⛔ 别合并。
-    const ruleTargetTypeKeys = new Set<string>();
-    const ruleEndTypeKeys = new Set<string>();
+    const ruleTypeKeys = new Set<string>();
     for (const r of live.rules) {
-      ruleTargetTypeKeys.add(r.targetTypeKey);
-      ruleEndTypeKeys.add(r.sourceTypeKey);
-      ruleEndTypeKeys.add(r.targetTypeKey);
+      ruleTypeKeys.add(r.sourceTypeKey);
+      ruleTypeKeys.add(r.targetTypeKey);
     }
     const byCarrierLive = new Map<string, ProcessStationLiveVM>();
     for (const carrier of new Set(res.definitions.map((p) => p.carrierTypeKey))) {
       const ids = live.nodeObjectIds[carrier] ?? [];
-      const drive = classifyTickDrive(carrier, ruleTargetTypeKeys, ruleEndTypeKeys, ids.length);
+      const drive = classifyTickDrive(carrier, ruleTypeKeys, ids.length);
       const now = live.snapshot === null ? { value: null, stateVarKeys: [] as string[] } : carrierReading(live.snapshot.state, ids);
       const before = live.prevSnapshot === null ? { value: null, stateVarKeys: [] as string[] } : carrierReading(live.prevSnapshot.state, ids);
       const delta = now.value === null || before.value === null ? null : round2(now.value - before.value);

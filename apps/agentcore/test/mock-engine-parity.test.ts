@@ -314,14 +314,7 @@ describe("WO-MOCK-ENGINE-PARITY · mock 与真引擎同口径现算集合相等"
     //   金丝雀三条同时验过：`model_producible_at|Model|Base` 两侧必中 = true ∧
     //   合成键 `zz_synthetic_never|Foo|Bar` 两侧必不中 = false ∧ 注释假阳性 `X|Y|Z` 必已消除 = false。
     // ⚠ 类型数不动（仍 63）：`Customer` 与 `Order` 两端早就都在本体里，本次只加一条链路声明。
-    //
-    // ⚠ **116 → 118（2026-09-19 · WO-PROP-V2-REBASE 收编）**：A 侧物料环新声明两条链路
-    // `inspection_for_material|IncomingInspection|Material` 与 `balance_drives_po|MaterialBalance|PurchaseOrder`，
-    // 本表当时没跟 ⇒ §1/§2/§7 三条一起红。**没有照抄报错里的 received**：照本段既有纪律
-    // 另用一份剥注释器独立复算，两侧**各得 118**（不剥注释得 120 —— 正是上面警告的那两条
-    // 注释内引用假阳性）；金丝雀同时验过 `model_producible_at` 必中 ∧ `zz_synthetic_never` 必不中。
-    // 旁证：§2 点名的 missing 恰好就是这两条，116 + 2 = 118 与差集口径自洽。
-    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 118）").toBe(118);
+    expect(graph.links.length, "链路数与 grep fromTypeKey 独立口径不符（今日 116）").toBe(116);
   });
 
   it("§2 mock 镜像图 == battery.ts 现算图（集合相等·缺谁多谁点名）", () => {

@@ -428,24 +428,14 @@ describe("WO-SIM-BE-SERIES · 指标时序（基线线 + 扰动后线 + 环节�
       expect(m.baseline[0], `${m.key} 在 tick0 就分叉了 ⇒ 基线不是同一个世界`).toEqual(m.actual[0]);
     }
 
-    // (d) 另起一个会话真的会给出**不同的**世界 —— 这是本条断言**非空转**的证据：
+    // (d) 另起一个会话真的会给出不同的世界 —— 这是本条断言**非空转**的证据：
     //     若新会话恰好与本会话逐格相同，上面几条就挡不住任何东西。
-    //
-    // ⚠ 2026-09-18 WO-SANDBOX-REAL 之后，本段的**判据换了实现，意图没变**：
-    //   以前靠「新会话 = 空世界 `{}`」来证明「新会话 ≠ 本会话」。那条路已按设计关闭 ——
-    //   `POST /sim/sessions` 不带 `baseSnapshot` 时，服务端现在用 `deriveSeedBaseSnapshot`
-    //   从**真实对象**派生（4,775 个对象 / 8,813 格，其中 measured 6,271 · derived 2,542）。
-    //   「空世界」曾经是「这一格不存在」的来源，而那正是 45 个推演格全靠 hash 编出来的那个病根。
-    //   ⛔ 所以不许把这一段降成 `toBeDefined()` 之类 —— 那会让金丝雀失去鉴别力。
-    //   现在直接钉**它要证明的那件事本身**：两个会话的 tick0 世界必须不同。
     const fresh = await t.app.inject({ method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN, payload: {} });
     expect(fresh.statusCode).toBe(201);
     const freshId = fresh.json().id as string;
     const freshTick0 = await t.repos.sim.getTickState("demo", freshId, 0);
-    const ownTick0 = await t.repos.sim.getTickState("demo", sid, 0);
-    expect(freshTick0!.state).not.toEqual(ownTick0!.state);
-    // 且差异必须落在**本用例真正读的那一格**上；否则 (b)(c) 仍可能是空转的。
-    expect(freshTick0!.state[BASE_ID]?.loadIndex).not.toBe(ownTick0!.state[BASE_ID]?.loadIndex);
+    expect(freshTick0!.state).toEqual({}); // 新会话的 tick0 是空世界 ⇒ 拿它当基线种子必然从 tick0 就分叉
+    expect(freshTick0!.state[BASE_ID]?.loadIndex).toBeUndefined();
   });
 
   // ── R3 entitlement 先于 authz：功能关 = 不存在（404），不是 403 ──────────────────

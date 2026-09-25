@@ -70,7 +70,7 @@ import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow�
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type CellProvenance, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
+import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
 import type { PairWeightReport } from "./sim/pair-weights.js";
@@ -96,10 +96,8 @@ import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact
 // 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
 import { buildMetricSeries } from "./sim/metric-series.js";
 // WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
-// 两个符号各有真实调用点，缺一个就编译不过：
-//   `listSimWorldObjects` → 落点成员集合物化入口（本文件 `:4138`，WO-IMPEDIMENT-LEVERS 侧）
-//   `deriveSeedBaseSnapshot` → 建会话缺省快照服务端派生（本文件 `:2073`，WO-SANDBOX-REAL 侧）
-import { deriveSeedBaseSnapshot, listSimWorldObjects, type SimWorldOps } from "./sim/seed-world.js";
+import type { SimWorldOps } from "./sim/seed-world.js";
+import { listSimWorldObjects } from "./sim/seed-world.js";
 // WO-SIM-BE-DRILL · 根因二级下钻 + 批号级传导明细（算法全在 sim/drill.ts 纯函数层，本文件只做 IO 与 A6 装配）
 import { ChainLossDrillRequestSchema } from "@platform/contracts";
 import { chainLossDrill, chainNodeDetail, type DrillObject, type DrillWorld } from "./sim/drill.js";
@@ -2044,46 +2042,11 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
    */
   const createSimSessionWorld = async (
     c: AuthCtx,
-    input: {
-      baseSnapshot?: TickState;
-      baseSnapshotProvenance?: CellProvenance;
-      scope?: Record<string, unknown>;
-      id?: string;
-      createdAt?: string;
-      tickDays?: number;
-    },
+    input: { baseSnapshot?: TickState; scope?: Record<string, unknown>; id?: string; createdAt?: string; tickDays?: number },
   ): Promise<SimSession> => {
-    /**
-     * ── 🔴 WO-SANDBOX-REAL-SNAPSHOT · 不传 `baseSnapshot` 时**服务端自己从真实对象派生** ──
-     *
-     * **今天的行为 X（本单开工前实测）**：调用方不传 ⇒ `input.baseSnapshot ?? {}` ⇒ **空世界**
-     * （实测空 body 建出的会话 `state` 键数 = 0，status 落 `DRAFT`）。于是唯一能拿到"有内容的
-     * 世界"的办法，就是调用方**自己编一份**塞进来 —— 前端 `SandboxView`/`EdgeActivePanel`
-     * 正是这么干的（`round(hash01(objectId|stateVar)×100)`，一次 `props` 都不读）。
-     * **应该的 Y**：世界内容由**持有真实对象的这一侧**派生，且逐格带出处；
-     * 调用方不该有"世界长什么样"的发言权（它没有对象，只能编）。
-     *
-     * ⚠ **判据落在 `=== undefined` 而不是 `?? {}` 的真值性上**：调用方**显式**传 `{}`
-     * （"我就是要一个空世界"）与**压根不传**（"你替我派生"）是两个不同的命题。
-     * 用 `??` 会把前者也拖去派生 —— 那是替调用方改主意。`createCheckpointBranch`
-     * 之类按快照建会话的路径传的是具体的 `TickState`，不受本支影响，逐字节同旧。
-     */
-    const derived = input.baseSnapshot === undefined ? await deriveSeedBaseSnapshot(repos, c.tenantId) : null;
-    const base = input.baseSnapshot ?? derived?.state ?? {};
-    const provenance = input.baseSnapshotProvenance ?? derived?.provenance;
-    /**
-     * 派生出来的世界，把**整份合计**也一起写进 `scope.baseSnapshotOrigin` ——
-     * 与逐格明细两个都要（理由见 `CellProvenanceSchema` 头注）：合计随列表投影下发（定长），
-     * 明细只随单条会话下发。调用方自带世界时**不写**这个记号：那份世界不是我们派生的，
-     * 替它声明出处就是编。
-     */
-    const scope = derived === null
-      ? (input.scope ?? {})
-      : { ...(input.scope ?? {}), baseSnapshotOrigin: derived.origin };
+    const base = input.baseSnapshot ?? {};
     const s: SimSession = {
-      id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base,
-      ...(provenance === undefined ? {} : { baseSnapshotProvenance: provenance }),
-      scope,
+      id: input.id ?? newId("sims"), tenantId: c.tenantId, baseSnapshot: base, scope: input.scope ?? {},
       status: Object.keys(base).length > 0 ? "READY" : "DRAFT", curTick: 0, parentCheckpointId: null,
       disabledRuleKeys: [], // WO-ACTIVE-EDGE-UX：新会话不屏蔽任何边 ⇒ 与本字段引入前逐字节相同（RL9）
       // WO-SIM-DRILL-P12 · G-DRILL-1：一 tick = 几天。缺省 1（与 A8 模拟时钟「一 tick = 一模拟日」同口径）
@@ -2226,18 +2189,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   app.get("/a/v1/sim/sessions/:id/world", async (req) => {
     const c = ctx(req); await requireSim(c, "sim.sandbox");
     const s = await getSimOr404(c, (req.params as { id: string }).id);
-    /**
-     * WO-SANDBOX-REAL-SNAPSHOT · `baseProvenance` = **tick0 起点**那一格的出处（逐格）。
-     *
-     * ⚠ 名字里必须有 `base`，不许叫 `provenance`：本回包的 `state` 在 `tick>0` 时是**引擎算出来的**，
-     * 那些数的出处是"传导结果"，不是"实测/占位"这对二选一。本表描述的自始至终是**起点**。
-     * 起点仍然值得一路带着：一条从哈希占位起跑的链，算到第 3 拍依旧是从占位起跑的 ——
-     * 把它在 `tick>0` 时丢掉，等于让用户以为推演结果比它的起点更可信。
-     *
-     * 消费方（`SandboxView` / `EdgeActivePanel`）据此逐格区分显示。缺键 = 出处未知（老会话、
-     * 或调用方自带世界那一档），前端按第三态渲染，**不许并进 `derived`**。
-     */
-    return { tick: s.curTick, state: await simCurrent(c, s), baseProvenance: s.baseSnapshotProvenance ?? {} };
+    return { tick: s.curTick, state: await simCurrent(c, s) };
   });
   /**
    * WO-SIM-BE-SERIES · **指标时序**：基线线 + 扰动后线 + 环节分段。

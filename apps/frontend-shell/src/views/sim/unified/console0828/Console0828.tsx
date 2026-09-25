@@ -46,7 +46,7 @@
  */
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PropagationRulesResponse, SandboxViewConfig, SimRunDisclosure } from "@platform/contracts";
+import type { PropagationRulesResponse, SandboxViewConfig } from "@platform/contracts";
 import {
   createSimPerturbation,
   fetchAllObjects,
@@ -143,63 +143,25 @@ interface DisclosureBrief {
   readonly totalMs: number | null;
 }
 
-/**
- * 把 `simTick(…, disclose:true)` 的披露层读成屏上那几项。
- *
- * ── 今天的行为是 X，应该是 Y（2026-09-18 真起服务实测，非推测）─────────────────────
- * 本函数原先把回包重新 `as Record<string, unknown>` 再手搓取值，**三条路取的键后端都没有**，
- * 于是屏上那三格恒 `—`。三条各写一句（实测口径：`SEED_DEMO=1` 内存态 datacore
- * `POST /a/v1/sim/sessions/sims_demo_seed_world/tick` `{n:1,disclose:true}` 的真回包）：
- *
- *  ① **耗时合计**：X = 取 `timings.total`，而契约 `timings` 是 `{phase,ms}[]` —— **数组没有 `.total`**；
- *     兜底那条 `d.totalMs` 后端**从来没有过**（金丝雀：同一查法查 `timings`，
- *     `apps/datacore/src` 命中 5 处 ⇒ 查法是好的；查 `totalMs` 命中 0 处 RC=1 ⇒ 是它真的不在）。
- *     两条路全死 ⇒ 恒 `null`。Y = `timings.find(t => t.phase === "total")?.ms`，真跑那次 = **1302**。
- *  ② **引用对象数**：X = 取 `graph.objects`，而后端那一段叫 **`data`** 不叫 `graph`
- *     （`disclosure.ts` 装配处、契约 `SimRunDisclosureSchema` 两处都是 `data`）；
- *     兜底 `d.objects` 同样不存在 ⇒ 恒 `null`。Y = `data.objects`，真跑那次 = **12,849**。
- *  ③ **关系条数**：同 ②，`graph.links` / `d.links` 双双落空 ⇒ 恒 `null`。
- *     Y = `data.links`，真跑那次 = **13,533**。
- *
- * ⚠ **病根不是这三个键拼错了，是那个 `as`**：上游 `endpoints.ts` 的 `simTick` 已经把回包
- * 标成 `disclosure?: SimRunDisclosure`（**类型本来是全的**），而这里一句 `as Record<string, unknown>`
- * 把它丢掉，从此契约改名、字段换形状，`tsc` 一个字都不会说 —— **漂移静默**。
- * 形态（照 CLAUDE.md 铁律 0.6 句式）：
- * > 「我用『这段代码编译通过了』当作『它读的键真的存在』的证据，而前者并不度量后者
- * > —— `as` 之后类型系统就不再度量这件事了。」
- *
- * ⇒ 故本函数**改成按契约消费**，闸放在编译期：
- *   入参收 `SimRunDisclosure`（上游 `endpoints.ts` 本来就是这个型），
- *   字段名写错 / 契约改名 ⇒ **`tsc` 当场红**，不必等有人真去点那一屏。
- *   后端与契约同仓同 build ⇒ 真改了名，datacore 自己先编译不过，前端这条也同刻红。
- *
- * ⚠ **运行期只校验「本函数真读的那几项」，不整包 `safeParse`** —— 这是实测之后改的口径：
- * 本屏只取 9 个标量，而整包 schema 会连 `rules.items[]` 里几百个**本函数一个都不读**的字段
- * 一起要求。拿 2026-09-03 那份真回包实测：整包 `safeParse` **失败 415 处**，
- * 全部落在后来 `WO-ADVERSARY-REACTION` 新增的还手字段上。
- * 若按整包判，这一屏会因为**几个读都没读的字段**整块黑掉 ——
- * 那是把「有一项没对上」升级成「六项全不给」，比本单要修的病更糟。
- * ⇒ 校验范围与消费范围对齐：读什么就验什么，验不过的**那一项**回 `null`（屏上 `—`），
- *   其余照常上屏。整段拿不到才回 `null` 走「本次没取到披露」那一路
- *   （`endpoints.ts` 原文：「没拿到」与「拿到了但是空」不许长成同一个样子）。
- */
-function readDisclosure(raw: SimRunDisclosure | null | undefined): DisclosureBrief | null {
-  if (!raw) return null;
+function readDisclosure(raw: unknown): DisclosureBrief | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const d = raw as Record<string, unknown>;
   const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const graph = d.graph as Record<string, unknown> | undefined;
+  const slice = d.slice as Record<string, unknown> | undefined;
+  const rules = d.rules as Record<string, unknown> | undefined;
+  const agent = d.agent as Record<string, unknown> | undefined;
+  const timings = d.timings as Record<string, unknown> | undefined;
   return {
-    objects: num(raw.data?.objects),
-    links: num(raw.data?.links),
-    sliceKey: typeof raw.slice?.sliceKey === "string" ? raw.slice.sliceKey : null,
-    hops: num(raw.slice?.hops),
-    rulesFired: num(raw.rules?.fired),
-    rulesDeclared: num(raw.rules?.declared),
-    withCoefficientRef: num(raw.rules?.withCoefficientRef),
-    agentInvoked: typeof raw.agent?.invoked === "boolean" ? raw.agent.invoked : null,
-    // 环节键取值来自后端 `DISCLOSURE_PHASE_ORDER`（graph/shadow/engine/persist/total），
-    // **真打过一次 tick 核对过**，不是照着注释猜的。没有 `total` 这一格 ⇒ null，不拿别的格顶替。
-    // `Array.isArray` 不是多余的：本单修的就是「这里曾被当成对象读」，
-    // 万一哪天真回来个对象，要的是 `—`，不是 `.find is not a function` 把整屏炸掉。
-    totalMs: Array.isArray(raw.timings) ? num(raw.timings.find((t) => t.phase === "total")?.ms) : null,
+    objects: num(graph?.objects ?? d.objects),
+    links: num(graph?.links ?? d.links),
+    sliceKey: typeof slice?.sliceKey === "string" ? slice.sliceKey : null,
+    hops: num(slice?.hops),
+    rulesFired: num(rules?.fired),
+    rulesDeclared: num(rules?.declared),
+    withCoefficientRef: num(rules?.withCoefficientRef),
+    agentInvoked: typeof agent?.invoked === "boolean" ? agent.invoked : null,
+    totalMs: num(timings?.total ?? d.totalMs),
   };
 }
 
@@ -577,7 +539,7 @@ export default function Console0828({
         deltas: diffWorld(before.state as WorldCells, after.state as WorldCells),
         staged,
         receipts,
-        disclosure: readDisclosure(ticked.disclosure),
+        disclosure: readDisclosure(ticked.disclosure ?? null),
         impediments: imp,
         impedimentError: impErr,
       };

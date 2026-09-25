@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { PropagationRule, SandboxViewConfig, SimRunDisclosure } from "@platform/contracts";
+import type { PropagationRule, SandboxViewConfig } from "@platform/contracts";
 
 /**
  * ══ WO-C0828-SEAM · 「统一推演控制台」`console0828` 的**接缝门**（SEAM-GATE：咬链路不咬函数）══
@@ -188,40 +188,13 @@ const WORLD_AFTER = {
   mat_licarb: { priceShock: 20 },
 };
 
-/**
- * 披露层回包 —— **真后端一次真跑的原样回包**，不是手写夹具（复用既有
- * `fixtures/sim-disclosure.real.json`，⛔ 不新造基线 JSON·仓主 2026-08-20 禁令 3）。
- *
- * ── 为什么必须换掉原来那个手写常量（2026-09-18·WO-DISCLOSURE-TIMINGS）─────────────
- * 本常量原文是：
- *   `{ graph:{objects:11_348,links:40_212}, slice:{…}, rules:{…}, agent:{…}, timings:{total:812} }`
- * —— 它**照着当时前端读法的形状写的，而不是照着契约写的**。而契约
- * （`packages/contracts/src/sim-disclosure.ts`）里那两段是 **`data`** 和
- * **`timings: {phase,ms}[]`**。于是：
- *   · 前端读 `graph.objects` / `timings.total`，手写夹具**恰好喂得出来** ⇒ 测试绿；
- *   · 真后端回的是 `data.objects` / `timings:[…{phase:"total",ms}]` ⇒ **屏上恒 `—`**。
- * **两边一起漂，还一起绿。** 这正是同目录 `sim-disclosure-panel.seam.test.tsx` 头注点名的那条：
- * 「手写的会跟着前端一起改，两边一起漂还一起绿」。
- * 反证（开工实测）：把原来那个手写常量喂给契约 `SimRunDisclosureSchema` ⇒ **失败** ——
- * 它从一开始就不是一个合法回包，只是恰好长成了当时那段读法要的样子。
- *
- * ⚠ **这份真回包自己也不是「整包合契约」的**，别照着它下相反的结论：
- * 它是 2026-09-03 抓的，早于 `WO-ADVERSARY-REACTION`；今天拿整包 `safeParse` 去验
- * **失败 415 处**，全部落在后来新增的还手字段（`rules.items[].isReaction` 等）上。
- * 本门读的 9 项（`data` / `slice` / `rules` 三个计数 / `agent` / `timings`）**逐项都在且都是真值**，
- * 故它对本门仍然有效；⛔ 但不许拿它当「整包契约符合性」的证据 —— 那是另一件事。
- * （同目录 `sim-disclosure-panel.seam.test.tsx` 也用这份 fixture，且是 `as` 断言进去的，
- *   所以那边同样不验整包 —— 这笔账记在这里，免得下一个人以为验过了。）
- *
- * ⇒ 换成真回包后，**后端哪天改了这 9 项里任何一项的字段名或形状，这里当场红**；
- *   而 §④ 新增的三条断言（对象/关系/耗时合计）全部由本 fixture **现算**，不写死数字。
- */
-const DISCLOSURE = JSON.parse(
-  readFileSync(join(FIX, "sim-disclosure.real.json"), "utf8"),
-) as SimRunDisclosure;
-
-/** 屏上「耗时合计」那个数的**唯一正确取法**（契约：`timings` 是数组，按 `phase` 找）。 */
-const DISCLOSURE_TOTAL_MS = DISCLOSURE.timings.find((t) => t.phase === "total")?.ms ?? null;
+const DISCLOSURE = {
+  graph: { objects: 11_348, links: 40_212 },
+  slice: { sliceKey: "sim.propagation", hops: 3 },
+  rules: { declared: 47, fired: 12, withCoefficientRef: 0 },
+  agent: { invoked: false },
+  timings: { total: 812 },
+};
 
 /**
  * 卡点载荷。基线 fixture **一个字节都不改**（仓主 2026-08-20 禁令 3：不新增基线 JSON），
@@ -592,42 +565,8 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
 
     // 披露层上屏（铁律 1.5 判据二：推演过程必须可披露，且「没调 agent」要明写不许留白）。
     const honesty = screen.getByTestId("c0828-honesty").textContent ?? "";
-    expect(honesty).toContain(DISCLOSURE.slice.sliceKey);
+    expect(honesty).toContain("sim.propagation");
     expect(honesty).toContain("本次未调用 agent");
-
-    /**
-     * ── ④c 披露层**逐项**要与回包逐字一致（WO-DISCLOSURE-TIMINGS·2026-09-18）────────
-     *
-     * 这三项在本单之前**恒显示 `—`**，而屏上其余三项（切片/跳数/规则）一直是对的 ——
-     * 于是「六项里有三项是死的」这件事，靠上面那两条断言一次都没红过：
-     * 它们咬的恰好是**活着的那三项**。
-     *
-     * 病因见 `Console0828.tsx` 的 `readDisclosure` 头注：`timings.total`（契约是数组）、
-     * `totalMs`（后端从来没有过）、`graph.objects/links`（后端那段叫 `data`）三条路全死，
-     * 而 `as Record<string, unknown>` 让 `tsc` 一个字都不说。
-     *
-     * ⚠ 期望值**全部由 fixture 现算**，不写死数字 —— 写死了就只是把另一个常量抄进断言，
-     * 回包一改照样绿（那正是原来那个手写夹具犯的病）。
-     */
-    // ⓪ 🐤 金丝雀：先证明这三个期望值**本身不是空的**。
-    //    若 fixture 哪天少了这几段，期望值会变成 `undefined`/`null`，
-    //    而 `toContain(String(undefined))` 这类断言会**恰好在屏上也没有值时通过** ——
-    //    那就把「两边都没有」读成了「两边一致」。故先把探针自己验一遍。
-    expect(DISCLOSURE_TOTAL_MS, "fixture 里没有 phase=total 这一格 ⇒ 探针坏了，不是屏上没数").not.toBeNull();
-    expect(DISCLOSURE.data.objects).toBeGreaterThan(0);
-    expect(DISCLOSURE.data.links).toBeGreaterThan(0);
-
-    // ① 耗时合计：屏上那个数必须 = 回包 `timings[phase="total"].ms`，逐字一致。
-    expect(honesty).toContain(`耗时合计 ${String(DISCLOSURE_TOTAL_MS)} 毫秒`);
-    // ⛔ 并且**不许**还是那个恒缺席的破折号 —— 「有个数」与「是对的数」要分开咬：
-    //    只断言上一行的话，屏上若同时出现别处的同名字样也可能蒙混过去。
-    expect(honesty).not.toContain("耗时合计 — 毫秒");
-
-    // ② / ③ 引用的数据：对象数与关系条数同样取自 `data` 段。
-    expect(honesty).toContain(`对象 ${String(DISCLOSURE.data.objects)} 个`);
-    expect(honesty).toContain(`关系 ${String(DISCLOSURE.data.links)} 条`);
-    expect(honesty).not.toContain("对象 — 个");
-    expect(honesty).not.toContain("关系 — 条");
   });
 
   it("④b 多件时主因这句话必须换成「说不清」——不许挑一个顶上（差分层看不出某一格是谁推的）", async () => {

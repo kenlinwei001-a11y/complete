@@ -125,22 +125,8 @@ const RULES = [
   status: "PUBLISHED" as const,
 }));
 
-/**
- * 本 fixture 里**只当源**的那一种承载类型（入度 0）。
- *
- * ⚠ 它不是本次新造的 —— 上面两条规则一直就是 `D0 → D1` 与 `D1 → NODATA`，
- * ⇒ `D0` **从来就不是任何规则的 target**。旧判据「∈ 两端」把它判成「随节拍变」，
- * 而它的读数推多少拍都不会变（没有任何规则写它）。
- * 2026-09-19 判据订正后它落 `SOURCE_ONLY` —— 本 fixture 因此**天然把四档都造齐了**，
- * 一条 def 都不用加。
- */
-const SOURCE_ONLY_CARRIER = DRIVEN_CARRIERS[0] ?? "";
-/** 真正会动的那一种：是 `D0 → D1` 的 target，且世界里有对象。 */
-const TRUE_DRIVEN_CARRIERS = DRIVEN_CARRIERS.slice(1);
-
 /** 一条流程**应该**落哪一档（现算的期望值，与被测实现各算各的 —— 不共用同一段代码）。 */
-function expectedDrive(carrierTypeKey: string): "TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "SOURCE_ONLY" | "NOT_TICK_DRIVEN" {
-  if (carrierTypeKey === SOURCE_ONLY_CARRIER) return "SOURCE_ONLY";
+function expectedDrive(carrierTypeKey: string): "TICK_DRIVEN" | "NO_CARRIER_OBJECTS" | "NOT_TICK_DRIVEN" {
   if (DRIVEN_CARRIERS.includes(carrierTypeKey)) return "TICK_DRIVEN";
   if (carrierTypeKey === NODATA_CARRIER) return "NO_CARRIER_OBJECTS";
   return "NOT_TICK_DRIVEN";
@@ -271,23 +257,19 @@ afterEach(() => cleanup());
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe("§A 金丝雀（不中就报「工具坏了」，不许报「代码干净」）", () => {
-  it("A1 · 分档函数**四档都说得出话** —— 一个恒返回「不随节拍变」的实现同样能让 §C 全绿", () => {
+  it("A1 · 分档函数**三档都说得出话** —— 一个恒返回「不随节拍变」的实现同样能让 §C 全绿", () => {
     const c = classifyTickDriveCanary();
-    expect(c.driven, "喂「在 target 端 + 有对象」都判不出随节拍变 ⇒ 分档函数坏了").toBe("TICK_DRIVEN");
-    expect(c.noData, "喂「在 target 端 + 0 个对象」都判不出无承载对象 ⇒ 两个不同事实被合成了一个").toBe("NO_CARRIER_OBJECTS");
-    // 2026-09-19 新拆：只在 source 端（入度 0）⇒ 没人写它 ⇒ 自己不动。
-    // 判据若被改回「∈ 两端 ⇒ 会动」，这一行当场红。
-    expect(c.sourceOnly, "喂「只在 source 端」都判不出只当源 ⇒ 判据还是旧的「∈ 两端」").toBe("SOURCE_ONLY");
+    expect(c.driven, "喂「在规则两端 + 有对象」都判不出随节拍变 ⇒ 分档函数坏了").toBe("TICK_DRIVEN");
+    expect(c.noData, "喂「在规则两端 + 0 个对象」都判不出无承载对象 ⇒ 两个不同事实被合成了一个").toBe("NO_CARRIER_OBJECTS");
     expect(c.dark, "喂「不在规则两端」都判不出不随节拍变 ⇒ 分档函数坏了").toBe("NOT_TICK_DRIVEN");
-    // 四档必须互不相等 —— 否则"分档"是装饰
-    expect(new Set([c.driven, c.noData, c.sourceOnly, c.dark]).size).toBe(4);
-    expect(TICK_DRIVE_ORDER.length).toBe(4);
+    // 三档必须互不相等 —— 否则"分档"是装饰
+    expect(new Set([c.driven, c.noData, c.dark]).size).toBe(3);
+    expect(TICK_DRIVE_ORDER.length).toBe(3);
   });
 
-  it("A2 · 本次世界真的把四档都造出来了（任一堆为空 ⇒ 那一档的断言在空集合上跑，恒真）", () => {
+  it("A2 · 本次世界真的把三档都造出来了（任一堆为空 ⇒ 那一档的断言在空集合上跑，恒真）", () => {
     expect(DEFS.length, "fixture 一条流程都没有 ⇒ 下面每条断言恒真恒绿").toBeGreaterThan(1);
-    expect(TRUE_DRIVEN_CARRIERS.length, "没有任何一种承载物被判为随节拍变 ⇒ §B「真的动了」无从谈起").toBeGreaterThan(0);
-    expect(SOURCE_ONLY_CARRIER, "没有「只当源」那一档 ⇒ 判据订正的那条断言在空集合上跑").not.toBe("");
+    expect(DRIVEN_CARRIERS.length, "没有任何一种承载物被判为随节拍变 ⇒ §B「真的动了」无从谈起").toBeGreaterThan(0);
     expect(NODATA_CARRIER.length, "没有「接了线没数据」那一档 ⇒ §C 的反面判据（两句话必须不同）在空集合上跑").toBeGreaterThan(0);
     expect(STATIC_CARRIERS.length, "没有「本层不随节拍变」那一档 ⇒ §C 主判据在空集合上跑").toBeGreaterThan(0);
     // 三堆两两不相交（否则一条流程会被数进两档，`byDrive` 求和恒等式反而看不出问题）
@@ -311,7 +293,7 @@ describe("§A 金丝雀（不中就报「工具坏了」，不许报「代码干
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe("§B 接缝驱动（推的是控制条上那颗真按钮，看的是 DOM 文本不是 state）", () => {
-  it("B1 · 第五档一挂出来就带着分类：四档条数之和 == 端点下发条数，且每条流程落的档与现算期望一致", async () => {
+  it("B1 · 第五档一挂出来就带着分类：三档条数之和 == 端点下发条数，且每条流程落的档与现算期望一致", async () => {
     const user = userEvent.setup();
     await enterSandbox();
     await openProcessMode(user);
@@ -326,23 +308,16 @@ describe("§B 接缝驱动（推的是控制条上那颗真按钮，看的是 DO
       expect(r.drive, `${r.key}（承载 ${def.carrierTypeKey}）落错档`).toBe(expectedDrive(def.carrierTypeKey));
     }
 
-    // 屏上那句总结里的四个数 == 现数 DOM 得到的四个数（同源判据：屏上写的必须度量屏上画的）
+    // 屏上那句总结里的三个数 == 现数 DOM 得到的三个数（同源判据：屏上写的必须度量屏上画的）
     const sum = screen.getByTestId("spc-live-summary");
-    for (const [attr, kind] of [
-      ["data-driven", "TICK_DRIVEN"],
-      ["data-nodata", "NO_CARRIER_OBJECTS"],
-      ["data-sourceonly", "SOURCE_ONLY"],
-      ["data-static", "NOT_TICK_DRIVEN"],
-    ] as const) {
+    for (const [attr, kind] of [["data-driven", "TICK_DRIVEN"], ["data-nodata", "NO_CARRIER_OBJECTS"], ["data-static", "NOT_TICK_DRIVEN"]] as const) {
       expect(sum.getAttribute(attr), `总结里的 ${kind} 条数 ≠ 现数 DOM 的条数`).toBe(String(rows.filter((r) => r.drive === kind).length));
     }
     // 分档不许漏人、不许一条被数两遍
-    // ⚠ 新拆的 SOURCE_ONLY **必须进这个和** —— 漏了它，那一档的流程就从总数里凭空蒸发。
     expect(
-      Number(sum.getAttribute("data-driven")) + Number(sum.getAttribute("data-nodata"))
-      + Number(sum.getAttribute("data-sourceonly")) + Number(sum.getAttribute("data-static")),
+      Number(sum.getAttribute("data-driven")) + Number(sum.getAttribute("data-nodata")) + Number(sum.getAttribute("data-static")),
     ).toBe(ledger.defsServed);
-    expect(screen.queryByTestId("spc-live-drive-mismatch"), "四档求和报警亮了").toBeNull();
+    expect(screen.queryByTestId("spc-live-drive-mismatch"), "三档求和报警亮了").toBeNull();
   }, 90000);
 
   it("B2 · **推一拍** → 能动的那几条屏上**真的变了**（读 DOM 文本；动的站亮出可见的脉冲环）", async () => {
@@ -509,18 +484,7 @@ describe("§C 「本层不随节拍变」≠「无承载对象」≠ 留白（�
     await pushTick(user);
     await waitFor(() => expect(screen.getByTestId("spc-live-summary").getAttribute("data-tick")).toBe(String(ledger.lastTick)), { timeout: 20000 });
 
-    // ⚠ **只咬「没有承载对象」的那两档**（`NO_CARRIER_OBJECTS` / `NOT_TICK_DRIVEN`）——
-    //   它们在本 fixture 里都没有对象，所以「读数必须是空」这句话对它们成立。
-    // ⛔ `SOURCE_ONLY` **不在这里咬**，理由不是放宽而是这条判据对它不成立：
-    //   本 fixture 的世界态是**合成的**（`worldAt(tick)` 直接造数），不是引擎传导出来的
-    //   ⇒ 它照样会给只当源的那一类写读数。拿它去证「只当源的不会动」，
-    //   证的是 fixture 的行为，不是引擎的行为 —— 那正是本仓「信号是真的，但它不指向我要断言的对象」那一形态。
-    //   **引擎侧的真证据在** `apps/datacore/test/process-tick-coverage.seam.test.ts`：
-    //   §C1 把「够不到的那一组」逐条钉死、§C3 咬黑档推 12 拍仍精确为 0，那边跑的是真 `propagateTick`。
-    const noObjectTiers = new Set(["NO_CARRIER_OBJECTS", "NOT_TICK_DRIVEN"]);
-    const checked = renderedLive().filter((x) => noObjectTiers.has(x.drive));
-    expect(checked.length, "没有任何一条落在这两档 ⇒ 本条断言在空集合上跑，恒绿").toBeGreaterThan(0);
-    for (const r of checked) {
+    for (const r of renderedLive().filter((x) => x.drive !== "TICK_DRIVEN")) {
       expect(r.moved, `${r.key} 不是节拍驱动，却被判成「这一拍动了」`).toBe(false);
       expect(r.reading, `${r.key} 没有承载对象却给出了读数 —— 那个数是编的`).toBe("");
     }
@@ -711,20 +675,15 @@ describe("§G additive 可回退（比的是基线实现的真输出，不是我
     }
   });
 
-  it("G8 · 分档函数本身：四档判据逐条可证伪（不靠上面那些集成路径间接证明）", () => {
-    // 规则图：A → B（A 只当源，B 是 target）；C 压根不在图里。
-    const targets = new Set(["B"]);
-    const ends = new Set(["A", "B"]);
-    expect(classifyTickDrive("B", targets, ends, 2)).toBe("TICK_DRIVEN");
-    expect(classifyTickDrive("B", targets, ends, 0)).toBe("NO_CARRIER_OBJECTS");
-    // 🔴 只当源：**不论有没有对象**都判 SOURCE_ONLY —— 补数据也不会让它动。
-    expect(classifyTickDrive("A", targets, ends, 2)).toBe("SOURCE_ONLY");
-    expect(classifyTickDrive("A", targets, ends, 0)).toBe("SOURCE_ONLY");
-    expect(classifyTickDrive("C", targets, ends, 2)).toBe("NOT_TICK_DRIVEN");
-    expect(classifyTickDrive("C", targets, ends, 0)).toBe("NOT_TICK_DRIVEN");
+  it("G8 · 分档函数本身：三档判据逐条可证伪（不靠上面那些集成路径间接证明）", () => {
+    const rules = new Set(["A", "B"]);
+    expect(classifyTickDrive("A", rules, 2)).toBe("TICK_DRIVEN");
+    expect(classifyTickDrive("A", rules, 0)).toBe("NO_CARRIER_OBJECTS");
+    expect(classifyTickDrive("C", rules, 2)).toBe("NOT_TICK_DRIVEN");
+    expect(classifyTickDrive("C", rules, 0)).toBe("NOT_TICK_DRIVEN");
     // 空规则集 ⇒ 全部不随节拍变（"没有传导规则"与"有规则但够不着"在这一档上同解，
     // 屏上那句话对两者都成立：传导图里没有这类承载物）
-    expect(classifyTickDrive("A", new Set<string>(), new Set<string>(), 2)).toBe("NOT_TICK_DRIVEN");
+    expect(classifyTickDrive("A", new Set<string>(), 2)).toBe("NOT_TICK_DRIVEN");
   });
 });
 
