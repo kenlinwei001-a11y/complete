@@ -666,23 +666,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 抛 403 PROPERTY_FORBIDDEN —— 在**任何一行落库之前**，故值绝不落库（不是写一半再回滚）。
     await assertDraftPatchWritableAtExecute(draft);
     const written: string[] = [];
-    // WO-C0828-P1 · R4 机制侧修复：不把 utilPressure 注册为 Line.derivedProperties（否则播种期
-    // runDerivations 会把它物化到对象 props 上，导致 measured/derived 格计数、合成校验 FULL/LITE
-    //  parity、以及世界态投影块全部被破坏）。改为在杠杆写入时级联写 utilPressure，保证
-    //  E3-b′ 写后 `Line.utilPressure === Line.utilization` 仍然成立。
-    const FOLLOW_PROPS: Record<string, Record<string, string>> = {
-      Line: { utilization: "utilPressure" },
-    };
     for (const l of parse.levers) {
       const obj = await repos.objects.get(draft.tenantId, l.objectId);
       if (!obj) return { ok: false, error: `${label}：对象不存在 ${l.objectId}` };
-      const followProp = FOLLOW_PROPS[obj.type]?.[l.prop];
-      const followPatch = followProp ? { [followProp]: l.value } : {};
-      await repos.objects.put({
-        ...obj,
-        props: { ...obj.props, [l.prop]: l.value, ...followPatch },
-        origin: { type: "MANUAL" },
-      });
+      await repos.objects.put({ ...obj, props: { ...obj.props, [l.prop]: l.value }, origin: { type: "MANUAL" } });
       written.push(`${l.objectId}.${l.prop}`);
     }
     // 派生重算：让下游 KPI/派生属性立刻反映本次采纳（与「对象数据变更」同一套）。

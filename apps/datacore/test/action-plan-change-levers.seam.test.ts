@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeApp, seedBattery, ADMIN, type TestApp } from "./helpers.js";
 import { BATTERY_ACTION_TYPES } from "../src/synthetic/battery.js";
+import { seedDemoDerivationSpecs, recomputeDemoDerivationsAtSeed } from "../src/seed-derivation-specs.js";
 
 /**
  * WO-ACTION-NOOP-EXEC · 非 global-sim 的 `plan_change` **按 payload 形态二分**（G-ACTION-NOOP-EXEC 续接）。
@@ -560,6 +561,10 @@ describe("WO-C0828-P1 · adopt_sim_option 写 Line.utilization 后 utilPressure 
   it("E3-b′：adopt_sim_option 审批后 Line.utilization 与 utilPressure 都变成拨定值", async () => {
     const t = await makeApp();
     await seedBattery(t);
+    // R3′：utilPressure 的跟随改由规格层 line_util_pressure 承担（derivedProperties 实例声明已撤，
+    // 见 battery.ts Line 段注释）——本臂须先走生产同链把规格播上，否则规格库为空、格不存在。
+    await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+    await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
     const beforeRes = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Line&pageSize=500", headers: ADMIN });
     const items = (beforeRes.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
     const line = items.find((o) => o.id === "obj_line_LINE-WS-jinhua-slitting");
@@ -588,4 +593,140 @@ describe("WO-C0828-P1 · adopt_sim_option 写 Line.utilization 后 utilPressure 
     expect(Number(hit!.props.utilization), "utilization 未落到拨定值").toBeCloseTo(target, 6);
     expect(Number(hit!.props.utilPressure), "utilPressure 未随 utilization 派生更新").toBeCloseTo(target, 6);
   }, 120000);
+});
+
+/**
+ * WO-C0828-P1 R3′ · 派生跟随根因修法（runDerivations 消费规格层 DerivationSpec）。
+ *
+ * 病灶（派单 §2.1 实测）：12 条杠杆候选里有下游派生量的 8 条，采纳后只有 2 条跟
+ * （Line.utilization→utilPressure，R3 实例修法补的）；Material.leadTime→shortageRisk、
+ * Process.utilization→queuePressure 真值落库了、派生量一个位都不动。
+ * 根因（报告 docs/evidence/WO-C0828-P1-R3-derived-follow.md §2.3）：runDerivations 只认
+ * ObjectType.derivedProperties，不消费规格层 ACTIVE specs —— 而三条杠杆下游的式子在
+ * 规格层 29 条里全有（屏上出处章 `STATE_VAR_VALUE_REFS` 指的也是规格层）。
+ *
+ * 主判据（E3-b′ 的两条新臂）：采纳落库后，派生量按**规格层式子**跟随，且确实变了
+ * （修前它们不动——`not.toBeCloseTo(before)` 咬住「真的动了」，防把「没变」读成「已修」）。
+ */
+describe("WO-C0828-P1 R3′ · adopt_sim_option 后规格层派生跟随", () => {
+  it("E3-b′ 臂①：Material.leadTime → shortageRisk 按 material_shortage_risk 式子跟随", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    // 生产 SEED_DEMO=1 同一条链（server.ts boot）：编译规格入库 → 播种期全量初算物化进 props。
+    // 少了这两步，测试租户规格库为空、shortageRisk 格根本不存在——而真身上它是存在的。
+    await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+    await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
+    const beforeRes = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Material&pageSize=500", headers: ADMIN });
+    const items = (beforeRes.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+    const mat = items.find((o) => o.id === "obj_material_pos_lfp");
+    expect(mat, "种子里应有 obj_material_pos_lfp").toBeTruthy();
+    const dailyUse = Number(mat!.props.dailyUse);
+    const onHand = Number(mat!.props.onHand);
+    const inTransit = Number(mat!.props.inTransit);
+    for (const [k, v] of Object.entries({ dailyUse, onHand, inTransit })) {
+      expect(Number.isFinite(v), `Material.pos_lfp.${k} 不是有限数值：${String(v)}（规格层式子的输入格必须真是数）`).toBe(true);
+    }
+    const target = 10;
+    expect(Number(mat!.props.leadTime)).not.toBeCloseTo(target, 6);
+    const before = Number(mat!.props.shortageRisk);
+
+    const done = await submitAndApprove(t, "adopt_sim_option", {
+      source: "sim-console-options",
+      levers: [{ objectType: "Material", objectId: mat!.id, prop: "leadTime", value: target }],
+      reason: "WO-C0828-P1 R3′ E3-b′ 臂①",
+      evidence: { sessionId: "sess-test", candidateId: "cand_test", scenarioFingerprint: "fp-test", pricing: null, disclosure: { agentInvolved: false } },
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+
+    const leadAfter = await readProp(t, "Material", mat!.id, "leadTime");
+    expect(Number(leadAfter), "leadTime 未落到拨定值").toBeCloseTo(target, 6);
+    // 规格层 material_shortage_risk：COALESCE((dailyUse*leadTime − onHand − inTransit)*100/(dailyUse*leadTime), 0)
+    const expected = ((dailyUse * target - onHand - inTransit) * 100) / (dailyUse * target);
+    const riskAfter = Number(await readProp(t, "Material", mat!.id, "shortageRisk"));
+    expect(riskAfter, "shortageRisk 未随 leadTime 派生更新（修前它停在原地）").not.toBeCloseTo(before, 6);
+    expect(riskAfter, "shortageRisk 不等于规格层式子重算值").toBeCloseTo(expected, 4);
+  }, 120000);
+
+  it("E3-b′ 臂②：Process.utilization → queuePressure 按 process_queue_pressure 式子跟随", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+    await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
+    const beforeRes = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Process&pageSize=500", headers: ADMIN });
+    const items = (beforeRes.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+    const proc = items.find((o) => o.id === "obj_process_LINE-WS-jinhua-slitting-assembly");
+    expect(proc, "种子里应有 obj_process_LINE-WS-jinhua-slitting-assembly").toBeTruthy();
+    const cur = Number(proc!.props.utilization);
+    expect(Number.isFinite(cur), `Process.utilization 不是有限数值：${String(proc!.props.utilization)}`).toBe(true);
+    const target = Math.round((cur - 0.05) * 10000) / 10000;
+    expect(target).toBeGreaterThan(0);
+    const before = Number(proc!.props.queuePressure);
+
+    const done = await submitAndApprove(t, "adopt_sim_option", {
+      source: "sim-console-options",
+      levers: [{ objectType: "Process", objectId: proc!.id, prop: "utilization", value: target }],
+      reason: "WO-C0828-P1 R3′ E3-b′ 臂②",
+      evidence: { sessionId: "sess-test", candidateId: "cand_test", scenarioFingerprint: "fp-test", pricing: null, disclosure: { agentInvolved: false } },
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+
+    const utilAfter = await readProp(t, "Process", proc!.id, "utilization");
+    expect(Number(utilAfter), "utilization 未落到拨定值").toBeCloseTo(target, 6);
+    // 规格层 process_queue_pressure：this.utilization * 100
+    const qpAfter = Number(await readProp(t, "Process", proc!.id, "queuePressure"));
+    expect(qpAfter, "queuePressure 未随 utilization 派生更新（修前它停在原地）").not.toBeCloseTo(before, 6);
+    expect(qpAfter, "queuePressure 不等于 utilization*100").toBeCloseTo(target * 100, 4);
+  }, 120000);
+
+  it("规格层聚合 DSL（out(/in(）在运行期诚实跳过、不炸批、不生成新格", async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoDerivationSpecs(t.repos, t.services.ontologyCore, t.services.governance, t.adminCtx);
+    await recomputeDemoDerivationsAtSeed(t.repos, t.services.ontologyCore, t.adminCtx);
+    // model_supply_risk = COALESCE(AVG(out(model_uses_material).shortageRisk), 0) —— 运行期不译。
+    // 采纳 Material.leadTime 后 Material.shortageRisk 已跟随（臂①），若聚合条被错误翻译执行，
+    // Model.supplyRisk 会跟着变；正确行为 = 它原地不动（跳过），且整批不抛错（臂①已 EXECUTED 证明）。
+    const beforeRes = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Model&pageSize=500", headers: ADMIN });
+    const beforeItems = (beforeRes.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+    expect(beforeItems.length).toBeGreaterThan(0);
+    const riskBefore = new Map(beforeItems.map((m) => [m.id, m.props.supplyRisk]));
+    for (const m of beforeItems) {
+      expect("supplyRisk" in m.props, `Model ${m.id} 缺 supplyRisk 格（播种期物化格必须存在）`).toBe(true);
+      expect(typeof m.props.supplyRisk).toBe("number");
+    }
+    const done = await submitAndApprove(t, "adopt_sim_option", {
+      source: "sim-console-options",
+      levers: [{ objectType: "Material", objectId: "obj_material_pos_lfp", prop: "leadTime", value: 10 }],
+      reason: "WO-C0828-P1 R3′ 聚合跳过臂",
+      evidence: { sessionId: "sess-test", candidateId: "cand_test", scenarioFingerprint: "fp-test", pricing: null, disclosure: { agentInvolved: false } },
+    });
+    expect(done.status, `执行未成功：${done.executionResult.error ?? ""}`).toBe("EXECUTED");
+    const res = await t.app.inject({ method: "GET", url: "/a/v1/objects?type=Model&pageSize=500", headers: ADMIN });
+    const items = (res.json() as { items: { id: string; props: Record<string, unknown> }[] }).items;
+    for (const m of items) {
+      // 跳过语义：格不被改写、值与采纳前逐字节相同（上游 shortageRisk 已变，聚合没跟——
+      // 代价已在报告里如实披露：运行期聚合不跟，屏上该格仍是播种期初算值）。
+      expect("supplyRisk" in m.props, `Model ${m.id} 的 supplyRisk 格被运行期吃掉`).toBe(true);
+      expect(m.props.supplyRisk, `Model ${m.id} 的 supplyRisk 被运行期改写（聚合条应跳过）`).toBe(riskBefore.get(m.id));
+    }
+  }, 120000);
+});
+
+describe("WO-C0828-P1 R3′ · translateSpecFormula 方言桥（自属性才译，聚合/嵌套诚实拒）", () => {
+  it("自属性式子 1:1 翻译，聚合/嵌套/非顶层 COALESCE 拒译", async () => {
+    const { translateSpecFormula } = await import("../src/ontology.js");
+    expect(translateSpecFormula("this.utilization")).toEqual({ inner: "utilization" });
+    expect(translateSpecFormula("this.utilization * 100")).toEqual({ inner: "utilization * 100" });
+    expect(
+      translateSpecFormula("COALESCE((this.dailyUse * this.leadTime - this.onHand - this.inTransit) * 100 / (this.dailyUse * this.leadTime), 0)"),
+    ).toEqual({ inner: "(dailyUse * leadTime - onHand - inTransit) * 100 / (dailyUse * leadTime)", fallback: 0 });
+    // 聚合 DSL：拒译（运行期没有链路求值器，翻了就是编造口径）
+    expect(translateSpecFormula("COALESCE(AVG(out(model_uses_material).shortageRisk), 0)")).toBeNull();
+    expect(translateSpecFormula("COUNT(Order.so BY bases)")).toBeNull();
+    // ⚠ in/out 子串防误伤：inTransit 这种属性名不许被判成聚合（\b 词界 + 紧跟括号才算）
+    expect(translateSpecFormula("this.inTransit * 2")).toEqual({ inner: "inTransit * 2" });
+    // 嵌套/非顶层 COALESCE：不猜，拒
+    expect(translateSpecFormula("COALESCE(COALESCE(this.a, 1), 0)")).toBeNull();
+    expect(translateSpecFormula("this.a + COALESCE(this.b, 0)")).toBeNull();
+  });
 });

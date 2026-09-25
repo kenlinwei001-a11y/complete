@@ -1902,6 +1902,12 @@ const orderProps: PropertyDef[] = [
 ];
 const orderDerived: DerivedPropertyDef[] = [{ propKey: "value", formula: "qty * unitPrice", unit: "元", scale: "absolute" }];
 
+// WO-C0828-P1 R3′：`Line.utilPressure` 的 derivedProperties 实例声明**已撤**（R3 曾在此补
+// `[{propKey:"utilPressure", formula:"utilization"}]`）——根因修法让 runDerivations 直接消费
+// 规格层 `line_util_pressure`（`this.utilization`，ACTIVE），同一格两处各算一次就是第二份真相。
+// 且实例声明会在**播种期**被 runDerivations 物化（synthetic/service.ts 播完对象即跑一次），
+// 导致「清规格 ⇒ 格消失」的引擎归属判据（sim-real-cells ⓐ 臂）对 utilPressure 永久失效。
+
 const lineProps: PropertyDef[] = [
   { propKey: "lineId", dataType: "string", isPrimaryKey: true, unit: "dimensionless", scale: "absolute" },
   { propKey: "baseId", dataType: "ref", isPrimaryKey: false, unit: "dimensionless", scale: "absolute", refToTypeKey: "Base" },

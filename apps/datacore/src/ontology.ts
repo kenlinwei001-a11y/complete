@@ -22,6 +22,7 @@ import { DslError } from "./ruledsl.js";
 import type {
   AuthCtx,
   DerivationRun,
+  DerivationSpecRecord,
   DerivedPropertyDef,
   LinkTypeDef,
   ObjectInstance,
@@ -163,6 +164,40 @@ export function evalArithmetic(expr: string, props: Record<string, unknown>): nu
   const result = parseAdd();
   if (pos !== tokens.length) throw validationError("bad formula: trailing tokens");
   return result;
+}
+
+/**
+ * WO-C0828-P1 R3′ · 规格层 §2 DSL → evalArithmetic 方言桥（runDerivations 消费规格层用）。
+ *
+ * 规格层（`DerivationSpec`，治理编译面）与 `derivedProperties`（运行期重算面）方言不同
+ * （`this.x` + `out(L)/in(L)` vs 裸标识符 + `BY` 聚合）——seed-derivation-specs.ts 头注
+ * 明写「不互通」。本桥只译**自属性式子**（语义 1:1，与该头注同一判据）：
+ * - `this.` 前缀机械剥离；
+ * - 顶层 `COALESCE(inner, <数字>)` ⇒ inner 求值非有限（除零/NaN）时取 fallback；
+ * - 含 `out(`/`in(` 单跳导航聚合 ⇒ 返回 null（运行期不译，调用方诚实跳过——
+ *   这类式子需要链路求值器，翻过来就是编造口径）；
+ * - 嵌套/非顶层 COALESCE、括号不配平 ⇒ 返回 null（不猜）。
+ */
+export function translateSpecFormula(formula: string): { inner: string; fallback?: number } | null {
+  if (/\b(?:out|in)\s*\(/.test(formula)) return null;
+  // 函数调用一律拒译（evalArithmetic 只识数字/标识符/四则/括号）：spec 方言里聚合只剩
+  // AVG/SUM(out|in(...))，已被上一行拦住；这里兜底 COUNT/MAX 等他方言串与不认识的形状，
+  // 译出去就是编造口径。判据 = 「标识符紧跟 (」；纯分组括号（前头是运算符或串首）不误伤。
+  const hasCall = (s: string) => /[A-Za-z_][A-Za-z0-9_.]*\s*\(/.test(s);
+  const stripped = formula.replace(/\bthis\./g, "");
+  const m = stripped.match(/^COALESCE\((.*),\s*(-?\d+(?:\.\d+)?)\)$/s);
+  if (m) {
+    const inner = m[1]!;
+    if (/COALESCE\s*\(/.test(inner)) return null;
+    if (hasCall(inner)) return null;
+    const opens = (inner.match(/\(/g) ?? []).length;
+    const closes = (inner.match(/\)/g) ?? []).length;
+    if (opens !== closes) return null;
+    return { inner, fallback: Number(m[2]) };
+  }
+  if (/COALESCE\s*\(/.test(stripped)) return null;
+  if (hasCall(stripped)) return null;
+  return { inner: stripped };
 }
 
 function primaryKeyProp(type: ObjectTypeDef): string {
@@ -1547,10 +1582,21 @@ export class OntologyService {
     // 本体原子规格 §1：一次派生运行 = 一个写入批次，推进租户 epoch（snapshotVersion 锚点）。
     await this.repos.epochs.next(ctx.tenantId);
     try {
+      // WO-C0828-P1 R3′ · 运行期重算消费规格层（根因修法）：规格层是屏上出处章指认的单源
+      // （`STATE_VAR_VALUE_REFS → specKey`、播种期物化、证据层溯源同吃这一份），采纳杠杆
+      // 落库后的派生跟随必须吃同一份，否则式子要在 derivedProperties 里抄第二份 = 第二真相源。
+      const activeSpecs = await this.repos.derivationSpecs.list(ctx.tenantId, (s) => s.status === "ACTIVE");
+      const specsByType = new Map<string, DerivationSpecRecord[]>();
+      for (const s of activeSpecs) {
+        const arr = specsByType.get(s.targetType) ?? [];
+        arr.push(s);
+        specsByType.set(s.targetType, arr);
+      }
       order = this.topoOrder(types);
       for (const typeKey of order) {
         const type = byKey.get(typeKey);
-        if (!type || type.derivedProperties.length === 0) continue;
+        const typeSpecs = specsByType.get(typeKey) ?? [];
+        if (!type || (type.derivedProperties.length === 0 && typeSpecs.length === 0)) continue;
         const pk = primaryKeyProp(type);
         const objects = await this.repos.objects.listByType(ctx.tenantId, typeKey);
         const sourceCache = new Map<string, ObjectInstance[]>();
@@ -1572,6 +1618,30 @@ export class OntologyService {
             value = round(value, 6);
             if (obj.props[d.propKey] !== value) {
               obj.props[d.propKey] = value;
+              changed = true;
+            }
+          }
+          // 规格层后算、覆盖写：同一 (type,prop) 两层都有时以规格层 ACTIVE 式子为准
+          // （屏上出处指规格层，运行期必须与它同口径）。约束三条（保既有口径不破）：
+          // ① 聚合 DSL 不译跳过；② 缺格不补写（不新增 prop 格 ⇒ 6381/4183 格数不变）；
+          // ③ 单条坏式子跳过不炸整批（compileSpecs 不校验 deps，ACTIVE 可能带坏式子）。
+          for (const s of typeSpecs) {
+            const translated = translateSpecFormula(s.formula);
+            if (translated === null) continue;
+            if (!(s.targetProp in obj.props)) continue;
+            let value: number;
+            try {
+              value = evalArithmetic(translated.inner, obj.props);
+            } catch {
+              continue;
+            }
+            if (!Number.isFinite(value)) {
+              if (translated.fallback === undefined) continue;
+              value = translated.fallback;
+            }
+            value = round(value, 6);
+            if (obj.props[s.targetProp] !== value) {
+              obj.props[s.targetProp] = value;
               changed = true;
             }
           }
