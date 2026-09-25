@@ -1,0 +1,1322 @@
+
+> ontology-decision-platform@0.1.0 gates /Users/apple/deploy/wo-edge-wire
+> node scripts/run-gates.mjs scripts/check-merge-conflict-markers.mjs scripts/check-case-collision.mjs scripts/check-system-ontology.mjs scripts/check-ontology-anchors.mjs scripts/check-chain-closure.mjs scripts/check-debattery.mjs scripts/check-prd-ontology.mjs scripts/check-prd-coverage.mjs scripts/check-meta-sync.mjs scripts/check-resource-descriptor.mjs scripts/check-ontology-slice-coverage.mjs scripts/check-slice-connectivity.mjs scripts/check-loop-control.mjs scripts/check-arg-drop-seam.mjs scripts/check-function-signature.mjs scripts/check-solver-arg-key-drift.mjs scripts/check-scenario-slot-keys.mjs scripts/check-object-interface.mjs scripts/check-action-wiring.mjs scripts/check-outsource-redline.mjs scripts/check-boundary-singlesource.mjs scripts/check-chain-node-singlesource.mjs scripts/check-view-reachable.mjs scripts/check-ontology-descriptions.mjs scripts/check-deploy-governance.mjs scripts/check-migration-numbering.mjs scripts/check-no-raw-nul.mjs scripts/check-lever-binding-drift.mjs scripts/check-req-coverage.mjs scripts/check-ref-closure.mjs scripts/check-worktree-canonical.mjs scripts/check-backend-frontend-seam.mjs scripts/check-factlock-anchor.mjs scripts/check-gate-ledger.mjs scripts/check-dark-launch-integrity.mjs scripts/check-feature-default-parity.mjs scripts/check-dist-freshness.mjs scripts/check-redline-wired.mjs scripts/check-css-token-defined.mjs scripts/check-ui-first-layer.mjs scripts/check-text-legibility.mjs scripts/check-mock-fidelity.mjs scripts/check-coverage-blind.mjs scripts/check-prd-data-grounding.mjs scripts/check-solver-field-seam.mjs scripts/check-gate-exit-discipline.mjs scripts/check-lever-landing-exists.mjs scripts/check-carrier-has-instances.mjs scripts/check-agent-config-complete.mjs scripts/check-screen-value-provenance.mjs scripts/check-lever-prop-resolvable.mjs scripts/check-derived-recompute.mjs scripts/check-wo-anchors.mjs scripts/check-dbui-flow-order.mjs scripts/check-dev-jargon-onscreen.mjs scripts/check-baseline-writer-honesty.mjs scripts/check-sim-ux-criteria.mjs scripts/check-edge-active-mounts.mjs scripts/check-quantile-field-naming.mjs scripts/check-dsh-dormancy.mjs scripts/check-name-consistency.mjs scripts/check-harness-ux-splitaccount.mjs scripts/check-gate-roster-handcopied.mjs scripts/check-gate-reach.mjs scripts/check-typecheck-coverage.mjs scripts/check-claim-strength.mjs scripts/check-layout-legibility.mjs scripts/check-file-truncation.mjs scripts/check-ontology-s8-status.mjs scripts/check-ontology-s8-dedupe.mjs scripts/check-fact-usage.mjs
+
+✅ 门册金丝雀：从 package.json:scripts.gates 解出 71 道门 · 必中样例 check-merge-conflict-markers.mjs 在册 · 必不中样例 0 误咬
+
+══ 门链执行器 · 全跑不短路 ══  名册 71 道（全量）
+   单门超时 900000 ms · 三态：PASS 真跑绿 / FAIL 真跑红 / NOT-MEASURED **没跑成**
+
+环境前置体检 · 带 build 脚本的包 5 个（真值：apps/* / packages/*）· 已构建 5 个
+  ✓ 全部已构建 —— 因缺 dist 而 NOT-MEASURED 的门，本次一道都不该出现。
+
+[ 1/71] ✓ PASS         check-merge-conflict-markers.mjs           rc=0  8.1s
+[ 2/71] ✓ PASS         check-case-collision.mjs                   rc=0  0.5s
+[ 3/71] ✓ PASS         check-system-ontology.mjs                  rc=0  7.4s
+[ 4/71] ✗ FAIL         check-ontology-anchors.mjs                 rc=1  17.0s  · 门判负（RC=1）
+[ 5/71] ◌ NOT-MEASURED check-chain-closure.mjs                    rc=2  0.9s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[ 6/71] ✓ PASS         check-debattery.mjs                        rc=0  6.6s
+[ 7/71] ✓ PASS         check-prd-ontology.mjs                     rc=0  0.8s
+[ 8/71] ✓ PASS         check-prd-coverage.mjs                     rc=0  4.8s
+[ 9/71] ✓ PASS         check-meta-sync.mjs                        rc=0  0.4s
+[10/71] ◌ NOT-MEASURED check-resource-descriptor.mjs              rc=2  0.8s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[11/71] ◌ NOT-MEASURED check-ontology-slice-coverage.mjs          rc=2  0.7s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[12/71] ◌ NOT-MEASURED check-slice-connectivity.mjs               rc=2  0.7s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[13/71] ✓ PASS         check-loop-control.mjs                     rc=0  0.5s
+[14/71] ✓ PASS         check-arg-drop-seam.mjs                    rc=0  4.9s
+[15/71] ◌ NOT-MEASURED check-function-signature.mjs               rc=2  0.5s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[16/71] ◌ NOT-MEASURED check-solver-arg-key-drift.mjs             rc=2  0.6s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[17/71] ✓ PASS         check-scenario-slot-keys.mjs               rc=0  4.0s
+[18/71] ◌ NOT-MEASURED check-object-interface.mjs                 rc=2  0.5s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[19/71] ✓ PASS         check-action-wiring.mjs                    rc=0  0.5s
+[20/71] ✓ PASS         check-outsource-redline.mjs                rc=0  3.1s
+[21/71] ✓ PASS         check-boundary-singlesource.mjs            rc=0  12.6s
+[22/71] ✓ PASS         check-chain-node-singlesource.mjs          rc=0  32.4s
+[23/71] ✓ PASS         check-view-reachable.mjs                   rc=0  1.9s
+[24/71] ◌ NOT-MEASURED check-ontology-descriptions.mjs            rc=2  1.2s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[25/71] ✓ PASS         check-deploy-governance.mjs                rc=0  0.8s
+[26/71] ✗ FAIL         check-migration-numbering.mjs              rc=1  0.4s  · 门判负（RC=1）
+[27/71] ✗ FAIL         check-no-raw-nul.mjs                       rc=1  5.2s  · 门判负（RC=1）
+[28/71] ✓ PASS         check-lever-binding-drift.mjs              rc=0  2.4s
+[29/71] ✓ PASS         check-req-coverage.mjs                     rc=0  2.0s
+[30/71] ✓ PASS         check-ref-closure.mjs                      rc=0  1.2s
+[31/71] ✗ FAIL         check-worktree-canonical.mjs               rc=1  2.0s  · 门判负（RC=1）
+[32/71] ✗ FAIL         check-backend-frontend-seam.mjs            rc=1  77.9s  · 门判负（RC=1）
+[33/71] ✗ FAIL         check-factlock-anchor.mjs                  rc=1  15.5s  · 门判负（RC=1）
+[34/71] ✓ PASS         check-gate-ledger.mjs                      rc=0  1.6s
+[35/71] ◌ NOT-MEASURED check-dark-launch-integrity.mjs            rc=2  0.6s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[36/71] ✓ PASS         check-feature-default-parity.mjs           rc=0  0.8s
+[37/71] ✓ PASS         check-dist-freshness.mjs                   rc=0  0.6s
+[38/71] ✓ PASS         check-redline-wired.mjs                    rc=0  6.3s
+[39/71] ✗ FAIL         check-css-token-defined.mjs                rc=1  2.4s  · 门判负（RC=1）
+[40/71] ✗ FAIL         check-ui-first-layer.mjs                   rc=1  10.0s  · 门判负（RC=1）
+[41/71] ✗ FAIL         check-text-legibility.mjs                  rc=1  2.4s  · 门判负（RC=1）
+[42/71] ✓ PASS         check-mock-fidelity.mjs                    rc=0  47.0s
+[43/71] ✗ FAIL         check-coverage-blind.mjs                   rc=1  36.6s  · 门判负（RC=1）
+[44/71] ◌ NOT-MEASURED check-prd-data-grounding.mjs               rc=2  1.7s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[45/71] ✗ FAIL         check-solver-field-seam.mjs                rc=1  26.2s  · 门判负（RC=1）
+[46/71] ✓ PASS         check-gate-exit-discipline.mjs             rc=0  5.2s
+[47/71] ◌ NOT-MEASURED check-lever-landing-exists.mjs             rc=2  0.3s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[48/71] ◌ NOT-MEASURED check-carrier-has-instances.mjs            rc=2  0.5s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[49/71] ◌ NOT-MEASURED check-agent-config-complete.mjs            rc=2  0.3s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[50/71] ✓ PASS         check-screen-value-provenance.mjs          rc=0  21.0s
+[51/71] ◌ NOT-MEASURED check-lever-prop-resolvable.mjs            rc=2  0.5s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[52/71] ◌ NOT-MEASURED check-derived-recompute.mjs                rc=2  0.4s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[53/71] ✓ PASS         check-wo-anchors.mjs                       rc=0  0.3s
+[54/71] ✓ PASS         check-dbui-flow-order.mjs                  rc=0  0.1s
+[55/71] ✓ PASS         check-dev-jargon-onscreen.mjs              rc=0  11.9s
+[56/71] ✓ PASS         check-baseline-writer-honesty.mjs          rc=0  7.7s
+[57/71] ✓ PASS         check-sim-ux-criteria.mjs                  rc=0  0.3s
+[58/71] ✓ PASS         check-edge-active-mounts.mjs               rc=0  0.4s
+[59/71] ✓ PASS         check-quantile-field-naming.mjs            rc=0  0.3s
+[60/71] ✓ PASS         check-dsh-dormancy.mjs                     rc=0  7.7s
+[61/71] ✓ PASS         check-name-consistency.mjs                 rc=0  0.5s
+[62/71] ✓ PASS         check-harness-ux-splitaccount.mjs          rc=0  1.0s
+[63/71] ✓ PASS         check-gate-roster-handcopied.mjs           rc=0  0.7s
+[64/71] ✓ PASS         check-gate-reach.mjs                       rc=0  5.0s
+[65/71] ✓ PASS         check-typecheck-coverage.mjs               rc=0  90.4s
+[66/71] ✗ FAIL         check-claim-strength.mjs                   rc=1  2.9s  · 门判负（RC=1）
+[67/71] ◌ NOT-MEASURED check-layout-legibility.mjs                rc=2  0.1s  · 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+[68/71] ✓ PASS         check-file-truncation.mjs                  rc=0  2.4s
+[69/71] ✓ PASS         check-ontology-s8-status.mjs               rc=0  2.4s
+[70/71] ✓ PASS         check-ontology-s8-dedupe.mjs               rc=0  0.1s
+[71/71] ✓ PASS         check-fact-usage.mjs                       rc=0  9.4s
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-ontology-anchors.mjs  (rc=1)
+  判据：门判负（RC=1）
+· 本体锚点：共 522 个 `file:line`
+· 已校准（带 (symbol) 可机器核）：351 个 · 容差 ±40 行
+· 未校准存量：70 条 / 基线 70 条
+· import 行护栏：实查 501/522 条 · 坏锚点 0 条 · 金丝雀 26/26 全中（检测逻辑活着）
+  ⚠️ 另有 21 条**未受本护栏覆盖**（非"已确认干净"）：其中 20 条是裸文件名锚点路径不唯一（无 (symbol)·按既有设计记入未校准存量、不为此报红）；补上 (symbol) 或写全仓根相对路径即可纳入护栏。
+
+✗ 本体锚点校准门未通过：
+  - [LINE_DRIFT] 本体 L61 §### A. 数据接入域（DataCore） 锚点漂了 119 行：`apps/datacore/src/app.ts:7634 (projectPipelineOrder)` 声称 :7634，`projectPipelineOrder` 实际在 apps/datacore/src/app.ts:7753
+  - [LINE_DRIFT] 本体 L148 §### E. 求解/推演域（DataCore） 锚点漂了 50 行：`apps/datacore/src/app.ts:2057 (putTickState)` 声称 :2057，`putTickState` 实际在 apps/datacore/src/app.ts:2107
+  - [LINE_DRIFT] 本体 L306 §### I. 推演沙盘域（DataCore · 增量 0 本体先行 · 设计待落 锚点漂了 116 行：`apps/datacore/src/seed.ts:328 (demo_base_load_to_line_util)` 声称 :328，`demo_base_load_to_line_util` 实际在 apps/datacore/src/seed.ts:444
+  - [LINE_DRIFT] 本体 L345 §### I. 推演沙盘域（DataCore · 增量 0 本体先行 · 设计待落 锚点漂了 110 行：`apps/datacore/src/solvers/impediment-options.ts:542 (enumerateImpedimentOptions)` 声称 :542，`enumerateImpedimentOptions` 实际在 apps/datacore/src/solvers/impediment-options.ts:652
+  - [LINE_DRIFT] 本体 L345 §### I. 推演沙盘域（DataCore · 增量 0 本体先行 · 设计待落 锚点漂了 176 行：`apps/frontend-shell/src/views/sim/SandboxConsole.tsx:1966 (CandidateBlock)` 声称 :1966，`CandidateBlock` 实际在 apps/frontend-shell/src/views/sim/SandboxConsole.tsx:2142
+  - [LINE_DRIFT] 本体 L347 §### I. 推演沙盘域（DataCore · 增量 0 本体先行 · 设计待落 锚点漂了 312 行：`chain-impediment.ts:489 (origin)` 声称 :489，`origin` 实际在 apps/datacore/src/solvers/chain-impediment.ts:801
+  - [LINE_DRIFT] 本体 L1694 §### 采纳台账读侧链路 · `AdoptedMitigation` → `ri 锚点漂了 127 行：`apps/frontend-shell/src/views/sim/SandboxView.tsx:967 (onTick)` 声称 :967，`onTick` 实际在 apps/frontend-shell/src/views/sim/SandboxView.tsx:1094
+  - [LINE_DRIFT] 本体 L2866 §### 入库前复验链路 · 隔离域 → 三类冲突 → 人裁决 → 真值写入（WO 锚点漂了 108 行：`apps/datacore/src/app.ts:5477 (upsertLinkType)` 声称 :5477，`upsertLinkType` 实际在 apps/datacore/src/app.ts:5585
+  - [LINE_DRIFT] 本体 L3651 §## 4. 数据流与事件失效图（模块间数据关系的单一来源） 锚点漂了 95 行：`apps/datacore/src/app.ts:2823 (sim.perturbation_created)` 声称 :2823，`sim.perturbation_created` 实际在 apps/datacore/src/app.ts:2918
+  - [LINE_DRIFT] 本体 L3651 §## 4. 数据流与事件失效图（模块间数据关系的单一来源） 锚点漂了 95 行：`apps/datacore/src/app.ts:2754 (simApplyAtCurrentTick)` 声称 :2754，`simApplyAtCurrentTick` 实际在 apps/datacore/src/app.ts:2849
+  - [LINE_OUT_OF_RANGE] 本体 L3804 §## 7. 检测/门禁（改动必须过） 行号越界：apps/frontend-shell/src/views/sim/edgeActiveModel.ts:395（文件仅 371 行）
+  - [SYMBOL_GONE] 本体 L3804 §## 7. 检测/门禁（改动必须过） symbol `deriveBaseSnapshot` 在 apps/frontend-shell/src/views/sim/SandboxView.tsx 中已不存在（被改名/删除）—— 语义漂移，--update 不代劳，须人判新锚点
+  - [LINE_DRIFT] 本体 L3807 §## 7. 检测/门禁（改动必须过） 锚点漂了 43 行：`apps/datacore/src/synthetic/service.ts:2431 (derivationSpotChecks)` 声称 :2431，`derivationSpotChecks` 实际在 apps/datacore/src/synthetic/service.ts:2474
+  - [LINE_DRIFT] 本体 L3879 §## 7. 检测/门禁（改动必须过） 锚点漂了 196 行：`apps/datacore/src/repo/pg.ts:815 (runMigrations)` 声称 :815，`runMigrations` 实际在 apps/datacore/src/repo/pg.ts:1011
+  - [LINE_DRIFT] 本体 L3887 §## 7. 检测/门禁（改动必须过） 锚点漂了 326 行：`apps/datacore/src/solvers/chain-impediment.ts:1043 (ChainImpedimentSchema)` 声称 :1043，`ChainImpedimentSchema` 实际在 apps/datacore/src/solvers/chain-impediment.ts:1369
+  - [LINE_DRIFT] 本体 L3912 §## 7. 检测/门禁（改动必须过） 锚点漂了 163 行：`apps/frontend-shell/src/api/endpoints.ts:1555 (fetchDecisionTrace)` 声称 :1555，`fetchDecisionTrace` 实际在 apps/frontend-shell/src/api/endpoints.ts:1718
+  - [LINE_DRIFT] 本体 L3912 §## 7. 检测/门禁（改动必须过） 锚点漂了 88 行：`apps/frontend-shell/src/api/endpoints.ts:1028 (simCheckpoint)` 声称 :1028，`simCheckpoint` 实际在 apps/frontend-shell/src/api/endpoints.ts:1116
+  - [LINE_DRIFT] 本体 L3912 §## 7. 检测/门禁（改动必须过） 锚点漂了 166 行：`apps/frontend-shell/src/api/endpoints.ts:1407 (decideActionDraft)` 声称 :1407，`decideActionDraft` 实际在 apps/frontend-shell/src/api/endpoints.ts:1573
+  - [LINE_DRIFT] 本体 L3912 §## 7. 检测/门禁（改动必须过） 锚点漂了 119 行：`apps/datacore/src/app.ts:6691 (actions.submit)` 声称 :6691，`actions.submit` 实际在 apps/datacore/src/app.ts:6810
+  - [LINE_DRIFT] 本体 L3924 §## 7. 检测/门禁（改动必须过） 锚点漂了 77 行：`apps/frontend-shell/src/mocks/handlers.ts:4097 (linkTypes)` 声称 :4097，`linkTypes` 实际在 apps/frontend-shell/src/mocks/handlers.ts:4174
+  - [LINE_DRIFT] 本体 L3924 §## 7. 检测/门禁（改动必须过） 锚点漂了 588 行：`apps/datacore/src/synthetic/battery.ts:3595 (batteryLinkTypes)` 声称 :3595，`batteryLinkTypes` 实际在 apps/datacore/src/synthetic/battery.ts:4183
+  - [LINE_DRIFT] 本体 L3925 §## 7. 检测/门禁（改动必须过） 锚点漂了 77 行：`apps/frontend-shell/src/mocks/handlers.ts:4097 (linkTypes)` 声称 :4097，`linkTypes` 实际在 apps/frontend-shell/src/mocks/handlers.ts:4174
+  - [LINE_DRIFT] 本体 L3925 §## 7. 检测/门禁（改动必须过） 锚点漂了 588 行：`apps/datacore/src/synthetic/battery.ts:3595 (batteryLinkTypes)` 声称 :3595，`batteryLinkTypes` 实际在 apps/datacore/src/synthetic/battery.ts:4183
+  - [LINE_DRIFT] 本体 L3965 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 344 行：`apps/datacore/src/solvers/chain-impediment.ts:1144 (detectChainImpediments)` 声称 :1144，`detectChainImpediments` 实际在 apps/datacore/src/solvers/chain-impediment.ts:1488
+  - [LINE_DRIFT] 本体 L3965 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 57 行：`packages/contracts/src/chain-sim.ts:1231 (ChainImpedimentSchema)` 声称 :1231，`ChainImpedimentSchema` 实际在 packages/contracts/src/chain-sim.ts:1288
+  - [LINE_DRIFT] 本体 L3966 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 77 行：`apps/frontend-shell/src/mocks/handlers.ts:4097 (linkTypes)` 声称 :4097，`linkTypes` 实际在 apps/frontend-shell/src/mocks/handlers.ts:4174
+  - [LINE_DRIFT] 本体 L3966 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 588 行：`apps/datacore/src/synthetic/battery.ts:3595 (batteryLinkTypes)` 声称 :3595，`batteryLinkTypes` 实际在 apps/datacore/src/synthetic/battery.ts:4183
+  - [LINE_DRIFT] 本体 L3967 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 167 行：`apps/frontend-shell/src/api/endpoints.ts:2499 (fetchProcessInstance)` 声称 :2499，`fetchProcessInstance` 实际在 apps/frontend-shell/src/api/endpoints.ts:2666
+  - [LINE_DRIFT] 本体 L3967 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 167 行：`apps/frontend-shell/src/api/endpoints.ts:2520 (advanceProcessInstance)` 声称 :2520，`advanceProcessInstance` 实际在 apps/frontend-shell/src/api/endpoints.ts:2687
+  - [LINE_DRIFT] 本体 L3968 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 166 行：`apps/frontend-shell/src/api/endpoints.ts:1407 (decideActionDraft)` 声称 :1407，`decideActionDraft` 实际在 apps/frontend-shell/src/api/endpoints.ts:1573
+  - [LINE_DRIFT] 本体 L3968 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 119 行：`apps/datacore/src/app.ts:6691 (actions.submit)` 声称 :6691，`actions.submit` 实际在 apps/datacore/src/app.ts:6810
+  - [LINE_DRIFT] 本体 L3968 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 95 行：`apps/datacore/src/app.ts:2678 (unknownPropagationRuleKeys)` 声称 :2678，`unknownPropagationRuleKeys` 实际在 apps/datacore/src/app.ts:2773
+  - [LINE_DRIFT] 本体 L3968 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 119 行：`apps/datacore/src/app.ts:7418 (processRuntime.create)` 声称 :7418，`processRuntime.create` 实际在 apps/datacore/src/app.ts:7537
+  - [LINE_DRIFT] 本体 L3968 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 523 行：`apps/datacore/src/seed.ts:1681 (DEMO_PROCESS_DEFINITIONS)` 声称 :1681，`DEMO_PROCESS_DEFINITIONS` 实际在 apps/datacore/src/seed.ts:2204
+  - [LINE_DRIFT] 本体 L3971 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 49 行：`apps/datacore/src/ontology-core.ts:640 (addNode)` 声称 :640，`addNode` 实际在 apps/datacore/src/ontology-core.ts:689
+  - [LINE_DRIFT] 本体 L3972 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 108 行：`apps/datacore/src/app.ts:5203 (sliceReferences)` 声称 :5203，`sliceReferences` 实际在 apps/datacore/src/app.ts:5311
+  - [LINE_DRIFT] 本体 L3974 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 51 行：`apps/datacore/src/ontology-core.ts:596 (resolveTemplate)` 声称 :596，`resolveTemplate` 实际在 apps/datacore/src/ontology-core.ts:647
+  - [LINE_DRIFT] 本体 L4059 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 119 行：`apps/datacore/src/app.ts:6860 (assertValidExpression)` 声称 :6860，`assertValidExpression` 实际在 apps/datacore/src/app.ts:6979
+  - [LINE_DRIFT] 本体 L4083 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 342 行：`apps/datacore/src/synthetic/battery.ts:994 (capexScenario)` 声称 :994，`capexScenario` 实际在 apps/datacore/src/synthetic/battery.ts:1336
+  - [LINE_DRIFT] 本体 L4086 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 56 行：`apps/frontend-shell/src/mocks/handlers.ts:3444 (PORT_TRANSFERS)` 声称 :3444，`PORT_TRANSFERS` 实际在 apps/frontend-shell/src/mocks/handlers.ts:3500
+  - [LINE_DRIFT] 本体 L4086 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 657 行：`apps/datacore/src/synthetic/battery.ts:6851 (transferId)` 声称 :6851，`transferId` 实际在 apps/datacore/src/synthetic/battery.ts:7508
+  - [LINE_DRIFT] 本体 L4086 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 655 行：`apps/datacore/src/synthetic/battery.ts:6188 (rngShip)` 声称 :6188，`rngShip` 实际在 apps/datacore/src/synthetic/battery.ts:6843
+  - [LINE_DRIFT] 本体 L4086 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 616 行：`apps/datacore/src/synthetic/battery.ts:4823 (wipLots)` 声称 :4823，`wipLots` 实际在 apps/datacore/src/synthetic/battery.ts:5439
+  - [LINE_DRIFT] 本体 L4087 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 196 行：`apps/datacore/src/repo/pg.ts:815 (runMigrations)` 声称 :815，`runMigrations` 实际在 apps/datacore/src/repo/pg.ts:1011
+  - [LINE_DRIFT] 本体 L4089 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 110 行：`apps/datacore/src/solvers/impediment-options.ts:542 (enumerateImpedimentOptions)` 声称 :542，`enumerateImpedimentOptions` 实际在 apps/datacore/src/solvers/impediment-options.ts:652
+  - [LINE_DRIFT] 本体 L4089 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 176 行：`apps/frontend-shell/src/views/sim/SandboxConsole.tsx:1966 (CandidateBlock)` 声称 :1966，`CandidateBlock` 实际在 apps/frontend-shell/src/views/sim/SandboxConsole.tsx:2142
+  - [LINE_DRIFT] 本体 L4089 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 176 行：`apps/frontend-shell/src/views/sim/SandboxConsole.tsx:1855 (CandidateAbsenceBlock)` 声称 :1855，`CandidateAbsenceBlock` 实际在 apps/frontend-shell/src/views/sim/SandboxConsole.tsx:2031
+  - [LINE_DRIFT] 本体 L4089 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 176 行：`apps/frontend-shell/src/views/sim/SandboxConsole.tsx:1966 (CandidateBlock)` 声称 :1966，`CandidateBlock` 实际在 apps/frontend-shell/src/views/sim/SandboxConsole.tsx:2142
+  - [LINE_DRIFT] 本体 L4089 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 176 行：`apps/frontend-shell/src/views/sim/SandboxConsole.tsx:1855 (CandidateAbsenceBlock)` 声称 :1855，`CandidateAbsenceBlock` 实际在 apps/frontend-shell/src/views/sim/SandboxConsole.tsx:2031
+  - [LINE_DRIFT] 本体 L4089 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 85 行：`apps/datacore/src/solvers/impediment-options.ts:567 (enumerateImpedimentOptions)` 声称 :567，`enumerateImpedimentOptions` 实际在 apps/datacore/src/solvers/impediment-options.ts:652
+  - [LINE_DRIFT] 本体 L4089 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 344 行：`apps/datacore/src/solvers/chain-impediment.ts:1144 (detectChainImpediments)` 声称 :1144，`detectChainImpediments` 实际在 apps/datacore/src/solvers/chain-impediment.ts:1488
+  - [LINE_DRIFT] 本体 L4092 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 50 行：`apps/datacore/src/app.ts:2058 (sim.session_created)` 声称 :2058，`sim.session_created` 实际在 apps/datacore/src/app.ts:2108
+  - [LINE_DRIFT] 本体 L4092 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 50 行：`apps/datacore/src/app.ts:2155 (putSession)` 声称 :2155，`putSession` 实际在 apps/datacore/src/app.ts:2205
+  - [LINE_DRIFT] 本体 L4092 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 50 行：`apps/datacore/src/app.ts:2049 (parentCheckpointId)` 声称 :2049，`parentCheckpointId` 实际在 apps/datacore/src/app.ts:2099
+  - [LINE_DRIFT] 本体 L4092 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 95 行：`apps/datacore/src/app.ts:2884 (listCheckpoints)` 声称 :2884，`listCheckpoints` 实际在 apps/datacore/src/app.ts:2979
+  - [LINE_DRIFT] 本体 L4092 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 87 行：`apps/datacore/src/repo/repo.ts:422 (listCheckpoints)` 声称 :422，`listCheckpoints` 实际在 apps/datacore/src/repo/repo.ts:509
+  - [LINE_DRIFT] 本体 L4096 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 108 行：`apps/datacore/src/app.ts:4187 (assembleCertification)` 声称 :4187，`assembleCertification` 实际在 apps/datacore/src/app.ts:4295
+  - [LINE_DRIFT] 本体 L4097 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 108 行：`apps/datacore/src/app.ts:4447 (snapKind)` 声称 :4447，`snapKind` 实际在 apps/datacore/src/app.ts:4555
+  - [LINE_DRIFT] 本体 L4100 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 655 行：`apps/datacore/src/synthetic/battery.ts:5953 (oee_current)` 声称 :5953，`oee_current` 实际在 apps/datacore/src/synthetic/battery.ts:6608
+  - [LINE_DRIFT] 本体 L4113 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 77 行：`apps/frontend-shell/src/mocks/handlers.ts:6203 (path)` 声称 :6203，`path` 实际在 apps/frontend-shell/src/mocks/handlers.ts:6280
+  - [LINE_DRIFT] 本体 L4120 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 355 行：`apps/datacore/src/synthetic/battery.ts:1812 (demandSegmentProps)` 声称 :1812，`demandSegmentProps` 实际在 apps/datacore/src/synthetic/battery.ts:2167
+  - [LINE_DRIFT] 本体 L4143 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 116 行：`apps/datacore/src/seed.ts:328 (demo_base_load_to_line_util)` 声称 :328，`demo_base_load_to_line_util` 实际在 apps/datacore/src/seed.ts:444
+  - [LINE_DRIFT] 本体 L4143 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 588 行：`apps/datacore/src/synthetic/battery.ts:3608 (line_belongs_to_base)` 声称 :3608，`line_belongs_to_base` 实际在 apps/datacore/src/synthetic/battery.ts:4196
+  - [LINE_DRIFT] 本体 L4144 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 43 行：`apps/datacore/src/synthetic/service.ts:2058 (graphView)` 声称 :2058，`graphView` 实际在 apps/datacore/src/synthetic/service.ts:2101
+  - [LINE_DRIFT] 本体 L4152 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 333 行：`apps/datacore/src/synthetic/battery.ts:2782 (PROP_DISPLAY_NAMES)` 声称 :2782，`PROP_DISPLAY_NAMES` 实际在 apps/datacore/src/synthetic/battery.ts:3115
+  - [LINE_DRIFT] 本体 L4157 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 45 行：`apps/datacore/src/ontology.ts:1531 (runDerivations)` 声称 :1531，`runDerivations` 实际在 apps/datacore/src/ontology.ts:1576
+  - [LINE_DRIFT] 本体 L4157 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 43 行：`apps/datacore/src/synthetic/service.ts:2431 (derivationSpotChecks)` 声称 :2431，`derivationSpotChecks` 实际在 apps/datacore/src/synthetic/service.ts:2474
+  - [LINE_DRIFT] 本体 L4157 §## 8. 已知断点登记（截至 0614 全链审核） 锚点漂了 45 行：`apps/datacore/src/ontology.ts:1531 (runDerivations)` 声称 :1531，`runDerivations` 实际在 apps/datacore/src/ontology.ts:1576
+  - [ANCHOR_DELETED] 基线中的已校准锚点消失了：apps/datacore/src/app.ts::scopeActions —— 不许为了变绿删锚点（本体锚点是"大脑的索引"）
+  - [ANCHOR_DELETED] 基线中的已校准锚点消失了：apps/datacore/src/domain.ts::ActionTypeRecord —— 不许为了变绿删锚点（本体锚点是"大脑的索引"）
+  - [ANCHOR_DELETED] 基线中的已校准锚点消失了：apps/datacore/src/sim/propagation.ts::propagateTick —— 不许为了变绿删锚点（本体锚点是"大脑的索引"）
+
+  修法：
+    · 66 条为**行号漂移 / 锚点压在 import 行**（机械） → `node scripts/check-ontology-anchors.mjs --update` 一键校准，diff 只有行号
+    · SYMBOL_GONE / FILE_MISSING / PATH_AMBIGUOUS 为**语义漂移** → 人工改锚点指向新位置（--update 刻意不代劳）
+    · IMPORT_LINE_ANCHOR：锚点指着一句 import（跳过去看不到接线）→ 改指该 symbol 的**定义处或接线点**；
+      不带 (symbol) 的裸锚点无法自动重算，须人工补 `path:line (symbol)` 后再 `--update`。
+    · SYMBOL_ONLY_IN_IMPORT：该文件只是转口（符号只在 import 行出现）→ 锚点须改指真正定义/使用它的文件。
+    · 新写锚点请带 symbol：`apps/agentcore/src/agent/loop.ts:452 (degrade)`
+    · ⚠️ 在本体正文里**举例**提某个 file:line 时别写进反引号——抽取器不区分「举例」和「锚点」，
+      会把它当成真锚点校验（写成「`x.ts` 第 N 行」即可）。
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-migration-numbering.mjs  (rc=1)
+  判据：门判负（RC=1）
+· 迁移号唯一门：扫描 2 个 migrations 目录 · 共 58 个迁移文件 · 撞号组 2
+· apps/agentcore/migrations：14 个迁移 · 编号 001…014 · 撞号组 0 · 跳空 无 · **下一个可用号 015**
+  · apps/datacore/migrations 编号 013：2 个文件（存量豁免）— 013_data_builder.sql , 013_pipeline.sql
+· apps/datacore/migrations：44 个迁移 · 编号 001…042 · 撞号组 2 · 跳空 无 · **下一个可用号 043**
+
+✗ migration-numbering:check 未通过（1 条）：
+  - 【编号撞车】apps/datacore/migrations 编号 041 被 2 个文件同时占用：
+      1. 041_ontology_graph.sql
+      2. 041_sim_session_base_provenance.sql
+    迁移器（apps/*/src/**/pg.ts runMigrations）以**完整文件名**去重并排序：
+      · 去重键是文件名 ⇒ 这 2 个**全都会跑**（不是互相覆盖）；
+      · 排序键是文件名 ⇒ 上面就是它们在**全新库**上的真实执行顺序，由编号后那段文字的字典序决定，与依赖意图无关；
+      · 老库上已跑过的会被跳过 ⇒ **老库按并线时间、新库按字典序，两者可能相反**（"我这儿好好的"由此而来）。
+    修法：给后到的那个改成**尚未占用的编号**（见下方各目录的下一个可用号），不要动已并线/已部署的那个。
+
+  ⚠ 为什么这条必须红：迁移号是**执行顺序的唯一表达**。同号不同内容时，顺序由文件名字典序偶然决定，
+    而不是由依赖关系决定 —— 今天能跑通是运气（本仓已有真实跨文件顺序依赖：
+    ts_points 由 002_addendum.sql 建表、由 007_lived_in.sql ALTER）。且 pg 模式**启动即自动迁移**，
+    没有人工确认环节能兜住。
+  ⚠ 不要用"加进 KNOWN_DUPLICATES"来消红：那个常量是**存量清单**，不是逃生舱。
+    新撞号一律改号——改号成本是一次重命名，撞号成本是一次线上顺序不可复现。
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-no-raw-nul.mjs  (rc=1)
+  判据：门判负（RC=1）
+❌ no-raw-nul: 2 个文件含裸 NUL 字节 —— git 会把它们当二进制，diff 不可复审
+   apps/datacore/src/sim/explain-slice.ts:164  （共 3 处）
+   scripts/ontology-index.mjs:736  （共 8 处）
+
+修法：把裸字节换成等价转义（行为逐字节不变，diff 恢复可读）——
+   TS/JS 模板串或字符串里写 \u0000，例如 `${a}\u0000${b}`
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-worktree-canonical.mjs  (rc=1)
+  判据：门判负（RC=1）
+金丝雀：解析到 81 个 worktree · 当前分支 = claude/inspiring-gates-aqczjg · 祖先判定器双向有效 · CI 判据双向有效（好样例 0 问题 / 坏样例各 1、1 问题）⇒ 解析器有效
+
+🔴 worktree-canonical:check 失败（2 项）
+
+   · 主工作目录 /Users/apple/deploy/complete 当前在分支 `wo-sim-options-p1`，不是 canonical `claude/inspiring-gates-aqczjg`。
+      ⚠️ 这正是 2026-08-09 那次「push 成功但 canonical 纹丝不动」的前置条件：
+         在别名分支上敲 `git push origin claude/inspiring-gates-aqczjg` 推的是**那个同名本地 ref**，不是你的 HEAD。
+      修法：git checkout claude/inspiring-gates-aqczjg && git merge --ff-only origin/claude/inspiring-gates-aqczjg
+      （若 canonical 被别的 worktree 占着，先按下面第②条处理。）
+
+   · worktree /Users/apple/deploy/wo-edge-wire 占着 canonical 分支 `claude/inspiring-gates-aqczjg`，主工作目录因此上不来。
+      ⚠️ 拆它之前必须先定性，不许直接删（本仓 2026-08-09 实操路径）：
+         git -C <path> status --porcelain            # 有没有未提交改动
+         git -C <path> write-tree                    # 暂存区写成 tree
+         git log --all --format=%T | grep <tree>      # 该 tree 在历史里出现过 ⇒ 零独有内容
+         git commit-tree <tree> -p <HEAD> -m "forensic" && git tag forensic/... <sha>   # 兜底快照
+      三步都过了，再 git worktree remove --force <path>。
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-backend-frontend-seam.mjs  (rc=1)
+  判据：门判负（RC=1）
+· 金丝雀 31/31 全中（词法 2 · SSE 抽取 4 · 路由 8 · 消费判据 5 · baseline 1 · exempt 1 · method 7 · 通配 3）——抽取器在真源码上有效，下面的否定结论才有资格被相信。
+· 载体① SSE 字段：后端 emit 出 43 个不同字段（143 处发点 · 变量 payload 未解析 12 处，其字段由契约类型管辖） · 前端零消费 3（基线 3 · 新增 0 · 已修复 0）
+· 载体② HTTP 端点：后端注册 563 条（结构性豁免 12）· 前端 URL 字面量 359 条 · 前端零调用 151（基线 139 · 新增 12 · 已修复 0）
+· 方法口径（WO-SEAM-GATE-METHOD）：前端已识别调用位 396 处 → 方法+路径 393 条 · **方法未知**的路径 9 条（选项是变量/含展开/字面量不在调用位上 ⇒ 对该路径所有方法沿用旧口径豁免） · 调用位 URL 切不出 v1 路径 12 处
+· ⚠ 口径升级暴露的**存量** 14 条（旧口径只比路径 ⇒ 判「已接」；新口径比方法+路径 ⇒ 判「零调用」） —— 逐条见 `--explain-method`。这些**不是新增违规**，是此前隐身的存量。
+· 通配口径（WO-BEFE-WILDCARD-CLAIM）：整段通配只吃通配/段内 glob（不吃字面段，两个方向都不吃） · 无同方法参数归属的通配按「动作选择子」兜底旧宽松口径（残余失明半径 1 条，逐条见 `--explain-wildcard`） · ⚠ 收紧暴露的**存量** 1 条（宽松通配判「已接」⇒ 严格通配判「零调用」）—— 逐条见 `--explain-wildcard`，不是新增违规
+· 散文位剔除（欠账 #174）：前端生产代码里判为散文的字符串 9484 条，其中写着 /a|b|api/v1/ 路由的归一路径 8 条 —— 一律**不**计作调用方；其中 4 条无任何真 URL 串佐证（/a/v1/sim/sessions/{id}/perturbations , /a/v1/sim/sessions/{id}/tick , /a/v1/sop-versions , /a/v1/history/bundle）。
+· 结构性豁免逐条点名（7 条规则 → 12 条端点）——「豁免≠隐身」，每条今天命中了谁一律上屏：
+    /^\/(healthz|readyz|metrics)$/                 → /healthz , /metrics , /readyz
+                                                     理由：容器探活/指标端点·由 compose 与 nginx 消费，非前端
+    /^\/[ab]\/v1\/(healthz|readyz)$/               → /a/v1/healthz , /a/v1/readyz , /b/v1/healthz , /b/v1/readyz
+                                                     理由：网关前缀下的探活别名·同上（刻意不含 metrics：带前缀的 metrics 是业务端点，见上方注释）
+    /\/internal\//                                 → /b/v1/internal/invalidate , /b/v1/internal/scaffold
+                                                     理由：服务间内部钩子（B←A 事件失效等）·SERVICE_TOKEN 凭证，前端一律 403
+    /\/\.well-known\//                             → /a/v1/.well-known/jwks.json
+                                                     理由：认证基础设施（JWKS 等）·由 AgentCore 验签侧消费，不经前端
+    /\/jwks/                                       → /a/v1/.well-known/jwks.json
+                                                     理由：JWKS 公钥集·服务间验签用
+    /^\/a\/v1\/references\/report$/                → /a/v1/references/report
+                                                     理由：服务间引用上报·SERVICE_TOKEN 专用（见 CLAUDE.md 服务间凭证一节）
+    /\/credential$/                                → /a/v1/llm-providers/*/credential
+                                                     理由：凭据读取·SERVICE_TOKEN 专用，no-secrets-echo 纪律禁止前端触达
+
+✗ befe-seam:check 未通过（12 条新增接缝缺口 · 棘轮只许降不许升）：
+  - 载体② 新增「后端注册了·前端零调用」端点 `GET /a/v1/calibration/gate`（apps/datacore/src/app.ts:8149）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `GET /a/v1/calibration/realized`（apps/datacore/src/app.ts:8141）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `GET /a/v1/ontology/derivation-specs/*/value-runs`（apps/datacore/src/app.ts:6600）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `GET /a/v1/sim/sessions`（apps/datacore/src/app.ts:2151）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `POST /a/v1/calibration/realized`（apps/datacore/src/app.ts:8127）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `POST /a/v1/calibration/realized/pair`（apps/datacore/src/app.ts:8145）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `POST /a/v1/sim/live-scenarios/*/end`（apps/datacore/src/app.ts:4673）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `POST /a/v1/sim/live-scenarios/*/pause`（apps/datacore/src/app.ts:4668）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `POST /a/v1/sim/optimize-pareto/by-proposal`（apps/datacore/src/app.ts:3507）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `POST /b/v1/dsh/tool-execute`（apps/agentcore/src/server.ts:2229）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `POST /b/v1/governance/adjudicate`（apps/agentcore/src/server.ts:2169）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+  - 载体② 新增「后端注册了·前端零调用」端点 `POST /b/v1/sim/propose-candidates`（apps/agentcore/src/server.ts:2631）
+      → 后端开了口子没人用。修：前端 apps/frontend-shell/src/api/endpoints.ts 接上；
+        或属结构性非前端端点（探活/服务间/认证基础设施）→ 加进本脚本 ROUTE_EXEMPTIONS 并写明理由；
+        或确属暂不接 → 人手加进 scripts/backend-frontend-seam-baseline.json 的 endpoints。
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-factlock-anchor.mjs  (rc=1)
+  判据：门判负（RC=1）
+· 扫描面（现算）：907 个测试文件 · 金丝雀 13/13 命中 · 来历样例 命中
+· 位置锚：现存 17 条 · 基线豁免 16 条 · 新增 1 条 · 基线已失效 0 条
+
+✗ factlock-anchor:check 未通过（新增 1 条位置锚事实锁）：
+  - apps/frontend-shell/test/decision-console-model.test.ts:548  正向 toContain("events")  ← 写死锚点 DecisionConsoleView.tsx
+      失败文案："金丝雀：真吃事件的那一路，实参里必须有 events"
+      key: apps/frontend-shell/test/decision-console-model.test.ts#5ad7d938e73d0b65
+
+  修法（照 apps/frontend-shell/test/stale-claims.seam.test.ts §3）：
+    ① 扫**整棵源码树**，别写死单个文件；
+    ② `stripComments` 剥注释 —— 注释里提一嘴不算「代码里有」；
+    ③ 排除声明式：`/(?<!function\s)\bfoo\s*\(/` —— 光有定义是「没接线」不是「在调用」；
+    ④ 两条金丝雀与主逻辑共用同一份实现。
+  若这条**位置就是事实本身**（如「这个 CSS 模块必须定义某类」「gate.sh 里必须挂着某道门」），
+  把上面的 key 连同 why/verdict 登记进 scripts/factlock-anchor-baseline.json。
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-css-token-defined.mjs  (rc=1)
+  判据：门判负（RC=1）
+扫描 377 个源文件 · 已定义令牌 95 个 · 金丝雀 6/6 命中
+
+🔴 3 个**幽灵令牌**：被 var() 无兜底引用，却全仓无定义。
+   后果不是「没上色」而是「取继承值」——可继承属性（color/fill）会一路继承到黑。
+
+   --text
+      ← apps/frontend-shell/src/views/sim/SandboxConsole.module.css
+   --muted-txt   （疑似想写：--txt / --muted / --muted2）
+      ← apps/frontend-shell/src/views/sim/SandboxView.tsx
+   --txt-dim   （疑似想写：--txt / --seg-active-txt / --accent-txt / --ok-txt）
+      ← apps/frontend-shell/src/views/sim/unified/console0828/Console0828.module.css
+
+   修：改成真令牌名，或显式写 fallback `var(--x, <具体色值>)` 表明是有意为之。
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-ui-first-layer.mjs  (rc=1)
+  判据：门判负（RC=1）
+
+── 存量榜 · 第一层最重的 12 页（docs/CONVENTION-ui-information-layering.md）────────────────
+   ⚠ 本榜**不进判据**：门是棘轮（只报变差），本榜报的是**现在有多差**——两者不是一个命题。
+   第一层  降层  降层率  口径  长说明  字号   文件
+      211    41   16.3%     0       0     3   views/sim/GlobalSimView.tsx （现 212）
+      205    81   28.3%     1       5     3   views/RiskBoardView.tsx （现 221）
+      174   144   45.3%     0       0     2   views/sim/SandboxConsole.tsx （现 183）
+      158    29   15.5%     0       3     3   pages/admin/DataBuilderPage.tsx （现 159）
+      148     5    3.3%     3       5     3   views/sim/SopBalanceView.tsx （现 156）
+      127    45   26.2%     0       0     3   views/sim/ProjectSimView.tsx
+      120    32   21.1%     0       0     3   views/DashboardView.tsx （现 126）
+      101     6    5.6%     0       1     3   pages/admin/AgentsPage.tsx （现 161）
+      101     3    2.9%     0       7     3   views/sim/InspectorNodePanel.tsx
+       89     6    6.3%     0       1     2   views/plan/OrderChainView.tsx （现 135）
+       83     2    2.4%     0       3     3   views/sim/ChainImpedimentView.tsx
+       78     1    1.3%     0       9     2   views/cleanroom/CleanroomAttrView.tsx （现 95）
+   全仓（基线 95 页）：第一层 4040 · 降层 762 ⇒ **降层率 15.9%**
+   **38 页 deferred=0（从没降过层）** —— 一个总数答不了这件事，故单列。　另有 118 个文件在 `unlisted` 段（第一层合计 3143 块，受同一套棘轮 + 硬上限，不在本榜）。
+   优先级：formula（违规 R-UI-3）> sizes>3（违规 R-UI-2）> prose > first 纯数量。
+❌ ui-first-layer:check 未通过（84 条）
+
+  · 【D7 棘轮松弛】apps/frontend-shell/src/components/Answer/KitProcurementLegs.tsx（files）基线**高于**实测：formula 1>0 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D1 棘轮】apps/frontend-shell/src/components/History/HistoryPanel.tsx 第一层信息块 12 → 13（+1），而第二层/浮层 0 → 0 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D7 棘轮松弛】apps/frontend-shell/src/components/QueryDock/ChatFlow.tsx（unlisted）基线**高于**实测：sizes 3>2 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/components/QueryDock/ThinkRow.tsx（unlisted）基线**高于**实测：sizes 3>2 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/components/QueryDock/ToolCallTree.tsx（unlisted）基线**高于**实测：sizes 3>2 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D1 棘轮】apps/frontend-shell/src/components/ScenarioLauncher/HomePage.tsx 第一层信息块 10 → 15（+5），而第二层/浮层 0 → 0 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D1 棘轮】apps/frontend-shell/src/components/ui/ErrorBoundary.tsx 第一层信息块 4 → 7（+3），而第二层/浮层 0 → 0 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/components/ui/ErrorBoundary.tsx 第一层长说明串（≥24 字）0 → 1：L66 "，可以直接从左边导航继续用； 这一页要能用，需要修复后端返回的数据或本页代码。…"　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/components/ui/ErrorBoundary.tsx 字号层级 1 → 2（12px 13px）
+  · 【D1 棘轮】apps/frontend-shell/src/pages/ShellLayout.tsx 第一层信息块 18 → 19（+1），而第二层/浮层 4 → 4 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/pages/admin/AgentsPage.tsx 第一层长说明串（≥24 字）1 → 3：L832 "版本不可改（不可变发布语义）——改内核/任何字段走派生：…" · L863 "留空则该 Agent 跟随「用途绑定矩阵」的 agent 用途模型（与矩阵保持一…" · L875 "DSH = 已验收的外部运行时（全仓缺省休眠，按 Agent 开通）；仅对新运行…"　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D1 棘轮】apps/frontend-shell/src/pages/admin/BoundaryPage.tsx 第一层信息块 19 → 36（+17），而第二层/浮层 0 → 0 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/pages/admin/BoundaryPage.tsx 第一层长说明串（≥24 字）0 → 2：L108 "数据源：边界册影响面（本次读取的即时值，不走缓存）…" · L109 "· 本页只读：改册值 = 改代码，经 boundary-singlesource…"　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/pages/admin/BoundaryPage.tsx 字号层级 1 → 4（11.5px 11px 12px 20px）
+  · 【D1 棘轮】apps/frontend-shell/src/pages/admin/CalibrationPage.tsx 第一层信息块 45 → 51（+6），而第二层/浮层 1 → 1 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/pages/admin/CalibrationPage.tsx 字号层级 2 → 4（11px 12px 13px 16px）
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/pages/admin/ConnectionsPage.tsx 字号层级 2 → 3（11px 12px 16px）
+  · 【D1 棘轮】apps/frontend-shell/src/pages/admin/InterfacesPage.tsx 第一层信息块 79 → 80（+1），而第二层/浮层 0 → 0 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/pages/admin/InterfacesPage.tsx 第一层长说明串（≥24 字）8 → 9：L194 "接口 = 一族类型共享的业务契约（多态抽象·组合优于继承：只声明要求、不注入字段…" · L196 "兑现：声明实现却没长出要求的属性/行动/函数 ⇒ 本体发布被拒并逐条点名。…" · L215 "assertInterfaceConformance…"　…另有 6 处未列出（本条用 --explain <file> 看全）　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/pages/admin/ModelingPage.tsx 第一层长说明串（≥24 字）0 → 1：L245 "数据源：本体已发布快照 · 计数为本次读取的即时值，非缓存…"　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/pages/admin/ModelingPage.tsx 字号层级 4 → 8（10px 11.5px 11px 12.5px 12px 14px 16px 20px）
+  · 【新文件·R-UI-2】apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx 字号 5 级 > 3（11.5px 11px 12px 13.5px 16px）
+  · 【新文件·R-UI-3】apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx 第一层有 1 处口径/公式，应进 `?` 浮层：L1347 "跳×"
+  · 【D2 棘轮·R-UI-3】apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx 第一层口径/公式 0 → 1：L1347 "跳×"
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx 第一层长说明串（≥24 字）7 → 15：L802 "⚠ 未选「由哪个属性实现」⇒ 这条边只是一句声明，…" · L954 "（&gt;0 时后端拒绝下线，409 逐条列出）…" · L1327 "—— 下面的按钮仍然可用，但你是在没有波及面的情况下按的。…"　…另有 12 处未列出（本条用 --explain <file> 看全）　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx 字号层级 3 → 5（11.5px 11px 12px 13.5px 16px）
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/pages/admin/QuarantinePage.tsx 第一层长说明串（≥24 字）1 → 2：L63 "接入/对象化时无法落地的异常行在此隔离（不污染主数据）。修复源后「重入」走正门，…" · L122 "为什么这一行可以作废？例如：源系统重复录入，已在上游删除…"　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/pages/admin/QuarantinePage.tsx 字号层级 2 → 3（11px 12px 16px）
+  · 【D1 棘轮】apps/frontend-shell/src/views/BaseOutlookPanel.tsx 第一层信息块 35 → 37（+2），而第二层/浮层 2 → 2 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/views/BaseOutlookPanel.tsx 字号层级 2 → 3（11px 12px 13px）
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/BaseOutlookPanel.tsx（files）基线**高于**实测：formula 1>0 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D1 棘轮】apps/frontend-shell/src/views/DashboardView.tsx 第一层信息块 120 → 126（+6），而第二层/浮层 32 → 32 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/views/DashboardView.tsx 字号层级 3 → 4（11px 12px 16px 28px）
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/RiskBoardView.tsx（files）基线**高于**实测：formula 1>0 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/capacity/CapacityRampEnvelope.tsx（files）基线**高于**实测：formula 1>0 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D1 棘轮】apps/frontend-shell/src/views/process/ProcessStartFromTemplate.tsx 第一层信息块 46 → 47（+1），而第二层/浮层 0 → 0 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D6 未落账】apps/frontend-shell/src/views/sim/CellExplainPanel.tsx 是扫描面里的新文件，两段基线里都没有它 ⇒ D1/D2/D2b/D3/D4 对它**全部失效**（实测 first=15 deferred=5）。跑 `node scripts/check-ui-first-layer.mjs --tighten` 把它落进 `unlisted` 段并写 why，从下一次起它与存量页受同一套棘轮。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/ChainLineMapView.tsx（files）基线**高于**实测：formula 1>0 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【新文件·R-UI-2】apps/frontend-shell/src/views/sim/DecisionConsoleView.tsx 字号 8 级 > 3（12.5px 12px 13px 14px 15px 16px 20px 42px）
+  · 【新文件·R-UI-3】apps/frontend-shell/src/views/sim/DecisionConsoleView.tsx 第一层有 2 处口径/公式，应进 `?` 浮层：L915 "× 本世界实测全距" · L1426 "左边加一件事，按〔算一下〕。在那之前这里不显示任何金额 —— 没算过的数摆上来，跟算出来的数长得一模一样。"
+  · 【D6 未落账】apps/frontend-shell/src/views/sim/DecisionConsoleView.tsx 是扫描面里的新文件，两段基线里都没有它 ⇒ D1/D2/D2b/D3/D4 对它**全部失效**（实测 first=155 deferred=100）。跑 `node scripts/check-ui-first-layer.mjs --tighten` 把它落进 `unlisted` 段并写 why，从下一次起它与存量页受同一套棘轮。
+  · 【D1 棘轮】apps/frontend-shell/src/views/sim/EdgeActivePanel.tsx 第一层信息块 45 → 54（+9），而第二层/浮层 2 → 2 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/views/sim/EdgeActivePanel.tsx 第一层长说明串（≥24 字）10 → 13：L301 "本租户尚未发布任何传导边，因此没有边可以关。要先在传导规则里建一条并发布。…" · L314 "源类型.状态变量 —(链路)→ 目标类型.状态变量…" · L314 "， 带系数与延迟（多少拍之后才传到）。这些边逐条来自已发布的传导规则，界面不做任…"　…另有 10 处未列出（本条用 --explain <file> 看全）　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/GlobalSimLevers.tsx（files）基线**高于**实测：formula 1>0 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/views/sim/GlobalSimView.tsx 字号层级 3 → 4（11px 12.5px 12px 19px）
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx 字号层级 3 → 5（11px 12px 14px 18px 21px）
+  · 【D4 守恒·内容变少】apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx 信息总量 44 → 25（少了 19；第一层 43→24，第二层/浮层 1→1）⇒ 内容**变少了**，这是**删除**不是**分层**。docs/CONVENTION-ui-information-layering.md §1：「诚实位允许降到浮层，**绝不允许删除**；静默降层等于删除」。分层的正确形态是 first↓ 而 deferred↑、总量不掉。若确属合理删除/合并，更新基线并写明 why。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx（files）基线**高于**实测：first 43>24 · formula 6>1 · prose 7>4 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/PerturbationTimeline.tsx（files）基线**高于**实测：formula 3>2 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/PhysicalTopologyView.tsx（files）基线**高于**实测：formula 4>2 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/PlanAuditView.tsx（files）基线**高于**实测：formula 2>0 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/views/sim/SandboxView.tsx 第一层长说明串（≥24 字）7 → 8：L1383 "本体暂无已发布对象类型 → 局部范围不提供（无目标的「局部」在后端等同全局，不以…" · L1453 "就绪认证未开通（sim.certification 关）…" · L1551 "传导规则清单不可用（`sim.propagation` 未开通或后端不可达）——…"　…另有 5 处未列出（本条用 --explain <file> 看全）　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/ScheduleTable.tsx（files）基线**高于**实测：formula 1>0 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/SopBalanceView.tsx（files）基线**高于**实测：formula 3>2 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/TransitFlowLayer.tsx（files）基线**高于**实测：formula 1>0 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【新文件·R-UI-2】apps/frontend-shell/src/views/sim/console/ImpactCone.tsx 字号 4 级 > 3（11px 12px 13px 9px）
+  · 【D1 棘轮】apps/frontend-shell/src/views/sim/console/ImpactCone.tsx 第一层信息块 8 → 9（+1），而第二层/浮层 0 → 0 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D3 棘轮·R-UI-2】apps/frontend-shell/src/views/sim/console/ImpactCone.tsx 字号层级 3 → 4（11px 12px 13px 9px）
+  · 【新文件·R-UI-2】apps/frontend-shell/src/views/sim/console/MetricGantt.tsx 字号 5 级 > 3（10.5px 10px 12px 8.5px 9.5px）
+  · 【新文件·R-UI-2】apps/frontend-shell/src/views/sim/console/PerturbTree.tsx 字号 7 级 > 3（10.5px 10px 11.5px 11px 7px 8.5px 9px）
+  · 【新文件·R-UI-2】apps/frontend-shell/src/views/sim/console/SandboxAttr.tsx 字号 11 级 > 3（10.5px 10px 11.5px 11px 12px 13px 14px 8.5px 8px 9.5px 9px）
+  · 【新文件·R-UI-3】apps/frontend-shell/src/views/sim/console/SandboxAttr.tsx 第一层有 1 处口径/公式，应进 `?` 浮层：L263 "环节 × 基地 热力"
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/console/SandboxAttr.tsx（unlisted）基线**高于**实测：first 50>49 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【新文件·R-UI-2】apps/frontend-shell/src/views/sim/console/SandboxDetail.tsx 字号 9 级 > 3（10.5px 10px 11.5px 11px 12px 8.5px 8px 9.5px 9px）
+  · 【D1 棘轮】apps/frontend-shell/src/views/sim/console/SandboxDetail.tsx 第一层信息块 91 → 92（+1），而第二层/浮层 0 → 0 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【新文件·R-UI-2】apps/frontend-shell/src/views/sim/console/SandboxHome.tsx 字号 9 级 > 3（10px 11.5px 11px 12px 13px 14px 8px 9.5px 9px）
+  · 【D4 守恒·内容变少】apps/frontend-shell/src/views/sim/console/SandboxHome.tsx 信息总量 24 → 23（少了 1；第一层 24→23，第二层/浮层 0→0）⇒ 内容**变少了**，这是**删除**不是**分层**。docs/CONVENTION-ui-information-layering.md §1：「诚实位允许降到浮层，**绝不允许删除**；静默降层等于删除」。分层的正确形态是 first↓ 而 deferred↑、总量不掉。若确属合理删除/合并，更新基线并写明 why。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/console/SandboxHome.tsx（unlisted）基线**高于**实测：first 24>23 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【新文件·R-UI-2】apps/frontend-shell/src/views/sim/console/SandboxOpt.tsx 字号 8 级 > 3（10.5px 10px 11px 12px 13px 14px 8.5px 9.5px）
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/views/sim/console/SandboxOpt.tsx 第一层长说明串（≥24 字）0 → 1：L588 "这次没有可对比的执行读数 —— 是「这条算例还没跑出按格子的读数」，不是「基线和…"　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/console/SandboxOpt.tsx（unlisted）基线**高于**实测：sizes 11>8 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【新文件·R-UI-2】apps/frontend-shell/src/views/sim/console/StrategyCards.tsx 字号 5 级 > 3（11px 14px 8.5px 9.5px 9px）
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/unified/BottomDrawer.tsx（unlisted）基线**高于**实测：sizes 2>1 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D1 棘轮】apps/frontend-shell/src/views/sim/unified/InspectorPane.tsx 第一层信息块 20 → 22（+2），而第二层/浮层 8 → 8 **没涨** ⇒ 纯往第一层堆。docs/CONVENTION-ui-information-layering.md §1：第一层只放「数值 / 状态 / 名字」，明细降第二层、口径降浮层。（若这是规范 §3 要求的结构化改造，它应当伴随内容下沉；确无可沉内容时更新基线并写 why。）
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/unified/InspectorPane.tsx（unlisted）基线**高于**实测：formula 1>0 · sizes 4>2 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/views/sim/unified/MetricWall.tsx 第一层长说明串（≥24 字）1 → 2：L122 "。下面标「算不出来」的卡片里，有一部分是没被取回来，不是世界里真的没有。…" · L199 "状态变量清单为空 —— 本租户还没有已发布的传导规则。 这不是「算不出来」，是「…"　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D4 守恒·内容变少】apps/frontend-shell/src/views/sim/unified/MetricWall.tsx 信息总量 15 → 13（少了 2；第一层 13→12，第二层/浮层 2→1）⇒ 内容**变少了**，这是**删除**不是**分层**。docs/CONVENTION-ui-information-layering.md §1：「诚实位允许降到浮层，**绝不允许删除**；静默降层等于删除」。分层的正确形态是 first↓ 而 deferred↑、总量不掉。若确属合理删除/合并，更新基线并写明 why。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/unified/MetricWall.tsx（unlisted）基线**高于**实测：first 13>12 · formula 1>0 · sizes 4>2 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D2b 棘轮·§1】apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx 第一层长说明串（≥24 字）2 → 6：L272 "还没有注册 —— 这是接线缺口，不是「没有数据」。…" · L320 "这张卡没有落点对象，问不出波及面 —— 这是问不出来，不是「没有波及」。…" · L349 "这一跳没走通 —— 不知道有没有波及（这和「后端说没有波及」是两件事）…"　…另有 3 处未列出（本条用 --explain <file> 看全）　—— 第一层只放「数值 / 状态 / 名字」，成段说明属浮层
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx（unlisted）基线**高于**实测：sizes 3>2 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D6 未落账】apps/frontend-shell/src/views/sim/unified/console0828/Console0828.tsx 是扫描面里的新文件，两段基线里都没有它 ⇒ D1/D2/D2b/D3/D4 对它**全部失效**（实测 first=329 deferred=208）。跑 `node scripts/check-ui-first-layer.mjs --tighten` 把它落进 `unlisted` 段并写 why，从下一次起它与存量页受同一套棘轮。
+  · 【D6 未落账】apps/frontend-shell/src/views/sim/unified/rail/DisclosurePanel.tsx 是扫描面里的新文件，两段基线里都没有它 ⇒ D1/D2/D2b/D3/D4 对它**全部失效**（实测 first=3 deferred=45）。跑 `node scripts/check-ui-first-layer.mjs --tighten` 把它落进 `unlisted` 段并写 why，从下一次起它与存量页受同一套棘轮。
+  · 【D7 棘轮松弛】apps/frontend-shell/src/views/sim/unified/rail/PerturbRail.tsx（unlisted）基线**高于**实测：prose 2>0 · sizes 4>1 ⇒ 这是**免检名额**，它可以一路涨回基线值而门一个字都不说。跑 `node scripts/check-ui-first-layer.mjs --tighten` 收紧（该模式**只降不升**，不会把已变差的条目洗成新基线）。
+  · 【D7 死账】apps/frontend-shell/src/views/ReviewView.tsx（files）在基线里，但当前扫描面里**没有这个文件**（删了/改名）。留着它等于给同名文件预留一份旧额度 —— 跑 `--tighten` 摘掉。
+
+判据出处：docs/CONVENTION-ui-information-layering.md §2（R-UI-2 / R-UI-3）与 §1（三层准入 · 不许删除）。
+修法：把明细降到第二层、把口径/公式降到 `?` 浮层（`@/components/InfoPopover`），
+     **第一层必须留可见记号** —— 静默降层等于删除。
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-text-legibility.mjs  (rc=1)
+  判据：门判负（RC=1）
+❌ text-legibility:check 未通过（19 条）
+
+  · 【新文件】【A 尺寸加权对比度】apps/frontend-shell/src/pages/admin/BoundaryPage.module.css 不达标声明 0 → 1（+1）：L62 .drill 11.5px/400 var(--accent) → dark 3.33<6.26@--panel-glass · light 5<6.26@--panel2 · warm 3.2<6.26@--panel2
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/pages/admin/BoundaryPage.module.css 0 → 3（+3）：L27 .ovCaliber = 11px · L43 .metaRow = 11px · L62 .drill = 11.5px
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/pages/admin/CalibrationPage.tsx 0 → 2（+2）：L110 style={{…}} = 11px · L114 style={{…}} = 11px
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/pages/admin/ConnectionsPage.tsx 0 → 1（+1）：L286 style={{…}} = 11px
+  · 【新文件】【A 尺寸加权对比度】apps/frontend-shell/src/pages/admin/ModelingPage.module.css 不达标声明 0 → 2（+2）：L61 .llmNoticeTitle 12.5px/400 var(--warn) → dark 5.65<5.76@--panel-glass · light 1.66<5.76@--panel2 · warm 1.68<5.76@--panel2 · L136 .drill 11.5px/400 var(--accent) → dark 3.33<6.26@--panel-glass · light 5<6.26@--panel2 · warm 3.2<6.26@--panel2
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/pages/admin/ModelingPage.module.css 0 → 6（+6）：L108 .ovCaliber = 11px · L116 .metaRow = 11px · L136 .drill = 11.5px
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/pages/admin/OntologyRelationsPage.tsx 0 → 5（+5）：L801 style={{…}} = 11.5px · L1207 style={{…}} = 11px · L1382 style={{…}} = 11px
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/pages/admin/QuarantinePage.tsx 0 → 1（+1）：L140 style={{…}} = 11px
+  · 【新文件】【A 尺寸加权对比度】apps/frontend-shell/src/views/BaseOutlookPanel.tsx 不达标声明 0 → 1（+1）：L218 style={{…}} 11px/400 var(--muted2) → dark 6.09<6.55@--panel-glass · light 6.13<6.55@--panel2 · warm 6.07<6.55@--panel2
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/views/BaseOutlookPanel.tsx 0 → 2（+2）：L218 style={{…}} = 11px · L236 style={{…}} = 11px
+  · 【新文件】【A 尺寸加权对比度】apps/frontend-shell/src/views/DashboardView.tsx 不达标声明 0 → 1（+1）：L895 style={{…}} 11px/400 var(--muted2) → dark 6.09<6.55@--panel-glass · light 6.13<6.55@--panel2 · warm 6.07<6.55@--panel2
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/views/DashboardView.tsx 0 → 1（+1）：L895 style={{…}} = 11px
+  · 【A 尺寸加权对比度】apps/frontend-shell/src/views/RiskBoardView.tsx 不达标声明 4 → 5（+1）：L455 style={{…}} 12px/400 #E8B54A → dark 5.65<6@--panel-glass · light 1.66<6@--panel2 · warm 1.68<6@--panel2 · L588 style={{…}} 12px/400 #fff → light 1<6@--bg2 · warm 1<6@--bg2 · L2112 style={{…}} 12px/400 var(--ink, #e8b54a) → dark 5.65<6@--panel-glass · light 1.66<6@--panel2 · warm 1.68<6@--panel2
+  · 【新文件】【A 尺寸加权对比度】apps/frontend-shell/src/views/sim/GlobalSimView.tsx 不达标声明 0 → 1（+1）：L1128 style={{…}} 11px/400 var(--muted2) → dark 6.09<6.55@--panel-glass · light 6.13<6.55@--panel2 · warm 6.07<6.55@--panel2
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/views/sim/GlobalSimView.tsx 0 → 1（+1）：L1128 style={{…}} = 11px
+  · 【新文件】【A 尺寸加权对比度】apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx 不达标声明 0 → 1（+1）：L286 style={{…}} 11px/400 var(--muted2) → dark 6.09<6.55@--panel-glass · light 6.13<6.55@--panel2 · warm 6.07<6.55@--panel2
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/views/sim/MultiObjWhatifPanel.tsx 0 → 2（+2）：L244 style={{…}} = 11px · L286 style={{…}} = 11px
+  · 【新文件】【A 尺寸加权对比度】apps/frontend-shell/src/views/sim/console/SandboxOpt.module.css 不达标声明 0 → 1（+1）：L349 .pc .rec 8.5px/400 var(--txt) → dark 2.75<6@var(--accent) · light 2.86<6@var(--accent) · warm 4.76<6@var(--accent)
+  · 【新文件】【B 字号硬底 <12px】apps/frontend-shell/src/views/sim/unified/rail/DisclosurePanel.module.css 0 → 3（+3）：L55 .mono = 11px · L82 .row = 11px · L96 .tag = 11px
+
+判据：required(S,w) = max(3.0, 72/S_eff)，S_eff = S×(w≥700 ? 1.2862 : 1)；字号硬底 12px。
+     两个锚点全部来自 WCAG 2.1 SC 1.4.3（16px→4.5 · 24px→3.0），指数由二者联立解出，不是自拟。
+修法：**优先升字号**（9–10px 的中文在本调色板内无解，见门头推导），其次改用达标的文字令牌；
+     确属合理存量 ⇒ 更新基线并逐条写 why。
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-coverage-blind.mjs  (rc=1)
+  判据：门判负（RC=1）
+· 真仓金丝雀 D4 `viaModelingChain`：命中 ✓（工具有效，下面的计数是真的）
+· 覆盖率盲区门：扫 907 个测试文件 + 727 个源文件 · 命中 366 条 （LOOP_NO_FLOOR=211 · EXISTS_FOR_ALL=144 · FILTER_TAUTOLOGY=9 · SWITCH_ARG_UNCOVERED=2）· 基线 239 条
+
+· 可收紧：10 条基线条目已消失（跑 `node scripts/check-coverage-blind.mjs --update` 落账）
+    - apps/datacore/test/ceo-data2-seam.test.ts :: SEAM D1×E1：scope.baseId=jiangmen → 江门专属树·L2 设备OEE 瓶颈叶非空(drillValue=真 oee_current)·勾稽·可溯 :: LOOP_NO_FLOOR :: g.reconChecksasunknownas{parentGap:number;sumChildren:number
+    - apps/datacore/test/engine-scope-fidelity-2.seam.test.ts :: 数据半事实②：WorkOrder 的型号跑出了 Model 之外 ⇒ 拿它当产线队列会编造 0 分钟换型 :: EXISTS_FOR_ALL :: orphans
+    - apps/datacore/test/engine-scope-fidelity-2.seam.test.ts :: 数据半事实②：WorkOrder 的型号跑出了 Model 之外 ⇒ 拿它当产线队列会编造 0 分钟换型 :: EXISTS_FOR_ALL :: woModels
+    - apps/datacore/test/gap-attribution.test.ts :: D2·每因素下钻到真实对象与字段（含动态产能/物料） :: FILTER_TAUTOLOGY :: factors.props
+    - apps/datacore/test/sop-reschedule.test.ts :: SEAM 头号：SO-3402 提前(advancePct 0.2) → feasible + 挤占 SO-3415(中优最该让) + 跨≥2基地拆产 + cost.total>0 + 勾稽全ok + 每值可溯 :: EXISTS_FOR_ALL :: dispIds
+    - apps/frontend-shell/test/inspector-node-panel.seam.test.tsx :: 每个变量都带承载徽标与 file:line 取证；非「有」的必须写清缺在哪 :: LOOP_NO_FLOOR :: input.variables
+    - apps/frontend-shell/test/multiobj-real-orderbook-seam.test.ts :: ③ 营收/违约金/换型成本来自真 Order 字段（qty×unitPrice / qty×优先级单价 / qty×换型单价），非 toy 常数 :: LOOP_NO_FLOOR :: scenario.rows
+    - apps/frontend-shell/test/node-semantics.seam.test.tsx :: 每条 cf 都有**能翻到的 file:line 依据**，且依据文件真的存在（指不出依据的一条都不许写） :: LOOP_NO_FLOOR :: sem?.cf??[]
+    - apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx :: 反向：九个键的路由**仍然可达**（深链接不许断） :: LOOP_NO_FLOOR :: viaDispatch
+    - apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx :: 反向：九个键的路由**仍然可达**（深链接不许断） :: LOOP_NO_FLOOR :: viaRoute
+
+✗ coverage-blind:check 未通过：136 条**基线外**覆盖率盲点（假绿第 12 形态）
+  - apps/agentcore/test/coordinator-child-degraded-bubble.seam.test.ts:82  [EXISTS_FOR_ALL] md
+      it: A1 正例·供应链子 agent STALL_LOOP → 父流恰好一帧 agent_degraded·归属 dispatch_0/agt_supply_chain·早于父步完成与 answer.final
+      指纹: apps/agentcore/test/coordinator-child-degraded-bubble.seam.test.ts :: A1 正例·供应链子 agent STALL_LOOP → 父流恰好一帧 agent_degraded·归属 dispatch_0/agt_supply_chain·早于父步完成与 answer.final :: EXISTS_FOR_ALL :: md
+  - apps/agentcore/test/dsh-deny-budget.seam.test.ts:83  [EXISTS_FOR_ALL] denied
+      it: ① 连续 deny 达 cap ⇒ 在**有界轮次内**终止，终态诚实且说清为什么
+      指纹: apps/agentcore/test/dsh-deny-budget.seam.test.ts :: ① 连续 deny 达 cap ⇒ 在**有界轮次内**终止，终态诚实且说清为什么 :: EXISTS_FOR_ALL :: denied
+  - apps/agentcore/test/dsh-engine-mcp-forward.seam.test.ts:184  [EXISTS_FOR_ALL] stub
+      it: A1 · agent.mcpServers 配 mock stdio server ⇒ 子进程世界收到 mcp__fwdmock__echo 工具且解密凭据到达 server 进程
+      指纹: apps/agentcore/test/dsh-engine-mcp-forward.seam.test.ts :: A1 · agent.mcpServers 配 mock stdio server ⇒ 子进程世界收到 mcp__fwdmock__echo 工具且解密凭据到达 server 进程 :: EXISTS_FOR_ALL :: stub
+  - apps/agentcore/test/dsh-engine-mcp-forward.seam.test.ts:489  [EXISTS_FOR_ALL] stub
+      it: A6-A · 零扰动锚 e2e：无 toolFilter ⇒ 三工具全含（含 exotic 规范化名 mcp__fwdmock2__util_calc），帧行为逐字节旧
+      指纹: apps/agentcore/test/dsh-engine-mcp-forward.seam.test.ts :: A6-A · 零扰动锚 e2e：无 toolFilter ⇒ 三工具全含（含 exotic 规范化名 mcp__fwdmock2__util_calc），帧行为逐字节旧 :: EXISTS_FOR_ALL :: stub
+  - apps/agentcore/test/dsh-provider-seam.test.ts:415  [LOOP_NO_FLOOR] stub.requests
+      it: 注入 key：事件流/结果/stub 请求体零 key 子串；runner 参数构造无 key；缺 key ⇒ MISSING_CREDENTIAL 含 env 引用名
+      指纹: apps/agentcore/test/dsh-provider-seam.test.ts :: 注入 key：事件流/结果/stub 请求体零 key 子串；runner 参数构造无 key；缺 key ⇒ MISSING_CREDENTIAL 含 env 引用名 :: LOOP_NO_FLOOR :: stub.requests
+  - apps/agentcore/test/dsh-runtime-map.test.ts:136  [EXISTS_FOR_ALL] names
+      it: unions scopeDeclaration.toolNames with granted tools (never subtracts)
+      指纹: apps/agentcore/test/dsh-runtime-map.test.ts :: unions scopeDeclaration.toolNames with granted tools (never subtracts) :: EXISTS_FOR_ALL :: names
+  - apps/agentcore/test/dsh-runtime-reassemble.test.ts:420  [LOOP_NO_FLOOR] emissions
+      it: 合成环帧流（同参重复工具调用 + aborted 收尾）：mapper 只产既有工具步映射，零 stall 类伪步
+      指纹: apps/agentcore/test/dsh-runtime-reassemble.test.ts :: 合成环帧流（同参重复工具调用 + aborted 收尾）：mapper 只产既有工具步映射，零 stall 类伪步 :: LOOP_NO_FLOOR :: emissions
+  - apps/agentcore/test/skill-dependson-cover.seam.test.ts:160  [LOOP_NO_FLOOR] skills
+      it: 出厂依赖图是 DAG：环检测对种子全量不报环（防把环误种进生产 seed——那会炸启动审计与发布流）
+      指纹: apps/agentcore/test/skill-dependson-cover.seam.test.ts :: 出厂依赖图是 DAG：环检测对种子全量不报环（防把环误种进生产 seed——那会炸启动审计与发布流） :: LOOP_NO_FLOOR :: skills
+  - apps/datacore/test/action-adopt-scheme.seam.test.ts:279  [EXISTS_FOR_ALL] targetsBefore
+      it: 基线未动：采纳后 PLAN_GOAL_TARGETS 相关读端（AOP scenarios/triggers/decomposition + PlanTarget 对象）与采纳前逐字段一致
+      指纹: apps/datacore/test/action-adopt-scheme.seam.test.ts :: 基线未动：采纳后 PLAN_GOAL_TARGETS 相关读端（AOP scenarios/triggers/decomposition + PlanTarget 对象）与采纳前逐字段一致 :: EXISTS_FOR_ALL :: targetsBefore
+  - apps/datacore/test/action-plan-change-levers.seam.test.ts:681  [LOOP_NO_FLOOR] items
+      it: 规格层聚合 DSL（out(/in(）在运行期诚实跳过、不炸批、不生成新格
+      指纹: apps/datacore/test/action-plan-change-levers.seam.test.ts :: 规格层聚合 DSL（out(/in(）在运行期诚实跳过、不炸批、不生成新格 :: LOOP_NO_FLOOR :: items
+  - apps/datacore/test/adoption-survives.seam.test.ts:253  [LOOP_NO_FLOOR] out.adoptionLedger??[]
+      it: ③ 实验 3 · **不许复活告警**：已消解的问题不许回到「当前风险」，board 上每张卡都仍在越线
+      指纹: apps/datacore/test/adoption-survives.seam.test.ts :: ③ 实验 3 · **不许复活告警**：已消解的问题不许回到「当前风险」，board 上每张卡都仍在越线 :: LOOP_NO_FLOOR :: out.adoptionLedger??[]
+  - apps/datacore/test/adversary-reaction.seam.test.ts:164  [LOOP_NO_FLOOR] orders
+      it: §2 反向对照：对抗方**关闭**时 orderChurn 仍是纯外生根（入度 0），世界态不含任何还手写入
+      指纹: apps/datacore/test/adversary-reaction.seam.test.ts :: §2 反向对照：对抗方**关闭**时 orderChurn 仍是纯外生根（入度 0），世界态不含任何还手写入 :: LOOP_NO_FLOOR :: orders
+  - apps/datacore/test/agent-proposal.seam.test.ts:117  [LOOP_NO_FLOOR] b
+      it: §1d 变异反证：draft 全文的数值只出现在下标位，且下标**不承载量纲**
+      指纹: apps/datacore/test/agent-proposal.seam.test.ts :: §1d 变异反证：draft 全文的数值只出现在下标位，且下标**不承载量纲** :: LOOP_NO_FLOOR :: b
+  - apps/datacore/test/agent-proposal.seam.test.ts:265  [LOOP_NO_FLOOR] DRAFT.options
+      it: §6b 每个方案的解都**在**兑现出来的网格里（不会算了一批却漏掉方案本身）
+      指纹: apps/datacore/test/agent-proposal.seam.test.ts :: §6b 每个方案的解都**在**兑现出来的网格里（不会算了一批却漏掉方案本身） :: LOOP_NO_FLOOR :: DRAFT.options
+  - apps/datacore/test/ceo-data2-seam.test.ts:326  [LOOP_NO_FLOOR] g.reconChecks
+      it: SEAM D1×E1：scope.baseId=jiangmen → 江门专属树·L2 设备OEE 瓶颈叶非空(drillValue=真 oee_current)·勾稽·可溯
+      指纹: apps/datacore/test/ceo-data2-seam.test.ts :: SEAM D1×E1：scope.baseId=jiangmen → 江门专属树·L2 设备OEE 瓶颈叶非空(drillValue=真 oee_current)·勾稽·可溯 :: LOOP_NO_FLOOR :: g.reconChecks
+  - apps/datacore/test/chain-impediment-seam.test.ts:469  [FILTER_TAUTOLOGY] withCarriers.carriers
+      it: ③ 对照实验 · 超阈幅度相近但承载量差一个量级 ⇒ severity 必须拉开（第二因子真的进了公式）
+      指纹: apps/datacore/test/chain-impediment-seam.test.ts :: ③ 对照实验 · 超阈幅度相近但承载量差一个量级 ⇒ severity 必须拉开（第二因子真的进了公式） :: FILTER_TAUTOLOGY :: withCarriers.carriers
+  - apps/datacore/test/chain-impediment-seam.test.ts:508  [EXISTS_FOR_ALL] withCarriers
+      it: ④ R6 · 承载对象判不出来时 severity 退回单因子口径，且不带该字段（既有回包逐字节不变）
+      指纹: apps/datacore/test/chain-impediment-seam.test.ts :: ④ R6 · 承载对象判不出来时 severity 退回单因子口径，且不带该字段（既有回包逐字节不变） :: EXISTS_FOR_ALL :: withCarriers
+  - apps/datacore/test/chain-impediment-seam.test.ts:508  [EXISTS_FOR_ALL] moved
+      it: ④ R6 · 承载对象判不出来时 severity 退回单因子口径，且不带该字段（既有回包逐字节不变）
+      指纹: apps/datacore/test/chain-impediment-seam.test.ts :: ④ R6 · 承载对象判不出来时 severity 退回单因子口径，且不带该字段（既有回包逐字节不变） :: EXISTS_FOR_ALL :: moved
+  - apps/datacore/test/chain-loss-matrix.seam.test.ts:59  [LOOP_NO_FLOOR] m.rowTotals
+      it: ① 端点真调：逐基地列和 == 该基地全链非增值天数，且逐列 Σpct == 100
+      指纹: apps/datacore/test/chain-loss-matrix.seam.test.ts :: ① 端点真调：逐基地列和 == 该基地全链非增值天数，且逐列 Σpct == 100 :: LOOP_NO_FLOOR :: m.rowTotals
+  - apps/datacore/test/chain-loss-matrix.seam.test.ts:59  [FILTER_TAUTOLOGY] sum.days
+      it: ① 端点真调：逐基地列和 == 该基地全链非增值天数，且逐列 Σpct == 100
+      指纹: apps/datacore/test/chain-loss-matrix.seam.test.ts :: ① 端点真调：逐基地列和 == 该基地全链非增值天数，且逐列 Σpct == 100 :: FILTER_TAUTOLOGY :: sum.days
+  - apps/datacore/test/chain-loss-matrix.seam.test.ts:146  [LOOP_NO_FLOOR] one.nodes
+      it: ③ 对拍：矩阵在一维求解器同一锚点基地那一列，与一维输出逐环节相等（且两侧都守恒）
+      指纹: apps/datacore/test/chain-loss-matrix.seam.test.ts :: ③ 对拍：矩阵在一维求解器同一锚点基地那一列，与一维输出逐环节相等（且两侧都守恒） :: LOOP_NO_FLOOR :: one.nodes
+  - apps/datacore/test/chain-loss-matrix.seam.test.ts:146  [EXISTS_FOR_ALL] pctByStep
+      it: ③ 对拍：矩阵在一维求解器同一锚点基地那一列，与一维输出逐环节相等（且两侧都守恒）
+      指纹: apps/datacore/test/chain-loss-matrix.seam.test.ts :: ③ 对拍：矩阵在一维求解器同一锚点基地那一列，与一维输出逐环节相等（且两侧都守恒） :: EXISTS_FOR_ALL :: pctByStep
+  - apps/datacore/test/chain-loss-money.seam.test.ts:92  [EXISTS_FOR_ALL] daysCells
+      it: ① 回包里真有元金额（金丝雀：同一回包的 days 必须也 > 0，否则是测试坏了）
+      指纹: apps/datacore/test/chain-loss-money.seam.test.ts :: ① 回包里真有元金额（金丝雀：同一回包的 days 必须也 > 0，否则是测试坏了） :: EXISTS_FOR_ALL :: daysCells
+  - apps/datacore/test/chain-loss-money.seam.test.ts:92  [EXISTS_FOR_ALL] priced
+      it: ① 回包里真有元金额（金丝雀：同一回包的 days 必须也 > 0，否则是测试坏了）
+      指纹: apps/datacore/test/chain-loss-money.seam.test.ts :: ① 回包里真有元金额（金丝雀：同一回包的 days 必须也 > 0，否则是测试坏了） :: EXISTS_FOR_ALL :: priced
+  - apps/datacore/test/chain-loss-money.seam.test.ts:111  [LOOP_NO_FLOOR] m.nodes
+      it: ② 基地维是真的：敞口最大/最小两列，同一环节金额不同，且比值 == 敞口之比
+      指纹: apps/datacore/test/chain-loss-money.seam.test.ts :: ② 基地维是真的：敞口最大/最小两列，同一环节金额不同，且比值 == 敞口之比 :: LOOP_NO_FLOOR :: m.nodes
+  - apps/datacore/test/chain-loss-money.seam.test.ts:111  [EXISTS_FOR_ALL] sameP
+      it: ② 基地维是真的：敞口最大/最小两列，同一环节金额不同，且比值 == 敞口之比
+      指纹: apps/datacore/test/chain-loss-money.seam.test.ts :: ② 基地维是真的：敞口最大/最小两列，同一环节金额不同，且比值 == 敞口之比 :: EXISTS_FOR_ALL :: sameP
+  - apps/datacore/test/chain-loss-money.seam.test.ts:151  [FILTER_TAUTOLOGY] cs.valueAtRiskYuan
+      it: ③ 反向对照：同一列内 days 相同的两个环节，金额必须仍然相同（不是噪声）
+      指纹: apps/datacore/test/chain-loss-money.seam.test.ts :: ③ 反向对照：同一列内 days 相同的两个环节，金额必须仍然相同（不是噪声） :: FILTER_TAUTOLOGY :: cs.valueAtRiskYuan
+  - apps/datacore/test/chain-loss-money.seam.test.ts:198  [LOOP_NO_FLOOR] m.colTotals
+      it: ⑤ 诚实缺席 + R6：敞口与锚点单无关；同参数二次调用逐字段一致
+      指纹: apps/datacore/test/chain-loss-money.seam.test.ts :: ⑤ 诚实缺席 + R6：敞口与锚点单无关；同参数二次调用逐字段一致 :: LOOP_NO_FLOOR :: m.colTotals
+  - apps/datacore/test/chain-loss-money.seam.test.ts:198  [FILTER_TAUTOLOGY] blanks.days
+      it: ⑤ 诚实缺席 + R6：敞口与锚点单无关；同参数二次调用逐字段一致
+      指纹: apps/datacore/test/chain-loss-money.seam.test.ts :: ⑤ 诚实缺席 + R6：敞口与锚点单无关；同参数二次调用逐字段一致 :: FILTER_TAUTOLOGY :: blanks.days
+  - apps/datacore/test/chain-loss-session-overlay.seam.test.ts:209  [EXISTS_FOR_ALL] grew
+      it: ⑥ 矩阵端点同样进会话上下文：列天数按可预言的量变，且 simContext 逐条披露
+      指纹: apps/datacore/test/chain-loss-session-overlay.seam.test.ts :: ⑥ 矩阵端点同样进会话上下文：列天数按可预言的量变，且 simContext 逐条披露 :: EXISTS_FOR_ALL :: grew
+  - apps/datacore/test/databuilder-needs.seam.test.ts:107  [LOOP_NO_FLOOR] needs.groups
+      it: §2 每一类的数都自洽：四态之和 == 需要数 == 条目数（数对不上 = 有一态被吞了）
+      指纹: apps/datacore/test/databuilder-needs.seam.test.ts :: §2 每一类的数都自洽：四态之和 == 需要数 == 条目数（数对不上 = 有一态被吞了） :: LOOP_NO_FLOOR :: needs.groups
+  - apps/datacore/test/decision-play-lta-evidence.seam.test.ts:124  [LOOP_NO_FLOOR] dp.options
+      it: L4 证据对象 ⟷ 证据读数同源：drillValue 是**那一份**长协自己的数，不是全体合计
+      指纹: apps/datacore/test/decision-play-lta-evidence.seam.test.ts :: L4 证据对象 ⟷ 证据读数同源：drillValue 是**那一份**长协自己的数，不是全体合计 :: LOOP_NO_FLOOR :: dp.options
+  - apps/datacore/test/decision-play-lta-evidence.seam.test.ts:155  [EXISTS_FOR_ALL] omitted
+      it: L6 换根因树 ⇒ 结论跟着换（不是把 lta-lfp-cylk 写死在另一个地方）
+      指纹: apps/datacore/test/decision-play-lta-evidence.seam.test.ts :: L6 换根因树 ⇒ 结论跟着换（不是把 lta-lfp-cylk 写死在另一个地方） :: EXISTS_FOR_ALL :: omitted
+  - apps/datacore/test/decision-play-options.seam.test.ts:111  [LOOP_NO_FLOOR] dp.impedimentPlays.joined
+      it: S2 方案里的依据能回指枚举器：candidateId 由 contracts 单源公式从候选自身字段反算得出
+      指纹: apps/datacore/test/decision-play-options.seam.test.ts :: S2 方案里的依据能回指枚举器：candidateId 由 contracts 单源公式从候选自身字段反算得出 :: LOOP_NO_FLOOR :: dp.impedimentPlays.joined
+  - apps/datacore/test/decision-play-options.seam.test.ts:206  [EXISTS_FOR_ALL] beforeCands
+      it: S5 改真颗粒 ⇒ 接上的候选跟着变（证候选是真试算出来的，不是贴上去的常量）
+      指纹: apps/datacore/test/decision-play-options.seam.test.ts :: S5 改真颗粒 ⇒ 接上的候选跟着变（证候选是真试算出来的，不是贴上去的常量） :: EXISTS_FOR_ALL :: beforeCands
+  - apps/datacore/test/dynamic-drill-resolve.seam.test.ts:210  [EXISTS_FOR_ALL] dynamic
+      it: DR-5 · 归因期占位解析**只连坐 demand_attain 一个域**（其余指标域产物逐字节不变的结构理由）
+      指纹: apps/datacore/test/dynamic-drill-resolve.seam.test.ts :: DR-5 · 归因期占位解析**只连坐 demand_attain 一个域**（其余指标域产物逐字节不变的结构理由） :: EXISTS_FOR_ALL :: dynamic
+  - apps/datacore/test/edge-active-counterfactual.test.ts:171  [LOOP_NO_FLOOR] lineIds
+      it: 🔴 SEAM：POST …/counterfactual 同时给出基线与反事实，diff 方向 down、量级 10
+      指纹: apps/datacore/test/edge-active-counterfactual.test.ts :: 🔴 SEAM：POST …/counterfactual 同时给出基线与反事实，diff 方向 down、量级 10 :: LOOP_NO_FLOOR :: lineIds
+  - apps/datacore/test/edge-money-weight.seam.test.ts:295  [EXISTS_FOR_ALL] bad
+      it: 🐤 金丝雀先行：把一条相符的边变异成不符，对账必须当场抓到
+      指纹: apps/datacore/test/edge-money-weight.seam.test.ts :: 🐤 金丝雀先行：把一条相符的边变异成不符，对账必须当场抓到 :: EXISTS_FOR_ALL :: bad
+  - apps/datacore/test/gap-attribution.test.ts:292  [FILTER_TAUTOLOGY] factors.props
+      it: D2·每因素下钻到真实对象与字段（占位在查询期解析·非播种期冻结）
+      指纹: apps/datacore/test/gap-attribution.test.ts :: D2·每因素下钻到真实对象与字段（占位在查询期解析·非播种期冻结） :: FILTER_TAUTOLOGY :: factors.props
+  - apps/datacore/test/impediment-options-seam.test.ts:405  [LOOP_NO_FLOOR] noPathMarks
+      it: S3-4c · NONE 必须带三选一定性，且「不进产能公式」这一类要顶得住独立复算
+      指纹: apps/datacore/test/impediment-options-seam.test.ts :: S3-4c · NONE 必须带三选一定性，且「不进产能公式」这一类要顶得住独立复算 :: LOOP_NO_FLOOR :: noPathMarks
+  - apps/datacore/test/impediment-options-seam.test.ts:405  [EXISTS_FOR_ALL] hit
+      it: S3-4c · NONE 必须带三选一定性，且「不进产能公式」这一类要顶得住独立复算
+      指纹: apps/datacore/test/impediment-options-seam.test.ts :: S3-4c · NONE 必须带三选一定性，且「不进产能公式」这一类要顶得住独立复算 :: EXISTS_FOR_ALL :: hit
+  - apps/datacore/test/lever-snapshot-unit.seam.test.ts:119  [EXISTS_FOR_ALL] stuck
+      it: 判据③ 回归护栏：plan_change 缺 versionId ⇒ 真后端 400 且草稿卡在 DRAFT（改回去即红）
+      指纹: apps/datacore/test/lever-snapshot-unit.seam.test.ts :: 判据③ 回归护栏：plan_change 缺 versionId ⇒ 真后端 400 且草稿卡在 DRAFT（改回去即红） :: EXISTS_FOR_ALL :: stuck
+  - apps/datacore/test/m11-calibration.test.ts:941  [LOOP_NO_FLOOR] gate.capabilities
+      it: T2② paired≥minPaired ⇒ 四项全放行 · 🐤 反向：闸读数与 debt 同源（不是第二套真相）
+      指纹: apps/datacore/test/m11-calibration.test.ts :: T2② paired≥minPaired ⇒ 四项全放行 · 🐤 反向：闸读数与 debt 同源（不是第二套真相） :: LOOP_NO_FLOOR :: gate.capabilities
+  - apps/datacore/test/metric-series.seam.test.ts:295  [LOOP_NO_FLOOR] after.metrics
+      it: 🔴 SEAM：DELETE 掉扰动 ⇒ 每个指标的 baseline 与 actual 逐点重合，excludedPerturbationIds 清空
+      指纹: apps/datacore/test/metric-series.seam.test.ts :: 🔴 SEAM：DELETE 掉扰动 ⇒ 每个指标的 baseline 与 actual 逐点重合，excludedPerturbationIds 清空 :: LOOP_NO_FLOOR :: after.metrics
+  - apps/datacore/test/metric-series.seam.test.ts:331  [LOOP_NO_FLOOR] out.metrics
+      it: 🔴 缺格 ⇒ null（不是 0、不是插值）；to 超出 curTick ⇒ 收敛并亮 clamped，不补未来格
+      指纹: apps/datacore/test/metric-series.seam.test.ts :: 🔴 缺格 ⇒ null（不是 0、不是插值）；to 超出 curTick ⇒ 收敛并亮 clamped，不补未来格 :: LOOP_NO_FLOOR :: out.metrics
+  - apps/datacore/test/metric-series.seam.test.ts:411  [LOOP_NO_FLOOR] out.metrics
+      it: 🔴 变异反证的常驻替身：基线必须来自**本会话自己的 tick0 行**，另起会话/换种子即红
+      指纹: apps/datacore/test/metric-series.seam.test.ts :: 🔴 变异反证的常驻替身：基线必须来自**本会话自己的 tick0 行**，另起会话/换种子即红 :: LOOP_NO_FLOOR :: out.metrics
+  - apps/datacore/test/multiobj-converge.seam.test.ts:146  [EXISTS_FOR_ALL] gapKeys
+      it: ⓪ 金丝雀：装置先自证（两条路各自真的跑起来了，且轴集合非空）
+      指纹: apps/datacore/test/multiobj-converge.seam.test.ts :: ⓪ 金丝雀：装置先自证（两条路各自真的跑起来了，且轴集合非空） :: EXISTS_FOR_ALL :: gapKeys
+  - apps/datacore/test/multiobj-converge.seam.test.ts:159  [LOOP_NO_FLOOR] req.objectives
+      it: ① 同一组权重 ⇒ 同一根轴上，A 路与 B 路读数逐字节相等（本门的存在理由）
+      指纹: apps/datacore/test/multiobj-converge.seam.test.ts :: ① 同一组权重 ⇒ 同一根轴上，A 路与 B 路读数逐字节相等（本门的存在理由） :: LOOP_NO_FLOOR :: req.objectives
+  - apps/datacore/test/object-constraint-refs.seam.test.ts:193  [EXISTS_FOR_ALL] utils
+      it: ④ 对照实验：只换引用的规则（阈值 96 → 95），同一求解器同一入参的结论 PASS → BLOCK
+      指纹: apps/datacore/test/object-constraint-refs.seam.test.ts :: ④ 对照实验：只换引用的规则（阈值 96 → 95），同一求解器同一入参的结论 PASS → BLOCK :: EXISTS_FOR_ALL :: utils
+  - apps/datacore/test/object-constraint-refs.seam.test.ts:248  [EXISTS_FOR_ALL] rows
+      it: ⑤b 非数字属性（日期/文本）上选实例必须**按值**比，不许塌给 id 字典序
+      指纹: apps/datacore/test/object-constraint-refs.seam.test.ts :: ⑤b 非数字属性（日期/文本）上选实例必须**按值**比，不许塌给 id 字典序 :: EXISTS_FOR_ALL :: rows
+  - apps/datacore/test/opt-pareto-assemble.seam.test.ts:658  [FILTER_TAUTOLOGY] target.id
+      it: 对照实验：某单违约金 ×10 ⇒ 目标函数值变、且该单从**被挤**翻成**获排**（不改排序 = 这根轴没参与排序）
+      指纹: apps/datacore/test/opt-pareto-assemble.seam.test.ts :: 对照实验：某单违约金 ×10 ⇒ 目标函数值变、且该单从**被挤**翻成**获排**（不改排序 = 这根轴没参与排序） :: FILTER_TAUTOLOGY :: target.id
+  - apps/datacore/test/opt-pareto-assemble.seam.test.ts:701  [EXISTS_FOR_ALL] flipped
+      it: 反向对照：违约金清零 ⇒ 轴读数归零、滑杆极差归零，且排序回到只看其它目标的结果
+      指纹: apps/datacore/test/opt-pareto-assemble.seam.test.ts :: 反向对照：违约金清零 ⇒ 轴读数归零、滑杆极差归零，且排序回到只看其它目标的结果 :: EXISTS_FOR_ALL :: flipped
+  - apps/datacore/test/order-dependent-pick.seam.test.ts:147  [EXISTS_FOR_ALL] reached
+      it: B1·L2 中段探针：塞一个字母序更靠前、但**被入口指着**（域内入度>0）的因子 ⇒ 它是果不是因，当不了入口
+      指纹: apps/datacore/test/order-dependent-pick.seam.test.ts :: B1·L2 中段探针：塞一个字母序更靠前、但**被入口指着**（域内入度>0）的因子 ⇒ 它是果不是因，当不了入口 :: EXISTS_FOR_ALL :: reached
+  - apps/datacore/test/order-dependent-pick.seam.test.ts:172  [EXISTS_FOR_ALL] roots
+      it: B1·L3 真并列 ⇒ fail-loud：两个平行入口时报错并点名，绝不替数据掷骰子挑一个
+      指纹: apps/datacore/test/order-dependent-pick.seam.test.ts :: B1·L3 真并列 ⇒ fail-loud：两个平行入口时报错并点名，绝不替数据掷骰子挑一个 :: EXISTS_FOR_ALL :: roots
+  - apps/datacore/test/order-dependent-pick.seam.test.ts:195  [EXISTS_FOR_ALL] nodes
+      it: C1·L0 金丝雀：本次推演树上确实有 BackupSupplierPool 落点，且确实有引用它的方案
+      指纹: apps/datacore/test/order-dependent-pick.seam.test.ts :: C1·L0 金丝雀：本次推演树上确实有 BackupSupplierPool 落点，且确实有引用它的方案 :: EXISTS_FOR_ALL :: nodes
+  - apps/datacore/test/order-dependent-pick.seam.test.ts:204  [FILTER_TAUTOLOGY] idsNow.id
+      it: C1·L1 存储顺序扰动：多一个正极备份池并把它排到最前 ⇒ 方案证据仍锚在树上那一个（现算·不写死 id）
+      指纹: apps/datacore/test/order-dependent-pick.seam.test.ts :: C1·L1 存储顺序扰动：多一个正极备份池并把它排到最前 ⇒ 方案证据仍锚在树上那一个（现算·不写死 id） :: FILTER_TAUTOLOGY :: idsNow.id
+  - apps/datacore/test/order-dependent-pick.seam.test.ts:204  [EXISTS_FOR_ALL] poolAnchors
+      it: C1·L1 存储顺序扰动：多一个正极备份池并把它排到最前 ⇒ 方案证据仍锚在树上那一个（现算·不写死 id）
+      指纹: apps/datacore/test/order-dependent-pick.seam.test.ts :: C1·L1 存储顺序扰动：多一个正极备份池并把它排到最前 ⇒ 方案证据仍锚在树上那一个（现算·不写死 id） :: EXISTS_FOR_ALL :: poolAnchors
+  - apps/datacore/test/order-dependent-pick.seam.test.ts:255  [EXISTS_FOR_ALL] maxGap
+      it: A·L1 order_fullchain 齐套判：注入同分候选后**打乱存储顺序重放**，结论逐字节不变
+      指纹: apps/datacore/test/order-dependent-pick.seam.test.ts :: A·L1 order_fullchain 齐套判：注入同分候选后**打乱存储顺序重放**，结论逐字节不变 :: EXISTS_FOR_ALL :: maxGap
+  - apps/datacore/test/order-journey-locus.seam.test.ts:96  [EXISTS_FOR_ALL] expected
+      it: OJ-2 · 落点候选真来自枚举器（有候选的那条 locus 上，candidateTotal 与阻滞点回包一致）
+      指纹: apps/datacore/test/order-journey-locus.seam.test.ts :: OJ-2 · 落点候选真来自枚举器（有候选的那条 locus 上，candidateTotal 与阻滞点回包一致） :: EXISTS_FOR_ALL :: expected
+  - apps/datacore/test/prop-clamp-decay.seam.test.ts:71  [LOOP_NO_FLOOR] series
+      it: §1 对照实验 · 声明取值域后，6 拍留在 0–100 内且收敛（不再 O(t^d) 发散）
+      指纹: apps/datacore/test/prop-clamp-decay.seam.test.ts :: §1 对照实验 · 声明取值域后，6 拍留在 0–100 内且收敛（不再 O(t^d) 发散） :: LOOP_NO_FLOOR :: series
+  - apps/datacore/test/prop-clamp-decay.seam.test.ts:90  [EXISTS_FOR_ALL] names
+      it: §2 λ 走 C35 引用；规则参数缺失 ⇒ decayUnresolved 报缺、绝不补默认
+      指纹: apps/datacore/test/prop-clamp-decay.seam.test.ts :: §2 λ 走 C35 引用；规则参数缺失 ⇒ decayUnresolved 报缺、绝不补默认 :: EXISTS_FOR_ALL :: names
+  - apps/datacore/test/prop-clamp-decay.seam.test.ts:268  [LOOP_NO_FLOOR] series
+      it: §7.3 有新读数的格子照旧压缩 —— 发散防线一个字节没动
+      指纹: apps/datacore/test/prop-clamp-decay.seam.test.ts :: §7.3 有新读数的格子照旧压缩 —— 发散防线一个字节没动 :: LOOP_NO_FLOOR :: series
+  - apps/datacore/test/prov-drillfield-truth.test.ts:126  [EXISTS_FOR_ALL] scopedBase
+      it: 效果层②（基地作用域路 + 敞口路）：scoped/exposure 两条支路逐叶同样对拍真值
+      指纹: apps/datacore/test/prov-drillfield-truth.test.ts :: 效果层②（基地作用域路 + 敞口路）：scoped/exposure 两条支路逐叶同样对拍真值 :: EXISTS_FOR_ALL :: scopedBase
+  - apps/datacore/test/quote-margin-customer.seam.test.ts:77  [LOOP_NO_FLOOR] names
+      it: 差分门：20 客户各自的毛利可溯到自己的订单与 BOM，且储能客户 ≠ 乘用车客户
+      指纹: apps/datacore/test/quote-margin-customer.seam.test.ts :: 差分门：20 客户各自的毛利可溯到自己的订单与 BOM，且储能客户 ≠ 乘用车客户 :: LOOP_NO_FLOOR :: names
+  - apps/datacore/test/quote-margin-customer.seam.test.ts:77  [LOOP_NO_FLOOR] names
+      it: 差分门：20 客户各自的毛利可溯到自己的订单与 BOM，且储能客户 ≠ 乘用车客户
+      指纹: apps/datacore/test/quote-margin-customer.seam.test.ts :: 差分门：20 客户各自的毛利可溯到自己的订单与 BOM，且储能客户 ≠ 乘用车客户 :: LOOP_NO_FLOOR :: names
+  - apps/datacore/test/quote-margin-customer.seam.test.ts:77  [LOOP_NO_FLOOR] names
+      it: 差分门：20 客户各自的毛利可溯到自己的订单与 BOM，且储能客户 ≠ 乘用车客户
+      指纹: apps/datacore/test/quote-margin-customer.seam.test.ts :: 差分门：20 客户各自的毛利可溯到自己的订单与 BOM，且储能客户 ≠ 乘用车客户 :: LOOP_NO_FLOOR :: names
+  - apps/datacore/test/riskboard-truncation.seam.test.ts:123  [LOOP_NO_FLOOR] u.bases
+      it: 未上榜的每一条都**真的越线**（crossDay 非空），否则这个提示自己就在撒谎
+      指纹: apps/datacore/test/riskboard-truncation.seam.test.ts :: 未上榜的每一条都**真的越线**（crossDay 非空），否则这个提示自己就在撒谎 :: LOOP_NO_FLOOR :: u.bases
+  - apps/datacore/test/rule-scope-triad.seam.test.ts:80  [LOOP_NO_FLOOR] lots
+      it: TRIAD-3 · C31 挂上本体图谱 Outsource 节点，且 material_has_outsource 边真实落库
+      指纹: apps/datacore/test/rule-scope-triad.seam.test.ts :: TRIAD-3 · C31 挂上本体图谱 Outsource 节点，且 material_has_outsource 边真实落库 :: LOOP_NO_FLOOR :: lots
+  - apps/datacore/test/sandbox-chain-scope.seam.test.ts:141  [EXISTS_FOR_ALL] inter
+      it: 三维同给 → 结果 = 三者交集，且严格小于任一单维（「只生效最后一个」当场红）
+      指纹: apps/datacore/test/sandbox-chain-scope.seam.test.ts :: 三维同给 → 结果 = 三者交集，且严格小于任一单维（「只生效最后一个」当场红） :: EXISTS_FOR_ALL :: inter
+  - apps/datacore/test/sandbox-d4-aggregates.seam.test.ts:168  [LOOP_NO_FLOOR] otd.rows
+      it: SEAM-2 口径就是那个差额：87.5% 里唯一迟到的单，迟到只因按「客户要求交期」判（earlyDue D+11 ≠ 合同交期 D+25）
+      指纹: apps/datacore/test/sandbox-d4-aggregates.seam.test.ts :: SEAM-2 口径就是那个差额：87.5% 里唯一迟到的单，迟到只因按「客户要求交期」判（earlyDue D+11 ≠ 合同交期 D+25） :: LOOP_NO_FLOOR :: otd.rows
+  - apps/datacore/test/sandbox-d4-aggregates.seam.test.ts:168  [EXISTS_FOR_ALL] late
+      it: SEAM-2 口径就是那个差额：87.5% 里唯一迟到的单，迟到只因按「客户要求交期」判（earlyDue D+11 ≠ 合同交期 D+25）
+      指纹: apps/datacore/test/sandbox-d4-aggregates.seam.test.ts :: SEAM-2 口径就是那个差额：87.5% 里唯一迟到的单，迟到只因按「客户要求交期」判（earlyDue D+11 ≠ 合同交期 D+25） :: EXISTS_FOR_ALL :: late
+  - apps/datacore/test/silent-wrong-answer-3.seam.test.ts:327  [EXISTS_FOR_ALL] truth
+      it: 不给型号 → 取主力型号真 BOM（= scope.bomId 的真配方成本·非无主语常数）· scope.mode=ALL
+      指纹: apps/datacore/test/silent-wrong-answer-3.seam.test.ts :: 不给型号 → 取主力型号真 BOM（= scope.bomId 的真配方成本·非无主语常数）· scope.mode=ALL :: EXISTS_FOR_ALL :: truth
+  - apps/datacore/test/sim-drill.seam.test.ts:103  [LOOP_NO_FLOOR] DRILL_EVENT_SPECS
+      it: ① 11 类事件**全部**有世界态落点，且每个落点在真规则表上**真有出边**（落在叶子上比不落更糟）
+      指纹: apps/datacore/test/sim-drill.seam.test.ts :: ① 11 类事件**全部**有世界态落点，且每个落点在真规则表上**真有出边**（落在叶子上比不落更糟） :: LOOP_NO_FLOOR :: DRILL_EVENT_SPECS
+  - apps/datacore/test/sim-drill.seam.test.ts:172  [EXISTS_FOR_ALL] called
+      it: ② 端到端：SO-3391 提前 10 天 ⇒ 求解器真被调 + 屏上给出被挤占订单号与代价数字
+      指纹: apps/datacore/test/sim-drill.seam.test.ts :: ② 端到端：SO-3391 提前 10 天 ⇒ 求解器真被调 + 屏上给出被挤占订单号与代价数字 :: EXISTS_FOR_ALL :: called
+  - apps/datacore/test/sim-node-detail-fields.seam.test.ts:157  [LOOP_NO_FLOOR] res.lots
+      it: ③ 每一个非 null 的业务量都能追到出处：证据三元组回仓储逐位对拍
+      指纹: apps/datacore/test/sim-node-detail-fields.seam.test.ts :: ③ 每一个非 null 的业务量都能追到出处：证据三元组回仓储逐位对拍 :: LOOP_NO_FLOOR :: res.lots
+  - apps/datacore/test/sim-node-detail-fields.seam.test.ts:157  [LOOP_NO_FLOOR] res.lots
+      it: ③ 每一个非 null 的业务量都能追到出处：证据三元组回仓储逐位对拍
+      指纹: apps/datacore/test/sim-node-detail-fields.seam.test.ts :: ③ 每一个非 null 的业务量都能追到出处：证据三元组回仓储逐位对拍 :: LOOP_NO_FLOOR :: res.lots
+  - apps/datacore/test/sim-order-real-fields.seam.test.ts:81  [EXISTS_FOR_ALL] completed
+      it: ①正向 measuredCells = 在手订单数 × 3，且两边**各自独立**算一遍再比
+      指纹: apps/datacore/test/sim-order-real-fields.seam.test.ts :: ①正向 measuredCells = 在手订单数 × 3，且两边**各自独立**算一遍再比 :: EXISTS_FOR_ALL :: completed
+  - apps/datacore/test/sim-order-real-fields.seam.test.ts:249  [LOOP_NO_FLOOR] byModel
+      it: ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器）
+      指纹: apps/datacore/test/sim-order-real-fields.seam.test.ts :: ⑤ 接缝：真值必须**出现在传导结果里**，且 max 语义不随拍数漂（不是纯积分器） :: LOOP_NO_FLOOR :: byModel
+  - apps/datacore/test/sim-real-cells.seam.test.ts:90  [LOOP_NO_FLOOR] A_TIER
+      it: ⓑ 指认粒度：26 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言）
+      指纹: apps/datacore/test/sim-real-cells.seam.test.ts :: ⓑ 指认粒度：26 条规格逐条物化数 = 该类型进世界对象数（逐条点名，不一锅断言） :: LOOP_NO_FLOOR :: A_TIER
+  - apps/datacore/test/sim-real-cells.seam.test.ts:162  [LOOP_NO_FLOOR] all
+      it: 臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」
+      指纹: apps/datacore/test/sim-real-cells.seam.test.ts :: 臂2 量纲：全扫 STATE_VAR_DOMAINS 已声明域的变量逐个不越域；无域族归档「刻意无上界」 :: LOOP_NO_FLOOR :: all
+  - apps/datacore/test/sim-real-cells.seam.test.ts:251  [LOOP_NO_FLOOR] A_TIER
+      it: ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的）
+      指纹: apps/datacore/test/sim-real-cells.seam.test.ts :: ⓐ 引擎归属：derivationSpecs 清成 0 条 ⇒ 25 个 targetProp 全部消失（证明是引擎②算的） :: LOOP_NO_FLOOR :: A_TIER
+  - apps/datacore/test/sim-seed-world.seam.test.ts:296  [EXISTS_FOR_ALL] movedObjectIds
+      it: ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+      指纹: apps/datacore/test/sim-seed-world.seam.test.ts :: ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身 :: EXISTS_FOR_ALL :: movedObjectIds
+  - apps/datacore/test/sim-seed-world.seam.test.ts:296  [EXISTS_FOR_ALL] downstream
+      it: ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身
+      指纹: apps/datacore/test/sim-seed-world.seam.test.ts :: ⑤ 扰动接缝：播种 ⇒ 会话有扰动 ⇒ metric-series 两条线分叉 ⇒ 且被带动的对象不止落点自身 :: EXISTS_FOR_ALL :: downstream
+  - apps/datacore/test/solver-arghints-contract.seam.test.ts:360  [LOOP_NO_FLOOR] DRIVEN
+      it: 金丝雀：真读键集合非空且确实来自真值组（否则上一条是拿空集比空集）
+      指纹: apps/datacore/test/solver-arghints-contract.seam.test.ts :: 金丝雀：真读键集合非空且确实来自真值组（否则上一条是拿空集比空集） :: LOOP_NO_FLOOR :: DRIVEN
+  - apps/datacore/test/solver-inputschema.seam.test.ts:97  [LOOP_NO_FLOOR] newlyVisible
+      it: ★ ${key}：后 > 前，且新增可见 ${newlyVisible.join("/")}（${why}）
+      指纹: apps/datacore/test/solver-inputschema.seam.test.ts :: ★ ${key}：后 > 前，且新增可见 ${newlyVisible.join("/")}（${why}） :: LOOP_NO_FLOOR :: newlyVisible
+  - apps/datacore/test/solver-inputschema.seam.test.ts:97  [LOOP_NO_FLOOR] alreadyVisible
+      it: ★ ${key}：后 > 前，且新增可见 ${newlyVisible.join("/")}（${why}）
+      指纹: apps/datacore/test/solver-inputschema.seam.test.ts :: ★ ${key}：后 > 前，且新增可见 ${newlyVisible.join("/")}（${why}） :: LOOP_NO_FLOOR :: alreadyVisible
+  - apps/datacore/test/solver-role-table.seam.test.ts:220  [LOOP_NO_FLOOR] DECLARED
+      it: §0b 端点金丝雀：4 个声明求解器各回非空 candidates 键集；未声明者回空 roles（防「端点坏了 ⇒ §1 恒真」）
+      指纹: apps/datacore/test/solver-role-table.seam.test.ts :: §0b 端点金丝雀：4 个声明求解器各回非空 candidates 键集；未声明者回空 roles（防「端点坏了 ⇒ §1 恒真」） :: LOOP_NO_FLOOR :: DECLARED
+  - apps/datacore/test/solver-role-table.seam.test.ts:220  [EXISTS_FOR_ALL] undeclared
+      it: §0b 端点金丝雀：4 个声明求解器各回非空 candidates 键集；未声明者回空 roles（防「端点坏了 ⇒ §1 恒真」）
+      指纹: apps/datacore/test/solver-role-table.seam.test.ts :: §0b 端点金丝雀：4 个声明求解器各回非空 candidates 键集；未声明者回空 roles（防「端点坏了 ⇒ §1 恒真」） :: EXISTS_FOR_ALL :: undeclared
+  - apps/datacore/test/solver-role-table.seam.test.ts:242  [LOOP_NO_FLOOR] DECLARED
+      it: §1a 链路：field-roles 端点回包的角色名集 === SOLVER_FIELD_ROLES（屏上渲染的就是这些名）
+      指纹: apps/datacore/test/solver-role-table.seam.test.ts :: §1a 链路：field-roles 端点回包的角色名集 === SOLVER_FIELD_ROLES（屏上渲染的就是这些名） :: LOOP_NO_FLOOR :: DECLARED
+  - apps/datacore/test/solver-role-table.seam.test.ts:255  [LOOP_NO_FLOOR] SOLVER_FIELD_ROLES[solverKey]!
+      it: ★ §1b ${solverKey}：每个 role 名都必须是求解器实读键（删掉它，求解器必须察觉）
+      指纹: apps/datacore/test/solver-role-table.seam.test.ts :: ★ §1b ${solverKey}：每个 role 名都必须是求解器实读键（删掉它，求解器必须察觉） :: LOOP_NO_FLOOR :: SOLVER_FIELD_ROLES[solverKey]!
+  - apps/datacore/test/solver-role-table.seam.test.ts:271  [LOOP_NO_FLOOR] DECLARED
+      it: §1c 交叉网（现算·不硬编码键名）：role 名 ⊆ 目录 argHints 键（该目录已被 solver-arghints-contract 真调用验过）
+      指纹: apps/datacore/test/solver-role-table.seam.test.ts :: §1c 交叉网（现算·不硬编码键名）：role 名 ⊆ 目录 argHints 键（该目录已被 solver-arghints-contract 真调用验过） :: LOOP_NO_FLOOR :: DECLARED
+  - apps/datacore/test/supply-vulnerability.seam.test.ts:194  [EXISTS_FOR_ALL] sids
+      it: §6 chain_impediments 回包带脆弱清单段，且与独立求解器同口径（不是第二份实现）
+      指纹: apps/datacore/test/supply-vulnerability.seam.test.ts :: §6 chain_impediments 回包带脆弱清单段，且与独立求解器同口径（不是第二份实现） :: EXISTS_FOR_ALL :: sids
+  - apps/datacore/test/worldstate-surface.seam.test.ts:330  [EXISTS_FOR_ALL] unc
+      it: 披露块可复核：sessionId/tick/source/divisor/rules/applied/unconsumed/agentInvolved 齐全，demandLoad 诚实进 unconsumed
+      指纹: apps/datacore/test/worldstate-surface.seam.test.ts :: 披露块可复核：sessionId/tick/source/divisor/rules/applied/unconsumed/agentInvolved 齐全，demandLoad 诚实进 unconsumed :: EXISTS_FOR_ALL :: unc
+  - apps/frontend-shell/test/befe-b-ops-scheduler-calendars.seam.test.tsx:93  [EXISTS_FOR_ALL] withRuns
+      it: ②-E 运行历史：点某行 → GET …/:id/runs 逐行上屏，失败必须带原因（不许只显 FAILED）
+      指纹: apps/frontend-shell/test/befe-b-ops-scheduler-calendars.seam.test.tsx :: ②-E 运行历史：点某行 → GET …/:id/runs 逐行上屏，失败必须带原因（不许只显 FAILED） :: EXISTS_FOR_ALL :: withRuns
+  - apps/frontend-shell/test/befe-wire-d.seam.test.tsx:488  [EXISTS_FOR_ALL] before
+      it: ③-A 只探针（不补）：真打 /b/v1/growth/probe，屏上结论来自响应，且**一张工单都没动**
+      指纹: apps/frontend-shell/test/befe-wire-d.seam.test.tsx :: ③-A 只探针（不补）：真打 /b/v1/growth/probe，屏上结论来自响应，且**一张工单都没动** :: EXISTS_FOR_ALL :: before
+  - apps/frontend-shell/test/console0828-decision.seam.test.tsx:458  [EXISTS_FOR_ALL] landable
+      it: ⓪ 金丝雀：12 件事全部挂出按钮，且三种落地态都非空 —— 失败 ⇒ 报「工具坏了」，不许读作「今天没有可加的事」
+      指纹: apps/frontend-shell/test/console0828-decision.seam.test.tsx :: ⓪ 金丝雀：12 件事全部挂出按钮，且三种落地态都非空 —— 失败 ⇒ 报「工具坏了」，不许读作「今天没有可加的事」 :: EXISTS_FOR_ALL :: landable
+  - apps/frontend-shell/test/console0828-decision.seam.test.tsx:458  [EXISTS_FOR_ALL] unlandable
+      it: ⓪ 金丝雀：12 件事全部挂出按钮，且三种落地态都非空 —— 失败 ⇒ 报「工具坏了」，不许读作「今天没有可加的事」
+      指纹: apps/frontend-shell/test/console0828-decision.seam.test.tsx :: ⓪ 金丝雀：12 件事全部挂出按钮，且三种落地态都非空 —— 失败 ⇒ 报「工具坏了」，不许读作「今天没有可加的事」 :: EXISTS_FOR_ALL :: unlandable
+  - apps/frontend-shell/test/console0828-decision.seam.test.tsx:904  [LOOP_NO_FLOOR] tags
+      it: ⑦b 同名两行必须分得开：辨识串带判据码 + 落点，⛔ 不是「①②」这种序号
+      指纹: apps/frontend-shell/test/console0828-decision.seam.test.tsx :: ⑦b 同名两行必须分得开：辨识串带判据码 + 落点，⛔ 不是「①②」这种序号 :: LOOP_NO_FLOOR :: tags
+  - apps/frontend-shell/test/dbui-13-needs.seam.test.tsx:94  [LOOP_NO_FLOOR] MODULE_KINDS
+      it: §1 13 类逐类上屏，一类不少 —— 且每一类的名字是人话，不是内部键名
+      指纹: apps/frontend-shell/test/dbui-13-needs.seam.test.tsx :: §1 13 类逐类上屏，一类不少 —— 且每一类的名字是人话，不是内部键名 :: LOOP_NO_FLOOR :: MODULE_KINDS
+  - apps/frontend-shell/test/decision-console-model.test.ts:524  [EXISTS_FOR_ALL] eating
+      it: 接缝：声明「不吃事件」的那几路，源码实参里就不许出现 events（含金丝雀自证）
+      指纹: apps/frontend-shell/test/decision-console-model.test.ts :: 接缝：声明「不吃事件」的那几路，源码实参里就不许出现 events（含金丝雀自证） :: EXISTS_FOR_ALL :: eating
+  - apps/frontend-shell/test/disruption-cards.seam.test.tsx:68  [LOOP_NO_FLOOR] chips
+      it: 🔴 分组：每个 chip 的条数 == 数据里该域的边数；chip 集合 == 数据里的域集合（零写死）
+      指纹: apps/frontend-shell/test/disruption-cards.seam.test.tsx :: 🔴 分组：每个 chip 的条数 == 数据里该域的边数；chip 集合 == 数据里的域集合（零写死） :: LOOP_NO_FLOOR :: chips
+  - apps/frontend-shell/test/disruption-cards.seam.test.tsx:93  [LOOP_NO_FLOOR] others
+      it: 🔴 切片：点某个域的 chip ⇒ 只出该域的行；别的域的行既不可见、也不在 DOM 里
+      指纹: apps/frontend-shell/test/disruption-cards.seam.test.tsx :: 🔴 切片：点某个域的 chip ⇒ 只出该域的行；别的域的行既不可见、也不在 DOM 里 :: LOOP_NO_FLOOR :: others
+  - apps/frontend-shell/test/ontology-relations.seam.test.tsx:736  [EXISTS_FOR_ALL] fromRegistries
+      it: mock 的两份结构边种子逐 key 一致（`mapping/registries` 字面量 vs `MOCK_LINK_SEED` store）
+      指纹: apps/frontend-shell/test/ontology-relations.seam.test.tsx :: mock 的两份结构边种子逐 key 一致（`mapping/registries` 字面量 vs `MOCK_LINK_SEED` store） :: EXISTS_FOR_ALL :: fromRegistries
+  - apps/frontend-shell/test/provenance-popover-legibility.test.tsx:1381  [EXISTS_FOR_ALL] sites
+      it: 棘轮 · 原生 title= 承载口径的存量只许减不许增（规范 §2 R-UI-3 · §6 要求第三次复发即建门）
+      指纹: apps/frontend-shell/test/provenance-popover-legibility.test.tsx :: 棘轮 · 原生 title= 承载口径的存量只许减不许增（规范 §2 R-UI-3 · §6 要求第三次复发即建门） :: EXISTS_FOR_ALL :: sites
+  - apps/frontend-shell/test/sandbox-console.seam.test.tsx:1053  [LOOP_NO_FLOOR] imp.impediments
+      it: ① 每条卡点自己的严重度上屏，且与载荷逐字节相等（收编后实测 0/8）
+      指纹: apps/frontend-shell/test/sandbox-console.seam.test.tsx :: ① 每条卡点自己的严重度上屏，且与载荷逐字节相等（收编后实测 0/8） :: LOOP_NO_FLOOR :: imp.impediments
+  - apps/frontend-shell/test/sandbox-console.seam.test.tsx:1097  [LOOP_NO_FLOOR] imp.impediments
+      it: ③ 阈值出处上屏，且按 ruleKey 连回载荷 thresholds[]（不是前端自己编一个出处）
+      指纹: apps/frontend-shell/test/sandbox-console.seam.test.tsx :: ③ 阈值出处上屏，且按 ruleKey 连回载荷 thresholds[]（不是前端自己编一个出处） :: LOOP_NO_FLOOR :: imp.impediments
+  - apps/frontend-shell/test/sandbox-console.seam.test.tsx:1130  [LOOP_NO_FLOOR] imp.impediments
+      it: ⑤ 触发判定条逐条在场 —— 复用独立屏那一份实现，不是沙盘另写一个
+      指纹: apps/frontend-shell/test/sandbox-console.seam.test.tsx :: ⑤ 触发判定条逐条在场 —— 复用独立屏那一份实现，不是沙盘另写一个 :: LOOP_NO_FLOOR :: imp.impediments
+  - apps/frontend-shell/test/sandbox-detail-pixel.test.tsx:279  [LOOP_NO_FLOOR] CHAIN_MAP_LANES
+      it: ④ 左侧地铁图的站名单源 CHAIN_NODE_REGISTRY —— 一个字都不许自己编
+      指纹: apps/frontend-shell/test/sandbox-detail-pixel.test.tsx :: ④ 左侧地铁图的站名单源 CHAIN_NODE_REGISTRY —— 一个字都不许自己编 :: LOOP_NO_FLOOR :: CHAIN_MAP_LANES
+  - apps/frontend-shell/test/sandbox-detail-pixel.test.tsx:279  [LOOP_NO_FLOOR] lane.nodes
+      it: ④ 左侧地铁图的站名单源 CHAIN_NODE_REGISTRY —— 一个字都不许自己编
+      指纹: apps/frontend-shell/test/sandbox-detail-pixel.test.tsx :: ④ 左侧地铁图的站名单源 CHAIN_NODE_REGISTRY —— 一个字都不许自己编 :: LOOP_NO_FLOOR :: lane.nodes
+  - apps/frontend-shell/test/sandbox-detail-pixel.test.tsx:279  [LOOP_NO_FLOOR] CHAIN_MAP_LANES
+      it: ④ 左侧地铁图的站名单源 CHAIN_NODE_REGISTRY —— 一个字都不许自己编
+      指纹: apps/frontend-shell/test/sandbox-detail-pixel.test.tsx :: ④ 左侧地铁图的站名单源 CHAIN_NODE_REGISTRY —— 一个字都不许自己编 :: LOOP_NO_FLOOR :: CHAIN_MAP_LANES
+  - apps/frontend-shell/test/sandbox-home-pixel.test.tsx:131  [LOOP_NO_FLOOR] CHAIN_NODE_REGISTRY
+      it: ⓪ 三把尺子先自证（金丝雀不中 ⇒ 报「尺子坏了」，不许报「代码没问题」）
+      指纹: apps/frontend-shell/test/sandbox-home-pixel.test.tsx :: ⓪ 三把尺子先自证（金丝雀不中 ⇒ 报「尺子坏了」，不许报「代码没问题」） :: LOOP_NO_FLOOR :: CHAIN_NODE_REGISTRY
+  - apps/frontend-shell/test/sandbox-home-pixel.test.tsx:131  [LOOP_NO_FLOOR] CAPACITY_FACTOR_BINDINGS
+      it: ⓪ 三把尺子先自证（金丝雀不中 ⇒ 报「尺子坏了」，不许报「代码没问题」）
+      指纹: apps/frontend-shell/test/sandbox-home-pixel.test.tsx :: ⓪ 三把尺子先自证（金丝雀不中 ⇒ 报「尺子坏了」，不许报「代码没问题」） :: LOOP_NO_FLOOR :: CAPACITY_FACTOR_BINDINGS
+  - apps/frontend-shell/test/sandbox-home-pixel.test.tsx:131  [LOOP_NO_FLOOR] PerturbationKindSchema.options
+      it: ⓪ 三把尺子先自证（金丝雀不中 ⇒ 报「尺子坏了」，不许报「代码没问题」）
+      指纹: apps/frontend-shell/test/sandbox-home-pixel.test.tsx :: ⓪ 三把尺子先自证（金丝雀不中 ⇒ 报「尺子坏了」，不许报「代码没问题」） :: LOOP_NO_FLOOR :: PerturbationKindSchema.options
+  - apps/frontend-shell/test/sandbox-home-pixel.test.tsx:198  [LOOP_NO_FLOOR] CHAIN_NODE_REGISTRY
+      it: ② 24 站全在屏，站名逐个 == CHAIN_NODE_REGISTRY 的 label（一个字都不许自己编）
+      指纹: apps/frontend-shell/test/sandbox-home-pixel.test.tsx :: ② 24 站全在屏，站名逐个 == CHAIN_NODE_REGISTRY 的 label（一个字都不许自己编） :: LOOP_NO_FLOOR :: CHAIN_NODE_REGISTRY
+  - apps/frontend-shell/test/sandbox-home-pixel.test.tsx:198  [LOOP_NO_FLOOR] CAPACITY_FACTOR_BINDINGS
+      it: ② 24 站全在屏，站名逐个 == CHAIN_NODE_REGISTRY 的 label（一个字都不许自己编）
+      指纹: apps/frontend-shell/test/sandbox-home-pixel.test.tsx :: ② 24 站全在屏，站名逐个 == CHAIN_NODE_REGISTRY 的 label（一个字都不许自己编） :: LOOP_NO_FLOOR :: CAPACITY_FACTOR_BINDINGS
+  - apps/frontend-shell/test/sandbox-home-pixel.test.tsx:198  [LOOP_NO_FLOOR] PerturbationKindSchema.options
+      it: ② 24 站全在屏，站名逐个 == CHAIN_NODE_REGISTRY 的 label（一个字都不许自己编）
+      指纹: apps/frontend-shell/test/sandbox-home-pixel.test.tsx :: ② 24 站全在屏，站名逐个 == CHAIN_NODE_REGISTRY 的 label（一个字都不许自己编） :: LOOP_NO_FLOOR :: PerturbationKindSchema.options
+  - apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx:263  [LOOP_NO_FLOOR] viaDispatch
+      it: 反向：收编键的路由**仍然可达**（深链接不许断）
+      指纹: apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx :: 反向：收编键的路由**仍然可达**（深链接不许断） :: LOOP_NO_FLOOR :: viaDispatch
+  - apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx:263  [LOOP_NO_FLOOR] viaRoute
+      it: 反向：收编键的路由**仍然可达**（深链接不许断）
+      指纹: apps/frontend-shell/test/sandbox-ia-consolidate.seam.test.tsx :: 反向：收编键的路由**仍然可达**（深链接不许断） :: LOOP_NO_FLOOR :: viaRoute
+  - apps/frontend-shell/test/sandbox-opt-pixel.test.tsx:300  [EXISTS_FOR_ALL] pd
+      it: ② 散点几何：每个被支配点的屏幕 y 都 **小于** 同 x 处前沿折线的 y（逐点，不抽查）
+      指纹: apps/frontend-shell/test/sandbox-opt-pixel.test.tsx :: ② 散点几何：每个被支配点的屏幕 y 都 **小于** 同 x 处前沿折线的 y（逐点，不抽查） :: EXISTS_FOR_ALL :: pd
+  - apps/frontend-shell/test/sandbox-process-live.seam.test.tsx:287  [LOOP_NO_FLOOR] TICK_DRIVE_ORDER
+      it: A2 · 本次世界真的把四档都造出来了（任一堆为空 ⇒ 那一档的断言在空集合上跑，恒真）
+      指纹: apps/frontend-shell/test/sandbox-process-live.seam.test.tsx :: A2 · 本次世界真的把四档都造出来了（任一堆为空 ⇒ 那一档的断言在空集合上跑，恒真） :: LOOP_NO_FLOOR :: TICK_DRIVE_ORDER
+  - apps/frontend-shell/test/sandbox-process-live.seam.test.tsx:398  [EXISTS_FOR_ALL] kindLabels
+      it: B3 · 总结说的是**变化**不是当前值：带上一拍拍号、动了几条、按等待态分列
+      指纹: apps/frontend-shell/test/sandbox-process-live.seam.test.tsx :: B3 · 总结说的是**变化**不是当前值：带上一拍拍号、动了几条、按等待态分列 :: EXISTS_FOR_ALL :: kindLabels
+  - apps/frontend-shell/test/sandbox-process-live.seam.test.tsx:571  [LOOP_NO_FLOOR] m.lines
+      it: G3 · `live` 键在**不传时根本不存在**（不是 `null`、不是 `undefined` 占槽）
+      指纹: apps/frontend-shell/test/sandbox-process-live.seam.test.tsx :: G3 · `live` 键在**不传时根本不存在**（不是 `null`、不是 `undefined` 占槽） :: LOOP_NO_FLOOR :: m.lines
+  - apps/frontend-shell/test/sandbox-process-live.seam.test.tsx:571  [LOOP_NO_FLOOR] line.stations
+      it: G3 · `live` 键在**不传时根本不存在**（不是 `null`、不是 `undefined` 占槽）
+      指纹: apps/frontend-shell/test/sandbox-process-live.seam.test.tsx :: G3 · `live` 键在**不传时根本不存在**（不是 `null`、不是 `undefined` 占槽） :: LOOP_NO_FLOOR :: line.stations
+  - apps/frontend-shell/test/sim-base-drill-greyout.test.tsx:51  [EXISTS_FOR_ALL] drillable
+      it: §0 金丝雀：册里两类因子都存在，且选项/因子行真的上了屏
+      指纹: apps/frontend-shell/test/sim-base-drill-greyout.test.tsx :: §0 金丝雀：册里两类因子都存在，且选项/因子行真的上了屏 :: EXISTS_FOR_ALL :: drillable
+  - apps/frontend-shell/test/sim-base-drill-greyout.test.tsx:51  [EXISTS_FOR_ALL] blocked
+      it: §0 金丝雀：册里两类因子都存在，且选项/因子行真的上了屏
+      指纹: apps/frontend-shell/test/sim-base-drill-greyout.test.tsx :: §0 金丝雀：册里两类因子都存在，且选项/因子行真的上了屏 :: EXISTS_FOR_ALL :: blocked
+  - apps/frontend-shell/test/sim-base-drill-greyout.test.tsx:66  [LOOP_NO_FLOOR] drillable
+      it: §1 落点类型有基地维度 ⇒ 基地选项照旧可选、不给原因、不置灰
+      指纹: apps/frontend-shell/test/sim-base-drill-greyout.test.tsx :: §1 落点类型有基地维度 ⇒ 基地选项照旧可选、不给原因、不置灰 :: LOOP_NO_FLOOR :: drillable
+  - apps/frontend-shell/test/sim-base-drill-greyout.test.tsx:85  [LOOP_NO_FLOOR] blocked
+      it: §2 落点类型无基地维度 ⇒ 基地选项置灰但仍在（不许隐藏），全网保持可选
+      指纹: apps/frontend-shell/test/sim-base-drill-greyout.test.tsx :: §2 落点类型无基地维度 ⇒ 基地选项置灰但仍在（不许隐藏），全网保持可选 :: LOOP_NO_FLOOR :: blocked
+  - apps/frontend-shell/test/sim-base-drill-greyout.test.tsx:134  [LOOP_NO_FLOOR] CAPACITY_FACTOR_BINDINGS
+      it: §4 逐因子：屏上置灰态 === 契约 canDrillByBase(落点类型)
+      指纹: apps/frontend-shell/test/sim-base-drill-greyout.test.tsx :: §4 逐因子：屏上置灰态 === 契约 canDrillByBase(落点类型) :: LOOP_NO_FLOOR :: CAPACITY_FACTOR_BINDINGS
+  - apps/frontend-shell/test/sim-disclosure-adversary.seam.test.tsx:203  [LOOP_NO_FLOOR] moves
+      it: 动作人话名取自契约登记册，前端不另抄一份表
+      指纹: apps/frontend-shell/test/sim-disclosure-adversary.seam.test.tsx :: 动作人话名取自契约登记册，前端不另抄一份表 :: LOOP_NO_FLOOR :: moves
+  - apps/frontend-shell/test/sim-nav-group.seam.test.tsx:248  [LOOP_NO_FLOOR] CONSOLE_KEYS
+      it: A4 · 收编的**两半必须齐**：四个键各带 consolidatedWhen:\"sim.sandbox\" ⊗ 各在 CONSOLIDATED_INTO_SANDBOX 里
+      指纹: apps/frontend-shell/test/sim-nav-group.seam.test.tsx :: A4 · 收编的**两半必须齐**：四个键各带 consolidatedWhen:\"sim.sandbox\" ⊗ 各在 CONSOLIDATED_INTO_SANDBOX 里 :: LOOP_NO_FLOOR :: CONSOLE_KEYS
+  - apps/frontend-shell/test/sim-nav-group.seam.test.tsx:327  [LOOP_NO_FLOOR] CONSOLE_KEYS
+      it: A5 · 四条**陈旧豁免必须已删**，合并壳自己则必须登记（判据⑨ 的账要平）
+      指纹: apps/frontend-shell/test/sim-nav-group.seam.test.tsx :: A5 · 四条**陈旧豁免必须已删**，合并壳自己则必须登记（判据⑨ 的账要平） :: LOOP_NO_FLOOR :: CONSOLE_KEYS
+  - apps/frontend-shell/test/sim-nav-group.seam.test.tsx:411  [LOOP_NO_FLOOR] CONSOLE_KEYS
+      it: B4 · 新标题不与任何内联 route label 相撞（不只是不撞「推演沙盘」这一条）
+      指纹: apps/frontend-shell/test/sim-nav-group.seam.test.tsx :: B4 · 新标题不与任何内联 route label 相撞（不只是不撞「推演沙盘」这一条） :: LOOP_NO_FLOOR :: CONSOLE_KEYS
+  - apps/frontend-shell/test/sim-unified-shell.seam.test.tsx:556  [EXISTS_FOR_ALL] emptyVars
+      it: ⑤ 诚实位臂：派生读数的口径标注与数字**同屏**（同一张卡内），且写着后端那句出处
+      指纹: apps/frontend-shell/test/sim-unified-shell.seam.test.tsx :: ⑤ 诚实位臂：派生读数的口径标注与数字**同屏**（同一张卡内），且写着后端那句出处 :: EXISTS_FOR_ALL :: emptyVars
+  - apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx:139  [FILTER_TAUTOLOGY] mutated.state
+      it: U4b-C1-反证 · 变异：把被排除项从节点集里过滤掉 ⇒ 红在「图上只剩入选项」，不是红在「组件不见了」
+      指纹: apps/frontend-shell/test/sim-ux-u4b-u1-u8.test.tsx :: U4b-C1-反证 · 变异：把被排除项从节点集里过滤掉 ⇒ 红在「图上只剩入选项」，不是红在「组件不见了」 :: FILTER_TAUTOLOGY :: mutated.state
+  - apps/frontend-shell/test/slice-graph-fold.test.tsx:87  [LOOP_NO_FLOOR] dag.edges
+      it: 展开一个组 → 该组节点个显、folded 收缩、边只在个显节点间
+      指纹: apps/frontend-shell/test/slice-graph-fold.test.tsx :: 展开一个组 → 该组节点个显、folded 收缩、边只在个显节点间 :: LOOP_NO_FLOOR :: dag.edges
+  - apps/datacore/src/sim/drill-orchestrator.ts:0  [SWITCH_ARG_UNCOVERED] feasible
+      it: 开关 feasible
+      生产 apps/datacore/src/sim/drill-orchestrator.ts:175=false
+        测试 apps/frontend-shell/test/sandbox-opt-pixel.test.tsx:140=true
+      指纹: <switch> :: feasible :: SWITCH_ARG_UNCOVERED :: feasible
+
+  ⚠ 为什么这条必须红：这几种形态下，「N 里只做了 1 个」与「做满 N 个」**测试给出同一个颜色**。
+    修法（按检测器）：
+      LOOP_NO_FLOOR       → 在循环前后加一条基数断言（`expect(xs).toHaveLength(N)`），空集就不再恒绿；
+      EXISTS_FOR_ALL      → 把 `toBeGreaterThan(0)` 换成咬死条数的断言，或对全集逐条断言；
+      FILTER_TAUTOLOGY    → **别用被断言的谓词去过滤样本**，遍历全集再断言（这条最狠：它构造性地把反例排除在样本外）；
+      SWITCH_ARG_UNCOVERED→ 补一条**传生产那个值**的用例（"这个函数有测试" ≠ "生产走的那个分支有测试"）。
+  ⚠ 不要用"加进基线"来消红：`--update` **只删不增**，没有这条逃生路。
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-solver-field-seam.mjs  (rc=1)
+  判据：门判负（RC=1）
+· 金丝雀 16/16 全中（形状解析 2 · 契约 schema 成员 1 · 开放形状探测 1 · 结果接口根解析 1 · **必中** 3 · **必不中** 3 · 消费判据 2 · import 图 1 · 扫描面 1 · rest 探测双向 1） —— 抽取器与判定器在真源码上有效，下面的否定结论才有资格被相信。
+  必中证据：载体③ 判定器双向可判（群体） ⇒ 载体③ 扫 487 字段 · DEAD 86（例 S3:assignment_optimize.itemType）· CONSUMED 272（例 S3:affected_orders.baseId） ｜ 载体④ 作用域判据严于全域（群体） ⇒ 载体④ 扫 94 字段 · 作用域判死且全域有同名 7（例 S4:CapacityForecastOutputSchema.unit，全域 59 文件）· CONSUMED 80 ｜ 载体⑤ 嵌套内联行字段可判（群体） ⇒ 载体⑤ 扫 97 个嵌套行字段 · DEAD 9（例 S5:chain_impediments.segmentAttribution.unattributedTotal）· CONSUMED 86（例 S5:chain_impediments.counts.total）
+· 扫描规模自证：求解器 63 个（形状表锚点 apps/datacore/src/solvers/service.ts:519；其中 5 个走契约 schema 单源） · 载体④ 契约 schema 10 个（入参族结构性豁免 9 · 前端无 import 作用域 1） · 载体⑤ 结果接口 123 个候选、结构 join 上 6 个求解器（嵌套行字段 97 个） · 逐字段核对 678 个 · 前端生产代码 287 个文件（已剔 mocks/ 与测试）· import 边 345 条
+· ⚠ 盲区自曝（载体⑤）：57 个求解器没 join 到结果接口 ⇒ 它们的嵌套行字段本门看不见。按原因分：无接口的键集覆盖该形状（结果类型多半是内联对象字面量，无具名类型可锚） ×43 · 形状仅 3 键（<5） ×7 · 形状仅 2 键（<5） ×2 · 形状仅 4 键（<5） ×5
+· 判定：有消费方 438 · **死字段 105**（基线 97 · 新增 11 · 已修复 3）· 未判定 135（不 gate，见 --verbose）
+· ⚠ 盲区自曝：目录里有 2 个求解器**未声明输出形状**（model_capacity_network, base_risk_profile）⇒ 本门看不见它们的字段。这是缺口不是干净。
+· ⚠ 盲区自曝（**最重要的一条**）：1 个求解器的输出 schema 用了 `.catchall/.passthrough`，即它**自己声明不穷尽** —— capacity_forecast←CapacityForecastOutputSchema。
+    实测标本：`capacityForecast`（apps/datacore/src/solvers/capacity.ts:407）把 `scopeOut` 展开进 3 个 return（:547 / :659 / :688），下发 `scope`/`scopeBaseId`/`scopeBaseName`/`scopeNote` 四个键，而 `CapacityForecastOutputSchema` 一个都没声明，前端 `scopeNote`/`scopeBaseName` 也零消费 ——**这类字段本门看不见**，因为它们压根不在"后端声明会下发的字段"这个集合里。
+    这不是本门漏判，是**上游单一来源本身不完整**：修法是让形状声明穷尽（或另立一道"实现返回键 ⊄ 声明形状"的漂移门），不是把它当成"没问题"。写在这里，是因为不写下来它就会变成下一次「我以为都查过了」。
+· ✅ 有人把字段接上了：S3:risk_timeline.otdBatch, S4:ParetoRequestSchema.args, S4:ParetoRequestSchema.levers
+  → 跑 `node scripts/check-solver-field-seam.mjs --update` 收紧基线（只减不增，不会招安新缺口）。
+
+✗ solver-field-seam:check 未通过：
+  - 新增「后端声明下发·前端零消费方」**字段** 11 条（逐条见下）
+      → 这就是 G-BE-FE-FIELD-DEAD：端点早就有、前端也在调，**但这个字段没人看**。
+        「端点有人调」不度量「这个端点的输出都有人看」——befe-seam:check 只量前者，故它全绿也说明不了什么。
+        修：在 apps/frontend-shell/src 里真接上（reducer/选择器/组件读它），或者后端别再声明下发这个字段；
+        确属暂不接 → 人手把它加进 scripts/solver-field-seam-baseline.json 的 entries（**必须写 why**）并同步 maxEntries；
+        误报（经 JSX `{...row}` 展开等本门追不到的形态消费）→ 同样加基线并把消费点写进 why，那是一个可评审的显式动作。
+        · S3:chain_impediments.supplyVulnerability  ←  apps/datacore/src/solvers/service.ts:519  · 全前端生产代码零提及
+        · S3:finance_world_projection.turnDynamics  ←  apps/datacore/src/solvers/service.ts:519  · 全前端生产代码零提及
+        · S3:optimize_whatif.deltaByObjective  ←  apps/datacore/src/solvers/service.ts:519  · 全前端生产代码零提及
+        · S3:supply_vulnerability.suppliers  ←  apps/datacore/src/solvers/service.ts:519  · 全前端生产代码零提及
+        · S3:supply_vulnerability.topBySpendOnly  ←  apps/datacore/src/solvers/service.ts:519  · 全前端生产代码零提及
+        · S5:chain_loss_attribution.simContext.dayStateVarRegistry  ←  apps/datacore/src/solvers/chain-loss.ts:242（接口 ChainLossResult）  · 全前端生产代码零提及
+        · S5:supply_vulnerability.counts.suppliers  ←  apps/datacore/src/solvers/supply-vulnerability.ts:125（接口 SupplyVulnerabilityResult）  · 全前端生产代码零提及
+        · S5:supply_vulnerability.counts.singlePointMaterials  ←  apps/datacore/src/solvers/supply-vulnerability.ts:125（接口 SupplyVulnerabilityResult）  · 全前端生产代码零提及
+        · S5:supply_vulnerability.counts.noRecoveryPath  ←  apps/datacore/src/solvers/supply-vulnerability.ts:125（接口 SupplyVulnerabilityResult）  · 全前端生产代码零提及
+        · S5:supply_vulnerability.counts.noQualifiedBackup  ←  apps/datacore/src/solvers/supply-vulnerability.ts:125（接口 SupplyVulnerabilityResult）  · 全前端生产代码零提及
+        · S4:ChainImpedimentSchema.carriers  ←  packages/contracts/src/chain-sim.ts:1288（求解器侧引用 apps/datacore/src/solvers/chain-impediment.ts:41）  · 解析该 schema 的前端文件（含其直接 importer）里零提及
+
+──────────────────────────────────────────────────────────────────────────────
+✗ FAIL  scripts/check-claim-strength.mjs  (rc=1)
+  判据：门判负（RC=1）
+⛔ claim-strength:check 真违规 3 条（扫描面 45 文件 · 命中 28 条）：
+   · 屏上强承诺词无登记：apps/frontend-shell/src/views/OptimizeWhatifView.tsx:631 「这套环境还没有接上最优化引擎 —— 求解要靠它来算，所以这一页现在给不出方案。 需要由管理员在部署时接入；接上之前，这里」（命中词「最优」）——要么改成「优选」系说法，要么在 scripts/claim-strength-registry.json 登记它**被什么撑着**
+   · 屏上强承诺词无登记：apps/frontend-shell/src/views/OptimizeWhatifView.tsx:764 「优化解对「模板族 · seed · 扰动清单」三样都敏感，复算时三样必须一致，否则得到的不是同一个最优方案。」（命中词「最优」）——要么改成「优选」系说法，要么在 scripts/claim-strength-registry.json 登记它**被什么撑着**
+   · 登记册死账：「apps/frontend-shell/src/locales/zh.ts :: 保证后端不可能多发一个字段」屏上已无此串——删掉这条登记（登记册是对账表，不是免检白名单）
+   依据口径：docker 态 CP-SAT 可证最优有撑；内存态 InProc 贪心恒 optimal:false 无撑 ⇒
+   静态大字不许写死强承诺词；动态标注跟求解器自述字段（optimal）走；其余一律登记依据。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-chain-closure.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ chain:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-resource-descriptor.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ resource-descriptor:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-ontology-slice-coverage.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ ontology-slice-coverage:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-slice-connectivity.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ slice-connectivity:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-function-signature.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ function-signature:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-solver-arg-key-drift.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ solver-arg-key-drift:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-object-interface.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ object-interface:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-ontology-descriptions.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ ontology-descriptions:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-dark-launch-integrity.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ dark-launch:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-prd-data-grounding.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+⛔ 门自己瞎了（金丝雀未被咬 / 真值源规模异常）—— **这不是「PRD 干净」**：
+   · 规则命名空间真值源只读到 2 个（<5）—— 判义③这一档等于没开
+   修门，别改结论。（退出码 2 = 工具坏了，不许据此报干净）
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-lever-landing-exists.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ lever-landing-exists:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-carrier-has-instances.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ carrier-has-instances:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-agent-config-complete.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ agent-config-complete:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-lever-prop-resolvable.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ lever-prop-resolvable:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-derived-recompute.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⚠ derived-recompute:check：**门自己没准备好，本次未度量任何代码，结论作废**（RC=2）。
+  原因：dist 未构建或落后于 src（**环境**状态，与被扫代码无关）。
+  - apps/datacore 的 dist **过期** 2832.7 分钟
+        最新源码：/Users/apple/deploy/wo-edge-wire/apps/datacore/src/synthetic/battery.ts
+        最新产物：/Users/apple/deploy/wo-edge-wire/apps/datacore/dist/solvers/sandbox-runner.mjs
+
+  为什么直接退出而不是照跑：本门读的是 dist、下的却是**源码**结论。dist 落后于 src 时，
+  它会说出与源码恰好相反的话，而且是绿的（欠账 #161）。
+  「dist 在不在」度量的是构建过没有，不是构建得够不够新——没准备好时本门必须闭嘴。
+
+  请先构建再重跑：  pnpm --filter datacore build
+  （或直接 pnpm -r build）
+
+  这一条读作「**我没查**」，不读作「我查了，你有问题」——两者处置相反：
+  前者去把环境补齐再重跑，后者去改代码。把前者当后者，就会去修一个根本不存在的缺陷
+  （欠账 #155 即此：dist 过期被错报成源码缺陷）。
+
+──────────────────────────────────────────────────────────────────────────────
+◌ NOT-MEASURED  scripts/check-layout-legibility.mjs  (rc=2)
+  判据：门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+⛔ layout-legibility 工具坏了（RC=2 · 只许说「我没查出来」，不许说「版面合格」）
+   未预期异常（未找到 Chromium（查过：/opt/pw-browsers / /root/.cache/ms-playwright / /Users/apple/.cache/ms-playwright）。容器预置在 /opt/pw-browsers；不许跑 playwright install，用 PLAYWRIGHT_CHROMIUM=<路径> 直接指过去。）
+       at launchBrowser (file:///Users/apple/deploy/wo-edge-wire/scripts/lib/layout-probe.mjs:468:11)
+       at main (file:///Users/apple/deploy/wo-edge-wire/scripts/check-layout-legibility.mjs:587:25)
+       at file:///Users/apple/deploy/wo-edge-wire/scripts/check-layout-legibility.mjs:886:9
+
+══════════════════════════════════════════════════════════════════════════════
+门链汇总 · 执行 71 道 · 用时 526.8s
+  ✓ PASS           43 道  真跑了，绿
+  ✗ FAIL           12 道  真跑了，红
+  ◌ NOT-MEASURED   16 道  **没跑成 —— 这一态既不是绿也不是红，是「没查」**
+
+  ✗ FAIL 名单：
+     · check-ontology-anchors.mjs
+     · check-migration-numbering.mjs
+     · check-no-raw-nul.mjs
+     · check-worktree-canonical.mjs
+     · check-backend-frontend-seam.mjs
+     · check-factlock-anchor.mjs
+     · check-css-token-defined.mjs
+     · check-ui-first-layer.mjs
+     · check-text-legibility.mjs
+     · check-coverage-blind.mjs
+     · check-solver-field-seam.mjs
+     · check-claim-strength.mjs
+
+  ◌ NOT-MEASURED 名单（⛔ 不许记成绿，也不许记成红）：
+     · check-chain-closure.mjs                    门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-resource-descriptor.mjs              门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-ontology-slice-coverage.mjs          门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-slice-connectivity.mjs               门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-function-signature.mjs               门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-solver-arg-key-drift.mjs             门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-object-interface.mjs                 门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-ontology-descriptions.mjs            门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-dark-launch-integrity.mjs            门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-prd-data-grounding.mjs               门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-lever-landing-exists.mjs             门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-carrier-has-instances.mjs            门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-agent-config-complete.mjs            门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-lever-prop-resolvable.mjs            门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-derived-recompute.mjs                门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+     · check-layout-legibility.mjs                门自报「工具没准备好」（RC=2）—— 没查，不是没问题
+
+  金丝雀（本汇总的量法自证）：从 package.json:scripts.gates 解出 71 道门 · 必中样例 check-merge-conflict-markers.mjs 在册 · 必不中样例 0 误咬
+
+🔴 门链未通过：12 道门判负（RC=1）。⛔ 红不许被吞成绿。
+ ELIFECYCLE  Command failed with exit code 1.

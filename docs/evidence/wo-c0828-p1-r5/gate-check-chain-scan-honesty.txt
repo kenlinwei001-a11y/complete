@@ -1,0 +1,16 @@
+  · dist 新鲜度已核：packages/contracts  产物 2026-09-23 06:02:59 ≥ 源码 2026-09-22 10:23:26（领先 1179.5 分钟）   [chain-scan-honesty:check]
+⛔ 门自己瞎了（不是「代码干净」）—— chain-scan-honesty:check 无法给出有效结论：
+  - 规则 C36 的 params 求值不出来：PROPAGATION_COEF_PARAMS is not defined
+      原文：PROPAGATION_COEF_PARAMS
+      —— 这是**门看不懂**，不是「规则不存在」。修法：把该派生函数从 @platform/contracts 导出（本门自动跟得上），或改回可求值的形态；**不许**把它读成 H6 的「不在册」。
+      ✓ R1 派生式跟得过这一跳（C05）：parityRuleExpression("C05") → "SUSTAIN(Line.utilization > 95, 3)"（= PARITY_RULE_SEEDS 同条）
+      ✓ R2 内联函数派生式被求值（C08）：outsourceRedlineViolationExpr(OUTSOURCE_REDLINE.subject, { p → "Order.outsourceRatio > params.outsourceRatioMax" · 与 outsourceRedlineViolationExprPublished() 一致
+      ✓ R3 字面量式原样取回（C22）："Order.changeoverMin > 120" → "Order.changeoverMin > 120"
+      ✓ R4 模板串真被求值（C18）：`AnnualScenario.cashCushion < ${ruleParamRef("cashFloor")}` → "AnnualScenario.cashCushion < params.cashFloor"
+      ✓ R5 跨对象错位可被咬（新对旧错）：新版 C01→"Line.weeklyCapacityWan > Line.designCeilingWan"（解析 2/2 条）· 旧正则 C01→"Action.approver == NULL OR Action.audited == FALSE"（解析 1/2 条 · 这就是那个病）
+      ✓ R6 不在册可被判出（C99）：C99 正确判为不在册（在册 31 条里无它）
+      ✓ R7 声明条数 == 解析条数（防吞噬）：声明 31 条 · 解析 31 条 · 无丢失
+      ✓ R8 模块自有记号取值与源码一致（STATE_DECAY_PARAM_KEY）：源码切片 "pressureDecayPerTick" · 解析得 "pressureDecayPerTick"
+
+  修法：修门（锚点/正则/事实源解析/求值器），不是修被扫代码。0 命中在本门里长得跟通过一模一样，故必须先自证工具是对的。
+  **本次结论作废（RC=2）**：不许读作「代码干净 / 无违规 / 通过」，也不许读作「不得并线」—— 本门这次什么都没证明。
