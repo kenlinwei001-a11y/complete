@@ -70,7 +70,7 @@ import { OntologyWorkflowUpsertSchema } from "@platform/contracts"; // OntoFlow�
 import { ForecastAdoptionPayloadSchema } from "@platform/contracts"; // WO-SIM-ACTION-REAL · 采纳产能预测结论 payload 契约
 import { SchemeAdoptionPayloadSchema } from "@platform/contracts"; // WO-ADOPT-SCHEME-CARRIER · 采纳经营方案 payload 契约（量纲逐字段标注）
 import { LocalTemplateIndex } from "./solvers/opt-embedding.js"; // 轨B·增量4 embedding 复用检索（advisory）
-import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, unknownPropagationRuleKeys, type CellProvenance, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
+import { ADVERSARY_FEATURE_KEY, adversaryMoveNameOf, applyPerturbationToState, diffTickStates, isPerturbationActiveAt, partitionAdversaryRules, partitionPropagationRules, PerturbationSchema, PropagationRulePatchSchema, PropagationRuleSchema, resolveSimScope, SandboxViewConfigSchema, SIM_SCOPE_DEFAULT_HOPS, SolutionCandidateSchema, unknownPropagationRuleKeys, type CellProvenance, type DelayedContribution, type Perturbation, type PropagationRule, type PropagationTrace, type ResolvedSimScope, type SimCheckpoint, type SimCounterfactualResult, type SimSession, type SimSessionStatus, type StateVarDomainLookup, type TickState } from "@platform/contracts";
 import { diffEnterpriseStates, ENTERPRISE_STATE_REAL_WORLD_ID } from "@platform/contracts"; // WO-ENTERPRISE-STATE · 企业状态快照（差分口径与 StateDelta 同一份纯函数）
 import { PERTURBATION_TRACE_PREFIX, firedPropagationRuleKeys, propagateTick, type CadenceGateLookup, type PairWeightLookup, type PerturbationInTick, type PropagationGraph, type RuleParamLookup, type ScopeReport, type StateVarDisclosure, type UnresolvedCadenceGate, type UnresolvedPairWeight } from "./sim/propagation.js";
 import type { PairWeightReport } from "./sim/pair-weights.js";
@@ -96,6 +96,10 @@ import { buildChangeImpactWorld, previewChangeImpact } from "./sim/change-impact
 // 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
 import { buildMetricSeries } from "./sim/metric-series.js";
 import { buildExplainSlice } from "./sim/explain-slice.js";
+// WO-C0828-P2 · D2 逐候选反事实定价的**模型层**（PRD-sim-options-decision-surface §4.2）。
+// 六步装配全在那边（对照与候选世界都走 persist:false 临时扰动路 ⇒ 零写入）；
+// 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
+import { priceCandidate, pricingFingerprint, scenarioPerturbationsHash, type PricingOutcome } from "./sim/option-pricing.js";
 // WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
 // 两个符号各有真实调用点，缺一个就编译不过：
 //   `listSimWorldObjects` → 落点成员集合物化入口（本文件 `:4138`，WO-IMPEDIMENT-LEVERS 侧）
@@ -2831,6 +2835,86 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       suppressedRulesFiredInBaseline: suppressed.map((r) => r.key).filter((k) => baseline.firedRuleKeys.includes(k)).sort(),
     };
     return result;
+  });
+  /**
+   * WO-C0828-P2 · D2 逐候选反事实定价（PRD-sim-options-decision-surface.md §4.2）。
+   *
+   * 一次定价 ≤4 条候选（PRD 性能段）。对照与候选世界都走 `simAdvanceTicks` 的
+   * persist:false 临时扰动路 ⇒ **零写入**：session curTick 不动、世界态逐字节不变、
+   * 不产扰动记录（E2-g 由机制保证，不是注释保证）。指纹缓存命中即回
+   * （键 = sessionId+curTick+场景扰动集 sha256+candidateId，PRD 性能段原式；
+   * 容量 500，超限按插入序淘汰 —— 场景扰动集一变哈希就变，无陈旧读数风险）。
+   */
+  const pricingCache = new Map<string, PricingOutcome>();
+  app.post("/a/v1/sim/sessions/:id/pricing", async (req) => {
+    const c = ctx(req);
+    await requireSim(c, "sim.propagation");
+    const s = await getSimOr404(c, (req.params as { id: string }).id);
+    const body = parseBody(
+      z.object({
+        horizon: z.number().int().min(1).max(64).optional(),
+        candidates: z.array(SolutionCandidateSchema).min(1).max(4),
+      }),
+      req.body ?? {},
+    );
+    const horizon = body.horizon ?? 1;
+    const specs = await repos.derivationSpecs.list(c.tenantId, (r) => r.status === "ACTIVE");
+    const scenarioPerts = await repos.sim.listPerturbations(c.tenantId, s.id);
+    const scenarioHash = scenarioPerturbationsHash(scenarioPerts);
+    const { active } = await sessionPropRules(c, s, undefined);
+    const advance = (_sessionId: string, opts: { n: number; ephemeral?: readonly Perturbation[] }): Promise<TickState> =>
+      simAdvanceTicks(c, s, { rules: active, n: opts.n, persist: false, ephemeralPerturbations: opts.ephemeral ?? [] }).then(
+        (r) => r.state,
+      );
+    const orderIds: string[] = [];
+    const orderValues = new Map<string, number>();
+    for (const o of await repos.objects.listByType(c.tenantId, "Order")) {
+      orderIds.push(o.id);
+      const v = o.props.value;
+      if (typeof v === "number" && Number.isFinite(v)) orderValues.set(o.id, v);
+    }
+    const items: PricingOutcome[] = [];
+    for (const candidate of body.candidates) {
+      const fp = pricingFingerprint({
+        sessionId: s.id,
+        curTick: s.curTick,
+        scenarioHash,
+        candidateId: candidate.candidateId,
+      });
+      const cached = pricingCache.get(fp);
+      if (cached !== undefined) {
+        items.push(cached);
+        continue;
+      }
+      const outcome = await priceCandidate(
+        {
+          listPerturbations: async () => scenarioPerts,
+          readWorldState: async () => simCurrent(c, s),
+          readObjectProps: async (objectId) => (await repos.objects.get(c.tenantId, objectId))?.props ?? {},
+          listOrderIds: async () => orderIds,
+          listOrderValues: async () => orderValues,
+          advanceTicks: advance,
+          now: () => performance.now(),
+          makeId: (prefix) => newId(prefix),
+        },
+        {
+          tenantId: c.tenantId,
+          sessionId: s.id,
+          curTick: s.curTick,
+          horizon,
+          candidate,
+          specs,
+          sessionCreatedAt: s.createdAt,
+        },
+      );
+      pricingCache.set(fp, outcome);
+      if (pricingCache.size > 500) {
+        const oldest = pricingCache.keys().next().value;
+        if (oldest !== undefined) pricingCache.delete(oldest);
+      }
+      items.push(outcome);
+    }
+    return { items };
   });
   /**
    * 把一条扰动施加到**当前 tick**，并把结果落回 `sim_tick_state`（`/act` 与 `POST /perturbations` 共用）。
