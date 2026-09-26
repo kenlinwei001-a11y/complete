@@ -34,9 +34,9 @@ import {
   type TickState,
 } from "@platform/contracts";
 
-import type { DerivationSpecRecord } from "../domain";
-import { evalArithmetic, translateSpecFormula } from "../ontology";
-import { round } from "../prng";
+import type { DerivationSpecRecord } from "../domain.js";
+import { evalArithmetic, translateSpecFormula } from "../ontology.js";
+import { round } from "../prng.js";
 
 /* ══ ① 查绑定 ═══════════════════════════════════════════════════════════════ */
 

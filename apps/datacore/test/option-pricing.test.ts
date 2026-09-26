@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Perturbation, SimStateDiffCell, SolutionCandidate, TickState } from "@platform/contracts";
 
-import type { DerivationSpecRecord } from "../src/domain";
+import type { DerivationSpecRecord } from "../src/domain.js";
 import {
   computePressureTarget,
   findPricingBinding,
@@ -24,7 +24,7 @@ import {
   pricingFingerprint,
   scenarioPerturbationsHash,
   type PricingDeps,
-} from "../src/sim/option-pricing";
+} from "../src/sim/option-pricing.js";
 
 /* ── 夹具 ─────────────────────────────────────────────────────────────────── */
 
