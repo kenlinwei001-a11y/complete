@@ -504,7 +504,21 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const qc = useQueryClient();
 
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [world, setWorld] = useState<TickState>({});
+  const [worldRaw, setWorld] = useState<TickState | undefined>({});
+  /**
+   * `world` 的不变量：**恒为对象**（WO-SANDBOX-WORLD-GUARD）。兜底加在这一处**入口**，
+   * 不在每个消费点各补一次 `?.` —— 本页读 `world` 的地方有 8 处（`globalKpi` / `provTally` /
+   * 导出 basis / 逐状态变量表 / 扰动前读数 / `onPerturb` 依赖 / `buildNodes` / 模式面板），
+   * 消费点会随屏上新增读数长出来，入口不会。
+   *
+   * ⚠ 刻意保留 `worldRaw` 而不在 state 里就把 `undefined` 抹成 `{}`：5 个写入源取的字段在契约上
+   * **都是必填**（`SimSession.baseSnapshot`、`WorldSnapshot.state`），所以 `undefined` 到这儿
+   * **是异常态、不是空世界**。抹进 state 会把「读不到」与「世界真的是空的」永久合并 ——
+   * 同一个理由见下面 `baseProvenance` 初值注释（「`{}` 已经把信息抹掉了，`undefined` 留住了它」）。
+   * 本单**不改屏上显示**（两态下 `globalKpi` 仍都是 0）；留住这个区分只为让下一单能把
+   * 「读不到」渲染成「—」而不是 `0`，届时无需再碰任何消费点。
+   */
+  const world: TickState = worldRaw ?? {};
   const [curTick, setCurTick] = useState(0);
 
   /**
@@ -1004,13 +1018,25 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       const s = await createSimSession({ scope });
       // 世界 = 回包里的那一份（服务端派生 + 逐格出处都在里面）。前端一格都没造，
       // 回包没带出处 ⇒ `undefined` = 未知 —— 「我没编这份，不知道就是不知道」，不许自盖。
-      const base = s.baseSnapshot;
+      /**
+       * ⚠ WO-SANDBOX-WORLD-GUARD · 这一个字段喂**四**个下游，所以归一化放在这里（入口），
+       * 不在四个消费点各补一次 `??`：`setWorld` · `setBaseWorld` · 下面那条 `qc.setQueryData`
+       * 的 `state` · 再下面 `setHistory` 里的 `Object.keys`。
+       * 契约上 `SimSession.baseSnapshot` 是必填，所以 `undefined` 到这儿是**异常态**；
+       * 留 `baseRaw` 就是为了下一行还能把「没有基线」与「基线是空的」分开说。
+       */
+      const baseRaw = s.baseSnapshot;
+      const base: TickState = baseRaw ?? {};
       setSessionId(s.id);
       setSessionScope(scope);
       setWorld(base);
       setBaseProvenance(s.baseSnapshotProvenance);
       // 基线快照就是上面那一份（同一个 `s.baseSnapshot`），沿用同一个局部量，不再各读一次。
-      setBaseWorld(base);
+      // ⚠ 这一处刻意用 `baseRaw ?? null` 而不是 `base`：`baseWorld` 声明的类型是
+      // `TickState | null`，而 `null` 在本页有确切含义 —— 上面那条懒查询的头注写着
+      // 「取不到 ⇒ `null`，下区差分整块显示诚实空」。喂 `{}` 会变成「基线存在且为空」，
+      // 那是**编了一份空基线**；喂 `null` 才是「没有基线」，落回已有的诚实空态。
+      setBaseWorld(baseRaw ?? null);
       // WO-SANDBOX-MEMORY：连同"这份基线属于哪个会话"一起记 —— 记了，上面那条懒查询
       // 首次挂载就**一发都不发**（省掉一整跳 285MB），只有真的切世界时才去捞那一条。
       setBaseWorldFor(s.id);
