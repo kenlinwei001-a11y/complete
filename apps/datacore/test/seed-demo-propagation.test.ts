@@ -15,7 +15,9 @@ import { deriveSeedBaseSnapshot, listSimWorldObjects } from "../src/sim/seed-wor
 import { seedDemoDerivationSpecs, recomputeDemoDerivationsAtSeed } from "../src/seed-derivation-specs.js";
 // ⛔ 刻意**不再** import `PRESSURE_DECAY_PER_TICK`：§6 的 λ 一律逐格从 `decayRef` 现读。
 // 把那个记号留在手边，下一个人顺手拿它当默认值就又回到「全表一个 λ」那个病（WO-COEF-LAMBDA）。
-import { resolveSimScope } from "@platform/contracts";
+// §7 WO-WEIGHT-BASIS-FIELD 另需 `PropagationRuleSchema`：契约层那两个方向的拒收要**真跑 zod**
+// （⛔ 不许在测里另写一个"我认为契约会拒"的判断 —— 那验的是我的想法不是契约）。
+import { resolveSimScope, PropagationRuleSchema } from "@platform/contracts";
 
 /**
  * 沙盘消"空世界"（审计 §3.5）：SEED_DEMO 给 demo 租户播 sim PropagationRule 种子。
@@ -980,6 +982,291 @@ describe("§5 WO-COEF-FROM-BOM · 用量项真的进了公式（真种子）", (
       sumRead,
       `逐料驱动的读数合计 ${sumRead} ≠ 系数 × ${SHOCK} ⇒ 换口径把世界总量改了（应当只是重新分配）`,
     ).toBeCloseTo(COEFF! * SHOCK, 9);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════
+// §7 WO-WEIGHT-BASIS-FIELD · **按声明字段分摊**真的按量值走，且字段读不到会当场失败
+//
+// ── 今天的行为 X / 应该的 Y（改前实测）─────────────────────────────────────────────
+// **X**：10 条扇入边全落 `equal_share` ⇒ 计量值恒 1 ⇒ **平摊**。实测 `obj_supplier_SUP-001`
+//   名下 4 张采购单 qty = 965 / 2752 / 2968 / 3951（极差 4.094×），各自单独加急 15
+//   ⇒ `Supplier.reviewPressure` **逐字节相同的 0.555**。按它排"先查哪家供应商"= 按单数排。
+// **Y**：3951 那张单的份额该是 965 那张的 4.094 倍。实测改后 0.824672809327 vs 0.201419706657，
+//   **比值 4.094301 与 qty 比值 4.094301 逐位相同**。
+//
+// ── 本段守两件事，缺一件这个口径就会退化 ─────────────────────────────────────────────
+//  ① **Σw 必须 = 1**（`IN_EDGES`）。换成 `IN_EDGES_MEAN`（Σ=N）会把入流整体放大 N 倍 ——
+//     §6 判据③b 注释里记的那次实测就是：同一个字段、只改归一方向，
+//     `Material.shortageRisk` 从 1.249998 变 1.571426。**字段对了不等于口径对了。**
+//  ② **字段读不到必须报缺**。这是本口径与 `source_qty_relative`（写死 `props.qty`）的**唯一**
+//     实质区别：那一支读不到时整表权重量出 0 ⇒ 引擎 `amount === 0 ⇒ continue`
+//     ⇒ 该边**静默停摆**，只体现为 `zeroPairs`、**永不进 `unresolved`**。
+//     形态：「我用『这条边声明了分摊口径』当作『它在按份额传导』的证据，而前者并不度量后者。」
+// ══════════════════════════════════════════════════════════════════════════════════
+describe("§7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子）", () => {
+  /** 本单改到的 9 条边 + 它们各自声明的字段（⛔ 与 seed.ts 手写一致，改了种子这里必须跟着改）。 */
+  const CHANGED: [string, string][] = [
+    ["demo_wo_release_to_model_cost", "qtyPlanned"],
+    ["demo_wo_release_to_model_supply_risk", "qtyPlanned"],
+    ["demo_po_expedite_to_supplier_review", "qty"],
+    ["demo_po_procurement_delay_to_material_shortage", "qty"],
+    ["demo_batch_procurement_delay_to_material_shortage", "qty"],
+    ["demo_fg_cover_days_to_model_demand", "qtyAvailable"],
+    ["demo_fg_drawdown_relieves_model_demand", "qtyAvailable"],
+    ["demo_supplier_delay_to_material_shortage", "contractedSupplyTon"],
+    ["demo_supplier_procurement_delay_to_material_shortage", "contractedSupplyTon"],
+  ];
+  /**
+   * **审过之后裁定不改**的那一条，连同理由钉在这里（不是遗漏）。
+   * `demo_model_demand_to_base_load`：候选字段 `Model.unitPrice` 与目标 `Base.loadIndex`
+   * （产能量）不对题；而 `capacity`/`orderCount`/`totalDemand` 已经在源态 `demandLoad`
+   * （定义式 `orderCount × 100 ÷ capacity`）里算过一遍，再乘份额就是同一个体量因子记两遍账。
+   * ⇒ 它**必须仍是 `equal_share`**。哪天有人顺手把它也改了，这一条会红，并读到这段理由。
+   */
+  const DELIBERATELY_EQUAL = "demo_model_demand_to_base_load";
+
+  const boot = async () => {
+    const t = await makeApp();
+    await seedBattery(t);
+    await seedDemoPropagationRules(t.repos);
+    return t;
+  };
+  const inputs = async (t: TestApp) => {
+    const rules = await t.repos.sim.listPropagationRules("demo", true);
+    const inp = await buildPropagationInputs(
+      t.repos,
+      { tenantId: "demo", userId: "admin", roles: ["admin"] } as never,
+      resolveSimScope(null),
+      rules,
+    );
+    return { rules, inp };
+  };
+
+  it("种子把 9 条边接到 source_field_share 上了，且各自声明了字段（裁定不改的那条仍是 equal_share）", async () => {
+    const t = await boot();
+    const { rules } = await inputs(t);
+    for (const [key, field] of CHANGED) {
+      const r = rules.find((x) => x.key === key);
+      expect(r, `规则 ${key} 不在种子里 ⇒ 下面每条断言都成空绿`).toBeDefined();
+      expect(r!.weightRef?.basis, `${key} 的口径变了`).toBe("source_field_share");
+      expect(
+        r!.weightRef?.field,
+        `${key} 没声明计量字段 —— 契约 superRefine 本该拦住它，能走到这里说明写入路绕过了 zod`,
+      ).toBe(field);
+    }
+    const eq = rules.find((x) => x.key === DELIBERATELY_EQUAL);
+    expect(
+      eq!.weightRef?.basis,
+      `${DELIBERATELY_EQUAL} 被改成了按字段分摊 —— 见本段 DELIBERATELY_EQUAL 上方那三行理由：` +
+        `unitPrice 与"基地有多忙"不对题，capacity/orderCount 会把已在源态里算过的体量再算一遍。`,
+    ).toBe("equal_share");
+    expect(eq!.weightRef?.field ?? null, `${DELIBERATELY_EQUAL} 不该有 field（equal_share 不读它）`).toBeNull();
+  }, 300000);
+
+  it("🔴 Σw 逐目标恒 = 1（归一方向被改成 Σ=N 即红 —— §6 判据③b 那次 1.249998→1.571426 的复发闸）", async () => {
+    const t = await boot();
+    const { rules, inp } = await inputs(t);
+    const typeOf = new Map(inp.graph.objects.map((o) => [o.id, o.typeKey]));
+    let checkedTargets = 0;
+    for (const [key] of CHANGED) {
+      const r = rules.find((x) => x.key === key)!;
+      const w = inp.pairWeights[r.key];
+      expect(w, `${key} 算不出权重表 ⇒ 该边不传导（看 pairWeightReport.unresolved 的原因）`).toBeDefined();
+      const byTarget = new Map<string, number>();
+      for (const l of inp.graph.links) {
+        if (l.linkKey !== r.viaLinkKey) continue;
+        if (typeOf.get(l.fromId) !== r.sourceTypeKey || typeOf.get(l.toId) !== r.targetTypeKey) continue;
+        byTarget.set(l.toId, (byTarget.get(l.toId) ?? 0) + (w![pairWeightKey(l.fromId, l.toId)] ?? 0));
+      }
+      // 🐤 金丝雀：这条边真的有目标。0 个目标时下面的 for 一次不进，"Σw 全对"是空绿。
+      expect(byTarget.size, `${key} 一个目标都没量到 ⇒ 量法坏了，不许读成『Σw 全对』`).toBeGreaterThan(0);
+      for (const [tid, sum] of byTarget) {
+        expect(
+          sum,
+          `${key} 目标 ${tid} 的 Σw = ${sum} ≠ 1 ⇒ 归一方向不再是 IN_EDGES。` +
+            `Σ=N 会把这一格的入流整体放大 N 倍（实测 Material.shortageRisk 1.249998 → 1.571426）。`,
+        ).toBeCloseTo(1, 12);
+        checkedTargets += 1;
+      }
+    }
+    expect(checkedTargets, "🐤 一个目标都没核到 ⇒ 本条是空绿").toBeGreaterThanOrEqual(60);
+  }, 300000);
+
+  it("🔴 对照实验：同一供应商名下 qty 差 4.09× 的两张采购单各加急 15 ⇒ 读数按 qty 拉开（修前同为 0.555）", async () => {
+    const t = await boot();
+    const RULE = "demo_po_expedite_to_supplier_review";
+    const { rules, inp } = await inputs(t);
+    const r = rules.find((x) => x.key === RULE)!;
+    const typeOf = new Map(inp.graph.objects.map((o) => [o.id, o.typeKey]));
+    const qtyOf = new Map<string, number>();
+    for (const o of await t.repos.objects.listByType("demo", "PurchaseOrder")) {
+      if (!o.mergedInto) qtyOf.set(o.id, Number(o.props.qty ?? 0));
+    }
+    // 沿**真链路表**挑组（不写死 obj_supplier_*：种子换单时本用例应当跟着走，而不是变成假绿）
+    const bySupplier = new Map<string, string[]>();
+    for (const l of inp.graph.links) {
+      if (l.linkKey !== r.viaLinkKey) continue;
+      if (typeOf.get(l.fromId) !== r.sourceTypeKey || typeOf.get(l.toId) !== r.targetTypeKey) continue;
+      (bySupplier.get(l.toId) ?? bySupplier.set(l.toId, []).get(l.toId)!).push(l.fromId);
+    }
+    const ranked = [...bySupplier.entries()]
+      .filter(([, pos]) => pos.length >= 2)
+      .map(([sup, pos]) => {
+        const qs = pos
+          .map((p) => ({ id: p, q: qtyOf.get(p) ?? 0 }))
+          .sort((a, b) => a.q - b.q || a.id.localeCompare(b.id)); // R6：平手按 id
+        return { sup, qs, spread: qs[qs.length - 1]!.q / Math.max(1, qs[0]!.q) };
+      })
+      .sort((a, b) => b.spread - a.spread || a.sup.localeCompare(b.sup));
+    expect(ranked.length, "没有任何供应商名下有 ≥2 张单 ⇒ 这条边分不了摊，实验前提不成立").toBeGreaterThan(0);
+    const pick = ranked[0]!;
+    expect(pick.spread, "组内 qty 极差 ≈1 ⇒ 按量值与平摊读数本就相同，这个实验没有鉴别力").toBeGreaterThan(1.5);
+    const lo = pick.qs[0]!, hi = pick.qs[pick.qs.length - 1]!;
+
+    const drive = async (poId: string) => {
+      const mk = await t.app.inject({
+        method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
+        payload: { baseSnapshot: { [poId]: { expeditePressure: 15 }, [pick.sup]: { reviewPressure: 0 } } },
+      });
+      expect(mk.statusCode, mk.body.slice(0, 200)).toBeLessThan(400);
+      const tk = await t.app.inject({
+        method: "POST", url: `/a/v1/sim/sessions/${(mk.json() as { id: string }).id}/tick?explain=1`,
+        headers: ADMIN, payload: { n: 2 }, // delayTicks=1 ⇒ 要两拍才落到 Supplier 上
+      });
+      expect(tk.statusCode, tk.body.slice(0, 300)).toBeLessThan(400);
+      const body = tk.json() as {
+        state: Record<string, Record<string, number>>;
+        pairWeighting?: { report: { explain: { ruleKey: string; sourceObjectId: string; targetObjectId: string; weight: number }[]; unresolved: { ruleKey: string; reason: string }[] } };
+      };
+      // 口径算不出来时引擎诚实报缺、本条流不传导 ⇒ 下面每个读数都成 0、逐句自洽成绿。
+      const bad = (body.pairWeighting?.report.unresolved ?? []).filter((u) => u.ruleKey === RULE);
+      expect(bad, `本规则被判"算不出权重"：${bad[0]?.reason ?? ""}`).toHaveLength(0);
+      const ex = body.pairWeighting?.report.explain.find(
+        (e) => e.ruleKey === RULE && e.sourceObjectId === poId && e.targetObjectId === pick.sup,
+      );
+      return { read: body.state[pick.sup]?.reviewPressure ?? 0, w: ex?.weight };
+    };
+    const rLo = await drive(lo.id), rHi = await drive(hi.id);
+
+    // ── 判据①：两个读数**必须不同**（修前逐字节相同的 0.555，那就是平摊的指纹）────────
+    expect(rLo.read, "小单读数为 0 ⇒ 这条边没传导，下面的比值是 0/0").toBeGreaterThan(0);
+    expect(
+      rHi.read,
+      `qty ${hi.q} 与 qty ${lo.q} 的两张单给出**逐字节相同**的 ${rHi.read} ⇒ 仍在平摊。` +
+        `这正是本口径要治的病（修前两者同为 0.555）。`,
+    ).not.toBe(rLo.read);
+    // ── 判据②：比值必须**等于 qty 比值**（这是"按量值成比例"的定义，不是"拉开就行"）──────
+    // ⚠ 只断言"不同"是不够的：任何一个瞎编的权重都能让两数不同。必须咬住那个**可预言的**比值。
+    expect(
+      rHi.read / rLo.read,
+      `读数比 ${rHi.read / rLo.read} ≠ qty 比 ${hi.q / lo.q} ⇒ 份额不是按声明字段成比例算的`,
+    ).toBeCloseTo(hi.q / lo.q, 9);
+    // ── 判据③：权重本身 = 该单 qty ÷ 组内 Σqty（分子分母都可被审计独立复算）──────────
+    const sumQ = pick.qs.reduce((s, x) => s + x.q, 0);
+    expect(rHi.w, "大单权重 ≠ qty ÷ Σqty ⇒ 分母不是该组总量").toBeCloseTo(hi.q / sumQ, 12);
+    expect(rLo.w, "小单权重 ≠ qty ÷ Σqty ⇒ 分母不是该组总量").toBeCloseTo(lo.q / sumQ, 12);
+  }, 300000);
+
+  it("🔴 field 读不到必须报缺 + 引擎不传导（双向金丝雀；⛔ 不许静默归零或回落等份）", async () => {
+    const t = await boot();
+    const RULE = "demo_po_expedite_to_supplier_review";
+    const probe = async () => {
+      const { inp } = await inputs(t);
+      return {
+        tbl: inp.pairWeights[RULE],
+        u: inp.pairWeightReport.unresolved.filter((x) => x.ruleKey === RULE),
+      };
+    };
+    // 🐤 正向金丝雀：**正确字段**必须算得出表且不报缺。
+    //    少了它，「什么都报缺」与「该报缺时才报缺」在屏上一模一样。
+    const ok = await probe();
+    expect(ok.tbl, "正确字段都算不出表 ⇒ 判据本身坏了，下面那条『报缺』不构成证据").toBeDefined();
+    expect(ok.u, "正确字段却报缺 ⇒ 实现把好的也拦了").toHaveLength(0);
+    expect(Object.values(ok.tbl!).filter((v) => v !== 0).length, "正确字段算出的表全是 0 ⇒ 没在分摊").toBeGreaterThan(0);
+
+    // ⚠ 仓储直写（绕过 zod）**是刻意的**：`repo/pg.ts` 读回是 `row.doc as PropagationRule` 裸 cast，
+    //   契约 refine 只在写入路生效 ⇒ 生产上真的可能出现一条 field 不对的规则。这里模拟那条路。
+    const cur = (await t.repos.sim.listPropagationRules("demo", true)).find((r) => r.key === RULE)!;
+    await t.repos.sim.putPropagationRule({
+      ...cur,
+      weightRef: { basis: "source_field_share", field: "qtyThisFieldDoesNotExist" },
+    });
+    const bad = await probe();
+    expect(
+      bad.tbl,
+      "❌ 字段读不到却**算出了一张表** ⇒ 静默归零：引擎会因 amount===0 跳过，该边一声不响地停摆，" +
+        "只体现为 zeroPairs、永不进 unresolved。这正是本口径存在的全部理由。",
+    ).toBeUndefined();
+    expect(bad.u, "字段读不到却没进 unresolved ⇒ 缺口没亮出来").toHaveLength(1);
+    expect(bad.u[0]!.reason, "报缺原因必须点名那个读不到的字段").toContain("qtyThisFieldDoesNotExist");
+    // 🐤 报否定结论必须带金丝雀证据：原因里要列出该类型上**实有**的数值字段，
+    //    否则读者分不清「字段名拼错了」还是「这个类型真的没有量值字段」—— 两者修法相反。
+    expect(bad.u[0]!.reason, "报缺时没给金丝雀（该类型实有字段清单）").toContain("qty");
+
+    // 端到端：引擎必须把它判进 `pairWeighting.unresolved`，且该边**一行 trace 都没有**。
+    // ⚠ 路径是 `pairWeighting.unresolved`（`app.ts` 的 `pairWeighting: { report, unresolved }`），
+    //   **不在顶层** —— 读顶层会拿到空数组，然后错报「引擎没把缺口亮出来」。
+    const poLinks = await t.repos.links.list("demo", (l) => l.type === cur.viaLinkKey);
+    expect(poLinks.length, `${cur.viaLinkKey} 一条链路都没有 ⇒ 本实验前提不成立`).toBeGreaterThan(0);
+    const mk = await t.app.inject({
+      method: "POST", url: "/a/v1/sim/sessions", headers: ADMIN,
+      payload: { baseSnapshot: { [poLinks[0]!.fromId]: { expeditePressure: 15 } } },
+    });
+    expect(mk.statusCode, mk.body.slice(0, 200)).toBeLessThan(400);
+    const tk = await t.app.inject({
+      method: "POST", url: `/a/v1/sim/sessions/${(mk.json() as { id: string }).id}/tick?explain=1`,
+      headers: ADMIN, payload: { n: 2 },
+    });
+    expect(tk.statusCode, tk.body.slice(0, 300)).toBeLessThan(400);
+    const body = tk.json() as {
+      trace?: { ruleKey: string }[];
+      pairWeighting?: { unresolved?: { ruleKey: string }[] };
+    };
+    expect(
+      (body.pairWeighting?.unresolved ?? []).filter((x) => x.ruleKey === RULE),
+      "引擎没把它判进 unresolvedWeights ⇒ 缺口在 API 上看不见",
+    ).toHaveLength(1);
+    expect(
+      (body.trace ?? []).filter((x) => x.ruleKey === RULE),
+      "字段读不到却还在传导 ⇒ 退回了「逐目标同额」，而那正是本字段要治的错行为",
+    ).toHaveLength(0);
+
+    // 还原，免得同文件后续用例吃到脏规则（seed.ts 一行未改）
+    await t.repos.sim.putPropagationRule(cur);
+    const back = await probe();
+    expect(back.tbl, "还原后仍算不出表 ⇒ 还原没生效").toBeDefined();
+    expect(back.u, "还原后仍报缺").toHaveLength(0);
+  }, 300000);
+
+  it("🔴 契约层 requiresField 两个方向都拒收（真跑 zod·带双向金丝雀）", () => {
+    const base = {
+      id: "x", key: "k", tenantId: "demo",
+      sourceTypeKey: "A", sourceStateVar: "a", viaLinkKey: "l",
+      targetTypeKey: "B", targetStateVar: "b",
+      coefficient: 1, delayTicks: 0, status: "PUBLISHED" as const,
+    };
+    // ① `requiresField:true` 却不给 field ⇒ 必须拒收。
+    //    不拦的话运行期得到一张全零表，表现只是"这条边今天没动"。
+    expect(
+      PropagationRuleSchema.safeParse({ ...base, weightRef: { basis: "source_field_share" } }).success,
+      "缺 field 却被收下 ⇒ 运行期会得到一张全零权重表，该边静默停摆",
+    ).toBe(false);
+    // ② `requiresField:false` 却给了 field ⇒ 必须拒收。
+    //    它会被实现静默忽略 ⇒ 台账写着"按 qty 分摊"、跑的是等份（声明与行为不一致的假绿）。
+    expect(
+      PropagationRuleSchema.safeParse({ ...base, weightRef: { basis: "equal_share", field: "qty" } }).success,
+      "equal_share 带 field 被收下 ⇒ 台账写着按 qty 分摊、实际跑等份",
+    ).toBe(false);
+    // 🐤 双向金丝雀：两个**合法**组合必须收下，否则上面两条只证明了"全都拒收"。
+    expect(
+      PropagationRuleSchema.safeParse({ ...base, weightRef: { basis: "source_field_share", field: "qty" } }).success,
+      "合法组合被拒 ⇒ 校验写反了",
+    ).toBe(true);
+    expect(
+      PropagationRuleSchema.safeParse({ ...base, weightRef: { basis: "equal_share" } }).success,
+      "既有 equal_share（不带 field）被拒 ⇒ 破了 additive·可回退 RL9 承诺",
+    ).toBe(true);
   });
 });
 
