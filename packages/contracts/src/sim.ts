@@ -529,7 +529,14 @@ export const PropagationRuleSchema = z.object({
        * 而「同一件事有多份抄本」正是本文件反复在治的那个东西。
        * ⇒ 口径只留一条，**变的那一点做成声明**。
        *
-       * `null`（缺省）= 本口径不吃字段 ⇒ 与本字段引入前**逐字节相同**（additive·可回退 RL9）。
+       * **缺省（不写这个键）** = 本口径不吃字段 ⇒ 与本字段引入前**逐字节相同**（additive·可回退 RL9）。
+       *
+       * ⚠ **刻意用 `.optional()` 而不是 `.default(null)`**（同文件 `description` 用的是后者）：
+       * `.default(null)` 会让 `field` 在**输出类型**上变成必填 ⇒ 既有 22 处 `weightRef: { basis: … }`
+       * 字面量全部 typecheck 失败，要逐处补一个 `field: null`。那不是"更显式"，那是**让一次
+       * additive 变更产生 22 处无信息量的改动**，且其中一部分落在本单 🚦范围边界之外的测试文件里。
+       * 判据落在「不写它的边，行为与本字段引入前逐字节相同」上 —— `.optional()` 满足它，
+       * 且下游 `field == null` 一次判断同时吃掉 `undefined`（pg 裸 cast 读回的老行）与 `null`。
        *
        * ⚠ **两个方向都由契约拦**（见 `requiresField` 注释）：
        *  · `requiresField:true` 却没给 `field` ⇒ 拒收。不拦的话运行期读出一张全零权重表，
@@ -537,13 +544,15 @@ export const PropagationRuleSchema = z.object({
        *  · `requiresField:false` 却给了 `field` ⇒ 拒收。它会被实现**静默忽略**，
        *    于是台账上写着"按 qtyAvailable 分摊"、跑的是等份 —— 最难查的那种假绿。
        */
-      field: z.string().min(1).nullable().default(null),
+      field: z.string().min(1).nullable().optional(),
     })
     .superRefine((v, ctx) => {
       const requires = pairWeightBasisRequiresField(v.basis);
       // `basis` 不在册时上面的 `.refine` 已经报过；这里不重复报（一个错报两遍读不出该改哪）。
       if (requires === null) return;
-      if (requires && v.field === null) {
+      // `== null` 而不是 `=== null`：缺省是 `undefined`（本字段走 `.optional()`，见上方注释），
+      // 而 pg 裸 cast 读回的老行同样是 `undefined` —— 两者都必须算作"没声明"。
+      if (requires && v.field == null) {
         ctx.addIssue({
           code: "custom",
           path: ["field"],
@@ -552,7 +561,7 @@ export const PropagationRuleSchema = z.object({
             `缺它不会报错，只会让整张权重表量出 0 ⇒ 该边静默停摆（只体现为 zeroPairs，永不进 unresolved）。`,
         });
       }
-      if (!requires && v.field !== null) {
+      if (!requires && v.field != null) {
         ctx.addIssue({
           code: "custom",
           path: ["field"],
