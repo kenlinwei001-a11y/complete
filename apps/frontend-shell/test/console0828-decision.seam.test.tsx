@@ -983,11 +983,12 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     mount();
     await railReady();
     // 定价只读、不依赖推演：直接切到对策页签（点默认那一处）即可见卡。
+    // ⚠ 卡片按 candidateId 对位（`cand_<impedimentId>_lead`，fixture 里现算）——
+    // 测试不许手拼这个 id（拼错 = 假红），一律按 testid 前缀正则取。
     const [btnA] = screen.getAllByTestId(/^c0828-fixbtn-/) as [HTMLElement];
-    const idA = (btnA.getAttribute("data-testid") ?? "").replace("c0828-fixbtn-", "");
     fireEvent.click(btnA);
 
-    const readout = await screen.findByTestId(`c0828-price-${idA}`);
+    const readout = await screen.findByTestId(/^c0828-price-cand_/);
     await waitFor(() => {
       expect(readout.textContent ?? "").toContain("拨后仍受影响");
     });
@@ -995,7 +996,7 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     expect(readout.textContent ?? "").toContain("3");
     expect(readout.textContent ?? "").toContain("1.80");
     // 明细：口径声明一字不落、p90 用真读数；披露四要素（规格/tick 数/耗时/未调用 agent）。
-    const detail = screen.getByTestId(`c0828-price-detail-${idA}`).textContent ?? "";
+    const detail = screen.getByTestId(/^c0828-price-detail-cand_/).textContent ?? "";
     expect(detail).toContain("受影响张数按 0.01 位移门槛计；本次位移 p90 = 1.80");
     expect(detail).toContain("位移离门槛越近，张数对门槛越敏感");
     expect(detail).toContain("material_shortage_risk");
@@ -1025,10 +1026,9 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
     mount();
     await railReady();
     const [btnA] = screen.getAllByTestId(/^c0828-fixbtn-/) as [HTMLElement];
-    const idA = (btnA.getAttribute("data-testid") ?? "").replace("c0828-fixbtn-", "");
     fireEvent.click(btnA);
 
-    const readout = await screen.findByTestId(`c0828-price-${idA}`);
+    const readout = await screen.findByTestId(/^c0828-price-cand_/);
     await waitFor(() => {
       expect(readout.textContent ?? "").toContain("定价缺格");
     });
