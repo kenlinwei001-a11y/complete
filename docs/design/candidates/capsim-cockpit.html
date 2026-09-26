@@ -1,0 +1,658 @@
+<title>产能推演 · 座舱</title>
+<style>
+:root{
+  --bg:#1a2740; --bg2:#223251; --panel:#16223a; --panel2:#1c2942;
+  --line:rgba(226,235,245,.09); --line2:rgba(226,235,245,.16);
+  --txt:#e9eef5; --muted:#ced7e1; --muted2:#bbc5ce;
+  --accent:#4c90f0; --accent-solid:#115dc9; --accent-txt:#a2c6f7;
+  --ok-txt:#91d2a0; --warn-txt:#eabd5d; --danger-txt:#f0b4b8;
+  /* 新增两个令牌，理由写在页脚 */
+  --honest:#c2b5e2;              /* 诚实位专用通道（对 --bg 实测 6.7:1，12px 达标） */
+  --quiet:#5d6d85;               /* 正常态的结构线 —— 只用于边框与标记，从不用于文字 */
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Cascadia Mono","Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#111a2c;color:var(--txt);font-family:var(--sans);font-size:13px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.num,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.wrap{max-width:1560px;margin:0 auto;padding:22px 18px 40px}
+u{text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}
+
+/* ── 页眉（元信息，不属于任何一块屏） ── */
+.doc{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding:0 2px 16px;border-bottom:1px solid var(--line)}
+.doc h1{font-size:15px;font-weight:650;margin:0;letter-spacing:.04em}
+.doc .d{font-family:var(--mono);font-size:12px;color:var(--muted2)}
+.doc .thesis{font-size:12px;color:var(--muted2);flex-basis:100%;line-height:1.75;max-width:960px}
+.doc .thesis b{color:var(--accent-txt);font-weight:600}
+
+/* ── 屏幕外壳 ── */
+.device{margin:22px 0 0;background:var(--bg);border:1px solid var(--line2);position:relative;
+  background-image:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.011) 3px 4px)}
+.slab{display:flex;align-items:center;gap:12px;margin:30px 0 0;padding:9px 12px;background:var(--panel);
+  border:1px solid var(--line2);border-left:3px solid var(--accent)}
+.slab b{font-size:13px;font-weight:650}
+.slab span{font-size:12px;color:var(--muted2);font-family:var(--mono)}
+
+/* ── 顶栏：口径常驻（sticky，滚动时钉在视口顶） ── */
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  height:auto;min-height:46px;padding:8px 14px;background:var(--panel2);border-bottom:1px solid var(--line2)}
+.brand{font-size:13px;font-weight:650;letter-spacing:.1em;color:var(--muted)}
+.scope{display:flex;align-items:stretch;border:1px solid var(--accent);background:rgba(76,144,240,.12)}
+.sc-k{font-size:12px;font-family:var(--mono);color:var(--muted2);padding:4px 9px;background:rgba(0,0,0,.3);
+  display:flex;align-items:center;letter-spacing:.08em}
+.sc-s{appearance:none;background:transparent;border:0;color:var(--accent-txt);font-family:var(--mono);
+  font-size:13px;font-weight:700;padding:4px 24px 4px 10px;outline:0;letter-spacing:.04em;
+  background-image:linear-gradient(45deg,transparent 50%,var(--accent-txt) 50%),linear-gradient(135deg,var(--accent-txt) 50%,transparent 50%);
+  background-position:calc(100% - 13px) calc(50% + 1px),calc(100% - 9px) calc(50% + 1px);background-size:4px 4px;background-repeat:no-repeat}
+.sc-s:disabled{color:var(--accent-txt);opacity:1}
+.sc-pin{font-size:12px;font-family:var(--mono);color:#0d1626;background:var(--accent-txt);padding:4px 8px;
+  display:flex;align-items:center;font-weight:700;letter-spacing:.06em}
+.topmeta{display:flex;gap:0;margin-left:6px}
+.st{font-size:12px;font-family:var(--mono);display:flex;align-items:center;gap:6px;padding:3px 11px;
+  border:1px solid var(--line);border-right:0;letter-spacing:.03em;color:var(--muted2)}
+.st:last-child{border-right:1px solid var(--line)}
+.st-over{color:var(--danger-txt);border-color:rgba(240,180,184,.4);background:rgba(240,180,184,.09)}
+.st-empty{color:var(--danger-txt);border-color:rgba(240,180,184,.4)}
+.st-near{color:var(--warn-txt);border-color:rgba(234,189,93,.3)}
+.st-gap{color:var(--honest);border-color:rgba(194,181,226,.32)}
+.topright{margin-left:auto;font-size:12px;color:var(--muted2);display:flex;align-items:center;gap:8px}
+
+/* ── 标记形状（色盲可辨：靠高度与填充，不靠颜色） ── */
+.m{display:inline-block;flex:0 0 auto}
+.m-over{width:4px;height:22px;background:var(--danger-txt)}                                   /* 实心高杆 */
+.m-empty{width:4px;height:22px;border:1px solid var(--danger-txt);background:transparent}      /* 空心高杆 = 空缓冲 */
+.m-near{width:4px;height:13px;background:linear-gradient(var(--warn-txt) 0 40%,transparent 40% 60%,var(--warn-txt) 60% 100%)} /* 断口中杆 */
+.m-gap{width:4px;height:13px;background:repeating-linear-gradient(45deg,var(--honest) 0 2px,transparent 2px 4px)} /* 斜纹中杆 */
+.m-ok{width:4px;height:4px;background:var(--quiet)}                                            /* 小点 */
+.st .m-over,.st .m-empty{height:12px}.st .m-near,.st .m-gap{height:10px}
+
+/* ── 主读数 ── */
+.prim{position:relative;display:flex;gap:34px;align-items:center;padding:26px 30px 24px;
+  border-bottom:1px solid var(--line2);background:linear-gradient(180deg,rgba(76,144,240,.05),transparent 70%)}
+.tick{position:absolute;width:11px;height:11px;border:1px solid var(--line2)}
+.tl{top:9px;left:9px;border-right:0;border-bottom:0}.tr{top:9px;right:9px;border-left:0;border-bottom:0}
+.bl{bottom:9px;left:9px;border-right:0;border-top:0}.br{bottom:9px;right:9px;border-left:0;border-top:0}
+.prim-l{flex:0 0 auto;padding-right:32px;border-right:1px solid var(--line)}
+.prim-k{font-size:12px;font-family:var(--mono);color:var(--muted2);letter-spacing:.34em;margin-bottom:2px}
+.prim-n{display:flex;align-items:baseline;gap:9px}
+.prim-n b{font-family:var(--mono);font-size:76px;line-height:.92;font-weight:600;letter-spacing:-.028em;
+  color:var(--danger-txt);font-variant-numeric:tabular-nums}
+.prim-n em{font-style:normal;font-size:13px;color:var(--muted2);font-family:var(--mono)}
+.prim-p{font-family:var(--mono);font-size:19px;color:var(--danger-txt);margin-top:4px;letter-spacing:.02em}
+.prim-p em{font-style:normal;font-size:12px;color:var(--muted2);margin-left:2px}
+.prim-r{flex:1;min-width:0}
+.gauge{position:relative;height:26px;background:rgba(0,0,0,.34);border:1px solid var(--line2);overflow:hidden}
+.g-f{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(180deg,rgba(76,144,240,.5),rgba(17,93,201,.55));
+  border-right:1px solid var(--txt)}
+.g-t{position:absolute;top:0;bottom:0;width:1px;background:rgba(226,235,245,.13)}
+.gauge-lab{display:flex;justify-content:space-between;margin-top:5px;font-family:var(--mono);font-size:12px;color:var(--muted2)}
+.zoomrow{display:flex;align-items:center;gap:0;margin-top:12px}
+.cone{flex:0 0 26px;height:44px;background:rgba(240,180,184,.13);border-top:1px solid rgba(240,180,184,.35);
+  border-bottom:1px solid rgba(240,180,184,.35);clip-path:polygon(0 44%,100% 0,100% 100%,0 56%)}
+.zoombox{flex:0 0 216px;border:1px solid rgba(240,180,184,.4);padding:6px 8px;background:rgba(0,0,0,.24)}
+.zbar{display:flex;height:14px;border:1px solid var(--line)}
+.z-f{background:rgba(76,144,240,.42)}
+.z-r{background:var(--danger-txt)}
+.zlab{font-family:var(--mono);font-size:12px;color:var(--muted2);margin-top:4px;display:flex;justify-content:space-between}
+.zlab b{color:var(--danger-txt)}
+.prim-sub{flex:1;padding-left:22px;font-size:12px;line-height:1.85;color:var(--muted2);font-family:var(--mono)}
+.hi{color:var(--txt);font-weight:700}
+
+/* ── 区块 ── */
+.sect{padding:20px 22px 24px;border-bottom:1px solid var(--line)}
+.sect h2{display:flex;align-items:baseline;gap:12px;margin:0 0 12px;font-size:13px;font-weight:650;letter-spacing:.14em}
+.h2sub{font-size:12px;font-weight:400;color:var(--muted2);letter-spacing:0;font-family:var(--mono)}
+
+/* ── 风险清单：正常态几乎不发声，异常态改变形状与体量 ── */
+.list{border-top:1px solid var(--line)}
+.row{border-bottom:1px solid var(--line)}
+.r-head{display:flex;align-items:center;gap:12px;padding:7px 10px 7px 0;min-height:34px}
+.r-mk{flex:0 0 22px;display:flex;justify-content:center;align-items:center}
+.r-nm{flex:0 0 78px;font-size:13px;color:var(--muted2)}
+.r-st{flex:0 0 62px;font-size:12px;font-family:var(--mono);color:var(--quiet)}
+.r-meta{flex:1;min-width:0;font-size:12px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r-cells{flex:0 0 auto;display:flex;align-items:center;gap:0}
+.cl,.cn,.cp,.co{display:flex;align-items:baseline;justify-content:flex-end;gap:5px;padding:0 12px;border-left:1px solid var(--line)}
+.cl{flex:0 0 132px}.cn{flex:0 0 116px}.cp{flex:0 0 78px}.co{flex:0 0 78px}
+.r-cells .num{font-size:15px;color:var(--muted)}
+.r-cells .num.x{color:var(--danger-txt);font-weight:700}
+.r-cells em{font-style:normal;font-size:12px;color:var(--quiet);font-family:var(--mono)}
+.lb{position:relative;display:block;width:52px;height:9px;background:rgba(0,0,0,.3);border:1px solid var(--line);align-self:center}
+.lb-f{position:absolute;left:0;top:0;bottom:0;background:var(--quiet)}
+.lb-f.x{background:var(--danger-txt)}
+.lb-r{position:absolute;top:-2px;bottom:-2px;left:85%;width:1px;background:var(--danger-txt)}
+.badge{font-size:12px;font-family:var(--mono);color:var(--accent-txt);border:1px solid var(--accent);padding:1px 6px;font-weight:400}
+
+/* 正常行：文字仍足额对比（7.3:1），消失的是「强调」不是「可读」 */
+.r-ok .r-head{opacity:.72}
+.r-ok:hover .r-head{opacity:1;background:rgba(255,255,255,.02)}
+/* 逼近 */
+.r-near{background:rgba(234,189,93,.045);box-shadow:inset 3px 0 0 rgba(234,189,93,.55)}
+.r-near .r-nm{color:var(--txt)}.r-near .r-st{color:var(--warn-txt)}
+/* 未取到 */
+.r-gap{background:rgba(194,181,226,.05);box-shadow:inset 3px 0 0 var(--honest)}
+.r-gap .r-nm{color:var(--txt)}.r-gap .r-st{color:var(--honest)}
+/* 越线 / 缓冲耗尽 —— 体量本身就是告警 */
+.r-over,.r-empty{background:rgba(240,180,184,.075);box-shadow:inset 3px 0 0 var(--danger-txt)}
+.r-empty{background:rgba(240,180,184,.04)}
+.r-over .r-nm,.r-empty .r-nm{color:var(--txt);font-size:15px;font-weight:650}
+.r-over .r-st,.r-empty .r-st{color:var(--danger-txt);font-weight:700}
+.r-over .r-meta,.r-empty .r-meta{color:var(--muted)}
+
+/* 三槽：点引线（ECAM 的作业行） */
+.r-slots{padding:2px 12px 10px 34px;border-top:1px dashed var(--line)}
+.slot{display:flex;align-items:flex-start;padding:3px 0;font-size:13px;line-height:1.65}
+.slot .k{flex:0 0 96px;position:relative;font-family:var(--mono);font-size:12px;color:var(--muted2);
+  letter-spacing:.1em;padding-top:1px}
+.slot .k::after{content:"";position:absolute;left:34px;right:10px;bottom:.46em;border-bottom:1px dotted var(--line2)}
+.slot .v{flex:1;min-width:0;color:var(--muted)}
+.r-over .slot .v,.r-empty .slot .v{color:var(--txt)}
+.src{display:inline-block;font-weight:400;font-size:12px;font-family:var(--mono);color:var(--accent-txt);
+  border:1px solid rgba(76,144,240,.4);padding:0 6px;margin-left:8px}
+.none{color:var(--danger-txt);font-weight:700;border-bottom:1px solid var(--danger-txt)}
+
+/* ── 诚实位 ── */
+.ho{color:var(--honest);text-decoration:line-through;text-decoration-thickness:1.5px;
+  text-decoration-color:var(--honest);font-family:var(--mono);font-size:12px}
+.why{display:inline-block;font-weight:400;font-size:12px;font-family:var(--mono);color:var(--honest);
+  border:1px dashed rgba(194,181,226,.5);padding:0 5px;margin-left:6px;letter-spacing:.02em}
+.tk{font-weight:400;font-size:12px;color:var(--honest);font-family:var(--mono);letter-spacing:-.04em}
+
+/* ── 时序方格带 ── */
+.brow{display:flex;align-items:flex-end;gap:0;padding:5px 0;border-bottom:1px solid var(--line)}
+.bhead{border-top:1px solid var(--line)}
+.bfoot{border-bottom:0;padding-top:0}
+.b-n{flex:0 0 78px;font-size:13px;color:var(--muted);padding-bottom:3px}
+.b-c{flex:0 0 46px;text-align:right;padding:0 12px 3px 0}
+.b-c .num{font-size:15px;color:var(--muted)}.b-c .num.x{color:var(--danger-txt);font-weight:700}
+.b-d{flex:0 0 74px;text-align:right;padding:0 0 3px 12px}
+.b-d .num{font-size:13px;color:var(--muted2)}.b-d .num.x{color:var(--danger-txt);font-weight:700}
+.b-p{flex:0 0 60px;text-align:right;padding:0 0 3px 12px;font-family:var(--mono);font-size:12px;color:var(--quiet)}
+.band{position:relative;flex:1;min-width:0;display:flex;align-items:flex-end;gap:2px;height:46px;
+  background:rgba(0,0,0,.2);border-bottom:1px solid var(--line2);padding:0 1px}
+.band .c{flex:1;display:block;min-width:0;border:1px solid var(--quiet);border-bottom:0;background:transparent}
+.band .c.x{background:var(--danger-txt);border:0;border-top:2px solid #fff;margin:0 -1px;position:relative;z-index:2}
+.band .rule{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(240,180,184,.55);z-index:3}
+.band .rule em{position:absolute;left:-24px;top:-8px;font-style:normal;font-family:var(--mono);
+  font-size:12px;color:var(--danger-txt)}
+.band .xd{position:absolute;top:-4px;bottom:0;width:1px;background:var(--danger-txt);z-index:4;box-shadow:0 0 7px var(--danger-txt)}
+.band.hatch{background:rgba(194,181,226,.055);background-image:repeating-linear-gradient(45deg,rgba(194,181,226,.15) 0 3px,transparent 3px 8px);
+  align-items:center;justify-content:center;border-bottom:1px dashed rgba(194,181,226,.45)}
+.band.hatch.sm{height:18px}
+.gaptxt{font-family:var(--mono);font-size:12px;color:var(--honest);letter-spacing:.04em;
+  background:var(--bg);padding:1px 8px}
+.axis{position:relative;flex:1;min-width:0;height:18px}
+.axis i{position:absolute;top:2px;transform:translateX(-50%);font-style:normal;font-family:var(--mono);
+  font-size:12px;color:var(--quiet)}
+.covnote{margin:14px 0 7px;font-size:12px;color:var(--muted2)}
+.cov{display:grid;grid-template-columns:repeat(3,1fr);gap:0 26px}
+.cv{display:flex;align-items:center;gap:0;padding:3px 0;border-bottom:1px solid var(--line)}
+.cv-n{flex:0 0 56px;font-size:12px;color:var(--muted2)}
+.cv .band{height:18px}
+.cv-d{flex:0 0 66px;text-align:right;padding-left:10px}
+
+/* ── 方案比对 ── */
+.plans{display:grid;grid-template-columns:104px repeat(4,1fr);border-top:1px solid var(--line2);border-left:1px solid var(--line)}
+.pl-rk,.pl-h,.pl-v,.pl-f{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:9px 12px}
+.pl-rk{font-family:var(--mono);font-size:12px;color:var(--muted2);letter-spacing:.1em;background:rgba(0,0,0,.16)}
+.pl-rk0{border-bottom:1px solid var(--line2)}
+.pl-h{border-bottom:1px solid var(--line2);background:rgba(76,144,240,.07)}
+.pl-cd{font-family:var(--mono);font-size:12px;color:var(--accent-txt);letter-spacing:.24em}
+.pl-nm{font-size:13px;font-weight:650;margin:1px 0 6px;color:var(--txt)}
+.pl-big{font-family:var(--mono);font-size:28px;line-height:1;color:var(--accent-txt);font-weight:600}
+.pl-big em{font-style:normal;font-size:12px;color:var(--muted2);margin-left:5px;letter-spacing:0}
+.pl-v{font-size:13px;color:var(--muted);line-height:1.6}
+.fx{display:block;font-weight:400;font-size:12px;font-family:var(--mono);color:var(--quiet);margin-top:3px}
+.pl-h.nul{background:rgba(240,180,184,.08);border-bottom:1px solid rgba(240,180,184,.45)}
+.pl-h.nul .pl-cd,.pl-h.nul .pl-big{color:var(--danger-txt)}
+.pl-v.nul{background:rgba(240,180,184,.035);color:var(--muted)}
+.pl-f{padding:11px 12px}
+.pl-f.nul{background:rgba(240,180,184,.035)}
+.btn{font-family:var(--sans);font-size:13px;color:#fff;background:var(--accent-solid);border:1px solid var(--accent);
+  padding:6px 16px;cursor:pointer;letter-spacing:.06em}
+.btn:hover{background:var(--accent)}
+.nobtn{font-family:var(--mono);font-size:12px;color:var(--danger-txt);letter-spacing:.02em;
+  border:1px dashed rgba(240,180,184,.45);padding:5px 9px;display:inline-block}
+.plnote{margin-top:11px;font-size:12px;color:var(--muted2);line-height:1.8}
+
+/* ── 浮层（成段说明一律在这里，不在第一层） ── */
+.pop{position:relative;display:inline-flex;align-items:center}
+.pop .q{width:16px;height:16px;border:1px solid var(--line2);color:var(--muted2);font-size:12px;
+  font-family:var(--mono);display:flex;align-items:center;justify-content:center;cursor:help;font-weight:400}
+.pop:hover .q{border-color:var(--accent);color:var(--accent-txt)}
+.pop .b{display:none;position:absolute;left:0;top:calc(100% + 7px);width:392px;z-index:60;
+  background:#0f192c;border:1px solid var(--line2);border-top:2px solid var(--accent);
+  padding:11px 13px;font-size:12px;line-height:1.85;color:var(--muted);
+  box-shadow:0 22px 54px -16px #000;text-align:left;font-weight:400}
+.pop.r .b{left:auto;right:0}
+.pop:hover .b{display:block}
+.pop .b b{color:var(--txt);display:inline-block;margin-bottom:2px}
+
+/* ── 推演可披露 ── */
+.disc{border-top:1px solid var(--line)}
+.disc summary{list-style:none;cursor:pointer;padding:11px 22px;display:flex;align-items:baseline;gap:12px;
+  font-size:12px;font-family:var(--mono);letter-spacing:.1em;color:var(--muted2)}
+.disc summary::-webkit-details-marker{display:none}
+.disc summary::before{content:"▸";color:var(--accent-txt);font-size:12px}
+.disc[open] summary::before{content:"▾"}
+.disc summary span{color:var(--txt)}
+.disc summary b{font-weight:400;letter-spacing:0;color:var(--quiet)}
+.disc summary:hover{background:rgba(255,255,255,.025)}
+.disc-b{padding:2px 22px 18px 40px;font-size:12px;line-height:1.9;color:var(--muted2)}
+.disc-b>div{display:flex;gap:12px;border-bottom:1px solid var(--line);padding:4px 0}
+.dk{flex:0 0 108px;font-family:var(--mono);color:var(--quiet);letter-spacing:.06em}
+
+/* ── 页脚 ── */
+.foot{margin-top:26px;padding:16px 2px 0;border-top:1px solid var(--line);font-size:12px;
+  color:var(--muted2);line-height:1.95;max-width:1000px}
+.foot b{color:var(--muted);font-weight:600}
+.foot code{font-family:var(--mono);color:var(--accent-txt);font-size:12px}
+
+@media (max-width:1180px){
+  .prim{flex-wrap:wrap;gap:20px}.prim-l{border-right:0;padding-right:0}
+  .prim-sub{flex-basis:100%;padding-left:0;margin-top:10px}
+  .zoomrow{flex-wrap:wrap}.cov{grid-template-columns:repeat(2,1fr)}
+  .r-head{flex-wrap:wrap}.r-meta{flex-basis:100%;order:9;padding-left:34px}
+  .plans{grid-template-columns:88px repeat(2,1fr)}
+}
+@media (max-width:720px){
+  .plans{grid-template-columns:1fr}.cov{grid-template-columns:1fr}
+  .cl,.cn,.cp,.co{flex:1 0 auto}
+  .pop .b{width:min(392px,86vw)}
+}
+</style>
+
+<div class="wrap">
+
+<div class="doc">
+  <h1>产能推演</h1>
+  <span class="d">工业驾驶舱 · 异常驱动</span>
+  <p class="thesis"><b>正常态不发声，异常态改变形状。</b>值班员扫一眼要拿到的只有一件事 ——「现在要不要动手」。
+  故：主指标一个巨大数字占视觉中心；正常项退成一条 4px 的点，越线项长成 22px 的杆；
+  等级靠<b>形状与体量</b>（实心杆／空心杆／断口杆／斜纹杆／点）而非颜色深浅区分，去色打印仍可读。
+  下面是<b>同一套版面的两种口径</b>：先「全部基地」，再切到「常州」——版面骨架逐像素相同，换的只有口径。</p>
+</div>
+
+<div class="slab"><b>屏 1</b><span>口径 ＝ 全部基地 · COO</span></div>
+
+<section class="device" id="all">
+  <header class="top">
+    <span class="brand">产能推演</span>
+    <span class="scope">
+      <b class="sc-k">口径</b>
+      <select class="sc-s"><option>全部基地</option><option>常州</option><option>厦门</option><option>邯郸</option><option>扬州</option><option>江门</option><option>成都</option><option>武汉</option><option>眉山</option><option>合肥</option><option>自贡</option><option>金华</option><option>信阳</option><option>枣庄</option></select>
+      
+    </span>
+    <span class="pop r"><b class="q">?</b><span class="b"><b>本屏口径</b><br>
+  全部基地 13 个 · 余量＝Σ(瓶颈工序硬产能 − 已排产) · 订单簿 500 单 / 20 客户 / 454.64 亿<br><br>
+  <b>警戒判据</b><br>
+  越线 ＝ 负荷率 ≥ 85（后端红线，非本屏所定）<br>
+  缓冲耗尽 ＝ 余量 &lt; 20 套/天（<u>本屏显示阈值</u>，非后端规则）<br>
+  逼近 ＝ 负荷率 80–84<br>
+  未取到 ＝ 30 天轨迹缺失，无法判越线日</span></span>
+    <span class="topmeta"><b class="st st-over"><i class="m m-over"></i>越线 2</b><b class="st st-empty"><i class="m m-empty"></i>缓冲耗尽 2</b><b class="st st-near"><i class="m m-near"></i>逼近 3</b><b class="st st-ok"><i class="m m-ok"></i>正常 6</b></span>
+    <span class="topright"><b class="tk">〔合成〕</b> 七因子读数 <span class="pop"><b class="q">?</b><span class="b"><b>记号约定</b><br>
+  <s class="ho">删除线</s> ＝ 这次算不出来。<u>不是 0，也不是「无变化」</u>。后面的 <b class="why">缺 …</b> 说明缺哪个输入。<br>
+  <b class="tk">〔估〕</b> ＝ 推演投影，非实测。<br>
+  <b class="tk">〔合成〕</b> ＝ 七因子读数由本体结构派生，<u>不是产线实测</u>；柜位／节拍／排产量才是真值。<br>
+  <b class="none">今天没有对策</b> ＝ 确实没有，不是页面没加载。</span></span></span>
+  </header>
+
+  
+<div class="prim">
+  <i class="tick tl"></i><i class="tick tr"></i><i class="tick bl"></i><i class="tick br"></i>
+  <div class="prim-l">
+    <div class="prim-k">余量</div>
+    <div class="prim-n"><b>2,896</b><em>套/天</em></div>
+    <div class="prim-p">0.25<em>%</em></div>
+  </div>
+  <div class="prim-r">
+    <div class="gauge"><i class="g-f" style="width:99.75%"></i><i class="g-t" style="left:10%"></i><i class="g-t" style="left:20%"></i><i class="g-t" style="left:30%"></i><i class="g-t" style="left:40%"></i><i class="g-t" style="left:50%"></i><i class="g-t" style="left:60%"></i><i class="g-t" style="left:70%"></i><i class="g-t" style="left:80%"></i><i class="g-t" style="left:90%"></i></div>
+    <div class="gauge-lab"><span>硬产能 1,158,399</span><span>已排 1,155,503</span></div>
+    <div class="zoomrow">
+      <i class="cone"></i>
+      <div class="zoombox">
+        <div class="zbar"><i class="z-f" style="width:75%"></i><i class="z-r" style="width:25%"></i></div>
+        <div class="zlab">末 1 % 放大 ×100 <b>余 0.25%</b></div>
+      </div>
+      <div class="prim-sub">13 个基地 · 7 种主约束 · 12,817 柜位 · 在手 500 单 / 454.64 亿 · 广汽埃安 223 单 / 131.76 亿 / 占 <b class="hi">30.8%</b></div>
+    </div>
+  </div>
+</div>
+
+  <div class="sect">
+    <h2>风险清单<b class="h2sub">13 个基地各一行 · 按警戒等级排序</b></h2>
+    <div class="list"><div class="row r-over">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-over"></i></span>
+    <span class="r-nm">常州</span>
+    <span class="r-st">越线</span>
+    <span class="r-meta">动力+储能 · 主约束 瓶颈工序</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f x" style="width:88%"></i><i class="lb-r"></i></span><b class="num x">88</b></span><span class="cn"><b class="num">718</b><em>套/天</em></span><span class="cp"><b class="num">0.43</b><em>%</em></span><span class="co"><b class="num">170</b><em>单</em></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">问题</span><span class="v">负荷率 <b class="hi">88</b> ≥ 红线 85 · 余量 718 套/天（0.43%）· 在手 170 单</span></div><div class="slot"><span class="k">根因</span><span class="v">关键正极安全库存覆盖降至 5 天（阈值 5 天），物料齐套率 79%（阈值 80%）<b class="src">WMS/ERP 采购与在途</b></span></div><div class="slot"><span class="k">建议</span><span class="v">方案 A 正极料紧急拉动 · 切口径至「常州」看 7 因子逐日轨迹</span></div></div></div><div class="row r-over">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-over"></i></span>
+    <span class="r-nm">厦门</span>
+    <span class="r-st">越线</span>
+    <span class="r-meta">动力 · 主约束 设备OEE</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f x" style="width:85%"></i><i class="lb-r"></i></span><b class="num x">85</b></span><span class="cn"><b class="num">296</b><em>套/天</em></span><span class="cp"><b class="num">0.23</b><em>%</em></span><span class="co"><b class="num">37</b><em>单</em></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">问题</span><span class="v">负荷率 <b class="hi">85</b> ＝ 红线 85 · 余量 296 套/天（0.23%）· 在手 37 单</span></div><div class="slot"><span class="k">根因</span><span class="v">主约束 设备OEE · 明细根因未取到</span></div><div class="slot"><span class="k">建议</span><span class="v"><b class="none">今天没有对策</b> —— 缺根因明细与 30 天轨迹</span></div></div></div><div class="row r-empty">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-empty"></i></span>
+    <span class="r-nm">邯郸</span>
+    <span class="r-st">缓冲耗尽</span>
+    <span class="r-meta">储能 · 主约束 物料齐套</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:70%"></i><i class="lb-r"></i></span><b class="num">70</b></span><span class="cn"><b class="num">3</b><em>套/天</em></span><span class="cp"><b class="num">0.01</b><em>%</em></span><span class="co"><b class="num">36</b><em>单</em></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">问题</span><span class="v">余量 <b class="hi">3</b> 套/天（0.01%）· 负荷率 70 未越线 · 在手 36 单</span></div><div class="slot"><span class="k">根因</span><span class="v">主约束 物料齐套 · 明细根因未取到</span></div><div class="slot"><span class="k">建议</span><span class="v"><b class="none">今天没有对策</b> —— 缺根因明细；可动用：其余储能基地余量合计 861 套/天<b class="tk">〔估〕</b></span></div></div></div><div class="row r-empty">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-empty"></i></span>
+    <span class="r-nm">扬州</span>
+    <span class="r-st">缓冲耗尽</span>
+    <span class="r-meta">储能 · 主约束 良率波动</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:72%"></i><i class="lb-r"></i></span><b class="num">72</b></span><span class="cn"><b class="num">14</b><em>套/天</em></span><span class="cp"><b class="num">0.03</b><em>%</em></span><span class="co"><b class="num">50</b><em>单</em></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">问题</span><span class="v">余量 <b class="hi">14</b> 套/天（0.03%）· 负荷率 72 未越线 · 在手 50 单</span></div><div class="slot"><span class="k">根因</span><span class="v">主约束 良率波动 · 30 天轨迹未取到 · 明细根因未取到</span></div><div class="slot"><span class="k">建议</span><span class="v"><b class="none">今天没有对策</b> —— 缺根因明细</span></div></div></div><div class="row r-near">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-near"></i></span>
+    <span class="r-nm">江门</span>
+    <span class="r-st">逼近</span>
+    <span class="r-meta">储能 · 主约束 物料齐套</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:83%"></i><i class="lb-r"></i></span><b class="num">83</b></span><span class="cn"><b class="num">436</b><em>套/天</em></span><span class="cp"><b class="num">0.37</b><em>%</em></span><span class="co"><b class="num">38</b><em>单</em></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">根因</span><span class="v">主约束 物料齐套 · 余量 436 套/天（0.37%）· 30 天轨迹未取到</span></div></div></div><div class="row r-near">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-near"></i></span>
+    <span class="r-nm">成都</span>
+    <span class="r-st">逼近</span>
+    <span class="r-meta">动力+储能 · 主约束 设备OEE</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:82%"></i><i class="lb-r"></i></span><b class="num">82</b></span><span class="cn"><b class="num">179</b><em>套/天</em></span><span class="cp"><b class="num">0.13</b><em>%</em></span><span class="co"><b class="num">68</b><em>单</em></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">根因</span><span class="v">主约束 设备OEE · 余量 179 套/天（0.13%）· 30 天轨迹未取到</span></div></div></div><div class="row r-near">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-near"></i></span>
+    <span class="r-nm">武汉</span>
+    <span class="r-st">逼近</span>
+    <span class="r-meta">动力 · 主约束 良率波动</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:80%"></i><i class="lb-r"></i></span><b class="num">80</b></span><span class="cn"><b class="num">137</b><em>套/天</em></span><span class="cp"><b class="num">0.16</b><em>%</em></span><span class="co"><b class="num">39</b><em>单</em></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">根因</span><span class="v">主约束 良率波动 · 余量 137 套/天（0.16%）· 30 天轨迹未取到</span></div></div></div><div class="row r-ok">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-ok"></i></span>
+    <span class="r-nm">眉山</span>
+    <span class="r-st"></span>
+    <span class="r-meta">储能 · 主约束 人力工时</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:79%"></i><i class="lb-r"></i></span><b class="num">79</b></span><span class="cn"><b class="num">110</b><em>套/天</em></span><span class="cp"><b class="num">0.12</b><em>%</em></span><span class="co"><b class="num">22</b><em>单</em></span></span>
+  </div></div><div class="row r-ok">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-ok"></i></span>
+    <span class="r-nm">合肥</span>
+    <span class="r-st"></span>
+    <span class="r-meta">动力 · 主约束 设备OEE</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:78%"></i><i class="lb-r"></i></span><b class="num">78</b></span><span class="cn"><b class="num">218</b><em>套/天</em></span><span class="cp"><b class="num">0.26</b><em>%</em></span><span class="co"><b class="num">33</b><em>单</em></span></span>
+  </div></div><div class="row r-ok">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-ok"></i></span>
+    <span class="r-nm">自贡</span>
+    <span class="r-st"></span>
+    <span class="r-meta">动力 · 主约束 人力工时</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:77%"></i><i class="lb-r"></i></span><b class="num">77</b></span><span class="cn"><b class="num">152</b><em>套/天</em></span><span class="cp"><b class="num">0.23</b><em>%</em></span><span class="co"><b class="num">33</b><em>单</em></span></span>
+  </div></div><div class="row r-ok">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-ok"></i></span>
+    <span class="r-nm">金华</span>
+    <span class="r-st"></span>
+    <span class="r-meta">动力 · 主约束 设备OEE</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:76%"></i><i class="lb-r"></i></span><b class="num">76</b></span><span class="cn"><b class="num">174</b><em>套/天</em></span><span class="cp"><b class="num">0.30</b><em>%</em></span><span class="co"><b class="num">82</b><em>单</em></span></span>
+  </div></div><div class="row r-ok">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-ok"></i></span>
+    <span class="r-nm">信阳</span>
+    <span class="r-st"></span>
+    <span class="r-meta">储能 · 主约束 物流时长</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:75%"></i><i class="lb-r"></i></span><b class="num">75</b></span><span class="cn"><b class="num">301</b><em>套/天</em></span><span class="cp"><b class="num">0.46</b><em>%</em></span><span class="co"><b class="num">56</b><em>单</em></span></span>
+  </div></div><div class="row r-ok">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-ok"></i></span>
+    <span class="r-nm">枣庄</span>
+    <span class="r-st"></span>
+    <span class="r-meta">动力+储能 · 主约束 换型损失</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:73%"></i><i class="lb-r"></i></span><b class="num">73</b></span><span class="cn"><b class="num">158</b><em>套/天</em></span><span class="cp"><b class="num">0.27</b><em>%</em></span><span class="co"><b class="num">110</b><em>单</em></span></span>
+  </div></div></div>
+  </div>
+
+  <div class="sect">
+    <h2>时序推演<b class="h2sub">未来 30 天逐日轨迹 · 轨迹覆盖 <b class="hi">1 / 13</b> 基地</b></h2>
+    <div class="brow bhead"><span class="b-n">常州</span><span class="b-c"><b class="num x">96</b></span><div class="band"><i class="rule" style="bottom:62.50%"><em>85</em></i><i class="xd" style="left:1.67%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:92.5%"></i><i class="c x" style="height:94.0%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:94.5%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:94.0%"></i><i class="c x" style="height:92.5%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:92.5%"></i><i class="c x" style="height:94.0%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:94.5%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:94.0%"></i></div><span class="b-d"><b class="num x">D+1</b></span><span class="b-p">97.8</span></div>
+    <div class="brow bfoot"><span class="b-n"></span><span class="b-c"></span><div class="axis"><i style="left:1.67%">D+1</i><i style="left:31.67%">D+10</i><i style="left:65.00%">D+20</i><i style="left:98.33%">D+30</i></div><span class="b-d"></span><span class="b-p"></span></div>
+    <div class="covnote">物料齐套 · 常州 —— 全网<u>唯一取到 30 天轨迹</u>的基地（7 因子中 4 条）。其余 12 个基地：</div>
+    <div class="cov"><div class="cv"><span class="cv-n">厦门</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">邯郸</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">扬州</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">江门</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">成都</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">武汉</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">眉山</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">合肥</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">自贡</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">金华</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">信阳</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div><div class="cv"><span class="cv-n">枣庄</span><div class="band hatch sm"><span class="gaptxt">未取到</span></div><span class="cv-d"><s class="ho">D+__</s></span></div></div>
+  </div>
+
+  <div class="sect">
+    <h2>多方案比对<b class="h2sub">3 个方案 ＋ 第 4 栏「什么都不做」</b></h2>
+    <div class="plans"><div class="pl-rk pl-rk0">方案</div><div class="pl-h">
+      <div class="pl-cd">A</div>
+      <div class="pl-nm">储能订单跨基地再平衡</div>
+      <div class="pl-big">861<em>套/天<b class="tk">〔估〕</b></em></div>
+    </div><div class="pl-h">
+      <div class="pl-cd">B</div>
+      <div class="pl-nm">常州·厦门 瓶颈工序扩产</div>
+      <div class="pl-big"><s class="ho">套/天</s><em></em></div>
+    </div><div class="pl-h">
+      <div class="pl-cd">C</div>
+      <div class="pl-nm">广汽埃安 交期重排</div>
+      <div class="pl-big">223<em>单</em></div>
+    </div><div class="pl-h nul">
+      <div class="pl-cd">D</div>
+      <div class="pl-nm">什么都不做</div>
+      <div class="pl-big">2,896<em>套/天</em></div>
+    </div><div class="pl-rk">针对</div><div class="pl-v">邯郸 3 · 扬州 14 缓冲耗尽</div><div class="pl-v">常州 88 · 厦门 85 越线</div><div class="pl-v">广汽埃安 223 单 · 131.76 亿 · 30.8%</div><div class="pl-v nul">不针对任何一条</div><div class="pl-rk">可动用量</div><div class="pl-v">861 套/天<b class="tk">〔估〕</b><b class="fx">扬州 14＋眉山 110＋信阳 301＋江门 436</b></div><div class="pl-v"><s class="ho">套/天</s><b class="why">缺 扩产产出系数</b></div><div class="pl-v">223 单可重排</div><div class="pl-v nul">0 套/天新增</div><div class="pl-rk">前置期</div><div class="pl-v"><s class="ho">天</s><b class="why">缺 转产切换时长</b></div><div class="pl-v"><s class="ho">天</s><b class="why">缺 设备交付期</b></div><div class="pl-v"><s class="ho">天</s><b class="why">缺 客户协商周期</b></div><div class="pl-v nul"><b class="hi">0 天 · 立即生效</b></div><div class="pl-rk">直接代价</div><div class="pl-v"><s class="ho">万元</s><b class="why">缺 物流费率表</b></div><div class="pl-v"><s class="ho">万元</s><b class="why">缺 设备与人工报价</b></div><div class="pl-v"><s class="ho">万元</s><b class="why">缺 违约/让价条款</b></div><div class="pl-v nul"><s class="ho">万元</s><b class="why">缺 缺交惩罚条款</b></div><div class="pl-rk">残留风险</div><div class="pl-v">江门 0.37% 承接后同样吃紧</div><div class="pl-v">常州 设备OEE D+18 越线仍在</div><div class="pl-v">30.8% 单点依赖不变</div><div class="pl-v nul">4 个基地留在越线／缓冲耗尽 · 常州 D+1 越线</div><div class="pl-rk">谁批</div><div class="pl-v">COO ＋ 两地基地负责人</div><div class="pl-v">COO ＋ 投资</div><div class="pl-v">COO ＋ 销售 VP</div><div class="pl-v nul">无需批准</div><div class="pl-rk"></div><div class="pl-f"><button class="btn">建方案</button></div><div class="pl-f"><button class="btn">建方案</button></div><div class="pl-f"><button class="btn">建方案</button></div><div class="pl-f nul"><span class="nobtn">默认发生 · 无需批准 · 无按钮</span></div></div>
+    <div class="plnote"><s class="ho">4 项代价</s>本次算不出来 —— 单价表／物流费率／加班工资率未接入。第 4 栏没有按钮，因为它<u>默认发生</u>；没有它，前 3 栏的代价看起来都是净支出。</div>
+  </div>
+
+  
+<details class="disc"><summary><span>推演过程</span><b>引用数据 · 命中规则 · 是否调用 agent</b></summary>
+<div class="disc-b">
+  <div><span class="dk">引用数据</span>Base 13 条 · Order 500 条 · Customer 20 条 · factorSeries 4 条（仅常州，7 因子中 4 条取到）</div>
+  <div><span class="dk">本体切片</span><s class="ho">sliceKey</s><b class="why">缺 切片标识未下发</b> · <s class="ho">跳数</s> · <s class="ho">节点/边数</s></div>
+  <div><span class="dk">命中规则</span>红线 85（越线判据，后端）· 余量 &lt; 20 套/天（缓冲耗尽，<u>本屏显示阈值</u>）· 系数 <s class="ho">值</s><b class="why">缺 系数未随读数下发</b></div>
+  <div><span class="dk">约束来源</span>WMS/ERP 采购与在途（物料齐套根因）· 其余因子来源未下发</div>
+  <div><span class="dk">agent</span><b class="hi">本次未调用 agent</b> —— 全部为规则与本体派生，非模型生成</div>
+  <div><span class="dk">各环节耗时</span><s class="ho">ms</s><b class="why">缺 计时未接入</b></div>
+  <div><span class="dk">确定性</span>seed 42 · 同 (industry, scale, seed) 重跑字节级一致</div>
+</div></details>
+</section>
+
+<div class="slab"><b>屏 2</b><span>口径 ＝ 常州 · 基地负责人 roles:["base_manager:常州"] · 口径被钉死，其余一切不变</span></div>
+
+<section class="device" id="cz">
+  <header class="top">
+    <span class="brand">产能推演</span>
+    <span class="scope">
+      <b class="sc-k">口径</b>
+      <select class="sc-s" disabled><option>常州</option></select>
+      <b class="sc-pin">已钉</b>
+    </span>
+    <span class="pop r"><b class="q">?</b><span class="b"><b>本屏口径</b><br>
+  常州 1 个基地 · 7 个因子 · 余量＝瓶颈工序硬产能 167,486 − 已排 166,768<br><br>
+  <b>警戒判据</b><br>
+  越线 ＝ 负荷率 ≥ 85（后端红线，非本屏所定）<br>
+  缓冲耗尽 ＝ 余量 &lt; 20 套/天（<u>本屏显示阈值</u>，非后端规则）<br>
+  逼近 ＝ 负荷率 80–84<br>
+  未取到 ＝ 30 天轨迹缺失，无法判越线日</span></span>
+    <span class="topmeta"><b class="st st-over"><i class="m m-over"></i>越线 2</b><b class="st st-near"><i class="m m-near"></i>逼近 2</b><b class="st st-gap"><i class="m m-gap"></i>未取到 3</b></span>
+    <span class="topright"><b class="tk">〔合成〕</b> 七因子读数 <span class="pop"><b class="q">?</b><span class="b"><b>记号约定</b><br>
+  <s class="ho">删除线</s> ＝ 这次算不出来。<u>不是 0，也不是「无变化」</u>。后面的 <b class="why">缺 …</b> 说明缺哪个输入。<br>
+  <b class="tk">〔估〕</b> ＝ 推演投影，非实测。<br>
+  <b class="tk">〔合成〕</b> ＝ 七因子读数由本体结构派生，<u>不是产线实测</u>；柜位／节拍／排产量才是真值。<br>
+  <b class="none">今天没有对策</b> ＝ 确实没有，不是页面没加载。</span></span></span>
+  </header>
+
+  
+<div class="prim">
+  <i class="tick tl"></i><i class="tick tr"></i><i class="tick bl"></i><i class="tick br"></i>
+  <div class="prim-l">
+    <div class="prim-k">余量</div>
+    <div class="prim-n"><b>718</b><em>套/天</em></div>
+    <div class="prim-p">0.43<em>%</em></div>
+  </div>
+  <div class="prim-r">
+    <div class="gauge"><i class="g-f" style="width:99.57%"></i><i class="g-t" style="left:10%"></i><i class="g-t" style="left:20%"></i><i class="g-t" style="left:30%"></i><i class="g-t" style="left:40%"></i><i class="g-t" style="left:50%"></i><i class="g-t" style="left:60%"></i><i class="g-t" style="left:70%"></i><i class="g-t" style="left:80%"></i><i class="g-t" style="left:90%"></i></div>
+    <div class="gauge-lab"><span>硬产能 167,486</span><span>已排 166,768</span></div>
+    <div class="zoomrow">
+      <i class="cone"></i>
+      <div class="zoombox">
+        <div class="zbar"><i class="z-f" style="width:57%"></i><i class="z-r" style="width:43%"></i></div>
+        <div class="zlab">末 1 % 放大 ×100 <b>余 0.43%</b></div>
+      </div>
+      <div class="prim-sub">动力+储能 · 主约束 瓶颈工序 · 1,849 柜位 · 节拍 93 · 在手 <b class="hi">170</b> 单 · 负荷率 <b class="hi">88</b> ≥ 红线 85 · roles:["base_manager:常州"]</div>
+    </div>
+  </div>
+</div>
+
+  <div class="sect">
+    <h2>风险清单<b class="h2sub">7 个因子各一行 · 按警戒等级排序 · 无正常项</b></h2>
+    <div class="list"><div class="row r-over">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-over"></i></span>
+    <span class="r-nm">物料齐套</span>
+    <span class="r-st">越线</span>
+    <span class="r-meta">红线 85 · 今日 96</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f x" style="width:96%"></i><i class="lb-r"></i></span><b class="num x">96</b></span><span class="cn"><b class="num x">D+1</b><em>越线</em></span><span class="cp"><b class="num">97.8</b><em>峰</em></span><span class="co"></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">问题</span><span class="v">紧度 <b class="hi">96</b> ≥ 红线 85 · 第 1 天越线 · 30 天峰值 97.8</span></div><div class="slot"><span class="k">根因</span><span class="v">关键正极安全库存覆盖降至 5 天（阈值 5 天），物料齐套率 79%（阈值 80%）<b class="src">WMS/ERP 采购与在途</b></span></div><div class="slot"><span class="k">建议</span><span class="v">方案 A 正极料紧急拉动 —— 唯一取到实测根因的因子</span></div></div></div><div class="row r-over">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-over"></i></span>
+    <span class="r-nm">瓶颈工序</span>
+    <span class="r-st">越线</span>
+    <span class="r-meta">红线 85 · 今日 91</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f x" style="width:91%"></i><i class="lb-r"></i></span><b class="num x">91</b></span><span class="cn"><b class="num x">D+1</b><em>越线</em></span><span class="cp"><b class="num">97.8</b><em>峰</em></span><span class="co"><b class="badge">主约束</b></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">问题</span><span class="v">紧度 <b class="hi">91</b> ≥ 红线 85 · 第 1 天越线 · 30 天峰值 97.8 · 节拍 93 · 柜位 1,849</span></div><div class="slot"><span class="k">根因</span><span class="v">常州主约束＝瓶颈工序 · 明细根因未取到</span></div><div class="slot"><span class="k">建议</span><span class="v">方案 B 转产 337 套/天<b class="tk">〔估〕</b> ／ 方案 C 加班（产出系数未接入）</span></div></div></div><div class="row r-near">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-near"></i></span>
+    <span class="r-nm">设备OEE</span>
+    <span class="r-st">逼近</span>
+    <span class="r-meta">红线 85 · 今日 69</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:69%"></i><i class="lb-r"></i></span><b class="num">69</b></span><span class="cn"><b class="num">D+18</b><em>越线</em></span><span class="cp"><b class="num">88</b><em>峰</em></span><span class="co"></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">根因</span><span class="v">第 18 天越线（69 → 88，30 天峰值 88）· 明细根因未取到</span></div></div></div><div class="row r-near">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-near"></i></span>
+    <span class="r-nm">人力工时</span>
+    <span class="r-st">逼近</span>
+    <span class="r-meta">红线 85 · 今日 70</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:70%"></i><i class="lb-r"></i></span><b class="num">70</b></span><span class="cn"><b class="num">D+19</b><em>越线</em></span><span class="cp"><b class="num">88</b><em>峰</em></span><span class="co"></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">根因</span><span class="v">第 19 天越线（70 → 84，30 天峰值 88）· 明细根因未取到</span></div></div></div><div class="row r-gap">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-gap"></i></span>
+    <span class="r-nm">良率波动</span>
+    <span class="r-st">未取到</span>
+    <span class="r-meta">当前紧度 68 · 轨迹未取到</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:68%"></i><i class="lb-r"></i></span><b class="num">68</b></span><span class="cn"><s class="ho">D+__</s></span><span class="cp"><s class="ho">峰</s></span><span class="co"></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">根因</span><span class="v">30 天轨迹未取到 —— 无法判越线日；当前紧度 68 为<b class="tk">〔合成〕</b>读数</span></div><div class="slot"><span class="k">建议</span><span class="v"><b class="none">今天没有对策</b> —— 缺 30 天轨迹</span></div></div></div><div class="row r-gap">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-gap"></i></span>
+    <span class="r-nm">物流时长</span>
+    <span class="r-st">未取到</span>
+    <span class="r-meta">当前紧度 64 · 轨迹未取到</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:64%"></i><i class="lb-r"></i></span><b class="num">64</b></span><span class="cn"><s class="ho">D+__</s></span><span class="cp"><s class="ho">峰</s></span><span class="co"></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">根因</span><span class="v">30 天轨迹未取到 —— 无法判越线日；当前紧度 64 为<b class="tk">〔合成〕</b>读数</span></div><div class="slot"><span class="k">建议</span><span class="v"><b class="none">今天没有对策</b> —— 缺 30 天轨迹</span></div></div></div><div class="row r-gap">
+  <div class="r-head">
+    <span class="r-mk"><i class="m m-gap"></i></span>
+    <span class="r-nm">换型损失</span>
+    <span class="r-st">未取到</span>
+    <span class="r-meta">当前紧度 63 · 轨迹未取到</span>
+    <span class="r-cells"><span class="cl"><span class="lb"><i class="lb-f" style="width:63%"></i><i class="lb-r"></i></span><b class="num">63</b></span><span class="cn"><s class="ho">D+__</s></span><span class="cp"><s class="ho">峰</s></span><span class="co"></span></span>
+  </div><div class="r-slots"><div class="slot"><span class="k">根因</span><span class="v">30 天轨迹未取到 —— 无法判越线日；当前紧度 63 为<b class="tk">〔合成〕</b>读数</span></div><div class="slot"><span class="k">建议</span><span class="v"><b class="none">今天没有对策</b> —— 缺 30 天轨迹</span></div></div></div></div>
+  </div>
+
+  <div class="sect">
+    <h2>时序推演<b class="h2sub">未来 30 天逐日轨迹 · 取到 <b class="hi">4 / 7</b> 因子</b></h2>
+    <div class="brow">
+  <span class="b-n">物料齐套</span>
+  <span class="b-c"><b class="num x">96</b></span>
+  <div class="band"><i class="rule" style="bottom:62.50%"><em>85</em></i><i class="xd" style="left:1.67%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:92.5%"></i><i class="c x" style="height:94.0%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:94.5%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:94.0%"></i><i class="c x" style="height:92.5%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:92.5%"></i><i class="c x" style="height:94.0%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:94.5%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:94.0%"></i></div>
+  <span class="b-d"><b class="num x">D+1</b></span>
+  <span class="b-p">97.8</span>
+</div><div class="brow">
+  <span class="b-n">瓶颈工序</span>
+  <span class="b-c"><b class="num x">91</b></span>
+  <div class="band"><i class="rule" style="bottom:62.50%"><em>85</em></i><i class="xd" style="left:1.67%"></i><i class="c x" style="height:77.5%"></i><i class="c x" style="height:77.5%"></i><i class="c x" style="height:80.0%"></i><i class="c x" style="height:80.0%"></i><i class="c x" style="height:80.0%"></i><i class="c x" style="height:80.0%"></i><i class="c x" style="height:82.5%"></i><i class="c x" style="height:82.5%"></i><i class="c x" style="height:82.5%"></i><i class="c x" style="height:82.5%"></i><i class="c x" style="height:85.0%"></i><i class="c x" style="height:85.0%"></i><i class="c x" style="height:85.0%"></i><i class="c x" style="height:85.0%"></i><i class="c x" style="height:85.0%"></i><i class="c x" style="height:87.5%"></i><i class="c x" style="height:90.0%"></i><i class="c x" style="height:92.5%"></i><i class="c x" style="height:94.0%"></i><i class="c x" style="height:94.5%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:93.8%"></i><i class="c x" style="height:92.5%"></i><i class="c x" style="height:92.5%"></i><i class="c x" style="height:93.8%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:94.5%"></i><i class="c x" style="height:94.3%"></i><i class="c x" style="height:93.8%"></i><i class="c x" style="height:92.5%"></i></div>
+  <span class="b-d"><b class="num x">D+1</b></span>
+  <span class="b-p">97.8</span>
+</div><div class="brow">
+  <span class="b-n">设备OEE</span>
+  <span class="b-c"><b class="num">69</b></span>
+  <div class="band"><i class="rule" style="bottom:62.50%"><em>85</em></i><i class="xd" style="left:58.33%"></i><i class="c" style="height:22.5%"></i><i class="c" style="height:25.0%"></i><i class="c" style="height:27.5%"></i><i class="c" style="height:30.0%"></i><i class="c" style="height:32.5%"></i><i class="c" style="height:35.0%"></i><i class="c" style="height:35.0%"></i><i class="c" style="height:37.5%"></i><i class="c" style="height:40.0%"></i><i class="c" style="height:42.5%"></i><i class="c" style="height:45.0%"></i><i class="c" style="height:47.5%"></i><i class="c" style="height:50.0%"></i><i class="c" style="height:52.5%"></i><i class="c" style="height:55.0%"></i><i class="c" style="height:57.5%"></i><i class="c" style="height:60.0%"></i><i class="c x" style="height:62.5%"></i><i class="c x" style="height:65.0%"></i><i class="c x" style="height:67.5%"></i><i class="c x" style="height:67.5%"></i><i class="c x" style="height:70.0%"></i><i class="c x" style="height:70.0%"></i><i class="c x" style="height:70.0%"></i><i class="c x" style="height:70.0%"></i><i class="c x" style="height:70.0%"></i><i class="c x" style="height:70.0%"></i><i class="c x" style="height:70.0%"></i><i class="c x" style="height:70.0%"></i><i class="c x" style="height:70.0%"></i></div>
+  <span class="b-d"><b class="num">D+18</b></span>
+  <span class="b-p">88</span>
+</div><div class="brow">
+  <span class="b-n">人力工时</span>
+  <span class="b-c"><b class="num">70</b></span>
+  <div class="band"><i class="rule" style="bottom:62.50%"><em>85</em></i><i class="xd" style="left:61.67%"></i><i class="c" style="height:25.0%"></i><i class="c" style="height:25.0%"></i><i class="c" style="height:27.5%"></i><i class="c" style="height:27.5%"></i><i class="c" style="height:30.0%"></i><i class="c" style="height:32.5%"></i><i class="c" style="height:32.5%"></i><i class="c" style="height:35.0%"></i><i class="c" style="height:35.0%"></i><i class="c" style="height:37.5%"></i><i class="c" style="height:40.0%"></i><i class="c" style="height:40.0%"></i><i class="c" style="height:42.5%"></i><i class="c" style="height:42.5%"></i><i class="c" style="height:45.0%"></i><i class="c" style="height:47.5%"></i><i class="c" style="height:52.5%"></i><i class="c" style="height:57.5%"></i><i class="c x" style="height:62.5%"></i><i class="c x" style="height:67.5%"></i><i class="c x" style="height:65.0%"></i><i class="c x" style="height:62.5%"></i><i class="c" style="height:60.0%"></i><i class="c" style="height:60.0%"></i><i class="c x" style="height:62.5%"></i><i class="c x" style="height:67.5%"></i><i class="c x" style="height:70.0%"></i><i class="c x" style="height:67.5%"></i><i class="c x" style="height:62.5%"></i><i class="c" style="height:60.0%"></i></div>
+  <span class="b-d"><b class="num">D+19</b></span>
+  <span class="b-p">88</span>
+</div><div class="brow">
+  <span class="b-n">良率波动</span>
+  <span class="b-c"><b class="num">68</b></span>
+  <div class="band hatch"><span class="gaptxt">30 天轨迹未取到 · 当前紧度 68</span></div>
+  <span class="b-d"><s class="ho">D+__</s></span>
+  <span class="b-p"><s class="ho">峰</s></span>
+</div><div class="brow">
+  <span class="b-n">物流时长</span>
+  <span class="b-c"><b class="num">64</b></span>
+  <div class="band hatch"><span class="gaptxt">30 天轨迹未取到 · 当前紧度 64</span></div>
+  <span class="b-d"><s class="ho">D+__</s></span>
+  <span class="b-p"><s class="ho">峰</s></span>
+</div><div class="brow">
+  <span class="b-n">换型损失</span>
+  <span class="b-c"><b class="num">63</b></span>
+  <div class="band hatch"><span class="gaptxt">30 天轨迹未取到 · 当前紧度 63</span></div>
+  <span class="b-d"><s class="ho">D+__</s></span>
+  <span class="b-p"><s class="ho">峰</s></span>
+</div><div class="brow bfoot"><span class="b-n"></span><span class="b-c"></span><div class="axis"><i style="left:1.67%">D+1</i><i style="left:31.67%">D+10</i><i style="left:65.00%">D+20</i><i style="left:98.33%">D+30</i></div><span class="b-d"></span><span class="b-p"></span></div>
+  </div>
+
+  <div class="sect">
+    <h2>多方案比对<b class="h2sub">3 个方案 ＋ 第 4 栏「什么都不做」</b></h2>
+    <div class="plans"><div class="pl-rk pl-rk0">方案</div><div class="pl-h">
+      <div class="pl-cd">A</div>
+      <div class="pl-nm">正极料紧急拉动</div>
+      <div class="pl-big">79<em>%</em></div>
+    </div><div class="pl-h">
+      <div class="pl-cd">B</div>
+      <div class="pl-nm">转产至混线基地</div>
+      <div class="pl-big">337<em>套/天<b class="tk">〔估〕</b></em></div>
+    </div><div class="pl-h">
+      <div class="pl-cd">C</div>
+      <div class="pl-nm">瓶颈工序加班</div>
+      <div class="pl-big"><s class="ho">套/天</s><em></em></div>
+    </div><div class="pl-h nul">
+      <div class="pl-cd">D</div>
+      <div class="pl-nm">什么都不做</div>
+      <div class="pl-big">718<em>套/天</em></div>
+    </div><div class="pl-rk">针对</div><div class="pl-v">物料齐套 96 · D+1 越线</div><div class="pl-v">瓶颈工序 91 · D+1 越线</div><div class="pl-v">瓶颈工序 91 · 节拍 93</div><div class="pl-v nul">不针对任何一条</div><div class="pl-rk">可动用量</div><div class="pl-v">齐套率 79% → 阈值 80% · <s class="ho">套/天</s><b class="why">缺 齐套率→产出 转换系数</b></div><div class="pl-v">337 套/天<b class="tk">〔估〕</b><b class="fx">枣庄 158＋成都 179（同为动力+储能混线）</b></div><div class="pl-v"><s class="ho">套/天</s><b class="why">缺 加班产出系数</b></div><div class="pl-v nul">0 套/天新增</div><div class="pl-rk">前置期</div><div class="pl-v"><s class="ho">天</s><b class="why">缺 采购在途前置期</b></div><div class="pl-v"><s class="ho">天</s><b class="why">缺 换型切换时长</b></div><div class="pl-v"><s class="ho">天</s><b class="why">缺 用工审批周期</b></div><div class="pl-v nul"><b class="hi">0 天 · 立即生效</b></div><div class="pl-rk">直接代价</div><div class="pl-v"><s class="ho">万元</s><b class="why">缺 正极料现货价差</b></div><div class="pl-v"><s class="ho">万元</s><b class="why">缺 跨基地物流费率</b></div><div class="pl-v"><s class="ho">万元</s><b class="why">缺 加班工资率</b></div><div class="pl-v nul"><s class="ho">万元</s><b class="why">缺 缺交惩罚条款</b></div><div class="pl-rk">残留风险</div><div class="pl-v">瓶颈工序 91 仍越线 · 本方案不覆盖</div><div class="pl-v">枣庄 0.27% / 成都 0.13% 承接后更紧</div><div class="pl-v">设备OEE D+18 · 人力工时 D+19 仍将越线</div><div class="pl-v nul">物料齐套 · 瓶颈工序 D+1 越线；设备OEE D+18；人力工时 D+19；在手 170 单</div><div class="pl-rk">谁批</div><div class="pl-v">基地负责人 ＋ 供应链</div><div class="pl-v">COO（跨基地）</div><div class="pl-v">基地负责人 ＋ HR</div><div class="pl-v nul">无需批准</div><div class="pl-rk"></div><div class="pl-f"><button class="btn">建方案</button></div><div class="pl-f"><button class="btn">建方案</button></div><div class="pl-f"><button class="btn">建方案</button></div><div class="pl-f nul"><span class="nobtn">默认发生 · 无需批准 · 无按钮</span></div></div>
+    <div class="plnote"><s class="ho">4 项代价</s>本次算不出来 —— 单价表／物流费率／加班工资率未接入。第 4 栏没有按钮，因为它<u>默认发生</u>；没有它，前 3 栏的代价看起来都是净支出。</div>
+  </div>
+
+  
+<details class="disc"><summary><span>推演过程</span><b>引用数据 · 命中规则 · 是否调用 agent</b></summary>
+<div class="disc-b">
+  <div><span class="dk">引用数据</span>Base 1 条（常州）· Order 170 条（在手）· factorSeries 4 条 / 7 因子 · 缺 3 条（良率波动 · 物流时长 · 换型损失）</div>
+  <div><span class="dk">本体切片</span><s class="ho">sliceKey</s><b class="why">缺 切片标识未下发</b> · <s class="ho">跳数</s> · <s class="ho">节点/边数</s></div>
+  <div><span class="dk">命中规则</span>红线 85（越线判据，后端）· 越线日＝首个 ≥85 的日序 · 安全库存阈值 5 天 · 物料齐套率阈值 80% · 系数 <s class="ho">值</s><b class="why">缺 系数未随读数下发</b></div>
+  <div><span class="dk">约束来源</span>WMS/ERP 采购与在途（物料齐套根因）· 其余因子来源未下发</div>
+  <div><span class="dk">agent</span><b class="hi">本次未调用 agent</b> —— 全部为规则与本体派生，非模型生成</div>
+  <div><span class="dk">各环节耗时</span><s class="ho">ms</s><b class="why">缺 计时未接入</b></div>
+  <div><span class="dk">确定性</span>seed 42 · 同 (industry, scale, seed) 重跑字节级一致</div>
+</div></details>
+</section>
+
+<div class="foot">
+<b>两个新令牌，理由：</b>
+<code>--honest:#c2b5e2</code> 诚实位专用通道 —— 若拿 <code>--warn-txt</code> 表达「不知道」，
+「未取到」会读成「告警」，那正是诚实位这套记号要防的事；实测对 <code>--bg</code> 为 6.7:1，12px 达标（门要 6.0）。
+<code>--quiet:#5d6d85</code> 只画正常态的<u>结构线与标记</u>，<b>从不用于文字</b> ——
+「灰到融进背景」削的是<u>强调</u>不是<u>可读性</u>：正常行的文字仍是 <code>--muted2</code>（7.3:1），
+消失的是边框、填充与杆高。<code>--bg</code> 下压到 #1a2740 使仪表面板 <code>--panel</code> 更沉，红色告警不必再加亮就能跳出。<br>
+<b>字号：</b>正文三级 12 / 13 / 15px（≤3 级），巨大数字属 display 数码非正文，另计 19 / 28 / 76px。全页最小 12px。<br>
+<b>取舍：</b>不设图例 —— 每行把等级词（越线／缓冲耗尽／逼近／未取到）直接印在标记旁，形状负责扫视、词负责确认；
+成段说明全部收进浮层与「推演过程」折叠区，第一层只留数值、状态、名字。
+</div>
+
+</div>

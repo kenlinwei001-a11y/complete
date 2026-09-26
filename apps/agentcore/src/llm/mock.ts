@@ -16,9 +16,21 @@ export function text(t: string): LlmContentBlock {
   return { type: "text", text: t };
 }
 
-export type ScriptedTurn =
-  | { content: LlmContentBlock[]; stopReason?: string }
-  | ((req: LlmAgentRequest) => { content: LlmContentBlock[]; stopReason?: string });
+/**
+ * G-9 SEAM：HANG 哨兵 turn —— agent() 遇此 turn 永不 resolve，仅当 req.signal abort 时 reject AbortError。
+ * 用于坐实"某次 llm.agent() 挂住 → per-call deadline abort → 优雅降级"（挂死路径），无需真实网络。
+ */
+export const HANG: unique symbol = Symbol("HANG");
+
+/** WO-FIX-REASONING-CONTENT：turn 可标 salvagedReasoning，模拟"推理型模型把结论写进 reasoning_content 却漏调 final_answer"。 */
+type TurnBody = { content: LlmContentBlock[]; stopReason?: string; salvagedReasoning?: boolean };
+export type ScriptedTurn = TurnBody | typeof HANG | ((req: LlmAgentRequest) => TurnBody);
+
+function abortError(): Error {
+  const e = new Error("The operation was aborted");
+  e.name = "AbortError";
+  return e;
+}
 
 /**
  * Scripted LLM mock: fixed classification sequences + scripted tool_use turns for the agent loop.
@@ -31,6 +43,7 @@ export class ScriptedLlmClient implements LlmClient {
 
   readonly classifyRequests: { model: string; system: string; user: string }[] = [];
   readonly agentRequests: LlmAgentRequest[] = [];
+  readonly composeRequests: { model: string; instruction: string; inputs: unknown[] }[] = [];
   readonly countTokensRequests: LlmAgentRequest[] = [];
 
   /** 增量 §1.1：测试可覆盖的能力声明（缺省模拟 Anthropic：count_tokens 可用）。 */
@@ -66,7 +79,17 @@ export class ScriptedLlmClient implements LlmClient {
 
   async agent(req: LlmAgentRequest): Promise<LlmAgentResponse> {
     this.agentRequests.push(req);
+    // G-9：honor req.signal —— 已 abort 直接 reject（模拟 SDK 语义）。
+    if (req.signal?.aborted) throw abortError();
     const next = this.agentTurns.shift();
+    // G-9：HANG 哨兵 —— 永不 resolve，仅在 signal abort 时 reject AbortError（坐实挂死→有界终止）。
+    if (next === HANG) {
+      return await new Promise<LlmAgentResponse>((_resolve, reject) => {
+        const signal = req.signal;
+        if (!signal) return; // 无 signal → 永挂（不应发生：循环恒传 signal）
+        signal.addEventListener("abort", () => reject(abortError()), { once: true });
+      });
+    }
     if (!next) {
       // default: end politely without tools
       return {
@@ -81,11 +104,12 @@ export class ScriptedLlmClient implements LlmClient {
       content: turn.content,
       stopReason: turn.stopReason ?? (hasToolUse ? "tool_use" : "end_turn"),
       usage: { inputTokens: 100, outputTokens: 50 },
+      ...(turn.salvagedReasoning ? { salvagedReasoning: true } : {}),
     };
   }
 
   async compose(req: { model: string; instruction: string; inputs: unknown[] }): Promise<string> {
-    void req;
+    this.composeRequests.push(req);
     return this.composeResults.shift() ?? "根据材料分析如上 ⟦ref:0⟧。";
   }
 }

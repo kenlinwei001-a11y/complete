@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "note": "mock 谎报棘轮基线（WO-GATE-MOCK-FIDELITY · 闭本体 §8 G-MOCK-OVERCLAIM）。每条 = 一处「mock 声称的，真后端并不提供或方向相反」的**已知欠账**，必须写明 why。**只减不增**：--update 只摘掉已修复项，绝不收编新增谎报（否则棘轮秒变橡皮图章）；要把一条新谎报记进存量，必须人手编辑本文件——那是一个可评审的显式动作，不是脚本的副作用。",
+  "generatedBy": "node scripts/check-mock-fidelity.mjs --update",
+  "exemptions": {}
+}

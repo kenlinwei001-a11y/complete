@@ -1,0 +1,191 @@
+{
+  "tabs": [
+    "▾ 规划与平衡",
+    "▾ 推演",
+    "▾ 台账与地图",
+    "▾ 数据接入",
+    "▾ 建模与图谱",
+    "▾ 图谱体系",
+    "▾ 规则与校准",
+    "▾ 构建与成长",
+    "▾ 编排与场景",
+    "▾ 运营与审批",
+    "▾ 平台与系统",
+    "指标态势",
+    "扰动后",
+    "传导识别",
+    "损失归因",
+    "方案寻优",
+    "演习结论",
+    "图",
+    "产销线路图",
+    "底账",
+    "传导边册",
+    "本体与就绪",
+    "销售与客户 8",
+    "产品与工程 6",
+    "采购与供应 7",
+    "计划与排产 3",
+    "生产制造 4",
+    "质量管理 3",
+    "设备与维护 2",
+    "基地与仓储交付 4",
+    "财务与成本 2",
+    "未归域 7",
+    "销售与客户8",
+    "产品与工程6",
+    "采购与供应7",
+    "计划与排产3",
+    "生产制造4",
+    "质量管理3",
+    "设备与维护2",
+    "基地与仓储交付4",
+    "财务与成本2",
+    "未归域7"
+  ],
+  "perTab": {
+    "▾ 规划与平衡": "点不到",
+    "▾ 推演": "点不到",
+    "▾ 台账与地图": "点不到",
+    "▾ 数据接入": "点不到",
+    "▾ 建模与图谱": "点不到",
+    "▾ 图谱体系": "点不到",
+    "▾ 规则与校准": "点不到",
+    "▾ 构建与成长": "点不到",
+    "▾ 编排与场景": "点不到",
+    "▾ 运营与审批": "点不到",
+    "▾ 平台与系统": "点不到",
+    "指标态势": [],
+    "扰动后": "点不到",
+    "传导识别": [
+      "/a/v1/sim/chain-loss-matrix body={}",
+      "/a/v1/sim/sessions/sims_demo_seed_world/world body=(无)",
+      "/a/v1/sim/view-config body=(无)",
+      "/a/v1/sim/sessions/sims_demo_seed_world/node-detail?nodeId=demand.consensus body=(无)"
+    ],
+    "损失归因": [
+      "/a/v1/sim/chain-loss-drill body={\"nodeId\":\"demand.consensus\"}",
+      "/a/v1/sim/sessions/sims_demo_seed_world/metric-series body=(无)"
+    ],
+    "方案寻优": [
+      "/a/v1/sim/optimize-pareto/assemble body={\"sessionId\":\"sims_demo_seed_world\"}",
+      "/a/v1/sim/optimize-pareto body={\"sessionId\":\"sims_demo_seed_world\",\"family\":\"cross_object_occupancy\",\"args\":{\"orders\":[{\"id\":\"SO-3391-L1\",\"revenue\":93921718,\"penalty\":0,\"qty\":4343},{\"id\":\"SO-3391-L2\",\"revenue\":54373242,\"penalty\":0,\"qty\":2499},{\"id\":\"SO-3391-L3\",\"revenue\":5802972,\"penalty\":0,\"qty\":417},{\"id\":\"SO-3402-L1\",\"revenue\"…(共755348字)"
+    ],
+    "演习结论": "点击失败 elementHandle.click: Timeout 6000ms exceeded.\nCall",
+    "图": [],
+    "产销线路图": [],
+    "底账": "点不到",
+    "传导边册": "点击失败 elementHandle.click: Timeout 6000ms exceeded.\nCall",
+    "本体与就绪": "点击失败 elementHandle.click: Timeout 6000ms exceeded.\nCall",
+    "销售与客户 8": "点不到",
+    "产品与工程 6": "点不到",
+    "采购与供应 7": "点不到",
+    "计划与排产 3": "点不到",
+    "生产制造 4": "点不到",
+    "质量管理 3": "点不到",
+    "设备与维护 2": "点不到",
+    "基地与仓储交付 4": "点不到",
+    "财务与成本 2": "点不到",
+    "未归域 7": "点不到",
+    "销售与客户8": [],
+    "产品与工程6": [],
+    "采购与供应7": [],
+    "计划与排产3": [],
+    "生产制造4": [],
+    "质量管理3": [],
+    "设备与维护2": [],
+    "基地与仓储交付4": [],
+    "财务与成本2": [],
+    "未归域7": []
+  },
+  "allSimRequests": [
+    {
+      "url": "/a/v1/sim/view-config",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/drill/state-var-layers",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/propagation-rules?published=true",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/sessions",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/propagation-rules?published=true",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/sessions/sims_demo_seed_world/perturbations",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/sessions/sims_demo_seed_world/metric-series?limit=500&stateVars=blockedPressure%2CchangeoverPressure%2CclearanceQueueDays%2CcollectionPressure%2CcostPressure%2CdefectPressure%2CdeliveryDelay%2CdeliveryHoldRisk%2CdemandLoad%2CdemandPressure%2CdrawdownPressure%2CequipmentFailure%2CexpeditePressure%2CfeedPressure%2CforecastBias%2CgapPressure%2ChandlingBacklog%2CinboundExpeditePressure%2CinspectBacklog%2CloadIndex%2CloadPressure%2CorderChurn%2CoverduePressure%2CpriceShock%2CprocurementDelay%2CpromiseRisk%2CqualificationQueue%2CqueueDays%2CqueuePressure%2CreceivablePressure%2CreleasePressure%2CrepairBacklog%2CreviewPressure%2CshortageRisk%2CsplitPressure%2CsupplyRisk%2CswitchPressure%2CtransferPressure%2CturnoverPressure%2CutilPressure%2CwindowSqueeze",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/chain-loss-matrix",
+      "body": "{}",
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/sessions/sims_demo_seed_world/world",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/view-config",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/sessions/sims_demo_seed_world/node-detail?nodeId=demand.consensus",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/chain-loss-drill",
+      "body": "{\"nodeId\":\"demand.consensus\"}",
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/sessions/sims_demo_seed_world/metric-series",
+      "body": null,
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/optimize-pareto/assemble",
+      "body": "{\"sessionId\":\"sims_demo_seed_world\"}",
+      "hasSessionId": true
+    },
+    {
+      "url": "/a/v1/sim/optimize-pareto",
+      "body": "{\"sessionId\":\"sims_demo_seed_world\",\"family\":\"cross_object_occupancy\",\"args\":{\"orders\":[{\"id\":\"SO-3391-L1\",\"revenue\":93921718,\"penalty\":0,\"qty\":4343},{\"id\":\"SO-3391-L2\",\"revenue\":54373242,\"penalty\":0,\"qty\":2499},{\"id\":\"SO-3391-L3\",\"revenue\":5802972,\"penalty\":0,\"qty\":417},{\"id\":\"SO-3402-L1\",\"revenue\"…(共755348字)",
+      "hasSessionId": true
+    }
+  ],
+  "chainLoss": [
+    {
+      "url": "/a/v1/sim/chain-loss-matrix",
+      "body": "{}",
+      "hasSessionId": false
+    },
+    {
+      "url": "/a/v1/sim/chain-loss-drill",
+      "body": "{\"nodeId\":\"demand.consensus\"}",
+      "hasSessionId": false
+    }
+  ],
+  "screenLen": 3024
+}

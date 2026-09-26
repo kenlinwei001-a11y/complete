@@ -1,0 +1,294 @@
+# 仓主要求 ↔ WO 追溯台账
+
+> **为什么有这份文件**：2026-08-14 容器重启把 9 个后台任务一起杀掉，2 张单的产出因未 push 丢失。
+> 口头追踪的要求同样会随上下文丢失。此表是**唯一台账**。
+>
+> **⚠️ 2026-08-14 第二版 —— 仓主指出第一版「不完整」，属实，两类错都记在这里**：
+> 1. **漏记**：做了但没进表（如「这些数据是什么」的屏上读法说明）。
+> 2. **过度声称**：把「数据构建发动机」的 6 步流程记成一个 ✅ + 两个 🟡，
+>    而依据是 `dbui-flow-order` 门 RC=0 —— **那道门只量「主流程排第一」，不量「6 步各自做没做」**。
+>    形态：**「我用『门 RC=0』当作『这 6 步都做好了』的证据，而前者并不度量后者。」**
+>    第二版逐步读源码复核，结论是**比我记的更完整**（⑤⑥ 都做了）。
+>
+> **状态口径**：✅ 已交付并收编且**亲手复验过**（注明复验方式）· 🟡 部分（缺口写明）·
+> ⛔ 未派 · 🔶 等仓主裁决（产品/信息架构决策）· 🔷 在仓主手上
+
+---
+
+## A · 推演沙盘 / 推演页前端
+
+| # | 仓主原话 | 状态 | 复验方式 |
+|---|---|---|---|
+| A1 | 「推演沙盘前端开发完毕了吗」「何时可以上线最新的」 | ✅ | 多批收编，前端全量 1554/1561 |
+| A2 | 「没有看到类似**地铁线路**的 UX」 | ✅ | `docs/shots/WO-R9-METRO-UX/` 四张截图 + 可重跑 `shot-metro.mjs` |
+| A3 | 「文字都看不清楚，文字与背景色**反差太低**」 | ✅ | 三套皮肤各 422 元素，**184/141/318 → 0/0/0**；`check-text-legibility` RC=0 |
+| A4 | 「**关系边（本体图谱结构）**，为何目前系统里没有这个功能？」 | ✅ | **现算名册 10 页 · 挂对 9 · 在册裁决 1**（`node scripts/check-edge-active-mounts.mjs`，判据②③④ 全过）。⚠️ **原文那个「9 页」曾经是个假数**：它是门里**手抄**的 9 条名单，`cleanroom-attr` / `disruption-radius` / `order-chain` 三页不在名单里 ⇒ **从未被这道门问过一次**（本体 §8 `G-GATE-ROSTER-HANDCOPIED`）。名册改现算（`WO-INFER-PAGE-SSOT`）后当场多问出 3 页，`WO-EDGE-PANEL-3PAGES` 逐页判定并收口：`order-chain` **补挂**（左导航「推演」组 · demo 传导边里 Order 是一等端点）；`disruption-radius` **补挂 + 另做本页自有的关系边开关**（关掉一跳 ⇒ 扇出改道或断链 ⇒ 半径/波及数/DAG 真变 —— 这一条才是本行原话点名的「关系边（本体图谱结构）」本身）；`cleanroom-attr` 判**不适用**并在棘轮基线里逐条写明理由 + 差什么才能收（见 `scripts/edge-active-mounts-baseline.json`）。接缝门 `test/edge-panel-3pages.seam.test.tsx`（6 例，含两个变异反证）。 |
+| A5 | 「目前系统的页面**都参照这个做了调整**吗？」 | ✅ | **10/10 页逐页有结论**（9 挂 + 1 判不适用带理由），名册**现算**不再手抄 ⇒「都」这个字第一次可核对。此前记的「9/9」度量的是「门问过的那几页都合格」，不是「该合格的都合格」——**同一个形态换了张脸**（铁律 0.6）。 |
+| A6 | 「输入扰动因素后会出现一个『**求解**』的 icon，很难看」 | ✅ | 改 `inflightStrip`：`min-height` 无跳动 + 呼吸点 + 文字取消 |
+| A7 | 「没价值则展示**汇总数据**，点击后再展示详细数据」 | ✅ | 汇总条 + `<details>` 折叠；**刻意不报「缺口 X→Y」**（面板拿不到 gap，编造就是造数） |
+| **A8** | **「这些是什么数据？对客户的价值是？」** | ✅ **（第一版漏记）** | 屏上读法说明：`对象 = 基地\|产线\|型号 · cellsPerDayP50 = 该格产能 P50（电芯/日）`，表头三列全带单位。**改名后同步更新过**（原写 `p50`） |
+| A9 | 「推演沙盘的 UI 的**图片**发我一下」 | ✅ | 已发；证据留在 `docs/shots/` |
+| A10 | 「你输出一个推演前端**完整的 html**，包含多一个页签」 | ✅ | 已交付 |
+| A11 | 「为何我希望看到的都在**别的页**，是第一个页面多个页签模式？」 | ✅ | 沙盘改为多档同页（第五档即由此而来） |
+
+## B · 后端有功能、前端没有（接缝断链）
+
+| # | 仓主原话 | 状态 | 复验方式 |
+|---|---|---|---|
+| B1 | 「**彻查**所有后端有功能、前端没有的情况还有哪些」 | ✅ | 建 `befe-seam:check`；零调用 **196 → 128** |
+| B2 | 「**都派**」 | ✅ | BEFE-A/B/C/D/E/F/G 七张全收编 |
+| B3 | 「不局限在推演沙盘，而是**整体系统**」 | ✅ | + REFERENCES-FAMILY：引用族 9 条 → 一个客户端 + 一块共享面板 |
+| B4 | 剩余 `POST /a/v1/process-instances` | 🟡 | **诚实挂账不接**：契约要 `tasks.min(1)`，而流程定义**零步骤字段** ⇒ 前端无数据源可填。前置是**步骤模板层**，⛔ 未派 |
+| B5 | 屏上承诺的 Action 要真接上（WO-SIM-ACTION-REAL：「我需要完成一个可交付的系统，不是 demo 系统」⇒ 对假承诺的处置是**接上，不是撤文案**） | ✅ | 项目推演屏 DAG fc 节点「结论可采纳为 Action」原零接线（金丝雀自证后四个 Action 符号 0 命中）→ 步骤⑥「采纳结论」真接既有 S2 链：ActionDraft（参数组合+量纲核对过的推演快照）→ 审批 → domainExecutor 新分支**真落 ForecastAdoption 台账对象** + 选中订单回 stamp（targetRef 用 `FC-ADOPT:` 不用假 MO 号）；头号验收 = 审批后**另一条路读回**字段逐值对拍（datacore seam 4/4 + 前端 2/2），变异反证真红（拆写入 → 「expected [] to have a length of 1 but got +0」）；剩 `采纳经营方案` 一型 NOT_IMPLEMENTED（本体 G-ACTION-NOOP-EXEC 已回写 ◑ 部分闭合） |
+| B4 | 剩余 `POST /a/v1/process-instances` | ✅ | **前置已补、线已接、接缝已驱动通**。前置（步骤模板层）落地：契约 `process-step-template.ts` + 表 + 种子 + 读端点 `GET /a/v1/process-definitions/{key}/step-template`；`tasks.min(1)` **一个字未放宽**，改的是步骤从**模板**来。前端 `views/process/ProcessStartFromTemplate.tsx`（挂 `/v/process-stuck` 页内）经契约 `tasksFromStepTemplate()`（前后端共用的唯一一处转换）折出 `tasks` 再 POST。**实测**：`apps/datacore/test/process-instance-wire.seam.test.ts` 走界面同形链路 ①模板 → ②`GET /a/v1/objects?type=<carrierTypeKey>`（按钮的渲染前提）→ ③转换 → ④POST → ⑤`GET …/{id}` **读回**，7 条有模板的流程**全部走通**且读回步数 == 模板步数（P25/2步/对象9 · P34/2/1 · P35/2/20 · P41/3/17 · P42/2/20 · P43/2/20 · P51/2/20）；变异反证 RC=1。前端侧 `test/process-start-from-template.seam.test.tsx` 8/8 绿 |
+| B4a | 同族两条：`POST …/{id}/advance`、`GET …/{id}` | ✅ | **2026-08-17 实测收口 —— 本行原判「生产消费方为 0」已过期**（`WO-PROCESS-INSTANCE-UI` 收编后）。现算：`advanceProcessInstance` → `views/process/ProcessInstanceDetailView.tsx:12`(import) / `:163`(调用)；`fetchProcessInstance` → 同文件 `:12` / `:312`(queryFn)；路由已注册 `App.tsx:163` `process-instances/:instanceId`。金丝雀（必中）：同法查 `fetchObjectTypes` = **30 处** ⇒ grep 没瞎。⚠ **本行与 B5 曾并存且互相矛盾**（B5 判 ✅ 已接、本行判 🟡 仍欠），根因是收编后只更新了 B5 一行、没回来收本行 —— 形态：**「我用『新加了一行说已接』当作『旧那行不再成立的记录已被撤销』的证据，而前者并不度量后者」**。两行讲同一件事时，**新增一行不等于旧行作废**，必须同批回写。 |
+| B5 | `GET /a/v1/process-instances/{id}` 与 `POST …/{id}/advance` 前端各 **0** 消费方 —— 「流程实例建出来之后就看不见了」 | ✅ | 详情页 `views/process/ProcessInstanceDetailView.tsx`（当前站/各步状态/时间线/溯源，缺就不渲染）+ 深链路由 `process-instances/:instanceId`（**非 v/ 前缀**，原因见 App.tsx 注释）+ 双入口（卡点卡片 · 流程实例下钻行）；推进走**确认弹窗**（不许一点就推），事实表只问 gate 声明过的项。复验：`pnpm --filter frontend-shell exec vitest run test/process-instance-detail.seam.test.tsx`（8 用例：端到端刷新找回 · 确认纪律 · 反推实例 · 暗发/不存在分块 · **变异反证** · 卡点入口）。⚠ 与 B4 的分工：本行接的是「建完之后」，**创建链**仍挂账在 B4（步骤模板层未派，届时创建成功页加一行深链跳转即闭合） |
+
+## C · 数据构建发动机 / 逆向数据推演 —— **第二版逐步复核**
+
+仓主原话：「输入故事脚本 - 显示目前缺少的信息（数据字段，求解器，约束，规则，本体…）
+- 人工触发创建 - 开始创建 - 完成创建（显示创建的信息）- 人工确定入库或选择下载」
+
+| 步 | 屏上真有的 | 状态 | 复验方式（读源码 `DataBuilderFlow.tsx`） |
+|---|---|---|---|
+| ① 输入故事脚本 | `STEPS[0] "输入故事脚本"` + `dbf-start` 按钮 | ✅ | :29 STEPS 定义 · :286 StepBox |
+| ② 显示还缺什么 | `"系统读出来什么 · 还缺什么"`，**提到一等位置**（原埋在「展开七阶段→点进 gap」三层之下）；分项列**求解器入参缺 / 全链未注册 / 渲染形状不匹配** | ✅ | :322 注释 + :338–344 |
+| ③ 人工触发创建 | `"确认开始创建"` 独立一步 | ✅ | :350 |
+| ④ 开始创建 | `"创建中"` | ✅ | :361 |
+| ⑤ 完成创建（**显示创建的信息**） | 汇总条 `dbf-module-summary`（触及 N 个模块）**＋ `ArtifactDetailTable` 明细表** | ✅ **（第一版记成 🟡，低估了）** | :373–388；「汇总条回答波及面，下面那张表回答具体是哪些 —— 两个问题不同，都要」 |
+| ⑥ 人工确定入库或下载 | `"入库前复验 · 入库或下载"`：`PromotePrecheckPanel` + `downloadPlan` | ✅ **（第一版记成 🟡，低估了）** | :390；下载的是**可重放的 `BuildPlan` JSON**（含 script / scriptHash / seed / 13 类 needs），文件名带 scriptHash 前 8 位与 seed ⇒ 同一份 plan 两次下载同名 |
+
+| # | 仓主原话 | 状态 | 复验方式 |
+|---|---|---|---|
+| C7 | 「模拟的数据是否可以入库，需要**系统再次复验自检**（人不清楚系统里数据现状、**是否有冲突**）」 | ✅ **（第一版记成 🟡）** | `PromotePrecheckPanel`：**三类冲突分开显示，绝不合成一个「N 条冲突」**（「会改掉既有定义」与「写了个一样的」性质不同）；无冲突时明说「没有撞上任何既有数据，可以直接入库」；预检**一个字节都不写** |
+| C8 | 「逆向数据推演…你解决了吗」 | ✅ | v4 反推三缺口全闭：哈希占位诚实位 · `coverage` 死杠杆判定为**派生不存储**（避免同一自由度存第三份）· 流程运行时两半 |
+| C9 | 「你目前数据构建发动机的前端 UX 逻辑，**我看不懂**」「这些都是我**看不懂**的功能」 | ✅ | 建 `dev-jargon:check` 用 TS 解析 JSX **只取真上屏的字**，禁「区2/区4」「三页归一」「厂商中立施工」；建 `dbui-flow-order:check` 咬死主流程排第一 |
+| C10 | 「13 类需求卡片在第 ② 步展示」 | ✅ | 13 类**全部上屏**，一类不少。**权威清单** = `MODULE_KINDS`（`contracts/src/databuilder.ts` §模块全集，13 项）+ `MODULE_KIND_REGISTRY`（人话名 + 去哪核对）。屏上渲染 `BuildJob.needs.groups`（`DataBuilderFlow.tsx` 的「逐类清点」段）。**7 类跨系统的现状诚实挂账**：A→B 今天只有「下发即创建」一条通道、没有只读探针 ⇒ 建之前查不到，故出 `evidence=NOT_PROBED` 并在屏上明说「要等创建时才知道」，**不渲染 0**（0 会被读成「不缺」）。复验：`pnpm --filter frontend-shell exec vitest run test/dbui-13-needs.seam.test.tsx`（7/7）+ `pnpm --filter datacore exec vitest run test/databuilder-needs.seam.test.ts` |
+| C10-注 | 上一版那条**分诊是错的**，记账防复发 | — | 原文写「`BuildPlan` 无 by-id 读端点（全仓 grep 无 `/build-plans`）」。**两句都不成立**：端点是 `/a/v1/data-builders/plans/:id`（`datacore/src/app.ts`，搜 `data-builders/plans`），前端 `endpoints.ts` 的 `fetchBuildPlan` 早已接上；`BuildPlan` 顶层**恰好 13 个 need 数组**（`scenarioTopology` 是 object 不计）。形态：**「我用『我猜的那个路径 grep 不中』当作『端点不存在』的证据，而前者只度量我猜错了名字」**。真缺口从来不是「没端点」，而是**干跑那条路上没去比对现状**、回执只塞了没类型的 5 键散记 `BuildJob.preview`（`z.record`，历史消费方仍在读，故保留）。**「5 类」与「13 类」是两个不同字段**（`preview` vs `needs`），不是同一个数少了 8 —— 混为一谈会去修错的地方 |
+
+## D · 决策质量（「传统 BI」那条）
+
+| # | 仓主原话 | 状态 | 复验方式 |
+|---|---|---|---|
+| D1 | 「典型的传统 BI，只展示发生了什么，**不提供根因分析，不提供解决推演后的方案**」 | ✅ | 查实**真病比原报的重**：不是「数值写死」，是**方案身份与根因语义无关**（现金域根因是应收账龄，照样推「正极供应链战略」）。改为**依据可核对才下发** |
+| D2 | 同上·下半场（不然屏上变成无缘无故的空白） | ✅ | 三种态说**三句不同的话**；`gapClose=null` 时**屏上一个 0 都不出现**；依据强度靠**字形+词+边框**分档不靠颜色 |
+| D3 | 门抖出的同族矛盾 | ✅ | 「因为 A 家违约 ⇒ 给 B 家加条款」治根；顺带查出屏上那个「160 万」**从头到尾指错人**（cost 也读了错的那份长协） |
+| D4 | 同族·更狠的一条 | ✅ | 入口因子改为**本域因果 DAG 的源点**。**反例已躺在库里**：`capacity` 域 2 条非根因子，字母序恰好选中零出边那个孤点 |
+| D5 | 5 条阻滞点对不上 | ✅ | `DYNAMIC-*` 解析从播种期搬到查询期。对上率 **12/17 → 17/17**（诚实拆分：EXACT 2→1 · TYPE 10→16 · NONE 5→0） |
+
+## E · 导航与信息架构
+
+| # | 仓主原话 | 状态 | 说明 |
+|---|---|---|---|
+| E1 | 「导航栏里面的『决策推演』**不应该在这个位置**，而是嵌入到每个需要决策的点」 | ✅ | 抽成 `DecisionPlayPanel` 唯一实现，壳与嵌入同一份（改一处文案两处同时变，门咬） |
+| E2 | 是否**删掉**导航项 | ✅ **已裁决·已落**（WO-IA-E2E5E6） | 删导航项留 route：NAV_GROUPS 条目删、`ROUTE_NO_NAV` 登记（门判据④+ f61 同读此表）；深链 `imp*` query 契约不动，双断言接缝测试 `nav-ia-decision-play.seam.test.tsx` |
+| E3 | 「『流程等待态』是干嘛用的？客户什么场景需要进入？」（问了两次） | ✅ | 答：模板层「这**类**流程通常等什么」+ 实例层「**这一张单**卡在第几站」 |
+| E4 | 「它应该在**推演沙盘里面**，且是**动态的数据变化**，基于某个时间 screenshot 有个总结」 | ✅ | 第五档接推演节拍；覆盖率 9/65 → **29/65**，且 29 条**条条真动** |
+| E5 | 两页是否合并 / 移组 | ✅ **已裁决·已落**（WO-IA-E2E5E6） | **不合页**（类 vs 张两问正交），做双向入口：模板层每站行内「现在有 N 张单卡在这里 →」→ 实例层 `?proc=<key>` 过滤；实例层每张卡「这类流程通常在这站等什么 →」→ 模板层 `?focus=<key>` 行定位。验收接缝测试 `process-wait-stuck-link.seam.test.tsx`：**模板层计数 == 实例层过滤后实际条数**（非链接存在性）+ 计数拿不到摆「暂不可得」绝不摆 0 + focus 查无此站明说（P44 活样本） |
+| E6 | 「订单全链条推演与项目推演，**是否部分功能重复**？」 | ✅ **已裁决·已落**（WO-IA-E2E5E6 + WO-AGENTCORE-RENAME-TAIL 收尾） | 订单那个已改「订单进展与卡因」；本次改名：**项目推演→接单可行性 · 全局项目推演→接单组合优选 · plan-generate 导航标题→规划建议**（「优选」非「最优」：求解器无最优性保证，强承诺不上屏）；**featureName 名册两键已解锁**（RENAME-TAIL：互锁实为册↔三份受检副本**四方**，非前单以为的两方——册+agentcore+datacore view-manifest+frontend fixtures 同批原子翻，机制测试 `feature-name-rename-tail.test.ts` 5/5 + 变异反证真红） |
+| E7 | 「是否修改为**订单状态**，且需要类似地铁线路图的 UX 展示进展？」 | ✅ | 单订单地铁图已接（复用组件零改动，锚 `data.so` 真实订单） |
+| E8 | E6 残留③：页内「最优」措辞与「优选非最优」裁决的张力 | ✅ **已闭**（WO-OPTIMAL-WORDING） | 求解器最优性先取证（docker CP-SAT 可证最优 / 内存态 InProc 贪心恒 `optimal:false`）→ 13 处无撑静态承诺改「优选」系 + 依据句；`MultiObjWhatifPanel` 写死「CP-SAT 可证最优」徽标改动态跟 `occ.data.optimal` 走（内存态那是谎话）；机制 = `claim-strength:check` 门（命中必须有登记依据，死账也红）+ `scripts/claim-strength-registry.json` 对账表（首扫 25 条命中全部登记）。复验：`node scripts/check-claim-strength.mjs` RC=0 · `--selftest` 12 条全中 |
+
+## F · 产能推演可读性
+
+| # | 仓主原话 | 状态 | 复验方式 |
+|---|---|---|---|
+| F1 | 「**看不懂**『产能推演』这个 UX，你希望用户看到这个做什么？」 | ✅ | 6 层产能金字塔按 `role` 公式可读化；分层欠账 **21 → 0**，`check-ui-first-layer` **首次 RC=0** |
+
+## G · Agent 系统换心
+
+| # | 仓主原话 | 状态 |
+|---|---|---|
+| G1 | 「期望用 deepseek-harness 替换目前的 agent 系统，**是否可行**」 | ✅ `docs/REPORT-harness-migration-feasibility.md` |
+| G2 | 「所有推演的功能都需要**借鉴这个设计 UX**」 | 🔶 **等仓主一句话** —— 「这个」的指代物**仓内有三份互相冲突的记录，全出自我，从未对账**：（甲）台账 §G 的章节归属暗示是 deepseek-harness；（乙）`docs/WO-ACTIVE-EDGE-UX.md` 第 43–45 行写「参考 HTML 里关系边上的 active 开关」；（丙）`docs/ASSESS-pi-agent-harness-replacement.md` 记着仓主校正「把 agent 的 UI/UX/CLI 升级到 pi 的水准」。⚠️ 我这张派单**引用了乙的原话，却按甲的章节归属去认指代物** —— 形态：「我用『这条记录躺在 §G 里』当作『它说的是 deepseek-harness』的证据」。⚠️ 且**本行此前记 🟡 与 §A 的 A4/A5 记 ✅ 是同一件事** —— 同一条要求在台账里同时是 🟡 和 ✅。**已交付**：从仓内 `docs/reference-prototype-decision-platform.html` 抽出 **9 条可逐页对照的判据**，12 页 × 10 判据 = 120 格三态表（符合 17 · 不符合 46 · **判不了 57**），并建门 `sim-ux-criteria:check` 守判据表本身。 |
+| G3 | 「关于换心，是否需要做一个 **POC** 验证？」「你发我提示词，我转发给做 POC 的 dev」 | 🔷 **在仓主手上**，进度我不掌握 |
+| G4 | 「你看一下 **POC 测试报告**」 | ✅ 已阅并反馈 |
+
+## H · 交付节奏（仓主对我的要求）
+
+| # | 仓主原话 | 状态 |
+|---|---|---|
+| H1 | 「赶快把 65 条并进 canonical」「gate 绿了再并」 | 🟡 **仍欠**：canonical 停在 `c87656a1`，集成分支已积 300+ 提交。四包 `build` RC=0，`test` 段待起 |
+| H2 | 「未派发 3 张为何不派」「为何不是 7 个 agents 跑」「火力全开」 | ✅ 按 CPU 画像分层派；本轮峰值 7 |
+| H3 | 「为何你不即时 push？」「沙箱定期重启，需要有应对机制」 | ✅ 每单元即 push；**本次重启实测 4/6 分支幸存** |
+| H4 | 「**输出中文**，只要论点论据，不要思考过程」 | ✅ |
+| H5 | 「完成了 PRD 就派单，无需我确认」 | ✅ 铁律 0.6「不许为派活请示」 |
+
+---
+
+## I · 交付底座：typecheck 扫描面（WO-TEST-TYPECHECK-BLIND · 2026-08-16）
+
+> 仓主原话：「**我需要完成一个可交付的系统，不是 demo 系统。**」
+> 这一条不是某个功能，是**判据本身的可信度** —— 本表序言里那句
+> 「我用『门 RC=0』当作『这 6 步都做好了』的证据，而前者并不度量后者」，
+> 在 typecheck 上有一个更彻底的版本：**它连看都没看。**
+
+| # | 事实 | 状态 |
+|---|---|---|
+| I1 | `datacore`/`agentcore` 的 `typecheck` **从不检查测试文件** —— `tsconfig.typecheck.json` 早在 `7302a0fc`（2026-08-13 · WO-R4「件一(1/2)」，标题自陈只做一半）就建好且注释写明要纳入 `test/`，而 `package.json` 的脚本**从来指向 `tsconfig.json`**；第二半的接线躺在 `claude/handoff-wo-typecheck-testblind` 上、被标注「[待裁·勿盲并]」而未并 —— **因为光翻开关会当场变红**。三天里 **466 个测试文件零检查** | ✅ **已接线**（两包脚本改指宽面；build 用的 `tsconfig.json` 未动） |
+| I2 | 接线后暴露 **354 个**真类型错误（datacore 272 + agentcore 82，涉 69 个文件） | ✅ **全部修完归零**，亲手复验：两包 `tsc -p tsconfig.typecheck.json --noEmit` 各 **0 error** |
+| I3 | 修的位置 | ✅ **全在测试侧，生产源码零改动**；`as any`/`@ts-ignore` **一处未用**（那是把「看不见」换成「假装看见了」，比原状更坏） |
+| I4 | 防复发 | ✅ 新门 `typecheck-coverage:check`，判据落在 `tsc --listFilesOnly` 的程序全集上（**刻意不读 `include`/`exclude`** —— 读配置去推断正是本单栽的跟头）；反向金丝雀 + 三向变异反证 RC=0/1/2 全机验；已接 `pnpm gates` + 门账 + 本体 §7/§8 |
+| I5 | 复验方式 | ✅ **金丝雀实测**：接线前往两包测试文件塞 `const __canary: number = "str"` ⇒ `typecheck` RC=**0**（漏网）；接线后同一探针 ⇒ RC=**2** + TS2322（抓住）。金丝雀用完已还原，`git status --porcelain` 为空 |
+
+**这批错误的形态**（说明为什么「三周没人发现」不是偶然）：契约字段改名后 fixture 没跟上 ·
+`ObjectInstance.origin` 这类**必填**字段 91 处缺失 · 测试本地断言类型漏声明生产真会发的字段
+（`RiskCard.adoptedMitigation` / `GA.reconChecks` / `no` / `amp`）· `status: "RUNNING"` 这种
+**枚举里根本不存在**的值 · `origin: "MANUAL" as ObjectInstance["origin"]`（用 `as` 把
+「字符串塞进判别联合」整个盖住）。**没有一条是靠读代码能稳定发现的，全部要靠类型系统看见它们。**
+
+**留给审核方的两条**（本单范围边界外，未擅动）：
+① `apps/agentcore/src/mocks/clients.ts:240/376/706` —— `MockDataCore` 若干方法**比接口少写形参**
+（`queryObjects` 漏 `asOfEpoch`、`listObjectTypeKeys`/`listPublishedRuleKeys` 漏 `ctx`）。
+TS 允许少写形参实现接口，于是 mock 的**具体类型比契约窄**，测试按契约调就编译不过；
+更要紧的是 **mock 因此对 R2 租户隔离与 §13.1 任务快照读是「收了参数不认」**。
+本单在测试侧用「上转到它实现的那个接口」绕开（非 `as any`），**生产侧建议补齐形参**。
+② `claude/handoff-wo-typecheck-testblind` 分支里的 `pipeline-config-seam.test.tsx`（55 行新测试）
+属另一单（WO-R4 件二）产出，本单未收编，**别随分支删除一起丢了**。
+
+---
+
+## J · 开关的理由过期 · 两侧 flag 反向（WO-GSIM-LIVE-FLAG-REASON · 2026-08-17 · 本体 §8 `G-GSIM-LIVE-FLAG-STALE`）
+
+> 这一条不是某个功能，是**注释与开关的可信度**。序言里那句
+> 「我用『门 RC=0』当作『这 6 步都做好了』的证据，而前者并不度量后者」，
+> 在 feature flag 上有一个更贵的版本：**前端测试绿，而真部署那块看不见。**
+>
+> **留一句已不成立的理由比没有理由更坏** —— 下一个人照着它去做兼容，
+> 等于给一个不存在的问题打补丁；或者以为端点还没做，去重做一遍已经做好的东西。
+
+| # | 事实 | 状态 | 复验方式 |
+|---|---|---|---|
+| J1 | `features.ts` 的 `view.global-sim.live` 行内注释写「真后端 `/b/v1/sim/compose` · `/a/v1/sim/scenarios` **端点未落** → defaultOff 避 404；WO-LIVE-SCENARIO 落后开门」，而五条端点在 `WO-LIVE-ENDPOINTS` 早已全部落地 | ✅ **理由已作废，注释改写为今天的真实状态**（含谁在何时验的、怎么复验） | 逐条**追到处理体**（不是只看路由注册行）：`apps/agentcore/src/server.ts` 的 `POST /b/v1/sim/compose` 调真 `portfolio`(twoStage·三方案)→`buildComposeNarrative`；`apps/datacore/src/app.ts` 的 `POST|GET /a/v1/sim/scenarios`、`GET …/compare`、`POST …/:id/branch` 四条首句均 `requireLive()`。**⚠ 派单给的 5 个行号今日全部已漂**（`features.ts` 111/112→132 · `app.ts` 2535/2546/2553/2565→2554/2565/2572/2584；`server.ts` 2364 未漂）—— 写死行号的引用天生带保质期 |
+| J2 | 前置端点在**真部署口径**下确实可用，不是空壳 / 501 / 恒抛，鉴权与 entitlement 也走得通 | ✅ **实测**，非读代码读出来的 | 真 app inject，无行业模板租户 `plain`：四条 A 侧端点 **201 / 200 / 201 / 200**；请求响应形状与前端 `composeGlobalSimNarrative`（`{page,query,sessionId,context}` → `{path,ranAgentLoop,narrative,scenarios,provenance}`）逐字段对得上 |
+| J3 | 执行既有裁决：`defaultOn` `false→true`（**不是新的产品决策** —— 注释里「落后开门」这句裁决早就做过，前置满足即执行） | ✅ | `scripts/feature-rollout.json` 同批 `tiered→ga`；`dark-launch:check` 的 A3/A4 核对两处一致 |
+| J4 | **`defaultOn` 只管 L1** —— 有行业模板的租户 L2 会整个取代 L1 ⇒ 拿 `demo` 测这条接缝等于拿一个**恒真的输入**去测一个开关 | ✅ **四格实测钉死**（这是本单最要紧的发现） | 同一份代码只翻 `defaultOn`：`demo`(battery·有模板) 两态**都是 90 项且都含本键**（对 `defaultOn` **完全不敏感**）；`plain`(无 industry) `true`→70 项/含/端点 201·200·201·200，`false`→69 项/不含/端点**全 404 FEATURE_NOT_FOUND**。⇒ 既有的 `live-scenarios-seam.test.ts` 用的正是 demo，**它证明不了这件事** |
+| J5 | 接缝测试必须**跨过 mock 那一层**（fixtures 本来就是 `true`，拿它测等于自证） | ✅ `apps/frontend-shell/test/gsim-live-deploy-visibility.seam.test.tsx`（3 passed） | workspace 由**真 datacore 应用**经 `GET /a/v1/me/workspace` 现产（跨包 import `apps/datacore/test/helpers.ts`，先例 `global-sim-seam-realsolver.test.tsx`）；租户固定 `plain`；并把 MSW 的 `/a/v1/me/workspace` 覆盖成**空 features 哨兵** —— 缓存一旦被 mock 顶掉用例立刻红，**「没走 fixtures」因此是机器证据不是注释声明** |
+| J6 | 变异反证：`defaultOn` 改回 `false` ⇒ 必须红在**「那两块没渲染出来」**，不是「组件不存在」 | ✅ **亲跑** | 红在 `Unable to find an element by: [data-testid="global-sim-nl-dock"]`，而页面其余部分**完整渲染**（12 基地 × 11 时间窗 · 「✓ 可证最优 · 有被挤单」）⇒ 红的是**闸**，不是组件缺失。改回 `true` ⇒ 3 passed |
+| J7 | 防复发机制 | ✅ 新门 `feature-default-parity:check`（本体 §7） | 逐 key 对账 A 侧 `features.ts`(+`view-manifest.ts` 派生) 与前端 `mocks/fixtures.ts` 的 `defaultOn`。**未登记的反向 RC=1** 且报文点明「这个 flag 前端绿不代表真部署看得见」；**陈旧登记同样报红**（逼人回来删掉已不成立的理由）。金丝雀与主逻辑共用 `scripts/lib/feature-defaults.mjs`。真仓变异：改回 `false` → RC=1 A1；登记表非法 JSON → RC=2 |
+
+**⑤ 还有几个 flag 是同样的病 —— 只列清单与证据，本单一个都没翻**（前置未验的开关不许顺手动）：
+
+| 键 | `features.ts` 里的理由 | 实测 | 定性 |
+|---|---|---|---|
+| `org.world` | 「**未完工的世界层功能**，前端另立单」（`WORLD_DARK_LAUNCH_FEATURES` 注释） | **前端那一单已落**：`apps/frontend-shell/src/pages/admin/OrgWorldPage.tsx` 存在且**已挂路由**（`App.tsx` `path:"admin/org"` + `<AdminGuard path="org" featureKey="org.world">`）；后端 `registerOrgWorldRoutes(...)` 已注册并挂 `requireFeatureTag("apiTags","org-world")` | **🔶 理由的「前端另立单」这一半已不成立**。⚠️ 但**未验**世界层功能是否真的完工（本单只验了「页面在、路由在」，没验端点集合是否完备、屏上有无真数据）⇒ **不翻**。另：该键在 `scripts/feature-rollout.json` **未声明投放意图** ⇒ `dark-launch:check` A1 红（**canonical 上既有**，非本单引入） |
+| `process.runtime` | 「平台自带**流程实例种子尚无**（65 条是模板，不是在跑的单子）——默认开会让每个租户的卡点面板都是空的」 | 追到写入方：`processInstances.put` 只出现在 `apps/datacore/src/process/runtime.ts`（`create`/`advance`），其唯一调用方是 HTTP 路由 `app.ts` 的 `POST /a/v1/process/instances` 系列；`synthetic/*` 里**零**实例种子 | **✅ 理由仍成立**（「接了线**没数据**」，不是「没接线」——修法是补种子，不是开门）。同样**未声明投放意图** ⇒ `dark-launch:check` A1 红（canonical 上既有） |
+| `data-import.record-materialize` | `features.ts` 注释写「R3 **暗发**·defaultOn:false·关=404」 | 真路由已落：`app.ts` 的 `materializeRecords` 两处 `features.enabled("data-import.record-materialize")` 门 + `decision/record-materialize.ts` 实现齐全。`feature-rollout.json` 自己就写着「**非「没做完」。注释里的「暗发」是措辞沿用，非当前状态**」，stage=`tiered` | **🔶 注释措辞过期**（说「暗发」= 暗示没做完），但开关本身是**产品分档**决策，不是「该开没开」⇒ 只该改注释，**不该翻开关**（翻它属产品决策=仓主） |
+| `ceo.dataset.generate` | 同上（注释「暗发」措辞） | `app.ts` 的 `POST /a/v1/ceo/dataset/generate` + `synthetic/ceo-dataset.ts` 已落；rollout stage=`tiered` 且 why 写明「非「没做完」」 | **🔶 同上：注释措辞过期，开关是产品分档** |
+| `qos.llm-budget-enforce` | 注释「暗发」 | rollout why：功能已完成，demo 刻意不点的理由是**产品体验**（配额耗尽硬线 429 拒人，demo 里是撞墙），并注明「要演示配额，正确做法是运维显式 PUT 一次 override」 | **✅ 不是同一个病**（不是「没做完」，是明写的产品决策） |
+
+**其余 26 个 `defaultOn:false`**（`sim.*` 7 · `opt.*` 5 · `qos.*` 8 · `agent.*` 4 · `decision.causal-graph` · `ceo.free-llm`）
+在 `scripts/feature-rollout.json` 里全部已声明为 `tiered`（产品分档）或 `explicit`（已完成·禁止模板顺带开），
+**没有一个声明为 `dark`（= 没做完）** ⇒ 按投放意图口径，它们的 `defaultOn:false` 不属于「理由已不成立」。
+⚠️ **诚实边界**：这一句的依据是**声明**，不是逐个功能亲手验过 ——「声明说它已完成」证明不了「它真的能用」。
+本单只对 `view.global-sim.live` 做了端到端实测，其余五条按上表逐条给证据，剩下 26 条**只做了声明层对账**。
+
+---
+
+## ⛔ 未派（我欠的）
+
+1. ~~**步骤模板层** —— B4 的前置~~ ✅ **2026-08-20 `WO-STEP-TEMPLATE-LAYER` 复验确认：早已交付并已接线，本行是重复副本**（分支 `claude/handoff-wo-step-template-layer`；**本单一行功能代码都没改**，只做复验 + 划掉本行）。
+   **功能落地于 `55873ed8`→`858c6390` 八个提交且已并入集成线**（`git log --all --grep=STEP-TEMPLATE-LAYER`），故本次派单是**照着过时台账重做已完成的活**，实测后停手顶回。
+   **链路逐跳实证**（否定结论已附金丝雀，`fetchObjectTypes` 命中 33 ⇒ grep 没瞎）：契约 `packages/contracts/src/process-step-template.ts:238 tasksFromStepTemplate()`（`index.ts:89` 导出）→ 读端点 `apps/datacore/src/app.ts:3844`（`readStepTemplate` 由 `app.ts:163` 导入，实现在 `process/step-templates.ts:324`，种子 `seed.ts:9`）→ 前端客户端 `endpoints.ts:321` → 组件 `views/process/ProcessStartFromTemplate.tsx:153`（**非 test 生产调用方**）→ 挂载 `views/ProcessStuckView.tsx:352` → 路由 `views/registry.ts:133 registerRenderer("process-stuck")`。
+   **亲手真跑三条接缝，29 个用例全绿**：`process-step-template.seam` 18/18 · `process-instance-wire.seam` 3/3 · 前端 `process-start-from-template.seam` 8/8（RC 全 0）。B4 行那 7 条数**逐条复现无误**（P25/2步/对象9 · P34/2/1 · P35/2/20 · P41/3/17 · P42/2/20 · P43/2/20 · P51/2/20）。
+   **变异反证（红对地方）**：摘掉生产挂载点 `ProcessStuckView.tsx:352` 的 `<ProcessStartFromTemplate />` ⇒ 前端接缝 **4/8 红在 `Unable to find an element by: [data-testid="start-from-template"]`**（= 「没上屏 / 没被应用」），**不是**红在「组件不见了」⇒ 该测试咬的是**链路**不是函数。同一变异下 `frontend typecheck` **RC=0**、`process-stuck.seam` **23/23 全绿** —— 印证 §3.7「typecheck 绿不度量接线」。
+   ⚠️ **顺带顶回一个机器级缺陷（本行不越界修，留给审核方裁）**：本「⛔ 未派」章节因 `0d9fdb7f`「TRACE ⛔ 清单按条目取并集」合并出**两份副本**，同一条目在两份里状态相反 —— 本条老副本未划掉/新副本（下方同号）已划掉；**C10 恰好相反**（老副本已标 ✅ 已闭、新副本仍未划）。后果不是文档难看，是 `scripts/dispatch-deficit.sh` 的「待派」**现算为 3，其中 2 条是副本假象**（实测 `待派 3 · 待复验 6 · 待写WO 35 = 44`）。形态：**「我用『清单里还有一条未划掉』当作『这活还没做』的证据，而前者并不度量后者。」** 本单就是被这条假象派出来的。
+2. ~~**13 类需求卡片补齐** —— C10~~ ✅ **已闭**（见上 C10 行）。13 类全部上屏，跨系统 7 类如实标「查不到」不摆 0；两侧接缝测试各自钉死。**未派的其实只是这条记账没回写**，功能本身在 `6ddf76f6`/`2242f9bc`/`dac4b1d2` 就已落地 —— 队列与代码脱节了一轮
+3. ~~**`STALE-8` 正则盲区**（实测漏 6 条：带点 slug 与非 `view.` 前缀）~~ ✅ **2026-08-16 WO-STALE-REGEX-BLIND 收单** —— ⚠️ **本条自己就是一条过时声明**：那两类盲区**早在 2026-08-15 的 `8244c82b`（WO-STALE-TEXT-SWEEP）就已修好**（变异反证 M1/M2 逐条复现：把 `FEATURE_KEY` 改窄回去，金丝雀当场点名抽不到 `view.graph.persp.all` / `qos.agent-fallback` / `view.project-sim.whatif`，RC=2）。真正还在的是**更深一层**：本门的扫描范围（`apps/frontend-shell/src` + `apps/*/src` + `packages/*/src`）**里没有 `scripts/` ⇒ 门看不见自己**，而它自己的文件头与《做不到的部分》写满「今天全仓 N 条 / 实测命中 N 行」这类自称现状的计数 —— 实测 **6 个数字已变假**（`@stale-fact` 生产记号「0 条」实为 **11** · 基线赌注「6 条」实为 **0** · CONFIRMED-STALE「两条」实为 **0** · 注释命中「147 行」实为 **63** · 字面量命中「14 行」实为 **13**），而门 RC=0 报绿。已新增第三层判据 **STALE-9/10（门自述层，无豁免段无棘轮）**：`@stale-self <口径名> <op><n>` 赌在门每次运行现算的口径上；⑩ 逐**句**判（同句无日期戳也无赌注即红）。六条过时自述**逐条改对、零条进基线**，基线五个水位一字未动（37/37 · 11/11）。~~**遗留另立单**：⑧ 的 `VIEW_TITLE_SLOTS` 仍要求 `key` 与 `name`/`title` **紧邻**，实测放宽后多抽到 29 个键并暴露 3 条真分叉（`aop-base` 亿/万 · `oee-trend` 14 日/7日 · `aop` 年度规划（旧）/年度规划）~~ ✅ **2026-08-20 WO-STALE-TEXT-FAMILY 收掉**（见下方同号条目）。
+   ⚠️ **本句原文的两处数今天已过期，照实顶回**（写下的当天为真，上游一变就成了屏上说谎 —— 正是本门要治的病）：① 「赌在 17 个口径上，现挂 9 条」**现算为 19 个口径 / 13 条赌注**；② 「暴露 3 条真分叉」**只有键数 29 复现得出**，三条**具体分叉全部对不上**：`aop-base`/`oee-trend` 已被 `WO-TITLE-DIVERGENCE` 修掉（现算两侧逐字相同），实测报出的是 `orders`/`order`/`aop`，且**三条全是概念撞名不是分叉** —— 照原文直接放宽会造 3 条假红。故收法不是"放宽"，是**另开 `widget-title` 命名空间、判据落在结构标记 `type:` 上**
+4. ~~**`sandboxConsoleModel.ts:709` 过时文案**（写着已被删除的 `worstMbal`）~~ ✅ **本条记账本身已过期（WO-STALE-TEXT-4 · 2026-08-16 实测）**：
+   2026-08-15 提交 `75f0adfe` 已修，`REQUIREMENTS-TRACE` 漏改这一行。今天该文件里 `worstMbal` 只剩 **2 处**（`:713`/`:715`），
+   两处都在那条 **2026-08-15 订正块**里，原文就写着「**符号已不存在** …… 已被 WO-DYNAMIC-DRILL-RESOLVE 整个删除」
+   —— 属**合法历史记录**，不是过时文案（本仓要求的正是这种「说清错法与修法」的记账）。
+   **机器复验（否定结论必附金丝雀）**：剥注释后扫 7 棵树 1319 个源文件，`worstMbal` 在**可执行代码里 0 处**，
+   同一趟扫描里已知必中的 `resolveDynamicDrill` 命中 **4 处**（若它也是 0 就是工具坏了，不是代码干净）。
+   ⚠️ **行号 `:709` 也已漂**（现 713/715）—— 印证「写死行号的引用天生带保质期」，本行改用符号串锚定。
+5. ~~**agentcore 3 处 stale 文案**~~ ✅ **已修，但「3 处」这个数错得离谱：实测 40 处**（WO-STALE-TEXT-4 · 2026-08-16）。
+   上一单只修了被点名的 `DemandSegment` 一行就收工 —— 形态即铁律 0.5：
+   **「我用『被点名的那处修好了』当作『这张表干净了』的证据，而前者并不度量后者。」**
+   本单把 `navigation-slice.ts` 的 `OBJECT_KEY_PROPS` **25 个类型 / 85 个属性名**逐个与 DataCore 本体真相源
+   （`synthetic/battery.ts` + `battery-extended.ts` 的 `PropertyDef`/`DerivedPropertyDef` 声明）对账，
+   **40 个（47%）在其声明的类型上根本不存在**，现已全部归位（实测 40 → 0）。四种错法**修法不同、不许合成一句**：
+   **A 改名漏改 16 处**（`Metric.metricKey`→`key` · `Line.util`→`utilization` · `Process.yieldPct`→`yield` ·
+   `Equipment.oee`→`oee_current` · `Customer.overdue`→`maxOverdueDays` …）；
+   **B 抄错地方**（那名字是**别的类型/别的层**的字段，换新名没用、要换真属性）：`Base.capacityDaily`
+   （`capacityDaily` 只长在 **Line** 上）· `Material.gapTon`（在 **MaterialBalance** 上）· `Segment.attainPct`
+   （**全 datacore 零 propKey 声明**，那是达成率 Metric 的语义）· `CarbonFactor` 三个名字全不沾边；
+   **C 把「求解器输出字段」当对象属性**：`Metric.gap` —— 本体上缺口是**两个派生属性**（`delta`/`gapPct`），
+   一个假名把两个真派生属性一起盖住，而派生属性正是 `renderTypeBlock` 唯一会渲染公式的那类；
+   **D 把「链路」当属性**：`RootCauseChain.caused_by` —— `caused_by` 是 CausalFactor→CausalFactor 的 **N:N LinkType**。
+   同批修 `mocks/solver-registry.ts` 的 `Metric.gap`（→ `Metric.target−Metric.actual`）；剥注释后全 `agentcore/src`
+   的 `Type.prop` 引用 **19 处、假名 0 处**（金丝雀：`DemandSegment.demandWanPerYearP50` 必中）。
+   🔒 **机制（本单真正的交付）**：`apps/agentcore/test/keyprops-ontology-parity.seam.test.ts` ——
+   四节：① 抽取器五条金丝雀自证（含「字符串里的 `∈[0, everyDays)` 把括号配平算歪」这条**本单真踩过**的回归）·
+   ② 整张表逐名对账、报错时现算「这名字实际长在哪个类型上」以区分 A/B 两种错法 ·
+   ③ 剥注释扫全 `agentcore/src` 的 `Type.prop` 面 · ④ **接缝**：真跑 `projectNavigationSlice → renderNavigationSlice`
+   断言名字确实到达 prompt，并驱动 `renderOntologySemanticContext` 断言「真名渲得出口径、假名让整块塌成 null」。
+   **修 40 处文案是一次性的，这个文件才是机制 —— 下次改名是机器先说话。**
+1. ~~**步骤模板层** —— B4 的前置~~ ✅ **已交付并已接线**（见 B4 行；接缝实测 7/7 走通）。
+   **改由 B4a 接棒**：同族的 `advance` / 实例详情两条仍无前端消费方，卡在导航信息架构（仓主决策）
+2. **13 类需求卡片补齐** —— C10
+3. ~~**`STALE-8` 正则盲区**（实测漏 6 条：带点 slug 与非 `view.` 前缀）~~ ✅ **2026-08-20 WO-STALE-TEXT-FAMILY 收单**（`claude/handoff-wo-stale-text-family`）。
+   ⚠️ **先顶回三个数**（照「以 dev 实测为准」）：
+   · **「漏 6 条」这个数复现不出来**。用旧判据（`8244c82b^` 的 `key:\s*"view\.([a-z0-9-]+)"`）与现判据在同一棵树上跑同一份抽取器：旧抽到 **81** 个键 / 现 **156** 个，**旧抽不到而现抽得到的是 107 个**（其中带点多段 23 · 非 `view.` 前缀 55 · 被 ≥2 真相源登记因而真可能查出分叉的 61）；而两者的**分叉数都是 0**。所以 6 既不是键数也不是违规数 —— 它是当初 `WO-VIEWNAME-SINGLE-SOURCE` 人工点的样例条数，**没有可复现口径**，不该被后续单当基数用。
+   · 本行点名的**那两类盲区（带点 slug / 非 `view.` 前缀）早在 2026-08-15 `8244c82b` 就已修好**，此处属台账漏改（上方同号条目已记过一次，这一份是重复的旧副本）。
+   · **真正还没修的是第三类盲区，本单修的就是它**：四条槽位正则全要求 `key` 与 `name`/`title` **紧邻**，而仪表盘 widget 写成 `{ key: "aop-base", type: "kpi", title: "…" }`，中间隔一个 `type:` ⇒ **一条都抽不到**。这批 widget 正是「一个概念两份真相源」（后端种子 `synthetic/service.ts` 的 `DASH_LAYOUT` × 前端 mock `fixtures.ts` 各存一份标题），且**真分叉过**（`aop-base` 亿/万 · `oee-trend` 14 日/7 日，两条都靠人肉发现，门当时一声不吭）。
+   · ⚠️ **上方同号条目里「放宽后暴露 3 条真分叉（`aop-base` 亿/万 · `oee-trend` 14日/7日 · `aop`）」这句话今天已过期**：前两条已被 `WO-TITLE-DIVERGENCE` 修掉（现算两侧逐字相同）。我实测放宽后报出的 3 条是 `orders` / `order` / `aop`，而且**逐条追下去 3 条全是概念撞名**（KPI 卡 vs 沙盘时间线行 · 视图 slug vs 模块直达卡 · 旧直链 vs 模块卡）—— 直接放宽 = 造 3 条假红。
+   **改法**：另开 `widget-title` 命名空间，判据落在结构标记 `type:` 上，不动 `view-title`。实测 registry 156 → **183** 个 slug，新增 **27** 个 widget 键（其中 **20** 个被 ≥2 真相源登记），**误报 0 条**。金丝雀与主逻辑共用同一份 `VIEW_TITLE_SLOTS`（`aop-base`/`oee-trend` 必咬 · `orders`/`aop` 必不咬），样例形状逐字取自生产实物；另挂两条 `@stale-self` 赌注（`truth.widgetKeys ==27` · `truth.widgetKeysMultiSource ==20`）与两条扫描规模下限，数变了门当场红
+4. ~~**`sandboxConsoleModel.ts:709` 过时文案**（写着已被删除的 `worstMbal`）~~ ✅ **2026-08-20 WO-STALE-TEXT-FAMILY 收单** —— **文案早已修好**（2026-08-15 `75f0adfe`），本单复验并补上它缺的那一半机制。
+   **机器复验（否定结论必附金丝雀）**：用本仓剥注释器扫 5 棵树 645 个源文件，`worstMbal` 在**可执行代码里 0 处**、注释里 5 处（`battery-extended.ts:423/1028/1050` + `sandboxConsoleModel.ts:713/715`），全部是讲历史的合法记账；同趟扫描里已知必中的 `resolveDynamicDrill` 命中**代码 4 处**（它若也是 0 就是工具坏了，不是代码干净）。
+   ⚠️ **顶回上方同号条目的两个数**：那里写「扫 **7 棵树 1319 个源文件**」，我实测是 **5 棵树 645 个源文件**（`apps/{datacore,agentcore,frontend-shell}/src` + `packages/{contracts,llm-adapters}/src`）—— 口径对不上，多半把 `test/` 也算进去了。
+   **真实缺口不在文案，在机制（两向只咬了一向）**：该处原有三条 `@stale-fact` 全在赌「**新的在**」（`resolveDynamicDrill` 存在 · 占位仍通配 · 落点仍 3 张），**一条都没赌「旧的没了」** ⇒ 把整段订正删掉、或哪天有人把已删符号写回文案，三条照样全绿 —— 「删内容冒充修好」这条路一直敞着。本单补两条**钉死计数**的赌注（`==` 不是 `>=`，故两个方向同时红）：`sandboxConsoleModel.ts /worst[M]bal/ ==2`（塞回去→3 红 · 整段删掉→0 红）、`battery-extended.ts /worst[M]bal/ ==3`（上游写回代码→涨→红）
+5. ~~**agentcore 3 处 stale 文案** —— `navigation-slice.ts` 把已不存在的 `p50` 当关键属性**喂给 LLM**~~ ✅ **2026-08-20 WO-STALE-TEXT-FAMILY 复验确认已闭**（修在 `WO-STALE-TEXT-4`，见上方同号条目：「3 处」实为 **40 处**，已全部归位）。
+   本单只做复验，**未再改一行**：现算 `p50` 在整个 `apps/agentcore/src` 只剩 **4 处**，逐处定性 —— `navigation-slice.ts:240/241/291` 是讲历史的注释 + 一条 `@stale-fact` 赌注；`dril/tag-taxonomy.ts:51` 是**用户查询词**关键词表（用户真会打「p50」），不是喂给 LLM 的属性名清单，**不属本族**。
+   该处**两向都已咬住**，本单确认无需补：`@stale-fact .../battery.ts /propKey: "demandWanPerYearP50"/ ==1`（新名在）+ `/propKey: "p50"/ ==0`（旧名没了），另有 `apps/agentcore/test/keyprops-ontology-parity.seam.test.ts` 断言真名渲得出口径、假名让整块塌成 `null`
+6. ~~**mock 与真后端 S&OP 量级差 4–12 倍**（改它=改值，只报不动）~~ ✅ **2026-08-20 `WO-MOCK-SOP-SCALE` 收单**
+   —— **已转为门守着，值一个字节没动**（交单分支 `claude/handoff-wo-mock-sop-scale`）。
+   新门 `mock-backend-scale:check`（`scripts/check-mock-backend-scale.mjs`）**两侧都现算**：
+   真后端把 datacore 起在内存里真跑 S&OP 五步、mock 真派发 MSW handler ——
+   守的是**倍数区间**（不是数量级窗：10 倍的窗放过 2 倍、4 倍的偏差，而真差异恰好全落在那一档）。
+   **受检面也是现算的**：= 两侧回包归一后数值叶路径的交集，**112 行全部逐条比过**
+   （A 档 91 · B 档 18 · C 档 3，另一侧独有 23 条逐条登记）。现算对照表见 **`docs/MOCK-BACKEND-SCALE.md`**。
+   ⚠️ **本条原文错在三处，逐条订正（三档修法完全相反，合成一句照它去修会改错一批对的值）**：
+   ① **「量级差」这件事已经不成立**——量轴/钱轴 **91 项全部 ratio ≈ 1.0000**，
+      2026-08-15 `WO-MOCK-SCALE-TRUTH` 就已对齐，**本台账漏了回写**（记账与代码又脱节了一轮）；
+   ② **「4–12 倍」这个数两头都不对**——全仓零个独立出处（金丝雀：同趟扫描「量级差」26 行、「12 倍」32 行 ⇒ 扫描器没瞎）；
+      改前的真实实测是 **7.63×–16.22×**，外加一项**反方向** 11.40×（mock 偏小）
+      ——「差 N 倍」这个说法本身把**方向**丢了，而方向决定往哪边修。
+      形态（铁律 0.6 句式）：**「我用『同屏并列的两张表相差 12 倍』当作『mock 与真后端相差 12 倍』的证据，
+      而前者并不度量后者。」** 那 11×–15× 是**年/月口径同屏并列**的差，**两侧各自都有**；
+   ③ **真正今天还在的差异本条没提**：供需失衡归因的**分摊** —— 总缺口两侧都是 81 万套/年（对上了），
+      但 mock 判「**需求端**主导 70%」、真后端判「**供给端**主导 64.5%」
+      （18 行真差异：2.33× / 3.89× / 3.06× / 4.28× / 6.51×）。
+      同一颗 seed、同一张屏，**一个说去修预测、一个说去修产能**。
+      既有 `mock-scale-truth.seam.test.ts` 只比 `totalGap`、且用数量级窗 ⇒ **今天全绿**。
+      已登断点 **`G-MOCK-ATTRIBUTION-SPLIT-FROZEN`**（🔴 未修·mock 侧是写死比例 `G×0.704`/`G×0.141`，
+      真后端是真算）—— **修它=改 mock 值，属产品/数据决策，本单只报不动**。
+   ④ 另附**三条一边没有数**（都是本条没提、且都不是量级差）：`capacity_gap` 叶 mock **整叶不存在**
+      （`handlers.ts` 注释写的理由「`Line.capacityDaily` 未落」**今天已过期** —— 同 seed 下真后端算得出该叶
+      6.3101 万套/年）· 预测偏差叶 mock **1 条** vs 真后端 **3 条**（逐细分）· 勾稽校验行 mock **1 条** vs 真后端 **3 条**
+      （⇒ mock 只能说「总数配平了」，说不了「需求端内部配平了没有」）。同样只报不动。
+   ⑤ **这道门自己被别的门当场咬红过两次，逐条记在 `docs/MOCK-BACKEND-SCALE.md` §5b**：
+      `gate-roster:check` 咬出「第一版受检面是手抄的、覆盖率只有 23%」；改成全量后我自己栽了
+      「按数组下标比两侧」那一脚（凭空造出 **24 条假差异**）。两次都是机器先说话。
+
+## 🔶 等你裁决
+
+1. **⚠️ 审批留痕里记着一个假的产能数**（`G-LEVER-SNAPSHOT-UNIT-LIE`）：张力峰值（0–100）被塞进 `snapshot.capWanP50`（万套/窗口），而该快照整个进 `plan_change` 的 **ActionDraft payload**。门守不了「塞进这个名字的值是不是那个量纲」，屏上不显示所以肉眼也看不见
+2. **设备 OEE 口径分歧**（**两个 dev 独立发现**）：铭牌 `oeeA×oeeP×oeeQ` vs 时序聚合 `oee_current`，两套给出不同的「最差设备」
+   —— ✅ **取证已完成（WO-OEE-SSOT · 2026-08-16）**，裁决材料见 **`docs/DECISION-oee-ssot.md`**（一页纸：三选项逐文件逐测试连坐面 + 推荐 + 第三条路）。
+   **⚠️ 本条原文写「两套」——实测是三套**：铭牌 `oeeA×oeeP×oeeQ` / 时序 `oee_current` / **IoT 日事实表 `EquipmentOEE.oee`（5460 行·自带 a/p/q·已接物理拓扑屏）**。
+   demo 真实入参（`seed=42, scale="S"`，780 台）算出**三台不同的最差设备**（`changzhou-formation-winding-E2` 0.769233 / `jinhua-slitting-winding-E1` 0.710781 / `xinyang-formation-coating-E1` 0.776429），
+   两两「最差 10 台」名单重叠 **0/10 · 0/10 · 1/10**，`|时序−铭牌|` 逐台平均 **0.0814**。**不是精度差异，是指向不同的设备。**
+   本体断点已登 **`G-OEE-DUAL-TRUTH`**（§8·🔴 未修）。**推荐选「③ 事实表为权威、①② 从它派生」**（论据见裁决材料 §4–5）。
+   **不等裁决已落地的那一半**：新门 `oee-ssot:check`（`scripts/check-oee-ssot.mjs`）守「同屏 ≥2 套口径必须标明哪个数是哪一套」，
+   `--selftest` 已起子进程实测 RC=0/1/2 四条路径；全仓现扫出唯一存量违规 `views/capacity/factorOntology.ts`（真缺陷·已按棘轮挂账）。
+   **⚠️ 仓主只需裁一件事**：A 维持现状（②）/ B 铭牌为权威（①）/ C 事实表为权威（③）。裁完即可派后续 WO。
+3. **删不删导航里的「决策推演」**（E2）
+4. **两页合不合**（E5）
+5. **后两个改名**（E6）
+6. **视图名字不一致 —— 已全量取证 + 已建门，裁决清单见 `docs/AUDIT-name-consistency.md`**（WO-NAME-CONSISTENCY）
+   - ⚠️ **原条目的前提被实测推翻**：`view.risk-board` 的**导航与页标题都是「产能推演」、一致**；「风险推演看板」只出现在管理台「功能开通配置」页。「导航点 A、进去看到 B」这一形态**真实存在，但发生在 `plan-generate`**（导航「方案生成」→ 页标题「规划建议」）。照原条目改会漏掉真正扎人的那一处。
+   - **全量**：30 个视图逐个核对三处名字（功能名 / 视图标题 / 页内大标题），**分歧 5 处**，定性四类。
+   - **门已上线**：`name-consistency:check`（`scripts/check-name-consistency.mjs`）—— 不替仓主拍板「叫哪个名字」，只守「**不一致的必须登记过**」：存量挂 `DECLARED` 等裁决，新增未登记分歧一律红。本体 §8 `G-NAME-DUAL-LABEL`。
+   - **待裁决 4 条**（每条已给推荐 + 连坐面）：🔴 `plan-generate` 导航标题 →「规划建议」（改 2 处）· 🟠 `risk` 功能名 →「产能推演」（改 4 处）· 🟢 `dash` 不改 · 🟢 `process-stuck` 不改（要动就另开 WO 拆键）。

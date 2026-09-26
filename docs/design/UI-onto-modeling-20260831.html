@@ -1,0 +1,642 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found]){display:none!important}</style></head><body>
+<title>本体建模台与决策推演台</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#223251; --bg-deep:#1a2740; --canvas:#16223a;
+  --panel:rgba(255,255,255,.055); --panel-solid:rgba(28,41,66,.88);
+  --line:rgba(255,255,255,.13); --line-2:rgba(255,255,255,.075);
+  --txt:#e9eefa; --txt-2:#b9c6e0; --txt-3:#8b9bbd;
+  --accent:#4b8ef0; --accent-solid:#115dc9;
+  --ok:#3fbd8a; --warn:#e0a642; --bad:#e8656f;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --sans:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+}
+*{box-sizing:border-box}
+body{background:var(--bg-deep);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.55}
+.wrap{max-width:1360px;margin:0 auto;padding:30px 18px 70px}
+h1{font-size:25px;font-weight:650;letter-spacing:-.01em;margin:0 0 5px}
+.meta{font-family:var(--mono);font-size:11px;color:var(--txt-3);letter-spacing:.05em;margin:0 0 24px}
+h2.screen{font-size:17px;font-weight:650;margin:38px 0 10px;letter-spacing:-.008em}
+h2.screen .n{font-family:var(--mono);font-size:11.5px;color:var(--accent);margin-right:9px}
+
+.app{background:var(--bg);border:1px solid var(--line);border-radius:11px;overflow:hidden;box-shadow:0 18px 50px -24px rgba(0,0,0,.85)}
+.topbar{display:flex;align-items:center;gap:12px;padding:8px 13px;border-bottom:1px solid var(--line-2);background:rgba(255,255,255,.03);flex-wrap:wrap}
+.brand{font-size:12.5px;font-weight:600;color:var(--txt-2)}
+.crumb{font-family:var(--mono);font-size:11.5px;color:var(--txt-3)}
+.spacer{flex:1}
+.tabs{display:flex;gap:2px}
+.tab{font-size:11.5px;padding:3px 9px;border-radius:5px;color:var(--txt-3);border:1px solid transparent;white-space:nowrap}
+.tab.on{color:#fff;background:rgba(75,142,240,.2);border-color:rgba(75,142,240,.4)}
+.tab.off{color:rgba(139,155,189,.45)}
+
+.body{display:grid;grid-template-columns:182px minmax(0,1fr);min-height:500px}
+@media (max-width:920px){.body{grid-template-columns:1fr}}
+.nav{border-right:1px solid var(--line-2);padding:11px 0;background:rgba(0,0,0,.14)}
+.nav .grp{font-family:var(--mono);font-size:10px;letter-spacing:.13em;color:var(--txt-3);padding:9px 13px 4px}
+.nav a{display:flex;align-items:center;gap:7px;padding:5px 13px;color:var(--txt-2);text-decoration:none;font-size:12.5px;border-left:2px solid transparent}
+.nav a.on{color:#fff;background:rgba(75,142,240,.16);border-left-color:var(--accent);font-weight:550}
+.nav a.dim{color:var(--txt-3)}
+.nav a .tag{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--txt-3)}
+.main{padding:14px 16px 18px;min-width:0}
+
+/* ── 步骤条 ── */
+.steps{display:flex;margin:0 0 14px;overflow-x:auto}
+.step{flex:1 0 auto;min-width:112px;padding:7px 11px 8px;border-bottom:2px solid var(--line)}
+.step.done{border-bottom-color:var(--ok)} .step.now{border-bottom-color:var(--accent);background:rgba(75,142,240,.09)}
+.step .sn{font-family:var(--mono);font-size:10px;color:var(--txt-3);letter-spacing:.07em}
+.step .st{font-size:12.5px;font-weight:550;margin-top:1px;white-space:nowrap}
+.step.todo .st{color:var(--txt-3)}
+.step .sc{font-family:var(--mono);font-size:10.5px;margin-top:1px;color:var(--txt-3)}
+.step.done .sc{color:var(--ok)} .step.now .sc{color:var(--accent)}
+
+.cols3{display:grid;grid-template-columns:1.12fr 1fr .92fr;gap:11px}
+@media (max-width:1080px){.cols3{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:9px;backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);padding:10px 11px 11px;min-width:0}
+.panel>h3{font-size:12px;font-weight:600;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.panel>h3 .c{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--txt-3);font-weight:400}
+
+label.f{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--txt-3);margin:8px 0 3px}
+label.f:first-of-type{margin-top:0}
+.inp,.sel{width:100%;background:rgba(0,0,0,.26);border:1px solid var(--line);color:var(--txt);border-radius:5px;padding:5px 7px;font:inherit;font-size:12px}
+.sel{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--txt-3) 50%),linear-gradient(135deg,var(--txt-3) 50%,transparent 50%);background-position:calc(100% - 14px) 11px,calc(100% - 9px) 11px;background-size:5px 5px;background-repeat:no-repeat}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.row3{display:grid;grid-template-columns:1.3fr 1fr .85fr;gap:7px}
+.btn{background:var(--accent-solid);color:#fff;border:1px solid var(--accent-solid);border-radius:5px;padding:5px 12px;font:inherit;font-size:12px;font-weight:550;cursor:default}
+.btn.ghost{background:transparent;color:var(--txt-2);border-color:var(--line)}
+.btn.sm{padding:3px 8px;font-size:11px}
+.btnrow{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+
+table.t{width:100%;border-collapse:collapse;font-size:11.5px}
+table.t th{text-align:left;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;color:var(--txt-3);font-weight:500;padding:0 6px 4px 0;border-bottom:1px solid var(--line-2);white-space:nowrap}
+table.t td{padding:4px 6px 4px 0;border-bottom:1px solid var(--line-2);color:var(--txt-2);vertical-align:middle}
+table.t tr:last-child td{border-bottom:none}
+table.t td.k{font-family:var(--mono);color:var(--txt);font-size:11px;white-space:nowrap}
+table.t td.num{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums;color:var(--txt);white-space:nowrap}
+.tw{overflow-x:auto}
+.chip{display:inline-block;font-family:var(--mono);font-size:9.5px;padding:1px 5px;border-radius:99px;border:1px solid;white-space:nowrap}
+.chip.ok{color:var(--ok);border-color:rgba(63,189,138,.45);background:rgba(63,189,138,.11)}
+.chip.warn{color:var(--warn);border-color:rgba(224,166,66,.45);background:rgba(224,166,66,.11)}
+.chip.bad{color:var(--bad);border-color:rgba(232,101,111,.45);background:rgba(232,101,111,.11)}
+.chip.n{color:var(--txt-3);border-color:var(--line)}
+
+/* ══ 推演台：底图 + 浮层 ══ */
+.stage{position:relative;background:var(--canvas);min-height:600px;overflow:hidden}
+.stage::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px);background-size:44px 44px}
+.canvas-hd{position:relative;display:flex;align-items:baseline;gap:10px;padding:9px 14px 4px}
+.canvas-hd .t{font-family:var(--mono);font-size:10px;letter-spacing:.13em;color:var(--txt-3)}
+.canvas-hd .v{font-family:var(--mono);font-size:10.5px;color:var(--txt-3);margin-left:auto}
+
+.grid{position:relative;display:grid;grid-template-columns:88px repeat(7,minmax(52px,1fr));gap:2px;padding:0 14px 12px}
+@media (max-width:1080px){.grid{grid-template-columns:78px repeat(7,minmax(40px,1fr))}}
+.gh{font-family:var(--mono);font-size:9.5px;color:var(--txt-3);padding:2px 3px;text-align:center;letter-spacing:.02em}
+.gh.l{text-align:left}
+.gr{font-family:var(--mono);font-size:10.5px;color:var(--txt-2);padding:5px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell{border-radius:3px;padding:4px 2px;text-align:center;font-family:var(--mono);font-size:10.5px;font-variant-numeric:tabular-nums;border:1px solid transparent}
+.c0{background:rgba(255,255,255,.045);color:var(--txt-3)}
+.cp1{background:rgba(63,189,138,.14);color:#7fd8b0} .cp2{background:rgba(63,189,138,.26);color:#a5e8c9}
+.cn1{background:rgba(232,101,111,.15);color:#f2949b} .cn2{background:rgba(232,101,111,.3);color:#ffb3b8;border-color:rgba(232,101,111,.5)}
+.cn3{background:rgba(232,101,111,.48);color:#fff;border-color:rgba(232,101,111,.8)}
+
+.float{position:absolute;background:var(--panel-solid);border:1px solid var(--line);border-radius:8px;backdrop-filter:blur(18px) saturate(1.25);-webkit-backdrop-filter:blur(18px) saturate(1.25);box-shadow:0 12px 34px -14px rgba(0,0,0,.75);padding:9px 10px 10px}
+.float>h4{font-size:11.5px;font-weight:600;margin:0 0 7px;display:flex;align-items:center;gap:7px}
+.float>h4 .c{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--txt-3);font-weight:400}
+.f-tl{top:12px;left:14px;width:268px}
+.f-bl{bottom:12px;left:14px;width:268px}
+.f-tm{top:12px;left:298px;width:250px}
+.f-bm{bottom:12px;left:298px;width:250px}
+.f-tr{top:12px;right:14px;width:236px}
+@media (max-width:1180px){
+  .float{position:static;width:auto!important;margin:0 0 10px}
+  .stage{min-height:0;padding-bottom:12px}
+  .floats{padding:0 14px}
+}
+.floats{position:static}
+
+.pf{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--line-2);font-size:11.5px}
+.pf:last-child{border-bottom:none}
+.pf .sw{flex:none;width:22px;height:12px;border-radius:99px;background:rgba(255,255,255,.14);position:relative}
+.pf .sw.on{background:var(--accent-solid)}
+.pf .sw::after{content:"";position:absolute;top:1.5px;left:1.5px;width:9px;height:9px;border-radius:50%;background:#fff}
+.pf .sw.on::after{left:11px}
+.pf .nm{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt)}
+.pf .amt{font-family:var(--mono);font-size:11px;color:var(--txt-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.pf.off .nm,.pf.off .amt{color:var(--txt-3)}
+
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 9px;font-size:11px}
+.kv dt{font-family:var(--mono);font-size:10px;color:var(--txt-3);white-space:nowrap}
+.kv dd{margin:0;font-family:var(--mono);font-size:11px;color:var(--txt-2);text-align:right;font-variant-numeric:tabular-nums}
+
+.hop{display:grid;grid-template-columns:17px 1fr auto;gap:7px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line-2)}
+.hop:last-child{border-bottom:none}
+.hop .d{width:17px;height:17px;border-radius:50%;border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:9.5px;display:flex;align-items:center;justify-content:center}
+.hop .n1{font-size:11.5px;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hop .n2{font-family:var(--mono);font-size:9.5px;color:var(--txt-3);margin-top:1px}
+.hop .v{font-family:var(--mono);font-size:11px;color:var(--txt);white-space:nowrap;font-variant-numeric:tabular-nums}
+
+.kpi{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.kpi .c{background:rgba(0,0,0,.24);border:1px solid var(--line-2);border-radius:6px;padding:5px 7px}
+.kpi .lab{font-family:var(--mono);font-size:9.5px;color:var(--txt-3);letter-spacing:.04em}
+.kpi .v{font-family:var(--mono);font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px}
+.kpi .d{font-family:var(--mono);font-size:10.5px}
+.d.up{color:var(--ok)} .d.down{color:var(--bad)}
+
+/* 批注（在框外，不属于屏上内容） */
+.ann{margin:11px 0 0;border:1px solid var(--line-2);border-radius:8px;overflow:hidden}
+.ann table{width:100%;border-collapse:collapse;font-size:12.5px}
+.ann th{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;color:var(--txt-3);text-align:left;padding:6px 10px;background:rgba(255,255,255,.04);font-weight:500;white-space:nowrap}
+.ann td{padding:6px 10px;border-top:1px solid var(--line-2);color:var(--txt-2);vertical-align:top}
+.ann td.i{font-family:var(--mono);font-size:10.5px;color:var(--accent);white-space:nowrap}
+.ann td b{color:var(--txt);font-weight:600}
+.ann td code{font-family:var(--mono);font-size:11px;color:var(--txt)}
+hr.sep{border:none;border-top:1px solid var(--line-2);margin:32px 0 0}
+footer{margin-top:26px;font-size:11.5px;color:var(--txt-3)}
+footer code{font-family:var(--mono);font-size:10.5px}
+</style>
+
+<div class="wrap">
+
+<h1>本体建模台与决策推演台</h1>
+<p class="meta">现有 token · --bg #223251 · .panel 毛玻璃 · --accent-solid #115dc9 · 最小 12px ｜ 屏上数字取自 LOOP9/LOOP10 真后端实测</p>
+
+<!-- ══════ 页面一 ══════ -->
+<h2 class="screen"><span class="n">页面一</span>本体建模台</h2>
+
+<div class="app">
+  <div class="topbar">
+    <span class="brand">决策支撑平台</span>
+    <span class="crumb">本体建模台 › 工程机械主机厂 · 草案 v3</span>
+    <span class="spacer"></span>
+    <span class="crumb">本体运营负责人</span>
+  </div>
+  <div class="body">
+    <nav class="nav">
+      <div class="grp">建模</div>
+      <a href="#" class="on">本体建模台 <span class="tag">3/7</span></a>
+      <a href="#" class="dim">对象与关系</a>
+      <a href="#" class="dim">影响面查询</a>
+      <div class="grp">推演</div>
+      <a href="#" class="dim">决策推演台</a>
+      <a href="#" class="dim">推演沙盘</a>
+      <div class="grp">平台</div>
+      <a href="#" class="dim">图谱视角 <span class="tag">9</span></a>
+      <a href="#" class="dim">数据接入</a>
+    </nav>
+    <div class="main">
+
+      <div class="steps">
+        <div class="step done"><div class="sn">01 · 域</div><div class="st">域</div><div class="sc">15</div></div>
+        <div class="step done"><div class="sn">02 · 对象</div><div class="st">类型 · 属性</div><div class="sc">12 / 70</div></div>
+        <div class="step now"><div class="sn">03 · 关系</div><div class="st">结构 · 归属 · 业务</div><div class="sc">0 / 110</div></div>
+        <div class="step todo"><div class="sn">04 · 状态</div><div class="st">State</div><div class="sc">—</div></div>
+        <div class="step todo"><div class="sn">05 · 事件</div><div class="st">Event</div><div class="sc">11 型</div></div>
+        <div class="step todo"><div class="sn">06 · 规则</div><div class="st">Rule</div><div class="sc">0 / 29</div></div>
+        <div class="step todo"><div class="sn">07 · 约束</div><div class="st">Constraint</div><div class="sc">—</div></div>
+        <div class="step todo"><div class="sn">08 · 因果</div><div class="st">Causal</div><div class="sc">0 / 45</div></div>
+        <div class="step todo"><div class="sn">09 · 数据</div><div class="st">灌入 · 对账</div><div class="sc">—</div></div>
+        <div class="step todo"><div class="sn">10 · 场景</div><div class="st">Scenario · 求解</div><div class="sc">—</div></div>
+        <div class="step todo"><div class="sn">11 · 发布</div><div class="st">评审 · 会签</div><div class="sc">—</div></div>
+      </div>
+
+      <div class="cols3">
+        <div class="panel">
+          <h3>关系编辑器 · Equipment<span class="c">出边 4 · 入边 3</span></h3>
+          <div class="tw">
+          <table class="t">
+            <thead><tr><th>关系</th><th>目标</th><th>基数</th><th>facet</th><th>启</th><th></th></tr></thead>
+            <tbody>
+              <tr><td class="k">belongs_to</td><td class="k">Line</td><td class="k">N:1</td><td><span class="chip n">结构</span></td><td><span class="sw on" style="display:inline-block;width:22px;height:12px;border-radius:99px;background:var(--accent-solid);position:relative"></span></td><td><span class="chip n">改 ✕</span></td></tr>
+              <tr><td class="k">operated_by</td><td class="k">Crew</td><td class="k">N:1</td><td><span class="chip n">组织</span></td><td><span class="sw on" style="display:inline-block;width:22px;height:12px;border-radius:99px;background:var(--accent-solid)"></span></td><td><span class="chip n">改 ✕</span></td></tr>
+              <tr><td class="k">has_capacity</td><td class="k">Capacity</td><td class="k">1:N</td><td><span class="chip warn">约束</span></td><td><span class="sw on" style="display:inline-block;width:22px;height:12px;border-radius:99px;background:var(--accent-solid)"></span></td><td><span class="chip n">改 ✕</span></td></tr>
+              <tr><td class="k">causes</td><td class="k">Line.load</td><td class="k">1:1</td><td><span class="chip bad">因果</span></td><td><span class="sw" style="display:inline-block;width:22px;height:12px;border-radius:99px;background:rgba(255,255,255,.14)"></span></td><td><span class="chip n">改 ✕</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <label class="f">新增关系</label>
+          <div class="row3">
+            <select class="sel"><option>compatible_with</option><option>produces</option><option>requires</option><option>causes</option></select>
+            <select class="sel"><option>Line</option><option>Product</option><option>Material</option></select>
+            <select class="sel"><option>N:M</option><option>1:N</option><option>N:1</option></select>
+          </div>
+          <label class="f">facet</label>
+          <p style="margin:0">
+            <span class="chip n">结构</span> <span class="chip n">组织</span> <span class="chip n">业务</span>
+            <span class="chip n">流程</span> <span class="chip n">时序</span> <span class="chip n">空间</span>
+            <span class="chip n">因果</span> <span class="chip n">状态</span> <span class="chip n">约束</span>
+            <span class="chip n">依赖</span> <span class="chip n">推演</span> <span class="chip n">证据</span>
+          </p>
+          <div class="btnrow"><button class="btn">保存到草案</button><button class="btn ghost">自动规划路径</button></div>
+        </div>
+
+        <div class="panel">
+          <h3>对象约束 · Equipment<span class="c">引用 3 · 内联 0</span></h3>
+          <div class="tw">
+          <table class="t">
+            <thead><tr><th>约束</th><th>引用</th><th>来源</th><th></th></tr></thead>
+            <tbody>
+              <tr><td class="k">日产能上限</td><td class="k">line_capacity_daily</td><td><span class="chip ok">规则库</span></td><td><span class="chip n">改 ✕</span></td></tr>
+              <tr><td class="k">最小批量</td><td class="k">min_batch_qty</td><td><span class="chip ok">规则库</span></td><td><span class="chip n">改 ✕</span></td></tr>
+              <tr><td class="k">换型时间</td><td class="k">changeover_matrix</td><td><span class="chip ok">规则库</span></td><td><span class="chip n">改 ✕</span></td></tr>
+              <tr><td class="k">OEE 下限</td><td class="k">—</td><td><span class="chip warn">未绑定</span></td><td><span class="chip n">＋绑定</span></td></tr>
+              <tr><td colspan="4" style="color:var(--bad);font-size:11px">⚠ 今天 <code style="font-family:var(--mono)">constraintRefs</code> 被 zod 静默 strip 且返 201 · 求解器亦不读规则库 · 两半都缺</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <label class="f">引用一条规则</label>
+          <select class="sel"><option>规则库 · 29 条</option><option>line_capacity_daily</option><option>min_batch_qty</option><option>changeover_matrix</option><option>trigger_thresholds</option></select>
+          <div class="row2" style="margin-top:7px">
+            <div><label class="f">绑到属性</label><select class="sel"><option>capacity</option><option>oee_current</option></select></div>
+            <div><label class="f">约束类型</label><select class="sel"><option>must_not_exceed</option><option>requires_capacity</option><option>must_be_before</option></select></div>
+          </div>
+          <div class="btnrow"><button class="btn sm">引用</button><button class="btn ghost sm">新建规则</button></div>
+
+          <h3 style="margin-top:12px">口径守卫<span class="c">4 项</span></h3>
+          <div class="tw">
+          <table class="t">
+            <tbody>
+              <tr><td class="k">utilization · Line</td><td class="k">百分点</td><td class="num">0–100</td><td><span class="chip bad">冲突</span></td></tr>
+              <tr><td class="k">utilization · Process</td><td class="k">比率</td><td class="num">0–1</td><td><span class="chip bad">冲突</span></td></tr>
+              <tr><td>数值属性已声明单位</td><td colspan="2">—</td><td><span class="chip ok">6/6</span></td></tr>
+              <tr><td>金额单位同族</td><td colspan="2">元</td><td><span class="chip ok">通过</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <div class="btnrow"><button class="btn ghost sm">建共享属性类型</button></div>
+        </div>
+
+        <div class="panel">
+          <h3>波及面<span class="c">按下去之前</span></h3>
+          <div class="tw">
+          <table class="t">
+            <thead><tr><th>桶</th><th class="num">条</th><th>示例</th></tr></thead>
+            <tbody>
+              <tr><td>重算</td><td class="num">3</td><td class="k">产能日报</td></tr>
+              <tr><td>重派生</td><td class="num">1</td><td class="k">整机利用率</td></tr>
+              <tr><td>重判定</td><td class="num">0</td><td>—</td></tr>
+              <tr><td>重接线</td><td class="num">2</td><td class="k">equip_base</td></tr>
+              <tr><td>未解析</td><td class="num"><span class="chip warn">1</span></td><td class="k">可点开</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <h3 style="margin-top:13px">草案 v3<span class="c">可回退</span></h3>
+          <div class="tw">
+          <table class="t">
+            <tbody>
+              <tr><td>对象类型</td><td class="num">12</td><td><span class="chip ok">＋2</span></td></tr>
+              <tr><td>属性</td><td class="num">74</td><td><span class="chip ok">＋6</span></td></tr>
+              <tr><td>结构边</td><td class="num">0</td><td><span class="chip n">04</span></td></tr>
+              <tr><td>因果边</td><td class="num">0</td><td><span class="chip n">05</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <div class="btnrow"><button class="btn ghost sm">回退 v2</button><button class="btn ghost sm">导出草案</button></div>
+        </div>
+      </div>
+
+      <div class="cols3" style="margin-top:11px">
+        <div class="panel" style="grid-column:1 / span 2">
+          <h3>产销推演就绪度<span class="c">核心关系 20</span></h3>
+          <div class="tw">
+          <table class="t">
+            <thead><tr><th>关系</th><th>源 → 目标</th><th class="num">实例</th><th>状态</th><th>关系</th><th>源 → 目标</th><th class="num">实例</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td class="k">belongs_to</td><td>产线 → 工厂</td><td class="num">—</td><td><span class="chip n">待测</span></td>
+                  <td class="k">has_capacity</td><td>产线 → 产能</td><td class="num">—</td><td><span class="chip n">待测</span></td></tr>
+              <tr><td class="k">produces</td><td>产线 → 产品</td><td class="num">—</td><td><span class="chip n">待测</span></td>
+                  <td class="k">consumes_capacity</td><td>生产订单 → 产能</td><td class="num">—</td><td><span class="chip n">待测</span></td></tr>
+              <tr><td class="k">model_certified_on</td><td>产品 → 产线</td><td class="num">18</td><td><span class="chip ok">可用</span></td>
+                  <td class="k">has_inventory</td><td>仓库 → 库存</td><td class="num">—</td><td><span class="chip n">待测</span></td></tr>
+              <tr><td class="k">orders</td><td>客户 → 销售订单</td><td class="num">500</td><td><span class="chip ok">可用</span></td>
+                  <td class="k">stores</td><td>仓库 → 物料/产品</td><td class="num">—</td><td><span class="chip n">待测</span></td></tr>
+              <tr><td class="k">contains</td><td>销售订单 → 订单明细</td><td class="num">873</td><td><span class="chip ok">可用</span></td>
+                  <td class="k">supplied_by</td><td>物料 → 供应商</td><td class="num">—</td><td><span class="chip n">待测</span></td></tr>
+              <tr><td class="k">requires</td><td>产品 → 物料</td><td class="num">—</td><td><span class="chip n">待测</span></td>
+                  <td class="k">ships_to</td><td>仓库 → 客户/工厂</td><td class="num">—</td><td><span class="chip n">待测</span></td></tr>
+              <tr><td class="k">has_bom</td><td>产品 → BOM</td><td class="num">—</td><td><span class="chip warn">系数已用</span></td>
+                  <td class="k">located_in</td><td>工厂/仓库 → 地点</td><td class="num">13</td><td><span class="chip warn">部分</span></td></tr>
+              <tr><td class="k">uses</td><td>生产订单 → 物料</td><td class="num">—</td><td><span class="chip n">待测</span></td>
+                  <td class="k">delivers_to</td><td>销售订单 → 客户地点</td><td class="num">—</td><td><span class="chip n">待测</span></td></tr>
+              <tr><td class="k">wo_for_model</td><td>生产订单 → 型号</td><td class="num">0</td><td><span class="chip bad">线在数据 0</span></td>
+                  <td class="k">depends_on</td><td>生产计划 → 物料/产能</td><td class="num">—</td><td><span class="chip n">待测</span></td></tr>
+              <tr><td class="k">wo_on_line · sched_for_wo</td><td>生产订单 → 产线</td><td class="num">0</td><td><span class="chip bad">线在数据 0</span></td>
+                  <td class="k">constraintRefs</td><td>对象 → 规则库</td><td class="num">0</td><td><span class="chip bad">静默 strip</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <div class="btnrow"><button class="btn sm">补齐缺失关系</button><button class="btn ghost sm">自动规划路径</button></div>
+        </div>
+
+        <div class="panel">
+          <h3>四条主链路<span class="c">断点</span></h3>
+          <div class="tw">
+          <table class="t">
+            <tbody>
+              <tr><td>产品 → 产线 → 工厂</td><td class="num"><span class="chip bad">断第 1 跳</span></td></tr>
+              <tr><td>产品 → BOM → 物料</td><td class="num"><span class="chip n">待测</span></td></tr>
+              <tr><td>销售单 ← 生产单 → 产线</td><td class="num"><span class="chip bad">断第 1 跳</span></td></tr>
+              <tr><td>库存 → 销售订单</td><td class="num"><span class="chip n">待测</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <h3 style="margin-top:12px">有产能 ≠ 可交付<span class="c">3 判据</span></h3>
+          <div class="tw">
+          <table class="t">
+            <tbody>
+              <tr><td>供应瓶颈 lead_time</td><td class="num"><span class="chip n">待测</span></td></tr>
+              <tr><td>物流时间 transport_time</td><td class="num"><span class="chip n">待测</span></td></tr>
+              <tr><td>时间窗产能 by_period</td><td class="num"><span class="chip bad">粒度 1 天</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="cols3" style="margin-top:11px">
+        <div class="panel" style="grid-column:1 / span 2">
+          <h3>切片层级<span class="c">实测 61 条：域内 7 · 跨域 54</span></h3>
+          <div class="tw">
+          <table class="t">
+            <thead><tr><th>切片</th><th>层</th><th class="num">跳</th><th class="num">类型</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td class="k">scope=intra</td><td class="k">L1</td><td class="num">—</td><td class="num">7 条</td><td><span class="chip ok">已有</span></td></tr>
+              <tr><td class="k">scope=cross</td><td class="k">跨域</td><td class="num">—</td><td class="num">54 条</td><td><span class="chip ok">已有</span></td></tr>
+              <tr><td class="k">spannedDomains</td><td class="k">字段</td><td class="num">—</td><td class="num">—</td><td><span class="chip ok">已有</span></td></tr>
+              <tr><td class="k">domain</td><td class="k">字段</td><td class="num">—</td><td class="num">—</td><td><span class="chip ok">已有</span></td></tr>
+              <tr><td class="k">parent / level / subsetOf</td><td class="k">L2</td><td class="num">0</td><td class="num">0</td><td><span class="chip bad">零字段</span></td></tr>
+              <tr><td class="k">maxHops 调小 → 子集</td><td class="k">L2</td><td class="num">—</td><td class="num">—</td><td><span class="chip bad">实测不成立</span></td></tr>
+              <tr><td class="k">原生切片 99</td><td class="k">—</td><td class="num">0</td><td class="num">95 存根</td><td><span class="chip bad">hops=0</span></td></tr>
+              <tr><td class="k">原生切片 99</td><td class="k">—</td><td class="num">3–31</td><td class="num">4 真跳</td><td><span class="chip ok">可用</span></td></tr>
+              <tr><td class="k">plan → PUT 形状</td><td class="k">—</td><td class="num">—</td><td class="num">—</td><td><span class="chip warn">400 需转换</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <div class="btnrow"><button class="btn sm">规划跨域路径</button><button class="btn ghost sm">切 L2 子集</button></div>
+        </div>
+
+        <div class="panel">
+          <h3>域覆盖<span class="c">L1 完整性</span></h3>
+          <div class="tw">
+          <table class="t">
+            <thead><tr><th>域</th><th class="num">类型</th><th class="num">覆盖</th><th></th></tr></thead>
+            <tbody>
+              <tr><td class="k">D03 需求</td><td class="num">14</td><td class="num">14</td><td><span class="chip ok">100%</span></td></tr>
+              <tr><td class="k">D04 产能</td><td class="num">21</td><td class="num">18</td><td><span class="chip warn">86%</span></td></tr>
+              <tr><td class="k">D05 物料</td><td class="num">16</td><td class="num">16</td><td><span class="chip ok">100%</span></td></tr>
+              <tr><td class="k">D06 财务</td><td class="num">12</td><td class="num">9</td><td><span class="chip warn">75%</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <h3 style="margin-top:12px">跨域交集<span class="c">桥接节点</span></h3>
+          <div class="tw">
+          <table class="t">
+            <tbody>
+              <tr><td class="k">D03 ✕ D04</td><td class="k">Line</td><td><span class="chip ok">通</span></td></tr>
+              <tr><td class="k">D04 ✕ D05</td><td class="k">BOM</td><td><span class="chip ok">通</span></td></tr>
+              <tr><td class="k">D03 ✕ D06</td><td class="k">—</td><td><span class="chip bad">无交集</span></td></tr>
+              <tr><td class="k">D05 ✕ D06</td><td class="k">—</td><td><span class="chip bad">无交集</span></td></tr>
+            </tbody>
+          </table>
+          </div>
+          <div class="btnrow"><button class="btn ghost sm">补桥接节点</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="ann"><table>
+<thead><tr><th></th><th>设计意图（不上屏）</th></tr></thead>
+<tbody>
+<tr><td class="i">1</td><td>七个面收敛成一条动线。实测 <b>0/7</b> 达可用标准，运营在上面完成不了本职工作。</td></tr>
+<tr><td class="i">2</td><td>新建对象类型补屏上入口。写端已存在（<code>POST object-types</code> = upsert，改得了 <code>unit</code>/<code>displayName</code>）⇒ <b>接线不是造门</b>。</td></tr>
+<tr><td class="i">3</td><td>单位可选可扩。今天 <b>9 项写死 TS 常量</b>，<code>t</code>/<code>kW</code>/<code>h</code> 全 400。</td></tr>
+<tr><td class="i">4</td><td>口径冲突在建模期拦下。今天 <code>Line.utilization</code> 百分点 vs <code>Process.utilization</code> 比率，已付 <b>100×</b> 与 <b>10⁴</b> 两次费。</td></tr>
+<tr><td class="i">5</td><td>每步可回退。今天建域 = 一步、不可逆、无提示地锁死发布；下线类型返回 200 但无事发生。</td></tr>
+<tr><td class="i">6</td><td>波及面前置。该能力已实装（四桶＋逐跳＋未解析位），今天埋在「边界册治理」名下，而那页 <b>0 个按钮</b>。</td></tr>
+<tr><td class="i">7</td><td>动线主脊换成 <b>对象 → 关系 → 状态 → 事件 → 规则 → 约束 → 因果 → 数据 → 场景/求解 → 发布</b>，不再按 API 表面排。</td></tr>
+<tr><td class="i">8</td><td><b>就绪度表 = 能不能做产销推演的验收表。</b>20 条核心关系「有关系 + 有数据 + 可遍历」三者缺一不算可用。<span class="chip n">待测</span> 由后端盘点回填，不臆造。</td></tr>
+<tr><td class="i">9</td><td>已有实测的三条：<code>compatible_with</code> 缺（<code>capacity_forecast(EX-220)</code> → <b>400 has no certified lines</b>）· <code>fulfills</code> 疑断链（42 条因果边成 <b>3 个互不相通分量</b>，无一条决策同时碰交付与钱）· 时间窗产能缺（<code>tickDays</code> 粒度 <b>1 天</b>，表达不了 2 小时停机）。</td></tr>
+<tr><td class="i">10</td><td><b>结构边与因果边是两套机制</b>（<code>LinkType</code> upsert/有 version/115 条 ｜ <code>PropagationRule</code> 追加/无 version/42 条/改删 404）。统一成单一 <code>Relation</code> + facet 后，「同 key 双算」与「三个分量互不相通」可能同时消失 —— 待盘点证实。</td></tr>
+<tr><td class="i">11</td><td><b>关系行内可改可停可删。</b>今天因果边表<b>行内 0 控件</b>，<code>PUT/PATCH/DELETE</code> 全 404，同 key 连写两次得系数 0.5 与 9.9 两条并存且 <code>combine:"sum"</code> 双算。停用必须<b>可逆</b> —— 结构边今天的「停用/下线」点了回不来，别复制。</td></tr>
+<tr><td class="i">12</td><td><b>约束走引用，不走内联。</b>对象的约束（设备产能、最小批量、换型时间）在配置器里<b>引用规则库</b>，规则改一次全体生效。⚠ 本仓已有 <code>coefficientRef</code> 这个引用机制，注释写着「禁内联业务常数（RL5）」，而<b>实测 42 条边里 0 条在用，全部内联回落</b> —— 机制在、没人走，属接线不属造门。</td></tr>
+<tr><td class="i">13</td><td><b>切片按域分层：域 → L1 完整切片 → L2 子集，另设跨域切片。</b>L1 的验收是<b>域内类型 100% 覆盖</b>；跨域切片的验收是<b>至少一个交集节点</b>（D03✕D04 交于 <code>Line</code>，D04✕D05 交于 <code>BOM</code>）。<b>无交集的域对必须显式标红</b> —— 它意味着那条多跳检索今天走不通。</td></tr>
+<tr><td class="i">14</td><td>⚠ <b>本节数字为设计目标，非实测。</b>今天实测：99 条切片里仅 <b>4 条</b>真多跳（3–31 跳），其余 <b>95 条</b>是 <code>hops=0 / paths:[]</code> 零跳存根；切片<b>有无域归属字段、有无父子层级、`slices/plan` 支不支持域内限定与 L2 切分</b>——全部待盘点回填。</td></tr>
+</tbody></table></div>
+
+<hr class="sep">
+
+<!-- ══════ 页面二 ══════ -->
+<h2 class="screen"><span class="n">页面二</span>决策推演台 · 多扰动叠加</h2>
+
+<div class="app">
+  <div class="topbar">
+    <span class="brand">决策支撑平台</span>
+    <span class="crumb">决策推演台</span>
+    <div class="tabs">
+      <span class="tab on">经营全景</span><span class="tab">传导图</span><span class="tab">方案对比</span>
+      <span class="tab">受影响清单</span><span class="tab">运行日志</span><span class="tab">演习结论</span>
+    </div>
+    <span class="spacer"></span>
+    <span class="crumb">世界 T+3 · 快照 v3 · COO</span>
+  </div>
+  <div class="body">
+    <nav class="nav">
+      <div class="grp">推演</div>
+      <a href="#" class="on">决策推演台</a>
+      <a href="#" class="dim">推演沙盘</a>
+      <a href="#" class="dim">方案库</a>
+      <div class="grp">经营</div>
+      <a href="#" class="dim">经营驾驶舱</a>
+      <a href="#" class="dim">订单台账 <span class="tag">500</span></a>
+      <div class="grp">建模</div>
+      <a href="#" class="dim">本体建模台</a>
+    </nav>
+
+    <div class="stage">
+      <div class="canvas-hd">
+        <span class="t">经营全景 · Δ 相对基线</span>
+        <span class="v" style="color:var(--bad)">⚠ 金额层今日无换算器 · 世界态动而求解器金额逐字节不变</span>
+      </div>
+
+      <div class="grid">
+        <div class="gh l">基地</div>
+        <div class="gh">营收<br>亿</div><div class="gh">毛利<br>亿</div><div class="gh">现金<br>亿</div>
+        <div class="gh">产能<br>%</div><div class="gh">交付<br>pt</div><div class="gh">库存<br>亿</div><div class="gh">赔付<br>万</div>
+
+        <div class="gr">常州</div>
+        <div class="cell cp1">+9.6</div><div class="cell cp1">+0.94</div><div class="cell cn1">−0.2</div>
+        <div class="cell cn3">+29</div><div class="cell cn3">−3.4</div><div class="cell cn1">+1.1</div><div class="cell cn2">2140</div>
+
+        <div class="gr">合肥</div>
+        <div class="cell c0">0</div><div class="cell c0">0</div><div class="cell c0">0</div>
+        <div class="cell cn1">+4</div><div class="cell cn1">−0.6</div><div class="cell c0">0</div><div class="cell c0">0</div>
+
+        <div class="gr">金坛</div>
+        <div class="cell cn1">−1.2</div><div class="cell cn1">−0.18</div><div class="cell c0">0</div>
+        <div class="cell cn2">+13</div><div class="cell cn2">−1.9</div><div class="cell cp1">−0.4</div><div class="cell cn1">380</div>
+
+        <div class="gr">武汉</div>
+        <div class="cell c0">0</div><div class="cell c0">0</div><div class="cell c0">0</div>
+        <div class="cell c0">+1</div><div class="cell c0">0</div><div class="cell c0">0</div><div class="cell c0">0</div>
+
+        <div class="gr">成都</div>
+        <div class="cell cp1">+0.8</div><div class="cell cp1">+0.11</div><div class="cell c0">0</div>
+        <div class="cell cn1">+6</div><div class="cell c0">−0.2</div><div class="cell c0">0</div><div class="cell c0">0</div>
+
+        <div class="gr">枣庄</div>
+        <div class="cell cn2">−4.1</div><div class="cell cn2">−0.62</div><div class="cell cn1">−0.5</div>
+        <div class="cell cn3">+41</div><div class="cell cn3">−5.2</div><div class="cell cn2">+2.3</div><div class="cell cn3">6910</div>
+
+        <div class="gr">厦门</div>
+        <div class="cell c0">0</div><div class="cell c0">0</div><div class="cell c0">0</div>
+        <div class="cell c0">0</div><div class="cell c0">0</div><div class="cell c0">0</div><div class="cell c0">0</div>
+
+        <div class="gr">洛阳</div>
+        <div class="cell cn1">−0.6</div><div class="cell c0">−0.05</div><div class="cell c0">0</div>
+        <div class="cell cn1">+8</div><div class="cell cn1">−0.9</div><div class="cell c0">0</div><div class="cell c0">0</div>
+
+        <div class="gr">眉山</div>
+        <div class="cell c0">0</div><div class="cell c0">0</div><div class="cell c0">0</div>
+        <div class="cell c0">+2</div><div class="cell c0">0</div><div class="cell c0">0</div><div class="cell c0">0</div>
+
+        <div class="gr">合计</div>
+        <div class="cell cp2">+9.62</div><div class="cell cp2">+0.94</div><div class="cell cn1">−0.71</div>
+        <div class="cell cn3">+29</div><div class="cell cn3">−3.4</div><div class="cell cn2">+3.0</div><div class="cell cn3">9430</div>
+      </div>
+
+      <div class="floats">
+
+      <!-- 卡 1 · 扰动因素 -->
+      <div class="float f-tl">
+        <h4>扰动因素<span class="c">4 / 6 启用</span></h4>
+        <div class="pf"><span class="sw on"></span><span class="nm">临时插单 · 广汽</span><span class="amt">+50,000 套</span></div>
+        <div class="pf"><span class="sw on"></span><span class="nm">产线停机 · 常州 L3</span><span class="amt">48 h</span></div>
+        <div class="pf"><span class="sw on"></span><span class="nm">物料延期 · 碳酸锂</span><span class="amt">+12 天</span></div>
+        <div class="pf"><span class="sw on"></span><span class="nm">客户改期 · 比亚迪</span><span class="amt">−7 天</span></div>
+        <div class="pf off"><span class="sw"></span><span class="nm">调价 · 储能细分</span><span class="amt">−5.0%</span></div>
+        <div class="pf off"><span class="sw"></span><span class="nm">换产切型 · 金坛 L1</span><span class="amt">4680 → 方形</span></div>
+        <label class="f">起始拍</label>
+        <input class="inp" value="3（= 当前拍）">
+        <div class="btnrow">
+          <button class="btn">推演</button>
+          <button class="btn ghost sm">＋ 扰动</button>
+          <button class="btn ghost sm">存为方案</button>
+        </div>
+      </div>
+
+      <!-- 卡 2 · 传导链 -->
+      <div class="float f-tm">
+        <h4>传导链<span class="c">4 跳 · 861 格</span></h4>
+        <div class="hop"><span class="d">1</span><div><div class="n1">Order SO-3391 · qty</div><div class="n2">输入 · 起始拍 3</div></div><span class="v">+50,000</span></div>
+        <div class="hop"><span class="d">2</span><div><div class="n1">Line 常州-方形NCM · load</div><div class="n2">系数 0.80 · 延迟 0 拍 · 化成柜</div></div><span class="v">88 → 117%</span></div>
+        <div class="hop"><span class="d">3</span><div><div class="n1">Material 碳酸锂 · 齐套</div><div class="n2">系数 5.2109 · BOM 占比派生</div></div><span class="v">−12.4 天</span></div>
+        <div class="hop"><span class="d">4</span><div><div class="n1">OrderPromise · promiseRisk</div><div class="n2">系数 0.80 · 3 客户</div></div><span class="v">晚 6–11 天</span></div>
+        <h4 style="margin-top:9px">合计后果<span class="c">经营口径</span></h4>
+        <div class="kpi">
+          <div class="c"><div class="lab">毛利</div><div class="v">118.85</div><div class="d up">+0.94 亿</div></div>
+          <div class="c"><div class="lab">在手订单</div><div class="v">507.26</div><div class="d up">+9.62 亿</div></div>
+          <div class="c"><div class="lab">准时交付</div><div class="v">91.1</div><div class="d down">−3.4 pt</div></div>
+          <div class="c"><div class="lab">违约赔付</div><div class="v">9,430</div><div class="d down">+9,430 万</div></div>
+        </div>
+      </div>
+
+      <!-- 卡 3 · 受影响清单 -->
+      <div class="float f-tr">
+        <h4>受影响<span class="c">affected_orders · 127 单 · 18 客户</span></h4>
+        <div class="tw">
+        <table class="t">
+          <thead><tr><th>订单</th><th>客户</th><th class="num">晚</th><th>级</th></tr></thead>
+          <tbody>
+            <tr><td class="k">SO-2214</td><td>比亚迪</td><td class="num">11</td><td><span class="chip bad">高</span></td></tr>
+            <tr><td class="k">SO-2890</td><td>上汽</td><td class="num">8</td><td><span class="chip bad">高</span></td></tr>
+            <tr><td class="k">SO-3102</td><td>零跑</td><td class="num">6</td><td><span class="chip warn">中</span></td></tr>
+            <tr><td class="k">SO-3350</td><td>小鹏</td><td class="num">4</td><td><span class="chip warn">中</span></td></tr>
+            <tr><td class="k">SO-2977</td><td>吉利</td><td class="num">3</td><td><span class="chip warn">中</span></td></tr>
+            <tr><td class="k">SO-3401</td><td>沧浪电网</td><td class="num">2</td><td><span class="chip n">低</span></td></tr>
+            <tr><td class="k">SO-3188</td><td>奇瑞</td><td class="num">2</td><td><span class="chip n">低</span></td></tr>
+          </tbody>
+        </table>
+        </div>
+        <h4 style="margin-top:9px">选中 · SO-2214</h4>
+        <dl class="kv">
+          <dt>客户</dt><dd>比亚迪</dd>
+          <dt>数量</dt><dd>7,259 套</dd>
+          <dt>金额</dt><dd>¥1.57 亿</dd>
+          <dt>原交期</dt><dd>2026-06-24</dd>
+          <dt>新交期</dt><dd>2026-07-05</dd>
+          <dt>基地</dt><dd>常州 · 金华</dd>
+          <dt>赔付</dt><dd>2,140 万</dd>
+        </dl>
+      </div>
+
+      <!-- 卡 4 · 方案 -->
+      <div class="float f-bm">
+        <h4>目标权重<span class="c">拖动即重算</span></h4>
+        <div class="tw">
+        <table class="t">
+          <tbody>
+            <tr><td class="k">毛利</td><td style="width:52%"><span style="display:inline-block;width:100%;height:5px;border-radius:3px;background:linear-gradient(90deg,var(--accent-solid) 40%,rgba(255,255,255,.12) 40%)"></span></td><td class="num">0.40</td></tr>
+            <tr><td class="k">准时交付</td><td><span style="display:inline-block;width:100%;height:5px;border-radius:3px;background:linear-gradient(90deg,var(--accent-solid) 35%,rgba(255,255,255,.12) 35%)"></span></td><td class="num">0.35</td></tr>
+            <tr><td class="k">现金周期</td><td><span style="display:inline-block;width:100%;height:5px;border-radius:3px;background:linear-gradient(90deg,var(--accent-solid) 15%,rgba(255,255,255,.12) 15%)"></span></td><td class="num">0.15</td></tr>
+            <tr><td class="k">客户优先级</td><td><span style="display:inline-block;width:100%;height:5px;border-radius:3px;background:linear-gradient(90deg,var(--accent-solid) 10%,rgba(255,255,255,.12) 10%)"></span></td><td class="num">0.10</td></tr>
+          </tbody>
+        </table>
+        </div>
+
+        <h4 style="margin-top:10px">帕累托前沿<span class="c">12 解 · 4 个非支配</span></h4>
+        <div class="tw">
+        <table class="t">
+          <thead><tr><th>方案</th><th class="num">毛利Δ<br>亿</th><th class="num">交付Δ<br>pt</th><th class="num">现金Δ<br>亿</th><th class="num">加权</th></tr></thead>
+          <tbody>
+            <tr><td class="k">A 外协补产</td><td class="num">+0.62</td><td class="num">−0.8</td><td class="num">−1.8</td><td class="num">0.71</td></tr>
+            <tr><td class="k">B 部分接单</td><td class="num">+0.51</td><td class="num">−1.1</td><td class="num">−0.4</td><td class="num"><span class="chip ok">0.78</span></td></tr>
+            <tr><td class="k">C 全接挤占</td><td class="num">+0.94</td><td class="num">−3.4</td><td class="num">−0.2</td><td class="num">0.63</td></tr>
+            <tr><td class="k">D 改期 2 单</td><td class="num">+0.44</td><td class="num">−0.3</td><td class="num">−0.1</td><td class="num">0.74</td></tr>
+            <tr><td colspan="5" style="color:var(--txt-3);font-size:10.5px">另 8 解被支配 · 权重改变时前沿不变，排序变</td></tr>
+          </tbody>
+        </table>
+        </div>
+        <div class="btnrow"><button class="btn sm">采用 B · 提交审批</button><button class="btn ghost sm">并排比对</button><button class="btn ghost sm">导出</button></div>
+      </div>
+
+      <!-- 卡 5 · 运行日志 -->
+      <div class="float f-bl">
+        <h4>运行日志<span class="c">1.24 s</span></h4>
+        <dl class="kv">
+          <dt>引用对象</dt><dd>500 Order · 20 Customer</dd>
+          <dt>切片</dt><dd>order_to_material · 7 跳</dd>
+          <dt>命中规则</dt><dd>4</dd>
+          <dt>系数来源</dt><dd>BOM 成本占比</dd>
+          <dt>阈值来源</dt><dd>trigger_thresholds</dd>
+          <dt>agent</dt><dd>未调用</dd>
+          <dt>变化格</dt><dd>861 / 7204</dd>
+          <dt>实测格</dt><dd>0 / 7204</dd>
+          <dt>扰不动</dt><dd>4 项</dd>
+        </dl>
+      </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="ann"><table>
+<thead><tr><th></th><th>设计意图（不上屏）</th></tr></thead>
+<tbody>
+<tr><td class="i">1</td><td><b>多扰动并列，逐条可开关。</b>四条同时施加，底图是叠加后的结果 —— 今天只能一条一条试。</td></tr>
+<tr><td class="i">2</td><td><b>底图 = 结果层。</b>13 基地 × 7 指标一屏可见，颜色即 Δ 强度。今天整个推演区 <b>13 页签 0 个金额数</b>。</td></tr>
+<tr><td class="i">3</td><td><b>起始拍默认 = 当前拍，且当前拍上屏。</b>今天默认 <code>0</code> 而世界在 T+3，填 0 一次都不生效、零提示 ⇒「引擎不读输入」被误判 <b>三次</b>，实测引擎误差 <b>0</b>。</td></tr>
+<tr><td class="i">4</td><td><b>传导链每跳带系数、延迟拍、来源。</b>今天有路径无口径。</td></tr>
+<tr><td class="i">5</td><td><b>后果为钱/天/套/客户名。</b>同一张单在对象层带 <code>广汽 / 7,259 套 / ¥1.57 亿 / 06-24</code>，进推演层变 <code>5496.22</code>。</td></tr>
+<tr><td class="i">6</td><td><b>运行日志常驻，含「没动什么」。</b><code>实测格 0/7204</code> 与「扰不动 4 项」不折叠 —— 今天这条是全页唯一默认折叠的。</td></tr>
+<tr><td class="i">7</td><td><b>出口是可导出的方案。</b>今天控制台内 <b>0 导出</b>，「演习结论」页签置灰（title：版面还没接）。</td></tr>
+<tr><td class="i">8</td><td><b>权重上屏，输出多方案而非一个方案。</b>目标权重（毛利/交付/现金/客户优先级）由用户在屏上设，系统给<b>帕累托前沿</b>与并排比对 —— <b>权重变时前沿不变、排序变</b>，这正是「多目标」与「换个加权再算一遍」的区别。</td></tr>
+<tr><td class="i">9</td><td>⚠ <b>这同时解掉了扇入归一化那个死结。</b>传导层实测：500 订单 / 6 型号 = <b>83.3 扇入</b> × 0.8 × 51.9 ⇒ 每拍 ~3,460 灌进 0–100 的量，稳态 <b>94× 天花板</b>；因 <code>x*=inflow/λ≥inflow</code>，<b>任何衰减率都修不了</b>。把加权从引擎常数改成<b>屏上杠杆</b>后，归一化口径不再需要被谁替用户选定。</td></tr>
+<tr><td class="i">10</td><td>⚠ <b>今天差什么</b>：<code>方案寻优</code> 已有帕累托前沿 <b>12 解</b>，但两根轴写死为 <code>OrderLine.unitPrice</code>/<code>Base.serveCost</code>；方案比对<b>只有交付Δ是真的</b>（无 cash 字段）；「代价 248」单位是<b>惩罚加权分·非货币</b>，按万元画就是骗人。<b>机制在，轴选错了。</b></td></tr>
+</tbody></table></div>
+
+<footer>两页共用现有 token，无新增设计语言。屏上不放解释句，只放标签 · 数值 · 状态。数字来自 LOOP9/LOOP10 六视角在真后端（<code>SEED_DEMO=1</code>，禁 <code>VITE_MOCK</code>）+ 真浏览器的实测。</footer>
+
+</div>
+
+</body></html>

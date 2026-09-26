@@ -1,7 +1,7 @@
 # 预置场景记录安装包（自带「历史推演」数据）
 
 本目录的两份 PostgreSQL 种子让**全新安装即自带已完成的推演与历史数据**——
-无需任何手工配置，登录后在「运营回顾 / 对话坞历史推演」即可看到推演的全过程、数据与结果。
+无需任何手工配置，登录后在「运营复盘 / 对话坞历史推演」即可看到推演的全过程、数据与结果。
 
 ## 一键启动（Docker，推荐）
 
@@ -42,7 +42,7 @@ psql "$AGENTCORE_DATABASE_URL" -v ON_ERROR_STOP=1 -f db-seed/agentcore-seed.sql
 
 ## 在哪里看「历史推演」
 
-### A. 运营回顾页（renderer=review，消费 `GET /a/v1/history/bundle`）
+### A. 运营复盘页（renderer=review，消费 `GET /a/v1/history/bundle`）
 livedIn 回放一年（T−365d→T0，12 月批次）写入 `lived_in_states`，页面可见：
 - 12 个月产出趋势（检修月/到货危机下凹）
 - 60 张已交付订单台账（含延期天数）

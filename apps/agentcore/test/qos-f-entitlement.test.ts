@@ -44,7 +44,7 @@ describe("Feature entitlement enforcement (entitlement PRD §4/§5)", () => {
       payload: { args: { modelId: "4680-NCM", weeks: 6 } },
     });
     expect(ok.statusCode).toBe(200);
-    expect((ok.json() as { data: { p50: number } }).data.p50).toBeGreaterThan(0);
+    expect((ok.json() as { data: { capWanP50: number } }).data.capWanP50).toBeGreaterThan(0);
   });
 
   it("E3: qos.agent-fallback off → would-be path B returns WORKFLOW_ONLY behavior (请换个问法 + intents), no agent run", async () => {
@@ -73,7 +73,8 @@ describe("Feature entitlement enforcement (entitlement PRD §4/§5)", () => {
 
   it("FeatureGate: TTL cache hit + ETag 304 revalidation (C-1: B consumes A's public API)", async () => {
     const calls: { url: string; ifNoneMatch?: string }[] = [];
-    const fetchImpl = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    // `RequestInfo` 是 DOM lib 的类型，本包 lib 只有 ES2022 ⇒ TS2552。取 fetch 自己的形参类型。
+    const fetchImpl = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const headers = (init?.headers ?? {}) as Record<string, string>;
       calls.push({ url: String(url), ifNoneMatch: headers["if-none-match"] });
       if (headers["if-none-match"] === '"cv-7"') {
@@ -140,8 +141,11 @@ describe("Feature entitlement enforcement (entitlement PRD §4/§5)", () => {
       payload: { args: { baseId: "base_changzhou" } },
     });
     expect(res.statusCode).toBe(200);
-    const data = (res.json() as { data: { orders: unknown[]; problems: { category: string; orderCount: number; rootChains: { layers: { kind: string }[] }[] }[] } }).data;
-    expect(Array.isArray(data.orders)).toBe(true); // 既有字段不变
+    // WO-MOCK-ENGINE-PARITY：改断 `data.affected`（真侧单基地分支必发）——旧断言读的 `data.orders`
+    // 是 mock 私自多发的字段（真侧 affectedOrders 返回里没有），把它当「既有字段」断言 = 咬 mock 自洽。
+    const data = (res.json() as { data: { affected: unknown[]; total: number; problems: { category: string; orderCount: number; rootChains: { layers: { kind: string }[] }[] }[] } }).data;
+    expect(Array.isArray(data.affected)).toBe(true); // 真侧口径字段（risk.ts affectedOrders）
+    expect(data.total).toBe(data.affected.length);
     expect(data.problems.length).toBeGreaterThan(0);
     for (const p of data.problems) {
       expect(["DELIVERY", "MARGIN", "KIT", "CREDIT"]).toContain(p.category);

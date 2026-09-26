@@ -1,15 +1,18 @@
-import type { SourceSchema } from "@platform/contracts";
+import type { ConnectionTestResult, SourceSchema } from "@platform/contracts";
 import type { AuthCtx, Connection, RawDataset, SyncJob } from "../domain.js";
 import type { Repos } from "../repo/repo.js";
 import type { BlobStore } from "../blob.js";
 import type { Metrics } from "../metrics.js";
 import type { TimeseriesService } from "../timeseries.js";
 import type { SchedulerService } from "../scheduler.js";
+import type { OutboxService } from "../outbox.js";
 import { CredentialCipher } from "../crypto.js";
 import { newId } from "../ids.js";
 import { notFound, validationError } from "../errors.js";
 import { createAdapter, CREDENTIAL_FIELDS, getConnectorType } from "./registry.js";
+import { registerRealizedOutcome } from "../calibration/realized.js";
 import { profileRows, suggestDatasetKind } from "./profiler.js";
+import { probeHttp, probeTimeoutMs, safeTarget, TYPES_WITHOUT_ADAPTER } from "./probe.js";
 
 /** Per-dataset config on the connection (A8.1: TIMESERIES marking, also for CSV uploads). */
 interface DatasetConfig {
@@ -19,12 +22,44 @@ interface DatasetConfig {
   entityRefField?: string;
   timeField?: string;
   measureFields?: string[];
+  /**
+   * M0-F1 实料映射（PRD-ground-truth §2.1）：声明本数据集的行是「某对象的某属性在某日的实际值」，
+   * sync 落行后逐行登记 RealizedOutcome（source:INGESTED，provenance 带 connId/syncJobId/datasetKey/rowRef）。
+   */
+  realizedOutcome?: {
+    typeKey: string; // 字面量对象类型（预测侧 = "Model"）
+    objectIdField: string; // 行里承载对象 id 的字段
+    prop: string; // 字面量属性名（产能 = "dailyOutputWan"）
+    asOfField: string; // 行里承载日期的字段（YYYY-MM-DD）
+    valueField: string; // 行里承载实际值的字段（有限数）
+    unitField?: string; // 行里承载单位的字段（缺省时用 unit）
+    unit?: string; // 字面量单位（unitField 缺省时必填）
+  };
+}
+
+/**
+ * M0-F1 申报期硬拒：mock_* 连接不许挂实料映射（PRD §2.1——「记录真实、数据合成」形态的防线）。
+ * 在 create/update 两处声明点拒绝并点名，而不是等 sync 时静默不登记。
+ */
+function assertRealizedMappingAllowed(connectorTypeKey: string, config: Record<string, unknown>): void {
+  if (!connectorTypeKey.startsWith("mock_")) return;
+  const datasets = config.datasets as Record<string, DatasetConfig> | undefined;
+  const offenders = Object.entries(datasets ?? {})
+    .filter(([, d]) => d?.realizedOutcome)
+    .map(([name]) => name);
+  if (offenders.length > 0) {
+    throw validationError(
+      `connectorTypeKey 是 ${connectorTypeKey}（mock_*）⇒ 数据集 [${offenders.join(", ")}] 拒绝挂 realizedOutcome 实料映射` +
+        `（mock 适配器的行不落真实摄取面，不可登记为实料）`,
+    );
+  }
 }
 
 /** A1 connector framework: connections, schema discovery, sync → RawDataset | ts writer. */
 export class ConnectorService {
   private ts: TimeseriesService | null = null;
   private scheduler: SchedulerService | null = null;
+  private outbox: OutboxService | null = null;
 
   constructor(
     private repos: Repos,
@@ -34,9 +69,10 @@ export class ConnectorService {
     private fetchImpl: typeof fetch = fetch,
   ) {}
 
-  wire(deps: { ts?: TimeseriesService; scheduler?: SchedulerService }): void {
+  wire(deps: { ts?: TimeseriesService; scheduler?: SchedulerService; outbox?: OutboxService }): void {
     this.ts = deps.ts ?? this.ts;
     this.scheduler = deps.scheduler ?? this.scheduler;
+    this.outbox = deps.outbox ?? this.outbox;
   }
 
   private datasetConfig(conn: Connection, dataset: string): DatasetConfig | undefined {
@@ -52,6 +88,7 @@ export class ConnectorService {
       name: string;
       config: Record<string, unknown>;
       schedule?: { cron: string };
+      category?: string;
     },
   ): Promise<Connection> {
     const type = getConnectorType(input.connectorTypeKey);
@@ -75,13 +112,117 @@ export class ConnectorService {
       config,
       schedule: input.schedule,
       status: "ACTIVE",
+      // A11：实例 category 默认取连接器类型 registry category，显式传则覆盖（可自定义值 R14）。
+      category: input.category?.trim() || type.category,
     };
+    assertRealizedMappingAllowed(conn.connectorTypeKey, conn.config);
     await this.repos.connections.put(conn);
     // S3: connections with schedule.cron auto-register a CONNECTOR_SYNC job.
     if (this.scheduler && input.schedule?.cron) {
       await this.scheduler.register(ctx.tenantId, "CONNECTOR_SYNC", conn.id, input.schedule.cron);
     }
     return this.redact(conn);
+  }
+
+  /**
+   * 「测试连接」——**真去连**，连不上说得出是哪一类连不上。
+   *
+   * 原实现只查 `configSchema.required`，齐了就 `ok:true`：`host=nonexistent.invalid` 返「连接成功」（实测 6ms）。
+   * 现在按类型选探针，并在回包里带 `probed`（有没有真发起连接）+ `latencyMs`（真连了才有耗时）——
+   * 这两位让「试过了，连不上」与「压根没试」在回包里可区分。
+   *
+   * 探针按类型分档（**每一档都不许对没验证过的东西说成功，也不许对能用的东西说不支持**）：
+   * - **无适配器型**（`TYPES_WITHOUT_ADAPTER`）：`ok:false / UNSUPPORTED_TYPE`，理由见 probe.ts。
+   * - **知识库**（`knowledge_base`）：由 `KbService` 服务、文档靠上传灌入 ⇒ 探后备存储，**不探 endpoint**。
+   * - **网络型**（`rest_api`）：有界 HTTP GET，按 DNS/拒绝/超时/认证/HTTP 分类。
+   * - **文件型**（`file_upload`/`prototype_html`）：探 blob 在不在——这就是该源的「可达」。
+   * - **内置样例型**（`mock_*`）：真调 `adapter.listDatasets()` 枚举一遍。**这是反向对照**：
+   *   它必须仍返 `ok:true`，否则就是把按钮做成了永远失败。
+   */
+  async testConnection(
+    ctx: AuthCtx,
+    input: { connectorTypeKey: string; config: Record<string, unknown> },
+  ): Promise<ConnectionTestResult> {
+    const type = getConnectorType(input.connectorTypeKey);
+    if (!type) {
+      return { ok: false, reason: "UNKNOWN_TYPE", message: `未知连接器类型：${input.connectorTypeKey}`, probed: false };
+    }
+    // ① 表单层：必填项。未发起连接 ⇒ probed:false（保留原行为，它是本次的金丝雀）。
+    const required = (type.configSchema.required as string[] | undefined) ?? [];
+    const missing = required.filter((k) => {
+      const v = input.config[k];
+      return v == null || v === "";
+    });
+    if (missing.length > 0) {
+      return { ok: false, reason: "MISSING_CONFIG", message: `缺少必填配置：${missing.join("、")}`, probed: false };
+    }
+    // ② 已注册但无适配器：不去连，也不谎报成功。
+    if (TYPES_WITHOUT_ADAPTER.has(type.key)) {
+      return {
+        ok: false,
+        reason: "UNSUPPORTED_TYPE",
+        message: `当前版本尚未内置 ${type.key} 的数据适配器：即使网络可达，建立连接后也无法读取表结构或同步数据。请改用文件导入或通用 REST 接口接入。`,
+        probed: false,
+        target: safeTarget(input.config.host ?? input.config.instanceUrl ?? input.config.jdbcUrl),
+      };
+    }
+    const timeoutMs = probeTimeoutMs();
+    // ③ 知识库：由 KbService 服务，文档靠上传灌入、不从 endpoint 拉取 ⇒ **不许拿 HTTP 探 endpoint**
+    //    （实测：databuilder 建的 KB 连接 endpoint 是 `internal://databuilder`，HTTP 探必失败 = 假阴性）。
+    //    真探针 = 后备存储读得动吗：真去数一遍本租户该类型下的文档。
+    if (type.key === "knowledge_base") {
+      const startedAt = Date.now();
+      try {
+        // 向导里连接还没落库、拿不到 connId ⇒ 只能按租户统计。措辞要如实说是「本租户」，
+        // 不许写成「本连接已存 N 篇」——那是个连数字都对不上的谎。
+        const docs = await this.repos.kbDocs.list(ctx.tenantId, () => true);
+        return {
+          ok: true,
+          reason: "OK",
+          message: `知识库可用（本租户现有 ${docs.length} 篇文档）。文档通过「上传」灌入，不从该地址拉取。`,
+          latencyMs: Date.now() - startedAt,
+          probed: true,
+        };
+      } catch {
+        return { ok: false, reason: "UNREACHABLE", message: "知识库存储读取失败：请稍后重试或联系管理员。", latencyMs: Date.now() - startedAt, probed: true };
+      }
+    }
+    // ④ 网络型：有界 HTTP 探测。
+    const urlField: Record<string, string> = { rest_api: "url" };
+    const field = urlField[type.key];
+    if (field) return probeHttp(input.config[field], this.fetchImpl, timeoutMs);
+    // ⑤ 文件型：blob 在不在就是「可达」。
+    if (type.key === "file_upload" || type.key === "prototype_html") {
+      const key = input.config.blobKey;
+      if (typeof key !== "string" || key === "") {
+        return { ok: false, reason: "MISSING_CONFIG", message: "缺少必填配置：blobKey", probed: false };
+      }
+      const startedAt = Date.now();
+      try {
+        const exists = await this.blob.exists(key);
+        const latencyMs = Date.now() - startedAt;
+        return exists
+          ? { ok: true, reason: "OK", message: "文件已就绪，可读取。", latencyMs, probed: true }
+          : { ok: false, reason: "NOT_FOUND", message: "文件不存在：该上传记录已失效或被清理，请重新上传。", latencyMs, probed: true };
+      } catch {
+        return { ok: false, reason: "UNREACHABLE", message: "读取文件存储失败：请稍后重试或联系管理员。", latencyMs: Date.now() - startedAt, probed: true };
+      }
+    }
+    // ⑥ 内置样例型：真枚举一遍数据集（反向对照——这一档必须仍然 ok:true）。
+    const startedAt = Date.now();
+    try {
+      const adapter = createAdapter(type.key, input.config, this.blob, this.fetchImpl);
+      const datasets = await adapter.listDatasets();
+      const latencyMs = Date.now() - startedAt;
+      return { ok: true, reason: "OK", message: `连接可用，可读取 ${datasets.length} 张数据表。`, latencyMs, probed: true };
+    } catch (err) {
+      const latencyMs = Date.now() - startedAt;
+      // createAdapter 对未实现类型抛的正是这一条 —— 兜住它，避免 500。
+      const msg = err instanceof Error && /no adapter implementation/.test(err.message)
+        ? `当前版本尚未内置 ${type.key} 的数据适配器：建立连接后也无法读取表结构或同步数据。`
+        : "连接失败：数据源未能返回表结构。";
+      return { ok: false, reason: "UNSUPPORTED_TYPE", message: msg, latencyMs, probed: true };
+    }
   }
 
   /** Update schedule → re-register/unregister the CONNECTOR_SYNC job. */
@@ -96,6 +237,7 @@ export class ConnectorService {
       for (const [k, v] of Object.entries(patch.config)) {
         conn.config[k] = CREDENTIAL_FIELDS.has(k) && typeof v === "string" ? this.cipher.encrypt(v) : v;
       }
+      assertRealizedMappingAllowed(conn.connectorTypeKey, conn.config);
     }
     if (patch.schedule !== undefined) {
       conn.schedule = patch.schedule ?? undefined;
@@ -107,6 +249,14 @@ export class ConnectorService {
         }
       }
     }
+    await this.repos.connections.put(conn);
+    return this.redact(conn);
+  }
+
+  /** 约束执行层 stage2：持久化该连接器（数据源）的本体校验策略 + 字段映射（按租户）。 */
+  async setValidationPolicy(ctx: AuthCtx, id: string, policy: import("@platform/contracts").ValidationPolicy): Promise<Connection> {
+    const conn = await this.getConnection(ctx, id);
+    conn.validationPolicy = policy;
     await this.repos.connections.put(conn);
     return this.redact(conn);
   }
@@ -175,6 +325,8 @@ export class ConnectorService {
       rowCounts: {},
     };
     await this.repos.syncJobs.put(job);
+    // DF-1/DF-4：本次同步落库的结构化 RawDataset id（TIMESERIES 走 ts 写入不计入）。
+    const landedDatasetIds: string[] = [];
     try {
       const adapter = createAdapter(conn.connectorTypeKey, this.decryptedConfig(conn), this.blob, this.fetchImpl);
       const datasets = await adapter.listDatasets();
@@ -221,16 +373,89 @@ export class ConnectorService {
           fields: profileRows(rows),
           rowCount: rows.length,
           syncedAt: new Date().toISOString(),
+          sourceCategory: conn.category, // A11 溯源继承
+
         };
         await this.repos.rawDatasets.put(ds);
         await this.repos.rawRows.replace(ctx.tenantId, ds.id, rows);
         job.rowCounts[name] = rows.length;
+        landedDatasetIds.push(ds.id);
+        // M0-F1：挂了实料映射的数据集 ⇒ 逐行登记 RealizedOutcome（provenance 可追回哪次 sync 的哪一行）。
+        // ⛔ 行级缺字段不许静默丢弃 —— 哪一行缺哪个字段都点进 sync 回执（job.realizedOutcomes.skipped）。
+        if (dsCfg?.realizedOutcome) {
+          const mapping = dsCfg.realizedOutcome;
+          const importedAt = new Date().toISOString();
+          const receipt = { registered: 0, skipped: [] as { rowRef: string; reason: string }[] };
+          for (let i = 0; i < rows.length; i++) {
+            const row = rows[i]!;
+            const rowRef = `#${i}`;
+            const objectId = row[mapping.objectIdField];
+            const asOf = row[mapping.asOfField];
+            const rawValue = row[mapping.valueField];
+            const unit = mapping.unitField ? row[mapping.unitField] : mapping.unit;
+            if (objectId === undefined || objectId === null || String(objectId) === "") {
+              receipt.skipped.push({ rowRef, reason: `缺字段 ${mapping.objectIdField}（objectId）` });
+              continue;
+            }
+            if (typeof asOf !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+              receipt.skipped.push({ rowRef, reason: `字段 ${mapping.asOfField} 不是 YYYY-MM-DD 日期（asOf）` });
+              continue;
+            }
+            const value = typeof rawValue === "number" ? rawValue : Number(rawValue);
+            if (!Number.isFinite(value)) {
+              receipt.skipped.push({ rowRef, reason: `字段 ${mapping.valueField} 不是有限数（value）` });
+              continue;
+            }
+            if (typeof unit !== "string" || unit === "") {
+              receipt.skipped.push({
+                rowRef,
+                reason: mapping.unitField ? `字段 ${mapping.unitField} 缺（unit）` : "映射缺 unit（unitField 未配且 unit 未给）",
+              });
+              continue;
+            }
+            await registerRealizedOutcome(this.repos, ctx.tenantId, {
+              subjectRef: { typeKey: mapping.typeKey, objectId: String(objectId), prop: mapping.prop },
+              asOf,
+              value,
+              unit,
+              source: "INGESTED",
+              provenance: {
+                connId: conn.id,
+                syncJobId: job.id,
+                datasetKey: name,
+                rowRef,
+                importedBy: ctx.userId,
+                importedAt,
+              },
+            });
+            receipt.registered++;
+          }
+          job.realizedOutcomes = receipt;
+          await this.repos.syncJobs.put(job);
+        }
       }
       job.status = "SUCCEEDED";
       job.finishedAt = new Date().toISOString();
       await this.repos.syncJobs.put(job);
       await this.repos.connections.put({ ...conn, lastSyncAt: job.finishedAt, status: "ACTIVE" });
       this.metrics.inc("dc_connector_sync_total", { type: conn.connectorTypeKey, outcome: "success" });
+      // DF-1：结构化数据落地 → raw_dataset.uploaded（失效 raw-datasets / modeling.dataset-picker · DL1）。
+      // DF-4：同步完成 → connection.sync_completed（失效 dashboard / scenario-data / object-queries · DL9）。
+      // 聚合键取 connId，使同一连接的多次同步/失败事件按序投递。
+      if (landedDatasetIds.length > 0) {
+        await this.outbox?.emit(
+          ctx.tenantId,
+          "raw_dataset.uploaded",
+          { connId, datasetIds: landedDatasetIds, count: landedDatasetIds.length, jobId: job.id },
+          connId,
+        );
+      }
+      await this.outbox?.emit(
+        ctx.tenantId,
+        "connection.sync_completed",
+        { connId, jobId: job.id, rowCounts: job.rowCounts },
+        connId,
+      );
       return job;
     } catch (err) {
       job.status = "FAILED";
@@ -239,6 +464,13 @@ export class ConnectorService {
       await this.repos.syncJobs.put(job);
       await this.repos.connections.put({ ...conn, status: "ERROR", lastError: job.error });
       this.metrics.inc("dc_connector_sync_total", { type: conn.connectorTypeKey, outcome: "failure" });
+      // DF-4：同步失败 → connector.sync_failed（失效 connectors / quarantine，通知运营）。
+      await this.outbox?.emit(
+        ctx.tenantId,
+        "connector.sync_failed",
+        { connId, jobId: job.id, error: job.error },
+        connId,
+      );
       return job;
     }
   }
@@ -264,6 +496,29 @@ export class ConnectorService {
     const schema = await this.discoverSchema(ctx, conn.id);
     const job = await this.sync(ctx, conn.id);
     return { connection: conn, schema, syncJobId: job.id };
+  }
+
+  /**
+   * prototype-intake P3 导入正门：原型 HTML → BlobStore → prototype_html 连接（数据连接器可见）
+   * → discovery + sync 把内嵌数据表全量落 RawDataset（在线查看，值与原型一致）。**不写死前端**。
+   */
+  async importPrototype(
+    ctx: AuthCtx,
+    filename: string,
+    html: string,
+  ): Promise<{ connection: Connection; schema: SourceSchema; syncJobId: string; rowCounts: Record<string, number> }> {
+    const safeName = filename.trim() || "prototype.html";
+    const blobKey = `prototype/${ctx.tenantId}/${newId("blob")}-${safeName}`;
+    await this.blob.put(blobKey, Buffer.from(html, "utf8"));
+    const conn = await this.createConnection(ctx, {
+      connectorTypeKey: "prototype_html",
+      name: `原型导入:${safeName}`,
+      config: { blobKey, filename: safeName },
+      category: "PROTOTYPE",
+    });
+    const schema = await this.discoverSchema(ctx, conn.id);
+    const job = await this.sync(ctx, conn.id);
+    return { connection: conn, schema, syncJobId: job.id, rowCounts: job.rowCounts };
   }
 
   async listRawDatasets(ctx: AuthCtx, connId?: string): Promise<RawDataset[]> {

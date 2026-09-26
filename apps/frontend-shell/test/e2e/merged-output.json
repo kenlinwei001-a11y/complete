@@ -1,0 +1,245 @@
+{
+  "tag": "merged",
+  "at": "2026-09-08T04:14:46.994Z",
+  "landed": "http://127.0.0.1:5193/",
+  "shotHome": "merged-01-home-after-login.png",
+  "noMock": {
+    "ok": true,
+    "realHits": 5,
+    "sample": [
+      "200 POST http://127.0.0.1:4032/a/v1/auth/login",
+      "200 GET http://127.0.0.1:4032/a/v1/me/workspace",
+      "200 GET http://127.0.0.1:4032/a/v1/history/watermark",
+      "200 GET http://127.0.0.1:4032/a/v1/data-health",
+      "200 GET http://127.0.0.1:4042/b/v1/scenarios"
+    ]
+  },
+  "inventory": {
+    "hotN": 6,
+    "viewN": 36,
+    "allN": 1,
+    "viewNames": [
+      "事件影响与对策",
+      "统一推演控制台",
+      "推演沙盘",
+      "经营驾驶舱",
+      "本体图谱",
+      "产能推演",
+      "订单台账",
+      "规划体检",
+      "规划建议",
+      "接单可行性",
+      "月度规划",
+      "接单组合优选",
+      "全链线路图",
+      "在途与在制",
+      "物理拓扑",
+      "节点检视",
+      "全链阻滞点",
+      "流程等待态",
+      "采购四段腿分解",
+      "运营复盘",
+      "年度规划",
+      "季度规划",
+      "订单进展与卡因",
+      "基地地理视图",
+      "图谱·全景",
+      "图谱·主干分级",
+      "图谱·产能推演网络",
+      "图谱·数据来源",
+      "图谱·求解器",
+      "图谱·MVP",
+      "图谱·智能体网络",
+      "图谱·学习闭环",
+      "推演指控台",
+      "传导识别",
+      "损失归因",
+      "方案寻优"
+    ],
+    "viewKeys": [
+      "decision-console",
+      "sim-unified",
+      "sim-sandbox",
+      "dash",
+      "graph",
+      "risk",
+      "order",
+      "plan-audit",
+      "plan-generate",
+      "project-sim",
+      "sop-balance",
+      "global-sim",
+      "chain-line-map",
+      "transit-flow",
+      "physical-topology",
+      "node-inspector",
+      "chain-impediments",
+      "process-wait",
+      "procurement-legs",
+      "review",
+      "annual-scenario",
+      "quarterly-rolling",
+      "order-chain",
+      "geo-map",
+      "graph-all",
+      "graph-backbone",
+      "graph-flow",
+      "graph-source",
+      "graph-solver",
+      "graph-mvp",
+      "graph-agent",
+      "graph-loop",
+      "sim-console",
+      "sim-conduction",
+      "sim-attribution",
+      "sim-optimize"
+    ],
+    "navAllN": 64,
+    "navBizN": 18,
+    "navBiz": [
+      "⚡ 场景启动器 /scenarios",
+      "经营驾驶舱 /v/dash",
+      "事件影响与对策 /v/decision-console",
+      "年度规划 /v/annual-scenario",
+      "季度规划 /v/quarterly-rolling",
+      "月度规划 /v/sop-balance",
+      "规划体检 /v/plan-audit",
+      "规划建议 /v/plan-generate",
+      "运营复盘 /v/review",
+      "统一推演控制台 /v/sim-unified",
+      "推演沙盘 /v/sim-sandbox",
+      "接单可行性 /v/project-sim",
+      "接单组合优选 /v/global-sim",
+      "产能推演 /v/risk",
+      "订单进展与卡因 /v/order-chain",
+      "订单台账 /v/order",
+      "基地地理视图 /v/geo-map",
+      "本体图谱 /v/graph"
+    ],
+    "missingFromHome": [],
+    "canaryPresent": true,
+    "guidanceText": "物料延期 / 缺料 | 点【物料齐套分析】：看下周哪些订单缺料开不了工，先框出受影响面 | 客户改期 / 交期告急 | 点【交期风险与受影响订单】：看这一下动了哪些订单、谁最先越线 | 停机 / 检修撞期 | 点【检修窗口错峰】：看检修和交付高峰撞在哪、窗口怎么挪 | 插单 / 客户加量 | 点【订单可承接性评审】：看这批加量到底接不接得下、缺口多大",
+    "guidanceChips": [
+      "物料延期 / 缺料 | 点【物料齐套分析】：看下周哪些订单缺料开不了工，先框出受影响面 | 客户改期 / 交期告急 | 点【交期风险与受影响订单】：看这一下动了哪些订单、谁最先越线 | 停机 / 检修撞期 | 点【检修窗口错峰】：看检修和交付高峰撞在哪、窗口怎么挪 | 插单 / 客户加量 | 点【订单可承接性评审】：看这批加量到底接不接得下、缺口多大",
+      "物料延期 / 缺料 | 点【物料齐套分析】：看下周哪些订单缺料开不了工，先框出受影响面",
+      "客户改期 / 交期告急 | 点【交期风险与受影响订单】：看这一下动了哪些订单、谁最先越线",
+      "停机 / 检修撞期 | 点【检修窗口错峰】：看检修和交付高峰撞在哪、窗口怎么挪",
+      "插单 / 客户加量 | 点【订单可承接性评审】：看这批加量到底接不接得下、缺口多大"
+    ]
+  },
+  "g1": {
+    "foundOnHome": true,
+    "source": "home",
+    "landedPath": "/v/sim-unified",
+    "clicksFromLogin": 2,
+    "totalSteps": 5,
+    "shot": "merged-02-unified-console.png"
+  },
+  "steps": [
+    {
+      "n": 1,
+      "act": "打开站点根 → 落登录页",
+      "kind": "nav",
+      "path": "/login"
+    },
+    {
+      "n": 2,
+      "act": "填账号/密码（租户默认 demo）",
+      "kind": "type",
+      "path": "/login",
+      "note": null
+    },
+    {
+      "n": 3,
+      "act": "点【登录】",
+      "kind": "click",
+      "path": "/",
+      "note": null
+    },
+    {
+      "n": 4,
+      "act": "在首页看到【统一推演控制台】",
+      "kind": "look",
+      "path": "/",
+      "note": null
+    },
+    {
+      "n": 5,
+      "act": "点首页的【统一推演控制台】",
+      "kind": "click",
+      "path": "/v/sim-unified",
+      "note": null
+    }
+  ],
+  "palette": [
+    {
+      "word": "物料",
+      "opened": true,
+      "inputValue": "物料",
+      "noMatch": false,
+      "rowCount": 3,
+      "rows": [
+        "S03 | 风险越线根因 | 常州物料齐套为什么这天越线？",
+        "S08 | 物料齐套分析 | 下周哪些订单缺料开不了工？",
+        "S10 | 库存水位优化 | 哪些物料超储/欠储？能释放多少资金？"
+      ]
+    },
+    {
+      "word": "订单",
+      "opened": true,
+      "inputValue": "订单",
+      "noMatch": false,
+      "rowCount": 4,
+      "rows": [
+        "S01 | 订单可承接性评审 | 4680-NCM 加 20% 六周能不能接？",
+        "S02 | 交期风险与受影响订单 | 常州基地影响哪些订单？",
+        "S08 | 物料齐套分析 | 下周哪些订单缺料开不了工？",
+        "S11 | 换型排序优化 | 下周订单怎么排能少换型？"
+      ]
+    },
+    {
+      "word": "物料延期",
+      "opened": true,
+      "inputValue": "物料延期",
+      "noMatch": false,
+      "rowCount": 1,
+      "rows": [
+        "S08 | 物料齐套分析 | 下周哪些订单缺料开不了工？"
+      ]
+    },
+    {
+      "word": "延期",
+      "opened": true,
+      "inputValue": "延期",
+      "noMatch": false,
+      "rowCount": 1,
+      "rows": [
+        "S08 | 物料齐套分析 | 下周哪些订单缺料开不了工？"
+      ]
+    },
+    {
+      "word": "停机",
+      "opened": true,
+      "inputValue": "停机",
+      "noMatch": false,
+      "rowCount": 1,
+      "rows": [
+        "S13 | 检修窗口错峰 | 检修计划和交付高峰撞了怎么调？"
+      ]
+    },
+    {
+      "word": "插单",
+      "opened": true,
+      "inputValue": "插单",
+      "noMatch": false,
+      "rowCount": 1,
+      "rows": [
+        "S01 | 订单可承接性评审 | 4680-NCM 加 20% 六周能不能接？"
+      ]
+    }
+  ],
+  "shotPalette": "merged-03-palette-material-delay.png",
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ]
+}

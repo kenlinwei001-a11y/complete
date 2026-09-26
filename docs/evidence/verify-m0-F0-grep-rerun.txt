@@ -1,0 +1,30 @@
+## F0 独立重跑 2026-09-20 11:32:16
+### ① 主判据 grep -rn deriveBaseSnapshot apps/frontend-shell/src
+RC_MAIN=1
+### ② 金丝雀 grep -rn deriveSeedBaseSnapshot apps/datacore/src（关键命中）
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore/src/app.ts:100:import { deriveSeedBaseSnapshot, type SimWorldOps } from "./sim/seed-world.js";
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore/src/app.ts:2069:    const derived = input.baseSnapshot === undefined ? await deriveSeedBaseSnapshot(repos, c.tenantId) : null;
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore/src/seed.ts:1300:  //   ③ **落点真进 `world.state`**：`deriveSeedBaseSnapshot`（`sim/seed-world.ts`）铺的是
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore/src/seed.ts:1386:  // `sim/seed-world.ts` 的 `deriveSeedBaseSnapshot` 铺格子的口径是
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore/src/seed.ts:1889:  // 于是 `deriveSeedBaseSnapshot`（`sim/seed-world.ts`）的同名探测当场命中 ——
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore/src/sim/seed-world.ts:304:export async function deriveSeedBaseSnapshot(
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore/src/sim/seed-world.ts:645:  const { state, origin, provenance } = await deriveSeedBaseSnapshot(repos, ctx.tenantId);
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/datacore/src/sim/seed-world.ts:725:  // 出处/落点都从会话自己的 `scope` 里读 —— 修复路没有 `deriveSeedBaseSnapshot` 的返回值，
+RC_CANARY=0
+### ③ 连带 grep hash01 / stampAllDerived in frontend-shell/src
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/api/endpoints.ts:843: * 各自在浏览器里 `round(hash01(\`${objectId}|${stateVar}\`) × 100)` ——
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/edgeActiveModel.ts:351: * 浏览器里按 `round(hash01(objectId|stateVar)×100)` 编 tick0 世界 + 自盖 `derived` 章，
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/physicalTopology.ts:185:/** FNV-1a → [0,1)（与本仓既有 hash01 同族；纯结构哈希，无 rng、无时钟）。 */
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/physicalTopology.ts:186:function hash01(s: string): number {
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/physicalTopology.ts:205:  return lo + hash01(`${seed}|${baseId}|${suffix}|${metric}`) * (hi - lo);
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/SandboxView.tsx:138:// **X（删之前）**：`init` 建会话时在浏览器里按 `round(hash01(objectId|stateVar)×100)` 现编
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/SandboxView.tsx:152: * `DERIVED` = 前端自编的哈希占位值（`hash01(对象id|变量名)×100`）—— **历史取值**：
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/SandboxView.tsx:990:   * **X（改之前）**：`createSimSession({ baseSnapshot: <前端 hash01 现编>, scope })` —— 前端没有
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/SandboxView.tsx:2144:               * `hash01(对象id|变量名)×100` 全对象取均值的**必然**结果（大数定律），
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/EdgeActivePanel.tsx:196:   * —— 本页在浏览器里编一份 `round(hash01(\`${objectId}|${stateVar}\`) × 100)` 的世界当 tick0，
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/EdgeActivePanel.tsx:389:          那在探针世界确实全是 `hash01` 占位的年代是真话。本单之后世界由服务端派生，
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/unified/metricWallModel.ts:44: * 只是那个数是 `round(hash01(objectId|stateVar)×100)` 结构派生出来的）。
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/unified/UnifiedSimShell.tsx:61: *      `round(hash01(objectId|stateVar)×100)` **结构派生**这件事写进了 `scope.baseSnapshotOrigin`，
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/console/useWorldStateVersion.ts:57: * 把一串扰动 id 折成定长摘要（FNV-1a 32 位，与本仓既有 `hash01` 同族）。
+/Users/apple/deploy/complete/.claude/worktrees/agent-aac69bcd2ba58eeaa/apps/frontend-shell/src/views/sim/SandboxConsole.module.css:100: * 本仓有过病历 —— 顶栏 16 个读数全落在 49.5–50.4（`hash01(id|var)×100` 的必然结果），
+RC_SWEEP=0

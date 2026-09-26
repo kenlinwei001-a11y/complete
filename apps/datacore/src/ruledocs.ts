@@ -9,6 +9,7 @@ import type { Metrics } from "./metrics.js";
 import type { RulesService } from "./rules.js";
 import { newId } from "./ids.js";
 import { invalidState, notFound, validationError } from "./errors.js";
+import { promptTemplateOverride } from "./prompts.js";
 
 const require_ = createRequire(import.meta.url);
 
@@ -203,13 +204,17 @@ export class RuleDocService {
     segment: DocSegment,
     extractJobId: string,
   ): Promise<RuleCandidate[]> {
+    // OC6（G-PROMPT-KEYS-CONFIG-ONLY 接线）：extraction 键真进 LLM 请求体——租户 override 替换硬编码
+    // 默认指令；无 override → EXTRACTION_SYSTEM（R6 字节兼容）。⚠️ 勿与 purpose:"extraction" 混：
+    // 那是用途绑定（选哪个模型），这里是提示词模板（用哪段指令）。
+    const system = (await promptTemplateOverride(this.repos, ctx.tenantId, "extraction")) ?? EXTRACTION_SYSTEM;
     const out = await this.llm.parseStructured({
       model: this.model,
       maxTokens: 4096,
       // LLM Provider 增量 §1.3：A2 抽取走用途绑定（extraction），无绑定回落 env 默认
       tenantId: ctx.tenantId,
       purpose: "extraction",
-      system: EXTRACTION_SYSTEM,
+      system,
       messages: [{ role: "user", content: `<segment heading="${segment.heading ?? ""}">\n${segment.text}\n</segment>` }],
       schema: ExtractionSchema,
     });

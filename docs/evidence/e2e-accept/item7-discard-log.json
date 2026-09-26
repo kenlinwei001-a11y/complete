@@ -1,0 +1,296 @@
+{
+  "counters": {
+    "steps": 7,
+    "clicks": 7,
+    "navs": 5
+  },
+  "portsHit": {
+    "127.0.0.1:5181": 191,
+    "127.0.0.1:4051": 11,
+    "127.0.0.1:4052": 2
+  },
+  "netCalls": [
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/refresh",
+      "status": 401,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/auth/login",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/me/workspace",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/history/watermark",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/data-health",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/scenarios",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/tenants/demo/features",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/quarantine",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/quarantine/discard",
+      "status": 200,
+      "method": "POST"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/quarantine",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4052",
+      "path": "/b/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/outbox",
+      "status": 200,
+      "method": "GET"
+    },
+    {
+      "port": "4051",
+      "path": "/a/v1/quarantine",
+      "status": 200,
+      "method": "GET"
+    }
+  ],
+  "log": [
+    {
+      "t": "2026-09-04T02:53:25.155Z",
+      "kind": "STEP",
+      "msg": "#1 打开应用入口（唯一允许输入的 URL）"
+    },
+    {
+      "t": "2026-09-04T02:53:25.172Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:53:25.966Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:53:26.006Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "t": "2026-09-04T02:53:26.011Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/login"
+    },
+    {
+      "t": "2026-09-04T02:53:26.011Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:53:26.028Z",
+      "kind": "CONSOLE-ERR",
+      "msg": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "t": "2026-09-04T02:53:27.763Z",
+      "kind": "STEP",
+      "msg": "#2 在登录页填 demo / admin / demo1234"
+    },
+    {
+      "t": "2026-09-04T02:53:27.839Z",
+      "kind": "CLICK",
+      "msg": "#1 登录"
+    },
+    {
+      "t": "2026-09-04T02:53:28.051Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:53:31.386Z",
+      "kind": "LOGIN",
+      "msg": "登录后 URL",
+      "url": "http://127.0.0.1:5181/"
+    },
+    {
+      "t": "2026-09-04T02:53:31.386Z",
+      "kind": "STEP",
+      "msg": "#3 侧边栏 →「隔离区」"
+    },
+    {
+      "t": "2026-09-04T02:53:31.391Z",
+      "kind": "CLICK",
+      "msg": "#2 侧边栏 →「隔离区」"
+    },
+    {
+      "t": "2026-09-04T02:53:31.427Z",
+      "kind": "NAV",
+      "msg": "http://127.0.0.1:5181/admin/quarantine"
+    },
+    {
+      "t": "2026-09-04T02:53:38.992Z",
+      "kind": "DUMP",
+      "msg": "i7d-01-pending",
+      "chars": 903
+    },
+    {
+      "t": "2026-09-04T02:53:39.102Z",
+      "kind": "SHOT",
+      "msg": "i7d-01-pending"
+    },
+    {
+      "t": "2026-09-04T02:53:39.104Z",
+      "kind": "CANARY",
+      "msg": "屏上隔离行 4 条（后端 4 条）",
+      "rows": [
+        "e2e_probe 主键重复 {\"sku\":\"A-1\",\"name\":\"丙\",\"qty\":30} 主键 'sku'='A-1' 重复 重入 丢弃",
+        "e2e_probe 主键重复 {\"sku\":\"A-1\",\"name\":\"丁\",\"qty\":40} 主键 'sku'='A-1' 重复 重入 丢弃",
+        "e2e_probe 结构不符 {\"sku\":\"\",\"name\":\"戊\",\"qty\":50} 主键 'sku' 缺失 重入 丢弃",
+        "e2e_probe 主键重复 {\"sku\":\"A-2\",\"name\":\"己\",\"qty\":60} 主键 'sku'='A-2' 重复 重入 丢弃"
+      ]
+    },
+    {
+      "t": "2026-09-04T02:53:39.104Z",
+      "kind": "STEP",
+      "msg": "#4 点第一行的「丢弃」，看是否弹出必填理由"
+    },
+    {
+      "t": "2026-09-04T02:53:39.106Z",
+      "kind": "PROBE",
+      "msg": "行内丢弃按钮 1 个"
+    },
+    {
+      "t": "2026-09-04T02:53:39.106Z",
+      "kind": "CLICK",
+      "msg": "#3 行内「丢弃」"
+    },
+    {
+      "t": "2026-09-04T02:53:41.071Z",
+      "kind": "SHOT",
+      "msg": "i7d-02-discard-form"
+    },
+    {
+      "t": "2026-09-04T02:53:41.084Z",
+      "kind": "P7-BLANK",
+      "msg": "理由留空",
+      "出现理由框": true,
+      "理由空时确认按钮禁用": true
+    },
+    {
+      "t": "2026-09-04T02:53:41.085Z",
+      "kind": "STEP",
+      "msg": "#5 理由留空时强行点「确认丢弃」，看请求发不发得出去"
+    },
+    {
+      "t": "2026-09-04T02:53:43.602Z",
+      "kind": "P7-BLANK",
+      "msg": "空理由请求",
+      "发出条数": 0,
+      "明细": []
+    },
+    {
+      "t": "2026-09-04T02:53:43.602Z",
+      "kind": "STEP",
+      "msg": "#6 填入理由，再点「确认丢弃」"
+    },
+    {
+      "t": "2026-09-04T02:53:43.626Z",
+      "kind": "FILL",
+      "msg": "理由已填"
+    },
+    {
+      "t": "2026-09-04T02:53:44.633Z",
+      "kind": "P7",
+      "msg": "填了理由后确认按钮 disabled?",
+      "dis2": false
+    },
+    {
+      "t": "2026-09-04T02:53:44.634Z",
+      "kind": "CLICK",
+      "msg": "#6 「确认丢弃」"
+    },
+    {
+      "t": "2026-09-04T02:53:49.179Z",
+      "kind": "P7-FILLED",
+      "msg": "带理由请求",
+      "明细": [
+        {
+          "port": "4051",
+          "path": "/a/v1/quarantine/discard",
+          "status": 200,
+          "method": "POST"
+        }
+      ]
+    },
+    {
+      "t": "2026-09-04T02:53:49.280Z",
+      "kind": "SHOT",
+      "msg": "i7d-03-after-discard"
+    },
+    {
+      "t": "2026-09-04T02:53:49.282Z",
+      "kind": "STEP",
+      "msg": "#7 切到「已丢弃」页签，看理由能不能回读"
+    },
+    {
+      "t": "2026-09-04T02:53:49.282Z",
+      "kind": "CLICK",
+      "msg": "#7 页签「已丢弃」"
+    },
+    {
+      "t": "2026-09-04T02:53:52.826Z",
+      "kind": "DUMP",
+      "msg": "i7d-04-discarded",
+      "chars": 729
+    },
+    {
+      "t": "2026-09-04T02:53:52.917Z",
+      "kind": "SHOT",
+      "msg": "i7d-04-discarded"
+    },
+    {
+      "t": "2026-09-04T02:53:52.918Z",
+      "kind": "P7-READBACK",
+      "msg": "回读",
+      "屏上找得到理由原文": true,
+      "含 discarded 标记": true,
+      "相关行": [
+        "e2e_probe\t主键重复\t{\"sku\":\"A-1\",\"name\":\"丙\",\"qty\":30}\t主键 'sku'='A-1' 重复 | discarded: E2E 验收：源系统主键重复，已在上游修正，本行作废\t—"
+      ]
+    }
+  ]
+}

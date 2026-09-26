@@ -32,7 +32,7 @@ describe("跨 6 域切片 order_fulfillment_360", () => {
     const t = await makeApp();
     await seedBattery(t);
 
-    const res = await resolve(t, { so: "SO-10001" });
+    const res = await resolve(t, { so: "SO-3391" });
     expect(res.statusCode).toBe(200);
     const out = res.json() as SliceResult;
 
@@ -63,11 +63,11 @@ describe("跨 6 域切片 order_fulfillment_360", () => {
   it("SL2: 同 seed 重跑 → 节点/边集合字节级一致（确定性）", async () => {
     const a = await makeApp();
     await seedBattery(a);
-    const ra = (await resolve(a, { so: "SO-10001" })).json() as SliceResult;
+    const ra = (await resolve(a, { so: "SO-3391" })).json() as SliceResult;
 
     const b = await makeApp();
     await seedBattery(b);
-    const rb = (await resolve(b, { so: "SO-10001" })).json() as SliceResult;
+    const rb = (await resolve(b, { so: "SO-3391" })).json() as SliceResult;
 
     const norm = (r: SliceResult) => ({
       nodes: r.nodes.map((n) => n.id).sort(),
@@ -81,10 +81,10 @@ describe("跨 6 域切片 order_fulfillment_360", () => {
     await seedBattery(t);
 
     // 找一张型号可在常州生产的订单作为 root（保证常州分支非空）。
-    const adminOut = (await resolve(t, { so: "SO-10001" })).json() as SliceResult;
+    const adminOut = (await resolve(t, { so: "SO-3391" })).json() as SliceResult;
     const adminBases = adminOut.nodes.filter((n) => n.typeKey === "Base").map((n) => String(n.objectKey));
 
-    const bmOut = (await resolve(t, { so: "SO-10001" }, BASE_MANAGER)).json() as SliceResult;
+    const bmOut = (await resolve(t, { so: "SO-3391" }, BASE_MANAGER)).json() as SliceResult;
     const bmBases = bmOut.nodes.filter((n) => n.typeKey === "Base").map((n) => String(n.objectKey));
     // base_manager 可见基地 ⊆ admin 可见基地，且不含非常州基地
     for (const b of bmBases) expect(b).toBe("changzhou");
@@ -111,7 +111,7 @@ describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
   it("SL5: order_to_cash_720 首单可达 10 域（+财务+计划，Phase7A plan↔product 连边）", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    const out = (await resolveKey(t, "order_to_cash_720", { so: "SO-10001" })).json() as SliceResult;
+    const out = (await resolveKey(t, "order_to_cash_720", { so: "SO-3391" })).json() as SliceResult;
     const doms = domainsOf(out);
     for (const want of ["product", "factory", "process", "equip", "supply", "commercial", "capacity", "quality", "finance", "plan"]) {
       expect(doms.has(want), `缺域 ${want}`).toBe(true);
@@ -126,7 +126,7 @@ describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
   it("SL6: enterprise_360 首单最大广度可达 8 域 + 认证/能耗/换型/细分/检修节点", async () => {
     const t = await makeApp();
     await seedBattery(t);
-    const out = (await resolveKey(t, "enterprise_360", { so: "SO-10001" })).json() as SliceResult;
+    const out = (await resolveKey(t, "enterprise_360", { so: "SO-3391" })).json() as SliceResult;
     expect(domainsOf(out).size).toBeGreaterThanOrEqual(8);
     const types = new Set(out.nodes.map((n) => n.typeKey));
     for (const want of ["Certification", "EnergyMeter", "ChangeoverMatrix", "Segment", "MaintPlan", "CarbonFactor"]) {
@@ -155,7 +155,7 @@ describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
     const dkeys = new Set((Array.isArray(domains) ? domains : []).map((d) => d.domainKey));
     expect(dkeys.has("supply") && dkeys.has("commercial"), "supply/commercial 域已注册").toBe(true);
     // enterprise_360 边覆盖新增链路键
-    const ent = (await resolveKey(t, "enterprise_360", { so: "SO-10001" })).json() as SliceResult;
+    const ent = (await resolveKey(t, "enterprise_360", { so: "SO-3391" })).json() as SliceResult;
     const lk = new Set(ent.edges.map((e) => e.linkKey));
     for (const k of ["model_has_cert", "customer_has_invoice", "material_has_batch", "material_carbon", "base_energy_meter", "base_maint_plan", "model_changeover", "model_in_segment", "base_data_health"]) {
       expect(lk.has(k), `enterprise_360 缺边 ${k}`).toBe(true);
@@ -169,7 +169,7 @@ describe("跨 8 域切片 order_to_cash_720 / enterprise_360", () => {
     const legacy = await t.app.inject({ method: "POST", url: "/a/v1/slices/base_risk_profile/resolve", headers: ADMIN, payload: { args: { baseId: "changzhou" } } });
     expect(legacy.statusCode).toBe(200);
     // 新声明式切片经同一旧端点可达（agent resolve_slice 工具走这里）
-    const viaLegacy = await t.app.inject({ method: "POST", url: "/a/v1/slices/order_to_cash_720/resolve", headers: ADMIN, payload: { args: { so: "SO-10001" } } });
+    const viaLegacy = await t.app.inject({ method: "POST", url: "/a/v1/slices/order_to_cash_720/resolve", headers: ADMIN, payload: { args: { so: "SO-3391" } } });
     expect(viaLegacy.statusCode).toBe(200);
     const body = viaLegacy.json() as { data?: { nodes?: { typeKey: string }[] }; snapshotVersion?: string };
     expect(body.data?.nodes?.length, "fall-through 返回 nodes").toBeGreaterThanOrEqual(15);

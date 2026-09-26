@@ -1,0 +1,4 @@
+· ontology-writeback：pnpm gates 含 71 个 check 门 · §7 漏登 0
+✓ ontology-writeback:check：pnpm gates 所有门均在本体 §7 登记（门禁维回写无遗漏）。
+· G3 反向：§7 提及 91 门 · 已建未接线 14（基线 14）
+✓ ontology-writeback:check G3：§7 宣称受治理的门均已登账，且无「宣称已接线实则零调用」。

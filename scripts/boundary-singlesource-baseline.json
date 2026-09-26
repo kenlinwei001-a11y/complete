@@ -1,0 +1,121 @@
+{
+  "note": "① 本文件是 `check-boundary-singlesource.mjs` 的**内联基地字面量存量棘轮**。受检对象集合（扫谁）由门**现算**（SCAN_ROOTS 全遍历），本文件里一个扫描面路径都不存 —— 名单一手抄，名单外的文件就永远绿，那正是本门 2026-08-16 之前的病（本体 §8 G-GATE-ROSTER-HANDCOPIED）。② 每条必须写 `why`（<10 字即判红）：**无理由白名单正是棘轮要治的病**，豁免要说清「凭什么这条今天可以不修」。③ `maxEntries` 必须恒等于 entries 条数；评审唯一必须拒绝的一行，就是把它调大。④ `--tighten` **只删不加**：修好一处即收回额度；新增内联**不自动收编**，当场红。",
+  "generatedBy": "node scripts/check-boundary-singlesource.mjs --tighten",
+  "entries": {
+    "apps/datacore/src/connectors/registry.ts#changzhou": {
+      "file": "apps/datacore/src/connectors/registry.ts",
+      "base": "changzhou",
+      "count": 3,
+      "why": "**连接器 mock 的上游 ERP 脏数据**（`MOCK_ERP_DATA.production_orders`）。这一坨刻意演示「外部系统的基地编码与本体对不上」——同一个数组里还有 `yibin`/`xian`/`qingdao`/`liyang` **四个册外 id**，它们正是 A1 连接器映射要处理的对象。把册内那 4 处改成查册派生会**破坏这个演示语义**（真实上游不会引用我们的册）。**为什么这轮没改**：改法要么给这份 mock 加一层「上游编码 → 册 id」的显式映射表（属 A1 连接器的产品改动，动 `apps/**`，超出本单纯门单的范围边界），要么判定它整体豁免（属治理裁决）。收口 = 二选一 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/connectors/registry.ts#hefei": {
+      "file": "apps/datacore/src/connectors/registry.ts",
+      "base": "hefei",
+      "count": 1,
+      "why": "**连接器 mock 的上游 ERP 脏数据**（`MOCK_ERP_DATA.production_orders`）。这一坨刻意演示「外部系统的基地编码与本体对不上」——同一个数组里还有 `yibin`/`xian`/`qingdao`/`liyang` **四个册外 id**，它们正是 A1 连接器映射要处理的对象。把册内那 4 处改成查册派生会**破坏这个演示语义**（真实上游不会引用我们的册）。**为什么这轮没改**：改法要么给这份 mock 加一层「上游编码 → 册 id」的显式映射表（属 A1 连接器的产品改动，动 `apps/**`，超出本单纯门单的范围边界），要么判定它整体豁免（属治理裁决）。收口 = 二选一 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/livedin/engine.ts#hefei": {
+      "file": "apps/datacore/src/livedin/engine.ts",
+      "base": "hefei",
+      "count": 1,
+      "why": "**lived-in 十例告警-处置闭环案例骨架**（`CASE_SPECS`）。10 处 baseId 是**案例事实**（哪个基地在哪天越线），不是册的重复定义——但判据说得对：册里删掉 `zaozhuang`，第 9 例就静默悬空且无人知。**为什么这轮没改**：正确修法是让 `CASE_SPECS` 的 baseId 从 `BASE_REGISTRY` 取（如 `BASE_REGISTRY[8].baseId`）或加一条「案例引用的 baseId 必须在册内」的运行时断言——两者都动 `apps/datacore/src`，超出本单范围边界。**风险已被本条量化**：10 处，是全仓最大的一笔。收口 = 补派生或补断言 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/livedin/engine.ts#xiamen": {
+      "file": "apps/datacore/src/livedin/engine.ts",
+      "base": "xiamen",
+      "count": 1,
+      "why": "**lived-in 十例告警-处置闭环案例骨架**（`CASE_SPECS`）。10 处 baseId 是**案例事实**（哪个基地在哪天越线），不是册的重复定义——但判据说得对：册里删掉 `zaozhuang`，第 9 例就静默悬空且无人知。**为什么这轮没改**：正确修法是让 `CASE_SPECS` 的 baseId 从 `BASE_REGISTRY` 取（如 `BASE_REGISTRY[8].baseId`）或加一条「案例引用的 baseId 必须在册内」的运行时断言——两者都动 `apps/datacore/src`，超出本单范围边界。**风险已被本条量化**：10 处，是全仓最大的一笔。收口 = 补派生或补断言 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/livedin/engine.ts#jiangmen": {
+      "file": "apps/datacore/src/livedin/engine.ts",
+      "base": "jiangmen",
+      "count": 1,
+      "why": "**lived-in 十例告警-处置闭环案例骨架**（`CASE_SPECS`）。10 处 baseId 是**案例事实**（哪个基地在哪天越线），不是册的重复定义——但判据说得对：册里删掉 `zaozhuang`，第 9 例就静默悬空且无人知。**为什么这轮没改**：正确修法是让 `CASE_SPECS` 的 baseId 从 `BASE_REGISTRY` 取（如 `BASE_REGISTRY[8].baseId`）或加一条「案例引用的 baseId 必须在册内」的运行时断言——两者都动 `apps/datacore/src`，超出本单范围边界。**风险已被本条量化**：10 处，是全仓最大的一笔。收口 = 补派生或补断言 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/livedin/engine.ts#meishan": {
+      "file": "apps/datacore/src/livedin/engine.ts",
+      "base": "meishan",
+      "count": 1,
+      "why": "**lived-in 十例告警-处置闭环案例骨架**（`CASE_SPECS`）。10 处 baseId 是**案例事实**（哪个基地在哪天越线），不是册的重复定义——但判据说得对：册里删掉 `zaozhuang`，第 9 例就静默悬空且无人知。**为什么这轮没改**：正确修法是让 `CASE_SPECS` 的 baseId 从 `BASE_REGISTRY` 取（如 `BASE_REGISTRY[8].baseId`）或加一条「案例引用的 baseId 必须在册内」的运行时断言——两者都动 `apps/datacore/src`，超出本单范围边界。**风险已被本条量化**：10 处，是全仓最大的一笔。收口 = 补派生或补断言 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/livedin/engine.ts#handan": {
+      "file": "apps/datacore/src/livedin/engine.ts",
+      "base": "handan",
+      "count": 1,
+      "why": "**lived-in 十例告警-处置闭环案例骨架**（`CASE_SPECS`）。10 处 baseId 是**案例事实**（哪个基地在哪天越线），不是册的重复定义——但判据说得对：册里删掉 `zaozhuang`，第 9 例就静默悬空且无人知。**为什么这轮没改**：正确修法是让 `CASE_SPECS` 的 baseId 从 `BASE_REGISTRY` 取（如 `BASE_REGISTRY[8].baseId`）或加一条「案例引用的 baseId 必须在册内」的运行时断言——两者都动 `apps/datacore/src`，超出本单范围边界。**风险已被本条量化**：10 处，是全仓最大的一笔。收口 = 补派生或补断言 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/livedin/engine.ts#wuhan": {
+      "file": "apps/datacore/src/livedin/engine.ts",
+      "base": "wuhan",
+      "count": 1,
+      "why": "**lived-in 十例告警-处置闭环案例骨架**（`CASE_SPECS`）。10 处 baseId 是**案例事实**（哪个基地在哪天越线），不是册的重复定义——但判据说得对：册里删掉 `zaozhuang`，第 9 例就静默悬空且无人知。**为什么这轮没改**：正确修法是让 `CASE_SPECS` 的 baseId 从 `BASE_REGISTRY` 取（如 `BASE_REGISTRY[8].baseId`）或加一条「案例引用的 baseId 必须在册内」的运行时断言——两者都动 `apps/datacore/src`，超出本单范围边界。**风险已被本条量化**：10 处，是全仓最大的一笔。收口 = 补派生或补断言 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/livedin/engine.ts#changzhou": {
+      "file": "apps/datacore/src/livedin/engine.ts",
+      "base": "changzhou",
+      "count": 1,
+      "why": "**lived-in 十例告警-处置闭环案例骨架**（`CASE_SPECS`）。10 处 baseId 是**案例事实**（哪个基地在哪天越线），不是册的重复定义——但判据说得对：册里删掉 `zaozhuang`，第 9 例就静默悬空且无人知。**为什么这轮没改**：正确修法是让 `CASE_SPECS` 的 baseId 从 `BASE_REGISTRY` 取（如 `BASE_REGISTRY[8].baseId`）或加一条「案例引用的 baseId 必须在册内」的运行时断言——两者都动 `apps/datacore/src`，超出本单范围边界。**风险已被本条量化**：10 处，是全仓最大的一笔。收口 = 补派生或补断言 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/livedin/engine.ts#chengdu": {
+      "file": "apps/datacore/src/livedin/engine.ts",
+      "base": "chengdu",
+      "count": 1,
+      "why": "**lived-in 十例告警-处置闭环案例骨架**（`CASE_SPECS`）。10 处 baseId 是**案例事实**（哪个基地在哪天越线），不是册的重复定义——但判据说得对：册里删掉 `zaozhuang`，第 9 例就静默悬空且无人知。**为什么这轮没改**：正确修法是让 `CASE_SPECS` 的 baseId 从 `BASE_REGISTRY` 取（如 `BASE_REGISTRY[8].baseId`）或加一条「案例引用的 baseId 必须在册内」的运行时断言——两者都动 `apps/datacore/src`，超出本单范围边界。**风险已被本条量化**：10 处，是全仓最大的一笔。收口 = 补派生或补断言 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/livedin/engine.ts#zaozhuang": {
+      "file": "apps/datacore/src/livedin/engine.ts",
+      "base": "zaozhuang",
+      "count": 1,
+      "why": "**lived-in 十例告警-处置闭环案例骨架**（`CASE_SPECS`）。10 处 baseId 是**案例事实**（哪个基地在哪天越线），不是册的重复定义——但判据说得对：册里删掉 `zaozhuang`，第 9 例就静默悬空且无人知。**为什么这轮没改**：正确修法是让 `CASE_SPECS` 的 baseId 从 `BASE_REGISTRY` 取（如 `BASE_REGISTRY[8].baseId`）或加一条「案例引用的 baseId 必须在册内」的运行时断言——两者都动 `apps/datacore/src`，超出本单范围边界。**风险已被本条量化**：10 处，是全仓最大的一笔。收口 = 补派生或补断言 + 删本条 + `--tighten`。"
+    },
+    "apps/datacore/src/livedin/engine.ts#yangzhou": {
+      "file": "apps/datacore/src/livedin/engine.ts",
+      "base": "yangzhou",
+      "count": 1,
+      "why": "**lived-in 十例告警-处置闭环案例骨架**（`CASE_SPECS`）。10 处 baseId 是**案例事实**（哪个基地在哪天越线），不是册的重复定义——但判据说得对：册里删掉 `zaozhuang`，第 9 例就静默悬空且无人知。**为什么这轮没改**：正确修法是让 `CASE_SPECS` 的 baseId 从 `BASE_REGISTRY` 取（如 `BASE_REGISTRY[8].baseId`）或加一条「案例引用的 baseId 必须在册内」的运行时断言——两者都动 `apps/datacore/src`，超出本单范围边界。**风险已被本条量化**：10 处，是全仓最大的一笔。收口 = 补派生或补断言 + 删本条 + `--tighten`。"
+    },
+    "apps/frontend-shell/src/mocks/handlers.ts#changzhou": {
+      "file": "apps/frontend-shell/src/mocks/handlers.ts",
+      "base": "changzhou",
+      "count": 1,
+      "why": "**A2 数据接入解析结果 mock**（`INTAKE_PARSE_RESULT.dataSources[].sampleRows`）。2 处是「上传的表里长什么样」的**样本行**，语义上同 connectors/registry.ts 那条（演示上游数据），但这里用的是**册内** id。**为什么这轮没改**：样本行要不要跟册走，取决于这份 mock 想演示「上游与我们对得上」还是「对不上」——属产品语义裁决，不是门能替它定的；且改动落在 `apps/frontend-shell/src`，超出本单范围边界。收口 = 定语义 + 删本条 + `--tighten`。"
+    },
+    "apps/frontend-shell/src/mocks/handlers.ts#xiamen": {
+      "file": "apps/frontend-shell/src/mocks/handlers.ts",
+      "base": "xiamen",
+      "count": 1,
+      "why": "**A2 数据接入解析结果 mock**（`INTAKE_PARSE_RESULT.dataSources[].sampleRows`）。2 处是「上传的表里长什么样」的**样本行**，语义上同 connectors/registry.ts 那条（演示上游数据），但这里用的是**册内** id。**为什么这轮没改**：样本行要不要跟册走，取决于这份 mock 想演示「上游与我们对得上」还是「对不上」——属产品语义裁决，不是门能替它定的；且改动落在 `apps/frontend-shell/src`，超出本单范围边界。收口 = 定语义 + 删本条 + `--tighten`。"
+    },
+    "apps/frontend-shell/src/mocks/livedInFixtures.ts#changzhou": {
+      "file": "apps/frontend-shell/src/mocks/livedInFixtures.ts",
+      "base": "changzhou",
+      "count": 2,
+      "why": "**前端 lived-in mock 的 4 基地月度产出表**（`LIVED_BASES`），与上面 datacore 的 `CASE_SPECS` 是同一套数据的前端半。7 处内联同时带 `name`（「常州」「合肥」…）——**id 与中文名两份都手抄**，册里改名就前后端不同步，正是本门 G-5/R14 要防的那个形态。**为什么这轮没改**：`LIVED_BASES` 该由 `BASE_REGISTRY.filter(...)` 派生（其余字段 monthlyWan/maintMonth 保留为 mock 事实），改动落在 `apps/frontend-shell/src`，超出本单范围边界。收口 = 改成 filter 派生 + 删本条 + `--tighten`。"
+    },
+    "apps/frontend-shell/src/mocks/livedInFixtures.ts#hefei": {
+      "file": "apps/frontend-shell/src/mocks/livedInFixtures.ts",
+      "base": "hefei",
+      "count": 2,
+      "why": "**前端 lived-in mock 的 4 基地月度产出表**（`LIVED_BASES`），与上面 datacore 的 `CASE_SPECS` 是同一套数据的前端半。7 处内联同时带 `name`（「常州」「合肥」…）——**id 与中文名两份都手抄**，册里改名就前后端不同步，正是本门 G-5/R14 要防的那个形态。**为什么这轮没改**：`LIVED_BASES` 该由 `BASE_REGISTRY.filter(...)` 派生（其余字段 monthlyWan/maintMonth 保留为 mock 事实），改动落在 `apps/frontend-shell/src`，超出本单范围边界。收口 = 改成 filter 派生 + 删本条 + `--tighten`。"
+    },
+    "apps/frontend-shell/src/mocks/livedInFixtures.ts#wuhan": {
+      "file": "apps/frontend-shell/src/mocks/livedInFixtures.ts",
+      "base": "wuhan",
+      "count": 2,
+      "why": "**前端 lived-in mock 的 4 基地月度产出表**（`LIVED_BASES`），与上面 datacore 的 `CASE_SPECS` 是同一套数据的前端半。7 处内联同时带 `name`（「常州」「合肥」…）——**id 与中文名两份都手抄**，册里改名就前后端不同步，正是本门 G-5/R14 要防的那个形态。**为什么这轮没改**：`LIVED_BASES` 该由 `BASE_REGISTRY.filter(...)` 派生（其余字段 monthlyWan/maintMonth 保留为 mock 事实），改动落在 `apps/frontend-shell/src`，超出本单范围边界。收口 = 改成 filter 派生 + 删本条 + `--tighten`。"
+    },
+    "apps/frontend-shell/src/mocks/livedInFixtures.ts#jiangmen": {
+      "file": "apps/frontend-shell/src/mocks/livedInFixtures.ts",
+      "base": "jiangmen",
+      "count": 1,
+      "why": "**前端 lived-in mock 的 4 基地月度产出表**（`LIVED_BASES`），与上面 datacore 的 `CASE_SPECS` 是同一套数据的前端半。7 处内联同时带 `name`（「常州」「合肥」…）——**id 与中文名两份都手抄**，册里改名就前后端不同步，正是本门 G-5/R14 要防的那个形态。**为什么这轮没改**：`LIVED_BASES` 该由 `BASE_REGISTRY.filter(...)` 派生（其余字段 monthlyWan/maintMonth 保留为 mock 事实），改动落在 `apps/frontend-shell/src`，超出本单范围边界。收口 = 改成 filter 派生 + 删本条 + `--tighten`。"
+    },
+    "apps/frontend-shell/src/mocks/planFixtures.ts#changzhou": {
+      "file": "apps/frontend-shell/src/mocks/planFixtures.ts",
+      "base": "changzhou",
+      "count": 1,
+      "why": "**求解器切片精度表 mock**（`slices[].baseId`）。仅 1 处 `changzhou`，同行还有 `sliceKey: \"capacity_forecast|changzhou|4680-NCM\"` —— **同一个 id 在同一行出现两次、其中一次埋在拼接串里**，本门只咬得到字段赋值那次（作用域见文件头）。**为什么这轮没改**：改 baseId 而不改 sliceKey 会让这份 mock 自相矛盾，正确修法是让两者都从册派生并拼接，落在 `apps/frontend-shell/src`，超出本单范围边界。收口 = 一起改成派生 + 删本条 + `--tighten`。"
+    }
+  },
+  "maxEntries": 19
+}

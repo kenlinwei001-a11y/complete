@@ -11,7 +11,7 @@ import type { Repos } from "./repo/repo.js";
 import type { AuthzService } from "./authz.js";
 import type { OutboxService } from "./outbox.js";
 import { newId } from "./ids.js";
-import { notFound, validationError } from "./errors.js";
+import { notFound, validationError, seriesColumnRestricted } from "./errors.js";
 import { round } from "./prng.js";
 import { primaryKeyProp } from "./ontology.js";
 
@@ -283,6 +283,26 @@ export class TimeseriesService {
       const runAt = new Date().toISOString();
       let maxIngested = spec.lastRunAt ?? "";
 
+      // ── 批量落盘 ts_agg_runs ────────────────────────────────────────────────
+      // 原来是循环里一行一个 `put()`。demo 播种实测：这一张表 **153920 行 = 153920 次
+      // round-trip**，占 pg 模式启动 173430 个事务的大头，直接决定 /readyz 要 503 多久
+      // （详见 repo/repo.ts `Store.putMany` 注释：这不是"慢一点"，是部署失败的成因）。
+      //
+      // 为什么可以安全地推迟到批末写：本循环内**没有任何一处回读 tsAggRuns**——
+      // 快照回写只把 `run.id` 当字符串塞进 __prov，不做 read-after-write。
+      // （这一条是逐行读过循环体确认的，不是"看起来没有"。）
+      //
+      // FLUSH 上限存在的理由是内存：全攒着 = 单 spec 15 万条驻留（~40MB）。
+      // 攒批的收益在前几百条就基本吃满（round-trip 数降两个数量级），
+      // 再往上只是拿内存换一个已经不明显的收益。
+      const FLUSH = 2000;
+      let pending: TsAggRunRecord[] = [];
+      const flushRuns = async (): Promise<void> => {
+        if (pending.length === 0) return;
+        await this.repos.tsAggRuns.putMany(pending);
+        pending = [];
+      };
+
       for (const [entityId, windowEnds] of [...affected.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
         const entityPoints = allPointsByEntity.get(entityId) ?? [];
         for (const windowEnd of [...windowEnds].sort()) {
@@ -319,7 +339,8 @@ export class TimeseriesService {
             value,
             runAt,
           };
-          await this.repos.tsAggRuns.put(run);
+          pending.push(run);
+          if (pending.length >= FLUSH) await flushRuns();
           windowsComputed++;
 
           // snapshot write-back: only the window ending at the entity's latest bucket.
@@ -351,6 +372,10 @@ export class TimeseriesService {
           }
         }
       }
+      // ⚠ 必须在推进 spec.lastRunAt **之前**冲刷：lastRunAt 一旦前移，下次增量聚合就
+      //   不会再看这批点了。若此处先写 spec 后写 runs 而中途崩，那批 run 会永久丢失且
+      //   没人再算它 —— 顺序不是风格问题，是"崩了能不能自愈"的问题。
+      await flushRuns();
       for (const p of touched) if (p.ingestedAt > maxIngested) maxIngested = p.ingestedAt;
       spec.lastRunAt = maxIngested || runAt;
       await this.repos.tsAggSpecs.put(spec);
@@ -359,6 +384,66 @@ export class TimeseriesService {
   }
 
   // -- A8.4 aggregate query (the ONLY read path; never returns raw rows) ---------
+
+  /**
+   * WO-COLUMN-SECURITY-TAIL · 残口③ 收口 —— **时序测点值的列级（属性级）闸**。
+   *
+   * ─ 修前的行为 ────────────────────────────────────────────────────────────────
+   * `aggQuery` 只继承**实体级**行策略（`authz.require` + `rowAllowed`），测点值一律照出。
+   * 于是「看不到 Line.utilization」的角色只要改问 `util:line` 这条 series，同一个数照样拿得到 ——
+   * 时序是列级安全的一条完整绕行通道（本体 §8 G-SECURITY-COLUMN-LEVEL 残口③）。
+   *
+   * ─ 「seriesKey→属性无干净映射」这句诊断的实测订正 ────────────────────────────────
+   * 本体原文说"无干净映射"。实测**有两条干净映射**，而且都取自仓内既有真表（不手抄第二份清单）：
+   *  ① **聚合规约的落点**（头号·真映射）：`ts_agg_specs` 里 `seriesKey` 相同、`status=ACTIVE` 的规约
+   *     自带 `output:{objectType, property}` —— 那就是这条 series 的值最终写进哪个 `type.prop`
+   *     （种子实例：`util:line` → `Line.utilization`、`yield:process` → `Process.yield_baseline`）。
+   *  ② **measureField 本身就是属性**：`series.measureFields` ∩ 该类型已发布属性全集。
+   * 两条求并 = 该 series 的**本体属性读取面**。
+   *
+   * ─ 判定（与 `columnSignatureGate` 同构·缺省一律偏拒）────────────────────────────
+   *  · 调用者在 `series.entityType` 上无列级约束 → **零成本返回**（不多读一行·逐字节现行为）。
+   *  · 读取面 ∩ 不可读属性 ≠ ∅ → **403 拒**（不返空点集：空集会被读成"这段时间没数据"）。
+   *  · 读取面**算不出来**（无 ACTIVE 规约 + measureFields 一个都不在属性全集里）→ **403 拒**。
+   *    未知 ≠ 安全 —— 与 P2 签名守卫「无签名即拒」同一条纪律。
+   *
+   * 判据全部复用 `authz.decide()` / `propReadable()`（并集语义与对象读写路径同一份·不另造第二套匹配）。
+   */
+  private async assertSeriesColumnReadable(ctx: AuthCtx, series: TsSeriesRecord): Promise<void> {
+    const d = await this.authz.decide(ctx, "OBJECT_TYPE", series.entityType, "READ");
+    // 不 allowed 的情形交给紧随其后的 `authz.require`（403 FORBIDDEN），不在此伪装成列级问题。
+    if (!d.allowed || !d.columnRestricted) return; // 快路径：admin / 无列级策略 → 逐字节现行为
+    const surface = new Set<string>();
+    // ① 聚合规约的落点（该 series 的值真正写进的 type.prop）。
+    const specs = await this.repos.tsAggSpecs.list(
+      ctx.tenantId,
+      (s) => s.seriesKey === series.seriesKey && s.status === "ACTIVE",
+    );
+    for (const s of specs) if (s.output.objectType === series.entityType) surface.add(s.output.property);
+    // ② measureField 本身就是该类型的已发布属性。
+    const tdef = (
+      await this.repos.ontologyTypes.list(ctx.tenantId, (t) => t.key === series.entityType && t.status === "ACTIVE")
+    )[0];
+    if (tdef) {
+      const universe = new Set([
+        ...tdef.properties.map((p) => p.propKey),
+        ...(tdef.derivedProperties ?? []).map((p) => p.propKey),
+      ]);
+      for (const f of series.measureFields) if (universe.has(f)) surface.add(f);
+    }
+    if (surface.size === 0) {
+      throw seriesColumnRestricted(
+        series.seriesKey,
+        series.entityType,
+        ["<读取面未知>"],
+        `既无 status=ACTIVE 的聚合规约把它落到 ${series.entityType} 的属性上，` +
+          `measureFields [${series.measureFields.join(", ")}] 也都不在该类型已发布属性全集内 ⇒ ` +
+          `无法证明这条 series 不暴露被禁列。未知不等于安全`,
+      );
+    }
+    const denied = [...surface].filter((p) => !this.authz.propReadable(d, p)).sort();
+    if (denied.length > 0) throw seriesColumnRestricted(series.seriesKey, series.entityType, denied);
+  }
 
   async aggQuery(ctx: AuthCtx, input: QueryTimeseriesAggInput): Promise<{ points: { entityId: string; bucket: string; value: number }[] }> {
     const series = await this.seriesByKey(ctx.tenantId, input.seriesKey);
@@ -374,6 +459,9 @@ export class TimeseriesService {
       throw validationError(`window spans ${bucketCount} buckets (>120) — use a coarser grain`);
     }
 
+    // A6 列级（属性级）· WO-COLUMN-SECURITY-TAIL 残口③：**先于**行过滤判列级
+    //（先于是刻意的：列级不通过时连"这个实体有没有数据"都不该泄漏）。
+    await this.assertSeriesColumnReadable(ctx, series);
     // A6: entity-level row policy inherited from the bound object type.
     const rowFilters = await this.authz.require(ctx, "OBJECT_TYPE", series.entityType, "READ");
     const index = await this.objectIndex(ctx.tenantId, series.entityType);

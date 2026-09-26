@@ -1,0 +1,96 @@
+{
+  "upload": {
+    "connection": {
+      "id": "conn_adpgj8swjq1kdtyf",
+      "tenantId": "demo",
+      "connectorTypeKey": "file_upload",
+      "name": "upload:e2e_probe.csv",
+      "config": {
+        "blobKey": "uploads/demo/blob_6jw7axe4ydghxhgr-e2e_probe.csv",
+        "format": "csv",
+        "datasetName": "e2e_probe"
+      },
+      "status": "ACTIVE",
+      "category": "FILE"
+    },
+    "schema": {
+      "datasets": [
+        {
+          "name": "e2e_probe",
+          "fields": [
+            {
+              "name": "sku",
+              "inferredType": "string",
+              "samples": [
+                "A-1",
+                "A-2"
+              ],
+              "nullRate": 0.167,
+              "uniqueRate": 0.4,
+              "enumCandidates": [
+                "A-1",
+                "A-2"
+              ]
+            },
+            {
+              "name": "name",
+              "inferredType": "string",
+              "samples": [
+                "甲",
+                "乙",
+                "丙",
+                "丁",
+                "戊"
+              ],
+              "nullRate": 0,
+              "uniqueRate": 1
+            },
+            {
+              "name": "qty",
+              "inferredType": "number",
+              "samples": [
+                10,
+                20,
+                30,
+                40,
+                50
+              ],
+              "nullRate": 0,
+              "uniqueRate": 1
+            }
+          ],
+          "kind": "ENTITY"
+        }
+      ]
+    },
+    "syncJobId": "sync_5r92jkrs65xdzap2",
+    "connId": "conn_adpgj8swjq1kdtyf",
+    "datasetName": "e2e_probe"
+  },
+  "dsId": "rds_s7zttkdtev2fpgwm",
+  "derive": {
+    "draftId": "draft_3waedzzc89z9hpxy",
+    "status": "DRAFT"
+  },
+  "publish": {
+    "ok": false,
+    "errors": [
+      {
+        "typeKey": "E2eProbe",
+        "message": "未归域（domain=unassigned），发布前必须人工归域"
+      }
+    ]
+  },
+  "materialize": {
+    "error": {
+      "code": "INVALID_STATE",
+      "message": "draft must be published before materialize",
+      "requestId": "req_2bhmrzyvrn1exh8k"
+    }
+  },
+  "quarantine": {
+    "total": 0,
+    "byReason": {},
+    "sample": []
+  }
+}
