@@ -8,7 +8,8 @@
  *    最近秩分位、faint/实质分账、订单集金丝雀）
  *  - 指纹：确定性 + 输入敏感性（R6）
  *  - 装配：E2-c 零扰动对照（诚实零 ≠ gap）、E2-d 反向金丝雀（无绑定 ⇒ gap，⛔ 不返 0）、
- *    落点格缺失 ⇒ gap、E2-g 零写入（deps 接口结构上无 persist 旋钮，且只调两次只读推进）、
+ *    落点格缺失 ⇒ gap、E2-g 零写入（deps 接口结构上无 persist 旋钮，基准/对照/候选三次只读推进）、
+ *    E2-a 基准锚定（场景在场 ⇒ 对照 = E0）、业务键解析（②③④ 用内部 id，披露说业务键）、
  *    披露六要素（specKey/落点/tick 数/耗时/agentInvolved:false）
  */
 import { describe, expect, it } from "vitest";
@@ -237,6 +238,9 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     expect(r.after.exposureYuan).toBe(0);
     expect(r.after.displacement.p50).toBeNull();
     expect(r.after.displacement.ordersSeen).toBe(2);
+    // 基准 ≡ 对照 ≡ 候选（无场景扰动）⇒ 对照读数同样诚实零，不是「没算」
+    expect(r.control.touchedOrders).toBe(0);
+    expect(r.control.displacement.ordersSeen).toBe(2);
     expect(r.disclosure.specKey).toBe("line_util_pressure");
     expect(r.disclosure.tickCount).toBe(6);
     expect(r.disclosure.agentInvolved).toBe(false);
@@ -269,7 +273,7 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     expect(r.reason).toBe("PRESSURE_TARGET_UNCOMPUTABLE");
   });
 
-  it("有效世界：读数 = diffTickStates(对照, 候选) 口径 + 敞口只加实质受扰单", async () => {
+  it("有效世界：读数 = diffTickStates(无扰动基准, 候选世界) + 敞口只加实质受扰单", async () => {
     const deps = mkDeps();
     const r = await priceCandidate(deps, mkInput({ candidate: mkCandidate({ toValue: 89.9153 }) }));
     expect(r.kind).toBe("priced");
@@ -281,14 +285,14 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
       mode: "set",
       magnitude: 89.9153,
     });
-    // 候选态 o1:+5 / o2:+0.02 → 实质受扰 2 张；敞口 = 1M + 2M
+    // 本夹具无场景扰动：基准 ≡ 对照 = 零态；候选态 o1:+5 / o2:+0.02 → 实质受扰 2 张；敞口 = 1M + 2M
     expect(r.after.touchedOrders).toBe(2);
     expect(r.after.faintOnly).toBe(0);
     expect(r.after.exposureYuan).toBe(3_000_000);
     expect(r.after.displacement.p50).toBe(5);
     expect(r.after.displacement.p90).toBe(5);
     expect(r.after.displacement.max).toBe(5);
-    // 对照读数恒诚实零（diff(对照,对照)）
+    // 对照 = diff(基准, 不处置世界)；本夹具基准 ≡ 对照 ⇒ 诚实零（场景在 E0 口径见 E2-a 用例）
     expect(r.control.touchedOrders).toBe(0);
     expect(r.control.displacement.p50).toBeNull();
     expect(r.disclosure.targetObjectId).toBe("obj_line_A1");
@@ -297,8 +301,8 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     expect(r.fingerprint).toHaveLength(64);
   });
 
-  it("E2-g 零写入：对照与候选各一次只读推进（无 persist 旋钮），扰动 mode:set 落点正确", async () => {
-    const calls: Array<{ n: number; ephemeral?: readonly Perturbation[] }> = [];
+  it("E2-g 零写入：基准/对照/候选各一次只读推进（无 persist 旋钮），扰动 mode:set 落点正确", async () => {
+    const calls: Array<{ n: number; ephemeral?: readonly Perturbation[]; excludeSessionPerturbations?: boolean }> = [];
     const deps = mkDeps({
       advanceTicks: async (_sid, opts) => {
         calls.push(opts);
@@ -306,14 +310,83 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
       },
     });
     await priceCandidate(deps, mkInput());
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
+    // 第 1 次：裸基准推进（排除会话扰动 = 差分锚点）
     expect(calls[0]!.ephemeral).toBeUndefined();
-    expect(calls[1]!.ephemeral).toHaveLength(1);
-    const pert = calls[1]!.ephemeral![0]!;
+    expect(calls[0]!.excludeSessionPerturbations).toBe(true);
+    // 第 2 次：对照（不处置）—— 会话扰动照常施加，无临时扰动
+    expect(calls[1]!.ephemeral).toBeUndefined();
+    expect(calls[1]!.excludeSessionPerturbations).toBeUndefined();
+    // 第 3 次：候选 —— 会话扰动之上再叠候选扰动
+    expect(calls[2]!.ephemeral).toHaveLength(1);
+    expect(calls[2]!.excludeSessionPerturbations).toBeUndefined();
+    const pert = calls[2]!.ephemeral![0]!;
     expect(pert.mode).toBe("set");
     expect(pert.targetObjectId).toBe("obj_line_A1");
     expect(pert.targetStateVar).toBe("utilPressure");
     expect(pert.durationTicks).toBeNull();
+  });
+
+  it("E2-a 基准锚定：场景扰动在场 ⇒ 对照 = E0 且 Ec ≤ E0（对照不是恒零）", async () => {
+    const deps = mkDeps({
+      advanceTicks: async (_sid, opts) => {
+        if (opts.excludeSessionPerturbations) return { o1: { pressure: 0 }, o2: { pressure: 0 } }; // 裸基准
+        return opts.ephemeral?.length
+          ? { o1: { pressure: 0.009 }, o2: { pressure: 0.02 } } // 候选：补救后残余（o1 已落到地板下）
+          : { o1: { pressure: 0.02 }, o2: { pressure: 0.02 } }; // 不处置：场景全量冲击 = E0
+      },
+    });
+    const r = await priceCandidate(deps, mkInput());
+    expect(r.kind).toBe("priced");
+    if (r.kind !== "priced") return;
+    // E0 与 Ec 都报出；Ec ≤ E0（§0.2：残余位移对 0.01 地板比较，不是边际 |Δ|）
+    expect(r.control.touchedOrders).toBe(2);
+    expect(r.control.faintOnly).toBe(0);
+    expect(r.control.exposureYuan).toBe(3_000_000);
+    expect(r.control.displacement.p50).toBe(0.02);
+    expect(r.after.touchedOrders).toBe(1); // o2 仍 0.02；o1 残余 0.009 ≤ 0.01 → faint
+    expect(r.after.faintOnly).toBe(1);
+    expect(r.after.exposureYuan).toBe(2_000_000);
+  });
+
+  it("业务键解析：②③④ 用 resolvedObjectId（内部 id）寻址；对外记录与披露仍说业务键", async () => {
+    const calls: Array<{ n: number; ephemeral?: readonly Perturbation[]; excludeSessionPerturbations?: boolean }> = [];
+    let propsRead = "";
+    const deps = mkDeps({
+      readWorldState: async () => ({ obj_material_pos_lfp: { shortageRisk: 12 } }),
+      readObjectProps: async (objectId) => {
+        propsRead = objectId;
+        return { leadTime: 26 };
+      },
+      advanceTicks: async (_sid, opts) => {
+        calls.push(opts);
+        return { o1: { pressure: 0 } };
+      },
+    });
+    const r = await priceCandidate(
+      deps,
+      mkInput({
+        candidate: mkCandidate({
+          lever: { objectType: "Material", objectId: "pos_lfp", prop: "leadTime", unit: "d", valueKind: "number" },
+          toValue: 10,
+        }),
+        resolvedObjectId: "obj_material_pos_lfp",
+      }),
+    );
+    expect(r.kind).toBe("priced");
+    if (r.kind !== "priced") return;
+    expect(r.specKey).toBe("material_shortage_risk");
+    // ② 代入按内部 id 读 props（业务键 "pos_lfp" 在对象库里查不到任何东西）
+    expect(propsRead).toBe("obj_material_pos_lfp");
+    // ④ 引擎实际寻址的扰动落点 = 内部 id
+    const pert = calls[2]!.ephemeral![0]!;
+    expect(pert.targetObjectId).toBe("obj_material_pos_lfp");
+    expect(pert.targetStateVar).toBe("shortageRisk");
+    expect(pert.magnitude).toBeCloseTo(2, 6); // COALESCE(10×2/10, 0)
+    // 对外记录 + 披露 = 业务键（人读业务身份；内部 id 是存储细节）
+    expect(r.perturbation.targetObjectId).toBe("pos_lfp");
+    expect(r.disclosure.targetObjectId).toBe("pos_lfp");
+    expect(r.disclosure.specKey).toBe("material_shortage_risk");
   });
 
   it("指纹随输入而变：同一候选不同场景哈希 ⇒ 不同指纹", async () => {

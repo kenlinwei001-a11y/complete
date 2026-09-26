@@ -151,7 +151,7 @@ function buildObjIndex(arrays: Map<string, readonly ObjectInstance[]>): Map<stri
  * 的数值巧合就会造出一条假引用边 —— 那正是本文件铁律①禁的「看着合理的编造」。
  * 标识符在本体里都是字符串（`matId`/`name`/`materialCode`/`lineId`…），砍掉数值不损失真边。
  */
-function uniqueKeyProps(objs: readonly ObjectInstance[]): string[] {
+export function uniqueKeyProps(objs: readonly ObjectInstance[]): string[] {
   if (objs.length === 0) return [];
   const propNames = new Set<string>();
   for (const o of objs) for (const k of Object.keys(o.props)) propNames.add(k);
@@ -371,9 +371,9 @@ function narrowByKeyJoin(
  * `uniqueKeyProps` 要求该类型全部实例上取值互异 ⇒ `baseId` 天然被排除、`processId` 留下，
  * 唯一键 ⇒ id 唯一，这是**由数据保证**的，不是靠命名约定碰巧。
  */
-type BusinessRefMemo = Map<string, string | null>;
+export type BusinessRefMemo = Map<string, string | null>;
 
-function businessRefPropOf(typeKey: string, arrays: Map<string, readonly ObjectInstance[]>, memo: BusinessRefMemo): string | null {
+export function businessRefPropOf(typeKey: string, arrays: Map<string, readonly ObjectInstance[]>, memo: BusinessRefMemo): string | null {
   const hit = memo.get(typeKey);
   if (hit !== undefined) return hit;
   const keys = uniqueKeyProps(arrays.get(typeKey) ?? []);
@@ -383,13 +383,32 @@ function businessRefPropOf(typeKey: string, arrays: Map<string, readonly ObjectI
 }
 
 /** 对象的业务可读 id（该类型唯一键上的取值；类型没有唯一键时诚实回落内部 `o.id`，不硬凑一个）。 */
-function businessRef(typeKey: string, o: ObjectInstance, arrays: Map<string, readonly ObjectInstance[]>, memo: BusinessRefMemo): string {
+export function businessRef(typeKey: string, o: ObjectInstance, arrays: Map<string, readonly ObjectInstance[]>, memo: BusinessRefMemo): string {
   const k = businessRefPropOf(typeKey, arrays, memo);
   if (k !== null) {
     const v = o.props[k];
     if (typeof v === "string" && v.length > 0) return v;
   }
   return o.id;
+}
+
+/**
+ * 业务键（候选 `lever.objectId`，如 matId/lineId/processId）→ 内部对象 id。
+ * 与枚举器**同一条** uniqueKeyProps/businessRef 链（单源，禁第二套解析）。
+ * 传入的 `objects` 必须是该类型**已加载**的全量数组，且 `arrays` 里同 typeKey 指向同一份
+ * （businessRefPropOf 按 typeKey 从 `arrays` 取 —— 调用方先 load 再调，否则唯一键会被 memo 钉成 null）。
+ * 匹配不到（业务键已漂移 / 类型无唯一键）⇒ 诚实 `null`，由定价层照 TARGET_CELL_ABSENT 缺格出口。
+ */
+export function resolveBusinessRefToObjectId(
+  typeKey: string,
+  objectRef: string,
+  objects: readonly ObjectInstance[],
+  arrays: Map<string, readonly ObjectInstance[]>,
+  memo: BusinessRefMemo,
+): string | null {
+  for (const o of objects) if (o.id === objectRef) return objectRef;
+  for (const o of objects) if (businessRef(typeKey, o, arrays, memo) === objectRef) return o.id;
+  return null;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

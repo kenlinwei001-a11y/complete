@@ -6,10 +6,13 @@
  *   ② 代入     computePressureTarget    —— `translateSpecFormula` + `evalArithmetic`（与 runDerivations 同一套）
  *   ③ 构造扰动 buildCandidatePerturbation —— mode:"set" 永久；落点 = 规格 targetProp（压力格）
  *   ④ 平行世界 priceCandidate           —— `simAdvanceTicks` 的 persist:false + `ephemeralPerturbations`
- *                                          临时扰动路（WO-MATERIAL-REPRICE 演习路已验证）；
- *                                          对照（不处置）与候选世界都零写入 ⇒ E2-g「世界态逐字节不变」结构成立
- *   ⑤ 同尺读数 orderDisplacement        —— diffTickStates(对照, 候选) → 与前端 buildMoneyView.magnitude
+ *                                          临时扰动路（WO-MATERIAL-REPRICE 演习路已验证）；三次推进：
+ *                                          基准（排除会话扰动的裸世界）/ 对照（不处置）/ 候选（+候选扰动），
+ *                                          全部零写入 ⇒ E2-g「世界态逐字节不变」结构成立
+ *   ⑤ 同尺读数 orderDisplacement        —— diffTickStates(无扰动基准, ·) → 与前端 buildMoneyView.magnitude
  *                                          同一口径（NOISE_FLOOR=0.01 / 档 [0.01,1,10] / 最近秩分位）
+ *                                          对照 = diff(基准, 不处置世界) = E0（场景全量冲击的残余）；
+ *                                          候选 = diff(基准, 候选世界) = Ec（补救后的残余位移）
  *   ⑥ 披露     disclosure               —— specKey、扰动落点、tick 数、各环节耗时、agentInvolved:false
  *
  * 与 PRD 原机制（branch 重放）的实现差异（语义等价，判据 E2-b′/c/d/g 不受影响）：
@@ -101,6 +104,12 @@ export function buildCandidatePerturbation(parts: {
   candidate: SolutionCandidate;
   targetStateVar: string;
   magnitude: number;
+  /**
+   * 引擎寻址用的内部对象 id。候选 `lever.objectId` 是业务键（matId/lineId/processId），
+   * 世界态与对象库按内部 `o.id` 寻址 —— 解析由接线方经 `resolveBusinessRefToObjectId` 做，
+   * 本函数不自己解析（单源禁令）。缺省回落业务键（无解析时与旧行为逐字节同）。
+   */
+  targetObjectId?: string;
   /** 借会话的建单时刻（R6：本函数不读时钟 —— 同 app.ts 演习路 `createdAt: s.createdAt`）。 */
   createdAt: string;
 }): Perturbation {
@@ -112,7 +121,7 @@ export function buildCandidatePerturbation(parts: {
     // kind 对临时扰动零语义（不入库、引擎不读；真实语义在 disclosure 的 specKey + lever 落点）。
     // 五个枚举值都是事件语义，候选不是事件；取产能族只是占位，落盘路径绝不使用本对象。
     kind: "capacity_loss",
-    targetObjectId: candidate.lever.objectId,
+    targetObjectId: parts.targetObjectId ?? candidate.lever.objectId,
     targetStateVar: parts.targetStateVar,
     startTick: 0,
     durationTicks: null,
@@ -228,11 +237,16 @@ export interface PricingDeps {
   listOrderIds(): Promise<readonly string[]>;
   listOrderValues(): Promise<ReadonlyMap<string, number>>;
   /**
-   * 一次推进 N 拍。⚠ **接口没有 persist 旋钮** —— 定价的对照与候选世界一律走
+   * 一次推进 N 拍。⚠ **接口没有 persist 旋钮** —— 定价的基准/对照/候选世界一律走
    * `simAdvanceTicks` 的 persist:false 支路（接线方的责任，本接口结构上排除 persist:true
    * 的定价推进）⇒ E2-g「世界态逐字节不变」由接口形状保证。
+   * `excludeSessionPerturbations` = 排除会话既有扰动（场景假设）的**裸基准世界**推进 ——
+   * 读数的差分锚点（§0.2 阶跃尺：E0/Ec 都是「残余位移」，必须对无扰动世界取差）。
    */
-  advanceTicks(sessionId: string, opts: { n: number; ephemeral?: readonly Perturbation[] }): Promise<TickState>;
+  advanceTicks(
+    sessionId: string,
+    opts: { n: number; ephemeral?: readonly Perturbation[]; excludeSessionPerturbations?: boolean },
+  ): Promise<TickState>;
   /** 单调时钟（接线方传 performance.now；测试传假钟）。 */
   now(): number;
   makeId(prefix: string): string;
@@ -284,7 +298,7 @@ export type PricingOutcome =
         readonly magnitude: number;
       };
       readonly horizon: number;
-      /** 对照（不处置）读数 —— diff(对照, 对照) 恒空 ⇒ 诚实零，与候选读数同形。 */
+      /** 对照（不处置）读数 = diff(无扰动基准, 不处置世界) = E0；无场景扰动时诚实零（与候选读数同形）。 */
       readonly control: PricingReading;
       readonly after: PricingReading;
       readonly disclosure: PricingDisclosure;
@@ -300,6 +314,12 @@ export async function priceCandidate(
     /** 与 runM 同 n 的推演拍数。 */
     horizon: number;
     candidate: SolutionCandidate;
+    /**
+     * 杠杆落点的**内部对象 id**（接线方经 `resolveBusinessRefToObjectId` 解析；候选
+     * `lever.objectId` 是业务键，世界态/对象库按内部 `o.id` 寻址）。②③④ 用它寻址；
+     * 披露与对外记录仍说业务键（人读的是业务身份，内部 id 是存储细节）。
+     */
+    resolvedObjectId?: string;
     /** 本租户 ACTIVE 规格（接线方从 `repos.derivationSpecs` 注入；本函数不改规格）。 */
     specs: readonly DerivationSpecRecord[];
     /** 会话建单时刻 —— 候选扰动借用（R6 不读时钟）。 */
@@ -334,16 +354,18 @@ export async function priceCandidate(
   if (binding === null) return gap("NO_BINDING");
 
   /* ② 代入 → 压力目标值 */
-  const objProps = await deps.readObjectProps(candidate.lever.objectId);
+  const landingId = input.resolvedObjectId ?? candidate.lever.objectId;
+  const objProps = await deps.readObjectProps(landingId);
   const pressureTarget = computePressureTarget(binding, objProps, candidate.lever.prop, candidate.toValue);
   if (pressureTarget === null) return gap("PRESSURE_TARGET_UNCOMPUTABLE");
 
   /* ③ 落点格必须已存在于世界态（PRD §3.2 段二；不存在 ⇒ 诚实缺格，不许造格） */
   const worldState = await deps.readWorldState(input.sessionId);
-  const landingCell = worldState[candidate.lever.objectId]?.[binding.targetProp];
+  const landingCell = worldState[landingId]?.[binding.targetProp];
   if (typeof landingCell !== "number") return gap("TARGET_CELL_ABSENT");
 
-  /* ④ 平行世界：对照（不处置）与候选世界，都走 persist:false 临时扰动路 */
+  /* ④ 平行世界三次推进，都走 persist:false 临时扰动路：
+   * 基准（排除会话扰动的裸世界）= 差分锚点；对照（不处置）= 场景全量冲击；候选 = 场景 + 候选扰动。 */
   t = deps.now();
   const scenarioPerts = await deps.listPerturbations(input.sessionId);
   const scenarioHash = scenarioPerturbationsHash(scenarioPerts);
@@ -354,18 +376,24 @@ export async function priceCandidate(
     candidate,
     targetStateVar: binding.targetProp,
     magnitude: pressureTarget,
+    targetObjectId: landingId,
     createdAt: input.sessionCreatedAt,
   });
   timings.perturb = deps.now() - t;
 
   t = deps.now();
+  const baselineState = await deps.advanceTicks(input.sessionId, { n: input.horizon, excludeSessionPerturbations: true });
   const controlState = await deps.advanceTicks(input.sessionId, { n: input.horizon });
   const candidateState = await deps.advanceTicks(input.sessionId, { n: input.horizon, ephemeral: [candidatePert] });
   timings.tick = deps.now() - t;
 
-  /* ⑤ 同尺读数：diffTickStates(对照, 候选世界) —— PRD §4.2 ⑤ 原文 */
+  /* ⑤ 同尺读数：对**无扰动基准**取差 —— §0.2 阶跃尺语义（E0/Ec 都是「残余位移」，不是边际 Δ）。
+   * diff(基准, 对照) = E0（场景冲击的残余）；diff(基准, 候选) = Ec（补救后的残余）。
+   * 无场景扰动时基准 ≡ 对照 ⇒ E0 诚实零（不是「没算」）；⛔ diff(对照,候选) 量的是边际 |Δ|，
+   * 复现不出 §0.2 的 0.012/0.009 表（那是残余压力对 0.01 地板的比较）。 */
   t = deps.now();
-  const diffs = diffTickStates(controlState, candidateState);
+  const controlDiffs = diffTickStates(baselineState, controlState);
+  const candidateDiffs = diffTickStates(baselineState, candidateState);
   const orderIds = new Set(await deps.listOrderIds());
   const orderValues = await deps.listOrderValues();
   const readingOf = (cells: readonly SimStateDiffCell[]): PricingReading => {
@@ -378,8 +406,8 @@ export async function priceCandidate(
     const { touchedOrderIds: _dropped, ...displacement } = d;
     return { touchedOrders: d.touchedOrders, faintOnly: d.faintOnly, exposureYuan, displacement };
   };
-  const after = readingOf(diffs);
-  const control = readingOf([]); // diff(对照, 对照) 恒空 ⇒ 诚实零，不是「没算」
+  const after = readingOf(candidateDiffs);
+  const control = readingOf(controlDiffs); // diff(基准, 不处置世界) = E0；基准 ≡ 对照时诚实零
   timings.diff = deps.now() - t;
 
   return {
@@ -393,6 +421,7 @@ export async function priceCandidate(
       candidateId: candidate.candidateId,
     }),
     perturbation: {
+      // 对外记录说业务键（人读的是业务身份）；引擎实际寻址的落点见 candidatePert（内部 id）。
       targetObjectId: candidate.lever.objectId,
       targetStateVar: binding.targetProp,
       mode: "set",

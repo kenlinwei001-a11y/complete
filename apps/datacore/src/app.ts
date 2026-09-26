@@ -100,6 +100,8 @@ import { buildExplainSlice } from "./sim/explain-slice.js";
 // 六步装配全在那边（对照与候选世界都走 persist:false 临时扰动路 ⇒ 零写入）；
 // 本文件只负责「取数据 → 交给它 → 回包」这三件事（同 change-impact / impact-analysis 的分层）。
 import { priceCandidate, pricingFingerprint, scenarioPerturbationsHash, type PricingOutcome } from "./sim/option-pricing.js";
+// 定价的业务键 → 内部 id 解析单源（枚举器的唯一键逻辑；见 resolver 的「先 load 再调」警告）。
+import { resolveBusinessRefToObjectId, type BusinessRefMemo } from "./solvers/impediment-options.js";
 // WO-SIM-SEED-WORLD · 建会话/推拍两条生产写路径的**契约**（定义住在播种侧，本文件只 import type ⇒ 运行时零依赖、不成环）。
 // 两个符号各有真实调用点，缺一个就编译不过：
 //   `listSimWorldObjects` → 落点成员集合物化入口（本文件 `:4138`，WO-IMPEDIMENT-LEVERS 侧）
@@ -2376,7 +2378,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
   const simAdvanceTicks = async (
     c: AuthCtx,
     s: SimSession,
-    opts: { rules: PropagationRule[]; n: number; persist: boolean; ephemeralPerturbations?: readonly Perturbation[] },
+    opts: {
+      rules: PropagationRule[];
+      n: number;
+      persist: boolean;
+      ephemeralPerturbations?: readonly Perturbation[];
+      /** 排除会话既有扰动（场景假设）的裸基准推进 —— 定价读数的差分锚点。 */
+      excludeSessionPerturbations?: boolean;
+    },
   ) => {
     const { rules: propRules, n, persist } = opts;
     // 逐环节计时（WO-SIM-DISCLOSURE ⑥）：**只测不改**——计时器一行算法都不碰，
@@ -2402,10 +2411,14 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     if (persist && (opts.ephemeralPerturbations?.length ?? 0) > 0) {
       throw new Error("simAdvanceTicks: ephemeralPerturbations 只允许在 persist:false 的推进里使用（落盘会造成查不出来源的世界线污染）");
     }
-    const sessionPerturbations = [
-      ...(await repos.sim.listPerturbations(c.tenantId, s.id)),
-      ...(opts.ephemeralPerturbations ?? []),
-    ];
+    // 真 tick 必须施加会话扰动 —— 排除开关只服务于定价的裸基准推进（persist:false），
+    // 落盘时排除 = 把世界线假设静默丢掉，与 ephemeral 落盘同级的事故。
+    if (persist && opts.excludeSessionPerturbations) {
+      throw new Error("simAdvanceTicks: excludeSessionPerturbations 只允许在 persist:false 的推进里使用（真 tick 必须施加会话扰动）");
+    }
+    const sessionPerturbations = opts.excludeSessionPerturbations
+      ? [...(opts.ephemeralPerturbations ?? [])]
+      : [...(await repos.sim.listPerturbations(c.tenantId, s.id)), ...(opts.ephemeralPerturbations ?? [])];
     /**
      * 「落地前值」= 该扰动 `startTick` 的**前一 tick** 快照上的目标值（`startTick===0` 取 baseSnapshot）。
      * 只有 `set` 与 `scale(magnitude===0)` 到期时用得上 —— 这两种模式不可解析求逆；
@@ -2862,10 +2875,17 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const scenarioPerts = await repos.sim.listPerturbations(c.tenantId, s.id);
     const scenarioHash = scenarioPerturbationsHash(scenarioPerts);
     const { active } = await sessionPropRules(c, s, undefined);
-    const advance = (_sessionId: string, opts: { n: number; ephemeral?: readonly Perturbation[] }): Promise<TickState> =>
-      simAdvanceTicks(c, s, { rules: active, n: opts.n, persist: false, ephemeralPerturbations: opts.ephemeral ?? [] }).then(
-        (r) => r.state,
-      );
+    const advance = (
+      _sessionId: string,
+      opts: { n: number; ephemeral?: readonly Perturbation[]; excludeSessionPerturbations?: boolean },
+    ): Promise<TickState> =>
+      simAdvanceTicks(c, s, {
+        rules: active,
+        n: opts.n,
+        persist: false,
+        ephemeralPerturbations: opts.ephemeral ?? [],
+        excludeSessionPerturbations: opts.excludeSessionPerturbations,
+      }).then((r) => r.state);
     const orderIds: string[] = [];
     const orderValues = new Map<string, number>();
     for (const o of await repos.objects.listByType(c.tenantId, "Order")) {
@@ -2873,6 +2893,18 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       const v = o.props.value;
       if (typeof v === "number" && Number.isFinite(v)) orderValues.set(o.id, v);
     }
+    // 业务键 → 内部 id（单源：枚举器同一条 uniqueKeyProps/businessRef 链，见
+    // `resolveBusinessRefToObjectId`）。候选 lever.objectId 是业务键（matId/lineId/processId），
+    // 世界态与对象库按内部 `o.id` 寻址 —— 不解析就全灭成 TARGET_CELL_ABSENT（E2 取证实抓）。
+    const typeArrays = new Map<string, readonly ObjectInstance[]>();
+    const refMemo: BusinessRefMemo = new Map();
+    const objectsOfType = async (typeKey: string): Promise<readonly ObjectInstance[]> => {
+      const hit = typeArrays.get(typeKey);
+      if (hit !== undefined) return hit;
+      const arr = await repos.objects.listByType(c.tenantId, typeKey);
+      typeArrays.set(typeKey, arr);
+      return arr;
+    };
     const items: PricingOutcome[] = [];
     for (const candidate of body.candidates) {
       const fp = pricingFingerprint({
@@ -2886,6 +2918,15 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         items.push(cached);
         continue;
       }
+      // 解析候选业务键（必须先 load 该类型再调 resolver —— 否则唯一键会被 memo 钉成 null）。
+      const typeObjs = await objectsOfType(candidate.lever.objectType);
+      const resolvedObjectId = resolveBusinessRefToObjectId(
+        candidate.lever.objectType,
+        candidate.lever.objectId,
+        typeObjs,
+        typeArrays,
+        refMemo,
+      );
       const outcome = await priceCandidate(
         {
           listPerturbations: async () => scenarioPerts,
@@ -2903,6 +2944,7 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           curTick: s.curTick,
           horizon,
           candidate,
+          resolvedObjectId: resolvedObjectId ?? undefined,
           specs,
           sessionCreatedAt: s.createdAt,
         },
