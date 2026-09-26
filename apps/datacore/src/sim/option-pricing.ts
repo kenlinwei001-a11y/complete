@@ -110,6 +110,13 @@ export function buildCandidatePerturbation(parts: {
    * 本函数不自己解析（单源禁令）。缺省回落业务键（无解析时与旧行为逐字节同）。
    */
   targetObjectId?: string;
+  /**
+   * 生效起始 tick。⚠ 引擎只在 `startTick === producedTick` 的**首次生效**拍落笔
+   * （propagation.ts 扰动段 ② entersAt）—— 传 0 而推进从 curTick(>0) 起 ⇒ entersAt
+   * 恒 false ⇒ 扰动**从不落地**，候选与对照推进逐字节相同（E2 取证实抓过的坑）。
+   * 接线方传 `curTick + 1`（候选推进第一拍生效）。
+   */
+  startTick: number;
   /** 借会话的建单时刻（R6：本函数不读时钟 —— 同 app.ts 演习路 `createdAt: s.createdAt`）。 */
   createdAt: string;
 }): Perturbation {
@@ -123,7 +130,7 @@ export function buildCandidatePerturbation(parts: {
     kind: "capacity_loss",
     targetObjectId: parts.targetObjectId ?? candidate.lever.objectId,
     targetStateVar: parts.targetStateVar,
-    startTick: 0,
+    startTick: parts.startTick,
     durationTicks: null,
     magnitude: parts.magnitude,
     mode: "set",
@@ -236,16 +243,24 @@ export interface PricingDeps {
   readObjectProps(objectId: string): Promise<Record<string, unknown>>;
   listOrderIds(): Promise<readonly string[]>;
   listOrderValues(): Promise<ReadonlyMap<string, number>>;
+  /** 历史定格态（基准重放的起点）：tick===0 ⇒ 接线方回 baseSnapshot（同 tick 路影子线语义）。 */
+  readTickState(sessionId: string, tick: number): Promise<TickState>;
   /**
    * 一次推进 N 拍。⚠ **接口没有 persist 旋钮** —— 定价的基准/对照/候选世界一律走
    * `simAdvanceTicks` 的 persist:false 支路（接线方的责任，本接口结构上排除 persist:true
    * 的定价推进）⇒ E2-g「世界态逐字节不变」由接口形状保证。
-   * `excludeSessionPerturbations` = 排除会话既有扰动（场景假设）的**裸基准世界**推进 ——
-   * 读数的差分锚点（§0.2 阶跃尺：E0/Ec 都是「残余位移」，必须对无扰动世界取差）。
+   * `excludeSessionPerturbations` = 排除会话既有扰动（场景假设）的推进；
+   * `fromState`/`fromTick` = 从历史定格态起推（基准重放用，与 exclude 配套）。
    */
   advanceTicks(
     sessionId: string,
-    opts: { n: number; ephemeral?: readonly Perturbation[]; excludeSessionPerturbations?: boolean },
+    opts: {
+      n: number;
+      ephemeral?: readonly Perturbation[];
+      excludeSessionPerturbations?: boolean;
+      fromState?: TickState;
+      fromTick?: number;
+    },
   ): Promise<TickState>;
   /** 单调时钟（接线方传 performance.now；测试传假钟）。 */
   now(): number;
@@ -364,8 +379,8 @@ export async function priceCandidate(
   const landingCell = worldState[landingId]?.[binding.targetProp];
   if (typeof landingCell !== "number") return gap("TARGET_CELL_ABSENT");
 
-  /* ④ 平行世界三次推进，都走 persist:false 临时扰动路：
-   * 基准（排除会话扰动的裸世界）= 差分锚点；对照（不处置）= 场景全量冲击；候选 = 场景 + 候选扰动。 */
+  /* ④ 平行世界推进，都走 persist:false 临时扰动路：
+   * 基准（场景扰动**从未存在**的世界）= 差分锚点；对照（不处置）= 场景全量冲击；候选 = 场景 + 候选扰动。 */
   t = deps.now();
   const scenarioPerts = await deps.listPerturbations(input.sessionId);
   const scenarioHash = scenarioPerturbationsHash(scenarioPerts);
@@ -377,12 +392,31 @@ export async function priceCandidate(
     targetStateVar: binding.targetProp,
     magnitude: pressureTarget,
     targetObjectId: landingId,
+    // 候选推进第一拍（curTick+1）生效 —— 传 0 会让 entersAt 恒 false、扰动从不落地
+    // （propagation.ts 只在 startTick===producedTick 的首次生效拍落笔）。
+    startTick: input.curTick + 1,
     createdAt: input.sessionCreatedAt,
   });
   timings.perturb = deps.now() - t;
 
   t = deps.now();
-  const baselineState = await deps.advanceTicks(input.sessionId, { n: input.horizon, excludeSessionPerturbations: true });
+  // 基准世界与 tick 路信号分离的「影子线」同一纪律（app.ts wantDrift 段的实测教训）：
+  // **拿已烘入扰动的当前态排除推进，两条线会逐字节相同** —— 场景扰动在 `POST /perturbations`
+  // 建单时已当场施加进当前态。§0.2 的表量的是「对无场景世界的残余位移」，故基准必须从
+  // **最早扰动 startTick−1 的历史定格态**零扰动重放到对照口径（R6 确定性 ⇒ 与从锚点带场景
+  // 重放、再推 horizon 拍的对照世界逐字节同构）。无场景扰动 / 锚不早于当前 ⇒ 基准 ≡ 对照
+  // ⇒ E0 诚实零（不是「没算」）。
+  const minStart = scenarioPerts.reduce((m, p) => Math.min(m, p.startTick), Number.POSITIVE_INFINITY);
+  const anchor = scenarioPerts.length === 0 ? null : Math.max(0, minStart - 1);
+  const needsReplay = anchor !== null && anchor < input.curTick;
+  const baselineState = needsReplay
+    ? await deps.advanceTicks(input.sessionId, {
+        n: input.curTick - anchor + input.horizon,
+        excludeSessionPerturbations: true,
+        fromState: await deps.readTickState(input.sessionId, anchor),
+        fromTick: anchor,
+      })
+    : await deps.advanceTicks(input.sessionId, { n: input.horizon, excludeSessionPerturbations: true });
   const controlState = await deps.advanceTicks(input.sessionId, { n: input.horizon });
   const candidateState = await deps.advanceTicks(input.sessionId, { n: input.horizon, ephemeral: [candidatePert] });
   timings.tick = deps.now() - t;

@@ -99,6 +99,7 @@ const mkDeps = (over?: Partial<PricingDeps>): PricingDeps => {
     readObjectProps: async () => ({ utilization: 95.8912 }),
     listOrderIds: async () => ["o1", "o2"],
     listOrderValues: async () => new Map([["o1", 1_000_000], ["o2", 2_000_000]]),
+    readTickState: async () => ({ o1: { pressure: 0 }, o2: { pressure: 0 } }),
     advanceTicks: async (_sid, opts) =>
       opts.ephemeral?.length ? { o1: { pressure: 5 }, o2: { pressure: 0.02 } } : { o1: { pressure: 0 }, o2: { pressure: 0 } },
     now: () => ++clock,
@@ -325,12 +326,27 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     expect(pert.targetObjectId).toBe("obj_line_A1");
     expect(pert.targetStateVar).toBe("utilPressure");
     expect(pert.durationTicks).toBeNull();
+    // 候选推进第一拍生效（curTick+1）—— startTick 0 会让引擎 entersAt 恒 false、扰动从不落地
+    expect(pert.startTick).toBe(4);
   });
 
-  it("E2-a 基准锚定：场景扰动在场 ⇒ 对照 = E0 且 Ec ≤ E0（对照不是恒零）", async () => {
+  it("E2-a 基准锚定：场景扰动在场 ⇒ 基准从锚点重放、对照 = E0 且 Ec ≤ E0（对照不是恒零）", async () => {
+    const calls: Array<{
+      n: number;
+      ephemeral?: readonly Perturbation[];
+      excludeSessionPerturbations?: boolean;
+      fromState?: TickState;
+      fromTick?: number;
+    }> = [];
+    const anchorState: TickState = { o1: { pressure: 0 }, o2: { pressure: 0 } };
     const deps = mkDeps({
+      listPerturbations: async () => [
+        { id: "p0", tenantId: "demo", sessionId: "s", kind: "demand_shift", targetObjectId: "o1", targetStateVar: "x", startTick: 1, durationTicks: null, magnitude: 1, mode: "delta", label: "l", createdAt: "2026-01-01T00:00:00Z" },
+      ],
+      readTickState: async () => anchorState,
       advanceTicks: async (_sid, opts) => {
-        if (opts.excludeSessionPerturbations) return { o1: { pressure: 0 }, o2: { pressure: 0 } }; // 裸基准
+        calls.push(opts);
+        if (opts.excludeSessionPerturbations) return anchorState; // 无场景重放期末：订单零位移
         return opts.ephemeral?.length
           ? { o1: { pressure: 0.009 }, o2: { pressure: 0.02 } } // 候选：补救后残余（o1 已落到地板下）
           : { o1: { pressure: 0.02 }, o2: { pressure: 0.02 } }; // 不处置：场景全量冲击 = E0
@@ -339,6 +355,13 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     const r = await priceCandidate(deps, mkInput());
     expect(r.kind).toBe("priced");
     if (r.kind !== "priced") return;
+    // 基准 = 从锚点（最早 startTick−1 = 0）零扰动重放到对照口径（curTick − anchor + horizon 拍）
+    expect(calls).toHaveLength(3);
+    expect(calls[0]!.excludeSessionPerturbations).toBe(true);
+    expect(calls[0]!.fromTick).toBe(0);
+    expect(calls[0]!.fromState).toBe(anchorState);
+    expect(calls[0]!.n).toBe(9); // curTick 3 − anchor 0 + horizon 6
+    expect(calls[0]!.ephemeral).toBeUndefined();
     // E0 与 Ec 都报出；Ec ≤ E0（§0.2：残余位移对 0.01 地板比较，不是边际 |Δ|）
     expect(r.control.touchedOrders).toBe(2);
     expect(r.control.faintOnly).toBe(0);
@@ -347,6 +370,57 @@ describe("priceCandidate（④⑤⑥ 装配）", () => {
     expect(r.after.touchedOrders).toBe(1); // o2 仍 0.02；o1 残余 0.009 ≤ 0.01 → faint
     expect(r.after.faintOnly).toBe(1);
     expect(r.after.exposureYuan).toBe(2_000_000);
+  });
+
+  it("E2-b′ 剂量对：同杠杆不同档 toValue ⇒ 不同扰动幅度 ⇒ aft 读数逐剂量传递（装配不漏剂量）", async () => {
+    const mk = () =>
+      mkDeps({
+        advanceTicks: async (_sid, opts) =>
+          opts.ephemeral?.length
+            ? { o1: { pressure: opts.ephemeral[0]!.magnitude }, o2: { pressure: 0 } }
+            : { o1: { pressure: 0 }, o2: { pressure: 0 } },
+      });
+    const r10 = await priceCandidate(mk(), mkInput({ candidate: mkCandidate({ toValue: 10 }) }));
+    const r25 = await priceCandidate(mk(), mkInput({ candidate: mkCandidate({ toValue: 25 }) }));
+    expect(r10.kind).toBe("priced");
+    expect(r25.kind).toBe("priced");
+    if (r10.kind !== "priced" || r25.kind !== "priced") return;
+    // 同一夹具：扰动幅度 = toValue（formula this.utilization 代入），aft p90 逐剂量传递
+    expect(r10.perturbation.magnitude).toBe(10);
+    expect(r25.perturbation.magnitude).toBe(25);
+    expect(r10.after.displacement.p90).toBe(10);
+    expect(r25.after.displacement.p90).toBe(25);
+    // 同屏要报的两个数（越线张数 + p90）都在读数里
+    expect(r10.after.touchedOrders).toBe(1);
+    expect(r25.after.touchedOrders).toBe(1);
+  });
+
+  it("E2-b″ 敞口塌缩：候选把残余压到地板下 ⇒ 越线张数从 E0 掉到 0、p90 诚实空", async () => {
+    const anchorState: TickState = { o1: { pressure: 0 }, o2: { pressure: 0 } };
+    const deps = mkDeps({
+      listPerturbations: async () => [
+        { id: "p0", tenantId: "demo", sessionId: "s", kind: "demand_shift", targetObjectId: "o1", targetStateVar: "x", startTick: 1, durationTicks: null, magnitude: 1, mode: "delta", label: "l", createdAt: "2026-01-01T00:00:00Z" },
+      ],
+      readTickState: async () => anchorState,
+      advanceTicks: async (_sid, opts) => {
+        if (opts.excludeSessionPerturbations) return anchorState;
+        return opts.ephemeral?.length
+          ? { o1: { pressure: 0.003 }, o2: { pressure: 0.003 } } // 候选：残余压到 0.01 地板下
+          : { o1: { pressure: 0.02 }, o2: { pressure: 0.02 } }; // 不处置：E0 两张全越线
+      },
+    });
+    const r = await priceCandidate(deps, mkInput());
+    expect(r.kind).toBe("priced");
+    if (r.kind !== "priced") return;
+    // E0 报出：2 张越线、p90 0.02
+    expect(r.control.touchedOrders).toBe(2);
+    expect(r.control.displacement.p90).toBe(0.02);
+    // 候选把敞口压到 ≈0：越线 2→0 张 + faint 分账 2 张；p90 从 0.02 掉到 0.003（地板下残余，
+    // 不是 null —— null 只留给「零移动」，0.003 是「动过但已无越线」的诚实读数）
+    expect(r.after.touchedOrders).toBe(0);
+    expect(r.after.faintOnly).toBe(2);
+    expect(r.after.displacement.p90).toBe(0.003);
+    expect(r.after.exposureYuan).toBe(0);
   });
 
   it("业务键解析：②③④ 用 resolvedObjectId（内部 id）寻址；对外记录与披露仍说业务键", async () => {

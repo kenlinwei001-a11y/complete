@@ -2385,6 +2385,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
       ephemeralPerturbations?: readonly Perturbation[];
       /** 排除会话既有扰动（场景假设）的裸基准推进 —— 定价读数的差分锚点。 */
       excludeSessionPerturbations?: boolean;
+      /**
+       * 从历史定格态起推（定价基准重放用，与 exclude 配套）：`fromState` = 锚点 tick 的世界态，
+       * `fromTick` = 该锚点 tick。缺省 = 从当前态起推（与旧行为逐字节同，RL9）。
+       * ⚠ 只允许 persist:false —— 从历史态落盘会覆盖真实世界线（守卫见下）。
+       */
+      fromState?: TickState;
+      fromTick?: number;
     },
   ) => {
     const { rules: propRules, n, persist } = opts;
@@ -2392,9 +2399,9 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 停表也不参与任何判断。它的读数只出现在 `?disclose=1` 的披露层里。
     const timer = new PhaseTimer();
     const stopTotal = timer.start("total");
-    const fromTick = s.curTick;
-    let state = await simCurrent(c, s);
-    let curTick = s.curTick;
+    const fromTick = opts.fromTick ?? s.curTick;
+    let state = opts.fromState !== undefined ? simState(opts.fromState) : await simCurrent(c, s);
+    let curTick = fromTick;
     // 增量 3 传导核接入（opt-in）：有规则才传导，否则退回恒等 tick（无规则不触发，可回退）。
     // propagateTick 是纯函数（R6 确定性、R14 零业务常数）。
     const propagate = propRules.length > 0;
@@ -2415,6 +2422,10 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     // 落盘时排除 = 把世界线假设静默丢掉，与 ephemeral 落盘同级的事故。
     if (persist && opts.excludeSessionPerturbations) {
       throw new Error("simAdvanceTicks: excludeSessionPerturbations 只允许在 persist:false 的推进里使用（真 tick 必须施加会话扰动）");
+    }
+    // 从历史态落盘 = 用反事实覆盖真实世界线，比 ephemeral 落盘更隐蔽（ephemeral 至少来源可查）。
+    if (persist && opts.fromState !== undefined) {
+      throw new Error("simAdvanceTicks: fromState 只允许在 persist:false 的推进里使用（真 tick 必须从当前态起推）");
     }
     const sessionPerturbations = opts.excludeSessionPerturbations
       ? [...(opts.ephemeralPerturbations ?? [])]
@@ -2877,7 +2888,13 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
     const { active } = await sessionPropRules(c, s, undefined);
     const advance = (
       _sessionId: string,
-      opts: { n: number; ephemeral?: readonly Perturbation[]; excludeSessionPerturbations?: boolean },
+      opts: {
+        n: number;
+        ephemeral?: readonly Perturbation[];
+        excludeSessionPerturbations?: boolean;
+        fromState?: TickState;
+        fromTick?: number;
+      },
     ): Promise<TickState> =>
       simAdvanceTicks(c, s, {
         rules: active,
@@ -2885,6 +2902,8 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
         persist: false,
         ephemeralPerturbations: opts.ephemeral ?? [],
         excludeSessionPerturbations: opts.excludeSessionPerturbations,
+        fromState: opts.fromState,
+        fromTick: opts.fromTick,
       }).then((r) => r.state);
     const orderIds: string[] = [];
     const orderValues = new Map<string, number>();
@@ -2934,6 +2953,12 @@ export async function buildApp(deps: AppDeps): Promise<BuiltApp> {
           readObjectProps: async (objectId) => (await repos.objects.get(c.tenantId, objectId))?.props ?? {},
           listOrderIds: async () => orderIds,
           listOrderValues: async () => orderValues,
+          // 基准重放锚点：tick 0 ⇒ baseSnapshot（与 tick 路影子线同一份起点）；
+          // 历史定格读不到 ⇒ 诚实回落 baseSnapshot 全史重放（锚点行缺失是数据异常，不许拿编的锚点顶）。
+          readTickState: async (_sessionId, tick) =>
+            tick === 0
+              ? s.baseSnapshot
+              : ((await repos.sim.getTickState(c.tenantId, s.id, tick))?.state ?? s.baseSnapshot),
           advanceTicks: advance,
           now: () => performance.now(),
           makeId: (prefix) => newId(prefix),
