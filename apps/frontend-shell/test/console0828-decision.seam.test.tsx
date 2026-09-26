@@ -293,6 +293,12 @@ let sessionTickDays: number | null = null;
 let sessionCreatedAtRaw: string | null = "2026-09-10T00:00:00.000Z";
 /** 卡点载荷要不要带对策（基线 8 处全是 0 对策 ⇒ 四栏面板根本不渲染，⑦ 就没东西可咬）。 */
 let withCandidates = false;
+/**
+ * WO-C0828-P2 · 定价回包工厂（null ⇒ 桩回空清单，屏上恒「未定价」）。
+ * 工厂收**这次请求真带的候选** —— 用例据此把 priced/gap 项挂到真 candidateId 上，
+ * 屏上按 candidateId 对位，不会出现「桩回了价、卡上找不到」的假红。
+ */
+let pricingOutcomeFactory: ((body: { candidates: { candidateId: string }[] }) => { items: unknown[] }) | null = null;
 
 vi.mock("@/api/endpoints", () => ({
   // ── console0828 这一屏用到的六个 ──
@@ -350,7 +356,9 @@ vi.mock("@/api/endpoints", () => ({
   }),
   // WO-C0828-P2：定价读数是只读触发（选中卡点即调），桩回空清单 ⇒ 候选卡如实显示「未定价」，
   // 不侵入既有断言。⛔ 缺这一条的话组件拿到 undefined 当场抛错（手写导出清单不会自动跟上，见下注）。
-  simPricing: vi.fn(async () => ({ items: [] })),
+  // ⑦c 两臂把 `pricingOutcomeFactory` 设上，就地把 priced/gap 挂到真 candidateId。
+  simPricing: vi.fn(async (_sid: string, body: { candidates: { candidateId: string }[] }) =>
+    pricingOutcomeFactory === null ? { items: [] } : pricingOutcomeFactory(body)),
   runSolver: vi.fn(async () => {
     if (solverFails) throw new Error("求解器这一跳没走通（桩：本用例刻意不回）");
     return { data: impedimentPayload(), snapshotVersion: "sv-test" };
@@ -452,6 +460,7 @@ beforeEach(() => {
   sessionTickDays = null;
   sessionCreatedAtRaw = "2026-09-10T00:00:00.000Z";
   withCandidates = false;
+  pricingOutcomeFactory = null;
 });
 afterEach(cleanup);
 
@@ -920,6 +929,113 @@ describe("WO-C0828-SEAM · 08-28 决策屏接缝门", () => {
       expect(t).toContain("判据 ");
       expect(t).toContain("落点 ");
     }
+  });
+
+  /* ════════════════════════════════════════════════════════════════════════════
+   * ⑦c WO-C0828-P2 · 逐候选反事实定价上卡（PRD §4.2 D2 / E2-e / E2-f）
+   * ════════════════════════════════════════════════════════════════════════════
+   * 定价在**选中卡点**时自动触发（只读平行世界，不依赖「开始推演」）。两条臂：
+   *  · priced ⇒ 候选卡第一层 = 「拨后仍受影响 N 张 · X」+ 口径声明用**回包真 p90**（⛔ 不写死）；
+   *  · gap ⇒ 卡上写「定价缺格」+ 缺的绑定点名，⛔ 不许渲染成 0 / 不许渲染成「未定价」。
+   * 变异反证：把 `pricingOutcomeFactory` 留在 null（桩恒回空清单）⇒ 第一臂红在
+   * 「拨后仍受影响」找不到 —— 空清单与「没接线」在屏上必须分得开。
+   */
+  it("⑦c 定价 priced 上卡：候选卡显示拨后仍受影响 N 张 · 金额，口径声明用回包真 p90", async () => {
+    withCandidates = true;
+    pricingOutcomeFactory = ({ candidates }) => ({
+      items: candidates.slice(0, 1).map((c) => ({
+        kind: "priced",
+        candidateId: c.candidateId,
+        specKey: "material_shortage_risk",
+        fingerprint: "f".repeat(64),
+        perturbation: { targetObjectId: "mat_x", targetStateVar: "shortageRisk", mode: "set", magnitude: 2 },
+        horizon: 3,
+        control: { touchedOrders: 0, faintOnly: 0, exposureYuan: 0, displacement: { faintOnly: 0, touchedOrders: 0, ordersSeen: 500, p50: null, p90: null, max: null, buckets: [] } },
+        after: {
+          touchedOrders: 3,
+          faintOnly: 2,
+          exposureYuan: 42_000_000,
+          displacement: {
+            faintOnly: 2,
+            touchedOrders: 3,
+            ordersSeen: 500,
+            p50: 1.2,
+            p90: 1.8,
+            max: 12,
+            buckets: [
+              { label: "微弱 ≤0.01", n: 2 },
+              { label: "轻 0.01–1", n: 1 },
+              { label: "中 1–10", n: 1 },
+              { label: "重 >10", n: 1 },
+            ],
+          },
+        },
+        disclosure: {
+          specKey: "material_shortage_risk",
+          targetObjectId: "mat_x",
+          targetStateVar: "shortageRisk",
+          tickCount: 3,
+          elapsedMs: { total: 42, binding: 1, perturb: 1, tick: 39, diff: 1 },
+          agentInvolved: false,
+        },
+      })),
+    });
+    mount();
+    await railReady();
+    // 定价只读、不依赖推演：直接切到对策页签（点默认那一处）即可见卡。
+    const [btnA] = screen.getAllByTestId(/^c0828-fixbtn-/) as [HTMLElement];
+    const idA = (btnA.getAttribute("data-testid") ?? "").replace("c0828-fixbtn-", "");
+    fireEvent.click(btnA);
+
+    const readout = await screen.findByTestId(`c0828-price-${idA}`);
+    await waitFor(() => {
+      expect(readout.textContent ?? "").toContain("拨后仍受影响");
+    });
+    // 第一层：N 张（桩给 3）+ 位移 p90 真读数（1.8 → 1.80）。
+    expect(readout.textContent ?? "").toContain("3");
+    expect(readout.textContent ?? "").toContain("1.80");
+    // 明细：口径声明一字不落、p90 用真读数；披露四要素（规格/tick 数/耗时/未调用 agent）。
+    const detail = screen.getByTestId(`c0828-price-detail-${idA}`).textContent ?? "";
+    expect(detail).toContain("受影响张数按 0.01 位移门槛计；本次位移 p90 = 1.80");
+    expect(detail).toContain("位移离门槛越近，张数对门槛越敏感");
+    expect(detail).toContain("material_shortage_risk");
+    expect(detail).toContain("推演 3 拍");
+    expect(detail).toContain("42ms");
+    expect(detail).toContain("本次未调用 agent");
+  });
+
+  it("⑦c-gap 定价缺格上卡：NO_BINDING 点名缺的绑定，⛔ 不渲染 0、不塌成「未定价」", async () => {
+    withCandidates = true;
+    pricingOutcomeFactory = ({ candidates }) => ({
+      items: candidates.slice(0, 1).map((c) => ({
+        kind: "gap",
+        candidateId: c.candidateId,
+        reason: "NO_BINDING",
+        missingBinding: { objectType: "Process", prop: "attendance" },
+        disclosure: {
+          specKey: null,
+          targetObjectId: "mat_x",
+          targetStateVar: null,
+          tickCount: 3,
+          elapsedMs: { total: 7, binding: 7, perturb: 0, tick: 0, diff: 0 },
+          agentInvolved: false,
+        },
+      })),
+    });
+    mount();
+    await railReady();
+    const [btnA] = screen.getAllByTestId(/^c0828-fixbtn-/) as [HTMLElement];
+    const idA = (btnA.getAttribute("data-testid") ?? "").replace("c0828-fixbtn-", "");
+    fireEvent.click(btnA);
+
+    const readout = await screen.findByTestId(`c0828-price-${idA}`);
+    await waitFor(() => {
+      expect(readout.textContent ?? "").toContain("定价缺格");
+    });
+    // E2-e：点名缺的绑定（⛔ 不返 0、不降格、不从屏上消失）。
+    expect(readout.textContent ?? "").toContain("Process.attendance");
+    expect(readout.textContent ?? "").not.toContain("拨后仍受影响");
+    expect(readout.textContent ?? "").not.toContain("未定价");
   });
 
   /* ════════════════════════════════════════════════════════════════════════════
