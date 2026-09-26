@@ -504,7 +504,21 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
   const qc = useQueryClient();
 
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [world, setWorld] = useState<TickState>({});
+  const [worldRaw, setWorld] = useState<TickState | undefined>({});
+  /**
+   * `world` 的不变量：**恒为对象**（WO-SANDBOX-WORLD-GUARD）。兜底加在这一处**入口**，
+   * 不在每个消费点各补一次 `?.` —— 本页读 `world` 的地方有 8 处（`globalKpi` / `provTally` /
+   * 导出 basis / 逐状态变量表 / 扰动前读数 / `onPerturb` 依赖 / `buildNodes` / 模式面板），
+   * 消费点会随屏上新增读数长出来，入口不会。
+   *
+   * ⚠ 刻意保留 `worldRaw` 而不在 state 里就把 `undefined` 抹成 `{}`：5 个写入源取的字段在契约上
+   * **都是必填**（`SimSession.baseSnapshot`、`WorldSnapshot.state`），所以 `undefined` 到这儿
+   * **是异常态、不是空世界**。抹进 state 会把「读不到」与「世界真的是空的」永久合并 ——
+   * 同一个理由见下面 `baseProvenance` 初值注释（「`{}` 已经把信息抹掉了，`undefined` 留住了它」）。
+   * 本单**不改屏上显示**（两态下 `globalKpi` 仍都是 0）；留住这个区分只为让下一单能把
+   * 「读不到」渲染成「—」而不是 `0`，届时无需再碰任何消费点。
+   */
+  const world: TickState = worldRaw ?? {};
   const [curTick, setCurTick] = useState(0);
 
   /**
