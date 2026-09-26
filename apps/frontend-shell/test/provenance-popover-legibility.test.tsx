@@ -1511,7 +1511,11 @@ describe('WO-HOVER-LAYER ⑥ 全仓浮层表面按**性质**判（③ 只咬 cla
      * `UnifiedSimShell` / `MetricWall` 等），仓主已另行安排，**不在本单修复范围**。
      * 它们留在基线里 = 记账，不是豁免：棘轮只许降，谁清理谁把这个数调低。
      */
-    const BASELINE = 93;
+    // 2026-09-26 收编闭环时本门再报红（94 > 93）：键比对点名两处新违规并修掉 ——
+    //   SliceInspector 分组徽标的「深层/过宽成组」理由 title= → InfoPopover（信息零删）；
+    //   CellExplainPanel 的 title 只装 fromObjectId/ruleKey 技术键，两者已并列可见 → 摘除。
+    // 存量降到 92，照棘轮协议锁到 92。
+    const BASELINE = 92;
     expect(
       hits.length,
       hits.length > BASELINE
