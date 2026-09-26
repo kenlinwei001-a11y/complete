@@ -1018,18 +1018,25 @@ export default function SandboxView({ injectedConfig }: SandboxViewProps = {}) {
       const s = await createSimSession({ scope });
       // 世界 = 回包里的那一份（服务端派生 + 逐格出处都在里面）。前端一格都没造，
       // 回包没带出处 ⇒ `undefined` = 未知 —— 「我没编这份，不知道就是不知道」，不许自盖。
-      const base = s.baseSnapshot;
+      /**
+       * ⚠ WO-SANDBOX-WORLD-GUARD · 这一个字段喂**四**个下游，所以归一化放在这里（入口），
+       * 不在四个消费点各补一次 `??`：`setWorld` · `setBaseWorld` · 下面那条 `qc.setQueryData`
+       * 的 `state` · 再下面 `setHistory` 里的 `Object.keys`。
+       * 契约上 `SimSession.baseSnapshot` 是必填，所以 `undefined` 到这儿是**异常态**；
+       * 留 `baseRaw` 就是为了下一行还能把「没有基线」与「基线是空的」分开说。
+       */
+      const baseRaw = s.baseSnapshot;
+      const base: TickState = baseRaw ?? {};
       setSessionId(s.id);
       setSessionScope(scope);
       setWorld(base);
       setBaseProvenance(s.baseSnapshotProvenance);
       // 基线快照就是上面那一份（同一个 `s.baseSnapshot`），沿用同一个局部量，不再各读一次。
-      // ⚠ `?? null`（WO-SANDBOX-WORLD-GUARD）：`baseWorld` 声明的类型是 `TickState | null`，
-      // 而 `null` 在本页有确切含义 —— 上面那条懒查询的头注写着「取不到 ⇒ `null`，下区差分整块
-      // 显示诚实空」。回包缺 `baseSnapshot` 时 `base` 是 `undefined`，它既不是基线也不是 `null`，
-      // 会绕过 `deriveStateVarDeltas` 的 `baseWorld === null` 那道闸直接崩在 `avgOf`。
-      // 归一到 `null` 是把它**落回已有的那个诚实空态**，不是给它编一份空基线。
-      setBaseWorld(base ?? null);
+      // ⚠ 这一处刻意用 `baseRaw ?? null` 而不是 `base`：`baseWorld` 声明的类型是
+      // `TickState | null`，而 `null` 在本页有确切含义 —— 上面那条懒查询的头注写着
+      // 「取不到 ⇒ `null`，下区差分整块显示诚实空」。喂 `{}` 会变成「基线存在且为空」，
+      // 那是**编了一份空基线**；喂 `null` 才是「没有基线」，落回已有的诚实空态。
+      setBaseWorld(baseRaw ?? null);
       // WO-SANDBOX-MEMORY：连同"这份基线属于哪个会话"一起记 —— 记了，上面那条懒查询
       // 首次挂载就**一发都不发**（省掉一整跳 285MB），只有真的切世界时才去捞那一条。
       setBaseWorldFor(s.id);
