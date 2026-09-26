@@ -275,16 +275,24 @@ function InlineGraph({
           {dag.groups.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }} data-testid={`slice-graph-groups-${sliceKey}`}>
               {dag.groups.map((g) => (
-                <button
-                  key={g.key}
-                  className="badge"
-                  data-testid={`slice-graph-group-${sliceKey}-${g.layer}-${g.typeKey}`}
-                  style={{ cursor: "pointer", border: "1px solid var(--line2)" }}
-                  title={g.deep ? `第 ${g.layer} 跳（深层按类型成组）` : `第 ${g.layer} 跳（同跳同类型过宽成组）`}
-                  onClick={() => toggleGroup(g.key)}
-                >
-                  ▸ {g.typeKey} {g.count} 个（第 {g.layer} 跳）
-                </button>
+                <div key={g.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <button
+                    className="badge"
+                    data-testid={`slice-graph-group-${sliceKey}-${g.layer}-${g.typeKey}`}
+                    style={{ cursor: "pointer", border: "1px solid var(--line2)" }}
+                    onClick={() => toggleGroup(g.key)}
+                  >
+                    ▸ {g.typeKey} {g.count} 个（第 {g.layer} 跳）
+                  </button>
+                  <InfoPopover
+                    topic={g.deep ? `第 ${g.layer} 跳（深层按类型成组）` : `第 ${g.layer} 跳（同跳同类型过宽成组）`}
+                    testId={`slice-graph-group-why-${sliceKey}-${g.layer}-${g.typeKey}`}
+                  >
+                    <span>
+                      {g.deep ? "这一跳的对象按类型分到了不同组" : "这一跳同类型的对象太多，分组防过宽"}
+                    </span>
+                  </InfoPopover>
+                </div>
               ))}
             </div>
           )}

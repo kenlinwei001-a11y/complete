@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19",
+  "generatedAt": "2026-09-26",
   "ontology": {
     "invariants": [
       "R1",
@@ -2307,6 +2307,23 @@
       ],
       "brokenArtifacts": []
     },
+    "PRD-sim-options-decision-surface.md": {
+      "hasOntologyRef": true,
+      "invariants": [
+        "R14",
+        "R4",
+        "R6"
+      ],
+      "breakpoints": [],
+      "artifacts": [
+        "apps/datacore/src/seed-derivation-specs.ts",
+        "apps/datacore/src/solvers/impediment-options.ts",
+        "apps/frontend-shell/test/console0828-decision.seam.test.tsx",
+        "apps/frontend-shell/test/exposure-responds-to-perturbation.seam.test.ts",
+        "packages/contracts/src/chain-sim.ts"
+      ],
+      "brokenArtifacts": []
+    },
     "PRD-sim-scope-local.md": {
       "hasOntologyRef": true,
       "invariants": [
@@ -4109,6 +4126,7 @@
       "PRD-sandbox-metro-ops.md",
       "PRD-sandbox-multiplan.md",
       "PRD-sandbox-redesign.md",
+      "PRD-sim-options-decision-surface.md",
       "PRD-stale-claims.md"
     ],
     "apps/datacore/test/chain-scan-honesty.test.ts": [
@@ -4177,6 +4195,18 @@
     ],
     "packages/contracts/src/enterprise-state.ts": [
       "PRD-sim-drill-parallel-world.md"
+    ],
+    "apps/datacore/src/seed-derivation-specs.ts": [
+      "PRD-sim-options-decision-surface.md"
+    ],
+    "apps/datacore/src/solvers/impediment-options.ts": [
+      "PRD-sim-options-decision-surface.md"
+    ],
+    "apps/frontend-shell/test/console0828-decision.seam.test.tsx": [
+      "PRD-sim-options-decision-surface.md"
+    ],
+    "apps/frontend-shell/test/exposure-responds-to-perturbation.seam.test.ts": [
+      "PRD-sim-options-decision-surface.md"
     ],
     "apps/datacore/test/sim-certification.test.ts": [
       "PRD-sim-scope-local.md"

@@ -146,7 +146,7 @@ export function CellExplainPanel({ sessionId, objectId, stateVar, tick, stateVar
               key={`${e.fromObjectId}|${e.ruleKey}|${e.viaLinkKey}`}
               data-testid={`cell-explain-edge-${e.ruleKey}`}
             >
-              <span className={styles.deltaName} title={`${e.fromObjectId} —${e.ruleKey}→`}>
+              <span className={styles.deltaName}>
                 {e.fromObjectId}
               </span>
               <span className={styles.deltaVals}>
