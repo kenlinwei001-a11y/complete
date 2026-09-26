@@ -1025,6 +1025,13 @@ describe("§7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子）", ()
    * ⇒ 它**必须仍是 `equal_share`**。哪天有人顺手把它也改了，这一条会红，并读到这段理由。
    */
   const DELIBERATELY_EQUAL = "demo_model_demand_to_base_load";
+  /**
+   * `po_from_supplier` 上**名下有 ≥2 张采购单**的供应商组数（实测 demo·seed 42）。
+   * 存在的理由是 `coverage-blind` 的 D2：只断言"至少有一组"等于拿 ∃ 冒充 ∀ ——
+   * 样本缩到 1 组时那种断言照样绿，而对照实验的鉴别力已经没了。
+   * ⚠ 全 30 条边 / 10 个供应商，其中扇入=1 的组不进本数（它们任何口径下权重恒 1）。
+   */
+  const MULTI_PO_SUPPLIER_GROUPS = 8;
 
   const boot = async () => {
     const t = await makeApp();
@@ -1119,10 +1126,47 @@ describe("§7 WO-WEIGHT-BASIS-FIELD · 按声明字段分摊（真种子）", ()
         return { sup, qs, spread: qs[qs.length - 1]!.q / Math.max(1, qs[0]!.q) };
       })
       .sort((a, b) => b.spread - a.spread || a.sup.localeCompare(b.sup));
-    expect(ranked.length, "没有任何供应商名下有 ≥2 张单 ⇒ 这条边分不了摊，实验前提不成立").toBeGreaterThan(0);
+    // ── 🐤 基数断言（不是存在性）—— `coverage-blind` 的 D2「拿 ∃ 冒充 ∀」当场咬出来的 ────────
+    // 上一版这里只有 `expect(ranked.length).toBeGreaterThan(0)`，然后只用 `ranked[0]`。
+    // 那是**存在性**断言：只要还剩一个多单供应商，它就绿，而"另外 N−1 组是不是也按 qty 分摊"
+    // 一个字都没验。判据落在**基数**上，并在下面补一条真正的 ∀ 臂。
+    expect(
+      ranked.length,
+      "名下有 ≥2 张采购单的供应商组数变了 —— 变少 ⇒ 样本在缩（这个实验的鉴别力在下降）；" +
+        "变多 ⇒ 种子加单了。两种都先解释再改这个数。",
+    ).toBe(MULTI_PO_SUPPLIER_GROUPS);
     const pick = ranked[0]!;
     expect(pick.spread, "组内 qty 极差 ≈1 ⇒ 按量值与平摊读数本就相同，这个实验没有鉴别力").toBeGreaterThan(1.5);
     const lo = pick.qs[0]!, hi = pick.qs[pick.qs.length - 1]!;
+
+    // ── ∀ 臂：**每一个**多单组都必须满足 w = qty ÷ 组内 Σqty 且 Σw = 1 ────────────────
+    // ⚠ 这一条不是"再验一遍"：下面那个 API 对照实验只驱动 `ranked[0]` 一组（真起服务、两拍），
+    //   逐组跑 API 太贵；而"份额是不是真按声明字段算的"这件事必须对**全部**组成立，
+    //   否则就是「一组对了」冒充「这个口径对了」。故这里用同一张生产权重表逐组核到 12 位。
+    const wTable = inp.pairWeights[RULE];
+    expect(wTable, `${RULE} 算不出权重表 ⇒ 下面逐组核对是空绿`).toBeDefined();
+    let checkedGroups = 0;
+    for (const g of ranked) {
+      // 🐤 组基数下限：`ranked` 是用 `pos.length >= 2` 滤出来的，但那个不变量在**上游**，
+      //    本 `it()` 里看不见 ⇒ 空组时下面这层 for 会一次不进、恒绿零断言（`coverage-blind` 的 D1）。
+      //    故在这里把它显式写出来：份额的前提就是"这一组至少有两个源要分"。
+      expect(g.qs.length, `${g.sup} 组内只有 ${g.qs.length} 个源 ⇒ 没有份额可分，它不该进 ranked`).toBeGreaterThanOrEqual(2);
+      const sq = g.qs.reduce((s, x) => s + x.q, 0);
+      expect(sq, `${g.sup} 组内 Σqty = 0 ⇒ 份额分母非正，本该进 unresolved`).toBeGreaterThan(0);
+      let sw = 0;
+      for (const row of g.qs) {
+        const w = wTable![pairWeightKey(row.id, g.sup)];
+        expect(w, `${g.sup} ← ${row.id} 这一对在权重表里查不到 ⇒ 该对不传导`).toBeDefined();
+        expect(
+          w,
+          `${g.sup} ← ${row.id}：权重 ${w} ≠ qty ${row.q} ÷ Σqty ${sq} ⇒ 这一组没有按声明字段分摊`,
+        ).toBeCloseTo(row.q / sq, 12);
+        sw += w!;
+      }
+      expect(sw, `${g.sup} 的 Σw = ${sw} ≠ 1 ⇒ 归一方向不再是 IN_EDGES`).toBeCloseTo(1, 12);
+      checkedGroups += 1;
+    }
+    expect(checkedGroups, "🐤 一组都没核到 ⇒ 上面那个 for 在空集上恒绿").toBe(MULTI_PO_SUPPLIER_GROUPS);
 
     const drive = async (poId: string) => {
       const mk = await t.app.inject({
