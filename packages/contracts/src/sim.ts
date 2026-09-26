@@ -41,11 +41,22 @@ export type PropagationTrace = z.infer<typeof PropagationTraceSchema>;
  * 沿用 `cadenceNodeId` × `CHAIN_NODE_REGISTRY` 那条纪律：本仓出过「两个 dev 各发明一套
  * nodeId、交集为 0」的事故，口径名自由串迟早重演。
  *
- * 每条登记项声明三件事，缺一不可：
+ * 每条登记项声明四件事，缺一不可：
  *  · `key`        —— 契约两侧共用的稳定串；
  *  · `normalize`  —— 归一方向。**当前全部是 `IN_EDGES`**（Σ over 同一 target 的全部源 = 1）。
  *                    出边归一**故意不提供**，理由见 `weightRef` 字段注释的「口径」段（量纲 + 重复计账）。
  *  · `measure`    —— 这个口径拿什么当「计量值」，写成人话，供屏上与审计对照。
+ *  · `requiresField` —— 这个口径的计量值**是否由边自己声明字段名**（`weightRef.field`）。
+ *    `true`  ⇒ 不声明 `field` 即**契约拒收**（而不是运行时读出一张全零表）；
+ *    `false` ⇒ 声明了 `field` 同样**契约拒收** —— 它会被实现静默忽略，
+ *              而「声明了却不生效」正是 `weightRef` 这一族字段从头到尾在防的那个东西。
+ *    ⚠ 这一位是 WO-WEIGHT-BASIS-FIELD 加的，来历是一处实测到的**静默停摆**：
+ *      `source_qty_relative` 把字段名**写死成 `qty`**（`sim/pair-weights.ts` 的 `num(o.props.qty)`），
+ *      而 `FinishedGoodsInventory` 的数量字段叫 `qtyAvailable`、`WorkOrder` 叫 `qtyPlanned`
+ *      ⇒ 计量值逐条量出 0 ⇒ `normalizeInEdges` 的 `denominator > 0 ? … : 0` 让**整表权重归零**
+ *      ⇒ 引擎 `if (amount === 0) continue` ⇒ 该边**一声不响地不再传导**，只体现为 `zeroPairs`，
+ *      **永不进 `unresolved`**。形态：「我用『这条边声明了分摊口径』当作『它在按份额传导』的证据，
+ *      而前者并不度量后者 —— 字段读不到时它根本不传导，而且不报错。」
  *
  * ⚠ 口径的**实现**（怎么从本体里把计量值算出来）在 DataCore 侧
  * （`apps/datacore/src/sim/pair-weights.ts`），不在契约里：契约只定名字与语义，
@@ -55,14 +66,57 @@ export const PAIR_WEIGHT_BASIS_REGISTRY = [
   {
     key: "bom_cost_share",
     normalize: "IN_EDGES",
+    requiresField: false,
     measure:
       "该 (源, 目标) 对在目标的**生效 BOM** 中的成本占比 = 单台用量 × 源单价 × (1+损耗率) ÷ 该 BOM 全部行之和。" +
       "分母取**整份 BOM**（不是图里现有入边之和）：占比必须是可审计的绝对量，" +
       "按现有入边重新归一会让「加一条链路」悄悄改掉其它每一条的权重。",
   },
   {
+    /**
+     * **按声明字段成比例的份额（WO-WEIGHT-BASIS-FIELD）**。它补的是一个**形状**上的空档，
+     * 不是给既有口径换个名字 —— 五条既有口径没有一条同时满足下面三件事：
+     *
+     * | 口径 | Σ=1？ | 按量值？ | 字段可声明？ |
+     * |---|---|---|---|
+     * | `bom_cost_share`          | ✅ | ✅ | ❌ **BOM 路专用**（走 4 跳 BOM 链路，非 BOM 的源用不上） |
+     * | `equal_share`             | ✅ | ❌ **计量值恒 1 ⇒ 平摊** | ❌ |
+     * | `source_qty_relative`     | ❌ Σ=N | ✅ | ❌ **写死 `props.qty`** |
+     * | `source_value_relative`   | ❌ Σ≈N | ✅ | ❌ 写死 `value`→`qty×unitPrice` |
+     * | `actor_exposure_relative` | ❌ Σ≈N | ✅ | ❌ 写死订单金额聚合 |
+     * | **本口径**                | ✅ | ✅ | ✅ |
+     *
+     * ── ⚠ Σ 为什么必须 = 1，不能拿 `source_qty_relative` 顶（实测，不是偏好）────────────
+     * 本口径服务的那批边，目标**全部**是 `STATE_VAR_DOMAINS` 里 `min:0 / max:100` 的压力量纲
+     * ⇒ 有上拐点 ⇒ 受 `0.75 × max` 增益预算约束 ⇒ 是**强度**型。
+     * 换 `IN_EDGES_MEAN`（Σ=N）会把入流整体放大 N 倍：实测
+     * `demo_batch_procurement_delay_to_material_shortage` 的 Σw
+     * **1.000000000000 → 3.000000000000**（8 个 `Material` 目标逐个 3×），
+     * `Material.shortageRisk` 合计 **1.249998 → 1.571426**。
+     * 这正是 `seed-demo-propagation.test.ts` 判据③b 那条断言的来历。
+     * **判据一句话：目标格子问的是「多快/多高」⇒ Σ=1；问「多少」⇒ 均值=1。**
+     *
+     * ── 与 `equal_share` 的分工（⛔ 不是"更好的 equal_share"）──────────────────────
+     * `equal_share` 表达的是「本体里**没有**可审计的差异化计量值 ⇒ 不编造轻重」，它是**诚实**。
+     * 本口径要求边**点名一个真字段**。⇒ 拿不出字段的边**仍然该用 `equal_share`**，
+     * 硬塞一个不对题的字段（如拿抽检样本量当供应份额）就是挂着"已按 X 分摊"的名义跑一个编出来的 X。
+     */
+    key: "source_field_share",
+    normalize: "IN_EDGES",
+    requiresField: true,
+    measure:
+      "源实例在**边自己声明的那个计量字段**上的读数，占同组（该目标全部入边源）同一字段之和的份额" +
+      " = 源.<weightRef.field> ÷ Σ(该目标全部入边源的 <weightRef.field>)。Σ=1 ⇒ 加权平均，配**强度**型目标。" +
+      "字段名走 `weightRef.field` 声明、**不写死在实现里** —— 写死就是 `source_qty_relative` 那个" +
+      "「源类型的数量字段不叫 `qty` ⇒ 整表权重归零 ⇒ 该边静默停摆」的静默停摆病。" +
+      "⚠ 声明的字段在该源类型上**一个实例都读不到**、或读到的值**合计 ≤ 0** ⇒ 整条规则进 " +
+      "`PairWeightReport.unresolved` 并写明原因（引擎据此让本条流不传导），" +
+      "⛔ 绝不静默归零、⛔ 绝不回落成 `equal_share`：回落会让「字段名拼错」看起来和「大家一样重」一模一样。",
+  },
+  {
     key: "source_qty_relative",
     normalize: "IN_EDGES_MEAN",
+    requiresField: false,
     measure:
       "源实例的数量**相对于同组均值**的倍率 = 源.qty ÷ mean(该目标全部入边源的 qty)。" +
       "均值为 1、总和为 N（源的条数）—— 与 `bom_cost_share` 的「Σ=1」是两种不同的归一，别混用。",
@@ -70,6 +124,7 @@ export const PAIR_WEIGHT_BASIS_REGISTRY = [
   {
     key: "source_value_relative",
     normalize: "IN_EDGES_GLOBAL_MEAN",
+    requiresField: false,
     measure:
       "源实例的**金额**相对于**全域基数**的倍率 = 源.value ÷ mean(本租户该类型**全部**实例的 value)。" +
       "分母是**全域**均值，不是该目标那一组的均值 —— 这一条是本口径与 `source_qty_relative` " +
@@ -78,6 +133,7 @@ export const PAIR_WEIGHT_BASIS_REGISTRY = [
   {
     key: "actor_exposure_relative",
     normalize: "SOURCE_POOL_MEAN",
+    requiresField: false,
     measure:
       "源实例（交易对手）的**在手订单金额敞口** = Σ(其名下订单 qty × unitPrice)，" +
       "除以**本规则全部源实例**该敞口的均值。均值=1、无量纲 —— 它是系数上的倍率，不是份额。",
@@ -85,12 +141,19 @@ export const PAIR_WEIGHT_BASIS_REGISTRY = [
   {
     key: "equal_share",
     normalize: "IN_EDGES",
+    requiresField: false,
     measure:
       "**等份**：计量值恒 1，分母 = 该目标在本规则下的入边条数 N ⇒ 每条 = 1/N、Σ=1。" +
       "用于**强度**型目标，且本体里找不到任何可审计的差异化计量值时 —— " +
-      "「这 N 个源哪个更重要」答不出来，就不许编一个；能答出来的用上面四条口径之一。",
+      "「这 N 个源哪个更重要」答不出来，就不许编一个；能答出来的用上面四条口径之一" +
+      "（含 `source_field_share`：拿得出一个**对题的真字段**就用它，拿不出才留在本口径）。",
   },
 ] as const;
+
+/** 本口径的计量值是否由边自己声明字段名（`weightRef.field`）。不在册 ⇒ `null`，调用方据实处理。 */
+export function pairWeightBasisRequiresField(key: string): boolean | null {
+  return PAIR_WEIGHT_BASIS_REGISTRY.find((b) => b.key === key)?.requiresField ?? null;
+}
 
 /**
  * ⛔ **为什么要收 `equal_share`（WO-SIM-DESAT-3 立账 · WO-SIM-CALIBRATION 移植）——
@@ -453,7 +516,61 @@ export const PropagationRuleSchema = z.object({
    * 「该物料不在该型号的 BOM 里 ⇒ 它占该型号 BOM 成本 0%」），并计入装配回执的 `zeroPairs`。
    */
   weightRef: z
-    .object({ basis: z.string().refine(isKnownPairWeightBasis, { message: "weightRef.basis 必须是 PAIR_WEIGHT_BASIS_REGISTRY 在册口径（禁自由串）" }) })
+    .object({
+      basis: z.string().refine(isKnownPairWeightBasis, { message: "weightRef.basis 必须是 PAIR_WEIGHT_BASIS_REGISTRY 在册口径（禁自由串）" }),
+      /**
+       * **计量字段名（WO-WEIGHT-BASIS-FIELD）**：这条边按源实例的**哪个属性**算份额。
+       * 只有 `requiresField: true` 的口径读它（今天是 `source_field_share`）。
+       *
+       * ── 为什么字段名要由边声明，而不是每个字段各开一条 basis ────────────────────────
+       * 本仓那 10 条被迫平摊的扇入边，量值字段各不相同（`qtyPlanned` / `qty` /
+       * `qtyAvailable` / `contractedSupplyTon` / `unitPrice`）。一字段一 basis ⇒ 登记册要长 5 条，
+       * 而它们的算法**逐字节相同**，差别只在读哪个键 —— 那 5 条是同一个口径的 5 份抄本，
+       * 而「同一件事有多份抄本」正是本文件反复在治的那个东西。
+       * ⇒ 口径只留一条，**变的那一点做成声明**。
+       *
+       * **缺省（不写这个键）** = 本口径不吃字段 ⇒ 与本字段引入前**逐字节相同**（additive·可回退 RL9）。
+       *
+       * ⚠ **刻意用 `.optional()` 而不是 `.default(null)`**（同文件 `description` 用的是后者）：
+       * `.default(null)` 会让 `field` 在**输出类型**上变成必填 ⇒ 既有 22 处 `weightRef: { basis: … }`
+       * 字面量全部 typecheck 失败，要逐处补一个 `field: null`。那不是"更显式"，那是**让一次
+       * additive 变更产生 22 处无信息量的改动**，且其中一部分落在本单 🚦范围边界之外的测试文件里。
+       * 判据落在「不写它的边，行为与本字段引入前逐字节相同」上 —— `.optional()` 满足它，
+       * 且下游 `field == null` 一次判断同时吃掉 `undefined`（pg 裸 cast 读回的老行）与 `null`。
+       *
+       * ⚠ **两个方向都由契约拦**（见 `requiresField` 注释）：
+       *  · `requiresField:true` 却没给 `field` ⇒ 拒收。不拦的话运行期读出一张全零权重表，
+       *    表现是"这条边今天没动"，查起来要逐对翻 `zeroPairs`。
+       *  · `requiresField:false` 却给了 `field` ⇒ 拒收。它会被实现**静默忽略**，
+       *    于是台账上写着"按 qtyAvailable 分摊"、跑的是等份 —— 最难查的那种假绿。
+       */
+      field: z.string().min(1).nullable().optional(),
+    })
+    .superRefine((v, ctx) => {
+      const requires = pairWeightBasisRequiresField(v.basis);
+      // `basis` 不在册时上面的 `.refine` 已经报过；这里不重复报（一个错报两遍读不出该改哪）。
+      if (requires === null) return;
+      // `== null` 而不是 `=== null`：缺省是 `undefined`（本字段走 `.optional()`，见上方注释），
+      // 而 pg 裸 cast 读回的老行同样是 `undefined` —— 两者都必须算作"没声明"。
+      if (requires && v.field == null) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["field"],
+          message:
+            `口径「${v.basis}」的计量值由边声明字段名 ⇒ weightRef.field 必填。` +
+            `缺它不会报错，只会让整张权重表量出 0 ⇒ 该边静默停摆（只体现为 zeroPairs，永不进 unresolved）。`,
+        });
+      }
+      if (!requires && v.field != null) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["field"],
+          message:
+            `口径「${v.basis}」不读 weightRef.field（它的计量值由口径自己定义）⇒ 不许声明，` +
+            `否则台账上写着「按 ${v.field} 分摊」而实现把它静默忽略 —— 声明与行为不一致的假绿。`,
+        });
+      }
+    })
     .nullable()
     .default(null),
   /**

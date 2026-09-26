@@ -409,6 +409,20 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     clamp: null,
     // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
     // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 1.38（实测扇入）⇒ 入流被放大 1.38 倍。
+    //
+    // ── ⛔ WO-WEIGHT-BASIS-FIELD **审过，裁定不改**（留 `equal_share`）─────────────────
+    // 本边在该单名单里，候选字段是 `Model.unitPrice`(13902–22022)。**实测后退回，两条理由**：
+    //  ① **`unitPrice` 与本边量纲不对题**：目标 `Base.loadIndex`「基地有多忙」是**产能**量，
+    //     单价是**价格**。按单价分摊等于说"贵的型号让基地更忙"，这是编一个业务上不成立的份额
+    //     —— 正是契约 `equal_share` 注释点名禁止的「挂着『已按 X 分摊』的名义跑一个编出来的 X」。
+    //  ② **`capacity` / `totalDemand` / `orderCount` 也不能用 —— 会同一个体量因子记两遍账**：
+    //     本边源态就是 `Model.demandLoad`，而它的定义式是 `orderCount × 100 ÷ capacity`
+    //     （`seed-derivation-specs.ts` `model_demand_load`）⇒ 拿 `capacity`/`orderCount`/`totalDemand`
+    //     再乘一次份额，乘的是**已经在源读数里算过一遍**的那个量。这与 `weightRef` 契约注释里
+    //     「订单大小已经在下游被计过一次…再乘一次份额就是同一个体量因子记两遍账」逐字同源。
+    // ⚠ 另有一处实测，说明这条边本来也没多少份额可分：**13 个 Base 目标里只有 4 个组内有差异**
+    //   （扇入 min/max/mean = 1/3/1.38）⇒ 9 个目标扇入=1，任何口径下权重恒 1。
+    // ⇒ 「这几个型号哪个让基地更忙」今天**答不出来**，`equal_share` 就是那个诚实的答案。
     weightRef: { basis: "equal_share" },
     cadenceNodeId: null, // 同上：未绑定 = 这条流不过节拍闸门（缺省即旧行为，逐字节不变）
     status: "PUBLISHED",
@@ -484,9 +498,16 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
-    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 1.88（实测扇入）⇒ 入流被放大 1.88 倍。
-    weightRef: { basis: "equal_share" },
+    // WO-WEIGHT-BASIS-FIELD：`equal_share` → 按**合同供应量**的份额（Σ 仍 = 1）。
+    // 份额出处 = `Supplier.contractedSupplyTon`（实测 14/14 有值全正、范围 2800–10000、6/8 组内有差异）：
+    // 「这家拖期对该物料的缺料贡献多大」= 我在这个物料上**指着这家供多少吨**。
+    // ⛔ 不用 `actualSupplyTon`（2604–9000）：那是**已经供到的**量，而已到货的吨位恰恰是
+    //   **不受未来延迟影响**的那部分 —— 用它当风险份额是把敞口算反了。
+    //   两者不是同一个数：实测 15/15 逐实例不同，故这是个有后果的选择。
+    // ⛔ 不用 `onTimeRate`(0.9–0.99) / `leadTime`(3–12) / `transitDays`(2–18)：前者是**率**、
+    //   后两者是**天数**，份额化一个率或一个天数答的不是"占多少供应"。
+    // ⛔ 不用 `minOrderQty`(600–2500)：起订量是交易条款，不是这家在该物料上的供应体量。
+    weightRef: { basis: "source_field_share", field: "contractedSupplyTon" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1314,6 +1335,22 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
+    // ── ✅ WO-WEIGHT-BASIS-FIELD 收掉下面那条「未尽」──────────────────────────────────
+    // 下面原文写着「⚠ 未尽：`equal_share` 只表示今天没有可审计的差异化计量值。日后若能按
+    // 检验批量/**库存量**取到真实占比，应照 `bom_cost_share` 的先例升级」。**现在升级了。**
+    //
+    // 份额出处 = `FinishedGoodsInventory.qtyAvailable`（实测 18/18 有值全正、范围 3278–46161、
+    // 6/6 个型号组内有差异）：`coverDays`「这行仓位能顶几天」的缓冲**贡献**按**可用库存量**分 ——
+    // 一个存着 46161 的仓位，吸收的需求本就该比存 3278 的那个多。
+    // ⚠ 量纲不变：归一方向仍是 `IN_EDGES`（Σ=1），只改"这几行仓位之间怎么分" ⇒ 下面那段
+    //   「Σw 从 N 归一到 1」的增益预算账**逐字节仍然成立**（实测 Σw 仍 = 1.000000000000）。
+    // ⚠ **诚实记一处**：实测 `qtyAvailable` 与 `qtyOnHand` **逐实例 18/18 完全相同**
+    //   ⇒ 今天选哪个**数值上没有差别**。选 `qtyAvailable` 是**语义**决定：能吸收需求的只能是
+    //   *可用*库存，`qtyOnHand` 含已分配/锁定的量。两者哪天分叉时这个选择才开始产生后果 ——
+    //   现在写下来，免得将来有人以为这里验证过「用 available 读数更对」。
+    // ⛔ 不用 `dailyDemand`(895.90–1696.93)：实测 **0/6 组内有差异**（同型号各仓位同值）
+    //   ⇒ 拿它当份额与 `equal_share` 逐字节等价，等于挂着"已按 X 分摊"的名义跑平摊。
+    //
     // WO-PROP-V2-REBASE 订正（2026-09-19）：上一版这里写的「撤回 `equal_share`」**建立在一次假红上** ——
     // 病因是 `packages/contracts/dist/sim.js` 陈旧（合并后 src 有 `equal_share`、dist 没有）⇒
     // `pairWeightNormalizeOf` 认不出它 ⇒ 整条边落进 `unresolved` 不传导。重 build 之后实测：
@@ -1327,7 +1364,7 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     //   —— 与 `demo_material_price_to_model_cost` 用 `bom_cost_share` 同一条判据。
     // ⚠ 未尽：`equal_share` 只表示「今天没有可审计的差异化计量值」。日后若能按检验批量/库存量
     //   取到真实占比，应照 `bom_cost_share` 的先例升级；本单不新造计量基。
-    weightRef: { basis: "equal_share" },
+    weightRef: { basis: "source_field_share", field: "qtyAvailable" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1378,9 +1415,14 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
-    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 3.00（实测扇入）⇒ 入流被放大 3.00 倍。
-    weightRef: { basis: "equal_share" },
+    // WO-WEIGHT-BASIS-FIELD：`equal_share` → 按**采购数量**的份额（Σ 仍 = 1）。
+    // 份额出处 = `PurchaseOrder.qty`（实测 30/30 有值全正、范围 965–4257、8/10 个供应商组内有差异）：
+    // 「这家供应商该不该上评审」问的是**加急的分量**，而一张 3951 件的加急单与一张 965 件的
+    // 不是一回事。修前两者给出**逐字节相同**的 0.555（平摊指纹），这就是本边要治的病。
+    // ⛔ 不用 `etaDay`/`arriveDay`/`orderDay`/`shipDay`：它们是**日期**不是体量，且实测带负值
+    //   （`orderDay` −24–12、30 个里只有 11 个为正）⇒ 负值按 0 计会把一批单的份额直接归零，
+    //   得到的不是"按体量分"而是"按日期符号分"。⛔ `sampleQty` 类抽检量不在本类型上。
+    weightRef: { basis: "source_field_share", field: "qty" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1441,9 +1483,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
-    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 3.75（实测扇入）⇒ 入流被放大 3.75 倍。
-    weightRef: { basis: "equal_share" },
+    // WO-WEIGHT-BASIS-FIELD：`equal_share` → 按**采购数量**的份额（Σ 仍 = 1）。
+    // 份额出处 = `PurchaseOrder.qty`：缺口的大小 = **这张在途单要补多少料**。
+    // 一张补 3951 的单晚到，比一张补 965 的单晚到，造成的短缺risk本就该更大。
+    // 实测 8/8 个 Material 组内有差异 ⇒ 这个份额在每一组里都真的起作用（不是只对个别组有效）。
+    // ⛔ 日期字段同上条（带负值，份额化会按符号切）。
+    weightRef: { basis: "source_field_share", field: "qty" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1461,9 +1506,18 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
-    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 3.00（实测扇入）⇒ 入流被放大 3.00 倍。
-    weightRef: { basis: "equal_share" },
+    // WO-WEIGHT-BASIS-FIELD：`equal_share` → 按**批次数量**的份额（Σ 仍 = 1）。
+    // 份额出处 = `MaterialBatch.qty`（实测 24/24 有值全正、范围 687–2827、8/8 组内有差异）：
+    // 批次晚入库造成的缺口 ∝ **这批货有多少**。
+    // ⛔ 不用 `ageDays`(1–154) / `idleDays`(0–121)：它们是**库龄/闲置天数**，度量的是"这批货放了多久"，
+    //   不是"这批货有多少" —— 份额问的是后者。且 `idleDays` 实测 24 个里 2 个为 0。
+    // ⚠ 这条边就是 `seed-demo-propagation.test.ts` 判据③b 注释里点名的那条：
+    //   当年拿 `source_qty_relative`（唯一读 `MaterialBatch.qty` 的既有口径）试过，
+    //   Σw 从 1.000000000000 → **3.000000000000**、`Material.shortageRisk` 1.249998 → 1.571426。
+    //   本口径读同一个字段而 **Σw 保持 1** —— 差别只在 `normalizeInEdges` 里那一次
+    //   `base / rows.length`（`IN_EDGES` vs `IN_EDGES_MEAN`）。这就是为什么本单要新加口径，
+    //   而不是把这几条边改挂到 `source_qty_relative` 上。
+    weightRef: { basis: "source_field_share", field: "qty" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1481,9 +1535,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
-    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 1.88（实测扇入）⇒ 入流被放大 1.88 倍。
-    weightRef: { basis: "equal_share" },
+    // WO-WEIGHT-BASIS-FIELD：`equal_share` → 按**合同供应量**的份额（Σ 仍 = 1）。
+    // 份额出处 = `Supplier.contractedSupplyTon`：理由与同源那条 `demo_supplier_delay_to_material_shortage`
+    // 逐字相同（合同量 = 在这个物料上我指着这家供多少；已实供的吨位不是未来延迟的风险敞口）。
+    // ⚠ 实测 8 个 Material 目标里只有 **6 个**组内有差异 —— 另 2 个扇入=1，任何口径下权重恒 1。
+    //   这不是"口径没用"，是那两组本来就没有份额可分（诚实登记，别读成 8/8）。
+    weightRef: { basis: "source_field_share", field: "contractedSupplyTon" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1753,9 +1810,16 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
-    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 43.33（实测扇入）⇒ 入流被放大 43.33 倍。
-    weightRef: { basis: "equal_share" },
+    // WO-WEIGHT-BASIS-FIELD：`equal_share` → 按**计划产量**的份额（Σ 仍 = 1，只改组内怎么分）。
+    // 上一版注释写「本边无可审计的差异化计量值」——**该句今天不成立**：真起数据实测
+    // `WorkOrder.qtyPlanned` **260/260 有值、全正、范围 1431–5674、6/6 个型号组内有差异**。
+    //
+    // 份额出处 = `WorkOrder.qtyPlanned`（计划产量），**不是** `qtyActual`：
+    // 供给风险问的是「交不出多少货」= 这张工单**计划要交**的量；`qtyActual` 是**已经产出来的**量，
+    // 而"下达受阻"恰恰是"还没产出来" ⇒ 用 actual 会把最该重视的那张单权重压低，与语义**反向**。
+    // （两者不是同一个数：实测 260/260 逐实例不同，故这是个有后果的选择，不是文字游戏。）
+    // ⛔ `spanDays`(7–13) 是工期不是体量，份额化它答的是另一个问题。
+    weightRef: { basis: "source_field_share", field: "qtyPlanned" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1777,9 +1841,12 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     combine: "sum",
     decay: null,
     clamp: null,
-    // WO-SIM-CALIBRATION：本边无可审计的差异化计量值 ⇒ 等份 Σ=1（不是"不分摊"）。
-    // `null` 的真实语义是「每源各加一份满额」⇒ Σw = N ≈ 43.33（实测扇入）⇒ 入流被放大 43.33 倍。
-    weightRef: { basis: "equal_share" },
+    // WO-WEIGHT-BASIS-FIELD：`equal_share` → 按**计划产量**的份额（Σ 仍 = 1）。
+    // 份额出处 = `WorkOrder.qtyPlanned`：赶工/加班/返工的成本是**按件**发生的 ——
+    // 一张计划 5674 件的工单受阻，推高的型号成本本就该比 1431 件那张多。
+    // ⛔ 不用 `qtyActual`：理由与同源那条 `demo_wo_release_to_model_supply_risk` 逐字相同
+    //   （已产出的量不是"受阻"的那部分，用它与语义反向）。⛔ `spanDays` 是工期不是体量。
+    weightRef: { basis: "source_field_share", field: "qtyPlanned" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },
@@ -1997,8 +2064,23 @@ const DEMO_PROPAGATION_RULES: ReadonlyArray<
     decay: null,
     clamp: null,
     // Σw 从 N(实测 3，max 4) 归一到 1 —— 去/回两程从此记同一个数（0.6），环增益回到段头声明的 0.36。
-    // ⚠ 未尽：三行仓位按 `qtyAvailable` 的真实占比分（实测差 4.15×）要新加在册口径，见段头。
-    weightRef: { basis: "equal_share" },
+    //
+    // ── ✅ WO-WEIGHT-BASIS-FIELD 收掉上面那条「未尽」──────────────────────────────────
+    // 上一版原文：「⚠ 未尽：三行仓位按 `qtyAvailable` 的真实占比分（实测差 4.15×）**要新加在册口径**，
+    // 见段头」；段头更写明了升级路径「加一条 basis（measure = 源.qtyAvailable，normalize = IN_EDGES），
+    // 落点在 PAIR_WEIGHT_BASIS_REGISTRY + pair-weights.ts」。**本单就是那条口径**，现予落地。
+    //
+    // ⚠ 但**不是**照段头那个名字落的：段头提的是 `source_avail_qty_share`（**字段名写死在口径名里**）。
+    //   实测本仓有 9 条边要按份额分摊，量值字段各不相同（`qtyPlanned` / `qty` / `qtyAvailable` /
+    //   `contractedSupplyTon`）⇒ 一字段一 basis 要往登记册里塞 4 条**算法逐字节相同**的抄本。
+    //   故落成 `source_field_share` + `weightRef.field` 声明：**口径只一条，变的那一点做成声明**。
+    //
+    // 份额出处 = `FinishedGoodsInventory.qtyAvailable`（段头实测的 4.15× 就是它）：
+    // 同一个型号的库存被切成几行仓位，**存得多的那行被提走时，缓解的需求本就该更多**。
+    // ⚠ 段头那条「合计是 1 还是 3」的裁决**没被动**：归一方向仍是 `IN_EDGES`
+    //   ⇒ Σw 实测仍 = 1.000000000000 ⇒ 去程记 0.6、回程记 0.6，环增益仍是段头声明的 0.36。
+    //   本单改的只是"三行之间怎么分"，与段头预言的「预算读数一模一样」逐字吻合。
+    weightRef: { basis: "source_field_share", field: "qtyAvailable" },
     cadenceNodeId: null,
     status: "PUBLISHED",
   },

@@ -124,10 +124,11 @@ interface Measure {
 // 引擎按诚实缺席处理。两种失效**长得完全不同**，而前者正是本仓反复治的那种假绿。
 //
 // ── 边界（实测后收窄，别照抄成"全部口径都能声明路径"）──────────────────────────
-// 四个口径里**只有 `bom_cost_share` 有 join 可迁**：另外三个的计量值就长在边自己的
-// 源/目标实例身上（`source_qty_relative`/`source_value_relative` 读 `o.props`，路径长度 0；
-// `actor_exposure_relative` 聚合的就是**本规则自己那批边**，本来就是图驱动），
-// `equal_share` 计量值恒 1、不读任何数据。**给它们编一条路径 = 编一个不存在的概念。**
+// 六个口径里**只有 `bom_cost_share` 有 join 可迁**：其余的计量值就长在边自己的
+// 源/目标实例身上（`source_qty_relative`/`source_value_relative`/`source_field_share`
+// 读 `o.props`，路径长度 0；`actor_exposure_relative` 聚合的就是**本规则自己那批边**，
+// 本来就是图驱动），`equal_share` 计量值恒 1、不读任何数据。
+// **给它们编一条路径 = 编一个不存在的概念。**
 // ══════════════════════════════════════════════════════════════════════════════
 
 /** 一跳声明：沿 `linkKey` 的 `out`(from→to) 或 `in`(to→from) 方向走一步。**是数据，不是代码**。 */
@@ -498,6 +499,107 @@ export async function buildPairWeights(
       continue;
     }
 
+    if (basis === "source_field_share") {
+      // ── 按**边自己声明的那个字段**成比例的份额（WO-WEIGHT-BASIS-FIELD · Σ=1）──────────
+      //
+      // ── 今天的行为 X / 应该是 Y（本支的病灶，实测·demo 租户 seed 42）────────────────
+      // **X**：10 条扇入边（`WorkOrder→Model` 70 扇入 · `PurchaseOrder→Supplier` 4 · …）
+      //   全部落 `equal_share` ⇒ 计量值恒 1 ⇒ **平摊**。于是 `PurchaseOrder.qty` 相差 4.4 倍
+      //   （965 vs 4257）的两张采购单，给供应商的评审压力**逐字节相同**。
+      //   而它们不该相同：一张 4257 件的加急单与一张 965 件的加急单，对供应商不是一回事。
+      // **Y**：份额 = 该源在声明字段上的读数 ÷ 同组之和 ⇒ 按体量拉开，且 Σ 仍 = 1
+      //   （不放大入流，见契约本口径注释里那条 1.249998 → 1.571426 的实测账）。
+      //
+      // ── ⛔ 本支与 `source_qty_relative` 的**唯一**实质区别在失败姿态上，不在算式上 ──────
+      // 算式都是「源读数 ÷ 同组之和」；区别是：
+      //  · 那一支字段名**写死 `qty`**，读不到 ⇒ 计量值全 0 ⇒ `normalizeInEdges` 的
+      //    `denominator > 0 ? … : 0` 让整表归零 ⇒ 引擎 `amount === 0 ⇒ continue`
+      //    ⇒ **该边静默停摆**，只体现为 `zeroPairs`，**永不进 `unresolved`**；
+      //  · 本支**读不到就整条报缺**（`fail(...)` ⇒ 不写 `weights[rule.key]` ⇒ 引擎据此
+      //    把本条流判为 `unresolvedWeights` 并明确不传导）。
+      // 「字段名拼错了」与「大家一样重」在屏上必须长得不一样 —— 这是本支存在的全部理由。
+      const field = rule.weightRef!.field;
+      // 契约 `superRefine` 已拦 `field` 缺席；这里**仍然要判**——`repo/pg.ts` 读回是
+      // `row.doc as PropagationRule`（裸 cast、不过 zod parse），契约 refine 只在写入路生效。
+      // 这与 `buildPairWeights` 顶上那句 `weightRef != null`（而不是 `!== null`）是同一条接缝。
+      if (field === null || field === undefined || field === "") {
+        fail(
+          `口径「${basis}」的计量值由边声明字段名，而本规则的 weightRef.field 为空 ⇒ 算不出权重。` +
+            `本条流不传导——回落等份会让「没声明字段」看起来和「大家一样重」一模一样。`,
+        );
+        continue;
+      }
+      const sources = await byType(rule.sourceTypeKey);
+      /** 源 id → 该字段的读数 + 该字段在这个实例上**在不在**（两件事，别合成一个 0）。 */
+      const readOf = new Map<string, { v: number; present: boolean }>();
+      for (const o of sources) {
+        const raw = o.props[field];
+        // `present` 判的是**字段在不在且是个有限数**，不是「值大不大」：
+        // 一个真值为 0 的字段与一个不存在的字段，定性完全不同（前者是数据，后者是拼错/错类型）。
+        const present = typeof raw === "number" ? Number.isFinite(raw) : num(raw) !== 0;
+        readOf.set(o.id, { v: num(raw), present });
+      }
+      // ── 类型级判据①：**本规则的边上**一个源都读不到这个字段 ⇒ 整条报缺 ────────────────
+      // 判据落在 `edges` 的源上而不是全类型实例上：范围裁剪（LOCAL）后类型里可能还有别的实例，
+      // 而本规则真正要分摊的只有 `edges` 这一批。
+      const edgeSrcIds = [...new Set(edges.map((e) => e.fromId))].sort((a, b) => a.localeCompare(b));
+      const presentCount = edgeSrcIds.filter((id) => readOf.get(id)?.present === true).length;
+      if (presentCount === 0) {
+        // 🐤 报否定结论必须同时给金丝雀：把**这个类型上真有的**数值字段列出来。
+        // 没有它，「字段名拼错了」与「这个类型真的没有可用的量值字段」在屏上一模一样，
+        // 而两者修法相反（前者改一个字符串，后者该退回 `equal_share`）。
+        const sample = sources.find((o) => edgeSrcIds.includes(o.id)) ?? sources[0];
+        const numericKeys = sample
+          ? Object.keys(sample.props)
+              .filter((k) => typeof sample.props[k] === "number" && Number.isFinite(sample.props[k] as number))
+              .sort()
+          : [];
+        fail(
+          `声明的计量字段「${rule.sourceTypeKey}.${field}」在本规则的 ${edgeSrcIds.length} 个源实例上` +
+            `**一个都读不到有限数值** ⇒ 算不出份额。本条流不传导——静默归零会让这条边` +
+            `「一声不响地不再传导」（只体现为 zeroPairs、永不进 unresolved），` +
+            `回落等份则会把「字段名拼错」伪装成「大家一样重」。` +
+            `🐤 该类型上实有的数值字段：${numericKeys.length > 0 ? numericKeys.join(" / ") : "（一个都没有 ⇒ 本边该用 equal_share，不是本口径）"}`,
+        );
+        continue;
+      }
+      // ── 类型级判据②：字段读得到，但**合计 ≤ 0** ⇒ 整条报缺 ──────────────────────────
+      // 份额的定义要求分母为正。全 0（字段存在但恒为 0）或全负，都算不出「谁占多少」。
+      const totalRead = edgeSrcIds.reduce((s, id) => s + Math.max(0, readOf.get(id)?.v ?? 0), 0);
+      if (!(totalRead > 0)) {
+        fail(
+          `声明的计量字段「${rule.sourceTypeKey}.${field}」在本规则 ${edgeSrcIds.length} 个源实例上` +
+            `读到了（${presentCount} 个非缺席）但**正值合计为 ${totalRead}** ⇒ 分母非正，算不出份额。` +
+            `本条流不传导——把 0 当分母得到的不是「平摊」，是整表归零。`,
+        );
+        continue;
+      }
+      const measures = new Map<string, Measure[]>();
+      for (const e of edges) {
+        const r0 = readOf.get(e.fromId);
+        // 负值不是权重，按 0 计（不翻转方向）—— 与 `source_qty_relative` / `source_value_relative` 同一条。
+        const v = Math.max(0, r0?.v ?? 0);
+        (measures.get(e.toId) ?? measures.set(e.toId, []).get(e.toId)!).push({
+          sourceId: e.fromId,
+          measure: v,
+          formula:
+            r0?.present === true
+              ? `源 ${field} ${v}`
+              : `源实例在 ${rule.sourceTypeKey}.${field} 上无读数 ⇒ 计量值 0（同组其余源仍有读数，故本条不整表报缺）`,
+          fields: [`${rule.sourceTypeKey}.${field}（由 weightRef.field 声明，非写死）`],
+          bomId: null,
+        });
+      }
+      // 分母 = **该组之和** ⇒ Σw = 1（强度型目标的加权平均）。
+      // ⚠ 与 `source_qty_relative` 的 `IN_EDGES_MEAN` 只差 `normalizeInEdges` 里那一次
+      //   `base / rows.length`，而那一次除法就是 Σ=1 与 Σ=N 的分野（见该函数注释）。
+      const r = normalizeInEdges(rule.key, basis, normalize, measures, (_t, rows) => rows.reduce((s, x) => s + x.measure, 0));
+      weights[rule.key] = r.table;
+      report.explain.push(...r.explain);
+      done(edges.length, r.zeroPairs);
+      continue;
+    }
+
     if (basis === "source_qty_relative") {
       // ── 源实例数量**相对于同组均值**的倍率（均值=1、Σ=N ⇒ 保总量）──────────────
       // 用于**广延**型目标（`Model.demandLoad`「需求负载」）：单越多负荷越大这个信号必须留着，
@@ -512,6 +614,32 @@ export async function buildPairWeights(
           formula: `源数量 qty ${q}`,
           fields: [`${rule.sourceTypeKey}.qty`],
           bomId: null,
+        });
+      }
+      // ── 🔴 诚实缺口上报（WO-WEIGHT-BASIS-FIELD 顺手补）：**只上报，不改数值行为** ──────
+      //
+      // 本支把字段名**写死成 `qty`**。源类型的数量字段不叫 `qty` 时（实测：`WorkOrder.qtyPlanned` /
+      // `FinishedGoodsInventory.qtyAvailable` / `Model` 压根没有），计量值逐条量出 0
+      // ⇒ `normalizeInEdges` 的 `denominator > 0 ? … : 0` 让**整表权重归零**
+      // ⇒ 引擎 `if (amount === 0) continue` ⇒ **该边静默停摆**，只体现为 `zeroPairs`。
+      // 形态：「我用『这条边声明了分摊口径』当作『它在按份额传导』的证据，而前者并不度量后者。」
+      //
+      // ⚠ **为什么这里只 push 不 continue**：`report.unresolved` 是 DataCore 侧的诚实回执，
+      //   引擎判「不传导」用的是**另一个信号** —— `pairWeights[rule.key] === undefined`
+      //   （`propagation.ts` 那段 `NO_WEIGHTS`）。故下面照常写 `weights[rule.key]`
+      //   ⇒ 本支的**数值行为逐字节不变**，只是缺口从此亮在回执里，不再只能靠翻 `zeroPairs` 发现。
+      //   改它的数值行为会动既有断言（`Model.demandLoad` 那两条边在用它），那是另一单。
+      // ⇒ 要按份额分摊又要 Σ=1 的边，用 `source_field_share` 声明字段，别改本支。
+      if (edges.every((e) => !((qtyOf.get(e.fromId) ?? 0) > 0))) {
+        report.unresolved.push({
+          ruleKey: rule.key,
+          basis,
+          reason:
+            `本口径把计量字段**写死为「qty」**，而 ${rule.sourceTypeKey} 的 ${edges.length} 条边上` +
+            `没有一个源的 props.qty 为正 ⇒ 整张权重表量出 0 ⇒ 本条边实际**静默停摆**` +
+            `（引擎侧 amount 恒 0、不落 trace，却因为表存在而不进 unresolvedWeights）。` +
+            `⚠ 本条是**诚实上报**，本支数值行为逐字节未改；` +
+            `修法是改用 source_field_share 并声明真实字段名（如 qtyPlanned / qtyAvailable）。`,
         });
       }
       const r = normalizeInEdges(rule.key, basis, normalize, measures, (_t, rows) => rows.reduce((s, x) => s + x.measure, 0));
